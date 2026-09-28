@@ -1,0 +1,233 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  @import "@xyflow/react/dist/style.css";
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground text-sm antialiased;
+  }
+
+  html {
+    @apply font-sans;
+  }
+}
+/* React Flow 的内置控件跟随项目主题：这些变量指向 shadcn token，
+   所以 .dark 切换时控制条会自动换色，不用额外写暗色样式。
+   放在 @layer base 之外，确保覆盖 xyflow 自带的默认值。 */
+.react-flow {
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--card-foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: 0 1px 2px 0 oklch(0 0 0 / 0.05);
+}
+
+/* 画布工具栏与站内图标按钮保持一致的尺寸。 */
+.react-flow__controls-button {
+  width: 36px;
+  height: 36px;
+  padding: 9px;
+}
+
+.react-flow__controls-button svg {
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+}
+
+/* 光标工具：箭头（select）负责选中与框选，抓手（pan）负责拖动画布。
+   xyflow 自带的光标是按「能不能拖」推导的，这里按当前工具统一覆盖；
+   同样放在 @layer 之外，未分层样式优先级高于 base 层。 */
+[data-tool="select"] .react-flow__pane {
+  cursor: default;
+}
+
+[data-tool="pan"] .react-flow__pane {
+  cursor: grab;
+}
+
+[data-tool="pan"] .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+/* 连线选中时染成流星的粉色并加粗，配合中点浮出的剪刀按钮，
+   一眼看出要剪哪一根。xyflow 自带的 .selected 只换成深灰，暗色底上看不见。 */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--edge-shape-color, #ff0073);
+  stroke-width: 2;
+}
+
+/* 抓手模式下整个界面就是一块可拖的画布：节点、连线、连接点、浮在节点下方的
+   输入框全都不接指针事件，按在哪儿拖都是平移画布，也点不进输入框、连不出线。
+   一条通配比逐个把类名列全可靠——以后新加的悬浮层不用再来补一笔。 */
+[data-tool="pan"] * {
+  pointer-events: none;
+}
+
+/* 例外只有三处：pane 是承接拖动的那一层；控制条得留着，
+   否则用按钮切到抓手以后就没地方切回箭头了；
+   还有挂 canvas-overlay-interactive 的常驻悬浮控件（设置按钮之类）。 */
+[data-tool="pan"] .react-flow__pane,
+[data-tool="pan"] .react-flow__controls,
+[data-tool="pan"] .react-flow__controls *,
+[data-tool="pan"] .canvas-overlay-interactive,
+[data-tool="pan"] .canvas-overlay-interactive * {
+  pointer-events: all;
+}
+
+/* 原生滚动条全局对齐 ScrollArea 组件的观感：轨道透明、滑块是半透明的
+   muted-foreground 圆角条，明暗主题都跟着 token 走，不用写两套。
+   宽度取 8px，和 ScrollArea 的 w-2 一致。 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: calc(infinity * 1px);
+  background-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+}
+
+/* Chrome 同时拿到 scrollbar-color 和 ::-webkit-scrollbar 时只认前者，
+   会让上面这套圆角样式失效，所以标准属性只留给没有伪元素的浏览器（Firefox）。 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent)
+      transparent;
+  }
+}
