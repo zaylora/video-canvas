@@ -23,3 +23,9 @@ type RegisterUserReq struct {
 	Nickname string `json:"nickname" binding:"omitempty,min=1,max=64" label:"昵称"`
 	Email    string `json:"email" binding:"omitempty,email,max=128" label:"邮箱"`
 }
+
+// 用户列表请求参数
+type ListUserReq struct {
+	Page     int `form:"page" label:"页码"`
+	PageSize int `form:"page_size" label:"每页条数"`
+}

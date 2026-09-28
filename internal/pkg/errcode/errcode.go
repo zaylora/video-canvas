@@ -44,3 +44,11 @@ var (
 	ErrUserExists        = New(20002, "用户名已存在", http.StatusConflict)
 	ErrInvalidCredential = New(20003, "用户名或密码错误", http.StatusUnauthorized)
 )
+
+// 画布模块 3xxxx
+var (
+	ErrCanvasNotFound = New(30001, "画布不存在", http.StatusNotFound)
+	ErrCanvasConflict = New(30002, "画布已被修改，请刷新后重试", http.StatusConflict)
+	ErrCanvasPayload  = New(30003, "画布内容必须是 JSON 对象", http.StatusBadRequest)
+	ErrCanvasNoChange = New(30004, "title 和 payload_json 至少传一个", http.StatusBadRequest)
+)

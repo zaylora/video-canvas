@@ -3,7 +3,7 @@ package pagination
 const (
 	DefaultPage     = 1
 	DefaultPageSize = 10
-	MaxPageSize     = 100
+	MaxPageSize     = 50
 )
 
 // Query 是通用分页参数，可直接用于 gin 的 ShouldBindQuery。

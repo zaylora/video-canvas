@@ -43,9 +43,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 	userCache := cache.NewUserCache(rdb)
 	userSvc := service.NewUserService(userRepo, userCache, cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.ExpireHours)
 
-	engine := router.New(cfg.Server.Mode, router.Handlers{
-		Health: handler.NewHealthHandler(db, rdb),
-		User:   handler.NewUserHandler(userSvc),
+	// 画布
+	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
+	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo)
+
+	engine := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
+		Health:        handler.NewHealthHandler(db, rdb),
+		User:          handler.NewUserHandler(userSvc),
+		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
 	})
 
 	return &App{

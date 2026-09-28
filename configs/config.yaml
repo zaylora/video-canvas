@@ -15,9 +15,6 @@ log:
   max_age: 30 # 保留天数
 
 database:
-  driver: postgres # sqlite | mysql | postgres
-  # mysql 示例: root:123456@tcp(127.0.0.1:3306)/video_canvas?charset=utf8mb4&parseTime=True&loc=Local
-  # postgres 示例: host=127.0.0.1 user=postgres password=root dbname=video_canvas port=5432 sslmode=disable TimeZone=Asia/Shanghai
   dsn: host=127.0.0.1 user=postgres password=root dbname=video_canvas port=5432 sslmode=disable TimeZone=Asia/Shanghai
   max_idle_conns: 10
   max_open_conns: 100

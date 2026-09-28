@@ -11,11 +11,12 @@ import (
 
 // Handlers 汇总所有 handler，新增模块时在这里加字段并注册路由。
 type Handlers struct {
-	Health *handler.HealthHandler
-	User   *handler.UserHandler
+	Health        *handler.HealthHandler
+	User          *handler.UserHandler
+	CanvasProject *handler.CanvasProjectHandler
 }
 
-func New(mode string, h Handlers) *gin.Engine {
+func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 	gin.SetMode(mode)
 
 	r := gin.New()
@@ -33,6 +34,20 @@ func New(mode string, h Handlers) *gin.Engine {
 		// 无需鉴权
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
+
+		// 需要登录
+		auth := v1.Group("", middleware.JWTAuth(jwtSecret))
+
+		canvas := auth.Group("/canvas")
+		canvas.POST("", h.CanvasProject.Create)
+		canvas.GET("", h.CanvasProject.List)
+		canvas.GET("/:id", h.CanvasProject.Get)
+		canvas.PUT("/:id", h.CanvasProject.Update)
+		canvas.DELETE("/:id", h.CanvasProject.Delete)
+
+		users := auth.Group("/users")
+		users.GET("", h.User.List)
+		users.GET("/:id", h.User.Get)
 
 		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权
 		// users := v1.Group("/users")

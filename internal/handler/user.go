@@ -42,3 +42,31 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 	response.OK(c, gin.H{"token": token, "expire_at": expireAt})
 }
+
+// 用户列表
+func (h *UserHandler) List(c *gin.Context) {
+	var req model.ListUserReq
+	if !bindQuery(c, &req) {
+		return
+	}
+	users, total, q, err := h.svc.List(c.Request.Context(), &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OKPage(c, users, total, q.Page, q.PageSize)
+}
+
+// 用户详情
+func (h *UserHandler) Get(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	u, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, u)
+}

@@ -39,7 +39,6 @@ type Log struct {
 }
 
 type Database struct {
-	Driver          string        `mapstructure:"driver"`
 	DSN             string        `mapstructure:"dsn"`
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`

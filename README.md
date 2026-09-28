@@ -36,9 +36,8 @@ go run ./cmd/server -c configs/config.yaml
 make run
 ```
 
-默认使用 SQLite（数据文件 `data/app.db`），Redis 关闭，无需任何外部依赖即可启动。
+数据库仅支持 PostgreSQL，启动前需准备好数据库并在 `database.dsn` 中填写连接信息。
 
-- 切换 MySQL：`database.driver` 改为 `mysql`，并填写 `database.dsn`
 - 启用 Redis：`redis.enabled` 改为 `true`
 - 环境变量覆盖：`APP_` + 配置路径，如 `APP_SERVER_PORT=9000`
 

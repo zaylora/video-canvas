@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -51,6 +52,25 @@ func bindQuery(c *gin.Context, req any) bool {
 	return bindWith(c, c.ShouldBindQuery(req))
 }
 
+// bindURI 解析路径参数到 req（字段用 uri 标签），行为同 bindJSON。
+func bindURI(c *gin.Context, req any) bool {
+	return bindWith(c, c.ShouldBindUri(req))
+}
+
+// idURI 是最常见的 /:id 路径参数。
+type idURI struct {
+	ID uint64 `uri:"id" binding:"required,min=1" label:"id"`
+}
+
+// pathID 解析路径参数 :id，非法时直接返回参数错误。
+func pathID(c *gin.Context) (uint64, bool) {
+	var uri idURI
+	if !bindURI(c, &uri) {
+		return 0, false
+	}
+	return uri.ID, true
+}
+
 func bindWith(c *gin.Context, err error) bool {
 	if err == nil {
 		return true
@@ -72,6 +92,10 @@ func bindErrMsg(err error) string {
 	var te *json.UnmarshalTypeError
 	if errors.As(err, &te) {
 		return te.Field + " 类型错误"
+	}
+	var ne *strconv.NumError
+	if errors.As(err, &ne) {
+		return "参数格式错误：" + ne.Num
 	}
 	return "请求参数格式错误"
 }
