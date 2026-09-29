@@ -13,13 +13,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/config"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )

@@ -7,8 +7,8 @@ import (
 	"testing"
 	. "video-canvas/internal/service"
 
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/model"
+	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/service/aiconfigfake"
 )
 

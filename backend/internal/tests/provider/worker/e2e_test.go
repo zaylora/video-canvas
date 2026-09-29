@@ -16,12 +16,12 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
-	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
-	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/dsl"
+	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -71,7 +71,9 @@ func e2eDB(t *testing.T) *gorm.DB {
 
 type e2eRegistry struct{ snap *dsl.Snapshot }
 
-func (r *e2eRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) { return nil, nil }
+func (r *e2eRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
+	return nil, nil
+}
 func (r *e2eRegistry) Snapshot(context.Context, string) (*dsl.Snapshot, error) {
 	cp := *r.snap
 	return &cp, nil

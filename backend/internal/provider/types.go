@@ -12,8 +12,8 @@ import (
 	"errors"
 	"io"
 
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/model"
+	"video-canvas/internal/provider/dsl"
 )
 
 // ErrorClass 是统一的错误分类，worker 据此决定重试还是失败。

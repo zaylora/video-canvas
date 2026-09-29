@@ -15,9 +15,9 @@ import (
 	"time"
 	. "video-canvas/internal/provider/worker"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/dsl"
-	"video-canvas/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -727,8 +727,10 @@ func TestWorker_Poll(t *testing.T) {
 			wantStatus: model.TaskFailed, wantCode: "provider_error", wantMsg: "平台繁忙，请稍后重试",
 		},
 		{
-			name:       "未知统一状态按 running 处理",
-			query:      func(int, provider.TaskRef) (*provider.QueryResult, error) { return &provider.QueryResult{Status: "weird"}, nil },
+			name: "未知统一状态按 running 处理",
+			query: func(int, provider.TaskRef) (*provider.QueryResult, error) {
+				return &provider.QueryResult{Status: "weird"}, nil
+			},
 			wantStatus: model.TaskRunning, wantNext: 5 * time.Second, wantTry: 1,
 		},
 		{
@@ -826,8 +828,8 @@ func TestBackoffAndFailureMapping(t *testing.T) {
 		provider.ClassModeration:       {"moderation", "内容未通过审核"},
 		provider.ClassProviderBalance:  {"provider_balance", "服务繁忙，请稍后再试"},
 		provider.ClassSubmitUnknown:    {"submit_unknown", "提交结果未知，积分已退回"},
-		FailTimeout:              {"timeout", "生成超时，积分已退回"},
-		FailTransfer:             {"transfer_failed", "生成结果保存失败，积分已退回"},
+		FailTimeout:                    {"timeout", "生成超时，积分已退回"},
+		FailTransfer:                   {"transfer_failed", "生成结果保存失败，积分已退回"},
 		provider.ClassTerminal:         {"provider_error", "平台繁忙，请稍后重试"},
 		provider.ClassRetryable:        {"provider_error", "平台繁忙，请稍后重试"},
 		provider.ErrorClass("unknown"): {"provider_error", "平台繁忙，请稍后重试"},
@@ -872,18 +874,24 @@ func TestWorker_Finalize_Failures(t *testing.T) {
 			wantStatus: model.TaskFailed, wantCode: "provider_error",
 		},
 		{
-			name:       "取产物地址时终态错误直接失败",
-			query:      func(int, provider.TaskRef) (*provider.QueryResult, error) { return nil, &provider.Error{Class: provider.ClassTerminal} },
+			name: "取产物地址时终态错误直接失败",
+			query: func(int, provider.TaskRef) (*provider.QueryResult, error) {
+				return nil, &provider.Error{Class: provider.ClassTerminal}
+			},
 			wantStatus: model.TaskFailed, wantCode: "provider_error",
 		},
 		{
-			name:       "取产物地址时可重试错误保持 finalizing",
-			query:      func(int, provider.TaskRef) (*provider.QueryResult, error) { return nil, &provider.Error{Class: provider.ClassRetryable} },
+			name: "取产物地址时可重试错误保持 finalizing",
+			query: func(int, provider.TaskRef) (*provider.QueryResult, error) {
+				return nil, &provider.Error{Class: provider.ClassRetryable}
+			},
 			wantStatus: model.TaskFinalizing,
 		},
 		{
-			name:       "平台状态回退（不是 succeeded）保持 finalizing 重试",
-			query:      func(int, provider.TaskRef) (*provider.QueryResult, error) { return &provider.QueryResult{Status: provider.StatusRunning}, nil },
+			name: "平台状态回退（不是 succeeded）保持 finalizing 重试",
+			query: func(int, provider.TaskRef) (*provider.QueryResult, error) {
+				return &provider.QueryResult{Status: provider.StatusRunning}, nil
+			},
 			wantStatus: model.TaskFinalizing,
 		},
 		{

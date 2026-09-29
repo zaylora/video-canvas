@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/model"
+	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/repository"
 )
 

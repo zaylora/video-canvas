@@ -13,10 +13,10 @@ import (
 	"time"
 	. "video-canvas/internal/service"
 
-	"video-canvas/internal/provider"
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/storage"
 )

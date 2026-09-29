@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/dsl"
-	"video-canvas/internal/pkg/logger"
 )
 
 // aiRegModel 是 Registry 里的一个已发布模型：指针行的运行时开关 + 已解析的发布版本。

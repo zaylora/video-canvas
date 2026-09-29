@@ -1,0 +1,43 @@
+[changelog]
+header = """
+# Changelog
+
+所有重要变更都会记录在此文件中。
+
+"""
+body = """
+{% if version %}
+## {{ version }}{% if timestamp %} - {{ timestamp | date(format="%Y-%m-%d") }}{% endif %}
+{% else %}
+## [Unreleased]
+{% endif %}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+
+{% for commit in commits %}
+- {{ commit.message | upper_first }}
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = """
+"""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+commit_preprocessors = []
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf|^refactor", group = "Changed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^build|^ci|^chore", group = "Changed" },
+  { message = "^revert", group = "Reverted" },
+  { message = "^Merge", skip = true },
+  { message = "^.*", group = "Other" },
+]
+tag_pattern = "v[0-9].*"
+sort_commits = "oldest"

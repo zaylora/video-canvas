@@ -14,13 +14,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
-	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/repository"
 )
 

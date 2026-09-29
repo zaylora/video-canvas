@@ -13,11 +13,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/repository"
 )
 

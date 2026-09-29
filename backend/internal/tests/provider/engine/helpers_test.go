@@ -15,9 +15,9 @@ import (
 	"testing"
 	. "video-canvas/internal/provider/engine"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/dsl"
-	"video-canvas/internal/model"
 )
 
 const engSecret = "sk-SECRET-1234567890abcdef"

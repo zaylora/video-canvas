@@ -1,3 +1,7 @@
-node_modules/
-dist/
-.git/
+.git
+node_modules
+dist
+.env
+.env.*
+!.env.example
+Dockerfile.dev

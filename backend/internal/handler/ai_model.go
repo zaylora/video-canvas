@@ -3,8 +3,8 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 
-	"video-canvas/internal/provider"
 	"video-canvas/internal/pkg/response"
+	"video-canvas/internal/provider"
 )
 
 // AIModelHandler 面向画布的模型清单接口。

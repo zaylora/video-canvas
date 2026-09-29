@@ -20,10 +20,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/dsl"
 )
 
 // Store 是 worker 需要的任务存储与状态迁移能力，由 service.GenerationTaskService 实现。

@@ -6,9 +6,9 @@ import (
 	"testing"
 	. "video-canvas/internal/service"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/provider/engine"
-	"video-canvas/internal/model"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service/aiconfigfake"
 )
