@@ -1,0 +1,12 @@
+FROM golang:1.27-bookworm
+
+WORKDIR /app
+
+# 先缓存模块下载；Compose 运行时会把 backend 源码挂载到 /app。
+COPY go.mod go.sum ./
+RUN go mod download && go install github.com/air-verse/air@latest
+
+ENV CGO_ENABLED=0 \
+    GOFLAGS=-buildvcs=false
+
+EXPOSE 8080

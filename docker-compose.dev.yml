@@ -1,0 +1,89 @@
+name: video-canvas-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: video_canvas
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d video_canvas"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: ["air", "-c", ".air.toml"]
+    environment:
+      APP_DATABASE_DSN: "host=postgres user=postgres password=root dbname=video_canvas port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+      APP_REDIS_ENABLED: "true"
+      APP_REDIS_ADDR: "redis:6379"
+      APP_JWT_SECRET: "change-me-in-dev"
+      APP_AI_SECRET_KEY: "video-canvas-dev-ai-secret"
+      APP_STORAGE_LOCAL_DIR: "/app/data/assets"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - ./backend:/app
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
+      - backend_assets:/app/data/assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      VITE_PROXY_TARGET: "http://backend:8080"
+      VITE_API_BASE_URL: "/api/v1"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  go_build_cache:
+  go_mod_cache:
+  backend_assets:
+  web_node_modules:

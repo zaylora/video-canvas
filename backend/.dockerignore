@@ -1,0 +1,6 @@
+bin/
+data/
+logs/
+tmp/
+.git/
+*.local.yaml
