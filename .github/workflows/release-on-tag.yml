@@ -54,7 +54,6 @@ jobs:
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" \
-              --verify-tag "$RELEASE_TAG" \
               --title "$RELEASE_TAG" \
               --notes-file release-notes.md
           fi
