@@ -52,3 +52,21 @@ var (
 	ErrCanvasPayload  = New(30003, "画布内容必须是 JSON 对象", http.StatusBadRequest)
 	ErrCanvasNoChange = New(30004, "title 和 payload_json 至少传一个", http.StatusBadRequest)
 )
+
+// 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx
+var (
+	ErrInsufficientCredits = New(40001, "积分不足", http.StatusPaymentRequired)
+	ErrTooManyTasks        = New(40002, "进行中的任务已达上限，请等待完成后再试", http.StatusTooManyRequests)
+	ErrModelUnavailable    = New(40003, "模型不可用或已下线", http.StatusBadRequest)
+	ErrTaskNotFound        = New(40004, "任务不存在", http.StatusNotFound)
+	ErrTaskNotCancelable   = New(40005, "任务已结束，无法取消", http.StatusConflict)
+	ErrTaskInput           = New(40006, "生成参数不合法", http.StatusBadRequest) // 字段级错误写进 Msg
+	ErrAssetNotFound       = New(40007, "素材不存在", http.StatusNotFound)
+	ErrAssetInvalid        = New(40008, "素材不合法", http.StatusBadRequest)
+	ErrAssetTooLarge       = New(40009, "素材超过大小限制", http.StatusRequestEntityTooLarge)
+	ErrConfigInvalid       = New(40010, "配置校验未通过", http.StatusBadRequest) // 错误列表写进 Msg
+	ErrConfigNotFound      = New(40011, "配置不存在", http.StatusNotFound)
+	ErrConfigNoDraft       = New(40012, "没有可发布的草稿", http.StatusConflict)
+	ErrSecretNotSet        = New(40013, "凭证尚未设置", http.StatusConflict)
+	ErrWSTicketInvalid     = New(40014, "连接凭证无效或已过期", http.StatusUnauthorized)
+)

@@ -29,7 +29,9 @@ backend/
 │   ├── cache/             # Redis 缓存封装，rdb 为 nil 时所有方法都是空操作
 │   ├── model/             # GORM 表模型 + 请求/响应结构体（XxxReq / XxxItem）
 │   │   └── base.go        # BaseModel（主键、时间戳、软删除）+ All()（自动迁移注册表）
-│   ├── ai/                # AI 助手模块（暂未实现，占位）
+│   ├── provider/          # 外部供应商调用与任务调度：types.go（跨包契约）、dsl/（声明式配置校验与表达式）、engine/（通用执行引擎，含 SSRF 防护）、worker/（轮询调度与转存）
+│   ├── pkg/ws/            # 用户级 WebSocket 推送：Hub、一次性 ticket、Broadcaster 接口
+│   ├── storage/           # 素材对象存储：local（仅开发）/ s3（S3 兼容，含阿里云 OSS）
 │   └── pkg/               # 内部通用包
 │       ├── errcode/       # 业务错误码定义（按模块分段）
 │       ├── response/      # 统一响应 OK / OKPage / Fail
@@ -73,13 +75,15 @@ router → middleware → handler → service → repository / cache → Postgre
 
 | 层              | 测试文件                          | 写法                                                                        | 要求                                                                                             |
 | --------------- | --------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| service         | `internal/service/xxx_test.go`    | 手写 fake 实现 service 包内声明的 Repo 接口，表驱动测试                     | **必写**。覆盖成功路径 + 每一个业务错误分支（参数非法、不存在、冲突、repo 返回未知错误透传等）   |
-| handler         | `internal/handler/xxx_test.go`    | `gin.SetMode(gin.TestMode)` + `httptest`，用真实 service + fake repo 组装   | **必写**。至少覆盖：成功响应、参数校验失败（400 + `10001`）、一个业务错误的 HTTP 状态码和 `code` |
-| repository      | `internal/repository/xxx_test.go` | 连接真实 PostgreSQL，从环境变量 `TEST_DATABASE_DSN` 读取，未设置时 `t.Skip` | 有复杂 SQL（乐观锁、模糊搜索、多条件）时写                                                       |
-| 纯函数 / 工具包 | 同包 `_test.go`                   | 表驱动                                                                      | 新增工具函数（如 `isJSONObject`、`escapeLike`、`pagination`）时写                                |
+| service         | `internal/tests/service/xxx_test.go` | 手写 fake 实现 service 包内声明的 Repo 接口，表驱动测试                     | **必写**。覆盖成功路径 + 每一个业务错误分支（参数非法、不存在、冲突、repo 返回未知错误透传等）   |
+| handler         | `internal/tests/handler/xxx_test.go` | `gin.SetMode(gin.TestMode)` + `httptest`，用真实 service + fake repo 组装   | **必写**。至少覆盖：成功响应、参数校验失败（400 + `10001`）、一个业务错误的 HTTP 状态码和 `code` |
+| repository      | `internal/tests/repository/xxx_test.go` | 连接真实 PostgreSQL，从环境变量 `TEST_DATABASE_DSN` 读取，未设置时 `t.Skip` | 有复杂 SQL（乐观锁、模糊搜索、多条件）时写                                                       |
+| 纯函数 / 工具包 | `internal/tests/<包路径>/`                | 表驱动                                                                      | 新增工具函数（如 `isJSONObject`、`escapeLike`、`pagination`）时写                                |
 
 **测试约定：**
 
+- **所有测试统一放在 `internal/tests/`，目录结构与被测包保持一致**（如 `internal/provider/dsl` → `internal/tests/provider/dsl`），包名用 `xxx_test` 外部测试包，被测包用点导入；测试夹具（`testdata/`）跟测试放在一起。
+- 需要访问包内未导出符号时，在被测包里加 `export_testing.go` 暴露（仅供测试，业务代码不要引用），不要把测试挪回业务包。
 - 只用标准库 `testing` + `net/http/httptest`，**不要擅自引入 testify、gomock 等新依赖**（需要时先和维护者确认）。
 - 测试名 `TestXxxService_Method` / `TestXxxHandler_Method`，子用例名用中文描述场景，例如 `"版本冲突返回 409"`。
 - 断言业务错误时比较错误码，而不是指针：`WithMsg` 会返回新副本，`errors.Is` 会失效。用 `errors.As(err, &e)` 后比较 `e.Code`。

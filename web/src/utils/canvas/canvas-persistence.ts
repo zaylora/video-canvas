@@ -3,6 +3,11 @@ import type { CanvasGraphDto } from '@/api/canvas/type'
 import { ANIMATED_EDGE_OPTIONS } from '@/constants/canvas'
 import type { CanvasEdge, CanvasNode } from '@/types'
 
+/** 是否还有「存下来也没有意义」的本地生成中节点，保存要等它们收尾 */
+export function hasVolatileRunning(nodes: CanvasNode[]) {
+  return nodes.some((node) => node.data.status === 'running' && !node.data.taskId)
+}
+
 export function serializeGraph(
   nodes: CanvasNode[], edges: CanvasEdge[], viewport: Viewport,
 ): CanvasGraphDto {
@@ -14,7 +19,12 @@ export function serializeGraph(
         label: rest.label,
         ...(rest.prompt !== undefined ? { prompt: rest.prompt } : {}),
         ...(rest.model !== undefined ? { model: rest.model } : {}),
-        ...(status ? { status: status === 'running' ? 'idle' as const : status } : {}),
+        ...(status
+          ? { status: status === 'running' && !rest.taskId ? 'idle' as const : status }
+          : {}),
+        ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
+        ...(rest.params !== undefined ? { params: rest.params } : {}),
+        ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
         ...(rest.src !== undefined ? { src: rest.src } : {}),
         ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
         ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
@@ -48,7 +58,13 @@ export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
   const edges = Array.isArray(graph?.edges) ? graph.edges : []
   const viewport = graph?.viewport ?? { x: 0, y: 0, zoom: 1 }
   return {
-    nodes: nodes as CanvasNode[],
+    nodes: nodes.map((node) => {
+      const data = node.data as { status?: string; taskId?: string }
+      // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理
+      return data.status === 'running' && !data.taskId
+        ? { ...node, data: { ...node.data, status: 'idle' as const } }
+        : node
+    }) as CanvasNode[],
     edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],
     viewport,
   }

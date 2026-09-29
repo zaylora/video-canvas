@@ -5,6 +5,9 @@ server:
   read_timeout: 10s
   write_timeout: 60s
   shutdown_timeout: 10s
+  allowed_origins: # WebSocket 升级允许的 Origin 白名单；为空只允许同源
+    - http://localhost:5173
+    - http://127.0.0.1:5173
 
 log:
   level: debug # debug | info | warn | error
@@ -32,6 +35,35 @@ jwt:
   secret: "change-me-in-prod" # 生产环境务必用环境变量 APP_JWT_SECRET 覆盖，不要用配置文件里的明文值
   issuer: video-canvas
   expire_hours: 72
+
+ai:
+  max_active_tasks_per_user: 4 # 每个用户进行中的任务上限
+  initial_credits: 50 # 新用户初始积分（本期不做充值）
+  webhook_base_url: "" # 为空时不注册 callback，纯轮询；配置公网地址后启用 webhook 加速
+  # webhook_secret 与 secret_key 只通过环境变量 APP_AI_WEBHOOK_SECRET / APP_AI_SECRET_KEY 提供
+  worker:
+    enabled: true
+    concurrency: 8
+    tick: 1s
+    batch_size: 50
+    lease: 60s
+
+storage:
+  driver: local # local（仅开发）| s3（S3 兼容，含阿里云 OSS）
+  max_upload_bytes: 209715200 # 200MB
+  max_result_bytes: 2147483648 # 2GB
+  signed_ttl: 1h # 私有桶签名 URL 有效期
+  local:
+    dir: ./data/assets
+    base_url: "" # 为空时使用相对路径 /files
+  s3:
+    endpoint: ""
+    region: ""
+    bucket: ""
+    use_ssl: true
+    public_base_url: "" # 公开桶或 CDN 前缀；为空则使用签名 URL
+    path_prefix: ""
+    # access_key / secret_key 只通过环境变量 APP_STORAGE_S3_ACCESS_KEY / APP_STORAGE_S3_SECRET_KEY 提供
 
 # 所有配置项都可以用环境变量覆盖，规则：APP_ + 大写路径，点换成下划线
 # 例如 APP_SERVER_PORT=9000、APP_DATABASE_DSN=...、APP_JWT_SECRET=...

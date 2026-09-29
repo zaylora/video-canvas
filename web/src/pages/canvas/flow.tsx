@@ -14,7 +14,7 @@ import {
   type EdgeTypes,
   type NodeTypes,
 } from "@xyflow/react";
-import { Hand, MousePointer2, Settings, Upload } from "lucide-react";
+import { Hand, MousePointer2, Settings, Upload, WifiOff, Zap } from "lucide-react";
 
 import {
   AddNodeMenu,
@@ -35,13 +35,22 @@ import {
   UPLOAD_NOTICE_DURATION,
 } from "@/constants/canvas";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
+import { useRemoteModels } from "@/hooks/use-models";
+import { useTaskBackfill } from "@/hooks/use-task-backfill";
+import { useCreditsStore } from "@/store/credits";
+import { useWsStore } from "@/store/ws";
+import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE, useSettingsStore } from "@/store";
 import type { NodeKind, UploadNotice } from "@/types";
 import { getAllowedKinds, getModelOptions } from "@/utils/canvas/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import type { CanvasEdge, CanvasNode } from "@/types";
-import { deserializeGraph, serializeGraph } from "@/utils/canvas/canvas-persistence";
+import {
+  deserializeGraph,
+  hasVolatileRunning,
+  serializeGraph,
+} from "@/utils/canvas/canvas-persistence";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 
@@ -84,6 +93,11 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
     applyNodesChange(changes);
   }, [applyNodesChange]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  // 任务结果回填节点；打开画布时对账还在 running 的节点
+  useTaskBackfill(nodes, setNodes);
+  useEffect(() => { rememberCanvasTitle(canvas.id, canvas.title); }, [canvas.id, canvas.title]);
+  const connection = useWsStore((state) => state.connection);
+  const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
   useEffect(() => () => {
     for (const node of nodesRef.current) releaseObjectUrl(node.data.src);
   }, []);
@@ -95,13 +109,23 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
     if (!hydratedRef.current) return;
     const delay = changeDelayRef.current;
     changeDelayRef.current = null;
-    if (delay !== false && !(delay === null && nodes.some((node) => node.data.status === "running"))) {
+    // 本地演示的生成中状态存不下来，等它收尾再存；带 taskId 的视频任务要立刻存，刷新后才能对账回填
+    if (delay !== false && !(delay === null && hasVolatileRunning(nodes))) {
       scheduleSave(delay ?? 800);
     }
   }, [nodes, edges, scheduleSave]);
   const { activeTool, toggleTool } = useCanvasTool();
   // 画布把设置里的几项都用上了，整份订阅，省去逐个 selector
   const settings = useSettingsStore();
+  const { options: videoModelOptions, status: videoModelsStatus } = useRemoteModels("video");
+  // 视频清单由服务端下发：设置里存的默认模型可能是旧演示清单里的 id，
+  // 清单没加载好或里面找不到时就不往新节点上写，让节点自己落到清单第一条，免得一建出来就是「已下线」
+  const defaultModels = useMemo(() => {
+    const { video, ...rest } = settings.defaultModels;
+    const usable =
+      videoModelsStatus === "ready" && videoModelOptions.some((option) => option.id === video);
+    return usable ? settings.defaultModels : rest;
+  }, [settings.defaultModels, videoModelOptions, videoModelsStatus]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const {
     menu,
@@ -116,7 +140,7 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
   } = useCanvasMenu({
     setNodes,
     setEdges,
-    defaultModels: settings.defaultModels,
+    defaultModels,
   });
 
   const isPanning = activeTool === "pan";
@@ -141,9 +165,9 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
         kind: meta.kind,
         label: meta.label,
         icon: <meta.icon />,
-        models: getModelOptions(meta.kind, settings.customModels),
-      })),
-    [settings.customModels],
+        models: getModelOptions(meta.kind, settings.customModels, videoModelOptions),
+      })).filter((group) => group.models.length > 0),
+    [settings.customModels, videoModelOptions],
   );
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点
@@ -254,8 +278,28 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
             {notice.text}
           </Panel>
         )}
-        <Panel position="top-right" className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur">
-          {saveStatus === "saving" ? "正在保存…" : saveStatus === "saved" ? "已保存" : saveStatus === "conflict" ? "已载入其他位置的修改" : "保存失败，继续编辑时重试"}
+        <Panel position="top-right" className="flex items-center gap-2">
+          {connection === "reconnecting" && (
+            <span
+              role="status"
+              className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs backdrop-blur"
+            >
+              <WifiOff className="size-3.5" />
+              连接中断，正在重连
+            </span>
+          )}
+          {availableCredits !== null && (
+            <span
+              className="bg-card/80 text-muted-foreground flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs tabular-nums backdrop-blur"
+              title="当前可用积分"
+            >
+              <Zap className="size-3.5" />
+              {availableCredits}
+            </span>
+          )}
+          <span className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur">
+            {saveStatus === "saving" ? "正在保存…" : saveStatus === "saved" ? "已保存" : saveStatus === "conflict" ? "已载入其他位置的修改" : "保存失败，继续编辑时重试"}
+          </span>
         </Panel>
         {!notice && settings.showHints && nodes.length === 0 && (
           <Panel

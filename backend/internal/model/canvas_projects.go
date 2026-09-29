@@ -33,29 +33,29 @@ type CanvasPayload struct {
 
 // 创建画布请求参数
 type CreateCanvasProjectReq struct {
-	Title       string          `json:"title" binding:"required,max=255" label:"画布标题"`
-	PayloadJSON json.RawMessage `json:"payload_json" label:"画布内容"` // 不传时默认为 {}
+	Title       string          `json:"title" binding:"required,max=255" label:"画布标题"` // 画布标题
+	PayloadJSON json.RawMessage `json:"payload_json" label:"画布内容"`                     // 不传时默认为 {}
 }
 
 // 更新画布请求参数，title 和 payload_json 至少传一个
 type UpdateCanvasProjectReq struct {
-	Title       *string         `json:"title" binding:"omitempty,min=1,max=255" label:"画布标题"`
-	PayloadJSON json.RawMessage `json:"payload_json" label:"画布内容"`
-	Revision    uint64          `json:"revision" binding:"required" label:"版本号"` // 客户端当前持有的版本号
+	Title       *string         `json:"title" binding:"omitempty,min=1,max=255" label:"画布标题"` // 新标题，不传表示不修改
+	PayloadJSON json.RawMessage `json:"payload_json" label:"画布内容"`                            // 新的画布内容，不传表示不修改
+	Revision    uint64          `json:"revision" binding:"required" label:"版本号"`              // 客户端当前持有的版本号
 }
 
 // 画布列表请求参数
 type ListCanvasProjectReq struct {
-	Page     int    `form:"page" label:"页码"`
-	PageSize int    `form:"page_size" label:"每页条数"`
+	Page     int    `form:"page" label:"页码"`                       // 页码，从 1 开始
+	PageSize int    `form:"page_size" label:"每页条数"`                // 每页条数
 	Keyword  string `form:"keyword" binding:"max=255" label:"关键词"` // 按标题模糊搜索
 }
 
 // 画布列表项，不含 payload_json，避免列表接口返回大字段
 type CanvasProjectItem struct {
-	ID        uint64    `json:"id"`
-	Title     string    `json:"title"`
-	Revision  uint64    `json:"revision"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint64    `json:"id"`         // 画布 ID
+	Title     string    `json:"title"`      // 画布标题
+	Revision  uint64    `json:"revision"`   // 乐观锁版本号
+	CreatedAt time.Time `json:"created_at"` // 创建时间
+	UpdatedAt time.Time `json:"updated_at"` // 更新时间
 }

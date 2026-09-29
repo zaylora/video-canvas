@@ -2,6 +2,7 @@ import type { HandleType } from "@xyflow/react";
 
 import {
   DOWNSTREAM_KINDS,
+  isRemoteModelKind,
   MODEL_LIBRARY,
   NODE_LIBRARY,
 } from "@/constants/canvas";
@@ -49,11 +50,16 @@ function toOption(model: CustomModel): ModelOption {
   };
 }
 
-/** 某种类真正能挑的模型：内置清单加上设置里接进来的那些 */
+/**
+ * 某种类真正能挑的模型：内置清单加上设置里接进来的那些。
+ * 服务端下发清单的种类（视频）只认 remote，不混本地演示项，也不支持自定义模型。
+ */
 export function getModelOptions(
   kind: NodeKind,
   customModels: readonly CustomModel[],
+  remote: readonly ModelOption[] = [],
 ): ModelOption[] {
+  if (isRemoteModelKind(kind)) return [...remote];
   return [
     ...getModels(kind),
     ...customModels.filter((model) => model.kind === kind).map(toOption),

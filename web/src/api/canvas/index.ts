@@ -51,9 +51,9 @@ const mapCanvasProject = (canvas: BackendCanvasProjectDto): CanvasDetailDto => (
 });
 
 /**
- *  获取画布列表
- * @param params 
- * @returns 
+ * 获取画布列表
+ * @param params 分页和查询参数
+ * @returns 画布列表及分页信息
  */
 export const getCanvasList = async (
   params?: CanvasListQueryDto,
@@ -82,9 +82,9 @@ export const getCanvasList = async (
 };
 
 /**
- *  创建画布
- * @param data 
- * @returns 
+ * 创建画布
+ * @param data 画布标题和初始图谱
+ * @returns 新建的画布详情
  */
 export const createCanvas = async (data: CreateCanvasDto = {}) => {
   const payload = {
@@ -97,8 +97,8 @@ export const createCanvas = async (data: CreateCanvasDto = {}) => {
 
 /**
  * 获取画布详情
- * @param id 
- * @returns 
+ * @param id 画布 ID
+ * @returns 画布详情
  */
 export const getCanvas = (id: string) =>
   service
@@ -106,10 +106,10 @@ export const getCanvas = (id: string) =>
     .then(mapCanvasProject);
 
 /**
- *  更新画布信息 
- * @param id 
- * @param data 
- * @returns 
+ * 更新画布信息
+ * @param id 画布 ID
+ * @param data 待更新的标题、图谱及当前 revision
+ * @returns 更新后的画布详情
  */
 export const updateCanvas = (id: string, data: UpdateCanvasDto) =>
   service
@@ -122,9 +122,9 @@ export const updateCanvas = (id: string, data: UpdateCanvasDto) =>
 
 /**
  * 保存画布图谱
- * @param id 
- * @param data 
- * @returns 
+ * @param id 画布 ID
+ * @param data 图谱数据及基准版本
+ * @returns 保存后的版本号和更新时间
  */
 export const saveCanvasGraph = (id: string, data: SaveCanvasGraphDto) =>
   service
@@ -133,8 +133,7 @@ export const saveCanvasGraph = (id: string, data: SaveCanvasGraphDto) =>
       {
         revision: data.baseVersion,
         payload_json: data.graph,
-      },
-      { silent: true },
+      }
     )
     .then((canvas): SaveCanvasGraphResponseDto => ({
       version: canvas.revision,
@@ -144,8 +143,7 @@ export const saveCanvasGraph = (id: string, data: SaveCanvasGraphDto) =>
 
 /**
  * 删除画布
- * @param id 
- * @returns 
+ * @param id 画布 ID
  */
 export const deleteCanvas = (id: string) =>
   service.delete<void>(`/canvas/${id}`);

@@ -40,6 +40,19 @@ export type CanvasNodeData = {
   text?: string | null;
   /** 生成失败的原因，摆给用户看的那句 */
   error?: string | null;
+  /** 视频生成任务 id（后端 id 是数字，这里统一存字符串）；status 为 running 时靠它对账回填 */
+  taskId?: string;
+  /** 按所选模型 input_schema 字段名存的参数值；提示词对应 params.prompt（兼容旧的 prompt 字段） */
+  params?: Record<string, unknown>;
+  /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */
+  paramAssets?: Record<string, ParamAsset>;
+};
+
+/** 参数面板里手动选的素材，只用于展示，真正提交的是 params 里的 assetId */
+export type ParamAsset = {
+  url: string;
+  fileName?: string;
+  mediaType?: "image" | "video" | "audio";
 };
 
 /** 画布上的节点 */
@@ -76,11 +89,15 @@ export type CanvasMenuState = {
 
 /** 上传完要摆给用户看的一句话：不合规是错，接不上线只是知会一声 */
 export type UploadNotice = {
+  /** 提示语气：error 表示不合规，info 表示知会一声 */
   tone: "error" | "info";
+  /** 摆给用户看的文案 */
   text: string;
 };
 
 /** 收下一个上传文件的结果：认下来给素材，认不下给一句能直接摆出去的话 */
 export type UploadTaken =
+  /** 认下来：素材类型与本地预览地址 */
   | { mediaType: MediaType; src: string }
+  /** 认不下：能直接展示给用户的原因 */
   | { error: string };

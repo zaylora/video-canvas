@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "sonner";
 import type { AxiosInstance, AxiosResponse } from "axios";
 import { getToken, removeToken } from "../storage/token";
 
@@ -51,6 +52,16 @@ const isApiResponse = (value: unknown): value is ApiResponse => {
   return typeof body.code === "number" && typeof body.msg === "string";
 };
 
+/**
+ * 统一拒绝出口：先走全局错误提示，再把 ApiError 抛给调用方。
+ * @param error 统一错误
+ */
+const reject = (error: ApiError) => {
+  console.error(`[api] ${error.code}: ${error.message}`);
+  toast.error(error.message, { id: `api:${error.code}` });
+  return Promise.reject(error);
+};
+
 const instance: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 2 * 60 * 1000,
@@ -74,7 +85,7 @@ instance.interceptors.response.use(
     if (!isApiResponse(response.data)) return response.data;
 
     if (response.data.code !== 0) {
-      return Promise.reject(
+      return reject(
         new ApiError(
           response.data.msg || "请求失败",
           response.data.code,
@@ -88,16 +99,16 @@ instance.interceptors.response.use(
   },
   (error: unknown) => {
     if (!axios.isAxiosError(error)) {
-      return Promise.reject(new ApiError("请求失败", "UNKNOWN_ERROR", 0));
+      return reject(new ApiError("请求失败", "UNKNOWN_ERROR", 0));
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
-      return Promise.reject(new ApiError("请求超时", "TIMEOUT", 0));
+      return reject(new ApiError("请求超时", "TIMEOUT", 0));
     }
 
     const response = error.response;
     if (!response) {
-      return Promise.reject(
+      return reject(
         new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0),
       );
     }
@@ -108,7 +119,7 @@ instance.interceptors.response.use(
     const code: ApiErrorCode =
       body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
 
-    return Promise.reject(
+    return reject(
       new ApiError(
         body?.msg || "请求失败",
         code,

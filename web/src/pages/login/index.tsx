@@ -6,7 +6,6 @@ import { login } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError } from "@/utils/requests/request";
 import { getToken, setToken } from "@/utils/storage/token";
 
 function getDestination(search: string) {
@@ -24,7 +23,6 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   if (getToken()) return <Navigate to={destination} replace />;
 
@@ -32,14 +30,11 @@ export default function Login() {
     event.preventDefault();
     if (loading) return;
     setLoading(true);
-    setError("");
 
     try {
       const result = await login({ username: username.trim(), password });
       setToken(result.token, result.expire_at);
       navigate(destination, { replace: true });
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "登录失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -130,12 +125,6 @@ export default function Login() {
                 </button>
               </div>
             </div>
-
-            {error && (
-              <p role="alert" className="text-destructive text-sm">
-                {error}
-              </p>
-            )}
 
             <Button type="submit" size="lg" disabled={loading} className="h-11 w-full justify-center">
               {loading ? (

@@ -27,6 +27,8 @@ import { useSettingsStore } from "@/store";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { canConnectKinds, getModelOptions, pickModel } from "@/utils/canvas/canvas";
 
+import { VideoCanvasNode } from "./video-node";
+
 /** 图片节点的正文：把节点里存的出图状态摊给纯展示的 NodeImageBody。 */
 function ImageNodeBody({ data }: { data: CanvasNodeData }) {
   // 出图还是演示状态机，跑不出 error；接真实服务时这里补上失败的样子
@@ -117,19 +119,18 @@ function NodePromptPanel({
   );
 }
 
-/** 画布节点：按种类挑正文，选中时节点下方浮出提示词输入框，外壳交给 NodeCard。 */
-export const CanvasNodeView = memo(
+/** 文本、图片、音频节点：按种类挑正文，选中时节点下方浮出提示词输入框，外壳交给 NodeCard。 */
+const GenericNodeView = memo(
   ({ id, data, selected }: NodeProps<CanvasNode>) => {
     const { getNode } = useReactFlow<CanvasNode>();
     const meta = NODE_META.get(data.kind) ?? NODE_LIBRARY[0];
     const PlaceholderIcon = meta.placeholderIcon;
     const isImage = data.kind === "image";
     const isText = data.kind === "script";
-    const isVideo = data.kind === "video";
     const status = data.status ?? "idle";
 
     // hook 不能按种类跳过，所以两个都照挂，各自只认自己那种节点；
-    // 视频和音频还没接生成服务，发送键点下去会说明还差什么
+    // 音频还没接生成服务，发送键点下去会说明还差什么；视频走 VideoCanvasNode
     const runImage = useImageGeneration(
       id,
       isImage && status !== "error" ? status : "idle",
@@ -160,16 +161,8 @@ export const CanvasNodeView = memo(
               icon={<PlaceholderIcon className="size-10" />}
               placeholder={meta.description}
             />
-          ) : isVideo && data.src ? (
-            // 片子眼下只能从本地传进来，接上视频生成服务后走的也是这条路
-            <NodeMediaBody
-              src={data.src}
-              mediaType="video"
-              caption={data.fileName}
-            />
           ) : (
-            // 还没出片的视频、以及还没接生成服务的音频，都先摆个占位框，
-            // 卡片高度和图片节点对齐
+            // 还没接生成服务的音频先摆个占位框，卡片高度和图片节点对齐
             <NodePlaceholderBody
               icon={<PlaceholderIcon className="size-10" />}
               label={meta.description}
@@ -194,5 +187,18 @@ export const CanvasNodeView = memo(
       </>
     );
   },
+);
+GenericNodeView.displayName = "GenericNodeView";
+
+/**
+ * 画布节点入口：视频节点接真实生成任务（schema 驱动的参数面板、任务状态、取消重试），
+ * 其余种类沿用原有的本地状态机。种类在节点整个生命周期里不变，分发不会切换 hook 集合。
+ */
+export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) =>
+  props.data.kind === "video" ? (
+    <VideoCanvasNode id={props.id} data={props.data} selected={props.selected} />
+  ) : (
+    <GenericNodeView {...props} />
+  ),
 );
 CanvasNodeView.displayName = "CanvasNodeView";

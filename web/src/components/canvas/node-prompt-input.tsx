@@ -56,6 +56,32 @@ type NodePromptInputProps = {
   onSubmit?: () => void;
   /** 没有 onSubmit 时，鼠标停在发送键上要给的说法 */
   submitHint?: string;
+  /**
+   * 由调用方接管「能不能发」的判断（比如按 schema 校验必填项）。
+   * 不给就沿用默认：有 onSubmit、没在跑、提示词非空。
+   */
+  canSubmit?: boolean;
+  /** 接管发送键的悬停说明，通常写清「为什么现在发不了」 */
+  hint?: string;
+  /** 提交请求在路上：发送键转圈，但和「正在生成」区分开 */
+  submitting?: boolean;
+  /** 模型触发器上显示的字，覆盖清单里的名字；清单为空或模型下线时用 */
+  modelLabel?: string;
+  /** 当前模型有问题（已下线等），触发器用警示色 */
+  modelInvalid?: boolean;
+  /** 覆盖工具栏里显示的单次积分 */
+  credits?: number;
+  /** 当前可用积分，摆在单次消耗后面 */
+  availableCredits?: number | null;
+  /** 提示词框禁用（比如提示词由上游连线提供），placeholder 会换成 promptNote */
+  promptDisabled?: boolean;
+  promptNote?: string;
+  /** 完全不要提示词框（该模型没有 prompt 字段） */
+  hidePrompt?: boolean;
+  /** 提示词框和工具栏之间的插槽，参数面板放这里 */
+  children?: ReactNode;
+  /** 工具栏上方的一行提示，比如提交被拒的原因 */
+  notice?: { tone: "error" | "info"; text: string } | null;
 };
 
 /**
@@ -74,23 +100,41 @@ export function NodePromptInput({
   running,
   onSubmit,
   submitHint = "这类节点还没接入生成服务",
+  canSubmit: canSubmitOverride,
+  hint: hintOverride,
+  submitting,
+  modelLabel,
+  modelInvalid,
+  credits: creditsOverride,
+  availableCredits,
+  promptDisabled,
+  promptNote,
+  hidePrompt,
+  children,
+  notice,
 }: NodePromptInputProps) {
   const model = models.find((item) => item.id === modelId) ?? models[0];
-  const canSubmit = !!onSubmit && !running && value.trim().length > 0;
+  const canSubmit =
+    canSubmitOverride ??
+    (!!onSubmit && !running && value.trim().length > 0);
+  const busy = running || submitting;
+  const credits = creditsOverride ?? model?.credits;
 
   const submit = () => {
-    if (canSubmit) onSubmit?.();
+    if (canSubmit && !busy) onSubmit?.();
   };
 
   // 按钮灰着的时候得说清为什么，不然只剩一个点不动的圈；
   // disabled 的按钮本身收不到鼠标事件，提示挂在外面那层上
-  const hint = running
-    ? "生成中"
-    : !onSubmit
-      ? submitHint
-      : value.trim()
-        ? "开始生成"
-        : "先写点提示词";
+  const hint =
+    hintOverride ??
+    (running
+      ? "生成中"
+      : !onSubmit
+        ? submitHint
+        : value.trim()
+          ? "开始生成"
+          : "先写点提示词");
 
   return (
     // 这块浮在节点外面，自带底色和阴影才压得住底下的画布；
@@ -101,37 +145,57 @@ export function NodePromptInput({
         PANEL_SIZE.width,
       )}
     >
-      <textarea
-        value={value}
-        placeholder={placeholder}
-        // field-sizing-content 让文本区跟着内容长，长到上限再自己滚，
-        // nowheel 把滚轮留给文本区，别让画布跟着平移
-        className={cn(
-          "nowheel placeholder:text-muted-foreground field-sizing-content w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none",
-          PANEL_SIZE.minHeight,
-          PANEL_SIZE.maxHeight,
-        )}
-        onChange={(event) => onValueChange(event.target.value)}
-        // Enter 直接发，换行留给 Shift+Enter；
-        // 中文输入法选词时那一下 Enter 是在敲拼音框，isComposing 把它挡回去
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" || event.shiftKey) return;
-          if (event.nativeEvent.isComposing) return;
-          event.preventDefault();
-          submit();
-        }}
-      />
+      {!hidePrompt && (
+        <textarea
+          value={value}
+          disabled={promptDisabled}
+          placeholder={promptDisabled && promptNote ? promptNote : placeholder}
+          // field-sizing-content 让文本区跟着内容长，长到上限再自己滚，
+          // nowheel 把滚轮留给文本区，别让画布跟着平移
+          className={cn(
+            "nowheel placeholder:text-muted-foreground field-sizing-content w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none",
+            PANEL_SIZE.minHeight,
+            PANEL_SIZE.maxHeight,
+          )}
+          onChange={(event) => onValueChange(event.target.value)}
+          // Enter 直接发，换行留给 Shift+Enter；
+          // 中文输入法选词时那一下 Enter 是在敲拼音框，isComposing 把它挡回去
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            if (event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            submit();
+          }}
+        />
+      )}
+      {children}
+      {notice && (
+        <p
+          role={notice.tone === "error" ? "alert" : undefined}
+          className={cn(
+            "rounded-lg px-2.5 py-1.5 text-xs",
+            notice.tone === "error"
+              ? "bg-destructive/10 text-destructive"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {notice.text}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             className={cn(
               buttonVariants({ variant: "ghost", size: "sm" }),
               "text-muted-foreground min-w-0 shrink gap-2 px-2",
+              modelInvalid && "text-destructive hover:text-destructive",
             )}
             aria-label="选择模型"
           >
             {icon}
-            <span className="min-w-0 truncate">{model.label}</span>
+            <span className="min-w-0 truncate">
+              {modelLabel ?? model?.label ?? "加载模型…"}
+            </span>
             <ChevronDown className="opacity-60" />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-60" align="start" sideOffset={6}>
@@ -140,7 +204,7 @@ export function NodePromptInput({
               <DropdownMenuLabel>选择模型</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup
-                value={model.id}
+                value={model?.id ?? ""}
                 onValueChange={(next) => onModelChange(next as string)}
               >
                 {models.map((item) => (
@@ -165,20 +229,29 @@ export function NodePromptInput({
 
         <span
           className="text-muted-foreground ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums"
-          title={`每次生成消耗 ${model.credits} 积分`}
+          title={
+            credits === undefined
+              ? undefined
+              : `每次生成消耗 ${credits} 积分${
+                  availableCredits == null ? "" : `，当前可用 ${availableCredits} 积分`
+                }`
+          }
         >
           <Zap className="size-3.5" />
-          {model.credits}
+          {credits ?? "-"}
+          {availableCredits != null && (
+            <span className="opacity-60">/ 可用 {availableCredits}</span>
+          )}
         </span>
         <span className="flex shrink-0" title={hint}>
           <Button
             size="icon"
             className="rounded-full"
-            aria-label={running ? "生成中" : "开始生成"}
-            disabled={!canSubmit}
+            aria-label={busy ? "生成中" : "开始生成"}
+            disabled={!canSubmit || busy}
             onClick={submit}
           >
-            {running ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+            {busy ? <Loader2 className="animate-spin" /> : <ArrowUp />}
           </Button>
         </span>
       </div>

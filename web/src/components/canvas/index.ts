@@ -10,6 +10,8 @@ export {
   type MediaType,
   type NodeStatus,
 } from "./node-body";
+export { NodeVideoBody } from "./node-video-body";
+export { VideoParamPanel, type AssetChoice } from "./video-param-panel";
 export { getNodeHit } from "./node-hit-test";
 export { NodeCard, type NodeCardHandle } from "./node-card";
 export {

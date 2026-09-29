@@ -12,8 +12,18 @@ import {
   type ConnectionTiltOptions,
 } from "./hooks/use-connection-tilt";
 
-/** 节点连接点的位置描述，只取 Handle 里和摆放有关的几项 */
-export type NodeCardHandle = Pick<HandleProps, "type" | "position" | "id">;
+/**
+ * 节点连接点的位置描述，只取 Handle 里和摆放有关的几项。
+ * 同一侧有多个连接点时（比如视频模型的多个输入口）用 top 错开，label 是口的名字。
+ */
+export type NodeCardHandle = Pick<HandleProps, "type" | "position" | "id"> & {
+  /** 沿边的位置（CSS top，仅左右两侧生效），缺省居中 */
+  top?: string;
+  /** 输入口的名字，悬停节点时显示在口旁边 */
+  label?: string;
+  /** 同侧口多时缩小命中区，免得互相盖住 */
+  compact?: boolean;
+};
 
 /** 缺省的连接点：左进右出 */
 const DEFAULT_HANDLES: NodeCardHandle[] = [
@@ -55,7 +65,14 @@ const HANDLE_ICON_HOME: Record<Position, { left: string; top: string }> = {
  * 图标平时不露面，鼠标移到节点上或节点选中时才浮出来，默认贴着节点的边；
  * 指针进了命中区就跟着指针跑，指到哪就提示能从哪拉线，离开再归位贴边。
  */
-function NodeCardHandleDot({ type, position, id }: NodeCardHandle) {
+function NodeCardHandleDot({
+  type,
+  position,
+  id,
+  top,
+  label,
+  compact,
+}: NodeCardHandle) {
   const home = HANDLE_ICON_HOME[position];
 
   // 指针一动就要挪图标，走 state 会把整个节点带着重渲染，这里直接改 CSS 变量。
@@ -79,7 +96,12 @@ function NodeCardHandleDot({ type, position, id }: NodeCardHandle) {
       type={type}
       position={position}
       id={id}
-      className={cn(HANDLE_BASE_CLASS, HANDLE_AXIS_CLASS[position])}
+      style={top ? { top } : undefined}
+      className={cn(
+        HANDLE_BASE_CLASS,
+        HANDLE_AXIS_CLASS[position],
+        compact && "before:h-10",
+      )}
       onPointerMove={trackPointer}
       onPointerLeave={resetPointer}
     >
@@ -98,6 +120,18 @@ function NodeCardHandleDot({ type, position, id }: NodeCardHandle) {
       >
         <Plus className="size-3.5" />
       </div>
+      {label && (
+        <span
+          className={cn(
+            "bg-card/90 text-muted-foreground pointer-events-none absolute -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] whitespace-nowrap",
+            "opacity-0 transition-opacity group-hover/node:opacity-100 in-[.selected]:opacity-100",
+            position === Position.Left ? "right-full mr-9" : "left-full ml-9",
+          )}
+          style={{ top: "50%" }}
+        >
+          {label}
+        </span>
+      )}
     </Handle>
   );
 }
@@ -143,6 +177,9 @@ export function NodeCard({
             type={handle.type}
             position={handle.position}
             id={handle.id}
+            top={handle.top}
+            label={handle.label}
+            compact={handle.compact}
           />
         ))}
       </BaseNode>

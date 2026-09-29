@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isRemoteModelKind } from "@/constants/canvas";
 import { useSettingsStore } from "@/store";
 
 import { CanvasPanel } from "./canvas-panel";
@@ -104,7 +105,14 @@ export function SettingsDialog({
                 {section === "canvas" && <CanvasPanel />}
                 {section === "general" && <GeneralPanel />}
                 {section === "model" && <ModelPanel groups={modelGroups} />}
-                {section === "custom" && <CustomModelPanel kinds={modelGroups} />}
+                {section === "custom" && (
+                  // 视频清单由平台统一托管，暂不支持自定义模型
+                  <CustomModelPanel
+                    kinds={modelGroups.filter(
+                      (group) => !isRemoteModelKind(group.kind),
+                    )}
+                  />
+                )}
               </div>
             </ScrollArea>
 

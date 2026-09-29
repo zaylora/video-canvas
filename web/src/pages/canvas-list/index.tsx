@@ -4,21 +4,22 @@ import { createCanvas, getCanvasList } from "@/api/canvas";
 import type { CanvasListItemDto } from "@/api/canvas/type";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 
 export default function CanvasList() {
   const navigate = useNavigate();
   const [items, setItems] = useState<CanvasListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
     let active = true;
     void getCanvasList()
       .then((result) => {
-        if (active) setItems(Array.isArray(result?.items) ? result.items : []);
-      })
-      .catch(() => {
-        if (active) setError("画布列表加载失败");
+        if (!active) return;
+        const list = Array.isArray(result?.items) ? result.items : [];
+        // 记下画布名，任务在别处完成时的 toast 要用
+        for (const item of list) rememberCanvasTitle(item.id, item.title);
+        setItems(list);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -31,12 +32,10 @@ export default function CanvasList() {
   const create = async () => {
     if (creating) return;
     setCreating(true);
-    setError(null);
     try {
       const canvas = await createCanvas();
       navigate(`/canvas/${canvas.id}`);
-    } catch {
-      setError("画布创建失败，请稍后重试");
+    } finally {
       setCreating(false);
     }
   };
@@ -63,8 +62,6 @@ export default function CanvasList() {
             </div>
           ))}
         </div>
-      ) : error ? (
-        <p className="text-destructive">{error}</p>
       ) : items.length === 0 ? (
         <p className="text-muted-foreground">还没有画布，先建一张吧。</p>
       ) : (

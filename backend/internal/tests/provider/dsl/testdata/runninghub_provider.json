@@ -1,0 +1,65 @@
+{
+  "dsl": 1,
+  "key": "runninghub",
+  "name": "RunningHub",
+  "base_url": "https://www.runninghub.cn",
+  "allowed_hosts": ["www.runninghub.cn", "*.runninghub.cn", "*.runninghub.ai", "*.myqcloud.com"],
+  "auth": { "type": "bearer", "secret": "runninghub_api_key" },
+  "rate_limit": { "rps": 5, "max_concurrency": 20 },
+  "poll": { "first_delay": "10s", "interval": "5s", "max_interval": "15s", "jitter": 0.2 },
+
+  "operations": {
+    "upload": {
+      "method": "POST",
+      "path": "/openapi/v2/media/upload/binary",
+      "encoding": { "type": "multipart", "file_field": "file" },
+      "success": "status == 200 && resp.code == 0",
+      "extract": { "ref": "resp.data.fileName" }
+    },
+    "submit": {
+      "method": "POST",
+      "path": "/openapi/v2/run/ai-app/${ model.params.webappId }",
+      "encoding": { "type": "json" },
+      "body": {
+        "nodeInfoList": "${ model.mapping.nodeInfoList }",
+        "instanceType": "${ model.params.instanceType ?? 'default' }",
+        "webhookUrl":   "${ ctx.webhook_url }"
+      },
+      "success": "status == 200 && resp.taskId != nil && len(parseJSON(resp.promptTips ?? '{}')?.node_errors ?? {}) == 0",
+      "extract": { "provider_task_id": "resp.taskId" }
+    },
+    "query": {
+      "method": "POST",
+      "path": "/openapi/v2/query",
+      "encoding": { "type": "json" },
+      "body": { "taskId": "${ task.provider_task_id }" },
+      "success": "status == 200",
+      "extract": {
+        "status":        "resp.status",
+        "outputs":       "map(resp.results ?? [], {url: .url, type: .outputType, node: .nodeId, text: .text})",
+        "error_code":    "resp.errorCode",
+        "error_message": "resp.errorMessage",
+        "provider_cost": "resp.usage?.consumeMoney"
+      }
+    },
+    "cancel": null
+  },
+
+  "status_map": {
+    "QUEUED": "queued", "RUNNING": "running",
+    "SUCCESS": "succeeded", "FAILED": "failed",
+    "_default": "running"
+  },
+
+  "error_rules": [
+    { "when": "status == 429 || status >= 500",                                         "class": "retryable" },
+    { "when": "matches(toString(resp.errorMessage), '(?i)balance|insufficient|余额')", "class": "provider_balance" },
+    { "when": "matches(toString(resp.errorMessage), '(?i)sensitive|nsfw|审核|违规')",   "class": "moderation" },
+    { "when": "true",                                                                   "class": "terminal" }
+  ],
+
+  "webhook": {
+    "verify": { "type": "path_secret" },
+    "task_id": "req.taskId"
+  }
+}
