@@ -3,6 +3,7 @@ package plugin_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -237,6 +238,36 @@ func TestExecutorDownloadInvalidBaseURL(t *testing.T) {
 		if provider.ClassOf(err) != provider.ClassTerminal {
 			t.Fatalf("非法 base_url 应是 terminal：%v", err)
 		}
+	}
+}
+
+// Download 返回后 Body 还没读完，读取不能因为下载超时的 context 被提前取消而失败。
+func TestExecutorDownloadBodyReadableAfterReturn(t *testing.T) {
+	const payload = "generated-image-bytes"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush() // 先发响应头，让 Download 在 Body 未读时就返回
+		time.Sleep(50 * time.Millisecond)
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer upstream.Close()
+	exec := execWith(syncTextPlugin, nil)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-dl-body", provider.RateLimit{}, true)
+
+	dl, err := exec.Download(context.Background(), snap, upstream.URL+"/a.png")
+	if err != nil {
+		t.Fatalf("下载失败：%v", err)
+	}
+	body, err := io.ReadAll(dl.Body)
+	if err != nil {
+		t.Fatalf("Download 返回后读取 Body 失败：%v", err)
+	}
+	if string(body) != payload {
+		t.Fatalf("Body 内容不对：%q", body)
+	}
+	if err := dl.Body.Close(); err != nil {
+		t.Fatalf("关闭 Body：%v", err)
 	}
 }
 

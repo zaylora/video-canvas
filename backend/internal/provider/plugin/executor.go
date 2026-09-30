@@ -284,19 +284,35 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 	}
 	req.Header.Set("User-Agent", defaultUserAgent)
 	client := e.client(allowed, snap.Channel.TrustedInternal)
+	// 超时 context 必须活到调用方把 Body 读完：Body 绑在它上面，Download 返回时就取消会让后续读取全部
+	// 报 context canceled。所以不能 defer cancel，改由 Body.Close 取消；出错的分支自己取消。
 	dctx, cancel := context.WithTimeout(ctx, e.opts.DownloadTimeout)
-	defer cancel()
 	req = req.WithContext(dctx)
 	resp, err := client.Do(req)
 	if err != nil {
+		cancel()
 		return nil, retryableErr(codeDownloadFailed, "下载产物失败", redactError(err, func(s string) string { return s }))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_ = resp.Body.Close()
+		cancel()
 		return nil, terminalErr(fmt.Sprintf("%s%d", codeHTTPPrefix, resp.StatusCode), "下载产物返回非成功状态", nil)
 	}
 	name := fileNameFromDisposition(resp.Header.Get("Content-Disposition"))
-	return &provider.Download{Body: resp.Body, ContentType: resp.Header.Get("Content-Type"), Size: resp.ContentLength, FileName: name}, nil
+	return &provider.Download{Body: &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}, ContentType: resp.Header.Get("Content-Type"), Size: resp.ContentLength, FileName: name}, nil
+}
+
+// cancelOnClose 在关闭 Body 时释放下载用的超时 context，避免 context 泄漏。
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+// Close 先关 Body 再取消 context；重复关闭是安全的。
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }
 
 // Check 执行渠道连通性检查。

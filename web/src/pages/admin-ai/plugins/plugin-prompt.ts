@@ -31,7 +31,7 @@ module.exports.meta 示例：
   channelSettings: {                // 可选：渠道上的非敏感设置（如区域），渲染成表单
     region: { type: "enum", label: "区域", options: ["cn", "global"], default: "cn" }
   },
-  import: { args: {} },             // 可选：“从渠道导入模型”的参数表单
+  import: { args: {} },             // 可选：声明支持“从渠道导入模型”；没有该字段时管理端的“导入模型”按钮是灰的，args 为空对象表示不需要参数
   poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }   // 可选：异步轮询节奏（秒）
 }
 规则：
@@ -39,6 +39,9 @@ module.exports.meta 示例：
 - 每个 endpoint 都必须实现 buildSubmitRequest 与 parseSubmitResponse；mode 为 async 的还必须实现 buildQueryRequest 与 parseQueryResponse。
 - 实现了 buildPrepareRequests 必须同时实现 parsePrepareResponses；buildImportRequest 与 parseImportResponse 必须成对出现。
 - channelSettings / import.args 每项：type 为 string / number / boolean / enum；label 必填；enum 必须有 options，且 default 必须在 options 内；名字匹配 ^[A-Za-z_][A-Za-z0-9_]{0,31}$。
+- 导入模型要同时满足两点才可用：meta 里声明 import（哪怕 args 是空对象），并且实现 buildImportRequest 与 parseImportResponse。只写钩子不写 meta.import，管理端会判定“不支持导入”，按钮置灰。
+- 连通性检查只看是否实现了 buildCheckRequest；没实现时管理端提示“插件不支持连通性检查”。
+- channelSettings / import.args 的 enum 选项 options 是字符串数组（["cn", "global"]）；这和模型 input_schema 里 enum 的 options 不同，后者是 [{ value, label }] 对象数组，别混用。
 - 只声明目标平台真实支持的 endpoint，不要为了凑数声明用不上的种类。
 
 # 三、钩子一览
@@ -50,8 +53,9 @@ buildQueryRequest(ctx)               async 必须。用 ctx.task.providerTaskId 
 parseQueryResponse(ctx, resp)        async 必须。返回统一结果
 buildCancelRequest(ctx)              可选。没有就走软取消
 classifyError(ctx, resp)             可选。上游非 2xx 时先调它，返回 { class, code?, message? } 或 null（null 表示走宿主默认规则）
-buildCheckRequest(ctx)               可选。连通性检查，任意 2xx 算通
-buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选。导入模型，parse 返回 [{ upstreamModel, kind, label, params?, inputSchema }]
+buildCheckRequest(ctx)               可选。连通性检查，任意 2xx 算通。请返回一个廉价、只读、不产生费用的请求（如列模型、查询一条历史记录），不要提交生成任务；宿主自动注入 Key
+buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，需配合 meta.import。导入模型，parse 返回 [{ upstreamModel, kind, label, params?, inputSchema }]，inputSchema 的写法见第九节
+- 钩子之间互相调用请直接调用文件里的普通函数，或写 module.exports.xxx(ctx)；不要依赖 this（宿主调用钩子时 this 不一定指向 module.exports）。
 
 # 四、ctx（每次调用新建，是副本）
 {
@@ -114,6 +118,25 @@ utils.uuid()、utils.unixNow()、utils.base64(s)、utils.base64Decode(s)、utils
 - ctx.model.params 由你自己约定结构（例如 { extra: {...} } 原样合并进请求体），请在文件顶部注释里写清每个字段的含义。
 - 用户输入字段由运营在模型的 input_schema 里配置，插件按字段名读取 ctx.input。请在文件顶部注释里列出插件会读取的输入字段名（如 prompt、image、duration、size），并说明哪些必填。
 - 用户输入优先于 params 里的固定值；params 只做补充。
+
+# 九·补、导入模型与 inputSchema
+parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {}, inputSchema: {...} }。
+inputSchema 是“字段名 -> 字段定义”的有序对象（书写顺序就是前端渲染顺序），字段名只能含字母/数字/下划线且不能以数字开头。字段定义：
+{
+  type: "text | number | enum | boolean | image | video | audio",   // 必填
+  label: "控件标题",                       // 必填，非空
+  required: true,                          // 可选
+  default: ...,                            // 可选；类型要匹配，enum 的 default 必须在 options 的 value 里；媒体字段不能有 default
+  max_length: 4000,                        // 仅 text
+  min: 1, max: 4,                          // 仅 number，min 不能大于 max
+  options: [ { value: "16:9", label: "16:9" } ],   // 仅 enum，至少一项；value 是字符串或数字且不重复；label 非空（注意是对象数组，不是字符串数组）
+  port: "text",                            // 可选：允许被画布上游连线提供；text 字段只能是 text，媒体字段必须与自身 type 相同，number/enum/boolean 不能设 port
+  advanced: true                           // 可选：折叠到“高级”
+}
+- 提示词写成 { type: "text", label: "提示词", required: true, port: "text", max_length: 4000 }；参考图写成 { type: "image", label: "参考图（可选）", port: "image" }。
+- 插件在 buildSubmitRequest 里读到的 ctx.input 就是按这个 schema 校验规范化后的值：enum 与 number 取到的类型以 schema 为准，读取时仍用 Number() / String() 兜底；没填的可选字段没有该键。
+- 上游没有“模型列表”接口时，可以把已知模型写死在插件里：buildImportRequest 返回一个廉价只读请求（如复用 buildCheckRequest 的请求），parseImportResponse 忽略响应，直接返回写死的草稿数组；别忘了声明 meta.import。inputSchema 用同一个函数生成，避免各草稿不一致。
+- 如果上游模型名不是“模型名”而是分组 id / 工作流 id，就把它放进 upstreamModel，在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取。
 
 # 十、输出要求
 1. 只输出一个完整的 .js 文件（放在一个代码块里），不要拆成多个文件，不要省略代码。
@@ -188,6 +211,8 @@ module.exports = {
 - 没有使用 ES6 以上语法、没有 require / 网络 / 定时器；所有返回值可 JSON.stringify。
 - 请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有把文件内容内联进请求。
 - 产物的域名已写进 allowedHosts（或就在渠道 baseUrl 的主机上）。
+- 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿的 inputSchema 里 enum 的 options 是 { value, label } 对象数组。
+- 改了代码就升 meta.version（同一 key 下版本不可覆盖），并提醒使用者把渠道切到新版本。
 - 失败路径都有明确的 error.class 和中文原因。
 
 # 目标平台 API 文档（在下面粘贴，越完整越好：鉴权方式、提交/查询接口、请求与响应示例、状态枚举、错误格式）
