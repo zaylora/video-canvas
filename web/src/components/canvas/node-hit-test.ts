@@ -9,10 +9,7 @@ import type { InternalNode, Node, XYPosition } from "@xyflow/react";
  * 拉线时的倾斜反馈和松手时的落点判定共用这一把尺子，
  * 才不会出现“节点沉下去了却接不上”的错位。
  */
-export function getNodeHit(
-  node: InternalNode<Node>,
-  point: XYPosition,
-): XYPosition | null {
+export function getNodeHit(node: InternalNode<Node>, point: XYPosition): XYPosition | null {
   const { width, height } = node.measured;
   if (!width || !height) return null;
 

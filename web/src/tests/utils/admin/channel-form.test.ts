@@ -92,8 +92,12 @@ describe("rebaseSettings", () => {
   });
 
   test("带过去的取值在新声明里不合法时退回默认值", () => {
-    const oldFields = settingFields({ region: { type: "enum", label: "r", options: ["cn", "eu"] } });
-    const newFields = settingFields({ region: { type: "enum", label: "r", options: ["cn"], default: "cn" } });
+    const oldFields = settingFields({
+      region: { type: "enum", label: "r", options: ["cn", "eu"] },
+    });
+    const newFields = settingFields({
+      region: { type: "enum", label: "r", options: ["cn"], default: "cn" },
+    });
     expect(rebaseSettings(oldFields, { region: "eu" }, newFields).region).toBe("cn");
   });
 });
@@ -121,7 +125,10 @@ describe("checkBaseUrl / CHANNEL_KEY_PATTERN", () => {
 
 describe("buildChannelRequest（新建）", () => {
   test("合法表单生成 create 请求，限流空值为 0，设置项转成对应类型", () => {
-    const result = buildChannelRequest(newForm({ rps: "3", settings: { region: "global", ttl: "60" } }), fields);
+    const result = buildChannelRequest(
+      newForm({ rps: "3", settings: { region: "global", ttl: "60" } }),
+      fields,
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.create).toMatchObject({
@@ -136,7 +143,14 @@ describe("buildChannelRequest（新建）", () => {
 
   test("字段错误按键返回：key、名称、地址、限流、设置项", () => {
     const result = buildChannelRequest(
-      newForm({ key: "Bad Key", name: " ", baseUrl: "x", rps: "-1", maxConcurrency: "1.5", settings: { region: "", ttl: "" } }),
+      newForm({
+        key: "Bad Key",
+        name: " ",
+        baseUrl: "x",
+        rps: "-1",
+        maxConcurrency: "1.5",
+        settings: { region: "", ttl: "" },
+      }),
       fields,
     );
     expect(result.ok).toBe(false);
@@ -189,7 +203,11 @@ describe("buildChannelRequest（编辑）", () => {
 
   test("设置项变化会带上 settings，没变化不带", () => {
     const form = channelFormFromView(original, fields);
-    const changed = buildChannelRequest({ ...form, settings: { ...form.settings, region: "global" } }, fields, original);
+    const changed = buildChannelRequest(
+      { ...form, settings: { ...form.settings, region: "global" } },
+      fields,
+      original,
+    );
     expect(changed.ok && changed.update.settings).toEqual({ region: "global" });
     const same = buildChannelRequest(form, fields, original);
     expect(same.ok && "settings" in same.update).toBe(false);

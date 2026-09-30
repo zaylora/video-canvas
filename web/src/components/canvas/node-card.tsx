@@ -65,14 +65,7 @@ const HANDLE_ICON_HOME: Record<Position, { left: string; top: string }> = {
  * 图标平时不露面，鼠标移到节点上或节点选中时才浮出来，默认贴着节点的边；
  * 指针进了命中区就跟着指针跑，指到哪就提示能从哪拉线，离开再归位贴边。
  */
-function NodeCardHandleDot({
-  type,
-  position,
-  id,
-  top,
-  label,
-  compact,
-}: NodeCardHandle) {
+function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCardHandle) {
   const home = HANDLE_ICON_HOME[position];
 
   // 指针一动就要挪图标，走 state 会把整个节点带着重渲染，这里直接改 CSS 变量。
@@ -97,11 +90,7 @@ function NodeCardHandleDot({
       position={position}
       id={id}
       style={top ? { top } : undefined}
-      className={cn(
-        HANDLE_BASE_CLASS,
-        HANDLE_AXIS_CLASS[position],
-        compact && "before:h-10",
-      )}
+      className={cn(HANDLE_BASE_CLASS, HANDLE_AXIS_CLASS[position], compact && "before:h-10")}
       onPointerMove={trackPointer}
       onPointerLeave={resetPointer}
     >
@@ -166,9 +155,7 @@ export function NodeCard({
   return (
     // 外面这层只管 3D：别人拉线压到本节点身上时朝鼠标偏一点头，
     // 倾斜留在包装层，BaseNode 里连接点的绝对定位和 .selected 样式都不受影响
-    <motion.div
-      style={{ transformPerspective: TILT_PERSPECTIVE, rotateX, rotateY, scale }}
-    >
+    <motion.div style={{ transformPerspective: TILT_PERSPECTIVE, rotateX, rotateY, scale }}>
       <BaseNode aria-label={title} className={cn("group/node w-96", className)}>
         {children}
         {handles.map((handle) => (

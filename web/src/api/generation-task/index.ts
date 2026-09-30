@@ -1,5 +1,5 @@
-import service from '@/utils/requests/service'
-import type { CreateTaskRequest, TaskView } from './type'
+import service from "@/utils/requests/service";
+import type { CreateTaskRequest, TaskView } from "./type";
 
 /**
  * 提交生成任务（HTTP 202）。
@@ -9,9 +9,9 @@ import type { CreateTaskRequest, TaskView } from './type'
  * @returns 任务视图
  */
 export const createGenerationTask = (data: CreateTaskRequest, idempotencyKey: string) =>
-  service.post<TaskView>('/generation-tasks', data, {
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
+  service.post<TaskView>("/generation-tasks", data, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 
 /**
  * 获取单个生成任务
@@ -19,7 +19,7 @@ export const createGenerationTask = (data: CreateTaskRequest, idempotencyKey: st
  * @returns 任务视图
  */
 export const getGenerationTask = (id: string | number) =>
-  service.get<TaskView>(`/generation-tasks/${id}`, undefined)
+  service.get<TaskView>(`/generation-tasks/${id}`, undefined);
 
 /**
  * 按 id 批量对账，后端单次最多 100 个，超出自动分批
@@ -27,25 +27,24 @@ export const getGenerationTask = (id: string | number) =>
  * @returns 任务视图列表
  */
 export const getGenerationTasksByIds = async (ids: Array<string | number>): Promise<TaskView[]> => {
-  if (ids.length === 0) return []
-  const result: TaskView[] = []
+  if (ids.length === 0) return [];
+  const result: TaskView[] = [];
   for (let i = 0; i < ids.length; i += 100) {
-    const chunk = ids.slice(i, i + 100)
-    const list = await service.get<TaskView[] | null>(
-      '/generation-tasks',
-      { ids: chunk.join(',') }
-    )
-    result.push(...(list ?? []))
+    const chunk = ids.slice(i, i + 100);
+    const list = await service.get<TaskView[] | null>("/generation-tasks", {
+      ids: chunk.join(","),
+    });
+    result.push(...(list ?? []));
   }
-  return result
-}
+  return result;
+};
 
 /**
  * 获取当前用户所有进行中的任务
  * @returns 任务视图列表
  */
 export const getActiveGenerationTasks = async (): Promise<TaskView[]> =>
-  (await service.get<TaskView[] | null>('/generation-tasks', { status: 'active' })) ?? []
+  (await service.get<TaskView[] | null>("/generation-tasks", { status: "active" })) ?? [];
 
 /**
  * 软取消任务；后端可能返回最新快照，也可能什么都不返回，调用方都要能处理
@@ -53,4 +52,4 @@ export const getActiveGenerationTasks = async (): Promise<TaskView[]> =>
  * @returns 最新任务快照或 null
  */
 export const cancelGenerationTask = (id: string | number) =>
-  service.post<TaskView | null>(`/generation-tasks/${id}/cancel`, undefined)
+  service.post<TaskView | null>(`/generation-tasks/${id}/cancel`, undefined);

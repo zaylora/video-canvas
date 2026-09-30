@@ -111,13 +111,7 @@ type NodeTextBodyProps = {
  * 出了结果就把正文摊开，失败则把原因摆在明面上。
  * 结果区留着 nodrag/nowheel，好让人在节点里选字、滚长文。
  */
-export function NodeTextBody({
-  status,
-  text,
-  error,
-  icon,
-  placeholder,
-}: NodeTextBodyProps) {
+export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTextBodyProps) {
   if (status === "running") {
     return (
       <BaseNodeContent>

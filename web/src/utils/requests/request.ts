@@ -31,12 +31,7 @@ export class ApiError extends Error {
   /** 完整错误响应体。 */
   body?: ApiErrorBody;
 
-  constructor(
-    message: string,
-    code: ApiErrorCode,
-    status: number,
-    body?: ApiErrorBody,
-  ) {
+  constructor(message: string, code: ApiErrorCode, status: number, body?: ApiErrorBody) {
     super(message);
     this.name = "ApiError";
     this.code = code;
@@ -108,25 +103,15 @@ instance.interceptors.response.use(
 
     const response = error.response;
     if (!response) {
-      return reject(
-        new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0),
-      );
+      return reject(new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0));
     }
 
     if (response.status === 401) removeToken();
 
     const body = isApiResponse(response.data) ? response.data : undefined;
-    const code: ApiErrorCode =
-      body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
+    const code: ApiErrorCode = body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
 
-    return reject(
-      new ApiError(
-        body?.msg || "请求失败",
-        code,
-        response.status,
-        body,
-      ),
-    );
+    return reject(new ApiError(body?.msg || "请求失败", code, response.status, body));
   },
 );
 

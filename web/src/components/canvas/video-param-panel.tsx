@@ -290,12 +290,7 @@ function FieldRow({
     control = null;
   } else if (locked) {
     control = (
-      <Input
-        disabled
-        value={link.text ?? ""}
-        className="h-8 text-xs"
-        aria-label={field.label}
-      />
+      <Input disabled value={link.text ?? ""} className="h-8 text-xs" aria-label={field.label} />
     );
   } else if (isMediaFieldType(field.type)) {
     control = (

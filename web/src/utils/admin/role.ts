@@ -9,8 +9,7 @@ export function normalizeRole(role: unknown): AdminRole {
 }
 
 /** 插件上传 / 启停 / 删除版本、渠道新建 / 修改 / Key / 连通性检查：只有 super_admin */
-export const canManageInfra = (role: AdminRole | null | undefined) =>
-  role === "super_admin";
+export const canManageInfra = (role: AdminRole | null | undefined) => role === "super_admin";
 
 /** 模型编辑、试跑、发布、回滚，以及从渠道导入模型：admin 与 super_admin 都可以 */
 export const canManageModels = (role: AdminRole | null | undefined) =>

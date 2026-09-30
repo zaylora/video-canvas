@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Position,
-  useNodeConnections,
-  useNodesData,
-  useReactFlow,
-} from "@xyflow/react";
+import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
 
 import type { ModelInfo } from "@/api/model/type";
 import type { NodeCardHandle } from "@/components/canvas";
@@ -82,19 +77,14 @@ export function useTaskNode(
     });
   }, [connections, upstream]);
   const bindings = useMemo(() => resolveBindings(schema, links), [schema, links]);
-  const built = useMemo(
-    () => buildTaskInput(schema, params, bindings),
-    [schema, params, bindings],
-  );
+  const built = useMemo(() => buildTaskInput(schema, params, bindings), [schema, params, bindings]);
 
   // 连线落点和实际绑定的输入口对齐；换模型后失效的口也在这里收拾，免得线被 xyflow 藏掉
   const fixes = useMemo(() => computeHandleFixes(schema, links), [schema, links]);
   useEffect(() => {
     if (Object.keys(fixes).length === 0) return;
     setEdges((edges) =>
-      edges.map((edge) =>
-        edge.id in fixes ? { ...edge, targetHandle: fixes[edge.id] } : edge,
-      ),
+      edges.map((edge) => (edge.id in fixes ? { ...edge, targetHandle: fixes[edge.id] } : edge)),
     );
   }, [fixes, setEdges]);
 
@@ -143,20 +133,17 @@ export function useTaskNode(
               : (firstError ?? null);
 
   /** 提交失败就地提示在提示词面板里，全局错误 toast 由请求层统一弹出 */
-  const submit = useCallback(
-    async () => {
-      if (blockedReason || !model) return;
-      setSubmitError(null);
-      const outcome = await generation.submit({
-        modelKey: model.key,
-        input: built.input,
-        currentSrc: data.src,
-      });
-      if (outcome.ok) return;
-      setSubmitError(outcome.error.message);
-    },
-    [blockedReason, built.input, data.src, generation, model],
-  );
+  const submit = useCallback(async () => {
+    if (blockedReason || !model) return;
+    setSubmitError(null);
+    const outcome = await generation.submit({
+      modelKey: model.key,
+      input: built.input,
+      currentSrc: data.src,
+    });
+    if (outcome.ok) return;
+    setSubmitError(outcome.error.message);
+  }, [blockedReason, built.input, data.src, generation, model]);
 
   const cancel = useCallback(() => {
     if (data.taskId) void generation.cancel(data.taskId);

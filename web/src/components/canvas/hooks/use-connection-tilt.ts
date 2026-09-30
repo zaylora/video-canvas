@@ -42,9 +42,7 @@ export type ConnectionTilt = {
  * 连线时指针每动一像素 store 都会更新一次，用 useConnection 订阅会把所有节点一起重渲染，
  * 因此直接订阅 store 并把结果写进 MotionValue：动画全程零 React 渲染。
  */
-export function useConnectionTilt({
-  canAccept,
-}: ConnectionTiltOptions = {}): ConnectionTilt {
+export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): ConnectionTilt {
   const nodeId = useNodeId();
   const store = useStoreApi();
   const prefersReducedMotion = useReducedMotion();

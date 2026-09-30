@@ -96,7 +96,9 @@ export function PluginDetail({
               />
             </label>
           ) : (
-            <Tag tone={plugin.enabled ? "success" : "warning"}>{plugin.enabled ? "已启用" : "已停用"}</Tag>
+            <Tag tone={plugin.enabled ? "success" : "warning"}>
+              {plugin.enabled ? "已启用" : "已停用"}
+            </Tag>
           )}
         </div>
       </header>
@@ -137,7 +139,11 @@ export function PluginDetail({
                       >
                         {version.version}
                       </button>
-                      {version.id === latest?.id && <Tag tone="info" className="ml-1.5">最新</Tag>}
+                      {version.id === latest?.id && (
+                        <Tag tone="info" className="ml-1.5">
+                          最新
+                        </Tag>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-1">
@@ -147,8 +153,12 @@ export function PluginDetail({
                         <CopyButton iconOnly text={version.sha256} label="复制完整 sha256" />
                       </span>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{formatTime(version.created_at)}</TableCell>
-                    <TableCell className="text-muted-foreground">{uploaderLabel(version)}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatTime(version.created_at)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {uploaderLabel(version)}
+                    </TableCell>
                     <TableCell>{version.channel_count}</TableCell>
                     {canWrite && (
                       <TableCell className="text-right">
@@ -166,7 +176,11 @@ export function PluginDetail({
                             <Trash2 />
                             删除
                           </Button>
-                          {block && <span className="text-muted-foreground max-w-48 text-[11px]">{block}</span>}
+                          {block && (
+                            <span className="text-muted-foreground max-w-48 text-[11px]">
+                              {block}
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                     )}

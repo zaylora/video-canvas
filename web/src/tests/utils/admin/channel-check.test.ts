@@ -15,12 +15,20 @@ describe("classifyCheck（接口正常返回）", () => {
   });
 
   test("插件不支持连通性检查：中性提示，不是错误", () => {
-    const outcome = classifyCheck({ ok: false, message: CHECK_UNSUPPORTED_MESSAGE, duration_ms: 0 });
+    const outcome = classifyCheck({
+      ok: false,
+      message: CHECK_UNSUPPORTED_MESSAGE,
+      duration_ms: 0,
+    });
     expect(outcome).toMatchObject({ kind: "unsupported", tone: "neutral" });
   });
 
   test("其他失败：红色，带后端说明", () => {
-    const outcome = classifyCheck({ ok: false, message: "dial tcp: i/o timeout", duration_ms: 5000 });
+    const outcome = classifyCheck({
+      ok: false,
+      message: "dial tcp: i/o timeout",
+      duration_ms: 5000,
+    });
     expect(outcome).toMatchObject({ kind: "failed", tone: "danger" });
     expect(outcome.detail).toContain("timeout");
   });

@@ -35,7 +35,8 @@ export function PluginList({
     const text = query.trim().toLowerCase();
     if (!text) return plugins;
     return plugins.filter(
-      (plugin) => plugin.key.toLowerCase().includes(text) || plugin.name.toLowerCase().includes(text),
+      (plugin) =>
+        plugin.key.toLowerCase().includes(text) || plugin.name.toLowerCase().includes(text),
     );
   }, [plugins, query]);
 

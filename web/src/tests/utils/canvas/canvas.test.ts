@@ -33,7 +33,17 @@ describe("pruneRemoteDefaults：远程种类默认模型核对", () => {
 
 describe("getModelOptions：远程种类只认服务端清单", () => {
   test("文本节点不再混本地演示与自定义模型", () => {
-    const custom = [{ id: "c1", kind: "script", label: "自定义", credits: 1, endpoint: "", modelId: "m", apiKey: "" }];
+    const custom = [
+      {
+        id: "c1",
+        kind: "script",
+        label: "自定义",
+        credits: 1,
+        endpoint: "",
+        modelId: "m",
+        apiKey: "",
+      },
+    ];
     expect(getModelOptions("script", custom as never, options)).toEqual(options);
     expect(getModelOptions("script", custom as never)).toEqual([]);
   });

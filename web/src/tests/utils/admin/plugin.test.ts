@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type {
-  ChannelView,
-  PluginMeta,
-  PluginVersionView,
-  PluginView,
-} from "@/api/admin-ai/type";
+import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin-ai/type";
 import {
   availableUpgrade,
   channelSupportsKind,
@@ -166,9 +161,7 @@ describe("shortSha / describeAuth / metaSummary", () => {
 });
 
 describe("findPluginVersion / channelSupportsKind", () => {
-  const plugins = [
-    plugin("p", [version(2, "2.0.0", textMeta), version(1, "1.0.0", videoMeta)]),
-  ];
+  const plugins = [plugin("p", [version(2, "2.0.0", textMeta), version(1, "1.0.0", videoMeta)])];
 
   test("先按版本 ID 找，找不到再按版本号", () => {
     expect(findPluginVersion(plugins, "p", { id: 1 })?.version).toBe("1.0.0");
@@ -224,13 +217,19 @@ describe("版本比较与升级", () => {
   ];
 
   test("availableUpgrade 找出比当前更新的最高版本", () => {
-    expect(availableUpgrade(plugins, { plugin_key: "p", plugin_version: "1.0.0" })?.version).toBe("1.1.0");
+    expect(availableUpgrade(plugins, { plugin_key: "p", plugin_version: "1.0.0" })?.version).toBe(
+      "1.1.0",
+    );
     expect(availableUpgrade(plugins, { plugin_key: "p", plugin_version: "1.1.0" })).toBeNull();
     expect(availableUpgrade(plugins, { plugin_key: "ghost", plugin_version: "1.0.0" })).toBeNull();
   });
 
   test("latestVersion 取 semver 最高的，不依赖数组顺序", () => {
-    const shuffled = plugin("p", [version(1, "1.0.0", null), version(3, "2.0.0", null), version(2, "1.5.0", null)]);
+    const shuffled = plugin("p", [
+      version(1, "1.0.0", null),
+      version(3, "2.0.0", null),
+      version(2, "1.5.0", null),
+    ]);
     expect(latestVersion(shuffled)?.version).toBe("2.0.0");
     expect(latestVersion(undefined)).toBeUndefined();
   });
@@ -245,7 +244,9 @@ describe("versionDeleteBlock / pluginChannelCount", () => {
 
   test("插件在用渠道数是各版本之和", () => {
     expect(
-      pluginChannelCount({ versions: [version(1, "1.0.0", null, 2), version(2, "2.0.0", null, 1)] }),
+      pluginChannelCount({
+        versions: [version(1, "1.0.0", null, 2), version(2, "2.0.0", null, 1)],
+      }),
     ).toBe(3);
     expect(pluginChannelCount({ versions: [] })).toBe(0);
   });

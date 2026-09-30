@@ -21,7 +21,10 @@ function KindBadge({ step }: { step: TraceStepView }) {
             : "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
       )}
     >
-      <Icon className={cn("size-3", !step.failed && step.kind === "http" && "fill-current")} aria-hidden />
+      <Icon
+        className={cn("size-3", !step.failed && step.kind === "http" && "fill-current")}
+        aria-hidden
+      />
       {step.failed ? `${label} · 失败` : label}
     </span>
   );
@@ -55,7 +58,10 @@ export function TraceStepRow({
       ref={ref}
       data-step-kind={step.kind}
       data-failed={step.failed}
-      className={cn("overflow-hidden rounded-lg border", step.failed && "border-destructive bg-destructive/5")}
+      className={cn(
+        "overflow-hidden rounded-lg border",
+        step.failed && "border-destructive bg-destructive/5",
+      )}
     >
       <button
         type="button"
@@ -64,19 +70,31 @@ export function TraceStepRow({
         aria-controls={bodyId}
         onClick={() => setOpen((value) => !value)}
       >
-        <ChevronRight className={cn("text-muted-foreground size-3 shrink-0 transition-transform", open && "rotate-90")} />
+        <ChevronRight
+          className={cn(
+            "text-muted-foreground size-3 shrink-0 transition-transform",
+            open && "rotate-90",
+          )}
+        />
         <span className="text-muted-foreground w-4 shrink-0 font-mono">{step.index}</span>
         <KindBadge step={step} />
         <span className="min-w-0 flex-1 truncate font-mono" title={step.url ?? step.title}>
           {step.title}
         </span>
         {step.status !== undefined && (
-          <span className={cn("font-mono", step.status >= 400 ? "text-destructive" : "text-muted-foreground")}>
+          <span
+            className={cn(
+              "font-mono",
+              step.status >= 400 ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
             {step.status}
           </span>
         )}
         {step.truncated && <Tag tone="warning">已截断</Tag>}
-        <span className="text-muted-foreground w-14 shrink-0 text-right font-mono">{formatDuration(step.durationMs)}</span>
+        <span className="text-muted-foreground w-14 shrink-0 text-right font-mono">
+          {formatDuration(step.durationMs)}
+        </span>
         <span className="bg-muted h-1.5 w-14 shrink-0 overflow-hidden rounded-full" aria-hidden>
           <span
             className={cn("block h-full", step.failed ? "bg-destructive" : "bg-muted-foreground")}
@@ -106,7 +124,9 @@ export function TraceStepRow({
           ))}
           {step.logs.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="text-muted-foreground font-medium">utils.log（{step.logs.length}）</div>
+              <div className="text-muted-foreground font-medium">
+                utils.log（{step.logs.length}）
+              </div>
               <ul className="bg-muted rounded-md p-2 font-mono text-[11px] leading-5">
                 {step.logs.map((line, index) => (
                   <li key={index} className="break-all whitespace-pre-wrap">

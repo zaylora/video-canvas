@@ -46,8 +46,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
       setPlugins(list);
       setPluginsStatus("ready");
     } catch {
-      if (aliveRef.current)
-        setPluginsStatus((prev) => (prev === "ready" ? prev : "error"));
+      if (aliveRef.current) setPluginsStatus((prev) => (prev === "ready" ? prev : "error"));
     }
   }, [aliveRef]);
 
@@ -58,8 +57,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
       setChannels(list);
       setChannelsStatus("ready");
     } catch {
-      if (aliveRef.current)
-        setChannelsStatus((prev) => (prev === "ready" ? prev : "error"));
+      if (aliveRef.current) setChannelsStatus((prev) => (prev === "ready" ? prev : "error"));
     }
   }, [aliveRef]);
 

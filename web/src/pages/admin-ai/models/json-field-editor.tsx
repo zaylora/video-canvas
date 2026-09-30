@@ -54,7 +54,10 @@ export function JsonFieldEditor({
         spellCheck={false}
         wrap="off"
         aria-invalid={!!error || !!issue}
-        className={cn("resize-y font-mono text-xs leading-5", (error || issue) && "border-destructive")}
+        className={cn(
+          "resize-y font-mono text-xs leading-5",
+          (error || issue) && "border-destructive",
+        )}
         onChange={(event) => {
           const next = event.target.value;
           setText(next);

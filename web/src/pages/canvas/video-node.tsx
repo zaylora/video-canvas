@@ -1,10 +1,5 @@
 import { useCallback, useEffect } from "react";
-import {
-  NodeToolbar,
-  Position,
-  useReactFlow,
-  useUpdateNodeInternals,
-} from "@xyflow/react";
+import { NodeToolbar, Position, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 
 import {
   NodeCard,
@@ -119,9 +114,7 @@ export function TaskPromptPanel({
         hint={vm.blockedReason ?? "开始生成"}
         hidePrompt={!vm.hasPromptField}
         promptDisabled={!!vm.promptBinding}
-        promptNote={
-          vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined
-        }
+        promptNote={vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined}
         notice={notice}
       >
         {vm.schema && (
@@ -187,18 +180,16 @@ function MediaTaskNode({
 
   return (
     <>
-      <NodeCard
-        title={data.label}
-        handles={vm.handles}
-        canAcceptConnection={canAcceptConnection}
-      >
+      <NodeCard title={data.label} handles={vm.handles} canAcceptConnection={canAcceptConnection}>
         <NodeVideoBody
           view={vm.view}
           caption={data.fileName}
           placeholder={meta?.description ?? kind}
           mediaType={data.mediaType ?? kind}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
-          onCancel={vm.view.phase === "queued" || vm.view.phase === "running" ? vm.cancel : undefined}
+          onCancel={
+            vm.view.phase === "queued" || vm.view.phase === "running" ? vm.cancel : undefined
+          }
           cancelling={vm.cancelling}
           onRetry={retryable ? () => void vm.submit() : undefined}
           retryDisabled={!!vm.blockedReason}

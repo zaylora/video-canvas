@@ -82,6 +82,7 @@ export function publishBlockReason(info: ModelChannelInfo, channelsReady: boolea
   if (!info.channelKey) return "还没有选择渠道";
   if (!info.channel) return `渠道 ${info.channelKey} 不存在`;
   if (!info.channel.enabled) return `渠道 ${info.channel.name} 已停用`;
-  if (info.keyMissing) return `渠道 ${info.channel.name} 还没有设置 Key，模型无法发布。请联系运维在“渠道”页设置 Key。`;
+  if (info.keyMissing)
+    return `渠道 ${info.channel.name} 还没有设置 Key，模型无法发布。请联系运维在“渠道”页设置 Key。`;
   return null;
 }

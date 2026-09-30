@@ -47,7 +47,7 @@ export function Segmented<T extends string>({
             aria-pressed={active}
             className={cn(
               "text-muted-foreground",
-              active && "bg-background text-foreground shadow-sm"
+              active && "bg-background text-foreground shadow-sm",
             )}
             onClick={() => onChange(option.value)}
           >

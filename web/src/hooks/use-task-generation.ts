@@ -2,10 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useParams } from "react-router";
 
-import {
-  cancelGenerationTask,
-  createGenerationTask,
-} from "@/api/generation-task";
+import { cancelGenerationTask, createGenerationTask } from "@/api/generation-task";
 import { handleTaskView } from "@/utils/ws/task-events";
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
@@ -18,9 +15,7 @@ import {
   type SubmitErrorInfo,
 } from "@/utils/tasks/submit";
 
-export type SubmitOutcome =
-  | { ok: true }
-  | { ok: false; error: SubmitErrorInfo };
+export type SubmitOutcome = { ok: true } | { ok: false; error: SubmitErrorInfo };
 
 /** 走生成任务的节点种类 */
 export type TaskNodeKind = keyof typeof REMOTE_KIND_OF_NODE;
@@ -48,7 +43,8 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       /** 节点当前的素材地址，重新生成会顶掉它，本地 blob 要还回去 */
       currentSrc?: string | null;
     }): Promise<SubmitOutcome> => {
-      if (lockRef.current) return { ok: false, error: { kind: "unknown", message: "正在提交，请稍候" } };
+      if (lockRef.current)
+        return { ok: false, error: { kind: "unknown", message: "正在提交，请稍候" } };
       const canvas = Number(canvasId);
       if (!canvasId || !Number.isFinite(canvas)) {
         return { ok: false, error: { kind: "unknown", message: "画布信息缺失，请刷新页面重试" } };

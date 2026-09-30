@@ -1,17 +1,9 @@
 import type { HandleType, Node, Position, XYPosition } from "@xyflow/react";
 
-import type {
-  AnimatedSvgEdge,
-  MediaType,
-  NodeMediaType,
-  NodeStatus,
-} from "@/components/canvas";
+import type { AnimatedSvgEdge, MediaType, NodeMediaType, NodeStatus } from "@/components/canvas";
 import type { NodeKind } from "@/constants/canvas/node-library";
 
-export type {
-  NodeKind,
-  NodeKindMeta,
-} from "@/constants/canvas/node-library";
+export type { NodeKind, NodeKindMeta } from "@/constants/canvas/node-library";
 export type { ModelOption } from "@/constants/canvas/model-library";
 export type { MediaType, NodeMediaType, NodeStatus };
 

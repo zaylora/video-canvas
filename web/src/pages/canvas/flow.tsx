@@ -44,11 +44,7 @@ import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE, useSettingsStore } from "@/store";
 import type { NodeKind, UploadNotice } from "@/types";
-import {
-  getAllowedKinds,
-  getModelOptions,
-  pruneRemoteDefaults,
-} from "@/utils/canvas/canvas";
+import { getAllowedKinds, getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import {
@@ -68,7 +64,13 @@ const nodeTypes = { canvas: CanvasNodeView } satisfies NodeTypes;
 const edgeTypes = { animatedSvgEdge: AnimatedSvgEdge } satisfies EdgeTypes;
 
 /** 画布主体 */
-export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConflict: (canvas: CanvasDetailDto) => void }) {
+export function Flow({
+  canvas,
+  onConflict,
+}: {
+  canvas: CanvasDetailDto;
+  onConflict: (canvas: CanvasDetailDto) => void;
+}) {
   const initial = useMemo(() => deserializeGraph(canvas.graph), [canvas.graph]);
   const [nodes, setNodes, applyNodesChange] = useNodesState<CanvasNode>(initial.nodes);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<CanvasEdge>(initial.edges);
@@ -81,35 +83,57 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
     initialVersion: canvas.version,
     onConflict,
   });
-  const scheduleSave = useCallback((delay = 800) => {
-    if (!hydratedRef.current) return;
-    changed(serializeGraph(nodes, edges, getViewport()), delay);
-  }, [changed, edges, getViewport, nodes]);
-  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
-    for (const change of changes) {
-      if (change.type === "remove") releaseObjectUrl(nodesRef.current.find((node) => node.id === change.id)?.data.src);
-    }
-    const persistent = changes.filter((change) => change.type !== "select" && change.type !== "dimensions");
-    changeDelayRef.current = persistent.length === 0
-      ? false
-      : persistent.every((change) => change.type === "position" && change.dragging)
-        ? false
-        : persistent.some((change) => change.type !== "position" || change.dragging === false) ? 0 : 800;
-    applyNodesChange(changes);
-  }, [applyNodesChange]);
-  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  const scheduleSave = useCallback(
+    (delay = 800) => {
+      if (!hydratedRef.current) return;
+      changed(serializeGraph(nodes, edges, getViewport()), delay);
+    },
+    [changed, edges, getViewport, nodes],
+  );
+  const onNodesChange = useCallback(
+    (changes: NodeChange<CanvasNode>[]) => {
+      for (const change of changes) {
+        if (change.type === "remove")
+          releaseObjectUrl(nodesRef.current.find((node) => node.id === change.id)?.data.src);
+      }
+      const persistent = changes.filter(
+        (change) => change.type !== "select" && change.type !== "dimensions",
+      );
+      changeDelayRef.current =
+        persistent.length === 0
+          ? false
+          : persistent.every((change) => change.type === "position" && change.dragging)
+            ? false
+            : persistent.some((change) => change.type !== "position" || change.dragging === false)
+              ? 0
+              : 800;
+      applyNodesChange(changes);
+    },
+    [applyNodesChange],
+  );
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
   // 任务结果回填节点；打开画布时对账还在 running 的节点
   useTaskBackfill(nodes, setNodes);
-  useEffect(() => { rememberCanvasTitle(canvas.id, canvas.title); }, [canvas.id, canvas.title]);
+  useEffect(() => {
+    rememberCanvasTitle(canvas.id, canvas.title);
+  }, [canvas.id, canvas.title]);
   const connection = useWsStore((state) => state.connection);
   const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
-  useEffect(() => () => {
-    for (const node of nodesRef.current) releaseObjectUrl(node.data.src);
-  }, []);
-  const onEdgesChange = useCallback((changes: EdgeChange<CanvasEdge>[]) => {
-    changeDelayRef.current = changes.some((change) => change.type !== "select") ? 0 : false;
-    applyEdgesChange(changes);
-  }, [applyEdgesChange]);
+  useEffect(
+    () => () => {
+      for (const node of nodesRef.current) releaseObjectUrl(node.data.src);
+    },
+    [],
+  );
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<CanvasEdge>[]) => {
+      changeDelayRef.current = changes.some((change) => change.type !== "select") ? 0 : false;
+      applyEdgesChange(changes);
+    },
+    [applyEdgesChange],
+  );
   useEffect(() => {
     if (!hydratedRef.current) return;
     const delay = changeDelayRef.current;
@@ -134,8 +158,14 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
       audio: { status: audio.status, options: audio.options },
     }),
     [
-      audio.options, audio.status, image.options, image.status,
-      text.options, text.status, video.options, video.status,
+      audio.options,
+      audio.status,
+      image.options,
+      image.status,
+      text.options,
+      text.status,
+      video.options,
+      video.status,
     ],
   );
   /**
@@ -196,8 +226,7 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点
   const menuItems = useMemo<AddNodeMenuItem[]>(() => {
-    const allowed =
-      pending && new Set(getAllowedKinds(pending.kind, pending.handleType));
+    const allowed = pending && new Set(getAllowedKinds(pending.kind, pending.handleType));
 
     return [
       ...NODE_LIBRARY.map((meta) => ({
@@ -211,9 +240,7 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
         label: "上传",
         icon: <Upload />,
         // 传进来的素材落成图片或视频节点，这两种都接不上就没法上传
-        disabled: allowed
-          ? !allowed.has("image") && !allowed.has("video")
-          : false,
+        disabled: allowed ? !allowed.has("image") && !allowed.has("video") : false,
         separated: true,
       },
     ];
@@ -258,10 +285,7 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
         elementsSelectable={!isPanning}
       >
         {settings.background !== "none" && (
-          <Background
-            variant={BACKGROUND_VARIANTS[settings.background]}
-            gap={GRID_SIZE}
-          />
+          <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
         )}
         <Controls
           position="bottom-center"
@@ -322,7 +346,13 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
             </span>
           )}
           <span className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur">
-            {saveStatus === "saving" ? "正在保存…" : saveStatus === "saved" ? "已保存" : saveStatus === "conflict" ? "已载入其他位置的修改" : "保存失败，继续编辑时重试"}
+            {saveStatus === "saving"
+              ? "正在保存…"
+              : saveStatus === "saved"
+                ? "已保存"
+                : saveStatus === "conflict"
+                  ? "已载入其他位置的修改"
+                  : "保存失败，继续编辑时重试"}
           </span>
         </Panel>
         {!notice && settings.showHints && nodes.length === 0 && (
@@ -331,9 +361,7 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
             className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur"
           >
             双击画布空白处添加节点，
-            {isWheelZoom
-              ? "滚轮缩放画布"
-              : "滚轮上下移动，Shift+滚轮左右移动，Ctrl+滚轮缩放"}
+            {isWheelZoom ? "滚轮缩放画布" : "滚轮上下移动，Shift+滚轮左右移动，Ctrl+滚轮缩放"}
           </Panel>
         )}
       </ReactFlow>

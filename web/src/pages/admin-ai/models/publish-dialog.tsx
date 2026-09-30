@@ -9,12 +9,16 @@ function Summary({ body, info }: { body: unknown; info: ModelChannelInfo }) {
   const { upstreamModel } = readModelChannel(body);
   const credits = readModelNumber(body, "credits");
   return (
-    <dl className="bg-muted grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg px-3 py-2 text-xs" data-testid="publish-summary">
+    <dl
+      className="bg-muted grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg px-3 py-2 text-xs"
+      data-testid="publish-summary"
+    >
       <dt className="text-muted-foreground">渠道</dt>
       <dd>
         {info.channel ? (
           <>
-            {info.channel.name} <span className="text-muted-foreground font-mono">{info.channel.key}</span>
+            {info.channel.name}{" "}
+            <span className="text-muted-foreground font-mono">{info.channel.key}</span>
           </>
         ) : (
           <span className="text-destructive">{info.channelKey || "未选择"}（找不到）</span>
@@ -121,8 +125,8 @@ export function RollbackDialog({
       description={
         revision && (
           <>
-            将 <span className="font-mono">{modelKey}</span> 回滚到<b>第 {revision.revision_no} 版</b>（
-            {formatTime(revision.created_at)}
+            将 <span className="font-mono">{modelKey}</span> 回滚到
+            <b>第 {revision.revision_no} 版</b>（{formatTime(revision.created_at)}
             {revision.note ? ` · ${revision.note}` : ""}）。回滚后立即生效，进行中的任务不受影响。
           </>
         )

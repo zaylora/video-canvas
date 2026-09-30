@@ -28,13 +28,11 @@ const normalizeGraph = (value: unknown): CanvasGraphDto => {
   const viewport = isRecord(value.viewport) ? value.viewport : {};
   const x = typeof viewport.x === "number" ? viewport.x : 0;
   const y = typeof viewport.y === "number" ? viewport.y : 0;
-  const zoom = typeof viewport.zoom === "number" && viewport.zoom > 0
-    ? viewport.zoom
-    : 1;
+  const zoom = typeof viewport.zoom === "number" && viewport.zoom > 0 ? viewport.zoom : 1;
 
   return {
-    nodes: Array.isArray(value.nodes) ? value.nodes as CanvasGraphDto["nodes"] : [],
-    edges: Array.isArray(value.edges) ? value.edges as CanvasGraphDto["edges"] : [],
+    nodes: Array.isArray(value.nodes) ? (value.nodes as CanvasGraphDto["nodes"]) : [],
+    edges: Array.isArray(value.edges) ? (value.edges as CanvasGraphDto["edges"]) : [],
     viewport: { x, y, zoom },
   };
 };
@@ -101,9 +99,7 @@ export const createCanvas = async (data: CreateCanvasDto = {}) => {
  * @returns 画布详情
  */
 export const getCanvas = (id: string) =>
-  service
-    .get<BackendCanvasProjectDto>(`/canvas/${id}`)
-    .then(mapCanvasProject);
+  service.get<BackendCanvasProjectDto>(`/canvas/${id}`).then(mapCanvasProject);
 
 /**
  * 更新画布信息
@@ -128,22 +124,17 @@ export const updateCanvas = (id: string, data: UpdateCanvasDto) =>
  */
 export const saveCanvasGraph = (id: string, data: SaveCanvasGraphDto) =>
   service
-    .put<BackendCanvasProjectDto>(
-      `/canvas/${id}`,
-      {
-        revision: data.baseVersion,
-        payload_json: data.graph,
-      }
-    )
+    .put<BackendCanvasProjectDto>(`/canvas/${id}`, {
+      revision: data.baseVersion,
+      payload_json: data.graph,
+    })
     .then((canvas): SaveCanvasGraphResponseDto => ({
       version: canvas.revision,
       updatedAt: canvas.updated_at,
     }));
 
-
 /**
  * 删除画布
  * @param id 画布 ID
  */
-export const deleteCanvas = (id: string) =>
-  service.delete<void>(`/canvas/${id}`);
+export const deleteCanvas = (id: string) => service.delete<void>(`/canvas/${id}`);

@@ -26,23 +26,41 @@ import {
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
 import { errorMessage, isChannelKeyExists } from "@/utils/admin/errors";
-import { availableUpgrade, describeAuth, findPluginVersion, latestVersion, shortSha } from "@/utils/admin/plugin";
+import {
+  availableUpgrade,
+  describeAuth,
+  findPluginVersion,
+  latestVersion,
+  shortSha,
+} from "@/utils/admin/plugin";
 import { settingFields, type SettingFormValue } from "@/utils/admin/settings-form";
 
 import { SettingFields } from "../setting-fields";
-import { ConfirmDialog, FormField, formatTime, NativeSelect, Notice, ReadOnlyNotice, Tag } from "../shared";
+import {
+  ConfirmDialog,
+  FormField,
+  formatTime,
+  NativeSelect,
+  Notice,
+  ReadOnlyNotice,
+  Tag,
+} from "../shared";
 import { useAliveRef } from "../use-admin";
 import { CheckResult } from "./check-result";
 import { SecretDialog } from "./secret-dialog";
 import type { CheckState } from "./use-channel-check";
 
 /** 抽屉打开的对象：新建（可预选插件），或已有渠道 */
-export type ChannelSheetTarget = { kind: "new"; pluginKey?: string } | { kind: "edit"; channel: ChannelView };
+export type ChannelSheetTarget =
+  | { kind: "new"; pluginKey?: string }
+  | { kind: "edit"; channel: ChannelView };
 
 /** 一个分区：标题 + 内容 */
 function Zone({ title, risk, children }: { title: string; risk?: boolean; children: ReactNode }) {
   return (
-    <section className={`flex flex-col gap-3 rounded-lg border p-3.5 ${risk ? "border-amber-500/60" : ""}`}>
+    <section
+      className={`flex flex-col gap-3 rounded-lg border p-3.5 ${risk ? "border-amber-500/60" : ""}`}
+    >
       <h3 className="text-sm font-medium">{title}</h3>
       {children}
     </section>
@@ -71,7 +89,8 @@ function RiskRow({
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <Label htmlFor={id} className="text-sm">
-          {title} <span className="text-muted-foreground font-mono text-xs font-normal">{field}</span>
+          {title}{" "}
+          <span className="text-muted-foreground font-mono text-xs font-normal">{field}</span>
         </Label>
         <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>
       </div>
@@ -176,7 +195,9 @@ function SheetBody({
 }) {
   const aliveRef = useAliveRef();
   /** 已存在的渠道；新建成功后会变成刚创建的那个，抽屉转为编辑态 */
-  const [original, setOriginal] = useState<ChannelView | null>(target.kind === "edit" ? target.channel : null);
+  const [original, setOriginal] = useState<ChannelView | null>(
+    target.kind === "edit" ? target.channel : null,
+  );
   const readOnly = !canWrite;
 
   const initialForm = useMemo<ChannelFormState | null>(() => {
@@ -189,7 +210,9 @@ function SheetBody({
       return channelFormFromView(target.channel, settingFields(meta?.channelSettings));
     }
     const base = emptyChannelForm(plugins);
-    const preferred = target.pluginKey ? plugins.find((plugin) => plugin.key === target.pluginKey) : undefined;
+    const preferred = target.pluginKey
+      ? plugins.find((plugin) => plugin.key === target.pluginKey)
+      : undefined;
     if (!preferred) return base;
     const version = latestVersion(preferred)?.version ?? "";
     const meta = preferred.versions.find((item) => item.version === version)?.meta;
@@ -289,7 +312,9 @@ function SheetForm({
   const fields = useMemo(() => settingFields(meta?.channelSettings), [meta]);
   const authType = meta?.auth?.type ?? "none";
   const isCustomAuth = authType === "custom";
-  const upgrade = original ? availableUpgrade(plugins, { plugin_key: form.pluginKey, plugin_version: form.pluginVersion }) : null;
+  const upgrade = original
+    ? availableUpgrade(plugins, { plugin_key: form.pluginKey, plugin_version: form.pluginVersion })
+    : null;
   const switchedVersion = !!original && form.pluginVersion !== original.plugin_version;
 
   /** 换插件 / 版本：设置项用 rebaseSettings 迁移，被丢弃的项提示；allow_credentials 不再可用时自动关闭 */
@@ -300,7 +325,8 @@ function SheetForm({
     const gone = fields
       .filter((field) => {
         const value = form.settings[field.name];
-        const had = typeof value === "boolean" ? value : typeof value === "string" && value.trim() !== "";
+        const had =
+          typeof value === "boolean" ? value : typeof value === "string" && value.trim() !== "";
         return had && !nextFields.some((next) => next.name === field.name);
       })
       .map((field) => field.label);
@@ -395,7 +421,11 @@ function SheetForm({
       <SheetHeader className="border-b">
         <SheetTitle>
           {title}
-          {original && <span className="text-muted-foreground ml-2 font-mono text-xs font-normal">{original.key}</span>}
+          {original && (
+            <span className="text-muted-foreground ml-2 font-mono text-xs font-normal">
+              {original.key}
+            </span>
+          )}
         </SheetTitle>
         <SheetDescription>渠道把一个插件版本、一个地址和一个 Key 绑在一起。</SheetDescription>
       </SheetHeader>
@@ -409,7 +439,11 @@ function SheetForm({
         }}
       >
         {readOnly && <ReadOnlyNotice what="修改渠道" />}
-        {formError && <Notice tone="danger" title="保存失败">{formError}</Notice>}
+        {formError && (
+          <Notice tone="danger" title="保存失败">
+            {formError}
+          </Notice>
+        )}
         {justCreated && original && (
           <Notice tone="success" title="渠道已创建">
             下一步：在下面设置 Key，再检查连通性。
@@ -450,7 +484,9 @@ function SheetForm({
               onCheckedChange={(checked) => patch({ enabled: checked })}
             />
             <Label htmlFor="channel-enabled">启用</Label>
-            <span className="text-muted-foreground text-xs">停用后不再接新任务，进行中的任务按快照继续</span>
+            <span className="text-muted-foreground text-xs">
+              停用后不再接新任务，进行中的任务按快照继续
+            </span>
           </div>
         </Zone>
 
@@ -479,7 +515,9 @@ function SheetForm({
                 disabled={readOnly}
                 onChange={(event) => changePluginVersion(form.pluginKey, event.target.value)}
               >
-                {!version && <option value={form.pluginVersion}>{form.pluginVersion || "请选择"}</option>}
+                {!version && (
+                  <option value={form.pluginVersion}>{form.pluginVersion || "请选择"}</option>
+                )}
                 {(plugin?.versions ?? []).map((item) => (
                   <option key={item.id} value={item.version}>
                     {item.version}
@@ -490,7 +528,8 @@ function SheetForm({
           </div>
           {version && (
             <p className="text-muted-foreground text-xs">
-              鉴权：{describeAuth(meta?.auth)} · sha256 <span className="font-mono">{shortSha(version.sha256)}</span>
+              鉴权：{describeAuth(meta?.auth)} · sha256{" "}
+              <span className="font-mono">{shortSha(version.sha256)}</span>
             </p>
           )}
           {upgrade && (
@@ -500,7 +539,8 @@ function SheetForm({
           )}
           {switchedVersion && !upgrade && (
             <Notice tone="info">
-              保存后新任务改用 v{form.pluginVersion}，进行中的任务按旧版本跑完。建议保存后先对使用这个渠道的模型试跑。
+              保存后新任务改用 v{form.pluginVersion}
+              ，进行中的任务按旧版本跑完。建议保存后先对使用这个渠道的模型试跑。
             </Notice>
           )}
           {dropped.length > 0 && (
@@ -583,7 +623,9 @@ function SheetForm({
             checked={form.trustedInternal}
             disabled={readOnly}
             description="允许 base_url 解析到内网地址（自建网关需要）。开启后，这个渠道的插件请求可以访问内网。此操作会记入审计日志。"
-            onChange={(checked) => (checked ? openRisk("trusted") : patch({ trustedInternal: false }))}
+            onChange={(checked) =>
+              checked ? openRisk("trusted") : patch({ trustedInternal: false })
+            }
           />
           <RiskRow
             id="channel-cred"
@@ -596,27 +638,41 @@ function SheetForm({
                 ? "开启后，插件代码能读取这个渠道的 Key（用于自行签名）。请确认你信任这个插件。此操作会记入审计日志。"
                 : "所选插件版本不需要接触 Key（鉴权由宿主注入），此开关不可用。"
             }
-            onChange={(checked) => (checked ? openRisk("cred") : patch({ allowCredentials: false }))}
+            onChange={(checked) =>
+              checked ? openRisk("cred") : patch({ allowCredentials: false })
+            }
           />
         </Zone>
 
         {original ? (
           <Zone title="Key">
             <div className="flex flex-wrap items-center gap-2">
-              {original.secret_set ? <Tag tone="success">已设置</Tag> : <Tag tone="warning">未设置</Tag>}
+              {original.secret_set ? (
+                <Tag tone="success">已设置</Tag>
+              ) : (
+                <Tag tone="warning">未设置</Tag>
+              )}
               <span className="text-muted-foreground text-xs">
                 {original.secret_set
                   ? `上次更新 ${formatTime(original.updated_at)}`
                   : "未设置 Key 的渠道，模型无法发布"}
               </span>
               {!readOnly && (
-                <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => setSecretOpen(true)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  onClick={() => setSecretOpen(true)}
+                >
                   <KeyRound />
                   {original.secret_set ? "更新 Key" : "设置 Key"}
                 </Button>
               )}
             </div>
-            <p className="text-muted-foreground text-xs">Key 只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里。</p>
+            <p className="text-muted-foreground text-xs">
+              Key 只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里。
+            </p>
             {(justSetKey || checkOk) && original.secret_set && (
               <Notice tone="success" title="Key 已设置">
                 下一步：检查连通性，或{" "}
@@ -678,12 +734,14 @@ function SheetForm({
                   （sha256 <span className="font-mono">{shortSha(version.sha256)}</span>）
                 </>
               )}
-              的代码能读取这个渠道的 Key。插件代码未经过评审，请确认你信任这份代码。此操作会记入审计日志。
+              的代码能读取这个渠道的
+              Key。插件代码未经过评审，请确认你信任这份代码。此操作会记入审计日志。
             </>
           ) : (
             <>
               开启后，这个渠道的插件请求可以访问内网地址。请确认{" "}
-              <span className="font-mono">{form.baseUrl.trim() || "（未填写）"}</span> 是受信任的内部服务。此操作会记入审计日志。
+              <span className="font-mono">{form.baseUrl.trim() || "（未填写）"}</span>{" "}
+              是受信任的内部服务。此操作会记入审计日志。
             </>
           )
         }
@@ -691,7 +749,10 @@ function SheetForm({
         onCancel={() => setRisk(null)}
       >
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={riskChecked} onCheckedChange={(checked) => setRiskChecked(checked === true)} />
+          <Checkbox
+            checked={riskChecked}
+            onCheckedChange={(checked) => setRiskChecked(checked === true)}
+          />
           {risk === "cred" ? "我确认信任这份插件代码" : "我确认这个地址是受信任的内部服务"}
         </label>
       </ConfirmDialog>

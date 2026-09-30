@@ -21,10 +21,10 @@
  *   GET    /admin/ai/test-runs/:id[/trace]             试跑任务视图 / 追踪
  *   GET    /admin/ai/schema/model                      模型配置 JSON Schema
  */
-const P = '/admin/ai'
-const seg = (value: string | number) => encodeURIComponent(String(value))
-const model = (key: string) => `${P}/models/${seg(key)}`
-const channel = (key: string) => `${P}/channels/${seg(key)}`
+const P = "/admin/ai";
+const seg = (value: string | number) => encodeURIComponent(String(value));
+const model = (key: string) => `${P}/models/${seg(key)}`;
+const channel = (key: string) => `${P}/channels/${seg(key)}`;
 
 export const adminAiEndpoints = {
   me: () => `${P}/me`,
@@ -55,10 +55,10 @@ export const adminAiEndpoints = {
   testRunResult: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}`,
   testRunTrace: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}/trace`,
   modelSchema: () => `${P}/schema/model`,
-} as const
+} as const;
 
 /** 保存草稿的请求体：正文放 body，备注放 note */
 export const saveBody = (config: unknown, note?: string) => ({
   body: config,
   ...(note ? { note } : {}),
-})
+});

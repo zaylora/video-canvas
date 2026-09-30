@@ -124,10 +124,19 @@ function RunView({ run }: { run: RunState }) {
       </div>
       {!terminal && (
         <>
-          <p className="text-muted-foreground text-xs">真实调用平台，不扣用户积分。每 3 秒刷新一次状态。</p>
+          <p className="text-muted-foreground text-xs">
+            真实调用平台，不扣用户积分。每 3 秒刷新一次状态。
+          </p>
           {progress !== null && (
-            <div className="bg-muted h-1.5 overflow-hidden rounded-full" role="progressbar" aria-valuenow={progress}>
-              <div className="bg-primary h-full transition-[width]" style={{ width: `${progress}%` }} />
+            <div
+              className="bg-muted h-1.5 overflow-hidden rounded-full"
+              role="progressbar"
+              aria-valuenow={progress}
+            >
+              <div
+                className="bg-primary h-full transition-[width]"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           )}
         </>
@@ -156,7 +165,9 @@ function RunView({ run }: { run: RunState }) {
       )}
       {run.note && <Notice tone="warning">{run.note}</Notice>}
       <details>
-        <summary className="text-primary cursor-pointer text-xs hover:underline">任务原始数据</summary>
+        <summary className="text-primary cursor-pointer text-xs hover:underline">
+          任务原始数据
+        </summary>
         <FoldableCode className="mt-2" text={JSON.stringify(view, null, 2)} />
       </details>
     </div>
@@ -207,7 +218,11 @@ export function ResultPanel({
           清空
         </Button>
       </div>
-      <Tabs value={tab} onValueChange={(value) => onTabChange(value as ResultTabId)} className="min-h-0 flex-1 gap-0">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => onTabChange(value as ResultTabId)}
+        className="min-h-0 flex-1 gap-0"
+      >
         <TabsList className="mx-3 mt-2 w-auto self-stretch">
           {TABS.map((item) => (
             <TabsTrigger key={item.id} value={item.id}>
@@ -218,10 +233,16 @@ export function ResultPanel({
             </TabsTrigger>
           ))}
         </TabsList>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3" role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label}>
+        <div
+          className="min-h-0 flex-1 overflow-y-auto p-3"
+          role="tabpanel"
+          aria-label={TABS.find((t) => t.id === tab)?.label}
+        >
           {tab === "issues" &&
             (entries.length === 0 ? (
-              <p className="text-muted-foreground text-xs">保存、校验、发布的结果与问题会显示在这里。</p>
+              <p className="text-muted-foreground text-xs">
+                保存、校验、发布的结果与问题会显示在这里。
+              </p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {entries.map((entry) => (
@@ -243,7 +264,8 @@ export function ResultPanel({
               <div className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium">请求描述</h3>
                 <p className="text-muted-foreground text-xs">
-                  插件返回的请求描述（已校验，Key 与鉴权头脱敏），未发送。{new Date(dryRun.time).toLocaleTimeString()}
+                  插件返回的请求描述（已校验，Key 与鉴权头脱敏），未发送。
+                  {new Date(dryRun.time).toLocaleTimeString()}
                 </p>
                 <FoldableCode defaultOpen text={JSON.stringify(dryRun.json, null, 2)} />
               </div>
@@ -251,14 +273,18 @@ export function ResultPanel({
 
           {tab === "run" &&
             (!run ? (
-              <p className="text-muted-foreground text-xs">点“试跑”真实调用一次上游，不扣用户积分；结束后自动切到“追踪”。</p>
+              <p className="text-muted-foreground text-xs">
+                点“试跑”真实调用一次上游，不扣用户积分；结束后自动切到“追踪”。
+              </p>
             ) : (
               <RunView run={run} />
             ))}
 
           {tab === "trace" &&
             (!trace ? (
-              <p className="text-muted-foreground text-xs">试跑完成后，这里会显示每次钩子与每次 HTTP 的时间线。</p>
+              <p className="text-muted-foreground text-xs">
+                试跑完成后，这里会显示每次钩子与每次 HTTP 的时间线。
+              </p>
             ) : trace.status === "error" ? (
               <Notice tone="warning" title="没能取到追踪">
                 稍后点“刷新”重试。

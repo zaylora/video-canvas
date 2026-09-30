@@ -27,8 +27,7 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
 
   load: (kind, force = false) => {
     const current = get().byKind[kind] ?? EMPTY;
-    const fresh =
-      current.status === "ready" && Date.now() - current.loadedAt < MODELS_TTL;
+    const fresh = current.status === "ready" && Date.now() - current.loadedAt < MODELS_TTL;
     if (!force && fresh) return Promise.resolve();
     const pending = inflight.get(kind);
     if (pending) return pending;

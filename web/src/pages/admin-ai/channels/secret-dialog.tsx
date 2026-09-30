@@ -109,7 +109,8 @@ function SecretBody({
       <DialogHeader>
         <DialogTitle>{secretSet ? "更新 Key" : "设置 Key"}</DialogTitle>
         <DialogDescription>
-          渠道 <b>{channelName}</b>（<span className="font-mono">{channelKey}</span>）。Key 只写不读，保存后不会再显示。
+          渠道 <b>{channelName}</b>（<span className="font-mono">{channelKey}</span>）。Key
+          只写不读，保存后不会再显示。
         </DialogDescription>
       </DialogHeader>
 
@@ -130,7 +131,10 @@ function SecretBody({
       </FormField>
 
       {secretSet && (
-        <Notice tone={confirming ? "danger" : "warning"} title={confirming ? "再点一次确认覆盖" : undefined}>
+        <Notice
+          tone={confirming ? "danger" : "warning"}
+          title={confirming ? "再点一次确认覆盖" : undefined}
+        >
           这将<b>覆盖现有 Key</b>，正在使用该 Key 的任务会立即改用新 Key。
         </Notice>
       )}

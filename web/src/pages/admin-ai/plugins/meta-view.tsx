@@ -61,7 +61,8 @@ export function MetaView({ meta }: { meta: PluginMeta | null | undefined }) {
         <p className="text-sm">{describeAuth(meta.auth)}</p>
         {authType === "custom" && (
           <Notice tone="warning">
-            需要渠道开启 <code className="font-mono">allow_credentials</code>，才会把 Key 交给这个插件；开启会记入审计日志。
+            需要渠道开启 <code className="font-mono">allow_credentials</code>，才会把 Key
+            交给这个插件；开启会记入审计日志。
           </Notice>
         )}
       </Section>
@@ -125,7 +126,10 @@ export function MetaView({ meta }: { meta: PluginMeta | null | undefined }) {
                     <TableCell>
                       {TYPE_LABEL[field.type] ?? field.type}
                       {field.options.length > 0 && (
-                        <span className="text-muted-foreground"> · {field.options.join(" / ")}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {field.options.join(" / ")}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell>{field.required ? "必填" : "可选"}</TableCell>
@@ -163,7 +167,9 @@ export function MetaView({ meta }: { meta: PluginMeta | null | undefined }) {
 
       <Section title="原始 meta">
         <details className="group">
-          <summary className="text-primary cursor-pointer text-xs hover:underline">展开只读 JSON</summary>
+          <summary className="text-primary cursor-pointer text-xs hover:underline">
+            展开只读 JSON
+          </summary>
           <FoldableCode className="mt-2" text={JSON.stringify(meta, null, 2)} />
         </details>
       </Section>

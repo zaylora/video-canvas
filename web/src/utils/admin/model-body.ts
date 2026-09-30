@@ -21,17 +21,11 @@ export function readModelChannel(body: unknown): {
   channel: string;
   upstreamModel: string;
 } {
-  const first =
-    isRecord(body) && Array.isArray(body.channels)
-      ? body.channels[0]
-      : undefined;
+  const first = isRecord(body) && Array.isArray(body.channels) ? body.channels[0] : undefined;
   return {
-    channel:
-      isRecord(first) && typeof first.channel === "string" ? first.channel : "",
+    channel: isRecord(first) && typeof first.channel === "string" ? first.channel : "",
     upstreamModel:
-      isRecord(first) && typeof first.upstream_model === "string"
-        ? first.upstream_model
-        : "",
+      isRecord(first) && typeof first.upstream_model === "string" ? first.upstream_model : "",
   };
 }
 
@@ -53,10 +47,7 @@ export function withModelChannel(
   };
   if ("channels" in body)
     return Object.fromEntries(
-      Object.entries(body).map(([key, value]) => [
-        key,
-        key === "channels" ? channels : value,
-      ]),
+      Object.entries(body).map(([key, value]) => [key, key === "channels" ? channels : value]),
     );
   return { ...body, channels };
 }
@@ -72,11 +63,7 @@ export function suggestModelKey(upstreamModel: string): string {
 }
 
 /** 后端草稿可能是 snake_case（契约）也可能透传插件的 camelCase，两种都认 */
-function pick<T>(
-  draft: Record<string, unknown>,
-  snake: string,
-  camel: string,
-): T | undefined {
+function pick<T>(draft: Record<string, unknown>, snake: string, camel: string): T | undefined {
   return (draft[snake] ?? draft[camel]) as T | undefined;
 }
 
@@ -100,10 +87,7 @@ export function normalizeDraft(raw: unknown): ModelDraft | null {
  * 导入草稿 → 新建模型编辑器的预填正文。
  * 渠道、上游模型名、kind、label、params、input_schema 取自草稿；积分等留默认值，运营再改。
  */
-export function draftToModelBody(
-  draft: ModelDraft,
-  channelKey: string,
-): Record<string, unknown> {
+export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<string, unknown> {
   const kind = draft.kind || "video";
   return {
     key: suggestModelKey(draft.upstream_model),
@@ -140,10 +124,7 @@ export function withModelField(
   if (!isRecord(body)) return null;
   if (field in body)
     return Object.fromEntries(
-      Object.entries(body).map(([key, current]) => [
-        key,
-        key === field ? value : current,
-      ]),
+      Object.entries(body).map(([key, current]) => [key, key === field ? value : current]),
     );
   return { ...body, [field]: value };
 }
@@ -182,7 +163,5 @@ export const readModelBool = (body: unknown, field: string) =>
 export function checkDeadline(value: string): string | null {
   const text = value.trim();
   if (!text) return "请填写时限，例如 30m";
-  return /^(\d+(\.\d+)?(ms|s|m|h))+$/.test(text)
-    ? null
-    : "时限格式不对，示例：90s、30m、1h";
+  return /^(\d+(\.\d+)?(ms|s|m|h))+$/.test(text) ? null : "时限格式不对，示例：90s、30m、1h";
 }

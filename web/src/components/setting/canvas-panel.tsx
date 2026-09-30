@@ -1,10 +1,6 @@
 import { Switch } from "@/components/ui/switch";
 
-import {
-  useSettingsStore,
-  type CanvasBackground,
-  type CanvasWheelMode,
-} from "@/store";
+import { useSettingsStore, type CanvasBackground, type CanvasWheelMode } from "@/store";
 
 import { Segmented, SettingRow } from "./setting-controls";
 

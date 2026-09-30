@@ -42,18 +42,9 @@ type UseCanvasMenuOptions = {
  * 「添加节点」菜单的状态机：双击空白或拉线落空时记录锚点，
  * 选定种类后就地建节点，并把拉线落空那根边补上。
  */
-export function useCanvasMenu({
-  setNodes,
-  setEdges,
-  defaultModels,
-}: UseCanvasMenuOptions) {
-  const {
-    flowToScreenPosition,
-    getInternalNode,
-    getNode,
-    getNodes,
-    screenToFlowPosition,
-  } = useReactFlow<CanvasNode, CanvasEdge>();
+export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMenuOptions) {
+  const { flowToScreenPosition, getInternalNode, getNode, getNodes, screenToFlowPosition } =
+    useReactFlow<CanvasNode, CanvasEdge>();
   const [menu, setMenu] = useState<CanvasMenuState | null>(null);
   /*
    * 菜单里点「上传」到文件真选好，中间隔着一个系统文件框，
@@ -67,10 +58,7 @@ export function useCanvasMenu({
 
   // 新连线直接套上流动高亮：AnimatedSvgEdge 必须拿到 data.shape 才渲染得出光点
   const onConnect = useCallback<OnConnect>(
-    (connection) =>
-      setEdges((eds) =>
-        addEdge({ ...connection, ...ANIMATED_EDGE_OPTIONS }, eds),
-      ),
+    (connection) => setEdges((eds) => addEdge({ ...connection, ...ANIMATED_EDGE_OPTIONS }, eds)),
     [setEdges],
   );
 
@@ -133,11 +121,7 @@ export function useCanvasMenu({
   const onConnectEnd = useCallback<OnConnectEnd>(
     (event, connectionState) => {
       // toNode 才是可靠的落点判断，event.target 会被 pointer capture 骗到
-      if (
-        connectionState.toNode ||
-        !connectionState.fromHandle ||
-        !connectionState.from
-      ) {
+      if (connectionState.toNode || !connectionState.fromHandle || !connectionState.from) {
         return;
       }
 
@@ -145,8 +129,7 @@ export function useCanvasMenu({
       const source = getNode(fromHandle.nodeId);
       if (!source) return;
 
-      const { clientX, clientY } =
-        "changedTouches" in event ? event.changedTouches[0] : event;
+      const { clientX, clientY } = "changedTouches" in event ? event.changedTouches[0] : event;
       const screen = { x: clientX, y: clientY };
       const flow = screenToFlowPosition(screen);
 
@@ -160,11 +143,7 @@ export function useCanvasMenu({
         .reverse()
         .find((node) => {
           if (node.id === source.id) return false;
-          const kindOk = canConnectKinds(
-            source.data.kind,
-            fromHandle.type,
-            node.data.kind,
-          );
+          const kindOk = canConnectKinds(source.data.kind, fromHandle.type, node.data.kind);
           if (!kindOk) return false;
 
           const internalNode = getInternalNode(node.id);
@@ -172,12 +151,7 @@ export function useCanvasMenu({
         });
 
       if (target) {
-        connectNodes(
-          source.id,
-          fromHandle.id ?? null,
-          fromHandle.type,
-          target.id,
-        );
+        connectNodes(source.id, fromHandle.id ?? null, fromHandle.type, target.id);
         return;
       }
 
@@ -194,14 +168,7 @@ export function useCanvasMenu({
         },
       });
     },
-    [
-      connectNodes,
-      flowToScreenPosition,
-      getInternalNode,
-      getNode,
-      getNodes,
-      screenToFlowPosition,
-    ],
+    [connectNodes, flowToScreenPosition, getInternalNode, getNode, getNodes, screenToFlowPosition],
   );
 
   /**
@@ -210,11 +177,7 @@ export function useCanvasMenu({
    * 拦不到菜单那一步，只能在这儿兜着。
    */
   const placeNode = useCallback(
-    (
-      kind: NodeKind,
-      placement: CanvasMenuState,
-      extra?: Partial<CanvasNodeData>,
-    ) => {
+    (kind: NodeKind, placement: CanvasMenuState, extra?: Partial<CanvasNodeData>) => {
       const meta = NODE_META.get(kind) ?? NODE_LIBRARY[0];
       const { connection } = placement;
       const id = crypto.randomUUID();
@@ -229,26 +192,16 @@ export function useCanvasMenu({
           ...extra,
         },
         // 拉线生成时让落点落在新节点自己的连接点上，线头才不会飘在半空
-        origin: connection
-          ? connection.handleType === "source"
-            ? [0, 0.5]
-            : [1, 0.5]
-          : [0, 0],
+        origin: connection ? (connection.handleType === "source" ? [0, 0.5] : [1, 0.5]) : [0, 0],
       };
 
       setNodes((nds) => nds.concat(node));
 
       const connected =
-        !!connection &&
-        canConnectKinds(connection.kind, connection.handleType, kind);
+        !!connection && canConnectKinds(connection.kind, connection.handleType, kind);
 
       if (connection && connected) {
-        connectNodes(
-          connection.nodeId,
-          connection.handleId,
-          connection.handleType,
-          id,
-        );
+        connectNodes(connection.nodeId, connection.handleId, connection.handleType, id);
       }
 
       return { id, connected };
@@ -364,12 +317,8 @@ export function useCanvasMenu({
           placeUploadedNode(item, {
             ...placement,
             flow: {
-              x:
-                placement.flow.x +
-                (index % UPLOAD_STACK_COLUMNS) * UPLOAD_STACK_GAP.x,
-              y:
-                placement.flow.y +
-                Math.floor(index / UPLOAD_STACK_COLUMNS) * UPLOAD_STACK_GAP.y,
+              x: placement.flow.x + (index % UPLOAD_STACK_COLUMNS) * UPLOAD_STACK_GAP.x,
+              y: placement.flow.y + Math.floor(index / UPLOAD_STACK_COLUMNS) * UPLOAD_STACK_GAP.y,
             },
           }),
         ),
@@ -380,9 +329,7 @@ export function useCanvasMenu({
         return {
           tone: "error",
           text:
-            rejected.length === 1
-              ? rejected[0]
-              : `${rejected.length} 个文件没收下：${rejected[0]}`,
+            rejected.length === 1 ? rejected[0] : `${rejected.length} 个文件没收下：${rejected[0]}`,
         };
       }
 
@@ -391,17 +338,13 @@ export function useCanvasMenu({
         return {
           tone: "error",
           text:
-            failed === 1
-              ? "上传失败，本地预览已保留"
-              : `${failed} 个文件上传失败，本地预览已保留`,
+            failed === 1 ? "上传失败，本地预览已保留" : `${failed} 个文件上传失败，本地预览已保留`,
         };
       }
 
       const detached = results.filter((result) => result.detached).length;
       if (detached) {
-        const meta =
-          NODE_META.get(UPLOAD_TARGET_KIND[taken[0].mediaType]) ??
-          NODE_LIBRARY[0];
+        const meta = NODE_META.get(UPLOAD_TARGET_KIND[taken[0].mediaType]) ?? NODE_LIBRARY[0];
         return {
           tone: "info",
           text:

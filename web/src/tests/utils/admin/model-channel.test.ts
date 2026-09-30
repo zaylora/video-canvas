@@ -85,14 +85,26 @@ describe("resolveModelChannel", () => {
   });
 
   test("需要 Key（非 none 鉴权）却没设置：keyMissing 为 true", () => {
-    const info = resolveModelChannel(body("kling-direct"), [channel({ secret_set: false })], plugins);
+    const info = resolveModelChannel(
+      body("kling-direct"),
+      [channel({ secret_set: false })],
+      plugins,
+    );
     expect(info.keyMissing).toBe(true);
   });
 
   test("鉴权为 none 的插件不需要 Key，没设置也不算缺失", () => {
     const info = resolveModelChannel(
       body("o", "text"),
-      [channel({ key: "o", plugin_key: "open", plugin_version_id: 5, plugin_version: "1.0.0", secret_set: false })],
+      [
+        channel({
+          key: "o",
+          plugin_key: "open",
+          plugin_version_id: 5,
+          plugin_version: "1.0.0",
+          secret_set: false,
+        }),
+      ],
       plugins,
     );
     expect(info.authType).toBe("none");
@@ -100,14 +112,20 @@ describe("resolveModelChannel", () => {
   });
 
   test("插件信息未知时不断言：authType 为 null，keyMissing 为 false，supportsKind 为 null", () => {
-    const info = resolveModelChannel(body("k"), [channel({ key: "k", plugin_key: "ghost", plugin_version_id: 9, secret_set: false })], plugins);
+    const info = resolveModelChannel(
+      body("k"),
+      [channel({ key: "k", plugin_key: "ghost", plugin_version_id: 9, secret_set: false })],
+      plugins,
+    );
     expect(info.authType).toBeNull();
     expect(info.keyMissing).toBe(false);
     expect(info.supportsKind).toBeNull();
   });
 
   test("kind 不在插件 endpoints 里时 supportsKind 为 false；没选渠道时各字段为空", () => {
-    expect(resolveModelChannel(body("kling-direct", "text"), [channel({})], plugins).supportsKind).toBe(false);
+    expect(
+      resolveModelChannel(body("kling-direct", "text"), [channel({})], plugins).supportsKind,
+    ).toBe(false);
     const none = resolveModelChannel(body(""), [channel({})], plugins);
     expect(none.channel).toBeNull();
     expect(none.channelKey).toBe("");
@@ -122,16 +140,29 @@ describe("publishBlockReason", () => {
   });
 
   test("Key 未设置时禁用并写明原因，带渠道名与去处", () => {
-    const info = resolveModelChannel(body("kling-direct"), [channel({ secret_set: false })], plugins);
+    const info = resolveModelChannel(
+      body("kling-direct"),
+      [channel({ secret_set: false })],
+      plugins,
+    );
     const reason = publishBlockReason(info, true);
     expect(reason).toContain("Key");
     expect(reason).toContain("可灵直连");
   });
 
   test("渠道不存在、已停用、没选渠道都给出原因", () => {
-    expect(publishBlockReason(resolveModelChannel(body("nope"), [channel({})], plugins), true)).toContain("不存在");
-    expect(publishBlockReason(resolveModelChannel(body("kling-direct"), [channel({ enabled: false })], plugins), true)).toContain("停用");
-    expect(publishBlockReason(resolveModelChannel(body(""), [channel({})], plugins), true)).toContain("选择渠道");
+    expect(
+      publishBlockReason(resolveModelChannel(body("nope"), [channel({})], plugins), true),
+    ).toContain("不存在");
+    expect(
+      publishBlockReason(
+        resolveModelChannel(body("kling-direct"), [channel({ enabled: false })], plugins),
+        true,
+      ),
+    ).toContain("停用");
+    expect(
+      publishBlockReason(resolveModelChannel(body(""), [channel({})], plugins), true),
+    ).toContain("选择渠道");
   });
 
   test("清单没加载好时不下结论", () => {

@@ -31,7 +31,14 @@ export const succeeded = (over: Partial<TaskView> = {}) =>
     status: "succeeded",
     version: 5,
     outputs: [
-      { asset_id: 77, url: "/files/a.mp4", media_type: "video", duration_ms: 5000, width: 1280, height: 720 },
+      {
+        asset_id: 77,
+        url: "/files/a.mp4",
+        media_type: "video",
+        duration_ms: 5000,
+        width: 1280,
+        height: 720,
+      },
     ],
     finished_at: "2026-09-29T10:03:00Z",
     ...over,

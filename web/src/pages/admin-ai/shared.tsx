@@ -150,7 +150,10 @@ export function Tag({
 }
 
 const NOTICE_TONE = {
-  info: { icon: Info, className: "border-transparent bg-primary/10 text-foreground [&>svg]:text-primary" },
+  info: {
+    icon: Info,
+    className: "border-transparent bg-primary/10 text-foreground [&>svg]:text-primary",
+  },
   warning: {
     icon: TriangleAlert,
     className:
@@ -190,7 +193,10 @@ export function Notice({
 }) {
   const { icon: Icon, className: toneClass } = NOTICE_TONE[tone];
   return (
-    <Alert role={tone === "danger" ? "alert" : "status"} className={cn("text-xs", toneClass, className)}>
+    <Alert
+      role={tone === "danger" ? "alert" : "status"}
+      className={cn("text-xs", toneClass, className)}
+    >
       <Icon />
       <div className="flex min-w-0 items-start gap-2">
         <div className="min-w-0 flex-1 leading-5">
@@ -250,7 +256,9 @@ export function ConfirmDialog({
       <AlertDialogContent className="data-[size=default]:sm:max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          {description && <AlertDialogDescription render={<div />}>{description}</AlertDialogDescription>}
+          {description && (
+            <AlertDialogDescription render={<div />}>{description}</AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         {children}
         {error && <Notice tone="danger">{error}</Notice>}

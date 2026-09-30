@@ -1,12 +1,7 @@
 import { create } from "zustand";
 
 /** 全局 WebSocket 的连接状态 */
-export type ConnectionState =
-  | "idle"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "closed";
+export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "closed";
 
 type WsState = {
   connection: ConnectionState;

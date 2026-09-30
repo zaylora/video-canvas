@@ -56,18 +56,12 @@ type SettingsDialogProps = {
 };
 
 /** 左边分栏、右边内容的设置弹窗 */
-export function SettingsDialog({
-  open,
-  onOpenChange,
-  modelGroups,
-}: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, modelGroups }: SettingsDialogProps) {
   const resetSettings = useSettingsStore((state) => state.resetSettings);
   const [section, setSection] = useState<SectionValue>("canvas");
   // 服务端下发清单的种类由平台统一托管，不支持自定义模型；一个能自定义的种类都没有时整栏不显示
   const customKinds = modelGroups.filter((group) => !isRemoteModelKind(group.kind));
-  const sections = SECTIONS.filter(
-    (item) => item.value !== "custom" || customKinds.length > 0,
-  );
+  const sections = SECTIONS.filter((item) => item.value !== "custom" || customKinds.length > 0);
   const active = sections.find((item) => item.value === section) ?? sections[0];
 
   return (
@@ -110,9 +104,7 @@ export function SettingsDialog({
                 {section === "canvas" && <CanvasPanel />}
                 {section === "general" && <GeneralPanel />}
                 {section === "model" && <ModelPanel groups={modelGroups} />}
-                {section === "custom" && (
-                  <CustomModelPanel kinds={customKinds} />
-                )}
+                {section === "custom" && <CustomModelPanel kinds={customKinds} />}
               </div>
             </ScrollArea>
 

@@ -82,7 +82,9 @@ describe("withModelField / withModelUpstream", () => {
     const next = withModelUpstream(body, "v2")!;
     expect(next.channels).toEqual([{ channel: "old", upstream_model: "v2" }]);
     expect(Object.keys(next)).toEqual(Object.keys(body));
-    expect(withModelUpstream({ key: "a" }, "m")!.channels).toEqual([{ channel: "", upstream_model: "m" }]);
+    expect(withModelUpstream({ key: "a" }, "m")!.channels).toEqual([
+      { channel: "", upstream_model: "m" },
+    ]);
   });
 
   test("用 JSON 文本来回转一遍，键顺序仍然保持", () => {
@@ -116,7 +118,10 @@ describe("normalizeDraft / draftToModelBody", () => {
   });
 
   test("草稿 → 新建正文：渠道预填、不上架、文本与其他 kind 的默认时限不同", () => {
-    const video = draftToModelBody({ upstream_model: "Kling V2", kind: "video", label: "", params: null }, "ch");
+    const video = draftToModelBody(
+      { upstream_model: "Kling V2", kind: "video", label: "", params: null },
+      "ch",
+    );
     expect(video).toMatchObject({
       key: "kling-v2",
       kind: "video",
@@ -127,7 +132,10 @@ describe("normalizeDraft / draftToModelBody", () => {
       params: {},
       input_schema: {},
     });
-    const text = draftToModelBody({ upstream_model: "gpt", kind: "text", label: "GPT", params: { a: 1 } }, "ch");
+    const text = draftToModelBody(
+      { upstream_model: "gpt", kind: "text", label: "GPT", params: { a: 1 } },
+      "ch",
+    );
     expect(text.deadline).toBe("5m");
     expect(text.params).toEqual({ a: 1 });
     expect(draftToModelBody({ upstream_model: "x", kind: "", label: "" }, "ch").kind).toBe("video");
@@ -136,11 +144,13 @@ describe("normalizeDraft / draftToModelBody", () => {
 
 describe("checkDeadline", () => {
   test("Go 时长写法通过", () => {
-    for (const ok of ["30m", "1h", "90s", "1h30m", "1.5h", "500ms"]) expect(checkDeadline(ok)).toBeNull();
+    for (const ok of ["30m", "1h", "90s", "1h30m", "1.5h", "500ms"])
+      expect(checkDeadline(ok)).toBeNull();
   });
 
   test("空值与错误格式给出提示", () => {
     expect(checkDeadline("")).toContain("请填写");
-    for (const bad of ["30", "m", "30 分钟", "-5m", "1d"]) expect(checkDeadline(bad)).toContain("格式");
+    for (const bad of ["30", "m", "30 分钟", "-5m", "1d"])
+      expect(checkDeadline(bad)).toContain("格式");
   });
 });

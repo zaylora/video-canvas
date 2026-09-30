@@ -1,8 +1,5 @@
 import type { TaskView } from "@/api/generation-task/type";
-import {
-  getActiveGenerationTasks,
-  getGenerationTasksByIds,
-} from "@/api/generation-task";
+import { getActiveGenerationTasks, getGenerationTasksByIds } from "@/api/generation-task";
 import { useCreditsStore } from "@/store/credits";
 import { useTasksStore } from "@/store/tasks";
 import { toast } from "sonner";
@@ -39,7 +36,10 @@ export function handleTaskView(view: TaskView, source: TaskSource) {
     description: plan.description,
     // 动态引入 router，避免 router -> ws-runtime -> 本文件 的循环依赖
     action: href
-      ? { label: "点击查看", onClick: () => void import("@/router").then(({ router }) => router.navigate(href)) }
+      ? {
+          label: "点击查看",
+          onClick: () => void import("@/router").then(({ router }) => router.navigate(href)),
+        }
       : undefined,
   });
 }

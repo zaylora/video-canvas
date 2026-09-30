@@ -60,12 +60,8 @@ type CustomModelPanelProps = {
 export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
   const customModels = useSettingsStore((state) => state.customModels);
   const addCustomModel = useSettingsStore((state) => state.addCustomModel);
-  const updateCustomModel = useSettingsStore(
-    (state) => state.updateCustomModel
-  );
-  const removeCustomModel = useSettingsStore(
-    (state) => state.removeCustomModel
-  );
+  const updateCustomModel = useSettingsStore((state) => state.updateCustomModel);
+  const removeCustomModel = useSettingsStore((state) => state.removeCustomModel);
   const [form, setForm] = useState<FormState | null>(null);
 
   const kindOptions = kinds.map((item) => ({
@@ -77,24 +73,23 @@ export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
     setForm(
       model
         ? { id: model.id, values: { ...model } }
-        : { id: null, values: { ...EMPTY_FORM, kind: kinds[0]?.kind ?? "" } }
+        : { id: null, values: { ...EMPTY_FORM, kind: kinds[0]?.kind ?? "" } },
     );
   };
 
   const setValue = <K extends keyof Omit<CustomModel, "id">>(
     key: K,
-    value: Omit<CustomModel, "id">[K]
+    value: Omit<CustomModel, "id">[K],
   ) => {
     setForm((current) =>
-      current ? { ...current, values: { ...current.values, [key]: value } } : current
+      current ? { ...current, values: { ...current.values, [key]: value } } : current,
     );
   };
 
   if (form) {
     const { id, values } = form;
     // 名字、地址、模型标识缺一个都调不起来，凑齐才让存
-    const canSave =
-      !!values.label.trim() && !!values.endpoint.trim() && !!values.modelId.trim();
+    const canSave = !!values.label.trim() && !!values.endpoint.trim() && !!values.modelId.trim();
 
     const save = () => {
       const payload = {
@@ -124,46 +119,46 @@ export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="名称" htmlFor="custom-model-label">
-            <Input
-              id="custom-model-label"
-              value={values.label}
-              placeholder="我的图片模型"
-              onChange={(event) => setValue("label", event.target.value)}
-            />
-          </Field>
-          <Field label="模型标识" htmlFor="custom-model-id">
-            <Input
-              id="custom-model-id"
-              value={values.modelId}
-              placeholder="gpt-image-1"
-              onChange={(event) => setValue("modelId", event.target.value)}
-            />
-          </Field>
+            <Field label="名称" htmlFor="custom-model-label">
+              <Input
+                id="custom-model-label"
+                value={values.label}
+                placeholder="我的图片模型"
+                onChange={(event) => setValue("label", event.target.value)}
+              />
+            </Field>
+            <Field label="模型标识" htmlFor="custom-model-id">
+              <Input
+                id="custom-model-id"
+                value={values.modelId}
+                placeholder="gpt-image-1"
+                onChange={(event) => setValue("modelId", event.target.value)}
+              />
+            </Field>
           </div>
 
-        <div className="mt-4">
-          <Field label="接口地址" htmlFor="custom-model-endpoint">
-          <Input
-            id="custom-model-endpoint"
-            value={values.endpoint}
-            placeholder="https://api.example.com/v1/images"
-            onChange={(event) => setValue("endpoint", event.target.value)}
-          />
-          </Field>
-        </div>
+          <div className="mt-4">
+            <Field label="接口地址" htmlFor="custom-model-endpoint">
+              <Input
+                id="custom-model-endpoint"
+                value={values.endpoint}
+                placeholder="https://api.example.com/v1/images"
+                onChange={(event) => setValue("endpoint", event.target.value)}
+              />
+            </Field>
+          </div>
 
-        <div className="mt-4">
-          <Field label="API Key" htmlFor="custom-model-key">
-          <Input
-            id="custom-model-key"
-            type="password"
-            value={values.apiKey}
-            placeholder="只存在本机浏览器里"
-            onChange={(event) => setValue("apiKey", event.target.value)}
-          />
-          </Field>
-        </div>
+          <div className="mt-4">
+            <Field label="API Key" htmlFor="custom-model-key">
+              <Input
+                id="custom-model-key"
+                type="password"
+                value={values.apiKey}
+                placeholder="只存在本机浏览器里"
+                onChange={(event) => setValue("apiKey", event.target.value)}
+              />
+            </Field>
+          </div>
         </div>
 
         <div className="rounded-xl border bg-muted/20 p-4">
@@ -176,26 +171,24 @@ export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
               <p className="text-muted-foreground text-xs">设置模型可用于哪些节点</p>
             </div>
           </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_8rem]">
-          <Field label="适用节点">
-            <Segmented
-              value={values.kind}
-              options={kindOptions}
-              onChange={(value) => setValue("kind", value)}
-            />
-          </Field>
-          <Field label="单次积分" htmlFor="custom-model-credits">
-            <Input
-              id="custom-model-credits"
-              type="number"
-              min={0}
-              value={values.credits}
-              onChange={(event) =>
-                setValue("credits", Number(event.target.value) || 0)
-              }
-            />
-          </Field>
-        </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_8rem]">
+            <Field label="适用节点">
+              <Segmented
+                value={values.kind}
+                options={kindOptions}
+                onChange={(value) => setValue("kind", value)}
+              />
+            </Field>
+            <Field label="单次积分" htmlFor="custom-model-credits">
+              <Input
+                id="custom-model-credits"
+                type="number"
+                min={0}
+                value={values.credits}
+                onChange={(event) => setValue("credits", Number(event.target.value) || 0)}
+              />
+            </Field>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t pt-4">
@@ -229,8 +222,7 @@ export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{model.label}</div>
               <div className="text-muted-foreground truncate text-xs">
-                {kind?.label ?? model.kind} · {model.credits} 积分 ·{" "}
-                {model.modelId}
+                {kind?.label ?? model.kind} · {model.credits} 积分 · {model.modelId}
               </div>
             </div>
             <Button
@@ -253,12 +245,7 @@ export function CustomModelPanel({ kinds }: CustomModelPanelProps) {
         );
       })}
 
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start"
-        onClick={() => openForm()}
-      >
+      <Button variant="outline" size="sm" className="self-start" onClick={() => openForm()}>
         <Plus />
         添加模型
       </Button>

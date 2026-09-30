@@ -1,0 +1,43 @@
+{
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // —— 前端：oxfmt 格式化 + oxlint 自动修复，规则见 web/.oxfmtrc.json、web/.oxlintrc.json ——
+  "oxc.enable": true,
+  "oxc.fmt.configPath": "web/.oxfmtrc.json",
+  "oxc.configPath": "web/.oxlintrc.json",
+  "[typescript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode",
+    "editor.formatOnSave": true
+  },
+
+  // —— 后端：goimports 格式化，local-prefixes 与 backend/.golangci.yml 保持一致 ——
+  "go.formatTool": "goimports",
+  "gopls": {
+    "formatting.local": "video-canvas"
+  },
+  "go.lintTool": "golangci-lint-v2",
+  "go.lintFlags": ["--new-from-merge-base=master"],
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+  },
+  "[go.mod]": {
+    "editor.formatOnSave": true
+  }
+}

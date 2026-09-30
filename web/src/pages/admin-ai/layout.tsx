@@ -75,7 +75,10 @@ export default function AdminAiLayout() {
   return (
     <div className="flex h-svh flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <Link to="/" className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm">
+        <Link
+          to="/"
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
+        >
           <ArrowLeft className="size-4" />
           返回画布
         </Link>
@@ -88,12 +91,16 @@ export default function AdminAiLayout() {
               className={({ isActive }) =>
                 cn(
                   "rounded-md px-3 py-1",
-                  isActive ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  isActive
+                    ? "bg-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                 )
               }
             >
               {tab.label}
-              {counts[tab.to] != null && <span className="text-muted-foreground ml-1">{counts[tab.to]}</span>}
+              {counts[tab.to] != null && (
+                <span className="text-muted-foreground ml-1">{counts[tab.to]}</span>
+              )}
             </NavLink>
           ))}
         </nav>

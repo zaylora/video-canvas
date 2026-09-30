@@ -4,7 +4,9 @@ import { locateJsonError, parseJsonText } from "@/utils/admin/json";
 
 describe("locateJsonError", () => {
   test("语法正确返回 null", () => {
-    expect(locateJsonError('{"a":[1,2,{"b":null}],"c":"x\\n\\u00e9","d":-1.5e3,"e":true}')).toBeNull();
+    expect(
+      locateJsonError('{"a":[1,2,{"b":null}],"c":"x\\n\\u00e9","d":-1.5e3,"e":true}'),
+    ).toBeNull();
     expect(locateJsonError("  [ ]  ")).toBeNull();
     expect(locateJsonError("{}")).toBeNull();
   });

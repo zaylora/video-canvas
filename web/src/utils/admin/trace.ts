@@ -103,9 +103,7 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
     title = str(hook.name) || title;
     push("输入", prettyValue(hook.input));
     push("输出", prettyValue(hook.output));
-    logs = Array.isArray(hook.logs)
-      ? hook.logs.map((line) => String(line))
-      : [];
+    logs = Array.isArray(hook.logs) ? hook.logs.map((line) => String(line)) : [];
   } else if (kind === "http") {
     const request = isRecord(raw.request) ? raw.request : null;
     const response = isRecord(raw.response) ? raw.response : null;
@@ -116,8 +114,7 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
       push("请求体", prettyValue(request.body));
     }
     if (response) {
-      status =
-        typeof response.status === "number" ? response.status : undefined;
+      status = typeof response.status === "number" ? response.status : undefined;
       push("响应体", prettyValue(response.body));
       truncated = response.truncated === true;
     }
@@ -148,9 +145,7 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
 /** 后端步骤数组 → 展示模型；null / 坏条目都不崩 */
 export function toTraceView(steps: unknown): TraceView {
   const list = Array.isArray(steps) ? steps.filter(isRecord) : [];
-  const views = list.map((step, index) =>
-    toStepView(step as unknown as TraceStep, index),
-  );
+  const views = list.map((step, index) => toStepView(step as unknown as TraceStep, index));
   return {
     steps: views,
     totalMs: views.reduce((sum, step) => sum + (step.durationMs ?? 0), 0),
@@ -165,8 +160,7 @@ export function foldText(
   maxChars = 1500,
 ): { folded: boolean; preview: string } {
   const lines = text.split("\n");
-  if (lines.length <= maxLines && text.length <= maxChars)
-    return { folded: false, preview: text };
+  if (lines.length <= maxLines && text.length <= maxChars) return { folded: false, preview: text };
   let preview = lines.slice(0, maxLines).join("\n");
   if (preview.length > maxChars) preview = preview.slice(0, maxChars);
   return { folded: true, preview };
@@ -175,24 +169,18 @@ export function foldText(
 /** 12 -> 「12ms」，1500 -> 「1.5s」 */
 export function formatDuration(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "-";
-  return ms < 1000
-    ? `${Math.round(ms)}ms`
-    : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
 }
 
 /** 第一个失败步骤；没有失败返回 undefined（默认展开并自动滚动到它） */
-export const firstFailedStep = (view: TraceView) =>
-  view.steps.find((step) => step.failed);
+export const firstFailedStep = (view: TraceView) => view.steps.find((step) => step.failed);
 
 /** 本次追踪里最长的步骤耗时（毫秒），耗时条按它归一；没有耗时数据返回 0 */
 export const maxStepDuration = (view: TraceView) =>
   view.steps.reduce((max, step) => Math.max(max, step.durationMs ?? 0), 0);
 
 /** 耗时条宽度百分比：相对最长步骤；耗时未知或最长为 0 时为 0，有耗时的至少留 2% 让条可见 */
-export function durationPercent(
-  durationMs: number | null | undefined,
-  maxMs: number,
-): number {
+export function durationPercent(durationMs: number | null | undefined, maxMs: number): number {
   if (durationMs == null || !Number.isFinite(durationMs) || maxMs <= 0) return 0;
   if (durationMs <= 0) return 0;
   return Math.min(100, Math.max(2, Math.round((durationMs / maxMs) * 100)));
