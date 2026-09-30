@@ -45,8 +45,7 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
     }): Promise<SubmitOutcome> => {
       if (lockRef.current)
         return { ok: false, error: { kind: "unknown", message: "正在提交，请稍候" } };
-      const canvas = Number(canvasId);
-      if (!canvasId || !Number.isFinite(canvas)) {
+      if (!canvasId) {
         return { ok: false, error: { kind: "unknown", message: "画布信息缺失，请刷新页面重试" } };
       }
       lockRef.current = true;
@@ -60,7 +59,7 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
               {
                 kind: REMOTE_KIND_OF_NODE[nodeKind],
                 model_id: args.modelKey,
-                canvas_id: canvas,
+                canvas_id: canvasId,
                 node_id: nodeId,
                 input: args.input,
               },

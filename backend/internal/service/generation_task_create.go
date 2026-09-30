@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"gorm.io/datatypes"
 
@@ -48,7 +49,7 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 	// 5. 组装任务：积分取模型配置（负数按 0 处理，防止配置错误变成“倒贴积分”）
 	task := &model.GenerationTask{UserID: userID, NodeID: req.NodeID, IdempotencyKey: idempotencyKey, Credits: max(snap.Model.Credits, 0)}
 	if req.CanvasID > 0 {
-		canvasID := req.CanvasID
+		canvasID := uint64(req.CanvasID)
 		task.CanvasProjectID = &canvasID
 	}
 	if err := s.fillTask(task, snap, input); err != nil {
@@ -132,7 +133,7 @@ func (s *GenerationTaskService) snapshotFor(ctx context.Context, req *model.Crea
 // fillTask 把快照与规范化输入填进任务行：种类 / 模型 / 渠道取快照；状态 pending、version 1；
 // next_poll_at = 现在，让 worker 立即领取；deadline 取模型配置，缺省 30 分钟。
 func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provider.Snapshot, input map[string]any) error {
-	inputJSON, err := json.Marshal(input)
+	inputJSON, err := json.Marshal(s.storedInput(snap.Model.InputSchema, input))
 	if err != nil {
 		return err
 	}
@@ -238,6 +239,21 @@ func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64,
 		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + joinFieldErrors(assetErrs))
 	}
 	return input, nil
+}
+
+// storedInput 返回落库用的输入：媒体字段的素材 id 存成十进制字符串。
+// 素材 id 存成 JSON 数字，worker 读出来会变成 float64，超过 2^53 就会丢精度；字符串没有这个问题。
+func (s *GenerationTaskService) storedInput(schema modelcfg.InputSchema, input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for k, v := range input {
+		out[k] = v
+	}
+	for _, name := range s.mediaFields(schema) {
+		if id, ok := toUint64(out[name]); ok {
+			out[name] = strconv.FormatUint(id, 10)
+		}
+	}
+	return out
 }
 
 // checkAsset 校验一个媒体字段引用的素材：格式错误 / 不存在 / 种类不符返回字段级错误；素材存储故障返回 error。

@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"gorm.io/datatypes"
+
+	"video-canvas/internal/pkg/idcodec"
 )
 
 // 任务状态。终态：succeeded / failed / canceled / expired。
@@ -90,7 +92,7 @@ type TaskOutput struct {
 // GenerationTaskView 是返回给前端的任务快照（HTTP 响应与 WebSocket 推送共用），不含快照、输入等内部字段。
 type GenerationTaskView struct {
 	ID              uint64       `json:"id"`            // 任务 ID
-	CanvasProjectID *uint64      `json:"canvas_id"`     // 所属画布
+	CanvasProjectID *idcodec.ID  `json:"canvas_id"`     // 所属画布（十六进制串）
 	NodeID          string       `json:"node_id"`       // 前端节点 id
 	Kind            string       `json:"kind"`          // video / image / audio / text
 	ModelID         string       `json:"model_id"`      // 模型 key
@@ -110,7 +112,7 @@ type GenerationTaskView struct {
 type CreateGenerationTaskReq struct {
 	Kind     string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
 	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
-	CanvasID uint64         `json:"canvas_id" label:"画布"`                                              // 所属画布，可不传
+	CanvasID idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
 	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id
 	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 input_schema 校验
 }

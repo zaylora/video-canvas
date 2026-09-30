@@ -607,8 +607,8 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
 				var in map[string]any
 				_ = json.Unmarshal(env.repo.tasks[v.ID].InputJSON, &in)
-				if in["image"] != float64(9) || in["prompt"] != "一只猫" {
-					t.Fatalf("input_json 应保存规范化后的输入：%v", in)
+				if in["image"] != "9" || in["prompt"] != "一只猫" {
+					t.Fatalf("input_json 应保存规范化后的输入（素材 id 存成字符串）：%v", in)
 				}
 			},
 		},

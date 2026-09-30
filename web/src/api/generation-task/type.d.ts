@@ -40,7 +40,7 @@ export interface TaskView {
   /** 任务 ID */
   id: number | string;
   /** 所属画布 ID，试跑任务等没有画布时为 null */
-  canvas_id: number | string | null;
+  canvas_id: string | null;
   /** 所属画布节点 ID */
   node_id: string;
   /** 任务类型（image / video / text 等） */
@@ -75,8 +75,8 @@ export interface CreateTaskRequest {
   kind: string;
   /** 使用的模型 key */
   model_id: string;
-  /** 所属画布 ID */
-  canvas_id: number | string;
+  /** 所属画布 ID，十六进制串 */
+  canvas_id: string;
   /** 所属画布节点 ID */
   node_id: string;
   /** 模型输入参数，字段由模型 input_schema 决定 */

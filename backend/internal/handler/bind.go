@@ -15,6 +15,7 @@ import (
 	zhtrans "github.com/go-playground/validator/v10/translations/zh"
 
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/response"
 )
 
@@ -69,6 +70,25 @@ func pathID(c *gin.Context) (uint64, bool) {
 		return 0, false
 	}
 	return uri.ID, true
+}
+
+// canvasURI 是画布的 /:id 路径参数，值是十六进制串。
+type canvasURI struct {
+	ID string `uri:"id" binding:"required" label:"id"`
+}
+
+// canvasPathID 解析画布路径参数 :id 并还原成主键；格式不对按参数错误返回，和不存在的画布区分开。
+func canvasPathID(c *gin.Context) (uint64, bool) {
+	var uri canvasURI
+	if !bindURI(c, &uri) {
+		return 0, false
+	}
+	id, ok := idcodec.Decode(uri.ID)
+	if !ok {
+		response.Fail(c, errcode.ErrInvalidParams.WithMsg("id 格式错误"))
+		return 0, false
+	}
+	return id, true
 }
 
 func bindWith(c *gin.Context, err error) bool {

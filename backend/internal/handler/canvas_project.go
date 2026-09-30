@@ -28,7 +28,7 @@ func (h *CanvasProjectHandler) Create(c *gin.Context) {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, p)
+	response.OK(c, p.View())
 }
 
 // 画布列表（不含 payload_json）
@@ -47,7 +47,7 @@ func (h *CanvasProjectHandler) List(c *gin.Context) {
 
 // 画布详情（含完整 payload_json）
 func (h *CanvasProjectHandler) Get(c *gin.Context) {
-	id, ok := pathID(c)
+	id, ok := canvasPathID(c)
 	if !ok {
 		return
 	}
@@ -56,12 +56,12 @@ func (h *CanvasProjectHandler) Get(c *gin.Context) {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, p)
+	response.OK(c, p.View())
 }
 
 // 更新画布，需带上当前 revision，版本不一致返回 409
 func (h *CanvasProjectHandler) Update(c *gin.Context) {
-	id, ok := pathID(c)
+	id, ok := canvasPathID(c)
 	if !ok {
 		return
 	}
@@ -74,12 +74,12 @@ func (h *CanvasProjectHandler) Update(c *gin.Context) {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, p)
+	response.OK(c, p.View())
 }
 
 // 删除画布（软删除）
 func (h *CanvasProjectHandler) Delete(c *gin.Context) {
-	id, ok := pathID(c)
+	id, ok := canvasPathID(c)
 	if !ok {
 		return
 	}

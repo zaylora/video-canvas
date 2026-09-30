@@ -57,7 +57,8 @@ func (o *operation) setInput(input map[string]any) {
 		return
 	}
 	for _, name := range modelcfg.MediaFieldNames(o.model.InputSchema) {
-		if id, ok := input[name].(uint64); ok {
+		// 任务输入是落库 JSON 解码来的，素材 id 是 float64，不能只认 uint64
+		if id, ok := modelcfg.AsAssetID(input[name]); ok {
 			o.media[name] = id
 		}
 	}

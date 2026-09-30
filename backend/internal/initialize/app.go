@@ -18,6 +18,7 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
@@ -57,6 +58,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 	userRepo := repository.NewUserRepository(db)
 	userCache := cache.NewUserCache(rdb)
 	userSvc := service.NewUserService(userRepo, userCache, cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.ExpireHours)
+
+	// 对外 ID 编码：画布 ID 等以十六进制串暴露，库里主键不变
+	idKey := cfg.Server.IDKey
+	if idKey == "" {
+		idKey = cfg.JWT.Secret
+	}
+	idcodec.Init(idKey)
 
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)

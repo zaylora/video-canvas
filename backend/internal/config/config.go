@@ -25,6 +25,9 @@ type Server struct {
 	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
 	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	// IDKey 是对外 ID（画布 ID 等）十六进制编码的密钥，只通过环境变量 APP_SERVER_ID_KEY 提供；为空时退回 jwt.secret。
+	// 同一环境的所有实例必须一致，换了密钥旧 ID（如书签里的画布地址）全部失效。
+	IDKey string `mapstructure:"id_key"`
 	// AllowedOrigins 是 WebSocket 升级时允许的 Origin 白名单（与 CORS 保持一致）；为空表示只允许同源。
 	AllowedOrigins []string `mapstructure:"allowed_origins"`
 }
@@ -136,7 +139,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	// 没写进 YAML 的项也要能被环境变量覆盖（viper 只会为已知的 key 读取环境变量）
-	for _, key := range []string{"ai.secret_key", "storage.s3.access_key", "storage.s3.secret_key"} {
+	for _, key := range []string{"server.id_key", "ai.secret_key", "storage.s3.access_key", "storage.s3.secret_key"} {
 		_ = v.BindEnv(key)
 	}
 

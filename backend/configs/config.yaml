@@ -5,6 +5,8 @@ server:
   read_timeout: 10s
   write_timeout: 60s
   shutdown_timeout: 10s
+  # 对外 ID（画布 ID 等）十六进制编码的密钥。同一环境的所有实例必须一致，改了以后旧 ID（如书签里的画布地址）全部失效，所以定下来就不要再改。
+  id_key: "id_key"
   allowed_origins: # WebSocket 升级允许的 Origin 白名单；为空只允许同源
     - http://localhost:5173
     - http://127.0.0.1:5173

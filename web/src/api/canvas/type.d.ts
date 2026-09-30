@@ -110,8 +110,8 @@ export interface CanvasListResponseDto {
 
 /** 后端 GET /canvas 列表里的一项原始结构。 */
 export interface BackendCanvasListItemDto {
-  /** 画布 ID */
-  id: number;
+  /** 画布 ID，十六进制串 */
+  id: string;
   /** 画布标题 */
   title: string;
   /** 画布版本号 */
@@ -136,8 +136,8 @@ export interface BackendCanvasListResponseDto {
 
 /** 后端 POST /canvas 的原始响应结构。 */
 export interface BackendCanvasProjectDto {
-  /** 画布 ID */
-  id: number;
+  /** 画布 ID，十六进制串 */
+  id: string;
   /** 画布标题 */
   title: string;
   /** 画布图谱 JSON */

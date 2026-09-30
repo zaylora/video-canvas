@@ -3,7 +3,7 @@ import type { CanvasNodeData } from "@/types";
 
 export const makeTask = (over: Partial<TaskView> = {}): TaskView => ({
   id: 1,
-  canvas_id: 10,
+  canvas_id: "10",
   node_id: "n1",
   kind: "video",
   model_id: "rh-1",

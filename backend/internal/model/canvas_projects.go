@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"gorm.io/datatypes"
+
+	"video-canvas/internal/pkg/idcodec"
 )
 
 // CanvasProject 画布主表，完整画布内容整体存放在 PayloadJSON 中。
@@ -17,6 +19,24 @@ type CanvasProject struct {
 }
 
 func (CanvasProject) TableName() string { return "canvas_projects" }
+
+// CanvasProjectView 返回给前端的画布详情：ID 是十六进制串，不暴露自增主键。
+type CanvasProjectView struct {
+	ID          idcodec.ID     `json:"id"`           // 画布 ID
+	Title       string         `json:"title"`        // 画布标题
+	PayloadJSON datatypes.JSON `json:"payload_json"` // 完整画布内容
+	Revision    uint64         `json:"revision"`     // 乐观锁版本号
+	CreatedAt   time.Time      `json:"created_at"`   // 创建时间
+	UpdatedAt   time.Time      `json:"updated_at"`   // 更新时间
+}
+
+// View 转成返回给前端的结构。
+func (p *CanvasProject) View() *CanvasProjectView {
+	return &CanvasProjectView{
+		ID: idcodec.ID(p.ID), Title: p.Title, PayloadJSON: p.PayloadJSON,
+		Revision: p.Revision, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+	}
+}
 
 // CanvasPayload 描述 payload_json 的结构，各子项内容由前端自行定义。
 type CanvasPayload struct {
@@ -53,9 +73,18 @@ type ListCanvasProjectReq struct {
 
 // 画布列表项，不含 payload_json，避免列表接口返回大字段
 type CanvasProjectItem struct {
-	ID        uint64    `json:"id"`         // 画布 ID
+	ID        uint64    `json:"id"`         // 画布 ID，对外序列化成十六进制串
 	Title     string    `json:"title"`      // 画布标题
 	Revision  uint64    `json:"revision"`   // 乐观锁版本号
 	CreatedAt time.Time `json:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at"` // 更新时间
+}
+
+// MarshalJSON 把 ID 输出成十六进制串。扫库仍用 uint64，避免依赖 gorm 对自定义类型的扫描。
+func (i CanvasProjectItem) MarshalJSON() ([]byte, error) {
+	type plain CanvasProjectItem // 去掉方法，避免递归
+	return json.Marshal(struct {
+		plain
+		ID idcodec.ID `json:"id"`
+	}{plain: plain(i), ID: idcodec.ID(i.ID)})
 }

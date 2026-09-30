@@ -366,6 +366,7 @@ func TestExecutorFileRefBoundaries(t *testing.T) {
 		{"没有 input: 前缀", `{__fileRef: "image"}`, map[string]any{"image": uint64(5)}, 9, true},
 		{"as 不合法", `{__fileRef: "input:image", as: "raw"}`, map[string]any{"image": uint64(5)}, 9, true},
 		{"素材不属于该用户", `{__fileRef: "input:image"}`, map[string]any{"image": uint64(5)}, 77, false},
+		{"JSON 解码的 float64 素材 id 同样是媒体字段", `{__fileRef: "input:image"}`, map[string]any{"image": float64(5)}, 77, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

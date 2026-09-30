@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
@@ -29,7 +30,7 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 	}
 	return &model.GenerationTaskView{
 		ID:              t.ID,
-		CanvasProjectID: t.CanvasProjectID,
+		CanvasProjectID: canvasRef(t.CanvasProjectID),
 		NodeID:          t.NodeID,
 		Kind:            t.Kind,
 		ModelID:         t.ModelKey,
@@ -116,4 +117,13 @@ func toUint64(value any) (uint64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// canvasRef 把任务行里的画布主键转成对外的画布 ID；没有所属画布时为空。
+func canvasRef(id *uint64) *idcodec.ID {
+	if id == nil {
+		return nil
+	}
+	ref := idcodec.ID(*id)
+	return &ref
 }

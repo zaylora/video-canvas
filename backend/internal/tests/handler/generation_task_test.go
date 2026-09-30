@@ -18,6 +18,7 @@ import (
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
@@ -294,7 +295,7 @@ func genTaskRespCode(resp map[string]any) int {
 	return int(c)
 }
 
-const genTaskValidBody = `{"kind":"video","model_id":"m1","canvas_id":3,"node_id":"n1","input":{"prompt":"一只猫"}}`
+var genTaskValidBody = `{"kind":"video","model_id":"m1","canvas_id":"` + idcodec.Encode(3) + `","node_id":"n1","input":{"prompt":"一只猫"}}`
 
 // ---------------------------------------------------------------------------
 // 测试
@@ -314,6 +315,7 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		{"缺少必填参数返回 400 + 10001", `{"kind":"video"}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"kind 取值非法返回 400 + 10001", `{"kind":"movie","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"kind 合法但与模型种类不一致返回 400 + 40006", `{"kind":"text","model_id":"m1","input":{"prompt":"x"}}`, nil, nil, http.StatusBadRequest, errcode.ErrTaskInput.Code},
+		{"canvas_id 传数字返回 400 + 10001", `{"kind":"video","model_id":"m1","canvas_id":3,"input":{"prompt":"x"}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"请求体不是 JSON 返回 400 + 10001", `not json`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"生成参数不合法返回 400 + 40006", `{"kind":"video","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrTaskInput.Code},
 		{"模型不可用返回 400 + 40003", genTaskValidBody, nil, func(e *genTaskEnv) { e.registry.err = provider.ErrModelUnavailable }, http.StatusBadRequest, errcode.ErrModelUnavailable.Code},
@@ -337,7 +339,7 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 				return
 			}
 			data := resp["data"].(map[string]any)
-			if data["status"] != "pending" || data["model_id"] != "m1" || data["node_id"] != "n1" || data["canvas_id"] != float64(3) {
+			if data["status"] != "pending" || data["model_id"] != "m1" || data["node_id"] != "n1" || data["canvas_id"] != idcodec.Encode(3) {
 				t.Fatalf("任务快照不对：%v", data)
 			}
 			if outs, ok := data["outputs"].([]any); !ok || len(outs) != 0 {

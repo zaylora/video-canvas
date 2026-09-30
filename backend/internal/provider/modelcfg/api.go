@@ -12,6 +12,10 @@ func ValidateInput(schema InputSchema, input map[string]any) (map[string]any, []
 // MediaFieldNames 返回 schema 中所有媒体字段的名字（image/video/audio）。
 func MediaFieldNames(schema InputSchema) []string { return mediaFieldNames(schema) }
 
+// AsAssetID 把 JSON 数字、float64、json.Number、数字字符串规范成 uint64 素材 id；0、负数与非整数无效。
+// 落库的任务输入经 JSON 解码后素材 id 是 float64，使用方要先规范化再当 asset id 用。
+func AsAssetID(raw any) (uint64, bool) { return asAssetID(raw) }
+
 // ParseModel 解析并校验模型配置正文：JSON 结构（未知字段、类型不符）、key / kind / label / credits / deadline、
 // channels（首期恰好一个，渠道 key 与上游模型名合法）、params、input_schema。所有问题一次报出，Issue 精确到 JSON 路径。
 // 成功时 deadline 缺省补成 30m，params 与 input_schema 里的数字已规范化。

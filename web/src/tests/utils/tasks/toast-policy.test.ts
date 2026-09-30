@@ -18,7 +18,7 @@ describe("currentCanvasIdFromPath", () => {
 
 describe("planTaskToast：画布外的完成提示", () => {
   test("成功：《画布名》中的视频已生成，点击跳转到该画布", () => {
-    const plan = planTaskToast(succeeded({ canvas_id: 10 }), null, "分镜一");
+    const plan = planTaskToast(succeeded({ canvas_id: "10" }), null, "分镜一");
     expect(plan).toMatchObject({
       tone: "success",
       title: "《分镜一》中的视频已生成",
@@ -43,7 +43,7 @@ describe("planTaskToast：画布外的完成提示", () => {
   });
 
   test("正看着这张画布时不弹（节点自己会变）；取消不弹", () => {
-    expect(planTaskToast(succeeded({ canvas_id: 10 }), "10", "A")).toBeNull();
+    expect(planTaskToast(succeeded({ canvas_id: "10" }), "10", "A")).toBeNull();
     expect(planTaskToast(makeTask({ status: "canceled" }), null, "A")).toBeNull();
   });
 });
