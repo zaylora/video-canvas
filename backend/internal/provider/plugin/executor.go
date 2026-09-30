@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	defaultHookTimeout      = 200 * time.Millisecond
+	defaultHookTimeout      = 1 * time.Second
 	defaultRequestTimeout   = 30 * time.Second
 	defaultMaxTimeout       = 120 * time.Second
 	defaultMaxResponseBytes = 5 << 20
