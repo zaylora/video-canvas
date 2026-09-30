@@ -70,3 +70,21 @@ var (
 	ErrSecretNotSet        = New(40013, "凭证尚未设置", http.StatusConflict)
 	ErrWSTicketInvalid     = New(40014, "连接凭证无效或已过期", http.StatusUnauthorized)
 )
+
+// 协议插件 / 渠道模块 5xxxx
+var (
+	ErrPluginNotFound     = New(50001, "插件不存在", http.StatusNotFound)
+	ErrPluginPrecheck     = New(50002, "插件预检未通过", http.StatusBadRequest) // 问题列表写进上传响应的 issues
+	ErrPluginVersionDup   = New(50003, "该插件版本号已存在，请修改 meta.version", http.StatusConflict)
+	ErrPluginDisabled     = New(50004, "插件已停用", http.StatusConflict)
+	ErrPluginInUse        = New(50005, "插件版本仍被渠道或进行中的任务使用，无法删除", http.StatusConflict)
+	ErrPluginBuiltin      = New(50006, "内置插件不能被删除或覆盖", http.StatusConflict)
+	ErrPluginTooLarge     = New(50007, "插件文件超过大小限制", http.StatusRequestEntityTooLarge)
+	ErrChannelNotFound    = New(50011, "渠道不存在", http.StatusNotFound)
+	ErrChannelExists      = New(50012, "渠道 key 已存在", http.StatusConflict)
+	ErrChannelInvalid     = New(50013, "渠道配置不合法", http.StatusBadRequest) // 具体原因写进 Msg
+	ErrChannelDisabled    = New(50014, "渠道已停用", http.StatusConflict)
+	ErrChannelSecretUnset = New(50015, "渠道 Key 尚未设置", http.StatusConflict)
+	ErrRunnerUnavailable  = New(50021, "插件运行时暂不可用，请稍后重试", http.StatusServiceUnavailable)
+	ErrPluginOpFailed     = New(50022, "插件调用失败", http.StatusBadGateway) // 连通性检查 / 导入失败，原因写进 Msg（已脱敏）
+)

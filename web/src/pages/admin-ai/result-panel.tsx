@@ -1,6 +1,6 @@
 import { CheckCircle2, CircleAlert, Info, Trash2 } from "lucide-react";
 
-import type { ConfigIssue, ImportNode } from "@/api/admin-ai/type";
+import type { ConfigIssue } from "@/api/admin-ai/type";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,9 +16,6 @@ export type ResultEntry = {
   json?: unknown;
   /** 一句补充说明 */
   text?: string;
-  /** RunningHub 导入得到的节点表 */
-  nodes?: ImportNode[];
-  warnings?: string[];
 };
 
 const TONE_ICON = {
@@ -58,37 +55,6 @@ function Entry({ entry }: { entry: ResultEntry }) {
             </li>
           ))}
         </ul>
-      )}
-      {entry.warnings && entry.warnings.length > 0 && (
-        <ul className="text-muted-foreground list-disc pl-5">
-          {entry.warnings.map((warning, index) => (
-            <li key={index}>{warning}</li>
-          ))}
-        </ul>
-      )}
-      {entry.nodes && entry.nodes.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-2 font-normal">节点</th>
-                <th className="py-1 pr-2 font-normal">字段</th>
-                <th className="py-1 pr-2 font-normal">输入名</th>
-                <th className="py-1 font-normal">类型</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entry.nodes.map((node) => (
-                <tr key={`${node.node_id}-${node.field_name}`} className="border-t align-top">
-                  <td className="py-1 pr-2 font-mono">{node.node_id}</td>
-                  <td className="py-1 pr-2 font-mono">{node.field_name}</td>
-                  <td className="py-1 pr-2 font-mono">{node.input_name}</td>
-                  <td className="py-1">{node.input_type}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       )}
       {entry.json !== undefined && (
         <pre className="bg-muted max-h-96 overflow-auto rounded-md p-2 font-mono text-[11px] leading-5 break-all whitespace-pre-wrap">

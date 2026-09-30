@@ -23,9 +23,12 @@ func All() []any {
 		&UserCredit{},
 		&CreditLedger{},
 		&Asset{},
-		&AIProvider{},
+		&AIPlugin{},
+		&AIPluginVersion{},
+		&AIChannel{},
 		&AIModel{},
 		&AIConfigRevision{},
 		&AISecret{},
+		&AIAuditLog{},
 	}
 }

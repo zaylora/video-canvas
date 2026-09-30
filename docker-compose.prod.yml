@@ -37,11 +37,16 @@ services:
       APP_REDIS_ADDR: redis:6379
       APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET is required}
       APP_AI_SECRET_KEY: ${APP_AI_SECRET_KEY:?APP_AI_SECRET_KEY is required}
+      # 协议插件在独立的 plugin-runner 容器里执行（无网络、限内存），经共享卷里的 Unix socket 通信
+      APP_AI_PLUGIN_RUNNER_MODE: external
+      APP_AI_PLUGIN_RUNNER_NETWORK: unix
+      APP_AI_PLUGIN_RUNNER_ADDRESS: /run/plugin-runner/runner.sock
       APP_STORAGE_DRIVER: ${APP_STORAGE_DRIVER:-local}
       APP_STORAGE_LOCAL_DIR: /app/data/assets
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
     volumes:
       - backend_assets:/app/data/assets
+      - plugin_runner_sock:/run/plugin-runner
     expose:
       - "8080"
     healthcheck:
@@ -55,6 +60,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      plugin-runner:
+        condition: service_healthy
+
+  # 协议插件的沙箱执行进程（与 backend 同一镜像、不同命令）。插件不做代码评审、生产开放在线上传，
+  # 所以用进程隔离兜底：没有网络（network_mode: none）、限内存（超限被系统杀掉后自动重启，主服务不受影响）、
+  # 不连数据库、只经共享卷里的 Unix socket 与 backend 通信。
+  plugin-runner:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-your-org}/video-canvas-backend:${IMAGE_TAG:-latest}
+    restart: always
+    network_mode: none
+    mem_limit: ${PLUGIN_RUNNER_MEM_LIMIT:-512m}
+    entrypoint: ["/app/server", "plugin-runner", "-network", "unix", "-address", "/run/plugin-runner/runner.sock"]
+    volumes:
+      - plugin_runner_sock:/run/plugin-runner
+    healthcheck:
+      test: ["CMD", "/app/server", "plugin-runner", "-healthcheck", "-network", "unix", "-address", "/run/plugin-runner/runner.sock"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 3s
 
   web:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-your-org}/video-canvas-web:${IMAGE_TAG:-latest}
@@ -69,3 +94,4 @@ volumes:
   postgres_data:
   redis_data:
   backend_assets:
+  plugin_runner_sock:

@@ -9,14 +9,17 @@ import (
 	"video-canvas/internal/model"
 )
 
+// CanvasProjectRepository 是画布项目的数据访问层。
 type CanvasProjectRepository struct {
 	db *gorm.DB
 }
 
+// NewCanvasProjectRepository 创建画布项目仓储。
 func NewCanvasProjectRepository(db *gorm.DB) *CanvasProjectRepository {
 	return &CanvasProjectRepository{db: db}
 }
 
+// Create 新建画布项目。
 func (r *CanvasProjectRepository) Create(ctx context.Context, p *model.CanvasProject) error {
 	return r.db.WithContext(ctx).Create(p).Error
 }
@@ -76,6 +79,7 @@ func (r *CanvasProjectRepository) Update(ctx context.Context, userID, id, revisi
 	return ErrRevisionConflict
 }
 
+// Delete 按 id + user_id 软删除画布；不存在或不属于该用户返回 ErrNotFound。
 func (r *CanvasProjectRepository) Delete(ctx context.Context, userID, id uint64) error {
 	res := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).Delete(&model.CanvasProject{})
 	if res.Error != nil {

@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"io"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/model"
@@ -11,10 +8,7 @@ import (
 	"video-canvas/internal/service"
 )
 
-// webhookMaxBody 是平台回调体的大小上限：回调只用来取一个任务 id，正常只有几百字节。
-const webhookMaxBody = 1 << 20
-
-// GenerationTaskHandler 生成任务、积分与平台回调的 HTTP 接口。
+// GenerationTaskHandler 生成任务与积分的 HTTP 接口。
 type GenerationTaskHandler struct {
 	svc *service.GenerationTaskService
 }
@@ -87,15 +81,4 @@ func (h *GenerationTaskHandler) Credits(c *gin.Context) {
 		return
 	}
 	response.OK(c, credits)
-}
-
-// 平台回调（不走 JWT，路径里的密钥即凭证）：只触发对应任务立即查询，不信任回调内容；密钥不对返回 404
-func (h *GenerationTaskHandler) Webhook(c *gin.Context) {
-	// 回调体读不出来（超限 / 断开）也当作空体处理：service 会忽略无法解析的回调并仍返回 200
-	body, _ := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, webhookMaxBody))
-	if err := h.svc.HandleWebhook(c.Request.Context(), c.Param("provider"), c.Param("secret"), body); err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, nil)
 }

@@ -14,6 +14,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "plugin-runner" {
+		if err := runPluginRunner(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "plugin-runner 退出错误:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "服务器退出错误:", err)
 		os.Exit(1)

@@ -7,12 +7,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 )
 
-// AdminAIHandler 是 AI 配置的管理接口（平台协议 / 模型 / 凭证 / 试跑 / 导入），
+// AdminAIHandler 是 AI 配置的管理接口（模型 / 凭证 / 试跑），
 // 必须挂在 JWTAuth + RequireAdmin 之后。
 type AdminAIHandler struct {
 	svc *service.AIConfigService
@@ -20,36 +19,6 @@ type AdminAIHandler struct {
 
 func NewAdminAIHandler(svc *service.AIConfigService) *AdminAIHandler {
 	return &AdminAIHandler{svc: svc}
-}
-
-// Register 在管理分组（/api/v1/admin/ai，已挂好鉴权和 RequireAdmin）下注册所有路由。
-//
-// 路由按 providers / models 两个静态前缀分开注册，而不是用 /:target/:key/... 这种通配写法：
-// 通配段与 /secrets、/import 等静态段同层时 Gin 的路由树容易冲突，分开注册最稳妥。
-func (h *AdminAIHandler) Register(admin *gin.RouterGroup) {
-	for target, path := range map[string]string{model.ConfigTargetProvider: "/providers", model.ConfigTargetModel: "/models"} {
-		g := admin.Group(path)
-		g.GET("", h.list(target))
-		g.POST("", h.create(target))
-		g.GET("/:key", h.get(target))
-		g.PUT("/:key", h.update(target))
-		g.POST("/:key/validate", h.validate(target))
-		g.POST("/:key/publish", h.publish(target))
-		g.POST("/:key/rollback", h.rollback(target))
-		g.GET("/:key/revisions", h.revisions(target))
-		g.GET("/:key/revisions/:rid", h.revision(target))
-	}
-	models := admin.Group("/models")
-	models.POST("/:key/dry-run", h.dryRun)
-	models.POST("/:key/test-run", h.testRun)
-	models.PUT("/:key/enabled", h.setEnabled)
-	models.PUT("/:key/sort", h.setSort)
-
-	admin.GET("/test-runs/:id", h.getTestRun)
-	admin.POST("/import/runninghub", h.importRunningHub)
-	admin.GET("/secrets", h.listSecrets)
-	admin.PUT("/secrets/:name", h.setSecret)
-	admin.GET("/schema/:target", h.schema)
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +54,7 @@ type rollbackReq struct {
 
 // trialReq 是 dry-run / 试跑请求：input 是示例输入。
 type trialReq struct {
-	Input            map[string]any `json:"input" binding:"required" label:"示例输入"`
-	UseProviderDraft bool           `json:"use_provider_draft"`
+	Input map[string]any `json:"input" binding:"required" label:"示例输入"`
 }
 
 type setEnabledReq struct {
@@ -95,12 +63,6 @@ type setEnabledReq struct {
 
 type setSortReq struct {
 	Sort *int `json:"sort" binding:"required" label:"sort"`
-}
-
-type importRunningHubReq struct {
-	WebappID string `json:"webapp_id" binding:"required,max=32" label:"webappId"`
-	Kind     string `json:"kind" binding:"omitempty,oneof=video image audio" label:"种类"`
-	Provider string `json:"provider" binding:"omitempty,max=64" label:"平台"`
 }
 
 type secretURI struct {
@@ -112,7 +74,7 @@ type setSecretReq struct {
 }
 
 type schemaURI struct {
-	Target string `uri:"target" binding:"required,oneof=provider model" label:"target"`
+	Target string `uri:"target" binding:"required,eq=model" label:"target"`
 }
 
 // bindOptionalJSON 绑定可选的 JSON 请求体：完全没有请求体时视为空请求，不报错。
@@ -137,176 +99,28 @@ func pathKey(c *gin.Context) (string, bool) {
 }
 
 // ---------------------------------------------------------------------------
-// providers / models 共用的接口（按 target 生成）
+// 模型配置接口
 // ---------------------------------------------------------------------------
 
-// list 列出配置概览（不含正文）。
-func (h *AdminAIHandler) list(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		items, err := h.svc.ListConfigs(c.Request.Context(), target)
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, items)
-	}
-}
-
-// create 新建配置并保存为草稿；正文有校验问题也会保存，问题列表在响应的 issues 里。
-func (h *AdminAIHandler) create(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req saveConfigReq
-		if !bindJSON(c, &req) {
-			return
-		}
-		res, err := h.svc.SaveDraft(c.Request.Context(), target, "", true, req.Body, req.Note, currentUserID(c))
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, res)
-	}
-}
-
-// get 读取配置详情：最新草稿与已发布版本的正文及 revision 元信息。
-func (h *AdminAIHandler) get(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		detail, err := h.svc.GetConfig(c.Request.Context(), target, key)
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, detail)
-	}
-}
-
-// update 更新已有配置的草稿。
-func (h *AdminAIHandler) update(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		var req saveConfigReq
-		if !bindJSON(c, &req) {
-			return
-		}
-		res, err := h.svc.SaveDraft(c.Request.Context(), target, key, false, req.Body, req.Note, currentUserID(c))
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, res)
-	}
-}
-
-// validate 校验草稿（或请求里传入的正文），返回问题列表。
-func (h *AdminAIHandler) validate(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		var req validateReq
-		if !bindOptionalJSON(c, &req) {
-			return
-		}
-		res, err := h.svc.Validate(c.Request.Context(), target, key, req.Body)
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, res)
-	}
-}
-
-// publish 发布最新草稿，成功后立即热生效。
-func (h *AdminAIHandler) publish(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		rev, err := h.svc.Publish(c.Request.Context(), target, key, currentUserID(c))
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, rev)
-	}
-}
-
-// rollback 回滚到指定的历史版本。
-func (h *AdminAIHandler) rollback(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		var req rollbackReq
-		if !bindJSON(c, &req) {
-			return
-		}
-		rev, err := h.svc.Rollback(c.Request.Context(), target, key, req.RevisionID, currentUserID(c))
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, rev)
-	}
-}
-
-// revisions 列出历史版本（不含正文）。
-func (h *AdminAIHandler) revisions(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key, ok := pathKey(c)
-		if !ok {
-			return
-		}
-		list, err := h.svc.ListRevisions(c.Request.Context(), target, key)
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, list)
-	}
-}
-
-// revision 读取某个历史版本的完整正文（回滚前预览）。
-func (h *AdminAIHandler) revision(target string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var uri revisionURI
-		if !bindURI(c, &uri) {
-			return
-		}
-		rev, err := h.svc.GetRevision(c.Request.Context(), target, uri.Key, uri.RID)
-		if err != nil {
-			response.Fail(c, err)
-			return
-		}
-		response.OK(c, rev)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// 模型专属接口
-// ---------------------------------------------------------------------------
-
-// dryRun 用草稿渲染请求但不发送，返回脱敏后的渲染结果。
-func (h *AdminAIHandler) dryRun(c *gin.Context) {
-	key, ok := pathKey(c)
-	if !ok {
+// List 列出配置概览（不含正文）。
+func (h *AdminAIHandler) List(c *gin.Context) {
+	items, err := h.svc.ListConfigs(c.Request.Context())
+	if err != nil {
+		response.Fail(c, err)
 		return
 	}
-	var req trialReq
+	response.OK(c, items)
+}
+
+// Create 新建配置并保存为草稿；正文有校验问题也会保存，问题列表在响应的 issues 里。
+func (h *AdminAIHandler) Create(c *gin.Context) {
+	var req saveConfigReq
 	if !bindJSON(c, &req) {
 		return
 	}
-	res, err := h.svc.DryRun(c.Request.Context(), key, req.Input, req.UseProviderDraft)
+	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
+		Create: true, Body: req.Body, Note: req.Note, AdminID: currentUserID(c),
+	})
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -314,8 +128,124 @@ func (h *AdminAIHandler) dryRun(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// testRun 用草稿真实跑一次（不扣积分），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
-func (h *AdminAIHandler) testRun(c *gin.Context) {
+// Get 读取配置详情：最新草稿与已发布版本的正文及 revision 元信息。
+func (h *AdminAIHandler) Get(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	detail, err := h.svc.GetConfig(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, detail)
+}
+
+// Update 更新已有配置的草稿。
+func (h *AdminAIHandler) Update(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	var req saveConfigReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
+		Key: key, Body: req.Body, Note: req.Note, AdminID: currentUserID(c),
+	})
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// Validate 校验草稿（或请求里传入的正文），返回问题列表。
+func (h *AdminAIHandler) Validate(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	var req validateReq
+	if !bindOptionalJSON(c, &req) {
+		return
+	}
+	res, err := h.svc.Validate(c.Request.Context(), key, req.Body)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// Publish 发布最新草稿，成功后立即热生效。
+func (h *AdminAIHandler) Publish(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	rev, err := h.svc.Publish(c.Request.Context(), key, currentUserID(c))
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, rev)
+}
+
+// Rollback 回滚到指定的历史版本。
+func (h *AdminAIHandler) Rollback(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	var req rollbackReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	rev, err := h.svc.Rollback(c.Request.Context(), key, req.RevisionID, currentUserID(c))
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, rev)
+}
+
+// Revisions 列出历史版本（不含正文）。
+func (h *AdminAIHandler) Revisions(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	list, err := h.svc.ListRevisions(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
+}
+
+// Revision 读取某个历史版本的完整正文（回滚前预览）。
+func (h *AdminAIHandler) Revision(c *gin.Context) {
+	var uri revisionURI
+	if !bindURI(c, &uri) {
+		return
+	}
+	rev, err := h.svc.GetRevision(c.Request.Context(), uri.Key, uri.RID)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, rev)
+}
+
+// ---------------------------------------------------------------------------
+// 模型专属接口
+// ---------------------------------------------------------------------------
+
+// DryRun 用草稿渲染请求但不发送，返回脱敏后的渲染结果。
+func (h *AdminAIHandler) DryRun(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
 		return
@@ -324,7 +254,25 @@ func (h *AdminAIHandler) testRun(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	view, err := h.svc.TestRun(c.Request.Context(), currentUserID(c), key, req.Input, req.UseProviderDraft)
+	res, err := h.svc.DryRun(c.Request.Context(), key, req.Input)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// TestRun 用草稿真实跑一次（不扣积分），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
+func (h *AdminAIHandler) TestRun(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	var req trialReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	view, err := h.svc.TestRun(c.Request.Context(), currentUserID(c), key, req.Input)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -332,8 +280,8 @@ func (h *AdminAIHandler) testRun(c *gin.Context) {
 	response.OK(c, view)
 }
 
-// getTestRun 查询试跑任务的当前状态（只能查自己创建的）。
-func (h *AdminAIHandler) getTestRun(c *gin.Context) {
+// GetTestRun 查询试跑任务的当前状态（只能查自己创建的）。
+func (h *AdminAIHandler) GetTestRun(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {
 		return
@@ -346,8 +294,8 @@ func (h *AdminAIHandler) getTestRun(c *gin.Context) {
 	response.OK(c, view)
 }
 
-// setEnabled 上架 / 下架模型。
-func (h *AdminAIHandler) setEnabled(c *gin.Context) {
+// SetEnabled 上架 / 下架模型。
+func (h *AdminAIHandler) SetEnabled(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
 		return
@@ -363,8 +311,8 @@ func (h *AdminAIHandler) setEnabled(c *gin.Context) {
 	response.OK(c, nil)
 }
 
-// setSort 修改模型排序值。
-func (h *AdminAIHandler) setSort(c *gin.Context) {
+// SetSort 修改模型排序值。
+func (h *AdminAIHandler) SetSort(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
 		return
@@ -380,26 +328,12 @@ func (h *AdminAIHandler) setSort(c *gin.Context) {
 	response.OK(c, nil)
 }
 
-// importRunningHub 按 webappId 从 RunningHub 导入节点，返回 Model 草稿建议（不落库）。
-func (h *AdminAIHandler) importRunningHub(c *gin.Context) {
-	var req importRunningHubReq
-	if !bindJSON(c, &req) {
-		return
-	}
-	res, err := h.svc.ImportRunningHub(c.Request.Context(), req.WebappID, req.Kind, req.Provider)
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, res)
-}
-
 // ---------------------------------------------------------------------------
 // 凭证与 JSON Schema
 // ---------------------------------------------------------------------------
 
-// listSecrets 列出凭证状态（是否已设置、更新时间、操作人），永远不返回明文或密文。
-func (h *AdminAIHandler) listSecrets(c *gin.Context) {
+// ListSecrets 列出凭证状态（是否已设置、更新时间、操作人），永远不返回明文或密文。
+func (h *AdminAIHandler) ListSecrets(c *gin.Context) {
 	list, err := h.svc.ListSecrets(c.Request.Context())
 	if err != nil {
 		response.Fail(c, err)
@@ -408,8 +342,8 @@ func (h *AdminAIHandler) listSecrets(c *gin.Context) {
 	response.OK(c, list)
 }
 
-// setSecret 设置（覆盖）凭证。只写：响应里不回显任何凭证内容。
-func (h *AdminAIHandler) setSecret(c *gin.Context) {
+// SetSecret 设置（覆盖）凭证。只写：响应里不回显任何凭证内容。
+func (h *AdminAIHandler) SetSecret(c *gin.Context) {
 	var uri secretURI
 	if !bindURI(c, &uri) {
 		return
@@ -425,8 +359,8 @@ func (h *AdminAIHandler) setSecret(c *gin.Context) {
 	response.OK(c, nil)
 }
 
-// schema 返回配置正文的 JSON Schema，供前端 Monaco 编辑器补全。
-func (h *AdminAIHandler) schema(c *gin.Context) {
+// Schema 返回配置正文的 JSON Schema，供前端 Monaco 编辑器补全。
+func (h *AdminAIHandler) Schema(c *gin.Context) {
 	var uri schemaURI
 	if !bindURI(c, &uri) {
 		return

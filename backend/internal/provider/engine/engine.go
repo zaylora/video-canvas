@@ -3,6 +3,8 @@
 // 它按快照里冻结的 Provider / Model 配置执行：渲染请求 → 发 HTTP → 用表达式提取字段 → 映射状态，
 // 不含任何平台专属代码。安全边界（域名白名单、内网 IP 拦截、DNS rebinding 防护、响应体上限、超时、限流）
 // 都在这里，见 guard.go。凭证只通过 SecretResolver 在鉴权环节取用，不进表达式上下文，不进日志和 Trace。
+//go:build legacy
+
 package engine
 
 import (

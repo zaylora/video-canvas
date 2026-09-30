@@ -4,58 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-	. "video-canvas/internal/repository"
 
 	"gorm.io/datatypes"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
+	. "video-canvas/internal/repository"
 )
 
-var gtSchemaSeq atomic.Int64
-
-// gtTestDB 连接测试库，并为本用例创建独立 schema（search_path 指向它），用例结束后整体删除。
-// 独立 schema 让 ClaimDue 这类“全表扫描”的 SQL 不会被其它用例（或其它包并行跑的测试）的数据干扰。
-// 未设置 TEST_DATABASE_DSN 时跳过。
+// gtTestDB 为本用例创建独立 schema 并迁移任务与积分表；ClaimDue 这类“全表扫描”的 SQL 需要隔离。
 func gtTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_DSN")
-	if dsn == "" {
-		t.Skip("未设置 TEST_DATABASE_DSN，跳过集成测试")
-	}
-	quiet := &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)}
-	admin, err := gorm.Open(postgres.Open(dsn), quiet)
-	if err != nil {
-		t.Fatalf("连接测试库失败：%v", err)
-	}
-	schema := fmt.Sprintf("gt_%d_%d", time.Now().UnixNano()%1_000_000_000, gtSchemaSeq.Add(1))
-	if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
-		t.Fatalf("创建 schema 失败：%v", err)
-	}
-	db, err := gorm.Open(postgres.Open(dsn+" search_path="+schema), quiet)
-	if err != nil {
-		t.Fatalf("连接测试 schema 失败：%v", err)
-	}
-	sqlDB, _ := db.DB()
-	sqlDB.SetMaxOpenConns(20)
-	t.Cleanup(func() {
-		_ = sqlDB.Close()
-		_ = admin.Exec("DROP SCHEMA " + schema + " CASCADE").Error
-		if a, err := admin.DB(); err == nil {
-			_ = a.Close()
-		}
-	})
-	if err := db.AutoMigrate(&model.GenerationTask{}, &model.UserCredit{}, &model.CreditLedger{}); err != nil {
-		t.Fatalf("迁移失败：%v", err)
-	}
-	return db
+	return isolatedDB(t, &model.GenerationTask{}, &model.UserCredit{}, &model.CreditLedger{})
 }
 
 var gtUserSeq atomic.Uint64
@@ -312,7 +276,7 @@ func TestGenerationTaskRepo_Idempotency(t *testing.T) {
 			dup := gtTask(user, model.TaskPending, 1, time.Now())
 			dup.IdempotencyKey = "k1"
 			if ok, err := tx.InsertTask(ctx, dup); err != nil || ok {
-				return fmt.Errorf("期望冲突：ok=%v err=%v", ok, err)
+				return fmt.Errorf("期望冲突：ok=%v err=%w", ok, err)
 			}
 			_, err := tx.CountActive(ctx, user)
 			return err

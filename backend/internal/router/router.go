@@ -46,12 +46,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
-		// 平台回调：路径里带服务端密钥，内容不被信任，只用来触发立即轮询
-		v1.POST("/webhooks/:provider/:secret", h.GenerationTask.Webhook)
-
 		// 需要登录
 		auth := v1.Group("", middleware.JWTAuth(jwtSecret))
 
+		// 用户鉴权
+		users := auth.Group("/users")
+		users.GET("", h.User.List)
+		users.GET("/:id", h.User.Get)
+
+		// 画布操作
 		canvas := auth.Group("/canvas")
 		canvas.POST("", h.CanvasProject.Create)
 		canvas.GET("", h.CanvasProject.List)
@@ -70,11 +73,28 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.GET("/models", h.AIModel.List)
 		auth.POST("/assets", h.Asset.Upload)
 		auth.GET("/assets/:id", h.Asset.Get)
-		h.AdminAI.Register(auth.Group("/admin/ai", middleware.RequireAdmin(h.AdminRole)))
 
-		users := auth.Group("/users")
-		users.GET("", h.User.List)
-		users.GET("/:id", h.User.Get)
+		// 管理员后台接口
+		adminAI := auth.Group("/admin/ai", middleware.RequireAdmin(h.AdminRole))
+		models := adminAI.Group("/models")
+		models.GET("", h.AdminAI.List)
+		models.POST("", h.AdminAI.Create)
+		models.GET("/:key", h.AdminAI.Get)
+		models.PUT("/:key", h.AdminAI.Update)
+		models.POST("/:key/validate", h.AdminAI.Validate)
+		models.POST("/:key/publish", h.AdminAI.Publish)
+		models.POST("/:key/rollback", h.AdminAI.Rollback)
+		models.GET("/:key/revisions", h.AdminAI.Revisions)
+		models.GET("/:key/revisions/:rid", h.AdminAI.Revision)
+		models.POST("/:key/dry-run", h.AdminAI.DryRun)
+		models.POST("/:key/test-run", h.AdminAI.TestRun)
+		models.PUT("/:key/enabled", h.AdminAI.SetEnabled)
+		models.PUT("/:key/sort", h.AdminAI.SetSort)
+
+		adminAI.GET("/test-runs/:id", h.AdminAI.GetTestRun)
+		adminAI.GET("/secrets", h.AdminAI.ListSecrets)
+		adminAI.PUT("/secrets/:name", h.AdminAI.SetSecret)
+		adminAI.GET("/schema/model", h.AdminAI.Schema)
 
 		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权
 		// users := v1.Group("/users")

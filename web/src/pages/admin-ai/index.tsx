@@ -13,29 +13,26 @@ import {
   Save,
   ShieldAlert,
   Undo2,
-  Wand2,
 } from "lucide-react";
 
 import {
-  createDraft,
+  createModelDraft,
   dryRunModel,
-  getConfigDetail,
+  getModelDetail,
   getTestRun,
-  importRunningHub,
-  listConfigs,
-  listRevisions,
-  publishConfig,
-  rollbackConfig,
+  listModelRevisions,
+  listModels,
+  publishModel,
+  rollbackModel,
   setModelEnabled,
   testRunModel,
-  updateDraft,
-  validateConfig,
+  updateModelDraft,
+  validateModel,
 } from "@/api/admin-ai";
 import type {
   ConfigDetail,
   ConfigListItem,
   ConfigRevision,
-  ConfigTarget,
 } from "@/api/admin-ai/type";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +43,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/utils/requests/request";
@@ -55,12 +51,11 @@ import { isTerminalStatus } from "@/utils/tasks/status";
 
 import { ResultPanel, type ResultEntry } from "./result-panel";
 import { SecretsPanel } from "./secrets-panel";
-import { MODEL_TEMPLATE, PROVIDER_TEMPLATE } from "./templates";
+import { MODEL_TEMPLATES } from "./templates";
 
-type Selection = { target: ConfigTarget; key: string | null };
+type Selection = { key: string | null };
 type ListState = "loading" | "ready" | "forbidden" | "error";
 
-const TARGET_LABEL: Record<ConfigTarget, string> = { provider: "平台", model: "模型" };
 const MAX_RESULTS = 30;
 const TEST_POLL_INTERVAL = 3000;
 const TEST_POLL_MAX = 15 * 60 * 1000;
@@ -69,27 +64,21 @@ const isForbidden = (error: unknown) =>
   error instanceof ApiError && (error.status === 403 || error.code === 10004);
 
 /**
- * 管理员 AI 配置页：左侧平台 / 模型列表，中间 JSON 编辑器，右侧结果面板。
+ * 管理员 AI 配置页：左侧模型列表，中间 JSON 编辑器，右侧结果面板。
  * 编辑器是 textarea + 格式化 / 语法校验；服务端校验（validate）会带 JSON 路径。
  * 非管理员访问后端会返回 403，这里展示无权限提示。
  */
 export default function AdminAi() {
   const [tab, setTab] = useState<"config" | "secrets">("config");
-  const [target, setTarget] = useState<ConfigTarget>("model");
-  const [lists, setLists] = useState<Record<ConfigTarget, ConfigListItem[]>>({
-    provider: [],
-    model: [],
-  });
+  const [models, setModels] = useState<ConfigListItem[]>([]);
   const [listState, setListState] = useState<ListState>("loading");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [detail, setDetail] = useState<ConfigDetail | null>(null);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
   const [sample, setSample] = useState("{}");
-  const [useProviderDraft, setUseProviderDraft] = useState(false);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [webappId, setWebappId] = useState("");
   const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
   const aliveRef = useRef(true);
 
@@ -117,9 +106,9 @@ export default function AdminAi() {
 
   const loadLists = useCallback(async () => {
     try {
-      const [provider, model] = await Promise.all([listConfigs("provider"), listConfigs("model")]);
+      const model = await listModels();
       if (!aliveRef.current) return;
-      setLists({ provider, model });
+      setModels(model);
       setListState("ready");
     } catch (error) {
       if (!aliveRef.current) return;
@@ -132,12 +121,12 @@ export default function AdminAi() {
   }, [loadLists]);
 
   const openDetail = useCallback(
-    async (nextTarget: ConfigTarget, nextKey: string) => {
-      setSelection({ target: nextTarget, key: nextKey });
+    async (nextKey: string) => {
+      setSelection({ key: nextKey });
       setRevisions(null);
       setBusy("load");
       try {
-        const data = await getConfigDetail(nextTarget, nextKey);
+        const data = await getModelDetail(nextKey);
         if (!aliveRef.current) return;
         setDetail(data);
         const body = data.draft?.body_json ?? data.published?.body_json ?? {};
@@ -151,9 +140,8 @@ export default function AdminAi() {
     [pushResult],
   );
 
-  const startNew = (nextTarget: ConfigTarget, body: unknown = nextTarget === "provider" ? PROVIDER_TEMPLATE : MODEL_TEMPLATE) => {
-    setTarget(nextTarget);
-    setSelection({ target: nextTarget, key: null });
+  const startNew = (body: unknown = MODEL_TEMPLATES[0].body) => {
+    setSelection({ key: null });
     setDetail(null);
     setRevisions(null);
     setText(toJsonText(body));
@@ -181,13 +169,13 @@ export default function AdminAi() {
     setBusy("save");
     try {
       const result = isNew
-        ? await createDraft(selection.target, parsed.value)
-        : await updateDraft(selection.target, selection.key as string, parsed.value);
+        ? await createModelDraft(parsed.value)
+        : await updateModelDraft(selection.key as string, parsed.value);
       const content = toJsonText(parsed.value);
       setSavedText(content);
       if (isNew) {
-        setSelection({ target: selection.target, key: bodyKey });
-        void openDetail(selection.target, bodyKey);
+        setSelection({ key: bodyKey });
+        void openDetail(bodyKey);
       }
       if (!silentOk || result.issues.length > 0) {
         pushResult({
@@ -215,7 +203,9 @@ export default function AdminAi() {
     }
     setBusy("validate");
     try {
-      const result = await validateConfig(selection.target, key ?? readConfigKey(parsed.value), parsed.value);
+      const modelKey = key ?? readConfigKey(parsed.value);
+      if (!modelKey) return;
+      const result = await validateModel(modelKey, parsed.value);
       pushResult({
         title: result.valid ? "校验通过" : `校验发现 ${result.issues.length} 个问题`,
         tone: result.valid ? "success" : "error",
@@ -234,14 +224,14 @@ export default function AdminAi() {
   };
 
   const dryRun = async () => {
-    if (!selection || selection.target !== "model") return;
+    if (!selection) return;
     const input = parseSample();
     if (!input.ok || !(await ensureSaved())) return;
     const modelKey = readConfigKey(parsed.ok ? parsed.value : null) || key;
     if (!modelKey) return;
     setBusy("dry-run");
     try {
-      const result = await dryRunModel(modelKey, input.value, useProviderDraft);
+      const result = await dryRunModel(modelKey, input.value);
       pushResult({
         title: "dry-run：渲染后的请求（未发送，凭证已脱敏）",
         tone: "success",
@@ -253,14 +243,14 @@ export default function AdminAi() {
   };
 
   const testRun = async () => {
-    if (!selection || selection.target !== "model") return;
+    if (!selection) return;
     const input = parseSample();
     if (!input.ok || !(await ensureSaved())) return;
     const modelKey = readConfigKey(parsed.ok ? parsed.value : null) || key;
     if (!modelKey) return;
     setBusy("test-run");
     try {
-      const view = await testRunModel(modelKey, input.value, useProviderDraft);
+      const view = await testRunModel(modelKey, input.value);
       const entryId = pushResult({
         title: `试跑任务 #${view.id}：${view.status}`,
         tone: "info",
@@ -298,17 +288,17 @@ export default function AdminAi() {
   };
 
   const publish = async () => {
-    if (!selection || !key && !isNew) return;
+    if (!selection || (!key && !isNew)) return;
     if (!(await ensureSaved())) return;
     const publishKey = key ?? readConfigKey(parsed.ok ? parsed.value : null);
     if (!publishKey) return;
-    if (!window.confirm(`确认发布 ${TARGET_LABEL[selection.target]} ${publishKey}？发布后立即对所有用户生效。`)) return;
+    if (!window.confirm(`确认发布模型 ${publishKey}？发布后立即对所有用户生效。`)) return;
     setBusy("publish");
     try {
-      const revision = await publishConfig(selection.target, publishKey);
+      const revision = await publishModel(publishKey);
       pushResult({ title: `已发布（第 ${revision.revision_no} 版）`, tone: "success" });
       void loadLists();
-      void openDetail(selection.target, publishKey);
+      void openDetail(publishKey);
     } finally {
       if (aliveRef.current) setBusy(null);
     }
@@ -317,7 +307,7 @@ export default function AdminAi() {
   const loadRevisions = async () => {
     if (!selection || !key) return;
     try {
-      setRevisions(await listRevisions(selection.target, key));
+      setRevisions(await listModelRevisions(key));
     } catch {
       setRevisions([]);
     }
@@ -328,10 +318,10 @@ export default function AdminAi() {
     if (!window.confirm(`确认回滚到第 ${revision.revision_no} 版？回滚后立即生效，进行中的任务不受影响。`)) return;
     setBusy("rollback");
     try {
-      await rollbackConfig(selection.target, key, revision.id);
+      await rollbackModel(key, revision.id);
       pushResult({ title: `已回滚到第 ${revision.revision_no} 版`, tone: "success" });
       void loadLists();
-      void openDetail(selection.target, key);
+      void openDetail(key);
     } finally {
       if (aliveRef.current) setBusy(null);
     }
@@ -341,30 +331,7 @@ export default function AdminAi() {
     await setModelEnabled(item.key, enabled);
     pushResult({ title: `${item.key} 已${enabled ? "上架" : "下架"}`, tone: "success" });
     void loadLists();
-    if (selection?.key === item.key) void openDetail("model", item.key);
-  };
-
-  const importFromRunningHub = async () => {
-    const id = webappId.trim();
-    if (!/^\d+$/.test(id)) {
-      pushResult({ title: "webappId 只能是数字", tone: "error" });
-      return;
-    }
-    setBusy("import");
-    try {
-      const result = await importRunningHub(id);
-      startNew("model", result.draft);
-      setTab("config");
-      pushResult({
-        title: `已导入 webappId ${id} 的 ${result.nodes.length} 个可改节点`,
-        tone: "success",
-        text: "已生成模型草稿（尚未保存）：请确认字段含义、填写名称与积分后保存。",
-        nodes: result.nodes,
-        warnings: result.warnings,
-      });
-    } finally {
-      if (aliveRef.current) setBusy(null);
-    }
+    if (selection?.key === item.key) void openDetail(item.key);
   };
 
   if (listState === "forbidden") {
@@ -384,8 +351,6 @@ export default function AdminAi() {
     );
   }
 
-  const currentList = lists[target];
-  const isModel = selection?.target === "model";
   const working = busy !== null;
 
   return (
@@ -414,27 +379,6 @@ export default function AdminAi() {
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Input
-            value={webappId}
-            onChange={(event) => setWebappId(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) void importFromRunningHub();
-            }}
-            placeholder="粘贴 RunningHub webappId"
-            aria-label="RunningHub webappId"
-            className="h-8 w-56 text-xs"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy === "import" || !webappId.trim()}
-            onClick={() => void importFromRunningHub()}
-          >
-            {busy === "import" ? <Loader2 className="animate-spin" /> : <Wand2 />}
-            导入
-          </Button>
-        </div>
       </header>
 
       {tab === "secrets" ? (
@@ -443,25 +387,11 @@ export default function AdminAi() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          {/* 左：平台 / 模型列表 */}
+          {/* 左：模型列表 */}
           <nav className="flex max-h-56 w-full shrink-0 flex-col border-b lg:max-h-none lg:w-64 lg:border-r lg:border-b-0">
             <div className="flex items-center gap-2 border-b p-2">
-              <div className="bg-muted flex flex-1 gap-0.5 rounded-lg p-0.5 text-xs">
-                {(["model", "provider"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={cn(
-                      "flex-1 rounded-md px-2 py-1",
-                      target === value ? "bg-background shadow-sm" : "text-muted-foreground",
-                    )}
-                    onClick={() => setTarget(value)}
-                  >
-                    {TARGET_LABEL[value]}（{lists[value].length}）
-                  </button>
-                ))}
-              </div>
-              <Button size="icon-sm" variant="outline" aria-label={`新建${TARGET_LABEL[target]}`} onClick={() => startNew(target)}>
+              <span className="text-sm font-medium">模型（{models.length}）</span>
+              <Button size="icon-sm" variant="outline" aria-label="新建模型" onClick={() => startNew()}>
                 <Plus />
               </Button>
             </div>
@@ -477,13 +407,13 @@ export default function AdminAi() {
                   </button>
                 </li>
               )}
-              {listState === "ready" && currentList.length === 0 && (
+              {listState === "ready" && models.length === 0 && (
                 <li className="text-muted-foreground p-3 text-xs">
-                  还没有{TARGET_LABEL[target]}，点右上角 + 新建，或用顶部的 webappId 导入。
+                  还没有模型，点右上角 + 新建。
                 </li>
               )}
-              {currentList.map((item) => {
-                const active = selection?.target === target && selection.key === item.key;
+              {models.map((item) => {
+                const active = selection?.key === item.key;
                 return (
                   <li key={item.key}>
                     <button
@@ -492,7 +422,7 @@ export default function AdminAi() {
                         "hover:bg-muted flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left",
                         active && "bg-muted",
                       )}
-                      onClick={() => void openDetail(target, item.key)}
+                      onClick={() => void openDetail(item.key)}
                     >
                       <span className="truncate font-mono text-xs">{item.key}</span>
                       <span className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -506,11 +436,9 @@ export default function AdminAi() {
                         {item.has_unpublished_draft && (
                           <span className="text-amber-600 dark:text-amber-400">有未发布草稿</span>
                         )}
-                        {target === "model" && (
-                          <span className={item.enabled ? "text-emerald-600 dark:text-emerald-400" : ""}>
-                            {item.enabled ? "已上架" : "未上架"}
-                          </span>
-                        )}
+                        <span className={item.enabled ? "text-emerald-600 dark:text-emerald-400" : ""}>
+                          {item.enabled ? "已上架" : "未上架"}
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -523,17 +451,17 @@ export default function AdminAi() {
           <section className="flex min-h-96 min-w-0 flex-1 flex-col">
             {!selection ? (
               <div className="text-muted-foreground grid flex-1 place-items-center p-6 text-sm">
-                从左侧选一个{TARGET_LABEL[target]}，或新建一个。
+                从左侧选一个模型，或新建一个。
               </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2 border-b p-2">
                   <span className="mr-1 text-sm font-medium">
-                    {TARGET_LABEL[selection.target]} ·{" "}
+                    模型 ·{" "}
                     <span className="font-mono">{key ?? "（新建，未保存）"}</span>
                   </span>
                   {dirty && <span className="text-xs text-amber-600 dark:text-amber-400">有未保存修改</span>}
-                  {isModel && detail && key && (
+                  {detail && key && (
                     <label className="text-muted-foreground ml-1 flex items-center gap-1.5 text-xs">
                       <Switch
                         size="sm"
@@ -557,18 +485,14 @@ export default function AdminAi() {
                       {busy === "validate" ? <Loader2 className="animate-spin" /> : <CheckCheck />}
                       校验
                     </Button>
-                    {isModel && (
-                      <>
-                        <Button size="xs" variant="outline" disabled={working} onClick={() => void dryRun()}>
-                          {busy === "dry-run" ? <Loader2 className="animate-spin" /> : <FlaskConical />}
-                          dry-run
-                        </Button>
-                        <Button size="xs" variant="outline" disabled={working} onClick={() => void testRun()}>
-                          {busy === "test-run" ? <Loader2 className="animate-spin" /> : <Play />}
-                          试跑
-                        </Button>
-                      </>
-                    )}
+                    <Button size="xs" variant="outline" disabled={working} onClick={() => void dryRun()}>
+                      {busy === "dry-run" ? <Loader2 className="animate-spin" /> : <FlaskConical />}
+                      dry-run
+                    </Button>
+                    <Button size="xs" variant="outline" disabled={working} onClick={() => void testRun()}>
+                      {busy === "test-run" ? <Loader2 className="animate-spin" /> : <Play />}
+                      试跑
+                    </Button>
                     <Button size="xs" disabled={working || isNew} onClick={() => void publish()}>
                       {busy === "publish" ? <Loader2 className="animate-spin" /> : <Rocket />}
                       发布
@@ -650,20 +574,11 @@ export default function AdminAi() {
                     : `JSON 语法错误${parsed.line ? `（第 ${parsed.line} 行 第 ${parsed.column} 列）` : ""}：${parsed.message}`}
                 </div>
 
-                {isModel && (
-                  <div className="flex flex-col gap-1.5 border-t p-2">
+                    <div className="flex flex-col gap-1.5 border-t p-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">
                         示例输入（dry-run / 试跑用，按 input_schema 字段名，媒体字段填素材 id）
                       </span>
-                      <label className="text-muted-foreground flex items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          checked={useProviderDraft}
-                          onChange={(event) => setUseProviderDraft(event.target.checked)}
-                        />
-                        用平台草稿
-                      </label>
                     </div>
                     <textarea
                       value={sample}
@@ -672,8 +587,7 @@ export default function AdminAi() {
                       aria-label="示例输入 JSON"
                       className="border-input bg-transparent h-20 resize-none rounded-lg border p-2 font-mono text-xs outline-none focus-visible:border-ring"
                     />
-                  </div>
-                )}
+                    </div>
               </>
             )}
           </section>

@@ -8,11 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -24,7 +22,7 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// 凭证相关的哨兵错误：引擎拿到它们会按 terminal 处理，同时日志里能看出原因。
+// 凭证相关的哨兵错误：插件宿主拿到它们会按 terminal 处理，同时日志里能看出原因。
 var (
 	// ErrAISecretKeyMissing 服务端没有配置凭证主密钥（APP_AI_SECRET_KEY）。
 	ErrAISecretKeyMissing = errors.New("未配置凭证主密钥（APP_AI_SECRET_KEY），无法读取或设置凭证")
@@ -35,9 +33,10 @@ var (
 // 凭证密文使用的密钥版本；将来轮换主密钥时新增版本，并按 key_version 选择解密密钥。
 const aiSecretKeyVersion = 1
 
-// aiSecretNameRe 限制凭证名的字符集，凭证名会出现在 provider 配置和日志里。
-var aiSecretNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$`)
+// aiSecretNameRe 限制凭证名的字符集：凭证名会出现在缓存 key 和日志里；允许冒号是因为渠道凭证名固定为 channel:<渠道 key>。
+var aiSecretNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:\-]{0,127}$`)
 
+// aiSecretMaxLen 是凭证明文的最大字节数，正常的 API Key 远小于它，超出多半是粘贴错了内容。
 const aiSecretMaxLen = 4096
 
 // aiSecretCipher 封装 AES-256-GCM。
@@ -105,15 +104,6 @@ type aiSecretCacheItem struct {
 	expires time.Time
 }
 
-// SecretStatus 是凭证的展示信息：只有是否已设置、更新时间和操作人，永远没有明文或密文。
-type SecretStatus struct {
-	Name         string     `json:"name"`
-	IsSet        bool       `json:"is_set"`
-	UpdatedAt    *time.Time `json:"updated_at"`
-	UpdatedBy    uint64     `json:"updated_by"`
-	ReferencedBy []string   `json:"referenced_by"` // 引用了它的平台 key
-}
-
 // SetSecret 设置（覆盖）凭证。只写：明文用 AES-256-GCM 加密后入库，之后任何接口都读不回明文。
 func (s *AIConfigService) SetSecret(ctx context.Context, name, value string, adminID uint64) error {
 	// 1. 没有主密钥就无法加密：返回明确的服务端错误，而不是悄悄存明文
@@ -122,7 +112,7 @@ func (s *AIConfigService) SetSecret(ctx context.Context, name, value string, adm
 	}
 	// 2. 参数校验；粘贴 Key 时常带首尾空白 / 换行，先去掉
 	if !aiSecretNameRe.MatchString(name) {
-		return errcode.ErrInvalidParams.WithMsg("凭证名只能包含字母、数字、下划线、点和短横线，且以字母或数字开头")
+		return errcode.ErrInvalidParams.WithMsg("凭证名只能包含字母、数字、下划线、点、冒号和短横线，且以字母或数字开头")
 	}
 	value = strings.TrimSpace(value)
 	if value == "" || len(value) > aiSecretMaxLen {
@@ -146,54 +136,26 @@ func (s *AIConfigService) SetSecret(ctx context.Context, name, value string, adm
 	return nil
 }
 
-// ListSecrets 列出凭证状态：所有已设置的凭证，加上已保存 / 已发布的平台配置引用了但还没设置的凭证名（is_set=false）。
-// 永远不返回明文或密文。
-func (s *AIConfigService) ListSecrets(ctx context.Context) ([]SecretStatus, error) {
-	// 1. 已设置的凭证（repo 已经不读密文列）
-	rows, err := s.repo.ListSecrets(ctx)
+// SecretIsSet 判断凭证是否已设置（只看有没有这一行，不解密、不需要主密钥）。渠道视图的 secret_set 与发布前置检查用它。
+func (s *AIConfigService) SecretIsSet(ctx context.Context, name string) (bool, error) {
+	// 1. 只读元信息：这里不需要明文，也就不走解密与缓存
+	_, err := s.repo.GetSecret(ctx, name)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	}
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	byName := map[string]*SecretStatus{}
-	for _, r := range rows {
-		at := r.UpdatedAt
-		byName[r.Name] = &SecretStatus{Name: r.Name, IsSet: true, UpdatedAt: &at, UpdatedBy: r.UpdatedBy, ReferencedBy: []string{}}
-	}
-	// 2. 平台配置引用的凭证名：让运营一眼看到“哪些凭证还没设置”
-	heads, err := s.repo.ListRevisionHeads(ctx, model.ConfigTargetProvider, true)
-	if err != nil {
-		return nil, err
-	}
-	for _, h := range heads {
-		var ref struct {
-			Auth struct {
-				Secret string `json:"secret"`
-			} `json:"auth"`
-		}
-		if json.Unmarshal(h.BodyJSON, &ref) != nil || ref.Auth.Secret == "" {
-			continue
-		}
-		st, ok := byName[ref.Auth.Secret]
-		if !ok {
-			st = &SecretStatus{Name: ref.Auth.Secret, ReferencedBy: []string{}}
-			byName[ref.Auth.Secret] = st
-		}
-		if !aiContains(st.ReferencedBy, h.TargetKey) {
-			st.ReferencedBy = append(st.ReferencedBy, h.TargetKey)
-		}
-	}
-	// 3. 按名字排序输出
-	out := make([]SecretStatus, 0, len(byName))
-	for _, st := range byName {
-		sort.Strings(st.ReferencedBy)
-		out = append(out, *st)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	return true, nil
 }
 
-// Get 实现 provider.SecretResolver：解密并返回凭证明文，只给引擎的 auth 块使用。
-// 明文只放在内存缓存里（有过期时间，SetSecret 会立即清除），不进日志、不进表达式上下文。
+// ListSecrets 列出已设置凭证的元信息，不返回密文。
+func (s *AIConfigService) ListSecrets(ctx context.Context) ([]model.AISecret, error) {
+	return s.repo.ListSecrets(ctx)
+}
+
+// Get 实现 provider.SecretResolver：解密并返回凭证明文，只给插件宿主的鉴权注入环节使用。
+// 明文只放在内存缓存里（有过期时间，SetSecret 会立即清除），不进日志、不进插件 ctx（auth: custom 且渠道开启除外）。
 func (s *AIConfigService) Get(ctx context.Context, name string) (string, error) {
 	// 1. 内存缓存：轮询很频繁，避免每次请求都查库解密
 	now := s.now()
@@ -228,13 +190,4 @@ func (s *AIConfigService) Get(ctx context.Context, name string) (string, error) 
 	s.secCache[name] = aiSecretCacheItem{value: plain, expires: now.Add(aiSecretCacheTTL)}
 	s.secMu.Unlock()
 	return plain, nil
-}
-
-func aiContains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
