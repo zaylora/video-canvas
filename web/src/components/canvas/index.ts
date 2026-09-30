@@ -8,6 +8,7 @@ export {
   NodeTextBody,
   type ImageStatus,
   type MediaType,
+  type NodeMediaType,
   type NodeStatus,
 } from "./node-body";
 export { NodeVideoBody } from "./node-video-body";

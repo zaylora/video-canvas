@@ -18,6 +18,7 @@ import { checkPluginFile, shortSha, summarizeUpload, PLUGIN_MAX_BYTES } from "@/
 
 import { CopyButton, Notice } from "../shared";
 import { useAliveRef } from "../use-admin";
+import { PLUGIN_AUTHORING_PROMPT } from "./plugin-prompt";
 
 /**
  * 上传插件对话框（仅运维）。
@@ -155,6 +156,8 @@ function UploadBody({
         </label>
       )}
 
+      {!accepted && <AiPromptHint />}
+
       {localError && (
         <Notice tone="danger">
           {localError}（本地已拦截，未发请求）
@@ -221,5 +224,29 @@ function UploadBody({
         )}
       </DialogFooter>
     </>
+  );
+}
+
+/**
+ * “让 AI 帮忙写插件”：把插件格式的提示词一键复制，连同目标平台的 API 文档一起发给 AI，即可生成符合契约的插件文件。
+ * 提示词默认收起，展开可预览全文。
+ */
+function AiPromptHint() {
+  return (
+    <section aria-label="用 AI 生成插件" className="bg-muted/40 flex flex-col gap-1.5 rounded-lg border p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="font-medium">没有现成的插件？让 AI 帮你写</span>
+        <CopyButton className="ml-auto" text={PLUGIN_AUTHORING_PROMPT} label="复制提示词" />
+      </div>
+      <p className="text-muted-foreground">
+        复制提示词，连同目标平台的 API 文档一起发给 AI（提示词末尾有粘贴文档的位置），把生成的 .js 文件保存后在下方上传即可。
+      </p>
+      <details className="group">
+        <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">预览提示词</summary>
+        <pre className="bg-background mt-1.5 max-h-56 overflow-auto rounded-md border p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+          {PLUGIN_AUTHORING_PROMPT}
+        </pre>
+      </details>
+    </section>
   );
 }

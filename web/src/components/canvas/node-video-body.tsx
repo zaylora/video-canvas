@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,16 @@ import {
   NODE_PREVIEW_ASPECT,
   NodeMediaBody,
   NodePlaceholderBody,
+  type NodeMediaType,
 } from "./node-body";
 import { VideoPlaceholderIcon } from "./placeholder-icons";
+
+/** 各种素材在「即将完成」时的说法 */
+const SAVING_TEXT: Record<NodeMediaType, string> = {
+  image: "正在保存图片",
+  video: "正在保存视频",
+  audio: "正在保存音频",
+};
 
 type NodeVideoBodyProps = {
   /** 由节点数据 + 任务快照推出的展示状态 */
@@ -19,6 +28,10 @@ type NodeVideoBodyProps = {
   caption?: string;
   /** 占位框的无障碍说明 */
   placeholder: string;
+  /** 产物种类，决定成功后怎么摆；默认视频 */
+  mediaType?: NodeMediaType;
+  /** 空状态占位框里的大图标；默认视频图标 */
+  placeholderIcon?: ReactNode;
   /** 取消任务，排队中 / 生成中才给按钮 */
   onCancel?: () => void;
   cancelling?: boolean;
@@ -98,6 +111,8 @@ export function NodeVideoBody({
   view,
   caption,
   placeholder,
+  mediaType = "video",
+  placeholderIcon,
   onCancel,
   cancelling,
   onRetry,
@@ -129,9 +144,9 @@ export function NodeVideoBody({
         />
       );
     case "finalizing":
-      return <PendingBox title="即将完成" detail="正在保存视频" />;
+      return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
     case "done":
-      return <NodeMediaBody src={view.src} mediaType="video" caption={caption} />;
+      return <NodeMediaBody src={view.src} mediaType={mediaType} caption={caption} />;
     case "failed":
       return (
         <BaseNodeContent>
@@ -165,7 +180,7 @@ export function NodeVideoBody({
     default:
       return (
         <NodePlaceholderBody
-          icon={<VideoPlaceholderIcon className="size-10" />}
+          icon={placeholderIcon ?? <VideoPlaceholderIcon className="size-10" />}
           label={placeholder}
         />
       );

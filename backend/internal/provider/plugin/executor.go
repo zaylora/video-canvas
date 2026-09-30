@@ -711,7 +711,8 @@ func (o *operation) validateOutputs(outputs []provider.Output) error {
 				return &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, o.red.str), PluginFault: true}
 			}
 		case provider.OutputAsset:
-			if o.asset == nil || out.AssetID == 0 {
+			// 插件只写 {type:"asset"}，素材 id 与地址由宿主用最近一次 binary 响应补全（契约 §6）
+			if o.asset == nil {
 				return pluginFault("asset 产物没有对应的二进制响应")
 			}
 			out.AssetID, out.AssetURL = o.asset.AssetID, o.asset.AssetURL

@@ -12,8 +12,12 @@ export type BackfillEvent = {
   patch: Partial<CanvasNodeData>
 }
 
-const mediaTypeOf = (mediaType: string | undefined): 'image' | 'video' =>
-  mediaType?.toLowerCase().startsWith('image') ? 'image' : 'video'
+const mediaTypeOf = (mediaType: string | undefined): 'image' | 'video' | 'audio' => {
+  const type = mediaType?.toLowerCase() ?? ''
+  if (type.startsWith('image')) return 'image'
+  if (type.startsWith('audio')) return 'audio'
+  return 'video'
+}
 
 /**
  * 任务进入终态、且节点的 taskId 与任务一致时，算出要写回节点的补丁；

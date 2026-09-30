@@ -3,6 +3,7 @@ import type { HandleType, Node, Position, XYPosition } from "@xyflow/react";
 import type {
   AnimatedSvgEdge,
   MediaType,
+  NodeMediaType,
   NodeStatus,
 } from "@/components/canvas";
 import type { NodeKind } from "@/constants/canvas/node-library";
@@ -12,7 +13,7 @@ export type {
   NodeKindMeta,
 } from "@/constants/canvas/node-library";
 export type { ModelOption } from "@/constants/canvas/model-library";
-export type { MediaType, NodeStatus };
+export type { MediaType, NodeMediaType, NodeStatus };
 
 /** 画布节点自身携带的数据 */
 export type CanvasNodeData = {
@@ -28,8 +29,8 @@ export type CanvasNodeData = {
   status?: NodeStatus;
   /** 出图结果或上传素材的地址，生成中为 null */
   src?: string | null;
-  /** src 那份素材是图还是视频 */
-  mediaType?: MediaType;
+  /** src 那份素材是图、视频还是音频 */
+  mediaType?: NodeMediaType;
   /** 服务端素材记录 id；有它的 URL 才能安全持久化 */
   assetId?: string;
   /** 素材是从本机传进来的，不是模型生成的 */

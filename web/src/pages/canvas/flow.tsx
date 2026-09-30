@@ -124,15 +124,22 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
   const settings = useSettingsStore();
   const video = useRemoteModels(REMOTE_KIND_OF_NODE.video);
   const text = useRemoteModels(REMOTE_KIND_OF_NODE.script);
+  const image = useRemoteModels(REMOTE_KIND_OF_NODE.image);
+  const audio = useRemoteModels(REMOTE_KIND_OF_NODE.audio);
   const remoteModels = useMemo(
     () => ({
       video: { status: video.status, options: video.options },
       script: { status: text.status, options: text.options },
+      image: { status: image.status, options: image.options },
+      audio: { status: audio.status, options: audio.options },
     }),
-    [text.options, text.status, video.options, video.status],
+    [
+      audio.options, audio.status, image.options, image.status,
+      text.options, text.status, video.options, video.status,
+    ],
   );
   /**
-   * 视频、文本清单由服务端下发：设置里存的默认模型可能是旧演示清单里的 id，
+   * 四种节点的清单都由服务端下发：设置里存的默认模型可能是旧演示清单里的 id，
    * 对不上就不往新节点上写
    */
   const defaultModels = useMemo(

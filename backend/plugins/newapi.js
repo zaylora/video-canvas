@@ -3,7 +3,9 @@
  *
  * 对接自建 / 第三方的 New API 网关（按 OpenAI 风格的公开 HTTP 协议调用）：
  *   - text  ：POST /v1/chat/completions，同步出正文；
- *   - video ：POST /v1/video/generations 提交，GET /v1/video/generations/{task_id} 轮询，异步出片。
+ *   - video ：POST /v1/video/generations 提交，GET /v1/video/generations/{task_id} 轮询，异步出片；
+ *   - image ：无参考图 POST /v1/images/generations（JSON），有参考图 POST /v1/images/edits（multipart），同步出图；
+ *   - audio ：POST /v1/audio/speech（语音合成），响应是二进制音频，由宿主直接落库。
  * 本文件是我们自己按公开接口写的，没有复用 New API 仓库里任何官方插件的代码（那是 AGPLv3 代码）。
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
@@ -12,37 +14,55 @@
  * 模型 params（运营在模型上填的固定参数）：
  *   text : { max_tokens?: number, system?: string, extra?: object }   extra 原样合并进请求体顶层
  *   video: { metadata?: object, extra?: object }                      metadata 放进请求体的 metadata，extra 合并进顶层
+ *   image: { extra?: object }                                         extra 合并进请求体顶层（如 response_format、background）
+ *   audio: { voice?: string, format?: string, speed?: number, extra?: object }   固定音色 / 格式 / 语速，用户没传时才用
  * 用户输入（input_schema 里声明的字段，按名字直传）：
  *   text : prompt（必填）、system、temperature、max_tokens（不能超过 params.max_tokens）、image（视觉模型，可选）
  *   video: prompt、image（首帧，可选）、duration、width、height、fps、seed、size、n
+ *   image: prompt（必填）、image（参考图，可选，传了就走 edits）、n、size、quality、style
+ *   audio: prompt（要朗读的文本，必填；也接受 text）、voice、format（mp3 / wav / opus / aac / flac）、speed
  */
 module.exports = {
   meta: {
     apiVersion: 1,
     key: "newapi",
     name: "New API",
-    version: "1.0.0",
-    description: "对接 New API 网关：文本（同步）与视频（异步）",
+    version: "1.1.0",
+    description: "对接 New API 网关：文本、图片、语音（同步）与视频（异步）",
     auth: { type: "bearer" },
     allowedHosts: [],
     endpoints: {
       text: { mode: "sync" },
-      video: { mode: "async" }
+      video: { mode: "async" },
+      image: { mode: "sync" },
+      audio: { mode: "sync" }
     },
     import: { args: {} },
     poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }
   },
 
   buildSubmitRequest: function (ctx) {
-    if (ctx.model.kind === "text") {
-      return buildChatRequest(ctx);
+    switch (ctx.model.kind) {
+      case "text":
+        return buildChatRequest(ctx);
+      case "image":
+        return buildImageRequest(ctx);
+      case "audio":
+        return buildSpeechRequest(ctx);
+      default:
+        return buildVideoRequest(ctx);
     }
-    return buildVideoRequest(ctx);
   },
 
   parseSubmitResponse: function (ctx, resp) {
     if (ctx.model.kind === "text") {
       return { immediate: parseChatResponse(resp) };
+    }
+    if (ctx.model.kind === "image") {
+      return { immediate: parseImageResponse(resp) };
+    }
+    if (ctx.model.kind === "audio") {
+      return { immediate: parseSpeechResponse(resp) };
     }
     var body = resp.body || {};
     var inner = body.data && !isArray(body.data) ? body.data : {};
@@ -94,7 +114,7 @@ module.exports = {
     return {
       status: "succeeded",
       progress: 100,
-      outputs: [{ type: "url", url: url, mediaType: "video", mime: mimeOfVideo(body, inner, url) }]
+      outputs: [{ type: "url", url: url, media_type: "video", mime: mimeOfVideo(body, inner, url) }]
     };
   },
 
@@ -135,7 +155,7 @@ module.exports = {
         kind: kind,
         label: id,
         params: {},
-        inputSchema: kind === "video" ? videoInputSchema() : textInputSchema()
+        inputSchema: inputSchemaOf(kind)
       });
     }
     return drafts;
@@ -304,27 +324,177 @@ function mimeOfVideo(body, inner, url) {
 }
 
 // ---------------------------------------------------------------------------
+// 图片
+// ---------------------------------------------------------------------------
+
+var IMAGE_PASSTHROUGH = ["n", "size", "quality", "style"];
+
+// 没有参考图走 /v1/images/generations（JSON）；有参考图走 /v1/images/edits（multipart，图片由宿主按文件引用上传）。
+function buildImageRequest(ctx) {
+  var input = ctx.input || {};
+  var params = ctx.model.params || {};
+  var fields = { model: ctx.model.upstreamModel };
+  if (input.prompt !== undefined) {
+    fields.prompt = String(input.prompt);
+  }
+  for (var i = 0; i < IMAGE_PASSTHROUGH.length; i++) {
+    var k = IMAGE_PASSTHROUGH[i];
+    if (input[k] !== undefined && input[k] !== null && input[k] !== "") {
+      fields[k] = input[k];
+    }
+  }
+  mergeExtra(fields, params.extra);
+
+  if (input.image) {
+    return {
+      method: "POST",
+      path: "/v1/images/edits",
+      multipart: { fields: fields, parts: [{ name: "image", fileRef: "input:image" }] },
+      timeout: 180
+    };
+  }
+  return { method: "POST", path: "/v1/images/generations", json: fields, timeout: 180 };
+}
+
+function parseImageResponse(resp) {
+  var body = resp.body || {};
+  var list = isArray(body.data) ? body.data : [];
+  var outputs = [];
+  var sawBase64 = false;
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i];
+    if (item && typeof item.url === "string" && item.url !== "") {
+      outputs.push({ type: "url", url: item.url, media_type: "image", mime: mimeOfImage(item.url) });
+    } else if (item && typeof item.b64_json === "string" && item.b64_json !== "") {
+      sawBase64 = true;
+    }
+  }
+  if (outputs.length > 0) {
+    return { status: "succeeded", outputs: outputs };
+  }
+  var msg = errorMessageOf(body);
+  if (msg) {
+    return failed(msg);
+  }
+  if (sawBase64) {
+    // 产物只支持下载地址与二进制响应，不接收内联 base64
+    return failed("上游只返回了 base64 图片，请在模型 params.extra 里指定 response_format 为 url，或换用支持返回地址的模型");
+  }
+  return failed("上游没有返回图片");
+}
+
+function mimeOfImage(url) {
+  var m = /\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url);
+  var ext = m ? m[1].toLowerCase() : "";
+  if (ext === "jpg" || ext === "jpeg") {
+    return "image/jpeg";
+  }
+  if (ext === "webp") {
+    return "image/webp";
+  }
+  if (ext === "gif") {
+    return "image/gif";
+  }
+  return "image/png";
+}
+
+// ---------------------------------------------------------------------------
+// 语音（文本转语音）
+// ---------------------------------------------------------------------------
+
+function buildSpeechRequest(ctx) {
+  var input = ctx.input || {};
+  var params = ctx.model.params || {};
+  var text = pick(input.prompt, input.text, input.input);
+  var body = {
+    model: ctx.model.upstreamModel,
+    input: text === undefined ? "" : String(text),
+    voice: firstString(input.voice, params.voice) || "alloy"
+  };
+  var format = firstString(input.format, params.format);
+  if (format) {
+    body.response_format = format;
+  }
+  var speed = typeof input.speed === "number" ? input.speed : params.speed;
+  if (typeof speed === "number") {
+    body.speed = speed;
+  }
+  mergeExtra(body, params.extra);
+  // 响应是音频字节：宿主直接写入素材存储，不经过插件
+  return { method: "POST", path: "/v1/audio/speech", json: body, responseType: "binary", timeout: 120 };
+}
+
+function parseSpeechResponse(resp) {
+  if (!resp.asset || !resp.asset.id) {
+    return failed(errorMessageOf(resp.body) || "上游没有返回音频");
+  }
+  return {
+    status: "succeeded",
+    outputs: [{ type: "asset" }] // 素材 id、地址、mime 由宿主补全
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 导入
 // ---------------------------------------------------------------------------
 
-// 按模型名粗略判断种类；本插件只支持 text 与 video，其它（图片、语音、向量…）返回空串表示不导入。
+// 按模型名粗略判断种类；本插件支持 text / video / image / audio（语音合成），其它（向量、转写、音乐…）返回空串表示不导入。
 function guessKind(id) {
   var s = id.toLowerCase();
-  if (/embed|rerank|moderation/.test(s)) {
+  if (/embed|rerank|moderation|whisper|transcribe|suno|midjourney|audio/.test(s)) {
     return "";
   }
   if (/video|sora|kling|veo|hailuo|seedance|wan[-_.0-9]|runway|pika|luma|cogvideo|vidu|hunyuan-video/.test(s)) {
     return "video";
   }
-  if (/image|dall|flux|midjourney|imagen|sdxl|stable-diffusion|seedream|tts|whisper|audio|speech|voice|suno/.test(s)) {
-    return "";
+  if (/tts|speech|voice/.test(s)) {
+    return "audio";
+  }
+  if (/image|dall|flux|imagen|sdxl|stable-diffusion|seedream/.test(s)) {
+    return "image";
   }
   return "text";
+}
+
+function inputSchemaOf(kind) {
+  switch (kind) {
+    case "video":
+      return videoInputSchema();
+    case "image":
+      return imageInputSchema();
+    case "audio":
+      return audioInputSchema();
+    default:
+      return textInputSchema();
+  }
 }
 
 function textInputSchema() {
   return {
     prompt: { type: "text", label: "提示词", required: true, port: "text", max_length: 20000 }
+  };
+}
+
+function imageInputSchema() {
+  return {
+    prompt: { type: "text", label: "提示词", required: true, port: "text", max_length: 4000 },
+    image: { type: "image", label: "参考图（可选）", port: "image" },
+    size: {
+      type: "enum",
+      label: "尺寸",
+      options: [
+        { value: "1024x1024", label: "1024×1024" },
+        { value: "1536x1024", label: "1536×1024（横）" },
+        { value: "1024x1536", label: "1024×1536（竖）" }
+      ],
+      default: "1024x1024"
+    }
+  };
+}
+
+function audioInputSchema() {
+  return {
+    prompt: { type: "text", label: "朗读文本", required: true, port: "text", max_length: 4096 }
   };
 }
 

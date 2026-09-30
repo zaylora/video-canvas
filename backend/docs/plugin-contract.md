@@ -150,7 +150,7 @@ meta: {
   "status": "queued" | "running" | "succeeded" | "failed",
   "progress": 40,                                   // 可选，0–100
   "outputs": [                                      // succeeded 时必填且非空
-    { "type": "url",  "url": "https://...", "mediaType": "video", "mime": "video/mp4" },
+    { "type": "url",  "url": "https://...", "media_type": "video", "mime": "video/mp4" },
     { "type": "text", "text": "..." },              // 文本正文，≤256KB
     { "type": "asset" }                             // 二进制响应已由宿主落库
   ],
@@ -160,7 +160,7 @@ meta: {
 }
 ```
 
-宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https 且主机在 `allowedHosts` 或渠道 `base_url` 的主机上；`text` 产物的 `text` 是字符串且 ≤256KB；`mediaType` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
+宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https 且主机在 `allowedHosts` 或渠道 `base_url` 的主机上；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
 
 ## 7. `utils`（宿主注入的同步函数）
 

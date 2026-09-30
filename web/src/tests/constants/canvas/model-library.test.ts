@@ -8,21 +8,20 @@ import {
 } from "@/constants/canvas/model-library";
 
 describe("节点种类与后端 kind 的映射", () => {
-  test("文本节点（script）对应后端 text，视频仍是 video", () => {
+  test("文本节点（script）对应后端 text，其余种类同名", () => {
     expect(remoteKindOf("script")).toBe("text");
+    expect(remoteKindOf("image")).toBe("image");
     expect(remoteKindOf("video")).toBe("video");
+    expect(remoteKindOf("audio")).toBe("audio");
   });
 
-  test("不走服务端清单的种类没有后端 kind", () => {
-    expect(remoteKindOf("image")).toBeUndefined();
-    expect(remoteKindOf("audio")).toBeUndefined();
+  test("不是节点种类的名字没有后端 kind", () => {
     expect(remoteKindOf("toString")).toBeUndefined();
   });
 
-  test("远程种类清单含 script 与 video，且本地不再放演示模型", () => {
-    expect([...REMOTE_MODEL_KINDS].sort()).toEqual(["script", "video"]);
-    expect(isRemoteModelKind("script")).toBe(true);
-    expect(isRemoteModelKind("image")).toBe(false);
-    expect(MODEL_LIBRARY.script).toHaveLength(0);
+  test("四种节点的清单都由服务端下发，本地不再放演示模型", () => {
+    expect([...REMOTE_MODEL_KINDS].sort()).toEqual(["audio", "image", "script", "video"]);
+    expect(isRemoteModelKind("image")).toBe(true);
+    for (const kind of REMOTE_MODEL_KINDS) expect(MODEL_LIBRARY[kind]).toHaveLength(0);
   });
 });

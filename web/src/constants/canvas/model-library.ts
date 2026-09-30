@@ -13,24 +13,19 @@ export type ModelOption = {
 };
 
 /**
- * 各种类节点能挑的模型。视频、文本已经改读接口，其余种类眼下还是写死的演示清单，
- * 接真实服务时把这里换成接口返回的分组，别处不用改。
+ * 各种类节点能挑的模型。四种节点的清单都由服务端下发，这里不再放演示数据；
+ * 保留这张表是为了给 getModelOptions 等按种类取清单的地方一个统一的兜底。
  * 每种类的第一条就是默认模型。
  */
 export const MODEL_LIBRARY = {
   // 文本清单由服务端下发（GET /models?kind=text），见 store/models.ts，这里不放演示数据
   script: [],
-  image: [
-    { id: "lib-image-2.5", label: "Lib Image 2.5", credits: 2, hint: "标准画质，日常出图" },
-    { id: "lib-image-2.5-pro", label: "Lib Image 2.5 Pro", credits: 6, hint: "高清细节，出关键帧" },
-    { id: "lib-image-edit", label: "Lib Image Edit", credits: 4, hint: "带参考图改画面" },
-  ],
+  // 图片清单由服务端下发（GET /models?kind=image），见 store/models.ts，这里不放演示数据
+  image: [],
   // 视频清单由服务端下发（GET /models?kind=video），见 store/models.ts，这里不放演示数据
   video: [],
-  audio: [
-    { id: "lib-voice", label: "Lib Voice", credits: 2, hint: "旁白与角色配音" },
-    { id: "lib-music", label: "Lib Music", credits: 8, hint: "BGM 与音效" },
-  ],
+  // 音频清单由服务端下发（GET /models?kind=audio），见 store/models.ts，这里不放演示数据
+  audio: [],
 } as const satisfies Record<NodeKind, readonly ModelOption[]>;
 
 /**
@@ -40,7 +35,9 @@ export const MODEL_LIBRARY = {
  */
 export const REMOTE_KIND_OF_NODE = {
   script: "text",
+  image: "image",
   video: "video",
+  audio: "audio",
 } as const satisfies Partial<Record<NodeKind, string>>;
 
 /** 模型清单由服务端下发的种类 */

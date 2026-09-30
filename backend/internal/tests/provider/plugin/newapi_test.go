@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/provider/plugin"
@@ -112,6 +113,11 @@ func TestNewAPIPrecheckAndMeta(t *testing.T) {
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {
 		t.Fatalf("video 应是 async：%+v", ep)
+	}
+	for _, kind := range []string{"image", "audio"} {
+		if ep, ok := env.meta.Endpoint(kind); !ok || ep.Mode != pluginmeta.ModeSync {
+			t.Fatalf("%s 应是 sync：%+v", kind, ep)
+		}
 	}
 }
 
@@ -353,11 +359,11 @@ func TestNewAPICheck(t *testing.T) {
 	}
 }
 
-// 导入：GET /v1/models，按模型名推断 text / video，其余（向量、图片、语音）跳过；草稿的上游模型名与输入表单齐全。
+// 导入：GET /v1/models，按模型名推断 text / video / image / audio，其余（向量、转写）跳过；草稿的上游模型名与输入表单齐全。
 func TestNewAPIImport(t *testing.T) {
 	srv := httptest.NewServer(&fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 		_, _ = w.Write([]byte(`{"object":"list","data":[
-			{"id":"gpt-4o"},{"id":"kling-v2-master"},{"id":"text-embedding-3-small"},{"id":"dall-e-3"},{"id":""},{"object":"model"}
+			{"id":"gpt-4o"},{"id":"kling-v2-master"},{"id":"text-embedding-3-small"},{"id":"dall-e-3"},{"id":"tts-1"},{"id":"whisper-1"},{"id":""},{"object":"model"}
 		]}`))
 	}})
 	defer srv.Close()
@@ -366,14 +372,17 @@ func TestNewAPIImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(drafts) != 2 {
-		t.Fatalf("应只导入文本与视频两个模型：%+v", drafts)
+	if len(drafts) != 4 {
+		t.Fatalf("应只导入文本、视频、图片、语音四个模型：%+v", drafts)
 	}
 	byModel := map[string]provider.ModelDraft{}
 	for _, d := range drafts {
 		byModel[d.UpstreamModel] = d
 	}
 	text, video := byModel["gpt-4o"], byModel["kling-v2-master"]
+	if byModel["dall-e-3"].Kind != "image" || byModel["tts-1"].Kind != "audio" {
+		t.Fatalf("dall-e-3 应是 image、tts-1 应是 audio：%+v", byModel)
+	}
 	if text.Kind != "text" || text.Label != "gpt-4o" {
 		t.Fatalf("文本草稿不符：%+v", text)
 	}
@@ -390,5 +399,119 @@ func TestNewAPIImport(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "prompt,image,duration" {
 		t.Fatalf("视频草稿字段顺序应为 prompt,image,duration：%v", names)
+	}
+}
+
+// 图片（无参考图）：POST /v1/images/generations，固定参数 extra 只补充、不覆盖用户输入；data[].url 变成 image 产物。
+func TestNewAPIImageGenerate(t *testing.T) {
+	var srv *httptest.Server
+	up := &fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		_, _ = w.Write([]byte(`{"data":[{"url":"` + srv.URL + `/a.jpg"},{"url":"` + srv.URL + `/b.webp?x=1"}]}`))
+	}}
+	srv = httptest.NewServer(up)
+	defer srv.Close()
+
+	env := newNewAPIEnv(t, nil)
+	schema := modelcfg.InputSchema{
+		{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "提示词", Required: true}},
+		{Name: "size", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "尺寸"}},
+	}
+	snap := env.snapshot(srv.URL, "image", schema)
+	snap.Model.Params = map[string]any{"extra": map[string]any{"size": "512x512", "background": "transparent"}}
+	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
+		Task: provider.TaskRef{ID: 5, UserID: 9}, Input: map[string]any{"prompt": "一只猫", "size": "1024x1024"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.Immediate == nil || sub.Immediate.Status != provider.StatusSucceeded || len(sub.Immediate.Outputs) != 2 {
+		t.Fatalf("图片应同步成功且有两个产物：%+v", sub)
+	}
+	first, second := sub.Immediate.Outputs[0], sub.Immediate.Outputs[1]
+	if first.Type != provider.OutputURL || first.MediaType != "image" || first.Mime != "image/jpeg" || second.Mime != "image/webp" {
+		t.Fatalf("图片产物不符：%+v %+v", first, second)
+	}
+	got := up.last()
+	if got.Path != "/v1/images/generations" || got.Auth != "Bearer sk-newapi" || got.Body["model"] != "up-model" ||
+		got.Body["prompt"] != "一只猫" || got.Body["size"] != "1024x1024" || got.Body["background"] != "transparent" {
+		t.Fatalf("图片请求不符：%+v", got)
+	}
+}
+
+// 图片：上游只给 base64 时明确失败并提示怎么改；错误体按文案分类。
+func TestNewAPIImageBadResponses(t *testing.T) {
+	cases := []struct {
+		name, body, wantClass, wantMsg string
+	}{
+		{"只有 base64", `{"data":[{"b64_json":"AAAA"}]}`, "terminal", "base64"},
+		{"没有数据", `{"data":[]}`, "terminal", "没有返回图片"},
+		{"额度不足", `{"error":{"message":"insufficient quota"}}`, "provider_balance", "insufficient"},
+	}
+	env := newNewAPIEnv(t, nil)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(&fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+				_, _ = w.Write([]byte(c.body))
+			}})
+			defer srv.Close()
+			sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", promptSchema), provider.SubmitInput{
+				Task: provider.TaskRef{ID: 6, UserID: 9}, Input: map[string]any{"prompt": "x"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := sub.Immediate
+			if r == nil || r.Status != provider.StatusFailed || string(r.ErrorClass) != c.wantClass || !strings.Contains(r.ErrorMessage, c.wantMsg) {
+				t.Fatalf("结果不符：%+v", r)
+			}
+		})
+	}
+}
+
+// fakeSaver 模拟宿主的素材存储：读完 binary 响应体并记录，返回固定的素材。
+type fakeSaver struct {
+	got  provider.SaveGeneratedInput
+	body string
+}
+
+func (f *fakeSaver) SaveGenerated(_ context.Context, in provider.SaveGeneratedInput) (*model.Asset, string, error) {
+	raw, _ := io.ReadAll(in.Body)
+	f.got, f.body = in, string(raw)
+	return &model.Asset{ID: 77, MimeType: "audio/mpeg", ByteSize: int64(len(raw))}, "https://files.local/77.mp3", nil
+}
+
+// 语音：POST /v1/audio/speech，音色、格式、语速取模型固定参数；响应是二进制，由宿主落库，插件返回 asset 产物。
+func TestNewAPIAudioSpeech(t *testing.T) {
+	up := &fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte("ID3fake"))
+	}}
+	srv := httptest.NewServer(up)
+	defer srv.Close()
+
+	saver := &fakeSaver{}
+	env := newNewAPIEnv(t, func(o *plugin.Options) { o.Saver = saver })
+	snap := env.snapshot(srv.URL, "audio", promptSchema)
+	snap.Model.Params = map[string]any{"voice": "nova", "format": "mp3", "speed": float64(1.2)}
+	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
+		Task: provider.TaskRef{ID: 7, UserID: 9}, Input: map[string]any{"prompt": "你好，世界"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := up.last()
+	if got.Path != "/v1/audio/speech" || got.Auth != "Bearer sk-newapi" || got.Body["input"] != "你好，世界" ||
+		got.Body["voice"] != "nova" || got.Body["response_format"] != "mp3" || got.Body["speed"] != 1.2 || got.Body["model"] != "up-model" {
+		t.Fatalf("语音请求不符：%+v", got)
+	}
+	if saver.body != "ID3fake" || saver.got.Kind != "audio" || saver.got.UserID != 9 {
+		t.Fatalf("二进制响应应按 audio 落库：%+v %q", saver.got, saver.body)
+	}
+	if sub.Immediate == nil || sub.Immediate.Status != provider.StatusSucceeded || len(sub.Immediate.Outputs) != 1 {
+		t.Fatalf("语音应同步成功：%+v", sub)
+	}
+	out := sub.Immediate.Outputs[0]
+	if out.Type != provider.OutputAsset || out.AssetID != 77 || out.MediaType != "audio" || out.Mime != "audio/mpeg" {
+		t.Fatalf("语音产物不符：%+v", out)
 	}
 }

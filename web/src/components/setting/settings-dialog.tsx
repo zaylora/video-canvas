@@ -63,7 +63,12 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const resetSettings = useSettingsStore((state) => state.resetSettings);
   const [section, setSection] = useState<SectionValue>("canvas");
-  const active = SECTIONS.find((item) => item.value === section) ?? SECTIONS[0];
+  // 服务端下发清单的种类由平台统一托管，不支持自定义模型；一个能自定义的种类都没有时整栏不显示
+  const customKinds = modelGroups.filter((group) => !isRemoteModelKind(group.kind));
+  const sections = SECTIONS.filter(
+    (item) => item.value !== "custom" || customKinds.length > 0,
+  );
+  const active = sections.find((item) => item.value === section) ?? sections[0];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,7 +76,7 @@ export function SettingsDialog({
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-4xl">
         <div className="flex h-[min(34rem,80dvh)] min-h-0">
           <nav className="bg-muted/40 flex w-32 shrink-0 flex-col gap-2 border-r p-3 sm:w-48">
-            {SECTIONS.map((item) => {
+            {sections.map((item) => {
               const selected = item.value === section;
 
               return (
@@ -106,12 +111,7 @@ export function SettingsDialog({
                 {section === "general" && <GeneralPanel />}
                 {section === "model" && <ModelPanel groups={modelGroups} />}
                 {section === "custom" && (
-                  // 视频清单由平台统一托管，暂不支持自定义模型
-                  <CustomModelPanel
-                    kinds={modelGroups.filter(
-                      (group) => !isRemoteModelKind(group.kind),
-                    )}
-                  />
+                  <CustomModelPanel kinds={customKinds} />
                 )}
               </div>
             </ScrollArea>

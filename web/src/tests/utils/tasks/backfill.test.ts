@@ -19,6 +19,14 @@ describe("planBackfill：终态回填节点", () => {
     });
   });
 
+  test("succeeded：图片、音频产物按 media_type 写进 mediaType", () => {
+    for (const [mediaType, url] of [["image", "/files/a.png"], ["audio", "/files/a.mp3"]] as const) {
+      const view = succeeded({ outputs: [{ asset_id: 78, url, media_type: mediaType }] });
+      const patch = planBackfill(makeData({ status: "running", taskId: "1" }), view);
+      expect(patch).toMatchObject({ status: "done", src: url, assetId: "78", mediaType });
+    }
+  });
+
   test("幂等：节点 assetId 已等于结果就跳过", () => {
     const data = makeData({ status: "done", taskId: "1", assetId: "77", src: "/files/a.mp4" });
     expect(planBackfill(data, succeeded())).toBeNull();
