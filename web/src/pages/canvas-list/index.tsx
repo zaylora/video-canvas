@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
+import { Settings2 } from "lucide-react";
 import { createCanvas, getCanvasList } from "@/api/canvas";
 import type { CanvasListItemDto } from "@/api/canvas/type";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAdminStore } from "@/store/admin";
+import { canManageModels } from "@/utils/admin/role";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 
 export default function CanvasList() {
@@ -11,6 +14,12 @@ export default function CanvasList() {
   const [items, setItems] = useState<CanvasListItemDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  /**
+   * 只有“已知是管理员”的会话才显示 AI 配置入口（store 里角色已确认）。
+   * 这里不主动探测角色：普通用户调 /admin/ai/me 会得到 403，拦截器会弹全局 toast，
+   * 而拦截器没有跳过开关；等后端在通用用户接口里带 role 后再改为登录后直接判断。
+   */
+  const isAdmin = useAdminStore((state) => state.status === "ready" && canManageModels(state.role));
   useEffect(() => {
     let active = true;
     void getCanvasList()
@@ -43,9 +52,17 @@ export default function CanvasList() {
     <main className="mx-auto min-h-svh max-w-6xl p-8">
       <header className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">我的画布</h1>
-        <Button disabled={creating} onClick={() => void create()}>
-          {creating ? "正在创建…" : "新建画布"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Link to="/admin/ai" className={buttonVariants({ variant: "outline" })}>
+              <Settings2 />
+              AI 配置
+            </Link>
+          )}
+          <Button disabled={creating} onClick={() => void create()}>
+            {creating ? "正在创建…" : "新建画布"}
+          </Button>
+        </div>
       </header>
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

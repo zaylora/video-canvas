@@ -13,6 +13,7 @@ const KIND_LABEL: Record<string, string> = {
   video: "视频",
   image: "图片",
   audio: "音频",
+  text: "文本",
 };
 
 /** 从当前地址里取出正在看的画布 id；不在画布页返回 null */

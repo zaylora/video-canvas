@@ -161,14 +161,17 @@ export function NodeTextBody({
   return <NodePlaceholderBody icon={icon} label={placeholder} />;
 }
 
-/** 节点里摆得下的素材：图片和视频两类 */
+/** 本地上传能传进画布的素材：图片和视频两类 */
 export type MediaType = "image" | "video";
+
+/** 节点里摆得下的素材：上传的两类，加上生成出来的音频 */
+export type NodeMediaType = MediaType | "audio";
 
 type NodeMediaBodyProps = {
   /** 素材地址 */
   src: string;
-  /** 素材种类，决定用 img 还是 video 渲染 */
-  mediaType: MediaType;
+  /** 素材种类，决定用 img、video 还是 audio 渲染 */
+  mediaType: NodeMediaType;
   /** 图片替代文字 */
   alt?: string;
   /** 摆在素材下面的一行小字，通常是文件名 */
@@ -196,6 +199,11 @@ export function NodeMediaBody({
       >
         {mediaType === "image" ? (
           <img src={src} alt={alt} className="size-full object-contain" />
+        ) : mediaType === "audio" ? (
+          // 音频没有画面，播放器居中摆在同一副画幅里
+          <div className="flex size-full items-center justify-center px-4">
+            <audio src={src} controls className="nodrag nowheel w-full" />
+          </div>
         ) : (
           // nodrag 让拖进度条不至于把节点跟着拽走，nowheel 把滚轮留给画布
           <video

@@ -4,33 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
-	. "video-canvas/internal/repository"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
+	. "video-canvas/internal/repository"
 )
 
-// aicRepoTestDB 连接专用测试库并迁移 AI 配置相关的表；未设置 TEST_DATABASE_DSN 时跳过。
+// aicRepoTestDB 为本用例创建独立 schema 并迁移 AI 配置相关的表；未设置 TEST_DATABASE_DSN 时跳过。
 func aicRepoTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_DSN")
-	if dsn == "" {
-		t.Skip("未设置 TEST_DATABASE_DSN，跳过仓储集成测试")
-	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
-	if err != nil {
-		t.Fatalf("连接测试库失败：%v", err)
-	}
-	if err := db.AutoMigrate(&model.AIProvider{}, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{}); err != nil {
-		t.Fatalf("迁移失败：%v", err)
-	}
-	return db
+	return isolatedDB(t, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
 }
 
 // aicRepoUnique 生成本用例独有的 key，避免用例之间互相污染。
@@ -41,7 +27,7 @@ func aicRepoUnique(prefix string) string {
 func aicRepoSaveModel(t *testing.T, r *AIConfigRepository, key, body string) *model.AIConfigRevision {
 	t.Helper()
 	rev, err := r.SaveDraft(context.Background(), SaveDraftInput{
-		Pointer: ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video", ProviderKey: "p1"},
+		Pointer: ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video"},
 		Body:    []byte(body), CreatedBy: 7, Note: "n", InitialEnabled: false, InitialSort: 50,
 	})
 	if err != nil {
@@ -96,27 +82,15 @@ func TestAIConfigRepository_SaveDraft(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := r.SaveDraft(ctx, SaveDraftInput{
-			Pointer: ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "image", ProviderKey: "p2"},
+			Pointer: ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "image"},
 			Body:    []byte(`{"a":3}`), InitialEnabled: false, InitialSort: 999,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		p, _ := r.GetModelPointer(ctx, key)
-		if !p.Enabled || p.Sort != 7 || p.Kind != "image" || p.ProviderKey != "p2" {
+		if !p.Enabled || p.Sort != 7 || p.Kind != "image" {
 			t.Fatalf("指针行不符合预期：%+v", p)
-		}
-	})
-
-	t.Run("平台草稿同步 name", func(t *testing.T) {
-		pk := aicRepoUnique("prov")
-		_, err := r.SaveDraft(ctx, SaveDraftInput{Pointer: ConfigPointer{Target: model.ConfigTargetProvider, Key: pk, Name: "平台A"}, Body: []byte(`{}`)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		p, err := r.GetProviderPointer(ctx, pk)
-		if err != nil || p.Name != "平台A" {
-			t.Fatalf("%+v %v", p, err)
 		}
 	})
 }
@@ -126,7 +100,7 @@ func TestAIConfigRepository_PublishAndRollback(t *testing.T) {
 	r := NewAIConfigRepository(db)
 	ctx := context.Background()
 	key := aicRepoUnique("m")
-	ptr := ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video", ProviderKey: "p1"}
+	ptr := ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video"}
 
 	v1 := aicRepoSaveModel(t, r, key, `{"v":1}`)
 
@@ -221,65 +195,39 @@ func TestAIConfigRepository_LoadPublished(t *testing.T) {
 	r := NewAIConfigRepository(db)
 	ctx := context.Background()
 
-	pk := aicRepoUnique("prov")
-	pptr := ConfigPointer{Target: model.ConfigTargetProvider, Key: pk, Name: "P"}
-	pd, err := r.SaveDraft(ctx, SaveDraftInput{Pointer: pptr, Body: []byte(`{"key":"x"}`)})
-	if err != nil {
-		t.Fatal(err)
-	}
 	mk := aicRepoUnique("m")
-	mptr := ConfigPointer{Target: model.ConfigTargetModel, Key: mk, Kind: "image", ProviderKey: pk}
+	mptr := ConfigPointer{Target: model.ConfigTargetModel, Key: mk, Kind: "image"}
 	md := aicRepoSaveModel(t, r, mk, `{"key":"y"}`)
 	unpub := aicRepoUnique("unpub")
 	aicRepoSaveModel(t, r, unpub, `{}`)
 
-	if _, err := r.PublishDraft(ctx, pptr, pd.ID); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := r.PublishDraft(ctx, mptr, md.ID); err != nil {
 		t.Fatal(err)
-	}
-
-	provs, err := r.LoadPublishedProviders(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	foundP := false
-	for _, p := range provs {
-		if p.Key == pk {
-			foundP = true
-			if p.RevisionID != pd.ID || p.Name != "P" || len(p.Body) == 0 {
-				t.Fatalf("已发布平台不符合预期：%+v", p)
-			}
-		}
-	}
-	if !foundP {
-		t.Fatal("已发布平台未出现在加载结果里")
 	}
 
 	models, err := r.LoadPublishedModels(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	foundM, foundUnpub := false, false
-	for _, m := range models {
-		if m.Key == mk {
-			foundM = true
-			if m.RevisionID != md.ID || m.Kind != "image" || m.ProviderKey != pk || len(m.Body) == 0 || m.Sort != 50 {
-				t.Fatalf("已发布模型不符合预期：%+v", m)
-			}
-		}
-		if m.Key == unpub {
-			foundUnpub = true
-		}
+	if len(models) != 1 {
+		t.Fatalf("只应加载已发布的模型，实际 %d 个：%+v", len(models), models)
 	}
-	if !foundM || foundUnpub {
-		t.Fatalf("加载结果不符合预期：found=%v unpublishedFound=%v", foundM, foundUnpub)
+	if m := models[0]; m.Key != mk || m.RevisionID != md.ID || m.Kind != "image" || len(m.Body) == 0 || m.Sort != 50 || m.Enabled {
+		t.Fatalf("已发布模型不符合预期：%+v", m)
 	}
 
 	heads, err := r.ListRevisionHeads(ctx, model.ConfigTargetModel, false)
-	if err != nil || len(heads) == 0 {
-		t.Fatalf("ListRevisionHeads 异常：%v", err)
+	if err != nil || len(heads) != 2 {
+		t.Fatalf("ListRevisionHeads 应返回已发布与未发布模型各一个 head：%v %d", err, len(heads))
+	}
+	for _, h := range heads {
+		if len(h.BodyJSON) != 0 {
+			t.Fatalf("withBody=false 不应带正文：%+v", h)
+		}
+	}
+	withBody, err := r.ListRevisionHeads(ctx, model.ConfigTargetModel, true)
+	if err != nil || len(withBody) != 2 || len(withBody[0].BodyJSON) == 0 {
+		t.Fatalf("withBody=true 应带正文：%v %+v", err, withBody)
 	}
 }
 

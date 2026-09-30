@@ -1,11 +1,12 @@
 package worker
 
 import (
+	"path"
 	"strings"
 	"time"
 
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
+	"video-canvas/internal/provider/pluginmeta"
 )
 
 // 仅 worker 内部使用的伪分类，用来复用 failureFor 的统一映射。
@@ -26,7 +27,8 @@ const (
 )
 
 // failureFor 把错误分类映射成（统一错误码，给用户看的文案）。
-// 文案是固定的，不带任何平台原始信息；原始信息只进日志。
+// 文案是固定的，不带任何上游或插件的原始信息；原始信息只进日志。插件级失败（异常、超时、结构不合规、runner 崩溃）
+// 的分类是 terminal / retryable，同样落到“平台繁忙”，用户看不到插件的存在。
 func failureFor(class provider.ErrorClass, platformCode string) (code, message string) {
 	switch class {
 	case provider.ClassModeration:
@@ -46,7 +48,7 @@ func failureFor(class provider.ErrorClass, platformCode string) (code, message s
 	return codeProviderError, "平台繁忙，请稍后重试"
 }
 
-// 轮询与退避的默认值（平台配置没写时使用）。
+// 轮询与退避的默认值（插件 meta.poll 没写时使用，见 backend/docs/plugin-contract.md §2）。
 const (
 	defaultFirstDelay  = 10 * time.Second
 	defaultInterval    = 5 * time.Second
@@ -54,29 +56,44 @@ const (
 	defaultJitter      = 0.2
 )
 
-// firstDelay 是提交成功后第一次查询的延迟，缺省 10 秒。
-func firstDelay(p dsl.PollConfig) time.Duration {
-	if d := p.FirstDelay.D(); d > 0 {
-		return d
+// seconds 把 meta.poll 里以秒为单位的数值换成 time.Duration；非正数返回 0，由调用方回落到默认值。
+func seconds(v float64) time.Duration {
+	if v <= 0 {
+		return 0
+	}
+	return time.Duration(v * float64(time.Second))
+}
+
+// firstDelay 是提交成功后第一次查询的延迟，插件没声明时缺省 10 秒。
+func firstDelay(p *pluginmeta.PollMeta) time.Duration {
+	if p != nil {
+		if d := seconds(p.FirstDelay); d > 0 {
+			return d
+		}
 	}
 	return defaultFirstDelay
 }
 
-// pollDelay 是第 attempts 次查询之后到下一次查询的间隔：从 interval 起每次翻倍，封顶 max_interval，
-// 再加 ±jitter 抖动（避免大量任务同时查询）。缺省 5s → 15s、20%。attempts 从 1 开始。
-func pollDelay(p dsl.PollConfig, attempts int, rnd func() float64) time.Duration {
-	interval := p.Interval.D()
+// pollDelay 是第 attempts 次查询之后到下一次查询的间隔：从 interval 起每次翻倍，封顶 maxInterval，
+// 再加 ±jitter 抖动（避免大量任务同时查询）。缺省 5s → 15s、20%。attempts 从 1 开始；p 为 nil 全部用默认值。
+func pollDelay(p *pluginmeta.PollMeta, attempts int, rnd func() float64) time.Duration {
+	var cfg pluginmeta.PollMeta
+	if p != nil {
+		cfg = *p
+	}
+	interval := seconds(cfg.Interval)
 	if interval <= 0 {
 		interval = defaultInterval
 	}
-	maxInterval := p.MaxInterval.D()
+	maxInterval := seconds(cfg.MaxInterval)
 	if maxInterval <= 0 {
 		maxInterval = defaultMaxInterval
 	}
+	// 插件把封顶值写得比起始间隔还小时，以起始间隔为准，避免间隔越退越短
 	if maxInterval < interval {
 		maxInterval = interval
 	}
-	jitter := p.Jitter
+	jitter := cfg.Jitter
 	if jitter <= 0 {
 		jitter = defaultJitter
 	}
@@ -117,7 +134,7 @@ func applyJitter(d time.Duration, ratio float64, rnd func() float64) time.Durati
 	return time.Duration(float64(d) * factor)
 }
 
-// extOf 根据平台给的产物类型（如 mp4）生成文件扩展名；只保留字母数字，避免奇怪的文件名。
+// extOf 根据产物类型（如 mp4）生成文件扩展名；只保留字母数字，避免奇怪的文件名。
 func extOf(typ string) string {
 	typ = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(typ)), ".")
 	if typ == "" || len(typ) > 8 {
@@ -129,4 +146,46 @@ func extOf(typ string) string {
 		}
 	}
 	return "." + typ
+}
+
+// mimeSubtypeExt 是子类型名与常用扩展名不一致的 MIME。不用标准库 mime.ExtensionsByType：
+// 它在 Windows 上读注册表，结果随机器而变。
+var mimeSubtypeExt = map[string]string{
+	"mpeg":      "mp3",
+	"quicktime": "mov",
+	"jpeg":      "jpg",
+	"x-wav":     "wav",
+	"x-m4a":     "m4a",
+	"svg+xml":   "svg",
+}
+
+// extOfMime 由 MIME（如 video/mp4、audio/mpeg; charset=…）推断扩展名，推断不出返回空串。
+func extOfMime(mime string) string {
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	if i := strings.IndexByte(mime, ';'); i >= 0 {
+		mime = strings.TrimSpace(mime[:i])
+	}
+	_, sub, ok := strings.Cut(mime, "/")
+	if !ok {
+		return ""
+	}
+	if e, found := mimeSubtypeExt[sub]; found {
+		sub = e
+	}
+	return extOf(sub)
+}
+
+// fileExt 给转存的产物挑一个扩展名：插件声明的 MIME 优先，其次下载响应的 Content-Type，最后看 URL 路径的后缀。
+func fileExt(declaredMime, contentType, rawURL string) string {
+	if e := extOfMime(declaredMime); e != "" {
+		return e
+	}
+	if e := extOfMime(contentType); e != "" {
+		return e
+	}
+	p := rawURL
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i]
+	}
+	return extOf(path.Ext(p))
 }

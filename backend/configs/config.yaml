@@ -39,14 +39,21 @@ jwt:
 ai:
   max_active_tasks_per_user: 4 # 每个用户进行中的任务上限
   initial_credits: 50 # 新用户初始积分（本期不做充值）
-  webhook_base_url: "" # 为空时不注册 callback，纯轮询；配置公网地址后启用 webhook 加速
-  # webhook_secret 与 secret_key 只通过环境变量 APP_AI_WEBHOOK_SECRET / APP_AI_SECRET_KEY 提供
+  # secret_key（加解密渠道 Key 的主密钥）只通过环境变量 APP_AI_SECRET_KEY 提供
+  plugin_runner: # 协议插件的沙箱执行进程，见 docs/design/协议插件设计.md 6.4
+    mode: spawn # spawn（主服务把自己作为 plugin-runner 子进程拉起，开发用）| external（连独立容器，生产用）| inprocess（同进程无隔离，仅测试排障）
+    network: tcp # unix | tcp；生产用 unix（共享卷里的 socket），开发用本机回环 tcp
+    address: 127.0.0.1:47650 # tcp 是 host:port；unix 是 socket 路径，如 /run/plugin-runner/runner.sock
+    hook_timeout: 1s # 单次钩子调用时限
+    pool_size: 8 # 每个插件版本最多的 goja Runtime 数
+    memory_limit_mb: 512 # spawn 模式下子进程的 GOMEMLIMIT 软限制；生产环境由容器 mem_limit 兜底
+    startup_wait: 15s # 启动时等 runner 就绪的最长时间
   worker:
     enabled: true
-    concurrency: 8
-    tick: 1s
-    batch_size: 50
-    lease: 60s
+    concurrency: 8 # 每个 worker 并发数
+    tick: 1s # worker 每次轮询任务的间隔
+    batch_size: 50 # 每次轮询任务的批量大小
+    lease: 60s # worker 处理任务的租约时长，超过这个时间未完成的任务会被其他 worker 重新抢占
 
 storage:
   driver: local # local（仅开发）| s3（S3 兼容，含阿里云 OSS）

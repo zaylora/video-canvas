@@ -23,7 +23,7 @@ export interface PersistedCanvasNodeDto {
     /** 产出或上传素材的地址 */
     src?: string | null
     /** src 素材的媒体类型 */
-    mediaType?: 'image' | 'video'
+    mediaType?: 'image' | 'video' | 'audio'
     /** 服务端素材记录 ID */
     assetId?: string
     /** 素材是否为本机上传 */

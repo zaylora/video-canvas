@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -42,6 +43,7 @@ type GenerationTaskRepository struct {
 	db *gorm.DB
 }
 
+// NewGenerationTaskRepository 创建生成任务与积分仓储。
 func NewGenerationTaskRepository(db *gorm.DB) *GenerationTaskRepository {
 	return &GenerationTaskRepository{db: db}
 }
@@ -291,4 +293,18 @@ func (r *GenerationTaskRepository) Reconcile(ctx context.Context, userID uint64)
 		return nil, err
 	}
 	return out, nil
+}
+
+// SaveTrace 写入试跑任务的执行追踪（trace_json，已脱敏）。只更新 is_test 任务（WHERE id=? AND is_test=TRUE），
+// 不改状态、不 bump version；任务不存在或不是试跑任务返回 ErrNotFound。
+func (r *GenerationTaskRepository) SaveTrace(ctx context.Context, id uint64, trace datatypes.JSON) error {
+	res := r.db.WithContext(ctx).Model(&model.GenerationTask{}).
+		Where("id = ? AND is_test = TRUE", id).Update("trace_json", trace)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

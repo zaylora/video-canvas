@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatJsonText, parseJsonText, readConfigKey } from "@/utils/admin/json";
+import { findPathInJson, formatJsonText, parseJsonText, readConfigKey } from "@/utils/admin/json";
 
 describe("parseJsonText", () => {
   test("合法 JSON", () => {
@@ -33,5 +33,43 @@ describe("formatJsonText / readConfigKey", () => {
     expect(readConfigKey({ key: 3 })).toBe("");
     expect(readConfigKey(null)).toBe("");
     expect(readConfigKey([])).toBe("");
+  });
+});
+
+describe("findPathInJson", () => {
+  const text = JSON.stringify(
+    {
+      key: "a",
+      channels: [{ channel: "c", upstream_model: "" }],
+      input_schema: { prompt: { type: "text" }, image: { type: "image" } },
+    },
+    null,
+    2,
+  );
+
+  test("顶层键定位到所在行", () => {
+    const hit = findPathInJson(text, "key");
+    expect(hit?.line).toBe(2);
+    expect(text.slice(hit!.index, hit!.index + hit!.length)).toBe('"key"');
+  });
+
+  test("数组下标被跳过，命中最后一段键名", () => {
+    const hit = findPathInJson(text, "channels[0].upstream_model");
+    expect(text.slice(hit!.index, hit!.index + hit!.length)).toBe('"upstream_model"');
+    expect(hit!.line).toBe(6);
+  });
+
+  test("按顺序逐段找，避免命中前面同名的键", () => {
+    const hit = findPathInJson(text, "input_schema.image.type");
+    const before = text.slice(0, hit!.index);
+    expect(before.includes('"image"')).toBe(true);
+    expect(text.slice(hit!.index, hit!.index + hit!.length)).toBe('"type"');
+  });
+
+  test("中途找不到就停在已命中的最深一段；完全找不到返回 null", () => {
+    const partial = findPathInJson(text, "input_schema.nope.deep");
+    expect(text.slice(partial!.index, partial!.index + partial!.length)).toBe('"input_schema"');
+    expect(findPathInJson(text, "missing")).toBeNull();
+    expect(findPathInJson(text, "")).toBeNull();
   });
 });

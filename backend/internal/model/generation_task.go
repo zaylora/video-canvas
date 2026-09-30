@@ -23,6 +23,7 @@ const (
 	KindVideo = "video" // 视频
 	KindImage = "image" // 图片
 	KindAudio = "audio" // 音频
+	KindText  = "text"  // 文本（同步出正文，没有素材转存）
 )
 
 // ActiveTaskStatuses 是所有非终态，用于并发统计、worker 调度和对账。
@@ -44,10 +45,10 @@ type GenerationTask struct {
 	UserID          uint64         `gorm:"not null;index:idx_task_user_status,priority:1;uniqueIndex:uk_task_user_idem,priority:1,where:idempotency_key <> ''" json:"user_id"` // 所属用户
 	CanvasProjectID *uint64        `gorm:"index" json:"canvas_project_id"`                                                                                                     // 所属画布，可空
 	NodeID          string         `gorm:"size:64;not null;default:''" json:"node_id"`                                                                                         // 前端节点 id
-	Kind            string         `gorm:"size:16;not null" json:"kind"`                                                                                                       // video / image / audio
+	Kind            string         `gorm:"size:16;not null" json:"kind"`                                                                                                       // video / image / audio / text
 	ModelKey        string         `gorm:"column:model_id;size:128;not null" json:"model_id"`                                                                                  // 模型 key（ai_models.key）
 	Provider        string         `gorm:"size:64;not null" json:"provider"`                                                                                                   // 平台 key
-	ProviderTaskID  string         `gorm:"size:128;not null;default:'';index:idx_task_provider,priority:2" json:"-"`                                                           // 平台任务 id，提交成功后才有
+	ProviderTaskID  string         `gorm:"size:128;not null;default:'';index:idx_task_provider,priority:2" json:"-"`                                                           // 上游任务 id，提交成功后才有
 	Status          string         `gorm:"size:16;not null;index:idx_task_user_status,priority:2" json:"status"`                                                               // 任务状态，取值见 Task* 常量
 	Progress        *int           `json:"progress"`                                                                                                                           // 0–100，平台不提供时为空
 	InputJSON       datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                       // 已校验的规范化输入
@@ -57,7 +58,10 @@ type GenerationTask struct {
 	Credits         int            `gorm:"not null;default:0" json:"credits"`                                                                                                  // 冻结的积分快照
 	Version         int64          `gorm:"not null;default:1" json:"version"`                                                                                                  // 每次状态变化 +1
 	IdempotencyKey  string         `gorm:"size:128;not null;default:'';uniqueIndex:uk_task_user_idem,priority:2,where:idempotency_key <> ''" json:"-"`                         // 幂等键（Idempotency-Key 请求头），同一用户下唯一
-	ConfigSnapshot  datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                       // 创建时 provider + model 的发布版本快照
+	ConfigSnapshot  datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                       // 创建时 model revision + 渠道配置 + 插件版本哈希的快照（provider.Snapshot，不含 Key）
+	ProviderState   datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                // 插件私有状态（≤64KB），由宿主持久化后下次传回插件
+	ProviderResult  datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                // 同步接口的即时结果（[]provider.Output），转存前落库，重启后继续转存而不重复调用上游
+	TraceJSON       datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                // 仅 is_test：插件钩子与 HTTP 的执行追踪（已脱敏），管理端试跑面板展示
 	IsTest          bool           `gorm:"not null;default:false" json:"is_test"`                                                                                              // 运营试跑：不扣积分、不推送
 	NextPollAt      time.Time      `gorm:"not null" json:"-"`                                                                                                                  // worker 调度依据（部分索引由迁移补建）
 	PollAttempts    int            `gorm:"not null;default:0" json:"-"`                                                                                                        // 已轮询次数
@@ -73,9 +77,10 @@ func (GenerationTask) TableName() string { return "generation_tasks" }
 
 // TaskOutput 是 output_json 里的一项：已转存到自有存储的产物。
 type TaskOutput struct {
-	AssetID      uint64 `json:"asset_id"`                 // 素材 ID
-	URL          string `json:"url"`                      // 访问地址
-	MediaType    string `json:"media_type"`               // video / image / audio
+	AssetID      uint64 `json:"asset_id,omitempty"`       // 素材 ID（text 没有）
+	URL          string `json:"url,omitempty"`            // 访问地址（text 没有）
+	MediaType    string `json:"media_type"`               // video / image / audio / text
+	Text         string `json:"text,omitempty"`           // media_type=text 时的正文
 	DurationMs   int64  `json:"duration_ms,omitempty"`    // 时长（毫秒）
 	Width        int    `json:"width,omitempty"`          // 宽度（像素）
 	Height       int    `json:"height,omitempty"`         // 高度（像素）
@@ -87,7 +92,7 @@ type GenerationTaskView struct {
 	ID              uint64       `json:"id"`            // 任务 ID
 	CanvasProjectID *uint64      `json:"canvas_id"`     // 所属画布
 	NodeID          string       `json:"node_id"`       // 前端节点 id
-	Kind            string       `json:"kind"`          // video / image / audio
+	Kind            string       `json:"kind"`          // video / image / audio / text
 	ModelID         string       `json:"model_id"`      // 模型 key
 	Status          string       `json:"status"`        // 任务状态
 	Progress        *int         `json:"progress"`      // 0–100，平台不提供时为空
@@ -103,11 +108,11 @@ type GenerationTaskView struct {
 
 // CreateGenerationTaskReq 提交任务。Idempotency-Key 走请求头，不在 body 里。
 type CreateGenerationTaskReq struct {
-	Kind     string         `json:"kind" binding:"required,oneof=video image audio" label:"生成种类"` // video / image / audio
-	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`               // 模型 key
-	CanvasID uint64         `json:"canvas_id" label:"画布"`                                         // 所属画布，可不传
-	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                          // 前端节点 id
-	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                        // 生成参数，按模型的 input_schema 校验
+	Kind     string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
+	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
+	CanvasID uint64         `json:"canvas_id" label:"画布"`                                              // 所属画布，可不传
+	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id
+	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 input_schema 校验
 }
 
 // ListGenerationTaskReq 对账查询：ids（逗号分隔，最多 100 个）与 status=active 二选一。

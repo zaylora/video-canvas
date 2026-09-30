@@ -64,14 +64,26 @@ type JWT struct {
 	ExpireHours int    `mapstructure:"expire_hours"`
 }
 
-// AI 生成任务相关配置。平台协议、模型、凭证不在这里，存在数据库里（见平台协议配置化设计）。
+// AI 生成任务相关配置。协议插件、渠道、模型、凭证不在这里，存在数据库里（见协议插件设计）。
 type AI struct {
-	MaxActiveTasksPerUser int    `mapstructure:"max_active_tasks_per_user"` // 每个用户进行中任务上限
-	InitialCredits        int    `mapstructure:"initial_credits"`           // 新用户初始积分
-	WebhookBaseURL        string `mapstructure:"webhook_base_url"`          // 为空时不注册 callback，纯轮询
-	WebhookSecret         string `mapstructure:"webhook_secret"`            // 回调路径里的密钥，只通过环境变量提供
-	SecretKey             string `mapstructure:"secret_key"`                // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
-	Worker                Worker `mapstructure:"worker"`
+	MaxActiveTasksPerUser int          `mapstructure:"max_active_tasks_per_user"` // 每个用户进行中任务上限
+	InitialCredits        int          `mapstructure:"initial_credits"`           // 新用户初始积分
+	SecretKey             string       `mapstructure:"secret_key"`                // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
+	Worker                Worker       `mapstructure:"worker"`
+	PluginRunner          PluginRunner `mapstructure:"plugin_runner"`
+}
+
+// PluginRunner 是 plugin-runner 进程（协议插件的沙箱执行环境）的部署与预算配置。
+// 生产环境 runner 是独立容器（network_mode: none、mem_limit、restart: always），经共享卷里的 Unix socket 通信，mode 用 external；
+// 开发环境（含 Windows）mode 用 spawn：主服务把自己的二进制以 plugin-runner 子命令拉起来，设 GOMEMLIMIT 软限制，崩溃后自动重启。
+type PluginRunner struct {
+	Mode        string        `mapstructure:"mode"`            // spawn（主服务拉起子进程）| external（连已有的 runner）| inprocess（同进程，无隔离，只给测试和排障）
+	Network     string        `mapstructure:"network"`         // unix | tcp
+	Address     string        `mapstructure:"address"`         // unix 是 socket 路径，tcp 是 host:port（开发默认 127.0.0.1:47650）
+	HookTimeout time.Duration `mapstructure:"hook_timeout"`    // 单次钩子调用时限，默认 200ms（提案值，压测后定）
+	PoolSize    int           `mapstructure:"pool_size"`       // 每个插件版本最多的 goja Runtime 数，默认 8
+	MemoryLimit int64         `mapstructure:"memory_limit_mb"` // spawn 模式下子进程的 GOMEMLIMIT（MiB），默认 512
+	StartupWait time.Duration `mapstructure:"startup_wait"`    // 启动时等 runner 就绪的最长时间，默认 15s
 }
 
 // Worker 是任务调度参数。
@@ -124,7 +136,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	// 没写进 YAML 的项也要能被环境变量覆盖（viper 只会为已知的 key 读取环境变量）
-	for _, key := range []string{"ai.secret_key", "ai.webhook_secret", "storage.s3.access_key", "storage.s3.secret_key"} {
+	for _, key := range []string{"ai.secret_key", "storage.s3.access_key", "storage.s3.secret_key"} {
 		_ = v.BindEnv(key)
 	}
 

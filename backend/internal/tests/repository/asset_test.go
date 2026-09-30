@@ -6,13 +6,13 @@ import (
 	"os"
 	"testing"
 	"time"
-	. "video-canvas/internal/repository"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
+	. "video-canvas/internal/repository"
 )
 
 // assetRepoTestDB 连接专用测试库并迁移 assets 表；未设置 TEST_DATABASE_DSN 时跳过。

@@ -55,7 +55,7 @@ make run
 | DELETE | /api/v1/users/:id | 删除用户（软删除） |
 | POST | /api/v1/auth/register、/api/v1/auth/login | 注册 / 登录 |
 | GET/POST/PUT/DELETE | /api/v1/canvas[/:id] | 画布项目（乐观锁 revision） |
-| GET | /api/v1/models?kind=video | 模型清单（已发布且启用，含 input_schema，不含平台细节） |
+| GET | /api/v1/models?kind=video | 模型清单（`kind` 取 video / image / audio / text；已发布且启用，含 input_schema，不含渠道与插件细节） |
 | POST | /api/v1/generation-tasks | 提交生成任务，请求头 `Idempotency-Key`，返回 **202** + 任务快照；错误码 40001 积分不足(402)、40002 并发已满(429)、40003 模型不可用、40006 参数不合法 |
 | GET | /api/v1/generation-tasks/:id | 单个任务 |
 | GET | /api/v1/generation-tasks?ids=1,2,3 / ?status=active | 批量对账（≤100）/ 当前用户进行中的任务 |
@@ -63,31 +63,42 @@ make run
 | GET | /api/v1/credits | 积分余额 `{balance, frozen, available}`（新用户初始 50） |
 | POST | /api/v1/ws/ticket | 换取一次性 WebSocket ticket（30s 有效） |
 | GET | /api/v1/ws?ticket=… | WebSocket 升级，推送 `task.updated`（无需 JWT，身份由 ticket 决定） |
-| POST | /api/v1/webhooks/:provider/:secret | 平台回调，只触发立即轮询，不信任内容；`ai.webhook_secret` 未配置时 404 |
 | POST | /api/v1/assets | 上传素材（multipart，字段 `file`） |
 | GET | /api/v1/assets/:id | 素材信息（URL 每次现生成） |
 | GET | /files/* | 本地存储的静态文件（仅 `storage.driver=local`，开发用） |
 
-### AI 配置管理（需要 admin 角色）
+### AI 管理接口（admin / super_admin）
 
-提升管理员：`UPDATE users SET role = 'admin' WHERE username = 'xxx';`（角色最多缓存 30 秒）。
-配置存在数据库里，发布后热生效，详见 [平台协议配置化设计](../docs/design/平台协议配置化设计.md)。
-平台凭证只写不读，主密钥来自环境变量 `APP_AI_SECRET_KEY`；首次启动会自动种下并发布 `runninghub` 平台，
-需要管理员调用 `PUT /api/v1/admin/ai/secrets/runninghub_api_key` 设置 Key。
+角色：`user` / `admin`（运营，管模型）/ `super_admin`（运维，装插件、管渠道与 Key）。管理接口读与模型相关写要求 `admin` 或 `super_admin`；
+插件与渠道的写接口只有 `super_admin`，`admin` 调用返回 403（10004）。首个 `super_admin` 只能用 SQL 提升：
+`UPDATE users SET role = 'super_admin' WHERE username = 'xxx';`（角色最多缓存 30 秒）。
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET/POST | /api/v1/admin/ai/{providers,models} | 列表 / 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦） |
-| GET/PUT | /api/v1/admin/ai/{providers,models}/:key | 详情（草稿 + 已发布） / 更新草稿 |
-| POST | /api/v1/admin/ai/{providers,models}/:key/validate | 校验（错误精确到 JSON 路径） |
-| POST | /api/v1/admin/ai/{providers,models}/:key/publish、/rollback | 发布 / 回滚（`{revision_id}`） |
-| GET | /api/v1/admin/ai/{providers,models}/:key/revisions[/:rid] | 版本历史 |
-| POST | /api/v1/admin/ai/models/:key/dry-run | 渲染请求但不发送（凭证脱敏） |
-| POST | /api/v1/admin/ai/models/:key/test-run | 用草稿真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询 |
-| PUT | /api/v1/admin/ai/models/:key/enabled、/sort | 上下架 / 排序 |
-| POST | /api/v1/admin/ai/import/runninghub | `{webapp_id}` 自动导入节点，返回模型草稿建议（不落库） |
-| GET/PUT | /api/v1/admin/ai/secrets[/:name] | 凭证：只返回是否已设置；PUT 只写 |
-| GET | /api/v1/admin/ai/schema/:target | DSL 的 JSON Schema |
+协议由**插件**（JS，跑在独立的 plugin-runner 进程里）实现，渠道固定一个插件版本 + 地址 + 加密的 Key，模型绑定渠道。
+内置插件（`plugins/newapi.js`）启动时按 key + version 自动登记，不能删除。渠道 Key 只写不读，主密钥来自环境变量 `APP_AI_SECRET_KEY`。
+完整的请求 / 响应见 [admin-ai-api.md](docs/admin-ai-api.md)，插件契约见 [plugin-contract.md](docs/plugin-contract.md)。
+
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| GET | /api/v1/admin/ai/me | admin | 当前用户 `{user_id, role}`，前端据此隐藏写操作 |
+| GET | /api/v1/admin/ai/plugins | admin | 插件与版本列表（含 meta、渠道数） |
+| POST | /api/v1/admin/ai/plugins | super_admin | 上传插件（multipart，字段 `file`）；预检不通过也返回 200，`accepted=false` + `issues` |
+| PUT | /api/v1/admin/ai/plugins/:key/enabled | super_admin | 启停插件 |
+| DELETE | /api/v1/admin/ai/plugins/:key/versions/:version | super_admin | 删除未被引用的版本（内置插件 / 仍被引用返回 409） |
+| GET | /api/v1/admin/ai/channels[/:key] | admin | 渠道列表 / 详情（`secret_set` 只告诉有没有设置 Key） |
+| POST | /api/v1/admin/ai/channels | super_admin | 新建渠道 |
+| PUT | /api/v1/admin/ai/channels/:key | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本） |
+| PUT | /api/v1/admin/ai/channels/:key/secret | super_admin | 设置渠道 Key（只写） |
+| POST | /api/v1/admin/ai/channels/:key/check | super_admin | 连通性检查 |
+| POST | /api/v1/admin/ai/channels/:key/import | admin | 从渠道导入模型草稿（只预填，不落库） |
+| GET/POST | /api/v1/admin/ai/models | admin | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦） |
+| GET/PUT | /api/v1/admin/ai/models/:key | admin | 详情（草稿 + 已发布） / 更新草稿 |
+| POST | /api/v1/admin/ai/models/:key/validate | admin | 校验（错误精确到 JSON 路径） |
+| POST | /api/v1/admin/ai/models/:key/publish、/rollback | admin | 发布 / 回滚（`{revision_id}`） |
+| GET | /api/v1/admin/ai/models/:key/revisions[/:rid] | admin | 版本历史 |
+| POST | /api/v1/admin/ai/models/:key/dry-run | admin | 渲染请求描述但不发送（不含注入后的鉴权头，凭证脱敏） |
+| POST | /api/v1/admin/ai/models/:key/test-run | admin | 用草稿真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪 |
+| PUT | /api/v1/admin/ai/models/:key/enabled、/sort | admin | 上下架 / 排序 |
+| GET | /api/v1/admin/ai/schema/model | admin | 模型配置的 JSON Schema |
 
 统一响应格式：
 

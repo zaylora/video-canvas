@@ -29,6 +29,7 @@ import {
   ANIMATED_EDGE_OPTIONS,
   BACKGROUND_VARIANTS,
   NODE_LIBRARY,
+  REMOTE_KIND_OF_NODE,
   UPLOAD_ACCEPT,
   UPLOAD_ACTION,
   UPLOAD_NOTICE_CLASS,
@@ -43,7 +44,11 @@ import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE, useSettingsStore } from "@/store";
 import type { NodeKind, UploadNotice } from "@/types";
-import { getAllowedKinds, getModelOptions } from "@/utils/canvas/canvas";
+import {
+  getAllowedKinds,
+  getModelOptions,
+  pruneRemoteDefaults,
+} from "@/utils/canvas/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import {
@@ -117,15 +122,30 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
   const { activeTool, toggleTool } = useCanvasTool();
   // 画布把设置里的几项都用上了，整份订阅，省去逐个 selector
   const settings = useSettingsStore();
-  const { options: videoModelOptions, status: videoModelsStatus } = useRemoteModels("video");
-  // 视频清单由服务端下发：设置里存的默认模型可能是旧演示清单里的 id，
-  // 清单没加载好或里面找不到时就不往新节点上写，让节点自己落到清单第一条，免得一建出来就是「已下线」
-  const defaultModels = useMemo(() => {
-    const { video, ...rest } = settings.defaultModels;
-    const usable =
-      videoModelsStatus === "ready" && videoModelOptions.some((option) => option.id === video);
-    return usable ? settings.defaultModels : rest;
-  }, [settings.defaultModels, videoModelOptions, videoModelsStatus]);
+  const video = useRemoteModels(REMOTE_KIND_OF_NODE.video);
+  const text = useRemoteModels(REMOTE_KIND_OF_NODE.script);
+  const image = useRemoteModels(REMOTE_KIND_OF_NODE.image);
+  const audio = useRemoteModels(REMOTE_KIND_OF_NODE.audio);
+  const remoteModels = useMemo(
+    () => ({
+      video: { status: video.status, options: video.options },
+      script: { status: text.status, options: text.options },
+      image: { status: image.status, options: image.options },
+      audio: { status: audio.status, options: audio.options },
+    }),
+    [
+      audio.options, audio.status, image.options, image.status,
+      text.options, text.status, video.options, video.status,
+    ],
+  );
+  /**
+   * 四种节点的清单都由服务端下发：设置里存的默认模型可能是旧演示清单里的 id，
+   * 对不上就不往新节点上写
+   */
+  const defaultModels = useMemo(
+    () => pruneRemoteDefaults(settings.defaultModels, remoteModels),
+    [remoteModels, settings.defaultModels],
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const {
     menu,
@@ -165,9 +185,13 @@ export function Flow({ canvas, onConflict }: { canvas: CanvasDetailDto; onConfli
         kind: meta.kind,
         label: meta.label,
         icon: <meta.icon />,
-        models: getModelOptions(meta.kind, settings.customModels, videoModelOptions),
+        models: getModelOptions(
+          meta.kind,
+          settings.customModels,
+          remoteModels[meta.kind as keyof typeof remoteModels]?.options,
+        ),
       })).filter((group) => group.models.length > 0),
-    [settings.customModels, videoModelOptions],
+    [remoteModels, settings.customModels],
   );
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点

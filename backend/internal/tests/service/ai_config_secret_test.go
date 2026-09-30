@@ -6,14 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 	. "video-canvas/internal/service"
 
-	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/service/aiconfigfake"
 )
@@ -50,58 +48,49 @@ func TestAIConfigService_Secret_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
 
-	if err := svc.SetSecret(ctx, "rh_key", "  sk-very-secret-123\n", 5); err != nil {
+	if err := svc.SetSecret(ctx, "channel:kling-main", "  sk-very-secret-123\n", 5); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("往返一致且首尾空白被去掉", func(t *testing.T) {
-		got, err := svc.Get(ctx, "rh_key")
+		got, err := svc.Get(ctx, "channel:kling-main")
 		if err != nil || got != "sk-very-secret-123" {
 			t.Fatalf("解密结果不符合预期：%q %v", got, err)
 		}
 	})
 	t.Run("库里存的是密文，不含明文", func(t *testing.T) {
-		row := repo.Secrets["rh_key"]
+		row := repo.Secrets["channel:kling-main"]
 		if bytes.Contains(row.Ciphertext, []byte("sk-very-secret-123")) || len(row.Nonce) != 12 || row.KeyVersion != 1 || row.UpdatedBy != 5 {
 			t.Fatalf("入库数据不符合预期：%+v", row)
 		}
 	})
 	t.Run("每次加密 nonce 不同", func(t *testing.T) {
-		_ = svc.SetSecret(ctx, "rh_key2", "same", 1)
-		_ = svc.SetSecret(ctx, "rh_key3", "same", 1)
-		if bytes.Equal(repo.Secrets["rh_key2"].Nonce, repo.Secrets["rh_key3"].Nonce) {
+		_ = svc.SetSecret(ctx, "channel:k2", "same", 1)
+		_ = svc.SetSecret(ctx, "channel:k3", "same", 1)
+		if bytes.Equal(repo.Secrets["channel:k2"].Nonce, repo.Secrets["channel:k3"].Nonce) {
 			t.Fatal("nonce 不应重复")
 		}
 	})
 	t.Run("覆盖后新值立即生效（缓存被清除）", func(t *testing.T) {
-		if err := svc.SetSecret(ctx, "rh_key", "sk-new", 6); err != nil {
+		if err := svc.SetSecret(ctx, "channel:kling-main", "sk-new", 6); err != nil {
 			t.Fatal(err)
 		}
-		got, _ := svc.Get(ctx, "rh_key")
+		got, _ := svc.Get(ctx, "channel:kling-main")
 		if got != "sk-new" {
 			t.Fatalf("应读到新值，实际 %q", got)
 		}
 	})
-	t.Run("ListSecrets 永远不含明文和密文", func(t *testing.T) {
-		list, err := svc.ListSecrets(ctx)
-		if err != nil {
-			t.Fatal(err)
+	t.Run("SecretIsSet 只看有没有这一行，不需要主密钥也能回答", func(t *testing.T) {
+		set, err := svc.SecretIsSet(ctx, "channel:kling-main")
+		if err != nil || !set {
+			t.Fatalf("应已设置：%v %v", set, err)
 		}
-		b, _ := json.Marshal(list)
-		text := string(b)
-		for _, bad := range []string{"sk-new", "sk-very-secret", "ciphertext", "nonce", base64.StdEncoding.EncodeToString(repo.Secrets["rh_key"].Ciphertext)} {
-			if strings.Contains(text, bad) {
-				t.Fatalf("列表泄露了敏感内容 %q：%s", bad, text)
-			}
+		if set, err := svc.SecretIsSet(ctx, "channel:none"); err != nil || set {
+			t.Fatalf("不存在的应返回 false：%v %v", set, err)
 		}
-		var found *SecretStatus
-		for i := range list {
-			if list[i].Name == "rh_key" {
-				found = &list[i]
-			}
-		}
-		if found == nil || !found.IsSet || found.UpdatedBy != 6 || found.UpdatedAt == nil {
-			t.Fatalf("rh_key 状态不符合预期：%+v", found)
+		noKey := NewAIConfigService(repo, repo, repo, "")
+		if set, err := noKey.SecretIsSet(ctx, "channel:kling-main"); err != nil || !set {
+			t.Fatalf("没有主密钥也应能回答：%v %v", set, err)
 		}
 	})
 }
@@ -131,7 +120,7 @@ func TestAIConfigService_Secret_Errors(t *testing.T) {
 
 	t.Run("没有主密钥：启动不失败，设置与读取都返回明确错误", func(t *testing.T) {
 		repo := aiconfigfake.NewMemRepo()
-		svc := NewAIConfigService(repo, &aiconfigfake.Validator{}, "")
+		svc := NewAIConfigService(repo, repo, repo, "")
 		err := svc.SetSecret(ctx, "k1", "v", 1)
 		var e *errcode.Error
 		if !errors.As(err, &e) || e.Code != errcode.ErrInternal.Code || !strings.Contains(e.Msg, "APP_AI_SECRET_KEY") {
@@ -147,9 +136,6 @@ func TestAIConfigService_Secret_Errors(t *testing.T) {
 		if _, err := svc.ListModels(ctx, ""); err != nil {
 			t.Fatalf("没有主密钥不影响模型清单：%v", err)
 		}
-		if _, err := svc.ListSecrets(ctx); err != nil {
-			t.Fatalf("没有主密钥不影响列出凭证状态：%v", err)
-		}
 	})
 
 	t.Run("凭证未设置", func(t *testing.T) {
@@ -161,11 +147,11 @@ func TestAIConfigService_Secret_Errors(t *testing.T) {
 
 	t.Run("更换主密钥后无法解密", func(t *testing.T) {
 		repo := aiconfigfake.NewMemRepo()
-		a := NewAIConfigService(repo, &aiconfigfake.Validator{}, "key-A")
+		a := NewAIConfigService(repo, repo, repo, "key-A")
 		if err := a.SetSecret(ctx, "k1", "v", 1); err != nil {
 			t.Fatal(err)
 		}
-		b := NewAIConfigService(repo, &aiconfigfake.Validator{}, "key-B")
+		b := NewAIConfigService(repo, repo, repo, "key-B")
 		if _, err := b.Get(ctx, "k1"); err == nil {
 			t.Fatalf("应解密失败：%v", err)
 		}
@@ -204,29 +190,5 @@ func TestAIConfigService_Secret_Errors(t *testing.T) {
 			svc, _, _ := aicNewSvc()
 			aicWantCode(t, svc.SetSecret(ctx, tt.secName, tt.value, 1), errcode.ErrInvalidParams.Code)
 		})
-	}
-}
-
-func TestAIConfigService_ListSecrets_ReferencedUnset(t *testing.T) {
-	ctx := context.Background()
-	svc, _, _ := aicNewSvc()
-	// 平台引用了 rh_key，但还没设置
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetProvider, "", true, aicProviderBody("p1", "rh_key", ""), "", 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetProvider, "", true, aicProviderBody("p2", "rh_key", ""), "", 1); err != nil {
-		t.Fatal(err)
-	}
-	_ = svc.SetSecret(ctx, "other", "x", 1)
-	list, err := svc.ListSecrets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 2 || list[0].Name != "other" || list[1].Name != "rh_key" {
-		t.Fatalf("应按名字排序并包含被引用未设置的凭证：%+v", list)
-	}
-	rh := list[1]
-	if rh.IsSet || rh.UpdatedAt != nil || len(rh.ReferencedBy) != 2 || rh.ReferencedBy[0] != "p1" || rh.ReferencedBy[1] != "p2" {
-		t.Fatalf("rh_key 状态不符合预期：%+v", rh)
 	}
 }

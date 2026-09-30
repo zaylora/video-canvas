@@ -2,8 +2,9 @@ package model
 
 // 用户角色。
 const (
-	RoleUser  = "user"  // 普通用户
-	RoleAdmin = "admin" // 管理员
+	RoleUser       = "user"        // 普通用户
+	RoleAdmin      = "admin"       // 管理员（运营）：只管模型
+	RoleSuperAdmin = "super_admin" // 超级管理员（运维）：装插件、管渠道与凭证；首个 super_admin 只能用 SQL 提升
 )
 
 type User struct {
@@ -12,7 +13,7 @@ type User struct {
 	Password string `gorm:"size:128;not null" json:"-"`                   // bcrypt 哈希后的密码
 	Nickname string `gorm:"size:64" json:"nickname"`                      // 昵称
 	Email    string `gorm:"size:128" json:"email"`                        // 邮箱
-	Role     string `gorm:"size:16;not null;default:user" json:"role"`    // user / admin，管理接口要求 admin
+	Role     string `gorm:"size:16;not null;default:user" json:"role"`    // user / admin / super_admin，管理接口要求 admin 或 super_admin
 }
 
 func (User) TableName() string { return "users" }

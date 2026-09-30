@@ -1,47 +1,55 @@
-// Package aiconfigfake 提供 AI 配置服务的内存 fake（仓储、校验器、dry-run、试跑任务、HTTP 客户端工厂），
-// 只给 service 与 handler 的单元测试共用，避免两边各写一份。它不依赖 service 包，因此不会产生循环引用。
+// Package aiconfigfake 提供 AI 配置服务测试用的最小内存依赖。
 package aiconfigfake
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
 
 	"video-canvas/internal/model"
-	"video-canvas/internal/provider/dsl"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
 
-// MemRepo 是 AIConfigRepo 的内存实现，状态机语义与真实仓储保持一致（草稿归档、发布、回滚、指针行）。
+// MemRepo 是 AIConfigRepo、AIChannelReader 和 AIPluginReader 的内存实现。
 type MemRepo struct {
-	mu        sync.Mutex
-	nextID    uint64
-	Revs      []*model.AIConfigRevision
-	Providers map[string]*model.AIProvider
-	Models    map[string]*model.AIModel
-	Secrets   map[string]*model.AISecret
+	mu       sync.Mutex
+	nextID   uint64
+	Revs     []*model.AIConfigRevision
+	Models   map[string]*model.AIModel
+	Secrets  map[string]*model.AISecret
+	Channels map[string]*model.AIChannel
+	Plugins  map[string]*model.AIPlugin
+	Versions map[uint64]*model.AIPluginVersion
 
-	// LoadPublishedCalls 统计 LoadPublishedModels 被调用的次数，用来断言缓存是否生效。
 	LoadPublishedCalls int
-	// FailLoad 非空时 Load* 返回该错误，用来模拟数据库故障。
-	FailLoad error
+	FailLoad           error
+
+	// 以下用来在测试里模拟插件 / 渠道 / 审计仓储的各种情形。
+	Audits         []model.AIAuditLog
+	AuditErr       error            // 非空时 InsertAudit 返回它
+	SaveVersionErr error            // 非空时 SaveVersion 返回它
+	ActiveTaskRefs map[uint64]int64 // 版本 id → 快照引用它的非终态任务数
+	DeleteInUse    bool             // 为 true 时 DeleteVersion 一律返回 ErrInUse（模拟并发下被新引用）
 }
 
 func NewMemRepo() *MemRepo {
 	return &MemRepo{
-		Providers: map[string]*model.AIProvider{},
-		Models:    map[string]*model.AIModel{},
-		Secrets:   map[string]*model.AISecret{},
+		Models:   map[string]*model.AIModel{},
+		Secrets:  map[string]*model.AISecret{},
+		Channels: map[string]*model.AIChannel{},
+		Plugins:  map[string]*model.AIPlugin{},
+		Versions: map[uint64]*model.AIPluginVersion{},
+
+		ActiveTaskRefs: map[uint64]int64{},
 	}
 }
 
 func (m *MemRepo) find(id uint64) *model.AIConfigRevision {
-	for _, r := range m.Revs {
-		if r.ID == id {
-			return r
+	for _, rev := range m.Revs {
+		if rev.ID == id {
+			return rev
 		}
 	}
 	return nil
@@ -50,107 +58,98 @@ func (m *MemRepo) find(id uint64) *model.AIConfigRevision {
 func (m *MemRepo) SaveDraft(_ context.Context, in repository.SaveDraftInput) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p := in.Pointer
-	if p.Target == model.ConfigTargetProvider {
-		if row, ok := m.Providers[p.Key]; ok {
-			row.Name = p.Name
-		} else {
-			m.Providers[p.Key] = &model.AIProvider{Key: p.Key, Name: p.Name}
+
+	row, ok := m.Models[in.Pointer.Key]
+	if !ok {
+		sortNo := in.InitialSort
+		if sortNo == 0 {
+			sortNo = 100
 		}
-	} else if row, ok := m.Models[p.Key]; ok {
-		row.Kind, row.ProviderKey = p.Kind, p.ProviderKey
-	} else {
-		sort := in.InitialSort
-		if sort == 0 {
-			sort = 100
-		}
-		m.Models[p.Key] = &model.AIModel{Key: p.Key, Kind: p.Kind, ProviderKey: p.ProviderKey, Enabled: in.InitialEnabled, Sort: sort}
+		row = &model.AIModel{Key: in.Pointer.Key, Enabled: in.InitialEnabled, Sort: sortNo}
+		m.Models[in.Pointer.Key] = row
 	}
+	row.Kind = in.Pointer.Kind
+
 	maxNo := 0
-	for _, r := range m.Revs {
-		if r.Target == p.Target && r.TargetKey == p.Key {
-			if r.RevisionNo > maxNo {
-				maxNo = r.RevisionNo
-			}
-			if r.Status == model.RevisionDraft {
-				r.Status = model.RevisionArchived
-			}
+	for _, rev := range m.Revs {
+		if rev.Target != model.ConfigTargetModel || rev.TargetKey != in.Pointer.Key {
+			continue
+		}
+		if rev.RevisionNo > maxNo {
+			maxNo = rev.RevisionNo
+		}
+		if rev.Status == model.RevisionDraft {
+			rev.Status = model.RevisionArchived
 		}
 	}
 	m.nextID++
 	rev := &model.AIConfigRevision{
-		ID: m.nextID, Target: p.Target, TargetKey: p.Key, RevisionNo: maxNo + 1,
-		BodyJSON: model.JSONText(append([]byte(nil), in.Body...)), Status: model.RevisionDraft,
-		CreatedBy: in.CreatedBy, Note: in.Note, CreatedAt: time.Now(),
+		ID: m.nextID, Target: model.ConfigTargetModel, TargetKey: in.Pointer.Key,
+		RevisionNo: maxNo + 1, BodyJSON: model.JSONText(append([]byte(nil), in.Body...)),
+		Status: model.RevisionDraft, CreatedBy: in.CreatedBy, Note: in.Note, CreatedAt: time.Now(),
 	}
 	m.Revs = append(m.Revs, rev)
-	cp := *rev
-	return &cp, nil
+	copyRev := *rev
+	return &copyRev, nil
 }
 
 func (m *MemRepo) GetDraft(_ context.Context, target, key string) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var best *model.AIConfigRevision
-	for _, r := range m.Revs {
-		if r.Target == target && r.TargetKey == key && r.Status == model.RevisionDraft && (best == nil || r.RevisionNo > best.RevisionNo) {
-			best = r
+	for _, rev := range m.Revs {
+		if rev.Target == target && rev.TargetKey == key && rev.Status == model.RevisionDraft &&
+			(best == nil || rev.RevisionNo > best.RevisionNo) {
+			best = rev
 		}
 	}
 	if best == nil {
 		return nil, repository.ErrNotFound
 	}
-	cp := *best
-	return &cp, nil
+	copyRev := *best
+	return &copyRev, nil
 }
 
 func (m *MemRepo) GetRevision(_ context.Context, id uint64) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	r := m.find(id)
-	if r == nil {
+	rev := m.find(id)
+	if rev == nil {
 		return nil, repository.ErrNotFound
 	}
-	cp := *r
-	return &cp, nil
-}
-
-func (m *MemRepo) publishedID(target, key string) (*uint64, bool) {
-	if target == model.ConfigTargetProvider {
-		p, ok := m.Providers[key]
-		if !ok {
-			return nil, false
-		}
-		return p.PublishedRevisionID, true
-	}
-	mo, ok := m.Models[key]
-	if !ok {
-		return nil, false
-	}
-	return mo.PublishedRevisionID, true
+	copyRev := *rev
+	return &copyRev, nil
 }
 
 func (m *MemRepo) GetPublishedRevision(_ context.Context, target, key string) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	id, ok := m.publishedID(target, key)
-	if !ok || id == nil {
+	if target != model.ConfigTargetModel {
 		return nil, repository.ErrNotFound
 	}
-	cp := *m.find(*id)
-	return &cp, nil
+	row, ok := m.Models[key]
+	if !ok || row.PublishedRevisionID == nil {
+		return nil, repository.ErrNotFound
+	}
+	rev := m.find(*row.PublishedRevisionID)
+	if rev == nil {
+		return nil, repository.ErrNotFound
+	}
+	copyRev := *rev
+	return &copyRev, nil
 }
 
 func (m *MemRepo) ListRevisions(_ context.Context, target, key string, limit int) ([]model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []model.AIConfigRevision
-	for _, r := range m.Revs {
-		if r.Target == target && r.TargetKey == key {
-			cp := *r
-			cp.BodyJSON = nil
-			out = append(out, cp)
+	out := make([]model.AIConfigRevision, 0)
+	for _, rev := range m.Revs {
+		if rev.Target != target || rev.TargetKey != key {
+			continue
 		}
+		copyRev := *rev
+		copyRev.BodyJSON = nil
+		out = append(out, copyRev)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].RevisionNo > out[j].RevisionNo })
 	if limit > 0 && len(out) > limit {
@@ -162,58 +161,18 @@ func (m *MemRepo) ListRevisions(_ context.Context, target, key string, limit int
 func (m *MemRepo) ListRevisionHeads(_ context.Context, target string, withBody bool) ([]model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []model.AIConfigRevision
-	for _, r := range m.Revs {
-		if r.Target == target && (r.Status == model.RevisionDraft || r.Status == model.RevisionPublished) {
-			cp := *r
-			if !withBody {
-				cp.BodyJSON = nil
-			}
-			out = append(out, cp)
+	out := make([]model.AIConfigRevision, 0)
+	for _, rev := range m.Revs {
+		if rev.Target != target || (rev.Status != model.RevisionDraft && rev.Status != model.RevisionPublished) {
+			continue
 		}
+		copyRev := *rev
+		if !withBody {
+			copyRev.BodyJSON = nil
+		}
+		out = append(out, copyRev)
 	}
 	return out, nil
-}
-
-func (m *MemRepo) switchPublished(ptr repository.ConfigPointer, id uint64, want string) (*model.AIConfigRevision, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	oldID, ok := m.publishedID(ptr.Target, ptr.Key)
-	if !ok {
-		return nil, repository.ErrNotFound
-	}
-	rev := m.find(id)
-	if rev == nil || rev.Target != ptr.Target || rev.TargetKey != ptr.Key {
-		return nil, repository.ErrNotFound
-	}
-	if rev.Status != want {
-		return nil, repository.ErrRevisionConflict
-	}
-	if oldID != nil && *oldID != rev.ID {
-		if old := m.find(*oldID); old != nil && old.Status == model.RevisionPublished {
-			old.Status = model.RevisionArchived
-		}
-	}
-	rev.Status = model.RevisionPublished
-	rid := rev.ID
-	if ptr.Target == model.ConfigTargetProvider {
-		p := m.Providers[ptr.Key]
-		p.PublishedRevisionID = &rid
-		if ptr.Name != "" {
-			p.Name = ptr.Name
-		}
-	} else {
-		mo := m.Models[ptr.Key]
-		mo.PublishedRevisionID = &rid
-		if ptr.Kind != "" {
-			mo.Kind = ptr.Kind
-		}
-		if ptr.ProviderKey != "" {
-			mo.ProviderKey = ptr.ProviderKey
-		}
-	}
-	cp := *rev
-	return &cp, nil
 }
 
 func (m *MemRepo) PublishDraft(_ context.Context, ptr repository.ConfigPointer, id uint64) (*model.AIConfigRevision, error) {
@@ -224,45 +183,50 @@ func (m *MemRepo) Rollback(_ context.Context, ptr repository.ConfigPointer, id u
 	return m.switchPublished(ptr, id, model.RevisionArchived)
 }
 
-func (m *MemRepo) GetProviderPointer(_ context.Context, key string) (*model.AIProvider, error) {
+func (m *MemRepo) switchPublished(ptr repository.ConfigPointer, id uint64, want string) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p, ok := m.Providers[key]
+	row, ok := m.Models[ptr.Key]
 	if !ok {
 		return nil, repository.ErrNotFound
 	}
-	cp := *p
-	return &cp, nil
-}
-
-func (m *MemRepo) ListProviderPointers(_ context.Context) ([]model.AIProvider, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []model.AIProvider
-	for _, p := range m.Providers {
-		out = append(out, *p)
+	rev := m.find(id)
+	if rev == nil || rev.Target != model.ConfigTargetModel || rev.TargetKey != ptr.Key {
+		return nil, repository.ErrNotFound
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
-	return out, nil
+	if rev.Status != want {
+		return nil, repository.ErrRevisionConflict
+	}
+	if row.PublishedRevisionID != nil && *row.PublishedRevisionID != rev.ID {
+		if old := m.find(*row.PublishedRevisionID); old != nil {
+			old.Status = model.RevisionArchived
+		}
+	}
+	rev.Status = model.RevisionPublished
+	rid := rev.ID
+	row.PublishedRevisionID = &rid
+	row.Kind = ptr.Kind
+	copyRev := *rev
+	return &copyRev, nil
 }
 
 func (m *MemRepo) GetModelPointer(_ context.Context, key string) (*model.AIModel, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	mo, ok := m.Models[key]
+	row, ok := m.Models[key]
 	if !ok {
 		return nil, repository.ErrNotFound
 	}
-	cp := *mo
-	return &cp, nil
+	copyRow := *row
+	return &copyRow, nil
 }
 
 func (m *MemRepo) ListModelPointers(_ context.Context) ([]model.AIModel, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []model.AIModel
-	for _, mo := range m.Models {
-		out = append(out, *mo)
+	out := make([]model.AIModel, 0, len(m.Models))
+	for _, row := range m.Models {
+		out = append(out, *row)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Sort != out[j].Sort {
@@ -276,41 +240,23 @@ func (m *MemRepo) ListModelPointers(_ context.Context) ([]model.AIModel, error) 
 func (m *MemRepo) SetModelEnabled(_ context.Context, key string, enabled bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	mo, ok := m.Models[key]
+	row, ok := m.Models[key]
 	if !ok {
 		return repository.ErrNotFound
 	}
-	mo.Enabled = enabled
+	row.Enabled = enabled
 	return nil
 }
 
-func (m *MemRepo) SetModelSort(_ context.Context, key string, sort int) error {
+func (m *MemRepo) SetModelSort(_ context.Context, key string, sortNo int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	mo, ok := m.Models[key]
+	row, ok := m.Models[key]
 	if !ok {
 		return repository.ErrNotFound
 	}
-	mo.Sort = sort
+	row.Sort = sortNo
 	return nil
-}
-
-func (m *MemRepo) LoadPublishedProviders(_ context.Context) ([]repository.PublishedProvider, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.FailLoad != nil {
-		return nil, m.FailLoad
-	}
-	var out []repository.PublishedProvider
-	for _, p := range m.Providers {
-		if p.PublishedRevisionID == nil {
-			continue
-		}
-		r := m.find(*p.PublishedRevisionID)
-		out = append(out, repository.PublishedProvider{Key: p.Key, Name: p.Name, RevisionID: r.ID, RevisionNo: r.RevisionNo, Body: r.BodyJSON})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
-	return out, nil
 }
 
 func (m *MemRepo) LoadPublishedModels(_ context.Context) ([]repository.PublishedModel, error) {
@@ -320,15 +266,18 @@ func (m *MemRepo) LoadPublishedModels(_ context.Context) ([]repository.Published
 	if m.FailLoad != nil {
 		return nil, m.FailLoad
 	}
-	var out []repository.PublishedModel
-	for _, mo := range m.Models {
-		if mo.PublishedRevisionID == nil {
+	out := make([]repository.PublishedModel, 0)
+	for _, row := range m.Models {
+		if row.PublishedRevisionID == nil {
 			continue
 		}
-		r := m.find(*mo.PublishedRevisionID)
+		rev := m.find(*row.PublishedRevisionID)
+		if rev == nil {
+			continue
+		}
 		out = append(out, repository.PublishedModel{
-			Key: mo.Key, Kind: mo.Kind, ProviderKey: mo.ProviderKey, Enabled: mo.Enabled, Sort: mo.Sort,
-			RevisionID: r.ID, RevisionNo: r.RevisionNo, Body: r.BodyJSON,
+			Key: row.Key, Kind: row.Kind, Enabled: row.Enabled, Sort: row.Sort,
+			RevisionID: rev.ID, RevisionNo: rev.RevisionNo, Body: rev.BodyJSON,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -340,131 +289,126 @@ func (m *MemRepo) LoadPublishedModels(_ context.Context) ([]repository.Published
 	return out, nil
 }
 
-func (m *MemRepo) UpsertSecret(_ context.Context, s *model.AISecret) error {
+func (m *MemRepo) UpsertSecret(_ context.Context, secret *model.AISecret) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cp := *s
-	cp.Ciphertext = append([]byte(nil), s.Ciphertext...)
-	cp.Nonce = append([]byte(nil), s.Nonce...)
-	m.Secrets[s.Name] = &cp
+	copySecret := *secret
+	copySecret.Ciphertext = append([]byte(nil), secret.Ciphertext...)
+	copySecret.Nonce = append([]byte(nil), secret.Nonce...)
+	m.Secrets[secret.Name] = &copySecret
 	return nil
 }
 
 func (m *MemRepo) GetSecret(_ context.Context, name string) (*model.AISecret, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, ok := m.Secrets[name]
+	secret, ok := m.Secrets[name]
 	if !ok {
 		return nil, repository.ErrNotFound
 	}
-	cp := *s
-	return &cp, nil
+	copySecret := *secret
+	return &copySecret, nil
 }
 
-// ListSecrets 与真实仓储一致：不返回密文和 nonce。
 func (m *MemRepo) ListSecrets(_ context.Context) ([]model.AISecret, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []model.AISecret
-	for _, s := range m.Secrets {
-		out = append(out, model.AISecret{Name: s.Name, KeyVersion: s.KeyVersion, UpdatedBy: s.UpdatedBy, UpdatedAt: s.UpdatedAt})
+	out := make([]model.AISecret, 0, len(m.Secrets))
+	for _, secret := range m.Secrets {
+		out = append(out, model.AISecret{Name: secret.Name, KeyVersion: secret.KeyVersion, UpdatedBy: secret.UpdatedBy, UpdatedAt: secret.UpdatedAt})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-// ---------------------------------------------------------------------------
-// 校验器 fake
-// ---------------------------------------------------------------------------
-
-// Validator 是 ConfigValidator 的 fake：用 encoding/json 直接解析；正文里 "bad": true 时返回一条校验问题；
-// 输入里 "invalid": true 时返回一条字段错误。
-type Validator struct {
-	Schema []byte
+func (m *MemRepo) GetChannel(_ context.Context, key string) (*model.AIChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	channel, ok := m.Channels[key]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	copyChannel := *channel
+	return &copyChannel, nil
 }
 
-func (v *Validator) ParseProvider(body []byte) (*dsl.ProviderConfig, []dsl.Issue) {
-	var cfg dsl.ProviderConfig
-	if err := json.Unmarshal(body, &cfg); err != nil {
-		return nil, []dsl.Issue{{Message: err.Error()}}
+func (m *MemRepo) ListChannels(_ context.Context) ([]model.AIChannel, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]model.AIChannel, 0, len(m.Channels))
+	for _, channel := range m.Channels {
+		out = append(out, *channel)
 	}
-	return &cfg, badIssues(body)
-}
-
-func (v *Validator) ParseModel(body []byte, provider *dsl.ProviderConfig) (*dsl.ModelConfig, []dsl.Issue) {
-	var cfg dsl.ModelConfig
-	if err := json.Unmarshal(body, &cfg); err != nil {
-		return nil, []dsl.Issue{{Message: err.Error()}}
-	}
-	return &cfg, badIssues(body)
-}
-
-func (v *Validator) ValidateInput(_ dsl.InputSchema, input map[string]any) (map[string]any, []dsl.FieldError) {
-	if b, _ := input["invalid"].(bool); b {
-		return nil, []dsl.FieldError{{Field: "invalid", Message: "不合法"}}
-	}
-	out := map[string]any{}
-	for k, val := range input {
-		out[k] = val
-	}
-	out["_normalized"] = true
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
 }
 
-func (v *Validator) JSONSchema(target string) ([]byte, error) {
-	if v.Schema == nil {
-		return []byte(`{"title":"` + target + `"}`), nil
+func (m *MemRepo) GetPlugin(_ context.Context, key string) (*model.AIPlugin, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	plugin, ok := m.Plugins[key]
+	if !ok {
+		return nil, repository.ErrNotFound
 	}
-	return v.Schema, nil
+	copyPlugin := *plugin
+	return &copyPlugin, nil
 }
 
-func badIssues(body []byte) []dsl.Issue {
-	var probe struct {
-		Bad bool `json:"bad"`
+func (m *MemRepo) ListVersions(_ context.Context, pluginKey string) ([]model.AIPluginVersion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]model.AIPluginVersion, 0, len(m.Versions))
+	for _, version := range m.Versions {
+		if pluginKey == "" || version.PluginKey == pluginKey {
+			out = append(out, *version)
+		}
 	}
-	if json.Unmarshal(body, &probe) == nil && probe.Bad {
-		return []dsl.Issue{{Path: "bad", Message: "配置不合法"}}
-	}
-	return nil
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	return out, nil
 }
 
-// ---------------------------------------------------------------------------
-// dry-run / 试跑 / HTTP 工厂 fake
-// ---------------------------------------------------------------------------
+func (m *MemRepo) GetVersionHead(_ context.Context, id uint64) (*model.AIPluginVersion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	version, ok := m.Versions[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	copyVersion := *version
+	copyVersion.Code = ""
+	return &copyVersion, nil
+}
 
-// DryRunner 记录调用并返回预设结果。
+// DryRunner 记录 dry-run 调用。
 type DryRunner struct {
 	Result any
 	Err    error
-
-	Snap  *dsl.Snapshot
-	Input map[string]any
+	Snap   *provider.Snapshot
+	Input  map[string]any
 }
 
-func (d *DryRunner) DryRun(_ context.Context, snap *dsl.Snapshot, input map[string]any) (any, error) {
+func (d *DryRunner) DryRun(_ context.Context, snap *provider.Snapshot, input map[string]any) (any, error) {
 	d.Snap, d.Input = snap, input
 	return d.Result, d.Err
 }
 
-// TestTasks 记录 SubmitTest 的调用，并按 id 返回试跑任务视图。
+// TestTasks 记录试跑任务调用。
 type TestTasks struct {
-	View *model.GenerationTaskView
-	Err  error
-
+	View   *model.GenerationTaskView
+	Err    error
 	UserID uint64
-	Snap   *dsl.Snapshot
+	Snap   *provider.Snapshot
 	Input  map[string]any
-	// Views 是 GetTestTask 能查到的任务：id -> {所属用户, 视图}。
-	Views map[uint64]TestView
+	Views  map[uint64]TestView
+	Trace  []provider.TraceStep // GetTestTrace 返回的追踪；为 nil 时表示任务还没有追踪
 }
 
-// TestView 是 TestTasks 里保存的一个试跑任务。
 type TestView struct {
 	UserID uint64
 	View   *model.GenerationTaskView
 }
 
-func (t *TestTasks) SubmitTest(_ context.Context, userID uint64, snap *dsl.Snapshot, input map[string]any) (*model.GenerationTaskView, error) {
+func (t *TestTasks) SubmitTest(_ context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (*model.GenerationTaskView, error) {
 	t.UserID, t.Snap, t.Input = userID, snap, input
 	if t.Err != nil {
 		return nil, t.Err
@@ -476,29 +420,23 @@ func (t *TestTasks) SubmitTest(_ context.Context, userID uint64, snap *dsl.Snaps
 }
 
 func (t *TestTasks) GetTestTask(_ context.Context, userID, taskID uint64) (*model.GenerationTaskView, error) {
-	v, ok := t.Views[taskID]
-	if !ok || v.UserID != userID {
+	view, ok := t.Views[taskID]
+	if !ok || view.UserID != userID {
 		return nil, repository.ErrNotFound
 	}
-	return v.View, nil
+	return view.View, nil
 }
 
-// HTTPFactory 返回固定的 http.Client（通常是 httptest.Server.Client()），并记录收到的 allowed_hosts。
-type HTTPFactory struct {
-	Client       *http.Client
-	AllowedHosts []string
-	Timeout      time.Duration
-}
-
-func (f *HTTPFactory) NewClient(allowedHosts []string, timeout time.Duration) *http.Client {
-	f.AllowedHosts, f.Timeout = allowedHosts, timeout
-	if f.Client == nil {
-		return http.DefaultClient
+// GetTestTrace 按 GetTestTask 同样的归属规则返回预设的追踪（Trace 字段），别人的任务与不存在的任务返回 ErrNotFound。
+func (t *TestTasks) GetTestTrace(_ context.Context, userID, taskID uint64) ([]provider.TraceStep, error) {
+	view, ok := t.Views[taskID]
+	if !ok || view.UserID != userID {
+		return nil, repository.ErrNotFound
 	}
-	return f.Client
+	return t.Trace, nil
 }
 
-// Invalidator 记录失效广播。
+// Invalidator 记录 Registry 失效广播。
 type Invalidator struct {
 	mu      sync.Mutex
 	Reasons []string

@@ -10,12 +10,15 @@ import (
 	"time"
 	. "video-canvas/internal/service"
 
+	"gorm.io/datatypes"
+
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
+	"video-canvas/internal/provider/modelcfg"
+	"video-canvas/internal/provider/pluginmeta"
 	"video-canvas/internal/repository"
 )
 
@@ -32,8 +35,6 @@ type fakeTaskRepo struct {
 
 	hideKeyLookups int              // 前 N 次 FindByIdempotencyKey 假装找不到，模拟并发竞争
 	errs           map[string]error // 方法名 -> 注入的错误
-	touchRows      int64            // TouchByProviderTask 返回的命中行数
-	touched        []string         // TouchByProviderTask 收到的 provider/providerTaskID
 	txCount        int
 }
 
@@ -287,6 +288,12 @@ func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, f
 			t.ErrorCode = v.(string)
 		case "error_message":
 			t.ErrorMessage = v.(string)
+		case "provider_state":
+			raw, _ := v.(json.Marshaler).MarshalJSON()
+			t.ProviderState = raw
+		case "provider_result":
+			raw, _ := v.(json.Marshaler).MarshalJSON()
+			t.ProviderResult = raw
 		default:
 			panic("fakeTaskRepo.UpdateIf 不认识的字段：" + k)
 		}
@@ -306,44 +313,49 @@ func (f *fakeTaskRepo) ExtendLease(ctx context.Context, id uint64, until time.Ti
 	return true, f.errs["ExtendLease"]
 }
 
-func (f *fakeTaskRepo) TouchByProviderTask(ctx context.Context, provider, providerTaskID string, now time.Time) (int64, error) {
-	f.touched = append(f.touched, provider+"/"+providerTaskID)
-	return f.touchRows, f.errs["TouchByProviderTask"]
+// SaveTrace 复刻真实仓储：只写 is_test 任务，任务不存在或不是试跑任务返回 ErrNotFound。
+func (f *fakeTaskRepo) SaveTrace(ctx context.Context, id uint64, trace datatypes.JSON) error {
+	if err := f.errs["SaveTrace"]; err != nil {
+		return err
+	}
+	t, ok := f.tasks[id]
+	if !ok || !t.IsTest {
+		return repository.ErrNotFound
+	}
+	t.TraceJSON = trace
+	return nil
 }
 
 type fakeTaskRegistry struct {
-	snap        *dsl.Snapshot
-	snapErr     error
-	provider    *dsl.ProviderConfig
-	providerErr error
+	snap    *provider.Snapshot
+	snapErr error
 }
 
 func (r *fakeTaskRegistry) ListModels(ctx context.Context, kind string) ([]provider.ModelInfo, error) {
 	return nil, nil
 }
-func (r *fakeTaskRegistry) Snapshot(ctx context.Context, key string) (*dsl.Snapshot, error) {
+func (r *fakeTaskRegistry) Snapshot(ctx context.Context, key string) (*provider.Snapshot, error) {
 	return r.snap, r.snapErr
-}
-func (r *fakeTaskRegistry) Provider(ctx context.Context, key string) (*dsl.ProviderConfig, error) {
-	return r.provider, r.providerErr
 }
 
 type fakeTaskExecutor struct {
 	cancelErr   error
 	cancelCalls []provider.TaskRef
+	cancelSnaps []*provider.Snapshot // 每次取消收到的快照
 }
 
-func (e *fakeTaskExecutor) Submit(ctx context.Context, snap *dsl.Snapshot, in provider.SubmitInput) (string, error) {
-	return "", errors.New("service 测试不应调用 Submit")
+func (e *fakeTaskExecutor) Submit(ctx context.Context, snap *provider.Snapshot, in provider.SubmitInput) (*provider.SubmitResult, error) {
+	return nil, errors.New("service 测试不应调用 Submit")
 }
-func (e *fakeTaskExecutor) Query(ctx context.Context, snap *dsl.Snapshot, t provider.TaskRef) (*provider.QueryResult, error) {
+func (e *fakeTaskExecutor) Query(ctx context.Context, snap *provider.Snapshot, t provider.TaskRef) (*provider.QueryResult, error) {
 	return nil, errors.New("service 测试不应调用 Query")
 }
-func (e *fakeTaskExecutor) Cancel(ctx context.Context, snap *dsl.Snapshot, t provider.TaskRef) error {
+func (e *fakeTaskExecutor) Cancel(ctx context.Context, snap *provider.Snapshot, t provider.TaskRef) error {
 	e.cancelCalls = append(e.cancelCalls, t)
+	e.cancelSnaps = append(e.cancelSnaps, snap)
 	return e.cancelErr
 }
-func (e *fakeTaskExecutor) Download(ctx context.Context, snap *dsl.Snapshot, url string) (*provider.Download, error) {
+func (e *fakeTaskExecutor) Download(ctx context.Context, snap *provider.Snapshot, url string) (*provider.Download, error) {
 	return nil, errors.New("service 测试不应调用 Download")
 }
 
@@ -379,20 +391,20 @@ func (b *fakeTaskBroadcaster) Publish(ctx context.Context, channel string, msg w
 	b.msgs = append(b.msgs, msg)
 }
 
-// fakeTaskValidate 是 dsl.ValidateInput 的替身：必填检查，媒体字段规范化成 uint64。
-func fakeTaskValidate(schema dsl.InputSchema, in map[string]any) (map[string]any, []dsl.FieldError) {
+// fakeTaskValidate 是 modelcfg.ValidateInput 的替身：必填检查，媒体字段规范化成 uint64。
+func fakeTaskValidate(schema modelcfg.InputSchema, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 	out := map[string]any{}
-	var errs []dsl.FieldError
+	var errs []modelcfg.FieldError
 	for _, e := range schema {
 		v, ok := in[e.Name]
 		if !ok || v == nil {
 			if e.Required {
-				errs = append(errs, dsl.FieldError{Field: e.Name, Message: "必填"})
+				errs = append(errs, modelcfg.FieldError{Field: e.Name, Message: "必填"})
 			}
 			continue
 		}
 		switch e.Type {
-		case dsl.FieldImage, dsl.FieldVideo, dsl.FieldAudio:
+		case modelcfg.FieldImage, modelcfg.FieldVideo, modelcfg.FieldAudio:
 			if n, ok := v.(float64); ok {
 				out[e.Name] = uint64(n)
 			} else {
@@ -405,26 +417,28 @@ func fakeTaskValidate(schema dsl.InputSchema, in map[string]any) (map[string]any
 	return out, errs
 }
 
-func fakeTaskMediaFields(schema dsl.InputSchema) []string {
+func fakeTaskMediaFields(schema modelcfg.InputSchema) []string {
 	var names []string
 	for _, e := range schema {
-		if e.Type == dsl.FieldImage || e.Type == dsl.FieldVideo || e.Type == dsl.FieldAudio {
+		if e.Type == modelcfg.FieldImage || e.Type == modelcfg.FieldVideo || e.Type == modelcfg.FieldAudio {
 			names = append(names, e.Name)
 		}
 	}
 	return names
 }
 
-func fakeTaskSnapshot(kind string, credits int) *dsl.Snapshot {
-	return &dsl.Snapshot{
-		Provider: dsl.ProviderConfig{Key: "p1"},
-		Model: dsl.ModelConfig{
-			Key: "m1", Kind: kind, Provider: "p1", Credits: credits,
-			InputSchema: dsl.InputSchema{
-				{Name: "prompt", InputField: dsl.InputField{Type: dsl.FieldText, Required: true}},
-				{Name: "image", InputField: dsl.InputField{Type: dsl.FieldImage}},
+func fakeTaskSnapshot(kind string, credits int) *provider.Snapshot {
+	return &provider.Snapshot{
+		Model: provider.ModelSnapshot{
+			Key: "m1", Kind: kind, Credits: credits, UpstreamModel: "up-1",
+			InputSchema: modelcfg.InputSchema{
+				{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Required: true}},
+				{Name: "image", InputField: modelcfg.InputField{Type: modelcfg.FieldImage}},
 			},
 		},
+		Channel:         provider.ChannelSnapshot{Key: "p1", PluginKey: "demo", PluginVersionID: 7, BaseURL: "https://up.example.com"},
+		Plugin:          provider.PluginSnapshot{Key: "demo", Version: "1.2.0", SHA256: "abc123", Meta: pluginmeta.Meta{Key: "demo", Version: "1.2.0"}},
+		ModelRevisionID: 42,
 	}
 }
 
@@ -459,7 +473,7 @@ func newTaskSvcEnv(cfg config.AI) *taskSvcEnv {
 }
 
 func defaultTaskCfg() config.AI {
-	return config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50, WebhookSecret: "s3cret", WebhookBaseURL: "https://api.example.com/"}
+	return config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50}
 }
 
 func assertTaskCode(t *testing.T, err error, want int) {
@@ -473,6 +487,18 @@ func assertTaskCode(t *testing.T, err error, want int) {
 	var e *errcode.Error
 	if !errors.As(err, &e) || e.Code != want {
 		t.Fatalf("期望错误码 %d，实际：%v", want, err)
+	}
+}
+
+// assertPlainError 断言返回了错误，且不是业务错误（未知的下层错误应原样透传，由 response.Fail 统一转成 500）。
+func assertPlainError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("期望返回错误")
+	}
+	var e *errcode.Error
+	if errors.As(err, &e) {
+		t.Fatalf("未知错误不应被包装成业务错误：%v", err)
 	}
 }
 
@@ -533,7 +559,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 				if !task.DeadlineAt.Equal(env.now.Add(30 * time.Minute)) {
 					t.Fatalf("默认 deadline 应为 30 分钟：%v", task.DeadlineAt)
 				}
-				var snap dsl.Snapshot
+				var snap provider.Snapshot
 				if err := json.Unmarshal(task.ConfigSnapshot, &snap); err != nil || snap.Model.Key != "m1" {
 					t.Fatalf("配置快照没有落库：%v %s", err, task.ConfigSnapshot)
 				}
@@ -559,7 +585,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 		{
 			name: "模型自带 deadline 时按模型配置",
 			setup: func(env *taskSvcEnv) {
-				env.registry.snap.Model.Deadline = dsl.Duration(5 * time.Minute)
+				env.registry.snap.Model.Deadline = modelcfg.Duration(5 * time.Minute)
 			},
 			req: validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
@@ -583,6 +609,19 @@ func TestGenerationTaskService_Create(t *testing.T) {
 				_ = json.Unmarshal(env.repo.tasks[v.ID].InputJSON, &in)
 				if in["image"] != float64(9) || in["prompt"] != "一只猫" {
 					t.Fatalf("input_json 应保存规范化后的输入：%v", in)
+				}
+			},
+		},
+		{
+			name: "模型积分配置为负数按 0 处理，不倒贴积分",
+			setup: func(env *taskSvcEnv) {
+				env.repo.addCredit(user, 50, 0)
+				env.registry.snap.Model.Credits = -5
+			},
+			req: validCreateReq,
+			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
+				if v.Credits != 0 || env.repo.credits[user].Frozen != 0 || env.repo.credits[user].Balance != 50 {
+					t.Fatalf("负积分应按 0：view=%+v acc=%+v", v, env.repo.credits[user])
 				}
 			},
 		},
@@ -643,6 +682,15 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			req: func() *model.CreateGenerationTaskReq {
 				r := validCreateReq()
 				r.Input["image"] = float64(9)
+				return r
+			},
+			wantCode: errcode.ErrTaskInput.Code,
+		},
+		{
+			name: "素材 id 格式错误返回 ErrTaskInput",
+			req: func() *model.CreateGenerationTaskReq {
+				r := validCreateReq()
+				r.Input["image"] = "not-an-id"
 				return r
 			},
 			wantCode: errcode.ErrTaskInput.Code,
@@ -748,6 +796,51 @@ func TestGenerationTaskService_Create(t *testing.T) {
 	}
 }
 
+// 快照冻结：任务落库的 config_snapshot 必须带上提交时的模型 revision、渠道与插件版本；
+// 之后运营改渠道 / 升级插件都不影响这个任务（worker 只读快照）。
+func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskCfg())
+	view, err := env.svc.Create(context.Background(), 1, "", validCreateReq())
+	assertTaskCode(t, err, 0)
+
+	task := env.repo.tasks[view.ID]
+	var got provider.Snapshot
+	if err := json.Unmarshal(task.ConfigSnapshot, &got); err != nil {
+		t.Fatalf("快照解码失败：%v", err)
+	}
+	if got.ModelRevisionID != 42 || got.Model.UpstreamModel != "up-1" || got.Model.Credits != 10 {
+		t.Fatalf("模型部分没冻结：%+v", got.Model)
+	}
+	if got.Channel.Key != "p1" || got.Channel.PluginVersionID != 7 || got.Channel.BaseURL != "https://up.example.com" {
+		t.Fatalf("渠道部分没冻结：%+v", got.Channel)
+	}
+	if got.Plugin.Key != "demo" || got.Plugin.Version != "1.2.0" || got.Plugin.SHA256 != "abc123" {
+		t.Fatalf("插件版本没冻结：%+v", got.Plugin)
+	}
+	if task.Provider != "p1" || task.ModelKey != "m1" || task.Kind != model.KindVideo {
+		t.Fatalf("任务的渠道 / 模型 / 种类取自快照：%+v", task)
+	}
+
+	// 提交后 registry 里的配置变了（渠道换了插件版本），已落库的快照不受影响
+	env.registry.snap.Channel.PluginVersionID = 8
+	var again provider.Snapshot
+	_ = json.Unmarshal(env.repo.tasks[view.ID].ConfigSnapshot, &again)
+	if again.Channel.PluginVersionID != 7 {
+		t.Fatalf("已落库的快照不应随配置变化：%+v", again.Channel)
+	}
+}
+
+func TestGenerationTaskService_Create_WithoutCanvas(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskCfg())
+	req := validCreateReq()
+	req.CanvasID = 0
+	view, err := env.svc.Create(context.Background(), 1, "", req)
+	assertTaskCode(t, err, 0)
+	if view.CanvasProjectID != nil || env.repo.tasks[view.ID].CanvasProjectID != nil {
+		t.Fatal("没传 canvas_id 时画布应为空")
+	}
+}
+
 func TestGenerationTaskService_Create_ErrorMessageContainsFieldErrors(t *testing.T) {
 	env := newTaskSvcEnv(defaultTaskCfg())
 	req := validCreateReq()
@@ -846,17 +939,31 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 	const admin = uint64(9)
 	tests := []struct {
 		name     string
-		snap     func() *dsl.Snapshot
+		snap     func() *provider.Snapshot
 		input    map[string]any
 		setup    func(env *taskSvcEnv)
 		wantCode int
 	}{
-		{name: "成功：is_test、不冻结、不推送", snap: func() *dsl.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) }, input: map[string]any{"prompt": "x"}},
-		{name: "快照为空返回 400", snap: func() *dsl.Snapshot { return nil }, wantCode: errcode.ErrInvalidParams.Code},
-		{name: "缺少必填字段返回 ErrTaskInput", snap: func() *dsl.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) }, input: map[string]any{}, wantCode: errcode.ErrTaskInput.Code},
+		{name: "成功：is_test、不冻结、不推送", snap: func() *provider.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) }, input: map[string]any{"prompt": "x"}},
+		{name: "快照为空返回 400", snap: func() *provider.Snapshot { return nil }, wantCode: errcode.ErrInvalidParams.Code},
+		{name: "缺少必填字段返回 ErrTaskInput", snap: func() *provider.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) }, input: map[string]any{}, wantCode: errcode.ErrTaskInput.Code},
+		{
+			name:     "素材存储未知错误透传",
+			snap:     func() *provider.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) },
+			input:    map[string]any{"prompt": "x", "image": float64(3)},
+			setup:    func(env *taskSvcEnv) { env.assets.err = errors.New("storage down") },
+			wantCode: -1,
+		},
+		{
+			name:     "插入任务出错透传",
+			snap:     func() *provider.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) },
+			input:    map[string]any{"prompt": "x"},
+			setup:    func(env *taskSvcEnv) { env.repo.errs["InsertTask"] = errors.New("db down") },
+			wantCode: -1,
+		},
 		{
 			name:     "素材不属于试跑者返回 ErrTaskInput",
-			snap:     func() *dsl.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) },
+			snap:     func() *provider.Snapshot { return fakeTaskSnapshot(model.KindVideo, 10) },
 			input:    map[string]any{"prompt": "x", "image": float64(3)},
 			wantCode: errcode.ErrTaskInput.Code,
 		},
@@ -868,7 +975,11 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 				tt.setup(env)
 			}
 			view, err := env.svc.SubmitTest(context.Background(), admin, tt.snap(), tt.input)
-			assertTaskCode(t, err, tt.wantCode)
+			if tt.wantCode == -1 {
+				assertPlainError(t, err)
+			} else {
+				assertTaskCode(t, err, tt.wantCode)
+			}
 			if tt.wantCode != 0 {
 				if len(env.repo.tasks) != 0 {
 					t.Fatal("失败时不应创建任务")
@@ -890,6 +1001,30 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("试跑任务用调用方传入的快照（草稿配置）冻结，不读 registry", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskCfg())
+		env.registry.snapErr = errors.New("试跑不应访问 registry")
+		snap := fakeTaskSnapshot(model.KindImage, 10)
+		snap.Channel.Key = "draft-ch"
+		snap.Model.Deadline = modelcfg.Duration(2 * time.Minute)
+		v, err := env.svc.SubmitTest(context.Background(), admin, snap, map[string]any{"prompt": "x"})
+		assertTaskCode(t, err, 0)
+		task := env.repo.tasks[v.ID]
+		var got provider.Snapshot
+		if err := json.Unmarshal(task.ConfigSnapshot, &got); err != nil || got.Channel.Key != "draft-ch" || got.Plugin.SHA256 != "abc123" {
+			t.Fatalf("快照没有落库：%v %s", err, task.ConfigSnapshot)
+		}
+		if task.Kind != model.KindImage || task.Provider != "draft-ch" || task.IdempotencyKey != "" {
+			t.Fatalf("任务字段应取自快照且没有幂等键：%+v", task)
+		}
+		if !task.DeadlineAt.Equal(env.now.Add(2 * time.Minute)) {
+			t.Fatalf("deadline 应取快照配置：%v", task.DeadlineAt)
+		}
+		if v.Status != model.TaskPending || v.Credits != 0 {
+			t.Fatalf("视图不对：%+v", v)
+		}
+	})
 
 	t.Run("试跑任务在已达并发上限时仍可提交", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
@@ -1034,6 +1169,104 @@ func itoa(n int) string {
 }
 
 // ---------------------------------------------------------------------------
+// 试跑任务：GetTestTask / GetTestTrace
+// ---------------------------------------------------------------------------
+
+func TestGenerationTaskService_GetTestTask(t *testing.T) {
+	const admin = uint64(9)
+	tests := []struct {
+		name     string
+		userID   uint64
+		task     model.GenerationTask
+		id       uint64 // 非 0 时覆盖任务 id
+		wantCode int
+	}{
+		{"查到自己的试跑任务", admin, model.GenerationTask{UserID: admin, Status: model.TaskRunning, IsTest: true}, 0, 0},
+		{"别人的试跑任务当作不存在", 1, model.GenerationTask{UserID: admin, Status: model.TaskRunning, IsTest: true}, 0, errcode.ErrTaskNotFound.Code},
+		{"正式任务当作不存在", admin, model.GenerationTask{UserID: admin, Status: model.TaskRunning}, 0, errcode.ErrTaskNotFound.Code},
+		{"不存在的任务", admin, model.GenerationTask{UserID: admin, IsTest: true}, 99999, errcode.ErrTaskNotFound.Code},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTaskSvcEnv(defaultTaskCfg())
+			task := env.repo.addTask(tt.task)
+			id := task.ID
+			if tt.id != 0 {
+				id = tt.id
+			}
+			v, err := env.svc.GetTestTask(context.Background(), tt.userID, id)
+			assertTaskCode(t, err, tt.wantCode)
+			if tt.wantCode == 0 && (v.ID != task.ID || v.Status != model.TaskRunning || v.Outputs == nil) {
+				t.Fatalf("视图不对：%+v", v)
+			}
+		})
+	}
+
+	t.Run("仓储错误透传", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskCfg())
+		env.repo.errs["GetByID"] = errors.New("db down")
+		_, err := env.svc.GetTestTask(context.Background(), admin, 1)
+		assertPlainError(t, err)
+	})
+}
+
+func TestGenerationTaskService_GetTestTrace(t *testing.T) {
+	const admin = uint64(9)
+	steps := []provider.TraceStep{{Kind: "hook", Name: "submit", DurationMs: 3}}
+	rawSteps, _ := json.Marshal(steps)
+
+	tests := []struct {
+		name      string
+		userID    uint64
+		task      model.GenerationTask
+		id        uint64
+		wantCode  int
+		wantPlain bool // 期望未知错误（非业务错误）
+		wantSteps int
+	}{
+		{"读出已写入的追踪步骤", admin, model.GenerationTask{UserID: admin, IsTest: true, TraceJSON: rawSteps}, 0, 0, false, 1},
+		{"还没有追踪时返回空切片", admin, model.GenerationTask{UserID: admin, IsTest: true}, 0, 0, false, 0},
+		{"别人的试跑任务当作不存在", 1, model.GenerationTask{UserID: admin, IsTest: true, TraceJSON: rawSteps}, 0, errcode.ErrTaskNotFound.Code, false, 0},
+		{"正式任务不能借此接口探测", admin, model.GenerationTask{UserID: admin, TraceJSON: rawSteps}, 0, errcode.ErrTaskNotFound.Code, false, 0},
+		{"任务不存在", admin, model.GenerationTask{UserID: admin, IsTest: true}, 99999, errcode.ErrTaskNotFound.Code, false, 0},
+		{"trace_json 损坏返回内部错误", admin, model.GenerationTask{UserID: admin, IsTest: true, TraceJSON: []byte(`{bad`)}, 0, 0, true, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTaskSvcEnv(defaultTaskCfg())
+			task := env.repo.addTask(tt.task)
+			id := task.ID
+			if tt.id != 0 {
+				id = tt.id
+			}
+			got, err := env.svc.GetTestTrace(context.Background(), tt.userID, id)
+			switch {
+			case tt.wantPlain:
+				assertPlainError(t, err)
+			default:
+				assertTaskCode(t, err, tt.wantCode)
+			}
+			if tt.wantCode != 0 || tt.wantPlain {
+				return
+			}
+			if got == nil || len(got) != tt.wantSteps {
+				t.Fatalf("步骤数应为 %d：%#v", tt.wantSteps, got)
+			}
+			if tt.wantSteps == 1 && (got[0].Name != "submit" || got[0].Kind != "hook" || got[0].DurationMs != 3) {
+				t.Fatalf("步骤内容不对：%+v", got[0])
+			}
+		})
+	}
+
+	t.Run("仓储错误透传", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskCfg())
+		env.repo.errs["GetByID"] = errors.New("db down")
+		_, err := env.svc.GetTestTrace(context.Background(), admin, 1)
+		assertPlainError(t, err)
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Cancel
 // ---------------------------------------------------------------------------
 
@@ -1095,6 +1328,46 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("取消上游时带冻结的快照与任务引用（渠道与插件版本按快照，不读当前配置）", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskCfg())
+		env.repo.addCredit(user, 50, 10)
+		snapJSON, _ := json.Marshal(fakeTaskSnapshot(model.KindVideo, 10))
+		task := env.repo.addTask(model.GenerationTask{
+			UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-9", ConfigSnapshot: snapJSON,
+		})
+		if _, err := env.svc.Cancel(context.Background(), user, task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(env.exec.cancelCalls) != 1 {
+			t.Fatalf("应通知上游取消一次：%d", len(env.exec.cancelCalls))
+		}
+		ref, snap := env.exec.cancelCalls[0], env.exec.cancelSnaps[0]
+		if ref.ID != task.ID || ref.UserID != user || ref.ProviderTaskID != "pt-9" {
+			t.Fatalf("任务引用不对：%+v", ref)
+		}
+		if snap == nil || snap.Channel.PluginVersionID != 7 || snap.Plugin.SHA256 != "abc123" {
+			t.Fatalf("应带任务冻结的快照：%+v", snap)
+		}
+	})
+
+	t.Run("快照损坏时跳过上游取消，本地取消与退款照常完成", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskCfg())
+		env.repo.addCredit(user, 50, 10)
+		task := env.repo.addTask(model.GenerationTask{
+			UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-9", ConfigSnapshot: []byte(`{bad`),
+		})
+		view, err := env.svc.Cancel(context.Background(), user, task.ID)
+		if err != nil || view.Status != model.TaskCanceled {
+			t.Fatalf("view=%+v err=%v", view, err)
+		}
+		if len(env.exec.cancelCalls) != 0 {
+			t.Fatal("快照损坏不应通知上游")
+		}
+		if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 50 {
+			t.Fatalf("应退回冻结：%+v", acc)
+		}
+	})
 
 	t.Run("CAS 没命中（刚好被别的流程结束）返回不可取消", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
@@ -1183,7 +1456,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("MarkSubmitted：pending → queued，记录平台任务 id、提交时间，推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskPending, nil)
-		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", next)
+		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", nil, next)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -1198,7 +1471,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("MarkSubmitted：任务已被取消则不迁移", func(t *testing.T) {
 		env, task := newEnv(model.TaskCanceled, nil)
-		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", next)
+		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", nil, next)
 		if err != nil || applied {
 			t.Fatalf("applied=%v err=%v，期望 false/nil", applied, err)
 		}
@@ -1210,7 +1483,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	t.Run("MarkPolled：状态或进度变化时 bump version 并推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskQueued, nil)
 		p := 30
-		applied, err := env.svc.MarkPolled(ctx, task, model.TaskRunning, &p, 1, next)
+		applied, err := env.svc.MarkPolled(ctx, task, model.TaskRunning, &p, nil, 1, next)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -1226,7 +1499,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	t.Run("MarkPolled：没有变化只调度，不 bump version、不推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, func(t *model.GenerationTask) { p := 30; t.Progress = &p })
 		p := 30
-		applied, err := env.svc.MarkPolled(ctx, task, model.TaskRunning, &p, 2, next)
+		applied, err := env.svc.MarkPolled(ctx, task, model.TaskRunning, &p, nil, 2, next)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -1240,7 +1513,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("MarkPolled：平台没给进度时保留原进度", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, func(t *model.GenerationTask) { p := 30; t.Progress = &p })
-		_, _ = env.svc.MarkPolled(ctx, task, model.TaskRunning, nil, 1, next)
+		_, _ = env.svc.MarkPolled(ctx, task, model.TaskRunning, nil, nil, 1, next)
 		if got := env.repo.tasks[task.ID]; got.Progress == nil || *got.Progress != 30 {
 			t.Fatalf("进度不应被覆盖：%+v", got.Progress)
 		}
@@ -1248,7 +1521,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("MarkPolled：不允许迁到其它状态", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, nil)
-		if _, err := env.svc.MarkPolled(ctx, task, model.TaskSucceeded, nil, 1, next); err == nil {
+		if _, err := env.svc.MarkPolled(ctx, task, model.TaskSucceeded, nil, nil, 1, next); err == nil {
 			t.Fatal("期望返回错误")
 		}
 	})
@@ -1436,6 +1709,176 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		}
 	})
 
+	t.Run("MarkSubmitted：带插件 state 时合并进 provider_state，保留已有的 prepared", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, func(t *model.GenerationTask) {
+			t.ProviderState = []byte(`{"prepared":{"file":"f-1"}}`)
+		})
+		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", json.RawMessage(`{"cursor":"c1"}`), next)
+		if err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		st, ok := provider.DecodeProviderState(env.repo.tasks[task.ID].ProviderState)
+		if !ok || string(st.Plugin) != `{"cursor":"c1"}` || string(st.Prepared) != `{"file":"f-1"}` {
+			t.Fatalf("provider_state 不对：%s", env.repo.tasks[task.ID].ProviderState)
+		}
+	})
+
+	t.Run("MarkSubmitted：pluginState 为空时不改 provider_state", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, func(t *model.GenerationTask) { t.ProviderState = []byte(`{"plugin":{"a":1}}`) })
+		if _, err := env.svc.MarkSubmitted(ctx, task, "pt-1", nil, next); err != nil {
+			t.Fatal(err)
+		}
+		if string(env.repo.tasks[task.ID].ProviderState) != `{"plugin":{"a":1}}` {
+			t.Fatalf("不应改动：%s", env.repo.tasks[task.ID].ProviderState)
+		}
+	})
+
+	t.Run("MarkSubmitted：仓储出错透传", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		env.repo.errs["UpdateIf"] = errors.New("db down")
+		applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", nil, next)
+		if err == nil || applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+	})
+
+	t.Run("MarkImmediate：同步接口 pending → finalizing，结果写进 provider_result，立即转存并唤醒 worker", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		outs := json.RawMessage(`[{"type":"url","url":"https://up.example.com/a.png"}]`)
+		applied, err := env.svc.MarkImmediate(ctx, task, "sync-1", json.RawMessage(`{"s":1}`), outs)
+		if err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		got := env.repo.tasks[task.ID]
+		if got.Status != model.TaskFinalizing || got.ProviderTaskID != "sync-1" || !got.NextPollAt.Equal(env.now) || got.Version != 2 || got.PollAttempts != 0 {
+			t.Fatalf("字段不对：%+v", got)
+		}
+		if string(got.ProviderResult) != string(outs) {
+			t.Fatalf("provider_result 不对：%s", got.ProviderResult)
+		}
+		if st, _ := provider.DecodeProviderState(got.ProviderState); string(st.Plugin) != `{"s":1}` {
+			t.Fatalf("插件 state 没保存：%s", got.ProviderState)
+		}
+		if !kicked(env.svc) || len(env.bc.msgs) != 1 {
+			t.Fatal("应唤醒 worker 并推送")
+		}
+	})
+
+	t.Run("MarkImmediate：任务已被取消则不迁移、不唤醒", func(t *testing.T) {
+		env, task := newEnv(model.TaskCanceled, nil)
+		applied, err := env.svc.MarkImmediate(ctx, task, "sync-1", nil, json.RawMessage(`[]`))
+		if err != nil || applied {
+			t.Fatalf("applied=%v err=%v，期望 false/nil", applied, err)
+		}
+		if kicked(env.svc) || len(env.bc.msgs) != 0 || env.repo.tasks[task.ID].ProviderResult != nil {
+			t.Fatal("未迁移不应写结果、唤醒或推送")
+		}
+	})
+
+	t.Run("MarkImmediate 只允许从 pending 迁移", func(t *testing.T) {
+		env, task := newEnv(model.TaskRunning, nil)
+		applied, err := env.svc.MarkImmediate(ctx, task, "sync-1", nil, json.RawMessage(`[]`))
+		if err != nil || applied {
+			t.Fatalf("running 不能 MarkImmediate：%v %v", applied, err)
+		}
+	})
+
+	t.Run("MarkPolled：带插件 state 时写入 provider_state", func(t *testing.T) {
+		env, task := newEnv(model.TaskQueued, nil)
+		applied, err := env.svc.MarkPolled(ctx, task, model.TaskQueued, nil, json.RawMessage(`{"page":2}`), 1, next)
+		if err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		got := env.repo.tasks[task.ID]
+		if st, _ := provider.DecodeProviderState(got.ProviderState); string(st.Plugin) != `{"page":2}` {
+			t.Fatalf("provider_state 不对：%s", got.ProviderState)
+		}
+		if got.Version != 1 || len(env.bc.msgs) != 0 {
+			t.Fatal("状态与进度都没变，不应 bump version 或推送")
+		}
+	})
+
+	t.Run("MarkPolled：已终态的任务不迁移", func(t *testing.T) {
+		env, task := newEnv(model.TaskCanceled, nil)
+		applied, err := env.svc.MarkPolled(ctx, task, model.TaskRunning, nil, nil, 1, next)
+		if err != nil || applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+	})
+
+	t.Run("MarkFinalizing：只允许从 queued / running 迁移", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		applied, err := env.svc.MarkFinalizing(ctx, task)
+		if err != nil || applied {
+			t.Fatalf("pending 不能直接 MarkFinalizing：%v %v", applied, err)
+		}
+	})
+
+	t.Run("SaveProviderState：保存准备结果，不改状态、不 bump、不推送", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		st := provider.ProviderState{Prepared: json.RawMessage(`{"file":"f-1"}`)}
+		if err := env.svc.SaveProviderState(ctx, task, st); err != nil {
+			t.Fatal(err)
+		}
+		got := env.repo.tasks[task.ID]
+		back, ok := provider.DecodeProviderState(got.ProviderState)
+		if !ok || string(back.Prepared) != `{"file":"f-1"}` {
+			t.Fatalf("provider_state 不对：%s", got.ProviderState)
+		}
+		if got.Status != model.TaskPending || got.Version != 1 || len(env.bc.msgs) != 0 {
+			t.Fatalf("不应改状态 / 版本 / 推送：%+v", got)
+		}
+	})
+
+	t.Run("SaveProviderState：任务已终态时静默忽略", func(t *testing.T) {
+		env, task := newEnv(model.TaskCanceled, nil)
+		if err := env.svc.SaveProviderState(ctx, task, provider.ProviderState{Prepared: json.RawMessage(`{}`)}); err != nil {
+			t.Fatalf("终态应静默忽略：%v", err)
+		}
+		if env.repo.tasks[task.ID].ProviderState != nil {
+			t.Fatal("终态任务不应被写入")
+		}
+	})
+
+	t.Run("SaveProviderState：仓储出错透传", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		env.repo.errs["UpdateIf"] = errors.New("db down")
+		assertPlainError(t, env.svc.SaveProviderState(ctx, task, provider.ProviderState{}))
+	})
+
+	t.Run("SaveTrace：试跑任务写入追踪", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, func(t *model.GenerationTask) { t.IsTest = true; t.Credits = 0 })
+		steps := []provider.TraceStep{{Name: "submit", Kind: "hook", DurationMs: 2}}
+		if err := env.svc.SaveTrace(ctx, task, steps); err != nil {
+			t.Fatal(err)
+		}
+		var back []provider.TraceStep
+		if err := json.Unmarshal(env.repo.tasks[task.ID].TraceJSON, &back); err != nil || len(back) != 1 || back[0].Name != "submit" {
+			t.Fatalf("trace_json 不对：%s %v", env.repo.tasks[task.ID].TraceJSON, err)
+		}
+	})
+
+	t.Run("SaveTrace：正式任务、空追踪、nil 任务一律忽略", func(t *testing.T) {
+		env, normal := newEnv(model.TaskPending, nil)
+		_, test := newEnv(model.TaskPending, func(t *model.GenerationTask) { t.IsTest = true })
+		steps := []provider.TraceStep{{Name: "submit", Kind: "hook"}}
+		if err := env.svc.SaveTrace(ctx, normal, steps); err != nil || env.repo.tasks[normal.ID].TraceJSON != nil {
+			t.Fatalf("正式任务不记追踪：%v", err)
+		}
+		if err := env.svc.SaveTrace(ctx, test, nil); err != nil {
+			t.Fatalf("空追踪应忽略：%v", err)
+		}
+		if err := env.svc.SaveTrace(ctx, nil, steps); err != nil {
+			t.Fatalf("nil 任务应忽略：%v", err)
+		}
+	})
+
+	t.Run("SaveTrace：仓储出错透传", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, func(t *model.GenerationTask) { t.IsTest = true })
+		env.repo.errs["SaveTrace"] = errors.New("db down")
+		assertPlainError(t, env.svc.SaveTrace(ctx, task, []provider.TraceStep{{Name: "submit", Kind: "hook"}}))
+	})
+
 	t.Run("ClaimDue / ExtendLease 透传仓储", func(t *testing.T) {
 		env, _ := newEnv(model.TaskPending, nil)
 		env.repo.errs["ClaimDue"] = errors.New("boom")
@@ -1446,101 +1889,6 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 			t.Fatalf("ok=%v err=%v", ok, err)
 		}
 	})
-}
-
-// ---------------------------------------------------------------------------
-// Webhook
-// ---------------------------------------------------------------------------
-
-func TestGenerationTaskService_HandleWebhook(t *testing.T) {
-	ctx := context.Background()
-	runningHub := &dsl.ProviderConfig{Key: "runninghub", Webhook: &dsl.WebhookConfig{TaskID: "req.taskId"}}
-	evalTaskID := func(src string, rc *dsl.RenderContext) (any, error) {
-		m, ok := rc.Req.(map[string]any)
-		if !ok {
-			return nil, errors.New("回调体不是对象")
-		}
-		return m["taskId"], nil
-	}
-
-	tests := []struct {
-		name      string
-		cfg       func(c *config.AI)
-		secret    string
-		body      string
-		provider  *dsl.ProviderConfig
-		provErr   error
-		evalErr   error
-		touchRows int64
-		touchErr  error
-		wantCode  int
-		wantTouch string
-		wantKick  bool
-	}{
-		{"成功：把任务的 next_poll_at 设为现在并唤醒 worker", nil, "s3cret", `{"taskId":"abc"}`, runningHub, nil, nil, 1, nil, 0, "runninghub/abc", true},
-		{"数字型任务 id 不丢精度", nil, "s3cret", `{"taskId":2093984571330498561}`, runningHub, nil, nil, 1, nil, 0, "runninghub/2093984571330498561", true},
-		{"找不到任务也返回成功（防探测），不唤醒", nil, "s3cret", `{"taskId":"nope"}`, runningHub, nil, nil, 0, nil, 0, "runninghub/nope", false},
-		{"密钥错误返回 404", nil, "wrong", `{"taskId":"abc"}`, runningHub, nil, nil, 1, nil, errcode.ErrNotFound.Code, "", false},
-		{"密钥为空返回 404", nil, "", `{"taskId":"abc"}`, runningHub, nil, nil, 1, nil, errcode.ErrNotFound.Code, "", false},
-		{"服务端未配置密钥一律 404", func(c *config.AI) { c.WebhookSecret = "" }, "", `{"taskId":"abc"}`, runningHub, nil, nil, 1, nil, errcode.ErrNotFound.Code, "", false},
-		{"平台不存在返回成功但不处理", nil, "s3cret", `{"taskId":"abc"}`, nil, provider.ErrModelUnavailable, nil, 1, nil, 0, "", false},
-		{"平台没声明 webhook 返回成功但不处理", nil, "s3cret", `{"taskId":"abc"}`, &dsl.ProviderConfig{Key: "runninghub"}, nil, nil, 1, nil, 0, "", false},
-		{"回调体不是合法 JSON 返回成功", nil, "s3cret", `not json`, runningHub, nil, nil, 1, nil, 0, "", false},
-		{"表达式求值失败返回成功", nil, "s3cret", `{"taskId":"abc"}`, runningHub, nil, errors.New("bad expr"), 1, nil, 0, "", false},
-		{"回调体里没有任务 id 返回成功", nil, "s3cret", `{}`, runningHub, nil, nil, 1, nil, 0, "", false},
-		{"数据库出错也返回成功（平台不必重试，轮询兜底）", nil, "s3cret", `{"taskId":"abc"}`, runningHub, nil, nil, 0, errors.New("db down"), 0, "runninghub/abc", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := defaultTaskCfg()
-			if tt.cfg != nil {
-				tt.cfg(&cfg)
-			}
-			env := newTaskSvcEnv(cfg)
-			env.registry.provider, env.registry.providerErr = tt.provider, tt.provErr
-			env.repo.touchRows = tt.touchRows
-			env.repo.errs["TouchByProviderTask"] = tt.touchErr
-			evalErr := tt.evalErr
-			env.svc.SetEvalExpr(func(src string, rc *dsl.RenderContext) (any, error) {
-				if evalErr != nil {
-					return nil, evalErr
-				}
-				return evalTaskID(src, rc)
-			})
-
-			err := env.svc.HandleWebhook(ctx, "runninghub", tt.secret, []byte(tt.body))
-			assertTaskCode(t, err, tt.wantCode)
-			if tt.wantTouch == "" && len(env.repo.touched) != 0 {
-				t.Fatalf("不应触碰任务：%v", env.repo.touched)
-			}
-			if tt.wantTouch != "" && (len(env.repo.touched) != 1 || env.repo.touched[0] != tt.wantTouch) {
-				t.Fatalf("期望触碰 %s，实际 %v", tt.wantTouch, env.repo.touched)
-			}
-			if got := kicked(env.svc); got != tt.wantKick {
-				t.Fatalf("唤醒 worker = %v，期望 %v", got, tt.wantKick)
-			}
-		})
-	}
-}
-
-func TestGenerationTaskService_WebhookURL(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  config.AI
-		want string
-	}{
-		{"配置了公网地址和密钥", config.AI{WebhookBaseURL: "https://api.example.com/", WebhookSecret: "abc"}, "https://api.example.com/api/v1/webhooks/runninghub/abc"},
-		{"未配置公网地址时为空（纯轮询）", config.AI{WebhookSecret: "abc"}, ""},
-		{"未配置密钥时为空", config.AI{WebhookBaseURL: "https://api.example.com"}, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(tt.cfg)
-			if got := env.svc.WebhookURL("runninghub"); got != tt.want {
-				t.Fatalf("got=%q want=%q", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestGenerationTaskService_Kick(t *testing.T) {

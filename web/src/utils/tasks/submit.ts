@@ -1,3 +1,5 @@
+import type { CanvasNodeData, NodeKind } from '@/types'
+
 /** 提交失败后要在提交处就地告诉用户的话 */
 export type SubmitErrorInfo = {
   kind: 'credits' | 'limit' | 'unavailable' | 'invalid' | 'asset' | 'network' | 'unknown'
@@ -75,5 +77,26 @@ export async function submitWithRetry<T>(
       if (attempt >= retries || !isRetryable(error)) throw error
       await sleep(delayMs * 2 ** attempt)
     }
+  }
+}
+
+/**
+ * 任务提交成功（202）后写进节点的补丁：记下 taskId、进入 running，并清掉上一次的结果。
+ * 文本节点清正文；媒体节点清素材相关字段。此后节点完全由任务 store 与回填驱动。
+ * @param kind 节点种类
+ * @param taskId 后端返回的任务 id（字符串）
+ * @returns 节点数据补丁
+ */
+export function buildSubmittedPatch(kind: NodeKind, taskId: string): Partial<CanvasNodeData> {
+  if (kind === 'script') return { taskId, status: 'running', text: null, error: null }
+  return {
+    taskId,
+    status: 'running',
+    src: null,
+    assetId: undefined,
+    mediaType: undefined,
+    uploaded: false,
+    fileName: undefined,
+    error: null,
   }
 }

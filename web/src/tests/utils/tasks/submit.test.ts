@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildSubmittedPatch,
   describeSubmitError,
   isRetryableSubmitError,
   submitWithRetry,
@@ -88,5 +89,28 @@ describe("submitWithRetry：同一次点击的重试复用同一个 Idempotency-
     expect(isRetryableSubmitError({ status: 502 })).toBe(true);
     expect(isRetryableSubmitError({ status: 400 })).toBe(false);
     expect(isRetryableSubmitError({ status: 429 })).toBe(false);
+  });
+});
+
+describe("buildSubmittedPatch：提交成功后写进节点的补丁", () => {
+  test("文本节点：running + taskId，清正文与错误，不碰素材字段", () => {
+    expect(buildSubmittedPatch("script", "9")).toEqual({
+      taskId: "9",
+      status: "running",
+      text: null,
+      error: null,
+    });
+  });
+
+  test("视频节点：running + taskId，清素材相关字段", () => {
+    expect(buildSubmittedPatch("video", "9")).toMatchObject({
+      taskId: "9",
+      status: "running",
+      src: null,
+      assetId: undefined,
+      uploaded: false,
+      error: null,
+    });
+    expect("text" in buildSubmittedPatch("video", "9")).toBe(false);
   });
 });

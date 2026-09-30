@@ -13,6 +13,7 @@ type AssetRepository struct {
 	db *gorm.DB
 }
 
+// NewAssetRepository 创建素材仓储。
 func NewAssetRepository(db *gorm.DB) *AssetRepository {
 	return &AssetRepository{db: db}
 }

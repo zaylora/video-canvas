@@ -10,25 +10,23 @@ import (
 	"video-canvas/internal/model"
 )
 
-// AIConfigRepository 是 AI 配置（平台协议 / 模型 / 凭证）的数据访问。
-// 指针表（ai_providers / ai_models）只记录“当前发布的是哪个 revision”和少量冗余字段，
-// 正文都在 ai_config_revisions 里；所有状态切换都在事务里完成。
+// AIConfigRepository 是 AI 配置（模型 / 凭证）的数据访问。
+// 指针表（ai_models）只记录“当前发布的是哪个 revision”和少量冗余字段，
+// 正文都在 ai_config_revisions 里；所有状态切换都在事务里完成。插件与渠道不走 revision，见 AIPluginRepository / AIChannelRepository。
 type AIConfigRepository struct {
 	db *gorm.DB
 }
 
+// NewAIConfigRepository 创建 AI 配置仓储。
 func NewAIConfigRepository(db *gorm.DB) *AIConfigRepository {
 	return &AIConfigRepository{db: db}
 }
 
-// ConfigPointer 标识一个配置目标，并携带要同步到指针表的冗余字段。
-// provider 只用 Name；model 只用 Kind / ProviderKey。
+// ConfigPointer 标识一个配置目标（目前只有模型），并携带要同步到指针表的冗余字段。
 type ConfigPointer struct {
-	Target      string // model.ConfigTargetProvider / model.ConfigTargetModel
-	Key         string
-	Name        string // provider 的显示名
-	Kind        string // model 的种类
-	ProviderKey string // model 所属平台
+	Target string // model.ConfigTargetModel
+	Key    string
+	Kind   string // 模型种类
 }
 
 // SaveDraftInput 保存草稿的参数。
@@ -43,25 +41,15 @@ type SaveDraftInput struct {
 	InitialSort    int
 }
 
-// PublishedProvider 是已发布的平台配置（指针行 + 发布版本正文）。
-type PublishedProvider struct {
+// PublishedModel 是已发布的模型配置（指针行 + 发布版本正文）。
+type PublishedModel struct {
 	Key        string
-	Name       string
+	Kind       string
+	Enabled    bool
+	Sort       int
 	RevisionID uint64
 	RevisionNo int
 	Body       model.JSONText
-}
-
-// PublishedModel 是已发布的模型配置（指针行 + 发布版本正文）。
-type PublishedModel struct {
-	Key         string
-	Kind        string
-	ProviderKey string
-	Enabled     bool
-	Sort        int
-	RevisionID  uint64
-	RevisionNo  int
-	Body        model.JSONText
 }
 
 // revisionMetaColumns 是不含正文的列，列表类查询用它避免读出大字段。
@@ -111,24 +99,17 @@ func (r *AIConfigRepository) SaveDraft(ctx context.Context, in SaveDraftInput) (
 	return rev, nil
 }
 
-// upsertPointer 创建或更新指针行；冲突更新会锁住已有行直到事务结束。
+// upsertPointer 创建或更新模型指针行；冲突更新会锁住已有行直到事务结束。
 func upsertPointer(tx *gorm.DB, in SaveDraftInput) error {
 	p := in.Pointer
-	if p.Target == model.ConfigTargetProvider {
-		row := &model.AIProvider{Key: p.Key, Name: p.Name}
-		return tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"name", "updated_at"}),
-		}).Create(row).Error
-	}
 	sort := in.InitialSort
 	if sort == 0 {
 		sort = 100
 	}
-	row := &model.AIModel{Key: p.Key, Kind: p.Kind, ProviderKey: p.ProviderKey, Enabled: in.InitialEnabled, Sort: sort}
+	row := &model.AIModel{Key: p.Key, Kind: p.Kind, Enabled: in.InitialEnabled, Sort: sort}
 	return tx.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"kind", "provider_key", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"kind", "updated_at"}),
 	}).Create(row).Error
 }
 
@@ -154,30 +135,20 @@ func (r *AIConfigRepository) GetRevision(ctx context.Context, id uint64) (*model
 
 // GetPublishedRevision 通过指针行找到当前发布的 revision；目标不存在或尚未发布返回 ErrNotFound。
 func (r *AIConfigRepository) GetPublishedRevision(ctx context.Context, target, key string) (*model.AIConfigRevision, error) {
-	var id *uint64
-	var err error
-	if target == model.ConfigTargetProvider {
-		var p model.AIProvider
-		err = r.db.WithContext(ctx).First(&p, "key = ?", key).Error
-		id = p.PublishedRevisionID
-	} else {
-		var m model.AIModel
-		err = r.db.WithContext(ctx).First(&m, "key = ?", key).Error
-		id = m.PublishedRevisionID
-	}
-	if err != nil {
+	var m model.AIModel
+	if err := r.db.WithContext(ctx).First(&m, "key = ?", key).Error; err != nil {
 		return nil, translate(err)
 	}
-	if id == nil {
+	if m.PublishedRevisionID == nil {
 		return nil, ErrNotFound
 	}
-	return r.GetRevision(ctx, *id)
+	return r.GetRevision(ctx, *m.PublishedRevisionID)
 }
 
 // ListRevisions 返回目标的历史版本（不含正文），revision_no 倒序，limit<=0 时默认 50。
 func (r *AIConfigRepository) ListRevisions(ctx context.Context, target, key string, limit int) ([]model.AIConfigRevision, error) {
 	if limit <= 0 {
-		limit = 50
+		limit = defaultListLimit
 	}
 	var list []model.AIConfigRevision
 	err := r.db.WithContext(ctx).Select(revisionMetaColumns).
@@ -254,57 +225,22 @@ func (r *AIConfigRepository) switchPublished(ctx context.Context, ptr ConfigPoin
 	return out, nil
 }
 
-// lockPointer 用 FOR UPDATE 锁住指针行，返回它当前的发布指针；指针行不存在返回 ErrNotFound。
+// lockPointer 用 FOR UPDATE 锁住模型指针行，返回它当前的发布指针；指针行不存在返回 ErrNotFound。
 func lockPointer(tx *gorm.DB, ptr ConfigPointer) (*uint64, error) {
-	lock := clause.Locking{Strength: "UPDATE"}
-	if ptr.Target == model.ConfigTargetProvider {
-		var p model.AIProvider
-		if err := tx.Clauses(lock).First(&p, "key = ?", ptr.Key).Error; err != nil {
-			return nil, translate(err)
-		}
-		return p.PublishedRevisionID, nil
-	}
 	var m model.AIModel
-	if err := tx.Clauses(lock).First(&m, "key = ?", ptr.Key).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&m, "key = ?", ptr.Key).Error; err != nil {
 		return nil, translate(err)
 	}
 	return m.PublishedRevisionID, nil
 }
 
-// updatePointerPublished 把指针行指向 revID，同时同步冗余字段（provider 的 name / model 的 kind、provider_key）。
+// updatePointerPublished 把指针行指向 revID，同时同步冗余字段（kind）。
 func updatePointerPublished(tx *gorm.DB, ptr ConfigPointer, revID uint64) error {
-	now := time.Now()
-	if ptr.Target == model.ConfigTargetProvider {
-		fields := map[string]any{"published_revision_id": revID, "updated_at": now}
-		if ptr.Name != "" {
-			fields["name"] = ptr.Name
-		}
-		return tx.Model(&model.AIProvider{}).Where("key = ?", ptr.Key).Updates(fields).Error
-	}
-	fields := map[string]any{"published_revision_id": revID, "updated_at": now}
+	fields := map[string]any{"published_revision_id": revID, "updated_at": time.Now()}
 	if ptr.Kind != "" {
 		fields["kind"] = ptr.Kind
 	}
-	if ptr.ProviderKey != "" {
-		fields["provider_key"] = ptr.ProviderKey
-	}
 	return tx.Model(&model.AIModel{}).Where("key = ?", ptr.Key).Updates(fields).Error
-}
-
-// GetProviderPointer 返回平台指针行；不存在返回 ErrNotFound。
-func (r *AIConfigRepository) GetProviderPointer(ctx context.Context, key string) (*model.AIProvider, error) {
-	var p model.AIProvider
-	if err := r.db.WithContext(ctx).First(&p, "key = ?", key).Error; err != nil {
-		return nil, translate(err)
-	}
-	return &p, nil
-}
-
-// ListProviderPointers 返回所有平台指针行，按 key 升序。
-func (r *AIConfigRepository) ListProviderPointers(ctx context.Context) ([]model.AIProvider, error) {
-	var list []model.AIProvider
-	err := r.db.WithContext(ctx).Order("key ASC").Find(&list).Error
-	return list, err
 }
 
 // GetModelPointer 返回模型指针行；不存在返回 ErrNotFound。
@@ -344,21 +280,11 @@ func (r *AIConfigRepository) updateModelPointer(ctx context.Context, key string,
 	return nil
 }
 
-// LoadPublishedProviders 一次取出所有已发布的平台配置（指针行 join 发布版本正文），Registry 刷新用。
-func (r *AIConfigRepository) LoadPublishedProviders(ctx context.Context) ([]PublishedProvider, error) {
-	var list []PublishedProvider
-	err := r.db.WithContext(ctx).Table("ai_providers AS p").
-		Select("p.key AS key, p.name AS name, r.id AS revision_id, r.revision_no AS revision_no, r.body_json AS body").
-		Joins("JOIN ai_config_revisions AS r ON r.id = p.published_revision_id").
-		Order("p.key ASC").Scan(&list).Error
-	return list, err
-}
-
 // LoadPublishedModels 一次取出所有已发布的模型配置，按 sort、key 升序。
 func (r *AIConfigRepository) LoadPublishedModels(ctx context.Context) ([]PublishedModel, error) {
 	var list []PublishedModel
 	err := r.db.WithContext(ctx).Table("ai_models AS m").
-		Select("m.key AS key, m.kind AS kind, m.provider_key AS provider_key, m.enabled AS enabled, m.sort AS sort, " +
+		Select("m.key AS key, m.kind AS kind, m.enabled AS enabled, m.sort AS sort, " +
 			"r.id AS revision_id, r.revision_no AS revision_no, r.body_json AS body").
 		Joins("JOIN ai_config_revisions AS r ON r.id = m.published_revision_id").
 		Order("m.sort ASC, m.key ASC").Scan(&list).Error

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,8 +21,8 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
-	"video-canvas/internal/provider/engine"
+	"video-canvas/internal/provider/plugin"
+	"video-canvas/internal/provider/pluginrunner"
 	"video-canvas/internal/provider/worker"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
@@ -36,6 +38,7 @@ type App struct {
 
 	hub        *ws.Hub        // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
 	taskWorker *worker.Worker // 生成任务调度；配置里关闭时为 nil
+	runnerStop func()         // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -78,11 +81,26 @@ func NewApp(cfg *config.Config) (*App, error) {
 	ticketStore := ws.NewTicketStore(rdb)
 
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
-	aiCfgSvc := service.NewAIConfigService(repository.NewAIConfigRepository(db), service.NewDSLValidator(), cfg.AI.SecretKey)
+	aiConfigRepo := repository.NewAIConfigRepository(db)
+	aiChannelRepo := repository.NewAIChannelRepository(db)
+	aiPluginRepo := repository.NewAIPluginRepository(db)
+	aiCfgSvc := service.NewAIConfigService(aiConfigRepo, aiChannelRepo, aiPluginRepo, cfg.AI.SecretKey)
 	if cfg.AI.SecretKey == "" {
 		logger.Warn("未配置 ai.secret_key（环境变量 APP_AI_SECRET_KEY），管理端无法设置或读取平台凭证，生成任务将无法提交")
 	}
-	executor := engine.New(engine.Options{Secrets: aiCfgSvc, Assets: assetSvc})
+	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
+	if err != nil {
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
+	executor := plugin.New(plugin.Options{
+		Runner:  runnerClient,
+		Codes:   pluginCodeStore{repo: aiPluginRepo},
+		Secrets: aiCfgSvc,
+		Assets:  assetSvc,
+		Saver:   assetSvc,
+	})
 
 	// 生成任务：提交 / 对账 / 取消 / 积分事务
 	taskRepo := repository.NewGenerationTaskRepository(db)
@@ -95,21 +113,17 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Config:      cfg.AI,
 	})
 
-	// 配置服务反向依赖执行引擎与任务服务（管理端 dry-run / 试跑 / 自动导入），所以组装完后再注入
-	aiCfgSvc.SetDryRunner(service.DryRunnerFunc(func(ctx context.Context, snap *dsl.Snapshot, in map[string]any) (any, error) {
-		res, err := engine.DryRun(ctx, snap, in)
-		if err != nil {
-			return nil, err // 不能直接 return engine.DryRun(...)：会把 nil 指针装进非 nil 接口
-		}
-		return res, nil
-	}))
-	aiCfgSvc.SetHTTPClientFactory(service.HTTPClientFactoryFunc(engine.NewGuardedClient))
+	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
+	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
-	if err := aiCfgSvc.SeedDefaults(context.Background()); err != nil {
-		closeRedis(rdb)
-		closeDB(db)
-		return nil, fmt.Errorf("初始化默认 AI 配置: %w", err)
-	}
+
+	// 插件与渠道管理：aiChannelRepo 同时负责审计日志；变更后经 aiCfgSvc 刷新 Registry
+	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiChannelRepo, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
+	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiPluginRepo, aiCfgSvc, aiChannelRepo, executor, aiCfgSvc)
+	// 内置插件按 key + version 登记（在 runner 就绪之后）；失败只记日志，不阻止启动
+	regCtx, regCancel := context.WithTimeout(context.Background(), time.Minute)
+	registerBuiltinPlugins(regCtx, aiPluginSvc)
+	regCancel()
 
 	var taskWorker *worker.Worker
 	if cfg.AI.Worker.Enabled {
@@ -119,7 +133,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 			BatchSize:        cfg.AI.Worker.BatchSize,
 			Lease:            cfg.AI.Worker.Lease,
 			MaxDownloadBytes: cfg.Storage.MaxResult,
-			WebhookURL:       taskSvc.WebhookURL,
 			ShutdownTimeout:  cfg.Server.ShutdownTimeout,
 		})
 	}
@@ -146,6 +159,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 		LocalFiles:     localFiles,
 		AIModel:        handler.NewAIModelHandler(aiCfgSvc),
 		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),
+		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
+		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc),
+		AdminMe:        handler.NewAdminMeHandler(roleLookup),
 		AdminRole:      roleLookup,
 	})
 
@@ -155,6 +171,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		rdb:        rdb,
 		hub:        hub,
 		taskWorker: taskWorker,
+		runnerStop: runnerStop,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -162,6 +179,102 @@ func NewApp(cfg *config.Config) (*App, error) {
 			WriteTimeout: cfg.Server.WriteTimeout,
 		},
 	}, nil
+}
+
+type pluginCodeStore struct {
+	repo *repository.AIPluginRepository
+}
+
+func (s pluginCodeStore) Code(ctx context.Context, versionID uint64, _ string) (string, error) {
+	version, err := s.repo.GetVersion(ctx, versionID)
+	if err != nil {
+		return "", err
+	}
+	return version.Code, nil
+}
+
+// newPluginRunnerClient 按配置创建 runner 客户端。spawn 模式下还会拉起子进程，并返回停止函数：
+// 子进程崩溃（如内存超限被杀）后由监督循环按指数退避自动重启，否则任务会一直 pending。
+func newPluginRunnerClient(cfg *config.Config) (plugin.RunnerClient, func(), error) {
+	r := cfg.AI.PluginRunner
+	switch r.Mode {
+	case "inprocess":
+		return plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{
+			PoolSize:       r.PoolSize,
+			DefaultTimeout: r.HookTimeout,
+		}).Handler()), nil, nil
+	case "spawn":
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, nil, fmt.Errorf("定位 plugin-runner 可执行文件失败: %w", err)
+		}
+		spawn := func() (pluginrunner.Process, error) {
+			cmd := exec.Command(executable, "plugin-runner",
+				"--network", r.Network, "--address", r.Address,
+				"--pool-size", fmt.Sprint(r.PoolSize), "--hook-timeout", r.HookTimeout.String())
+			if r.MemoryLimit > 0 {
+				cmd.Env = append(os.Environ(), fmt.Sprintf("GOMEMLIMIT=%dMiB", r.MemoryLimit))
+			}
+			if err := cmd.Start(); err != nil {
+				return nil, err
+			}
+			return cmdProcess{cmd}, nil
+		}
+		first, err := spawn()
+		if err != nil {
+			return nil, nil, fmt.Errorf("启动 plugin-runner 失败: %w", err)
+		}
+		client := plugin.NewHTTPRunnerClient(r.Network, r.Address)
+		wait := r.StartupWait
+		if wait <= 0 {
+			wait = 15 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		defer cancel()
+		for {
+			if err := client.Ready(ctx); err == nil {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				_ = first.Kill()
+				_ = first.Wait()
+				return nil, nil, fmt.Errorf("等待 plugin-runner 就绪超时: %w", ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+		// 就绪之后交给监督循环：进程退出就重启；停止函数取消监督、杀掉当前进程并等循环结束
+		superCtx, superCancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			pluginrunner.Supervise(superCtx, first, pluginrunner.SupervisorOptions{
+				Start: spawn,
+				OnExit: func(err error, lived, delay time.Duration) {
+					logger.Error("plugin-runner 进程退出，将自动重启",
+						zap.Error(err), zap.Duration("lived", lived), zap.Duration("restart_in", delay))
+				},
+				OnStartError: func(err error, delay time.Duration) {
+					logger.Error("重启 plugin-runner 失败，稍后再试", zap.Error(err), zap.Duration("retry_in", delay))
+				},
+			})
+		}()
+		return client, func() { superCancel(); <-done }, nil
+	default:
+		return plugin.NewHTTPRunnerClient(r.Network, r.Address), nil, nil
+	}
+}
+
+// cmdProcess 把 *exec.Cmd 适配成可监督的进程。
+type cmdProcess struct{ cmd *exec.Cmd }
+
+func (p cmdProcess) Wait() error { return p.cmd.Wait() }
+
+func (p cmdProcess) Kill() error {
+	if p.cmd.Process == nil {
+		return nil
+	}
+	return p.cmd.Process.Kill()
 }
 
 // Run 启动 HTTP 服务，ctx 取消（收到退出信号）后优雅关闭并释放资源。
@@ -220,6 +333,9 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) close() {
+	if a.runnerStop != nil {
+		a.runnerStop()
+	}
 	if a.rdb != nil {
 		if err := a.rdb.Close(); err != nil {
 			logger.Warn("关闭 redis 失败", zap.Error(err))
