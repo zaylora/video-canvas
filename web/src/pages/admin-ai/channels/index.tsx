@@ -43,7 +43,10 @@ export default function ChannelsPage() {
   const openEdit = (key: string) => setParams({ edit: key });
   const closeSheet = () => setParams({}, { replace: true });
   const editMissing =
-    !!edit && edit !== "new" && catalog.channelsStatus === "ready" && !catalog.channels.some((item) => item.key === edit);
+    !!edit &&
+    edit !== "new" &&
+    catalog.channelsStatus === "ready" &&
+    !catalog.channels.some((item) => item.key === edit);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -97,7 +100,11 @@ export default function ChannelsPage() {
         onClose={() => setImporting(null)}
         onImported={(draftId) => {
           setImporting(null);
-          navigate(draftId ? `/admin/ai/models/new?from=import&draft=${encodeURIComponent(draftId)}` : "/admin/ai/models/new");
+          navigate(
+            draftId
+              ? `/admin/ai/models/new?from=import&draft=${encodeURIComponent(draftId)}`
+              : "/admin/ai/models/new",
+          );
         }}
       />
     </div>

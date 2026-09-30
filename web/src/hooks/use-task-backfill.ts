@@ -36,10 +36,7 @@ export function useTaskBackfill(
   const initialNodesRef = useRef(nodes);
   useEffect(() => {
     let active = true;
-    const ids = collectRunningTaskIds(
-      initialNodesRef.current,
-      useTasksStore.getState().tasks,
-    );
+    const ids = collectRunningTaskIds(initialNodesRef.current, useTasksStore.getState().tasks);
     if (ids.length === 0) return;
     void reconcileTaskIds(ids).then((missing) => {
       if (!active || !missing || missing.length === 0) return;

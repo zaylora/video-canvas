@@ -154,7 +154,9 @@ export function ChannelTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Tag tone={channel.enabled ? "success" : "neutral"}>{channel.enabled ? "启用" : "停用"}</Tag>
+                  <Tag tone={channel.enabled ? "success" : "neutral"}>
+                    {channel.enabled ? "启用" : "停用"}
+                  </Tag>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1.5">

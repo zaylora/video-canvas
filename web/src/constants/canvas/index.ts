@@ -2,12 +2,7 @@ import { BackgroundVariant } from "@xyflow/react";
 
 import type { MediaType } from "@/components/canvas";
 import type { CanvasBackground } from "@/store";
-import type {
-  CanvasEdge,
-  CanvasNode,
-  NodeKind,
-  UploadNotice,
-} from "@/types";
+import type { CanvasEdge, CanvasNode, NodeKind, UploadNotice } from "@/types";
 
 export * from "./model-library";
 export * from "./node-library";
@@ -44,10 +39,7 @@ export const ANIMATED_EDGE_OPTIONS = {
 };
 
 /** 设置里的背景样式映射到 xyflow 的 variant，"none" 单独处理成不渲染 */
-export const BACKGROUND_VARIANTS: Record<
-  Exclude<CanvasBackground, "none">,
-  BackgroundVariant
-> = {
+export const BACKGROUND_VARIANTS: Record<Exclude<CanvasBackground, "none">, BackgroundVariant> = {
   dots: BackgroundVariant.Dots,
   lines: BackgroundVariant.Lines,
   cross: BackgroundVariant.Cross,

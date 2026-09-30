@@ -50,7 +50,15 @@ export function ImportDialog({
   return (
     <Dialog open={!!channel} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-xl">
-        {channel && <ImportBody key={channel.key} channel={channel} plugins={plugins} onClose={onClose} onImported={onImported} />}
+        {channel && (
+          <ImportBody
+            key={channel.key}
+            channel={channel}
+            plugins={plugins}
+            onClose={onClose}
+            onImported={onImported}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -131,7 +139,8 @@ function ImportBody({
       <DialogHeader>
         <DialogTitle>从渠道导入模型</DialogTitle>
         <DialogDescription>
-          渠道 <b>{channel.name}</b>。导入的只是草稿，<b>不会上架</b>，需要在模型页确认和试跑后发布。
+          渠道 <b>{channel.name}</b>。导入的只是草稿，<b>不会上架</b>
+          ，需要在模型页确认和试跑后发布。
         </DialogDescription>
       </DialogHeader>
 
@@ -144,7 +153,9 @@ function ImportBody({
             values={values}
             errors={errors}
             disabled={busy}
-            onChange={(name: string, value: SettingFormValue) => setValues((prev) => ({ ...prev, [name]: value }))}
+            onChange={(name: string, value: SettingFormValue) =>
+              setValues((prev) => ({ ...prev, [name]: value }))
+            }
           />
         </section>
       )}
@@ -158,13 +169,17 @@ function ImportBody({
       {drafts && (
         <section aria-label="草稿列表" className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-muted-foreground text-xs font-medium">{fields.length > 0 ? "2. " : "1. "}选择草稿</h3>
+            <h3 className="text-muted-foreground text-xs font-medium">
+              {fields.length > 0 ? "2. " : "1. "}选择草稿
+            </h3>
             {drafts.length > 0 && (
               <label className="ml-auto flex items-center gap-1.5 text-xs">
                 <Checkbox
                   checked={allChecked}
                   onCheckedChange={(checked) =>
-                    setSelected(checked === true ? new Set(drafts.map((_, index) => index)) : new Set())
+                    setSelected(
+                      checked === true ? new Set(drafts.map((_, index) => index)) : new Set(),
+                    )
                   }
                 />
                 全选
@@ -212,7 +227,11 @@ function ImportBody({
         <Button variant="outline" onClick={onClose}>
           取消
         </Button>
-        <Button variant={drafts ? "outline" : "default"} disabled={busy} onClick={() => void fetchDrafts()}>
+        <Button
+          variant={drafts ? "outline" : "default"}
+          disabled={busy}
+          onClick={() => void fetchDrafts()}
+        >
           {busy && <Loader2 className="animate-spin" />}
           {drafts ? "重新拉取" : "拉取"}
         </Button>

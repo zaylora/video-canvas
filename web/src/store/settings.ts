@@ -45,10 +45,7 @@ export type Settings = {
 };
 
 type SettingsActions = {
-  updateSettings: <K extends keyof Settings>(
-    key: K,
-    value: Settings[K]
-  ) => void;
+  updateSettings: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   /** 单独改某个种类的默认模型，其余种类原样留着 */
   setDefaultModel: (kind: string, modelId: string) => void;
   addCustomModel: (model: Omit<CustomModel, "id">) => void;
@@ -93,16 +90,13 @@ export const useSettingsStore = create<SettingsStore>()(
 
       addCustomModel: (model) =>
         set({
-          customModels: [
-            ...get().customModels,
-            { ...model, id: `custom-${crypto.randomUUID()}` },
-          ],
+          customModels: [...get().customModels, { ...model, id: `custom-${crypto.randomUUID()}` }],
         }),
 
       updateCustomModel: (id, patch) =>
         set({
           customModels: get().customModels.map((model) =>
-            model.id === id ? { ...patch, id } : model
+            model.id === id ? { ...patch, id } : model,
           ),
         }),
 
@@ -110,9 +104,7 @@ export const useSettingsStore = create<SettingsStore>()(
       removeCustomModel: (id) =>
         set({
           defaultModels: Object.fromEntries(
-            Object.entries(get().defaultModels).filter(
-              ([, value]) => value !== id
-            )
+            Object.entries(get().defaultModels).filter(([, value]) => value !== id),
           ),
           customModels: get().customModels.filter((model) => model.id !== id),
         }),
@@ -146,8 +138,8 @@ export const useSettingsStore = create<SettingsStore>()(
       onRehydrateStorage: () => (state) => {
         if (state) applyTheme(state.theme);
       },
-    }
-  )
+    },
+  ),
 );
 
 /**

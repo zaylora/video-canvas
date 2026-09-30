@@ -67,7 +67,9 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
     expect(
       deriveVideoNodeView({ status: "error", error: "内容未通过审核", taskId: "1" }, undefined, T0),
     ).toEqual({ phase: "failed", message: "内容未通过审核", refunded: true });
-    expect(deriveVideoNodeView({ status: "error", error: "上传失败，请重试" }, undefined, T0)).toEqual({
+    expect(
+      deriveVideoNodeView({ status: "error", error: "上传失败，请重试" }, undefined, T0),
+    ).toEqual({
       phase: "failed",
       message: "上传失败，请重试",
       refunded: false,

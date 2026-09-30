@@ -10,9 +10,7 @@ import { buildWsUrl, TaskSocketClient } from "./socket-client";
 
 /** 拿 ticket 遇到 401 说明登录已失效，重试没有意义 */
 const isUnauthorized = (error: unknown) =>
-  typeof error === "object" &&
-  error !== null &&
-  (error as { status?: unknown }).status === 401;
+  typeof error === "object" && error !== null && (error as { status?: unknown }).status === 401;
 
 /**
  * 登录后在应用根部建立唯一一条用户级 WebSocket：

@@ -34,19 +34,11 @@ export function SettingFields({
         const id = `${idPrefix}-${field.name}`;
         const value = values[field.name];
         const error = errors?.[field.name];
-        const hint = field.description ?? (
-          <span className="font-mono">{field.name}</span>
-        );
+        const hint = field.description ?? <span className="font-mono">{field.name}</span>;
 
         if (field.type === "boolean") {
           return (
-            <FormField
-              key={field.name}
-              label={field.label}
-              htmlFor={id}
-              hint={hint}
-              error={error}
-            >
+            <FormField key={field.name} label={field.label} htmlFor={id} hint={hint} error={error}>
               <div className="flex h-9 items-center">
                 <Switch
                   id={id}
@@ -76,9 +68,7 @@ export function SettingFields({
                 aria-invalid={!!error}
                 onChange={(event) => onChange(field.name, event.target.value)}
               >
-                <option value="">
-                  {field.required ? "请选择" : "（不设置）"}
-                </option>
+                <option value="">{field.required ? "请选择" : "（不设置）"}</option>
                 {field.options.map((option) => (
                   <option key={option} value={option}>
                     {option}

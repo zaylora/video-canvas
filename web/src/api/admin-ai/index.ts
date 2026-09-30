@@ -1,6 +1,6 @@
-import service from '@/utils/requests/service'
-import type { TaskView } from '@/api/generation-task/type'
-import { adminAiEndpoints as ep, saveBody } from './endpoints'
+import service from "@/utils/requests/service";
+import type { TaskView } from "@/api/generation-task/type";
+import { adminAiEndpoints as ep, saveBody } from "./endpoints";
 import type {
   AdminMe,
   ChannelCheckResult,
@@ -16,7 +16,7 @@ import type {
   SaveDraftResult,
   TestRunTrace,
   ValidateResult,
-} from './type'
+} from "./type";
 
 // ---------------------------------------------------------------- 当前用户
 
@@ -24,7 +24,7 @@ import type {
  * 当前管理端角色；普通用户调用得到 403
  * @returns 用户 ID 与角色
  */
-export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined)
+export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined);
 
 // ---------------------------------------------------------------- 插件
 
@@ -33,9 +33,9 @@ export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined)
  * @returns 插件列表
  */
 export const listPlugins = async (): Promise<PluginView[]> => {
-  const list = await service.get<PluginView[] | null>(ep.plugins(), undefined)
-  return (list ?? []).map((item) => ({ ...item, versions: item.versions ?? [] }))
-}
+  const list = await service.get<PluginView[] | null>(ep.plugins(), undefined);
+  return (list ?? []).map((item) => ({ ...item, versions: item.versions ?? [] }));
+};
 
 /**
  * 上传插件文件（super_admin）；预检不通过也返回 200，结果在 accepted / issues 里
@@ -43,15 +43,15 @@ export const listPlugins = async (): Promise<PluginView[]> => {
  * @returns 预检结果
  */
 export const uploadPlugin = async (file: File): Promise<PluginUploadResult> => {
-  const form = new FormData()
-  form.append('file', file)
-  const result = await service.upload<PluginUploadResult | null>(ep.plugins(), form)
+  const form = new FormData();
+  form.append("file", file);
+  const result = await service.upload<PluginUploadResult | null>(ep.plugins(), form);
   return {
     accepted: !!result?.accepted,
     issues: result?.issues ?? [],
     version: result?.version ?? null,
-  }
-}
+  };
+};
 
 /**
  * 插件启停（super_admin）
@@ -59,7 +59,7 @@ export const uploadPlugin = async (file: File): Promise<PluginUploadResult> => {
  * @param enabled 是否启用
  */
 export const setPluginEnabled = (key: string, enabled: boolean) =>
-  service.put<unknown>(ep.pluginEnabled(key), { enabled })
+  service.put<unknown>(ep.pluginEnabled(key), { enabled });
 
 /**
  * 删除插件版本（super_admin）；被渠道或进行中的任务引用时 409
@@ -67,7 +67,7 @@ export const setPluginEnabled = (key: string, enabled: boolean) =>
  * @param version semver 版本号
  */
 export const deletePluginVersion = (key: string, version: string) =>
-  service.delete<unknown>(ep.pluginVersion(key, version))
+  service.delete<unknown>(ep.pluginVersion(key, version));
 
 // ---------------------------------------------------------------- 渠道
 
@@ -76,14 +76,14 @@ export const deletePluginVersion = (key: string, version: string) =>
  * @returns 渠道列表
  */
 export const listChannels = async () =>
-  (await service.get<ChannelView[] | null>(ep.channels(), undefined)) ?? []
+  (await service.get<ChannelView[] | null>(ep.channels(), undefined)) ?? [];
 
 /**
  * 渠道详情
  * @param key 渠道 key
  * @returns 渠道视图
  */
-export const getChannel = (key: string) => service.get<ChannelView>(ep.channel(key), undefined)
+export const getChannel = (key: string) => service.get<ChannelView>(ep.channel(key), undefined);
 
 /**
  * 新建渠道（super_admin）
@@ -91,7 +91,7 @@ export const getChannel = (key: string) => service.get<ChannelView>(ep.channel(k
  * @returns 新建的渠道
  */
 export const createChannel = (data: ChannelCreateRequest) =>
-  service.post<ChannelView>(ep.channels(), data)
+  service.post<ChannelView>(ep.channels(), data);
 
 /**
  * 更新渠道（super_admin），字段不传表示不改
@@ -100,7 +100,7 @@ export const createChannel = (data: ChannelCreateRequest) =>
  * @returns 更新后的渠道
  */
 export const updateChannel = (key: string, data: ChannelUpdateRequest) =>
-  service.put<ChannelView>(ep.channel(key), data)
+  service.put<ChannelView>(ep.channel(key), data);
 
 /**
  * 设置渠道 Key（super_admin）；只写，设置后任何接口都读不回明文
@@ -108,7 +108,7 @@ export const updateChannel = (key: string, data: ChannelUpdateRequest) =>
  * @param value Key 明文
  */
 export const setChannelSecret = (key: string, value: string) =>
-  service.put<unknown>(ep.channelSecret(key), { value })
+  service.put<unknown>(ep.channelSecret(key), { value });
 
 /**
  * 连通性检查（super_admin）
@@ -116,7 +116,7 @@ export const setChannelSecret = (key: string, value: string) =>
  * @returns 是否连通、说明与耗时
  */
 export const checkChannel = (key: string) =>
-  service.post<ChannelCheckResult>(ep.channelCheck(key), undefined)
+  service.post<ChannelCheckResult>(ep.channelCheck(key), undefined);
 
 /**
  * 从渠道导入模型草稿（admin 也能调）；只预填编辑器，不落库
@@ -128,9 +128,9 @@ export const importFromChannel = async (
   key: string,
   args: Record<string, unknown>,
 ): Promise<ChannelImportResult> => {
-  const result = await service.post<ChannelImportResult | null>(ep.channelImport(key), { args })
-  return { drafts: result?.drafts ?? [] }
-}
+  const result = await service.post<ChannelImportResult | null>(ep.channelImport(key), { args });
+  return { drafts: result?.drafts ?? [] };
+};
 
 // ---------------------------------------------------------------- 模型
 
@@ -139,14 +139,14 @@ export const importFromChannel = async (
  * @returns 模型列表
  */
 export const listModels = async () =>
-  (await service.get<ConfigListItem[] | null>(ep.models(), undefined)) ?? []
+  (await service.get<ConfigListItem[] | null>(ep.models(), undefined)) ?? [];
 
 /**
  * 模型详情（草稿 + 已发布）
  * @param key 模型 key
  * @returns 模型详情
  */
-export const getModelDetail = (key: string) => service.get<ConfigDetail>(ep.model(key), undefined)
+export const getModelDetail = (key: string) => service.get<ConfigDetail>(ep.model(key), undefined);
 
 /**
  * 新建模型草稿
@@ -155,7 +155,7 @@ export const getModelDetail = (key: string) => service.get<ConfigDetail>(ep.mode
  * @returns 保存结果
  */
 export const createModelDraft = async (config: unknown, note?: string) =>
-  normalizeSave(await service.post<SaveDraftResult>(ep.models(), saveBody(config, note)))
+  normalizeSave(await service.post<SaveDraftResult>(ep.models(), saveBody(config, note)));
 
 /**
  * 更新模型草稿
@@ -165,12 +165,12 @@ export const createModelDraft = async (config: unknown, note?: string) =>
  * @returns 保存结果
  */
 export const updateModelDraft = async (key: string, config: unknown, note?: string) =>
-  normalizeSave(await service.put<SaveDraftResult>(ep.model(key), saveBody(config, note)))
+  normalizeSave(await service.put<SaveDraftResult>(ep.model(key), saveBody(config, note)));
 
 const normalizeSave = (result: SaveDraftResult): SaveDraftResult => ({
   ...result,
   issues: result?.issues ?? [],
-})
+});
 
 /**
  * 校验模型配置；config 不传就校验已保存的最新草稿
@@ -182,9 +182,9 @@ export const validateModel = async (key: string, config?: unknown): Promise<Vali
   const result = await service.post<ValidateResult>(
     ep.modelValidate(key),
     config === undefined ? {} : { body: config },
-  )
-  return { valid: !!result?.valid, issues: result?.issues ?? [] }
-}
+  );
+  return { valid: !!result?.valid, issues: result?.issues ?? [] };
+};
 
 /**
  * 发布模型草稿
@@ -192,7 +192,7 @@ export const validateModel = async (key: string, config?: unknown): Promise<Vali
  * @returns 新发布的版本
  */
 export const publishModel = (key: string) =>
-  service.post<ConfigRevision>(ep.modelPublish(key), undefined)
+  service.post<ConfigRevision>(ep.modelPublish(key), undefined);
 
 /**
  * 模型历史版本
@@ -200,7 +200,7 @@ export const publishModel = (key: string) =>
  * @returns 历史版本列表
  */
 export const listModelRevisions = async (key: string) =>
-  (await service.get<ConfigRevision[] | null>(ep.modelRevisions(key), undefined)) ?? []
+  (await service.get<ConfigRevision[] | null>(ep.modelRevisions(key), undefined)) ?? [];
 
 /**
  * 模型的某个历史版本
@@ -209,7 +209,7 @@ export const listModelRevisions = async (key: string) =>
  * @returns 版本详情
  */
 export const getModelRevision = (key: string, revisionId: number) =>
-  service.get<ConfigRevision>(ep.modelRevision(key, revisionId), undefined)
+  service.get<ConfigRevision>(ep.modelRevision(key, revisionId), undefined);
 
 /**
  * 回滚到指定历史版本
@@ -218,7 +218,7 @@ export const getModelRevision = (key: string, revisionId: number) =>
  * @returns 回滚后的版本
  */
 export const rollbackModel = (key: string, revisionId: number) =>
-  service.post<ConfigRevision>(ep.modelRollback(key), { revision_id: revisionId })
+  service.post<ConfigRevision>(ep.modelRollback(key), { revision_id: revisionId });
 
 /**
  * 模型上下架
@@ -226,7 +226,7 @@ export const rollbackModel = (key: string, revisionId: number) =>
  * @param enabled 是否上架
  */
 export const setModelEnabled = (key: string, enabled: boolean) =>
-  service.put<unknown>(ep.modelEnabled(key), { enabled })
+  service.put<unknown>(ep.modelEnabled(key), { enabled });
 
 /**
  * 模型排序
@@ -234,7 +234,7 @@ export const setModelEnabled = (key: string, enabled: boolean) =>
  * @param sort 排序值，越小越靠前
  */
 export const setModelSort = (key: string, sort: number) =>
-  service.put<unknown>(ep.modelSort(key), { sort })
+  service.put<unknown>(ep.modelSort(key), { sort });
 
 /**
  * dry-run：渲染插件返回的请求描述（已校验，Key 脱敏），不发送；注意后端目前不含宿主注入后的鉴权头，界面上不要叫“最终请求”
@@ -243,7 +243,7 @@ export const setModelSort = (key: string, sort: number) =>
  * @returns 自由结构的 JSON
  */
 export const dryRunModel = (key: string, input: unknown) =>
-  service.post<unknown>(ep.modelDryRun(key), { input })
+  service.post<unknown>(ep.modelDryRun(key), { input });
 
 /**
  * 试跑（is_test 任务，不扣积分）
@@ -252,7 +252,7 @@ export const dryRunModel = (key: string, input: unknown) =>
  * @returns 试跑任务视图
  */
 export const testRunModel = (key: string, input: unknown) =>
-  service.post<TaskView>(ep.modelTestRun(key), { input })
+  service.post<TaskView>(ep.modelTestRun(key), { input });
 
 /**
  * 查询试跑任务
@@ -260,7 +260,7 @@ export const testRunModel = (key: string, input: unknown) =>
  * @returns 任务视图
  */
 export const getTestRun = (taskId: number | string) =>
-  service.get<TaskView>(ep.testRunResult(taskId), undefined)
+  service.get<TaskView>(ep.testRunResult(taskId), undefined);
 
 /**
  * 试跑追踪：每次钩子的输入 / 输出 / utils.log，每次 HTTP 的请求与响应（均已脱敏）
@@ -268,12 +268,12 @@ export const getTestRun = (taskId: number | string) =>
  * @returns 追踪步骤；还没有追踪时是空数组
  */
 export const getTestRunTrace = async (taskId: number | string): Promise<TestRunTrace> => {
-  const result = await service.get<TestRunTrace | null>(ep.testRunTrace(taskId), undefined)
-  return { steps: result?.steps ?? [] }
-}
+  const result = await service.get<TestRunTrace | null>(ep.testRunTrace(taskId), undefined);
+  return { steps: result?.steps ?? [] };
+};
 
 /**
  * 模型配置的 JSON Schema
  * @returns JSON Schema
  */
-export const getModelSchema = () => service.get<unknown>(ep.modelSchema(), undefined)
+export const getModelSchema = () => service.get<unknown>(ep.modelSchema(), undefined);

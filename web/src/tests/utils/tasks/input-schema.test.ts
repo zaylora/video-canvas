@@ -79,13 +79,15 @@ describe("buildTaskInput：组装 input 并校验", () => {
 
   test("文本口连线：用上游文字覆盖手填；上游没文字且必填时报错", () => {
     const fromText = link({ sourceKind: "script", text: " 上游提示 ", sourceLabel: "文本" });
-    expect(buildTaskInput(SCHEMA, { prompt: "手填", image: 1 }, { prompt: fromText }).input.prompt).toBe(
-      "上游提示",
-    );
+    expect(
+      buildTaskInput(SCHEMA, { prompt: "手填", image: 1 }, { prompt: fromText }).input.prompt,
+    ).toBe("上游提示");
     const empty = link({ sourceKind: "script", text: "  ", sourceLabel: "文本" });
     expect(buildTaskInput(SCHEMA, { image: 1 }, { prompt: empty }).errors.prompt).toContain("文本");
     // 上游没文字但手填了：退回手填
-    expect(buildTaskInput(SCHEMA, { prompt: "手填", image: 1 }, { prompt: empty }).input.prompt).toBe("手填");
+    expect(
+      buildTaskInput(SCHEMA, { prompt: "手填", image: 1 }, { prompt: empty }).input.prompt,
+    ).toBe("手填");
   });
 
   test("文本长度、数字范围、枚举合法性", () => {

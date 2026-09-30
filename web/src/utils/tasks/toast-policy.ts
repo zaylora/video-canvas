@@ -47,7 +47,8 @@ export function planTaskToast(
   currentCanvasId: string | null,
   canvasTitle: string | undefined,
 ): TaskToastPlan | null {
-  const canvasId = view.canvas_id === null || view.canvas_id === undefined ? null : String(view.canvas_id);
+  const canvasId =
+    view.canvas_id === null || view.canvas_id === undefined ? null : String(view.canvas_id);
   if (canvasId !== null && canvasId === currentCanvasId) return null;
 
   const kind = KIND_LABEL[view.kind] ?? "内容";

@@ -10,7 +10,10 @@ describe("outputText：文本产出提取", () => {
 
   test("跳过没有 text 的产出", () => {
     const view = textSucceeded("x", {
-      outputs: [{ media_type: "text", text: " " }, { media_type: "text", text: "正文" }],
+      outputs: [
+        { media_type: "text", text: " " },
+        { media_type: "text", text: "正文" },
+      ],
     });
     expect(outputText(view)).toBe("正文");
   });

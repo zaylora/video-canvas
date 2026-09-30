@@ -16,7 +16,13 @@ const TONE: Record<CheckOutcome["tone"], { tag: TagTone; icon: typeof CheckCircl
  * 检查结果：图标加文字，不只靠颜色。
  * compact 用于列表行（一个小标签，说明放 title）；否则内联展开说明（抽屉里）。
  */
-export function CheckResult({ state, compact }: { state: CheckState | undefined; compact?: boolean }) {
+export function CheckResult({
+  state,
+  compact,
+}: {
+  state: CheckState | undefined;
+  compact?: boolean;
+}) {
   if (!state) return null;
   if (state.busy) {
     return (

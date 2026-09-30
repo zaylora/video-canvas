@@ -20,7 +20,10 @@ describe("planBackfill：终态回填节点", () => {
   });
 
   test("succeeded：图片、音频产物按 media_type 写进 mediaType", () => {
-    for (const [mediaType, url] of [["image", "/files/a.png"], ["audio", "/files/a.mp3"]] as const) {
+    for (const [mediaType, url] of [
+      ["image", "/files/a.png"],
+      ["audio", "/files/a.mp3"],
+    ] as const) {
       const view = succeeded({ outputs: [{ asset_id: 78, url, media_type: mediaType }] });
       const patch = planBackfill(makeData({ status: "running", taskId: "1" }), view);
       expect(patch).toMatchObject({ status: "done", src: url, assetId: "78", mediaType });
@@ -101,7 +104,9 @@ describe("applyBackfill：批量回填", () => {
   });
 
   test("已回填过的结果再应用一次是空操作", () => {
-    const first = applyBackfill([node("a", { status: "running", taskId: "1" })], { "1": succeeded() });
+    const first = applyBackfill([node("a", { status: "running", taskId: "1" })], {
+      "1": succeeded(),
+    });
     const second = applyBackfill(first.nodes, { "1": succeeded() });
     expect(second.nodes).toBe(first.nodes);
   });
@@ -134,7 +139,10 @@ describe("planBackfill：文本节点（script）", () => {
   });
 
   test("failed：error + 后端文案，清掉旧正文", () => {
-    const patch = planBackfill(running(), makeTask({ kind: "text", status: "failed", error_message: "模型超时" }));
+    const patch = planBackfill(
+      running(),
+      makeTask({ kind: "text", status: "failed", error_message: "模型超时" }),
+    );
     expect(patch).toEqual({ status: "error", error: "模型超时", text: null });
   });
 

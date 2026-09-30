@@ -57,7 +57,8 @@ export default function Login() {
             让创意自由连接
           </span>
           <h1 className="text-5xl leading-tight font-semibold tracking-tight xl:text-6xl">
-            从灵感到画面，<br />
+            从灵感到画面，
+            <br />
             在一张画布上完成。
           </h1>
           <p className="mt-6 max-w-md text-base leading-7 text-white/65">
@@ -126,11 +127,20 @@ export default function Login() {
               </div>
             </div>
 
-            <Button type="submit" size="lg" disabled={loading} className="h-11 w-full justify-center">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={loading}
+              className="h-11 w-full justify-center"
+            >
               {loading ? (
-                <><LoaderCircle className="size-4 animate-spin" /> 登录中...</>
+                <>
+                  <LoaderCircle className="size-4 animate-spin" /> 登录中...
+                </>
               ) : (
-                <>登录 <ArrowRight className="size-4" /></>
+                <>
+                  登录 <ArrowRight className="size-4" />
+                </>
               )}
             </Button>
           </form>

@@ -23,7 +23,12 @@ const hookStep = (over: Partial<TraceStep> = {}): TraceStep => ({
 const httpStep = (status: number, over: Partial<TraceStep> = {}): TraceStep => ({
   name: "submit",
   kind: "http",
-  request: { method: "POST", url: "https://x.test/v1", headers: { Authorization: "***" }, body: '{"a":1}' },
+  request: {
+    method: "POST",
+    url: "https://x.test/v1",
+    headers: { Authorization: "***" },
+    body: '{"a":1}',
+  },
   response: { status, body: '{"ok":true}', truncated: false },
   duration_ms: 1800,
   ...over,
@@ -56,7 +61,9 @@ describe("toTraceView", () => {
   });
 
   test("HTTP 步骤：标题是方法加路径（不带域名），完整 URL 单独保留，带状态、请求头、响应体，截断标记透传", () => {
-    const step = toTraceView([httpStep(200, { response: { status: 200, body: "{}", truncated: true } })]).steps[0];
+    const step = toTraceView([
+      httpStep(200, { response: { status: 200, body: "{}", truncated: true } }),
+    ]).steps[0];
     expect(step.title).toBe("POST /v1");
     expect(step.url).toBe("https://x.test/v1");
     expect(step.status).toBe(200);
@@ -65,13 +72,22 @@ describe("toTraceView", () => {
   });
 
   test("有 error 或 HTTP 状态 >= 400 都算失败", () => {
-    const view = toTraceView([hookStep({ error: "boom" }), httpStep(500), httpStep(404), httpStep(200)]);
+    const view = toTraceView([
+      hookStep({ error: "boom" }),
+      httpStep(500),
+      httpStep(404),
+      httpStep(200),
+    ]);
     expect(view.steps.map((step) => step.failed)).toEqual([true, true, true, false]);
     expect(view.failedCount).toBe(3);
   });
 
   test("总耗时是各步骤之和；耗时缺失按 0 计且显示为 null", () => {
-    const view = toTraceView([hookStep({ duration_ms: 10 }), httpStep(200, { duration_ms: 90 }), { name: "x", kind: "hook" }]);
+    const view = toTraceView([
+      hookStep({ duration_ms: 10 }),
+      httpStep(200, { duration_ms: 90 }),
+      { name: "x", kind: "hook" },
+    ]);
     expect(view.totalMs).toBe(100);
     expect(view.steps[2].durationMs).toBeNull();
   });
@@ -84,7 +100,12 @@ describe("toTraceView", () => {
 });
 
 describe("firstFailedStep / maxStepDuration / durationPercent", () => {
-  const view = toTraceView([hookStep(), httpStep(200), hookStep({ error: "e1", duration_ms: 2 }), hookStep({ error: "e2" })]);
+  const view = toTraceView([
+    hookStep(),
+    httpStep(200),
+    hookStep({ error: "e1", duration_ms: 2 }),
+    hookStep({ error: "e2" }),
+  ]);
 
   test("第一个失败步骤是被默认展开并滚动到的那个", () => {
     expect(firstFailedStep(view)?.index).toBe(3);
@@ -126,7 +147,9 @@ describe("foldText / formatDuration", () => {
 
 describe("urlPath", () => {
   test("完整 URL 取路径与查询串；相对路径与残缺 URL 原样返回", () => {
-    expect(urlPath("https://api.example.com/v1/video/generations/abc?x=1")).toBe("/v1/video/generations/abc?x=1");
+    expect(urlPath("https://api.example.com/v1/video/generations/abc?x=1")).toBe(
+      "/v1/video/generations/abc?x=1",
+    );
     expect(urlPath("https://api.example.com")).toBe("/");
     expect(urlPath("/v1/x")).toBe("/v1/x");
     expect(urlPath("")).toBe("");

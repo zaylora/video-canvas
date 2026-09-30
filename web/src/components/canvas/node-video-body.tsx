@@ -69,13 +69,9 @@ function PendingBox({
           <div className="text-foreground/80 flex items-center gap-2 text-sm font-medium">
             <Loader2 className="size-4 animate-spin" />
             {title}
-            {progress != null && (
-              <span className="tabular-nums">{progress}%</span>
-            )}
+            {progress != null && <span className="tabular-nums">{progress}%</span>}
           </div>
-          {detail && (
-            <p className="text-muted-foreground text-xs tabular-nums">{detail}</p>
-          )}
+          {detail && <p className="text-muted-foreground text-xs tabular-nums">{detail}</p>}
           {progress != null && (
             <div className="bg-foreground/10 h-1 w-32 overflow-hidden rounded-full">
               <div
@@ -157,9 +153,7 @@ export function NodeVideoBody({
           >
             <TriangleAlert className="size-4 shrink-0" />
             <p className="line-clamp-3 break-words">{view.message}</p>
-            {view.refunded && (
-              <p className="text-muted-foreground">积分已退回</p>
-            )}
+            {view.refunded && <p className="text-muted-foreground">积分已退回</p>}
             {onRetry && (
               <span title={retryHint}>
                 <Button

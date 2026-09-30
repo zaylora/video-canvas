@@ -43,7 +43,9 @@ export function TraceTimeline({
             <span className="text-muted-foreground font-normal">
               {" "}
               · 共 {view.steps.length} 步 · {formatDuration(view.totalMs)}
-              {view.failedCount > 0 && <span className="text-destructive"> · {view.failedCount} 步失败</span>}
+              {view.failedCount > 0 && (
+                <span className="text-destructive"> · {view.failedCount} 步失败</span>
+              )}
             </span>
           )}
         </h3>
@@ -54,7 +56,9 @@ export function TraceTimeline({
               刷新
             </Button>
           )}
-          {view.steps.length > 0 && <CopyButton text={JSON.stringify(steps, null, 2)} label="复制全部（JSON）" />}
+          {view.steps.length > 0 && (
+            <CopyButton text={JSON.stringify(steps, null, 2)} label="复制全部（JSON）" />
+          )}
         </div>
       </div>
 
@@ -68,7 +72,12 @@ export function TraceTimeline({
       ) : (
         <ol className="flex flex-col gap-1.5">
           {view.steps.map((step) => (
-            <TraceStepRow key={step.id} step={step} maxMs={maxMs} autoScroll={failed?.id === step.id} />
+            <TraceStepRow
+              key={step.id}
+              step={step}
+              maxMs={maxMs}
+              autoScroll={failed?.id === step.id}
+            />
           ))}
         </ol>
       )}

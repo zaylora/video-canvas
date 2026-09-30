@@ -22,7 +22,8 @@ export default function PluginsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   const selectedKey = params.get("key");
-  const selected = catalog.plugins.find((plugin) => plugin.key === selectedKey) ?? catalog.plugins[0] ?? null;
+  const selected =
+    catalog.plugins.find((plugin) => plugin.key === selectedKey) ?? catalog.plugins[0] ?? null;
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[19rem_1fr]">

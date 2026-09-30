@@ -1,70 +1,73 @@
 /** 持久化到后端的画布节点 */
 export interface PersistedCanvasNodeDto {
   /** 节点 ID */
-  id: string
+  id: string;
   /** 节点渲染类型，固定为 canvas */
-  type: 'canvas'
+  type: "canvas";
   /** 节点在画布上的坐标 */
-  position: { x: number; y: number }
+  position: { x: number; y: number };
   /** 节点坐标原点 */
-  origin?: [number, number]
+  origin?: [number, number];
   /** 节点携带的业务数据 */
   data: {
     /** 节点种类 */
-    kind: 'script' | 'image' | 'video' | 'audio'
+    kind: "script" | "image" | "video" | "audio";
     /** 节点标题 */
-    label: string
+    label: string;
     /** 提示词 */
-    prompt?: string
+    prompt?: string;
     /** 选中的模型 key */
-    model?: string
+    model?: string;
     /** 生成状态 */
-    status?: 'idle' | 'running' | 'done' | 'error'
+    status?: "idle" | "running" | "done" | "error";
     /** 产出或上传素材的地址 */
-    src?: string | null
+    src?: string | null;
     /** src 素材的媒体类型 */
-    mediaType?: 'image' | 'video' | 'audio'
+    mediaType?: "image" | "video" | "audio";
     /** 服务端素材记录 ID */
-    assetId?: string
+    assetId?: string;
     /** 素材是否为本机上传 */
-    uploaded?: boolean
+    uploaded?: boolean;
     /** 上传的文件名 */
-    fileName?: string | null
+    fileName?: string | null;
     /** 文本节点生成的正文 */
-    text?: string | null
+    text?: string | null;
     /** 生成失败原因 */
-    error?: string | null
+    error?: string | null;
     /** 生成任务 id（字符串）；running 状态靠它在刷新/重开后对账回填 */
-    taskId?: string
+    taskId?: string;
     /** 按模型 input_schema 字段名存的参数值 */
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>;
     /** 参数里媒体字段所选素材的展示信息 */
-    paramAssets?: Record<string, { url: string; fileName?: string; mediaType?: 'image' | 'video' | 'audio' }>
-  }
+    paramAssets?: Record<
+      string,
+      { url: string; fileName?: string; mediaType?: "image" | "video" | "audio" }
+    >;
+  };
 }
 
 /** 持久化到后端的画布连线 */
 export interface PersistedCanvasEdgeDto {
   /** 连线 ID */
-  id: string
+  id: string;
   /** 起点节点 ID */
-  source: string
+  source: string;
   /** 终点节点 ID */
-  target: string
+  target: string;
   /** 起点 handle ID */
-  sourceHandle?: string | null
+  sourceHandle?: string | null;
   /** 终点 handle ID */
-  targetHandle?: string | null
+  targetHandle?: string | null;
 }
 
 /** 画布图谱：节点、连线和视口 */
 export interface CanvasGraphDto {
   /** 节点列表 */
-  nodes: PersistedCanvasNodeDto[]
+  nodes: PersistedCanvasNodeDto[];
   /** 连线列表 */
-  edges: PersistedCanvasEdgeDto[]
+  edges: PersistedCanvasEdgeDto[];
   /** 视口位置与缩放 */
-  viewport: { x: number; y: number; zoom: number }
+  viewport: { x: number; y: number; zoom: number };
 }
 
 /** 列表页使用的展示数据，字段已在 API 层转换成前端命名。 */
@@ -156,13 +159,13 @@ export interface CanvasDetailDto {
   /** 画布描述，后端暂未提供为 null */
   description: string | null;
   /** 画布版本号 */
-  version: number
+  version: number;
   /** 画布图谱 */
   graph: CanvasGraphDto;
   /** 创建时间 */
   createdAt: string;
   /** 最近更新时间 */
-  updatedAt: string
+  updatedAt: string;
 }
 
 /** 创建画布的参数 */
@@ -170,7 +173,7 @@ export interface CreateCanvasDto {
   /** 画布标题，缺省为「未命名画布」 */
   title?: string;
   /** 初始图谱，缺省为空画布 */
-  graph?: CanvasGraphDto
+  graph?: CanvasGraphDto;
 }
 
 /** 更新画布的参数 */
@@ -188,7 +191,7 @@ export interface SaveCanvasGraphDto {
   /** 保存所基于的版本号 */
   baseVersion: number;
   /** 待保存的图谱 */
-  graph: CanvasGraphDto
+  graph: CanvasGraphDto;
 }
 
 /** 保存画布图谱的结果 */
@@ -196,5 +199,5 @@ export interface SaveCanvasGraphResponseDto {
   /** 保存后的版本号 */
   version: number;
   /** 保存后的更新时间 */
-  updatedAt: string
+  updatedAt: string;
 }

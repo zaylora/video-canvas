@@ -31,12 +31,8 @@ export type ChannelFormState = {
 };
 
 /** 新建渠道的空表单：默认选第一个启用的插件的最新版本 */
-export function emptyChannelForm(
-  plugins: readonly PluginView[],
-): ChannelFormState {
-  const plugin = plugins.find(
-    (item) => item.enabled && (item.versions ?? []).length > 0,
-  );
+export function emptyChannelForm(plugins: readonly PluginView[]): ChannelFormState {
+  const plugin = plugins.find((item) => item.enabled && (item.versions ?? []).length > 0);
   return {
     key: "",
     name: "",
@@ -53,15 +49,10 @@ export function emptyChannelForm(
 }
 
 const numText = (value: unknown) =>
-  typeof value === "number" && Number.isFinite(value) && value > 0
-    ? String(value)
-    : "";
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? String(value) : "";
 
 /** 渠道视图 → 编辑表单 */
-export function channelFormFromView(
-  view: ChannelView,
-  fields: SettingField[],
-): ChannelFormState {
+export function channelFormFromView(view: ChannelView, fields: SettingField[]): ChannelFormState {
   return {
     key: view.key,
     name: view.name ?? "",
@@ -83,10 +74,7 @@ export function rebaseSettings(
   oldValues: SettingFormValues,
   newFields: SettingField[],
 ): SettingFormValues {
-  return initialSettingValues(
-    newFields,
-    validateSettingValues(oldFields, oldValues).values,
-  );
+  return initialSettingValues(newFields, validateSettingValues(oldFields, oldValues).values);
 }
 
 /** base_url：http/https、有主机、不带用户名密码；通过返回 null */
@@ -99,22 +87,17 @@ export function checkBaseUrl(raw: string): string | null {
   } catch {
     return "base_url 不是合法的地址";
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:")
-    return "base_url 只能是 http 或 https";
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "base_url 只能是 http 或 https";
   if (!url.hostname) return "base_url 缺少主机名";
   if (url.username || url.password) return "base_url 不能包含用户名或密码";
   return null;
 }
 
-function parseLimit(
-  text: string,
-  label: string,
-): { value: number } | { error: string } {
+function parseLimit(text: string, label: string): { value: number } | { error: string } {
   const trimmed = text.trim();
   if (!trimmed) return { value: 0 };
   const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0)
-    return { error: `${label}必须是非负数字` };
+  if (!Number.isFinite(value) || value < 0) return { error: `${label}必须是非负数字` };
   return { value };
 }
 
@@ -127,8 +110,7 @@ export type ChannelRequestResult =
       changed: boolean;
     };
 
-const sameJson = (a: unknown, b: unknown) =>
-  JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
 
 /**
  * 表单 → 请求体。新建用 create；编辑用 update（只含改过的字段，没改动时 changed=false）。
@@ -142,30 +124,23 @@ export function buildChannelRequest(
   const errors: Record<string, string> = {};
   const key = form.key.trim();
   if (!original && !CHANNEL_KEY_PATTERN.test(key)) {
-    errors.key =
-      "key 只能是小写字母、数字、连字符，以字母或数字开头，最长 64 位";
+    errors.key = "key 只能是小写字母、数字、连字符，以字母或数字开头，最长 64 位";
   }
   const name = form.name.trim();
   if (!name) errors.name = "请填写名称";
-  if (!form.pluginKey || !form.pluginVersion)
-    errors.plugin = "请选择插件与版本";
+  if (!form.pluginKey || !form.pluginVersion) errors.plugin = "请选择插件与版本";
   const baseUrlError = checkBaseUrl(form.baseUrl);
   if (baseUrlError) errors.baseUrl = baseUrlError;
   const rps = parseLimit(form.rps, "rps");
   if ("error" in rps) errors.rps = rps.error;
   const concurrency = parseLimit(form.maxConcurrency, "最大并发");
   if ("error" in concurrency) errors.maxConcurrency = concurrency.error;
-  else if (!Number.isInteger(concurrency.value))
-    errors.maxConcurrency = "最大并发必须是整数";
+  else if (!Number.isInteger(concurrency.value)) errors.maxConcurrency = "最大并发必须是整数";
   const settings = validateSettingValues(fields, form.settings);
   for (const [field, message] of Object.entries(settings.errors))
     errors[`settings.${field}`] = message;
 
-  if (
-    Object.keys(errors).length > 0 ||
-    "error" in rps ||
-    "error" in concurrency
-  ) {
+  if (Object.keys(errors).length > 0 || "error" in rps || "error" in concurrency) {
     return { ok: false, errors };
   }
 
@@ -201,8 +176,7 @@ export function buildChannelRequest(
     update.trusted_internal = create.trusted_internal;
   if (create.allow_credentials !== !!original.allow_credentials)
     update.allow_credentials = create.allow_credentials;
-  if (!sameJson(create.settings, original.settings))
-    update.settings = create.settings;
+  if (!sameJson(create.settings, original.settings)) update.settings = create.settings;
   const originalLimit = {
     rps: original.rate_limit?.rps ?? 0,
     max_concurrency: original.rate_limit?.max_concurrency ?? 0,

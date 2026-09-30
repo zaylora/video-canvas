@@ -1,52 +1,52 @@
 /** 前端使用的素材信息（camelCase，id 为字符串） */
 export interface AssetDto {
   /** 素材 ID */
-  id: string
+  id: string;
   /** 素材访问地址 */
-  url: string
+  url: string;
   /** 素材类型 */
-  kind: 'image' | 'video' | 'audio'
+  kind: "image" | "video" | "audio";
   /** MIME 类型 */
-  mimeType: string
+  mimeType: string;
   /** 文件大小（字节） */
-  byteSize: number
+  byteSize: number;
   /** 宽度（像素），没有该维度时为 null */
-  width: number | null
+  width: number | null;
   /** 高度（像素），没有该维度时为 null */
-  height: number | null
+  height: number | null;
   /** 时长（毫秒），图片等没有时长时为 null */
-  durationMs: number | null
+  durationMs: number | null;
   /** 原始文件名 */
-  fileName: string | null
+  fileName: string | null;
 }
 
 /** 后端 POST /assets 的原始响应（AssetView，snake_case，id 为数字） */
 export interface BackendAssetDto {
   /** 素材 ID */
-  id: number | string
+  id: number | string;
   /** 素材类型 */
-  kind: 'image' | 'video' | 'audio'
+  kind: "image" | "video" | "audio";
   /** 素材访问地址 */
-  url: string
+  url: string;
   /** MIME 类型 */
-  mime_type?: string | null
+  mime_type?: string | null;
   /** 文件大小（字节） */
-  byte_size?: number | null
+  byte_size?: number | null;
   /** 宽度（像素），0 表示没有该维度 */
-  width?: number | null
+  width?: number | null;
   /** 高度（像素），0 表示没有该维度 */
-  height?: number | null
+  height?: number | null;
   /** 时长（毫秒），0 表示没有该维度 */
-  duration_ms?: number | null
+  duration_ms?: number | null;
   /** 原始文件名 */
-  file_name?: string | null
+  file_name?: string | null;
   // 兼容早先前端期望的 camelCase 形态
   /** MIME 类型（camelCase 兼容字段） */
-  mimeType?: string | null
+  mimeType?: string | null;
   /** 文件大小（camelCase 兼容字段） */
-  byteSize?: number | null
+  byteSize?: number | null;
   /** 时长（camelCase 兼容字段） */
-  durationMs?: number | null
+  durationMs?: number | null;
   /** 原始文件名（camelCase 兼容字段） */
-  fileName?: string | null
+  fileName?: string | null;
 }

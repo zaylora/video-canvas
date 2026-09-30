@@ -20,7 +20,11 @@ export default function ModelsPage() {
   const ws = useModelWorkspace(catalog);
   const editorRef = useRef<ModelEditorHandle>(null);
 
-  const rollbackInfo = resolveModelChannel(ws.rollbackTarget?.body_json, catalog.channels, catalog.plugins);
+  const rollbackInfo = resolveModelChannel(
+    ws.rollbackTarget?.body_json,
+    catalog.channels,
+    catalog.plugins,
+  );
   const rollbackBlock = ws.rollbackTarget
     ? publishBlockReason(rollbackInfo, catalog.channelsStatus === "ready")
     : null;

@@ -1,16 +1,7 @@
 import { useCallback, useEffect } from "react";
-import {
-  NodeToolbar,
-  Position,
-  useReactFlow,
-  useUpdateNodeInternals,
-} from "@xyflow/react";
+import { NodeToolbar, Position, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 
-import {
-  NodeCard,
-  NodeTextBody,
-  type IncomingConnection,
-} from "@/components/canvas";
+import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
 import { NODE_META } from "@/constants/canvas";
 import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
@@ -56,11 +47,7 @@ export function TextCanvasNode({
 
   return (
     <>
-      <NodeCard
-        title={data.label}
-        handles={vm.handles}
-        canAcceptConnection={canAcceptConnection}
-      >
+      <NodeCard title={data.label} handles={vm.handles} canAcceptConnection={canAcceptConnection}>
         <NodeTextBody
           status={data.status ?? "idle"}
           text={data.text}

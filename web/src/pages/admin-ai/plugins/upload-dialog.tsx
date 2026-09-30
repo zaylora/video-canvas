@@ -114,7 +114,8 @@ function UploadBody({
       <DialogHeader>
         <DialogTitle>上传插件</DialogTitle>
         <DialogDescription>
-          选择一个 .js 插件文件（≤512KB）。上传后会先做预检，通过才登记为新版本；版本一经登记不可修改。
+          选择一个 .js
+          插件文件（≤512KB）。上传后会先做预检，通过才登记为新版本；版本一经登记不可修改。
         </DialogDescription>
       </DialogHeader>
 
@@ -135,7 +136,8 @@ function UploadBody({
           <FileCode2 className="text-muted-foreground size-5" />
           {file ? (
             <span>
-              已选：<span className="font-mono">{file.name}</span> · {(file.size / 1024).toFixed(1)}KB
+              已选：<span className="font-mono">{file.name}</span> · {(file.size / 1024).toFixed(1)}
+              KB
             </span>
           ) : (
             <span className="text-muted-foreground">拖拽或点击选择 .js 文件</span>
@@ -158,11 +160,7 @@ function UploadBody({
 
       {!accepted && <AiPromptHint />}
 
-      {localError && (
-        <Notice tone="danger">
-          {localError}（本地已拦截，未发请求）
-        </Notice>
-      )}
+      {localError && <Notice tone="danger">{localError}（本地已拦截，未发请求）</Notice>}
 
       {busy && (
         <p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
@@ -182,7 +180,10 @@ function UploadBody({
           <Notice tone="danger" title={summary.title} />
           <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
             {summary.issues.map((issue, index) => (
-              <li key={`${issue.path}-${index}`} className="bg-destructive/5 flex items-start gap-2 rounded-md px-2.5 py-2">
+              <li
+                key={`${issue.path}-${index}`}
+                className="bg-destructive/5 flex items-start gap-2 rounded-md px-2.5 py-2"
+              >
                 <div className="min-w-0 flex-1">
                   <code className="text-destructive text-xs font-semibold break-all">
                     {issue.path || "（整个文件）"}
@@ -233,16 +234,22 @@ function UploadBody({
  */
 function AiPromptHint() {
   return (
-    <section aria-label="用 AI 生成插件" className="bg-muted/40 flex flex-col gap-1.5 rounded-lg border p-3 text-xs">
+    <section
+      aria-label="用 AI 生成插件"
+      className="bg-muted/40 flex flex-col gap-1.5 rounded-lg border p-3 text-xs"
+    >
       <div className="flex items-center gap-2">
         <span className="font-medium">没有现成的插件？让 AI 帮你写</span>
         <CopyButton className="ml-auto" text={PLUGIN_AUTHORING_PROMPT} label="复制提示词" />
       </div>
       <p className="text-muted-foreground">
-        复制提示词，连同目标平台的 API 文档一起发给 AI（提示词末尾有粘贴文档的位置），把生成的 .js 文件保存后在下方上传即可。
+        复制提示词，连同目标平台的 API 文档一起发给 AI（提示词末尾有粘贴文档的位置），把生成的 .js
+        文件保存后在下方上传即可。
       </p>
       <details className="group">
-        <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">预览提示词</summary>
+        <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">
+          预览提示词
+        </summary>
         <pre className="bg-background mt-1.5 max-h-56 overflow-auto rounded-md border p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
           {PLUGIN_AUTHORING_PROMPT}
         </pre>

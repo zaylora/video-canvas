@@ -1,8 +1,4 @@
-import type {
-  SettingSchema,
-  SettingSpec,
-  SettingType,
-} from "@/api/admin-ai/type";
+import type { SettingSchema, SettingSpec, SettingType } from "@/api/admin-ai/type";
 
 /**
  * 插件声明的设置项（meta.channelSettings / meta.import.args）→ 表单。
@@ -24,20 +20,13 @@ export type SettingField = {
 export type SettingFormValue = string | boolean;
 export type SettingFormValues = Record<string, SettingFormValue>;
 
-const KNOWN_TYPES: readonly SettingType[] = [
-  "string",
-  "number",
-  "boolean",
-  "enum",
-];
+const KNOWN_TYPES: readonly SettingType[] = ["string", "number", "boolean", "enum"];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** 声明对象 → 有序字段列表；坏条目跳过，未知类型按 string 处理（表单至少能填） */
-export function settingFields(
-  schema: SettingSchema | null | undefined,
-): SettingField[] {
+export function settingFields(schema: SettingSchema | null | undefined): SettingField[] {
   if (!isRecord(schema)) return [];
   return Object.entries(schema).flatMap(([name, raw]) => {
     if (!isRecord(raw)) return [];
@@ -53,8 +42,7 @@ export function settingFields(
         name,
         type,
         label: typeof spec.label === "string" && spec.label ? spec.label : name,
-        description:
-          typeof spec.description === "string" ? spec.description : undefined,
+        description: typeof spec.description === "string" ? spec.description : undefined,
         required: spec.required === true,
         default: spec.default,
         options,
@@ -64,21 +52,14 @@ export function settingFields(
 }
 
 /** 一个值能不能放进某类型的表单控件；放不进就当没有 */
-function toFormValue(
-  field: SettingField,
-  value: unknown,
-): SettingFormValue | undefined {
+function toFormValue(field: SettingField, value: unknown): SettingFormValue | undefined {
   switch (field.type) {
     case "boolean":
       return typeof value === "boolean" ? value : undefined;
     case "number":
-      return typeof value === "number" && Number.isFinite(value)
-        ? String(value)
-        : undefined;
+      return typeof value === "number" && Number.isFinite(value) ? String(value) : undefined;
     case "enum":
-      return typeof value === "string" && field.options.includes(value)
-        ? value
-        : undefined;
+      return typeof value === "string" && field.options.includes(value) ? value : undefined;
     default:
       return typeof value === "string"
         ? value
@@ -98,12 +79,9 @@ export function initialSettingValues(
 ): SettingFormValues {
   const values: SettingFormValues = {};
   for (const field of fields) {
-    const fromCurrent = isRecord(current)
-      ? toFormValue(field, current[field.name])
-      : undefined;
+    const fromCurrent = isRecord(current) ? toFormValue(field, current[field.name]) : undefined;
     const fromDefault = toFormValue(field, field.default);
-    values[field.name] =
-      fromCurrent ?? fromDefault ?? (field.type === "boolean" ? false : "");
+    values[field.name] = fromCurrent ?? fromDefault ?? (field.type === "boolean" ? false : "");
   }
   return values;
 }

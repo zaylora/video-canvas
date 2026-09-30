@@ -64,8 +64,9 @@ describe("parseServerMessage", () => {
     // task.updated 必须带 id / version / status
     expect(parseServerMessage('{"type":"task.updated","data":{"id":1}}')).toBeNull();
     expect(
-      parseServerMessage('{"type":"task.updated","channel":"user:1","data":{"id":1,"version":2,"status":"running"}}')
-        ?.type,
+      parseServerMessage(
+        '{"type":"task.updated","channel":"user:1","data":{"id":1,"version":2,"status":"running"}}',
+      )?.type,
     ).toBe("task.updated");
   });
 });
@@ -90,14 +91,22 @@ class FakeSocket implements SocketLike {
     this.onopen?.(new Event("open"));
   }
   message(payload: unknown) {
-    this.onmessage?.({ data: typeof payload === "string" ? payload : JSON.stringify(payload) } as MessageEvent);
+    this.onmessage?.({
+      data: typeof payload === "string" ? payload : JSON.stringify(payload),
+    } as MessageEvent);
   }
   drop() {
     this.onclose?.({} as CloseEvent);
   }
 }
 
-function setup(options: { ticket?: () => Promise<string>; canConnect?: () => boolean; isFatal?: (e: unknown) => boolean } = {}) {
+function setup(
+  options: {
+    ticket?: () => Promise<string>;
+    canConnect?: () => boolean;
+    isFatal?: (e: unknown) => boolean;
+  } = {},
+) {
   let now = 0;
   let nextId = 1;
   const pending = new Map<number, { at: number; fn: () => void; every?: number }>();
@@ -165,7 +174,16 @@ function setup(options: { ticket?: () => Promise<string>; canConnect?: () => boo
     random: () => 0.5,
     timers,
   });
-  return { client, sockets, states, tasks, advance, flush, opens: () => opens, pendingCount: () => pending.size };
+  return {
+    client,
+    sockets,
+    states,
+    tasks,
+    advance,
+    flush,
+    opens: () => opens,
+    pendingCount: () => pending.size,
+  };
 }
 
 describe("TaskSocketClient", () => {
@@ -186,7 +204,11 @@ describe("TaskSocketClient", () => {
     await t.flush();
     t.sockets[0].open();
     t.sockets[0].message({ type: "hello", data: {} });
-    t.sockets[0].message({ type: "task.updated", channel: "user:1", data: { id: 1, version: 2, status: "running" } });
+    t.sockets[0].message({
+      type: "task.updated",
+      channel: "user:1",
+      data: { id: 1, version: 2, status: "running" },
+    });
     t.sockets[0].message("garbage");
     expect(t.tasks.map((task) => task.version)).toEqual([2]);
   });

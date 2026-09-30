@@ -23,8 +23,7 @@ export const CHECK_UNSUPPORTED_MESSAGE = "插件不支持连通性检查";
 
 /** 检查接口正常返回（HTTP 200）的结果 → 分类 */
 export function classifyCheck(result: ChannelCheckResult): CheckOutcome {
-  const duration =
-    result.duration_ms > 0 ? `耗时 ${Math.round(result.duration_ms)}ms` : "";
+  const duration = result.duration_ms > 0 ? `耗时 ${Math.round(result.duration_ms)}ms` : "";
   if (result.ok) {
     return {
       kind: "ok",

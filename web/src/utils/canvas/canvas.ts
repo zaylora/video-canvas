@@ -10,15 +10,12 @@ import type { CustomModel } from "@/store";
 import type { ModelOption, NodeKind } from "@/types";
 
 /** 从某个节点的某一端拉线时，允许新建的种类；从 target 端拉线要反查谁能生成它 */
-export function getAllowedKinds(
-  kind: NodeKind,
-  handleType: HandleType,
-): NodeKind[] {
+export function getAllowedKinds(kind: NodeKind, handleType: HandleType): NodeKind[] {
   if (handleType === "source") return DOWNSTREAM_KINDS[kind];
 
-  return NODE_LIBRARY.filter((meta) =>
-    DOWNSTREAM_KINDS[meta.kind].includes(kind),
-  ).map((meta) => meta.kind);
+  return NODE_LIBRARY.filter((meta) => DOWNSTREAM_KINDS[meta.kind].includes(kind)).map(
+    (meta) => meta.kind,
+  );
 }
 
 /**
@@ -60,17 +57,11 @@ export function getModelOptions(
   remote: readonly ModelOption[] = [],
 ): ModelOption[] {
   if (isRemoteModelKind(kind)) return [...remote];
-  return [
-    ...getModels(kind),
-    ...customModels.filter((model) => model.kind === kind).map(toOption),
-  ];
+  return [...getModels(kind), ...customModels.filter((model) => model.kind === kind).map(toOption)];
 }
 
 /** 取当前该用的模型：存的那个已经删了就退回清单第一条 */
-export function pickModel(
-  options: readonly ModelOption[],
-  id?: string,
-): ModelOption {
+export function pickModel(options: readonly ModelOption[], id?: string): ModelOption {
   return options.find((model) => model.id === id) ?? options[0];
 }
 

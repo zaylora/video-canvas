@@ -16,7 +16,12 @@ import {
   updateModelDraft,
   validateModel,
 } from "@/api/admin-ai";
-import type { ConfigDetail, ConfigIssue, ConfigListItem, ConfigRevision } from "@/api/admin-ai/type";
+import type {
+  ConfigDetail,
+  ConfigIssue,
+  ConfigListItem,
+  ConfigRevision,
+} from "@/api/admin-ai/type";
 import { errorMessage, isRunnerDown } from "@/utils/admin/errors";
 import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";
@@ -251,7 +256,8 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     action?.();
   };
 
-  const selectModel = (nextKey: string) => guard(() => navigate(`/admin/ai/models?key=${encodeURIComponent(nextKey)}`));
+  const selectModel = (nextKey: string) =>
+    guard(() => navigate(`/admin/ai/models?key=${encodeURIComponent(nextKey)}`));
 
   const startNew = () =>
     guard(() => {
@@ -269,14 +275,17 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   // ------------------------------------------------------------ 编辑
 
   /** 表单改字段：在 JSON 正文上原位修改，保持键顺序；正文不合法时不动 */
-  const editBody = useCallback((mutate: (current: Record<string, unknown>) => Record<string, unknown> | null) => {
-    setText((prev) => {
-      const result = parseJsonText(prev);
-      if (!result.ok || !isRecord(result.value)) return prev;
-      const next = mutate(result.value);
-      return next ? toJsonText(next) : prev;
-    });
-  }, []);
+  const editBody = useCallback(
+    (mutate: (current: Record<string, unknown>) => Record<string, unknown> | null) => {
+      setText((prev) => {
+        const result = parseJsonText(prev);
+        if (!result.ok || !isRecord(result.value)) return prev;
+        const next = mutate(result.value);
+        return next ? toJsonText(next) : prev;
+      });
+    },
+    [],
+  );
 
   /** 切换表单 / JSON；JSON 解析失败时阻止切回表单并提示行列 */
   const switchMode = (next: EditorMode) => {
@@ -284,7 +293,9 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     if (next === "form") {
       if (!parsed.ok) {
         const where = parsed.line ? `第 ${parsed.line} 行 第 ${parsed.column} 列` : "";
-        setModeError(`JSON 有语法错误${where ? `（${where}）` : ""}：${parsed.message}。修复后才能切回表单。`);
+        setModeError(
+          `JSON 有语法错误${where ? `（${where}）` : ""}：${parsed.message}。修复后才能切回表单。`,
+        );
         return;
       }
       if (!isRecord(parsed.value)) {
@@ -317,14 +328,20 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     }
     const newKey = readConfigKey(parsed.value);
     if (!newKey) {
-      pushEntry({ title: "正文里缺少 key", tone: "error", text: "key 是配置的唯一标识，必须填写。" });
+      pushEntry({
+        title: "正文里缺少 key",
+        tone: "error",
+        text: "key 是配置的唯一标识，必须填写。",
+      });
       return null;
     }
     const sentText = text;
     setBusy("save");
     setIssues([]);
     try {
-      const result = isNew ? await createModelDraft(parsed.value) : await updateModelDraft(key as string, parsed.value);
+      const result = isNew
+        ? await createModelDraft(parsed.value)
+        : await updateModelDraft(key as string, parsed.value);
       if (!aliveRef.current) return null;
       setSavedText(sentText);
       setIssues(result.issues);
@@ -332,7 +349,10 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         pushEntry({
           title: `草稿已保存（第 ${result.revision.revision_no} 版）`,
           tone: result.issues.length > 0 ? "info" : "success",
-          text: result.issues.length > 0 ? `有 ${result.issues.length} 个问题，修复后才能发布。` : undefined,
+          text:
+            result.issues.length > 0
+              ? `有 ${result.issues.length} 个问题，修复后才能发布。`
+              : undefined,
           issues: result.issues,
         });
       }
@@ -341,11 +361,23 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         const rest = queue.slice(1);
         if (queue.length > 0 && rest.length > 0) {
           setQueue(rest);
-          if (importRef.current) updateStashedDrafts(importRef.current.id, { channelKey: importRef.current.channelKey, bodies: rest });
+          if (importRef.current)
+            updateStashedDrafts(importRef.current.id, {
+              channelKey: importRef.current.channelKey,
+              bodies: rest,
+            });
           loadIntoEditor(rest[0]);
-          pushEntry({ title: `已保存 ${newKey}，接着处理下一个草稿`, tone: "success", text: `还剩 ${rest.length} 个。` });
+          pushEntry({
+            title: `已保存 ${newKey}，接着处理下一个草稿`,
+            tone: "success",
+            text: `还剩 ${rest.length} 个。`,
+          });
         } else {
-          if (importRef.current) updateStashedDrafts(importRef.current.id, { channelKey: importRef.current.channelKey, bodies: [] });
+          if (importRef.current)
+            updateStashedDrafts(importRef.current.id, {
+              channelKey: importRef.current.channelKey,
+              bodies: [],
+            });
           setQueue([]);
           keepResultsForRef.current = newKey;
           navigate(`/admin/ai/models?key=${encodeURIComponent(newKey)}`, { replace: true });
@@ -372,7 +404,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     }
     const target = key ?? readConfigKey(parsed.value);
     if (!target) {
-      pushEntry({ title: "正文里缺少 key", tone: "error", text: "key 是配置的唯一标识，必须填写。" });
+      pushEntry({
+        title: "正文里缺少 key",
+        tone: "error",
+        text: "key 是配置的唯一标识，必须填写。",
+      });
       return;
     }
     setBusy("validate");
@@ -420,7 +456,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
 
   const loadTrace = useCallback(
     async (taskId: number | string) => {
-      setTrace((prev) => ({ taskId, status: "loading", steps: prev?.taskId === taskId ? prev.steps : [] }));
+      setTrace((prev) => ({
+        taskId,
+        status: "loading",
+        steps: prev?.taskId === taskId ? prev.steps : [],
+      }));
       try {
         const result = await getTestRunTrace(taskId);
         if (aliveRef.current) setTrace({ taskId, status: "ready", steps: result.steps });
@@ -434,7 +474,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   /** 每 3 秒查一次试跑状态，最长 15 分钟；结束（任何终态）后拉追踪并自动切到追踪标签 */
   const pollTestRun = async (token: number, taskId: number | string) => {
     const startedAt = Date.now();
-    while (aliveRef.current && runTokenRef.current === token && Date.now() - startedAt < TEST_POLL_MAX) {
+    while (
+      aliveRef.current &&
+      runTokenRef.current === token &&
+      Date.now() - startedAt < TEST_POLL_MAX
+    ) {
       await new Promise((resolve) => setTimeout(resolve, TEST_POLL_INTERVAL));
       if (!aliveRef.current || runTokenRef.current !== token) return;
       try {
@@ -514,7 +558,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
       if (!aliveRef.current) return;
       const message = errorMessage(error, "发布失败");
       setPublishError(message);
-      if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === 40010) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        (error as { code?: unknown }).code === 40010
+      ) {
         pushEntry({ title: "发布被拦截：配置校验未通过", tone: "error", text: message });
       }
     } finally {
@@ -574,12 +622,20 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const skipDraft = () => {
     const rest = queue.slice(1);
     setQueue(rest);
-    if (importRef.current) updateStashedDrafts(importRef.current.id, { channelKey: importRef.current.channelKey, bodies: rest });
+    if (importRef.current)
+      updateStashedDrafts(importRef.current.id, {
+        channelKey: importRef.current.channelKey,
+        bodies: rest,
+      });
     loadIntoEditor(rest[0] ?? MODEL_TEMPLATES[0].body);
   };
 
   const discardDrafts = () => {
-    if (importRef.current) updateStashedDrafts(importRef.current.id, { channelKey: importRef.current.channelKey, bodies: [] });
+    if (importRef.current)
+      updateStashedDrafts(importRef.current.id, {
+        channelKey: importRef.current.channelKey,
+        bodies: [],
+      });
     setQueue([]);
     loadIntoEditor(MODEL_TEMPLATES[0].body);
   };

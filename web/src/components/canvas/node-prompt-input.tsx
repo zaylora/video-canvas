@@ -114,9 +114,7 @@ export function NodePromptInput({
   notice,
 }: NodePromptInputProps) {
   const model = models.find((item) => item.id === modelId) ?? models[0];
-  const canSubmit =
-    canSubmitOverride ??
-    (!!onSubmit && !running && value.trim().length > 0);
+  const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);
   const busy = running || submitting;
   const credits = creditsOverride ?? model?.credits;
 
@@ -128,13 +126,7 @@ export function NodePromptInput({
   // disabled 的按钮本身收不到鼠标事件，提示挂在外面那层上
   const hint =
     hintOverride ??
-    (running
-      ? "生成中"
-      : !onSubmit
-        ? submitHint
-        : value.trim()
-          ? "开始生成"
-          : "先写点提示词");
+    (running ? "生成中" : !onSubmit ? submitHint : value.trim() ? "开始生成" : "先写点提示词");
 
   return (
     // 这块浮在节点外面，自带底色和阴影才压得住底下的画布；
@@ -193,9 +185,7 @@ export function NodePromptInput({
             aria-label="选择模型"
           >
             {icon}
-            <span className="min-w-0 truncate">
-              {modelLabel ?? model?.label ?? "加载模型…"}
-            </span>
+            <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
             <ChevronDown className="opacity-60" />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-60" align="start" sideOffset={6}>
@@ -212,9 +202,7 @@ export function NodePromptInput({
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{item.label}</span>
                       {item.hint && (
-                        <span className="text-muted-foreground truncate text-xs">
-                          {item.hint}
-                        </span>
+                        <span className="text-muted-foreground truncate text-xs">{item.hint}</span>
                       )}
                     </span>
                     <span className="text-muted-foreground ml-auto text-xs">

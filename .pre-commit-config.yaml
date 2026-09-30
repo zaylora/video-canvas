@@ -1,0 +1,56 @@
+# 安装：pip install pre-commit（或 brew install pre-commit），然后在仓库根目录执行 pre-commit install
+# 手动全量运行：pre-commit run --all-files
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+        exclude: ^web/(tsconfig.*\.json|components\.json)$
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      # 与 backend/Makefile 的 make lint 一致：只检查相对 master 的增量
+      - id: golangci-lint
+        name: golangci-lint (backend)
+        entry: bash -c 'cd backend && golangci-lint run --new-from-merge-base=master ./...'
+        language: system
+        files: ^backend/.*\.(go|mod|sum)$|^backend/\.golangci\.yml$
+        pass_filenames: false
+
+      - id: gofmt
+        name: gofmt (backend)
+        entry: bash -c 'out=$(gofmt -l "$@"); [ -z "$out" ] || { echo "需要格式化:"; echo "$out"; exit 1; }' --
+        language: system
+        types: [go]
+
+      - id: web-format
+        name: oxfmt (web)
+        entry: bash -c 'cd web && bun run format:check'
+        language: system
+        files: ^web/.*\.(ts|tsx|js|jsx|json|css|md)$
+        pass_filenames: false
+
+      - id: web-lint
+        name: oxlint (web)
+        entry: bash -c 'cd web && bun run lint'
+        language: system
+        files: ^web/src/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+      - id: web-typecheck
+        name: tsc typecheck (web)
+        entry: bash -c 'cd web && bun run typecheck'
+        language: system
+        files: ^web/(src/.*\.(ts|tsx)|tsconfig.*\.json)$
+        pass_filenames: false

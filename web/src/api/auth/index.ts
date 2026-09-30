@@ -21,5 +21,4 @@ export interface LoginResponse {
  * @param data 登录账号和密码
  * @returns 登录令牌及过期时间
  */
-export const login = (data: LoginRequest) =>
-  service.post<LoginResponse>("/auth/login", data);
+export const login = (data: LoginRequest) => service.post<LoginResponse>("/auth/login", data);

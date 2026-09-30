@@ -144,15 +144,30 @@ export function ModelEditor({
             {spinner("save", <Save />)}
             保存草稿
           </Button>
-          <Button size="xs" variant="outline" disabled={disabled} onClick={() => void ws.validate()}>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => void ws.validate()}
+          >
             {spinner("validate", <CheckCheck />)}
             校验
           </Button>
-          <Button size="xs" variant="outline" disabled={disabled} onClick={() => void ws.doDryRun()}>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => void ws.doDryRun()}
+          >
             {spinner("dry-run", <FlaskConical />)}
             dry-run
           </Button>
-          <Button size="xs" variant="outline" disabled={disabled} onClick={() => void ws.doTestRun()}>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => void ws.doTestRun()}
+          >
             {spinner("test-run", <Play />)}
             试跑
           </Button>
@@ -181,7 +196,9 @@ export function ModelEditor({
             <DropdownMenuContent align="end" className="w-72" sideOffset={6}>
               <DropdownMenuGroup>
                 <DropdownMenuLabel>回滚到历史版本</DropdownMenuLabel>
-                {ws.revisions === null && <p className="text-muted-foreground px-1.5 py-2 text-xs">加载中…</p>}
+                {ws.revisions === null && (
+                  <p className="text-muted-foreground px-1.5 py-2 text-xs">加载中…</p>
+                )}
                 {ws.revisions !== null && rollbackable.length === 0 && (
                   <p className="text-muted-foreground px-1.5 py-2 text-xs">没有可回滚的历史版本</p>
                 )}
@@ -190,7 +207,8 @@ export function ModelEditor({
                     <History />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span>
-                        第 {revision.revision_no} 版 · {revision.status === "published" ? "当前发布" : "历史"}
+                        第 {revision.revision_no} 版 ·{" "}
+                        {revision.status === "published" ? "当前发布" : "历史"}
                       </span>
                       <span className="text-muted-foreground truncate text-xs">
                         {new Date(revision.created_at).toLocaleString()}
@@ -269,7 +287,9 @@ export function ModelEditor({
               isNew={ws.isNew}
               channels={catalog.channels}
               plugins={catalog.plugins}
-              channelsReady={catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready"}
+              channelsReady={
+                catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready"
+              }
               issues={ws.issues}
               epoch={ws.epoch}
               onChange={ws.editBody}
@@ -306,7 +326,10 @@ export function ModelEditor({
             }}
           />
           <div
-            className={cn("border-t px-3 py-1.5 text-xs", parsed.ok ? "text-muted-foreground" : "text-destructive")}
+            className={cn(
+              "border-t px-3 py-1.5 text-xs",
+              parsed.ok ? "text-muted-foreground" : "text-destructive",
+            )}
             role={parsed.ok ? undefined : "alert"}
           >
             {parsed.ok

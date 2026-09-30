@@ -357,21 +357,9 @@ function Meteor({ animateMotionProps }: { animateMotionProps: AnimateMotionProps
           x2="0"
           y2="0"
         >
-          <stop
-            offset="0%"
-            stopColor="var(--edge-shape-color, #ff0073)"
-            stopOpacity="0"
-          />
-          <stop
-            offset="60%"
-            stopColor="var(--edge-shape-color, #ff0073)"
-            stopOpacity="0.45"
-          />
-          <stop
-            offset="100%"
-            stopColor="var(--edge-shape-color, #ff0073)"
-            stopOpacity="1"
-          />
+          <stop offset="0%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="0" />
+          <stop offset="60%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="1" />
         </linearGradient>
       </defs>
       {/* 外层宽尾当辉光，内层细尾当焰心，叠出通透的拖尾 */}
@@ -383,22 +371,13 @@ function Meteor({ animateMotionProps }: { animateMotionProps: AnimateMotionProps
         strokeLinecap="round"
         opacity="0.2"
       />
-      <path
-        d={tail}
-        fill="none"
-        stroke={`url(#${tailId})`}
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
+      <path d={tail} fill="none" stroke={`url(#${tailId})`} strokeWidth="3" strokeLinecap="round" />
       <g fill="var(--edge-shape-color, #ff0073)">
         <circle r="7" opacity="0.18" />
         <circle r="4" opacity="0.4" />
         <circle r="2" fill="var(--edge-shape-core, #fff)" />
       </g>
-      <animateMotion
-        {...animateMotionProps}
-        rotate={reversed ? "auto-reverse" : "auto"}
-      />
+      <animateMotion {...animateMotionProps} rotate={reversed ? "auto-reverse" : "auto"} />
     </g>
   );
 }

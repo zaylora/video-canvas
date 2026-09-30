@@ -63,7 +63,8 @@ type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | 
 /** 后端校验问题里落在某个字段上的第一条说明 */
 const issueFor = (issues: ConfigIssue[], path: string) =>
   issues.find(
-    (issue) => issue.path === path || issue.path.startsWith(`${path}.`) || issue.path.startsWith(`${path}[`),
+    (issue) =>
+      issue.path === path || issue.path.startsWith(`${path}.`) || issue.path.startsWith(`${path}[`),
   )?.message;
 
 /** 画布表单预览：按 input_schema 的书写顺序渲染只读控件，让运营确认画布上会长什么样 */
@@ -88,7 +89,9 @@ function SchemaPreviewDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>画布表单预览</DialogTitle>
-          <DialogDescription>按 input_schema 的书写顺序，只读预览，与画布上的渲染顺序一致。</DialogDescription>
+          <DialogDescription>
+            按 input_schema 的书写顺序，只读预览，与画布上的渲染顺序一致。
+          </DialogDescription>
         </DialogHeader>
         {fields.length === 0 ? (
           <p className="text-muted-foreground text-sm">input_schema 里还没有字段。</p>
@@ -96,7 +99,9 @@ function SchemaPreviewDialog({
           <ul className="flex max-h-96 flex-col gap-3 overflow-y-auto">
             {fields.map(([name, spec]) => {
               const type = typeof spec?.type === "string" ? spec.type : "text";
-              const options = Array.isArray(spec?.options) ? (spec.options as Array<{ value?: unknown; label?: string }>) : [];
+              const options = Array.isArray(spec?.options)
+                ? (spec.options as Array<{ value?: unknown; label?: string }>)
+                : [];
               return (
                 <li key={name} className="flex flex-col gap-1">
                   <span className="text-xs font-medium">
@@ -118,7 +123,11 @@ function SchemaPreviewDialog({
                       上传或连接 {type} 素材
                     </div>
                   ) : (
-                    <Input disabled aria-label={name} placeholder={type === "number" ? "数字" : "文本"} />
+                    <Input
+                      disabled
+                      aria-label={name}
+                      placeholder={type === "number" ? "数字" : "文本"}
+                    />
                   )}
                 </li>
               );
@@ -166,7 +175,8 @@ export function ModelForm({
   const available = channelsForKind(channels, plugins, kind);
   const info = resolveModelChannel(body, channels, plugins);
   const currentMissing = !!channelKey && !available.some((item) => item.key === channelKey);
-  const setField = (field: string, value: unknown) => onChange((current) => withModelField(current, field, value));
+  const setField = (field: string, value: unknown) =>
+    onChange((current) => withModelField(current, field, value));
   const setNumber = (field: string, text: string) => {
     if (text.trim() === "") return setField(field, 0);
     const value = Number(text);
@@ -219,7 +229,9 @@ export function ModelForm({
               aria-invalid={!!issueFor(issues, "kind")}
               onChange={(event) => setField("kind", event.target.value)}
             >
-              {!MODEL_KINDS.includes(kind as (typeof MODEL_KINDS)[number]) && <option value={kind}>{kind || "请选择"}</option>}
+              {!MODEL_KINDS.includes(kind as (typeof MODEL_KINDS)[number]) && (
+                <option value={kind}>{kind || "请选择"}</option>
+              )}
               {MODEL_KINDS.map((item) => (
                 <option key={item} value={item}>
                   {item}（{MODEL_KIND_LABEL[item]}）
@@ -227,7 +239,12 @@ export function ModelForm({
               ))}
             </NativeSelect>
           </FormField>
-          <FormField label="展示名 label" htmlFor="model-label" error={issueFor(issues, "label")} required>
+          <FormField
+            label="展示名 label"
+            htmlFor="model-label"
+            error={issueFor(issues, "label")}
+            required
+          >
             <Input
               id="model-label"
               value={readModelString(body, "label")}
@@ -236,7 +253,11 @@ export function ModelForm({
             />
           </FormField>
           <FormField label="提示 hint" htmlFor="model-hint" hint="画布上模型名旁的一句说明，可留空">
-            <Input id="model-hint" value={readModelString(body, "hint")} onChange={(event) => setField("hint", event.target.value)} />
+            <Input
+              id="model-hint"
+              value={readModelString(body, "hint")}
+              onChange={(event) => setField("hint", event.target.value)}
+            />
           </FormField>
         </div>
       </section>
@@ -255,7 +276,9 @@ export function ModelForm({
               id="model-channel"
               value={channelKey}
               aria-invalid={!!issueFor(issues, "channels[0].channel")}
-              onChange={(event) => onChange((current) => withModelChannel(current, event.target.value))}
+              onChange={(event) =>
+                onChange((current) => withModelChannel(current, event.target.value))
+              }
             >
               <option value="">{channelsReady ? "请选择渠道" : "渠道加载中…"}</option>
               {currentMissing && (
@@ -281,7 +304,9 @@ export function ModelForm({
               className="font-mono"
               value={upstreamModel}
               aria-invalid={!!issueFor(issues, "channels[0].upstream_model")}
-              onChange={(event) => onChange((current) => withModelUpstream(current, event.target.value))}
+              onChange={(event) =>
+                onChange((current) => withModelUpstream(current, event.target.value))
+              }
             />
           </FormField>
         </div>
@@ -293,13 +318,21 @@ export function ModelForm({
         )}
 
         {info.channel && (
-          <div className="bg-muted flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs" data-testid="channel-info">
+          <div
+            className="bg-muted flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs"
+            data-testid="channel-info"
+          >
             <div className="flex flex-wrap items-center gap-1.5">
               <span>
-                插件 <b>{info.pluginName}</b> <span className="font-mono">v{info.pluginVersion}</span>
-                {info.sha8 && <span className="text-muted-foreground font-mono"> · {info.sha8}</span>}
+                插件 <b>{info.pluginName}</b>{" "}
+                <span className="font-mono">v{info.pluginVersion}</span>
+                {info.sha8 && (
+                  <span className="text-muted-foreground font-mono"> · {info.sha8}</span>
+                )}
               </span>
-              {info.authLabel && <span className="text-muted-foreground">· 鉴权：{info.authLabel}</span>}
+              {info.authLabel && (
+                <span className="text-muted-foreground">· 鉴权：{info.authLabel}</span>
+              )}
               {info.secretSet ? (
                 <Tag tone="success">Key 已设置</Tag>
               ) : info.authType === "none" ? (
@@ -312,7 +345,10 @@ export function ModelForm({
             {info.keyMissing && (
               <p className="text-amber-700 dark:text-amber-400">
                 这个渠道还没有设置 Key，模型无法发布。请联系运维在{" "}
-                <Link className="underline" to={`/admin/ai/channels?edit=${encodeURIComponent(info.channel.key)}`}>
+                <Link
+                  className="underline"
+                  to={`/admin/ai/channels?edit=${encodeURIComponent(info.channel.key)}`}
+                >
                   渠道页
                 </Link>{" "}
                 设置。
@@ -328,7 +364,11 @@ export function ModelForm({
       <section className="flex flex-col gap-3" aria-label="上架">
         <h3 className="text-sm font-medium">上架</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <FormField label="积分 credits" htmlFor="model-credits" error={issueFor(issues, "credits")}>
+          <FormField
+            label="积分 credits"
+            htmlFor="model-credits"
+            error={issueFor(issues, "credits")}
+          >
             <Input
               id="model-credits"
               type="number"
@@ -352,7 +392,12 @@ export function ModelForm({
               onChange={(event) => setField("deadline", event.target.value)}
             />
           </FormField>
-          <FormField label="排序 sort" htmlFor="model-sort" error={issueFor(issues, "sort")} hint="越小越靠前">
+          <FormField
+            label="排序 sort"
+            htmlFor="model-sort"
+            error={issueFor(issues, "sort")}
+            hint="越小越靠前"
+          >
             <Input
               id="model-sort"
               type="number"
@@ -400,13 +445,28 @@ export function ModelForm({
           rows={12}
           actions={
             <>
-              <Button type="button" size="xs" variant="ghost" onClick={() => insertTemplate("text")}>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => insertTemplate("text")}
+              >
                 插入文本模板
               </Button>
-              <Button type="button" size="xs" variant="ghost" onClick={() => insertTemplate("video")}>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => insertTemplate("video")}
+              >
                 插入视频模板
               </Button>
-              <Button type="button" size="xs" variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => setPreviewOpen(true)}
+              >
                 <Eye />
                 预览画布表单
               </Button>
@@ -416,7 +476,11 @@ export function ModelForm({
         />
       </section>
 
-      <SchemaPreviewDialog open={previewOpen} schema={body.input_schema} onClose={() => setPreviewOpen(false)} />
+      <SchemaPreviewDialog
+        open={previewOpen}
+        schema={body.input_schema}
+        onClose={() => setPreviewOpen(false)}
+      />
     </div>
   );
 }

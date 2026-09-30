@@ -67,10 +67,7 @@ export default function CanvasList() {
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <div
-              key={index}
-              className="bg-card overflow-hidden rounded-xl border shadow-sm"
-            >
+            <div key={index} className="bg-card overflow-hidden rounded-xl border shadow-sm">
               <Skeleton className="aspect-video rounded-none" />
               <div className="p-4">
                 <Skeleton className="h-5 w-1/2" />
@@ -91,11 +88,7 @@ export default function CanvasList() {
             >
               <div className="bg-muted aspect-video">
                 {canvas.coverUrl && (
-                  <img
-                    src={canvas.coverUrl}
-                    alt=""
-                    className="size-full object-cover"
-                  />
+                  <img src={canvas.coverUrl} alt="" className="size-full object-cover" />
                 )}
               </div>
               <div className="p-4">

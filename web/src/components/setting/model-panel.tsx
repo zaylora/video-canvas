@@ -46,8 +46,7 @@ export function ModelPanel({ groups }: ModelPanelProps) {
     <>
       {groups.map((group) => {
         const current =
-          group.models.find((item) => item.id === defaultModels[group.kind]) ??
-          group.models[0];
+          group.models.find((item) => item.id === defaultModels[group.kind]) ?? group.models[0];
 
         return (
           <SettingRow
@@ -59,7 +58,7 @@ export function ModelPanel({ groups }: ModelPanelProps) {
               <DropdownMenuTrigger
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),
-                  "min-w-0 max-w-full gap-2"
+                  "min-w-0 max-w-full gap-2",
                 )}
                 aria-label={`选择${group.label}节点的默认模型`}
               >
@@ -71,9 +70,7 @@ export function ModelPanel({ groups }: ModelPanelProps) {
                 <DropdownMenuGroup>
                   <DropdownMenuRadioGroup
                     value={current.id}
-                    onValueChange={(next) =>
-                      setDefaultModel(group.kind, next as string)
-                    }
+                    onValueChange={(next) => setDefaultModel(group.kind, next as string)}
                   >
                     {group.models.map((item) => (
                       <DropdownMenuRadioItem key={item.id} value={item.id}>
