@@ -3,6 +3,50 @@
 所有重要变更都会记录在此文件中。
 
 
+## v0.1.0 - 2026-09-30
+
+
+
+### Added
+
+
+- 后端完成插件协议设计
+
+- 添加协议插件
+
+
+### Changed
+
+
+- 后端代码规范
+
+
+### Documentation
+
+
+- Update changelog for v0.0.1
+
+- 文档整理
+
+
+### Fixed
+
+
+- Avoid tag visibility race in release workflow
+
+- 画布引用不了后端模型
+
+- 优化下载功能，确保下载超时后 Body 可读并避免 context 泄漏；更新插件元数据说明
+
+- 更新钩子超时设置为 1 秒，优化并发控制文档
+
+
+### Other
+
+
+- 添加代码规范
+
+
 ## v0.0.1 - 2026-09-29
 
 
