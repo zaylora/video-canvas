@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"video-canvas/internal/provider"
@@ -99,6 +100,12 @@ type Executor struct {
 	opts     Options
 	loader   *loader
 	limiters *limiterSet
+
+	// 出站 Transport 按 trusted_internal 维度各缓存一个，复用连接池。
+	// SSRF 防护不受影响：域名白名单在每次请求的 hostGuardRT 里检查（http.Client 每次按白名单新建，很轻），
+	// IP 校验在共享 Transport 的 DialContext 里对每条新连接执行。
+	transportMu sync.Mutex
+	transports  [2]*http.Transport // 0 = 普通渠道，1 = trusted_internal
 }
 
 var (
@@ -262,7 +269,11 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 		return nil, terminalErr(provider.CodeSSRFBlocked, "产物地址不合法", err)
 	}
 	allowed := append([]string(nil), snap.Plugin.Meta.AllowedHosts...)
-	base, _ := url.Parse(snap.Channel.BaseURL)
+	// base_url 在渠道创建期校验过，但快照可能来自老数据；解析失败按快照不合法处理，不能解引用 nil
+	base, err := url.Parse(snap.Channel.BaseURL)
+	if err != nil || base.Hostname() == "" {
+		return nil, terminalErr(codeInvalidSnapshot, fmt.Sprintf("渠道 %s 的 base_url 不合法", snap.Channel.Key), err)
+	}
 	allowed = append(allowed, strings.ToLower(base.Hostname()))
 	if err := netguard.CheckURLAllowed(allowed, u.Scheme, u.Hostname(), u.User != nil); err != nil {
 		return nil, &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, func(s string) string { return s })}
@@ -362,9 +373,23 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 	if err != nil {
 		return nil, err
 	}
-	var drafts []provider.ModelDraft
-	if err := json.Unmarshal(raw, &drafts); err != nil {
+	// 契约里草稿的字段是驼峰（upstreamModel / inputSchema），与 provider.ModelDraft 的蛇形 JSON 标签不同，
+	// 直接解码会让这两个字段静默丢失，所以先按契约解码再转换。
+	var wire []struct {
+		UpstreamModel string               `json:"upstreamModel"`
+		Kind          string               `json:"kind"`
+		Label         string               `json:"label"`
+		Params        map[string]any       `json:"params"`
+		InputSchema   modelcfg.InputSchema `json:"inputSchema"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
 		return nil, pluginFaultf("导入模型结果不是数组：%s", err.Error())
+	}
+	drafts := make([]provider.ModelDraft, 0, len(wire))
+	for _, w := range wire {
+		drafts = append(drafts, provider.ModelDraft{
+			UpstreamModel: w.UpstreamModel, Kind: w.Kind, Label: w.Label, Params: w.Params, InputSchema: w.InputSchema,
+		})
 	}
 	for i := range drafts {
 		if issues := modelcfg.ValidateInputSchema(drafts[i].InputSchema); len(issues) > 0 {
@@ -477,7 +502,7 @@ type assetResponse struct {
 func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) (hookResponse, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
-	release, err := o.e.limit(requestCtx, b)
+	release, err := o.e.limit(requestCtx, o.rt.Channel)
 	if err != nil {
 		return hookResponse{}, retryableErr("", "渠道限流等待被取消", err)
 	}
@@ -706,17 +731,34 @@ func (o *operation) modelKind() string {
 	return o.model.Kind
 }
 
-func (e *Executor) limit(ctx context.Context, b *builtRequest) (func(), error) {
-	return e.limiters.get(b.url.Hostname(), 0, 0).acquire(ctx)
+// limit 按渠道 key 取限流器并占用名额，参数取快照里冻结的 rate_limit（rps、max_concurrency，0 表示不限）。
+// 以渠道而不是主机名为单位：同一个网关下的多个渠道各有各的配额，同一渠道的所有请求（提交、轮询、准备阶段）共享一份。
+func (e *Executor) limit(ctx context.Context, ch provider.ChannelSnapshot) (func(), error) {
+	return e.limiters.get(ch.Key, ch.RateLimit.RPS, ch.RateLimit.MaxConcurrency).acquire(ctx)
 }
 
+// client 返回绑定白名单的客户端；底层 Transport 按 trusted 维度缓存复用。
 func (e *Executor) client(allowed []string, trusted bool) *http.Client {
-	cfg := &netguard.Config{IPAllowed: e.opts.IPAllowed, Resolver: e.opts.Resolver, Dial: e.opts.Dial, MaxRedirects: e.opts.MaxRedirects}
-	if trusted && cfg.IPAllowed == nil {
-		cfg.IPAllowed = func(net.IP) bool { return true }
+	return netguard.NewClient(e.transport(trusted), allowed, e.opts.MaxRedirects)
+}
+
+// transport 懒创建并缓存带 SSRF 拨号校验的 Transport。
+func (e *Executor) transport(trusted bool) *http.Transport {
+	idx := 0
+	if trusted {
+		idx = 1
 	}
-	cfg.ApplyDefaults()
-	return netguard.NewClient(netguard.NewTransport(cfg), allowed, e.opts.MaxRedirects)
+	e.transportMu.Lock()
+	defer e.transportMu.Unlock()
+	if e.transports[idx] == nil {
+		cfg := &netguard.Config{IPAllowed: e.opts.IPAllowed, Resolver: e.opts.Resolver, Dial: e.opts.Dial, MaxRedirects: e.opts.MaxRedirects}
+		if trusted && cfg.IPAllowed == nil {
+			cfg.IPAllowed = func(net.IP) bool { return true }
+		}
+		cfg.ApplyDefaults()
+		e.transports[idx] = netguard.NewTransport(cfg)
+	}
+	return e.transports[idx]
 }
 
 func responseHeaders(h http.Header) map[string]string {

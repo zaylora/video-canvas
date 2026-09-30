@@ -149,11 +149,6 @@ func (s *AIConfigService) SecretIsSet(ctx context.Context, name string) (bool, e
 	return true, nil
 }
 
-// ListSecrets 列出已设置凭证的元信息，不返回密文。
-func (s *AIConfigService) ListSecrets(ctx context.Context) ([]model.AISecret, error) {
-	return s.repo.ListSecrets(ctx)
-}
-
 // Get 实现 provider.SecretResolver：解密并返回凭证明文，只给插件宿主的鉴权注入环节使用。
 // 明文只放在内存缓存里（有过期时间，SetSecret 会立即清除），不进日志、不进插件 ctx（auth: custom 且渠道开启除外）。
 func (s *AIConfigService) Get(ctx context.Context, name string) (string, error) {

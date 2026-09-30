@@ -1,52 +1,54 @@
-//go:build legacy
-
 package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 	. "video-canvas/internal/service"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
 	"video-canvas/internal/service/aiconfigfake"
 )
 
-// aicCountValidator 统计 ParseModel / ParseProvider 的调用次数，用来断言按 revision_id 的解析缓存生效。
-type aicCountValidator struct {
-	aiconfigfake.Validator
-	modelParses    int
-	providerParses int
+// aicKindBody 生成指定种类与排序值的模型正文（绑定渠道 channel）。
+func aicKindBody(key, channel, kind string, sort int) json.RawMessage {
+	body := strings.Replace(string(aicModelBody(key, channel, "")), `"kind":"video"`, fmt.Sprintf(`"kind":%q`, kind), 1)
+	body = strings.Replace(body, `"sort":10`, fmt.Sprintf(`"sort":%d`, sort), 1)
+	return json.RawMessage(body)
 }
 
-func (v *aicCountValidator) ParseModel(body []byte, p *dsl.ProviderConfig) (*dsl.ModelConfig, []dsl.Issue) {
-	v.modelParses++
-	return v.Validator.ParseModel(body, p)
-}
-
-func (v *aicCountValidator) ParseProvider(body []byte) (*dsl.ProviderConfig, []dsl.Issue) {
-	v.providerParses++
-	return v.Validator.ParseProvider(body)
+// aicPublishBody 保存并发布一份指定正文的新模型。
+func aicPublishBody(t *testing.T, svc *AIConfigService, body json.RawMessage) {
+	t.Helper()
+	var head struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(body, &head); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SaveDraft(context.Background(), ModelDraftInput{Create: true, Body: body, AdminID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Publish(context.Background(), head.Key, 1); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
-	aicPublishProvider(t, svc, "p1", "s1")
-	aicPublishModel(t, svc, "m-b", "p1")
-	aicPublishModel(t, svc, "m-a", "p1")
-	// 一个 image 模型，排序更靠前
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetModel, "", true, []byte(`{"key":"m-img","kind":"image","provider":"p1","label":"图","credits":2,"enabled":true,"sort":1,"input_schema":{"prompt":{"type":"text","label":"p"}}}`), "", 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Publish(ctx, model.ConfigTargetModel, "m-img", 1); err != nil {
-		t.Fatal(err)
-	}
+	aicSeedChannel(t, svc, repo, "c1", true)
+	aicPublishModel(t, svc, "m-b", "c1")
+	aicPublishModel(t, svc, "m-a", "c1")
+	// 一个 text 模型，排序更靠前
+	aicPublishBody(t, svc, aicKindBody("m-txt", "c1", "text", 1))
 	// 只有草稿、未发布的模型不出现
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetModel, "", true, aicModelBody("m-draft", "p1", ""), "", 1); err != nil {
+	if _, err := aicSave(svc, "", true, aicModelBody("m-draft", "c1", "")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,9 +57,9 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 		kind string
 		want []string
 	}{
-		{"全部按 sort 再按 key 排序", "", []string{"m-img", "m-a", "m-b"}},
+		{"全部按 sort 再按 key 排序", "", []string{"m-txt", "m-a", "m-b"}},
 		{"按 kind 过滤 video", "video", []string{"m-a", "m-b"}},
-		{"按 kind 过滤 image", "image", []string{"m-img"}},
+		{"按 kind 过滤 text", "text", []string{"m-txt"}},
 		{"没有该 kind 时返回空列表", "audio", []string{}},
 	}
 	for _, tt := range tests {
@@ -97,91 +99,120 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 		if _, ok := m.InputSchema.Get("prompt"); !ok {
 			t.Fatal("input_schema 应带上")
 		}
+		b, _ := json.Marshal(list)
+		for _, bad := range []string{"channel", "kling", "instanceType", "sk-c1", "upstream"} {
+			if strings.Contains(string(b), bad) {
+				t.Fatalf("清单不应泄露 %q：%s", bad, b)
+			}
+		}
 	})
 }
 
 func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
-	aicPublishProvider(t, svc, "p1", "s1")
-	aicPublishModel(t, svc, "m1", "p1")
-	// 平台没发布的模型（直接造数据：模型已发布但平台指针为空）
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetProvider, "", true, aicProviderBody("p2", "", ""), "", 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.SaveDraft(ctx, model.ConfigTargetModel, "", true, aicModelBody("m-orphan", "p2", ""), "", 1); err != nil {
-		t.Fatal(err)
-	}
-	orphan, _ := repo.GetDraft(ctx, model.ConfigTargetModel, "m-orphan")
-	rid := orphan.ID
-	repo.Models["m-orphan"].PublishedRevisionID = &rid
-	repo.Revs[len(repo.Revs)-1].Status = model.RevisionPublished
-	if err := svc.RefreshRegistry(ctx); err != nil {
-		t.Fatal(err)
-	}
+	aicSeedChannel(t, svc, repo, "c1", true)
+	aicPublishModel(t, svc, "m1", "c1")
 
-	t.Run("冻结模型与平台的发布版本及 revision id", func(t *testing.T) {
+	t.Run("冻结模型、渠道、插件版本，不含 Key", func(t *testing.T) {
 		snap, err := svc.Snapshot(ctx, "m1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snap.Model.Key != "m1" || snap.Provider.Key != "p1" || snap.Provider.Auth.Secret != "s1" {
-			t.Fatalf("快照内容不符合预期：%+v", snap)
+		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Credits != 5 ||
+			snap.Model.Params["instanceType"] != "default" {
+			t.Fatalf("模型部分不符合预期：%+v", snap.Model)
+		}
+		ver, _ := repo.FindVersion(ctx, "kling", "1.0.0")
+		if snap.Channel.Key != "c1" || snap.Channel.PluginKey != "kling" || snap.Channel.PluginVersionID != ver.ID ||
+			snap.Channel.BaseURL != "https://gw.example.com" || snap.Channel.Settings["tenant"] != "t" {
+			t.Fatalf("渠道部分不符合预期：%+v", snap.Channel)
+		}
+		if snap.Plugin.Key != "kling" || snap.Plugin.Version != "1.0.0" || snap.Plugin.SHA256 != "seed" || snap.Plugin.Meta.Key != "kling" {
+			t.Fatalf("插件部分不符合预期：%+v", snap.Plugin)
 		}
 		pub, _ := repo.GetPublishedRevision(ctx, model.ConfigTargetModel, "m1")
-		ppub, _ := repo.GetPublishedRevision(ctx, model.ConfigTargetProvider, "p1")
-		if snap.ModelRevisionID != pub.ID || snap.ProviderRevisionID != ppub.ID {
-			t.Fatalf("revision id 不符合预期：%+v", snap)
+		if snap.ModelRevisionID != pub.ID {
+			t.Fatalf("revision id 不符合预期：%d vs %d", snap.ModelRevisionID, pub.ID)
 		}
-		if !snap.Model.Enabled || snap.Model.Sort != 10 {
-			t.Fatalf("enabled / sort 应取指针行的运行时值：%+v", snap.Model)
+		b, _ := json.Marshal(snap)
+		if strings.Contains(string(b), "sk-c1") {
+			t.Fatalf("快照不能含渠道 Key：%s", b)
 		}
 	})
+
+	unavailable := []struct {
+		name   string
+		mutate func(repo *aiconfigfake.MemRepo)
+	}{
+		{"模型已下线", func(r *aiconfigfake.MemRepo) { r.Models["m1"].Enabled = false }},
+		{"渠道已停用", func(r *aiconfigfake.MemRepo) { r.Channels["c1"].Enabled = false }},
+		{"渠道已被删除", func(r *aiconfigfake.MemRepo) { delete(r.Channels, "c1") }},
+		{"渠道用的插件已停用", func(r *aiconfigfake.MemRepo) { r.Plugins["kling"].Enabled = false }},
+		{"渠道用的插件行已被删除", func(r *aiconfigfake.MemRepo) { delete(r.Plugins, "kling") }},
+		{"渠道固定的插件版本已不存在", func(r *aiconfigfake.MemRepo) {
+			for id := range r.Versions {
+				delete(r.Versions, id)
+			}
+		}},
+		{"渠道固定的插件版本 meta 损坏", func(r *aiconfigfake.MemRepo) {
+			for _, v := range r.Versions {
+				v.MetaJSON = model.JSONText(`{oops`)
+			}
+		}},
+		{"渠道后来切到了不支持该种类的插件版本", func(r *aiconfigfake.MemRepo) {
+			for _, v := range r.Versions {
+				v.MetaJSON = model.JSONText(`{"apiVersion":1,"key":"kling","name":"k","version":"1.0.0","auth":{"type":"none"},"endpoints":{"text":{"mode":"sync"}}}`)
+			}
+		}},
+	}
+	for _, tt := range unavailable {
+		t.Run("不可用："+tt.name, func(t *testing.T) {
+			s, r, _ := aicNewSvc()
+			aicSeedChannel(t, s, r, "c1", true)
+			aicPublishModel(t, s, "m1", "c1")
+			tt.mutate(r)
+			if err := s.RefreshRegistry(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Snapshot(ctx, "m1"); !errors.Is(err, provider.ErrModelUnavailable) {
+				t.Fatalf("期望 ErrModelUnavailable，实际 %v", err)
+			}
+			if list, _ := s.ListModels(ctx, ""); len(list) != 0 {
+				t.Fatalf("不可用的模型不应出现在清单里：%+v", list)
+			}
+		})
+	}
+
 	t.Run("模型不存在", func(t *testing.T) {
 		if _, err := svc.Snapshot(ctx, "nope"); !errors.Is(err, provider.ErrModelUnavailable) {
 			t.Fatalf("期望 ErrModelUnavailable，实际 %v", err)
 		}
 	})
-	t.Run("已下线", func(t *testing.T) {
-		repo.Models["m1"].Enabled = false
-		_ = svc.RefreshRegistry(ctx)
-		if _, err := svc.Snapshot(ctx, "m1"); !errors.Is(err, provider.ErrModelUnavailable) {
-			t.Fatalf("期望 ErrModelUnavailable，实际 %v", err)
+	t.Run("渠道升级到新插件版本后，新快照用新版本，旧快照不受影响", func(t *testing.T) {
+		old, _ := svc.Snapshot(ctx, "m1")
+		v2 := adminSeedVersion(t, repo, adminMetaJSON("kling", "1.1.0"), model.PluginSourceUploaded, true)
+		repo.Channels["c1"].PluginVersionID = v2
+		if err := svc.RefreshRegistry(ctx); err != nil {
+			t.Fatal(err)
 		}
-		repo.Models["m1"].Enabled = true
-		_ = svc.RefreshRegistry(ctx)
-	})
-	t.Run("平台没有发布", func(t *testing.T) {
-		if _, err := svc.Snapshot(ctx, "m-orphan"); !errors.Is(err, provider.ErrModelUnavailable) {
-			t.Fatalf("期望 ErrModelUnavailable，实际 %v", err)
+		fresh, err := svc.Snapshot(ctx, "m1")
+		if err != nil || fresh.Plugin.Version != "1.1.0" || fresh.Channel.PluginVersionID != v2 {
+			t.Fatalf("新快照应用 1.1.0：%+v %v", fresh, err)
 		}
-		list, _ := svc.ListModels(ctx, "")
-		for _, m := range list {
-			if m.Key == "m-orphan" {
-				t.Fatal("平台没发布的模型不应出现在清单里")
-			}
-		}
-	})
-	t.Run("Provider 查询", func(t *testing.T) {
-		p, err := svc.Provider(ctx, "p1")
-		if err != nil || p.Key != "p1" {
-			t.Fatalf("Provider 查询失败：%v %+v", err, p)
-		}
-		if _, err := svc.Provider(ctx, "p2"); !errors.Is(err, provider.ErrModelUnavailable) {
-			t.Fatalf("未发布的平台期望 ErrModelUnavailable，实际 %v", err)
+		if old.Plugin.Version != "1.0.0" {
+			t.Fatalf("已取得的旧快照不应被改动：%+v", old.Plugin)
 		}
 	})
 }
 
 func TestAIConfigService_Registry_CacheAndHotRefresh(t *testing.T) {
 	ctx := context.Background()
-	repo := aiconfigfake.NewMemRepo()
-	val := &aicCountValidator{}
-	svc := NewAIConfigService(repo, val, "k")
+	svc, repo, _ := aicNewSvc()
 	clock := time.Now()
 	svc.SetNow(func() time.Time { return clock })
-	aicPublishProvider(t, svc, "p1", "")
-	aicPublishModel(t, svc, "m1", "p1")
+	aicSeedChannel(t, svc, repo, "c1", true)
+	aicPublishModel(t, svc, "m1", "c1")
 
 	t.Run("缓存命中不再查库", func(t *testing.T) {
 		_ = svc.RefreshRegistry(ctx)
@@ -196,54 +227,52 @@ func TestAIConfigService_Registry_CacheAndHotRefresh(t *testing.T) {
 		}
 	})
 
-	t.Run("发布后立即热生效且已解析的 revision 不重复解析", func(t *testing.T) {
+	t.Run("发布后立即热生效", func(t *testing.T) {
 		before, _ := svc.Snapshot(ctx, "m1")
-		parsesBefore := val.modelParses
-		if _, err := svc.SaveDraft(ctx, model.ConfigTargetModel, "m1", false, aicModelBody("m1", "p1", `"credits_note":"v2"`), "", 1); err != nil {
+		if _, err := aicSave(svc, "m1", false, aicModelBody("m1", "c1", `"deadline":"45m"`)); err != nil {
 			t.Fatal(err)
 		}
-		parsesAfterSave := val.modelParses
-		if _, err := svc.Publish(ctx, model.ConfigTargetModel, "m1", 1); err != nil {
+		if _, err := svc.Publish(ctx, "m1", 1); err != nil {
 			t.Fatal(err)
 		}
 		after, err := svc.Snapshot(ctx, "m1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if after.ModelRevisionID == before.ModelRevisionID {
-			t.Fatal("发布后快照应立即指向新 revision")
-		}
-		// 发布时校验解析 1 次（checkPublishable 内的 collectIssues）+ 加载新 revision 1 次；旧 revision 已被清理，不会再解析
-		if val.modelParses-parsesAfterSave > 2 || parsesAfterSave <= parsesBefore {
-			t.Fatalf("解析次数异常：before=%d save=%d publish=%d", parsesBefore, parsesAfterSave, val.modelParses)
-		}
-	})
-
-	t.Run("没有变化的 revision 在下次刷新时命中解析缓存", func(t *testing.T) {
-		before := val.modelParses
-		provBefore := val.providerParses
-		_ = svc.RefreshRegistry(ctx)
-		_ = svc.RefreshRegistry(ctx)
-		if val.modelParses != before || val.providerParses != provBefore {
-			t.Fatalf("同一 revision 不应重复解析：model %d->%d provider %d->%d", before, val.modelParses, provBefore, val.providerParses)
+		if after.ModelRevisionID == before.ModelRevisionID || after.Model.Deadline.D() != 45*time.Minute {
+			t.Fatalf("发布后快照应立即指向新 revision：%d -> %d，deadline=%v", before.ModelRevisionID, after.ModelRevisionID, after.Model.Deadline.D())
 		}
 	})
 
 	t.Run("回滚后立即指回旧 revision", func(t *testing.T) {
-		revs, _ := svc.ListRevisions(ctx, model.ConfigTargetModel, "m1")
+		revs, _ := svc.ListRevisions(ctx, "m1")
 		var oldID uint64
 		for _, r := range revs {
 			if r.RevisionNo == 1 {
 				oldID = r.ID
 			}
 		}
-		if _, err := svc.Rollback(ctx, model.ConfigTargetModel, "m1", oldID, 1); err != nil {
+		if _, err := svc.Rollback(ctx, "m1", oldID, 1); err != nil {
 			t.Fatal(err)
 		}
 		snap, _ := svc.Snapshot(ctx, "m1")
 		if snap.ModelRevisionID != oldID {
 			t.Fatalf("回滚后快照应指向旧 revision %d，实际 %d", oldID, snap.ModelRevisionID)
 		}
+	})
+
+	t.Run("渠道被改动后要刷新才生效（TTL 内沿用旧状态），刷新后立即生效", func(t *testing.T) {
+		_ = svc.RefreshRegistry(ctx)
+		repo.Channels["c1"].Enabled = false
+		if _, err := svc.Snapshot(ctx, "m1"); err != nil {
+			t.Fatalf("缓存未过期时仍应使用旧状态：%v", err)
+		}
+		svc.NotifyChanged(ctx, "test")
+		if _, err := svc.Snapshot(ctx, "m1"); !errors.Is(err, provider.ErrModelUnavailable) {
+			t.Fatalf("刷新后应立即不可用：%v", err)
+		}
+		repo.Channels["c1"].Enabled = true
+		svc.NotifyChanged(ctx, "test")
 	})
 
 	t.Run("缓存过期后重新加载（多实例没有广播时的兜底）", func(t *testing.T) {
@@ -273,7 +302,7 @@ func TestAIConfigService_Registry_CacheAndHotRefresh(t *testing.T) {
 func TestAIConfigService_Registry_LoadFailureWithoutState(t *testing.T) {
 	repo := aiconfigfake.NewMemRepo()
 	repo.FailLoad = errors.New("db down")
-	svc := NewAIConfigService(repo, &aiconfigfake.Validator{}, "k")
+	svc := NewAIConfigService(repo, repo, repo, "k")
 	if _, err := svc.ListModels(context.Background(), ""); err == nil {
 		t.Fatal("没有旧状态且加载失败时应返回错误")
 	}
@@ -285,10 +314,10 @@ func TestAIConfigService_Registry_LoadFailureWithoutState(t *testing.T) {
 func TestAIConfigService_Registry_InvalidPublishedConfigIgnored(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
-	aicPublishProvider(t, svc, "p1", "")
-	aicPublishModel(t, svc, "m1", "p1")
+	aicSeedChannel(t, svc, repo, "c1", true)
+	aicPublishModel(t, svc, "m1", "c1")
 	// 手工把已发布的模型正文改成解析会失败的内容：不应带病运行，也不应拖垮其他模型
-	aicPublishModel(t, svc, "m2", "p1")
+	aicPublishModel(t, svc, "m2", "c1")
 	for _, r := range repo.Revs {
 		if r.TargetKey == "m1" {
 			r.BodyJSON = []byte(`{"key":"m1","bad":true}`)

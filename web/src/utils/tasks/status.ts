@@ -16,3 +16,12 @@ export const taskKey = (id: number | string) => String(id)
 
 /** 任务的第一份产物；没有产物时为 undefined */
 export const firstOutput = (view: TaskView) => view.outputs?.[0]
+
+/**
+ * 文本任务的正文：取第一份带非空 text 的产出。
+ * 原样返回，不做 trim，正文里的换行与缩进要保留。
+ * @param view 任务快照
+ * @returns 正文；没有文本产出或全是空白时为 undefined
+ */
+export const outputText = (view: TaskView): string | undefined =>
+  view.outputs?.find((output) => typeof output.text === 'string' && output.text.trim() !== '')?.text

@@ -14,7 +14,6 @@ import type {
   PluginUploadResult,
   PluginView,
   SaveDraftResult,
-  SecretStatus,
   TestRunTrace,
   ValidateResult,
 } from './type'
@@ -238,7 +237,7 @@ export const setModelSort = (key: string, sort: number) =>
   service.put<unknown>(ep.modelSort(key), { sort })
 
 /**
- * dry-run：渲染插件返回的请求描述与宿主注入后的最终请求（Key 脱敏），不发送
+ * dry-run：渲染插件返回的请求描述（已校验，Key 脱敏），不发送；注意后端目前不含宿主注入后的鉴权头，界面上不要叫“最终请求”
  * @param key 模型 key
  * @param input 示例输入
  * @returns 自由结构的 JSON
@@ -272,31 +271,6 @@ export const getTestRunTrace = async (taskId: number | string): Promise<TestRunT
   const result = await service.get<TestRunTrace | null>(ep.testRunTrace(taskId), undefined)
   return { steps: result?.steps ?? [] }
 }
-
-// ---------------------------------------------------------------- 凭证
-
-type SecretMetadata = Omit<SecretStatus, 'is_set' | 'referenced_by'> & {
-  is_set?: boolean
-  referenced_by?: string[]
-}
-
-/**
- * 获取凭证状态列表；只返回元信息，不返回明文或密文。
- */
-export const listSecrets = async (): Promise<SecretStatus[]> => {
-  const list = await service.get<SecretMetadata[] | null>(ep.secrets(), undefined)
-  return (list ?? []).map((item) => ({
-    ...item,
-    is_set: item.is_set ?? true,
-    referenced_by: item.referenced_by ?? [],
-  }))
-}
-
-/**
- * 设置凭证；只写：设置后任何接口都读不回明文。
- */
-export const setSecret = (name: string, value: string) =>
-  service.put<unknown>(ep.secret(name), { value })
 
 /**
  * 模型配置的 JSON Schema

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"video-canvas/internal/model"
@@ -9,14 +10,16 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// ListConfigs 列出所有模型配置的概览（不含正文），带草稿 / 发布状态汇总。返回的切片永远不是 nil。
+// ListConfigs 列出所有模型配置的概览（不含正文），带草稿 / 发布状态汇总，以及展示名（label）与绑定的渠道 key（channel）。
+// 返回的切片永远不是 nil。
 func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, error) {
-	// 1. 取所有 draft / published 的 revision 元信息，按 key 归并；不读正文，避免列表接口读出大字段
-	heads, err := s.repo.ListRevisionHeads(ctx, model.ConfigTargetModel, false)
+	// 1. 取所有 draft / published 的 revision，按 key 归并。要读正文是因为 label 与 channel 只在正文里；
+	//    管理端模型数量有限，一次读出可以接受
+	heads, err := s.repo.ListRevisionHeads(ctx, model.ConfigTargetModel, true)
 	if err != nil {
 		return nil, err
 	}
-	drafts, published := aiGroupHeads(heads)
+	summaries := aiGroupHeads(heads)
 
 	// 2. 与指针行合并：指针行的 enabled / sort 是运行时真值
 	rows, err := s.repo.ListModelPointers(ctx)
@@ -27,31 +30,67 @@ func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, er
 	for _, r := range rows {
 		item := ConfigListItem{Key: r.Key, Kind: r.Kind, Enabled: r.Enabled, Sort: r.Sort,
 			PublishedRevisionID: r.PublishedRevisionID, UpdatedAt: r.UpdatedAt}
-		if no, ok := drafts[r.Key]; ok {
-			item.DraftRevisionNo, item.HasUnpublishedDraft = &no, true
-		}
-		if no, ok := published[r.Key]; ok {
-			item.PublishedRevisionNo = &no
+		if sum, ok := summaries[r.Key]; ok {
+			if sum.draftNo > 0 {
+				no := sum.draftNo
+				item.DraftRevisionNo, item.HasUnpublishedDraft = &no, true
+			}
+			if sum.publishedNo > 0 {
+				no := sum.publishedNo
+				item.PublishedRevisionNo = &no
+			}
+			item.Label, item.Channel = sum.label, sum.channel
 		}
 		items = append(items, item)
 	}
 	return items, nil
 }
 
-// aiGroupHeads 把 revision 头信息按 key 归并成“最新草稿号”和“发布版本号”两张表。
-func aiGroupHeads(heads []model.AIConfigRevision) (drafts, published map[string]int) {
-	drafts, published = map[string]int{}, map[string]int{}
+// aiHeadSummary 是一个模型的 revision 汇总：最新草稿号、发布版本号，以及展示用的 label / channel。
+type aiHeadSummary struct {
+	draftNo, publishedNo int
+	label, channel       string
+}
+
+// aiGroupHeads 把 revision 头信息（含正文）按 key 归并。label / channel 优先取已发布版本的正文
+// （列表展示的是线上正在用的），没发布过才取最新草稿的；正文解析不出来就留空，不影响其他字段。
+func aiGroupHeads(heads []model.AIConfigRevision) map[string]*aiHeadSummary {
+	out := map[string]*aiHeadSummary{}
+	var publishedSeen = map[string]bool{}
+	var draftBody = map[string]model.JSONText{}
 	for _, h := range heads {
+		sum := out[h.TargetKey]
+		if sum == nil {
+			sum = &aiHeadSummary{}
+			out[h.TargetKey] = sum
+		}
 		switch h.Status {
 		case model.RevisionDraft:
-			if old, ok := drafts[h.TargetKey]; !ok || h.RevisionNo > old {
-				drafts[h.TargetKey] = h.RevisionNo
+			if h.RevisionNo > sum.draftNo {
+				sum.draftNo = h.RevisionNo
+				draftBody[h.TargetKey] = h.BodyJSON
 			}
 		case model.RevisionPublished:
-			published[h.TargetKey] = h.RevisionNo
+			sum.publishedNo = h.RevisionNo
+			publishedSeen[h.TargetKey] = true
+			sum.label, sum.channel = aiLabelAndChannel(h.BodyJSON)
 		}
 	}
-	return drafts, published
+	for key, body := range draftBody {
+		if !publishedSeen[key] {
+			out[key].label, out[key].channel = aiLabelAndChannel(body)
+		}
+	}
+	return out
+}
+
+// aiLabelAndChannel 从配置正文里宽松取出 label 与 channels[0].channel；正文不是合法 JSON 对象时返回空串。
+func aiLabelAndChannel(body model.JSONText) (label, channel string) {
+	var m aiConfigMeta
+	if err := json.Unmarshal(body, &m); err != nil {
+		return "", ""
+	}
+	return m.Label, m.channel()
 }
 
 // GetConfig 返回模型详情：最新草稿与当前已发布版本的完整正文。模型不存在返回 ErrConfigNotFound。

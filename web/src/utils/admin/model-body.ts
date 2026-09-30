@@ -119,3 +119,70 @@ export function draftToModelBody(
     input_schema: draft.input_schema ?? {},
   };
 }
+
+/** kind 的中文名 */
+export const MODEL_KIND_LABEL: Record<string, string> = {
+  text: "文本",
+  video: "视频",
+  image: "图片",
+  audio: "音频",
+};
+
+/**
+ * 改正文里的一个顶层字段：字段已存在就原位替换（键顺序不动），不存在就追加到末尾。
+ * 正文不是对象时返回 null。
+ */
+export function withModelField(
+  body: unknown,
+  field: string,
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!isRecord(body)) return null;
+  if (field in body)
+    return Object.fromEntries(
+      Object.entries(body).map(([key, current]) => [
+        key,
+        key === field ? value : current,
+      ]),
+    );
+  return { ...body, [field]: value };
+}
+
+/** 把 channels[0].upstream_model 改成指定值，其余字段与键顺序不动；没有 channels 时追加一项 */
+export function withModelUpstream(
+  body: unknown,
+  upstreamModel: string,
+): Record<string, unknown> | null {
+  if (!isRecord(body)) return null;
+  const channels = Array.isArray(body.channels) ? [...body.channels] : [];
+  const first = isRecord(channels[0]) ? channels[0] : {};
+  channels[0] = {
+    channel: first.channel ?? "",
+    ...first,
+    upstream_model: upstreamModel,
+  };
+  return withModelField(body, "channels", channels);
+}
+
+/** 正文里的数字字段（credits / sort）；不是数字返回 null */
+export const readModelNumber = (body: unknown, field: string) =>
+  isRecord(body) && typeof body[field] === "number" && Number.isFinite(body[field])
+    ? (body[field] as number)
+    : null;
+
+/** 正文里的字符串字段；缺失返回空串 */
+export const readModelString = (body: unknown, field: string) =>
+  isRecord(body) && typeof body[field] === "string" ? (body[field] as string) : "";
+
+/** 正文里的布尔字段 */
+export const readModelBool = (body: unknown, field: string) =>
+  isRecord(body) && body[field] === true;
+
+/** 时限格式（Go 的 time.Duration 写法，如 30m、1h30m、90s）；通过返回 null，前端只校验格式 */
+export function checkDeadline(value: string): string | null {
+  const text = value.trim();
+  if (!text) return "请填写时限，例如 30m";
+  return /^(\d+(\.\d+)?(ms|s|m|h))+$/.test(text)
+    ? null
+    : "时限格式不对，示例：90s、30m、1h";
+}

@@ -39,6 +39,7 @@
 - 前端使用的结构命名为 `*Dto`，使用 camelCase 和字符串 id。
 - 转换只在 API 层做（如 `mapAsset`、`mapCanvasProject`），页面和组件不接触后端原始结构。
 - 后端用 0 表示「没有该维度」的字段，前端统一转成 `null`。
+- **例外**：`api/admin-ai`（管理端 AI 配置）直接沿用后端 snake_case 字段与数字 id，不做映射：字段多、与 `backend/docs/admin-ai-api.md` 一一对应，映射层只会增加漂移风险。
 
 ## 5. 类型组织
 

@@ -1,9 +1,8 @@
-//go:build legacy
-
 package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
 
@@ -242,7 +242,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		if status == model.TaskPending {
 			return task
 		}
-		if _, err := env.svc.MarkSubmitted(ctx, task, "pt-"+fmt.Sprint(v.ID), time.Now()); err != nil {
+		if _, err := env.svc.MarkSubmitted(ctx, task, "pt-"+fmt.Sprint(v.ID), nil, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		task, _ = env.store.GetByIDAny(ctx, v.ID)
@@ -405,7 +405,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		v, err := env.svc.SubmitTest(ctx, env.user, fakeTaskSnapshot(model.KindVideo, 10), map[string]any{"prompt": "x"})
 		assertTaskCode(t, err, 0)
 		task, _ := env.store.GetByIDAny(ctx, v.ID)
-		_, _ = env.svc.MarkSubmitted(ctx, task, "pt", time.Now())
+		_, _ = env.svc.MarkSubmitted(ctx, task, "pt", nil, time.Now())
 		task, _ = env.store.GetByIDAny(ctx, v.ID)
 		_, _ = env.svc.MarkFinalizing(ctx, task)
 		task, _ = env.store.GetByIDAny(ctx, v.ID)
@@ -418,6 +418,117 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		}
 		if len(env.bc.msgs) != 0 {
 			t.Fatalf("试跑不应推送：%d", len(env.bc.msgs))
+		}
+	})
+}
+
+// jsonb 列会规范化空白与键顺序，所以只比较解码后的语义，不比较原始字节。
+func TestGenerationTaskService_Integration_ProviderColumns(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.AI{MaxActiveTasksPerUser: 10, InitialCredits: 50}
+
+	t.Run("config_snapshot 落库后能还原出冻结的模型 / 渠道 / 插件版本", func(t *testing.T) {
+		env := newGTIEnv(t, cfg)
+		v, err := env.create("")
+		assertTaskCode(t, err, 0)
+		task, err := env.store.GetByIDAny(ctx, v.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snap provider.Snapshot
+		if err := json.Unmarshal(task.ConfigSnapshot, &snap); err != nil {
+			t.Fatalf("快照解码失败：%v", err)
+		}
+		if snap.ModelRevisionID != 42 || snap.Channel.PluginVersionID != 7 || snap.Plugin.SHA256 != "abc123" || snap.Model.Key != "m1" {
+			t.Fatalf("快照内容不对：%+v", snap)
+		}
+	})
+
+	t.Run("provider_state：提交时合并插件 state，保留准备阶段的 prepared", func(t *testing.T) {
+		env := newGTIEnv(t, cfg)
+		v, _ := env.create("")
+		task, _ := env.store.GetByIDAny(ctx, v.ID)
+		if err := env.svc.SaveProviderState(ctx, task, provider.ProviderState{Prepared: json.RawMessage(`{"file":"f-1"}`)}); err != nil {
+			t.Fatal(err)
+		}
+		task, _ = env.store.GetByIDAny(ctx, v.ID)
+		if applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", json.RawMessage(`{"cursor":"c1"}`), time.Now()); err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		got, _ := env.store.GetByIDAny(ctx, v.ID)
+		st, ok := provider.DecodeProviderState(got.ProviderState)
+		if !ok {
+			t.Fatalf("provider_state 解码失败：%s", got.ProviderState)
+		}
+		var prepared, plugin map[string]string
+		_ = json.Unmarshal(st.Prepared, &prepared)
+		_ = json.Unmarshal(st.Plugin, &plugin)
+		if prepared["file"] != "f-1" || plugin["cursor"] != "c1" {
+			t.Fatalf("prepared / plugin 都应保留：%s", got.ProviderState)
+		}
+		if got.Status != model.TaskQueued || got.ProviderTaskID != "pt-1" || got.Version != 2 {
+			t.Fatalf("任务状态不对：%+v", got)
+		}
+	})
+
+	t.Run("provider_result：同步结果落库并进入 finalizing，随后结算积分", func(t *testing.T) {
+		env := newGTIEnv(t, cfg)
+		v, _ := env.create("")
+		task, _ := env.store.GetByIDAny(ctx, v.ID)
+		outs := json.RawMessage(`[{"type":"url","url":"https://up.example.com/a.png"}]`)
+		if applied, err := env.svc.MarkImmediate(ctx, task, "sync-1", nil, outs); err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		got, _ := env.store.GetByIDAny(ctx, v.ID)
+		var back []provider.Output
+		if err := json.Unmarshal(got.ProviderResult, &back); err != nil || len(back) != 1 || back[0].URL != "https://up.example.com/a.png" {
+			t.Fatalf("provider_result 不对：%s %v", got.ProviderResult, err)
+		}
+		if got.Status != model.TaskFinalizing || got.ProviderTaskID != "sync-1" {
+			t.Fatalf("任务状态不对：%+v", got)
+		}
+		if applied, err := env.svc.Complete(ctx, got, nil); err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		rec := env.assertReconciled(t, 50)
+		if rec.Balance != 40 || rec.Frozen != 0 {
+			t.Fatalf("结算结果不对：%+v", rec)
+		}
+	})
+
+	t.Run("试跑任务：追踪写入 trace_json，GetTestTrace 读回；正式任务不记追踪", func(t *testing.T) {
+		env := newGTIEnv(t, cfg)
+		tv, err := env.svc.SubmitTest(ctx, env.user, fakeTaskSnapshot(model.KindVideo, 10), map[string]any{"prompt": "x"})
+		assertTaskCode(t, err, 0)
+		testTask, _ := env.store.GetByIDAny(ctx, tv.ID)
+
+		steps := []provider.TraceStep{{Name: "submit", Kind: "hook", DurationMs: 3}}
+		if err := env.svc.SaveTrace(ctx, testTask, steps); err != nil {
+			t.Fatal(err)
+		}
+		got, err := env.svc.GetTestTrace(ctx, env.user, tv.ID)
+		if err != nil || len(got) != 1 || got[0].Name != "submit" || got[0].DurationMs != 3 {
+			t.Fatalf("追踪读回不对：%+v %v", got, err)
+		}
+		if _, err := env.svc.GetTestTask(ctx, env.user, tv.ID); err != nil {
+			t.Fatalf("GetTestTask 应能查到：%v", err)
+		}
+		// 试跑任务不出现在普通接口里
+		_, err = env.svc.Get(ctx, env.user, tv.ID)
+		assertTaskCode(t, err, errcode.ErrTaskNotFound.Code)
+
+		// 正式任务：SaveTrace 被忽略，GetTestTrace 当作不存在
+		nv, _ := env.create("")
+		normal, _ := env.store.GetByIDAny(ctx, nv.ID)
+		if err := env.svc.SaveTrace(ctx, normal, steps); err != nil {
+			t.Fatalf("正式任务应静默忽略：%v", err)
+		}
+		if _, err := env.svc.GetTestTrace(ctx, env.user, nv.ID); err == nil {
+			t.Fatal("正式任务不应通过 GetTestTrace 查到")
+		}
+		// 真实仓储的 SaveTrace 对非试跑任务返回 ErrNotFound
+		if err := env.store.SaveTrace(ctx, nv.ID, []byte(`[]`)); !errors.Is(err, repository.ErrNotFound) {
+			t.Fatalf("仓储应返回 ErrNotFound：%v", err)
 		}
 	})
 }

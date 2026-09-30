@@ -19,8 +19,6 @@
  *   GET    /admin/ai/models/:key/revisions[/:rid]      历史
  *   PUT    /admin/ai/models/:key/{enabled|sort}        上下架 / 排序
  *   GET    /admin/ai/test-runs/:id[/trace]             试跑任务视图 / 追踪
- *   GET    /admin/ai/secrets                             凭证状态列表
- *   PUT    /admin/ai/secrets/:name                       设置凭证，body = {value}
  *   GET    /admin/ai/schema/model                      模型配置 JSON Schema
  */
 const P = '/admin/ai'
@@ -56,8 +54,6 @@ export const adminAiEndpoints = {
   modelTestRun: (key: string) => `${model(key)}/test-run`,
   testRunResult: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}`,
   testRunTrace: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}/trace`,
-  secrets: () => `${P}/secrets`,
-  secret: (name: string) => `${P}/secrets/${seg(name)}`,
   modelSchema: () => `${P}/schema/model`,
 } as const
 

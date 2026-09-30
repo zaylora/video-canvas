@@ -48,8 +48,6 @@ type AIConfigRepo interface {
 	UpsertSecret(ctx context.Context, s *model.AISecret) error
 	// GetSecret 读取凭证（含密文），不存在返回 repository.ErrNotFound。
 	GetSecret(ctx context.Context, name string) (*model.AISecret, error)
-	// ListSecrets 列出凭证元信息，不返回密文。
-	ListSecrets(ctx context.Context) ([]model.AISecret, error)
 }
 
 // AIChannelReader 是本服务对渠道表的只读依赖（签名与 repository.AIChannelRepository 一致，接线时直接传真实仓储）。
@@ -200,6 +198,8 @@ type ValidateResult struct {
 type ConfigListItem struct {
 	Key                 string    `json:"key"`
 	Kind                string    `json:"kind"`
+	Label               string    `json:"label"`   // 展示名：取已发布版本的 label，没发布过取最新草稿的
+	Channel             string    `json:"channel"` // 绑定的渠道 key（channels[0].channel），同样先看已发布版本；正文里没写为空串
 	Enabled             bool      `json:"enabled"`
 	Sort                int       `json:"sort"`
 	PublishedRevisionID *uint64   `json:"published_revision_id"`
@@ -231,6 +231,7 @@ type TestTraceView struct {
 type aiConfigMeta struct {
 	Key      string `json:"key"`
 	Kind     string `json:"kind"`
+	Label    string `json:"label"`
 	Enabled  bool   `json:"enabled"`
 	Sort     int    `json:"sort"`
 	Channels []struct {

@@ -23,15 +23,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { NODE_META } from "@/constants/canvas";
-import {
-  useVideoNode,
-  type VideoNodeModel,
-} from "@/hooks/use-video-node";
-import type { CanvasNode, CanvasNodeData } from "@/types";
+import type { TaskNodeModel } from "@/hooks/use-task-node";
+import { useVideoNode } from "@/hooks/use-video-node";
+import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canConnectKinds } from "@/utils/canvas/canvas";
 
 /** 换模型会丢参数时的确认框；挂在 Portal 里，事件别冒泡回节点 */
-function SwitchModelDialog({ vm }: { vm: VideoNodeModel }) {
+function SwitchModelDialog({ vm }: { vm: TaskNodeModel }) {
   const pending = vm.pendingSwitch;
   return (
     <Dialog open={!!pending} onOpenChange={(open) => !open && vm.cancelSwitch()}>
@@ -57,15 +55,20 @@ function SwitchModelDialog({ vm }: { vm: VideoNodeModel }) {
   );
 }
 
-/** 节点下方的提示词 + 参数面板，跟着 NodeToolbar 装卸，没选中的节点不渲染 */
-function VideoPromptPanel({
+/**
+ * 节点下方的提示词 + 参数面板，跟着 NodeToolbar 装卸，没选中的节点不渲染。
+ * 视频与文本节点共用，kind 决定占位提示与图标。
+ */
+export function TaskPromptPanel({
   vm,
   data,
+  kind,
 }: {
-  vm: VideoNodeModel;
+  vm: TaskNodeModel;
   data: CanvasNodeData;
+  kind: NodeKind;
 }) {
-  const meta = NODE_META.get("video");
+  const meta = NODE_META.get(kind);
   const Icon = meta?.icon;
   const { modelsStatus, reloadModels } = vm;
 
@@ -193,7 +196,7 @@ export function VideoCanvasNode({
         />
       </NodeCard>
       <NodeToolbar isVisible={selected} position={Position.Bottom} offset={16}>
-        <VideoPromptPanel vm={vm} data={data} />
+        <TaskPromptPanel vm={vm} data={data} kind="video" />
       </NodeToolbar>
     </>
   );

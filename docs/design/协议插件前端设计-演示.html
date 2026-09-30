@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>协议插件 · 管理端前端设计</title>
+<style>
+:root{
+  --bg:oklch(0.985 0 0); --fg:oklch(0.145 0 0); --card:oklch(1 0 0); --muted:oklch(0.97 0 0); --muted-fg:oklch(0.5 0 0);
+  --border:oklch(0.9 0 0); --input:oklch(0.9 0 0); --primary:oklch(0.205 0 0); --primary-fg:oklch(0.985 0 0);
+  --accent:oklch(0.95 0 0); --ring:oklch(0.65 0 0);
+  --danger:oklch(0.577 0.245 27.3); --danger-soft:oklch(0.97 0.02 27); --danger-fg:oklch(0.45 0.2 27);
+  --ok:oklch(0.55 0.14 155); --ok-soft:oklch(0.96 0.04 155); --ok-fg:oklch(0.4 0.12 155);
+  --warn:oklch(0.7 0.15 75); --warn-soft:oklch(0.97 0.05 85); --warn-fg:oklch(0.45 0.1 65);
+  --info:oklch(0.55 0.16 255); --info-soft:oklch(0.96 0.03 255); --info-fg:oklch(0.42 0.14 255);
+  --page:oklch(0.94 0.005 90);
+  --sans:"Geist Variable","Geist","PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --mono:"JetBrains Mono","Cascadia Code","SF Mono",Consolas,"Microsoft YaHei",monospace;
+  --radius:10px;
+}
+:root[data-theme="dark"]{
+  --bg:oklch(0.145 0 0); --fg:oklch(0.985 0 0); --card:oklch(0.205 0 0); --muted:oklch(0.269 0 0); --muted-fg:oklch(0.708 0 0);
+  --border:oklch(1 0 0 / 12%); --input:oklch(1 0 0 / 16%); --primary:oklch(0.922 0 0); --primary-fg:oklch(0.205 0 0);
+  --accent:oklch(0.269 0 0); --ring:oklch(0.556 0 0);
+  --danger:oklch(0.704 0.191 22); --danger-soft:oklch(0.27 0.06 22); --danger-fg:oklch(0.8 0.13 22);
+  --ok:oklch(0.72 0.15 155); --ok-soft:oklch(0.27 0.05 155); --ok-fg:oklch(0.82 0.12 155);
+  --warn:oklch(0.8 0.14 80); --warn-soft:oklch(0.28 0.05 80); --warn-fg:oklch(0.85 0.11 80);
+  --info:oklch(0.72 0.14 255); --info-soft:oklch(0.27 0.05 255); --info-fg:oklch(0.82 0.1 255);
+  --page:oklch(0.11 0 0);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--fg);font-family:var(--sans);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
+a{color:inherit}
+code,.mono{font-family:var(--mono)}
+code{font-size:.9em;background:var(--muted);padding:1px 5px;border-radius:4px}
+
+/* ---------- 文档外壳 ---------- */
+.wrap{max-width:1360px;margin:0 auto;padding:28px 24px 80px}
+.doc-head h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.doc-head p{margin:0;color:var(--muted-fg);max-width:820px}
+.doc-links{margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;font-size:13px}
+.doc-links a{color:var(--info-fg)}
+.toolbar{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:22px 0 12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+.toolbar .grp{display:flex;align-items:center;gap:8px}
+.toolbar .lbl{font-size:12px;color:var(--muted-fg)}
+.seg{display:inline-flex;border:1px solid var(--input);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--fg);padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:var(--primary);color:var(--primary-fg)}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.hint{font-size:12px;color:var(--muted-fg)}
+.scroll-x{overflow-x:auto;border-radius:14px}
+
+/* ---------- 应用框 ---------- */
+.frame{position:relative;min-width:1040px;height:780px;background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 30px rgb(0 0 0 / 8%)}
+#app{display:contents}
+.app-top{display:flex;align-items:center;gap:14px;padding:0 18px;height:52px;border-bottom:1px solid var(--border);background:var(--card);flex:none}
+.app-top .back{color:var(--muted-fg);font-size:13px}
+.app-top h2{font-size:15px;margin:0;font-weight:650}
+.tabs{display:flex;gap:2px;margin-left:16px}
+.tabs button{border:0;background:transparent;color:var(--muted-fg);font:inherit;font-weight:500;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button:hover{background:var(--accent)}
+.tabs button.on{background:var(--accent);color:var(--fg)}
+.tabs .n{font-size:11px;margin-left:4px;color:var(--muted-fg)}
+.app-top .sp{flex:1}
+.main{flex:1;min-height:0;display:flex;position:relative}
+
+/* ---------- 基础控件 ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--input);background:var(--card);color:var(--fg);padding:6px 12px;border-radius:8px;font:inherit;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--accent)}
+.btn.primary{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
+.btn.primary:hover{opacity:.9}
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--accent)}
+.btn.sm{padding:3px 9px;font-size:12.5px;border-radius:7px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;border:1px solid transparent;background:var(--muted);color:var(--muted-fg);white-space:nowrap}
+.badge.ok{background:var(--ok-soft);color:var(--ok-fg)}
+.badge.warn{background:var(--warn-soft);color:var(--warn-fg)}
+.badge.danger{background:var(--danger-soft);color:var(--danger-fg)}
+.badge.info{background:var(--info-soft);color:var(--info-fg)}
+.badge.outline{background:transparent;border-color:var(--border)}
+.input,.select,.textarea{width:100%;border:1px solid var(--input);background:var(--card);color:var(--fg);border-radius:8px;padding:6px 10px;font:inherit}
+.input:focus,.select:focus,.textarea:focus{outline:2px solid var(--ring);outline-offset:-1px}
+.input[disabled],.select[disabled],.textarea[disabled]{background:var(--muted);color:var(--muted-fg)}
+.input.bad{border-color:var(--danger)}
+.textarea{font-family:var(--mono);font-size:12.5px;line-height:1.55;resize:vertical;min-height:120px}
+.field{margin-bottom:14px}
+.field>label{display:block;font-weight:550;font-size:13px;margin-bottom:4px}
+.field .desc{font-size:12px;color:var(--muted-fg);margin-top:4px}
+.field .err{font-size:12px;color:var(--danger);margin-top:4px}
+.sw{position:relative;width:34px;height:20px;border-radius:999px;background:var(--input);border:0;cursor:pointer;flex:none;transition:.15s}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--card);transition:.15s;box-shadow:0 1px 2px rgb(0 0 0 / 25%)}
+.sw.on{background:var(--primary)}
+.sw.on::after{left:16px}
+.sw[disabled]{opacity:.45;cursor:not-allowed}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+.banner{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:9px;font-size:13px;border:1px solid transparent}
+.banner.info{background:var(--info-soft);color:var(--info-fg)}
+.banner.warn{background:var(--warn-soft);color:var(--warn-fg)}
+.banner.danger{background:var(--danger-soft);color:var(--danger-fg)}
+.banner.ok{background:var(--ok-soft);color:var(--ok-fg)}
+.banner b{font-weight:650}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;font-size:12px;font-weight:550;color:var(--muted-fg);padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.click{cursor:pointer}.tbl tr.click:hover td{background:var(--accent)}
+.row{display:flex;align-items:center;gap:8px}
+.wrapr{flex-wrap:wrap}
+.sp1{flex:1}
+.muted{color:var(--muted-fg)}.small{font-size:12px}
+.title{font-weight:650;font-size:15px}
+.empty{padding:48px 24px;text-align:center;color:var(--muted-fg)}
+.empty b{display:block;color:var(--fg);margin-bottom:4px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:6px;background:var(--muted)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:8px 12px;align-items:start}
+.kv dt{color:var(--muted-fg);font-size:12.5px;padding-top:1px}.kv dd{margin:0}
+pre.code{margin:0;padding:12px;background:var(--muted);border-radius:8px;font-family:var(--mono);font-size:12px;line-height:1.55;overflow:auto;max-height:260px;white-space:pre-wrap;word-break:break-all}
+
+/* ---------- 页面：插件 ---------- */
+.split{display:grid;grid-template-columns:300px 1fr;flex:1;min-height:0;width:100%}
+.split>.lft{border-right:1px solid var(--border);overflow:auto;background:var(--card)}
+.split>.rgt{overflow:auto;padding:20px 24px}
+.plist-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer}
+.plist-item:hover{background:var(--accent)}
+.plist-item.on{background:var(--accent);box-shadow:inset 3px 0 var(--primary)}
+.cap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cap{border:1px solid var(--border);border-radius:9px;padding:9px 10px;text-align:center}
+.cap.off{opacity:.4;background:var(--muted)}
+.cap b{display:block;font-size:13px}.cap span{font-size:11.5px;color:var(--muted-fg)}
+.sect{margin-top:22px}
+.sect h3{font-size:13px;margin:0 0 8px;color:var(--muted-fg);font-weight:600;letter-spacing:.02em}
+
+/* ---------- 页面：渠道 ---------- */
+.page{flex:1;overflow:auto;padding:20px 24px;min-width:0}
+.sheet-mask{position:absolute;inset:0;background:rgb(0 0 0 / 30%);z-index:20}
+.sheet{position:absolute;right:0;top:0;bottom:0;width:480px;background:var(--card);border-left:1px solid var(--border);z-index:21;display:flex;flex-direction:column;box-shadow:-12px 0 40px rgb(0 0 0 / 15%)}
+.sheet-h{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sheet-b{flex:1;overflow:auto;padding:16px 20px}
+.sheet-f{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.zone{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
+.zone>h4{margin:0 0 10px;font-size:13px;font-weight:650}
+.zone.risk{border-color:var(--warn)}
+.switchrow{display:flex;gap:12px;align-items:flex-start;padding:8px 0}
+.switchrow+.switchrow{border-top:1px dashed var(--border)}
+.switchrow .tx{flex:1}
+.switchrow .tx b{display:block;font-size:13px}
+.switchrow .tx span{font-size:12px;color:var(--muted-fg)}
+.secret-line{display:flex;align-items:center;gap:10px}
+
+/* ---------- 弹窗 ---------- */
+.modal-mask{position:absolute;inset:0;background:rgb(0 0 0 / 40%);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;width:560px;max-width:100%;max-height:100%;display:flex;flex-direction:column;box-shadow:0 20px 60px rgb(0 0 0 / 30%)}
+.modal-h{padding:16px 20px 4px;font-weight:650;font-size:16px}
+.modal-d{padding:0 20px;color:var(--muted-fg);font-size:13px}
+.modal-b{padding:14px 20px;overflow:auto}
+.modal-f{padding:12px 20px 16px;display:flex;gap:8px;justify-content:flex-end}
+.drop{border:1.5px dashed var(--input);border-radius:10px;padding:16px;text-align:center;color:var(--muted-fg)}
+.drop.has{border-style:solid;color:var(--fg);background:var(--muted)}
+.issue{display:flex;gap:10px;padding:8px 10px;border-radius:8px;background:var(--danger-soft);margin-top:6px}
+.issue .p{font-family:var(--mono);font-size:12px;color:var(--danger-fg);font-weight:600}
+.issue .m{font-size:12.5px}
+.draft{display:flex;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--border);border-radius:9px;margin-top:6px}
+
+/* ---------- 页面：模型 ---------- */
+.mgrid{display:grid;grid-template-columns:250px minmax(0,1fr) 390px;flex:1;min-height:0;width:100%}
+.mgrid>div{min-height:0;overflow:auto}
+.mgrid .mlist{border-right:1px solid var(--border);background:var(--card)}
+.mgrid .med{padding:16px 20px}
+.mgrid .mres{border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column}
+.mitem{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+.mitem:hover,.mitem.on{background:var(--accent)}
+.mitem.on{box-shadow:inset 3px 0 var(--primary)}
+.sub-tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--border);flex:none}
+.sub-tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted-fg);padding:6px 10px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.sub-tabs button.on{color:var(--fg);border-color:var(--primary)}
+.res-body{flex:1;overflow:auto;padding:14px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.ch-info{margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--muted);font-size:12.5px}
+.progress{height:6px;border-radius:9px;background:var(--muted);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--primary);transition:width .3s}
+
+/* ---------- 追踪 ---------- */
+.trace-h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.step{border:1px solid var(--border);border-radius:9px;margin-bottom:6px;overflow:hidden}
+.step.fail{border-color:var(--danger);background:var(--danger-soft)}
+.step-h{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:12.5px}
+.step-h:hover{background:var(--accent)}
+.step.fail .step-h:hover{background:transparent}
+.step .no{font-family:var(--mono);color:var(--muted-fg);width:16px}
+.step .kind{font-size:11px;font-weight:600;padding:0 6px;border-radius:5px;border:1px solid var(--border);white-space:nowrap}
+.step .kind.hook{color:var(--info-fg);background:var(--info-soft);border-color:transparent}
+.step .kind.http{color:var(--ok-fg);background:var(--ok-soft);border-color:transparent}
+.step.fail .kind{color:var(--danger-fg);background:var(--danger-soft);border-color:var(--danger)}
+.step .nm{flex:1;font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step .ms{color:var(--muted-fg);font-family:var(--mono);font-size:11.5px;width:52px;text-align:right}
+.step .bar{width:64px;height:5px;background:var(--muted);border-radius:9px;overflow:hidden;flex:none}
+.step .bar i{display:block;height:100%;background:var(--muted-fg)}
+.step.fail .bar i{background:var(--danger)}
+.step-b{padding:4px 10px 10px;border-top:1px solid var(--border);font-size:12px}
+.step-b .lbl{font-weight:600;margin:8px 0 3px;color:var(--muted-fg)}
+.step-b pre{margin:0;padding:8px;background:var(--muted);border-radius:6px;font-family:var(--mono);font-size:11.5px;overflow:auto;max-height:150px;white-space:pre-wrap;word-break:break-all}
+.step.fail .step-b pre{background:var(--card)}
+
+/* ---------- 提示 ---------- */
+.toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);background:var(--primary);color:var(--primary-fg);padding:9px 16px;border-radius:9px;z-index:60;box-shadow:0 6px 24px rgb(0 0 0 / 25%);font-size:13px}
+
+/* ---------- 文档内容 ---------- */
+.notes{margin-top:34px;display:grid;gap:18px}
+.notes h2{font-size:18px;margin:14px 0 4px}
+.notes .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.notes .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pad{padding:16px 18px}
+.pad h3{margin:0 0 8px;font-size:14px}
+.pad ul{margin:0;padding-left:18px}.pad li{margin:3px 0}
+.matrix td,.matrix th{text-align:center}
+.matrix td:first-child,.matrix th:first-child{text-align:left}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flow .n{padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:12.5px}
+.flow .a{color:var(--muted-fg)}
+.flow .n.role{background:var(--info-soft);color:var(--info-fg);border-color:transparent}
+.phase{border-left:3px solid var(--primary);padding-left:14px}
+.phase h3{margin:0 0 4px}
+.foot{margin-top:40px;color:var(--muted-fg);font-size:12.5px}
+@media (max-width:900px){.notes .grid2,.notes .grid3{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <h1>协议插件 · 管理端前端设计</h1>
+  <p>下面是可以点击的管理端原型：<b>模型 / 渠道 / 插件</b>三页，共用一个带角色的布局。数据都是假的，交互按设计文档实现，用来走查流程和界面，不连后端。</p>
+  <div class="doc-links">
+    <a href="./协议插件前端设计.md">前端设计文档（md）</a>
+    <a href="./协议插件后端评审.md">后端实现评审</a>
+    <a href="./协议插件设计.md">协议插件设计（后端）</a>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="grp"><span class="lbl">当前角色</span>
+    <div class="seg" id="roleSeg"><button data-role="admin">admin 运营</button><button data-role="super_admin" class="on">super_admin 运维</button></div>
+  </div>
+  <div class="grp"><span class="lbl">主题</span>
+    <div class="seg" id="themeSeg"><button data-theme="light" class="on">浅色</button><button data-theme="dark">深色</button></div>
+  </div>
+  <label class="chk"><input type="checkbox" id="runnerDown"> 模拟 runner 不可用（503 / 50021）</label>
+  <label class="chk"><input type="checkbox" id="runFail" checked> 试跑模拟失败（看追踪定位）</label>
+  <span class="hint">试试：插件页“上传插件” → 选示例文件；渠道页“新建 / 编辑 / 设 Key / 检查 / 导入”；模型页“试跑”。</span>
+</div>
+
+<div class="scroll-x"><div class="frame" id="frame"><div id="app"></div></div></div>
+
+<section class="notes">
+  <h2>设计要点</h2>
+  <div class="grid3">
+    <div class="card pad"><h3>1 · 看得见的才是能做的</h3><ul>
+      <li><code>admin</code> 看不到上传、设 Key、两个危险开关</li>
+      <li>只读页仍显示信息，写操作不渲染</li>
+      <li>403 只做兜底页，不靠点了再报错来教育用户</li></ul></div>
+    <div class="card pad"><h3>2 · Key 永远只写</h3><ul>
+      <li>输入框永远为空，成功后只显示“已设置”</li>
+      <li>不进 URL、不进 store、不回显</li>
+      <li>已设置时覆盖前要确认</li></ul></div>
+    <div class="card pad"><h3>3 · 上传即反馈</h3><ul>
+      <li>预检问题精确到字段路径，与文件同屏</li>
+      <li>预检不通过是 HTTP 200，对话框不关闭</li>
+      <li>版本不可变：<code>sha256</code>、渠道引用数是一等信息</li></ul></div>
+  </div>
+
+  <h2>角色与权限</h2>
+  <div class="card scroll-x"><table class="tbl matrix">
+    <tr><th>操作</th><th>super_admin</th><th>admin</th><th>admin 看到什么</th></tr>
+    <tr><td>查看插件、版本、meta</td><td>✓</td><td>✓</td><td>正常显示</td></tr>
+    <tr><td>上传、启停插件，删除版本</td><td>✓</td><td>—</td><td>不渲染按钮，页头写“只读”</td></tr>
+    <tr><td>查看渠道（不含 Key）</td><td>✓</td><td>✓</td><td>Key 只显示“已设置”</td></tr>
+    <tr><td>新建 / 修改渠道、设 Key、检查、两个危险开关</td><td>✓</td><td>—</td><td>抽屉以只读打开，操作区不渲染</td></tr>
+    <tr><td>从渠道导入模型</td><td>✓</td><td>✓</td><td>可用（导入只是草稿）</td></tr>
+    <tr><td>模型编辑、校验、试跑、发布、回滚、上下架</td><td>✓</td><td>✓</td><td>可用</td></tr>
+  </table></div>
+
+  <h2>关键流程</h2>
+  <div class="card pad" style="display:grid;gap:14px">
+    <div><b>A · 运维接入新协议</b><div class="flow" style="margin-top:6px">
+      <span class="n role">运维</span><span class="n">上传插件</span><span class="a">→</span><span class="n">预检（失败看字段路径）</span><span class="a">→</span><span class="n">新建渠道</span><span class="a">→</span><span class="n">设 Key</span><span class="a">→</span><span class="n">连通性检查</span><span class="a">→</span><span class="n">去上架模型</span></div></div>
+    <div><b>B · 运维升级插件</b><div class="flow" style="margin-top:6px">
+      <span class="n role">运维</span><span class="n">上传新版本</span><span class="a">→</span><span class="n">渠道出现“可升级”</span><span class="a">→</span><span class="n">切换版本</span><span class="a">→</span><span class="n">对相关模型试跑</span><span class="a">→</span><span class="n">旧任务按旧版本跑完</span></div></div>
+    <div><b>C · 运营上架（主任务）</b><div class="flow" style="margin-top:6px">
+      <span class="n role">运营</span><span class="n">新建模型</span><span class="a">→</span><span class="n">渠道下拉（只列可用）</span><span class="a">→</span><span class="n">上游模型 / input_schema</span><span class="a">→</span><span class="n">保存草稿</span><span class="a">→</span><span class="n">试跑</span><span class="a">→</span><span class="n">看追踪</span><span class="a">→</span><span class="n">发布</span></div></div>
+    <div><b>D · 运营批量起草</b><div class="flow" style="margin-top:6px">
+      <span class="n role">运营</span><span class="n">渠道行“导入模型”</span><span class="a">→</span><span class="n">选草稿</span><span class="a">→</span><span class="n">带入编辑器（不上架）</span><span class="a">→</span><span class="n">逐个保存</span><span class="a">→</span><span class="n">走流程 C 后半段</span></div></div>
+  </div>
+
+  <h2>状态与异常（页面除了 toast 之外要做的事）</h2>
+  <div class="card scroll-x"><table class="tbl">
+    <tr><th>场景</th><th>错误码</th><th>页面行为</th></tr>
+    <tr><td>无权限</td><td>403 / 10004</td><td>布局显示 403 页；提示“角色刚变更可稍后重试”</td></tr>
+    <tr><td>runner 不可用</td><td>503 / 50021</td><td>在上传、检查、dry-run、导入旁就地提示，保留输入；不设常驻横幅</td></tr>
+    <tr><td>渠道 Key 未设置</td><td>409 / 50015</td><td>检查：引导去设 Key；发布：禁用按钮并说明</td></tr>
+    <tr><td>渠道配置不合法</td><td>400 / 50013</td><td>抽屉顶部显示原因</td></tr>
+    <tr><td>删除版本被引用</td><td>409 / 50005、50006</td><td>对话框内显示具体原因</td></tr>
+    <tr><td>版本号已存在</td><td>预检 issue</td><td>上传对话框内联，不是 HTTP 错误</td></tr>
+    <tr><td>追踪为空</td><td>—</td><td>中性提示“任务尚未产生追踪”，不是错误</td></tr>
+  </table></div>
+
+  <h2>分阶段</h2>
+  <div class="grid2">
+    <div class="phase"><h3>阶段 0 · 地基（前端独立可做）</h3><div class="muted">删旧凭证面板；角色 store 与 <code>getAdminMe</code> 接线；布局与三个子路由；补 <code>utils/admin</code> 单测；添加 shadcn 组件；mock 适配层；拆分 <code>index.tsx</code></div></div>
+    <div class="phase"><h3>阶段 1 · 插件页与渠道页</h3><div class="muted">上传与预检内联反馈；渠道抽屉与危险开关；Key 只写；连通性检查；导入对话框；按角色显隐</div></div>
+    <div class="phase"><h3>阶段 2 · 模型页改造与追踪</h3><div class="muted">渠道与上游模型表单；表单与 JSON 双向；发布确认框；试跑后追踪时间线</div></div>
+    <div class="phase"><h3>阶段 3 · 打磨</h3><div class="muted">审计日志页（依赖后端接口）、无障碍与暗色走查、筛选搜索、评估代码编辑器</div></div>
+  </div>
+
+  <div class="card pad"><h3>依赖后端</h3>
+    <div class="muted">后端的插件、渠道、<code>/me</code>、trace 接口目前都没有实现（见后端评审 P0-2）。前端按 <code>admin-ai-api.md</code> 契约用 mock 开发，联调需要等后端补齐。另外希望后端在模型列表项里补 <code>label</code> 与 <code>channel</code>，并让 <code>channelSettings</code> 保持键序。</div></div>
+
+  <p class="foot">原型只用于走查设计，不是最终实现；控件用 shadcn neutral 令牌近似，真实实现按 <code>components/ui</code> 与规范来。管理端按桌面宽度（≥1024px）设计。</p>
+</section>
+</div>
+
+<script>
+/* ================= 数据 ================= */
+const hex = (s)=> (s.repeat(16)).slice(0,64);
+const PLUGINS = [
+  { key:'newapi', name:'New API', source:'builtin', enabled:true, versions:[
+    { id:1, version:'1.0.0', sha:hex('9f3ac2e1'), created:'2026-09-30 10:12', by:'内置', meta:{
+      auth:{type:'bearer'}, hosts:[], endpoints:{text:'sync',video:'async'}, settings:{}, import:{args:{}}, check:true } } ] },
+  { key:'kling', name:'可灵直连', source:'uploaded', enabled:true, versions:[
+    { id:3, version:'0.3.0', sha:hex('c41d07ab'), created:'2026-09-29 16:40', by:'zhanghuizhong', meta:{
+      auth:{type:'custom'}, hosts:['*.klingai.com'], endpoints:{video:'async'},
+      settings:{ region:{type:'enum',label:'区域',options:['cn','global'],default:'cn',required:true}, sign_ttl:{type:'number',label:'签名有效期（秒）',default:1800} },
+      import:null, check:false } },
+    { id:2, version:'0.2.0', sha:hex('7be91f30'), created:'2026-09-25 11:03', by:'zhanghuizhong', meta:{
+      auth:{type:'custom'}, hosts:['*.klingai.com'], endpoints:{video:'async'},
+      settings:{ region:{type:'enum',label:'区域',options:['cn','global'],default:'cn',required:true} }, import:null, check:false } } ] }
+];
+let CHANNELS = [
+  { key:'newapi-main', name:'自建 New API（主）', plugin:'newapi', version:'1.0.0', base_url:'https://gw.example.com', trusted:false, cred:false, settings:{}, rps:5, conc:20, enabled:true, secret_set:true, updated:'2026-09-30 10:20' },
+  { key:'newapi-lab', name:'实验网关（内网）', plugin:'newapi', version:'1.0.0', base_url:'http://10.0.3.12:3000', trusted:true, cred:false, settings:{}, rps:2, conc:4, enabled:true, secret_set:false, updated:'2026-09-30 11:02' },
+  { key:'kling-direct', name:'可灵直连', plugin:'kling', version:'0.2.0', base_url:'https://api.klingai.com', trusted:false, cred:true, settings:{region:'cn'}, rps:0, conc:0, enabled:true, secret_set:true, updated:'2026-09-29 17:10' }
+];
+const IMPORT_DRAFTS = {
+  'newapi-main':[
+    {upstream_model:'gpt-4o-mini', kind:'text', label:'GPT-4o mini'},
+    {upstream_model:'kling-v2-master', kind:'video', label:'可灵 v2 大师'},
+    {upstream_model:'sora-lite', kind:'video', label:'Sora Lite'} ]
+};
+let MODELS = [
+  mk({key:'gpt-text',kind:'text',label:'GPT 文本',credits:1,channel:'newapi-main',upstream:'gpt-4o-mini',pub:'v1',draft:false,enabled:true,params:{max_tokens:2000},schema:{prompt:{type:'text',label:'提示词',required:true,port:'text'}}}),
+  mk({key:'kling-i2v',kind:'video',label:'可灵 图生视频',credits:10,channel:'kling-direct',upstream:'kling-v2-master',pub:'v3',draft:true,enabled:true,params:{mode:'std'},schema:{prompt:{type:'text',label:'提示词',required:true,port:'text'},image:{type:'image',label:'首帧',required:true,port:'image'},duration:{type:'enum',label:'时长',options:[{value:5,label:'5 秒'},{value:10,label:'10 秒'}],default:5}}}),
+  mk({key:'veo-lite',kind:'video',label:'Veo Lite（草稿）',credits:8,channel:'newapi-lab',upstream:'veo-lite-001',pub:null,draft:true,enabled:false,params:{},schema:{prompt:{type:'text',label:'提示词',required:true,port:'text'}}})
+];
+function mk(o){ const body={key:o.key,kind:o.kind,label:o.label,hint:'',credits:o.credits,deadline:'30m',enabled:o.enabled,sort:100,channels:[{channel:o.channel,upstream_model:o.upstream}],params:o.params,input_schema:o.schema};
+  return {body, pub:o.pub, draft:o.draft, paramsText:JSON.stringify(o.params,null,2), schemaText:JSON.stringify(o.schema,null,2), pending:false}; }
+
+const TRACE_OK = [
+  {kind:'hook',name:'buildSubmitRequest',ms:12,hook:{input:{model:{upstreamModel:'kling-v2-master'},input:{prompt:'夜景城市',image:'input:image'}},output:{method:'POST',path:'/v1/video/generations',json:{model:'kling-v2-master',prompt:'夜景城市',image:{__fileRef:'input:image',as:'url'}}},logs:['prompt length=4']}},
+  {kind:'http',name:'POST /v1/video/generations',ms:1820,http:{status:200,req:'Authorization: ***\nContent-Type: application/json\n\n{"model":"kling-v2-master","prompt":"夜景城市","image":"https://files.example.com/…"}',res:'{"task_id":"abc123","status":"queued"}'}},
+  {kind:'hook',name:'parseSubmitResponse',ms:3,hook:{input:{status:200},output:{providerTaskId:'abc123'},logs:[]}},
+  {kind:'http',name:'GET /v1/video/generations/abc123',ms:210,http:{status:200,req:'Authorization: ***',res:'{"status":"succeeded","video_url":"https://cdn.klingai.com/…mp4"}'}},
+  {kind:'hook',name:'parseQueryResponse',ms:2,hook:{input:{status:200},output:{status:'succeeded',outputs:[{type:'url',mediaType:'video'}]},logs:['done']}}
+];
+const TRACE_FAIL = [
+  TRACE_OK[0], TRACE_OK[1], TRACE_OK[2], TRACE_OK[3],
+  {kind:'hook',name:'parseQueryResponse',ms:2,fail:true,error:'插件抛出异常：TypeError: Cannot read properties of undefined (reading \'video_url\')',hook:{input:{status:200,body:'{"status":"succeeded","result":{"videos":[…]}}'},output:null,logs:['status=succeeded','result keys: videos']}}
+];
+const KINDS=['text','video','image','audio'];
+
+/* ================= 状态 ================= */
+const S = {
+  role:'super_admin', tab:'plugins', runnerDown:false, runFail:true,
+  selPlugin:'kling', selModel:'kling-i2v',
+  sheet:null, modal:null, toast:null, checks:{}, secretUpdated:{},
+  editorMode:'form', jsonText:'', jsonErr:'', rightTab:'issues',
+  run:null, openSteps:{}
+};
+const isSuper = ()=> S.role==='super_admin';
+
+/* ================= 工具 ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const plugin = k=>PLUGINS.find(p=>p.key===k);
+const pver = (pk,v)=> (plugin(pk)?.versions||[]).find(x=>x.version===v);
+const latest = pk=> plugin(pk).versions[0];
+const chan = k=>CHANNELS.find(c=>c.key===k);
+const model = k=>MODELS.find(m=>m.body.key===k);
+const shortSha = s=>s.slice(0,8);
+const badge=(t,cls='')=>`<span class="badge ${cls}">${esc(t)}</span>`;
+const sw=(on,act,dis)=>`<button class="sw ${on?'on':''}" ${act?`data-act="${act}"`:''} ${dis?'disabled':''} role="switch" aria-checked="${!!on}"></button>`;
+const pretty=v=>typeof v==='string'?v:JSON.stringify(v,null,2);
+const tone={ok:'ok',warn:'warn',danger:'danger',info:'info'};
+function channelsForKind(kind){
+  return CHANNELS.filter(c=>{ const p=plugin(c.plugin); const v=pver(c.plugin,c.version);
+    return c.enabled && p?.enabled && v && v.meta.endpoints[kind]; });
+}
+function say(msg){ S.toast=msg; render(); clearTimeout(say.t); say.t=setTimeout(()=>{S.toast=null;render();},2600); }
+
+/* ================= 渲染：外壳 ================= */
+const KEEP=['.sheet-b','.page','.split>.rgt','.med','.res-body','.modal-b'];
+function render(){
+  const saved=KEEP.map(s=>{const e=$(s);return [s,e?e.scrollTop:0]});
+  $('#app').innerHTML = topBar()+`<div class="main">${page()}${S.sheet?sheetHtml():''}${S.modal?modalHtml():''}</div>`+(S.toast?`<div class="toast">${esc(S.toast)}</div>`:'');
+  saved.forEach(([s,t])=>{const e=$(s);if(e)e.scrollTop=t});
+  if(S.scrollFail){ S.scrollFail=false; const f=$('.step.fail'); if(f) f.scrollIntoView({block:'nearest'}); }
+}
+function topBar(){
+  const nP=PLUGINS.length,nC=CHANNELS.length,nM=MODELS.length;
+  const tab=(k,l,n)=>`<button data-act="tab:${k}" class="${S.tab===k?'on':''}">${l}<span class="n">${n}</span></button>`;
+  return `<div class="app-top"><span class="back">← 返回画布</span><h2>AI 配置管理</h2>
+    <div class="tabs">${tab('models','模型',nM)}${tab('channels','渠道',nC)}${tab('plugins','插件',nP)}</div>
+    <span class="sp"></span>${badge(isSuper()?'运维 · super_admin':'运营 · admin',isSuper()?'info':'')}</div>`;
+}
+function page(){ return S.tab==='plugins'?pluginsPage():S.tab==='channels'?channelsPage():modelsPage(); }
+const roBanner=(what)=>isSuper()?'':`<div class="banner info" style="margin-bottom:14px"><span>ⓘ</span><span><b>只读</b>：${what}需要运维权限（super_admin）。你可以查看，不能修改。</span></div>`;
+
+/* ================= 插件页 ================= */
+function pluginsPage(){
+  const p=plugin(S.selPlugin)||PLUGINS[0];
+  const list=PLUGINS.map(x=>{const v=x.versions[0];const n=x.versions.reduce((a,b)=>a+channelCount(x.key,b.version),0);
+    return `<div class="plist-item ${x.key===p.key?'on':''}" data-act="selPlugin:${x.key}">
+      <div class="row"><b>${esc(x.name)}</b><span class="sp1"></span>${x.enabled?'':badge('已停用','warn')}</div>
+      <div class="row small muted" style="margin-top:3px"><span class="mono">${esc(x.key)}</span>${badge(x.source==='builtin'?'内置':'已上传','outline')}<span>v${esc(v.version)}</span><span class="sp1"></span><span>${n} 个渠道在用</span></div></div>`}).join('');
+  return `<div class="split"><div class="lft">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border)" class="row"><span class="title">插件</span><span class="sp1"></span>
+      ${isSuper()?`<button class="btn primary sm" data-act="openUpload">上传插件</button>`:''}</div>${list}</div>
+    <div class="rgt">${pluginDetail(p)}</div></div>`;
+}
+function channelCount(pk,ver){ return CHANNELS.filter(c=>c.plugin===pk&&c.version===ver).length; }
+function pluginDetail(p){
+  const m=p.versions[0].meta;
+  const authTxt={bearer:'Bearer（宿主注入）',header:'自定义头（宿主注入）',query:'查询参数（宿主注入）',custom:'custom（插件自行签名）',none:'无'}[m.auth.type];
+  const rows=p.versions.map(v=>{const n=channelCount(p.key,v.version);
+    const why = p.source==='builtin'?'内置版本不能删除':n>0?`${n} 个渠道固定在此版本`:'';
+    return `<tr><td><b>${esc(v.version)}</b></td><td class="mono" title="${esc(v.sha)}">${esc(shortSha(v.sha))}…</td><td class="muted">${esc(v.created)}</td><td class="muted">${esc(v.by)}</td><td>${n}</td>
+      <td style="text-align:right">${isSuper()?`<button class="btn sm" ${why?`disabled title="${esc(why)}"`:`data-act="delVer:${p.key}:${v.version}"`}>删除</button>`:''}</td></tr>`}).join('');
+  const cap=['text','video','image','audio'].map(k=>{const e=m.endpoints[k];return `<div class="cap ${e?'':'off'}"><b>${k}</b><span>${e?(e==='sync'?'同步':'异步'):'不支持'}</span></div>`}).join('');
+  const setRows=Object.entries(m.settings).map(([k,s])=>`<tr><td class="mono">${esc(k)}</td><td>${esc(s.label)}</td><td>${esc(s.type)}${s.options?` · ${s.options.join(' / ')}`:''}</td><td>${s.required?'必填':'可选'}</td><td class="muted">${esc(s.default??'')}</td></tr>`).join('');
+  return `${roBanner('上传、启停插件与删除版本')}
+  <div class="row wrapr"><div class="title" style="font-size:18px">${esc(p.name)}</div><span class="mono muted">${esc(p.key)}</span>${badge(p.source==='builtin'?'内置':'已上传','outline')}<span class="sp1"></span>
+    ${isSuper()?`<span class="small muted">启用</span>${sw(p.enabled,'togglePlugin:'+p.key)}`:badge(p.enabled?'已启用':'已停用',p.enabled?'ok':'warn')}</div>
+  ${p.enabled?'':`<div class="banner warn" style="margin-top:12px"><span>⚠</span><span>停用后，所有使用它的渠道<b>不再接新任务</b>，进行中的任务不受影响。</span></div>`}
+  <div class="sect"><h3>版本（新到旧，版本不可变）</h3><div class="card"><table class="tbl"><tr><th>版本</th><th>sha256</th><th>上传时间</th><th>上传人</th><th>固定在此版本的渠道</th><th></th></tr>${rows}</table></div></div>
+  <div class="sect"><h3>能力清单 · v${esc(p.versions[0].version)}</h3>
+    <div class="card" style="padding:14px 16px"><dl class="kv">
+      <dt>鉴权</dt><dd>${esc(authTxt)}${m.auth.type==='custom'?`<div class="banner warn" style="margin-top:6px"><span>⚠</span><span>渠道必须开启 <code>allow_credentials</code>，才会把 Key 交给这个插件；开启会记入审计日志。</span></div>`:''}</dd>
+      <dt>支持的生成方式</dt><dd><div class="cap-grid">${cap}</div></dd>
+      <dt>允许访问的域名</dt><dd>${m.hosts.length?`<div class="chips">${m.hosts.map(h=>`<span class="chip">${esc(h)}</span>`).join('')}</div>`:'<span class="muted">无（结果只能来自渠道 base_url）</span>'}</dd>
+      <dt>渠道设置项</dt><dd>${setRows?`<table class="tbl" style="font-size:12.5px"><tr><th>字段</th><th>标题</th><th>类型</th><th></th><th>默认</th></tr>${setRows}</table>`:'<span class="muted">无</span>'}</dd>
+      <dt>导入模型</dt><dd>${m.import?'支持'+(Object.keys(m.import.args).length?'（需要参数）':'（无参数，列出全部）'):'<span class="muted">不支持</span>'}</dd>
+    </dl></div></div>`;
+}
+
+/* ================= 渠道页 ================= */
+function channelsPage(){
+  const rows=CHANNELS.map(c=>{
+    const p=plugin(c.plugin), up=latest(c.plugin).version!==c.version;
+    return `<tr>
+      <td><b>${esc(c.name)}</b><div class="mono small muted">${esc(c.key)}</div></td>
+      <td>${esc(p.name)} <span class="mono">v${esc(c.version)}</span> ${up?badge('可升级 → '+latest(c.plugin).version,'info'):''}</td>
+      <td class="mono small">${esc(c.base_url)}</td>
+      <td>${c.secret_set?badge('已设置','ok'):badge('未设置','warn')}</td>
+      <td><div class="row wrapr">${c.trusted?badge('⚠ 内网','warn'):''}${c.cred?badge('⚠ 凭证','warn'):''}${!c.trusted&&!c.cred?'<span class="muted">—</span>':''}</div></td>
+      <td>${badge(c.enabled?'启用':'停用',c.enabled?'ok':'')}</td>
+      <td><div class="row" style="justify-content:flex-end">${chkResult(c)}
+        ${isSuper()?`<button class="btn sm" data-act="check:${c.key}">检查</button>`:''}
+        <button class="btn sm" data-act="openImport:${c.key}">导入模型</button>
+        <button class="btn sm" data-act="edit:${c.key}">${isSuper()?'编辑':'查看'}</button></div></td></tr>`}).join('');
+  return `<div class="page">${roBanner('新建、修改渠道，设置 Key，检查连通性')}
+    <div class="row" style="margin-bottom:14px"><div><div class="title" style="font-size:18px">渠道</div>
+      <div class="muted small">渠道把一个插件版本、一个地址和一个 Key 绑在一起，模型通过渠道调用上游。</div></div><span class="sp1"></span>
+      ${isSuper()?`<button class="btn primary" data-act="newChannel">新建渠道</button>`:''}</div>
+    ${CHANNELS.length?`<div class="card" style="overflow:auto"><table class="tbl"><tr><th>渠道</th><th>插件与版本</th><th>base_url</th><th>Key</th><th>风险开关</th><th>状态</th><th></th></tr>${rows}</table></div>`
+      :`<div class="card empty"><b>还没有渠道</b>渠道把一个插件版本、一个地址和一个 Key 绑在一起。${isSuper()?'':'请联系运维新建。'}</div>`}
+    ${S.role==='admin'?'':''}</div>`;
+}
+function chkResult(c){
+  const r=S.checks[c.key]; if(!r) return '';
+  if(r.busy) return '<span class="small muted">检查中…</span>';
+  return `<span class="badge ${r.tone}" title="${esc(r.msg)}">${esc(r.short)}</span>`;
+}
+function sheetHtml(){
+  const f=S.sheet.form, isNew=S.sheet.mode==='new', ro=!isSuper();
+  const p=plugin(f.plugin), v=pver(f.plugin,f.version), lat=latest(f.plugin);
+  const settings=v?.meta.settings||{};
+  const keyBad = isNew && f.key && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(f.key);
+  const urlBad = f.base_url && !/^https?:\/\/[^\s@\/]+(\/.*)?$/.test(f.base_url);
+  const errs=S.sheet.errors||{};
+  const settingsHtml=Object.entries(settings).map(([k,s])=>{
+    const val=f.settings[k]??s.default??'';
+    const inp = s.type==='enum'?`<select class="select" data-chg="set:${k}" ${ro?'disabled':''}>${s.options.map(o=>`<option ${String(val)===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`
+      : `<input class="input ${errs[k]?'bad':''}" data-inp="set:${k}" type="${s.type==='number'?'number':'text'}" value="${esc(val)}" ${ro?'disabled':''}>`;
+    return `<div class="field"><label>${esc(s.label)}${s.required?' <span style="color:var(--danger)">*</span>':''} <span class="mono muted small">${esc(k)}</span></label>${inp}${errs[k]?`<div class="err">${esc(errs[k])}</div>`:''}</div>`}).join('');
+  const credOK = v?.meta.auth.type==='custom';
+  const sec = f._orig?.secret_set;
+  return `<div class="sheet-mask" data-act="closeSheet"></div><aside class="sheet">
+    <div class="sheet-h"><div class="title">${isNew?'新建渠道':ro?'查看渠道':'编辑渠道'}</div>${!isNew?`<span class="mono muted small">${esc(f.key)}</span>`:''}<span class="sp1"></span><button class="btn ghost sm" data-act="closeSheet">✕</button></div>
+    <div class="sheet-b">
+      ${ro?'<div class="banner info" style="margin-bottom:14px"><span>ⓘ</span><span>只读：修改渠道需要运维权限。</span></div>':''}
+      ${S.sheet.error?`<div class="banner danger" style="margin-bottom:14px"><span>✕</span><span>${esc(S.sheet.error)}</span></div>`:''}
+      <div class="zone"><h4>基本</h4>
+        <div class="field"><label>标识 key</label><input class="input mono ${keyBad?'bad':''}" data-inp="key" value="${esc(f.key)}" placeholder="如 newapi-main" ${(!isNew||ro)?'disabled':''}>
+          ${keyBad?'<div class="err">只能用小写字母、数字、连字符，且以字母或数字开头</div>':`<div class="desc">${isNew?'创建后不可修改':'不可修改'}</div>`}${errs.key?`<div class="err">${esc(errs.key)}</div>`:''}</div>
+        <div class="field"><label>名称</label><input class="input" data-inp="name" value="${esc(f.name)}" ${ro?'disabled':''}></div>
+        <div class="row"><span>启用</span>${sw(f.enabled,'fEnabled',ro)}<span class="small muted">停用后不再接新任务，进行中的任务按快照继续</span></div></div>
+      <div class="zone"><h4>插件</h4>
+        <div class="form-grid"><div class="field"><label>插件</label><select class="select" data-chg="plugin" ${ro?'disabled':''}>${PLUGINS.map(x=>`<option value="${x.key}" ${x.key===f.plugin?'selected':''}>${esc(x.name)}${x.enabled?'':'（已停用）'}</option>`).join('')}</select></div>
+        <div class="field"><label>固定版本</label><select class="select" data-chg="version" ${ro?'disabled':''}>${p.versions.map(x=>`<option ${x.version===f.version?'selected':''}>${esc(x.version)}</option>`).join('')}</select></div></div>
+        ${f.version!==lat.version?`<div class="banner info"><span>↑</span><span>有新版本 <b>${esc(lat.version)}</b>。切换后新任务用新版本，进行中的任务按旧版本跑完。<b>切换后建议先对相关模型试跑。</b></span></div>`:''}
+        ${f._dropped&&f._dropped.length?`<div class="banner warn" style="margin-top:8px"><span>⚠</span><span>新版本不再有设置项：${f._dropped.map(esc).join('、')}，已丢弃。</span></div>`:''}</div>
+      <div class="zone"><h4>连接</h4>
+        <div class="field"><label>base_url</label><input class="input mono ${urlBad?'bad':''}" data-inp="base_url" value="${esc(f.base_url)}" placeholder="https://gw.example.com" ${ro?'disabled':''}>
+          ${urlBad?'<div class="err">必须是 http/https 地址，且不能带用户名密码</div>':'<div class="desc">插件请求只能去这个地址</div>'}</div></div>
+      ${settingsHtml?`<div class="zone"><h4>插件设置</h4>${settingsHtml}</div>`:''}
+      <div class="zone"><h4>限流</h4><div class="form-grid">
+        <div class="field"><label>每秒请求数 rps</label><input class="input" type="number" min="0" data-inp="rps" value="${esc(f.rps)}" ${ro?'disabled':''}></div>
+        <div class="field"><label>最大并发</label><input class="input" type="number" min="0" data-inp="conc" value="${esc(f.conc)}" ${ro?'disabled':''}></div></div><div class="desc" style="margin-top:-8px">0 或留空表示不限</div></div>
+      <div class="zone risk"><h4>⚠ 高级与安全（会记入审计日志）</h4>
+        <div class="switchrow"><div class="tx"><b>允许访问内网 <span class="mono muted small">trusted_internal</span></b><span>允许 base_url 解析到内网地址（自建网关需要）。开启后，这个渠道的插件请求可以访问内网。</span></div>${sw(f.trusted,'riskToggle:trusted',ro)}</div>
+        <div class="switchrow"><div class="tx"><b>允许插件读取 Key <span class="mono muted small">allow_credentials</span></b>
+          <span>${credOK?'开启后，插件代码能读取这个渠道的 Key（用于自行签名）。请确认你信任这个插件。':'所选插件版本不需要接触 Key（鉴权由宿主注入），此开关不可用。'}</span></div>${sw(f.cred,'riskToggle:cred',ro||!credOK)}</div></div>
+      ${!isNew?`<div class="zone"><h4>Key</h4><div class="secret-line">${sec?badge('已设置','ok'):badge('未设置','warn')}<span class="small muted">${sec?'上次更新 '+esc(S.secretUpdated[f.key]||f._orig.updated):'未设置 Key 的渠道，模型无法发布'}</span><span class="sp1"></span>
+        ${isSuper()?`<button class="btn sm" data-act="openSecret:${f.key}">${sec?'更新 Key':'设置 Key'}</button>`:''}</div>
+        <div class="desc" style="margin-top:8px">Key 只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里。</div></div>`:`<div class="banner info"><span>ⓘ</span><span>保存渠道后，再在这里设置 Key。</span></div>`}
+    </div>
+    <div class="sheet-f">${!isNew&&isSuper()?`<button class="btn" data-act="check:${f.key}">检查连通性</button><span class="sp1"></span>`:'<span class="sp1"></span>'}
+      <button class="btn" data-act="closeSheet">${ro?'关闭':'取消'}</button>${ro?'':`<button class="btn primary" data-act="saveChannel">保存</button>`}</div></aside>`;
+}
+
+/* ================= 弹窗 ================= */
+function modalHtml(){
+  const m=S.modal;
+  if(m.type==='upload') return uploadModal(m);
+  if(m.type==='risk'){ const cred=m.field==='cred'; const v=pver(S.sheet.form.plugin,S.sheet.form.version);
+    return wrapModal(cred?'开启“允许插件读取 Key”？':'开启“允许访问内网”？',
+      cred?`开启后，<b>${esc(plugin(S.sheet.form.plugin).name)} v${esc(S.sheet.form.version)}</b>（sha256 <span class="mono">${esc(shortSha(v.sha))}</span>）的代码能读取这个渠道的 Key。插件未经过代码评审，请确认你信任这份代码。此操作会记入审计日志。`
+           :`开启后，这个渠道的插件请求可以访问内网地址。请确认 <span class="mono">${esc(S.sheet.form.base_url||'（未填写）')}</span> 是受信任的内部服务。此操作会记入审计日志。`,
+      `<label class="chk"><input type="checkbox" id="riskOk"> ${cred?'我确认信任这份插件代码':'我确认这个地址是受信任的内部服务'}</label>`,
+      `<button class="btn" data-act="closeModal">取消</button><button class="btn danger" data-act="riskConfirm" id="riskBtn" disabled>开启</button>`); }
+  if(m.type==='secret'){ const c=chan(m.key);
+    return wrapModal(c.secret_set?'更新 Key':'设置 Key',`渠道 <b>${esc(c.name)}</b>。Key 只写不读，保存后不会再显示。`,
+      `<div class="field"><label>Key</label><input class="input mono" id="secretInput" type="password" autocomplete="new-password" placeholder="粘贴 Key"></div>
+       ${c.secret_set?'<div class="banner warn"><span>⚠</span><span>这将<b>覆盖现有 Key</b>，正在使用该 Key 的任务会立即改用新 Key。</span></div>':''}`,
+      `<button class="btn" data-act="closeModal">取消</button><button class="btn primary" data-act="saveSecret:${c.key}">保存</button>`); }
+  if(m.type==='delver'){ return wrapModal('删除插件版本？',`将永久删除 <b>${esc(plugin(m.key).name)} v${esc(m.version)}</b>。这个操作不能撤销。`,m.err?`<div class="banner danger"><span>✕</span><span>${esc(m.err)}</span></div>`:'',
+      `<button class="btn" data-act="closeModal">取消</button><button class="btn danger" data-act="delVerOk">删除</button>`); }
+  if(m.type==='import') return importModal(m);
+  if(m.type==='publish'){ const mo=model(S.selModel); const b=mo.body; const c=chan(b.channels[0].channel); const v=c&&pver(c.plugin,c.version);
+    return wrapModal('发布模型？',`发布后，<b>${esc(b.label||b.key)}</b> 会以下面的配置生效。`,
+      `<dl class="kv"><dt>渠道</dt><dd>${esc(c?.name)} <span class="mono muted">${esc(c?.key)}</span></dd><dt>插件版本</dt><dd>${esc(plugin(c.plugin).name)} v${esc(c.version)} <span class="mono muted">${esc(shortSha(v.sha))}</span></dd><dt>上游模型</dt><dd class="mono">${esc(b.channels[0].upstream_model)}</dd><dt>积分</dt><dd>${esc(b.credits)}</dd></dl>`,
+      `<button class="btn" data-act="closeModal">取消</button><button class="btn primary" data-act="publishOk">发布</button>`); }
+  return '';
+}
+function wrapModal(title,desc,body,foot){
+  return `<div class="modal-mask" data-act="maskClose"><div class="modal" data-stop><div class="modal-h">${title}</div><div class="modal-d">${desc}</div><div class="modal-b">${body}</div><div class="modal-f">${foot}</div></div></div>`;
+}
+const SAMPLES=[
+  {id:'ok', name:'kling-0.4.0.js', kb:19, desc:'合法插件'},
+  {id:'hook', name:'bad-async.js', kb:7, desc:'缺少异步 query 钩子'},
+  {id:'dup', name:'kling-0.3.0.js', kb:18, desc:'版本号已存在'},
+  {id:'syntax', name:'broken.js', kb:3, desc:'语法错误'},
+  {id:'big', name:'huge.js', kb:900, desc:'超过 512KB'}
+];
+function uploadModal(m){
+  const chips=SAMPLES.map(s=>`<button class="btn sm ${m.file?.id===s.id?'primary':''}" data-act="pick:${s.id}">${esc(s.name)} · ${esc(s.desc)}</button>`).join(' ');
+  let result='';
+  if(m.busy) result='<div class="small muted" style="margin-top:12px">预检中…（在沙箱里编译并检查钩子）</div>';
+  else if(m.local) result=`<div class="banner danger" style="margin-top:12px"><span>✕</span><span>${esc(m.local)}（本地已拦截，未发请求）</span></div>`;
+  else if(m.down) result=`<div class="banner danger" style="margin-top:12px"><span>✕</span><span>插件运行器暂时不可用（503 / 50021），已选文件保留，稍后重试。</span></div>`;
+  else if(m.result){ const r=m.result;
+    result = r.accepted
+      ? `<div class="banner ok" style="margin-top:12px"><span>✓</span><div><b>预检通过，已登记 ${esc(r.version)}</b><div class="mono small" style="margin-top:2px">sha256 ${esc(shortSha(r.sha))}…</div></div></div>`
+      : `<div style="margin-top:12px"><b>预检未通过（${r.issues.length} 个问题）</b>${r.issues.map(i=>`<div class="issue"><span class="p">${esc(i.path)}</span><span class="m">${esc(i.message)}</span></div>`).join('')}</div>`; }
+  const done=m.result?.accepted;
+  return wrapModal('上传插件','插件是一个 JS 文件（CommonJS），≤512KB。上传后立即在沙箱里预检，通过才会登记为不可变版本。',
+    `<div class="drop ${m.file?'has':''}">${m.file?`已选：<b>${esc(m.file.name)}</b> · ${m.file.kb}KB`:'拖拽或选择 .js 文件'}</div>
+     <div class="small muted" style="margin:10px 0 4px">原型里用示例文件代替真实选择：</div><div class="row wrapr">${chips}</div>${result}`,
+    done?`<button class="btn" data-act="closeModal">关闭</button><button class="btn primary" data-act="nextChannel">下一步：新建渠道</button>`
+        :`<button class="btn" data-act="closeModal">取消</button><button class="btn primary" data-act="doUpload" ${(!m.file||m.busy)?'disabled':''}>${m.busy?'预检中…':'上传'}</button>`);
+}
+function importModal(m){
+  const c=chan(m.key), v=pver(c.plugin,c.version);
+  let body='';
+  if(!v.meta.import) body='<div class="banner info"><span>ⓘ</span><span>这个插件不支持导入模型，请在模型页手动填写上游模型名。</span></div>';
+  else if(m.down) body='<div class="banner danger"><span>✕</span><span>插件运行器暂时不可用（503 / 50021），请稍后重试。</span></div>';
+  else if(!m.drafts) body=`<div class="small muted" style="margin-bottom:10px">该插件的导入没有参数，将列出渠道上的全部模型。</div><button class="btn primary" data-act="doImport">拉取模型列表</button>`;
+  else body=`<div class="banner info" style="margin-bottom:8px"><span>ⓘ</span><span>导入的只是<b>草稿</b>，不会上架。需要在模型页确认、试跑后才能发布。</span></div>
+    ${m.drafts.map((d,i)=>`<label class="draft"><input type="checkbox" data-chg="draftSel:${i}" ${m.sel.has(i)?'checked':''}><div class="sp1"><b>${esc(d.label)}</b><div class="mono small muted">${esc(d.upstream_model)}</div></div>${badge(d.kind,'outline')}</label>`).join('')}`;
+  return wrapModal('从渠道导入模型',`渠道 <b>${esc(c.name)}</b>`,body,
+    `<button class="btn" data-act="closeModal">关闭</button>${m.drafts?`<button class="btn primary" data-act="applyImport" ${m.sel.size?'':'disabled'}>带入编辑器（${m.sel.size}）</button>`:''}`);
+}
+
+/* ================= 模型页 ================= */
+function modelsPage(){
+  const mo=model(S.selModel)||MODELS[0]; const b=mo.body;
+  const list=MODELS.map(m=>{const c=chan(m.body.channels[0].channel);
+    const st=m.pending?badge('待处理草稿','info'):m.pub?(m.draft?badge(`已发布 ${m.pub} · 有草稿`,'warn'):badge('已发布 '+m.pub,'ok')):badge('未发布');
+    return `<div class="mitem ${m.body.key===mo.body.key?'on':''}" data-act="selModel:${m.body.key}">
+      <div class="row"><b>${esc(m.body.label||m.body.key)}</b><span class="sp1"></span>${badge(m.body.kind,'outline')}</div>
+      <div class="row small muted wrapr" style="margin-top:3px"><span class="mono">${esc(m.body.key)}</span><span>·</span><span>${esc(c?c.name:'（未选渠道）')}</span></div>
+      <div style="margin-top:5px" class="row">${st}${m.body.enabled?'':badge('未上架','')}</div></div>`}).join('');
+  return `<div class="mgrid">
+    <div class="mlist"><div style="padding:12px 14px;border-bottom:1px solid var(--border)" class="row"><span class="title">模型</span><span class="sp1"></span><button class="btn sm" data-act="newModel">新建</button></div>${list}</div>
+    <div class="med">${editor(mo)}</div>
+    <div class="mres">${resultPanel(mo)}</div></div>`;
+}
+function issuesOf(mo){
+  const b=mo.body, out=[]; const ch=b.channels[0]; const c=chan(ch.channel);
+  if(!ch.channel) out.push({path:'channels[0].channel',message:'请选择渠道'});
+  else if(!c) out.push({path:'channels[0].channel',message:`渠道 ${ch.channel} 不存在`});
+  else{ const p=plugin(c.plugin), v=pver(c.plugin,c.version);
+    if(!c.enabled) out.push({path:'channels[0].channel',message:'渠道已停用'});
+    else if(!p.enabled) out.push({path:'channels[0].channel',message:'渠道所用插件已停用'});
+    else if(!v.meta.endpoints[b.kind]) out.push({path:'channels[0].channel',message:`插件 ${p.name} v${c.version} 不支持 ${b.kind}`}); }
+  if(!ch.upstream_model) out.push({path:'channels[0].upstream_model',message:'请填写上游模型名'});
+  if(!(b.credits>0)) out.push({path:'credits',message:'积分必须大于 0'});
+  if(!/^\d+(s|m|h)$/.test(b.deadline||'')) out.push({path:'deadline',message:'时长格式如 30m'});
+  try{JSON.parse(mo.paramsText||'{}')}catch(e){out.push({path:'params',message:'不是合法 JSON：'+e.message})}
+  try{JSON.parse(mo.schemaText||'{}')}catch(e){out.push({path:'input_schema',message:'不是合法 JSON：'+e.message})}
+  return out;
+}
+function editor(mo){
+  const b=mo.body, iss=issuesOf(mo), ch=b.channels[0], c=chan(ch.channel);
+  const opts=channelsForKind(b.kind);
+  const chOpts=`<option value="">请选择渠道</option>`+opts.map(x=>`<option value="${x.key}" ${x.key===ch.channel?'selected':''}>${esc(x.name)}${x.secret_set?'':'（未设置 Key）'}</option>`).join('')
+     +(c&&!opts.includes(c)?`<option value="${c.key}" selected>${esc(c.name)}（当前不可用）</option>`:'');
+  const tb=`<div class="row" style="margin-bottom:12px"><div class="title" style="font-size:16px">${esc(b.label||b.key)}</div><span class="mono muted small">${esc(b.key)}</span><span class="sp1"></span>
+    <div class="seg"><button data-act="mode:form" class="${S.editorMode==='form'?'on':''}">表单</button><button data-act="mode:json" class="${S.editorMode==='json'?'on':''}">JSON</button></div>
+    <button class="btn sm" data-act="saveDraft">保存草稿</button><button class="btn sm" data-act="validate">校验</button>
+    <button class="btn primary sm" data-act="askPublish" ${(iss.length||!c||!c.secret_set)?'disabled':''}>发布</button></div>`;
+  const why = !c?'':!c.secret_set?`<div class="banner warn" style="margin-bottom:10px"><span>⚠</span><span>渠道 <b>${esc(c.name)}</b> 还没有设置 Key，<b>无法发布</b>（50015）。请联系运维设置。 <a href="#" data-act="tab:channels" style="text-decoration:underline">去渠道页</a></span></div>`:'';
+  if(S.editorMode==='json'){
+    return tb+why+(S.jsonErr?`<div class="banner danger" style="margin-bottom:10px"><span>✕</span><span>${esc(S.jsonErr)}</span></div>`:'')+
+      `<textarea class="textarea" data-inp="json" style="min-height:520px" spellcheck="false">${esc(S.jsonText)}</textarea><div class="desc small muted" style="margin-top:6px">JSON 是事实来源；切回表单时会重新解析。</div>`;
+  }
+  const info = c?`<div class="ch-info">${esc(plugin(c.plugin).name)} v${esc(c.version)} · 鉴权 ${esc(pver(c.plugin,c.version).meta.auth.type)} · ${c.secret_set?'Key 已设置':'<b style="color:var(--warn-fg)">Key 未设置</b>'} · <span class="mono">${esc(c.base_url)}</span></div>`:'';
+  return tb+why+`
+   <div class="zone"><h4>身份</h4><div class="form-grid">
+     <div class="field"><label>key</label><input class="input mono" data-inp="m:key" value="${esc(b.key)}" disabled></div>
+     <div class="field"><label>类型 kind</label><select class="select" data-chg="m:kind">${KINDS.map(k=>`<option ${k===b.kind?'selected':''}>${k}</option>`).join('')}</select></div>
+     <div class="field"><label>展示名 label</label><input class="input" data-inp="m:label" value="${esc(b.label)}"></div>
+     <div class="field"><label>提示 hint</label><input class="input" data-inp="m:hint" value="${esc(b.hint)}"></div></div></div>
+   <div class="zone" style="border-color:var(--primary)"><h4>渠道与上游模型</h4>
+     <div class="form-grid"><div class="field"><label>渠道 <span class="small muted">只列出启用且支持 ${esc(b.kind)} 的渠道</span></label><select class="select" data-chg="m:channel">${chOpts}</select></div>
+     <div class="field"><label>上游模型 upstream_model</label><input class="input mono" data-inp="m:upstream" value="${esc(ch.upstream_model)}" placeholder="如 kling-v2-master"></div></div>${info}
+     ${opts.length===0?`<div class="banner warn" style="margin-top:8px"><span>⚠</span><span>没有支持 ${esc(b.kind)} 的可用渠道。请联系运维新建渠道。</span></div>`:''}</div>
+   <div class="zone"><h4>上架</h4><div class="form-grid">
+     <div class="field"><label>积分 credits</label><input class="input" type="number" data-inp="m:credits" value="${esc(b.credits)}"></div>
+     <div class="field"><label>超时 deadline</label><input class="input mono" data-inp="m:deadline" value="${esc(b.deadline)}"></div></div>
+     <div class="row"><span>上架</span>${sw(b.enabled,'mEnabled',!mo.pub)}<span class="small muted">${mo.pub?'':'发布过一次后才能上架'}</span></div></div>
+   <div class="zone"><h4>固定参数 params <span class="small muted" style="font-weight:400">由插件定义，宿主只存不解释</span></h4><textarea class="textarea" data-inp="m:params" style="min-height:90px" spellcheck="false">${esc(mo.paramsText)}</textarea></div>
+   <div class="zone"><h4>输入定义 input_schema <span class="small muted" style="font-weight:400">有序对象，书写顺序就是画布里的渲染顺序</span></h4><textarea class="textarea" data-inp="m:schema" style="min-height:170px" spellcheck="false">${esc(mo.schemaText)}</textarea></div>`;
+}
+function resultPanel(mo){
+  const t=(k,l,n)=>`<button data-act="rtab:${k}" class="${S.rightTab===k?'on':''}">${l}${n?` <span class="badge ${n.c}">${n.t}</span>`:''}</button>`;
+  const iss=issuesOf(mo);
+  const tabs=`<div class="sub-tabs">${t('issues','问题',iss.length?{c:'danger',t:iss.length}:null)}${t('dry','请求描述')}${t('run','试跑',S.run?{c:S.run.state==='failed'?'danger':S.run.state==='succeeded'?'ok':'info',t:S.run.state==='running'?'…':S.run.state==='failed'?'失败':'完成'}:null)}${t('trace','追踪',S.run&&S.run.trace?{c:'',t:S.run.trace.length}:null)}</div>`;
+  let body='';
+  if(S.rightTab==='issues') body=iss.length?iss.map(i=>`<div class="issue"><span class="p">${esc(i.path)}</span><span class="m">${esc(i.message)}</span></div>`).join('')+'<div class="small muted" style="margin-top:10px">保存草稿始终成功，问题不阻断保存；发布前必须清零。点击路径可定位（原型未实现）。</div>'
+    :'<div class="banner ok"><span>✓</span><span>没有校验问题，可以试跑或发布。</span></div>';
+  if(S.rightTab==='dry'){ const b=mo.body; const req={method:'POST',path:'/v1/video/generations',headers:{'Content-Type':'application/json'},json:{model:b.channels[0].upstream_model,prompt:'夜景城市',image:{__fileRef:'input:image',as:'url'}},responseType:'json'};
+    body=`<div class="banner info" style="margin-bottom:10px"><span>ⓘ</span><span><b>请求描述</b>：插件返回、宿主校验后的结果，Key 脱敏。它<b>不含</b>宿主注入的鉴权头，所以不叫“最终请求”。</span></div><div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="dryRun" ${S.runnerDown?'':''}>运行 dry-run</button></div>${S.dry?`<pre class="code">${esc(pretty(req))}</pre>`:'<div class="empty" style="padding:24px">点击“运行 dry-run”，不会发送请求。</div>'}${S.dryDown?'<div class="banner danger" style="margin-top:8px"><span>✕</span><span>插件运行器暂时不可用（503 / 50021）。</span></div>':''}`; }
+  if(S.rightTab==='run'){ const r=S.run;
+    body=`<div class="row" style="margin-bottom:10px"><button class="btn primary sm" data-act="startRun" ${r&&r.state==='running'?'disabled':''}>试跑</button><span class="small muted">is_test 任务，不扣积分</span></div>`+
+     (!r?'<div class="empty" style="padding:24px">填好示例输入后点“试跑”。</div>':
+      `<div class="row"><b>试跑 #1821</b><span class="sp1"></span>${badge(r.state==='running'?'运行中':r.state==='failed'?'失败':'成功',r.state==='failed'?'danger':r.state==='succeeded'?'ok':'info')}</div>
+       <div class="progress" style="margin:10px 0"><i style="width:${r.p}%"></i></div>
+       ${r.state==='failed'?`<div class="banner danger"><span>✕</span><span>失败：<b>parseQueryResponse</b> 抛出异常。<a href="#" data-act="rtab:trace" style="text-decoration:underline">查看追踪</a></span></div>`:''}
+       ${r.state==='succeeded'?`<div class="banner ok"><span>✓</span><span>成功：1 个视频产物。<a href="#" data-act="rtab:trace" style="text-decoration:underline">查看追踪</a></span></div>`:''}`); }
+  if(S.rightTab==='trace') body=traceHtml();
+  return tabs+`<div class="res-body">${body}</div>`;
+}
+function traceHtml(){
+  const r=S.run;
+  if(!r||!r.trace) return '<div class="empty" style="padding:24px"><b>任务尚未产生追踪</b>先试跑，追踪会出现在这里。</div>';
+  const total=r.trace.reduce((a,s)=>a+s.ms,0), max=Math.max(...r.trace.map(s=>s.ms));
+  const steps=r.trace.map((s,i)=>{
+    const open = S.openSteps[i]!==undefined?S.openSteps[i]:!!s.fail;
+    let inner='';
+    if(open){
+      if(s.kind==='hook') inner=`<div class="step-b">${s.error?`<div class="lbl" style="color:var(--danger-fg)">异常</div><pre>${esc(s.error)}</pre>`:''}<div class="lbl">输入</div><pre>${esc(pretty(s.hook.input))}</pre><div class="lbl">输出</div><pre>${esc(s.hook.output===null?'（无，抛出异常）':pretty(s.hook.output))}</pre>${s.hook.logs.length?`<div class="lbl">utils.log（${s.hook.logs.length}）</div><pre>${esc(s.hook.logs.join('\n'))}</pre>`:''}</div>`;
+      else inner=`<div class="step-b"><div class="lbl">请求（已脱敏）</div><pre>${esc(s.http.req)}</pre><div class="lbl">响应 · ${s.http.status}</div><pre>${esc(s.http.res)}</pre></div>`;
+    }
+    return `<div class="step ${s.fail?'fail':''}"><div class="step-h" data-act="step:${i}"><span class="no">${i+1}</span><span class="kind ${s.kind}">${s.fail?'✕ ':s.kind==='hook'?'◆ ':'● '}${s.kind}</span><span class="nm">${esc(s.name)}</span>${s.kind==='http'?badge(String(s.http.status),'ok'):''}<span class="bar"><i style="width:${Math.max(4,s.ms/max*100)}%"></i></span><span class="ms">${s.ms>=1000?(s.ms/1000).toFixed(1)+'s':s.ms+'ms'}</span></div>${inner}</div>`}).join('');
+  return `<div class="trace-h"><b>追踪 · 试跑 #1821</b><span class="small muted">共 ${r.trace.length} 步 · ${(total/1000).toFixed(1)}s</span><span class="sp1"></span><button class="btn sm" data-act="copyTrace">复制 JSON</button></div>
+    <div class="banner info" style="margin-bottom:10px"><span>🔒</span><span>Key 与鉴权头已脱敏。失败的步骤默认展开。</span></div>${steps}`;
+}
+
+/* ================= 交互 ================= */
+$('#roleSeg').addEventListener('click',e=>{const b=e.target.closest('[data-role]');if(!b)return;S.role=b.dataset.role;
+  [...$('#roleSeg').children].forEach(x=>x.classList.toggle('on',x===b)); if(S.role==='admin'){S.sheet&&(S.sheet.mode='view');} render();});
+$('#themeSeg').addEventListener('click',e=>{const b=e.target.closest('[data-theme]');if(!b)return;document.documentElement.dataset.theme=b.dataset.theme;
+  [...$('#themeSeg').children].forEach(x=>x.classList.toggle('on',x===b));});
+$('#runnerDown').addEventListener('change',e=>{S.runnerDown=e.target.checked;render();});
+$('#runFail').addEventListener('change',e=>{S.runFail=e.target.checked;});
+if(matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.dataset.theme='dark';[...$('#themeSeg').children].forEach(x=>x.classList.toggle('on',x.dataset.theme==='dark'));}
+
+const app=$('#frame');
+app.addEventListener('click',e=>{
+  if(e.target.closest('[data-stop]') && !e.target.closest('[data-act]')) return;
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  if(el.tagName==='A') e.preventDefault();
+  if(el.dataset.act==='maskClose' && e.target.closest('[data-stop]')) return;
+  act(el.dataset.act, el);
+});
+app.addEventListener('input',e=>{
+  const el=e.target.closest('[data-inp]'); if(!el) return; const k=el.dataset.inp;
+  if(S.sheet){ const f=S.sheet.form;
+    if(k.startsWith('set:')) f.settings[k.slice(4)]=el.value; else if(k in f) f[k]=el.type==='number'?Number(el.value):el.value; }
+  const mo=model(S.selModel); if(!mo) return;
+  if(k==='json') S.jsonText=el.value;
+  else if(k==='m:label') mo.body.label=el.value; else if(k==='m:hint') mo.body.hint=el.value;
+  else if(k==='m:upstream'){mo.body.channels[0].upstream_model=el.value;}
+  else if(k==='m:credits') mo.body.credits=Number(el.value); else if(k==='m:deadline') mo.body.deadline=el.value;
+  else if(k==='m:params') mo.paramsText=el.value; else if(k==='m:schema') mo.schemaText=el.value;
+  if(k.startsWith('m:')) mo.draft=true;
+});
+app.addEventListener('change',e=>{
+  const rk=e.target.id; if(rk==='riskOk'){ $('#riskBtn').disabled=!e.target.checked; return; }
+  const el=e.target.closest('[data-chg]'); if(el){ chg(el.dataset.chg, el); return; }
+  const inp=e.target.closest('[data-inp]'); if(inp) render(); // 失焦后刷新校验提示
+});
+function chg(k,el){
+  if(S.sheet){ const f=S.sheet.form;
+    if(k==='plugin'){ f.plugin=el.value; const old=f.settings; f.version=latest(f.plugin).version; rebase(f,old); f.cred=false; render(); return; }
+    if(k==='version'){ const old=f.settings; f.version=el.value; rebase(f,old); if(pver(f.plugin,f.version).meta.auth.type!=='custom') f.cred=false; render(); return; }
+    if(k.startsWith('set:')){ f.settings[k.slice(4)]=el.value; return; }
+  }
+  const mo=model(S.selModel);
+  if(k==='m:kind'){ mo.body.kind=el.value; const opts=channelsForKind(el.value); if(!opts.find(c=>c.key===mo.body.channels[0].channel)) mo.body.channels[0].channel=''; mo.draft=true; render(); }
+  if(k==='m:channel'){ mo.body.channels[0].channel=el.value; mo.draft=true; render(); }
+  if(k.startsWith('draftSel:')){ const i=+k.slice(9), s=S.modal.sel; s.has(i)?s.delete(i):s.add(i); render(); }
+}
+function rebase(f,old){ const sch=pver(f.plugin,f.version).meta.settings; const next={}; const dropped=[];
+  Object.keys(old||{}).forEach(k=>{ if(sch[k]) next[k]=old[k]; else dropped.push(k); });
+  Object.entries(sch).forEach(([k,s])=>{ if(!(k in next)&&s.default!==undefined) next[k]=s.default; });
+  f.settings=next; f._dropped=dropped; }
+function blankForm(pk){ const v=latest(pk||'newapi'); const f={key:'',name:'',plugin:pk||'newapi',version:v.version,base_url:'',trusted:false,cred:false,settings:{},rps:0,conc:0,enabled:true}; rebase(f,{}); return f; }
+
+function act(a,el){
+  const [k,...r]=a.split(':'); const x=r.join(':');
+  switch(k){
+    case 'tab': S.tab=x; S.sheet=null; S.modal=null; return render();
+    case 'selPlugin': S.selPlugin=x; return render();
+    case 'togglePlugin': { const p=plugin(x); p.enabled=!p.enabled; return say(p.enabled?'已启用插件':'已停用插件'); }
+    case 'openUpload': S.modal={type:'upload',file:null,result:null,busy:false}; return render();
+    case 'pick': S.modal.file=SAMPLES.find(s=>s.id===x); S.modal.result=null; S.modal.local=null; S.modal.down=false;
+      if(S.modal.file.kb>512) S.modal.local='文件 '+S.modal.file.kb+'KB，超过 512KB 上限'; return render();
+    case 'doUpload': { const m=S.modal; m.busy=true; m.result=null; m.local=null; m.down=false; render();
+      setTimeout(()=>{ if(!S.modal||S.modal!==m) return; m.busy=false;
+        if(S.runnerDown){ m.down=true; return render(); }
+        const id=m.file.id;
+        if(id==='ok'){ const k=plugin('kling'); k.versions.unshift({id:9,version:'0.4.0',sha:hex('e5a01c9d'),created:'2026-09-30 15:20',by:'zhanghuizhong',meta:JSON.parse(JSON.stringify(k.versions[0].meta))}); m.result={accepted:true,version:'0.4.0',sha:hex('e5a01c9d'),issues:[]}; }
+        else if(id==='hook') m.result={accepted:false,issues:[{path:'meta.endpoints.video.mode',message:'声明了 async，但没有实现 buildQueryRequest'},{path:'exports.buildQueryRequest',message:'缺少导出的钩子'}]};
+        else if(id==='dup') m.result={accepted:false,issues:[{path:'meta.version',message:'版本号 0.3.0 已存在（版本不可变，请改版本号）'}]};
+        else if(id==='syntax') m.result={accepted:false,issues:[{path:'code',message:'SyntaxError: line 42: Unexpected token }'}]};
+        render(); },700); return; }
+    case 'nextChannel': S.modal=null; S.tab='channels'; S.sheet={mode:'new',form:blankForm('kling')}; S.sheet.form.plugin='kling'; return render();
+    case 'delVer': S.modal={type:'delver',key:x.split(':')[0],version:x.split(':')[1]}; return render();
+    case 'delVerOk': { const p=plugin(S.modal.key); p.versions=p.versions.filter(v=>v.version!==S.modal.version); S.modal=null; say('已删除版本'); return; }
+    case 'closeModal': case 'maskClose': S.modal=null; return render();
+    /* 渠道 */
+    case 'newChannel': S.sheet={mode:'new',form:blankForm()}; return render();
+    case 'edit': { const c=chan(x); S.sheet={mode:'edit',form:{...JSON.parse(JSON.stringify(c)),_orig:c}}; return render(); }
+    case 'closeSheet': S.sheet=null; return render();
+    case 'fEnabled': S.sheet.form.enabled=!S.sheet.form.enabled; return render();
+    case 'riskToggle': { const f=S.sheet.form, fld=x;
+      if(f[fld]){ f[fld]=false; return render(); }
+      S.modal={type:'risk',field:fld}; return render(); }
+    case 'riskConfirm': S.sheet.form[S.modal.field]=true; S.modal=null; return render();
+    case 'saveChannel': { const f=S.sheet.form; const errs={}; let err='';
+      if(S.sheet.mode==='new'){ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(f.key)) errs.key='key 格式不合法'; else if(chan(f.key)){ errs.key='key 已存在（50012）'; } }
+      if(!f.name) err='请填写名称';
+      if(!/^https?:\/\/[^\s@\/]+(\/.*)?$/.test(f.base_url)) err=err||'base_url 必须是 http/https 地址，且不能带用户名密码（50013）';
+      Object.entries(pver(f.plugin,f.version).meta.settings).forEach(([k,s])=>{ if(s.required&&!(f.settings[k]||'')) errs[k]='必填'; });
+      if(Object.keys(errs).length||err){ S.sheet.errors=errs; S.sheet.error=err||'请修正标红的字段'; return render(); }
+      const now='2026-09-30 15:30';
+      if(S.sheet.mode==='new'){ CHANNELS.push({key:f.key,name:f.name,plugin:f.plugin,version:f.version,base_url:f.base_url,trusted:f.trusted,cred:f.cred,settings:f.settings,rps:f.rps,conc:f.conc,enabled:f.enabled,secret_set:false,updated:now}); S.sheet=null; return say('渠道已创建。下一步：设置 Key'); }
+      Object.assign(f._orig,{name:f.name,plugin:f.plugin,version:f.version,base_url:f.base_url,trusted:f.trusted,cred:f.cred,settings:f.settings,rps:f.rps,conc:f.conc,enabled:f.enabled,updated:now}); S.sheet=null; return say('渠道已保存'); }
+    case 'openSecret': S.modal={type:'secret',key:x}; return render();
+    case 'saveSecret': { const v=$('#secretInput').value; if(!v){ $('#secretInput').classList.add('bad'); return; }
+      const c=chan(x); c.secret_set=true; S.secretUpdated[x]='刚刚'; if(S.sheet&&S.sheet.form._orig===c){} S.modal=null; return say('Key 已保存（不会再显示）'); }
+    case 'check': { const c=chan(x); S.checks[x]={busy:true}; render();
+      setTimeout(()=>{ const v=pver(c.plugin,c.version);
+        S.checks[x]= S.runnerDown?{tone:'danger',short:'runner 不可用',msg:'503 / 50021'}
+          : !c.secret_set?{tone:'warn',short:'Key 未设置',msg:'409 / 50015：请先设置 Key'}
+          : !v.meta.check?{tone:'',short:'插件不支持检查',msg:'插件没有实现 buildCheckRequest'}
+          : {tone:'ok',short:'✓ HTTP 200 · 120ms',msg:'连通'};
+        render(); },500); return; }
+    case 'openImport': S.modal={type:'import',key:x,drafts:null,sel:new Set(),down:false}; return render();
+    case 'doImport': { if(S.runnerDown){ S.modal.down=true; return render(); }
+      S.modal.drafts=IMPORT_DRAFTS[S.modal.key]||[{upstream_model:'demo-model',kind:'text',label:'示例模型'}]; return render(); }
+    case 'applyImport': { const m=S.modal; [...m.sel].forEach(i=>{ const d=m.drafts[i];
+        const key=d.upstream_model.replace(/[^a-z0-9]+/gi,'-').toLowerCase(); if(model(key)) return;
+        const o=mk({key,kind:d.kind,label:d.label,credits:5,channel:m.key,upstream:d.upstream_model,pub:null,draft:true,enabled:false,params:{},schema:{prompt:{type:'text',label:'提示词',required:true,port:'text'}}}); o.pending=true; MODELS.push(o); S.selModel=key; });
+      S.modal=null; S.tab='models'; S.rightTab='issues'; return say(`已带入 ${m.sel.size} 个草稿，需确认并试跑后才能发布`); }
+    /* 模型 */
+    case 'selModel': S.selModel=x; S.editorMode='form'; S.jsonErr=''; S.run=null; S.dry=false; return render();
+    case 'newModel': { const key='new-model-'+(MODELS.length+1); const o=mk({key,kind:'video',label:'新模型',credits:5,channel:'',upstream:'',pub:null,draft:true,enabled:false,params:{},schema:{prompt:{type:'text',label:'提示词',required:true,port:'text'}}}); MODELS.push(o); S.selModel=key; S.run=null; return render(); }
+    case 'mode': { const mo=model(S.selModel);
+      if(x==='json'){ try{ const b={...mo.body,params:JSON.parse(mo.paramsText||'{}'),input_schema:JSON.parse(mo.schemaText||'{}')}; S.jsonText=JSON.stringify(b,null,2); S.jsonErr=''; S.editorMode='json'; }catch(e){ S.rightTab='issues'; return say('params 或 input_schema 不是合法 JSON，先修正再切换'); } }
+      else { if(S.editorMode==='json'){ try{ const b=JSON.parse(S.jsonText); const ch=b.channels?.[0]||{channel:'',upstream_model:''};
+          mo.paramsText=JSON.stringify(b.params||{},null,2); mo.schemaText=JSON.stringify(b.input_schema||{},null,2); delete b.params; delete b.input_schema; mo.body={...mo.body,...b,channels:[ch]}; S.jsonErr=''; }
+        catch(e){ S.jsonErr='JSON 语法错误：'+e.message; return render(); } } S.editorMode='form'; }
+      return render(); }
+    case 'mEnabled': { const mo=model(S.selModel); mo.body.enabled=!mo.body.enabled; return render(); }
+    case 'saveDraft': { const mo=model(S.selModel); mo.pending=false; const n=issuesOf(mo).length; S.rightTab='issues'; return say(n?`草稿已保存，有 ${n} 个问题（不阻断保存）`:'草稿已保存'); }
+    case 'validate': S.rightTab='issues'; return render();
+    case 'askPublish': S.modal={type:'publish'}; return render();
+    case 'publishOk': { const mo=model(S.selModel); mo.pub='v'+((parseInt((mo.pub||'v0').slice(1))||0)+1); mo.draft=false; S.modal=null; return say('已发布 '+mo.pub); }
+    case 'rtab': S.rightTab=x; return render();
+    case 'dryRun': S.dry=false; S.dryDown=false; if(S.runnerDown){ S.dryDown=true; return render(); } S.dry=true; return render();
+    case 'startRun': { if(S.runnerDown){ S.rightTab='run'; return say('插件运行器暂时不可用（503 / 50021），已保留输入'); }
+      const fail=S.runFail; S.run={state:'running',p:8,trace:null}; S.rightTab='run'; render(); let p=8;
+      const t=setInterval(()=>{ p+=22; if(!S.run||S.run.state!=='running'){clearInterval(t);return;}
+        if(p>=100){ clearInterval(t); S.run={state:fail?'failed':'succeeded',p:100,trace:fail?TRACE_FAIL:TRACE_OK}; S.openSteps={}; S.rightTab='trace'; S.scrollFail=true; }
+        else S.run.p=p; render(); },500); return; }
+    case 'step': { const i=+x; const s=S.run.trace[i]; const cur=S.openSteps[i]!==undefined?S.openSteps[i]:!!s.fail; S.openSteps[i]=!cur; return render(); }
+    case 'copyTrace': { try{ navigator.clipboard.writeText(JSON.stringify(S.run.trace,null,2)); }catch(e){} return say('已复制追踪 JSON（已脱敏）'); }
+  }
+}
+render();
+</script>
+</body>
+</html>

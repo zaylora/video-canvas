@@ -2,13 +2,12 @@ package pluginrunner
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -17,13 +16,16 @@ import (
 	"video-canvas/internal/provider/pluginproto"
 )
 
+// bootstrap 在插件代码之前执行：只声明 CommonJS 风格的导出对象和 utils 容器。
 const bootstrap = `
 var module = {exports: {}};
 var exports = module.exports;
 var utils = {};
 `
 
-// 动态代码入口并不是完整的安全边界；内存和网络的硬隔离依赖 runner 容器。
+// lockdown 封堵动态代码入口，必须在插件顶层代码执行之前运行：
+// 插件顶层一旦先拿到 Function / eval 的引用（或 AsyncFunction 等构造器），事后再封就晚了。
+// 它不是完整的安全边界；内存和网络的硬隔离依赖 runner 容器。
 const lockdown = `
 (function () {
   var constructors = [Object, Array, String, Number, Boolean, Function, Error, Date,
@@ -35,40 +37,82 @@ const lockdown = `
       Object.freeze(c.prototype);
     }
   }
-  try { Object.defineProperty(Object.getPrototypeOf(function*(){}), "constructor", {value: undefined}); } catch (_) {}
+  // 生成器 / 异步函数（goja 不支持异步生成器语法，插件写不出来）的原型上各有一个指向动态构造器的 constructor，逐个封掉。
+  var samples = [];
+  try { samples.push(function*(){}); } catch (_) {}
+  try { samples.push(async function(){}); } catch (_) {}
+  for (var k = 0; k < samples.length; k++) {
+    var proto = Object.getPrototypeOf(samples[k]);
+    try { Object.defineProperty(proto, "constructor", {value: undefined, configurable: false}); } catch (_) {}
+    try { Object.freeze(proto); } catch (_) {}
+  }
   for (var j = 0; j < constructors.length; j++) if (constructors[j]) Object.freeze(constructors[j]);
   Object.freeze(JSON); Object.freeze(Math); Object.freeze(Reflect);
   Object.freeze(utils);
-  globalThis.eval = undefined;
-  globalThis.Function = undefined;
+  try { Object.defineProperty(globalThis, "eval", {value: undefined, writable: false, configurable: false}); } catch (_) {}
+  try { Object.defineProperty(globalThis, "Function", {value: undefined, writable: false, configurable: false}); } catch (_) {}
 })();
 `
 
+// compile 只编译插件源码；bootstrap 与 lockdown 单独编译，这样错误行号与插件文件一致。
 func compile(code string) (*goja.Program, error) {
-	return goja.Compile("plugin.js", bootstrap+"\n"+code, false)
+	return goja.Compile("plugin.js", code, false)
 }
 
-func newRuntime(program *goja.Program) (*runtime, error) {
-	vm := goja.New()
-	rt := &runtime{vm: vm}
-	if _, err := vm.RunProgram(program); err != nil {
-		return nil, err
-	}
-	if err := installUtils(rt); err != nil {
-		return nil, err
-	}
-	lockdownProgram, err := goja.Compile("lockdown.js", lockdown, false)
+var (
+	setupOnce    sync.Once
+	setupProgram *goja.Program
+	setupErr     error
+)
+
+// setup 返回 bootstrap 与 lockdown 的编译结果（进程内只编译一次）。
+func setup() (boot, lock *goja.Program, err error) {
+	setupOnce.Do(func() {
+		setupProgram, setupErr = goja.Compile("bootstrap.js", bootstrap, false)
+		if setupErr == nil {
+			lockProgram, setupErr = goja.Compile("lockdown.js", lockdown, false)
+		}
+	})
+	return setupProgram, lockProgram, setupErr
+}
+
+var lockProgram *goja.Program
+
+// newRuntime 创建运行时并执行插件顶层代码。
+// 顺序：bootstrap → utils → lockdown → 插件顶层代码 → 读取导出与钩子列表。
+// 插件顶层代码和读取导出（可能触发 getter）都可能死循环，所以与钩子共用同一套超时中断（runTimed）；
+// 超时返回 errTimeout，此时运行时已被中断，调用方直接丢弃。
+func newRuntime(program *goja.Program, timeout time.Duration) (*runtime, error) {
+	boot, lock, err := setup()
 	if err != nil {
 		return nil, err
 	}
-	if _, err := vm.RunProgram(lockdownProgram); err != nil {
+	vm := goja.New()
+	rt := &runtime{vm: vm}
+	err = runTimed(rt, timeout, func() error {
+		if _, err := vm.RunProgram(boot); err != nil {
+			return err
+		}
+		if err := installUtils(rt); err != nil {
+			return err
+		}
+		if _, err := vm.RunProgram(lock); err != nil {
+			return err
+		}
+		if _, err := vm.RunProgram(program); err != nil {
+			return err
+		}
+		exports := vm.Get("module").ToObject(vm).Get("exports")
+		if goja.IsUndefined(exports) || goja.IsNull(exports) {
+			return errors.New("module.exports 必须是对象")
+		}
+		rt.exports = exports.ToObject(vm)
+		rt.hooks = hooks(rt)
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	exports := vm.Get("module").ToObject(vm).Get("exports")
-	if goja.IsUndefined(exports) || goja.IsNull(exports) {
-		return nil, errors.New("module.exports 必须是对象")
-	}
-	rt.exports = exports.ToObject(vm)
 	return rt, nil
 }
 
@@ -85,7 +129,7 @@ func hooks(rt *runtime) []string {
 func runTimed(rt *runtime, timeout time.Duration, fn func() error) (err error) {
 	expired := make(chan struct{})
 	timer := time.AfterFunc(timeout, func() {
-		rt.vm.Interrupt("钩子执行超时")
+		rt.vm.Interrupt("插件执行超时")
 		close(expired)
 	})
 	defer timer.Stop()
@@ -102,16 +146,17 @@ func runTimed(rt *runtime, timeout time.Duration, fn func() error) (err error) {
 	return fn()
 }
 
-var errTimeout = errors.New("钩子执行超时")
+var errTimeout = errors.New("插件执行超时")
 
 func invoke(rt *runtime, name string, args []json.RawMessage, timeout time.Duration) (json.RawMessage, error) {
-	fn, ok := goja.AssertFunction(rt.exports.Get(name))
-	if !ok {
-		return nil, errMissing
-	}
 	rt.logs = nil
 	var result json.RawMessage
 	err := runTimed(rt, timeout, func() error {
+		// 读取导出属性可能触发 getter，也放在超时保护之内
+		fn, ok := goja.AssertFunction(rt.exports.Get(name))
+		if !ok {
+			return errMissing
+		}
 		jsArgs := make([]goja.Value, 0, len(args))
 		parse, ok := goja.AssertFunction(rt.vm.Get("JSON").ToObject(rt.vm).Get("parse"))
 		if !ok {
@@ -248,6 +293,32 @@ func utilityString(call goja.FunctionCall, index int) string {
 	return s
 }
 
-// 保留 crypto/rand 的导入，避免未来替换 UUID 实现时重新改变随机源边界。
-var _ = rand.Reader
-var _ = strings.TrimSpace
+var errNoMeta = errors.New("插件没有导出 meta")
+
+// encodeMeta 用 JS 自己的 JSON.stringify 序列化 meta。
+// 不能用 Export() + json.Marshal：Go 的 map 会把键排成字母序，channelSettings / import.args 的书写顺序就丢了
+// （管理端按此顺序渲染表单）。JSON.stringify 按属性定义顺序输出（整数样式的键除外，这是 JS 语言规则）。
+// toJSON、getter 可能死循环，所以同样在超时保护内执行。
+func encodeMeta(rt *runtime, timeout time.Duration) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := runTimed(rt, timeout, func() error {
+		metaValue := rt.exports.Get("meta")
+		if goja.IsUndefined(metaValue) || goja.IsNull(metaValue) {
+			return errNoMeta
+		}
+		stringify, ok := goja.AssertFunction(rt.vm.Get("JSON").ToObject(rt.vm).Get("stringify"))
+		if !ok {
+			return errors.New("JSON.stringify 不可用")
+		}
+		encoded, err := stringify(goja.Undefined(), metaValue)
+		if err != nil {
+			return err
+		}
+		if goja.IsUndefined(encoded) {
+			return errInvalidResult
+		}
+		out = json.RawMessage(encoded.String())
+		return nil
+	})
+	return out, err
+}

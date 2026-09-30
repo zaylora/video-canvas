@@ -27,6 +27,7 @@ func adminTestRouter(userID uint, lookup RoleLookup) *gin.Engine {
 		c.Next()
 	})
 	r.GET("/admin", RequireAdmin(lookup), func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+	r.GET("/super", RequireSuperAdmin(lookup), func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 	return r
 }
 
@@ -39,6 +40,7 @@ func TestRequireAdmin(t *testing.T) {
 		wantCode   int
 	}{
 		{"管理员放行", 1, func(context.Context, uint64) (string, error) { return model.RoleAdmin, nil }, http.StatusOK, 0},
+		{"超级管理员也放行（admin 的超集）", 1, func(context.Context, uint64) (string, error) { return model.RoleSuperAdmin, nil }, http.StatusOK, 0},
 		{"普通用户 403", 1, func(context.Context, uint64) (string, error) { return model.RoleUser, nil }, http.StatusForbidden, errcode.ErrForbidden.Code},
 		{"用户不存在（角色为空）403", 1, func(context.Context, uint64) (string, error) { return "", nil }, http.StatusForbidden, errcode.ErrForbidden.Code},
 		{"没经过 JWT 按未登录 401", 0, func(context.Context, uint64) (string, error) { return model.RoleAdmin, nil }, http.StatusUnauthorized, errcode.ErrUnauthorized.Code},
@@ -48,6 +50,41 @@ func TestRequireAdmin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			adminTestRouter(tt.userID, tt.lookup).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin", nil))
+			if w.Code != tt.wantStatus {
+				t.Fatalf("HTTP 状态期望 %d，实际 %d：%s", tt.wantStatus, w.Code, w.Body.String())
+			}
+			if tt.wantCode != 0 {
+				var body struct {
+					Code int `json:"code"`
+				}
+				_ = json.Unmarshal(w.Body.Bytes(), &body)
+				if body.Code != tt.wantCode {
+					t.Fatalf("业务码期望 %d，实际 %d", tt.wantCode, body.Code)
+				}
+			}
+		})
+	}
+}
+
+func TestRequireSuperAdmin(t *testing.T) {
+	tests := []struct {
+		name       string
+		userID     uint
+		lookup     RoleLookup
+		wantStatus int
+		wantCode   int
+	}{
+		{"超级管理员放行", 1, func(context.Context, uint64) (string, error) { return model.RoleSuperAdmin, nil }, http.StatusOK, 0},
+		{"admin 403", 1, func(context.Context, uint64) (string, error) { return model.RoleAdmin, nil }, http.StatusForbidden, errcode.ErrForbidden.Code},
+		{"普通用户 403", 1, func(context.Context, uint64) (string, error) { return model.RoleUser, nil }, http.StatusForbidden, errcode.ErrForbidden.Code},
+		{"用户不存在（角色为空）403", 1, func(context.Context, uint64) (string, error) { return "", nil }, http.StatusForbidden, errcode.ErrForbidden.Code},
+		{"没经过 JWT 按未登录 401", 0, func(context.Context, uint64) (string, error) { return model.RoleSuperAdmin, nil }, http.StatusUnauthorized, errcode.ErrUnauthorized.Code},
+		{"查询角色失败返回 500", 1, func(context.Context, uint64) (string, error) { return "", errors.New("db down") }, http.StatusInternalServerError, errcode.ErrInternal.Code},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			adminTestRouter(tt.userID, tt.lookup).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/super", nil))
 			if w.Code != tt.wantStatus {
 				t.Fatalf("HTTP 状态期望 %d，实际 %d：%s", tt.wantStatus, w.Code, w.Body.String())
 			}

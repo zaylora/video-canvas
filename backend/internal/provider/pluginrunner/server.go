@@ -22,6 +22,9 @@ import (
 type Options struct {
 	PoolSize       int
 	DefaultTimeout time.Duration
+	// LoadTimeout 是执行插件顶层代码（装载、预检、补建运行时）的时限；零值取 2 秒。
+	// 它比钩子时限宽松，因为顶层代码要一次性完成编译后的初始化，但同样会被中断。
+	LoadTimeout time.Duration
 }
 
 // Server 是只执行插件代码的 HTTP 服务。
@@ -33,15 +36,17 @@ type Server struct {
 }
 
 type version struct {
-	program *goja.Program
-	hooks   []string
-	idle    chan *runtime
-	slots   chan struct{}
+	program     *goja.Program
+	loadTimeout time.Duration
+	hooks       []string
+	idle        chan *runtime
+	slots       chan struct{}
 }
 
 type runtime struct {
 	vm      *goja.Runtime
 	exports *goja.Object
+	hooks   []string // 顶层代码执行后导出的钩子名
 	logs    []string
 }
 
@@ -52,6 +57,9 @@ func NewServer(opts Options) *Server {
 	}
 	if opts.DefaultTimeout <= 0 {
 		opts.DefaultTimeout = time.Duration(pluginproto.DefaultHookTimeoutMs) * time.Millisecond
+	}
+	if opts.LoadTimeout <= 0 {
+		opts.LoadTimeout = 2 * time.Second
 	}
 	return &Server{opts: opts, versions: make(map[string]*version)}
 }
@@ -137,12 +145,12 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) {
 		respond(w, pluginproto.LoadResponse{Error: issue(pluginproto.CodeException, err.Error())})
 		return
 	}
-	rt, err := newRuntime(program)
+	rt, err := newRuntime(program, s.opts.LoadTimeout)
 	if err != nil {
-		respond(w, pluginproto.LoadResponse{Error: issue(pluginproto.CodeException, safeError(err))})
+		respond(w, pluginproto.LoadResponse{Error: callError(err)})
 		return
 	}
-	v := newVersion(program, hooks(rt), s.opts.PoolSize)
+	v := newVersion(program, rt.hooks, s.opts.PoolSize, s.opts.LoadTimeout)
 	v.idle <- rt
 	s.remember(in.SHA256, v)
 	respond(w, pluginproto.LoadResponse{OK: true, Hooks: v.hooks})
@@ -198,13 +206,14 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request) {
 		out.Error = callError(err)
 		return
 	}
+	// 先复制日志再归还：归还后运行时可能立刻被别的请求取走并清空 logs
+	out.Logs = append([]string(nil), rt.logs...)
 	v.release(rt, false)
 	if len(result) > pluginproto.MaxPayloadBytes {
 		out.Error = issue(pluginproto.CodeTooLarge, "钩子返回值超过上限")
 		return
 	}
 	out.Result = result
-	out.Logs = append([]string(nil), rt.logs...)
 }
 
 func (s *Server) precheck(w http.ResponseWriter, r *http.Request) {
@@ -224,20 +233,20 @@ func (s *Server) precheck(w http.ResponseWriter, r *http.Request) {
 		respond(w, out)
 		return
 	}
-	rt, err := newRuntime(program)
+	// 预检与装载走同一套保护：顶层代码死循环在 LoadTimeout 内被中断，返回预检问题而不是挂住请求
+	rt, err := newRuntime(program, s.opts.LoadTimeout)
 	if err != nil {
 		out.Issues = []pluginproto.Issue{{Path: "code", Message: safeError(err)}}
 		respond(w, out)
 		return
 	}
-	out.Hooks = hooks(rt)
-	metaValue := rt.exports.Get("meta")
-	if goja.IsUndefined(metaValue) || goja.IsNull(metaValue) {
+	out.Hooks = rt.hooks
+	metaRaw, err := encodeMeta(rt, s.opts.LoadTimeout)
+	if errors.Is(err, errNoMeta) {
 		out.Issues = []pluginproto.Issue{{Path: "meta", Message: "插件必须导出 meta 对象"}}
 		respond(w, out)
 		return
 	}
-	metaRaw, err := json.Marshal(metaValue.Export())
 	if err != nil {
 		out.Issues = []pluginproto.Issue{{Path: "meta", Message: "meta 不能编码成 JSON：" + safeError(err)}}
 		respond(w, out)
@@ -257,12 +266,13 @@ func (s *Server) precheck(w http.ResponseWriter, r *http.Request) {
 	respond(w, out)
 }
 
-func newVersion(program *goja.Program, hookNames []string, poolSize int) *version {
+func newVersion(program *goja.Program, hookNames []string, poolSize int, loadTimeout time.Duration) *version {
 	return &version{
-		program: program,
-		hooks:   append([]string(nil), hookNames...),
-		idle:    make(chan *runtime, poolSize),
-		slots:   make(chan struct{}, poolSize),
+		program:     program,
+		loadTimeout: loadTimeout,
+		hooks:       append([]string(nil), hookNames...),
+		idle:        make(chan *runtime, poolSize),
+		slots:       make(chan struct{}, poolSize),
 	}
 }
 
@@ -272,7 +282,7 @@ func (v *version) acquire() (*runtime, error) {
 	case rt := <-v.idle:
 		return rt, nil
 	default:
-		rt, err := newRuntime(v.program)
+		rt, err := newRuntime(v.program, v.loadTimeout)
 		if err != nil {
 			<-v.slots
 			return nil, err

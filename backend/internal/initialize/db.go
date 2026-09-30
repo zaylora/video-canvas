@@ -12,6 +12,7 @@ import (
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
+	"video-canvas/internal/repository"
 )
 
 // NewDB 按配置连接 PostgreSQL，设置连接池，并按需自动迁移表结构。
@@ -37,6 +38,10 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	if cfg.AutoMigrate {
+		// 先清旧版平台协议配置的遗留结构（ai_providers、ai_models.provider_key），幂等；不清的话旧库上新建模型会因 NOT NULL 报 500
+		if err := repository.MigrateLegacyAIConfig(db); err != nil {
+			return nil, fmt.Errorf("migrate legacy ai config: %w", err)
+		}
 		if err := db.AutoMigrate(model.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)
 		}

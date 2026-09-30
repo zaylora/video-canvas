@@ -21,7 +21,10 @@ type Handlers struct {
 	Asset          *handler.AssetHandler          // 素材上传与查询
 	LocalFiles     gin.HandlerFunc                // 本地存储的静态文件服务，仅 local 驱动时非 nil
 	AIModel        *handler.AIModelHandler        // 面向画布的模型清单
-	AdminAI        *handler.AdminAIHandler        // AI 配置管理
+	AdminAI        *handler.AdminAIHandler        // AI 模型配置管理
+	AdminPlugin    *handler.AdminPluginHandler    // 协议插件管理
+	AdminChannel   *handler.AdminChannelHandler   // 渠道管理
+	AdminMe        *handler.AdminMeHandler        // 当前管理员身份
 	AdminRole      middleware.RoleLookup          // 管理接口的角色查询
 }
 
@@ -74,8 +77,27 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/assets", h.Asset.Upload)
 		auth.GET("/assets/:id", h.Asset.Get)
 
-		// 管理员后台接口
+		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
+		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。
 		adminAI := auth.Group("/admin/ai", middleware.RequireAdmin(h.AdminRole))
+		superOnly := middleware.RequireSuperAdmin(h.AdminRole)
+		adminAI.GET("/me", h.AdminMe.Me)
+
+		plugins := adminAI.Group("/plugins")
+		plugins.GET("", h.AdminPlugin.List)
+		plugins.POST("", superOnly, h.AdminPlugin.Upload)
+		plugins.PUT("/:key/enabled", superOnly, h.AdminPlugin.SetEnabled)
+		plugins.DELETE("/:key/versions/:version", superOnly, h.AdminPlugin.DeleteVersion)
+
+		channels := adminAI.Group("/channels")
+		channels.GET("", h.AdminChannel.List)
+		channels.POST("", superOnly, h.AdminChannel.Create)
+		channels.GET("/:key", h.AdminChannel.Get)
+		channels.PUT("/:key", superOnly, h.AdminChannel.Update)
+		channels.PUT("/:key/secret", superOnly, h.AdminChannel.SetSecret)
+		channels.POST("/:key/check", superOnly, h.AdminChannel.Check)
+		channels.POST("/:key/import", h.AdminChannel.Import)
+
 		models := adminAI.Group("/models")
 		models.GET("", h.AdminAI.List)
 		models.POST("", h.AdminAI.Create)
@@ -92,8 +114,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		models.PUT("/:key/sort", h.AdminAI.SetSort)
 
 		adminAI.GET("/test-runs/:id", h.AdminAI.GetTestRun)
-		adminAI.GET("/secrets", h.AdminAI.ListSecrets)
-		adminAI.PUT("/secrets/:name", h.AdminAI.SetSecret)
+		adminAI.GET("/test-runs/:id/trace", h.AdminAI.GetTestTrace)
 		adminAI.GET("/schema/model", h.AdminAI.Schema)
 
 		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权

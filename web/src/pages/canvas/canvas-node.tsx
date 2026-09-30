@@ -12,7 +12,6 @@ import {
   NodeMediaBody,
   NodePlaceholderBody,
   NodePromptInput,
-  NodeTextBody,
   type IncomingConnection,
 } from "@/components/canvas";
 
@@ -22,11 +21,11 @@ import {
   NODE_META,
 } from "@/constants/canvas";
 import { useImageGeneration } from "@/hooks/use-image-generation";
-import { useTextGeneration } from "@/hooks/use-text-generation";
 import { useSettingsStore } from "@/store";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { canConnectKinds, getModelOptions, pickModel } from "@/utils/canvas/canvas";
 
+import { TextCanvasNode } from "./text-node";
 import { VideoCanvasNode } from "./video-node";
 
 /** 图片节点的正文：把节点里存的出图状态摊给纯展示的 NodeImageBody。 */
@@ -119,25 +118,22 @@ function NodePromptPanel({
   );
 }
 
-/** 文本、图片、音频节点：按种类挑正文，选中时节点下方浮出提示词输入框，外壳交给 NodeCard。 */
+/** 图片、音频节点：按种类挑正文，选中时节点下方浮出提示词输入框，外壳交给 NodeCard。 */
 const GenericNodeView = memo(
   ({ id, data, selected }: NodeProps<CanvasNode>) => {
     const { getNode } = useReactFlow<CanvasNode>();
     const meta = NODE_META.get(data.kind) ?? NODE_LIBRARY[0];
     const PlaceholderIcon = meta.placeholderIcon;
     const isImage = data.kind === "image";
-    const isText = data.kind === "script";
     const status = data.status ?? "idle";
 
-    // hook 不能按种类跳过，所以两个都照挂，各自只认自己那种节点；
-    // 音频还没接生成服务，发送键点下去会说明还差什么；视频走 VideoCanvasNode
+    // 音频还没接生成服务，发送键点下去会说明还差什么；视频、文本走各自的节点组件
     const runImage = useImageGeneration(
       id,
       isImage && status !== "error" ? status : "idle",
       data.src,
     );
-    const runText = useTextGeneration(id, data);
-    const run = isImage ? runImage : isText ? runText : undefined;
+    const run = isImage ? runImage : undefined;
 
     // 拉过来的线要按同一套规则过一遍，接不上就别沉下去骗人
     const canAcceptConnection = useCallback(
@@ -153,14 +149,6 @@ const GenericNodeView = memo(
         <NodeCard title={data.label} canAcceptConnection={canAcceptConnection}>
           {isImage ? (
             <ImageNodeBody data={data} />
-          ) : isText ? (
-            <NodeTextBody
-              status={status}
-              text={data.text}
-              error={data.error}
-              icon={<PlaceholderIcon className="size-10" />}
-              placeholder={meta.description}
-            />
           ) : (
             // 还没接生成服务的音频先摆个占位框，卡片高度和图片节点对齐
             <NodePlaceholderBody
@@ -191,14 +179,17 @@ const GenericNodeView = memo(
 GenericNodeView.displayName = "GenericNodeView";
 
 /**
- * 画布节点入口：视频节点接真实生成任务（schema 驱动的参数面板、任务状态、取消重试），
+ * 画布节点入口：视频、文本节点接真实生成任务（schema 驱动的参数面板、任务状态），
  * 其余种类沿用原有的本地状态机。种类在节点整个生命周期里不变，分发不会切换 hook 集合。
  */
-export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) =>
-  props.data.kind === "video" ? (
-    <VideoCanvasNode id={props.id} data={props.data} selected={props.selected} />
-  ) : (
-    <GenericNodeView {...props} />
-  ),
-);
+export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) => {
+  switch (props.data.kind) {
+    case "video":
+      return <VideoCanvasNode id={props.id} data={props.data} selected={props.selected} />;
+    case "script":
+      return <TextCanvasNode id={props.id} data={props.data} selected={props.selected} />;
+    default:
+      return <GenericNodeView {...props} />;
+  }
+});
 CanvasNodeView.displayName = "CanvasNodeView";

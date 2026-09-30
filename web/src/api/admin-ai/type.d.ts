@@ -215,32 +215,20 @@ export interface ChannelImportResult {
   drafts: ModelDraft[]
 }
 
-// ---------------------------------------------------------------- 凭证
-
-/** GET /admin/ai/secrets 的一项；明文和密文都不会返回 */
-export interface SecretStatus {
-  /** 凭证名称 */
-  name: string
-  /** 是否已设置 */
-  is_set: boolean
-  /** 最近更新时间，未设置为 null */
-  updated_at: string | null
-  /** 最近更新人用户 ID */
-  updated_by: number
-  /** 引用该凭证的配置 key 列表 */
-  referenced_by: string[]
-}
-
 // ---------------------------------------------------------------- 模型
 
 /** 管理端模型列表的一行（不含正文） */
 export interface ConfigListItem {
   /** 模型 key */
   key: string
-  /** 展示名称 */
+  /** 展示名称（旧字段，新后端用 label） */
   name?: string
+  /** 展示名称；后端补齐前可能缺失，缺失时界面回退到 key */
+  label?: string
   /** 模型类型 */
   kind?: string
+  /** 模型使用的渠道 key（channels[0].channel）；后端补齐前可能缺失，缺失时不显示渠道 */
+  channel?: string
   /** 是否已上架 */
   enabled?: boolean
   /** 排序值 */

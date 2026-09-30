@@ -19,11 +19,13 @@ export type TaskStatus =
 
 /** 任务产出的一份素材 */
 export interface TaskOutput {
-  /** 素材 ID */
-  asset_id: number | string
-  /** 素材访问地址 */
-  url: string
-  /** 媒体类型（image / video / audio） */
+  /** 素材 ID；文本产出没有 */
+  asset_id?: number | string
+  /** 素材访问地址；文本产出没有 */
+  url?: string
+  /** 文本正文；仅 media_type 为 text 的产出有 */
+  text?: string
+  /** 媒体类型（image / video / audio / text） */
   media_type: string
   /** 时长（毫秒） */
   duration_ms?: number | null
@@ -41,7 +43,7 @@ export interface TaskView {
   canvas_id: number | string | null
   /** 所属画布节点 ID */
   node_id: string
-  /** 任务类型（image / video 等） */
+  /** 任务类型（image / video / text 等） */
   kind: string
   /** 使用的模型 key */
   model_id: string

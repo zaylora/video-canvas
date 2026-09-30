@@ -1,5 +1,3 @@
-//go:build legacy
-
 package handler_test
 
 import (
@@ -14,6 +12,7 @@ import (
 	. "video-canvas/internal/handler"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/datatypes"
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/middleware"
@@ -21,7 +20,7 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/dsl"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -32,12 +31,10 @@ import (
 
 // fakeGenTaskRepo 是内存版 service.GenerationTaskRepo，WithTx 直接在自身上执行（handler 测试不关心回滚）。
 type fakeGenTaskRepo struct {
-	tasks     map[uint64]*model.GenerationTask
-	credits   map[uint64]*model.UserCredit
-	ledger    []model.CreditLedger
-	nextID    uint64
-	touched   []string
-	touchRows int64
+	tasks   map[uint64]*model.GenerationTask
+	credits map[uint64]*model.UserCredit
+	ledger  []model.CreditLedger
+	nextID  uint64
 }
 
 func newFakeGenTaskRepo() *fakeGenTaskRepo {
@@ -91,15 +88,14 @@ func (f *fakeGenTaskRepo) GetCredit(ctx context.Context, userID uint64) (*model.
 	cp := *c
 	return &cp, nil
 }
+func (f *fakeGenTaskRepo) SaveTrace(ctx context.Context, id uint64, trace datatypes.JSON) error {
+	return nil
+}
 func (f *fakeGenTaskRepo) ClaimDue(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]model.GenerationTask, error) {
 	return nil, nil
 }
 func (f *fakeGenTaskRepo) ExtendLease(ctx context.Context, id uint64, until time.Time) (bool, error) {
 	return true, nil
-}
-func (f *fakeGenTaskRepo) TouchByProviderTask(ctx context.Context, provider, pid string, now time.Time) (int64, error) {
-	f.touched = append(f.touched, provider+"/"+pid)
-	return f.touchRows, nil
 }
 func (f *fakeGenTaskRepo) FindByIdempotencyKey(ctx context.Context, userID uint64, key string) (*model.GenerationTask, error) {
 	for _, t := range f.tasks {
@@ -182,36 +178,29 @@ func (f *fakeGenTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string
 }
 
 type fakeGenTaskRegistry struct {
-	snap     *dsl.Snapshot
-	err      error
-	provider *dsl.ProviderConfig
+	snap *provider.Snapshot
+	err  error
 }
 
 func (r *fakeGenTaskRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
 	return nil, nil
 }
-func (r *fakeGenTaskRegistry) Snapshot(context.Context, string) (*dsl.Snapshot, error) {
+func (r *fakeGenTaskRegistry) Snapshot(context.Context, string) (*provider.Snapshot, error) {
 	return r.snap, r.err
-}
-func (r *fakeGenTaskRegistry) Provider(context.Context, string) (*dsl.ProviderConfig, error) {
-	if r.provider == nil {
-		return nil, provider.ErrModelUnavailable
-	}
-	return r.provider, nil
 }
 
 type fakeGenTaskExecutor struct{}
 
-func (fakeGenTaskExecutor) Submit(context.Context, *dsl.Snapshot, provider.SubmitInput) (string, error) {
-	return "", errors.New("unused")
-}
-func (fakeGenTaskExecutor) Query(context.Context, *dsl.Snapshot, provider.TaskRef) (*provider.QueryResult, error) {
+func (fakeGenTaskExecutor) Submit(context.Context, *provider.Snapshot, provider.SubmitInput) (*provider.SubmitResult, error) {
 	return nil, errors.New("unused")
 }
-func (fakeGenTaskExecutor) Cancel(context.Context, *dsl.Snapshot, provider.TaskRef) error {
+func (fakeGenTaskExecutor) Query(context.Context, *provider.Snapshot, provider.TaskRef) (*provider.QueryResult, error) {
+	return nil, errors.New("unused")
+}
+func (fakeGenTaskExecutor) Cancel(context.Context, *provider.Snapshot, provider.TaskRef) error {
 	return provider.ErrCancelUnsupported
 }
-func (fakeGenTaskExecutor) Download(context.Context, *dsl.Snapshot, string) (*provider.Download, error) {
+func (fakeGenTaskExecutor) Download(context.Context, *provider.Snapshot, string) (*provider.Download, error) {
 	return nil, errors.New("unused")
 }
 
@@ -242,36 +231,29 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 	env := &genTaskEnv{
 		repo: newFakeGenTaskRepo(),
 		registry: &fakeGenTaskRegistry{
-			snap: &dsl.Snapshot{
-				Provider: dsl.ProviderConfig{Key: "runninghub", Webhook: &dsl.WebhookConfig{TaskID: "req.taskId"}},
-				Model: dsl.ModelConfig{
-					Key: "m1", Kind: model.KindVideo, Provider: "runninghub", Credits: 10,
-					InputSchema: dsl.InputSchema{{Name: "prompt", InputField: dsl.InputField{Type: dsl.FieldText, Required: true}}},
+			snap: &provider.Snapshot{
+				Model: provider.ModelSnapshot{
+					Key: "m1", Kind: model.KindVideo, Credits: 10,
+					InputSchema: modelcfg.InputSchema{{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Required: true}}},
 				},
+				Channel: provider.ChannelSnapshot{Key: "ch1", PluginKey: "demo"},
+				Plugin:  provider.PluginSnapshot{Key: "demo", Version: "1.0.0"},
 			},
-			provider: &dsl.ProviderConfig{Key: "runninghub", Webhook: &dsl.WebhookConfig{TaskID: "req.taskId"}},
 		},
 		userID: 1,
 	}
 	env.svc = service.NewGenerationTaskService(service.GenerationTaskDeps{
 		Repo: env.repo, Registry: env.registry, Executor: fakeGenTaskExecutor{}, Assets: fakeGenTaskAssets{},
 		Broadcaster: ws.NopBroadcaster{},
-		Config:      config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50, WebhookSecret: "s3cret"},
+		Config:      config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50},
 	},
-		service.WithInputValidator(func(_ dsl.InputSchema, in map[string]any) (map[string]any, []dsl.FieldError) {
+		service.WithInputValidator(func(_ modelcfg.InputSchema, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 			if s, _ := in["prompt"].(string); s == "" {
-				return nil, []dsl.FieldError{{Field: "prompt", Message: "必填"}}
+				return nil, []modelcfg.FieldError{{Field: "prompt", Message: "必填"}}
 			}
 			return in, nil
 		}),
-		service.WithMediaFieldNames(func(dsl.InputSchema) []string { return nil }),
-		service.WithExprEvaluator(func(_ string, rc *dsl.RenderContext) (any, error) {
-			m, ok := rc.Req.(map[string]any)
-			if !ok {
-				return nil, errors.New("回调体不是对象")
-			}
-			return m["taskId"], nil
-		}),
+		service.WithMediaFieldNames(func(modelcfg.InputSchema) []string { return nil }),
 	)
 	h := NewGenerationTaskHandler(env.svc)
 
@@ -284,7 +266,6 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 	v1.GET("/generation-tasks/:id", h.Get)
 	v1.POST("/generation-tasks/:id/cancel", h.Cancel)
 	v1.GET("/credits", h.Credits)
-	v1.POST("/webhooks/:provider/:secret", h.Webhook)
 	env.router = r
 	return env
 }
@@ -331,7 +312,8 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		{"成功返回 202 和任务快照", genTaskValidBody, nil, nil, http.StatusAccepted, 0},
 		{"带 Idempotency-Key 成功", genTaskValidBody, map[string]string{"Idempotency-Key": "k1"}, nil, http.StatusAccepted, 0},
 		{"缺少必填参数返回 400 + 10001", `{"kind":"video"}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
-		{"kind 取值非法返回 400 + 10001", `{"kind":"text","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
+		{"kind 取值非法返回 400 + 10001", `{"kind":"movie","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
+		{"kind 合法但与模型种类不一致返回 400 + 40006", `{"kind":"text","model_id":"m1","input":{"prompt":"x"}}`, nil, nil, http.StatusBadRequest, errcode.ErrTaskInput.Code},
 		{"请求体不是 JSON 返回 400 + 10001", `not json`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"生成参数不合法返回 400 + 40006", `{"kind":"video","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrTaskInput.Code},
 		{"模型不可用返回 400 + 40003", genTaskValidBody, nil, func(e *genTaskEnv) { e.registry.err = provider.ErrModelUnavailable }, http.StatusBadRequest, errcode.ErrModelUnavailable.Code},
@@ -539,43 +521,6 @@ func TestGenerationTaskHandler_Credits(t *testing.T) {
 			t.Fatalf("积分不对：%v", data)
 		}
 	})
-}
-
-func TestGenerationTaskHandler_Webhook(t *testing.T) {
-	tests := []struct {
-		name       string
-		path       string
-		body       string
-		touchRows  int64
-		wantStatus int
-		wantCode   int
-		wantTouch  string
-	}{
-		{"密钥正确：触发任务立即查询并返回 200", "/api/v1/webhooks/runninghub/s3cret", `{"taskId":"abc"}`, 1, http.StatusOK, 0, "runninghub/abc"},
-		{"找不到任务也返回 200（避免被探测）", "/api/v1/webhooks/runninghub/s3cret", `{"taskId":"nope"}`, 0, http.StatusOK, 0, "runninghub/nope"},
-		{"回调体不是 JSON 也返回 200", "/api/v1/webhooks/runninghub/s3cret", `garbage`, 0, http.StatusOK, 0, ""},
-		{"密钥错误返回 404", "/api/v1/webhooks/runninghub/wrong", `{"taskId":"abc"}`, 1, http.StatusNotFound, errcode.ErrNotFound.Code, ""},
-		{"未知平台返回 200 但不处理", "/api/v1/webhooks/unknown/s3cret", `{"taskId":"abc"}`, 1, http.StatusOK, 0, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newGenTaskEnv(t)
-			env.repo.touchRows = tt.touchRows
-			if strings.Contains(tt.path, "/unknown/") {
-				env.registry.provider = nil
-			}
-			status, resp := env.call(t, http.MethodPost, tt.path, tt.body, nil)
-			if status != tt.wantStatus || genTaskRespCode(resp) != tt.wantCode {
-				t.Fatalf("期望 HTTP %d / code %d，实际 %d / %v", tt.wantStatus, tt.wantCode, status, resp)
-			}
-			if tt.wantTouch == "" && len(env.repo.touched) != 0 {
-				t.Fatalf("不应触碰任务：%v", env.repo.touched)
-			}
-			if tt.wantTouch != "" && (len(env.repo.touched) != 1 || env.repo.touched[0] != tt.wantTouch) {
-				t.Fatalf("期望触碰 %s，实际 %v", tt.wantTouch, env.repo.touched)
-			}
-		})
-	}
 }
 
 func genTaskItoa(n uint64) string {

@@ -201,3 +201,23 @@ describe("readParams：提示词兼容旧字段", () => {
     expect(readParams({})).toEqual({});
   });
 });
+
+describe("文本模型 input 组装", () => {
+  const TEXT_SCHEMA: InputSchema = {
+    prompt: { type: "text", label: "提示词", required: true, port: "text" },
+    temperature: { type: "number", label: "温度", min: 0, max: 2, default: 0.7 },
+  };
+
+  test("至少组出 { prompt }，其余字段取 schema 默认值", () => {
+    const built = buildTaskInput(TEXT_SCHEMA, readParams({ prompt: "写一段旁白" }));
+    expect(built.errors).toEqual({});
+    expect(built.input).toEqual({ prompt: "写一段旁白", temperature: 0.7 });
+  });
+
+  test("提示词为空报错；上游文本节点连到 prompt 口时以上游为准", () => {
+    expect(buildTaskInput(TEXT_SCHEMA, readParams({ prompt: "  " })).errors.prompt).toBeDefined();
+    const upstream = link({ sourceKind: "script", text: "上游正文", targetHandle: "prompt" });
+    const bindings = resolveBindings(TEXT_SCHEMA, [upstream]);
+    expect(buildTaskInput(TEXT_SCHEMA, {}, bindings).input.prompt).toBe("上游正文");
+  });
+});

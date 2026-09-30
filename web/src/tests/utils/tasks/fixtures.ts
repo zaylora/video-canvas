@@ -36,3 +36,14 @@ export const succeeded = (over: Partial<TaskView> = {}) =>
     finished_at: "2026-09-29T10:03:00Z",
     ...over,
   });
+
+/** 文本任务成功：产出只有 text，没有 asset_id / url */
+export const textSucceeded = (text: string, over: Partial<TaskView> = {}) =>
+  makeTask({
+    kind: "text",
+    status: "succeeded",
+    version: 5,
+    outputs: [{ media_type: "text", text }],
+    finished_at: "2026-09-29T10:00:03Z",
+    ...over,
+  });

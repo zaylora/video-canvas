@@ -18,7 +18,7 @@ func NewAIModelHandler(registry provider.Registry) *AIModelHandler {
 
 // listModelsQuery 是 GET /models 的查询参数。
 type listModelsQuery struct {
-	Kind string `form:"kind" binding:"omitempty,oneof=video image audio" label:"种类"`
+	Kind string `form:"kind" binding:"omitempty,oneof=video image audio text" label:"种类"`
 }
 
 // List 返回已发布且上架的模型清单（可按 kind 过滤）。

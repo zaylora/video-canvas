@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { CanvasNodeData } from "@/types";
 
 import { applyBackfill, planBackfill } from "@/utils/tasks/backfill";
-import { makeData, makeTask, succeeded } from "./fixtures";
+import { makeData, makeTask, succeeded, textSucceeded } from "./fixtures";
 
 const node = (id: string, data: Partial<CanvasNodeData>) => ({ id, data: makeData(data) });
 
@@ -101,5 +101,49 @@ describe("applyBackfill：批量回填", () => {
   test("节点已被删除（任务还在 store 里）不报错", () => {
     expect(() => applyBackfill([], { "1": succeeded() })).not.toThrow();
     expect(applyBackfill([], { "1": succeeded() }).events).toEqual([]);
+  });
+});
+
+describe("planBackfill：文本节点（script）", () => {
+  const running = () => makeData({ kind: "script", label: "文本", status: "running", taskId: "1" });
+
+  test("succeeded：done + 正文写进 text，不动素材字段", () => {
+    const patch = planBackfill(running(), textSucceeded("第一行\n第二行"));
+    expect(patch).toEqual({ status: "done", text: "第一行\n第二行", error: null });
+  });
+
+  test("幂等：节点已是同一份正文就跳过", () => {
+    const data = { ...running(), status: "done" as const, text: "你好" };
+    expect(planBackfill(data, textSucceeded("你好"))).toBeNull();
+  });
+
+  test("成功但没有正文（空产出 / 只有空白 / 没有 text 字段）：按失败处理，且幂等", () => {
+    for (const outputs of [[], [{ media_type: "text", text: "  \n" }], [{ media_type: "text" }]]) {
+      const patch = planBackfill(running(), textSucceeded("x", { outputs }));
+      expect(patch).toMatchObject({ status: "error", error: "生成结果为空，请重试", text: null });
+      expect(planBackfill({ ...running(), ...patch }, textSucceeded("x", { outputs }))).toBeNull();
+    }
+  });
+
+  test("failed：error + 后端文案，清掉旧正文", () => {
+    const patch = planBackfill(running(), makeTask({ kind: "text", status: "failed", error_message: "模型超时" }));
+    expect(patch).toEqual({ status: "error", error: "模型超时", text: null });
+  });
+
+  test("canceled：回到 idle 并清 taskId", () => {
+    const patch = planBackfill(running(), makeTask({ kind: "text", status: "canceled" }));
+    expect(patch).toEqual({ status: "idle", taskId: undefined, error: null });
+  });
+
+  test("taskId 不一致不回填", () => {
+    expect(planBackfill({ ...running(), taskId: "2" }, textSucceeded("x"))).toBeNull();
+  });
+
+  test("媒体节点收到没有 url / asset_id 的产出：仍按空结果失败，行为不变", () => {
+    const patch = planBackfill(
+      makeData({ status: "running", taskId: "1" }),
+      succeeded({ outputs: [{ media_type: "video", url: "/x.mp4" }] }),
+    );
+    expect(patch).toMatchObject({ status: "error", error: "生成结果为空，请重试" });
   });
 });

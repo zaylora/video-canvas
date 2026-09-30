@@ -1,7 +1,10 @@
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
 
 import { WsRuntime } from "@/components/ws-runtime";
-import AdminAi from "@/pages/admin-ai";
+import AdminAiLayout from "@/pages/admin-ai/layout";
+import ChannelsPage from "@/pages/admin-ai/channels";
+import ModelsPage from "@/pages/admin-ai/models";
+import PluginsPage from "@/pages/admin-ai/plugins";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
 import Login from "@/pages/login";
@@ -46,7 +49,14 @@ export const router = createBrowserRouter([
       },
       {
         path: "admin/ai",
-        element: <AdminAi />,
+        element: <AdminAiLayout />,
+        children: [
+          { index: true, element: <Navigate to="models" replace /> },
+          { path: "models", element: <ModelsPage /> },
+          { path: "models/new", element: <ModelsPage /> },
+          { path: "channels", element: <ChannelsPage /> },
+          { path: "plugins", element: <PluginsPage /> },
+        ],
       },
     ],
   },

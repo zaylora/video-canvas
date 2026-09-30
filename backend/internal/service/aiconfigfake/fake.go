@@ -3,7 +3,6 @@ package aiconfigfake
 
 import (
 	"context"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -26,6 +25,13 @@ type MemRepo struct {
 
 	LoadPublishedCalls int
 	FailLoad           error
+
+	// 以下用来在测试里模拟插件 / 渠道 / 审计仓储的各种情形。
+	Audits         []model.AIAuditLog
+	AuditErr       error            // 非空时 InsertAudit 返回它
+	SaveVersionErr error            // 非空时 SaveVersion 返回它
+	ActiveTaskRefs map[uint64]int64 // 版本 id → 快照引用它的非终态任务数
+	DeleteInUse    bool             // 为 true 时 DeleteVersion 一律返回 ErrInUse（模拟并发下被新引用）
 }
 
 func NewMemRepo() *MemRepo {
@@ -35,6 +41,8 @@ func NewMemRepo() *MemRepo {
 		Channels: map[string]*model.AIChannel{},
 		Plugins:  map[string]*model.AIPlugin{},
 		Versions: map[uint64]*model.AIPluginVersion{},
+
+		ActiveTaskRefs: map[uint64]int64{},
 	}
 }
 
@@ -371,9 +379,6 @@ func (m *MemRepo) GetVersionHead(_ context.Context, id uint64) (*model.AIPluginV
 	return &copyVersion, nil
 }
 
-// Validator 保留为迁移期占位类型，不参与生产服务。
-type Validator struct{}
-
 // DryRunner 记录 dry-run 调用。
 type DryRunner struct {
 	Result any
@@ -395,6 +400,7 @@ type TestTasks struct {
 	Snap   *provider.Snapshot
 	Input  map[string]any
 	Views  map[uint64]TestView
+	Trace  []provider.TraceStep // GetTestTrace 返回的追踪；为 nil 时表示任务还没有追踪
 }
 
 type TestView struct {
@@ -421,15 +427,13 @@ func (t *TestTasks) GetTestTask(_ context.Context, userID, taskID uint64) (*mode
 	return view.View, nil
 }
 
-func (t *TestTasks) GetTestTrace(context.Context, uint64, uint64) ([]provider.TraceStep, error) {
-	return []provider.TraceStep{}, nil
-}
-
-// HTTPFactory 是迁移期占位，不参与生产服务。
-type HTTPFactory struct {
-	Client       *http.Client
-	AllowedHosts []string
-	Timeout      time.Duration
+// GetTestTrace 按 GetTestTask 同样的归属规则返回预设的追踪（Trace 字段），别人的任务与不存在的任务返回 ErrNotFound。
+func (t *TestTasks) GetTestTrace(_ context.Context, userID, taskID uint64) ([]provider.TraceStep, error) {
+	view, ok := t.Views[taskID]
+	if !ok || view.UserID != userID {
+		return nil, repository.ErrNotFound
+	}
+	return t.Trace, nil
 }
 
 // Invalidator 记录 Registry 失效广播。

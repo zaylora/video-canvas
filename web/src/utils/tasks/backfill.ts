@@ -1,6 +1,6 @@
 import type { TaskView } from '@/api/generation-task/type'
 import type { CanvasNodeData } from '@/types'
-import { firstOutput, isTerminalStatus, taskKey } from './status'
+import { firstOutput, isTerminalStatus, outputText, taskKey } from './status'
 import type { TaskMap } from './merge'
 
 /** 节点回填只关心这几项 */
@@ -19,7 +19,7 @@ const mediaTypeOf = (mediaType: string | undefined): 'image' | 'video' =>
  * 任务进入终态、且节点的 taskId 与任务一致时，算出要写回节点的补丁；
  * 节点已经是这个结果就返回 null（幂等，重复推送、重复对账都不会反复写）。
  *
- * - succeeded：done + 产物地址 + assetId
+ * - succeeded：媒体节点写 done + 产物地址 + assetId；文本节点（script）写 done + 正文 text
  * - failed / expired：error + 文案（「积分已退回」由展示层根据 taskId 补）
  * - canceled：回到 idle，taskId 一并清掉
  * taskId 在成功、失败时保留，方便追溯；只有 running 的节点才会被重开时对账。
@@ -33,8 +33,19 @@ export function planBackfill(
 
   switch (view.status) {
     case 'succeeded': {
+      if (data.kind === 'script') {
+        const text = outputText(view)
+        if (text === undefined) {
+          const message = '生成结果为空，请重试'
+          return data.status === 'error' && data.error === message
+            ? null
+            : { status: 'error', error: message, text: null }
+        }
+        if (data.status === 'done' && data.text === text) return null
+        return { status: 'done', text, error: null }
+      }
       const output = firstOutput(view)
-      if (!output?.url) {
+      if (!output?.url || output.asset_id == null) {
         const message = '生成结果为空，请重试'
         return data.status === 'error' && data.error === message
           ? null
@@ -57,10 +68,14 @@ export function planBackfill(
       const message =
         view.error_message || (view.status === 'expired' ? '生成超时' : '生成失败')
       if (data.status === 'error' && data.error === message) return null
-      return { status: 'error', error: message, src: null, assetId: undefined }
+      return data.kind === 'script'
+        ? { status: 'error', error: message, text: null }
+        : { status: 'error', error: message, src: null, assetId: undefined }
     }
     case 'canceled':
-      return { status: 'idle', taskId: undefined, error: null, src: null, assetId: undefined }
+      return data.kind === 'script'
+        ? { status: 'idle', taskId: undefined, error: null }
+        : { status: 'idle', taskId: undefined, error: null, src: null, assetId: undefined }
     default:
       return null
   }

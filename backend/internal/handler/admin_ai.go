@@ -7,12 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 )
 
-// AdminAIHandler 是 AI 配置的管理接口（模型 / 凭证 / 试跑），
-// 必须挂在 JWTAuth + RequireAdmin 之后。
+// AdminAIHandler 是 AI 模型配置的管理接口（草稿 / 发布 / 试跑 / 追踪），
+// 必须挂在 JWTAuth + RequireAdmin 之后。插件与渠道见 AdminPluginHandler、AdminChannelHandler。
 type AdminAIHandler struct {
 	svc *service.AIConfigService
 }
@@ -57,24 +58,16 @@ type trialReq struct {
 	Input map[string]any `json:"input" binding:"required" label:"示例输入"`
 }
 
+type setSecretReq struct {
+	Value string `json:"value" binding:"required,max=4096" label:"Key"`
+}
+
 type setEnabledReq struct {
 	Enabled *bool `json:"enabled" binding:"required" label:"enabled"`
 }
 
 type setSortReq struct {
 	Sort *int `json:"sort" binding:"required" label:"sort"`
-}
-
-type secretURI struct {
-	Name string `uri:"name" binding:"required,max=128" label:"凭证名"`
-}
-
-type setSecretReq struct {
-	Value string `json:"value" binding:"required,max=4096" label:"凭证值"`
-}
-
-type schemaURI struct {
-	Target string `uri:"target" binding:"required,eq=model" label:"target"`
 }
 
 // bindOptionalJSON 绑定可选的 JSON 请求体：完全没有请求体时视为空请求，不报错。
@@ -329,43 +322,26 @@ func (h *AdminAIHandler) SetSort(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// 凭证与 JSON Schema
+// 试跑追踪与 JSON Schema
 // ---------------------------------------------------------------------------
 
-// ListSecrets 列出凭证状态（是否已设置、更新时间、操作人），永远不返回明文或密文。
-func (h *AdminAIHandler) ListSecrets(c *gin.Context) {
-	list, err := h.svc.ListSecrets(c.Request.Context())
+// GetTestTrace 查询试跑任务的执行追踪（每次钩子与 HTTP 的输入输出，已脱敏；只能查自己创建的试跑任务）。
+func (h *AdminAIHandler) GetTestTrace(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	trace, err := h.svc.GetTestTrace(c.Request.Context(), currentUserID(c), id)
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, list)
+	response.OK(c, trace)
 }
 
-// SetSecret 设置（覆盖）凭证。只写：响应里不回显任何凭证内容。
-func (h *AdminAIHandler) SetSecret(c *gin.Context) {
-	var uri secretURI
-	if !bindURI(c, &uri) {
-		return
-	}
-	var req setSecretReq
-	if !bindJSON(c, &req) {
-		return
-	}
-	if err := h.svc.SetSecret(c.Request.Context(), uri.Name, req.Value, currentUserID(c)); err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, nil)
-}
-
-// Schema 返回配置正文的 JSON Schema，供前端 Monaco 编辑器补全。
+// Schema 返回模型配置正文的 JSON Schema，供前端 Monaco 编辑器补全（路由固定为 /schema/model）。
 func (h *AdminAIHandler) Schema(c *gin.Context) {
-	var uri schemaURI
-	if !bindURI(c, &uri) {
-		return
-	}
-	b, err := h.svc.JSONSchema(uri.Target)
+	b, err := h.svc.JSONSchema(model.ConfigTargetModel)
 	if err != nil {
 		response.Fail(c, err)
 		return

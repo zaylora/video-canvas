@@ -16,8 +16,10 @@ export type TraceStepView = {
   /** 从 1 开始的序号 */
   index: number;
   kind: "hook" | "http" | "other";
-  /** 主标题：钩子名，或“方法 URL” */
+  /** 主标题：钩子名，或“方法 路径”（不带域名，域名放在 url 里，鼠标悬停看全） */
   title: string;
+  /** HTTP 步骤的完整 URL（已脱敏）；钩子步骤没有 */
+  url?: string;
   /** 步骤名（submit / query / prepare:0 …） */
   stepName: string;
   durationMs: number | null;
@@ -74,6 +76,16 @@ const headerText = (headers: unknown) =>
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 
+/** 完整 URL → 路径加查询串；解析不了（相对路径、残缺 URL）就原样返回 */
+export function urlPath(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return `${url.pathname}${url.search}` || "/";
+  } catch {
+    return raw;
+  }
+}
+
 function toStepView(raw: TraceStep, index: number): TraceStepView {
   const kind = raw.kind === "hook" || raw.kind === "http" ? raw.kind : "other";
   const blocks: TraceBlock[] = [];
@@ -82,6 +94,7 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
   };
   let title = str(raw.name) || `步骤 ${index + 1}`;
   let status: number | undefined;
+  let url: string | undefined;
   let logs: string[] = [];
   let truncated = false;
 
@@ -97,7 +110,8 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
     const request = isRecord(raw.request) ? raw.request : null;
     const response = isRecord(raw.response) ? raw.response : null;
     if (request) {
-      title = `${str(request.method) || "GET"} ${str(request.url)}`.trim();
+      title = `${str(request.method) || "GET"} ${urlPath(str(request.url))}`.trim();
+      url = str(request.url) || undefined;
       push("请求头", headerText(request.headers));
       push("请求体", prettyValue(request.body));
     }
@@ -119,6 +133,7 @@ function toStepView(raw: TraceStep, index: number): TraceStepView {
     index: index + 1,
     kind,
     title,
+    url,
     stepName: str(raw.name),
     durationMs: duration,
     status,
@@ -163,4 +178,22 @@ export function formatDuration(ms: number | null | undefined): string {
   return ms < 1000
     ? `${Math.round(ms)}ms`
     : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
+}
+
+/** 第一个失败步骤；没有失败返回 undefined（默认展开并自动滚动到它） */
+export const firstFailedStep = (view: TraceView) =>
+  view.steps.find((step) => step.failed);
+
+/** 本次追踪里最长的步骤耗时（毫秒），耗时条按它归一；没有耗时数据返回 0 */
+export const maxStepDuration = (view: TraceView) =>
+  view.steps.reduce((max, step) => Math.max(max, step.durationMs ?? 0), 0);
+
+/** 耗时条宽度百分比：相对最长步骤；耗时未知或最长为 0 时为 0，有耗时的至少留 2% 让条可见 */
+export function durationPercent(
+  durationMs: number | null | undefined,
+  maxMs: number,
+): number {
+  if (durationMs == null || !Number.isFinite(durationMs) || maxMs <= 0) return 0;
+  if (durationMs <= 0) return 0;
+  return Math.min(100, Math.max(2, Math.round((durationMs / maxMs) * 100)));
 }

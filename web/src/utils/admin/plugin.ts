@@ -186,12 +186,81 @@ export function channelSupportsKind(
   );
 }
 
-/** 模型编辑器“选择渠道”下拉：只列出支持该 kind 的渠道（插件信息未知的也保留） */
+/**
+ * 模型编辑器“选择渠道”下拉：只列可用的渠道——渠道启用、所属插件未停用、插件版本支持该 kind。
+ * 插件信息未知（列表没加载好）的渠道保留，交给后端在发布时兜底。
+ */
 export const channelsForKind = (
   channels: readonly ChannelView[],
   plugins: readonly PluginView[],
   kind: string,
 ) =>
   channels.filter(
-    (channel) => channelSupportsKind(plugins, channel, kind) !== false,
+    (channel) =>
+      channel.enabled &&
+      plugins.find((plugin) => plugin.key === channel.plugin_key)?.enabled !==
+        false &&
+      channelSupportsKind(plugins, channel, kind) !== false,
   );
+
+/** 比较两个 semver 版本号（只比主.次.修订，预发布后缀忽略）；a 大返回正数 */
+export function compareSemver(a: string, b: string): number {
+  const parse = (text: string) =>
+    text
+      .split("-")[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10) || 0);
+  const left = parse(a);
+  const right = parse(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/** 渠道所属插件里比当前固定版本更新的最高版本；没有更新（或找不到插件）返回 null */
+export function availableUpgrade(
+  plugins: readonly PluginView[],
+  channel: Pick<ChannelView, "plugin_key" | "plugin_version">,
+): PluginVersionView | null {
+  const plugin = plugins.find((item) => item.key === channel.plugin_key);
+  let best: PluginVersionView | null = null;
+  for (const version of plugin?.versions ?? []) {
+    if (compareSemver(version.version, channel.plugin_version) <= 0) continue;
+    if (!best || compareSemver(version.version, best.version) > 0) best = version;
+  }
+  return best;
+}
+
+/** 插件当前最新的版本（按 semver 最高）；没有版本返回 undefined */
+export function latestVersion(
+  plugin: PluginView | undefined,
+): PluginVersionView | undefined {
+  let best: PluginVersionView | undefined;
+  for (const version of plugin?.versions ?? []) {
+    if (!best || compareSemver(version.version, best.version) > 0) best = version;
+  }
+  return best;
+}
+
+/**
+ * 版本不能删除的原因；可以删除返回 null。
+ * 内置插件的版本、还有渠道固定在该版本的版本不能删（后端还会检查非终态任务，返回 409）。
+ */
+export function versionDeleteBlock(
+  plugin: Pick<PluginView, "source">,
+  version: Pick<PluginVersionView, "channel_count">,
+): string | null {
+  if (plugin.source === "builtin") return "内置版本不能删除";
+  if (version.channel_count > 0)
+    return `${version.channel_count} 个渠道固定在此版本，先把它们切到别的版本`;
+  return null;
+}
+
+/** 插件当前有多少个渠道在用（各版本 channel_count 之和） */
+export const pluginChannelCount = (plugin: Pick<PluginView, "versions">) =>
+  (plugin.versions ?? []).reduce((sum, version) => sum + (version.channel_count ?? 0), 0);
+
+/** 插件版本 meta 里声明的四种 kind，按固定顺序，用于“支持的生成方式”四格 */
+export const PLUGIN_KINDS = ["text", "video", "image", "audio"] as const;

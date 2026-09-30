@@ -56,7 +56,9 @@ linters:
               desc: 依赖方向是 handler → service（A1）
             - pkg: video-canvas/internal/middleware
               desc: 依赖方向是 middleware → service（A1）
-            - pkg: video-canvas/internal/provider/engine
+            - pkg: video-canvas/internal/provider/plugin
+              desc: service 只依赖 provider 包里的接口，不依赖具体实现（A3）
+            - pkg: video-canvas/internal/provider/pluginrunner
               desc: service 只依赖 provider 包里的接口，不依赖具体实现（A3）
             - pkg: video-canvas/internal/provider/worker
               desc: service 只依赖 provider 包里的接口，不依赖具体实现（A3）

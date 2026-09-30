@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useOutletContext } from "react-router";
 
 import { listChannels, listPlugins } from "@/api/admin-ai";
 import type { ChannelView, PluginView } from "@/api/admin-ai/type";
@@ -27,6 +28,10 @@ export type AdminCatalog = {
   reloadChannels: () => Promise<void>;
 };
 
+/**
+ * 取插件与渠道清单。
+ * @param enabled 为 true 时才开始请求（角色确认后再请求，避免普通用户白白吃一次 403）
+ */
 export function useAdminCatalog(enabled: boolean): AdminCatalog {
   const aliveRef = useAliveRef();
   const [plugins, setPlugins] = useState<PluginView[]>([]);
@@ -73,3 +78,12 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
     reloadChannels,
   };
 }
+
+/** 布局通过 Outlet 传给三个子页的上下文 */
+export type AdminOutletContext = {
+  /** 插件与渠道清单（三页共用一份，避免各自请求） */
+  catalog: AdminCatalog;
+};
+
+/** 子页取布局上下文 */
+export const useAdminOutlet = () => useOutletContext<AdminOutletContext>();
