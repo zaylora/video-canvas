@@ -34,17 +34,15 @@ import {
   shortSha,
 } from "@/utils/admin/plugin";
 import { settingFields, type SettingFormValue } from "@/utils/admin/settings-form";
+import { formatTime } from "@/utils/time";
 
 import { SettingFields } from "../setting-fields";
-import {
-  ConfirmDialog,
-  FormField,
-  formatTime,
-  NativeSelect,
-  Notice,
-  ReadOnlyNotice,
-  Tag,
-} from "../shared";
+import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
+import { FormField } from "@/components/admin-ui/form-field";
+import { NativeSelect } from "@/components/admin-ui/native-select";
+import { Notice } from "@/components/admin-ui/notice";
+import { Tag } from "@/components/admin-ui/tag";
+import { ReadOnlyNotice } from "../shared";
 import { useAliveRef } from "../use-admin";
 import { CheckResult } from "./check-result";
 import { SecretDialog } from "./secret-dialog";

@@ -1,53 +1,93 @@
-import { useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  Check,
+  CircleArrowUp,
+  Fingerprint,
+  GitCommitHorizontal,
+  Lock,
+  Plus,
+  RadioTower,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import { Link } from "react-router";
 
 import { deletePluginVersion, setPluginEnabled } from "@/api/admin-ai";
-import type { PluginVersionView, PluginView } from "@/api/admin-ai/type";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import type { ChannelView, PluginVersionView, PluginView } from "@/api/admin-ai/type";
+import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
+import { CopyButton } from "@/components/admin-ui/copy-button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DescriptionDetails,
+  DescriptionItem,
+  DescriptionList,
+  DescriptionTerm,
+} from "@/components/admin-ui/description-list";
+import { Notice } from "@/components/admin-ui/notice";
+import { Tag, toneClasses } from "@/components/admin-ui/tag";
+import {
+  Timeline,
+  TimelineContent,
+  TimelineHeader,
+  TimelineIndicator,
+  TimelineItem,
+} from "@/components/admin-ui/timeline";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/utils/admin/errors";
-import { latestVersion, shortSha, versionDeleteBlock } from "@/utils/admin/plugin";
+import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
+import {
+  describeAuth,
+  latestVersion,
+  pluginChannelCount,
+  shortSha,
+  versionDeleteBlock,
+} from "@/utils/admin/plugin";
+import { formatShortTime } from "@/utils/time";
 
-import { ConfirmDialog, CopyButton, formatTime, Notice, ReadOnlyNotice, Tag } from "../shared";
+import { KIND_ORDER, KIND_STYLE, KindIcons } from "../kind";
+import { ReadOnlyNotice } from "../shared";
 import { useAliveRef } from "../use-admin";
-import { MetaView } from "./meta-view";
 
 /** 上传人：内置插件（0）显示“内置”，其余显示用户 ID */
 const uploaderLabel = (version: PluginVersionView) =>
   version.created_by === 0 ? "内置" : `用户 #${version.created_by}`;
 
+/** 版本声明里支持的能力 */
+const kindsOf = (version: PluginVersionView | undefined) =>
+  Object.keys(version?.meta?.endpoints ?? {});
+
 /**
- * 插件页右栏：头部（启停）、版本表（新到旧，含删除与禁用原因）、能力清单。
- * @param canWrite 是否有运维权限；没有则不渲染启停开关与删除按钮，页头写只读
+ * 插件页右栏（设计稿样式）：头部卡片（启停 + 支持的生成方式）、插件信息、版本历史时间线。
+ * @param channels 全部渠道，用来列出每个版本的“在用渠道”
+ * @param canWrite 是否有运维权限；没有则启停开关只读、不显示删除
  * @param onChanged 启停或删除成功后刷新清单
  */
 export function PluginDetail({
   plugin,
+  channels,
   canWrite,
   onChanged,
 }: {
   plugin: PluginView;
+  channels: ChannelView[];
   canWrite: boolean;
   onChanged: () => Promise<void>;
 }) {
   const aliveRef = useAliveRef();
   const latest = latestVersion(plugin);
-  const [viewId, setViewId] = useState<number | null>(null);
+  const meta = latest?.meta;
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState<PluginVersionView | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const viewed = plugin.versions.find((version) => version.id === viewId) ?? latest;
 
   const toggle = async (enabled: boolean) => {
     setToggling(true);
@@ -76,128 +116,267 @@ export function PluginDetail({
     }
   };
 
+  const endpoints = meta?.endpoints ?? {};
+  const hasAsync = Object.values(endpoints).some((value) => value?.mode === "async");
+  const poll = meta?.poll ?? {};
+  const hosts = Array.isArray(meta?.allowedHosts) ? meta.allowedHosts : [];
+  const info: Array<{ term: string; value: ReactNode }> = [
+    { term: "插件标识", value: <span className="font-mono">{plugin.key}</span> },
+    {
+      term: "最新版本",
+      value: <span className="font-mono">{latest ? `v${latest.version}` : "—"}</span>,
+    },
+    { term: "契约版本", value: meta?.apiVersion ? `v${meta.apiVersion}` : "—" },
+    {
+      term: "来源",
+      value:
+        plugin.source === "builtin"
+          ? "内置（随系统发布）"
+          : `上传${latest ? ` · ${uploaderLabel(latest)}` : ""}`,
+    },
+    { term: "鉴权方式", value: describeAuth(meta?.auth) },
+    {
+      term: "从渠道导入模型",
+      value: meta?.import ? (
+        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+          <Check className="size-3.5" />
+          支持
+        </span>
+      ) : (
+        <span className="text-muted-foreground">不支持</span>
+      ),
+    },
+    {
+      term: "异步任务查询",
+      value: hasAsync ? (
+        `提交 ${poll.firstDelay ?? 10} 秒后开始，每 ${poll.interval ?? 5} 秒一次，最长间隔 ${poll.maxInterval ?? 15} 秒`
+      ) : (
+        <span className="text-muted-foreground">全部同步返回，无需查询</span>
+      ),
+    },
+    {
+      term: "允许下载结果的域名",
+      value: hosts.length ? (
+        <span className="flex flex-wrap gap-1">
+          {hosts.map((host) => (
+            <Tag key={host} mono>
+              {host}
+            </Tag>
+          ))}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">仅渠道的 Base URL</span>
+      ),
+    },
+  ];
+
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {!canWrite && <ReadOnlyNotice what="上传、启停插件与删除版本" />}
 
-      <header className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold">{plugin.name}</h2>
-        <span className="text-muted-foreground font-mono text-sm">{plugin.key}</span>
-        <Tag>{plugin.source === "builtin" ? "内置" : "已上传"}</Tag>
-        <div className="ml-auto flex items-center gap-2 text-sm">
-          {canWrite ? (
-            <label className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">启用</span>
-              <Switch
-                checked={plugin.enabled}
-                disabled={toggling}
-                aria-label={`启用插件 ${plugin.name}`}
-                onCheckedChange={(checked) => void toggle(checked)}
-              />
-            </label>
-          ) : (
-            <Tag tone={plugin.enabled ? "success" : "warning"}>
-              {plugin.enabled ? "已启用" : "已停用"}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            <span className="text-xl font-semibold tracking-tight">{plugin.name}</span>
+            <Tag tone={plugin.source === "builtin" ? "neutral" : "violet"}>
+              {plugin.source === "builtin" ? "内置" : "已上传"}
             </Tag>
-          )}
-        </div>
-      </header>
+            <span className="text-muted-foreground font-mono text-xs font-normal">
+              {plugin.key}
+              {latest && ` · v${latest.version}`}
+            </span>
+          </CardTitle>
+          {meta?.description && <CardDescription>{meta.description}</CardDescription>}
+          <CardAction className="flex items-center gap-3 rounded-lg border px-3 py-2">
+            <div className="text-right">
+              <div className="text-sm font-medium">{plugin.enabled ? "已启用" : "已停用"}</div>
+              <div className="text-muted-foreground text-xs">
+                {pluginChannelCount(plugin)} 个渠道在用
+              </div>
+            </div>
+            <Switch
+              checked={plugin.enabled}
+              disabled={!canWrite || toggling}
+              aria-label={canWrite ? `启用插件 ${plugin.name}` : "插件启用状态"}
+              onCheckedChange={(checked) => void toggle(checked)}
+            />
+          </CardAction>
+        </CardHeader>
+        {!plugin.enabled && (
+          <CardContent>
+            <Notice tone="warning">
+              已停用：所有使用它的渠道不再接新任务，进行中的任务不受影响。
+            </Notice>
+          </CardContent>
+        )}
+        <CardContent className="border-t pt-4">
+          <div className="text-muted-foreground mb-3 text-xs font-medium">支持的生成方式</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {KIND_ORDER.map((kind) => {
+              const style = KIND_STYLE[kind];
+              const mode = endpoints[kind]?.mode;
+              return (
+                <div
+                  key={kind}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg border p-3",
+                    mode ? toneClasses[style.tone] : "border-dashed opacity-40",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid size-9 shrink-0 place-items-center rounded-md",
+                      mode ? "bg-background/50" : "bg-muted",
+                    )}
+                  >
+                    <style.icon className="size-4" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium">{MODEL_KIND_LABEL[kind]}</div>
+                    <div className="text-xs opacity-80">
+                      {!mode
+                        ? "不支持"
+                        : mode === "async"
+                          ? "异步 · 提交后查询"
+                          : "同步 · 直接返回"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
-      {!plugin.enabled && (
-        <Notice tone="warning">
-          停用后，所有使用它的渠道<b>不再接新任务</b>，进行中的任务不受影响。
-        </Notice>
-      )}
+      <Card className="gap-0 pb-0">
+        <CardHeader className="pb-3">
+          <CardTitle>插件信息</CardTitle>
+          <CardDescription className="text-xs">读取自最新版本的声明</CardDescription>
+        </CardHeader>
+        <DescriptionList className="gap-0 border-t sm:grid-cols-2 md:grid-cols-2 2xl:grid-cols-4">
+          {info.map(({ term, value }) => (
+            <DescriptionItem
+              key={term}
+              className="border-b px-4 py-3.5 sm:odd:border-r 2xl:border-r 2xl:[&:nth-child(4n)]:border-r-0"
+            >
+              <DescriptionTerm>{term}</DescriptionTerm>
+              <DescriptionDetails className="font-normal">{value}</DescriptionDetails>
+            </DescriptionItem>
+          ))}
+        </DescriptionList>
+      </Card>
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-muted-foreground text-xs font-medium">版本（新到旧，版本不可变）</h3>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>版本</TableHead>
-                <TableHead>sha256</TableHead>
-                <TableHead>上传时间</TableHead>
-                <TableHead>上传人</TableHead>
-                <TableHead>固定在此版本的渠道</TableHead>
-                {canWrite && <TableHead className="text-right">操作</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plugin.versions.map((version) => {
-                const block = versionDeleteBlock(plugin, version);
-                const selected = version.id === viewed?.id;
-                return (
-                  <TableRow key={version.id} data-state={selected ? "selected" : undefined}>
-                    <TableCell>
-                      <button
-                        type="button"
-                        className={cn("font-medium hover:underline", selected && "underline")}
-                        aria-pressed={selected}
-                        title="查看这个版本的能力清单"
-                        onClick={() => setViewId(version.id)}
-                      >
-                        {version.version}
-                      </button>
-                      {version.id === latest?.id && (
-                        <Tag tone="info" className="ml-1.5">
-                          最新
-                        </Tag>
+      <Card>
+        <CardHeader>
+          <CardTitle>版本历史</CardTitle>
+          <CardAction className="text-muted-foreground self-center text-xs">
+            渠道固定在某个版本上，升级需要在渠道里手动切换
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <Timeline>
+            {plugin.versions.map((version, index) => {
+              const isLatest = version.id === latest?.id;
+              const block = versionDeleteBlock(plugin, version);
+              const kinds = kindsOf(version);
+              const previous = plugin.versions[index + 1];
+              const added = previous
+                ? kinds.filter((kind) => !kindsOf(previous).includes(kind))
+                : [];
+              const pinned = channels.filter(
+                (channel) =>
+                  channel.plugin_key === plugin.key && channel.plugin_version === version.version,
+              );
+              return (
+                <TimelineItem key={version.id}>
+                  <TimelineIndicator active={isLatest}>
+                    {isLatest ? <Sparkles /> : <GitCommitHorizontal />}
+                  </TimelineIndicator>
+                  <TimelineContent>
+                    <TimelineHeader>
+                      <span className="font-mono text-base font-semibold">v{version.version}</span>
+                      {isLatest && <Tag tone="info">最新</Tag>}
+                      {version.channel_count > 0 ? (
+                        <Tag tone="success">{version.channel_count} 个渠道在用</Tag>
+                      ) : (
+                        <Tag>无渠道使用</Tag>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="font-mono text-xs" title={version.sha256}>
-                          {shortSha(version.sha256)}…
-                        </span>
-                        <CopyButton iconOnly text={version.sha256} label="复制完整 sha256" />
+                      <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+                        {formatShortTime(version.created_at)} · {uploaderLabel(version)}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatTime(version.created_at)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {uploaderLabel(version)}
-                    </TableCell>
-                    <TableCell>{version.channel_count}</TableCell>
+                    </TimelineHeader>
+                    <div className="bg-muted/20 mt-2 rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                        <KindIcons kinds={kinds} />
+                        {added.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                            <Plus className="size-3" />
+                            新增 {added.map((kind) => MODEL_KIND_LABEL[kind] ?? kind).join("、")}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground ml-auto inline-flex items-center gap-1">
+                          <span
+                            className="bg-muted inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px]"
+                            title={version.sha256}
+                          >
+                            <Fingerprint className="size-3" />
+                            {shortSha(version.sha256)}
+                          </span>
+                          <CopyButton iconOnly text={version.sha256} label="复制完整 sha256" />
+                        </span>
+                      </div>
+                      {pinned.length > 0 && (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t pt-2.5 text-xs">
+                          <span className="text-muted-foreground">在用渠道</span>
+                          {pinned.map((channel) => (
+                            <Link
+                              key={channel.key}
+                              to={`/admin/ai/channels?edit=${encodeURIComponent(channel.key)}`}
+                              className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5"
+                            >
+                              <RadioTower className="size-3" />
+                              {channel.name}
+                            </Link>
+                          ))}
+                          {!isLatest && latest && (
+                            <span className="ml-auto inline-flex items-center gap-1 text-sky-600 dark:text-sky-400">
+                              <CircleArrowUp className="size-3.5" />
+                              可升级到 v{latest.version}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {canWrite && (
-                      <TableCell className="text-right">
-                        <div className="flex flex-col items-end gap-0.5">
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={!!block}
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        {block ? (
+                          <span className="text-muted-foreground inline-flex items-center gap-1">
+                            <Lock className="size-3" />
+                            {block}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-red-600 hover:underline dark:text-red-400"
                             aria-label={`删除 ${version.version}`}
                             onClick={() => {
                               setDeleteError(null);
                               setDeleting(version);
                             }}
                           >
-                            <Trash2 />
-                            删除
-                          </Button>
-                          {block && (
-                            <span className="text-muted-foreground max-w-48 text-[11px]">
-                              {block}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
+                            <Trash2 className="size-3" />
+                            删除这个版本
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-
-      {viewed && (
-        <section className="flex flex-col gap-3 rounded-lg border p-4">
-          <h3 className="text-sm font-medium">能力清单 · v{viewed.version}</h3>
-          <MetaView meta={viewed.meta} />
-        </section>
-      )}
+                  </TimelineContent>
+                </TimelineItem>
+              );
+            })}
+          </Timeline>
+        </CardContent>
+      </Card>
 
       <ConfirmDialog
         open={!!deleting}
@@ -220,12 +399,6 @@ export function PluginDetail({
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleting(null)}
       />
-      {toggling && (
-        <p className="text-muted-foreground flex items-center gap-1 text-xs" role="status">
-          <Loader2 className="size-3 animate-spin" />
-          正在更新…
-        </p>
-      )}
     </div>
   );
 }

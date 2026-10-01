@@ -1,36 +1,46 @@
-import { useEffect } from "react";
-import { Link, NavLink, Outlet } from "react-router";
-import { ArrowLeft } from "lucide-react";
+import { useEffect, type CSSProperties } from "react";
+import { Shield } from "lucide-react";
+import { Outlet, useLocation } from "react-router";
 
 import { Button } from "@/components/ui/button";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { AdminHeader } from "@/components/admin-ui/admin-header";
+import { ThemeSwitch } from "@/components/admin-ui/theme-switch";
 import { useAdminStore } from "@/store/admin";
+import { useSettingsStore } from "@/store/settings";
 import { ROLE_LABEL } from "@/utils/admin/role";
 
-import { ForbiddenView, Tag } from "./shared";
+import { AdminSidebar } from "./admin-sidebar";
+import { findNav } from "./admin-nav";
+import { Tag } from "@/components/admin-ui/tag";
+import { ForbiddenView } from "./shared";
 import { useAdminCatalog, type AdminOutletContext } from "./use-admin";
 
-/** 三个标签：与运营的使用频率一致（模型最常用） */
-const TABS = [
-  { to: "models", label: "模型" },
-  { to: "channels", label: "渠道" },
-  { to: "plugins", label: "插件" },
-] as const;
-
-/**
- * 管理端 AI 配置的共用布局：进入时取一次角色放进 useAdminStore，
- * 未确认前整页骨架（不闪 403），403 显示兜底页，确认后渲染标签导航与子路由。
- * 插件 / 渠道清单在这里加载一次，通过 Outlet 上下文给三个子页共用。
- */
 export default function AdminAiLayout() {
   const role = useAdminStore((state) => state.role);
   const status = useAdminStore((state) => state.status);
   const load = useAdminStore((state) => state.load);
+  const { pathname } = useLocation();
+  const theme = useSettingsStore((state) => state.theme);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 后台用设计稿的 zinc 配色：挂在 <html> 上，弹窗（挂在 body）也能拿到；离开后台时摘掉
+  useEffect(() => {
+    document.documentElement.classList.add("admin-theme");
+    return () => document.documentElement.classList.remove("admin-theme");
+  }, []);
 
   const catalog = useAdminCatalog(status === "ready");
 
@@ -52,67 +62,67 @@ export default function AdminAiLayout() {
 
   if (status !== "ready" || !role) {
     return (
-      <div className="flex h-svh flex-col" aria-busy="true" aria-label="正在确认管理权限">
-        <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-6 w-48" />
-        </div>
-        <div className="grid flex-1 gap-4 p-6 md:grid-cols-[16rem_1fr]">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-96" />
+      <div className="flex h-svh" aria-busy="true" aria-label="正在确认管理权限">
+        <Skeleton className="hidden h-full w-64 rounded-none lg:block" />
+        <div className="flex flex-1 flex-col">
+          <div className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+            <Skeleton className="h-5 w-40" />
+          </div>
+          <div className="grid flex-1 gap-4 p-6 md:grid-cols-[16rem_1fr]">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-96" />
+          </div>
         </div>
       </div>
     );
   }
 
   const context: AdminOutletContext = { catalog };
-  const counts: Record<string, number | null> = {
-    models: null,
-    channels: catalog.channelsStatus === "ready" ? catalog.channels.length : null,
-    plugins: catalog.pluginsStatus === "ready" ? catalog.plugins.length : null,
+  const counts = {
+    "ai/channels": catalog.channelsStatus === "ready" ? catalog.channels.length : undefined,
+    "ai/plugins": catalog.pluginsStatus === "ready" ? catalog.plugins.length : undefined,
   };
+  const current = findNav(pathname);
+
+  const dark =
+    theme === "dark" ||
+    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
-    <div className="flex h-svh flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <Link
-          to="/"
-          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-        >
-          <ArrowLeft className="size-4" />
-          返回画布
-        </Link>
-        <h1 className="text-sm font-medium">AI 配置管理</h1>
-        <nav aria-label="AI 配置" className="bg-muted flex gap-0.5 rounded-lg p-0.5 text-xs">
-          {TABS.map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              className={({ isActive }) =>
-                cn(
-                  "rounded-md px-3 py-1",
-                  isActive
-                    ? "bg-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )
-              }
+    <SidebarProvider style={{ "--sidebar-width": "15rem" } as CSSProperties}>
+      <AdminSidebar role={role} counts={counts} />
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
+        <AdminHeader>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden sm:inline-flex">
+                {current?.group.label ?? "后台管理"}
+              </BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden sm:block" />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{current?.item.label ?? "后台"}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          <div className="ml-auto flex items-center gap-2">
+            <Tag
+              tone={role === "super_admin" ? "info" : "neutral"}
+              title={ROLE_LABEL[role]}
+              className="hidden sm:inline-flex"
             >
-              {tab.label}
-              {counts[tab.to] != null && (
-                <span className="text-muted-foreground ml-1">{counts[tab.to]}</span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-2">
-          <Tag tone={role === "super_admin" ? "info" : "neutral"} title="当前管理端角色">
-            {ROLE_LABEL[role]}
-          </Tag>
+              <Shield />
+              {role === "super_admin" ? "超级管理员" : "管理员"}
+            </Tag>
+            <ThemeSwitch
+              dark={dark}
+              onToggle={() => updateSettings("theme", dark ? "light" : "dark")}
+            />
+          </div>
+        </AdminHeader>
+        <div className="min-h-0 flex-1">
+          <Outlet context={context} />
         </div>
-      </header>
-      <div className="min-h-0 flex-1">
-        <Outlet context={context} />
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

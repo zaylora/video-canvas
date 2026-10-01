@@ -25,10 +25,16 @@ import type {
 import { errorMessage, isRunnerDown } from "@/utils/admin/errors";
 import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";
+import { withModelChannel } from "@/utils/admin/model-body";
 import { resolveModelChannel, publishBlockReason } from "@/utils/admin/model-channel";
+import { toast } from "sonner";
+
+import type { InputSchema } from "@/api/model/type";
+import type { ParamAsset } from "@/types";
+import { buildTaskInput } from "@/utils/tasks/input-schema";
 import { isTerminalStatus } from "@/utils/tasks/status";
 
-import type { DryRunState, ResultEntry, ResultTabId, RunState, TraceState } from "../result-panel";
+import type { DryRunState, ResultNotice, ResultTabId, RunState, TraceState } from "../result-panel";
 import { MODEL_TEMPLATES } from "../templates";
 import type { AdminCatalog } from "../use-admin";
 import { useAliveRef } from "../use-admin";
@@ -36,7 +42,6 @@ import { useAliveRef } from "../use-admin";
 /** 编辑器的两种视图 */
 export type EditorMode = "form" | "json";
 
-const MAX_ENTRIES = 30;
 /** 试跑状态轮询间隔（毫秒） */
 const TEST_POLL_INTERVAL = 3000;
 /** 试跑轮询上限：15 分钟，超过后不标失败，提示稍后再看 */
@@ -61,6 +66,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const key = isNewRoute ? null : params.get("key");
   const draftId = isNewRoute ? params.get("draft") : null;
   const fromImport = isNewRoute && params.get("from") === "import";
+  const presetChannel = isNewRoute ? params.get("channel") : null;
   const selection: "none" | "new" | "model" = isNewRoute ? "new" : key ? "model" : "none";
   const isNew = selection === "new";
 
@@ -73,7 +79,12 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
-  const [sample, setSample] = useState("{}");
+  /** 测试节点上填的参数（字段名 -> 值），和画布节点的 params 同一形状 */
+  const [testParams, setTestParams] = useState<Record<string, unknown>>({});
+  /** 测试节点里选的素材，只用于展示 */
+  const [testAssets, setTestAssets] = useState<Record<string, ParamAsset>>({});
+  /** 点过 dry-run / 试跑之后才标红没填的字段 */
+  const [showTestErrors, setShowTestErrors] = useState(false);
   const [mode, setMode] = useState<EditorMode>("form");
   const [modeError, setModeError] = useState<string | null>(null);
   /** 正文被整体替换（切换模型、切回表单等）的计数，表单里的 JSON 编辑框据此重新挂载 */
@@ -83,11 +94,10 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
 
   // ---- 结果面板
-  const [entries, setEntries] = useState<ResultEntry[]>([]);
   const [dryRun, setDryRun] = useState<DryRunState | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [trace, setTrace] = useState<TraceState | null>(null);
-  const [resultTab, setResultTab] = useState<ResultTabId>("issues");
+  const [resultTab, setResultTab] = useState<ResultTabId>("run");
 
   // ---- 对话框
   const [publishKey, setPublishKey] = useState<string | null>(null);
@@ -114,26 +124,45 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     () => resolveModelChannel(body, catalog.channels, catalog.plugins),
     [body, catalog.channels, catalog.plugins],
   );
+  const inputSchema = (body && isRecord(body.input_schema) ? body.input_schema : undefined) as
+    | InputSchema
+    | undefined;
+  const testInput = useMemo(
+    () => buildTaskInput(inputSchema, testParams),
+    [inputSchema, testParams],
+  );
+  const setTestParam = useCallback((name: string, value: unknown, asset?: ParamAsset | null) => {
+    setTestParams((prev) => ({ ...prev, [name]: value }));
+    if (asset === null)
+      setTestAssets((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    else if (asset) setTestAssets((prev) => ({ ...prev, [name]: asset }));
+  }, []);
   const publishBlock = publishBlockReason(info, catalog.channelsStatus === "ready");
   const working = busy !== null;
 
   // ------------------------------------------------------------ 结果面板
 
-  const pushEntry = useCallback((entry: Omit<ResultEntry, "id" | "time">, focus = true) => {
-    const id = crypto.randomUUID();
-    setEntries((prev) => [{ ...entry, id, time: Date.now() }, ...prev].slice(0, MAX_ENTRIES));
-    if (focus) setResultTab("issues");
-    return id;
+  /** 操作结果提示：用 toast 弹出，不再占结果面板；校验问题另外放在 issues 里就地显示 */
+  const pushEntry = useCallback((entry: ResultNotice) => {
+    const show =
+      entry.tone === "success" ? toast.success : entry.tone === "error" ? toast.error : toast.info;
+    show(entry.title, { description: entry.text });
   }, []);
 
   const resetResults = useCallback(() => {
     runTokenRef.current += 1;
-    setEntries([]);
     setDryRun(null);
     setRun(null);
     setTrace(null);
     setIssues([]);
-    setResultTab("issues");
+    setTestParams({});
+    setTestAssets({});
+    setShowTestErrors(false);
+    setResultTab("run");
   }, []);
 
   const clearResults = resetResults;
@@ -210,7 +239,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     }
     importRef.current = null;
     setQueue([]);
-    loadIntoEditor(MODEL_TEMPLATES[0].body);
+    // 从渠道页“用这个渠道新建模型”进来时带 ?channel=<key>，预先选好渠道
+    loadIntoEditor(
+      (presetChannel && withModelChannel(MODEL_TEMPLATES[0].body, presetChannel)) ||
+        MODEL_TEMPLATES[0].body,
+    );
     if (fromImport) {
       pushEntry({
         title: "没有读到导入的草稿",
@@ -218,7 +251,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         text: "浏览器没能暂存草稿（可能是隐私模式或页面已刷新），已用空白模板，请手动填写。",
       });
     }
-  }, [draftId, fromImport, loadIntoEditor, pushEntry, resetResults]);
+  }, [draftId, fromImport, presetChannel, loadIntoEditor, pushEntry, resetResults]);
 
   useEffect(() => {
     if (selection === "model" && key) {
@@ -256,8 +289,16 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     action?.();
   };
 
-  const selectModel = (nextKey: string) =>
-    guard(() => navigate(`/admin/ai/models?key=${encodeURIComponent(nextKey)}`));
+  /** 打开某个模型的编辑弹窗；test 为 true 时同时打开测试弹窗 */
+  const selectModel = (nextKey: string, options?: { test?: boolean }) =>
+    guard(() =>
+      navigate(
+        `/admin/ai/models?key=${encodeURIComponent(nextKey)}${options?.test ? "&test=1" : ""}`,
+      ),
+    );
+
+  /** 关闭编辑弹窗回到列表；有未保存修改时先确认 */
+  const closeEditor = () => guard(() => navigate("/admin/ai/models"));
 
   const startNew = () =>
     guard(() => {
@@ -425,10 +466,16 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     }
   };
 
+  /** 测试节点组装出的 input；有没填的必填项就标红并提示，不发请求 */
   const parseSample = (): { ok: true; value: unknown } | { ok: false } => {
-    const result = parseJsonText(sample);
-    if (result.ok) return result;
-    pushEntry({ title: "示例输入不是合法 JSON", tone: "error", text: result.message });
+    setShowTestErrors(true);
+    const count = Object.keys(testInput.errors).length;
+    if (count === 0) return { ok: true, value: testInput.input };
+    pushEntry({
+      title: `测试节点还有 ${count} 项没填好`,
+      tone: "error",
+      text: Object.values(testInput.errors)[0],
+    });
     return { ok: false };
   };
 
@@ -446,7 +493,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     } catch (error) {
       // runner 不可用：就地说明，保留输入可重试；其余错误只靠全局 toast
       if (aliveRef.current && isRunnerDown(error)) {
-        setDryRun({ time: Date.now(), error: "插件运行器暂时不可用，稍后重试。示例输入已保留。" });
+        setDryRun({ time: Date.now(), error: "插件运行器暂时不可用，稍后重试。测试参数已保留。" });
         setResultTab("dry-run");
       }
     } finally {
@@ -535,7 +582,11 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     const saved = await ensureSaved();
     if (!saved) return;
     if (saved.issues.length > 0) {
-      setResultTab("issues");
+      pushEntry({
+        title: `还有 ${saved.issues.length} 个问题，暂时不能发布`,
+        tone: "error",
+        text: "问题已标在对应字段上，修复后再发布。",
+      });
       return;
     }
     setPublishError(null);
@@ -608,7 +659,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     try {
       await setModelEnabled(key, enabled);
       if (!aliveRef.current) return;
-      pushEntry({ title: `${key} 已${enabled ? "上架" : "下架"}`, tone: "success" }, false);
+      pushEntry({ title: `${key} 已${enabled ? "上架" : "下架"}`, tone: "success" });
       void loadList();
       setDetail((prev) => (prev ? { ...prev, enabled } : prev));
     } finally {
@@ -658,8 +709,12 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     dirty,
     parsed,
     body,
-    sample,
-    setSample,
+    inputSchema,
+    testParams,
+    testAssets,
+    testInput,
+    showTestErrors,
+    setTestParam,
     mode,
     modeError,
     switchMode,
@@ -674,6 +729,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     publishBlock,
     // 动作
     selectModel,
+    closeEditor,
     startNew,
     save,
     validate,
@@ -688,7 +744,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     revisions,
     refreshTrace,
     // 结果
-    entries,
     dryRun,
     run,
     trace,

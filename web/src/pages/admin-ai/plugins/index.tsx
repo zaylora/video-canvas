@@ -4,6 +4,18 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 
+import { Upload } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
+import { AdminMain } from "@/components/admin-ui/admin-main";
+import {
+  PageHeader,
+  PageHeaderActions,
+  PageHeaderDescription,
+  PageHeaderHeading,
+  PageHeaderTitle,
+} from "@/components/admin-ui/page-header";
 import { useAdminOutlet } from "../use-admin";
 import { PluginDetail } from "./plugin-detail";
 import { PluginList } from "./plugin-list";
@@ -26,43 +38,61 @@ export default function PluginsPage() {
     catalog.plugins.find((plugin) => plugin.key === selectedKey) ?? catalog.plugins[0] ?? null;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[19rem_1fr]">
-      <aside className="max-h-72 min-h-0 border-b md:max-h-none md:border-r md:border-b-0">
-        <PluginList
-          plugins={catalog.plugins}
-          status={catalog.pluginsStatus}
-          selectedKey={selected?.key ?? null}
-          onSelect={(key) => setParams({ key })}
-          onUpload={canWrite ? () => setUploadOpen(true) : undefined}
-          onRetry={() => void catalog.reloadPlugins()}
-        />
-      </aside>
-      <section className="min-h-0 overflow-y-auto p-6">
-        {selected ? (
-          <PluginDetail
-            key={selected.key}
-            plugin={selected}
-            canWrite={canWrite}
-            onChanged={catalog.reloadPlugins}
+    <div className="h-full overflow-y-auto">
+      <AdminMain>
+        <PageHeader>
+          <PageHeaderHeading>
+            <PageHeaderTitle>插件</PageHeaderTitle>
+            <PageHeaderDescription>
+              插件把一种上游协议翻译成统一的请求与结果；渠道固定在插件的某个版本上，版本登记后不可变。
+            </PageHeaderDescription>
+          </PageHeaderHeading>
+          <PageHeaderActions>
+            {canWrite && (
+              <Button onClick={() => setUploadOpen(true)}>
+                <Upload />
+                上传插件
+              </Button>
+            )}
+          </PageHeaderActions>
+        </PageHeader>
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
+          <PluginList
+            plugins={catalog.plugins}
+            status={catalog.pluginsStatus}
+            selectedKey={selected?.key ?? null}
+            onSelect={(key) => setParams({ key })}
+            onRetry={() => void catalog.reloadPlugins()}
           />
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            {catalog.pluginsStatus === "loading" ? "加载中…" : "选择左侧的插件查看详情。"}
-          </p>
-        )}
-      </section>
+          <section className="min-w-0">
+            {selected ? (
+              <PluginDetail
+                key={selected.key}
+                plugin={selected}
+                channels={catalog.channels}
+                canWrite={canWrite}
+                onChanged={catalog.reloadPlugins}
+              />
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                {catalog.pluginsStatus === "loading" ? "加载中…" : "选择左侧的插件查看详情。"}
+              </p>
+            )}
+          </section>
+        </div>
 
-      {canWrite && (
-        <UploadDialog
-          open={uploadOpen}
-          onClose={() => setUploadOpen(false)}
-          onUploaded={() => void catalog.reloadPlugins()}
-          onNextStep={(pluginKey) => {
-            setUploadOpen(false);
-            navigate(`/admin/ai/channels?edit=new&plugin=${encodeURIComponent(pluginKey)}`);
-          }}
-        />
-      )}
+        {canWrite && (
+          <UploadDialog
+            open={uploadOpen}
+            onClose={() => setUploadOpen(false)}
+            onUploaded={() => void catalog.reloadPlugins()}
+            onNextStep={(pluginKey) => {
+              setUploadOpen(false);
+              navigate(`/admin/ai/channels?edit=new&plugin=${encodeURIComponent(pluginKey)}`);
+            }}
+          />
+        )}
+      </AdminMain>
     </div>
   );
 }

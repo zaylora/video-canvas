@@ -2,7 +2,7 @@ import { CheckCircle2, CircleAlert, Loader2, MinusCircle, TriangleAlert } from "
 
 import type { CheckOutcome } from "@/utils/admin/channel-check";
 
-import { Tag, type TagTone } from "../shared";
+import { Tag, type TagTone } from "@/components/admin-ui/tag";
 import type { CheckState } from "./use-channel-check";
 
 const TONE: Record<CheckOutcome["tone"], { tag: TagTone; icon: typeof CheckCircle2 }> = {

@@ -5,7 +5,8 @@ import type { TraceStep } from "@/api/admin-ai/type";
 import { Button } from "@/components/ui/button";
 import { firstFailedStep, formatDuration, maxStepDuration, toTraceView } from "@/utils/admin/trace";
 
-import { CopyButton, Notice } from "../shared";
+import { CopyButton } from "@/components/admin-ui/copy-button";
+import { Notice } from "@/components/admin-ui/notice";
 import { TraceStepRow } from "./trace-step";
 
 /**

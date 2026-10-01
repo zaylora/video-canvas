@@ -119,6 +119,66 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
+   只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
+.admin-theme {
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(240 10% 3.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(240 10% 3.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(240 10% 3.9%);
+  --primary: hsl(240 5.9% 10%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(240 4.8% 95.9%);
+  --secondary-foreground: hsl(240 5.9% 10%);
+  --muted: hsl(240 4.8% 95.9%);
+  --muted-foreground: hsl(240 3.8% 46.1%);
+  --accent: hsl(240 4.8% 95.9%);
+  --accent-foreground: hsl(240 5.9% 10%);
+  --destructive: hsl(0 72% 51%);
+  --border: hsl(240 5.9% 90%);
+  --input: hsl(240 5.9% 90%);
+  --ring: hsl(240 5.9% 10%);
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(240 5.9% 10%);
+}
+
+.dark.admin-theme {
+  --background: hsl(240 10% 3.9%);
+  --foreground: hsl(0 0% 98%);
+  --card: hsl(240 10% 3.9%);
+  --card-foreground: hsl(0 0% 98%);
+  --popover: hsl(240 10% 3.9%);
+  --popover-foreground: hsl(0 0% 98%);
+  --primary: hsl(0 0% 98%);
+  --primary-foreground: hsl(240 5.9% 10%);
+  --secondary: hsl(240 3.7% 15.9%);
+  --secondary-foreground: hsl(0 0% 98%);
+  --muted: hsl(240 3.7% 15.9%);
+  --muted-foreground: hsl(240 5% 64.9%);
+  --accent: hsl(240 3.7% 15.9%);
+  --accent-foreground: hsl(0 0% 98%);
+  --destructive: hsl(0 62.8% 45%);
+  --border: hsl(240 3.7% 15.9%);
+  --input: hsl(240 3.7% 18%);
+  --ring: hsl(240 4.9% 83.9%);
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(0 0% 98%);
+  --sidebar-primary-foreground: hsl(240 5.9% 10%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(240 4.9% 83.9%);
+}
+
 @layer base {
   @import "@xyflow/react/dist/style.css";
 
@@ -229,4 +289,12 @@
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;
   }
+}
+
+/* 后台的原生下拉（admin-ui/native-select）：去掉系统箭头，换成和设计稿一致的灰色 chevron */
+[data-slot="native-select"] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 0.6rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem;
 }

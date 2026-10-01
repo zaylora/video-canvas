@@ -4,7 +4,8 @@ import { ChevronRight, Circle, CircleX, Diamond } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { durationPercent, formatDuration, type TraceStepView } from "@/utils/admin/trace";
 
-import { FoldableCode, Tag } from "../shared";
+import { FoldableCode } from "@/components/admin-ui/foldable-code";
+import { Tag } from "@/components/admin-ui/tag";
 
 /** 步骤类型的“形状 + 文字”标签：hook 是菱形，http 是圆点，失败是叉；不只靠颜色区分 */
 function KindBadge({ step }: { step: TraceStepView }) {

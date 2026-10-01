@@ -1,7 +1,8 @@
 import axios from "axios";
 import { toast } from "sonner";
-import type { AxiosInstance, AxiosResponse } from "axios";
+import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import { getToken, removeToken } from "../storage/token";
+import { recordRequest, redactRequestBody, shouldLogRequest } from "./request-log";
 
 /** 后端统一响应结构 */
 export interface ApiResponse<T = unknown> {
@@ -65,10 +66,38 @@ const instance: AxiosInstance = axios.create({
   },
 });
 
+/** 请求发出时间：只给要记日志的请求打点 */
+const logStart = new WeakMap<object, number>();
+
+function logResponse(
+  config: InternalAxiosRequestConfig | undefined,
+  status: number,
+  response: unknown,
+  ok: boolean,
+) {
+  const start = config ? logStart.get(config) : undefined;
+  if (!config || start === undefined) return;
+  const url = config.url ?? "";
+  const query = config.params ? `?${new URLSearchParams(config.params).toString()}` : "";
+  recordRequest({
+    time: start,
+    duration: Date.now() - start,
+    method: (config.method ?? "get").toUpperCase(),
+    url: `${url}${query}`,
+    request: redactRequestBody(url, config.data),
+    status,
+    code: isApiResponse(response) ? response.code : undefined,
+    response,
+    ok,
+  });
+}
+
 instance.interceptors.request.use(
   (config) => {
     const token = getToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
+    // 后台接口记一笔日志，响应拦截器里补上结果与耗时
+    if (shouldLogRequest(config.url)) logStart.set(config, Date.now());
     return config;
   },
   (error) => Promise.reject(error),
@@ -76,6 +105,12 @@ instance.interceptors.request.use(
 
 instance.interceptors.response.use(
   (response: AxiosResponse) => {
+    logResponse(
+      response.config,
+      response.status,
+      response.data,
+      !isApiResponse(response.data) || response.data.code === 0,
+    );
     // 后端成功响应也包在统一 Body 中，业务层直接拿到 data。
     if (!isApiResponse(response.data)) return response.data;
 
@@ -93,6 +128,14 @@ instance.interceptors.response.use(
     return response.data.data;
   },
   (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      logResponse(
+        error.config,
+        error.response?.status ?? 0,
+        error.response?.data ?? error.message,
+        false,
+      );
+    }
     if (!axios.isAxiosError(error)) {
       return reject(new ApiError("请求失败", "UNKNOWN_ERROR", 0));
     }

@@ -1,8 +1,9 @@
 import type { ConfigRevision } from "@/api/admin-ai/type";
 import { readModelChannel, readModelNumber, readModelString } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
+import { formatTime } from "@/utils/time";
 
-import { ConfirmDialog, formatTime } from "../shared";
+import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 
 /** 确认框里的摘要：渠道、插件版本、上游模型、积分 */
 function Summary({ body, info }: { body: unknown; info: ModelChannelInfo }) {

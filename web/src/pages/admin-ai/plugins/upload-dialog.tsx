@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
 import { isRunnerDown, isTooLarge } from "@/utils/admin/errors";
 import { checkPluginFile, shortSha, summarizeUpload, PLUGIN_MAX_BYTES } from "@/utils/admin/plugin";
 
-import { CopyButton, Notice } from "../shared";
+import { CopyButton } from "@/components/admin-ui/copy-button";
+import { Notice } from "@/components/admin-ui/notice";
 import { useAliveRef } from "../use-admin";
 import { PLUGIN_AUTHORING_PROMPT } from "./plugin-prompt";
 

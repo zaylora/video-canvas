@@ -26,7 +26,8 @@ import {
 } from "@/utils/admin/settings-form";
 
 import { SettingFields } from "../setting-fields";
-import { Notice, Tag } from "../shared";
+import { Notice } from "@/components/admin-ui/notice";
+import { Tag } from "@/components/admin-ui/tag";
 import { useAliveRef } from "../use-admin";
 
 /**

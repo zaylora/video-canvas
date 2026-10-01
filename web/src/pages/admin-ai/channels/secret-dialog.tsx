@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-import { FormField, Notice } from "../shared";
+import { FormField } from "@/components/admin-ui/form-field";
+import { Notice } from "@/components/admin-ui/notice";
 import { useAliveRef } from "../use-admin";
 
 /**

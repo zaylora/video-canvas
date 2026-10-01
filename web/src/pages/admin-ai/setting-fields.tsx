@@ -6,7 +6,8 @@ import type {
   SettingFormValues,
 } from "@/utils/admin/settings-form";
 
-import { FormField, NativeSelect } from "./shared";
+import { FormField } from "@/components/admin-ui/form-field";
+import { NativeSelect } from "@/components/admin-ui/native-select";
 
 /**
  * 按插件声明（channelSettings / import.args）渲染的表单字段，顺序即声明顺序。
