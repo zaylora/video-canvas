@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/provider/modelcfg"
 )
 
 // TaskStore 是 worker 需要的任务存储与状态迁移能力，由 service.GenerationTaskService 实现（worker.Store 是它的别名）。
@@ -32,8 +33,9 @@ type TaskStore interface {
 	MarkFinalizing(ctx context.Context, t *model.GenerationTask) (bool, error)
 	// Retry 可重试的失败：状态不变，记录重试次数与下次处理时间。
 	Retry(ctx context.Context, t *model.GenerationTask, attempts int, nextPollAt time.Time) (bool, error)
-	// Complete finalizing → succeeded，写产物并结算积分。
-	Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput) (bool, error)
+	// Complete finalizing → succeeded，写产物并结算积分。usage 是文本任务的实际 Token 用量（插件没回传为 nil），
+	// Token 计费据此按实际用量扣费并退回多冻结的部分；其他计费方式忽略它。
+	Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput, usage *modelcfg.Usage) (bool, error)
 	// Fail 非终态 → failed 并退回积分。errorCode 是统一错误码，message 是给用户看的文案。
 	Fail(ctx context.Context, t *model.GenerationTask, errorCode, message string) (bool, error)
 	// Expire 非终态 → expired 并退回积分。

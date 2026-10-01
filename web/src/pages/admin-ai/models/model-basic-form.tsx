@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Link } from "react-router";
 
 import type { ChannelView, ConfigIssue, PluginView } from "@/api/admin-ai/type";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
+import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
@@ -12,28 +14,42 @@ import {
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag, toneClasses } from "@/components/admin-ui/tag";
+import { TagInput } from "@/components/admin-ui/tag-input";
+import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  MODEL_HINT_MAX,
   MODEL_KIND_LABEL,
+  MODEL_TAG_MAX_LENGTH,
+  MODEL_TAGS_MAX,
   readModelChannel,
   readModelKind,
   readModelNumber,
   readModelString,
+  readModelStrings,
   suggestModelKey,
   withModelChannel,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
+import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
 import { channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
 
 import { KIND_ORDER, KIND_STYLE } from "../kind";
 import { issueFor } from "./model-fields";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
+
+/** 新建时换种类：能力与定价跟着种类重置成该种类的默认值（生成方式、素材、参数、计费方式都不通用） */
+function withKind(body: Record<string, unknown>, kind: string) {
+  const next = withModelField(body, "kind", kind);
+  const withCaps = next && withModelField(next, "capabilities", defaultCapabilities(kind));
+  return withCaps && withModelField(withCaps, "pricing", defaultPricing(kind));
+}
 
 const KIND_DESC: Record<string, string> = {
   text: "对话、写作",
@@ -73,13 +89,29 @@ export function ModelBasicForm({
   );
   const kindUnsupported = (item: string) =>
     !!current && item !== kind && channelSupportsKind(plugins, current, item) === false;
-  const pickChannel = (item: ChannelView) =>
+  // 换能力会把能力与参数、定价重置成新种类的默认值；已保存的模型先确认，免得误点清掉配置
+  const [pendingKind, setPendingKind] = useState<{ kind: string; channel?: string } | null>(null);
+  const applyKind = (nextKind: string, nextChannel?: string) =>
     onChange((body) => {
-      const next = withModelChannel(body, item.key);
-      if (!next || channelSupportsKind(plugins, item, kind) !== false) return next;
-      const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
-      return fallback ? withModelField(next, "kind", fallback) : next;
+      const next = nextChannel ? withModelChannel(body, nextChannel) : body;
+      return next && withKind(next, nextKind);
     });
+  const requestKind = (nextKind: string, nextChannel?: string) => {
+    if (nextKind === kind) return;
+    if (isNew) applyKind(nextKind, nextChannel);
+    else setPendingKind({ kind: nextKind, channel: nextChannel });
+  };
+  const pickChannel = (item: ChannelView) => {
+    if (item.key === channelKey) return;
+    // 新渠道支持当前能力就只换渠道；不支持时能力跟着换成它支持的第一种
+    if (channelSupportsKind(plugins, item, kind) !== false) {
+      onChange((body) => withModelChannel(body, item.key));
+      return;
+    }
+    const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
+    if (fallback) requestKind(fallback, item.key);
+    else onChange((body) => withModelChannel(body, item.key));
+  };
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
   const keyMissing = (item: ChannelView) => {
@@ -87,6 +119,7 @@ export function ModelBasicForm({
     return !item.secret_set && auth !== "none";
   };
   const hint = readModelString(body, "hint");
+  const tags = readModelStrings(body, "tags");
 
   return (
     <>
@@ -157,6 +190,21 @@ export function ModelBasicForm({
               onChange={(event) => setField("label", event.target.value)}
             />
           </FormField>
+          <FormField
+            size="default"
+            label="模型 Logo"
+            htmlFor="model-vendor"
+            error={issueFor(issues, "vendor")}
+            hint="选厂商后，模型选择器里显示该厂商的 logo；不选则显示名称首字。"
+          >
+            <VendorPicker
+              id="model-vendor"
+              value={readModelString(body, "vendor")}
+              name={readModelString(body, "label")}
+              seed={readModelString(body, "key")}
+              onChange={(slug) => setField("vendor", slug || undefined)}
+            />
+          </FormField>
         </div>
       </FormSection>
 
@@ -164,7 +212,7 @@ export function ModelBasicForm({
         <FormSectionHeader>
           <FormSectionTitle>能力与渠道</FormSectionTitle>
           <FormSectionDescription>
-            新建时选定能力与渠道，选定渠道后它不支持的能力会置灰；保存后不能再改。
+            能力与渠道都可以修改；所选渠道的插件不支持的能力会置灰。换能力会把能力与参数、定价重置成新能力的默认值。
           </FormSectionDescription>
         </FormSectionHeader>
         <div className="space-y-5">
@@ -180,7 +228,8 @@ export function ModelBasicForm({
                   <ChoiceCard
                     key={item}
                     selected={item === kind}
-                    disabled={!isNew || kindUnsupported(item)}
+                    disabled={kindUnsupported(item)}
+                    title={kindUnsupported(item) ? "所选渠道的插件不支持这个能力" : undefined}
                     className={cn(
                       "items-center gap-2.5",
                       item === kind &&
@@ -189,7 +238,7 @@ export function ModelBasicForm({
                           "data-selected:bg-transparent ring-1 ring-current",
                         ),
                     )}
-                    onClick={() => setField("kind", item)}
+                    onClick={() => requestKind(item)}
                   >
                     <Icon className="size-5 shrink-0" />
                     <span>
@@ -228,7 +277,6 @@ export function ModelBasicForm({
                       key={item.key}
                       indicator
                       selected={item.key === channelKey}
-                      disabled={!isNew}
                       onClick={() => pickChannel(item)}
                     >
                       <span className="min-w-0 flex-1">
@@ -291,11 +339,24 @@ export function ModelBasicForm({
             label="模型描述"
             htmlFor="model-hint"
             error={issueFor(issues, "hint")}
-            hint="在模型选择器里显示在名称下面，可留空。"
+            hint={
+              <span className="flex justify-between gap-2">
+                <span>在模型选择器里显示在名称下面，可留空。</span>
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    hint.length >= MODEL_HINT_MAX && "text-destructive",
+                  )}
+                >
+                  {hint.length} / {MODEL_HINT_MAX}
+                </span>
+              </span>
+            }
           >
             <Textarea
               id="model-hint"
               rows={3}
+              maxLength={MODEL_HINT_MAX}
               placeholder="说明适用场景和注意事项"
               value={hint}
               onChange={(event) => setField("hint", event.target.value)}
@@ -322,8 +383,43 @@ export function ModelBasicForm({
               }}
             />
           </FormField>
+          <FormField
+            size="default"
+            label="展示标签"
+            htmlFor="model-tags"
+            className="md:col-span-2"
+            error={issueFor(issues, "tags")}
+            hint={`显示在模型名称旁，如「推荐」「带音轨」。最多 ${MODEL_TAGS_MAX} 个，每个不超过 ${MODEL_TAG_MAX_LENGTH} 字。`}
+          >
+            <TagInput
+              id="model-tags"
+              value={tags}
+              max={MODEL_TAGS_MAX}
+              maxLength={MODEL_TAG_MAX_LENGTH}
+              onChange={(next) => setField("tags", next.length ? next : undefined)}
+            />
+          </FormField>
         </div>
       </FormSection>
+
+      <ConfirmDialog
+        open={!!pendingKind}
+        title={`改成${MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind ?? ""}模型？`}
+        description={
+          <>
+            {pendingKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
+            「能力与参数」和「积分定价」会重置成
+            {MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind}
+            模型的默认值，当前的配置会被替换。改动保存为草稿，发布后才对用户生效。
+          </>
+        }
+        confirmLabel="确认修改"
+        onConfirm={() => {
+          if (pendingKind) applyKind(pendingKind.kind, pendingKind.channel);
+          setPendingKind(null);
+        }}
+        onCancel={() => setPendingKind(null)}
+      />
     </>
   );
 }

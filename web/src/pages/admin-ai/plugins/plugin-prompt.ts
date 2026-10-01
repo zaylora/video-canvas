@@ -41,7 +41,7 @@ module.exports.meta 示例：
 - channelSettings / import.args 每项：type 为 string / number / boolean / enum；label 必填；enum 必须有 options，且 default 必须在 options 内；名字匹配 ^[A-Za-z_][A-Za-z0-9_]{0,31}$。
 - 导入模型要同时满足两点才可用：meta 里声明 import（哪怕 args 是空对象），并且实现 buildImportRequest 与 parseImportResponse。只写钩子不写 meta.import，管理端会判定“不支持导入”，按钮置灰。
 - 连通性检查只看是否实现了 buildCheckRequest；没实现时管理端提示“插件不支持连通性检查”。
-- channelSettings / import.args 的 enum 选项 options 是字符串数组（["cn", "global"]）；这和模型 input_schema 里 enum 的 options 不同，后者是 [{ value, label }] 对象数组，别混用。
+- channelSettings / import.args 的 enum 选项 options 是字符串数组（["cn", "global"]）；模型 capabilities.params 里 enum 的 options 是字符串或数字数组，写法类似。
 - 只声明目标平台真实支持的 endpoint，不要为了凑数声明用不上的种类。
 
 # 三、钩子一览
@@ -54,14 +54,14 @@ parseQueryResponse(ctx, resp)        async 必须。返回统一结果
 buildCancelRequest(ctx)              可选。没有就走软取消
 classifyError(ctx, resp)             可选。上游非 2xx 时先调它，返回 { class, code?, message? } 或 null（null 表示走宿主默认规则）
 buildCheckRequest(ctx)               可选。连通性检查，任意 2xx 算通。请返回一个廉价、只读、不产生费用的请求（如列模型、查询一条历史记录），不要提交生成任务；宿主自动注入 Key
-buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，需配合 meta.import。导入模型，parse 返回 [{ upstreamModel, kind, label, params?, inputSchema }]，inputSchema 的写法见第九节
+buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，需配合 meta.import。导入模型，parse 返回 [{ upstreamModel, kind, label, params?, paramHints? }]（模型能力由运营在后台配置；paramHints 是可选的生成参数预填建议，见第九节补）
 - 钩子之间互相调用请直接调用文件里的普通函数，或写 module.exports.xxx(ctx)；不要依赖 this（宿主调用钩子时 this 不一定指向 module.exports）。
 
 # 四、ctx（每次调用新建，是副本）
 {
   task:    { id, providerTaskId, state },           // providerTaskId 提交前为空；state 是插件上次返回的私有状态
   model:   { key, kind, upstreamModel, params },    // params：运营在模型上填的固定参数，结构由插件自己约定并读取
-  input:   { prompt: "...", image: "input:image", duration: 5 },   // 用户输入；媒体字段是文件引用字符串 "input:<字段名>"，没填的可选字段没有该键
+  input:   { prompt: "...", op: "i2v", images: ["input:images.0"], duration: 5 },   // 用户输入（见第九节）；参考素材是文件引用字符串数组，没填的可选键没有
   channel: { baseUrl, settings },
   prepared, credentials, now                        // credentials 只有 auth.type 为 custom 且渠道开启授权时才有
 }
@@ -75,12 +75,12 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
   headers: { "X-Foo": "bar" },           // 禁止 Authorization、Cookie、Host、Content-Length 等；鉴权由宿主注入
   json: { ... },                         // 与 form / multipart 三选一，都不写表示无请求体
   form: { k: "v" },                      // application/x-www-form-urlencoded
-  multipart: { fields: { k: "v" }, parts: [ { name: "file", fileRef: "input:image", filename: "a.png" } ] },
+  multipart: { fields: { k: "v" }, parts: [ { name: "file", fileRef: "input:images.0", filename: "a.png" } ] },
   responseType: "json",                  // json(默认) / text / binary
   timeout: 30,                           // 秒，默认 30，上限 120
   auth: { type: "query", name: "apiKey" }   // 可选：只为这次请求换一种注入方式（bearer / header / query / none），Key 仍由宿主注入
 }
-- 文件引用：json / form / multipart.fields 的任意位置可以写 { __fileRef: "input:image", as: "url" }，as 取 url（自有存储签名地址）/ base64 / dataUrl。引用必须指向 ctx.input 里的媒体字段。
+- 文件引用：json / form / multipart.fields 的任意位置可以写 { __fileRef: "input:images.0", as: "url" }，as 取 url（自有存储签名地址）/ base64 / dataUrl。引用写法就是 ctx.input.images / videos / audios 里的字符串原样（如 { __fileRef: ctx.input.images[0], as: "url" }），只能引用本次任务里已有的素材。
 - 请求体编码后 ≤1MB。base64 / dataUrl 会把文件读进内存（默认上限 10MB），能用 url 就用 url。
 - responseType 为 binary（如语音合成直接返回音频字节）时，宿主把响应体写入素材存储，parse 钩子拿到的 resp 是 { status, headers, asset: { id, mime, size } }，此时产物写 { type: "asset" } 即可。
 
@@ -96,7 +96,8 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
   progress: 40,                          // 可选，0–100
   outputs: [                             // succeeded 时必填且非空
     { type: "url",  url: "https://...", media_type: "video", mime: "video/mp4" },
-    { type: "text", text: "..." },       // 仅 text 模型使用，≤256KB
+    { type: "text", text: "...",         // 仅 text 模型使用，≤256KB
+      usage: { input_tokens: 120, output_tokens: 800 } },   // 可选但强烈建议：实际 Token 用量，按 Token 计费的模型据此结算
     { type: "asset" }                    // 二进制响应已由宿主落库
   ],
   error: { class: "terminal", code: "xxx", message: "给用户看的原因" },   // failed 时必填
@@ -106,6 +107,8 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
 - error.class 只能是：retryable（可重试）/ terminal（终止）/ moderation（内容审核不通过）/ provider_balance（上游余额不足）。
 - text 模型的产物必须是 text；其他模型不能返回 text。url 产物必须是 http/https，且主机在 allowedHosts 或渠道 baseUrl 主机内（所以要把结果文件所在的域名写进 allowedHosts）。
 - 只支持 url 与 asset 两种文件产物，不支持内联 base64；上游只给 base64 时，返回 failed 并说明原因。
+- 文本产物请带上 usage：从上游响应里取实际 Token 用量（OpenAI 风格是 usage.prompt_tokens / completion_tokens），换成 { input_tokens, output_tokens }。按 Token 计费的模型会先按上限冻结积分，完成后按这个用量多退少补；不带 usage 时按冻结额全扣。
+- 一个任务对应画布上的一个节点、一个结果：不要让上游一次生成多张 / 多段（如 n、imageCount 大于 1），否则多出来的结果用户只付了一份钱、画布上也只显示一个。
 - sync endpoint：parseSubmitResponse 必须返回 { immediate: 统一结果 }，且 status 只能是 succeeded 或 failed。
 - async endpoint：parseSubmitResponse 返回 { providerTaskId: "上游任务id" }（字符串或数字）；之后宿主按 poll 节奏调用 buildQueryRequest / parseQueryResponse，直到 succeeded 或 failed。未知的中间状态一律当作 queued 或 running 继续等待，不要当失败。
 - 上游明确返回“失败/取消/过期”才返回 failed，并尽量带上上游给的原因文案。
@@ -116,33 +119,30 @@ utils.uuid()、utils.unixNow()、utils.base64(s)、utils.base64Decode(s)、utils
 
 # 九、模型 params 与用户输入
 - ctx.model.params 由你自己约定结构（例如 { extra: {...} } 原样合并进请求体），请在文件顶部注释里写清每个字段的含义。
-- 用户输入字段由运营在模型的 input_schema 里配置，插件按字段名读取 ctx.input。请在文件顶部注释里列出插件会读取的输入字段名（如 prompt、image、duration、size），并说明哪些必填。
+- 用户输入由宿主按运营在模型 capabilities 里配置的能力校验后放进 ctx.input，键固定为：prompt（提示词）、op（生成方式 t2v / i2v / omni / t2i / i2i，仅视频、图片）、运营给生成参数起的名字（如 duration、aspect_ratio、resolution，值已按类型规范化）、参考素材数组 images / videos / audios（每项是文件引用字符串 "input:images.0"，用 { __fileRef: ... } 或 multipart 的 fileRef 引用，不是素材 ID）；文本模型另有 system（固定系统提示）与 max_tokens（最大输出）。请在文件顶部注释里列出插件会读取的键，并说明每个键应该对应上游的哪个字段。
 - 用户输入优先于 params 里的固定值；params 只做补充。
+- 积分由宿主按运营配置的定价计算并冻结、结算，插件不参与计费，也不要在请求或结果里处理积分。
+- 「生成数量」由宿主处理：用户选生成 N 个时，宿主拆成 N 个独立任务，每个任务各调一次插件，生成数量这个参数不会出现在 ctx.input 里。拆成多个任务时宿主会给每个任务放一个随机的 input.seed（模型自己配了 seed 参数时用用户的取值）；上游支持随机种子就把它传过去，避免 N 个结果一模一样。
+- 按秒计费的视频模型由运营配置一个叫 duration 的数字参数（单位秒），插件把 input.duration 传给上游对应的时长字段。
 
-# 九·补、导入模型与 inputSchema
-parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {}, inputSchema: {...} }。
-inputSchema 是“字段名 -> 字段定义”的有序对象（书写顺序就是前端渲染顺序），字段名只能含字母/数字/下划线且不能以数字开头。字段定义：
-{
-  type: "text | number | enum | boolean | image | video | audio",   // 必填
-  label: "控件标题",                       // 必填，非空
-  required: true,                          // 可选
-  default: ...,                            // 可选；类型要匹配，enum 的 default 必须在 options 的 value 里；媒体字段不能有 default
-  max_length: 4000,                        // 仅 text
-  min: 1, max: 4,                          // 仅 number，min 不能大于 max
-  options: [ { value: "16:9", label: "16:9" } ],   // 仅 enum，至少一项；value 是字符串或数字且不重复；label 非空（注意是对象数组，不是字符串数组）
-  port: "text",                            // 可选：允许被画布上游连线提供；text 字段只能是 text，媒体字段必须与自身 type 相同，number/enum/boolean 不能设 port
-  advanced: true                           // 可选：折叠到“高级”
-}
-- 提示词写成 { type: "text", label: "提示词", required: true, port: "text", max_length: 4000 }；参考图写成 { type: "image", label: "参考图（可选）", port: "image" }。
-- 插件在 buildSubmitRequest 里读到的 ctx.input 就是按这个 schema 校验规范化后的值：enum 与 number 取到的类型以 schema 为准，读取时仍用 Number() / String() 兜底；没填的可选字段没有该键。
-- 上游没有“模型列表”接口时，可以把已知模型写死在插件里：buildImportRequest 返回一个廉价只读请求（如复用 buildCheckRequest 的请求），parseImportResponse 忽略响应，直接返回写死的草稿数组；别忘了声明 meta.import。inputSchema 用同一个函数生成，避免各草稿不一致。
+# 九·补、导入模型
+parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {}, paramHints: {} }。生成方式、参考素材、生成参数等能力由运营在后台配置，插件不声明；导入时平台按种类套默认能力模板预填编辑器。
+- 一个模型的不同清晰度 / 档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要拆成多个草稿：按系列导出一个草稿，把「档位 → 上游 id」对照表放进 params（字段名自己定，如 { groups: { "1K": "…", "4K": "…" } }），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。
+- paramHints（可选）：告诉平台这个模型的生成参数建议配成什么，平台在导入那一刻覆盖默认模板里的同名参数，之后运营可以随意改，校验和下单都不读它。键必须是模板里的参数名（视频：aspect_ratio / resolution / duration / generate_audio / count；图片：aspect_ratio / resolution / count），对不上的会被忽略；不能新增参数，也不能改 spec、fanout。每个参数可以给：
+  - enum：options（可选值，字符串或数字，最多 20 个）、default；
+  - number：min、max、step、default（0 – 3600 的整数）；
+  - boolean：default；
+  - 任意类型：open（是否开放给用户）、remove: true（模型没有这一项，去掉）。
+  例：{ resolution: { options: ["2K", "4K"], default: "2K" }, generate_audio: { remove: true } }。可选值要和 params 里的对照表一致（都从插件里同一张表生成），否则用户会选到插件不认识的档位。只有一个档位时用 remove: true 去掉清晰度参数，插件按唯一的档位处理。
+- 插件在 buildSubmitRequest 里读到的 ctx.input 见上一节；没开放、没填的可选键没有。
+- 上游没有“模型列表”接口时，可以把已知模型写死在插件里：buildImportRequest 返回一个廉价只读请求（如复用 buildCheckRequest 的请求），parseImportResponse 忽略响应，直接返回写死的草稿数组；别忘了声明 meta.import。
 - 如果上游模型名不是“模型名”而是分组 id / 工作流 id，就把它放进 upstreamModel，在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取。
 
 # 十、输出要求
 1. 只输出一个完整的 .js 文件（放在一个代码块里），不要拆成多个文件，不要省略代码。
 2. 文件顶部用注释写明：对接的平台与接口、支持的 endpoint、params 结构、读取的输入字段、已知限制。
 3. 注释和错误文案使用中文。
-4. 代码后另附一段“配置说明”：渠道 base_url 应该填什么；推荐的 auth 类型；每种 endpoint 建议的 input_schema 示例（JSON）和 params 示例；哪些地方是根据文档推断的、需要人工试跑确认。
+4. 代码后另附一段“配置说明”：渠道 base_url 应该填什么；推荐的 auth 类型；每种 endpoint 建议的 capabilities 示例（JSON：ops、refs、prompt、params）和固定参数 params 示例；哪些地方是根据文档推断的、需要人工试跑确认。
 5. 文档里没写清楚的地方不要编造，用注释标出“待确认”，并在“配置说明”里列出。
 
 # 十一、最小示例（同步文本 + 异步视频，仅供对照格式，不要照抄接口）
@@ -168,8 +168,12 @@ module.exports = {
       };
     }
     var body = { model: ctx.model.upstreamModel, prompt: String(input.prompt) };
-    if (input.image) {
-      body.image = { __fileRef: input.image, as: "url" };
+    // 参考图：images 是文件引用数组，取第一张交给上游
+    if (input.images && input.images.length) {
+      body.image = { __fileRef: input.images[0], as: "url" };
+    }
+    if (typeof input.duration === "number") {
+      body.duration = input.duration;
     }
     return { method: "POST", path: "/v1/video/generations", json: body, timeout: 60 };
   },
@@ -181,7 +185,11 @@ module.exports = {
       if (typeof content !== "string" || content === "") {
         return { immediate: { status: "failed", error: { class: "terminal", message: "上游返回了空内容" } } };
       }
-      return { immediate: { status: "succeeded", outputs: [{ type: "text", text: content }] } };
+      var output = { type: "text", text: content };
+      if (body.usage) {
+        output.usage = { input_tokens: body.usage.prompt_tokens || 0, output_tokens: body.usage.completion_tokens || 0 };
+      }
+      return { immediate: { status: "succeeded", outputs: [output] } };
     }
     if (!body.task_id) {
       throw new Error("上游没有返回 task_id");
@@ -211,7 +219,8 @@ module.exports = {
 - 没有使用 ES6 以上语法、没有 require / 网络 / 定时器；所有返回值可 JSON.stringify。
 - 请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有把文件内容内联进请求。
 - 产物的域名已写进 allowedHosts（或就在渠道 baseUrl 的主机上）。
-- 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿的 inputSchema 里 enum 的 options 是 { value, label } 对象数组。
+- 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿只含 upstreamModel / kind / label / params / paramHints；paramHints 的参数名是模板里的，可选值和 params 里的档位对照表一致。
+- 读取的是 ctx.input.images / videos / audios 数组，不是旧的单个 image 字段；没有让上游一次出多个结果；文本产物带了 usage；没有在插件里处理积分或生成数量。
 - 改了代码就升 meta.version（同一 key 下版本不可覆盖），并提醒使用者把渠道切到新版本。
 - 失败路径都有明确的 error.class 和中文原因。
 

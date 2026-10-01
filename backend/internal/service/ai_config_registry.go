@@ -52,7 +52,8 @@ func (s *AIConfigService) ListModels(ctx context.Context, kind string) ([]provid
 		}
 		out = append(out, provider.ModelInfo{
 			Key: m.key, Kind: m.cfg.Kind, Label: m.cfg.Label, Hint: m.cfg.Hint,
-			Credits: m.cfg.Credits, InputSchema: m.cfg.InputSchema,
+			Vendor: m.cfg.Vendor, Tags: nonNilTags(m.cfg.Tags),
+			Pricing: m.cfg.Pricing.Public(), Capabilities: m.cfg.Capabilities.Public(),
 		})
 	}
 	return out, nil
@@ -249,4 +250,12 @@ func channelRuntime(ch *model.AIChannel, ver *model.AIPluginVersion) *provider.C
 		return nil
 	}
 	return rt
+}
+
+// nonNilTags 让没有标签的模型在 JSON 里输出 [] 而不是 null，前端不用判空。
+func nonNilTags(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }

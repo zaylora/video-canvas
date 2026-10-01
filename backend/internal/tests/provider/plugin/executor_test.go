@@ -53,7 +53,7 @@ func testSnapshot(baseURL, code, kind string, auth pluginmeta.Auth) *provider.Sn
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{
 			Key: "test-model", Kind: kind, UpstreamModel: "upstream",
-			InputSchema: modelcfg.InputSchema{},
+			Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 10000}},
 		},
 		Channel: provider.ChannelSnapshot{
 			Key: "test-channel", PluginKey: "test-plugin", PluginVersionID: 1,
@@ -137,7 +137,7 @@ module.exports = {
 	exec := testExecutor(t, code, "")
 	snap := testSnapshot(upstream.URL, code, "video", pluginmeta.Auth{Type: pluginmeta.AuthNone})
 	snap.Plugin.Meta.Endpoints["video"] = pluginmeta.Endpoint{Mode: pluginmeta.ModeAsync}
-	submitted, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}})
+	submitted, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 	if err != nil || submitted.ProviderTaskID != "provider-123" || submitted.Immediate != nil {
 		t.Fatalf("异步提交结果不符合预期：%+v %v", submitted, err)
 	}
@@ -164,7 +164,7 @@ module.exports = {
 
 	exec := testExecutor(t, code, "secret")
 	snap := testSnapshot(upstream.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthBearer})
-	_, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}})
+	_, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 	if err == nil || provider.CodeOf(err) != provider.CodePluginError || !strings.Contains(err.Error(), "请求头") {
 		t.Fatalf("应拒绝插件伪造 Authorization：%v", err)
 	}
@@ -187,7 +187,7 @@ module.exports = {
 
 	exec := testExecutor(t, code, "")
 	snap := testSnapshot(upstream.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthNone})
-	_, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}})
+	_, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 	if err == nil || provider.ClassOf(err) != provider.ClassSubmitUnknown {
 		t.Fatalf("提交超时应归类为 submit_unknown：%v", err)
 	}

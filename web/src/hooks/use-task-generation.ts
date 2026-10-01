@@ -6,7 +6,8 @@ import { cancelGenerationTask, createGenerationTask } from "@/api/generation-tas
 import { handleTaskView } from "@/utils/ws/task-events";
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
-import type { CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasNode } from "@/types";
+import { duplicateNode } from "@/utils/canvas/duplicate";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import {
   buildSubmittedPatch,
@@ -24,17 +25,50 @@ export type TaskNodeKind = keyof typeof REMOTE_KIND_OF_NODE;
 export type TaskGeneration = ReturnType<typeof useTaskGeneration>;
 
 /**
- * 生成任务节点（视频、文本）共用的提交与取消：
+ * 生成任务节点共用的提交与取消：
  * 点生成 -> POST /generation-tasks（同一次点击的重试复用同一个 Idempotency-Key）
  * -> 节点写 taskId、status=running，此后完全由任务 store 与回填驱动。
- * 提交失败（积分不足、并发已满、参数错误…）不动节点，把原因交回调用方就地提示。
+ * 生成数量 N > 1 时，点发送的瞬间先像「复制节点」一样在原节点旁复制出 N − 1 个副本（都处于生成中），
+ * 再一次提交 N 个节点；按返回逐个写回：成功的写 taskId，失败的节点显示自己的错误并保留。
+ * 只生成 1 个时提交失败不动节点，把原因交回调用方就地提示。
  */
 export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
-  const { updateNodeData } = useReactFlow<CanvasNode>();
+  const { updateNodeData, getNode, getNodes, getEdges, setNodes, setEdges } = useReactFlow<
+    CanvasNode,
+    CanvasEdge
+  >();
   const { id: canvasId } = useParams();
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const lockRef = useRef(false);
+
+  /** 复制出 count - 1 个副本并选中它们与原节点，返回按顺序的全部节点 id（原节点在第一个） */
+  const fanOut = useCallback(
+    (count: number) => {
+      const source = getNode(nodeId);
+      if (!source || count <= 1) return [nodeId];
+      const copies = duplicateNode(source, getNodes(), getEdges(), count - 1);
+      const copyIds = new Set(copies.nodes.map((node) => node.id));
+      setNodes((nodes) => [
+        ...nodes.map((node) => ({ ...node, selected: node.id === nodeId })),
+        ...copies.nodes.map((node) => ({
+          ...node,
+          data: { ...node.data, status: "running" as const },
+        })),
+      ]);
+      setEdges((edges) => [...edges, ...copies.edges]);
+      return [nodeId, ...copies.nodes.map((node) => node.id).filter((id) => copyIds.has(id))];
+    },
+    [getEdges, getNode, getNodes, nodeId, setEdges, setNodes],
+  );
+
+  /** 一个节点提交失败：多个节点时把错误写在节点上（保留节点），只有一个时不动节点 */
+  const markFailed = useCallback(
+    (id: string, message: string, multiple: boolean) => {
+      if (multiple) updateNodeData(id, { status: "error", error: message, taskId: undefined });
+    },
+    [updateNodeData],
+  );
 
   const submit = useCallback(
     async (args: {
@@ -42,6 +76,10 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       input: Record<string, unknown>;
       /** 节点当前的素材地址，重新生成会顶掉它，本地 blob 要还回去 */
       currentSrc?: string | null;
+      /** 生成数量：拆成几个任务（几个节点），默认 1 */
+      count?: number;
+      /** 前端算出的每个任务的积分；与后端冻结额不一致时记日志（两份计价算法漂移了），以后端为准 */
+      expectedCredits?: number;
     }): Promise<SubmitOutcome> => {
       if (lockRef.current)
         return { ok: false, error: { kind: "unknown", message: "正在提交，请稍候" } };
@@ -50,10 +88,14 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       }
       lockRef.current = true;
       setSubmitting(true);
+      // 点发送的瞬间 N 个节点就在画布上
+      const nodeIds = fanOut(Math.max(1, args.count ?? 1));
+      const multiple = nodeIds.length > 1;
+      if (multiple) updateNodeData(nodeId, { status: "running", taskId: undefined, error: null });
       // 每次点击一个新 key；submitWithRetry 内部的重试沿用它
       const idempotencyKey = crypto.randomUUID();
       try {
-        const view = await submitWithRetry(
+        const { items } = await submitWithRetry(
           (key) =>
             createGenerationTask(
               {
@@ -61,25 +103,47 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
                 model_id: args.modelKey,
                 canvas_id: canvasId,
                 node_id: nodeId,
+                node_ids: nodeIds,
                 input: args.input,
               },
               key,
             ),
           idempotencyKey,
         );
-        handleTaskView(view, "reconcile");
-        releaseObjectUrl(args.currentSrc);
-        updateNodeData(nodeId, buildSubmittedPatch(nodeKind, String(view.id)));
+        let own: SubmitErrorInfo | null = null;
+        for (const [index, id] of nodeIds.entries()) {
+          const item = items.find((entry) => entry.node_id === id) ?? items[index];
+          if (item?.task) {
+            if (args.expectedCredits !== undefined && item.task.credits !== args.expectedCredits) {
+              console.warn("[pricing] 前端计价与后端冻结额不一致，以后端为准", {
+                model: args.modelKey,
+                expected: args.expectedCredits,
+                frozen: item.task.credits,
+                taskId: item.task.id,
+              });
+            }
+            handleTaskView(item.task, "reconcile");
+            if (id === nodeId) releaseObjectUrl(args.currentSrc);
+            updateNodeData(id, buildSubmittedPatch(nodeKind, String(item.task.id)));
+            continue;
+          }
+          const info = describeSubmitError(item?.error ?? null);
+          markFailed(id, info.message, multiple);
+          if (id === nodeId) own = info;
+        }
         void useCreditsStore.getState().refresh();
-        return { ok: true };
+        return own ? { ok: false, error: own } : { ok: true };
       } catch (error) {
-        return { ok: false, error: describeSubmitError(error) };
+        // 请求本身失败（未登录、参数不合法、网络…）：每个节点都显示这条错误，节点保留
+        const info = describeSubmitError(error);
+        for (const id of nodeIds) markFailed(id, info.message, multiple);
+        return { ok: false, error: info };
       } finally {
         lockRef.current = false;
         setSubmitting(false);
       }
     },
-    [canvasId, nodeId, nodeKind, updateNodeData],
+    [canvasId, fanOut, markFailed, nodeId, nodeKind, updateNodeData],
   );
 
   const cancel = useCallback(

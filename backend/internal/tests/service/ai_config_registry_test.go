@@ -17,7 +17,7 @@ import (
 
 // aicKindBody 生成指定种类与排序值的模型正文（绑定渠道 channel）。
 func aicKindBody(key, channel, kind string, sort int) json.RawMessage {
-	body := strings.Replace(string(aicModelBody(key, channel, "")), `"kind":"video"`, fmt.Sprintf(`"kind":%q`, kind), 1)
+	body := aicWithKind(string(aicModelBody(key, channel, "")), kind)
 	body = strings.Replace(body, `"sort":10`, fmt.Sprintf(`"sort":%d`, sort), 1)
 	return json.RawMessage(body)
 }
@@ -93,11 +93,11 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	t.Run("公开字段完整", func(t *testing.T) {
 		list, _ := svc.ListModels(ctx, "video")
 		m := list[0]
-		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Credits != 5 || m.Kind != "video" {
+		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Pricing.Unit != 5 || m.Pricing.Cost != nil || m.Kind != "video" {
 			t.Fatalf("公开字段不符合预期：%+v", m)
 		}
-		if _, ok := m.InputSchema.Get("prompt"); !ok {
-			t.Fatal("input_schema 应带上")
+		if m.Capabilities.Prompt.MaxLength != 2000 || len(m.Capabilities.Ops) != 1 {
+			t.Fatalf("capabilities 应带上：%+v", m.Capabilities)
 		}
 		b, _ := json.Marshal(list)
 		for _, bad := range []string{"channel", "kling", "instanceType", "sk-c1", "upstream"} {
@@ -119,7 +119,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Credits != 5 ||
+		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Pricing.Unit != 5 ||
 			snap.Model.Params["instanceType"] != "default" {
 			t.Fatalf("模型部分不符合预期：%+v", snap.Model)
 		}

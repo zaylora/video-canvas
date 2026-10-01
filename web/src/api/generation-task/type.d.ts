@@ -57,14 +57,18 @@ export interface TaskView {
   error_code: string | null;
   /** 失败原因 */
   error_message: string | null;
-  /** 消耗（冻结）的积分 */
+  /** 冻结的积分 */
   credits: number;
+  /** 实际扣的积分（Token 计费按用量结算，可能小于冻结额），未结算为 null */
+  charged_credits: number | null;
   /** 快照版本号，递增 */
   version: number;
   /** 任务截止时间 */
   deadline_at: string | null;
   /** 创建时间 */
   created_at: string;
+  /** 提交给平台（开始调用上游）的时间，还在排队时为 null */
+  submitted_at: string | null;
   /** 结束时间，未结束为 null */
   finished_at: string | null;
 }
@@ -79,8 +83,29 @@ export interface CreateTaskRequest {
   canvas_id: string;
   /** 所属画布节点 ID */
   node_id: string;
-  /** 模型输入参数，字段由模型 input_schema 决定 */
+  /** 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点 */
+  node_ids?: string[];
+  /** 模型输入参数，字段由模型 capabilities 决定（prompt、op、生成参数，以及 images / videos / audios 素材 id 数组） */
   input: Record<string, unknown>;
+}
+
+/** 提交结果里一个节点的错误，含义与整体请求的 HTTP 错误一致（402 积分不足、429 并发已满……） */
+export interface CreateTaskItemError {
+  status: number;
+  code: number;
+  message: string;
+}
+
+/** 提交结果的一项：这个节点的任务，或这个节点的错误 */
+export interface CreateTaskItem {
+  node_id: string;
+  task?: TaskView;
+  error?: CreateTaskItemError;
+}
+
+/** 提交生成任务的结果：按节点顺序逐项给出 */
+export interface CreateTaskResponse {
+  items: CreateTaskItem[];
 }
 
 /** WebSocket 服务端消息 */

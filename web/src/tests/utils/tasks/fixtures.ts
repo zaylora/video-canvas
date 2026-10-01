@@ -16,6 +16,7 @@ export const makeTask = (over: Partial<TaskView> = {}): TaskView => ({
   version: 1,
   deadline_at: "2026-09-29T10:30:00Z",
   created_at: "2026-09-29T10:00:00Z",
+  submitted_at: null,
   finished_at: null,
   ...over,
 });

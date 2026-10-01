@@ -54,7 +54,7 @@ func textSnap(baseURL, code string) *provider.Snapshot {
 }
 
 func submit(exec *plugin.Executor, snap *provider.Snapshot) (*provider.SubmitResult, error) {
-	return exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1, UserID: 9}})
+	return exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "hi"}})
 }
 
 // runner 调用中崩溃：可重试，带 CodeRunnerCrashed，并标记为插件级失败；连不上则是 CodeRunnerUnavailable，不算插件级失败。
@@ -293,26 +293,32 @@ func (f *fakeAssets) Open(ctx context.Context, userID, id uint64) (*provider.Ass
 
 func imageSnap(baseURL, code string) *provider.Snapshot {
 	snap := textSnap(baseURL, code)
-	snap.Model.InputSchema = modelcfg.InputSchema{
-		{Name: "image", InputField: modelcfg.InputField{Type: modelcfg.FieldImage, Label: "图"}},
+	snap.Model.Kind = modelcfg.KindImage
+	snap.Plugin.Meta.Endpoints = map[string]pluginmeta.Endpoint{modelcfg.KindImage: {Mode: pluginmeta.ModeSync}}
+	snap.Model.Capabilities = modelcfg.Capabilities{
+		Ops:    []string{modelcfg.OpT2I, modelcfg.OpI2I},
+		Refs:   modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: 3, MaxMB: 10}},
+		Prompt: modelcfg.PromptSpec{MaxLength: 100},
 	}
 	return snap
 }
 
-// 文件引用：url / base64 / dataUrl 三种形态由宿主注入；插件看到的只是 "input:image"，永远拿不到素材 ID。
+// 文件引用：url / base64 / dataUrl 三种形态由宿主注入；插件看到的只是 "input:images.0"，永远拿不到素材 ID。
 func TestExecutorFileRefs(t *testing.T) {
 	const code = `
 module.exports = {
   buildSubmitRequest: function(ctx) {
-    if (ctx.input.image !== "input:image") { throw new Error("插件应只看到文件引用：" + ctx.input.image); }
+    var ref = ctx.input.images[0];
+    if (ref !== "input:images.0" || ctx.input.images.length !== 2 || ctx.input.images[1] !== "input:images.1") { throw new Error("插件应只看到文件引用：" + JSON.stringify(ctx.input.images)); }
     return {method: "POST", path: "/run", json: {
-      u: {__fileRef: ctx.input.image},
-      b: {__fileRef: ctx.input.image, as: "base64"},
-      d: {__fileRef: ctx.input.image, as: "dataUrl"},
-      list: [{__fileRef: ctx.input.image, as: "url"}]
+      u: {__fileRef: ref},
+      b: {__fileRef: ref, as: "base64"},
+      d: {__fileRef: ref, as: "dataUrl"},
+      second: {__fileRef: ctx.input.images[1], as: "url"},
+      list: [{__fileRef: ref, as: "url"}]
     }};
   },
-  parseSubmitResponse: function() { return {immediate: {status: "succeeded", outputs: [{type: "text", text: "ok"}]}}; }
+  parseSubmitResponse: function(ctx) { return {immediate: {status: "succeeded", outputs: [{type: "url", url: ctx.channel.baseUrl + "/o.png"}]}}; }
 };`
 	var got map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -321,10 +327,10 @@ module.exports = {
 	}))
 	defer upstream.Close()
 
-	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("PNGDATA")}}
+	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("PNGDATA"), 6: []byte("OTHER")}}
 	exec := execWith(code, func(o *plugin.Options) { o.Assets = assets })
 	_, err := exec.Submit(context.Background(), imageSnap(upstream.URL, code), provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"image": uint64(5)},
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "op": "i2i", "images": []uint64{5, 6}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -333,12 +339,15 @@ module.exports = {
 	if got["u"] != "https://cdn.example.com/a.png" || got["b"] != b64 || got["d"] != "data:image/png;base64,"+b64 {
 		t.Fatalf("文件引用注入不符：%v", got)
 	}
+	if got["second"] != "https://cdn.example.com/a.png" {
+		t.Fatalf("第二个引用应指向 images.1：%v", got["second"])
+	}
 	if list, _ := got["list"].([]any); len(list) != 1 || list[0] != "https://cdn.example.com/a.png" {
 		t.Fatalf("数组里的文件引用注入不符：%v", got["list"])
 	}
 }
 
-// 文件引用的安全边界：只能引用任务输入里已填写的媒体字段；别人的素材打不开；as 非法被拒。
+// 文件引用的安全边界：只能引用任务输入里已填写的参考素材；别人的素材打不开；as 非法被拒。
 func TestExecutorFileRefBoundaries(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +358,7 @@ func TestExecutorFileRefBoundaries(t *testing.T) {
 	build := func(ref string) string {
 		return `module.exports = {
   buildSubmitRequest: function(ctx) { return {method: "POST", path: "/run", json: {x: ` + ref + `}}; },
-  parseSubmitResponse: function() { return {immediate: {status: "succeeded", outputs: [{type: "text", text: "ok"}]}}; }
+  parseSubmitResponse: function(ctx) { return {immediate: {status: "succeeded", outputs: [{type: "url", url: ctx.channel.baseUrl + "/o.png"}]}}; }
 };`
 	}
 	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("x"), 6: []byte("y")}}
@@ -361,19 +370,19 @@ func TestExecutorFileRefBoundaries(t *testing.T) {
 		user  uint64
 		fault bool // 期望插件级失败；否则期望素材不可用（宿主 terminal，非插件失败）
 	}{
-		{"引用不存在的字段", `{__fileRef: "input:secret"}`, map[string]any{"image": uint64(5)}, 9, true},
-		{"引用没填写的字段", `{__fileRef: "input:image"}`, map[string]any{}, 9, true},
-		{"没有 input: 前缀", `{__fileRef: "image"}`, map[string]any{"image": uint64(5)}, 9, true},
-		{"as 不合法", `{__fileRef: "input:image", as: "raw"}`, map[string]any{"image": uint64(5)}, 9, true},
-		{"素材不属于该用户", `{__fileRef: "input:image"}`, map[string]any{"image": uint64(5)}, 77, false},
-		{"JSON 解码的 float64 素材 id 同样是媒体字段", `{__fileRef: "input:image"}`, map[string]any{"image": float64(5)}, 77, false},
+		{"引用不存在的素材", `{__fileRef: "input:images.3"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
+		{"引用没填写的素材", `{__fileRef: "input:images.0"}`, map[string]any{}, 9, true},
+		{"没有 input: 前缀", `{__fileRef: "images.0"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
+		{"as 不合法", `{__fileRef: "input:images.0", as: "raw"}`, map[string]any{"images": []any{uint64(5)}}, 9, true},
+		{"素材不属于该用户", `{__fileRef: "input:images.0"}`, map[string]any{"images": []any{uint64(5)}}, 77, false},
+		{"落库后字符串素材 id 同样可引用", `{__fileRef: "input:images.0"}`, map[string]any{"images": []any{"5"}}, 77, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			code := build(tc.ref)
 			exec := execWith(code, func(o *plugin.Options) { o.Assets = assets })
 			_, err := exec.Submit(context.Background(), imageSnap(upstream.URL, code), provider.SubmitInput{
-				Task: provider.TaskRef{ID: 1, UserID: tc.user}, Input: tc.input,
+				Task: provider.TaskRef{ID: 1, UserID: tc.user}, Input: withImageInput(tc.input),
 			})
 			var pe *provider.Error
 			if !errors.As(err, &pe) || pe.Class != provider.ClassTerminal {
@@ -387,4 +396,16 @@ func TestExecutorFileRefBoundaries(t *testing.T) {
 	if hits.Load() != 0 {
 		t.Fatalf("文件引用不合规的请求不应发到上游，实际 %d 次", hits.Load())
 	}
+}
+
+// withImageInput 给文件引用用例补上图生所需的提示词与生成方式（素材数组保持原样）。
+func withImageInput(in map[string]any) map[string]any {
+	out := map[string]any{"prompt": "x"}
+	for k, v := range in {
+		out[k] = v
+	}
+	if _, ok := out["images"]; ok {
+		out["op"] = "i2i"
+	}
+	return out
 }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import type { ConfigIssue } from "@/api/admin-ai/type";
-import type { InputSchema } from "@/api/model/type";
+import type { Capabilities, GenerationOp, ParamField, RefKind, RefSpec } from "@/api/model/type";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
@@ -13,12 +13,27 @@ import {
 import { ToggleChip } from "@/components/admin-ui/toggle-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { checkDeadline, readModelString, withModelField } from "@/utils/admin/model-body";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  checkDeadline,
+  readModelKind,
+  readModelString,
+  withModelField,
+} from "@/utils/admin/model-body";
+import { defaultCapabilities } from "@/utils/admin/model-template";
 
-import { MODEL_TEMPLATES } from "../templates";
+import {
+  AddParamRow,
+  ContextEditor,
+  LIMITS,
+  OPS_OF_KIND,
+  OpsEditor,
+  paramSetOps,
+  ParamRowEditor,
+  RefCardEditor,
+} from "./capability-editors";
 import { JsonFieldEditor } from "./json-field-editor";
 import { issueFor } from "./model-fields";
-import { SchemaFieldEditor } from "./schema-field-editor";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
 
@@ -30,9 +45,25 @@ const DEADLINES: Array<[string, string]> = [
   ["60m", "60 分钟"],
 ];
 
+const REF_OFF: RefSpec = { on: false, max: 0, max_mb: 0 };
+
+/** 读正文里的 capabilities；缺失的部分补成空值，表单可以直接渲染 */
+function readCaps(body: Record<string, unknown>): Capabilities {
+  const raw = body.capabilities;
+  const caps = (
+    raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+  ) as Partial<Capabilities>;
+  return {
+    ...caps,
+    refs: { image: REF_OFF, video: REF_OFF, audio: REF_OFF, ...caps.refs },
+    prompt: caps.prompt ?? { max_length: 0 },
+  };
+}
+
 /**
- * 能力与参数页签：任务超时、参考素材与生成参数（input_schema 的图形化配置 + JSON）、固定参数（params）。
- * 右侧的模拟节点随 input_schema 实时变化。
+ * 能力与参数页签：任务超时，以及模型能力 capabilities 的结构化表单——生成方式、上下文（文本）、
+ * 参考素材、提示词上限、生成参数（每个参数一行）、固定系统提示（文本）；另有固定参数（params）。
+ * 所有控件都读写正文里的 capabilities，「用 JSON 编辑」折叠区和它是同一份数据。右侧的模拟节点随它实时变化。
  * @param epoch 正文被整体替换的计数，变化时 JSON 编辑框重新挂载
  */
 export function ModelParamsForm({
@@ -46,28 +77,30 @@ export function ModelParamsForm({
   epoch: number;
   onChange: (mutate: BodyMutator) => void;
 }) {
-  const [schemaNonce, setSchemaNonce] = useState(0);
+  const [capsNonce, setCapsNonce] = useState(0);
   const deadline = readModelString(body, "deadline");
   const custom = !!deadline && !DEADLINES.some(([value]) => value === deadline);
   const deadlineError = deadline ? checkDeadline(deadline) : null;
+  const kind = readModelKind(body);
+  const caps = readCaps(body);
+  const params = caps.params ?? {};
+  const isMedia = kind === "video" || kind === "image";
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
-  const schema = (
-    body.input_schema && typeof body.input_schema === "object" && !Array.isArray(body.input_schema)
-      ? body.input_schema
-      : {}
-  ) as InputSchema;
-  /** 图形化改了 schema 之后，让 JSON 编辑框重新挂载显示最新内容 */
-  const setSchema = (next: InputSchema) => {
-    setField("input_schema", next);
-    setSchemaNonce((value) => value + 1);
+  /** 图形化改了 capabilities：写回正文，并让 JSON 编辑框重新挂载显示最新内容 */
+  const setCaps = (next: Capabilities) => {
+    setField("capabilities", next);
+    setCapsNonce((value) => value + 1);
   };
-  const insertTemplate = (id: "text" | "video") => {
-    const template = MODEL_TEMPLATES.find((item) => item.id === id);
-    if (!template) return;
-    setField("input_schema", structuredClone(template.body.input_schema));
-    setSchemaNonce((value) => value + 1);
-  };
+  const patch = (partial: Partial<Capabilities>) => setCaps({ ...caps, ...partial });
+  const setRef = (refKind: RefKind, value: RefSpec) =>
+    patch({ refs: { ...caps.refs, [refKind]: value } });
+  const setParams = (next: Record<string, ParamField>) => patch({ params: next });
+  const refKinds: RefKind[] = kind === "video" ? ["image", "audio", "video"] : ["image"];
+  const promptIssue = issueFor(issues, "capabilities.prompt");
+  const promptOut =
+    caps.prompt.max_length < LIMITS.promptLength[0] ||
+    caps.prompt.max_length > LIMITS.promptLength[1];
 
   return (
     <>
@@ -103,53 +136,155 @@ export function ModelParamsForm({
         </FormField>
       </FormSection>
 
+      {OPS_OF_KIND[kind] && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>生成方式</FormSectionTitle>
+            <FormSectionDescription>
+              用户在画布节点上可以切换的方式，至少保留一种。
+            </FormSectionDescription>
+          </FormSectionHeader>
+          <OpsEditor
+            kind={kind}
+            ops={(caps.ops ?? []) as GenerationOp[]}
+            onChange={(ops) => patch({ ops })}
+          />
+          {issueFor(issues, "capabilities.ops") && (
+            <p className="text-destructive mt-2 text-xs">{issueFor(issues, "capabilities.ops")}</p>
+          )}
+        </FormSection>
+      )}
+
+      {kind === "text" && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>上下文能力</FormSectionTitle>
+            <FormSectionDescription>
+              超出允许范围时标红；最大输出会作为每次请求的 max_tokens。
+            </FormSectionDescription>
+          </FormSectionHeader>
+          <ContextEditor value={caps.context} onChange={(context) => patch({ context })} />
+          {issueFor(issues, "capabilities.context") && (
+            <p className="text-destructive mt-2 text-xs">
+              {issueFor(issues, "capabilities.context")}
+            </p>
+          )}
+        </FormSection>
+      )}
+
+      {isMedia && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>参考素材</FormSectionTitle>
+            <FormSectionDescription>
+              用户可以连到这个节点上的素材；关闭的类型即使生成方式允许也不接收。
+            </FormSectionDescription>
+          </FormSectionHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {refKinds.map((refKind) => (
+              <RefCardEditor
+                key={refKind}
+                kind={refKind}
+                value={caps.refs[refKind]}
+                onChange={(value) => setRef(refKind, value)}
+              />
+            ))}
+          </div>
+          {(["refs", ...refKinds.map((k) => `refs.${k}`)] as const).map((path) => {
+            const message = issueFor(issues, `capabilities.${path}`);
+            return message ? (
+              <p key={path} className="text-destructive mt-2 text-xs">
+                {message}
+              </p>
+            ) : null;
+          })}
+        </FormSection>
+      )}
+
       <FormSection>
         <FormSectionHeader>
-          <FormSectionTitle>参考素材</FormSectionTitle>
-          <FormSectionDescription>用户可以连到这个节点上的素材。</FormSectionDescription>
+          <FormSectionTitle>提示词</FormSectionTitle>
         </FormSectionHeader>
-        <SchemaFieldEditor schema={schema} media onChange={setSchema} />
+        <FormField
+          size="default"
+          label="字数上限"
+          htmlFor="model-prompt-length"
+          error={promptIssue}
+          hint={`画布输入框右下角显示 0 / 上限；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`}
+        >
+          <Input
+            id="model-prompt-length"
+            type="number"
+            className="w-36 tabular-nums"
+            aria-invalid={promptOut}
+            value={caps.prompt.max_length || ""}
+            onChange={(event) =>
+              patch({ prompt: { max_length: Math.trunc(Number(event.target.value)) || 0 } })
+            }
+          />
+        </FormField>
       </FormSection>
 
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>生成参数</FormSectionTitle>
           <FormSectionDescription>
-            每个参数会作为选项出现在画布节点里，书写顺序就是显示顺序；右边的节点会立即变化。
+            每个参数会作为选项出现在画布节点里，书写顺序就是显示顺序；参数名会作为任务输入的键传给插件，
+            要和插件约定的名字对应。
           </FormSectionDescription>
         </FormSectionHeader>
-        <SchemaFieldEditor schema={schema} media={false} onChange={setSchema} />
-        <details className="group mt-3 rounded-lg border" open={!!issueFor(issues, "input_schema")}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
-            <ChevronRight className="size-4 transition group-open:rotate-90" />
-            用 JSON 编辑全部字段
-            <span className="text-muted-foreground text-xs font-normal">
-              增删字段、改选项、改端口
-            </span>
-          </summary>
-          <div className="border-t p-3">
-            <JsonFieldEditor
-              key={`schema-${epoch}-${schemaNonce}`}
-              id="model-input-schema"
-              label="input_schema"
-              value={body.input_schema}
-              issue={issueFor(issues, "input_schema")}
-              rows={14}
-              actions={
-                <>
-                  <Button size="xs" variant="ghost" onClick={() => insertTemplate("text")}>
-                    插入文本模板
-                  </Button>
-                  <Button size="xs" variant="ghost" onClick={() => insertTemplate("video")}>
-                    插入视频模板
-                  </Button>
-                </>
-              }
-              onValid={(value) => setField("input_schema", value)}
+        <div id="model-capabilities-params" className="space-y-3">
+          {Object.keys(params).length === 0 && (
+            <p className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs">
+              {kind === "text" ? "文本模型默认没有生成参数。" : "还没有生成参数。"}
+            </p>
+          )}
+          {Object.entries(params).map(([name, field], index, all) => (
+            <ParamRowEditor
+              key={name}
+              name={name}
+              field={field}
+              first={index === 0}
+              last={index === all.length - 1}
+              error={issueFor(issues, `capabilities.params.${name}`)}
+              onChange={(next) => setParams(paramSetOps.patch(params, name, next))}
+              onMove={(direction) => setParams(paramSetOps.move(params, name, direction))}
+              onRemove={() => setParams(paramSetOps.remove(params, name))}
             />
-          </div>
-        </details>
+          ))}
+          <AddParamRow
+            existing={Object.keys(params)}
+            onAdd={(name, field) => setParams(paramSetOps.add(params, name, field))}
+          />
+          {issueFor(issues, "capabilities.params") && (
+            <p className="text-destructive text-xs">{issueFor(issues, "capabilities.params")}</p>
+          )}
+        </div>
       </FormSection>
+
+      {kind === "text" && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>固定系统提示</FormSectionTitle>
+            <FormSectionDescription>
+              每次请求都会带上，用户看不到，也不会下发给画布。
+            </FormSectionDescription>
+          </FormSectionHeader>
+          <Textarea
+            id="model-system"
+            rows={4}
+            aria-label="固定系统提示"
+            placeholder="例如：你是一名资深分镜师，回答使用中文。"
+            value={caps.system ?? ""}
+            onChange={(event) => patch({ system: event.target.value || undefined })}
+          />
+          {issueFor(issues, "capabilities.system") && (
+            <p className="text-destructive mt-2 text-xs">
+              {issueFor(issues, "capabilities.system")}
+            </p>
+          )}
+        </FormSection>
+      )}
 
       <FormSection>
         <FormSectionHeader>
@@ -167,6 +302,35 @@ export function ModelParamsForm({
           rows={5}
           onValid={(value) => setField("params", value)}
         />
+        <details className="group mt-4 rounded-lg border" open={!!issueFor(issues, "capabilities")}>
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
+            <ChevronRight className="size-4 transition group-open:rotate-90" />
+            用 JSON 编辑全部能力
+            <span className="text-muted-foreground text-xs font-normal">
+              capabilities，和上面的表单是同一份数据
+            </span>
+          </summary>
+          <div className="border-t p-3">
+            <JsonFieldEditor
+              key={`capabilities-${epoch}-${capsNonce}`}
+              id="model-capabilities"
+              label="capabilities"
+              value={body.capabilities}
+              issue={issueFor(issues, "capabilities")}
+              rows={16}
+              actions={
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setCaps(defaultCapabilities(kind))}
+                >
+                  恢复{kind ? "该种类的" : ""}默认能力
+                </Button>
+              }
+              onValid={(value) => setField("capabilities", value)}
+            />
+          </div>
+        </details>
       </FormSection>
     </>
   );

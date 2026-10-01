@@ -4,34 +4,44 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/rand/v2"
 	"strconv"
 
+	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 )
 
-// Create 提交生成任务：冻结快照 → 校验输入与素材 → 单个事务内冻结积分并插入 pending 任务。
-// idempotencyKey 非空时同一 (用户, key) 只会创建一个任务，重复提交返回已存在的任务且不再冻结积分。
-// 返回的任务处于 pending，由 worker 异步提交给上游，接口本身不依赖上游响应速度。kind 支持 video / image / audio / text。
-func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idempotencyKey string, req *model.CreateGenerationTaskReq) (*model.GenerationTaskView, error) {
-	// 1. 校验幂等键长度：超过列宽会在插入时才失败，提前按参数错误返回
-	if len(idempotencyKey) > maxIdempotencyKeyLen {
+// Create 提交生成任务：冻结快照 → 校验输入与素材 → 按定价算出每个任务的积分 → 按节点顺序逐个创建任务。
+// 选了生成数量 N（fanout 参数）时，一次请求拆成 N 个独立任务，第 i 个任务绑定 node_ids[i]；
+// 每个任务各自一个事务、各自冻结，某个失败（积分不足、并发已满……）只让这个节点得到错误，不回滚已创建的任务。
+// 请求级错误（参数不合法、模型不可用、输入校验失败）整体返回 error，一个任务也不创建。
+// idempotencyKey 非空时，第 i 个任务用 key（i=0）或 key#i 去重：重复提交返回已创建的任务，失败的节点会重新尝试。
+func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idempotencyKey string, req *model.CreateGenerationTaskReq) (*model.CreateGenerationTaskResp, error) {
+	// 1. 节点列表与幂等键长度：超过列宽会在插入时才失败，提前按参数错误返回
+	nodes := req.NodeIDs
+	if len(nodes) == 0 {
+		nodes = []string{req.NodeID}
+	}
+	if len(idempotencyKey) > maxIdempotencyKeyLen-len("#9") {
 		return nil, errcode.ErrInvalidParams.WithMsg("Idempotency-Key 过长")
 	}
 
-	// 2. 幂等快速路径：同一个 key 已经创建过任务，直接返回它，不再做任何校验和冻结
+	// 2. 幂等快速路径：每个节点都已经有任务时直接返回，不再做任何校验和冻结
 	//    （即使模型此后被下线，重复请求也应得到第一次的结果）
-	existing, err := s.findIdempotent(ctx, s.repo, userID, idempotencyKey)
+	existing, err := s.findIdempotentAll(ctx, userID, idempotencyKey, len(nodes))
 	if err != nil {
 		return nil, err
 	}
-	if existing != nil {
-		return taskView(existing), nil
+	if allFound(existing) {
+		return taskItems(nodes, existing, nil), nil
 	}
 
 	// 3. 冻结模型快照（模型 revision + 渠道配置 + 插件版本）：任务此后只按快照执行，运营改配置不影响进行中的任务
@@ -40,14 +50,72 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 		return nil, err
 	}
 
-	// 4. 按 input_schema 校验并规范化输入，再校验媒体字段引用的素材都属于当前用户
+	// 4. 按 capabilities 校验并规范化输入，再校验参考素材都属于当前用户
 	input, err := s.prepareInput(ctx, userID, snap, req.Input)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. 组装任务：积分取模型配置（负数按 0 处理，防止配置错误变成“倒贴积分”）
-	task := &model.GenerationTask{UserID: userID, NodeID: req.NodeID, IdempotencyKey: idempotencyKey, Credits: max(snap.Model.Credits, 0)}
+	// 5. 生成数量必须与节点数一致；计价（每个任务的积分）在拆分前算，生成数量参数本身不交给插件
+	caps := snap.Model.Capabilities
+	n := modelcfg.FanoutCount(caps, input)
+	if n != len(nodes) {
+		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("node_ids 的数量（%d）必须等于生成数量（%d）", len(nodes), n))
+	}
+	one := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(input, caps.System)), 0)
+	if name := modelcfg.FanoutParam(caps); name != "" {
+		delete(input, name)
+	}
+
+	// 6. 按节点顺序逐个创建
+	errs, err := s.createAll(ctx, userID, idempotencyKey, nodes, existing, func() *model.GenerationTask {
+		return &model.GenerationTask{UserID: userID, Credits: one}
+	}, req, snap, input, n)
+	if err != nil {
+		return nil, err
+	}
+	return taskItems(nodes, existing, errs), nil
+}
+
+// createAll 按节点顺序逐个创建任务，结果写回 existing：已存在的原样保留，其余各自冻结。
+// 业务错误（积分不足、并发已满……）只落在这个节点上；基础设施故障（数据库等）不再继续创建：
+// 一个任务都还没有时整体返回错误，否则剩下的节点按内部错误返回。
+func (s *GenerationTaskService) createAll(ctx context.Context, userID uint64, key string, nodes []string, existing []*model.GenerationTask,
+	newTask func() *model.GenerationTask, req *model.CreateGenerationTaskReq, snap *provider.Snapshot, input map[string]any, n int) ([]error, error) {
+	errs := make([]error, len(nodes))
+	for i, nodeID := range nodes {
+		if existing[i] != nil {
+			continue
+		}
+		task := newTask()
+		task.NodeID, task.IdempotencyKey = nodeID, idemKeyAt(key, i)
+		existing[i], errs[i] = s.createOne(ctx, task, req, snap, taskInput(input, snap.Model.Capabilities, n))
+		var biz *errcode.Error
+		if errs[i] == nil || errors.As(errs[i], &biz) {
+			continue
+		}
+		if !anyFound(existing) {
+			return nil, errs[i]
+		}
+		for j := i + 1; j < len(nodes); j++ {
+			errs[j] = errs[i]
+		}
+		break
+	}
+	return errs, nil
+}
+
+func anyFound(tasks []*model.GenerationTask) bool {
+	for _, t := range tasks {
+		if t != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// createOne 创建一个任务：组装 → 单个事务冻结积分并插入 → 唤醒 worker 并推送。命中幂等键时返回已存在的任务。
+func (s *GenerationTaskService) createOne(ctx context.Context, task *model.GenerationTask, req *model.CreateGenerationTaskReq, snap *provider.Snapshot, input map[string]any) (*model.GenerationTask, error) {
 	if req.CanvasID > 0 {
 		canvasID := uint64(req.CanvasID)
 		task.CanvasProjectID = &canvasID
@@ -55,20 +123,79 @@ func (s *GenerationTaskService) Create(ctx context.Context, userID uint64, idemp
 	if err := s.fillTask(task, snap, input); err != nil {
 		return nil, err
 	}
-
-	// 6. 单个事务冻结积分并插入任务；并发的同 key 请求先提交时返回它的任务
-	existing, err = s.insertAndFreeze(ctx, task)
-	if err != nil {
-		return nil, err
+	existing, err := s.insertAndFreeze(ctx, task)
+	if err != nil || existing != nil {
+		return existing, err
 	}
-	if existing != nil {
-		return taskView(existing), nil
-	}
-
-	// 7. 事务提交之后才唤醒 worker 和推送，避免对方读到还没提交的数据
+	// 事务提交之后才唤醒 worker 和推送，避免对方读到还没提交的数据
 	s.Kick()
 	s.publish(ctx, task)
-	return taskView(task), nil
+	return task, nil
+}
+
+// taskInput 返回单个任务的输入。拆成多个任务时，每个任务带自己的随机种子（模型自己有 seed 参数时尊重用户的取值），
+// 否则 N 个任务可能出一模一样的结果；插件决定怎么把 seed 交给上游。
+func taskInput(input map[string]any, caps modelcfg.Capabilities, n int) map[string]any {
+	out := make(map[string]any, len(input)+1)
+	for k, v := range input {
+		out[k] = v
+	}
+	if _, hasSeed := caps.Params.Get("seed"); n > 1 && !hasSeed {
+		out["seed"] = float64(rand.Int32N(1<<31-1) + 1) //nolint:gosec // 生成结果的随机种子，不涉及安全
+	}
+	return out
+}
+
+// idemKeyAt 是第 i 个任务的幂等键：第一个沿用原 key，其余追加 #i；key 为空时都为空（不去重）。
+func idemKeyAt(key string, i int) string {
+	if key == "" || i == 0 {
+		return key
+	}
+	return key + "#" + strconv.Itoa(i)
+}
+
+// findIdempotentAll 按每个节点的幂等键查已存在的任务；key 为空时全是 nil。
+func (s *GenerationTaskService) findIdempotentAll(ctx context.Context, userID uint64, key string, n int) ([]*model.GenerationTask, error) {
+	out := make([]*model.GenerationTask, n)
+	for i := range out {
+		t, err := s.findIdempotent(ctx, s.repo, userID, idemKeyAt(key, i))
+		if err != nil {
+			return nil, err
+		}
+		out[i] = t
+	}
+	return out, nil
+}
+
+func allFound(tasks []*model.GenerationTask) bool {
+	for _, t := range tasks {
+		if t == nil {
+			return false
+		}
+	}
+	return len(tasks) > 0
+}
+
+// taskItems 按节点顺序组装响应：有任务给任务，否则给这个节点的错误。
+// 业务错误（errcode）原样带出 HTTP 状态与错误码，前端可以继续按状态码给文案；其它错误记日志后按内部错误返回。
+func taskItems(nodes []string, tasks []*model.GenerationTask, errs []error) *model.CreateGenerationTaskResp {
+	items := make([]model.CreateTaskItem, len(nodes))
+	for i, nodeID := range nodes {
+		items[i].NodeID = nodeID
+		if tasks[i] != nil {
+			items[i].Task = taskView(tasks[i])
+			continue
+		}
+		var e *errcode.Error
+		if errs == nil || !errors.As(errs[i], &e) {
+			if errs != nil {
+				logger.Error("创建生成任务失败", zap.String("node_id", nodeID), zap.Error(errs[i]))
+			}
+			e = errcode.ErrInternal
+		}
+		items[i].Error = &model.TaskItemError{Status: e.HTTPStatus(), Code: e.Code, Message: e.Msg}
+	}
+	return &model.CreateGenerationTaskResp{Items: items}
 }
 
 // SubmitTest 创建运营试跑任务（管理端 test-run 用）：is_test=true，不冻结也不扣积分，
@@ -133,7 +260,7 @@ func (s *GenerationTaskService) snapshotFor(ctx context.Context, req *model.Crea
 // fillTask 把快照与规范化输入填进任务行：种类 / 模型 / 渠道取快照；状态 pending、version 1；
 // next_poll_at = 现在，让 worker 立即领取；deadline 取模型配置，缺省 30 分钟。
 func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provider.Snapshot, input map[string]any) error {
-	inputJSON, err := json.Marshal(s.storedInput(snap.Model.InputSchema, input))
+	inputJSON, err := json.Marshal(s.storedInput(input))
 	if err != nil {
 		return err
 	}
@@ -210,24 +337,31 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 	return existing, nil
 }
 
-// prepareInput 校验并规范化输入，并确认媒体字段引用的素材都属于该用户。
+// prepareInput 校验并规范化输入，补上宿主注入的文本参数，并确认参考素材都属于该用户、种类与大小合规。
 // 字段级错误统一拼进 ErrTaskInput 的文案，返回 400。
 func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64, snap *provider.Snapshot, raw map[string]any) (map[string]any, error) {
-	// 1. 按 input_schema 校验（必填、枚举、长度、范围）并补默认值
-	input, fieldErrs := s.validateInput(snap.Model.InputSchema, raw)
+	// 1. 按模型能力校验（提示词、生成方式、生成参数、素材数量）并补默认值
+	caps := snap.Model.Capabilities
+	input, fieldErrs := s.validateInput(snap.Model.Kind, caps, raw)
 	if len(fieldErrs) > 0 {
 		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + joinFieldErrors(fieldErrs))
 	}
 
-	// 2. 逐个校验媒体字段的素材：不存在 / 不属于自己统一按“素材不存在”处理，避免暴露别人的素材；
-	//    素材种类还必须与字段类型一致（image 字段不能填视频素材）
-	var assetErrs []modelcfg.FieldError
-	for _, name := range s.mediaFields(snap.Model.InputSchema) {
-		v, ok := input[name]
-		if !ok || v == nil {
-			continue // 可选的媒体字段没传
+	// 2. 文本模型：固定系统提示与最大输出由配置决定，用户的输入改不了
+	if snap.Model.Kind == modelcfg.KindText {
+		if caps.System != "" {
+			input["system"] = caps.System
 		}
-		fe, err := s.checkAsset(ctx, userID, snap.Model.InputSchema, name, v)
+		if caps.Context != nil {
+			input["max_tokens"] = caps.Context.Output
+		}
+	}
+
+	// 3. 逐个校验参考素材：不存在 / 不属于自己统一按“素材不存在”处理，避免暴露别人的素材；
+	//    素材种类必须与数组一致（images 里不能放视频），单个大小不能超过 refs.<种类>.max_mb
+	var assetErrs []modelcfg.FieldError
+	for _, ref := range modelcfg.MediaRefs(input) {
+		fe, err := s.checkAsset(ctx, userID, caps, ref)
 		if err != nil {
 			return nil, err
 		}
@@ -241,36 +375,42 @@ func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64,
 	return input, nil
 }
 
-// storedInput 返回落库用的输入：媒体字段的素材 id 存成十进制字符串。
+// storedInput 返回落库用的输入：参考素材数组里的素材 id 存成十进制字符串。
 // 素材 id 存成 JSON 数字，worker 读出来会变成 float64，超过 2^53 就会丢精度；字符串没有这个问题。
-func (s *GenerationTaskService) storedInput(schema modelcfg.InputSchema, input map[string]any) map[string]any {
+func (s *GenerationTaskService) storedInput(input map[string]any) map[string]any {
 	out := make(map[string]any, len(input))
 	for k, v := range input {
 		out[k] = v
 	}
-	for _, name := range s.mediaFields(schema) {
-		if id, ok := toUint64(out[name]); ok {
-			out[name] = strconv.FormatUint(id, 10)
+	for _, m := range modelcfg.MediaKinds {
+		if _, ok := input[m.Key]; !ok {
+			continue
 		}
+		var ids []string
+		for _, r := range modelcfg.MediaRefs(input) {
+			if r.Key == m.Key {
+				ids = append(ids, strconv.FormatUint(r.ID, 10))
+			}
+		}
+		out[m.Key] = ids
 	}
 	return out
 }
 
-// checkAsset 校验一个媒体字段引用的素材：格式错误 / 不存在 / 种类不符返回字段级错误；素材存储故障返回 error。
-func (s *GenerationTaskService) checkAsset(ctx context.Context, userID uint64, schema modelcfg.InputSchema, name string, v any) (*modelcfg.FieldError, error) {
-	assetID, ok := toUint64(v)
-	if !ok {
-		return &modelcfg.FieldError{Field: name, Message: "素材 id 格式错误"}, nil
-	}
-	asset, err := s.assets.Get(ctx, userID, assetID)
+// checkAsset 校验一个参考素材：不存在 / 种类不符 / 超过大小上限返回字段级错误；素材存储故障返回 error。
+func (s *GenerationTaskService) checkAsset(ctx context.Context, userID uint64, caps modelcfg.Capabilities, ref modelcfg.MediaRef) (*modelcfg.FieldError, error) {
+	asset, err := s.assets.Get(ctx, userID, ref.ID)
 	if errors.Is(err, provider.ErrAssetNotFound) {
-		return &modelcfg.FieldError{Field: name, Message: "素材不存在"}, nil
+		return &modelcfg.FieldError{Field: ref.Key, Message: "素材不存在"}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if field, ok := schema.Get(name); ok && asset.Kind != field.Type {
-		return &modelcfg.FieldError{Field: name, Message: "素材类型与字段不匹配"}, nil
+	if asset.Kind != ref.Kind {
+		return &modelcfg.FieldError{Field: ref.Key, Message: "素材类型不匹配"}, nil
+	}
+	if mb := caps.Refs.Of(ref.Kind).MaxMB; mb > 0 && asset.ByteSize > int64(mb)<<20 {
+		return &modelcfg.FieldError{Field: ref.Key, Message: fmt.Sprintf("单个素材不能超过 %d MB", mb)}, nil
 	}
 	return nil, nil
 }

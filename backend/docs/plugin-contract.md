@@ -59,7 +59,7 @@ meta: {
 {
   "task":    { "id": 123, "providerTaskId": "", "state": null },   // state：插件上次返回的私有状态；providerTaskId 提交前为空
   "model":   { "key": "kling-i2v", "kind": "video", "upstreamModel": "kling-v2-master", "params": { } },
-  "input":   { "prompt": "...", "image": "input:image", "duration": 5 },  // 已按 input_schema 校验规范化；媒体字段是文件引用字符串 "input:<字段名>"
+  "input":   { "prompt": "...", "op": "i2v", "images": ["input:images.0", "input:images.1"], "duration": 5 },  // 已按模型 capabilities 校验规范化；键是 prompt、op、运营起的生成参数名，以及参考素材数组 images / videos / audios，数组每项是文件引用字符串 "input:<数组名>.<下标>"。文本模型另有 system（固定系统提示）与 max_tokens（最大输出）
   "channel": { "baseUrl": "https://...", "settings": { "region": "cn" } },
   "prepared": null,                      // 仅 buildSubmitRequest：准备阶段的结果
   "credentials": { "apiKey": "..." },    // 仅当 meta.auth.type == "custom" 且渠道开启 allow_credentials；其余情况没有这个字段
@@ -81,19 +81,19 @@ meta: {
   "headers": { "X-Foo": "bar" },
   "json": { ... },                       // 与 form / multipart 三选一，都没有表示无请求体
   "form": { "k": "v" },                  // application/x-www-form-urlencoded
-  "multipart": { "fields": { "k": "v" }, "parts": [ { "name": "file", "fileRef": "input:image", "filename": "a.png" } ] },
+  "multipart": { "fields": { "k": "v" }, "parts": [ { "name": "file", "fileRef": "input:images.0", "filename": "a.png" } ] },
   "responseType": "json",                // json（默认）/ text / binary
   "timeout": 30,                         // 秒，默认 30，上限 120
   "auth": { "type": "query", "name": "apiKey" }   // 可选：只为这一次请求换一种注入方式（bearer / header(需 name) / query(需 name) / none），Key 仍由宿主注入
 }
 ```
 
-**文件引用**：`json` / `form` / `multipart.fields` 的任意位置可以放 `{ "__fileRef": "input:image", "as": "url" }`，宿主替换成：
+**文件引用**：`json` / `form` / `multipart.fields` 的任意位置可以放 `{ "__fileRef": "input:images.0", "as": "url" }`，宿主替换成：
 - `as: "url"`：自有存储的签名 URL（字符串）；
 - `as: "base64"`：文件内容的标准 base64（字符串）；
 - `as: "dataUrl"`：`data:<mime>;base64,<...>`。
 
-`multipart.parts[].fileRef` 是文件引用（字符串 `"input:<字段名>"`），宿主流式上传文件内容；`filename` 可选。`base64` / `dataUrl` 会把文件读进内存，受 `media_inline_max_bytes`（默认 10MB）限制。引用必须指向 `ctx.input` 里的媒体字段；宿主校验素材归属当前任务用户。
+`multipart.parts[].fileRef` 是文件引用（字符串 `"input:<数组名>.<下标>"`，如 `input:images.0`），宿主流式上传文件内容；`filename` 可选。`base64` / `dataUrl` 会把文件读进内存，受 `media_inline_max_bytes`（默认 10MB）限制。引用必须指向 `ctx.input` 里已填写的参考素材；宿主校验素材归属当前任务用户。
 
 **宿主对请求描述的校验**（任一不通过就是 `terminal` + 插件级失败，不发请求）：
 - `method` 合法；`path`/`url` 二选一；`path` 以 `/` 开头、不以 `//` 开头、不含 `..` 段、拼出来的主机必须仍是 `base_url` 的主机与协议；
@@ -134,7 +134,7 @@ meta: {
 | `classifyError(ctx, resp)` | ctx，非 2xx 响应 | `{ class, code?, message? }` 或 null；可选 |
 | `buildCheckRequest(ctx)` | ctx | 请求描述（任意 2xx 算连通）；可选 |
 | `buildImportRequest(ctx, args)` | ctx，导入参数 | 请求描述；可选 |
-| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数 | 模型草稿数组 `[{ upstreamModel, kind, label, params?, inputSchema }]`；可选 |
+| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数 | 模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
 
 **提交流程**：`buildPrepareRequests`（若有且 `ctx.prepared` 还没有）→ 宿主依次执行 → `parsePrepareResponses` → 持久化 prepared → `buildSubmitRequest` → 执行 → `parseSubmitResponse`。准备请求与提交请求走同样的校验、鉴权注入、SSRF、限流。
 
@@ -151,7 +151,8 @@ meta: {
   "progress": 40,                                   // 可选，0–100
   "outputs": [                                      // succeeded 时必填且非空
     { "type": "url",  "url": "https://...", "media_type": "video", "mime": "video/mp4" },
-    { "type": "text", "text": "..." },              // 文本正文，≤256KB
+    { "type": "text", "text": "...",                // 文本正文，≤256KB
+      "usage": { "input_tokens": 120, "output_tokens": 800 } },   // 可选：实际 Token 用量。按 Token 计费的模型据此结算（扣 min(实际, 冻结)），不填按冻结额扣
     { "type": "asset" }                             // 二进制响应已由宿主落库
   ],
   "error": { "class": "moderation", "code": "...", "message": "..." },   // failed 时必填；class 只能是 retryable / terminal / moderation / provider_balance
@@ -161,6 +162,22 @@ meta: {
 ```
 
 宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https 且主机在 `allowedHosts` 或渠道 `base_url` 的主机上；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
+
+**导入草稿的参数预填建议（`paramHints`，可选）**：模型能力由运营在后台配置，插件不声明；但导入时插件可以告诉平台“这个模型的某个生成参数建议配成什么”，平台在导入那一刻按种类套默认能力模板后，用它覆盖**模板里同名参数**的取值设置。之后运营可以随意修改，后端校验与下单都不读它。
+
+```jsonc
+"paramHints": {
+  "resolution":     { "options": ["2K", "4K"], "default": "2K" },   // enum：可选值、默认值
+  "duration":       { "min": 4, "max": 15, "step": 1, "default": 5 }, // number：最小 / 最大 / 步长 / 默认
+  "generate_audio": { "default": false },                            // boolean：默认值
+  "aspect_ratio":   { "open": false },                               // 任意类型：是否开放给用户
+  "count":          { "remove": true }                               // 任意类型：模型没有这一项，去掉
+}
+```
+
+- 键是模板里的参数名（视频：`aspect_ratio / resolution / duration / generate_audio / count`；图片：`aspect_ratio / resolution / count`）；对不上的键被忽略，导入时提示运营。不能新增模板里没有的参数，也不能改 `spec`（规格价格维度）、`fanout`（生成数量）。
+- 宿主只校验格式：参数名是小写字母 / 数字 / 下划线；`options` 最多 20 个、每个是非空字符串或数字；`default` 是字符串、数字或布尔；`min / max / step` 是 0 – 3600 的整数。不合规时整次导入按插件故障失败。
+- 超出平台固定范围的值不会被自动修正，编辑器里照常标红，运营改完才能发布。
 
 ## 7. `utils`（宿主注入的同步函数）
 

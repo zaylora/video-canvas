@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { parseJsonText, toJsonText } from "@/utils/admin/json";
 
 /**
- * 表单里 params / input_schema 的 JSON 编辑框：只写入合法的 JSON。
+ * 表单里 params / capabilities 的 JSON 编辑框：只写入合法的 JSON。
  * 编辑中的文本先放本地 state，解析成功才通过 onValid 写回正文（键顺序由 JSON.parse 保留）；
  * 解析失败时正文保持上一个合法值，框下提示行列。
  * 外部整体替换内容（切换模型、插入模板）时，调用方用 key 让它重新挂载。

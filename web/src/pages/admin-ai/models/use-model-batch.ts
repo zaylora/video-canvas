@@ -3,11 +3,12 @@ import { useState } from "react";
 import { getModelDetail, publishModel, setModelEnabled, updateModelDraft } from "@/api/admin-ai";
 import type { ConfigListItem } from "@/api/admin-ai/type";
 import { errorMessage } from "@/utils/admin/errors";
-import { withModelChannel, withModelField } from "@/utils/admin/model-body";
+import { withDefaultPrice, withModelChannel, withModelField } from "@/utils/admin/model-body";
 
 /** 批量修改要改的字段：值为 undefined 表示不改 */
 export type BatchPatch = {
-  credits?: number;
+  /** 统一默认价格（按次 / 按秒的默认价；Token 计费的模型跳过） */
+  price?: number;
   deadline?: string;
   channel?: string;
 };
@@ -91,7 +92,10 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
       const source = detail.draft?.body_json ?? detail.published?.body_json;
       body = source && typeof source === "object" ? { ...(source as object) } : null;
       if (!body) return "读不到配置正文";
-      if (patch.credits !== undefined) body = withModelField(body, "credits", patch.credits);
+      if (patch.price !== undefined) {
+        body = withDefaultPrice(body, patch.price);
+        if (!body) return "按 Token 计费，没有统一价格，已跳过";
+      }
       if (body && patch.deadline !== undefined)
         body = withModelField(body, "deadline", patch.deadline);
       if (body && patch.channel !== undefined) body = withModelChannel(body, patch.channel);

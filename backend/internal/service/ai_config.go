@@ -198,6 +198,8 @@ type ValidateResult struct {
 type ConfigListItem struct {
 	Key                 string    `json:"key"`
 	Kind                string    `json:"kind"`
+	Vendor              string    `json:"vendor"`  // 厂商 slug，取值规则同 label；没有为空串
+	Tags                []string  `json:"tags"`    // 展示标签，取值规则同 label；没有为 []
 	Label               string    `json:"label"`   // 展示名：取已发布版本的 label，没发布过取最新草稿的
 	Channel             string    `json:"channel"` // 绑定的渠道 key（channels[0].channel），同样先看已发布版本；正文里没写为空串
 	Enabled             bool      `json:"enabled"`
@@ -232,6 +234,8 @@ type aiConfigMeta struct {
 	Key      string `json:"key"`
 	Kind     string `json:"kind"`
 	Label    string `json:"label"`
+	Vendor   string `json:"vendor"`
+	Tags     []any  `json:"tags"` // 宽松解码：草稿里写错类型不能让整条列表项丢掉 label
 	Enabled  bool   `json:"enabled"`
 	Sort     int    `json:"sort"`
 	Channels []struct {

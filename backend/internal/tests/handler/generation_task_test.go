@@ -234,8 +234,11 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 		registry: &fakeGenTaskRegistry{
 			snap: &provider.Snapshot{
 				Model: provider.ModelSnapshot{
-					Key: "m1", Kind: model.KindVideo, Credits: 10,
-					InputSchema: modelcfg.InputSchema{{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Required: true}}},
+					Key: "m1", Kind: model.KindVideo,
+					Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}, Params: modelcfg.ParamSet{
+						{Name: "count", ParamField: modelcfg.ParamField{Type: modelcfg.ParamEnum, Label: "生成数量", Open: true, Options: []any{1.0, 2.0, 3.0}, Default: 1.0, Fanout: true}},
+					}},
+					Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 10},
 				},
 				Channel: provider.ChannelSnapshot{Key: "ch1", PluginKey: "demo"},
 				Plugin:  provider.PluginSnapshot{Key: "demo", Version: "1.0.0"},
@@ -248,13 +251,12 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 		Broadcaster: ws.NopBroadcaster{},
 		Config:      config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50},
 	},
-		service.WithInputValidator(func(_ modelcfg.InputSchema, in map[string]any) (map[string]any, []modelcfg.FieldError) {
+		service.WithInputValidator(func(_ string, _ modelcfg.Capabilities, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 			if s, _ := in["prompt"].(string); s == "" {
 				return nil, []modelcfg.FieldError{{Field: "prompt", Message: "必填"}}
 			}
 			return in, nil
 		}),
-		service.WithMediaFieldNames(func(modelcfg.InputSchema) []string { return nil }),
 	)
 	h := NewGenerationTaskHandler(env.svc)
 
@@ -319,11 +321,8 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		{"请求体不是 JSON 返回 400 + 10001", `not json`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 		{"生成参数不合法返回 400 + 40006", `{"kind":"video","model_id":"m1","input":{}}`, nil, nil, http.StatusBadRequest, errcode.ErrTaskInput.Code},
 		{"模型不可用返回 400 + 40003", genTaskValidBody, nil, func(e *genTaskEnv) { e.registry.err = provider.ErrModelUnavailable }, http.StatusBadRequest, errcode.ErrModelUnavailable.Code},
-		{"积分不足返回 402 + 40001", genTaskValidBody, nil, func(e *genTaskEnv) { e.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 5} }, http.StatusPaymentRequired, errcode.ErrInsufficientCredits.Code},
-		{"进行中任务达上限返回 429 + 40002", genTaskValidBody, nil, func(e *genTaskEnv) {
-			e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
-			e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskPending})
-		}, http.StatusTooManyRequests, errcode.ErrTooManyTasks.Code},
+		{"node_ids 数量与生成数量不一致返回 400 + 10001", `{"kind":"video","model_id":"m1","node_ids":["a","b"],"input":{"prompt":"x"}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
+		{"node_ids 超过 8 个返回 400 + 10001", `{"kind":"video","model_id":"m1","node_ids":["1","2","3","4","5","6","7","8","9"],"input":{"prompt":"x"}}`, nil, nil, http.StatusBadRequest, errcode.ErrInvalidParams.Code},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,7 +337,7 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 			if tt.wantCode != 0 {
 				return
 			}
-			data := resp["data"].(map[string]any)
+			data := genTaskItem(t, resp, 0)["task"].(map[string]any)
 			if data["status"] != "pending" || data["model_id"] != "m1" || data["node_id"] != "n1" || data["canvas_id"] != idcodec.Encode(3) {
 				t.Fatalf("任务快照不对：%v", data)
 			}
@@ -356,11 +355,78 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		if status != http.StatusAccepted {
 			t.Fatalf("重复提交也应是 202：%d", status)
 		}
-		if first["data"].(map[string]any)["id"] != second["data"].(map[string]any)["id"] {
+		if genTaskItem(t, first, 0)["task"].(map[string]any)["id"] != genTaskItem(t, second, 0)["task"].(map[string]any)["id"] {
 			t.Fatal("应返回同一个任务")
 		}
 		if env.repo.credits[1].Frozen != 10 || len(env.repo.tasks) != 1 {
 			t.Fatalf("只应创建一个任务、冻结一次：%+v", env.repo.credits[1])
+		}
+	})
+
+	t.Run("节点级错误：202 + 该节点的 error（积分不足 402 / 并发已满 429）", func(t *testing.T) {
+		for _, c := range []struct {
+			name   string
+			setup  func(e *genTaskEnv)
+			status int
+			code   int
+		}{
+			{"积分不足", func(e *genTaskEnv) { e.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 5} }, http.StatusPaymentRequired, errcode.ErrInsufficientCredits.Code},
+			{"并发已满", func(e *genTaskEnv) {
+				e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
+				e.repo.add(model.GenerationTask{UserID: 1, Status: model.TaskPending})
+			}, http.StatusTooManyRequests, errcode.ErrTooManyTasks.Code},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				env := newGenTaskEnv(t)
+				c.setup(env)
+				status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", genTaskValidBody, nil)
+				item := genTaskItem(t, resp, 0)
+				e, _ := item["error"].(map[string]any)
+				if status != http.StatusAccepted || item["node_id"] != "n1" || item["task"] != nil || e == nil ||
+					e["status"] != float64(c.status) || e["code"] != float64(c.code) || e["message"] == "" {
+					t.Fatalf("实际 %d / %v", status, resp)
+				}
+			})
+		}
+	})
+
+	t.Run("生成 3 个、余额只够 2 个：前 2 个节点成功，第 3 个节点积分不足", func(t *testing.T) {
+		env := newGenTaskEnv(t)
+		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 25}
+		env.registry.snap.Model.Capabilities.Params[0].Options = []any{1.0, 2.0, 3.0}
+		body := `{"kind":"video","model_id":"m1","node_ids":["a","b","c"],"input":{"prompt":"猫","count":3}}`
+		status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "multi"})
+		if status != http.StatusAccepted {
+			t.Fatalf("应是 202：%d %v", status, resp)
+		}
+		for i, node := range []string{"a", "b"} {
+			if it := genTaskItem(t, resp, i); it["node_id"] != node || it["task"].(map[string]any)["node_id"] != node {
+				t.Fatalf("第 %d 项应是节点 %s 的任务：%v", i, node, it)
+			}
+		}
+		if e, _ := genTaskItem(t, resp, 2)["error"].(map[string]any); e == nil || e["code"] != float64(errcode.ErrInsufficientCredits.Code) {
+			t.Fatalf("第 3 项应是积分不足：%v", resp)
+		}
+		if env.repo.credits[1].Frozen != 20 || len(env.repo.tasks) != 2 {
+			t.Fatalf("应建 2 个任务、各冻结 10：%+v %d", env.repo.credits[1], len(env.repo.tasks))
+		}
+		for _, task := range env.repo.tasks {
+			var in map[string]any
+			_ = json.Unmarshal(task.InputJSON, &in)
+			if _, ok := in["count"]; ok || in["seed"] == nil {
+				t.Fatalf("任务输入不应带生成数量，且应带随机种子：%v", in)
+			}
+		}
+
+		// 充值、腾出并发名额后重试同一个 key：已创建的原样返回，失败的节点重新尝试
+		env.repo.credits[1].Balance = 100
+		env.repo.tasks[genTaskTaskID(t, resp, 1)].Status = model.TaskSucceeded
+		_, again := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "multi"})
+		if genTaskItem(t, again, 0)["task"].(map[string]any)["id"] != genTaskItem(t, resp, 0)["task"].(map[string]any)["id"] {
+			t.Fatal("重试时第 1 个任务应原样返回")
+		}
+		if genTaskItem(t, again, 2)["task"] == nil || len(env.repo.tasks) != 3 {
+			t.Fatalf("重试时第 3 个节点应创建成功：%v", again)
 		}
 	})
 
@@ -371,6 +437,23 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 			t.Fatalf("实际 %d / %v", status, resp)
 		}
 	})
+}
+
+// genTaskTaskID 取提交响应第 i 项里任务的 id。
+func genTaskTaskID(t *testing.T, resp map[string]any, i int) uint64 {
+	t.Helper()
+	return uint64(genTaskItem(t, resp, i)["task"].(map[string]any)["id"].(float64))
+}
+
+// genTaskItem 取提交响应 data.items 的第 i 项。
+func genTaskItem(t *testing.T, resp map[string]any, i int) map[string]any {
+	t.Helper()
+	data, _ := resp["data"].(map[string]any)
+	items, _ := data["items"].([]any)
+	if i >= len(items) {
+		t.Fatalf("响应里没有第 %d 项：%v", i, resp)
+	}
+	return items[i].(map[string]any)
 }
 
 func TestGenerationTaskHandler_Get(t *testing.T) {

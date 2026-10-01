@@ -20,7 +20,7 @@ import (
 // aiRedactMask 是凭证明文在输出里的替换文本。
 const aiRedactMask = "***"
 
-// DryRun 用模型草稿（没有草稿则用已发布版本）+ 渠道当前配置 + 渠道固定的插件版本组装快照，按 input_schema 校验示例输入，
+// DryRun 用模型草稿（没有草稿则用已发布版本）+ 渠道当前配置 + 渠道固定的插件版本组装快照，按模型能力校验示例输入，
 // 交给宿主渲染请求但不发送，返回脱敏后的渲染结果（插件返回的请求描述与宿主注入鉴权后的最终请求）。
 func (s *AIConfigService) DryRun(ctx context.Context, modelKey string, input map[string]any) (any, error) {
 	// 1. 依赖检查：宿主适配器在接线时注入
@@ -161,7 +161,7 @@ func aiNormalizeTrialInput(snap *provider.Snapshot, input map[string]any) (map[s
 	if input == nil {
 		input = map[string]any{}
 	}
-	normalized, ferrs := modelcfg.ValidateInput(snap.Model.InputSchema, input)
+	normalized, ferrs := modelcfg.ValidateInput(snap.Model.Kind, snap.Model.Capabilities, input)
 	if len(ferrs) > 0 {
 		return nil, errcode.ErrTaskInput.WithMsg("示例输入不合法：" + joinFieldErrors(ferrs))
 	}

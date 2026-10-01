@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   checkDeadline,
+  describeDefaultPrice,
   draftToModelBody,
   normalizeDraft,
   readModelBool,
@@ -10,6 +11,7 @@ import {
   readModelNumber,
   readModelString,
   suggestModelKey,
+  withDefaultPrice,
   withModelChannel,
   withModelField,
   withModelUpstream,
@@ -22,7 +24,7 @@ const body = {
   credits: 10,
   channels: [{ channel: "old", upstream_model: "v1" }],
   params: { b: 1, a: 2 },
-  input_schema: { prompt: {}, image: {}, duration: {} },
+  capabilities: { ops: [], refs: {}, prompt: {}, params: { b: {}, a: {} } },
 };
 
 describe("读取正文字段", () => {
@@ -51,7 +53,7 @@ describe("withModelChannel", () => {
     expect(next).not.toBeNull();
     expect(Object.keys(next!)).toEqual(Object.keys(body));
     expect(next!.channels).toEqual([{ channel: "new", upstream_model: "v1" }]);
-    expect(Object.keys(next!.input_schema as object)).toEqual(["prompt", "image", "duration"]);
+    expect(Object.keys(next!.capabilities as object)).toEqual(["ops", "refs", "prompt", "params"]);
   });
 
   test("没有 channels 时追加一项，正文不是对象时返回 null", () => {
@@ -106,13 +108,20 @@ describe("suggestModelKey", () => {
 
 describe("normalizeDraft / draftToModelBody", () => {
   test("同时认 snake_case 与 camelCase；缺上游模型名的丢掉", () => {
-    expect(normalizeDraft({ upstreamModel: "m1", kind: "text", inputSchema: { p: {} } })).toEqual({
+    expect(
+      normalizeDraft({
+        upstreamModel: "m1",
+        kind: "image",
+        paramHints: { resolution: { options: ["2K"] } },
+      }),
+    ).toEqual({
       upstream_model: "m1",
-      kind: "text",
+      kind: "image",
       label: "",
       params: null,
-      input_schema: { p: {} },
+      param_hints: { resolution: { options: ["2K"] } },
     });
+    expect(normalizeDraft({ upstream_model: "m2", param_hints: "坏数据" })?.param_hints).toBeNull();
     expect(normalizeDraft({ kind: "text" })).toBeNull();
     expect(normalizeDraft(null)).toBeNull();
   });
@@ -130,8 +139,17 @@ describe("normalizeDraft / draftToModelBody", () => {
       deadline: "30m",
       channels: [{ channel: "ch", upstream_model: "Kling V2" }],
       params: {},
-      input_schema: {},
     });
+    // 能力按种类预填（草稿不带）
+    expect(Object.keys((video.capabilities as { params: object }).params)).toEqual([
+      "aspect_ratio",
+      "resolution",
+      "duration",
+      "generate_audio",
+      "count",
+    ]);
+    expect((video.pricing as { billing: string }).billing).toBe("per_second");
+    expect("credits" in video).toBe(false);
     const text = draftToModelBody(
       { upstream_model: "gpt", kind: "text", label: "GPT", params: { a: 1 } },
       "ch",
@@ -152,5 +170,34 @@ describe("checkDeadline", () => {
     expect(checkDeadline("")).toContain("请填写");
     for (const bad of ["30", "m", "30 分钟", "-5m", "1d"])
       expect(checkDeadline(bad)).toContain("格式");
+  });
+});
+
+describe("默认价格读写", () => {
+  test("按次改 unit、按秒改 per_second，其余定价与键顺序不动；Token 计费不适用", () => {
+    const perCall = { key: "a", pricing: { billing: "per_call", unit: 4, tiers: [] } };
+    expect(withDefaultPrice(perCall, 9)?.pricing).toEqual({
+      billing: "per_call",
+      unit: 9,
+      tiers: [],
+    });
+    const perSecond = { pricing: { billing: "per_second", per_second: 2 } };
+    expect(withDefaultPrice(perSecond, 3)?.pricing).toEqual({
+      billing: "per_second",
+      per_second: 3,
+    });
+    expect(
+      withDefaultPrice({ pricing: { billing: "token", token: { in: 1, out: 1 } } }, 3),
+    ).toBeNull();
+    expect(withDefaultPrice({}, 3)).toBeNull();
+  });
+
+  test("describeDefaultPrice", () => {
+    expect(describeDefaultPrice({ billing: "per_call", unit: 4 })).toBe("4 积分 / 次");
+    expect(describeDefaultPrice({ billing: "per_second", per_second: 2 })).toBe("2 积分 / 秒");
+    expect(describeDefaultPrice({ billing: "token", token: { in: 2, out: 8 } })).toContain(
+      "输入 2",
+    );
+    expect(describeDefaultPrice(null)).toBe("-");
   });
 });

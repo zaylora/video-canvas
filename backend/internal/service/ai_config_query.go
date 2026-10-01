@@ -39,7 +39,10 @@ func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, er
 				no := sum.publishedNo
 				item.PublishedRevisionNo = &no
 			}
-			item.Label, item.Channel = sum.label, sum.channel
+			item.Label, item.Channel, item.Vendor, item.Tags = sum.label, sum.channel, sum.vendor, sum.tags
+		}
+		if item.Tags == nil {
+			item.Tags = []string{}
 		}
 		items = append(items, item)
 	}
@@ -50,6 +53,8 @@ func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, er
 type aiHeadSummary struct {
 	draftNo, publishedNo int
 	label, channel       string
+	vendor               string
+	tags                 []string
 }
 
 // aiGroupHeads 把 revision 头信息（含正文）按 key 归并。label / channel 优先取已发布版本的正文
@@ -73,24 +78,31 @@ func aiGroupHeads(heads []model.AIConfigRevision) map[string]*aiHeadSummary {
 		case model.RevisionPublished:
 			sum.publishedNo = h.RevisionNo
 			publishedSeen[h.TargetKey] = true
-			sum.label, sum.channel = aiLabelAndChannel(h.BodyJSON)
+			sum.setDisplay(h.BodyJSON)
 		}
 	}
 	for key, body := range draftBody {
 		if !publishedSeen[key] {
-			out[key].label, out[key].channel = aiLabelAndChannel(body)
+			out[key].setDisplay(body)
 		}
 	}
 	return out
 }
 
-// aiLabelAndChannel 从配置正文里宽松取出 label 与 channels[0].channel；正文不是合法 JSON 对象时返回空串。
-func aiLabelAndChannel(body model.JSONText) (label, channel string) {
+// setDisplay 从配置正文里宽松取出列表要展示的 label / channels[0].channel / vendor / tags；
+// 正文不是合法 JSON 对象时全部置空。tags 里的非字符串元素丢弃。
+func (s *aiHeadSummary) setDisplay(body model.JSONText) {
 	var m aiConfigMeta
 	if err := json.Unmarshal(body, &m); err != nil {
-		return "", ""
+		s.label, s.channel, s.vendor, s.tags = "", "", "", nil
+		return
 	}
-	return m.Label, m.channel()
+	s.label, s.channel, s.vendor, s.tags = m.Label, m.channel(), m.Vendor, nil
+	for _, t := range m.Tags {
+		if str, ok := t.(string); ok {
+			s.tags = append(s.tags, str)
+		}
+	}
 }
 
 // GetConfig 返回模型详情：最新草稿与当前已发布版本的完整正文。模型不存在返回 ErrConfigNotFound。

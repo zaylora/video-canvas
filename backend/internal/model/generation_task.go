@@ -57,7 +57,8 @@ type GenerationTask struct {
 	OutputJSON      datatypes.JSON `gorm:"type:jsonb" json:"-"`                                                                                                                // []TaskOutput
 	ErrorCode       string         `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                      // 统一错误码
 	ErrorMessage    string         `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                  // 给用户看的文案
-	Credits         int            `gorm:"not null;default:0" json:"credits"`                                                                                                  // 冻结的积分快照
+	Credits         int            `gorm:"not null;default:0" json:"credits"`                                                                                                  // 冻结的积分（下单时按定价算出）
+	ChargedCredits  *int           `json:"charged_credits"`                                                                                                                    // 成功时实际扣的积分；Token 计费按用量结算，可能小于冻结额，未结算为空
 	Version         int64          `gorm:"not null;default:1" json:"version"`                                                                                                  // 每次状态变化 +1
 	IdempotencyKey  string         `gorm:"size:128;not null;default:'';uniqueIndex:uk_task_user_idem,priority:2,where:idempotency_key <> ''" json:"-"`                         // 幂等键（Idempotency-Key 请求头），同一用户下唯一
 	ConfigSnapshot  datatypes.JSON `gorm:"type:jsonb;not null" json:"-"`                                                                                                       // 创建时 model revision + 渠道配置 + 插件版本哈希的快照（provider.Snapshot，不含 Key）
@@ -91,21 +92,23 @@ type TaskOutput struct {
 
 // GenerationTaskView 是返回给前端的任务快照（HTTP 响应与 WebSocket 推送共用），不含快照、输入等内部字段。
 type GenerationTaskView struct {
-	ID              uint64       `json:"id"`            // 任务 ID
-	CanvasProjectID *idcodec.ID  `json:"canvas_id"`     // 所属画布（十六进制串）
-	NodeID          string       `json:"node_id"`       // 前端节点 id
-	Kind            string       `json:"kind"`          // video / image / audio / text
-	ModelID         string       `json:"model_id"`      // 模型 key
-	Status          string       `json:"status"`        // 任务状态
-	Progress        *int         `json:"progress"`      // 0–100，平台不提供时为空
-	Outputs         []TaskOutput `json:"outputs"`       // 已转存的产物列表
-	ErrorCode       string       `json:"error_code"`    // 统一错误码
-	ErrorMessage    string       `json:"error_message"` // 给用户看的文案
-	Credits         int          `json:"credits"`       // 冻结的积分
-	Version         int64        `json:"version"`       // 状态版本号，前端据此丢弃过期推送
-	DeadlineAt      time.Time    `json:"deadline_at"`   // 截止时间，超过则 expired
-	CreatedAt       time.Time    `json:"created_at"`    // 创建时间
-	FinishedAt      *time.Time   `json:"finished_at"`   // 进入终态的时间
+	ID              uint64       `json:"id"`              // 任务 ID
+	CanvasProjectID *idcodec.ID  `json:"canvas_id"`       // 所属画布（十六进制串）
+	NodeID          string       `json:"node_id"`         // 前端节点 id
+	Kind            string       `json:"kind"`            // video / image / audio / text
+	ModelID         string       `json:"model_id"`        // 模型 key
+	Status          string       `json:"status"`          // 任务状态
+	Progress        *int         `json:"progress"`        // 0–100，平台不提供时为空
+	Outputs         []TaskOutput `json:"outputs"`         // 已转存的产物列表
+	ErrorCode       string       `json:"error_code"`      // 统一错误码
+	ErrorMessage    string       `json:"error_message"`   // 给用户看的文案
+	Credits         int          `json:"credits"`         // 冻结的积分
+	ChargedCredits  *int         `json:"charged_credits"` // 实际扣的积分，未结算为 null
+	Version         int64        `json:"version"`         // 状态版本号，前端据此丢弃过期推送
+	DeadlineAt      time.Time    `json:"deadline_at"`     // 截止时间，超过则 expired
+	CreatedAt       time.Time    `json:"created_at"`      // 创建时间
+	SubmittedAt     *time.Time   `json:"submitted_at"`    // 提交给平台（开始调用上游）的时间；还在排队时为空
+	FinishedAt      *time.Time   `json:"finished_at"`     // 进入终态的时间
 }
 
 // CreateGenerationTaskReq 提交任务。Idempotency-Key 走请求头，不在 body 里。
@@ -113,8 +116,28 @@ type CreateGenerationTaskReq struct {
 	Kind     string         `json:"kind" binding:"required,oneof=video image audio text" label:"生成种类"` // video / image / audio / text
 	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
 	CanvasID idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
-	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id
-	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 input_schema 校验
+	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
+	NodeIDs  []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点
+	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
+}
+
+// CreateGenerationTaskResp 是提交的结果：按节点顺序逐项给出创建好的任务，或这个节点的错误。
+type CreateGenerationTaskResp struct {
+	Items []CreateTaskItem `json:"items"`
+}
+
+// CreateTaskItem 是一个节点的提交结果，task 与 error 二选一。
+type CreateTaskItem struct {
+	NodeID string              `json:"node_id"`
+	Task   *GenerationTaskView `json:"task,omitempty"`
+	Error  *TaskItemError      `json:"error,omitempty"`
+}
+
+// TaskItemError 是单个节点提交失败的原因，含义与整体请求的 HTTP 错误一致（402 积分不足、429 并发已满……）。
+type TaskItemError struct {
+	Status  int    `json:"status"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // ListGenerationTaskReq 对账查询：ids（逗号分隔，最多 100 个）与 status=active 二选一。

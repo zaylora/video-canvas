@@ -1,5 +1,10 @@
 import type { ConfigRevision } from "@/api/admin-ai/type";
-import { readModelChannel, readModelNumber, readModelString } from "@/utils/admin/model-body";
+import {
+  describeDefaultPrice,
+  readModelChannel,
+  readModelPricing,
+  readModelString,
+} from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
 import { formatTime } from "@/utils/time";
 
@@ -8,7 +13,7 @@ import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 /** 确认框里的摘要：渠道、插件版本、上游模型、积分 */
 function Summary({ body, info }: { body: unknown; info: ModelChannelInfo }) {
   const { upstreamModel } = readModelChannel(body);
-  const credits = readModelNumber(body, "credits");
+  const pricing = readModelPricing(body);
   return (
     <dl
       className="bg-muted grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg px-3 py-2 text-xs"
@@ -38,8 +43,11 @@ function Summary({ body, info }: { body: unknown; info: ModelChannelInfo }) {
       </dd>
       <dt className="text-muted-foreground">上游模型</dt>
       <dd className="font-mono">{upstreamModel || "-"}</dd>
-      <dt className="text-muted-foreground">积分</dt>
-      <dd>{credits ?? "-"}</dd>
+      <dt className="text-muted-foreground">默认价格</dt>
+      <dd>
+        {describeDefaultPrice(pricing)}
+        {!!pricing?.tiers?.length && ` · ${pricing.tiers.length} 条规格价格`}
+      </dd>
     </dl>
   );
 }

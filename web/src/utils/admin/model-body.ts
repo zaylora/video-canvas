@@ -1,8 +1,12 @@
 import type { ModelDraft } from "@/api/admin-ai/type";
+import type { Pricing } from "@/api/model/type";
+
+import { defaultCapabilities, defaultPricing } from "./model-template";
+import { applyParamHints, type ParamHints } from "./param-hints";
 
 /**
  * 模型配置正文（admin-ai-api.md「模型配置正文」）的小工具。
- * 编辑器是 JSON 文本、键顺序是刻意保留的（input_schema 的书写顺序就是前端渲染顺序），
+ * 编辑器是 JSON 文本、键顺序是刻意保留的（capabilities.params 的书写顺序就是画布参数面板的渲染顺序），
  * 这里的函数只读或只改个别字段，JSON.parse / stringify 本身保留对象键顺序。
  */
 
@@ -73,34 +77,40 @@ export function normalizeDraft(raw: unknown): ModelDraft | null {
   const upstream = pick<unknown>(raw, "upstream_model", "upstreamModel");
   if (typeof upstream !== "string" || !upstream) return null;
   const params = pick<unknown>(raw, "params", "params");
-  const schema = pick<unknown>(raw, "input_schema", "inputSchema");
+  const hints = pick<unknown>(raw, "param_hints", "paramHints");
   return {
     upstream_model: upstream,
     kind: typeof raw.kind === "string" ? raw.kind : "",
     label: typeof raw.label === "string" ? raw.label : "",
     params: isRecord(params) ? params : null,
-    input_schema: isRecord(schema) ? schema : null,
+    param_hints: isRecord(hints) ? (hints as ParamHints) : null,
   };
 }
 
 /**
  * 导入草稿 → 新建模型编辑器的预填正文。
- * 渠道、上游模型名、kind、label、params、input_schema 取自草稿；积分等留默认值，运营再改。
+ * 渠道、上游模型名、kind、label、params 取自草稿；能力与定价按种类预填默认值，
+ * 再用插件给的参数预填建议（param_hints）覆盖同名参数，运营再改。
  */
 export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<string, unknown> {
   const kind = draft.kind || "video";
+  const hinted = applyParamHints(
+    defaultCapabilities(kind),
+    defaultPricing(kind),
+    draft.param_hints,
+  );
   return {
     key: suggestModelKey(draft.upstream_model),
     kind,
     label: draft.label || draft.upstream_model,
     hint: "",
-    credits: 1,
     deadline: kind === "text" ? "5m" : "30m",
     enabled: false,
     sort: 100,
     channels: [{ channel: channelKey, upstream_model: draft.upstream_model }],
     params: draft.params ?? {},
-    input_schema: draft.input_schema ?? {},
+    capabilities: hinted.capabilities,
+    pricing: hinted.pricing,
   };
 }
 
@@ -145,7 +155,33 @@ export function withModelUpstream(
   return withModelField(body, "channels", channels);
 }
 
-/** 正文里的数字字段（credits / sort）；不是数字返回 null */
+/** 正文里的 pricing；缺失或不是对象返回 null */
+export const readModelPricing = (body: unknown): Pricing | null =>
+  isRecord(body) && isRecord(body.pricing) ? (body.pricing as unknown as Pricing) : null;
+
+/** 默认价格的字段名：按次 unit、按秒 per_second；Token 计费没有单一默认价，返回 null */
+export const defaultPriceField = (pricing: Pricing | null) =>
+  pricing?.billing === "per_second" ? "per_second" : pricing?.billing === "token" ? null : "unit";
+
+/** 默认价格的文案：「10 积分 / 次」「2 积分 / 秒」「输入 2 / 输出 8（积分 / 百万 Token）」 */
+export function describeDefaultPrice(pricing: Pricing | null) {
+  if (!pricing) return "-";
+  if (pricing.billing === "token")
+    return `输入 ${pricing.token?.in ?? 0} / 输出 ${pricing.token?.out ?? 0}（积分 / 百万 Token）`;
+  return pricing.billing === "per_second"
+    ? `${pricing.per_second ?? 0} 积分 / 秒`
+    : `${pricing.unit ?? 0} 积分 / 次`;
+}
+
+/** 把默认价格改成指定值（键顺序不动）；Token 计费或没有 pricing 时返回 null，表示不适用 */
+export function withDefaultPrice(body: unknown, value: number): Record<string, unknown> | null {
+  const pricing = readModelPricing(body);
+  const field = defaultPriceField(pricing);
+  if (!pricing || !field) return null;
+  return withModelField(body, "pricing", { ...pricing, [field]: value });
+}
+
+/** 正文里的数字字段（sort 等）；不是数字返回 null */
 export const readModelNumber = (body: unknown, field: string) =>
   isRecord(body) && typeof body[field] === "number" && Number.isFinite(body[field])
     ? (body[field] as number)
@@ -154,6 +190,18 @@ export const readModelNumber = (body: unknown, field: string) =>
 /** 正文里的字符串字段；缺失返回空串 */
 export const readModelString = (body: unknown, field: string) =>
   isRecord(body) && typeof body[field] === "string" ? (body[field] as string) : "";
+
+/** 正文里的字符串数组字段（tags）；缺失或不是数组返回空数组，非字符串元素丢弃 */
+export const readModelStrings = (body: unknown, field: string): string[] =>
+  isRecord(body) && Array.isArray(body[field])
+    ? body[field].filter((item): item is string => typeof item === "string")
+    : [];
+
+/** 模型描述的字数上限（和后端 maxHintLen 一致） */
+export const MODEL_HINT_MAX = 500;
+/** 展示标签的个数与单个字数上限（和后端 maxTags / maxTagLen 一致） */
+export const MODEL_TAGS_MAX = 5;
+export const MODEL_TAG_MAX_LENGTH = 12;
 
 /** 正文里的布尔字段 */
 export const readModelBool = (body: unknown, field: string) =>

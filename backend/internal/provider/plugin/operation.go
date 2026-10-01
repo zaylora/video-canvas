@@ -49,18 +49,16 @@ func (e *Executor) newOperation(ctx context.Context, rt *provider.ChannelRuntime
 	return &operation{e: e, rt: rt, model: ms, task: task, base: base, hosts: hosts, trace: provider.TraceFrom(ctx)}, nil
 }
 
-// setInput 登记规范化后的输入与其中已填写的媒体字段。
+// setInput 登记规范化后的输入与其中的参考素材：o.media 的键是文件引用名 images.0 / videos.1 …，值是素材 id。
 func (o *operation) setInput(input map[string]any) {
 	o.input = input
 	o.media = map[string]uint64{}
 	if o.model == nil {
 		return
 	}
-	for _, name := range modelcfg.MediaFieldNames(o.model.InputSchema) {
-		// 任务输入是落库 JSON 解码来的，素材 id 是 float64，不能只认 uint64
-		if id, ok := modelcfg.AsAssetID(input[name]); ok {
-			o.media[name] = id
-		}
+	// 任务输入是落库 JSON 解码来的，素材 id 是字符串或 float64，MediaRefs 已兼容
+	for _, r := range modelcfg.MediaRefs(input) {
+		o.media[r.Ref()] = r.ID
 	}
 }
 
@@ -135,7 +133,8 @@ type hookCredentials struct {
 }
 
 // buildCtx 组装钩子 ctx。任务类操作带 task / model / input；Check / Import 只有 channel、credentials、now。
-// 媒体字段换成文件引用字符串 "input:<字段名>"：插件永远看不到 asset id，只能通过文件引用让宿主注入内容。
+// 参考素材数组（images / videos / audios）里的每个 id 换成文件引用字符串 "input:images.0"：
+// 插件永远看不到 asset id，只能通过文件引用让宿主注入内容。
 func (o *operation) buildCtx(ctx context.Context) (*hookCtx, error) {
 	settings := o.rt.Channel.Settings
 	if settings == nil {
@@ -160,10 +159,18 @@ func (o *operation) buildCtx(ctx context.Context) (*hookCtx, error) {
 	hc.Task = &hookTask{ID: o.task.ID, ProviderTaskID: o.task.ProviderTaskID, State: nonEmptyJSON(o.task.State)}
 	in := make(map[string]any, len(o.input))
 	for k, v := range o.input {
-		if _, isMedia := o.media[k]; isMedia {
-			v = fileRefPrefix + k
-		}
 		in[k] = v
+	}
+	refs := map[string][]string{}
+	for _, r := range modelcfg.MediaRefs(o.input) {
+		refs[r.Key] = append(refs[r.Key], fileRefPrefix+r.Ref())
+	}
+	for _, m := range modelcfg.MediaKinds {
+		if list, ok := refs[m.Key]; ok {
+			in[m.Key] = list
+		} else {
+			delete(in, m.Key)
+		}
 	}
 	raw, err := json.Marshal(in)
 	if err != nil {

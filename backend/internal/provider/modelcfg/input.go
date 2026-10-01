@@ -1,5 +1,5 @@
-// 本文件：用户输入校验：按 input_schema 检查并规范化用户提交的字段（文本 / 数字 / 布尔 / 枚举 / 媒体资源），
-// 一次返回全部字段级错误；另提供媒体字段名提取（MediaFieldNames）。
+// 本文件：用户输入校验：按模型能力（capabilities）检查并规范化用户提交的任务输入，一次返回全部字段级错误；
+// 另提供参考素材的提取（MediaRefs）。
 
 package modelcfg
 
@@ -9,106 +9,248 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // maxSafeAssetID 是 float64 能精确表示的最大整数（2^53）；更大的 asset id 必须以字符串或 json.Number 传入。
 const maxSafeAssetID = 1 << 53
 
-// validateInput 按 input_schema 校验并规范化用户输入。
-// 规范化结果只包含 schema 里声明的字段：text -> string，number -> float64，boolean -> bool，
-// enum -> 选项里声明的值（数字选项统一为 float64），媒体 -> uint64（asset id）。
-func validateInput(schema InputSchema, input map[string]any) (map[string]any, []FieldError) {
-	out := make(map[string]any, len(schema))
-	var errs []FieldError
-	for _, e := range schema {
-		label := e.Label
-		if label == "" {
-			label = e.Name
-		}
-		fail := func(msg string) { errs = append(errs, FieldError{Field: e.Name, Message: msg}) }
-
-		raw, present := input[e.Name]
-		if !present || raw == nil || isBlankString(e.Type, raw) {
-			// 没传：先用默认值，再看是否必填
-			if e.Default == nil {
-				if e.Required {
-					fail(label + " 不能为空")
-				}
-				continue
-			}
-			raw = e.Default
-		}
-
-		v, msg := normalizeField(e.InputField, label, raw)
-		if msg != "" {
-			fail(msg)
-			continue
-		}
-		out[e.Name] = v
+// refKindsOfOp 返回生成方式允许引用的素材种类：文生不引用素材；图生只引用图片；全能参考不限类型（以 refs 里开启的为准）。
+func refKindsOfOp(op string) []string {
+	switch op {
+	case OpI2V, OpI2I:
+		return []string{"image"}
+	case OpOmni:
+		return []string{"image", "video", "audio"}
 	}
+	return nil
+}
+
+// validateInput 按能力校验并规范化任务输入。输出只包含这些键：
+//   - prompt：string，必填，不超过 prompt.max_length 个字符；
+//   - op：string，仅 video / image，省略取第一种生成方式；
+//   - 每个生成参数：只接受 open=true 的，其余一律取 default（enum -> 选项里声明的值，数字统一为 float64；number -> float64；boolean -> bool）；
+//   - images / videos / audios：素材 id（uint64）数组，只保留当前生成方式允许、且 refs 里开启的种类，数量不超过 refs.<种类>.max。
+//
+// 未知键忽略。
+func validateInput(kind string, c Capabilities, in map[string]any) (map[string]any, []FieldError) {
+	out := map[string]any{}
+	var errs []FieldError
+
+	errs = append(errs, inputPrompt(c, in, out)...)
+	op, opErrs := inputOp(kind, c, in, out)
+	errs = append(errs, opErrs...)
+	errs = append(errs, inputParams(c, in, out)...)
+	errs = append(errs, inputRefs(c, op, in, out)...)
+
 	if len(errs) > 0 {
 		return nil, errs
 	}
 	return out, nil
 }
 
-// isBlankString 文本 / 媒体字段传了空白字符串等同于没传（前端表单清空文本框时会传 ""）。
-func isBlankString(fieldType string, raw any) bool {
-	if fieldType != FieldText && !isMediaType(fieldType) {
-		return false
+// inputPrompt 校验提示词：必填、不超过字数上限。
+func inputPrompt(c Capabilities, in, out map[string]any) []FieldError {
+	prompt, _ := in["prompt"].(string)
+	switch n := utf8.RuneCountInString(prompt); {
+	case strings.TrimSpace(prompt) == "":
+		return []FieldError{{Field: "prompt", Message: "提示词不能为空"}}
+	case n > c.Prompt.MaxLength:
+		return []FieldError{{Field: "prompt", Message: fmt.Sprintf("提示词不能超过 %d 个字符（当前 %d 个）", c.Prompt.MaxLength, n)}}
 	}
+	out["prompt"] = prompt
+	return nil
+}
+
+// inputOp 校验生成方式（仅 video / image）：省略取第一种；返回最终生效的方式。
+func inputOp(kind string, c Capabilities, in, out map[string]any) (string, []FieldError) {
+	if len(opsOfKind[kind]) == 0 {
+		return "", nil
+	}
+	op := c.firstOp()
+	if raw, ok := in["op"].(string); ok && raw != "" {
+		if !inStrings(c.Ops, raw) {
+			return op, []FieldError{{Field: "op", Message: "生成方式必须是 " + strings.Join(c.Ops, " / ") + " 之一"}}
+		}
+		op = raw
+	}
+	if op != "" {
+		out["op"] = op
+	}
+	return op, nil
+}
+
+// inputParams 校验生成参数：只接受开放的，没传或空白取默认值。
+func inputParams(c Capabilities, in, out map[string]any) []FieldError {
+	var errs []FieldError
+	for _, e := range c.Params {
+		var raw any
+		if e.Open {
+			raw = in[e.Name]
+		}
+		if raw == nil || isBlank(raw) {
+			raw = e.Default
+		}
+		if raw == nil {
+			if e.Type == ParamBoolean {
+				out[e.Name] = false
+			}
+			continue
+		}
+		v, msg := normalizeParam(e.ParamField, raw)
+		if msg != "" {
+			errs = append(errs, FieldError{Field: e.Name, Message: e.label(e.Name) + " " + msg})
+			continue
+		}
+		out[e.Name] = v
+	}
+	return errs
+}
+
+// inputRefs 校验参考素材：按生成方式与 refs 开关过滤，检查数量，图生 / 全能参考要求至少有素材。
+func inputRefs(c Capabilities, op string, in, out map[string]any) []FieldError {
+	var errs []FieldError
+	allowed := refKindsOfOp(op)
+	for _, m := range MediaKinds {
+		spec := c.Refs.Of(m.Kind)
+		if in[m.Key] == nil || !spec.On || !inStrings(allowed, m.Kind) {
+			continue // 当前方式不使用这种素材：忽略
+		}
+		ids, err := refIDs(in[m.Key])
+		switch {
+		case err != "":
+			errs = append(errs, FieldError{Field: m.Key, Message: err})
+		case len(ids) > spec.Max:
+			errs = append(errs, FieldError{Field: m.Key, Message: fmt.Sprintf("最多 %d 个%s素材（当前 %d 个）", spec.Max, kindLabel(m.Kind), len(ids))})
+		case len(ids) > 0:
+			out[m.Key] = ids
+		}
+	}
+	if (op == OpI2V || op == OpI2I) && out[MediaKeyImages] == nil && !hasErr(errs, MediaKeyImages) {
+		errs = append(errs, FieldError{Field: MediaKeyImages, Message: "图生方式需要至少 1 张参考图片"})
+	}
+	if op == OpOmni && !hasAnyMedia(out) && !hasErr(errs, MediaKeyImages, MediaKeyVideos, MediaKeyAudios) {
+		errs = append(errs, FieldError{Field: MediaKeyImages, Message: "全能参考需要至少 1 个参考素材"})
+	}
+	return errs
+}
+
+// refIDs 把一个素材数组规范成 uint64 id 列表；格式不对返回中文错误。
+func refIDs(raw any) ([]uint64, string) {
+	var list []any
+	switch t := raw.(type) {
+	case []any:
+		list = t
+	case []uint64:
+		for _, id := range t {
+			list = append(list, id)
+		}
+	default:
+		return nil, "必须是素材 ID 数组"
+	}
+	ids := make([]uint64, 0, len(list))
+	for _, item := range list {
+		id, ok := asAssetID(item)
+		if !ok {
+			return nil, "包含无效的素材 ID"
+		}
+		ids = append(ids, id)
+	}
+	return ids, ""
+}
+
+func (c Capabilities) firstOp() string {
+	if len(c.Ops) == 0 {
+		return ""
+	}
+	return c.Ops[0]
+}
+
+func (e ParamEntry) label(fallback string) string {
+	if e.Label != "" {
+		return e.Label
+	}
+	return fallback
+}
+
+func kindLabel(kind string) string {
+	switch kind {
+	case "image":
+		return "图片"
+	case "video":
+		return "视频"
+	}
+	return "音频"
+}
+
+func hasErr(errs []FieldError, fields ...string) bool {
+	for _, e := range errs {
+		if inStrings(fields, e.Field) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyMedia(out map[string]any) bool {
+	for _, m := range MediaKinds {
+		if out[m.Key] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// isBlank 空白字符串等同于没传（前端表单清空输入框时会传 ""）。
+func isBlank(raw any) bool {
 	s, ok := raw.(string)
 	return ok && strings.TrimSpace(s) == ""
 }
 
-// normalizeField 校验并规范化单个字段的值，返回中文错误文案（空表示通过）。
-func normalizeField(f InputField, label string, raw any) (any, string) {
+// normalizeParam 校验并规范化一个生成参数的值，返回中文错误后缀（空表示通过）。
+func normalizeParam(f ParamField, raw any) (any, string) {
 	switch f.Type {
-	case FieldText:
-		return normalizeText(f, label, raw)
-	case FieldNumber:
-		return normalizeNumber(f, label, raw)
-	case FieldBoolean:
-		return normalizeBool(label, raw)
-	case FieldEnum:
-		return normalizeEnum(f, label, raw)
-	case FieldImage, FieldVideo, FieldAudio:
-		id, ok := asAssetID(raw)
-		if !ok {
-			return nil, label + " 必须是有效的素材 ID"
+	case ParamEnum:
+		return normalizeEnumParam(f, raw)
+	case ParamNumber:
+		return normalizeNumberParam(f, raw)
+	case ParamBoolean:
+		return normalizeBoolParam(raw)
+	}
+	return nil, "的类型不受支持"
+}
+
+func normalizeEnumParam(f ParamField, raw any) (any, string) {
+	opt, ok := matchOption(f.Options, raw)
+	if !ok {
+		labels := make([]string, 0, len(f.Options))
+		for _, o := range f.Options {
+			labels = append(labels, stringify(o))
 		}
-		return id, ""
+		return nil, "必须是 " + strings.Join(labels, " / ") + " 之一"
 	}
-	return nil, label + " 的类型不受支持"
+	// 数字选项统一成 float64，避免下游（插件的 ctx.input）拿到 int / float64 混杂的类型
+	if n, isNum := toFloat(opt); isNum {
+		return n, ""
+	}
+	return opt, ""
 }
 
-func normalizeText(f InputField, label string, raw any) (any, string) {
-	s, ok := raw.(string)
-	if !ok {
-		return nil, label + " 必须是文本"
-	}
-	if f.MaxLength > 0 && len([]rune(s)) > f.MaxLength {
-		return nil, fmt.Sprintf("%s 不能超过 %d 个字符", label, f.MaxLength)
-	}
-	return s, ""
-}
-
-func normalizeNumber(f InputField, label string, raw any) (any, string) {
+func normalizeNumberParam(f ParamField, raw any) (any, string) {
 	n, ok := asNumber(raw)
-	if !ok {
-		return nil, label + " 必须是数字"
-	}
-	if f.Min != nil && n < *f.Min {
-		return nil, fmt.Sprintf("%s 不能小于 %s", label, stringify(*f.Min))
-	}
-	if f.Max != nil && n > *f.Max {
-		return nil, fmt.Sprintf("%s 不能大于 %s", label, stringify(*f.Max))
+	switch {
+	case !ok || n != math.Trunc(n):
+		return nil, "必须是整数"
+	case f.Min != nil && n < float64(*f.Min):
+		return nil, fmt.Sprintf("不能小于 %d", *f.Min)
+	case f.Max != nil && n > float64(*f.Max):
+		return nil, fmt.Sprintf("不能大于 %d", *f.Max)
 	}
 	return n, ""
 }
 
-// normalizeBool 接受布尔值，以及表单常见的 "true" / "false" 字符串。
-func normalizeBool(label string, raw any) (any, string) {
+// normalizeBoolParam 接受布尔值，以及表单常见的 "true" / "false" 字符串。
+func normalizeBoolParam(raw any) (any, string) {
 	switch t := raw.(type) {
 	case bool:
 		return t, ""
@@ -120,23 +262,7 @@ func normalizeBool(label string, raw any) (any, string) {
 			return false, ""
 		}
 	}
-	return nil, label + " 必须是 true 或 false"
-}
-
-func normalizeEnum(f InputField, label string, raw any) (any, string) {
-	opt, ok := matchOption(f.Options, raw)
-	if !ok {
-		labels := make([]string, 0, len(f.Options))
-		for _, o := range f.Options {
-			labels = append(labels, o.Label)
-		}
-		return nil, fmt.Sprintf("%s 必须是 %s 之一", label, strings.Join(labels, " / "))
-	}
-	// 数字选项统一成 float64，避免下游（插件的 ctx.input）拿到 int / float64 混杂的类型
-	if n, isNum := toFloat(opt.Value); isNum {
-		return n, ""
-	}
-	return opt.Value, ""
+	return nil, "必须是 true 或 false"
 }
 
 // asNumber 接受 float64 / 各种整型 / json.Number，拒绝 NaN、Inf 与字符串。
@@ -146,6 +272,45 @@ func asNumber(raw any) (float64, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// MediaRef 是任务输入里的一个参考素材：Key 是 images / videos / audios，Index 是它在数组里的下标。
+type MediaRef struct {
+	Key   string
+	Kind  string // image / video / audio
+	Index int
+	ID    uint64
+}
+
+// Ref 返回插件里使用的文件引用名，如 "images.0"（完整引用写作 input:images.0）。
+func (r MediaRef) Ref() string { return r.Key + "." + strconv.Itoa(r.Index) }
+
+// mediaRefs 按 images / videos / audios 的顺序提取任务输入里的参考素材。
+// 数组元素可以是 uint64、数字、json.Number 或数字字符串（落库后的任务输入经 JSON 解码，素材 id 是字符串或 float64）；
+// 无效元素跳过。
+func mediaRefs(in map[string]any) []MediaRef {
+	var out []MediaRef
+	for _, m := range MediaKinds {
+		var list []any
+		switch t := in[m.Key].(type) {
+		case []any:
+			list = t
+		case []uint64:
+			for _, id := range t {
+				list = append(list, id)
+			}
+		case []string:
+			for _, id := range t {
+				list = append(list, id)
+			}
+		}
+		for i, item := range list {
+			if id, ok := asAssetID(item); ok {
+				out = append(out, MediaRef{Key: m.Key, Kind: m.Kind, Index: i, ID: id})
+			}
+		}
+	}
+	return out
 }
 
 // asAssetID 把 JSON 数字、float64、json.Number、数字字符串规范成 uint64 素材 id；0 与负数无效。
@@ -199,46 +364,4 @@ func parseNumberString(s string) (float64, bool) {
 		return 0, false
 	}
 	return f, true
-}
-
-// matchOption 在枚举选项里找与 raw 相等的那一项。数字按数值比较（5 与 5.0 相等，"5" 也视为 5），字符串按原文比较。
-func matchOption(options []EnumOption, raw any) (EnumOption, bool) {
-	rawNum, rawIsNum := toFloat(raw)
-	rawStr, rawIsStr := raw.(string)
-	if rawIsStr {
-		if n, ok := parseNumberString(rawStr); ok {
-			rawNum, rawIsNum = n, true
-		}
-	}
-	for _, o := range options {
-		if optNum, ok := toFloat(o.Value); ok {
-			if rawIsNum && optNum == rawNum {
-				return o, true
-			}
-			continue
-		}
-		optStr, ok := o.Value.(string)
-		if !ok {
-			continue
-		}
-		if rawIsStr && optStr == rawStr {
-			return o, true
-		}
-		// 选项写成 "5" 而前端传了数字 5
-		if n, ok := parseNumberString(optStr); ok && rawIsNum && n == rawNum {
-			return o, true
-		}
-	}
-	return EnumOption{}, false
-}
-
-// mediaFieldNames 返回 schema 中所有媒体字段（image / video / audio）的名字，保持书写顺序。
-func mediaFieldNames(schema InputSchema) []string {
-	var out []string
-	for _, e := range schema {
-		if isMediaType(e.Type) {
-			out = append(out, e.Name)
-		}
-	}
-	return out
 }

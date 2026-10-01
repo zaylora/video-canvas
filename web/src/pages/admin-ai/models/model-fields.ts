@@ -11,12 +11,14 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
   label: { tab: "basic", id: "model-label" },
   kind: { tab: "basic", id: "model-kind" },
   hint: { tab: "basic", id: "model-hint" },
+  vendor: { tab: "basic", id: "model-vendor" },
+  tags: { tab: "basic", id: "model-tags" },
   sort: { tab: "basic", id: "model-sort" },
   channels: { tab: "basic", id: "model-channel" },
   deadline: { tab: "params", id: "model-deadline" },
   params: { tab: "params", id: "model-params" },
-  input_schema: { tab: "params", id: "model-input-schema" },
-  credits: { tab: "price", id: "model-credits" },
+  capabilities: { tab: "params", id: "model-capabilities" },
+  pricing: { tab: "price", id: "model-pricing" },
 };
 
 /** 校验问题的路径 → 页签与控件；channels[0].upstream_model 单独映射 */

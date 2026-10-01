@@ -1,6 +1,6 @@
 /**
  * AI 管理接口的类型，以 backend/docs/admin-ai-api.md 为准。
- * 三层对象：插件（JS 文件，版本不可变）→ 渠道（插件版本 + base_url + 加密 Key）→ 模型（渠道 + 上游模型 + input_schema）。
+ * 三层对象：插件（JS 文件，版本不可变）→ 渠道（插件版本 + base_url + 加密 Key）→ 模型（渠道 + 上游模型 + capabilities）。
  */
 
 /** 管理端角色：admin 运营（只管模型），super_admin 运维（能管插件与渠道） */
@@ -206,8 +206,8 @@ export interface ModelDraft {
   label: string;
   /** 固定参数 */
   params?: Record<string, unknown> | null;
-  /** 输入 schema（有序对象） */
-  input_schema?: Record<string, unknown> | null;
+  /** 插件给的生成参数预填建议（参数名 -> 建议），只在导入时预填编辑器 */
+  param_hints?: import("@/utils/admin/param-hints").ParamHints | null;
 }
 
 /** POST /admin/ai/channels/:key/import 的结果 */
@@ -227,6 +227,10 @@ export interface ConfigListItem {
   label?: string;
   /** 模型类型 */
   kind?: string;
+  /** 厂商 slug（对应内置 logo），没有为空串；后端补齐前可能缺失 */
+  vendor?: string;
+  /** 展示标签，没有为空数组；后端补齐前可能缺失 */
+  tags?: string[];
   /** 模型使用的渠道 key（channels[0].channel）；后端补齐前可能缺失，缺失时不显示渠道 */
   channel?: string;
   /** 是否已上架 */

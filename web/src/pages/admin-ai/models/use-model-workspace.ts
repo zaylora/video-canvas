@@ -29,9 +29,9 @@ import { withModelChannel } from "@/utils/admin/model-body";
 import { resolveModelChannel, publishBlockReason } from "@/utils/admin/model-channel";
 import { toast } from "sonner";
 
-import type { InputSchema } from "@/api/model/type";
+import type { Capabilities } from "@/api/model/type";
 import type { ParamAsset } from "@/types";
-import { buildTaskInput } from "@/utils/tasks/input-schema";
+import { buildTaskInput, manualRefs, type RefKey } from "@/utils/tasks/capabilities";
 import { isTerminalStatus } from "@/utils/tasks/status";
 
 import type { DryRunState, ResultNotice, ResultTabId, RunState, TraceState } from "../result-panel";
@@ -124,22 +124,46 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     () => resolveModelChannel(body, catalog.channels, catalog.plugins),
     [body, catalog.channels, catalog.plugins],
   );
-  const inputSchema = (body && isRecord(body.input_schema) ? body.input_schema : undefined) as
-    | InputSchema
+  const capabilities = (body && isRecord(body.capabilities) ? body.capabilities : undefined) as
+    | Capabilities
     | undefined;
   const testInput = useMemo(
-    () => buildTaskInput(inputSchema, testParams),
-    [inputSchema, testParams],
+    () => buildTaskInput(capabilities, testParams),
+    [capabilities, testParams],
   );
-  const setTestParam = useCallback((name: string, value: unknown, asset?: ParamAsset | null) => {
-    setTestParams((prev) => ({ ...prev, [name]: value }));
-    if (asset === null)
-      setTestAssets((prev) => {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      });
-    else if (asset) setTestAssets((prev) => ({ ...prev, [name]: asset }));
+  const setTestParam = useCallback((name: string, value: unknown) => {
+    setTestParams((prev) => {
+      const next = { ...prev };
+      if (value === undefined) delete next[name];
+      else next[name] = value;
+      return next;
+    });
+  }, []);
+  /** 测试节点上手动加一个参考素材（上传的素材 id 存进 params.images / videos / audios） */
+  const addTestRef = useCallback((key: RefKey, assetId: string | number, asset: ParamAsset) => {
+    const id = String(assetId);
+    setTestParams((prev) => {
+      const existing = manualRefs(prev, key).map(String);
+      return { ...prev, [key]: existing.includes(id) ? existing : [...existing, id] };
+    });
+    setTestAssets((prev) => ({ ...prev, [id]: asset }));
+  }, []);
+  const removeTestRef = useCallback((key: RefKey, assetId: string | number) => {
+    const id = String(assetId);
+    setTestParams((prev) => {
+      const rest = manualRefs(prev, key)
+        .map(String)
+        .filter((value) => value !== id);
+      const next = { ...prev };
+      if (rest.length > 0) next[key] = rest;
+      else delete next[key];
+      return next;
+    });
+    setTestAssets((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
   const publishBlock = publishBlockReason(info, catalog.channelsStatus === "ready");
   const working = busy !== null;
@@ -709,7 +733,9 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     dirty,
     parsed,
     body,
-    inputSchema,
+    capabilities,
+    addTestRef,
+    removeTestRef,
     testParams,
     testAssets,
     testInput,

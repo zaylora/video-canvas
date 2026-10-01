@@ -55,8 +55,8 @@ make run
 | DELETE | /api/v1/users/:id | 删除用户（软删除） |
 | POST | /api/v1/auth/register、/api/v1/auth/login | 注册 / 登录 |
 | GET/POST/PUT/DELETE | /api/v1/canvas[/:id] | 画布项目（乐观锁 revision） |
-| GET | /api/v1/models?kind=video | 模型清单（`kind` 取 video / image / audio / text；已发布且启用，含 input_schema，不含渠道与插件细节） |
-| POST | /api/v1/generation-tasks | 提交生成任务，请求头 `Idempotency-Key`，返回 **202** + 任务快照；错误码 40001 积分不足(402)、40002 并发已满(429)、40003 模型不可用、40006 参数不合法 |
+| GET | /api/v1/models?kind=video | 模型清单（`kind` 取 video / image / audio / text；已发布且启用，含 vendor / tags / capabilities，不含渠道与插件细节） |
+| POST | /api/v1/generation-tasks | 提交生成任务，请求头 `Idempotency-Key`；生成数量 N 时传 `node_ids`（N 个节点）拆成 N 个任务，返回 **202** + `{items: [{node_id, task} \| {node_id, error}]}`，节点级错误 40001 积分不足(402)、40002 并发已满(429)；请求级错误 40003 模型不可用、40006 参数不合法 |
 | GET | /api/v1/generation-tasks/:id | 单个任务 |
 | GET | /api/v1/generation-tasks?ids=1,2,3 / ?status=active | 批量对账（≤100）/ 当前用户进行中的任务 |
 | POST | /api/v1/generation-tasks/:id/cancel | 软取消，退回冻结积分 |

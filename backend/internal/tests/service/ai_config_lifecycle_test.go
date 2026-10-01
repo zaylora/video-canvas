@@ -145,7 +145,7 @@ func TestAIConfigService_ListAndGet(t *testing.T) {
 		}
 		// 列表不含正文
 		b, _ := json.Marshal(items)
-		if strings.Contains(string(b), "body_json") || strings.Contains(string(b), "input_schema") {
+		if strings.Contains(string(b), "body_json") || strings.Contains(string(b), "capabilities") {
 			t.Fatalf("列表不应包含正文：%s", b)
 		}
 	})

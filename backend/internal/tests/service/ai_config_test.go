@@ -25,13 +25,26 @@ func aicNewSvc() (*AIConfigService, *aiconfigfake.MemRepo, *aiconfigfake.Invalid
 }
 
 // aicModelBody 生成模型配置正文（video，绑定渠道 channel）。extra 是要追加的 JSON 成员（如 `"bad":true`）。
+// aicWithKind 把 aicModelBody 生成的视频模型正文改成别的种类，能力一并换成该种类合法的最小配置。
+func aicWithKind(body, kind string) string {
+	caps := map[string]string{
+		"text":  `{"prompt":{"max_length":2000},"context":{"window":128000,"output":4096}}`,
+		"image": `{"ops":["t2i"],"prompt":{"max_length":2000}}`,
+		"audio": `{"prompt":{"max_length":2000}}`,
+		"video": `{"ops":["t2v"],"prompt":{"max_length":2000}}`,
+	}[kind]
+	body = strings.Replace(body, `"kind":"video"`, fmt.Sprintf(`"kind":%q`, kind), 1)
+	// 定价沿用按次 5 积分：按次计费对任何种类都合法
+	return strings.Replace(body, `"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}}`, `"capabilities":`+caps, 1)
+}
+
 func aicModelBody(key, channel string, extra string) json.RawMessage {
 	if extra != "" {
 		extra = "," + extra
 	}
-	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"video","label":"模型-%s","hint":"提示","credits":5,"enabled":true,"sort":10,`+
+	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"video","label":"模型-%s","hint":"提示","enabled":true,"sort":10,`+
 		`"channels":[{"channel":%q,"upstream_model":"kling-v2"}],"params":{"instanceType":"default"},`+
-		`"input_schema":{"prompt":{"type":"text","label":"提示词","required":true}}%s}`, key, key, channel, extra))
+		`"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}},"pricing":{"billing":"per_call","unit":5,"cost":{"on":true,"unit":2}}%s}`, key, key, channel, extra))
 }
 
 // aicWantCode 断言错误是指定业务错误码；wantCode=0 表示期望成功。
@@ -152,7 +165,7 @@ func TestAIConfigService_SaveDraft_CrossObjectIssues(t *testing.T) {
 			tt.mutate(repo)
 			body := aicModelBody("m1", "c1", "")
 			if tt.wantMsg == "" { // 用 text 种类去撞只支持 video 的插件
-				body = json.RawMessage(strings.Replace(string(body), `"kind":"video"`, `"kind":"text"`, 1))
+				body = json.RawMessage(aicWithKind(string(body), "text"))
 			}
 			res, err := aicSave(svc, "", true, body)
 			aicWantCode(t, err, 0)
@@ -280,7 +293,7 @@ func TestAIConfigService_Publish(t *testing.T) {
 		}, "m1", errcode.ErrChannelInvalid.Code},
 		{"渠道的插件不支持模型的种类", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
-			body := strings.Replace(string(aicModelBody("m1", "c1", "")), `"kind":"video"`, `"kind":"image"`, 1)
+			body := aicWithKind(string(aicModelBody("m1", "c1", "")), "image")
 			_, _ = aicSave(s, "", true, json.RawMessage(body))
 		}, "m1", errcode.ErrConfigInvalid.Code},
 		{"需要鉴权而渠道 Key 未设置（50015）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {

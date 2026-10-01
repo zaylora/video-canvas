@@ -17,6 +17,8 @@ import { channelMeta } from "@/utils/admin/plugin";
 import { isRunnerDown } from "@/utils/admin/errors";
 import { stashDrafts } from "@/utils/admin/import-draft";
 import { draftToModelBody, normalizeDraft } from "@/utils/admin/model-body";
+import { defaultCapabilities } from "@/utils/admin/model-template";
+import { ignoredHints } from "@/utils/admin/param-hints";
 import {
   initialSettingValues,
   settingFields,
@@ -202,6 +204,21 @@ function ImportBody({
                     <span className="font-mono text-xs">{draft.upstream_model}</span>
                     {draft.kind && <Tag>{draft.kind}</Tag>}
                     <span className="text-muted-foreground truncate text-xs">{draft.label}</span>
+                    {(() => {
+                      const ignored = ignoredHints(
+                        defaultCapabilities(draft.kind || "video"),
+                        draft.param_hints,
+                      );
+                      return ignored.length > 0 ? (
+                        <Tag
+                          tone="warning"
+                          className="ml-auto"
+                          title="插件建议预填的这些参数不在默认模板里，已忽略；需要的话导入后在「能力与参数」里手动添加"
+                        >
+                          忽略了未知参数 {ignored.join("、")}
+                        </Tag>
+                      ) : null;
+                    })()}
                   </label>
                 </li>
               ))}

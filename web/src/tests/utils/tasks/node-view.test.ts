@@ -14,21 +14,37 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
     });
   });
 
-  test("排队中：pending / queued", () => {
-    for (const status of ["pending", "queued"] as const) {
-      expect(
-        deriveVideoNodeView({ status: "running", taskId: "1" }, makeTask({ status }), T0),
-      ).toEqual({ phase: "queued" });
+  test("排队中：只有 pending（还没调用上游，在等执行名额 / 渠道并发）", () => {
+    expect(
+      deriveVideoNodeView({ status: "running", taskId: "1" }, makeTask({ status: "pending" }), T0),
+    ).toEqual({ phase: "queued" });
+  });
+
+  test("生成中：queued 和 running 都算（已经调用上游），平台给进度就带进度", () => {
+    for (const status of ["queued", "running"] as const) {
+      const view = deriveVideoNodeView(
+        { status: "running", taskId: "1" },
+        makeTask({ status, progress: 42, submitted_at: "2026-09-29T10:00:00Z" }),
+        T0 + 65_000,
+      );
+      expect(view).toEqual({ phase: "running", elapsedMs: 65_000, progress: 42 });
     }
   });
 
-  test("生成中：从 created_at 起算耗时，平台给进度就带进度", () => {
-    const view = deriveVideoNodeView(
-      { status: "running", taskId: "1" },
-      makeTask({ status: "running", progress: 42 }),
-      T0 + 65_000,
-    );
-    expect(view).toEqual({ phase: "running", elapsedMs: 65_000, progress: 42 });
+  test("耗时从提交给上游那一刻起算，排队的时间不算；没有提交时间退回创建时间", () => {
+    const task = makeTask({ status: "queued", submitted_at: "2026-09-29T10:00:40Z" });
+    expect(
+      deriveVideoNodeView({ status: "running", taskId: "1" }, task, T0 + 65_000),
+    ).toMatchObject({
+      phase: "running",
+      elapsedMs: 25_000,
+    });
+    const legacy = makeTask({ status: "running", submitted_at: null });
+    expect(
+      deriveVideoNodeView({ status: "running", taskId: "1" }, legacy, T0 + 65_000),
+    ).toMatchObject({
+      elapsedMs: 65_000,
+    });
   });
 
   test("时钟比服务端慢时耗时不会出现负数", () => {

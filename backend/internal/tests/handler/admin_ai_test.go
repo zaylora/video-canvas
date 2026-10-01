@@ -189,12 +189,28 @@ func aicChannelJSON(key, pluginVersion string) map[string]any {
 	}
 }
 
+// aicCapabilities 返回合法的最小模型能力：video / image 有生成方式，text 有上下文与固定系统提示。
+func aicCapabilities(kind string) map[string]any {
+	caps := map[string]any{"prompt": map[string]any{"max_length": 2000}}
+	switch kind {
+	case "video":
+		caps["ops"] = []any{"t2v"}
+	case "image":
+		caps["ops"] = []any{"t2i"}
+	case "text":
+		caps["context"] = map[string]any{"window": 128000, "output": 4096}
+		caps["system"] = "保密的系统提示"
+	}
+	return caps
+}
+
 func aicModelJSON(key, kind, channel string) map[string]any {
 	return map[string]any{
-		"key": key, "kind": kind, "label": "模型-" + key, "hint": "小字", "credits": 5, "enabled": true, "sort": 10,
+		"key": key, "kind": kind, "label": "模型-" + key, "hint": "小字", "enabled": true, "sort": 10,
+		"pricing":      map[string]any{"billing": "per_call", "unit": 5, "cost": map[string]any{"on": true, "unit": 2}},
 		"channels":     []any{map[string]any{"channel": channel, "upstream_model": "kling-v2"}},
 		"params":       map[string]any{"instanceType": "default"},
-		"input_schema": map[string]any{"prompt": map[string]any{"type": "text", "label": "提示词", "required": true}},
+		"capabilities": aicCapabilities(kind),
 	}
 }
 
@@ -234,19 +250,22 @@ func TestAIModelHandler_List(t *testing.T) {
 			t.Fatalf("应返回 1 个模型：%v %s", err, r.Raw)
 		}
 		m := list[0]
-		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["credits"] != float64(5) {
+		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["pricing"].(map[string]any)["unit"] != float64(5) {
 			t.Fatalf("公开字段不符合预期：%v", m)
 		}
-		if _, ok := m["input_schema"].(map[string]any)["prompt"]; !ok {
-			t.Fatalf("应包含 input_schema：%v", m)
+		if caps, _ := m["capabilities"].(map[string]any); caps == nil || caps["prompt"] == nil || caps["ops"] == nil {
+			t.Fatalf("应包含 capabilities：%v", m)
 		}
-		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "kling", "sk-super-secret", "base_url", "upstream"} {
+		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "kling", "sk-super-secret", "base_url", "upstream", "cost", "保密的系统提示"} {
 			if strings.Contains(r.Raw, bad) {
 				t.Fatalf("/models 响应泄露了 %q：%s", bad, r.Raw)
 			}
 		}
-		if len(m) != 6 {
-			t.Fatalf("公开字段应恰好 6 个，实际 %d：%v", len(m), m)
+		if tags, ok := m["tags"].([]any); !ok || len(tags) != 0 {
+			t.Fatalf("没有标签时 tags 应为 []：%v", m["tags"])
+		}
+		if len(m) != 8 {
+			t.Fatalf("公开字段应恰好 8 个（key/kind/label/hint/vendor/tags/capabilities/pricing），实际 %d：%v", len(m), m)
 		}
 	})
 	t.Run("kind=text 合法：文本节点能拿到清单", func(t *testing.T) {
@@ -835,9 +854,33 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		if list[0]["key"] != "m1" || list[0]["label"] != "模型-m1" || list[0]["channel"] != "kling-main" || list[0]["kind"] != "video" {
 			t.Fatalf("列表项字段不符合预期：%v", list[0])
 		}
-		if strings.Contains(r.Raw, "body_json") || strings.Contains(r.Raw, "input_schema") {
+		if strings.Contains(r.Raw, "body_json") || strings.Contains(r.Raw, "capabilities") {
 			t.Fatalf("列表不应包含正文：%s", r.Raw)
 		}
+		if tags, ok := list[0]["tags"].([]any); !ok || len(tags) != 0 || list[0]["vendor"] != "" {
+			t.Fatalf("没有 vendor / tags 时应为 \"\" 与 []：%v", list[0])
+		}
+	})
+	t.Run("列表带 vendor 与 tags", func(t *testing.T) {
+		body := aicModelJSON("m2", "video", "kling-main")
+		body["vendor"], body["tags"] = "kling", []any{"推荐", "带音轨"}
+		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": body}), http.StatusOK, 0)
+		r := env.admin(http.MethodGet, aicBase+"/models", nil)
+		var list []map[string]any
+		if err := json.Unmarshal(r.Data, &list); err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range list {
+			if it["key"] != "m2" {
+				continue
+			}
+			tags, _ := it["tags"].([]any)
+			if it["vendor"] != "kling" || len(tags) != 2 || tags[0] != "推荐" {
+				t.Fatalf("vendor / tags 不符合预期：%v", it)
+			}
+			return
+		}
+		t.Fatalf("列表里没有 m2：%s", r.Raw)
 	})
 }
 
@@ -939,7 +982,7 @@ func TestAdminAIHandler_Schema(t *testing.T) {
 	t.Run("GET /schema/model 返回 JSON Schema（此前恒 400）", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/schema/model", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		if !json.Valid(r.Data) || !strings.Contains(r.Raw, "input_schema") {
+		if !json.Valid(r.Data) || !strings.Contains(r.Raw, "capabilities") {
 			t.Fatalf("应返回 JSON Schema：%s", r.Raw)
 		}
 	})

@@ -10,6 +10,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	. "video-canvas/internal/provider/worker"
 )
 
@@ -280,6 +281,51 @@ func TestWorker_Submit_CanceledDuringSubmitCancelsProviderTask(t *testing.T) {
 // ---------------------------------------------------------------------------
 // 同步：immediate
 // ---------------------------------------------------------------------------
+
+// 文本产物带的 Token 用量跟着 provider_result 落库，转存完成时汇总交给 store.Complete 结算。
+func TestWorker_Submit_ImmediateUsagePassedToComplete(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, func(t *model.GenerationTask) {
+		t.Kind = model.KindText
+		t.ConfigSnapshot = wkSnapshotJSON(model.KindText, nil)
+	})
+	env.exec.submitFn = func(int, provider.SubmitInput) (*provider.SubmitResult, error) {
+		return &provider.SubmitResult{ProviderTaskID: "sync-1", Immediate: &provider.QueryResult{
+			Status: provider.StatusSucceeded,
+			Outputs: []provider.Output{
+				{Type: provider.OutputText, Text: "一", Usage: &modelcfg.Usage{InputTokens: 10, OutputTokens: 20}},
+				{Type: provider.OutputText, Text: "二", Usage: &modelcfg.Usage{InputTokens: 1, OutputTokens: 2}},
+			},
+		}}, nil
+	}
+	env.runOnce(t)
+	env.runOnce(t)
+	if got := env.store.get(1); got.Status != model.TaskSucceeded {
+		t.Fatalf("应成功：%+v", got)
+	}
+	if u := env.store.usageOf(1); u == nil || u.InputTokens != 11 || u.OutputTokens != 22 {
+		t.Fatalf("应汇总用量交给 Complete：%+v", u)
+	}
+}
+
+// 没有任何产物带用量时交给 Complete 的是 nil（由任务服务按冻结额结算）。
+func TestWorker_Submit_NoUsageIsNil(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, func(t *model.GenerationTask) {
+		t.Kind = model.KindText
+		t.ConfigSnapshot = wkSnapshotJSON(model.KindText, nil)
+	})
+	env.exec.submitFn = func(int, provider.SubmitInput) (*provider.SubmitResult, error) {
+		return &provider.SubmitResult{ProviderTaskID: "sync-1", Immediate: &provider.QueryResult{
+			Status: provider.StatusSucceeded, Outputs: []provider.Output{{Type: provider.OutputText, Text: "一"}},
+		}}, nil
+	}
+	env.runOnce(t)
+	env.runOnce(t)
+	if env.store.get(1).Status != model.TaskSucceeded || env.store.usageOf(1) != nil {
+		t.Fatalf("没有用量时应传 nil：%+v", env.store.usageOf(1))
+	}
+}
 
 func TestWorker_Submit_ImmediateSucceeded(t *testing.T) {
 	tests := []struct {

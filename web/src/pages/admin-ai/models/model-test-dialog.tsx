@@ -1,6 +1,6 @@
 import { FlaskConical } from "lucide-react";
 
-import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { readModelKind, readModelNumber, readModelString } from "@/utils/admin/model-body";
+import { readModelKind, readModelPricing, readModelString } from "@/utils/admin/model-body";
 
 import { ResultPanel } from "../result-panel";
 import { TestNode } from "./test-node";
@@ -38,7 +38,11 @@ export function ModelTestDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="flex h-[min(88svh,820px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
         <div className="flex items-start gap-3 border-b px-6 py-4 pr-12">
-          <InitialAvatar name={label || "?"} seed={ws.modelKey} />
+          <VendorAvatar
+            vendor={body ? readModelString(body, "vendor") : ""}
+            name={label || "?"}
+            seed={ws.modelKey}
+          />
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-base font-semibold">测试 {label || "模型"}</DialogTitle>
             <DialogDescription className="text-xs">
@@ -52,16 +56,19 @@ export function ModelTestDialog({
           <div className="bg-muted/20 min-h-0 overflow-y-auto border-b p-5 lg:border-r lg:border-b-0">
             <TestNode
               modelKey={ws.modelKey}
+              vendor={body ? readModelString(body, "vendor") : ""}
               label={label}
               kind={kind}
-              credits={body ? readModelNumber(body, "credits") : null}
-              schema={ws.inputSchema}
+              pricing={body ? (readModelPricing(body) ?? undefined) : undefined}
+              caps={ws.capabilities}
               params={ws.testParams}
               assets={ws.testAssets}
               errors={ws.testInput.errors}
               showErrors={ws.showTestErrors}
               disabled={busy}
               onChange={ws.setTestParam}
+              onAddRef={ws.addTestRef}
+              onRemoveRef={ws.removeTestRef}
               action={{
                 label: "开始测试",
                 busy: ws.busy === "test-run",

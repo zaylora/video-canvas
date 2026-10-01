@@ -117,7 +117,7 @@ type TaskRef struct {
 	Prepared       json.RawMessage // 准备阶段已经完成的结果（ProviderState.Prepared），没有为空
 }
 
-// SubmitInput 提交请求。Input 是已按 input_schema 校验过的规范化输入，媒体字段的值是 asset id（uint64）。
+// SubmitInput 提交请求。Input 是已按模型能力（capabilities）校验过的规范化输入：prompt、op、各生成参数，以及 images / videos / audios 素材 id（uint64）数组。
 type SubmitInput struct {
 	Task  TaskRef
 	Input map[string]any
@@ -149,6 +149,9 @@ type Output struct {
 	Text      string `json:"text,omitempty"`       // type=text
 	MediaType string `json:"media_type,omitempty"` // video / image / audio / text；为空取模型 kind
 	Mime      string `json:"mime,omitempty"`       // 插件声明的 MIME，下载响应头优先
+	// Usage 是文本产物的 Token 用量（插件从上游响应里取，如 OpenAI 风格的 usage.prompt_tokens / completion_tokens），
+	// 按 Token 计费的模型据此结算；没有可以不填，宿主按冻结额扣费
+	Usage *modelcfg.Usage `json:"usage,omitempty"`
 
 	// 以下只在 type=asset 时由宿主填写：二进制响应已经写入素材存储，worker 不必再下载转存，直接据此生成 TaskOutput。
 	AssetID    uint64 `json:"asset_id,omitempty"`    // 宿主已写入的素材
@@ -208,11 +211,12 @@ type CheckResult struct {
 
 // ModelDraft 是“从渠道导入模型”得到的一份模型草稿建议，只预填编辑器，运营确认、试跑后才发布。
 type ModelDraft struct {
-	UpstreamModel string               `json:"upstream_model"`
-	Kind          string               `json:"kind"`
-	Label         string               `json:"label"`
-	Params        map[string]any       `json:"params,omitempty"`
-	InputSchema   modelcfg.InputSchema `json:"input_schema"`
+	UpstreamModel string         `json:"upstream_model"`
+	Kind          string         `json:"kind"`
+	Label         string         `json:"label"`
+	Params        map[string]any `json:"params,omitempty"`
+	// ParamHints 是插件对生成参数的预填建议（参数名 -> 建议），只在导入时预填编辑器，见 modelcfg.ParamHint
+	ParamHints map[string]modelcfg.ParamHint `json:"param_hints,omitempty"`
 }
 
 // PluginOps 是管理端经插件钩子做的两件事：连通性检查与导入模型。由宿主（provider/plugin）实现。
@@ -248,12 +252,14 @@ var (
 
 // ModelInfo 是面向画布的模型信息（GET /models），不含 params / 渠道 / 插件细节。
 type ModelInfo struct {
-	Key         string               `json:"key"`
-	Kind        string               `json:"kind"`
-	Label       string               `json:"label"`
-	Hint        string               `json:"hint"`
-	Credits     int                  `json:"credits"`
-	InputSchema modelcfg.InputSchema `json:"input_schema"`
+	Key          string                `json:"key"`
+	Kind         string                `json:"kind"`
+	Label        string                `json:"label"`
+	Hint         string                `json:"hint"`
+	Vendor       string                `json:"vendor"`
+	Tags         []string              `json:"tags"`
+	Pricing      modelcfg.Pricing      `json:"pricing"` // 不含积分成本
+	Capabilities modelcfg.Capabilities `json:"capabilities"`
 }
 
 // Registry 只读访问“已发布”的模型配置。实现方缓存编译结果，发布 / 回滚 / 渠道变更后热生效。

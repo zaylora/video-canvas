@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
 
-import type { ModelInfo } from "@/api/model/type";
+import type { GenerationOp, ModelInfo } from "@/api/model/type";
 import type { NodeCardHandle } from "@/components/canvas";
 import type { AssetChoice } from "@/components/canvas/video-param-panel";
 import { useNow } from "@/hooks/use-now";
@@ -14,13 +14,19 @@ import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types
 import {
   buildTaskInput,
   computeHandleFixes,
-  portFields,
+  currentOp,
+  inputPorts,
+  manualRefs,
+  priceSpecOf,
   readParams,
+  refKindsOf,
   resolveBindings,
   switchModelParams,
   type IncomingLink,
-} from "@/utils/tasks/input-schema";
+  type RefKey,
+} from "@/utils/tasks/capabilities";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
+import { fanoutCount, quote } from "@/utils/pricing/quote";
 
 /** 切换模型时要用户确认的那次切换 */
 export type PendingModelSwitch = {
@@ -29,7 +35,7 @@ export type PendingModelSwitch = {
 };
 
 /**
- * 生成任务节点（视频、文本）的全部业务状态：模型清单与下线判断、schema 驱动的参数、上游连线绑定、
+ * 生成任务节点的全部业务状态：模型清单与下线判断、按模型能力（capabilities）驱动的生成方式与参数、上游连线绑定、
  * 提交 / 取消 / 重试、展示状态。节点正文和下方的提示词面板共用一份，
  * 所以在始终挂载的节点组件里调用一次，再分发下去。
  */
@@ -50,11 +56,12 @@ export function useTaskNode(
   const modelKey = data.model ?? models[0]?.key;
   const model: ModelInfo | undefined = models.find((item) => item.key === modelKey);
   const offline = modelsStatus === "ready" && !!modelKey && !model;
-  const schema = model?.input_schema;
-  const hasPromptField = schema ? schema.prompt?.type === "text" : true;
+  const caps = model?.capabilities;
 
-  // ---- 参数与上游连线 ----
+  // ---- 参数、生成方式与上游连线 ----
   const params = useMemo(() => readParams(data), [data]);
+  const op = useMemo(() => currentOp(caps, params), [caps, params]);
+  const refKinds = useMemo(() => refKindsOf(caps, op), [caps, op]);
   const connections = useNodeConnections({ id, handleType: "target" });
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
   const links = useMemo<IncomingLink[]>(() => {
@@ -76,11 +83,32 @@ export function useTaskNode(
       ];
     });
   }, [connections, upstream]);
-  const bindings = useMemo(() => resolveBindings(schema, links), [schema, links]);
-  const built = useMemo(() => buildTaskInput(schema, params, bindings), [schema, params, bindings]);
+  const bindings = useMemo(() => resolveBindings(caps, op, links), [caps, op, links]);
+  const built = useMemo(() => buildTaskInput(caps, params, bindings), [caps, params, bindings]);
+
+  // ---- 本地计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准 ----
+  const price = useMemo(() => {
+    if (!model) return null;
+    const spec = priceSpecOf(caps, built.input);
+    const one = quote(model.pricing, caps, spec);
+    const count = fanoutCount(caps, spec.params);
+    const billing = model.pricing?.billing;
+    const unit =
+      billing === "per_second"
+        ? `${one / Math.max(1, Number(spec.params.duration) || 1)} 积分/秒 × ${spec.params.duration} 秒`
+        : `${one} 积分`;
+    return {
+      one,
+      count,
+      total: one * count,
+      isMax: billing === "token",
+      detail:
+        billing === "token" ? "按 Token 预估上限" : count > 1 ? `${unit} × ${count} 个` : unit,
+    };
+  }, [built.input, caps, model]);
 
   // 连线落点和实际绑定的输入口对齐；换模型后失效的口也在这里收拾，免得线被 xyflow 藏掉
-  const fixes = useMemo(() => computeHandleFixes(schema, links), [schema, links]);
+  const fixes = useMemo(() => computeHandleFixes(caps, op, links), [caps, op, links]);
   useEffect(() => {
     if (Object.keys(fixes).length === 0) return;
     setEdges((edges) =>
@@ -88,10 +116,10 @@ export function useTaskNode(
     );
   }, [fixes, setEdges]);
 
-  // 输入口：schema 里每个 port 字段一个；清单还没到时先沿用连线上已有的口，线不会闪没
+  // 输入口：提示词口 + 当前生成方式能接收的每种素材一个口；清单还没到时先沿用连线上已有的口，线不会闪没
   const handles = useMemo<NodeCardHandle[]>(() => {
-    const ports = schema
-      ? portFields(schema).map((field) => ({ id: field.name, label: field.label }))
+    const ports = caps
+      ? inputPorts(caps, op).map((port) => ({ id: port.id as string, label: port.label }))
       : [...new Set(links.map((link) => link.targetHandle).filter((h): h is string => !!h))].map(
           (handle) => ({ id: handle, label: undefined as string | undefined }),
         );
@@ -107,7 +135,7 @@ export function useTaskNode(
             compact: ports.length > 1,
           }));
     return [...inputs, { type: "source", position: Position.Right }];
-  }, [links, schema]);
+  }, [links, caps, op]);
 
   // ---- 展示状态 ----
   const running = data.status === "running";
@@ -140,10 +168,13 @@ export function useTaskNode(
       modelKey: model.key,
       input: built.input,
       currentSrc: data.src,
+      count: price?.count ?? 1,
+      // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
+      expectedCredits: price && !price.isMax ? price.one : undefined,
     });
     if (outcome.ok) return;
     setSubmitError(outcome.error.message);
-  }, [blockedReason, built.input, data.src, generation, model]);
+  }, [blockedReason, built.input, data.src, generation, model, price]);
 
   const cancel = useCallback(() => {
     if (data.taskId) void generation.cancel(data.taskId);
@@ -181,25 +212,76 @@ export function useTaskNode(
     [id, updateNodeData],
   );
 
+  /** 切换生成方式；新方式不接收的素材连线保留，只是提交时忽略 */
+  const setOp = useCallback(
+    (next: GenerationOp) => {
+      setSubmitError(null);
+      updateNodeData(id, (node) => ({ params: { ...node.data.params, op: next } }));
+    },
+    [id, updateNodeData],
+  );
+
+  /** 手动添加一个参考素材（上传或选画布素材）；已有同一个素材时不重复添加 */
+  const addRef = useCallback(
+    (key: RefKey, assetId: string | number, asset: ParamAsset) => {
+      setSubmitError(null);
+      updateNodeData(id, (node) => {
+        const existing = manualRefs(node.data.params ?? {}, key).map(String);
+        const nextId = String(assetId);
+        return {
+          params: {
+            ...node.data.params,
+            [key]: existing.includes(nextId) ? existing : [...existing, nextId],
+          },
+          paramAssets: { ...node.data.paramAssets, [nextId]: asset },
+        };
+      });
+    },
+    [id, updateNodeData],
+  );
+
+  /** 移除一个手动添加的参考素材 */
+  const removeRef = useCallback(
+    (key: RefKey, assetId: string | number) => {
+      updateNodeData(id, (node) => {
+        const target = String(assetId);
+        const rest = manualRefs(node.data.params ?? {}, key)
+          .map(String)
+          .filter((value) => value !== target);
+        const assets = { ...node.data.paramAssets };
+        delete assets[target];
+        const params = { ...node.data.params };
+        if (rest.length > 0) params[key] = rest;
+        else delete params[key];
+        return { params, paramAssets: assets };
+      });
+    },
+    [id, updateNodeData],
+  );
+
   const applyModel = useCallback(
     (key: string) => {
       const next = models.find((item) => item.key === key);
       if (!next) return;
       setSubmitError(null);
-      const switched = switchModelParams(schema, next.input_schema, readParams(data));
-      const keptNames = new Set(Object.keys(switched.params));
+      const switched = switchModelParams(caps, next.capabilities, readParams(data));
+      // 素材展示信息只留给还在用的手动素材
+      const keptIds = new Set(
+        (["images", "videos", "audios"] as const).flatMap((key) =>
+          manualRefs(switched.params, key).map(String),
+        ),
+      );
       const assets = Object.fromEntries(
-        Object.entries(data.paramAssets ?? {}).filter(([name]) => keptNames.has(name)),
+        Object.entries(data.paramAssets ?? {}).filter(([assetId]) => keptIds.has(assetId)),
       );
       updateNodeData(id, {
         model: key,
         params: switched.params,
         paramAssets: assets,
-        // 提示词只在新模型还有 prompt 字段时才继续用；旧字段保持兼容
         prompt: typeof switched.params.prompt === "string" ? switched.params.prompt : data.prompt,
       });
     },
-    [data, id, models, schema, updateNodeData],
+    [data, id, models, caps, updateNodeData],
   );
 
   /** 换模型：会丢参数时先挂起等用户确认，不丢就直接换 */
@@ -207,14 +289,14 @@ export function useTaskNode(
     (key: string) => {
       const next = models.find((item) => item.key === key);
       if (!next || key === modelKey) return;
-      const switched = switchModelParams(schema, next.input_schema, readParams(data));
+      const switched = switchModelParams(caps, next.capabilities, readParams(data));
       if (switched.droppedLabels.length > 0) {
         setPendingSwitch({ key, droppedLabels: switched.droppedLabels });
         return;
       }
       applyModel(key);
     },
-    [applyModel, data, modelKey, models, schema],
+    [applyModel, data, modelKey, models, caps],
   );
 
   const confirmSwitch = useCallback(() => {
@@ -257,8 +339,12 @@ export function useTaskNode(
     confirmSwitch,
     cancelSwitch,
     // 参数
-    schema,
-    hasPromptField,
+    caps,
+    op,
+    setOp,
+    refKinds,
+    addRef,
+    removeRef,
     params,
     bindings,
     promptBinding,
@@ -269,6 +355,7 @@ export function useTaskNode(
     // 连接点
     handles,
     // 提交
+    price,
     availableCredits,
     blockedReason,
     submit,
