@@ -77,7 +77,7 @@ func submitAll(t *testing.T, exec *plugin.Executor, snaps ...*provider.Snapshot)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := exec.Submit(context.Background(), s, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}}); err != nil {
+			if _, err := exec.Submit(context.Background(), s, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}, Input: map[string]any{"prompt": "hi"}}); err != nil {
 				t.Errorf("提交失败：%v", err)
 			}
 		}()
@@ -138,7 +138,7 @@ func TestExecutorChannelRPS(t *testing.T) {
 	start := time.Now()
 	// 突发量是 ceil(rps)=10，第 11~13 次请求各需等约 100ms
 	for i := 0; i < 13; i++ {
-		if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}}); err != nil {
+		if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}, Input: map[string]any{"prompt": "hi"}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -160,13 +160,13 @@ func TestExecutorLimiterWaitHonorsContext(t *testing.T) {
 	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-block", provider.RateLimit{MaxConcurrency: 1}, true)
 
 	go func() {
-		_, _ = exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}})
+		_, _ = exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 	}()
 	time.Sleep(100 * time.Millisecond) // 让第一个请求占住名额
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := exec.Submit(ctx, snap, provider.SubmitInput{Task: provider.TaskRef{ID: 2}})
+	_, err := exec.Submit(ctx, snap, provider.SubmitInput{Task: provider.TaskRef{ID: 2}, Input: map[string]any{"prompt": "hi"}})
 	if err == nil || provider.ClassOf(err) != provider.ClassRetryable {
 		t.Fatalf("等名额期间 ctx 超时应返回可重试错误：%v", err)
 	}
@@ -187,7 +187,7 @@ func TestExecutorReusesConnections(t *testing.T) {
 	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-pool", provider.RateLimit{}, true)
 
 	for i := 0; i < 6; i++ {
-		if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}}); err != nil {
+		if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}, Input: map[string]any{"prompt": "hi"}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -212,14 +212,14 @@ func TestExecutorSSRFStillEnforcedWithSharedTransport(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		before := hits.Load()
-		_, err := exec.Submit(context.Background(), untrusted, provider.SubmitInput{Task: provider.TaskRef{ID: 1}})
+		_, err := exec.Submit(context.Background(), untrusted, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 		if !errors.Is(err, netguard.ErrBlockedAddress) {
 			t.Fatalf("第 %d 次：非 trusted 渠道连内网地址应被拒：%v", i+1, err)
 		}
 		if hits.Load() != before {
 			t.Fatal("被拒的请求不应到达上游")
 		}
-		if _, err := exec.Submit(context.Background(), trusted, provider.SubmitInput{Task: provider.TaskRef{ID: 2}}); err != nil {
+		if _, err := exec.Submit(context.Background(), trusted, provider.SubmitInput{Task: provider.TaskRef{ID: 2}, Input: map[string]any{"prompt": "hi"}}); err != nil {
 			t.Fatalf("trusted 渠道应可访问内网：%v", err)
 		}
 	}

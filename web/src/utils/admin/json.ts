@@ -169,7 +169,7 @@ export type JsonLocation = {
 };
 
 /**
- * 按校验问题的路径（如 channels[0].upstream_model、input_schema.prompt.type）在 JSON 文本里找位置：
+ * 按校验问题的路径（如 channels[0].upstream_model、capabilities.params.duration.type）在 JSON 文本里找位置：
  * 依次找每一段键名（数组下标跳过），命中最后一段；中途某段找不到就停在已命中的最深一段。一个都没命中返回 null。
  * 只是“大致定位到行”，重名键会命中第一个。
  */

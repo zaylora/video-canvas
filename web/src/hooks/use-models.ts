@@ -12,6 +12,8 @@ export const toModelOption = (info: ModelInfo): ModelOption => ({
   label: info.label,
   credits: info.credits,
   hint: info.hint,
+  vendor: info.vendor,
+  tags: info.tags,
 });
 
 /**

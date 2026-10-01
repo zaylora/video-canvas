@@ -14,9 +14,19 @@
 
   "params": { "max_tokens": 2000, "instanceType": "default" },
 
-  "input_schema": {
-    "prompt":   { "type": "text",  "label": "提示词", "required": true, "max_length": 2000, "port": "text" },
-    "image":    { "type": "image", "label": "首帧",   "required": true, "port": "image" },
-    "duration": { "type": "enum",  "label": "时长",   "options": [{"value": 5, "label": "5 秒"}, {"value": 10, "label": "10 秒"}], "default": 5 }
+  "capabilities": {
+    "ops": ["t2v", "i2v", "omni"],
+    "refs": {
+      "image": { "on": true, "max": 4, "max_mb": 10 },
+      "audio": { "on": true, "max": 1, "max_mb": 15 },
+      "video": { "on": false, "max": 0, "max_mb": 0 }
+    },
+    "prompt": { "max_length": 2000 },
+    "params": {
+      "aspect_ratio": { "type": "enum", "label": "比例", "open": true, "options": ["Auto", "16:9", "9:16"], "default": "Auto" },
+      "resolution": { "type": "enum", "label": "清晰度", "open": true, "options": ["720P", "1080P"], "default": "720P", "spec": true },
+      "duration": { "type": "number", "label": "视频时长", "open": true, "min": 4, "max": 12, "step": 1, "default": 5, "unit": "秒" },
+      "generate_audio": { "type": "boolean", "label": "生成音频", "open": true, "default": true, "spec": true }
+    }
   }
 }

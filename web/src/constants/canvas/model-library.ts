@@ -10,6 +10,10 @@ export type ModelOption = {
   credits: number;
   /** 下拉里的一行小字 */
   hint?: string;
+  /** 厂商 slug，用来显示 logo；没有时回退首字头像 */
+  vendor?: string;
+  /** 展示标签 */
+  tags?: readonly string[];
 };
 
 /**

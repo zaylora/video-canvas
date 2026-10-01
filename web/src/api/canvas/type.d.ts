@@ -36,7 +36,7 @@ export interface PersistedCanvasNodeDto {
     error?: string | null;
     /** 生成任务 id（字符串）；running 状态靠它在刷新/重开后对账回填 */
     taskId?: string;
-    /** 按模型 input_schema 字段名存的参数值 */
+    /** 按模型 capabilities 存的参数值（提示词、生成方式、生成参数、手动添加的参考素材） */
     params?: Record<string, unknown>;
     /** 参数里媒体字段所选素材的展示信息 */
     paramAssets?: Record<

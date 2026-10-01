@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 
 import type { ConfigIssue } from "@/api/admin-ai/type";
-import type { InputSchema } from "@/api/model/type";
+import type { Capabilities } from "@/api/model/type";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
@@ -30,13 +30,13 @@ const SOON = "即将支持";
 export function ModelPriceForm({
   body,
   kind,
-  schema,
+  caps,
   issues,
   onChange,
 }: {
   body: Record<string, unknown>;
   kind: string;
-  schema: InputSchema | undefined;
+  caps: Capabilities | undefined;
   issues: ConfigIssue[];
   onChange: (mutate: BodyMutator) => void;
 }) {
@@ -45,7 +45,7 @@ export function ModelPriceForm({
     ["per_second", "按秒", kind === "video" ? `按秒计费${SOON}` : "只有视频按时长计费"],
     ["token", "Token", kind === "text" ? `按 Token 计费${SOON}` : "只有文本按 Token 计费"],
   ];
-  const hasSpecs = specFields(schema).length > 0;
+  const hasSpecs = specFields(caps).length > 0;
 
   return (
     <FormSection>

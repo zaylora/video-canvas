@@ -1,8 +1,10 @@
 import type { ModelDraft } from "@/api/admin-ai/type";
 
+import { defaultCapabilities } from "./model-template";
+
 /**
  * 模型配置正文（admin-ai-api.md「模型配置正文」）的小工具。
- * 编辑器是 JSON 文本、键顺序是刻意保留的（input_schema 的书写顺序就是前端渲染顺序），
+ * 编辑器是 JSON 文本、键顺序是刻意保留的（capabilities.params 的书写顺序就是画布参数面板的渲染顺序），
  * 这里的函数只读或只改个别字段，JSON.parse / stringify 本身保留对象键顺序。
  */
 
@@ -73,19 +75,17 @@ export function normalizeDraft(raw: unknown): ModelDraft | null {
   const upstream = pick<unknown>(raw, "upstream_model", "upstreamModel");
   if (typeof upstream !== "string" || !upstream) return null;
   const params = pick<unknown>(raw, "params", "params");
-  const schema = pick<unknown>(raw, "input_schema", "inputSchema");
   return {
     upstream_model: upstream,
     kind: typeof raw.kind === "string" ? raw.kind : "",
     label: typeof raw.label === "string" ? raw.label : "",
     params: isRecord(params) ? params : null,
-    input_schema: isRecord(schema) ? schema : null,
   };
 }
 
 /**
  * 导入草稿 → 新建模型编辑器的预填正文。
- * 渠道、上游模型名、kind、label、params、input_schema 取自草稿；积分等留默认值，运营再改。
+ * 渠道、上游模型名、kind、label、params 取自草稿；能力按种类预填默认值（草稿不带），积分等留默认值，运营再改。
  */
 export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<string, unknown> {
   const kind = draft.kind || "video";
@@ -100,7 +100,7 @@ export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<
     sort: 100,
     channels: [{ channel: channelKey, upstream_model: draft.upstream_model }],
     params: draft.params ?? {},
-    input_schema: draft.input_schema ?? {},
+    capabilities: defaultCapabilities(kind),
   };
 }
 
@@ -154,6 +154,18 @@ export const readModelNumber = (body: unknown, field: string) =>
 /** 正文里的字符串字段；缺失返回空串 */
 export const readModelString = (body: unknown, field: string) =>
   isRecord(body) && typeof body[field] === "string" ? (body[field] as string) : "";
+
+/** 正文里的字符串数组字段（tags）；缺失或不是数组返回空数组，非字符串元素丢弃 */
+export const readModelStrings = (body: unknown, field: string): string[] =>
+  isRecord(body) && Array.isArray(body[field])
+    ? body[field].filter((item): item is string => typeof item === "string")
+    : [];
+
+/** 模型描述的字数上限（和后端 maxHintLen 一致） */
+export const MODEL_HINT_MAX = 500;
+/** 展示标签的个数与单个字数上限（和后端 maxTags / maxTagLen 一致） */
+export const MODEL_TAGS_MAX = 5;
+export const MODEL_TAG_MAX_LENGTH = 12;
 
 /** 正文里的布尔字段 */
 export const readModelBool = (body: unknown, field: string) =>

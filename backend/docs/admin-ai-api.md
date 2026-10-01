@@ -66,7 +66,7 @@
 | PUT | `/channels/:key` | 更新（super_admin），字段都可选（不传表示不改）：`name`、`plugin_version`、`base_url`、`trusted_internal`、`allow_credentials`、`settings`（整体替换）、`rate_limit`（整体替换）、`enabled`。插件本身不能换（要换插件请新建渠道），改 `plugin_version` 即“升级插件后切换渠道”：新版本必须存在且插件启用（不切版本时，插件停用不挡其他修改），并且 `settings`（不传则用现有取值）按新版本的 `channelSettings` 重新校验。渠道不存在 404（50011）；校验失败 400（50013） |
 | PUT | `/channels/:key/secret` | 设置渠道 Key：`{ "value": "..." }`（去掉首尾空白，≤4096 字节），存 `ai_secrets`，名字 `channel:<key>`，只写、响应无 `data`、不回显。没有配置主密钥 `APP_AI_SECRET_KEY` 时 500 并在 msg 里说明；渠道不存在 404 |
 | POST | `/channels/:key/check` | 连通性检查（super_admin）→ `{ "ok": true, "message": "HTTP 200", "duration_ms": 120 }`。上游不通是正常的检查结果 `ok=false`（原因在 message，已脱敏）；插件没实现 `buildCheckRequest` 时 `ok=false, message="插件不支持连通性检查"`；需要宿主注入鉴权（插件 `auth.type` 不是 `none`）而 Key 没设置 409（50015）；runner 不可用 503（50021）；插件本身出错（钩子异常、请求描述非法等）502（50022，msg 已脱敏） |
-| POST | `/channels/:key/import` | 从渠道导入模型（admin）：`{ "args": { } }`（取值按插件 `meta.import.args` 校验：未声明 / 类型 / 必填，没有请求体等同空 args）→ `{ "drafts": [ { "upstream_model": "kling-v2", "kind": "video", "label": "...", "params": { }, "input_schema": { } } ] }`，只预填编辑器，不落库。参数不合法 400（10001）；Key 没设置 409（50015）；插件没实现导入钩子 502（50022）；runner 不可用 503 |
+| POST | `/channels/:key/import` | 从渠道导入模型（admin）：`{ "args": { } }`（取值按插件 `meta.import.args` 校验：未声明 / 类型 / 必填，没有请求体等同空 args）→ `{ "drafts": [ { "upstream_model": "kling-v2", "kind": "video", "label": "...", "params": { } } ] }`（模型能力由运营在后台手填，草稿不带），只预填编辑器，不落库。参数不合法 400（10001）；Key 没设置 409（50015）；插件没实现导入钩子 502（50022）；runner 不可用 503 |
 
 ### 审计日志
 
@@ -106,10 +106,18 @@
 ```jsonc
 {
   "key": "kling-i2v", "kind": "video",          // kind：video / image / audio / text
-  "label": "可灵 图生视频", "hint": "", "credits": 10, "deadline": "30m", "enabled": false, "sort": 100,
+  // hint 最多 500 字；vendor 可省略，小写字母/数字/连字符（前端据此显示厂商 logo）；tags 可省略，最多 5 个、每个最多 12 字、不能重复
+  "label": "可灵 图生视频", "hint": "", "vendor": "kling", "tags": ["推荐"], "credits": 10, "deadline": "30m", "enabled": false, "sort": 100,
   "channels": [ { "channel": "newapi-main", "upstream_model": "kling-v2-master" } ],   // 首期必须恰好一个
   "params": { "max_tokens": 2000 },               // 可选，固定参数，原样交给插件
-  "input_schema": { "prompt": { "type": "text", "label": "提示词", "required": true, "port": "text" } }   // 有序对象，书写顺序就是前端渲染顺序
+  "capabilities": {                               // 模型能力：由运营手填，画布渲染与下单校验的唯一来源（取代旧的 input_schema）
+    "ops": ["t2v", "i2v", "omni"],                // 生成方式：video 取 t2v / i2v / omni，image 取 t2i / i2i；text、audio 不填
+    "refs": { "image": { "on": true, "max": 4, "max_mb": 10 }, "audio": { "on": false, "max": 0, "max_mb": 0 }, "video": { "on": false, "max": 0, "max_mb": 0 } },
+    "prompt": { "max_length": 2000 },
+    "params": { "duration": { "type": "number", "label": "视频时长", "open": true, "min": 4, "max": 12, "step": 1, "default": 5, "unit": "秒" } },   // 有序对象，书写顺序就是画布参数面板的显示顺序；参数名会作为任务输入的键传给插件
+    "context": { "window": 128000, "output": 8192 },   // 仅 text
+    "system": "…"                                       // 仅 text，固定系统提示，不下发给画布
+  }
 }
 ```
 
@@ -119,7 +127,7 @@
 
 ## 面向画布的接口（变化）
 
-- `GET /api/v1/models?kind=video|image|audio|text`（登录即可，不要求管理员）：`kind` 新增 `text`，其他取值 400；返回的字段不变（`key / kind / label / hint / credits / input_schema`），仍然不含 params / 渠道 / 插件信息。
+- `GET /api/v1/models?kind=video|image|audio|text`（登录即可，不要求管理员）：`kind` 新增 `text`，其他取值 400；返回字段为 `key / kind / label / hint / vendor / tags / credits / capabilities`（`capabilities` 不含 `system`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
 - `POST /generation-tasks` 的 `kind` 新增 `text`；文本任务成功后 `outputs` 是 `[{ "media_type": "text", "text": "正文" }]`（没有 `asset_id` 与 `url`）。
 - `TaskOutput` 新增 `text` 字段，`asset_id` / `url` 在文本产物里不出现。
 - 平台回调 `POST /webhooks/:provider/:secret` 已删除。

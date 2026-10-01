@@ -235,7 +235,7 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 			snap: &provider.Snapshot{
 				Model: provider.ModelSnapshot{
 					Key: "m1", Kind: model.KindVideo, Credits: 10,
-					InputSchema: modelcfg.InputSchema{{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Required: true}}},
+					Capabilities: modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}},
 				},
 				Channel: provider.ChannelSnapshot{Key: "ch1", PluginKey: "demo"},
 				Plugin:  provider.PluginSnapshot{Key: "demo", Version: "1.0.0"},
@@ -248,13 +248,12 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 		Broadcaster: ws.NopBroadcaster{},
 		Config:      config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50},
 	},
-		service.WithInputValidator(func(_ modelcfg.InputSchema, in map[string]any) (map[string]any, []modelcfg.FieldError) {
+		service.WithInputValidator(func(_ string, _ modelcfg.Capabilities, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 			if s, _ := in["prompt"].(string); s == "" {
 				return nil, []modelcfg.FieldError{{Field: "prompt", Message: "必填"}}
 			}
 			return in, nil
 		}),
-		service.WithMediaFieldNames(func(modelcfg.InputSchema) []string { return nil }),
 	)
 	h := NewGenerationTaskHandler(env.svc)
 

@@ -2,11 +2,12 @@ import type { ReactNode } from "react";
 import { Eye, Star } from "lucide-react";
 
 import type { ConfigListItem } from "@/api/admin-ai/type";
-import type { InputSchema } from "@/api/model/type";
-import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
+import type { Capabilities } from "@/api/model/type";
+import { Tag } from "@/components/admin-ui/tag";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { cn } from "@/lib/utils";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
-import { schemaFields } from "@/utils/tasks/input-schema";
+import { paramEntries } from "@/utils/tasks/capabilities";
 
 /** 右侧预览栏的小标题 + 底部说明 */
 export function PreviewFrame({
@@ -33,12 +34,16 @@ export function PreviewFrame({
 function PickerRow({
   name,
   seed,
+  vendor,
+  tags,
   credits,
   hint,
   active,
 }: {
   name: string;
   seed: string;
+  vendor?: string;
+  tags?: readonly string[];
   credits?: number | null;
   hint?: string;
   active?: boolean;
@@ -50,10 +55,15 @@ function PickerRow({
         active ? "bg-accent ring-foreground/20 ring-1" : "opacity-45",
       )}
     >
-      <InitialAvatar name={name} seed={seed} />
+      <VendorAvatar vendor={vendor} name={name} seed={seed} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">{name || "未命名模型"}</span>
+          {tags?.map((tag) => (
+            <Tag key={tag} tone="info" className="px-1 py-0 text-[10px]">
+              {tag}
+            </Tag>
+          ))}
           {credits !== undefined && credits !== null && (
             <span className="text-muted-foreground ml-auto shrink-0 text-xs tabular-nums">
               {credits} 积分
@@ -71,6 +81,8 @@ export function PickerPreview({
   modelKey,
   label,
   kind,
+  vendor,
+  tags,
   credits,
   hint,
   models,
@@ -78,6 +90,8 @@ export function PickerPreview({
   modelKey: string;
   label: string;
   kind: string;
+  vendor: string;
+  tags: readonly string[];
   credits: number | null;
   hint: string;
   models: ConfigListItem[];
@@ -94,18 +108,32 @@ export function PickerPreview({
         <div className="text-muted-foreground px-2 pt-1 pb-2 text-xs">
           {MODEL_KIND_LABEL[kind] ?? kind}模型
         </div>
-        <PickerRow active name={label} seed={modelKey} credits={credits} hint={hint} />
+        <PickerRow
+          active
+          name={label}
+          seed={modelKey}
+          vendor={vendor}
+          tags={tags}
+          credits={credits}
+          hint={hint}
+        />
         {others.map((item) => (
-          <PickerRow key={item.key} name={item.label || item.name || item.key} seed={item.key} />
+          <PickerRow
+            key={item.key}
+            name={item.label || item.name || item.key}
+            seed={item.key}
+            vendor={item.vendor}
+            tags={item.tags}
+          />
         ))}
       </div>
     </PreviewFrame>
   );
 }
 
-/** 可以拿来区分价格的规格参数：有选项的 enum 字段（时长、分辨率等） */
-export const specFields = (schema: InputSchema | undefined) =>
-  schemaFields(schema).filter((field) => field.type === "enum" && !!field.options?.length);
+/** 可以拿来区分价格的规格参数：有选项的 enum 参数（清晰度、档位等） */
+export const specFields = (caps: Capabilities | undefined) =>
+  paramEntries(caps).filter((field) => field.type === "enum" && !!field.options?.length);
 
 /**
  * 积分定价页签的预览：用户点“生成”前看到的价格。
@@ -113,13 +141,13 @@ export const specFields = (schema: InputSchema | undefined) =>
  */
 export function PricePreview({
   credits,
-  schema,
+  caps,
 }: {
   credits: number | null;
-  schema: InputSchema | undefined;
+  caps: Capabilities | undefined;
 }) {
   const price = credits ?? 0;
-  const [row, col] = specFields(schema);
+  const [row, col] = specFields(caps);
   return (
     <PreviewFrame
       title="用户看到的价格"
@@ -135,22 +163,21 @@ export function PricePreview({
                     {row.label} {"\\"} {col.label}
                   </th>
                   {col.options!.map((option) => (
-                    <th key={String(option.value)} className="px-2.5 py-2 text-right font-medium">
-                      {option.label}
+                    <th key={String(option)} className="px-2.5 py-2 text-right font-medium">
+                      {String(option)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {row.options!.map((rowOption) => (
-                  <tr key={String(rowOption.value)} className="border-b last:border-0">
-                    <td className="px-2.5 py-2 font-medium">{rowOption.label}</td>
+                  <tr key={String(rowOption)} className="border-b last:border-0">
+                    <td className="px-2.5 py-2 font-medium">{String(rowOption)}</td>
                     {col.options!.map((colOption) => {
-                      const isDefault =
-                        rowOption.value === row.default && colOption.value === col.default;
+                      const isDefault = rowOption === row.default && colOption === col.default;
                       return (
                         <td
-                          key={String(colOption.value)}
+                          key={String(colOption)}
                           className={cn(
                             "px-2.5 py-2 text-right tabular-nums",
                             isDefault && "font-semibold",

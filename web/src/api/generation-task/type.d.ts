@@ -79,7 +79,7 @@ export interface CreateTaskRequest {
   canvas_id: string;
   /** 所属画布节点 ID */
   node_id: string;
-  /** 模型输入参数，字段由模型 input_schema 决定 */
+  /** 模型输入参数，字段由模型 capabilities 决定（prompt、op、生成参数，以及 images / videos / audios 素材 id 数组） */
   input: Record<string, unknown>;
 }
 

@@ -117,7 +117,7 @@ type TaskRef struct {
 	Prepared       json.RawMessage // 准备阶段已经完成的结果（ProviderState.Prepared），没有为空
 }
 
-// SubmitInput 提交请求。Input 是已按 input_schema 校验过的规范化输入，媒体字段的值是 asset id（uint64）。
+// SubmitInput 提交请求。Input 是已按模型能力（capabilities）校验过的规范化输入：prompt、op、各生成参数，以及 images / videos / audios 素材 id（uint64）数组。
 type SubmitInput struct {
 	Task  TaskRef
 	Input map[string]any
@@ -208,11 +208,10 @@ type CheckResult struct {
 
 // ModelDraft 是“从渠道导入模型”得到的一份模型草稿建议，只预填编辑器，运营确认、试跑后才发布。
 type ModelDraft struct {
-	UpstreamModel string               `json:"upstream_model"`
-	Kind          string               `json:"kind"`
-	Label         string               `json:"label"`
-	Params        map[string]any       `json:"params,omitempty"`
-	InputSchema   modelcfg.InputSchema `json:"input_schema"`
+	UpstreamModel string         `json:"upstream_model"`
+	Kind          string         `json:"kind"`
+	Label         string         `json:"label"`
+	Params        map[string]any `json:"params,omitempty"`
 }
 
 // PluginOps 是管理端经插件钩子做的两件事：连通性检查与导入模型。由宿主（provider/plugin）实现。
@@ -248,12 +247,14 @@ var (
 
 // ModelInfo 是面向画布的模型信息（GET /models），不含 params / 渠道 / 插件细节。
 type ModelInfo struct {
-	Key         string               `json:"key"`
-	Kind        string               `json:"kind"`
-	Label       string               `json:"label"`
-	Hint        string               `json:"hint"`
-	Credits     int                  `json:"credits"`
-	InputSchema modelcfg.InputSchema `json:"input_schema"`
+	Key          string                `json:"key"`
+	Kind         string                `json:"kind"`
+	Label        string                `json:"label"`
+	Hint         string                `json:"hint"`
+	Vendor       string                `json:"vendor"`
+	Tags         []string              `json:"tags"`
+	Credits      int                   `json:"credits"`
+	Capabilities modelcfg.Capabilities `json:"capabilities"`
 }
 
 // Registry 只读访问“已发布”的模型配置。实现方缓存编译结果，发布 / 回滚 / 渠道变更后热生效。

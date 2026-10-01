@@ -3,7 +3,7 @@ import { Ellipsis, FlaskConical, Pencil } from "lucide-react";
 
 import { listModelRevisions } from "@/api/admin-ai";
 import type { ChannelView, ConfigListItem, ConfigRevision, PluginView } from "@/api/admin-ai/type";
-import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -255,7 +255,7 @@ export function ModelRows({
                   )}
                   <TableCell className="px-3 py-3">
                     <div className="flex items-center gap-3">
-                      <InitialAvatar name={label} seed={item.key} />
+                      <VendorAvatar vendor={item.vendor} name={label} seed={item.key} />
                       <div className="min-w-0">
                         <div className="truncate font-medium">{label}</div>
                         <div className="text-muted-foreground truncate font-mono text-xs">

@@ -1,6 +1,6 @@
 // 本文件：模型配置（ModelConfig）的解析与语义校验：先做结构检查（未知字段、类型不符），再补默认值，
-// 最后逐项检查 key / kind / label / credits / deadline / channels，所有问题一次报出。
-// 输入 schema 的校验在 validate_input.go。
+// 最后逐项检查 key / kind / label / credits / deadline / channels / capabilities，所有问题一次报出。
+// 能力（capabilities）的校验在 validate_caps.go。
 
 package modelcfg
 
@@ -15,6 +15,7 @@ import (
 
 var (
 	modelKeyRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+	vendorRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	channelKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 )
 
@@ -25,6 +26,11 @@ const (
 	maxUpstreamModelLen = 128
 	// maxChannels 是首期每个模型允许绑定的渠道数。数据结构是数组，预留多渠道，但首期只接受一个。
 	maxChannels = 1
+	// maxHintLen 是模型描述的最大字符数。
+	maxHintLen = 500
+	// maxTags 是展示标签的最大个数，maxTagLen 是单个标签的最大字符数。
+	maxTags   = 5
+	maxTagLen = 12
 )
 
 func inStrings(list []string, s string) bool {
@@ -80,11 +86,11 @@ func (m *ModelConfig) normalize() {
 	if m.Params != nil {
 		m.Params = normalizeConfigNumber(m.Params).(map[string]any)
 	}
-	for i := range m.InputSchema {
-		f := &m.InputSchema[i].InputField
+	for i := range m.Capabilities.Params {
+		f := &m.Capabilities.Params[i].ParamField
 		f.Default = normalizeConfigNumber(f.Default)
 		for j := range f.Options {
-			f.Options[j].Value = normalizeConfigNumber(f.Options[j].Value)
+			f.Options[j] = normalizeConfigNumber(f.Options[j])
 		}
 	}
 }
@@ -102,6 +108,13 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 	if strings.TrimSpace(m.Label) == "" {
 		add("label", "不能为空")
 	}
+	if n := utf8.RuneCountInString(m.Hint); n > maxHintLen {
+		add("hint", fmt.Sprintf("不能超过 %d 个字符（当前 %d 个）", maxHintLen, n))
+	}
+	if m.Vendor != "" && !vendorRe.MatchString(m.Vendor) {
+		add("vendor", "只能包含小写字母、数字和连字符，且以字母或数字开头（最长 64 位）")
+	}
+	validateTags(m.Tags, add)
 	if m.Credits < 0 {
 		add("credits", "不能为负数")
 	}
@@ -109,7 +122,27 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 		add("deadline", "必须大于 0 且不超过 24h（不填默认 30m）")
 	}
 	validateChannels(m.Channels, add)
-	*issues = append(*issues, ValidateInputSchema(m.InputSchema)...)
+	validateCapabilities(m.Kind, &m.Capabilities, issues)
+}
+
+// validateTags 校验展示标签：个数、单个长度、不能为空、不能重复。
+func validateTags(tags []string, add func(path, msg string)) {
+	if len(tags) > maxTags {
+		add("tags", fmt.Sprintf("最多 %d 个标签（当前 %d 个）", maxTags, len(tags)))
+	}
+	seen := map[string]bool{}
+	for i, t := range tags {
+		path := fmt.Sprintf("tags[%d]", i)
+		switch n := utf8.RuneCountInString(t); {
+		case strings.TrimSpace(t) == "":
+			add(path, "不能为空")
+		case n > maxTagLen:
+			add(path, fmt.Sprintf("不能超过 %d 个字符（当前 %d 个）", maxTagLen, n))
+		case seen[t]:
+			add(path, fmt.Sprintf("标签 %q 重复", t))
+		}
+		seen[t] = true
+	}
 }
 
 // validateChannels 校验 channels：首期恰好一个元素，每个元素的渠道 key 与上游模型名合法。

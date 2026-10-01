@@ -41,7 +41,7 @@ describe("findPathInJson", () => {
     {
       key: "a",
       channels: [{ channel: "c", upstream_model: "" }],
-      input_schema: { prompt: { type: "text" }, image: { type: "image" } },
+      capabilities: { prompt: { type: "text" }, image: { type: "image" } },
     },
     null,
     2,
@@ -60,15 +60,15 @@ describe("findPathInJson", () => {
   });
 
   test("按顺序逐段找，避免命中前面同名的键", () => {
-    const hit = findPathInJson(text, "input_schema.image.type");
+    const hit = findPathInJson(text, "capabilities.image.type");
     const before = text.slice(0, hit!.index);
     expect(before.includes('"image"')).toBe(true);
     expect(text.slice(hit!.index, hit!.index + hit!.length)).toBe('"type"');
   });
 
   test("中途找不到就停在已命中的最深一段；完全找不到返回 null", () => {
-    const partial = findPathInJson(text, "input_schema.nope.deep");
-    expect(text.slice(partial!.index, partial!.index + partial!.length)).toBe('"input_schema"');
+    const partial = findPathInJson(text, "capabilities.nope.deep");
+    expect(text.slice(partial!.index, partial!.index + partial!.length)).toBe('"capabilities"');
     expect(findPathInJson(text, "missing")).toBeNull();
     expect(findPathInJson(text, "")).toBeNull();
   });

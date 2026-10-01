@@ -22,7 +22,7 @@ const body = {
   credits: 10,
   channels: [{ channel: "old", upstream_model: "v1" }],
   params: { b: 1, a: 2 },
-  input_schema: { prompt: {}, image: {}, duration: {} },
+  capabilities: { ops: [], refs: {}, prompt: {}, params: { b: {}, a: {} } },
 };
 
 describe("读取正文字段", () => {
@@ -51,7 +51,7 @@ describe("withModelChannel", () => {
     expect(next).not.toBeNull();
     expect(Object.keys(next!)).toEqual(Object.keys(body));
     expect(next!.channels).toEqual([{ channel: "new", upstream_model: "v1" }]);
-    expect(Object.keys(next!.input_schema as object)).toEqual(["prompt", "image", "duration"]);
+    expect(Object.keys(next!.capabilities as object)).toEqual(["ops", "refs", "prompt", "params"]);
   });
 
   test("没有 channels 时追加一项，正文不是对象时返回 null", () => {
@@ -111,7 +111,6 @@ describe("normalizeDraft / draftToModelBody", () => {
       kind: "text",
       label: "",
       params: null,
-      input_schema: { p: {} },
     });
     expect(normalizeDraft({ kind: "text" })).toBeNull();
     expect(normalizeDraft(null)).toBeNull();
@@ -130,8 +129,14 @@ describe("normalizeDraft / draftToModelBody", () => {
       deadline: "30m",
       channels: [{ channel: "ch", upstream_model: "Kling V2" }],
       params: {},
-      input_schema: {},
     });
+    // 能力按种类预填（草稿不带）
+    expect(Object.keys((video.capabilities as { params: object }).params)).toEqual([
+      "aspect_ratio",
+      "resolution",
+      "duration",
+      "generate_audio",
+    ]);
     const text = draftToModelBody(
       { upstream_model: "gpt", kind: "text", label: "GPT", params: { a: 1 } },
       "ch",

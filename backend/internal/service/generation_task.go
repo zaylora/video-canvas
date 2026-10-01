@@ -77,13 +77,8 @@ type GenerationTaskDeps struct {
 type GenerationTaskOption func(*GenerationTaskService)
 
 // WithInputValidator 替换输入校验函数，默认 modelcfg.ValidateInput。
-func WithInputValidator(fn func(modelcfg.InputSchema, map[string]any) (map[string]any, []modelcfg.FieldError)) GenerationTaskOption {
+func WithInputValidator(fn func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)) GenerationTaskOption {
 	return func(s *GenerationTaskService) { s.validateInput = fn }
-}
-
-// WithMediaFieldNames 替换“取媒体字段名”函数，默认 modelcfg.MediaFieldNames。
-func WithMediaFieldNames(fn func(modelcfg.InputSchema) []string) GenerationTaskOption {
-	return func(s *GenerationTaskService) { s.mediaFields = fn }
 }
 
 // WithTaskClock 替换时间来源（测试用）。
@@ -103,8 +98,7 @@ type GenerationTaskService struct {
 
 	kick chan struct{} // 进程内信号：有新任务 / 需要立即处理时唤醒 worker
 
-	validateInput func(modelcfg.InputSchema, map[string]any) (map[string]any, []modelcfg.FieldError)
-	mediaFields   func(modelcfg.InputSchema) []string
+	validateInput func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)
 	now           func() time.Time
 }
 
@@ -126,7 +120,6 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		cfg:           deps.Config,
 		kick:          make(chan struct{}, 1),
 		validateInput: modelcfg.ValidateInput,
-		mediaFields:   modelcfg.MediaFieldNames,
 		now:           time.Now,
 	}
 	if s.broadcaster == nil {

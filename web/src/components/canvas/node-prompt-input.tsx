@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowUp, ChevronDown, Loader2, Zap } from "lucide-react";
 
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -35,6 +36,10 @@ export type NodeModelOption = {
   credits: number;
   /** 下拉里的一行小字，说明擅长什么 */
   hint?: string;
+  /** 厂商 slug，用来显示 logo；没有时回退首字头像 */
+  vendor?: string;
+  /** 展示标签 */
+  tags?: readonly string[];
 };
 
 type NodePromptInputProps = {
@@ -82,6 +87,8 @@ type NodePromptInputProps = {
   children?: ReactNode;
   /** 工具栏上方的一行提示，比如提交被拒的原因 */
   notice?: { tone: "error" | "info"; text: string } | null;
+  /** 工具栏里模型选择后面的插槽，放生成方式下拉与参数摘要按钮 */
+  toolbarExtra?: ReactNode;
 };
 
 /**
@@ -112,6 +119,7 @@ export function NodePromptInput({
   hidePrompt,
   children,
   notice,
+  toolbarExtra,
 }: NodePromptInputProps) {
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);
@@ -184,11 +192,20 @@ export function NodePromptInput({
             )}
             aria-label="选择模型"
           >
-            {icon}
+            {model ? (
+              <VendorAvatar
+                vendor={model.vendor}
+                name={model.label}
+                seed={model.id}
+                className="size-5 rounded-md text-[10px]"
+              />
+            ) : (
+              icon
+            )}
             <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
             <ChevronDown className="opacity-60" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-60" align="start" sideOffset={6}>
+          <DropdownMenuContent className="w-72" align="start" sideOffset={6}>
             <DropdownMenuGroup>
               {/* GroupLabel 必须待在 Group 里，否则 Base UI 会抛 MenuGroupContext 缺失 */}
               <DropdownMenuLabel>选择模型</DropdownMenuLabel>
@@ -199,8 +216,24 @@ export function NodePromptInput({
               >
                 {models.map((item) => (
                   <DropdownMenuRadioItem key={item.id} value={item.id}>
+                    <VendorAvatar
+                      vendor={item.vendor}
+                      name={item.label}
+                      seed={item.id}
+                      className="size-7 rounded-md text-xs"
+                    />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{item.label}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate">{item.label}</span>
+                        {item.tags?.map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-muted text-muted-foreground shrink-0 rounded px-1 py-px text-[10px] leading-4"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
                       {item.hint && (
                         <span className="text-muted-foreground truncate text-xs">{item.hint}</span>
                       )}
@@ -214,6 +247,8 @@ export function NodePromptInput({
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {toolbarExtra}
 
         <span
           className="text-muted-foreground ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums"

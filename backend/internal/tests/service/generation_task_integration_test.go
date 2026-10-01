@@ -81,7 +81,7 @@ func newGTIEnv(t *testing.T, cfg config.AI) *gtiEnv {
 	env.now = time.Now()
 	env.svc = NewGenerationTaskService(GenerationTaskDeps{
 		Repo: real, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Config: cfg,
-	}, WithInputValidator(fakeTaskValidate), WithMediaFieldNames(fakeTaskMediaFields))
+	})
 	return &gtiEnv{taskSvcEnv: env, store: real, user: uint64(time.Now().UnixNano()/1000)*100 + gtiUserSeq.Add(1)%100}
 }
 

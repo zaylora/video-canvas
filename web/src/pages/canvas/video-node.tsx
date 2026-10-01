@@ -1,4 +1,5 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { NodeToolbar, Position, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 
 import {
@@ -8,7 +9,17 @@ import {
   VideoParamPanel,
   type IncomingConnection,
 } from "@/components/canvas";
-import { Button } from "@/components/ui/button";
+import type { GenerationOp } from "@/api/model/type";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -21,8 +32,10 @@ import { NODE_META } from "@/constants/canvas";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
+import { cn } from "@/lib/utils";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canConnectKinds } from "@/utils/canvas/canvas";
+import { OP_LABEL, openParams, paramSummary } from "@/utils/tasks/capabilities";
 
 /** 走「提交任务 -> 轮询 / 推送 -> 回填」流程的媒体节点种类 */
 export type MediaTaskKind = "image" | "video" | "audio";
@@ -70,6 +83,7 @@ export function TaskPromptPanel({
   const meta = NODE_META.get(kind);
   const Icon = meta?.icon;
   const { modelsStatus, reloadModels } = vm;
+  const [panelOpen, setPanelOpen] = useState(true);
 
   // 上次清单没拉下来的话，选中节点时顺手再试一次
   useEffect(() => {
@@ -112,14 +126,68 @@ export function TaskPromptPanel({
         onSubmit={() => void vm.submit()}
         canSubmit={!vm.blockedReason}
         hint={vm.blockedReason ?? "开始生成"}
-        hidePrompt={!vm.hasPromptField}
         promptDisabled={!!vm.promptBinding}
         promptNote={vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined}
         notice={notice}
+        toolbarExtra={
+          vm.caps && (
+            <>
+              {(vm.caps.ops?.length ?? 0) > 1 && (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "sm" }),
+                      "shrink-0 gap-1 px-2",
+                    )}
+                    aria-label="选择生成方式"
+                    disabled={vm.running || vm.submitting}
+                  >
+                    {vm.op ? OP_LABEL[vm.op] : "生成方式"}
+                    <ChevronDown className="opacity-60" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-40" align="start" sideOffset={6}>
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>生成方式</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={vm.op ?? ""}
+                        onValueChange={(next) => vm.setOp(next as GenerationOp)}
+                      >
+                        {vm.caps.ops?.map((item) => (
+                          <DropdownMenuRadioItem key={item} value={item}>
+                            {OP_LABEL[item]}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {(vm.refKinds.length > 0 || openParams(vm.caps).length > 0) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground min-w-0 shrink gap-1 px-2"
+                  aria-expanded={panelOpen}
+                  aria-label="参数设置"
+                  onClick={() => setPanelOpen((open) => !open)}
+                >
+                  <span className="truncate">{paramSummary(vm.caps, vm.params) || "参数"}</span>
+                  <ChevronDown
+                    className={cn(
+                      "shrink-0 opacity-60 transition-transform",
+                      panelOpen && "rotate-180",
+                    )}
+                  />
+                </Button>
+              )}
+            </>
+          )
+        }
       >
-        {vm.schema && (
+        {vm.caps && panelOpen && (
           <VideoParamPanel
-            schema={vm.schema}
+            caps={vm.caps}
+            op={vm.op}
             params={vm.params}
             paramAssets={data.paramAssets}
             bindings={vm.bindings}
@@ -127,6 +195,8 @@ export function TaskPromptPanel({
             showErrors
             disabled={vm.running || vm.submitting}
             onChange={vm.setParam}
+            onAddRef={vm.addRef}
+            onRemoveRef={vm.removeRef}
             listAssets={vm.listAssets}
           />
         )}
@@ -138,7 +208,7 @@ export function TaskPromptPanel({
 
 /**
  * 媒体生成节点（图片、视频、音频共用）：正文按任务状态（排队 / 生成中 / 转存中 / 成功 / 失败）渲染，
- * 模型清单与输入口由后端下发的模型 input_schema 决定（带 port 的字段生成输入口），
+ * 模型清单、输入口与参数由后端下发的模型能力 capabilities 决定（提示词口 + 当前生成方式能接收的素材口），
  * 选中时下方浮出提示词与参数面板。种类在节点整个生命周期里不变，hook 集合不会切换。
  */
 function MediaTaskNode({

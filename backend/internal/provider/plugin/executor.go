@@ -389,14 +389,13 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 	if err != nil {
 		return nil, err
 	}
-	// 契约里草稿的字段是驼峰（upstreamModel / inputSchema），与 provider.ModelDraft 的蛇形 JSON 标签不同，
-	// 直接解码会让这两个字段静默丢失，所以先按契约解码再转换。
+	// 契约里草稿的字段是驼峰（upstreamModel），与 provider.ModelDraft 的蛇形 JSON 标签不同，
+	// 直接解码会让这个字段静默丢失，所以先按契约解码再转换。模型能力由运营在后台手填，草稿不带。
 	var wire []struct {
-		UpstreamModel string               `json:"upstreamModel"`
-		Kind          string               `json:"kind"`
-		Label         string               `json:"label"`
-		Params        map[string]any       `json:"params"`
-		InputSchema   modelcfg.InputSchema `json:"inputSchema"`
+		UpstreamModel string         `json:"upstreamModel"`
+		Kind          string         `json:"kind"`
+		Label         string         `json:"label"`
+		Params        map[string]any `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return nil, pluginFaultf("导入模型结果不是数组：%s", err.Error())
@@ -404,13 +403,8 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 	drafts := make([]provider.ModelDraft, 0, len(wire))
 	for _, w := range wire {
 		drafts = append(drafts, provider.ModelDraft{
-			UpstreamModel: w.UpstreamModel, Kind: w.Kind, Label: w.Label, Params: w.Params, InputSchema: w.InputSchema,
+			UpstreamModel: w.UpstreamModel, Kind: w.Kind, Label: w.Label, Params: w.Params,
 		})
-	}
-	for i := range drafts {
-		if issues := modelcfg.ValidateInputSchema(drafts[i].InputSchema); len(issues) > 0 {
-			return nil, pluginFaultf("导入模型 %d 的 inputSchema 不合规", i+1)
-		}
 	}
 	return drafts, nil
 }
@@ -448,9 +442,9 @@ func (o *operation) validateInput(ctx context.Context) error {
 	if o.model == nil {
 		return nil
 	}
-	_, issues := modelcfg.ValidateInput(o.model.InputSchema, o.input)
+	_, issues := modelcfg.ValidateInput(o.model.Kind, o.model.Capabilities, o.input)
 	if len(issues) > 0 {
-		return terminalErr(codeInvalidInput, "任务输入不符合模型 input_schema", nil)
+		return terminalErr(codeInvalidInput, "任务输入不符合模型能力（capabilities）", nil)
 	}
 	for _, id := range o.media {
 		if o.e.opts.Assets == nil {

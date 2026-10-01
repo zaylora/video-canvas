@@ -176,9 +176,9 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	}
 
 	// 5. 用草稿建模型 → 发布 → 出现在清单里
-	schema, _ := json.Marshal(textDraft.InputSchema)
 	body := `{"key":"gpt","kind":"text","label":"GPT","credits":1,"enabled":true,` +
-		`"channels":[{"channel":"newapi-main","upstream_model":"gpt-4o"}],"input_schema":` + string(schema) + `}`
+		`"channels":[{"channel":"newapi-main","upstream_model":"gpt-4o"}],` +
+		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`
 	saved, err := e.cfg.SaveDraft(ctx, ModelDraftInput{Create: true, Body: json.RawMessage(body), AdminID: 1})
 	if err != nil || len(saved.Issues) != 0 {
 		t.Fatalf("保存草稿失败：%+v %v", saved, err)

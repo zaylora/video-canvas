@@ -16,10 +16,13 @@
  *   video: { metadata?: object, extra?: object }                      metadata 放进请求体的 metadata，extra 合并进顶层
  *   image: { extra?: object }                                         extra 合并进请求体顶层（如 response_format、background）
  *   audio: { voice?: string, format?: string, speed?: number, extra?: object }   固定音色 / 格式 / 语速，用户没传时才用
- * 用户输入（input_schema 里声明的字段，按名字直传）：
- *   text : prompt（必填）、system、temperature、max_tokens（不能超过 params.max_tokens）、image（视觉模型，可选）
- *   video: prompt、image（首帧，可选）、duration、width、height、fps、seed、size、n
- *   image: prompt（必填）、image（参考图，可选，传了就走 edits）、n、size、quality、style
+ * 用户输入（宿主按模型能力 capabilities 校验后传入；生成参数按运营在后台起的参数名直传）：
+ *   通用 : prompt（必填）、op（生成方式 t2v / i2v / omni / t2i / i2i）、images / videos / audios（参考素材，
+ *          每项是文件引用 "input:images.0" 这样的字符串，用 {__fileRef: ...} 交给宿主换成地址或内容）
+ *   text : system（固定系统提示）、max_tokens（最大输出，不能超过 params.max_tokens）、temperature、images[0]（视觉模型，可选）
+ *   video: duration、width、height、fps、seed、size、n、aspect_ratio、resolution、generate_audio；
+ *          images[0] -> image，videos[0] -> video，audios[0] -> audio（多于一个时同时给 images / videos / audios 数组）
+ *   image: n、size、quality、style、aspect_ratio、resolution；有参考图就走 edits，多张参考图用 image[] 字段上传
  *   audio: prompt（要朗读的文本，必填；也接受 text）、voice、format（mp3 / wav / opus / aac / flac）、speed
  */
 module.exports = {
@@ -27,7 +30,7 @@ module.exports = {
     apiVersion: 1,
     key: "newapi",
     name: "New API",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "对接 New API 网关：文本、图片、语音（同步）与视频（异步）",
     auth: { type: "bearer" },
     allowedHosts: [],
@@ -154,8 +157,7 @@ module.exports = {
         upstreamModel: id,
         kind: kind,
         label: id,
-        params: {},
-        inputSchema: inputSchemaOf(kind)
+        params: {}
       });
     }
     return drafts;
@@ -176,11 +178,12 @@ function buildChatRequest(ctx) {
     messages.push({ role: "system", content: system });
   }
   var userContent = input.prompt === undefined ? "" : String(input.prompt);
-  if (input.image) {
+  var firstImage = first(input.images);
+  if (firstImage) {
     // 视觉模型：提示词 + 图片地址（宿主把文件引用换成自有存储的签名 URL）
     userContent = [
       { type: "text", text: userContent },
-      { type: "image_url", image_url: { url: { __fileRef: input.image, as: "url" } } }
+      { type: "image_url", image_url: { url: { __fileRef: firstImage, as: "url" } } }
     ];
   }
   messages.push({ role: "user", content: userContent });
@@ -242,10 +245,8 @@ function buildVideoRequest(ctx) {
   if (input.prompt !== undefined) {
     body.prompt = String(input.prompt);
   }
-  if (input.image) {
-    body.image = { __fileRef: input.image, as: "url" };
-  }
-  var passthrough = ["duration", "width", "height", "fps", "seed", "size", "n"];
+  attachRefs(body, input);
+  var passthrough = ["duration", "width", "height", "fps", "seed", "size", "n", "aspect_ratio", "resolution", "generate_audio"];
   for (var i = 0; i < passthrough.length; i++) {
     var k = passthrough[i];
     if (input[k] !== undefined && input[k] !== null && input[k] !== "") {
@@ -327,7 +328,7 @@ function mimeOfVideo(body, inner, url) {
 // 图片
 // ---------------------------------------------------------------------------
 
-var IMAGE_PASSTHROUGH = ["n", "size", "quality", "style"];
+var IMAGE_PASSTHROUGH = ["n", "size", "quality", "style", "aspect_ratio", "resolution"];
 
 // 没有参考图走 /v1/images/generations（JSON）；有参考图走 /v1/images/edits（multipart，图片由宿主按文件引用上传）。
 function buildImageRequest(ctx) {
@@ -345,13 +346,14 @@ function buildImageRequest(ctx) {
   }
   mergeExtra(fields, params.extra);
 
-  if (input.image) {
-    return {
-      method: "POST",
-      path: "/v1/images/edits",
-      multipart: { fields: fields, parts: [{ name: "image", fileRef: "input:image" }] },
-      timeout: 180
-    };
+  var images = isArray(input.images) ? input.images : [];
+  if (images.length > 0) {
+    // 单张用 image，多张用 image[]（OpenAI 风格的 edits 接口）
+    var parts = [];
+    for (var j = 0; j < images.length; j++) {
+      parts.push({ name: images.length > 1 ? "image[]" : "image", fileRef: images[j] });
+    }
+    return { method: "POST", path: "/v1/images/edits", multipart: { fields: fields, parts: parts }, timeout: 180 };
   }
   return { method: "POST", path: "/v1/images/generations", json: fields, timeout: 180 };
 }
@@ -456,64 +458,33 @@ function guessKind(id) {
   return "text";
 }
 
-function inputSchemaOf(kind) {
-  switch (kind) {
-    case "video":
-      return videoInputSchema();
-    case "image":
-      return imageInputSchema();
-    case "audio":
-      return audioInputSchema();
-    default:
-      return textInputSchema();
-  }
-}
-
-function textInputSchema() {
-  return {
-    prompt: { type: "text", label: "提示词", required: true, port: "text", max_length: 20000 }
-  };
-}
-
-function imageInputSchema() {
-  return {
-    prompt: { type: "text", label: "提示词", required: true, port: "text", max_length: 4000 },
-    image: { type: "image", label: "参考图（可选）", port: "image" },
-    size: {
-      type: "enum",
-      label: "尺寸",
-      options: [
-        { value: "1024x1024", label: "1024×1024" },
-        { value: "1536x1024", label: "1536×1024（横）" },
-        { value: "1024x1536", label: "1024×1536（竖）" }
-      ],
-      default: "1024x1024"
-    }
-  };
-}
-
-function audioInputSchema() {
-  return {
-    prompt: { type: "text", label: "朗读文本", required: true, port: "text", max_length: 4096 }
-  };
-}
-
-function videoInputSchema() {
-  return {
-    prompt: { type: "text", label: "提示词", required: true, port: "text", max_length: 2000 },
-    image: { type: "image", label: "首帧图（可选）", port: "image" },
-    duration: {
-      type: "enum",
-      label: "时长",
-      options: [{ value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }],
-      default: 5
-    }
-  };
-}
-
 // ---------------------------------------------------------------------------
 // 通用小工具
 // ---------------------------------------------------------------------------
+
+// 取数组第一项；不是数组或为空返回 undefined。
+function first(list) {
+  return isArray(list) && list.length > 0 ? list[0] : undefined;
+}
+
+// 把参考素材挂到视频请求体：第一项放 image / video / audio，多于一个时再带上完整数组。
+function attachRefs(body, input) {
+  var groups = [["images", "image"], ["videos", "video"], ["audios", "audio"]];
+  for (var i = 0; i < groups.length; i++) {
+    var list = input[groups[i][0]];
+    if (!isArray(list) || list.length === 0) {
+      continue;
+    }
+    body[groups[i][1]] = { __fileRef: list[0], as: "url" };
+    if (list.length > 1) {
+      var all = [];
+      for (var k = 0; k < list.length; k++) {
+        all.push({ __fileRef: list[k], as: "url" });
+      }
+      body[groups[i][0]] = all;
+    }
+  }
+}
 
 function failed(message) {
   return { status: "failed", error: { class: classifyMessage(message), message: message } };

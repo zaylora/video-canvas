@@ -10,7 +10,6 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
 	. "video-canvas/internal/service"
 	"video-canvas/internal/service/aiconfigfake"
 )
@@ -626,7 +625,7 @@ func TestAIChannelService_Import(t *testing.T) {
 
 	t.Run("成功：参数按声明校验并补默认值，草稿原样返回", func(t *testing.T) {
 		e := setup(t, true)
-		e.ops.Drafts = []provider.ModelDraft{{UpstreamModel: "kling-v2", Kind: "video", Label: "可灵 v2", InputSchema: modelcfg.InputSchema{}}}
+		e.ops.Drafts = []provider.ModelDraft{{UpstreamModel: "kling-v2", Kind: "video", Label: "可灵 v2"}}
 		auditsBefore := len(e.repo.Audits)
 		res, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 10.0})
 		if err != nil || len(res.Drafts) != 1 || res.Drafts[0].UpstreamModel != "kling-v2" {

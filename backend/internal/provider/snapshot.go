@@ -21,14 +21,14 @@ type Snapshot struct {
 
 // ModelSnapshot 是模型配置里执行要用的部分。
 type ModelSnapshot struct {
-	Key           string               `json:"key"`
-	Kind          string               `json:"kind"`
-	Label         string               `json:"label"`
-	Credits       int                  `json:"credits"`
-	Deadline      modelcfg.Duration    `json:"deadline"`
-	UpstreamModel string               `json:"upstream_model"`
-	Params        map[string]any       `json:"params,omitempty"`
-	InputSchema   modelcfg.InputSchema `json:"input_schema"`
+	Key           string                `json:"key"`
+	Kind          string                `json:"kind"`
+	Label         string                `json:"label"`
+	Credits       int                   `json:"credits"`
+	Deadline      modelcfg.Duration     `json:"deadline"`
+	UpstreamModel string                `json:"upstream_model"`
+	Params        map[string]any        `json:"params,omitempty"`
+	Capabilities  modelcfg.Capabilities `json:"capabilities"`
 }
 
 // RateLimit 是渠道限流：每个渠道一个令牌桶 + 并发上限，零值表示不限。
@@ -100,7 +100,7 @@ func NewSnapshot(cfg *modelcfg.ModelConfig, rt *ChannelRuntime, modelRevisionID 
 	return &Snapshot{
 		Model: ModelSnapshot{
 			Key: cfg.Key, Kind: cfg.Kind, Label: cfg.Label, Credits: cfg.Credits, Deadline: cfg.Deadline,
-			UpstreamModel: upstream, Params: cfg.Params, InputSchema: cfg.InputSchema,
+			UpstreamModel: upstream, Params: cfg.Params, Capabilities: cfg.Capabilities,
 		},
 		Channel:         rt.Channel,
 		Plugin:          rt.Plugin,

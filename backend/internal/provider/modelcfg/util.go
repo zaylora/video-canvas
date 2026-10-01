@@ -9,8 +9,6 @@ import (
 	"strconv"
 )
 
-func isMediaType(t string) bool { return t == FieldImage || t == FieldVideo || t == FieldAudio }
-
 func toFloat(v any) (float64, bool) {
 	switch t := v.(type) {
 	case float64:

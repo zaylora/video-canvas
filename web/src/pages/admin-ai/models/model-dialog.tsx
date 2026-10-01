@@ -17,7 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Notice } from "@/components/admin-ui/notice";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
@@ -43,6 +43,7 @@ import {
   readModelKind,
   readModelNumber,
   readModelString,
+  readModelStrings,
 } from "@/utils/admin/model-body";
 
 import type { AdminCatalog } from "../use-admin";
@@ -134,6 +135,8 @@ export function ModelDialog({
       modelKey={ws.modelKey}
       label={label}
       kind={kind}
+      vendor={readModelString(body, "vendor")}
+      tags={readModelStrings(body, "tags")}
       credits={credits}
       hint={readModelString(body, "hint")}
       models={ws.models}
@@ -145,27 +148,35 @@ export function ModelDialog({
     >
       <TestNode
         modelKey={ws.modelKey}
+        vendor={readModelString(body, "vendor")}
         label={label}
         kind={kind}
         credits={credits}
-        schema={ws.inputSchema}
+        caps={ws.capabilities}
         params={ws.testParams}
         assets={ws.testAssets}
         errors={ws.testInput.errors}
         showErrors={ws.showTestErrors}
         onChange={ws.setTestParam}
+        onAddRef={ws.addTestRef}
+        onRemoveRef={ws.removeTestRef}
         action={{ label: "测试", onClick: () => setTestOpen(true) }}
       />
     </PreviewFrame>
   ) : (
-    <PricePreview credits={credits} schema={ws.inputSchema} />
+    <PricePreview credits={credits} caps={ws.capabilities} />
   );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 顶部：头像、标题与版本、渠道 · 上游 ID、更多、关闭 */}
       <div className="flex items-start gap-4 border-b px-6 py-4">
-        <InitialAvatar name={label || "?"} seed={ws.modelKey} className="size-10 text-base" />
+        <VendorAvatar
+          vendor={body ? readModelString(body, "vendor") : ""}
+          name={label || "?"}
+          seed={ws.modelKey}
+          className="size-10 text-base"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle className="text-lg font-semibold">
@@ -413,7 +424,7 @@ export function ModelDialog({
               <ModelPriceForm
                 body={body}
                 kind={kind}
-                schema={ws.inputSchema}
+                caps={ws.capabilities}
                 issues={ws.issues}
                 onChange={ws.editBody}
               />

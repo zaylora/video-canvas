@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"gorm.io/datatypes"
@@ -133,7 +134,7 @@ func (s *GenerationTaskService) snapshotFor(ctx context.Context, req *model.Crea
 // fillTask 把快照与规范化输入填进任务行：种类 / 模型 / 渠道取快照；状态 pending、version 1；
 // next_poll_at = 现在，让 worker 立即领取；deadline 取模型配置，缺省 30 分钟。
 func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provider.Snapshot, input map[string]any) error {
-	inputJSON, err := json.Marshal(s.storedInput(snap.Model.InputSchema, input))
+	inputJSON, err := json.Marshal(s.storedInput(input))
 	if err != nil {
 		return err
 	}
@@ -210,24 +211,31 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 	return existing, nil
 }
 
-// prepareInput 校验并规范化输入，并确认媒体字段引用的素材都属于该用户。
+// prepareInput 校验并规范化输入，补上宿主注入的文本参数，并确认参考素材都属于该用户、种类与大小合规。
 // 字段级错误统一拼进 ErrTaskInput 的文案，返回 400。
 func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64, snap *provider.Snapshot, raw map[string]any) (map[string]any, error) {
-	// 1. 按 input_schema 校验（必填、枚举、长度、范围）并补默认值
-	input, fieldErrs := s.validateInput(snap.Model.InputSchema, raw)
+	// 1. 按模型能力校验（提示词、生成方式、生成参数、素材数量）并补默认值
+	caps := snap.Model.Capabilities
+	input, fieldErrs := s.validateInput(snap.Model.Kind, caps, raw)
 	if len(fieldErrs) > 0 {
 		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + joinFieldErrors(fieldErrs))
 	}
 
-	// 2. 逐个校验媒体字段的素材：不存在 / 不属于自己统一按“素材不存在”处理，避免暴露别人的素材；
-	//    素材种类还必须与字段类型一致（image 字段不能填视频素材）
-	var assetErrs []modelcfg.FieldError
-	for _, name := range s.mediaFields(snap.Model.InputSchema) {
-		v, ok := input[name]
-		if !ok || v == nil {
-			continue // 可选的媒体字段没传
+	// 2. 文本模型：固定系统提示与最大输出由配置决定，用户的输入改不了
+	if snap.Model.Kind == modelcfg.KindText {
+		if caps.System != "" {
+			input["system"] = caps.System
 		}
-		fe, err := s.checkAsset(ctx, userID, snap.Model.InputSchema, name, v)
+		if caps.Context != nil {
+			input["max_tokens"] = caps.Context.Output
+		}
+	}
+
+	// 3. 逐个校验参考素材：不存在 / 不属于自己统一按“素材不存在”处理，避免暴露别人的素材；
+	//    素材种类必须与数组一致（images 里不能放视频），单个大小不能超过 refs.<种类>.max_mb
+	var assetErrs []modelcfg.FieldError
+	for _, ref := range modelcfg.MediaRefs(input) {
+		fe, err := s.checkAsset(ctx, userID, caps, ref)
 		if err != nil {
 			return nil, err
 		}
@@ -241,36 +249,42 @@ func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64,
 	return input, nil
 }
 
-// storedInput 返回落库用的输入：媒体字段的素材 id 存成十进制字符串。
+// storedInput 返回落库用的输入：参考素材数组里的素材 id 存成十进制字符串。
 // 素材 id 存成 JSON 数字，worker 读出来会变成 float64，超过 2^53 就会丢精度；字符串没有这个问题。
-func (s *GenerationTaskService) storedInput(schema modelcfg.InputSchema, input map[string]any) map[string]any {
+func (s *GenerationTaskService) storedInput(input map[string]any) map[string]any {
 	out := make(map[string]any, len(input))
 	for k, v := range input {
 		out[k] = v
 	}
-	for _, name := range s.mediaFields(schema) {
-		if id, ok := toUint64(out[name]); ok {
-			out[name] = strconv.FormatUint(id, 10)
+	for _, m := range modelcfg.MediaKinds {
+		if _, ok := input[m.Key]; !ok {
+			continue
 		}
+		var ids []string
+		for _, r := range modelcfg.MediaRefs(input) {
+			if r.Key == m.Key {
+				ids = append(ids, strconv.FormatUint(r.ID, 10))
+			}
+		}
+		out[m.Key] = ids
 	}
 	return out
 }
 
-// checkAsset 校验一个媒体字段引用的素材：格式错误 / 不存在 / 种类不符返回字段级错误；素材存储故障返回 error。
-func (s *GenerationTaskService) checkAsset(ctx context.Context, userID uint64, schema modelcfg.InputSchema, name string, v any) (*modelcfg.FieldError, error) {
-	assetID, ok := toUint64(v)
-	if !ok {
-		return &modelcfg.FieldError{Field: name, Message: "素材 id 格式错误"}, nil
-	}
-	asset, err := s.assets.Get(ctx, userID, assetID)
+// checkAsset 校验一个参考素材：不存在 / 种类不符 / 超过大小上限返回字段级错误；素材存储故障返回 error。
+func (s *GenerationTaskService) checkAsset(ctx context.Context, userID uint64, caps modelcfg.Capabilities, ref modelcfg.MediaRef) (*modelcfg.FieldError, error) {
+	asset, err := s.assets.Get(ctx, userID, ref.ID)
 	if errors.Is(err, provider.ErrAssetNotFound) {
-		return &modelcfg.FieldError{Field: name, Message: "素材不存在"}, nil
+		return &modelcfg.FieldError{Field: ref.Key, Message: "素材不存在"}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if field, ok := schema.Get(name); ok && asset.Kind != field.Type {
-		return &modelcfg.FieldError{Field: name, Message: "素材类型与字段不匹配"}, nil
+	if asset.Kind != ref.Kind {
+		return &modelcfg.FieldError{Field: ref.Key, Message: "素材类型不匹配"}, nil
+	}
+	if mb := caps.Refs.Of(ref.Kind).MaxMB; mb > 0 && asset.ByteSize > int64(mb)<<20 {
+		return &modelcfg.FieldError{Field: ref.Key, Message: fmt.Sprintf("单个素材不能超过 %d MB", mb)}, nil
 	}
 	return nil, nil
 }

@@ -12,28 +12,41 @@ import {
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag, toneClasses } from "@/components/admin-ui/tag";
+import { TagInput } from "@/components/admin-ui/tag-input";
+import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  MODEL_HINT_MAX,
   MODEL_KIND_LABEL,
+  MODEL_TAG_MAX_LENGTH,
+  MODEL_TAGS_MAX,
   readModelChannel,
   readModelKind,
   readModelNumber,
   readModelString,
+  readModelStrings,
   suggestModelKey,
   withModelChannel,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
+import { defaultCapabilities } from "@/utils/admin/model-template";
 import { channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
 
 import { KIND_ORDER, KIND_STYLE } from "../kind";
 import { issueFor } from "./model-fields";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
+
+/** 新建时换种类：能力跟着种类重置成该种类的默认值（生成方式、素材、参数都不通用） */
+function withKind(body: Record<string, unknown>, kind: string) {
+  const next = withModelField(body, "kind", kind);
+  return next && withModelField(next, "capabilities", defaultCapabilities(kind));
+}
 
 const KIND_DESC: Record<string, string> = {
   text: "对话、写作",
@@ -78,7 +91,7 @@ export function ModelBasicForm({
       const next = withModelChannel(body, item.key);
       if (!next || channelSupportsKind(plugins, item, kind) !== false) return next;
       const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
-      return fallback ? withModelField(next, "kind", fallback) : next;
+      return fallback ? withKind(next, fallback) : next;
     });
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
@@ -87,6 +100,7 @@ export function ModelBasicForm({
     return !item.secret_set && auth !== "none";
   };
   const hint = readModelString(body, "hint");
+  const tags = readModelStrings(body, "tags");
 
   return (
     <>
@@ -157,6 +171,21 @@ export function ModelBasicForm({
               onChange={(event) => setField("label", event.target.value)}
             />
           </FormField>
+          <FormField
+            size="default"
+            label="模型 Logo"
+            htmlFor="model-vendor"
+            error={issueFor(issues, "vendor")}
+            hint="选厂商后，模型选择器里显示该厂商的 logo；不选则显示名称首字。"
+          >
+            <VendorPicker
+              id="model-vendor"
+              value={readModelString(body, "vendor")}
+              name={readModelString(body, "label")}
+              seed={readModelString(body, "key")}
+              onChange={(slug) => setField("vendor", slug || undefined)}
+            />
+          </FormField>
         </div>
       </FormSection>
 
@@ -189,7 +218,7 @@ export function ModelBasicForm({
                           "data-selected:bg-transparent ring-1 ring-current",
                         ),
                     )}
-                    onClick={() => setField("kind", item)}
+                    onClick={() => onChange((body) => withKind(body, item))}
                   >
                     <Icon className="size-5 shrink-0" />
                     <span>
@@ -291,11 +320,24 @@ export function ModelBasicForm({
             label="模型描述"
             htmlFor="model-hint"
             error={issueFor(issues, "hint")}
-            hint="在模型选择器里显示在名称下面，可留空。"
+            hint={
+              <span className="flex justify-between gap-2">
+                <span>在模型选择器里显示在名称下面，可留空。</span>
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    hint.length >= MODEL_HINT_MAX && "text-destructive",
+                  )}
+                >
+                  {hint.length} / {MODEL_HINT_MAX}
+                </span>
+              </span>
+            }
           >
             <Textarea
               id="model-hint"
               rows={3}
+              maxLength={MODEL_HINT_MAX}
               placeholder="说明适用场景和注意事项"
               value={hint}
               onChange={(event) => setField("hint", event.target.value)}
@@ -320,6 +362,22 @@ export function ModelBasicForm({
                   event.target.value.trim() === "" || !Number.isFinite(value) ? 0 : value,
                 );
               }}
+            />
+          </FormField>
+          <FormField
+            size="default"
+            label="展示标签"
+            htmlFor="model-tags"
+            className="md:col-span-2"
+            error={issueFor(issues, "tags")}
+            hint={`显示在模型名称旁，如「推荐」「带音轨」。最多 ${MODEL_TAGS_MAX} 个，每个不超过 ${MODEL_TAG_MAX_LENGTH} 字。`}
+          >
+            <TagInput
+              id="model-tags"
+              value={tags}
+              max={MODEL_TAGS_MAX}
+              maxLength={MODEL_TAG_MAX_LENGTH}
+              onChange={(next) => setField("tags", next.length ? next : undefined)}
             />
           </FormField>
         </div>

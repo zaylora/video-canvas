@@ -90,13 +90,16 @@ func TestParseModel_夹具通过校验(t *testing.T) {
 	if len(m.Channels) != 1 || m.Channels[0].Channel != "newapi-main" || m.Channels[0].UpstreamModel != "kling-v2-master" {
 		t.Fatalf("channels 不符：%+v", m.Channels)
 	}
-	// input_schema 保序
+	// capabilities.params 保序
 	var names []string
-	for _, e := range m.InputSchema {
+	for _, e := range m.Capabilities.Params {
 		names = append(names, e.Name)
 	}
-	if strings.Join(names, ",") != "prompt,image,duration" {
-		t.Fatalf("input_schema 顺序错误：%v", names)
+	if strings.Join(names, ",") != "aspect_ratio,resolution,duration,generate_audio" {
+		t.Fatalf("capabilities.params 顺序错误：%v", names)
+	}
+	if len(m.Capabilities.Ops) != 3 || !m.Capabilities.Refs.Image.On || m.Capabilities.Prompt.MaxLength != 2000 {
+		t.Fatalf("capabilities 解析不符：%+v", m.Capabilities)
 	}
 	if v := m.Params["max_tokens"]; v != 2000.0 {
 		t.Fatalf("params 错误：%v", m.Params)
@@ -155,7 +158,7 @@ func TestParseModel_deadline边界(t *testing.T) {
 func TestParseModel_大整数参数不丢精度(t *testing.T) {
 	m := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u"}],
 	"params":{"webappId":2093984571330498561,"n":5,"nested":{"big":2093984571330498562},"list":[1,2.5]},
-	"input_schema":{"a":{"type":"text","label":"A"}}}`
+	"capabilities":{"ops":["t2i"],"prompt":{"max_length":100}}}`
 	got, issues := modelcfg.ParseModel([]byte(m))
 	if len(issues) > 0 {
 		t.Fatalf("应通过：%v", mcIssueList(issues))
@@ -248,67 +251,111 @@ func TestParseModel_基础字段与channels规则(t *testing.T) {
 	})
 }
 
-func TestParseModel_输入schema规则(t *testing.T) {
+func TestParseModel_能力规则(t *testing.T) {
 	mcRunCases(t, []mcCase{
-		{"字段类型非法", func(m map[string]any) { mcDig(m, "input_schema.prompt")["type"] = "string" }, "input_schema.prompt.type", ""},
-		{"字段缺 label", func(m map[string]any) { mcDig(m, "input_schema.prompt")["label"] = "" }, "input_schema.prompt.label", ""},
-		{"字段名含连字符", func(m map[string]any) {
-			mcDig(m, "input_schema")["first-frame"] = map[string]any{"type": "image", "label": "x"}
-		}, "input_schema.first-frame", "字段名"},
-		{"字段名以数字开头", func(m map[string]any) {
-			mcDig(m, "input_schema")["1st"] = map[string]any{"type": "image", "label": "x"}
-		}, "input_schema.1st", "字段名"},
-		{"enum 没有 options", func(m map[string]any) { delete(mcDig(m, "input_schema.duration"), "options") }, "input_schema.duration.options", "至少"},
-		{"enum 选项 value 类型错误", func(m map[string]any) {
-			mcDig(m, "input_schema.duration")["options"] = []any{map[string]any{"value": true, "label": "x"}}
-		}, "input_schema.duration.options[0].value", "字符串或数字"},
-		{"enum 选项重复", func(m map[string]any) {
-			mcDig(m, "input_schema.duration")["options"] = []any{
-				map[string]any{"value": 5, "label": "5 秒"}, map[string]any{"value": 5.0, "label": "又 5 秒"},
+		// —— 生成方式 ——
+		{"没有生成方式", func(m map[string]any) { mcCaps(m)["ops"] = []any{} }, "capabilities.ops", "至少"},
+		{"生成方式非法", func(m map[string]any) { mcCaps(m)["ops"] = []any{"t2i"} }, "capabilities.ops[0]", "t2v"},
+		{"生成方式重复", func(m map[string]any) { mcCaps(m)["ops"] = []any{"t2v", "t2v"} }, "capabilities.ops[1]", "重复"},
+		{"文本模型不能有生成方式", func(m map[string]any) {
+			mcAsText(m)
+			mcCaps(m)["ops"] = []any{"t2v"}
+		}, "capabilities.ops", "没有生成方式"},
+		// —— 参考素材 ——
+		{"参考图数量超过 50", func(m map[string]any) { mcDig(m, "capabilities.refs.image")["max"] = 51 }, "capabilities.refs.image.max", "1 – 50"},
+		{"开启后数量为 0", func(m map[string]any) { mcDig(m, "capabilities.refs.image")["max"] = 0 }, "capabilities.refs.image.max", "1 – 50"},
+		{"大小超过 500MB", func(m map[string]any) { mcDig(m, "capabilities.refs.audio")["max_mb"] = 501 }, "capabilities.refs.audio.max_mb", "500"},
+		{"大小为 0", func(m map[string]any) { mcDig(m, "capabilities.refs.image")["max_mb"] = 0 }, "capabilities.refs.image.max_mb", "1"},
+		{"图生需要开启图片素材", func(m map[string]any) { mcDig(m, "capabilities.refs.image")["on"] = false }, "capabilities.refs.image.on", "图生"},
+		{"全能参考至少开一种素材", func(m map[string]any) {
+			mcCaps(m)["ops"] = []any{"omni"}
+			mcDig(m, "capabilities.refs.image")["on"] = false
+			mcDig(m, "capabilities.refs.audio")["on"] = false
+		}, "capabilities.refs", "至少"},
+		{"图片模型不能开视频素材", func(m map[string]any) {
+			m["kind"] = "image"
+			mcCaps(m)["ops"] = []any{"t2i", "i2i"}
+			mcDig(m, "capabilities.refs.video")["on"] = true
+		}, "capabilities.refs.video.on", "不接收"},
+		// —— 提示词 ——
+		{"提示词上限为 0", func(m map[string]any) { mcDig(m, "capabilities.prompt")["max_length"] = 0 }, "capabilities.prompt.max_length", "1 –"},
+		{"提示词上限过大", func(m map[string]any) { mcDig(m, "capabilities.prompt")["max_length"] = 1000001 }, "capabilities.prompt.max_length", "1000000"},
+		// —— 生成参数 ——
+		{"参数名含大写", func(m map[string]any) {
+			mcParams(m)["Ratio"] = map[string]any{"type": "boolean", "label": "x", "open": true}
+		}, "capabilities.params.Ratio", "参数名"},
+		{"参数名是保留键", func(m map[string]any) {
+			mcParams(m)["prompt"] = map[string]any{"type": "boolean", "label": "x", "open": true}
+		}, "capabilities.params.prompt", "保留"},
+		{"参数类型非法", func(m map[string]any) { mcParam(m, "duration")["type"] = "text" }, "capabilities.params.duration.type", "enum"},
+		{"参数缺 label", func(m map[string]any) { mcParam(m, "duration")["label"] = "" }, "capabilities.params.duration.label", ""},
+		{"enum 没有可选值", func(m map[string]any) { mcParam(m, "resolution")["options"] = []any{} }, "capabilities.params.resolution.options", "1 –"},
+		{"enum 可选值重复", func(m map[string]any) { mcParam(m, "resolution")["options"] = []any{"720P", "720P"} }, "capabilities.params.resolution.options[1]", "重复"},
+		{"enum 可选值类型错误", func(m map[string]any) { mcParam(m, "resolution")["options"] = []any{true} }, "capabilities.params.resolution.options[0]", "字符串或数字"},
+		{"enum 默认值不在可选值内", func(m map[string]any) { mcParam(m, "resolution")["default"] = "4K" }, "capabilities.params.resolution.default", "可选值之一"},
+		{"enum 没有默认值", func(m map[string]any) { delete(mcParam(m, "resolution"), "default") }, "capabilities.params.resolution.default", "默认值"},
+		{"number 缺 min / max", func(m map[string]any) { delete(mcParam(m, "duration"), "max") }, "capabilities.params.duration", "min"},
+		{"number 最大值超过 3600", func(m map[string]any) { mcParam(m, "duration")["max"] = 3601 }, "capabilities.params.duration.min", "3600"},
+		{"number 最小值大于最大值", func(m map[string]any) { mcParam(m, "duration")["min"] = 20 }, "capabilities.params.duration.min", ""},
+		{"number 默认值超出范围", func(m map[string]any) { mcParam(m, "duration")["default"] = 13 }, "capabilities.params.duration.default", "4 – 12"},
+		{"number 默认值不是步长整数倍", func(m map[string]any) {
+			mcParam(m, "duration")["step"] = 2
+			mcParam(m, "duration")["default"] = 5
+		}, "capabilities.params.duration.default", "整数倍"},
+		{"number 步长小于 1", func(m map[string]any) { mcParam(m, "duration")["step"] = 0 }, "capabilities.params.duration.step", "1"},
+		{"number 不能做规格维度", func(m map[string]any) { mcParam(m, "duration")["spec"] = true }, "capabilities.params.duration.spec", "number"},
+		{"enum 写了 min", func(m map[string]any) { mcParam(m, "resolution")["min"] = 1 }, "capabilities.params.resolution", "number"},
+		{"number 写了 options", func(m map[string]any) { mcParam(m, "duration")["options"] = []any{1} }, "capabilities.params.duration.options", "enum"},
+		{"boolean 默认值类型错误", func(m map[string]any) { mcParam(m, "generate_audio")["default"] = "yes" }, "capabilities.params.generate_audio.default", "true / false"},
+		{"不开放的参数必须有默认值", func(m map[string]any) {
+			mcParams(m)["flag"] = map[string]any{"type": "boolean", "label": "F", "open": false}
+		}, "capabilities.params.flag.default", "不开放"},
+		{"fanout 必须是 enum", func(m map[string]any) {
+			mcParam(m, "duration")["fanout"] = true
+		}, "capabilities.params.duration.fanout", "enum"},
+		{"fanout 取值超过 8", func(m map[string]any) {
+			mcParams(m)["count"] = map[string]any{"type": "enum", "label": "数量", "open": true, "options": []any{1, 9}, "default": 1, "fanout": true}
+		}, "capabilities.params.count.options", "1 – 8"},
+		{"fanout 至多一个", func(m map[string]any) {
+			for _, n := range []string{"c1", "c2"} {
+				mcParams(m)[n] = map[string]any{"type": "enum", "label": "数量", "open": true, "options": []any{1, 2}, "default": 1, "fanout": true}
 			}
-		}, "input_schema.duration.options[1].value", "重复"},
-		{"enum 选项 5 与 \"5\" 视为重复", func(m map[string]any) {
-			mcDig(m, "input_schema.duration")["options"] = []any{
-				map[string]any{"value": 5, "label": "5 秒"}, map[string]any{"value": "5", "label": "五"},
-			}
-		}, "input_schema.duration.options[1].value", "重复"},
-		{"enum 选项缺 label", func(m map[string]any) {
-			mcDig(m, "input_schema.duration")["options"] = []any{map[string]any{"value": 5, "label": ""}}
-			delete(mcDig(m, "input_schema.duration"), "default")
-		}, "input_schema.duration.options[0].label", ""},
-		{"enum 默认值不在选项内", func(m map[string]any) { mcDig(m, "input_schema.duration")["default"] = 7 }, "input_schema.duration.default", "options"},
-		{"非 enum 写了 options", func(m map[string]any) {
-			mcDig(m, "input_schema.prompt")["options"] = []any{map[string]any{"value": "a", "label": "a"}}
-		}, "input_schema.prompt.options", "enum"},
-		{"number min 大于 max", func(m map[string]any) {
-			mcDig(m, "input_schema")["n"] = map[string]any{"type": "number", "label": "N", "min": 10, "max": 1}
-		}, "input_schema.n.min", "max"},
-		{"text 写了 min", func(m map[string]any) { mcDig(m, "input_schema.prompt")["min"] = 1 }, "input_schema.prompt.min", "number"},
-		{"text 写了 max", func(m map[string]any) { mcDig(m, "input_schema.prompt")["max"] = 1 }, "input_schema.prompt.max", "number"},
-		{"number 写了 max_length", func(m map[string]any) {
-			mcDig(m, "input_schema")["n"] = map[string]any{"type": "number", "label": "N", "max_length": 5}
-		}, "input_schema.n.max_length", "text"},
-		{"max_length 为负", func(m map[string]any) { mcDig(m, "input_schema.prompt")["max_length"] = -1 }, "input_schema.prompt.max_length", "负数"},
-		{"port 非法", func(m map[string]any) { mcDig(m, "input_schema.prompt")["port"] = "file" }, "input_schema.prompt.port", ""},
-		{"text 字段 port 不是 text", func(m map[string]any) { mcDig(m, "input_schema.prompt")["port"] = "image" }, "input_schema.prompt.port", "text"},
-		{"媒体字段 port 与类型不符", func(m map[string]any) { mcDig(m, "input_schema.image")["port"] = "video" }, "input_schema.image.port", "image"},
-		{"number 字段不能有 port", func(m map[string]any) {
-			mcDig(m, "input_schema")["n"] = map[string]any{"type": "number", "label": "N", "port": "text"}
-		}, "input_schema.n.port", ""},
-		{"媒体字段不能有默认值", func(m map[string]any) { mcDig(m, "input_schema.image")["default"] = 1 }, "input_schema.image.default", "媒体"},
-		{"text 默认值类型错误", func(m map[string]any) { mcDig(m, "input_schema.prompt")["default"] = 5 }, "input_schema.prompt.default", "字符串"},
-		{"text 默认值超长", func(m map[string]any) {
-			f := mcDig(m, "input_schema.prompt")
-			f["max_length"] = 2
-			f["default"] = "abc"
-		}, "input_schema.prompt.default", "max_length"},
-		{"number 默认值小于 min", func(m map[string]any) {
-			mcDig(m, "input_schema")["n"] = map[string]any{"type": "number", "label": "N", "min": 5, "default": 1}
-		}, "input_schema.n.default", "min"},
-		{"boolean 默认值类型错误", func(m map[string]any) {
-			mcDig(m, "input_schema")["b"] = map[string]any{"type": "boolean", "label": "B", "default": "yes"}
-		}, "input_schema.b.default", "true / false"},
+		}, "capabilities.params", "至多一个"},
+		// —— 文本上下文 ——
+		{"文本模型缺 context", func(m map[string]any) { mcAsText(m); delete(mcCaps(m), "context") }, "capabilities.context", "必须设置"},
+		{"最大输出不小于窗口", func(m map[string]any) {
+			mcAsText(m)
+			mcCaps(m)["context"] = map[string]any{"window": 1000, "output": 1000}
+		}, "capabilities.context.output", "小于"},
+		{"最大输出过小", func(m map[string]any) {
+			mcAsText(m)
+			mcCaps(m)["context"] = map[string]any{"window": 8000, "output": 100}
+		}, "capabilities.context.output", "256"},
+		{"窗口过大", func(m map[string]any) {
+			mcAsText(m)
+			mcCaps(m)["context"] = map[string]any{"window": 10000001, "output": 1000}
+		}, "capabilities.context.window", "10000000"},
+		{"非文本不能有 context", func(m map[string]any) { mcCaps(m)["context"] = map[string]any{"window": 8000, "output": 1000} }, "capabilities.context", "文本"},
+		{"非文本不能有 system", func(m map[string]any) { mcCaps(m)["system"] = "你好" }, "capabilities.system", "文本"},
 	})
+}
+
+// mcCaps 取夹具的 capabilities。
+func mcCaps(m map[string]any) map[string]any { return mcDig(m, "capabilities") }
+
+// mcParams 取夹具的 capabilities.params。
+func mcParams(m map[string]any) map[string]any { return mcDig(m, "capabilities.params") }
+
+// mcParam 取夹具里的一个生成参数。
+func mcParam(m map[string]any, name string) map[string]any { return mcParams(m)[name].(map[string]any) }
+
+// mcAsText 把夹具改成合法的文本模型（无生成方式、无素材、有 context、没有生成参数）。
+func mcAsText(m map[string]any) {
+	m["kind"] = "text"
+	m["capabilities"] = map[string]any{
+		"prompt":  map[string]any{"max_length": 8000},
+		"context": map[string]any{"window": 128000, "output": 8192},
+	}
 }
 
 func TestParseModel_未知字段与类型错误(t *testing.T) {
@@ -318,11 +365,11 @@ func TestParseModel_未知字段与类型错误(t *testing.T) {
 		{"旧的 mapping 字段已不存在", func(m map[string]any) { m["mapping"] = map[string]any{} }, "mapping", "未知字段"},
 		{"旧的 output 字段已不存在", func(m map[string]any) { m["output"] = map[string]any{} }, "output", "未知字段"},
 		{"channels 元素里的未知字段", func(m map[string]any) { mcChannel0(m)["weight"] = 1 }, "channels[0].weight", "未知字段"},
-		{"字段定义里的未知属性", func(m map[string]any) { mcDig(m, "input_schema.prompt")["requried"] = true }, "input_schema.prompt.requried", "未知字段"},
-		{"选项里的未知属性", func(m map[string]any) {
-			mcDig(m, "input_schema.duration")["options"] = []any{map[string]any{"value": 5, "label": "5", "x": 1}}
-		}, "input_schema.duration.options[0].x", "未知字段"},
-		{"input_schema 不是对象", func(m map[string]any) { m["input_schema"] = []any{} }, "input_schema", "对象"},
+		{"参数定义里的未知属性", func(m map[string]any) { mcParam(m, "duration")["requried"] = true }, "capabilities.params.duration.requried", "未知字段"},
+		{"旧的 input_schema 已不存在", func(m map[string]any) { m["input_schema"] = map[string]any{} }, "input_schema", "未知字段"},
+		{"capabilities 不是对象", func(m map[string]any) { m["capabilities"] = []any{} }, "capabilities", "对象"},
+		{"capabilities.params 不是对象", func(m map[string]any) { mcCaps(m)["params"] = []any{} }, "capabilities.params", "对象"},
+		{"素材上限不是整数", func(m map[string]any) { mcDig(m, "capabilities.refs.image")["max"] = 1.5 }, "capabilities.refs.image.max", "整数"},
 		{"key 不是字符串", func(m map[string]any) { m["key"] = 5 }, "key", "字符串"},
 		{"label 不是字符串", func(m map[string]any) { m["label"] = true }, "label", "字符串"},
 		{"credits 是字符串", func(m map[string]any) { m["credits"] = "10" }, "credits", "整数"},
@@ -330,10 +377,8 @@ func TestParseModel_未知字段与类型错误(t *testing.T) {
 		{"enabled 不是布尔", func(m map[string]any) { m["enabled"] = "yes" }, "enabled", "布尔"},
 		{"sort 是字符串", func(m map[string]any) { m["sort"] = "1" }, "sort", "整数"},
 		{"deadline 是布尔", func(m map[string]any) { m["deadline"] = true }, "deadline", "字符串"},
-		{"字段 required 不是布尔", func(m map[string]any) { mcDig(m, "input_schema.prompt")["required"] = "true" }, "input_schema.prompt.required", "布尔"},
-		{"字段 min 不是数字", func(m map[string]any) {
-			mcDig(m, "input_schema")["n"] = map[string]any{"type": "number", "label": "N", "min": "1"}
-		}, "input_schema.n.min", "数字"},
+		{"参数 open 不是布尔", func(m map[string]any) { mcParam(m, "duration")["open"] = "true" }, "capabilities.params.duration.open", "布尔"},
+		{"参数 min 不是整数", func(m map[string]any) { mcParam(m, "duration")["min"] = "1" }, "capabilities.params.duration.min", "整数"},
 		{"channel 不是字符串", func(m map[string]any) { mcChannel0(m)["channel"] = 1 }, "channels[0].channel", "字符串"},
 	})
 }
@@ -368,21 +413,22 @@ func TestParseModel_多个问题一次报出(t *testing.T) {
 		map[string]any{"channel": "BAD", "upstream_model": ""},
 		map[string]any{"channel": "ok", "upstream_model": "x"},
 	}
-	mcDig(m, "input_schema.prompt")["type"] = "string"
+	mcParam(m, "duration")["type"] = "text"
 	_, issues := modelcfg.ParseModel(mcMarshal(t, m))
-	for _, p := range []string{"key", "kind", "credits", "channels", "channels[0].channel", "channels[0].upstream_model", "input_schema.prompt.type"} {
+	for _, p := range []string{"key", "kind", "credits", "channels", "channels[0].channel", "channels[0].upstream_model", "capabilities.params.duration.type"} {
 		if _, ok := mcHasIssue(issues, p); !ok {
 			t.Errorf("缺少路径 %s，实际 %v", p, mcIssueList(issues))
 		}
 	}
 }
 
-func TestParseModel_重复字段名(t *testing.T) {
-	body := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u"}],"input_schema":{
-		"a":{"type":"text","label":"A"},"a":{"type":"text","label":"B"}}}`
+func TestParseModel_重复参数名(t *testing.T) {
+	body := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u"}],"capabilities":{
+		"ops":["t2i"],"prompt":{"max_length":100},"params":{
+		"a":{"type":"boolean","label":"A","open":true},"a":{"type":"boolean","label":"B","open":true}}}}`
 	_, issues := modelcfg.ParseModel([]byte(body))
-	if is, ok := mcHasIssue(issues, "input_schema.a"); !ok || !strings.Contains(is.Message, "重复") {
-		t.Fatalf("期望重复字段名 Issue，实际：%v", mcIssueList(issues))
+	if is, ok := mcHasIssue(issues, "capabilities.params.a"); !ok || !strings.Contains(is.Message, "重复") {
+		t.Fatalf("期望重复参数名 Issue，实际：%v", mcIssueList(issues))
 	}
 }
 
@@ -396,35 +442,37 @@ func TestParseModel_合法变体(t *testing.T) {
 		{"params 为 null", func(m map[string]any) { m["params"] = nil }},
 		{"没有 hint", func(m map[string]any) { delete(m, "hint") }},
 		{"hint 为空", func(m map[string]any) { m["hint"] = "" }},
-		{"空 input_schema", func(m map[string]any) { m["input_schema"] = map[string]any{} }},
-		{"没有 input_schema", func(m map[string]any) { delete(m, "input_schema") }},
+		{"没有生成参数", func(m map[string]any) { delete(mcCaps(m), "params") }},
+		{"只留文生", func(m map[string]any) {
+			mcCaps(m)["ops"] = []any{"t2v"}
+			mcDig(m, "capabilities.refs.image")["on"] = false
+		}},
 		{"credits 为 0", func(m map[string]any) { m["credits"] = 0 }},
 		{"kind=text", func(m map[string]any) {
-			m["kind"] = "text"
-			m["input_schema"] = map[string]any{"prompt": map[string]any{"type": "text", "label": "提问", "required": true}}
+			mcAsText(m)
+			mcCaps(m)["system"] = "你是一名分镜师"
 		}},
-		{"kind=image", func(m map[string]any) { m["kind"] = "image" }},
-		{"kind=audio", func(m map[string]any) { m["kind"] = "audio" }},
+		{"kind=image", func(m map[string]any) {
+			m["kind"] = "image"
+			mcCaps(m)["ops"] = []any{"t2i", "i2i"}
+			mcDig(m, "capabilities.refs.audio")["on"] = false
+		}},
+		{"kind=audio", func(m map[string]any) {
+			m["kind"] = "audio"
+			m["capabilities"] = map[string]any{"prompt": map[string]any{"max_length": 4096}}
+		}},
 		{"key 含点、下划线、大写", func(m map[string]any) { m["key"] = "Kling_v2.master-1" }},
 		{"key 恰好 128 位", func(m map[string]any) { m["key"] = strings.Repeat("a", 128) }},
 		{"channel 恰好 64 位", func(m map[string]any) { mcChannel0(m)["channel"] = strings.Repeat("a", 64) }},
 		{"upstream_model 恰好 128 个字符", func(m map[string]any) { mcChannel0(m)["upstream_model"] = strings.Repeat("模", 128) }},
 		{"upstream_model 含斜杠与冒号", func(m map[string]any) { mcChannel0(m)["upstream_model"] = "org/model:v1" }},
-		{"字符串枚举", func(m map[string]any) {
-			mcDig(m, "input_schema")["ar"] = map[string]any{"type": "enum", "label": "比例", "default": "16:9",
-				"options": []any{map[string]any{"value": "16:9", "label": "横屏"}, map[string]any{"value": "9:16", "label": "竖屏"}}}
+		{"数字枚举与生成数量", func(m map[string]any) {
+			mcParams(m)["count"] = map[string]any{"type": "enum", "label": "生成数量", "open": true, "options": []any{1, 2, 4}, "default": 1, "fanout": true, "unit": "个"}
 		}},
-		{"boolean 与 number", func(m map[string]any) {
-			mcDig(m, "input_schema")["hd"] = map[string]any{"type": "boolean", "label": "高清", "default": false, "advanced": true}
-			mcDig(m, "input_schema")["seed"] = map[string]any{"type": "number", "label": "种子", "min": 0, "max": 100, "default": 1}
+		{"不开放的参数有默认值", func(m map[string]any) {
+			mcParams(m)["seed"] = map[string]any{"type": "number", "label": "种子", "open": false, "min": 1, "max": 100, "default": 7}
 		}},
-		{"字段名以下划线开头", func(m map[string]any) {
-			mcDig(m, "input_schema")["_x"] = map[string]any{"type": "text", "label": "X"}
-		}},
-		{"多个媒体字段", func(m map[string]any) {
-			mcDig(m, "input_schema")["tail"] = map[string]any{"type": "image", "label": "尾帧", "port": "image"}
-			mcDig(m, "input_schema")["voice"] = map[string]any{"type": "audio", "label": "配音"}
-		}},
+		{"number 不写步长", func(m map[string]any) { delete(mcParam(m, "duration"), "step") }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -436,36 +484,4 @@ func TestParseModel_合法变体(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestValidateInputSchema(t *testing.T) {
-	t.Run("空 schema 合法", func(t *testing.T) {
-		if issues := modelcfg.ValidateInputSchema(nil); len(issues) != 0 {
-			t.Fatalf("实际 %v", mcIssueList(issues))
-		}
-	})
-	t.Run("Go 里构造的 schema（数字是 int / float64 / json.Number）合法", func(t *testing.T) {
-		schema := modelcfg.InputSchema{
-			{Name: "duration", InputField: modelcfg.InputField{Type: modelcfg.FieldEnum, Label: "时长", Default: json.Number("5"),
-				Options: []modelcfg.EnumOption{{Value: 5, Label: "5 秒"}, {Value: 10.0, Label: "10 秒"}, {Value: json.Number("15"), Label: "15 秒"}}}},
-			{Name: "seed", InputField: modelcfg.InputField{Type: modelcfg.FieldNumber, Label: "种子", Default: int64(3)}},
-		}
-		if issues := modelcfg.ValidateInputSchema(schema); len(issues) != 0 {
-			t.Fatalf("实际 %v", mcIssueList(issues))
-		}
-	})
-	t.Run("路径带 input_schema 前缀，多个问题一起返回且保持书写顺序", func(t *testing.T) {
-		schema := modelcfg.InputSchema{
-			{Name: "b", InputField: modelcfg.InputField{Type: "file", Label: "B"}},
-			{Name: "a", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: ""}},
-			{Name: "a", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "A2"}},
-			{Name: "x y", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "X"}},
-		}
-		issues := modelcfg.ValidateInputSchema(schema)
-		got := strings.Join(mcIssuePaths(issues), ",")
-		want := "input_schema.b.type,input_schema.a.label,input_schema.a,input_schema.x y"
-		if got != want {
-			t.Fatalf("路径 %s，期望 %s", got, want)
-		}
-	})
 }

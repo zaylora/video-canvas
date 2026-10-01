@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	durationType    = reflect.TypeOf(Duration(0))
-	inputSchemaType = reflect.TypeOf(InputSchema(nil))
-	inputFieldType  = reflect.TypeOf(InputField{})
+	durationType   = reflect.TypeOf(Duration(0))
+	paramSetType   = reflect.TypeOf(ParamSet(nil))
+	paramFieldType = reflect.TypeOf(ParamField{})
 )
 
 // joinPath 拼接 JSON 路径，base 为空时直接返回 key。
@@ -68,14 +68,14 @@ func checkShape(path string, raw any, t reflect.Type, issues *[]Issue) {
 			*issues = append(*issues, Issue{Path: path, Message: err.Error()})
 		}
 		return
-	case inputSchemaType:
+	case paramSetType:
 		m, ok := raw.(map[string]any)
 		if !ok {
-			*issues = append(*issues, Issue{Path: path, Message: "应为对象（字段名 -> 字段定义）"})
+			*issues = append(*issues, Issue{Path: path, Message: "应为对象（参数名 -> 参数定义）"})
 			return
 		}
 		for _, k := range sortedKeys(m) {
-			checkShape(joinPath(path, k), m[k], inputFieldType, issues)
+			checkShape(joinPath(path, k), m[k], paramFieldType, issues)
 		}
 		return
 	}

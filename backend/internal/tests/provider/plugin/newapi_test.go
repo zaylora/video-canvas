@@ -55,9 +55,9 @@ func newNewAPIEnv(t *testing.T, mod func(*plugin.Options)) *newapiEnv {
 	return &newapiEnv{exec: plugin.New(opts), code: code, meta: meta, sha: pre.SHA256}
 }
 
-func (e *newapiEnv) snapshot(baseURL, kind string, schema modelcfg.InputSchema) *provider.Snapshot {
+func (e *newapiEnv) snapshot(baseURL, kind string, caps modelcfg.Capabilities) *provider.Snapshot {
 	return &provider.Snapshot{
-		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: "up-model", InputSchema: schema},
+		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: "up-model", Capabilities: caps},
 		Channel: provider.ChannelSnapshot{
 			Key: "newapi-main", PluginKey: "newapi", PluginVersionID: 1, BaseURL: baseURL, TrustedInternal: true,
 		},
@@ -67,12 +67,13 @@ func (e *newapiEnv) snapshot(baseURL, kind string, schema modelcfg.InputSchema) 
 }
 
 func (e *newapiEnv) runtime(baseURL string) *provider.ChannelRuntime {
-	return e.snapshot(baseURL, "text", nil).Runtime()
+	return e.snapshot(baseURL, "text", modelcfg.Capabilities{}).Runtime()
 }
 
-var promptSchema = modelcfg.InputSchema{
-	{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "提示词", Required: true}},
-}
+// promptCaps 是只有提示词的最小能力（文本、语音、视频/图片的查询测试用）。
+var promptCaps = modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 10000}}
+
+func newapiIntP(v int) *int { return &v }
 
 // fakeNewAPI 模拟 New API 网关的公开接口，记录每次请求。
 type fakeNewAPI struct {
@@ -130,7 +131,7 @@ func TestNewAPITextSync(t *testing.T) {
 	defer srv.Close()
 
 	env := newNewAPIEnv(t, nil)
-	snap := env.snapshot(srv.URL, "text", promptSchema)
+	snap := env.snapshot(srv.URL, "text", promptCaps)
 	snap.Model.Params = map[string]any{"system": "你是助手", "max_tokens": float64(256)}
 	res, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "打个招呼"},
@@ -165,7 +166,7 @@ func TestNewAPITextUpstreamErrorBody(t *testing.T) {
 	}})
 	defer srv.Close()
 	env := newNewAPIEnv(t, nil)
-	res, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "text", promptSchema), provider.SubmitInput{
+	res, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "text", promptCaps), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "x"},
 	})
 	if err != nil {
@@ -203,11 +204,13 @@ func TestNewAPIVideoSubmitAndQuery(t *testing.T) {
 	defer srv.Close()
 
 	env := newNewAPIEnv(t, nil)
-	schema := modelcfg.InputSchema{
-		{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "提示词", Required: true}},
-		{Name: "duration", InputField: modelcfg.InputField{Type: modelcfg.FieldNumber, Label: "时长"}},
+	caps := modelcfg.Capabilities{
+		Ops:    []string{modelcfg.OpT2V},
+		Prompt: modelcfg.PromptSpec{MaxLength: 10000},
+		Params: modelcfg.ParamSet{{Name: "duration", ParamField: modelcfg.ParamField{
+			Type: modelcfg.ParamNumber, Label: "时长", Open: true, Min: newapiIntP(1), Max: newapiIntP(60), Default: 5.0}}},
 	}
-	snap := env.snapshot(srv.URL, "video", schema)
+	snap := env.snapshot(srv.URL, "video", caps)
 	snap.Model.Params = map[string]any{"metadata": map[string]any{"quality": "high"}}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 3, UserID: 9}, Input: map[string]any{"prompt": "猫在跳舞", "duration": float64(5)},
@@ -265,7 +268,7 @@ func TestNewAPIVideoQueryFailed(t *testing.T) {
 			}})
 			defer srv.Close()
 			env := newNewAPIEnv(t, nil)
-			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "video", promptSchema), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
+			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "video", promptCaps), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -287,7 +290,7 @@ func TestNewAPIVideoEdgeResponses(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":{}}`))
 	}})
 	defer srv.Close()
-	snap := env.snapshot(srv.URL, "video", promptSchema)
+	snap := env.snapshot(srv.URL, "video", promptCaps)
 
 	q, err := env.exec.Query(context.Background(), snap, provider.TaskRef{ID: 1, ProviderTaskID: "x"})
 	if err != nil || q.Status != provider.StatusFailed {
@@ -322,7 +325,7 @@ func TestNewAPIClassifyHTTPErrors(t *testing.T) {
 			}})
 			defer srv.Close()
 			env := newNewAPIEnv(t, nil)
-			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "text", promptSchema), provider.SubmitInput{
+			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "text", promptCaps), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "x"},
 			})
 			if err == nil || provider.ClassOf(err) != tc.class {
@@ -386,19 +389,8 @@ func TestNewAPIImport(t *testing.T) {
 	if text.Kind != "text" || text.Label != "gpt-4o" {
 		t.Fatalf("文本草稿不符：%+v", text)
 	}
-	if _, ok := text.InputSchema.Get("prompt"); !ok {
-		t.Fatalf("文本草稿应有 prompt 字段：%+v", text.InputSchema)
-	}
 	if video.Kind != "video" {
 		t.Fatalf("视频草稿不符：%+v", video)
-	}
-	// 输入表单键序按插件书写顺序保留
-	var names []string
-	for _, e := range video.InputSchema {
-		names = append(names, e.Name)
-	}
-	if strings.Join(names, ",") != "prompt,image,duration" {
-		t.Fatalf("视频草稿字段顺序应为 prompt,image,duration：%v", names)
 	}
 }
 
@@ -412,11 +404,13 @@ func TestNewAPIImageGenerate(t *testing.T) {
 	defer srv.Close()
 
 	env := newNewAPIEnv(t, nil)
-	schema := modelcfg.InputSchema{
-		{Name: "prompt", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "提示词", Required: true}},
-		{Name: "size", InputField: modelcfg.InputField{Type: modelcfg.FieldText, Label: "尺寸"}},
+	caps := modelcfg.Capabilities{
+		Ops:    []string{modelcfg.OpT2I},
+		Prompt: modelcfg.PromptSpec{MaxLength: 10000},
+		Params: modelcfg.ParamSet{{Name: "size", ParamField: modelcfg.ParamField{
+			Type: modelcfg.ParamEnum, Label: "尺寸", Open: true, Options: []any{"1024x1024", "512x512"}, Default: "512x512"}}},
 	}
-	snap := env.snapshot(srv.URL, "image", schema)
+	snap := env.snapshot(srv.URL, "image", caps)
 	snap.Model.Params = map[string]any{"extra": map[string]any{"size": "512x512", "background": "transparent"}}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 5, UserID: 9}, Input: map[string]any{"prompt": "一只猫", "size": "1024x1024"},
@@ -454,7 +448,7 @@ func TestNewAPIImageBadResponses(t *testing.T) {
 				_, _ = w.Write([]byte(c.body))
 			}})
 			defer srv.Close()
-			sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", promptSchema), provider.SubmitInput{
+			sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", promptCaps), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 6, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			if err != nil {
@@ -491,7 +485,7 @@ func TestNewAPIAudioSpeech(t *testing.T) {
 
 	saver := &fakeSaver{}
 	env := newNewAPIEnv(t, func(o *plugin.Options) { o.Saver = saver })
-	snap := env.snapshot(srv.URL, "audio", promptSchema)
+	snap := env.snapshot(srv.URL, "audio", promptCaps)
 	snap.Model.Params = map[string]any{"voice": "nova", "format": "mp3", "speed": float64(1.2)}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 7, UserID: 9}, Input: map[string]any{"prompt": "你好，世界"},
