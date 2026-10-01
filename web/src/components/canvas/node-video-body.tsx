@@ -120,7 +120,7 @@ export function NodeVideoBody({
       return (
         <PendingBox
           title="排队中"
-          detail="已提交，等待平台开始生成"
+          detail="前面的任务处理完后会自动开始"
           onCancel={onCancel}
           cancelling={cancelling}
         />

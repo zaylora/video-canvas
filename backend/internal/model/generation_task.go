@@ -107,6 +107,7 @@ type GenerationTaskView struct {
 	Version         int64        `json:"version"`         // 状态版本号，前端据此丢弃过期推送
 	DeadlineAt      time.Time    `json:"deadline_at"`     // 截止时间，超过则 expired
 	CreatedAt       time.Time    `json:"created_at"`      // 创建时间
+	SubmittedAt     *time.Time   `json:"submitted_at"`    // 提交给平台（开始调用上游）的时间；还在排队时为空
 	FinishedAt      *time.Time   `json:"finished_at"`     // 进入终态的时间
 }
 

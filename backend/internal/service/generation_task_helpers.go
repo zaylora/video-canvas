@@ -44,6 +44,7 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 		Version:         t.Version,
 		DeadlineAt:      t.DeadlineAt,
 		CreatedAt:       t.CreatedAt,
+		SubmittedAt:     t.SubmittedAt,
 		FinishedAt:      t.FinishedAt,
 	}
 }

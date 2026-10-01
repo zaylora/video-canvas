@@ -1508,6 +1508,10 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if len(env.bc.msgs) != 1 {
 			t.Fatalf("应推送一次：%d", len(env.bc.msgs))
 		}
+		// 推送的任务视图要带上提交时间：前端据此区分“排队中”（还没调用上游，为 null）和“生成中”，并从这一刻起算耗时
+		if v, ok := env.bc.msgs[0].Data.(*model.GenerationTaskView); !ok || v.SubmittedAt == nil || v.Status != model.TaskQueued {
+			t.Fatalf("推送的视图应带 submitted_at：%+v", env.bc.msgs[0].Data)
+		}
 	})
 
 	t.Run("MarkSubmitted：任务已被取消则不迁移", func(t *testing.T) {

@@ -67,6 +67,8 @@ export interface TaskView {
   deadline_at: string | null;
   /** 创建时间 */
   created_at: string;
+  /** 提交给平台（开始调用上游）的时间，还在排队时为 null */
+  submitted_at: string | null;
   /** 结束时间，未结束为 null */
   finished_at: string | null;
 }
