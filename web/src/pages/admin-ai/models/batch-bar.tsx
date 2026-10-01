@@ -168,8 +168,8 @@ function EditDialog({
 
   const creditsValue = Number(credits);
   const creditsError =
-    creditsOn && (credits.trim() === "" || !Number.isFinite(creditsValue) || creditsValue < 0)
-      ? "请填写不小于 0 的数字"
+    creditsOn && (credits.trim() === "" || !Number.isInteger(creditsValue) || creditsValue <= 0)
+      ? "请填写大于 0 的整数"
       : null;
   const deadlineError = deadlineOn ? checkDeadline(deadline) : null;
   const channelError = channelOn && !channel ? "请选择渠道" : null;
@@ -178,7 +178,7 @@ function EditDialog({
 
   const submit = () => {
     const patch: BatchPatch = {};
-    if (creditsOn) patch.credits = creditsValue;
+    if (creditsOn) patch.price = creditsValue;
     if (deadlineOn) patch.deadline = deadline.trim();
     if (channelOn) patch.channel = channel;
     onSubmit(patch, publish);
@@ -197,15 +197,19 @@ function EditDialog({
           <div className="flex flex-col gap-2">
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox checked={creditsOn} onCheckedChange={(v) => setCreditsOn(!!v)} />
-              积分价格
+              默认价格
             </label>
             {creditsOn && (
-              <FormField label="统一设置为（积分）" error={creditsError ?? undefined}>
+              <FormField
+                label="统一设置为（积分，按次是每次、按秒是每秒）"
+                hint="只改默认价，规格价格不动；按 Token 计费的模型会跳过。"
+                error={creditsError ?? undefined}
+              >
                 <Input
-                  inputMode="decimal"
+                  inputMode="numeric"
                   value={credits}
                   onChange={(event) => setCredits(event.target.value)}
-                  aria-label="积分价格"
+                  aria-label="默认价格"
                 />
               </FormField>
             )}

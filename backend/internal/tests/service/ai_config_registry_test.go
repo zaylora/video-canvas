@@ -93,7 +93,7 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	t.Run("公开字段完整", func(t *testing.T) {
 		list, _ := svc.ListModels(ctx, "video")
 		m := list[0]
-		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Credits != 5 || m.Kind != "video" {
+		if m.Label != "模型-m-b" || m.Hint != "提示" || m.Pricing.Unit != 5 || m.Pricing.Cost != nil || m.Kind != "video" {
 			t.Fatalf("公开字段不符合预期：%+v", m)
 		}
 		if m.Capabilities.Prompt.MaxLength != 2000 || len(m.Capabilities.Ops) != 1 {
@@ -119,7 +119,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Credits != 5 ||
+		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Pricing.Unit != 5 ||
 			snap.Model.Params["instanceType"] != "default" {
 			t.Fatalf("模型部分不符合预期：%+v", snap.Model)
 		}

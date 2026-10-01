@@ -59,6 +59,47 @@ export interface Capabilities {
   system?: string;
 }
 
+/** 计费方式：按次 / 按秒（× 时长参数 duration）/ 按 Token（仅文本） */
+export type Billing = "per_call" | "per_second" | "token";
+
+/** Token 单价（积分 / 百万 Token） */
+export interface TokenPrice {
+  in: number;
+  out: number;
+}
+
+/** 一条规格价格：满足 when 的全部条件时覆盖默认价；条件最多的一条胜出 */
+export interface PriceTier {
+  /** 是否可供用户使用 */
+  on: boolean;
+  /** 条件：spec 参数名 -> 取值，或 op（生成方式）、ref_video（参考素材里有视频） */
+  when: Record<string, string | number | boolean>;
+  /** 价格，单位随计费方式（积分 / 次、积分 / 秒） */
+  unit: number;
+}
+
+/** 积分成本，仅管理端可见 */
+export interface PriceCost {
+  on: boolean;
+  unit?: number;
+  per_second?: number;
+  token?: TokenPrice;
+}
+
+/** 模型定价：价格一律是整数积分 */
+export interface Pricing {
+  billing: Billing;
+  /** 按次：积分 / 次 */
+  unit?: number;
+  /** 按秒：积分 / 秒 */
+  per_second?: number;
+  /** 按 Token：输入价与输出价 */
+  token?: TokenPrice;
+  tiers?: PriceTier[];
+  /** 画布接口不下发 */
+  cost?: PriceCost;
+}
+
 /** GET /models 返回的一项 */
 export interface ModelInfo {
   /** 模型 key */
@@ -73,8 +114,8 @@ export interface ModelInfo {
   vendor?: string;
   /** 展示标签，没有时为空数组 */
   tags?: string[];
-  /** 单次生成消耗的积分 */
-  credits: number;
+  /** 定价（不含积分成本），画布据此本地计价 */
+  pricing: Pricing;
   /** 模型能力：生成方式、参考素材、提示词上限与生成参数 */
   capabilities: Capabilities;
 }

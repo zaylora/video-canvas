@@ -40,6 +40,7 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 		ErrorCode:       t.ErrorCode,
 		ErrorMessage:    t.ErrorMessage,
 		Credits:         t.Credits,
+		ChargedCredits:  t.ChargedCredits,
 		Version:         t.Version,
 		DeadlineAt:      t.DeadlineAt,
 		CreatedAt:       t.CreatedAt,

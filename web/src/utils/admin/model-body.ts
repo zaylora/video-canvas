@@ -1,6 +1,7 @@
 import type { ModelDraft } from "@/api/admin-ai/type";
+import type { Pricing } from "@/api/model/type";
 
-import { defaultCapabilities } from "./model-template";
+import { defaultCapabilities, defaultPricing } from "./model-template";
 
 /**
  * 模型配置正文（admin-ai-api.md「模型配置正文」）的小工具。
@@ -94,13 +95,13 @@ export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<
     kind,
     label: draft.label || draft.upstream_model,
     hint: "",
-    credits: 1,
     deadline: kind === "text" ? "5m" : "30m",
     enabled: false,
     sort: 100,
     channels: [{ channel: channelKey, upstream_model: draft.upstream_model }],
     params: draft.params ?? {},
     capabilities: defaultCapabilities(kind),
+    pricing: defaultPricing(kind),
   };
 }
 
@@ -145,7 +146,33 @@ export function withModelUpstream(
   return withModelField(body, "channels", channels);
 }
 
-/** 正文里的数字字段（credits / sort）；不是数字返回 null */
+/** 正文里的 pricing；缺失或不是对象返回 null */
+export const readModelPricing = (body: unknown): Pricing | null =>
+  isRecord(body) && isRecord(body.pricing) ? (body.pricing as unknown as Pricing) : null;
+
+/** 默认价格的字段名：按次 unit、按秒 per_second；Token 计费没有单一默认价，返回 null */
+export const defaultPriceField = (pricing: Pricing | null) =>
+  pricing?.billing === "per_second" ? "per_second" : pricing?.billing === "token" ? null : "unit";
+
+/** 默认价格的文案：「10 积分 / 次」「2 积分 / 秒」「输入 2 / 输出 8（积分 / 百万 Token）」 */
+export function describeDefaultPrice(pricing: Pricing | null) {
+  if (!pricing) return "-";
+  if (pricing.billing === "token")
+    return `输入 ${pricing.token?.in ?? 0} / 输出 ${pricing.token?.out ?? 0}（积分 / 百万 Token）`;
+  return pricing.billing === "per_second"
+    ? `${pricing.per_second ?? 0} 积分 / 秒`
+    : `${pricing.unit ?? 0} 积分 / 次`;
+}
+
+/** 把默认价格改成指定值（键顺序不动）；Token 计费或没有 pricing 时返回 null，表示不适用 */
+export function withDefaultPrice(body: unknown, value: number): Record<string, unknown> | null {
+  const pricing = readModelPricing(body);
+  const field = defaultPriceField(pricing);
+  if (!pricing || !field) return null;
+  return withModelField(body, "pricing", { ...pricing, [field]: value });
+}
+
+/** 正文里的数字字段（sort 等）；不是数字返回 null */
 export const readModelNumber = (body: unknown, field: string) =>
   isRecord(body) && typeof body[field] === "number" && Number.isFinite(body[field])
     ? (body[field] as number)

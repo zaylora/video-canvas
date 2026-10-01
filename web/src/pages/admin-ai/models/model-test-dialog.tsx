@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { readModelKind, readModelNumber, readModelString } from "@/utils/admin/model-body";
+import { readModelKind, readModelPricing, readModelString } from "@/utils/admin/model-body";
 
 import { ResultPanel } from "../result-panel";
 import { TestNode } from "./test-node";
@@ -59,7 +59,7 @@ export function ModelTestDialog({
               vendor={body ? readModelString(body, "vendor") : ""}
               label={label}
               kind={kind}
-              credits={body ? readModelNumber(body, "credits") : null}
+              pricing={body ? (readModelPricing(body) ?? undefined) : undefined}
               caps={ws.capabilities}
               params={ws.testParams}
               assets={ws.testAssets}

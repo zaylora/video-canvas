@@ -17,6 +17,7 @@ import {
   currentOp,
   inputPorts,
   manualRefs,
+  priceSpecOf,
   readParams,
   refKindsOf,
   resolveBindings,
@@ -25,6 +26,7 @@ import {
   type RefKey,
 } from "@/utils/tasks/capabilities";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
+import { fanoutCount, quote } from "@/utils/pricing/quote";
 
 /** 切换模型时要用户确认的那次切换 */
 export type PendingModelSwitch = {
@@ -83,6 +85,27 @@ export function useTaskNode(
   }, [connections, upstream]);
   const bindings = useMemo(() => resolveBindings(caps, op, links), [caps, op, links]);
   const built = useMemo(() => buildTaskInput(caps, params, bindings), [caps, params, bindings]);
+
+  // ---- 本地计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准 ----
+  const price = useMemo(() => {
+    if (!model) return null;
+    const spec = priceSpecOf(caps, built.input);
+    const one = quote(model.pricing, caps, spec);
+    const count = fanoutCount(caps, spec.params);
+    const billing = model.pricing?.billing;
+    const unit =
+      billing === "per_second"
+        ? `${one / Math.max(1, Number(spec.params.duration) || 1)} 积分/秒 × ${spec.params.duration} 秒`
+        : `${one} 积分`;
+    return {
+      one,
+      count,
+      total: one * count,
+      isMax: billing === "token",
+      detail:
+        billing === "token" ? "按 Token 预估上限" : count > 1 ? `${unit} × ${count} 个` : unit,
+    };
+  }, [built.input, caps, model]);
 
   // 连线落点和实际绑定的输入口对齐；换模型后失效的口也在这里收拾，免得线被 xyflow 藏掉
   const fixes = useMemo(() => computeHandleFixes(caps, op, links), [caps, op, links]);
@@ -145,10 +168,13 @@ export function useTaskNode(
       modelKey: model.key,
       input: built.input,
       currentSrc: data.src,
+      count: price?.count ?? 1,
+      // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
+      expectedCredits: price && !price.isMax ? price.one : undefined,
     });
     if (outcome.ok) return;
     setSubmitError(outcome.error.message);
-  }, [blockedReason, built.input, data.src, generation, model]);
+  }, [blockedReason, built.input, data.src, generation, model, price]);
 
   const cancel = useCallback(() => {
     if (data.taskId) void generation.cancel(data.taskId);
@@ -329,6 +355,7 @@ export function useTaskNode(
     // 连接点
     handles,
     // 提交
+    price,
     availableCredits,
     blockedReason,
     submit,

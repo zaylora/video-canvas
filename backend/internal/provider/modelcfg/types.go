@@ -50,13 +50,13 @@ type ModelConfig struct {
 	Hint         string         `json:"hint,omitempty"`   // 模型描述，最多 maxHintLen 个字符
 	Vendor       string         `json:"vendor,omitempty"` // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空
 	Tags         []string       `json:"tags,omitempty"`   // 展示标签，最多 maxTags 个，每个最多 maxTagLen 个字符
-	Credits      int            `json:"credits"`
-	Deadline     Duration       `json:"deadline"` // 默认 30m
+	Deadline     Duration       `json:"deadline"`         // 默认 30m
 	Enabled      bool           `json:"enabled"`
 	Sort         int            `json:"sort"`
 	Channels     []ChannelRef   `json:"channels"`         // 首期长度必须为 1
 	Params       map[string]any `json:"params,omitempty"` // 固定参数，宿主只存不解释，原样交给插件
 	Capabilities Capabilities   `json:"capabilities"`     // 模型能力：前端渲染 + 后端校验的唯一来源
+	Pricing      Pricing        `json:"pricing"`          // 定价：计费方式、默认价、规格价格与成本
 }
 
 // Duration 是 JSON 里写成 "10s" / "30m" 的时长。

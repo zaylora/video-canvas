@@ -19,8 +19,9 @@
  * 用户输入（宿主按模型能力 capabilities 校验后传入；生成参数按运营在后台起的参数名直传）：
  *   通用 : prompt（必填）、op（生成方式 t2v / i2v / omni / t2i / i2i）、images / videos / audios（参考素材，
  *          每项是文件引用 "input:images.0" 这样的字符串，用 {__fileRef: ...} 交给宿主换成地址或内容）
- *   text : system（固定系统提示）、max_tokens（最大输出，不能超过 params.max_tokens）、temperature、images[0]（视觉模型，可选）
- *   video: duration、width、height、fps、seed、size、n、aspect_ratio、resolution、generate_audio；
+ *   text : system（固定系统提示）、max_tokens（最大输出，不能超过 params.max_tokens）、temperature、images[0]（视觉模型，可选）；
+ *          文本产物带上 usage（input_tokens / output_tokens），按 Token 计费的模型据此结算
+ *   video: duration、width、height、fps、seed（生成多个时宿主为每个任务注入随机种子）、size、n、aspect_ratio、resolution、generate_audio；
  *          images[0] -> image，videos[0] -> video，audios[0] -> audio（多于一个时同时给 images / videos / audios 数组）
  *   image: n、size、quality、style、aspect_ratio、resolution；有参考图就走 edits，多张参考图用 image[] 字段上传
  *   audio: prompt（要朗读的文本，必填；也接受 text）、voice、format（mp3 / wav / opus / aac / flac）、speed
@@ -30,7 +31,7 @@ module.exports = {
     apiVersion: 1,
     key: "newapi",
     name: "New API",
-    version: "1.2.0",
+    version: "1.3.0",
     description: "对接 New API 网关：文本、图片、语音（同步）与视频（异步）",
     auth: { type: "bearer" },
     allowedHosts: [],
@@ -230,8 +231,29 @@ function parseChatResponse(resp) {
   if (typeof content !== "string" || content === "") {
     return failed("上游返回了空内容");
   }
-  var result = { status: "succeeded", outputs: [{ type: "text", text: content }] };
-  return result;
+  var output = { type: "text", text: content };
+  var usage = usageOf(body.usage);
+  if (usage) {
+    output.usage = usage;
+  }
+  return { status: "succeeded", outputs: [output] };
+}
+
+// OpenAI 风格的 usage（prompt_tokens / completion_tokens，部分网关用 input_tokens / output_tokens）→ 宿主的用量；
+// 没有可用数字时返回 null，宿主按冻结额结算。
+function usageOf(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  var input = pick(raw.prompt_tokens, raw.input_tokens);
+  var output = pick(raw.completion_tokens, raw.output_tokens);
+  if (typeof input !== "number" && typeof output !== "number") {
+    return null;
+  }
+  return {
+    input_tokens: typeof input === "number" ? Math.max(0, Math.round(input)) : 0,
+    output_tokens: typeof output === "number" ? Math.max(0, Math.round(output)) : 0
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -107,7 +107,7 @@
 {
   "key": "kling-i2v", "kind": "video",          // kind：video / image / audio / text
   // hint 最多 500 字；vendor 可省略，小写字母/数字/连字符（前端据此显示厂商 logo）；tags 可省略，最多 5 个、每个最多 12 字、不能重复
-  "label": "可灵 图生视频", "hint": "", "vendor": "kling", "tags": ["推荐"], "credits": 10, "deadline": "30m", "enabled": false, "sort": 100,
+  "label": "可灵 图生视频", "hint": "", "vendor": "kling", "tags": ["推荐"], "deadline": "30m", "enabled": false, "sort": 100,
   "channels": [ { "channel": "newapi-main", "upstream_model": "kling-v2-master" } ],   // 首期必须恰好一个
   "params": { "max_tokens": 2000 },               // 可选，固定参数，原样交给插件
   "capabilities": {                               // 模型能力：由运营手填，画布渲染与下单校验的唯一来源（取代旧的 input_schema）
@@ -117,6 +117,12 @@
     "params": { "duration": { "type": "number", "label": "视频时长", "open": true, "min": 4, "max": 12, "step": 1, "default": 5, "unit": "秒" } },   // 有序对象，书写顺序就是画布参数面板的显示顺序；参数名会作为任务输入的键传给插件
     "context": { "window": 128000, "output": 8192 },   // 仅 text
     "system": "…"                                       // 仅 text，固定系统提示，不下发给画布
+  },
+  "pricing": {                                    // 定价：价格一律是整数积分（取代旧的 credits）
+    "billing": "per_second",                      // per_call 按次 / per_second 按秒（× 参数 duration）/ token 按 Token（仅 text，用 token.in / token.out，积分 / 百万 Token）
+    "per_second": 2,
+    "tiers": [ { "on": true, "when": { "resolution": "1080P" }, "unit": 4 } ],   // 规格价格：键是 spec 参数名、op 或 ref_video；条件最多的一条胜出
+    "cost": { "on": true, "per_second": 1 }       // 积分成本，仅管理端，不下发给画布
   }
 }
 ```
@@ -127,7 +133,8 @@
 
 ## 面向画布的接口（变化）
 
-- `GET /api/v1/models?kind=video|image|audio|text`（登录即可，不要求管理员）：`kind` 新增 `text`，其他取值 400；返回字段为 `key / kind / label / hint / vendor / tags / credits / capabilities`（`capabilities` 不含 `system`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
+- `GET /api/v1/models?kind=video|image|audio|text`（登录即可，不要求管理员）：`kind` 新增 `text`，其他取值 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
+- `POST /generation-tasks`：请求新增 `node_ids`（长度等于生成数量，第 i 个任务绑定第 i 个节点；只生成 1 个时可以只传 `node_id`），积分按 `pricing` 计算；响应改为 `{ "items": [ { "node_id", "task" } | { "node_id", "error": { "status", "code", "message" } } ] }`，按节点逐项给出，某个节点失败（402 积分不足、429 并发已满……）不影响其它节点。幂等键覆盖全部任务：第 i 个任务用 `Idempotency-Key#i`（i=0 不加后缀）。任务视图新增 `charged_credits`（实际扣的积分，Token 计费可能小于冻结额）。
 - `POST /generation-tasks` 的 `kind` 新增 `text`；文本任务成功后 `outputs` 是 `[{ "media_type": "text", "text": "正文" }]`（没有 `asset_id` 与 `url`）。
 - `TaskOutput` 新增 `text` 字段，`asset_id` / `url` 在文本产物里不出现。
 - 平台回调 `POST /webhooks/:provider/:secret` 已删除。

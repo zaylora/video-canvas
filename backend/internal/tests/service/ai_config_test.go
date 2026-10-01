@@ -34,6 +34,7 @@ func aicWithKind(body, kind string) string {
 		"video": `{"ops":["t2v"],"prompt":{"max_length":2000}}`,
 	}[kind]
 	body = strings.Replace(body, `"kind":"video"`, fmt.Sprintf(`"kind":%q`, kind), 1)
+	// 定价沿用按次 5 积分：按次计费对任何种类都合法
 	return strings.Replace(body, `"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}}`, `"capabilities":`+caps, 1)
 }
 
@@ -41,9 +42,9 @@ func aicModelBody(key, channel string, extra string) json.RawMessage {
 	if extra != "" {
 		extra = "," + extra
 	}
-	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"video","label":"模型-%s","hint":"提示","credits":5,"enabled":true,"sort":10,`+
+	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"video","label":"模型-%s","hint":"提示","enabled":true,"sort":10,`+
 		`"channels":[{"channel":%q,"upstream_model":"kling-v2"}],"params":{"instanceType":"default"},`+
-		`"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}}%s}`, key, key, channel, extra))
+		`"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}},"pricing":{"billing":"per_call","unit":5,"cost":{"on":true,"unit":2}}%s}`, key, key, channel, extra))
 }
 
 // aicWantCode 断言错误是指定业务错误码；wantCode=0 表示期望成功。

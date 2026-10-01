@@ -14,6 +14,7 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 )
 
@@ -171,8 +172,8 @@ func (s *GenerationTaskService) Retry(ctx context.Context, t *model.GenerationTa
 	return applied, err
 }
 
-// Complete 完成转存并结算积分。
-func (s *GenerationTaskService) Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput) (bool, error) {
+// Complete 完成转存并结算积分。Token 计费按 usage 结算：扣 min(实际, 冻结)，差额退回；没有 usage 按冻结额扣并记日志。
+func (s *GenerationTaskService) Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput, usage *modelcfg.Usage) (bool, error) {
 	if outputs == nil {
 		outputs = []model.TaskOutput{}
 	}
@@ -180,17 +181,32 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 	if err != nil {
 		return false, err
 	}
+	charge := s.settleAmount(t, usage)
 	updated, applied, err := s.finish(ctx, t.ID, []string{model.TaskFinalizing}, model.TaskSucceeded, map[string]any{
-		"output_json":   datatypes.JSON(raw),
-		"progress":      100,
-		"error_code":    "",
-		"error_message": "",
+		"output_json":     datatypes.JSON(raw),
+		"progress":        100,
+		"error_code":      "",
+		"error_message":   "",
+		"charged_credits": charge,
 	})
 	if err != nil || !applied {
 		return false, err
 	}
 	s.publish(ctx, updated)
 	return true, nil
+}
+
+// settleAmount 按任务快照里的定价算成功时实际扣的积分（不超过冻结额）。快照解析失败时按冻结额扣，不让用户少付也不多付。
+func (s *GenerationTaskService) settleAmount(t *model.GenerationTask, usage *modelcfg.Usage) int {
+	var snap provider.Snapshot
+	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
+		logger.Warn("解析任务快照失败，按冻结额结算", zap.Uint64("task_id", t.ID), zap.Error(err))
+		return t.Credits
+	}
+	if snap.Model.Pricing.Billing == modelcfg.BillingToken && usage == nil {
+		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", zap.Uint64("task_id", t.ID), zap.String("model", t.ModelKey))
+	}
+	return max(modelcfg.Settle(snap.Model.Pricing, t.Credits, usage), 0)
 }
 
 // Fail 把非终态任务置为失败并退回积分。
@@ -291,21 +307,7 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 		if t.IsTest {
 			return nil
 		}
-		ledgerType, dBalance := model.LedgerRefund, 0
-		if target == model.TaskSucceeded {
-			ledgerType, dBalance = model.LedgerSettle, -t.Credits
-		}
-		inserted, err := tx.InsertLedger(ctx, &model.CreditLedger{
-			UserID: t.UserID, TaskID: t.ID, Type: ledgerType, Amount: t.Credits,
-		})
-		if err != nil {
-			return err
-		}
-		if !inserted {
-			logger.Warn("积分流水已存在，跳过重复结算", zap.Uint64("task_id", t.ID), zap.String("type", ledgerType))
-			return nil
-		}
-		return tx.AddCredit(ctx, t.UserID, dBalance, -t.Credits)
+		return settleLedger(ctx, tx, t, target)
 	})
 	if errors.Is(err, repository.ErrStateConflict) {
 		return nil, false, nil
@@ -314,6 +316,36 @@ func (s *GenerationTaskService) finish(ctx context.Context, id uint64, from []st
 		return nil, false, err
 	}
 	return updated, true, nil
+}
+
+// settleLedger 写结算 / 退款流水并解冻：成功时扣 charged_credits（没有则扣冻结额），多冻结的部分再写一笔 refund；
+// 失败 / 取消 / 超时全额退回。流水 UNIQUE(task_id, type) 保证重复结算只生效一次。
+func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.GenerationTask, target string) error {
+	frozen, charge := t.Credits, 0
+	if target == model.TaskSucceeded {
+		charge = frozen
+		if t.ChargedCredits != nil {
+			charge = min(max(*t.ChargedCredits, 0), frozen)
+		}
+	}
+	entries := []model.CreditLedger{}
+	if charge > 0 || target == model.TaskSucceeded {
+		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: t.ID, Type: model.LedgerSettle, Amount: charge})
+	}
+	if refund := frozen - charge; refund > 0 || target != model.TaskSucceeded {
+		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: t.ID, Type: model.LedgerRefund, Amount: refund})
+	}
+	for i := range entries {
+		inserted, err := tx.InsertLedger(ctx, &entries[i])
+		if err != nil {
+			return err
+		}
+		if !inserted {
+			logger.Warn("积分流水已存在，跳过重复结算", zap.Uint64("task_id", t.ID), zap.String("type", entries[i].Type))
+			return nil
+		}
+	}
+	return tx.AddCredit(ctx, t.UserID, -charge, -frozen)
 }
 
 func mergeProviderState(raw []byte, next provider.ProviderState) ([]byte, error) {

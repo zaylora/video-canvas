@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Link } from "react-router";
 
 import type { ChannelView, ConfigIssue, PluginView } from "@/api/admin-ai/type";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
+import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
@@ -34,7 +36,7 @@ import {
   withModelUpstream,
 } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
-import { defaultCapabilities } from "@/utils/admin/model-template";
+import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
 import { channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
 
 import { KIND_ORDER, KIND_STYLE } from "../kind";
@@ -42,10 +44,11 @@ import { issueFor } from "./model-fields";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
 
-/** 新建时换种类：能力跟着种类重置成该种类的默认值（生成方式、素材、参数都不通用） */
+/** 新建时换种类：能力与定价跟着种类重置成该种类的默认值（生成方式、素材、参数、计费方式都不通用） */
 function withKind(body: Record<string, unknown>, kind: string) {
   const next = withModelField(body, "kind", kind);
-  return next && withModelField(next, "capabilities", defaultCapabilities(kind));
+  const withCaps = next && withModelField(next, "capabilities", defaultCapabilities(kind));
+  return withCaps && withModelField(withCaps, "pricing", defaultPricing(kind));
 }
 
 const KIND_DESC: Record<string, string> = {
@@ -86,13 +89,29 @@ export function ModelBasicForm({
   );
   const kindUnsupported = (item: string) =>
     !!current && item !== kind && channelSupportsKind(plugins, current, item) === false;
-  const pickChannel = (item: ChannelView) =>
+  // 换能力会把能力与参数、定价重置成新种类的默认值；已保存的模型先确认，免得误点清掉配置
+  const [pendingKind, setPendingKind] = useState<{ kind: string; channel?: string } | null>(null);
+  const applyKind = (nextKind: string, nextChannel?: string) =>
     onChange((body) => {
-      const next = withModelChannel(body, item.key);
-      if (!next || channelSupportsKind(plugins, item, kind) !== false) return next;
-      const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
-      return fallback ? withKind(next, fallback) : next;
+      const next = nextChannel ? withModelChannel(body, nextChannel) : body;
+      return next && withKind(next, nextKind);
     });
+  const requestKind = (nextKind: string, nextChannel?: string) => {
+    if (nextKind === kind) return;
+    if (isNew) applyKind(nextKind, nextChannel);
+    else setPendingKind({ kind: nextKind, channel: nextChannel });
+  };
+  const pickChannel = (item: ChannelView) => {
+    if (item.key === channelKey) return;
+    // 新渠道支持当前能力就只换渠道；不支持时能力跟着换成它支持的第一种
+    if (channelSupportsKind(plugins, item, kind) !== false) {
+      onChange((body) => withModelChannel(body, item.key));
+      return;
+    }
+    const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
+    if (fallback) requestKind(fallback, item.key);
+    else onChange((body) => withModelChannel(body, item.key));
+  };
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
   const keyMissing = (item: ChannelView) => {
@@ -193,7 +212,7 @@ export function ModelBasicForm({
         <FormSectionHeader>
           <FormSectionTitle>能力与渠道</FormSectionTitle>
           <FormSectionDescription>
-            新建时选定能力与渠道，选定渠道后它不支持的能力会置灰；保存后不能再改。
+            能力与渠道都可以修改；所选渠道的插件不支持的能力会置灰。换能力会把能力与参数、定价重置成新能力的默认值。
           </FormSectionDescription>
         </FormSectionHeader>
         <div className="space-y-5">
@@ -209,7 +228,8 @@ export function ModelBasicForm({
                   <ChoiceCard
                     key={item}
                     selected={item === kind}
-                    disabled={!isNew || kindUnsupported(item)}
+                    disabled={kindUnsupported(item)}
+                    title={kindUnsupported(item) ? "所选渠道的插件不支持这个能力" : undefined}
                     className={cn(
                       "items-center gap-2.5",
                       item === kind &&
@@ -218,7 +238,7 @@ export function ModelBasicForm({
                           "data-selected:bg-transparent ring-1 ring-current",
                         ),
                     )}
-                    onClick={() => onChange((body) => withKind(body, item))}
+                    onClick={() => requestKind(item)}
                   >
                     <Icon className="size-5 shrink-0" />
                     <span>
@@ -257,7 +277,6 @@ export function ModelBasicForm({
                       key={item.key}
                       indicator
                       selected={item.key === channelKey}
-                      disabled={!isNew}
                       onClick={() => pickChannel(item)}
                     >
                       <span className="min-w-0 flex-1">
@@ -382,6 +401,25 @@ export function ModelBasicForm({
           </FormField>
         </div>
       </FormSection>
+
+      <ConfirmDialog
+        open={!!pendingKind}
+        title={`改成${MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind ?? ""}模型？`}
+        description={
+          <>
+            {pendingKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
+            「能力与参数」和「积分定价」会重置成
+            {MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind}
+            模型的默认值，当前的配置会被替换。改动保存为草稿，发布后才对用户生效。
+          </>
+        }
+        confirmLabel="确认修改"
+        onConfirm={() => {
+          if (pendingKind) applyKind(pendingKind.kind, pendingKind.channel);
+          setPendingKind(null);
+        }}
+        onCancel={() => setPendingKind(null)}
+      />
     </>
   );
 }

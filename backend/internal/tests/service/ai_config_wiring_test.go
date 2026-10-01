@@ -176,7 +176,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	}
 
 	// 5. 用草稿建模型 → 发布 → 出现在清单里
-	body := `{"key":"gpt","kind":"text","label":"GPT","credits":1,"enabled":true,` +
+	body := `{"key":"gpt","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
 		`"channels":[{"channel":"newapi-main","upstream_model":"gpt-4o"}],` +
 		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`
 	saved, err := e.cfg.SaveDraft(ctx, ModelDraftInput{Create: true, Body: json.RawMessage(body), AdminID: 1})

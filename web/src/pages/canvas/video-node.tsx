@@ -119,7 +119,9 @@ export function TaskPromptPanel({
         onModelChange={vm.setModel}
         modelLabel={modelLabel}
         modelInvalid={vm.offline || modelsStatus === "error"}
-        credits={vm.model?.credits}
+        credits={vm.price?.total}
+        creditsIsMax={vm.price?.isMax}
+        creditsDetail={vm.price?.detail}
         availableCredits={vm.availableCredits}
         running={vm.running}
         submitting={vm.submitting}

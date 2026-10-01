@@ -22,7 +22,7 @@ type listModelsQuery struct {
 }
 
 // List 返回已发布且上架的模型清单（可按 kind 过滤）。
-// 只返回 provider.ModelInfo 的公开字段（key / kind / label / hint / vendor / tags / credits / input_schema），
+// 只返回 provider.ModelInfo 的公开字段（key / kind / label / hint / vendor / tags / capabilities / pricing），
 // 不含 params / mapping / provider / 凭证等内部配置——这是它的类型保证，不依赖手工过滤。
 func (h *AIModelHandler) List(c *gin.Context) {
 	var q listModelsQuery

@@ -1,0 +1,2029 @@
+{
+  "_说明": "Go（backend/internal/provider/modelcfg/quote.go）与 TS（web/src/utils/pricing/quote.ts）共用的计价测试向量。one 是每个任务冻结的积分，n 是拆成的任务数，total = one × n。改算法时两边一起改、一起跑。",
+  "quote": [
+    {
+      "name": "按秒：默认清晰度关音频，取默认每秒价",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "720P",
+          "duration": 5,
+          "generate_audio": false,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 10,
+      "n": 1,
+      "total": 10
+    },
+    {
+      "name": "按秒：只开音频命中单条件规格价",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "720P",
+          "duration": 5,
+          "generate_audio": true,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 15,
+      "n": 1,
+      "total": 15
+    },
+    {
+      "name": "按秒：1080P + 音频命中两条件规格价（与设计文档的例子一致）",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "1080P",
+          "duration": 5,
+          "generate_audio": true,
+          "count": 4
+        },
+        "prompt_chars": 0
+      },
+      "one": 25,
+      "n": 4,
+      "total": 100
+    },
+    {
+      "name": "按秒：1080P 关音频",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "1080P",
+          "duration": 5,
+          "generate_audio": false,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 20,
+      "n": 1,
+      "total": 20
+    },
+    {
+      "name": "按秒：条件数相同取靠前的（4K + 音频落到先写的音频价）",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "4K",
+          "duration": 5,
+          "generate_audio": true,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 15,
+      "n": 1,
+      "total": 15
+    },
+    {
+      "name": "按秒：4K 关音频",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "4K",
+          "duration": 12,
+          "generate_audio": false,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 96,
+      "n": 1,
+      "total": 96
+    },
+    {
+      "name": "按秒：有参考视频（关音频）",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "omni",
+        "ref_video": true,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "720P",
+          "duration": 8,
+          "generate_audio": false,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 16,
+      "n": 1,
+      "total": 16
+    },
+    {
+      "name": "按秒：已停用的规格价与没有条件的规格价不参与匹配",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "16:9",
+          "resolution": "720P",
+          "duration": 4,
+          "generate_audio": false,
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 8,
+      "n": 1,
+      "total": 8
+    },
+    {
+      "name": "按秒：生成数量用字符串也能识别",
+      "capabilities": {
+        "ops": [
+          "t2v",
+          "i2v",
+          "omni"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": true,
+            "max": 1,
+            "max_mb": 15
+          },
+          "video": {
+            "on": true,
+            "max": 1,
+            "max_mb": 100
+          }
+        },
+        "prompt": {
+          "max_length": 2000
+        },
+        "params": {
+          "aspect_ratio": {
+            "type": "enum",
+            "label": "比例",
+            "open": true,
+            "options": [
+              "Auto",
+              "16:9"
+            ],
+            "default": "Auto"
+          },
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "720P",
+              "1080P",
+              "4K"
+            ],
+            "default": "720P",
+            "spec": true
+          },
+          "duration": {
+            "type": "number",
+            "label": "视频时长",
+            "open": true,
+            "min": 4,
+            "max": 12,
+            "step": 1,
+            "default": 5,
+            "unit": "秒"
+          },
+          "generate_audio": {
+            "type": "boolean",
+            "label": "生成音频",
+            "open": true,
+            "default": true,
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "个"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_second",
+        "per_second": 2,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "generate_audio": true
+            },
+            "unit": 3
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P"
+            },
+            "unit": 4
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "1080P",
+              "generate_audio": true
+            },
+            "unit": 5
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "ref_video": true
+            },
+            "unit": 2
+          },
+          {
+            "on": false,
+            "when": {
+              "aspect_ratio": "16:9"
+            },
+            "unit": 99
+          },
+          {
+            "on": true,
+            "when": {},
+            "unit": 1
+          }
+        ],
+        "cost": {
+          "on": true,
+          "per_second": 1
+        }
+      },
+      "spec": {
+        "op": "t2v",
+        "ref_video": false,
+        "params": {
+          "aspect_ratio": "Auto",
+          "resolution": "720P",
+          "duration": 5,
+          "generate_audio": false,
+          "count": "2"
+        },
+        "prompt_chars": 0
+      },
+      "one": 10,
+      "n": 2,
+      "total": 20
+    },
+    {
+      "name": "按次：默认档位",
+      "capabilities": {
+        "ops": [
+          "t2i",
+          "i2i"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 1500
+        },
+        "params": {
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "1K",
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "张"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_call",
+        "unit": 4,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "resolution": "2K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 16
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i"
+            },
+            "unit": 6
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i",
+              "resolution": "4K"
+            },
+            "unit": 20
+          }
+        ]
+      },
+      "spec": {
+        "op": "t2i",
+        "ref_video": false,
+        "params": {
+          "resolution": "1K",
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 4,
+      "n": 1,
+      "total": 4
+    },
+    {
+      "name": "按次：2K 档位 × 生成 2 张",
+      "capabilities": {
+        "ops": [
+          "t2i",
+          "i2i"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 1500
+        },
+        "params": {
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "1K",
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "张"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_call",
+        "unit": 4,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "resolution": "2K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 16
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i"
+            },
+            "unit": 6
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i",
+              "resolution": "4K"
+            },
+            "unit": 20
+          }
+        ]
+      },
+      "spec": {
+        "op": "t2i",
+        "ref_video": false,
+        "params": {
+          "resolution": "2K",
+          "count": 2
+        },
+        "prompt_chars": 0
+      },
+      "one": 8,
+      "n": 2,
+      "total": 16
+    },
+    {
+      "name": "按次：生成方式作为条件",
+      "capabilities": {
+        "ops": [
+          "t2i",
+          "i2i"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 1500
+        },
+        "params": {
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "1K",
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "张"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_call",
+        "unit": 4,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "resolution": "2K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 16
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i"
+            },
+            "unit": 6
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i",
+              "resolution": "4K"
+            },
+            "unit": 20
+          }
+        ]
+      },
+      "spec": {
+        "op": "i2i",
+        "ref_video": false,
+        "params": {
+          "resolution": "1K",
+          "count": 4
+        },
+        "prompt_chars": 0
+      },
+      "one": 6,
+      "n": 4,
+      "total": 24
+    },
+    {
+      "name": "按次：方式 + 档位两条件胜过单条件",
+      "capabilities": {
+        "ops": [
+          "t2i",
+          "i2i"
+        ],
+        "refs": {
+          "image": {
+            "on": true,
+            "max": 4,
+            "max_mb": 10
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 1500
+        },
+        "params": {
+          "resolution": {
+            "type": "enum",
+            "label": "清晰度",
+            "open": true,
+            "options": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "1K",
+            "spec": true
+          },
+          "count": {
+            "type": "enum",
+            "label": "生成数量",
+            "open": true,
+            "options": [
+              1,
+              2,
+              4
+            ],
+            "default": 1,
+            "fanout": true,
+            "unit": "张"
+          }
+        }
+      },
+      "pricing": {
+        "billing": "per_call",
+        "unit": 4,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "resolution": "2K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 16
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i"
+            },
+            "unit": 6
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i",
+              "resolution": "4K"
+            },
+            "unit": 20
+          }
+        ]
+      },
+      "spec": {
+        "op": "i2i",
+        "ref_video": false,
+        "params": {
+          "resolution": "4K",
+          "count": 1
+        },
+        "prompt_chars": 0
+      },
+      "one": 20,
+      "n": 1,
+      "total": 20
+    },
+    {
+      "name": "Token：小单价向上取整到最少 1 积分",
+      "capabilities": {
+        "refs": {
+          "image": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 20000
+        },
+        "params": {},
+        "context": {
+          "window": 128000,
+          "output": 8192
+        }
+      },
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2,
+          "out": 8
+        }
+      },
+      "spec": {
+        "op": "",
+        "ref_video": false,
+        "params": {},
+        "prompt_chars": 1000
+      },
+      "one": 1,
+      "n": 1,
+      "total": 1
+    },
+    {
+      "name": "Token：按预估输入 + 最大输出预冻结，小数向上取整",
+      "capabilities": {
+        "refs": {
+          "image": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "audio": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          },
+          "video": {
+            "on": false,
+            "max": 0,
+            "max_mb": 0
+          }
+        },
+        "prompt": {
+          "max_length": 20000
+        },
+        "params": {},
+        "context": {
+          "window": 128000,
+          "output": 8192
+        }
+      },
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2000,
+          "out": 8000
+        }
+      },
+      "spec": {
+        "op": "",
+        "ref_video": false,
+        "params": {},
+        "prompt_chars": 500000
+      },
+      "one": 1066,
+      "n": 1,
+      "total": 1066
+    }
+  ],
+  "settle": [
+    {
+      "name": "Token：按实际用量扣，少于冻结额的部分退回",
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2000,
+          "out": 8000
+        }
+      },
+      "frozen": 1066,
+      "usage": {
+        "input_tokens": 1000,
+        "output_tokens": 500
+      },
+      "charge": 6
+    },
+    {
+      "name": "Token：实际用量超过冻结额时只扣冻结额",
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2000,
+          "out": 8000
+        }
+      },
+      "frozen": 10,
+      "usage": {
+        "input_tokens": 1000000,
+        "output_tokens": 1000000
+      },
+      "charge": 10
+    },
+    {
+      "name": "Token：用量很小也至少扣 1 积分",
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2,
+          "out": 8
+        }
+      },
+      "frozen": 1,
+      "usage": {
+        "input_tokens": 10,
+        "output_tokens": 10
+      },
+      "charge": 1
+    },
+    {
+      "name": "Token：插件没回传用量按冻结额扣",
+      "pricing": {
+        "billing": "token",
+        "token": {
+          "in": 2000,
+          "out": 8000
+        }
+      },
+      "frozen": 1066,
+      "usage": null,
+      "charge": 1066
+    },
+    {
+      "name": "按次：忽略用量，扣冻结额",
+      "pricing": {
+        "billing": "per_call",
+        "unit": 4,
+        "tiers": [
+          {
+            "on": true,
+            "when": {
+              "resolution": "2K"
+            },
+            "unit": 8
+          },
+          {
+            "on": true,
+            "when": {
+              "resolution": "4K"
+            },
+            "unit": 16
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i"
+            },
+            "unit": 6
+          },
+          {
+            "on": true,
+            "when": {
+              "op": "i2i",
+              "resolution": "4K"
+            },
+            "unit": 20
+          }
+        ]
+      },
+      "frozen": 8,
+      "usage": {
+        "input_tokens": 1,
+        "output_tokens": 1
+      },
+      "charge": 8
+    }
+  ]
+}

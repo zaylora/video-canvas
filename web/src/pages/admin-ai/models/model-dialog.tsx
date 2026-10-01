@@ -41,12 +41,14 @@ import { findPathInJson } from "@/utils/admin/json";
 import {
   readModelChannel,
   readModelKind,
-  readModelNumber,
+  readModelPricing,
   readModelString,
   readModelStrings,
 } from "@/utils/admin/model-body";
 
 import type { AdminCatalog } from "../use-admin";
+import { priceLabel } from "@/utils/pricing/quote";
+
 import { ModelBasicForm } from "./model-basic-form";
 import { fieldOfPath, modelChecks, type ModelTabId } from "./model-fields";
 import { ModelParamsForm } from "./model-params-form";
@@ -119,7 +121,7 @@ export function ModelDialog({
 
   const label = body ? readModelString(body, "label") : "";
   const kind = body ? readModelKind(body) : "";
-  const credits = body ? readModelNumber(body, "credits") : null;
+  const pricing = body ? readModelPricing(body) : null;
   const upstream = body ? readModelChannel(body).upstreamModel : "";
   const checks = modelChecks(body, ws.info, ws.issues);
   const disabled = ws.working || ws.loadingDetail;
@@ -137,7 +139,7 @@ export function ModelDialog({
       kind={kind}
       vendor={readModelString(body, "vendor")}
       tags={readModelStrings(body, "tags")}
-      credits={credits}
+      price={priceLabel(pricing ?? undefined)}
       hint={readModelString(body, "hint")}
       models={ws.models}
     />
@@ -151,7 +153,7 @@ export function ModelDialog({
         vendor={readModelString(body, "vendor")}
         label={label}
         kind={kind}
-        credits={credits}
+        pricing={pricing ?? undefined}
         caps={ws.capabilities}
         params={ws.testParams}
         assets={ws.testAssets}
@@ -164,7 +166,7 @@ export function ModelDialog({
       />
     </PreviewFrame>
   ) : (
-    <PricePreview credits={credits} caps={ws.capabilities} />
+    <PricePreview pricing={pricing} caps={ws.capabilities} />
   );
 
   return (

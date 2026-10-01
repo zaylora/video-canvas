@@ -94,6 +94,41 @@ func capabilitiesSchema() obj {
 	}, "prompt")
 }
 
+func tokenPriceSchema(desc string) obj {
+	return object(desc, obj{
+		"in":  obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": "输入价（积分 / 百万 Token）"},
+		"out": obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": "输出价（积分 / 百万 Token）"},
+	}, "in", "out")
+}
+
+func priceInt(desc string) obj {
+	return obj{"type": "integer", "minimum": 0, "maximum": maxPrice, "description": desc}
+}
+
+// pricingSchema 是 pricing 的 Schema。
+func pricingSchema() obj {
+	return object("定价：价格一律是整数积分", obj{
+		"billing":    enum("计费方式：per_call 按次 / per_second 按秒（乘以时长参数 duration）/ token 按 Token（仅文本）", Billings...),
+		"unit":       priceInt("按次：积分 / 次"),
+		"per_second": priceInt("按秒：积分 / 秒"),
+		"token":      tokenPriceSchema("按 Token：输入价与输出价"),
+		"tiers": obj{
+			"type": "array", "description": "规格价格：满足全部条件时覆盖默认价；条件最多的一条胜出，条件数相同取靠前的",
+			"items": object("一条规格价格", obj{
+				"on":   boolean("是否可供用户使用"),
+				"when": obj{"type": "object", "minProperties": 1, "description": "条件：spec 参数名 -> 取值，或 op（生成方式）、ref_video（参考素材里有视频）"},
+				"unit": priceInt("价格，单位随计费方式（积分 / 次、积分 / 秒）"),
+			}, "on", "when", "unit"),
+		},
+		"cost": object("积分成本，仅管理端可见，不参与扣费", obj{
+			"on":         boolean("是否填写成本"),
+			"unit":       priceInt("按次成本"),
+			"per_second": priceInt("按秒成本"),
+			"token":      tokenPriceSchema("按 Token 成本"),
+		}, "on"),
+	}, "billing")
+}
+
 // channelRefSchema 是 channels 数组元素的 Schema。
 func channelRefSchema() obj {
 	return object("模型绑定的一个渠道", obj{
@@ -113,9 +148,9 @@ func modelSchema() obj {
 		"$schema":              "http://json-schema.org/draft-07/schema#",
 		"title":                "Model（模型）",
 		"type":                 "object",
-		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型、固定参数、模型能力、积分",
+		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型、固定参数、模型能力、定价",
 		"additionalProperties": false,
-		"required":             []string{"key", "kind", "label", "channels"},
+		"required":             []string{"key", "kind", "label", "channels", "pricing"},
 		"properties": obj{
 			"key":   obj{"type": "string", "pattern": modelKeyRe.String(), "description": "模型唯一标识"},
 			"kind":  enum("模型类型", Kinds...),
@@ -130,7 +165,6 @@ func modelSchema() obj {
 				"items":       obj{"type": "string", "minLength": 1, "maxLength": maxTagLen},
 				"description": "展示标签，最多 5 个，每个最多 12 字",
 			},
-			"credits":  obj{"type": "integer", "minimum": 0, "description": "每次生成扣的积分"},
 			"deadline": duration("任务整体截止时间，大于 0 且不超过 24h，默认 30m"),
 			"enabled":  boolean("是否上架"),
 			"sort":     obj{"type": "integer", "description": "排序，升序"},
@@ -140,6 +174,7 @@ func modelSchema() obj {
 			},
 			"params":       obj{"type": "object", "description": "固定参数：宿主只存不解释，原样交给渠道所用的插件（例如工作流型插件的节点绑定）"},
 			"capabilities": capabilitiesSchema(),
+			"pricing":      pricingSchema(),
 		},
 	}
 }

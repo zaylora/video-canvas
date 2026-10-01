@@ -1,5 +1,5 @@
 // 本文件：模型配置（ModelConfig）的解析与语义校验：先做结构检查（未知字段、类型不符），再补默认值，
-// 最后逐项检查 key / kind / label / credits / deadline / channels / capabilities，所有问题一次报出。
+// 最后逐项检查 key / kind / label / deadline / channels / capabilities / pricing，所有问题一次报出。
 // 能力（capabilities）的校验在 validate_caps.go。
 
 package modelcfg
@@ -93,6 +93,11 @@ func (m *ModelConfig) normalize() {
 			f.Options[j] = normalizeConfigNumber(f.Options[j])
 		}
 	}
+	for i := range m.Pricing.Tiers {
+		if w := m.Pricing.Tiers[i].When; w != nil {
+			m.Pricing.Tiers[i].When = normalizeConfigNumber(w).(map[string]any)
+		}
+	}
 }
 
 // validateModel 校验模型配置的各个字段（deadline 的默认值已在调用前补好）。
@@ -115,14 +120,12 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 		add("vendor", "只能包含小写字母、数字和连字符，且以字母或数字开头（最长 64 位）")
 	}
 	validateTags(m.Tags, add)
-	if m.Credits < 0 {
-		add("credits", "不能为负数")
-	}
 	if m.Deadline <= 0 || m.Deadline.D() > maxModelDeadline {
 		add("deadline", "必须大于 0 且不超过 24h（不填默认 30m）")
 	}
 	validateChannels(m.Channels, add)
 	validateCapabilities(m.Kind, &m.Capabilities, issues)
+	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, issues)
 }
 
 // validateTags 校验展示标签：个数、单个长度、不能为空、不能重复。

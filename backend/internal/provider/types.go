@@ -149,6 +149,9 @@ type Output struct {
 	Text      string `json:"text,omitempty"`       // type=text
 	MediaType string `json:"media_type,omitempty"` // video / image / audio / text；为空取模型 kind
 	Mime      string `json:"mime,omitempty"`       // 插件声明的 MIME，下载响应头优先
+	// Usage 是文本产物的 Token 用量（插件从上游响应里取，如 OpenAI 风格的 usage.prompt_tokens / completion_tokens），
+	// 按 Token 计费的模型据此结算；没有可以不填，宿主按冻结额扣费
+	Usage *modelcfg.Usage `json:"usage,omitempty"`
 
 	// 以下只在 type=asset 时由宿主填写：二进制响应已经写入素材存储，worker 不必再下载转存，直接据此生成 TaskOutput。
 	AssetID    uint64 `json:"asset_id,omitempty"`    // 宿主已写入的素材
@@ -253,7 +256,7 @@ type ModelInfo struct {
 	Hint         string                `json:"hint"`
 	Vendor       string                `json:"vendor"`
 	Tags         []string              `json:"tags"`
-	Credits      int                   `json:"credits"`
+	Pricing      modelcfg.Pricing      `json:"pricing"` // 不含积分成本
 	Capabilities modelcfg.Capabilities `json:"capabilities"`
 }
 

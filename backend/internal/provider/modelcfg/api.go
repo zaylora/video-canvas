@@ -16,8 +16,8 @@ func MediaRefs(input map[string]any) []MediaRef { return mediaRefs(input) }
 // 落库的任务输入经 JSON 解码后素材 id 是 float64，使用方要先规范化再当 asset id 用。
 func AsAssetID(raw any) (uint64, bool) { return asAssetID(raw) }
 
-// ParseModel 解析并校验模型配置正文：JSON 结构（未知字段、类型不符）、key / kind / label / credits / deadline、
-// channels（首期恰好一个，渠道 key 与上游模型名合法）、params、capabilities。所有问题一次报出，Issue 精确到 JSON 路径。
+// ParseModel 解析并校验模型配置正文：JSON 结构（未知字段、类型不符）、key / kind / label / deadline、
+// channels（首期恰好一个，渠道 key 与上游模型名合法）、params、capabilities、pricing。所有问题一次报出，Issue 精确到 JSON 路径。
 // 成功时 deadline 缺省补成 30m，params 与 input_schema 里的数字已规范化。
 // 不检查渠道是否存在、插件是否支持该 kind：那是 service 层的跨对象检查。没有 Issue 才算通过。
 func ParseModel(body []byte) (*ModelConfig, []Issue) { return parseModel(body) }

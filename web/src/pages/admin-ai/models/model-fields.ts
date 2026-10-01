@@ -18,7 +18,7 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
   deadline: { tab: "params", id: "model-deadline" },
   params: { tab: "params", id: "model-params" },
   capabilities: { tab: "params", id: "model-capabilities" },
-  credits: { tab: "price", id: "model-credits" },
+  pricing: { tab: "price", id: "model-pricing" },
 };
 
 /** 校验问题的路径 → 页签与控件；channels[0].upstream_model 单独映射 */

@@ -1,15 +1,15 @@
 import service from "@/utils/requests/service";
-import type { CreateTaskRequest, TaskView } from "./type";
+import type { CreateTaskRequest, CreateTaskResponse, TaskView } from "./type";
 
 /**
- * 提交生成任务（HTTP 202）。
+ * 提交生成任务（HTTP 202）。生成数量 N 时一次请求拆成 N 个任务，按节点逐项返回任务或错误。
  * 同一次点击的重试必须复用同一个 idempotencyKey。
  * @param data 任务创建参数
  * @param idempotencyKey 幂等键
- * @returns 任务视图
+ * @returns 每个节点的结果
  */
 export const createGenerationTask = (data: CreateTaskRequest, idempotencyKey: string) =>
-  service.post<TaskView>("/generation-tasks", data, {
+  service.post<CreateTaskResponse>("/generation-tasks", data, {
     headers: { "Idempotency-Key": idempotencyKey },
   });
 

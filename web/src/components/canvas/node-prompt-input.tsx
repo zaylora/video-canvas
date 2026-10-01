@@ -32,8 +32,10 @@ export type NodeModelOption = {
   id: string;
   /** 模型显示名 */
   label: string;
-  /** 单次消耗的积分 */
+  /** 最低单价（积分） */
   credits: number;
+  /** 价格文案，如「10 积分」「2 积分/秒起」「按 Token」 */
+  priceLabel?: string;
   /** 下拉里的一行小字，说明擅长什么 */
   hint?: string;
   /** 厂商 slug，用来显示 logo；没有时回退首字头像 */
@@ -74,8 +76,12 @@ type NodePromptInputProps = {
   modelLabel?: string;
   /** 当前模型有问题（已下线等），触发器用警示色 */
   modelInvalid?: boolean;
-  /** 覆盖工具栏里显示的单次积分 */
+  /** 覆盖工具栏里显示的积分：本次提交合计要冻结的积分（所有任务之和） */
   credits?: number;
+  /** credits 是预估上限（按 Token 计费，完成后按实际用量多退少补） */
+  creditsIsMax?: boolean;
+  /** 合计积分的组成说明，如「5 积分/秒 × 5 秒 × 4 个」，放在悬停提示里 */
+  creditsDetail?: string;
   /** 当前可用积分，摆在单次消耗后面 */
   availableCredits?: number | null;
   /** 提示词框禁用（比如提示词由上游连线提供），placeholder 会换成 promptNote */
@@ -113,6 +119,8 @@ export function NodePromptInput({
   modelLabel,
   modelInvalid,
   credits: creditsOverride,
+  creditsIsMax,
+  creditsDetail,
   availableCredits,
   promptDisabled,
   promptNote,
@@ -239,7 +247,7 @@ export function NodePromptInput({
                       )}
                     </span>
                     <span className="text-muted-foreground ml-auto text-xs">
-                      {item.credits} 积分
+                      {item.priceLabel ?? `${item.credits} 积分`}
                     </span>
                   </DropdownMenuRadioItem>
                 ))}
@@ -255,13 +263,13 @@ export function NodePromptInput({
           title={
             credits === undefined
               ? undefined
-              : `每次生成消耗 ${credits} 积分${
-                  availableCredits == null ? "" : `，当前可用 ${availableCredits} 积分`
-                }`
+              : `${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
+                  creditsIsMax ? "，完成后按实际用量结算，多冻结的退回" : ""
+                }${availableCredits == null ? "" : `，当前可用 ${availableCredits} 积分`}`
           }
         >
           <Zap className="size-3.5" />
-          {credits ?? "-"}
+          {credits === undefined ? "-" : `${creditsIsMax ? "≤" : ""}${credits}`}
           {availableCredits != null && (
             <span className="opacity-60">/ 可用 {availableCredits}</span>
           )}

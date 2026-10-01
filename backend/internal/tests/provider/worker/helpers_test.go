@@ -20,6 +20,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/provider/pluginmeta"
 	. "video-canvas/internal/provider/worker"
 )
@@ -68,6 +69,7 @@ type wkStore struct {
 	calls        []string // 调用流水，如 "MarkSubmitted:1"
 	fails        []wkFailCall
 	completed    map[uint64][]model.TaskOutput
+	usage        map[uint64]*modelcfg.Usage
 	traces       map[uint64][][]provider.TraceStep // 每次 SaveTrace 的入参
 	claimLimits  []int
 	extendCalls  atomic.Int32
@@ -81,7 +83,7 @@ type wkStore struct {
 func newWkStore(clock *wkClock) *wkStore {
 	return &wkStore{
 		clock: clock, tasks: map[uint64]*model.GenerationTask{},
-		completed: map[uint64][]model.TaskOutput{}, traces: map[uint64][][]provider.TraceStep{},
+		completed: map[uint64][]model.TaskOutput{}, usage: map[uint64]*modelcfg.Usage{}, traces: map[uint64][][]provider.TraceStep{},
 	}
 }
 
@@ -126,6 +128,12 @@ func (s *wkStore) count(prefix string) int {
 		}
 	}
 	return n
+}
+
+func (s *wkStore) usageOf(id uint64) *modelcfg.Usage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.usage[id]
 }
 
 func (s *wkStore) completedOf(id uint64) []model.TaskOutput {
@@ -308,7 +316,7 @@ func (s *wkStore) Retry(ctx context.Context, t *model.GenerationTask, attempts i
 	return true, nil
 }
 
-func (s *wkStore) Complete(ctx context.Context, t *model.GenerationTask, outs []model.TaskOutput) (bool, error) {
+func (s *wkStore) Complete(ctx context.Context, t *model.GenerationTask, outs []model.TaskOutput, usage *modelcfg.Usage) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cur := s.cas(t.ID, model.TaskFinalizing)
@@ -318,6 +326,7 @@ func (s *wkStore) Complete(ctx context.Context, t *model.GenerationTask, outs []
 	}
 	cur.Status, cur.LeaseUntil = model.TaskSucceeded, nil
 	s.completed[t.ID] = outs
+	s.usage[t.ID] = usage
 	s.rec("Complete:%d", t.ID)
 	return true, nil
 }

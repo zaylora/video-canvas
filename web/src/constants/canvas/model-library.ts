@@ -6,8 +6,10 @@ export type ModelOption = {
   id: string;
   /** 模型显示名 */
   label: string;
-  /** 单次消耗的积分 */
+  /** 最低单价（积分），用来比较与兜底显示 */
   credits: number;
+  /** 价格文案，如「10 积分」「2 积分/秒起」「按 Token」；没有时显示「credits 积分」 */
+  priceLabel?: string;
   /** 下拉里的一行小字 */
   hint?: string;
   /** 厂商 slug，用来显示 logo；没有时回退首字头像 */

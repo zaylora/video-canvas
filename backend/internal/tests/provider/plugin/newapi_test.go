@@ -125,7 +125,7 @@ func TestNewAPIPrecheckAndMeta(t *testing.T) {
 // 文本同步：POST /v1/chat/completions，Bearer 由宿主注入，正文从 choices[0].message.content 取。
 func TestNewAPITextSync(t *testing.T) {
 	up := &fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"你好，世界"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"你好，世界"}}],"usage":{"prompt_tokens":12,"completion_tokens":34}}`))
 	}}
 	srv := httptest.NewServer(up)
 	defer srv.Close()
@@ -142,6 +142,9 @@ func TestNewAPITextSync(t *testing.T) {
 	if res.Immediate == nil || res.Immediate.Status != provider.StatusSucceeded ||
 		len(res.Immediate.Outputs) != 1 || res.Immediate.Outputs[0].Text != "你好，世界" {
 		t.Fatalf("文本结果不符：%+v", res)
+	}
+	if u := res.Immediate.Outputs[0].Usage; u == nil || u.InputTokens != 12 || u.OutputTokens != 34 {
+		t.Fatalf("应回传 Token 用量：%+v", u)
 	}
 	got := up.last()
 	if got.Method != "POST" || got.Path != "/v1/chat/completions" || got.Auth != "Bearer sk-newapi" {

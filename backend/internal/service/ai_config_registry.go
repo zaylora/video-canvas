@@ -53,7 +53,7 @@ func (s *AIConfigService) ListModels(ctx context.Context, kind string) ([]provid
 		out = append(out, provider.ModelInfo{
 			Key: m.key, Kind: m.cfg.Kind, Label: m.cfg.Label, Hint: m.cfg.Hint,
 			Vendor: m.cfg.Vendor, Tags: nonNilTags(m.cfg.Tags),
-			Credits: m.cfg.Credits, Capabilities: m.cfg.Capabilities.Public(),
+			Pricing: m.cfg.Pricing.Public(), Capabilities: m.cfg.Capabilities.Public(),
 		})
 	}
 	return out, nil

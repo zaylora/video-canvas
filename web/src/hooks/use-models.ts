@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { ModelInfo } from "@/api/model/type";
 import { useModelsStore, type ModelsEntry } from "@/store/models";
 import type { ModelOption } from "@/types";
+import { lowestUnit, priceLabel } from "@/utils/pricing/quote";
 
 const EMPTY_ENTRY: ModelsEntry = { status: "idle", models: [], loadedAt: 0 };
 
@@ -10,7 +11,8 @@ const EMPTY_ENTRY: ModelsEntry = { status: "idle", models: [], loadedAt: 0 };
 export const toModelOption = (info: ModelInfo): ModelOption => ({
   id: info.key,
   label: info.label,
-  credits: info.credits,
+  credits: lowestUnit(info.pricing),
+  priceLabel: priceLabel(info.pricing),
   hint: info.hint,
   vendor: info.vendor,
   tags: info.tags,

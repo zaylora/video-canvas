@@ -1,9 +1,9 @@
-import { defaultCapabilities } from "@/utils/admin/model-template";
+import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
 
 /**
  * 新建模型时编辑器里的起始内容，结构见 backend/docs/admin-ai-api.md「模型配置正文」。
  * channels 首期必须恰好一项；params 原样交给插件解释；capabilities 是模型能力（生成方式、参考素材、
- * 提示词上限、生成参数，参数的书写顺序就是画布参数面板的显示顺序），按种类预填，运营可改。
+ * 提示词上限、生成参数，参数的书写顺序就是画布参数面板的显示顺序）与 pricing（定价）按种类预填，运营可改。
  */
 
 /** 文本模型（插件 endpoint 为 sync：一次请求出正文） */
@@ -12,13 +12,13 @@ export const TEXT_MODEL_TEMPLATE = {
   kind: "text",
   label: "",
   hint: "",
-  credits: 1,
   deadline: "5m",
   enabled: false,
   sort: 100,
   channels: [{ channel: "", upstream_model: "" }],
   params: {},
   capabilities: defaultCapabilities("text"),
+  pricing: defaultPricing("text"),
 };
 
 /** 视频模型（插件 endpoint 为 async：提交后轮询） */
@@ -27,13 +27,13 @@ export const VIDEO_MODEL_TEMPLATE = {
   kind: "video",
   label: "",
   hint: "",
-  credits: 10,
   deadline: "30m",
   enabled: false,
   sort: 100,
   channels: [{ channel: "", upstream_model: "" }],
   params: {},
   capabilities: defaultCapabilities("video"),
+  pricing: defaultPricing("video"),
 };
 
 /** 图片模型（插件 endpoint 为 sync：一次请求出图） */
@@ -42,13 +42,13 @@ export const IMAGE_MODEL_TEMPLATE = {
   kind: "image",
   label: "",
   hint: "",
-  credits: 2,
   deadline: "10m",
   enabled: false,
   sort: 100,
   channels: [{ channel: "", upstream_model: "" }],
   params: {},
   capabilities: defaultCapabilities("image"),
+  pricing: defaultPricing("image"),
 };
 
 export const MODEL_TEMPLATES = [

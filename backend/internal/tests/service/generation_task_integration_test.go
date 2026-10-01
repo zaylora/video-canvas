@@ -86,7 +86,7 @@ func newGTIEnv(t *testing.T, cfg config.AI) *gtiEnv {
 }
 
 func (e *gtiEnv) create(key string) (*model.GenerationTaskView, error) {
-	return e.svc.Create(context.Background(), e.user, key, validCreateReq())
+	return createSingle(context.Background(), e.svc, e.user, key, validCreateReq())
 }
 
 // assertReconciled 断言账户、流水、进行中任务三方对账零差异。
@@ -262,7 +262,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 	t.Run("成功结算：余额和冻结各减 credits，流水与账户对账", func(t *testing.T) {
 		env := newGTIEnv(t, cfg)
 		task := makeTask(t, env, model.TaskFinalizing)
-		applied, err := env.svc.Complete(ctx, task, []model.TaskOutput{{AssetID: 1, URL: "u", MediaType: "video"}})
+		applied, err := env.svc.Complete(ctx, task, []model.TaskOutput{{AssetID: 1, URL: "u", MediaType: "video"}}, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -294,7 +294,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		a := makeTask(t, env, model.TaskFinalizing)
 		b := makeTask(t, env, model.TaskQueued)
 		for i := 0; i < 3; i++ {
-			_, _ = env.svc.Complete(ctx, a, nil)
+			_, _ = env.svc.Complete(ctx, a, nil, nil)
 			_, _ = env.svc.Fail(ctx, b, "provider_error", "x")
 			_, _ = env.svc.Expire(ctx, b)
 		}
@@ -311,7 +311,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		if _, err := env.store.InsertLedger(ctx, &model.CreditLedger{UserID: env.user, TaskID: task.ID, Type: model.LedgerSettle, Amount: 10}); err != nil {
 			t.Fatal(err)
 		}
-		applied, err := env.svc.Complete(ctx, task, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -339,7 +339,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 				var err error
 				switch i % 4 {
 				case 0:
-					ok, err = env.svc.Complete(ctx, task, nil)
+					ok, err = env.svc.Complete(ctx, task, nil, nil)
 				case 1:
 					ok, err = env.svc.Fail(ctx, task, "provider_error", "x")
 				case 2:
@@ -384,7 +384,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		running := makeTask(t, env, model.TaskQueued)
 		_ = running // 保持进行中
 
-		_, _ = env.svc.Complete(ctx, succeeded, nil)
+		_, _ = env.svc.Complete(ctx, succeeded, nil, nil)
 		_, _ = env.svc.Fail(ctx, failed, "moderation", "内容未通过审核")
 		_, _ = env.svc.Expire(ctx, expired)
 		if _, err := env.svc.Cancel(ctx, env.user, canceled.ID); err != nil {
@@ -409,7 +409,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		task, _ = env.store.GetByIDAny(ctx, v.ID)
 		_, _ = env.svc.MarkFinalizing(ctx, task)
 		task, _ = env.store.GetByIDAny(ctx, v.ID)
-		applied, err := env.svc.Complete(ctx, task, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -487,7 +487,7 @@ func TestGenerationTaskService_Integration_ProviderColumns(t *testing.T) {
 		if got.Status != model.TaskFinalizing || got.ProviderTaskID != "sync-1" {
 			t.Fatalf("任务状态不对：%+v", got)
 		}
-		if applied, err := env.svc.Complete(ctx, got, nil); err != nil || !applied {
+		if applied, err := env.svc.Complete(ctx, got, nil, nil); err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
 		rec := env.assertReconciled(t, 50)

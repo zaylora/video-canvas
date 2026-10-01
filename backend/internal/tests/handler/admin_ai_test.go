@@ -206,7 +206,8 @@ func aicCapabilities(kind string) map[string]any {
 
 func aicModelJSON(key, kind, channel string) map[string]any {
 	return map[string]any{
-		"key": key, "kind": kind, "label": "模型-" + key, "hint": "小字", "credits": 5, "enabled": true, "sort": 10,
+		"key": key, "kind": kind, "label": "模型-" + key, "hint": "小字", "enabled": true, "sort": 10,
+		"pricing":      map[string]any{"billing": "per_call", "unit": 5, "cost": map[string]any{"on": true, "unit": 2}},
 		"channels":     []any{map[string]any{"channel": channel, "upstream_model": "kling-v2"}},
 		"params":       map[string]any{"instanceType": "default"},
 		"capabilities": aicCapabilities(kind),
@@ -249,13 +250,13 @@ func TestAIModelHandler_List(t *testing.T) {
 			t.Fatalf("应返回 1 个模型：%v %s", err, r.Raw)
 		}
 		m := list[0]
-		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["credits"] != float64(5) {
+		if m["key"] != "m1" || m["kind"] != "video" || m["label"] != "模型-m1" || m["hint"] != "小字" || m["pricing"].(map[string]any)["unit"] != float64(5) {
 			t.Fatalf("公开字段不符合预期：%v", m)
 		}
 		if caps, _ := m["capabilities"].(map[string]any); caps == nil || caps["prompt"] == nil || caps["ops"] == nil {
 			t.Fatalf("应包含 capabilities：%v", m)
 		}
-		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "kling", "sk-super-secret", "base_url", "upstream"} {
+		for _, bad := range []string{"params", "channel", "plugin", "secret", "instanceType", "kling", "sk-super-secret", "base_url", "upstream", "cost", "保密的系统提示"} {
 			if strings.Contains(r.Raw, bad) {
 				t.Fatalf("/models 响应泄露了 %q：%s", bad, r.Raw)
 			}
@@ -264,7 +265,7 @@ func TestAIModelHandler_List(t *testing.T) {
 			t.Fatalf("没有标签时 tags 应为 []：%v", m["tags"])
 		}
 		if len(m) != 8 {
-			t.Fatalf("公开字段应恰好 8 个（key/kind/label/hint/vendor/tags/credits/capabilities），实际 %d：%v", len(m), m)
+			t.Fatalf("公开字段应恰好 8 个（key/kind/label/hint/vendor/tags/capabilities/pricing），实际 %d：%v", len(m), m)
 		}
 	})
 	t.Run("kind=text 合法：文本节点能拿到清单", func(t *testing.T) {

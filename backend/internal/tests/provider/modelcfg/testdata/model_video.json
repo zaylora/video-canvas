@@ -3,7 +3,6 @@
   "kind": "video",
   "label": "可灵 图生视频",
   "hint": "5 秒或 10 秒，支持首帧",
-  "credits": 10,
   "deadline": "30m",
   "enabled": true,
   "sort": 100,
@@ -28,5 +27,16 @@
       "duration": { "type": "number", "label": "视频时长", "open": true, "min": 4, "max": 12, "step": 1, "default": 5, "unit": "秒" },
       "generate_audio": { "type": "boolean", "label": "生成音频", "open": true, "default": true, "spec": true }
     }
+  },
+
+  "pricing": {
+    "billing": "per_second",
+    "per_second": 2,
+    "tiers": [
+      { "on": true, "when": { "resolution": "1080P" }, "unit": 4 },
+      { "on": true, "when": { "resolution": "1080P", "generate_audio": true }, "unit": 5 },
+      { "on": true, "when": { "op": "omni" }, "unit": 3 }
+    ],
+    "cost": { "on": true, "per_second": 1 }
   }
 }

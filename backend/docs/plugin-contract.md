@@ -151,7 +151,8 @@ meta: {
   "progress": 40,                                   // 可选，0–100
   "outputs": [                                      // succeeded 时必填且非空
     { "type": "url",  "url": "https://...", "media_type": "video", "mime": "video/mp4" },
-    { "type": "text", "text": "..." },              // 文本正文，≤256KB
+    { "type": "text", "text": "...",                // 文本正文，≤256KB
+      "usage": { "input_tokens": 120, "output_tokens": 800 } },   // 可选：实际 Token 用量。按 Token 计费的模型据此结算（扣 min(实际, 冻结)），不填按冻结额扣
     { "type": "asset" }                             // 二进制响应已由宿主落库
   ],
   "error": { "class": "moderation", "code": "...", "message": "..." },   // failed 时必填；class 只能是 retryable / terminal / moderation / provider_balance

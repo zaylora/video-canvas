@@ -61,7 +61,7 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
 {
   task:    { id, providerTaskId, state },           // providerTaskId 提交前为空；state 是插件上次返回的私有状态
   model:   { key, kind, upstreamModel, params },    // params：运营在模型上填的固定参数，结构由插件自己约定并读取
-  input:   { prompt: "...", image: "input:image", duration: 5 },   // 用户输入；媒体字段是文件引用字符串 "input:<字段名>"，没填的可选字段没有该键
+  input:   { prompt: "...", op: "i2v", images: ["input:images.0"], duration: 5 },   // 用户输入（见第九节）；参考素材是文件引用字符串数组，没填的可选键没有
   channel: { baseUrl, settings },
   prepared, credentials, now                        // credentials 只有 auth.type 为 custom 且渠道开启授权时才有
 }
@@ -75,12 +75,12 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
   headers: { "X-Foo": "bar" },           // 禁止 Authorization、Cookie、Host、Content-Length 等；鉴权由宿主注入
   json: { ... },                         // 与 form / multipart 三选一，都不写表示无请求体
   form: { k: "v" },                      // application/x-www-form-urlencoded
-  multipart: { fields: { k: "v" }, parts: [ { name: "file", fileRef: "input:image", filename: "a.png" } ] },
+  multipart: { fields: { k: "v" }, parts: [ { name: "file", fileRef: "input:images.0", filename: "a.png" } ] },
   responseType: "json",                  // json(默认) / text / binary
   timeout: 30,                           // 秒，默认 30，上限 120
   auth: { type: "query", name: "apiKey" }   // 可选：只为这次请求换一种注入方式（bearer / header / query / none），Key 仍由宿主注入
 }
-- 文件引用：json / form / multipart.fields 的任意位置可以写 { __fileRef: "input:image", as: "url" }，as 取 url（自有存储签名地址）/ base64 / dataUrl。引用必须指向 ctx.input 里的媒体字段。
+- 文件引用：json / form / multipart.fields 的任意位置可以写 { __fileRef: "input:images.0", as: "url" }，as 取 url（自有存储签名地址）/ base64 / dataUrl。引用写法就是 ctx.input.images / videos / audios 里的字符串原样（如 { __fileRef: ctx.input.images[0], as: "url" }），只能引用本次任务里已有的素材。
 - 请求体编码后 ≤1MB。base64 / dataUrl 会把文件读进内存（默认上限 10MB），能用 url 就用 url。
 - responseType 为 binary（如语音合成直接返回音频字节）时，宿主把响应体写入素材存储，parse 钩子拿到的 resp 是 { status, headers, asset: { id, mime, size } }，此时产物写 { type: "asset" } 即可。
 
@@ -96,7 +96,8 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
   progress: 40,                          // 可选，0–100
   outputs: [                             // succeeded 时必填且非空
     { type: "url",  url: "https://...", media_type: "video", mime: "video/mp4" },
-    { type: "text", text: "..." },       // 仅 text 模型使用，≤256KB
+    { type: "text", text: "...",         // 仅 text 模型使用，≤256KB
+      usage: { input_tokens: 120, output_tokens: 800 } },   // 可选但强烈建议：实际 Token 用量，按 Token 计费的模型据此结算
     { type: "asset" }                    // 二进制响应已由宿主落库
   ],
   error: { class: "terminal", code: "xxx", message: "给用户看的原因" },   // failed 时必填
@@ -106,6 +107,8 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
 - error.class 只能是：retryable（可重试）/ terminal（终止）/ moderation（内容审核不通过）/ provider_balance（上游余额不足）。
 - text 模型的产物必须是 text；其他模型不能返回 text。url 产物必须是 http/https，且主机在 allowedHosts 或渠道 baseUrl 主机内（所以要把结果文件所在的域名写进 allowedHosts）。
 - 只支持 url 与 asset 两种文件产物，不支持内联 base64；上游只给 base64 时，返回 failed 并说明原因。
+- 文本产物请带上 usage：从上游响应里取实际 Token 用量（OpenAI 风格是 usage.prompt_tokens / completion_tokens），换成 { input_tokens, output_tokens }。按 Token 计费的模型会先按上限冻结积分，完成后按这个用量多退少补；不带 usage 时按冻结额全扣。
+- 一个任务对应画布上的一个节点、一个结果：不要让上游一次生成多张 / 多段（如 n、imageCount 大于 1），否则多出来的结果用户只付了一份钱、画布上也只显示一个。
 - sync endpoint：parseSubmitResponse 必须返回 { immediate: 统一结果 }，且 status 只能是 succeeded 或 failed。
 - async endpoint：parseSubmitResponse 返回 { providerTaskId: "上游任务id" }（字符串或数字）；之后宿主按 poll 节奏调用 buildQueryRequest / parseQueryResponse，直到 succeeded 或 failed。未知的中间状态一律当作 queued 或 running 继续等待，不要当失败。
 - 上游明确返回“失败/取消/过期”才返回 failed，并尽量带上上游给的原因文案。
@@ -118,6 +121,9 @@ utils.uuid()、utils.unixNow()、utils.base64(s)、utils.base64Decode(s)、utils
 - ctx.model.params 由你自己约定结构（例如 { extra: {...} } 原样合并进请求体），请在文件顶部注释里写清每个字段的含义。
 - 用户输入由宿主按运营在模型 capabilities 里配置的能力校验后放进 ctx.input，键固定为：prompt（提示词）、op（生成方式 t2v / i2v / omni / t2i / i2i，仅视频、图片）、运营给生成参数起的名字（如 duration、aspect_ratio、resolution，值已按类型规范化）、参考素材数组 images / videos / audios（每项是文件引用字符串 "input:images.0"，用 { __fileRef: ... } 或 multipart 的 fileRef 引用，不是素材 ID）；文本模型另有 system（固定系统提示）与 max_tokens（最大输出）。请在文件顶部注释里列出插件会读取的键，并说明每个键应该对应上游的哪个字段。
 - 用户输入优先于 params 里的固定值；params 只做补充。
+- 积分由宿主按运营配置的定价计算并冻结、结算，插件不参与计费，也不要在请求或结果里处理积分。
+- 「生成数量」由宿主处理：用户选生成 N 个时，宿主拆成 N 个独立任务，每个任务各调一次插件，生成数量这个参数不会出现在 ctx.input 里。拆成多个任务时宿主会给每个任务放一个随机的 input.seed（模型自己配了 seed 参数时用用户的取值）；上游支持随机种子就把它传过去，避免 N 个结果一模一样。
+- 按秒计费的视频模型由运营配置一个叫 duration 的数字参数（单位秒），插件把 input.duration 传给上游对应的时长字段。
 
 # 九·补、导入模型
 parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {} }。草稿只预填模型编辑器的这几项，生成方式、参考素材、生成参数等能力由运营在后台按种类预填后手改，插件不声明。
@@ -155,8 +161,12 @@ module.exports = {
       };
     }
     var body = { model: ctx.model.upstreamModel, prompt: String(input.prompt) };
-    if (input.image) {
-      body.image = { __fileRef: input.image, as: "url" };
+    // 参考图：images 是文件引用数组，取第一张交给上游
+    if (input.images && input.images.length) {
+      body.image = { __fileRef: input.images[0], as: "url" };
+    }
+    if (typeof input.duration === "number") {
+      body.duration = input.duration;
     }
     return { method: "POST", path: "/v1/video/generations", json: body, timeout: 60 };
   },
@@ -168,7 +178,11 @@ module.exports = {
       if (typeof content !== "string" || content === "") {
         return { immediate: { status: "failed", error: { class: "terminal", message: "上游返回了空内容" } } };
       }
-      return { immediate: { status: "succeeded", outputs: [{ type: "text", text: content }] } };
+      var output = { type: "text", text: content };
+      if (body.usage) {
+        output.usage = { input_tokens: body.usage.prompt_tokens || 0, output_tokens: body.usage.completion_tokens || 0 };
+      }
+      return { immediate: { status: "succeeded", outputs: [output] } };
     }
     if (!body.task_id) {
       throw new Error("上游没有返回 task_id");
@@ -199,6 +213,7 @@ module.exports = {
 - 请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有把文件内容内联进请求。
 - 产物的域名已写进 allowedHosts（或就在渠道 baseUrl 的主机上）。
 - 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿只含 upstreamModel / kind / label / params。
+- 读取的是 ctx.input.images / videos / audios 数组，不是旧的单个 image 字段；没有让上游一次出多个结果；文本产物带了 usage；没有在插件里处理积分或生成数量。
 - 改了代码就升 meta.version（同一 key 下版本不可覆盖），并提醒使用者把渠道切到新版本。
 - 失败路径都有明确的 error.class 和中文原因。
 

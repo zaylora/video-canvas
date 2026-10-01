@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -288,6 +289,9 @@ func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, f
 			t.ErrorCode = v.(string)
 		case "error_message":
 			t.ErrorMessage = v.(string)
+		case "charged_credits":
+			c := v.(int)
+			t.ChargedCredits = &c
 		case "provider_state":
 			raw, _ := v.(json.Marshaler).MarshalJSON()
 			t.ProviderState = raw
@@ -394,7 +398,8 @@ func (b *fakeTaskBroadcaster) Publish(ctx context.Context, channel string, msg w
 func fakeTaskSnapshot(kind string, credits int) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{
-			Key: "m1", Kind: kind, Credits: credits, UpstreamModel: "up-1",
+			Key: "m1", Kind: kind, UpstreamModel: "up-1",
+			Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: credits},
 			Capabilities: modelcfg.Capabilities{
 				Ops:    []string{modelcfg.OpT2V, modelcfg.OpI2V},
 				Refs:   modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: 2, MaxMB: 1}},
@@ -478,6 +483,23 @@ func kicked(svc *GenerationTaskService) bool {
 func withImages(r *model.CreateGenerationTaskReq, ids ...any) {
 	r.Input["op"] = "i2v"
 	r.Input["images"] = ids
+}
+
+// createSingle 提交只生成 1 个的任务，把唯一一项结果解包成“任务或错误”：节点级错误还原成 errcode.Error，
+// 这样大部分用例沿用单任务的断言。
+func createSingle(ctx context.Context, svc *GenerationTaskService, userID uint64, key string, req *model.CreateGenerationTaskReq) (*model.GenerationTaskView, error) {
+	resp, err := svc.Create(ctx, userID, key, req)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.Items) != 1 {
+		return nil, fmt.Errorf("应只有一项结果，实际 %d 项", len(resp.Items))
+	}
+	item := resp.Items[0]
+	if item.Error != nil {
+		return nil, errcode.New(item.Error.Code, item.Error.Message, item.Error.Status)
+	}
+	return item.Task, nil
 }
 
 func validCreateReq() *model.CreateGenerationTaskReq {
@@ -609,7 +631,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			name: "模型积分配置为负数按 0 处理，不倒贴积分",
 			setup: func(env *taskSvcEnv) {
 				env.repo.addCredit(user, 50, 0)
-				env.registry.snap.Model.Credits = -5
+				env.registry.snap.Model.Pricing.Unit = -5
 			},
 			req: validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
@@ -782,7 +804,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			if acc := env.repo.credits[user]; acc != nil {
 				baseFrozen = acc.Frozen
 			}
-			view, err := env.svc.Create(context.Background(), user, tt.key, tt.req())
+			view, err := createSingle(context.Background(), env.svc, user, tt.key, tt.req())
 			if tt.wantCode == -1 {
 				if err == nil {
 					t.Fatal("期望返回错误")
@@ -819,7 +841,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 // 之后运营改渠道 / 升级插件都不影响这个任务（worker 只读快照）。
 func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing.T) {
 	env := newTaskSvcEnv(defaultTaskCfg())
-	view, err := env.svc.Create(context.Background(), 1, "", validCreateReq())
+	view, err := createSingle(context.Background(), env.svc, 1, "", validCreateReq())
 	assertTaskCode(t, err, 0)
 
 	task := env.repo.tasks[view.ID]
@@ -827,7 +849,7 @@ func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing
 	if err := json.Unmarshal(task.ConfigSnapshot, &got); err != nil {
 		t.Fatalf("快照解码失败：%v", err)
 	}
-	if got.ModelRevisionID != 42 || got.Model.UpstreamModel != "up-1" || got.Model.Credits != 10 {
+	if got.ModelRevisionID != 42 || got.Model.UpstreamModel != "up-1" || got.Model.Pricing.Unit != 10 {
 		t.Fatalf("模型部分没冻结：%+v", got.Model)
 	}
 	if got.Channel.Key != "p1" || got.Channel.PluginVersionID != 7 || got.Channel.BaseURL != "https://up.example.com" {
@@ -853,7 +875,7 @@ func TestGenerationTaskService_Create_WithoutCanvas(t *testing.T) {
 	env := newTaskSvcEnv(defaultTaskCfg())
 	req := validCreateReq()
 	req.CanvasID = 0
-	view, err := env.svc.Create(context.Background(), 1, "", req)
+	view, err := createSingle(context.Background(), env.svc, 1, "", req)
 	assertTaskCode(t, err, 0)
 	if view.CanvasProjectID != nil || env.repo.tasks[view.ID].CanvasProjectID != nil {
 		t.Fatal("没传 canvas_id 时画布应为空")
@@ -864,7 +886,7 @@ func TestGenerationTaskService_Create_ErrorMessageContainsFieldErrors(t *testing
 	env := newTaskSvcEnv(defaultTaskCfg())
 	req := validCreateReq()
 	req.Input = map[string]any{}
-	_, err := env.svc.Create(context.Background(), 1, "", req)
+	_, err := createSingle(context.Background(), env.svc, 1, "", req)
 	var e *errcode.Error
 	if !errors.As(err, &e) || e.Code != errcode.ErrTaskInput.Code {
 		t.Fatalf("期望 ErrTaskInput：%v", err)
@@ -882,12 +904,12 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 
 	t.Run("同一个 Idempotency-Key 重复提交只创建一个任务、只冻结一次", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
-		first, err := env.svc.Create(context.Background(), user, "key-1", validCreateReq())
+		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
 		kicked(env.svc) // 清掉信号
 		env.bc.msgs = nil
 
-		second, err := env.svc.Create(context.Background(), user, "key-1", validCreateReq())
+		second, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
 		if second.ID != first.ID {
 			t.Fatalf("应返回同一个任务：%d vs %d", second.ID, first.ID)
@@ -903,9 +925,9 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	t.Run("重复提交时即使积分已不足也返回第一次的任务", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
 		env.repo.addCredit(user, 10, 0)
-		first, err := env.svc.Create(context.Background(), user, "key-1", validCreateReq())
+		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
-		again, err := env.svc.Create(context.Background(), user, "key-1", validCreateReq())
+		again, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
 		if again.ID != first.ID {
 			t.Fatal("应返回同一个任务")
@@ -914,8 +936,8 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 
 	t.Run("不同用户可以使用相同的 key", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
-		a, _ := env.svc.Create(context.Background(), 1, "same", validCreateReq())
-		b, err := env.svc.Create(context.Background(), 2, "same", validCreateReq())
+		a, _ := createSingle(context.Background(), env.svc, 1, "same", validCreateReq())
+		b, err := createSingle(context.Background(), env.svc, 2, "same", validCreateReq())
 		assertTaskCode(t, err, 0)
 		if a.ID == b.ID {
 			t.Fatal("不同用户应各自创建")
@@ -928,7 +950,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 		winner := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, IdempotencyKey: "race", Credits: 10})
 		env.repo.hideKeyLookups = 2 // 快速路径和事务内复查都“没看到”赢家
 
-		view, err := env.svc.Create(context.Background(), user, "race", validCreateReq())
+		view, err := createSingle(context.Background(), env.svc, user, "race", validCreateReq())
 		assertTaskCode(t, err, 0)
 		if view.ID != winner.ID {
 			t.Fatalf("应返回赢家的任务 %d，实际 %d", winner.ID, view.ID)
@@ -944,7 +966,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	t.Run("幂等键查询出错透传", func(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskCfg())
 		env.repo.errs["FindByIdempotencyKey"] = errors.New("db down")
-		if _, err := env.svc.Create(context.Background(), user, "k", validCreateReq()); err == nil {
+		if _, err := createSingle(context.Background(), env.svc, user, "k", validCreateReq()); err == nil {
 			t.Fatal("期望返回错误")
 		}
 	})
@@ -1578,7 +1600,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	t.Run("Complete：结算积分（余额和冻结各减 credits）、写 settle 流水与 output_json", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
 		outs := []model.TaskOutput{{AssetID: 5, URL: "http://x/a.mp4", MediaType: "video"}}
-		applied, err := env.svc.Complete(ctx, task, outs)
+		applied, err := env.svc.Complete(ctx, task, outs, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -1601,10 +1623,47 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		}
 	})
 
+	t.Run("Complete：Token 计费按用量扣、差额退回，写 settle + refund 两笔流水", func(t *testing.T) {
+		snap := fakeTaskSnapshot(model.KindText, 0)
+		snap.Model.Pricing = modelcfg.Pricing{Billing: modelcfg.BillingToken, Token: &modelcfg.TokenPrice{In: 2000, Out: 8000}}
+		raw, _ := json.Marshal(snap)
+		for _, c := range []struct {
+			name           string
+			usage          *modelcfg.Usage
+			charge, refund int
+		}{
+			{"实际 6 积分", &modelcfg.Usage{InputTokens: 1000, OutputTokens: 500}, 6, 4},
+			{"实际超过冻结额只扣冻结额", &modelcfg.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000}, 10, 0},
+			{"没回传用量按冻结额扣", nil, 10, 0},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				env, task := newEnv(model.TaskFinalizing, func(t *model.GenerationTask) { t.ConfigSnapshot = raw })
+				applied, err := env.svc.Complete(ctx, task, []model.TaskOutput{{MediaType: "text", Text: "正文"}}, c.usage)
+				if err != nil || !applied {
+					t.Fatalf("applied=%v err=%v", applied, err)
+				}
+				got := env.repo.tasks[task.ID]
+				if got.ChargedCredits == nil || *got.ChargedCredits != c.charge {
+					t.Fatalf("charged_credits 应为 %d：%v", c.charge, got.ChargedCredits)
+				}
+				if acc := env.repo.credits[user]; acc.Balance != 50-c.charge || acc.Frozen != 0 {
+					t.Fatalf("应扣 %d 并全部解冻：%+v", c.charge, acc)
+				}
+				if l := env.repo.ledgerOf(task.ID, model.LedgerSettle); l == nil || l.Amount != c.charge {
+					t.Fatalf("settle 流水应为 %d：%+v", c.charge, l)
+				}
+				refund := env.repo.ledgerOf(task.ID, model.LedgerRefund)
+				if (c.refund == 0) != (refund == nil) || (refund != nil && refund.Amount != c.refund) {
+					t.Fatalf("refund 流水应为 %d：%+v", c.refund, refund)
+				}
+			})
+		}
+	})
+
 	t.Run("Complete 重复执行不会重复扣款", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
-		_, _ = env.svc.Complete(ctx, task, nil)
-		applied, err := env.svc.Complete(ctx, task, nil)
+		_, _ = env.svc.Complete(ctx, task, nil, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || applied {
 			t.Fatalf("第二次应 applied=false：%v %v", applied, err)
 		}
@@ -1619,7 +1678,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	t.Run("Complete：settle 流水已存在（重放）时不再改余额，状态仍迁移", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
 		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: task.ID, Type: model.LedgerSettle, Amount: 10})
-		applied, err := env.svc.Complete(ctx, task, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}
@@ -1633,7 +1692,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("Complete 只允许从 finalizing 迁移", func(t *testing.T) {
 		env, task := newEnv(model.TaskRunning, nil)
-		applied, err := env.svc.Complete(ctx, task, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || applied {
 			t.Fatalf("running 不能直接 Complete：%v %v", applied, err)
 		}
@@ -1716,7 +1775,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("试跑任务终态不动积分也不推送", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, func(t *model.GenerationTask) { t.IsTest = true; t.Credits = 0 })
-		applied, err := env.svc.Complete(ctx, task, nil)
+		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
 		}

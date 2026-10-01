@@ -379,3 +379,22 @@ export function paramSummary(caps: Capabilities | undefined, params: Record<stri
     .filter(Boolean)
     .join(" · ");
 }
+
+/**
+ * 计价用的规格：生成方式、是否有参考视频、所有参数的取值（开放的取用户值，未开放的取默认值，和后端补齐的一致）、
+ * 提示词字数。input 是 buildTaskInput 组装出的提交输入。画布拿不到固定系统提示，Token 预估因此略低于后端。
+ */
+export function priceSpecOf(caps: Capabilities | undefined, input: Record<string, unknown>) {
+  const values: Record<string, unknown> = {};
+  for (const field of paramEntries(caps)) {
+    values[field.name] =
+      field.open && input[field.name] !== undefined ? input[field.name] : field.default;
+  }
+  const videos = input.videos;
+  return {
+    op: typeof input.op === "string" ? input.op : undefined,
+    refVideo: Array.isArray(videos) && videos.length > 0,
+    params: values,
+    promptChars: typeof input.prompt === "string" ? [...input.prompt].length : 0,
+  };
+}
