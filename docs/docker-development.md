@@ -29,8 +29,8 @@ start-docker.bat --detach
 
 - 前端：<http://localhost:5173>
 - 后端健康检查：<http://localhost:8080/health>
-- PostgreSQL：`localhost:5432`，用户 `postgres`，密码 `root`，数据库 `video_canvas`
-- Redis：`localhost:6379`
+- PostgreSQL：`localhost:15432`，用户 `postgres`，密码 `root`，数据库 `video_canvas`
+- Redis：`localhost:16379`
 
 前端容器里的 Vite 代理通过 `http://backend:8080` 访问后端；浏览器仍然使用同源的 `/api/v1` 和 WebSocket 地址。后端通过 `APP_DATABASE_DSN`、`APP_REDIS_ADDR` 等环境变量连接 Compose 服务名，不要在容器配置里使用 `127.0.0.1`。
 
