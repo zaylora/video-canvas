@@ -54,7 +54,7 @@ parseQueryResponse(ctx, resp)        async 必须。返回统一结果
 buildCancelRequest(ctx)              可选。没有就走软取消
 classifyError(ctx, resp)             可选。上游非 2xx 时先调它，返回 { class, code?, message? } 或 null（null 表示走宿主默认规则）
 buildCheckRequest(ctx)               可选。连通性检查，任意 2xx 算通。请返回一个廉价、只读、不产生费用的请求（如列模型、查询一条历史记录），不要提交生成任务；宿主自动注入 Key
-buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，需配合 meta.import。导入模型，parse 返回 [{ upstreamModel, kind, label, params? }]（模型能力由运营在后台手填，草稿不带）
+buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，需配合 meta.import。导入模型，parse 返回 [{ upstreamModel, kind, label, params?, paramHints? }]（模型能力由运营在后台配置；paramHints 是可选的生成参数预填建议，见第九节补）
 - 钩子之间互相调用请直接调用文件里的普通函数，或写 module.exports.xxx(ctx)；不要依赖 this（宿主调用钩子时 this 不一定指向 module.exports）。
 
 # 四、ctx（每次调用新建，是副本）
@@ -126,7 +126,14 @@ utils.uuid()、utils.unixNow()、utils.base64(s)、utils.base64Decode(s)、utils
 - 按秒计费的视频模型由运营配置一个叫 duration 的数字参数（单位秒），插件把 input.duration 传给上游对应的时长字段。
 
 # 九·补、导入模型
-parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {} }。草稿只预填模型编辑器的这几项，生成方式、参考素材、生成参数等能力由运营在后台按种类预填后手改，插件不声明。
+parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名（由插件自己解释）", kind: "text|image|video|audio", label: "给人看的名字", params: {}, paramHints: {} }。生成方式、参考素材、生成参数等能力由运营在后台配置，插件不声明；导入时平台按种类套默认能力模板预填编辑器。
+- 一个模型的不同清晰度 / 档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要拆成多个草稿：按系列导出一个草稿，把「档位 → 上游 id」对照表放进 params（字段名自己定，如 { groups: { "1K": "…", "4K": "…" } }），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。
+- paramHints（可选）：告诉平台这个模型的生成参数建议配成什么，平台在导入那一刻覆盖默认模板里的同名参数，之后运营可以随意改，校验和下单都不读它。键必须是模板里的参数名（视频：aspect_ratio / resolution / duration / generate_audio / count；图片：aspect_ratio / resolution / count），对不上的会被忽略；不能新增参数，也不能改 spec、fanout。每个参数可以给：
+  - enum：options（可选值，字符串或数字，最多 20 个）、default；
+  - number：min、max、step、default（0 – 3600 的整数）；
+  - boolean：default；
+  - 任意类型：open（是否开放给用户）、remove: true（模型没有这一项，去掉）。
+  例：{ resolution: { options: ["2K", "4K"], default: "2K" }, generate_audio: { remove: true } }。可选值要和 params 里的对照表一致（都从插件里同一张表生成），否则用户会选到插件不认识的档位。只有一个档位时用 remove: true 去掉清晰度参数，插件按唯一的档位处理。
 - 插件在 buildSubmitRequest 里读到的 ctx.input 见上一节；没开放、没填的可选键没有。
 - 上游没有“模型列表”接口时，可以把已知模型写死在插件里：buildImportRequest 返回一个廉价只读请求（如复用 buildCheckRequest 的请求），parseImportResponse 忽略响应，直接返回写死的草稿数组；别忘了声明 meta.import。
 - 如果上游模型名不是“模型名”而是分组 id / 工作流 id，就把它放进 upstreamModel，在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取。
@@ -212,7 +219,7 @@ module.exports = {
 - 没有使用 ES6 以上语法、没有 require / 网络 / 定时器；所有返回值可 JSON.stringify。
 - 请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有把文件内容内联进请求。
 - 产物的域名已写进 allowedHosts（或就在渠道 baseUrl 的主机上）。
-- 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿只含 upstreamModel / kind / label / params。
+- 想让“检查”“导入模型”可用：已实现 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现，草稿只含 upstreamModel / kind / label / params / paramHints；paramHints 的参数名是模板里的，可选值和 params 里的档位对照表一致。
 - 读取的是 ctx.input.images / videos / audios 数组，不是旧的单个 image 字段；没有让上游一次出多个结果；文本产物带了 usage；没有在插件里处理积分或生成数量。
 - 改了代码就升 meta.version（同一 key 下版本不可覆盖），并提醒使用者把渠道切到新版本。
 - 失败路径都有明确的 error.class 和中文原因。

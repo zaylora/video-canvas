@@ -134,7 +134,7 @@ meta: {
 | `classifyError(ctx, resp)` | ctx，非 2xx 响应 | `{ class, code?, message? }` 或 null；可选 |
 | `buildCheckRequest(ctx)` | ctx | 请求描述（任意 2xx 算连通）；可选 |
 | `buildImportRequest(ctx, args)` | ctx，导入参数 | 请求描述；可选 |
-| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数 | 模型草稿数组 `[{ upstreamModel, kind, label, params? }]`；可选 |
+| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数 | 模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
 
 **提交流程**：`buildPrepareRequests`（若有且 `ctx.prepared` 还没有）→ 宿主依次执行 → `parsePrepareResponses` → 持久化 prepared → `buildSubmitRequest` → 执行 → `parseSubmitResponse`。准备请求与提交请求走同样的校验、鉴权注入、SSRF、限流。
 
@@ -162,6 +162,22 @@ meta: {
 ```
 
 宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https 且主机在 `allowedHosts` 或渠道 `base_url` 的主机上；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
+
+**导入草稿的参数预填建议（`paramHints`，可选）**：模型能力由运营在后台配置，插件不声明；但导入时插件可以告诉平台“这个模型的某个生成参数建议配成什么”，平台在导入那一刻按种类套默认能力模板后，用它覆盖**模板里同名参数**的取值设置。之后运营可以随意修改，后端校验与下单都不读它。
+
+```jsonc
+"paramHints": {
+  "resolution":     { "options": ["2K", "4K"], "default": "2K" },   // enum：可选值、默认值
+  "duration":       { "min": 4, "max": 15, "step": 1, "default": 5 }, // number：最小 / 最大 / 步长 / 默认
+  "generate_audio": { "default": false },                            // boolean：默认值
+  "aspect_ratio":   { "open": false },                               // 任意类型：是否开放给用户
+  "count":          { "remove": true }                               // 任意类型：模型没有这一项，去掉
+}
+```
+
+- 键是模板里的参数名（视频：`aspect_ratio / resolution / duration / generate_audio / count`；图片：`aspect_ratio / resolution / count`）；对不上的键被忽略，导入时提示运营。不能新增模板里没有的参数，也不能改 `spec`（规格价格维度）、`fanout`（生成数量）。
+- 宿主只校验格式：参数名是小写字母 / 数字 / 下划线；`options` 最多 20 个、每个是非空字符串或数字；`default` 是字符串、数字或布尔；`min / max / step` 是 0 – 3600 的整数。不合规时整次导入按插件故障失败。
+- 超出平台固定范围的值不会被自动修正，编辑器里照常标红，运营改完才能发布。
 
 ## 7. `utils`（宿主注入的同步函数）
 

@@ -215,6 +215,8 @@ type ModelDraft struct {
 	Kind          string         `json:"kind"`
 	Label         string         `json:"label"`
 	Params        map[string]any `json:"params,omitempty"`
+	// ParamHints 是插件对生成参数的预填建议（参数名 -> 建议），只在导入时预填编辑器，见 modelcfg.ParamHint
+	ParamHints map[string]modelcfg.ParamHint `json:"param_hints,omitempty"`
 }
 
 // PluginOps 是管理端经插件钩子做的两件事：连通性检查与导入模型。由宿主（provider/plugin）实现。

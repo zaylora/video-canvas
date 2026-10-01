@@ -108,12 +108,20 @@ describe("suggestModelKey", () => {
 
 describe("normalizeDraft / draftToModelBody", () => {
   test("同时认 snake_case 与 camelCase；缺上游模型名的丢掉", () => {
-    expect(normalizeDraft({ upstreamModel: "m1", kind: "text", inputSchema: { p: {} } })).toEqual({
+    expect(
+      normalizeDraft({
+        upstreamModel: "m1",
+        kind: "image",
+        paramHints: { resolution: { options: ["2K"] } },
+      }),
+    ).toEqual({
       upstream_model: "m1",
-      kind: "text",
+      kind: "image",
       label: "",
       params: null,
+      param_hints: { resolution: { options: ["2K"] } },
     });
+    expect(normalizeDraft({ upstream_model: "m2", param_hints: "坏数据" })?.param_hints).toBeNull();
     expect(normalizeDraft({ kind: "text" })).toBeNull();
     expect(normalizeDraft(null)).toBeNull();
   });

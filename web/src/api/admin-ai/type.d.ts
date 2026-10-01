@@ -206,6 +206,8 @@ export interface ModelDraft {
   label: string;
   /** 固定参数 */
   params?: Record<string, unknown> | null;
+  /** 插件给的生成参数预填建议（参数名 -> 建议），只在导入时预填编辑器 */
+  param_hints?: import("@/utils/admin/param-hints").ParamHints | null;
 }
 
 /** POST /admin/ai/channels/:key/import 的结果 */

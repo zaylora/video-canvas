@@ -66,7 +66,7 @@
 | PUT | `/channels/:key` | 更新（super_admin），字段都可选（不传表示不改）：`name`、`plugin_version`、`base_url`、`trusted_internal`、`allow_credentials`、`settings`（整体替换）、`rate_limit`（整体替换）、`enabled`。插件本身不能换（要换插件请新建渠道），改 `plugin_version` 即“升级插件后切换渠道”：新版本必须存在且插件启用（不切版本时，插件停用不挡其他修改），并且 `settings`（不传则用现有取值）按新版本的 `channelSettings` 重新校验。渠道不存在 404（50011）；校验失败 400（50013） |
 | PUT | `/channels/:key/secret` | 设置渠道 Key：`{ "value": "..." }`（去掉首尾空白，≤4096 字节），存 `ai_secrets`，名字 `channel:<key>`，只写、响应无 `data`、不回显。没有配置主密钥 `APP_AI_SECRET_KEY` 时 500 并在 msg 里说明；渠道不存在 404 |
 | POST | `/channels/:key/check` | 连通性检查（super_admin）→ `{ "ok": true, "message": "HTTP 200", "duration_ms": 120 }`。上游不通是正常的检查结果 `ok=false`（原因在 message，已脱敏）；插件没实现 `buildCheckRequest` 时 `ok=false, message="插件不支持连通性检查"`；需要宿主注入鉴权（插件 `auth.type` 不是 `none`）而 Key 没设置 409（50015）；runner 不可用 503（50021）；插件本身出错（钩子异常、请求描述非法等）502（50022，msg 已脱敏） |
-| POST | `/channels/:key/import` | 从渠道导入模型（admin）：`{ "args": { } }`（取值按插件 `meta.import.args` 校验：未声明 / 类型 / 必填，没有请求体等同空 args）→ `{ "drafts": [ { "upstream_model": "kling-v2", "kind": "video", "label": "...", "params": { } } ] }`（模型能力由运营在后台手填，草稿不带），只预填编辑器，不落库。参数不合法 400（10001）；Key 没设置 409（50015）；插件没实现导入钩子 502（50022）；runner 不可用 503 |
+| POST | `/channels/:key/import` | 从渠道导入模型（admin）：`{ "args": { } }`（取值按插件 `meta.import.args` 校验：未声明 / 类型 / 必填，没有请求体等同空 args）→ `{ "drafts": [ { "upstream_model": "kling-v2", "kind": "video", "label": "...", "params": { }, "param_hints": { "resolution": { "options": ["2K", "4K"], "default": "2K" } } } ] }`（模型能力由运营在后台配置；`param_hints` 是插件给的生成参数预填建议，可省略，只在导入时预填编辑器，见 plugin-contract.md），只预填编辑器，不落库。参数不合法 400（10001）；Key 没设置 409（50015）；插件没实现导入钩子 502（50022）；runner 不可用 503 |
 
 ### 审计日志
 
