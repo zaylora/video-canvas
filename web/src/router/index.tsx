@@ -9,6 +9,8 @@ import OverviewPage from "@/pages/admin-ai/overview";
 import PluginsPage from "@/pages/admin-ai/plugins";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
+import Home from "@/pages/home";
+import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
 import { getToken } from "@/utils/storage/token";
 
@@ -51,8 +53,12 @@ export const router = createBrowserRouter([
         element: <RequireAuth />,
         children: [
           {
-            index: true,
-            element: <CanvasList />,
+            /** 首页和所有画布共用侧栏 + 顶栏 */
+            element: <HomeLayout />,
+            children: [
+              { index: true, element: <Home /> },
+              { path: "canvases", element: <CanvasList /> },
+            ],
           },
           {
             path: "canvas",

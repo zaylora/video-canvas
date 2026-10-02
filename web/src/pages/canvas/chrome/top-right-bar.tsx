@@ -52,7 +52,7 @@ const WS_TEXT: Record<ConnectionState, string> = {
 };
 
 /** 从登录令牌里读出用户名，读不出就返回 null（令牌是不透明串时） */
-function useUsername() {
+export function useUsername() {
   return useMemo(() => {
     try {
       const payload = getToken()?.split(".")[1];
@@ -67,7 +67,7 @@ function useUsername() {
 }
 
 /** 积分胶囊：左边是实时连接状态点，点开看余额明细 */
-function CreditsPill() {
+export function CreditsPill() {
   const credits = useCreditsStore((state) => state.credits);
   const refresh = useCreditsStore((state) => state.refresh);
   const connection = useWsStore((state) => state.connection);

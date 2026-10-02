@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>首页原型</title>
+<style>
+/* token 抄自 web/src/index.css；--cover-scrim 为本方案新增 */
+:root {
+  --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+  --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0); --ring: oklch(0.708 0 0); --destructive: oklch(0.577 0.245 27.325);
+  --popover: oklch(1 0 0);
+  --canvas-bg: oklch(0.975 0 0); --canvas-dot: oklch(0 0 0 / 0.14);
+  --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08); --chrome-hover: oklch(0 0 0 / 0.05);
+  --credit: oklch(0.72 0.15 75); --status-success: oklch(0.6 0.15 155);
+  --edge: oklch(0 0 0 / 0.28);
+  --cover-scrim: oklch(0 0 0 / 0.62);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* DURATION.fast / base / slow；SPRING 在原型里用 220ms ease-out 近似 */
+  --fast: 120ms; --base: 180ms; --slow: 240ms; --spring: 220ms;
+}
+.dark {
+  --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+  --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+  --border: oklch(1 0 0 / 10%); --ring: oklch(0.556 0 0); --destructive: oklch(0.704 0.191 22.216);
+  --popover: oklch(0.205 0 0);
+  --canvas-bg: oklch(0.13 0 0); --canvas-dot: oklch(1 0 0 / 0.08);
+  --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08); --chrome-hover: oklch(1 0 0 / 0.07);
+  --credit: oklch(0.82 0.15 85); --status-success: oklch(0.75 0.15 155);
+  --edge: oklch(1 0 0 / 0.28);
+  --cover-scrim: oklch(0 0 0 / 0.7);
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--background); color: var(--foreground); font: 14px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.tap { transition: transform var(--spring) var(--ease-out), background var(--fast); }
+.tap:not(:disabled):active { transform: scale(.96); }
+.num { font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* 原型控制条（不属于设计） */
+.proto { position: fixed; left: 16px; bottom: 16px; z-index: 50; display: flex; gap: 6px; padding: 6px; border-radius: 12px; background: var(--popover); box-shadow: 0 8px 30px oklch(0 0 0 / .3); outline: 1px solid var(--border); font-size: 12px; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+.proto button { padding: 4px 8px; border-radius: 8px; background: var(--muted); }
+
+/* 顶栏 */
+header.top { position: sticky; top: 0; z-index: 20; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 24px; background: color-mix(in oklch, var(--background) 80%, transparent); backdrop-filter: blur(16px); border-bottom: 1px solid transparent; transition: border-color var(--base); }
+header.top.scrolled { border-color: var(--border); }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.logo .mark { width: 24px; height: 24px; border-radius: 7px; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; }
+.spacer { flex: 1; }
+.pill { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 999px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); font-weight: 600; font-family: ui-monospace, monospace; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-success) 15%, transparent); }
+.pill .star { color: var(--credit); }
+.ghost { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; color: var(--muted-foreground); }
+.ghost:not(:disabled):hover { background: var(--chrome-hover); color: var(--foreground); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); font-weight: 600; }
+.avatar:hover { box-shadow: 0 0 0 2px color-mix(in oklch, var(--foreground) 30%, transparent); }
+
+main { max-width: 1200px; margin: 0 auto; padding: 16px 24px 96px; }
+
+/* 侧栏：代码里用 components/ui/sidebar（collapsible="icon"），展开 240px / 收起 56px，⌘B 切换 */
+.sb { position: fixed; inset: 0 auto 0 0; z-index: 30; width: var(--sbw); display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; background: var(--sidebar, var(--background)); border-right: 1px solid var(--border); transition: width var(--slow) var(--ease-out), transform var(--slow) var(--ease-out); }
+html { --sbw: 240px; }
+html.collapsed { --sbw: 56px; }
+.shell { margin-left: var(--sbw); transition: margin-left var(--slow) var(--ease-out); }
+.sb-head { display: flex; align-items: center; justify-content: space-between; height: 36px; padding-left: 4px; margin-bottom: 8px; }
+.sb .logo { white-space: nowrap; }
+.sb-toggle { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted-foreground); flex: none; }
+.sb-toggle:hover { background: var(--chrome-hover); color: var(--foreground); }
+.sb-new { height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; background: var(--primary); color: var(--primary-foreground); font-weight: 600; white-space: nowrap; margin-bottom: 12px; }
+.nav { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.nav-item { position: relative; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 10px; color: var(--muted-foreground); white-space: nowrap; width: 100%; text-align: left; }
+.nav-item svg.i { width: 18px; height: 18px; }
+.nav-item:not(:disabled):hover { background: var(--chrome-hover); color: var(--foreground); }
+.nav-item[aria-current="page"] { color: var(--foreground); font-weight: 600; }
+.nav-item .badge { margin-left: auto; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground); font-weight: 400; }
+.nav .hl { position: absolute; left: 0; right: 0; top: 0; height: 40px; border-radius: 10px; background: var(--muted); transition: transform var(--spring) var(--ease-out); }
+.nav .hl::before { content: ""; position: absolute; left: -10px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--foreground); }
+.sb-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.sb-label { transition: opacity var(--fast); }
+html.collapsed .sb-label, html.collapsed .sb .logo-text { display: none; }
+/* 侧栏里的 Tooltip 从右侧弹出，收起后靠它认出图标 */
+.sb [data-tip]:hover::after { left: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+html.collapsed .sb-head { flex-direction: column; height: auto; gap: 8px; padding: 0; }
+html.collapsed .sb-new { width: 36px; padding: 0; margin-left: 0; }
+html.collapsed .sb-new .sb-label { display: none; }
+html.collapsed .nav-item { padding: 0 9px; }
+.sb-trigger { display: none; }
+.sb-scrim { display: none; }
+.page { display: none; }
+.page.on { display: block; animation: rise var(--slow) var(--ease-out) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes fade { from { opacity: 0; } }
+
+/* Hero */
+.hero { position: relative; border-radius: 28px; padding: 56px 48px 40px; background: color-mix(in oklch, var(--card) 60%, transparent); box-shadow: 0 0 0 1px var(--border); overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 20px 20px; mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%); pointer-events: none; }
+.hero > * { position: relative; }
+.greet { text-align: center; font-size: 36px; letter-spacing: -.01em; }
+.greet .hi { color: var(--muted-foreground); font-weight: 300; }
+.greet .name { font-weight: 600; }
+.prompt { max-width: 760px; margin: 24px auto 0; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 16px; border-radius: 18px; background: color-mix(in oklch, var(--background) 70%, transparent); box-shadow: 0 0 0 1px var(--border); transition: box-shadow var(--fast), transform var(--fast) var(--ease-out); }
+.prompt:focus-within { box-shadow: 0 0 0 1px var(--ring), 0 8px 30px oklch(0 0 0 / .15); transform: translateY(-1px); }
+.prompt input { flex: 1; background: none; border: 0; outline: none; font-size: 15px; min-width: 0; }
+.prompt input::placeholder { color: var(--muted-foreground); }
+.prompt .sparkle { color: var(--muted-foreground); }
+.send { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; }
+.chips { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; background: color-mix(in oklch, var(--muted) 60%, transparent); font-size: 12.5px; color: var(--muted-foreground); }
+.chip:hover { background: var(--muted); color: var(--foreground); }
+
+/* tooltip */
+[data-tip] { position: relative; }
+[data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; padding: 4px 8px; border-radius: 6px; background: var(--foreground); color: var(--background); font-size: 12px; font-family: "PingFang SC", sans-serif; font-weight: 400; z-index: 30; animation: fade var(--base) both; pointer-events: none; opacity: 1; }
+button:disabled[data-tip] { pointer-events: auto; }
+
+/* 分段控件：滑块用 transform 移动，代码里用 layoutId */
+.seg { position: relative; display: inline-flex; padding: 2px; border-radius: 10px; gap: 2px; }
+.seg .thumb { position: absolute; top: 2px; bottom: 2px; left: 0; border-radius: 8px; background: var(--muted); transition: transform var(--spring) var(--ease-out), width var(--spring) var(--ease-out); }
+.seg button { position: relative; z-index: 1; height: 30px; padding: 0 12px; border-radius: 8px; color: var(--muted-foreground); transition: color var(--fast); }
+.seg button[aria-selected="true"] { color: var(--foreground); font-weight: 500; }
+.seg button:not(:disabled):not([aria-selected="true"]):hover { color: var(--foreground); }
+
+.bar { display: flex; align-items: center; gap: 8px; margin: 40px 0 14px; }
+.search { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: color-mix(in oklch, var(--muted) 60%, transparent); width: 200px; color: var(--muted-foreground); transition: box-shadow var(--fast); }
+.search:focus-within { box-shadow: 0 0 0 1px var(--ring); }
+.search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--foreground); }
+.more-link { display: inline-flex; align-items: center; gap: 2px; color: var(--muted-foreground); padding: 4px 6px; border-radius: 8px; }
+.more-link:hover { color: var(--foreground); }
+.more-link svg { transition: transform var(--fast) var(--ease-out); }
+.more-link:hover svg { transform: translateX(2px); }
+
+/* 卡片 */
+.recent { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 5 * 12px) / 6); gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+.recent > * { scroll-snap-align: start; }
+.card { position: relative; display: block; width: 100%; text-align: left; border-radius: 14px; overflow: hidden; aspect-ratio: 4/3; animation: rise var(--base) var(--ease-out) both; transition: transform var(--spring) var(--ease-out), opacity var(--base); }
+.card:active { transform: scale(.96); }
+.card[data-deleting] { opacity: .5; pointer-events: none; }
+.card .cover { position: absolute; inset: 0; transition: transform var(--base) var(--ease-out); }
+.card:hover .cover { transform: scale(1.03); }
+.card .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 12px 10px; background: linear-gradient(to top, var(--cover-scrim), transparent); color: oklch(0.985 0 0); }
+.card .t { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .d { font-size: 11.5px; opacity: .75; }
+.kebab { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--cover-scrim); color: oklch(0.985 0 0); opacity: 0; transition: opacity var(--base); z-index: 2; }
+.card:hover .kebab, .card:focus-within .kebab, .kebab[aria-expanded="true"] { opacity: 1; }
+.newcard { display: grid; place-content: center; justify-items: center; gap: 10px; background: color-mix(in oklch, var(--muted) 40%, transparent); box-shadow: inset 0 0 0 1px var(--border); color: var(--muted-foreground); }
+.newcard:hover { background: var(--muted); color: var(--foreground); }
+.newcard .plus { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+.spin { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.skel { aspect-ratio: 4/3; border-radius: 14px; background: var(--muted); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .5; } }
+.note { display: grid; place-items: center; align-content: center; gap: 8px; color: var(--muted-foreground); font-size: 13px; text-align: center; }
+.note button { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+
+/* 节点线框封面 */
+.wire { background-color: var(--canvas-bg); background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 14px 14px; }
+.wire svg { width: 100%; height: 100%; }
+.wire .n { fill: var(--muted); stroke: var(--chrome-border); }
+.wire .l { fill: color-mix(in oklch, var(--muted-foreground) 35%, transparent); }
+.wire .e { stroke: var(--edge); fill: none; stroke-width: 1.2; }
+
+/* Banner */
+.banner { position: relative; margin-top: 24px; aspect-ratio: 21/5; border-radius: 28px; overflow: hidden; background: var(--muted); }
+.banner .track { display: flex; height: 100%; transition: transform var(--slow) var(--ease-out); }
+.slide { flex: 0 0 100%; display: flex; align-items: flex-end; padding: 28px 36px; background-image: repeating-linear-gradient(135deg, transparent 0 14px, var(--chrome-hover) 14px 15px); }
+.slide b { display: block; font-size: 26px; font-weight: 600; }
+.slide span { color: var(--muted-foreground); font-size: 13px; }
+.arrow { position: absolute; top: 50%; width: 40px; height: 40px; margin-top: -20px; border-radius: 50%; display: grid; place-items: center; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); backdrop-filter: blur(12px); opacity: 0; transition: opacity var(--base); }
+.banner:hover .arrow, .arrow:focus-visible { opacity: 1; }
+.arrow.l { left: 16px; } .arrow.r { right: 16px; }
+.dots { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.dots button { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in oklch, var(--foreground) 30%, transparent); transition: width var(--base) var(--ease-out), background var(--base); padding: 0; }
+.dots button[aria-current="true"] { width: 20px; background: var(--foreground); }
+
+/* 作品区 */
+.works-bar { display: flex; align-items: center; gap: 12px; margin: 28px 0 16px; }
+.utabs { position: relative; display: flex; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; }
+.utabs button { position: relative; height: 40px; padding: 0 14px; color: var(--muted-foreground); font-size: 15px; white-space: nowrap; border-radius: 10px; }
+.utabs button:hover { color: var(--foreground); }
+.utabs button[aria-selected="true"] { color: var(--foreground); font-weight: 600; background: color-mix(in oklch, var(--muted) 60%, transparent); }
+.utabs .line { position: absolute; bottom: 2px; height: 2px; left: 0; border-radius: 2px; background: var(--foreground); transition: transform var(--spring) var(--ease-out), width var(--spring) var(--ease-out); }
+.primary { height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 0 18px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-weight: 600; white-space: nowrap; }
+.works-empty { height: 320px; border-radius: 20px; box-shadow: inset 0 0 0 1px var(--border); background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 20px 20px; }
+
+/* 所有画布页 */
+.toolbar { display: flex; align-items: center; gap: 8px; margin: 8px 0 20px; flex-wrap: wrap; }
+.toolbar .seg button { height: 36px; font-size: 15px; padding: 0 16px; }
+.icon-seg button { padding: 0 8px !important; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); }
+.pcard { position: relative; border-radius: 20px; padding: 6px; background: var(--card); box-shadow: 0 0 0 1px var(--border); text-align: left; animation: rise var(--base) var(--ease-out) both; transition: transform var(--spring) var(--ease-out), box-shadow var(--base); }
+.pcard:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 20%, transparent); }
+.pcard:active { transform: scale(.98); }
+.pcard .cw { position: relative; aspect-ratio: 4/3; border-radius: 14px; overflow: hidden; }
+.pcard .cover { position: absolute; inset: 0; transition: transform var(--base) var(--ease-out); }
+.pcard:hover .cover { transform: scale(1.03); }
+.pcard .info { padding: 10px 8px 6px; }
+.pcard .t { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard .d { color: var(--muted-foreground); font-size: 12px; }
+.pcard:hover .kebab, .pcard:focus-within .kebab { opacity: 1; }
+.pnew { position: absolute; inset: 6px; border-radius: 14px; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted-foreground); background: color-mix(in oklch, var(--muted) 50%, transparent); }
+/* 新建卡和骨架屏沿用普通卡的骨架（4:3 封面 + 信息区），所以有没有其他卡高度都一样 */
+.pcard .ghost-info { visibility: hidden; }
+.pcard .skel-line { height: 12px; border-radius: 6px; background: var(--muted); animation: pulse 1.6s ease-in-out infinite; }
+.pnew:hover { color: var(--foreground); }
+.pnew .plus { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--chrome-hover); box-shadow: 0 0 0 1px var(--chrome-border); }
+
+/* 菜单与确认框 */
+.menu { position: fixed; z-index: 40; min-width: 140px; padding: 4px; border-radius: 10px; background: var(--popover); box-shadow: 0 0 0 1px var(--border), 0 10px 30px oklch(0 0 0 / .25); transform-origin: top right; animation: pop var(--base) var(--ease-out) both; }
+.menu button { width: 100%; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--destructive); }
+.menu button:hover { background: color-mix(in oklch, var(--destructive) 10%, transparent); }
+@keyframes pop { from { opacity: 0; transform: scale(.95); } }
+.scrim { position: fixed; inset: 0; z-index: 45; background: oklch(0 0 0 / .4); display: grid; place-items: center; animation: fade var(--base) both; padding: 16px; }
+.dialog { width: 380px; max-width: 100%; border-radius: 16px; padding: 20px; background: var(--popover); box-shadow: 0 0 0 1px var(--border); animation: pop var(--slow) var(--ease-out) both; }
+.dialog h3 { font-size: 16px; margin-bottom: 6px; }
+.dialog p { color: var(--muted-foreground); }
+.dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.btn { height: 34px; padding: 0 14px; border-radius: 9px; box-shadow: 0 0 0 1px var(--border); }
+.btn.danger { background: var(--destructive); color: oklch(0.985 0 0); box-shadow: none; }
+
+/* 窄屏 */
+@media (max-width: 767px) {
+  header.top { padding: 0 16px; }
+  /* 窄屏：侧栏变成从左滑出的抽屉，顶栏出现汉堡按钮 */
+  html, html.collapsed { --sbw: 0px; }
+  .sb { width: 260px; transform: translateX(-100%); box-shadow: 0 0 40px oklch(0 0 0 / .3); }
+  html.sb-open .sb { transform: none; }
+  html.sb-open .sb-scrim { display: block; position: fixed; inset: 0; z-index: 25; background: oklch(0 0 0 / .4); animation: fade var(--base) both; }
+  html.collapsed .sb-label, html.collapsed .sb .logo-text { display: initial; }
+  .sb-trigger { display: grid; }
+  .sb-toggle.collapse { display: none; }
+  main { padding: 8px 16px 96px; }
+  .hero { padding: 32px 16px 24px; border-radius: 22px; }
+  .greet { font-size: 24px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; }
+  .chip { flex: none; }
+  .recent { grid-auto-columns: 42%; }
+  .bar .search { width: 120px; }
+  .banner { aspect-ratio: 16/7; }
+  .works-bar .search, .ghost .lbl, .density { display: none; }
+  .grid { --cols: 2 !important; gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-name: fade !important; transition-property: opacity, color, background, box-shadow !important; }
+  .card:hover .cover, .pcard:hover .cover { transform: none; }
+  .banner .track { transition: none; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="chevl" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+  <symbol id="loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></symbol>
+  <symbol id="folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6M9 13h6"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></symbol>
+  <symbol id="g3" viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="10" y="3" width="5" height="5" rx="1"/><rect x="17" y="3" width="4" height="5" rx="1"/><rect x="3" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/><rect x="17" y="10" width="4" height="5" rx="1"/></symbol>
+  <symbol id="g2" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></symbol>
+  <symbol id="g1" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
+  <symbol id="sort" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/></symbol>
+  <symbol id="panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 10l-2 2 2 2"/></symbol>
+  <symbol id="menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="nodes" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="15" width="8" height="6" rx="1.5"/><path d="M7 9v3a3 3 0 0 0 3 3h3"/></symbol>
+  <symbol id="tv" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="m8 3 4 4 4-4"/></symbol>
+  <symbol id="trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4a3 3 0 0 0 4 4M16 6h4a3 3 0 0 1-4 4M12 13v4M8 21h8M10 17h4v4h-4z"/></symbol>
+  <symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5a6 6 0 0 1 11 0"/></symbol>
+  <symbol id="cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+</svg>
+
+<aside class="sb" id="sb">
+  <div class="sb-head">
+    <div class="logo"><span class="mark"><svg class="i" style="width:14px;height:14px"><use href="#spark"/></svg></span><span class="logo-text">Video Canvas</span></div>
+    <button class="sb-toggle collapse tap" id="collapse" data-tip="收起侧栏 ⌘B" aria-label="收起侧栏"><svg class="i"><use href="#panel"/></svg></button>
+  </div>
+  <button class="sb-new tap" onclick="createOne()"><svg class="i"><use href="#plus"/></svg><span class="sb-label">新建画布</span></button>
+  <nav class="nav" id="nav">
+    <span class="hl"></span>
+    <button class="nav-item tap" data-go="home" aria-current="page"><svg class="i"><use href="#home"/></svg><span class="sb-label">首页</span></button>
+    <button class="nav-item tap" data-go="list"><svg class="i"><use href="#nodes"/></svg><span class="sb-label">无限画布</span></button>
+    <button class="nav-item" disabled data-tip="即将上线"><svg class="i"><use href="#tv"/></svg><span class="sb-label">作品广场</span></button>
+    <button class="nav-item" disabled data-tip="即将上线"><svg class="i"><use href="#trophy"/></svg><span class="sb-label">创作活动</span></button>
+  </nav>
+  <div class="sb-foot">
+    <button class="nav-item tap"><svg class="i"><use href="#cog"/></svg><span class="sb-label">AI 配置</span><span class="badge sb-label">管理员</span></button>
+    <button class="nav-item" disabled data-tip="即将上线"><svg class="i"><use href="#user"/></svg><span class="sb-label">我的账户</span></button>
+  </div>
+</aside>
+<div class="sb-scrim" id="scrim"></div>
+
+<div class="shell">
+<header class="top" id="top">
+  <button class="sb-toggle sb-trigger tap" id="open" aria-label="打开菜单"><svg class="i"><use href="#menu"/></svg></button>
+  <div class="spacer"></div>
+  <div class="pill num"><span class="dot"></span><span class="star">✦</span>25</div>
+  <button class="avatar tap">S</button>
+</header>
+
+<main>
+  <!-- ========== 首页 ========== -->
+  <section class="page on" id="home">
+    <div class="hero">
+      <h1 class="greet"><span class="hi" id="hi">晚上好，</span><span class="name">Smooth</span></h1>
+      <label class="prompt">
+        <svg class="i sparkle"><use href="#spark"/></svg>
+        <input id="idea" placeholder="说出你的创意，在画布上实现 …" />
+        <button class="send tap" disabled data-tip="即将上线" aria-label="发送"><svg class="i"><use href="#up"/></svg></button>
+      </label>
+      <div class="chips" id="chips"></div>
+
+      <div class="bar">
+        <div class="seg" id="scope"><span class="thumb"></span>
+          <button role="tab">全部</button><button role="tab" aria-selected="true">个人</button><button role="tab" disabled data-tip="即将上线">协作</button>
+        </div>
+        <div class="spacer"></div>
+        <label class="search"><svg class="i"><use href="#search"/></svg><input class="q" placeholder="搜索" /></label>
+        <button class="more-link tap" data-go="list">所有画布<svg class="i"><use href="#chev"/></svg></button>
+      </div>
+      <div class="recent" id="recent"></div>
+    </div>
+
+    <div class="banner" id="banner">
+      <div class="track">
+        <div class="slide"><div><span>活动位 · 即将上线</span><b>运营 Banner 占位 1</b></div></div>
+        <div class="slide"><div><span>活动位 · 即将上线</span><b>运营 Banner 占位 2</b></div></div>
+        <div class="slide"><div><span>活动位 · 即将上线</span><b>运营 Banner 占位 3</b></div></div>
+      </div>
+      <button class="arrow l tap" aria-label="上一张"><svg class="i"><use href="#chevl"/></svg></button>
+      <button class="arrow r tap" aria-label="下一张"><svg class="i"><use href="#chev"/></svg></button>
+      <div class="dots"></div>
+    </div>
+
+    <div class="works-bar">
+      <div class="utabs" id="utabs"><span class="line"></span></div>
+      <label class="search"><svg class="i"><use href="#search"/></svg><input placeholder="搜索作品" disabled /></label>
+      <button class="primary tap" disabled data-tip="即将上线"><svg class="i"><use href="#plus"/></svg>发布作品</button>
+    </div>
+    <div class="works-empty note"><b style="color:var(--foreground);font-size:15px">作品广场即将上线</b>这里会展示大家用画布做出来的作品</div>
+  </section>
+
+  <!-- ========== 所有画布 ========== -->
+  <section class="page" id="list">
+    <div class="toolbar">
+      <div class="seg" id="scope2"><span class="thumb"></span>
+        <button role="tab">全部</button><button role="tab" aria-selected="true">个人画布</button><button role="tab" disabled data-tip="即将上线">协作画布</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="ghost" disabled data-tip="即将上线"><svg class="i"><use href="#folder"/></svg><span class="lbl">新建文件夹</span></button>
+      <button class="ghost" disabled data-tip="即将上线"><svg class="i"><use href="#check"/></svg><span class="lbl">多选</span></button>
+      <button class="ghost" disabled data-tip="即将上线"><svg class="i"><use href="#link"/></svg><span class="lbl">打开分享链接</span></button>
+      <label class="search" style="height:36px"><svg class="i"><use href="#search"/></svg><input class="q" placeholder="搜索" /></label>
+      <div class="seg icon-seg density" id="density"><span class="thumb"></span>
+        <button role="tab" data-cols="6" aria-label="小"><svg class="i"><use href="#g3"/></svg></button>
+        <button role="tab" data-cols="4" aria-selected="true" aria-label="中"><svg class="i"><use href="#g2"/></svg></button>
+        <button role="tab" data-cols="3" aria-label="大"><svg class="i"><use href="#g1"/></svg></button>
+      </div>
+      <button class="ghost" disabled data-tip="即将上线" aria-label="排序"><svg class="i"><use href="#sort"/></svg></button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+</div>
+
+<div class="proto">
+  <b style="align-self:center;padding:0 4px">原型</b>
+  <button data-go="home">首页</button><button data-go="list">所有画布</button>
+  <button id="theme">切换深/浅</button>
+  <button data-state="ok">有数据</button><button data-state="loading">加载中</button><button data-state="empty">空</button><button data-state="error">失败</button>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const h = new Date().getHours();
+$("#hi").textContent = (h >= 5 && h < 11 ? "早上好" : h < 13 ? "中午好" : h < 18 ? "下午好" : "晚上好") + "，";
+
+let items = [
+  ["分镜：雨夜追逐", "今天 04:52"], ["产品广告 · 耳机", "2026-09-10 10:24"], ["角色设定集", "2026-09-07 14:33"],
+  ["无限画布", "2026-09-07 13:05"], ["短片《归途》", "2026-08-29 18:45"], ["城市空镜", "2026-08-27 00:53"],
+  ["AIMV 草稿", "2026-08-20 21:10"], ["未命名画布", "2026-08-11 09:02"],
+].map(([t, d], i) => ({ id: "c" + i, t, d }));
+let state = "ok", query = "", creating = false;
+
+/* 节点线框封面：按 id 哈希挑 3 种布局之一 */
+const node = (x, y) => `<rect class="n" x="${x}" y="${y}" width="60" height="36" rx="6"/><rect class="l" x="${x + 7}" y="${y + 8}" width="22" height="3" rx="1.5"/><rect class="l" x="${x + 7}" y="${y + 17}" width="40" height="2.5" rx="1.2"/><rect class="l" x="${x + 7}" y="${y + 24}" width="30" height="2.5" rx="1.2"/>`;
+const edge = (x1, y1, x2, y2) => `<path class="e" d="M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}"/>`;
+const LAYOUTS = [
+  node(30, 57) + node(110, 57) + edge(90, 75, 110, 75),
+  node(20, 20) + node(70, 62) + node(120, 104) + edge(80, 38, 70, 80) + edge(130, 80, 120, 122),
+  node(25, 62) + node(115, 22) + node(115, 102) + edge(85, 80, 115, 40) + edge(85, 80, 115, 120),
+];
+const cover = (id) => `<div class="cover wire"><svg viewBox="0 0 200 150" preserveAspectRatio="xMidYMid slice">${LAYOUTS[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 3]}</svg></div>`;
+const kebab = `<span class="kebab tap" role="button" tabindex="0" aria-label="更多"><svg class="i"><use href="#dots"/></svg></span>`;
+const newInner = (big) => creating
+  ? `<span class="plus"><svg class="i spin"><use href="#loader"/></svg></span>正在创建…`
+  : `<span class="plus"><svg class="i"><use href="#plus"/></svg></span>${big ? "新建画布" : "新建画布"}`;
+
+function visible() { return items.filter((x) => x.t.includes(query)); }
+function note(html) { return `<div class="note" style="grid-column:2/-1;align-self:center">${html}</div>`; }
+function stateNote() {
+  if (state === "error") return note(`加载失败 <button onclick="setState('ok')">重试</button>`);
+  if (state === "empty") return note("还没有画布，从这里开始");
+  if (!visible().length) return note(`没有找到“${query}” <button onclick="clearQ()">清空搜索</button>`);
+}
+
+function renderRecent() {
+  const el = $("#recent");
+  let html = `<button class="card newcard tap" ${creating ? "disabled" : ""} onclick="createOne()">${newInner()}</button>`;
+  if (state === "loading") html += Array.from({ length: 5 }, () => `<div class="skel"></div>`).join("");
+  else html += stateNote() || visible().slice(0, 5).map((x, i) =>
+    `<button class="card" data-id="${x.id}" style="animation-delay:${Math.min(i, 6) * 30}ms">${cover(x.id)}${kebab}<div class="meta"><div class="t">${x.t}</div><div class="d num">${x.d}</div></div></button>`).join("");
+  el.innerHTML = html;
+}
+function renderGrid() {
+  const el = $("#grid");
+  const info = `<div class="info ghost-info"><div class="t">&nbsp;</div><div class="d">&nbsp;</div></div>`;
+  let html = `<button class="pcard tap" ${creating ? "disabled" : ""} onclick="createOne()"><div class="cw"></div>${info}<div class="pnew">${newInner(true)}</div></button>`;
+  if (state === "loading") html += Array.from({ length: 7 }, () => `<div class="pcard"><div class="cw skel"></div><div class="info"><div class="skel-line" style="width:50%;margin:3px 0 8px"></div><div class="skel-line" style="width:35%;height:10px"></div></div></div>`).join("");
+  else html += stateNote() || visible().map((x, i) =>
+    `<button class="pcard" data-id="${x.id}" style="animation-delay:${Math.min(i, 6) * 30}ms"><div class="cw">${cover(x.id)}${kebab}</div><div class="info"><div class="t">${x.t}</div><div class="d num">${x.d}</div></div></button>`).join("");
+  el.innerHTML = html;
+}
+function render() { renderRecent(); renderGrid(); }
+window.setState = (s) => { state = s; render(); };
+window.clearQ = () => { query = ""; $$(".q").forEach((i) => (i.value = "")); render(); };
+window.createOne = () => {
+  if (creating) return; creating = true; render();
+  setTimeout(() => { creating = false; render(); alert("（原型）创建成功，这里会跳进画布"); }, 900);
+};
+
+/* 分段控件滑块 */
+function seg(root, onPick) {
+  const thumb = $(".thumb", root);
+  const place = () => { const b = $('[aria-selected="true"]', root); thumb.style.width = b.offsetWidth + "px"; thumb.style.transform = `translateX(${b.offsetLeft}px)`; };
+  $$("button", root).forEach((b) => b.addEventListener("click", () => {
+    if (b.disabled) return; $$("button", root).forEach((x) => x.setAttribute("aria-selected", x === b)); place(); onPick?.(b);
+  }));
+  requestAnimationFrame(place); addEventListener("resize", place);
+  return place;
+}
+const placers = [seg($("#scope")), seg($("#scope2"))];
+
+/* 疏密切换：FLIP 近似 motion 的 layout 动画 */
+const placeDensity = seg($("#density"), (b) => {
+  const cards = $$("#grid > *"), first = cards.map((c) => c.getBoundingClientRect());
+  $("#grid").style.setProperty("--cols", b.dataset.cols);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  cards.forEach((c, i) => {
+    const last = c.getBoundingClientRect(), f = first[i];
+    c.animate([{ transform: `translate(${f.left - last.left}px,${f.top - last.top}px) scale(${f.width / last.width})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }], { duration: 220, easing: "cubic-bezier(0.2,0,0,1)" });
+  });
+});
+placers.push(placeDensity);
+
+/* 作品分类下划线 */
+const cats = ["全部", "2026 赛事", "影视长片", "创意短片", "动画 CG", "AIMV", "短剧漫剧", "其他"];
+$("#utabs").insertAdjacentHTML("beforeend", cats.map((c, i) => `<button role="tab" aria-selected="${i === 0}">${c}</button>`).join(""));
+const line = $("#utabs .line");
+const placeLine = () => { const b = $('#utabs [aria-selected="true"]'); line.style.width = b.offsetWidth - 28 + "px"; line.style.transform = `translateX(${b.offsetLeft + 14}px)`; };
+$$("#utabs button").forEach((b) => b.addEventListener("click", () => { $$("#utabs button").forEach((x) => x.setAttribute("aria-selected", x === b)); placeLine(); }));
+requestAnimationFrame(placeLine); addEventListener("resize", placeLine);
+
+/* 快捷 chips：填进输入框 */
+const chipText = { "分镜脚本": "把这段故事拆成 6 个分镜：", "角色设定": "设计一个角色：", "产品广告": "为这款产品做 15 秒广告：", "画面风格": "统一画面风格为：", "AIMV": "根据这首歌的歌词生成 MV 分镜：" };
+$("#chips").innerHTML = Object.keys(chipText).map((c) => `<button class="chip tap">${c}</button>`).join("");
+$$(".chip").forEach((c) => c.addEventListener("click", () => { const i = $("#idea"); i.value = chipText[c.textContent]; i.focus(); }));
+
+/* Banner：手动切换，不自动播放 */
+let slide = 0; const track = $("#banner .track"), dots = $("#banner .dots");
+dots.innerHTML = [0, 1, 2].map((i) => `<button aria-label="第 ${i + 1} 张"></button>`).join("");
+const go = (n) => { slide = (n + 3) % 3; track.style.transform = `translateX(${-slide * 100}%)`; $$("button", dots).forEach((d, i) => d.setAttribute("aria-current", i === slide)); };
+$(".arrow.l").onclick = () => go(slide - 1); $(".arrow.r").onclick = () => go(slide + 1);
+$$("button", dots).forEach((d, i) => (d.onclick = () => go(i)));
+$("#banner").tabIndex = 0; $("#banner").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") go(slide - 1); if (e.key === "ArrowRight") go(slide + 1); });
+go(0);
+
+/* 搜索：防抖 300ms */
+let timer; $$(".q").forEach((inp) => inp.addEventListener("input", () => {
+  clearTimeout(timer); timer = setTimeout(() => { query = inp.value.trim(); $$(".q").forEach((o) => o !== inp && (o.value = inp.value)); render(); }, 300);
+}));
+$$(".q").forEach((inp) => inp.addEventListener("keydown", (e) => e.key === "Escape" && clearQ()));
+
+/* 卡片点击 & ⋯ 菜单 & 删除确认 */
+document.addEventListener("click", (e) => {
+  $(".menu")?.remove();
+  const k = e.target.closest(".kebab");
+  if (k) {
+    e.stopPropagation(); const id = k.closest("[data-id]").dataset.id, r = k.getBoundingClientRect();
+    const m = document.createElement("div"); m.className = "menu";
+    m.style.top = r.bottom + 6 + "px"; m.style.right = innerWidth - r.right + "px";
+    m.innerHTML = `<button><svg class="i"><use href="#trash"/></svg>删除</button>`;
+    m.firstChild.onclick = () => confirmDel(id); document.body.append(m); return;
+  }
+  const card = e.target.closest("[data-id]");
+  if (card) alert("（原型）进入画布 " + card.dataset.id);
+  const g = e.target.closest("[data-go]"); if (g) show(g.dataset.go);
+  const s = e.target.closest("[data-state]"); if (s) setState(s.dataset.state);
+});
+function confirmDel(id) {
+  const x = items.find((i) => i.id === id);
+  const s = document.createElement("div"); s.className = "scrim";
+  s.innerHTML = `<div class="dialog" role="alertdialog"><h3>删除「${x.t}」？</h3><p>画布里的节点和连线会一起删除，删除后无法恢复。</p><div class="acts"><button class="btn tap">取消</button><button class="btn danger tap">删除</button></div></div>`;
+  const [cancel, ok] = $$(".btn", s);
+  cancel.onclick = () => s.remove(); s.onclick = (e) => e.target === s && s.remove();
+  ok.onclick = () => {
+    s.remove(); $$(`[data-id="${id}"]`).forEach((c) => c.setAttribute("data-deleting", ""));
+    setTimeout(() => { items = items.filter((i) => i.id !== id); render(); }, 500);
+  };
+  document.body.append(s); ok.focus();
+  s.addEventListener("keydown", (e) => e.key === "Escape" && s.remove());
+}
+
+function show(p) {
+  $$(".page").forEach((x) => x.classList.toggle("on", x.id === p));
+  $$(".nav-item[data-go]").forEach((n) => (n.dataset.go === p ? n.setAttribute("aria-current", "page") : n.removeAttribute("aria-current")));
+  placeHl(); document.documentElement.classList.remove("sb-open");
+  scrollTo(0, 0); requestAnimationFrame(() => { placers.forEach((f) => f()); placeLine(); });
+}
+/* 侧栏选中块：代码里用 layoutId */
+function placeHl() { const a = $('.nav-item[aria-current="page"]'); $("#nav .hl").style.transform = `translateY(${a.offsetTop}px)`; }
+requestAnimationFrame(placeHl);
+const toggleSb = () => {
+  const c = document.documentElement.classList.toggle("collapsed");
+  /* 收起后可用的菜单项也要 Tooltip（代码里是 SidebarMenuButton 的 tooltip 属性）；禁用项本来就有「即将上线」 */
+  $$(".sb .nav-item:not(:disabled), .sb-new").forEach((n) => (c ? n.setAttribute("data-tip", n.textContent.trim()) : n.removeAttribute("data-tip")));
+  $("#collapse").dataset.tip = c ? "展开侧栏 ⌘B" : "收起侧栏 ⌘B"; setTimeout(() => { placers.forEach((f) => f()); placeLine(); }, 260); };
+$("#collapse").onclick = toggleSb;
+addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "b") { e.preventDefault(); toggleSb(); } if (e.key === "Escape") document.documentElement.classList.remove("sb-open"); });
+$("#open").onclick = () => document.documentElement.classList.add("sb-open");
+$("#scrim").onclick = () => document.documentElement.classList.remove("sb-open");
+$("#theme").onclick = () => document.documentElement.classList.toggle("dark");
+addEventListener("scroll", () => $("#top").classList.toggle("scrolled", scrollY > 4));
+render();
+</script>
+</body>
+</html>
