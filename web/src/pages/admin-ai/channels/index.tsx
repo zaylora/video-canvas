@@ -25,6 +25,7 @@ import { ChannelSheet, type ChannelSheetTarget } from "./channel-sheet";
 import { ImportDialog } from "./import-dialog";
 import { openSecretDialog } from "./secret-dialog";
 import { useChannelChecks } from "./use-channel-check";
+import { useChannelLoads } from "./use-channel-loads";
 
 /**
  * 渠道页：列表 + 侧边抽屉。
@@ -40,6 +41,7 @@ export default function ChannelsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { checks, run: runCheck } = useChannelChecks();
+  const loads = useChannelLoads(catalog.channelsStatus === "ready");
   // “使用这个渠道的模型”
   const { models, status: modelsStatus, reload: reloadModels } = useModelList();
   const row = useModelRowActions(catalog, reloadModels);
@@ -131,6 +133,7 @@ export default function ChannelsPage() {
             status={catalog.channelsStatus}
             canWrite={canWrite}
             checks={checks}
+            loads={loads}
             selectedKey={selectedKey}
             onSelect={select}
             onNew={() => setParams({ edit: "new" })}

@@ -17,7 +17,13 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-import type { ChannelView, ConfigListItem, ConfigRevision, PluginView } from "@/api/admin-ai/type";
+import type {
+  ChannelLoad,
+  ChannelView,
+  ConfigListItem,
+  ConfigRevision,
+  PluginView,
+} from "@/api/admin-ai/type";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import {
   DropdownMenu,
@@ -93,6 +99,7 @@ export function ChannelMaster({
   status,
   canWrite,
   checks,
+  loads,
   selectedKey,
   onSelect,
   onNew,
@@ -118,6 +125,8 @@ export function ChannelMaster({
   status: LoadStatus;
   canWrite: boolean;
   checks: Record<string, CheckState>;
+  /** 各渠道当前的生成中 / 排队数，按渠道 key 索引 */
+  loads: Record<string, ChannelLoad>;
   /** 选中的渠道；为空或找不到时选第一个 */
   selectedKey: string | null;
   onSelect: (key: string) => void;
@@ -196,6 +205,12 @@ export function ChannelMaster({
   const health = channelHealth(selected, plugins);
   const pluginOff = !!plugin && !plugin.enabled;
   const rl = selected.rate_limit;
+  const load = loads[selected.key];
+  const running = load?.running ?? 0;
+  const waiting = load?.waiting ?? 0;
+  const runningLimit = rl?.max_running ?? 0;
+  // 满了：配了上限，且正在生成的已经顶到上限
+  const full = runningLimit > 0 && running >= runningLimit;
   const settingSpecs = meta?.channelSettings ? Object.entries(meta.channelSettings) : [];
   const check = checks[selected.key];
   const usedModels = models.filter((item) => item.channel === selected.key);
@@ -447,8 +462,21 @@ export function ChannelMaster({
               <DescriptionItem>
                 <DescriptionTerm>限流</DescriptionTerm>
                 <DescriptionDetails className="tabular-nums">
-                  RPS {rl?.rps || <span className="text-muted-foreground">不限</span>} · 并发{" "}
-                  {rl?.max_concurrency || <span className="text-muted-foreground">不限</span>}
+                  RPS {rl?.rps || <span className="text-muted-foreground">不限</span>} · 同时请求{" "}
+                  {rl?.max_concurrency || <span className="text-muted-foreground">不限</span>} ·
+                  同时生成 {rl?.max_running || <span className="text-muted-foreground">不限</span>}
+                </DescriptionDetails>
+              </DescriptionItem>
+              <DescriptionItem>
+                <DescriptionTerm>当前负载</DescriptionTerm>
+                <DescriptionDetails className="tabular-nums">
+                  生成中 {running}
+                  {runningLimit > 0 && `/${runningLimit}`}
+                  <span className="text-muted-foreground font-normal">·</span>
+                  <span className={waiting > 0 ? "text-amber-600 dark:text-amber-400" : undefined}>
+                    排队 {waiting}
+                  </span>
+                  {full && <Tag tone="warning">已满</Tag>}
                 </DescriptionDetails>
               </DescriptionItem>
               <DescriptionItem>

@@ -10,6 +10,7 @@
  *   GET    /admin/ai/{plugins|channels|models}/:key/delete-check   删除预检：谁在引用它
  *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（模型连同全部历史版本，key 之后可以重新使用）
  *   GET    /admin/ai/channels[/:key]                   渠道列表 / 详情
+ *   GET    /admin/ai/channels/loads                    各渠道当前的生成中 / 排队任务数
  *   POST   /admin/ai/channels                          新建渠道
  *   PUT    /admin/ai/channels/:key                     更新渠道（字段都可选）
  *   PUT    /admin/ai/channels/:key/secret              设置 Key，body = {value}，只写
@@ -40,6 +41,7 @@ export const adminAiEndpoints = {
     `${P}/plugins/${seg(key)}/versions/${seg(version)}`,
 
   channels: () => `${P}/channels`,
+  channelLoads: () => `${P}/channels/loads`,
   channel,
   channelSecret: (key: string) => `${channel(key)}/secret`,
   channelCheck: (key: string) => `${channel(key)}/check`,

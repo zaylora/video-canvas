@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/service"
 
 	"gorm.io/datatypes"
@@ -274,6 +275,8 @@ func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, f
 			t.FinishedAt = &ts
 		case "next_poll_at":
 			t.NextPollAt = v.(time.Time)
+		case "deadline_at":
+			t.DeadlineAt = v.(time.Time)
 		case "poll_attempts":
 			t.PollAttempts = v.(int)
 		case "lease_until":
@@ -1482,6 +1485,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	ctx := context.Background()
 	const user = uint64(1)
 	next := time.Date(2026, 9, 29, 12, 0, 10, 0, time.UTC)
+	env0Now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) // newTaskSvcEnv 的初始时钟
 
 	newEnv := func(status string, mut func(t *model.GenerationTask)) (*taskSvcEnv, *model.GenerationTask) {
 		env := newTaskSvcEnv(defaultTaskCfg())
@@ -1511,6 +1515,41 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		// 推送的任务视图要带上提交时间：前端据此区分“排队中”（还没调用上游，为 null）和“生成中”，并从这一刻起算耗时
 		if v, ok := env.bc.msgs[0].Data.(*model.GenerationTaskView); !ok || v.SubmittedAt == nil || v.Status != model.TaskQueued {
 			t.Fatalf("推送的视图应带 submitted_at：%+v", env.bc.msgs[0].Data)
+		}
+	})
+
+	t.Run("MarkSubmitted：生成超时从受理时刻重新计算，排队时间不占用", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, func(tk *model.GenerationTask) {
+			tk.DeadlineAt = env0Now.Add(30 * time.Minute) // 创建时算的：创建时间 + 超时
+		})
+		env.now = env0Now.Add(20 * time.Minute) // 排了 20 分钟才轮到
+		if applied, err := env.svc.MarkSubmitted(ctx, task, "pt-1", nil, next); err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		if got := env.repo.tasks[task.ID]; !got.DeadlineAt.Equal(env.now.Add(30 * time.Minute)) {
+			t.Fatalf("deadline_at 应为提交时刻 + 30 分钟，实际 %v", got.DeadlineAt)
+		}
+	})
+
+	t.Run("Expire：从没调用过上游的 pending 是排队超时，其余是生成超时", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			status string
+			mut    func(*model.GenerationTask)
+			want   string
+		}{
+			{"排队中的 pending", model.TaskPending, nil, "排队超时，积分已退回"},
+			{"提交重试过的 pending", model.TaskPending, func(tk *model.GenerationTask) { tk.PollAttempts = 2 }, "生成超时，积分已退回"},
+			{"已在上游的 running", model.TaskRunning, nil, "生成超时，积分已退回"},
+		}
+		for _, c := range cases {
+			env, task := newEnv(c.status, c.mut)
+			if applied, err := env.svc.Expire(ctx, task); err != nil || !applied {
+				t.Fatalf("%s：applied=%v err=%v", c.name, applied, err)
+			}
+			if got := env.repo.tasks[task.ID]; got.ErrorMessage != c.want || got.ErrorCode != TaskErrTimeout {
+				t.Errorf("%s：文案应为 %q，实际 %q/%q", c.name, c.want, got.ErrorCode, got.ErrorMessage)
+			}
 		}
 	})
 

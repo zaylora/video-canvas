@@ -138,7 +138,7 @@ describe("buildChannelRequest（新建）", () => {
       plugin_key: "kling",
       plugin_version: "0.2.0",
       base_url: "https://api.example.com",
-      rate_limit: { rps: 3, max_concurrency: 0 },
+      rate_limit: { rps: 3, max_concurrency: 0, max_running: 0 },
       settings: { region: "global", ttl: 60 },
     });
   });
@@ -151,6 +151,7 @@ describe("buildChannelRequest（新建）", () => {
         baseUrl: "x",
         rps: "-1",
         maxConcurrency: "1.5",
+        maxRunning: "-2",
         settings: { region: "", ttl: "" },
       }),
       fields,
@@ -158,7 +159,7 @@ describe("buildChannelRequest（新建）", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.errors).sort()).toEqual(
-      ["baseUrl", "key", "maxConcurrency", "name", "rps", "settings.region"].sort(),
+      ["baseUrl", "key", "maxConcurrency", "maxRunning", "name", "rps", "settings.region"].sort(),
     );
   });
 
@@ -198,9 +199,25 @@ describe("buildChannelRequest（编辑）", () => {
       plugin_key: "kling",
       plugin_version: "0.3.0",
       trusted_internal: true,
-      rate_limit: { rps: 10, max_concurrency: 0 },
+      rate_limit: { rps: 10, max_concurrency: 0, max_running: 0 },
     });
     expect(result.create.key).toBe("kling-direct");
+  });
+
+  test("最大同时生成数：回填、修改后进 rate_limit，留空等于不限", () => {
+    const withRunning = view({ rate_limit: { rps: 5, max_concurrency: 0, max_running: 2 } });
+    const form = channelFormFromView(withRunning, fields);
+    expect(form.maxRunning).toBe("2");
+    const changed = buildChannelRequest({ ...form, maxRunning: "4" }, fields, withRunning);
+    expect(changed.ok && changed.update.rate_limit).toEqual({
+      rps: 5,
+      max_concurrency: 0,
+      max_running: 4,
+    });
+    const cleared = buildChannelRequest({ ...form, maxRunning: "" }, fields, withRunning);
+    expect(cleared.ok && cleared.update.rate_limit?.max_running).toBe(0);
+    const same = buildChannelRequest(form, fields, withRunning);
+    expect(same.ok && "rate_limit" in same.update).toBe(false);
   });
 
   test("设置项变化会带上 settings，没变化不带", () => {

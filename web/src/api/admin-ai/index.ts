@@ -7,6 +7,7 @@ import type {
   ChannelCreateRequest,
   ChannelImportResult,
   ChannelUpdateRequest,
+  ChannelLoad,
   ChannelView,
   ConfigDetail,
   ConfigListItem,
@@ -108,6 +109,13 @@ export const deleteTarget = (target: DeleteTarget, key: string) =>
  */
 export const listChannels = async () =>
   (await service.get<ChannelView[] | null>(ep.channels(), undefined)) ?? [];
+
+/**
+ * 各渠道当前的任务负载（生成中 / 排队数）
+ * @returns 有未完成任务的渠道的负载
+ */
+export const listChannelLoads = async () =>
+  (await service.get<ChannelLoad[] | null>(ep.channelLoads(), undefined)) ?? [];
 
 /**
  * 渠道详情

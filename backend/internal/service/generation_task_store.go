@@ -61,16 +61,30 @@ func (s *GenerationTaskService) SaveTrace(ctx context.Context, t *model.Generati
 	return s.repo.SaveTrace(ctx, t.ID, datatypes.JSON(raw))
 }
 
-// MarkSubmitted 记录异步任务已被上游受理。
+// restartDeadline 把任务的超时时间改成“从现在起一个完整的模型超时”。
+// 创建任务时 deadline_at = 创建时间 + 超时，pending 阶段它就是排队的上限；任务真正交给上游后，
+// 生成时长应该从这一刻重新算，不能让排队的时间吃掉生成的时间。快照解析失败时保持原值，不影响提交结果。
+func (s *GenerationTaskService) restartDeadline(t *model.GenerationTask, now time.Time, fields map[string]any) {
+	var snap provider.Snapshot
+	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
+		logger.Warn("解析任务快照失败，保持原有截止时间", zap.Uint64("task_id", t.ID), zap.Error(err))
+		return
+	}
+	fields["deadline_at"] = now.Add(taskDeadline(&snap))
+}
+
+// MarkSubmitted 记录异步任务已被上游受理，并从受理时刻起重新计算生成超时。
 func (s *GenerationTaskService) MarkSubmitted(ctx context.Context, t *model.GenerationTask, providerTaskID string, pluginState json.RawMessage, nextPollAt time.Time) (bool, error) {
+	now := s.now()
 	fields := map[string]any{
 		"status":           model.TaskQueued,
 		"provider_task_id": providerTaskID,
-		"submitted_at":     s.now(),
+		"submitted_at":     now,
 		"next_poll_at":     nextPollAt,
 		"poll_attempts":    0,
 		"lease_until":      nil,
 	}
+	s.restartDeadline(t, now, fields)
 	if len(pluginState) > 0 {
 		raw, err := mergeProviderState(t.ProviderState, provider.ProviderState{Plugin: pluginState})
 		if err != nil {
@@ -88,14 +102,17 @@ func (s *GenerationTaskService) MarkSubmitted(ctx context.Context, t *model.Gene
 
 // MarkImmediate 记录同步接口的即时结果并进入转存阶段。
 func (s *GenerationTaskService) MarkImmediate(ctx context.Context, t *model.GenerationTask, providerTaskID string, pluginState json.RawMessage, outputs json.RawMessage) (bool, error) {
+	now := s.now()
 	fields := map[string]any{
 		"status":           model.TaskFinalizing,
 		"provider_task_id": providerTaskID,
 		"provider_result":  datatypes.JSON(outputs),
-		"next_poll_at":     s.now(),
+		"next_poll_at":     now,
 		"poll_attempts":    0,
 		"lease_until":      nil,
 	}
+	// 转存窗口是 deadline_at + TransferGrace：同样从上游出结果的时刻重新算，别让排队时间挤掉转存的余量
+	s.restartDeadline(t, now, fields)
 	if len(pluginState) > 0 {
 		raw, err := mergeProviderState(t.ProviderState, provider.ProviderState{Plugin: pluginState})
 		if err != nil {
@@ -224,9 +241,14 @@ func (s *GenerationTaskService) Fail(ctx context.Context, t *model.GenerationTas
 
 // Expire 把超时任务置为 expired 并退回积分。
 func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationTask) (bool, error) {
+	// 从没调用过上游（pending 且没有过提交重试）就超时，说明是在排队：文案要让用户知道不是生成失败
+	msg := taskMsgTimeout
+	if t.Status == model.TaskPending && t.PollAttempts == 0 {
+		msg = taskMsgQueueTimeout
+	}
 	updated, applied, err := s.finish(ctx, t.ID, model.ActiveTaskStatuses, model.TaskExpired, map[string]any{
 		"error_code":    TaskErrTimeout,
-		"error_message": taskMsgTimeout,
+		"error_message": msg,
 	})
 	if err != nil || !applied {
 		return false, err

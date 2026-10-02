@@ -86,6 +86,7 @@ make run
 | DELETE | /api/v1/admin/ai/plugins/:key/versions/:version | super_admin | 删除未被引用的版本（内置插件 / 仍被引用返回 409） |
 | GET | /api/v1/admin/ai/plugins/:key/delete-check | super_admin | 删除预检：`{blockers:[{kind,message,refs}]}`，kind 为 `builtin_plugin` / `plugin_channels` / `active_tasks` |
 | DELETE | /api/v1/admin/ai/plugins/:key | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被渠道或进行中的任务引用 409（50005） |
+| GET | /api/v1/admin/ai/channels/loads | admin | 各渠道当前的任务负载：`running`（同时生成数，对应 `max_running`）、`waiting`（排队数）；没有未完成任务的渠道不返回 |
 | GET | /api/v1/admin/ai/channels[/:key] | admin | 渠道列表 / 详情（`secret_set` 只告诉有没有设置 Key） |
 | POST | /api/v1/admin/ai/channels | super_admin | 新建渠道 |
 | PUT | /api/v1/admin/ai/channels/:key | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本） |

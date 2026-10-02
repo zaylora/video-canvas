@@ -413,7 +413,8 @@ function SheetForm({
       setErrors(built.errors);
       setFormError(null);
       if (built.errors.key) setKeyEdited(true);
-      if (built.errors.rps || built.errors.maxConcurrency) setAdvancedOpen(true);
+      if (built.errors.rps || built.errors.maxConcurrency || built.errors.maxRunning)
+        setAdvancedOpen(true);
       return;
     }
     setErrors({});
@@ -775,7 +776,7 @@ function SheetForm({
                   />
                 </FormField>
                 <FormField
-                  label="最大并发"
+                  label="最大同时请求数"
                   htmlFor="channel-concurrency"
                   error={errors.maxConcurrency}
                 >
@@ -789,8 +790,27 @@ function SheetForm({
                     onChange={(event) => patch({ maxConcurrency: event.target.value })}
                   />
                 </FormField>
+                <FormField
+                  label="最大同时生成数"
+                  htmlFor="channel-max-running"
+                  error={errors.maxRunning}
+                  className="col-span-2"
+                >
+                  <Input
+                    id="channel-max-running"
+                    type="number"
+                    min={0}
+                    value={form.maxRunning}
+                    disabled={readOnly}
+                    aria-invalid={!!errors.maxRunning}
+                    onChange={(event) => patch({ maxRunning: event.target.value })}
+                  />
+                </FormField>
               </div>
-              <p className="text-muted-foreground text-xs">0 或留空表示不限。</p>
+              <p className="text-muted-foreground text-xs">
+                0 或留空表示不限。「最大同时请求数」限制同时发给上游的 HTTP 请求；
+                「最大同时生成数」限制同时在上游生成的任务数，填上游账号允许的并发，超出的任务在平台里显示“排队中”，等有空位再提交。
+              </p>
               <div className="flex items-center gap-2 text-sm">
                 <Switch
                   id="channel-enabled"

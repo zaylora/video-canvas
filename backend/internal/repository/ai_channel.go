@@ -120,6 +120,24 @@ func (r *AIChannelRepository) ListChannels(ctx context.Context) ([]model.AIChann
 	return list, err
 }
 
+// channelLoadsSQL 按渠道统计当前负载。口径与 ClaimDue 的占用数一致：queued / running 与租约有效的 pending 算“生成中”，
+// 其余 pending 算“排队”；终态与 finalizing（上游已出结果、只剩转存）都不算。
+const channelLoadsSQL = `
+SELECT provider AS channel,
+       COUNT(*) FILTER (WHERE status IN ('queued','running') OR (status = 'pending' AND lease_until >= @now)) AS running,
+       COUNT(*) FILTER (WHERE status = 'pending' AND (lease_until IS NULL OR lease_until < @now)) AS waiting
+FROM generation_tasks
+WHERE status IN ('pending','queued','running')
+GROUP BY provider
+ORDER BY provider`
+
+// ChannelLoads 统计每个有未完成任务的渠道的负载（没有任务的渠道不在结果里，调用方按 0 处理），按渠道 key 升序。
+func (r *AIChannelRepository) ChannelLoads(ctx context.Context, now time.Time) ([]model.ChannelLoad, error) {
+	var list []model.ChannelLoad
+	err := r.db.WithContext(ctx).Raw(channelLoadsSQL, map[string]any{"now": now}).Scan(&list).Error
+	return list, err
+}
+
 // SetChannelEnabled 启用 / 停用渠道并记录操作人（updated_by、updated_at）；渠道不存在返回 ErrNotFound。
 func (r *AIChannelRepository) SetChannelEnabled(ctx context.Context, key string, enabled bool, updatedBy uint64) error {
 	res := r.db.WithContext(ctx).Model(&model.AIChannel{}).Where("key = ?", key).
