@@ -38,7 +38,7 @@ export function AdminSidebar({
           name="Video Canvas"
           subtitle="AI 配置管理"
           icon={Clapperboard}
-          render={<Link to="/admin/ai/models" />}
+          render={<Link to="/admin/ai/overview" />}
         />
       </SidebarHeader>
       <SidebarContent>

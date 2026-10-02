@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { listChannels, listPlugins } from "@/api/admin-ai";
-import type { ChannelView, PluginView } from "@/api/admin-ai/type";
+import { listChannels, listModels, listPlugins } from "@/api/admin-ai";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin-ai/type";
 
 export type LoadStatus = "loading" | "ready" | "error";
 
@@ -75,6 +75,30 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
     reloadPlugins,
     reloadChannels,
   };
+}
+
+/**
+ * 模型清单（总览、渠道、插件页用来算“谁在用”“影响几个模型”；模型页有自己的工作区，不用这个）。
+ * @returns 清单、加载状态与刷新函数
+ */
+export function useModelList() {
+  const aliveRef = useAliveRef();
+  const [models, setModels] = useState<ConfigListItem[]>([]);
+  const [status, setStatus] = useState<LoadStatus>("loading");
+  const reload = useCallback(async () => {
+    try {
+      const list = await listModels();
+      if (!aliveRef.current) return;
+      setModels(list);
+      setStatus("ready");
+    } catch {
+      if (aliveRef.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
+    }
+  }, [aliveRef]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  return { models, status, reload };
 }
 
 /** 布局通过 Outlet 传给三个子页的上下文 */

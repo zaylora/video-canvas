@@ -348,3 +348,30 @@ func (h *AdminAIHandler) Schema(c *gin.Context) {
 	}
 	response.OK(c, b)
 }
+
+// DeleteCheck 删除模型前的预检：返回阻断删除的原因，blockers 为空数组表示可以删。
+func (h *AdminAIHandler) DeleteCheck(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	res, err := h.svc.CheckModelDelete(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// Delete 删除一个已下架的模型（连同它的全部版本，不可恢复）。
+func (h *AdminAIHandler) Delete(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteModel(c.Request.Context(), key, currentUserID(c)); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, nil)
+}

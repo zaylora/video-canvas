@@ -11,10 +11,16 @@ import {
   Trash2,
 } from "lucide-react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 
 import { deletePluginVersion, setPluginEnabled } from "@/api/admin-ai";
-import type { ChannelView, PluginVersionView, PluginView } from "@/api/admin-ai/type";
-import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
+import type {
+  ChannelView,
+  ConfigListItem,
+  PluginVersionView,
+  PluginView,
+} from "@/api/admin-ai/type";
+import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import {
   DescriptionDetails,
@@ -39,9 +45,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { errorMessage } from "@/utils/admin/errors";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
 import {
   describeAuth,
@@ -55,6 +61,7 @@ import { formatShortTime } from "@/utils/time";
 import { KIND_ORDER, KIND_STYLE, KindIcons } from "../kind";
 import { ReadOnlyNotice } from "../shared";
 import { useAliveRef } from "../use-admin";
+import { confirmUpgradeChannels, outdatedChannels } from "./upgrade-channels";
 
 /** 上传人：内置插件（0）显示“内置”，其余显示用户 ID */
 const uploaderLabel = (version: PluginVersionView) =>
@@ -67,54 +74,93 @@ const kindsOf = (version: PluginVersionView | undefined) =>
 /**
  * 插件页右栏（设计稿样式）：头部卡片（启停 + 支持的生成方式）、插件信息、版本历史时间线。
  * @param channels 全部渠道，用来列出每个版本的“在用渠道”
+ * @param models 全部模型，停用前算出会波及几个在线模型；没加载到时为空数组
  * @param canWrite 是否有运维权限；没有则启停开关只读、不显示删除
- * @param onChanged 启停或删除成功后刷新清单
+ * @param onChanged 启停或删除版本成功后刷新清单
+ * @param onDelete 删除整个插件（打开删除对话框）
+ * @param plugins 全部插件（批量升级时算设置项迁移）
+ * @param onChannelsChanged 批量升级渠道后刷新渠道清单
  */
 export function PluginDetail({
   plugin,
+  plugins,
   channels,
+  models,
   canWrite,
   onChanged,
+  onChannelsChanged,
+  onDelete,
 }: {
   plugin: PluginView;
+  plugins: PluginView[];
   channels: ChannelView[];
+  models: ConfigListItem[];
   canWrite: boolean;
   onChanged: () => Promise<void>;
+  onChannelsChanged: () => Promise<void>;
+  onDelete: () => void;
 }) {
+  const outdated = outdatedChannels(plugin, channels);
   const aliveRef = useAliveRef();
   const latest = latestVersion(plugin);
   const meta = latest?.meta;
   const [toggling, setToggling] = useState(false);
-  const [deleting, setDeleting] = useState<PluginVersionView | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const toggle = async (enabled: boolean) => {
+  const setEnabled = async (enabled: boolean) => {
     setToggling(true);
     try {
       await setPluginEnabled(plugin.key, enabled);
+      toast.success(`插件「${plugin.name}」已${enabled ? "启用" : "停用"}`);
       await onChanged();
     } finally {
       if (aliveRef.current) setToggling(false);
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    setDeleteBusy(true);
-    setDeleteError(null);
-    try {
-      await deletePluginVersion(plugin.key, deleting.version);
-      if (!aliveRef.current) return;
-      setDeleting(null);
-      await onChanged();
-    } catch (error) {
-      // 409：有渠道 / 非终态任务引用或内置。全局 toast 已弹，这里把原因留在对话框里
-      if (aliveRef.current) setDeleteError(errorMessage(error, "删除失败"));
-    } finally {
-      if (aliveRef.current) setDeleteBusy(false);
-    }
+  /** 启用直接生效；停用影响面大（所有用它的渠道、渠道下的模型），先算影响再确认 */
+  const toggle = (enabled: boolean) => {
+    if (enabled) return void setEnabled(true);
+    const pinned = channels.filter((channel) => channel.plugin_key === plugin.key);
+    const online = models.filter(
+      (item) => item.enabled && pinned.some((channel) => channel.key === item.channel),
+    );
+    void confirm({
+      title: `停用插件「${plugin.name}」？`,
+      destructive: true,
+      confirmLabel: "停用",
+      description: (
+        <>
+          停用后{" "}
+          <b>
+            {pinned.length} 个渠道{online.length > 0 && `、${online.length} 个在线模型`}
+          </b>{" "}
+          会不可用，进行中的任务不受影响。
+        </>
+      ),
+      onConfirm: () => setEnabled(false),
+    });
   };
+
+  // 409：有渠道 / 非终态任务引用或内置。全局 toast 已弹，原因由 confirm 留在对话框里
+  const requestDeleteVersion = (version: PluginVersionView) =>
+    void confirm({
+      title: "删除插件版本？",
+      destructive: true,
+      confirmLabel: "删除",
+      description: (
+        <>
+          将永久删除{" "}
+          <b>
+            {plugin.name} v{version.version}
+          </b>
+          ，不能撤销。若仍有非终态任务在使用这个版本，后端会拒绝删除。
+        </>
+      ),
+      onConfirm: async () => {
+        await deletePluginVersion(plugin.key, version.version);
+        await onChanged();
+      },
+    });
 
   const endpoints = meta?.endpoints ?? {};
   const hasAsync = Object.values(endpoints).some((value) => value?.mode === "async");
@@ -198,8 +244,20 @@ export function PluginDetail({
               checked={plugin.enabled}
               disabled={!canWrite || toggling}
               aria-label={canWrite ? `启用插件 ${plugin.name}` : "插件启用状态"}
-              onCheckedChange={(checked) => void toggle(checked)}
+              onCheckedChange={(checked) => toggle(checked)}
             />
+            {canWrite && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={`删除插件 ${plugin.name}`}
+                title="删除插件（含全部版本）"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={onDelete}
+              >
+                <Trash2 />
+              </Button>
+            )}
           </CardAction>
         </CardHeader>
         {!plugin.enabled && (
@@ -269,8 +327,26 @@ export function PluginDetail({
       <Card>
         <CardHeader>
           <CardTitle>版本历史</CardTitle>
-          <CardAction className="text-muted-foreground self-center text-xs">
-            渠道固定在某个版本上，升级需要在渠道里手动切换
+          <CardAction className="text-muted-foreground flex items-center gap-2 self-center text-xs">
+            {outdated.length > 0 && canWrite ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void confirmUpgradeChannels({
+                    plugin,
+                    channels,
+                    plugins,
+                    onDone: onChannelsChanged,
+                  })
+                }
+              >
+                <CircleArrowUp />
+                升级全部 {outdated.length} 个渠道到 v{latest?.version}
+              </Button>
+            ) : (
+              "渠道固定在某个版本上，新版本要切换后才生效"
+            )}
           </CardAction>
         </CardHeader>
         <CardContent>
@@ -359,10 +435,7 @@ export function PluginDetail({
                             type="button"
                             className="inline-flex items-center gap-1 text-red-600 hover:underline dark:text-red-400"
                             aria-label={`删除 ${version.version}`}
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeleting(version);
-                            }}
+                            onClick={() => requestDeleteVersion(version)}
                           >
                             <Trash2 className="size-3" />
                             删除这个版本
@@ -377,28 +450,6 @@ export function PluginDetail({
           </Timeline>
         </CardContent>
       </Card>
-
-      <ConfirmDialog
-        open={!!deleting}
-        title="删除插件版本？"
-        destructive
-        confirmLabel="删除"
-        busy={deleteBusy}
-        error={deleteError}
-        description={
-          deleting && (
-            <>
-              将永久删除{" "}
-              <b>
-                {plugin.name} v{deleting.version}
-              </b>
-              ，不能撤销。若仍有非终态任务在使用这个版本，后端会拒绝删除。
-            </>
-          )
-        }
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleting(null)}
-      />
     </div>
   );
 }

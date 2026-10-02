@@ -34,6 +34,11 @@ type AIPluginRepo interface {
 	CountVersionRefs(ctx context.Context, id uint64) (repository.VersionRefs, error)
 	// DeleteVersion 事务内重新统计引用后删除版本：仍被引用返回 repository.ErrInUse，不存在返回 repository.ErrNotFound。
 	DeleteVersion(ctx context.Context, id uint64) error
+	// CountPluginRefs 统计插件全部版本被渠道与非终态任务引用的情况，插件不存在返回 repository.ErrNotFound。
+	CountPluginRefs(ctx context.Context, key string) (repository.PluginRefs, error)
+	// DeletePlugin 事务内按“插件行 → 版本行”加锁、重新统计引用后删除全部版本与插件行：
+	// 仍被引用时返回当时的引用与 repository.ErrInUse，不存在返回 repository.ErrNotFound。
+	DeletePlugin(ctx context.Context, key string) (repository.PluginRefs, error)
 }
 
 // AIChannelLister 只用来统计每个插件版本被多少个渠道固定（PluginView.versions[].channel_count），由 AIChannelRepository 实现。
@@ -42,7 +47,7 @@ type AIChannelLister interface {
 	ListChannels(ctx context.Context) ([]model.AIChannel, error)
 }
 
-// AIPluginService 管理协议插件：上传（预检 + 登记不可变版本）、启停、删除版本、启动时登记内置插件。
+// AIPluginService 管理协议插件：上传（预检 + 登记不可变版本）、启停、删除版本 / 整个插件、启动时登记内置插件。
 // 写操作只有 super_admin 能调（由路由的中间件保证），并写审计日志。
 type AIPluginService struct {
 	repo     AIPluginRepo

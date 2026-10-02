@@ -84,12 +84,16 @@ make run
 | POST | /api/v1/admin/ai/plugins | super_admin | 上传插件（multipart，字段 `file`）；预检不通过也返回 200，`accepted=false` + `issues` |
 | PUT | /api/v1/admin/ai/plugins/:key/enabled | super_admin | 启停插件 |
 | DELETE | /api/v1/admin/ai/plugins/:key/versions/:version | super_admin | 删除未被引用的版本（内置插件 / 仍被引用返回 409） |
+| GET | /api/v1/admin/ai/plugins/:key/delete-check | super_admin | 删除预检：`{blockers:[{kind,message,refs}]}`，kind 为 `builtin_plugin` / `plugin_channels` / `active_tasks` |
+| DELETE | /api/v1/admin/ai/plugins/:key | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被渠道或进行中的任务引用 409（50005） |
 | GET | /api/v1/admin/ai/channels[/:key] | admin | 渠道列表 / 详情（`secret_set` 只告诉有没有设置 Key） |
 | POST | /api/v1/admin/ai/channels | super_admin | 新建渠道 |
 | PUT | /api/v1/admin/ai/channels/:key | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本） |
 | PUT | /api/v1/admin/ai/channels/:key/secret | super_admin | 设置渠道 Key（只写） |
 | POST | /api/v1/admin/ai/channels/:key/check | super_admin | 连通性检查 |
 | POST | /api/v1/admin/ai/channels/:key/import | admin | 从渠道导入模型草稿（只预填，不落库） |
+| GET | /api/v1/admin/ai/channels/:key/delete-check | super_admin | 删除预检，kind 为 `channel_models`（refs 是模型）/ `active_tasks` |
+| DELETE | /api/v1/admin/ai/channels/:key | super_admin | 删除渠道并删掉它的 Key；仍被模型（最新草稿或已发布版本）或进行中的任务引用 409（50016） |
 | GET/POST | /api/v1/admin/ai/models | admin | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦） |
 | GET/PUT | /api/v1/admin/ai/models/:key | admin | 详情（草稿 + 已发布） / 更新草稿 |
 | POST | /api/v1/admin/ai/models/:key/validate | admin | 校验（错误精确到 JSON 路径） |
@@ -98,6 +102,8 @@ make run
 | POST | /api/v1/admin/ai/models/:key/dry-run | admin | 渲染请求描述但不发送（不含注入后的鉴权头，凭证脱敏） |
 | POST | /api/v1/admin/ai/models/:key/test-run | admin | 用草稿真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪 |
 | PUT | /api/v1/admin/ai/models/:key/enabled、/sort | admin | 上下架 / 排序 |
+| GET | /api/v1/admin/ai/models/:key/delete-check | admin | 删除预检，kind 为 `model_enabled` |
+| DELETE | /api/v1/admin/ai/models/:key | admin | 硬删除模型及其全部版本（必须先下架，否则 409 / 50031），不可恢复；之后同名 key 可以重新新建 / 导入 |
 | GET | /api/v1/admin/ai/schema/model | admin | 模型配置的 JSON Schema |
 
 统一响应格式：

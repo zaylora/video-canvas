@@ -314,3 +314,23 @@ func (r *AIConfigRepository) ListSecrets(ctx context.Context) ([]model.AISecret,
 	err := r.db.WithContext(ctx).Select("name, key_version, updated_by, updated_at").Order("name ASC").Find(&list).Error
 	return list, err
 }
+
+// DeleteModel 在一个事务里硬删除模型：锁住指针行（FOR UPDATE，与发布 / 回滚 / 保存草稿串行）→ 锁内仍是上架状态返回 ErrInUse →
+// 删除该模型的全部 revision（target=model、target_key=key）→ 删除指针行。指针行不存在返回 ErrNotFound。
+// 删除后同名 key 可以重新新建，revision_no 从 1 开始（旧 revision 已不在，不会撞 uk_rev_target_no）。
+func (r *AIConfigRepository) DeleteModel(ctx context.Context, key string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var m model.AIModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&m, "key = ?", key).Error; err != nil {
+			return translate(err)
+		}
+		if m.Enabled {
+			return ErrInUse
+		}
+		if err := tx.Where("target = ? AND target_key = ?", model.ConfigTargetModel, key).
+			Delete(&model.AIConfigRevision{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("key = ?", key).Delete(&model.AIModel{}).Error
+	})
+}

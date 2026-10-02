@@ -26,6 +26,11 @@ type AIChannelRepo interface {
 	GetChannel(ctx context.Context, key string) (*model.AIChannel, error)
 	// ListChannels 返回所有渠道，按 key 升序。
 	ListChannels(ctx context.Context) ([]model.AIChannel, error)
+	// CountChannelRefs 统计渠道被模型（最新草稿 / 已发布版本）与非终态任务引用的情况，渠道不存在返回 repository.ErrNotFound。
+	CountChannelRefs(ctx context.Context, key string) (repository.ChannelRefs, error)
+	// DeleteChannel 事务内锁住渠道行、重新统计引用后删除渠道与它的 Key：仍被引用时返回当时的引用与 repository.ErrInUse，
+	// 不存在返回 repository.ErrNotFound。
+	DeleteChannel(ctx context.Context, key string) (repository.ChannelRefs, error)
 }
 
 // AIChannelPlugins 是渠道服务对插件表的只读依赖，由 repository.AIPluginRepository 实现。
@@ -48,9 +53,11 @@ type AIChannelSecrets interface {
 	SecretIsSet(ctx context.Context, name string) (bool, error)
 	// Get 解密并返回凭证明文，只用来对错误信息做防御性脱敏，绝不进响应。
 	Get(ctx context.Context, name string) (string, error)
+	// ForgetSecret 清掉本实例对该凭证的明文缓存（凭证行已被删除后调用）。
+	ForgetSecret(name string)
 }
 
-// AIChannelService 管理渠道：创建 / 更新 / 详情 / 列表、设置 Key、连通性检查、导入模型。
+// AIChannelService 管理渠道：创建 / 更新 / 详情 / 列表 / 删除、设置 Key、连通性检查、导入模型。
 // 写操作只有 super_admin 能调（由路由的中间件保证），导入模型 admin 也能调。
 type AIChannelService struct {
 	repo     AIChannelRepo

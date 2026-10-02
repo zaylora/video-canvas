@@ -88,6 +88,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		plugins.POST("", superOnly, h.AdminPlugin.Upload)
 		plugins.PUT("/:key/enabled", superOnly, h.AdminPlugin.SetEnabled)
 		plugins.DELETE("/:key/versions/:version", superOnly, h.AdminPlugin.DeleteVersion)
+		plugins.GET("/:key/delete-check", superOnly, h.AdminPlugin.DeleteCheck)
+		plugins.DELETE("/:key", superOnly, h.AdminPlugin.Delete)
 
 		channels := adminAI.Group("/channels")
 		channels.GET("", h.AdminChannel.List)
@@ -97,6 +99,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.PUT("/:key/secret", superOnly, h.AdminChannel.SetSecret)
 		channels.POST("/:key/check", superOnly, h.AdminChannel.Check)
 		channels.POST("/:key/import", h.AdminChannel.Import)
+		channels.GET("/:key/delete-check", superOnly, h.AdminChannel.DeleteCheck)
+		channels.DELETE("/:key", superOnly, h.AdminChannel.Delete)
 
 		models := adminAI.Group("/models")
 		models.GET("", h.AdminAI.List)
@@ -112,6 +116,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		models.POST("/:key/test-run", h.AdminAI.TestRun)
 		models.PUT("/:key/enabled", h.AdminAI.SetEnabled)
 		models.PUT("/:key/sort", h.AdminAI.SetSort)
+		models.GET("/:key/delete-check", h.AdminAI.DeleteCheck)
+		models.DELETE("/:key", h.AdminAI.Delete)
 
 		adminAI.GET("/test-runs/:id", h.AdminAI.GetTestRun)
 		adminAI.GET("/test-runs/:id/trace", h.AdminAI.GetTestTrace)

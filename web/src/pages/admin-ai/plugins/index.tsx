@@ -16,14 +16,15 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { useAdminOutlet } from "../use-admin";
+import { openDeleteDialog } from "../delete-dialog";
+import { useAdminOutlet, useModelList } from "../use-admin";
 import { PluginDetail } from "./plugin-detail";
 import { PluginList } from "./plugin-list";
 import { UploadDialog } from "./upload-dialog";
 
 /**
  * 插件页：左栏插件列表、右栏详情（主从）。?key=<插件 key> 选中某个插件（深链）。
- * 上传、启停、删版本只对运维（canManageInfra）渲染；admin 只读。
+ * 上传、启停、删版本、删除插件只对运维（canManageInfra）渲染；admin 只读。
  */
 export default function PluginsPage() {
   const { catalog } = useAdminOutlet();
@@ -32,6 +33,7 @@ export default function PluginsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const { models } = useModelList();
 
   const selectedKey = params.get("key");
   const selected =
@@ -69,9 +71,23 @@ export default function PluginsPage() {
               <PluginDetail
                 key={selected.key}
                 plugin={selected}
+                plugins={catalog.plugins}
                 channels={catalog.channels}
+                onChannelsChanged={catalog.reloadChannels}
+                models={models}
                 canWrite={canWrite}
                 onChanged={catalog.reloadPlugins}
+                onDelete={() =>
+                  openDeleteDialog({
+                    target: "plugin",
+                    objectKey: selected.key,
+                    name: selected.name,
+                    onDeleted: () => {
+                      setParams({}, { replace: true });
+                      void catalog.reloadPlugins();
+                    },
+                  })
+                }
               />
             ) : (
               <p className="text-muted-foreground text-sm">

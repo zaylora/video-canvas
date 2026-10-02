@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
 import { Plus } from "lucide-react";
+import { useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
+import { useRetained } from "@/hooks/use-retained";
 import { publishBlockReason, resolveModelChannel } from "@/utils/admin/model-channel";
 
 import { AdminMain } from "@/components/admin-ui/admin-main";
@@ -32,6 +34,7 @@ import { useModelWorkspace } from "./use-model-workspace";
 export default function ModelsPage() {
   const { catalog } = useAdminOutlet();
   const ws = useModelWorkspace(catalog);
+  const [params] = useSearchParams();
   const editorRef = useRef<ModelDialogHandle>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const batch = useModelBatch(ws.models, ws.reloadList);
@@ -39,12 +42,14 @@ export default function ModelsPage() {
   // 列表刷新后丢掉已经不存在的勾选
   const checked = selected.filter((key) => ws.models.some((item) => item.key === key));
 
+  // 关闭时 rollbackTarget 置空，确认框里的渠道摘要按最后一个目标算，留到退出动画播完
+  const shownRollback = useRetained(ws.rollbackTarget);
   const rollbackInfo = resolveModelChannel(
-    ws.rollbackTarget?.body_json,
+    shownRollback?.body_json,
     catalog.channels,
     catalog.plugins,
   );
-  const rollbackBlock = ws.rollbackTarget
+  const rollbackBlock = shownRollback
     ? publishBlockReason(rollbackInfo, catalog.channelsStatus === "ready")
     : null;
 
@@ -55,7 +60,7 @@ export default function ModelsPage() {
           <PageHeaderHeading>
             <PageHeaderTitle>模型</PageHeaderTitle>
             <PageHeaderDescription>
-              模型是画布里用户能选到的生成能力。编辑后保存为草稿，测试通过再发布；上架后用户才看得到。
+              模型是画布里用户能选到的生成能力。编辑后可以先保存草稿，测试通过点「上线」，用户就能在画布里选到。
             </PageHeaderDescription>
           </PageHeaderHeading>
           <PageHeaderActions>
@@ -83,6 +88,9 @@ export default function ModelsPage() {
           onTest={(key) => ws.selectModel(key, { test: true })}
           onToggleEnabled={(key, enabled) => void row.toggleEnabled(key, enabled)}
           onRollback={row.requestRollback}
+          onDelete={row.requestDelete}
+          channelsReady={catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready"}
+          initialState={params.get("status") ?? ""}
           onNew={ws.startNew}
           onRetry={() => void ws.reloadList()}
         />
@@ -91,6 +99,9 @@ export default function ModelsPage() {
           open={ws.selection !== "none"}
           onOpenChange={(open) => {
             if (!open) ws.closeEditor();
+          }}
+          onOpenChangeComplete={(open) => {
+            if (!open) ws.clearEditor();
           }}
         >
           <DialogContent
@@ -112,6 +123,7 @@ export default function ModelsPage() {
         />
         <PublishDialog
           open={!!ws.publishKey}
+          online={!!ws.detail?.published && !!ws.detail.enabled}
           modelKey={ws.publishKey ?? ""}
           body={ws.body}
           info={ws.info}
@@ -120,7 +132,6 @@ export default function ModelsPage() {
           onConfirm={() => void ws.confirmPublish()}
           onCancel={ws.cancelPublish}
         />
-        <RollbackDialog {...row.rollback} onConfirm={() => void row.rollback.onConfirm()} />
         <RollbackDialog
           revision={ws.rollbackTarget}
           modelKey={ws.key ?? ""}

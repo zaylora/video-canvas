@@ -6,7 +6,7 @@ import "time"
 const (
 	AuditPluginUpload    = "plugin.upload"      // 上传插件版本（detail 含版本号与 sha256）
 	AuditPluginEnable    = "plugin.enable"      // 启用 / 停用插件
-	AuditPluginDelete    = "plugin.delete"      // 删除插件版本
+	AuditPluginDelete    = "plugin.delete"      // 删除插件版本（target_type=plugin_version）或整个插件（target_type=plugin，detail 含全部版本号）
 	AuditChannelCreate   = "channel.create"     // 新建渠道
 	AuditChannelUpdate   = "channel.update"     // 修改渠道（含切换插件版本）
 	AuditChannelSecret   = "channel.secret"     // 设置渠道 Key（不记值）
@@ -14,6 +14,7 @@ const (
 	AuditChannelCred     = "channel.credential" // 开关 allow_credentials
 	AuditChannelEnable   = "channel.enable"     // 启用 / 停用渠道
 	AuditChannelAutoOff  = "channel.auto_off"   // 连续插件级失败，自动停用（actor 为 0）
+	AuditChannelDelete   = "channel.delete"     // 删除渠道（同时删掉它的 Key，detail 不含 Key）
 	AuditTargetPlugin    = "plugin"
 	AuditTargetChannel   = "channel"
 	AuditTargetPluginVer = "plugin_version"

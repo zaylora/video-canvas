@@ -10,6 +10,7 @@ import {
   History,
   Info,
   Loader2,
+  EyeOff,
   Rocket,
   Save,
   SlidersHorizontal,
@@ -35,7 +36,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { findPathInJson } from "@/utils/admin/json";
 import {
@@ -126,6 +126,7 @@ export function ModelDialog({
   const checks = modelChecks(body, ws.info, ws.issues);
   const disabled = ws.working || ws.loadingDetail;
   const published = ws.detail?.published;
+  const online = !!published && !!ws.detail?.enabled;
   const draft = ws.detail?.draft;
   const rollbackable = ws.revisions?.filter((revision) => revision.status !== "draft") ?? [];
   const spinner = (name: string, icon: React.ReactNode) =>
@@ -243,6 +244,16 @@ export function ModelDialog({
                 <CheckCheck />
                 校验配置
               </DropdownMenuItem>
+              {online && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={disabled}
+                  onClick={() => void ws.toggleEnabled(false)}
+                >
+                  <EyeOff />
+                  下线
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
             {!ws.isNew && (
               <>
@@ -438,21 +449,14 @@ export function ModelDialog({
         </div>
       )}
 
-      {/* 底栏：上架开关 + 测试 / 取消 / 保存草稿 / 保存并发布 */}
+      {/* 底栏：当前状态 + 测试 / 取消 / 保存草稿 / 上线（= 保存 + 发布 + 上架，一步完成）；下线在“更多”里 */}
       <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={!!ws.detail?.enabled}
-            disabled={disabled || !published || !ws.key}
-            aria-label="在画布中上架"
-            onCheckedChange={(checked) => void ws.toggleEnabled(checked)}
-          />
-          <div className="leading-tight">
-            <div className="text-sm font-medium">在画布中上架</div>
-            <div className="text-muted-foreground text-xs">
-              {published ? "立即生效，不需要重新发布" : "发布过一个版本后才能上架"}
-            </div>
-          </div>
+        <div className="text-muted-foreground text-xs leading-tight">
+          {!published
+            ? "还没上线：点「上线」后用户就能在画布里选到"
+            : online
+              ? "在线中：改完点「更新上线版本」，立即对所有用户生效"
+              : "已下线：点「上线」重新对用户开放"}
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="outline" disabled={disabled} onClick={() => setTestOpen(true)}>
@@ -472,7 +476,7 @@ export function ModelDialog({
             onClick={() => void ws.requestPublish()}
           >
             {spinner("publish", <Rocket />)}
-            保存并发布
+            {online ? "更新上线版本" : "上线"}
           </Button>
         </div>
       </div>

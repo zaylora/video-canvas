@@ -112,3 +112,65 @@ func TestMigrateLegacyAIConfig(t *testing.T) {
 		}
 	})
 }
+
+// softDeleteSchemaDB 模拟模型软删除方案留下的库：ai_models 带 deleted_at 列与索引，
+// soft-a 已软删除（2 个 revision），live-b 未删除（1 个 revision）。
+func softDeleteSchemaDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := isolatedDB(t, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
+	stmts := []string{
+		`ALTER TABLE ai_models ADD COLUMN deleted_at timestamptz`,
+		`CREATE INDEX idx_ai_models_deleted_at ON ai_models (deleted_at)`,
+		`INSERT INTO ai_models (key, kind, enabled, sort, deleted_at) VALUES ('soft-a', 'video', false, 1, now()), ('live-b', 'video', false, 2, NULL)`,
+		`INSERT INTO ai_config_revisions (target, target_key, revision_no, body_json, status, created_at)
+			VALUES ('model', 'soft-a', 1, '{}', 'archived', now()), ('model', 'soft-a', 2, '{}', 'draft', now()),
+			       ('model', 'live-b', 1, '{}', 'draft', now())`,
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			t.Fatalf("准备软删除遗留数据失败（%s）：%v", s, err)
+		}
+	}
+	return db
+}
+
+func TestMigrateLegacyAIConfig_DropModelSoftDelete(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("删掉已软删除的模型及其 revision，再删掉 deleted_at 列与索引，可重复执行", func(t *testing.T) {
+		db := softDeleteSchemaDB(t)
+		for i := range 2 {
+			if err := MigrateLegacyAIConfig(db); err != nil {
+				t.Fatalf("第 %d 次执行失败：%v", i+1, err)
+			}
+		}
+		if db.Migrator().HasColumn("ai_models", "deleted_at") {
+			t.Fatal("deleted_at 列应已删除")
+		}
+		if db.Migrator().HasIndex("ai_models", "idx_ai_models_deleted_at") {
+			t.Fatal("deleted_at 的索引应已删除")
+		}
+		r := NewAIConfigRepository(db)
+		list, err := r.ListModelPointers(ctx)
+		if err != nil || len(list) != 1 || list[0].Key != "live-b" {
+			t.Fatalf("只应保留未删除的模型：%+v %v", list, err)
+		}
+		if revs, _ := r.ListRevisions(ctx, model.ConfigTargetModel, "soft-a", 0); len(revs) != 0 {
+			t.Fatalf("已软删除模型的 revision 应一并删除：%d", len(revs))
+		}
+		if revs, _ := r.ListRevisions(ctx, model.ConfigTargetModel, "live-b", 0); len(revs) != 1 {
+			t.Fatalf("未删除模型的 revision 应保留：%d", len(revs))
+		}
+	})
+
+	t.Run("清理后同名 key 可以重新新建，revision_no 从 1 开始", func(t *testing.T) {
+		db := softDeleteSchemaDB(t)
+		if err := MigrateLegacyAIConfig(db); err != nil {
+			t.Fatal(err)
+		}
+		rev := aicRepoSaveModel(t, NewAIConfigRepository(db), "soft-a", `{}`)
+		if rev.RevisionNo != 1 {
+			t.Fatalf("revision_no 应从 1 开始：%d", rev.RevisionNo)
+		}
+	})
+}

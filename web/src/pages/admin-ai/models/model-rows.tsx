@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Ellipsis, FlaskConical, Pencil } from "lucide-react";
+import { Ellipsis, FlaskConical, Pencil, Trash2 } from "lucide-react";
 
 import { listModelRevisions } from "@/api/admin-ai";
 import type { ChannelView, ConfigListItem, ConfigRevision, PluginView } from "@/api/admin-ai/type";
@@ -28,35 +28,59 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { cn } from "@/lib/utils";
+import {
+  HEALTH_UI_TONE,
+  MODEL_STATUS_LABEL,
+  MODEL_STATUS_TONE,
+  modelHealth,
+  type ModelHealth,
+} from "@/utils/admin/health";
+
 import { KindTag } from "../kind";
 
-/** 版本标签：已发布 vN（带点）/ 未发布，有草稿再加一个“草稿 vN” */
-function VersionTags({ item }: { item: ConfigListItem }) {
+/**
+ * 状态列：对运营只露一个状态（在线 / 不可用 / 已下线 / 未上线），渠道层面的问题写在下面一行，
+ * 有未上线的修改再加一个标签。插件停用、渠道缺 Key 等会传到这里，不会再显示“已上架”却用不了。
+ */
+function StatusCell({ item, health }: { item: ConfigListItem; health: ModelHealth }) {
   return (
-    <div className="flex flex-wrap gap-1">
-      {item.published_revision_no !== null ? (
-        <Tag tone="success">
-          <StatusDot tone="success" />v{item.published_revision_no}
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <Tag tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]}>
+          <StatusDot tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]} />
+          {MODEL_STATUS_LABEL[health.status]}
+          {item.published_revision_no !== null && (
+            <span className="font-mono opacity-70">v{item.published_revision_no}</span>
+          )}
         </Tag>
-      ) : (
-        <Tag>未发布</Tag>
-      )}
-      {item.has_unpublished_draft && item.draft_revision_no !== null && (
-        <Tag tone="info">草稿 v{item.draft_revision_no}</Tag>
+        {item.has_unpublished_draft && <Tag tone="info">有未上线的修改</Tag>}
+      </div>
+      {health.reason && health.status !== "offline" && (
+        <span
+          className={cn(
+            "text-xs",
+            health.status === "broken" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+          )}
+        >
+          {health.status === "unpublished" ? `上线前要处理：${health.reason}` : health.reason}
+        </span>
       )}
     </div>
   );
 }
 
-/** 行尾“更多”：测试模型 + 版本历史（归档版本可回滚）；打开时才拉历史 */
+/** 行尾“更多”：编辑 + 版本历史（归档版本可回滚，打开时才拉历史）+ 删除 */
 function RowMenu({
   item,
-  onTest,
+  onEdit,
   onRollback,
+  onDelete,
 }: {
   item: ConfigListItem;
-  onTest: () => void;
+  onEdit: () => void;
   onRollback: (revision: ConfigRevision) => void;
+  onDelete?: () => void;
 }) {
   const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
   return (
@@ -73,9 +97,9 @@ function RowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onTest}>
-            <FlaskConical />
-            测试模型
+          <DropdownMenuItem onClick={onEdit}>
+            <Pencil />
+            编辑
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
@@ -114,13 +138,25 @@ function RowMenu({
             );
           })}
         </DropdownMenuGroup>
+        {onDelete && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <Trash2 />
+                删除…
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
 /**
- * 模型表格（设计稿 modelTable）：模型 / 能力 / 渠道 / 版本 / 上架 / 操作，点整行打开编辑弹窗。
+ * 模型表格（设计稿 modelTable）：模型 / 能力 / 渠道 / 状态 / 上线 / 操作，点整行打开编辑弹窗。
+ * 行内按钮是“测试”（编辑靠点整行，更多菜单里也有）；删除在更多菜单底部。
  * 模型页和渠道页“使用这个渠道的模型”共用；渠道页传 hideChannel 去掉渠道列。
  * 传 selected 时第一列是勾选框（批量操作用）。
  */
@@ -138,6 +174,8 @@ export function ModelRows({
   onTest,
   onToggleEnabled,
   onRollback,
+  onDelete,
+  channelsReady = true,
   onRetry,
 }: {
   models: ConfigListItem[];
@@ -154,6 +192,10 @@ export function ModelRows({
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
   onRollback: (key: string, revision: ConfigRevision) => void;
+  /** 删除；不传则不显示删除入口 */
+  onDelete?: (item: ConfigListItem) => void;
+  /** 渠道与插件清单已加载；没加载完不下“不可用”的结论 */
+  channelsReady?: boolean;
   onRetry?: () => void;
 }) {
   const selectable = !!selected && !!onSelectedChange;
@@ -190,8 +232,8 @@ export function ModelRows({
             {!hideChannel && (
               <TableHead className="text-muted-foreground px-3 text-xs">渠道</TableHead>
             )}
-            <TableHead className="text-muted-foreground px-3 text-xs">版本</TableHead>
-            <TableHead className="text-muted-foreground px-3 text-xs">上架</TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">状态</TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">上线</TableHead>
             <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -236,6 +278,7 @@ export function ModelRows({
                 ? plugins.find((p) => p.key === channel.plugin_key)
                 : undefined;
               const neverPublished = item.published_revision_no === null;
+              const health = modelHealth(item, channels, plugins, channelsReady);
               return (
                 <TableRow
                   key={item.key}
@@ -274,14 +317,14 @@ export function ModelRows({
                     </TableCell>
                   )}
                   <TableCell className="px-3 py-3">
-                    <VersionTags item={item} />
+                    <StatusCell item={item} health={health} />
                   </TableCell>
                   <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                     <Switch
                       checked={!!item.enabled}
                       disabled={neverPublished || busyKey === item.key}
-                      title={neverPublished ? "发布后才能上架" : undefined}
-                      aria-label={`上架 ${label}`}
+                      title={neverPublished ? "还没上线过：打开编辑，点「上线」" : undefined}
+                      aria-label={`上线 ${label}`}
                       onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
                     />
                   </TableCell>
@@ -289,15 +332,16 @@ export function ModelRows({
                     className="px-3 py-3 text-right whitespace-nowrap"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <Button size="sm" variant="outline" onClick={() => onEdit(item.key)}>
-                      <Pencil />
-                      编辑
+                    <Button size="sm" variant="outline" onClick={() => onTest(item.key)}>
+                      <FlaskConical />
+                      测试
                     </Button>
                     <span className="ml-1 inline-block">
                       <RowMenu
                         item={item}
-                        onTest={() => onTest(item.key)}
+                        onEdit={() => onEdit(item.key)}
                         onRollback={(revision) => onRollback(item.key, revision)}
+                        onDelete={onDelete && (() => onDelete(item))}
                       />
                     </span>
                   </TableCell>

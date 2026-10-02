@@ -5,8 +5,10 @@ import type {
   ChannelView,
   PluginView,
 } from "@/api/admin-ai/type";
+import { findPluginVersion } from "./plugin";
 import {
   initialSettingValues,
+  settingFields,
   validateSettingValues,
   type SettingField,
   type SettingFormValues,
@@ -184,4 +186,89 @@ export function buildChannelRequest(
   if (!sameJson(rateLimit, originalLimit)) update.rate_limit = rateLimit;
   if (create.enabled !== !!original.enabled) update.enabled = create.enabled;
   return { ok: true, create, update, changed: Object.keys(update).length > 0 };
+}
+
+/** 名称里的英文、数字转成 key 片段：小写、非字母数字变连字符、去掉首尾连字符 */
+const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+/**
+ * 新建渠道时按名称自动生成 key（用户没手动改过 key 时用）：
+ * 名称里有英文 / 数字就用它；没有（纯中文名）就用“插件 key + 地址主机名第一段”；
+ * 和已有渠道重名时依次加 -2、-3……；结果满足 CHANNEL_KEY_PATTERN。
+ * @param existing 已有渠道的 key
+ */
+export function suggestChannelKey(
+  name: string,
+  pluginKey: string,
+  baseUrl: string,
+  existing: readonly string[],
+): string {
+  let host = "";
+  try {
+    host = new URL(baseUrl.trim()).hostname.split(".").find((part) => part !== "www") ?? "";
+  } catch {
+    host = "";
+  }
+  const base = slugify(name) || slugify([pluginKey, host].filter(Boolean).join("-")) || "channel";
+  const trimmed = base.slice(0, 60).replace(/-+$/, "");
+  const taken = new Set(existing);
+  if (!taken.has(trimmed)) return trimmed;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${trimmed}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+export type ChannelUpgrade = {
+  /** 提交给 PUT /channels/:key 的请求体 */
+  update: ChannelUpdateRequest;
+  /** 新版本不再声明、已丢弃的设置项（显示名），有值的才算 */
+  dropped: string[];
+  /** 新版本不是 auth: custom，“允许插件读取 Key”被自动关闭 */
+  credsReset: boolean;
+};
+
+/**
+ * 把渠道切到插件的另一个版本（批量升级用），与渠道抽屉里换版本的规则一致：
+ * 同名设置项的取值带过去，其余用新声明的默认值；新版本不需要读 Key 时关闭 allow_credentials。
+ * 找不到目标版本返回 null。
+ */
+export function upgradeChannelRequest(
+  channel: ChannelView,
+  plugins: readonly PluginView[],
+  targetVersion: string,
+): ChannelUpgrade | null {
+  const next = findPluginVersion(plugins, channel.plugin_key, { version: targetVersion });
+  if (!next) return null;
+  const current = findPluginVersion(plugins, channel.plugin_key, {
+    id: channel.plugin_version_id,
+    version: channel.plugin_version,
+  });
+  const oldFields = settingFields(current?.meta?.channelSettings);
+  const newFields = settingFields(next.meta?.channelSettings);
+  const oldValues = initialSettingValues(oldFields, channel.settings);
+  const dropped = oldFields
+    .filter((field) => {
+      const value = oldValues[field.name];
+      const had =
+        typeof value === "boolean" ? value : typeof value === "string" && value.trim() !== "";
+      return had && !newFields.some((item) => item.name === field.name);
+    })
+    .map((field) => field.label);
+  const settings = validateSettingValues(
+    newFields,
+    rebaseSettings(oldFields, oldValues, newFields),
+  ).values;
+  const credsReset = !!channel.allow_credentials && next.meta?.auth?.type !== "custom";
+  const update: ChannelUpdateRequest = {
+    plugin_key: channel.plugin_key,
+    plugin_version: next.version,
+    settings,
+  };
+  if (credsReset) update.allow_credentials = false;
+  return { update, dropped, credsReset };
 }
