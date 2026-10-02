@@ -39,6 +39,25 @@ export type CanvasNodeData = {
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */
   paramAssets?: Record<string, ParamAsset>;
+  /** 历次生成的产物，旧的在前；src / mediaType / assetId 是当前那一版的镜像，下游照旧读它们 */
+  outputs?: NodeOutput[];
+  /** 当前选中的 outputs[].id */
+  activeOutputId?: string;
+};
+
+/** 节点的一版生成产物 */
+export type NodeOutput = {
+  /** 版本 id，取素材 id，同一素材不会重复入列 */
+  id: string;
+  src: string;
+  mediaType: NodeMediaType;
+  assetId: string;
+  /** 产出这一版的任务 */
+  taskId?: string;
+  /** 产出这一版的模型 */
+  model?: string;
+  /** 入列时间，毫秒 */
+  createdAt: number;
 };
 
 /** 参数面板里手动选的素材，只用于展示，真正提交的是 params 里的 assetId */

@@ -51,6 +51,8 @@ type VideoParamPanelProps = {
   onAddRef: (key: RefKey, assetId: string | number, asset: ParamAsset) => void;
   onRemoveRef: (key: RefKey, assetId: string | number) => void;
   listAssets: (type: RefKind) => AssetChoice[];
+  /** 只画参考素材、只画生成参数，还是都画（缺省都画） */
+  section?: "all" | "refs" | "params";
 };
 
 const ACCEPT: Record<RefKind, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
@@ -510,14 +512,20 @@ export function VideoParamPanel({
   onAddRef,
   onRemoveRef,
   listAssets,
+  section = "all",
 }: VideoParamPanelProps) {
-  const kinds = refKindsOf(caps, op);
-  const fields = openParams(caps);
-  const textOnly = !!op && kinds.length === 0;
+  const kinds = section === "params" ? [] : refKindsOf(caps, op);
+  const fields = section === "refs" ? [] : openParams(caps);
+  const textOnly = section !== "params" && !!op && kinds.length === 0;
   if (kinds.length === 0 && fields.length === 0 && !textOnly) return null;
 
   return (
-    <div className="nowheel flex max-h-72 flex-col gap-2.5 overflow-y-auto px-1 py-0.5">
+    <div
+      className={cn(
+        "nowheel flex flex-col gap-2.5 overflow-y-auto px-1 py-0.5",
+        section === "refs" ? "max-h-56" : "max-h-72",
+      )}
+    >
       {textOnly && (
         <p className="text-muted-foreground text-xs">当前方式只用文字，不使用参考素材</p>
       )}

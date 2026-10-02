@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { NodeToolbar, Position, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
+import { useCallback, useEffect } from "react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 
 import {
   NodeCard,
@@ -9,17 +9,10 @@ import {
   VideoParamPanel,
   type IncomingConnection,
 } from "@/components/canvas";
+import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
+import { OpTabs } from "@/components/canvas/op-tabs";
 import type { GenerationOp } from "@/api/model/type";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -28,14 +21,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NODE_META } from "@/constants/canvas";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
-import { cn } from "@/lib/utils";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canConnectKinds } from "@/utils/canvas/canvas";
 import { OP_LABEL, openParams, paramSummary } from "@/utils/tasks/capabilities";
+import type { VideoNodeView } from "@/utils/tasks/node-view";
+
+import { NodeOverlays } from "./node-overlays";
+import { useMultiSelected } from "./selection-toolbar";
 
 /** 走「提交任务 -> 轮询 / 推送 -> 回填」流程的媒体节点种类 */
 export type MediaTaskKind = "image" | "video" | "audio";
@@ -67,23 +64,50 @@ function SwitchModelDialog({ vm }: { vm: TaskNodeModel }) {
   );
 }
 
+/** 节点标题行右侧的状态：生成中带进度，失败标红 */
+export function NodeStatusLabel({
+  view,
+}: {
+  view: Pick<VideoNodeView, "phase"> & { progress?: number | null };
+}) {
+  switch (view.phase) {
+    case "queued":
+      return <span className="text-muted-foreground">排队中</span>;
+    case "running":
+      return (
+        <span className="text-status-running font-mono tabular-nums">
+          生成中{typeof view.progress === "number" ? ` ${view.progress}%` : ""}
+        </span>
+      );
+    case "finalizing":
+      return <span className="text-status-running">即将完成</span>;
+    case "failed":
+      return <span className="text-destructive">生成失败</span>;
+    default:
+      return null;
+  }
+}
+
 /**
- * 节点下方的提示词 + 参数面板，跟着 NodeToolbar 装卸，没选中的节点不渲染。
- * 四种生成节点共用，kind 决定占位提示与图标。
+ * 节点下方的生成面板（设计稿 6.4）：生成方式 Tabs、参考素材、提示词、
+ * 底栏的模型 / 参数摘要 / 积分 + 发送。四种生成节点共用，kind 决定占位提示与图标。
  */
 export function TaskPromptPanel({
   vm,
   data,
   kind,
+  nodeId,
+  width,
 }: {
   vm: TaskNodeModel;
   data: CanvasNodeData;
   kind: NodeKind;
+  nodeId: string;
+  width: number;
 }) {
   const meta = NODE_META.get(kind);
   const Icon = meta?.icon;
   const { modelsStatus, reloadModels } = vm;
-  const [panelOpen, setPanelOpen] = useState(true);
 
   // 上次清单没拉下来的话，选中节点时顺手再试一次
   useEffect(() => {
@@ -101,15 +125,31 @@ export function TaskPromptPanel({
   const notice = vm.submitError
     ? { tone: "error" as const, text: vm.submitError }
     : vm.offline
-      ? {
-          tone: "error" as const,
-          text: "这个模型已经下线，请在下拉里换一个模型后再生成",
-        }
+      ? { tone: "error" as const, text: "这个模型已经下线，请换一个模型后再生成" }
       : null;
+
+  const locked = vm.running || vm.submitting;
+  const ops = vm.caps?.ops ?? [];
+  const params = openParams(vm.caps);
+  const panelProps = vm.caps && {
+    caps: vm.caps,
+    op: vm.op,
+    params: vm.params,
+    paramAssets: data.paramAssets,
+    bindings: vm.bindings,
+    errors: vm.errors,
+    showErrors: true,
+    disabled: locked,
+    onChange: vm.setParam,
+    onAddRef: vm.addRef,
+    onRemoveRef: vm.removeRef,
+    listAssets: vm.listAssets,
+  };
 
   return (
     <>
       <NodePromptInput
+        width={width}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
         placeholder={meta?.placeholder}
@@ -131,77 +171,41 @@ export function TaskPromptPanel({
         promptDisabled={!!vm.promptBinding}
         promptNote={vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined}
         notice={notice}
+        header={
+          ops.length > 1 ? (
+            <OpTabs
+              id={nodeId}
+              value={vm.op}
+              options={ops.map((op) => ({ value: op, label: OP_LABEL[op] }))}
+              onValueChange={(op: GenerationOp) => vm.setOp(op)}
+              disabled={locked}
+            />
+          ) : null
+        }
         toolbarExtra={
-          vm.caps && (
-            <>
-              {(vm.caps.ops?.length ?? 0) > 1 && (
-                <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger
-                    className={cn(
-                      buttonVariants({ variant: "ghost", size: "sm" }),
-                      "shrink-0 gap-1 px-2",
-                    )}
-                    aria-label="选择生成方式"
-                    disabled={vm.running || vm.submitting}
-                  >
-                    {vm.op ? OP_LABEL[vm.op] : "生成方式"}
-                    <ChevronDown className="opacity-60" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-40" align="start" sideOffset={6}>
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>生成方式</DropdownMenuLabel>
-                      <DropdownMenuRadioGroup
-                        value={vm.op ?? ""}
-                        onValueChange={(next) => vm.setOp(next as GenerationOp)}
-                      >
-                        {vm.caps.ops?.map((item) => (
-                          <DropdownMenuRadioItem key={item} value={item}>
-                            {OP_LABEL[item]}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-              {(vm.refKinds.length > 0 || openParams(vm.caps).length > 0) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground min-w-0 shrink gap-1 px-2"
-                  aria-expanded={panelOpen}
-                  aria-label="参数设置"
-                  onClick={() => setPanelOpen((open) => !open)}
-                >
-                  <span className="truncate">{paramSummary(vm.caps, vm.params) || "参数"}</span>
-                  <ChevronDown
-                    className={cn(
-                      "shrink-0 opacity-60 transition-transform",
-                      panelOpen && "rotate-180",
-                    )}
-                  />
-                </Button>
-              )}
-            </>
+          panelProps &&
+          params.length > 0 && (
+            <Popover>
+              <PopoverTrigger className={PANEL_CHIP_CLASS} aria-label="生成参数">
+                <SlidersHorizontal className="text-muted-foreground" />
+                <span className="min-w-0 truncate">
+                  {paramSummary(vm.caps, vm.params) || "参数"}
+                </span>
+                <ChevronDown className="opacity-50" />
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                sideOffset={10}
+                className="nodrag nowheel w-80 rounded-xl p-3"
+              >
+                <VideoParamPanel {...panelProps} section="params" />
+              </PopoverContent>
+            </Popover>
           )
         }
       >
-        {vm.caps && panelOpen && (
-          <VideoParamPanel
-            caps={vm.caps}
-            op={vm.op}
-            params={vm.params}
-            paramAssets={data.paramAssets}
-            bindings={vm.bindings}
-            errors={vm.errors}
-            showErrors
-            disabled={vm.running || vm.submitting}
-            onChange={vm.setParam}
-            onAddRef={vm.addRef}
-            onRemoveRef={vm.removeRef}
-            listAssets={vm.listAssets}
-          />
-        )}
+        {panelProps && vm.refKinds.length > 0 && <VideoParamPanel {...panelProps} section="refs" />}
       </NodePromptInput>
       <SwitchModelDialog vm={vm} />
     </>
@@ -211,7 +215,7 @@ export function TaskPromptPanel({
 /**
  * 媒体生成节点（图片、视频、音频共用）：正文按任务状态（排队 / 生成中 / 转存中 / 成功 / 失败）渲染，
  * 模型清单、输入口与参数由后端下发的模型能力 capabilities 决定（提示词口 + 当前生成方式能接收的素材口），
- * 选中时下方浮出提示词与参数面板。种类在节点整个生命周期里不变，hook 集合不会切换。
+ * 选中时上方浮出生成历史、下方浮出生成面板。种类在节点整个生命周期里不变，hook 集合不会切换。
  */
 function MediaTaskNode({
   id,
@@ -229,6 +233,7 @@ function MediaTaskNode({
   const vm = useTaskNode(id, data, kind, generation);
   const meta = NODE_META.get(kind);
   const PlaceholderIcon = meta?.placeholderIcon;
+  const KindIcon = meta?.icon;
 
   // 输入口随所选模型的 schema 增减；xyflow 只在节点挂载时量一次连接点，
   // 之后口变了必须通知它重新测量，否则连到新口上的线会因为「找不到 handle」被藏起来
@@ -249,14 +254,21 @@ function MediaTaskNode({
   );
 
   const retryable = vm.view.phase === "failed";
+  const multiSelected = useMultiSelected();
 
   return (
     <>
-      <NodeCard title={data.label} handles={vm.handles} canAcceptConnection={canAcceptConnection}>
+      <NodeCard
+        title={data.label}
+        icon={KindIcon ? <KindIcon /> : undefined}
+        status={<NodeStatusLabel view={vm.view} />}
+        handles={vm.handles}
+        canAcceptConnection={canAcceptConnection}
+      >
         <NodeVideoBody
           view={vm.view}
           caption={data.fileName}
-          placeholder={meta?.description ?? kind}
+          placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
           mediaType={data.mediaType ?? kind}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
           onCancel={
@@ -268,9 +280,11 @@ function MediaTaskNode({
           retryHint={vm.blockedReason ?? undefined}
         />
       </NodeCard>
-      <NodeToolbar isVisible={selected} position={Position.Bottom} offset={16}>
-        <TaskPromptPanel vm={vm} data={data} kind={kind} />
-      </NodeToolbar>
+      {selected && !multiSelected && (
+        <NodeOverlays id={id} data={data} showHistory>
+          {(width) => <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />}
+        </NodeOverlays>
+      )}
     </>
   );
 }

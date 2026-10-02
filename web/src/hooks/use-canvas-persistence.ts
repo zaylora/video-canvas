@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
-import { getCanvas, saveCanvasGraph } from "@/api/canvas";
+import { getCanvas, saveCanvasGraph, updateCanvas } from "@/api/canvas";
 import { ApiError } from "@/utils/requests/request";
 
 export type SaveStatus = "loading" | "saved" | "saving" | "error" | "conflict";
@@ -68,6 +68,48 @@ export function useCanvasPersistence({
     flushRef.current = flush;
   }, [flush]);
 
+  /** 409 时拉最新的画布交给调用方重挂；拉取也失败就报保存失败 */
+  const resolveConflict = useCallback(async () => {
+    try {
+      const current = await getCanvas(canvasId);
+      if (!activeRef.current) return true;
+      revisionRef.current = 0;
+      savedRevisionRef.current = 0;
+      versionRef.current = current.version;
+      latestGraphRef.current = null;
+      setStatus("conflict");
+      onConflict(current);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [canvasId, onConflict]);
+
+  /**
+   * 改画布名：和图谱保存共用同一个 revision，所以等在路上的那次保存落地再发，
+   * 改完把新 revision 接过来，后面的图谱保存不会撞 409。
+   */
+  const rename = useCallback(
+    async (title: string) => {
+      for (let i = 0; inFlightRef.current && i < 50; i++) {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      }
+      inFlightRef.current = true;
+      try {
+        const saved = await updateCanvas(canvasId, { revision: versionRef.current, title });
+        if (activeRef.current) versionRef.current = saved.version;
+        return true;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) await resolveConflict();
+        return false;
+      } finally {
+        inFlightRef.current = false;
+        if (revisionRef.current !== savedRevisionRef.current) void flushRef.current();
+      }
+    },
+    [canvasId, resolveConflict],
+  );
+
   const changed = useCallback(
     (graph: CanvasGraphDto, delay = 800) => {
       latestGraphRef.current = graph;
@@ -97,5 +139,5 @@ export function useCanvasPersistence({
     };
   }, [flush]);
 
-  return { status, changed, flush };
+  return { status, changed, flush, rename };
 }

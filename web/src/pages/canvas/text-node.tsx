@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { NodeToolbar, Position, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
+import { useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
 import { NODE_META } from "@/constants/canvas";
@@ -7,7 +7,9 @@ import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { canConnectKinds } from "@/utils/canvas/canvas";
 
-import { TaskPromptPanel } from "./video-node";
+import { NodeOverlays } from "./node-overlays";
+import { useMultiSelected } from "./selection-toolbar";
+import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
 
 /**
  * 文本节点：模型清单、参数与提交走后端生成任务，正文由任务回填写进 data.text。
@@ -27,6 +29,9 @@ export function TextCanvasNode({
   const vm = useTextNode(id, data);
   const meta = NODE_META.get("script");
   const PlaceholderIcon = meta?.placeholderIcon;
+  const KindIcon = meta?.icon;
+  const status = data.status ?? "idle";
+  const multiSelected = useMultiSelected();
 
   /** 输入口随模型 schema 增减，xyflow 要被通知重新测量，否则连线会因找不到 handle 被藏起来 */
   const updateNodeInternals = useUpdateNodeInternals();
@@ -47,18 +52,34 @@ export function TextCanvasNode({
 
   return (
     <>
-      <NodeCard title={data.label} handles={vm.handles} canAcceptConnection={canAcceptConnection}>
+      <NodeCard
+        title={data.label}
+        icon={KindIcon ? <KindIcon /> : undefined}
+        status={
+          <NodeStatusLabel
+            view={{
+              phase: status === "running" ? "running" : status === "error" ? "failed" : "idle",
+            }}
+          />
+        }
+        handles={vm.handles}
+        canAcceptConnection={canAcceptConnection}
+      >
         <NodeTextBody
-          status={data.status ?? "idle"}
+          status={status}
           text={data.text}
           error={data.error}
           icon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : null}
-          placeholder={meta?.description ?? "文本"}
+          placeholder="选中后输入要求生成文本"
         />
       </NodeCard>
-      <NodeToolbar isVisible={selected} position={Position.Bottom} offset={16}>
-        <TaskPromptPanel vm={vm} data={data} kind="script" />
-      </NodeToolbar>
+      {selected && !multiSelected && (
+        <NodeOverlays id={id} data={data} showHistory={false}>
+          {(width) => (
+            <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
+          )}
+        </NodeOverlays>
+      )}
     </>
   );
 }

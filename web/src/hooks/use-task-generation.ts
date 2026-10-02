@@ -124,7 +124,8 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
             }
             handleTaskView(item.task, "reconcile");
             if (id === nodeId) releaseObjectUrl(args.currentSrc);
-            updateNodeData(id, buildSubmittedPatch(nodeKind, String(item.task.id)));
+            const taskId = String(item.task.id);
+            updateNodeData(id, (node) => buildSubmittedPatch(nodeKind, taskId, node.data));
             continue;
           }
           const info = describeSubmitError(item?.error ?? null);

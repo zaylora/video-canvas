@@ -195,7 +195,12 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         origin: connection ? (connection.handleType === "source" ? [0, 0.5] : [1, 0.5]) : [0, 0],
       };
 
-      setNodes((nds) => nds.concat(node));
+      // 新节点直接选中：面板浮出来就能写提示词
+      setNodes((nds) =>
+        nds
+          .map((item) => (item.selected ? { ...item, selected: false } : item))
+          .concat({ ...node, selected: true }),
+      );
 
       const connected =
         !!connection && canConnectKinds(connection.kind, connection.handleType, kind);
@@ -217,6 +222,21 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
       setMenu(null);
     },
     [menu, placeNode],
+  );
+
+  /** 不经过菜单，直接在画布坐标 flow 处建一个节点（底部工具条、空状态卡片用） */
+  const addNodeAt = useCallback(
+    (kind: NodeKind, flow: { x: number; y: number }, extra?: Partial<CanvasNodeData>) =>
+      placeNode(kind, { screen: flowToScreenPosition(flow), flow, connection: null }, extra).id,
+    [flowToScreenPosition, placeNode],
+  );
+
+  /** 不经过菜单的上传：先记下落点，文件框交给调用方弹 */
+  const beginUploadAt = useCallback(
+    (flow: { x: number; y: number }) => {
+      uploadPlacement.current = { screen: flowToScreenPosition(flow), flow, connection: null };
+    },
+    [flowToScreenPosition],
   );
 
   /** 点了「上传」：记下落点、收起菜单，文件框交给调用方弹 */
@@ -364,7 +384,9 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     pending,
     closeMenu,
     addNode,
+    addNodeAt,
     beginUpload,
+    beginUploadAt,
     addUploadedNodes,
     onConnect,
     onConnectEnd,

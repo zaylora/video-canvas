@@ -96,11 +96,12 @@ function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCard
     >
       <div
         className={cn(
-          "bg-card text-muted-foreground pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border",
-          // 平时藏起来，鼠标上了节点或节点被选中才显形。
+          "bg-canvas text-muted-foreground ring-foreground/30 pointer-events-none absolute flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full ring-[1.5px]",
+          // 平时藏起来，鼠标上了节点或节点被选中才从 0.6 倍弹出来。
           // hover 认的是 NodeCard 上的 group/node，命中条是节点的子元素，
           // 所以扫到伸出节点外的那半截也算悬浮在节点上
-          "opacity-0 transition-opacity group-hover/node:opacity-100 in-[.selected]:opacity-100",
+          "scale-60 opacity-0 transition-[opacity,scale] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
+          "group-hover/node:scale-100 group-hover/node:opacity-100 in-[.selected]:scale-100 in-[.selected]:opacity-100",
         )}
         style={{
           left: `var(--handle-x, ${home.left})`,
@@ -126,8 +127,12 @@ function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCard
 }
 
 type NodeCardProps = {
-  /** 节点的无障碍名称 */
+  /** 节点标题，摆在卡片上方，同时是无障碍名称 */
   title: string;
+  /** 标题左边的种类图标 */
+  icon?: ReactNode;
+  /** 标题行右侧的状态（生成中 42%、生成失败） */
+  status?: ReactNode;
   /** 连接点配置，缺省为左 target、右 source */
   handles?: NodeCardHandle[];
   /** 拉过来的线接不接得上，用来决定要不要给倾斜反馈；缺省一律接 */
@@ -143,6 +148,8 @@ type NodeCardProps = {
  */
 export function NodeCard({
   title,
+  icon,
+  status,
   handles = DEFAULT_HANDLES,
   canAcceptConnection,
   className,
@@ -157,6 +164,11 @@ export function NodeCard({
     // 倾斜留在包装层，BaseNode 里连接点的绝对定位和 .selected 样式都不受影响
     <motion.div style={{ transformPerspective: TILT_PERSPECTIVE, rotateX, rotateY, scale }}>
       <BaseNode aria-label={title} className={cn("group/node w-96", className)}>
+        <div className="text-foreground pointer-events-none absolute right-0.5 bottom-full left-0.5 mb-2 flex items-center gap-2 text-[13px] font-semibold">
+          {icon && <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>}
+          <span className="truncate">{title}</span>
+          {status && <span className="ml-auto shrink-0 text-xs font-medium">{status}</span>}
+        </div>
         {children}
         {handles.map((handle) => (
           <NodeCardHandleDot

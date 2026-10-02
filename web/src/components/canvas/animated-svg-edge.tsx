@@ -176,7 +176,7 @@ const METEOR_TAIL_LENGTH = 34;
 
 const shapes = {
   circle: ({ animateMotionProps }) => (
-    <circle r="5" fill="var(--edge-shape-color, #ff0073)">
+    <circle r="5" fill="var(--edge-shape-color)">
       <animateMotion {...animateMotionProps} />
     </circle>
   ),
@@ -186,7 +186,7 @@ const shapes = {
    * 用三层同心圆叠出辉光，比 SVG filter 轻，也不会被边容器裁掉。
    */
   glow: ({ animateMotionProps }) => (
-    <g fill="var(--edge-shape-color, #ff0073)">
+    <g fill="var(--edge-shape-color)">
       <circle r="16" opacity="0.12" />
       <circle r="10" opacity="0.25" />
       <circle r="5.5" opacity="0.55" />
@@ -357,9 +357,9 @@ function Meteor({ animateMotionProps }: { animateMotionProps: AnimateMotionProps
           x2="0"
           y2="0"
         >
-          <stop offset="0%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="0" />
-          <stop offset="60%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="var(--edge-shape-color, #ff0073)" stopOpacity="1" />
+          <stop offset="0%" stopColor="var(--edge-shape-color)" stopOpacity="0" />
+          <stop offset="60%" stopColor="var(--edge-shape-color)" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="var(--edge-shape-color)" stopOpacity="1" />
         </linearGradient>
       </defs>
       {/* 外层宽尾当辉光，内层细尾当焰心，叠出通透的拖尾 */}
@@ -372,7 +372,7 @@ function Meteor({ animateMotionProps }: { animateMotionProps: AnimateMotionProps
         opacity="0.2"
       />
       <path d={tail} fill="none" stroke={`url(#${tailId})`} strokeWidth="3" strokeLinecap="round" />
-      <g fill="var(--edge-shape-color, #ff0073)">
+      <g fill="var(--edge-shape-color)">
         <circle r="7" opacity="0.18" />
         <circle r="4" opacity="0.4" />
         <circle r="2" fill="var(--edge-shape-core, #fff)" />

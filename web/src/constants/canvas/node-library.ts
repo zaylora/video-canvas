@@ -74,3 +74,11 @@ export type NodeKindMeta = (typeof NODE_LIBRARY)[number];
 export const NODE_META = new Map<NodeKind, NodeKindMeta>(
   NODE_LIBRARY.map((item) => [item.kind, item]),
 );
+
+/** 「添加节点」菜单里的顺序和说法（设计稿 docs/design/画布UI设计 原型）：常用的生成节点排前面 */
+export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string }[] = [
+  { kind: "image", title: "图片生成", description: "文字或参考图出图" },
+  { kind: "video", title: "视频生成", description: "文生、参考、编辑、延长" },
+  { kind: "script", title: "文本", description: "脚本、分镜描述" },
+  { kind: "audio", title: "音频", description: "配乐、音效、配音" },
+];

@@ -39,6 +39,16 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-canvas: var(--canvas-bg);
+  --color-canvas-dot: var(--canvas-dot);
+  --color-chrome: var(--chrome);
+  --color-chrome-border: var(--chrome-border);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-node-ring: var(--node-ring);
+  --color-credit: var(--credit);
+  --color-status-running: var(--status-running);
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -82,6 +92,19 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* 画布：设计稿 docs/design/画布UI设计。外壳是半透明浮层，颜色只留给素材、积分和状态 */
+  --canvas-bg: oklch(0.975 0 0);
+  --canvas-dot: oklch(0 0 0 / 0.14);
+  --chrome: oklch(1 0 0 / 0.82);
+  --chrome-border: oklch(0 0 0 / 0.08);
+  --chrome-hover: oklch(0 0 0 / 0.05);
+  --node-ring: oklch(0.2 0 0 / 0.85);
+  --credit: oklch(0.72 0.15 75);
+  --status-running: oklch(0.58 0.15 250);
+  --status-success: oklch(0.6 0.15 155);
+  --status-warning: oklch(0.7 0.16 70);
+  --edge: oklch(0 0 0 / 0.28);
+  --edge-selected: oklch(0.2 0 0);
 }
 
 .dark {
@@ -117,6 +140,18 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --canvas-bg: oklch(0.13 0 0);
+  --canvas-dot: oklch(1 0 0 / 0.08);
+  --chrome: oklch(0.2 0 0 / 0.78);
+  --chrome-border: oklch(1 0 0 / 0.08);
+  --chrome-hover: oklch(1 0 0 / 0.07);
+  --node-ring: oklch(1 0 0 / 0.72);
+  --credit: oklch(0.82 0.15 85);
+  --status-running: oklch(0.75 0.12 240);
+  --status-success: oklch(0.75 0.15 155);
+  --status-warning: oklch(0.8 0.15 75);
+  --edge: oklch(1 0 0 / 0.28);
+  --edge-selected: oklch(1 0 0 / 0.9);
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
@@ -198,6 +233,12 @@
    所以 .dark 切换时控制条会自动换色，不用额外写暗色样式。
    放在 @layer base 之外，确保覆盖 xyflow 自带的默认值。 */
 .react-flow {
+  --xy-background-color: var(--canvas-bg);
+  --xy-background-pattern-color: var(--canvas-dot);
+  --xy-edge-stroke: var(--edge);
+  --xy-minimap-background-color: var(--chrome);
+  --xy-minimap-mask-background-color: color-mix(in oklch, var(--canvas-bg) 60%, transparent);
+  --edge-shape-color: var(--edge-selected);
   --xy-controls-button-background-color: var(--card);
   --xy-controls-button-background-color-hover: var(--accent);
   --xy-controls-button-color: var(--card-foreground);
@@ -235,11 +276,24 @@
   cursor: grabbing;
 }
 
-/* 连线选中时染成流星的粉色并加粗，配合中点浮出的剪刀按钮，
-   一眼看出要剪哪一根。xyflow 自带的 .selected 只换成深灰，暗色底上看不见。 */
+/* 连线选中时提亮并加粗，配合中点浮出的剪刀按钮，一眼看出要剪哪一根。
+   颜色走 --edge-selected，深浅主题各一套，不再写死粉色。 */
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: var(--edge-shape-color, #ff0073);
+  stroke: var(--edge-shape-color);
   stroke-width: 2;
+}
+
+/* 框选后 xyflow 自带的选区框只留拖动整组的作用，长相交给 SelectionToolbar 画的底框 */
+.react-flow__nodesselection-rect {
+  background: transparent;
+  border: none;
+}
+
+/* 节点选中时：xyflow 给外层加的焦点框和阴影去掉，选中态由节点自己的描边表达 */
+.react-flow__node:focus-visible,
+.react-flow__node.selected {
+  outline: none;
+  box-shadow: none;
 }
 
 /* 抓手模式下整个界面就是一块可拖的画布：节点、连线、连接点、浮在节点下方的
