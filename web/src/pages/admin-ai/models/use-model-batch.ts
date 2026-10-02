@@ -1,6 +1,12 @@
 import { useState } from "react";
 
-import { getModelDetail, publishModel, setModelEnabled, updateModelDraft } from "@/api/admin-ai";
+import {
+  deleteTarget,
+  getModelDetail,
+  publishModel,
+  setModelEnabled,
+  updateModelDraft,
+} from "@/api/admin-ai";
 import type { ConfigListItem } from "@/api/admin-ai/type";
 import { errorMessage } from "@/utils/admin/errors";
 import { withDefaultPrice, withModelChannel, withModelField } from "@/utils/admin/model-body";
@@ -13,7 +19,7 @@ export type BatchPatch = {
   channel?: string;
 };
 
-export type BatchAction = "enable" | "disable" | "publish" | "edit";
+export type BatchAction = "enable" | "disable" | "publish" | "edit" | "delete";
 
 export type BatchResult = {
   action: BatchAction;
@@ -26,10 +32,11 @@ export type BatchResult = {
 };
 
 const LABEL: Record<BatchAction, string> = {
-  enable: "批量上架",
-  disable: "批量下架",
-  publish: "批量发布草稿",
+  enable: "批量上线",
+  disable: "批量下线",
+  publish: "批量上线修改",
   edit: "批量修改",
+  delete: "批量删除",
 };
 export const batchLabel = (action: BatchAction) => LABEL[action];
 
@@ -74,14 +81,14 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
 
   const setEnabled = (keys: string[], enabled: boolean) =>
     run(enabled ? "enable" : "disable", keys, async (item) => {
-      if (enabled && item.published_revision_no === null) return "还没发布过，不能上架";
-      if (!!item.enabled === enabled) return enabled ? "已经是上架状态" : "已经是下架状态";
+      if (enabled && item.published_revision_no === null) return "还没上线过，先打开编辑点「上线」";
+      if (!!item.enabled === enabled) return enabled ? "已经在线" : "已经下线";
       await setModelEnabled(item.key, enabled);
     });
 
   const publishDrafts = (keys: string[]) =>
     run("publish", keys, async (item) => {
-      if (!item.has_unpublished_draft) return "没有未发布的草稿";
+      if (!item.has_unpublished_draft) return "没有未上线的修改";
       await publishModel(item.key);
     });
 
@@ -108,6 +115,13 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
       }
     });
 
+  /** 批量删除：还在上线的跳过（要先下线），其余逐个彻底删除 */
+  const remove = (keys: string[]) =>
+    run("delete", keys, async (item) => {
+      if (item.enabled) return "还在上线，先下线再删除";
+      await deleteTarget("model", item.key);
+    });
+
   return {
     running,
     progress,
@@ -116,6 +130,7 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
     setEnabled,
     publishDrafts,
     edit,
+    remove,
   };
 }
 

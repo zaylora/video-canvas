@@ -13,7 +13,7 @@ import (
 	"video-canvas/internal/service"
 )
 
-// AdminPluginHandler 是协议插件的管理接口：列表（admin 可读），上传 / 启停 / 删除版本（仅 super_admin，由路由挂中间件）。
+// AdminPluginHandler 是协议插件的管理接口：列表（admin 可读），上传 / 启停 / 删除版本 / 删除插件及其预检（仅 super_admin，由路由挂中间件）。
 type AdminPluginHandler struct {
 	svc *service.AIPluginService
 }
@@ -101,6 +101,33 @@ func (h *AdminPluginHandler) DeleteVersion(c *gin.Context) {
 		return
 	}
 	if err := h.svc.DeleteVersion(c.Request.Context(), currentUserID(c), uri.Key, uri.Version); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, nil)
+}
+
+// DeleteCheck 删除整个插件前的预检：返回阻断删除的原因，blockers 为空数组表示可以删。
+func (h *AdminPluginHandler) DeleteCheck(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	res, err := h.svc.CheckDelete(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// Delete 删除整个插件（全部版本），只能删未被引用的上传插件。
+func (h *AdminPluginHandler) Delete(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), currentUserID(c), key); err != nil {
 		response.Fail(c, err)
 		return
 	}

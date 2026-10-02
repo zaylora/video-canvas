@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { KeyRound, Loader2, Stethoscope } from "lucide-react";
+import { ChevronRight, Download, Loader2, Plus, Stethoscope } from "lucide-react";
 
-import { createChannel, getChannel, updateChannel } from "@/api/admin-ai";
+import { createChannel, getChannel, setChannelSecret, updateChannel } from "@/api/admin-ai";
 import type { ChannelView, PluginView } from "@/api/admin-ai/type";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,6 +24,7 @@ import {
   channelFormFromView,
   emptyChannelForm,
   rebaseSettings,
+  suggestChannelKey,
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
 import { errorMessage, isChannelKeyExists } from "@/utils/admin/errors";
@@ -36,16 +38,19 @@ import {
 import { settingFields, type SettingFormValue } from "@/utils/admin/settings-form";
 import { formatTime } from "@/utils/time";
 
+import { useRetained } from "@/hooks/use-retained";
 import { SettingFields } from "../setting-fields";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
+import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
+import { cn } from "@/lib/utils";
+import { KindIcons } from "../kind";
 import { ReadOnlyNotice } from "../shared";
 import { useAliveRef } from "../use-admin";
 import { CheckResult } from "./check-result";
-import { SecretDialog } from "./secret-dialog";
 import type { CheckState } from "./use-channel-check";
 
 /** 抽屉打开的对象：新建（可预选插件），或已有渠道 */
@@ -99,10 +104,14 @@ function RiskRow({
 
 /**
  * 渠道抽屉：新建 / 编辑；admin 打开为只读（操作区不渲染）。
- * 五个区：基本、插件、连接（含插件设置）、限流、高级与安全，Key 单独一区。
- * 两个危险开关旁直接写后果说明，从关到开要勾选确认；allow_credentials 仅所选版本 auth=custom 可用。
+ * 一屏三步：1 选平台（插件卡片）→ 2 连接（地址、Key、插件设置）→ 3 名称（标识按名称自动生成，可改）；
+ * 插件版本、限流、启用、安全开关收在“高级设置”里（有新版本时默认展开）。
+ * 底部只有一个“保存并检查”：保存渠道 → 写 Key → 检查连通性，通过后给“导入模型 / 新建模型”两个下一步。
+ * 两个危险开关从关到开要勾选确认；新建时插件是 auth: custom 则“允许插件读取 Key”自动打开（必需）。
  * @param pluginsReady 插件清单已加载（未就绪时抽屉里显示骨架，避免版本下拉是空的）
+ * @param existingKeys 已有渠道的 key（自动生成标识时避开）
  * @param onSaved 新建 / 更新 / 设 Key 后，通知列表刷新
+ * @param onImport 检查通过后点“从这个渠道导入模型”（页面负责关抽屉、开导入弹窗）
  */
 export function ChannelSheet({
   target,
@@ -110,8 +119,10 @@ export function ChannelSheet({
   pluginsReady,
   canWrite,
   checks,
+  existingKeys,
   onCheck,
   onSaved,
+  onImport,
   onClose,
 }: {
   target: ChannelSheetTarget | null;
@@ -120,8 +131,10 @@ export function ChannelSheet({
   canWrite: boolean;
   /** 各渠道的检查状态（按 key）；新建成功后抽屉转为编辑态，要按新 key 取 */
   checks: Record<string, CheckState>;
+  existingKeys: string[];
   onCheck: (key: string) => void;
   onSaved: () => void;
+  onImport?: (channel: ChannelView) => void;
   onClose: () => void;
 }) {
   /** 由 Body 上报“是否有未保存修改”，关闭时据此确认 */
@@ -132,21 +145,25 @@ export function ChannelSheet({
     if (dirty) setConfirmClose(true);
     else onClose();
   };
+  // 关闭时 target 会被置空，抽屉内容按最后一次的对象留到滑出动画播完
+  const shown = useRetained(target);
 
   return (
     <>
       <Sheet open={!!target} onOpenChange={(next) => !next && requestClose()}>
         <SheetContent className="w-full data-[side=right]:sm:max-w-xl">
-          {target && (
+          {shown && (
             <SheetBody
-              key={target.kind === "edit" ? target.channel.key : `new:${target.pluginKey ?? ""}`}
-              target={target}
+              key={shown.kind === "edit" ? shown.channel.key : `new:${shown.pluginKey ?? ""}`}
+              target={shown}
               plugins={plugins}
               pluginsReady={pluginsReady}
               canWrite={canWrite}
               checks={checks}
               onCheck={onCheck}
               onSaved={onSaved}
+              existingKeys={existingKeys}
+              onImport={onImport}
               onDirtyChange={setDirty}
               onClose={requestClose}
             />
@@ -176,8 +193,10 @@ function SheetBody({
   pluginsReady,
   canWrite,
   checks,
+  existingKeys,
   onCheck,
   onSaved,
+  onImport,
   onDirtyChange,
   onClose,
 }: {
@@ -188,6 +207,8 @@ function SheetBody({
   checks: Record<string, CheckState>;
   onCheck: (key: string) => void;
   onSaved: () => void;
+  existingKeys: string[];
+  onImport?: (channel: ChannelView) => void;
   onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
 }) {
@@ -249,6 +270,8 @@ function SheetBody({
       checks={checks}
       onCheck={onCheck}
       onSaved={onSaved}
+      existingKeys={existingKeys}
+      onImport={onImport}
       onDirtyChange={onDirtyChange}
       onClose={onClose}
     />
@@ -261,10 +284,12 @@ function SheetForm({
   original,
   setOriginal,
   plugins,
+  existingKeys,
   readOnly,
   checks,
   onCheck,
   onSaved,
+  onImport,
   onDirtyChange,
   onClose,
 }: {
@@ -273,10 +298,12 @@ function SheetForm({
   original: ChannelView | null;
   setOriginal: (channel: ChannelView) => void;
   plugins: PluginView[];
+  existingKeys: string[];
   readOnly: boolean;
   checks: Record<string, CheckState>;
   onCheck: (key: string) => void;
   onSaved: () => void;
+  onImport?: (channel: ChannelView) => void;
   onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
 }) {
@@ -284,23 +311,26 @@ function SheetForm({
   const check = original ? checks[original.key] : undefined;
   const [form, setFormState] = useState<ChannelFormState>(initialForm);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initialForm));
+  /** Key 明文只在这里，提交时取走并立刻清空；不进 form，不参与脏比较的 JSON */
+  const [secret, setSecret] = useState("");
+  /** 新建时用户手动改过标识：之后不再按名称自动生成 */
+  const [keyEdited, setKeyEdited] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** 这次打开抽屉后点过“保存并检查”：检查通过时给下一步 */
+  const [checked, setChecked] = useState(false);
   const [dropped, setDropped] = useState<string[]>([]);
   const [credsReset, setCredsReset] = useState(false);
-  const [justCreated, setJustCreated] = useState(false);
-  const [justSetKey, setJustSetKey] = useState(false);
   const [risk, setRisk] = useState<"trusted" | "cred" | null>(null);
   const [riskChecked, setRiskChecked] = useState(false);
-  const [secretOpen, setSecretOpen] = useState(false);
 
   /** 抽屉卸载（关闭、切换对象）时清掉脏标记，避免下次打开误提示“放弃修改” */
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
-  const setForm = (next: ChannelFormState) => {
+  const setForm = (next: ChannelFormState, nextSecret = secret) => {
     setFormState(next);
-    onDirtyChange(JSON.stringify(next) !== baseline);
+    onDirtyChange(JSON.stringify(next) !== baseline || nextSecret.trim() !== "");
   };
   const patch = (partial: Partial<ChannelFormState>) => setForm({ ...form, ...partial });
 
@@ -309,11 +339,23 @@ function SheetForm({
   const meta = version?.meta ?? undefined;
   const fields = useMemo(() => settingFields(meta?.channelSettings), [meta]);
   const authType = meta?.auth?.type ?? "none";
+  const needsKey = authType !== "none";
   const isCustomAuth = authType === "custom";
   const upgrade = original
     ? availableUpgrade(plugins, { plugin_key: form.pluginKey, plugin_version: form.pluginVersion })
     : null;
   const switchedVersion = !!original && form.pluginVersion !== original.plugin_version;
+  const [advancedOpen, setAdvancedOpen] = useState(!!upgrade);
+
+  // 新建时：标识没手动改过就按名称自动生成；插件要自己签名（auth: custom）时必须允许读 Key，直接打开
+  const effective: ChannelFormState = {
+    ...form,
+    key:
+      isNew && !keyEdited
+        ? suggestChannelKey(form.name, form.pluginKey, form.baseUrl, existingKeys)
+        : form.key,
+    allowCredentials: isNew && isCustomAuth ? true : form.allowCredentials,
+  };
 
   /** 换插件 / 版本：设置项用 rebaseSettings 迁移，被丢弃的项提示；allow_credentials 不再可用时自动关闭 */
   const changePluginVersion = (pluginKey: string, versionText: string) => {
@@ -331,7 +373,7 @@ function SheetForm({
     setDropped(gone);
     const nextCustom = nextVersion?.meta?.auth?.type === "custom";
     const reset = form.allowCredentials && !nextCustom;
-    setCredsReset(reset);
+    setCredsReset(reset && !isNew);
     setForm({
       ...form,
       pluginKey,
@@ -342,6 +384,7 @@ function SheetForm({
   };
 
   const onPluginChange = (key: string) => {
+    if (key === form.pluginKey) return;
     const next = plugins.find((item) => item.key === key);
     changePluginVersion(key, latestVersion(next)?.version ?? "");
   };
@@ -357,54 +400,72 @@ function SheetForm({
     setRisk(null);
   };
 
+  /**
+   * 保存并检查，一步完成：
+   * 1. 新建 / 更新渠道（没改动就跳过）；
+   * 2. 填了 Key 就写入（只写不读，明文提交后立刻清空）；
+   * 3. 插件不需要 Key，或 Key 已设置，就跑一次连通性检查，结果显示在抽屉里，通过后给下一步。
+   * 第 1 步成功、第 2 步失败时渠道已经保存，抽屉转为编辑态，失败原因留在顶部。
+   */
   const save = async () => {
-    const built = buildChannelRequest(form, fields, original);
+    const built = buildChannelRequest(effective, fields, original);
     if (!built.ok) {
       setErrors(built.errors);
       setFormError(null);
+      if (built.errors.key) setKeyEdited(true);
+      if (built.errors.rps || built.errors.maxConcurrency || built.errors.maxRunning)
+        setAdvancedOpen(true);
       return;
     }
     setErrors({});
     setFormError(null);
     setSaving(true);
+    let current = original;
     try {
-      let saved: ChannelView | null = null;
-      if (!original) {
-        saved = await createChannel(built.create);
-        setJustCreated(true);
-      } else if (built.changed) {
-        saved = await updateChannel(original.key, built.update);
-        setJustCreated(false);
-      }
-      if (!aliveRef.current) return;
-      if (saved) {
-        setOriginal(saved);
-        onSaved();
-      }
-      // 保存后的状态成为新的基线，脏状态清零
-      setBaseline(JSON.stringify(form));
-      onDirtyChange(false);
+      if (!original) current = await createChannel(built.create);
+      else if (built.changed) current = await updateChannel(original.key, built.update);
+      if (!aliveRef.current || !current) return;
+      setOriginal(current);
+      setForm(effective, secret);
+      setBaseline(JSON.stringify(effective));
+      setKeyEdited(true);
       setDropped([]);
       setCredsReset(false);
-    } catch (error) {
-      // 全局 toast 已弹；这里把原因就地放在表单里（50013 放顶部，50012 定位到 key 字段）
-      if (!aliveRef.current) return;
-      if (isChannelKeyExists(error)) setErrors({ key: errorMessage(error, "这个 key 已经存在") });
-      else setFormError(errorMessage(error, "保存失败"));
-    } finally {
-      if (aliveRef.current) setSaving(false);
-    }
-  };
-
-  const refreshAfterSecret = async () => {
-    if (!original) return;
-    setJustSetKey(true);
-    try {
-      const fresh = await getChannel(original.key);
-      if (aliveRef.current) setOriginal(fresh);
-    } finally {
       onSaved();
+    } catch (error) {
+      // 全局 toast 已弹；这里把原因就地放在表单里（50012 定位到 key 字段）
+      if (!aliveRef.current) return;
+      if (isChannelKeyExists(error)) {
+        setKeyEdited(true);
+        setErrors({ key: errorMessage(error, "这个标识已经存在") });
+      } else setFormError(errorMessage(error, "保存失败"));
+      setSaving(false);
+      return;
     }
+
+    const plain = secret.trim();
+    if (plain) {
+      setSecret("");
+      try {
+        await setChannelSecret(current.key, plain);
+        const fresh = await getChannel(current.key);
+        if (!aliveRef.current) return;
+        current = fresh;
+        setOriginal(fresh);
+        onSaved();
+      } catch (error) {
+        if (aliveRef.current) {
+          setFormError(`渠道已保存，但 Key 没设置成功：${errorMessage(error, "请重试")}`);
+          setSaving(false);
+        }
+        return;
+      }
+    }
+    if (!aliveRef.current) return;
+    onDirtyChange(false);
+    setSaving(false);
+    setChecked(true);
+    if (!needsKey || current.secret_set) onCheck(current.key);
   };
 
   const changeSetting = (name: string, value: SettingFormValue) =>
@@ -412,7 +473,14 @@ function SheetForm({
 
   const title = isNew ? "新建渠道" : readOnly ? "查看渠道" : "编辑渠道";
   const pluginLabel = plugin ? `${plugin.name} v${form.pluginVersion}` : form.pluginKey;
-  const checkOk = check && !check.busy && check.outcome.kind === "ok";
+  const checkOk = !!check && !check.busy && check.outcome.kind === "ok";
+  const checking = !!check?.busy;
+  const keyMissing = !!original && needsKey && !original.secret_set;
+  const settingErrors = Object.fromEntries(
+    Object.entries(errors)
+      .filter(([key]) => key.startsWith("settings."))
+      .map(([key, message]) => [key.slice("settings.".length), message]),
+  );
 
   return (
     <>
@@ -425,7 +493,11 @@ function SheetForm({
             </span>
           )}
         </SheetTitle>
-        <SheetDescription>渠道把一个插件版本、一个地址和一个 Key 绑在一起。</SheetDescription>
+        <SheetDescription>
+          {isNew
+            ? "选平台 → 填地址和 Key → 起个名字，点「保存并检查」就能用。"
+            : "渠道把一个插件版本、一个地址和一个 Key 绑在一起。"}
+        </SheetDescription>
       </SheetHeader>
 
       <form
@@ -438,123 +510,88 @@ function SheetForm({
       >
         {readOnly && <ReadOnlyNotice what="修改渠道" />}
         {formError && (
-          <Notice tone="danger" title="保存失败">
+          <Notice tone="danger" title="没有完成">
             {formError}
           </Notice>
         )}
-        {justCreated && original && (
-          <Notice tone="success" title="渠道已创建">
-            下一步：在下面设置 Key，再检查连通性。
+
+        {checked && original && (checkOk || checking || check) && (
+          <Zone title="连通性检查">
+            {check && <CheckResult state={check} />}
+            {checkOk && (
+              <div className="flex flex-wrap gap-2">
+                {meta?.import && onImport && (
+                  <Button type="button" size="sm" onClick={() => onImport(original)}>
+                    <Download />
+                    从这个渠道导入模型
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={meta?.import && onImport ? "outline" : "default"}
+                  render={
+                    <Link to={`/admin/ai/models/new?channel=${encodeURIComponent(original.key)}`} />
+                  }
+                >
+                  <Plus />
+                  用这个渠道新建模型
+                </Button>
+              </div>
+            )}
+          </Zone>
+        )}
+        {checked && keyMissing && (
+          <Notice tone="warning" title="渠道已保存，还没有 Key">
+            填上 API Key 再点「保存并检查」；没有 Key 的渠道，模型无法上线。
           </Notice>
         )}
 
-        <Zone title="基本">
-          <FormField
-            label="标识 key"
-            htmlFor="channel-key"
-            error={errors.key}
-            hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : "不可修改"}
-          >
-            <Input
-              id="channel-key"
-              className="font-mono"
-              value={form.key}
-              placeholder="如 newapi-main"
-              disabled={!isNew || readOnly}
-              aria-invalid={!!errors.key}
-              onChange={(event) => patch({ key: event.target.value })}
-            />
-          </FormField>
-          <FormField label="名称" htmlFor="channel-name" error={errors.name}>
-            <Input
-              id="channel-name"
-              value={form.name}
-              disabled={readOnly}
-              aria-invalid={!!errors.name}
-              onChange={(event) => patch({ name: event.target.value })}
-            />
-          </FormField>
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              id="channel-enabled"
-              checked={form.enabled}
-              disabled={readOnly}
-              onCheckedChange={(checked) => patch({ enabled: checked })}
-            />
-            <Label htmlFor="channel-enabled">启用</Label>
-            <span className="text-muted-foreground text-xs">
-              停用后不再接新任务，进行中的任务按快照继续
-            </span>
-          </div>
-        </Zone>
-
-        <Zone title="插件">
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="插件" htmlFor="channel-plugin" error={errors.plugin}>
-              <NativeSelect
-                id="channel-plugin"
-                value={form.pluginKey}
-                disabled={readOnly}
-                onChange={(event) => onPluginChange(event.target.value)}
-              >
-                {!plugin && <option value={form.pluginKey}>{form.pluginKey || "请选择"}</option>}
-                {plugins.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.name}
-                    {item.enabled ? "" : "（已停用）"}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormField>
-            <FormField label="固定版本" htmlFor="channel-version">
-              <NativeSelect
-                id="channel-version"
-                value={form.pluginVersion}
-                disabled={readOnly}
-                onChange={(event) => changePluginVersion(form.pluginKey, event.target.value)}
-              >
-                {!version && (
-                  <option value={form.pluginVersion}>{form.pluginVersion || "请选择"}</option>
-                )}
-                {(plugin?.versions ?? []).map((item) => (
-                  <option key={item.id} value={item.version}>
-                    {item.version}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormField>
-          </div>
-          {version && (
+        <Zone title="1 · 选平台">
+          <ChoiceCardGroup aria-label="插件" className="sm:grid-cols-2">
+            {plugins.map((item) => {
+              const latest = latestVersion(item);
+              const auth = latest?.meta?.auth?.type ?? "none";
+              return (
+                <ChoiceCard
+                  key={item.key}
+                  indicator
+                  selected={item.key === form.pluginKey}
+                  disabled={readOnly || (!item.enabled && item.key !== form.pluginKey)}
+                  onClick={() => onPluginChange(item.key)}
+                >
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="truncate text-sm font-medium">
+                      {item.name}
+                      {!item.enabled && "（已停用）"}
+                    </span>
+                    <span className="text-muted-foreground flex items-center gap-2 text-xs">
+                      <KindIcons kinds={Object.keys(latest?.meta?.endpoints ?? {})} />
+                      {auth === "none" ? "无需 Key" : "需要 Key"}
+                    </span>
+                  </span>
+                </ChoiceCard>
+              );
+            })}
+          </ChoiceCardGroup>
+          {errors.plugin && <p className="text-destructive text-xs">{errors.plugin}</p>}
+          {plugins.length === 0 && (
             <p className="text-muted-foreground text-xs">
-              鉴权：{describeAuth(meta?.auth)} · sha256{" "}
-              <span className="font-mono">{shortSha(version.sha256)}</span>
+              还没有可用的插件，先到
+              <Link className="mx-1 underline" to="/admin/ai/plugins">
+                插件页
+              </Link>
+              上传一个。
             </p>
           )}
-          {upgrade && (
-            <Notice tone="info" title={`有新版本 ${upgrade.version}`}>
-              切换后新任务用新版本，进行中的任务按旧版本跑完。<b>切换后建议先对相关模型试跑。</b>
-            </Notice>
-          )}
-          {switchedVersion && !upgrade && (
-            <Notice tone="info">
-              保存后新任务改用 v{form.pluginVersion}
-              ，进行中的任务按旧版本跑完。建议保存后先对使用这个渠道的模型试跑。
-            </Notice>
-          )}
-          {dropped.length > 0 && (
-            <Notice tone="warning">新版本不再有这些设置项，已丢弃：{dropped.join("、")}。</Notice>
-          )}
-          {credsReset && (
-            <Notice tone="warning">新版本不需要接触 Key，已自动关闭“允许插件读取 Key”。</Notice>
-          )}
         </Zone>
 
-        <Zone title="连接">
+        <Zone title="2 · 连接">
           <FormField
-            label="base_url"
+            label="接口地址"
             htmlFor="channel-base-url"
             error={errors.baseUrl}
-            hint="插件请求只能去这个地址；http/https，不能带用户名密码"
+            hint="插件请求只能发到这个地址；http/https，不能带用户名密码"
           >
             <Input
               id="channel-base-url"
@@ -566,175 +603,273 @@ function SheetForm({
               onChange={(event) => patch({ baseUrl: event.target.value })}
             />
           </FormField>
-        </Zone>
-
-        {fields.length > 0 && (
-          <Zone title="插件设置">
+          {needsKey && !readOnly && (
+            <FormField
+              label={
+                <span className="flex items-center gap-2">
+                  API Key
+                  {original &&
+                    (original.secret_set ? (
+                      <Tag tone="success">已设置 · {formatTime(original.updated_at)}</Tag>
+                    ) : (
+                      <Tag tone="warning">未设置</Tag>
+                    ))}
+                </span>
+              }
+              htmlFor="channel-secret"
+              hint={
+                original?.secret_set && secret.trim()
+                  ? "保存时会覆盖现有 Key"
+                  : "只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里"
+              }
+            >
+              <Input
+                id="channel-secret"
+                type="password"
+                autoComplete="new-password"
+                className="font-mono"
+                value={secret}
+                placeholder={original?.secret_set ? "已设置。要更换就填新的，留空不改" : "sk-..."}
+                onChange={(event) => {
+                  setSecret(event.target.value);
+                  setForm(form, event.target.value);
+                }}
+              />
+            </FormField>
+          )}
+          {needsKey && readOnly && original && (
+            <p className="text-muted-foreground text-xs">
+              API Key：{original.secret_set ? "已设置" : "未设置"}
+            </p>
+          )}
+          {!needsKey && version && (
+            <p className="text-muted-foreground text-xs">这个插件不需要 Key。</p>
+          )}
+          {isNew && isCustomAuth && (
+            <Notice tone="warning">
+              这个插件要用 Key 自己签名，已自动打开“允许插件读取 Key”（会记入审计日志）。
+            </Notice>
+          )}
+          {fields.length > 0 && (
             <SettingFields
               idPrefix="channel-setting"
               fields={fields}
               values={form.settings}
-              errors={Object.fromEntries(
-                Object.entries(errors)
-                  .filter(([key]) => key.startsWith("settings."))
-                  .map(([key, message]) => [key.slice("settings.".length), message]),
-              )}
+              errors={settingErrors}
               disabled={readOnly}
               onChange={changeSetting}
             />
-          </Zone>
-        )}
-
-        <Zone title="限流">
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="每秒请求数 rps" htmlFor="channel-rps" error={errors.rps}>
-              <Input
-                id="channel-rps"
-                type="number"
-                min={0}
-                value={form.rps}
-                disabled={readOnly}
-                aria-invalid={!!errors.rps}
-                onChange={(event) => patch({ rps: event.target.value })}
-              />
-            </FormField>
-            <FormField
-              label="最大同时请求数"
-              htmlFor="channel-concurrency"
-              error={errors.maxConcurrency}
-            >
-              <Input
-                id="channel-concurrency"
-                type="number"
-                min={0}
-                value={form.maxConcurrency}
-                disabled={readOnly}
-                aria-invalid={!!errors.maxConcurrency}
-                onChange={(event) => patch({ maxConcurrency: event.target.value })}
-              />
-            </FormField>
-            <FormField
-              label="最大同时生成数"
-              htmlFor="channel-max-running"
-              error={errors.maxRunning}
-              className="col-span-2"
-            >
-              <Input
-                id="channel-max-running"
-                type="number"
-                min={0}
-                value={form.maxRunning}
-                disabled={readOnly}
-                aria-invalid={!!errors.maxRunning}
-                onChange={(event) => patch({ maxRunning: event.target.value })}
-              />
-            </FormField>
-          </div>
-          <p className="text-muted-foreground text-xs">
-            0 或留空表示不限。「最大同时请求数」限制同时发给上游的 HTTP 请求；
-            「最大同时生成数」限制同时在上游生成的任务数，填上游账号允许的并发，超出的任务在平台里显示“排队中”，等有空位再提交。
-          </p>
+          )}
         </Zone>
 
-        <Zone title="高级与安全（会记入审计日志）" risk>
-          <RiskRow
-            id="channel-trusted"
-            title="允许访问内网"
-            field="trusted_internal"
-            checked={form.trustedInternal}
-            disabled={readOnly}
-            description="允许 base_url 解析到内网地址（自建网关需要）。开启后，这个渠道的插件请求可以访问内网。此操作会记入审计日志。"
-            onChange={(checked) =>
-              checked ? openRisk("trusted") : patch({ trustedInternal: false })
-            }
-          />
-          <RiskRow
-            id="channel-cred"
-            title="允许插件读取 Key"
-            field="allow_credentials"
-            checked={form.allowCredentials}
-            disabled={readOnly || (!isCustomAuth && !form.allowCredentials)}
-            description={
-              isCustomAuth || form.allowCredentials
-                ? "开启后，插件代码能读取这个渠道的 Key（用于自行签名）。请确认你信任这个插件。此操作会记入审计日志。"
-                : "所选插件版本不需要接触 Key（鉴权由宿主注入），此开关不可用。"
-            }
-            onChange={(checked) =>
-              checked ? openRisk("cred") : patch({ allowCredentials: false })
-            }
-          />
-        </Zone>
-
-        {original ? (
-          <Zone title="Key">
-            <div className="flex flex-wrap items-center gap-2">
-              {original.secret_set ? (
-                <Tag tone="success">已设置</Tag>
-              ) : (
-                <Tag tone="warning">未设置</Tag>
-              )}
-              <span className="text-muted-foreground text-xs">
-                {original.secret_set
-                  ? `上次更新 ${formatTime(original.updated_at)}`
-                  : "未设置 Key 的渠道，模型无法发布"}
-              </span>
-              {!readOnly && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto"
-                  onClick={() => setSecretOpen(true)}
-                >
-                  <KeyRound />
-                  {original.secret_set ? "更新 Key" : "设置 Key"}
-                </Button>
-              )}
-            </div>
+        <Zone title="3 · 名称">
+          <FormField label="显示名称" htmlFor="channel-name" error={errors.name}>
+            <Input
+              id="channel-name"
+              value={form.name}
+              placeholder="如 NewAPI 主线"
+              disabled={readOnly}
+              aria-invalid={!!errors.name}
+              onChange={(event) => patch({ name: event.target.value })}
+            />
+          </FormField>
+          {isNew && !keyEdited ? (
             <p className="text-muted-foreground text-xs">
-              Key 只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里。
+              标识自动生成：<code className="font-mono">{effective.key}</code>{" "}
+              <button
+                type="button"
+                className="underline underline-offset-4"
+                onClick={() => {
+                  setKeyEdited(true);
+                  patch({ key: effective.key });
+                }}
+              >
+                修改
+              </button>
             </p>
-            {(justSetKey || checkOk) && original.secret_set && (
-              <Notice tone="success" title="Key 已设置">
-                下一步：检查连通性，或{" "}
-                <Link className="underline" to="/admin/ai/models/new">
-                  去上架模型
-                </Link>
-                。
-              </Notice>
-            )}
-          </Zone>
-        ) : (
-          !readOnly && <Notice tone="info">保存渠道后，再在这里设置 Key。</Notice>
-        )}
+          ) : (
+            <FormField
+              label="标识 key"
+              htmlFor="channel-key"
+              error={errors.key}
+              hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : "不可修改"}
+            >
+              <Input
+                id="channel-key"
+                className="font-mono"
+                value={form.key}
+                disabled={!isNew || readOnly}
+                aria-invalid={!!errors.key}
+                onChange={(event) => patch({ key: event.target.value })}
+              />
+            </FormField>
+          )}
+        </Zone>
 
-        {original && !readOnly && check && (
-          <Zone title="连通性检查">
-            <CheckResult state={check} />
-          </Zone>
-        )}
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 py-1 text-sm">
+            <ChevronRight
+              className={cn("size-4 transition-transform", advancedOpen && "rotate-90")}
+            />
+            高级设置
+            <span className="text-xs">（插件版本、限流、启用、安全开关）</span>
+            {upgrade && <Tag tone="info">有新版本 {upgrade.version}</Tag>}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 flex flex-col gap-3.5">
+            <Zone title="插件版本">
+              <FormField label="固定版本" htmlFor="channel-version">
+                <NativeSelect
+                  id="channel-version"
+                  value={form.pluginVersion}
+                  disabled={readOnly}
+                  onChange={(event) => changePluginVersion(form.pluginKey, event.target.value)}
+                >
+                  {!version && (
+                    <option value={form.pluginVersion}>{form.pluginVersion || "请选择"}</option>
+                  )}
+                  {(plugin?.versions ?? []).map((item) => (
+                    <option key={item.id} value={item.version}>
+                      {item.version}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormField>
+              {version && (
+                <p className="text-muted-foreground text-xs">
+                  鉴权：{describeAuth(meta?.auth)} · sha256{" "}
+                  <span className="font-mono">{shortSha(version.sha256)}</span>
+                </p>
+              )}
+              {upgrade && (
+                <Notice tone="info" title={`有新版本 ${upgrade.version}`}>
+                  切换后新任务用新版本，进行中的任务按旧版本跑完。
+                  <b>切换后建议先对相关模型试跑。</b>
+                </Notice>
+              )}
+              {switchedVersion && !upgrade && (
+                <Notice tone="info">
+                  保存后新任务改用 v{form.pluginVersion}
+                  ，进行中的任务按旧版本跑完。建议保存后先对使用这个渠道的模型试跑。
+                </Notice>
+              )}
+              {dropped.length > 0 && (
+                <Notice tone="warning">
+                  新版本不再有这些设置项，已丢弃：{dropped.join("、")}。
+                </Notice>
+              )}
+              {credsReset && (
+                <Notice tone="warning">新版本不需要接触 Key，已自动关闭“允许插件读取 Key”。</Notice>
+              )}
+            </Zone>
+
+            <Zone title="限流">
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="每秒请求数 rps" htmlFor="channel-rps" error={errors.rps}>
+                  <Input
+                    id="channel-rps"
+                    type="number"
+                    min={0}
+                    value={form.rps}
+                    disabled={readOnly}
+                    aria-invalid={!!errors.rps}
+                    onChange={(event) => patch({ rps: event.target.value })}
+                  />
+                </FormField>
+                <FormField
+                  label="最大同时请求数"
+                  htmlFor="channel-concurrency"
+                  error={errors.maxConcurrency}
+                >
+                  <Input
+                    id="channel-concurrency"
+                    type="number"
+                    min={0}
+                    value={form.maxConcurrency}
+                    disabled={readOnly}
+                    aria-invalid={!!errors.maxConcurrency}
+                    onChange={(event) => patch({ maxConcurrency: event.target.value })}
+                  />
+                </FormField>
+                <FormField
+                  label="最大同时生成数"
+                  htmlFor="channel-max-running"
+                  error={errors.maxRunning}
+                  className="col-span-2"
+                >
+                  <Input
+                    id="channel-max-running"
+                    type="number"
+                    min={0}
+                    value={form.maxRunning}
+                    disabled={readOnly}
+                    aria-invalid={!!errors.maxRunning}
+                    onChange={(event) => patch({ maxRunning: event.target.value })}
+                  />
+                </FormField>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                0 或留空表示不限。「最大同时请求数」限制同时发给上游的 HTTP 请求；
+                「最大同时生成数」限制同时在上游生成的任务数，填上游账号允许的并发，超出的任务在平台里显示“排队中”，等有空位再提交。
+              </p>
+              <div className="flex items-center gap-2 text-sm">
+                <Switch
+                  id="channel-enabled"
+                  checked={form.enabled}
+                  disabled={readOnly}
+                  onCheckedChange={(checked) => patch({ enabled: checked })}
+                />
+                <Label htmlFor="channel-enabled">启用</Label>
+                <span className="text-muted-foreground text-xs">
+                  停用后不再接新任务，进行中的任务按快照继续
+                </span>
+              </div>
+            </Zone>
+
+            <Zone title="安全开关（会记入审计日志）" risk>
+              <RiskRow
+                id="channel-trusted"
+                title="允许访问内网"
+                field="trusted_internal"
+                checked={form.trustedInternal}
+                disabled={readOnly}
+                description="允许接口地址解析到内网地址（自建网关需要）。开启后，这个渠道的插件请求可以访问内网。"
+                onChange={(checked) =>
+                  checked ? openRisk("trusted") : patch({ trustedInternal: false })
+                }
+              />
+              <RiskRow
+                id="channel-cred"
+                title="允许插件读取 Key"
+                field="allow_credentials"
+                checked={effective.allowCredentials}
+                disabled={
+                  readOnly || (isNew && isCustomAuth) || (!isCustomAuth && !form.allowCredentials)
+                }
+                description={
+                  isNew && isCustomAuth
+                    ? "这个插件要用 Key 自己签名，必须打开。"
+                    : isCustomAuth || form.allowCredentials
+                      ? "开启后，插件代码能读取这个渠道的 Key（用于自行签名）。请确认你信任这个插件。"
+                      : "所选插件版本不需要接触 Key（鉴权由宿主注入），此开关不可用。"
+                }
+                onChange={(checked) =>
+                  checked ? openRisk("cred") : patch({ allowCredentials: false })
+                }
+              />
+            </Zone>
+          </CollapsibleContent>
+        </Collapsible>
       </form>
 
       <SheetFooter className="flex-row items-center border-t">
-        {original && !readOnly && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={check?.busy}
-            onClick={() => onCheck(original.key)}
-          >
-            {check?.busy ? <Loader2 className="animate-spin" /> : <Stethoscope />}
-            检查连通性
-          </Button>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
             {readOnly ? "关闭" : "取消"}
           </Button>
           {!readOnly && (
-            <Button type="submit" form="channel-form" disabled={saving}>
-              {saving && <Loader2 className="animate-spin" />}
-              保存
+            <Button type="submit" form="channel-form" disabled={saving || checking}>
+              {saving || checking ? <Loader2 className="animate-spin" /> : <Stethoscope />}
+              {saving ? "保存中…" : checking ? "检查中…" : "保存并检查"}
             </Button>
           )}
         </div>
@@ -777,17 +912,6 @@ function SheetForm({
           {risk === "cred" ? "我确认信任这份插件代码" : "我确认这个地址是受信任的内部服务"}
         </label>
       </ConfirmDialog>
-
-      {original && !readOnly && (
-        <SecretDialog
-          open={secretOpen}
-          channelKey={original.key}
-          channelName={original.name}
-          secretSet={original.secret_set}
-          onClose={() => setSecretOpen(false)}
-          onSaved={() => void refreshAfterSecret()}
-        />
-      )}
     </>
   );
 }

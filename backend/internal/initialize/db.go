@@ -38,7 +38,8 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	if cfg.AutoMigrate {
-		// 先清旧版平台协议配置的遗留结构（ai_providers、ai_models.provider_key），幂等；不清的话旧库上新建模型会因 NOT NULL 报 500
+		// 先清旧版遗留的结构（ai_providers、ai_models.provider_key、模型软删除的 deleted_at 及已软删除的模型），幂等；
+		// 不清的话旧库上新建模型会因 NOT NULL 报 500，已软删除的模型也会在去掉 deleted_at 字段后重新出现
 		if err := repository.MigrateLegacyAIConfig(db); err != nil {
 			return nil, fmt.Errorf("migrate legacy ai config: %w", err)
 		}

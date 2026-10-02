@@ -6,24 +6,21 @@ import { DataTableToolbar } from "@/components/admin-ui/data-table-toolbar";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
+import { MODEL_STATUS_LABEL, modelHealth } from "@/utils/admin/health";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
 
 import { KIND_ORDER } from "../kind";
 import { ModelRows } from "./model-rows";
 
-/** 状态筛选（设计稿的“全部状态”下拉） */
+/** 状态筛选：与状态列一致（在线 / 不可用 / 已下线 / 未上线），外加“有未上线的修改” */
 const STATES: Array<[string, string]> = [
   ["", "全部状态"],
-  ["on", "上架中"],
-  ["draft", "有未发布草稿"],
-  ["unpublished", "从未发布"],
+  ["online", MODEL_STATUS_LABEL.online],
+  ["broken", MODEL_STATUS_LABEL.broken],
+  ["offline", MODEL_STATUS_LABEL.offline],
+  ["unpublished", MODEL_STATUS_LABEL.unpublished],
+  ["draft", "有未上线的修改"],
 ];
-
-const matchState = (item: ConfigListItem, state: string) =>
-  !state ||
-  (state === "on" && !!item.enabled) ||
-  (state === "draft" && item.has_unpublished_draft) ||
-  (state === "unpublished" && item.published_revision_no === null);
 
 /**
  * 模型列表（设计稿样式）：卡片里是工具栏（搜索、能力分段、渠道 / 状态下拉、计数）+ 表格 + 分页。
@@ -41,6 +38,9 @@ export function ModelTable({
   onTest,
   onToggleEnabled,
   onRollback,
+  onDelete,
+  channelsReady,
+  initialState = "",
   onNew,
   onRetry,
 }: {
@@ -55,13 +55,17 @@ export function ModelTable({
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
   onRollback: (key: string, revision: ConfigRevision) => void;
+  onDelete: (item: ConfigListItem) => void;
+  channelsReady: boolean;
+  /** 初始的状态筛选（总览页“去查看”带过来的 ?status=） */
+  initialState?: string;
   onNew: () => void;
   onRetry: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
   const [channel, setChannel] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState(initialState);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   /** 改筛选条件后回到第一页 */
@@ -78,9 +82,12 @@ export function ModelTable({
           [item.key, item.label, item.name].some((t) => (t ?? "").toLowerCase().includes(text))) &&
         (!kind || item.kind === kind) &&
         (!channel || item.channel === channel) &&
-        matchState(item, state),
+        (!state ||
+          (state === "draft"
+            ? item.has_unpublished_draft
+            : modelHealth(item, channels, plugins, channelsReady).status === state)),
     );
-  }, [models, query, kind, channel, state]);
+  }, [models, query, kind, channel, state, channels, plugins, channelsReady]);
 
   const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
   const current = Math.min(page, pageCount);
@@ -164,6 +171,8 @@ export function ModelTable({
           onTest={onTest}
           onToggleEnabled={onToggleEnabled}
           onRollback={onRollback}
+          onDelete={onDelete}
+          channelsReady={channelsReady}
           onRetry={onRetry}
         />
         {shown.length > pageSize && (

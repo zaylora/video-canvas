@@ -32,7 +32,9 @@ type MemRepo struct {
 	SaveVersionErr error               // 非空时 SaveVersion 返回它
 	ActiveTaskRefs map[uint64]int64    // 版本 id → 快照引用它的非终态任务数
 	Loads          []model.ChannelLoad // ChannelLoads 的返回值
-	DeleteInUse    bool                // 为 true 时 DeleteVersion 一律返回 ErrInUse（模拟并发下被新引用）
+	DeleteInUse    bool                // 为 true 时 DeleteVersion / DeleteChannel / DeletePlugin / DeleteModel 一律返回 ErrInUse（模拟并发下被新引用）
+
+	ChannelTaskRefs map[string]int64 // 渠道 key → 快照引用它的非终态任务数
 }
 
 func NewMemRepo() *MemRepo {
@@ -44,6 +46,8 @@ func NewMemRepo() *MemRepo {
 		Versions: map[uint64]*model.AIPluginVersion{},
 
 		ActiveTaskRefs: map[uint64]int64{},
+
+		ChannelTaskRefs: map[string]int64{},
 	}
 }
 

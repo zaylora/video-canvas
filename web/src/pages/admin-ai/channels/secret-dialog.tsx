@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 
 import { FormField } from "@/components/admin-ui/form-field";
 import { Notice } from "@/components/admin-ui/notice";
+import { openDialog } from "@/store/dialog";
 import { useAliveRef } from "../use-admin";
 
 /**
@@ -23,7 +24,9 @@ import { useAliveRef } from "../use-admin";
  * - 明文只存在于这个对话框的 state 里，提交时取走并立刻清空，不进 URL、store、localStorage、日志；
  * - 已设置时先在对话框内二次确认“将覆盖现有 Key”，第二次点击才真正提交。
  * @param secretSet 渠道当前是否已设置 Key
+ * 页面上直接打开时走全局弹窗 store（openDialog(SecretDialog, …)）；在渠道抽屉里是受控的子弹窗。
  * @param onSaved 保存成功后（刷新渠道的“已设置”状态）
+ * @param onExited 退出动画播完（store 管理时传入）
  */
 export function SecretDialog({
   open,
@@ -32,6 +35,7 @@ export function SecretDialog({
   secretSet,
   onClose,
   onSaved,
+  onExited,
 }: {
   open: boolean;
   channelKey: string;
@@ -39,20 +43,24 @@ export function SecretDialog({
   secretSet: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onExited?: () => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      onOpenChangeComplete={(next) => !next && onExited?.()}
+    >
       <DialogContent className="sm:max-w-md">
-        {/* 每次打开都重新挂载：输入框永远是空的，上一次的输入不会残留 */}
-        {open && (
-          <SecretBody
-            channelKey={channelKey}
-            channelName={channelName}
-            secretSet={secretSet}
-            onClose={onClose}
-            onSaved={onSaved}
-          />
-        )}
+        {/* 不用 open && 包：关闭时内容要留到退出动画播完。弹层收起后 Base UI 会卸载它，
+            下次打开重新挂载，输入框仍然从空白开始，上一次的输入不会残留 */}
+        <SecretBody
+          channelKey={channelKey}
+          channelName={channelName}
+          secretSet={secretSet}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -156,3 +164,14 @@ function SecretBody({
     </form>
   );
 }
+
+/**
+ * 用全局弹窗 store 打开 Key 弹窗（渠道页、总览页上直接打开时用）。
+ * @param onSaved 保存成功后（刷新渠道清单）；弹窗会自己关闭
+ */
+export const openSecretDialog = (props: {
+  channelKey: string;
+  channelName: string;
+  secretSet: boolean;
+  onSaved: () => void;
+}) => openDialog(SecretDialog, props);

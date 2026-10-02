@@ -7,6 +7,8 @@
  *   POST   /admin/ai/plugins                           上传插件（multipart，字段 file）
  *   PUT    /admin/ai/plugins/:key/enabled              启停，body = {enabled}
  *   DELETE /admin/ai/plugins/:key/versions/:version    删除未被引用的版本
+ *   GET    /admin/ai/{plugins|channels|models}/:key/delete-check   删除预检：谁在引用它
+ *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（模型连同全部历史版本，key 之后可以重新使用）
  *   GET    /admin/ai/channels[/:key]                   渠道列表 / 详情
  *   GET    /admin/ai/channels/loads                    各渠道当前的生成中 / 排队任务数
  *   POST   /admin/ai/channels                          新建渠道
@@ -22,6 +24,8 @@
  *   GET    /admin/ai/test-runs/:id[/trace]             试跑任务视图 / 追踪
  *   GET    /admin/ai/schema/model                      模型配置 JSON Schema
  */
+import type { DeleteTarget } from "./type";
+
 const P = "/admin/ai";
 const seg = (value: string | number) => encodeURIComponent(String(value));
 const model = (key: string) => `${P}/models/${seg(key)}`;
@@ -31,6 +35,7 @@ export const adminAiEndpoints = {
   me: () => `${P}/me`,
 
   plugins: () => `${P}/plugins`,
+  plugin: (key: string) => `${P}/plugins/${seg(key)}`,
   pluginEnabled: (key: string) => `${P}/plugins/${seg(key)}/enabled`,
   pluginVersion: (key: string, version: string) =>
     `${P}/plugins/${seg(key)}/versions/${seg(version)}`,
@@ -57,6 +62,8 @@ export const adminAiEndpoints = {
   testRunResult: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}`,
   testRunTrace: (taskId: number | string) => `${P}/test-runs/${seg(taskId)}/trace`,
   modelSchema: () => `${P}/schema/model`,
+  deleteCheck: (target: DeleteTarget, key: string) => `${P}/${target}s/${seg(key)}/delete-check`,
+  remove: (target: DeleteTarget, key: string) => `${P}/${target}s/${seg(key)}`,
 } as const;
 
 /** 保存草稿的请求体：正文放 body，备注放 note */

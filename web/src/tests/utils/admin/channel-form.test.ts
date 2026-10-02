@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ChannelView, PluginView } from "@/api/admin-ai/type";
+import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin-ai/type";
 import {
   buildChannelRequest,
   channelFormFromView,
@@ -8,6 +8,8 @@ import {
   CHANNEL_KEY_PATTERN,
   emptyChannelForm,
   rebaseSettings,
+  suggestChannelKey,
+  upgradeChannelRequest,
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
 import { settingFields } from "@/utils/admin/settings-form";
@@ -228,5 +230,80 @@ describe("buildChannelRequest（编辑）", () => {
     expect(changed.ok && changed.update.settings).toEqual({ region: "global" });
     const same = buildChannelRequest(form, fields, original);
     expect(same.ok && "settings" in same.update).toBe(false);
+  });
+});
+
+describe("suggestChannelKey", () => {
+  test("名称有英文就用名称，纯中文名用插件 key + 主机名", () => {
+    expect(suggestChannelKey("NewAPI Main", "newapi", "https://gw.x.com", [])).toBe("newapi-main");
+    expect(suggestChannelKey("主线", "newapi", "https://www.gw.example.com", [])).toBe("newapi-gw");
+    expect(suggestChannelKey("主线", "", "坏地址", [])).toBe("channel");
+  });
+
+  test("重名时加序号，结果符合 key 格式", () => {
+    const key = suggestChannelKey("主线", "kling", "https://api.klingai.com", [
+      "kling-api",
+      "kling-api-2",
+    ]);
+    expect(key).toBe("kling-api-3");
+    expect(CHANNEL_KEY_PATTERN.test(key)).toBe(true);
+    expect(CHANNEL_KEY_PATTERN.test(suggestChannelKey("x".repeat(80), "", "", []))).toBe(true);
+  });
+});
+
+describe("upgradeChannelRequest", () => {
+  const version = (id: number, ver: string, meta: PluginMeta): PluginVersionView => ({
+    id,
+    plugin_key: "kling",
+    version: ver,
+    sha256: "",
+    created_at: "",
+    created_by: 0,
+    channel_count: 0,
+    meta,
+  });
+  const plugins: PluginView[] = [
+    {
+      key: "kling",
+      name: "可灵",
+      source: "uploaded",
+      enabled: true,
+      updated_at: "",
+      versions: [
+        version(3, "0.3.0", {
+          auth: { type: "bearer" },
+          channelSettings: { region: { type: "enum", label: "区域", options: ["cn", "global"] } },
+        }),
+        version(2, "0.2.0", {
+          auth: { type: "custom" },
+          channelSettings: {
+            region: { type: "enum", label: "区域", options: ["cn", "global"] },
+            ttl: { type: "number", label: "有效期" },
+          },
+        }),
+      ],
+    },
+  ];
+
+  test("带过同名设置、丢弃新版本没有的设置、不再需要读 Key 时关掉 allow_credentials", () => {
+    const result = upgradeChannelRequest(
+      view({ settings: { region: "global", ttl: 30 } }),
+      plugins,
+      "0.3.0",
+    );
+    expect(result).toEqual({
+      update: {
+        plugin_key: "kling",
+        plugin_version: "0.3.0",
+        settings: { region: "global" },
+        allow_credentials: false,
+      },
+      dropped: ["有效期"],
+      credsReset: true,
+    });
+  });
+
+  test("目标版本不存在返回 null", () => {
+    expect(upgradeChannelRequest(view(), plugins, "9.9.9")).toBeNull();
   });
 });

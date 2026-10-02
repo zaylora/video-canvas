@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>后台交互优化演示</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // 与 AI配置管理-演示.html 相同的 token 命名：颜色走 CSS 变量，明暗主题只换变量
+  const c = (v) => `hsl(var(--${v}) / <alpha-value>)`;
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
+          mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+        },
+        colors: {
+          border: c("border"), input: c("input"), ring: c("ring"),
+          background: c("background"), foreground: c("foreground"),
+          primary: { DEFAULT: c("primary"), foreground: c("primary-foreground") },
+          muted: { DEFAULT: c("muted"), foreground: c("muted-foreground") },
+          accent: { DEFAULT: c("accent"), foreground: c("accent-foreground") },
+          card: { DEFAULT: c("card"), foreground: c("card-foreground") },
+        },
+        borderColor: { DEFAULT: "hsl(var(--border))" },
+        borderRadius: { xl: "calc(var(--radius) + 4px)", lg: "var(--radius)", md: "calc(var(--radius) - 2px)" },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    --radius: 0.625rem;
+    --background: 0 0% 100%; --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%; --card-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
+    --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%; --accent-foreground: 240 5.9% 10%;
+    --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
+    color-scheme: light;
+  }
+  .dark {
+    --background: 240 10% 3.9%; --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%; --card-foreground: 0 0% 98%;
+    --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
+    --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%; --accent-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%; --input: 240 3.7% 18%; --ring: 240 4.9% 83.9%;
+    color-scheme: dark;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  [data-lucide] { width: 1em; height: 1em; }
+  .btn { display:inline-flex; align-items:center; gap:.375rem; height:2rem; padding:0 .75rem; border-radius:calc(var(--radius) - 2px); font-size:.8125rem; font-weight:500; white-space:nowrap; transition:background .15s; }
+  .btn:disabled { opacity:.5; pointer-events:none; }
+  .btn-primary { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+  .btn-primary:hover { opacity:.9; }
+  .btn-outline { border:1px solid hsl(var(--border)); background:hsl(var(--background)); }
+  .btn-outline:hover, .btn-ghost:hover { background:hsl(var(--accent)); }
+  .btn-danger { background:#dc2626; color:#fff; }
+  .btn-danger:hover { background:#b91c1c; }
+  .btn-sm { height:1.75rem; padding:0 .5rem; font-size:.75rem; }
+  .input { height:2.25rem; width:100%; border:1px solid hsl(var(--input)); border-radius:calc(var(--radius) - 2px); background:transparent; padding:0 .75rem; font-size:.875rem; outline:none; }
+  .input:focus { box-shadow:0 0 0 2px hsl(var(--ring) / .3); }
+  .tag { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.0625rem .4rem; font-size:.6875rem; font-weight:500; border:1px solid transparent; white-space:nowrap; }
+  .t-ok { background:rgb(16 185 129 / .12); color:rgb(5 150 105); }
+  .t-bad { background:rgb(239 68 68 / .12); color:rgb(220 38 38); }
+  .t-warn { background:rgb(245 158 11 / .14); color:rgb(180 83 9); }
+  .t-info { background:rgb(14 165 233 / .12); color:rgb(2 132 199); }
+  .t-mute { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+  .dark .t-ok { color:rgb(52 211 153); } .dark .t-bad { color:rgb(248 113 113); }
+  .dark .t-warn { color:rgb(251 191 36); } .dark .t-info { color:rgb(56 189 248); }
+  .note { display:none; }
+  .show-notes .note { display:flex; }
+  .note { gap:.375rem; align-items:flex-start; border:1px dashed rgb(139 92 246 / .6); background:rgb(139 92 246 / .07); color:rgb(109 40 217); border-radius:.5rem; padding:.375rem .625rem; font-size:.75rem; line-height:1.45; }
+  .dark .note { color:rgb(196 181 253); }
+  .menu { position:absolute; right:0; top:calc(100% + 4px); z-index:30; min-width:11rem; border:1px solid hsl(var(--border)); background:hsl(var(--card)); border-radius:.5rem; padding:.25rem; box-shadow:0 8px 24px rgb(0 0 0 / .12); }
+  .menu button { display:flex; width:100%; align-items:center; gap:.5rem; padding:.375rem .5rem; border-radius:.375rem; font-size:.8125rem; text-align:left; }
+  .menu button:hover { background:hsl(var(--accent)); }
+  .menu .danger { color:rgb(220 38 38); }
+  .menu hr { margin:.25rem -.25rem; border-color:hsl(var(--border)); }
+  .switch { position:relative; width:2.1rem; height:1.2rem; border-radius:999px; background:hsl(var(--input)); transition:background .15s; flex-shrink:0; }
+  .switch[aria-checked="true"] { background:hsl(var(--primary)); }
+  .switch::after { content:""; position:absolute; top:.15rem; left:.15rem; width:.9rem; height:.9rem; border-radius:999px; background:hsl(var(--background)); transition:transform .15s; }
+  .switch[aria-checked="true"]::after { transform:translateX(.9rem); }
+  .nav-item[aria-current="page"] { background:hsl(var(--accent)); font-weight:500; }
+  @keyframes spin { to { transform:rotate(360deg); } } .spin { animation:spin 1s linear infinite; }
+  /* 浮层进出场：与 shadcn Dialog / Sheet 的动效一致；关闭时先播退出动画，播完再移除节点 */
+  @keyframes fade-in { from { opacity:0; } } @keyframes fade-out { to { opacity:0; } }
+  @keyframes zoom-in { from { opacity:0; transform:scale(.96) translateY(4px); } }
+  @keyframes zoom-out { to { opacity:0; transform:scale(.96) translateY(4px); } }
+  @keyframes slide-in { from { transform:translateX(100%); } } @keyframes slide-out { to { transform:translateX(100%); } }
+  @keyframes toast-in { from { opacity:0; transform:translateY(8px); } } @keyframes toast-out { to { opacity:0; transform:translateY(8px); } }
+  .ov[data-state="open"] { animation:fade-in .16s ease-out; }
+  .ov[data-state="closed"] { animation:fade-out .14s ease-in forwards; pointer-events:none; }
+  .ov[data-state="open"] .dlg { animation:zoom-in .2s cubic-bezier(.16,1,.3,1); }
+  .ov[data-state="closed"] .dlg { animation:zoom-out .14s ease-in forwards; }
+  .ov[data-state="open"] .sht { animation:slide-in .28s cubic-bezier(.32,.72,0,1); }
+  .ov[data-state="closed"] .sht { animation:slide-out .2s ease-in forwards; }
+  .toast-card[data-state="open"] { animation:toast-in .2s cubic-bezier(.16,1,.3,1); }
+  .toast-card[data-state="closed"] { animation:toast-out .15s ease-in forwards; }
+  @media (prefers-reduced-motion: reduce) { .ov, .ov *, .toast-card { animation-duration:1ms !important; } }
+</style>
+</head>
+<body class="font-sans antialiased show-notes">
+<div class="flex h-svh">
+  <!-- 侧栏 -->
+  <aside class="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
+    <div class="flex h-14 items-center gap-2 border-b px-4">
+      <span class="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"><i data-lucide="clapperboard"></i></span>
+      <div class="leading-tight"><div class="text-sm font-semibold">Video Canvas</div><div class="text-[11px] text-muted-foreground">后台管理</div></div>
+    </div>
+    <nav class="flex-1 space-y-0.5 p-2 text-sm" id="nav"></nav>
+    <div class="border-t p-3 text-[11px] leading-relaxed text-muted-foreground">
+      交互原型 · 数据在内存里，刷新复原。紫色虚线框是设计标注。
+    </div>
+  </aside>
+
+  <div class="flex min-w-0 flex-1 flex-col">
+    <header class="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+      <select id="mnav" class="input w-32 md:hidden"></select>
+      <button class="btn btn-outline hidden w-72 justify-start text-muted-foreground sm:inline-flex" onclick="openCmd()">
+        <i data-lucide="search"></i>搜索模型、渠道、插件…<kbd class="ml-auto rounded border px-1 font-mono text-[10px]">⌘K</kbd>
+      </button>
+      <div class="ml-auto flex items-center gap-2">
+        <label class="flex items-center gap-2 text-xs text-muted-foreground"><span>设计标注</span>
+          <button class="switch" id="notesSw" aria-checked="true" onclick="toggleNotes()"></button></label>
+        <span class="tag t-info"><i data-lucide="shield"></i>超级管理员</span>
+        <button class="btn btn-ghost btn-sm" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换主题"><i data-lucide="sun-moon"></i></button>
+      </div>
+    </header>
+    <main class="min-h-0 flex-1 overflow-y-auto"><div class="mx-auto max-w-6xl p-4 sm:p-6" id="page"></div></main>
+  </div>
+</div>
+<div id="layer"></div>
+<div id="toast" class="pointer-events-none fixed bottom-5 left-1/2 z-50 -translate-x-1/2"></div>
+
+<script>
+// ------------------------------------------------------------ 数据
+const KIND = { video: "视频", image: "图片", audio: "音频" };
+const S = {
+  page: "overview",
+  plugins: [
+    { key: "newapi", name: "New API", builtin: true, enabled: true, versions: ["1.2.0"], kinds: ["video", "image"], auth: "bearer", import: true, url: "https://", desc: "兼容 OpenAI 格式的聚合网关" },
+    { key: "kling", name: "可灵 Kling", builtin: false, enabled: false, versions: ["1.3.0", "1.2.0"], kinds: ["video"], auth: "bearer", import: false, url: "https://api.klingai.com", desc: "可灵官方视频接口" },
+    { key: "old-test", name: "测试插件", builtin: false, enabled: true, versions: ["0.1.0"], kinds: ["image"], auth: "none", import: false, url: "", desc: "早期调试用，已不再使用" },
+  ],
+  channels: [
+    { key: "newapi-main", name: "NewAPI 主线", plugin: "newapi", version: "1.2.0", url: "https://gw.example.com", keySet: true, enabled: true, check: "ok" },
+    { key: "newapi-backup", name: "备用线路", plugin: "newapi", version: "1.2.0", url: "https://gw2.example.com", keySet: false, enabled: true, check: null },
+    { key: "kling-official", name: "可灵官方", plugin: "kling", version: "1.2.0", url: "https://api.klingai.com", keySet: true, enabled: true, check: "ok" },
+    { key: "test-ch", name: "测试渠道", plugin: "newapi", version: "1.2.0", url: "http://localhost:3000", keySet: true, enabled: false, check: "fail" },
+  ],
+  models: [
+    { key: "seedance-2-pro", label: "Seedance 2.0 Pro", kind: "video", channel: "newapi-main", published: true, enabled: true, draft: false },
+    { key: "gpt-image-2", label: "GPT Image 2", kind: "image", channel: "newapi-main", published: true, enabled: true, draft: true },
+    { key: "kling-2-1", label: "可灵 2.1", kind: "video", channel: "kling-official", published: true, enabled: true, draft: false },
+    { key: "flux-dev", label: "Flux Dev", kind: "image", channel: "newapi-backup", published: false, enabled: false, draft: true },
+    { key: "test-model", label: "测试模型", kind: "image", channel: "test-ch", published: true, enabled: false, draft: false },
+  ],
+  selChannel: "newapi-main",
+  selPlugin: "newapi",
+  modelFilter: "all",
+};
+const plugin = (k) => S.plugins.find((p) => p.key === k);
+const channel = (k) => S.channels.find((c) => c.key === k);
+const needsKey = (ch) => (plugin(ch.plugin)?.auth ?? "bearer") !== "none";
+
+/** 渠道真实可用性：插件停用 / 渠道停用 / 缺 Key 都向下传播 */
+function channelHealth(ch) {
+  const p = plugin(ch.plugin);
+  if (!ch.enabled) return { tone: "mute", text: "已停用" };
+  if (!p) return { tone: "bad", text: "插件不存在" };
+  if (!p.enabled) return { tone: "bad", text: `插件「${p.name}」已停用` };
+  if (needsKey(ch) && !ch.keySet) return { tone: "warn", text: "未设置 Key" };
+  if (ch.check === "fail") return { tone: "bad", text: "连通性检查失败" };
+  return { tone: "ok", text: "可用" };
+}
+/** 模型对用户只露一个状态 */
+function modelHealth(m) {
+  const ch = channel(m.channel);
+  const blocker = !ch ? "渠道不存在" : channelHealth(ch).tone === "ok" ? null : `渠道${channelHealth(ch).text === "已停用" ? "已停用" : "：" + channelHealth(ch).text}`;
+  if (!m.published) return { tone: "mute", text: "未上线", blocker };
+  if (!m.enabled) return { tone: "mute", text: "已下线", blocker };
+  if (blocker) return { tone: "bad", text: "不可用", blocker };
+  return { tone: "ok", text: "在线", blocker: null };
+}
+
+// ------------------------------------------------------------ 工具
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+const icon = (n, cls = "") => `<i data-lucide="${n}" class="${cls}"></i>`;
+const tag = (tone, text, ic) => `<span class="tag t-${tone}">${ic ? icon(ic) : ""}${esc(text)}</span>`;
+const note = (text) => `<div class="note">${icon("sparkles", "mt-0.5 shrink-0")}<span>${text}</span></div>`;
+function toast(text, undo) {
+  const el = document.getElementById("toast");
+  el.innerHTML = `<div class="toast-card pointer-events-auto flex items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-sm shadow-lg" data-state="open">${icon("circle-check", "text-emerald-500")}<span>${esc(text)}</span>${undo ? `<button class="btn btn-outline btn-sm" id="undoBtn">撤销</button>` : ""}</div>`;
+  const card = el.firstElementChild;
+  const hide = () => { if (card.isConnected) dismiss(card); };
+  if (undo) document.getElementById("undoBtn").onclick = () => { undo(); hide(); render(); };
+  lucide.createIcons();
+  clearTimeout(toast.t);
+  toast.t = setTimeout(hide, 4000);
+}
+function toggleNotes() {
+  const on = document.body.classList.toggle("show-notes");
+  document.getElementById("notesSw").setAttribute("aria-checked", on);
+}
+let openMenuId = null;
+function menu(id, items) {
+  const open = openMenuId === id;
+  return `<div class="relative inline-block">
+    <button class="btn btn-outline btn-sm px-1.5" onclick="event.stopPropagation();openMenuId=${open ? "null" : `'${id}'`};render()" aria-label="更多操作">${icon("ellipsis")}</button>
+    ${open ? `<div class="menu" onclick="event.stopPropagation()">${items.map((it) => (it === "-" ? "<hr>" : `<button class="${it.danger ? "danger" : ""}" onclick="openMenuId=null;${it.on}">${icon(it.icon)}${esc(it.label)}</button>`)).join("")}</div>` : ""}
+  </div>`;
+}
+document.addEventListener("click", () => { if (openMenuId) { openMenuId = null; render(); } });
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openCmd(); }
+  if (e.key === "Escape") closeLayer();
+});
+function go(page, extra = {}) { Object.assign(S, extra, { page }); closeLayer(); render(); }
+
+// ------------------------------------------------------------ 浮层
+/** 当前打开（不在退出动画里）的浮层 */
+const openOverlay = () => document.querySelector('#layer > .ov[data-state="open"]');
+/** 播完退出动画再移除节点；正在退出的节点去掉 id，免得和新打开的浮层撞 id */
+function dismiss(node, done) {
+  node.dataset.state = "closed";
+  node.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  let removed = false;
+  const remove = () => { if (!removed) { removed = true; node.remove(); done?.(); } };
+  node.addEventListener("animationend", (e) => { if (e.target === node) remove(); });
+  setTimeout(remove, 320); // 兜底：动画被禁用或没触发 animationend
+}
+function closeLayer() { const node = openOverlay(); if (node) dismiss(node); }
+/**
+ * 打开浮层。已有同类浮层打开时只换内容、不重播入场动画（删除对话框迁移后刷新、新建渠道切换状态都走这里）；
+ * 否则关掉旧的（播退出动画）并新开一个。
+ */
+function overlay(type, panelClass, overlayClass, inner) {
+  const current = openOverlay();
+  if (current && current.dataset.type === type) {
+    const panel = current.firstElementChild;
+    panel.className = panelClass;
+    panel.innerHTML = inner;
+  } else {
+    if (current) dismiss(current);
+    const node = document.createElement("div");
+    node.className = `ov fixed inset-0 z-40 bg-black/50 ${overlayClass}`;
+    node.dataset.state = "open";
+    node.dataset.type = type;
+    node.onclick = (e) => { if (e.target === node) closeLayer(); };
+    node.innerHTML = `<div class="${panelClass}">${inner}</div>`;
+    document.getElementById("layer").appendChild(node);
+  }
+  lucide.createIcons();
+}
+function dialog(inner, width = "max-w-lg") {
+  overlay("dialog", `dlg w-full ${width} rounded-xl border bg-card p-5 shadow-xl`, "grid place-items-center p-4", inner);
+}
+function sheet(inner) {
+  overlay("sheet", "sht absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l bg-card shadow-xl", "", inner);
+}
+
+// ------------------------------------------------------------ 删除（统一模式）
+/** 删除预检：返回阻断原因，每条可带一键处理 */
+function deleteCheck(type, key) {
+  if (type === "model") {
+    const m = S.models.find((x) => x.key === key);
+    return { name: m.label, confirmText: null, blockers: m.enabled ? [{ text: "模型还在上架，用户正在使用。", fix: { label: "下架并删除", on: `S.models.find(x=>x.key==='${key}').enabled=false;doDelete('model','${key}')` } }] : [],
+      cascade: ["草稿与全部历史版本", "删除后标识「" + key + "」不能再使用"], keep: "历史生成任务照常可看（任务存了配置快照）" };
+  }
+  if (type === "channel") {
+    const ch = channel(key);
+    const used = S.models.filter((m) => m.channel === key);
+    const others = S.channels.filter((c) => c.key !== key);
+    return { name: ch.name, confirmText: ch.name,
+      blockers: used.length ? [{ text: `${used.length} 个模型在用这个渠道：${used.map((m) => m.label).join("、")}`, migrate: { models: used.map((m) => m.key), options: others } }] : [],
+      cascade: ["渠道的 Key（加密存储，一并删除）", "连通性检查记录"], keep: "历史生成任务照常可看" };
+  }
+  const p = plugin(key);
+  const used = S.channels.filter((c) => c.plugin === key);
+  const blockers = [];
+  if (p.builtin) blockers.push({ text: "内置插件随系统发布，不能删除，只能停用。" });
+  if (used.length) blockers.push({ text: `${used.length} 个渠道在用：${used.map((c) => c.name).join("、")}`, fix: { label: "去渠道页处理", on: `go('channels',{selChannel:'${used[0].key}'})` } });
+  return { name: p.name, confirmText: p.key, blockers, cascade: [`全部 ${p.versions.length} 个版本的代码`], keep: "历史生成任务照常可看" };
+}
+const TYPE_LABEL = { model: "模型", channel: "渠道", plugin: "插件" };
+function openDelete(type, key) {
+  const r = deleteCheck(type, key);
+  const blocked = r.blockers.length > 0;
+  dialog(`
+    <div class="flex items-start gap-3">
+      <span class="grid size-9 shrink-0 place-items-center rounded-full ${blocked ? "bg-amber-500/15 text-amber-600" : "bg-red-500/15 text-red-600"}">${icon(blocked ? "lock" : "trash-2")}</span>
+      <div class="min-w-0 flex-1">
+        <h2 class="font-semibold">${blocked ? "暂时不能删除" : "删除" + TYPE_LABEL[type] + "？"}「${esc(r.name)}」</h2>
+        <p class="mt-1 text-sm text-muted-foreground">${blocked ? "先处理下面的问题，处理完这里会自动刷新。" : "删除后不能撤销。"}</p>
+      </div>
+    </div>
+    ${blocked ? `<div class="mt-4 space-y-2">${r.blockers.map((b) => `
+      <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+        <div class="flex items-start gap-2">${icon("circle-alert", "mt-0.5 shrink-0 text-amber-600")}<span class="flex-1">${esc(b.text)}</span></div>
+        ${b.fix ? `<div class="mt-2 flex justify-end"><button class="btn btn-outline btn-sm" onclick="${b.fix.on}">${esc(b.fix.label)}</button></div>` : ""}
+        ${b.migrate ? `<div class="mt-2.5 flex items-center gap-2 border-t pt-2.5">
+          <span class="shrink-0 text-xs text-muted-foreground">全部迁到</span>
+          <select id="migTo" class="input h-8 text-xs">${b.migrate.options.map((o) => `<option value="${o.key}">${esc(o.name)}（${channelHealth(o).text}）</option>`).join("")}</select>
+          <button class="btn btn-outline btn-sm" onclick="migrate(${esc(JSON.stringify(b.migrate.models))},'${type}','${key}')">迁移</button></div>` : ""}
+      </div>`).join("")}</div>` : `
+      <div class="mt-4 grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs">
+        <div><span class="text-muted-foreground">一起删除：</span>${r.cascade.map(esc).join("；")}</div>
+        <div><span class="text-muted-foreground">不受影响：</span>${esc(r.keep)}</div>
+      </div>
+      ${r.confirmText ? `<label class="mt-3 block text-sm">输入 <code class="rounded bg-muted px-1 font-mono">${esc(r.confirmText)}</code> 确认
+        <input class="input mt-1.5" id="confirmInput" autocomplete="off" oninput="document.getElementById('delBtn').disabled=this.value!==${esc(JSON.stringify(r.confirmText))}"></label>` : ""}`}
+    <div class="mt-5 flex justify-end gap-2">
+      <button class="btn btn-outline" onclick="closeLayer()">${blocked ? "关闭" : "取消"}</button>
+      ${blocked ? "" : `<button class="btn btn-danger" id="delBtn" ${r.confirmText ? "disabled" : ""} onclick="doDelete('${type}','${key}')">${icon("trash-2")}删除</button>`}
+    </div>
+    <div class="mt-4">${note(type === "model" ? "模型：仍上架时给「下架并删除」一步完成；软删除，历史任务不受影响。" : type === "channel" ? "渠道：有模型引用时不让删，但就地给出「迁移到其他渠道」，迁完自动变成可删除；要输入名称确认。" : "插件：内置不能删；有渠道在用时给跳转；整个插件连同所有版本一起删，要输入 key 确认。")}</div>
+  `);
+}
+function migrate(keys, type, key) {
+  const to = document.getElementById("migTo").value;
+  S.models.forEach((m) => { if (keys.includes(m.key)) m.channel = to; });
+  toast(`已把 ${keys.length} 个模型迁到「${channel(to).name}」`);
+  render(); openDelete(type, key);
+}
+function doDelete(type, key) {
+  if (type === "model") { const i = S.models.findIndex((m) => m.key === key); S.models.splice(i, 1); }
+  if (type === "channel") { S.channels = S.channels.filter((c) => c.key !== key); S.selChannel = S.channels[0]?.key; }
+  if (type === "plugin") { S.plugins = S.plugins.filter((p) => p.key !== key); S.selPlugin = S.plugins[0]?.key; }
+  closeLayer(); toast(`已删除${TYPE_LABEL[type]}`); render();
+}
+
+// ------------------------------------------------------------ 其他浮层
+function openKey(chKey) {
+  const ch = channel(chKey);
+  dialog(`<h2 class="font-semibold">设置 Key ·「${esc(ch.name)}」</h2>
+    <p class="mt-1 text-sm text-muted-foreground">只写不读，保存后不再显示。保存时自动检查连通性。</p>
+    <input class="input mt-4 font-mono" placeholder="sk-..." id="keyInput" value="sk-demo-****">
+    <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" onclick="closeLayer()">取消</button>
+    <button class="btn btn-primary" onclick="channel('${chKey}').keySet=true;channel('${chKey}').check='ok';closeLayer();toast('Key 已保存，连通性检查通过');render()">保存并检查</button></div>`);
+}
+function confirmPluginToggle(key) {
+  const p = plugin(key);
+  if (!p.enabled) { p.enabled = true; toast(`插件「${p.name}」已启用`); render(); return; }
+  const chs = S.channels.filter((c) => c.plugin === key);
+  const online = S.models.filter((m) => chs.some((c) => c.key === m.channel) && modelHealth(m).text === "在线");
+  dialog(`<h2 class="font-semibold">停用插件「${esc(p.name)}」？</h2>
+    <p class="mt-2 text-sm text-muted-foreground">停用后 <b class="text-foreground">${chs.length} 个渠道、${online.length} 个在线模型</b>会不可用，进行中的任务不受影响。</p>
+    <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" onclick="closeLayer()">取消</button>
+    <button class="btn btn-danger" onclick="plugin('${key}').enabled=false;closeLayer();toast('插件已停用',()=>plugin('${key}').enabled=true);render()">停用</button></div>
+    <div class="mt-4">${note("现在停用插件是直接拨开关、没有确认，影响面却比停用渠道大。改成先算影响再确认，并给撤销。")}</div>`);
+}
+function upgradeAll(key) {
+  const p = plugin(key); const latest = p.versions[0];
+  const n = S.channels.filter((c) => c.plugin === key && c.version !== latest);
+  n.forEach((c) => (c.version = latest));
+  toast(`${n.length} 个渠道已切到 v${latest}`); render();
+}
+function openCmd() {
+  const items = [
+    ...S.models.map((m) => ({ g: "模型", t: m.label, on: `go('models')` })),
+    ...S.channels.map((c) => ({ g: "渠道", t: c.name, on: `go('channels',{selChannel:'${c.key}'})` })),
+    ...S.plugins.map((p) => ({ g: "插件", t: p.name, on: `go('plugins',{selPlugin:'${p.key}'})` })),
+    { g: "快捷操作", t: "新建渠道", on: `go('channels');openNewChannel()` },
+    { g: "快捷操作", t: "新建模型", on: `go('models');openModel()` },
+  ];
+  dialog(`<div class="-m-5"><div class="flex items-center gap-2 border-b px-4">${icon("search", "text-muted-foreground")}
+    <input class="h-12 flex-1 bg-transparent text-sm outline-none" placeholder="输入名称…" autofocus oninput="filterCmd(this.value)"></div>
+    <div class="max-h-80 overflow-y-auto p-2" id="cmdList">${items.map((it) => `<button data-t="${esc(it.t)}" class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-accent" onclick="${it.on}"><span>${esc(it.t)}</span><span class="text-xs text-muted-foreground">${it.g}</span></button>`).join("")}</div>
+    <div class="border-t p-3">${note("从 shadcn-admin 搬的命令面板（⌘K）：直接按名字跳转，加「新建」快捷操作。项目里已有 command.tsx。")}</div></div>`, "max-w-md");
+  openOverlay()?.querySelector("input")?.focus();
+}
+function filterCmd(q) { document.querySelectorAll("#cmdList button").forEach((b) => (b.style.display = b.dataset.t.toLowerCase().includes(q.toLowerCase()) ? "" : "none")); }
+
+// ------------------------------------------------------------ 新建渠道（一屏建完）
+let nc = null;
+function openNewChannel(pluginKey) {
+  nc = { plugin: pluginKey || S.plugins.find((p) => p.enabled)?.key, name: "", url: "", key: "", state: "edit" };
+  if (nc.plugin) nc.url = plugin(nc.plugin).url;
+  renderNewChannel();
+}
+const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "channel-" + (S.channels.length + 1);
+function renderNewChannel() {
+  const p = plugin(nc.plugin);
+  const showKey = p && p.auth !== "none";
+  const ok = nc.state === "ok";
+  sheet(`
+    <div class="border-b p-4"><h2 class="font-semibold">新建渠道</h2><p class="text-sm text-muted-foreground">选插件 → 填地址和 Key → 保存并检查，一屏完成。</p></div>
+    <div class="flex-1 space-y-5 overflow-y-auto p-4">
+      ${ok ? `<div class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div class="flex items-center gap-2 font-medium text-emerald-600">${icon("circle-check")}渠道已创建，连通性检查通过</div>
+          <p class="mt-1 text-sm text-muted-foreground">下一步：</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            ${p.import ? `<button class="btn btn-primary" onclick="closeLayer();toast('演示：打开导入对话框（批量勾选）')">${icon("download")}从这个渠道导入模型</button>` : ""}
+            <button class="btn btn-outline" onclick="go('models');openModel(null,'${nc.created}')">${icon("plus")}用这个渠道新建模型</button>
+          </div></div>
+          ${note("现在的「去上架模型」链接没带 ?channel=，到模型页要重新选渠道。这里两个下一步都带上渠道。")}` : `
+      <section><div class="mb-2 text-xs font-medium text-muted-foreground">1 · 选插件（接哪个平台）</div>
+        <div class="grid grid-cols-2 gap-2">${S.plugins.map((x) => `
+          <button class="rounded-lg border p-3 text-left text-sm ${x.key === nc.plugin ? "border-primary ring-1 ring-primary" : ""} ${x.enabled ? "" : "opacity-50"}" ${x.enabled ? "" : "disabled"} onclick="nc.plugin='${x.key}';nc.url=plugin('${x.key}').url;renderNewChannel()">
+            <div class="font-medium">${esc(x.name)}</div>
+            <div class="mt-1 text-xs text-muted-foreground">${x.kinds.map((k) => KIND[k]).join(" · ")}${x.enabled ? "" : " · 已停用"}</div></button>`).join("")}</div>
+        <p class="mt-1.5 text-xs text-muted-foreground">默认用最新版本 v${p?.versions[0] ?? "—"}，要指定旧版本到「高级设置」里改。</p></section>
+      <section class="space-y-3"><div class="text-xs font-medium text-muted-foreground">2 · 连接</div>
+        <label class="block text-sm">接口地址<input class="input mt-1 font-mono" placeholder="https://gw.example.com" value="${esc(nc.url)}" oninput="nc.url=this.value"></label>
+        ${showKey ? `<label class="block text-sm">API Key<input class="input mt-1 font-mono" placeholder="sk-..." value="${esc(nc.key)}" oninput="nc.key=this.value"><span class="mt-1 block text-xs text-muted-foreground">只写不读，保存后不再显示。</span></label>`
+          : `<p class="text-xs text-muted-foreground">这个插件不需要 Key。</p>`}
+        ${note("Key 直接在新建表单里填。现在要「先保存渠道 → 再开弹窗设 Key → 再手动点检查」三段。")}</section>
+      <section class="space-y-3"><div class="text-xs font-medium text-muted-foreground">3 · 名称</div>
+        <label class="block text-sm">显示名称<input class="input mt-1" placeholder="如 NewAPI 主线" value="${esc(nc.name)}" oninput="nc.name=this.value;document.getElementById('slug').textContent=slug(this.value)"></label>
+        <p class="text-xs text-muted-foreground">标识自动生成：<code class="font-mono" id="slug">${esc(slug(nc.name))}</code> <button class="underline">修改</button></p></section>
+      <details class="rounded-lg border p-3 text-sm"><summary class="cursor-pointer text-muted-foreground">高级设置（插件版本、限流、内网访问）</summary>
+        <div class="mt-3 space-y-2 text-xs text-muted-foreground"><div>插件版本：v${p?.versions[0] ?? "—"}（最新）</div><div>限流：不限</div><div>允许访问内网：关</div>
+        <div>允许插件读取 Key：${p?.auth === "custom" ? "插件要求，已自动开启" : "插件不需要，保持关闭"}</div></div></details>`}
+    </div>
+    <div class="flex justify-end gap-2 border-t p-4">
+      <button class="btn btn-outline" onclick="closeLayer()">${ok ? "完成" : "取消"}</button>
+      ${ok ? "" : `<button class="btn btn-primary" ${nc.state === "busy" ? "disabled" : ""} onclick="saveNewChannel()">${nc.state === "busy" ? icon("loader-circle", "spin") + "保存并检查中…" : icon("stethoscope") + "保存并检查"}</button>`}
+    </div>`);
+}
+function saveNewChannel() {
+  if (!nc.name.trim()) { toast("先填一个显示名称"); return; }
+  nc.state = "busy"; renderNewChannel();
+  setTimeout(() => {
+    const key = slug(nc.name);
+    const p = plugin(nc.plugin);
+    S.channels.push({ key, name: nc.name, plugin: nc.plugin, version: p.versions[0], url: nc.url, keySet: p.auth === "none" ? false : !!nc.key, enabled: true, check: "ok" });
+    S.selChannel = key; nc.created = key; nc.state = "ok"; render(); renderNewChannel();
+  }, 900);
+}
+
+// ------------------------------------------------------------ 模型编辑（只演示底栏的“上线”合并）
+function openModel(key, presetChannel) {
+  const m = key ? S.models.find((x) => x.key === key) : null;
+  const h = m ? modelHealth(m) : null;
+  const chKey = m?.channel ?? presetChannel ?? S.channels[0]?.key;
+  const blocker = chKey && channel(chKey) ? (channelHealth(channel(chKey)).tone === "ok" ? null : channelHealth(channel(chKey)).text) : "还没有选择渠道";
+  const primary = !m ? "上线" : h.text === "在线" ? "更新上线版本" : "上线";
+  dialog(`
+    <div class="flex items-center gap-2"><h2 class="text-lg font-semibold">${m ? esc(m.label) : "新建模型"}</h2>${m ? tag(h.tone, h.text) : ""}${m?.draft ? tag("info", "有未上线的修改") : ""}</div>
+    <p class="mt-1 text-sm text-muted-foreground">（基本信息 / 能力与参数 / 积分定价三个页签不变，这里只演示状态与按钮的简化）</p>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">展示名称<input class="input mt-1" value="${esc(m?.label ?? "")}" placeholder="如 Seedance 2.0 Pro"></label>
+      <label class="text-sm">所属渠道<select class="input mt-1">${S.channels.map((c) => `<option ${c.key === chKey ? "selected" : ""}>${esc(c.name)}（${channelHealth(c).text}）</option>`).join("")}</select></label>
+    </div>
+    <p class="mt-2 text-xs text-muted-foreground">标识自动生成：<code class="font-mono">${esc(m?.key ?? "seedance-2-pro")}</code> · 上游模型 ID 导入时自动带入</p>
+    ${blocker ? `<div class="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">${icon("circle-alert")}
+      <span class="flex-1">渠道${esc(blocker)}，暂时不能上线</span>
+      ${blocker === "未设置 Key" ? `<button class="btn btn-outline btn-sm" onclick="openKey('${chKey}')">设置 Key</button>` : ""}
+      <button class="btn btn-ghost btn-sm" onclick="toast('已复制：渠道链接 + 「请帮忙设置 Key」')">${icon("copy")}复制给运维</button></div>` : ""}
+    <div class="mt-5 flex flex-wrap items-center gap-2 border-t pt-4">
+      <button class="btn btn-ghost">${icon("flask-conical")}测试</button>
+      <div class="ml-auto flex gap-2">
+        <button class="btn btn-outline" onclick="closeLayer()">取消</button>
+        <button class="btn btn-outline" onclick="closeLayer();toast('已保存为草稿')">${icon("save")}保存草稿</button>
+        <button class="btn btn-primary" ${blocker ? "disabled" : ""} onclick="goLive('${m?.key ?? ""}')">${icon("rocket")}${primary}</button>
+      </div>
+    </div>
+    <div class="mt-4">${note("「保存并发布」+「在画布中上架」开关 合并成一个「上线」。现在发布完还要再拨开关用户才看得到，很容易漏。下线放到更多菜单和列表开关。")}</div>
+  `, "max-w-2xl");
+}
+function goLive(key) {
+  const m = S.models.find((x) => x.key === key);
+  if (m) Object.assign(m, { published: true, enabled: true, draft: false });
+  closeLayer(); toast(m ? `「${m.label}」已上线，用户现在就能在画布里选到` : "演示：新模型已上线"); render();
+}
+
+// ------------------------------------------------------------ 页面：总览
+function pageOverview() {
+  const usablePlugins = S.plugins.filter((p) => p.enabled).length;
+  const usableCh = S.channels.filter((c) => channelHealth(c).tone === "ok").length;
+  const online = S.models.filter((m) => modelHealth(m).text === "在线").length;
+  const todos = [];
+  S.channels.forEach((c) => {
+    const h = channelHealth(c);
+    const affected = S.models.filter((m) => m.channel === c.key && (m.enabled || !m.published)).length;
+    if (h.text === "未设置 Key") todos.push({ tone: "warn", icon: "key-round", text: `渠道「${c.name}」还没设置 Key${affected ? `，${affected} 个模型因此无法上线` : ""}`, btn: "设置 Key", on: `openKey('${c.key}')` });
+    if (h.text === "连通性检查失败") todos.push({ tone: "bad", icon: "unplug", text: `渠道「${c.name}」上次连通性检查失败（401 Unauthorized）`, btn: "重新检查", on: `channel('${c.key}').check='ok';toast('检查通过');render()` });
+  });
+  S.plugins.forEach((p) => {
+    const chs = S.channels.filter((c) => c.plugin === p.key);
+    const hit = S.models.filter((m) => chs.some((c) => c.key === m.channel) && m.enabled).length;
+    if (!p.enabled && chs.length) todos.push({ tone: "bad", icon: "plug-zap", text: `插件「${p.name}」已停用，${chs.length} 个渠道、${hit} 个上架模型实际不可用`, btn: "启用插件", on: `confirmPluginToggle('${p.key}')` });
+    const old = chs.filter((c) => c.version !== p.versions[0]);
+    if (old.length) todos.push({ tone: "info", icon: "circle-arrow-up", text: `${p.name} v${p.versions[0]} 可用，${old.length} 个渠道还在旧版本`, btn: "一键升级", on: `upgradeAll('${p.key}')` });
+  });
+  const drafts = S.models.filter((m) => m.draft && m.published).length;
+  if (drafts) todos.push({ tone: "info", icon: "file-pen", text: `${drafts} 个在线模型有改动还没上线`, btn: "去查看", on: `go('models',{modelFilter:'draft'})` });
+  const steps = [
+    { n: 1, title: "接入平台", sub: "插件", ok: usablePlugins > 0, stat: `${usablePlugins} 个可用`, btn: "上传插件", on: "go('plugins')" },
+    { n: 2, title: "配置渠道", sub: "地址 + Key", ok: usableCh > 0, stat: `${usableCh} / ${S.channels.length} 个可用`, btn: "新建渠道", on: "go('channels');openNewChannel()" },
+    { n: 3, title: "上线模型", sub: "用户可在画布选到", ok: online > 0, stat: `${online} 个在线`, btn: "新建模型", on: "go('models');openModel()" },
+  ];
+  const current = steps.find((s) => !s.ok);
+  return `
+    <div class="mb-6"><h1 class="text-2xl font-semibold tracking-tight">总览</h1><p class="mt-1 text-sm text-muted-foreground">现在系统能不能用、哪里需要处理，一眼看完。</p></div>
+    ${note("新增的后台首页。现在后台默认进「模型」页，空系统里用户不知道要先建插件和渠道；各种告警散落在三页的小字里。")}
+    <section class="mt-3 grid gap-3 md:grid-cols-3">${steps.map((s, i) => `
+      <div class="relative rounded-xl border p-4 ${current === s ? "border-primary ring-1 ring-primary" : ""}">
+        <div class="flex items-center gap-2"><span class="grid size-6 place-items-center rounded-full text-xs font-semibold ${s.ok ? "bg-emerald-500 text-white" : "bg-muted"}">${s.ok ? icon("check") : s.n}</span>
+          <span class="font-medium">${s.title}</span><span class="text-xs text-muted-foreground">${s.sub}</span></div>
+        <div class="mt-3 text-2xl font-semibold tabular-nums">${s.stat}</div>
+        <button class="btn ${current === s ? "btn-primary" : "btn-outline"} btn-sm mt-3" onclick="${s.on}">${icon("plus")}${s.btn}</button>
+        ${i < 2 ? `<span class="absolute -right-2.5 top-1/2 hidden -translate-y-1/2 text-muted-foreground md:block">${icon("chevron-right")}</span>` : ""}
+      </div>`).join("")}</section>
+    <section class="mt-6 rounded-xl border">
+      <div class="flex items-center gap-2 border-b px-4 py-3"><h2 class="font-medium">待处理</h2><span class="tag t-mute">${todos.length}</span></div>
+      ${todos.length ? todos.map((t) => `<div class="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+        <span class="grid size-8 shrink-0 place-items-center rounded-md t-${t.tone}">${icon(t.icon)}</span>
+        <span class="flex-1 text-sm">${esc(t.text)}</span>
+        <button class="btn btn-outline btn-sm" onclick="${t.on}">${t.btn}</button></div>`).join("")
+        : `<div class="p-8 text-center text-sm text-muted-foreground">${icon("party-popper")} 一切正常，没有要处理的事</div>`}
+    </section>
+    <div class="mt-3">${note("每条问题都带修复按钮，能就地修的就地修（设置 Key、重新检查、一键升级），不能的深链到对应位置。点几个试试，修完自动从列表消失。")}</div>`;
+}
+
+// ------------------------------------------------------------ 页面：模型
+function pageModels() {
+  const f = S.modelFilter;
+  const list = S.models.filter((m) => f === "all" || (f === "draft" ? m.draft : modelHealth(m).text === f));
+  const counts = (t) => S.models.filter((m) => modelHealth(m).text === t).length;
+  const chips = [["all", "全部", S.models.length], ["在线", "在线", counts("在线")], ["不可用", "不可用", counts("不可用")], ["已下线", "已下线", counts("已下线")], ["未上线", "未上线", counts("未上线")], ["draft", "有未上线的修改", S.models.filter((m) => m.draft).length]];
+  return `
+    <div class="mb-5 flex flex-wrap items-end gap-3"><div><h1 class="text-2xl font-semibold tracking-tight">模型</h1><p class="mt-1 text-sm text-muted-foreground">用户在画布里能选到的生成能力。</p></div>
+      <button class="btn btn-primary ml-auto" onclick="openModel()">${icon("plus")}新建模型</button></div>
+    <div class="mb-3 flex flex-wrap gap-1.5">${chips.map(([k, l, n]) => `<button class="btn btn-sm ${f === k ? "btn-primary" : "btn-outline"}" onclick="S.modelFilter='${k}';render()">${l}<span class="opacity-60">${n}</span></button>`).join("")}</div>
+    <div class="overflow-x-auto rounded-xl border"><table class="w-full text-sm">
+      <thead class="border-b text-left text-xs text-muted-foreground"><tr><th class="px-3 py-2.5 font-normal">模型</th><th class="px-3 font-normal">能力</th><th class="px-3 font-normal">渠道</th><th class="px-3 font-normal">状态</th><th class="px-3 font-normal">对用户开放</th><th class="px-3 text-right font-normal">操作</th></tr></thead>
+      <tbody>${list.map((m) => { const h = modelHealth(m); const ch = channel(m.channel); return `
+        <tr class="cursor-pointer border-b last:border-b-0 hover:bg-muted/40" onclick="openModel('${m.key}')">
+          <td class="px-3 py-3"><div class="font-medium">${esc(m.label)}</div><div class="font-mono text-xs text-muted-foreground">${esc(m.key)}</div></td>
+          <td class="px-3">${tag("mute", KIND[m.kind])}</td>
+          <td class="px-3">${esc(ch?.name ?? m.channel)}</td>
+          <td class="px-3"><div class="flex flex-col items-start gap-1">${tag(h.tone, h.text)}${h.blocker && h.text !== "已下线" ? `<span class="text-xs text-muted-foreground">${esc(h.blocker)}</span>` : ""}${m.draft ? tag("info", "有未上线的修改") : ""}</div></td>
+          <td class="px-3" onclick="event.stopPropagation()"><button class="switch" aria-checked="${m.enabled}" ${m.published ? "" : `title="未上线，打开编辑点「上线」"`} onclick="toggleModel('${m.key}')"></button></td>
+          <td class="whitespace-nowrap px-3 text-right" onclick="event.stopPropagation()">
+            <button class="btn btn-outline btn-sm" onclick="toast('演示：打开测试')">${icon("flask-conical")}测试</button>
+            ${menu("m-" + m.key, [{ icon: "history", label: "版本历史", on: "toast('演示：版本历史抽屉（时间线 + 差异 + 回滚）')" }, { icon: m.enabled ? "eye-off" : "rocket", label: m.enabled ? "下线" : "上线", on: `toggleModel('${m.key}')` }, "-", { icon: "trash-2", label: "删除…", danger: true, on: `openDelete('model','${m.key}')` }])}
+          </td></tr>`; }).join("") || `<tr><td colspan="6" class="p-8 text-center text-muted-foreground">没有匹配的模型</td></tr>`}</tbody></table></div>
+    <div class="mt-3 grid gap-2">
+      ${note("状态只有一个：在线 / 不可用（带原因）/ 已下线 / 未上线。插件停用、渠道缺 Key 会传到模型行上——现在这种模型仍显示「已上架 ✓」，用户却用不了。看「可灵 2.1」。")}
+      ${note("行操作：去掉和整行点击重复的「编辑」，换成更常用的「测试」；删除在更多菜单底部，与其他操作分开。")}
+    </div>`;
+}
+function toggleModel(key) {
+  const m = S.models.find((x) => x.key === key);
+  if (!m.published) { openModel(key); return; }
+  m.enabled = !m.enabled;
+  toast(m.enabled ? `「${m.label}」已上线` : `「${m.label}」已下线`, () => (m.enabled = !m.enabled));
+  render();
+}
+
+// ------------------------------------------------------------ 页面：渠道
+function pageChannels() {
+  const sel = channel(S.selChannel) ?? S.channels[0];
+  if (!sel) return `<h1 class="text-2xl font-semibold">渠道</h1><div class="mt-6 rounded-xl border p-10 text-center"><p class="text-sm text-muted-foreground">还没有渠道</p><button class="btn btn-primary mt-3" onclick="openNewChannel()">${icon("plus")}新建渠道</button></div>`;
+  const h = channelHealth(sel);
+  const p = plugin(sel.plugin);
+  const used = S.models.filter((m) => m.channel === sel.key);
+  return `
+    <div class="mb-5 flex flex-wrap items-end gap-3"><div><h1 class="text-2xl font-semibold tracking-tight">渠道</h1><p class="mt-1 text-sm text-muted-foreground">一个渠道 = 一个平台的地址 + Key。</p></div>
+      <button class="btn btn-primary ml-auto" onclick="openNewChannel()">${icon("plus")}新建渠道</button></div>
+    <div class="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <ul class="h-fit overflow-hidden rounded-xl border">${S.channels.map((c) => { const ch = channelHealth(c); return `
+        <li><button class="w-full border-b p-3 text-left last:border-b-0 ${c.key === sel.key ? "bg-accent" : "hover:bg-muted/40"}" onclick="S.selChannel='${c.key}';render()">
+          <div class="flex items-center gap-2"><span class="truncate text-sm font-medium">${esc(c.name)}</span><span class="ml-auto">${tag(ch.tone, ch.tone === "ok" ? "可用" : ch.text.length > 6 ? "不可用" : ch.text)}</span></div>
+          <div class="mt-1 text-xs text-muted-foreground">${esc(plugin(c.plugin)?.name ?? c.plugin)} · ${S.models.filter((m) => m.channel === c.key).length} 个模型</div></button></li>`; }).join("")}</ul>
+      <div class="min-w-0 space-y-4">
+        <div class="rounded-xl border p-4">
+          <div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold">${esc(sel.name)}</h2>${tag(h.tone, h.text)}
+            <div class="ml-auto flex gap-2">
+              <button class="btn btn-outline btn-sm" onclick="channel('${sel.key}').check='ok';toast('连通性检查通过');render()">${icon("stethoscope")}检查</button>
+              <button class="btn btn-outline btn-sm" ${p?.import ? "" : "disabled"}>${icon("download")}导入模型</button>
+              ${menu("c-" + sel.key, [{ icon: "pencil", label: "编辑", on: "toast('演示：编辑抽屉')" }, { icon: "key-round", label: sel.keySet ? "更新 Key" : "设置 Key", on: `openKey('${sel.key}')` }, { icon: sel.enabled ? "pause" : "play", label: sel.enabled ? "停用渠道" : "启用渠道", on: `channel('${sel.key}').enabled=!channel('${sel.key}').enabled;toast('已切换',()=>channel('${sel.key}').enabled=!channel('${sel.key}').enabled);render()` }, "-", { icon: "trash-2", label: "删除…", danger: true, on: `openDelete('channel','${sel.key}')` }])}
+            </div></div>
+          <code class="mt-2 inline-block rounded bg-muted px-2 py-0.5 font-mono text-xs">${esc(sel.url)}</code>
+          ${h.tone !== "ok" && h.text !== "已停用" ? `<div class="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">${icon("circle-alert")}<span class="flex-1">${esc(h.text)}，使用它的 ${used.length} 个模型都不可用</span>
+            ${h.text === "未设置 Key" ? `<button class="btn btn-outline btn-sm" onclick="openKey('${sel.key}')">设置 Key</button>` : h.text.startsWith("插件") ? `<button class="btn btn-outline btn-sm" onclick="go('plugins',{selPlugin:'${sel.plugin}'})">去插件页</button>` : ""}</div>` : ""}
+          <dl class="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-sm sm:grid-cols-4">
+            <div><dt class="text-xs text-muted-foreground">插件</dt><dd>${esc(p?.name ?? sel.plugin)} <span class="font-mono text-xs text-muted-foreground">v${sel.version}</span></dd></div>
+            <div><dt class="text-xs text-muted-foreground">API Key</dt><dd>${!needsKey(sel) ? "无需" : sel.keySet ? "已设置" : '<span class="text-amber-600">未设置</span>'}</dd></div>
+            <div><dt class="text-xs text-muted-foreground">限流</dt><dd>不限</dd></div>
+            <div><dt class="text-xs text-muted-foreground">标识</dt><dd class="font-mono text-xs">${esc(sel.key)}</dd></div>
+          </dl>
+        </div>
+        <div class="rounded-xl border p-4">
+          <div class="flex items-center gap-2"><h3 class="font-medium">使用这个渠道的模型</h3><span class="tag t-mute">${used.length}</span>
+            <button class="btn btn-outline btn-sm ml-auto" onclick="openModel(null,'${sel.key}')">${icon("plus")}用这个渠道新建模型</button></div>
+          <ul class="mt-3 divide-y rounded-lg border">${used.map((m) => `<li class="flex items-center gap-2 px-3 py-2 text-sm"><span class="flex-1">${esc(m.label)}</span>${tag(modelHealth(m).tone, modelHealth(m).text)}</li>`).join("") || `<li class="p-4 text-center text-sm text-muted-foreground">还没有模型</li>`}</ul>
+        </div>
+        ${note("试试删除「NewAPI 主线」：被 2 个模型引用，对话框里直接选目标渠道迁移，迁完变成可删除并要求输入名称。删除「测试渠道」也一样。")}
+        ${note("左栏选中项改进 URL（?key=），与插件页一致；现在用组件内 state，从插件页跳过来不会选中、刷新会丢。")}
+      </div>
+    </div>`;
+}
+
+// ------------------------------------------------------------ 页面：插件
+function pagePlugins() {
+  const sel = plugin(S.selPlugin) ?? S.plugins[0];
+  if (!sel) return `<h1 class="text-2xl font-semibold">插件</h1><p class="mt-4 text-sm text-muted-foreground">没有插件</p>`;
+  const chs = S.channels.filter((c) => c.plugin === sel.key);
+  const old = chs.filter((c) => c.version !== sel.versions[0]);
+  return `
+    <div class="mb-5 flex flex-wrap items-end gap-3"><div><h1 class="text-2xl font-semibold tracking-tight">插件</h1><p class="mt-1 text-sm text-muted-foreground">插件负责对接一个平台的接口。</p></div>
+      <button class="btn btn-primary ml-auto" onclick="toast('演示：上传插件（流程不变，现有的已经不错）')">${icon("upload")}上传插件</button></div>
+    <div class="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <ul class="h-fit overflow-hidden rounded-xl border">${S.plugins.map((x) => `
+        <li><button class="w-full border-b p-3 text-left last:border-b-0 ${x.key === sel.key ? "bg-accent" : "hover:bg-muted/40"}" onclick="S.selPlugin='${x.key}';render()">
+          <div class="flex items-center gap-2"><span class="text-sm font-medium">${esc(x.name)}</span>${tag(x.builtin ? "mute" : "info", x.builtin ? "内置" : "已上传")}<span class="ml-auto">${tag(x.enabled ? "ok" : "mute", x.enabled ? "启用" : "停用")}</span></div>
+          <div class="mt-1 text-xs text-muted-foreground">v${x.versions[0]} · ${S.channels.filter((c) => c.plugin === x.key).length} 个渠道</div></button></li>`).join("")}</ul>
+      <div class="min-w-0 space-y-4">
+        <div class="rounded-xl border p-4">
+          <div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold">${esc(sel.name)}</h2>${tag(sel.builtin ? "mute" : "info", sel.builtin ? "内置" : "已上传")}
+            <div class="ml-auto flex items-center gap-3">
+              <span class="text-sm">${sel.enabled ? "已启用" : "已停用"}</span><button class="switch" aria-checked="${sel.enabled}" onclick="confirmPluginToggle('${sel.key}')"></button>
+              ${menu("p-" + sel.key, [{ icon: "upload", label: "上传新版本", on: "toast('演示')" }, "-", { icon: "trash-2", label: "删除插件…", danger: true, on: `openDelete('plugin','${sel.key}')` }])}
+            </div></div>
+          <p class="mt-1 text-sm text-muted-foreground">${esc(sel.desc)}</p>
+          <div class="mt-4 grid grid-cols-3 gap-3 border-t pt-4 text-sm">
+            <div><div class="text-xs text-muted-foreground">支持</div><div class="mt-1 flex gap-1">${sel.kinds.map((k) => tag("mute", KIND[k])).join("")}</div></div>
+            <div><div class="text-xs text-muted-foreground">在用渠道</div><div class="mt-1">${chs.length} 个</div></div>
+            <div><div class="text-xs text-muted-foreground">从渠道导入模型</div><div class="mt-1">${sel.import ? "支持" : "不支持"}</div></div>
+          </div>
+          ${old.length ? `<div class="mt-4 flex items-center gap-2 rounded-lg bg-sky-500/10 px-3 py-2 text-sm text-sky-700 dark:text-sky-400">${icon("circle-arrow-up")}<span class="flex-1">v${sel.versions[0]} 可用，${old.length} 个渠道还在旧版本</span><button class="btn btn-outline btn-sm" onclick="upgradeAll('${sel.key}')">升级全部 ${old.length} 个渠道</button></div>` : ""}
+          <details class="mt-4 rounded-lg border p-3 text-sm"><summary class="cursor-pointer text-muted-foreground">技术详情（版本历史、sha256、契约版本、允许的域名、轮询参数）</summary>
+            <ul class="mt-3 space-y-1 font-mono text-xs text-muted-foreground">${sel.versions.map((v, i) => `<li>v${v}${i === 0 ? "（最新）" : ""} · sha256 ${Math.random().toString(16).slice(2, 10)} · ${S.channels.filter((c) => c.plugin === sel.key && c.version === v).length} 个渠道</li>`).join("")}</ul></details>
+        </div>
+        ${note("插件开关停用前先确认并算出影响（试试停用 New API）；「可升级」从一行提示变成批量升级按钮（看可灵 Kling）。")}
+        ${note("插件详情首屏只留运营关心的：支持什么、几个渠道在用、能不能导入。sha256 等收进技术详情。")}
+        ${note("删除整个插件：「测试插件」无引用可删（要输入 key）；「New API」是内置，只能停用；「可灵 Kling」有渠道在用会被拦。")}
+      </div>
+    </div>`;
+}
+
+// ------------------------------------------------------------ 渲染
+const PAGES = [
+  { id: "overview", label: "总览", icon: "layout-dashboard", fn: pageOverview },
+  { id: "models", label: "模型", icon: "boxes", fn: pageModels },
+  { id: "channels", label: "渠道", icon: "radio-tower", fn: pageChannels },
+  { id: "plugins", label: "插件", icon: "puzzle", fn: pagePlugins },
+];
+function badge(id) {
+  if (id === "overview") {
+    const n = S.channels.filter((c) => channelHealth(c).tone !== "ok" && c.enabled).length + S.plugins.filter((p) => !p.enabled && S.channels.some((c) => c.plugin === p.key)).length;
+    return n ? `<span class="ml-auto rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white">${n}</span>` : "";
+  }
+  const n = { models: S.models.length, channels: S.channels.length, plugins: S.plugins.length }[id];
+  return `<span class="ml-auto text-xs text-muted-foreground">${n}</span>`;
+}
+function render() {
+  document.getElementById("nav").innerHTML = `<div class="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">AI 配置</div>` +
+    PAGES.map((p) => `<button class="nav-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent" ${S.page === p.id ? 'aria-current="page"' : ""} onclick="go('${p.id}')">${icon(p.icon)}${p.label}${badge(p.id)}</button>`).join("");
+  document.getElementById("mnav").innerHTML = PAGES.map((p) => `<option value="${p.id}" ${S.page === p.id ? "selected" : ""}>${p.label}</option>`).join("");
+  document.getElementById("mnav").onchange = (e) => go(e.target.value);
+  document.getElementById("page").innerHTML = PAGES.find((p) => p.id === S.page).fn();
+  lucide.createIcons();
+}
+render();
+</script>
+</body>
+</html>

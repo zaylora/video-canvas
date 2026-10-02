@@ -32,6 +32,8 @@
 | POST | `/plugins` | 上传插件：`multipart/form-data`，字段 `file`（.js，≤512KB）。**预检不通过也返回 200**：`{ "accepted": false, "issues": [{ "path": "meta.endpoints.video.mode", "message": "..." }], "version": null }`；通过则登记为新版本 `{ "accepted": true, "issues": [], "version": PluginVersionView }`。版本号已存在 → `issues` 里报 `meta.version`（不是 HTTP 错误）。没有 `file` 字段 / 不是 multipart / 空文件 400（10001）；文件超限 413（50007，请求体总大小也有上限，超过同样 413）；往内置插件的 key 上传 409（50006）；runner 不可用 503（50021） |
 | PUT | `/plugins/:key/enabled` | `{ "enabled": true }`，停用后所有使用它的渠道不再接新任务（进行中的任务按快照继续）；插件不存在 404（50001） |
 | DELETE | `/plugins/:key/versions/:version` | 只能删没有渠道引用、也没有非终态任务引用的版本（否则 409，50005）；内置插件 409（50006）；插件或版本不存在 404（50001）。删除最后一个版本后插件行一并消失 |
+| GET | `/plugins/:key/delete-check` | 删除整个插件前的预检（super_admin），见下文「删除预检」；kind：`builtin_plugin`、`plugin_channels`（refs 是固定在它任一版本上的渠道 key + name）、`active_tasks`。插件不存在 404（50001） |
+| DELETE | `/plugins/:key` | 删除整个插件（全部版本 + 插件行，super_admin）：内置插件 409（50008，只能停用）；任一版本仍被渠道固定或被非终态任务引用 409（50005，msg 带数量）；不存在 404（50001）。事务内按“插件行 → 版本行”加锁后重新统计，写审计 `plugin.delete`（target_type=plugin） |
 
 ```jsonc
 // PluginView
@@ -67,6 +69,8 @@
 | PUT | `/channels/:key` | 更新（super_admin），字段都可选（不传表示不改）：`name`、`plugin_version`、`base_url`、`trusted_internal`、`allow_credentials`、`settings`（整体替换）、`rate_limit`（整体替换）、`enabled`。插件本身不能换（要换插件请新建渠道），改 `plugin_version` 即“升级插件后切换渠道”：新版本必须存在且插件启用（不切版本时，插件停用不挡其他修改），并且 `settings`（不传则用现有取值）按新版本的 `channelSettings` 重新校验。渠道不存在 404（50011）；校验失败 400（50013） |
 | PUT | `/channels/:key/secret` | 设置渠道 Key：`{ "value": "..." }`（去掉首尾空白，≤4096 字节），存 `ai_secrets`，名字 `channel:<key>`，只写、响应无 `data`、不回显。没有配置主密钥 `APP_AI_SECRET_KEY` 时 500 并在 msg 里说明；渠道不存在 404 |
 | POST | `/channels/:key/check` | 连通性检查（super_admin）→ `{ "ok": true, "message": "HTTP 200", "duration_ms": 120 }`。上游不通是正常的检查结果 `ok=false`（原因在 message，已脱敏）；插件没实现 `buildCheckRequest` 时 `ok=false, message="插件不支持连通性检查"`；需要宿主注入鉴权（插件 `auth.type` 不是 `none`）而 Key 没设置 409（50015）；runner 不可用 503（50021）；插件本身出错（钩子异常、请求描述非法等）502（50022，msg 已脱敏） |
+| GET | `/channels/:key/delete-check` | 删除预检（super_admin）；kind：`channel_models`（refs 是引用它的模型 key + 展示名 label，没有 label 用 key）、`active_tasks`。渠道不存在 404（50011） |
+| DELETE | `/channels/:key` | 硬删除渠道，连同 ai_secrets 里的 `channel:<key>`（super_admin）：仍被模型（**最新草稿或已发布版本**的 `channels[].channel`，归档版本与已删除模型不算）或非终态任务的快照引用 409（50016，msg 带数量）；不存在 404（50011）。写审计 `channel.delete` 并刷新 Registry |
 | POST | `/channels/:key/import` | 从渠道导入模型（admin）：`{ "args": { } }`（取值按插件 `meta.import.args` 校验：未声明 / 类型 / 必填，没有请求体等同空 args）→ `{ "drafts": [ { "upstream_model": "kling-v2", "kind": "video", "label": "...", "params": { }, "param_hints": { "resolution": { "options": ["2K", "4K"], "default": "2K" } } } ] }`（模型能力由运营在后台配置；`param_hints` 是插件给的生成参数预填建议，可省略，只在导入时预填编辑器，见 plugin-contract.md），只预填编辑器，不落库。参数不合法 400（10001）；Key 没设置 409（50015）；插件没实现导入钩子 502（50022）；runner 不可用 503 |
 
 ### 审计日志
@@ -77,13 +81,14 @@
 |---|---|---|
 | `plugin.upload` | 上传插件版本成功；内置插件首次登记（操作人 0，多一个 `source: "builtin"`） | `version`、`sha256` |
 | `plugin.enable` | 启停插件 | `enabled` |
-| `plugin.delete` | 删除插件版本 | `version`、`sha256` |
+| `plugin.delete` | 删除插件版本（target_type=`plugin_version`）；删除整个插件（target_type=`plugin`） | 删版本：`version`、`sha256`；删插件：`versions`（`[{version, sha256}]`） |
 | `channel.create` | 新建渠道 | `plugin_key`、`plugin_version`、`enabled` |
 | `channel.update` | 更新渠道且有字段变化 | `fields`（被改的字段名）；切版本时带 `from_version` / `to_version` |
 | `channel.secret` | 设置渠道 Key | 无 |
 | `channel.trusted` | `trusted_internal` 变化（创建时为 true 也记一条） | `from`、`to` |
 | `channel.credential` | `allow_credentials` 变化（创建时为 true 也记一条） | `from`、`to` |
 | `channel.enable` | 渠道启停变化 | `from`、`to` |
+| `channel.delete` | 删除渠道（连同它的 Key） | 无 |
 
 ## 模型（admin 与 super_admin 都能写）
 
@@ -99,6 +104,18 @@
 | GET | `/test-runs/:id/trace` | 试跑追踪：`{ "steps": [TraceStep] }`（每次钩子的输入 / 输出 / `utils.log`，每次 HTTP 的请求与响应，均已脱敏）；任务还没有追踪时 `steps: []`；归属规则同上，别人的任务 / 不存在 / 非试跑任务统一 404（40004） |
 | PUT | `/models/:key/enabled`、`/models/:key/sort` | 上下架 / 排序：`{ "enabled": true }`、`{ "sort": 5 }`；上架要求已发布过 |
 | GET | `/schema/model` | 模型配置的 JSON Schema（`/schema/provider` 已删除） |
+| GET | `/models/:key/delete-check` | 删除预检；kind：`model_enabled`。模型不存在 404（40011） |
+| DELETE | `/models/:key` | **硬删除**：事务内锁住模型行 → 还在上架 409（50031）→ 删掉该模型的全部版本（草稿 / 已发布 / 归档）→ 删掉模型行，不可恢复；不存在 404（40011）。进行中与历史任务不受影响（它们只读自己的配置快照）。之后**同名 key 可以重新新建 / 导入**，版本号从 1 开始 |
+
+### 删除预检
+
+模型、渠道、插件的 `GET .../:key/delete-check` 共用一个结构：
+
+```json
+{ "blockers": [ { "kind": "channel_models", "message": "2 个模型在用这个渠道", "refs": [ { "key": "m1", "name": "可灵 2" } ] } ] }
+```
+
+`blockers` 与 `refs` 永远是数组；`blockers` 为空表示可以删。预检只给界面展示，真正能否删除以 DELETE 事务内的判断为准。
 
 `dry-run` / `test-run` 请求里的 `use_provider_draft` 字段已废弃（忽略）。
 
@@ -158,10 +175,13 @@
 | 50005 | 409 | 插件版本仍被渠道或进行中的任务使用，无法删除 |
 | 50006 | 409 | 内置插件不能被删除或覆盖 |
 | 50007 | 413 | 插件文件超过大小限制 |
+| 50008 | 409 | 内置插件不能删除，只能停用 |
 | 50011 | 404 | 渠道不存在 |
 | 50012 | 409 | 渠道 key 已存在 |
 | 50013 | 400 | 渠道配置不合法（原因在 msg） |
 | 50014 | 409 | 渠道已停用 |
 | 50015 | 409 | 渠道 Key 尚未设置 |
+| 50016 | 409 | 渠道仍被模型或进行中的任务使用，无法删除（msg 带数量） |
 | 50021 | 503 | 插件运行时（plugin-runner）暂不可用 |
 | 50022 | 502 | 连通性检查 / 导入失败（原因在 msg，已脱敏） |
+| 50031 | 409 | 模型还在上线，先下线再删除 |

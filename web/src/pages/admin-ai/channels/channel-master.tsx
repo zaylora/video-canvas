@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Stethoscope,
+  Trash2,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -70,6 +71,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
 import { availableUpgrade, channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
 import { formatShortTime } from "@/utils/time";
 
@@ -87,7 +89,9 @@ const isKeyMissing = (plugins: PluginView[], channel: ChannelView) => {
 
 /**
  * 渠道页主体：左侧渠道列表（搜索、新建），右侧选中渠道的详情卡片与操作。
- * 写操作（检查、新建）只对运维渲染；导入 admin 也能用。
+ * 列表与详情显示的是渠道的**实际**可用性：插件停用、缺 Key 时即使渠道“启用”也标成不可用。
+ * 选中项由页面放在 URL 里（selectedKey / onSelect）。
+ * 写操作（检查、新建、停用、删除）只对运维渲染；导入 admin 也能用。
  */
 export function ChannelMaster({
   channels,
@@ -96,6 +100,8 @@ export function ChannelMaster({
   canWrite,
   checks,
   loads,
+  selectedKey,
+  onSelect,
   onNew,
   onEdit,
   onCheck,
@@ -106,11 +112,13 @@ export function ChannelMaster({
   busyModelKey,
   onSetKey,
   onToggleChannel,
+  onDeleteChannel,
   onEditModel,
   onTestModel,
   onNewModel,
   onToggleModel,
   onRollbackModel,
+  onDeleteModel,
 }: {
   channels: ChannelView[];
   plugins: PluginView[];
@@ -119,6 +127,9 @@ export function ChannelMaster({
   checks: Record<string, CheckState>;
   /** 各渠道当前的生成中 / 排队数，按渠道 key 索引 */
   loads: Record<string, ChannelLoad>;
+  /** 选中的渠道；为空或找不到时选第一个 */
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
   onNew: () => void;
   onEdit: (key: string) => void;
   onCheck: (key: string) => void;
@@ -130,14 +141,15 @@ export function ChannelMaster({
   busyModelKey: string | null;
   onSetKey: (channel: ChannelView) => void;
   onToggleChannel: (channel: ChannelView) => void;
+  onDeleteChannel: (channel: ChannelView) => void;
   onEditModel: (key: string) => void;
   onTestModel: (key: string) => void;
   onNewModel: (channelKey: string) => void;
   onToggleModel: (key: string, enabled: boolean) => void;
   onRollbackModel: (key: string, revision: ConfigRevision) => void;
+  onDeleteModel: (item: ConfigListItem) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [modelKind, setModelKind] = useState("");
 
   if (status === "loading") {
@@ -190,6 +202,8 @@ export function ChannelMaster({
   const upgrade = availableUpgrade(plugins, selected);
   const importUnsupported = !!meta && !meta.import;
   const keyMissing = isKeyMissing(plugins, selected);
+  const health = channelHealth(selected, plugins);
+  const pluginOff = !!plugin && !plugin.enabled;
   const rl = selected.rate_limit;
   const load = loads[selected.key];
   const running = load?.running ?? 0;
@@ -241,17 +255,22 @@ export function ChannelMaster({
             const itemPlugin = plugins.find((p) => p.key === item.plugin_key);
             const missing = isKeyMissing(plugins, item);
             const canUpgrade = !!availableUpgrade(plugins, item);
+            const itemHealth = channelHealth(item, plugins);
             return (
               <ListPanelItem
                 key={item.key}
                 data-channel={item.key}
                 active={item.key === selected.key}
-                onClick={() => setSelectedKey(item.key)}
+                onClick={() => onSelect(item.key)}
               >
                 <ListPanelItemRow>
                   <span className="truncate text-sm font-medium">{item.name}</span>
-                  <StatusLabel tone={item.enabled ? "success" : "neutral"} className="ml-auto">
-                    {item.enabled ? "启用" : "停用"}
+                  <StatusLabel
+                    tone={HEALTH_UI_TONE[itemHealth.tone]}
+                    className="ml-auto"
+                    title={itemHealth.reason ?? undefined}
+                  >
+                    {itemHealth.label}
                   </StatusLabel>
                 </ListPanelItemRow>
                 <div className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
@@ -288,8 +307,8 @@ export function ChannelMaster({
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
               <span className="text-xl font-semibold tracking-tight">{selected.name}</span>
-              <Tag tone={selected.enabled ? "success" : "neutral"}>
-                {selected.enabled ? "已启用" : "已停用"}
+              <Tag tone={HEALTH_UI_TONE[health.tone]} title={health.reason ?? undefined}>
+                {health.label}
               </Tag>
               <span className="text-muted-foreground font-mono text-xs font-normal">
                 {selected.key}
@@ -358,15 +377,41 @@ export function ChannelMaster({
                         {selected.enabled ? "停用渠道" : "启用渠道"}
                       </DropdownMenuItem>
                     </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => onDeleteChannel(selected)}
+                      >
+                        <Trash2 />
+                        删除渠道…
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
             </CardAction>
           </CardHeader>
 
-          {(check || keyMissing || upgrade) && (
+          {(check || keyMissing || upgrade || pluginOff) && (
             <CardContent className="space-y-2">
               {check && <CheckResult state={check} />}
+              {pluginOff && (
+                <Notice
+                  tone="danger"
+                  title={`插件「${plugin.name}」已停用`}
+                  action={
+                    <Link
+                      to={`/admin/ai/plugins?key=${encodeURIComponent(plugin.key)}`}
+                      className="text-xs font-medium underline underline-offset-4"
+                    >
+                      去插件页
+                    </Link>
+                  }
+                >
+                  这个渠道不接新任务，使用它的 {usedModels.length} 个模型都不可用。
+                </Notice>
+              )}
               {keyMissing && !check && (
                 <Notice tone="warning" title="未设置 Key" action={fixLink("设置 Key")}>
                   使用这个渠道的模型无法发布。
@@ -522,6 +567,7 @@ export function ChannelMaster({
               onTest={onTestModel}
               onToggleEnabled={onToggleModel}
               onRollback={onRollbackModel}
+              onDelete={onDeleteModel}
             />
           </CardContent>
         </Card>
