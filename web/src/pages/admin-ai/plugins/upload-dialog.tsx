@@ -44,8 +44,9 @@ export function UploadDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-xl">
-        {/* 每次打开都重新挂载，清掉上一次的文件与结果 */}
-        {open && <UploadBody onClose={onClose} onUploaded={onUploaded} onNextStep={onNextStep} />}
+        {/* 不用 open && 包：关闭时内容要留到退出动画播完。弹层收起后会被卸载，
+            下次打开重新挂载，上一次的文件与结果自然清掉 */}
+        <UploadBody onClose={onClose} onUploaded={onUploaded} onNextStep={onNextStep} />
       </DialogContent>
     </Dialog>
   );

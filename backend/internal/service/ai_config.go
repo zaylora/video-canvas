@@ -43,6 +43,8 @@ type AIConfigRepo interface {
 	SetModelSort(ctx context.Context, key string, sort int) error
 	// LoadPublishedModels 一次取出所有已发布的模型（指针行 + 发布版本正文）。
 	LoadPublishedModels(ctx context.Context) ([]repository.PublishedModel, error)
+	// DeleteModel 事务内锁住指针行后硬删除模型（全部 revision + 指针行）：仍上架返回 repository.ErrInUse，不存在返回 repository.ErrNotFound。
+	DeleteModel(ctx context.Context, key string) error
 
 	// UpsertSecret 写入或覆盖凭证密文。
 	UpsertSecret(ctx context.Context, s *model.AISecret) error

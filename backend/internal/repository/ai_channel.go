@@ -151,3 +151,112 @@ func (r *AIChannelRepository) ListAudit(ctx context.Context, targetKey string, l
 	err := db.Order("id DESC").Limit(limit).Find(&list).Error
 	return list, err
 }
+
+// ChannelModelRef 是一个引用渠道的模型：Label 取已发布版本正文里的 label，没有已发布版本引用它时取草稿的；可能为空串。
+type ChannelModelRef struct {
+	Key   string
+	Label string
+}
+
+// ChannelRefs 是一个渠道被引用的情况，删除前检查用。
+type ChannelRefs struct {
+	Models      []ChannelModelRef // 最新草稿或已发布版本的 channels[].channel 指向它的模型，按 key 升序
+	ActiveTasks int64             // 快照引用了这个渠道的非终态任务数（config_snapshot->'channel'->>'key'）
+}
+
+// InUse 判断渠道是否仍被引用。
+func (r ChannelRefs) InUse() bool { return len(r.Models) > 0 || r.ActiveTasks > 0 }
+
+// channelModelRefRow 是引用查询的一行：同一模型可能有草稿与已发布两行。
+type channelModelRefRow struct {
+	Key    string
+	Status string
+	Label  string
+}
+
+// modelRefsChannelSQL 匹配“正文 channels 数组里有一项的 channel 等于某渠道 key”的 revision。
+// body_json 是 json 列（库里保证是合法 JSON），转 jsonb 后用 @> 做包含判断；channels 不是数组时只是不匹配，不会报错。
+const modelRefsChannelSQL = "(r.body_json::jsonb -> 'channels') @> jsonb_build_array(jsonb_build_object('channel', ?::text))"
+
+// taskRefsChannelSQL 匹配“快照冻结了某个渠道的非终态任务”。快照缺字段时 #>> 得到 NULL，只是不匹配。
+const taskRefsChannelSQL = "status IN ? AND config_snapshot #>> '{channel,key}' = ?"
+
+// CountChannelRefs 统计渠道被引用的情况（见 ChannelRefs）；渠道不存在返回 ErrNotFound。
+func (r *AIChannelRepository) CountChannelRefs(ctx context.Context, key string) (ChannelRefs, error) {
+	db := r.db.WithContext(ctx)
+	var exists int64
+	if err := db.Model(&model.AIChannel{}).Where("key = ?", key).Count(&exists).Error; err != nil {
+		return ChannelRefs{}, err
+	}
+	if exists == 0 {
+		return ChannelRefs{}, ErrNotFound
+	}
+	return countChannelRefs(db, key)
+}
+
+// countChannelRefs 统计渠道的引用，db 可以是普通连接也可以是事务。
+// 模型口径：target=model、状态是 draft / published（已归档的历史版本不算）、指针行存在。
+func countChannelRefs(db *gorm.DB, key string) (ChannelRefs, error) {
+	var rows []channelModelRefRow
+	err := db.Table("ai_config_revisions AS r").
+		Select("r.target_key AS key, r.status AS status, COALESCE(r.body_json::jsonb ->> 'label', '') AS label").
+		Joins("JOIN ai_models AS m ON m.key = r.target_key").
+		Where("r.target = ? AND r.status IN ?", model.ConfigTargetModel, []string{model.RevisionDraft, model.RevisionPublished}).
+		Where(modelRefsChannelSQL, key).
+		Order("r.target_key ASC").Scan(&rows).Error
+	if err != nil {
+		return ChannelRefs{}, err
+	}
+	refs := ChannelRefs{Models: mergeChannelModelRefs(rows)}
+	err = db.Model(&model.GenerationTask{}).Where(taskRefsChannelSQL, activeStatuses(), key).Count(&refs.ActiveTasks).Error
+	if err != nil {
+		return ChannelRefs{}, err
+	}
+	return refs, nil
+}
+
+// mergeChannelModelRefs 把同一模型的草稿 / 已发布两行合并成一项（rows 已按 key 升序）：label 优先取已发布版本的。
+func mergeChannelModelRefs(rows []channelModelRefRow) []ChannelModelRef {
+	out := []ChannelModelRef{}
+	idx := map[string]int{}
+	for _, row := range rows {
+		i, ok := idx[row.Key]
+		if !ok {
+			idx[row.Key] = len(out)
+			out = append(out, ChannelModelRef{Key: row.Key, Label: row.Label})
+			continue
+		}
+		if row.Status == model.RevisionPublished && row.Label != "" {
+			out[i].Label = row.Label
+		}
+	}
+	return out
+}
+
+// DeleteChannel 在一个事务里删除渠道：锁住渠道行（FOR UPDATE）后重新统计引用，仍被模型或非终态任务引用时返回当时的引用与 ErrInUse；
+// 渠道不存在返回 ErrNotFound。删除时连同 ai_secrets 里它的 Key（channel:<key>）一起删掉，避免留下没有主人的凭证。
+func (r *AIChannelRepository) DeleteChannel(ctx context.Context, key string) (ChannelRefs, error) {
+	var refs ChannelRefs
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 锁渠道行：与更新、设 Key 等写操作串行
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("key").
+			Where("key = ?", key).First(&model.AIChannel{}).Error; err != nil {
+			return translate(err)
+		}
+		// 2. 锁内重新统计引用：service 层的预检结果可能已过期
+		var err error
+		refs, err = countChannelRefs(tx, key)
+		if err != nil {
+			return err
+		}
+		if refs.InUse() {
+			return ErrInUse
+		}
+		// 3. 删渠道行与它的 Key
+		if err := tx.Where("key = ?", key).Delete(&model.AIChannel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("name = ?", model.ChannelSecretName(key)).Delete(&model.AISecret{}).Error
+	})
+	return refs, err
+}

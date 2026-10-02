@@ -136,6 +136,14 @@ func (s *AIConfigService) SetSecret(ctx context.Context, name, value string, adm
 	return nil
 }
 
+// ForgetSecret 清掉本实例对该凭证的明文缓存：渠道被删除（连同它的 Key）后调用，避免缓存里的旧明文在过期前还能被取到。
+// 其他实例的缓存最多 aiSecretCacheTTL 后过期；而渠道删除后 Registry 已没有它，不会再有新任务去取这个 Key。
+func (s *AIConfigService) ForgetSecret(name string) {
+	s.secMu.Lock()
+	delete(s.secCache, name)
+	s.secMu.Unlock()
+}
+
 // SecretIsSet 判断凭证是否已设置（只看有没有这一行，不解密、不需要主密钥）。渠道视图的 secret_set 与发布前置检查用它。
 func (s *AIConfigService) SecretIsSet(ctx context.Context, name string) (bool, error) {
 	// 1. 只读元信息：这里不需要明文，也就不走解密与缓存

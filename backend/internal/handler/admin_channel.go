@@ -8,7 +8,7 @@ import (
 	"video-canvas/internal/service"
 )
 
-// AdminChannelHandler 是渠道的管理接口：列表 / 详情 / 导入模型（admin 可用），创建 / 更新 / 设 Key / 连通性检查（仅 super_admin，由路由挂中间件）。
+// AdminChannelHandler 是渠道的管理接口：列表 / 详情 / 导入模型（admin 可用），创建 / 更新 / 设 Key / 连通性检查 / 删除及其预检（仅 super_admin，由路由挂中间件）。
 type AdminChannelHandler struct {
 	svc *service.AIChannelService
 }
@@ -165,4 +165,31 @@ func (h *AdminChannelHandler) Import(c *gin.Context) {
 		return
 	}
 	response.OK(c, res)
+}
+
+// DeleteCheck 删除渠道前的预检：返回阻断删除的原因，blockers 为空数组表示可以删。
+func (h *AdminChannelHandler) DeleteCheck(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	res, err := h.svc.CheckDelete(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// Delete 删除一个未被引用的渠道（连同它的 Key）。
+func (h *AdminChannelHandler) Delete(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), currentUserID(c), key); err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, nil)
 }

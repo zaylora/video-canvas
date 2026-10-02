@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Loader2, PencilLine, Rocket } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Loader2,
+  PencilLine,
+  Rocket,
+  Trash2,
+} from "lucide-react";
 
 import type { ChannelView } from "@/api/admin-ai/type";
 import { Button } from "@/components/ui/button";
@@ -7,7 +14,9 @@ import {
   BulkActionButton,
   DataTableBulkActions,
 } from "@/components/admin-ui/data-table-bulk-actions";
+import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useRetained } from "@/hooks/use-retained";
 import {
   Dialog,
   DialogContent,
@@ -25,8 +34,8 @@ import { Notice } from "@/components/admin-ui/notice";
 import { batchLabel, type BatchPatch, type ModelBatch } from "./use-model-batch";
 
 /**
- * 勾选后出现的批量操作条：批量上架 / 下架 / 发布草稿 / 批量修改。
- * 每个操作都会二次确认范围（几项），完成后弹出逐项结果。
+ * 勾选后出现的批量操作条：批量上线 / 下线 / 上线修改 / 修改 / 删除。
+ * 删除先二次确认；每个操作完成后弹出逐项结果。
  */
 export function BatchBar({
   selected,
@@ -41,37 +50,57 @@ export function BatchBar({
 }) {
   const [editing, setEditing] = useState(false);
   const busy = batch.running !== null;
-  if (selected.length === 0 && !batch.result && !busy) return null;
+  // 关闭结果框时 result 置空，内容留到退出动画播完
+  const result = useRetained(batch.result);
+  const showBar = selected.length > 0 || busy;
+
+  const requestRemove = () =>
+    void confirm({
+      title: `删除 ${selected.length} 个模型？`,
+      destructive: true,
+      confirmLabel: "删除",
+      description:
+        "还在上线的会跳过（要先下线）。模型连同全部历史版本彻底删除，不能恢复；历史生成任务照常可以查看。",
+      onConfirm: () => void batch.remove(selected),
+    });
 
   return (
     <>
-      <DataTableBulkActions count={selected.length} entityName="模型" onClear={onClear}>
-        <BulkActionButton
-          label="批量上架"
-          icon={<ArrowUpFromLine />}
-          disabled={busy}
-          onClick={() => void batch.setEnabled(selected, true)}
-        />
-        <BulkActionButton
-          label="批量下架"
-          icon={<ArrowDownToLine />}
-          disabled={busy}
-          onClick={() => void batch.setEnabled(selected, false)}
-        />
-        <BulkActionButton
-          label="发布草稿"
-          icon={<Rocket />}
-          disabled={busy}
-          onClick={() => void batch.publishDrafts(selected)}
-        />
-        <BulkActionButton
-          label="批量修改"
-          variant="default"
-          icon={<PencilLine />}
-          disabled={busy}
-          onClick={() => setEditing(true)}
-        />
-      </DataTableBulkActions>
+      {showBar && (
+        <DataTableBulkActions count={selected.length} entityName="模型" onClear={onClear}>
+          <BulkActionButton
+            label="批量上线"
+            icon={<ArrowUpFromLine />}
+            disabled={busy}
+            onClick={() => void batch.setEnabled(selected, true)}
+          />
+          <BulkActionButton
+            label="批量下线"
+            icon={<ArrowDownToLine />}
+            disabled={busy}
+            onClick={() => void batch.setEnabled(selected, false)}
+          />
+          <BulkActionButton
+            label="上线修改"
+            icon={<Rocket />}
+            disabled={busy}
+            onClick={() => void batch.publishDrafts(selected)}
+          />
+          <BulkActionButton
+            label="批量修改"
+            variant="default"
+            icon={<PencilLine />}
+            disabled={busy}
+            onClick={() => setEditing(true)}
+          />
+          <BulkActionButton
+            label="批量删除"
+            icon={<Trash2 />}
+            disabled={busy}
+            onClick={requestRemove}
+          />
+        </DataTableBulkActions>
+      )}
 
       {busy && (
         <div
@@ -96,20 +125,20 @@ export function BatchBar({
 
       <Dialog open={!!batch.result && !busy} onOpenChange={(open) => !open && batch.clearResult()}>
         <DialogContent className="sm:max-w-lg">
-          {batch.result && (
+          {result && (
             <>
               <DialogHeader>
-                <DialogTitle>{batchLabel(batch.result.action)}完成</DialogTitle>
+                <DialogTitle>{batchLabel(result.action)}完成</DialogTitle>
                 <DialogDescription>
-                  成功 {batch.result.done.length} 项，跳过 {batch.result.skipped.length} 项，失败{" "}
-                  {batch.result.failed.length} 项。
+                  成功 {result.done.length} 项，跳过 {result.skipped.length} 项，失败{" "}
+                  {result.failed.length} 项。
                 </DialogDescription>
               </DialogHeader>
               <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
-                {batch.result.failed.length > 0 && (
+                {result.failed.length > 0 && (
                   <Notice tone="danger" title="失败">
                     <ul className="mt-1 space-y-0.5">
-                      {batch.result.failed.map((item) => (
+                      {result.failed.map((item) => (
                         <li key={item.key}>
                           <code className="font-mono">{item.key}</code>：{item.reason}
                         </li>
@@ -117,10 +146,10 @@ export function BatchBar({
                     </ul>
                   </Notice>
                 )}
-                {batch.result.skipped.length > 0 && (
+                {result.skipped.length > 0 && (
                   <Notice tone="warning" title="跳过">
                     <ul className="mt-1 space-y-0.5">
-                      {batch.result.skipped.map((item) => (
+                      {result.skipped.map((item) => (
                         <li key={item.key}>
                           <code className="font-mono">{item.key}</code>：{item.reason}
                         </li>
@@ -128,9 +157,9 @@ export function BatchBar({
                     </ul>
                   </Notice>
                 )}
-                {batch.result.done.length > 0 && (
+                {result.done.length > 0 && (
                   <Notice tone="success" title="成功">
-                    <span className="font-mono">{batch.result.done.join("、")}</span>
+                    <span className="font-mono">{result.done.join("、")}</span>
                   </Notice>
                 )}
               </div>

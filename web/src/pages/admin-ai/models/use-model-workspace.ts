@@ -285,16 +285,28 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     } else if (selection === "new") {
       enterNew();
     } else {
+      // 关闭：先作废进行中的请求与试跑轮询；编辑器内容留到弹窗退出动画播完再清（见 clearEditor）
       latestKeyRef.current = null;
-      resetResults();
-      setDetail(null);
-      setText("");
-      setSavedText("");
+      runTokenRef.current += 1;
       setLoadingDetail(false);
     }
     // 只在选中对象变化时执行；openDetail / enterNew 引用稳定性由各自依赖保证
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, key, draftId]);
+
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  /**
+   * 清空编辑器：由弹窗在退出动画播完后调用（onOpenChangeComplete），
+   * 关闭过程中弹窗里仍是原来的模型，而不是先变成空白。动画期间又打开了别的模型则不清。
+   */
+  const clearEditor = useCallback(() => {
+    if (selectionRef.current !== "none") return;
+    resetResults();
+    setDetail(null);
+    setText("");
+    setSavedText("");
+  }, [resetResults]);
 
   // ------------------------------------------------------------ 导航守卫
 
@@ -600,14 +612,14 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     if (taskId !== undefined) void loadTrace(taskId);
   };
 
-  /** 点“发布”：先保存，有校验问题就留在问题标签；否则打开确认框 */
+  /** 点“上线”：先保存，有校验问题就留在问题标签；否则打开确认框 */
   const requestPublish = async () => {
     if (selection === "none") return;
     const saved = await ensureSaved();
     if (!saved) return;
     if (saved.issues.length > 0) {
       pushEntry({
-        title: `还有 ${saved.issues.length} 个问题，暂时不能发布`,
+        title: `还有 ${saved.issues.length} 个问题，暂时不能上线`,
         tone: "error",
         text: "问题已标在对应字段上，修复后再发布。",
       });
@@ -617,28 +629,54 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     setPublishKey(saved.key);
   };
 
+  /**
+   * 确认上线：发布草稿，没上架的接着上架——对运营来说“发布”和“上架”是一件事，合成一步。
+   * 发布成功但上架失败时，版本已经发布，提示用户在列表里再打开开关。
+   */
   const confirmPublish = async () => {
     if (!publishKey) return;
     setBusy("publish");
     setPublishError(null);
     try {
       const revision = await publishModel(publishKey);
+      const wasEnabled = !!detail?.enabled && detail.key === publishKey;
+      if (!wasEnabled) {
+        try {
+          await setModelEnabled(publishKey, true);
+        } catch {
+          if (!aliveRef.current) return;
+          pushEntry({
+            title: `已发布第 ${revision.revision_no} 版，但没能对用户开放`,
+            tone: "error",
+            text: "在模型列表里打开「上线」开关重试。",
+          });
+          setPublishKey(null);
+          void loadList();
+          void openDetail(publishKey, true);
+          return;
+        }
+      }
       if (!aliveRef.current) return;
-      pushEntry({ title: `已发布（第 ${revision.revision_no} 版）`, tone: "success" });
+      pushEntry({
+        title: wasEnabled
+          ? `已更新上线版本（第 ${revision.revision_no} 版）`
+          : `已上线（第 ${revision.revision_no} 版），用户现在就能在画布里选到`,
+        tone: "success",
+      });
       setPublishKey(null);
       void loadList();
       void openDetail(publishKey, true);
     } catch (error) {
       // 全局 toast 已弹；原因留在确认框里，配置校验未通过（40010）时同时回到问题标签
       if (!aliveRef.current) return;
-      const message = errorMessage(error, "发布失败");
+      const message = errorMessage(error, "上线失败");
       setPublishError(message);
       if (
         typeof error === "object" &&
         error !== null &&
         (error as { code?: unknown }).code === 40010
       ) {
-        pushEntry({ title: "发布被拦截：配置校验未通过", tone: "error", text: message });
+        pushEntry({ title: "上线被拦截：配置校验未通过", tone: "error", text: message });
       }
     } finally {
       if (aliveRef.current) setBusy(null);
@@ -683,7 +721,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     try {
       await setModelEnabled(key, enabled);
       if (!aliveRef.current) return;
-      pushEntry({ title: `${key} 已${enabled ? "上架" : "下架"}`, tone: "success" });
+      pushEntry({ title: `${key} 已${enabled ? "上线" : "下线"}`, tone: "success" });
       void loadList();
       setDetail((prev) => (prev ? { ...prev, enabled } : prev));
     } finally {
@@ -726,6 +764,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     listState,
     reloadList: loadList,
     // 编辑器
+    clearEditor,
     detail,
     loadingDetail,
     text,

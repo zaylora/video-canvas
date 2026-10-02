@@ -1,9 +1,11 @@
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
 
+import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
 import AdminAiLayout from "@/pages/admin-ai/layout";
 import ChannelsPage from "@/pages/admin-ai/channels";
 import ModelsPage from "@/pages/admin-ai/models";
+import OverviewPage from "@/pages/admin-ai/overview";
 import PluginsPage from "@/pages/admin-ai/plugins";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
@@ -27,36 +29,52 @@ function RequireAuth() {
   );
 }
 
+/** 根布局：全站弹窗挂在路由里面，弹窗内可以用 Link / useNavigate */
+function RootLayout() {
+  return (
+    <>
+      <Outlet />
+      <DialogHost />
+    </>
+  );
+}
+
 export const router = createBrowserRouter([
   {
-    path: "/login",
-    element: <Login />,
-  },
-  {
-    element: <RequireAuth />,
+    element: <RootLayout />,
     children: [
       {
-        index: true,
-        element: <CanvasList />,
+        path: "/login",
+        element: <Login />,
       },
       {
-        path: "canvas",
-        element: <Navigate to="/" replace />,
-      },
-      {
-        path: "canvas/:id",
-        element: <Canvas />,
-      },
-      {
-        path: "admin",
-        element: <AdminAiLayout />,
+        element: <RequireAuth />,
         children: [
-          { index: true, element: <Navigate to="ai/models" replace /> },
-          { path: "ai", element: <Navigate to="models" replace /> },
-          { path: "ai/models", element: <ModelsPage /> },
-          { path: "ai/models/new", element: <ModelsPage /> },
-          { path: "ai/channels", element: <ChannelsPage /> },
-          { path: "ai/plugins", element: <PluginsPage /> },
+          {
+            index: true,
+            element: <CanvasList />,
+          },
+          {
+            path: "canvas",
+            element: <Navigate to="/" replace />,
+          },
+          {
+            path: "canvas/:id",
+            element: <Canvas />,
+          },
+          {
+            path: "admin",
+            element: <AdminAiLayout />,
+            children: [
+              { index: true, element: <Navigate to="ai/overview" replace /> },
+              { path: "ai", element: <Navigate to="overview" replace /> },
+              { path: "ai/overview", element: <OverviewPage /> },
+              { path: "ai/models", element: <ModelsPage /> },
+              { path: "ai/models/new", element: <ModelsPage /> },
+              { path: "ai/channels", element: <ChannelsPage /> },
+              { path: "ai/plugins", element: <PluginsPage /> },
+            ],
+          },
         ],
       },
     ],

@@ -11,6 +11,8 @@ import type {
   ConfigDetail,
   ConfigListItem,
   ConfigRevision,
+  DeleteCheckResult,
+  DeleteTarget,
   PluginUploadResult,
   PluginView,
   SaveDraftResult,
@@ -68,6 +70,35 @@ export const setPluginEnabled = (key: string, enabled: boolean) =>
  */
 export const deletePluginVersion = (key: string, version: string) =>
   service.delete<unknown>(ep.pluginVersion(key, version));
+
+// ---------------------------------------------------------------- 删除
+
+/**
+ * 删除预检：列出谁在引用它（只给界面看，真正的判断以删除接口事务内为准）
+ * @param target 插件 / 渠道 / 模型
+ * @param key 对象 key
+ * @returns 阻断原因；为空表示可以删
+ */
+export const checkDelete = async (
+  target: DeleteTarget,
+  key: string,
+): Promise<DeleteCheckResult> => {
+  const result = await service.get<DeleteCheckResult | null>(
+    ep.deleteCheck(target, key),
+    undefined,
+  );
+  return {
+    blockers: (result?.blockers ?? []).map((item) => ({ ...item, refs: item.refs ?? [] })),
+  };
+};
+
+/**
+ * 删除插件（整个，含全部版本）/ 渠道（连同 Key）/ 模型（连同全部历史版本，彻底删除）；仍被引用时 409
+ * @param target 插件 / 渠道 / 模型
+ * @param key 对象 key
+ */
+export const deleteTarget = (target: DeleteTarget, key: string) =>
+  service.delete<unknown>(ep.remove(target, key));
 
 // ---------------------------------------------------------------- 渠道
 

@@ -19,6 +19,7 @@ import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useRetained } from "@/hooks/use-retained";
 import { cn } from "@/lib/utils";
 import {
   MODEL_HINT_MAX,
@@ -91,6 +92,8 @@ export function ModelBasicForm({
     !!current && item !== kind && channelSupportsKind(plugins, current, item) === false;
   // 换能力会把能力与参数、定价重置成新种类的默认值；已保存的模型先确认，免得误点清掉配置
   const [pendingKind, setPendingKind] = useState<{ kind: string; channel?: string } | null>(null);
+  // 关闭时 pendingKind 置空，确认框文案留到退出动画播完
+  const shownKind = useRetained(pendingKind);
   const applyKind = (nextKind: string, nextChannel?: string) =>
     onChange((body) => {
       const next = nextChannel ? withModelChannel(body, nextChannel) : body;
@@ -404,12 +407,12 @@ export function ModelBasicForm({
 
       <ConfirmDialog
         open={!!pendingKind}
-        title={`改成${MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind ?? ""}模型？`}
+        title={`改成${MODEL_KIND_LABEL[shownKind?.kind ?? ""] ?? shownKind?.kind ?? ""}模型？`}
         description={
           <>
-            {pendingKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
+            {shownKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
             「能力与参数」和「积分定价」会重置成
-            {MODEL_KIND_LABEL[pendingKind?.kind ?? ""] ?? pendingKind?.kind}
+            {MODEL_KIND_LABEL[shownKind?.kind ?? ""] ?? shownKind?.kind}
             模型的默认值，当前的配置会被替换。改动保存为草稿，发布后才对用户生效。
           </>
         }

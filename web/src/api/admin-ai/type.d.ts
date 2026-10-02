@@ -186,6 +186,37 @@ export interface ChannelCreateRequest {
 /** PUT /admin/ai/channels/:key 的请求体：字段都可选，不传表示不改 */
 export type ChannelUpdateRequest = Partial<Omit<ChannelCreateRequest, "key">>;
 
+/** 可以删除的对象 */
+export type DeleteTarget = "plugin" | "channel" | "model";
+
+/**
+ * 删除阻断原因：
+ * - model_enabled：模型还在上架
+ * - channel_models：有模型（最新草稿或已发布版本）在用这个渠道，refs 是这些模型
+ * - plugin_channels：有渠道固定在这个插件的某个版本上，refs 是这些渠道
+ * - builtin_plugin：内置插件只能停用
+ * - active_tasks：还有进行中的任务在用
+ */
+export type DeleteBlockerKind =
+  | "model_enabled"
+  | "channel_models"
+  | "plugin_channels"
+  | "builtin_plugin"
+  | "active_tasks";
+
+export interface DeleteBlocker {
+  kind: DeleteBlockerKind | (string & {});
+  /** 给运营看的整句，带数量 */
+  message: string;
+  /** 引用它的对象 */
+  refs: Array<{ key: string; name: string }>;
+}
+
+/** 删除预检结果：blockers 为空表示可以删 */
+export interface DeleteCheckResult {
+  blockers: DeleteBlocker[];
+}
+
 /** 连通性检查结果 */
 export interface ChannelCheckResult {
   /** 是否连通 */
