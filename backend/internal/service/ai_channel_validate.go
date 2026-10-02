@@ -88,8 +88,8 @@ func checkBaseURL(raw string) (string, string) {
 
 // checkRateLimit 限流参数不能为负；0 表示不限。
 func checkRateLimit(r provider.RateLimit) string {
-	if r.RPS < 0 || r.MaxConcurrency < 0 {
-		return "rate_limit 的 rps 与 max_concurrency 不能为负数（0 表示不限）"
+	if r.RPS < 0 || r.MaxConcurrency < 0 || r.MaxRunning < 0 {
+		return "rate_limit 的 rps、max_concurrency 与 max_running 不能为负数（0 表示不限）"
 	}
 	return ""
 }

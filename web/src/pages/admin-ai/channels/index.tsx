@@ -16,6 +16,7 @@ import { ChannelSheet, type ChannelSheetTarget } from "./channel-sheet";
 import { ChannelMaster } from "./channel-master";
 import { ImportDialog } from "./import-dialog";
 import { useChannelChecks } from "./use-channel-check";
+import { useChannelLoads } from "./use-channel-loads";
 import { listModels, updateChannel } from "@/api/admin-ai";
 import type { ChannelView, ConfigListItem } from "@/api/admin-ai/type";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
@@ -38,6 +39,7 @@ export default function ChannelsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { checks, run: runCheck } = useChannelChecks();
+  const loads = useChannelLoads(catalog.channelsStatus === "ready");
   const [importing, setImporting] = useState<ChannelView | null>(null);
   const [keyTarget, setKeyTarget] = useState<ChannelView | null>(null);
   const [toggleTarget, setToggleTarget] = useState<ChannelView | null>(null);
@@ -114,6 +116,7 @@ export default function ChannelsPage() {
             status={catalog.channelsStatus}
             canWrite={canWrite}
             checks={checks}
+            loads={loads}
             onNew={() => setParams({ edit: "new" })}
             onEdit={openEdit}
             onCheck={(key) => void runCheck(key)}

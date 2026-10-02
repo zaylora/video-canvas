@@ -31,10 +31,14 @@ type ModelSnapshot struct {
 	Pricing       modelcfg.Pricing      `json:"pricing"` // 定价规则：运营中途调价不影响进行中的任务
 }
 
-// RateLimit 是渠道限流：每个渠道一个令牌桶 + 并发上限，零值表示不限。
+// RateLimit 是渠道限流，零值表示不限：
+//   - RPS / MaxConcurrency 约束单次 HTTP 请求（令牌桶 + 同时请求数），由插件宿主在进程内执行；
+//   - MaxRunning 约束“同时在上游生成的任务数”，由 worker 领取任务时在数据库里执行（跨实例生效），
+//     超出的任务留在 pending（用户看到“排队中”），不调用上游。
 type RateLimit struct {
 	RPS            float64 `json:"rps"`
 	MaxConcurrency int     `json:"max_concurrency"`
+	MaxRunning     int     `json:"max_running"`
 }
 
 // ChannelSnapshot 是渠道配置（不含 Key）。

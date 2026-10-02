@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
 	. "video-canvas/internal/handler"
 
 	"github.com/gin-gonic/gin"
@@ -314,6 +315,7 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		{http.MethodPut, "/plugins/kling/enabled", true},
 		{http.MethodDelete, "/plugins/kling/versions/1.0.0", true},
 		{http.MethodGet, "/channels", false},
+		{http.MethodGet, "/channels/loads", false},
 		{http.MethodPost, "/channels", true},
 		{http.MethodGet, "/channels/x", false},
 		{http.MethodPut, "/channels/x", true},
@@ -623,6 +625,49 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"plugin_version": "9.9.9"}), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
 		aicWant(t, env.super(http.MethodPut, path+"/ghost", map[string]any{"name": "x"}), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
 		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"name": strings.Repeat("长", 200)}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+}
+
+func TestAdminChannelHandler_Loads(t *testing.T) {
+	env := aicNewEnv(t)
+	path := aicBase + "/channels/loads"
+
+	t.Run("没有未完成任务时返回空数组而不是 null", func(t *testing.T) {
+		r := env.admin(http.MethodGet, path, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		if string(r.Data) != "[]" {
+			t.Fatalf("应返回 []，实际 %s", r.Data)
+		}
+	})
+	t.Run("返回各渠道的生成中 / 排队数，admin 可读，路径不被 /:key 吞掉", func(t *testing.T) {
+		env.repo.Loads = []model.ChannelLoad{{Channel: "yswg", Running: 2, Waiting: 5}}
+		r := env.admin(http.MethodGet, path, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var list []model.ChannelLoad
+		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 1 || list[0] != env.repo.Loads[0] {
+			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+	})
+}
+
+func TestAdminChannelHandler_RateLimit(t *testing.T) {
+	env := aicNewEnv(t)
+	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
+	path := aicBase + "/channels"
+
+	t.Run("max_running 随渠道保存并原样返回", func(t *testing.T) {
+		body := aicChannelJSON("kling-rl", "1.0.0")
+		body["rate_limit"] = map[string]any{"rps": 5, "max_concurrency": 20, "max_running": 3}
+		r := env.super(http.MethodPost, path, body)
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"max_running":3`) {
+			t.Fatalf("响应应带 max_running：%s", r.Raw)
+		}
+	})
+	t.Run("max_running 为负数返回 400", func(t *testing.T) {
+		body := aicChannelJSON("kling-bad", "1.0.0")
+		body["rate_limit"] = map[string]any{"max_running": -1}
+		aicWant(t, env.super(http.MethodPost, path, body), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
 	})
 }
 

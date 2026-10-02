@@ -119,7 +119,7 @@
         <li>可重试的错误最多重试 5 次，还不行就失败</li>
         <li>用户看到“平台繁忙，请稍后重试”，积分退回</li>
       </ul>
-      <p class="small" style="margin-top:12px">库里的任务 32、34 就是这样失败的（YSWG，<code>provider_error</code>）。</p>
+      <p class="small" style="margin-top:12px">库里的失败任务（YSWG，<code>provider_error</code>）有两类：<b>提交时被拒</b>（如 30、31，重试 5 次后放弃），以及<b>上游先接单、约 1 分钟后才返回“平台繁忙”</b>（如 32、34）。方案 A 把同时生成数压在上游上限以内，两类都会明显减少；后一类要彻底解决需要“自动重新提交”，本期不做。</p>
     </div>
     <div class="card">
       <h3>为什么现有的限流挡不住</h3>

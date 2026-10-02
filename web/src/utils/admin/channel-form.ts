@@ -27,6 +27,7 @@ export type ChannelFormState = {
   enabled: boolean;
   rps: string;
   maxConcurrency: string;
+  maxRunning: string;
   settings: SettingFormValues;
 };
 
@@ -44,6 +45,7 @@ export function emptyChannelForm(plugins: readonly PluginView[]): ChannelFormSta
     enabled: true,
     rps: "",
     maxConcurrency: "",
+    maxRunning: "",
     settings: {},
   };
 }
@@ -64,6 +66,7 @@ export function channelFormFromView(view: ChannelView, fields: SettingField[]): 
     enabled: !!view.enabled,
     rps: numText(view.rate_limit?.rps),
     maxConcurrency: numText(view.rate_limit?.max_concurrency),
+    maxRunning: numText(view.rate_limit?.max_running),
     settings: initialSettingValues(fields, view.settings),
   };
 }
@@ -114,7 +117,7 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? {}) === JSON.st
 
 /**
  * 表单 → 请求体。新建用 create；编辑用 update（只含改过的字段，没改动时 changed=false）。
- * 错误键：key / name / plugin / baseUrl / rps / maxConcurrency / settings.<字段名>
+ * 错误键：key / name / plugin / baseUrl / rps / maxConcurrency / maxRunning / settings.<字段名>
  */
 export function buildChannelRequest(
   form: ChannelFormState,
@@ -133,20 +136,29 @@ export function buildChannelRequest(
   if (baseUrlError) errors.baseUrl = baseUrlError;
   const rps = parseLimit(form.rps, "rps");
   if ("error" in rps) errors.rps = rps.error;
-  const concurrency = parseLimit(form.maxConcurrency, "最大并发");
+  const concurrency = parseLimit(form.maxConcurrency, "最大同时请求数");
   if ("error" in concurrency) errors.maxConcurrency = concurrency.error;
-  else if (!Number.isInteger(concurrency.value)) errors.maxConcurrency = "最大并发必须是整数";
+  else if (!Number.isInteger(concurrency.value)) errors.maxConcurrency = "最大同时请求数必须是整数";
+  const running = parseLimit(form.maxRunning, "最大同时生成数");
+  if ("error" in running) errors.maxRunning = running.error;
+  else if (!Number.isInteger(running.value)) errors.maxRunning = "最大同时生成数必须是整数";
   const settings = validateSettingValues(fields, form.settings);
   for (const [field, message] of Object.entries(settings.errors))
     errors[`settings.${field}`] = message;
 
-  if (Object.keys(errors).length > 0 || "error" in rps || "error" in concurrency) {
+  if (
+    Object.keys(errors).length > 0 ||
+    "error" in rps ||
+    "error" in concurrency ||
+    "error" in running
+  ) {
     return { ok: false, errors };
   }
 
   const rateLimit: ChannelRateLimit = {
     rps: rps.value,
     max_concurrency: concurrency.value,
+    max_running: running.value,
   };
   const create: ChannelCreateRequest = {
     key: original ? original.key : key,
@@ -180,6 +192,7 @@ export function buildChannelRequest(
   const originalLimit = {
     rps: original.rate_limit?.rps ?? 0,
     max_concurrency: original.rate_limit?.max_concurrency ?? 0,
+    max_running: original.rate_limit?.max_running ?? 0,
   };
   if (!sameJson(rateLimit, originalLimit)) update.rate_limit = rateLimit;
   if (create.enabled !== !!original.enabled) update.enabled = create.enabled;

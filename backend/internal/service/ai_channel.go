@@ -26,6 +26,8 @@ type AIChannelRepo interface {
 	GetChannel(ctx context.Context, key string) (*model.AIChannel, error)
 	// ListChannels 返回所有渠道，按 key 升序。
 	ListChannels(ctx context.Context) ([]model.AIChannel, error)
+	// ChannelLoads 返回每个有未完成任务的渠道的负载（生成中 / 排队数），没有任务的渠道不在结果里。
+	ChannelLoads(ctx context.Context, now time.Time) ([]model.ChannelLoad, error)
 }
 
 // AIChannelPlugins 是渠道服务对插件表的只读依赖，由 repository.AIPluginRepository 实现。
@@ -154,6 +156,19 @@ func (s *AIChannelService) List(ctx context.Context) ([]ChannelView, error) {
 		out = append(out, *view)
 	}
 	return out, nil
+}
+
+// Loads 返回各渠道当前的任务负载（生成中 / 排队数），管理端渠道页轮询它来显示“生成中 x/y，排队 z”。
+// 没有未完成任务的渠道不在结果里，前端按 0 处理；返回的切片永远不是 nil。
+func (s *AIChannelService) Loads(ctx context.Context) ([]model.ChannelLoad, error) {
+	list, err := s.repo.ChannelLoads(ctx, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []model.ChannelLoad{}
+	}
+	return list, nil
 }
 
 // Get 返回渠道详情。渠道不存在返回 ErrChannelNotFound。

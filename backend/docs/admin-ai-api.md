@@ -52,17 +52,18 @@
 // ChannelView
 { "key": "newapi-main", "name": "自建 New API", "plugin_key": "newapi", "plugin_version_id": 3, "plugin_version": "1.0.0",
   "base_url": "https://gw.example.com", "trusted_internal": false, "allow_credentials": false,
-  "settings": { "region": "cn" }, "rate_limit": { "rps": 5, "max_concurrency": 20 },
+  "settings": { "region": "cn" }, "rate_limit": { "rps": 5, "max_concurrency": 20, "max_running": 2 },
   "enabled": true, "secret_set": true,       // Key 只写不读，这里只告诉有没有设置
   "updated_by": 1, "updated_at": "...", "created_at": "..." }
 ```
 
-`plugin_version` 是渠道固定的插件版本号（semver）；`plugin_version_id` 是版本行 id。`rate_limit` 里 0 表示不限。
+`plugin_version` 是渠道固定的插件版本号（semver）；`plugin_version_id` 是版本行 id。`rate_limit` 里 0 表示不限：`rps` / `max_concurrency` 限制发往上游的 HTTP 请求（每秒数、同时数）；`max_running` 限制**同时在上游生成的任务数**（跨实例，由 worker 领取任务时在数据库里执行），超出的任务留在 `pending`（用户看到“排队中”），等有空位再提交；排队超过任务的 `deadline_at` 会置为 `expired`（文案“排队超时，积分已退回”）。任务真正提交给上游时，`deadline_at` 会从提交时刻重新计算一个完整的模型超时。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/channels`、`/channels/:key` | 列表（按 key 升序）/ 详情（admin）；详情渠道不存在 404（50011） |
-| POST | `/channels` | 新建（super_admin）：`{ key, name, plugin_key, plugin_version, base_url, trusted_internal?, allow_credentials?, settings?, rate_limit?, enabled? }`。`plugin_version` 是 semver 字符串（固定到这个版本）；`enabled` 不传按 true。key 重复 409（50012）；缺必填字段 400（10001）；业务校验失败 400（50013，所有问题一次报出，原因在 msg）：key 格式（`^[a-z0-9][a-z0-9-]{0,63}$`）、name 非空且 ≤128 字、插件版本存在**且插件启用**、`base_url` 是 http/https、有主机、**无用户名密码、无查询参数与片段**、`settings` 符合插件 `channelSettings`（未声明的名字、类型、enum 取值、必填项；没填的项补默认值）、`rate_limit` 非负 |
+| GET | `/channels/loads` | 各渠道当前的任务负载（admin）→ `[ { "channel": "yswg", "running": 2, "waiting": 5 } ]`。`running` = 同时生成数（`queued` / `running` + 正在提交的 `pending`），与 `rate_limit.max_running` 比较；`waiting` = 还没调用上游、在等名额的 `pending`；没有未完成任务的渠道不返回，没有任何任务时返回 `[]` |
+| POST | `/channels` | 新建（super_admin）：`{ key, name, plugin_key, plugin_version, base_url, trusted_internal?, allow_credentials?, settings?, rate_limit?, enabled? }`。`plugin_version` 是 semver 字符串（固定到这个版本）；`enabled` 不传按 true。key 重复 409（50012）；缺必填字段 400（10001）；业务校验失败 400（50013，所有问题一次报出，原因在 msg）：key 格式（`^[a-z0-9][a-z0-9-]{0,63}$`）、name 非空且 ≤128 字、插件版本存在**且插件启用**、`base_url` 是 http/https、有主机、**无用户名密码、无查询参数与片段**、`settings` 符合插件 `channelSettings`（未声明的名字、类型、enum 取值、必填项；没填的项补默认值）、`rate_limit` 的 `rps` / `max_concurrency` / `max_running` 非负 |
 | PUT | `/channels/:key` | 更新（super_admin），字段都可选（不传表示不改）：`name`、`plugin_version`、`base_url`、`trusted_internal`、`allow_credentials`、`settings`（整体替换）、`rate_limit`（整体替换）、`enabled`。插件本身不能换（要换插件请新建渠道），改 `plugin_version` 即“升级插件后切换渠道”：新版本必须存在且插件启用（不切版本时，插件停用不挡其他修改），并且 `settings`（不传则用现有取值）按新版本的 `channelSettings` 重新校验。渠道不存在 404（50011）；校验失败 400（50013） |
 | PUT | `/channels/:key/secret` | 设置渠道 Key：`{ "value": "..." }`（去掉首尾空白，≤4096 字节），存 `ai_secrets`，名字 `channel:<key>`，只写、响应无 `data`、不回显。没有配置主密钥 `APP_AI_SECRET_KEY` 时 500 并在 msg 里说明；渠道不存在 404 |
 | POST | `/channels/:key/check` | 连通性检查（super_admin）→ `{ "ok": true, "message": "HTTP 200", "duration_ms": 120 }`。上游不通是正常的检查结果 `ok=false`（原因在 message，已脱敏）；插件没实现 `buildCheckRequest` 时 `ok=false, message="插件不支持连通性检查"`；需要宿主注入鉴权（插件 `auth.type` 不是 `none`）而 Key 没设置 409（50015）；runner 不可用 503（50021）；插件本身出错（钩子异常、请求描述非法等）502（50022，msg 已脱敏） |

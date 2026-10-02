@@ -105,6 +105,8 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   可选，
   providerCost: 0.12                     // 可选，仅对账
 }
 - error.class 只能是：retryable（可重试）/ terminal（终止）/ moderation（内容审核不通过）/ provider_balance（上游余额不足）。
+- 上游因为“账号并发已满 / 系统繁忙 / 限流（如 HTTP 429、对应业务错误码）”拒绝提交时，一定要归为 retryable，不要归为 terminal：宿主会退避后重试（提交阶段最多 5 次）；归为 terminal 会直接让任务失败并退款。参数错误、鉴权失败、余额不足、内容审核不通过才是 terminal / provider_balance / moderation。
+- 宿主已经在渠道层面限制了“同时在上游生成的任务数”（运营在渠道里配“最大同时生成数”），超出的任务会在平台排队，不会打到上游；插件不需要自己做并发控制或排队。
 - text 模型的产物必须是 text；其他模型不能返回 text。url 产物必须是 http/https，且主机在 allowedHosts 或渠道 baseUrl 主机内（所以要把结果文件所在的域名写进 allowedHosts）。
 - 只支持 url 与 asset 两种文件产物，不支持内联 base64；上游只给 base64 时，返回 failed 并说明原因。
 - 文本产物请带上 usage：从上游响应里取实际 Token 用量（OpenAI 风格是 usage.prompt_tokens / completion_tokens），换成 { input_tokens, output_tokens }。按 Token 计费的模型会先按上限冻结积分，完成后按这个用量多退少补；不带 usage 时按冻结额全扣。

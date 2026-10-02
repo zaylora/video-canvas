@@ -598,7 +598,11 @@ function SheetForm({
                 onChange={(event) => patch({ rps: event.target.value })}
               />
             </FormField>
-            <FormField label="最大并发" htmlFor="channel-concurrency" error={errors.maxConcurrency}>
+            <FormField
+              label="最大同时请求数"
+              htmlFor="channel-concurrency"
+              error={errors.maxConcurrency}
+            >
               <Input
                 id="channel-concurrency"
                 type="number"
@@ -609,8 +613,27 @@ function SheetForm({
                 onChange={(event) => patch({ maxConcurrency: event.target.value })}
               />
             </FormField>
+            <FormField
+              label="最大同时生成数"
+              htmlFor="channel-max-running"
+              error={errors.maxRunning}
+              className="col-span-2"
+            >
+              <Input
+                id="channel-max-running"
+                type="number"
+                min={0}
+                value={form.maxRunning}
+                disabled={readOnly}
+                aria-invalid={!!errors.maxRunning}
+                onChange={(event) => patch({ maxRunning: event.target.value })}
+              />
+            </FormField>
           </div>
-          <p className="text-muted-foreground text-xs">0 或留空表示不限。</p>
+          <p className="text-muted-foreground text-xs">
+            0 或留空表示不限。「最大同时请求数」限制同时发给上游的 HTTP 请求；
+            「最大同时生成数」限制同时在上游生成的任务数，填上游账号允许的并发，超出的任务在平台里显示“排队中”，等有空位再提交。
+          </p>
         </Zone>
 
         <Zone title="高级与安全（会记入审计日志）" risk>

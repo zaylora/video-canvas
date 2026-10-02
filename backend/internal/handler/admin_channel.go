@@ -60,6 +60,16 @@ func (h *AdminChannelHandler) List(c *gin.Context) {
 	response.OK(c, list)
 }
 
+// Loads 返回各渠道当前的任务负载（生成中 / 排队数）。
+func (h *AdminChannelHandler) Loads(c *gin.Context) {
+	list, err := h.svc.Loads(c.Request.Context())
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, list)
+}
+
 // Get 返回渠道详情。
 func (h *AdminChannelHandler) Get(c *gin.Context) {
 	key, ok := pathKey(c)

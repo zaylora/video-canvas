@@ -91,6 +91,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		channels := adminAI.Group("/channels")
 		channels.GET("", h.AdminChannel.List)
+		channels.GET("/loads", h.AdminChannel.Loads)
 		channels.POST("", superOnly, h.AdminChannel.Create)
 		channels.GET("/:key", h.AdminChannel.Get)
 		channels.PUT("/:key", superOnly, h.AdminChannel.Update)

@@ -130,8 +130,20 @@ export interface PluginUploadResult {
 export interface ChannelRateLimit {
   /** 每秒请求数 */
   rps?: number;
-  /** 最大并发 */
+  /** 最大同时请求数：同时发往上游的 HTTP 请求数（不是任务数） */
   max_concurrency?: number;
+  /** 最大同时生成数：同时在上游生成的任务数，超出的任务在平台排队 */
+  max_running?: number;
+}
+
+/** 渠道当前的任务负载（没有未完成任务的渠道不会出现） */
+export interface ChannelLoad {
+  /** 渠道 key */
+  channel: string;
+  /** 同时生成数：已在上游生成 + 正在提交的任务，和 max_running 比较 */
+  running: number;
+  /** 排队数：还没调用上游、在等名额的任务 */
+  waiting: number;
 }
 
 /** 渠道视图（不含 Key） */

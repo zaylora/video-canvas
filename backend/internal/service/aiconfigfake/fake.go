@@ -28,10 +28,11 @@ type MemRepo struct {
 
 	// 以下用来在测试里模拟插件 / 渠道 / 审计仓储的各种情形。
 	Audits         []model.AIAuditLog
-	AuditErr       error            // 非空时 InsertAudit 返回它
-	SaveVersionErr error            // 非空时 SaveVersion 返回它
-	ActiveTaskRefs map[uint64]int64 // 版本 id → 快照引用它的非终态任务数
-	DeleteInUse    bool             // 为 true 时 DeleteVersion 一律返回 ErrInUse（模拟并发下被新引用）
+	AuditErr       error               // 非空时 InsertAudit 返回它
+	SaveVersionErr error               // 非空时 SaveVersion 返回它
+	ActiveTaskRefs map[uint64]int64    // 版本 id → 快照引用它的非终态任务数
+	Loads          []model.ChannelLoad // ChannelLoads 的返回值
+	DeleteInUse    bool                // 为 true 时 DeleteVersion 一律返回 ErrInUse（模拟并发下被新引用）
 }
 
 func NewMemRepo() *MemRepo {
@@ -341,6 +342,13 @@ func (m *MemRepo) ListChannels(_ context.Context) ([]model.AIChannel, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
+}
+
+// ChannelLoads 返回测试预设的渠道负载（Loads 字段）。
+func (m *MemRepo) ChannelLoads(_ context.Context, _ time.Time) ([]model.ChannelLoad, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]model.ChannelLoad(nil), m.Loads...), nil
 }
 
 func (m *MemRepo) GetPlugin(_ context.Context, key string) (*model.AIPlugin, error) {
