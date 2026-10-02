@@ -26,10 +26,9 @@ import type {
   NodeKind,
   UploadNotice,
 } from "@/types";
-import { canConnectKinds } from "@/utils/canvas/canvas";
-import { takeUploadFile } from "@/utils/canvas/media";
+import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
 import { uploadAsset } from "@/api/asset";
-import { releaseObjectUrl } from "@/utils/canvas/media";
 
 type UseCanvasMenuOptions = {
   setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>;
@@ -143,8 +142,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         .reverse()
         .find((node) => {
           if (node.id === source.id) return false;
-          const kindOk = canConnectKinds(source.data.kind, fromHandle.type, node.data.kind);
-          if (!kindOk) return false;
+          if (!canLinkFrom(source.data, fromHandle.type, node.data)) return false;
 
           const internalNode = getInternalNode(node.id);
           return !!internalNode && !!getNodeHit(internalNode, flow);
@@ -202,8 +200,9 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
           .concat({ ...node, selected: true }),
       );
 
+      const from = connection && getNode(connection.nodeId);
       const connected =
-        !!connection && canConnectKinds(connection.kind, connection.handleType, kind);
+        !!connection && !!from && canLinkFrom(from.data, connection.handleType, node.data);
 
       if (connection && connected) {
         connectNodes(connection.nodeId, connection.handleId, connection.handleType, id);
@@ -211,7 +210,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
 
       return { id, connected };
     },
-    [connectNodes, defaultModels, setNodes],
+    [connectNodes, defaultModels, getNode, setNodes],
   );
 
   const addNode = useCallback(

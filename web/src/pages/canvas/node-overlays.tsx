@@ -5,7 +5,8 @@ import { NodeToolbar, Position, useReactFlow } from "@xyflow/react";
 import { NodeHistoryStrip } from "@/components/canvas/node-history-strip";
 import {
   PANEL_OFFSET,
-  useCanvasDragging,
+  useNodeDragging,
+  usePaneBusy,
   usePanelPlacement,
 } from "@/components/canvas/hooks/use-panel-placement";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
@@ -40,9 +41,11 @@ export function NodeOverlays({
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelHeight, setPanelHeight] = useState(300);
   const { position, width, shift } = usePanelPlacement(id, panelHeight);
-  const dragging = useCanvasDragging(id);
+  const paneBusy = usePaneBusy();
+  const nodeDragging = useNodeDragging(id);
   const flipped = position === Position.Top;
 
+  // 拖动时面板卸掉、松手后是新的元素，所以跟着 nodeDragging 重新挂监听
   useLayoutEffect(() => {
     const element = panelRef.current;
     if (!element) return;
@@ -51,7 +54,7 @@ export function NodeOverlays({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [nodeDragging]);
 
   const selectVersion = useCallback(
     (outputId: string) => {
@@ -69,9 +72,12 @@ export function NodeOverlays({
   );
 
   const fade = {
-    opacity: dragging ? 0.35 : 1,
-    pointerEvents: dragging ? ("none" as const) : undefined,
+    opacity: paneBusy ? 0.35 : 1,
+    pointerEvents: paneBusy ? ("none" as const) : undefined,
   };
+
+  // 拖着这个节点时两块都收起，松手后重新浮出来
+  if (nodeDragging) return null;
 
   return (
     <>

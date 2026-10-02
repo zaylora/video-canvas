@@ -4,7 +4,8 @@ import type { Capabilities } from "@/api/model/type";
 import { defaultCapabilities } from "@/utils/admin/model-template";
 import {
   buildTaskInput,
-  computeHandleFixes,
+  acceptsSourceKind,
+  legacyHandleFixes,
   currentOp,
   inputPorts,
   paramSummary,
@@ -74,7 +75,7 @@ describe("生成方式与输入口", () => {
   });
 });
 
-describe("resolveBindings / computeHandleFixes", () => {
+describe("resolveBindings / legacyHandleFixes / acceptsSourceKind", () => {
   test("素材口可接多根线，提示词口取第一根；当前方式不接收的线不绑定", () => {
     const links = [
       link({ edgeId: "t", sourceKind: "script", sourceLabel: "文本", text: "猫" }),
@@ -90,14 +91,28 @@ describe("resolveBindings / computeHandleFixes", () => {
     expect(none.images).toEqual([]);
   });
 
-  test("落在空口或失效口的线被改挂；不接收的线回到默认口", () => {
+  test("单输入口：挂在具名口上的旧连线一律改回默认口", () => {
     const links = [
       link({ edgeId: "a", assetId: "1", targetHandle: null }),
       link({ edgeId: "b", assetId: "2", targetHandle: "images" }),
       link({ edgeId: "c", sourceKind: "video", assetId: "3", targetHandle: "videos" }),
     ];
-    expect(computeHandleFixes(video(), "omni", links)).toEqual({ a: "images", c: null });
-    expect(computeHandleFixes(undefined, "omni", links)).toEqual({});
+    expect(legacyHandleFixes(links)).toEqual({ b: null, c: null });
+  });
+
+  test("落在默认口的线照样按种类绑定", () => {
+    const bound = resolveBindings(video(), "omni", [
+      link({ edgeId: "a", assetId: "1", targetHandle: null }),
+    ]);
+    expect(bound.images.map((l) => l.edgeId)).toEqual(["a"]);
+  });
+
+  test("按当前模型和生成方式判断收不收这种上游", () => {
+    expect(acceptsSourceKind(video(), "omni", "image")).toBe(true);
+    expect(acceptsSourceKind(video(), "t2v", "image")).toBe(false);
+    expect(acceptsSourceKind(video(), "omni", "video")).toBe(false); // 视频素材关闭
+    expect(acceptsSourceKind(video(), "t2v", "script")).toBe(true); // 文字总是进提示词
+    expect(acceptsSourceKind(undefined, "omni", "audio")).toBe(true); // 清单没到不拦
   });
 });
 

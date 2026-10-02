@@ -71,13 +71,14 @@ export function usePanelPlacement(nodeId: string, panelHeight: number): PanelPla
   };
 }
 
-/** 画布或节点正在被拖：浮层淡下去、不吃指针，免得挡住拖拽目标 */
-export function useCanvasDragging(nodeId: string) {
+/** 画布正在被拖或框选：浮层淡下去、不吃指针，免得挡住视线 */
+export function usePaneBusy() {
+  return useStore((state: ReactFlowState) => state.paneDragging || state.userSelectionActive);
+}
+
+/** 这个节点自己正在被拖：浮层整个收起，松手再出来 */
+export function useNodeDragging(nodeId: string) {
   return useStore(
-    useCallback(
-      (state: ReactFlowState) =>
-        state.paneDragging || state.userSelectionActive || !!state.nodeLookup.get(nodeId)?.dragging,
-      [nodeId],
-    ),
+    useCallback((state: ReactFlowState) => !!state.nodeLookup.get(nodeId)?.dragging, [nodeId]),
   );
 }

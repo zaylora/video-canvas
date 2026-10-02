@@ -352,3 +352,116 @@
   background-repeat: no-repeat;
   background-size: 1rem;
 }
+
+/* ---------- 进入画布：聚焦显影加载（设计稿原型 A） ---------- */
+/* 全部用 CSS 关键帧：浏览器在合成线程上跑，画布挂载、解码图片占住主线程时也不掉帧。
+   别改成 JS 逐帧驱动（motion 的 scale 等单独变换走主线程），进画布那一下正好最忙。 */
+.canvas-loader {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px);
+  background-size: 20px 20px;
+  background-position: center;
+}
+.canvas-loader-focus {
+  animation: canvas-focus-in 0.9s cubic-bezier(0.2, 0, 0, 1) both;
+  will-change: transform, opacity, filter;
+}
+.canvas-loader-focus[data-later] {
+  animation-delay: 0.12s;
+}
+/* 退场：logo 和名字虚掉缩小，整层随后淡出；不写起点，从进场停下的样子接着走 */
+.canvas-loader[data-leaving] {
+  animation: canvas-loader-out 0.38s 0.1s both;
+}
+.canvas-loader[data-leaving] .canvas-loader-focus {
+  animation: canvas-focus-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes canvas-focus-in {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+    transform: scale(1.12);
+  }
+}
+@keyframes canvas-focus-out {
+  to {
+    opacity: 0;
+    filter: blur(10px);
+    transform: scale(0.94);
+  }
+}
+@keyframes canvas-loader-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* 加载层淡出时画布内容依次入场：节点浮上来，顶栏落下、底栏升起，连线稍后淡入。
+   只动 transform 和 opacity；节点里有大图，给每个节点做 blur 会卡 */
+[data-entering] .react-flow__node > :first-child {
+  animation: canvas-node-in 0.5s cubic-bezier(0.2, 0, 0, 1) both;
+  will-change: transform, opacity;
+  animation-delay: 0.42s;
+}
+[data-entering] .react-flow__node:nth-child(1) > :first-child {
+  animation-delay: 0.1s;
+}
+[data-entering] .react-flow__node:nth-child(2) > :first-child {
+  animation-delay: 0.16s;
+}
+[data-entering] .react-flow__node:nth-child(3) > :first-child {
+  animation-delay: 0.22s;
+}
+[data-entering] .react-flow__node:nth-child(4) > :first-child {
+  animation-delay: 0.28s;
+}
+[data-entering] .react-flow__node:nth-child(5) > :first-child {
+  animation-delay: 0.32s;
+}
+[data-entering] .react-flow__node:nth-child(6) > :first-child {
+  animation-delay: 0.36s;
+}
+[data-entering] .react-flow__edges {
+  animation: canvas-fade-in 0.5s 0.3s both;
+}
+[data-entering] [data-slot="chrome-zone"] {
+  animation: canvas-chrome-drop 0.45s cubic-bezier(0.2, 0, 0, 1) 0.12s both;
+}
+[data-entering] [data-slot="chrome-zone"][data-position^="bottom"] {
+  animation-name: canvas-chrome-lift;
+  animation-delay: 0.2s;
+}
+@keyframes canvas-node-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes canvas-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes canvas-chrome-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@keyframes canvas-chrome-lift {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-entering] *,
+  .canvas-loader-focus {
+    animation: none !important;
+  }
+  .canvas-loader[data-leaving] {
+    animation-duration: 0.01ms;
+    animation-delay: 0s;
+  }
+}

@@ -155,14 +155,16 @@ export function NodeCard({
   className,
   children,
 }: NodeCardProps) {
-  const { rotateX, rotateY, scale } = useConnectionTilt({
+  const { rotateX, rotateY, scale, opacity } = useConnectionTilt({
     canAccept: canAcceptConnection,
   });
 
   return (
     // 外面这层只管 3D：别人拉线压到本节点身上时朝鼠标偏一点头，
     // 倾斜留在包装层，BaseNode 里连接点的绝对定位和 .selected 样式都不受影响
-    <motion.div style={{ transformPerspective: TILT_PERSPECTIVE, rotateX, rotateY, scale }}>
+    <motion.div
+      style={{ transformPerspective: TILT_PERSPECTIVE, rotateX, rotateY, scale, opacity }}
+    >
       <BaseNode aria-label={title} className={cn("group/node w-96", className)}>
         <div className="text-foreground pointer-events-none absolute right-0.5 bottom-full left-0.5 mb-2 flex items-center gap-2 text-[13px] font-semibold">
           {icon && <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>}

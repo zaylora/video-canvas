@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   MiniMap,
@@ -40,8 +40,9 @@ import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { GRID_SIZE, useSettingsStore } from "@/store";
 import type { CanvasEdge, CanvasNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
-import { getAllowedKinds, getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
+import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
+import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
 import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
 import {
   deserializeGraph,
@@ -60,6 +61,7 @@ import { TopRightBar } from "./chrome/top-right-bar";
 import { ViewControls } from "./chrome/view-controls";
 import { CanvasNodeView } from "./canvas-node";
 import { buildAddNodeItems } from "./chrome/add-node-items";
+import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
 import { MultiSelectProvider, SelectionToolbar } from "./selection-toolbar";
 import { useCanvasShortcuts } from "./use-canvas-shortcuts";
 
@@ -82,8 +84,11 @@ const nodeTypes = { canvas: CanvasNodeView } satisfies NodeTypes;
 /** 供 ReactFlow 使用的边类型表 */
 const edgeTypes = { animatedSvgEdge: AnimatedSvgEdge } satisfies EdgeTypes;
 
-/** 画布主体 */
-export function Flow({
+/**
+ * 画布主体。加载层退场时外面会在根节点（data-canvas-root）挂 data-entering 播入场，样式见 index.css；
+ * 用 memo 包住，免得页面上的加载状态变化把整张画布重渲染一遍。
+ */
+export const Flow = memo(function Flow({
   canvas,
   onConflict,
 }: {
@@ -93,7 +98,10 @@ export function Flow({
   const initial = useMemo(() => deserializeGraph(canvas.graph), [canvas.graph]);
   const [nodes, setNodes, applyNodesChange] = useNodesState<CanvasNode>(initial.nodes);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<CanvasEdge>(initial.edges);
-  const { getViewport, setViewport, screenToFlowPosition } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { getViewport, setViewport, screenToFlowPosition, getNode, getNodes } = useReactFlow<
+    CanvasNode,
+    CanvasEdge
+  >();
   const hydratedRef = useRef(false);
   const nodesRef = useRef(nodes);
   const changeDelayRef = useRef<number | false | null>(null);
@@ -114,8 +122,11 @@ export function Flow({
     },
     [changed, edges, getViewport, nodes],
   );
+  const overlayGate = useOverlayGate(getNodes);
+  const { pruneOnChange } = overlayGate;
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
+      pruneOnChange(changes);
       for (const change of changes) {
         if (change.type === "remove")
           releaseObjectUrl(nodesRef.current.find((node) => node.id === change.id)?.data.src);
@@ -133,7 +144,7 @@ export function Flow({
               : 800;
       applyNodesChange(changes);
     },
-    [applyNodesChange],
+    [applyNodesChange, pruneOnChange],
   );
   useEffect(() => {
     nodesRef.current = nodes;
@@ -182,6 +193,7 @@ export function Flow({
   }, [nodes, edges, scheduleSave]);
   const { tool, activeTool, setTool } = useCanvasTool();
   const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+
   const multiSelected = useMemo(
     () => nodes.reduce((count, node) => count + (node.selected ? 1 : 0), 0) > 1,
     [nodes],
@@ -312,163 +324,186 @@ export function Flow({
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点
   const menuItems = useMemo<AddNodeMenuItem[]>(() => {
-    const allowed = pending && new Set(getAllowedKinds(pending.kind, pending.handleType));
-    return buildAddNodeItems((kind) => (allowed ? !allowed.has(kind) : false));
-  }, [pending]);
+    const from = pending && getNode(pending.nodeId);
+    return buildAddNodeItems((kind) =>
+      from
+        ? !canLinkFrom(from.data, pending.handleType, { kind, model: defaultModels?.[kind] })
+        : false,
+    );
+  }, [defaultModels, getNode, pending]);
+
+  /** 拖线接到连接点上时的放行规则：种类规则 + 下游当前模型收不收 */
+  const isValidConnection = useCallback(
+    (connection: { source: string; target: string }) => {
+      const source = getNode(connection.source);
+      const target = getNode(connection.target);
+      return (
+        !!source && !!target && source.id !== target.id && canLinkNodes(source.data, target.data)
+      );
+    },
+    [getNode],
+  );
 
   return (
     // data-tool 驱动 index.css 里的光标与命中规则
     <CanvasHistoryProvider value={history}>
       <MultiSelectProvider value={multiSelected}>
-        <TooltipProvider delay={400}>
-          <div
-            className="bg-canvas relative h-svh w-svw overflow-hidden"
-            data-tool={activeTool}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-          >
-            <ReactFlow
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onInit={() => {
-                void setViewport(initial.viewport);
-                hydratedRef.current = true;
-              }}
-              onMoveEnd={() => scheduleSave(1000)}
-              onConnect={onConnect}
-              onConnectEnd={onConnectEnd}
-              // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
-              onDoubleClick={isPanning ? undefined : onDoubleClick}
-              zoomOnDoubleClick={false}
-              // 大画布要能一眼看全，最小缩到 14%
-              minZoom={MIN_ZOOM}
-              // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
-              // 设置里切成缩放后，滚轮直接缩放，不再需要按键
-              panOnScroll={!isWheelZoom}
-              zoomOnScroll={isWheelZoom}
-              zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
-              snapToGrid={settings.snapToGrid}
-              snapGrid={[GRID_SIZE, GRID_SIZE]}
-              // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
-              panOnDrag={isPanning ? true : [1]}
-              selectionOnDrag={!isPanning}
-              // 框选相交即选中，不要求完整包住
-              selectionMode={SelectionMode.Partial}
-              // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
-              nodesDraggable={!isPanning}
-              nodesConnectable={!isPanning}
-              elementsSelectable={!isPanning}
+        <OverlayGateProvider value={overlayGate.dragSelected}>
+          <TooltipProvider delay={400}>
+            <div
+              className="bg-canvas relative h-svh w-svw overflow-hidden"
+              data-tool={activeTool}
+              data-canvas-root
+              onDragOver={onDragOver}
+              onPointerDownCapture={overlayGate.onPointerDownCapture}
+              onDrop={onDrop}
             >
-              {settings.background !== "none" && (
-                <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
-              )}
-              <SelectionToolbar />
-              {minimap && (
-                <MiniMap
-                  position="bottom-left"
-                  pannable
-                  zoomable
-                  className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
-                  nodeColor="var(--muted-foreground)"
-                  nodeBorderRadius={12}
+              <ReactFlow
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onInit={() => {
+                  void setViewport(initial.viewport);
+                  hydratedRef.current = true;
+                }}
+                onMoveEnd={() => scheduleSave(1000)}
+                onNodeDragStart={overlayGate.onNodeDragStart}
+                onNodeClick={overlayGate.onNodeClick}
+                onConnect={onConnect}
+                isValidConnection={isValidConnection}
+                onConnectEnd={onConnectEnd}
+                // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
+                onDoubleClick={isPanning ? undefined : onDoubleClick}
+                zoomOnDoubleClick={false}
+                // 大画布要能一眼看全，最小缩到 14%
+                minZoom={MIN_ZOOM}
+                // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
+                // 设置里切成缩放后，滚轮直接缩放，不再需要按键
+                panOnScroll={!isWheelZoom}
+                zoomOnScroll={isWheelZoom}
+                zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
+                snapToGrid={settings.snapToGrid}
+                snapGrid={[GRID_SIZE, GRID_SIZE]}
+                // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
+                panOnDrag={isPanning ? true : [1]}
+                selectionOnDrag={!isPanning}
+                // 框选相交即选中，不要求完整包住
+                selectionMode={SelectionMode.Partial}
+                // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
+                nodesDraggable={!isPanning}
+                nodesConnectable={!isPanning}
+                elementsSelectable={!isPanning}
+              >
+                {settings.background !== "none" && (
+                  <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
+                )}
+                <SelectionToolbar />
+                {minimap && (
+                  <MiniMap
+                    position="bottom-left"
+                    pannable
+                    zoomable
+                    className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
+                    nodeColor="var(--muted-foreground)"
+                    nodeBorderRadius={12}
+                  />
+                )}
+              </ReactFlow>
+
+              {!isPanning && pending && menu && (
+                <PendingConnectionLine
+                  from={pending.fromScreen}
+                  fromPosition={pending.fromPosition}
+                  to={menu.screen}
                 />
               )}
-            </ReactFlow>
 
-            {!isPanning && pending && menu && (
-              <PendingConnectionLine
-                from={pending.fromScreen}
-                fromPosition={pending.fromPosition}
-                to={menu.screen}
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept={UPLOAD_ACCEPT}
+                multiple
+                className="sr-only"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  // 同一批文件连着选两次也得有反应，所以选完就把值清掉
+                  event.target.value = "";
+                  if (files.length) void addUploadedNodes(files).then(showUploadNotice);
+                }}
               />
-            )}
 
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept={UPLOAD_ACCEPT}
-              multiple
-              className="sr-only"
-              aria-hidden
-              tabIndex={-1}
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                // 同一批文件连着选两次也得有反应，所以选完就把值清掉
-                event.target.value = "";
-                if (files.length) void addUploadedNodes(files).then(showUploadNotice);
-              }}
-            />
+              {nodes.length === 0 && <EmptyState onAdd={addAtCenter} onUpload={uploadAtCenter} />}
 
-            {nodes.length === 0 && <EmptyState onAdd={addAtCenter} onUpload={uploadAtCenter} />}
+              <ChromeZone position="top-left">
+                <TopLeftBar
+                  title={title}
+                  onRename={onRename}
+                  saveStatus={saveStatus}
+                  onRetrySave={() => void flush()}
+                />
+              </ChromeZone>
+              <ChromeZone position="top-right">
+                <TopRightBar
+                  onOpenSettings={() => setSettingsOpen(true)}
+                  onOpenShortcuts={openShortcuts}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-center">
+                <BottomToolbar
+                  tool={tool}
+                  onToolChange={setTool}
+                  onAdd={addAtCenter}
+                  onUpload={uploadAtCenter}
+                  canUndo={history.canUndo}
+                  canRedo={history.canRedo}
+                  onUndo={history.undo}
+                  onRedo={history.redo}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-left" className="max-md:hidden">
+                <ViewControls
+                  minimap={minimap}
+                  onMinimapChange={setMinimap}
+                  onOpenShortcuts={openShortcuts}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-right" className="max-md:hidden">
+                <StatsBar />
+              </ChromeZone>
 
-            <ChromeZone position="top-left">
-              <TopLeftBar
-                title={title}
-                onRename={onRename}
-                saveStatus={saveStatus}
-                onRetrySave={() => void flush()}
+              <SettingsDialog
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                modelGroups={modelGroups}
               />
-            </ChromeZone>
-            <ChromeZone position="top-right">
-              <TopRightBar
-                onOpenSettings={() => setSettingsOpen(true)}
-                onOpenShortcuts={openShortcuts}
-              />
-            </ChromeZone>
-            <ChromeZone position="bottom-center">
-              <BottomToolbar
-                tool={tool}
-                onToolChange={setTool}
-                onAdd={addAtCenter}
-                onUpload={uploadAtCenter}
-                canUndo={history.canUndo}
-                canRedo={history.canRedo}
-                onUndo={history.undo}
-                onRedo={history.redo}
-              />
-            </ChromeZone>
-            <ChromeZone position="bottom-left" className="max-md:hidden">
-              <ViewControls
-                minimap={minimap}
-                onMinimapChange={setMinimap}
-                onOpenShortcuts={openShortcuts}
-              />
-            </ChromeZone>
-            <ChromeZone position="bottom-right" className="max-md:hidden">
-              <StatsBar />
-            </ChromeZone>
+              <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
-            <SettingsDialog
-              open={settingsOpen}
-              onOpenChange={setSettingsOpen}
-              modelGroups={modelGroups}
-            />
-            <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+              <AddNodeMenu
+                position={isPanning ? null : (menu?.screen ?? null)}
+                label={pending ? "引用该节点生成" : "添加节点"}
+                items={menuItems}
+                onClose={closeMenu}
+                onSelect={(value) => {
+                  // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
+                  if (value === UPLOAD_ACTION) {
+                    beginUpload();
+                    uploadInputRef.current?.click();
+                    return;
+                  }
 
-            <AddNodeMenu
-              position={isPanning ? null : (menu?.screen ?? null)}
-              label={pending ? "引用该节点生成" : "添加节点"}
-              items={menuItems}
-              onClose={closeMenu}
-              onSelect={(value) => {
-                // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
-                if (value === UPLOAD_ACTION) {
-                  beginUpload();
-                  uploadInputRef.current?.click();
-                  return;
-                }
-
-                addNode(value as NodeKind);
-              }}
-            />
-          </div>
-        </TooltipProvider>
+                  addNode(value as NodeKind);
+                }}
+              />
+            </div>
+          </TooltipProvider>
+        </OverlayGateProvider>
       </MultiSelectProvider>
     </CanvasHistoryProvider>
   );
-}
+});

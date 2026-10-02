@@ -5,9 +5,10 @@ import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/ca
 import { NODE_META } from "@/constants/canvas";
 import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
-import { canConnectKinds } from "@/utils/canvas/canvas";
+import { canLinkFrom } from "@/utils/canvas/link-rule";
 
 import { NodeOverlays } from "./node-overlays";
+import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
 
@@ -32,6 +33,7 @@ export function TextCanvasNode({
   const KindIcon = meta?.icon;
   const status = data.status ?? "idle";
   const multiSelected = useMultiSelected();
+  const dragSelected = useDragSelected(id);
 
   /** 输入口随模型 schema 增减，xyflow 要被通知重新测量，否则连线会因找不到 handle 被藏起来 */
   const updateNodeInternals = useUpdateNodeInternals();
@@ -45,9 +47,9 @@ export function TextCanvasNode({
   const canAcceptConnection = useCallback(
     ({ nodeId, handleType }: IncomingConnection) => {
       const from = getNode(nodeId);
-      return !!from && canConnectKinds(from.data.kind, handleType, "script");
+      return !!from && canLinkFrom(from.data, handleType, data);
     },
-    [getNode],
+    [data, getNode],
   );
 
   return (
@@ -73,7 +75,7 @@ export function TextCanvasNode({
           placeholder="选中后输入要求生成文本"
         />
       </NodeCard>
-      {selected && !multiSelected && (
+      {selected && !multiSelected && !dragSelected && (
         <NodeOverlays id={id} data={data} showHistory={false}>
           {(width) => (
             <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />

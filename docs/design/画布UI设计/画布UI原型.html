@@ -42,10 +42,23 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 #stage.hand { cursor: grab; } #stage.panning { cursor: grabbing; }
 #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 svg.edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
-.edges path { fill: none; stroke: var(--edge); stroke-width: 1.5; vector-effect: non-scaling-stroke; transition: stroke .18s; }
-.edges path.hot { stroke: var(--node-ring); }
-.edges path.flow { stroke: var(--run); stroke-dasharray: 6 6; animation: flow .6s linear infinite; }
-@keyframes flow { to { stroke-dashoffset: -12; } }
+.edges path { fill: none; vector-effect: non-scaling-stroke; }
+.edges .base { stroke: var(--edge); stroke-width: 1.5; transition: stroke .18s; }
+.edges .hot .base { stroke: rgba(255,255,255,.5); }
+/* 流光颜色：平时白色，下游生成中换成蓝色并加速 */
+.edges g { --fx: rgba(255,255,255,.85); --speed: 1; }
+.edges g.hot { --fx: #fff; }
+.edges g.run { --fx: var(--run); --speed: .45; }
+/* A 彗星：一段带辉光的亮带从上游跑向下游 */
+.fx-comet-glow { stroke: var(--fx); stroke-width: 6; stroke-linecap: round; opacity: .28; filter: blur(3px); stroke-dasharray: 16 84; animation: comet calc(2.2s * var(--speed)) cubic-bezier(.45,0,.55,1) infinite; }
+.fx-comet-core { stroke: var(--fx); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 10 90; animation: comet calc(2.2s * var(--speed)) cubic-bezier(.45,0,.55,1) infinite; }
+@keyframes comet { from { stroke-dashoffset: 16; } to { stroke-dashoffset: -84; } }
+/* B 光带：渐变描边，渐变本身沿线平移 */
+.fx-sweep { stroke-width: 2.5; stroke-linecap: round; }
+/* C 粒子流：圆头的零长度虚线就是一颗颗光点，偏移量滚动让它们流向下游 */
+.fx-dots { stroke: var(--fx); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 0 13; animation: dots calc(.9s * var(--speed)) linear infinite; }
+.fx-dots-glow { stroke: var(--fx); stroke-width: 7; stroke-linecap: round; opacity: .18; filter: blur(2px); stroke-dasharray: 0 13; animation: dots calc(.9s * var(--speed)) linear infinite; }
+@keyframes dots { to { stroke-dashoffset: -13; } }
 
 .node { position: absolute; }
 .node-head { position: absolute; left: 2px; right: 2px; bottom: calc(100% + 8px); display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--fg); }
@@ -259,6 +272,78 @@ button.stat:hover { background: rgba(255,255,255,.07); }
 .toast .d { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .toast.bad .d { background: var(--bad); } .toast.info .d { background: var(--run); }
 
+/* 流光层用画布单位：虚线间距、亮带长度跟着缩放走，pathLength 才算得准 */
+.edges path:not(.base) { vector-effect: none; }
+
+/* ---------- 进入画布的加载层 ---------- */
+@property --hole { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --ripple { syntax: "<length>"; inherits: false; initial-value: 0px; }
+#loader { position: fixed; inset: 0; z-index: 200; display: grid; place-content: center; justify-items: center; gap: 22px;
+  background-color: var(--canvas-bg); background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); background-size: 20px 20px; background-position: center; }
+#loader[hidden] { display: none; }
+.ld-mark { width: 72px; height: 72px; border-radius: 22px; background: var(--fg); display: grid; place-items: center; }
+.ld-mark svg { width: 40px; height: 40px; }
+.ld-name { font-size: 15px; font-weight: 600; letter-spacing: .02em; color: var(--fg); }
+.ld-sub { font-size: 12px; color: var(--fg-3); margin-top: -14px; }
+.ld-bar { width: 140px; height: 3px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+.ld-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--fg); transition: width .25s var(--e-out); }
+/* A 聚焦显影 */
+.ld-a .ld-mark, .ld-a .ld-name { animation: focusIn .9s var(--e-out) both; }
+.ld-a .ld-name { animation-delay: .12s; }
+.ld-a.out .ld-mark, .ld-a.out .ld-name { animation: focusOut .32s cubic-bezier(.4,0,1,1) both; }
+.ld-a.out { transition: opacity .38s .1s; opacity: 0; }
+@keyframes focusIn { from { opacity: 0; filter: blur(16px); transform: scale(1.12); } to { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes focusOut { to { opacity: 0; filter: blur(10px); transform: scale(.94); } }
+/* B 点阵涟漪：一圈更亮的点阵从中心往外扩；结束时中心开洞，画布从洞里露出来 */
+.ld-b::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255,255,255,.55) 1.1px, transparent 1.5px); background-size: 20px 20px; background-position: center;
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent calc(var(--ripple) - 60px), #000 var(--ripple), transparent calc(var(--ripple) + 60px));
+          mask: radial-gradient(circle at 50% 50%, transparent calc(var(--ripple) - 60px), #000 var(--ripple), transparent calc(var(--ripple) + 60px));
+  animation: ripple 1.6s cubic-bezier(.3,0,.3,1) infinite; }
+@keyframes ripple { from { --ripple: 0px; opacity: 1; } to { --ripple: 75vmax; opacity: 0; } }
+.ld-b .ld-mark { background: transparent; box-shadow: inset 0 0 0 2px var(--fg); }
+.ld-b .ld-mark svg * { stroke: var(--fg); stroke-dasharray: 60; stroke-dashoffset: 60; animation: draw 1.1s var(--e-out) .1s forwards; }
+.ld-b .ld-mark svg path[fill] { fill: var(--fg); fill-opacity: 0; animation: draw 1.1s var(--e-out) .1s forwards, fillIn .4s .9s forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes fillIn { to { fill-opacity: 1; } }
+.ld-b { -webkit-mask: radial-gradient(circle at 50% 45%, transparent var(--hole), #000 calc(var(--hole) + 1px)); mask: radial-gradient(circle at 50% 45%, transparent var(--hole), #000 calc(var(--hole) + 1px)); }
+.ld-b.out { transition: --hole .7s cubic-bezier(.65,0,.35,1); --hole: 120vmax; }
+.ld-b .ld-name, .ld-b .ld-sub { animation: rise .6s var(--e-out) .3s both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+/* C 品牌归位：大 logo 飞去左上角变成品牌标，其余淡出 */
+.ld-c .ld-mark { animation: popIn .5s cubic-bezier(.3,1.3,.5,1) both; transform-origin: center; }
+.ld-c .ld-name, .ld-c .ld-bar { animation: rise .5s var(--e-out) .15s both; }
+.ld-c.out { background-color: transparent; background-image: none; transition: background-color .35s; }
+.ld-c.out .ld-name, .ld-c.out .ld-bar { transition: opacity .2s; opacity: 0; }
+@keyframes popIn { from { opacity: 0; transform: scale(.6); } }
+
+/* 画布内容的入场：加载层撤下时依次出现 */
+.booting .zone, .booting #world, .booting #hist, .booting #panel, .booting #fxdemo { opacity: 0; }
+.revealing .node { animation: nodeIn .55s var(--e-out) both; animation-delay: calc(var(--i, 0) * 70ms + 80ms); }
+.revealing .edges { animation: fadeIn .5s .3s both; }
+.revealing .z-tl, .revealing .z-tr { animation: dropIn .45s var(--e-out) both; animation-delay: .1s; }
+.revealing .z-bc, .revealing .z-bl, .revealing .z-br { animation: liftIn .45s var(--e-out) both; animation-delay: .18s; }
+.revealing .z-bc { animation-name: liftInC; }
+.revealing #panel.show, .revealing #hist.show { animation: fadeIn .4s .45s both; }
+.revealing.no-brand #btn-logo .logo { opacity: 0; }
+@keyframes nodeIn { from { opacity: 0; filter: blur(8px); transform: scale(.97) translateY(8px); } }
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes dropIn { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes liftIn { from { opacity: 0; transform: translateY(10px); } }
+@keyframes liftInC { from { opacity: 0; transform: translate(-50%, 10px); } to { transform: translate(-50%, 0); } }
+
+/* ---------- 原型演示：切换加载动画和流光效果 ---------- */
+#fxdemo { position: fixed; z-index: 30; top: calc(64px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px;
+  max-width: calc(100vw - 24px); padding: 6px 8px 6px 12px; border-radius: 16px; background: var(--chrome); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 1px var(--chrome-border), 0 8px 24px rgba(0,0,0,.35); font-size: 12px; }
+#fxdemo .lab { color: var(--fg-3); }
+#fxdemo .grp { display: flex; align-items: center; gap: 6px; }
+#fxdemo .opts { display: flex; padding: 2px; border-radius: 999px; background: var(--surface-2); }
+#fxdemo .opts button { height: 26px; padding: 0 10px; border-radius: 999px; color: var(--fg-2); transition: background .15s, color .15s; }
+#fxdemo .opts button:hover { color: var(--fg); }
+#fxdemo .opts button.on { background: var(--surface-3); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+#fxdemo .replay { height: 26px; padding: 0 10px; border-radius: 999px; color: var(--fg); box-shadow: inset 0 0 0 1px var(--chrome-border); display: inline-flex; align-items: center; gap: 4px; }
+#fxdemo .replay:hover { background: rgba(255,255,255,.07); }
+
 @media (max-width: 860px) {
   .z-bl, .z-br, .hide-sm { display: none !important; }
 }
@@ -410,6 +495,24 @@ button.stat:hover { background: rgba(255,255,255,.07); }
   </div>
 </div>
 <div id="toasts"></div>
+
+<!-- 进入画布前的加载层：三种效果由下面的演示面板切换 -->
+<div id="loader" class="ld-a" role="status" aria-label="正在打开画布"></div>
+
+<!-- 原型演示：切换加载动画和连线流光 -->
+<div id="fxdemo">
+  <div class="grp"><span class="lab">加载动画</span>
+    <div class="opts" id="opt-loader">
+      <button data-v="a" class="on">聚焦显影</button><button data-v="b">点阵涟漪</button><button data-v="c">品牌归位</button>
+    </div>
+    <button class="replay" id="btn-replay" title="重新播放进入画布的过程"><span data-icon="redo" data-size="13"></span>重播</button>
+  </div>
+  <div class="grp"><span class="lab">连线流光</span>
+    <div class="opts" id="opt-edge">
+      <button data-v="comet" class="on">彗星</button><button data-v="sweep">光带</button><button data-v="dots">粒子流</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js"></script>
 <script>
@@ -634,15 +737,58 @@ function render() {
   $("#st-fail").textContent = failed; $("#st-warn").classList.toggle("warn", failed > 0);
   renderHist();
 }
+/* 连线：底线 + 流光层。流光有三种（彗星 / 光带 / 粒子流），由演示面板切换 */
+let edgeFx = "comet";
+function edgeFxMarkup(e, d, sx, sy, tx, ty, running) {
+  if (edgeFx === "comet")
+    return `<path class="fx-comet-glow" pathLength="100" d="${d}"/><path class="fx-comet-core" pathLength="100" d="${d}"/>`;
+  if (edgeFx === "dots")
+    return `<path class="fx-dots-glow" d="${d}"/><path class="fx-dots" d="${d}"/>`;
+  // 光带：沿上下游连线方向的渐变，渐变本身从上游平移到下游
+  const gid = "sw-" + e.id, vx = tx - sx, vy = ty - sy;
+  const color = running ? "var(--run)" : "#fff";
+  const dur = running ? 1.1 : 2.6;
+  const anim = REDUCE ? "" : `<animateTransform attributeName="gradientTransform" type="translate" from="${-vx} ${-vy}" to="${vx} ${vy}" dur="${dur}s" repeatCount="indefinite"/>`;
+  return `<defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${sx}" y1="${sy}" x2="${tx}" y2="${ty}">
+      <stop offset=".3" stop-color="${color}" stop-opacity="0"/><stop offset=".5" stop-color="${color}" stop-opacity=".95"/><stop offset=".7" stop-color="${color}" stop-opacity="0"/>${anim}
+    </linearGradient></defs><path class="fx-sweep" stroke="url(#${gid})" d="${d}"/>`;
+}
+/**
+ * 每帧都可能调用（拖节点、生成进度），所以不整块重建：
+ * 同一根线复用原来的 <g>，只改路径和渐变坐标，流光动画才不会被一次次打断重来。
+ * 只有换了流光类型、或者生成状态变了（光带的颜色和速度写在标记里）才重建这一根。
+ */
 function renderEdges() {
-  $("#edges").innerHTML = edges.map(e => {
-    const a = byId(e.source), b = byId(e.target); if (!a || !b) return "";
+  const svg = $("#edges");
+  const live = new Set();
+  for (const e of edges) {
+    const a = byId(e.source), b = byId(e.target); if (!a || !b) continue;
+    live.add(e.id);
     const ka = KIND[a.kind], kb = KIND[b.kind];
     const sx = a.x + ka.w, sy = a.y + ka.h / 2, tx = b.x, ty = b.y + kb.h / 2;
     const dx = Math.max(60, Math.abs(tx - sx) / 2);
-    const cls = b.status === "running" ? "flow" : (selId === a.id || selId === b.id) ? "hot" : "";
-    return `<path class="${cls}" d="M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}"/>`;
-  }).join("");
+    const d = `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
+    const running = b.status === "running";
+    const cls = running ? "run" : (selId === a.id || selId === b.id) ? "hot" : "";
+    const sig = edgeFx + (running ? ":run" : "");
+    let g = svg.querySelector(`g[data-id="${e.id}"]`);
+    if (!g || g.dataset.sig !== sig) {
+      g?.remove();
+      g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.dataset.id = e.id; g.dataset.sig = sig;
+      g.innerHTML = `<path class="base" d="${d}"/>${edgeFxMarkup(e, d, sx, sy, tx, ty, running)}`;
+      svg.appendChild(g);
+    }
+    if (g.getAttribute("class") !== cls) g.setAttribute("class", cls);
+    g.querySelectorAll("path").forEach(p => p.getAttribute("d") !== d && p.setAttribute("d", d));
+    const grad = g.querySelector("linearGradient");
+    if (grad) {
+      grad.setAttribute("x1", sx); grad.setAttribute("y1", sy); grad.setAttribute("x2", tx); grad.setAttribute("y2", ty);
+      const t = grad.querySelector("animateTransform");
+      t?.setAttribute("from", `${sx - tx} ${sy - ty}`); t?.setAttribute("to", `${tx - sx} ${ty - sy}`);
+    }
+  }
+  svg.querySelectorAll("g[data-id]").forEach(g => { if (!live.has(g.dataset.id)) g.remove(); });
 }
 const waveBars = seed => Array.from({ length: 48 }, (_, i) => `<i style="height:${18 + Math.abs(Math.sin(i * 0.7 + seed) * Math.cos(i * 0.23)) * 60}%"></i>`).join("");
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -1159,6 +1305,75 @@ function toast(msg, kind = "ok") {
   setTimeout(() => { t.classList.remove("in"); setTimeout(() => t.remove(), 200); }, 2400);
 }
 
+/* ---------- 进入画布：加载层 + 内容入场（三种效果） ---------- */
+const MARK_SVG = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.5" y="4" width="8" height="8" rx="2" stroke="#0d0d0e" stroke-width="1.6"/><path d="M10.5 7.2 13.5 5.5v5l-3-1.7" fill="#0d0d0e" stroke="#0d0d0e" stroke-width=".8" stroke-linejoin="round"/></svg>`;
+let loaderStyle = "a", booting = false;
+const loaderEl = $("#loader");
+
+function boot() {
+  if (booting) return;
+  booting = true;
+  closePops();
+  document.body.classList.remove("revealing", "no-brand");
+  document.body.classList.add("booting");
+  loaderEl.className = "ld-" + loaderStyle;
+  loaderEl.hidden = false;
+  loaderEl.innerHTML = `<div class="ld-mark">${MARK_SVG}</div><div class="ld-name">Video Canvas</div>` +
+    (loaderStyle === "b" ? `<div class="ld-sub">正在打开「${esc(title.value)}」</div>` : "") +
+    (loaderStyle === "c" ? `<div class="ld-bar"><i></i></div>` : "");
+  // 模拟拉取画布数据：进度分几步走，C 的进度条跟着动
+  const bar = $(".ld-bar i", loaderEl);
+  [22, 48, 76, 100].forEach((p, i) => setTimeout(() => bar && (bar.style.width = p + "%"), 160 + i * 260));
+  setTimeout(reveal, REDUCE ? 150 : 1350);
+}
+
+function reveal() {
+  const body = document.body;
+  // 节点按画布上的先后（先上后下、先左后右）依次出现
+  [...nodes].sort((p, q) => p.y - q.y || p.x - q.x).forEach((n, i) => els.get(n.id)?.style.setProperty("--i", i));
+  if (loaderStyle === "c") {
+    // 品牌归位：大 logo 飞到左上角品牌标的位置并缩成它，落地后真品牌标接上
+    const mark = $(".ld-mark", loaderEl), target = $("#btn-logo .logo");
+    const a = mark.getBoundingClientRect(), b = target.getBoundingClientRect();
+    body.classList.add("no-brand");
+    loaderEl.classList.add("out");
+    body.classList.remove("booting"); body.classList.add("revealing");
+    const scale = b.width / a.width;
+    const flight = mark.animate([
+      { transform: "none", borderRadius: "22px" },
+      { transform: `translate(${b.left + b.width / 2 - (a.left + a.width / 2)}px, ${b.top + b.height / 2 - (a.top + a.height / 2)}px) scale(${scale})`, borderRadius: `${7 / scale}px` },
+    ], { duration: REDUCE ? 0 : 640, easing: "cubic-bezier(.65,0,.25,1)", fill: "forwards" });
+    flight.finished.then(() => { body.classList.remove("no-brand"); finishBoot(); });
+    return;
+  }
+  loaderEl.classList.add("out");
+  body.classList.remove("booting"); body.classList.add("revealing");
+  setTimeout(finishBoot, REDUCE ? 0 : loaderStyle === "b" ? 760 : 520);
+}
+
+function finishBoot() {
+  loaderEl.hidden = true;
+  loaderEl.className = "";
+  loaderEl.innerHTML = "";
+  booting = false;
+  // 入场动画都播完再摘掉，免得之后 render 新节点也跟着播一遍
+  setTimeout(() => document.body.classList.remove("revealing"), 1200);
+}
+
+/* 演示面板：切换加载动画（切了就重播）和连线流光 */
+function pickOption(group, btn) {
+  $$("button", group).forEach(x => x.classList.toggle("on", x === btn));
+}
+$("#opt-loader").onclick = e => {
+  const b = e.target.closest("button[data-v]"); if (!b) return;
+  pickOption($("#opt-loader"), b); loaderStyle = b.dataset.v; boot();
+};
+$("#btn-replay").onclick = () => boot();
+$("#opt-edge").onclick = e => {
+  const b = e.target.closest("button[data-v]"); if (!b) return;
+  pickOption($("#opt-edge"), b); edgeFx = b.dataset.v; renderEdges();
+};
+
 /* ---------- 启动 ---------- */
 addEventListener("resize", () => { layoutOverlay(); segTo($("#seg-tool"), $("#seg-tool .on"), true); segTo($("#seg-view"), $("#seg-view .on"), true); });
 render();
@@ -1166,6 +1381,7 @@ const W = innerWidth, H = innerHeight;
 view.k = clampK(Math.min(1, (W - 140) / 1120));
 view.x = W / 2 - 490 * view.k; view.y = Math.max(110, H * 0.3 - 118 * view.k);
 apply(); buildPanel(); syncUndo(); syncDemo(); setSave("idle");
+boot();
 requestAnimationFrame(() => { segTo($("#seg-tool"), $("#seg-tool .on"), true); segTo($("#seg-view"), $("#seg-view .on"), true); layoutOverlay(); });
 })();
 </script>

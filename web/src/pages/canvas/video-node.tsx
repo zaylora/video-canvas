@@ -27,11 +27,12 @@ import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
-import { canConnectKinds } from "@/utils/canvas/canvas";
+import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { OP_LABEL, openParams, paramSummary } from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { NodeOverlays } from "./node-overlays";
+import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 
 /** 走「提交任务 -> 轮询 / 推送 -> 回填」流程的媒体节点种类 */
@@ -248,13 +249,14 @@ function MediaTaskNode({
   const canAcceptConnection = useCallback(
     ({ nodeId, handleType }: IncomingConnection) => {
       const from = getNode(nodeId);
-      return !!from && canConnectKinds(from.data.kind, handleType, kind);
+      return !!from && canLinkFrom(from.data, handleType, data);
     },
-    [getNode, kind],
+    [data, getNode],
   );
 
   const retryable = vm.view.phase === "failed";
   const multiSelected = useMultiSelected();
+  const dragSelected = useDragSelected(id);
 
   return (
     <>
@@ -280,7 +282,7 @@ function MediaTaskNode({
           retryHint={vm.blockedReason ?? undefined}
         />
       </NodeCard>
-      {selected && !multiSelected && (
+      {selected && !multiSelected && !dragSelected && (
         <NodeOverlays id={id} data={data} showHistory>
           {(width) => <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />}
         </NodeOverlays>

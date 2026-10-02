@@ -30,7 +30,12 @@ export type ConnectionTilt = {
   rotateX: MotionValue<number>;
   rotateY: MotionValue<number>;
   scale: MotionValue<number>;
+  /** 别人拉线时，本节点接不上就淡下去，一眼看出该往哪儿连 */
+  opacity: MotionValue<number>;
 };
+
+/** 拉线时接不上的节点淡到多少 */
+const DIMMED_OPACITY = 0.35;
 
 /**
  * 别人从另一个节点拉线过来、线头停在本节点身上时，让节点被指到的那一侧往里沉一点，
@@ -56,6 +61,7 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
   const rotateX = useSpring(0, SPRING);
   const rotateY = useSpring(0, SPRING);
   const scale = useSpring(1, SPRING);
+  const opacity = useSpring(1, SPRING);
 
   useEffect(() => {
     const rest = () => {
@@ -64,16 +70,22 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
       scale.set(1);
     };
 
-    if (!nodeId || prefersReducedMotion) return rest;
+    // 订阅撤掉时连同淡化一起还原，免得节点卡在半透明
+    const reset = () => {
+      rest();
+      opacity.set(1);
+    };
 
-    return store.subscribe((state, previous) => {
+    if (!nodeId) return reset;
+
+    const unsubscribe = store.subscribe((state, previous) => {
       // store 里什么都可能变，只有连线状态换了对象才值得往下算
       const { connection } = state;
       if (connection === previous.connection) return;
 
-      // 没人在拉线，或拉线的就是自己，都不倾斜
+      // 没人在拉线（包括松手、落空、取消），或拉线的就是自己：倾斜和淡化都还原
       if (!connection.inProgress || connection.fromNode.id === nodeId) {
-        rest();
+        reset();
         return;
       }
 
@@ -81,8 +93,10 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
         nodeId: connection.fromNode.id,
         handleType: connection.fromHandle.type,
       };
-      // 接不上的线不给反馈，免得沉下去了松手却连不上
-      if (canAcceptRef.current && !canAcceptRef.current(from)) {
+      // 接不上的线不给倾斜反馈，免得沉下去了松手却连不上；节点整体淡下去
+      const accepted = !canAcceptRef.current || canAcceptRef.current(from);
+      opacity.set(accepted ? 1 : DIMMED_OPACITY);
+      if (!accepted || prefersReducedMotion) {
         rest();
         return;
       }
@@ -106,7 +120,11 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
       rotateY.set(hit.x * MAX_TILT);
       scale.set(HOVER_SCALE);
     });
-  }, [nodeId, prefersReducedMotion, rotateX, rotateY, scale, store]);
+    return () => {
+      unsubscribe();
+      reset();
+    };
+  }, [nodeId, opacity, prefersReducedMotion, rotateX, rotateY, scale, store]);
 
-  return { rotateX, rotateY, scale };
+  return { rotateX, rotateY, scale, opacity };
 }

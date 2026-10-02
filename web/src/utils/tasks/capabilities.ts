@@ -142,37 +142,29 @@ export function resolveBindings(
   return out;
 }
 
-/** 绑定结果里被占用的连线 id -> 它实际落在的输入口 */
-function boundHandles(bindings: Bindings): Map<string, string> {
-  const map = new Map<string, string>();
-  if (bindings.prompt) map.set(bindings.prompt.edgeId, "prompt");
-  for (const ref of REF_KEYS) for (const link of bindings[ref.key]) map.set(link.edgeId, ref.key);
-  return map;
+/**
+ * 节点只有一个输入口（设计稿：左侧一个 ⊕），连线不再挂在具名口上：
+ * 旧画布里挂在「提示词 / 图片…」口上的线一律改回默认口（null），用途由 resolveBindings 按上游种类决定。
+ * 返回 edgeId -> null，没有要改的就是空对象。
+ */
+export function legacyHandleFixes(links: IncomingLink[]): Record<string, null> {
+  const fixes: Record<string, null> = {};
+  for (const link of links) if (link.targetHandle !== null) fixes[link.edgeId] = null;
+  return fixes;
 }
 
 /**
- * 让连线的落点和绑定结果一致：落在空口 / 已经不存在的口上的线，改挂到实际绑定的输入口；
- * 当前方式不接收的线改成默认口（null），免得 xyflow 找不到 handle 把线藏掉。
- * 返回 edgeId -> 新的 targetHandle，没有要改的就是空对象。
+ * 按当前模型和生成方式，本节点收不收这种上游：文字总是进提示词，
+ * 素材要当前方式收这种素材（比如「文生视频」不收图片）。模型清单还没到时不拦，只看种类规则。
  */
-export function computeHandleFixes(
+export function acceptsSourceKind(
   caps: Capabilities | undefined,
   op: GenerationOp | undefined,
-  links: IncomingLink[],
-): Record<string, string | null> {
-  if (!caps) return {};
-  const bound = boundHandles(resolveBindings(caps, op, links));
-  const names = new Set<string>(inputPorts(caps, op).map((port) => port.id));
-  const fixes: Record<string, string | null> = {};
-  for (const link of links) {
-    const target = bound.get(link.edgeId);
-    if (target !== undefined) {
-      if (link.targetHandle !== target) fixes[link.edgeId] = target;
-    } else if (link.targetHandle !== null && !names.has(link.targetHandle)) {
-      fixes[link.edgeId] = null;
-    }
-  }
-  return fixes;
+  sourceKind: NodeKind,
+): boolean {
+  if (!caps) return true;
+  const port = PORT_OF_KIND[sourceKind];
+  return port === "text" || refKindsOf(caps, op).includes(port);
 }
 
 /** 提示词兼容：旧节点只有 data.prompt，新节点提示词放 params.prompt */

@@ -13,9 +13,8 @@ import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import {
   buildTaskInput,
-  computeHandleFixes,
   currentOp,
-  inputPorts,
+  legacyHandleFixes,
   manualRefs,
   priceSpecOf,
   readParams,
@@ -27,6 +26,12 @@ import {
 } from "@/utils/tasks/capabilities";
 import { deriveVideoNodeView } from "@/utils/tasks/node-view";
 import { fanoutCount, quote } from "@/utils/pricing/quote";
+
+/** 节点的连接点：左进右出各一个 */
+const SINGLE_HANDLES: NodeCardHandle[] = [
+  { type: "target", position: Position.Left },
+  { type: "source", position: Position.Right },
+];
 
 /** 切换模型时要用户确认的那次切换 */
 export type PendingModelSwitch = {
@@ -107,35 +112,17 @@ export function useTaskNode(
     };
   }, [built.input, caps, model]);
 
-  // 连线落点和实际绑定的输入口对齐；换模型后失效的口也在这里收拾，免得线被 xyflow 藏掉
-  const fixes = useMemo(() => computeHandleFixes(caps, op, links), [caps, op, links]);
+  // 节点只有一个输入口：旧画布里挂在具名口上的线改回默认口，免得 xyflow 找不到 handle 把线藏掉
+  const fixes = useMemo(() => legacyHandleFixes(links), [links]);
   useEffect(() => {
     if (Object.keys(fixes).length === 0) return;
     setEdges((edges) =>
-      edges.map((edge) => (edge.id in fixes ? { ...edge, targetHandle: fixes[edge.id] } : edge)),
+      edges.map((edge) => (edge.id in fixes ? { ...edge, targetHandle: null } : edge)),
     );
   }, [fixes, setEdges]);
 
-  // 输入口：提示词口 + 当前生成方式能接收的每种素材一个口；清单还没到时先沿用连线上已有的口，线不会闪没
-  const handles = useMemo<NodeCardHandle[]>(() => {
-    const ports = caps
-      ? inputPorts(caps, op).map((port) => ({ id: port.id as string, label: port.label }))
-      : [...new Set(links.map((link) => link.targetHandle).filter((h): h is string => !!h))].map(
-          (handle) => ({ id: handle, label: undefined as string | undefined }),
-        );
-    const inputs: NodeCardHandle[] =
-      ports.length === 0
-        ? [{ type: "target", position: Position.Left }]
-        : ports.map((port, index) => ({
-            type: "target",
-            position: Position.Left,
-            id: port.id,
-            label: port.label,
-            top: ports.length > 1 ? `${((index + 1) / (ports.length + 1)) * 100}%` : undefined,
-            compact: ports.length > 1,
-          }));
-    return [...inputs, { type: "source", position: Position.Right }];
-  }, [links, caps, op]);
+  // 左边一个输入口、右边一个输出口；接进来的线做什么用由 resolveBindings 按上游种类决定
+  const handles = SINGLE_HANDLES;
 
   // ---- 展示状态 ----
   const running = data.status === "running";

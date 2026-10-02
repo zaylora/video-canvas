@@ -28,6 +28,7 @@ export function ChromeZone({
   return (
     <div
       data-slot="chrome-zone"
+      data-position={position}
       className={cn(
         "canvas-overlay-interactive pointer-events-auto absolute z-10 flex items-center gap-2",
         ZONE_CLASS[position],

@@ -7,8 +7,10 @@ import {
   getStraightPath,
   getSmoothStepPath,
   useReactFlow,
+  useStore,
 } from "@xyflow/react";
 import { Scissors } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 
@@ -49,7 +51,8 @@ export type AnimatedSvgEdge = Edge<{
    * If not provided, this defaults to `"indefinite"`.
    */
   repeat?: number | "indefinite";
-  shape: keyof typeof shapes;
+  /** 沿路径移动的形状；sweep 不是形状，而是一段沿线扫过的渐变光带 */
+  shape: keyof typeof shapes | "sweep";
 }>;
 
 /**
@@ -86,11 +89,17 @@ export function AnimatedSvgEdge({
   labelBgBorderRadius,
   // 选中态决定中点那把剪刀露不露面
   selected,
+  target,
 }: EdgeProps<AnimatedSvgEdge>) {
   const { deleteElements } = useReactFlow();
+  // 下游在生成：光带换成运行色并加速，一眼看出这根线正在喂数据
+  const running = useStore(
+    (state) =>
+      (state.nodeLookup.get(target)?.data as { status?: string } | undefined)?.status === "running",
+  );
 
   // data 为空对象时（比如边没带 data 就被创建）回退到默认形状，避免取不到组件
-  const Shape = shapes[data.shape] ?? shapes.circle;
+  const Shape = data.shape === "sweep" ? null : (shapes[data.shape] ?? shapes.circle);
 
   const [path, labelX, labelY] = getPath({
     type: data.path ?? "bezier",
@@ -127,7 +136,18 @@ export function AnimatedSvgEdge({
         labelBgPadding={labelBgPadding}
         labelBgBorderRadius={labelBgBorderRadius}
       />
-      <Shape animateMotionProps={animateMotionProps} />
+      {Shape ? (
+        <Shape animateMotionProps={animateMotionProps} />
+      ) : (
+        <SweepLight
+          id={id}
+          path={path}
+          from={{ x: sourceX, y: sourceY }}
+          to={{ x: targetX, y: targetY }}
+          running={running}
+          emphasized={!!selected}
+        />
+      )}
       {/* 选中这条线就在中点浮出剪刀，点一下断开关联。
           按 React Flow UI 的 button-edge 写法：EdgeLabelRenderer 把内容搬到画布的
           变换层上，坐标直接用画布坐标；它的容器不吃指针事件，得由这层定位 div
@@ -153,6 +173,72 @@ export function AnimatedSvgEdge({
           </div>
         </EdgeLabelRenderer>
       )}
+    </>
+  );
+}
+
+/** 光带走完一趟的时长：平时慢、下游生成中快 */
+const SWEEP_DURATION = { idle: 2.6, running: 1.1 };
+
+/**
+ * 光带流光（设计稿原型「光带」）：一段两头渐隐的亮带沿连线从上游扫到下游。
+ * 做法是给连线叠一层渐变描边，渐变方向取上下游连线方向，
+ * 再用 animateTransform 把整个渐变从起点外平移到终点外；不移动任何形状，节点挪动时也不会跳帧。
+ * 系统开了「减少动态效果」时只留静止的底线，不画光带。
+ */
+function SweepLight({
+  id,
+  path,
+  from,
+  to,
+  running,
+  emphasized,
+}: {
+  id: string;
+  path: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  running: boolean;
+  emphasized: boolean;
+}) {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return null;
+  const gradientId = `edge-sweep-${id}`;
+  const color = running ? "var(--status-running)" : "var(--edge-shape-color)";
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return (
+    <>
+      <defs>
+        <linearGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          x1={from.x}
+          y1={from.y}
+          x2={to.x}
+          y2={to.y}
+        >
+          <stop offset="0.3" style={{ stopColor: color, stopOpacity: 0 }} />
+          <stop offset="0.5" style={{ stopColor: color, stopOpacity: emphasized ? 1 : 0.85 }} />
+          <stop offset="0.7" style={{ stopColor: color, stopOpacity: 0 }} />
+          <animateTransform
+            attributeName="gradientTransform"
+            type="translate"
+            from={`${-dx} ${-dy}`}
+            to={`${dx} ${dy}`}
+            dur={`${running ? SWEEP_DURATION.running : SWEEP_DURATION.idle}s`}
+            repeatCount="indefinite"
+          />
+        </linearGradient>
+      </defs>
+      <path
+        d={path}
+        fill="none"
+        stroke={`url(#${gradientId})`}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        pointerEvents="none"
+      />
     </>
   );
 }
