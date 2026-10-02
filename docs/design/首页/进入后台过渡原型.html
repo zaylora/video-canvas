@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>进入后台过渡</title>
+<style>
+/* 首页 token 抄自 index.css 的 .dark；后台 token 抄自 .dark.admin-theme（.admin-vars 让加载层提前用上后台配色） */
+.dark { --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0); --card: oklch(0.205 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0); --border: oklch(1 0 0 / 10%); --popover: oklch(0.205 0 0); --sidebar: oklch(0.205 0 0); --destructive: oklch(0.704 0.191 22.216); --credit: oklch(0.82 0.15 85); --chrome-hover: oklch(1 0 0 / 0.07); --canvas-dot: oklch(1 0 0 / 0.08); --canvas-bg: oklch(0.13 0 0); }
+.dark.admin-theme, .dark .admin-vars { --background: hsl(240 10% 3.9%); --foreground: hsl(0 0% 98%); --card: hsl(240 10% 3.9%); --muted: hsl(240 3.7% 15.9%); --muted-foreground: hsl(240 5% 64.9%); --border: hsl(240 3.7% 15.9%); --popover: hsl(240 10% 3.9%); --sidebar: hsl(240 5.9% 10%); --canvas-bg: hsl(240 10% 3.9%); }
+:root { --ease-out: cubic-bezier(0.2, 0, 0, 1); }
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--background); color: var(--foreground); font: 14px/1.5 "PingFang SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+#root { position: relative; z-index: 1; background: var(--background); min-height: 100vh; }
+
+.app { display: flex; min-height: 100vh; }
+.sb { width: 240px; flex: none; background: var(--sidebar); border-right: 1px solid var(--border); padding: 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+.brand { display: flex; align-items: center; gap: 8px; height: 36px; padding-left: 6px; font-weight: 600; margin-bottom: 8px; }
+.brand i { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #8b5cf6, #22d3ee); flex: none; }
+.brand small { display: block; color: var(--muted-foreground); font-weight: 400; font-size: 11px; line-height: 1; }
+.item { height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 10px; color: var(--muted-foreground); text-align: left; }
+.item.on { background: var(--muted); color: var(--foreground); font-weight: 600; }
+.item:hover { background: var(--chrome-hover); color: var(--foreground); }
+.new { height: 40px; border-radius: 12px; background: var(--foreground); color: var(--background); font-weight: 600; margin-bottom: 12px; }
+.foot { margin-top: auto; }
+.inset { flex: 1; min-width: 0; }
+header { position: relative; z-index: 10; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--background); }
+.sp { flex: 1; }
+.pill { height: 36px; padding: 0 12px; border-radius: 999px; background: var(--card); display: flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--card); box-shadow: 0 0 0 1px var(--border); font-weight: 600; }
+.tag { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: oklch(0.6 0.15 250 / 0.18); color: oklch(0.75 0.12 240); }
+.crumb { color: var(--muted-foreground); } .crumb b { color: var(--foreground); font-weight: 500; }
+main { padding: 24px; transform-origin: 50% 30%; }
+.hero { border-radius: 28px; padding: 56px 40px; background: color-mix(in oklch, var(--card) 60%, transparent); box-shadow: 0 0 0 1px var(--border); text-align: center; background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 20px 20px; }
+.hero h1 { font-size: 34px; font-weight: 300; color: var(--muted-foreground); } .hero h1 b { color: var(--foreground); font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 32px; }
+.cards div { aspect-ratio: 4/3; border-radius: 12px; background: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.stat { border: 1px solid var(--border); border-radius: 12px; padding: 16px; } .stat b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted-foreground); font-size: 12px; }
+.table { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; height: 320px; }
+
+/* 头像菜单 */
+.menu-wrap { position: relative; }
+.menu { position: absolute; right: 0; top: 44px; width: 208px; padding: 4px; border-radius: 12px; background: var(--popover); box-shadow: 0 0 0 1px var(--border), 0 12px 30px oklch(0 0 0 / .35); transform-origin: top right; animation: pop 180ms var(--ease-out) both; }
+@keyframes pop { from { opacity: 0; transform: scale(.95); } }
+.menu .label { padding: 6px 8px; color: var(--muted-foreground); font-size: 12px; }
+.menu button { width: 100%; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 8px; text-align: left; }
+.menu button:hover { background: var(--muted); }
+.menu button[aria-busy="true"] { cursor: progress; }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px -4px; }
+.menu .danger { color: var(--destructive); }
+svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.spin { animation: spin .8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 旧画面快照（原型用的兼容实现；代码里 B/C 用原生 View Transitions） */
+.ghost { position: fixed; inset: 0; z-index: 15; pointer-events: none; overflow: hidden; background: var(--background); }
+
+/* ===== A 聚焦显影：关键帧和 index.css 里的 canvas-loader 一致 ===== */
+.loader { position: fixed; inset: 0; z-index: 30; display: grid; place-content: center; justify-items: center; gap: 20px; color: var(--foreground);
+  background-color: var(--canvas-bg); background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 20px 20px; background-position: center; animation: loader-in calc(.18s * var(--f, 1)) both; }
+@keyframes loader-in { from { opacity: 0; } }
+.loader .mark { width: 72px; height: 72px; border-radius: 22px; background: var(--foreground); color: var(--background); display: grid; place-items: center; }
+.loader .mark svg { width: 36px; height: 36px; stroke-width: 1.8; }
+.loader .txt { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.loader .txt b { font-size: 15px; letter-spacing: .02em; } .loader .txt span { color: var(--muted-foreground); font-size: 12px; }
+.focus { animation: focus-in calc(.9s * var(--f, 1)) cubic-bezier(0.2, 0, 0, 1) both; }
+.focus.later { animation-delay: calc(.12s * var(--f, 1)); }
+.loader.leaving { animation: loader-out calc(.38s * var(--f, 1)) calc(.1s * var(--f, 1)) both; }
+.loader.leaving .focus { animation: focus-out calc(.32s * var(--f, 1)) cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes focus-in { from { opacity: 0; filter: blur(16px); transform: scale(1.12); } }
+@keyframes focus-out { to { opacity: 0; filter: blur(10px); transform: scale(0.94); } }
+@keyframes loader-out { to { opacity: 0; } }
+
+/* 选择条 */
+.picker { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40; display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--popover); box-shadow: 0 0 0 1px var(--border), 0 12px 30px oklch(0 0 0 / .4); font-size: 13px; align-items: center; }
+.picker .opt { padding: 8px 14px; border-radius: 10px; color: var(--muted-foreground); text-align: left; line-height: 1.3; }
+.picker .opt b { display: block; color: var(--foreground); font-weight: 600; }
+.picker .opt[aria-pressed="true"] { background: var(--muted); }
+.picker .opt small { font-size: 11px; }
+.picker .tools { display: flex; flex-direction: column; gap: 4px; padding-left: 8px; border-left: 1px solid var(--border); margin-left: 4px; }
+.picker .tools button { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<div class="picker">
+  <button class="opt" data-fx="A" aria-pressed="true"><b>A 聚焦显影</b><small>同进入画布</small></button>
+  <button class="opt" data-fx="B"><b>B 沉入</b><small>骨架不动，内容换层</small></button>
+  <button class="opt" data-fx="C"><b>C 涟漪展开</b><small>从点击处圆形展开</small></button>
+  <div class="tools">
+    <button id="lat">角色加载 300ms</button>
+    <button id="slow">慢放 ×4</button>
+  </div>
+</div>
+
+<script>
+const ICON = {
+  shield: '<svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  spin: '<svg viewBox="0 0 24 24" class="spin"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
+  moon: '<svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"/></svg>',
+  out: '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+};
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+let page = "home", menuOpen = false, roleCached = false, latency = 300, fx = "A", f = 1, running = false;
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const home = () => `
+<div class="app">
+  <aside class="sb">
+    <div class="brand"><i></i>Video Canvas</div>
+    <button class="new">＋ 新建画布</button>
+    <div class="item on">首页</div><div class="item">无限画布</div><div class="item">作品广场</div><div class="item">创作活动</div>
+    <div class="foot"><div class="item">我的账户</div></div>
+  </aside>
+  <div class="inset">
+    <header><div class="sp"></div><div class="pill"><span style="color:var(--credit)">✦</span>25</div>
+      <div class="menu-wrap"><button class="avatar" id="avatar">A</button>${menuOpen ? menu() : ""}</div></header>
+    <main><div class="hero"><h1>晚上好，<b>admin</b></h1><div class="cards">${"<div></div>".repeat(6)}</div></div></main>
+  </div>
+</div>`;
+const menu = () => `<div class="menu"><div class="label">admin</div>
+  <button>${ICON.moon}主题</button>
+  <button id="go">${ICON.shield}管理后台</button><hr/>
+  <button class="danger">${ICON.out}退出登录</button></div>`;
+const admin = () => `
+<div class="app">
+  <aside class="sb">
+    <div class="brand"><i></i><div>Video Canvas<small>AI 配置管理</small></div></div>
+    <div class="item on">概览</div><div class="item">模型</div><div class="item">渠道</div><div class="item">插件</div>
+    <div class="foot"><button class="item" id="back" style="width:100%">${ICON.back}返回画布</button></div>
+  </aside>
+  <div class="inset">
+    <header><span class="crumb">AI 配置 / <b>概览</b></span><div class="sp"></div><span class="tag">超级管理员</span></header>
+    <main><div class="stats">${["模型 12", "渠道 5", "今日调用 1,284", "失败率 0.8%"].map((s) => { const [a, b] = s.split(" "); return `<div class="stat"><span>${a}</span><b>${b}</b></div>`; }).join("")}</div><div class="table"></div></main>
+  </div>
+</div>`;
+
+function render() {
+  document.documentElement.classList.toggle("admin-theme", page === "admin");
+  $("#root").innerHTML = page === "home" ? home() : admin();
+}
+
+/** 把当前画面拍成快照浮层（连同当时的配色变量） */
+const VARS = ["--background", "--foreground", "--card", "--muted", "--muted-foreground", "--border", "--popover", "--sidebar", "--credit", "--chrome-hover", "--canvas-dot", "--destructive"];
+function snapshot() {
+  const css = getComputedStyle(document.documentElement);
+  const ghost = $("#root").cloneNode(true);
+  ghost.removeAttribute("id"); ghost.className = "ghost";
+  for (const v of VARS) ghost.style.setProperty(v, css.getPropertyValue(v));
+  ghost.querySelector(".menu")?.remove();
+  document.body.append(ghost);
+  return ghost;
+}
+const anim = (el, frames, opts) => el.animate(frames, { easing: EASE, fill: "both", ...opts, duration: opts.duration * f, delay: (opts.delay ?? 0) * f });
+
+/** 骨架依次入场：侧栏从左、顶栏从上、内容块从下（和进画布时外壳落下、节点浮上同一个思路） */
+function chromeEnter() {
+  anim($("#root .sb"), [{ opacity: 0, transform: "translateX(-12px)" }, { opacity: 1, transform: "none" }], { duration: 450, delay: 60 });
+  anim($("#root header"), [{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "none" }], { duration: 450, delay: 120 });
+  $$("#root main .stat, #root main .table, #root main .hero").forEach((el, i) =>
+    anim(el, [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }], { duration: 500, delay: 100 + Math.min(i, 5) * 60 }));
+}
+
+/* ---------- A 聚焦显影 ---------- */
+async function fxA(dir) {
+  if (dir === "back") {
+    /* 回首页不需要加载层：旧画面淡出，首页骨架依次入场 */
+    const ghost = snapshot(); page = "home"; menuOpen = false; render();
+    anim(ghost, [{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).finished.then(() => ghost.remove());
+    chromeEnter(); return;
+  }
+  menuOpen = false; render();
+  const loader = document.createElement("div");
+  loader.className = "loader admin-vars"; loader.style.setProperty("--f", f);
+  loader.setAttribute("role", "status");
+  loader.innerHTML = `<div class="mark focus">${ICON.shield}</div><div class="txt focus later"><b>AI 配置管理</b><span>${roleCached ? "正在进入后台" : "正在确认管理权限"}</span></div>`;
+  document.body.append(loader);
+  await Promise.all([wait(900 * f), roleCached ? null : wait(latency)]);   // 至少停 0.9s，等 logo 聚焦完
+  roleCached = true;
+  page = "admin"; render();                                     // 后台在加载层下面挂好
+  loader.classList.add("leaving");                              // logo 失焦缩小、整层淡出
+  chromeEnter();
+  await wait(500 * f); loader.remove();
+}
+
+/* ---------- B 沉入 ---------- */
+async function fxB(dir) {
+  const fwd = dir === "forward";
+  if (fwd && !roleCached) await spinUntilRole();
+  const ghost = snapshot(); page = fwd ? "admin" : "home"; menuOpen = false; render();
+  anim(ghost, [{ opacity: 1 }, { opacity: 0 }], { duration: 240 }).finished.then(() => ghost.remove());
+  anim(ghost.querySelector("main"), [{}, { opacity: 0, transform: fwd ? "scale(.96)" : "translateY(24px)" }], { duration: 168 });
+  anim($("#root main"), [{ opacity: 0, transform: fwd ? "translateY(24px)" : "scale(.96)" }, { opacity: 1, transform: "none" }], { duration: 240, delay: 60 });
+}
+
+/* ---------- C 涟漪展开 ---------- */
+async function fxC(dir, origin) {
+  const fwd = dir === "forward";
+  if (fwd && !roleCached) await spinUntilRole();
+  const r = origin.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const ghost = snapshot();
+  page = fwd ? "admin" : "home"; menuOpen = false; render();
+  const root = $("#root");
+  const clear = () => root.getAnimations().forEach((a) => a.cancel());
+  if (fwd) {
+    /* 新页面（后台）在上面，从点击处圆形展开；旧页面在下面略微后退、变暗 */
+    ghost.style.zIndex = 0;
+    anim(root, [{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${R}px at ${x}px ${y}px)` }], { duration: 520, easing: "cubic-bezier(0.4, 0, 0.2, 1)" })
+      .finished.then(() => { clear(); ghost.remove(); });
+    anim(ghost, [{ transform: "none", filter: "brightness(1)" }, { transform: "scale(.97)", filter: "brightness(.6)" }], { duration: 520 });
+  } else {
+    /* 返回：后台收拢回「返回画布」按钮，首页在下面从 0.97 回到原样 */
+    anim(ghost, [{ clipPath: `circle(${R}px at ${x}px ${y}px)` }, { clipPath: `circle(0px at ${x}px ${y}px)` }], { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)" })
+      .finished.then(() => ghost.remove());
+    anim(root, [{ transform: "scale(.97)", filter: "brightness(.6)" }, { transform: "none", filter: "brightness(1)" }], { duration: 420 })
+      .finished.then(clear);
+  }
+}
+
+/** B / C：菜单不关，「管理后台」的盾牌换成转圈，等角色回来 */
+async function spinUntilRole() {
+  const item = $("#go");
+  if (item) { item.setAttribute("aria-busy", "true"); item.querySelector("svg").outerHTML = ICON.spin; }
+  await wait(latency); roleCached = true;
+}
+
+async function navigate(dir, origin) {
+  if (running) return; running = true;
+  try { await ({ A: fxA, B: fxB, C: fxC })[fx](dir, origin); } finally { running = false; }
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (t?.closest(".picker")) return;
+  if (!t) { if (menuOpen) { menuOpen = false; render(); } return; }
+  if (t.id === "avatar") { menuOpen = !menuOpen; render(); return; }
+  if (t.id === "go") navigate("forward", t);
+  if (t.id === "back") navigate("back", t);
+});
+$$(".picker .opt").forEach((b) => b.addEventListener("click", () => {
+  fx = b.dataset.fx; $$(".picker .opt").forEach((o) => o.setAttribute("aria-pressed", o === b));
+  roleCached = false;
+  if (page !== "home") { page = "home"; render(); }
+}));
+$("#lat").onclick = (e) => {
+  latency = latency === 300 ? 1500 : latency === 1500 ? 0 : 300; roleCached = false;
+  e.target.textContent = `角色加载 ${latency}ms`;
+};
+$("#slow").onclick = (e) => { f = f === 1 ? 4 : 1; e.target.textContent = f === 1 ? "慢放 ×4" : "正常速度"; };
+render();
+</script>
+</body>
+</html>

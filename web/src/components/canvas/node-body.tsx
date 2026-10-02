@@ -36,12 +36,13 @@ export function NodePlaceholderBody({
   return (
     <BaseNodeContent>
       <div
-        className="bg-muted/40 text-muted-foreground/40 flex w-full items-center justify-center rounded-2xl border [corner-shape:squircle]"
+        className="text-muted-foreground/45 flex w-full flex-col items-center justify-center gap-2.5 rounded-[inherit]"
         style={{ aspectRatio: aspect }}
         role="img"
         aria-label={label}
       >
         {icon}
+        <span className="text-muted-foreground/70 text-xs">{label}</span>
       </div>
     </BaseNodeContent>
   );
@@ -116,7 +117,7 @@ export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTex
     return (
       <BaseNodeContent>
         <div
-          className="bg-muted/40 text-muted-foreground flex w-full items-center justify-center gap-2 rounded-2xl border text-xs [corner-shape:squircle]"
+          className="bg-muted/40 text-muted-foreground flex w-full items-center justify-center gap-2 rounded-[inherit] text-xs"
           style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
         >
           <Loader2 className="size-4 animate-spin" />
@@ -130,7 +131,7 @@ export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTex
     return (
       <BaseNodeContent>
         <div
-          className="border-destructive/40 bg-destructive/5 text-destructive flex w-full items-center justify-center gap-2 rounded-2xl border px-3 text-center text-xs [corner-shape:squircle]"
+          className="bg-destructive/5 text-destructive flex w-full items-center justify-center gap-2 rounded-[inherit] px-3 text-center text-xs"
           style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
           role="alert"
         >
@@ -145,7 +146,7 @@ export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTex
   if (status === "done" && text) {
     return (
       <BaseNodeContent>
-        <div className="nodrag nowheel bg-muted/40 max-h-48 min-h-24 w-full overflow-y-auto rounded-2xl border p-3 text-sm leading-6 whitespace-pre-wrap [corner-shape:squircle]">
+        <div className="nodrag nowheel bg-muted/40 max-h-48 min-h-24 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap">
           {text}
         </div>
       </BaseNodeContent>
@@ -188,7 +189,7 @@ export function NodeMediaBody({
   return (
     <BaseNodeContent>
       <div
-        className="bg-muted/40 w-full overflow-hidden rounded-2xl border [corner-shape:squircle]"
+        className="bg-muted/40 w-full overflow-hidden rounded-[inherit]"
         style={{ aspectRatio: aspect }}
       >
         {mediaType === "image" ? (

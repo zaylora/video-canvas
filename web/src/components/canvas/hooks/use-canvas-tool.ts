@@ -93,5 +93,5 @@ export function useCanvasTool() {
   /** 叠加空格临时态后当前真正生效的工具 */
   const activeTool: CanvasTool = spaceHeld ? "pan" : tool;
 
-  return { tool, activeTool, toggleTool };
+  return { tool, activeTool, toggleTool, setTool };
 }

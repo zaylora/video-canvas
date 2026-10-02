@@ -39,6 +39,19 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-canvas: var(--canvas-bg);
+  --color-canvas-dot: var(--canvas-dot);
+  --color-chrome: var(--chrome);
+  --color-chrome-border: var(--chrome-border);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-node-ring: var(--node-ring);
+  --color-credit: var(--credit);
+  --color-status-running: var(--status-running);
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-cover-scrim: var(--cover-scrim);
+  --color-cover-foreground: var(--cover-foreground);
+  --color-edge: var(--edge);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -82,6 +95,22 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* 画布：设计稿 docs/design/画布UI设计。外壳是半透明浮层，颜色只留给素材、积分和状态 */
+  --canvas-bg: oklch(0.975 0 0);
+  --canvas-dot: oklch(0 0 0 / 0.14);
+  --chrome: oklch(1 0 0 / 0.82);
+  --chrome-border: oklch(0 0 0 / 0.08);
+  --chrome-hover: oklch(0 0 0 / 0.05);
+  --node-ring: oklch(0.2 0 0 / 0.85);
+  --credit: oklch(0.72 0.15 75);
+  --status-running: oklch(0.58 0.15 250);
+  --status-success: oklch(0.6 0.15 155);
+  --status-warning: oklch(0.7 0.16 70);
+  --edge: oklch(0 0 0 / 0.28);
+  --edge-selected: oklch(0.2 0 0);
+  /* 首页卡片封面底部的渐变遮罩：上面压白字，深浅主题都要深色才看得清 */
+  --cover-scrim: oklch(0 0 0 / 0.62);
+  --cover-foreground: oklch(0.985 0 0);
 }
 
 .dark {
@@ -117,11 +146,27 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --canvas-bg: oklch(0.13 0 0);
+  --canvas-dot: oklch(1 0 0 / 0.08);
+  --chrome: oklch(0.2 0 0 / 0.78);
+  --chrome-border: oklch(1 0 0 / 0.08);
+  --chrome-hover: oklch(1 0 0 / 0.07);
+  --node-ring: oklch(1 0 0 / 0.72);
+  --credit: oklch(0.82 0.15 85);
+  --status-running: oklch(0.75 0.12 240);
+  --status-success: oklch(0.75 0.15 155);
+  --status-warning: oklch(0.8 0.15 75);
+  --edge: oklch(1 0 0 / 0.28);
+  --edge-selected: oklch(1 0 0 / 0.9);
+  --cover-scrim: oklch(0 0 0 / 0.7);
+  --cover-foreground: oklch(0.985 0 0);
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
    只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
 .admin-theme {
+  /* 进后台的加载层用 canvas-loader 的点阵底，底色跟后台走 */
+  --canvas-bg: hsl(0 0% 100%);
   --background: hsl(0 0% 100%);
   --foreground: hsl(240 10% 3.9%);
   --card: hsl(0 0% 100%);
@@ -151,6 +196,7 @@
 }
 
 .dark.admin-theme {
+  --canvas-bg: hsl(240 10% 3.9%);
   --background: hsl(240 10% 3.9%);
   --foreground: hsl(0 0% 98%);
   --card: hsl(240 10% 3.9%);
@@ -198,6 +244,12 @@
    所以 .dark 切换时控制条会自动换色，不用额外写暗色样式。
    放在 @layer base 之外，确保覆盖 xyflow 自带的默认值。 */
 .react-flow {
+  --xy-background-color: var(--canvas-bg);
+  --xy-background-pattern-color: var(--canvas-dot);
+  --xy-edge-stroke: var(--edge);
+  --xy-minimap-background-color: var(--chrome);
+  --xy-minimap-mask-background-color: color-mix(in oklch, var(--canvas-bg) 60%, transparent);
+  --edge-shape-color: var(--edge-selected);
   --xy-controls-button-background-color: var(--card);
   --xy-controls-button-background-color-hover: var(--accent);
   --xy-controls-button-color: var(--card-foreground);
@@ -235,11 +287,24 @@
   cursor: grabbing;
 }
 
-/* 连线选中时染成流星的粉色并加粗，配合中点浮出的剪刀按钮，
-   一眼看出要剪哪一根。xyflow 自带的 .selected 只换成深灰，暗色底上看不见。 */
+/* 连线选中时提亮并加粗，配合中点浮出的剪刀按钮，一眼看出要剪哪一根。
+   颜色走 --edge-selected，深浅主题各一套，不再写死粉色。 */
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: var(--edge-shape-color, #ff0073);
+  stroke: var(--edge-shape-color);
   stroke-width: 2;
+}
+
+/* 框选后 xyflow 自带的选区框只留拖动整组的作用，长相交给 SelectionToolbar 画的底框 */
+.react-flow__nodesselection-rect {
+  background: transparent;
+  border: none;
+}
+
+/* 节点选中时：xyflow 给外层加的焦点框和阴影去掉，选中态由节点自己的描边表达 */
+.react-flow__node:focus-visible,
+.react-flow__node.selected {
+  outline: none;
+  box-shadow: none;
 }
 
 /* 抓手模式下整个界面就是一块可拖的画布：节点、连线、连接点、浮在节点下方的
@@ -297,4 +362,133 @@
   background-position: right 0.6rem center;
   background-repeat: no-repeat;
   background-size: 1rem;
+}
+
+/* ---------- 进入画布：聚焦显影加载（设计稿原型 A） ---------- */
+/* 全部用 CSS 关键帧：浏览器在合成线程上跑，画布挂载、解码图片占住主线程时也不掉帧。
+   别改成 JS 逐帧驱动（motion 的 scale 等单独变换走主线程），进画布那一下正好最忙。 */
+.canvas-loader {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px);
+  background-size: 20px 20px;
+  background-position: center;
+}
+.canvas-loader-focus {
+  animation: canvas-focus-in 0.9s cubic-bezier(0.2, 0, 0, 1) both;
+  will-change: transform, opacity, filter;
+}
+.canvas-loader-focus[data-later] {
+  animation-delay: 0.12s;
+}
+/* 退场：logo 和名字虚掉缩小，整层随后淡出；不写起点，从进场停下的样子接着走 */
+.canvas-loader[data-leaving] {
+  animation: canvas-loader-out 0.38s 0.1s both;
+}
+.canvas-loader[data-leaving] .canvas-loader-focus {
+  animation: canvas-focus-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes canvas-focus-in {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+    transform: scale(1.12);
+  }
+}
+@keyframes canvas-focus-out {
+  to {
+    opacity: 0;
+    filter: blur(10px);
+    transform: scale(0.94);
+  }
+}
+@keyframes canvas-loader-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* 加载层淡出时画布内容依次入场：节点浮上来，顶栏落下、底栏升起，连线稍后淡入。
+   只动 transform 和 opacity；节点里有大图，给每个节点做 blur 会卡 */
+[data-entering] .react-flow__node > :first-child {
+  animation: canvas-node-in 0.5s cubic-bezier(0.2, 0, 0, 1) both;
+  will-change: transform, opacity;
+  animation-delay: 0.42s;
+}
+[data-entering] .react-flow__node:nth-child(1) > :first-child {
+  animation-delay: 0.1s;
+}
+[data-entering] .react-flow__node:nth-child(2) > :first-child {
+  animation-delay: 0.16s;
+}
+[data-entering] .react-flow__node:nth-child(3) > :first-child {
+  animation-delay: 0.22s;
+}
+[data-entering] .react-flow__node:nth-child(4) > :first-child {
+  animation-delay: 0.28s;
+}
+[data-entering] .react-flow__node:nth-child(5) > :first-child {
+  animation-delay: 0.32s;
+}
+[data-entering] .react-flow__node:nth-child(6) > :first-child {
+  animation-delay: 0.36s;
+}
+[data-entering] .react-flow__edges {
+  animation: canvas-fade-in 0.5s 0.3s both;
+}
+[data-entering] [data-slot="chrome-zone"] {
+  animation: canvas-chrome-drop 0.45s cubic-bezier(0.2, 0, 0, 1) 0.12s both;
+}
+[data-entering] [data-slot="chrome-zone"][data-position^="bottom"] {
+  animation-name: canvas-chrome-lift;
+  animation-delay: 0.2s;
+}
+/* 进后台：加载层淡出时侧栏从左滑入、顶栏落下、正文浮上来（设计稿 docs/design/首页 第 10 节 A） */
+[data-entering] [data-slot="sidebar-container"] {
+  animation: admin-sidebar-in 0.45s cubic-bezier(0.2, 0, 0, 1) 0.06s both;
+}
+[data-entering] [data-slot="admin-header"] {
+  animation: canvas-chrome-drop 0.45s cubic-bezier(0.2, 0, 0, 1) 0.12s both;
+}
+[data-entering] [data-slot="admin-outlet"] {
+  animation: canvas-node-in 0.5s cubic-bezier(0.2, 0, 0, 1) 0.16s both;
+}
+@keyframes admin-sidebar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+@keyframes canvas-node-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes canvas-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes canvas-chrome-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+@keyframes canvas-chrome-lift {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-entering] *,
+  .canvas-loader-focus {
+    animation: none !important;
+  }
+  .canvas-loader[data-leaving] {
+    animation-duration: 0.01ms;
+    animation-delay: 0s;
+  }
 }

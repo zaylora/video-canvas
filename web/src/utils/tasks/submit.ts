@@ -1,4 +1,5 @@
 import type { CanvasNodeData, NodeKind } from "@/types";
+import { readOutputs } from "@/utils/canvas/outputs";
 
 /** 提交失败后要在提交处就地告诉用户的话 */
 export type SubmitErrorInfo = {
@@ -88,9 +89,16 @@ export async function submitWithRetry<T>(
  * @param taskId 后端返回的任务 id（字符串）
  * @returns 节点数据补丁
  */
-export function buildSubmittedPatch(kind: NodeKind, taskId: string): Partial<CanvasNodeData> {
+export function buildSubmittedPatch(
+  kind: NodeKind,
+  taskId: string,
+  data?: CanvasNodeData,
+): Partial<CanvasNodeData> {
   if (kind === "script") return { taskId, status: "running", text: null, error: null };
+  // 旧画布的结果只存在 src 上，清掉之前先落进历史，重新生成后还能切回去
+  const outputs = data ? readOutputs(data) : [];
   return {
+    ...(outputs.length ? { outputs } : {}),
     taskId,
     status: "running",
     src: null,

@@ -1,7 +1,8 @@
-import { useEffect, type CSSProperties } from "react";
-import { Shield } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
+import { Shield, ShieldCheck } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 
+import { FocusLoader } from "@/components/focus-loader";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -24,7 +25,58 @@ import { Tag } from "@/components/admin-ui/tag";
 import { ForbiddenView } from "./shared";
 import { useAdminCatalog, type AdminOutletContext } from "./use-admin";
 
+/** 入场动画播多久后摘掉 data-entering，和画布页一致 */
+const ENTERING_MS = 1200;
+
+/**
+ * 后台外壳（设计稿 docs/design/首页 第 10 节，方案 A「聚焦显影」）：
+ * 进后台和进画布一样先出全屏加载层，管理权限就在这一层里确认，
+ * 角色有结果（就绪、无权限或失败）且 logo 聚焦完后加载层退场，侧栏、顶栏、正文依次入场。
+ */
 export default function AdminAiLayout() {
+  const status = useAdminStore((state) => state.status);
+  const [revealed, setRevealed] = useState(false);
+  /** 角色已经缓存过就不说“确认权限”了 */
+  const [cached] = useState(() => status === "ready");
+
+  /**
+   * 后台用设计稿的 zinc 配色：挂在 <html> 上，弹窗（挂在 body）也能拿到；离开后台时摘掉。
+   * 用 layout effect：在首帧绘制前挂上，加载层第一眼就是后台配色，不会先闪一下首页的灰
+   */
+  useLayoutEffect(() => {
+    document.documentElement.classList.add("admin-theme");
+    return () => document.documentElement.classList.remove("admin-theme");
+  }, []);
+
+  /** 入场直接挂在根节点上，不走 state：免得退场刚开始时整个后台重渲染一遍 */
+  const onOpen = useCallback(() => {
+    const root = document.querySelector<HTMLElement>("[data-admin-root]");
+    if (!root) return;
+    root.dataset.entering = "";
+    window.setTimeout(() => delete root.dataset.entering, ENTERING_MS);
+  }, []);
+  const onDone = useCallback(() => setRevealed(true), []);
+
+  return (
+    <>
+      <AdminBody />
+      {!revealed && (
+        <FocusLoader
+          icon={<ShieldCheck className="size-9" strokeWidth={1.8} aria-hidden />}
+          title="AI 配置管理"
+          subtitle={cached ? "正在进入后台" : "正在确认管理权限"}
+          label="正在进入后台"
+          ready={status === "ready" || status === "forbidden" || status === "error"}
+          onOpen={onOpen}
+          onDone={onDone}
+        />
+      )}
+    </>
+  );
+}
+
+/** 后台的实际内容：按角色状态显示无权限、失败、骨架或正文 */
+function AdminBody() {
   const role = useAdminStore((state) => state.role);
   const status = useAdminStore((state) => state.status);
   const load = useAdminStore((state) => state.load);
@@ -35,12 +87,6 @@ export default function AdminAiLayout() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  // 后台用设计稿的 zinc 配色：挂在 <html> 上，弹窗（挂在 body）也能拿到；离开后台时摘掉
-  useEffect(() => {
-    document.documentElement.classList.add("admin-theme");
-    return () => document.documentElement.classList.remove("admin-theme");
-  }, []);
 
   const catalog = useAdminCatalog(status === "ready");
 
@@ -89,7 +135,7 @@ export default function AdminAiLayout() {
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "15rem" } as CSSProperties}>
+    <SidebarProvider data-admin-root style={{ "--sidebar-width": "15rem" } as CSSProperties}>
       <AdminSidebar role={role} counts={counts} />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <AdminHeader>
@@ -119,7 +165,7 @@ export default function AdminAiLayout() {
             />
           </div>
         </AdminHeader>
-        <div className="min-h-0 flex-1">
+        <div data-slot="admin-outlet" className="min-h-0 flex-1">
           <Outlet context={context} />
         </div>
       </SidebarInset>

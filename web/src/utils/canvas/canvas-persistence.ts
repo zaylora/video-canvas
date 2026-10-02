@@ -34,6 +34,8 @@ export function serializeGraph(
         ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),
         ...(rest.text !== undefined ? { text: rest.text } : {}),
         ...(rest.error !== undefined ? { error: rest.error } : {}),
+        ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
+        ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
       };
       if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
       return {

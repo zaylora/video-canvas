@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
-  ControlButton,
-  Controls,
-  Panel,
+  MiniMap,
   ReactFlow,
   SelectionMode,
   useEdgesState,
@@ -14,7 +12,7 @@ import {
   type EdgeTypes,
   type NodeTypes,
 } from "@xyflow/react";
-import { Hand, MousePointer2, Settings, Upload, WifiOff, Zap } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   AddNodeMenu,
@@ -23,8 +21,10 @@ import {
   useCanvasTool,
   type AddNodeMenuItem,
 } from "@/components/canvas";
+import { ChromeZone } from "@/components/canvas/chrome/chrome";
+import { NODE_OUTPUT_MIME } from "@/components/canvas/node-history-strip";
 import { SettingsDialog, type SettingModelGroup } from "@/components/setting";
-import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ANIMATED_EDGE_OPTIONS,
   BACKGROUND_VARIANTS,
@@ -32,21 +32,18 @@ import {
   REMOTE_KIND_OF_NODE,
   UPLOAD_ACCEPT,
   UPLOAD_ACTION,
-  UPLOAD_NOTICE_CLASS,
-  UPLOAD_NOTICE_DURATION,
 } from "@/constants/canvas";
+import { CanvasHistoryProvider, useCanvasHistory } from "@/hooks/use-canvas-history";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
-import { useCreditsStore } from "@/store/credits";
-import { useWsStore } from "@/store/ws";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
-import { cn } from "@/lib/utils";
 import { GRID_SIZE, useSettingsStore } from "@/store";
-import type { NodeKind, UploadNotice } from "@/types";
-import { getAllowedKinds, getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
+import type { CanvasEdge, CanvasNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
+import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
-import type { CanvasEdge, CanvasNode } from "@/types";
+import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
+import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
 import {
   deserializeGraph,
   hasVolatileRunning,
@@ -55,7 +52,31 @@ import {
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 
+import { BottomToolbar } from "./chrome/bottom-toolbar";
+import { EmptyState } from "./chrome/empty-state";
+import { ShortcutsDialog } from "./chrome/shortcuts-dialog";
+import { StatsBar } from "./chrome/stats-bar";
+import { TopLeftBar } from "./chrome/top-left-bar";
+import { TopRightBar } from "./chrome/top-right-bar";
+import { ViewControls } from "./chrome/view-controls";
 import { CanvasNodeView } from "./canvas-node";
+import { buildAddNodeItems } from "./chrome/add-node-items";
+import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
+import { MultiSelectProvider, SelectionToolbar } from "./selection-toolbar";
+import { useCanvasShortcuts } from "./use-canvas-shortcuts";
+
+/** 画布最小缩放 */
+const MIN_ZOOM = 0.14;
+
+/** 新节点的估算尺寸：从视口中心落节点时，让节点正中对准视口中心 */
+const NEW_NODE_SIZE = { width: 384, height: 216 };
+
+/** 上传完那句话按语气挑 toast */
+function showUploadNotice(notice: UploadNotice | null) {
+  if (!notice) return;
+  if (notice.tone === "error") toast.error(notice.text);
+  else toast.info(notice.text);
+}
 
 /** 供 ReactFlow 使用的节点类型表，摆在模块顶层，重渲染时不会换新对象 */
 const nodeTypes = { canvas: CanvasNodeView } satisfies NodeTypes;
@@ -63,8 +84,11 @@ const nodeTypes = { canvas: CanvasNodeView } satisfies NodeTypes;
 /** 供 ReactFlow 使用的边类型表 */
 const edgeTypes = { animatedSvgEdge: AnimatedSvgEdge } satisfies EdgeTypes;
 
-/** 画布主体 */
-export function Flow({
+/**
+ * 画布主体。加载层退场时外面会在根节点（data-canvas-root）挂 data-entering 播入场，样式见 index.css；
+ * 用 memo 包住，免得页面上的加载状态变化把整张画布重渲染一遍。
+ */
+export const Flow = memo(function Flow({
   canvas,
   onConflict,
 }: {
@@ -74,11 +98,19 @@ export function Flow({
   const initial = useMemo(() => deserializeGraph(canvas.graph), [canvas.graph]);
   const [nodes, setNodes, applyNodesChange] = useNodesState<CanvasNode>(initial.nodes);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<CanvasEdge>(initial.edges);
-  const { getViewport, setViewport } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { getViewport, setViewport, screenToFlowPosition, getNode, getNodes } = useReactFlow<
+    CanvasNode,
+    CanvasEdge
+  >();
   const hydratedRef = useRef(false);
   const nodesRef = useRef(nodes);
   const changeDelayRef = useRef<number | false | null>(null);
-  const { status: saveStatus, changed } = useCanvasPersistence({
+  const {
+    status: saveStatus,
+    changed,
+    flush,
+    rename,
+  } = useCanvasPersistence({
     canvasId: canvas.id,
     initialVersion: canvas.version,
     onConflict,
@@ -90,8 +122,11 @@ export function Flow({
     },
     [changed, edges, getViewport, nodes],
   );
+  const overlayGate = useOverlayGate(getNodes);
+  const { pruneOnChange } = overlayGate;
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
+      pruneOnChange(changes);
       for (const change of changes) {
         if (change.type === "remove")
           releaseObjectUrl(nodesRef.current.find((node) => node.id === change.id)?.data.src);
@@ -109,7 +144,7 @@ export function Flow({
               : 800;
       applyNodesChange(changes);
     },
-    [applyNodesChange],
+    [applyNodesChange, pruneOnChange],
   );
   useEffect(() => {
     nodesRef.current = nodes;
@@ -119,8 +154,21 @@ export function Flow({
   useEffect(() => {
     rememberCanvasTitle(canvas.id, canvas.title);
   }, [canvas.id, canvas.title]);
-  const connection = useWsStore((state) => state.connection);
-  const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
+  const [title, setTitle] = useState(canvas.title);
+  const onRename = useCallback(
+    (next: string) => {
+      const previous = title;
+      setTitle(next);
+      void rename(next).then((ok) => {
+        if (ok) rememberCanvasTitle(canvas.id, next);
+        else {
+          setTitle(previous);
+          toast.error("改名没保存上，请稍后再试");
+        }
+      });
+    },
+    [canvas.id, rename, title],
+  );
   useEffect(
     () => () => {
       for (const node of nodesRef.current) releaseObjectUrl(node.data.src);
@@ -143,7 +191,17 @@ export function Flow({
       scheduleSave(delay ?? 800);
     }
   }, [nodes, edges, scheduleSave]);
-  const { activeTool, toggleTool } = useCanvasTool();
+  const { tool, activeTool, setTool } = useCanvasTool();
+  const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+
+  const multiSelected = useMemo(
+    () => nodes.reduce((count, node) => count + (node.selected ? 1 : 0), 0) > 1,
+    [nodes],
+  );
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [minimap, setMinimap] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  useCanvasShortcuts({ undo: history.undo, redo: history.redo, setTool, openShortcuts });
   // 画布把设置里的几项都用上了，整份订阅，省去逐个 selector
   const settings = useSettingsStore();
   const video = useRemoteModels(REMOTE_KIND_OF_NODE.video);
@@ -182,7 +240,9 @@ export function Flow({
     pending,
     closeMenu,
     addNode,
+    addNodeAt,
     beginUpload,
+    beginUploadAt,
     addUploadedNodes,
     onConnect,
     onConnectEnd,
@@ -198,15 +258,53 @@ export function Flow({
 
   // 文件框常驻在画布里：菜单点完就关，藏在菜单里的 input 会跟着没
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [notice, setNotice] = useState<UploadNotice | null>(null);
 
-  // 上传那句话摆一会儿就撤，不必让人再点一下关掉
-  useEffect(() => {
-    if (!notice) return;
+  /** 视口中心对应的画布坐标，换算成新节点左上角 */
+  const viewportCenter = useCallback(() => {
+    const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight * 0.4 });
+    return { x: center.x - NEW_NODE_SIZE.width / 2, y: center.y - NEW_NODE_SIZE.height / 2 };
+  }, [screenToFlowPosition]);
+  const addAtCenter = useCallback(
+    (kind: NodeKind) => addNodeAt(kind, viewportCenter()),
+    [addNodeAt, viewportCenter],
+  );
+  const uploadAtCenter = useCallback(() => {
+    beginUploadAt(viewportCenter());
+    uploadInputRef.current?.click();
+  }, [beginUploadAt, viewportCenter]);
 
-    const timer = setTimeout(() => setNotice(null), UPLOAD_NOTICE_DURATION);
-    return () => clearTimeout(timer);
-  }, [notice]);
+  /** 历史浮条里的缩略图拖到画布上：以那一版为素材建一个新节点 */
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes(NODE_OUTPUT_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      const raw = event.dataTransfer.getData(NODE_OUTPUT_MIME);
+      if (!raw) return;
+      event.preventDefault();
+      try {
+        const output = JSON.parse(raw) as NodeOutput;
+        const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        addNodeAt(
+          MEDIA_KIND_OF[output.mediaType],
+          { x: flow.x - NEW_NODE_SIZE.width / 2, y: flow.y - NEW_NODE_SIZE.height / 2 },
+          {
+            status: "done",
+            src: output.src,
+            assetId: output.assetId,
+            mediaType: output.mediaType,
+            outputs: [output],
+            activeOutputId: output.id,
+          },
+        );
+      } catch {
+        // 拖进来的不是我们塞的数据，不理它
+      }
+    },
+    [addNodeAt, screenToFlowPosition],
+  );
 
   // 设置里要列的模型清单：每种节点一行，内置清单后面接上自定义模型
   const modelGroups = useMemo<SettingModelGroup[]>(
@@ -226,192 +324,186 @@ export function Flow({
 
   // 拉线落空时只放行接得上的种类，双击空白则全部可点
   const menuItems = useMemo<AddNodeMenuItem[]>(() => {
-    const allowed = pending && new Set(getAllowedKinds(pending.kind, pending.handleType));
+    const from = pending && getNode(pending.nodeId);
+    return buildAddNodeItems((kind) =>
+      from
+        ? !canLinkFrom(from.data, pending.handleType, { kind, model: defaultModels?.[kind] })
+        : false,
+    );
+  }, [defaultModels, getNode, pending]);
 
-    return [
-      ...NODE_LIBRARY.map((meta) => ({
-        value: meta.kind,
-        label: meta.label,
-        icon: <meta.icon />,
-        disabled: allowed ? !allowed.has(meta.kind) : false,
-      })),
-      {
-        value: UPLOAD_ACTION,
-        label: "上传",
-        icon: <Upload />,
-        // 传进来的素材落成图片或视频节点，这两种都接不上就没法上传
-        disabled: allowed ? !allowed.has("image") && !allowed.has("video") : false,
-        separated: true,
-      },
-    ];
-  }, [pending]);
+  /** 拖线接到连接点上时的放行规则：种类规则 + 下游当前模型收不收 */
+  const isValidConnection = useCallback(
+    (connection: { source: string; target: string }) => {
+      const source = getNode(connection.source);
+      const target = getNode(connection.target);
+      return (
+        !!source && !!target && source.id !== target.id && canLinkNodes(source.data, target.data)
+      );
+    },
+    [getNode],
+  );
 
   return (
     // data-tool 驱动 index.css 里的光标与命中规则
-    <div className="h-svh w-svw" data-tool={activeTool}>
-      <ReactFlow
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onInit={() => {
-          void setViewport(initial.viewport);
-          hydratedRef.current = true;
-        }}
-        onMoveEnd={() => scheduleSave(1000)}
-        onConnect={onConnect}
-        onConnectEnd={onConnectEnd}
-        // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
-        onDoubleClick={isPanning ? undefined : onDoubleClick}
-        zoomOnDoubleClick={false}
-        // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
-        // 设置里切成缩放后，滚轮直接缩放，不再需要按键
-        panOnScroll={!isWheelZoom}
-        zoomOnScroll={isWheelZoom}
-        zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
-        snapToGrid={settings.snapToGrid}
-        snapGrid={[GRID_SIZE, GRID_SIZE]}
-        // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
-        panOnDrag={isPanning ? true : [1]}
-        selectionOnDrag={!isPanning}
-        // 框选相交即选中，不要求完整包住
-        selectionMode={SelectionMode.Partial}
-        // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
-        nodesDraggable={!isPanning}
-        nodesConnectable={!isPanning}
-        elementsSelectable={!isPanning}
-      >
-        {settings.background !== "none" && (
-          <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
-        )}
-        <Controls
-          position="bottom-center"
-          orientation="horizontal"
-          className="bg-card overflow-hidden rounded-lg border shadow-sm"
-        >
-          <ControlButton
-            onClick={toggleTool}
-            title={isPanning ? "抓手：拖动画布" : "箭头：选中节点"}
-            aria-label={isPanning ? "切换为箭头工具" : "切换为抓手工具"}
-            aria-pressed={isPanning}
-          >
-            {isPanning ? <Hand /> : <MousePointer2 />}
-          </ControlButton>
-        </Controls>
-        {/* 抓手模式下悬浮层整体不接指针事件，这块跟控制条一样走 index.css 里的例外 */}
-        <Panel position="bottom-left" className="canvas-overlay-interactive">
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-card shadow-sm"
-            title="画布设置"
-            aria-label="打开画布设置"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings />
-          </Button>
-        </Panel>
-        {notice && (
-          <Panel
-            position="top-center"
-            className={cn(
-              "rounded-md border px-3 py-1.5 text-xs backdrop-blur",
-              UPLOAD_NOTICE_CLASS[notice.tone],
-            )}
-            role="alert"
-          >
-            {notice.text}
-          </Panel>
-        )}
-        <Panel position="top-right" className="flex items-center gap-2">
-          {connection === "reconnecting" && (
-            <span
-              role="status"
-              className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs backdrop-blur"
+    <CanvasHistoryProvider value={history}>
+      <MultiSelectProvider value={multiSelected}>
+        <OverlayGateProvider value={overlayGate.dragSelected}>
+          <TooltipProvider delay={400}>
+            <div
+              className="bg-canvas relative h-svh w-svw overflow-hidden"
+              data-tool={activeTool}
+              data-canvas-root
+              onDragOver={onDragOver}
+              onPointerDownCapture={overlayGate.onPointerDownCapture}
+              onDrop={onDrop}
             >
-              <WifiOff className="size-3.5" />
-              连接中断，正在重连
-            </span>
-          )}
-          {availableCredits !== null && (
-            <span
-              className="bg-card/80 text-muted-foreground flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs tabular-nums backdrop-blur"
-              title="当前可用积分"
-            >
-              <Zap className="size-3.5" />
-              {availableCredits}
-            </span>
-          )}
-          <span className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur">
-            {saveStatus === "saving"
-              ? "正在保存…"
-              : saveStatus === "saved"
-                ? "已保存"
-                : saveStatus === "conflict"
-                  ? "已载入其他位置的修改"
-                  : "保存失败，继续编辑时重试"}
-          </span>
-        </Panel>
-        {!notice && settings.showHints && nodes.length === 0 && (
-          <Panel
-            position="top-center"
-            className="bg-card/80 text-muted-foreground rounded-md border px-3 py-1.5 text-xs backdrop-blur"
-          >
-            双击画布空白处添加节点，
-            {isWheelZoom ? "滚轮缩放画布" : "滚轮上下移动，Shift+滚轮左右移动，Ctrl+滚轮缩放"}
-          </Panel>
-        )}
-      </ReactFlow>
+              <ReactFlow
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onInit={() => {
+                  void setViewport(initial.viewport);
+                  hydratedRef.current = true;
+                }}
+                onMoveEnd={() => scheduleSave(1000)}
+                onNodeDragStart={overlayGate.onNodeDragStart}
+                onNodeClick={overlayGate.onNodeClick}
+                onConnect={onConnect}
+                isValidConnection={isValidConnection}
+                onConnectEnd={onConnectEnd}
+                // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
+                onDoubleClick={isPanning ? undefined : onDoubleClick}
+                zoomOnDoubleClick={false}
+                // 大画布要能一眼看全，最小缩到 14%
+                minZoom={MIN_ZOOM}
+                // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
+                // 设置里切成缩放后，滚轮直接缩放，不再需要按键
+                panOnScroll={!isWheelZoom}
+                zoomOnScroll={isWheelZoom}
+                zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
+                snapToGrid={settings.snapToGrid}
+                snapGrid={[GRID_SIZE, GRID_SIZE]}
+                // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
+                panOnDrag={isPanning ? true : [1]}
+                selectionOnDrag={!isPanning}
+                // 框选相交即选中，不要求完整包住
+                selectionMode={SelectionMode.Partial}
+                // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
+                nodesDraggable={!isPanning}
+                nodesConnectable={!isPanning}
+                elementsSelectable={!isPanning}
+              >
+                {settings.background !== "none" && (
+                  <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
+                )}
+                <SelectionToolbar />
+                {minimap && (
+                  <MiniMap
+                    position="bottom-left"
+                    pannable
+                    zoomable
+                    className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
+                    nodeColor="var(--muted-foreground)"
+                    nodeBorderRadius={12}
+                  />
+                )}
+              </ReactFlow>
 
-      {!isPanning && pending && menu && (
-        <PendingConnectionLine
-          from={pending.fromScreen}
-          fromPosition={pending.fromPosition}
-          to={menu.screen}
-        />
-      )}
+              {!isPanning && pending && menu && (
+                <PendingConnectionLine
+                  from={pending.fromScreen}
+                  fromPosition={pending.fromPosition}
+                  to={menu.screen}
+                />
+              )}
 
-      <input
-        ref={uploadInputRef}
-        type="file"
-        accept={UPLOAD_ACCEPT}
-        multiple
-        className="sr-only"
-        aria-hidden
-        tabIndex={-1}
-        onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          // 同一批文件连着选两次也得有反应，所以选完就把值清掉
-          event.target.value = "";
-          if (files.length) void addUploadedNodes(files).then(setNotice);
-        }}
-      />
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept={UPLOAD_ACCEPT}
+                multiple
+                className="sr-only"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  // 同一批文件连着选两次也得有反应，所以选完就把值清掉
+                  event.target.value = "";
+                  if (files.length) void addUploadedNodes(files).then(showUploadNotice);
+                }}
+              />
 
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        modelGroups={modelGroups}
-      />
+              {nodes.length === 0 && <EmptyState onAdd={addAtCenter} onUpload={uploadAtCenter} />}
 
-      <AddNodeMenu
-        position={isPanning ? null : (menu?.screen ?? null)}
-        label={pending ? "引用该节点生成" : "添加节点"}
-        items={menuItems}
-        onClose={closeMenu}
-        onSelect={(value) => {
-          // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
-          if (value === UPLOAD_ACTION) {
-            beginUpload();
-            uploadInputRef.current?.click();
-            return;
-          }
+              <ChromeZone position="top-left">
+                <TopLeftBar
+                  title={title}
+                  onRename={onRename}
+                  saveStatus={saveStatus}
+                  onRetrySave={() => void flush()}
+                />
+              </ChromeZone>
+              <ChromeZone position="top-right">
+                <TopRightBar
+                  onOpenSettings={() => setSettingsOpen(true)}
+                  onOpenShortcuts={openShortcuts}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-center">
+                <BottomToolbar
+                  tool={tool}
+                  onToolChange={setTool}
+                  onAdd={addAtCenter}
+                  onUpload={uploadAtCenter}
+                  canUndo={history.canUndo}
+                  canRedo={history.canRedo}
+                  onUndo={history.undo}
+                  onRedo={history.redo}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-left" className="max-md:hidden">
+                <ViewControls
+                  minimap={minimap}
+                  onMinimapChange={setMinimap}
+                  onOpenShortcuts={openShortcuts}
+                />
+              </ChromeZone>
+              <ChromeZone position="bottom-right" className="max-md:hidden">
+                <StatsBar />
+              </ChromeZone>
 
-          addNode(value as NodeKind);
-        }}
-      />
-    </div>
+              <SettingsDialog
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                modelGroups={modelGroups}
+              />
+              <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+
+              <AddNodeMenu
+                position={isPanning ? null : (menu?.screen ?? null)}
+                label={pending ? "引用该节点生成" : "添加节点"}
+                items={menuItems}
+                onClose={closeMenu}
+                onSelect={(value) => {
+                  // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
+                  if (value === UPLOAD_ACTION) {
+                    beginUpload();
+                    uploadInputRef.current?.click();
+                    return;
+                  }
+
+                  addNode(value as NodeKind);
+                }}
+              />
+            </div>
+          </TooltipProvider>
+        </OverlayGateProvider>
+      </MultiSelectProvider>
+    </CanvasHistoryProvider>
   );
-}
+});

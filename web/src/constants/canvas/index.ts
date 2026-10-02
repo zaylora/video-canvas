@@ -23,13 +23,13 @@ export const INITIAL_NODES: CanvasNode[] = [];
 
 export const INITIAL_EDGES: CanvasEdge[] = [];
 
-/** 流动高亮的动画参数：一颗流星 2 秒从源头划到目标，循环不停 */
+/** 流动高亮的动画参数：一段光带从源头扫到目标，循环不停（设计稿原型选定「光带」） */
 export const ANIMATED_EDGE_DATA: NonNullable<CanvasEdge["data"]> = {
   duration: 2,
   direction: "forward",
   repeat: "indefinite",
   path: "bezier",
-  shape: "meteor",
+  shape: "sweep",
 };
 
 /** 新建连线时套用的默认配置，交给 ReactFlow 的 defaultEdgeOptions */

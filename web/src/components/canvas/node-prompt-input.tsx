@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
-import { ArrowUp, ChevronDown, Loader2, Zap } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { motion } from "motion/react";
+import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle } from "lucide-react";
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,18 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-/**
- * 输入框这块的尺寸，想调大调小改这里就够：
- * width 是整块的宽，minHeight / maxHeight 是文本区空着和写满时的高度。
- * 这块不随画布缩放，所以这些值就是实打实的屏幕像素（w-96 即 384px）。
- */
-const PANEL_SIZE = {
-  width: "w-96",
-  minHeight: "min-h-16",
-  maxHeight: "max-h-48",
-} as const;
+/** 提示词最多多少字，和后端校验一致 */
+export const PROMPT_MAX_LENGTH = 16000;
+/** 字数到这个比例开始提醒 */
+const PROMPT_WARN_RATIO = 0.94;
 
 /** 一个可选模型：名字之外还带每次出片要扣的积分 */
 export type NodeModelOption = {
@@ -43,6 +39,14 @@ export type NodeModelOption = {
   /** 展示标签 */
   tags?: readonly string[];
 };
+
+/** 面板底栏上的胶囊按钮样式，参数摘要、批量这类按钮共用 */
+export const PANEL_CHIP_CLASS = cn(
+  "nodrag inline-flex h-8.5 min-w-0 shrink items-center gap-1.5 rounded-full px-3 text-[13px] whitespace-nowrap",
+  "ring-1 ring-foreground/10 transition-[background-color,color] hover:bg-chrome-hover",
+  "focus-visible:ring-node-ring/60 outline-none focus-visible:ring-2",
+  "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5 [&_svg]:shrink-0",
+);
 
 type NodePromptInputProps = {
   /** 提示词文本 */
@@ -76,31 +80,81 @@ type NodePromptInputProps = {
   modelLabel?: string;
   /** 当前模型有问题（已下线等），触发器用警示色 */
   modelInvalid?: boolean;
-  /** 覆盖工具栏里显示的积分：本次提交合计要冻结的积分（所有任务之和） */
+  /** 覆盖发送键上显示的积分：本次提交合计要冻结的积分（所有任务之和） */
   credits?: number;
   /** credits 是预估上限（按 Token 计费，完成后按实际用量多退少补） */
   creditsIsMax?: boolean;
   /** 合计积分的组成说明，如「5 积分/秒 × 5 秒 × 4 个」，放在悬停提示里 */
   creditsDetail?: string;
-  /** 当前可用积分，摆在单次消耗后面 */
+  /** 当前可用积分，放在悬停提示里 */
   availableCredits?: number | null;
   /** 提示词框禁用（比如提示词由上游连线提供），placeholder 会换成 promptNote */
   promptDisabled?: boolean;
   promptNote?: string;
   /** 完全不要提示词框（该模型没有 prompt 字段） */
   hidePrompt?: boolean;
-  /** 提示词框和工具栏之间的插槽，参数面板放这里 */
+  /** 面板最上面一行，放生成方式 Tabs */
+  header?: ReactNode;
+  /** 提示词框上方的插槽，放参考素材 */
   children?: ReactNode;
   /** 工具栏上方的一行提示，比如提交被拒的原因 */
   notice?: { tone: "error" | "info"; text: string } | null;
-  /** 工具栏里模型选择后面的插槽，放生成方式下拉与参数摘要按钮 */
+  /** 底栏里模型选择后面的插槽，放参数摘要、批量 */
   toolbarExtra?: ReactNode;
+  /** 面板宽度（屏幕像素）；不给就 480 */
+  width?: number;
+  className?: string;
 };
 
+/** 自适应高度的提示词框：Enter / ⌘Enter 发送，Shift+Enter 换行；组字时的 Enter 不算 */
+function PromptTextarea({
+  value,
+  onValueChange,
+  placeholder,
+  disabled,
+  onSubmit,
+  large,
+  autoFocus,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  onSubmit: () => void;
+  large?: boolean;
+  autoFocus?: boolean;
+}) {
+  return (
+    <textarea
+      data-node-prompt={large ? undefined : ""}
+      value={value}
+      disabled={disabled}
+      autoFocus={autoFocus}
+      maxLength={PROMPT_MAX_LENGTH}
+      placeholder={placeholder}
+      // field-sizing-content 让文本区跟着内容长，长到上限再自己滚，
+      // nowheel 把滚轮留给文本区，别让画布跟着平移
+      className={cn(
+        "nowheel placeholder:text-muted-foreground/70 field-sizing-content w-full resize-none bg-transparent px-1 text-[15px] leading-6 outline-none disabled:opacity-60",
+        large ? "min-h-72 max-h-[60vh]" : "max-h-50 min-h-12",
+      )}
+      onChange={(event) => onValueChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || event.shiftKey) return;
+        if (event.nativeEvent.isComposing) return;
+        // 大编辑框里写长文，回车只换行，⌘Enter 才发
+        if (large && !event.metaKey && !event.ctrlKey) return;
+        event.preventDefault();
+        onSubmit();
+      }}
+    />
+  );
+}
+
 /**
- * 浮在节点下方的提示词输入框：一块自适应高度的文本区，
- * 底下一条工具栏放模型选择、积分和发送按钮。
- * 只管长相和交互，摆在哪儿、提示词与模型存哪儿都由调用方决定。
+ * 浮在节点下方的生成面板（设计稿 6.4）：
+ * 生成方式 Tabs → 参考素材 → 自适应提示词 → 字数 → 底栏（模型、参数、批量、积分 + 发送）。
+ * 右上角可以把提示词放大到对话框里写。只管长相和交互，数据都由调用方决定。
  */
 export function NodePromptInput({
   value,
@@ -125,17 +179,22 @@ export function NodePromptInput({
   promptDisabled,
   promptNote,
   hidePrompt,
+  header,
   children,
   notice,
   toolbarExtra,
+  width = 480,
+  className,
 }: NodePromptInputProps) {
+  const [expanded, setExpanded] = useState(false);
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);
   const busy = running || submitting;
   const credits = creditsOverride ?? model?.credits;
+  const blocked = !canSubmit || busy;
 
   const submit = () => {
-    if (canSubmit && !busy) onSubmit?.();
+    if (!blocked) onSubmit?.();
   };
 
   // 按钮灰着的时候得说清为什么，不然只剩一个点不动的圈；
@@ -143,40 +202,65 @@ export function NodePromptInput({
   const hint =
     hintOverride ??
     (running ? "生成中" : !onSubmit ? submitHint : value.trim() ? "开始生成" : "先写点提示词");
+  const creditsTitle =
+    credits === undefined
+      ? hint
+      : `${hint} · ${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
+          creditsIsMax ? "，完成后按实际用量结算" : ""
+        }${availableCredits == null ? "" : `，当前可用 ${availableCredits}`}`;
+  const promptPlaceholder = promptDisabled && promptNote ? promptNote : placeholder;
+  const nearLimit = value.length > PROMPT_MAX_LENGTH * PROMPT_WARN_RATIO;
 
   return (
-    // 这块浮在节点外面，自带底色和阴影才压得住底下的画布；
     // nodrag 让框里能正常选字、点按钮，不会顺手把画布拖走
     <div
+      style={{ width }}
       className={cn(
-        "nodrag border-input bg-card focus-within:border-ring focus-within:ring-ring/30 flex flex-col gap-3 rounded-2xl border p-3 text-left shadow-lg transition-[color,box-shadow] focus-within:ring-3 [corner-shape:squircle]",
-        PANEL_SIZE.width,
+        "nodrag nopan bg-popover/95 text-popover-foreground ring-chrome-border flex flex-col gap-3 rounded-[22px] p-3.5 text-left shadow-2xl ring-1 backdrop-blur-2xl",
+        className,
       )}
     >
-      {!hidePrompt && (
-        <textarea
-          value={value}
-          disabled={promptDisabled}
-          placeholder={promptDisabled && promptNote ? promptNote : placeholder}
-          // field-sizing-content 让文本区跟着内容长，长到上限再自己滚，
-          // nowheel 把滚轮留给文本区，别让画布跟着平移
-          className={cn(
-            "nowheel placeholder:text-muted-foreground field-sizing-content w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none",
-            PANEL_SIZE.minHeight,
-            PANEL_SIZE.maxHeight,
+      {(header || !hidePrompt) && (
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="min-w-0 flex-1">{header}</div>
+          {!hidePrompt && (
+            <motion.button
+              type="button"
+              whileTap={TAP}
+              aria-label="放大编辑提示词"
+              title="放大编辑"
+              disabled={promptDisabled}
+              onClick={() => setExpanded(true)}
+              className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground ring-chrome-border grid size-8 shrink-0 place-items-center rounded-[9px] ring-1 transition-colors disabled:opacity-40"
+            >
+              <Maximize2 className="size-4" />
+            </motion.button>
           )}
-          onChange={(event) => onValueChange(event.target.value)}
-          // Enter 直接发，换行留给 Shift+Enter；
-          // 中文输入法选词时那一下 Enter 是在敲拼音框，isComposing 把它挡回去
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
-            if (event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            submit();
-          }}
-        />
+        </div>
       )}
+
       {children}
+
+      {!hidePrompt && (
+        <div className="flex flex-col gap-1">
+          <PromptTextarea
+            value={value}
+            onValueChange={onValueChange}
+            placeholder={promptPlaceholder}
+            disabled={promptDisabled}
+            onSubmit={submit}
+          />
+          <span
+            className={cn(
+              "self-end font-mono text-xs tabular-nums",
+              nearLimit ? "text-status-warning" : "text-muted-foreground/60",
+            )}
+          >
+            {value.length}/{PROMPT_MAX_LENGTH}
+          </span>
+        </div>
+      )}
+
       {notice && (
         <p
           role={notice.tone === "error" ? "alert" : undefined}
@@ -190,14 +274,11 @@ export function NodePromptInput({
           {notice.text}
         </p>
       )}
-      <div className="flex items-center gap-2">
+
+      <div className="flex min-w-0 items-center gap-2">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              "text-muted-foreground min-w-0 shrink gap-2 px-2",
-              modelInvalid && "text-destructive hover:text-destructive",
-            )}
+            className={cn(PANEL_CHIP_CLASS, "pl-1.5", modelInvalid && "text-destructive")}
             aria-label="选择模型"
           >
             {model ? (
@@ -205,15 +286,15 @@ export function NodePromptInput({
                 vendor={model.vendor}
                 name={model.label}
                 seed={model.id}
-                className="size-5 rounded-md text-[10px]"
+                className="size-5.5 rounded-full text-[10px]"
               />
             ) : (
               icon
             )}
             <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
-            <ChevronDown className="opacity-60" />
+            <ChevronDown className="opacity-50" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-72" align="start" sideOffset={6}>
+          <DropdownMenuContent className="w-72" align="start" sideOffset={8}>
             <DropdownMenuGroup>
               {/* GroupLabel 必须待在 Group 里，否则 Base UI 会抛 MenuGroupContext 缺失 */}
               <DropdownMenuLabel>选择模型</DropdownMenuLabel>
@@ -258,34 +339,70 @@ export function NodePromptInput({
 
         {toolbarExtra}
 
+        {/* 积分和发送拼成一颗胶囊：要花多少一眼看到，不用二次确认 */}
         <span
-          className="text-muted-foreground ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums"
-          title={
-            credits === undefined
-              ? undefined
-              : `${creditsIsMax ? "最多冻结" : "本次消耗"} ${credits} 积分${creditsDetail ? `（${creditsDetail}）` : ""}${
-                  creditsIsMax ? "，完成后按实际用量结算，多冻结的退回" : ""
-                }${availableCredits == null ? "" : `，当前可用 ${availableCredits} 积分`}`
-          }
-        >
-          <Zap className="size-3.5" />
-          {credits === undefined ? "-" : `${creditsIsMax ? "≤" : ""}${credits}`}
-          {availableCredits != null && (
-            <span className="opacity-60">/ 可用 {availableCredits}</span>
+          className={cn(
+            "ring-foreground/10 ml-auto flex h-10 shrink-0 items-center gap-1 rounded-full pr-[3px] pl-3 ring-1 transition-opacity",
+            blocked && !busy && "opacity-50",
           )}
-        </span>
-        <span className="flex shrink-0" title={hint}>
-          <Button
-            size="icon"
-            className="rounded-full"
+          title={creditsTitle}
+        >
+          <span className="flex items-center gap-1.5 pr-1.5 font-mono text-[15px] font-semibold tabular-nums">
+            <Sparkle
+              className={cn("size-4", blocked && !busy ? "fill-muted-foreground" : "fill-credit")}
+              strokeWidth={0}
+            />
+            {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+          </span>
+          <motion.button
+            type="button"
+            whileTap={blocked ? undefined : { scale: 0.92 }}
+            whileHover={blocked ? undefined : { scale: 1.05 }}
             aria-label={busy ? "生成中" : "开始生成"}
-            disabled={!canSubmit || busy}
+            disabled={blocked}
             onClick={submit}
+            className="bg-foreground text-background grid size-8.5 place-items-center rounded-full disabled:pointer-events-none"
           >
-            {busy ? <Loader2 className="animate-spin" /> : <ArrowUp />}
-          </Button>
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ArrowUp className="size-4 stroke-[2.5]" />
+            )}
+          </motion.button>
         </span>
       </div>
+
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent
+          className="sm:max-w-2xl"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle>编辑提示词</DialogTitle>
+          </DialogHeader>
+          <div className="bg-muted/50 rounded-xl p-3">
+            <PromptTextarea
+              large
+              autoFocus
+              value={value}
+              onValueChange={onValueChange}
+              placeholder={promptPlaceholder}
+              disabled={promptDisabled}
+              onSubmit={() => {
+                setExpanded(false);
+                submit();
+              }}
+            />
+          </div>
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>⌘↵ 发送，Esc 收起</span>
+            <span className={cn("font-mono tabular-nums", nearLimit && "text-status-warning")}>
+              {value.length}/{PROMPT_MAX_LENGTH}
+            </span>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

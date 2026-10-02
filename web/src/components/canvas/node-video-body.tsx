@@ -59,7 +59,7 @@ function PendingBox({
   return (
     <BaseNodeContent>
       <div
-        className="relative w-full overflow-hidden rounded-2xl border [corner-shape:squircle]"
+        className="relative w-full overflow-hidden rounded-[inherit]"
         style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
         role="status"
         aria-live="polite"
@@ -147,7 +147,7 @@ export function NodeVideoBody({
       return (
         <BaseNodeContent>
           <div
-            className="border-destructive/40 bg-destructive/5 text-destructive flex w-full flex-col items-center justify-center gap-2 rounded-2xl border px-4 text-center text-xs [corner-shape:squircle]"
+            className="bg-destructive/5 text-destructive flex w-full flex-col items-center justify-center gap-2 rounded-[inherit] px-4 text-center text-xs"
             style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
             role="alert"
           >
