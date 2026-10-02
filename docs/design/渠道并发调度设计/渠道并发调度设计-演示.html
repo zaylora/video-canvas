@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>渠道并发调度设计</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* 与 docs/design 下其他演示文档同一套 token：颜色走 CSS 变量，明暗主题只换变量 */
+  :root {
+    --bg: 240 10% 3.9%; --fg: 0 0% 98%;
+    --card: 240 6% 7%; --muted: 240 3.7% 15.9%; --muted-fg: 240 5% 64.9%;
+    --border: 240 3.7% 18%;
+    --blue: 211 90% 62%; --green: 152 60% 50%; --amber: 38 92% 58%; --red: 0 75% 62%; --violet: 262 80% 70%;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: 0 0% 100%; --fg: 240 10% 3.9%;
+    --card: 240 5% 97%; --muted: 240 4.8% 93%; --muted-fg: 240 3.8% 40%;
+    --border: 240 5.9% 86%;
+    --blue: 211 85% 45%; --green: 152 65% 32%; --amber: 32 95% 40%; --red: 0 72% 48%; --violet: 262 60% 50%;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: 0 0% 100%; --fg: 240 10% 3.9%;
+      --card: 240 5% 97%; --muted: 240 4.8% 93%; --muted-fg: 240 3.8% 40%;
+      --border: 240 5.9% 86%;
+      --blue: 211 85% 45%; --green: 152 65% 32%; --amber: 32 95% 40%; --red: 0 72% 48%; --violet: 262 60% 50%;
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: hsl(var(--bg)); color: hsl(var(--fg));
+    font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  body { overflow: hidden; }
+  code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: .92em; }
+  code { background: hsl(var(--muted)); padding: .05em .35em; border-radius: 4px; }
+
+  /* 舞台：固定 1280×720，按窗口等比缩放 */
+  #stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: center; }
+  .slide { position: absolute; inset: 0; padding: 56px 72px 64px; display: none; flex-direction: column; gap: 18px; }
+  .slide.active { display: flex; }
+  .kicker { color: hsl(var(--muted-fg)); font-size: 15px; letter-spacing: .08em; }
+  h1 { font-size: 52px; line-height: 1.15; margin: 0; font-weight: 700; }
+  h2 { font-size: 34px; line-height: 1.2; margin: 0; font-weight: 650; }
+  h3 { font-size: 19px; margin: 0 0 6px; font-weight: 600; }
+  p, li { font-size: 19px; line-height: 1.6; margin: 0; }
+  .lead { font-size: 22px; color: hsl(var(--muted-fg)); line-height: 1.6; }
+  .small { font-size: 15px; color: hsl(var(--muted-fg)); line-height: 1.55; }
+  ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px 20px; }
+  .card p, .card li { font-size: 17px; }
+  .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid currentColor; }
+  .t-blue { color: hsl(var(--blue)); } .t-green { color: hsl(var(--green)); } .t-amber { color: hsl(var(--amber)); }
+  .t-red { color: hsl(var(--red)); } .t-violet { color: hsl(var(--violet)); } .t-muted { color: hsl(var(--muted-fg)); }
+  .b-blue { border-color: hsl(var(--blue) / .6); } .b-green { border-color: hsl(var(--green) / .6); }
+  .b-amber { border-color: hsl(var(--amber) / .6); } .b-red { border-color: hsl(var(--red) / .6); } .b-violet { border-color: hsl(var(--violet) / .6); }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid hsl(var(--border)); vertical-align: top; line-height: 1.5; }
+  th { color: hsl(var(--muted-fg)); font-weight: 500; font-size: 14px; }
+  .new { background: hsl(var(--blue) / .08); }
+  .pre { font-family: "Geist Mono", monospace; font-size: 14px; line-height: 1.55; background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+    border-radius: 12px; padding: 14px 18px; white-space: pre; overflow: hidden; }
+  .spacer { flex: 1; }
+  .callout { border-left: 3px solid hsl(var(--blue)); padding: 6px 0 6px 14px; }
+
+  /* 时间线（占用示意） */
+  .tl { display: grid; grid-template-columns: 120px 1fr; gap: 8px 14px; align-items: center; font-size: 15px; }
+  .track { position: relative; height: 26px; background: hsl(var(--muted) / .5); border-radius: 6px; }
+  .seg { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; font-size: 12px; display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; }
+  .seg.q { background: hsl(var(--amber) / .35); color: hsl(var(--amber)); }
+  .seg.run { background: hsl(var(--blue) / .3); color: hsl(var(--blue)); }
+  .seg.req { background: hsl(var(--green) / .55); color: hsl(var(--fg)); }
+  .seg.fin { background: hsl(var(--violet) / .35); color: hsl(var(--violet)); }
+  .axis { display: flex; justify-content: space-between; font-size: 12px; color: hsl(var(--muted-fg)); padding-left: 134px; }
+
+  /* 后台表单示意 */
+  .field label { display: block; font-size: 14px; color: hsl(var(--muted-fg)); margin-bottom: 6px; }
+  .input { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 16px; background: hsl(var(--bg)); }
+  .bar { height: 8px; border-radius: 99px; background: hsl(var(--muted)); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: hsl(var(--blue)); }
+
+  /* 底部导航 */
+  #nav { position: fixed; left: 0; right: 0; bottom: 0; height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px;
+    font-size: 13px; color: hsl(var(--muted-fg)); }
+  #nav button { background: transparent; color: inherit; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  #nav button:hover { color: hsl(var(--fg)); }
+  #progress { position: fixed; left: 0; bottom: 0; height: 3px; background: hsl(var(--blue)); transition: width .2s; }
+  @media print { #nav, #progress { display: none; } }
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- 1 封面 -->
+<section class="slide" data-title="封面">
+  <div class="spacer"></div>
+  <div class="kicker">VIDEO-CANVAS · 设计提案 · 2026-10-02</div>
+  <h1>渠道并发调度设计</h1>
+  <p class="lead" style="max-width:900px">给每个渠道设“最多同时生成几个任务”，满了就在我们这边排队，<br>而不是撞上游的限制再失败；之后再让一个模型能在多个渠道之间自动挑空闲的。</p>
+  <div class="spacer"></div>
+  <p class="small">A：渠道级同时生成上限（排队） · B：多渠道自动调度　|　← → 翻页，T 切换明暗</p>
+</section>
+
+<!-- 2 现象 -->
+<section class="slide" data-title="现象">
+  <div class="kicker">01 · 问题</div>
+  <h2>上游满了，我们不知道，任务直接失败</h2>
+  <div class="grid2" style="margin-top:8px">
+    <div class="card">
+      <h3>今天发生了什么</h3>
+      <ul>
+        <li>任务一建好，worker 有空位就立刻提交给上游</li>
+        <li>上游账号同时生成数到顶了，返回“繁忙”</li>
+        <li>可重试的错误最多重试 5 次，还不行就失败</li>
+        <li>用户看到“平台繁忙，请稍后重试”，积分退回</li>
+      </ul>
+      <p class="small" style="margin-top:12px">库里的任务 32、34 就是这样失败的（YSWG，<code>provider_error</code>）。</p>
+    </div>
+    <div class="card">
+      <h3>为什么现有的限流挡不住</h3>
+      <p>渠道页的“每秒请求数 / 最大并发”管的是<b>请求</b>：一个请求从发出到收到响应才占名额。</p>
+      <p style="margin-top:10px">YSWG 这类异步接口，提交 1 秒就返回任务号，中间 60 秒的生成<b>不占名额</b>。所以“最大并发 3”，上游照样可以同时有几十个任务在生成。</p>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:6px"><p>缺的是一个管“<b>任务</b>”的上限：这个渠道此刻最多有几个任务在上游生成。</p></div>
+</section>
+
+<!-- 3 请求 vs 任务 -->
+<section class="slide" data-title="请求与任务">
+  <div class="kicker">02 · 先分清两个东西</div>
+  <h2>“请求”只占一瞬，“任务”占满整个生成过程</h2>
+  <p class="small">一个 YSWG 生图任务的时间线（示意，约 60 秒）：</p>
+  <div class="tl" style="margin-top:4px">
+    <div>任务在上游</div>
+    <div class="track">
+      <div class="seg run" style="left:3%;width:85%">生成中（上游在出图）</div>
+      <div class="seg fin" style="left:88%;width:10%">转存</div>
+    </div>
+    <div>发出的请求</div>
+    <div class="track">
+      <div class="seg req" style="left:2%;width:2.5%"></div>
+      <div class="seg req" style="left:27%;width:1.5%"></div>
+      <div class="seg req" style="left:52%;width:1.5%"></div>
+      <div class="seg req" style="left:77%;width:1.5%"></div>
+    </div>
+  </div>
+  <div class="axis"><span>0s 提交</span><span>15s 查</span><span>30s 查</span><span>45s 查</span><span>60s 出图</span></div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card b-green"><h3 class="t-green">请求（现有限流管的）</h3><p>提交 1 次 + 每 15 秒查 1 次，每次不到 1 秒。<br>“最大并发 3”= 同时最多 3 个请求在路上。</p></div>
+    <div class="card b-blue"><h3 class="t-blue">任务（这次要新增的）</h3><p>从提交成功到上游出图，一直占着上游的一个生成位。<br>“最大同时生成 3”= 同时最多 3 个任务在上游。</p></div>
+  </div>
+  <p class="small">同步接口（如文本）例外：一次请求等到正文返回，请求和任务几乎重叠，所以现有的“最大并发”对它碰巧有效。</p>
+</section>
+
+<!-- 4 四道闸门 -->
+<section class="slide" data-title="四道闸门">
+  <div class="kicker">03 · 现状与新增</div>
+  <h2>一个任务要过的四道闸门</h2>
+  <table style="margin-top:6px">
+    <tr><th style="width:18%">闸门</th><th style="width:23%">管什么</th><th>在哪一步拦</th><th style="width:20%">拦下时用户看到</th><th style="width:12%">配置</th></tr>
+    <tr><td>① 用户进行中上限</td><td>每个用户同时进行的任务数</td><td>提交接口，建任务之前</td><td>“并发已满”，不建任务</td><td><code>max_active_tasks_per_user</code> 4</td></tr>
+    <tr><td>② worker 执行池</td><td>整个服务同一时刻在处理的任务步骤</td><td>领任务时：没空位就不领</td><td>排队中</td><td><code>worker.concurrency</code> 8</td></tr>
+    <tr class="new"><td><b class="t-blue">③ 渠道同时生成上限（新）</b></td><td>这个渠道此刻在上游生成的任务数</td><td>领 pending 任务时：渠道满了就不领</td><td>排队中</td><td>渠道页，新字段</td></tr>
+    <tr><td>④ 渠道请求限流</td><td>这个渠道发出的请求：每秒几个、同时几个</td><td>真正发 HTTP 之前：等令牌和名额</td><td>排队中 / 生成中（看哪个请求在等）</td><td>渠道页 rps、最大并发</td></tr>
+  </table>
+  <p class="small">另有插件沙箱池（每个插件版本 8 个 JS 运行时），只占几毫秒，几乎不会成为瓶颈，见《协议插件设计 / 并发控制与沙箱池》。</p>
+  <div class="callout"><p>③ 放在②之后、④之前：先有执行位，再看渠道还有没有生成位，最后才去发请求。</p></div>
+</section>
+
+<!-- 5 目标 -->
+<section class="slide" data-title="目标">
+  <div class="kicker">04 · 范围</div>
+  <h2>这次要做到什么，不做什么</h2>
+  <div class="grid2" style="margin-top:6px">
+    <div class="card b-green">
+      <h3 class="t-green">目标</h3>
+      <ul>
+        <li>渠道能配“最大同时生成数”，0 或留空表示不限（和现在一致）</li>
+        <li>满了的任务留在 <code>pending</code>，画布显示“排队中”，空出来自动提交，先到先提交</li>
+        <li>多个后端实例一起跑也不会超限</li>
+        <li>排队时间不吃掉生成超时；排太久有单独的“排队超时”</li>
+        <li>渠道页能看到“生成中 3 / 5，排队 7”</li>
+      </ul>
+    </div>
+    <div class="card b-red">
+      <h3 class="t-red">不做（这一期）</h3>
+      <ul>
+        <li>按“渠道 + 模型”分别设上限（见待确认）</li>
+        <li>用户之间的公平调度（同一渠道内先到先得，单个用户最多 4 个任务已经限住了）</li>
+        <li>VIP 优先级、插队</li>
+        <li>自动探测上游真实上限：数值由运营填</li>
+        <li>多渠道调度：放到方案 B</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 6 A 总览 -->
+<section class="slide" data-title="方案 A 总览">
+  <div class="kicker">05 · 方案 A：渠道同时生成上限</div>
+  <h2>一个字段、一处领取规则、一个超时调整</h2>
+  <div class="grid3" style="margin-top:10px">
+    <div class="card b-blue"><span class="tag t-blue">配置</span><h3 style="margin-top:10px">渠道新增 <code>max_running</code></h3><p>放进现有的 <code>rate_limit_json</code>：<br><code>{"rps":5, "max_concurrency":20, "max_running":10}</code><br>不用改表结构，旧渠道没有这个键就是不限。</p></div>
+    <div class="card b-amber"><span class="tag t-amber">调度</span><h3 style="margin-top:10px">领 pending 时看余量</h3><p>worker 每秒领任务时，pending 任务按渠道数一下“正在占位的任务数”，只领到上限为止。轮询、转存不受影响。</p></div>
+    <div class="card b-violet"><span class="tag t-violet">超时</span><h3 style="margin-top:10px">排队与生成分开计时</h3><p>生成超时改为从提交给上游起算；排队另设上限，超了按“排队超时”失败并退积分。</p></div>
+  </div>
+  <p class="small" style="margin-top:6px">为什么放在“领任务”这一步，而不是“发请求”这一步：领了却发不出去，任务会占着 worker 执行位干等，还会拖慢别的渠道；不领它，它就安静地待在数据库里。</p>
+</section>
+
+<!-- 7 占位怎么算 -->
+<section class="slide" data-title="怎么算占位">
+  <div class="kicker">06 · 方案 A · 占位</div>
+  <h2>哪些任务算“正在占这个渠道的生成位”</h2>
+  <table style="margin-top:6px">
+    <tr><th style="width:24%">任务状态</th><th style="width:12%">算占位？</th><th>理由</th></tr>
+    <tr><td><code>pending</code>，正在被提交（有有效租约、还没拿到上游任务号）</td><td class="t-blue"><b>算</b></td><td>请求已经在路上或马上发出。不算的话，两个实例可能同时各提交一批，超限</td></tr>
+    <tr><td><code>pending</code>，在等（没有租约）</td><td class="t-muted">不算</td><td>就是排队中的那些，还没碰上游</td></tr>
+    <tr><td><code>pending</code>，提交失败后退避重试中</td><td class="t-muted">不算</td><td>上游没有接收这个任务，把位置让给别人</td></tr>
+    <tr><td><code>queued</code> / <code>running</code></td><td class="t-blue"><b>算</b></td><td>已经在上游，占着上游的生成位</td></tr>
+    <tr><td><code>finalizing</code></td><td class="t-muted">不算</td><td>上游已经出结果，只是我们在下载、保存，不占上游</td></tr>
+    <tr><td>终态（成功 / 失败 / 取消 / 超时）</td><td class="t-muted">不算</td><td>结束了</td></tr>
+  </table>
+  <p class="small">按任务表的 <code>provider</code> 列（就是渠道 key）分组计数；运营试跑任务（<code>is_test</code>）也算占位，因为它也占上游。</p>
+</section>
+
+<!-- 8 领取规则 -->
+<section class="slide" data-title="领取规则">
+  <div class="kicker">07 · 方案 A · 调度</div>
+  <h2>worker 领任务改成两路</h2>
+  <div class="grid2" style="margin-top:4px">
+    <div class="card"><h3>第一路：在途任务（不变）</h3><p><code>queued / running / finalizing</code> 到点要查结果或转存，照常领。</p><p class="small" style="margin-top:8px">必须不受上限影响：只有查到结果、任务结束，位置才会空出来。要是它们也排队，就死锁了。</p></div>
+    <div class="card b-blue"><h3 class="t-blue">第二路：pending（新规则）</h3><p>每个渠道最多领 <b>上限 − 占位</b> 个，同一渠道内按创建时间先到先领；上限为 0 的渠道不限。</p><p class="small" style="margin-top:8px">两路加起来仍然不超过 worker 的空位数（闸门②）。</p></div>
+  </div>
+  <div class="pre">-- 第二路的思路（示意，不是最终 SQL）
+WITH busy AS (            -- 每个渠道正在占位的任务数
+  SELECT provider, count(*) AS n FROM generation_tasks
+  WHERE status IN ('queued','running') OR (status = 'pending' AND lease_until &gt; now() AND provider_task_id = '')
+  GROUP BY provider),
+ranked AS (               -- 到点的 pending，按渠道排名
+  SELECT t.id, row_number() OVER (PARTITION BY t.provider ORDER BY t.created_at) AS rn, c.max_running, coalesce(b.n, 0) AS n
+  FROM generation_tasks t JOIN ai_channels c ON c.key = t.provider LEFT JOIN busy b ON b.provider = t.provider
+  WHERE t.status = 'pending' AND t.next_poll_at &lt;= now() AND (t.lease_until IS NULL OR t.lease_until &lt; now()))
+SELECT id FROM ranked WHERE max_running = 0 OR rn &lt;= max_running - n   -- 再按 created_at 取前 limit 个，加租约</pre>
+  <p class="small">上限读渠道的<b>当前</b>配置（join 渠道表），不读任务快照：运营调大上限，排队的任务马上能用上。</p>
+</section>
+
+<!-- 9 多实例 -->
+<section class="slide" data-title="多实例安全">
+  <div class="kicker">08 · 方案 A · 并发安全</div>
+  <h2>两个后端实例同时领，会不会一起超限</h2>
+  <div class="grid2" style="margin-top:6px">
+    <div class="card b-red">
+      <h3 class="t-red">风险</h3>
+      <p>实例 1 和实例 2 同一时刻都数到“渠道还剩 2 个位”，各领 2 个，结果提交了 4 个。</p>
+      <p class="small" style="margin-top:8px">现有的 <code>FOR UPDATE SKIP LOCKED</code> 只保证不会领到同一个任务，保证不了“数完再领”这个整体不被打断。</p>
+    </div>
+    <div class="card b-green">
+      <h3 class="t-green">做法：第二路领取串行</h3>
+      <p>第二路在事务里先拿一把 PostgreSQL 事务级咨询锁（<code>pg_advisory_xact_lock</code>），数和领在同一把锁里完成，提交事务自动释放。</p>
+      <p class="small" style="margin-top:8px">每个实例每秒只领一次，锁持有几毫秒，串行的代价可以忽略。第一路不加锁，轮询照旧并行。</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>为什么不用内存计数、Redis 计数</h3>
+    <p>内存计数每个实例各算各的，必然超；Redis 计数要在任务状态变化的每个地方加减，进程崩溃时会漏减，计数会越来越偏。直接按任务表现算，<b>任务表就是唯一事实来源</b>，崩溃了也不会算错（租约过期自然不再算占位）。</p>
+  </div>
+</section>
+
+<!-- 10 时间线示例 -->
+<section class="slide" data-title="例子">
+  <div class="kicker">09 · 方案 A · 走一遍</div>
+  <h2>渠道上限 2，同时来 5 个任务</h2>
+  <p class="small">YSWG 生图，每个约 60 秒；黄色 = 排队中（在我们这边），蓝色 = 生成中（在上游），紫色 = 转存。</p>
+  <div class="tl" style="margin-top:6px">
+    <div>任务 1</div><div class="track"><div class="seg run" style="left:1%;width:44%">生成中</div><div class="seg fin" style="left:45%;width:4%"></div></div>
+    <div>任务 2</div><div class="track"><div class="seg run" style="left:1%;width:46%">生成中</div><div class="seg fin" style="left:47%;width:4%"></div></div>
+    <div>任务 3</div><div class="track"><div class="seg q" style="left:0;width:45%">排队中</div><div class="seg run" style="left:45%;width:44%">生成中</div><div class="seg fin" style="left:89%;width:4%"></div></div>
+    <div>任务 4</div><div class="track"><div class="seg q" style="left:0;width:47%">排队中</div><div class="seg run" style="left:47%;width:45%">生成中</div><div class="seg fin" style="left:92%;width:4%"></div></div>
+    <div>任务 5</div><div class="track"><div class="seg q" style="left:0;width:89%">排队中（前面还有任务）</div><div class="seg run" style="left:89%;width:11%">生成中…</div></div>
+  </div>
+  <div class="axis"><span>0s</span><span>30s</span><span>60s</span><span>90s</span><span>120s</span><span>135s</span></div>
+  <ul style="margin-top:12px">
+    <li>0 秒：任务 1、2 被领走提交；3、4、5 留在 <code>pending</code>，显示“排队中”。</li>
+    <li>约 60 秒：任务 1 上游出图进入转存，转存不占位，下一秒任务 3 就被领走提交；任务 2 出图后同理放行任务 4。</li>
+    <li>任务 5 要等到 3 或 4 出图。<b>没有一个任务撞到上游的限制。</b></li>
+  </ul>
+</section>
+
+<!-- 11 超时 -->
+<section class="slide" data-title="超时">
+  <div class="kicker">10 · 方案 A · 超时</div>
+  <h2>排队时间不能吃掉生成时间</h2>
+  <div class="grid2" style="margin-top:6px">
+    <div class="card b-red">
+      <h3 class="t-red">现在</h3>
+      <p>任务一创建就开始计时（模型配置的超时，默认 30 分钟）。排队 25 分钟的任务，提交给上游后只剩 5 分钟，大概率“生成超时”。</p>
+    </div>
+    <div class="card b-green">
+      <h3 class="t-green">改成</h3>
+      <ul>
+        <li><b>排队超时</b>：在 <code>pending</code> 里最多等多久，默认等于模型超时；超了失败，文案“排队超时，积分已退回”</li>
+        <li><b>生成超时</b>：提交给上游成功那一刻重新起算（<code>deadline_at = submitted_at + 模型超时</code>）</li>
+      </ul>
+    </div>
+  </div>
+  <table style="margin-top:4px">
+    <tr><th>时刻</th><th>现在的 deadline</th><th>改后的 deadline</th></tr>
+    <tr><td>10:00 创建，排队</td><td>10:30</td><td>10:30（排队超时）</td></tr>
+    <tr><td>10:20 被领走、提交成功</td><td>10:30，只剩 10 分钟生成</td><td>重新算成 10:50，完整 30 分钟</td></tr>
+  </table>
+  <p class="small">积分在创建时就已冻结，排队超时和其他失败一样全额退回。用户在排队中随时可以取消。</p>
+</section>
+
+<!-- 12 上游仍报繁忙 -->
+<section class="slide" data-title="上限填错了">
+  <div class="kicker">11 · 方案 A · 兜底</div>
+  <h2>上限填大了，或者上游账号还被别处用着</h2>
+  <p class="lead">我们这边的上限只能挡住<b>我们自己</b>发出的任务。上游仍可能返回“繁忙 / 并发已满”。</p>
+  <div class="grid2" style="margin-top:4px">
+    <div class="card"><h3>处理方式（沿用现有逻辑）</h3><ul><li>插件把这类错误归为可重试（<code>retryable</code>）</li><li>任务回到 <code>pending</code>，退避后重试；这期间<b>不算占位</b>，不会把渠道锁死</li><li>重试 5 次仍失败才失败退款</li></ul></div>
+    <div class="card"><h3>给运营的提示</h3><ul><li>日志里记“渠道 xx 提交时上游报繁忙”，渠道页显示最近一小时的次数</li><li>次数多说明上限填大了，调小即可，立刻生效</li><li>插件提示词里补一条：上游的“并发已满”要归为可重试</li></ul></div>
+  </div>
+</section>
+
+<!-- 13 用户看到 -->
+<section class="slide" data-title="用户看到">
+  <div class="kicker">12 · 方案 A · 画布</div>
+  <h2>用户看到的：排队中 → 生成中</h2>
+  <div class="grid3" style="margin-top:8px">
+    <div class="card b-amber"><span class="tag t-amber">排队中</span><p style="margin-top:10px">任务是 <code>pending</code>，还没调用上游。<br>文案：“前面的任务处理完后会自动开始”。可以取消。</p><p class="small" style="margin-top:8px">可选增强：显示“前面还有 3 个”（同一渠道里比它早创建的 pending 数），在对账查询时一起返回。</p></div>
+    <div class="card b-blue"><span class="tag t-blue">生成中</span><p style="margin-top:10px">已提交给上游（<code>queued</code> / <code>running</code>）。已耗时从提交那一刻算，平台给进度就显示进度。可以取消。</p></div>
+    <div class="card b-violet"><span class="tag t-violet">即将完成</span><p style="margin-top:10px">上游已出结果，正在保存（<code>finalizing</code>）。不能取消。</p></div>
+  </div>
+  <p class="small">“排队中 = 没调用上游、生成中 = 已调用上游”这条定义已经在昨天改好了（任务视图新增 <code>submitted_at</code>）。方案 A 只是让“排队中”真的会出现，并且排得有道理。</p>
+</section>
+
+<!-- 14 后台配置 -->
+<section class="slide" data-title="后台配置">
+  <div class="kicker">13 · 方案 A · 渠道页</div>
+  <h2>渠道页的「限流」改成两组</h2>
+  <div class="grid2" style="margin-top:6px; align-items:start">
+    <div class="card">
+      <h3>同时生成（新）</h3>
+      <div class="field" style="margin-top:8px"><label>最大同时生成数</label><div class="input">10</div></div>
+      <p class="small" style="margin-top:6px">这个渠道最多同时有几个任务在上游生成，满了的任务在平台这边排队。填上游账号允许的同时生成数，0 或留空不限。</p>
+      <div style="margin-top:14px"><div class="small" style="display:flex;justify-content:space-between"><span>现在：生成中 7 / 10</span><span>排队 3</span></div><div class="bar" style="margin-top:6px"><i style="width:70%"></i></div></div>
+      <h3 style="margin-top:18px">发送请求</h3>
+      <div class="grid2" style="gap:12px;margin-top:8px">
+        <div class="field"><label>每秒请求数</label><div class="input">5</div></div>
+        <div class="field"><label>最大同时请求数</label><div class="input">20</div></div>
+      </div>
+      <p class="small" style="margin-top:6px">限制发给上游的 HTTP 请求（提交、查询都算），防止被上游按频率限流。原来叫“最大并发”，容易和上面混淆，改名。</p>
+    </div>
+    <div class="card">
+      <h3>怎么填</h3>
+      <table>
+        <tr><th>上游规定</th><th>填哪个</th></tr>
+        <tr><td>同时最多生成 N 个</td><td>最大同时生成数 = N</td></tr>
+        <tr><td>每秒最多 N 次请求</td><td>每秒请求数 = N</td></tr>
+        <tr><td>同步接口，同时最多处理 N 个请求</td><td>两个都可以填 N</td></tr>
+        <tr><td>不知道</td><td>先留空，看日志里有没有“上游繁忙”</td></tr>
+      </table>
+      <p class="small" style="margin-top:10px">“生成中 / 排队”按任务表实时统计，打开渠道页时查一次，不推送。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 方案 B -->
+<section class="slide" data-title="方案 B">
+  <div class="kicker">14 · 方案 B：多渠道自动调度（第二期）</div>
+  <h2>一个模型绑多个渠道，谁有空用谁</h2>
+  <div class="grid2" style="margin-top:6px">
+    <div class="card">
+      <h3>配置</h3>
+      <p>模型的 <code>channels</code> 允许多条（数据结构已经是数组，现在只是校验限死了 1 条）。每条有自己的上游模型 ID 和优先级：</p>
+      <div class="pre" style="margin-top:8px">"channels": [
+  { "channel": "yswg-a", "upstream_model": "yswg-turing-2", "priority": 1 },
+  { "channel": "yswg-b", "upstream_model": "yswg-turing-2", "priority": 2 }
+]</div>
+    </div>
+    <div class="card">
+      <h3>调度</h3>
+      <ul>
+        <li><b>建任务时</b>快照冻结所有候选渠道，不选定</li>
+        <li><b>领任务时</b>按优先级挑第一个“启用且有余量”的渠道，写进任务的 <code>provider</code>，之后轮询都走这个渠道</li>
+        <li>全都满了：留在 <code>pending</code> 排队，哪个先空用哪个</li>
+        <li>提交时报可重试错误：下次重试可以换下一个渠道（故障切换）</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small">B 必须建立在 A 之上：没有“这个渠道现在满不满”的判断，就没法“挑有空的”。所以先做 A。</p>
+</section>
+
+<!-- 16 B 待定 -->
+<section class="slide" data-title="方案 B 待定">
+  <div class="kicker">15 · 方案 B · 要先定的事</div>
+  <h2>多渠道之前，还有这些要回答</h2>
+  <table style="margin-top:6px">
+    <tr><th style="width:26%">问题</th><th>为什么要定</th><th style="width:30%">我的建议</th></tr>
+    <tr><td>不同渠道的插件不同怎么办</td><td>固定参数（<code>params</code>）和插件约定的参数名可能不一样</td><td>第二期只允许同一插件的多个渠道（例如多个 YSWG 账号）</td></tr>
+    <tr><td>用户价格要不要跟渠道变</td><td>用户提交前就看到了价格</td><td>不变，价格是模型级的；成本按渠道分别记，利润率按实际渠道算</td></tr>
+    <tr><td>挑渠道的规则</td><td>优先级、轮询、最空闲各有利弊</td><td>先按优先级，同优先级里选占位最少的</td></tr>
+    <tr><td>试跑测哪个渠道</td><td>运营要能确认每个渠道都能跑通</td><td>测试弹窗里选渠道</td></tr>
+    <tr><td>某个渠道 Key 失效</td><td>一直挑中它，一直失败</td><td>连续失败 N 次自动暂停这个渠道 X 分钟</td></tr>
+  </table>
+</section>
+
+<!-- 17 待确认 -->
+<section class="slide" data-title="待确认">
+  <div class="kicker">16 · 决策</div>
+  <h2>我先按这些默认做，你可以改</h2>
+  <table style="margin-top:6px">
+    <tr><th style="width:30%">事项</th><th style="width:30%">默认</th><th>不同意的话</th></tr>
+    <tr><td>上限按什么算</td><td><b>按渠道</b>：一个渠道 = 上游一个账号 / Key，配额通常是账号级的</td><td>如果上游按模型分别限（例如 2K、4K 各限 3 个），需要加“渠道 + 模型”的上限，模型页多一个字段</td></tr>
+    <tr><td>数值谁来填</td><td>运营在渠道页填，0 或留空不限</td><td>—</td></tr>
+    <tr><td>排队顺序</td><td>同一渠道内按创建时间先到先得</td><td>需要按用户轮流的话告诉我</td></tr>
+    <tr><td>排队超时</td><td>等于模型的任务超时（默认 30 分钟）</td><td>可以做成渠道或全局配置</td></tr>
+    <tr><td>生成超时起点</td><td>改为从提交给上游起算</td><td>保持从创建起算（排队会吃掉生成时间）</td></tr>
+    <tr><td>“前面还有 N 个”</td><td>先不做，作为可选增强</td><td>需要的话一起做</td></tr>
+  </table>
+</section>
+
+<!-- 18 实施 -->
+<section class="slide" data-title="实施与验收">
+  <div class="kicker">17 · 落地</div>
+  <h2>改动清单与验收</h2>
+  <div class="grid2" style="margin-top:4px">
+    <div class="card">
+      <h3>改动（方案 A）</h3>
+      <ul>
+        <li>渠道：<code>rate_limit_json</code> 加 <code>max_running</code>，校验非负</li>
+        <li>任务仓储：领取拆成两路，第二路加咨询锁与按渠道余量</li>
+        <li>worker：先领第一路，再用剩余空位领第二路</li>
+        <li>任务服务：提交成功时重算 <code>deadline_at</code>；pending 超过排队超时按“排队超时”失败</li>
+        <li>渠道页：新字段、改名、实时占位</li>
+        <li>插件提示词：上游并发已满归为可重试</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>验收</h3>
+      <ul>
+        <li>上限 2、同时提交 5 个：任意时刻上游最多 2 个，其余“排队中”，空位出来一秒内被领走</li>
+        <li>两个后端实例同时跑，仍然不超过 2</li>
+        <li>轮询、转存不受上限影响，不会死锁</li>
+        <li>排队 25 分钟后提交的任务，有完整 30 分钟生成时间</li>
+        <li>上限调大，排队任务下一秒开始提交</li>
+        <li>上限为 0 的渠道，行为和现在完全一样</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small">配套演示：同目录《任务调度全流程-演示》，画出从点发送到结算的完整流程和四道闸门。</p>
+</section>
+
+</div>
+
+<div id="nav">
+  <span id="title"></span>
+  <span>
+    <button id="prev" aria-label="上一页">←</button>
+    <span id="count" style="margin:0 10px"></span>
+    <button id="next" aria-label="下一页">→</button>
+    <button id="theme" aria-label="切换明暗" style="margin-left:10px">T</button>
+  </span>
+</div>
+<div id="progress"></div>
+
+<script>
+  // 幻灯片：← → / 空格 / PageUp PageDown / Home End 翻页，T 切明暗，地址栏 #n 记住页码
+  const slides = [...document.querySelectorAll(".slide")];
+  const stage = document.getElementById("stage");
+  let index = 0;
+  function fit() {
+    const s = Math.min(window.innerWidth / 1280, (window.innerHeight - 44) / 720);
+    stage.style.transform = `translate(-50%, calc(-50% - 22px)) scale(${s})`;
+  }
+  function show(i) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((el, n) => el.classList.toggle("active", n === index));
+    document.getElementById("count").textContent = `${index + 1} / ${slides.length}`;
+    document.getElementById("title").textContent = slides[index].dataset.title || "";
+    document.getElementById("progress").style.width = `${((index + 1) / slides.length) * 100}%`;
+    history.replaceState(null, "", `#${index + 1}`);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(index + 1); }
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(index - 1); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key.toLowerCase() === "t") toggleTheme();
+  });
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+  }
+  document.getElementById("prev").onclick = () => show(index - 1);
+  document.getElementById("next").onclick = () => show(index + 1);
+  document.getElementById("theme").onclick = toggleTheme;
+  window.addEventListener("resize", fit);
+  fit();
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>
