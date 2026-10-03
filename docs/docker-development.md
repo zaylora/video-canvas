@@ -34,6 +34,8 @@ start-docker.bat --detach
 
 前端容器里的 Vite 代理通过 `http://backend:8080` 访问后端；浏览器仍然使用同源的 `/api/v1` 和 WebSocket 地址。后端通过 `APP_DATABASE_DSN`、`APP_REDIS_ADDR` 等环境变量连接 Compose 服务名，不要在容器配置里使用 `127.0.0.1`。
 
+启动脚本会在每次启动时清理悬空镜像。后端和前端容器启动时分别执行 `go mod download`、`bun install --frozen-lockfile`，所以修改 `go.mod`、`go.sum`、`package.json` 或 `bun.lock` 后，重新运行脚本即可同步新增依赖；依赖缓存卷仍会保留，不需要每次重新下载全部依赖。
+
 ## 常用命令
 
 ```bash
