@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  Circle,
   CloudAlert,
   LoaderCircle,
   Plus,
@@ -92,16 +93,17 @@ function CanvasTitle({ title, onRename }: { title: string; onRename: (title: str
 const SAVE_TEXT: Record<SaveStatus, string> = {
   loading: "加载中",
   saved: "已保存",
+  dirty: "未保存",
   saving: "保存中",
   error: "保存失败 · 重试",
-  conflict: "已同步其他位置的修改",
+  conflict: "存在冲突",
 };
 
 /**
- * 保存状态：保存中转圈，保存好的字 2 秒后收起只留勾，失败标红可点重试。
+ * 保存状态：未保存是个低调的小圆点，点一下立即保存；保存中转圈，保存好的字 2 秒后收起只留勾，失败标红可点重试。
  * 调用方以 status 作 key，状态一变就重挂，收起的计时从头算。
  */
-function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => void }) {
   const [quiet, setQuiet] = useState(false);
   useEffect(() => {
     if (status !== "saved") return;
@@ -116,21 +118,32 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
         ? CloudAlert
         : status === "conflict"
           ? RefreshCw
-          : Check;
+          : status === "dirty"
+            ? Circle
+            : Check;
   const error = status === "error";
+  const clickable = error || status === "dirty";
 
   return (
     <button
       type="button"
       role="status"
-      disabled={!error}
-      onClick={onRetry}
+      disabled={!clickable}
+      onClick={onSave}
       className={cn(
         "text-muted-foreground flex h-8 items-center gap-1.5 rounded-full pr-2.5 pl-1.5 text-xs transition-colors",
         error && "text-destructive hover:bg-destructive/10 cursor-pointer",
+        status === "dirty" && "hover:bg-accent cursor-pointer",
       )}
     >
-      <Icon className={cn("size-3.5 shrink-0", status === "saving" && "animate-spin")} />
+      <Icon
+        className={cn(
+          "size-3.5 shrink-0",
+          status === "saving" && "animate-spin",
+          // 未保存只用一个实心小点，不要警告色，免得用户有压力
+          status === "dirty" && "size-2! fill-current",
+        )}
+      />
       <AnimatePresence>
         {!quiet && (
           <motion.span
@@ -154,20 +167,34 @@ export function TopLeftBar({
   title,
   onRename,
   saveStatus,
-  onRetrySave,
+  onSaveNow,
 }: {
   title: string;
   onRename: (title: string) => void;
   saveStatus: SaveStatus;
-  onRetrySave: () => void;
+  /** 立即保存，返回保存后是否已经没有未保存的内容 */
+  onSaveNow: () => Promise<boolean>;
 }) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+
+  /** 离开前先把没存的内容存掉；存不上就留在原地，别让内容悄悄丢了 */
+  const leaveTo = async (to: string) => {
+    if (!(await onSaveNow())) {
+      toast.error("还有内容没保存上，已留在当前画布");
+      return;
+    }
+    navigate(to);
+  };
 
   const newCanvas = async () => {
     if (creating) return;
     setCreating(true);
     try {
+      if (!(await onSaveNow())) {
+        toast.error("还有内容没保存上，已留在当前画布");
+        return;
+      }
       const canvas = await createCanvas();
       navigate(`/canvas/${canvas.id}`);
     } catch {
@@ -191,7 +218,7 @@ export function TopLeftBar({
           />
         </ChromeTooltip>
         <DropdownMenuContent className="w-52" sideOffset={10}>
-          <DropdownMenuItem onClick={() => navigate("/")}>
+          <DropdownMenuItem onClick={() => void leaveTo("/")}>
             <ArrowLeft />
             返回项目列表
           </DropdownMenuItem>
@@ -203,7 +230,7 @@ export function TopLeftBar({
         </DropdownMenuContent>
       </DropdownMenu>
       <CanvasTitle title={title} onRename={onRename} />
-      <SaveIndicator key={saveStatus} status={saveStatus} onRetry={onRetrySave} />
+      <SaveIndicator key={saveStatus} status={saveStatus} onSave={() => void onSaveNow()} />
     </ChromePill>
   );
 }

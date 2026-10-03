@@ -12,6 +12,7 @@ import {
   type EdgeTypes,
   type NodeTypes,
 } from "@xyflow/react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 import {
@@ -41,6 +42,7 @@ import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { GRID_SIZE, useSettingsStore } from "@/store";
 import type { CanvasEdge, CanvasNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
+import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
 import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
@@ -60,6 +62,7 @@ import { TopLeftBar } from "./chrome/top-left-bar";
 import { TopRightBar } from "./chrome/top-right-bar";
 import { ViewControls } from "./chrome/view-controls";
 import { CanvasNodeView } from "./canvas-node";
+import { ConflictDialog } from "./conflict-dialog";
 import { buildAddNodeItems } from "./chrome/add-node-items";
 import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
 import { MultiSelectProvider, SelectionToolbar } from "./selection-toolbar";
@@ -77,6 +80,10 @@ function showUploadNotice(notice: UploadNotice | null) {
   if (notice.tone === "error") toast.error(notice.text);
   else toast.info(notice.text);
 }
+
+/** 节点上挂着的任务号 */
+const taskIdsOf = (nodes: CanvasNode[]) =>
+  nodes.flatMap((node) => (node.data.taskId ? [node.data.taskId] : []));
 
 /** 供 ReactFlow 使用的节点类型表，摆在模块顶层，重渲染时不会换新对象 */
 const nodeTypes = { canvas: CanvasNodeView } satisfies NodeTypes;
@@ -102,26 +109,35 @@ export const Flow = memo(function Flow({
     CanvasNode,
     CanvasEdge
   >();
+  const navigate = useNavigate();
   const hydratedRef = useRef(false);
   const nodesRef = useRef(nodes);
-  const changeDelayRef = useRef<number | false | null>(null);
+  const edgesRef = useRef(edges);
+  /** 这一轮节点/连线变化要不要存：false 不存（选中、尺寸、拖动过程中），true 要存，null 是不经过 onNodesChange 的数据修改 */
+  const changeSaveRef = useRef<boolean | null>(null);
+  /** 已经见过的任务号：出现新的就要立刻存，刷新后才能对账回填 */
+  const knownTaskIdsRef = useRef(new Set(taskIdsOf(initial.nodes)));
+  // 保存发请求的那一刻才取图谱，视口也在这时读，所以平移缩放本身不用触发保存
+  const getGraph = useCallback(
+    () =>
+      hydratedRef.current
+        ? serializeGraph(nodesRef.current, edgesRef.current, getViewport())
+        : null,
+    [getViewport],
+  );
   const {
     status: saveStatus,
+    conflict,
     changed,
     flush,
     rename,
+    dismissConflict,
   } = useCanvasPersistence({
     canvasId: canvas.id,
     initialVersion: canvas.version,
+    getGraph,
     onConflict,
   });
-  const scheduleSave = useCallback(
-    (delay = 800) => {
-      if (!hydratedRef.current) return;
-      changed(serializeGraph(nodes, edges, getViewport()), delay);
-    },
-    [changed, edges, getViewport, nodes],
-  );
   const overlayGate = useOverlayGate(getNodes);
   const { pruneOnChange } = overlayGate;
   const onNodesChange = useCallback(
@@ -134,21 +150,18 @@ export const Flow = memo(function Flow({
       const persistent = changes.filter(
         (change) => change.type !== "select" && change.type !== "dimensions",
       );
-      changeDelayRef.current =
-        persistent.length === 0
-          ? false
-          : persistent.every((change) => change.type === "position" && change.dragging)
-            ? false
-            : persistent.some((change) => change.type !== "position" || change.dragging === false)
-              ? 0
-              : 800;
+      // 只有选中、尺寸变化，或者还在拖动的过程中，都不算内容改动
+      changeSaveRef.current =
+        persistent.length > 0 &&
+        !persistent.every((change) => change.type === "position" && change.dragging);
       applyNodesChange(changes);
     },
     [applyNodesChange, pruneOnChange],
   );
   useEffect(() => {
     nodesRef.current = nodes;
-  }, [nodes]);
+    edgesRef.current = edges;
+  }, [nodes, edges]);
   // 任务结果回填节点；打开画布时对账还在 running 的节点
   useTaskBackfill(nodes, setNodes);
   useEffect(() => {
@@ -177,20 +190,24 @@ export const Flow = memo(function Flow({
   );
   const onEdgesChange = useCallback(
     (changes: EdgeChange<CanvasEdge>[]) => {
-      changeDelayRef.current = changes.some((change) => change.type !== "select") ? 0 : false;
+      changeSaveRef.current = changes.some((change) => change.type !== "select");
       applyEdgesChange(changes);
     },
     [applyEdgesChange],
   );
   useEffect(() => {
     if (!hydratedRef.current) return;
-    const delay = changeDelayRef.current;
-    changeDelayRef.current = null;
-    // 本地演示的生成中状态存不下来，等它收尾再存；带 taskId 的视频任务要立刻存，刷新后才能对账回填
-    if (delay !== false && !(delay === null && hasVolatileRunning(nodes))) {
-      scheduleSave(delay ?? 800);
-    }
-  }, [nodes, edges, scheduleSave]);
+    const save = changeSaveRef.current;
+    changeSaveRef.current = null;
+    // 本地演示的生成中状态存不下来，等它收尾再存
+    if (save === false || (save === null && hasVolatileRunning(nodes))) return;
+    changed();
+    // 带 taskId 的任务提交后要立刻存：等停手再存的话，这几秒内刷新就对不上账了
+    const taskIds = taskIdsOf(nodes);
+    const fresh = taskIds.some((taskId) => !knownTaskIdsRef.current.has(taskId));
+    knownTaskIdsRef.current = new Set(taskIds);
+    if (fresh) void flush();
+  }, [nodes, edges, changed, flush]);
   const { tool, activeTool, setTool } = useCanvasTool();
   const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
 
@@ -201,7 +218,14 @@ export const Flow = memo(function Flow({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [minimap, setMinimap] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
-  useCanvasShortcuts({ undo: history.undo, redo: history.redo, setTool, openShortcuts });
+  const saveNow = useCallback(() => void flush(), [flush]);
+  useCanvasShortcuts({
+    undo: history.undo,
+    redo: history.redo,
+    setTool,
+    openShortcuts,
+    save: saveNow,
+  });
   // 画布把设置里的几项都用上了，整份订阅，省去逐个 selector
   const settings = useSettingsStore();
   const video = useRemoteModels(REMOTE_KIND_OF_NODE.video);
@@ -370,7 +394,6 @@ export const Flow = memo(function Flow({
                   void setViewport(initial.viewport);
                   hydratedRef.current = true;
                 }}
-                onMoveEnd={() => scheduleSave(1000)}
                 onNodeDragStart={overlayGate.onNodeDragStart}
                 onNodeClick={overlayGate.onNodeClick}
                 onConnect={onConnect}
@@ -445,7 +468,7 @@ export const Flow = memo(function Flow({
                   title={title}
                   onRename={onRename}
                   saveStatus={saveStatus}
-                  onRetrySave={() => void flush()}
+                  onSaveNow={flush}
                 />
               </ChromeZone>
               <ChromeZone position="top-right">
@@ -483,6 +506,30 @@ export const Flow = memo(function Flow({
                 modelGroups={modelGroups}
               />
               <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+              <ConflictDialog
+                open={conflict !== null}
+                onLoadLatest={() => {
+                  if (!conflict) return;
+                  dismissConflict();
+                  onConflict(conflict);
+                }}
+                onSaveAsCopy={async () => {
+                  if (!conflict) return;
+                  const graph = getGraph();
+                  if (!graph) return;
+                  try {
+                    const copy = await createCanvas({ title: `${title} 副本`, graph });
+                    toast.success(`已另存为「${copy.title}」`, {
+                      action: { label: "打开", onClick: () => navigate(`/canvas/${copy.id}`) },
+                    });
+                  } catch {
+                    toast.error("另存失败，请稍后重试");
+                    return;
+                  }
+                  dismissConflict();
+                  onConflict(conflict);
+                }}
+              />
 
               <AddNodeMenu
                 position={isPanning ? null : (menu?.screen ?? null)}

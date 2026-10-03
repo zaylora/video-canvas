@@ -95,11 +95,14 @@ export function useCanvasShortcuts({
   redo,
   setTool,
   openShortcuts,
+  save,
 }: {
   undo: () => void;
   redo: () => void;
   setTool: (tool: CanvasTool) => void;
   openShortcuts: () => void;
+  /** 立即保存，不等停手 */
+  save: () => void;
 }) {
   const {
     getNodes,
@@ -125,9 +128,17 @@ export function useCanvasShortcuts({
     const { insert, selection } = selectionOps({ getNodes, getEdges, setNodes, setEdges });
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.isComposing || isBusyTarget(event.target)) return;
+      if (event.isComposing) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+
+      // 保存在输入框里也要生效，同时挡掉浏览器的「保存网页」
+      if (mod && key === "s" && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        save();
+        return;
+      }
+      if (isBusyTarget(event.target)) return;
 
       if (mod && key === "z") {
         event.preventDefault();
@@ -215,6 +226,7 @@ export function useCanvasShortcuts({
     getNodes,
     openShortcuts,
     redo,
+    save,
     screenToFlowPosition,
     setEdges,
     setNodes,
