@@ -38,3 +38,40 @@ export function PendingConnectionLine({ from, fromPosition, to }: PendingConnect
     </svg>
   );
 }
+
+type PendingFanLinesProps = {
+  /** 各来源节点出口的屏幕坐标 */
+  froms: XYPosition[];
+  /** 当前指针（或松手落点）的屏幕坐标，所有线汇到这里 */
+  to: XYPosition;
+};
+
+/**
+ * 多选引用时的扇入引导线：每个被引用的节点从右侧出口各拉一根线，汇到指针处。
+ * 拖拽过程中和松手后选种类期间都用它，行为和单根的 PendingConnectionLine 一致。
+ */
+export function PendingFanLines({ froms, to }: PendingFanLinesProps) {
+  return (
+    <svg className="pointer-events-none fixed inset-0 z-40 size-full" aria-hidden>
+      {froms.map((from, index) => {
+        const [path] = getBezierPath({
+          sourceX: from.x,
+          sourceY: from.y,
+          sourcePosition: Position.Right,
+          targetX: to.x,
+          targetY: to.y,
+          targetPosition: Position.Left,
+        });
+        return (
+          <path
+            key={index}
+            d={path}
+            fill="none"
+            strokeWidth={1}
+            className="stroke-muted-foreground"
+          />
+        );
+      })}
+    </svg>
+  );
+}

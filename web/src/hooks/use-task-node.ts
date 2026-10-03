@@ -14,11 +14,14 @@ import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types
 import {
   buildTaskInput,
   currentOp,
+  hasImageRefs,
+  isAutoOp,
   legacyHandleFixes,
   manualRefs,
   priceSpecOf,
   readParams,
   refKindsOf,
+  refPanelOp,
   resolveBindings,
   switchModelParams,
   type IncomingLink,
@@ -65,8 +68,6 @@ export function useTaskNode(
 
   // ---- 参数、生成方式与上游连线 ----
   const params = useMemo(() => readParams(data), [data]);
-  const op = useMemo(() => currentOp(caps, params), [caps, params]);
-  const refKinds = useMemo(() => refKindsOf(caps, op), [caps, op]);
   const connections = useNodeConnections({ id, handleType: "target" });
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
   const links = useMemo<IncomingLink[]>(() => {
@@ -88,8 +89,21 @@ export function useTaskNode(
       ];
     });
   }, [connections, upstream]);
+  // 图片模型不让用户选生成方式：连着图片或手动加了参考图就是图生图，否则文生图
+  const hasImageRef = useMemo(
+    () => hasImageRefs(params, { images: links.filter((link) => link.sourceKind === "image") }),
+    [links, params],
+  );
+  const op = useMemo(() => currentOp(caps, params, hasImageRef), [caps, params, hasImageRef]);
+  const autoOp = isAutoOp(caps);
+  // 自动切换时文生图状态下也要摆出参考图入口，用户加了图才会转成图生图
+  const refOp = refPanelOp(caps, op);
+  const refKinds = useMemo(() => refKindsOf(caps, refOp), [caps, refOp]);
   const bindings = useMemo(() => resolveBindings(caps, op, links), [caps, op, links]);
-  const built = useMemo(() => buildTaskInput(caps, params, bindings), [caps, params, bindings]);
+  const built = useMemo(
+    () => buildTaskInput(caps, params, bindings, op),
+    [caps, params, bindings, op],
+  );
 
   // ---- 本地计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准 ----
   const price = useMemo(() => {
@@ -328,6 +342,10 @@ export function useTaskNode(
     // 参数
     caps,
     op,
+    /** 生成方式由有没有图片引用决定，面板不再让用户选 */
+    autoOp,
+    /** 摆素材口时用的生成方式，自动切换的模型始终按图生图算 */
+    refOp,
     setOp,
     refKinds,
     addRef,

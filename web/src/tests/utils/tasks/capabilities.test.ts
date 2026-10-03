@@ -8,9 +8,11 @@ import {
   legacyHandleFixes,
   currentOp,
   inputPorts,
+  isAutoOp,
   paramSummary,
   readParams,
   refKindsOf,
+  refPanelOp,
   resolveBindings,
   switchModelParams,
   type IncomingLink,
@@ -260,6 +262,83 @@ describe("其它", () => {
     expect(
       paramSummary(video(), { aspect_ratio: "16:9", duration: 8, generate_audio: false }),
     ).toBe("16:9 · 8秒 · 生成音频关");
+  });
+});
+
+describe("图片：生成方式自动切换", () => {
+  const image = () => defaultCapabilities("image");
+  const textToImageOnly = (): Capabilities => ({ ...image(), ops: ["t2i"] });
+
+  test("isAutoOp：同时支持文生图和图生图的模型才自动切换，视频不算", () => {
+    expect(isAutoOp(image())).toBe(true);
+    expect(isAutoOp(textToImageOnly())).toBe(false);
+    expect(isAutoOp(video())).toBe(false);
+    expect(isAutoOp(undefined)).toBe(false);
+  });
+
+  test("currentOp：没有图片引用是文生图，有就是图生图，忽略节点里存的 op", () => {
+    expect(currentOp(image(), {})).toBe("t2i");
+    expect(currentOp(image(), {}, true)).toBe("i2i");
+    expect(currentOp(image(), { op: "i2i" })).toBe("t2i");
+    expect(currentOp(image(), { op: "t2i" }, true)).toBe("i2i");
+  });
+
+  test("currentOp：只支持一种方式的模型不受引用影响；视频仍按用户选的", () => {
+    expect(currentOp(textToImageOnly(), {}, true)).toBe("t2i");
+    expect(currentOp(video(), { op: "omni" }, true)).toBe("omni");
+    expect(currentOp(video(), {}, true)).toBe("t2v");
+  });
+
+  test("refPanelOp：自动切换的模型始终按图生图摆出素材口，别的照原样", () => {
+    expect(refPanelOp(image(), "t2i")).toBe("i2i");
+    expect(refKindsOf(image(), refPanelOp(image(), "t2i"))).toEqual(["image"]);
+    expect(refPanelOp(video(), "t2v")).toBe("t2v");
+    expect(refPanelOp(textToImageOnly(), "t2i")).toBe("t2i");
+  });
+
+  test("acceptsSourceKind：图片节点没有引用时也收图片，这样才能拉第一根线进来", () => {
+    expect(acceptsSourceKind(image(), "t2i", "image")).toBe(true);
+    expect(acceptsSourceKind(image(), "t2i", "script")).toBe(true);
+    expect(acceptsSourceKind(image(), "t2i", "video")).toBe(false); // 参考视频关闭
+    expect(acceptsSourceKind(textToImageOnly(), "t2i", "image")).toBe(false);
+  });
+
+  test("buildTaskInput：没有引用提交文生图，不报缺参考图", () => {
+    const { input, errors } = buildTaskInput(image(), { prompt: "一只猫" });
+    expect(errors).toEqual({});
+    expect(input.op).toBe("t2i");
+    expect(input.images).toBeUndefined();
+  });
+
+  test("buildTaskInput：连线引用图片提交图生图，素材进 images", () => {
+    const a = link({ edgeId: "a", assetId: "1" });
+    const { input, errors } = buildTaskInput(
+      image(),
+      { prompt: "改成雪夜" },
+      { ...emptyB(), images: [a] },
+    );
+    expect(errors).toEqual({});
+    expect(input.op).toBe("i2i");
+    expect(input.images).toEqual([1]);
+  });
+
+  test("buildTaskInput：手动添加的参考图同样触发图生图", () => {
+    const { input, errors } = buildTaskInput(image(), { prompt: "x", images: ["7"] });
+    expect(errors).toEqual({});
+    expect(input.op).toBe("i2i");
+    expect(input.images).toEqual([7]);
+  });
+
+  test("buildTaskInput：上游图片还没出图时报错，不悄悄退回文生图", () => {
+    const pending = link({ edgeId: "a", assetId: undefined, sourceLabel: "图片 A" });
+    const { errors } = buildTaskInput(image(), { prompt: "x" }, { ...emptyB(), images: [pending] });
+    expect(errors.images).toContain("图片 A");
+  });
+
+  test("switchModelParams：换到自动切换的模型，手动参考图保留", () => {
+    const switched = switchModelParams(image(), image(), { prompt: "x", images: ["3"] });
+    expect(switched.params.images).toEqual(["3"]);
+    expect(switched.droppedLabels).toEqual([]);
   });
 });
 

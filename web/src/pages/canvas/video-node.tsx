@@ -134,7 +134,7 @@ export function TaskPromptPanel({
   const params = openParams(vm.caps);
   const panelProps = vm.caps && {
     caps: vm.caps,
-    op: vm.op,
+    op: vm.refOp,
     params: vm.params,
     paramAssets: data.paramAssets,
     bindings: vm.bindings,
@@ -173,7 +173,7 @@ export function TaskPromptPanel({
         promptNote={vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined}
         notice={notice}
         header={
-          ops.length > 1 ? (
+          ops.length > 1 && !vm.autoOp ? (
             <OpTabs
               id={nodeId}
               value={vm.op}

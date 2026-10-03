@@ -48,14 +48,39 @@ const REF_KINDS_OF_OP: Record<GenerationOp, RefKind[]> = {
   omni: ["image", "video", "audio"],
 };
 
-/** 当前生成方式：节点里选过且仍在模型支持的列表里就用它，否则取第一种；文本、音频模型没有生成方式 */
+/**
+ * 模型是否自动切换生成方式：同时支持文生图和图生图时，不让用户选，由有没有引用图片决定。
+ * 视频的图生、全能参考靠用户判断，不在此列。
+ */
+export function isAutoOp(caps: Capabilities | undefined): boolean {
+  const ops = caps?.ops ?? [];
+  return ops.includes("t2i") && ops.includes("i2i");
+}
+
+/**
+ * 当前生成方式。自动切换的模型：有图片引用（hasImageRef）就是图生图，没有就是文生图，不看节点里存的 op；
+ * 其它模型：节点里选过且仍在模型支持的列表里就用它，否则取第一种；文本、音频模型没有生成方式。
+ */
 export function currentOp(
   caps: Capabilities | undefined,
   params: Record<string, unknown>,
+  hasImageRef = false,
 ): GenerationOp | undefined {
+  if (isAutoOp(caps)) return hasImageRef ? "i2i" : "t2i";
   const ops = caps?.ops ?? [];
   const picked = params.op;
   return ops.find((op) => op === picked) ?? ops[0];
+}
+
+/**
+ * 摆素材口、判断能不能连图片时用的生成方式：自动切换的模型始终按图生图算，
+ * 否则文生图状态下既看不到参考图入口，也没法拉第一根图片线进来。
+ */
+export function refPanelOp(
+  caps: Capabilities | undefined,
+  op: GenerationOp | undefined,
+): GenerationOp | undefined {
+  return isAutoOp(caps) ? "i2i" : op;
 }
 
 /** 当前生成方式下，节点能接收的素材种类（已过 refs 开关） */
@@ -164,7 +189,7 @@ export function acceptsSourceKind(
 ): boolean {
   if (!caps) return true;
   const port = PORT_OF_KIND[sourceKind];
-  return port === "text" || refKindsOf(caps, op).includes(port);
+  return port === "text" || refKindsOf(caps, refPanelOp(caps, op)).includes(port);
 }
 
 /** 提示词兼容：旧节点只有 data.prompt，新节点提示词放 params.prompt */
@@ -197,6 +222,14 @@ export function toAssetNumber(value: unknown): number | null {
     return Number.isFinite(n) && n > 0 ? n : null;
   }
   return null;
+}
+
+/** 有没有图片引用：上游连着图片节点，或手动添加过参考图 */
+export function hasImageRefs(
+  params: Record<string, unknown>,
+  bindings: Pick<Bindings, "images">,
+): boolean {
+  return bindings.images.length > 0 || manualRefs(params, "images").length > 0;
 }
 
 /** 手动添加的参考素材 id（节点 params.images / videos / audios 里存的数组），转成去重的数字 */
@@ -245,11 +278,13 @@ export function buildTaskInput(
   caps: Capabilities | undefined,
   params: Record<string, unknown>,
   bindings: Bindings = emptyBindings(),
+  /** 调用方已经算好生成方式时直接传，缺省按引用情况推算 */
+  opOverride?: GenerationOp,
 ): BuiltInput {
   const input: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
   if (!caps) return { input, errors };
-  const op = currentOp(caps, params);
+  const op = opOverride ?? currentOp(caps, params, hasImageRefs(params, bindings));
   const maxLength = caps.prompt?.max_length ?? 0;
 
   // 提示词
@@ -337,7 +372,7 @@ export function switchModelParams(
     droppedNames.push(name);
     droppedLabels.push(label);
   };
-  const newOp = currentOp(newCaps, params);
+  const newOp = refPanelOp(newCaps, currentOp(newCaps, params));
   const allowedKinds = new Set(refKindsOf(newCaps, newOp));
   const refLabel = (key: string) => REF_KEYS.find((ref) => ref.key === key)?.label ?? key;
 

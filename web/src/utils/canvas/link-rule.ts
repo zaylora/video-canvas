@@ -35,3 +35,14 @@ export function canLinkFrom(
 ): boolean {
   return handleType === "source" ? canLinkNodes(from, other) : canLinkNodes(other, from);
 }
+
+/**
+ * 多个节点一起引用到一个新节点上：按 canLinkNodes 把能接的和接不上的分开。
+ * 多选拉出新节点时，接不上的节点不接线，只告诉用户有几个被跳过。
+ */
+export function partitionLinkable<T extends LinkEnd>(sources: T[], target: LinkEnd) {
+  const linkable: T[] = [];
+  const skipped: T[] = [];
+  for (const source of sources) (canLinkNodes(source, target) ? linkable : skipped).push(source);
+  return { linkable, skipped };
+}

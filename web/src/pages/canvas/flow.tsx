@@ -19,6 +19,7 @@ import {
   AddNodeMenu,
   AnimatedSvgEdge,
   PendingConnectionLine,
+  PendingFanLines,
   useCanvasTool,
   type AddNodeMenuItem,
 } from "@/components/canvas";
@@ -262,6 +263,8 @@ export const Flow = memo(function Flow({
   const {
     menu,
     pending,
+    pendingGroup,
+    openGroupMenu,
     closeMenu,
     addNode,
     addNodeAt,
@@ -346,15 +349,24 @@ export const Flow = memo(function Flow({
     [remoteModels, settings.customModels],
   );
 
-  // 拉线落空时只放行接得上的种类，双击空白则全部可点
+  // 拉线落空时只放行接得上的种类，双击空白则全部可点；
+  // 多选引用时只要有一个被选节点接得上就放行（接不上的建完会跳过），上传素材的节点不接输入，整项禁用
   const menuItems = useMemo<AddNodeMenuItem[]>(() => {
     const from = pending && getNode(pending.nodeId);
-    return buildAddNodeItems((kind) =>
-      from
-        ? !canLinkFrom(from.data, pending.handleType, { kind, model: defaultModels?.[kind] })
-        : false,
-    );
-  }, [defaultModels, getNode, pending]);
+    const items = buildAddNodeItems((kind) => {
+      const target = { kind, model: defaultModels?.[kind] };
+      if (pendingGroup) {
+        return !pendingGroup.nodeIds.some((id) => {
+          const source = getNode(id);
+          return !!source && canLinkFrom(source.data, "source", target);
+        });
+      }
+      return from ? !canLinkFrom(from.data, pending.handleType, target) : false;
+    });
+    return pendingGroup
+      ? items.map((item) => (item.value === UPLOAD_ACTION ? { ...item, disabled: true } : item))
+      : items;
+  }, [defaultModels, getNode, pending, pendingGroup]);
 
   /** 拖线接到连接点上时的放行规则：种类规则 + 下游当前模型收不收 */
   const isValidConnection = useCallback(
@@ -424,7 +436,7 @@ export const Flow = memo(function Flow({
                 {settings.background !== "none" && (
                   <Background variant={BACKGROUND_VARIANTS[settings.background]} gap={GRID_SIZE} />
                 )}
-                <SelectionToolbar />
+                <SelectionToolbar onFanOut={openGroupMenu} />
                 {minimap && (
                   <MiniMap
                     position="bottom-left"
@@ -443,6 +455,9 @@ export const Flow = memo(function Flow({
                   fromPosition={pending.fromPosition}
                   to={menu.screen}
                 />
+              )}
+              {!isPanning && pendingGroup && menu && (
+                <PendingFanLines froms={pendingGroup.froms} to={menu.screen} />
               )}
 
               <input
@@ -533,7 +548,13 @@ export const Flow = memo(function Flow({
 
               <AddNodeMenu
                 position={isPanning ? null : (menu?.screen ?? null)}
-                label={pending ? "引用该节点生成" : "添加节点"}
+                label={
+                  pendingGroup
+                    ? `引用选中的 ${pendingGroup.nodeIds.length} 个节点生成`
+                    : pending
+                      ? "引用该节点生成"
+                      : "添加节点"
+                }
                 items={menuItems}
                 onClose={closeMenu}
                 onSelect={(value) => {

@@ -89,7 +89,15 @@ export type PendingConnection = {
   fromPosition: Position;
 };
 
-/** 双击画布或拉线落空时记录 */
+/** 多选后从选区右侧拉出新节点时记下的来源：选完种类，每个接得上的节点各连一根线过去 */
+export type PendingGroup = {
+  /** 被引用的节点 */
+  nodeIds: string[];
+  /** 各节点出口的屏幕坐标，用来补画引导线 */
+  froms: XYPosition[];
+};
+
+/** 双击画布、拉线落空或从多选区拉出时记录 */
 export type CanvasMenuState = {
   /** 相对视口的鼠标坐标 */
   screen: XYPosition;
@@ -97,6 +105,8 @@ export type CanvasMenuState = {
   flow: XYPosition;
   /** 拉线落空时的线头来源，双击空白时为 null */
   connection: PendingConnection | null;
+  /** 从多选区拉出时被引用的那组节点，其余情况没有 */
+  group?: PendingGroup | null;
 };
 
 /** 上传完要摆给用户看的一句话：不合规是错，接不上线只是知会一声 */
