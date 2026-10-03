@@ -6,6 +6,7 @@ import type {
   RefKind,
 } from "@/api/model/type";
 import type { CanvasNodeData, NodeKind } from "@/types";
+import { expandPrompt } from "@/utils/canvas/prompt-tokens";
 
 /** 参数 + 参数名，按 capabilities.params 的键顺序排列（也就是参数面板的显示顺序） */
 export type ParamEntry = ParamField & { name: string };
@@ -224,12 +225,15 @@ export function toAssetNumber(value: unknown): number | null {
   return null;
 }
 
-/** 有没有图片引用：上游连着图片节点，或手动添加过参考图 */
+/** 有没有图片引用：上游连着已经出图的图片节点，或手动添加过参考图；还没出图的上游不算 */
 export function hasImageRefs(
   params: Record<string, unknown>,
   bindings: Pick<Bindings, "images">,
 ): boolean {
-  return bindings.images.length > 0 || manualRefs(params, "images").length > 0;
+  return (
+    bindings.images.some((link) => toAssetNumber(link.assetId) !== null) ||
+    manualRefs(params, "images").length > 0
+  );
 }
 
 /** 手动添加的参考素材 id（节点 params.images / videos / audios 里存的数组），转成去重的数字 */
@@ -268,10 +272,31 @@ function checkParam(field: ParamField, value: unknown): { value: unknown } | { e
   }
 }
 
+/** 提交时素材引用写成「图片1」这种编号，序号按 input 里同类素材的顺序 */
+const REF_WORD: Record<RefKind, string> = { image: "图片", video: "视频", audio: "音频" };
+
+/**
+ * 把提示词里 @ 进来的素材换成模型看得懂的文字：文本上游换成它的正文，
+ * 素材换成在 input 里的编号；连线已断、素材没提交的，退回成素材名。
+ */
+function expandRefs(prompt: string, links: IncomingLink[], input: Record<string, unknown>) {
+  return expandPrompt(prompt, (id, label) => {
+    const link = links.find((item) => item.sourceId === id);
+    if (!link) return label;
+    const port = PORT_OF_KIND[link.sourceKind];
+    if (port === "text") return link.text?.trim() || label;
+    const ref = REF_KEYS.find((item) => item.kind === port);
+    const list = ref ? input[ref.key] : undefined;
+    const asset = toAssetNumber(link.assetId);
+    const index = Array.isArray(list) && asset !== null ? list.indexOf(asset) : -1;
+    return index >= 0 ? `${REF_WORD[port]}${index + 1}` : label;
+  });
+}
+
 /**
  * 按模型能力组装提交用的 input 并校验：
- * 提示词（上游文字优先于手填）、生成方式、开放给用户的参数（没填取默认值），
- * 以及参考素材：当前方式允许的种类里，上游连线 + 手动添加的素材合并去重后按 refs 上限和方式要求检查。
+ * 提示词（手填优先，里面 @ 的素材展开成编号或正文；没手填才用上游文字）、生成方式、开放给用户的参数（没填取默认值），
+ * 以及参考素材：当前方式允许的种类里，上游连线（还没出图的跳过）+ 手动添加的素材合并去重后按 refs 上限和方式要求检查。
  * 未开放的参数不放进 input，后端按默认值补齐。素材值是素材 assetId（数字），不是 URL。
  */
 export function buildTaskInput(
@@ -280,23 +305,14 @@ export function buildTaskInput(
   bindings: Bindings = emptyBindings(),
   /** 调用方已经算好生成方式时直接传，缺省按引用情况推算 */
   opOverride?: GenerationOp,
+  /** 接进来的全部上游，用来展开提示词里 @ 的素材 */
+  links: IncomingLink[] = [],
 ): BuiltInput {
   const input: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
   if (!caps) return { input, errors };
   const op = opOverride ?? currentOp(caps, params, hasImageRefs(params, bindings));
   const maxLength = caps.prompt?.max_length ?? 0;
-
-  // 提示词
-  const link = bindings.prompt;
-  const upstreamText = link?.text?.trim();
-  const typed = typeof params.prompt === "string" ? params.prompt.trim() : "";
-  const prompt = upstreamText || typed;
-  if (!prompt) {
-    errors.prompt = link ? `上游「${link.sourceLabel}」还没有文字` : "请填写提示词";
-  } else if (maxLength > 0 && [...prompt].length > maxLength) {
-    errors.prompt = `提示词不能超过 ${maxLength} 个字`;
-  } else input.prompt = prompt;
 
   if (op) input.op = op;
 
@@ -318,13 +334,10 @@ export function buildTaskInput(
   let total = 0;
   for (const ref of REF_KEYS) {
     if (!kinds.includes(ref.kind)) continue;
-    const ids: number[] = [];
-    for (const item of bindings[ref.key]) {
-      const id = toAssetNumber(item.assetId);
-      if (id === null) {
-        errors[ref.key] ??= `上游「${item.sourceLabel}」还没有可用的素材`;
-      } else ids.push(id);
-    }
+    // 还没出图的上游直接跳过：它在引用条里标着「还没生成」，不拦着整次提交
+    const ids = bindings[ref.key]
+      .map((item) => toAssetNumber(item.assetId))
+      .filter((id): id is number => id !== null);
     const all = [...new Set([...ids, ...manualRefs(params, ref.key)])];
     const max = caps.refs[ref.kind].max;
     if (all.length > max) errors[ref.key] ??= `${ref.label}最多 ${max} 个，请移除多余的`;
@@ -335,7 +348,21 @@ export function buildTaskInput(
     errors.images = "图生方式需要至少 1 张参考图片";
   if (op === "omni" && total === 0 && !Object.keys(errors).some((k) => k in REF_INDEX))
     errors.images = "全能参考需要至少 1 个参考素材";
-  return { input, errors };
+
+  // 提示词：手填的优先（@ 的素材展开），没手填才用上游文字
+  const link = bindings.prompt;
+  const typed = typeof params.prompt === "string" ? params.prompt : "";
+  const prompt = expandRefs(typed, links, input).trim() || link?.text?.trim() || "";
+  const promptError = !prompt
+    ? link
+      ? `上游「${link.sourceLabel}」还没有文字`
+      : "请填写提示词"
+    : maxLength > 0 && [...prompt].length > maxLength
+      ? `提示词不能超过 ${maxLength} 个字`
+      : null;
+  // 素材编号要等参考素材收齐才能展开，所以提示词最后算；报错仍排在最前，节点上先提示它
+  if (promptError) return { input, errors: { prompt: promptError, ...errors } };
+  return { input: { prompt, ...input }, errors };
 }
 
 const REF_INDEX: Record<string, true> = { images: true, videos: true, audios: true };

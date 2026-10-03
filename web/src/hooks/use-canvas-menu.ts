@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 
 import { getNodeHit } from "@/components/canvas";
+import { newNodeLabel, uploadLabel } from "@/utils/canvas/node-label";
 import {
   ANIMATED_EDGE_OPTIONS,
   NODE_LIBRARY,
@@ -195,7 +196,11 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         position: placement.flow,
         data: {
           kind: meta.kind,
-          label: meta.label,
+          // 上传的用文件名，其余按种类名编号（「图片 2」），@ 素材时才分得清
+          label: newNodeLabel(
+            extra?.fileName ? uploadLabel(extra.fileName, meta.label) : meta.label,
+            getNodes().map((item) => item.data.label),
+          ),
           model: defaultModels?.[meta.kind],
           ...extra,
         },
@@ -239,7 +244,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
 
       return { id, connected };
     },
-    [connectNodes, defaultModels, getNode, setNodes],
+    [connectNodes, defaultModels, getNode, getNodes, setNodes],
   );
 
   const addNode = useCallback(

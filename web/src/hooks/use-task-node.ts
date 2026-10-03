@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Position, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
+import { Position, addEdge, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
 
 import type { GenerationOp, ModelInfo } from "@/api/model/type";
 import type { NodeCardHandle } from "@/components/canvas";
+import type { PromptMentionSource, RefSource } from "@/components/canvas/prompt-mention";
+import type { ManualRef, RefItem, UploadKind } from "@/components/canvas/ref-strip";
 import type { AssetChoice } from "@/components/canvas/video-param-panel";
+import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { useNow } from "@/hooks/use-now";
 import { useRemoteModels } from "@/hooks/use-models";
 import type { TaskGeneration, TaskNodeKind } from "@/hooks/use-task-generation";
-import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
+import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
 import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
+import { mentionableNodes, unlinkSource } from "@/utils/canvas/link-rule";
+import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import {
+  REF_KEYS,
+  PORT_OF_KIND,
   buildTaskInput,
   currentOp,
   hasImageRefs,
@@ -36,6 +43,16 @@ const SINGLE_HANDLES: NodeCardHandle[] = [
   { type: "source", position: Position.Right },
 ];
 
+/** 画布节点摊成引用条 / @ 菜单认的素材信息 */
+const toRefSource = (node: Pick<CanvasNode, "id" | "data">): RefSource => ({
+  id: node.id,
+  kind: node.data.kind,
+  label: node.data.label,
+  src: node.data.src,
+  mediaType: node.data.mediaType,
+  text: node.data.text,
+});
+
 /** 切换模型时要用户确认的那次切换 */
 export type PendingModelSwitch = {
   key: string;
@@ -53,7 +70,8 @@ export function useTaskNode(
   nodeKind: TaskNodeKind,
   generation: TaskGeneration,
 ) {
-  const { updateNodeData, setEdges, getNodes } = useReactFlow<CanvasNode, CanvasEdge>();
+  const { updateNodeData, setEdges, getNodes, getEdges } = useReactFlow<CanvasNode, CanvasEdge>();
+  const history = useCanvasHistoryContext();
   const remote = useRemoteModels(REMOTE_KIND_OF_NODE[nodeKind]);
   const availableCredits = useCreditsStore((state) => state.credits?.available ?? null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -101,8 +119,109 @@ export function useTaskNode(
   const refKinds = useMemo(() => refKindsOf(caps, refOp), [caps, refOp]);
   const bindings = useMemo(() => resolveBindings(caps, op, links), [caps, op, links]);
   const built = useMemo(
-    () => buildTaskInput(caps, params, bindings, op),
-    [caps, params, bindings, op],
+    () => buildTaskInput(caps, params, bindings, op, links),
+    [caps, params, bindings, op, links],
+  );
+
+  // ---- 引用条与 @ 素材（设计稿 6.7） ----
+  /** 接进来的全部上游，按连线先后；当前生成方式用不上的标出来 */
+  const refItems = useMemo<RefItem[]>(() => {
+    const byId = new Map(upstream.map((node) => [node.id, node]));
+    const seen = new Set<string>();
+    return connections.flatMap((connection) => {
+      const node = byId.get(connection.source);
+      if (!node || seen.has(node.id)) return [];
+      seen.add(node.id);
+      const port = PORT_OF_KIND[node.data.kind];
+      return [
+        {
+          ...toRefSource(node),
+          used: !caps || port === "text" || refKindsOf(caps, op).includes(port),
+          running: node.data.status === "running",
+        },
+      ];
+    });
+  }, [caps, connections, op, upstream]);
+  const linkedIds = useMemo(() => new Set(refItems.map((item) => item.id)), [refItems]);
+
+  /** 从画布里接一根线进来；@ 时顺手连的线和正在打的字算同一步撤销 */
+  const linkSource = useCallback(
+    (source: RefSource, withTyping = false) => {
+      if (getEdges().some((edge) => edge.source === source.id && edge.target === id)) return;
+      if (withTyping) history?.absorbTyping();
+      setEdges((edges) =>
+        addEdge(
+          {
+            source: source.id,
+            target: id,
+            sourceHandle: null,
+            targetHandle: null,
+            ...ANIMATED_EDGE_OPTIONS,
+          },
+          edges,
+        ),
+      );
+    },
+    [getEdges, history, id, setEdges],
+  );
+
+  /**
+   * 引用条上点 ×：断开这个上游，提示词里引用它的 chip 一起删掉。
+   * 两处改动在同一次渲染里落地，撤销栈里只算一步，⌘Z 线和 chip 一起回来。
+   */
+  const unlink = useCallback(
+    (sourceId: string) => {
+      setEdges((edges) => unlinkSource(edges, sourceId, id));
+      updateNodeData(id, (node) => {
+        const prompt = readParams(node.data).prompt;
+        if (typeof prompt !== "string") return {};
+        const next = removePromptRef(prompt, sourceId);
+        return next === prompt
+          ? {}
+          : { prompt: next, params: { ...node.data.params, prompt: next } };
+      });
+    },
+    [id, setEdges, updateNodeData],
+  );
+
+  /** 画布里能 @ 的素材，打开菜单时才取，不订阅 */
+  const listMentionables = useCallback(() => {
+    const { linked, canvas } = mentionableNodes(id, getNodes(), getEdges());
+    return { linked: linked.map(toRefSource), canvas: canvas.map(toRefSource) };
+  }, [getEdges, getNodes, id]);
+
+  const mention = useMemo<PromptMentionSource>(
+    () => ({
+      list: listMentionables,
+      link: (source) => linkSource(source, true),
+      linkedIds,
+    }),
+    [linkSource, linkedIds, listMentionables],
+  );
+
+  /** 手动上传的参考素材，只列当前生成方式收的种类 */
+  const manualRefItems = useMemo<ManualRef[]>(
+    () =>
+      REF_KEYS.filter((ref) => refKinds.includes(ref.kind)).flatMap((ref) =>
+        manualRefs(params, ref.key).map((assetId) => ({
+          key: ref.key,
+          assetId: String(assetId),
+          asset: data.paramAssets?.[String(assetId)],
+        })),
+      ),
+    [data.paramAssets, params, refKinds],
+  );
+  const uploadKinds = useMemo<UploadKind[]>(
+    () =>
+      caps
+        ? REF_KEYS.filter((ref) => refKinds.includes(ref.kind)).map((ref) => ({
+            key: ref.key,
+            kind: ref.kind,
+            label: ref.label,
+            maxMb: caps.refs[ref.kind].max_mb,
+          }))
+        : [],
+    [caps, refKinds],
   );
 
   // ---- 本地计价：每个任务的积分 × 生成数量；只用于显示，下单以后端算的为准 ----
@@ -339,6 +458,13 @@ export function useTaskNode(
     pendingSwitch,
     confirmSwitch,
     cancelSwitch,
+    // 引用条与 @ 素材
+    refItems,
+    manualRefItems,
+    uploadKinds,
+    mention,
+    linkSource,
+    unlink,
     // 参数
     caps,
     op,

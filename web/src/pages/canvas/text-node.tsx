@@ -26,7 +26,7 @@ export function TextCanvasNode({
   data: CanvasNodeData;
   selected?: boolean;
 }) {
-  const { getNode } = useReactFlow<CanvasNode>();
+  const { getNode, updateNodeData } = useReactFlow<CanvasNode>();
   const vm = useTextNode(id, data);
   const meta = NODE_META.get("script");
   const PlaceholderIcon = meta?.placeholderIcon;
@@ -56,6 +56,7 @@ export function TextCanvasNode({
     <>
       <NodeCard
         title={data.label}
+        onRename={(label) => updateNodeData(id, { label })}
         icon={KindIcon ? <KindIcon /> : undefined}
         status={
           <NodeStatusLabel

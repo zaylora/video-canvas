@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
 import { defaultCapabilities } from "@/utils/admin/model-template";
+import { formatPromptRef } from "@/utils/canvas/prompt-tokens";
 import {
   buildTaskInput,
   acceptsSourceKind,
+  hasImageRefs,
   legacyHandleFixes,
   currentOp,
   inputPorts,
@@ -131,15 +133,34 @@ describe("buildTaskInput", () => {
     });
   });
 
-  test("上游文字优先于手填；上游还没有文字时报错", () => {
+  test("手填优先；没手填才用上游文字；两边都没有时报错", () => {
     const text = link({ sourceKind: "script", sourceLabel: "文本", text: "来自上游" });
     expect(
       buildTaskInput(video(), { prompt: "手填" }, { ...emptyB(), prompt: text }).input.prompt,
+    ).toBe("手填");
+    expect(
+      buildTaskInput(video(), { prompt: "  " }, { ...emptyB(), prompt: text }).input.prompt,
     ).toBe("来自上游");
     const empty = { ...text, text: "" };
     expect(buildTaskInput(video(), {}, { ...emptyB(), prompt: empty }).errors.prompt).toContain(
       "上游",
     );
+  });
+
+  test("@ 的素材展开：素材按提交顺序编号，文本换成正文，对不上的退回素材名", () => {
+    const img = link({ edgeId: "a", sourceId: "i", assetId: "5" });
+    const txt = link({ edgeId: "t", sourceId: "t", sourceKind: "script", text: "镜头一" });
+    const prompt = `参考${formatPromptRef("i", "U03")}，按${formatPromptRef("t", "分镜")}，${formatPromptRef("gone", "旧图")}`;
+    const built = buildTaskInput(
+      { ...video(), prompt: { max_length: 100 } },
+      { prompt, op: "i2v", images: ["3"] },
+      { ...emptyB(), images: [img] },
+      undefined,
+      [img, txt],
+    );
+    expect(built.errors).toEqual({});
+    expect(built.input.images).toEqual([5, 3]);
+    expect(built.input.prompt).toBe("参考图片1，按镜头一，旧图");
   });
 
   test("提示词必填且受字数上限约束", () => {
@@ -180,13 +201,25 @@ describe("buildTaskInput", () => {
     expect(over.errors.images).toContain("最多 2 个");
   });
 
-  test("文生方式忽略已有的素材；上游素材还没生成好时报错", () => {
+  test("文生方式忽略已有的素材；还没出图的上游提交时跳过，不点名报错", () => {
     expect(buildTaskInput(video(), { prompt: "x", images: ["1"] }).input.images).toBeUndefined();
     const pending = link({ edgeId: "a", assetId: undefined, sourceLabel: "图片 1" });
-    expect(
-      buildTaskInput(video(), { prompt: "x", op: "i2v" }, { ...emptyB(), images: [pending] }).errors
-        .images,
-    ).toContain("图片 1");
+    const ready = link({ edgeId: "b", assetId: "2" });
+    const built = buildTaskInput(
+      video(),
+      { prompt: "x", op: "i2v" },
+      { ...emptyB(), images: [pending, ready] },
+    );
+    expect(built.errors).toEqual({});
+    expect(built.input.images).toEqual([2]);
+    // 全是空的上游，等于没有图：按方式本身的要求提示，不提哪个上游
+    const only = buildTaskInput(
+      video(),
+      { prompt: "x", op: "i2v" },
+      { ...emptyB(), images: [pending] },
+    );
+    expect(only.errors.images).toContain("至少 1 张");
+    expect(only.errors.images).not.toContain("图片 1");
   });
 
   test("全能参考：至少一个素材", () => {
@@ -329,10 +362,23 @@ describe("图片：生成方式自动切换", () => {
     expect(input.images).toEqual([7]);
   });
 
-  test("buildTaskInput：上游图片还没出图时报错，不悄悄退回文生图", () => {
+  test("buildTaskInput：连着的图片都还没出图时按文生图提交，不报错", () => {
     const pending = link({ edgeId: "a", assetId: undefined, sourceLabel: "图片 A" });
-    const { errors } = buildTaskInput(image(), { prompt: "x" }, { ...emptyB(), images: [pending] });
-    expect(errors.images).toContain("图片 A");
+    const { input, errors } = buildTaskInput(
+      image(),
+      { prompt: "x" },
+      { ...emptyB(), images: [pending] },
+    );
+    expect(errors).toEqual({});
+    expect(input.op).toBe("t2i");
+    expect(input.images).toBeUndefined();
+  });
+
+  test("hasImageRefs：只有已出图的上游或手动图才算有图片引用", () => {
+    const pending = link({ edgeId: "a", assetId: undefined });
+    expect(hasImageRefs({}, { images: [pending] })).toBe(false);
+    expect(hasImageRefs({}, { images: [link({ edgeId: "b", assetId: "3" })] })).toBe(true);
+    expect(hasImageRefs({ images: ["7"] }, { images: [pending] })).toBe(true);
   });
 
   test("switchModelParams：换到自动切换的模型，手动参考图保留", () => {

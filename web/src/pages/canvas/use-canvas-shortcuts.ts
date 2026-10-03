@@ -4,6 +4,7 @@ import { useReactFlow } from "@xyflow/react";
 import type { CanvasTool } from "@/components/canvas";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import { copyLabels } from "@/utils/canvas/node-label";
 
 import { VIEWPORT_DURATION } from "./chrome/view-controls";
 
@@ -29,19 +30,32 @@ function cloneData(data: CanvasNodeData): CanvasNodeData {
   return next;
 }
 
-/** 把一组节点和它们之间的连线复制一份，整体平移 offset，新副本处于选中状态 */
+/**
+ * 把一组节点和它们之间的连线复制一份，整体平移 offset，新副本处于选中状态。
+ * 给了 onCanvas（画布上眼下的节点）就按「X 副本」「X 副本二」起名，避开已有的名字；
+ * 只是挪剪贴板里的位置时不给，名字原样留着。
+ */
 function cloneGroup(
   source: { nodes: CanvasNode[]; edges: CanvasEdge[] },
   offset: { x: number; y: number },
+  onCanvas?: CanvasNode[],
 ) {
   const ids = new Map(source.nodes.map((node) => [node.id, crypto.randomUUID()]));
-  const nodes = source.nodes.map((node) => ({
-    id: ids.get(node.id) as string,
-    type: node.type,
-    position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
-    selected: true,
-    data: cloneData(node.data),
-  }));
+  const used = onCanvas?.map((node) => node.data.label) ?? [];
+  const nodes = source.nodes.map((node) => {
+    const data = cloneData(node.data);
+    if (onCanvas) {
+      [data.label] = copyLabels(node.data.label, used, 1);
+      used.push(data.label);
+    }
+    return {
+      id: ids.get(node.id) as string,
+      type: node.type,
+      position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
+      selected: true,
+      data,
+    };
+  });
   const edges = source.edges.map((edge) => ({
     ...edge,
     ...ANIMATED_EDGE_OPTIONS,
@@ -83,7 +97,7 @@ function selectionOps({ getNodes, getEdges, setNodes, setEdges }: FlowOps) {
 export function duplicateSelection(flow: FlowOps) {
   const { insert, selection } = selectionOps(flow);
   const picked = selection();
-  if (picked.nodes.length) insert(cloneGroup(picked, { x: 32, y: 32 }));
+  if (picked.nodes.length) insert(cloneGroup(picked, { x: 32, y: 32 }, flow.getNodes()));
 }
 
 /**
@@ -164,7 +178,7 @@ export function useCanvasShortcuts({
         const top = Math.min(...clipboard.nodes.map((node) => node.position.y));
         const at = pointer.current ? screenToFlowPosition(pointer.current) : null;
         const offset = at ? { x: at.x - left, y: at.y - top } : { x: 48, y: 48 };
-        insert(cloneGroup(clipboard, offset));
+        insert(cloneGroup(clipboard, offset, getNodes()));
         if (!at) clipboard = cloneGroup(clipboard, { x: 48, y: 48 });
         return;
       }
@@ -200,11 +214,14 @@ export function useCanvasShortcuts({
       if (key === "v") setTool("select");
       if (key === "h") setTool("pan");
       if (event.key === "Enter") {
-        const prompt = document.querySelector<HTMLTextAreaElement>("[data-node-prompt]");
+        const prompt = document.querySelector<HTMLElement>("[data-node-prompt]");
         if (prompt) {
           event.preventDefault();
           prompt.focus();
-          prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+          // 提示词是可编辑的 div（Tiptap），光标挪到末尾
+          const selection = window.getSelection();
+          selection?.selectAllChildren(prompt);
+          selection?.collapseToEnd();
         }
       }
       if (event.key === "Escape") {

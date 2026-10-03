@@ -46,3 +46,73 @@ export function partitionLinkable<T extends LinkEnd>(sources: T[], target: LinkE
   for (const source of sources) (canLinkNodes(source, target) ? linkable : skipped).push(source);
   return { linkable, skipped };
 }
+
+/** 判断能不能被引用要看的字段 */
+export type MaterialEnd = LinkEnd & Pick<CanvasNodeData, "text" | "src" | "assetId" | "status">;
+
+/**
+ * 节点手里有没有能被引用的东西：文本要有正文，图片 / 视频 / 音频要有已经入库的素材。
+ * 还在生成的不算，产物还没定。
+ */
+export function hasMaterial(
+  data: Pick<MaterialEnd, "kind" | "text" | "src" | "assetId" | "status">,
+) {
+  if (data.status === "running") return false;
+  return data.kind === "script" ? !!data.text?.trim() : !!data.src && !!data.assetId;
+}
+
+/** 从 start 顺着连线往下能走到的所有节点（不含 start） */
+function downstreamOf(start: string, edges: readonly { source: string; target: string }[]) {
+  const seen = new Set<string>();
+  const stack = [start];
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    for (const edge of edges) {
+      if (edge.source !== current || seen.has(edge.target) || edge.target === start) continue;
+      seen.add(edge.target);
+      stack.push(edge.target);
+    }
+  }
+  return seen;
+}
+
+/**
+ * 提示词里 @ 能列出的素材（设计稿 6.7）：已经连上的放 linked，画布里还没连、选了会自动连线的放 canvas。
+ * 两组都只收：不是自己、有素材、canLinkNodes 接得上、不在自己下游（连回来会成环）。
+ * 接不上的一律不返回，菜单里也就不显示。
+ */
+export function mentionableNodes<T extends { id: string; data: MaterialEnd }>(
+  targetId: string,
+  nodes: readonly T[],
+  edges: readonly { source: string; target: string }[],
+) {
+  const target = nodes.find((node) => node.id === targetId);
+  if (!target) return { linked: [] as T[], canvas: [] as T[] };
+  const ok = (node: T) =>
+    node.id !== targetId && hasMaterial(node.data) && canLinkNodes(node.data, target.data);
+  const linkedIds = new Set(
+    edges.filter((edge) => edge.target === targetId).map((edge) => edge.source),
+  );
+  const below = downstreamOf(targetId, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return {
+    linked: [...linkedIds].flatMap((id) => {
+      const node = byId.get(id);
+      return node && ok(node) ? [node] : [];
+    }),
+    canvas: nodes.filter((node) => ok(node) && !linkedIds.has(node.id) && !below.has(node.id)),
+  };
+}
+
+/**
+ * 断开某个上游连到 targetId 的线（引用条上点 ×）。同一对节点有几根就都删；
+ * 一根都没有时返回原数组，免得多记一步撤销、多存一次。
+ */
+export function unlinkSource<T extends { source: string; target: string }>(
+  edges: T[],
+  sourceId: string,
+  targetId: string,
+): T[] {
+  const kept = edges.filter((edge) => edge.source !== sourceId || edge.target !== targetId);
+  return kept.length === edges.length ? edges : kept;
+}
