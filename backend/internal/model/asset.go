@@ -13,7 +13,8 @@ type Asset struct {
 	ID         uint64    `gorm:"primaryKey" json:"id"`                          // 素材 ID
 	UserID     uint64    `gorm:"not null;index" json:"user_id"`                 // 所属用户
 	Kind       string    `gorm:"size:16;not null" json:"kind"`                  // image / video / audio
-	StorageKey string    `gorm:"size:512;not null" json:"-"`                    // 存储内的对象 key
+	StorageID  uint64    `gorm:"not null;default:0;index" json:"-"`             // 所在存储（storage_configs.id）；读取、签名、删除都按它找存储
+	StorageKey string    `gorm:"size:512;not null;uniqueIndex" json:"-"`        // 存储内的对象 key，全局唯一（/files/<key> 靠它反查素材）
 	MimeType   string    `gorm:"size:128;not null" json:"mime_type"`            // MIME 类型
 	ByteSize   int64     `gorm:"not null;default:0" json:"byte_size"`           // 文件大小（字节）
 	Width      int       `json:"width"`                                         // 宽度（像素），图片/视频有效

@@ -24,6 +24,10 @@ export const ADMIN_ERROR_CODE = {
   CHANNEL_SECRET_MISSING: 50015,
   /** 插件运行器不可用 */
   RUNNER_UNAVAILABLE: 50021,
+  /** 存储：已有素材引用，定位字段不能修改（被锁字段写在 msg 里） */
+  STORAGE_FIELD_LOCKED: 51005,
+  /** 存储：配置已被其他人修改（version 过期） */
+  STORAGE_VERSION_CONFLICT: 51009,
 } as const;
 
 /** 插件运行器不可用：503 或业务码 50021 */
@@ -47,6 +51,14 @@ export const isTooLarge = (error: unknown) => {
 /** 渠道 key 冲突：业务码 50012 */
 export const isChannelKeyExists = (error: unknown) =>
   asErrorLike(error).code === ADMIN_ERROR_CODE.CHANNEL_KEY_EXISTS;
+
+/** 存储配置版本冲突：业务码 51009，说明别人改过了，需要重新拉取 */
+export const isStorageVersionConflict = (error: unknown) =>
+  asErrorLike(error).code === ADMIN_ERROR_CODE.STORAGE_VERSION_CONFLICT;
+
+/** 存储定位字段被锁：业务码 51005 */
+export const isStorageFieldLocked = (error: unknown) =>
+  asErrorLike(error).code === ADMIN_ERROR_CODE.STORAGE_FIELD_LOCKED;
 
 /** 取错误里给人看的说明；没有就用兜底文案 */
 export const errorMessage = (error: unknown, fallback = "请求失败") => {

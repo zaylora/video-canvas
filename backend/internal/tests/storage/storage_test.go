@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/storage"
 
 	"github.com/gin-gonic/gin"
@@ -314,47 +315,15 @@ func TestFileServer(t *testing.T) {
 	})
 }
 
-func TestNew(t *testing.T) {
-	t.Run("local 与空 driver 返回 LocalStorage", func(t *testing.T) {
-		for _, driver := range []string{"", "local"} {
-			st, err := New(config.Storage{Driver: driver, Local: config.LocalStorage{Dir: filepath.Join(t.TempDir(), "d")}})
-			if err != nil {
-				t.Fatalf("driver=%q 失败：%v", driver, err)
-			}
-			if _, ok := st.(*LocalStorage); !ok {
-				t.Fatalf("driver=%q 应返回 *LocalStorage，实际 %T", driver, st)
-			}
-		}
-	})
-	t.Run("local 缺目录报错", func(t *testing.T) {
-		if _, err := New(config.Storage{Driver: "local"}); err == nil {
-			t.Fatal("期望报错")
-		}
-	})
-	t.Run("s3 返回 S3Storage", func(t *testing.T) {
-		st, err := New(config.Storage{Driver: "s3", S3: testS3Config()})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := st.(*S3Storage); !ok {
-			t.Fatalf("应返回 *S3Storage，实际 %T", st)
-		}
-	})
-	t.Run("s3 缺配置报错", func(t *testing.T) {
-		bad := []config.S3Storage{
-			{Bucket: "b", AccessKey: "a", SecretKey: "s"},
-			{Endpoint: "e.example.com", AccessKey: "a", SecretKey: "s"},
-			{Endpoint: "e.example.com", Bucket: "b"},
-		}
-		for i, c := range bad {
-			if _, err := New(config.Storage{Driver: "s3", S3: c}); err == nil {
-				t.Errorf("用例 %d 期望报错", i)
-			}
-		}
-	})
-	t.Run("未知 driver 报错", func(t *testing.T) {
-		if _, err := New(config.Storage{Driver: "ftp"}); err == nil {
-			t.Fatal("期望报错")
-		}
-	})
+func TestNewLocal_RequiresDir(t *testing.T) {
+	if _, err := NewLocal(config.LocalStorage{}); err == nil {
+		t.Fatal("缺目录应报错")
+	}
+	l, err := NewLocal(config.LocalStorage{Dir: filepath.Join(t.TempDir(), "d")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(l.Dir()); err != nil {
+		t.Errorf("目录不存在时应自动创建：%v", err)
+	}
 }

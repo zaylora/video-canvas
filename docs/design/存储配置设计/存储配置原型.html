@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>存储配置原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // 与 后台交互优化-演示.html 相同的 token 命名：颜色走 CSS 变量，明暗主题只换变量
+  const c = (v) => `hsl(var(--${v}) / <alpha-value>)`;
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
+          mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+        },
+        colors: {
+          border: c("border"), input: c("input"), ring: c("ring"),
+          background: c("background"), foreground: c("foreground"),
+          primary: { DEFAULT: c("primary"), foreground: c("primary-foreground") },
+          muted: { DEFAULT: c("muted"), foreground: c("muted-foreground") },
+          accent: { DEFAULT: c("accent"), foreground: c("accent-foreground") },
+          card: { DEFAULT: c("card"), foreground: c("card-foreground") },
+        },
+        borderColor: { DEFAULT: "hsl(var(--border))" },
+        borderRadius: { xl: "calc(var(--radius) + 4px)", lg: "var(--radius)", md: "calc(var(--radius) - 2px)" },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    --radius: 0.625rem;
+    --background: 0 0% 100%; --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%; --card-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
+    --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%; --accent-foreground: 240 5.9% 10%;
+    --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
+    color-scheme: light;
+  }
+  .dark {
+    --background: 240 10% 3.9%; --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%; --card-foreground: 0 0% 98%;
+    --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
+    --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%; --accent-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%; --input: 240 3.7% 18%; --ring: 240 4.9% 83.9%;
+    color-scheme: dark;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  [data-lucide] { width: 1em; height: 1em; }
+  .btn { display:inline-flex; align-items:center; gap:.375rem; height:2rem; padding:0 .75rem; border-radius:calc(var(--radius) - 2px); font-size:.8125rem; font-weight:500; white-space:nowrap; transition:background .15s; }
+  .btn:disabled { opacity:.5; pointer-events:none; }
+  .btn-primary { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+  .btn-primary:hover { opacity:.9; }
+  .btn-outline { border:1px solid hsl(var(--border)); background:hsl(var(--background)); }
+  .btn-outline:hover, .btn-ghost:hover { background:hsl(var(--accent)); }
+  .btn-danger { background:#dc2626; color:#fff; }
+  .btn-danger:hover { background:#b91c1c; }
+  .btn-sm { height:1.75rem; padding:0 .5rem; font-size:.75rem; }
+  .input { height:2.25rem; width:100%; border:1px solid hsl(var(--input)); border-radius:calc(var(--radius) - 2px); background:transparent; padding:0 .75rem; font-size:.875rem; outline:none; }
+  .input:focus { box-shadow:0 0 0 2px hsl(var(--ring) / .3); }
+  .input:disabled { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); cursor:not-allowed; }
+  .input.err { border-color:#dc2626; }
+  .tag { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.0625rem .4rem; font-size:.6875rem; font-weight:500; border:1px solid transparent; white-space:nowrap; }
+  .t-ok { background:rgb(16 185 129 / .12); color:rgb(5 150 105); }
+  .t-bad { background:rgb(239 68 68 / .12); color:rgb(220 38 38); }
+  .t-warn { background:rgb(245 158 11 / .14); color:rgb(180 83 9); }
+  .t-info { background:rgb(14 165 233 / .12); color:rgb(2 132 199); }
+  .t-mute { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+  .dark .t-ok { color:rgb(52 211 153); } .dark .t-bad { color:rgb(248 113 113); } .dark .t-warn { color:rgb(251 191 36); } .dark .t-info { color:rgb(56 189 248); }
+  .switch { position:relative; width:2.25rem; height:1.25rem; border-radius:999px; background:hsl(var(--input)); transition:background .15s; flex:none; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:1rem; height:1rem; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgb(0 0 0 / .2); transition:transform .15s; }
+  .switch[aria-checked="true"] { background:hsl(var(--primary)); }
+  .switch[aria-checked="true"]::after { transform:translateX(1rem); }
+  .dark .switch::after { background:hsl(var(--background)); }
+  .switch:disabled { opacity:.5; }
+  .note { outline:1.5px dashed #8b5cf6; outline-offset:3px; position:relative; }
+  .note-txt { display:none; margin-top:.375rem; font-size:.6875rem; line-height:1.5; color:#7c3aed; }
+  .show-notes .note-txt { display:block; }
+  body:not(.show-notes) .note { outline:none; }
+  .prov { border:1.5px solid hsl(var(--border)); border-radius:var(--radius); padding:.625rem .75rem; text-align:left; transition:border-color .15s; }
+  .prov:hover { border-color:hsl(var(--muted-foreground)); }
+  .prov.on { border-color:hsl(var(--primary)); box-shadow:0 0 0 1px hsl(var(--primary)); }
+  .prov:disabled { opacity:.55; cursor:not-allowed; }
+  .lbl { font-size:.8125rem; font-weight:500; display:flex; align-items:center; gap:.375rem; margin-bottom:.375rem; }
+  .hint { font-size:.75rem; color:hsl(var(--muted-foreground)); margin-top:.25rem; line-height:1.5; }
+  .sheet { animation: slidein .2s ease; }
+  @keyframes slidein { from { transform: translateX(24px); opacity:.4; } to { transform:none; opacity:1; } }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  th { font-weight:500; }
+</style>
+</head>
+<body class="font-sans antialiased show-notes">
+<div class="flex h-screen">
+  <aside class="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
+    <div class="flex h-14 items-center gap-2 border-b px-4">
+      <span class="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"><i data-lucide="clapperboard"></i></span>
+      <div class="leading-tight"><div class="text-sm font-semibold">Video Canvas</div><div class="text-[11px] text-muted-foreground">后台管理</div></div>
+    </div>
+    <nav class="flex-1 space-y-0.5 p-2 text-sm">
+      <div class="px-2 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">AI 配置</div>
+      <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"><i data-lucide="layout-dashboard"></i>总览</a>
+      <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"><i data-lucide="boxes"></i>模型</a>
+      <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"><i data-lucide="radio-tower"></i>渠道</a>
+      <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"><i data-lucide="puzzle"></i>插件</a>
+      <div class="px-2 pb-1 pt-4 text-[11px] font-medium text-muted-foreground">系统设置 <span class="tag t-info ml-1">新</span></div>
+      <a class="flex items-center gap-2 rounded-md bg-accent px-2 py-1.5 font-medium"><i data-lucide="hard-drive"></i>存储配置</a>
+    </nav>
+    <div class="border-t p-3 text-[11px] leading-relaxed text-muted-foreground">
+      交互原型 · 数据在内存里，刷新复原。紫色虚线框是设计标注。<br>
+      模拟失败：Secret 填 <code>wrong</code>；Bucket 含 <code>nobucket</code>；勾选直传后可在抽屉里模拟“桶未配 CORS”。
+    </div>
+  </aside>
+
+  <div class="flex min-w-0 flex-1 flex-col">
+    <header class="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+      <nav class="text-sm text-muted-foreground">系统设置 <span class="mx-1">/</span> <span class="text-foreground">存储配置</span></nav>
+      <div class="ml-auto flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs text-muted-foreground"><span>设计标注</span>
+          <button class="switch" id="notesSw" aria-checked="true" onclick="toggleNotes()"></button></label>
+        <label class="flex items-center gap-2 text-xs text-muted-foreground">身份
+          <select class="input h-7 w-28 text-xs" onchange="S.role=this.value;render()">
+            <option value="super">超级管理员</option><option value="admin">管理员（只读）</option>
+          </select></label>
+        <button class="btn btn-ghost btn-sm" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换主题"><i data-lucide="sun-moon"></i></button>
+      </div>
+    </header>
+    <main class="min-h-0 flex-1 overflow-y-auto"><div class="mx-auto max-w-6xl p-4 sm:p-6" id="page"></div></main>
+  </div>
+</div>
+<div id="layer"></div>
+<div id="toast" class="pointer-events-none fixed bottom-5 left-1/2 z-50 -translate-x-1/2"></div>
+
+<script>
+// ---------- 预设（实现时由 GET /admin/storages/presets 下发） ----------
+const PRESETS = {
+  aliyun_oss: { name: "阿里云 OSS", icon: "cloud", regions: [["cn-hangzhou","华东1（杭州）"],["cn-shanghai","华东2（上海）"],["cn-beijing","华北2（北京）"],["cn-shenzhen","华南1（深圳）"],["cn-hongkong","中国香港"]],
+    endpoint: r => `oss-${r}.aliyuncs.com`, addressing: "virtual", sslLocked: true, direct: "post_policy",
+    bucketHint: "OSS 控制台 → Bucket 列表里的名称" },
+  tencent_cos: { name: "腾讯云 COS", icon: "cloud-cog", regions: [["ap-guangzhou","广州"],["ap-shanghai","上海"],["ap-beijing","北京"],["ap-chengdu","成都"],["ap-hongkong","中国香港"]],
+    endpoint: r => `cos.${r}.myqcloud.com`, addressing: "virtual", sslLocked: true, direct: "post_policy",
+    bucketHint: "必须带 APPID 后缀，例如 canvas-1250000000" },
+  s3: { name: "AWS S3 / 兼容", icon: "database", regions: [["us-east-1","美国东部（弗吉尼亚北部）"],["us-west-2","美国西部（俄勒冈）"],["ap-northeast-1","亚太（东京）"],["ap-southeast-1","亚太（新加坡）"],["eu-central-1","欧洲（法兰克福）"]],
+    endpoint: r => `s3.${r}.amazonaws.com`, addressing: "auto", sslLocked: false, direct: "post_policy",
+    bucketHint: "S3 桶名与地域在控制台的存储桶列表里查看" },
+  r2: { name: "Cloudflare R2", icon: "cloud-lightning", regions: [["auto", "auto（R2 固定）"]], account: true,
+    endpoint: (r, acct) => `${acct || "<account_id>"}.r2.cloudflarestorage.com`, addressing: "path", sslLocked: true, direct: "presigned_put",
+    bucketHint: "R2 控制台 → 存储桶名称",
+    publicHint: "需先在 R2 控制台为桶开启 r2.dev 子域，或绑定自定义域名" },
+};
+const PROV_LABEL = { local: "本地磁盘", ...Object.fromEntries(Object.entries(PRESETS).map(([k, v]) => [k, v.name])) };
+const LOCKED = ["provider", "region", "account", "endpoint", "bucket", "prefix", "addressing"];
+const DIRECT_LABEL = { post_policy: "POST Policy 表单（桶侧限制大小）", presigned_put: "预签名 PUT（签入 Content-Length，登记时复核大小）" };
+const calcEndpoint = (d) => PRESETS[d.provider].endpoint(d.region, d.accountId);
+
+// ---------- 状态 ----------
+const S = {
+  role: "super",
+  storages: [
+    { id: 1, name: "本地磁盘", provider: "local", builtin: true, isDefault: true, assets: 1284, dir: "./data/assets", check: { ok: true, at: "启动时" } },
+    { id: 2, name: "OSS 杭州 · 旧桶", provider: "aliyun_oss", region: "cn-hangzhou", endpoint: "oss-cn-hangzhou.aliyuncs.com", bucket: "vc-legacy", prefix: "assets/", addressing: "virtual", akId: "LTAI5t••••••Qm8", skTail: "a1b2", access: "private", ttl: 3600, publicBase: "", direct: false, isDefault: false, assets: 0, check: { ok: false, at: "3 天前", err: "AccessDenied：密钥无权访问该桶" } },
+  ],
+  nextId: 3,
+  draft: null, // 抽屉里的编辑态
+};
+const isSuper = () => S.role === "super";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (n) => n.toLocaleString("zh-CN");
+
+function toggleNotes() {
+  const on = document.body.classList.toggle("show-notes");
+  $("#notesSw").setAttribute("aria-checked", on);
+}
+function toast(msg, kind = "ok") {
+  const el = $("#toast");
+  el.innerHTML = `<div class="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm shadow-lg"><i data-lucide="${kind === "ok" ? "circle-check" : "circle-alert"}" class="${kind === "ok" ? "text-emerald-600" : "text-red-600"}"></i>${esc(msg)}</div>`;
+  lucide.createIcons();
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => (el.innerHTML = ""), 2600);
+}
+
+// ---------- 页面 ----------
+function statusTag(s) {
+  if (!s.check) return `<span class="tag t-mute">未测试</span>`;
+  return s.check.ok
+    ? `<span class="tag t-ok"><i data-lucide="circle-check"></i>正常</span><div class="text-[11px] text-muted-foreground mt-0.5">${esc(s.check.at)}</div>`
+    : `<span class="tag t-bad"><i data-lucide="circle-x"></i>失败</span><div class="text-[11px] text-red-600 mt-0.5 max-w-[180px] truncate" title="${esc(s.check.err)}">${esc(s.check.err)}</div>`;
+}
+function where(s) {
+  if (s.provider === "local") return `<span class="font-mono text-xs">${esc(s.dir)}</span>`;
+  return `<div class="font-mono text-xs">${esc(s.bucket)}</div><div class="text-[11px] text-muted-foreground">${s.provider === "r2" ? "R2 · auto" : esc(s.region || s.endpoint)}${s.prefix ? " · /" + esc(s.prefix) : ""}</div>`;
+}
+function deleteBlock(s) {
+  if (s.builtin) return "内置存储不可删除";
+  if (s.isDefault) return "默认存储不可删除，请先把其他存储设为默认";
+  if (s.assets > 0) return `被 ${fmt(s.assets)} 个素材引用，不可删除（二期可先迁移）`;
+  return "";
+}
+function defaultBlock(s) {
+  if (s.isDefault) return "已是默认";
+  if (!s.check || !s.check.ok) return "最近一次测试未通过，不能设为默认";
+  return "";
+}
+
+function render() {
+  const def = S.storages.find((s) => s.isDefault);
+  const onlyLocal = S.storages.every((s) => s.provider === "local");
+  $("#page").innerHTML = `
+    <div class="mb-5 flex flex-wrap items-end gap-3">
+      <div><h1 class="text-xl font-semibold tracking-tight">存储配置</h1>
+        <p class="mt-1 text-sm text-muted-foreground">素材（上传与生成产物）存到哪里。切换默认只影响新文件，已有素材始终从它所在的存储读取。</p></div>
+      ${isSuper() ? `<button class="btn btn-primary ml-auto" onclick="openSheet()"><i data-lucide="plus"></i>新建存储</button>` : `<span class="tag t-mute ml-auto"><i data-lucide="eye"></i>只读：修改需要超级管理员</span>`}
+    </div>
+
+    ${def.provider === "local" ? `
+    <div class="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+      <i data-lucide="triangle-alert" class="mt-0.5 text-amber-600"></i>
+      <div><b>当前默认是本地磁盘。</b>本地存储的地址上游 AI 平台访问不到（参考图以 URL 传给模型会失败），也不便于多实例部署。生产环境建议新建对象存储并设为默认。</div>
+    </div>` : ""}
+
+    <div class="note mb-5 rounded-xl border bg-card p-4">
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="grid size-10 place-items-center rounded-lg bg-muted text-lg"><i data-lucide="${def.provider === "local" ? "hard-drive" : PRESETS[def.provider].icon}"></i></span>
+        <div class="min-w-0">
+          <div class="text-xs text-muted-foreground">默认存储 · 新上传和新生成的素材写到这里</div>
+          <div class="mt-0.5 flex items-center gap-2 font-medium">${esc(def.name)} <span class="tag t-mute">${PROV_LABEL[def.provider]}</span>${def.builtin ? `<span class="tag t-mute">内置</span>` : ""}</div>
+        </div>
+        <div class="ml-auto flex gap-6 text-sm">
+          <div><div class="text-xs text-muted-foreground">位置</div>${where(def)}</div>
+          <div><div class="text-xs text-muted-foreground">素材数</div><div class="font-mono">${fmt(def.assets)}</div></div>
+          <div><div class="text-xs text-muted-foreground">连通</div>${statusTag(def)}</div>
+        </div>
+      </div>
+      <div class="note-txt">设计：先回答“现在新文件写到哪”这一个问题。只读角色也能一眼确认。</div>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border">
+      <table class="w-full text-sm">
+        <thead class="bg-muted/40 text-left text-xs text-muted-foreground">
+          <tr><th class="px-4 py-2.5">名称</th><th class="px-3">服务商</th><th class="px-3">桶 · 地域</th><th class="px-3">访问方式</th><th class="px-3">直传</th><th class="px-3 text-right">素材数</th><th class="px-3">连通状态</th><th class="px-4 text-right">操作</th></tr>
+        </thead>
+        <tbody>
+          ${S.storages.map((s) => {
+            const del = deleteBlock(s), dft = defaultBlock(s);
+            return `<tr class="border-t align-top">
+              <td class="px-4 py-3"><div class="flex items-center gap-1.5 font-medium">${esc(s.name)}${s.isDefault ? `<span class="tag t-info">默认</span>` : ""}${s.builtin ? `<span class="tag t-mute">内置</span>` : ""}</div>
+                ${s.builtin ? `<div class="text-[11px] text-muted-foreground">来自 config.yaml，只读</div>` : ""}</td>
+              <td class="px-3 py-3">${PROV_LABEL[s.provider]}</td>
+              <td class="px-3 py-3">${where(s)}</td>
+              <td class="px-3 py-3">${s.provider === "local" ? `<span class="text-muted-foreground">/files 直出</span>` : s.access === "public" ? `<span class="tag t-mute">公开 / CDN</span>` : `<span class="tag t-mute">私有 · 签名 ${s.ttl / 3600}h</span>`}</td>
+              <td class="px-3 py-3">${s.provider === "local" ? "—" : s.direct ? `<span class="tag t-ok">开</span>` : `<span class="text-muted-foreground">关</span>`}</td>
+              <td class="px-3 py-3 text-right font-mono">${fmt(s.assets)}</td>
+              <td class="px-3 py-3">${statusTag(s)}</td>
+              <td class="px-4 py-3"><div class="flex justify-end gap-1">
+                ${isSuper() ? `
+                  ${s.builtin ? "" : `<button class="btn btn-ghost btn-sm" onclick="openSheet(${s.id})"><i data-lucide="pencil"></i>编辑</button>`}
+                  <button class="btn btn-ghost btn-sm" onclick="recheck(${s.id})"><i data-lucide="activity"></i>测试</button>
+                  <span title="${esc(dft)}"><button class="btn btn-ghost btn-sm" ${dft ? "disabled" : ""} onclick="confirmDefault(${s.id})"><i data-lucide="star"></i>设为默认</button></span>
+                  <span title="${esc(del)}"><button class="btn btn-ghost btn-sm text-red-600" ${del ? "disabled" : ""} onclick="confirmDelete(${s.id})"><i data-lucide="trash-2"></i></button></span>`
+                : `<button class="btn btn-ghost btn-sm" onclick="openSheet(${s.id})"><i data-lucide="eye"></i>查看</button>`}
+              </div></td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="note mt-3 rounded-md p-2"><div class="text-xs text-muted-foreground">禁用按钮悬停可看原因。</div>
+      <div class="note-txt">设计：删除 / 设默认的禁用原因必须可见（tooltip），不让人猜。只读角色直接隐藏写按钮，而不是只禁用。</div></div>
+  `;
+  lucide.createIcons();
+}
+
+// ---------- 抽屉：新建 / 编辑 ----------
+function openSheet(id) {
+  const src = id ? S.storages.find((s) => s.id === id) : null;
+  S.draft = src
+    ? { ...src, sk: "", replaceSk: false, test: null, simNoCors: false, advanced: src.provider === "s3" && src.endpoint !== PRESETS.s3.endpoint(src.region) }
+    : { id: null, name: "", provider: "aliyun_oss", region: "cn-hangzhou", endpoint: PRESETS.aliyun_oss.endpoint("cn-hangzhou"), bucket: "", prefix: "", addressing: "virtual", accountId: "",
+        akId: "", sk: "", access: "private", ttl: 3600, publicBase: "", direct: false, assets: 0, test: null, simNoCors: false, advanced: false, replaceSk: true };
+  renderSheet();
+}
+function closeSheet() { S.draft = null; $("#layer").innerHTML = ""; }
+
+function lockedField(f) { return S.draft.id && S.draft.assets > 0 && LOCKED.includes(f); }
+function ro() { return !isSuper(); }
+function dis(f) { return ro() || lockedField(f) ? "disabled" : ""; }
+function lockIcon(f) {
+  return lockedField(f) ? `<span class="text-muted-foreground" title="已有 ${fmt(S.draft.assets)} 个素材在此存储中，修改会导致它们无法访问；如需换桶请新建存储"><i data-lucide="lock"></i></span>` : "";
+}
+function bucketError() {
+  const d = S.draft;
+  if (!d.bucket) return "";
+  if (d.provider === "tencent_cos" && !/^[a-z0-9-]+-\d{10}$/.test(d.bucket)) return "COS 桶名需要带 APPID 后缀，例如 canvas-1250000000";
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(d.bucket)) return "桶名只能包含小写字母、数字、- 和 .，长度 3–63";
+  return "";
+}
+
+function renderSheet() {
+  const d = S.draft;
+  if (!d) return;
+  const p = PRESETS[d.provider];
+  const editing = !!d.id;
+  const bErr = bucketError();
+  $("#layer").innerHTML = `
+  <div class="fixed inset-0 z-40 bg-black/40" onclick="closeSheet()"></div>
+  <div class="sheet fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l bg-background shadow-xl">
+    <div class="flex items-center gap-2 border-b px-5 py-4">
+      <div><div class="font-semibold">${ro() ? "查看存储" : editing ? "编辑存储" : "新建存储"}</div>
+        <div class="text-xs text-muted-foreground">${editing && d.assets > 0 ? `已有 ${fmt(d.assets)} 个素材，定位字段已锁定` : "保存时会自动测试连接"}</div></div>
+      <button class="btn btn-ghost btn-sm ml-auto" onclick="closeSheet()" aria-label="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+
+      <section>
+        <div class="lbl">服务商 ${lockIcon("provider")}</div>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          ${Object.entries(PRESETS).map(([k, v]) => `
+            <button class="prov ${d.provider === k ? "on" : ""}" ${dis("provider")} ${editing ? "disabled" : ""} onclick="setProv('${k}')">
+              <div class="flex items-center gap-1.5 text-sm font-medium"><i data-lucide="${v.icon}"></i>${v.name}</div>
+              <div class="mt-0.5 text-[11px] text-muted-foreground">${k === "s3" ? "AWS 官方" : k === "r2" ? "S3 兼容 · 无出口流量费" : "S3 兼容协议"}</div>
+            </button>`).join("")}
+        </div>
+        ${editing ? `<div class="hint">服务商创建后不可更改。</div>` : ""}
+      </section>
+
+      <section class="space-y-3">
+        <div><div class="lbl">名称</div><input class="input" ${ro() ? "disabled" : ""} value="${esc(d.name)}" placeholder="例如：OSS 杭州 · 生产" oninput="S.draft.name=this.value"></div>
+        ${p.account ? `
+        <div class="note"><div class="lbl">Account ID ${lockIcon("account")}</div>
+          <input class="input font-mono ${accountError() ? "err" : ""}" ${dis("account")} value="${esc(d.accountId)}" placeholder="32 位十六进制，R2 概览页右侧可复制" oninput="S.draft.accountId=this.value.trim();S.draft.endpoint=calcEndpoint(S.draft);S.draft.test=null;refreshAccount(this)">
+          <div class="hint" id="acctHint" ${accountError() ? 'style="color:#dc2626"' : ""}>${esc(accountError() || "Region 固定为 auto，无需选择")}</div>
+          <div class="note-txt">R2 单独做预设：Region 锁定 auto、寻址锁定 path、直传方式自动用预签名 PUT（R2 不支持 POST Policy）。</div></div>` : ""}
+        <div class="grid grid-cols-2 gap-3">
+          ${p.account ? `<div><div class="lbl">Region</div><input class="input font-mono" disabled value="auto"></div>` : `
+          <div><div class="lbl">地域 ${lockIcon("region")}</div>
+            <select class="input" ${dis("region")} onchange="setRegion(this.value)">
+              ${p.regions.map(([v, l]) => `<option value="${v}" ${d.region === v ? "selected" : ""}>${l} · ${v}</option>`).join("")}
+            </select></div>`}
+          <div class="note"><div class="lbl">Endpoint ${lockIcon("endpoint")}</div>
+            <input class="input font-mono text-xs" id="epBox" disabled value="${esc(d.endpoint)}">
+            <div class="note-txt">由地域（R2 为 Account ID）推导，不让管理员手填；OSS/COS 锁定 HTTPS + 虚拟主机寻址。</div></div>
+        </div>
+        <div><div class="lbl">Bucket ${lockIcon("bucket")}</div>
+          <input class="input font-mono ${bErr ? "err" : ""}" ${dis("bucket")} value="${esc(d.bucket)}" placeholder="${d.provider === "tencent_cos" ? "canvas-1250000000" : "video-canvas-prod"}" oninput="S.draft.bucket=this.value.trim();S.draft.test=null;refreshBucket(this)">
+          <div class="hint" id="bucketHint" ${bErr ? 'style="color:#dc2626"' : ""}>${esc(bErr || p.bucketHint)}</div></div>
+        <div><div class="lbl">路径前缀 <span class="text-xs font-normal text-muted-foreground">可选</span> ${lockIcon("prefix")}</div>
+          <input class="input font-mono" ${dis("prefix")} value="${esc(d.prefix)}" placeholder="assets/" oninput="S.draft.prefix=this.value"></div>
+      </section>
+
+      <section class="space-y-3">
+        <div class="text-sm font-semibold">访问凭证</div>
+        <div><div class="lbl">${d.provider === "tencent_cos" ? "SecretId" : d.provider === "r2" ? "Access Key ID（R2 API 令牌）" : "AccessKey ID"}</div>
+          <input class="input font-mono" ${ro() ? "disabled" : ""} value="${esc(d.akId)}" oninput="S.draft.akId=this.value;S.draft.test=null"></div>
+        <div class="note"><div class="lbl">${d.provider === "tencent_cos" ? "SecretKey" : d.provider === "r2" ? "Secret Access Key" : "AccessKey Secret"}</div>
+          ${editing && !d.replaceSk
+            ? `<div class="flex items-center gap-2"><div class="input flex items-center font-mono text-muted-foreground">已设置 ·••••${esc(d.skTail)}</div>${ro() ? "" : `<button class="btn btn-outline" onclick="S.draft.replaceSk=true;renderSheet()">替换</button>`}</div>`
+            : `<input class="input font-mono" type="password" value="${esc(d.sk)}" placeholder="只写不读，保存后无法查看" oninput="S.draft.sk=this.value;S.draft.test=null">`}
+          <div class="note-txt">与渠道 Key 同一套：AES-256-GCM 存 ai_secrets（name = storage:&lt;id&gt;），只写不读，替换时先测试通过才生效。</div></div>
+        <div class="hint">${d.provider === "r2" ? "在 R2 → 管理 API 令牌中创建，权限选“对象读和写”，并限定到该桶。" : "建议用只授予该桶读写权限的子账号密钥（RAM / CAM / IAM）。"}</div>
+      </section>
+
+      <section class="space-y-3">
+        <div class="text-sm font-semibold">访问方式</div>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="prov ${d.access === "private" ? "on" : ""}" ${ro() ? "disabled" : ""} onclick="S.draft.access='private';renderSheet()"><div class="text-sm font-medium">私有桶 · 签名</div><div class="text-[11px] text-muted-foreground">推荐。按需生成临时地址</div></button>
+          <button class="prov ${d.access === "public" ? "on" : ""}" ${ro() ? "disabled" : ""} onclick="S.draft.access='public';renderSheet()"><div class="text-sm font-medium">公开读 / CDN</div><div class="text-[11px] text-muted-foreground">地址固定，靠 key 不可猜测</div></button>
+        </div>
+        ${d.access === "private"
+          ? `<div><div class="lbl">签名有效期</div><select class="input" ${ro() ? "disabled" : ""} onchange="S.draft.ttl=+this.value">${[[900,"15 分钟"],[3600,"1 小时"],[21600,"6 小时"],[86400,"24 小时"]].map(([v,l]) => `<option value="${v}" ${d.ttl === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+             <div class="note"><div class="hint">画布里存的是稳定地址 <code class="font-mono">/files/&lt;key&gt;</code>，有效期只影响单次播放，不会让画布裂图。</div>
+             <div class="note-txt">D2：后端按素材所属存储即时签名并 302。</div></div></div>`
+          : `<div><div class="lbl">公开访问域名</div><input class="input font-mono" ${ro() ? "disabled" : ""} value="${esc(d.publicBase)}" placeholder="${d.provider === "r2" ? "https://pub-xxxx.r2.dev 或自定义域名" : "https://cdn.example.com"}" oninput="S.draft.publicBase=this.value">${p.publicHint ? `<div class="hint">${p.publicHint}</div>` : ""}</div>`}
+      </section>
+
+      <section class="space-y-3">
+        <div class="flex items-center justify-between"><div><div class="text-sm font-semibold">允许浏览器直传</div>
+          <div class="hint">开启后，用户上传的文件直接传到桶里，不经过后端；失败时会自动回退到后端中转。</div></div>
+          <button class="switch" ${ro() ? "disabled" : ""} aria-checked="${d.direct}" onclick="S.draft.direct=!S.draft.direct;S.draft.test=null;renderSheet()"></button></div>
+        ${d.direct ? `
+          <div class="note flex items-center gap-2 text-xs"><span class="text-muted-foreground">直传方式</span><span class="tag ${p.direct === "presigned_put" ? "t-warn" : "t-mute"}">${DIRECT_LABEL[p.direct]}</span>
+            <div class="note-txt">跟着服务商预设走，管理员不用选。R2 不支持 POST Policy，大小上限靠“签名时拒绝超限声明 + 登记时 Stat 复核”。</div></div>
+          <div class="note rounded-lg border bg-muted/40 p-3 text-xs">
+            <div class="mb-1.5 flex items-center gap-2 font-medium"><i data-lucide="info"></i>需要在桶上配置 CORS<button class="btn btn-outline btn-sm ml-auto" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('cors').textContent);toast('CORS 规则已复制')"><i data-lucide="copy"></i>复制规则</button></div>
+<pre id="cors" class="overflow-x-auto font-mono text-[11px] leading-relaxed">AllowedOrigin: ${location.origin === "null" ? "https://canvas.example.com" : location.origin}
+AllowedMethod: ${p.direct === "presigned_put" ? "PUT, GET, HEAD" : "POST, PUT, GET, HEAD"}
+AllowedHeader: *
+ExposeHeader:  ETag
+MaxAgeSeconds: 600</pre>
+            <label class="mt-2 flex items-center gap-2 text-muted-foreground"><input type="checkbox" ${d.simNoCors ? "checked" : ""} onchange="S.draft.simNoCors=this.checked;S.draft.test=null"> 原型模拟：桶还没配 CORS</label>
+            <div class="note-txt">MVP 不自动改桶 CORS（需要更高权限）。测试连接第 ⑥ 步会在当前浏览器真实直传一次来验证。</div>
+          </div>` : ""}
+      </section>
+
+      ${d.provider === "s3" ? `
+      <section class="space-y-3">
+        <button class="flex items-center gap-1 text-sm font-semibold" onclick="S.draft.advanced=!S.draft.advanced;renderSheet()"><i data-lucide="${d.advanced ? "chevron-down" : "chevron-right"}"></i>高级（自定义 Endpoint）</button>
+        ${d.advanced ? `
+          <div><div class="lbl">自定义 Endpoint ${lockIcon("endpoint")}</div><input class="input font-mono" ${dis("endpoint")} value="${esc(d.endpoint)}" placeholder="minio.internal:9000" oninput="S.draft.endpoint=this.value;S.draft.test=null"></div>
+          <div><div class="lbl">寻址方式 ${lockIcon("addressing")}</div><select class="input" ${dis("addressing")} onchange="S.draft.addressing=this.value">
+            ${[["auto","自动"],["virtual","虚拟主机（bucket.endpoint）"],["path","路径（endpoint/bucket）"]].map(([v,l]) => `<option value="${v}" ${d.addressing === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>` : ""}
+      </section>` : ""}
+
+      <section id="testBox">${testBox()}</section>
+    </div>
+    ${ro() ? "" : `
+    <div class="flex items-center gap-2 border-t px-5 py-3">
+      <button class="btn btn-outline" onclick="runTest()" ${d.testing ? "disabled" : ""}><i data-lucide="activity"></i>测试连接</button>
+      <div class="ml-auto flex gap-2">
+        <button class="btn btn-ghost" onclick="closeSheet()">取消</button>
+        <button class="btn btn-primary" onclick="save()" ${d.testing ? "disabled" : ""}>${d.test && !d.test.ok ? "仍然保存（不可设为默认）" : "保存"}</button>
+      </div>
+    </div>`}
+  </div>`;
+  lucide.createIcons();
+}
+function accountError() {
+  const d = S.draft;
+  if (d.provider !== "r2" || !d.accountId) return "";
+  return /^[0-9a-f]{32}$/.test(d.accountId) ? "" : "Account ID 应为 32 位十六进制（小写）";
+}
+function refreshAccount(input) {
+  const err = accountError();
+  input.classList.toggle("err", !!err);
+  const h = $("#acctHint");
+  h.textContent = err || "Region 固定为 auto，无需选择";
+  h.style.color = err ? "#dc2626" : "";
+  $("#epBox").value = S.draft.endpoint;
+}
+function refreshBucket(input) {
+  const err = bucketError();
+  input.classList.toggle("err", !!err);
+  const h = $("#bucketHint");
+  h.textContent = err || PRESETS[S.draft.provider].bucketHint;
+  h.style.color = err ? "#dc2626" : "";
+}
+function setProv(k) {
+  const p = PRESETS[k], d = S.draft;
+  d.provider = k; d.region = p.regions[0][0]; d.endpoint = calcEndpoint(d); d.addressing = p.addressing; d.test = null; d.advanced = false;
+  renderSheet();
+}
+function setRegion(r) { S.draft.region = r; if (!S.draft.advanced) S.draft.endpoint = calcEndpoint(S.draft); S.draft.test = null; renderSheet(); }
+
+// ---------- 测试连接（模拟） ----------
+const STEPS = ["鉴权", "写入探针对象 _probe/…", "读取探针", "签名地址可访问", "删除探针", "浏览器直传（CORS）"];
+function testBox() {
+  const t = S.draft.test;
+  if (!t) return `<div class="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">还没有测试。点“测试连接”，会依次验证鉴权、写、读、签名访问、删除${S.draft.direct ? "、浏览器直传" : ""}。</div>`;
+  return `<div class="note rounded-lg border p-3">
+    <div class="mb-2 flex items-center gap-2 text-sm font-medium">测试结果 ${t.done ? (t.ok ? `<span class="tag t-ok">全部通过</span>` : `<span class="tag t-bad">未通过</span>`) : `<span class="tag t-mute">进行中</span>`}</div>
+    <ol class="space-y-1.5 text-sm">
+      ${t.steps.map((s, i) => `<li class="flex items-center gap-2">
+        <span class="w-4 text-center">${s.st === "run" ? `<i data-lucide="loader-circle" class="spin"></i>` : s.st === "ok" ? `<i data-lucide="circle-check" class="text-emerald-600"></i>` : s.st === "bad" ? `<i data-lucide="circle-x" class="text-red-600"></i>` : `<i data-lucide="circle" class="text-muted-foreground"></i>`}</span>
+        <span class="${s.st === "wait" ? "text-muted-foreground" : ""}">${i + 1}. ${s.i === 5 ? `浏览器直传（${PRESETS[S.draft.provider].direct === "presigned_put" ? "预签名 PUT" : "POST Policy"} + CORS）` : STEPS[s.i]}</span>
+        <span class="ml-auto font-mono text-xs text-muted-foreground">${s.ms ? s.ms + "ms" : ""}</span></li>
+        ${s.err ? `<li class="ml-6 rounded-md bg-red-500/10 p-2 text-xs text-red-700 dark:text-red-400"><b>${esc(s.err[0])}</b><div class="mt-0.5">${esc(s.err[1])}</div><details class="mt-1 text-muted-foreground"><summary class="cursor-pointer">原始错误</summary><code class="font-mono">${esc(s.err[2])}</code></details></li>` : ""}`).join("")}
+    </ol>
+    <div class="note-txt">停在失败的那一步，并把云厂商错误码翻译成中文和处理建议；原始错误可展开查看。</div>
+  </div>`;
+}
+function failureFor(d, i) {
+  if (i === 0 && (!d.akId || (!d.sk && (d.replaceSk || !d.id)))) return ["缺少密钥", "请填写 AccessKey ID 与 Secret。", "MissingCredentials"];
+  if (i === 0 && d.sk === "wrong") return ["密钥无权访问该桶", "检查 AccessKey 是否正确、子账号是否授予了该桶的读写权限。", "AccessDenied: The specified access key is not authorized"];
+  if (i === 0 && d.provider === "r2" && (!d.accountId || accountError())) return ["Account ID 不合法", accountError() || "请填写 Account ID。", "InvalidEndpoint"];
+  if (i === 0 && (!d.bucket || bucketError())) return ["桶名不合法", bucketError() || "请填写 Bucket。", "InvalidBucketName"];
+  if (i === 1 && d.bucket.includes("nobucket")) return ["桶不存在或地域不对", `确认桶 ${d.bucket} 存在于 ${d.region}。跨地域的桶需要选择对应地域。`, "NoSuchBucket: The specified bucket does not exist"];
+  if (i === 5 && d.simNoCors) return ["浏览器直传被 CORS 拦截", "请在云控制台的跨域设置中添加上面的规则（可一键复制），或关闭“允许浏览器直传”。", "TypeError: Failed to fetch (CORS preflight 403)"];
+  return null;
+}
+function runTest(after) {
+  const d = S.draft;
+  const n = d.direct ? 6 : 5;
+  d.test = { done: false, ok: false, steps: Array.from({ length: n }, (_, i) => ({ i, st: "wait" })) };
+  d.testing = true;
+  renderSheet();
+  let i = 0;
+  const tick = () => {
+    if (!S.draft || S.draft !== d) return;
+    const s = d.test.steps[i];
+    s.st = "run";
+    $("#testBox").innerHTML = testBox(); lucide.createIcons();
+    setTimeout(() => {
+      if (!S.draft || S.draft !== d) return;
+      const err = failureFor(d, i);
+      s.ms = 40 + Math.round(Math.random() * 120);
+      if (err) { s.st = "bad"; s.err = err; d.test.steps.slice(i + 1).forEach((x) => (x.st = "wait")); finish(false); return; }
+      s.st = "ok"; i++;
+      if (i >= n) finish(true); else tick();
+    }, 380);
+  };
+  const finish = (ok) => { d.test.done = true; d.test.ok = ok; d.testing = false; renderSheet(); after && after(ok); };
+  tick();
+}
+
+// ---------- 保存 / 默认 / 删除 / 重测 ----------
+function save() {
+  const d = S.draft;
+  if (!d.name.trim()) return toast("请填写名称", "bad");
+  const commit = (ok) => {
+    const row = {
+      ...d, check: { ok, at: "刚刚", err: ok ? "" : d.test.steps.find((s) => s.err)?.err[0] },
+      skTail: d.sk ? d.sk.slice(-4) : d.skTail, akId: d.akId.length > 8 ? d.akId.slice(0, 6) + "••••••" + d.akId.slice(-3) : d.akId,
+    };
+    ["sk", "test", "testing", "replaceSk", "simNoCors"].forEach((k) => delete row[k]);
+    if (d.id) S.storages = S.storages.map((s) => (s.id === d.id ? row : s));
+    else { row.id = S.nextId++; S.storages.push(row); }
+    closeSheet(); render();
+    toast(ok ? (d.id ? "已保存" : "已创建。测试通过后可以设为默认") : "已保存，但测试未通过：修复前不能设为默认", ok ? "ok" : "bad");
+  };
+  if (d.test && d.test.done && !d.test.ok) return commit(false); // “仍然保存”
+  if (d.test && d.test.ok) return commit(true);
+  runTest((ok) => { if (ok) commit(true); else toast("测试未通过，修复后再保存，或点“仍然保存”", "bad"); });
+}
+function recheck(id) {
+  const s = S.storages.find((x) => x.id === id);
+  toast(`正在测试「${s.name}」…`);
+  setTimeout(() => {
+    s.check = s.skTail === "a1b2" ? { ok: false, at: "刚刚", err: "AccessDenied：密钥无权访问该桶" } : { ok: true, at: "刚刚" };
+    render(); toast(s.check.ok ? "测试通过" : "测试未通过：" + s.check.err, s.check.ok ? "ok" : "bad");
+  }, 700);
+}
+function dialog(html) {
+  $("#layer").innerHTML = `<div class="fixed inset-0 z-40 bg-black/40" onclick="closeSheet()"></div>
+    <div class="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background p-5 shadow-xl">${html}</div>`;
+  lucide.createIcons();
+}
+function confirmDefault(id) {
+  const s = S.storages.find((x) => x.id === id), cur = S.storages.find((x) => x.isDefault);
+  dialog(`<div class="text-base font-semibold">把「${esc(s.name)}」设为默认？</div>
+    <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+      <li>之后<b class="text-foreground">新上传和新生成</b>的素材写入 ${PROV_LABEL[s.provider]} · <span class="font-mono">${esc(s.bucket)}</span></li>
+      <li>「${esc(cur.name)}」里已有的 <b class="text-foreground">${fmt(cur.assets)}</b> 个素材<b class="text-foreground">不会移动</b>，仍从原处读取，画布不受影响</li>
+      <li>正在进行中的生成任务，产物会写入新的默认存储</li>
+    </ul>
+    <div class="mt-5 flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeSheet()">取消</button><button class="btn btn-primary" onclick="doDefault(${id})">设为默认</button></div>`);
+}
+function doDefault(id) {
+  S.storages.forEach((s) => (s.isDefault = s.id === id));
+  closeSheet(); render(); toast("默认存储已切换，新素材将写入这里");
+}
+function confirmDelete(id) {
+  const s = S.storages.find((x) => x.id === id);
+  dialog(`<div class="text-base font-semibold">删除「${esc(s.name)}」？</div>
+    <p class="mt-2 text-sm text-muted-foreground">该存储没有任何素材引用。删除后加密的密钥一并删除，桶里的文件<b class="text-foreground">不会</b>被清理。</p>
+    <div class="mt-5 flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeSheet()">取消</button><button class="btn btn-danger" onclick="doDelete(${id})">删除</button></div>`);
+}
+function doDelete(id) { S.storages = S.storages.filter((s) => s.id !== id); closeSheet(); render(); toast("已删除"); }
+
+addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+render();
+</script>
+</body>
+</html>

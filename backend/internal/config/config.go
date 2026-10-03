@@ -98,23 +98,27 @@ type Worker struct {
 	Lease       time.Duration `mapstructure:"lease"`       // 租约时长
 }
 
-// Storage 是素材存储配置：driver 取 local / s3（S3 兼容，含阿里云 OSS）。
+// Storage 是素材存储的全局配置。对象存储（阿里云 OSS / 腾讯云 COS / S3 / R2）在后台“存储配置”里管理，
+// 这里只保留内置的本地磁盘、上传 / 转存大小上限，以及稳定地址的站点前缀。
 type Storage struct {
-	Driver    string        `mapstructure:"driver"`
 	MaxUpload int64         `mapstructure:"max_upload_bytes"` // 单个上传文件上限
 	MaxResult int64         `mapstructure:"max_result_bytes"` // 单个生成产物转存上限
-	SignedTTL time.Duration `mapstructure:"signed_ttl"`       // 私有桶签名 URL 有效期
+	SignedTTL time.Duration `mapstructure:"signed_ttl"`       // 存储自己没配签名有效期时的兜底（本地磁盘、旧版导入）
 	Local     LocalStorage  `mapstructure:"local"`
-	S3        S3Storage     `mapstructure:"s3"`
+
+	// Driver 与 S3 是旧版（升级前）用环境变量配置对象存储的方式，已废弃：
+	// 只在升级后首次启动时读取，用来一次性导入为后台存储，之后不再使用。
+	Driver string    `mapstructure:"driver"`
+	S3     S3Storage `mapstructure:"s3"`
 }
 
-// LocalStorage 本地磁盘，仅用于开发环境。
+// LocalStorage 是内置的本地磁盘存储。
 type LocalStorage struct {
 	Dir     string `mapstructure:"dir"`      // 存放目录
-	BaseURL string `mapstructure:"base_url"` // 对外访问前缀，为空时用相对路径 /files
+	BaseURL string `mapstructure:"base_url"` // 素材稳定地址（/files/<key>）的站点前缀，为空时用相对路径；所有存储共用
 }
 
-// S3Storage S3 兼容存储；阿里云 OSS 填 endpoint 即可。
+// S3Storage 是旧版的 S3 兼容存储配置，仅用于升级导入（见 Storage.Driver）。
 type S3Storage struct {
 	Endpoint      string `mapstructure:"endpoint"`
 	Region        string `mapstructure:"region"`
@@ -122,7 +126,7 @@ type S3Storage struct {
 	AccessKey     string `mapstructure:"access_key"`
 	SecretKey     string `mapstructure:"secret_key"`
 	UseSSL        bool   `mapstructure:"use_ssl"`
-	PublicBaseURL string `mapstructure:"public_base_url"` // 公开桶（或 CDN）前缀；为空则用签名 URL
+	PublicBaseURL string `mapstructure:"public_base_url"`
 	PathPrefix    string `mapstructure:"path_prefix"`
 }
 
@@ -139,7 +143,13 @@ func Load(path string) (*Config, error) {
 	}
 
 	// 没写进 YAML 的项也要能被环境变量覆盖（viper 只会为已知的 key 读取环境变量）
-	for _, key := range []string{"server.id_key", "ai.secret_key", "storage.s3.access_key", "storage.s3.secret_key"} {
+	// 其中 storage.driver 与 storage.s3.* 是旧版对象存储的环境变量，YAML 里已经没有这些项，仍需要绑定才能读到，
+	// 否则升级时无法把它们导入为后台存储
+	for _, key := range []string{
+		"server.id_key", "ai.secret_key", "storage.driver",
+		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
+		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
+	} {
 		_ = v.BindEnv(key)
 	}
 

@@ -50,3 +50,31 @@ export interface BackendAssetDto {
   /** 原始文件名（camelCase 兼容字段） */
   fileName?: string | null;
 }
+
+/** POST /assets/upload-intents 的请求体：申请上传方式 */
+export type UploadIntentBody = {
+  /** 原始文件名，只用于展示 */
+  file_name: string;
+  /** 文件大小（字节），直传时会被签进地址或用来复核 */
+  size: number;
+  /** 文件的 MIME 类型，必须在后端白名单内 */
+  mime_type: string;
+};
+
+/** POST /assets/upload-intents 的响应 */
+export type UploadIntent = {
+  /** proxy 表示走后端中转（POST /assets），direct 表示浏览器直传 */
+  mode: "proxy" | "direct";
+  /** 直传意图 ID，登记完成时要带上；mode=direct 时才有 */
+  intent_id?: number;
+  /** 直传方式：post 是表单直传（POST Policy），put 是预签名 PUT */
+  method?: "post" | "put";
+  /** 直传地址 */
+  url?: string;
+  /** post：必须原样放进表单的字段 */
+  fields?: Record<string, string>;
+  /** put：必须带上的请求头 */
+  headers?: Record<string, string>;
+  /** 凭证过期时间（ISO 时间串） */
+  expires_at?: string;
+};

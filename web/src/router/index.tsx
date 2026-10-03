@@ -7,6 +7,7 @@ import ChannelsPage from "@/pages/admin-ai/channels";
 import ModelsPage from "@/pages/admin-ai/models";
 import OverviewPage from "@/pages/admin-ai/overview";
 import PluginsPage from "@/pages/admin-ai/plugins";
+import StoragePage from "@/pages/admin-storage";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
 import Home from "@/pages/home";
@@ -79,6 +80,8 @@ export const router = createBrowserRouter([
               { path: "ai/models/new", element: <ModelsPage /> },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
+              { path: "settings", element: <Navigate to="storage" replace /> },
+              { path: "settings/storage", element: <StoragePage /> },
             ],
           },
         ],

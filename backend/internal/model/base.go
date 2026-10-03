@@ -23,6 +23,8 @@ func All() []any {
 		&UserCredit{},
 		&CreditLedger{},
 		&Asset{},
+		&StorageConfig{},
+		&AssetUploadIntent{},
 		&AIPlugin{},
 		&AIPluginVersion{},
 		&AIChannel{},

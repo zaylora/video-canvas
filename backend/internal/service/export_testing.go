@@ -43,3 +43,5 @@ func (s *AIConfigService) ResetModelParse() { s.modelParse = map[uint64]*modelcf
 func (s *AssetService) SetRepo(r AssetRepo) { s.repo = r }
 
 func (s *AssetService) SetNow(fn func() time.Time) { s.now = fn }
+
+func (s *StorageConfigService) SetNow(fn func() time.Time) { s.now = fn }

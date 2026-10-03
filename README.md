@@ -21,7 +21,7 @@
 - **异步生成** — 提交后立即返回，进度通过 WebSocket 实时推送；任务可以取消，积分先冻结，失败或取消时退回。
 - **插件化接入模型** — 供应商协议用 JS 插件实现，插件运行在隔离的 plugin-runner 进程中；内置 NewAPI 插件，也可以上传自己写的插件。
 - **模型配置后台** — 模型按「草稿 → 校验 → 试跑 → 发布」上线，可以回滚到任意历史版本；渠道 Key 加密存储，只能写入，不能读出。
-- **素材存储** — 开发时用本地磁盘，生产环境可接 S3 兼容存储（含阿里云 OSS）。
+- **素材存储** — 开发时用内置的本地磁盘；生产环境在后台「存储配置」里添加阿里云 OSS / 腾讯云 COS / AWS S3 / Cloudflare R2，可建多套并指定默认，切换默认只影响新素材，旧素材始终从原存储读取。
 - **安全保存** — 画布按 `revision` 乐观锁保存，多个标签页或设备同时修改时不会互相覆盖。
 
 ![从节点生成视频](docs/assets/readme/generate.gif)
@@ -84,7 +84,7 @@ flowchart LR
   W -->|/api /files| S[backend<br/>Gin]
   S --> P[(PostgreSQL)]
   S --> R[(Redis)]
-  S --> O[(本地磁盘 / S3)]
+  S --> O[(本地磁盘 / 对象存储)]
   S -->|生成任务| K[worker]
   K --> PR[plugin-runner<br/>JS 协议插件]
   PR --> M[模型供应商]
@@ -96,7 +96,7 @@ flowchart LR
 |---|---|
 | 前端 | React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui · React Flow · zustand |
 | 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja |
-| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / S3 兼容存储 |
+| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / 对象存储（OSS · COS · S3 · R2） |
 | 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff |
 
 ## 目录结构
@@ -129,7 +129,7 @@ video-canvas/
 - [x] 画布项目管理与乐观锁保存
 - [x] 文本 / 图片 / 视频 / 音频节点与异步生成任务
 - [x] JS 协议插件与 AI 管理后台
-- [x] 本地 / S3 兼容素材存储
+- [x] 本地磁盘与对象存储（阿里云 OSS · 腾讯云 COS · S3 · Cloudflare R2），后台可配
 - [ ] 画布版本控制
 - [ ] 导演台、分镜表等新节点类型
 - [ ] 资产管理

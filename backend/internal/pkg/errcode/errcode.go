@@ -91,3 +91,22 @@ var (
 	ErrPluginOpFailed     = New(50022, "插件调用失败", http.StatusBadGateway) // 连通性检查 / 导入失败，原因写进 Msg（已脱敏）
 	ErrModelEnabled       = New(50031, "模型还在上线，先下线再删除", http.StatusConflict)
 )
+
+// 存储配置 / 浏览器直传 51xxx
+var (
+	ErrStorageNotFound        = New(51001, "存储不存在", http.StatusNotFound)
+	ErrStorageNameDup         = New(51002, "存储名称已存在", http.StatusConflict)
+	ErrStorageInvalid         = New(51003, "存储配置不合法", http.StatusBadRequest) // 具体原因写进 Msg
+	ErrStorageInUse           = New(51004, "存储仍被素材或进行中的上传使用，无法删除", http.StatusConflict)
+	ErrStorageFieldLocked     = New(51005, "该存储已有素材引用，定位字段不能修改", http.StatusConflict) // 被锁字段写进 Msg
+	ErrStorageBuiltin         = New(51006, "内置存储不能修改或删除", http.StatusConflict)
+	ErrStorageCheckFailed     = New(51007, "存储连接测试未通过", http.StatusBadRequest) // 失败步骤与原因写进 Msg
+	ErrStorageUnavailable     = New(51008, "存储暂不可用，请稍后重试", http.StatusBadGateway)
+	ErrStorageVersionConflict = New(51009, "存储配置已被其他人修改，请刷新后重试", http.StatusConflict)
+	ErrStorageNotChecked      = New(51010, "最近一次连接测试未通过，不能设为默认存储", http.StatusConflict)
+	ErrStorageIsDefault       = New(51011, "默认存储不能删除，请先把其他存储设为默认", http.StatusConflict)
+	ErrStorageSecretUnset     = New(51012, "存储密钥尚未设置", http.StatusConflict)
+	ErrUploadIntentNotFound   = New(51021, "上传申请不存在或已过期", http.StatusNotFound)
+	ErrUploadSizeMismatch     = New(51022, "上传的文件大小与申请不一致", http.StatusBadRequest)
+	ErrUploadDirectDisabled   = New(51023, "当前存储未开启浏览器直传", http.StatusConflict)
+)

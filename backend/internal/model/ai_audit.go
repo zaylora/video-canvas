@@ -15,6 +15,12 @@ const (
 	AuditChannelEnable   = "channel.enable"     // 启用 / 停用渠道
 	AuditChannelAutoOff  = "channel.auto_off"   // 连续插件级失败，自动停用（actor 为 0）
 	AuditChannelDelete   = "channel.delete"     // 删除渠道（同时删掉它的 Key，detail 不含 Key）
+	AuditStorageCreate   = "storage.create"     // 新建存储
+	AuditStorageUpdate   = "storage.update"     // 修改存储配置
+	AuditStorageSecret   = "storage.secret"     // 替换存储密钥（不记值）
+	AuditStorageDefault  = "storage.default"    // 设置默认存储（detail 含新旧默认）
+	AuditStorageDelete   = "storage.delete"     // 删除存储（同时删掉它的密钥）
+	AuditTargetStorage   = "storage"
 	AuditTargetPlugin    = "plugin"
 	AuditTargetChannel   = "channel"
 	AuditTargetPluginVer = "plugin_version"

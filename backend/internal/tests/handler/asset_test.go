@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/handler"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,22 @@ func (f *fakeAssetHandlerRepo) Create(ctx context.Context, a *model.Asset) error
 	return nil
 }
 
+func (f *fakeAssetHandlerRepo) GetByStorageKey(ctx context.Context, key string) (*model.Asset, error) {
+	for _, a := range f.rows {
+		if a.StorageKey == key {
+			cp := *a
+			return &cp, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+// handlerRegistry 实现 service.StoreRegistry：只有一套存储，id 固定为 1。
+type handlerRegistry struct{ h *storage.Handle }
+
+func (r handlerRegistry) Default(context.Context) (*storage.Handle, error)     { return r.h, nil }
+func (r handlerRegistry) Get(context.Context, uint64) (*storage.Handle, error) { return r.h, nil }
+
 func (f *fakeAssetHandlerRepo) GetByID(ctx context.Context, userID, id uint64) (*model.Asset, error) {
 	a, ok := f.rows[id]
 	if !ok || a.UserID != userID {
@@ -68,7 +85,7 @@ func newAssetTestEnv(t *testing.T, maxUpload int64) *assetTestEnv {
 		t.Fatal(err)
 	}
 	repo := &fakeAssetHandlerRepo{rows: map[uint64]*model.Asset{}}
-	svc := service.NewAssetService(repo, store, config.Storage{MaxUpload: maxUpload, SignedTTL: time.Hour})
+	svc := service.NewAssetService(repo, handlerRegistry{&storage.Handle{ID: 1, Provider: storage.ProviderLocal, Storage: store}}, config.Storage{MaxUpload: maxUpload, SignedTTL: time.Hour})
 	h := NewAssetHandler(svc)
 
 	r := gin.New()

@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 	"time"
-	. "video-canvas/internal/storage"
 
-	"video-canvas/internal/config"
+	. "video-canvas/internal/storage"
 )
 
 // testS3Config 返回一份不需要真实连接的配置；显式给 region，避免签名时去查询 bucket location。
-func testS3Config() config.S3Storage {
-	return config.S3Storage{
+func testS3Config() Spec {
+	return Spec{
+		Provider:  ProviderS3,
 		Endpoint:  "oss-cn-hangzhou.aliyuncs.com",
 		Region:    "cn-hangzhou",
 		Bucket:    "vc-bucket",
@@ -43,7 +43,7 @@ func TestS3Storage_ObjectKey(t *testing.T) {
 	t.Run("带前缀", func(t *testing.T) {
 		cfg := testS3Config()
 		cfg.PathPrefix = "/prod/"
-		s, err := NewS3(cfg)
+		s, err := NewFromSpec(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,14 +53,14 @@ func TestS3Storage_ObjectKey(t *testing.T) {
 		}
 	})
 	t.Run("无前缀", func(t *testing.T) {
-		s, _ := NewS3(testS3Config())
+		s, _ := NewFromSpec(testS3Config())
 		got, err := s.ObjectKey("u1/a.png")
 		if err != nil || got != "u1/a.png" {
 			t.Fatalf("实际 %q，err=%v", got, err)
 		}
 	})
 	t.Run("非法 key 被拒绝", func(t *testing.T) {
-		s, _ := NewS3(testS3Config())
+		s, _ := NewFromSpec(testS3Config())
 		if _, err := s.ObjectKey("../x"); !errors.Is(err, ErrInvalidKey) {
 			t.Fatalf("期望 ErrInvalidKey，实际：%v", err)
 		}
@@ -74,7 +74,7 @@ func TestS3Storage_URL(t *testing.T) {
 		cfg := testS3Config()
 		cfg.PublicBaseURL = "https://cdn.example.com/"
 		cfg.PathPrefix = "prod"
-		s, err := NewS3(cfg)
+		s, err := NewFromSpec(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -87,7 +87,7 @@ func TestS3Storage_URL(t *testing.T) {
 	t.Run("未配置公开地址时返回带过期时间的签名 URL", func(t *testing.T) {
 		cfg := testS3Config()
 		cfg.PathPrefix = "prod"
-		s, err := NewS3(cfg)
+		s, err := NewFromSpec(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestS3Storage_URL(t *testing.T) {
 	})
 
 	t.Run("ttl 为 0 使用默认 1 小时", func(t *testing.T) {
-		s, _ := NewS3(testS3Config())
+		s, _ := NewFromSpec(testS3Config())
 		got, err := s.URL(ctx, "u1/a.png", 0)
 		if err != nil {
 			t.Fatal(err)
@@ -124,7 +124,7 @@ func TestS3Storage_URL(t *testing.T) {
 	})
 
 	t.Run("非法 key 报错", func(t *testing.T) {
-		s, _ := NewS3(testS3Config())
+		s, _ := NewFromSpec(testS3Config())
 		if _, err := s.URL(ctx, "/etc/passwd", time.Hour); !errors.Is(err, ErrInvalidKey) {
 			t.Fatalf("期望 ErrInvalidKey，实际：%v", err)
 		}
@@ -133,7 +133,7 @@ func TestS3Storage_URL(t *testing.T) {
 	t.Run("endpoint 带协议头也能创建", func(t *testing.T) {
 		cfg := testS3Config()
 		cfg.Endpoint = "https://oss-cn-hangzhou.aliyuncs.com"
-		if _, err := NewS3(cfg); err != nil {
+		if _, err := NewFromSpec(cfg); err != nil {
 			t.Fatalf("期望成功：%v", err)
 		}
 	})

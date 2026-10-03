@@ -104,6 +104,44 @@ func (h *AssetHandler) Get(c *gin.Context) {
 	response.OK(c, view)
 }
 
+// uploadIntentReq 是申请直传的参数。
+type uploadIntentReq struct {
+	FileName string `json:"file_name" binding:"required,max=255" label:"文件名"`
+	Size     int64  `json:"size" binding:"required,min=1" label:"文件大小"`
+	MimeType string `json:"mime_type" binding:"required,max=128" label:"文件类型"`
+}
+
+// CreateUploadIntent 申请一次上传：存储开启了浏览器直传时返回直传凭证（mode=direct），
+// 否则返回 mode=proxy，客户端改走 POST /assets 由后端中转。
+func (h *AssetHandler) CreateUploadIntent(c *gin.Context) {
+	var req uploadIntentReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	view, err := h.svc.CreateUploadIntent(c.Request.Context(), currentUserID(c), service.UploadIntentInput{
+		FileName: req.FileName, Size: req.Size, MimeType: req.MimeType,
+	})
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, view)
+}
+
+// CompleteUpload 登记一次直传：浏览器把文件传到桶里之后调用，后端复核大小与内容类型，返回素材视图。
+func (h *AssetHandler) CompleteUpload(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	view, err := h.svc.CompleteUpload(c.Request.Context(), currentUserID(c), id)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, view)
+}
+
 // uploadReadErr 把读取 multipart 的错误翻译成业务错误：超过请求体上限是 413，其余是 400。
 func uploadReadErr(err error) error {
 	var mbe *http.MaxBytesError

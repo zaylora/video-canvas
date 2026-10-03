@@ -19,11 +19,12 @@ type Handlers struct {
 	GenerationTask *handler.GenerationTaskHandler // 任务提交 / 对账 / 取消 / 积分 / webhook
 	WS             *handler.WSHandler             // 用户级 WebSocket 推送
 	Asset          *handler.AssetHandler          // 素材上传与查询
-	LocalFiles     gin.HandlerFunc                // 本地存储的静态文件服务，仅 local 驱动时非 nil
+	Files          gin.HandlerFunc                // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler        // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler        // AI 模型配置管理
 	AdminPlugin    *handler.AdminPluginHandler    // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler   // 渠道管理
+	AdminStorage   *handler.AdminStorageHandler   // 存储配置管理
 	AdminMe        *handler.AdminMeHandler        // 当前管理员身份
 	AdminRole      middleware.RoleLookup          // 管理接口的角色查询
 }
@@ -75,6 +76,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.GET("/credits", h.GenerationTask.Credits)
 		auth.GET("/models", h.AIModel.List)
 		auth.POST("/assets", h.Asset.Upload)
+		auth.POST("/assets/upload-intents", h.Asset.CreateUploadIntent)          // 申请上传：直传凭证，或告知走后端中转
+		auth.POST("/assets/upload-intents/:id/complete", h.Asset.CompleteUpload) // 直传完成后登记素材
 		auth.GET("/assets/:id", h.Asset.Get)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
@@ -124,6 +127,21 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI.GET("/test-runs/:id/trace", h.AdminAI.GetTestTrace)
 		adminAI.GET("/schema/model", h.AdminAI.Schema)
 
+		// 存储配置（素材存到哪）：读 = admin 或 super_admin；测试 / 创建 / 修改 / 换密钥 / 设默认 / 删除 = 仅 super_admin。
+		// 密钥只写不读，和渠道 Key 同一套规则。
+		storages := auth.Group("/admin/storages", middleware.RequireAdmin(h.AdminRole))
+		storages.GET("", h.AdminStorage.List)
+		storages.GET("/presets", h.AdminStorage.Presets)
+		storages.POST("/test", superOnly, h.AdminStorage.Test)
+		storages.POST("", superOnly, h.AdminStorage.Create)
+		storages.PUT("/default", superOnly, h.AdminStorage.SetDefault)
+		storages.GET("/:id", h.AdminStorage.Get)
+		storages.PUT("/:id", superOnly, h.AdminStorage.Update)
+		storages.PUT("/:id/secret", superOnly, h.AdminStorage.ReplaceSecret)
+		storages.POST("/:id/check", superOnly, h.AdminStorage.Check)
+		storages.GET("/:id/delete-check", superOnly, h.AdminStorage.DeleteCheck)
+		storages.DELETE("/:id", superOnly, h.AdminStorage.Delete)
+
 		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权
 		// users := v1.Group("/users")
 		// users.POST("", h.User.Create)
@@ -132,10 +150,11 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// users.DELETE("/:id", h.User.Delete)
 	}
 
-	// 本地存储的素材文件（仅开发环境）；key 不可猜测，不做鉴权，便于 <video>/<img> 直接引用
-	if h.LocalFiles != nil {
-		r.GET("/files/*filepath", h.LocalFiles)
-		r.HEAD("/files/*filepath", h.LocalFiles)
+	// 素材的稳定地址：画布 payload 里存的就是它，永不过期、换存储也不变。
+	// key 不可猜测，不做鉴权，便于 <video>/<img> 直接引用
+	if h.Files != nil {
+		r.GET("/files/*filepath", h.Files)
+		r.HEAD("/files/*filepath", h.Files)
 	}
 
 	r.NoRoute(func(c *gin.Context) {
