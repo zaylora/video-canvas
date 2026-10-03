@@ -23,6 +23,21 @@ describe("redactRequestBody", () => {
     );
   });
 
+  test("存储配置的请求体里 secret_key 被隐藏，其他字段照常记录", () => {
+    const body = JSON.stringify({
+      name: "OSS",
+      bucket: "vc",
+      access_key_id: "ak",
+      secret_key: "sk-123",
+    });
+    for (const input of [body, JSON.parse(body)]) {
+      const logged = redactRequestBody("/admin/storages", input) as Record<string, unknown>;
+      expect(logged.secret_key).toBe("（已隐藏）");
+      expect(logged).toMatchObject({ name: "OSS", bucket: "vc", access_key_id: "ak" });
+    }
+    expect(JSON.stringify(redactRequestBody("/admin/storages/test", body))).not.toContain("sk-123");
+  });
+
   test("文件上传只记文件名", () => {
     const form = new FormData();
     form.append("file", new File(["x"], "kling.js"));

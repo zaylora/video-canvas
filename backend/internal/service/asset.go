@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -44,15 +45,29 @@ type AssetRepo interface {
 	Create(ctx context.Context, a *model.Asset) error
 	// GetByID 按 id 且 user_id 查询，不存在或不属于该用户返回 repository.ErrNotFound。
 	GetByID(ctx context.Context, userID, id uint64) (*model.Asset, error)
+	// GetByStorageKey 按对象 key 查询（不带用户条件，给 /files/<key> 路由用），不存在返回 repository.ErrNotFound。
+	GetByStorageKey(ctx context.Context, key string) (*model.Asset, error)
+}
+
+// StoreRegistry 是素材服务依赖的存储解析接口，由 storage.Registry 实现。
+// 写入用 Default（当时的默认存储），读取、签名、删除用 Get（按素材记录的 storage_id）。
+type StoreRegistry interface {
+	// Default 返回当前默认存储。
+	Default(ctx context.Context) (*storage.Handle, error)
+	// Get 按 id 返回存储，不存在返回 storage.ErrStorageNotFound。
+	Get(ctx context.Context, id uint64) (*storage.Handle, error)
 }
 
 // AssetService 负责素材的上传、生成产物转存与读取。
 // 同时实现 provider.AssetStore（引擎 / 任务服务读取素材）与 provider.AssetSaver（worker 转存产物）。
 type AssetService struct {
-	repo  AssetRepo
-	store storage.Storage
-	cfg   config.Storage
-	now   func() time.Time
+	repo   AssetRepo
+	stores StoreRegistry
+	cfg    config.Storage
+	now    func() time.Time
+
+	redirects redirectCache    // /files 跳转的签名结果缓存
+	intents   UploadIntentRepo // 浏览器直传的上传意图；没有开启直传能力时为 nil
 }
 
 var (
@@ -60,8 +75,9 @@ var (
 	_ provider.AssetSaver = (*AssetService)(nil)
 )
 
-func NewAssetService(repo AssetRepo, store storage.Storage, cfg config.Storage) *AssetService {
-	return &AssetService{repo: repo, store: store, cfg: cfg, now: time.Now}
+// NewAssetService 创建素材服务。stores 按素材记录的 storage_id 解析存储，写入用当时的默认存储。
+func NewAssetService(repo AssetRepo, stores StoreRegistry, cfg config.Storage) *AssetService {
+	return &AssetService{repo: repo, stores: stores, cfg: cfg, now: time.Now, redirects: redirectCache{items: map[string]redirectItem{}}}
 }
 
 // UploadInput 是用户上传素材的入参。
@@ -114,7 +130,7 @@ func (s *AssetService) Upload(ctx context.Context, userID uint64, in UploadInput
 	return assetView(asset, url), nil
 }
 
-// View 返回当前用户的一份素材视图，URL 每次现生成（私有桶的签名地址会过期，前端需要时刷新）。
+// View 返回当前用户的一份素材视图，URL 是稳定地址（见 ViewOf）。
 func (s *AssetService) View(ctx context.Context, userID, id uint64) (*model.AssetView, error) {
 	// 1. 按 user_id 归属查询：查不到和不属于自己统一返回“不存在”，避免暴露素材是否存在
 	asset, err := s.repo.GetByID(ctx, userID, id)
@@ -125,18 +141,29 @@ func (s *AssetService) View(ctx context.Context, userID, id uint64) (*model.Asse
 		return nil, err
 	}
 
-	// 2. 现生成访问地址
+	// 2. 组装视图
 	return s.ViewOf(ctx, asset)
 }
 
-// ViewOf 把素材行转成对前端的视图，URL 由存储实现按策略生成（公开地址或带过期时间的签名地址）。
-// 调用方必须已确认素材归属当前用户。
+// ViewOf 把素材行转成对前端的视图。调用方必须已确认素材归属当前用户。
+//
+// URL 是稳定地址 {站点前缀}/files/<key>：它会被前端写进画布 payload 持久化，所以必须永不过期、
+// 换存储也不变。签名发生在浏览器真正访问 /files 的那一刻（见 ResolveFile），而不是这里。
 func (s *AssetService) ViewOf(ctx context.Context, a *model.Asset) (*model.AssetView, error) {
-	url, err := s.store.URL(ctx, a.StorageKey, s.cfg.SignedTTL)
-	if err != nil {
-		return nil, fmt.Errorf("生成素材访问地址失败: %w", err)
+	return assetView(a, s.fileURL(a.StorageKey)), nil
+}
+
+// fileURL 返回素材的稳定访问地址。站点前缀沿用 storage.local.base_url（为空时是相对路径 /files）。
+func (s *AssetService) fileURL(key string) string {
+	return strings.TrimRight(s.cfg.Local.BaseURL, "/") + "/files/" + key
+}
+
+// signedTTL 返回一套存储的签名有效期：存储自己没配（如本地磁盘）时用全局 storage.signed_ttl。
+func (s *AssetService) signedTTL(h *storage.Handle) time.Duration {
+	if h.SignedTTL > 0 {
+		return h.SignedTTL
 	}
-	return assetView(a, url), nil
+	return s.cfg.SignedTTL
 }
 
 // assetView 组装对前端的素材视图。
@@ -175,8 +202,19 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 		return nil, err
 	}
 
-	// 2. 打开存储对象；行在但对象丢了属于数据不一致，对调用方按“素材不存在”处理，但要留日志排查
-	body, err := s.store.Open(ctx, a.StorageKey)
+	// 2. 找到素材所在的存储（按素材自己记录的 storage_id，而不是当前默认存储）；
+	//    存储配置已不存在属于数据不一致，按“素材不存在”处理并留日志
+	h, err := s.stores.Get(ctx, a.StorageID)
+	if err != nil {
+		if errors.Is(err, storage.ErrStorageNotFound) {
+			logger.Error("素材所属的存储已不存在", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID))
+			return nil, provider.ErrAssetNotFound
+		}
+		return nil, fmt.Errorf("获取素材所在存储失败: %w", err)
+	}
+
+	// 3. 打开存储对象；行在但对象丢了属于数据不一致，对调用方按“素材不存在”处理，但要留日志排查
+	body, err := h.Storage.Open(ctx, a.StorageKey)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Error("素材记录存在但存储对象丢失", zap.Uint64("asset_id", a.ID), zap.String("key", a.StorageKey))
@@ -185,8 +223,9 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 		return nil, fmt.Errorf("打开素材失败: %w", err)
 	}
 
-	// 3. 生成 URL；失败要关掉刚打开的 Body，避免泄漏
-	url, err := s.store.URL(ctx, a.StorageKey, s.cfg.SignedTTL)
+	// 4. 生成可被上游平台访问的 URL：这里要直接给存储的签名 / 公开地址，不能给 /files 稳定地址
+	//    （上游未必跟随跳转，后端地址也可能是内网地址）；失败要关掉刚打开的 Body，避免泄漏
+	url, err := h.Storage.URL(ctx, a.StorageKey, s.signedTTL(h))
 	if err != nil {
 		_ = body.Close()
 		return nil, fmt.Errorf("生成素材访问地址失败: %w", err)
@@ -300,24 +339,24 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 	// 4. 探测元数据（宽高 / 时长）；探测失败不算错误，对应字段留 0
 	meta := probeAssetMeta(mime, f, n)
 
-	// 5. 生成不可猜测的对象 key：{前缀}{用户ID}/{年月}/{随机uuid}{扩展名}
+	// 5. 取当前默认存储：本次写入、记录 storage_id、失败清理都用这一份，不会中途再取，
+	//    所以写入过程中管理员切换默认存储，也不会出现“文件在 A、记录指向 B”
+	h, err := s.stores.Default(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("获取默认存储失败: %w", err)
+	}
+
+	// 6. 生成不可猜测的对象 key：{前缀}{用户ID}/{年月}/{随机uuid}{扩展名}
 	//    扩展名取自嗅探结果而不是文件名，避免客户端塞入奇怪的后缀
 	key := fmt.Sprintf("%s%d/%s/%s%s", p.KeyPrefix, p.UserID, s.now().Format("200601"), newAssetUUID(), assetMimeExt[mime])
 
-	// 6. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
+	// 7. 写入存储；失败也尝试删一次，防止对象已部分落地却没有对应记录
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return nil, "", fmt.Errorf("回读素材临时文件失败: %w", err)
 	}
-	if err := s.store.Put(ctx, key, f, n, mime); err != nil {
-		s.cleanup(ctx, key)
+	if err := h.Storage.Put(ctx, key, f, n, mime); err != nil {
+		s.cleanup(ctx, h.Storage, key)
 		return nil, "", fmt.Errorf("写入存储失败: %w", err)
-	}
-
-	// 7. 先生成访问 URL 再插入行：URL 只取决于 key，提前失败就不必回滚数据库行
-	url, err := s.store.URL(ctx, key, s.cfg.SignedTTL)
-	if err != nil {
-		s.cleanup(ctx, key)
-		return nil, "", fmt.Errorf("生成素材访问地址失败: %w", err)
 	}
 
 	// 8. 插入素材行；失败必须删除刚写入的对象，否则会留下永远没人引用的孤儿文件
@@ -328,6 +367,7 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 	asset := &model.Asset{
 		UserID:     p.UserID,
 		Kind:       kind,
+		StorageID:  h.ID,
 		StorageKey: key,
 		MimeType:   mime,
 		ByteSize:   n,
@@ -339,18 +379,19 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 		FileName:   name,
 	}
 	if err := s.repo.Create(ctx, asset); err != nil {
-		s.cleanup(ctx, key)
+		s.cleanup(ctx, h.Storage, key)
 		return nil, "", fmt.Errorf("保存素材记录失败: %w", err)
 	}
+	url := s.fileURL(key)
 	return asset, url, nil
 }
 
 // cleanup 尽力删除存储对象。用脱离请求取消信号的 ctx，因为常见的失败原因就是请求被取消；
 // 删除失败只记日志（无法再补救，运维可按日志清理孤儿对象）。
-func (s *AssetService) cleanup(ctx context.Context, key string) {
+func (s *AssetService) cleanup(ctx context.Context, st storage.Storage, key string) {
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), assetCleanupTimeout)
 	defer cancel()
-	if err := s.store.Delete(cctx, key); err != nil {
+	if err := st.Delete(cctx, key); err != nil {
 		logger.Error("清理素材对象失败，可能产生孤儿文件", zap.String("key", key), zap.Error(err))
 	}
 }
@@ -458,4 +499,100 @@ func sanitizeAssetFileName(name string) string {
 		}
 	}
 	return name
+}
+
+// FileTarget 是 /files/<key> 的处理结果：本地存储由后端直接提供文件，对象存储跳转到签名 / 公开地址。
+type FileTarget struct {
+	Local       *storage.LocalStorage // 非空：由后端直接提供文件
+	RedirectURL string                // 非空：302 跳转目标
+	MaxAge      time.Duration         // 允许浏览器缓存这次跳转的时长
+}
+
+// ResolveFile 按对象 key 找到素材所在的存储，并决定怎么提供这个文件。
+// 这条路由不鉴权（<video> / <img> 要直接引用），安全性靠 key 不可猜测，和原来的本地存储 /files 一致。
+func (s *AssetService) ResolveFile(ctx context.Context, key string) (*FileTarget, error) {
+	// 1. 非法 key 不可能对应任何素材，直接按不存在处理，不必查库
+	if err := storage.ValidateKey(key); err != nil {
+		return nil, errcode.ErrAssetNotFound
+	}
+
+	// 2. 反查素材：拿到它所在的存储
+	a, err := s.repo.GetByStorageKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, errcode.ErrAssetNotFound
+		}
+		return nil, err
+	}
+	h, err := s.stores.Get(ctx, a.StorageID)
+	if err != nil {
+		// 内部原因（解密失败、配置被删等）只写日志，不透传给浏览器
+		logger.Error("解析素材所在存储失败", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID), zap.Error(err))
+		return nil, errcode.ErrStorageUnavailable
+	}
+
+	// 3. 本地磁盘：后端直接提供（支持 Range，视频可拖动）
+	if ls, ok := h.Storage.(*storage.LocalStorage); ok {
+		return &FileTarget{Local: ls}, nil
+	}
+
+	// 4. 对象存储：跳转到签名（或公开）地址。同一个文件在 ttl/2 内复用同一个地址，
+	//    这样浏览器对图片、视频的缓存才能命中；浏览器最多缓存 ttl/4，保证拿到的地址一定还没过期
+	ttl := s.signedTTL(h)
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	cacheKey := fmt.Sprintf("%d/%s", h.ID, key)
+	now := s.now()
+	if url, ok := s.redirects.get(cacheKey, now); ok {
+		return &FileTarget{RedirectURL: url, MaxAge: ttl / 4}, nil
+	}
+	url, err := h.Storage.URL(ctx, key, ttl)
+	if err != nil {
+		logger.Error("生成素材跳转地址失败", zap.Uint64("storage_id", h.ID), zap.Error(err))
+		return nil, errcode.ErrStorageUnavailable
+	}
+	s.redirects.put(cacheKey, url, now.Add(ttl/2), now)
+	return &FileTarget{RedirectURL: url, MaxAge: ttl / 4}, nil
+}
+
+// redirectCacheMax 是跳转地址缓存的条目上限，防止被大量不同 key 撑爆内存。
+const redirectCacheMax = 10000
+
+type redirectItem struct {
+	url string
+	exp time.Time
+}
+
+// redirectCache 缓存 /files 跳转用的签名地址。
+type redirectCache struct {
+	mu    sync.Mutex
+	items map[string]redirectItem
+}
+
+func (c *redirectCache) get(key string, now time.Time) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	it, ok := c.items[key]
+	if !ok || !now.Before(it.exp) {
+		return "", false
+	}
+	return it.url, true
+}
+
+// put 写入缓存；超过上限时先清掉已过期的项，仍然超限就整体清空（缓存丢了只是多签几次名）。
+func (c *redirectCache) put(key, url string, exp, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.items) >= redirectCacheMax {
+		for k, it := range c.items {
+			if !now.Before(it.exp) {
+				delete(c.items, k)
+			}
+		}
+		if len(c.items) >= redirectCacheMax {
+			c.items = map[string]redirectItem{}
+		}
+	}
+	c.items[key] = redirectItem{url: url, exp: exp}
 }

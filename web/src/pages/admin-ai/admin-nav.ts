@@ -1,4 +1,11 @@
-import { Boxes, LayoutDashboard, Puzzle, RadioTower, type LucideIcon } from "lucide-react";
+import {
+  Boxes,
+  HardDrive,
+  LayoutDashboard,
+  Puzzle,
+  RadioTower,
+  type LucideIcon,
+} from "lucide-react";
 
 export type AdminNavEntry = {
   /** 相对 /admin 的路径 */
@@ -18,6 +25,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/channels", label: "渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
     ],
+  },
+  {
+    label: "系统设置",
+    items: [{ to: "settings/storage", label: "存储配置", icon: HardDrive }],
   },
 ];
 

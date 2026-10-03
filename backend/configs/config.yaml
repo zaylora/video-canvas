@@ -58,21 +58,16 @@ ai:
     lease: 60s # worker 处理任务的租约时长，超过这个时间未完成的任务会被其他 worker 重新抢占
 
 storage:
-  driver: local # local（仅开发）| s3（S3 兼容，含阿里云 OSS）
+  # 对象存储（阿里云 OSS / 腾讯云 COS / S3 / Cloudflare R2）不在这里配，请到后台“存储配置”页面添加。
+  # 这里只保留内置的本地磁盘（开发用，也是对象存储配好之前的兜底）和全局上限。
   max_upload_bytes: 209715200 # 200MB
   max_result_bytes: 2147483648 # 2GB
-  signed_ttl: 1h # 私有桶签名 URL 有效期
+  signed_ttl: 1h # 存储自己没配签名有效期时的兜底
   local:
     dir: ./data/assets
-    base_url: "" # 为空时使用相对路径 /files
-  s3:
-    endpoint: ""
-    region: ""
-    bucket: ""
-    use_ssl: true
-    public_base_url: "" # 公开桶或 CDN 前缀；为空则使用签名 URL
-    path_prefix: ""
-    # access_key / secret_key 只通过环境变量 APP_STORAGE_S3_ACCESS_KEY / APP_STORAGE_S3_SECRET_KEY 提供
+    base_url: "" # 素材稳定地址 /files/<key> 的站点前缀，为空时使用相对路径；所有存储共用
+  # 升级提示：旧版用 APP_STORAGE_DRIVER=s3 + APP_STORAGE_S3_* 配置的对象存储，升级后首次启动会自动导入为后台存储，
+  # 导入后可以删掉这些环境变量。导入需要配置 APP_AI_SECRET_KEY（用来加密保存密钥）。
 
 # 所有配置项都可以用环境变量覆盖，规则：APP_ + 大写路径，点换成下划线
 # 例如 APP_SERVER_PORT=9000、APP_DATABASE_DSN=...、APP_JWT_SECRET=...

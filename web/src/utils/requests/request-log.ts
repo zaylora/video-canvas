@@ -34,7 +34,18 @@ const emit = () => listeners.forEach((listener) => listener());
 export const shouldLogRequest = (url: string | undefined) =>
   !!url && LOGGED_PREFIXES.some((prefix) => url.startsWith(prefix));
 
-/** 请求体脱敏：Key 接口整段替换，文件上传只写文件名 */
+/** 请求体里值要隐藏的字段：存储配置的新建与测试请求带着 Secret 明文 */
+const SECRET_FIELDS = ["secret_key"];
+
+/** 把对象里的敏感字段换成说明文字，其余字段原样保留；不是对象时原样返回 */
+function maskSecretFields(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const next: Record<string, unknown> = { ...value };
+  for (const field of SECRET_FIELDS) if (field in next) next[field] = "（已隐藏）";
+  return next;
+}
+
+/** 请求体脱敏：Key 接口整段替换，含 Secret 的字段单独隐藏，文件上传只写文件名 */
 export function redactRequestBody(url: string, body: unknown): unknown {
   if (body === undefined || body === null || body === "") return undefined;
   if (SECRET_PATTERN.test(url.split("?")[0])) return "（Key 已隐藏）";
@@ -46,12 +57,12 @@ export function redactRequestBody(url: string, body: unknown): unknown {
   }
   if (typeof body === "string") {
     try {
-      return JSON.parse(body);
+      return maskSecretFields(JSON.parse(body));
     } catch {
       return body;
     }
   }
-  return body;
+  return maskSecretFields(body);
 }
 
 export function recordRequest(entry: Omit<RequestLogEntry, "id">) {

@@ -40,7 +40,6 @@ services:
       APP_AI_PLUGIN_RUNNER_MODE: external
       APP_AI_PLUGIN_RUNNER_NETWORK: unix
       APP_AI_PLUGIN_RUNNER_ADDRESS: /run/plugin-runner/runner.sock
-      APP_STORAGE_DRIVER: ${APP_STORAGE_DRIVER:-local}
       APP_STORAGE_LOCAL_DIR: /app/data/assets
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
     volumes:

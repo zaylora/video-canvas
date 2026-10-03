@@ -18,7 +18,7 @@ backend/
 │   ├── middleware/      # 中间件
 │   ├── provider/        # 外部供应商调用与任务调度：dsl（声明式配置）/ engine（通用执行引擎）/ worker（调度）
 │   ├── pkg/ws/          # 用户级 WebSocket：Hub / ticket
-│   ├── storage/         # 素材存储：本地磁盘（开发）/ S3 兼容（含 OSS）
+│   ├── storage/         # 素材存储：内置本地磁盘 + S3 兼容对象存储（OSS / COS / S3 / R2），Registry 按 id 解析
 │   ├── cache/           # Redis 缓存
 │   ├── initialize/      # 初始化
 │   └── pkg/             # 内部通用工具包
@@ -63,9 +63,11 @@ make run
 | GET | /api/v1/credits | 积分余额 `{balance, frozen, available}`（新用户初始 50） |
 | POST | /api/v1/ws/ticket | 换取一次性 WebSocket ticket（30s 有效） |
 | GET | /api/v1/ws?ticket=… | WebSocket 升级，推送 `task.updated`（无需 JWT，身份由 ticket 决定） |
-| POST | /api/v1/assets | 上传素材（multipart，字段 `file`） |
-| GET | /api/v1/assets/:id | 素材信息（URL 每次现生成） |
-| GET | /files/* | 本地存储的静态文件（仅 `storage.driver=local`，开发用） |
+| POST | /api/v1/assets | 上传素材（multipart，字段 `file`），由后端中转 |
+| POST | /api/v1/assets/upload-intents | 申请上传：存储开了浏览器直传时返回直传凭证（`mode=direct`，`method` 为 `post` 或 `put`），否则返回 `mode=proxy`，客户端改走上一个接口 |
+| POST | /api/v1/assets/upload-intents/:id/complete | 直传完成后登记素材：后端复核大小、按内容嗅探类型，不合法的对象会被删除；重复提交幂等 |
+| GET | /api/v1/assets/:id | 素材信息（`url` 是稳定地址 `/files/<key>`，不会过期） |
+| GET | /files/* | 素材稳定地址，不鉴权（靠 key 不可猜测）：素材在本地存储则直接返回文件（支持 Range），在对象存储则现签名并 302 跳转 |
 
 ### AI 管理接口（admin / super_admin）
 
@@ -95,6 +97,16 @@ make run
 | POST | /api/v1/admin/ai/channels/:key/import | admin | 从渠道导入模型草稿（只预填，不落库） |
 | GET | /api/v1/admin/ai/channels/:key/delete-check | super_admin | 删除预检，kind 为 `channel_models`（refs 是模型）/ `active_tasks` |
 | DELETE | /api/v1/admin/ai/channels/:key | super_admin | 删除渠道并删掉它的 Key；仍被模型（最新草稿或已发布版本）或进行中的任务引用 409（50016） |
+| GET | /api/v1/admin/storages[/:id] | admin | 存储列表 / 详情（`secret_set` 只告诉有没有设置密钥，`access_key_id` 已脱敏；带素材数、是否锁定、最近一次测试结果） |
+| GET | /api/v1/admin/storages/presets | admin | 服务商预设：地域列表、直传方式、固定的寻址方式 |
+| POST | /api/v1/admin/storages/test | super_admin | 测试一份未保存的配置（不落库），返回分步结果 |
+| POST | /api/v1/admin/storages | super_admin | 新建存储：保存前自动测试，测试不通过仍保存但不能设为默认；密钥加密存 `ai_secrets` |
+| PUT | /api/v1/admin/storages/:id | super_admin | 修改配置（整份表单，带 `version` 乐观锁，冲突 409 / 51009）；已有素材时定位字段（地域、桶、前缀等）锁定，409 / 51005 |
+| PUT | /api/v1/admin/storages/:id/secret | super_admin | 同时替换 AccessKey ID 与 Secret：先用新凭证测试，不通过什么都不改 |
+| POST | /api/v1/admin/storages/:id/check | super_admin | 用已存密钥重新测试 |
+| PUT | /api/v1/admin/storages/default | super_admin | 设为默认存储（最近测试未通过 409 / 51010）；只影响新素材 |
+| GET | /api/v1/admin/storages/:id/delete-check | super_admin | 删除预检：素材数、进行中的上传数、能否删除及原因 |
+| DELETE | /api/v1/admin/storages/:id | super_admin | 删除存储与它的密钥；内置 / 默认 / 仍被素材引用 409 |
 | GET/POST | /api/v1/admin/ai/models | admin | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦） |
 | GET/PUT | /api/v1/admin/ai/models/:key | admin | 详情（草稿 + 已发布） / 更新草稿 |
 | POST | /api/v1/admin/ai/models/:key/validate | admin | 校验（错误精确到 JSON 路径） |

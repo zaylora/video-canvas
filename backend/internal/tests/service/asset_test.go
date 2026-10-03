@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/service"
 
 	"video-canvas/internal/config"
@@ -58,6 +59,19 @@ func (f *fakeAssetRepo) GetByID(ctx context.Context, userID, id uint64) (*model.
 	return &cp, nil
 }
 
+func (f *fakeAssetRepo) GetByStorageKey(ctx context.Context, key string) (*model.Asset, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	for _, a := range f.rows {
+		if a.StorageKey == key {
+			cp := *a
+			return &cp, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
 // fakeAssetStore 实现 storage.Storage，记录写入 / 删除，可注入各种失败。
 type fakeAssetStore struct {
 	objects   map[string][]byte
@@ -67,6 +81,7 @@ type fakeAssetStore struct {
 	putPartly bool // 写入部分内容后再失败，模拟对象已部分落地
 	openErr   error
 	urlErr    error
+	urlCalls  int // URL() 被调用的次数，用来验证签名结果被缓存
 	delErr    error
 	closers   []*fakeAssetBody
 }
@@ -108,6 +123,7 @@ func (f *fakeAssetStore) Open(ctx context.Context, key string) (io.ReadCloser, e
 }
 
 func (f *fakeAssetStore) URL(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	f.urlCalls++
 	if f.urlErr != nil {
 		return "", f.urlErr
 	}
@@ -142,9 +158,43 @@ func (r *errAssetReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+// fakeRegistry 实现 StoreRegistry：按 id 返回预置的存储句柄，可切换默认存储。
+type fakeRegistry struct {
+	defaultID uint64
+	handles   map[uint64]*storage.Handle
+	getErr    error
+}
+
+func newFakeRegistry(defaultID uint64, hs ...*storage.Handle) *fakeRegistry {
+	r := &fakeRegistry{defaultID: defaultID, handles: map[uint64]*storage.Handle{}}
+	for _, h := range hs {
+		r.handles[h.ID] = h
+	}
+	return r
+}
+
+func (f *fakeRegistry) Default(ctx context.Context) (*storage.Handle, error) {
+	return f.Get(ctx, f.defaultID)
+}
+
+func (f *fakeRegistry) Get(ctx context.Context, id uint64) (*storage.Handle, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	h, ok := f.handles[id]
+	if !ok {
+		return nil, storage.ErrStorageNotFound
+	}
+	return h, nil
+}
+
+func objectHandle(id uint64, st storage.Storage, ttl time.Duration) *storage.Handle {
+	return &storage.Handle{ID: id, Version: 1, Provider: storage.ProviderS3, Storage: st, SignedTTL: ttl}
+}
+
 func newAssetTestService(cfg config.Storage) (*AssetService, *fakeAssetRepo, *fakeAssetStore) {
 	repo, store := newFakeAssetRepo(), newFakeAssetStore()
-	svc := NewAssetService(repo, store, cfg)
+	svc := NewAssetService(repo, newFakeRegistry(1, objectHandle(1, store, cfg.SignedTTL)), cfg)
 	svc.SetNow(func() time.Time { return time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC) })
 	return svc, repo, store
 }
@@ -215,8 +265,11 @@ func TestAssetService_Upload(t *testing.T) {
 				if !bytes.Equal(store.objects[row.StorageKey], png) || store.types[row.StorageKey] != "image/png" {
 					t.Fatal("存储内容或类型不对")
 				}
-				if want := "https://cdn.test/" + row.StorageKey + "?ttl=30m0s"; v.URL != want {
-					t.Fatalf("URL 应使用 SignedTTL 生成：%q", v.URL)
+				if want := "/files/" + row.StorageKey; v.URL != want {
+					t.Fatalf("视图 URL 应是稳定地址 %q，实际 %q", want, v.URL)
+				}
+				if row.StorageID != 1 {
+					t.Fatalf("素材应记录写入的存储 id=1，实际 %d", row.StorageID)
 				}
 			},
 		},
@@ -277,11 +330,6 @@ func TestAssetService_Upload(t *testing.T) {
 		{
 			name: "入库失败要删除已写入的对象", fileName: "a.png", size: -1, body: bytes.NewReader(png),
 			mutate:   func(r *fakeAssetRepo, _ *fakeAssetStore) { r.createErr = errors.New("db down") },
-			wantCode: -1,
-		},
-		{
-			name: "生成 URL 失败要删除已写入的对象", fileName: "a.png", size: -1, body: bytes.NewReader(png),
-			mutate:   func(_ *fakeAssetRepo, s *fakeAssetStore) { s.urlErr = errors.New("sign failed") },
 			wantCode: -1,
 		},
 	}
@@ -398,7 +446,7 @@ func TestAssetService_MaxUpload(t *testing.T) {
 
 func TestAssetService_View(t *testing.T) {
 	seed := func(repo *fakeAssetRepo) {
-		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "video", StorageKey: "u1/202609/a.mp4", MimeType: "video/mp4", ByteSize: 9, Width: 16, Height: 9, DurationMs: 1234, FileName: "a.mp4"}
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "video", StorageID: 1, StorageKey: "u1/202609/a.mp4", MimeType: "video/mp4", ByteSize: 9, Width: 16, Height: 9, DurationMs: 1234, FileName: "a.mp4"}
 	}
 	tests := []struct {
 		name     string
@@ -411,7 +459,6 @@ func TestAssetService_View(t *testing.T) {
 		{"他人素材返回不存在", 2, 5, nil, errcode.ErrAssetNotFound.Code},
 		{"素材不存在", 1, 999, nil, errcode.ErrAssetNotFound.Code},
 		{"repo 未知错误透传", 1, 5, func(r *fakeAssetRepo, _ *fakeAssetStore) { r.getErr = errors.New("db down") }, -1},
-		{"生成 URL 失败", 1, 5, func(_ *fakeAssetRepo, s *fakeAssetStore) { s.urlErr = errors.New("sign failed") }, -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -426,7 +473,7 @@ func TestAssetService_View(t *testing.T) {
 				if err != nil {
 					t.Fatalf("期望成功：%v", err)
 				}
-				if v.ID != 5 || v.Kind != "video" || v.Width != 16 || v.DurationMs != 1234 || v.FileName != "a.mp4" || v.URL != "https://cdn.test/u1/202609/a.mp4?ttl=1h0m0s" {
+				if v.ID != 5 || v.Kind != "video" || v.Width != 16 || v.DurationMs != 1234 || v.FileName != "a.mp4" || v.URL != "/files/u1/202609/a.mp4" {
 					t.Fatalf("视图不对：%+v", v)
 				}
 			case -1:
@@ -446,7 +493,7 @@ func TestAssetService_View(t *testing.T) {
 func TestAssetService_GetOpen(t *testing.T) {
 	setup := func() (*AssetService, *fakeAssetRepo, *fakeAssetStore) {
 		svc, repo, store := newAssetTestService(config.Storage{SignedTTL: time.Hour})
-		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "image", StorageKey: "u1/202609/a.png", MimeType: "image/png"}
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "image", StorageID: 1, StorageKey: "u1/202609/a.png", MimeType: "image/png"}
 		store.objects["u1/202609/a.png"] = []byte("PNGDATA")
 		return svc, repo, store
 	}
@@ -597,10 +644,6 @@ func TestAssetService_SaveGenerated(t *testing.T) {
 			name: "入库失败", mutate: func(r *fakeAssetRepo, _ *fakeAssetStore) { r.createErr = errors.New("db down") },
 			wantErr: "db down",
 		},
-		{
-			name: "生成 URL 失败", mutate: func(_ *fakeAssetRepo, s *fakeAssetStore) { s.urlErr = errors.New("sign failed") },
-			wantErr: "sign failed",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -627,7 +670,7 @@ func TestAssetService_SaveGenerated(t *testing.T) {
 				if a.Source != model.AssetSourceGenerated || a.TaskID == nil || *a.TaskID != 42 || a.UserID != 3 {
 					t.Fatalf("入库行不对：%+v", a)
 				}
-				if !strings.HasPrefix(a.StorageKey, "g3/202609/") || url != "https://cdn.test/"+a.StorageKey+"?ttl=1h0m0s" {
+				if !strings.HasPrefix(a.StorageKey, "g3/202609/") || url != "/files/"+a.StorageKey {
 					t.Fatalf("key 或 URL 不对：%q %q", a.StorageKey, url)
 				}
 				if repo.rows[a.ID] == nil || len(store.objects) != 1 {

@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -37,9 +36,10 @@ type App struct {
 	rdb    *redis.Client
 	server *http.Server
 
-	hub        *ws.Hub        // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskWorker *worker.Worker // 生成任务调度；配置里关闭时为 nil
-	runnerStop func()         // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	hub        *ws.Hub               // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
+	taskWorker *worker.Worker        // 生成任务调度；配置里关闭时为 nil
+	runnerStop func()                // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	assets     *service.AssetService // 素材服务；后台定期用它清理过期未登记的直传对象
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -70,24 +70,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
 	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo)
 
-	// 素材存储：本地磁盘（仅开发）或 S3 兼容（含阿里云 OSS）
-	store, err := storage.New(cfg.Storage)
-	if err != nil {
-		closeRedis(rdb)
-		closeDB(db)
-		return nil, err
-	}
-	assetRepo := repository.NewAssetRepository(db)
-	assetSvc := service.NewAssetService(assetRepo, store, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
-	var localFiles gin.HandlerFunc
-	if ls, ok := store.(*storage.LocalStorage); ok {
-		localFiles = storage.FileServer(ls)
-	}
-
-	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
-	hub := ws.NewHub()
-	ticketStore := ws.NewTicketStore(rdb)
-
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
 	aiChannelRepo := repository.NewAIChannelRepository(db)
@@ -96,6 +78,26 @@ func NewApp(cfg *config.Config) (*App, error) {
 	if cfg.AI.SecretKey == "" {
 		logger.Warn("未配置 ai.secret_key（环境变量 APP_AI_SECRET_KEY），管理端无法设置或读取平台凭证，生成任务将无法提交")
 	}
+
+	// 素材存储：存储配置在数据库里（后台“存储配置”管理），密钥复用 AI 配置的加密存储（ai_secrets），
+	// 所以 AI 配置服务要先建。Registry 按 id 解析存储并缓存客户端；写入用默认存储，读取按素材记录的 storage_id。
+	storageRepo := repository.NewStorageConfigRepository(db)
+	storageSvc := service.NewStorageConfigService(storageRepo, aiCfgSvc, aiChannelRepo, nil, cfg.Storage)
+	if err := bootstrapStorage(db, storageSvc, cfg.Storage); err != nil {
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
+	storeRegistry := storage.NewRegistry(storageSvc, 30*time.Second)
+	storageSvc.SetInvalidator(storeRegistry)
+	assetRepo := repository.NewAssetRepository(db)
+	assetSvc := service.NewAssetService(assetRepo, storeRegistry, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
+	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
+
+	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
+	hub := ws.NewHub()
+	ticketStore := ws.NewTicketStore(rdb)
+
 	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
 	if err != nil {
 		closeRedis(rdb)
@@ -164,11 +166,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
-		LocalFiles:     localFiles,
+		Files:          handler.NewFilesHandler(assetSvc),
 		AIModel:        handler.NewAIModelHandler(aiCfgSvc),
 		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),
 		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
 		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc),
+		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
 		AdminRole:      roleLookup,
 	})
@@ -180,6 +183,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		hub:        hub,
 		taskWorker: taskWorker,
 		runnerStop: runnerStop,
+		assets:     assetSvc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -310,6 +314,18 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}()
 
+	// 过期未登记的直传对象清理：和 worker 一样先于关库停止
+	cleanCtx, cleanCancel := context.WithCancel(context.Background())
+	cleanDone := make(chan struct{})
+	go func() {
+		defer close(cleanDone)
+		a.cleanupUploads(cleanCtx)
+	}()
+	defer func() {
+		cleanCancel()
+		<-cleanDone
+	}()
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("http 服务已启动", zap.String("name", a.cfg.Server.Name), zap.String("addr", a.server.Addr))
@@ -340,6 +356,28 @@ func (a *App) Run(ctx context.Context) error {
 	return nil
 }
 
+// uploadCleanupInterval 是清理过期直传对象的间隔；意图有效期 15 分钟，每 5 分钟扫一次足够及时。
+const uploadCleanupInterval = 5 * time.Minute
+
+// cleanupUploads 周期性删除“申请了直传却一直没登记”的对象与意图，直到 ctx 取消。
+// 多实例同时跑也安全：删除不存在的对象与意图都不算错误。
+func (a *App) cleanupUploads(ctx context.Context) {
+	ticker := time.NewTicker(uploadCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if n, err := a.assets.CleanupUploads(ctx, 200); err != nil {
+				logger.Error("清理过期直传失败", zap.Error(err))
+			} else if n > 0 {
+				logger.Info("已清理过期未登记的直传对象", zap.Int("count", n))
+			}
+		}
+	}
+}
+
 func (a *App) close() {
 	if a.runnerStop != nil {
 		a.runnerStop()
@@ -366,4 +404,23 @@ func closeDB(db *gorm.DB) {
 	if err := sqlDB.Close(); err != nil {
 		logger.Warn("数据库关闭失败", zap.Error(err))
 	}
+}
+
+// bootstrapStorage 在启动时准备存储配置，必须在任何素材读写之前完成：
+//  1. 升级前用环境变量配置了 S3 的部署，先把它导入为后台存储，旧素材才能继续从对象存储读取；
+//  2. 确保内置的本地磁盘存储存在（全新部署的默认存储），并把还没记录存储的旧素材回填给它。
+//
+// 失败会让启动中止：没有默认存储，所有上传都会失败，不如启动时就报清楚。
+func bootstrapStorage(db *gorm.DB, svc *service.StorageConfigService, cfg config.Storage) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if cfg.Driver == "s3" {
+		if _, err := svc.ImportLegacyS3(ctx, cfg); err != nil {
+			return fmt.Errorf("导入旧版 S3 存储配置失败: %w", err)
+		}
+	}
+	if _, err := repository.EnsureBuiltinStorage(ctx, db); err != nil {
+		return err
+	}
+	return nil
 }

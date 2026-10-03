@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>存储配置设计 · 演示</title>
+<style>
+:root{
+  --paper:#F5F3EE; --card:#FFFFFF; --ink:#17191E; --ink2:#3A3E47; --muted:#737884;
+  --line:#DDD8CD; --line2:#ECE8DF; --chip:#ECE7DC;
+  --accent:#D9480F; --accent-soft:#FCE9DE;
+  --blue:#1C6FD1; --blue-soft:#E3EEFB; --green:#2B8A3E; --green-soft:#E3F3E6;
+  --red:#C92A2A; --red-soft:#FBE4E4; --violet:#6741D9; --violet-soft:#ECE6FB;
+  --slate:#5C6B7A; --slate-soft:#E8ECEF; --gray:#9098A1;
+  --code-bg:#1E2127; --code-ink:#E4E6EB;
+  --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC","Hiragino Sans GB",system-ui,sans-serif;
+  --mono:"JetBrains Mono","Cascadia Code","SF Mono",Consolas,"Microsoft YaHei",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#E4E1D9;overflow:hidden;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
+.stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center;transform:translate(-50%,-50%) scale(var(--s,1))}
+.slide{position:absolute;inset:0;background:var(--paper);padding:64px 96px 84px;display:none;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.12);overflow:hidden}
+.slide.active{display:flex}
+.chrome{position:absolute;left:96px;right:96px;bottom:30px;display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted);pointer-events:none;z-index:5}
+.chrome .pg{font-family:var(--mono);letter-spacing:.04em}
+.progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);transition:width .3s ease;z-index:6}
+
+/* 排版 */
+.kicker{display:flex;align-items:center;gap:12px;font-size:15px;letter-spacing:.12em;color:var(--accent);font-weight:600;margin-bottom:14px}
+.kicker .num{font-family:var(--mono);background:var(--accent);color:#fff;padding:2px 8px;border-radius:4px;letter-spacing:0}
+h1{font-size:92px;line-height:1.05;margin:0;font-weight:800;letter-spacing:-.01em}
+h2{font-size:44px;line-height:1.25;margin:0 0 28px;font-weight:750}
+h3{font-size:30px;margin:0 0 12px;font-weight:700}
+p{margin:0}
+.lead{font-size:26px;line-height:1.6;color:var(--ink2)}
+.muted{color:var(--muted)}
+.small{font-size:15px}
+code,.mono{font-family:var(--mono)}
+code{font-size:.86em;background:var(--chip);padding:1px 6px;border-radius:4px;white-space:nowrap}
+.hl{color:var(--accent);font-weight:700}
+.grow{flex:1;min-height:0}
+.row{display:flex;gap:28px}
+.col{display:flex;flex-direction:column;gap:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px 32px}
+.card p,.card li{font-size:23px;line-height:1.7;color:var(--ink2)}
+.card ul{margin:0;padding-left:22px}
+.card.accent{border-color:var(--accent)}
+.card .idx{font-family:var(--mono);font-size:16px;color:var(--accent);font-weight:700;margin-bottom:8px;display:block}
+
+.callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:20px 26px;border-radius:0 10px 10px 0;font-size:25px;line-height:1.6}
+.callout b{color:var(--accent)}
+
+.tbl{width:100%;border-collapse:collapse;font-size:24px;line-height:1.5}
+.tbl th{text-align:left;font-size:15px;color:var(--muted);font-weight:600;letter-spacing:.06em;padding:8px 14px;border-bottom:2px solid var(--ink)}
+.tbl td{padding:24px 14px;border-bottom:1px solid var(--line);vertical-align:middle;color:var(--ink2)}
+.tbl td.path{font-family:var(--mono);font-size:21px;color:var(--ink);white-space:nowrap}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:15px;padding:5px 12px;border-radius:999px;background:var(--chip);color:var(--ink2);white-space:nowrap}
+.pill{display:inline-block;font-family:var(--mono);font-size:15px;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:.02em}
+.m-get{background:var(--blue-soft);color:var(--blue)}
+.m-post{background:var(--green-soft);color:var(--green)}
+.m-patch{background:var(--violet-soft);color:var(--violet)}
+.m-del{background:var(--red-soft);color:var(--red)}
+.s-auto{background:var(--slate-soft);color:var(--slate)}
+.s-manual{background:var(--blue-soft);color:var(--blue)}
+.s-rollback{background:var(--accent-soft);color:var(--accent)}
+
+pre.code{margin:0;background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:17px;line-height:1.9;padding:22px 26px;border-radius:12px;white-space:pre;overflow:hidden}
+pre.code .c{color:#7F8794}.code .k{color:#FF9E64}.code .t{color:#82AAFF}.code .s{color:#A5D6A7}
+
+.frag{opacity:0;transform:translateY(6px);transition:opacity .35s ease,transform .35s ease}
+.frag.on{opacity:1;transform:none}
+
+/* 封面 */
+.cover{justify-content:center;padding-left:120px}
+.cover .scope{display:flex;align-items:center;gap:14px;margin-top:48px;font-size:22px}
+.cover .scope .node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 20px}
+.cover .scope .arr{color:var(--accent);font-size:26px}
+.cover .keys{position:absolute;left:120px;bottom:90px;font-size:15px;color:var(--muted)}
+.cover .deco{position:absolute;right:40px;top:150px;width:560px}
+kbd{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 7px;background:var(--card);color:var(--ink2)}
+
+/* 字段卡 */
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px 30px}
+.fcard h4{margin:0 0 4px;font-family:var(--mono);font-size:24px;color:var(--ink)}
+.fcard .tag{font-size:16px;color:var(--muted);margin-bottom:10px;display:block}
+.fcard.new{border-color:var(--accent)}
+.fcard.new h4{color:var(--accent)}
+.f{display:flex;gap:14px;font-size:20px;line-height:1.5;padding:9px 0;border-top:1px dashed var(--line2)}
+.f:first-of-type{border-top:0}
+.f b{font-family:var(--mono);font-weight:600;font-size:19px;color:var(--ink);white-space:nowrap;min-width:190px}
+.f span{color:var(--muted)}
+.f.key b{color:var(--accent)}
+
+/* 步骤 */
+.steps{display:flex;flex-direction:column;gap:22px;counter-reset:st}
+.step{display:flex;gap:18px;align-items:flex-start;font-size:25px;line-height:1.5;color:var(--ink2)}
+.step:before{counter-increment:st;content:counter(st);flex:none;width:38px;height:38px;border-radius:50%;background:var(--ink);color:#fff;font-family:var(--mono);font-size:18px;font-weight:700;display:grid;place-items:center;margin-top:0}
+.col.be .step:before{background:var(--accent)}
+.step code{font-size:.84em}
+.head{display:flex;align-items:center;gap:12px;font-size:28px;font-weight:700;margin-bottom:10px}
+.head .tag{font-size:15px;font-family:var(--mono);color:#fff;background:var(--ink);padding:2px 9px;border-radius:5px}
+.be .head .tag{background:var(--accent)}
+
+/* 回滚演示 */
+.sim{display:grid;grid-template-columns:1.25fr 1fr;gap:26px;flex:1;min-height:0}
+.vlist{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.vrow{display:grid;grid-template-columns:70px 130px 1fr 64px;align-items:center;gap:12px;padding:16px 16px;border-radius:9px;border:1.5px solid transparent;cursor:pointer;font-size:21px;color:var(--ink2);background:var(--paper)}
+.vrow:hover{border-color:var(--line)}
+.vrow.sel{border-color:var(--accent);background:var(--accent-soft)}
+.vrow .vn{font-family:var(--mono);font-weight:700;color:var(--ink)}
+.vrow .lb{font-size:18px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vrow .pin{font-size:15px;font-family:var(--mono);color:var(--accent);font-weight:700;text-align:right}
+.vrow.newrow{animation:flash 1.1s ease}
+@keyframes flash{from{background:#FFD8BF}to{background:var(--paper)}}
+.panel{display:flex;flex-direction:column;gap:14px}
+.snap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 24px}
+.snap .l{font-size:15px;color:var(--muted);letter-spacing:.06em}
+.snap .v{font-family:var(--mono);font-size:30px;font-weight:700;margin-top:4px}
+.snap .row2{display:flex;gap:22px}
+.btn{font-family:var(--sans);font-size:18px;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 18px;color:var(--ink2);cursor:pointer}
+.btn:hover{border-color:var(--ink2)}
+.btn.acc{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.simlog{font-size:19px;line-height:1.6;color:var(--ink2);min-height:92px}
+
+/* 冲突流 */
+.flow{display:flex;align-items:stretch;gap:0}
+.fnode{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 26px}
+.fnode .t{font-size:17px;color:var(--muted);letter-spacing:.06em}
+.fnode .b{font-family:var(--mono);font-size:30px;font-weight:700;margin-top:4px}
+.farr{flex:none;width:64px;display:grid;place-items:center;color:var(--accent);font-size:26px}
+
+/* 栈 */
+.stack{display:flex;flex-direction:column-reverse;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:560px;justify-content:flex-start}
+.stack .it{font-size:22px;padding:14px 16px;border-radius:7px;background:var(--paper);border:1px solid var(--line2)}
+.stack .it.top{background:var(--accent-soft);border-color:var(--accent);font-weight:600}
+.stack-h{font-family:var(--mono);font-size:20px;font-weight:700;margin-bottom:8px}
+
+/* 总览 */
+.overview{position:fixed;inset:0;background:#E4E1D9;overflow:auto;display:none;padding:28px;z-index:20}
+.overview.show{display:block}
+.overview .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:18px}
+.thumb{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:8px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.1);outline:3px solid transparent}
+.thumb.cur{outline-color:var(--accent)}
+.thumb .inner{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0}
+.thumb .inner .slide{display:flex;box-shadow:none}
+.thumb .inner .frag{opacity:1;transform:none}
+.thumb .n{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.65);color:#fff;padding:1px 6px;border-radius:4px}
+.nav{position:fixed;right:18px;top:14px;display:flex;gap:8px;z-index:10;opacity:.35;transition:opacity .2s}
+.nav:hover{opacity:1}
+.nav button{font-family:var(--mono);font-size:14px;border:1px solid #CFCAC0;background:#FAF9F6;border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--ink2)}
+
+@media print{
+  @page{size:1600px 900px;margin:0}
+  html,body{overflow:visible;height:auto;background:#fff}
+  .stage{position:static;transform:none;width:1600px;height:auto}
+  .slide{position:relative;display:flex!important;width:1600px;height:900px;page-break-after:always;box-shadow:none}
+  .frag{opacity:1!important;transform:none!important}
+  .chrome,.progress,.nav,.overview{display:none!important}
+}
+.vlist .vrow{cursor:default}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+<!-- 1 封面 -->
+<section class="slide cover">
+  <div class="kicker"><span class="num">DESIGN</span>video-canvas · 后台管理</div>
+  <h1>存储配置<br><span style="color:var(--accent)">接入对象存储</span></h1>
+  <p class="lead" style="margin-top:28px;max-width:1100px">阿里云 OSS · 腾讯云 COS · AWS S3 · Cloudflare R2 —— 在后台里配，不重启、不改 env、切换不丢素材。</p>
+  <div class="scope">
+    <span class="node">后台“存储配置”页</span><span class="muted">→</span>
+    <span class="node">多套存储 + 默认</span><span class="muted">→</span>
+    <span class="node">稳定地址 /files 302</span><span class="muted">→</span>
+    <span class="node">中转 / 直传</span>
+  </div>
+  <p class="small muted" style="margin-top:40px">2026-10-03 · 设计稿，未改代码 · 配套：存储配置设计.md / 存储配置原型.html</p>
+</section>
+
+<!-- 2 结论 -->
+<section class="slide">
+  <div class="kicker"><span class="num">01</span>先说结论</div>
+  <h2>问题不是“没有对象存储”，是另外四件事</h2>
+  <p class="lead" style="margin-bottom:26px">后端早就有 S3 兼容实现（minio-go），但它只能写在 YAML 里，而且存在四个会在生产上出事的缺口：</p>
+  <div class="grid2 grow">
+    <div class="card frag"><span class="idx">缺口 1 · 配不了</span><p>存储在启动时由 <code>storage.New(cfg)</code> 建一次，换存储 = 改 env + 重启。后台没有入口。</p></div>
+    <div class="card frag"><span class="idx">缺口 2 · 换不了</span><p><code>assets</code> 只记了 <code>storage_key</code>，没记<b>存在哪</b>。一切换，旧素材全部 404。</p></div>
+    <div class="card accent frag"><span class="idx">缺口 3 · 会过期</span><p>私有桶返回 1 小时签名 URL，前端把它写进画布 payload 的 <code>src</code>。<b class="hl">一小时后画布裂图。</b></p></div>
+    <div class="card frag"><span class="idx">缺口 4 · 兼容细节</span><p>OSS 只认虚拟主机寻址；COS 桶名带 APPID。现有配置都没体现。</p></div>
+  </div>
+</section>
+
+<!-- 3 现状链路 -->
+<section class="slide">
+  <div class="kicker"><span class="num">02</span>现状</div>
+  <h2>一份 YAML，一个单例，一个会过期的 src</h2>
+  <div class="flow" style="margin-top:10px">
+    <div class="fnode"><div class="t">config.yaml / env</div><div class="b">driver: s3</div><p class="small muted" style="margin-top:8px">AK/SK 只能走 APP_STORAGE_S3_*</p></div>
+    <div class="farr">→</div>
+    <div class="fnode"><div class="t">initialize/app.go</div><div class="b">storage.New()</div><p class="small muted" style="margin-top:8px">启动时一次，全进程单例</p></div>
+    <div class="farr">→</div>
+    <div class="fnode"><div class="t">AssetService</div><div class="b">store.URL()</div><p class="small muted" style="margin-top:8px">私有桶 → 1h 签名 URL</p></div>
+    <div class="farr">→</div>
+    <div class="fnode" style="border-color:var(--red)"><div class="t">画布 payload</div><div class="b" style="color:var(--red)">src = 签名URL</div><p class="small muted" style="margin-top:8px">持久化；无刷新逻辑</p></div>
+  </div>
+  <div class="grid3" style="margin-top:34px">
+    <div class="card"><span class="idx">可复用</span><p><code>Storage</code> 接口、<code>S3Storage</code>、key 校验、本地 <code>FileServer</code>（Range）</p></div>
+    <div class="card"><span class="idx">可复用</span><p><code>ai_secrets</code> AES-256-GCM 加密；渠道“Key 只写不读”的交互</p></div>
+    <div class="card"><span class="idx">可复用</span><p>渠道页的“检查连通性”结果组件、删除前 <code>delete-check</code> 模式</p></div>
+  </div>
+</section>
+
+<!-- 4 三家差异 -->
+<section class="slide">
+  <div class="kicker"><span class="num">03</span>调研 · 三家存储</div>
+  <h2>都兼容 S3，但差异就藏在细节里</h2>
+  <table class="tbl" style="font-size:20px">
+    <tr><th></th><th>阿里云 OSS</th><th>腾讯云 COS</th><th>AWS S3 / 兼容</th><th>Cloudflare R2</th></tr>
+    <tr><td><b>Endpoint</b></td><td class="path">oss-{region}.aliyuncs.com</td><td class="path">cos.{region}.myqcloud.com</td><td class="path">s3.{region}.amazonaws.com</td><td class="path" style="font-size:17px">{account}.r2.cloudflarestorage.com</td></tr>
+    <tr><td><b>寻址</b></td><td><span class="hl">只支持虚拟主机</span></td><td>虚拟主机</td><td>自动</td><td>path · region 固定 <code>auto</code></td></tr>
+    <tr><td><b>桶名</b></td><td>普通</td><td><span class="hl">带 APPID</span>：canvas-1250000000</td><td>普通</td><td>普通</td></tr>
+    <tr><td><b>签名</b></td><td>V4，<span class="hl">不支持 aws-chunked</span></td><td>V4</td><td>V4</td><td>V4</td></tr>
+    <tr><td><b>直传</b></td><td colspan="3">需配 CORS · POST Policy（可限大小）</td><td>需配 CORS · <span class="hl">不支持 POST Policy，只能预签名 PUT</span></td></tr>
+  </table>
+  <div class="callout" style="margin-top:28px">做法：差异收进<b>厂商预设</b>。管理员只填地域、桶名、密钥；OSS/COS 锁定虚拟主机寻址 + 强制 HTTPS；R2 只填 Account ID，直传方式自动换成预签名 PUT。</div>
+</section>
+
+<!-- 5 竞品 -->
+<section class="slide">
+  <div class="kicker"><span class="num">04</span>调研 · 别人怎么做</div>
+  <h2>数据模型学 Memos，配置交互学 Cloudreve</h2>
+  <div class="grid3 grow">
+    <div class="card"><h3>Cloudreve</h3><p>管理面板 → 存储策略 → 新增；按厂商分类型向导；<b>创建时可自动配置 CORS</b>；文档直说私有签名直链在 OSS/S3 上“不能长期有效”。</p><p class="small muted" style="margin-top:12px">取：厂商向导、能力差异表</p></div>
+    <div class="card accent"><h3>Memos 0.31</h3><p>命名配置 + 稳定 ID + <code>defaultStorageId</code>。<b>“A new default is not a storage migration”</b>——旧附件按自己的 storage ID 读。改用文件路由，不再直出预签名 URL。</p><p class="small muted" style="margin-top:12px">取：数据模型、稳定路由</p></div>
+    <div class="card"><h3>Mastodon / GitLab</h3><p>配置文件 + 环境变量，单套存储，改了要重启，迁移靠手动。</p><p class="small muted" style="margin-top:12px">反例：用户是运维，不是后台管理员</p></div>
+  </div>
+</section>
+
+<!-- 6 七个决定 -->
+<section class="slide">
+  <div class="kicker"><span class="num">05</span>已确认的决定</div>
+  <h2>七个决定</h2>
+  <table class="tbl" style="font-size:22px">
+    <tr><th>#</th><th>决定</th><th>换来了什么</th></tr>
+    <tr class="frag on"><td class="path">D1</td><td><b>多套命名存储 + 一个默认</b></td><td>切默认只影响新上传，旧素材原地可读</td></tr>
+    <tr class="frag"><td class="path">D2</td><td><b>稳定路由 /files/&lt;key&gt; + 302</b></td><td>payload 永不过期，前端零改动</td></tr>
+    <tr class="frag"><td class="path">D3</td><td><b>YAML 只留 local</b></td><td>对象存储唯一入口在后台</td></tr>
+    <tr class="frag"><td class="path">D4</td><td><b>中转 + 直传，按存储开关</b></td><td>中转兜底；大文件可绕开后端</td></tr>
+    <tr class="frag"><td class="path">D5</td><td><b>迁移放二期</b></td><td>MVP 收敛；被引用不可删</td></tr>
+    <tr class="frag"><td class="path">D6</td><td><b>继续用 minio-go</b></td><td>新增依赖 0</td></tr>
+    <tr class="frag"><td class="path">D7</td><td><b>定位字段锁定</b></td><td>防一次误改让全部旧素材 404</td></tr>
+  </table>
+</section>
+
+<!-- 7 数据模型 -->
+<section class="slide">
+  <div class="kicker"><span class="num">06</span>数据模型</div>
+  <h2>素材记住自己住在哪</h2>
+  <div class="row grow">
+    <pre class="code" style="flex:1.2"><span class="c">-- 新表</span>
+<span class="k">storage_configs</span> (
+  id, name,
+  provider     <span class="c">-- local | aliyun_oss | tencent_cos | s3</span>
+  builtin      <span class="c">-- 内置本地磁盘，来自 YAML，只读</span>
+  endpoint, region, bucket, path_prefix,
+  addressing   <span class="c">-- auto | virtual | path</span>
+  access_key_id, public_base_url, signed_ttl_sec,
+  direct_upload, <span class="t">is_default</span>,  <span class="c">-- 部分唯一索引</span>
+  last_check_*, <span class="t">version</span>       <span class="c">-- 乐观锁 + 缓存失效</span>
+)
+<span class="c">-- Secret → ai_secrets, name = "storage:&lt;id&gt;"</span>
+
+<span class="k">assets</span> ADD <span class="t">storage_id</span>        <span class="c">-- 迁移回填为内置本地</span>
+<span class="k">assets</span> ADD UNIQUE(<span class="t">storage_key</span>)  <span class="c">-- /files 反查</span></pre>
+    <div class="col" style="flex:1">
+      <div class="card"><span class="idx">写</span><p>上传 / 生成产物转存 → <code>Registry.Default()</code></p></div>
+      <div class="card"><span class="idx">读 · 签名 · 删</span><p>一律 → <code>Registry.Get(asset.storage_id)</code></p></div>
+      <div class="card"><span class="idx">多实例</span><p>客户端按 <code>(id, version)</code> 缓存；Redis 广播失效 + 30s 兜底</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 302 + 演示 -->
+<section class="slide">
+  <div class="kicker"><span class="num">07</span>素材访问</div>
+  <h2>payload 只存稳定地址，签名留到最后一刻</h2>
+  <div class="sim">
+    <pre class="code">GET <span class="s">/files/u12/202610/3f2a…e9.png</span>
+  ↓ storage_key → assets.storage_id
+  ├─ 内置本地   → ServeContent（Range、长缓存）
+  ├─ 公开 / CDN → <span class="k">302</span> {public_base_url}/{key}
+  └─ 私有桶     → <span class="k">302</span> 预签名 GET
+                  <span class="c">签名按 ttl/2 缓存，Location 稳定</span>
+                  <span class="c">→ 浏览器缓存可命中</span>
+
+<span class="c">给上游 AI 平台的 URL 不走 302，</span>
+<span class="c">直接给桶的签名 / 公开地址</span></pre>
+    <div class="panel">
+      <div class="snap">
+        <div class="l">方案</div>
+        <div class="row2" style="margin-top:8px">
+          <button class="btn" data-m="old">旧：src 存签名URL</button>
+          <button class="btn acc" data-m="new">新：src 存 /files</button>
+        </div>
+      </div>
+      <div class="snap">
+        <div class="l">打开画布的时间</div>
+        <div class="row2" style="margin-top:8px">
+          <button class="btn acc" data-t="0">刚上传</button>
+          <button class="btn" data-t="2">2 小时后</button>
+          <button class="btn" data-t="168">7 天后</button>
+        </div>
+      </div>
+      <div class="snap">
+        <div class="l">期间是否切换了默认存储</div>
+        <div class="row2" style="margin-top:8px">
+          <button class="btn acc" data-s="0">没有</button>
+          <button class="btn" data-s="1">本地 → OSS</button>
+        </div>
+      </div>
+      <div class="snap"><div class="l">结果</div><div class="v" id="simRes">✓ 正常显示</div><div class="simlog" id="simWhy" style="min-height:60px;margin-top:6px"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 上传 -->
+<section class="slide">
+  <div class="kicker"><span class="num">08</span>上传</div>
+  <h2>中转永远可用，直传按存储开启</h2>
+  <div class="row grow">
+    <div class="col" style="flex:1">
+      <div class="head"><span class="tag">PROXY</span>后端中转（现状保留）</div>
+      <div class="steps">
+        <div class="step">POST /assets，文件进后端</div>
+        <div class="step">落临时文件 → 内容嗅探 → 探测宽高、时长</div>
+        <div class="step">写入<b>默认存储</b>，插入行并记录 storage_id</div>
+      </div>
+      <div class="callout" style="margin-top:26px;font-size:21px">无需 CORS；直传失败时也会<b>自动降级</b>到这里。</div>
+    </div>
+    <div class="col be" style="flex:1.15">
+      <div class="head"><span class="tag">DIRECT</span>浏览器直传（存储勾选“允许直传”）</div>
+      <div class="steps">
+        <div class="step">POST /assets/upload-intents → 按服务商拿到 <b>POST Policy</b> 表单（S3/OSS/COS，桶侧限大小）或 <b>预签名 PUT</b>（R2，签入 Content-Length）</div>
+        <div class="step">浏览器直接上传到桶</div>
+        <div class="step">…/complete：后端 Stat 校验大小 + Range 读头部补做嗅探；不合法就删除对象</div>
+        <div class="step">过期未 complete 的意图由 worker 清理对象</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 后台页 -->
+<section class="slide">
+  <div class="kicker"><span class="num">09</span>后台页</div>
+  <h2>系统设置 → 存储配置</h2>
+  <div class="row grow">
+    <div class="col" style="flex:1">
+      <div class="card"><span class="idx">顶部</span><p>当前默认存储卡片：名称 · 服务商 · 桶 · 状态</p></div>
+      <div class="card"><span class="idx">列表</span><p>名称 / 服务商 / 桶·地域 / 访问方式 / 直传 / 素材数 / 连通状态</p></div>
+      <div class="card"><span class="idx">抽屉</span><p>选服务商 → 地域（推导 endpoint）→ 桶 → 密钥 → 访问方式 → 直传</p></div>
+    </div>
+    <div class="col" style="flex:1">
+      <div class="head">测试连接 · 分步给出结果</div>
+      <div class="vlist" style="gap:6px">
+        <div class="vrow" style="grid-template-columns:40px 1fr 90px"><span class="vn">①</span><span>鉴权</span><span class="pin" style="color:var(--green)">✓ 82ms</span></div>
+        <div class="vrow" style="grid-template-columns:40px 1fr 90px"><span class="vn">②</span><span>写入探针 _probe/…</span><span class="pin" style="color:var(--green)">✓</span></div>
+        <div class="vrow" style="grid-template-columns:40px 1fr 90px"><span class="vn">③</span><span>读取</span><span class="pin" style="color:var(--green)">✓</span></div>
+        <div class="vrow" style="grid-template-columns:40px 1fr 90px"><span class="vn">④</span><span>签名地址可访问</span><span class="pin" style="color:var(--green)">✓</span></div>
+        <div class="vrow" style="grid-template-columns:40px 1fr 90px"><span class="vn">⑤</span><span>删除探针</span><span class="pin" style="color:var(--green)">✓</span></div>
+        <div class="vrow sel" style="grid-template-columns:40px 1fr 90px"><span class="vn">⑥</span><span>浏览器直传（CORS）</span><span class="pin" style="color:var(--red)">✗</span></div>
+      </div>
+      <p class="small muted">错误会翻译成中文：AccessDenied → “密钥无权访问该桶”；NoSuchBucket → “桶不存在或地域不对”</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 规则 -->
+<section class="slide">
+  <div class="kicker"><span class="num">10</span>规则与异常</div>
+  <h2>会让旧素材失效的操作，从入口上就不提供</h2>
+  <div class="grid2 grow">
+    <div class="card"><span class="idx">编辑（D7）</span><p>有素材引用后，🔒 服务商 / endpoint / bucket / 前缀 / region 锁定；<br>可改：名称、密钥、公开域名、签名有效期、直传开关。<br>换桶 = 新建一套。</p></div>
+    <div class="card"><span class="idx">删除（D5）</span><p>只能删“非默认、非内置、素材数 = 0”的存储；否则说明原因（“被 1,284 个素材引用”）。</p></div>
+    <div class="card"><span class="idx">设为默认</span><p>二次确认并写明影响；最近一次测试未通过时禁止。</p></div>
+    <div class="card"><span class="idx">权限与安全</span><p>admin 只读，super_admin 可写；Secret 只写不读、不进日志；写操作记审计；<code>version</code> 乐观锁防并发覆盖。</p></div>
+  </div>
+</section>
+
+<!-- 12 接口 -->
+<section class="slide">
+  <div class="kicker"><span class="num">11</span>接口</div>
+  <h2>一组后台接口 + 两个用户侧接口</h2>
+  <div class="grid2" style="gap:14px 40px;font-size:21px">
+    <div><span class="pill m-get">GET</span> <code>/admin/storages</code> 列表</div>
+    <div><span class="pill m-post">POST</span> <code>/admin/storages/test</code> 测未保存的配置</div>
+    <div><span class="pill m-get">GET</span> <code>/admin/storages/presets</code> 厂商预设</div>
+    <div><span class="pill m-post">POST</span> <code>/admin/storages</code> 新建（自动测试）</div>
+    <div><span class="pill m-get">GET</span> <code>/admin/storages/:id</code> 详情</div>
+    <div><span class="pill m-patch">PUT</span> <code>/admin/storages/:id</code> 更新（锁定 409）</div>
+    <div><span class="pill m-patch">PUT</span> <code>/admin/storages/:id/secret</code> 换密钥</div>
+    <div><span class="pill m-post">POST</span> <code>/admin/storages/:id/check</code> 重测</div>
+    <div><span class="pill m-patch">PUT</span> <code>/admin/storages/default</code> 设默认</div>
+    <div><span class="pill m-del">DEL</span> <code>/admin/storages/:id</code> 删除（含 delete-check）</div>
+  </div>
+  <div class="callout" style="margin-top:34px">用户侧：<code>POST /assets/upload-intents</code> · <code>POST /assets/upload-intents/:id/complete</code> · <code>GET /files/*key</code> 改为始终注册</div>
+</section>
+
+<!-- 13 MVP -->
+<section class="slide">
+  <div class="kicker"><span class="num">12</span>范围</div>
+  <h2>MVP 验收 · 二期</h2>
+  <div class="row grow">
+    <div class="card accent" style="flex:1.3"><h3>MVP</h3><ul>
+      <li>从零配好并设为默认 ≤ 3 分钟，不重启</li>
+      <li>OSS / COS / S3 / R2 真桶分步测试通过</li>
+      <li>填错密钥 / 桶 / 地域时，停在正确步骤并给出中文原因</li>
+      <li>私有桶素材 7 天后仍能显示；视频可拖动</li>
+      <li>切换默认后历史画布零裂图</li>
+      <li>直传：超限被拒、伪造类型被删、CORS 失败自动降级</li>
+    </ul></div>
+    <div class="card" style="flex:1"><h3>二期</h3><ul>
+      <li>素材迁移任务 A → B（进度、续传、校验）</li>
+      <li>服务端走内网 endpoint</li>
+      <li>自动配置桶 CORS</li>
+      <li>视频尾部 Range 补探时长</li>
+      <li>总览页存储健康度</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 14 待确认 -->
+<section class="slide">
+  <div class="kicker"><span class="num">13</span>待确认</div>
+  <h2>还剩四个问题</h2>
+  <table class="tbl" style="font-size:22px">
+    <tr><th>#</th><th>问题</th><th>推荐</th></tr>
+    <tr><td class="path">Q1</td><td>已用 env 配 S3 的部署，升级时自动导入成一条后台存储？</td><td>是，否则存量素材 404</td></tr>
+    <tr><td class="path">Q2</td><td>测试不通过：禁止保存，还是可保存但不能设默认？</td><td>可保存，不能设默认</td></tr>
+    <tr><td class="path">Q3</td><td>/files 是否升级为带用户态的签名 token？</td><td>MVP 不做，和现状同级</td></tr>
+    <tr><td class="path">Q4</td><td>签名有效期默认 1 小时？</td><td>1 小时，长暂停续播需实测</td></tr>
+  </table>
+  <p class="small muted" style="margin-top:26px">需真桶实测：OSS 签名用的 region 写法 · POST Policy 在 OSS/COS 上的兼容性 · HTTPS 下 minio-go 不使用 aws-chunked · R2 预签名 PUT 对 Content-Length 的约束</p>
+</section>
+
+</div>
+
+<div class="chrome"><span>存储配置设计</span><span class="pg" id="pg">01 / 14</span></div>
+<div class="progress" id="progress"></div>
+<div class="nav"><button id="bPrev">←</button><button id="bOv">总览</button><button id="bNext">→</button></div>
+<div class="overview" id="overview"><div class="grid" id="ovGrid"></div></div>
+
+<script>
+(function(){
+  const stage = document.getElementById('stage');
+  const slides = [...stage.querySelectorAll('.slide')];
+  const pg = document.getElementById('pg'), bar = document.getElementById('progress');
+  const N = slides.length;
+  let cur = 0;
+
+  function fit(){ stage.style.setProperty('--s', Math.min(innerWidth/1600, innerHeight/900)); }
+  addEventListener('resize', fit); fit();
+
+  const frags = s => [...s.querySelectorAll('.frag')];
+  const pad = n => String(n).padStart(2,'0');
+  // 第一个 .frag.on 是默认可见项，不参与逐步显示
+  const baseOn = new WeakSet();
+  slides.forEach(s => frags(s).forEach(e => { if (e.classList.contains('on')) baseOn.add(e); }));
+  const steps = s => frags(s).filter(e => !baseOn.has(e));
+
+  function show(i, revealAll){
+    cur = Math.max(0, Math.min(N-1, i));
+    slides.forEach((s,k) => s.classList.toggle('active', k===cur));
+    steps(slides[cur]).forEach(e => e.classList.toggle('on', !!revealAll));
+    pg.textContent = pad(cur+1) + ' / ' + pad(N);
+    bar.style.width = ((cur+1)/N*100) + '%';
+    try { history.replaceState(null, '', '#' + (cur+1)); } catch(e){}
+  }
+  function next(){
+    const hidden = steps(slides[cur]).filter(e => !e.classList.contains('on'));
+    if (hidden.length) { hidden[0].classList.add('on'); return; }
+    if (cur < N-1) show(cur+1, false);
+  }
+  function prev(){
+    const on = steps(slides[cur]).filter(e => e.classList.contains('on'));
+    if (on.length) { on[on.length-1].classList.remove('on'); return; }
+    if (cur > 0) show(cur-1, true);
+  }
+
+  // 总览
+  const ov = document.getElementById('overview'), ovGrid = document.getElementById('ovGrid');
+  function buildOverview(){
+    ovGrid.innerHTML = '';
+    slides.forEach((s,k) => {
+      const t = document.createElement('div'); t.className = 'thumb' + (k===cur?' cur':'');
+      const inner = document.createElement('div'); inner.className = 'inner';
+      const c = s.cloneNode(true); c.classList.add('active');
+      c.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+      inner.appendChild(c); t.appendChild(inner);
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = pad(k+1); t.appendChild(n);
+      t.onclick = () => { toggleOverview(false); show(k, true); };
+      ovGrid.appendChild(t);
+    });
+    requestAnimationFrame(() => ovGrid.querySelectorAll('.thumb').forEach(t => {
+      t.querySelector('.inner').style.transform = 'scale(' + (t.clientWidth/1600) + ')';
+    }));
+  }
+  function toggleOverview(force){
+    const want = force === undefined ? !ov.classList.contains('show') : force;
+    if (want) buildOverview();
+    ov.classList.toggle('show', want);
+  }
+
+  addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input,textarea')) return;
+    const k = e.key;
+    if (ov.classList.contains('show')) { if (k==='Escape' || k==='o' || k==='O') toggleOverview(false); return; }
+    if (['ArrowRight','ArrowDown','PageDown','Enter'].includes(k) || (k===' ' && !(e.target.closest && e.target.closest('button')))) { e.preventDefault(); next(); }
+    else if (['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(k)) { e.preventDefault(); prev(); }
+    else if (k==='Home') show(0, false);
+    else if (k==='End') show(N-1, true);
+    else if (k==='o' || k==='O') toggleOverview(true);
+    else if (k==='f' || k==='F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
+    else if (k==='p' || k==='P') window.print();
+  });
+  document.getElementById('bNext').onclick = next;
+  document.getElementById('bPrev').onclick = prev;
+  document.getElementById('bOv').onclick = () => toggleOverview();
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, {passive:true});
+  addEventListener('touchend', e => { if (tx===null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) (dx < 0 ? next : prev)(); tx = null; });
+
+  const h = parseInt((location.hash||'').slice(1), 10);
+  show(isNaN(h) ? 0 : h-1, true);
+
+  // ---- 素材地址演示 ----
+  const $ = id => document.getElementById(id);
+  const st = { m: 'new', t: 0, s: 0 };
+  function pick(attr, val){
+    document.querySelectorAll('[data-' + attr + ']').forEach(b => b.classList.toggle('acc', b.dataset[attr] === String(val)));
+  }
+  function render(){
+    let ok = true, why = '';
+    if (st.m === 'old'){
+      if (st.t >= 2){ ok = false; why = 'payload 里存的是 1 小时签名 URL，打开时早已过期 → 403。'; }
+      else if (st.s){ ok = true; why = '签名还没过期，暂时能看；但旧方案没有记录 storage_id，签名过期后就再也找不回这份素材。'; }
+      else why = '刚签出来的 URL，还在 1 小时有效期内。';
+    } else {
+      why = 'src 是 /files/<key>：后端按 assets.storage_id 找到它所在的存储' +
+        (st.s ? '（仍是本地磁盘，切换默认不影响旧素材）' : '') +
+        '，' + (st.t >= 2 ? '现场重新签名' : '签名') + '后 302。';
+    }
+    $('simRes').textContent = ok ? '✓ 正常显示' : '✗ 裂图';
+    $('simRes').style.color = ok ? 'var(--green)' : 'var(--red)';
+    $('simWhy').textContent = why;
+  }
+  document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { st.m = b.dataset.m; pick('m', st.m); render(); });
+  document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { st.t = +b.dataset.t; pick('t', st.t); render(); });
+  document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { st.s = +b.dataset.s; pick('s', st.s); render(); });
+  render();
+})();
+</script>
+</body>
+</html>
