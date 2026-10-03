@@ -62,8 +62,17 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
-CMD=(docker compose -f "$COMPOSE_FILE" up)
-[ "$BUILD" = true ] && CMD+=(--build)
+
+if [ "$BUILD" = true ]; then
+  echo "==> 构建 video-canvas Docker 镜像"
+  docker compose -f "$COMPOSE_FILE" build
+fi
+
+# 构建会产生旧的悬空镜像；只清理未被标签引用的镜像，不影响运行中的服务。
+echo "==> 清理悬空 Docker 镜像"
+docker image prune --force
+
+CMD=(docker compose -f "$COMPOSE_FILE" up --remove-orphans)
 [ "$DETACH" = true ] && CMD+=(-d)
 
 echo "==> 启动 video-canvas Docker 开发环境"
