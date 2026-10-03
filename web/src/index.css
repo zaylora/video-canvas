@@ -300,6 +300,12 @@
   border: none;
 }
 
+/* 悬停引用条缩略图或提示词里的 chip 时，画布上的源节点虚线圈出来（设计稿 6.7） */
+.react-flow__node.ref-hl > * > * {
+  outline: 2px dashed var(--node-ring);
+  outline-offset: 4px;
+}
+
 /* 节点选中时：xyflow 给外层加的焦点框和阴影去掉，选中态由节点自己的描边表达 */
 .react-flow__node:focus-visible,
 .react-flow__node.selected {

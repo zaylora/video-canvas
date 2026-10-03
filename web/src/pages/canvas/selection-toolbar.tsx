@@ -6,6 +6,7 @@ import {
   useReactFlow,
   useStore,
   type ReactFlowState,
+  type XYPosition,
 } from "@xyflow/react";
 import { motion } from "motion/react";
 import {
@@ -33,10 +34,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DURATION, EASE_OUT } from "@/lib/motion";
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasNode, PendingGroup } from "@/types";
 import { arrangeNodes, type ArrangeMode } from "@/utils/canvas/arrange";
 
 import { MOD } from "./chrome/keys";
+import { SelectionFanHandle } from "./selection-fan-handle";
 import { duplicateSelection } from "./use-canvas-shortcuts";
 
 /** 选框比节点外沿多出的留白（画布单位），要包住卡片上方的标题行 */
@@ -72,8 +74,14 @@ const boundsKey = (state: ReactFlowState) => {
   return Number.isFinite(x0) ? [x0, y0, x1, y1].map(Math.round).join(",") : "";
 };
 
-/** 选区的淡色底框：跟着画布缩放，不吃指针 */
-function SelectionFrame() {
+/** 选区的淡色底框：跟着画布缩放，不吃指针；右侧挂着「引用选中节点生成」的把手 */
+function SelectionFrame({
+  ids,
+  onFanOut,
+}: {
+  ids: string[];
+  onFanOut: (screen: XYPosition, group: PendingGroup) => void;
+}) {
   const key = useStore(boundsKey);
   if (!key) return null;
   const [x0, y0, x1, y1] = key.split(",").map(Number);
@@ -89,6 +97,12 @@ function SelectionFrame() {
           width: x1 - x0 + FRAME_PADDING.x * 2,
           height: y1 - y0 + FRAME_PADDING.top + FRAME_PADDING.bottom,
         }}
+      />
+      <SelectionFanHandle
+        ids={ids}
+        x={x1 + FRAME_PADDING.x}
+        y={(y0 - FRAME_PADDING.top + y1 + FRAME_PADDING.bottom) / 2}
+        onFanOut={onFanOut}
       />
     </ViewportPortal>
   );
@@ -120,7 +134,12 @@ const ARRANGE_OPTIONS: { mode: ArrangeMode; label: string; icon: typeof Rows3 }[
  * 多选时的选区工具条（参考 neoWow）：浮在选区上方，不随缩放变化。
  * 节点数 | 整理布局 | 复制 | 下载 | 删除。
  */
-export function SelectionToolbar() {
+export function SelectionToolbar({
+  onFanOut,
+}: {
+  /** 从选框右侧的「+」拉出或点击：交给画布弹种类菜单，引用被选中的节点 */
+  onFanOut: (screen: XYPosition, group: PendingGroup) => void;
+}) {
   const key = useStore(selectedKey);
   const ids = key ? key.split(",") : [];
   const { getNodes, setNodes, setEdges, deleteElements, getEdges } = useReactFlow<
@@ -192,7 +211,7 @@ export function SelectionToolbar() {
 
   return (
     <>
-      <SelectionFrame />
+      <SelectionFrame ids={ids} onFanOut={onFanOut} />
       <NodeToolbar
         nodeId={ids}
         isVisible

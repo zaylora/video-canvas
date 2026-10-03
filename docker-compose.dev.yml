@@ -34,7 +34,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     working_dir: /app
-    command: ["air", "-c", ".air.toml"]
+    # 依赖缓存卷会跨容器保留，因此每次启动先按 go.mod/go.sum 同步模块。
+    command: ["sh", "-c", "go mod download && exec air -c .air.toml"]
     environment:
       APP_DATABASE_DSN: "host=postgres user=postgres password=root dbname=video_canvas port=5432 sslmode=disable TimeZone=Asia/Shanghai"
       APP_REDIS_ENABLED: "true"
@@ -66,7 +67,8 @@ services:
       context: ./web
       dockerfile: Dockerfile.dev
     working_dir: /app
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    # node_modules 是命名卷，启动时同步可确保新增依赖立即生效。
+    command: ["sh", "-c", "bun install --frozen-lockfile && exec npm run dev -- --host 0.0.0.0"]
     environment:
       VITE_PROXY_TARGET: "http://backend:8080"
       VITE_API_BASE_URL: "/api/v1"

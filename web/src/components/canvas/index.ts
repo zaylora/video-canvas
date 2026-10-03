@@ -16,7 +16,7 @@ export { VideoParamPanel, type AssetChoice } from "./video-param-panel";
 export { getNodeHit } from "./node-hit-test";
 export { NodeCard, type NodeCardHandle } from "./node-card";
 export { NodePromptInput, type NodeModelOption } from "./node-prompt-input";
-export { PendingConnectionLine } from "./pending-connection-line";
+export { PendingConnectionLine, PendingFanLines } from "./pending-connection-line";
 export {
   AudioPlaceholderIcon,
   ImagePlaceholderIcon,

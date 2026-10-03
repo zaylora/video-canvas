@@ -33,8 +33,18 @@ for %%A in (%*) do (
   if /I "%%A"=="--help" goto :help
 )
 
+if defined BUILD (
+  echo ==^> 构建 video-canvas Docker 镜像
+  docker compose -f "%COMPOSE_FILE%" build
+  if errorlevel 1 exit /b 1
+)
+
+echo ==^> 清理悬空 Docker 镜像
+docker image prune --force
+if errorlevel 1 exit /b 1
+
 echo ==^> 启动 video-canvas Docker 开发环境
-docker compose -f "%COMPOSE_FILE%" up %BUILD% %DETACH%
+docker compose -f "%COMPOSE_FILE%" up --remove-orphans %DETACH%
 if errorlevel 1 exit /b %errorlevel%
 
 if defined DETACH (

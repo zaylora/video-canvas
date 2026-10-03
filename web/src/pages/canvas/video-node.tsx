@@ -11,6 +11,7 @@ import {
 } from "@/components/canvas";
 import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
 import { OpTabs } from "@/components/canvas/op-tabs";
+import { RefStrip } from "@/components/canvas/ref-strip";
 import type { GenerationOp } from "@/api/model/type";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,7 @@ import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
-import { OP_LABEL, openParams, paramSummary } from "@/utils/tasks/capabilities";
+import { OP_LABEL, REF_KEYS, openParams, paramSummary } from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { NodeOverlays } from "./node-overlays";
@@ -90,7 +91,7 @@ export function NodeStatusLabel({
 }
 
 /**
- * 节点下方的生成面板（设计稿 6.4）：生成方式 Tabs、参考素材、提示词、
+ * 节点下方的生成面板（设计稿 6.4、6.7）：生成方式 Tabs、引用条、提示词（可 @ 素材）、
  * 底栏的模型 / 参数摘要 / 积分 + 发送。四种生成节点共用，kind 决定占位提示与图标。
  */
 export function TaskPromptPanel({
@@ -134,7 +135,7 @@ export function TaskPromptPanel({
   const params = openParams(vm.caps);
   const panelProps = vm.caps && {
     caps: vm.caps,
-    op: vm.op,
+    op: vm.refOp,
     params: vm.params,
     paramAssets: data.paramAssets,
     bindings: vm.bindings,
@@ -153,7 +154,6 @@ export function TaskPromptPanel({
         width={width}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
-        placeholder={meta?.placeholder}
         icon={Icon ? <Icon className="size-4" /> : undefined}
         models={vm.modelOptions}
         modelId={vm.modelKey ?? ""}
@@ -169,11 +169,15 @@ export function TaskPromptPanel({
         onSubmit={() => void vm.submit()}
         canSubmit={!vm.blockedReason}
         hint={vm.blockedReason ?? "开始生成"}
-        promptDisabled={!!vm.promptBinding}
-        promptNote={vm.promptBinding ? `由上游「${vm.promptBinding.sourceLabel}」提供` : undefined}
+        placeholder={
+          vm.promptBinding
+            ? `留空就用上游「${vm.promptBinding.sourceLabel}」的文字，输入 @ 引用素材`
+            : `${meta?.placeholder ?? "写下你想要的内容。"}输入 @ 引用画布里的素材。`
+        }
+        mention={vm.mention}
         notice={notice}
         header={
-          ops.length > 1 ? (
+          ops.length > 1 && !vm.autoOp ? (
             <OpTabs
               id={nodeId}
               value={vm.op}
@@ -206,7 +210,18 @@ export function TaskPromptPanel({
           )
         }
       >
-        {panelProps && vm.refKinds.length > 0 && <VideoParamPanel {...panelProps} section="refs" />}
+        <RefStrip
+          items={vm.refItems}
+          manual={vm.manualRefItems}
+          candidates={() => vm.mention.list().canvas}
+          onLink={(source) => vm.linkSource(source)}
+          onUnlink={vm.unlink}
+          uploadKinds={vm.uploadKinds}
+          onUpload={vm.addRef}
+          onRemoveManual={vm.removeRef}
+          errors={REF_KEYS.flatMap((ref) => (vm.errors[ref.key] ? [vm.errors[ref.key]] : []))}
+          disabled={locked}
+        />
       </NodePromptInput>
       <SwitchModelDialog vm={vm} />
     </>
@@ -229,7 +244,7 @@ function MediaTaskNode({
   selected?: boolean;
   kind: MediaTaskKind;
 }) {
-  const { getNode } = useReactFlow<CanvasNode>();
+  const { getNode, updateNodeData } = useReactFlow<CanvasNode>();
   const generation = useTaskGeneration(id, kind);
   const vm = useTaskNode(id, data, kind, generation);
   const meta = NODE_META.get(kind);
@@ -262,6 +277,7 @@ function MediaTaskNode({
     <>
       <NodeCard
         title={data.label}
+        onRename={(label) => updateNodeData(id, { label })}
         icon={KindIcon ? <KindIcon /> : undefined}
         status={<NodeStatusLabel view={vm.view} />}
         handles={vm.handles}

@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Handle, Position, type HandleProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { motion } from "motion/react";
 
 import { cn } from "@/lib/utils";
+import { NODE_LABEL_MAX, normalizeNodeLabel } from "@/utils/canvas/node-label";
 
 import { BaseNode } from "./base-node";
 import {
@@ -126,9 +127,61 @@ function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCard
   );
 }
 
+/**
+ * 节点标题：双击原地变输入框改名（设计稿 6.2），Enter / 失焦提交，Esc 取消。
+ * 名字也是提示词里 @ 素材时搜索、显示用的那个。不给 onRename 就只读。
+ */
+function NodeTitle({ title, onRename }: { title: string; onRename?: (label: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  if (draft !== null)
+    return (
+      <input
+        autoFocus
+        value={draft}
+        maxLength={NODE_LABEL_MAX * 2}
+        aria-label="节点名称"
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            setDraft(null);
+          }
+        }}
+        onBlur={() => {
+          const next = normalizeNodeLabel(draft, title);
+          setDraft(null);
+          if (next !== title) onRename?.(next);
+        }}
+        // 选字、拖光标不能把节点或画布拖走
+        className="nodrag nopan bg-background ring-node-ring/60 pointer-events-auto -mx-1 h-6 min-w-0 flex-1 rounded-md px-1 text-[13px] font-semibold ring-1 outline-none"
+      />
+    );
+
+  return (
+    <span
+      title={onRename ? "双击重命名" : undefined}
+      onDoubleClick={(event) => {
+        if (!onRename) return;
+        // 别让画布把这次双击当成「在空白处新建节点」
+        event.stopPropagation();
+        setDraft(title);
+      }}
+      className={cn("truncate", onRename && "pointer-events-auto cursor-text")}
+    >
+      {title}
+    </span>
+  );
+}
+
 type NodeCardProps = {
   /** 节点标题，摆在卡片上方，同时是无障碍名称 */
   title: string;
+  /** 双击标题改名后回调，参数已经规整过；不给就不能改名 */
+  onRename?: (label: string) => void;
   /** 标题左边的种类图标 */
   icon?: ReactNode;
   /** 标题行右侧的状态（生成中 42%、生成失败） */
@@ -148,6 +201,7 @@ type NodeCardProps = {
  */
 export function NodeCard({
   title,
+  onRename,
   icon,
   status,
   handles = DEFAULT_HANDLES,
@@ -168,7 +222,7 @@ export function NodeCard({
       <BaseNode aria-label={title} className={cn("group/node w-96", className)}>
         <div className="text-foreground pointer-events-none absolute right-0.5 bottom-full left-0.5 mb-2 flex items-center gap-2 text-[13px] font-semibold">
           {icon && <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>}
-          <span className="truncate">{title}</span>
+          <NodeTitle title={title} onRename={onRename} />
           {status && <span className="ml-auto shrink-0 text-xs font-medium">{status}</span>}
         </div>
         {children}

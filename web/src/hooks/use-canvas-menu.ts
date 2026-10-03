@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   addEdge,
   useReactFlow,
@@ -9,6 +10,7 @@ import {
 } from "@xyflow/react";
 
 import { getNodeHit } from "@/components/canvas";
+import { newNodeLabel, uploadLabel } from "@/utils/canvas/node-label";
 import {
   ANIMATED_EDGE_OPTIONS,
   NODE_LIBRARY,
@@ -24,9 +26,10 @@ import type {
   CanvasNodeData,
   MediaType,
   NodeKind,
+  PendingGroup,
   UploadNotice,
 } from "@/types";
-import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { canLinkFrom, partitionLinkable } from "@/utils/canvas/link-rule";
 import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
 import { uploadAsset } from "@/api/asset";
 
@@ -52,6 +55,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
   const uploadPlacement = useRef<CanvasMenuState | null>(null);
 
   const pending = menu?.connection ?? null;
+  const pendingGroup = menu?.group ?? null;
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -87,6 +91,13 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
       setEdges((eds) => addEdge({ ...edge, ...ANIMATED_EDGE_OPTIONS }, eds));
     },
     [setEdges],
+  );
+
+  /** 从多选区右侧拉出来松手：在松手处弹菜单，选完种类后每个接得上的节点各连一根线 */
+  const openGroupMenu = useCallback(
+    (screen: { x: number; y: number }, group: PendingGroup) =>
+      setMenu({ screen, flow: screenToFlowPosition(screen), connection: null, group }),
+    [screenToFlowPosition],
   );
 
   // 只有双击空白画布才弹菜单
@@ -177,7 +188,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
   const placeNode = useCallback(
     (kind: NodeKind, placement: CanvasMenuState, extra?: Partial<CanvasNodeData>) => {
       const meta = NODE_META.get(kind) ?? NODE_LIBRARY[0];
-      const { connection } = placement;
+      const { connection, group } = placement;
       const id = crypto.randomUUID();
       const node: CanvasNode = {
         id,
@@ -185,12 +196,22 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         position: placement.flow,
         data: {
           kind: meta.kind,
-          label: meta.label,
+          // 上传的用文件名，其余按种类名编号（「图片 2」），@ 素材时才分得清
+          label: newNodeLabel(
+            extra?.fileName ? uploadLabel(extra.fileName, meta.label) : meta.label,
+            getNodes().map((item) => item.data.label),
+          ),
           model: defaultModels?.[meta.kind],
           ...extra,
         },
-        // 拉线生成时让落点落在新节点自己的连接点上，线头才不会飘在半空
-        origin: connection ? (connection.handleType === "source" ? [0, 0.5] : [1, 0.5]) : [0, 0],
+        // 拉线生成时让落点落在新节点自己的连接点上，线头才不会飘在半空；从多选区拉出同理，接在新节点左侧
+        origin: group
+          ? [0, 0.5]
+          : connection
+            ? connection.handleType === "source"
+              ? [0, 0.5]
+              : [1, 0.5]
+            : [0, 0],
       };
 
       // 新节点直接选中：面板浮出来就能写提示词
@@ -208,9 +229,22 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         connectNodes(connection.nodeId, connection.handleId, connection.handleType, id);
       }
 
+      // 多选引用：接得上的各连一根线，接不上的跳过并告知，不静默丢
+      if (group) {
+        const sources = group.nodeIds.flatMap((nodeId) => {
+          const source = getNode(nodeId);
+          return source ? [{ id: nodeId, ...source.data }] : [];
+        });
+        const { linkable, skipped } = partitionLinkable(sources, node.data);
+        for (const source of linkable) connectNodes(source.id, null, "source", id);
+        if (skipped.length > 0) {
+          toast.info(`${skipped.length} 个节点接不到${meta.label}上，已跳过`);
+        }
+      }
+
       return { id, connected };
     },
-    [connectNodes, defaultModels, getNode, setNodes],
+    [connectNodes, defaultModels, getNode, getNodes, setNodes],
   );
 
   const addNode = useCallback(
@@ -381,6 +415,8 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
   return {
     menu,
     pending,
+    pendingGroup,
+    openGroupMenu,
     closeMenu,
     addNode,
     addNodeAt,

@@ -1,4 +1,5 @@
 import service from "@/utils/requests/service";
+import type { RequestExtraConfig } from "@/utils/requests/service";
 import type {
   CanvasDetailDto,
   CanvasGraphDto,
@@ -105,29 +106,43 @@ export const getCanvas = (id: string) =>
  * 更新画布信息
  * @param id 画布 ID
  * @param data 待更新的标题、图谱及当前 revision
+ * @param config 额外的请求配置，如 silent
  * @returns 更新后的画布详情
  */
-export const updateCanvas = (id: string, data: UpdateCanvasDto) =>
+export const updateCanvas = (id: string, data: UpdateCanvasDto, config?: RequestExtraConfig) =>
   service
-    .put<BackendCanvasProjectDto>(`/canvas/${id}`, {
-      revision: data.revision,
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.graph ? { payload_json: data.graph } : {}),
-    })
+    .put<BackendCanvasProjectDto>(
+      `/canvas/${id}`,
+      {
+        revision: data.revision,
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.graph ? { payload_json: data.graph } : {}),
+      },
+      config,
+    )
     .then(mapCanvasProject);
 
 /**
  * 保存画布图谱
  * @param id 画布 ID
  * @param data 图谱数据及基准版本
+ * @param config 额外的请求配置，如 silent、页面关闭时的 keepalive
  * @returns 保存后的版本号和更新时间
  */
-export const saveCanvasGraph = (id: string, data: SaveCanvasGraphDto) =>
+export const saveCanvasGraph = (
+  id: string,
+  data: SaveCanvasGraphDto,
+  config?: RequestExtraConfig,
+) =>
   service
-    .put<BackendCanvasProjectDto>(`/canvas/${id}`, {
-      revision: data.baseVersion,
-      payload_json: data.graph,
-    })
+    .put<BackendCanvasProjectDto>(
+      `/canvas/${id}`,
+      {
+        revision: data.baseVersion,
+        payload_json: data.graph,
+      },
+      config,
+    )
     .then((canvas): SaveCanvasGraphResponseDto => ({
       version: canvas.revision,
       updatedAt: canvas.updated_at,

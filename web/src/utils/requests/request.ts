@@ -4,6 +4,13 @@ import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "a
 import { getToken, removeToken } from "../storage/token";
 import { recordRequest, redactRequestBody, shouldLogRequest } from "./request-log";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /** 为 true 时失败不弹全局 toast，由调用方自己决定怎么提示（错误仍会照常抛出） */
+    silent?: boolean;
+  }
+}
+
 /** 后端统一响应结构 */
 export interface ApiResponse<T = unknown> {
   code: number;
@@ -51,10 +58,11 @@ const isApiResponse = (value: unknown): value is ApiResponse => {
 /**
  * 统一拒绝出口：先走全局错误提示，再把 ApiError 抛给调用方。
  * @param error 统一错误
+ * @param silent 请求带了 silent 时不弹 toast
  */
-const reject = (error: ApiError) => {
+const reject = (error: ApiError, silent = false) => {
   console.error(`[api] ${error.code}: ${error.message}`);
-  toast.error(error.message, { id: `api:${error.code}` });
+  if (!silent) toast.error(error.message, { id: `api:${error.code}` });
   return Promise.reject(error);
 };
 
@@ -122,6 +130,7 @@ instance.interceptors.response.use(
           response.status,
           response.data,
         ),
+        response.config.silent,
       );
     }
 
@@ -140,13 +149,14 @@ instance.interceptors.response.use(
       return reject(new ApiError("请求失败", "UNKNOWN_ERROR", 0));
     }
 
+    const silent = error.config?.silent;
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
-      return reject(new ApiError("请求超时", "TIMEOUT", 0));
+      return reject(new ApiError("请求超时", "TIMEOUT", 0), silent);
     }
 
     const response = error.response;
     if (!response) {
-      return reject(new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0));
+      return reject(new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0), silent);
     }
 
     if (response.status === 401) removeToken();
@@ -154,7 +164,7 @@ instance.interceptors.response.use(
     const body = isApiResponse(response.data) ? response.data : undefined;
     const code: ApiErrorCode = body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
 
-    return reject(new ApiError(body?.msg || "请求失败", code, response.status, body));
+    return reject(new ApiError(body?.msg || "请求失败", code, response.status, body), silent);
   },
 );
 

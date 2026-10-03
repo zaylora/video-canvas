@@ -1,5 +1,7 @@
 import type { CanvasEdge, CanvasNode } from "@/types";
 
+import { copyLabels } from "./node-label";
+
 /** 节点还没被 xyflow 测量过时按这个尺寸估算，避免副本叠在一起 */
 const FALLBACK_SIZE = { width: 280, height: 220 };
 /** 副本之间、副本与已有节点之间至少留的空隙 */
@@ -18,23 +20,6 @@ const overlaps = (a: Rect, b: Rect) =>
   a.y < b.y + b.height + GAP &&
   b.y < a.y + a.height + GAP;
 
-/** 去掉标题末尾的编号：「视频节点 3」→「视频节点」 */
-const baseLabel = (label: string) => label.replace(/\s+\d+$/, "");
-
-/** 同一底名下下一个空着的编号，从 2 开始（原节点算 1） */
-function nextLabels(label: string, nodes: CanvasNode[], count: number) {
-  const base = baseLabel(label);
-  const used = new Set(
-    nodes
-      .map((node) => node.data.label)
-      .filter((item) => baseLabel(item) === base)
-      .map((item) => Number(/\s(\d+)$/.exec(item)?.[1] ?? 1)),
-  );
-  const out: string[] = [];
-  for (let n = 2; out.length < count; n++) if (!used.has(n)) out.push(`${base} ${n}`);
-  return out;
-}
-
 /**
  * 像「复制节点」一样复制出 count 个副本：
  * 复制提示词、模型、参数、手动选的参考素材（prompt / model / params / paramAssets），
@@ -52,7 +37,11 @@ export function duplicateNode(
 ): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const size = sizeOf(source);
   const taken: Rect[] = nodes.map((node) => ({ ...node.position, ...sizeOf(node) }));
-  const labels = nextLabels(source.data.label, nodes, count);
+  const labels = copyLabels(
+    source.data.label,
+    nodes.map((node) => node.data.label),
+    count,
+  );
   const incoming = edges.filter((edge) => edge.target === source.id);
   const outNodes: CanvasNode[] = [];
   const outEdges: CanvasEdge[] = [];

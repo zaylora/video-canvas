@@ -43,14 +43,14 @@ describe("duplicateNode", () => {
     const copy = out.nodes[0];
     expect(copy.data).toEqual({
       kind: "video",
-      label: "视频节点 2",
+      label: "视频节点 副本一",
       model: "m1",
       prompt: "猫",
       params: { prompt: "猫", duration: 8, images: ["7"] },
       paramAssets: { "7": { url: "u" } },
     });
     expect(copy.selected).toBe(true);
-    expect(out.nodes[1].data.label).toBe("视频节点 3");
+    expect(out.nodes[1].data.label).toBe("视频节点 副本二");
     // 每个副本各复制一份进来的连线（2 根），出去的那根不复制
     expect(out.edges).toHaveLength(4);
     expect(
@@ -64,18 +64,21 @@ describe("duplicateNode", () => {
     expect(source.data.params?.images).toEqual(["7"]);
   });
 
-  test("编号跳过已占用的，副本不和已有节点重叠", () => {
-    const blocker = node("b", "视频节点 2", 240, 0);
+  test("只复制一份叫「副本」，已被占用就往后编号；副本不和已有节点重叠", () => {
+    expect(duplicateNode(source, [source], [], 1, ids()).nodes[0].data.label).toBe("视频节点 副本");
+    const blocker = node("b", "视频节点 副本", 240, 0);
     const out = duplicateNode(source, [source, blocker], [], 1, ids());
-    expect(out.nodes[0].data.label).toBe("视频节点 3");
+    expect(out.nodes[0].data.label).toBe("视频节点 副本二");
     const p = out.nodes[0].position;
     const hit =
       p.x < 240 + 200 + 40 && 240 < p.x + 200 + 40 && p.y < 100 + 40 && 0 < p.y + 100 + 40;
     expect(hit).toBe(false);
   });
 
-  test("原节点标题本身带编号时按同一底名续编", () => {
-    const out = duplicateNode(node("s", "图片节点 5"), [node("s", "图片节点 5")], [], 2, ids());
-    expect(out.nodes.map((n) => n.data.label)).toEqual(["图片节点 2", "图片节点 3"]);
+  test("复制副本时不叠「副本 副本」，按原名续编", () => {
+    const original = node("o", "图片节点 5");
+    const copy = node("s", "图片节点 5 副本");
+    const out = duplicateNode(copy, [original, copy], [], 2, ids());
+    expect(out.nodes.map((n) => n.data.label)).toEqual(["图片节点 5 副本一", "图片节点 5 副本二"]);
   });
 });

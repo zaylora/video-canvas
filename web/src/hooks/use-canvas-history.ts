@@ -25,6 +25,7 @@ const keyed = (nodes: CanvasNode[], edges: CanvasEdge[]): Keyed => {
  * - 改标题、提示词、参数：停手 800ms 才算一步，连续打字不会一个字一步
  * - 任务回填（状态、产物）不算一步，撤销时也不倒回去，见 restoreNodes
  * - 切历史版本这类只改 activeOutputId 的操作，调用方先 record() 再改
+ * - 提示词里 @ 素材顺手连的线，调用方先 absorbTyping()，和正在攒的打字算同一步
  * 409 冲突时画布整张重挂，撤销栈随之清空。
  */
 export function useCanvasHistory({
@@ -44,6 +45,7 @@ export function useCanvasHistory({
   const typingBase = useRef<HistorySnapshot | null>(null);
   const typingTimer = useRef<number | null>(null);
   const restoring = useRef(false);
+  const absorbNext = useRef(false);
   const [depth, setDepth] = useState({ past: 0, future: 0, typing: false });
 
   const sync = useCallback(
@@ -68,6 +70,7 @@ export function useCanvasHistory({
 
   /** 把攒着的打字那一步落进栈里 */
   const settleTyping = useCallback(() => {
+    absorbNext.current = false;
     if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
     typingTimer.current = null;
     if (typingBase.current) push(typingBase.current);
@@ -85,8 +88,11 @@ export function useCanvasHistory({
     }
     if (nodes.some((node) => node.dragging)) return;
     if (current.structure !== previous.structure) {
+      // 被打过招呼的这次连线并进攒着的打字：撤销一次回到开始打字之前，而不是停在打了一半的 @ 上
+      const base = absorbNext.current ? typingBase.current : null;
+      if (base) typingBase.current = null;
       settleTyping();
-      push(previous);
+      push(base ?? previous);
     } else if (current.content !== previous.content) {
       if (!typingBase.current) {
         typingBase.current = previous;
@@ -144,10 +150,16 @@ export function useCanvasHistory({
     if (latest.current) push(latest.current);
   }, [push, settleTyping]);
 
+  /** 紧接着的那次结构改动（比如 @ 素材时自动连的线）和正在攒的打字合成一步 */
+  const absorbTyping = useCallback(() => {
+    absorbNext.current = true;
+  }, []);
+
   return {
     undo,
     redo,
     record,
+    absorbTyping,
     canUndo: depth.past > 0 || depth.typing,
     canRedo: depth.future > 0,
   };
