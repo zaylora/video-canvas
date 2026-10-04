@@ -225,6 +225,8 @@ export function VideoFacade({ src, durationMs, active = true }: VideoFacadeProps
   const reduce = useReducedMotion();
   const [phase, setPhase] = useState<FacadePhase>("idle");
   const [frameReady, setFrameReady] = useState(false);
+  /** 封面是否已就绪（加载完或确定没有封面）；播放钮和时长角标等它一起淡入 */
+  const [posterSettled, setPosterSettled] = useState(false);
   /** 每次点播放换一个，旧 video 还在淡出时不会被新一轮播放复用 */
   const [session, setSession] = useState(0);
   const startedAt = useRef(0);
@@ -271,7 +273,7 @@ export function VideoFacade({ src, durationMs, active = true }: VideoFacadeProps
 
   return (
     <div className="relative size-full">
-      <VideoPoster src={src} className="object-contain" />
+      <VideoPoster src={src} className="object-contain" onSettledChange={setPosterSettled} />
       <AnimatePresence>
         {phase !== "idle" && (
           <FacadeVideo
@@ -296,7 +298,10 @@ export function VideoFacade({ src, durationMs, active = true }: VideoFacadeProps
         aria-label="播放视频"
         disabled={phase !== "idle"}
         initial={false}
-        animate={{ opacity: playing ? 0 : 1, scale: playing && !reduce ? 0.9 : 1 }}
+        animate={{
+          opacity: playing || !posterSettled ? 0 : 1,
+          scale: playing && !reduce ? 0.9 : 1,
+        }}
         whileHover={phase === "idle" && !reduce ? { scale: 1.06 } : undefined}
         whileTap={phase === "idle" ? TAP : undefined}
         transition={transition}
@@ -365,7 +370,7 @@ export function VideoFacade({ src, durationMs, active = true }: VideoFacadeProps
         <motion.span
           className="pointer-events-none absolute right-2 bottom-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] leading-4 text-white tabular-nums"
           initial={false}
-          animate={{ opacity: playing ? 0 : 1 }}
+          animate={{ opacity: playing || !posterSettled ? 0 : 1 }}
           transition={transition}
         >
           {duration}

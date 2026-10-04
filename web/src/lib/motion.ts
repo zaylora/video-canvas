@@ -26,3 +26,6 @@ export const TAP = { scale: 0.96 } as const;
 /** 列表卡片依次入场的间隔（秒），超过 STAGGER_MAX 张后不再往后错开，免得长列表等太久 */
 export const STAGGER = 0.03;
 export const STAGGER_MAX = 6;
+
+/** 节点内容加载占位要等这么久才出现：缓存命中等很快返回的场景不该闪一块灰 */
+export const SKELETON_DELAY = 0.15;
