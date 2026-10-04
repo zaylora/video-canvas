@@ -15,7 +15,6 @@
 - `backend/docs/standards/`：后端架构、日志、复用、测试和工程化规范。
 - `web/docs/coding-standards.md`：前端注释、API、类型、错误处理和组件约定。
 - `.agents/skills/ui-design/SKILL.md`：前端界面设计和交互改动流程。
-- `.agents/skills/tdd-development/SKILL.md`：测试驱动开发流程；`.claude/skills/tdd-development/SKILL.md` 是同内容副本。
 
 ## 工作方式
 

@@ -93,6 +93,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	assetRepo := repository.NewAssetRepository(db)
 	assetSvc := service.NewAssetService(assetRepo, storeRegistry, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
 	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
+	// 图片处理服务：给素材所在存储配置的云厂商缩略图 / 视频封面；素材服务通过它解析 /files?v=thumb|poster
+	processorSvc := service.NewImageProcessorService(repository.NewImageProcessorRepository(db), storageRepo, storeRegistry, service.NewHTTPProcessorFetcher())
+	assetSvc.SetVariantResolver(processorSvc)
 
 	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
 	hub := ws.NewHub()
@@ -172,6 +175,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
 		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc),
 		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
+		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
 		AdminRole:      roleLookup,
 	})

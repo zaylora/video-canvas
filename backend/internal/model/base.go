@@ -32,5 +32,7 @@ func All() []any {
 		&AIConfigRevision{},
 		&AISecret{},
 		&AIAuditLog{},
+		&ImageProcessor{},
+		&ImageProcessorVersion{},
 	}
 }

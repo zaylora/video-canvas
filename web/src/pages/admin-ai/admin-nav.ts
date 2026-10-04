@@ -1,6 +1,7 @@
 import {
   Boxes,
   HardDrive,
+  ImageDown,
   LayoutDashboard,
   Puzzle,
   RadioTower,
@@ -28,7 +29,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
   },
   {
     label: "系统设置",
-    items: [{ to: "settings/storage", label: "存储配置", icon: HardDrive }],
+    items: [
+      { to: "settings/storage", label: "存储配置", icon: HardDrive },
+      { to: "settings/image-processor", label: "图片处理服务管理", icon: ImageDown },
+    ],
   },
 ];
 

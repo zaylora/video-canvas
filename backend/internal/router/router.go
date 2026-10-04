@@ -16,17 +16,18 @@ type Handlers struct {
 	CanvasProject *handler.CanvasProjectHandler
 
 	// 长任务生成相关
-	GenerationTask *handler.GenerationTaskHandler // 任务提交 / 对账 / 取消 / 积分 / webhook
-	WS             *handler.WSHandler             // 用户级 WebSocket 推送
-	Asset          *handler.AssetHandler          // 素材上传与查询
-	Files          gin.HandlerFunc                // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
-	AIModel        *handler.AIModelHandler        // 面向画布的模型清单
-	AdminAI        *handler.AdminAIHandler        // AI 模型配置管理
-	AdminPlugin    *handler.AdminPluginHandler    // 协议插件管理
-	AdminChannel   *handler.AdminChannelHandler   // 渠道管理
-	AdminStorage   *handler.AdminStorageHandler   // 存储配置管理
-	AdminMe        *handler.AdminMeHandler        // 当前管理员身份
-	AdminRole      middleware.RoleLookup          // 管理接口的角色查询
+	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
+	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
+	Asset          *handler.AssetHandler               // 素材上传与查询
+	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
+	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
+	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
+	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
+	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
+	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
+	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
+	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
+	AdminRole      middleware.RoleLookup               // 管理接口的角色查询
 }
 
 func New(mode, jwtSecret string, h Handlers) *gin.Engine {
@@ -141,6 +142,19 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		storages.POST("/:id/check", superOnly, h.AdminStorage.Check)
 		storages.GET("/:id/delete-check", superOnly, h.AdminStorage.DeleteCheck)
 		storages.DELETE("/:id", superOnly, h.AdminStorage.Delete)
+
+		// 图片处理服务（给素材所在存储配置缩略图 / 视频封面的处理服务）：读 = admin 或 super_admin；写 = 仅 super_admin。
+		processors := auth.Group("/admin/image-processors", middleware.RequireAdmin(h.AdminRole))
+		processors.GET("", h.AdminImageProc.List)
+		processors.GET("/presets", h.AdminImageProc.Presets)
+		processors.POST("", superOnly, h.AdminImageProc.Create)
+		processors.GET("/:id", h.AdminImageProc.Get)
+		processors.PUT("/:id", superOnly, h.AdminImageProc.Update)
+		processors.POST("/:id/check", superOnly, h.AdminImageProc.Check)
+		processors.POST("/:id/publish", superOnly, h.AdminImageProc.Publish)
+		processors.POST("/:id/rollback", superOnly, h.AdminImageProc.Rollback)
+		processors.POST("/:id/disable", superOnly, h.AdminImageProc.Disable)
+		processors.DELETE("/:id", superOnly, h.AdminImageProc.Delete)
 
 		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权
 		// users := v1.Group("/users")

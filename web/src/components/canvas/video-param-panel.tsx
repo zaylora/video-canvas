@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ParamAsset } from "@/types";
+import { MediaPreview, VideoPoster } from "./media-preview";
 import {
   effectiveValue,
   manualRefs,
@@ -406,10 +407,14 @@ function RefCard({
             className="bg-muted/50 flex items-center gap-2 rounded-lg border p-1.5"
           >
             {asset?.url && kind === "image" && (
-              <img src={asset.url} alt="" className="size-9 rounded object-cover" />
+              <span className="size-9 shrink-0 overflow-hidden rounded">
+                <MediaPreview src={asset.url} mode="thumb" fit="cover" />
+              </span>
             )}
             {asset?.url && kind === "video" && (
-              <video src={asset.url} muted className="size-9 rounded object-cover" />
+              <span className="size-9 shrink-0 overflow-hidden rounded">
+                <VideoPoster src={asset.url} iconClassName="size-4" />
+              </span>
             )}
             <span className="min-w-0 flex-1 truncate text-xs">
               {asset?.fileName ?? `素材 #${assetId}`}

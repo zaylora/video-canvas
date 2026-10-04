@@ -110,3 +110,17 @@ var (
 	ErrUploadSizeMismatch     = New(51022, "上传的文件大小与申请不一致", http.StatusBadRequest)
 	ErrUploadDirectDisabled   = New(51023, "当前存储未开启浏览器直传", http.StatusConflict)
 )
+
+// 图片处理服务 52xxx
+var (
+	ErrProcessorNotFound        = New(52001, "图片处理服务不存在", http.StatusNotFound)
+	ErrProcessorNameDup         = New(52002, "图片处理服务名称已存在", http.StatusConflict)
+	ErrProcessorInvalid         = New(52003, "图片处理服务配置不合法", http.StatusBadRequest) // 具体原因写进 Msg
+	ErrProcessorVersionConflict = New(52004, "图片处理服务已被其他人修改，请刷新后重试", http.StatusConflict)
+	ErrProcessorStorageMismatch = New(52005, "处理服务厂商与存储不匹配", http.StatusBadRequest) // 具体原因写进 Msg
+	ErrProcessorStorageBound    = New(52006, "该存储已被另一个已发布的图片处理服务绑定", http.StatusConflict)
+	ErrProcessorNotChecked      = New(52007, "当前草稿还没有通过校验与试跑，不能发布", http.StatusConflict)
+	ErrProcessorPublished       = New(52008, "已发布的图片处理服务不能删除，请先停用", http.StatusConflict)
+	ErrProcessorNoPrevious      = New(52009, "没有可回滚的版本", http.StatusConflict)
+	ErrProcessorNotPublished    = New(52010, "图片处理服务不是已发布状态", http.StatusConflict)
+)

@@ -68,6 +68,7 @@ make run
 | POST | /api/v1/assets/upload-intents/:id/complete | 直传完成后登记素材：后端复核大小、按内容嗅探类型，不合法的对象会被删除；重复提交幂等 |
 | GET | /api/v1/assets/:id | 素材信息（`url` 是稳定地址 `/files/<key>`，不会过期） |
 | GET | /files/* | 素材稳定地址，不鉴权（靠 key 不可猜测）：素材在本地存储则直接返回文件（支持 Range），在对象存储则现签名并 302 跳转 |
+| GET | /files/*?v=thumb\|poster | 素材缩略图 / 视频封面：素材所在存储有已发布的图片处理服务时 302 到厂商的处理地址；没有时缩略图回退原图、封面 404；种类不匹配（图片请求 poster、视频请求 thumb、音频）404 |
 
 ### AI 管理接口（admin / super_admin）
 
@@ -107,6 +108,15 @@ make run
 | PUT | /api/v1/admin/storages/default | super_admin | 设为默认存储（最近测试未通过 409 / 51010）；只影响新素材 |
 | GET | /api/v1/admin/storages/:id/delete-check | super_admin | 删除预检：素材数、进行中的上传数、能否删除及原因 |
 | DELETE | /api/v1/admin/storages/:id | super_admin | 删除存储与它的密钥；内置 / 默认 / 仍被素材引用 409 |
+| GET | /api/v1/admin/image-processors[/:id] | admin | 图片处理服务列表 / 详情（绑定的存储、工作配置与线上配置、`has_draft`、可回滚版本、最近一次校验与试跑） |
+| GET | /api/v1/admin/image-processors/presets | admin | 厂商预设：Cloudflare R2 / 腾讯云数据万象 / 阿里云 OSS，允许绑定的存储、可选格式、是否支持视频封面、默认配置 |
+| POST | /api/v1/admin/image-processors | super_admin | 新建草稿；厂商与存储不匹配 400 / 52005（腾讯云只能绑 COS、阿里云只能绑 OSS、Cloudflare 只能绑有公开域名的 R2） |
+| PUT | /api/v1/admin/image-processors/:id | super_admin | 保存草稿（整份，带 `version` 乐观锁，冲突 409 / 52004）；已发布的线上配置不受影响 |
+| POST | /api/v1/admin/image-processors/:id/check | super_admin | 校验与试跑（绑定关系、域名、签名、用该存储里真实素材各取一次缩略图 / 封面），结果写入 `check`；未通过也返回 200 |
+| POST | /api/v1/admin/image-processors/:id/publish | super_admin | 发布草稿（body `{version}`）：要求针对这一版草稿的校验没有 fail，否则 409 / 52007；同存储旧的已发布服务自动停用 |
+| POST | /api/v1/admin/image-processors/:id/rollback | super_admin | 回滚到上一个已发布版本，没有 409 / 52009 |
+| POST | /api/v1/admin/image-processors/:id/disable | super_admin | 停用：该存储回退原图 / 占位 |
+| DELETE | /api/v1/admin/image-processors/:id | super_admin | 删除草稿或已停用的；已发布的 409 / 52008 |
 | GET/POST | /api/v1/admin/ai/models | admin | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦） |
 | GET/PUT | /api/v1/admin/ai/models/:key | admin | 详情（草稿 + 已发布） / 更新草稿 |
 | POST | /api/v1/admin/ai/models/:key/validate | admin | 校验（错误精确到 JSON 路径） |
