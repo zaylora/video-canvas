@@ -284,6 +284,32 @@ func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (
 	return taskView(updated), nil
 }
 
+// CancelActiveByUser 取消用户全部进行中的正式任务并退还冻结（后台封禁并取消任务用）。
+// 每个任务复用 Cancel 的完整流程（状态迁移 + 结算 / 退款流水 + 退还冻结在同一事务里、通知上游取消、推送），不另写积分逻辑。
+// 单个任务失败不影响其他任务：失败的 id 放进结果，已成功的不回滚；只有查询进行中任务失败才返回 error。
+func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID uint64) (*CancelActiveResult, error) {
+	// 1. 取该用户全部非终态的正式任务（试跑任务不占积分，不在其中）
+	tasks, err := s.repo.ListActive(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	// 2. 逐个取消。任务在查询之后被别的流程结束（返回“不可取消”）说明目标已达成，既不算取消也不算失败
+	res := &CancelActiveResult{}
+	for i := range tasks {
+		_, err := s.Cancel(ctx, userID, tasks[i].ID)
+		var ec *errcode.Error
+		switch {
+		case err == nil:
+			res.Canceled++
+		case errors.As(err, &ec) && ec.Code == errcode.ErrTaskNotCancelable.Code:
+		default:
+			logger.Warn("取消进行中任务失败", zap.Error(err), zap.Uint64("task_id", tasks[i].ID), zap.Uint64("user_id", userID))
+			res.Failed = append(res.Failed, tasks[i].ID)
+		}
+	}
+	return res, nil
+}
+
 func (s *GenerationTaskService) cancelProvider(ctx context.Context, t *model.GenerationTask) {
 	if t == nil || t.ProviderTaskID == "" || s.executor == nil {
 		return
@@ -352,10 +378,10 @@ func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.
 	}
 	entries := []model.CreditLedger{}
 	if charge > 0 || target == model.TaskSucceeded {
-		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: t.ID, Type: model.LedgerSettle, Amount: charge})
+		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerSettle, Amount: charge})
 	}
 	if refund := frozen - charge; refund > 0 || target != model.TaskSucceeded {
-		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: t.ID, Type: model.LedgerRefund, Amount: refund})
+		entries = append(entries, model.CreditLedger{UserID: t.UserID, TaskID: model.TaskIDPtr(t.ID), Type: model.LedgerRefund, Amount: refund})
 	}
 	for i := range entries {
 		inserted, err := tx.InsertLedger(ctx, &entries[i])

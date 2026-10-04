@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/handler"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
 
-	"video-canvas/internal/config"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -218,6 +218,14 @@ func (fakeGenTaskAssets) Open(context.Context, uint64, uint64) (*provider.AssetF
 // 测试装配
 // ---------------------------------------------------------------------------
 
+// genTaskLimits 实现 service.TaskLimits：固定的并发上限与初始积分（生产里来自后台系统设置）。
+type genTaskLimits struct{ maxActive, initial int }
+
+func (l genTaskLimits) InitialCredits(context.Context) (int, error) { return l.initial, nil }
+func (l genTaskLimits) MaxActiveTasks(context.Context, uint64) (int, error) {
+	return l.maxActive, nil
+}
+
 type genTaskEnv struct {
 	router   *gin.Engine
 	repo     *fakeGenTaskRepo
@@ -249,7 +257,7 @@ func newGenTaskEnv(t *testing.T) *genTaskEnv {
 	env.svc = service.NewGenerationTaskService(service.GenerationTaskDeps{
 		Repo: env.repo, Registry: env.registry, Executor: fakeGenTaskExecutor{}, Assets: fakeGenTaskAssets{},
 		Broadcaster: ws.NopBroadcaster{},
-		Config:      config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50},
+		Limits:      genTaskLimits{maxActive: 2, initial: 50},
 	},
 		service.WithInputValidator(func(_ string, _ modelcfg.Capabilities, in map[string]any) (map[string]any, []modelcfg.FieldError) {
 			if s, _ := in["prompt"].(string); s == "" {

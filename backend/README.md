@@ -42,25 +42,45 @@ make run
 
 - 启用 Redis：`redis.enabled` 改为 `true`
 - 环境变量覆盖：`APP_` + 配置路径，如 `APP_SERVER_PORT=9000`
+- 登录记录保留天数固定为 180 天（`service.DefaultLoginLogRetentionDays`，不再可配置）：后台任务在启动后 1~5 分钟内先清理一次，之后每 24 小时一次，每批最多删 1000 行；失败只记日志，不影响服务
+- 并发上限与新用户初始积分不在配置文件里：由后台「注册设置」的库值决定，库里没有值时回落到代码常量 `service.DefaultMaxActiveTasks`（4）与 `service.DefaultInitialCredits`（50）
 
 ## 接口
+
+所有登录后的接口都经过 `JWTAuth` → `RequireActive`：账号被停用返回 403 / 53004，token 的 `token_version` 与用户当前值不符返回 401。用户状态走 Redis 缓存（`user:<id>`，无 Redis 直接查库），`RequireAdmin` / `RequireSuperAdmin` 的角色查询与它共用同一套。原先的 `GET /users`、`GET /users/:id` 已删除。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /health | 健康检查（数据库、Redis、版本信息） |
-| POST | /api/v1/users | 创建用户 |
-| GET | /api/v1/users?page=1&page_size=10 | 用户列表 |
-| GET | /api/v1/users/:id | 用户详情（带 Redis 缓存） |
-| PUT | /api/v1/users/:id | 更新用户 |
-| DELETE | /api/v1/users/:id | 删除用户（软删除） |
-| POST | /api/v1/auth/register、/api/v1/auth/login | 注册 / 登录 |
+| GET | /api/v1/auth/config | 注册配置 `{register_enabled, email_verify_required}`：开放 = 后台开关打开且（SMTP 已启用 或 users 表为空）；要验证码 = SMTP 已启用且表非空（首个账号免验证） |
+| POST | /api/v1/auth/register/code | 发注册验证码 `{email}`：6 位数字、10 分钟有效、错 5 次作废；同邮箱 60 秒冷却、同 IP 每小时 20 次（429）；注册关闭 / 无 SMTP 403 / 53001，邮箱已注册 409 / 53002。验证码存 Redis（未启用时进程内存），仅 debug 模式打到日志 |
+| POST | /api/v1/auth/register | 注册即登录 `{username, email, password, code}` → `{token, expire_at, role}`；users 表为空时首个账号成为 `super_admin`（注册事务内加咨询锁，并发安全），事务内建积分账户并写 `initial` 流水；错误 53001 / 20002 / 53002 / 53003 |
+| POST | /api/v1/auth/login | 登录 → `{token, expire_at, role}`；账号停用 403 / 53004；成功更新 `last_login_at`，成功 / 密码错 / 停用都写登录记录；token 带 `token_version` |
+| GET | /api/v1/admin/users?q=&status=&role=&page=&page_size= | admin 用户列表（`q` 模糊匹配用户名 / 邮箱，`page_size` ≤ 100，含积分、进行中任务数、实际生效并发上限） |
+| GET | /api/v1/admin/users/:id | admin 用户详情：列表字段 + `email_verified_at`、任务统计、最近 3 条审计 |
+| GET | /api/v1/admin/users/:id/tasks?status=&cursor=&limit= | admin 用户生成记录（排除试跑）；`status` 为 all / success / failed（含 expired、canceled）/ running；游标分页 `{items, next_cursor}`，`next_cursor` 为空串表示没有更多，`limit` 默认 20、最大 100 |
+| GET | /api/v1/admin/users/:id/ledger?type=&cursor=&limit= | admin 用户积分流水（带 `operator_name`）；`type` 为 all / admin（仅 admin_adjust）/ task（freeze、settle、refund，不含 initial）；游标分页同上；`amount` 是带符号的「对可用积分的影响」（仅响应层映射，库里的值不变，对账仍用原值）：freeze / settle 为负，refund / initial 为正，admin_adjust 为原值 |
+| GET | /api/v1/admin/users/:id/logins?result=&cursor=&limit= | admin 用户登录记录；`result=fail` 只看 badpw / blocked；游标分页同上 |
+| POST | /api/v1/admin/users/:id/credits | admin 调整积分 `{mode: add\|sub\|set, amount, note(1..100)}`，返回 `{balance, frozen, available}`；set 把**可用积分**设为 amount（余额 = amount + 冻结）；sub 超出可用返回 400 / 53005（文案含「最多可扣 N」）；与任务冻结 / 结算共用 `LockCredit` 行锁，写 `admin_adjust` 流水与审计 |
+| PUT | /api/v1/admin/users/:id/limits | admin 设置并发上限 `{max_active_tasks: 1..64 \| null}`，清用户缓存，写审计 |
+| PUT | /api/v1/admin/users/:id/status | admin 封禁 / 启用 `{status, cancel_active?}`，返回 `{status, canceled, cancel_failed, failed_task_ids, cancel_error?}`；封禁时清缓存、断开该用户全部 WebSocket，`cancel_active=true` 时取消进行中任务并退还冻结（逐个处理，部分失败不回滚） |
+| PUT | /api/v1/admin/users/:id/role | **super_admin** 调整角色 `{role: user\|admin\|super_admin}`；不能改自己（403 / 10004「不能修改自己的角色」）、不能降级最后一个 super_admin（403 / 10004，事务内咨询锁 + 统计，并发安全）；角色没变化直接成功不写审计；写 `user.role` 审计 `{from, to}`，清用户缓存让新角色立即生效 |
+| POST | /api/v1/admin/users/:id/reset-password | **super_admin** 重置密码 `{new_password?: 6..128}`（可省略整个 body；可重置自己的）；缺省生成 16 位强随机临时密码（crypto/rand，字母数字、去掉易混淆字符）；返回 `{temp_password}`，**仅此一次**（指定了 `new_password` 时返回同一值）；bcrypt 存储，`token_version` +1 并清缓存，该用户已签发的 token 立即 401；审计 `user.reset_password` 只记 `{generated}`，日志与审计不含明文 |
+| POST | /api/v1/admin/users/batch/credits | admin 批量发积分 `{ids(≤200，去重), amount>0, note}`，返回 `{results:[{id, ok, error?}]}`，每个用户独立权限判断与事务 |
+| PUT | /api/v1/admin/users/batch/status | admin 批量封禁 / 启用 `{ids(≤200，去重), status}`（不取消任务），返回同上 |
+| GET | /api/v1/admin/settings/register | admin 注册设置 `{register_enabled, initial_credits, default_max_active_tasks}`（库值优先，缺省为代码常量：初始积分 50、并发上限 4） |
+| PUT | /api/v1/admin/settings/register | super_admin 保存注册设置，写审计 |
+| GET | /api/v1/admin/settings/smtp | admin 邮件服务配置，**密码永不返回**，只给 `has_password` |
+| PUT | /api/v1/admin/settings/smtp | super_admin 保存邮件配置（不含密码）；主机不能指向内网 / 回环 / 链路本地（含 DNS 解析后的 IP），否则 400 / 53006 |
+| PUT | /api/v1/admin/settings/smtp/password | super_admin 设置 SMTP 密码（只写）；用 `APP_AI_SECRET_KEY` 加密，缺密钥 400 / 53006 |
+| POST | /api/v1/admin/settings/smtp/test | super_admin 发测试邮件 `{to}`，结果写入 `last_check_*`；失败 502 / 53007（文案已脱敏） |
 | GET/POST/PUT/DELETE | /api/v1/canvas[/:id] | 画布项目（乐观锁 revision） |
 | GET | /api/v1/models?kind=video | 模型清单（`kind` 取 video / image / audio / text；已发布且启用，含 vendor / tags / capabilities，不含渠道与插件细节） |
 | POST | /api/v1/generation-tasks | 提交生成任务，请求头 `Idempotency-Key`；生成数量 N 时传 `node_ids`（N 个节点）拆成 N 个任务，返回 **202** + `{items: [{node_id, task} \| {node_id, error}]}`，节点级错误 40001 积分不足(402)、40002 并发已满(429)；请求级错误 40003 模型不可用、40006 参数不合法 |
 | GET | /api/v1/generation-tasks/:id | 单个任务 |
 | GET | /api/v1/generation-tasks?ids=1,2,3 / ?status=active | 批量对账（≤100）/ 当前用户进行中的任务 |
 | POST | /api/v1/generation-tasks/:id/cancel | 软取消，退回冻结积分 |
-| GET | /api/v1/credits | 积分余额 `{balance, frozen, available}`（新用户初始 50） |
+| GET | /api/v1/credits | 积分余额 `{balance, frozen, available}`（新用户初始积分取后台注册设置，缺省 50） |
 | POST | /api/v1/ws/ticket | 换取一次性 WebSocket ticket（30s 有效） |
 | GET | /api/v1/ws?ticket=… | WebSocket 升级，推送 `task.updated`（无需 JWT，身份由 ticket 决定） |
 | POST | /api/v1/assets | 上传素材（multipart，字段 `file`），由后端中转 |

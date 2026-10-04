@@ -66,6 +66,22 @@ const reject = (error: ApiError, silent = false) => {
   return Promise.reject(error);
 };
 
+/** 业务错误码：账号已被停用（契约 53004） */
+const ACCOUNT_DISABLED_CODE = 53004;
+
+/**
+ * 已登录状态下收到「账号已停用」：清掉 token 并回登录页（登录接口自己的 53004 不处理，交给登录页就地提示）。
+ * 提示由随后的 reject 统一弹，这里不重复。
+ * @param url 触发错误的请求路径
+ */
+const handleAccountDisabled = (url?: string) => {
+  if (url?.startsWith("/auth/") || !getToken()) return;
+  removeToken();
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.assign("/login");
+  }
+};
+
 const instance: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 2 * 60 * 1000,
@@ -162,6 +178,7 @@ instance.interceptors.response.use(
     if (response.status === 401) removeToken();
 
     const body = isApiResponse(response.data) ? response.data : undefined;
+    if (body?.code === ACCOUNT_DISABLED_CODE) handleAccountDisabled(error.config?.url);
     const code: ApiErrorCode = body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
 
     return reject(new ApiError(body?.msg || "请求失败", code, response.status, body), silent);

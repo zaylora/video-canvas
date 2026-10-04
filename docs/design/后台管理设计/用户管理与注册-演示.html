@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用户管理与注册演示</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // 与 后台交互优化-演示.html 相同的 token 命名：颜色走 CSS 变量，明暗主题只换变量
+  const c = (v) => `hsl(var(--${v}) / <alpha-value>)`;
+  tailwind.config = {
+    darkMode: "class",
+    theme: { extend: {
+      fontFamily: {
+        sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
+        mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+      },
+      colors: {
+        border: c("border"), input: c("input"), ring: c("ring"),
+        background: c("background"), foreground: c("foreground"),
+        primary: { DEFAULT: c("primary"), foreground: c("primary-foreground") },
+        muted: { DEFAULT: c("muted"), foreground: c("muted-foreground") },
+        accent: { DEFAULT: c("accent"), foreground: c("accent-foreground") },
+        card: { DEFAULT: c("card"), foreground: c("card-foreground") },
+      },
+      borderColor: { DEFAULT: "hsl(var(--border))" },
+      borderRadius: { xl: "calc(var(--radius) + 4px)", lg: "var(--radius)", md: "calc(var(--radius) - 2px)" },
+    } },
+  };
+</script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    --radius: 0.625rem;
+    --background: 0 0% 100%; --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%; --card-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
+    --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%; --accent-foreground: 240 5.9% 10%;
+    --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
+    color-scheme: light;
+  }
+  .dark {
+    --background: 240 10% 3.9%; --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%; --card-foreground: 0 0% 98%;
+    --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
+    --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%; --accent-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%; --input: 240 3.7% 18%; --ring: 240 4.9% 83.9%;
+    color-scheme: dark;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  [data-lucide] { width: 1em; height: 1em; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:.375rem; height:2rem; padding:0 .75rem; border-radius:calc(var(--radius) - 2px); font-size:.8125rem; font-weight:500; white-space:nowrap; transition:background .15s, opacity .15s; cursor:pointer; }
+  .btn:disabled { opacity:.5; pointer-events:none; }
+  .btn-primary { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+  .btn-primary:hover { opacity:.9; }
+  .btn-outline { border:1px solid hsl(var(--border)); background:hsl(var(--background)); }
+  .btn-outline:hover, .btn-ghost:hover { background:hsl(var(--accent)); }
+  .btn-danger { background:#dc2626; color:#fff; }
+  .btn-danger:hover { background:#b91c1c; }
+  .btn-sm { height:1.75rem; padding:0 .5rem; font-size:.75rem; }
+  .btn-lg { height:2.75rem; font-size:.9rem; width:100%; }
+  .input { height:2.25rem; width:100%; border:1px solid hsl(var(--input)); border-radius:calc(var(--radius) - 2px); background:transparent; padding:0 .75rem; font-size:.875rem; outline:none; }
+  .input:focus { box-shadow:0 0 0 2px hsl(var(--ring) / .3); }
+  .input.err { border-color:#dc2626; }
+  .input-lg { height:2.75rem; }
+  .label { display:block; font-size:.8125rem; font-weight:500; margin-bottom:.375rem; }
+  .hint { font-size:.75rem; color:hsl(var(--muted-foreground)); margin-top:.25rem; }
+  .errtext { font-size:.75rem; color:#dc2626; margin-top:.25rem; }
+  .tag { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.0625rem .4rem; font-size:.6875rem; font-weight:500; white-space:nowrap; }
+  .t-ok { background:rgb(16 185 129 / .12); color:rgb(5 150 105); }
+  .t-bad { background:rgb(239 68 68 / .12); color:rgb(220 38 38); }
+  .t-warn { background:rgb(245 158 11 / .14); color:rgb(180 83 9); }
+  .t-info { background:rgb(14 165 233 / .12); color:rgb(2 132 199); }
+  .t-mute { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+  .dark .t-ok { color:rgb(52 211 153); } .dark .t-bad { color:rgb(248 113 113); }
+  .dark .t-warn { color:rgb(251 191 36); } .dark .t-info { color:rgb(56 189 248); }
+  .note { display:none; gap:.375rem; align-items:flex-start; border:1px dashed rgb(139 92 246 / .6); background:rgb(139 92 246 / .07); color:rgb(109 40 217); border-radius:.5rem; padding:.375rem .625rem; font-size:.75rem; line-height:1.5; margin-top:.5rem; }
+  .show-notes .note { display:flex; }
+  .dark .note { color:rgb(196 181 253); }
+  .seg { display:inline-flex; background:hsl(var(--muted)); border-radius:.5rem; padding:.1875rem; gap:.125rem; }
+  .seg button { padding:.25rem .75rem; font-size:.8125rem; border-radius:.375rem; color:hsl(var(--muted-foreground)); cursor:pointer; white-space:nowrap; }
+  .seg button.on { background:hsl(var(--background)); color:hsl(var(--foreground)); box-shadow:0 1px 2px rgb(0 0 0 / .08); font-weight:500; }
+  .frame { border:1px solid hsl(var(--border)); border-radius:.875rem; overflow:hidden; background:hsl(var(--background)); }
+  table.t { width:100%; border-collapse:collapse; font-size:.8125rem; }
+  table.t th { text-align:left; font-weight:500; color:hsl(var(--muted-foreground)); padding:.5rem .75rem; border-bottom:1px solid hsl(var(--border)); white-space:nowrap; }
+  table.t td { padding:.625rem .75rem; border-bottom:1px solid hsl(var(--border)); }
+  table.t tbody tr.row { cursor:pointer; }
+  table.t tbody tr.row:hover { background:hsl(var(--muted) / .6); }
+  .overlay { position:fixed; inset:0; background:rgb(0 0 0 / .5); display:flex; align-items:center; justify-content:center; padding:1rem; z-index:50; }
+  .dlg { background:hsl(var(--background)); border:1px solid hsl(var(--border)); border-radius:.875rem; width:100%; max-height:90vh; overflow:auto; box-shadow:0 20px 50px rgb(0 0 0 / .25); }
+  .tab { padding:.5rem .75rem; font-size:.8125rem; color:hsl(var(--muted-foreground)); border-bottom:2px solid transparent; cursor:pointer; }
+  .tab.on { color:hsl(var(--foreground)); border-color:hsl(var(--foreground)); font-weight:500; }
+  .toast { position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%); background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); padding:.5rem 1rem; border-radius:.5rem; font-size:.8125rem; z-index:80; box-shadow:0 8px 24px rgb(0 0 0 / .25); }
+  .bar { height:.375rem; border-radius:99px; background:hsl(var(--muted)); overflow:hidden; }
+  .bar > i { display:block; height:100%; background:hsl(var(--foreground)); }
+  .navi { display:flex; align-items:center; gap:.5rem; padding:.375rem .625rem; border-radius:.5rem; font-size:.8125rem; color:hsl(var(--muted-foreground)); }
+  .navi.on { background:hsl(var(--accent)); color:hsl(var(--foreground)); font-weight:500; }
+</style>
+</head>
+<body class="font-sans antialiased">
+
+<header class="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
+    <div class="mr-2">
+      <div class="text-sm font-semibold">用户管理与注册 · 交互演示</div>
+      <div class="text-xs text-muted-foreground">对应 docs/design/用户管理与注册设计.md</div>
+    </div>
+    <div class="seg" id="scenes"></div>
+    <div class="ml-auto flex items-center gap-2">
+      <button class="btn btn-outline btn-sm" id="btnNotes"><i data-lucide="message-square-text"></i> 设计标注</button>
+      <button class="btn btn-outline btn-sm" id="btnTheme"><i data-lucide="moon"></i> 主题</button>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl px-4 py-6" id="app"></main>
+<div id="layer"></div>
+
+<script>
+/* ============ 状态 ============ */
+const S = {
+  scene: "register",
+  // 注册场景
+  env: "normal",            // normal | closed | nosmtp | fresh
+  tab: "register",          // login | register
+  reg: { username:"", email:"", code:"", pw:"", pw2:"", sent:false, cd:0, err:{}, done:false, busy:false },
+  // 后台
+  viewer: "super_admin",    // admin | super_admin
+  defaultConc: 4,
+  q: "", fRole: "all", fStatus: "all",
+  users: [
+    { id:1, name:"owner",   email:"owner@studio.com",  role:"super_admin", status:"active",   bal:500, frozen:0,  conc:null, active:0, tasks:42, spent:1280, last:"今天 10:21", ledger:[{t:"initial",a:50,n:"注册赠送",by:"系统",at:"2026-08-01"}] },
+    { id:2, name:"lina",    email:"lina@studio.com",   role:"admin",       status:"active",   bal:120, frozen:10, conc:null, active:1, tasks:77, spent:2310, last:"今天 09:02", ledger:[{t:"settle",a:-30,n:"任务 #8821",by:"系统",at:"2026-10-03"},{t:"initial",a:50,n:"注册赠送",by:"系统",at:"2026-08-04"}] },
+    { id:3, name:"zhangsan",email:"zs@mail.com",       role:"user",        status:"active",   bal:36,  frozen:12, conc:2,    active:2, tasks:19, spent:164,  last:"昨天 22:40", ledger:[{t:"freeze",a:-12,n:"任务 #9013 冻结",by:"系统",at:"2026-10-04"},{t:"admin_adjust",a:50,n:"活动补发",by:"lina",at:"2026-09-20"}] },
+    { id:4, name:"wangwu",  email:"ww@mail.com",       role:"user",        status:"active",   bal:0,   frozen:0,  conc:null, active:0, tasks:5,  spent:50,   last:"3 天前",    ledger:[{t:"settle",a:-50,n:"任务 #7730",by:"系统",at:"2026-10-01"}] },
+    { id:5, name:"spam_01", email:"x1@tmp.io",         role:"user",        status:"disabled", bal:50,  frozen:0,  conc:null, active:0, tasks:0,  spent:0,    last:"7 天前",    ledger:[{t:"initial",a:50,n:"注册赠送",by:"系统",at:"2026-09-27"}] },
+    { id:6, name:"chen",    email:"chen@studio.com",   role:"user",        status:"active",   bal:210, frozen:0,  conc:8,    active:3, tasks:131,spent:4120, last:"今天 11:05", ledger:[{t:"admin_adjust",a:200,n:"合作方额度",by:"owner",at:"2026-09-10"}] },
+  ],
+  sel: null, dtab: "overview", adj: { mode:"add", val:"", note:"", err:"" },
+  concDraft: "",
+  // SMTP
+  smtp: { host:"smtp.example.com", port:465, enc:"tls", user:"noreply@example.com", from:"Video Canvas <noreply@example.com>", hasPw:true, ok:true, at:"2026-10-02 18:20", err:"" },
+  regCfg: { enabled:true, initial:50, defConc:4 },
+  testRes: null,
+};
+const ICON = { initial:"gift", settle:"minus-circle", freeze:"snowflake", refund:"rotate-ccw", admin_adjust:"user-cog" };
+const TYPE = { initial:"赠送", settle:"结算", freeze:"冻结", refund:"退款", admin_adjust:"管理员调整" };
+const ROLE = { user:["普通用户","t-mute"], admin:["管理员","t-info"], super_admin:["超级管理员","t-warn"] };
+
+const $ = (s, r=document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+const avail = (u) => u.bal - u.frozen;
+const limit = (u) => u.conc ?? S.defaultConc;
+function toast(msg){ const el=document.createElement("div"); el.className="toast"; el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),2200); }
+const note = (t) => `<div class="note"><i data-lucide="sticky-note" class="mt-0.5 shrink-0"></i><span>${t}</span></div>`;
+
+/* ============ 场景 1：登录页注册 ============ */
+const ENV = {
+  normal: ["正常", "注册已开放，SMTP 已配置"],
+  closed: ["注册已关闭", "超管在「注册设置」里关闭了开关"],
+  nosmtp: ["未配 SMTP", "表非空 + 未配置邮件服务"],
+  fresh:  ["全新环境", "users 表为空 + 未配置 SMTP"],
+};
+
+function viewRegister() {
+  const e = S.env, r = S.reg;
+  const canRegister = e === "normal" || e === "fresh";
+  const needCode = e === "normal";
+  const tab = canRegister ? S.tab : "login";
+
+  const field = (id, label, type, ph, extra="") => `
+    <div><label class="label" for="${id}">${label}</label>
+    <input id="${id}" type="${type}" class="input input-lg ${r.err[id]?"err":""}" placeholder="${ph}" value="${esc(r[id])}" ${extra}>
+    ${r.err[id] ? `<div class="errtext">${r.err[id]}</div>` : ""}</div>`;
+
+  let form;
+  if (r.done) {
+    form = `<div class="mt-10 rounded-xl border p-6 text-center">
+      <div class="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600"><i data-lucide="check"></i></div>
+      <div class="font-semibold">注册成功，已自动登录</div>
+      <div class="hint mt-1">正在进入画布首页…（演示在此结束）</div>
+      ${e==="fresh" ? `<div class="mt-3"><span class="tag t-warn"><i data-lucide="crown"></i> 你是首个用户，已成为超级管理员</span></div><div class="hint mt-2">请先到 后台 → 系统设置 → 邮件服务 配置 SMTP，其他人才能注册。</div>` : `<div class="mt-3 hint">已赠送 ${S.regCfg.initial} 积分</div>`}
+      <button class="btn btn-outline mt-4" data-act="reg-reset">重新演示</button></div>`;
+  } else if (tab === "login") {
+    form = `<form class="mt-10 space-y-5" data-form="login">
+      <div><label class="label">用户名</label><input class="input input-lg" placeholder="请输入用户名"></div>
+      <div><label class="label">密码</label><input class="input input-lg" type="password" placeholder="请输入密码"></div>
+      <button class="btn btn-primary btn-lg" type="submit">登录 <i data-lucide="arrow-right"></i></button></form>`;
+  } else {
+    form = `<form class="mt-8 space-y-4" data-form="register">
+      ${field("username","用户名","text","3–64 个字符")}
+      ${field("email","邮箱","email","用于接收验证码")}
+      ${needCode ? `<div><label class="label">验证码</label>
+        <div class="flex gap-2"><input id="code" class="input input-lg ${r.err.code?"err":""}" inputmode="numeric" maxlength="6" placeholder="6 位数字" value="${esc(r.code)}">
+        <button type="button" class="btn btn-outline h-11 shrink-0" data-act="send" ${r.cd>0||r.busy?"disabled":""}>${r.cd>0?`${r.cd}s 后重发`:(r.sent?"重新发送":"发送验证码")}</button></div>
+        ${r.err.code?`<div class="errtext">${r.err.code}</div>`:(r.sent?`<div class="hint">验证码已发送至 ${esc(r.email)}，10 分钟内有效。演示用验证码：123456</div>`:"")}</div>` : ""}
+      ${field("pw","密码","password","6–128 个字符")}
+      ${field("pw2","确认密码","password","再输入一次密码")}
+      <button class="btn btn-primary btn-lg" type="submit" ${r.busy?"disabled":""}>${needCode?"注册并登录":"创建账号"} <i data-lucide="arrow-right"></i></button>
+      ${e==="fresh" ? `<div class="hint text-center">全新环境：首个账号无需验证码，并自动成为超级管理员</div>`:""}
+    </form>`;
+  }
+
+  const tabs = canRegister && !r.done ? `
+    <div class="mt-8 grid grid-cols-2 rounded-lg bg-muted p-1 text-sm">
+      <button data-act="tab-login" class="rounded-md py-1.5 ${tab==="login"?"bg-background font-medium shadow-sm":"text-muted-foreground"}">登录</button>
+      <button data-act="tab-register" class="rounded-md py-1.5 ${tab==="register"?"bg-background font-medium shadow-sm":"text-muted-foreground"}">注册</button>
+    </div>` : "";
+
+  const closedHint = !canRegister && !r.done ? `<div class="mt-6 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"><i data-lucide="lock"></i> ${e==="closed"?"注册暂未开放，请联系管理员":"暂未开放注册（邮件服务未配置）"}</div>` : "";
+
+  return `
+  <div class="mb-4 flex flex-wrap items-center gap-3">
+    <span class="text-sm text-muted-foreground">模拟环境：</span>
+    <div class="seg">${Object.entries(ENV).map(([k,v])=>`<button data-env="${k}" class="${S.env===k?"on":""}">${v[0]}</button>`).join("")}</div>
+    <span class="text-xs text-muted-foreground">${ENV[S.env][1]}</span>
+  </div>
+  <div class="frame"><div class="grid min-h-[620px] lg:grid-cols-2">
+    <section class="relative hidden overflow-hidden bg-neutral-950 p-10 text-white lg:flex lg:flex-col lg:justify-between">
+      <div class="absolute inset-0" style="background:radial-gradient(circle at 72% 35%,rgba(122,92,255,.38),transparent 35%),radial-gradient(circle at 22% 85%,rgba(45,128,176,.22),transparent 38%)"></div>
+      <div class="relative flex items-center gap-3 text-lg font-semibold"><span class="flex size-10 items-center justify-center rounded-xl bg-white text-neutral-950"><i data-lucide="film"></i></span>Video Canvas</div>
+      <div class="relative"><span class="mb-5 inline-flex rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-white/75">让创意自由连接</span>
+        <h1 class="text-4xl font-semibold leading-tight">从灵感到画面，<br>在一张画布上完成。</h1>
+        <p class="mt-5 max-w-sm text-sm text-white/65">组织想法、连接素材，继续你的创作。</p></div>
+      <p class="relative text-xs text-white/45">VIDEO CANVAS · CREATIVE WORKSPACE</p>
+    </section>
+    <section class="flex items-center justify-center px-6 py-10"><div class="w-full max-w-[400px]">
+      <p class="mb-2 text-sm text-muted-foreground">${tab==="login"||!canRegister?"欢迎回来":"创建账号"}</p>
+      <h2 class="text-3xl font-semibold tracking-tight">${tab==="login"||!canRegister?"登录你的账号":"开始使用画布"}</h2>
+      ${tabs}${form}${closedHint}
+    </div></section>
+  </div></div>
+  ${note("登录/注册同页切换，不新增路由，保留 ?next= 跳转。入口是否出现由 GET /auth/config 的 register_enabled 与 email_verify_required 决定。")}
+  ${note("注册事务内：校验验证码 → 用户名/邮箱唯一 → 判断 users 是否为空（为空则 role=super_admin）。不暴露「邮箱是否已注册」之外的细节。")}
+  ${note("「全新环境」是为解决引导问题：后台要超管才能进，超管要靠注册产生，而注册要邮件，所以首个账号免验证。")}`;
+}
+
+function bindRegister() {
+  const r = S.reg;
+  document.querySelectorAll("[data-env]").forEach(b => b.onclick = () => { S.env = b.dataset.env; S.reg = freshReg(); S.tab = "register"; render(); });
+  const on = (a, fn) => document.querySelectorAll(`[data-act="${a}"]`).forEach(b => b.onclick = fn);
+  on("tab-login", () => { S.tab="login"; render(); });
+  on("tab-register", () => { S.tab="register"; render(); });
+  on("reg-reset", () => { S.reg = freshReg(); S.tab="register"; render(); });
+  ["username","email","code","pw","pw2"].forEach(id => { const el = $("#"+id); if (el) el.oninput = () => { r[id] = el.value; if (r.err[id]) { delete r.err[id]; el.classList.remove("err"); const t=el.parentElement.querySelector(".errtext"); if(t) t.remove(); } }; });
+  on("send", () => {
+    if (!/^\S+@\S+\.\S+$/.test(r.email)) { r.err.email = "请输入有效的邮箱地址"; return render(); }
+    r.busy = true; render();
+    setTimeout(() => { r.busy=false; r.sent=true; r.cd=60; render(); tick(); toast("验证码已发送（演示：123456）"); }, 700);
+  });
+  const reg = $('[data-form="register"]');
+  if (reg) reg.onsubmit = (ev) => {
+    ev.preventDefault();
+    const err = {};
+    if (r.username.trim().length < 3) err.username = "用户名至少 3 个字符";
+    else if (["owner","lina","zhangsan"].includes(r.username.trim()) && S.env==="normal") err.username = "用户名已被占用";
+    if (!/^\S+@\S+\.\S+$/.test(r.email)) err.email = "请输入有效的邮箱地址";
+    if (S.env==="normal") { if (!r.sent) err.code = "请先获取验证码"; else if (r.code !== "123456") err.code = "验证码错误或已过期"; }
+    if (r.pw.length < 6) err.pw = "密码至少 6 个字符";
+    if (r.pw2 !== r.pw) err.pw2 = "两次输入的密码不一致";
+    r.err = err;
+    if (Object.keys(err).length) return render();
+    r.busy = true; render();
+    setTimeout(() => { r.busy=false; r.done=true; render(); }, 700);
+  };
+  const lg = $('[data-form="login"]'); if (lg) lg.onsubmit = (e) => { e.preventDefault(); toast("登录流程不在本次演示范围"); };
+}
+const freshReg = () => ({ username:"", email:"", code:"", pw:"", pw2:"", sent:false, cd:0, err:{}, done:false, busy:false });
+let timer; function tick(){ clearInterval(timer); timer=setInterval(()=>{ if(S.scene!=="register"||S.reg.cd<=0){clearInterval(timer);return;} S.reg.cd--; const b=$('[data-act="send"]'); if(b){ b.disabled=S.reg.cd>0; b.textContent=S.reg.cd>0?`${S.reg.cd}s 后重发`:"重新发送"; } },1000); }
+
+/* ============ 后台外壳 ============ */
+function shell(active, body) {
+  const nav = [
+    ["AI 配置", [["layout-dashboard","总览"],["boxes","模型"],["radio-tower","渠道"],["puzzle","插件"]]],
+    ["用户", [["users","用户管理"]]],
+    ["系统设置", [["hard-drive","存储配置"],["image-down","图片处理服务"],["user-plus","注册设置"],["mail","邮件服务"]]],
+  ];
+  return `<div class="frame"><div class="flex min-h-[640px]">
+    <aside class="hidden w-52 shrink-0 border-r p-3 md:block">
+      <div class="mb-4 flex items-center gap-2 px-2 text-sm font-semibold"><span class="flex size-7 items-center justify-center rounded-lg bg-foreground text-background"><i data-lucide="film"></i></span>管理后台</div>
+      ${nav.map(([g,items])=>`<div class="mb-1 mt-3 px-2 text-[11px] text-muted-foreground">${g}</div>${items.map(([ic,l])=>`<div class="navi ${l===active?"on":""}"><i data-lucide="${ic}"></i>${l}</div>`).join("")}`).join("")}
+      <div class="mt-6 rounded-lg border p-2 text-xs"><div class="text-muted-foreground">当前身份</div>
+        <div class="seg mt-1 w-full"><button class="flex-1 ${S.viewer==="admin"?"on":""}" data-viewer="admin">admin</button><button class="flex-1 ${S.viewer==="super_admin"?"on":""}" data-viewer="super_admin">super_admin</button></div></div>
+    </aside>
+    <div class="min-w-0 flex-1 p-5">${body}</div></div></div>`;
+}
+function bindViewer(){ document.querySelectorAll("[data-viewer]").forEach(b=>b.onclick=()=>{ S.viewer=b.dataset.viewer; render(); if(S.sel) openUser(S.sel.id,true); }); }
+
+/* ============ 场景 2：用户列表 ============ */
+function filtered() {
+  return S.users.filter(u =>
+    (!S.q || (u.name+u.email).toLowerCase().includes(S.q.toLowerCase())) &&
+    (S.fRole==="all"||u.role===S.fRole) && (S.fStatus==="all"||u.status===S.fStatus));
+}
+function viewUsers() {
+  const rows = filtered();
+  const body = `
+    <div class="mb-4"><h2 class="text-lg font-semibold">用户管理</h2><p class="text-sm text-muted-foreground">查看用户、调整积分与并发、封禁账号。点击一行打开详情。</p></div>
+    <div class="mb-3 flex flex-wrap items-center gap-2">
+      <div class="relative w-64"><i data-lucide="search" class="absolute left-2.5 top-2.5 text-muted-foreground"></i><input id="q" class="input pl-8" placeholder="搜索用户名或邮箱" value="${esc(S.q)}"></div>
+      <select id="fRole" class="input w-32"><option value="all">全部角色</option><option value="user">普通用户</option><option value="admin">管理员</option><option value="super_admin">超级管理员</option></select>
+      <select id="fStatus" class="input w-28"><option value="all">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option></select>
+      <span class="ml-auto text-xs text-muted-foreground">共 ${rows.length} 人</span>
+    </div>
+    <div class="overflow-x-auto rounded-xl border"><table class="t"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>可用积分</th><th>并发</th><th>最近活跃</th></tr></thead><tbody>
+    ${rows.map(u=>`<tr class="row" data-uid="${u.id}">
+      <td><div class="font-medium">${esc(u.name)}</div><div class="text-xs text-muted-foreground">${esc(u.email)}</div></td>
+      <td><span class="tag ${ROLE[u.role][1]}">${ROLE[u.role][0]}</span></td>
+      <td>${u.status==="active"?'<span class="tag t-ok">正常</span>':'<span class="tag t-bad"><i data-lucide="ban"></i> 已停用</span>'}</td>
+      <td><span class="font-mono">${avail(u)}</span>${u.frozen?`<span class="ml-1 text-xs text-muted-foreground">(冻结 ${u.frozen})</span>`:""}</td>
+      <td><span class="font-mono">${u.active}/${limit(u)}</span>${u.conc?'<span class="tag t-info ml-1">自定义</span>':""}</td>
+      <td class="text-muted-foreground">${u.last}</td></tr>`).join("") || `<tr><td colspan="6" class="py-12 text-center text-muted-foreground">没有符合条件的用户</td></tr>`}
+    </tbody></table></div>
+    ${note("列表不返回大字段；积分、并发占用来自 user_credits 与 CountActive 的聚合。后端分页，搜索走 username/email 索引。")}
+    ${note("现有 GET /users 对所有登录用户开放，需随本功能收口到 admin 组。")}`;
+  return shell("用户管理", body);
+}
+function bindUsers() {
+  bindViewer();
+  const q = $("#q"); q.oninput = () => { S.q=q.value; const pos=q.selectionStart; render(); const n=$("#q"); n.focus(); n.setSelectionRange(pos,pos); };
+  $("#fRole").value=S.fRole; $("#fRole").onchange=e=>{S.fRole=e.target.value;render();};
+  $("#fStatus").value=S.fStatus; $("#fStatus").onchange=e=>{S.fStatus=e.target.value;render();};
+  document.querySelectorAll("[data-uid]").forEach(r=>r.onclick=()=>openUser(+r.dataset.uid));
+}
+
+/* ============ 用户弹窗 ============ */
+function canTouch(u){ // 权限分层：admin 不能动 admin/super_admin；任何人不能动自己的封禁
+  if (u.id===1) return S.viewer==="super_admin"; // 演示：owner 即当前登录者本人 → 见 isSelf
+  return S.viewer==="super_admin" || u.role==="user";
+}
+const isSelf = (u) => (S.viewer==="super_admin" && u.id===1) || (S.viewer==="admin" && u.id===2);
+function openUser(id, keep) { S.sel = S.users.find(u=>u.id===id); if(!keep){ S.dtab="overview"; S.adj={mode:"add",val:"",note:"",err:""}; S.concDraft = S.sel.conc ?? ""; } renderDialog(); }
+function closeDlg(){ S.sel=null; $("#layer").innerHTML=""; }
+
+function renderDialog() {
+  const u = S.sel; if (!u) return;
+  const touch = canTouch(u) && !isSelf(u);
+  const tabs = [["overview","概览"],["credits","积分"],["control","管控"]];
+  let content = "";
+  if (S.dtab==="overview") {
+    content = `<dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+      ${[["用户名",u.name],["邮箱",u.email+' <span class="tag t-ok ml-1">已验证</span>'],["角色",`<span class="tag ${ROLE[u.role][1]}">${ROLE[u.role][0]}</span>`],["状态",u.status==="active"?'<span class="tag t-ok">正常</span>':'<span class="tag t-bad">已停用</span>'],["最近登录",u.last],["任务总数",u.tasks],["累计消耗积分",u.spent],["并发占用",`${u.active} / ${limit(u)}`]].map(([k,v])=>`<div><dt class="text-xs text-muted-foreground">${k}</dt><dd class="mt-0.5 font-medium">${v}</dd></div>`).join("")}</dl>
+      <div class="mt-5"><div class="mb-1 flex justify-between text-xs text-muted-foreground"><span>并发使用</span><span>${u.active}/${limit(u)}</span></div><div class="bar"><i style="width:${Math.min(100,u.active/limit(u)*100)}%"></i></div></div>
+      ${note("用量统计（任务数、累计消耗）来自 generation_tasks 聚合；MVP 只做数字，图表放后续。")}`;
+  } else if (S.dtab==="credits") {
+    const a = S.adj, max = avail(u);
+    content = `<div class="grid grid-cols-3 gap-3">
+      ${[["余额",u.bal],["冻结",u.frozen],["可用",max]].map(([k,v])=>`<div class="rounded-xl border p-3"><div class="text-xs text-muted-foreground">${k}</div><div class="mt-1 text-2xl font-semibold font-mono">${v}</div></div>`).join("")}</div>
+      <div class="mt-5 rounded-xl border p-4 ${touch?"":"opacity-60"}">
+        <div class="mb-3 text-sm font-medium">调整积分</div>
+        <div class="seg mb-3">${[["add","增加"],["sub","扣减"],["set","设为"]].map(([k,l])=>`<button data-am="${k}" class="${a.mode===k?"on":""}">${l}</button>`).join("")}</div>
+        <div class="grid gap-3 sm:grid-cols-[140px_1fr]">
+          <div><input id="adjVal" class="input" type="number" min="0" placeholder="数值" value="${esc(a.val)}" ${touch?"":"disabled"}>${a.mode==="sub"?`<div class="hint">最多可扣 ${max}</div>`:a.mode==="set"?`<div class="hint">不得低于冻结额 ${u.frozen}</div>`:""}</div>
+          <input id="adjNote" class="input" placeholder="备注（必填，写入流水与审计）" value="${esc(a.note)}" ${touch?"":"disabled"}>
+        </div>
+        ${a.err?`<div class="errtext">${a.err}</div>`:""}
+        <div class="mt-3 flex justify-end"><button class="btn btn-primary" data-act="adj" ${touch?"":"disabled"}>确认调整</button></div>
+        ${note("事务内 LockCredit 行锁 → 校验调整后 balance − frozen ≥ 0 → AddCredit → 写流水(type=admin_adjust, operator_id, note)。与任务结算互斥，不丢更新。")}
+      </div>
+      <div class="mt-5 text-sm font-medium">流水</div>
+      <div class="mt-2 overflow-hidden rounded-xl border"><table class="t"><thead><tr><th>类型</th><th>变动</th><th>说明</th><th>操作人</th><th>时间</th></tr></thead><tbody>
+      ${u.ledger.map(l=>`<tr><td><span class="tag t-mute"><i data-lucide="${ICON[l.t]}"></i> ${TYPE[l.t]}</span></td><td class="font-mono ${l.a>=0?"text-emerald-600":"text-red-600"}">${l.a>0?"+":""}${l.a}</td><td>${esc(l.n)}</td><td class="text-muted-foreground">${esc(l.by)}</td><td class="text-muted-foreground">${l.at}</td></tr>`).join("")}</tbody></table></div>`;
+  } else {
+    content = `
+      ${!touch ? `<div class="mb-4 flex items-start gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"><i data-lucide="shield-alert" class="mt-0.5"></i>${isSelf(u)?"不能对自己执行封禁或降级，防止把自己锁在后台之外。":"admin 不能操作其他管理员或超级管理员，请使用 super_admin 身份。"}</div>`:""}
+      <section class="rounded-xl border p-4"><div class="text-sm font-medium">并发上限</div>
+        <p class="hint">留空使用全局默认（当前 ${S.defaultConc}）。调低不会中断已在跑的任务，只影响新提交。</p>
+        <div class="mt-2 flex gap-2"><input id="conc" class="input w-40" type="number" min="1" max="64" placeholder="默认 ${S.defaultConc}" value="${esc(S.concDraft)}" ${touch?"":"disabled"}><button class="btn btn-outline" data-act="conc" ${touch?"":"disabled"}>保存</button></div>
+        ${note("users.max_active_tasks 可空；insertAndFreeze 里取 COALESCE(用户值, 全局默认)。")}</section>
+      <section class="mt-4 rounded-xl border p-4"><div class="flex items-center justify-between gap-3"><div><div class="text-sm font-medium">账号状态</div><p class="hint">${u.status==="active"?"封禁后立即无法登录，已登录的请求下一次即被拒绝。":"该账号已被停用。"}</p></div>
+        ${u.status==="active"?`<button class="btn btn-danger" data-act="ban" ${touch?"":"disabled"}><i data-lucide="ban"></i> 封禁</button>`:`<button class="btn btn-outline" data-act="unban" ${touch?"":"disabled"}><i data-lucide="check-circle"></i> 启用</button>`}</div>
+        ${note("JWTAuth 之后加状态检查中间件，带短 TTL 缓存（同 NewCachedRoleLookup 做法），封禁时主动清缓存。")}</section>
+      <section class="mt-4 rounded-xl border p-4 ${S.viewer==="super_admin"?"":"opacity-60"}"><div class="mb-1 flex items-center gap-2 text-sm font-medium">角色与密码 <span class="tag t-warn">仅 super_admin</span></div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <select id="role" class="input w-40" ${touch&&S.viewer==="super_admin"?"":"disabled"}>${Object.entries(ROLE).map(([k,v])=>`<option value="${k}" ${u.role===k?"selected":""}>${v[0]}</option>`).join("")}</select>
+          <button class="btn btn-outline" data-act="reset" ${touch&&S.viewer==="super_admin"?"":"disabled"}><i data-lucide="key-round"></i> 重置密码</button></div>
+        ${S.viewer!=="super_admin"?'<div class="hint">当前为 admin 身份，这一块只读。</div>':""}
+        ${note("重置密码后 token_version +1，使该用户旧 token 立即失效。临时密码只展示一次。")}</section>`;
+  }
+  $("#layer").innerHTML = `<div class="overlay" data-close><div class="dlg max-w-2xl" onclick="event.stopPropagation()">
+    <div class="flex items-start justify-between border-b p-4"><div><div class="flex items-center gap-2 text-base font-semibold">${esc(u.name)} <span class="tag ${ROLE[u.role][1]}">${ROLE[u.role][0]}</span>${u.status==="disabled"?'<span class="tag t-bad">已停用</span>':""}</div><div class="text-xs text-muted-foreground">${esc(u.email)} · ID ${u.id}</div></div>
+      <button class="btn btn-ghost btn-sm" data-close><i data-lucide="x"></i></button></div>
+    <div class="flex gap-1 border-b px-3">${tabs.map(([k,l])=>`<div class="tab ${S.dtab===k?"on":""}" data-dt="${k}">${l}</div>`).join("")}</div>
+    <div class="p-5">${content}</div></div></div>`;
+  bindDialog(u, touch); lucide.createIcons();
+}
+
+function bindDialog(u, touch) {
+  document.querySelectorAll("[data-close]").forEach(b=>b.onclick=closeDlg);
+  document.querySelectorAll("[data-dt]").forEach(t=>t.onclick=()=>{S.dtab=t.dataset.dt;renderDialog();});
+  document.querySelectorAll("[data-am]").forEach(b=>b.onclick=()=>{S.adj.mode=b.dataset.am;S.adj.err="";renderDialog();});
+  const v=$("#adjVal"), n=$("#adjNote"); if(v) v.oninput=()=>S.adj.val=v.value; if(n) n.oninput=()=>S.adj.note=n.value;
+  const act=(a,fn)=>{const b=$(`[data-act="${a}"]`); if(b) b.onclick=fn;};
+  act("adj",()=>{
+    const a=S.adj, val=parseInt(a.val,10);
+    if(!Number.isFinite(val)||val<0) return fail("请输入不小于 0 的整数");
+    if(!a.note.trim()) return fail("请填写备注，调整会写入流水和审计");
+    let delta = a.mode==="add"?val : a.mode==="sub"?-val : val-u.bal;
+    if(a.mode==="sub" && val>avail(u)) return fail(`最多可扣减 ${avail(u)}`);
+    if(a.mode==="set" && val<u.frozen) return fail(`不能低于冻结额 ${u.frozen}`);
+    u.bal+=delta; u.ledger.unshift({t:"admin_adjust",a:delta,n:a.note.trim(),by:S.viewer==="super_admin"?"owner":"lina",at:"2026-10-04"});
+    S.adj={mode:"add",val:"",note:"",err:""}; toast(`已调整 ${delta>0?"+":""}${delta} 积分，并写入流水与审计`); renderDialog(); render(true);
+    function fail(m){a.err=m; renderDialog();}
+  });
+  act("conc",()=>{ const raw=$("#conc").value.trim(); u.conc = raw===""?null:Math.max(1,parseInt(raw,10)||1); S.concDraft=u.conc??""; toast(u.conc?`并发上限已设为 ${u.conc}`:"已恢复为全局默认"); renderDialog(); render(true); });
+  act("ban",()=>confirmBan(u));
+  act("unban",()=>{u.status="active"; toast("已启用该账号"); renderDialog(); render(true);});
+  act("reset",()=>{ const pw="Vc-"+Math.random().toString(36).slice(2,8); confirmBox("重置密码",`将为 <b>${esc(u.name)}</b> 生成临时密码，旧登录态立即失效。`,"生成临时密码",()=>{ showBox("临时密码",`<div class="rounded-lg border bg-muted/50 p-3 text-center font-mono text-lg">${pw}</div><p class="hint mt-2">仅展示这一次，关闭后无法再查看。</p>`); }); });
+  const r=$("#role"); if(r) r.onchange=()=>{ const to=r.value; confirmBox("调整角色",`确认将 <b>${esc(u.name)}</b> 改为「${ROLE[to][0]}」？`,"确认",()=>{u.role=to; toast("角色已更新"); renderDialog(); render(true);},()=>{r.value=u.role;}); };
+}
+
+function confirmBan(u){
+  let cancel=false;
+  const el=document.createElement("div"); el.className="overlay"; el.style.zIndex=60;
+  el.innerHTML=`<div class="dlg max-w-md p-5"><div class="text-base font-semibold">封禁 ${esc(u.name)}？</div>
+    <p class="mt-2 text-sm text-muted-foreground">封禁后该用户无法登录，已登录的会话下一次请求即被拒绝。</p>
+    <div class="mt-3 rounded-lg border p-3 text-sm"><div class="text-xs text-muted-foreground">进行中任务</div><div class="font-medium">${u.active} 个，冻结 ${u.frozen} 积分</div></div>
+    <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm"><input type="checkbox" id="cc" class="mt-1" ${u.active?"":"disabled"}><span>同时取消进行中任务并退还冻结积分<br><span class="hint">默认不勾选：已提交的任务会跑完并正常结算。</span></span></label>
+    ${note("勾选则走现有取消流程（Cancel → refund 流水）；不勾选只切断登录与新任务。")}
+    <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" id="no">取消</button><button class="btn btn-danger" id="yes">确认封禁</button></div></div>`;
+  document.body.appendChild(el); lucide.createIcons();
+  $("#no",el).onclick=()=>el.remove();
+  $("#yes",el).onclick=()=>{ cancel=$("#cc",el).checked; u.status="disabled"; if(cancel&&u.active){u.frozen=0;u.active=0;} el.remove(); toast(cancel?"已封禁，并取消进行中任务":"已封禁，进行中任务将继续运行"); renderDialog(); render(true); };
+}
+function confirmBox(title,html,ok,fn,cancelFn){
+  const el=document.createElement("div"); el.className="overlay"; el.style.zIndex=60;
+  el.innerHTML=`<div class="dlg max-w-sm p-5"><div class="text-base font-semibold">${title}</div><p class="mt-2 text-sm text-muted-foreground">${html}</p><div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" id="no">取消</button><button class="btn btn-primary" id="yes">${ok}</button></div></div>`;
+  document.body.appendChild(el);
+  $("#no",el).onclick=()=>{el.remove();cancelFn&&cancelFn();}; $("#yes",el).onclick=()=>{el.remove();fn();};
+}
+function showBox(title,html){
+  const el=document.createElement("div"); el.className="overlay"; el.style.zIndex=60;
+  el.innerHTML=`<div class="dlg max-w-sm p-5"><div class="text-base font-semibold">${title}</div><div class="mt-3">${html}</div><div class="mt-5 flex justify-end"><button class="btn btn-primary" id="ok">我已记录</button></div></div>`;
+  document.body.appendChild(el); $("#ok",el).onclick=()=>el.remove();
+}
+
+/* ============ 场景 3：系统设置（注册 + 邮件） ============ */
+function viewSettings() {
+  const sa = S.viewer==="super_admin", d = sa?"":"disabled", s = S.smtp;
+  const body = `
+    <div class="mb-4"><h2 class="text-lg font-semibold">注册与邮件设置</h2><p class="text-sm text-muted-foreground">注册开关、赠送积分、默认并发，以及验证码邮件使用的 SMTP。</p></div>
+    ${sa?"":`<div class="mb-4 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"><i data-lucide="lock"></i> 当前为 admin 身份，本页只读。注册开关与邮件服务仅 super_admin 可改。</div>`}
+    <section class="rounded-xl border p-4"><div class="mb-3 text-sm font-medium">注册设置</div>
+      <label class="flex items-center justify-between gap-4 py-2 text-sm"><span><b>开放注册</b><br><span class="hint">关闭后登录页隐藏注册入口，接口拒绝注册。</span></span>
+        <input type="checkbox" id="regOn" class="size-4" ${S.regCfg.enabled?"checked":""} ${d}></label>
+      <div class="grid gap-3 sm:grid-cols-2 mt-2"><div><label class="label">新用户初始积分</label><input id="regInit" type="number" min="0" class="input" value="${S.regCfg.initial}" ${d}><div class="hint">可设为 0。</div></div>
+        <div><label class="label">默认并发上限</label><input id="regConc" type="number" min="1" class="input" value="${S.defaultConc}" ${d}><div class="hint">单用户未设置时使用。</div></div></div>
+      <div class="mt-3 flex justify-end"><button class="btn btn-primary" id="saveReg" ${d}>保存</button></div>
+      ${note("库值优先、config.yaml 的 ai.initial_credits / max_active_tasks_per_user 作为初始默认。变更写审计 settings.register。")}</section>
+    <section class="mt-4 rounded-xl border p-4"><div class="mb-3 flex items-center justify-between"><div class="text-sm font-medium">邮件服务（SMTP）</div>
+      ${s.ok?`<span class="tag t-ok"><i data-lucide="check"></i> 最近测试通过 · ${s.at}</span>`:`<span class="tag t-bad"><i data-lucide="x"></i> 最近测试失败</span>`}</div>
+      <div class="grid gap-3 sm:grid-cols-[1fr_120px_140px]">
+        <div><label class="label">服务器</label><input id="sHost" class="input" value="${esc(s.host)}" ${d}></div>
+        <div><label class="label">端口</label><input id="sPort" type="number" class="input" value="${s.port}" ${d}></div>
+        <div><label class="label">加密</label><select id="sEnc" class="input" ${d}>${[["none","无"],["starttls","STARTTLS"],["tls","SSL/TLS"]].map(([k,l])=>`<option value="${k}" ${s.enc===k?"selected":""}>${l}</option>`).join("")}</select></div>
+        <div class="sm:col-span-1"><label class="label">用户名</label><input id="sUser" class="input" value="${esc(s.user)}" ${d}></div>
+        <div class="sm:col-span-2"><label class="label">密码</label><div class="flex gap-2"><input class="input" type="password" disabled value="${s.hasPw?"••••••••":""}" placeholder="未设置"><button class="btn btn-outline shrink-0" id="sPw" ${d}>${s.hasPw?"替换密码":"设置密码"}</button></div><div class="hint">只写不读，接口只返回「是否已设置」。需要 APP_AI_SECRET_KEY 加密保存。</div></div>
+        <div class="sm:col-span-3"><label class="label">发件人</label><input id="sFrom" class="input" value="${esc(s.from)}" ${d}></div></div>
+      ${s.err?`<div class="errtext mt-2">${s.err}</div>`:""}
+      <div class="mt-4 flex flex-wrap items-center gap-2"><input id="testTo" class="input w-64" placeholder="测试收件邮箱" ${d}><button class="btn btn-outline" id="sTest" ${d}><i data-lucide="send"></i> 发送测试邮件</button>
+        <button class="btn btn-primary ml-auto" id="sSave" ${d}>保存</button></div>
+      ${S.testRes?`<div class="mt-3 rounded-lg border px-3 py-2 text-sm ${S.testRes.ok?"border-emerald-500/40 bg-emerald-500/10":"border-red-500/40 bg-red-500/10"}">${S.testRes.msg}</div>`:""}
+      ${note("SMTP 地址由管理员填写，存在 SSRF 风险：复用 provider/netguard 思路，默认拒绝内网与回环地址。待确认：自建邮件服务器是否放开。")}
+      ${note("没配置 SMTP 时：表为空允许首个账号免验证注册；表非空则注册入口显示「暂未开放」。见「登录页注册」场景的环境切换。")}</section>`;
+  return shell("邮件服务", body);
+}
+function bindSettings() {
+  bindViewer();
+  const g=id=>$("#"+id);
+  g("saveReg")&&(g("saveReg").onclick=()=>{ S.regCfg.enabled=g("regOn").checked; S.regCfg.initial=Math.max(0,+g("regInit").value||0); S.defaultConc=Math.max(1,+g("regConc").value||1); toast("注册设置已保存（已写审计）"); render(); });
+  g("sTest")&&(g("sTest").onclick=()=>{
+    const to=g("testTo").value.trim(), host=g("sHost").value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(to)) return (S.testRes={ok:false,msg:"请填写有效的测试收件邮箱"},render());
+    if(/^(127\.|10\.|192\.168\.|localhost)/.test(host)) return (S.testRes={ok:false,msg:"该地址指向内网或回环，已被出站校验拒绝"},render());
+    S.testRes={ok:true,msg:`测试邮件已发送至 ${esc(to)}，请到收件箱确认。`}; S.smtp.ok=true; S.smtp.at="刚刚"; render();
+  });
+  g("sSave")&&(g("sSave").onclick=()=>{ Object.assign(S.smtp,{host:g("sHost").value,port:+g("sPort").value,enc:g("sEnc").value,user:g("sUser").value,from:g("sFrom").value}); toast("邮件服务已保存，建议再发一封测试邮件"); render(); });
+  g("sPw")&&(g("sPw").onclick=()=>{ showBox("替换 SMTP 密码",`<input class="input" type="password" placeholder="输入新密码"><p class="hint mt-2">保存后不可再查看，只能替换。</p>`); S.smtp.hasPw=true; });
+}
+
+/* ============ 路由与渲染 ============ */
+const SCENES = [["register","登录页注册"],["users","用户管理"],["settings","注册与邮件设置"]];
+function render(keepDialog) {
+  $("#scenes").innerHTML = SCENES.map(([k,l])=>`<button data-sc="${k}" class="${S.scene===k?"on":""}">${l}</button>`).join("");
+  $("#scenes").querySelectorAll("button").forEach(b=>b.onclick=()=>{ S.scene=b.dataset.sc; closeDlg(); render(); });
+  const app=$("#app");
+  if (S.scene==="register") { app.innerHTML=viewRegister(); bindRegister(); }
+  if (S.scene==="users")    { app.innerHTML=viewUsers();    bindUsers(); }
+  if (S.scene==="settings") { app.innerHTML=viewSettings(); bindSettings(); }
+  lucide.createIcons();
+  if (keepDialog && S.sel) renderDialog();
+}
+$("#btnNotes").onclick=()=>document.body.classList.toggle("show-notes");
+$("#btnTheme").onclick=()=>document.documentElement.classList.toggle("dark");
+render();
+</script>
+</body>
+</html>

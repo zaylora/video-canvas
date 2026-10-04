@@ -12,9 +12,11 @@ import (
 	"video-canvas/internal/pkg/utils"
 )
 
+// gin.Context 里存放登录身份的键，由 JWTAuth 写入。
 const (
-	CtxUserIDKey   = "user_id"
-	CtxUsernameKey = "username"
+	CtxUserIDKey       = "user_id"
+	CtxUsernameKey     = "username"
+	CtxTokenVersionKey = "token_version"
 )
 
 // JWTAuth 校验 Authorization: Bearer <token>，
@@ -46,8 +48,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		}
 
 		// 3. 注入用户身份，供后续 Handler / Service 使用
-		c.Set(CtxUserIDKey, claims.UserId)
+		c.Set(CtxUserIDKey, claims.UserID)
 		c.Set(CtxUsernameKey, claims.Username)
+		c.Set(CtxTokenVersionKey, claims.TokenVersion)
 		c.Next()
 	}
 }
@@ -55,6 +58,11 @@ func JWTAuth(secret string) gin.HandlerFunc {
 // GetUserID 返回当前登录用户 ID，未经过 JWTAuth 时为 0。
 func GetUserID(c *gin.Context) uint {
 	return c.GetUint(CtxUserIDKey)
+}
+
+// GetTokenVersion 返回 token 里的 token_version，未经过 JWTAuth 时为 0。
+func GetTokenVersion(c *gin.Context) int {
+	return c.GetInt(CtxTokenVersionKey)
 }
 
 func GetUsername(c *gin.Context) string {

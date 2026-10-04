@@ -43,6 +43,10 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 		if err := repository.MigrateLegacyAIConfig(db); err != nil {
 			return nil, fmt.Errorf("migrate legacy ai config: %w", err)
 		}
+		// 再处理积分流水表的变更（task_id 可空、唯一索引改部分索引）：AutoMigrate 做不了，必须在它之前；幂等
+		if err := repository.MigrateUserManagement(db); err != nil {
+			return nil, fmt.Errorf("migrate user management: %w", err)
+		}
 		if err := db.AutoMigrate(model.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)
 		}

@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { ADMIN_NAV, findNav } from "@/pages/admin-ai/admin-nav";
+import { ADMIN_NAV, findNav } from "@/pages/admin/admin-nav";
 
 describe("后台导航", () => {
-  test("“系统设置”分组下，存储配置之后紧跟图片处理服务管理", () => {
+  test("“系统设置”分组下，存储配置之后之后是图片处理、注册设置、邮件服务", () => {
     const group = ADMIN_NAV.find((item) => item.label === "系统设置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["settings/storage", "存储配置"],
-      ["settings/image-processor", "图片处理服务管理"],
+      ["settings/image-processor", "图片服务"],
+      ["settings/register", "注册设置"],
+      ["settings/email", "邮件服务"],
     ]);
   });
 
@@ -17,8 +19,8 @@ describe("后台导航", () => {
     expect(found?.item.label).toBe("存储配置");
   });
 
-  test("findNav 能认出图片处理服务管理页", () => {
-    expect(findNav("/admin/settings/image-processor")?.item.label).toBe("图片处理服务管理");
+  test("findNav 能认出图片服务页", () => {
+    expect(findNav("/admin/settings/image-processor")?.item.label).toBe("图片服务");
   });
 
   test("原有 AI 配置页不受影响", () => {

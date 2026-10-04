@@ -103,8 +103,13 @@ func (s *GenerationTaskService) List(ctx context.Context, userID uint64, req *mo
 
 // GetCredits 返回当前用户的积分。账户不存在时按配置的初始积分惰性创建后再返回。
 func (s *GenerationTaskService) GetCredits(ctx context.Context, userID uint64) (*model.CreditView, error) {
-	// 1. 惰性创建账户：已存在时是空操作，不会覆盖余额
-	if err := s.repo.EnsureCredit(ctx, userID, s.cfg.InitialCredits); err != nil {
+	// 1. 惰性创建账户：已存在时是空操作，不会覆盖余额；初始积分来自系统设置（缺省 config），
+	//    真正建出新账户时仓储在同一事务补写 initial 流水
+	initial, err := s.initialCredits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.EnsureCredit(ctx, userID, initial); err != nil {
 		return nil, err
 	}
 	// 2. 读取账户；可用 = 余额 - 冻结

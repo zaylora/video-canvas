@@ -18,9 +18,15 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// Create 新建用户。
+// Create 新建用户；用户名或邮箱唯一约束冲突返回 ErrDuplicate。
 func (r *UserRepository) Create(ctx context.Context, u *model.User) error {
-	return r.db.WithContext(ctx).Create(u).Error
+	if err := r.db.WithContext(ctx).Create(u).Error; err != nil {
+		if isUniqueViolation(err) {
+			return ErrDuplicate
+		}
+		return err
+	}
+	return nil
 }
 
 // GetByID 按 id 查询用户；不存在返回 ErrNotFound。

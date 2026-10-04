@@ -15,7 +15,15 @@ export const DURATION = {
   exit: 0.126,
   /** 抽屉、对话框 */
   slow: 0.24,
+  /** 抽屉、对话框的退出：约为 slow 的 70% */
+  slowExit: 0.168,
 } as const;
+
+/** CSS transition / animation 要的毫秒字符串，如 ms(DURATION.base) = "180ms" */
+export const ms = (seconds: number) => `${Math.round(seconds * 1000)}ms`;
+
+/** EASE_OUT 的 CSS 写法，给 Tailwind 的 ease-(--motion-ease) 用 */
+export const EASE_OUT_CSS = `cubic-bezier(${EASE_OUT.join(", ")})`;
 
 /** layoutId 滑块、面板变宽、进度条 */
 export const SPRING: Transition = { type: "spring", stiffness: 500, damping: 38, mass: 0.8 };

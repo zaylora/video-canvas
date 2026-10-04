@@ -124,3 +124,15 @@ var (
 	ErrProcessorNoPrevious      = New(52009, "没有可回滚的版本", http.StatusConflict)
 	ErrProcessorNotPublished    = New(52010, "图片处理服务不是已发布状态", http.StatusConflict)
 )
+
+// 用户管理与注册 53xxx
+var (
+	ErrRegisterClosed      = New(53001, "暂未开放注册", http.StatusForbidden)
+	ErrEmailExists         = New(53002, "该邮箱已注册", http.StatusConflict)
+	ErrCodeInvalid         = New(53003, "验证码错误或已过期", http.StatusBadRequest)
+	ErrAccountDisabled     = New(53004, "账号已被停用，请联系管理员", http.StatusForbidden)
+	ErrCreditAdjustInvalid = New(53005, "积分调整不合法", http.StatusBadRequest)   // 原因写进 Msg
+	ErrSMTPInvalid         = New(53006, "邮件服务配置不合法", http.StatusBadRequest) // 原因写进 Msg
+	ErrSMTPSendFailed      = New(53007, "邮件发送失败", http.StatusBadGateway)    // 原因写进 Msg（已脱敏）
+	ErrSMTPNotConfigured   = New(53008, "邮件服务未配置", http.StatusConflict)
+)

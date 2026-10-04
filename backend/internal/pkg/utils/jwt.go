@@ -8,19 +8,21 @@ import (
 )
 
 type MyClaims struct {
-	UserId   uint   `json:"user_id"`
-	Username string `json:"username"`
+	UserID       uint   `json:"user_id"`
+	Username     string `json:"username"`
+	TokenVersion int    `json:"token_version"` // 签发时用户的 token_version；与库里当前值不一致说明密码被重置等，token 作废
 	jwt.RegisteredClaims
 }
 
 // GenerateToken 用 HS256 签发 token，返回 token 字符串和过期时间（Unix 秒）。
-func GenerateToken(userID uint, username, secret string, issuer string, expireHours int) (string, int64, error) {
+func GenerateToken(userID uint, username string, tokenVersion int, secret string, issuer string, expireHours int) (string, int64, error) {
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(expireHours) * time.Hour)
 
 	claims := MyClaims{
-		UserId:   userID,
-		Username: username,
+		UserID:       userID,
+		Username:     username,
+		TokenVersion: tokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
