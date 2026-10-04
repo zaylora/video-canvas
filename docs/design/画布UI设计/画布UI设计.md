@@ -582,6 +582,150 @@ type GroupHue = "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purpl
 
 **依赖**：无。
 
+### 6.11 视频节点：封面 ⇄ 视频的过渡
+
+原型：[视频加载过渡原型.html](视频加载过渡原型.html)（A / B / C 三种并排，**定稿选 B**，A、C 留在原型里仅供对照）。
+
+**问题**：视频节点平时只显示封面（`VideoFacade` 不挂载 `<video>`）。点击播放后直接换成 `<video>`，首帧解码出来之前是一块黑，过渡很突兀；另外视频一旦挂载，暂停后也不会自己退回封面，白白占着 WebMediaPlayer 名额。
+
+**目标**：① 点击到首帧出来之间有连续、不闪的加载过渡；② 节点没被选中时，视频停止播放并平滑换回封面。
+
+#### 布局草图
+
+```
+idle（封面）          loading（B）               playing / paused（选中）
+┌──────────────┐     ┌──────────────┐           ┌──────────────┐
+│              │     │▒▒▒▒▒▒▒▒▒▒▒▒▒▒│           │              │
+│     (▶)      │ ──▶ │▒▒▒▒▒ ◜ ▒▒▒▒▒▒│ ──────▶   │   视频画面    │
+│        0:15  │     │▒▒▒ 封面压暗 ▒▒│           │ ▮▮ ━●━━ 0:06 │
+└──────────────┘     └──────────────┘           └──────────────┘
+```
+
+#### 控件说明
+
+| 元素 | 规格 | 状态 |
+|---|---|---|
+| 播放按钮 | `size-12` 圆形，idle：`bg-black/55` + `backdrop-blur` + 白色实心三角 | hover `scale 1.06`；按下 `TAP`；`focus-visible` 描边 |
+| 加载环 | 28px SVG，白色 2.4px 描边，底圈 25% 不透明，弧 22/66，每 0.9s 一圈线性旋转 | 只在 loading 出现 |
+| 压暗遮罩 | 盖在封面上、按钮下面，`bg-black/30`，不拦截指针事件 | 只在 loading 出现 |
+| 时长角标 | 沿用现状 | loading 时随按钮一起保留 |
+| 控制条 | 沿用现状 `VideoControls` | 视频就绪后才出现，不在 loading 时露出 |
+
+#### 动效表
+
+| 触发 | 属性 | 时长 / 曲线 | 方向 |
+|---|---|---|---|
+| 点击播放（进入 loading） | 按钮背景 `→ transparent`；三角 `scale 1→0.6` + `opacity →0`；加载环 `scale 0.8→1` + `opacity 0→1` | `DURATION.fast` 120ms，`EASE_OUT` | 同一个按钮原地变形，不新增元素 |
+| 同上 | 遮罩 `opacity 0→1` | `DURATION.base` 180ms | 整块封面均匀压暗 |
+| 点击瞬间 | 按钮 `TAP`（`scale 0.96`） | — | 100ms 内给反馈 |
+| 首帧就绪（loading → playing） | `<video>` 在封面上方 `opacity 0→1`；遮罩、加载环淡出；按钮 `scale →0.9` + `opacity →0` | video 淡入 `DURATION.base` 180ms；其余淡出 126ms | 封面始终在底下，不会黑一下 |
+| 退回封面（节点未选中，无论是否在播放） | `<video>` `opacity 1→0` 露出封面；控制条淡出；按钮 `scale 0.9→1` + `opacity 0→1` | 淡出 126ms（进入的 70%），按钮 `DURATION.base` | 回到点击前的样子，按钮在原位 |
+| 加载环旋转 | `rotate 0→360°` | 0.9s 线性循环 | 生成中类状态指示，属于规范里“常驻循环”的例外，加载结束即停 |
+| 减少动态效果 | 环不旋转（静止弧），所有位移和缩放去掉，只留 `opacity` 淡入淡出 | — | 读屏文本“视频加载中”照常 |
+
+**防闪规则**：loading 至少显示 320ms。网络极快时，首帧早于 320ms 也要等到 320ms 再淡入 video，否则环一闪而过，反而像卡了一下。
+
+#### 状态表
+
+| 状态 | 表现 |
+|---|---|
+| idle | 封面 + 播放按钮 + 时长角标 |
+| loading | 封面压暗 + 旋转环；按钮不可再点；容器 `role="status"`，读屏读“视频加载中” |
+| playing | video + 控制条 |
+| paused 且节点选中 | 保留 video 和控制条，停在当前帧 |
+| 节点变为未选中（playing / paused / loading 均适用） | 立即 `pause()`，退回封面（见动效表）；loading 中取消选中则中止加载。再点播放从头开始 |
+| 变更：原为“暂停且未选中才退回，播放中不打断” | 改为只要未选中就停止并退回封面 |
+| 加载失败（`error` 事件，或超过 15 秒仍未出首帧） | 立即退回封面、按钮复位，用 sonner 提示“视频无法播放”；再次点击可重试 |
+| 名额池挤掉（已有逻辑） | 同样走“退回封面”动效 |
+| 窄屏（< 768px） | 按钮和环尺寸不变（触控区够大），无其他差异 |
+| 深浅主题 | 遮罩和按钮都是黑色半透明、环是白色，叠在封面上，两套主题表现一致 |
+
+**“激活”的定义**：React Flow 的 `selected`。点击节点（含点播放按钮）即选中。点画布空白或别的节点则取消选中。
+
+#### 涉及的组件与文件
+
+- `components/canvas/video-facade.tsx`：新增 `loading` 状态、`active` 属性；加载环、遮罩、video 淡入淡出；监听 `loadeddata` / `error` / `pause` / `ended`；`active` 变为 false 时 `pause()` 并 `setPlaying(false)`（含 loading 中）。
+- `components/canvas/node-body.tsx`：`NodeMediaBody` 增加 `active` 并透传给 `VideoFacade`。
+- `components/canvas/node-video-body.tsx`：`NodeVideoBody` 增加 `active` 并透传。
+- `pages/canvas/video-node.tsx`：把 `MediaTaskNode` 的 `selected` 传下去。
+- `lib/motion.ts`：`DURATION` 新增 `exit: 0.126`（进入 `base` 的 70%），不在组件里写魔法数。
+- 释放顺序：退回封面时先让 video 淡出，淡出结束再清 `src` 并 `load()` 释放 WebMediaPlayer，否则淡出过程中会看到黑屏；名额池 `release` 可以立刻执行。实现时在浏览器里确认。
+- 图片、音频节点不受影响（`active` 只被视频分支使用）。
+
+**依赖**：无（`motion`、`lucide-react` 已有）。
+
+### 6.12 节点内容加载占位（灰色渐变）
+
+原型：[节点加载占位原型.html](节点加载占位原型.html)（A 扫光 / B 呼吸 / C 静态三种并排，**定稿选 A**，B、C 留在原型里仅供对照）。
+
+**问题**：图片缩略图、原图、视频封面还没返回时，节点预览框只有一块静止的 `bg-muted/40`，用户分不清是“没内容”还是“还在加载”，内容到了又是硬切。
+
+**目标**：内容没渲染出来时，预览框里有一层灰色的渐变占位；内容到了平滑淡入替换它。
+
+#### 范围
+
+- 图片节点：`MediaPreview` 里缩略图未到、且没有原图可看的阶段。
+- 视频节点：`VideoPoster` 的封面未到的阶段。
+- 不改：生成中 / 排队中 / 转存中的 `PendingBox`（它是“任务在跑”，保持现状的 `animate-pulse` 骨架 + 文字）；点击播放后的加载环（6.11）；双击预览弹层的加载（6.9）。
+
+#### 布局草图
+
+```
+加载中                         内容到了
+┌──────────────────┐          ┌──────────────────┐
+│░░░░░░░░░░░░░░░░░░│          │                  │
+│░░░░░ ▒▒▒▒ ░░░░░░░│  ────▶   │      图片 / 封面   │
+│░░░░░░░░░░░░░░░░░░│  淡入     │  (▶)       0:15  │
+└──────────────────┘          └──────────────────┘
+ 灰底 + 光带从左扫到右             占位层淡出，播放钮、时长角标随封面一起出现
+```
+
+#### 控件说明
+
+| 元素 | 说明 |
+|---|---|
+| 占位层 | 铺满预览框（节点画幅 16:9，圆角跟随父级 `rounded-[inherit]`），底色 `bg-muted`。叠在内容层下方，内容淡入后自然被盖住 |
+| 扫光 | 120° 斜向的线性渐变光带，宽度占框的 40%，`translateX(-100% → 100%)`，1.6s 一轮，`ease-in-out` 循环 |
+| 内容层 | 缩略图 / 封面。到了之后 `opacity 0 → 1` |
+| 视频的播放钮、时长角标 | 封面没到之前不显示，和封面同一时刻淡入，不单独先冒出来 |
+
+#### 动效表
+
+| 触发 | 属性 | 时长 / 曲线 | 方向 |
+|---|---|---|---|
+| 等待超过 150ms 仍未到 | 占位层 `opacity 0 → 1` | `DURATION.base` 180ms，`EASE_OUT` | 原地出现 |
+| 内容到达 | 内容层 `opacity 0 → 1` | `DURATION.base` 180ms，`EASE_OUT` | 同一位置，覆盖占位 |
+| 内容到达 | 占位层 `opacity 1 → 0` | `DURATION.exit` 126ms，`EASE_OUT` | 同上 |
+| 扫光循环 | `transform: translateX` | 1.6s `ease-in-out`，无限 | 左 → 右 |
+| 减少动态效果 | 循环动画停掉，扫光层退成 4% 前景色静态罩 | 淡入淡出仍为 180ms / 126ms | 只剩淡入淡出 |
+
+循环动画属于“加载状态指示”，规范里的常驻循环例外；内容到达后占位层卸载，不留下常驻动画。只动 `transform` / `opacity`，不用 `filter`、不用 `backdrop-blur`，画布上几十个节点同时加载也走合成线程。
+
+#### 状态表
+
+| 状态 | 表现 |
+|---|---|
+| 请求发出 150ms 内到达（缓存命中等） | 不出现占位，内容直接 180ms 淡入，避免灰块一闪而过 |
+| 等待超过 150ms | 占位层淡入并开始循环 |
+| 缩略图到了、原图还在加载 | 不再显示占位（缩略图已经是内容），原图沿用 6.9 的交叉淡入 |
+| 加载失败 | 占位层移除，显示现有的占位图标（`ImagePlaceholderIcon` / `VideoPlaceholderIcon`），不变 |
+| 低缩放档（`useLowDetail`） | 照常显示；这时只请求缩略图，占位很快就被替换 |
+| 窄屏（< 768px） | 无差异，占位铺满预览框 |
+| 深浅主题 | 灰底用 `muted`，光带用新增的 `--sheen`，两套主题各一条 |
+| 减少动态效果 | 见动效表 |
+| 读屏 | 占位层 `aria-hidden`；预览框本身沿用现有 `alt`，不新增“加载中”播报（每个节点都播太吵） |
+
+#### 涉及的组件与文件
+
+- `index.css`：`:root` 和 `.dark` 各补一条 `--sheen`（浅色 `oklch(1 0 0 / 0.7)`，深色 `oklch(1 0 0 / 0.09)`），`@theme inline` 里映射 `--color-sheen`；新增 `@keyframes node-sheen`。
+- `components/canvas/media-skeleton.tsx`（新）：`MediaSkeleton` 占位层，内部带 150ms 的延迟出现逻辑，导出给图片和视频共用。
+- `components/canvas/media-preview.tsx`：`ImageLayersInner` 缩略图和原图都未加载完时渲染 `MediaSkeleton`，缩略图 `<img>` 加 `opacity` 淡入；`VideoPosterInner` 加 `loaded` 状态，封面到了再淡入。
+- `components/canvas/video-facade.tsx`：播放钮和时长角标跟随封面 `loaded` 一起淡入（需要 `VideoPoster` 暴露 `onLoad`）。
+- `lib/motion.ts`：不新增档位，用现有 `DURATION.base` / `DURATION.exit`；150ms 延迟作为 `SKELETON_DELAY` 常量加进来。
+- `ui/skeleton.tsx`：不改（它是“生成中”的呼吸骨架，另有用途）。
+
+**依赖**：无。
+
 ## 7. 动效规范（Motion）
 
 | Token | 值 | 用途 |

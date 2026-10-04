@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>视频节点加载过渡 · 三种方案</title>
+<style>
+  /* token 抄自 web/src/index.css（oklch），动效参数抄自 web/src/lib/motion.ts */
+  :root {
+    color-scheme: light;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --border: oklch(0.922 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --canvas-bg: oklch(0.975 0 0);
+    --canvas-dot: oklch(0 0 0 / 0.14);
+    --chrome: oklch(1 0 0 / 0.82);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --status-running: oklch(0.58 0.15 250);
+    --node-ring: oklch(0.58 0.15 250);
+    --radius: 0.625rem;
+    --d-fast: 120ms;
+    --d-base: 180ms;
+    --d-exit: 126ms; /* 退出约为进入的 70% */
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 0.1);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --canvas-bg: oklch(0.16 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.14);
+    --chrome: oklch(0.2 0 0 / 0.78);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --status-running: oklch(0.75 0.12 240);
+    --node-ring: oklch(0.75 0.12 240);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas-bg); color: var(--foreground);
+    font: 14px/1.5 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted-foreground); font-size: 13px; margin: 0 0 16px; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+    background: var(--chrome); border: 1px solid var(--chrome-border); border-radius: 14px;
+    padding: 10px 14px; margin-bottom: 20px; backdrop-filter: blur(8px);
+  }
+  .bar label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .bar input[type=range] { width: 160px; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+
+  /* ---------- 节点卡片 ---------- */
+  .col h2 { font-size: 14px; margin: 0 0 2px; }
+  .col p.d { margin: 0 0 10px; color: var(--muted-foreground); font-size: 12px; min-height: 54px; }
+  .node {
+    background: var(--card); border-radius: 16px; padding: 6px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
+    transition: box-shadow var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+  }
+  .node[data-selected="true"] { border-color: var(--node-ring); box-shadow: 0 0 0 1px var(--node-ring); }
+  .stage {
+    position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 11px;
+    background: var(--muted);
+  }
+  /* 封面：用渐变假装 ?v=poster */
+  .poster, .video { position: absolute; inset: 0; }
+  .poster {
+    background:
+      radial-gradient(60% 80% at 25% 30%, oklch(0.78 0.12 60 / 0.9), transparent 60%),
+      radial-gradient(70% 90% at 80% 75%, oklch(0.55 0.14 250 / 0.9), transparent 62%),
+      linear-gradient(135deg, oklch(0.42 0.06 280), oklch(0.3 0.05 240));
+  }
+  /* 视频层：就绪后才淡入，盖在封面上；回退时淡出露出封面 */
+  .video {
+    opacity: 0; pointer-events: none;
+    background:
+      radial-gradient(60% 80% at 25% 30%, oklch(0.78 0.12 60 / 0.9), transparent 60%),
+      radial-gradient(70% 90% at 80% 75%, oklch(0.55 0.14 250 / 0.9), transparent 62%),
+      linear-gradient(135deg, oklch(0.42 0.06 280), oklch(0.3 0.05 240));
+    transition: opacity var(--d-exit) var(--ease-out);
+  }
+  .video::after { /* 假装画面在动 */
+    content: ""; position: absolute; inset: -20%;
+    background: radial-gradient(40% 40% at 50% 50%, oklch(1 0 0 / 0.18), transparent 70%);
+    animation: drift 4s ease-in-out infinite alternate;
+  }
+  @keyframes drift { from { transform: translate(-12%, -6%); } to { transform: translate(12%, 8%); } }
+  .node[data-state="playing"] .video,
+  .node[data-state="paused"] .video { opacity: 1; transition-duration: var(--d-base); }
+  .node[data-state="paused"] .video::after { animation-play-state: paused; }
+
+  /* 播放按钮 */
+  .play {
+    position: absolute; inset: 0; margin: auto; width: 48px; height: 48px; border: 0; border-radius: 999px;
+    background: oklch(0 0 0 / 0.55); color: #fff; display: grid; place-items: center; cursor: pointer;
+    box-shadow: 0 6px 16px oklch(0 0 0 / 0.25); backdrop-filter: blur(6px);
+    transition: transform var(--d-fast) var(--ease-out), opacity var(--d-exit) var(--ease-out);
+  }
+  .play:hover { transform: scale(1.06); }
+  .play:active { transform: scale(0.96); }
+  .play svg { grid-area: 1 / 1; transition: opacity var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out); }
+  .play .tri { width: 20px; height: 20px; transform: translateX(1px); }
+  .play .ring { width: 28px; height: 28px; opacity: 0; transform: scale(0.8); }
+  .ring circle { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
+  .ring .track { stroke-opacity: 0.25; }
+  .ring .arc { stroke-dasharray: 22 66; transform-origin: 50% 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 视频就绪后，按钮和遮罩都淡出 */
+  .node[data-state="playing"] .play,
+  .node[data-state="paused"] .play { opacity: 0; pointer-events: none; transform: scale(0.9); }
+
+  /* 控制条（就绪后才有） */
+  .ctrl {
+    position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 10px; padding: 26px 14px 10px;
+    background: linear-gradient(to top, oklch(0 0 0 / 0.45), transparent); color: #fff;
+    opacity: 0; transition: opacity var(--d-exit) var(--ease-out); font-size: 12px;
+  }
+  .ctrl button { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; }
+  .ctrl .track { flex: 1; height: 2px; border-radius: 99px; background: oklch(1 0 0 / 0.35); overflow: hidden; }
+  .ctrl .fill { height: 100%; width: 38%; background: #fff; }
+  .node[data-state="playing"] .ctrl, .node[data-state="paused"] .ctrl { opacity: 1; transition-duration: var(--d-base); }
+
+  /* ---------- 方案 A：按钮变环形 ---------- */
+  .node[data-v="a"][data-state="loading"] .play .tri { opacity: 0; transform: scale(0.6); }
+  .node[data-v="a"][data-state="loading"] .play .ring { opacity: 1; transform: scale(1); }
+
+  /* ---------- 方案 B：压暗 + 居中 spinner ---------- */
+  .dim { position: absolute; inset: 0; background: oklch(0 0 0 / 0.32); opacity: 0; pointer-events: none;
+    transition: opacity var(--d-exit) var(--ease-out); }
+  .node[data-v="b"][data-state="loading"] .dim { opacity: 1; transition-duration: var(--d-base); }
+  .node[data-v="b"][data-state="loading"] .play .tri { opacity: 0; transform: scale(0.6); }
+  .node[data-v="b"][data-state="loading"] .play .ring { opacity: 1; transform: scale(1); }
+  .node[data-v="b"] .play { background: transparent; box-shadow: none; backdrop-filter: none; }
+  .node[data-v="b"][data-state="idle"] .play { background: oklch(0 0 0 / 0.55); box-shadow: 0 6px 16px oklch(0 0 0 / 0.25); }
+
+  /* ---------- 方案 C：shimmer 扫光 ---------- */
+  .shimmer { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none;
+    transition: opacity var(--d-exit) var(--ease-out); }
+  .shimmer::before {
+    content: ""; position: absolute; inset: 0 -50%; width: 50%;
+    background: linear-gradient(100deg, transparent, oklch(1 0 0 / 0.38), transparent);
+    transform: translateX(-100%); animation: sweep 1.2s var(--ease-out) infinite;
+  }
+  @keyframes sweep { to { transform: translateX(400%); } }
+  .node[data-v="c"][data-state="loading"] .shimmer { opacity: 1; transition-duration: var(--d-base); }
+  .node[data-v="c"][data-state="loading"] .play { opacity: 0.55; transform: scale(0.92); }
+  .node[data-v="c"][data-state="loading"] .play .tri { opacity: 1; }
+
+  /* 底部演示控制 */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .actions button {
+    font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--foreground);
+    transition: transform var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+  }
+  .actions button:hover { background: var(--muted); }
+  .actions button:active { transform: scale(0.96); }
+  .actions button:focus-visible, .play:focus-visible { outline: 2px solid var(--node-ring); outline-offset: 2px; }
+  .state { margin-top: 8px; font-size: 12px; color: var(--muted-foreground); }
+  .state b { color: var(--status-running); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ring .arc, .shimmer::before, .video::after { animation: none; }
+    .play, .play svg, .video, .dim, .shimmer, .ctrl { transition-duration: 0.01ms !important; }
+    .shimmer::before { display: none; }
+    /* 降级：环形/压暗仍然只做淡入淡出，不旋转不扫光；用静态弧表示“加载中” */
+  }
+  .rm .ring .arc, .rm .shimmer::before, .rm .video::after { animation: none; }
+  .rm .shimmer::before { display: none; }
+  @media (max-width: 767px) { .bar input[type=range] { width: 110px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>视频节点：封面 → 视频的加载过渡</h1>
+  <p class="sub">三种方案并排。点每张卡里的播放按钮，用上方滑块模拟网络快慢；也可以测「取消选中 → 停止并退回封面」（播放中、已暂停、加载中都适用）。</p>
+
+  <div class="bar">
+    <label>模拟加载耗时 <input id="delay" type="range" min="100" max="4000" step="100" value="1400" />
+      <span id="delayVal" class="tabular">1.4 s</span></label>
+    <label><input id="loadFail" type="checkbox" /> 加载失败</label>
+    <label><input id="rm" type="checkbox" /> 减少动态效果</label>
+    <label><input id="dark" type="checkbox" /> 深色主题</label>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const VARIANTS = [
+  { v: "a", title: "A · 按钮变环形进度", desc: "封面不动。播放按钮里的三角 120ms 内缩小淡出、换成一圈细环旋转；视频首帧就绪后，video 在封面上方 180ms 淡入，按钮整体淡出。" },
+  { v: "b", title: "B · 封面压暗 + 居中 spinner", desc: "点击后封面叠一层 black/30 压暗（180ms 淡入），按钮背景消失只留旋转环；就绪后遮罩和环一起淡出，video 淡入。" },
+  { v: "c", title: "C · 封面 shimmer 扫光", desc: "按钮缩小到 92% 并变淡，封面上一道斜向高光自左向右循环扫过（沿用生成中骨架屏的语言）；就绪后高光淡出，video 淡入。" },
+];
+const MIN_SHOW = 320; // 加载态至少显示这么久，避免极快网络下环一闪而过
+
+const tri = '<svg class="tri" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const ring = '<svg class="ring" viewBox="0 0 28 28"><circle class="track" cx="14" cy="14" r="11"/><circle class="arc" cx="14" cy="14" r="11"/></svg>';
+const pauseIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+const playIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+
+const grid = document.getElementById("grid");
+const $ = (id) => document.getElementById(id);
+
+VARIANTS.forEach(({ v, title, desc }) => {
+  const col = document.createElement("div");
+  col.className = "col";
+  col.innerHTML = `
+    <h2>${title}</h2><p class="d">${desc}</p>
+    <div class="node" data-v="${v}" data-state="idle" data-selected="true">
+      <div class="stage">
+        <div class="poster"></div>
+        <div class="video"></div>
+        <div class="dim"></div><div class="shimmer"></div>
+        <button class="play" aria-label="播放视频">${tri}${ring}</button>
+        <div class="ctrl"><button data-act="toggle" aria-label="暂停">${pauseIcon}</button>
+          <div class="track"><div class="fill"></div></div><span class="tabular">0:06 / 0:15</span></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button data-act="toggle2">暂停 / 继续</button>
+      <button data-act="select">取消选中 / 选中</button>
+      <button data-act="reset">重置</button>
+    </div>
+    <div class="state">状态：<b data-role="state">封面</b> · 选中：<span data-role="sel">是</span></div>`;
+  grid.appendChild(col);
+  wire(col);
+});
+
+function wire(col) {
+  const node = col.querySelector(".node");
+  const label = { idle: "封面", loading: "加载中", playing: "播放中", paused: "已暂停" };
+  let timer = null;
+
+  const set = (s) => {
+    node.dataset.state = s;
+    col.querySelector('[data-role="state"]').textContent = label[s];
+    col.querySelector('[data-role="sel"]').textContent = node.dataset.selected === "true" ? "是" : "否";
+    const t = col.querySelector('[data-act="toggle"]');
+    t.innerHTML = s === "playing" ? pauseIcon : playIcon;
+    t.setAttribute("aria-label", s === "playing" ? "暂停" : "播放");
+  };
+  // 规则：节点未选中 → 停止播放（含加载中），退回封面
+  const settle = () => {
+    if (node.dataset.selected !== "true" && node.dataset.state !== "idle") {
+      clearTimeout(timer);
+      set("idle");
+    } else set(node.dataset.state);
+  };
+
+  col.querySelector(".play").addEventListener("click", () => {
+    if (node.dataset.state !== "idle") return;
+    node.dataset.selected = "true"; // 点击节点即选中
+    set("loading");
+    const started = performance.now();
+    const wait = +$("delay").value;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if ($("loadFail").checked) { set("idle"); flash(col, "视频加载失败，已退回封面"); return; }
+      const rest = Math.max(0, MIN_SHOW - (performance.now() - started));
+      timer = setTimeout(() => set("playing"), rest);
+    }, wait);
+  });
+
+  const toggle = () => {
+    const s = node.dataset.state;
+    if (s === "playing") { set("paused"); settle(); }
+    else if (s === "paused") set("playing");
+  };
+  col.querySelector('[data-act="toggle"]').addEventListener("click", toggle);
+  col.querySelector('[data-act="toggle2"]').addEventListener("click", toggle);
+  col.querySelector('[data-act="select"]').addEventListener("click", () => {
+    node.dataset.selected = node.dataset.selected === "true" ? "false" : "true";
+    settle();
+  });
+  col.querySelector('[data-act="reset"]').addEventListener("click", () => {
+    clearTimeout(timer); node.dataset.selected = "true"; set("idle");
+  });
+}
+
+function flash(col, text) {
+  const el = col.querySelector(".state");
+  const old = el.innerHTML; el.textContent = text;
+  setTimeout(() => (el.innerHTML = old), 1600);
+}
+
+$("delay").addEventListener("input", (e) => ($("delayVal").textContent = (e.target.value / 1000).toFixed(1) + " s"));
+$("dark").addEventListener("change", (e) => (document.documentElement.dataset.theme = e.target.checked ? "dark" : "light"));
+$("rm").addEventListener("change", (e) => document.body.classList.toggle("rm", e.target.checked));
+</script>
+</body>
+</html>

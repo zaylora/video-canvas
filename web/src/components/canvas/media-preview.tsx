@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { variantUrl } from "@/utils/canvas/media-lod";
+import { isMediaPending, type MediaLoadState } from "@/utils/canvas/media-pending";
 
 import { useLowDetail, useNodeSelected } from "./hooks/use-low-detail";
+import { MediaSkeleton } from "./media-skeleton";
 import { ImagePlaceholderIcon, VideoPlaceholderIcon } from "./placeholder-icons";
 
 type MediaPreviewProps = {
@@ -30,6 +32,7 @@ type MediaPreviewProps = {
  * 图片预览的统一出口：低缩放且未选中时只请求 `?v=thumb`，
  * 放大或选中后在缩略图上叠原图，原图加载完成再淡入，避免闪白。
  * 缩略图失败自动改用原图，原图也失败才显示破图占位。
+ * 两层都还没加载出来时盖一层灰色扫光占位（设计稿 6.12），缩略图到了就淡入替换它。
  * 填满父级盒子，画幅由父级决定（节点预览框固定 16:9）。
  */
 export function MediaPreview({ mode = "lod", ...rest }: MediaPreviewProps) {
@@ -71,6 +74,11 @@ function ImageLayersInner({
   const showOriginal = !thumbUsable || !preferThumb;
   const showBroken = originalState === "failed" && thumbState !== "loaded";
   const fitClass = fit === "cover" ? "object-cover" : "object-contain";
+  // 只统计此刻真正在渲染的图层，没渲染的缩略图 / 原图不能算“还在等”
+  const pending = isMediaPending([
+    ...(thumbUsable ? [thumbState] : []),
+    ...(showOriginal ? [originalState] : []),
+  ]);
 
   if (showBroken) {
     return (
@@ -90,15 +98,18 @@ function ImageLayersInner({
   return (
     <div className={cn("relative size-full", className)}>
       {thumbUsable && (
-        <img
+        <motion.img
           src={thumb.url}
           alt={alt}
           loading="lazy"
           decoding="async"
           draggable={draggable}
+          initial={false}
+          animate={{ opacity: thumbState === "loaded" ? 1 : 0 }}
+          transition={{ duration: DURATION.base, ease: EASE_OUT }}
           onLoad={() => setThumbState("loaded")}
           onError={() => setThumbState("failed")}
-          ref={(el) => {
+          ref={(el: HTMLImageElement | null) => {
             if (el?.complete && el.naturalWidth > 0) setThumbState("loaded");
           }}
           className={cn("absolute inset-0 size-full", fitClass)}
@@ -122,6 +133,7 @@ function ImageLayersInner({
           className={cn("absolute inset-0 size-full", fitClass)}
         />
       )}
+      <MediaSkeleton pending={pending} />
     </div>
   );
 }
@@ -132,23 +144,33 @@ type VideoPosterProps = {
   className?: string;
   /** 图标大小类，占位用 */
   iconClassName?: string;
+  /**
+   * 封面“尘埃落定”时回调：封面加载完成，或确定没有封面（无变体 / 请求失败）。
+   * 调用方据此让播放按钮、时长角标和封面一起淡入。
+   */
+  onSettledChange?: (settled: boolean) => void;
 };
 
 /**
  * 视频封面 `?v=poster`：不挂载 video，零视频文件请求。
+ * 封面到之前盖一层灰色扫光占位（设计稿 6.12），到了淡入替换它。
  * 地址不归后端管、或封面请求失败（404 等）时显示视频占位图标。
  */
-export function VideoPoster({ src, className, iconClassName }: VideoPosterProps) {
-  return (
-    <VideoPosterInner key={src} src={src} className={className} iconClassName={iconClassName} />
-  );
+export function VideoPoster({ src, ...rest }: VideoPosterProps) {
+  return <VideoPosterInner key={src} src={src} {...rest} />;
 }
 
-function VideoPosterInner({ src, className, iconClassName }: VideoPosterProps) {
+function VideoPosterInner({ src, className, iconClassName, onSettledChange }: VideoPosterProps) {
   const poster = variantUrl(src, "poster");
-  const [failed, setFailed] = useState(false);
+  const [state, setState] = useState<MediaLoadState>("pending");
 
-  if (!poster.hasVariant || failed) {
+  const noPoster = !poster.hasVariant || state === "failed";
+  const settled = noPoster || state === "loaded";
+  useEffect(() => {
+    onSettledChange?.(settled);
+  }, [settled, onSettledChange]);
+
+  if (noPoster) {
     return (
       <span className="text-muted-foreground/45 grid size-full place-items-center">
         <VideoPlaceholderIcon className={cn("size-1/3 max-w-10", iconClassName)} />
@@ -156,14 +178,24 @@ function VideoPosterInner({ src, className, iconClassName }: VideoPosterProps) {
     );
   }
   return (
-    <img
-      src={poster.url}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      draggable={false}
-      onError={() => setFailed(true)}
-      className={cn("size-full object-cover", className)}
-    />
+    <div className="relative size-full">
+      <motion.img
+        src={poster.url}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        initial={false}
+        animate={{ opacity: state === "loaded" ? 1 : 0 }}
+        transition={{ duration: DURATION.base, ease: EASE_OUT }}
+        onLoad={() => setState("loaded")}
+        onError={() => setState("failed")}
+        ref={(el: HTMLImageElement | null) => {
+          if (el?.complete && el.naturalWidth > 0) setState("loaded");
+        }}
+        className={cn("size-full object-cover", className)}
+      />
+      <MediaSkeleton pending={isMediaPending([state])} />
+    </div>
   );
 }
