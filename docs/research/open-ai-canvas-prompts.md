@@ -1,0 +1,506 @@
+# open-ai-canvas 图片/视频节点预设提示词
+
+- 来源仓库：https://github.com/ddcat-ai/open-ai-canvas
+- 抓取文件：`backend/internal/tools/seed/tools.json`
+- 抓取提交：`125864f69252d1de8cf76b4036fe4cf60a2d7e1b`
+- 原始字段完整保留；图片风格共 45 条，视频运镜共 33 条，辅助宫格/推演预设共 9 条。
+
+## 图片节点：风格预设
+
+图片节点可直接追加到提示词的风格描述。
+
+分类：`period`=古装、`city`=都市、`decade`=年代、`life`=生活、`science_fiction`=科幻、`type`=类型、`poetic`=写意、`animation`=动画、`drawing`=绘画、`myth`=神话
+
+### 1. 古装偶像 (`period_idol`)
+- 分类：`period`
+- 提示词：古偶唯美柔光风格，东方新古典写意浪漫，古装言情影像，ARRI Alexa Mini LF大画幅摄影机拍摄，[50/85/135mm]大光圈定焦镜头，1/8黑柔焦镜+薄雾滤镜效果。低饱和东方传统色盘，包裹式柔光布光，侧逆柔光勾勒轮廓，光比1:2低反差，高调柔影调，明暗过渡丝滑，宋式雅致美学，高通透度，强空气感，薄烟氤氲氛围，奶油焦外虚化，极细腻微胶片颗粒，宽动态范围，中低锐度边缘柔和，电影级古偶唯美质感
+
+### 2. 宫廷权谋 (`palace_intrigue`)
+- 分类：`period`
+- 提示词：古装宫廷权谋正剧，冷峻肃杀风格，东方写实主义极简美学，ARRI Alexa 35 摄影机拍摄，Super35 画幅，电影级质感。低明度低饱和冷调色盘；大光比硬光布光，侧逆光伦勃朗光，人物半明半暗，硬朗阴影边界，低调硬调高反差，整体压暗曝光，暗部沉实保留层次。庄重肃穆宫廷美术，哑光做旧质感，细腻中灰胶片颗粒，低通透度，淡淡焚香薄烟空气感，宽动态范围，中等偏高锐度，材质纹理清晰。整体氛围沉郁压抑，静水流深暗流涌动，权力博弈的宿命感，高级电影质感。
+
+### 3. 武侠江湖 (`wuxia`)
+- 分类：`period`
+- 提示词：写实武侠江湖题材，新现实主义武侠风格，沉郁凛冽的江湖烟火气质，院线电影级画面，采用ARRI Alexa 35数字电影摄影机拍摄，Super 35画幅，库克S4/i定焦镜头，35mm柯达Vision3胶片扫描质感，自然主义光源，侧逆低调布光，伦勃朗光型，中高反差硬调影调，宽动态范围，暗部细节丰富。，粗粝写实美术，史实级中式古代场景与服饰，中等胶片颗粒，中低通透度，自然空气感与丁达尔效应，中等偏上锐度，焦外柔润，整体厚重沉稳，电影级叙事感
+
+### 4. 国产都市 (`cn_urban`)
+- 分类：`city`
+- 提示词：中国新写实主义都市剧情片，纪实美学风格，克制粗粝的本土都市质感，蔡司 CP.3 定焦镜头，35mm 焦段，自然景深；低饱和冷灰基底，小面积高饱和霓虹点缀，中低反差影调，实景自然光源布光，7-9 档明暗层级，暗部留细节高光不溢出，阴天散射光质感；低程度数字底噪，中低通透度带轻微灰雾，14 档高动态范围，中低锐度保留皮肤纹理，沉静疏离的日常氛围
+
+### 5. 都市情感 (`urban_romance`)
+- 分类：`city`
+- 提示词：韩国当代都市情感剧集影像，韩剧都市柔光风格，日常浪漫主义美学，暖柔治愈基调；ARRI Alexa Mini LF 全画幅数字摄影机，35mm 大光圈定焦镜头，1/8 黑柔焦镜，浅景深；低饱和暖调基底，奶杏米棕主色调，莫兰迪冷色点缀，软质散射光，平柔布光，低反差中高调，明暗过渡顺滑，高光柔化自然溢出，暗部保留灰阶细节；韩式简约现代美术，哑光柔润质感，圆润线条造型，细腻数字微颗粒，中高通透度，轻微空气感，宽动态范围，中低锐度，温柔治愈都市氛围感
+
+### 6. 现实悬疑 (`crime_suspense`)
+- 分类：`city`
+- 提示词：国产社会派现实主义悬疑，冷峻克制的写实影像风格，沉郁压抑的冷调悬疑气质,ARRI Alexa Mini LF全画幅数字电影机，35mm定焦镜头，电影级浅景深,整体色彩偏沉偏冷,低调布光，大光比，侧逆光塑造人物，大面积阴影制造悬念，明暗高反差，硬调影调，暗部扎实厚重,现实主义粗粝质感，轻微均匀胶片颗粒，低通透度带轻微雾感，弱空气感，高动态范围，中等偏低锐度，厚重写实画质
+
+### 7. 韩国冷淡 (`korean_muted`)
+- 分类：`city`
+- 提示词：新现实主义写实美学，清冷克制的疏离感，ARRI Alexa Mini 拍摄，Super 35mm 传感器，35mm 定焦人文视角，克制虚化。低饱和冷灰调基底，阴天漫射侧光，低光比平柔布光，低反差中灰影调，整体欠曝 0.5 档，明暗过渡平缓。全画面哑光质感，元素精简，细腻轻微胶片颗粒，中低通透度带轻微雾感，弱空气透视，高动态范围，中等偏低锐度，边缘柔和温润。
+
+### 8. 90年代 (`nineties`)
+- 分类：`decade`
+- 提示词：90年代新写实主义电影，现实题材纪实感，Super 16mm胶片拍摄，柯达Vision 500T 5279胶片，Arriflex SR3摄影机，手持拍摄轻微呼吸感，蔡司25mm/35mm/50mm定焦镜头，低饱和度色彩，自然光+实用光源布光，现有光效，中低反差，中间调丰富，暗部带灰雾，高光柔和暖溢，中等16mm胶片颗粒，暗部颗粒更明显，低通透度，空气带浮尘薄雾，窄动态范围，中低锐度，边缘柔和，纯胶片质感
+构图平实自然，无刻意形式感，无数码感，年代感准确
+
+### 9. 黄金时代 (`golden_age`)
+- 分类：`decade`
+- 提示词：美式复古好莱坞黄金时代风格，古典制片厂美学，1930s-1960s年代感，强电影叙事感，浪漫与戏剧张力并存，35mm醋酸纤维胶片，Mitchell BNC摄影机，Cooke Speed Panchro定焦镜头，模拟Technicolor特艺彩冲印工艺，中高反差影调，伦勃朗三点布光，菲涅尔聚光灯主光，高光暖调柔化，暗部沉实带灰雾，肤色暖橙细腻，Art Deco装饰艺术置景，微做旧质感，环境烟雾空气透视，中等细度35mm胶片颗粒，中低通透度薄雾感，胶片级动态范围，中等偏柔柔化锐度，优雅怀旧电影质感
+
+### 10. 纪实写实 (`documentary_realism`)
+- 分类：`decade`
+- 提示词：复古叙事电影风格，35mm胶片拍摄，ARRICAM摄影机，Cooke经典定焦镜头，诗意现实主义风格，年代剧情片质感，整体暖棕基调，低饱和中低明度色彩，侧逆柔光，伦勃朗布光，中等柔反差，中低调影调，高光柔化带暖溢，暗部保留丰富细节，灰阶过渡平滑，年代写实美术，质朴生活质感，中等细腻胶片颗粒，轻微雾感，空气透视，自然暗角，高光柔化，中等偏柔锐度，高动态范围，复古电影质感，叙事氛围感
+
+### 11. 复古叙事 (`retro_narrative`)
+- 分类：`decade`
+- 提示词：现实主义纪实风格，35mm柯达Vision彩色胶片拍摄，Arri BL4胶片摄影机，35mm标准定焦镜头，自然空间透视，纪实自然光效，中等偏粗胶片颗粒，低通透度，空气浮尘朦胧感，强空气透视纵深感，中等动态范围，偏低锐度，胶片温润质感，原生年代真实感
+
+### 12. 美式90 (`american_nineties`)
+- 分类：`decade`
+- 提示词：经典复古剧情片视觉，古典好莱坞摄影美学，35mm胶片质感，沉静叙事感，怀旧厚重氛围，35mm柯达Vision3彩色电影胶片，Arriflex 535B摄影机，180°快门角度，Panavision C系列变形镜头，自然运动模糊，低饱和复古色盘，古典三点布光，低光比柔化光影，中低反差影调，暗部保留细节，高光柔和滚降，暖调高光偏移，哑光写实质感，年代经典造型，35mm胶片自然细颗粒，中等通透度，轻微空气透视，宽动态范围，中等锐度边缘柔化，电影级最终放映质感
+
+### 13. 昭和黑白 (`showa_monochrome`)
+- 分类：`decade`
+- 提示词：日本昭和黑白电影风格，35mm黑白负片胶片拍摄，机械式胶片电影摄影机，，50mm标准定焦镜头，f/4.0中等光圈，日式写实主义，物哀美学，沉静克制的视觉基调，留白式构图，纯黑白灰阶影调，中高反差，全灰阶过渡自然，侧光与侧逆光为主，单主光+弱环境补光，柔和自然光效，暗部保留细节、亮部不过曝，写实质朴美术，35mm自然银盐颗粒，中等锐度，柔润结像，宽动态范围，自然空气透视，复古胶片质感
+
+### 14. 老式工业 (`vintage_industrial`)
+- 分类：`decade`
+- 提示词：20 世纪中期重工业纪实影像，胶片工业美学，冷峻厚重的工业力量感；35mm 柯达 Ektachrome 彩色反转胶片，Arriflex 35 II 摄影机，Cooke Speed Panchro 镜头；低饱和度低明度；高位顶光与侧逆光结合，现场固有光源布光，硬调中高反差，暗部扎实高光柔和溢出；中等偏粗胶片颗粒，中低通透度，空间弥漫粉尘雾气带轻微丁达尔效应，中等动态范围，柔和中等锐度，真实工业纪实质感
+
+### 15. 60海报 (`sixties_poster`)
+- 分类：`decade`
+- 提示词：50-60年代美式复古海报风格，Mid-Century Modern插画美学，高饱和度撞色搭配，强烈的摄影棚硬光与深邃阴影，高反差长调影调，清晰可见的CMYK四色印刷网点与罗塞塔纹，大画幅胶片细腻颗粒，套印不准的微妙色彩溢出，廉价纸张纹理与岁月泛黄效果，油墨不均的印刷瑕疵，硬朗的轮廓光，理想化的人物造型与比例，充满年代感的乐观主义氛围，怀旧广告画，Saturday Evening Post封面质感，平版胶印工艺模拟。
+
+### 16. 复古港片 (`hk_retro`)
+- 分类：`decade`
+- 提示词：90年代香港电影风格，35mm柯达500T胶片拍摄，Arriflex 435摄影机，35mm标准定焦镜头，冷暖对冲色彩体系，混合光源照明，硬光侧逆光布光，高反差硬调影调，暗部扎实厚重，霓虹高光带自然溢色，中等偏粗胶片颗粒，暗部颗粒明显，中低通透度，空气带轻微烟尘雾感，中等动态范围，中等温润锐度，写实基底带戏剧张力
+
+### 17. 复古胶片 (`retro_film`)
+- 分类：`decade`
+- 提示词：复古柯达胶片摄影风格，Kodak Portra 400与Gold 200色彩科学，细腻的ISO 400胶片颗粒质感，暖黄与冷蓝双调的怀旧色偏，定焦老镜头（Helios/Canon FD）特有的肥皂泡圆形散景与轻微旋转焦外，自然的镜头漏光与暖调光晕效果，曝光过度1档的褪色感，胶片特有的Halation高光滚降，浅景深，手动对焦的轻微柔化感，底片扫描的灰尘与划痕纹理，压缩的反差与低动态范围，电影级怀旧色彩分级，不经意的生活碎片美学。
+
+### 18. 生活治愈 (`healing_life`)
+- 分类：`life`
+- 提示词：日式生活流治愈影像，整体基调静谧松弛温润，自然主义日常美学；16mm彩色负片拍摄，35mm/50mm/85mm定焦镜头组，漫射自然光为主、暖柔光为辅，软调低反差影调，明暗过渡平缓；侘寂质朴美术，细腻胶片颗粒，空气感强，宽动态范围，氛围平缓治愈，影视专业标准
+
+### 19. 青春胶片 (`youth_film`)
+- 分类：`life`
+- 提示词：日式青春胶片风格，135 彩色负片，富士 C200 质感，大光圈定焦拍摄，平成青春映画美学，清新写实风格,低饱和高明度色彩，阴影青蓝色偏高光暖黄调，中低反差高调影调，宽动态范围，明暗过渡顺滑，黄金时段侧逆光，柔和自然光，漫射软光，发丝轮廓光，空气丁达尔效应,中等细腻胶片颗粒，中低锐度边缘柔和，强空气透视感，奶油焦外虚化，画面通透有呼吸感,治愈懵懂青春情绪，怀旧怅惘氛围，日常诗意感
+
+### 20. 原子朋克 (`atompunk`)
+- 分类：`science_fiction`
+- 提示词：原子朋克复古科幻，黄金时代科幻美学，1950 年代复古未来主义，前数字时代的未来幻想，冷峻工业感与浪漫人文感交织；35mm 电影胶片，Panavision C 系列变形宽银幕镜头，柯达反转片质感，轻微镜头眩光与边缘色散；高反差硬调影调，中等细度胶片颗粒，中低通透度，淡雾空气感，12 档动态范围，中等偏柔锐度，空间纵深感强，复古胶片光学质感
+
+### 21. 霓虹朋克 (`neon_punk`)
+- 分类：`science_fiction`
+- 提示词：科幻反乌托邦赛博朋克风格，新黑色电影叙事逻辑，高科技低生活二元对立气质，冷峻迷幻的反乌托邦都市基调，ARRI Alexa Mini LF 大画幅摄影机拍摄，变形宽银幕镜头，带水平眩光与拉丝散景，14 档宽动态范围，冷暖强对冲，高饱和霓虹与低饱和环境形成对比，全人工霓虹环境光为主，蓝调时刻弱天光为辅，逆光霓虹勾勒轮廓，人物面部弱漫反射光，高反差低调影调，霓虹高光带柔和光晕，16mm 细腻胶片颗粒，中低通透度，强空气感，中等锐度，近实远虚空气透视，电影级质感
+
+### 22. 硬核科幻 (`hard_scifi`)
+- 分类：`science_fiction`
+- 提示词：硬核科幻风格，严谨的工程技术美学，极低饱和的功能指示色点缀，航天级铝合金与钛合金精密加工质感，暴露可循的管道与电缆走线逻辑，高反差无情阴影，真空级通透度与零浮尘空气感，零颗粒数字成像，功能决定形式的包豪斯设计哲学，理性冷峻的深空压抑氛围，真实物理光影与反射，超精密机械结构的秩序感，非装饰的功能性主义。
+
+### 23. 蒸汽朋克 (`steampunk`)
+- 分类：`science_fiction`
+- 提示词：维多利亚时代蒸汽朋克风格，复古机械美学与古典贵族服饰融合，中高反差长调影调，金属镜面高光与天鹅绒暗部层次，精密渐开线齿轮与铆接蒸汽管道结构，新艺术运动与哥特复兴装饰纹样，新维多利亚式工业浪漫主义，维多利亚时代湿版底片颗粒质感，微距级材质还原，电影级 ARRI ALEXA 65 质感，匠人之手与工业之力协奏的机械诗篇。
+
+### 24. 血肉朋克 (`biopunk`)
+- 分类：`science_fiction`
+- 提示词：科幻反乌托邦血肉朋克美学，生物工业共生题材，肉体与工业深度侵蚀融合，有机生长替代工业组装，压抑诡谲的生理冲击感，暗黑生物科技基，35mm柯达Vision3 500T胶片拍摄，ARRICAM摄影机，潘纳维申C系列变形镜头，轻微眩光与焦外拉丝，原生胶片颗粒，高反差硬调影调，低照度大光比，侧逆光勾勒肌理，湿雾散射环境光，中等偏粗胶片颗粒，暗部颗粒加重；低通透度，重度湿雾空气感，丁达尔光效；高动态范围，暗部保留肌理；中等偏低锐度，边缘柔和
+
+### 25. 心理恐怖 (`psychological_horror`)
+- 分类：`type`
+- 提示词：院线级恐怖电影，写实主义恐怖风格，哥特暗黑美学，日常空间异化，心理惊悚氛围，35mm胶片拍摄，ARRICAM ST摄影机，老式电影镜头，轻微暗角与呼吸效应，高反差硬调，大面积纯黑暗部，局部高光溢出，侧逆光+顶光布光，整体欠曝，衰败日常美学，恐怖元素半遮半露，中等胶片颗粒，暗部颗粒加重，低通透度，轻微灰雾，窄动态范围，中等偏低锐度，边缘柔化
+
+### 26. 邪典cult (`cult_film`)
+- 分类：`type`
+- 提示词：美式复古怪诞邪典风格，50-70年代美式复古背景，林奇式超现实悬疑，乡村哥特怪核美学，克制型心理惊悚，平静下的诡异感，35mm彩色胶片拍摄，Arriflex 35mm胶片摄影机，老式定焦镜头，轻微镜头漏光与眩光，胶片齿孔边缘，低调布光，中高反差，大面积死黑暗部，50-70年代美式复古美术，搪植入微小违和怪异细节，中等偏粗胶片颗粒，暗部颗粒加重，低通透薄雾感，窄动态范围，中心锐度中等边缘柔化，轻微胶片划痕与印片污渍，老胶片胶转磁质感
+
+### 27. 现代战争 (`modern_warfare`)
+- 分类：`type`
+- 提示词：写实复古战争史诗画面，35mm 柯达电影胶片拍摄，潘纳维申复古变形镜头，自然胶片颗粒，轻微镜头眩光与焦外拉丝；低饱和低明度影调，高反差低调硬调，侧逆光硬光布光，冷暖光影对比；中等偏粗胶片颗粒，低通透度，强空气透视，硝烟扬尘空气介质，中等动态范围，中等锐度边缘柔化，沉郁冷峻的战场氛围，沉浸式临场感，影视级画面质感
+
+### 28. 荒野公路 (`wasteland_road`)
+- 分类：`type`
+- 提示词：荒野叙事电影质感，新写实主义融合史诗气质，粗粝冷峻的旷野美学，ARRI Alexa Mini LF大画幅数字摄影机，变形宽银幕定焦镜头成像，14档宽动态范围，自然光效主导，黄金时刻侧逆光，中高反差硬调，暗部扎实有层次，亮部保留高光肌理，整体曝光偏沉，风化写实美术风格，中等偏粗有机胶片颗粒，中低通透度，空气尘雾感，强空气透视，自然中等锐度，电影级画面质感，氛围孤寂蛮荒
+
+### 29. 西部牛仔 (`western_cowboy`)
+- 分类：`type`
+- 提示词：经典美式西部风格，强烈的正午直射阳光，边缘锋利的硬阴影，极高反差的影调结构，风沙扬尘的大气介质，35mm 胶片颗粒感，变形宽银幕的横向拉伸与光学眩光，复古西部电影的严峻史诗氛围，帽檐阴影下锐利的眼神光，汗渍与泥土的细节，赛尔乔·莱昂内式构图，尘土飞扬的荒野传说。
+
+### 30. 新兴中式 (`neo_chinese`)
+- 分类：`poetic`
+- 提示词：电影级画面，新中式诗意写实风格，东方人文意境，阿莱Alexa Mini LF拍摄，蔡司电影定焦镜头，35mm柯达夜景胶片质感，霁蓝灰蓝冷蓝辉光，低饱和冷暖对冲，柔光布光，半明半暗留白布光，中低调影调，宽动态范围，明暗过渡柔和，细腻中等胶片颗粒，中高通透度，微弱薄雾空气感，蓝辉轻度丁达尔散射，中等柔化锐度，焦外柔和，整体静谧悠远东方禅意氛围
+
+### 31. 高调荒诞 (`high_key_absurd`)
+- 分类：`poetic`
+- 提示词：35mm胶片质感，高调荒诞美学，超现实怪诞风格，ARRICAM胶片摄影机，潘纳维申C系列变形镜头，柯达Vision3 50D彩色负片，高短调影调，大面积柔光照明，光比1:2，高明度马卡龙主色系，高饱和点缀色，明暗过渡顺滑，高光保留细节，暗部极浅无死黑，洁净规整哑光质感，几何化夸张造型，秩序化陈设，比例失调的荒诞细节，中等细腻胶片颗粒，高通透度，轻微空气感，高动态范围，中等偏高锐度，变形宽银幕散景光晕
+
+### 32. 上美动漫 (`shanghai_animation`)
+- 分类：`animation`
+- 提示词：中国动画学派，上海美术电影制片厂经典风格，手绘赛璐璐动画正片，中国传统工笔重彩，东方古典浪漫主义，影视级叙事质感，ISO100低感光度，平光为主弱塑形光，装饰性布光，中国传统矿物颜料配色，中对比度中间调，三级明暗层级，铁线描勾边，矿物颜料平涂，局部毛笔晕染，意象化造型，均衡构图留白得当，线条清晰色块均匀，背景水墨空气感，宽动态范围
+
+### 33. 大友克洋 (`otomo_akira`)
+- 分类：`animation`
+- 提示词：大友克洋风格，硬核科幻写实动画，赛璐璐手绘质感，工业精密美学，冷峻末世基调，低调硬光布光，大光比高反差硬调，人工霓虹混合光源，中低通透度，强空间纵深感，12档动态范围，中高锐度，暗部沉实高光克制
+
+### 34. 定格动画 (`stop_motion`)
+- 分类：`animation`
+- 提示词：逐帧定格动画，物理实体微缩模型，手工制作质感，移轴效果，自然景深，精准透视，柔光主光，低位漫反射补光，中对比度全阶影调，明暗过渡自然，黏土/树脂/布艺/木质实体材质，统一微缩比例，手工打磨痕迹，道具带自然使用磨损，材质肌理清晰，真实物理投影，细腻数字底噪，中高通透度，轻度空气透视，宽动态范围，中等偏高锐度，院线级定格动画质感
+
+### 35. 黏土动画 (`claymation`)
+- 分类：`animation`
+- 提示词：传统手工黏土定格动画，100mm f/2.8微距镜头，大画幅传感器，宽动态范围，实体塑性黏土材质，表面带手工塑形细微肌理，微缩实体模型场景，手工制作轻微不完美痕迹，45°侧位主光，漫射辅光补亮暗部，顶置轮廓光分离主体，中反差柔化影调，明暗过渡自然，细腻浅度胶片颗粒，中等通透度，轻微空气透视，自然中等锐度，微缩世界沉浸感，温润手工艺术质感，阿德曼工作室。
+
+### 36. 中式水墨 (`chinese_ink`)
+- 分类：`drawing`
+- 提示词：新中式数字水墨影像，东方诗意美学，虚实相生，留白见意，气韵生动，墨分五色，清雅空灵的电影画面，墨色五阶为主色，软反差低对比度，细腻灰阶过渡，自然漫射柔光，阴影边缘晕染虚化，中低调影调，生宣纤维质感基底，墨色边缘自然洇染，干湿笔锋结合，造型概括简练，中式传统形制，近浓远淡，无生硬轮廓，强空气感水雾山岚，中低锐度边缘柔化，温润沉静的东方禅意氛围
+
+### 37. 浮世绘风 (`ukiyo_e`)
+- 分类：`drawing`
+- 提示词：日本传统浮世绘木版画风格，葛饰北斋与歌川广重艺术风格，流畅有力的书法性黑色轮廓线，大面积矿物颜料平涂上色，层次分明的硬边阴影切割，无渐变渲染的2-3级色阶，和纸植物纤维的天然纹理质感，木版木理纹理的隐约显现，版木角压痕与轻微套印不准的工艺感，幽玄与物哀的东方古典美学意境，古朴典雅的木版墨色与矿物色粉质感，和纸的温润呼吸感。 无文字。
+
+### 38. 传统皮影 (`shadow_puppet`)
+- 分类：`drawing`
+- 提示词：中国传统非遗皮影戏风格，蔡司Supreme Prime定焦镜头，Super 35画幅，16档宽动态范围，中高反差戏剧影调，传统矿物颜料色系，明暗层级丰富，逆光下皮料半通透，手工兽皮皮质质感，传统皮影造型规范，镂空雕刻工艺，中式传统纹样，分层平面布局，手工刀刻痕迹，矿物染色颗粒感，线条刚劲流畅，细腻低银盐颗粒，温润通透画质，微弱丁达尔空气感，中等偏高锐度，细节扎实，16mm胶片复古质感，东方写意戏剧氛围，古朴厚重的非遗艺术调性，专业影视布光
+
+### 39. 埃及壁画 (`egyptian_mural`)
+- 分类：`drawing`
+- 提示词：史诗级古埃及壁画风格，平涂矿物色彩，硬朗粗粝的深色轮廓线，几何化边框纹样，象形文字铭文装饰，局部鎏金斑驳质感，极低反差影调，神秘古老仪式氛围，浮尘空气感，ARRI Alexa 65 质感，庄严永恒的画面。
+
+### 40. 简约插画 (`minimal_illustration`)
+- 分类：`drawing`
+- 提示词：现代扁平化设计风格，纯矢量图形质感，极简几何形状构成，高饱和纯色块填充，高对比度色相搭配，清晰锐利的轮廓线条（单像素级），绝对无阴影、无渐变、无纹理、无材质表现的平面设计法则，严格网格系统构图，大面积留白提供视觉呼吸感，UI插画与信息图形设计美学，简洁明快的现代简约视觉效果，包豪斯与瑞士国际主义设计语言，整齐统一的元素间距与圆角半径，信息传达清晰精确，完美的像素级锐度。
+
+### 41. 荒诞达利 (`dali_surreal`)
+- 分类：`drawing`
+- 提示词：达利式超现实主义影视画面，偏执批判派梦境美学，潜意识荒诞隐喻，古典艺术厚重调性，非逻辑错视空间，写实细节搭配违背物理规则的形态,65mm柯达Vision3 50D胶片拍摄，Panavision大画幅胶片摄影机，Primo定焦镜头，1/8黑柔焦镜，自然细腻胶片颗粒，侧逆硬光主光，冷色漫反射补光，丁达尔体积光；古典明暗对照法，中高反差影调，14档宽动态范围，高光有细节暗部有层次，达利经典意象写实材质+非逻辑形态，多重透视错视空间，中低通透度，强空气透视雾感，近实远虚，主体锐度清晰边缘柔化，影调过渡平滑，电影级超现实梦境质感
+
+### 42. 游戏概念 (`game_concept`)
+- 分类：`drawing`
+- 提示词：美国游戏概念艺术，好莱坞写实主义数字概念设计，Master Prime定焦镜头，大光圈浅景深，轻微自然暗角与镜头眩光，低饱和基底色，高对比度点缀色，侧逆轮廓光，伦勃朗布光逻辑，硬调高反差影调，暗部有细节，高光不裁切，PBR物理材质，美式工业写实造型，细腻原生数字颗粒，中高通透度，真实大气透视，空气感强，14档宽动态范围，中心高锐度边缘柔化，3A游戏概念美术质感
+
+### 43. 传统神话 (`chinese_myth`)
+- 分类：`myth`
+- 提示词：东方新古典神话史诗，新东方主义美学，上古神话题材，兼具洪荒厚重感与空灵仙气，写实与东方写意结合，庄肃瑰丽，65mm大画幅传感器，16mm柯达胶片颗粒，电影级浅景深，变形宽银幕散景，暗部偏青蓝冷调，亮部偏暖金调，冷暖对冲，中高反差影调，9档动态范围，冷色环境补光，丁达尔体积光束，伦勃朗人物布光，神性角色轮廓光晕，淡墨晕染质感，古拙雄浑，细腻胶片颗粒，高通透度，强空气感，宽动态范围，中心锐度扎实，焦外柔和，电影级画质，空间纵深感强，自然暗角
+
+### 44. 希腊神话 (`greek_myth`)
+- 分类：`myth`
+- 提示词：希腊神话史诗风格，35mm柯达胶片拍摄，Vision3胶片质感，中等胶片颗粒，高动态范围，新古典主义史诗风格，沉郁雄浑的神性史诗气质，考古级写实质感，地中海硬调自然光，侧逆光塑造雕塑感轮廓，明暗层次丰富，中高反差影调，冷暖对比布光，画面中心锐度高，边缘轻微柔化，变形宽银幕拉丝光斑，空气透视远景雾感，电影级光影，影视工业质感，细节丰富，构图庄重有仪式感
+
+### 45. 西式魔幻 (`western_fantasy`)
+- 分类：`myth`
+- 提示词：黑暗奇幻影视，新哥特现实主义风格，史诗悲剧质感，神性陨落与蛮荒生长的核心情绪，辉煌残响中的绝望诗意，写实化奇幻叙事，35mm柯达Vision3 5219胶片拍摄，Panavision C系列变形镜头，中等胶片颗粒，4K数字中间片校色，低调硬调影调，大光比1:12，侧逆轮廓光塑形，环境光压暗，丁达尔光束，高动态范围，衰败的崇高感，低通透度冷灰薄雾，强空气透视，阴冷潮湿的幽冥气息，中等柔化锐度，史诗级肃穆压迫感
+
+## 视频节点：运镜预设
+
+视频节点可直接追加到提示词的运镜描述。
+
+分类：`basic`=基础控制、`follow`=人物跟拍、`reveal`=揭示转场、`emotion`=情绪强化、`aerial`=空间航拍
+
+### 46. 固定镜头 (`static_shot`)
+- 分类：`basic`
+- 用途：建立冷静秩序
+- 提示词：运镜：固定机位，镜头位置和拍摄方向都保持不变，画面构图稳定，由主体动作或画面内部变化形成运动感。
+
+### 47. 镜头上摇 (`tilt_up`)
+- 分类：`basic`
+- 用途：展示高度威压
+- 提示词：运镜：固定机位上摇，镜头位置不移动，只沿垂直方向缓慢向上转动，画面重心从下方逐步移向上方。
+
+### 48. 镜头下摇 (`tilt_down`)
+- 分类：`basic`
+- 用途：从环境落到人
+- 提示词：运镜：固定机位下摇，镜头位置不移动，只沿垂直方向缓慢向下转动，画面重心从上方逐步移向下方。
+
+### 49. 镜头左摇 (`pan_left`)
+- 分类：`basic`
+- 用途：横向展示空间
+- 提示词：运镜：固定机位左摇，镜头位置不移动，只沿水平方向缓慢向左转动，让画面内容从右向左连续变化。
+
+### 50. 镜头右摇 (`pan_right`)
+- 分类：`basic`
+- 用途：引出画外信息
+- 提示词：运镜：固定机位右摇，镜头位置不移动，只沿水平方向缓慢向右转动，让画面内容从左向右连续变化。
+
+### 51. 镜头上升 (`crane_up`)
+- 分类：`basic`
+- 用途：展开场景规模
+- 提示词：运镜：镜头垂直上升，拍摄方向基本保持稳定，机位高度从低到高变化，画面视角随高度产生变化。
+
+### 52. 镜头左移 (`truck_left`)
+- 分类：`basic`
+- 用途：制造空间视差
+- 提示词：运镜：镜头左移，机位整体向左横向平移，拍摄方向基本不变，前景与背景形成自然视差。
+
+### 53. 镜头下降 (`crane_down`)
+- 分类：`basic`
+- 用途：从全局聚焦
+- 提示词：运镜：镜头垂直下降，拍摄方向基本保持稳定，机位高度从高到低变化，画面视角随高度产生变化。
+
+### 54. 镜头右移 (`truck_right`)
+- 分类：`basic`
+- 用途：制造空间视差
+- 提示词：运镜：镜头右移，机位整体向右横向平移，拍摄方向基本不变，前景与背景形成自然视差。
+
+### 55. 镜头前推 (`dolly_in`)
+- 分类：`basic`
+- 用途：强调情绪靠近
+- 提示词：运镜：镜头缓慢前推，机位沿镜头朝向向前移动，主体在画面中逐渐变大，空间层次产生自然视差。
+
+### 56. 镜头后移 (`dolly_out`)
+- 分类：`basic`
+- 用途：展示人物孤独
+- 提示词：运镜：镜头缓慢后拉，机位沿镜头朝向向后移动，主体在画面中逐渐变小，画面范围逐步变宽。
+
+### 57. 变焦推进 (`zoom_in`)
+- 分类：`basic`
+- 用途：突出表情反应
+- 提示词：运镜：缓慢变焦推进，机位保持不动，只通过焦距变化让画面范围逐渐收紧。
+
+### 58. 变焦拉远 (`zoom_out`)
+- 分类：`basic`
+- 用途：从局部到全貌
+- 提示词：运镜：缓慢变焦拉远，机位保持不动，只通过焦距变化让画面范围逐渐放宽。
+
+### 59. 跟随拍摄 (`follow_tracking`)
+- 分类：`follow`
+- 用途：跟住人物行动
+- 提示词：运镜：跟随拍摄，镜头跟随主体运动方向移动，与主体保持相对稳定的距离和构图。
+
+### 60. 迎面跟拍 (`leading_tracking`)
+- 分类：`follow`
+- 用途：保留人物表情
+- 提示词：运镜：迎面跟拍，镜头位于主体前方并随主体运动同步后退，保持主体正面信息稳定可见。
+
+### 61. 侧面跟拍 (`profile_tracking`)
+- 分类：`follow`
+- 用途：强化行进节奏
+- 提示词：运镜：侧面跟拍，镜头在主体侧方与其平行移动，保持侧向构图稳定，并形成横向空间视差。
+
+### 62. 手持拍摄 (`handheld_shot`)
+- 分类：`follow`
+- 用途：增加真实紧张
+- 提示词：运镜：手持拍摄，镜头带轻微自然晃动和近距离临场感，可随主体动作产生小幅调整。
+
+### 63. 第一视角 (`pov_shot`)
+- 分类：`follow`
+- 用途：进入角色视角
+- 提示词：运镜：第一视角，镜头模拟角色视线和身体移动，带轻微头部晃动和主观视角的运动反馈。
+
+### 64. 稳定器行进 (`steadicam_walkthrough`)
+- 分类：`follow`
+- 用途：平稳进入现场
+- 提示词：运镜：稳定器行进，镜头以稳定、连续的方式向前或跟随移动，运动平滑，晃动幅度低。
+
+### 65. 横滑揭示 (`slider_reveal`)
+- 分类：`reveal`
+- 用途：从遮挡露主体
+- 提示词：运镜：横滑揭示，镜头从遮挡关系中横向滑出，逐步露出被遮挡的主体或关键信息。
+
+### 66. 前景擦过 (`foreground_wipe`)
+- 分类：`reveal`
+- 用途：用遮挡完成切换
+- 提示词：运镜：前景擦过，近处遮挡物从镜头前掠过并短暂覆盖画面，随后露出新的画面内容。
+
+### 67. 穿越镜头 (`push_through`)
+- 分类：`reveal`
+- 用途：穿过边界入场
+- 提示词：运镜：穿越镜头，镜头持续快速向前推进，并产生短暂运动模糊，穿过明确的前景边界或空间层次，进入后方画面，最后落到新的构图或目标上。
+
+### 68. 甩摇 (`whip_pan`)
+- 分类：`reveal`
+- 用途：快速切换信息
+- 提示词：运镜：甩摇，镜头快速水平转动并产生短暂运动模糊，最后落到新的构图或目标上。
+
+### 69. 焦点转移 (`rack_focus`)
+- 分类：`reveal`
+- 用途：注意力换目标
+- 提示词：运镜：焦点转移，镜头位置可以不变，焦点从一个画面层次平滑切换到另一个画面层次。
+
+### 70. 急速变焦 (`crash_zoom`)
+- 分类：`emotion`
+- 用途：放大戏剧反应
+- 提示词：运镜：急速变焦推进，机位保持不动，画面范围快速收紧到目标区域，形成突然强调。
+
+### 71. 希区柯克 (`dolly_zoom`)
+- 分类：`emotion`
+- 用途：现实崩塌瞬间
+- 提示词：运镜：希区柯克式变焦，机位移动与反向变焦同时发生，主体大小基本保持稳定，背景透视发生明显变化。
+
+### 72. 环绕拍摄 (`orbit_180`)
+- 分类：`emotion`
+- 用途：强化人物气场
+- 提示词：运镜：环绕拍摄，镜头围绕主体平稳旋转约180度，主体保持在画面核心位置，背景产生连续旋转视差。
+
+### 73. 盘旋抬升 (`ascending_orbit`)
+- 分类：`emotion`
+- 用途：高光登场时刻
+- 提示词：运镜：盘旋抬升，镜头围绕主体旋转的同时逐渐升高，主体保持锁定，机位高度持续变化。
+
+### 74. 盘旋下降 (`descending_orbit`)
+- 分类：`emotion`
+- 用途：巨物压迫登场
+- 提示词：运镜：盘旋下降，镜头围绕主体旋转的同时逐渐降低，主体保持锁定，机位高度持续变化。
+
+### 75. 穿越机运镜 (`fpv_flythrough`)
+- 分类：`aerial`
+- 用途：高速掠过空间
+- 提示词：运镜：穿越机运镜，fpv 镜头以第一视角高速穿行空间，贴近场景边界和主体灵活飞行，带明显速度感与滚转俯仰变化。
+
+### 76. 高空航拍 (`aerial_establishing`)
+- 分类：`aerial`
+- 用途：建立宏大世界
+- 提示词：运镜：高空航拍，镜头以高角度俯视画面，并保持稳定滑行，用于呈现空间关系和整体布局。
+
+### 77. 俯冲下降 (`drone_dive`)
+- 分类：`aerial`
+- 用途：从高空压向目标
+- 提示词：运镜：俯冲下降，镜头从高处向目标方向快速下降并靠近，形成明显速度感和压迫感。
+
+### 78. 拉升离场 (`pull_away`)
+- 分类：`aerial`
+- 用途：人变小世界变大
+- 提示词：运镜：拉升离场，镜头从主体附近向后并向上移动，主体在画面中逐渐变小，画面范围逐步扩大。
+
+## 图片节点：宫格/推演预设
+
+图片节点的构图、设定图和画面推演模板。
+
+### 79. 多机位九宫格 (`multi_camera_nine_grid`)
+- 用途：生成一个 3x3 九宫格的多机位联系表
+- 提示词：Generate a libtv-style 3x3 director multi-camera contact sheet from the source image.
+
+Output requirements:
+- Final output must be one readable 3x3 grid contact sheet, not nine separate images.
+- Keep the same primary subject, same costume, same scene, same time moment, and same action.
+- Do not add new characters, new dialogue, new story events, or unrelated props.
+- Each cell must preserve the source image aspect ratio and orientation.
+- Do not crop each camera view into a different ratio.
+- Vary only camera coverage: shot size, camera height, lens distance, and angle.
+- Each panel must look like a usable director coverage frame from the same shot setup.
+- Add a small white label in the upper-left corner of every cell.
+- Use exactly these nine labels and shot types in reading order:
+  [KF1 | 3s | ELS] extreme long shot / full environment,
+  [KF2 | 2s | LS] long shot / full body,
+  [KF3 | 2s | MLS] medium long shot,
+  [KF4 | 2s | MS] medium shot,
+  [KF5 | 2s | MCU] medium close-up,
+  [KF6 | 2s | CU] close-up,
+  [KF7 | 1s | ECU] extreme close-up of the key hand/object/detail,
+  [KF8 | 2s | High-Angle] high-angle view,
+  [KF9 | 2s | Low-Angle] low-angle view.
+- Use thin dark grid lines between cells; no large white gutters, no decorative border.
+- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.
+- Preserve identity, costume, lighting mood, color tone, and scene continuity across all cells.
+
+### 80. 剧情推演四宫格 (`story_pitch_four_grid`)
+- 用途：生成一个 2x2 四宫格的剧情推演联系表
+- 提示词：Generate a 2x2 story pitch board from the source image.
+
+Output requirements:
+- Create four consecutive pitch frames that expand the current story moment.
+- Keep the same characters, scene, and dramatic context.
+- Emphasize clear story progression and emotional beats.
+- Each cell must preserve the source image aspect ratio and orientation.
+- Do not crop each story frame into a different ratio.
+- Arrange the four same-ratio frames in a clean 2x2 grid with thin dividers.
+- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.
+
+### 81. 角色脸部三视图 (`character_face_three_view`)
+- 用途：生成一个 3x2 三宫图的角色脸部联系表
+- 提示词：Generate a clean three-view face sheet from the source image.
+
+Output requirements:
+- Show front view, three-quarter view, and side view of the same face.
+- Preserve facial identity, age, hairstyle, skin tone, and expression logic.
+- Use a clean reference-sheet style.
+- Final output must be a compact three-view face layout.
+
+### 82. 产品三视图 (`product_three_view`)
+- 用途：生成一个 3x2 三宫图的产品联系表
+- 提示词：Generate a clean three-view product reference sheet from the source image.
+
+Output requirements:
+- Show front, side, and back/alternate view of the same product.
+- Preserve materials, silhouette, proportions, and key details.
+- Use a clean product reference layout with neutral presentation.
+- Final output must be a three-view sheet.
+
+### 83. 25宫格连贯分镜 (`storyboard_25_grid`)
+- 用途：生成一个 5x5 25宫格的连贯分镜联系表
+- 提示词：Generate a libtv-style 5x5 cinematic storyboard shot sequence from the source image.
+
+Output requirements:
+- Final output must be one readable 5x5 storyboard contact sheet, not 25 separate images.
+- Build a coherent shot progression around the same core event in the source image.
+- Do not create random variants, unrelated future scenes, or a new ending.
+- Preserve the visible subjects, identities, costumes/materials, environment, lighting mood, and key objects from the source image.
+- Adapt the sequence to the actual source content. Do not invent dialogue, extra characters, paper, weapons, vehicles, or props that are not visible or strongly implied.
+- Organize the 25 cells like an editable film sequence:
+  1-3 establishing coverage of the location, subject placement, and spatial relationship,
+  4-6 primary subject close-ups, detail views, or reaction shots when characters exist,
+  7-10 alternate angles, over-the-shoulder or eye-line coverage only when applicable,
+  11-15 step-by-step progression of the visible key action or the most plausible next micro-action,
+  16-19 inserts and extreme close-ups of visible key details: hands, face, eyes, object, texture, signage, machinery, landscape feature, or environment clue,
+  20-22 pause, reaction, consequence, or atmospheric detail beats,
+  23-25 restrained resolution frames that stay in the same scene and subject context.
+- Mix shot types deliberately: wide, medium, close-up, extreme close-up, insert, reaction/detail. Use OTS only when the source contains a valid over-shoulder relationship.
+- Avoid repeating the same two-shot or portrait composition across many cells.
+- Number each cell unobtrusively in the upper-left corner from 1 to 25.
+- Each cell must preserve the source image aspect ratio and orientation.
+- Do not crop each storyboard frame into a different ratio.
+- Arrange the twenty-five same-ratio frames in a clean 5x5 grid with thin dividers.
+- Fill the whole output canvas; do not add black bars, letterboxing, UI, or watermark.
+
+### 84. 电影级光影校正 (`cinematic_light_correction`)
+- 用途：修正电影灯光，使场景更真实
+- 提示词：Cinematically refine the source image lighting.
+
+Output requirements:
+- Improve light hierarchy, shadow structure, exposure balance, and atmosphere.
+- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.
+- Keep the same scene, same characters, and same camera framing.
+- Do not turn the image into a different composition.
+- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.
+- Final output must remain a single frame with no collage, UI, watermark, or text.
+
+### 85. 角色三视图生成 (`character_three_view_generation`)
+- 用途：生成一个 16x9 三宫图的角色角色联系表
+- 提示词：Generate a clean character three-view sheet from the source image.
+
+Output requirements:
+- Show front, side, and back/full-figure view of the same character.
+- Preserve face identity, body proportions, costume details, and style.
+- Keep the presentation clean and reference-friendly.
+- Final output must be a three-view character sheet.
+
+### 86. 画面推演-3秒后 (`image_projection_after_3s`)
+- 用途：创建一个 3秒后投影的图像，作为视频的一帧
+- 提示词：Create a future keyframe from the source image, as if this is a libtv-style frame projection 3 seconds later in a video.
+
+Output requirements:
+- Preserve character identity, costume, environment, art style, and story continuity.
+- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.
+- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.
+- Do not make a near-duplicate or simple retouch of the source image.
+- Create a clear time jump: the subject must be in a different action phase, body pose, walking position, hand position, gaze, and object placement.
+- Within the same frame size, use plausible camera pan, tilt, push, pull, or subject relocation to make the temporal change obvious.
+- Allow doors, props, cloth, hair, shadows, and nearby environment details to change according to the action, while keeping spatial continuity coherent.
+- The projected moment should feel like a real adjacent video frame, not a retouched still.
+- Final output must be one single frame with no collage, UI, watermark, or text.
+
+### 87. 画面推演-5秒前 (`image_projection_before_5s`)
+- 用途：创建一个 5秒前投影的图像，作为视频的一帧
+- 提示词：Create a past keyframe from the source image, as if this is a libtv-style frame projection 5 seconds before in a video.
+
+Output requirements:
+- Preserve character identity, costume, environment, art style, and story continuity.
+- Preserve the source image aspect ratio, canvas dimensions, and orientation exactly.
+- Fill the whole existing canvas; do not add black bars, borders, or letterboxing.
+- Do not make a near-duplicate or simple retouch of the source image.
+- Create a clear earlier setup: the subject must be in a different action phase, body pose, walking position, hand position, gaze, and object placement.
+- Within the same frame size, use plausible camera pan, tilt, push, pull, or subject relocation to make the earlier moment obvious.
+- Allow doors, props, cloth, hair, shadows, and nearby environment details to change according to the preceding action, while keeping spatial continuity coherent.
+- The projected moment should feel like a real adjacent video frame, not a retouched still.
+- Final output must be one single frame with no collage, UI, watermark, or text.
