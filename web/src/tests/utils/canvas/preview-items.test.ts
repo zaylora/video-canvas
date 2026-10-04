@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CanvasNode, NodeKind } from "@/types";
+import type { CanvasGroupNode, CanvasNode, NodeKind } from "@/types";
 import {
   collectPreviewItems,
   formatFileSize,
@@ -109,5 +109,25 @@ describe("formatFileSize", () => {
     expect(formatFileSize(null)).toBeNull();
     expect(formatFileSize(0)).toBeNull();
     expect(formatFileSize(Number.NaN)).toBeNull();
+  });
+});
+
+describe("collectPreviewItems 与组", () => {
+  const group: CanvasGroupNode = {
+    id: "g",
+    type: "group",
+    position: { x: 1000, y: 0 },
+    width: 800,
+    height: 600,
+    data: { label: "组" },
+  };
+
+  test("组本身不进列表；组内节点按绝对位置排序，不是相对组的坐标", () => {
+    // a 在组里，相对坐标 (10, 0) 看着最靠左，实际在 x=1010，应排在画布上 x=500 的 b 之后
+    const a = { ...node("a", 10, 0), parentId: "g" };
+    const b = node("b", 500, 0);
+    const items = collectPreviewItems([group, a, b]);
+    expect(items.map((item) => item.id)).toEqual(["b", "a"]);
+    expect(items[1].x).toBe(1010);
   });
 });

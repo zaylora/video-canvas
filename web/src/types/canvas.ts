@@ -67,8 +67,27 @@ export type ParamAsset = {
   mediaType?: "image" | "video" | "audio";
 };
 
-/** 画布上的节点 */
+/** 画布上的素材 / 生成节点 */
 export type CanvasNode = Node<CanvasNodeData, "canvas">;
+
+/** 组可选的颜色，对应 index.css 里的 --group-* token */
+export type GroupHue = "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink";
+
+/** 组节点携带的数据：名字和两种颜色，成员关系靠成员的 parentId */
+export type CanvasGroupData = {
+  /** 组名 */
+  label: string;
+  /** 背景色，缺省为中性 */
+  color?: GroupHue;
+  /** 组名行的颜色，缺省为中性 */
+  labelColor?: GroupHue;
+};
+
+/** 组：框住若干节点，整组一起拖；尺寸放在节点自身的 width / height 上，成员的 parentId 指向它 */
+export type CanvasGroupNode = Node<CanvasGroupData, "group">;
+
+/** 画布上所有种类的节点 */
+export type FlowNode = CanvasNode | CanvasGroupNode;
 
 /** 画布上的连线 */
 export type CanvasEdge = AnimatedSvgEdge;

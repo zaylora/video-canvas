@@ -111,6 +111,15 @@
   /* 首页卡片封面底部的渐变遮罩：上面压白字，深浅主题都要深色才看得清 */
   --cover-scrim: oklch(0 0 0 / 0.62);
   --cover-foreground: oklch(0.985 0 0);
+  /* 组的 8 种颜色（设计稿 6.10）：组名行直接用，背景用 color-mix 压淡 */
+  --group-red: oklch(0.58 0.2 25);
+  --group-orange: oklch(0.64 0.17 55);
+  --group-yellow: oklch(0.7 0.15 90);
+  --group-green: oklch(0.6 0.17 150);
+  --group-cyan: oklch(0.62 0.12 205);
+  --group-blue: oklch(0.55 0.18 255);
+  --group-purple: oklch(0.55 0.2 295);
+  --group-pink: oklch(0.6 0.2 345);
 }
 
 .dark {
@@ -160,6 +169,15 @@
   --edge-selected: oklch(1 0 0 / 0.9);
   --cover-scrim: oklch(0 0 0 / 0.7);
   --cover-foreground: oklch(0.985 0 0);
+  /* 组的 8 种颜色（设计稿 6.10）：组名行直接用，背景用 color-mix 压淡 */
+  --group-red: oklch(0.72 0.17 25);
+  --group-orange: oklch(0.76 0.16 55);
+  --group-yellow: oklch(0.84 0.15 90);
+  --group-green: oklch(0.76 0.17 150);
+  --group-cyan: oklch(0.8 0.12 205);
+  --group-blue: oklch(0.72 0.15 255);
+  --group-purple: oklch(0.7 0.16 295);
+  --group-pink: oklch(0.74 0.17 345);
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
@@ -298,6 +316,30 @@
 .react-flow__nodesselection-rect {
   background: transparent;
   border: none;
+}
+
+/* xyflow 给 group 类型节点自带了背景、边框、内边距和选中阴影，会盖在我们自己画的虚线组框外面
+   （发灰、露出方角）。组的长相全部由 GroupNodeView 负责，这里整个抹掉（设计稿 6.10） */
+.react-flow__node.react-flow__node-group,
+.react-flow__node.react-flow__node-group.selectable:hover,
+.react-flow__node.react-flow__node-group.selectable.selected,
+.react-flow__node.react-flow__node-group.selectable:focus,
+.react-flow__node.react-flow__node-group.selectable:focus-visible {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+
+/* 拖着节点悬在组上方：组框外圈描边提示「松手入组」（设计稿 6.10）。属性由 flow.tsx 直接写在 DOM 上，不走 React state */
+.react-flow__node-group[data-drop-target] [data-slot="group-frame"] {
+  box-shadow:
+    0 0 0 2px var(--node-ring),
+    0 0 0 6px color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
 /* 悬停引用条缩略图或提示词里的 chip 时，画布上的源节点虚线圈出来（设计稿 6.7） */

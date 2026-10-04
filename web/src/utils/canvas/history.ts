@@ -1,12 +1,13 @@
-import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import type { CanvasEdge, CanvasNodeData, FlowNode } from "@/types";
 
+import { isGroupNode } from "./group";
 import { selectOutput } from "./outputs";
 
 /** 撤销栈最多记几步 */
 export const HISTORY_LIMIT = 100;
 
 /** 一步撤销记下的画布 */
-export type HistorySnapshot = { nodes: CanvasNode[]; edges: CanvasEdge[] };
+export type HistorySnapshot = { nodes: FlowNode[]; edges: CanvasEdge[] };
 
 /**
  * 由生成任务写进来的字段：撤销不该把它们倒回去，
@@ -28,7 +29,14 @@ const TASK_FIELDS = [
 /** 节点的结构：增删、位置、连线变了就是一步，立刻入栈 */
 export function structureKey({ nodes, edges }: HistorySnapshot) {
   return JSON.stringify([
-    nodes.map((node) => [node.id, Math.round(node.position.x), Math.round(node.position.y)]),
+    nodes.map((node) => [
+      node.id,
+      Math.round(node.position.x),
+      Math.round(node.position.y),
+      // 入组 / 退组、缩放组框也是一步
+      node.parentId ?? null,
+      isGroupNode(node) ? [Math.round(node.width ?? 0), Math.round(node.height ?? 0)] : null,
+    ]),
     // 连接点（handle）不算：换模型后节点会自己把线挪到新口上，那不是用户的一步
     edges.map((edge) => [edge.id, edge.source, edge.target]),
   ]);
@@ -37,7 +45,17 @@ export function structureKey({ nodes, edges }: HistorySnapshot) {
 /** 节点的内容：标题、模型、提示词、参数。连着打字只算一步，要攒一会儿再入栈 */
 export function contentKey({ nodes }: HistorySnapshot) {
   return JSON.stringify(
-    nodes.map(({ data }) => [data.label, data.model, data.prompt, data.params, data.paramAssets]),
+    nodes.map((node) =>
+      isGroupNode(node)
+        ? [node.data.label, node.data.color, node.data.labelColor]
+        : [
+            node.data.label,
+            node.data.model,
+            node.data.prompt,
+            node.data.params,
+            node.data.paramAssets,
+          ],
+    ),
   );
 }
 
@@ -46,11 +64,13 @@ export function contentKey({ nodes }: HistorySnapshot) {
  * 任务写的（状态、产物、历史版本）取眼下的；当前版本按眼下的历史重新对一遍镜像字段。
  * 快照里有、眼下已经被删的节点原样放回。
  */
-export function restoreNodes(snapshot: CanvasNode[], current: CanvasNode[]): CanvasNode[] {
+export function restoreNodes(snapshot: FlowNode[], current: FlowNode[]): FlowNode[] {
   const live = new Map(current.map((node) => [node.id, node]));
-  return snapshot.map((saved) => {
+  return snapshot.map((saved): FlowNode => {
     const now = live.get(saved.id);
     if (!now) return saved;
+    // 组没有任务字段：位置、尺寸、名字、颜色全取快照，只保留眼下测得的尺寸
+    if (isGroupNode(saved) || isGroupNode(now)) return { ...saved, measured: now.measured };
     const data: CanvasNodeData = { ...saved.data };
     for (const key of TASK_FIELDS) {
       if (now.data[key] === undefined) delete data[key];

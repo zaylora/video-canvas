@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { NodeChange, OnNodeDrag } from "@xyflow/react";
 
-import type { CanvasNode } from "@/types";
+import type { FlowNode } from "@/types";
 
 /**
  * 节点浮层（历史浮条、生成面板）的开关：拖动顺带选中的节点不打开，点一下才打开。
@@ -9,7 +9,7 @@ import type { CanvasNode } from "@/types";
  * 所以「按下时还没选中、随后被拖」就是拖动顺带选中，这些节点记进 dragSelected；
  * 点击节点或节点取消选中时把它拿掉。新建、定位这类程序选中不经过拖动，照常打开。
  */
-export function useOverlayGate(getNodes: () => CanvasNode[]) {
+export function useOverlayGate(getNodes: () => FlowNode[]) {
   const [dragSelected, setDragSelected] = useState<ReadonlySet<string>>(() => new Set());
   const selectedAtPointerDown = useRef<ReadonlySet<string>>(new Set());
 
@@ -31,7 +31,7 @@ export function useOverlayGate(getNodes: () => CanvasNode[]) {
     );
   }, [getNodes]);
 
-  const onNodeDragStart = useCallback<OnNodeDrag<CanvasNode>>((_, __, dragged) => {
+  const onNodeDragStart = useCallback<OnNodeDrag<FlowNode>>((_, __, dragged) => {
     const fresh = dragged
       .map((node) => node.id)
       .filter((id) => !selectedAtPointerDown.current.has(id));
@@ -40,13 +40,13 @@ export function useOverlayGate(getNodes: () => CanvasNode[]) {
   }, []);
 
   const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: CanvasNode) => remove([node.id]),
+    (_: React.MouseEvent, node: FlowNode) => remove([node.id]),
     [remove],
   );
 
   /** 放进 onNodesChange 里：取消选中、被删掉的节点不再记着 */
   const pruneOnChange = useCallback(
-    (changes: NodeChange<CanvasNode>[]) => {
+    (changes: NodeChange<FlowNode>[]) => {
       const gone = changes.flatMap((change) =>
         (change.type === "select" && !change.selected) || change.type === "remove"
           ? [change.id]

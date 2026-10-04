@@ -8,6 +8,8 @@ export interface PersistedCanvasNodeDto {
   position: { x: number; y: number };
   /** 节点坐标原点 */
   origin?: [number, number];
+  /** 所属组的节点 ID；有它时 position 是相对该组左上角的坐标 */
+  parentId?: string;
   /** 节点携带的业务数据 */
   data: {
     /** 节点种类 */
@@ -46,6 +48,28 @@ export interface PersistedCanvasNodeDto {
   };
 }
 
+/** 持久化到后端的组节点：框住若干节点，成员通过 parentId 指向它 */
+export interface PersistedCanvasGroupDto {
+  /** 节点 ID */
+  id: string;
+  /** 节点渲染类型 */
+  type: "group";
+  /** 组左上角在画布上的坐标 */
+  position: { x: number; y: number };
+  /** 组框宽度 */
+  width: number;
+  /** 组框高度 */
+  height: number;
+  data: {
+    /** 组名 */
+    label: string;
+    /** 背景色 */
+    color?: "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink";
+    /** 组名行颜色 */
+    labelColor?: "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink";
+  };
+}
+
 /** 持久化到后端的画布连线 */
 export interface PersistedCanvasEdgeDto {
   /** 连线 ID */
@@ -63,7 +87,7 @@ export interface PersistedCanvasEdgeDto {
 /** 画布图谱：节点、连线和视口 */
 export interface CanvasGraphDto {
   /** 节点列表 */
-  nodes: PersistedCanvasNodeDto[];
+  nodes: Array<PersistedCanvasNodeDto | PersistedCanvasGroupDto>;
   /** 连线列表 */
   edges: PersistedCanvasEdgeDto[];
   /** 视口位置与缩放 */

@@ -12,10 +12,11 @@ import { useFocusNode } from "./use-focus-node";
 /** 右下角：连线数、节点数、失败节点数（点一下依次定位到失败的节点） */
 export function StatsBar() {
   const edgeCount = useStore((state) => state.edges.length);
-  const nodeCount = useStore((state) => state.nodes.length);
+  // 组不算素材节点
+  const nodeCount = useStore((state) => state.nodes.filter((node) => node.type !== "group").length);
   const failedKey = useStore((state) =>
     (state.nodes as CanvasNode[])
-      .filter((node) => node.data.status === "error")
+      .filter((node) => node.type === "canvas" && node.data.status === "error")
       .map((node) => node.id)
       .join(","),
   );
