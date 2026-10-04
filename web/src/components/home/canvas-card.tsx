@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DURATION, EASE_OUT, STAGGER, STAGGER_MAX, TAP } from "@/lib/motion";
+import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatCanvasTime } from "@/utils/home/home";
 
@@ -39,20 +39,10 @@ const FRAME = {
   panel: "bg-card ring-border rounded-2xl p-1.5 ring-1",
 } as const;
 
-/** 列表里第 index 张卡的入场：从下方 6px 浮上来，相邻的错开一点 */
-function enterMotion(index: number) {
-  return {
-    initial: { opacity: 0, y: 6 },
-    animate: { opacity: 1, y: 0 },
-    /** 退出比进入快，约为进入的 70% */
-    exit: { opacity: 0, transition: { duration: DURATION.base * 0.7 } },
-    transition: {
-      duration: DURATION.base,
-      ease: EASE_OUT,
-      delay: Math.min(index, STAGGER_MAX) * STAGGER,
-    },
-  };
-}
+/** 卡片删除时的退出淡出（不做入场动画，加载态由骨架屏承担） */
+const EXIT_MOTION = {
+  exit: { opacity: 0, transition: { duration: DURATION.base * 0.7 } },
+};
 
 /** 封面悬停放大用 CSS 过渡（跟着卡片的 group-hover），时长和曲线仍取自 lib/motion */
 const COVER_TRANSITION = {
@@ -116,14 +106,11 @@ function CardActions({ title, onDelete }: { title: string; onDelete: () => void 
 export function CanvasCard({
   canvas,
   variant,
-  index,
   deleting,
   onDelete,
 }: {
   canvas: CanvasListItemDto;
   variant: CanvasCardVariant;
-  /** 在列表里的位置，决定入场错开多少 */
-  index: number;
   /** 删除请求进行中：半透明、不可点 */
   deleting?: boolean;
   onDelete: () => void;
@@ -132,10 +119,9 @@ export function CanvasCard({
 
   return (
     <motion.div
-      layout
       data-slot="canvas-card"
       data-variant={variant}
-      {...enterMotion(index)}
+      {...EXIT_MOTION}
       whileTap={TAP}
       className={cn(
         "group/card relative min-w-0",
@@ -212,7 +198,6 @@ export function NewCanvasCard({
   return (
     <motion.button
       type="button"
-      layout
       data-slot="new-canvas-card"
       disabled={creating}
       whileTap={creating ? undefined : TAP}
