@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  becameFirstAdmin,
   CODE_COOLDOWN_SECONDS,
   codeButtonState,
   hasRegisterErrors,
@@ -123,5 +124,16 @@ describe("业务错误码就地提示", () => {
     expect(mapAuthError(10005)).toBeNull();
     expect(mapAuthError("NETWORK_ERROR")).toBeNull();
     expect(mapAuthError(undefined)).toBeNull();
+  });
+});
+
+describe("becameFirstAdmin（是否弹「你是首个用户」提示）", () => {
+  test("只有注册后角色是 super_admin 才算首个用户", () => {
+    expect(becameFirstAdmin("super_admin")).toBe(true);
+  });
+  test("普通用户注册不提示，不管需不需要验证码", () => {
+    expect(becameFirstAdmin("user")).toBe(false);
+    expect(becameFirstAdmin("")).toBe(false);
+    expect(becameFirstAdmin(undefined)).toBe(false);
   });
 });

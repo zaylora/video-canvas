@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { getAdminMe } from "@/api/admin-ai";
 import type { AdminRole } from "@/api/admin-ai/type";
 import { isForbiddenError, normalizeRole } from "@/utils/admin/role";
+import { saveRole } from "@/utils/storage/token";
 
 /** 角色加载状态 */
 export type AdminStatus =
@@ -45,8 +46,10 @@ export const useAdminStore = create<AdminStore>((set, get) => ({
     set({ status: "loading" });
     try {
       const me = await getAdminMe();
+      const role = normalizeRole(me?.role);
+      saveRole(role);
       set({
-        role: normalizeRole(me?.role),
+        role,
         userId: typeof me?.user_id === "number" ? me.user_id : null,
         status: "ready",
       });

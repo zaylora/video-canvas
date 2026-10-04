@@ -8,6 +8,10 @@ export function normalizeRole(role: unknown): AdminRole {
   return role === "super_admin" ? "super_admin" : "admin";
 }
 
+/** 能否进入管理后台：只有 admin / super_admin；普通用户、未知角色和没有角色都不能（前端只决定入口显不显示，后端仍会校验） */
+export const canEnterAdmin = (role: string | null | undefined) =>
+  role === "admin" || role === "super_admin";
+
 /** 插件上传 / 启停 / 删除版本、渠道新建 / 修改 / Key / 连通性检查：只有 super_admin */
 export const canManageInfra = (role: AdminRole | null | undefined) => role === "super_admin";
 

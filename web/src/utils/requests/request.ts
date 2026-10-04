@@ -1,7 +1,8 @@
 import axios from "axios";
 import { toast } from "sonner";
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import { getToken, removeToken } from "../storage/token";
+import { clearSession } from "../storage/session";
+import { getToken } from "../storage/token";
 import { recordRequest, redactRequestBody, shouldLogRequest } from "./request-log";
 
 declare module "axios" {
@@ -76,7 +77,7 @@ const ACCOUNT_DISABLED_CODE = 53004;
  */
 const handleAccountDisabled = (url?: string) => {
   if (url?.startsWith("/auth/") || !getToken()) return;
-  removeToken();
+  clearSession();
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     window.location.assign("/login");
   }
@@ -175,7 +176,7 @@ instance.interceptors.response.use(
       return reject(new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0), silent);
     }
 
-    if (response.status === 401) removeToken();
+    if (response.status === 401) clearSession();
 
     const body = isApiResponse(response.data) ? response.data : undefined;
     if (body?.code === ACCOUNT_DISABLED_CODE) handleAccountDisabled(error.config?.url);

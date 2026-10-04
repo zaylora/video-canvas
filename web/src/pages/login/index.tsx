@@ -74,7 +74,7 @@ export default function Login() {
 
     try {
       const result = await login({ username: username.trim(), password });
-      setToken(result.token, result.expire_at);
+      setToken(result.token, result.expire_at, result.role);
       navigate(destination, { replace: true });
     } catch (error) {
       const hint = error instanceof ApiError ? mapAuthError(error.code) : null;

@@ -149,3 +149,12 @@ export function mapAuthError(code: unknown): AuthErrorHint | null {
       return null;
   }
 }
+
+/**
+ * 注册成功后是否提示「你是首个用户，已成为超级管理员」：以服务端返回的角色为准。
+ * 不能用「是否需要验证码」推断——没启用邮件服务或关了验证开关时，所有人都不需要验证码。
+ * @param role 注册响应里的角色
+ */
+export function becameFirstAdmin(role: string | null | undefined): boolean {
+  return role === "super_admin";
+}

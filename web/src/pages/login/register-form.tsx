@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError } from "@/utils/requests/request";
 import { setToken } from "@/utils/storage/token";
 import {
+  becameFirstAdmin,
   CODE_COOLDOWN_SECONDS,
   codeButtonState,
   hasRegisterErrors,
@@ -53,7 +54,7 @@ function Field({
  * 注册表单：用户名、邮箱、验证码（可隐藏）、密码、确认密码。
  * 字段校验走 utils/auth/register-rules；请求失败的全局 toast 由拦截器弹，这里只做字段级就地提示。
  * @param needCode 是否需要邮箱验证码；false 为全新环境的首个账号
- * @param onSuccess 注册成功（token 已写入）后的回调，带回是否是免验证的首个账号
+ * @param onSuccess 注册成功（token 已写入）后的回调，带回是否成为了首个超级管理员（以返回的角色为准）
  */
 export function RegisterForm({
   needCode,
@@ -120,8 +121,8 @@ export function RegisterForm({
         password: values.password,
         ...(needCode ? { code: values.code.trim() } : {}),
       });
-      setToken(result.token, result.expire_at);
-      onSuccess(!needCode);
+      setToken(result.token, result.expire_at, result.role);
+      onSuccess(becameFirstAdmin(result.role));
     } catch (error) {
       if (error instanceof ApiError) applyHint(error.code);
     } finally {

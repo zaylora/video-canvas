@@ -35,7 +35,9 @@ import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store";
 import { useCreditsStore } from "@/store/credits";
 import { useWsStore, type ConnectionState } from "@/store/ws";
-import { getToken, removeToken } from "@/utils/storage/token";
+import { canEnterAdmin } from "@/utils/admin/role";
+import { logout } from "@/utils/storage/session";
+import { getRole, getToken } from "@/utils/storage/token";
 
 const THEMES: { value: ThemeSetting; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "跟随系统", icon: Monitor },
@@ -64,6 +66,11 @@ export function useUsername() {
       return null;
     }
   }, []);
+}
+
+/** 当前账号能否进入管理后台：读登录时存下的角色，普通用户不显示入口 */
+export function useCanEnterAdmin() {
+  return useMemo(() => canEnterAdmin(getRole()), []);
 }
 
 /** 积分胶囊：左边是实时连接状态点，点开看余额明细 */
@@ -142,6 +149,7 @@ export function TopRightBar({
   const theme = useSettingsStore((state) => state.theme);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
   const username = useUsername();
+  const showAdmin = useCanEnterAdmin();
 
   return (
     <>
@@ -204,18 +212,14 @@ export function TopRightBar({
               <DropdownMenuLabel className="truncate">{username}</DropdownMenuLabel>
             </DropdownMenuGroup>
           )}
-          <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
-            <ShieldCheck />
-            管理后台
-          </DropdownMenuItem>
+          {showAdmin && (
+            <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
+              <ShieldCheck />
+              管理后台
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => {
-              removeToken();
-              navigate("/login", { replace: true });
-            }}
-          >
+          <DropdownMenuItem variant="destructive" onClick={logout}>
             <LogOut />
             退出登录
           </DropdownMenuItem>
