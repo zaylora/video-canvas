@@ -24,6 +24,7 @@ import {
   type AddNodeMenuItem,
 } from "@/components/canvas";
 import { ChromeZone } from "@/components/canvas/chrome/chrome";
+import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
 import { NODE_OUTPUT_MIME } from "@/components/canvas/node-history-strip";
 import { SettingsDialog, type SettingModelGroup } from "@/components/setting";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -54,6 +55,7 @@ import {
 } from "@/utils/canvas/canvas-persistence";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import { releaseObjectUrl } from "@/utils/canvas/media";
+import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 
 import { BottomToolbar } from "./chrome/bottom-toolbar";
 import { EmptyState } from "./chrome/empty-state";
@@ -63,6 +65,7 @@ import { TopLeftBar } from "./chrome/top-left-bar";
 import { TopRightBar } from "./chrome/top-right-bar";
 import { ViewControls } from "./chrome/view-controls";
 import { CanvasNodeView } from "./canvas-node";
+import { useFocusNode } from "./chrome/use-focus-node";
 import { ConflictDialog } from "./conflict-dialog";
 import { buildAddNodeItems } from "./chrome/add-node-items";
 import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
@@ -260,6 +263,46 @@ export const Flow = memo(function Flow({
     [remoteModels, settings.defaultModels],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  /**
+   * 双击节点预览（设计稿 6.9）：弹层状态留在这里，不进 store，免得整张画布跟着重渲染。
+   * 可预览项只在弹层开着时才随节点重算；关闭的出场动画里还要接着画，所以留一份最近的。
+   */
+  const focusNode = useFocusNode();
+  const [preview, setPreview] = useState<LightboxTarget | null>(null);
+  const previewOpen = preview !== null;
+  const liveItems = useMemo(
+    () => (previewOpen ? collectPreviewItems(nodes) : null),
+    [nodes, previewOpen],
+  );
+  const [lastItems, setLastItems] = useState<PreviewItem[]>([]);
+  if (liveItems && liveItems !== lastItems) setLastItems(liveItems);
+  const closePreview = useCallback(() => setPreview(null), []);
+  const changePreview = useCallback(
+    (id: string) => setPreview((current) => (current ? { ...current, id } : current)),
+    [],
+  );
+  const locatePreview = useCallback(
+    (id: string) => {
+      setPreview(null);
+      focusNode(id);
+    },
+    [focusNode],
+  );
+  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: CanvasNode) => {
+    // 视频控制条、按钮、输入框上的双击是它们自己的事
+    if ((event.target as Element).closest("button, input, textarea, a, .nodrag")) return;
+    if (collectPreviewItems([node]).length === 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    // 节点里正在播的视频让位给预览，免得两路声音叠在一起
+    document
+      .querySelectorAll<HTMLVideoElement>(".react-flow__node video")
+      .forEach((v) => v.pause());
+    setPreview({
+      id: node.id,
+      origin: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    });
+  }, []);
   const {
     menu,
     pending,
@@ -413,6 +456,7 @@ export const Flow = memo(function Flow({
                 onConnectEnd={onConnectEnd}
                 // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
                 onDoubleClick={isPanning ? undefined : onDoubleClick}
+                onNodeDoubleClick={isPanning ? undefined : onNodeDoubleClick}
                 zoomOnDoubleClick={false}
                 // 大画布要能一眼看全，最小缩到 14%
                 minZoom={MIN_ZOOM}
@@ -521,6 +565,13 @@ export const Flow = memo(function Flow({
                 modelGroups={modelGroups}
               />
               <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+              <MediaLightbox
+                items={liveItems ?? lastItems}
+                target={preview}
+                onActiveChange={changePreview}
+                onLocate={locatePreview}
+                onClose={closePreview}
+              />
               <ConflictDialog
                 open={conflict !== null}
                 onLoadLatest={() => {
