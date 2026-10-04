@@ -9,6 +9,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
 import type { CanvasNode } from "@/types";
 import { readOutputs } from "@/utils/canvas/outputs";
 
@@ -77,15 +78,9 @@ function AssetGrid({ onPicked }: { onPicked: () => void }) {
         >
           <span className="bg-muted ring-border relative aspect-video overflow-hidden rounded-xl ring-1 transition-shadow group-hover/asset:ring-foreground/30">
             {item.mediaType === "image" ? (
-              <img
-                src={item.src}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="size-full object-cover"
-              />
+              <MediaPreview src={item.src} mode="thumb" fit="cover" />
             ) : item.mediaType === "video" ? (
-              <video src={item.src} muted preload="metadata" className="size-full object-cover" />
+              <VideoPoster src={item.src} iconClassName="size-8" />
             ) : (
               <span className="text-muted-foreground grid size-full place-items-center text-xs">
                 音频

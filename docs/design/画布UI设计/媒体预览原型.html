@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>双击节点预览原图 · 原型</title>
+<style>
+  /* token 抄自 web/src/index.css 的 .dark */
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --canvas-bg: oklch(0.13 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.08);
+    --chrome: oklch(0.2 0 0 / 0.78);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --node-ring: oklch(1 0 0 / 0.72);
+    --cover-scrim: oklch(0 0 0 / 0.7);
+    /* 动效参数抄自 web/src/lib/motion.ts */
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --dur-fast: 120ms;
+    --dur-base: 180ms;
+    --dur-slow: 240ms;
+    /* 弹簧：stiffness 500 / damping 38 / mass 0.8 近似成 linear 曲线 */
+    --spring: linear(0, 0.18 7%, 0.62 17%, 0.94 28%, 1.04 38%, 1.02 48%, 1 62%, 1);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--canvas-bg);
+    background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px);
+    background-size: 22px 22px;
+    color: var(--foreground);
+    font: 14px/1.4 -apple-system, "PingFang SC", "Geist Variable", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---------- 模拟画布 ---------- */
+  .hint {
+    position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+    background: var(--chrome); border: 1px solid var(--chrome-border); border-radius: 999px;
+    padding: 6px 14px; font-size: 12px; color: var(--muted-foreground); z-index: 1;
+  }
+  .node {
+    position: absolute; width: 288px; background: var(--card); border-radius: 16px;
+    box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08); user-select: none;
+    transition: box-shadow var(--dur-base) var(--ease-out);
+  }
+  .node:hover { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.2); }
+  .node.selected { box-shadow: 0 0 0 2px var(--node-ring), 0 25px 50px -12px rgb(0 0 0 / .5); }
+  .node .title { position: absolute; bottom: 100%; left: 2px; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+  .node .shot { aspect-ratio: 16/9; border-radius: inherit; overflow: hidden; position: relative; }
+  .node .badge {
+    position: absolute; right: 8px; bottom: 8px; font-size: 11px; background: rgb(0 0 0 / .6);
+    padding: 1px 6px; border-radius: 6px;
+  }
+  .node.plain .shot { display: grid; place-items: center; color: var(--muted-foreground); font-size: 12px; aspect-ratio: 16/9; }
+
+  /* 用渐变画几张“假画面” */
+  .art { position: absolute; inset: 0; }
+  .art-0 { background: radial-gradient(ellipse at 30% 80%, #5b6a7a 0, transparent 55%), linear-gradient(160deg, #1b2330, #3a4a5c 60%, #1a1f27); }
+  .art-1 { background: radial-gradient(circle at 70% 70%, #ff9a3c 0, #c4511b 12%, transparent 30%), linear-gradient(180deg, #1c1a24, #3a2a2a 70%, #120f10); }
+  .art-2 { background: radial-gradient(ellipse at 50% 40%, #e8eef3 0, #9fb0bd 35%, #3a4651 80%); }
+  .art-3 { background: linear-gradient(170deg, #4a6a54, #26382c 55%, #6c7a85 56%, #2a323a); }
+  .art-4 { background: radial-gradient(circle at 20% 30%, #6a7ea0 0, transparent 40%), linear-gradient(120deg, #2a2f3a, #4b4237 60%, #1d1b1a); }
+  .art-5 { background: linear-gradient(180deg, #f2a65a, #c0502d 45%, #2a1a14 46%, #120d0c); }
+  .art-6 { background: radial-gradient(ellipse at 50% 90%, #fff 0, #cfe1ee 30%, #8aa3b5 70%); }
+  /* 视频“画面”会动一下，示意正在播放 */
+  .art.playing { animation: drift 6s linear infinite; background-size: 140% 140%; }
+  @keyframes drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+
+  /* ---------- 弹层 ---------- */
+  .lb { position: fixed; inset: 0; z-index: 50; display: none; }
+  .lb.open { display: block; }
+  .scrim {
+    position: absolute; inset: 0; background: var(--cover-scrim);
+    backdrop-filter: blur(8px); opacity: 0;
+    transition: opacity var(--dur-slow) var(--ease-out);
+  }
+  .lb.shown .scrim { opacity: 1; }
+  .lb.closing .scrim { transition-duration: 170ms; }
+
+  .stage-wrap {
+    position: absolute; left: 80px; right: 80px; top: 72px; bottom: 150px;
+    display: grid; place-items: center; pointer-events: none;
+  }
+  .stage {
+    position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ar, 16/9);
+    height: 100%; max-height: 100%; border-radius: 16px; overflow: hidden; pointer-events: auto;
+    background: #000; box-shadow: 0 30px 80px rgb(0 0 0 / .6);
+    opacity: 0; transform: scale(.96); transform-origin: var(--ox, 50%) var(--oy, 50%);
+    transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+  }
+  .lb.shown .stage { opacity: 1; transform: none; }
+  .lb.closing .stage { opacity: 0; transform: scale(.96); transition-duration: 170ms; }
+  .stage .frame { position: absolute; inset: 0; }
+  .stage .frame.enter { animation: slideIn var(--dur-base) var(--ease-out) both; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 12px)); } to { opacity: 1; transform: none; } }
+  .loading {
+    position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: rgb(255 255 255 / .6);
+  }
+
+  .chrome {
+    background: var(--chrome); border: 1px solid var(--chrome-border); backdrop-filter: blur(16px);
+    border-radius: 999px;
+  }
+  .top { position: absolute; right: 24px; top: 20px; display: flex; gap: 8px; align-items: center; z-index: 2; }
+  .pill { height: 40px; padding: 0 14px; display: flex; align-items: center; font-size: 14px; }
+  .circ { width: 40px; height: 40px; display: grid; place-items: center; transition: background var(--dur-fast); }
+  .circ:hover:not(:disabled) { background: var(--chrome-hover); }
+  .circ:active:not(:disabled) { transform: scale(.96); }
+  .circ:disabled { opacity: .3; cursor: default; }
+  .circ:focus-visible, .ctl:focus-visible, .thumb:focus-visible { outline: 2px solid var(--node-ring); outline-offset: 2px; }
+  .esc { position: absolute; right: 24px; top: 64px; font-size: 11px; color: var(--muted-foreground); background: var(--chrome); border-radius: 6px; padding: 0 6px; }
+
+  .side { position: absolute; top: calc(72px + (100vh - 222px) / 2); width: 44px; height: 44px; transform: translateY(-50%); z-index: 2; }
+  .side.prev { left: 16px; } .side.next { right: 16px; }
+  .side:active:not(:disabled) { transform: translateY(-50%) scale(.96); }
+
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  svg.fill { fill: currentColor; stroke: none; }
+
+  /* 视频控制条 */
+  .controls {
+    position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 40px 18px 14px; color: #fff; font-size: 13px;
+    background: linear-gradient(to top, rgb(0 0 0 / .55), transparent);
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .controls.idle { opacity: 0; }
+  .ctl { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; flex: none; }
+  .ctl:hover { background: rgb(255 255 255 / .12); }
+  .ctl:active { transform: scale(.96); }
+  .ctl.on { background: rgb(255 255 255 / .2); }
+  .ctl.txt { width: auto; padding: 0 8px; }
+  .bar { flex: 1; min-width: 120px; height: 14px; display: flex; align-items: center; cursor: pointer; }
+  .bar i { display: block; width: 100%; height: 2px; background: rgb(255 255 255 / .35); border-radius: 2px; position: relative; }
+  .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; border-radius: 2px; }
+  .bar b::after { content: ""; position: absolute; right: -5px; top: -4px; width: 10px; height: 10px; background: #fff; border-radius: 50%; }
+  .menu {
+    position: absolute; bottom: 44px; right: 0; background: var(--chrome); border: 1px solid var(--chrome-border);
+    backdrop-filter: blur(16px); border-radius: 12px; padding: 4px; display: none; transform-origin: bottom right;
+  }
+  .menu.open { display: block; animation: pop var(--dur-base) var(--ease-out); }
+  @keyframes pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+  .menu button { display: block; width: 100%; text-align: left; padding: 6px 14px; border-radius: 8px; }
+  .menu button:hover { background: var(--chrome-hover); }
+  .menu button.cur { color: #fff; font-weight: 600; }
+  .rel { position: relative; }
+
+  /* 底部信息行 + 缩略图条 */
+  .bottom { position: absolute; left: 0; right: 0; bottom: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; z-index: 2; }
+  .info { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted-foreground); }
+  .info .chip { height: 28px; padding: 0 12px; display: flex; align-items: center; gap: 6px; }
+  .info kbd { border: 1px solid var(--chrome-border); border-radius: 6px; padding: 0 5px; font: inherit; background: var(--chrome-hover); }
+  .info button.chip { color: var(--foreground); transition: background var(--dur-fast); }
+  .info button.chip:hover { background: var(--chrome-hover); }
+  .info button.chip:active { transform: scale(.96); }
+  .strip { display: flex; gap: 8px; padding: 4px; max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none; }
+  .thumb { position: relative; flex: none; height: 56px; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; opacity: .75; transition: opacity var(--dur-fast); }
+  .thumb:hover { opacity: 1; }
+  .thumb.active { opacity: 1; }
+  .thumb .play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; }
+  .thumb .play span { width: 20px; height: 20px; border-radius: 50%; background: rgb(0 0 0 / .5); display: grid; place-items: center; }
+  .thumb .play svg { width: 10px; height: 10px; }
+  .ring {
+    position: absolute; pointer-events: none; border-radius: 12px; box-shadow: 0 0 0 2px var(--node-ring);
+    transition: transform 280ms var(--spring), width 280ms var(--spring); left: 0; top: 4px; height: 56px;
+  }
+  .strip-in { position: relative; display: flex; gap: 8px; }
+
+  @media (max-width: 768px) {
+    .stage-wrap { left: 8px; right: 8px; top: 64px; bottom: 150px; }
+    .side { width: 36px; height: 36px; } .side.prev { left: 4px; } .side.next { right: 4px; }
+    .info .keys { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage, .lb.closing .stage { transform: none !important; }
+    .stage .frame.enter { animation-name: fadeOnly; }
+    @keyframes fadeOnly { from { opacity: 0; } }
+    .ring { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="hint">双击「画面」节点预览 · 带 ▶ 的是视频 · 灰色节点（音频）双击没有反应 · 标题双击仍是改名</div>
+<div id="canvas"></div>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="媒体预览">
+  <div class="scrim" id="scrim"></div>
+  <div class="top">
+    <div class="chrome pill tnum" id="meta"></div>
+    <button class="chrome circ" id="dl" title="下载原文件" aria-label="下载原文件"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></button>
+    <button class="chrome circ" id="close" title="关闭 (Esc)" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <span class="esc">Esc</span>
+  <button class="chrome circ side prev" id="prev" aria-label="上一个"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <button class="chrome circ side next" id="next" aria-label="下一个"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+  <div class="stage-wrap"><div class="stage" id="stage"></div></div>
+  <div class="bottom">
+    <div class="info" id="info">
+      <span class="chrome chip tnum" id="pos"></span>
+      <span class="chrome chip keys"><kbd>←</kbd><kbd>→</kbd> 切换</span>
+      <button class="chrome chip" id="locate"><svg viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>定位到节点</button>
+    </div>
+    <div class="strip" id="strip"></div>
+  </div>
+</div>
+
+<script>
+/* 假数据：位置决定排序（先按行、同行再按 x），和 6.9 节一致 */
+const NODES = [
+  { id: "n1", title: "街道", kind: "image", art: 0, x: 80,  y: 120, w: 832, h: 480, size: "2.1 MB" },
+  { id: "n2", title: "山洞篝火", kind: "video", art: 1, x: 460, y: 130, w: 832, h: 480, size: "11.3 MB", dur: 15 },
+  { id: "n3", title: "蒸笼", kind: "image", art: 2, x: 840, y: 118, w: 1280, h: 720, size: "3.4 MB" },
+  { id: "n4", title: "背景音乐", kind: "audio", x: 1220, y: 125 },
+  { id: "n5", title: "山路", kind: "image", art: 3, x: 80,  y: 400, w: 1920, h: 1080, size: "5.6 MB" },
+  { id: "n6", title: "人群", kind: "video", art: 4, x: 460, y: 410, w: 832, h: 480, size: "8.9 MB", dur: 9 },
+  { id: "n7", title: "日落", kind: "image", art: 5, x: 840, y: 405, w: 1280, h: 720, size: "2.8 MB" },
+  { id: "n8", title: "赤脚", kind: "image", art: 6, x: 1220, y: 412, w: 1080, h: 1080, size: "1.9 MB" },
+];
+const ROW = 140; // 行高容差：约节点高度的一半
+const items = NODES.filter(n => n.kind !== "audio")
+  .sort((a, b) => (Math.round(a.y / ROW) - Math.round(b.y / ROW)) || a.x - b.x);
+
+const $ = id => document.getElementById(id);
+const canvas = $("canvas");
+NODES.forEach(n => {
+  const el = document.createElement("div");
+  el.className = "node" + (n.kind === "audio" ? " plain" : "");
+  el.style.left = n.x + "px"; el.style.top = n.y + "px"; el.dataset.id = n.id;
+  el.innerHTML = `<div class="title">${n.title}</div><div class="shot">` +
+    (n.kind === "audio" ? "音频节点 · 原生播放器" : `<div class="art art-${n.art}"></div>` +
+    (n.kind === "video" ? `<span class="badge tnum">0:${String(n.dur).padStart(2, "0")}</span>` : "")) + `</div>`;
+  el.addEventListener("click", () => { document.querySelectorAll(".node").forEach(x => x.classList.remove("selected")); el.classList.add("selected"); });
+  el.addEventListener("dblclick", e => { if (n.kind !== "audio" && !e.target.closest(".title")) open(n.id, el); });
+  canvas.appendChild(el);
+});
+
+/* ---------- 弹层状态 ---------- */
+const lb = $("lb"), stage = $("stage");
+let idx = 0, dir = 1, vt = null, vState = null, idleTimer = null;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function open(id, el) {
+  idx = items.findIndex(i => i.id === id);
+  const r = el.getBoundingClientRect();
+  stage.style.setProperty("--ox", r.left + r.width / 2 + "px");
+  stage.style.setProperty("--oy", r.top + r.height / 2 + "px");
+  lb.classList.remove("closing"); lb.classList.add("open");
+  buildStrip(); render(false);
+  requestAnimationFrame(() => requestAnimationFrame(() => lb.classList.add("shown")));
+}
+function close() {
+  stopVideo(); lb.classList.add("closing"); lb.classList.remove("shown");
+  setTimeout(() => lb.classList.remove("open", "closing"), reduce ? 0 : 170);
+}
+function go(d) {
+  const next = idx + d;
+  if (next < 0 || next >= items.length) return;
+  dir = d; idx = next; render(true);
+}
+
+function buildStrip() {
+  const strip = $("strip");
+  strip.innerHTML = `<div class="strip-in" id="stripIn"></div>`;
+  const inner = $("stripIn");
+  items.forEach((it, i) => {
+    const b = document.createElement("button");
+    b.className = "thumb"; b.dataset.i = i; b.setAttribute("aria-label", it.title);
+    b.innerHTML = `<div class="art art-${it.art}"></div>` + (it.kind === "video" ? `<div class="play"><span><svg class="fill" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span></div>` : "");
+    b.onclick = () => { dir = i > idx ? 1 : -1; idx = i; render(true); };
+    inner.appendChild(b);
+  });
+  const ring = document.createElement("div"); ring.className = "ring"; ring.id = "ring"; inner.appendChild(ring);
+}
+
+function render(animate) {
+  stopVideo();
+  const it = items[idx];
+  $("pos").textContent = `相邻节点 ${idx + 1} / ${items.length}`;
+  $("prev").disabled = idx === 0; $("next").disabled = idx === items.length - 1;
+  const one = items.length === 1;
+  $("prev").hidden = $("next").hidden = $("strip").hidden = $("pos").hidden = one;
+  stage.style.setProperty("--ar", it.w / it.h);
+  $("meta").textContent = "加载原图…";
+  stage.innerHTML = `<div class="frame ${animate && !reduce ? "enter" : ""}" style="--dir:${dir}"><div class="art art-${it.art}" id="media"></div><div class="loading" id="ld">${it.kind === "video" ? "" : ""}</div></div>`;
+  // 模拟原图加载：先露缩略图，约 400ms 后原图完成，信息胶囊补全尺寸与大小
+  setTimeout(() => { if (items[idx] === it) { $("meta").textContent = `${it.w}×${it.h} · ${it.size}`; $("ld")?.remove(); } }, 400);
+  if (it.kind === "video") mountControls(it);
+  document.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", +t.dataset.i === idx));
+  const t = document.querySelector(`.thumb[data-i="${idx}"]`);
+  const ring = $("ring");
+  ring.style.width = t.offsetWidth + "px"; ring.style.transform = `translateX(${t.offsetLeft}px)`;
+  t.scrollIntoView({ inline: "center", block: "nearest", behavior: reduce ? "auto" : "smooth" });
+}
+
+/* ---------- 视频（用计时器模拟，行为与真实 video 一致：自动播放、倍速、循环、静音、拖动进度） ---------- */
+function fmt(s) { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+function mountControls(it) {
+  vState = { t: 0, playing: true, speed: 1, loop: false, muted: false, dur: it.dur };
+  const wrap = document.createElement("div");
+  wrap.className = "controls";
+  wrap.innerHTML = `
+    <button class="ctl" id="pp" aria-label="暂停"></button>
+    <div class="bar" id="bar"><i><b id="fill"></b></i></div>
+    <span class="tnum" id="clock"></span>
+    <div class="rel"><button class="ctl txt tnum" id="spd" aria-label="倍速">1x</button>
+      <div class="menu" id="spdMenu">${[0.5, 1, 1.5, 2].map(v => `<button data-v="${v}" class="tnum ${v === 1 ? "cur" : ""}">${v}x</button>`).join("")}</div></div>
+    <button class="ctl" id="loop" aria-label="循环"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/></svg></button>
+    <button class="ctl" id="vol" aria-label="静音"></button>`;
+  stage.appendChild(wrap);
+  const media = $("media"); media.classList.add("playing");
+  const icons = {
+    play: `<svg class="fill" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`,
+    pause: `<svg class="fill" viewBox="0 0 24 24"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>`,
+    vol: `<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4zM16 9a4 4 0 010 6M19 6a8 8 0 010 12"/></svg>`,
+    mute: `<svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6"/></svg>`,
+  };
+  const paint = () => {
+    $("pp").innerHTML = vState.playing ? icons.pause : icons.play;
+    $("pp").setAttribute("aria-label", vState.playing ? "暂停" : "播放");
+    $("vol").innerHTML = vState.muted ? icons.mute : icons.vol;
+    $("fill").style.width = vState.t / vState.dur * 100 + "%";
+    $("clock").textContent = `${fmt(vState.t)} / ${fmt(vState.dur)}`;
+    $("loop").classList.toggle("on", vState.loop);
+    media.style.animationPlayState = vState.playing ? "running" : "paused";
+    wrap.classList.toggle("idle", vState.playing && vState.idle);
+  };
+  vState.paint = paint;
+  $("pp").onclick = () => { toggle(); };
+  $("loop").onclick = () => { vState.loop = !vState.loop; paint(); };
+  $("vol").onclick = () => { vState.muted = !vState.muted; paint(); };
+  $("spd").onclick = e => { e.stopPropagation(); $("spdMenu").classList.toggle("open"); };
+  $("spdMenu").onclick = e => {
+    const v = e.target.dataset.v; if (!v) return;
+    vState.speed = +v; $("spd").textContent = v + "x";
+    $("spdMenu").querySelectorAll("button").forEach(b => b.classList.toggle("cur", b.dataset.v === v));
+    $("spdMenu").classList.remove("open");
+  };
+  $("bar").onclick = e => { const r = e.currentTarget.getBoundingClientRect(); vState.t = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * vState.dur; paint(); };
+  let last = performance.now();
+  vt = setInterval(() => {
+    const now = performance.now(), dt = (now - last) / 1000; last = now;
+    if (!vState.playing) return;
+    vState.t += dt * vState.speed;
+    if (vState.t >= vState.dur) { if (vState.loop) vState.t = 0; else { vState.t = vState.dur; vState.playing = false; } }
+    paint();
+  }, 100);
+  paint(); poke();
+}
+function toggle() {
+  if (!vState) return;
+  if (!vState.playing && vState.t >= vState.dur) vState.t = 0;
+  vState.playing = !vState.playing; vState.idle = false; vState.paint(); poke();
+}
+/* 鼠标 2.5 秒不动淡出控制条，暂停时常显 */
+function poke() {
+  if (!vState) return;
+  vState.idle = false; vState.paint();
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (vState) { vState.idle = true; vState.paint(); } }, 2500);
+}
+function stopVideo() { clearInterval(vt); clearTimeout(idleTimer); vt = null; vState = null; }
+stage.addEventListener("mousemove", poke);
+document.addEventListener("click", e => { if (!e.target.closest(".rel")) document.querySelector(".menu")?.classList.remove("open"); });
+
+/* ---------- 其它交互 ---------- */
+$("close").onclick = close;
+$("scrim").onclick = close;
+$("prev").onclick = () => go(-1);
+$("next").onclick = () => go(1);
+$("dl").onclick = () => alert("下载原文件：" + items[idx].title);
+$("locate").onclick = () => {
+  const id = items[idx].id; close();
+  setTimeout(() => {
+    document.querySelectorAll(".node").forEach(x => x.classList.toggle("selected", x.dataset.id === id));
+    const el = document.querySelector(`.node[data-id="${id}"]`);
+    el.animate([{ outline: "0 solid transparent" }, { outline: "6px solid oklch(1 0 0 / .35)" }, { outline: "0 solid transparent" }], { duration: 600 });
+  }, 180);
+};
+document.addEventListener("keydown", e => {
+  if (!lb.classList.contains("open")) return;
+  if (e.key === "Escape") close();
+  else if (e.key === "ArrowLeft") go(-1);
+  else if (e.key === "ArrowRight") go(1);
+  else if (e.key === " " && vState) { e.preventDefault(); toggle(); }
+  else if ((e.key === "m" || e.key === "M") && vState) { vState.muted = !vState.muted; vState.paint(); }
+});
+</script>
+</body>
+</html>

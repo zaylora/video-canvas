@@ -19,6 +19,8 @@ import (
 // FileResolver 决定一个对象 key 怎么提供给浏览器，由 service.AssetService 实现。
 type FileResolver interface {
 	ResolveFile(ctx context.Context, key string) (*service.FileTarget, error)
+	// ResolveVariant 解析素材变体（?v=thumb|poster）：有处理服务时跳转到处理地址，否则缩略图回退原图、封面 404。
+	ResolveVariant(ctx context.Context, key, variant string) (*service.FileTarget, error)
 }
 
 // NewFilesHandler 返回 /files/*filepath 的处理器（GET 与 HEAD 都挂它）。
@@ -29,7 +31,16 @@ type FileResolver interface {
 func NewFilesHandler(res FileResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := strings.TrimPrefix(c.Param("filepath"), "/")
-		target, err := res.ResolveFile(c.Request.Context(), key)
+		// 带 v 参数是请求缩略图 / 封面：不带就是原文件，行为和以前完全一致
+		var (
+			target *service.FileTarget
+			err    error
+		)
+		if variant := c.Query("v"); variant != "" {
+			target, err = res.ResolveVariant(c.Request.Context(), key, variant)
+		} else {
+			target, err = res.ResolveFile(c.Request.Context(), key)
+		}
 		if err != nil {
 			var e *errcode.Error
 			if errors.As(err, &e) {

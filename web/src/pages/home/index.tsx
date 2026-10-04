@@ -112,12 +112,11 @@ export default function Home() {
       </CardListNote>
     );
   } else {
-    body = recent.map((canvas, index) => (
+    body = recent.map((canvas) => (
       <CanvasCard
         key={canvas.id}
         canvas={canvas}
         variant="overlay"
-        index={index}
         deleting={list.deleting.has(canvas.id)}
         onDelete={() => void list.remove(canvas.id)}
       />

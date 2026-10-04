@@ -34,28 +34,29 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DURATION, EASE_OUT } from "@/lib/motion";
-import type { CanvasEdge, CanvasNode, PendingGroup } from "@/types";
+import type { CanvasEdge, CanvasNode, FlowNode, PendingGroup } from "@/types";
 import { arrangeNodes, type ArrangeMode } from "@/utils/canvas/arrange";
+import { absolutePosition, isGroupNode, localizePositions } from "@/utils/canvas/group";
 
+import { animatePositions } from "./arrange-animation";
 import { MOD } from "./chrome/keys";
 import { SelectionFanHandle } from "./selection-fan-handle";
 import { duplicateSelection } from "./use-canvas-shortcuts";
 
 /** 选框比节点外沿多出的留白（画布单位），要包住卡片上方的标题行 */
 const FRAME_PADDING = { x: 24, top: 44, bottom: 24 };
-/** 整理布局的过渡时长，毫秒 */
-const ARRANGE_DURATION = 260;
-
 /** 是否选中了多个节点：多选时节点不再各自浮出面板，统一由选区工具条接管 */
 const MultiSelectContext = createContext(false);
 export const MultiSelectProvider = MultiSelectContext.Provider;
 export const useMultiSelected = () => useContext(MultiSelectContext);
 
-const selectedKey = (state: ReactFlowState) =>
-  state.nodes
-    .filter((node) => node.selected)
-    .map((node) => node.id)
-    .join(",");
+/** 选中的节点 id；选区里只要有组就返回空串，这时不出多选工具条（组有自己的菜单） */
+const selectedKey = (state: ReactFlowState) => {
+  const selected = state.nodes.filter((node) => node.selected);
+  return selected.some((node) => node.type === "group")
+    ? ""
+    : selected.map((node) => node.id).join(",");
+};
 
 /** 选中节点的包围盒（画布坐标），拼成字符串让选择器只在真的变了时触发重渲染 */
 const boundsKey = (state: ReactFlowState) => {
@@ -136,57 +137,41 @@ const ARRANGE_OPTIONS: { mode: ArrangeMode; label: string; icon: typeof Rows3 }[
  */
 export function SelectionToolbar({
   onFanOut,
+  onGroup,
 }: {
   /** 从选框右侧的「+」拉出或点击：交给画布弹种类菜单，引用被选中的节点 */
   onFanOut: (screen: XYPosition, group: PendingGroup) => void;
+  /** 把选中的节点打成组 */
+  onGroup: () => void;
 }) {
   const key = useStore(selectedKey);
   const ids = key ? key.split(",") : [];
   const { getNodes, setNodes, setEdges, deleteElements, getEdges } = useReactFlow<
-    CanvasNode,
+    FlowNode,
     CanvasEdge
   >();
   const zoom = useStore((state) => state.transform[2]);
 
   const arrange = useCallback(
     (mode: ArrangeMode) => {
-      const selected = getNodes().filter((node) => node.selected);
-      const targets = arrangeNodes(selected, mode);
-      const from = new Map(selected.map((node) => [node.id, node.position]));
-      const start = performance.now();
-      // 过渡期间标成 dragging，撤销栈只在落定时记一步
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / ARRANGE_DURATION);
-        const eased = 1 - Math.pow(1 - t, 3);
-        setNodes((nodes) =>
-          nodes.map((node) => {
-            const to = targets.get(node.id);
-            const origin = from.get(node.id);
-            if (!to || !origin) return node;
-            return {
-              ...node,
-              dragging: t < 1,
-              position: {
-                x: origin.x + (to.x - origin.x) * eased,
-                y: origin.y + (to.y - origin.y) * eased,
-              },
-            };
-          }),
-        );
-        if (t < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
+      const all = getNodes();
+      const selected = all.filter(
+        (node): node is CanvasNode => node.selected === true && !isGroupNode(node),
+      );
+      // 成员的 position 是相对组的：先换成绝对位置排好，再换回各自的坐标系写回
+      const flat = selected.map((node) => ({ ...node, position: absolutePosition(node, all) }));
+      const targets = localizePositions(all, arrangeNodes(flat, mode));
+      animatePositions({ getNodes, setNodes }, targets);
     },
     [getNodes, setNodes],
   );
 
   const download = useCallback(() => {
-    const files = getNodes()
-      .filter((node) => node.selected && node.data.src && !node.data.src.startsWith("blob:"))
-      .map((node) => ({
-        url: node.data.src as string,
-        name: node.data.fileName ?? node.data.label,
-      }));
+    const files = getNodes().flatMap((node) =>
+      node.selected && node.type === "canvas" && node.data.src && !node.data.src.startsWith("blob:")
+        ? [{ url: node.data.src, name: node.data.fileName ?? node.data.label }]
+        : [],
+    );
     if (files.length === 0) {
       toast.info("选中的节点里还没有可下载的素材");
       return;
@@ -228,6 +213,13 @@ export function SelectionToolbar({
             <span className="text-muted-foreground px-3 text-sm tabular-nums">
               {ids.length} 个节点
             </span>
+            <ChromeSeparator />
+            <ChromeTooltip label="打组" shortcut={`${MOD}G`}>
+              <ChromeButton size="lg" aria-label="打组" onClick={onGroup}>
+                <LayoutGrid />
+                <span className="text-foreground text-sm">打组</span>
+              </ChromeButton>
+            </ChromeTooltip>
             <ChromeSeparator />
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger render={<ChromeButton size="lg" aria-label="整理布局" />}>

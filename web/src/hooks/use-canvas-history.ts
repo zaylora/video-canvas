@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, FlowNode } from "@/types";
+import { isGroupNode } from "@/utils/canvas/group";
 import {
   HISTORY_LIMIT,
   contentKey,
@@ -9,12 +10,16 @@ import {
   type HistorySnapshot,
 } from "@/utils/canvas/history";
 
+/** 节点当前选中的生成版本，组没有这个概念 */
+const activeOutput = (node?: FlowNode) =>
+  node && !isGroupNode(node) ? node.data.activeOutputId : undefined;
+
 /** 连续改提示词、参数时，停手多久才算一步 */
 const TYPING_SETTLE_MS = 800;
 
 type Keyed = HistorySnapshot & { structure: string; content: string };
 
-const keyed = (nodes: CanvasNode[], edges: CanvasEdge[]): Keyed => {
+const keyed = (nodes: FlowNode[], edges: CanvasEdge[]): Keyed => {
   const snapshot = { nodes, edges };
   return { ...snapshot, structure: structureKey(snapshot), content: contentKey(snapshot) };
 };
@@ -34,9 +39,9 @@ export function useCanvasHistory({
   setNodes,
   setEdges,
 }: {
-  nodes: CanvasNode[];
+  nodes: FlowNode[];
   edges: CanvasEdge[];
-  setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>;
+  setNodes: React.Dispatch<React.SetStateAction<FlowNode[]>>;
   setEdges: React.Dispatch<React.SetStateAction<CanvasEdge[]>>;
 }) {
   const past = useRef<HistorySnapshot[]>([]);
@@ -86,7 +91,8 @@ export function useCanvasHistory({
       latest.current = current;
       return;
     }
-    if (nodes.some((node) => node.dragging)) return;
+    // 拖动、缩放组框的过程中不记，落定时才算一步
+    if (nodes.some((node) => node.dragging || node.resizing)) return;
     if (current.structure !== previous.structure) {
       // 被打过招呼的这次连线并进攒着的打字：撤销一次回到开始打字之前，而不是停在打了一半的 @ 上
       const base = absorbNext.current ? typingBase.current : null;
@@ -121,7 +127,7 @@ export function useCanvasHistory({
       while (target) {
         const key = keyed(target.nodes, target.edges);
         const sameVersions = target.nodes.every(
-          (node, index) => node.data.activeOutputId === present.nodes[index]?.data.activeOutputId,
+          (node, index) => activeOutput(node) === activeOutput(present.nodes[index]),
         );
         if (key.structure !== present.structure || key.content !== present.content || !sameVersions)
           break;

@@ -3,13 +3,14 @@ import { useReactFlow } from "@xyflow/react";
 
 import type { CanvasTool } from "@/components/canvas";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
-import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import type { CanvasEdge, CanvasNodeData, FlowNode } from "@/types";
+import { absolutePosition, isGroupNode } from "@/utils/canvas/group";
 import { copyLabels } from "@/utils/canvas/node-label";
 
 import { VIEWPORT_DURATION } from "./chrome/view-controls";
 
 /** 复制到剪贴板的节点：跨画布也能粘（同一个标签页里） */
-let clipboard: { nodes: CanvasNode[]; edges: CanvasEdge[] } | null = null;
+let clipboard: { nodes: FlowNode[]; edges: CanvasEdge[] } | null = null;
 
 /** 焦点在能打字的地方、或者在弹窗菜单里时，按键是给那边的 */
 function isBusyTarget(target: EventTarget | null) {
@@ -34,25 +35,45 @@ function cloneData(data: CanvasNodeData): CanvasNodeData {
  * 把一组节点和它们之间的连线复制一份，整体平移 offset，新副本处于选中状态。
  * 给了 onCanvas（画布上眼下的节点）就按「X 副本」「X 副本二」起名，避开已有的名字；
  * 只是挪剪贴板里的位置时不给，名字原样留着。
+ * 组：复制一个组连同它的成员，成员相对组的位置不变；只复制了成员（组没一起复制）时，
+ * 副本留在原来的组里，按原位置平移。
  */
 function cloneGroup(
-  source: { nodes: CanvasNode[]; edges: CanvasEdge[] },
+  source: { nodes: FlowNode[]; edges: CanvasEdge[] },
   offset: { x: number; y: number },
-  onCanvas?: CanvasNode[],
+  onCanvas?: FlowNode[],
 ) {
   const ids = new Map(source.nodes.map((node) => [node.id, crypto.randomUUID()]));
   const used = onCanvas?.map((node) => node.data.label) ?? [];
-  const nodes = source.nodes.map((node) => {
-    const data = cloneData(node.data);
-    if (onCanvas) {
-      [data.label] = copyLabels(node.data.label, used, 1);
-      used.push(data.label);
+  const nodes = source.nodes.map((node): FlowNode => {
+    const id = ids.get(node.id) as string;
+    const label = onCanvas ? copyLabels(node.data.label, used, 1)[0] : node.data.label;
+    if (onCanvas) used.push(label);
+    // 父组也在这次复制里：成员跟着新组走，相对位置不变，不再单独平移
+    const parentCloned = !!node.parentId && ids.has(node.parentId);
+    const position = parentCloned
+      ? node.position
+      : { x: node.position.x + offset.x, y: node.position.y + offset.y };
+    if (isGroupNode(node)) {
+      return {
+        id,
+        type: "group",
+        position,
+        width: node.width,
+        height: node.height,
+        zIndex: node.zIndex,
+        selected: true,
+        data: { ...node.data, label },
+      };
     }
+    const data = cloneData(node.data);
+    data.label = label;
     return {
-      id: ids.get(node.id) as string,
+      id,
       type: node.type,
-      position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
-      selected: true,
+      position,
+      selected: !parentCloned,
+      ...(node.parentId ? { parentId: parentCloned ? ids.get(node.parentId) : node.parentId } : {}),
       data,
     };
   });
@@ -64,17 +85,21 @@ function cloneGroup(
     target: ids.get(edge.target) as string,
     selected: false,
   }));
-  return { nodes, edges };
+  // xyflow 要求父节点在子节点之前
+  return {
+    nodes: [...nodes.filter(isGroupNode), ...nodes.filter((node) => !isGroupNode(node))],
+    edges,
+  };
 }
 
 type FlowOps = Pick<
-  ReturnType<typeof useReactFlow<CanvasNode, CanvasEdge>>,
+  ReturnType<typeof useReactFlow<FlowNode, CanvasEdge>>,
   "getNodes" | "getEdges" | "setNodes" | "setEdges"
 >;
 
 /** 选区的读取与插入：快捷键和多选工具条共用 */
 function selectionOps({ getNodes, getEdges, setNodes, setEdges }: FlowOps) {
-  const insert = (group: { nodes: CanvasNode[]; edges: CanvasEdge[] }) => {
+  const insert = (group: { nodes: FlowNode[]; edges: CanvasEdge[] }) => {
     setNodes((nodes) => [
       ...nodes.map((node) => (node.selected ? { ...node, selected: false } : node)),
       ...group.nodes,
@@ -85,7 +110,14 @@ function selectionOps({ getNodes, getEdges, setNodes, setEdges }: FlowOps) {
     ]);
   };
   const selection = () => {
-    const nodes = getNodes().filter((node) => node.selected);
+    // 选中了组就连成员一起算：成员没被点选，但复制 / 粘贴要带上
+    const all = getNodes();
+    const groupIds = new Set(
+      all.filter((node) => node.selected && isGroupNode(node)).map((node) => node.id),
+    );
+    const nodes = all.filter(
+      (node) => node.selected || (node.parentId && groupIds.has(node.parentId)),
+    );
     const ids = new Set(nodes.map((node) => node.id));
     const edges = getEdges().filter((edge) => ids.has(edge.source) && ids.has(edge.target));
     return { nodes, edges };
@@ -110,6 +142,7 @@ export function useCanvasShortcuts({
   setTool,
   openShortcuts,
   save,
+  group,
 }: {
   undo: () => void;
   redo: () => void;
@@ -117,6 +150,8 @@ export function useCanvasShortcuts({
   openShortcuts: () => void;
   /** 立即保存，不等停手 */
   save: () => void;
+  /** 组的快捷键：⌘G 打组、⇧⌘G 解组、Enter / F2 给选中的组改名 */
+  group: { group: () => void; ungroup: () => void; rename: () => boolean };
 }) {
   const {
     getNodes,
@@ -128,7 +163,7 @@ export function useCanvasShortcuts({
     zoomTo,
     zoomIn,
     zoomOut,
-  } = useReactFlow<CanvasNode, CanvasEdge>();
+  } = useReactFlow<FlowNode, CanvasEdge>();
   const pointer = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -174,12 +209,24 @@ export function useCanvasShortcuts({
         if (!clipboard?.nodes.length) return;
         event.preventDefault();
         // 有指针就粘到指针处（以选区左上角对齐），没有就在原位错开一点
-        const left = Math.min(...clipboard.nodes.map((node) => node.position.x));
-        const top = Math.min(...clipboard.nodes.map((node) => node.position.y));
+        // 对齐的是最外层元素的左上角：组和不在这次复制范围内的组里的节点，按绝对位置算
+        const copiedIds = new Set(clipboard.nodes.map((node) => node.id));
+        const outer = clipboard.nodes.filter(
+          (node) => !node.parentId || !copiedIds.has(node.parentId),
+        );
+        const everything = getNodes();
+        const left = Math.min(...outer.map((node) => absolutePosition(node, everything).x));
+        const top = Math.min(...outer.map((node) => absolutePosition(node, everything).y));
         const at = pointer.current ? screenToFlowPosition(pointer.current) : null;
         const offset = at ? { x: at.x - left, y: at.y - top } : { x: 48, y: 48 };
         insert(cloneGroup(clipboard, offset, getNodes()));
         if (!at) clipboard = cloneGroup(clipboard, { x: 48, y: 48 });
+        return;
+      }
+      if (mod && key === "g") {
+        event.preventDefault();
+        if (event.shiftKey) group.ungroup();
+        else group.group();
         return;
       }
       if (mod && key === "d") {
@@ -213,6 +260,10 @@ export function useCanvasShortcuts({
       }
       if (key === "v") setTool("select");
       if (key === "h") setTool("pan");
+      if ((event.key === "Enter" || event.key === "F2") && group.rename()) {
+        event.preventDefault();
+        return;
+      }
       if (event.key === "Enter") {
         const prompt = document.querySelector<HTMLElement>("[data-node-prompt]");
         if (prompt) {
@@ -242,6 +293,7 @@ export function useCanvasShortcuts({
     getEdges,
     getNodes,
     openShortcuts,
+    group,
     redo,
     save,
     screenToFlowPosition,

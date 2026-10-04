@@ -1,4 +1,6 @@
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasNode, FlowNode } from "@/types";
+
+import { absolutePosition } from "./group";
 
 import { copyLabels } from "./node-label";
 
@@ -7,7 +9,7 @@ const FALLBACK_SIZE = { width: 280, height: 220 };
 /** 副本之间、副本与已有节点之间至少留的空隙 */
 const GAP = 40;
 
-const sizeOf = (node: CanvasNode) => ({
+const sizeOf = (node: FlowNode) => ({
   width: node.measured?.width ?? node.width ?? FALLBACK_SIZE.width,
   height: node.measured?.height ?? node.height ?? FALLBACK_SIZE.height,
 });
@@ -30,13 +32,18 @@ const overlaps = (a: Rect, b: Rect) =>
  */
 export function duplicateNode(
   source: CanvasNode,
-  nodes: CanvasNode[],
+  nodes: FlowNode[],
   edges: CanvasEdge[],
   count: number,
   newId: () => string = () => crypto.randomUUID(),
 ): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const size = sizeOf(source);
-  const taken: Rect[] = nodes.map((node) => ({ ...node.position, ...sizeOf(node) }));
+  // 组内节点的 position 是相对组的，摆放一律按画布上的绝对位置算；副本落在画布上，不入组
+  const origin = absolutePosition(source, nodes);
+  const taken: Rect[] = nodes.map((node) => ({
+    ...absolutePosition(node, nodes),
+    ...sizeOf(node),
+  }));
   const labels = copyLabels(
     source.data.label,
     nodes.map((node) => node.data.label),
@@ -48,13 +55,13 @@ export function duplicateNode(
 
   for (let i = 0; i < count; i++) {
     // 先往右排，撞到别的节点就换下一行
-    let position = { x: source.position.x, y: source.position.y };
+    let position = { x: origin.x, y: origin.y };
     for (let step = 1; ; step++) {
       const row = Math.floor((step - 1) / 4);
       const col = ((step - 1) % 4) + 1;
       position = {
-        x: source.position.x + col * (size.width + GAP),
-        y: source.position.y + row * (size.height + GAP),
+        x: origin.x + col * (size.width + GAP),
+        y: origin.y + row * (size.height + GAP),
       };
       if (!taken.some((rect) => overlaps({ ...position, ...size }, rect))) break;
       if (step > 200) break; // 极端拥挤时不再找，叠放也比卡死好

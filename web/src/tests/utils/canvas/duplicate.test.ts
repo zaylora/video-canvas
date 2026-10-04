@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, CanvasGroupNode, CanvasNode } from "@/types";
 import { duplicateNode } from "@/utils/canvas/duplicate";
 
 const node = (id: string, label: string, x = 0, y = 0, extra = {}): CanvasNode => ({
@@ -80,5 +80,24 @@ describe("duplicateNode", () => {
     const copy = node("s", "图片节点 5 副本");
     const out = duplicateNode(copy, [original, copy], [], 2, ids());
     expect(out.nodes.map((n) => n.data.label)).toEqual(["图片节点 5 副本一", "图片节点 5 副本二"]);
+  });
+});
+
+describe("duplicateNode 与组", () => {
+  test("组内节点的副本按绝对位置摆，落在画布上（不入组），不会被相对坐标带偏", () => {
+    const group: CanvasGroupNode = {
+      id: "g",
+      type: "group",
+      position: { x: 1000, y: 1000 },
+      width: 600,
+      height: 400,
+      data: { label: "组" },
+    };
+    const member = { ...node("m", "镜头", 24, 24), parentId: "g" };
+    const out = duplicateNode(member, [group, member], [], 1, ids());
+    expect(out.nodes[0].parentId).toBeUndefined();
+    // 原节点绝对位置是 (1024, 1024)，副本在它右侧：x 比 1024 + 200 大，y 同行
+    expect(out.nodes[0].position.x).toBeGreaterThan(1024 + 200);
+    expect(out.nodes[0].position.y).toBe(1024);
   });
 });

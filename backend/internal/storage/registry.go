@@ -40,6 +40,9 @@ type Handle struct {
 	Storage      Storage
 	SignedTTL    time.Duration
 	DirectUpload bool // 管理员允许直传，且这套存储实现了直传
+	// Spec 是对象存储的完整配置（含解密后的密钥，只在内存里使用，不进日志、不进响应）；本地磁盘为零值。
+	// 图片处理服务据此给私有读桶签发带处理参数的地址。
+	Spec Spec
 }
 
 // Registry 按 id 解析存储并缓存客户端。素材写入用 Default，读取、签名、删除用 Get（按素材记录的 storage_id）。
@@ -154,5 +157,6 @@ func build(e Entry) (*Handle, error) {
 	}
 	h.Storage = st
 	h.DirectUpload = e.DirectUpload
+	h.Spec = e.Spec
 	return h, nil
 }

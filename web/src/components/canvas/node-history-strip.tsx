@@ -6,6 +6,8 @@ import { DURATION, EASE_OUT, SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { NodeOutput } from "@/types";
 
+import { MediaPreview, VideoPoster } from "./media-preview";
+
 /** 拖出缩略图时塞进 dataTransfer 的类型，画布 onDrop 认它来建节点 */
 export const NODE_OUTPUT_MIME = "application/x-video-canvas-output";
 
@@ -14,24 +16,9 @@ const VISIBLE_THUMBS = 8;
 
 function Thumb({ output }: { output: NodeOutput }) {
   if (output.mediaType === "image")
-    return (
-      <img
-        src={output.src}
-        alt=""
-        draggable={false}
-        decoding="async"
-        className="size-full object-cover"
-      />
-    );
-  if (output.mediaType === "video")
-    return (
-      <video
-        src={output.src}
-        muted
-        preload="metadata"
-        className="pointer-events-none size-full object-cover"
-      />
-    );
+    return <MediaPreview src={output.src} mode="thumb" fit="cover" draggable={false} />;
+  // 历史条一次摆多个视频，只显示封面，不挂载 video
+  if (output.mediaType === "video") return <VideoPoster src={output.src} iconClassName="size-4" />;
   return (
     <span className="text-muted-foreground grid size-full place-items-center">
       <AudioLines className="size-4" />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AnimatePresence, LayoutGroup } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import {
   CheckSquare,
   FolderPlus,
@@ -107,12 +107,11 @@ export default function CanvasList() {
       </CardListNote>
     );
   } else {
-    body = list.items.map((canvas, index) => (
+    body = list.items.map((canvas) => (
       <CanvasCard
         key={canvas.id}
         canvas={canvas}
         variant="panel"
-        index={index}
         deleting={list.deleting.has(canvas.id)}
         onDelete={() => void list.remove(canvas.id)}
       />
@@ -172,16 +171,14 @@ export default function CanvasList() {
         </SoonTip>
       </div>
 
-      <LayoutGroup>
-        <div className={cn("grid gap-2.5 md:gap-4", DENSITY_GRID[density])}>
-          <NewCanvasCard
-            variant="panel"
-            creating={list.creating}
-            onCreate={() => void list.create()}
-          />
-          <AnimatePresence initial={false}>{body}</AnimatePresence>
-        </div>
-      </LayoutGroup>
+      <div className={cn("grid gap-2.5 md:gap-4", DENSITY_GRID[density])}>
+        <NewCanvasCard
+          variant="panel"
+          creating={list.creating}
+          onCreate={() => void list.create()}
+        />
+        <AnimatePresence initial={false}>{body}</AnimatePresence>
+      </div>
     </div>
   );
 }

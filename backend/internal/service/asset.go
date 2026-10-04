@@ -66,8 +66,9 @@ type AssetService struct {
 	cfg    config.Storage
 	now    func() time.Time
 
-	redirects redirectCache    // /files 跳转的签名结果缓存
-	intents   UploadIntentRepo // 浏览器直传的上传意图；没有开启直传能力时为 nil
+	redirects redirectCache        // /files 跳转的签名结果缓存
+	intents   UploadIntentRepo     // 浏览器直传的上传意图；没有开启直传能力时为 nil
+	variants  AssetVariantResolver // 缩略图 / 封面的处理服务解析；没有配置时变体一律回退
 }
 
 var (
@@ -511,32 +512,45 @@ type FileTarget struct {
 // ResolveFile 按对象 key 找到素材所在的存储，并决定怎么提供这个文件。
 // 这条路由不鉴权（<video> / <img> 要直接引用），安全性靠 key 不可猜测，和原来的本地存储 /files 一致。
 func (s *AssetService) ResolveFile(ctx context.Context, key string) (*FileTarget, error) {
+	a, h, err := s.lookupFile(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return s.targetOf(ctx, h, key, a)
+}
+
+// lookupFile 校验 key、反查素材并取得它所在的存储，ResolveFile 与 ResolveVariant 共用。
+func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset, *storage.Handle, error) {
 	// 1. 非法 key 不可能对应任何素材，直接按不存在处理，不必查库
 	if err := storage.ValidateKey(key); err != nil {
-		return nil, errcode.ErrAssetNotFound
+		return nil, nil, errcode.ErrAssetNotFound
 	}
 
 	// 2. 反查素材：拿到它所在的存储
 	a, err := s.repo.GetByStorageKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, errcode.ErrAssetNotFound
+			return nil, nil, errcode.ErrAssetNotFound
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	h, err := s.stores.Get(ctx, a.StorageID)
 	if err != nil {
 		// 内部原因（解密失败、配置被删等）只写日志，不透传给浏览器
 		logger.Error("解析素材所在存储失败", zap.Uint64("asset_id", a.ID), zap.Uint64("storage_id", a.StorageID), zap.Error(err))
-		return nil, errcode.ErrStorageUnavailable
+		return nil, nil, errcode.ErrStorageUnavailable
 	}
+	return a, h, nil
+}
 
-	// 3. 本地磁盘：后端直接提供（支持 Range，视频可拖动）
+// targetOf 决定原文件怎么提供：本地磁盘由后端直接提供，对象存储跳转到签名（或公开）地址。
+func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key string, a *model.Asset) (*FileTarget, error) {
+	// 1. 本地磁盘：后端直接提供（支持 Range，视频可拖动）
 	if ls, ok := h.Storage.(*storage.LocalStorage); ok {
 		return &FileTarget{Local: ls}, nil
 	}
 
-	// 4. 对象存储：跳转到签名（或公开）地址。同一个文件在 ttl/2 内复用同一个地址，
+	// 2. 对象存储：跳转到签名（或公开）地址。同一个文件在 ttl/2 内复用同一个地址，
 	//    这样浏览器对图片、视频的缓存才能命中；浏览器最多缓存 ttl/4，保证拿到的地址一定还没过期
 	ttl := s.signedTTL(h)
 	if ttl <= 0 {

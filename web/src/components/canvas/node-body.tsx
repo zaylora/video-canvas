@@ -4,7 +4,9 @@ import { Loader2, TriangleAlert } from "lucide-react";
 import { BaseNodeContent } from "./base-node";
 import { GridReveal } from "@/components/ui/grid-reveal";
 
+import { MediaPreview } from "./media-preview";
 import { ImagePlaceholderIcon } from "./placeholder-icons";
+import { VideoFacade } from "./video-facade";
 
 /** 节点的产出进度：没跑过、生成中、已产出、调用失败 */
 export type NodeStatus = "idle" | "running" | "done" | "error";
@@ -173,11 +175,14 @@ type NodeMediaBodyProps = {
   caption?: string;
   /** 预览画幅 */
   aspect?: number;
+  /** 视频时长，毫秒；节点数据里没有就不传，视频封面不显示时长角标 */
+  durationMs?: number | null;
 };
 
 /**
  * 现成素材的正文：本地传进来的、或是生成服务交回来的一份图/视频，
- * 摆在和别的节点一样的画幅里，视频带原生控件。
+ * 摆在和别的节点一样的画幅里。
+ * 图片按画布缩放分档加载缩略图 / 原图；视频平时只是封面，点击才挂载 video。
  */
 export function NodeMediaBody({
   src,
@@ -185,6 +190,7 @@ export function NodeMediaBody({
   alt,
   caption,
   aspect = NODE_PREVIEW_ASPECT,
+  durationMs,
 }: NodeMediaBodyProps) {
   return (
     <BaseNodeContent>
@@ -193,20 +199,14 @@ export function NodeMediaBody({
         style={{ aspectRatio: aspect }}
       >
         {mediaType === "image" ? (
-          <img src={src} alt={alt} className="size-full object-contain" />
+          <MediaPreview src={src} alt={alt} />
         ) : mediaType === "audio" ? (
           // 音频没有画面，播放器居中摆在同一副画幅里
           <div className="flex size-full items-center justify-center px-4">
             <audio src={src} controls className="nodrag nowheel w-full" />
           </div>
         ) : (
-          // nodrag 让拖进度条不至于把节点跟着拽走，nowheel 把滚轮留给画布
-          <video
-            src={src}
-            controls
-            playsInline
-            className="nodrag nowheel size-full object-contain"
-          />
+          <VideoFacade src={src} durationMs={durationMs} />
         )}
       </div>
       {caption && (

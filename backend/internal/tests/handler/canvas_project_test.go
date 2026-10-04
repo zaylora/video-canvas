@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/datatypes"
 
 	. "video-canvas/internal/handler"
 	"video-canvas/internal/middleware"
@@ -62,6 +63,9 @@ func (r *fakeCanvasRepo) Update(_ context.Context, userID, id, revision uint64, 
 	}
 	if t, ok := fields["title"].(string); ok {
 		p.Title = t
+	}
+	if j, ok := fields["payload_json"].(datatypes.JSON); ok {
+		p.PayloadJSON = j
 	}
 	p.Revision++
 	return nil
@@ -141,5 +145,48 @@ func TestCanvasProjectHandler_HexID(t *testing.T) {
 
 	if status, _ = canvasCall(t, r, http.MethodDelete, "/api/v1/canvas/"+id, ""); status != http.StatusOK || len(repo.items) != 0 {
 		t.Errorf("删除失败：%d", status)
+	}
+}
+
+// 画布里的组节点（type=group、width/height、成员的 parentId）整体存在 payload_json 里，
+// 后端只要求它是 JSON 对象，不认识节点字段：创建、更新、读取后必须原样返回，不丢任何组字段。
+func TestCanvasProjectHandler_GroupNodesRoundTrip(t *testing.T) {
+	r, _ := newCanvasRouter()
+	payload := `{"nodes":[` +
+		`{"id":"g1","type":"group","position":{"x":100,"y":200},"width":448,"height":300,"data":{"label":"第一场","color":"blue","labelColor":"orange"}},` +
+		`{"id":"n1","type":"canvas","parentId":"g1","position":{"x":24,"y":24},"data":{"kind":"image","label":"镜头 1"}}` +
+		`],"edges":[],"viewport":{"x":0,"y":0,"zoom":1}}`
+
+	status, resp := canvasCall(t, r, http.MethodPost, "/api/v1/canvas", `{"title":"a","payload_json":`+payload+`}`)
+	data, _ := resp["data"].(map[string]any)
+	id, _ := data["id"].(string)
+	if status != http.StatusOK || id == "" {
+		t.Fatalf("创建带组的画布失败：%d %v", status, resp)
+	}
+
+	// 更新一次：改掉组名和颜色，成员关系不动
+	updated := strings.Replace(payload, `"第一场"`, `"第二场"`, 1)
+	updated = strings.Replace(updated, `"color":"blue"`, `"color":"red"`, 1)
+	if status, resp = canvasCall(t, r, http.MethodPut, "/api/v1/canvas/"+id, `{"revision":1,"payload_json":`+updated+`}`); status != http.StatusOK {
+		t.Fatalf("更新带组的画布失败：%d %v", status, resp)
+	}
+
+	status, resp = canvasCall(t, r, http.MethodGet, "/api/v1/canvas/"+id, "")
+	if status != http.StatusOK {
+		t.Fatalf("读取失败：%d %v", status, resp)
+	}
+	got, _ := resp["data"].(map[string]any)["payload_json"].(map[string]any)
+	nodes, _ := got["nodes"].([]any)
+	if len(nodes) != 2 {
+		t.Fatalf("节点数应为 2：%v", got)
+	}
+	group := nodes[0].(map[string]any)
+	groupData := group["data"].(map[string]any)
+	if group["type"] != "group" || group["width"] != float64(448) || group["height"] != float64(300) ||
+		groupData["label"] != "第二场" || groupData["color"] != "red" || groupData["labelColor"] != "orange" {
+		t.Errorf("组节点字段丢失或被改写：%v", group)
+	}
+	if member := nodes[1].(map[string]any); member["parentId"] != "g1" {
+		t.Errorf("成员的 parentId 丢失：%v", member)
 	}
 }

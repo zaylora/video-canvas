@@ -1,10 +1,17 @@
 import type { ComponentProps } from "react";
-import { CircleCheck, CircleDashed, CircleX, Loader2, MinusCircle } from "lucide-react";
+import {
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  Loader2,
+  MinusCircle,
+  TriangleAlert,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-/** 步骤状态：进行中、通过、失败、按配置跳过、因前面失败没执行 */
-type StepStatus = "running" | "ok" | "failed" | "skipped" | "notrun";
+/** 步骤状态：进行中、通过、提示（通过但有需要留意的）、失败、按配置跳过、因前面失败没执行 */
+type StepStatus = "running" | "ok" | "warn" | "failed" | "skipped" | "notrun";
 
 const STEP_ICON: Record<
   StepStatus,
@@ -12,6 +19,7 @@ const STEP_ICON: Record<
 > = {
   running: { icon: Loader2, className: "animate-spin text-muted-foreground", label: "进行中" },
   ok: { icon: CircleCheck, className: "text-emerald-600 dark:text-emerald-400", label: "通过" },
+  warn: { icon: TriangleAlert, className: "text-amber-600 dark:text-amber-400", label: "提示" },
   failed: { icon: CircleX, className: "text-red-600 dark:text-red-400", label: "失败" },
   skipped: { icon: MinusCircle, className: "text-muted-foreground", label: "已跳过" },
   notrun: { icon: CircleDashed, className: "text-muted-foreground/60", label: "未执行" },

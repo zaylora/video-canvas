@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Link2, Music } from "lucide-react";
 import { useNodesData } from "@xyflow/react";
+import { MediaPreview, VideoPoster } from "./media-preview";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
 import Mention from "@tiptap/extension-mention";
@@ -122,24 +123,8 @@ export function RefThumb({ source, compact }: { source: RefSource; compact?: boo
     );
   const media = source.mediaType ?? source.kind;
   if (media === "image")
-    return (
-      <img
-        src={source.src}
-        alt=""
-        draggable={false}
-        decoding="async"
-        className="size-full object-cover"
-      />
-    );
-  if (media === "video")
-    return (
-      <video
-        src={source.src}
-        muted
-        preload="metadata"
-        className="pointer-events-none size-full object-cover"
-      />
-    );
+    return <MediaPreview src={source.src} mode="thumb" fit="cover" draggable={false} />;
+  if (media === "video") return <VideoPoster src={source.src} iconClassName="size-4" />;
   return (
     <span className="text-status-success grid size-full place-items-center">
       <Music className="size-[50%] max-w-5" />

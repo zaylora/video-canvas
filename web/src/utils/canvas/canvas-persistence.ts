@@ -1,20 +1,39 @@
 import type { Viewport } from "@xyflow/react";
 import type { CanvasGraphDto } from "@/api/canvas/type";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
-import type { CanvasEdge, CanvasNode } from "@/types";
+import type { CanvasEdge, FlowNode } from "@/types";
+
+import { isGroupNode, normalizeFlowNodes } from "./group";
 
 /** 是否还有「存下来也没有意义」的本地生成中节点，保存要等它们收尾 */
-export function hasVolatileRunning(nodes: CanvasNode[]) {
-  return nodes.some((node) => node.data.status === "running" && !node.data.taskId);
+export function hasVolatileRunning(nodes: FlowNode[]) {
+  return nodes.some(
+    (node) => !isGroupNode(node) && node.data.status === "running" && !node.data.taskId,
+  );
 }
 
 export function serializeGraph(
-  nodes: CanvasNode[],
+  nodes: FlowNode[],
   edges: CanvasEdge[],
   viewport: Viewport,
 ): CanvasGraphDto {
   return {
     nodes: nodes.map((node) => {
+      if (isGroupNode(node)) {
+        const { label, color, labelColor } = node.data;
+        return {
+          id: node.id,
+          type: "group" as const,
+          position: { x: node.position.x, y: node.position.y },
+          width: node.width ?? node.measured?.width ?? 0,
+          height: node.height ?? node.measured?.height ?? 0,
+          data: {
+            label,
+            ...(color ? { color } : {}),
+            ...(labelColor ? { labelColor } : {}),
+          },
+        };
+      }
       const { status, ...rest } = node.data;
       const data = {
         kind: rest.kind,
@@ -42,6 +61,7 @@ export function serializeGraph(
         id: node.id,
         type: "canvas",
         position: { x: node.position.x, y: node.position.y },
+        ...(node.parentId ? { parentId: node.parentId } : {}),
         ...(node.origin ? { origin: node.origin as [number, number] } : {}),
         data,
       };
@@ -62,13 +82,16 @@ export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
   const edges = Array.isArray(graph?.edges) ? graph.edges : [];
   const viewport = graph?.viewport ?? { x: 0, y: 0, zoom: 1 };
   return {
-    nodes: nodes.map((node) => {
-      const data = node.data as { status?: string; taskId?: string };
-      // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理
-      return data.status === "running" && !data.taskId
-        ? { ...node, data: { ...node.data, status: "idle" as const } }
-        : node;
-    }) as CanvasNode[],
+    // 组排在成员之前、指向不存在的组的 parentId 清掉：xyflow 要求父节点在前，也防坏数据
+    nodes: normalizeFlowNodes(
+      nodes.map((node) => {
+        const data = node.data as { status?: string; taskId?: string };
+        // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理
+        return data.status === "running" && !data.taskId
+          ? { ...node, data: { ...node.data, status: "idle" as const } }
+          : node;
+      }) as FlowNode[],
+    ),
     edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],
     viewport,
   };
