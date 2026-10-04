@@ -177,6 +177,8 @@ type NodeMediaBodyProps = {
   aspect?: number;
   /** 视频时长，毫秒；节点数据里没有就不传，视频封面不显示时长角标 */
   durationMs?: number | null;
+  /** 所在节点是否被选中；视频失去选中会停止播放并退回封面，默认不受约束 */
+  active?: boolean;
 };
 
 /**
@@ -191,6 +193,7 @@ export function NodeMediaBody({
   caption,
   aspect = NODE_PREVIEW_ASPECT,
   durationMs,
+  active,
 }: NodeMediaBodyProps) {
   return (
     <BaseNodeContent>
@@ -206,7 +209,7 @@ export function NodeMediaBody({
             <audio src={src} controls className="nodrag nowheel w-full" />
           </div>
         ) : (
-          <VideoFacade src={src} durationMs={durationMs} />
+          <VideoFacade src={src} durationMs={durationMs} active={active} />
         )}
       </div>
       {caption && (

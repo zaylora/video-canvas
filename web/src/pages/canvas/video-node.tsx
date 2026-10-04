@@ -298,6 +298,7 @@ function MediaTaskNode({
           onRetry={retryable ? () => void vm.submit() : undefined}
           retryDisabled={!!vm.blockedReason}
           retryHint={vm.blockedReason ?? undefined}
+          active={!!selected}
         />
       </NodeCard>
       {selected && !multiSelected && !dragSelected && (

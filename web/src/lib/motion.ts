@@ -11,6 +11,8 @@ export const DURATION = {
   fast: 0.12,
   /** 菜单、浮条、面板出现 */
   base: 0.18,
+  /** 菜单、浮条等 base 动效的退出：约为进入的 70% */
+  exit: 0.126,
   /** 抽屉、对话框 */
   slow: 0.24,
 } as const;

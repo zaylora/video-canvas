@@ -40,6 +40,8 @@ type NodeVideoBodyProps = {
   retryDisabled?: boolean;
   /** 重试按钮悬停时的说明，写清为什么点不了 */
   retryHint?: string;
+  /** 节点是否被选中；视频失去选中会停止播放并退回封面 */
+  active?: boolean;
 };
 
 /** 排队中、生成中、转存中共用的骨架屏，中间叠一行状态文字 */
@@ -114,6 +116,7 @@ export function NodeVideoBody({
   onRetry,
   retryDisabled,
   retryHint,
+  active,
 }: NodeVideoBodyProps) {
   switch (view.phase) {
     case "queued":
@@ -142,7 +145,9 @@ export function NodeVideoBody({
     case "finalizing":
       return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
     case "done":
-      return <NodeMediaBody src={view.src} mediaType={mediaType} caption={caption} />;
+      return (
+        <NodeMediaBody src={view.src} mediaType={mediaType} caption={caption} active={active} />
+      );
     case "failed":
       return (
         <BaseNodeContent>
