@@ -10,6 +10,20 @@ import { VideoPoster } from "./media-preview";
 /** 全页面共用的 video 名额池：同时挂载的 video 受 WebMediaPlayer 数量限制 */
 const videoSlots = createVideoSlotPool();
 
+/** 原生控制条的大致高度；它在 shadow DOM 里，没法单独挂 nodrag */
+const CONTROLS_HEIGHT = 64;
+
+/**
+ * video 铺满节点，整块都 nodrag 会导致节点拖不动。
+ * 这里只在指针落在底部控制条时才加 nodrag（拖进度条不带动节点），画面区域仍可拖节点。
+ * React Flow 在 mousedown 时才读 class，而 pointermove/pointerdown 都先于它触发。
+ */
+function syncDragGuard(e: React.PointerEvent<HTMLVideoElement>) {
+  const el = e.currentTarget;
+  const { bottom } = el.getBoundingClientRect();
+  el.classList.toggle("nodrag", e.clientY >= bottom - CONTROLS_HEIGHT);
+}
+
 type VideoFacadeProps = {
   /** 视频地址（不带变体） */
   src: string;
@@ -47,7 +61,7 @@ export function VideoFacade({ src, durationMs }: VideoFacadeProps) {
 
   if (playing) {
     return (
-      // nodrag 让拖进度条不至于把节点跟着拽走，nowheel 把滚轮留给画布
+      // nowheel 把滚轮留给画布；nodrag 由 syncDragGuard 按指针位置动态加减
       <video
         ref={videoRef}
         src={src}
@@ -55,7 +69,9 @@ export function VideoFacade({ src, durationMs }: VideoFacadeProps) {
         playsInline
         autoPlay
         preload="auto"
-        className="nodrag nowheel size-full object-contain"
+        onPointerMove={syncDragGuard}
+        onPointerDown={syncDragGuard}
+        className="nowheel size-full object-contain"
       />
     );
   }
