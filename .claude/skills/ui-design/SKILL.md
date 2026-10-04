@@ -58,18 +58,21 @@ description: 当用户要设计、改版或美化 video-canvas 前端界面时�
 ## 设计与实现规则
 
 **颜色和形状**
+
 - 只引用 token：`bg-chrome`、`border-chrome-border`、`text-muted-foreground`、`text-credit`、`text-status-*` 等。
 - 缺 token 就在 `index.css` 的 `:root` 和 `.dark` 里**同时**补一对，不写死 hex 或 rgb。
 - 圆角用 `rounded-*` 刻度，间距用 4 的倍数。
 - 数字一律加 `tabular-nums`。
 
 **组件**
+
 - `components/ui` 的组件用 `bunx shadcn@latest add` 生成，不手写；生成后可以在原文件上修改。
 - 业务组件放在 `components/canvas` 等目录。
 - 后台放在 `components/admin-ui`，写法：平铺的单文件，导出可组合部件，带 `data-slot`，页面直接导入并真的用上。
 - Base UI 菜单里的 `DropdownMenuLabel` 必须包在 `DropdownMenuGroup` 里。
 
 **动效（顺滑来自克制）**
+
 - 时长、曲线、弹簧只从 `@/lib/motion` 取（`DURATION`、`EASE_OUT`、`SPRING`、`TAP`）。需要新档位时加进这个文件，不在组件里写魔法数。
 - 只对 `transform` 和 `opacity` 做动画，尺寸变化用 `layout`，滑块用 `layoutId`。
 - 退出比进入快：退出时长约为进入的 70%。
@@ -81,6 +84,7 @@ description: 当用户要设计、改版或美化 video-canvas 前端界面时�
 - 画布上大量节点时不做 `filter: blur` 动画；同屏 `backdrop-blur` 不超过 6 层。
 
 **交互**
+
 - 每个可操作元素都要有这几种状态：hover、按下、聚焦（`focus-visible` 描边）、禁用，需要时再加加载中。
 - 高频操作要有快捷键，并在 Tooltip 里写出来。
 - 破坏性操作要能撤销，不能撤销的才弹确认框。
@@ -88,6 +92,7 @@ description: 当用户要设计、改版或美化 video-canvas 前端界面时�
 - 至少检查 768px 以下宽度下的表现。
 
 **依赖（能用成熟的就不手写）**
+
 - 遇到拖拽排序、虚拟列表、轮播、可拖拽分栏、颜色或日期选择、手势、富文本这类有坑的交互，先查现有依赖能不能做：`motion`、`@base-ui/react`、`radix-ui`、`cmdk`、`sonner`、`@number-flow/react`、`@xyflow/react`，以及 shadcn registry（`bunx shadcn@latest add` 能直接拿的组件）。
 - 这一步在第 1 步调研时就做。现有的都不合适，再上网找成熟的库，挑选标准：
   - 近一年内还在维护，issue 有人处理，周下载量可观。
@@ -102,6 +107,7 @@ description: 当用户要设计、改版或美化 video-canvas 前端界面时�
 **代码风格**：注释用 JSDoc 块注释，写"是什么、为什么"，和周围代码的密度保持一致。
 
 **验证方式**：全程不安装、不使用 Playwright、Puppeteer、Cypress 之类的浏览器自动化，也不写端到端测试，不截图自测。
+
 - 验证只靠三样：读代码核对，`bun run typecheck` / `bun run lint`，以及纯逻辑部分的 `bun test` 单测。
 - 视觉和动效列出要看的点，交给用户自己在浏览器里看。
 
@@ -115,13 +121,13 @@ description: 当用户要设计、改版或美化 video-canvas 前端界面时�
 
 ## 常见错误
 
-| 错误 | 正确做法 |
-|---|---|
-| 没等确认就直接改组件 | 先交方案和原型，用户确认后再写 |
-| 一次抛出五个问题 | AskUserQuestion，一次一题 |
-| 为了"丝滑"给所有东西加弹簧、加延迟 | 动效只为空间连续性和反馈服务，按上面的验收标准来 |
-| 对 `width`/`height`/`top` 做动画 | 用 `layout` 或 transform |
-| 原型自己配了一套颜色 | 从 `index.css` 抄 token |
+| 错误                                           | 正确做法                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 没等确认就直接改组件                           | 先交方案和原型，用户确认后再写                                                                   |
+| 一次抛出五个问题                               | AskUserQuestion，一次一题                                                                        |
+| 为了"丝滑"给所有东西加弹簧、加延迟             | 动效只为空间连续性和反馈服务，按上面的验收标准来                                                 |
+| 对 `width`/`height`/`top` 做动画               | 用 `layout` 或 transform                                                                         |
+| 原型自己配了一套颜色                           | 从 `index.css` 抄 token                                                                          |
 | 手写拖拽排序、虚拟列表这类成熟库早已解决的交互 | 调研时先查现有依赖和 shadcn registry，再按“依赖”一节的标准找库，问过用户、得到同意后再 `bun add` |
-| 没问用户就自己挑库、直接安装 | 候选库做成 AskUserQuestion 的选项先问，“不装，自己写”也是一个选项 |
-| 后台组件搞分层目录和 index 桶文件 | 平铺的单文件，照 `components/ui` 的写法 |
+| 没问用户就自己挑库、直接安装                   | 候选库做成 AskUserQuestion 的选项先问，“不装，自己写”也是一个选项                                |
+| 后台组件搞分层目录和 index 桶文件              | 平铺的单文件，照 `components/ui` 的写法                                                          |

@@ -1,500 +1,1363 @@
 <!doctype html>
 <html lang="zh-CN" class="admin-theme">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>用户管理原型</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  /* 颜色全部走 CSS 变量（抄自 web/src/index.css 的 .admin-theme / .dark.admin-theme 和业务 token） */
-  const v = (n) => `var(--${n})`;
-  tailwind.config = {
-    darkMode: "class",
-    theme: { extend: {
-      fontFamily: {
-        sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
-        mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
-      },
-      colors: {
-        border: v("border"), input: v("input"), ring: v("ring"),
-        background: v("background"), foreground: v("foreground"),
-        primary: { DEFAULT: v("primary"), foreground: v("primary-foreground") },
-        muted: { DEFAULT: v("muted"), foreground: v("muted-foreground") },
-        accent: { DEFAULT: v("accent"), foreground: v("accent-foreground") },
-        card: v("card"), popover: v("popover"), destructive: v("destructive"),
-        credit: v("credit"), sidebar: v("sidebar"),
-        "status-success": v("status-success"), "status-warning": v("status-warning"), "status-running": v("status-running"),
-      },
-      borderColor: { DEFAULT: v("border") },
-      borderRadius: { sm: "calc(var(--radius) * 0.6)", md: "calc(var(--radius) * 0.8)", lg: "var(--radius)", xl: "calc(var(--radius) * 1.4)" },
-    } },
-  };
-</script>
-<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-<script type="module">
-  /* @number-flow/react 底层的同一个 web component；加载失败时 setNum 降级为淡入 */
-  try { await import("https://cdn.jsdelivr.net/npm/number-flow/+esm"); window.__nf = true; window.dispatchEvent(new Event("nf-ready")); } catch (e) { console.warn("number-flow 加载失败，数字改为淡入", e); }
-</script>
-<style>
-  .admin-theme {
-    --radius: 0.625rem;
-    --background: hsl(0 0% 100%); --foreground: hsl(240 10% 3.9%);
-    --card: hsl(0 0% 100%); --popover: hsl(0 0% 100%);
-    --primary: hsl(240 5.9% 10%); --primary-foreground: hsl(0 0% 98%);
-    --muted: hsl(240 4.8% 95.9%); --muted-foreground: hsl(240 3.8% 46.1%);
-    --accent: hsl(240 4.8% 95.9%); --accent-foreground: hsl(240 5.9% 10%);
-    --destructive: hsl(0 72% 51%);
-    --border: hsl(240 5.9% 90%); --input: hsl(240 5.9% 90%); --ring: hsl(240 5.9% 10%);
-    --sidebar: hsl(0 0% 98%);
-    --credit: oklch(0.72 0.15 75);
-    --status-running: oklch(0.58 0.15 250);
-    --status-success: oklch(0.6 0.15 155);
-    --status-warning: oklch(0.7 0.16 70);
-    color-scheme: light;
-  }
-  .dark.admin-theme {
-    --background: hsl(240 10% 3.9%); --foreground: hsl(0 0% 98%);
-    --card: hsl(240 10% 3.9%); --popover: hsl(240 10% 3.9%);
-    --primary: hsl(0 0% 98%); --primary-foreground: hsl(240 5.9% 10%);
-    --muted: hsl(240 3.7% 15.9%); --muted-foreground: hsl(240 5% 64.9%);
-    --accent: hsl(240 3.7% 15.9%); --accent-foreground: hsl(0 0% 98%);
-    --destructive: hsl(0 62.8% 45%);
-    --border: hsl(240 3.7% 15.9%); --input: hsl(240 3.7% 18%); --ring: hsl(240 4.9% 83.9%);
-    --sidebar: hsl(240 5.9% 10%);
-    --credit: oklch(0.82 0.15 85);
-    --status-running: oklch(0.75 0.12 240);
-    --status-success: oklch(0.75 0.15 155);
-    --status-warning: oklch(0.8 0.15 75);
-    color-scheme: dark;
-  }
-  html, body { height: 100%; }
-  body { background: var(--background); color: var(--foreground); font-size: 14px; }
-  [data-lucide] { width: 1em; height: 1em; flex-shrink: 0; }
-  .mix { --m: var(--muted); }
-  /* 按钮：hover / 按下 / focus-visible / 禁用四态 */
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:.375rem; height:2rem; padding:0 .75rem; border-radius:calc(var(--radius) * .8); font-size:.8125rem; font-weight:500; white-space:nowrap; cursor:pointer; transition: background-color 120ms cubic-bezier(.2,0,0,1), transform 120ms cubic-bezier(.2,0,0,1); user-select:none; }
-  .btn:active:not(:disabled) { transform: scale(.96); }
-  .btn:focus-visible, .icon-btn:focus-visible, .credit-cell:focus-visible, .row:focus-visible, .seg button:focus-visible, .tabbtn:focus-visible, .mi:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  .btn:disabled, .icon-btn:disabled { opacity:.5; cursor:not-allowed; }
-  .btn-primary { background: var(--primary); color: var(--primary-foreground); }
-  .btn-primary:hover:not(:disabled) { background: color-mix(in oklab, var(--primary) 88%, transparent); }
-  .btn-outline { border:1px solid var(--border); background: var(--background); }
-  .btn-outline:hover:not(:disabled), .btn-ghost:hover:not(:disabled) { background: var(--accent); }
-  .btn-danger { background: var(--destructive); color: #fff; }
-  .btn-danger:hover:not(:disabled) { background: color-mix(in oklab, var(--destructive) 88%, black); }
-  .btn-danger-ghost { color: var(--destructive); }
-  .btn-danger-ghost:hover:not(:disabled) { background: color-mix(in oklab, var(--destructive) 10%, transparent); }
-  .btn-xs { height:1.625rem; padding:0 .5rem; font-size:.75rem; }
-  .icon-btn { display:inline-flex; align-items:center; justify-content:center; width:1.75rem; height:1.75rem; border-radius:calc(var(--radius) * .8); color: var(--muted-foreground); transition: background-color 120ms, transform 120ms; cursor:pointer; }
-  .icon-btn:hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
-  .icon-btn:active:not(:disabled) { transform: scale(.96); }
-  .input { height:2.25rem; width:100%; border:1px solid var(--input); border-radius:calc(var(--radius) * .8); background:transparent; padding:0 .75rem; font-size:.875rem; outline:none; transition: box-shadow 120ms, border-color 120ms; }
-  .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent); }
-  .input.err { border-color: var(--destructive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 18%, transparent); }
-  .kbd { font-family: "Geist Mono", monospace; font-size:.6875rem; border:1px solid var(--border); border-bottom-width:2px; border-radius:.25rem; padding:0 .25rem; color: var(--muted-foreground); background: var(--background); line-height:1.1rem; }
-  .tag { display:inline-flex; align-items:center; gap:.25rem; border-radius:.375rem; padding:.0625rem .4375rem; font-size:.6875rem; font-weight:500; white-space:nowrap; line-height:1.125rem; }
-  .t-mute { background: var(--muted); color: var(--muted-foreground); }
-  .t-info { background: color-mix(in oklab, var(--status-running) 14%, transparent); color: var(--status-running); }
-  .t-warn { background: color-mix(in oklab, var(--status-warning) 16%, transparent); color: color-mix(in oklab, var(--status-warning) 80%, var(--foreground)); }
-  .t-ok { background: color-mix(in oklab, var(--status-success) 14%, transparent); color: var(--status-success); }
-  .t-bad { background: color-mix(in oklab, var(--destructive) 12%, transparent); color: var(--destructive); }
-  .dot { width:.4375rem; height:.4375rem; border-radius:99px; display:inline-block; }
-  .muted-fg { color: var(--muted-foreground); }
-  .num { font-family: "Geist Mono", monospace; font-variant-numeric: tabular-nums; }
-  number-flow { font-variant-numeric: tabular-nums; }
-  /* Segmented：滑块 transform 走 SPRING，按钮宽度变化不做动画 */
-  .seg { position:relative; display:inline-flex; background: var(--muted); border-radius:.5rem; padding:.1875rem; gap:.125rem; }
-  .seg-thumb { position:absolute; top:.1875rem; left:0; bottom:.1875rem; border-radius:.375rem; background: var(--background); box-shadow: 0 1px 2px rgb(0 0 0 / .08); pointer-events:none; }
-  .seg button { position:relative; z-index:1; padding:.1875rem .625rem; font-size:.8125rem; border-radius:.375rem; color: var(--muted-foreground); cursor:pointer; white-space:nowrap; transition: color 120ms; }
-  .seg button.on { color: var(--foreground); font-weight:500; }
-  .seg.sm button { font-size:.75rem; padding:.125rem .5rem; }
-  .seg.w-full button { flex:1; }
-  /* 禁用按钮不派发鼠标事件，让外层 data-tip 的 span 接住，权限原因才能悬停可见（同 ReasonTooltip） */
-  [data-tip] > button:disabled { pointer-events:none; }
-  /* 表格 */
-  .tbl { width:100%; border-collapse:separate; border-spacing:0; font-size:.8125rem; }
-  .tbl th { text-align:left; font-weight:500; color: var(--muted-foreground); padding:.5rem .75rem; border-bottom:1px solid var(--border); white-space:nowrap; background: color-mix(in oklab, var(--muted) 40%, transparent); font-size:.75rem; height:2.5rem; }
-  .tbl td { padding:0 .75rem; border-bottom:1px solid var(--border); height:3.5rem; }
-  .tbl tbody tr:last-child td { border-bottom:0; }
-  .row { cursor:pointer; transition: background-color 120ms; outline:none; }
-  .row:hover { background: color-mix(in oklab, var(--muted) 50%, transparent); }
-  .row.cur { background: var(--muted); }
-  .row.disabled .dim { color: var(--muted-foreground); }
-  .row.checked { background: color-mix(in oklab, var(--muted) 70%, transparent); }
-  .cb { width:1rem; height:1rem; accent-color: var(--primary); cursor:pointer; }
-  .credit-cell { display:inline-flex; flex-direction:column; align-items:flex-end; gap:0; padding:.25rem .5rem; margin-right:-.5rem; border-radius:.5rem; border:1px dashed transparent; cursor:pointer; transition: border-color 120ms, background-color 120ms, transform 120ms; position:relative; }
-  .credit-cell:hover:not(:disabled) { border-color: color-mix(in oklab, var(--foreground) 30%, transparent); background: var(--background); }
-  .credit-cell:active:not(:disabled) { transform: scale(.96); }
-  .credit-cell .pm { position:absolute; left:-.25rem; top:50%; translate:-100% -50%; opacity:0; color: var(--muted-foreground); transition: opacity 120ms; }
-  .credit-cell:hover:not(:disabled) .pm, .credit-cell.open .pm { opacity:1; }
-  .credit-cell.open { border-color: var(--foreground); background: var(--background); }
-  .credit-cell:disabled { cursor:default; }
-  .bar { width:3rem; height:.25rem; border-radius:99px; background: var(--muted); overflow:hidden; }
-  .bar > i { display:block; height:100%; width:100%; background: var(--foreground); transform-origin:left; }
-  .bar.full > i { background: var(--status-warning); }
-  .cur-bar { position:absolute; left:0; top:0; width:2px; background: var(--foreground); border-radius:0 2px 2px 0; pointer-events:none; opacity:0; }
-  .sk { background: var(--muted); border-radius:.375rem; }
-  @media (max-width: 767px) { .col-md { display:none; } }
-  /* 浮层、菜单、抽屉、弹窗 */
-  .floating { position:fixed; z-index:60; background: var(--popover); border:1px solid var(--border); border-radius:var(--radius); box-shadow: 0 10px 30px -10px rgb(0 0 0 / .25), 0 2px 6px rgb(0 0 0 / .06); visibility:hidden; }
-  .mi { display:flex; align-items:center; gap:.5rem; width:100%; padding:.375rem .5rem; border-radius:.375rem; font-size:.8125rem; text-align:left; cursor:pointer; outline:none; }
-  .mi:hover:not([aria-disabled="true"]), .mi:focus-visible { background: var(--accent); }
-  .mi[aria-disabled="true"] { opacity:.5; cursor:not-allowed; }
-  .mi.danger { color: var(--destructive); }
-  .mi .sc { margin-left:auto; }
-  .msep { height:1px; background: var(--border); margin:.25rem -.25rem; }
-  #drawer { position:fixed; top:0; right:0; bottom:0; width:560px; max-width:100vw; z-index:40; background: var(--background); border-left:1px solid var(--border); box-shadow: -16px 0 40px -20px rgb(0 0 0 / .25); visibility:hidden; display:flex; flex-direction:column; }
-  @media (max-width: 767px) { #drawer { width:100vw; } }
-  .tabbar { position:relative; display:flex; gap:.25rem; padding:0 1.25rem; border-bottom:1px solid var(--border); }
-  .tabbtn { position:relative; padding:.625rem .5rem; font-size:.8125rem; color: var(--muted-foreground); cursor:pointer; display:inline-flex; align-items:center; gap:.375rem; transition: color 120ms; border-radius:.375rem; }
-  .tabbtn:hover { color: var(--foreground); }
-  .tabbtn.on { color: var(--foreground); font-weight:500; }
-  .tab-line { position:absolute; left:0; bottom:-1px; height:2px; width:100px; background: var(--foreground); transform-origin:left; pointer-events:none; }
-  .badge { font-size:.625rem; min-width:1rem; height:1rem; padding:0 .25rem; border-radius:99px; background: var(--status-running); color:#fff; display:inline-flex; align-items:center; justify-content:center; }
-  .overlay { position:fixed; inset:0; z-index:70; background: rgb(0 0 0 / .4); display:flex; align-items:center; justify-content:center; padding:1rem; }
-  .dlg { background: var(--background); border:1px solid var(--border); border-radius: calc(var(--radius) * 1.4); width:100%; box-shadow: 0 24px 60px rgb(0 0 0 / .3); }
-  #bulk { position:fixed; left:50%; bottom:1.5rem; z-index:45; translate:-50% 0; visibility:hidden; }
-  #toasts { position:fixed; right:1rem; bottom:1rem; z-index:90; display:flex; flex-direction:column; gap:.5rem; align-items:flex-end; pointer-events:none; }
-  .toast { pointer-events:auto; display:flex; align-items:center; gap:.75rem; min-width:18rem; max-width:24rem; background: var(--popover); border:1px solid var(--border); border-radius: var(--radius); padding:.625rem .75rem; box-shadow: 0 10px 30px -10px rgb(0 0 0 / .3); font-size:.8125rem; }
-  #tip { position:fixed; z-index:100; pointer-events:none; background: var(--primary); color: var(--primary-foreground); font-size:.75rem; padding:.25rem .5rem; border-radius:.375rem; max-width:16rem; opacity:0; display:flex; gap:.5rem; align-items:center; }
-  #tip .kbd { background: transparent; color: inherit; border-color: color-mix(in oklab, var(--primary-foreground) 35%, transparent); }
-  .navi { display:flex; align-items:center; gap:.5rem; padding:.375rem .5rem; border-radius:.375rem; font-size:.8125rem; color: color-mix(in oklab, var(--foreground) 75%, transparent); }
-  .navi.on { background: var(--accent); color: var(--foreground); font-weight:500; }
-  .demo { background: repeating-linear-gradient(45deg, color-mix(in oklab, var(--status-warning) 10%, transparent) 0 8px, transparent 8px 16px); }
-  .log-row { display:grid; align-items:center; gap:.75rem; padding:.625rem 0; border-bottom:1px solid var(--border); font-size:.8125rem; }
-  .log-row:last-child { border-bottom:0; }
-  .scroll { overflow-y:auto; overscroll-behavior:contain; }
-</style>
-</head>
-<body class="font-sans antialiased">
-
-<!-- 演示控制条：不是设计的一部分 -->
-<div class="demo border-b">
-  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 text-xs">
-    <span class="font-semibold">原型控制</span>
-    <label class="flex items-center gap-2">当前身份 <span id="viewerSeg"></span></label>
-    <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="slow" class="cb"> 模拟慢网络</label>
-    <button class="btn btn-outline btn-xs" id="reload"><i data-lucide="rotate-cw"></i> 重新加载（看骨架）</button>
-    <button class="btn btn-outline btn-xs" id="theme"><i data-lucide="moon"></i> 切换主题</button>
-    <span class="muted-fg">URL：<code id="urlView" class="num">/admin/users</code></span>
-    <span class="muted-fg ml-auto hidden lg:inline">快捷键：<span class="kbd">/</span> 搜索 · <span class="kbd">↑</span><span class="kbd">↓</span> 切换用户 · <span class="kbd">Esc</span> 逐层关闭</span>
-  </div>
-</div>
-
-<div class="flex" style="height: calc(100% - 41px)">
-  <aside class="hidden w-56 shrink-0 border-r bg-sidebar p-3 md:block">
-    <div class="mb-4 flex items-center gap-2 px-2 pt-1 text-sm font-semibold"><span class="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><i data-lucide="film"></i></span>Video Canvas 后台</div>
-    <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">AI 配置</div>
-    <div class="navi"><i data-lucide="layout-dashboard"></i>总览</div><div class="navi"><i data-lucide="boxes"></i>模型</div><div class="navi"><i data-lucide="radio-tower"></i>渠道</div><div class="navi"><i data-lucide="puzzle"></i>插件</div>
-    <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">用户</div>
-    <div class="navi on"><i data-lucide="users"></i>用户管理</div>
-    <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">系统设置</div>
-    <div class="navi"><i data-lucide="hard-drive"></i>存储配置</div><div class="navi"><i data-lucide="image-down"></i>图片处理服务</div><div class="navi"><i data-lucide="user-plus"></i>注册设置</div><div class="navi"><i data-lucide="mail"></i>邮件服务</div>
-  </aside>
-  <main class="min-w-0 flex-1 overflow-y-auto" id="mainScroll">
-    <div class="mx-auto max-w-[1200px] px-4 py-6 md:px-8">
-      <div class="mb-5">
-        <h1 class="text-xl font-semibold tracking-tight">用户管理</h1>
-        <p class="mt-1 text-sm muted-fg">查看用户、调整积分与并发、封禁账号，查看生成与登录记录。</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>用户管理原型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      /* 颜色全部走 CSS 变量（抄自 web/src/index.css 的 .admin-theme / .dark.admin-theme 和业务 token） */
+      const v = (n) => `var(--${n})`;
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
+              mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+            },
+            colors: {
+              border: v("border"),
+              input: v("input"),
+              ring: v("ring"),
+              background: v("background"),
+              foreground: v("foreground"),
+              primary: { DEFAULT: v("primary"), foreground: v("primary-foreground") },
+              muted: { DEFAULT: v("muted"), foreground: v("muted-foreground") },
+              accent: { DEFAULT: v("accent"), foreground: v("accent-foreground") },
+              card: v("card"),
+              popover: v("popover"),
+              destructive: v("destructive"),
+              credit: v("credit"),
+              sidebar: v("sidebar"),
+              "status-success": v("status-success"),
+              "status-warning": v("status-warning"),
+              "status-running": v("status-running"),
+            },
+            borderColor: { DEFAULT: v("border") },
+            borderRadius: {
+              sm: "calc(var(--radius) * 0.6)",
+              md: "calc(var(--radius) * 0.8)",
+              lg: "var(--radius)",
+              xl: "calc(var(--radius) * 1.4)",
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <script type="module">
+      /* @number-flow/react 底层的同一个 web component；加载失败时 setNum 降级为淡入 */
+      try {
+        await import("https://cdn.jsdelivr.net/npm/number-flow/+esm");
+        window.__nf = true;
+        window.dispatchEvent(new Event("nf-ready"));
+      } catch (e) {
+        console.warn("number-flow 加载失败，数字改为淡入", e);
+      }
+    </script>
+    <style>
+      .admin-theme {
+        --radius: 0.625rem;
+        --background: hsl(0 0% 100%);
+        --foreground: hsl(240 10% 3.9%);
+        --card: hsl(0 0% 100%);
+        --popover: hsl(0 0% 100%);
+        --primary: hsl(240 5.9% 10%);
+        --primary-foreground: hsl(0 0% 98%);
+        --muted: hsl(240 4.8% 95.9%);
+        --muted-foreground: hsl(240 3.8% 46.1%);
+        --accent: hsl(240 4.8% 95.9%);
+        --accent-foreground: hsl(240 5.9% 10%);
+        --destructive: hsl(0 72% 51%);
+        --border: hsl(240 5.9% 90%);
+        --input: hsl(240 5.9% 90%);
+        --ring: hsl(240 5.9% 10%);
+        --sidebar: hsl(0 0% 98%);
+        --credit: oklch(0.72 0.15 75);
+        --status-running: oklch(0.58 0.15 250);
+        --status-success: oklch(0.6 0.15 155);
+        --status-warning: oklch(0.7 0.16 70);
+        color-scheme: light;
+      }
+      .dark.admin-theme {
+        --background: hsl(240 10% 3.9%);
+        --foreground: hsl(0 0% 98%);
+        --card: hsl(240 10% 3.9%);
+        --popover: hsl(240 10% 3.9%);
+        --primary: hsl(0 0% 98%);
+        --primary-foreground: hsl(240 5.9% 10%);
+        --muted: hsl(240 3.7% 15.9%);
+        --muted-foreground: hsl(240 5% 64.9%);
+        --accent: hsl(240 3.7% 15.9%);
+        --accent-foreground: hsl(0 0% 98%);
+        --destructive: hsl(0 62.8% 45%);
+        --border: hsl(240 3.7% 15.9%);
+        --input: hsl(240 3.7% 18%);
+        --ring: hsl(240 4.9% 83.9%);
+        --sidebar: hsl(240 5.9% 10%);
+        --credit: oklch(0.82 0.15 85);
+        --status-running: oklch(0.75 0.12 240);
+        --status-success: oklch(0.75 0.15 155);
+        --status-warning: oklch(0.8 0.15 75);
+        color-scheme: dark;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        background: var(--background);
+        color: var(--foreground);
+        font-size: 14px;
+      }
+      [data-lucide] {
+        width: 1em;
+        height: 1em;
+        flex-shrink: 0;
+      }
+      .mix {
+        --m: var(--muted);
+      }
+      /* 按钮：hover / 按下 / focus-visible / 禁用四态 */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        height: 2rem;
+        padding: 0 0.75rem;
+        border-radius: calc(var(--radius) * 0.8);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          transform 120ms cubic-bezier(0.2, 0, 0, 1);
+        user-select: none;
+      }
+      .btn:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+      .btn:focus-visible,
+      .icon-btn:focus-visible,
+      .credit-cell:focus-visible,
+      .row:focus-visible,
+      .seg button:focus-visible,
+      .tabbtn:focus-visible,
+      .mi:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+      }
+      .btn:disabled,
+      .icon-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: color-mix(in oklab, var(--primary) 88%, transparent);
+      }
+      .btn-outline {
+        border: 1px solid var(--border);
+        background: var(--background);
+      }
+      .btn-outline:hover:not(:disabled),
+      .btn-ghost:hover:not(:disabled) {
+        background: var(--accent);
+      }
+      .btn-danger {
+        background: var(--destructive);
+        color: #fff;
+      }
+      .btn-danger:hover:not(:disabled) {
+        background: color-mix(in oklab, var(--destructive) 88%, black);
+      }
+      .btn-danger-ghost {
+        color: var(--destructive);
+      }
+      .btn-danger-ghost:hover:not(:disabled) {
+        background: color-mix(in oklab, var(--destructive) 10%, transparent);
+      }
+      .btn-xs {
+        height: 1.625rem;
+        padding: 0 0.5rem;
+        font-size: 0.75rem;
+      }
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: calc(var(--radius) * 0.8);
+        color: var(--muted-foreground);
+        transition:
+          background-color 120ms,
+          transform 120ms;
+        cursor: pointer;
+      }
+      .icon-btn:hover:not(:disabled) {
+        background: var(--accent);
+        color: var(--foreground);
+      }
+      .icon-btn:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+      .input {
+        height: 2.25rem;
+        width: 100%;
+        border: 1px solid var(--input);
+        border-radius: calc(var(--radius) * 0.8);
+        background: transparent;
+        padding: 0 0.75rem;
+        font-size: 0.875rem;
+        outline: none;
+        transition:
+          box-shadow 120ms,
+          border-color 120ms;
+      }
+      .input:focus {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent);
+      }
+      .input.err {
+        border-color: var(--destructive);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 18%, transparent);
+      }
+      .kbd {
+        font-family: "Geist Mono", monospace;
+        font-size: 0.6875rem;
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 0.25rem;
+        padding: 0 0.25rem;
+        color: var(--muted-foreground);
+        background: var(--background);
+        line-height: 1.1rem;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        border-radius: 0.375rem;
+        padding: 0.0625rem 0.4375rem;
+        font-size: 0.6875rem;
+        font-weight: 500;
+        white-space: nowrap;
+        line-height: 1.125rem;
+      }
+      .t-mute {
+        background: var(--muted);
+        color: var(--muted-foreground);
+      }
+      .t-info {
+        background: color-mix(in oklab, var(--status-running) 14%, transparent);
+        color: var(--status-running);
+      }
+      .t-warn {
+        background: color-mix(in oklab, var(--status-warning) 16%, transparent);
+        color: color-mix(in oklab, var(--status-warning) 80%, var(--foreground));
+      }
+      .t-ok {
+        background: color-mix(in oklab, var(--status-success) 14%, transparent);
+        color: var(--status-success);
+      }
+      .t-bad {
+        background: color-mix(in oklab, var(--destructive) 12%, transparent);
+        color: var(--destructive);
+      }
+      .dot {
+        width: 0.4375rem;
+        height: 0.4375rem;
+        border-radius: 99px;
+        display: inline-block;
+      }
+      .muted-fg {
+        color: var(--muted-foreground);
+      }
+      .num {
+        font-family: "Geist Mono", monospace;
+        font-variant-numeric: tabular-nums;
+      }
+      number-flow {
+        font-variant-numeric: tabular-nums;
+      }
+      /* Segmented：滑块 transform 走 SPRING，按钮宽度变化不做动画 */
+      .seg {
+        position: relative;
+        display: inline-flex;
+        background: var(--muted);
+        border-radius: 0.5rem;
+        padding: 0.1875rem;
+        gap: 0.125rem;
+      }
+      .seg-thumb {
+        position: absolute;
+        top: 0.1875rem;
+        left: 0;
+        bottom: 0.1875rem;
+        border-radius: 0.375rem;
+        background: var(--background);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+        pointer-events: none;
+      }
+      .seg button {
+        position: relative;
+        z-index: 1;
+        padding: 0.1875rem 0.625rem;
+        font-size: 0.8125rem;
+        border-radius: 0.375rem;
+        color: var(--muted-foreground);
+        cursor: pointer;
+        white-space: nowrap;
+        transition: color 120ms;
+      }
+      .seg button.on {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .seg.sm button {
+        font-size: 0.75rem;
+        padding: 0.125rem 0.5rem;
+      }
+      .seg.w-full button {
+        flex: 1;
+      }
+      /* 禁用按钮不派发鼠标事件，让外层 data-tip 的 span 接住，权限原因才能悬停可见（同 ReasonTooltip） */
+      [data-tip] > button:disabled {
+        pointer-events: none;
+      }
+      /* 表格 */
+      .tbl {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.8125rem;
+      }
+      .tbl th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--muted-foreground);
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        background: color-mix(in oklab, var(--muted) 40%, transparent);
+        font-size: 0.75rem;
+        height: 2.5rem;
+      }
+      .tbl td {
+        padding: 0 0.75rem;
+        border-bottom: 1px solid var(--border);
+        height: 3.5rem;
+      }
+      .tbl tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .row {
+        cursor: pointer;
+        transition: background-color 120ms;
+        outline: none;
+      }
+      .row:hover {
+        background: color-mix(in oklab, var(--muted) 50%, transparent);
+      }
+      .row.cur {
+        background: var(--muted);
+      }
+      .row.disabled .dim {
+        color: var(--muted-foreground);
+      }
+      .row.checked {
+        background: color-mix(in oklab, var(--muted) 70%, transparent);
+      }
+      .cb {
+        width: 1rem;
+        height: 1rem;
+        accent-color: var(--primary);
+        cursor: pointer;
+      }
+      .credit-cell {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0;
+        padding: 0.25rem 0.5rem;
+        margin-right: -0.5rem;
+        border-radius: 0.5rem;
+        border: 1px dashed transparent;
+        cursor: pointer;
+        transition:
+          border-color 120ms,
+          background-color 120ms,
+          transform 120ms;
+        position: relative;
+      }
+      .credit-cell:hover:not(:disabled) {
+        border-color: color-mix(in oklab, var(--foreground) 30%, transparent);
+        background: var(--background);
+      }
+      .credit-cell:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+      .credit-cell .pm {
+        position: absolute;
+        left: -0.25rem;
+        top: 50%;
+        translate: -100% -50%;
+        opacity: 0;
+        color: var(--muted-foreground);
+        transition: opacity 120ms;
+      }
+      .credit-cell:hover:not(:disabled) .pm,
+      .credit-cell.open .pm {
+        opacity: 1;
+      }
+      .credit-cell.open {
+        border-color: var(--foreground);
+        background: var(--background);
+      }
+      .credit-cell:disabled {
+        cursor: default;
+      }
+      .bar {
+        width: 3rem;
+        height: 0.25rem;
+        border-radius: 99px;
+        background: var(--muted);
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 100%;
+        background: var(--foreground);
+        transform-origin: left;
+      }
+      .bar.full > i {
+        background: var(--status-warning);
+      }
+      .cur-bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 2px;
+        background: var(--foreground);
+        border-radius: 0 2px 2px 0;
+        pointer-events: none;
+        opacity: 0;
+      }
+      .sk {
+        background: var(--muted);
+        border-radius: 0.375rem;
+      }
+      @media (max-width: 767px) {
+        .col-md {
+          display: none;
+        }
+      }
+      /* 浮层、菜单、抽屉、弹窗 */
+      .floating {
+        position: fixed;
+        z-index: 60;
+        background: var(--popover);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow:
+          0 10px 30px -10px rgb(0 0 0 / 0.25),
+          0 2px 6px rgb(0 0 0 / 0.06);
+        visibility: hidden;
+      }
+      .mi {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.375rem 0.5rem;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        text-align: left;
+        cursor: pointer;
+        outline: none;
+      }
+      .mi:hover:not([aria-disabled="true"]),
+      .mi:focus-visible {
+        background: var(--accent);
+      }
+      .mi[aria-disabled="true"] {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .mi.danger {
+        color: var(--destructive);
+      }
+      .mi .sc {
+        margin-left: auto;
+      }
+      .msep {
+        height: 1px;
+        background: var(--border);
+        margin: 0.25rem -0.25rem;
+      }
+      #drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 560px;
+        max-width: 100vw;
+        z-index: 40;
+        background: var(--background);
+        border-left: 1px solid var(--border);
+        box-shadow: -16px 0 40px -20px rgb(0 0 0 / 0.25);
+        visibility: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      @media (max-width: 767px) {
+        #drawer {
+          width: 100vw;
+        }
+      }
+      .tabbar {
+        position: relative;
+        display: flex;
+        gap: 0.25rem;
+        padding: 0 1.25rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .tabbtn {
+        position: relative;
+        padding: 0.625rem 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--muted-foreground);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        transition: color 120ms;
+        border-radius: 0.375rem;
+      }
+      .tabbtn:hover {
+        color: var(--foreground);
+      }
+      .tabbtn.on {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .tab-line {
+        position: absolute;
+        left: 0;
+        bottom: -1px;
+        height: 2px;
+        width: 100px;
+        background: var(--foreground);
+        transform-origin: left;
+        pointer-events: none;
+      }
+      .badge {
+        font-size: 0.625rem;
+        min-width: 1rem;
+        height: 1rem;
+        padding: 0 0.25rem;
+        border-radius: 99px;
+        background: var(--status-running);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        background: rgb(0 0 0 / 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+      .dlg {
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) * 1.4);
+        width: 100%;
+        box-shadow: 0 24px 60px rgb(0 0 0 / 0.3);
+      }
+      #bulk {
+        position: fixed;
+        left: 50%;
+        bottom: 1.5rem;
+        z-index: 45;
+        translate: -50% 0;
+        visibility: hidden;
+      }
+      #toasts {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 90;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-end;
+        pointer-events: none;
+      }
+      .toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 18rem;
+        max-width: 24rem;
+        background: var(--popover);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 0.625rem 0.75rem;
+        box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.3);
+        font-size: 0.8125rem;
+      }
+      #tip {
+        position: fixed;
+        z-index: 100;
+        pointer-events: none;
+        background: var(--primary);
+        color: var(--primary-foreground);
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+        max-width: 16rem;
+        opacity: 0;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      #tip .kbd {
+        background: transparent;
+        color: inherit;
+        border-color: color-mix(in oklab, var(--primary-foreground) 35%, transparent);
+      }
+      .navi {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        color: color-mix(in oklab, var(--foreground) 75%, transparent);
+      }
+      .navi.on {
+        background: var(--accent);
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .demo {
+        background: repeating-linear-gradient(
+          45deg,
+          color-mix(in oklab, var(--status-warning) 10%, transparent) 0 8px,
+          transparent 8px 16px
+        );
+      }
+      .log-row {
+        display: grid;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.625rem 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.8125rem;
+      }
+      .log-row:last-child {
+        border-bottom: 0;
+      }
+      .scroll {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+    </style>
+  </head>
+  <body class="font-sans antialiased">
+    <!-- 演示控制条：不是设计的一部分 -->
+    <div class="demo border-b">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 text-xs">
+        <span class="font-semibold">原型控制</span>
+        <label class="flex items-center gap-2">当前身份 <span id="viewerSeg"></span></label>
+        <label class="flex items-center gap-1.5 cursor-pointer"
+          ><input type="checkbox" id="slow" class="cb" /> 模拟慢网络</label
+        >
+        <button class="btn btn-outline btn-xs" id="reload">
+          <i data-lucide="rotate-cw"></i> 重新加载（看骨架）
+        </button>
+        <button class="btn btn-outline btn-xs" id="theme">
+          <i data-lucide="moon"></i> 切换主题
+        </button>
+        <span class="muted-fg">URL：<code id="urlView" class="num">/admin/users</code></span>
+        <span class="muted-fg ml-auto hidden lg:inline"
+          >快捷键：<span class="kbd">/</span> 搜索 · <span class="kbd">↑</span
+          ><span class="kbd">↓</span> 切换用户 · <span class="kbd">Esc</span> 逐层关闭</span
+        >
       </div>
-      <div class="rounded-xl border bg-card">
-        <div class="flex flex-wrap items-center gap-2 p-4" id="toolbar"></div>
-        <div class="relative overflow-x-auto border-t" id="tableWrap"></div>
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-xs" id="pager"></div>
-      </div>
-      <div class="h-24"></div>
     </div>
-  </main>
-</div>
 
-<aside id="drawer" role="dialog" aria-label="用户详情"></aside>
-<div id="pop" class="floating p-3" style="width:min(288px, calc(100vw - 32px))" role="dialog"></div>
-<div id="menu" class="floating p-1" style="width:15rem" role="menu"></div>
-<div id="bulk"></div>
-<div id="toasts" aria-live="polite"></div>
-<div id="dlgRoot"></div>
-<div id="tip"></div>
+    <div class="flex" style="height: calc(100% - 41px)">
+      <aside class="hidden w-56 shrink-0 border-r bg-sidebar p-3 md:block">
+        <div class="mb-4 flex items-center gap-2 px-2 pt-1 text-sm font-semibold">
+          <span
+            class="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+            ><i data-lucide="film"></i></span
+          >Video Canvas 后台
+        </div>
+        <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">AI 配置</div>
+        <div class="navi"><i data-lucide="layout-dashboard"></i>总览</div>
+        <div class="navi"><i data-lucide="boxes"></i>模型</div>
+        <div class="navi"><i data-lucide="radio-tower"></i>渠道</div>
+        <div class="navi"><i data-lucide="puzzle"></i>插件</div>
+        <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">用户</div>
+        <div class="navi on"><i data-lucide="users"></i>用户管理</div>
+        <div class="mb-1 mt-4 px-2 text-[11px] muted-fg">系统设置</div>
+        <div class="navi"><i data-lucide="hard-drive"></i>存储配置</div>
+        <div class="navi"><i data-lucide="image-down"></i>图片处理服务</div>
+        <div class="navi"><i data-lucide="user-plus"></i>注册设置</div>
+        <div class="navi"><i data-lucide="mail"></i>邮件服务</div>
+      </aside>
+      <main class="min-w-0 flex-1 overflow-y-auto" id="mainScroll">
+        <div class="mx-auto max-w-[1200px] px-4 py-6 md:px-8">
+          <div class="mb-5">
+            <h1 class="text-xl font-semibold tracking-tight">用户管理</h1>
+            <p class="mt-1 text-sm muted-fg">
+              查看用户、调整积分与并发、封禁账号，查看生成与登录记录。
+            </p>
+          </div>
+          <div class="rounded-xl border bg-card">
+            <div class="flex flex-wrap items-center gap-2 p-4" id="toolbar"></div>
+            <div class="relative overflow-x-auto border-t" id="tableWrap"></div>
+            <div
+              class="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-xs"
+              id="pager"
+            ></div>
+          </div>
+          <div class="h-24"></div>
+        </div>
+      </main>
+    </div>
 
-<script>
-/* =====================================================================
- * 动效参数：与 web/src/lib/motion.ts 一一对应
- * ===================================================================== */
-const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const EASE = "cubic-bezier(0.2, 0, 0, 1)";            // EASE_OUT
-const D = { fast: 120, base: 180, exit: 126, slow: 240, slowExit: 168 }; // DURATION（slowExit 为本方案新增）
-const SKELETON_DELAY = 150;
-/** 把 SPRING（stiffness 500 / damping 38 / mass 0.8）数值积分成 CSS linear() 曲线，原型里用它代替 motion 的弹簧 */
-const SPRING = (() => {
-  const k = 500, c = 38, m = 0.8, dt = 1 / 1000; let x = 0, vel = 0, t = 0; const pts = [0];
-  while (t < 1) { const a = (-k * (x - 1) - c * vel) / m; vel += a * dt; x += vel * dt; t += dt; pts.push(x); if (Math.abs(x - 1) < 0.01 && Math.abs(vel) < 0.1) break; }
-  const n = 32, s = []; for (let i = 0; i <= n; i++) s.push(+pts[Math.round(i / n * (pts.length - 1))].toFixed(4));
-  s[0] = 0; s[n] = 1;
-  const ok = CSS.supports("animation-timing-function", "linear(0, 1)");
-  /* 按真实曲线时长播放（约 280ms 到 1% 误差），不截断，保证和 motion 的 SPRING 观感一致 */
-  return { duration: Math.round(t * 1000), easing: ok ? `linear(${s.join(", ")})` : EASE };
-})();
+    <aside id="drawer" role="dialog" aria-label="用户详情"></aside>
+    <div
+      id="pop"
+      class="floating p-3"
+      style="width: min(288px, calc(100vw - 32px))"
+      role="dialog"
+    ></div>
+    <div id="menu" class="floating p-1" style="width: 15rem" role="menu"></div>
+    <div id="bulk"></div>
+    <div id="toasts" aria-live="polite"></div>
+    <div id="dlgRoot"></div>
+    <div id="tip"></div>
 
-/** 从当前计算样式出发做动画：中途打断也不会跳，动画不阻塞任何输入 */
-function anim(el, to, duration, easing = EASE, from) {
-  if (!el) return { finished: Promise.resolve() };
-  const cs = getComputedStyle(el);
-  const start = from || { transform: cs.transform === "none" ? "none" : cs.transform, opacity: cs.opacity };
-  el.getAnimations().forEach(a => a.cancel());
-  let frames = [start, to];
-  if (RM) {
-    /* 减少动态效果：去掉位移和缩放，只保留淡入淡出 */
-    frames = frames.map(f => ("opacity" in f ? { opacity: f.opacity } : {}));
-    if (!("opacity" in to)) { Object.assign(el.style, { transform: to.transform || "" }); return { finished: Promise.resolve() }; }
-    duration = Math.min(duration, D.base);
-  }
-  const a = el.animate(frames, { duration, easing, fill: "forwards" });
-  return a;
-}
+    <script>
+      /* =====================================================================
+       * 动效参数：与 web/src/lib/motion.ts 一一对应
+       * ===================================================================== */
+      const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const EASE = "cubic-bezier(0.2, 0, 0, 1)"; // EASE_OUT
+      const D = { fast: 120, base: 180, exit: 126, slow: 240, slowExit: 168 }; // DURATION（slowExit 为本方案新增）
+      const SKELETON_DELAY = 150;
+      /** 把 SPRING（stiffness 500 / damping 38 / mass 0.8）数值积分成 CSS linear() 曲线，原型里用它代替 motion 的弹簧 */
+      const SPRING = (() => {
+        const k = 500,
+          c = 38,
+          m = 0.8,
+          dt = 1 / 1000;
+        let x = 0,
+          vel = 0,
+          t = 0;
+        const pts = [0];
+        while (t < 1) {
+          const a = (-k * (x - 1) - c * vel) / m;
+          vel += a * dt;
+          x += vel * dt;
+          t += dt;
+          pts.push(x);
+          if (Math.abs(x - 1) < 0.01 && Math.abs(vel) < 0.1) break;
+        }
+        const n = 32,
+          s = [];
+        for (let i = 0; i <= n; i++)
+          s.push(+pts[Math.round((i / n) * (pts.length - 1))].toFixed(4));
+        s[0] = 0;
+        s[n] = 1;
+        const ok = CSS.supports("animation-timing-function", "linear(0, 1)");
+        /* 按真实曲线时长播放（约 280ms 到 1% 误差），不截断，保证和 motion 的 SPRING 观感一致 */
+        return { duration: Math.round(t * 1000), easing: ok ? `linear(${s.join(", ")})` : EASE };
+      })();
 
-/* =====================================================================
- * 假数据
- * ===================================================================== */
-const MODELS = [["video", "Seedance 2.0", 30], ["video", "可灵 2.1", 25], ["image", "GPT-Image-2", 6], ["image", "Seedream 4", 4], ["image", "Nano Banana Pro", 8], ["video", "Veo 3", 60]];
-const ERRORS = ["上游超时（120s）", "内容审核未通过", "渠道额度不足", "参考图下载失败"];
-const DEVICES = ["Chrome · macOS", "Safari · iOS", "Edge · Windows", "Chrome · Android", "Firefox · Windows"];
-const SEED = [
-  /* 用户名, 邮箱, 角色, 状态, 余额, 冻结, 并发覆盖, 进行中, 最近活跃, 注册日期 */
-  ["owner", "owner@studio.com", "super_admin", "active", 500, 0, null, 0, "今天 10:21", "2026-08-01"],
-  ["lina", "lina@studio.com", "admin", "active", 130, 10, null, 1, "今天 09:02", "2026-08-04"],
-  ["kevin", "kevin@outlook.com", "admin", "active", 300, 0, null, 0, "2 天前", "2026-08-11"],
-  ["zhangsan", "zs@mail.com", "user", "active", 36, 12, 2, 2, "昨天 22:40", "2026-09-20"],
-  ["chen", "chen@studio.com", "user", "active", 270, 60, 8, 3, "今天 11:05", "2026-08-15"],
-  ["mia", "mia@gmail.com", "user", "active", 88, 0, null, 0, "今天 08:47", "2026-09-02"],
-  ["xiaoyu", "xy@qq.com", "user", "active", 30, 15, null, 1, "今天 11:12", "2026-09-12"],
-  ["wangwu", "ww@mail.com", "user", "active", 0, 0, null, 0, "3 天前", "2026-09-05"],
-  ["liuqi", "liuqi@163.com", "user", "active", 42, 0, null, 0, "5 天前", "2026-09-08"],
-  ["tom", "tom@proton.me", "user", "active", 120, 0, null, 0, "今天 07:30", "2026-09-14"],
-  ["anna", "anna@studio.com", "user", "active", 960, 120, 6, 4, "今天 11:20", "2026-08-20"],
-  ["jay", "jay@gmail.com", "user", "active", 12, 0, null, 0, "1 周前", "2026-09-01"],
-  ["spam_01", "x1@tmp.io", "user", "disabled", 50, 0, null, 0, "7 天前", "2026-09-27"],
-  ["spam_02", "x2@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
-  ["spam_03", "x3@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
-  ["spam_04", "x4@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
-  ["spam_05", "x5@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
-  ["sunny", "sunny@qq.com", "user", "active", 66, 0, null, 0, "昨天 19:02", "2026-09-18"],
-  ["leo", "leo@outlook.com", "user", "active", 5, 5, null, 1, "今天 10:58", "2026-09-22"],
-  ["grace", "grace@studio.com", "user", "active", 400, 0, 10, 0, "今天 09:44", "2026-08-25"],
-  ["bob", "bob@mail.com", "user", "disabled", 0, 0, null, 0, "1 月前", "2026-08-08"],
-  ["yuki", "yuki@gmail.com", "user", "active", 74, 0, null, 0, "2 天前", "2026-09-25"],
-  ["ivan", "ivan@yandex.com", "user", "active", 23, 0, null, 0, "4 天前", "2026-09-29"],
-  ["nina", "nina@studio.com", "user", "active", 150, 30, null, 2, "今天 11:16", "2026-09-03"],
-];
-let rnd = 7; const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
-const users = SEED.map((r, i) => ({
-  id: i + 1, name: r[0], email: r[1], role: r[2], status: r[3], bal: r[4], frozen: r[5], conc: r[6], active: r[7], last: r[8], reg: r[9],
-  tasks: r[0].startsWith("spam") ? 0 : 5 + Math.floor(rand() * 140), spent: 0, ledger: null, logs: null, audit: [],
-}));
-users.forEach(u => { u.spent = u.tasks * (4 + Math.floor(rand() * 20)); });
-const SPAM_IP = "203.0.113.7";
+      /** 从当前计算样式出发做动画：中途打断也不会跳，动画不阻塞任何输入 */
+      function anim(el, to, duration, easing = EASE, from) {
+        if (!el) return { finished: Promise.resolve() };
+        const cs = getComputedStyle(el);
+        const start = from || {
+          transform: cs.transform === "none" ? "none" : cs.transform,
+          opacity: cs.opacity,
+        };
+        el.getAnimations().forEach((a) => a.cancel());
+        let frames = [start, to];
+        if (RM) {
+          /* 减少动态效果：去掉位移和缩放，只保留淡入淡出 */
+          frames = frames.map((f) => ("opacity" in f ? { opacity: f.opacity } : {}));
+          if (!("opacity" in to)) {
+            Object.assign(el.style, { transform: to.transform || "" });
+            return { finished: Promise.resolve() };
+          }
+          duration = Math.min(duration, D.base);
+        }
+        const a = el.animate(frames, { duration, easing, fill: "forwards" });
+        return a;
+      }
 
-/** 生成记录、积分流水、登录记录按需造一次，造好就缓存在用户身上 */
-function ensureLogs(u) {
-  if (u.logs) return;
-  const tasks = [];
-  for (let i = 0; i < Math.min(u.tasks, 46) + u.active; i++) {
-    const [kind, model, cost] = MODELS[Math.floor(rand() * MODELS.length)];
-    const running = i < u.active;
-    const failed = !running && rand() < 0.14;
-    const day = Math.floor(i / 5);
-    tasks.push({
-      id: 9000 + u.id * 100 + i, kind, model, cost: failed ? 0 : cost,
-      status: running ? "running" : failed ? "failed" : "success",
-      err: failed ? ERRORS[Math.floor(rand() * ERRORS.length)] : "",
-      dur: running ? null : (kind === "video" ? 30 + Math.floor(rand() * 90) : 4 + Math.floor(rand() * 20)),
-      at: day === 0 ? `今天 ${String(11 - (i % 5)).padStart(2, "0")}:${String(Math.floor(rand() * 60)).padStart(2, "0")}` : `10月${Math.max(1, 5 - day)}日`,
-    });
-  }
-  const ledger = [];
-  tasks.slice(0, 16).forEach(t => {
-    if (t.status === "running") ledger.push({ type: "freeze", amt: -MODELS.find(m => m[1] === t.model)[2], note: `任务 #${t.id}`, by: "系统", at: t.at });
-    else if (t.status === "success") ledger.push({ type: "settle", amt: -t.cost, note: `任务 #${t.id}`, by: "系统", at: t.at });
-    else ledger.push({ type: "refund", amt: 0, note: `任务 #${t.id} 失败退回`, by: "系统", at: t.at });
-  });
-  if (u.id === 4) ledger.splice(2, 0, { type: "admin_adjust", amt: 50, note: "活动补发", by: "lina", at: "9月28日" });
-  if (u.id === 5) ledger.splice(1, 0, { type: "admin_adjust", amt: 200, note: "合作方额度", by: "owner", at: "9月10日" });
-  ledger.push({ type: "initial", amt: 50, note: "注册赠送", by: "系统", at: u.reg.slice(5).replace("-", "月") + "日" });
-  const logins = [];
-  const spam = u.name.startsWith("spam");
-  if (u.status === "disabled") logins.push({ res: "blocked", ip: spam ? SPAM_IP : "198.51.100.23", dev: DEVICES[0], at: "今天 09:12" });
-  for (let i = 0; i < (spam ? 1 : 18); i++) {
-    const fail = rand() < 0.12;
-    logins.push({ res: fail ? "badpw" : "ok", ip: spam ? SPAM_IP : `112.${64 + (u.id % 20)}.${Math.floor(rand() * 255)}.${Math.floor(rand() * 255)}`, dev: DEVICES[(u.id + i) % DEVICES.length], at: i === 0 ? u.last : `10月${Math.max(1, 5 - Math.floor(i / 3))}日` });
-  }
-  logins.push({ res: "register", ip: spam ? SPAM_IP : logins[logins.length - 1]?.ip || "-", dev: DEVICES[u.id % DEVICES.length], at: u.reg });
-  u.logs = { tasks, logins }; u.ledger = ledger;
-}
+      /* =====================================================================
+       * 假数据
+       * ===================================================================== */
+      const MODELS = [
+        ["video", "Seedance 2.0", 30],
+        ["video", "可灵 2.1", 25],
+        ["image", "GPT-Image-2", 6],
+        ["image", "Seedream 4", 4],
+        ["image", "Nano Banana Pro", 8],
+        ["video", "Veo 3", 60],
+      ];
+      const ERRORS = ["上游超时（120s）", "内容审核未通过", "渠道额度不足", "参考图下载失败"];
+      const DEVICES = [
+        "Chrome · macOS",
+        "Safari · iOS",
+        "Edge · Windows",
+        "Chrome · Android",
+        "Firefox · Windows",
+      ];
+      const SEED = [
+        /* 用户名, 邮箱, 角色, 状态, 余额, 冻结, 并发覆盖, 进行中, 最近活跃, 注册日期 */
+        [
+          "owner",
+          "owner@studio.com",
+          "super_admin",
+          "active",
+          500,
+          0,
+          null,
+          0,
+          "今天 10:21",
+          "2026-08-01",
+        ],
+        [
+          "lina",
+          "lina@studio.com",
+          "admin",
+          "active",
+          130,
+          10,
+          null,
+          1,
+          "今天 09:02",
+          "2026-08-04",
+        ],
+        ["kevin", "kevin@outlook.com", "admin", "active", 300, 0, null, 0, "2 天前", "2026-08-11"],
+        ["zhangsan", "zs@mail.com", "user", "active", 36, 12, 2, 2, "昨天 22:40", "2026-09-20"],
+        ["chen", "chen@studio.com", "user", "active", 270, 60, 8, 3, "今天 11:05", "2026-08-15"],
+        ["mia", "mia@gmail.com", "user", "active", 88, 0, null, 0, "今天 08:47", "2026-09-02"],
+        ["xiaoyu", "xy@qq.com", "user", "active", 30, 15, null, 1, "今天 11:12", "2026-09-12"],
+        ["wangwu", "ww@mail.com", "user", "active", 0, 0, null, 0, "3 天前", "2026-09-05"],
+        ["liuqi", "liuqi@163.com", "user", "active", 42, 0, null, 0, "5 天前", "2026-09-08"],
+        ["tom", "tom@proton.me", "user", "active", 120, 0, null, 0, "今天 07:30", "2026-09-14"],
+        ["anna", "anna@studio.com", "user", "active", 960, 120, 6, 4, "今天 11:20", "2026-08-20"],
+        ["jay", "jay@gmail.com", "user", "active", 12, 0, null, 0, "1 周前", "2026-09-01"],
+        ["spam_01", "x1@tmp.io", "user", "disabled", 50, 0, null, 0, "7 天前", "2026-09-27"],
+        ["spam_02", "x2@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
+        ["spam_03", "x3@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
+        ["spam_04", "x4@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
+        ["spam_05", "x5@tmp.io", "user", "active", 50, 0, null, 0, "7 天前", "2026-09-27"],
+        ["sunny", "sunny@qq.com", "user", "active", 66, 0, null, 0, "昨天 19:02", "2026-09-18"],
+        ["leo", "leo@outlook.com", "user", "active", 5, 5, null, 1, "今天 10:58", "2026-09-22"],
+        ["grace", "grace@studio.com", "user", "active", 400, 0, 10, 0, "今天 09:44", "2026-08-25"],
+        ["bob", "bob@mail.com", "user", "disabled", 0, 0, null, 0, "1 月前", "2026-08-08"],
+        ["yuki", "yuki@gmail.com", "user", "active", 74, 0, null, 0, "2 天前", "2026-09-25"],
+        ["ivan", "ivan@yandex.com", "user", "active", 23, 0, null, 0, "4 天前", "2026-09-29"],
+        ["nina", "nina@studio.com", "user", "active", 150, 30, null, 2, "今天 11:16", "2026-09-03"],
+      ];
+      let rnd = 7;
+      const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
+      const users = SEED.map((r, i) => ({
+        id: i + 1,
+        name: r[0],
+        email: r[1],
+        role: r[2],
+        status: r[3],
+        bal: r[4],
+        frozen: r[5],
+        conc: r[6],
+        active: r[7],
+        last: r[8],
+        reg: r[9],
+        tasks: r[0].startsWith("spam") ? 0 : 5 + Math.floor(rand() * 140),
+        spent: 0,
+        ledger: null,
+        logs: null,
+        audit: [],
+      }));
+      users.forEach((u) => {
+        u.spent = u.tasks * (4 + Math.floor(rand() * 20));
+      });
+      const SPAM_IP = "203.0.113.7";
 
-/* =====================================================================
- * 状态（真实实现里 q / status / role / page / user / tab 都在 URL）
- * ===================================================================== */
-const S = {
-  viewer: "super_admin", loaded: false, loading: false,
-  q: "", status: "all", role: "all", page: 1, size: 10,
-  checked: new Set(), lastChecked: null,
-  user: null, tab: "overview", tabFilter: { tasks: "all", credits: "all", logins: "all" }, tabShown: 10,
-  drawerOpen: false, menuFor: null, popFor: null,
-};
-const drafts = {}; // 积分浮层的未提交内容：10 秒内重开同一用户会恢复
-const ROLE = { user: ["普通用户", "t-mute"], admin: ["管理员", "t-info"], super_admin: ["超级管理员", "t-warn"] };
-const TYPE = { initial: ["赠送", "gift"], freeze: ["冻结", "snowflake"], settle: ["结算", "receipt"], refund: ["退款", "rotate-ccw"], admin_adjust: ["管理员调整", "user-cog"] };
-const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
-const avail = (u) => u.bal - u.frozen;
-const limitOf = (u) => u.conc ?? 4;
-const meId = () => (S.viewer === "super_admin" ? 1 : 2);
-const icons = () => lucide.createIcons();
-/** 焦点在文本输入里时不响应单键快捷键；勾选框不算输入 */
-const typing = () => { const el = document.activeElement; if (!el) return false; if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true; return el.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(el.type); };
+      /** 生成记录、积分流水、登录记录按需造一次，造好就缓存在用户身上 */
+      function ensureLogs(u) {
+        if (u.logs) return;
+        const tasks = [];
+        for (let i = 0; i < Math.min(u.tasks, 46) + u.active; i++) {
+          const [kind, model, cost] = MODELS[Math.floor(rand() * MODELS.length)];
+          const running = i < u.active;
+          const failed = !running && rand() < 0.14;
+          const day = Math.floor(i / 5);
+          tasks.push({
+            id: 9000 + u.id * 100 + i,
+            kind,
+            model,
+            cost: failed ? 0 : cost,
+            status: running ? "running" : failed ? "failed" : "success",
+            err: failed ? ERRORS[Math.floor(rand() * ERRORS.length)] : "",
+            dur: running
+              ? null
+              : kind === "video"
+                ? 30 + Math.floor(rand() * 90)
+                : 4 + Math.floor(rand() * 20),
+            at:
+              day === 0
+                ? `今天 ${String(11 - (i % 5)).padStart(2, "0")}:${String(Math.floor(rand() * 60)).padStart(2, "0")}`
+                : `10月${Math.max(1, 5 - day)}日`,
+          });
+        }
+        const ledger = [];
+        tasks.slice(0, 16).forEach((t) => {
+          if (t.status === "running")
+            ledger.push({
+              type: "freeze",
+              amt: -MODELS.find((m) => m[1] === t.model)[2],
+              note: `任务 #${t.id}`,
+              by: "系统",
+              at: t.at,
+            });
+          else if (t.status === "success")
+            ledger.push({
+              type: "settle",
+              amt: -t.cost,
+              note: `任务 #${t.id}`,
+              by: "系统",
+              at: t.at,
+            });
+          else
+            ledger.push({
+              type: "refund",
+              amt: 0,
+              note: `任务 #${t.id} 失败退回`,
+              by: "系统",
+              at: t.at,
+            });
+        });
+        if (u.id === 4)
+          ledger.splice(2, 0, {
+            type: "admin_adjust",
+            amt: 50,
+            note: "活动补发",
+            by: "lina",
+            at: "9月28日",
+          });
+        if (u.id === 5)
+          ledger.splice(1, 0, {
+            type: "admin_adjust",
+            amt: 200,
+            note: "合作方额度",
+            by: "owner",
+            at: "9月10日",
+          });
+        ledger.push({
+          type: "initial",
+          amt: 50,
+          note: "注册赠送",
+          by: "系统",
+          at: u.reg.slice(5).replace("-", "月") + "日",
+        });
+        const logins = [];
+        const spam = u.name.startsWith("spam");
+        if (u.status === "disabled")
+          logins.push({
+            res: "blocked",
+            ip: spam ? SPAM_IP : "198.51.100.23",
+            dev: DEVICES[0],
+            at: "今天 09:12",
+          });
+        for (let i = 0; i < (spam ? 1 : 18); i++) {
+          const fail = rand() < 0.12;
+          logins.push({
+            res: fail ? "badpw" : "ok",
+            ip: spam
+              ? SPAM_IP
+              : `112.${64 + (u.id % 20)}.${Math.floor(rand() * 255)}.${Math.floor(rand() * 255)}`,
+            dev: DEVICES[(u.id + i) % DEVICES.length],
+            at: i === 0 ? u.last : `10月${Math.max(1, 5 - Math.floor(i / 3))}日`,
+          });
+        }
+        logins.push({
+          res: "register",
+          ip: spam ? SPAM_IP : logins[logins.length - 1]?.ip || "-",
+          dev: DEVICES[u.id % DEVICES.length],
+          at: u.reg,
+        });
+        u.logs = { tasks, logins };
+        u.ledger = ledger;
+      }
 
-/** 权限：返回禁用原因，null 表示可以操作（真实实现放 utils/admin/user-rules.ts，可单测） */
-function deny(u, action) {
-  const self = u.id === meId();
-  if ((action === "role" || action === "reset") && S.viewer !== "super_admin") return "仅超级管理员可用";
-  if (self && (action === "ban" || action === "role")) return "不能对自己执行此操作";
-  if (self && action === "credit" && S.viewer !== "super_admin") return "admin 不能给自己调整积分";
-  if (!self && S.viewer === "admin" && u.role !== "user") return "admin 不能操作管理员账号";
-  return null;
-}
+      /* =====================================================================
+       * 状态（真实实现里 q / status / role / page / user / tab 都在 URL）
+       * ===================================================================== */
+      const S = {
+        viewer: "super_admin",
+        loaded: false,
+        loading: false,
+        q: "",
+        status: "all",
+        role: "all",
+        page: 1,
+        size: 10,
+        checked: new Set(),
+        lastChecked: null,
+        user: null,
+        tab: "overview",
+        tabFilter: { tasks: "all", credits: "all", logins: "all" },
+        tabShown: 10,
+        drawerOpen: false,
+        menuFor: null,
+        popFor: null,
+      };
+      const drafts = {}; // 积分浮层的未提交内容：10 秒内重开同一用户会恢复
+      const ROLE = {
+        user: ["普通用户", "t-mute"],
+        admin: ["管理员", "t-info"],
+        super_admin: ["超级管理员", "t-warn"],
+      };
+      const TYPE = {
+        initial: ["赠送", "gift"],
+        freeze: ["冻结", "snowflake"],
+        settle: ["结算", "receipt"],
+        refund: ["退款", "rotate-ccw"],
+        admin_adjust: ["管理员调整", "user-cog"],
+      };
+      const $ = (s, r = document) => r.querySelector(s);
+      const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"]/g,
+          (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[m],
+        );
+      const avail = (u) => u.bal - u.frozen;
+      const limitOf = (u) => u.conc ?? 4;
+      const meId = () => (S.viewer === "super_admin" ? 1 : 2);
+      const icons = () => lucide.createIcons();
+      /** 焦点在文本输入里时不响应单键快捷键；勾选框不算输入 */
+      const typing = () => {
+        const el = document.activeElement;
+        if (!el) return false;
+        if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;
+        return el.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(el.type);
+      };
 
-function filtered() {
-  const q = S.q.trim().toLowerCase();
-  return users.filter(u => (!q || u.name.includes(q) || u.email.includes(q)) && (S.status === "all" || u.status === S.status) && (S.role === "all" || u.role === S.role));
-}
-function pageRows() { const f = filtered(); return f.slice((S.page - 1) * S.size, S.page * S.size); }
-function syncUrl() {
-  const p = new URLSearchParams();
-  if (S.q) p.set("q", S.q); if (S.status !== "all") p.set("status", S.status); if (S.role !== "all") p.set("role", S.role);
-  if (S.page > 1) p.set("page", S.page); if (S.drawerOpen && S.user) { p.set("user", S.user); if (S.tab !== "overview") p.set("tab", S.tab); }
-  const s = p.toString(); $("#urlView").textContent = "/admin/users" + (s ? "?" + s : "");
-}
+      /** 权限：返回禁用原因，null 表示可以操作（真实实现放 utils/admin/user-rules.ts，可单测） */
+      function deny(u, action) {
+        const self = u.id === meId();
+        if ((action === "role" || action === "reset") && S.viewer !== "super_admin")
+          return "仅超级管理员可用";
+        if (self && (action === "ban" || action === "role")) return "不能对自己执行此操作";
+        if (self && action === "credit" && S.viewer !== "super_admin")
+          return "admin 不能给自己调整积分";
+        if (!self && S.viewer === "admin" && u.role !== "user") return "admin 不能操作管理员账号";
+        return null;
+      }
 
-/* =====================================================================
- * 数字滚动（NumberFlow）
- * ===================================================================== */
-const nf = (key, v, cls = "") => `<span class="nf ${cls}" data-nf="${key}" data-v="${v}">${v}</span>`;
-function hydrateNF(root = document) {
-  if (!window.__nf) return;
-  $$("span.nf", root).forEach(s => {
-    const f = document.createElement("number-flow");
-    f.dataset.nf = s.dataset.nf; f.className = s.className.replace(/\bnf\b/, "").trim();
-    s.replaceWith(f);
-    try { f.animated = false; f.update(+s.dataset.v); requestAnimationFrame(() => { f.animated = !RM; }); } catch { f.textContent = s.dataset.v; }
-  });
-}
-function setNum(key, val) {
-  $$(`[data-nf="${key}"]`).forEach(el => {
-    if (el.tagName === "NUMBER-FLOW" && el.update) el.update(val);
-    else { el.textContent = val; anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, { opacity: 0, transform: `translateY(${val > +el.dataset.v ? 6 : -6}px)` }); }
-    el.dataset.v = val;
-  });
-}
-window.addEventListener("nf-ready", () => hydrateNF());
+      function filtered() {
+        const q = S.q.trim().toLowerCase();
+        return users.filter(
+          (u) =>
+            (!q || u.name.includes(q) || u.email.includes(q)) &&
+            (S.status === "all" || u.status === S.status) &&
+            (S.role === "all" || u.role === S.role),
+        );
+      }
+      function pageRows() {
+        const f = filtered();
+        return f.slice((S.page - 1) * S.size, S.page * S.size);
+      }
+      function syncUrl() {
+        const p = new URLSearchParams();
+        if (S.q) p.set("q", S.q);
+        if (S.status !== "all") p.set("status", S.status);
+        if (S.role !== "all") p.set("role", S.role);
+        if (S.page > 1) p.set("page", S.page);
+        if (S.drawerOpen && S.user) {
+          p.set("user", S.user);
+          if (S.tab !== "overview") p.set("tab", S.tab);
+        }
+        const s = p.toString();
+        $("#urlView").textContent = "/admin/users" + (s ? "?" + s : "");
+      }
 
-/* =====================================================================
- * 通用小件：Segmented、Tooltip、Toast
- * ===================================================================== */
-const segHTML = (name, opts, val, cls = "") => `<div class="seg ${cls}" data-seg="${name}" role="radiogroup"><span class="seg-thumb"></span>${opts.map(([k, l]) => `<button type="button" role="radio" aria-checked="${k === val}" data-v="${k}" class="${k === val ? "on" : ""}">${l}</button>`).join("")}</div>`;
-/** 滑块位置：宽度直接设（不做动画），位移走 SPRING */
-function syncSeg(root, animate) {
-  $$(".seg", root).forEach(seg => {
-    const on = $("button.on", seg), th = $(".seg-thumb", seg); if (!on || !th) return;
-    th.style.width = on.offsetWidth + "px";
-    const to = { transform: `translateX(${on.offsetLeft}px)` };
-    if (animate) anim(th, to, SPRING.duration, SPRING.easing); else { th.getAnimations().forEach(a => a.cancel()); th.style.transform = to.transform; }
-  });
-}
-function bindSeg(root, name, onChange) {
-  const seg = $(`[data-seg="${name}"]`, root); if (!seg) return;
-  $$("button", seg).forEach(b => b.onclick = (e) => {
-    e.stopPropagation();
-    $$("button", seg).forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", x === b); });
-    syncSeg(seg.parentElement, true); onChange(b.dataset.v);
-  });
-}
+      /* =====================================================================
+       * 数字滚动（NumberFlow）
+       * ===================================================================== */
+      const nf = (key, v, cls = "") =>
+        `<span class="nf ${cls}" data-nf="${key}" data-v="${v}">${v}</span>`;
+      function hydrateNF(root = document) {
+        if (!window.__nf) return;
+        $$("span.nf", root).forEach((s) => {
+          const f = document.createElement("number-flow");
+          f.dataset.nf = s.dataset.nf;
+          f.className = s.className.replace(/\bnf\b/, "").trim();
+          s.replaceWith(f);
+          try {
+            f.animated = false;
+            f.update(+s.dataset.v);
+            requestAnimationFrame(() => {
+              f.animated = !RM;
+            });
+          } catch {
+            f.textContent = s.dataset.v;
+          }
+        });
+      }
+      function setNum(key, val) {
+        $$(`[data-nf="${key}"]`).forEach((el) => {
+          if (el.tagName === "NUMBER-FLOW" && el.update) el.update(val);
+          else {
+            el.textContent = val;
+            anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, {
+              opacity: 0,
+              transform: `translateY(${val > +el.dataset.v ? 6 : -6}px)`,
+            });
+          }
+          el.dataset.v = val;
+        });
+      }
+      window.addEventListener("nf-ready", () => hydrateNF());
 
-const tip = $("#tip"); let tipTimer;
-document.addEventListener("mouseover", (e) => {
-  const t = e.target.closest("[data-tip]"); clearTimeout(tipTimer);
-  if (!t) { anim(tip, { opacity: 0 }, D.exit); return; }
-  tipTimer = setTimeout(() => {
-    tip.innerHTML = `<span>${esc(t.dataset.tip)}</span>${t.dataset.kbd ? t.dataset.kbd.split(" ").map(k => `<span class="kbd">${esc(k)}</span>`).join("") : ""}`;
-    const r = t.getBoundingClientRect(); const w = tip.offsetWidth;
-    let x = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)); let y = r.top - tip.offsetHeight - 6; if (y < 8) y = r.bottom + 6;
-    tip.style.left = x + "px"; tip.style.top = y + "px";
-    anim(tip, { opacity: 1 }, D.fast);
-  }, 300);
-});
+      /* =====================================================================
+       * 通用小件：Segmented、Tooltip、Toast
+       * ===================================================================== */
+      const segHTML = (name, opts, val, cls = "") =>
+        `<div class="seg ${cls}" data-seg="${name}" role="radiogroup"><span class="seg-thumb"></span>${opts.map(([k, l]) => `<button type="button" role="radio" aria-checked="${k === val}" data-v="${k}" class="${k === val ? "on" : ""}">${l}</button>`).join("")}</div>`;
+      /** 滑块位置：宽度直接设（不做动画），位移走 SPRING */
+      function syncSeg(root, animate) {
+        $$(".seg", root).forEach((seg) => {
+          const on = $("button.on", seg),
+            th = $(".seg-thumb", seg);
+          if (!on || !th) return;
+          th.style.width = on.offsetWidth + "px";
+          const to = { transform: `translateX(${on.offsetLeft}px)` };
+          if (animate) anim(th, to, SPRING.duration, SPRING.easing);
+          else {
+            th.getAnimations().forEach((a) => a.cancel());
+            th.style.transform = to.transform;
+          }
+        });
+      }
+      function bindSeg(root, name, onChange) {
+        const seg = $(`[data-seg="${name}"]`, root);
+        if (!seg) return;
+        $$("button", seg).forEach(
+          (b) =>
+            (b.onclick = (e) => {
+              e.stopPropagation();
+              $$("button", seg).forEach((x) => {
+                x.classList.toggle("on", x === b);
+                x.setAttribute("aria-checked", x === b);
+              });
+              syncSeg(seg.parentElement, true);
+              onChange(b.dataset.v);
+            }),
+        );
+      }
 
-function toast(msg, opts = {}) {
-  const el = document.createElement("div"); el.className = "toast";
-  el.innerHTML = `<i data-lucide="${opts.icon || "check-circle-2"}" style="color:var(--${opts.danger ? "destructive" : "status-success"})"></i><span class="flex-1">${msg}</span>${opts.undo ? `<button class="btn btn-outline btn-xs" data-undo>撤销</button>` : ""}`;
-  $("#toasts").appendChild(el); icons();
-  anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, { opacity: 0, transform: "translateY(12px)" });
-  const close = () => { clearTimeout(timer); anim(el, { opacity: 0, transform: "translateY(8px)" }, D.exit).finished.then(() => el.remove()); };
-  const timer = setTimeout(close, opts.undo ? 5000 : 3000);
-  if (opts.undo) $("[data-undo]", el).onclick = () => { opts.undo(); close(); };
-}
+      const tip = $("#tip");
+      let tipTimer;
+      document.addEventListener("mouseover", (e) => {
+        const t = e.target.closest("[data-tip]");
+        clearTimeout(tipTimer);
+        if (!t) {
+          anim(tip, { opacity: 0 }, D.exit);
+          return;
+        }
+        tipTimer = setTimeout(() => {
+          tip.innerHTML = `<span>${esc(t.dataset.tip)}</span>${
+            t.dataset.kbd
+              ? t.dataset.kbd
+                  .split(" ")
+                  .map((k) => `<span class="kbd">${esc(k)}</span>`)
+                  .join("")
+              : ""
+          }`;
+          const r = t.getBoundingClientRect();
+          const w = tip.offsetWidth;
+          let x = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+          let y = r.top - tip.offsetHeight - 6;
+          if (y < 8) y = r.bottom + 6;
+          tip.style.left = x + "px";
+          tip.style.top = y + "px";
+          anim(tip, { opacity: 1 }, D.fast);
+        }, 300);
+      });
 
-/* =====================================================================
- * 工具栏、表格、分页
- * ===================================================================== */
-function renderToolbar() {
-  $("#toolbar").innerHTML = `
+      function toast(msg, opts = {}) {
+        const el = document.createElement("div");
+        el.className = "toast";
+        el.innerHTML = `<i data-lucide="${opts.icon || "check-circle-2"}" style="color:var(--${opts.danger ? "destructive" : "status-success"})"></i><span class="flex-1">${msg}</span>${opts.undo ? `<button class="btn btn-outline btn-xs" data-undo>撤销</button>` : ""}`;
+        $("#toasts").appendChild(el);
+        icons();
+        anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, {
+          opacity: 0,
+          transform: "translateY(12px)",
+        });
+        const close = () => {
+          clearTimeout(timer);
+          anim(el, { opacity: 0, transform: "translateY(8px)" }, D.exit).finished.then(() =>
+            el.remove(),
+          );
+        };
+        const timer = setTimeout(close, opts.undo ? 5000 : 3000);
+        if (opts.undo)
+          $("[data-undo]", el).onclick = () => {
+            opts.undo();
+            close();
+          };
+      }
+
+      /* =====================================================================
+       * 工具栏、表格、分页
+       * ===================================================================== */
+      function renderToolbar() {
+        $("#toolbar").innerHTML = `
     <div class="relative w-full sm:w-64">
       <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 muted-fg"></i>
       <input id="q" class="input pl-8 pr-14" placeholder="搜索用户名或邮箱" value="${esc(S.q)}" autocomplete="off">
       <span class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">${S.q ? `<button class="icon-btn" style="width:1.25rem;height:1.25rem" id="qClear" aria-label="清空搜索"><i data-lucide="x"></i></button>` : `<span class="kbd">/</span>`}</span>
     </div>
-    ${segHTML("status", [["all", "全部"], ["active", "正常"], ["disabled", "已停用"]], S.status)}
+    ${segHTML(
+      "status",
+      [
+        ["all", "全部"],
+        ["active", "正常"],
+        ["disabled", "已停用"],
+      ],
+      S.status,
+    )}
     <select id="role" class="input" style="width:8.5rem">
-      ${[["all", "全部角色"], ["user", "普通用户"], ["admin", "管理员"], ["super_admin", "超级管理员"]].map(([k, l]) => `<option value="${k}" ${S.role === k ? "selected" : ""}>${l}</option>`).join("")}
+      ${[
+        ["all", "全部角色"],
+        ["user", "普通用户"],
+        ["admin", "管理员"],
+        ["super_admin", "超级管理员"],
+      ]
+        .map(([k, l]) => `<option value="${k}" ${S.role === k ? "selected" : ""}>${l}</option>`)
+        .join("")}
     </select>
     <span class="ml-auto flex items-center gap-2 text-xs muted-fg num" id="count"></span>`;
-  icons(); syncSeg($("#toolbar"), false);
-  let deb; $("#q").oninput = (e) => { S.q = e.target.value; clearTimeout(deb); deb = setTimeout(() => { S.page = 1; load(); }, 300); toggleClear(); };
-  function toggleClear() { const holder = $("#q").nextElementSibling; holder.innerHTML = S.q ? `<button class="icon-btn" style="width:1.25rem;height:1.25rem" id="qClear" aria-label="清空搜索"><i data-lucide="x"></i></button>` : `<span class="kbd">/</span>`; icons(); bindClear(); }
-  function bindClear() { const c = $("#qClear"); if (c) c.onclick = () => { S.q = ""; $("#q").value = ""; toggleClear(); S.page = 1; load(); $("#q").focus(); }; }
-  bindClear();
-  bindSeg($("#toolbar"), "status", (v) => { S.status = v; S.page = 1; load(); });
-  $("#role").onchange = (e) => { S.role = e.target.value; S.page = 1; load(); };
-}
-function renderCount() {
-  const f = filtered().length, all = users.length, filtering = S.q || S.status !== "all" || S.role !== "all";
-  $("#count").innerHTML = `${S.loading ? `<i data-lucide="loader-2" class="animate-spin"></i>` : ""}${filtering ? `筛出 ${f} / ${all} 人` : `共 ${all} 人`}`;
-  icons();
-}
+        icons();
+        syncSeg($("#toolbar"), false);
+        let deb;
+        $("#q").oninput = (e) => {
+          S.q = e.target.value;
+          clearTimeout(deb);
+          deb = setTimeout(() => {
+            S.page = 1;
+            load();
+          }, 300);
+          toggleClear();
+        };
+        function toggleClear() {
+          const holder = $("#q").nextElementSibling;
+          holder.innerHTML = S.q
+            ? `<button class="icon-btn" style="width:1.25rem;height:1.25rem" id="qClear" aria-label="清空搜索"><i data-lucide="x"></i></button>`
+            : `<span class="kbd">/</span>`;
+          icons();
+          bindClear();
+        }
+        function bindClear() {
+          const c = $("#qClear");
+          if (c)
+            c.onclick = () => {
+              S.q = "";
+              $("#q").value = "";
+              toggleClear();
+              S.page = 1;
+              load();
+              $("#q").focus();
+            };
+        }
+        bindClear();
+        bindSeg($("#toolbar"), "status", (v) => {
+          S.status = v;
+          S.page = 1;
+          load();
+        });
+        $("#role").onchange = (e) => {
+          S.role = e.target.value;
+          S.page = 1;
+          load();
+        };
+      }
+      function renderCount() {
+        const f = filtered().length,
+          all = users.length,
+          filtering = S.q || S.status !== "all" || S.role !== "all";
+        $("#count").innerHTML =
+          `${S.loading ? `<i data-lucide="loader-2" class="animate-spin"></i>` : ""}${filtering ? `筛出 ${f} / ${all} 人` : `共 ${all} 人`}`;
+        icons();
+      }
 
-/** 骨架：等 SKELETON_DELAY 还没返回才出现，行高与真实行一致 */
-function renderSkeleton() {
-  $("#tableWrap").innerHTML = `<table class="tbl"><thead>${theadHTML(true)}</thead><tbody>${Array.from({ length: 8 }, () => `<tr><td style="width:40px"><div class="sk h-4 w-4"></div></td><td><div class="flex items-center gap-2.5"><div class="sk size-7 rounded-full"></div><div class="space-y-1.5"><div class="sk h-3 w-24"></div><div class="sk h-2.5 w-32"></div></div></div></td><td><div class="sk h-4 w-14"></div></td><td><div class="sk h-4 w-12"></div></td><td><div class="sk ml-auto h-4 w-10"></div></td><td class="col-md"><div class="sk h-4 w-14"></div></td><td class="col-md"><div class="sk h-3 w-16"></div></td><td></td></tr>`).join("")}</tbody></table>`;
-  anim($("#tableWrap table"), { opacity: 1 }, D.base, EASE, { opacity: 0 });
-}
-function theadHTML(disabled) {
-  const rows = pageRows(); const n = rows.filter(u => S.checked.has(u.id)).length;
-  return `<tr><th style="width:40px"><input type="checkbox" class="cb" id="checkAll" aria-label="全选当前页" ${disabled ? "disabled" : ""} ${n && n === rows.length ? "checked" : ""}></th><th>用户</th><th>角色</th><th>状态</th><th class="text-right">可用积分</th><th class="col-md">并发</th><th class="col-md">最近活跃</th><th style="width:48px"></th></tr>`;
-}
-const statusHTML = (u) => u.status === "active" ? `<span class="inline-flex items-center gap-1.5"><span class="dot" style="background:var(--status-success)"></span>正常</span>` : `<span class="tag t-bad"><i data-lucide="ban"></i>已停用</span>`;
-const avatar = (u, size = 28) => `<span class="flex shrink-0 items-center justify-center rounded-full bg-muted font-medium uppercase" style="width:${size}px;height:${size}px;font-size:${size * 0.4}px">${esc(u.name[0])}</span>`;
-function concHTML(u) {
-  const lim = limitOf(u), full = u.active >= lim;
-  return `<div class="flex items-center gap-2"><span class="num ${full ? "" : ""}" style="${full ? "color:var(--status-warning)" : ""}">${u.active}/${lim}</span><span class="bar ${full ? "full" : ""}"><i style="transform:scaleX(${Math.min(1, u.active / lim)})"></i></span>${u.conc ? `<span class="text-[10px] muted-fg">自定</span>` : ""}</div>`;
-}
-function creditCellHTML(u) {
-  const why = deny(u, "credit");
-  const inner = `<span class="pm"><i data-lucide="plus-minus"></i></span><span class="num font-medium">${nf("avail-" + u.id, avail(u))}</span>${u.frozen ? `<span class="text-[11px] muted-fg">冻结 ${nf("frozen-" + u.id, u.frozen, "num")}</span>` : ""}`;
-  return why ? `<span data-tip="${esc(why)}" class="inline-block"><button class="credit-cell" disabled>${inner}</button></span>` : `<button class="credit-cell" data-credit="${u.id}" data-tip="调整积分" aria-label="调整 ${esc(u.name)} 的积分">${inner}</button>`;
-}
-function rowHTML(u) {
-  const ck = S.checked.has(u.id);
-  return `<tr class="row ${u.status === "disabled" ? "disabled" : ""} ${ck ? "checked" : ""} ${S.drawerOpen && S.user === u.id ? "cur" : ""}" data-id="${u.id}" tabindex="0">
+      /** 骨架：等 SKELETON_DELAY 还没返回才出现，行高与真实行一致 */
+      function renderSkeleton() {
+        $("#tableWrap").innerHTML =
+          `<table class="tbl"><thead>${theadHTML(true)}</thead><tbody>${Array.from({ length: 8 }, () => `<tr><td style="width:40px"><div class="sk h-4 w-4"></div></td><td><div class="flex items-center gap-2.5"><div class="sk size-7 rounded-full"></div><div class="space-y-1.5"><div class="sk h-3 w-24"></div><div class="sk h-2.5 w-32"></div></div></div></td><td><div class="sk h-4 w-14"></div></td><td><div class="sk h-4 w-12"></div></td><td><div class="sk ml-auto h-4 w-10"></div></td><td class="col-md"><div class="sk h-4 w-14"></div></td><td class="col-md"><div class="sk h-3 w-16"></div></td><td></td></tr>`).join("")}</tbody></table>`;
+        anim($("#tableWrap table"), { opacity: 1 }, D.base, EASE, { opacity: 0 });
+      }
+      function theadHTML(disabled) {
+        const rows = pageRows();
+        const n = rows.filter((u) => S.checked.has(u.id)).length;
+        return `<tr><th style="width:40px"><input type="checkbox" class="cb" id="checkAll" aria-label="全选当前页" ${disabled ? "disabled" : ""} ${n && n === rows.length ? "checked" : ""}></th><th>用户</th><th>角色</th><th>状态</th><th class="text-right">可用积分</th><th class="col-md">并发</th><th class="col-md">最近活跃</th><th style="width:48px"></th></tr>`;
+      }
+      const statusHTML = (u) =>
+        u.status === "active"
+          ? `<span class="inline-flex items-center gap-1.5"><span class="dot" style="background:var(--status-success)"></span>正常</span>`
+          : `<span class="tag t-bad"><i data-lucide="ban"></i>已停用</span>`;
+      const avatar = (u, size = 28) =>
+        `<span class="flex shrink-0 items-center justify-center rounded-full bg-muted font-medium uppercase" style="width:${size}px;height:${size}px;font-size:${size * 0.4}px">${esc(u.name[0])}</span>`;
+      function concHTML(u) {
+        const lim = limitOf(u),
+          full = u.active >= lim;
+        return `<div class="flex items-center gap-2"><span class="num ${full ? "" : ""}" style="${full ? "color:var(--status-warning)" : ""}">${u.active}/${lim}</span><span class="bar ${full ? "full" : ""}"><i style="transform:scaleX(${Math.min(1, u.active / lim)})"></i></span>${u.conc ? `<span class="text-[10px] muted-fg">自定</span>` : ""}</div>`;
+      }
+      function creditCellHTML(u) {
+        const why = deny(u, "credit");
+        const inner = `<span class="pm"><i data-lucide="plus-minus"></i></span><span class="num font-medium">${nf("avail-" + u.id, avail(u))}</span>${u.frozen ? `<span class="text-[11px] muted-fg">冻结 ${nf("frozen-" + u.id, u.frozen, "num")}</span>` : ""}`;
+        return why
+          ? `<span data-tip="${esc(why)}" class="inline-block"><button class="credit-cell" disabled>${inner}</button></span>`
+          : `<button class="credit-cell" data-credit="${u.id}" data-tip="调整积分" aria-label="调整 ${esc(u.name)} 的积分">${inner}</button>`;
+      }
+      function rowHTML(u) {
+        const ck = S.checked.has(u.id);
+        return `<tr class="row ${u.status === "disabled" ? "disabled" : ""} ${ck ? "checked" : ""} ${S.drawerOpen && S.user === u.id ? "cur" : ""}" data-id="${u.id}" tabindex="0">
     <td data-stop style="width:40px"><input type="checkbox" class="cb" data-cb="${u.id}" ${ck ? "checked" : ""} aria-label="选择 ${esc(u.name)}"></td>
     <td><div class="flex items-center gap-2.5">${avatar(u)}<div class="min-w-0"><div class="dim truncate font-medium">${esc(u.name)}${u.id === meId() ? `<span class="ml-1.5 text-[11px] font-normal muted-fg">（你）</span>` : ""}</div><div class="truncate text-[11px] muted-fg">${esc(u.email)}</div></div></div></td>
     <td><span class="tag ${ROLE[u.role][1]}">${ROLE[u.role][0]}</span></td>
@@ -504,352 +1367,733 @@ function rowHTML(u) {
     <td class="col-md text-xs muted-fg">${esc(u.last)}</td>
     <td data-stop><button class="icon-btn" data-menu="${u.id}" aria-label="更多操作" aria-haspopup="menu"><i data-lucide="ellipsis"></i></button></td>
   </tr>`;
-}
-function renderTable() {
-  const rows = pageRows();
-  if (!rows.length) {
-    $("#tableWrap").innerHTML = `<div class="flex flex-col items-center gap-3 px-6 py-16 text-center"><div class="flex size-10 items-center justify-center rounded-full bg-muted muted-fg"><i data-lucide="search-x"></i></div><div class="font-medium">没有匹配${S.q ? ` “${esc(S.q)}” ` : "条件"}的用户</div><div class="text-xs muted-fg">换个关键词，或清除筛选条件</div><button class="btn btn-outline" id="clearFilter">清除筛选</button></div>`;
-    icons(); $("#clearFilter").onclick = () => { S.q = ""; S.status = "all"; S.role = "all"; S.page = 1; renderToolbar(); load(); };
-    renderPager(); renderCount(); return;
-  }
-  $("#tableWrap").innerHTML = `<div class="cur-bar" id="curBar"></div><table class="tbl" style="${S.loading ? "opacity:.6" : ""}"><thead>${theadHTML()}</thead><tbody>${rows.map(rowHTML).join("")}</tbody></table>`;
-  icons(); hydrateNF($("#tableWrap"));
-  bindTable(); renderPager(); renderCount(); placeCurBar(false);
-}
-function bindTable() {
-  $$("#tableWrap .row").forEach(tr => {
-    tr.onclick = (e) => { if (e.target.closest("[data-stop]")) return; openUser(+tr.dataset.id); };
-    tr.onkeydown = (e) => { if (e.key === "Enter" && e.target === tr) openUser(+tr.dataset.id); };
-  });
-  $$("[data-cb]").forEach(cb => cb.onclick = (e) => {
-    const id = +cb.dataset.cb, ids = pageRows().map(u => u.id);
-    if (e.shiftKey && S.lastChecked != null) {
-      /* Shift + 点击：连选上一次点到这一次之间的所有行 */
-      const [a, b] = [ids.indexOf(S.lastChecked), ids.indexOf(id)].sort((x, y) => x - y);
-      ids.slice(a, b + 1).forEach(x => cb.checked ? S.checked.add(x) : S.checked.delete(x));
-    } else cb.checked ? S.checked.add(id) : S.checked.delete(id);
-    S.lastChecked = id; refreshChecks();
-  });
-  const all = $("#checkAll"); if (all) {
-    const rows = pageRows(), n = rows.filter(u => S.checked.has(u.id)).length;
-    all.indeterminate = n > 0 && n < rows.length;
-    all.onclick = () => { rows.forEach(u => all.checked ? S.checked.add(u.id) : S.checked.delete(u.id)); refreshChecks(); };
-  }
-  $$("[data-credit]").forEach(b => b.onclick = (e) => { e.stopPropagation(); openCreditPop(b, users.find(u => u.id === +b.dataset.credit)); });
-  $$("[data-menu]").forEach(b => b.onclick = (e) => { e.stopPropagation(); openMenu(b, users.find(u => u.id === +b.dataset.menu)); });
-}
-/** 勾选变化只改类名和表头状态，不重渲染整张表 */
-function refreshChecks() {
-  $$("#tableWrap .row").forEach(tr => { const on = S.checked.has(+tr.dataset.id); tr.classList.toggle("checked", on); $("[data-cb]", tr).checked = on; });
-  const rows = pageRows(), n = rows.filter(u => S.checked.has(u.id)).length, all = $("#checkAll");
-  if (all) { all.checked = n > 0 && n === rows.length; all.indeterminate = n > 0 && n < rows.length; }
-  renderBulk();
-}
-/** 当前在抽屉里打开的行：左侧竖条跟着移动（真实实现用 layoutId + SPRING） */
-function placeCurBar(animate) {
-  const bar = $("#curBar"); if (!bar) return;
-  const tr = S.drawerOpen && $(`#tableWrap .row[data-id="${S.user}"]`);
-  $$("#tableWrap .row").forEach(r => r.classList.toggle("cur", !!tr && r === tr));
-  if (!tr) { anim(bar, { opacity: 0 }, D.exit); return; }
-  bar.style.height = tr.offsetHeight + "px";
-  const to = { transform: `translateY(${tr.offsetTop}px)`, opacity: 1 };
-  const visible = +getComputedStyle(bar).opacity > 0;
-  if (animate && visible) anim(bar, to, SPRING.duration, SPRING.easing);
-  else anim(bar, to, D.base, EASE, { transform: to.transform, opacity: 0 });
-}
-function renderPager() {
-  const total = filtered().length, pages = Math.max(1, Math.ceil(total / S.size));
-  const nums = pages <= 5 ? Array.from({ length: pages }, (_, i) => i + 1) : S.page <= 3 ? [1, 2, 3, 4, "…", pages] : S.page >= pages - 2 ? [1, "…", pages - 3, pages - 2, pages - 1, pages] : [1, "…", S.page - 1, S.page, S.page + 1, "…", pages];
-  $("#pager").innerHTML = `<span class="muted-fg">每页 ${S.size} 条（原型为演示翻页，实际默认 20）</span>
+      }
+      function renderTable() {
+        const rows = pageRows();
+        if (!rows.length) {
+          $("#tableWrap").innerHTML =
+            `<div class="flex flex-col items-center gap-3 px-6 py-16 text-center"><div class="flex size-10 items-center justify-center rounded-full bg-muted muted-fg"><i data-lucide="search-x"></i></div><div class="font-medium">没有匹配${S.q ? ` “${esc(S.q)}” ` : "条件"}的用户</div><div class="text-xs muted-fg">换个关键词，或清除筛选条件</div><button class="btn btn-outline" id="clearFilter">清除筛选</button></div>`;
+          icons();
+          $("#clearFilter").onclick = () => {
+            S.q = "";
+            S.status = "all";
+            S.role = "all";
+            S.page = 1;
+            renderToolbar();
+            load();
+          };
+          renderPager();
+          renderCount();
+          return;
+        }
+        $("#tableWrap").innerHTML =
+          `<div class="cur-bar" id="curBar"></div><table class="tbl" style="${S.loading ? "opacity:.6" : ""}"><thead>${theadHTML()}</thead><tbody>${rows.map(rowHTML).join("")}</tbody></table>`;
+        icons();
+        hydrateNF($("#tableWrap"));
+        bindTable();
+        renderPager();
+        renderCount();
+        placeCurBar(false);
+      }
+      function bindTable() {
+        $$("#tableWrap .row").forEach((tr) => {
+          tr.onclick = (e) => {
+            if (e.target.closest("[data-stop]")) return;
+            openUser(+tr.dataset.id);
+          };
+          tr.onkeydown = (e) => {
+            if (e.key === "Enter" && e.target === tr) openUser(+tr.dataset.id);
+          };
+        });
+        $$("[data-cb]").forEach(
+          (cb) =>
+            (cb.onclick = (e) => {
+              const id = +cb.dataset.cb,
+                ids = pageRows().map((u) => u.id);
+              if (e.shiftKey && S.lastChecked != null) {
+                /* Shift + 点击：连选上一次点到这一次之间的所有行 */
+                const [a, b] = [ids.indexOf(S.lastChecked), ids.indexOf(id)].sort((x, y) => x - y);
+                ids
+                  .slice(a, b + 1)
+                  .forEach((x) => (cb.checked ? S.checked.add(x) : S.checked.delete(x)));
+              } else cb.checked ? S.checked.add(id) : S.checked.delete(id);
+              S.lastChecked = id;
+              refreshChecks();
+            }),
+        );
+        const all = $("#checkAll");
+        if (all) {
+          const rows = pageRows(),
+            n = rows.filter((u) => S.checked.has(u.id)).length;
+          all.indeterminate = n > 0 && n < rows.length;
+          all.onclick = () => {
+            rows.forEach((u) => (all.checked ? S.checked.add(u.id) : S.checked.delete(u.id)));
+            refreshChecks();
+          };
+        }
+        $$("[data-credit]").forEach(
+          (b) =>
+            (b.onclick = (e) => {
+              e.stopPropagation();
+              openCreditPop(
+                b,
+                users.find((u) => u.id === +b.dataset.credit),
+              );
+            }),
+        );
+        $$("[data-menu]").forEach(
+          (b) =>
+            (b.onclick = (e) => {
+              e.stopPropagation();
+              openMenu(
+                b,
+                users.find((u) => u.id === +b.dataset.menu),
+              );
+            }),
+        );
+      }
+      /** 勾选变化只改类名和表头状态，不重渲染整张表 */
+      function refreshChecks() {
+        $$("#tableWrap .row").forEach((tr) => {
+          const on = S.checked.has(+tr.dataset.id);
+          tr.classList.toggle("checked", on);
+          $("[data-cb]", tr).checked = on;
+        });
+        const rows = pageRows(),
+          n = rows.filter((u) => S.checked.has(u.id)).length,
+          all = $("#checkAll");
+        if (all) {
+          all.checked = n > 0 && n === rows.length;
+          all.indeterminate = n > 0 && n < rows.length;
+        }
+        renderBulk();
+      }
+      /** 当前在抽屉里打开的行：左侧竖条跟着移动（真实实现用 layoutId + SPRING） */
+      function placeCurBar(animate) {
+        const bar = $("#curBar");
+        if (!bar) return;
+        const tr = S.drawerOpen && $(`#tableWrap .row[data-id="${S.user}"]`);
+        $$("#tableWrap .row").forEach((r) => r.classList.toggle("cur", !!tr && r === tr));
+        if (!tr) {
+          anim(bar, { opacity: 0 }, D.exit);
+          return;
+        }
+        bar.style.height = tr.offsetHeight + "px";
+        const to = { transform: `translateY(${tr.offsetTop}px)`, opacity: 1 };
+        const visible = +getComputedStyle(bar).opacity > 0;
+        if (animate && visible) anim(bar, to, SPRING.duration, SPRING.easing);
+        else anim(bar, to, D.base, EASE, { transform: to.transform, opacity: 0 });
+      }
+      function renderPager() {
+        const total = filtered().length,
+          pages = Math.max(1, Math.ceil(total / S.size));
+        const nums =
+          pages <= 5
+            ? Array.from({ length: pages }, (_, i) => i + 1)
+            : S.page <= 3
+              ? [1, 2, 3, 4, "…", pages]
+              : S.page >= pages - 2
+                ? [1, "…", pages - 3, pages - 2, pages - 1, pages]
+                : [1, "…", S.page - 1, S.page, S.page + 1, "…", pages];
+        $("#pager").innerHTML =
+          `<span class="muted-fg">每页 ${S.size} 条（原型为演示翻页，实际默认 20）</span>
     <div class="flex items-center gap-1"><span class="mr-2 muted-fg num">第 ${S.page} / ${pages} 页</span>
     <button class="icon-btn" data-pg="${S.page - 1}" ${S.page <= 1 ? "disabled" : ""} aria-label="上一页"><i data-lucide="chevron-left"></i></button>
-    ${nums.map(n => n === "…" ? `<span class="px-1 muted-fg">…</span>` : `<button class="btn ${n === S.page ? "btn-outline" : "btn-ghost"} btn-xs num" style="min-width:1.75rem" data-pg="${n}">${n}</button>`).join("")}
+    ${nums.map((n) => (n === "…" ? `<span class="px-1 muted-fg">…</span>` : `<button class="btn ${n === S.page ? "btn-outline" : "btn-ghost"} btn-xs num" style="min-width:1.75rem" data-pg="${n}">${n}</button>`)).join("")}
     <button class="icon-btn" data-pg="${S.page + 1}" ${S.page >= pages ? "disabled" : ""} aria-label="下一页"><i data-lucide="chevron-right"></i></button></div>`;
-  icons();
-  $$("[data-pg]").forEach(b => b.onclick = () => { S.page = +b.dataset.pg; load(); });
-}
+        icons();
+        $$("[data-pg]").forEach(
+          (b) =>
+            (b.onclick = () => {
+              S.page = +b.dataset.pg;
+              load();
+            }),
+        );
+      }
 
-/** 列表查询：首屏没返回超过 SKELETON_DELAY 才出骨架；之后的翻页 / 筛选保留旧数据并半透明 */
-let loadSeq = 0;
-function load(initial) {
-  closeFloating(); syncUrl();
-  const seq = ++loadSeq, slow = $("#slow").checked, delay = initial ? 450 : slow ? 700 : 0;
-  if (!delay) { S.loading = false; S.loaded = true; renderTable(); return; }
-  S.loading = true;
-  if (!S.loaded) { setTimeout(() => { if (seq === loadSeq && S.loading) renderSkeleton(); }, SKELETON_DELAY); }
-  else { const t = $("#tableWrap table"); if (t) t.style.opacity = ".6"; renderCount(); }
-  setTimeout(() => { if (seq !== loadSeq) return; S.loading = false; S.loaded = true; renderTable(); if (initial && S.drawerOpen) placeCurBar(false); }, delay);
-}
+      /** 列表查询：首屏没返回超过 SKELETON_DELAY 才出骨架；之后的翻页 / 筛选保留旧数据并半透明 */
+      let loadSeq = 0;
+      function load(initial) {
+        closeFloating();
+        syncUrl();
+        const seq = ++loadSeq,
+          slow = $("#slow").checked,
+          delay = initial ? 450 : slow ? 700 : 0;
+        if (!delay) {
+          S.loading = false;
+          S.loaded = true;
+          renderTable();
+          return;
+        }
+        S.loading = true;
+        if (!S.loaded) {
+          setTimeout(() => {
+            if (seq === loadSeq && S.loading) renderSkeleton();
+          }, SKELETON_DELAY);
+        } else {
+          const t = $("#tableWrap table");
+          if (t) t.style.opacity = ".6";
+          renderCount();
+        }
+        setTimeout(() => {
+          if (seq !== loadSeq) return;
+          S.loading = false;
+          S.loaded = true;
+          renderTable();
+          if (initial && S.drawerOpen) placeCurBar(false);
+        }, delay);
+      }
 
-/* =====================================================================
- * 浮层定位：在触发点下方，放不下翻到上方；transform-origin 指向触发点
- * ===================================================================== */
-function place(el, anchor, align = "center") {
-  el.style.visibility = "hidden"; el.style.left = "0px"; el.style.top = "0px";
-  const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, gap = 6;
-  let x = align === "end" ? r.right - w : align === "start" ? r.left : r.left + r.width / 2 - w / 2;
-  x = Math.max(16, Math.min(innerWidth - w - 16, x));
-  const below = r.bottom + gap + h <= innerHeight - 8, y = below ? r.bottom + gap : Math.max(8, r.top - gap - h);
-  el.style.left = x + "px"; el.style.top = y + "px";
-  const ox = Math.max(0, Math.min(w, r.left + r.width / 2 - x));
-  el.style.transformOrigin = `${ox}px ${below ? 0 : h}px`;
-  el.style.visibility = "visible";
-}
-function showFloating(el) { anim(el, { opacity: 1, transform: "scale(1)" }, D.base, EASE, { opacity: 0, transform: "scale(0.96)" }); }
-function hideFloating(el) {
-  if (el.style.visibility !== "visible") return;
-  anim(el, { opacity: 0, transform: "scale(0.96)" }, D.exit).finished.then(() => { if (+getComputedStyle(el).opacity === 0) el.style.visibility = "hidden"; });
-}
-function closeFloating() { closePop(); closeMenu(); }
-document.addEventListener("pointerdown", (e) => {
-  if (S.popFor && !e.target.closest("#pop") && !e.target.closest("[data-credit],[data-limit-open],[data-credit-open]")) closePop();
-  if (S.menuFor && !e.target.closest("#menu") && !e.target.closest("[data-menu],[data-dmenu]")) closeMenu();
-});
+      /* =====================================================================
+       * 浮层定位：在触发点下方，放不下翻到上方；transform-origin 指向触发点
+       * ===================================================================== */
+      function place(el, anchor, align = "center") {
+        el.style.visibility = "hidden";
+        el.style.left = "0px";
+        el.style.top = "0px";
+        const r = anchor.getBoundingClientRect(),
+          w = el.offsetWidth,
+          h = el.offsetHeight,
+          gap = 6;
+        let x =
+          align === "end" ? r.right - w : align === "start" ? r.left : r.left + r.width / 2 - w / 2;
+        x = Math.max(16, Math.min(innerWidth - w - 16, x));
+        const below = r.bottom + gap + h <= innerHeight - 8,
+          y = below ? r.bottom + gap : Math.max(8, r.top - gap - h);
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+        const ox = Math.max(0, Math.min(w, r.left + r.width / 2 - x));
+        el.style.transformOrigin = `${ox}px ${below ? 0 : h}px`;
+        el.style.visibility = "visible";
+      }
+      function showFloating(el) {
+        anim(el, { opacity: 1, transform: "scale(1)" }, D.base, EASE, {
+          opacity: 0,
+          transform: "scale(0.96)",
+        });
+      }
+      function hideFloating(el) {
+        if (el.style.visibility !== "visible") return;
+        anim(el, { opacity: 0, transform: "scale(0.96)" }, D.exit).finished.then(() => {
+          if (+getComputedStyle(el).opacity === 0) el.style.visibility = "hidden";
+        });
+      }
+      function closeFloating() {
+        closePop();
+        closeMenu();
+      }
+      document.addEventListener("pointerdown", (e) => {
+        if (
+          S.popFor &&
+          !e.target.closest("#pop") &&
+          !e.target.closest("[data-credit],[data-limit-open],[data-credit-open]")
+        )
+          closePop();
+        if (
+          S.menuFor &&
+          !e.target.closest("#menu") &&
+          !e.target.closest("[data-menu],[data-dmenu]")
+        )
+          closeMenu();
+      });
 
-/* =====================================================================
- * 积分浮层（行内与抽屉共用）
- * ===================================================================== */
-let popAnchor = null;
-function openCreditPop(anchor, u) {
-  closeMenu();
-  if (S.popFor === "credit-" + u.id) { closePop(); return; }
-  const d = drafts[u.id] && Date.now() - drafts[u.id].t < 10000 ? drafts[u.id] : { mode: "add", val: "", note: "" };
-  S.popFor = "credit-" + u.id; popAnchor = anchor; $$(".credit-cell.open").forEach(x => x.classList.remove("open")); anchor.classList.add("open");
-  const st = { ...d, busy: false };
-  const pop = $("#pop");
-  const draw = () => {
-    const val = parseInt(st.val, 10), has = Number.isFinite(val) && val >= 0;
-    const after = !has ? null : st.mode === "add" ? avail(u) + val : st.mode === "sub" ? avail(u) - val : val;
-    const err = has && st.mode === "sub" && val > avail(u) ? `最多可扣 ${avail(u)}` : null;
-    const okVal = has && (st.mode === "set" || val > 0);
-    const ok = okVal && !err && !!st.note.trim() && !st.busy;
-    pop.innerHTML = `
+      /* =====================================================================
+       * 积分浮层（行内与抽屉共用）
+       * ===================================================================== */
+      let popAnchor = null;
+      function openCreditPop(anchor, u) {
+        closeMenu();
+        if (S.popFor === "credit-" + u.id) {
+          closePop();
+          return;
+        }
+        const d =
+          drafts[u.id] && Date.now() - drafts[u.id].t < 10000
+            ? drafts[u.id]
+            : { mode: "add", val: "", note: "" };
+        S.popFor = "credit-" + u.id;
+        popAnchor = anchor;
+        $$(".credit-cell.open").forEach((x) => x.classList.remove("open"));
+        anchor.classList.add("open");
+        const st = { ...d, busy: false };
+        const pop = $("#pop");
+        const draw = () => {
+          const val = parseInt(st.val, 10),
+            has = Number.isFinite(val) && val >= 0;
+          const after = !has
+            ? null
+            : st.mode === "add"
+              ? avail(u) + val
+              : st.mode === "sub"
+                ? avail(u) - val
+                : val;
+          const err = has && st.mode === "sub" && val > avail(u) ? `最多可扣 ${avail(u)}` : null;
+          const okVal = has && (st.mode === "set" || val > 0);
+          const ok = okVal && !err && !!st.note.trim() && !st.busy;
+          pop.innerHTML = `
       <div class="mb-2 flex items-center justify-between"><span class="text-sm font-medium">调整积分 · ${esc(u.name)}</span><span class="text-xs muted-fg">可用 <span class="num">${avail(u)}</span></span></div>
-      ${segHTML("pmode", [["add", "增加"], ["sub", "扣减"], ["set", "设为"]], st.mode, "sm w-full")}
-      <div class="mt-2 flex gap-1.5" style="${st.mode === "add" ? "" : "display:none"}">${[50, 100, 500, 1000].map(n => `<button class="btn btn-outline btn-xs flex-1 num" data-chip="${n}">+${n}</button>`).join("")}</div>
+      ${segHTML(
+        "pmode",
+        [
+          ["add", "增加"],
+          ["sub", "扣减"],
+          ["set", "设为"],
+        ],
+        st.mode,
+        "sm w-full",
+      )}
+      <div class="mt-2 flex gap-1.5" style="${st.mode === "add" ? "" : "display:none"}">${[50, 100, 500, 1000].map((n) => `<button class="btn btn-outline btn-xs flex-1 num" data-chip="${n}">+${n}</button>`).join("")}</div>
       <input id="pv" class="input num mt-2 ${err ? "err" : ""}" inputmode="numeric" placeholder="${st.mode === "set" ? "把可用积分设为" : "数值"}" value="${esc(st.val)}" ${st.busy ? "disabled" : ""}>
       <input id="pn" class="input mt-2" placeholder="备注（必填，写入流水和审计）" value="${esc(st.note)}" maxlength="100" ${st.busy ? "disabled" : ""}>
       <div class="mt-3 flex items-center justify-between gap-2">
         <span class="text-xs num" id="pprev" style="${err ? "color:var(--destructive)" : ""}">${err ? err : after == null ? `<span class="muted-fg">输入数值查看结果</span>` : `<span class="muted-fg">${avail(u)}</span> → <b>${after}</b>`}</span>
         <button class="btn btn-primary btn-xs" id="pok" ${ok ? "" : "disabled"}>${st.busy ? `<i data-lucide="loader-2" class="animate-spin"></i>提交中` : `确认 <span class="kbd" style="background:transparent;color:inherit;border-color:currentColor;opacity:.6">⏎</span>`}</button>
       </div>`;
-    icons(); syncSeg(pop, false);
-    bindSeg(pop, "pmode", (m) => { st.mode = m; save(); redraw("pv"); });
-    $$("[data-chip]", pop).forEach(b => b.onclick = () => { st.val = String((parseInt(st.val, 10) || 0) + +b.dataset.chip); save(); redraw("pn"); });
-    $("#pv").oninput = (e) => { st.val = e.target.value.replace(/[^\d]/g, ""); e.target.value = st.val; save(); redraw("pv"); };
-    $("#pn").oninput = (e) => { st.note = e.target.value; save(); redraw("pn"); };
-    $$("#pv, #pn", pop).forEach(i => i.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#pok").click(); } });
-    $("#pok").onclick = submit;
-  };
-  /** 重绘但保住焦点和光标，打字不受影响 */
-  const redraw = (focusId) => { const el = $("#" + focusId); const pos = el?.selectionStart; draw(); place(pop, anchor, "center"); const n = $("#" + focusId); if (n && !st.busy) { n.focus(); try { n.setSelectionRange(pos ?? n.value.length, pos ?? n.value.length); } catch {} } };
-  const save = () => { drafts[u.id] = { mode: st.mode, val: st.val, note: st.note, t: Date.now() }; };
-  const submit = () => {
-    const val = parseInt(st.val, 10);
-    st.busy = true; draw();
-    setTimeout(() => {
-      const delta = st.mode === "add" ? val : st.mode === "sub" ? -val : val - avail(u);
-      const note = st.note.trim();
-      applyCredit(u, delta, note);
-      delete drafts[u.id]; closePop();
-      const verb = delta >= 0 ? `增加 ${delta}` : `扣减 ${-delta}`;
-      toast(`已为 ${esc(u.name)} ${verb} 积分`, { undo: () => { applyCredit(u, -delta, "撤销：" + note); toast(`已撤销，${esc(u.name)} 可用积分恢复为 ${avail(u)}`, { icon: "undo-2" }); } });
-    }, $("#slow").checked ? 900 : 350);
-  };
-  draw(); place(pop, anchor, "center"); showFloating(pop);
-  setTimeout(() => $("#pv")?.focus(), 0);
-}
-function closePop() {
-  if (!S.popFor) return; S.popFor = null;
-  $$(".credit-cell.open").forEach(x => x.classList.remove("open"));
-  hideFloating($("#pop"));
-  if (popAnchor && document.activeElement?.closest("#pop")) popAnchor.focus();
-}
-/** 积分变化：写流水 + 审计，表格和抽屉的数字原地滚动，不重渲染 */
-function applyCredit(u, delta, note) {
-  ensureLogs(u);
-  u.bal += delta;
-  const by = S.viewer === "super_admin" ? "owner" : "lina";
-  u.ledger.unshift({ type: "admin_adjust", amt: delta, note, by, at: "刚刚" });
-  u.audit.unshift({ text: `${by} ${delta >= 0 ? "增加" : "扣减"} ${Math.abs(delta)} 积分：${note}`, at: "刚刚" });
-  setNum("avail-" + u.id, avail(u));
-  if (S.drawerOpen && S.user === u.id && (S.tab === "credits" || S.tab === "overview")) renderTabBody(false);
-}
+          icons();
+          syncSeg(pop, false);
+          bindSeg(pop, "pmode", (m) => {
+            st.mode = m;
+            save();
+            redraw("pv");
+          });
+          $$("[data-chip]", pop).forEach(
+            (b) =>
+              (b.onclick = () => {
+                st.val = String((parseInt(st.val, 10) || 0) + +b.dataset.chip);
+                save();
+                redraw("pn");
+              }),
+          );
+          $("#pv").oninput = (e) => {
+            st.val = e.target.value.replace(/[^\d]/g, "");
+            e.target.value = st.val;
+            save();
+            redraw("pv");
+          };
+          $("#pn").oninput = (e) => {
+            st.note = e.target.value;
+            save();
+            redraw("pn");
+          };
+          $$("#pv, #pn", pop).forEach(
+            (i) =>
+              (i.onkeydown = (e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  $("#pok").click();
+                }
+              }),
+          );
+          $("#pok").onclick = submit;
+        };
+        /** 重绘但保住焦点和光标，打字不受影响 */
+        const redraw = (focusId) => {
+          const el = $("#" + focusId);
+          const pos = el?.selectionStart;
+          draw();
+          place(pop, anchor, "center");
+          const n = $("#" + focusId);
+          if (n && !st.busy) {
+            n.focus();
+            try {
+              n.setSelectionRange(pos ?? n.value.length, pos ?? n.value.length);
+            } catch {}
+          }
+        };
+        const save = () => {
+          drafts[u.id] = { mode: st.mode, val: st.val, note: st.note, t: Date.now() };
+        };
+        const submit = () => {
+          const val = parseInt(st.val, 10);
+          st.busy = true;
+          draw();
+          setTimeout(
+            () => {
+              const delta = st.mode === "add" ? val : st.mode === "sub" ? -val : val - avail(u);
+              const note = st.note.trim();
+              applyCredit(u, delta, note);
+              delete drafts[u.id];
+              closePop();
+              const verb = delta >= 0 ? `增加 ${delta}` : `扣减 ${-delta}`;
+              toast(`已为 ${esc(u.name)} ${verb} 积分`, {
+                undo: () => {
+                  applyCredit(u, -delta, "撤销：" + note);
+                  toast(`已撤销，${esc(u.name)} 可用积分恢复为 ${avail(u)}`, { icon: "undo-2" });
+                },
+              });
+            },
+            $("#slow").checked ? 900 : 350,
+          );
+        };
+        draw();
+        place(pop, anchor, "center");
+        showFloating(pop);
+        setTimeout(() => $("#pv")?.focus(), 0);
+      }
+      function closePop() {
+        if (!S.popFor) return;
+        S.popFor = null;
+        $$(".credit-cell.open").forEach((x) => x.classList.remove("open"));
+        hideFloating($("#pop"));
+        if (popAnchor && document.activeElement?.closest("#pop")) popAnchor.focus();
+      }
+      /** 积分变化：写流水 + 审计，表格和抽屉的数字原地滚动，不重渲染 */
+      function applyCredit(u, delta, note) {
+        ensureLogs(u);
+        u.bal += delta;
+        const by = S.viewer === "super_admin" ? "owner" : "lina";
+        u.ledger.unshift({ type: "admin_adjust", amt: delta, note, by, at: "刚刚" });
+        u.audit.unshift({
+          text: `${by} ${delta >= 0 ? "增加" : "扣减"} ${Math.abs(delta)} 积分：${note}`,
+          at: "刚刚",
+        });
+        setNum("avail-" + u.id, avail(u));
+        if (S.drawerOpen && S.user === u.id && (S.tab === "credits" || S.tab === "overview"))
+          renderTabBody(false);
+      }
 
-/* =====================================================================
- * 并发上限浮层
- * ===================================================================== */
-function openLimitPop(anchor, u) {
-  closeMenu();
-  S.popFor = "limit-" + u.id; popAnchor = anchor;
-  const st = { useDefault: u.conc == null, val: u.conc ?? "" };
-  const pop = $("#pop");
-  const draw = () => {
-    const v = parseInt(st.val, 10), bad = !st.useDefault && !(v >= 1 && v <= 64);
-    pop.innerHTML = `
+      /* =====================================================================
+       * 并发上限浮层
+       * ===================================================================== */
+      function openLimitPop(anchor, u) {
+        closeMenu();
+        S.popFor = "limit-" + u.id;
+        popAnchor = anchor;
+        const st = { useDefault: u.conc == null, val: u.conc ?? "" };
+        const pop = $("#pop");
+        const draw = () => {
+          const v = parseInt(st.val, 10),
+            bad = !st.useDefault && !(v >= 1 && v <= 64);
+          pop.innerHTML = `
       <div class="mb-1 text-sm font-medium">并发上限 · ${esc(u.name)}</div>
       <p class="mb-3 text-xs muted-fg">调低不会中断已在跑的任务，只影响新提交。当前进行中 <span class="num">${u.active}</span> 个。</p>
       <label class="flex cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"><span>使用全局默认（<span class="num">4</span>）</span><input type="checkbox" id="ldef" class="cb" ${st.useDefault ? "checked" : ""}></label>
       <input id="lval" class="input num mt-2 ${bad && st.val !== "" ? "err" : ""}" inputmode="numeric" placeholder="1–64" value="${esc(st.val)}" ${st.useDefault ? "disabled" : ""}>
       <div class="mt-3 flex justify-end gap-2"><button class="btn btn-ghost btn-xs" id="lcancel">取消</button><button class="btn btn-primary btn-xs" id="lok" ${bad ? "disabled" : ""}>保存</button></div>`;
-    $("#ldef").onchange = (e) => { st.useDefault = e.target.checked; draw(); if (!st.useDefault) $("#lval").focus(); };
-    $("#lval").oninput = (e) => { st.val = e.target.value.replace(/[^\d]/g, ""); const p = e.target.selectionStart; draw(); const n = $("#lval"); n.focus(); n.setSelectionRange(p, p); };
-    $("#lval").onkeydown = (e) => { if (e.key === "Enter") $("#lok").click(); };
-    $("#lcancel").onclick = closePop;
-    $("#lok").onclick = () => {
-      const before = u.conc; u.conc = st.useDefault ? null : parseInt(st.val, 10);
-      closePop(); renderTable(); if (S.drawerOpen && S.user === u.id) renderDrawer("none");
-      toast(u.conc ? `${esc(u.name)} 的并发上限已设为 ${u.conc}` : `${esc(u.name)} 已改回全局默认并发`, { undo: () => { u.conc = before; renderTable(); if (S.drawerOpen && S.user === u.id) renderDrawer("none"); } });
-    };
-  };
-  draw(); place(pop, anchor, "center"); showFloating(pop);
-  setTimeout(() => (st.useDefault ? $("#ldef") : $("#lval")).focus(), 0);
-}
+          $("#ldef").onchange = (e) => {
+            st.useDefault = e.target.checked;
+            draw();
+            if (!st.useDefault) $("#lval").focus();
+          };
+          $("#lval").oninput = (e) => {
+            st.val = e.target.value.replace(/[^\d]/g, "");
+            const p = e.target.selectionStart;
+            draw();
+            const n = $("#lval");
+            n.focus();
+            n.setSelectionRange(p, p);
+          };
+          $("#lval").onkeydown = (e) => {
+            if (e.key === "Enter") $("#lok").click();
+          };
+          $("#lcancel").onclick = closePop;
+          $("#lok").onclick = () => {
+            const before = u.conc;
+            u.conc = st.useDefault ? null : parseInt(st.val, 10);
+            closePop();
+            renderTable();
+            if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+            toast(
+              u.conc
+                ? `${esc(u.name)} 的并发上限已设为 ${u.conc}`
+                : `${esc(u.name)} 已改回全局默认并发`,
+              {
+                undo: () => {
+                  u.conc = before;
+                  renderTable();
+                  if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+                },
+              },
+            );
+          };
+        };
+        draw();
+        place(pop, anchor, "center");
+        showFloating(pop);
+        setTimeout(() => (st.useDefault ? $("#ldef") : $("#lval")).focus(), 0);
+      }
 
-/* =====================================================================
- * 行菜单（抽屉里的 ⋯ 也用它）
- * ===================================================================== */
-function menuItem(icon, label, act, why, opts = {}) {
-  const dis = !!why;
-  const html = `<button class="mi ${opts.danger ? "danger" : ""}" role="menuitem" ${dis ? `aria-disabled="true"` : `data-act="${act}"`}><i data-lucide="${icon}"></i>${label}${opts.sc ? `<span class="sc kbd">${opts.sc}</span>` : ""}${opts.sub ? `<i data-lucide="chevron-right" class="sc"></i>` : ""}</button>`;
-  return dis ? `<span data-tip="${esc(why)}" class="block">${html}</span>` : html;
-}
-function openMenu(anchor, u, inDrawer) {
-  closePop();
-  if (S.menuFor === u.id && $("#menu").style.visibility === "visible") { closeMenu(); return; }
-  S.menuFor = u.id;
-  const menu = $("#menu");
-  const main = () => {
-    menu.innerHTML = `
+      /* =====================================================================
+       * 行菜单（抽屉里的 ⋯ 也用它）
+       * ===================================================================== */
+      function menuItem(icon, label, act, why, opts = {}) {
+        const dis = !!why;
+        const html = `<button class="mi ${opts.danger ? "danger" : ""}" role="menuitem" ${dis ? `aria-disabled="true"` : `data-act="${act}"`}><i data-lucide="${icon}"></i>${label}${opts.sc ? `<span class="sc kbd">${opts.sc}</span>` : ""}${opts.sub ? `<i data-lucide="chevron-right" class="sc"></i>` : ""}</button>`;
+        return dis ? `<span data-tip="${esc(why)}" class="block">${html}</span>` : html;
+      }
+      function openMenu(anchor, u, inDrawer) {
+        closePop();
+        if (S.menuFor === u.id && $("#menu").style.visibility === "visible") {
+          closeMenu();
+          return;
+        }
+        S.menuFor = u.id;
+        const menu = $("#menu");
+        const main = () => {
+          menu.innerHTML = `
       ${inDrawer ? "" : menuItem("panel-right-open", "查看详情", "open", null, { sc: "⏎" })}
       ${inDrawer ? "" : menuItem("gauge", "调整并发上限…", "limit", deny(u, "limit"))}
       ${inDrawer ? "" : `<div class="msep"></div>`}
-      ${inDrawer ? "" : (u.status === "active" ? menuItem("ban", "封禁", "ban", deny(u, "ban"), { danger: true }) : menuItem("circle-check", "启用", "unban", deny(u, "ban")))}
+      ${inDrawer ? "" : u.status === "active" ? menuItem("ban", "封禁", "ban", deny(u, "ban"), { danger: true }) : menuItem("circle-check", "启用", "unban", deny(u, "ban"))}
       ${u.status === "active" && u.active > 0 ? menuItem("octagon-x", `封禁并取消 ${u.active} 个任务…`, "banCancel", deny(u, "ban"), { danger: true }) : ""}
       ${inDrawer && !(u.status === "active" && u.active > 0) ? "" : `<div class="msep"></div>`}
       ${menuItem("shield", "修改角色", "role", deny(u, "role"), { sub: true })}
       ${menuItem("key-round", "重置密码…", "reset", deny(u, "reset"))}`;
-    icons(); bind();
-  };
-  const roles = () => {
-    menu.innerHTML = `<button class="mi muted-fg" data-act="back"><i data-lucide="chevron-left"></i>修改角色</button><div class="msep"></div>
-      ${Object.entries(ROLE).map(([k, [l]]) => `<button class="mi" role="menuitemradio" aria-checked="${u.role === k}" data-role="${k}"><i data-lucide="${u.role === k ? "check" : "dot"}" style="${u.role === k ? "" : "opacity:0"}"></i>${l}</button>`).join("")}`;
-    icons(); anim(menu, { opacity: 1 }, D.fast, EASE, { opacity: 0.4 });
-    $("[data-act=back]", menu).onclick = () => { main(); anim(menu, { opacity: 1 }, D.fast, EASE, { opacity: 0.4 }); };
-    $$("[data-role]", menu).forEach(b => b.onclick = () => { const to = b.dataset.role; closeMenu(); if (to !== u.role) changeRole(u, to); });
-  };
-  const bind = () => $$("[data-act]", menu).forEach(b => b.onclick = () => {
-    const a = b.dataset.act;
-    if (a === "role") return roles();
-    closeMenu();
-    if (a === "open") openUser(u.id);
-    if (a === "limit") openLimitPop(anchor, u);
-    if (a === "ban") setStatus([u], "disabled");
-    if (a === "unban") setStatus([u], "active");
-    if (a === "banCancel") confirmBanCancel(u);
-    if (a === "reset") confirmReset(u);
-  });
-  main(); place(menu, anchor, "end"); showFloating(menu);
-  setTimeout(() => $(".mi:not([aria-disabled])", menu)?.focus(), 0);
-}
-function closeMenu() { if (!S.menuFor) return; S.menuFor = null; hideFloating($("#menu")); }
-$("#menu").addEventListener("keydown", (e) => {
-  /* 方向键在菜单项间移动 */
-  const items = $$(".mi:not([aria-disabled])", $("#menu")); const i = items.indexOf(document.activeElement);
-  if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
-  if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
-});
+          icons();
+          bind();
+        };
+        const roles = () => {
+          menu.innerHTML = `<button class="mi muted-fg" data-act="back"><i data-lucide="chevron-left"></i>修改角色</button><div class="msep"></div>
+      ${Object.entries(ROLE)
+        .map(
+          ([k, [l]]) =>
+            `<button class="mi" role="menuitemradio" aria-checked="${u.role === k}" data-role="${k}"><i data-lucide="${u.role === k ? "check" : "dot"}" style="${u.role === k ? "" : "opacity:0"}"></i>${l}</button>`,
+        )
+        .join("")}`;
+          icons();
+          anim(menu, { opacity: 1 }, D.fast, EASE, { opacity: 0.4 });
+          $("[data-act=back]", menu).onclick = () => {
+            main();
+            anim(menu, { opacity: 1 }, D.fast, EASE, { opacity: 0.4 });
+          };
+          $$("[data-role]", menu).forEach(
+            (b) =>
+              (b.onclick = () => {
+                const to = b.dataset.role;
+                closeMenu();
+                if (to !== u.role) changeRole(u, to);
+              }),
+          );
+        };
+        const bind = () =>
+          $$("[data-act]", menu).forEach(
+            (b) =>
+              (b.onclick = () => {
+                const a = b.dataset.act;
+                if (a === "role") return roles();
+                closeMenu();
+                if (a === "open") openUser(u.id);
+                if (a === "limit") openLimitPop(anchor, u);
+                if (a === "ban") setStatus([u], "disabled");
+                if (a === "unban") setStatus([u], "active");
+                if (a === "banCancel") confirmBanCancel(u);
+                if (a === "reset") confirmReset(u);
+              }),
+          );
+        main();
+        place(menu, anchor, "end");
+        showFloating(menu);
+        setTimeout(() => $(".mi:not([aria-disabled])", menu)?.focus(), 0);
+      }
+      function closeMenu() {
+        if (!S.menuFor) return;
+        S.menuFor = null;
+        hideFloating($("#menu"));
+      }
+      $("#menu").addEventListener("keydown", (e) => {
+        /* 方向键在菜单项间移动 */
+        const items = $$(".mi:not([aria-disabled])", $("#menu"));
+        const i = items.indexOf(document.activeElement);
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          items[(i + 1) % items.length]?.focus();
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          items[(i - 1 + items.length) % items.length]?.focus();
+        }
+      });
 
-/* =====================================================================
- * 封禁 / 启用 / 角色 / 重置密码
- * ===================================================================== */
-/** 封禁和启用都可逆：立即执行 + 5 秒撤销，不弹确认框 */
-function setStatus(list, to, opts = {}) {
-  const skipped = [], done = [];
-  list.forEach(u => { const why = deny(u, "ban"); if (why) skipped.push([u, why]); else if (u.status !== to) done.push(u); });
-  done.forEach(u => { u.status = to; u.audit.unshift({ text: `${S.viewer === "super_admin" ? "owner" : "lina"} ${to === "disabled" ? "封禁了账号" : "启用了账号"}`, at: "刚刚" }); updateStatusUI(u); });
-  if (opts.clear) { S.checked.clear(); refreshChecks(); }
-  const verb = to === "disabled" ? "封禁" : "启用";
-  const skipText = skipped.length ? `，已跳过 ${skipped.length} 个：${esc(skipped[0][1])}` : "";
-  if (!done.length) { toast(`没有可${verb}的用户${skipText}`, { icon: "info", danger: true }); return; }
-  toast(`已${verb} ${done.length === 1 ? esc(done[0].name) : done.length + " 个用户"}${skipText}`, {
-    icon: to === "disabled" ? "ban" : "circle-check", danger: to === "disabled",
-    undo: () => { const back = to === "disabled" ? "active" : "disabled"; done.forEach(u => { u.status = back; u.audit.shift(); updateStatusUI(u); }); },
-  });
-}
-/** 状态 Tag 交叉淡入（DURATION.fast），行和抽屉只局部更新 */
-function updateStatusUI(u) {
-  if (S.status !== "all") { renderTable(); }
-  else {
-    const tr = $(`#tableWrap .row[data-id="${u.id}"]`);
-    if (tr) { tr.classList.toggle("disabled", u.status === "disabled"); const cell = $("[data-status]", tr); cell.innerHTML = statusHTML(u); icons(); anim(cell.firstElementChild, { opacity: 1 }, D.fast, EASE, { opacity: 0 }); }
-  }
-  if (S.drawerOpen && S.user === u.id) renderDrawer("none");
-}
-function changeRole(u, to) {
-  const from = u.role; u.role = to; renderTable(); if (S.drawerOpen && S.user === u.id) renderDrawer("none");
-  toast(`${esc(u.name)} 已改为「${ROLE[to][0]}」`, { icon: "shield", undo: () => { u.role = from; renderTable(); if (S.drawerOpen && S.user === u.id) renderDrawer("none"); } });
-}
+      /* =====================================================================
+       * 封禁 / 启用 / 角色 / 重置密码
+       * ===================================================================== */
+      /** 封禁和启用都可逆：立即执行 + 5 秒撤销，不弹确认框 */
+      function setStatus(list, to, opts = {}) {
+        const skipped = [],
+          done = [];
+        list.forEach((u) => {
+          const why = deny(u, "ban");
+          if (why) skipped.push([u, why]);
+          else if (u.status !== to) done.push(u);
+        });
+        done.forEach((u) => {
+          u.status = to;
+          u.audit.unshift({
+            text: `${S.viewer === "super_admin" ? "owner" : "lina"} ${to === "disabled" ? "封禁了账号" : "启用了账号"}`,
+            at: "刚刚",
+          });
+          updateStatusUI(u);
+        });
+        if (opts.clear) {
+          S.checked.clear();
+          refreshChecks();
+        }
+        const verb = to === "disabled" ? "封禁" : "启用";
+        const skipText = skipped.length
+          ? `，已跳过 ${skipped.length} 个：${esc(skipped[0][1])}`
+          : "";
+        if (!done.length) {
+          toast(`没有可${verb}的用户${skipText}`, { icon: "info", danger: true });
+          return;
+        }
+        toast(
+          `已${verb} ${done.length === 1 ? esc(done[0].name) : done.length + " 个用户"}${skipText}`,
+          {
+            icon: to === "disabled" ? "ban" : "circle-check",
+            danger: to === "disabled",
+            undo: () => {
+              const back = to === "disabled" ? "active" : "disabled";
+              done.forEach((u) => {
+                u.status = back;
+                u.audit.shift();
+                updateStatusUI(u);
+              });
+            },
+          },
+        );
+      }
+      /** 状态 Tag 交叉淡入（DURATION.fast），行和抽屉只局部更新 */
+      function updateStatusUI(u) {
+        if (S.status !== "all") {
+          renderTable();
+        } else {
+          const tr = $(`#tableWrap .row[data-id="${u.id}"]`);
+          if (tr) {
+            tr.classList.toggle("disabled", u.status === "disabled");
+            const cell = $("[data-status]", tr);
+            cell.innerHTML = statusHTML(u);
+            icons();
+            anim(cell.firstElementChild, { opacity: 1 }, D.fast, EASE, { opacity: 0 });
+          }
+        }
+        if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+      }
+      function changeRole(u, to) {
+        const from = u.role;
+        u.role = to;
+        renderTable();
+        if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+        toast(`${esc(u.name)} 已改为「${ROLE[to][0]}」`, {
+          icon: "shield",
+          undo: () => {
+            u.role = from;
+            renderTable();
+            if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+          },
+        });
+      }
 
-/** 弹窗：DURATION.slow 进入，slowExit 退出；Esc 关闭 */
-let dlgStack = [];
-function dialog(html, maxW = "28rem") {
-  const ov = document.createElement("div"); ov.className = "overlay";
-  ov.innerHTML = `<div class="dlg p-5" style="max-width:${maxW}" role="dialog" aria-modal="true">${html}</div>`;
-  $("#dlgRoot").appendChild(ov); icons();
-  const box = ov.firstElementChild;
-  anim(ov, { opacity: 1 }, D.base, EASE, { opacity: 0 });
-  anim(box, { opacity: 1, transform: "scale(1)" }, D.slow, EASE, { opacity: 0, transform: "scale(0.96)" });
-  const close = () => { dlgStack = dlgStack.filter(c => c !== close); anim(box, { opacity: 0, transform: "scale(0.96)" }, D.slowExit); anim(ov, { opacity: 0 }, D.slowExit).finished.then(() => ov.remove()); };
-  ov.addEventListener("pointerdown", (e) => { if (e.target === ov) close(); });
-  dlgStack.push(close);
-  return { box, close };
-}
-function confirmBanCancel(u) {
-  const { box, close } = dialog(`
+      /** 弹窗：DURATION.slow 进入，slowExit 退出；Esc 关闭 */
+      let dlgStack = [];
+      function dialog(html, maxW = "28rem") {
+        const ov = document.createElement("div");
+        ov.className = "overlay";
+        ov.innerHTML = `<div class="dlg p-5" style="max-width:${maxW}" role="dialog" aria-modal="true">${html}</div>`;
+        $("#dlgRoot").appendChild(ov);
+        icons();
+        const box = ov.firstElementChild;
+        anim(ov, { opacity: 1 }, D.base, EASE, { opacity: 0 });
+        anim(box, { opacity: 1, transform: "scale(1)" }, D.slow, EASE, {
+          opacity: 0,
+          transform: "scale(0.96)",
+        });
+        const close = () => {
+          dlgStack = dlgStack.filter((c) => c !== close);
+          anim(box, { opacity: 0, transform: "scale(0.96)" }, D.slowExit);
+          anim(ov, { opacity: 0 }, D.slowExit).finished.then(() => ov.remove());
+        };
+        ov.addEventListener("pointerdown", (e) => {
+          if (e.target === ov) close();
+        });
+        dlgStack.push(close);
+        return { box, close };
+      }
+      function confirmBanCancel(u) {
+        const { box, close } = dialog(`
     <div class="flex items-start gap-3"><span class="flex size-9 shrink-0 items-center justify-center rounded-full t-bad"><i data-lucide="octagon-x"></i></span>
     <div><div class="text-base font-semibold">封禁 ${esc(u.name)} 并取消任务？</div>
     <p class="mt-1.5 text-sm muted-fg">将取消 <b class="num" style="color:var(--foreground)">${u.active}</b> 个进行中任务，并退还 <b class="num" style="color:var(--foreground)">${u.frozen}</b> 冻结积分。账号封禁可以之后再启用，<b style="color:var(--foreground)">取消的任务无法恢复</b>。</p></div></div>
     <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" data-x>取消</button><button class="btn btn-danger" data-ok><i data-lucide="octagon-x"></i>封禁并取消任务</button></div>`);
-  $("[data-x]", box).onclick = close;
-  $("[data-ok]", box).onclick = () => {
-    close(); ensureLogs(u);
-    const n = u.active, back = u.frozen;
-    u.status = "disabled"; u.bal -= 0; u.frozen = 0; u.active = 0;
-    u.logs.tasks.forEach(t => { if (t.status === "running") { t.status = "failed"; t.err = "管理员封禁账号时取消"; } });
-    if (back) u.ledger.unshift({ type: "refund", amt: back, note: `封禁取消 ${n} 个任务退回`, by: "系统", at: "刚刚" });
-    u.audit.unshift({ text: `${S.viewer === "super_admin" ? "owner" : "lina"} 封禁了账号并取消 ${n} 个任务`, at: "刚刚" });
-    renderTable(); if (S.drawerOpen && S.user === u.id) renderDrawer("none");
-    toast(`已封禁 ${esc(u.name)}，取消 ${n} 个任务并退还 ${back} 积分`, { icon: "ban", danger: true });
-  };
-  setTimeout(() => $("[data-x]", box).focus(), 0);
-}
-function confirmReset(u) {
-  const { box, close } = dialog(`
+        $("[data-x]", box).onclick = close;
+        $("[data-ok]", box).onclick = () => {
+          close();
+          ensureLogs(u);
+          const n = u.active,
+            back = u.frozen;
+          u.status = "disabled";
+          u.bal -= 0;
+          u.frozen = 0;
+          u.active = 0;
+          u.logs.tasks.forEach((t) => {
+            if (t.status === "running") {
+              t.status = "failed";
+              t.err = "管理员封禁账号时取消";
+            }
+          });
+          if (back)
+            u.ledger.unshift({
+              type: "refund",
+              amt: back,
+              note: `封禁取消 ${n} 个任务退回`,
+              by: "系统",
+              at: "刚刚",
+            });
+          u.audit.unshift({
+            text: `${S.viewer === "super_admin" ? "owner" : "lina"} 封禁了账号并取消 ${n} 个任务`,
+            at: "刚刚",
+          });
+          renderTable();
+          if (S.drawerOpen && S.user === u.id) renderDrawer("none");
+          toast(`已封禁 ${esc(u.name)}，取消 ${n} 个任务并退还 ${back} 积分`, {
+            icon: "ban",
+            danger: true,
+          });
+        };
+        setTimeout(() => $("[data-x]", box).focus(), 0);
+      }
+      function confirmReset(u) {
+        const { box, close } = dialog(`
     <div class="text-base font-semibold">重置 ${esc(u.name)} 的密码？</div>
     <p class="mt-1.5 text-sm muted-fg">将生成一个临时密码，该用户所有已登录的设备会立即退出。</p>
     <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" data-x>取消</button><button class="btn btn-primary" data-ok>生成临时密码</button></div>`);
-  $("[data-x]", box).onclick = close;
-  $("[data-ok]", box).onclick = () => {
-    close();
-    const pw = "Vc-" + Math.random().toString(36).slice(2, 6) + "-" + Math.random().toString(36).slice(2, 6);
-    const r = dialog(`<div class="text-base font-semibold">临时密码</div>
+        $("[data-x]", box).onclick = close;
+        $("[data-ok]", box).onclick = () => {
+          close();
+          const pw =
+            "Vc-" +
+            Math.random().toString(36).slice(2, 6) +
+            "-" +
+            Math.random().toString(36).slice(2, 6);
+          const r = dialog(`<div class="text-base font-semibold">临时密码</div>
       <div class="mt-3 flex items-center gap-2 rounded-lg border bg-muted px-3 py-2.5"><code class="num flex-1 text-base">${pw}</code><button class="btn btn-outline btn-xs" data-copy><i data-lucide="copy"></i>复制</button></div>
       <p class="mt-2 text-xs muted-fg">只显示这一次，关闭后无法再查看。请通过安全渠道发给用户，并提醒对方登录后修改。</p>
       <div class="mt-5 flex justify-end"><button class="btn btn-primary" data-x>我已记录</button></div>`);
-    $("[data-x]", r.box).onclick = r.close;
-    $("[data-copy]", r.box).onclick = (e) => { navigator.clipboard?.writeText(pw).catch(() => {}); e.currentTarget.innerHTML = `<i data-lucide="check"></i>已复制`; icons(); };
-  };
-}
+          $("[data-x]", r.box).onclick = r.close;
+          $("[data-copy]", r.box).onclick = (e) => {
+            navigator.clipboard?.writeText(pw).catch(() => {});
+            e.currentTarget.innerHTML = `<i data-lucide="check"></i>已复制`;
+            icons();
+          };
+        };
+      }
 
-/* =====================================================================
- * 批量条 + 批量发积分
- * ===================================================================== */
-let bulkShown = false;
-function renderBulk() {
-  const n = S.checked.size, el = $("#bulk");
-  if (!n) { if (bulkShown) { bulkShown = false; anim(el, { opacity: 0, transform: "translateY(16px)" }, D.exit).finished.then(() => { if (!bulkShown) el.style.visibility = "hidden"; }); } return; }
-  el.innerHTML = `<div class="flex items-center gap-1 rounded-xl border bg-popover p-1.5 shadow-lg" role="toolbar" aria-label="批量操作">
+      /* =====================================================================
+       * 批量条 + 批量发积分
+       * ===================================================================== */
+      let bulkShown = false;
+      function renderBulk() {
+        const n = S.checked.size,
+          el = $("#bulk");
+        if (!n) {
+          if (bulkShown) {
+            bulkShown = false;
+            anim(el, { opacity: 0, transform: "translateY(16px)" }, D.exit).finished.then(() => {
+              if (!bulkShown) el.style.visibility = "hidden";
+            });
+          }
+          return;
+        }
+        el.innerHTML = `<div class="flex items-center gap-1 rounded-xl border bg-popover p-1.5 shadow-lg" role="toolbar" aria-label="批量操作">
     <span class="flex items-center gap-1.5 px-2 text-sm"><span class="tag t-mute num">${n}</span>已选用户</span>
     <span class="mx-1 h-5 w-px bg-border" style="background:var(--border)"></span>
     <button class="btn btn-ghost btn-xs" data-b="credit"><i data-lucide="gift"></i>发积分…</button>
@@ -857,88 +2101,177 @@ function renderBulk() {
     <button class="btn btn-ghost btn-xs" data-b="unban"><i data-lucide="circle-check"></i>启用</button>
     <span class="mx-1 h-5 w-px" style="background:var(--border)"></span>
     <button class="icon-btn" data-b="clear" data-tip="清除选择" data-kbd="Esc" aria-label="清除选择"><i data-lucide="x"></i></button></div>`;
-  icons();
-  const list = () => users.filter(u => S.checked.has(u.id));
-  $$("[data-b]", el).forEach(b => b.onclick = () => {
-    const a = b.dataset.b;
-    if (a === "clear") { S.checked.clear(); refreshChecks(); }
-    if (a === "ban") setStatus(list(), "disabled", { clear: true });
-    if (a === "unban") setStatus(list(), "active", { clear: true });
-    if (a === "credit") batchCredit(list());
-  });
-  if (!bulkShown) { bulkShown = true; el.style.visibility = "visible"; anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, { opacity: 0, transform: "translateY(16px)" }); }
-}
-function batchCredit(list) {
-  const ok = list.filter(u => !deny(u, "credit")), skip = list.filter(u => deny(u, "credit"));
-  const st = { val: "", note: "" };
-  const { box, close } = dialog(`<div class="text-base font-semibold">给 ${list.length} 个用户发积分</div>
+        icons();
+        const list = () => users.filter((u) => S.checked.has(u.id));
+        $$("[data-b]", el).forEach(
+          (b) =>
+            (b.onclick = () => {
+              const a = b.dataset.b;
+              if (a === "clear") {
+                S.checked.clear();
+                refreshChecks();
+              }
+              if (a === "ban") setStatus(list(), "disabled", { clear: true });
+              if (a === "unban") setStatus(list(), "active", { clear: true });
+              if (a === "credit") batchCredit(list());
+            }),
+        );
+        if (!bulkShown) {
+          bulkShown = true;
+          el.style.visibility = "visible";
+          anim(el, { opacity: 1, transform: "translateY(0)" }, D.base, EASE, {
+            opacity: 0,
+            transform: "translateY(16px)",
+          });
+        }
+      }
+      function batchCredit(list) {
+        const ok = list.filter((u) => !deny(u, "credit")),
+          skip = list.filter((u) => deny(u, "credit"));
+        const st = { val: "", note: "" };
+        const { box, close } =
+          dialog(`<div class="text-base font-semibold">给 ${list.length} 个用户发积分</div>
     <p class="mt-1 text-sm muted-fg">只支持增加。每人都会写一条流水和审计记录。</p>
-    <div class="mt-4 flex gap-1.5">${[50, 100, 500, 1000].map(n => `<button class="btn btn-outline btn-xs flex-1 num" data-chip="${n}">+${n}</button>`).join("")}</div>
+    <div class="mt-4 flex gap-1.5">${[50, 100, 500, 1000].map((n) => `<button class="btn btn-outline btn-xs flex-1 num" data-chip="${n}">+${n}</button>`).join("")}</div>
     <input id="bv" class="input num mt-2" inputmode="numeric" placeholder="每人增加多少积分">
     <input id="bn" class="input mt-2" placeholder="备注（必填，如：国庆活动补发）" maxlength="100">
     <div class="mt-3 rounded-lg bg-muted px-3 py-2 text-xs" id="bprev"></div>
     <div class="mt-5 flex justify-end gap-2"><button class="btn btn-outline" data-x>取消</button><button class="btn btn-primary" data-ok disabled>发放</button></div>`);
-  const upd = () => {
-    const v = parseInt(st.val, 10) || 0;
-    $("#bprev", box).innerHTML = `<span class="num">${ok.length} 人 × ${v} = <b>${ok.length * v}</b> 积分</span>${skip.length ? `<div class="mt-1" style="color:var(--status-warning)">将跳过 ${skip.length} 个：${esc(deny(skip[0], "credit"))}（${skip.map(u => esc(u.name)).join("、")}）</div>` : ""}`;
-    $("[data-ok]", box).disabled = !(v > 0 && st.note.trim() && ok.length);
-  };
-  $$("[data-chip]", box).forEach(b => b.onclick = () => { st.val = String((parseInt(st.val, 10) || 0) + +b.dataset.chip); $("#bv", box).value = st.val; upd(); $("#bn", box).focus(); });
-  $("#bv", box).oninput = (e) => { st.val = e.target.value.replace(/[^\d]/g, ""); e.target.value = st.val; upd(); };
-  $("#bn", box).oninput = (e) => { st.note = e.target.value; upd(); };
-  $("[data-x]", box).onclick = close;
-  $("[data-ok]", box).onclick = (e) => {
-    const btn = e.currentTarget; btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="animate-spin"></i>发放中`; icons();
-    setTimeout(() => {
-      const v = parseInt(st.val, 10), note = st.note.trim();
-      ok.forEach(u => applyCredit(u, v, note)); close(); S.checked.clear(); refreshChecks();
-      toast(`已给 ${ok.length} 个用户各发 ${v} 积分${skip.length ? `，跳过 ${skip.length} 个` : ""}`, { icon: "gift", undo: () => ok.forEach(u => applyCredit(u, -v, "撤销：" + note)) });
-    }, $("#slow").checked ? 900 : 400);
-  };
-  upd(); setTimeout(() => $("#bv", box).focus(), 0);
-}
+        const upd = () => {
+          const v = parseInt(st.val, 10) || 0;
+          $("#bprev", box).innerHTML =
+            `<span class="num">${ok.length} 人 × ${v} = <b>${ok.length * v}</b> 积分</span>${skip.length ? `<div class="mt-1" style="color:var(--status-warning)">将跳过 ${skip.length} 个：${esc(deny(skip[0], "credit"))}（${skip.map((u) => esc(u.name)).join("、")}）</div>` : ""}`;
+          $("[data-ok]", box).disabled = !(v > 0 && st.note.trim() && ok.length);
+        };
+        $$("[data-chip]", box).forEach(
+          (b) =>
+            (b.onclick = () => {
+              st.val = String((parseInt(st.val, 10) || 0) + +b.dataset.chip);
+              $("#bv", box).value = st.val;
+              upd();
+              $("#bn", box).focus();
+            }),
+        );
+        $("#bv", box).oninput = (e) => {
+          st.val = e.target.value.replace(/[^\d]/g, "");
+          e.target.value = st.val;
+          upd();
+        };
+        $("#bn", box).oninput = (e) => {
+          st.note = e.target.value;
+          upd();
+        };
+        $("[data-x]", box).onclick = close;
+        $("[data-ok]", box).onclick = (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.innerHTML = `<i data-lucide="loader-2" class="animate-spin"></i>发放中`;
+          icons();
+          setTimeout(
+            () => {
+              const v = parseInt(st.val, 10),
+                note = st.note.trim();
+              ok.forEach((u) => applyCredit(u, v, note));
+              close();
+              S.checked.clear();
+              refreshChecks();
+              toast(
+                `已给 ${ok.length} 个用户各发 ${v} 积分${skip.length ? `，跳过 ${skip.length} 个` : ""}`,
+                {
+                  icon: "gift",
+                  undo: () => ok.forEach((u) => applyCredit(u, -v, "撤销：" + note)),
+                },
+              );
+            },
+            $("#slow").checked ? 900 : 400,
+          );
+        };
+        upd();
+        setTimeout(() => $("#bv", box).focus(), 0);
+      }
 
-/* =====================================================================
- * 抽屉
- * ===================================================================== */
-let drawerReturnFocus = null;
-function openUser(id) {
-  closeFloating();
-  const wasOpen = S.drawerOpen, prev = S.user;
-  const ids = filtered().map(u => u.id);
-  if (!wasOpen) drawerReturnFocus = document.activeElement;
-  S.user = id; S.tabShown = 10;
-  if (!wasOpen) { S.drawerOpen = true; renderDrawer("none"); const d = $("#drawer"); d.style.visibility = "visible"; anim(d, { transform: "translateX(0)", opacity: 1 }, D.slow, EASE, getComputedStyle(d).opacity > 0 && d.getAnimations().length ? undefined : { transform: "translateX(100%)", opacity: 0 }); setTimeout(() => $("#drawer [data-close]")?.focus({ preventScroll: true }), 0); }
-  else if (prev !== id) renderDrawer(ids.indexOf(id) > ids.indexOf(prev) ? "down" : "up");
-  placeCurBar(wasOpen); syncUrl();
-}
-function closeDrawer() {
-  if (!S.drawerOpen) return;
-  S.drawerOpen = false; closeFloating();
-  const d = $("#drawer");
-  anim(d, { transform: "translateX(100%)", opacity: 0 }, D.slowExit).finished.then(() => { if (!S.drawerOpen) d.style.visibility = "hidden"; });
-  placeCurBar(false); syncUrl();
-  const back = $(`#tableWrap .row[data-id="${S.user}"]`) || drawerReturnFocus; back?.focus({ preventScroll: true });
-}
-/** 上一个 / 下一个：按当前筛选顺序，跨页时自动翻页 */
-function stepUser(dir) {
-  const list = filtered(), i = list.findIndex(u => u.id === S.user), next = list[i + dir];
-  if (!next) return;
-  const page = Math.floor((i + dir) / S.size) + 1;
-  if (page !== S.page) { S.page = page; renderTable(); }
-  openUser(next.id);
-  $(`#tableWrap .row[data-id="${next.id}"]`)?.scrollIntoView({ block: "nearest", behavior: RM ? "auto" : "smooth" });
-}
+      /* =====================================================================
+       * 抽屉
+       * ===================================================================== */
+      let drawerReturnFocus = null;
+      function openUser(id) {
+        closeFloating();
+        const wasOpen = S.drawerOpen,
+          prev = S.user;
+        const ids = filtered().map((u) => u.id);
+        if (!wasOpen) drawerReturnFocus = document.activeElement;
+        S.user = id;
+        S.tabShown = 10;
+        if (!wasOpen) {
+          S.drawerOpen = true;
+          renderDrawer("none");
+          const d = $("#drawer");
+          d.style.visibility = "visible";
+          anim(
+            d,
+            { transform: "translateX(0)", opacity: 1 },
+            D.slow,
+            EASE,
+            getComputedStyle(d).opacity > 0 && d.getAnimations().length
+              ? undefined
+              : { transform: "translateX(100%)", opacity: 0 },
+          );
+          setTimeout(() => $("#drawer [data-close]")?.focus({ preventScroll: true }), 0);
+        } else if (prev !== id) renderDrawer(ids.indexOf(id) > ids.indexOf(prev) ? "down" : "up");
+        placeCurBar(wasOpen);
+        syncUrl();
+      }
+      function closeDrawer() {
+        if (!S.drawerOpen) return;
+        S.drawerOpen = false;
+        closeFloating();
+        const d = $("#drawer");
+        anim(d, { transform: "translateX(100%)", opacity: 0 }, D.slowExit).finished.then(() => {
+          if (!S.drawerOpen) d.style.visibility = "hidden";
+        });
+        placeCurBar(false);
+        syncUrl();
+        const back = $(`#tableWrap .row[data-id="${S.user}"]`) || drawerReturnFocus;
+        back?.focus({ preventScroll: true });
+      }
+      /** 上一个 / 下一个：按当前筛选顺序，跨页时自动翻页 */
+      function stepUser(dir) {
+        const list = filtered(),
+          i = list.findIndex((u) => u.id === S.user),
+          next = list[i + dir];
+        if (!next) return;
+        const page = Math.floor((i + dir) / S.size) + 1;
+        if (page !== S.page) {
+          S.page = page;
+          renderTable();
+        }
+        openUser(next.id);
+        $(`#tableWrap .row[data-id="${next.id}"]`)?.scrollIntoView({
+          block: "nearest",
+          behavior: RM ? "auto" : "smooth",
+        });
+      }
 
-function renderDrawer(dir) {
-  const u = users.find(x => x.id === S.user); const d = $("#drawer");
-  if (!u) { d.innerHTML = `<div class="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"><i data-lucide="user-x" class="size-8 muted-fg"></i><div class="font-medium">用户不存在或已被删除</div><button class="btn btn-outline" data-close>关闭</button></div>`; icons(); $("[data-close]", d).onclick = closeDrawer; return; }
-  ensureLogs(u);
-  const list = filtered(), i = list.findIndex(x => x.id === u.id);
-  const lim = limitOf(u), full = u.active >= lim;
-  const running = u.logs.tasks.filter(t => t.status === "running").length;
-  const btn = (html, why) => why ? `<span data-tip="${esc(why)}" class="inline-flex">${html.replace("<button", "<button disabled")}</span>` : html;
-  d.innerHTML = `
+      function renderDrawer(dir) {
+        const u = users.find((x) => x.id === S.user);
+        const d = $("#drawer");
+        if (!u) {
+          d.innerHTML = `<div class="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"><i data-lucide="user-x" class="size-8 muted-fg"></i><div class="font-medium">用户不存在或已被删除</div><button class="btn btn-outline" data-close>关闭</button></div>`;
+          icons();
+          $("[data-close]", d).onclick = closeDrawer;
+          return;
+        }
+        ensureLogs(u);
+        const list = filtered(),
+          i = list.findIndex((x) => x.id === u.id);
+        const lim = limitOf(u),
+          full = u.active >= lim;
+        const running = u.logs.tasks.filter((t) => t.status === "running").length;
+        const btn = (html, why) =>
+          why
+            ? `<span data-tip="${esc(why)}" class="inline-flex">${html.replace("<button", "<button disabled")}</span>`
+            : html;
+        d.innerHTML = `
     <div class="flex items-start gap-3 border-b px-5 pb-4 pt-5" id="dHead">
       ${avatar(u, 40)}
       <div class="min-w-0 flex-1">
@@ -966,127 +2299,366 @@ function renderDrawer(dir) {
         </div>
       </div>
       <div class="tabbar mt-4" id="tabs" role="tablist">
-        ${[["overview", "概览"], ["tasks", "生成"], ["credits", "积分"], ["logins", "登录"]].map(([k, l]) => `<button class="tabbtn ${S.tab === k ? "on" : ""}" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}${k === "tasks" && running ? `<span class="badge num">${running}</span>` : ""}</button>`).join("")}
+        ${[
+          ["overview", "概览"],
+          ["tasks", "生成"],
+          ["credits", "积分"],
+          ["logins", "登录"],
+        ]
+          .map(
+            ([k, l]) =>
+              `<button class="tabbtn ${S.tab === k ? "on" : ""}" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}${k === "tasks" && running ? `<span class="badge num">${running}</span>` : ""}</button>`,
+          )
+          .join("")}
         <span class="tab-line" id="tabLine"></span>
       </div>
       <div class="scroll min-h-0 flex-1 px-5 pb-6" id="tabBody"></div>
     </div>`;
-  icons(); hydrateNF(d);
-  $("[data-close]", d).onclick = closeDrawer;
-  $$("[data-step]", d).forEach(b => b.onclick = () => stepUser(+b.dataset.step));
-  $("[data-copy-email]", d).onclick = () => { navigator.clipboard?.writeText(u.email).catch(() => {}); toast("邮箱已复制", { icon: "copy" }); };
-  const co = $("[data-credit-open]", d); if (co && !co.disabled) co.onclick = () => openCreditPop(co, u);
-  const lo = $("[data-limit-open]", d); if (lo && !lo.disabled) lo.onclick = () => (S.popFor === "limit-" + u.id ? closePop() : openLimitPop(lo, u));
-  const bn = $("[data-ban]", d); if (bn && !bn.disabled) bn.onclick = () => setStatus([u], "disabled");
-  const ub = $("[data-unban]", d); if (ub && !ub.disabled) ub.onclick = () => setStatus([u], "active");
-  $("[data-dmenu]", d).onclick = (e) => openMenu(e.currentTarget, u, true);
-  $$("[data-tab]", d).forEach(b => b.onclick = () => { if (S.tab === b.dataset.tab) return; S.tab = b.dataset.tab; S.tabShown = 10; $$("[data-tab]", d).forEach(x => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", x === b); }); placeTabLine(true); renderTabBody(true); syncUrl(); });
-  placeTabLine(false); renderTabBody(false);
-  /* 切换用户：外框不动，内容按方向从上 / 下 8px 淡入 */
-  if (dir !== "none") anim($("#dBody", d), { opacity: 1, transform: "translateY(0)" }, D.base, EASE, { opacity: 0, transform: `translateY(${dir === "down" ? 8 : -8}px)` });
-  if (dir !== "none") anim($("#dHead", d), { opacity: 1 }, D.base, EASE, { opacity: 0.3 });
-}
-/** 页签下划线：translateX + scaleX，走 SPRING（真实实现用 layoutId） */
-function placeTabLine(animate) {
-  const on = $("#tabs .tabbtn.on"), line = $("#tabLine"); if (!on || !line) return;
-  const to = { transform: `translateX(${on.offsetLeft}px) scaleX(${on.offsetWidth / 100})` };
-  if (animate) anim(line, to, SPRING.duration, SPRING.easing); else { line.getAnimations().forEach(a => a.cancel()); line.style.transform = to.transform; }
-}
+        icons();
+        hydrateNF(d);
+        $("[data-close]", d).onclick = closeDrawer;
+        $$("[data-step]", d).forEach((b) => (b.onclick = () => stepUser(+b.dataset.step)));
+        $("[data-copy-email]", d).onclick = () => {
+          navigator.clipboard?.writeText(u.email).catch(() => {});
+          toast("邮箱已复制", { icon: "copy" });
+        };
+        const co = $("[data-credit-open]", d);
+        if (co && !co.disabled) co.onclick = () => openCreditPop(co, u);
+        const lo = $("[data-limit-open]", d);
+        if (lo && !lo.disabled)
+          lo.onclick = () => (S.popFor === "limit-" + u.id ? closePop() : openLimitPop(lo, u));
+        const bn = $("[data-ban]", d);
+        if (bn && !bn.disabled) bn.onclick = () => setStatus([u], "disabled");
+        const ub = $("[data-unban]", d);
+        if (ub && !ub.disabled) ub.onclick = () => setStatus([u], "active");
+        $("[data-dmenu]", d).onclick = (e) => openMenu(e.currentTarget, u, true);
+        $$("[data-tab]", d).forEach(
+          (b) =>
+            (b.onclick = () => {
+              if (S.tab === b.dataset.tab) return;
+              S.tab = b.dataset.tab;
+              S.tabShown = 10;
+              $$("[data-tab]", d).forEach((x) => {
+                x.classList.toggle("on", x === b);
+                x.setAttribute("aria-selected", x === b);
+              });
+              placeTabLine(true);
+              renderTabBody(true);
+              syncUrl();
+            }),
+        );
+        placeTabLine(false);
+        renderTabBody(false);
+        /* 切换用户：外框不动，内容按方向从上 / 下 8px 淡入 */
+        if (dir !== "none")
+          anim($("#dBody", d), { opacity: 1, transform: "translateY(0)" }, D.base, EASE, {
+            opacity: 0,
+            transform: `translateY(${dir === "down" ? 8 : -8}px)`,
+          });
+        if (dir !== "none") anim($("#dHead", d), { opacity: 1 }, D.base, EASE, { opacity: 0.3 });
+      }
+      /** 页签下划线：translateX + scaleX，走 SPRING（真实实现用 layoutId） */
+      function placeTabLine(animate) {
+        const on = $("#tabs .tabbtn.on"),
+          line = $("#tabLine");
+        if (!on || !line) return;
+        const to = { transform: `translateX(${on.offsetLeft}px) scaleX(${on.offsetWidth / 100})` };
+        if (animate) anim(line, to, SPRING.duration, SPRING.easing);
+        else {
+          line.getAnimations().forEach((a) => a.cancel());
+          line.style.transform = to.transform;
+        }
+      }
 
-function renderTabBody(fade) {
-  const u = users.find(x => x.id === S.user); if (!u) return; ensureLogs(u);
-  const body = $("#tabBody"); let html = "";
-  const more = (total) => total > S.tabShown ? `<div class="pt-3 text-center"><button class="btn btn-ghost btn-xs" data-more>加载更多 <span class="muted-fg num">（还有 ${total - S.tabShown} 条）</span></button></div>` : total ? `<div class="pt-4 text-center text-xs muted-fg">没有更多了</div>` : "";
-  const empty = (t) => `<div class="py-12 text-center text-sm muted-fg">${t}</div>`;
-  if (S.tab === "overview") {
-    const done = u.logs.tasks.filter(t => t.status !== "running"), okN = done.filter(t => t.status === "success").length;
-    const lastLogin = u.logs.logins.find(l => l.res === "ok");
-    const kv = (k, v) => `<div><dt class="text-xs muted-fg">${k}</dt><dd class="mt-0.5 text-sm font-medium">${v}</dd></div>`;
-    html = `<dl class="grid grid-cols-2 gap-x-6 gap-y-4 pt-4">
+      function renderTabBody(fade) {
+        const u = users.find((x) => x.id === S.user);
+        if (!u) return;
+        ensureLogs(u);
+        const body = $("#tabBody");
+        let html = "";
+        const more = (total) =>
+          total > S.tabShown
+            ? `<div class="pt-3 text-center"><button class="btn btn-ghost btn-xs" data-more>加载更多 <span class="muted-fg num">（还有 ${total - S.tabShown} 条）</span></button></div>`
+            : total
+              ? `<div class="pt-4 text-center text-xs muted-fg">没有更多了</div>`
+              : "";
+        const empty = (t) => `<div class="py-12 text-center text-sm muted-fg">${t}</div>`;
+        if (S.tab === "overview") {
+          const done = u.logs.tasks.filter((t) => t.status !== "running"),
+            okN = done.filter((t) => t.status === "success").length;
+          const lastLogin = u.logs.logins.find((l) => l.res === "ok");
+          const kv = (k, v) =>
+            `<div><dt class="text-xs muted-fg">${k}</dt><dd class="mt-0.5 text-sm font-medium">${v}</dd></div>`;
+          html = `<dl class="grid grid-cols-2 gap-x-6 gap-y-4 pt-4">
       ${kv("注册时间", u.reg)}${kv("邮箱", `<span class="inline-flex items-center gap-1">已验证 <i data-lucide="badge-check" style="color:var(--status-success)"></i></span>`)}
       ${kv("最近登录", lastLogin ? `${lastLogin.at} <span class="text-xs font-normal muted-fg num">${lastLogin.ip}</span>` : "—")}${kv("生成总数", `<span class="num">${u.tasks}</span>`)}
-      ${kv("成功率", done.length ? `<span class="num">${Math.round(okN / done.length * 100)}%</span>` : "—")}${kv("累计消耗积分", `<span class="num">${u.spent}</span>`)}
+      ${kv("成功率", done.length ? `<span class="num">${Math.round((okN / done.length) * 100)}%</span>` : "—")}${kv("累计消耗积分", `<span class="num">${u.spent}</span>`)}
       ${kv("近 7 天生成", `<span class="num">${Math.min(u.tasks, u.logs.tasks.length)}</span>`)}${kv("并发上限", u.conc ? `<span class="num">${u.conc}</span>（自定义）` : `<span class="num">4</span>（全局默认）`)}</dl>
       <div class="mt-6 mb-2 flex items-center justify-between"><span class="text-sm font-medium">最近管理员操作</span><button class="btn btn-ghost btn-xs" data-goto="credits">查看积分流水</button></div>
-      ${u.audit.length ? `<div class="rounded-lg border">${u.audit.slice(0, 3).map(a => `<div class="flex items-center justify-between gap-3 border-b px-3 py-2 text-xs last:border-b-0"><span>${esc(a.text)}</span><span class="shrink-0 muted-fg">${a.at}</span></div>`).join("")}</div>` : `<div class="rounded-lg border border-dashed px-3 py-4 text-center text-xs muted-fg">还没有管理员操作过这个账号</div>`}`;
-  }
-  if (S.tab === "tasks") {
-    const f = S.tabFilter.tasks, all = u.logs.tasks.filter(t => f === "all" || t.status === f), rows = all.slice(0, S.tabShown);
-    html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML("tf", [["all", "全部"], ["success", "成功"], ["failed", "失败"], ["running", "进行中"]], f, "sm")}<span class="text-xs muted-fg num">${all.length} 条</span></div>
-      ${rows.length ? rows.map(t => `<div class="log-row" style="grid-template-columns: 5.5rem 1fr auto 3.25rem 3rem">
+      ${
+        u.audit.length
+          ? `<div class="rounded-lg border">${u.audit
+              .slice(0, 3)
+              .map(
+                (a) =>
+                  `<div class="flex items-center justify-between gap-3 border-b px-3 py-2 text-xs last:border-b-0"><span>${esc(a.text)}</span><span class="shrink-0 muted-fg">${a.at}</span></div>`,
+              )
+              .join("")}</div>`
+          : `<div class="rounded-lg border border-dashed px-3 py-4 text-center text-xs muted-fg">还没有管理员操作过这个账号</div>`
+      }`;
+        }
+        if (S.tab === "tasks") {
+          const f = S.tabFilter.tasks,
+            all = u.logs.tasks.filter((t) => f === "all" || t.status === f),
+            rows = all.slice(0, S.tabShown);
+          html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML(
+            "tf",
+            [
+              ["all", "全部"],
+              ["success", "成功"],
+              ["failed", "失败"],
+              ["running", "进行中"],
+            ],
+            f,
+            "sm",
+          )}<span class="text-xs muted-fg num">${all.length} 条</span></div>
+      ${
+        rows.length
+          ? rows
+              .map(
+                (
+                  t,
+                ) => `<div class="log-row" style="grid-template-columns: 5.5rem 1fr auto 3.25rem 3rem">
         <span class="text-xs muted-fg">${t.at}</span>
         <span class="min-w-0"><span class="flex items-center gap-1.5 truncate"><i data-lucide="${t.kind === "video" ? "clapperboard" : "image"}" class="muted-fg"></i>${t.model}</span>${t.err ? `<details class="mt-0.5 text-xs"><summary class="cursor-pointer" style="color:var(--destructive)">${esc(t.err)}</summary><div class="mt-1 flex items-center gap-1 muted-fg num">任务 #${t.id}<button class="icon-btn" style="width:1.25rem;height:1.25rem" data-copy-id="${t.id}" data-tip="复制任务 ID"><i data-lucide="copy"></i></button></div></details>` : ""}</span>
         <span>${t.status === "success" ? `<span class="tag t-ok">成功</span>` : t.status === "failed" ? `<span class="tag t-bad">失败</span>` : `<span class="tag t-info"><span class="dot animate-pulse" style="background:var(--status-running)"></span>进行中</span>`}</span>
         <span class="text-right num ${t.cost ? "" : "muted-fg"}">${t.status === "running" ? "冻结" : t.cost ? "-" + t.cost : "0"}</span>
-        <span class="text-right text-xs muted-fg num">${t.dur ? t.dur + "s" : "—"}</span></div>`).join("") : empty(f === "all" ? "还没有生成记录" : "没有符合条件的记录")}
+        <span class="text-right text-xs muted-fg num">${t.dur ? t.dur + "s" : "—"}</span></div>`,
+              )
+              .join("")
+          : empty(f === "all" ? "还没有生成记录" : "没有符合条件的记录")
+      }
       ${more(all.length)}`;
-  }
-  if (S.tab === "credits") {
-    const f = S.tabFilter.credits, all = u.ledger.filter(l => f === "all" || (f === "admin" ? l.type === "admin_adjust" : l.type !== "admin_adjust" && l.type !== "initial")), rows = all.slice(0, S.tabShown);
-    html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML("cf", [["all", "全部"], ["admin", "管理员调整"], ["task", "任务"]], f, "sm")}<span class="text-xs muted-fg num">${all.length} 条</span></div>
-      ${rows.length ? rows.map(l => `<div class="log-row" style="grid-template-columns: 6.5rem 3.5rem 1fr auto">
+        }
+        if (S.tab === "credits") {
+          const f = S.tabFilter.credits,
+            all = u.ledger.filter(
+              (l) =>
+                f === "all" ||
+                (f === "admin"
+                  ? l.type === "admin_adjust"
+                  : l.type !== "admin_adjust" && l.type !== "initial"),
+            ),
+            rows = all.slice(0, S.tabShown);
+          html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML(
+            "cf",
+            [
+              ["all", "全部"],
+              ["admin", "管理员调整"],
+              ["task", "任务"],
+            ],
+            f,
+            "sm",
+          )}<span class="text-xs muted-fg num">${all.length} 条</span></div>
+      ${
+        rows.length
+          ? rows
+              .map(
+                (l) => `<div class="log-row" style="grid-template-columns: 6.5rem 3.5rem 1fr auto">
         <span><span class="tag ${l.type === "admin_adjust" ? "t-warn" : "t-mute"}"><i data-lucide="${TYPE[l.type][1]}"></i>${TYPE[l.type][0]}</span></span>
         <span class="text-right num font-medium" style="color:${l.amt > 0 ? "var(--status-success)" : l.amt < 0 ? "var(--destructive)" : "var(--muted-foreground)"}">${l.amt > 0 ? "+" : ""}${l.amt}</span>
         <span class="min-w-0 truncate">${esc(l.note)}${l.by !== "系统" ? `<span class="ml-1.5 text-xs muted-fg">· ${esc(l.by)}</span>` : ""}</span>
-        <span class="text-xs muted-fg">${l.at}</span></div>`).join("") : empty("没有符合条件的流水")}
+        <span class="text-xs muted-fg">${l.at}</span></div>`,
+              )
+              .join("")
+          : empty("没有符合条件的流水")
+      }
       ${more(all.length)}`;
-  }
-  if (S.tab === "logins") {
-    const f = S.tabFilter.logins, all = u.logs.logins.filter(l => f === "all" || l.res === "badpw" || l.res === "blocked"), rows = all.slice(0, S.tabShown);
-    const shared = (ip) => ip === SPAM_IP ? users.filter(x => x.name.startsWith("spam")).length : 0;
-    const R = { ok: ["成功", "t-ok"], badpw: ["密码错误", "t-bad"], blocked: ["账号已停用", "t-bad"], register: ["注册", "t-info"] };
-    html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML("lf", [["all", "全部"], ["fail", "失败"]], f, "sm")}<span class="text-xs muted-fg num">${all.length} 条</span></div>
-      ${rows.length ? rows.map(l => `<div class="log-row" style="grid-template-columns: 5.5rem 5.5rem 1fr auto">
+        }
+        if (S.tab === "logins") {
+          const f = S.tabFilter.logins,
+            all = u.logs.logins.filter(
+              (l) => f === "all" || l.res === "badpw" || l.res === "blocked",
+            ),
+            rows = all.slice(0, S.tabShown);
+          const shared = (ip) =>
+            ip === SPAM_IP ? users.filter((x) => x.name.startsWith("spam")).length : 0;
+          const R = {
+            ok: ["成功", "t-ok"],
+            badpw: ["密码错误", "t-bad"],
+            blocked: ["账号已停用", "t-bad"],
+            register: ["注册", "t-info"],
+          };
+          html = `<div class="sticky top-0 z-10 flex items-center justify-between bg-background py-3">${segHTML(
+            "lf",
+            [
+              ["all", "全部"],
+              ["fail", "失败"],
+            ],
+            f,
+            "sm",
+          )}<span class="text-xs muted-fg num">${all.length} 条</span></div>
+      ${
+        rows.length
+          ? rows
+              .map(
+                (l) => `<div class="log-row" style="grid-template-columns: 5.5rem 5.5rem 1fr auto">
         <span class="text-xs muted-fg">${l.at}</span>
         <span><span class="tag ${R[l.res][1]}">${R[l.res][0]}</span></span>
         <span class="min-w-0"><span class="num text-xs">${l.ip}</span>${shared(l.ip) > 1 ? ` <span class="tag t-warn" data-tip="提案：同一 IP 注册或登录过多个账号，可能是刷号"><i data-lucide="link"></i>关联 ${shared(l.ip)} 个账号</span>` : ""}</span>
-        <span class="text-xs muted-fg">${l.dev}</span></div>`).join("") : empty(f === "all" ? "还没有登录记录" : "没有失败的登录")}
+        <span class="text-xs muted-fg">${l.dev}</span></div>`,
+              )
+              .join("")
+          : empty(f === "all" ? "还没有登录记录" : "没有失败的登录")
+      }
       ${more(all.length)}`;
-  }
-  body.innerHTML = html; icons(); syncSeg(body, false);
-  bindSeg(body, "tf", (v) => { S.tabFilter.tasks = v; S.tabShown = 10; renderTabBody(true); });
-  bindSeg(body, "cf", (v) => { S.tabFilter.credits = v; S.tabShown = 10; renderTabBody(true); });
-  bindSeg(body, "lf", (v) => { S.tabFilter.logins = v; S.tabShown = 10; renderTabBody(true); });
-  const m = $("[data-more]", body); if (m) m.onclick = () => { S.tabShown += 10; const y = body.scrollTop; renderTabBody(false); body.scrollTop = y; };
-  const g = $("[data-goto]", body); if (g) g.onclick = () => { S.tab = g.dataset.goto; renderDrawer("none"); syncUrl(); };
-  $$("[data-copy-id]", body).forEach(b => b.onclick = (e) => { e.preventDefault(); navigator.clipboard?.writeText(b.dataset.copyId).catch(() => {}); toast("任务 ID 已复制", { icon: "copy" }); });
-  /* 页签内容切换只淡入，不位移，避免和切换用户的位移混淆 */
-  if (fade) { const target = body.children.length > 1 ? Array.from(body.children).slice(1) : [body]; target.forEach(c => anim(c, { opacity: 1 }, D.base, EASE, { opacity: 0 })); syncSeg(body, false); }
-}
+        }
+        body.innerHTML = html;
+        icons();
+        syncSeg(body, false);
+        bindSeg(body, "tf", (v) => {
+          S.tabFilter.tasks = v;
+          S.tabShown = 10;
+          renderTabBody(true);
+        });
+        bindSeg(body, "cf", (v) => {
+          S.tabFilter.credits = v;
+          S.tabShown = 10;
+          renderTabBody(true);
+        });
+        bindSeg(body, "lf", (v) => {
+          S.tabFilter.logins = v;
+          S.tabShown = 10;
+          renderTabBody(true);
+        });
+        const m = $("[data-more]", body);
+        if (m)
+          m.onclick = () => {
+            S.tabShown += 10;
+            const y = body.scrollTop;
+            renderTabBody(false);
+            body.scrollTop = y;
+          };
+        const g = $("[data-goto]", body);
+        if (g)
+          g.onclick = () => {
+            S.tab = g.dataset.goto;
+            renderDrawer("none");
+            syncUrl();
+          };
+        $$("[data-copy-id]", body).forEach(
+          (b) =>
+            (b.onclick = (e) => {
+              e.preventDefault();
+              navigator.clipboard?.writeText(b.dataset.copyId).catch(() => {});
+              toast("任务 ID 已复制", { icon: "copy" });
+            }),
+        );
+        /* 页签内容切换只淡入，不位移，避免和切换用户的位移混淆 */
+        if (fade) {
+          const target = body.children.length > 1 ? Array.from(body.children).slice(1) : [body];
+          target.forEach((c) => anim(c, { opacity: 1 }, D.base, EASE, { opacity: 0 }));
+          syncSeg(body, false);
+        }
+      }
 
-/* =====================================================================
- * 快捷键：/ 搜索；↑↓ / K J 切换用户；Esc 逐层关闭
- * ===================================================================== */
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (dlgStack.length) { dlgStack[dlgStack.length - 1](); return; }
-    if (S.menuFor) { closeMenu(); return; }
-    if (S.popFor) { closePop(); return; }
-    if (typing()) { document.activeElement.blur(); return; }
-    if (S.checked.size) { S.checked.clear(); refreshChecks(); return; }
-    if (S.drawerOpen) { closeDrawer(); return; }
-  }
-  if (typing() || dlgStack.length || S.popFor || S.menuFor) return;
-  if (e.key === "/") { e.preventDefault(); $("#q").focus(); $("#q").select(); }
-  if (S.drawerOpen && (e.key === "ArrowDown" || e.key === "j")) { e.preventDefault(); stepUser(1); }
-  if (S.drawerOpen && (e.key === "ArrowUp" || e.key === "k")) { e.preventDefault(); stepUser(-1); }
-});
-addEventListener("resize", () => { closeFloating(); placeCurBar(false); placeTabLine(false); });
-$("#mainScroll").addEventListener("scroll", () => { if (S.popFor && popAnchor && !popAnchor.closest("#drawer")) closePop(); if (S.menuFor) closeMenu(); }, { passive: true });
+      /* =====================================================================
+       * 快捷键：/ 搜索；↑↓ / K J 切换用户；Esc 逐层关闭
+       * ===================================================================== */
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          if (dlgStack.length) {
+            dlgStack[dlgStack.length - 1]();
+            return;
+          }
+          if (S.menuFor) {
+            closeMenu();
+            return;
+          }
+          if (S.popFor) {
+            closePop();
+            return;
+          }
+          if (typing()) {
+            document.activeElement.blur();
+            return;
+          }
+          if (S.checked.size) {
+            S.checked.clear();
+            refreshChecks();
+            return;
+          }
+          if (S.drawerOpen) {
+            closeDrawer();
+            return;
+          }
+        }
+        if (typing() || dlgStack.length || S.popFor || S.menuFor) return;
+        if (e.key === "/") {
+          e.preventDefault();
+          $("#q").focus();
+          $("#q").select();
+        }
+        if (S.drawerOpen && (e.key === "ArrowDown" || e.key === "j")) {
+          e.preventDefault();
+          stepUser(1);
+        }
+        if (S.drawerOpen && (e.key === "ArrowUp" || e.key === "k")) {
+          e.preventDefault();
+          stepUser(-1);
+        }
+      });
+      addEventListener("resize", () => {
+        closeFloating();
+        placeCurBar(false);
+        placeTabLine(false);
+      });
+      $("#mainScroll").addEventListener(
+        "scroll",
+        () => {
+          if (S.popFor && popAnchor && !popAnchor.closest("#drawer")) closePop();
+          if (S.menuFor) closeMenu();
+        },
+        { passive: true },
+      );
 
-/* =====================================================================
- * 原型控制条
- * ===================================================================== */
-function renderViewer() {
-  $("#viewerSeg").innerHTML = segHTML("viewer", [["super_admin", "super_admin（owner）"], ["admin", "admin（lina）"]], S.viewer, "sm");
-  syncSeg($("#viewerSeg"), false);
-  bindSeg($("#viewerSeg"), "viewer", (v) => { S.viewer = v; closeFloating(); renderTable(); if (S.drawerOpen) renderDrawer("none"); toast(`已切换为 ${v === "admin" ? "admin：不能操作管理员、不能改角色和重置密码" : "super_admin：全部权限"}`, { icon: "user-cog" }); });
-}
-$("#theme").onclick = () => { document.documentElement.classList.toggle("dark"); };
-$("#reload").onclick = () => { S.loaded = false; load(true); };
+      /* =====================================================================
+       * 原型控制条
+       * ===================================================================== */
+      function renderViewer() {
+        $("#viewerSeg").innerHTML = segHTML(
+          "viewer",
+          [
+            ["super_admin", "super_admin（owner）"],
+            ["admin", "admin（lina）"],
+          ],
+          S.viewer,
+          "sm",
+        );
+        syncSeg($("#viewerSeg"), false);
+        bindSeg($("#viewerSeg"), "viewer", (v) => {
+          S.viewer = v;
+          closeFloating();
+          renderTable();
+          if (S.drawerOpen) renderDrawer("none");
+          toast(
+            `已切换为 ${v === "admin" ? "admin：不能操作管理员、不能改角色和重置密码" : "super_admin：全部权限"}`,
+            { icon: "user-cog" },
+          );
+        });
+      }
+      $("#theme").onclick = () => {
+        document.documentElement.classList.toggle("dark");
+      };
+      $("#reload").onclick = () => {
+        S.loaded = false;
+        load(true);
+      };
 
-renderViewer(); renderToolbar(); icons();
-load(true);
-</script>
-</body>
+      renderViewer();
+      renderToolbar();
+      icons();
+      load(true);
+    </script>
+  </body>
 </html>

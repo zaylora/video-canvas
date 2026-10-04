@@ -39,10 +39,10 @@ module.exports = {
       text: { mode: "sync" },
       video: { mode: "async" },
       image: { mode: "sync" },
-      audio: { mode: "sync" }
+      audio: { mode: "sync" },
     },
     import: { args: {} },
-    poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }
+    poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 },
   },
 
   buildSubmitRequest: function (ctx) {
@@ -85,7 +85,7 @@ module.exports = {
     return {
       method: "GET",
       path: "/v1/video/generations/" + encodeURIComponent(ctx.task.providerTaskId),
-      timeout: 30
+      timeout: 30,
     };
   },
 
@@ -97,7 +97,7 @@ module.exports = {
     var progress = parseProgress(pick(body.progress, inner.progress));
 
     if (status === "failed") {
-      var r = failed(errorMessageOf(body) || errorMessageOf(inner) || ("上游任务失败：" + raw));
+      var r = failed(errorMessageOf(body) || errorMessageOf(inner) || "上游任务失败：" + raw);
       if (progress !== undefined) {
         r.progress = progress;
       }
@@ -118,7 +118,9 @@ module.exports = {
     return {
       status: "succeeded",
       progress: 100,
-      outputs: [{ type: "url", url: url, media_type: "video", mime: mimeOfVideo(body, inner, url) }]
+      outputs: [
+        { type: "url", url: url, media_type: "video", mime: mimeOfVideo(body, inner, url) },
+      ],
     };
   },
 
@@ -158,11 +160,11 @@ module.exports = {
         upstreamModel: id,
         kind: kind,
         label: id,
-        params: {}
+        params: {},
       });
     }
     return drafts;
-  }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -184,7 +186,7 @@ function buildChatRequest(ctx) {
     // 视觉模型：提示词 + 图片地址（宿主把文件引用换成自有存储的签名 URL）
     userContent = [
       { type: "text", text: userContent },
-      { type: "image_url", image_url: { url: { __fileRef: firstImage, as: "url" } } }
+      { type: "image_url", image_url: { url: { __fileRef: firstImage, as: "url" } } },
     ];
   }
   messages.push({ role: "user", content: userContent });
@@ -252,7 +254,7 @@ function usageOf(raw) {
   }
   return {
     input_tokens: typeof input === "number" ? Math.max(0, Math.round(input)) : 0,
-    output_tokens: typeof output === "number" ? Math.max(0, Math.round(output)) : 0
+    output_tokens: typeof output === "number" ? Math.max(0, Math.round(output)) : 0,
   };
 }
 
@@ -268,7 +270,18 @@ function buildVideoRequest(ctx) {
     body.prompt = String(input.prompt);
   }
   attachRefs(body, input);
-  var passthrough = ["duration", "width", "height", "fps", "seed", "size", "n", "aspect_ratio", "resolution", "generate_audio"];
+  var passthrough = [
+    "duration",
+    "width",
+    "height",
+    "fps",
+    "seed",
+    "size",
+    "n",
+    "aspect_ratio",
+    "resolution",
+    "generate_audio",
+  ];
   for (var i = 0; i < passthrough.length; i++) {
     var k = passthrough[i];
     if (input[k] !== undefined && input[k] !== null && input[k] !== "") {
@@ -375,7 +388,12 @@ function buildImageRequest(ctx) {
     for (var j = 0; j < images.length; j++) {
       parts.push({ name: images.length > 1 ? "image[]" : "image", fileRef: images[j] });
     }
-    return { method: "POST", path: "/v1/images/edits", multipart: { fields: fields, parts: parts }, timeout: 180 };
+    return {
+      method: "POST",
+      path: "/v1/images/edits",
+      multipart: { fields: fields, parts: parts },
+      timeout: 180,
+    };
   }
   return { method: "POST", path: "/v1/images/generations", json: fields, timeout: 180 };
 }
@@ -388,7 +406,12 @@ function parseImageResponse(resp) {
   for (var i = 0; i < list.length; i++) {
     var item = list[i];
     if (item && typeof item.url === "string" && item.url !== "") {
-      outputs.push({ type: "url", url: item.url, media_type: "image", mime: mimeOfImage(item.url) });
+      outputs.push({
+        type: "url",
+        url: item.url,
+        media_type: "image",
+        mime: mimeOfImage(item.url),
+      });
     } else if (item && typeof item.b64_json === "string" && item.b64_json !== "") {
       sawBase64 = true;
     }
@@ -402,7 +425,9 @@ function parseImageResponse(resp) {
   }
   if (sawBase64) {
     // 产物只支持下载地址与二进制响应，不接收内联 base64
-    return failed("上游只返回了 base64 图片，请在模型 params.extra 里指定 response_format 为 url，或换用支持返回地址的模型");
+    return failed(
+      "上游只返回了 base64 图片，请在模型 params.extra 里指定 response_format 为 url，或换用支持返回地址的模型",
+    );
   }
   return failed("上游没有返回图片");
 }
@@ -433,7 +458,7 @@ function buildSpeechRequest(ctx) {
   var body = {
     model: ctx.model.upstreamModel,
     input: text === undefined ? "" : String(text),
-    voice: firstString(input.voice, params.voice) || "alloy"
+    voice: firstString(input.voice, params.voice) || "alloy",
   };
   var format = firstString(input.format, params.format);
   if (format) {
@@ -445,7 +470,13 @@ function buildSpeechRequest(ctx) {
   }
   mergeExtra(body, params.extra);
   // 响应是音频字节：宿主直接写入素材存储，不经过插件
-  return { method: "POST", path: "/v1/audio/speech", json: body, responseType: "binary", timeout: 120 };
+  return {
+    method: "POST",
+    path: "/v1/audio/speech",
+    json: body,
+    responseType: "binary",
+    timeout: 120,
+  };
 }
 
 function parseSpeechResponse(resp) {
@@ -454,7 +485,7 @@ function parseSpeechResponse(resp) {
   }
   return {
     status: "succeeded",
-    outputs: [{ type: "asset" }] // 素材 id、地址、mime 由宿主补全
+    outputs: [{ type: "asset" }], // 素材 id、地址、mime 由宿主补全
   };
 }
 
@@ -468,7 +499,11 @@ function guessKind(id) {
   if (/embed|rerank|moderation|whisper|transcribe|suno|midjourney|audio/.test(s)) {
     return "";
   }
-  if (/video|sora|kling|veo|hailuo|seedance|wan[-_.0-9]|runway|pika|luma|cogvideo|vidu|hunyuan-video/.test(s)) {
+  if (
+    /video|sora|kling|veo|hailuo|seedance|wan[-_.0-9]|runway|pika|luma|cogvideo|vidu|hunyuan-video/.test(
+      s,
+    )
+  ) {
     return "video";
   }
   if (/tts|speech|voice/.test(s)) {
@@ -491,7 +526,11 @@ function first(list) {
 
 // 把参考素材挂到视频请求体：第一项放 image / video / audio，多于一个时再带上完整数组。
 function attachRefs(body, input) {
-  var groups = [["images", "image"], ["videos", "video"], ["audios", "audio"]];
+  var groups = [
+    ["images", "image"],
+    ["videos", "video"],
+    ["audios", "audio"],
+  ];
   for (var i = 0; i < groups.length; i++) {
     var list = input[groups[i][0]];
     if (!isArray(list) || list.length === 0) {
@@ -539,7 +578,12 @@ function errorMessageOf(body) {
   if (typeof body.fail_reason === "string" && body.fail_reason) {
     return body.fail_reason;
   }
-  if (typeof body.message === "string" && body.message && body.status !== undefined && mapVideoStatus(body.status) === "failed") {
+  if (
+    typeof body.message === "string" &&
+    body.message &&
+    body.status !== undefined &&
+    mapVideoStatus(body.status) === "failed"
+  ) {
     return body.message;
   }
   return "";

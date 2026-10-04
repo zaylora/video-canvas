@@ -66,11 +66,29 @@ services:
     restart: always
     network_mode: none
     mem_limit: ${PLUGIN_RUNNER_MEM_LIMIT:-512m}
-    entrypoint: ["/app/server", "plugin-runner", "-network", "unix", "-address", "/run/plugin-runner/runner.sock"]
+    entrypoint:
+      [
+        "/app/server",
+        "plugin-runner",
+        "-network",
+        "unix",
+        "-address",
+        "/run/plugin-runner/runner.sock",
+      ]
     volumes:
       - plugin_runner_sock:/run/plugin-runner
     healthcheck:
-      test: ["CMD", "/app/server", "plugin-runner", "-healthcheck", "-network", "unix", "-address", "/run/plugin-runner/runner.sock"]
+      test:
+        [
+          "CMD",
+          "/app/server",
+          "plugin-runner",
+          "-healthcheck",
+          "-network",
+          "unix",
+          "-address",
+          "/run/plugin-runner/runner.sock",
+        ]
       interval: 5s
       timeout: 3s
       retries: 12

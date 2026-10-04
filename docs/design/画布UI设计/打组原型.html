@@ -1,387 +1,1079 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>画布打组原型</title>
-<style>
-/* token 抄自 web/src/index.css（深色），hue 系列为本次新增的 --group-* */
-:root {
-  --canvas-bg: oklch(0.13 0 0);
-  --canvas-dot: oklch(1 0 0 / 0.08);
-  --chrome: oklch(0.2 0 0 / 0.78);
-  --chrome-border: oklch(1 0 0 / 0.08);
-  --chrome-hover: oklch(1 0 0 / 0.07);
-  --node-ring: oklch(1 0 0 / 0.72);
-  --foreground: oklch(0.985 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --card: oklch(0.205 0 0);
-  --popover: oklch(0.205 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --status-success: oklch(0.75 0.15 155);
-  --group-red: oklch(0.72 0.17 25);
-  --group-orange: oklch(0.76 0.16 55);
-  --group-yellow: oklch(0.84 0.15 90);
-  --group-green: oklch(0.76 0.17 150);
-  --group-cyan: oklch(0.8 0.12 205);
-  --group-blue: oklch(0.72 0.15 255);
-  --group-purple: oklch(0.7 0.16 295);
-  --group-pink: oklch(0.74 0.17 345);
-  --e-out: cubic-bezier(0.2, 0, 0, 1);
-  --fast: 0.12s; --base: 0.18s; --slow: 0.24s;
-  color-scheme: dark;
-}
-:root.light {
-  --canvas-bg: oklch(0.975 0 0);
-  --canvas-dot: oklch(0 0 0 / 0.14);
-  --chrome: oklch(1 0 0 / 0.82);
-  --chrome-border: oklch(0 0 0 / 0.08);
-  --chrome-hover: oklch(0 0 0 / 0.05);
-  --node-ring: oklch(0.2 0 0 / 0.85);
-  --foreground: oklch(0.145 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --card: oklch(1 0 0);
-  --popover: oklch(1 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --group-red: oklch(0.58 0.2 25);
-  --group-orange: oklch(0.64 0.17 55);
-  --group-yellow: oklch(0.7 0.15 90);
-  --group-green: oklch(0.6 0.17 150);
-  --group-cyan: oklch(0.62 0.12 205);
-  --group-blue: oklch(0.55 0.18 255);
-  --group-purple: oklch(0.55 0.2 295);
-  --group-pink: oklch(0.6 0.2 345);
-  color-scheme: light;
-}
-* { box-sizing: border-box; margin: 0; }
-body { background: var(--canvas-bg); color: var(--foreground); font: 14px/1.4 "PingFang SC", system-ui, sans-serif; overflow: hidden; height: 100vh; -webkit-font-smoothing: antialiased; }
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--node-ring); outline-offset: 2px; }
-#stage { position: absolute; inset: 0; background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px); background-size: 20px 20px; user-select: none; }
-#world { position: absolute; inset: 0; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布打组原型</title>
+    <style>
+      /* token 抄自 web/src/index.css（深色），hue 系列为本次新增的 --group-* */
+      :root {
+        --canvas-bg: oklch(0.13 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.08);
+        --chrome: oklch(0.2 0 0 / 0.78);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --chrome-hover: oklch(1 0 0 / 0.07);
+        --node-ring: oklch(1 0 0 / 0.72);
+        --foreground: oklch(0.985 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --card: oklch(0.205 0 0);
+        --popover: oklch(0.205 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --status-success: oklch(0.75 0.15 155);
+        --group-red: oklch(0.72 0.17 25);
+        --group-orange: oklch(0.76 0.16 55);
+        --group-yellow: oklch(0.84 0.15 90);
+        --group-green: oklch(0.76 0.17 150);
+        --group-cyan: oklch(0.8 0.12 205);
+        --group-blue: oklch(0.72 0.15 255);
+        --group-purple: oklch(0.7 0.16 295);
+        --group-pink: oklch(0.74 0.17 345);
+        --e-out: cubic-bezier(0.2, 0, 0, 1);
+        --fast: 0.12s;
+        --base: 0.18s;
+        --slow: 0.24s;
+        color-scheme: dark;
+      }
+      :root.light {
+        --canvas-bg: oklch(0.975 0 0);
+        --canvas-dot: oklch(0 0 0 / 0.14);
+        --chrome: oklch(1 0 0 / 0.82);
+        --chrome-border: oklch(0 0 0 / 0.08);
+        --chrome-hover: oklch(0 0 0 / 0.05);
+        --node-ring: oklch(0.2 0 0 / 0.85);
+        --foreground: oklch(0.145 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --card: oklch(1 0 0);
+        --popover: oklch(1 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --group-red: oklch(0.58 0.2 25);
+        --group-orange: oklch(0.64 0.17 55);
+        --group-yellow: oklch(0.7 0.15 90);
+        --group-green: oklch(0.6 0.17 150);
+        --group-cyan: oklch(0.62 0.12 205);
+        --group-blue: oklch(0.55 0.18 255);
+        --group-purple: oklch(0.55 0.2 295);
+        --group-pink: oklch(0.6 0.2 345);
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        background: var(--canvas-bg);
+        color: var(--foreground);
+        font:
+          14px/1.4 "PingFang SC",
+          system-ui,
+          sans-serif;
+        overflow: hidden;
+        height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--node-ring);
+        outline-offset: 2px;
+      }
+      #stage {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1.3px);
+        background-size: 20px 20px;
+        user-select: none;
+      }
+      #world {
+        position: absolute;
+        inset: 0;
+      }
 
-/* ---------- 组 ---------- */
-.group { position: absolute; pointer-events: none; --hue: transparent; }
-.group .frame { position: absolute; inset: 0; pointer-events: auto; cursor: grab; border-radius: 22px; border: 1px dashed color-mix(in oklch, var(--foreground) 20%, transparent);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent); transition: background var(--base) var(--e-out), border-color var(--fast), box-shadow var(--fast); }
-.group[data-color] .frame { background: color-mix(in oklch, var(--hue) 16%, transparent); border-color: color-mix(in oklch, var(--hue) 40%, transparent); }
-.group.sel .frame { border-color: var(--node-ring); }
-.group.drop .frame { box-shadow: 0 0 0 2px var(--node-ring), 0 0 0 6px color-mix(in oklch, var(--foreground) 10%, transparent); }
-.group .head { position: absolute; left: 4px; bottom: calc(100% + 8px); display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 6px; border-radius: 8px;
-  pointer-events: auto; cursor: grab; color: var(--muted-foreground); font-size: 15px; font-weight: 600; white-space: nowrap; }
-.group[data-label-color] .head { color: var(--label); }
-.group .head:hover { background: var(--chrome-hover); }
-.group .head svg { width: 18px; height: 18px; flex: none; }
-.group .head input { width: 140px; background: var(--chrome); color: var(--foreground); border: 1px solid var(--node-ring); border-radius: 6px; padding: 2px 6px; font: inherit; }
-/* 边框一圈可抓：四条 8px 宽的透明命中带，内部留给框选 */
-.group .edge { position: absolute; pointer-events: auto; cursor: grab; }
-.group .edge.t { left: 0; right: 0; top: -4px; height: 8px; } .group .edge.b { left: 0; right: 0; bottom: -4px; height: 8px; }
-.group .edge.l { top: 0; bottom: 0; left: -4px; width: 8px; } .group .edge.r { top: 0; bottom: 0; right: -4px; width: 8px; }
-.corner { position: absolute; width: 10px; height: 10px; border-radius: 3px; background: var(--card); border: 1.5px solid var(--node-ring); pointer-events: auto;
-  opacity: 0; transform: scale(.6); transition: opacity var(--fast) var(--e-out), transform var(--base) var(--e-out); }
-.group.sel .corner { opacity: 1; transform: none; }
-.corner.tl { left: -5px; top: -5px; cursor: nwse-resize; } .corner.tr { right: -5px; top: -5px; cursor: nesw-resize; }
-.corner.bl { left: -5px; bottom: -5px; cursor: nesw-resize; } .corner.br { right: -5px; bottom: -5px; cursor: nwse-resize; }
+      /* ---------- 组 ---------- */
+      .group {
+        position: absolute;
+        pointer-events: none;
+        --hue: transparent;
+      }
+      .group .frame {
+        position: absolute;
+        inset: 0;
+        pointer-events: auto;
+        cursor: grab;
+        border-radius: 22px;
+        border: 1px dashed color-mix(in oklch, var(--foreground) 20%, transparent);
+        background: color-mix(in oklch, var(--foreground) 8%, transparent);
+        transition:
+          background var(--base) var(--e-out),
+          border-color var(--fast),
+          box-shadow var(--fast);
+      }
+      .group[data-color] .frame {
+        background: color-mix(in oklch, var(--hue) 16%, transparent);
+        border-color: color-mix(in oklch, var(--hue) 40%, transparent);
+      }
+      .group.sel .frame {
+        border-color: var(--node-ring);
+      }
+      .group.drop .frame {
+        box-shadow:
+          0 0 0 2px var(--node-ring),
+          0 0 0 6px color-mix(in oklch, var(--foreground) 10%, transparent);
+      }
+      .group .head {
+        position: absolute;
+        left: 4px;
+        bottom: calc(100% + 8px);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        padding: 0 6px;
+        border-radius: 8px;
+        pointer-events: auto;
+        cursor: grab;
+        color: var(--muted-foreground);
+        font-size: 15px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .group[data-label-color] .head {
+        color: var(--label);
+      }
+      .group .head:hover {
+        background: var(--chrome-hover);
+      }
+      .group .head svg {
+        width: 18px;
+        height: 18px;
+        flex: none;
+      }
+      .group .head input {
+        width: 140px;
+        background: var(--chrome);
+        color: var(--foreground);
+        border: 1px solid var(--node-ring);
+        border-radius: 6px;
+        padding: 2px 6px;
+        font: inherit;
+      }
+      /* 边框一圈可抓：四条 8px 宽的透明命中带，内部留给框选 */
+      .group .edge {
+        position: absolute;
+        pointer-events: auto;
+        cursor: grab;
+      }
+      .group .edge.t {
+        left: 0;
+        right: 0;
+        top: -4px;
+        height: 8px;
+      }
+      .group .edge.b {
+        left: 0;
+        right: 0;
+        bottom: -4px;
+        height: 8px;
+      }
+      .group .edge.l {
+        top: 0;
+        bottom: 0;
+        left: -4px;
+        width: 8px;
+      }
+      .group .edge.r {
+        top: 0;
+        bottom: 0;
+        right: -4px;
+        width: 8px;
+      }
+      .corner {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        background: var(--card);
+        border: 1.5px solid var(--node-ring);
+        pointer-events: auto;
+        opacity: 0;
+        transform: scale(0.6);
+        transition:
+          opacity var(--fast) var(--e-out),
+          transform var(--base) var(--e-out);
+      }
+      .group.sel .corner {
+        opacity: 1;
+        transform: none;
+      }
+      .corner.tl {
+        left: -5px;
+        top: -5px;
+        cursor: nwse-resize;
+      }
+      .corner.tr {
+        right: -5px;
+        top: -5px;
+        cursor: nesw-resize;
+      }
+      .corner.bl {
+        left: -5px;
+        bottom: -5px;
+        cursor: nesw-resize;
+      }
+      .corner.br {
+        right: -5px;
+        bottom: -5px;
+        cursor: nwse-resize;
+      }
 
-/* ---------- 节点 ---------- */
-.node { position: absolute; width: 200px; height: 130px; }
-.node .title { position: absolute; left: 2px; bottom: calc(100% + 6px); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.node .card { position: absolute; inset: 0; border-radius: 16px; background: var(--card); box-shadow: 0 0 0 1px var(--chrome-border); cursor: grab; overflow: hidden;
-  transition: box-shadow var(--fast) var(--e-out); }
-.node.sel .card { box-shadow: 0 0 0 2px var(--node-ring), 0 12px 40px oklch(0 0 0 / .4); }
-.node .card i { position: absolute; inset: 0; }
-.node.dragging .card { cursor: grabbing; }
+      /* ---------- 节点 ---------- */
+      .node {
+        position: absolute;
+        width: 200px;
+        height: 130px;
+      }
+      .node .title {
+        position: absolute;
+        left: 2px;
+        bottom: calc(100% + 6px);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .node .card {
+        position: absolute;
+        inset: 0;
+        border-radius: 16px;
+        background: var(--card);
+        box-shadow: 0 0 0 1px var(--chrome-border);
+        cursor: grab;
+        overflow: hidden;
+        transition: box-shadow var(--fast) var(--e-out);
+      }
+      .node.sel .card {
+        box-shadow:
+          0 0 0 2px var(--node-ring),
+          0 12px 40px oklch(0 0 0 / 0.4);
+      }
+      .node .card i {
+        position: absolute;
+        inset: 0;
+      }
+      .node.dragging .card {
+        cursor: grabbing;
+      }
 
-/* ---------- 浮层 ---------- */
-.pill { position: fixed; top: 0; left: 0; display: flex; align-items: center; gap: 2px; height: 48px; padding: 0 6px; border-radius: 999px; background: var(--chrome);
-  border: 1px solid var(--chrome-border); backdrop-filter: blur(20px); box-shadow: 0 8px 30px oklch(0 0 0 / .35);
-  transition: opacity var(--base) var(--e-out), transform var(--base) var(--e-out); }
-.pill[hidden] { display: flex; opacity: 0; pointer-events: none; transform: translateY(6px) scale(.97); }
-.pill .sep { width: 1px; height: 22px; background: var(--chrome-border); margin: 0 4px; }
-.pill .cnt { padding: 0 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 999px; transition: background var(--fast), transform var(--fast) var(--e-out); }
-.btn:hover { background: var(--chrome-hover); } .btn:active { transform: scale(.96); }
-.btn svg { width: 18px; height: 18px; } .btn.danger:hover { color: var(--destructive); }
-.btn kbd, .tip kbd { font: 11px ui-monospace, monospace; color: var(--muted-foreground); }
-.swatch-dot { width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(var(--group-red), var(--group-yellow), var(--group-green), var(--group-cyan), var(--group-blue), var(--group-purple), var(--group-red)); }
-.pop { position: fixed; top: 0; left: 0; width: 300px; padding: 14px; border-radius: 16px; background: var(--popover); border: 1px solid var(--chrome-border);
-  box-shadow: 0 16px 48px oklch(0 0 0 / .45); transform-origin: top left; transition: opacity var(--base) var(--e-out), transform var(--base) var(--e-out); }
-.pop[hidden] { display: block; opacity: 0; transform: translateY(-4px) scale(.96); pointer-events: none; }
-.pop h4 { font-size: 12px; font-weight: 500; color: var(--muted-foreground); margin: 0 0 8px; } .pop h4:not(:first-child) { margin-top: 14px; }
-.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.sw { aspect-ratio: 1; border-radius: 10px; border: 1px solid var(--chrome-border); position: relative; transition: transform var(--fast) var(--e-out); }
-.sw:hover { transform: scale(1.06); } .sw:active { transform: scale(.96); }
-.sw.on { box-shadow: 0 0 0 2px var(--popover), 0 0 0 4px var(--node-ring); }
-.sw.none::after { content: ""; position: absolute; left: 20%; right: 20%; top: 50%; border-top: 1.5px solid var(--muted-foreground); transform: rotate(-45deg); }
-.dlg-mask { position: fixed; inset: 0; background: oklch(0 0 0 / .5); display: grid; place-items: center; transition: opacity var(--slow) var(--e-out); }
-.dlg-mask[hidden] { display: grid; opacity: 0; pointer-events: none; }
-.dlg { width: 360px; padding: 20px; border-radius: 16px; background: var(--popover); border: 1px solid var(--chrome-border); transition: transform var(--slow) var(--e-out); }
-.dlg-mask[hidden] .dlg { transform: scale(.96); }
-.dlg h3 { font-size: 16px; margin-bottom: 8px; } .dlg p { color: var(--muted-foreground); font-size: 13px; line-height: 1.6; }
-.dlg .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.dlg .btn { border: 1px solid var(--chrome-border); border-radius: 10px; } .dlg .btn.primary { background: var(--destructive); color: white; border-color: transparent; }
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 999px; background: var(--chrome); border: 1px solid var(--chrome-border); backdrop-filter: blur(20px); font-size: 13px; transition: opacity var(--base), transform var(--base) var(--e-out); }
-.toast[hidden] { display: block; opacity: 0; transform: translate(-50%, 6px); pointer-events: none; }
-.marquee { position: absolute; border: 1px solid var(--node-ring); background: color-mix(in oklch, var(--foreground) 6%, transparent); border-radius: 4px; pointer-events: none; }
-.help { position: fixed; left: 24px; bottom: 24px; max-width: 360px; font-size: 12px; line-height: 1.8; color: var(--muted-foreground); }
-.help b { color: var(--foreground); font-weight: 500; }
-.theme { position: fixed; right: 24px; top: 24px; }
-@media (prefers-reduced-motion: reduce) { * { transition-duration: .01s !important; } .pill[hidden], .pop[hidden], .dlg-mask[hidden] .dlg { transform: none; } }
-</style>
-</head>
-<body>
-<div id="stage"><div id="world"></div></div>
+      /* ---------- 浮层 ---------- */
+      .pill {
+        position: fixed;
+        top: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        height: 48px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--chrome);
+        border: 1px solid var(--chrome-border);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 8px 30px oklch(0 0 0 / 0.35);
+        transition:
+          opacity var(--base) var(--e-out),
+          transform var(--base) var(--e-out);
+      }
+      .pill[hidden] {
+        display: flex;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px) scale(0.97);
+      }
+      .pill .sep {
+        width: 1px;
+        height: 22px;
+        background: var(--chrome-border);
+        margin: 0 4px;
+      }
+      .pill .cnt {
+        padding: 0 12px;
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 999px;
+        transition:
+          background var(--fast),
+          transform var(--fast) var(--e-out);
+      }
+      .btn:hover {
+        background: var(--chrome-hover);
+      }
+      .btn:active {
+        transform: scale(0.96);
+      }
+      .btn svg {
+        width: 18px;
+        height: 18px;
+      }
+      .btn.danger:hover {
+        color: var(--destructive);
+      }
+      .btn kbd,
+      .tip kbd {
+        font:
+          11px ui-monospace,
+          monospace;
+        color: var(--muted-foreground);
+      }
+      .swatch-dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: conic-gradient(
+          var(--group-red),
+          var(--group-yellow),
+          var(--group-green),
+          var(--group-cyan),
+          var(--group-blue),
+          var(--group-purple),
+          var(--group-red)
+        );
+      }
+      .pop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 300px;
+        padding: 14px;
+        border-radius: 16px;
+        background: var(--popover);
+        border: 1px solid var(--chrome-border);
+        box-shadow: 0 16px 48px oklch(0 0 0 / 0.45);
+        transform-origin: top left;
+        transition:
+          opacity var(--base) var(--e-out),
+          transform var(--base) var(--e-out);
+      }
+      .pop[hidden] {
+        display: block;
+        opacity: 0;
+        transform: translateY(-4px) scale(0.96);
+        pointer-events: none;
+      }
+      .pop h4 {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted-foreground);
+        margin: 0 0 8px;
+      }
+      .pop h4:not(:first-child) {
+        margin-top: 14px;
+      }
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+      }
+      .sw {
+        aspect-ratio: 1;
+        border-radius: 10px;
+        border: 1px solid var(--chrome-border);
+        position: relative;
+        transition: transform var(--fast) var(--e-out);
+      }
+      .sw:hover {
+        transform: scale(1.06);
+      }
+      .sw:active {
+        transform: scale(0.96);
+      }
+      .sw.on {
+        box-shadow:
+          0 0 0 2px var(--popover),
+          0 0 0 4px var(--node-ring);
+      }
+      .sw.none::after {
+        content: "";
+        position: absolute;
+        left: 20%;
+        right: 20%;
+        top: 50%;
+        border-top: 1.5px solid var(--muted-foreground);
+        transform: rotate(-45deg);
+      }
+      .dlg-mask {
+        position: fixed;
+        inset: 0;
+        background: oklch(0 0 0 / 0.5);
+        display: grid;
+        place-items: center;
+        transition: opacity var(--slow) var(--e-out);
+      }
+      .dlg-mask[hidden] {
+        display: grid;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .dlg {
+        width: 360px;
+        padding: 20px;
+        border-radius: 16px;
+        background: var(--popover);
+        border: 1px solid var(--chrome-border);
+        transition: transform var(--slow) var(--e-out);
+      }
+      .dlg-mask[hidden] .dlg {
+        transform: scale(0.96);
+      }
+      .dlg h3 {
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+      .dlg p {
+        color: var(--muted-foreground);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .dlg .row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .dlg .btn {
+        border: 1px solid var(--chrome-border);
+        border-radius: 10px;
+      }
+      .dlg .btn.primary {
+        background: var(--destructive);
+        color: white;
+        border-color: transparent;
+      }
+      .toast {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: var(--chrome);
+        border: 1px solid var(--chrome-border);
+        backdrop-filter: blur(20px);
+        font-size: 13px;
+        transition:
+          opacity var(--base),
+          transform var(--base) var(--e-out);
+      }
+      .toast[hidden] {
+        display: block;
+        opacity: 0;
+        transform: translate(-50%, 6px);
+        pointer-events: none;
+      }
+      .marquee {
+        position: absolute;
+        border: 1px solid var(--node-ring);
+        background: color-mix(in oklch, var(--foreground) 6%, transparent);
+        border-radius: 4px;
+        pointer-events: none;
+      }
+      .help {
+        position: fixed;
+        left: 24px;
+        bottom: 24px;
+        max-width: 360px;
+        font-size: 12px;
+        line-height: 1.8;
+        color: var(--muted-foreground);
+      }
+      .help b {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .theme {
+        position: fixed;
+        right: 24px;
+        top: 24px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition-duration: 0.01s !important;
+        }
+        .pill[hidden],
+        .pop[hidden],
+        .dlg-mask[hidden] .dlg {
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><div id="world"></div></div>
 
-<div class="pill" id="bar" hidden></div>
-<div class="pop" id="pop" hidden></div>
-<div class="dlg-mask" id="mask" hidden>
-  <div class="dlg" role="alertdialog" aria-labelledby="dt">
-    <h3 id="dt">删除「组」？</h3>
-    <p id="dp"></p>
-    <div class="row"><button class="btn" id="dno">取消</button><button class="btn primary" id="dyes">删除组和节点</button></div>
-  </div>
-</div>
-<div class="toast" id="toast" hidden></div>
-<button class="btn theme" id="theme">切换浅色 / 深色</button>
-<div class="help">
-  <b>试一试</b><br>⓪ 组内任何空白处都能拖；<b>点一下</b>弹组菜单，<b>拖动</b>不弹<br>
-  ① 框选或 Shift 点选 2 个以上节点 → 顶部点「打组」<br>
-  ② 在组里任意空白处按住拖，整组一起走；双击组名（或选中后按 Enter）改名<br>
-  ③ 选中组，拖四角改范围（不会吞节点，也缩不到比成员更小）；拖组压过别的节点，它们<b>不</b>入组<br>
-  ④ 把别的节点拖进组（中心点进框即入组，高亮提示）；拖出去即退组<br>
-  ⑤ 选中组 → 颜色 / 整理布局 / 解组；Delete 弹确认；⌘Z 撤销
-</div>
+    <div class="pill" id="bar" hidden></div>
+    <div class="pop" id="pop" hidden></div>
+    <div class="dlg-mask" id="mask" hidden>
+      <div class="dlg" role="alertdialog" aria-labelledby="dt">
+        <h3 id="dt">删除「组」？</h3>
+        <p id="dp"></p>
+        <div class="row">
+          <button class="btn" id="dno">取消</button
+          ><button class="btn primary" id="dyes">删除组和节点</button>
+        </div>
+      </div>
+    </div>
+    <div class="toast" id="toast" hidden></div>
+    <button class="btn theme" id="theme">切换浅色 / 深色</button>
+    <div class="help">
+      <b>试一试</b><br />⓪ 组内任何空白处都能拖；<b>点一下</b>弹组菜单，<b>拖动</b>不弹<br />
+      ① 框选或 Shift 点选 2 个以上节点 → 顶部点「打组」<br />
+      ② 在组里任意空白处按住拖，整组一起走；双击组名（或选中后按 Enter）改名<br />
+      ③
+      选中组，拖四角改范围（不会吞节点，也缩不到比成员更小）；拖组压过别的节点，它们<b>不</b>入组<br />
+      ④ 把别的节点拖进组（中心点进框即入组，高亮提示）；拖出去即退组<br />
+      ⑤ 选中组 → 颜色 / 整理布局 / 解组；Delete 弹确认；⌘Z 撤销
+    </div>
 
-<script>
-const GAP = { x: 40, y: 56 }, PAD = { x: 24, top: 24, bottom: 24 }, HEAD = 36;
-const HUES = ["red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink"];
-const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
-const I = {
-  color: '<span class="swatch-dot"></span>',
-  arrange: ICON,
-  ungroup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M4 20 20 4"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
-};
-const GRADS = ["#5b6b8c,#202a40", "#8c5b5b,#402020", "#5b8c6e,#204030", "#8c7f5b,#403a20", "#6e5b8c,#302040", "#5b8c8c,#204040", "#8c5b7f,#40203a"];
+    <script>
+      const GAP = { x: 40, y: 56 },
+        PAD = { x: 24, top: 24, bottom: 24 },
+        HEAD = 36;
+      const HUES = ["red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink"];
+      const ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+      const I = {
+        color: '<span class="swatch-dot"></span>',
+        arrange: ICON,
+        ungroup:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M4 20 20 4"/></svg>',
+        trash:
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+      };
+      const GRADS = [
+        "#5b6b8c,#202a40",
+        "#8c5b5b,#402020",
+        "#5b8c6e,#204030",
+        "#8c7f5b,#403a20",
+        "#6e5b8c,#302040",
+        "#5b8c8c,#204040",
+        "#8c5b7f,#40203a",
+      ];
 
-let uid = 0;
-let nodes = [], groups = [], sel = new Set(), history = [];
-/* 组菜单只在「点一下」后打开；拖动不弹，拖完也不自动弹（已经开着的，拖完恢复） */
-let menuFor = null;
-const $ = (id) => document.getElementById(id);
-const world = $("world");
+      let uid = 0;
+      let nodes = [],
+        groups = [],
+        sel = new Set(),
+        history = [];
+      /* 组菜单只在「点一下」后打开；拖动不弹，拖完也不自动弹（已经开着的，拖完恢复） */
+      let menuFor = null;
+      const $ = (id) => document.getElementById(id);
+      const world = $("world");
 
-function seed() {
-  const pos = [[120, 160], [400, 120], [680, 200], [160, 420], [460, 400], [760, 470], [1000, 160]];
-  nodes = pos.map(([x, y], i) => ({ id: "n" + i, x, y, w: 200, h: 130, label: ["镜头 1", "镜头 2", "镜头 3", "角色 A", "角色 B", "场景图", "旁白"][i], g: GRADS[i] }));
-  groups = [];
-}
-const snap = () => history.push(JSON.stringify({ nodes, groups }));
-function undo() { const s = history.pop(); if (!s) return; ({ nodes, groups } = JSON.parse(s)); sel.clear(); render(); }
+      function seed() {
+        const pos = [
+          [120, 160],
+          [400, 120],
+          [680, 200],
+          [160, 420],
+          [460, 400],
+          [760, 470],
+          [1000, 160],
+        ];
+        nodes = pos.map(([x, y], i) => ({
+          id: "n" + i,
+          x,
+          y,
+          w: 200,
+          h: 130,
+          label: ["镜头 1", "镜头 2", "镜头 3", "角色 A", "角色 B", "场景图", "旁白"][i],
+          g: GRADS[i],
+        }));
+        groups = [];
+      }
+      const snap = () => history.push(JSON.stringify({ nodes, groups }));
+      function undo() {
+        const s = history.pop();
+        if (!s) return;
+        ({ nodes, groups } = JSON.parse(s));
+        sel.clear();
+        render();
+      }
 
-/* 成员只存 id，位置全是画布坐标；真实实现用 xyflow parentId + 相对坐标，行为一致 */
-const center = (n) => ({ x: n.x + n.w / 2, y: n.y + n.h / 2 });
-const inside = (n, g) => { const c = center(n); return c.x >= g.x && c.x <= g.x + g.w && c.y >= g.y && c.y <= g.y + g.h; };
-const members = (g) => nodes.filter((n) => n.group === g.id);
-const bounds = (list) => ({ x0: Math.min(...list.map((n) => n.x)), y0: Math.min(...list.map((n) => n.y)), x1: Math.max(...list.map((n) => n.x + n.w)), y1: Math.max(...list.map((n) => n.y + n.h)) });
-const fitFrame = (g, list) => { const b = bounds(list); Object.assign(g, { x: b.x0 - PAD.x, y: b.y0 - PAD.top - HEAD + 12, w: b.x1 - b.x0 + PAD.x * 2, h: b.y1 - b.y0 + PAD.top + HEAD - 12 + PAD.bottom }); };
-/* 只有用户亲手拖动的节点才重新判定归属：中心点在某个组框里就入组，出框就退组；组不嵌套。
+      /* 成员只存 id，位置全是画布坐标；真实实现用 xyflow parentId + 相对坐标，行为一致 */
+      const center = (n) => ({ x: n.x + n.w / 2, y: n.y + n.h / 2 });
+      const inside = (n, g) => {
+        const c = center(n);
+        return c.x >= g.x && c.x <= g.x + g.w && c.y >= g.y && c.y <= g.y + g.h;
+      };
+      const members = (g) => nodes.filter((n) => n.group === g.id);
+      const bounds = (list) => ({
+        x0: Math.min(...list.map((n) => n.x)),
+        y0: Math.min(...list.map((n) => n.y)),
+        x1: Math.max(...list.map((n) => n.x + n.w)),
+        y1: Math.max(...list.map((n) => n.y + n.h)),
+      });
+      const fitFrame = (g, list) => {
+        const b = bounds(list);
+        Object.assign(g, {
+          x: b.x0 - PAD.x,
+          y: b.y0 - PAD.top - HEAD + 12,
+          w: b.x1 - b.x0 + PAD.x * 2,
+          h: b.y1 - b.y0 + PAD.top + HEAD - 12 + PAD.bottom,
+        });
+      };
+      /* 只有用户亲手拖动的节点才重新判定归属：中心点在某个组框里就入组，出框就退组；组不嵌套。
    被组「带过去」、被组框「盖住」、被缩放「罩住」的节点都不算 */
-function settle(list, skip = new Set()) {
-  for (const n of list) { n.group = undefined; for (const g of [...groups].reverse()) if (!skip.has(g.id) && inside(n, g)) { n.group = g.id; break; } }
-}
+      function settle(list, skip = new Set()) {
+        for (const n of list) {
+          n.group = undefined;
+          for (const g of [...groups].reverse())
+            if (!skip.has(g.id) && inside(n, g)) {
+              n.group = g.id;
+              break;
+            }
+        }
+      }
 
-function groupMarkup(g) {
-  const style = `left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px;` + (g.color ? `--hue:var(--group-${g.color});` : "") + (g.labelColor ? `--label:var(--group-${g.labelColor});` : "");
-  return `<div class="group${sel.has(g.id) ? " sel" : ""}" data-gid="${g.id}" ${g.color ? `data-color="${g.color}"` : ""} ${g.labelColor ? `data-label-color="${g.labelColor}"` : ""} style="${style}">
+      function groupMarkup(g) {
+        const style =
+          `left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px;` +
+          (g.color ? `--hue:var(--group-${g.color});` : "") +
+          (g.labelColor ? `--label:var(--group-${g.labelColor});` : "");
+        return `<div class="group${sel.has(g.id) ? " sel" : ""}" data-gid="${g.id}" ${g.color ? `data-color="${g.color}"` : ""} ${g.labelColor ? `data-label-color="${g.labelColor}"` : ""} style="${style}">
     <div class="frame"></div><i class="edge t" data-drag></i><i class="edge b" data-drag></i><i class="edge l" data-drag></i><i class="edge r" data-drag></i>
     <div class="head" data-drag>${ICON}<span class="name">${g.name}</span></div>
     ${["tl", "tr", "bl", "br"].map((c) => `<i class="corner ${c}" data-corner="${c}"></i>`).join("")}</div>`;
-}
-const nodeMarkup = (n) => `<div class="node${sel.has(n.id) ? " sel" : ""}" data-nid="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px">
+      }
+      const nodeMarkup = (
+        n,
+      ) => `<div class="node${sel.has(n.id) ? " sel" : ""}" data-nid="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px">
   <div class="title">${n.label}</div><div class="card"><i style="background:linear-gradient(135deg,${n.g.split(",")[0]},${n.g.split(",")[1]})"></i></div></div>`;
 
-function render() {
-  world.innerHTML = groups.map(groupMarkup).join("") + nodes.map(nodeMarkup).join(""); // 组永远在节点下面
-  renderBar();
-}
+      function render() {
+        world.innerHTML = groups.map(groupMarkup).join("") + nodes.map(nodeMarkup).join(""); // 组永远在节点下面
+        renderBar();
+      }
 
-/* ---------- 工具条 ---------- */
-const btn = (id, icon, text, extra = "", cls = "") => `<button class="btn ${cls}" data-act="${id}">${icon}${text}${extra}</button>`;
-function renderBar() {
-  const bar = $("bar");
-  const selNodes = nodes.filter((n) => sel.has(n.id)), selGroups = groups.filter((g) => sel.has(g.id));
-  const old = bar.dataset.mode;
-  let html = "", mode = "";
-  if (selGroups.length === 1 && !selNodes.length && menuFor === selGroups[0].id) {
-    mode = "group";
-    html = btn("color", I.color, "颜色") + '<i class="sep"></i>' + btn("arrange", I.arrange, "整理布局") + '<i class="sep"></i>' + btn("ungroup", I.ungroup, "解组", ' <kbd>⌘⇧G</kbd>') + '<i class="sep"></i>' + btn("del", I.trash, "", "", "danger");
-  } else if (selNodes.length >= 2 && !selGroups.length) {
-    mode = "nodes";
-    html = `<span class="cnt">${selNodes.length} 个节点</span><i class="sep"></i>` + btn("group", ICON, "打组", ' <kbd>⌘G</kbd>') + '<i class="sep"></i>' + btn("arrange", I.arrange, "整理布局") + '<i class="sep"></i>' + btn("del", I.trash, "", "", "danger");
-  }
-  if (mode !== old) closePop();
-  bar.dataset.mode = mode;
-  if (mode) { bar.innerHTML = html; placeBar(mode === "group" ? selGroups[0] : null, selNodes); bar.hidden = false; } else bar.hidden = true;
-}
-/* 工具条浮在目标上方：组 = 组名行上方，多选节点 = 选区底框上方；居中、距离 14px、不随缩放变化；
+      /* ---------- 工具条 ---------- */
+      const btn = (id, icon, text, extra = "", cls = "") =>
+        `<button class="btn ${cls}" data-act="${id}">${icon}${text}${extra}</button>`;
+      function renderBar() {
+        const bar = $("bar");
+        const selNodes = nodes.filter((n) => sel.has(n.id)),
+          selGroups = groups.filter((g) => sel.has(g.id));
+        const old = bar.dataset.mode;
+        let html = "",
+          mode = "";
+        if (selGroups.length === 1 && !selNodes.length && menuFor === selGroups[0].id) {
+          mode = "group";
+          html =
+            btn("color", I.color, "颜色") +
+            '<i class="sep"></i>' +
+            btn("arrange", I.arrange, "整理布局") +
+            '<i class="sep"></i>' +
+            btn("ungroup", I.ungroup, "解组", " <kbd>⌘⇧G</kbd>") +
+            '<i class="sep"></i>' +
+            btn("del", I.trash, "", "", "danger");
+        } else if (selNodes.length >= 2 && !selGroups.length) {
+          mode = "nodes";
+          html =
+            `<span class="cnt">${selNodes.length} 个节点</span><i class="sep"></i>` +
+            btn("group", ICON, "打组", " <kbd>⌘G</kbd>") +
+            '<i class="sep"></i>' +
+            btn("arrange", I.arrange, "整理布局") +
+            '<i class="sep"></i>' +
+            btn("del", I.trash, "", "", "danger");
+        }
+        if (mode !== old) closePop();
+        bar.dataset.mode = mode;
+        if (mode) {
+          bar.innerHTML = html;
+          placeBar(mode === "group" ? selGroups[0] : null, selNodes);
+          bar.hidden = false;
+        } else bar.hidden = true;
+      }
+      /* 工具条浮在目标上方：组 = 组名行上方，多选节点 = 选区底框上方；居中、距离 14px、不随缩放变化；
    上方放不下翻到下方，左右各留 8px。真实实现用 xyflow NodeToolbar（position Top）。 */
-function placeBar(g, list) {
-  const bar = $("bar"), b = g ? { x0: g.x, x1: g.x + g.w, y0: g.y - HEAD, y1: g.y + g.h } : (({ x0, x1, y0, y1 }) => ({ x0: x0 - PAD.x, x1: x1 + PAD.x, y0: y0 - 44, y1: y1 + PAD.bottom }))(bounds(list));
-  const w = bar.offsetWidth, h = bar.offsetHeight;
-  const left = Math.min(Math.max(8, (b.x0 + b.x1) / 2 - w / 2), innerWidth - w - 8);
-  let top = b.y0 - 14 - h; if (top < 8) top = b.y1 + 14;
-  bar.style.left = left + "px"; bar.style.top = top + "px";
-}
-function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 2200); }
+      function placeBar(g, list) {
+        const bar = $("bar"),
+          b = g
+            ? { x0: g.x, x1: g.x + g.w, y0: g.y - HEAD, y1: g.y + g.h }
+            : (({ x0, x1, y0, y1 }) => ({
+                x0: x0 - PAD.x,
+                x1: x1 + PAD.x,
+                y0: y0 - 44,
+                y1: y1 + PAD.bottom,
+              }))(bounds(list));
+        const w = bar.offsetWidth,
+          h = bar.offsetHeight;
+        const left = Math.min(Math.max(8, (b.x0 + b.x1) / 2 - w / 2), innerWidth - w - 8);
+        let top = b.y0 - 14 - h;
+        if (top < 8) top = b.y1 + 14;
+        bar.style.left = left + "px";
+        bar.style.top = top + "px";
+      }
+      function toast(t) {
+        const el = $("toast");
+        el.textContent = t;
+        el.hidden = false;
+        clearTimeout(toast.t);
+        toast.t = setTimeout(() => (el.hidden = true), 2200);
+      }
 
-/* ---------- 操作 ---------- */
-function makeGroup() {
-  const list = nodes.filter((n) => sel.has(n.id)); if (list.length < 2) return;
-  snap();
-  const g = { id: "g" + ++uid, name: nextName(), x: 0, y: 0, w: 0, h: 0 };
-  fitFrame(g, list); groups.push(g); list.forEach((n) => (n.group = g.id)); sel = new Set([g.id]); menuFor = g.id; render(); requestAnimationFrame(() => startRename(g.id));
-  toast("已打组 · 直接输入组名，Enter 确认、Esc 保留「" + g.name + "」");
-}
-function nextName() { const used = new Set(groups.map((g) => g.name)); if (!used.has("组")) return "组"; let i = 2; while (used.has("组 " + i)) i++; return "组 " + i; }
-function ungroup(g) { snap(); groups = groups.filter((x) => x !== g); nodes.forEach((n) => n.group === g.id && (n.group = undefined)); sel = new Set(members(g).map((n) => n.id)); menuFor = null; render(); toast("已解组，节点原地保留"); }
-function arrange(list, g) {
-  snap();
-  const cols = Math.ceil(Math.sqrt(list.length)); const x0 = Math.min(...list.map((n) => n.x)), y0 = Math.min(...list.map((n) => n.y));
-  const sorted = [...list].sort((a, b) => a.y - b.y || a.x - b.x);
-  sorted.forEach((n, i) => { n.x = x0 + (i % cols) * (n.w + GAP.x); n.y = y0 + Math.floor(i / cols) * (n.h + GAP.y); });
-  if (g) fitFrame(g, list);
-  render();
-}
-function askDelete(g) {
-  const k = members(g).length;
-  $("dp").textContent = `「${g.name}」里的 ${k} 个节点会一起被删除，相关连线也会断开。可以用 ⌘Z 恢复。`;
-  $("dt").textContent = `删除「${g.name}」？`;
-  $("mask").hidden = false; $("mask").dataset.gid = g.id; $("dyes").focus();
-}
-function doDelete() { const g = groups.find((x) => x.id === $("mask").dataset.gid); $("mask").hidden = true; if (!g) return; snap(); nodes = nodes.filter((n) => n.group !== g.id); groups = groups.filter((x) => x !== g); sel.clear(); render(); }
+      /* ---------- 操作 ---------- */
+      function makeGroup() {
+        const list = nodes.filter((n) => sel.has(n.id));
+        if (list.length < 2) return;
+        snap();
+        const g = { id: "g" + ++uid, name: nextName(), x: 0, y: 0, w: 0, h: 0 };
+        fitFrame(g, list);
+        groups.push(g);
+        list.forEach((n) => (n.group = g.id));
+        sel = new Set([g.id]);
+        menuFor = g.id;
+        render();
+        requestAnimationFrame(() => startRename(g.id));
+        toast("已打组 · 直接输入组名，Enter 确认、Esc 保留「" + g.name + "」");
+      }
+      function nextName() {
+        const used = new Set(groups.map((g) => g.name));
+        if (!used.has("组")) return "组";
+        let i = 2;
+        while (used.has("组 " + i)) i++;
+        return "组 " + i;
+      }
+      function ungroup(g) {
+        snap();
+        groups = groups.filter((x) => x !== g);
+        nodes.forEach((n) => n.group === g.id && (n.group = undefined));
+        sel = new Set(members(g).map((n) => n.id));
+        menuFor = null;
+        render();
+        toast("已解组，节点原地保留");
+      }
+      function arrange(list, g) {
+        snap();
+        const cols = Math.ceil(Math.sqrt(list.length));
+        const x0 = Math.min(...list.map((n) => n.x)),
+          y0 = Math.min(...list.map((n) => n.y));
+        const sorted = [...list].sort((a, b) => a.y - b.y || a.x - b.x);
+        sorted.forEach((n, i) => {
+          n.x = x0 + (i % cols) * (n.w + GAP.x);
+          n.y = y0 + Math.floor(i / cols) * (n.h + GAP.y);
+        });
+        if (g) fitFrame(g, list);
+        render();
+      }
+      function askDelete(g) {
+        const k = members(g).length;
+        $("dp").textContent =
+          `「${g.name}」里的 ${k} 个节点会一起被删除，相关连线也会断开。可以用 ⌘Z 恢复。`;
+        $("dt").textContent = `删除「${g.name}」？`;
+        $("mask").hidden = false;
+        $("mask").dataset.gid = g.id;
+        $("dyes").focus();
+      }
+      function doDelete() {
+        const g = groups.find((x) => x.id === $("mask").dataset.gid);
+        $("mask").hidden = true;
+        if (!g) return;
+        snap();
+        nodes = nodes.filter((n) => n.group !== g.id);
+        groups = groups.filter((x) => x !== g);
+        sel.clear();
+        render();
+      }
 
-/* ---------- 颜色面板 ---------- */
-function openPop() {
-  const g = groups.find((x) => sel.has(x.id)); if (!g) return;
-  const sw = (kind, cur) => `<div class="swatches">${[null, ...HUES].map((h) => `<button class="sw ${h ? "" : "none"} ${cur === (h || undefined) ? "on" : ""}" data-kind="${kind}" data-hue="${h || ""}" aria-label="${h || "无"}" style="${h ? (kind === "color" ? `background:color-mix(in oklch,var(--group-${h}) 38%,var(--popover))` : `background:var(--group-${h})`) : ""}"></button>`).join("")}</div>`;
-  $("pop").innerHTML = `<h4>背景颜色</h4>${sw("color", g.color)}<h4>标签颜色</h4>${sw("labelColor", g.labelColor)}`;
-  const r = $("bar").getBoundingClientRect();
-  $("pop").style.left = Math.min(Math.max(8, r.left), innerWidth - 308) + "px"; $("pop").style.top = r.bottom + 10 + "px";
-  $("pop").hidden = false;
-}
-const closePop = () => ($("pop").hidden = true);
+      /* ---------- 颜色面板 ---------- */
+      function openPop() {
+        const g = groups.find((x) => sel.has(x.id));
+        if (!g) return;
+        const sw = (kind, cur) =>
+          `<div class="swatches">${[null, ...HUES].map((h) => `<button class="sw ${h ? "" : "none"} ${cur === (h || undefined) ? "on" : ""}" data-kind="${kind}" data-hue="${h || ""}" aria-label="${h || "无"}" style="${h ? (kind === "color" ? `background:color-mix(in oklch,var(--group-${h}) 38%,var(--popover))` : `background:var(--group-${h})`) : ""}"></button>`).join("")}</div>`;
+        $("pop").innerHTML =
+          `<h4>背景颜色</h4>${sw("color", g.color)}<h4>标签颜色</h4>${sw("labelColor", g.labelColor)}`;
+        const r = $("bar").getBoundingClientRect();
+        $("pop").style.left = Math.min(Math.max(8, r.left), innerWidth - 308) + "px";
+        $("pop").style.top = r.bottom + 10 + "px";
+        $("pop").hidden = false;
+      }
+      const closePop = () => ($("pop").hidden = true);
 
-/* ---------- 指针交互 ---------- */
-let drag = null;
-const pt = (e) => ({ x: e.clientX, y: e.clientY });
-$("stage").addEventListener("pointerdown", (e) => {
-  if (e.button) return;
-  const nEl = e.target.closest("[data-nid]"), gEl = e.target.closest("[data-gid]");
-  const corner = e.target.closest("[data-corner]"), handle = e.target.closest("[data-drag]");
-  if (e.target.closest("input")) return;
-  document.activeElement?.blur?.();
-  if (e.detail >= 2 && gEl && e.target.closest(".head")) { // 双击组名：原地改名（按下时就处理，免得重绘把元素换掉）
-    e.preventDefault(); const g = groups.find((x) => x.id === gEl.dataset.gid); sel = new Set([g.id]); menuFor = g.id; render(); requestAnimationFrame(() => startRename(g.id)); return;
-  }
-  if (corner && gEl) { snap(); const g = groups.find((x) => x.id === gEl.dataset.gid); drag = { type: "resize", g, c: corner.dataset.corner, start: pt(e), o: { ...g } }; }
-  else if (nEl) {
-    const n = nodes.find((x) => x.id === nEl.dataset.nid);
-    if (e.shiftKey) sel.has(n.id) ? sel.delete(n.id) : sel.add(n.id); else if (!sel.has(n.id)) sel = new Set([n.id]);
-    menuFor = null; snap(); drag = { type: "move", start: pt(e), items: moveSet(), moved: false };
-  } else if (gEl) { // 组内任何空白处都能拖；没拖动就是点击，松手后弹组菜单
-    const g = groups.find((x) => x.id === gEl.dataset.gid), wasOpen = menuFor === g.id;
-    if (e.shiftKey) sel.has(g.id) ? sel.delete(g.id) : sel.add(g.id); else if (!sel.has(g.id)) sel = new Set([g.id]);
-    snap(); drag = { type: "move", start: pt(e), items: moveSet(), moved: false, group: g, wasOpen };
-  } else { menuFor = null; if (!e.shiftKey) sel.clear(); drag = { type: "box", start: pt(e), base: new Set(sel) }; }
-  render(); if (drag.type === "box") { const m = document.createElement("div"); m.className = "marquee"; world.append(m); drag.el = m; }
-});
-/* 被拖动的集合：选中的节点 + 选中组的成员（成员跟着组走） */
-function moveSet() {
-  const gs = groups.filter((g) => sel.has(g.id));
-  const ids = new Set([...sel]); gs.forEach((g) => members(g).forEach((n) => ids.add(n.id)));
-  return [...nodes, ...groups].filter((o) => ids.has(o.id)).map((o) => ({ o, x: o.x, y: o.y }));
-}
-window.addEventListener("pointermove", (e) => {
-  if (!drag) return;
-  const dx = e.clientX - drag.start.x, dy = e.clientY - drag.start.y;
-  if (drag.type === "move") {
-    if (!drag.moved && Math.hypot(dx, dy) < 3) return;
-    if (!drag.moved) $("bar").hidden = true; // 拖动中菜单收起
-    drag.moved = true;
-    drag.items.forEach(({ o, x, y }) => { o.x = x + dx; o.y = y + dy; });
-    // 高亮：被拖的节点中心进入哪个组
-    const hot = new Set(); nodes.filter((n) => sel.has(n.id)).forEach((n) => groups.forEach((g) => !sel.has(g.id) && inside(n, g) && hot.add(g.id)));
-    for (const el of world.querySelectorAll("[data-gid]")) el.classList.toggle("drop", hot.has(el.dataset.gid));
-    for (const { o } of drag.items) { const el = world.querySelector(`[data-nid="${o.id}"],[data-gid="${o.id}"]`); if (el) { el.style.left = o.x + "px"; el.style.top = o.y + "px"; } }
-  } else if (drag.type === "resize") {
-    $("bar").hidden = true; closePop();
-    const { g, c, o } = drag, ms = members(g), mb = ms.length ? bounds(ms) : null;
-    // 最小尺寸：200×140，且不能缩到比成员更小（缩放不改变谁在组里）
-    const right = o.x + o.w, bottom = o.y + o.h;
-    const minR = mb ? Math.max(o.x + 200, mb.x1 + PAD.x) : o.x + 200, minB = mb ? Math.max(o.y + 140, mb.y1 + PAD.bottom) : o.y + 140;
-    const maxL = mb ? Math.min(right - 200, mb.x0 - PAD.x) : right - 200, maxT = mb ? Math.min(bottom - 140, mb.y0 - PAD.top - HEAD + 12) : bottom - 140;
-    let x = o.x, y = o.y, w = o.w, h = o.h;
-    if (c.includes("r")) w = Math.max(minR, right + dx) - o.x; if (c.includes("b")) h = Math.max(minB, bottom + dy) - o.y;
-    if (c.includes("l")) { x = Math.min(maxL, o.x + dx); w = right - x; } if (c.includes("t")) { y = Math.min(maxT, o.y + dy); h = bottom - y; }
-    Object.assign(g, { x, y, w, h });
-    const el = world.querySelector(`[data-gid="${g.id}"]`); Object.assign(el.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
-  } else if (drag.type === "box") {
-    const a = drag.start, x = Math.min(a.x, e.clientX), y = Math.min(a.y, e.clientY), w = Math.abs(dx), h = Math.abs(dy);
-    Object.assign(drag.el.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
-    sel = new Set(drag.base);
-    nodes.forEach((n) => n.x < x + w && n.x + n.w > x && n.y < y + h && n.y + n.h > y && sel.add(n.id)); // 相交即选中
-    world.querySelectorAll("[data-nid]").forEach((el) => el.classList.toggle("sel", sel.has(el.dataset.nid)));
-  }
-});
-window.addEventListener("pointerup", () => {
-  if (!drag) return; const d = drag; drag = null;
-  if (d.type === "move" && d.moved) {
-    const before = nodes.map((n) => n.group).join();
-    // 只重判被亲手拖动的节点；整组被拖时，成员跟着走、别的节点不受影响
-    const dragged = nodes.filter((n) => sel.has(n.id) && d.items.some((it) => it.o === n));
-    settle(dragged, new Set(groups.filter((g) => sel.has(g.id)).map((g) => g.id)));
-    if (nodes.map((n) => n.group).join() !== before) toast("组成员已更新");
-  } else if (d.type === "move") history.pop(); // 只是点了一下，不算一步
-  if (d.type === "move" && d.group) menuFor = d.moved ? (d.wasOpen ? d.group.id : null) : d.group.id;
-  if (d.type === "resize") { sel = new Set([d.g.id]); }
-  render();
-});
-function startRename(gid) {
-  const g = groups.find((x) => x.id === gid), span = world.querySelector(`[data-gid="${gid}"] .head .name`); if (!g || !span) return;
-  const input = Object.assign(document.createElement("input"), { value: g.name, maxLength: 40 });
-  span.replaceWith(input); input.focus(); input.select();
-  let finished = false;
-  const done = (ok) => { if (finished) return; finished = true; if (ok) { const v = input.value.replace(/\s+/g, " ").trim(); if (v && v !== g.name) { snap(); g.name = v; } } render(); };
-  input.onkeydown = (ev) => { if (ev.key === "Enter") done(true); if (ev.key === "Escape") done(false); ev.stopPropagation(); };
-  input.onblur = () => done(true);
-}
-$("bar").addEventListener("click", (e) => {
-  const act = e.target.closest("[data-act]")?.dataset.act, g = groups.find((x) => sel.has(x.id));
-  if (act === "group") makeGroup();
-  else if (act === "ungroup") ungroup(g);
-  else if (act === "del") g ? askDelete(g) : (snap(), nodes = nodes.filter((n) => !sel.has(n.id)), sel.clear(), render());
-  else if (act === "arrange") g ? arrange(members(g), g) : arrange(nodes.filter((n) => sel.has(n.id)));
-  else if (act === "color") $("pop").hidden ? openPop() : closePop();
-});
-$("pop").addEventListener("click", (e) => {
-  const b = e.target.closest(".sw"); if (!b) return; const g = groups.find((x) => sel.has(x.id)); snap();
-  g[b.dataset.kind] = b.dataset.hue || undefined; render(); openPop();
-});
-$("dno").onclick = () => ($("mask").hidden = true); $("dyes").onclick = doDelete;
-$("theme").onclick = () => document.documentElement.classList.toggle("light");
-window.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") return;
-  const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
-  if (!$("mask").hidden) { if (k === "escape") $("mask").hidden = true; return; }
-  if (mod && k === "g") { e.preventDefault(); const g = groups.find((x) => sel.has(x.id)); e.shiftKey ? g && ungroup(g) : makeGroup(); }
-  else if (mod && k === "z") { e.preventDefault(); undo(); }
-  else if (k === "delete" || k === "backspace") { const g = groups.find((x) => sel.has(x.id)); if (g) askDelete(g); else if (sel.size) { snap(); nodes = nodes.filter((n) => !sel.has(n.id)); sel.clear(); render(); } }
-  else if ((k === "enter" || k === "f2") && sel.size === 1 && groups.some((x) => sel.has(x.id))) { e.preventDefault(); startRename([...sel][0]); }
-  else if (k === "escape") { closePop(); sel.clear(); menuFor = null; render(); }
-});
-document.addEventListener("pointerdown", (e) => { if (!e.target.closest("#pop, #bar")) closePop(); }, true);
-seed(); render();
-</script>
-</body>
+      /* ---------- 指针交互 ---------- */
+      let drag = null;
+      const pt = (e) => ({ x: e.clientX, y: e.clientY });
+      $("stage").addEventListener("pointerdown", (e) => {
+        if (e.button) return;
+        const nEl = e.target.closest("[data-nid]"),
+          gEl = e.target.closest("[data-gid]");
+        const corner = e.target.closest("[data-corner]"),
+          handle = e.target.closest("[data-drag]");
+        if (e.target.closest("input")) return;
+        document.activeElement?.blur?.();
+        if (e.detail >= 2 && gEl && e.target.closest(".head")) {
+          // 双击组名：原地改名（按下时就处理，免得重绘把元素换掉）
+          e.preventDefault();
+          const g = groups.find((x) => x.id === gEl.dataset.gid);
+          sel = new Set([g.id]);
+          menuFor = g.id;
+          render();
+          requestAnimationFrame(() => startRename(g.id));
+          return;
+        }
+        if (corner && gEl) {
+          snap();
+          const g = groups.find((x) => x.id === gEl.dataset.gid);
+          drag = { type: "resize", g, c: corner.dataset.corner, start: pt(e), o: { ...g } };
+        } else if (nEl) {
+          const n = nodes.find((x) => x.id === nEl.dataset.nid);
+          if (e.shiftKey) sel.has(n.id) ? sel.delete(n.id) : sel.add(n.id);
+          else if (!sel.has(n.id)) sel = new Set([n.id]);
+          menuFor = null;
+          snap();
+          drag = { type: "move", start: pt(e), items: moveSet(), moved: false };
+        } else if (gEl) {
+          // 组内任何空白处都能拖；没拖动就是点击，松手后弹组菜单
+          const g = groups.find((x) => x.id === gEl.dataset.gid),
+            wasOpen = menuFor === g.id;
+          if (e.shiftKey) sel.has(g.id) ? sel.delete(g.id) : sel.add(g.id);
+          else if (!sel.has(g.id)) sel = new Set([g.id]);
+          snap();
+          drag = { type: "move", start: pt(e), items: moveSet(), moved: false, group: g, wasOpen };
+        } else {
+          menuFor = null;
+          if (!e.shiftKey) sel.clear();
+          drag = { type: "box", start: pt(e), base: new Set(sel) };
+        }
+        render();
+        if (drag.type === "box") {
+          const m = document.createElement("div");
+          m.className = "marquee";
+          world.append(m);
+          drag.el = m;
+        }
+      });
+      /* 被拖动的集合：选中的节点 + 选中组的成员（成员跟着组走） */
+      function moveSet() {
+        const gs = groups.filter((g) => sel.has(g.id));
+        const ids = new Set([...sel]);
+        gs.forEach((g) => members(g).forEach((n) => ids.add(n.id)));
+        return [...nodes, ...groups]
+          .filter((o) => ids.has(o.id))
+          .map((o) => ({ o, x: o.x, y: o.y }));
+      }
+      window.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        const dx = e.clientX - drag.start.x,
+          dy = e.clientY - drag.start.y;
+        if (drag.type === "move") {
+          if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+          if (!drag.moved) $("bar").hidden = true; // 拖动中菜单收起
+          drag.moved = true;
+          drag.items.forEach(({ o, x, y }) => {
+            o.x = x + dx;
+            o.y = y + dy;
+          });
+          // 高亮：被拖的节点中心进入哪个组
+          const hot = new Set();
+          nodes
+            .filter((n) => sel.has(n.id))
+            .forEach((n) => groups.forEach((g) => !sel.has(g.id) && inside(n, g) && hot.add(g.id)));
+          for (const el of world.querySelectorAll("[data-gid]"))
+            el.classList.toggle("drop", hot.has(el.dataset.gid));
+          for (const { o } of drag.items) {
+            const el = world.querySelector(`[data-nid="${o.id}"],[data-gid="${o.id}"]`);
+            if (el) {
+              el.style.left = o.x + "px";
+              el.style.top = o.y + "px";
+            }
+          }
+        } else if (drag.type === "resize") {
+          $("bar").hidden = true;
+          closePop();
+          const { g, c, o } = drag,
+            ms = members(g),
+            mb = ms.length ? bounds(ms) : null;
+          // 最小尺寸：200×140，且不能缩到比成员更小（缩放不改变谁在组里）
+          const right = o.x + o.w,
+            bottom = o.y + o.h;
+          const minR = mb ? Math.max(o.x + 200, mb.x1 + PAD.x) : o.x + 200,
+            minB = mb ? Math.max(o.y + 140, mb.y1 + PAD.bottom) : o.y + 140;
+          const maxL = mb ? Math.min(right - 200, mb.x0 - PAD.x) : right - 200,
+            maxT = mb ? Math.min(bottom - 140, mb.y0 - PAD.top - HEAD + 12) : bottom - 140;
+          let x = o.x,
+            y = o.y,
+            w = o.w,
+            h = o.h;
+          if (c.includes("r")) w = Math.max(minR, right + dx) - o.x;
+          if (c.includes("b")) h = Math.max(minB, bottom + dy) - o.y;
+          if (c.includes("l")) {
+            x = Math.min(maxL, o.x + dx);
+            w = right - x;
+          }
+          if (c.includes("t")) {
+            y = Math.min(maxT, o.y + dy);
+            h = bottom - y;
+          }
+          Object.assign(g, { x, y, w, h });
+          const el = world.querySelector(`[data-gid="${g.id}"]`);
+          Object.assign(el.style, {
+            left: x + "px",
+            top: y + "px",
+            width: w + "px",
+            height: h + "px",
+          });
+        } else if (drag.type === "box") {
+          const a = drag.start,
+            x = Math.min(a.x, e.clientX),
+            y = Math.min(a.y, e.clientY),
+            w = Math.abs(dx),
+            h = Math.abs(dy);
+          Object.assign(drag.el.style, {
+            left: x + "px",
+            top: y + "px",
+            width: w + "px",
+            height: h + "px",
+          });
+          sel = new Set(drag.base);
+          nodes.forEach(
+            (n) => n.x < x + w && n.x + n.w > x && n.y < y + h && n.y + n.h > y && sel.add(n.id),
+          ); // 相交即选中
+          world
+            .querySelectorAll("[data-nid]")
+            .forEach((el) => el.classList.toggle("sel", sel.has(el.dataset.nid)));
+        }
+      });
+      window.addEventListener("pointerup", () => {
+        if (!drag) return;
+        const d = drag;
+        drag = null;
+        if (d.type === "move" && d.moved) {
+          const before = nodes.map((n) => n.group).join();
+          // 只重判被亲手拖动的节点；整组被拖时，成员跟着走、别的节点不受影响
+          const dragged = nodes.filter((n) => sel.has(n.id) && d.items.some((it) => it.o === n));
+          settle(dragged, new Set(groups.filter((g) => sel.has(g.id)).map((g) => g.id)));
+          if (nodes.map((n) => n.group).join() !== before) toast("组成员已更新");
+        } else if (d.type === "move") history.pop(); // 只是点了一下，不算一步
+        if (d.type === "move" && d.group)
+          menuFor = d.moved ? (d.wasOpen ? d.group.id : null) : d.group.id;
+        if (d.type === "resize") {
+          sel = new Set([d.g.id]);
+        }
+        render();
+      });
+      function startRename(gid) {
+        const g = groups.find((x) => x.id === gid),
+          span = world.querySelector(`[data-gid="${gid}"] .head .name`);
+        if (!g || !span) return;
+        const input = Object.assign(document.createElement("input"), {
+          value: g.name,
+          maxLength: 40,
+        });
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        let finished = false;
+        const done = (ok) => {
+          if (finished) return;
+          finished = true;
+          if (ok) {
+            const v = input.value.replace(/\s+/g, " ").trim();
+            if (v && v !== g.name) {
+              snap();
+              g.name = v;
+            }
+          }
+          render();
+        };
+        input.onkeydown = (ev) => {
+          if (ev.key === "Enter") done(true);
+          if (ev.key === "Escape") done(false);
+          ev.stopPropagation();
+        };
+        input.onblur = () => done(true);
+      }
+      $("bar").addEventListener("click", (e) => {
+        const act = e.target.closest("[data-act]")?.dataset.act,
+          g = groups.find((x) => sel.has(x.id));
+        if (act === "group") makeGroup();
+        else if (act === "ungroup") ungroup(g);
+        else if (act === "del")
+          g
+            ? askDelete(g)
+            : (snap(), (nodes = nodes.filter((n) => !sel.has(n.id))), sel.clear(), render());
+        else if (act === "arrange")
+          g ? arrange(members(g), g) : arrange(nodes.filter((n) => sel.has(n.id)));
+        else if (act === "color") $("pop").hidden ? openPop() : closePop();
+      });
+      $("pop").addEventListener("click", (e) => {
+        const b = e.target.closest(".sw");
+        if (!b) return;
+        const g = groups.find((x) => sel.has(x.id));
+        snap();
+        g[b.dataset.kind] = b.dataset.hue || undefined;
+        render();
+        openPop();
+      });
+      $("dno").onclick = () => ($("mask").hidden = true);
+      $("dyes").onclick = doDelete;
+      $("theme").onclick = () => document.documentElement.classList.toggle("light");
+      window.addEventListener("keydown", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        const mod = e.metaKey || e.ctrlKey,
+          k = e.key.toLowerCase();
+        if (!$("mask").hidden) {
+          if (k === "escape") $("mask").hidden = true;
+          return;
+        }
+        if (mod && k === "g") {
+          e.preventDefault();
+          const g = groups.find((x) => sel.has(x.id));
+          e.shiftKey ? g && ungroup(g) : makeGroup();
+        } else if (mod && k === "z") {
+          e.preventDefault();
+          undo();
+        } else if (k === "delete" || k === "backspace") {
+          const g = groups.find((x) => sel.has(x.id));
+          if (g) askDelete(g);
+          else if (sel.size) {
+            snap();
+            nodes = nodes.filter((n) => !sel.has(n.id));
+            sel.clear();
+            render();
+          }
+        } else if (
+          (k === "enter" || k === "f2") &&
+          sel.size === 1 &&
+          groups.some((x) => sel.has(x.id))
+        ) {
+          e.preventDefault();
+          startRename([...sel][0]);
+        } else if (k === "escape") {
+          closePop();
+          sel.clear();
+          menuFor = null;
+          render();
+        }
+      });
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          if (!e.target.closest("#pop, #bar")) closePop();
+        },
+        true,
+      );
+      seed();
+      render();
+    </script>
+  </body>
 </html>

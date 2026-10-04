@@ -7,9 +7,7 @@
   "enabled": true,
   "sort": 100,
 
-  "channels": [
-    { "channel": "newapi-main", "upstream_model": "kling-v2-master" }
-  ],
+  "channels": [{ "channel": "newapi-main", "upstream_model": "kling-v2-master" }],
 
   "params": { "max_tokens": 2000, "instanceType": "default" },
 
@@ -22,10 +20,38 @@
     },
     "prompt": { "max_length": 2000 },
     "params": {
-      "aspect_ratio": { "type": "enum", "label": "比例", "open": true, "options": ["Auto", "16:9", "9:16"], "default": "Auto" },
-      "resolution": { "type": "enum", "label": "清晰度", "open": true, "options": ["720P", "1080P"], "default": "720P", "spec": true },
-      "duration": { "type": "number", "label": "视频时长", "open": true, "min": 4, "max": 12, "step": 1, "default": 5, "unit": "秒" },
-      "generate_audio": { "type": "boolean", "label": "生成音频", "open": true, "default": true, "spec": true }
+      "aspect_ratio": {
+        "type": "enum",
+        "label": "比例",
+        "open": true,
+        "options": ["Auto", "16:9", "9:16"],
+        "default": "Auto"
+      },
+      "resolution": {
+        "type": "enum",
+        "label": "清晰度",
+        "open": true,
+        "options": ["720P", "1080P"],
+        "default": "720P",
+        "spec": true
+      },
+      "duration": {
+        "type": "number",
+        "label": "视频时长",
+        "open": true,
+        "min": 4,
+        "max": 12,
+        "step": 1,
+        "default": 5,
+        "unit": "秒"
+      },
+      "generate_audio": {
+        "type": "boolean",
+        "label": "生成音频",
+        "open": true,
+        "default": true,
+        "spec": true
+      }
     }
   },
 

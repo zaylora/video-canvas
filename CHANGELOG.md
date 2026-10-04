@@ -1,37 +1,26 @@
 # Changelog
-所有重要变更都会记录在此文件中。
 
+所有重要变更都会记录在此文件中。
 
 ## v0.1.7 - 2026-10-04
 
-
-
 ### Added
-
 
 - 添加部署脚本
 
 - 视频加载UI
 
-
 ### Documentation
-
 
 - Update changelog for v0.1.6
 
-
 ### Other
-
 
 - 节点加载占位UI
 
-
 ## v0.1.6 - 2026-10-04
 
-
-
 ### Added
-
 
 - 加入媒体转换服务
 
@@ -41,33 +30,23 @@
 
 - 新增分组节点功能及相关测试
 
-
 ### Changed
-
 
 - 优化生成插件提示词
 
 - 移除不必要的入场动画，简化卡片组件逻辑
 
-
 ### Documentation
-
 
 - Update changelog for v0.1.5
 
-
 ### Fixed
-
 
 - 无法拖动视频节点问题
 
-
 ## v0.1.5 - 2026-10-03
 
-
-
 ### Added
-
 
 - 添加 docker-compose 配置文件以支持服务管理
 
@@ -77,23 +56,17 @@
 
 - 添加对象存储配置
 
-
 ### Changed
-
 
 - Docker开发配置引用新依赖无法更新问题
 
-
 ### Documentation
-
 
 - Update changelog for v0.1.4
 
 - Docker引入依赖无法更新问题
 
-
 ### Other
-
 
 - 可以拉去取多个节点连线
 
@@ -103,25 +76,17 @@
 
 - 更新skills
 
-
 ## v0.1.4 - 2026-10-02
-
-
 
 ### Added
 
-
 - 渠道最大同时生成数，超出的任务在平台排队
-
 
 ### Documentation
 
-
 - Update changelog for v0.1.3
 
-
 ### Other
-
 
 - 并发调度文档
 
@@ -133,13 +98,9 @@
 
 - 首页进入后台过渡设计
 
-
 ## v0.1.3 - 2026-10-02
 
-
-
 ### Added
-
 
 - Feat：新增渠道 Key 建议及升级请求功能
 
@@ -147,25 +108,19 @@
 
 * 新增 ，支持将渠道升级至新版本插件，并管理相关配置。
 
-* 新增渠道和模型的健康检查工具，包括  和 。
+* 新增渠道和模型的健康检查工具，包括 和 。
 
-* 为 、 和  模块新增相关功能测试。
+* 为 、 和 模块新增相关功能测试。
 
 * 完善批量导入处理逻辑，包括 Key 校验及草稿状态处理。
 
-
 ### Documentation
-
 
 - Update changelog for v0.1.2
 
-
 ## v0.1.2 - 2026-10-01
 
-
-
 ### Added
-
 
 - 编辑模型补齐（一二期）：厂商 Logo 与标签、模型能力结构化
 
@@ -175,15 +130,11 @@
 
 - 添加任务提交时间字段，更新相关逻辑和测试
 
-
 ### Changed
-
 
 - 清理无用注释和空行
 
-
 ### Documentation
-
 
 - Update changelog for v0.1.1
 
@@ -191,57 +142,39 @@
 
 - 添加模型补齐设计
 
-
 ## v0.1.1 - 2026-10-01
-
-
 
 ### Documentation
 
-
 - Update changelog for v0.1.0
-
 
 ### Fixed
 
-
 - 副生图不能参考图片问题以及修改画布 ID 为十六进制
-
 
 ### Other
 
-
 - 更新管理后台UI界面
-
 
 ## v0.1.0 - 2026-09-30
 
-
-
 ### Added
-
 
 - 后端完成插件协议设计
 
 - 添加协议插件
 
-
 ### Changed
-
 
 - 后端代码规范
 
-
 ### Documentation
-
 
 - Update changelog for v0.0.1
 
 - 文档整理
 
-
 ### Fixed
-
 
 - Avoid tag visibility race in release workflow
 
@@ -251,19 +184,13 @@
 
 - 更新钩子超时设置为 1 秒，优化并发控制文档
 
-
 ### Other
-
 
 - 添加代码规范
 
-
 ## v0.0.1 - 2026-09-29
 
-
-
 ### Added
-
 
 - Feat：新增画布项目管理功能
 
@@ -286,26 +213,18 @@
 - 添加 Docker 开发环境支持，包括 Dockerfile 和 docker-compose 配置
 
 - Feat: 添加 GitHub Actions 工作流以支持 Docker 镜像发布和版本管理
-feat: 添加 CHANGELOG.md 和 VERSION 文件以记录版本信息
-
+  feat: 添加 CHANGELOG.md 和 VERSION 文件以记录版本信息
 
 ### Changed
-
 
 - Chore：将后端代码迁移到 backend/ 子目录，仓库改为 monorepo 结构
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
-
 ### Fixed
-
 
 - Fix：移除 dist/
 
-
 ### Other
 
-
 - Init
-
-
