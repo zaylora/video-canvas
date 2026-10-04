@@ -39,36 +39,63 @@ const DEFAULT_HANDLES: NodeCardHandle[] = [
  */
 const HANDLE_BASE_CLASS = cn(
   "pointer-events-auto rounded-none border-0 bg-transparent",
-  "before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']",
+  "before:absolute before:content-['']",
 );
 
-/** 按朝向铺开命中区：左右两侧竖着铺，上下两侧横着铺 */
+/**
+ * 按朝向铺开命中区：沿边方向居中铺开，朝外一侧伸出去，朝内一侧不进节点，
+ * 免得盖住节点里的控制条、按钮这类要点的东西。
+ */
 const HANDLE_AXIS_CLASS: Record<Position, string> = {
-  [Position.Left]: "before:h-48 before:w-14",
-  [Position.Right]: "before:h-48 before:w-14",
-  [Position.Top]: "before:h-14 before:w-48",
-  [Position.Bottom]: "before:h-14 before:w-48",
+  [Position.Left]:
+    "before:top-1/2 before:left-1/2 before:h-48 before:w-7 before:-translate-x-full before:-translate-y-1/2",
+  [Position.Right]: "before:top-1/2 before:left-1/2 before:h-48 before:w-7 before:-translate-y-1/2",
+  [Position.Top]:
+    "before:top-1/2 before:left-1/2 before:h-7 before:w-48 before:-translate-x-1/2 before:-translate-y-full",
+  [Position.Bottom]:
+    "before:top-1/2 before:left-1/2 before:h-7 before:w-48 before:-translate-x-1/2",
 };
+
+/** 图标贴边时离边框的距离：一个图标半径 */
+const ICON_OFFSET = "14px";
 
 /**
  * 图标的默认落点：以 handle 盒子中心（也就是节点边框上）为原点，
  * 往节点外侧推一个图标半径，图标就贴在边框外面挨着节点，不压节点内容。
  */
 const HANDLE_ICON_HOME: Record<Position, { left: string; top: string }> = {
-  [Position.Left]: { left: "calc(50% - 14px)", top: "50%" },
-  [Position.Right]: { left: "calc(50% + 14px)", top: "50%" },
-  [Position.Top]: { left: "50%", top: "calc(50% - 14px)" },
-  [Position.Bottom]: { left: "50%", top: "calc(50% + 14px)" },
+  [Position.Left]: { left: `calc(50% - ${ICON_OFFSET})`, top: "50%" },
+  [Position.Right]: { left: `calc(50% + ${ICON_OFFSET})`, top: "50%" },
+  [Position.Top]: { left: "50%", top: `calc(50% - ${ICON_OFFSET})` },
+  [Position.Bottom]: { left: "50%", top: `calc(50% + ${ICON_OFFSET})` },
 };
+
+/**
+ * 图标跟随指针时的坐标：朝外那根轴上夹在贴边位置之外，永远不会跑进节点里压住内容；
+ * 沿边那根轴照常跟着指针。
+ */
+function iconPosition(position: Position): { left: string; top: string } {
+  const home = HANDLE_ICON_HOME[position];
+  const x = `var(--handle-x, ${home.left})`;
+  const y = `var(--handle-y, ${home.top})`;
+  switch (position) {
+    case Position.Left:
+      return { left: `min(${x}, ${home.left})`, top: y };
+    case Position.Right:
+      return { left: `max(${x}, ${home.left})`, top: y };
+    case Position.Top:
+      return { left: x, top: `min(${y}, ${home.top})` };
+    case Position.Bottom:
+      return { left: x, top: `max(${y}, ${home.top})` };
+  }
+}
 
 /**
  * 单个连接点：一条大命中区加一个 ⊕ 图标，
  * 图标平时不露面，鼠标移到节点上或节点选中时才浮出来，默认贴着节点的边；
- * 指针进了命中区就跟着指针跑，指到哪就提示能从哪拉线，离开再归位贴边。
+ * 指针进了命中区就沿边跟着指针跑，指到哪就提示能从哪拉线（不会跑进节点里），离开再归位贴边。
  */
 function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCardHandle) {
-  const home = HANDLE_ICON_HOME[position];
-
   // 指针一动就要挪图标，走 state 会把整个节点带着重渲染，这里直接改 CSS 变量。
   // 坐标相对 handle 盒子算，指针跑在伪元素铺开的那一圈里时值会超出盒子，正是要的效果
   const trackPointer = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -104,10 +131,7 @@ function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCard
           "scale-60 opacity-0 transition-[opacity,scale] duration-200 ease-[cubic-bezier(0.2,0,0,1)]",
           "group-hover/node:scale-100 group-hover/node:opacity-100 in-[.selected]:scale-100 in-[.selected]:opacity-100",
         )}
-        style={{
-          left: `var(--handle-x, ${home.left})`,
-          top: `var(--handle-y, ${home.top})`,
-        }}
+        style={iconPosition(position)}
       >
         <Plus className="size-3.5" />
       </div>

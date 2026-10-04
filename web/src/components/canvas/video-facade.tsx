@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { Play } from "lucide-react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { motion } from "motion/react";
 
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
@@ -10,18 +10,104 @@ import { VideoPoster } from "./media-preview";
 /** 全页面共用的 video 名额池：同时挂载的 video 受 WebMediaPlayer 数量限制 */
 const videoSlots = createVideoSlotPool();
 
-/** 原生控制条的大致高度；它在 shadow DOM 里，没法单独挂 nodrag */
-const CONTROLS_HEIGHT = 64;
+/** 秒 → m:ss；还没有有效时长时显示 0:00 */
+function formatClock(seconds: number): string {
+  return formatMediaDuration(seconds * 1000) ?? "0:00";
+}
+
+type VideoControlsProps = {
+  videoRef: RefObject<HTMLVideoElement | null>;
+};
 
 /**
- * video 铺满节点，整块都 nodrag 会导致节点拖不动。
- * 这里只在指针落在底部控制条时才加 nodrag（拖进度条不带动节点），画面区域仍可拖节点。
- * React Flow 在 mousedown 时才读 class，而 pointermove/pointerdown 都先于它触发。
+ * 自绘的精简控制条：播放/暂停、进度条、时间、静音，单行排布。
+ * 原生控制条的布局和全屏、更多菜单都没法裁掉，所以不用 `controls`。
+ * 整条 nodrag nowheel，拖进度条不会带动节点，视频画面区域仍可拖节点。
  */
-function syncDragGuard(e: React.PointerEvent<HTMLVideoElement>) {
-  const el = e.currentTarget;
-  const { bottom } = el.getBoundingClientRect();
-  el.classList.toggle("nodrag", e.clientY >= bottom - CONTROLS_HEIGHT);
+function VideoControls({ videoRef }: VideoControlsProps) {
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => {
+      setPaused(video.paused);
+      setMuted(video.muted);
+      setCurrent(video.currentTime);
+      setTotal(Number.isFinite(video.duration) ? video.duration : 0);
+    };
+    sync();
+    const events = [
+      "play",
+      "pause",
+      "ended",
+      "timeupdate",
+      "durationchange",
+      "loadedmetadata",
+      "volumechange",
+    ];
+    events.forEach((name) => video.addEventListener(name, sync));
+    return () => events.forEach((name) => video.removeEventListener(name, sync));
+  }, [videoRef]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused || video.ended) void video.play();
+    else video.pause();
+  };
+
+  const percent = total > 0 ? (current / total) * 100 : 0;
+
+  return (
+    <div className="nodrag nowheel absolute inset-x-0 bottom-0 flex items-center gap-3.5 bg-gradient-to-t from-black/45 to-transparent px-4 pt-10 pb-3.5 text-white">
+      <button
+        type="button"
+        aria-label={paused ? "播放" : "暂停"}
+        onClick={togglePlay}
+        className="grid size-6 shrink-0 place-items-center"
+      >
+        {paused ? (
+          <Play className="size-[18px] fill-current" />
+        ) : (
+          <Pause className="size-[18px] fill-current" />
+        )}
+      </button>
+      <input
+        type="range"
+        aria-label="播放进度"
+        min={0}
+        max={total || 1}
+        step="any"
+        value={current}
+        onChange={(e) => {
+          const video = videoRef.current;
+          if (video) video.currentTime = Number(e.target.value);
+        }}
+        style={{
+          background: `linear-gradient(to right, #fff ${percent}%, rgb(255 255 255 / 0.35) ${percent}%)`,
+        }}
+        className="h-0.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:size-2.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-webkit-slider-thumb]:size-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+      />
+      <span className="shrink-0 text-[13px] tabular-nums text-white/90">
+        {formatClock(current)} / {formatClock(total)}
+      </span>
+      <button
+        type="button"
+        aria-label={muted ? "取消静音" : "静音"}
+        onClick={() => {
+          const video = videoRef.current;
+          if (video) video.muted = !video.muted;
+        }}
+        className="grid size-6 shrink-0 place-items-center"
+      >
+        {muted ? <VolumeX className="size-[18px]" /> : <Volume2 className="size-[18px]" />}
+      </button>
+    </div>
+  );
 }
 
 type VideoFacadeProps = {
@@ -61,18 +147,17 @@ export function VideoFacade({ src, durationMs }: VideoFacadeProps) {
 
   if (playing) {
     return (
-      // nowheel 把滚轮留给画布；nodrag 由 syncDragGuard 按指针位置动态加减
-      <video
-        ref={videoRef}
-        src={src}
-        controls
-        playsInline
-        autoPlay
-        preload="auto"
-        onPointerMove={syncDragGuard}
-        onPointerDown={syncDragGuard}
-        className="nowheel size-full object-contain"
-      />
+      <div className="relative size-full">
+        <video
+          ref={videoRef}
+          src={src}
+          playsInline
+          autoPlay
+          preload="auto"
+          className="size-full object-contain"
+        />
+        <VideoControls videoRef={videoRef} />
+      </div>
     );
   }
 

@@ -282,6 +282,8 @@ function MediaTaskNode({
         status={<NodeStatusLabel view={vm.view} />}
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
+        // 视频要看画面细节，比默认的 w-96 略宽一点
+        className={kind === "video" ? "w-[27rem]" : undefined}
       >
         <NodeVideoBody
           view={vm.view}
