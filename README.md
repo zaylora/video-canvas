@@ -28,7 +28,43 @@
 
 ## 快速开始
 
-需要 [Docker](https://docs.docker.com/get-docker/)（带 Compose v2）。
+### 一键部署（Docker）
+
+服务器上只需要 [Docker](https://docs.docker.com/get-docker/)（带 Compose v2）和 curl，不用克隆仓库：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.sh | bash
+```
+
+脚本会在当前目录的 `video-canvas/` 下载 `docker-compose.yml`，生成带随机密钥的 `.env`，拉取 GHCR 镜像并启动，就绪后打开 <http://localhost> 即可。
+
+更新到最新版：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.sh | bash
+```
+
+<details>
+<summary>自定义端口、域名、版本，回退与注意事项</summary>
+
+```bash
+# 自定义端口 / 访问地址 / 固定版本 / 部署目录
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.sh | bash -s -- \
+  --port 8080 --origin https://canvas.example.com --tag 0.1.6 --dir /opt/video-canvas
+
+# 更新时指定目录，或回退到某个版本
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.sh | bash -s -- --dir /opt/video-canvas --tag 0.1.5
+```
+
+- 已有 `.env` 时部署脚本直接沿用，不会重新生成密钥。
+- 请备份 `.env`：`APP_AI_SECRET_KEY` 丢失后，已加密保存的模型和存储密钥无法解密。
+- 指定版本更新后服务没有恢复健康，会自动回滚到更新前的版本。
+- 镜像为私有时，先执行 `docker login ghcr.io`。
+- 更多生产配置见 [生产 Docker 部署](docs/docker-production.md)。
+
+</details>
+
+### Docker 开发环境
 
 ```bash
 git clone https://github.com/zaylora/video-canvas.git
@@ -53,7 +89,8 @@ cd video-canvas
 2. 把这个账号提升为超级管理员（第一个 `super_admin` 只能用 SQL 设置）：
 
    ```bash
-   docker compose -f docker-compose.dev.yml exec postgres \
+   # 一键部署的环境：在部署目录（默认 video-canvas/）执行；开发环境把 docker compose 换成 docker compose -f docker-compose.dev.yml
+   docker compose exec postgres \
      psql -U postgres -d video_canvas \
      -c "UPDATE users SET role = 'super_admin' WHERE username = '你的用户名';"
    ```
@@ -106,13 +143,14 @@ video-canvas/
 ├── backend/        # Go 后端：API、生成任务 worker、plugin-runner、内置插件
 ├── web/            # React 前端：画布、画布列表、AI 管理后台
 ├── docs/           # 部署文档、设计文档、开发计划
-├── docker-compose.dev.yml / docker-compose.prod.yml
-└── start*.sh / start*.bat   # 一键启动脚本
+├── docker-compose.dev.yml / docker-compose.yml   # 开发 / 生产（GHCR 镜像）
+├── deploy.sh / update.sh                         # 生产一键部署 / 更新
+└── start*.sh / start*.bat                        # 开发一键启动脚本
 ```
 
 ## 生产部署
 
-推送 `v*` tag 后，CI 会构建 `video-canvas-backend` 和 `video-canvas-web` 两个镜像并发布到 GHCR。部署时使用 `docker-compose.prod.yml`，至少要设置 `POSTGRES_PASSWORD`、`APP_JWT_SECRET`、`APP_AI_SECRET_KEY` 和 `APP_SERVER_ALLOWED_ORIGINS`。完整步骤见 [生产 Docker 部署](docs/docker-production.md)。
+推送 `v*` tag 后，CI 会构建 `video-canvas-backend` 和 `video-canvas-web` 两个镜像并发布到 GHCR。部署和更新见[快速开始](#一键部署docker)，完整配置见 [生产 Docker 部署](docs/docker-production.md)。
 
 ## 文档
 
