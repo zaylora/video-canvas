@@ -26,7 +26,7 @@ metadata:
 1. 进入项目目录，读取 `git status --short --branch`、`VERSION`、远端标签和当前提交。不要覆盖用户已有的未提交改动；工作区不干净时先说明并停止。
 2. 根据上面的规则计算目标版本。确认本地和远端不存在同名 `v<version>` 标签。
 3. 发版基于当前 `master`（或用户明确指定的分支）。运行项目已有的定向检查；至少确认版本格式和仓库状态。
-4. 更新 `VERSION` 为目标版本并提交：`chore: prepare release v<version>`。只有在项目当前发布流程明确由 CI 回写 `VERSION` 时，才允许跳过本地提交；本仓库的 tag 工作流会自动回写 `VERSION/CHANGELOG.md`，因此通常直接给当前提交打标签即可。
+4. **不需要手动更新 `VERSION`**。本仓库的 `.github/workflows/release-on-tag.yml` 工作流会在推送标签后自动回写 `VERSION/CHANGELOG.md` 到 `master` 分支，因此直接创建和推送标签即可，无需本地提交版本文件。
 5. 创建带说明的标签：`git tag -a v<version> -m "Release v<version>"`，然后推送：`git push origin v<version>`。
 6. 通过 `gh run list` 等待并核对 `Release on tag` 和 `Release Docker images`：发布说明、`VERSION/CHANGELOG.md` 回写、质量检查和镜像发布都成功后才算完成。若任务只要求创建标签，可在标签推送成功后返回标签地址，并说明工作流状态。
 7. 最终报告目标版本、标签、Release 地址、工作流地址和每项验证结果。不要把密钥、令牌或运行时数据写入仓库。
