@@ -1818,7 +1818,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 
 <i class="c2">视</i><i class="c2">频</i><i class="c2">节</i><i class="c2">点</i>
 <i class="c1">│</i> (<i class="c1">◉</i><i class="c2">模</i><i class="c2">型</i> <i class="c1">▾</i>)(720P <i class="c1">·</i> 5s <i class="c1">▾</i>)  [<i class="c2">🎥</i>]<i class="c1">²</i>                [<i class="c1">✦</i> 120 | <i class="c1">↑</i>] <i class="c1">│</i>
-                           <i class="c1">└</i> <i class="c2">运</i><i class="c2">镜</i><i class="c2">（</i><i class="c2">选</i><i class="c2">了</i> 2 <i class="c2">条</i><i class="c2">，</i><i class="c2">显</i><i class="c2">示</i><i class="c2">数</i><i class="c2">量</i><i class="c2">）</i>
+                            <i class="c1">└</i> <i class="c2">运</i><i class="c2">镜</i><i class="c2">（</i><i class="c2">选</i><i class="c2">了</i> 2 <i class="c2">条</i><i class="c2">，</i><i class="c2">显</i><i class="c2">示</i><i class="c2">数</i><i class="c2">量</i><i class="c2">）</i>
 </code></pre>
 <p><strong>控件说明</strong></p>
 <div class="tw"><table>
@@ -1834,7 +1834,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <tr>
   <td>入口按钮</td>
   <td>底栏，参数摘要之后、批量之前；36×34 圆胶囊，只有图标，<code>ring-foreground/10</code> 描边，和 <code>PANEL_CHIP_CLASS</code> 同高</td>
-  <td>风格 <code>Box</code>、运镜 <code>Camera</code>、预设模板 <code>Shapes</code>（lucide）。默认：描边；hover：<code>bg-chrome-hover</code>；已选：<code>bg-foreground/10</code> + 右上角 7px <code>--preset</code> 小点，运镜选了 2 条以上改成数量角标；打开中：同已选；生成中：<code>opacity .4</code>、不可点；聚焦：<code>focus-visible</code> 描边</td>
+  <td>风格 <code>Box</code>、运镜 <code>Camera</code>、预设模板 <code>Shapes</code>（lucide）。默认：描边；hover：<code>bg-chrome-hover</code>；已选：<code>bg-foreground/10</code> + 右上角 7px <code>--preset</code> 小点；打开中：同已选；生成中：<code>opacity .4</code>、不可点；聚焦：<code>focus-visible</code> 描边</td>
   <td>点击打开选择器；Tooltip 写类别名，已选时追加&quot;：盘旋下降、环绕拍摄&quot;；只有图标是因为面板默认 480 宽，放不下文字</td>
 </tr>
 <tr>
@@ -1853,7 +1853,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
   <td>运镜选择器</td>
   <td>同上</td>
   <td>分类标签（全部 + 基础控制 / 人物跟拍 / 揭示转场 / 情绪强化 / 空间航拍）；4 列 1:1 示意图卡，名称压在底部渐变条上</td>
-  <td>点击加入或取消，<strong>选择器不关</strong>；悬停提示是「名称 · 用途」。<strong class="tag chg">变更：原为</strong>悬停播放动图——源文件实际是单帧静态图，不是动图</td>
+  <td>点击选用并<strong>关闭</strong>（运镜也是，一次一个）；悬停提示是「名称 · 用途」。<strong class="tag chg">变更：原为</strong>悬停播放动图——源文件实际是单帧静态图，不是动图</td>
 </tr>
 <tr>
   <td>预设模板菜单</td>
@@ -1866,7 +1866,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <p><strong>数量规则</strong></p>
 <ul>
 <li>风格、预设模板：各至多一个，两类可以共存。再选同类的一个，<strong>在原 chip 的位置替换</strong>；再点已选的那个，取消。</li>
-<li>运镜：可以多选，每条最多一个；点已选的取消。方向相反的组合（上摇 / 下摇、左摇 / 右摇等）<strong>不做任何提醒或限制</strong>，由用户自己决定。</li>
+<li>风格、预设模板：各至多一个，再选同类的另一个<strong>在原 chip 的位置替换</strong>，再点已选的那个取消。运镜：<strong>每次只点一个，但提示词里可以同时有多个</strong>，各不相同；点已选的取消，方向相反的组合不做任何提醒或限制。选择器选完一项就关闭，想再加一个运镜就再点一次入口。</li>
 <li>插入位置：风格、运镜插在提示词里<strong>最后一次的光标处</strong>（没有就末尾），后面带一个空格；预设模板永远插在<strong>最前面</strong>，因为它改写的是整个任务。</li>
 </ul>
 <p><strong>点 chip 替换</strong>（风格、运镜、预设模板的 chip 都一样）</p>
@@ -1875,7 +1875,6 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <li>选另一条：<strong>原位替换</strong>这个 chip，选择器关闭，焦点回到提示词。运镜也是替换点中的那一个，不影响提示词里的其他运镜。</li>
 <li>点当前这一条自己：取消，chip 被移除。</li>
 <li>运镜替换时，选一条已在提示词别处出现的：不执行，也不提示，选择器保持打开。</li>
-<li>从 chip 进入的选择器是一次性的：运镜在这里不保持打开（和从底栏入口进入的多选不同）。</li>
 <li>预设已下架（删除线 chip）同样可以点，用来换成现有的预设。</li>
 <li>键盘：chip 本身不可聚焦，键盘用户用底栏入口按钮；光标在 chip 前后时 Backspace / Delete 删除。</li>
 <li>生成中不响应点击。放大编辑对话框里的 chip 本期不支持点击替换，只能删除。</li>
@@ -1893,7 +1892,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <ul>
 <li>选择器内：方向键在卡片间移动，<code>Enter</code> / <code>Space</code> 选中，<code>Esc</code> 关闭并把焦点还给入口按钮，<code>Tab</code> 离开。</li>
 <li>不设全局快捷键：这是低频的&quot;挑一次&quot;操作，选择器里有完整的键盘导航。后续可以考虑在提示词里输入 <code>/</code> 唤起（和 <code>@</code> 对称），本期不做。</li>
-<li>选择器是 Popover，打开期间点编辑器、点面板其他区域都会关闭；运镜多选时保持打开，点选择器外面才关。</li>
+<li>选择器是 Popover，选中一项就关闭（运镜也是，不连选）；打开期间点编辑器、点面板其他区域也会关闭。</li>
 </ul>
 <p><strong>动效</strong></p>
 <div class="tw"><table>
@@ -1967,7 +1966,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 </tr>
 <tr>
   <td>已选</td>
-  <td>入口高亮 + 小点（运镜 ≥2 显示数量）；提示词里有 chip</td>
+  <td>入口高亮 + 小点（运镜选了 2 条以上显示数量）；提示词里有 chip</td>
 </tr>
 <tr>
   <td>打开分类后没有结果</td>
@@ -2019,7 +2018,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <li><code>components/canvas/node-prompt-input.tsx</code>：<code>toolbarExtra</code> 里放预设入口，<code>NodePromptInput</code> 把 editor <abbr class="gl" tabindex="0" data-tip="节点上能连线的接口点。">handle</abbr> 通过 context 暴露给选择器。</li>
 <li><code>pages/canvas/video-node.tsx</code>：按节点种类传入可用的预设类别。</li>
 <li><code>utils/canvas/prompt-tokens.ts</code>：新增 <code>preset</code> 段与 <code>expandPrompt</code> 的预设展开。</li>
-<li><code>utils/canvas/preset-rules.ts</code>（新）：<code>planPreset</code> 把&quot;同类替换、运镜多选、点 chip 替换&quot;这些数量规则写成纯函数，编辑器按返回的方案去改文档，规则本身有单测。</li>
+<li><code>utils/canvas/preset-rules.ts</code>（新）：<code>planPreset</code> 把&quot;同类替换、运镜多个共存、点 chip 替换&quot;这些数量规则写成纯函数，编辑器按返回的方案去改文档，规则本身有单测。</li>
 <li><code>web/scripts/export-preset-assets.sh</code>（新）：从 <code>docs/research</code> 导出风格封面（压到 480 宽）和运镜示意图到 <code>web/public/presets/</code>。</li>
 <li><code>utils/tasks/capabilities.ts</code>：<code>buildTaskInput</code> 展开预设，并按展开后长度校验。</li>
 <li><code>index.css</code>：<code>:root</code> 和 <code>.dark</code> 同时补 <code>--preset</code>（<code>oklch(0.55 0.2 295)</code> / <code>oklch(0.6 0.19 295)</code>），<code>@theme inline</code> 里补 <code>--color-preset</code>。</li>

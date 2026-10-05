@@ -819,7 +819,7 @@ export function findPreset(kind: PresetKind, id: string) {
   return BY_KIND[kind].get(id);
 }
 
-/** 三类预设的展示名和单选 / 多选规则（设计稿 6.13「数量规则」） */
+/** 三类预设的展示名，以及一条提示词里能不能放多个（设计稿 6.13「数量规则」）：只有运镜可以 */
 export const PRESET_KINDS: Readonly<Record<PresetKind, { label: string; multi: boolean }>> = {
   style: { label: "风格", multi: false },
   motion: { label: "运镜", multi: true },

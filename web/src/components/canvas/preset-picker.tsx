@@ -286,7 +286,7 @@ function PresetMenu({
   disabled?: boolean;
 }) {
   const Icon = KIND_ICON[kind];
-  const { label, multi } = PRESET_KINDS[kind];
+  const { label } = PRESET_KINDS[kind];
   const mine = presets.selected.filter((item) => item.kind === kind);
   const names = mine.map((item) => findPreset(kind, item.id)?.name ?? "已下架");
   const chip = presets.chip?.kind === kind ? presets.chip : null;
@@ -294,11 +294,9 @@ function PresetMenu({
   const pick = (id: string) => {
     // 从 chip 点进来选了别处已有的运镜：不执行，也不提示，选择器保持打开
     if (presets.apply(kind, id, chip?.index)?.type === "blocked") return;
-    // 单选和从 chip 点进来的替换是一次性的；运镜从入口进来可以连选，不关
-    if (!multi || chip) {
-      onOpenChange(false);
-      presets.focusEditor();
-    }
+    // 一次只点一个：选完就关。运镜在提示词里可以有多个，想再加一个就再点一次入口
+    onOpenChange(false);
+    presets.focusEditor();
   };
 
   return (
