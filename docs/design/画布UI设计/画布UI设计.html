@@ -1,0 +1,2397 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画布 UI 设计（外壳 + 节点 + 生成面板）</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: oklch(0.985 0 0);
+    --fg: oklch(0.2 0 0);
+    --muted: oklch(0.5 0 0);
+    --card: oklch(1 0 0);
+    --line: oklch(0 0 0 / 0.09);
+    --hover: oklch(0 0 0 / 0.05);
+    --code-bg: oklch(0.96 0 0);
+    --accent: oklch(0.55 0.2 295);
+    --note: oklch(0.58 0.15 250);
+    --why: oklch(0.55 0.2 295);
+    --codec: oklch(0.6 0.15 155);
+    --warn: oklch(0.7 0.16 70);
+    --font: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
+    --e-out: cubic-bezier(0.2, 0, 0, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: oklch(0.145 0 0);
+      --fg: oklch(0.94 0 0);
+      --muted: oklch(0.7 0 0);
+      --card: oklch(0.2 0 0);
+      --line: oklch(1 0 0 / 0.1);
+      --hover: oklch(1 0 0 / 0.07);
+      --code-bg: oklch(0.2 0 0);
+      --accent: oklch(0.7 0.16 295);
+      --note: oklch(0.75 0.12 240);
+      --why: oklch(0.72 0.16 295);
+      --codec: oklch(0.75 0.15 155);
+      --warn: oklch(0.8 0.15 75);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: oklch(0.145 0 0); --fg: oklch(0.94 0 0); --muted: oklch(0.7 0 0); --card: oklch(0.2 0 0);
+    --line: oklch(1 0 0 / 0.1); --hover: oklch(1 0 0 / 0.07); --code-bg: oklch(0.2 0 0);
+    --accent: oklch(0.7 0.16 295); --note: oklch(0.75 0.12 240); --why: oklch(0.72 0.16 295);
+    --codec: oklch(0.75 0.15 155); --warn: oklch(0.8 0.15 75);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.8 var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* 顶栏 */
+  #bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; background: color-mix(in oklch, var(--bg) 86%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+  #bar .ttl { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #bar .sp { flex: 1; }
+  .btn { height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; box-shadow: inset 0 0 0 1px var(--line); transition: background .12s, transform .12s; white-space: nowrap; }
+  .btn:hover { background: var(--hover); }
+  .btn:active { transform: scale(.96); }
+  .btn[aria-pressed="true"] { background: var(--hover); }
+  #prog { position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%; background: var(--accent); transform-origin: 0 0; transform: scaleX(0); }
+  #navbtn { display: none; }
+
+  /* 布局 */
+  #wrap { display: grid; grid-template-columns: 224px minmax(0, 1fr); max-width: 1480px; margin: 0 auto; }
+  #toc { position: sticky; top: 52px; align-self: start; height: calc(100vh - 52px); overflow-y: auto; padding: 20px 8px 40px 16px; font-size: 13px; }
+  #toc a { display: block; padding: 5px 10px; border-radius: 8px; color: var(--muted); text-decoration: none; line-height: 1.5; }
+  #toc a:hover { background: var(--hover); color: var(--fg); }
+  #toc a.on { color: var(--fg); background: var(--hover); font-weight: 600; }
+  #toc .sublist { margin: 2px 0 6px 10px; padding-left: 8px; border-left: 1px solid var(--line); display: none; }
+  #toc .tg.open .sublist { display: block; }
+  #toc .sublist a { font-size: 12px; padding: 3px 8px; }
+  main { padding: 28px 24px 120px 32px; min-width: 0; }
+
+  header.hero { padding: 24px 0 28px; max-width: 1100px; }
+  header.hero h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.3; letter-spacing: -.01em; }
+  header.hero .meta { color: var(--muted); font-size: 14px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  .chapter { margin-bottom: 56px; }
+  .sub { display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 32px; }
+  .main { min-width: 0; }
+  .notes { align-self: start; position: sticky; top: 72px; display: grid; gap: 10px; max-height: calc(100vh - 96px); overflow-y: auto; padding-top: 6px; }
+  .notes:empty { display: none; }
+  body.nonotes .sub { grid-template-columns: minmax(0, 1fr); }
+  body.nonotes .notes { display: none; }
+
+  h2 { font-size: 26px; line-height: 1.35; margin: 40px 0 12px; padding-top: 24px; border-top: 1px solid var(--line); letter-spacing: -.01em; }
+  .chapter:first-child h2 { border-top: 0; padding-top: 0; }
+  h3 { font-size: 20px; line-height: 1.4; margin: 32px 0 10px; }
+  h4 { font-size: 15px; margin: 22px 0 6px; color: var(--muted); letter-spacing: .02em; }
+  .sub > .main > h2, .sub > .main > h3 { margin-top: 0; }
+  .sub + .sub { margin-top: 36px; }
+  .anc { margin-left: 8px; font-size: .7em; text-decoration: none; opacity: 0; transition: opacity .12s; }
+  h2:hover .anc, h3:hover .anc, .anc:focus-visible { opacity: .6; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 1.5em; margin: 8px 0; }
+  li { margin: 4px 0; }
+  li > ul, li > ol { margin: 4px 0; }
+  blockquote { margin: 12px 0; padding: 8px 14px; border-left: 3px solid var(--line); color: var(--muted); border-radius: 0 8px 8px 0; background: var(--hover); }
+  blockquote p { margin: 4px 0; }
+  code { font: 0.88em var(--mono); padding: 2px 6px; border-radius: 6px; background: var(--code-bg); box-shadow: inset 0 0 0 1px var(--line); word-break: break-word; }
+  pre { margin: 12px 0; padding: 14px 16px; border-radius: 12px; background: var(--code-bg); box-shadow: inset 0 0 0 1px var(--line); overflow-x: auto; font: 13px/1.6 var(--mono); }
+  pre code { padding: 0; background: none; box-shadow: none; font-size: inherit; white-space: pre; word-break: normal; }
+  pre.art code i { display: inline-block; font-style: normal; text-align: center; overflow: visible; }
+  pre.art code i.c1 { width: 1ch; }
+  pre.art code i.c2 { width: 2ch; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+  em { color: var(--muted); }
+  del { color: var(--muted); }
+  .tw { overflow-x: auto; margin: 12px 0; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; line-height: 1.65; }
+  th, td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); min-width: 84px; }
+  th { background: var(--hover); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { min-width: 96px; }
+  .tag { display: inline-block; padding: 0 8px; border-radius: 6px; font-size: .85em; font-weight: 600; line-height: 1.6; margin-right: 2px; }
+  .tag.chg { background: color-mix(in oklch, var(--warn) 22%, transparent); color: var(--fg); }
+  .tag.dec { background: color-mix(in oklch, var(--codec) 22%, transparent); color: var(--fg); }
+  .xref { text-decoration-style: dotted; }
+
+  /* 注释 */
+  .note { padding: 10px 12px 11px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); border-left: 3px solid var(--c, var(--note)); font-size: 13px; line-height: 1.7; }
+  .note b { display: block; font-size: 11px; letter-spacing: .08em; color: var(--c, var(--note)); margin-bottom: 2px; }
+  .note p { margin: 0; color: var(--fg); }
+  .note.k-why { --c: var(--why); }
+  .note.k-code { --c: var(--codec); }
+  .note.k-code p { font-size: 12.5px; }
+  .note.k-warn { --c: var(--warn); }
+  .note code { font-size: .92em; }
+  abbr.gl { text-decoration: none; border-bottom: 1px dashed var(--accent); cursor: help; }
+  abbr.gl:hover, abbr.gl:focus-visible { background: color-mix(in oklch, var(--accent) 14%, transparent); }
+  #tip { position: fixed; z-index: 60; max-width: 280px; padding: 8px 12px; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 12.5px; line-height: 1.6; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .12s var(--e-out), transform .12s var(--e-out); }
+  #tip.show { opacity: 1; transform: none; }
+
+  /* 演示模式：一次只显示一章，←/→ 翻页 */
+  #pager { position: fixed; left: 50%; bottom: 18px; z-index: 40; display: none; align-items: center; gap: 6px; padding: 5px; border-radius: 999px; background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 10px 30px oklch(0 0 0 / 0.25); transform: translateX(-50%); }
+  #pager .pn { min-width: 72px; text-align: center; font: 13px var(--mono); }
+  body.present #pager { display: flex; }
+  body.present .chapter { display: none; margin: 0; }
+  body.present .chapter.cur { display: block; animation: ch .18s var(--e-out); }
+  body.present #wrap { grid-template-columns: minmax(0, 1fr); }
+  body.present #toc, body.present header.hero { display: none; }
+  body.present main { padding-bottom: 96px; max-width: 1280px; margin: 0 auto; }
+  body.present .chapter h2 { border-top: 0; padding-top: 0; font-size: 30px; }
+  @keyframes ch { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 1180px) {
+    .sub { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .notes { position: static; max-height: none; order: -1; }
+  }
+  @media (max-width: 860px) {
+    #wrap { grid-template-columns: minmax(0, 1fr); }
+    #toc { position: fixed; z-index: 35; left: 0; top: 52px; width: min(300px, 86vw); background: var(--bg); box-shadow: 0 0 0 1px var(--line), 0 20px 50px oklch(0 0 0 / 0.3); transform: translateX(-102%); transition: transform .18s var(--e-out); }
+    body.nav #toc { transform: none; }
+    #navbtn { display: inline-block; }
+    main { padding: 20px 16px 120px; }
+    header.hero h1 { font-size: 26px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media print { #bar, #toc, #pager { display: none; } .sub { grid-template-columns: 1fr 240px; } .chapter { break-inside: auto; } }
+</style>
+</head>
+<body>
+<div id="bar" role="banner">
+  <button class="btn" id="navbtn" aria-label="目录">目录</button>
+  <span class="ttl">画布 UI 设计（外壳 + 节点 + 生成面板）</span>
+  <span class="sp"></span>
+  <button class="btn" id="b-notes" aria-pressed="true" title="显示或隐藏右侧注释（N）">注释</button>
+  <button class="btn" id="b-present" aria-pressed="false" title="一次只显示一章，←/→ 翻页（P）">演示模式</button>
+  <button class="btn" id="b-theme" aria-label="切换明暗主题" title="切换明暗主题">主题</button>
+  <div id="prog"></div>
+</div>
+<div id="wrap">
+  <nav id="toc" aria-label="章节目录"><div class="tg" data-ch="s1"><a class="t2" href="#s1" data-id="s1">1. 设计摘要</a></div><div class="tg" data-ch="s2"><a class="t2" href="#s2" data-id="s2">2. 项目现状</a></div><div class="tg" data-ch="s3"><a class="t2" href="#s3" data-id="s3">3. 用户与场景</a></div><div class="tg" data-ch="s4"><a class="t2" href="#s4" data-id="s4">4. 主流方案调研（访问日期 2026-10-03）</a></div><div class="tg" data-ch="s5"><a class="t2" href="#s5" data-id="s5">5. 设计原则</a></div><div class="tg" data-ch="s6"><a class="t2" href="#s6" data-id="s6">6. 推荐方案</a><div class=sublist><a href="#s6-1" data-id="s6-1">6.1 外壳布局（五区）</a><a href="#s6-2" data-id="s6-2">6.2 节点卡</a><a href="#s6-3" data-id="s6-3">6.3 节点生成历史浮条</a><a href="#s6-4" data-id="s6-4">6.4 生成面板</a><a href="#s6-5" data-id="s6-5">6.5 多选（参考 neoWow）</a><a href="#s6-7" data-id="s6-7">6.7 引用条与 @ 引用</a><a href="#s6-8" data-id="s6-8">6.8 快捷键（一期）</a><a href="#s6-9" data-id="s6-9">6.9 双击节点预览原图（媒体预览弹层）</a><a href="#s6-10" data-id="s6-10">6.10 节点打组</a><a href="#s6-11" data-id="s6-11">6.11 视频节点：封面 ⇄ 视频的过渡</a><a href="#s6-12" data-id="s6-12">6.12 节点内容加载占位（灰色渐变）</a><a href="#s6-13" data-id="s6-13">6.13 节点预设：风格、运镜、预设模板</a></div></div><div class="tg" data-ch="s7"><a class="t2" href="#s7" data-id="s7">7. 动效规范（Motion）</a></div><div class="tg" data-ch="s8"><a class="t2" href="#s8" data-id="s8">8. 视觉 Token（新增，深色为主）</a></div><div class="tg" data-ch="s9"><a class="t2" href="#s9" data-id="s9">9. 状态与异常</a></div><div class="tg" data-ch="s10"><a class="t2" href="#s10" data-id="s10">10. 数据与工程影响（建议，未改代码）</a></div><div class="tg" data-ch="s11"><a class="t2" href="#s11" data-id="s11">11. 方案取舍</a></div><div class="tg" data-ch="s12"><a class="t2" href="#s12" data-id="s12">12. MVP 与后续</a></div><div class="tg" data-ch="s13"><a class="t2" href="#s13" data-id="s13">13. 待确认问题</a></div><div class="tg" data-ch="s14"><a class="t2" href="#s14" data-id="s14">14. 来源与假设</a></div></nav>
+  <main>
+    <header class="hero">
+      <h1>画布 UI 设计（外壳 + 节点 + 生成面板）</h1>
+      <div class="meta">状态：提案 v1 · 2026-10-03 · 配套原型：<a href="%E7%94%BB%E5%B8%83UI%E5%8E%9F%E5%9E%8B.html">画布UI原型.html</a></div>
+      <div class="legend" aria-label="图例">
+        <span><i class="tag chg">变更</i>推翻了前面的某个决定，以此为准</span>
+        <span><i class="tag dec">已定</i>访谈里用户明确拍板的决定</span>
+        <span>右侧卡片：<b style="color:var(--note)">注</b> 说明 · <b style="color:var(--why)">为什么</b> 取舍理由 · <b style="color:var(--codec)">对应代码</b> · <b style="color:var(--warn)">注意</b></span>
+        <span><abbr class="gl" tabindex="0" data-tip="鼠标悬停或键盘聚焦就会看到解释。每章里同一个词只标第一次。">虚线下划线</abbr>的词悬停可看术语解释</span>
+        <span>快捷键：<code>P</code> 演示模式 · <code>N</code> 注释 · <code>←</code> <code>→</code> 翻章</span>
+      </div>
+    </header>
+<section class="chapter" id="s1-ch" data-id="s1"><div class="sub" id="s1"><div class="main"><h2>1. 设计摘要<a class="anc" href="#s1" aria-label="本节链接">#</a></h2>
+<p><strong>问题</strong>：画布页现在只有零散控件——右上角的积分和保存文字、底部 xyflow 自带的 Controls、左下的设置按钮。没有顶栏，回不到列表，也看不到标题；生成面板宽度固定 384px，节点多时会挡住别的节点；重新生成会直接覆盖旧结果；没有撤销/重做。</p>
+<p><strong>目标</strong>：参考 neoWow 的按钮摆放，用 shadcn/ui 的语言重做整套画布外壳和节点。以<strong>生成效率</strong>为第一优先：从选中节点到点击发送的路径最短，动效只用来给反馈、保持空间上的连贯。</p>
+<p><strong>推荐结论</strong>：</p>
+<ul>
+<li><strong>布局</strong>：四角加底部中央的&quot;五区布局&quot;。左上是返回、标题和保存状态；右上是「…」菜单、积分和头像；底部中央放主工具条；左下是视图和缩放；右下是统计和告警。</li>
+<li><strong>生成面板</strong>：节点下方的浮层，宽度跟随节点，空间不够时自动翻到节点上方；顶部用分段 Tabs 切换生成方式；底部是一排参数 <abbr class="gl" tabindex="0" data-tip="圆角小标签或胶囊按钮。">chip</abbr>，加上「积分 + 发送」组合按钮。</li>
+<li><strong>节点生成历史</strong>：每个节点保存 <code>outputs[]</code>。选中节点时，上方的浮条可以展开缩略图来切换版本；下游节点永远读取当前选中的版本。</li>
+<li><strong>一期新增</strong>：撤销/重做、复制粘贴。拖拽上传、右键菜单和命令面板放到二期。</li>
+<li><strong>动效</strong>：统一使用已安装的 <code>motion@13</code>，全局只有三档时长和一条弹簧曲线，并尊重 <code><abbr class="gl" tabindex="0" data-tip="系统的&quot;减少动态效果&quot;开关。开启后本设计只保留淡入淡出。">prefers-reduced-motion</abbr></code>。</li>
+</ul>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>「五区布局」＝左上、右上、底部中央、左下、右下五块浮层。画布占满整屏，所有控件都是半透明浮层，不占画布面积。</p></div><div class="note k-why"><b>为什么</b><p>「生成效率第一」是全文的判据：第 5 节的原则和第 11 节的取舍，凡有分歧，都按"从选中节点到发送的路径最短"来选。</p></div><div class="note k-warn"><b>注意</b><p>本文是分次迭代的：1–5 节和 6.1–6.5 是最初提案（2026-10-03），6.7–6.13 是之后逐项访谈追加的。后文标有「变更」的地方覆盖前面的说法，以最近的为准。</p></div></aside></div></section>
+<section class="chapter" id="s2-ch" data-id="s2"><div class="sub" id="s2"><div class="main"><h2>2. 项目现状<a class="anc" href="#s2" aria-label="本节链接">#</a></h2>
+</div><aside class="notes"></aside></div><div class="sub" id="s2-1"><div class="main"><h3>2.1 事实（附证据）<a class="anc" href="#s2-1" aria-label="本节链接">#</a></h3>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>事实</th>
+  <th>证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>React 19.2、@xyflow/react 12.11、Tailwind 4.3、motion 13、zustand 5、cmdk、sonner、lucide-react 均已安装</td>
+  <td><code>web/package.json</code></td>
+</tr>
+<tr>
+  <td>shadcn 已初始化（style <code>base-nova</code>），<code>components/ui</code> 下约 30 个组件，下拉菜单基于 Base UI</td>
+  <td><code>web/components.json</code>、<code>web/src/components/ui/</code></td>
+</tr>
+<tr>
+  <td>画布路由是 <code>/canvas/:id</code>，主体在 <code>flow.tsx</code>，只注册了一个节点类型 <code>canvas</code>，按 <code>kind</code> 分发到具体渲染</td>
+  <td><code>pages/canvas/flow.tsx</code>、<code>pages/canvas/canvas-node.tsx</code></td>
+</tr>
+<tr>
+  <td>生成面板通过 <code><abbr class="gl" tabindex="0" data-tip="@xyflow/react 提供的组件，把浮层挂在节点旁边，随节点移动和缩放。">NodeToolbar</abbr></code> 挂在节点下方 16px 处，节点宽度固定 <code>w-96</code>；提示词、模型、生成方式下拉、参数摘要、积分和发送按钮都在 <code>node-prompt-input.tsx</code> 里</td>
+  <td><code>pages/canvas/video-node.tsx</code>、<code>components/canvas/node-prompt-input.tsx</code></td>
+</tr>
+<tr>
+  <td>参数和参考素材由 schema 驱动</td>
+  <td><code>components/canvas/video-param-panel.tsx</code>（554 行）</td>
+</tr>
+<tr>
+  <td>节点两侧的 ⊕ 跟随指针显示；拉线落到空白处会弹出添加节点菜单，并且只允许兼容的类型</td>
+  <td><code>components/canvas/node-card.tsx</code>、<code>hooks/use-canvas-menu.ts</code>、<code>add-node-menu.tsx</code></td>
+</tr>
+<tr>
+  <td>画布保存：停手 3 秒后保存、连续编辑最长等 30 秒；视口不触发保存；携带 <code>baseVersion</code>；页面隐藏、关闭、离开画布时立即保存；409 冲突弹窗让用户选（见<a href="../%E8%87%AA%E5%8A%A8%E4%BF%9D%E5%AD%98%E8%8A%82%E5%A5%8F%E8%AE%BE%E8%AE%A1/%E8%87%AA%E5%8A%A8%E4%BF%9D%E5%AD%98%E8%8A%82%E5%A5%8F%E8%AE%BE%E8%AE%A1.md">自动保存节奏设计</a>）</td>
+  <td><code>hooks/use-canvas-persistence.ts</code>、<code>utils/canvas/save-schedule.ts</code>、<code>pages/canvas/conflict-dialog.tsx</code></td>
+</tr>
+<tr>
+  <td>序列化时按白名单逐个写入字段，结果只有一个 <code>src</code></td>
+  <td><code>utils/canvas/canvas-persistence.ts</code></td>
+</tr>
+<tr>
+  <td>生成数量 N&gt;1 时会复制出 N−1 个兄弟节点</td>
+  <td><code>hooks/use-task-generation.ts</code>、<code>utils/canvas/duplicate.ts</code></td>
+</tr>
+<tr>
+  <td>主题使用 <code>.dark</code> 类和 <abbr class="gl" tabindex="0" data-tip="一种感知均匀的颜色表示：L 明度、C 色度、H 色相。项目的颜色 token 都用它。">oklch</abbr> 纯灰 <abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">token</abbr>；连线选中时的粉色 <code>#ff0073</code> 写死在代码里</td>
+  <td><code>src/index.css</code>、<code>lib/theme.ts</code>、<code>animated-svg-edge.tsx</code></td>
+</tr>
+<tr>
+  <td>已有的动效：拉线经过节点时的 3D 倾斜（motion），连线上的流光（SVG <code>animateMotion</code>）</td>
+  <td><code>hooks/use-connection-tilt.ts</code>、<code>animated-svg-edge.tsx</code></td>
+</tr>
+</tbody>
+</table></div>
+</div><aside class="notes"><div class="note k-code"><b>对应代码</b><p>右列「证据」是 web/src 下的真实文件路径，想核对某条事实时直接按路径找。</p></div></aside></div><div class="sub" id="s2-2"><div class="main"><h3>2.2 约束<a class="anc" href="#s2-2" aria-label="本节链接">#</a></h3>
+<ul>
+<li>节点数据整体存在 <abbr class="gl" tabindex="0" data-tip="PostgreSQL 的二进制 JSON 列。整张画布存在这一列里。">JSONB</abbr> <code>payload_json</code> 里，依靠 <code><abbr class="gl" tabindex="0" data-tip="画布的版本号，乐观锁靠它判断有没有人在你之后保存过。">revision</abbr></code> 乐观锁保存。新增字段要同步改 <code>serializeGraph</code> / <code>deserializeGraph</code> 两处的白名单，并兼容旧数据。</li>
+<li>节点和连线目前直接用 <code>useNodesState</code> 管理，没有独立的 store；要做撤销/重做，必须先在这一层之上加一个操作历史。</li>
+<li>只有一个节点类型 <code>canvas</code>，外观改动可以集中在 <code>node-card.tsx</code> / <code>base-node.tsx</code>，改动面小。</li>
+</ul>
+</div><aside class="notes"><div class="note k-warn"><b>注意</b><p>「新增字段要同步改 serializeGraph / deserializeGraph 的白名单」最容易漏：序列化只写白名单里的字段，漏了就存不进去，刷新后丢失。</p></div></aside></div><div class="sub" id="s2-3"><div class="main"><h3>2.3 缺口<a class="anc" href="#s2-3" aria-label="本节链接">#</a></h3>
+<p>没有顶栏，没有撤销/重做和复制粘贴，没有生成历史，没有拖拽上传，没有右键菜单，也没有小地图；生成面板会遮挡其他节点；没有品牌或语义色 token。</p>
+</div><aside class="notes"></aside></div><div class="sub" id="s2-4"><div class="main"><h3>2.4 不存在的能力（设计中不假设）<a class="anc" href="#s2-4" aria-label="本节链接">#</a></h3>
+<p>协作、会员体系、AI 整理画布助手（neoWow 右侧的吉祥物）。顶栏不为这些预留占位。</p>
+</div><aside class="notes"><div class="note k-why"><b>为什么</b><p>写下"不存在的能力"，是为了不给协作、会员、AI 助手预留空占位，避免设计出一个今天没有功能支撑的界面。</p></div></aside></div></section>
+<section class="chapter" id="s3-ch" data-id="s3"><div class="sub" id="s3"><div class="main"><h2>3. 用户与场景<a class="anc" href="#s3" aria-label="本节链接">#</a></h2>
+<ul>
+<li><strong>用户</strong>：做 AI 短片和广告素材的创作者，中高频使用，熟悉&quot;提示词 + 参考图&quot;的工作方式。</li>
+<li><strong>主任务</strong>（按频率排序）：<ol>
+<li>选中节点 → 写或改提示词 → 调整模型和参数 → 发送 → 等待 → 对比结果 → 选定版本 → 连到下游。</li>
+<li>从节点 ⊕ 拉出下游节点 → 自动带入参考 → 生成。</li>
+<li>整理画布：框选、复制、对齐、删除，写错时撤销。</li>
+</ol>
+</li>
+<li><strong>成功指标</strong>（可验收）：<ul>
+<li>从选中一个已有提示词的节点到发送：<strong>鼠标 1 次点击，或按 1 次 ⌘↵</strong>。</li>
+<li>重新生成后，旧结果 <strong>100% 可以找回</strong>（历史数 ≥ 1）。</li>
+<li>误删节点或连线后，⌘Z 能<strong>一步恢复</strong>。</li>
+<li>画布上没有任何固定 UI 遮挡选中节点的生成面板（面板会自动翻转或避让）。</li>
+<li>面板出现/消失、Tab 切换、历史展开的动画都 ≤ 250ms，交互期间 60fps（Chrome Performance 面板中没有 &gt;16ms 的长帧）。</li>
+</ul>
+</li>
+</ul>
+</div><aside class="notes"><div class="note k-why"><b>为什么</b><p>成功指标都写成了可数的量（1 次点击、100% 可找回、≤250ms、无长帧），第 12 节的一期验收逐条对应。</p></div></aside></div></section>
+<section class="chapter" id="s4-ch" data-id="s4"><div class="sub" id="s4"><div class="main"><h2>4. 主流方案调研（访问日期 2026-10-03）<a class="anc" href="#s4" aria-label="本节链接">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>方案</th>
+  <th>观察到的事实</th>
+  <th>借鉴</th>
+  <th>不采用 / 原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>neoWow</strong>（用户提供的截图）</td>
+  <td>外壳分五个区；底部工具条居中，主按钮「+」是白色实心；节点上方有「节点生成历史」浮条；节点两侧有 ⊕；面板依次是 Tabs、参考图、提示词、<abbr class="gl" tabindex="0" data-tip="圆角小标签或胶囊按钮。">chip</abbr> 行和「积分 + 发送」</td>
+  <td>整体摆放、面板的信息顺序、白色主按钮</td>
+  <td>协作和会员占位；吉祥物助手（本项目没有 AI 整理能力）</td>
+</tr>
+<tr>
+  <td><strong>FLORA</strong>（<a target="_blank" rel="noopener" href="https://www.artinput.ai/learn/flora-ai-why-infinite-freeform-canvases-are-the-future-of-ai-image-video-creation">artinput</a>、<a target="_blank" rel="noopener" href="https://www.banani.co/blog/flora-ai-review">banani 评测</a>）</td>
+  <td>每个输出就是一个节点；通过「+」添加节点并连线；支持分支，可以并排比较</td>
+  <td>用 ⊕ 添加下游节点，分支对比</td>
+  <td>评测提到&quot;学习曲线陡、成本不可预期&quot;，所以本方案在发送按钮上<strong>直接显示积分</strong></td>
+</tr>
+<tr>
+  <td><strong>Krea Nodes</strong>（<a target="_blank" rel="noopener" href="https://www.krea.ai/docs/user-guide/features/nodes">官方文档</a>）</td>
+  <td><abbr class="gl" tabindex="0" data-tip="节点上能连线的接口点。">handle</abbr> 按数据类型着色，拖线时提示哪些节点可以接；修改后只重跑下游；生成前显示每个节点的花费</td>
+  <td>按类型着色的 handle、拖线时的兼容提示</td>
+  <td>没有公开的节点内版本切换（未验证）——本方案用历史浮条补上</td>
+</tr>
+<tr>
+  <td><strong>tldraw</strong>（<a target="_blank" rel="noopener" href="https://tldraw.dev/sdk-features/ui-components">UI components</a>、<a target="_blank" rel="noopener" href="https://tldraw.dev/releases/v4.0.0">v4.0</a>）</td>
+  <td>分区布局：左上是菜单，右上是分享和样式，底部是导航、工具条和帮助；2023 年把工具条从左侧移到底部；窄屏时样式面板改成 popover</td>
+  <td>五区布局的依据；窄屏降级策略</td>
+  <td>绘图类工具（画笔、形状），本项目用不到</td>
+</tr>
+<tr>
+  <td><strong>Figma / FigJam</strong>（基于已有知识，未逐项验证）</td>
+  <td>底部工具条，⌘Z 和 ⌘D 是肌肉记忆；属性放在右侧栏</td>
+  <td>快捷键约定</td>
+  <td>右侧属性栏——会占用画布宽度，用户已选择浮层</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>比较结论</strong>（1–5 分，越高越好）：</p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>维度</th>
+  <th>节点下方浮层（选用）</th>
+  <th>固定底部 Dock</th>
+  <th>右侧属性栏</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>任务效率（视线移动）</td>
+  <td>5</td>
+  <td>3</td>
+  <td>3</td>
+</tr>
+<tr>
+  <td>空间关系（面板属于哪个节点）</td>
+  <td>5</td>
+  <td>2</td>
+  <td>3</td>
+</tr>
+<tr>
+  <td>遮挡风险</td>
+  <td>3（翻转/避让后为 4）</td>
+  <td>5</td>
+  <td>4</td>
+</tr>
+<tr>
+  <td>空间利用</td>
+  <td>4</td>
+  <td>4</td>
+  <td>2</td>
+</tr>
+<tr>
+  <td>与现有代码的匹配度</td>
+  <td>5（已经是 <abbr class="gl" tabindex="0" data-tip="@xyflow/react 提供的组件，把浮层挂在节点旁边，随节点移动和缩放。">NodeToolbar</abbr>）</td>
+  <td>3</td>
+  <td>2</td>
+</tr>
+</tbody>
+</table></div>
+</div><aside class="notes"><div class="note k-warn"><b>注意</b><p>比较表的 1–5 分是设计者的主观判断，不是实测。Figma 一行文档自己标了"未逐项验证"。</p></div></aside></div></section>
+<section class="chapter" id="s5-ch" data-id="s5"><div class="sub" id="s5"><div class="main"><h2>5. 设计原则<a class="anc" href="#s5" aria-label="本节链接">#</a></h2>
+<ol>
+<li><strong>素材是主角，UI 退后</strong>：外壳全部用半透明玻璃质感的胶囊，颜色只出现在素材里；彩色只给积分（金色）和状态（语义色）。<em>依据：用户选择&quot;深色优先 + 中性白&quot;。</em></li>
+<li><strong>最短生成路径</strong>：选中节点即出面板，并聚焦提示词；⌘↵ 发送；发送按钮上直接显示要花的积分，不需要二次确认。<em>依据：优先级是&quot;生成效率&quot;。</em></li>
+<li><strong>动效只服务连续性</strong>：元素从哪里来就回到哪里去（<abbr class="gl" tabindex="0" data-tip="缩放、旋转的原点。设成触发点，元素看起来就是从那里长出来的。">transform-origin</abbr> 指向触发点）；切换用共享 <code><abbr class="gl" tabindex="0" data-tip="motion 的共享布局动画：两个元素用同一个 layoutId，motion 自动补间位置和尺寸，做出&quot;滑块在选项间移动&quot;的效果。">layoutId</abbr></code>；任何动效都不阻塞输入。<em>依据：用户要求&quot;丝滑&quot;，同时效率优先。</em></li>
+<li><strong>不丢东西</strong>：生成有历史，操作可撤销，保存失败时明确可见。<em>依据：MVP 选了历史 + 撤销。</em></li>
+<li><strong>按需出现</strong>：⊕、历史浮条、节点工具只在悬停或选中时出现，平时保持画布干净。<em>依据：neoWow 的做法，以及 FLORA 被评&quot;学习曲线陡&quot;的反面教训。</em></li>
+</ol>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>每条原则末尾的斜体"依据"，是访谈时用户的选择，不是设计者的偏好。想改原则，先改依据。</p></div></aside></div></section>
+<section class="chapter" id="s6-ch" data-id="s6"><div class="sub" id="s6"><div class="main"><h2>6. 推荐方案<a class="anc" href="#s6" aria-label="本节链接">#</a></h2>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>小节编号从 6.5 直接跳到 6.7，没有 6.6。这是编号遗留，引用时按现有编号即可，不要补。</p></div><div class="note k-note"><b>注</b><p>阅读顺序：6.1–6.4 是外壳、节点、历史、面板的基础；6.5–6.8 是多选、引用、快捷键等交互；6.9–6.12 是各带原型的独立功能；6.13 是最新追加的节点预设。</p></div></aside></div><div class="sub" id="s6-1"><div class="main"><h3>6.1 外壳布局（五区）<a class="anc" href="#s6-1" aria-label="本节链接">#</a></h3>
+<pre class="art"><code><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+<i class="c1">│</i> [<i class="c1">◆</i> <i class="c1">▾</i>] <i class="c2">画</i><i class="c2">布</i><i class="c2">名</i> <i class="c1">▾</i>  <i class="c1">✓</i><i class="c2">已</i><i class="c2">保</i><i class="c2">存</i>                 [<i class="c1">·</i><i class="c1">·</i><i class="c1">·</i> ] [<i class="c1">●</i> <i class="c1">✦</i> 25] [<i class="c2">头</i><i class="c2">像</i>]        <i class="c1">│</i>  <i class="c1">←</i> <i class="c2">顶</i><i class="c2">部</i> 12px <i class="c2">边</i><i class="c2">距</i>, <i class="c2">高</i> 40
+<i class="c1">│</i>                                                                      <i class="c1">│</i>
+<i class="c1">│</i>                       (<i class="c2">节</i><i class="c2">点</i><i class="c2">生</i><i class="c2">成</i><i class="c2">历</i><i class="c2">史</i><i class="c2">浮</i><i class="c2">条</i>)                               <i class="c1">│</i>
+<i class="c1">│</i>                         <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>                                  <i class="c1">│</i>
+<i class="c1">│</i>                      <i class="c1">⊕</i>  <i class="c1">│</i>  <i class="c2">节</i><i class="c2">点</i>   <i class="c1">│</i>  <i class="c1">⊕</i>                               <i class="c1">│</i>
+<i class="c1">│</i>                         <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>                                  <i class="c1">│</i>
+<i class="c1">│</i>                      <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c2">生</i><i class="c2">成</i><i class="c2">面</i><i class="c2">板</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>                                 <i class="c1">│</i>
+<i class="c1">│</i>                                                                      <i class="c1">│</i>
+<i class="c1">│</i> [<i class="c1">▦</i> <i class="c1">▤</i> <i class="c2">🔍</i>78%] [<i class="c1">⊞</i>] [?]   [ + <i class="c1">│</i> <i class="c1">↖</i> <i class="c2">✋</i> <i class="c1">│</i> <i class="c1">↶</i> <i class="c1">↷</i> <i class="c1">│</i> <i class="c1">🗀</i> <i class="c1">◷</i> ]        [<i class="c1">→</i>0 <i class="c1">▦</i>2 <i class="c1">⚠</i>]      <i class="c1">│</i>  <i class="c1">←</i> <i class="c2">底</i><i class="c2">部</i> 12px <i class="c2">边</i><i class="c2">距</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+</code></pre>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>区域</th>
+  <th>内容</th>
+  <th>交互</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>左上</strong></td>
+  <td>Logo 下拉（返回项目列表 / 新建画布）、画布名、保存状态</td>
+  <td>画布名点击后原地变成 Input，Enter/失焦提交，Esc 取消；保存状态有四种：<code>● 未保存</code>（有改动但还在等停手，可点击立即保存）、<code>◌ 保存中</code>、<code>✓ 已保存</code>（2 秒后淡成图标）、<code>⚠ 保存失败·重试</code>（红色，可点击）</td>
+</tr>
+<tr>
+  <td><strong>右上</strong></td>
+  <td>「…」菜单（设置、快捷键、主题、帮助）、积分胶囊、头像</td>
+  <td>积分胶囊左侧是 <abbr class="gl" tabindex="0" data-tip="WebSocket：服务端主动推送任务进度的长连接。">WS</abbr> 状态点（绿色=已连接，琥珀色闪烁=重连中），点击打开积分明细 <abbr class="gl" tabindex="0" data-tip="点击后在触发按钮旁弹出的小浮层，点外面关闭。">Popover</abbr>；数值变化时数字滚动；头像菜单里有后台入口和退出</td>
+</tr>
+<tr>
+  <td><strong>底部中央</strong></td>
+  <td><code>[+ 添加]</code> ｜ <code>选择 V / 抓手 H</code> ｜ <code>撤销 ⌘Z / 重做 ⇧⌘Z</code> ｜ <code>素材库</code> <code>任务历史</code></td>
+  <td>「+」是白色实心主按钮，点击后向上弹出节点类型菜单（图片/视频/文本/音频/上传）；选择和抓手用 <code><abbr class="gl" tabindex="0" data-tip="motion 的共享布局动画：两个元素用同一个 layoutId，motion 自动补间位置和尺寸，做出&quot;滑块在选项间移动&quot;的效果。">layoutId</abbr></code> 滑块；撤销/重做在不可用时 disabled；素材库和任务历史从底部升起抽屉（<abbr class="gl" tabindex="0" data-tip="从屏幕边缘滑出的抽屉面板。">Sheet</abbr>）</td>
+</tr>
+<tr>
+  <td><strong>左下</strong></td>
+  <td>视图切换（点阵/网格/无背景）、缩放 <code>78%</code>（点击弹出：放大、缩小、适应 ⇧1、100% ⇧0）、小地图开关、帮助</td>
+  <td>缩放数字在滚轮缩放时实时更新，用 <abbr class="gl" tabindex="0" data-tip="等宽数字。数字变化时每位宽度不变，不会左右抖。">tabular-nums</abbr> 防止抖动</td>
+</tr>
+<tr>
+  <td><strong>右下</strong></td>
+  <td>统计：连线数、节点数、告警（失败节点数）</td>
+  <td>点击告警依次定位到失败节点（<abbr class="gl" tabindex="0" data-tip="画布当前的平移和缩放状态，也就是&quot;你正看着画布的哪一块&quot;。">viewport</abbr> 平滑飞行）</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>视觉规格</strong>：所有胶囊统一使用 <code>bg-popover/80 backdrop-blur-xl border border-white/8 shadow-lg rounded-full</code>（菜单是 <code>rounded-xl</code>），高 40px，图标按钮 32px、图标 16px，按钮之间用 1px 竖分隔线。</p>
+<p><strong>窄屏（&lt;768px）</strong>：左下和右下收起；底部工具条只保留 + / 撤销 / 更多；生成面板改为底部 Sheet。</p>
+</div><aside class="notes"><div class="note k-code"><b>对应代码</b><p>底栏、顶栏等外壳放在 web/src/components/canvas/chrome/。这里的 bg-popover/80 等写法，落地时统一换成第 8 节的 --chrome 等 <abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">token</abbr>。</p></div></aside></div><div class="sub" id="s6-2"><div class="main"><h3>6.2 节点卡<a class="anc" href="#s6-2" aria-label="本节链接">#</a></h3>
+<ul>
+<li><strong>标题行</strong>（卡片外、上方 8px）：类型图标 + 可双击重命名的标题；运行中时右侧显示 <code>生成中 42%</code>。</li>
+<li><strong>卡片</strong>：<code>rounded-2xl</code>，<code>bg-card</code>；空状态是虚线描边，中间是类型图标和&quot;输入提示词生成视频&quot;。<ul>
+<li>选中时描边变成 <code>ring-2 ring-white/70</code>（中性白，不用彩色）。</li>
+<li>悬停时描边提亮到 <code>white/20</code>。</li>
+</ul>
+</li>
+<li><strong>⊕ 连接点</strong>：左右各一个，距卡片 24px。悬停或选中时以 <code>scale 0.6→1 + opacity</code> 出现，沿用现有&quot;跟随指针&quot;的逻辑。<ul>
+<li>点击 ⊕ 打开添加菜单，新节点自动接在这一侧。</li>
+<li>拖动 ⊕ 拉线；拉线过程中，不兼容的节点降到 40% 透明度，兼容的节点描边高亮（借鉴 Krea）。</li>
+</ul>
+</li>
+<li><strong>单一输入口</strong>：左侧只有一个 ⊕，不再按「提示词 / 图片 / 视频」拆成多个口。<ul>
+<li>接进来的线派什么用，按上游种类定：文字进提示词，素材进对应的参考位。</li>
+<li>能不能连，要同时满足两条规则（<code><abbr class="gl" tabindex="0" data-tip="判断两个节点能不能连线的函数，在 utils/canvas/link-rule.ts。">canLinkNodes</abbr></code>）：一是节点种类规则；二是下游当前的模型和生成方式收不收这种上游，比如「文生视频」不收图片。图片模型例外：生成方式自动切换（见 <a class="xref" href="#s6-4">6.4</a>），没有引用时也收图片，不然拉不进第一根图片线。模型清单还没加载时，只看种类规则。</li>
+<li>拖线到连接点、落在节点身上、落在空白处建节点、倾斜反馈，都走这同一套规则。</li>
+<li>旧画布里挂在具名口上的线，会自动迁回这个默认口。</li>
+</ul>
+</li>
+<li><strong>生成中</strong>：素材区显示 <abbr class="gl" tabindex="0" data-tip="骨架屏上扫过的高光条，表示&quot;正在加载&quot;。">shimmer</abbr> 骨架，下方 2px 进度条，进度宽度用弹簧过渡；取消按钮在悬停时出现。</li>
+<li><strong>失败</strong>：素材区显示失败原因、<code>重试</code> 按钮和&quot;积分已退回&quot;的说明。</li>
+</ul>
+</div><aside class="notes"><div class="note k-code"><b>对应代码</b><p>canLinkNodes 在 utils/canvas/link-rule.ts，pages/canvas/flow.tsx 的拖线、落点、建节点都调用它，所以连线规则只有一份。</p></div></aside></div><div class="sub" id="s6-3"><div class="main"><h3>6.3 节点生成历史浮条<a class="anc" href="#s6-3" aria-label="本节链接">#</a></h3>
+<ul>
+<li><strong>位置</strong>：选中节点时，出现在标题上方 12px、水平居中的胶囊：<code>◷ 节点生成历史 3 │ ○</code>。右侧圆圈是&quot;设为封面 / 当前版本&quot;的状态指示。</li>
+<li><strong>展开</strong>：点击后胶囊用 <code>layout</code> 动画变宽，横向列出缩略图（56×32，最多显示 8 个，超出部分可横向滚动）。当前版本带白色描边，<code>layoutId=&quot;history-active&quot;</code> 让这个描边在缩略图之间滑动。</li>
+<li><strong>切换</strong>：点击缩略图后，节点素材做 <abbr class="gl" tabindex="0" data-tip="两张图叠放，一张淡出的同时另一张淡入。">crossfade</abbr>（150ms），同时写入 <code><abbr class="gl" tabindex="0" data-tip="节点当前选中的历史版本。下游节点读的永远是它。">activeOutput</abbr></code>，进入撤销栈。</li>
+<li><strong>拖出</strong>：把缩略图拖到画布上，会生成一个&quot;上传素材&quot;类型的新节点（复用 duplicate 逻辑）。</li>
+<li><strong>下游</strong>：连线读取的永远是 <code>activeOutput</code> 指向的素材。切换版本后，下游节点标题旁出现一个小点&quot;上游已变更&quot;（不自动重跑）。</li>
+<li><strong>没有历史时</strong>（outputs ≤ 1）不显示计数，只显示&quot;节点生成历史&quot;。</li>
+</ul>
+</div><aside class="notes"><div class="note k-why"><b>为什么</b><p>历史存在节点自己的 outputs[] 里，而不是生成兄弟节点：画布不会变乱，旧结果也不会丢。数据字段见 <a class="xref" href="#s10-1">10.1</a>。</p></div></aside></div><div class="sub" id="s6-4"><div class="main"><h3>6.4 生成面板<a class="anc" href="#s6-4" aria-label="本节链接">#</a></h3>
+<p>信息顺序与 neoWow 图 2 一致，从上到下：</p>
+<ol>
+<li><strong>生成方式 Tabs</strong>：分段控件，选中块用 <code>layoutId=&quot;op-tab&quot;</code> 滑动。只显示当前模型支持的生成方式（来自 schema 里的 <code>params.op</code>）；只有一种时整行隐藏（对应图 3）。<ul>
+<li><strong>图片节点不显示 Tabs</strong>：同时支持文生图和图生图的模型，生成方式自动切换——连着图片节点或手动加了参考图就是图生图，否则是文生图，节点里存的 <code>params.op</code> 不再生效。素材入口始终显示，加图即切换。视频的图生、全能参考要用户判断，仍保留 Tabs。实现见 <code>utils/tasks/capabilities.ts</code> 的 <code>isAutoOp</code> / <code>currentOp</code> / <code>refPanelOp</code>。</li>
+</ul>
+</li>
+<li><strong>引用条</strong>（详见 <a class="xref" href="#s6-7">6.7</a>）：所有种类节点的面板顶部都有，列出接进来的全部上游；虚线「+」从画布里挑素材并自动连线。<ul>
+<li><strong class="tag chg">变更：原为</strong>&quot;参考素材行&quot;只在图片 / 视频节点出现、过滤掉音频和文本，「+」打开素材库。</li>
+<li><del>图片模型额外显示&quot;风格转绘&quot;和&quot;调色盘&quot;两个 <abbr class="gl" tabindex="0" data-tip="圆角小标签或胶囊按钮。">chip</abbr></del> <strong class="tag chg">变更：</strong> 取消，由底栏的风格、预设模板入口取代，见 <a class="xref" href="#s6-13">6.13</a>。</li>
+</ul>
+</li>
+<li><strong>提示词</strong>：自适应高度的编辑器，最小 2 行，最大 8 行，超出后滚动；右下角显示 <code>15/16000</code>，接近上限时变成琥珀色。输入 <code>@</code> 弹出引用菜单，选中的素材以 chip 形式嵌在文字里（详见 <a class="xref" href="#s6-7">6.7</a>）。<ul>
+<li><strong class="tag chg">变更：原为</strong> textarea。</li>
+</ul>
+</li>
+<li><strong>底栏 chip 行</strong>：<code>模型 ▾</code>（显示厂商头像）、<code>480p · 16:9 · 4s ▾</code>（参数摘要，点击弹出 <code>video-param-panel</code> 的 Popover）、<code>分镜栏编辑</code>（仅视频，二期）；右侧是 <code>批量 ×N</code>，以及 <code>[✦ 480 | ↑]</code> 组合发送按钮。<ul>
+<li>积分不够时，组合按钮变灰，悬停提示&quot;积分不足，还差 N&quot;。</li>
+<li>没有提示词时，发送按钮是 disabled。</li>
+</ul>
+</li>
+<li><strong>展开按钮</strong>（右上角 ↗）：把面板放大成居中的 Dialog（共享 <code>layoutId=&quot;prompt-panel&quot;</code>，从原位置放大过去），用来写长提示词，Esc 收回。</li>
+</ol>
+<p><strong>定位规则</strong>（解决遮挡）：</p>
+<ul>
+<li>宽度 = <code>clamp(480px, 节点屏幕宽度 + 160px, 720px)</code>，<strong>不随缩放变小</strong>，保证可读。</li>
+<li>下方空间不够时翻到节点上方（此时历史浮条移到节点下方）；水平方向会贴住视口边缘，保持 16px 边距。</li>
+<li><strong>只有点击才打开</strong>：直接拖动一个还没选中的节点时，它会顺带被选中，但不打开历史浮条和生成面板，点它一下才打开。新建节点、从抽屉里定位到的节点照常直接打开。</li>
+<li>拖动一个已经打开的节点时，历史浮条和生成面板整个收起，松手后再浮出来。</li>
+<li>拖动画布或框选时，面板 <code>opacity → 0.35</code> 并且不响应指针，松手后恢复。</li>
+</ul>
+<p><strong>键盘</strong>：选中节点后按 <code>Enter</code> 聚焦提示词；在提示词里 <code>⌘↵</code> 发送、<code>Esc</code> 失焦（再按一次 Esc 取消选中）；<code>⌘⇧↵</code> 是批量发送。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>图片节点没有生成方式 Tabs：有引用图就是图生图，没有就是文生图，由 isAutoOp / currentOp 自动判断（utils/tasks/capabilities.ts）。</p></div><div class="note k-note"><b>注</b><p>"只有点击才打开"的效果是：拖动一个没选中的节点时，面板不会跟着弹出来挡住别的节点。</p></div></aside></div><div class="sub" id="s6-5"><div class="main"><h3>6.5 多选（参考 neoWow）<a class="anc" href="#s6-5" aria-label="本节链接">#</a></h3>
+<ul>
+<li>选中 2 个及以上节点时，节点不再各自浮出生成面板和历史浮条，统一交给选区：<ul>
+<li>节点外围画一个淡色圆角底框，跟着画布一起缩放；</li>
+<li>底框上方浮出选区工具条，大小不随缩放变化：<code>N 个节点 | 整理布局 ▾ | 复制 | 下载 | 删除</code>。</li>
+</ul>
+</li>
+<li><strong>引用选中节点生成</strong>：选框右侧垂直居中有一个「+」，大小不随缩放变化。拖出去松手，或直接点一下，弹出「引用选中的 N 个节点生成」菜单；拖动时每个被选节点从右侧出口各拉一根线汇到指针处。选种类后在松手处新建节点，并从每个<strong>接得上</strong>的被选节点各连一根线（规则同 <code>canLinkNodes</code>）；接不上的跳过并 toast 告知数量，种类菜单里只要有一个被选节点接得上就可点，「上传素材」整项禁用。实现见 <code>pages/canvas/selection-fan-handle.tsx</code>、<code>hooks/use-canvas-menu.ts</code> 的 <code>openGroupMenu</code>。</li>
+<li><strong>整理布局</strong>：有横向、纵向、网格三种排列，以选区左上角为起点，用 260ms 缓动移到新位置；整个过程在撤销栈里只算一步。</li>
+<li><strong>打组</strong>：见 <a class="xref" href="#s6-10">6.10</a>。<strong class="tag chg">变更：原为</strong>&quot;放到二期&quot;。</li>
+<li><strong>批量高清</strong>：要先有超分模型，放到二期。</li>
+</ul>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>底框跟着画布缩放，但右侧的「+」大小不随缩放变化：它是屏幕空间的控件，要保证任何缩放下都点得到。</p></div></aside></div><div class="sub" id="s6-7"><div class="main"><h3>6.7 引用条与 @ 引用<a class="anc" href="#s6-7" aria-label="本节链接">#</a></h3>
+<p><strong>问题</strong>：节点引用了哪些上游，原来只有图片 / 视频的面板里看得到，而且音频、文本上游不显示；写提示词时也没法指明&quot;这句话说的是哪张图&quot;。用户只能对着连线猜。</p>
+<p><strong>目标</strong>：</p>
+<ol>
+<li>不论文本、音频、图片、视频，以及以后加的节点种类，面板最上面都是引用条，一眼看到&quot;这个节点吃进了什么&quot;。这是所有节点共用的基础规则。</li>
+<li>在提示词里输入 <code>@</code>，就能点名画布上的素材；当前节点接不了的素材不出现在菜单里。</li>
+</ol>
+<p><strong>布局</strong>（生成面板顶部，图 1 红框）：</p>
+<pre class="art"><code><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i> <i class="c1">↗</i> <i class="c1">┐</i>
+<i class="c1">│</i> [<i class="c2">全</i><i class="c2">能</i><i class="c2">参</i><i class="c2">考</i>] <i class="c2">视</i><i class="c2">频</i><i class="c2">编</i><i class="c2">辑</i>  <i class="c2">视</i><i class="c2">频</i><i class="c2">延</i><i class="c2">长</i>  <i class="c2">首</i><i class="c2">尾</i><i class="c2">帧</i> <i class="c1">…</i>              (<i class="c2">有</i><i class="c2">多</i><i class="c2">种</i><i class="c2">生</i><i class="c2">成</i><i class="c2">方</i><i class="c2">式</i><i class="c2">才</i><i class="c2">有</i><i class="c2">这</i><i class="c2">行</i>) <i class="c1">│</i>
+<i class="c1">│</i> <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i> <i class="c1">┌</i> <i class="c1">─</i> <i class="c1">─</i><i class="c1">┐</i>                                <i class="c1">│</i>
+<i class="c1">│</i> <i class="c1">│</i><i class="c2">🔗</i><i class="c2">图</i><i class="c1">│</i><i class="c1">│</i><i class="c2">🔗</i><i class="c2">文</i><i class="c1">│</i><i class="c1">│</i><i class="c2">🔗</i><i class="c1">♫</i> <i class="c1">│</i><i class="c1">│</i><i class="c2">🔗</i><i class="c1">▶</i> <i class="c1">│</i> <i class="c1">│</i> +  <i class="c1">│</i>   <i class="c1">←</i> <i class="c2">引</i><i class="c2">用</i><i class="c2">条</i><i class="c2">：</i>56<i class="c1">×</i>56<i class="c2">，</i><i class="c2">间</i><i class="c2">距</i> 8<i class="c2">，</i><i class="c2">横</i><i class="c2">向</i><i class="c2">滚</i><i class="c2">动</i> <i class="c1">│</i>
+<i class="c1">│</i> <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i><i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i><i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i><i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i> <i class="c1">└</i> <i class="c1">─</i> <i class="c1">─</i><i class="c1">┘</i>                                <i class="c1">│</i>
+<i class="c1">│</i> <i class="c2">参</i><i class="c2">考</i> [<i class="c1">▣</i> U03-1] <i class="c2">的</i><i class="c2">构</i><i class="c2">图</i><i class="c2">，</i><i class="c2">按</i> [T <i class="c2">分</i><i class="c2">镜</i><i class="c2">脚</i><i class="c2">本</i>] <i class="c2">的</i><i class="c2">分</i><i class="c2">镜</i><i class="c2">：</i><i class="c2">男</i><i class="c2">孩</i><i class="c2">抬</i><i class="c2">头</i><i class="c1">…</i>           <i class="c1">│</i>
+<i class="c1">│</i>                                                     34/16000 <i class="c1">│</i>
+<i class="c1">│</i> (<i class="c2">模</i><i class="c2">型</i>) (<i class="c2">参</i><i class="c2">数</i>)                         (<i class="c2">批</i><i class="c2">量</i>) [<i class="c1">✦</i> 480 | <i class="c1">↑</i>]       <i class="c1">│</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+          @ <i class="c2">菜</i><i class="c2">单</i><i class="c2">（</i><i class="c2">贴</i><i class="c2">着</i><i class="c2">光</i><i class="c2">标</i><i class="c2">，</i><i class="c2">放</i><i class="c2">不</i><i class="c2">下</i><i class="c2">翻</i><i class="c2">到</i><i class="c2">上</i><i class="c2">方</i><i class="c2">）</i>
+          <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+          <i class="c1">│</i> [P] <i class="c2">选</i><i class="c2">择</i><i class="c2">预</i><i class="c2">设</i><i class="c2">提</i><i class="c2">示</i><i class="c2">词</i>             <i class="c1">│</i>  <i class="c1">←</i> <i class="c2">只</i><i class="c2">在</i> @ <i class="c2">后</i><i class="c2">还</i><i class="c2">没</i><i class="c2">输</i><i class="c2">入</i><i class="c2">字</i><i class="c2">时</i><i class="c2">出</i><i class="c2">现</i>
+          <i class="c1">│</i> <i class="c2">已</i><i class="c2">引</i><i class="c2">用</i>                         <i class="c1">│</i>
+          <i class="c1">│</i> [<i class="c1">▣</i>] U03-1                      <i class="c1">│</i>
+          <i class="c1">│</i> [T] <i class="c2">分</i><i class="c2">镜</i><i class="c2">脚</i><i class="c2">本</i>                    <i class="c1">│</i>
+          <i class="c1">│</i> <i class="c2">画</i><i class="c2">布</i><i class="c2">中</i> <i class="c1">·</i> <i class="c2">选</i><i class="c2">中</i><i class="c2">后</i><i class="c2">自</i><i class="c2">动</i><i class="c2">连</i><i class="c2">线</i>          <i class="c1">│</i>
+          <i class="c1">│</i> [<i class="c1">▣</i>] C05 <i class="c1">—</i> <i class="c2">周</i><i class="c2">德</i><i class="c2">发</i>        <i class="c2">🔗</i><i class="c2">连</i><i class="c2">线</i>  <i class="c1">│</i>
+          <i class="c1">│</i> [<i class="c1">♫</i>] <i class="c2">周</i><i class="c2">德</i><i class="c2">发</i> <i class="c1">·</i> <i class="c2">台</i><i class="c2">词</i>       <i class="c2">🔗</i><i class="c2">连</i><i class="c2">线</i>  <i class="c1">│</i>
+          <i class="c1">│</i> <i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i>  <i class="c1">│</i>
+          <i class="c1">│</i> [<i class="c1">🗀</i>] <i class="c2">素</i><i class="c2">材</i><i class="c2">库</i>                <i class="c2">二</i><i class="c2">期</i> <i class="c1">│</i>
+          <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+</code></pre>
+<p><strong>控件说明</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>控件</th>
+  <th>位置 / 尺寸</th>
+  <th>内容与状态</th>
+  <th>交互</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>引用条</td>
+  <td>面板第一行（有生成方式 Tabs 时排在第二行）；高 56，<code>gap-2</code>，不换行，溢出横向滚动、隐藏滚动条</td>
+  <td>按连线先后列出全部上游，不分种类。右侧「↗ 放大编辑」在没有 Tabs 时挂在这一行</td>
+  <td>节点切换时整行重建，不做入场动画</td>
+</tr>
+<tr>
+  <td>引用缩略图</td>
+  <td>56×56 <code>rounded-[10px]</code>，左上 16×16 链接角标，右上 16×16 删除 ×（见下方修订）</td>
+  <td>图片：画面封面；视频：封面 + 右下 ▶ 角标；文本：前 40 字，两行截断；音频：<code>--status-success</code> 色音符；上游还没产出：虚线框 + 种类图标；当前生成方式用不到（如「文生视频」接了图片）：<code>opacity .4</code>，tooltip 说明</td>
+  <td>hover 描边 <code>--node-ring</code>，同时提示词里同一素材的 chip 描边、画布上源节点外圈虚线；按下 <code>scale .96</code>；<strong>点击 = 在光标处插入这个素材的 chip</strong>；不能删，tooltip 写&quot;断开连线即可移除&quot;</td>
+</tr>
+<tr>
+  <td>「+」</td>
+  <td>引用条末尾，56×56 虚线框</td>
+  <td>—</td>
+  <td>打开引用菜单（link 模式）：只列画布中还没连上、且接得上的素材，选中只连线、不插 chip</td>
+</tr>
+<tr>
+  <td>提示词编辑器</td>
+  <td>原 textarea 位置；15px/1.75，最小 52px，最多 8 行</td>
+  <td>占位文字末尾加&quot;输入 @ 引用画布里的素材&quot;</td>
+  <td><code>@</code> 后跟最多 24 个非空白字符视为查询；<code>Enter</code> 换行（菜单开着时是选中）；粘贴只取纯文本</td>
+</tr>
+<tr>
+  <td>素材 chip</td>
+  <td>行内，高 26，<code>rounded-md</code>，<code>bg-surface-2</code> + 1px <code>chrome-border</code>；20×20 缩略图 + 名称（最宽 168，超出省略）</td>
+  <td>正常；hover 联动描边；<strong>失效</strong>：源节点被删或连线断开，变透明底 + 名称删除线 + 缩略图 35% 透明，tooltip&quot;引用已断开：重新连线，或删掉这个引用&quot;</td>
+  <td>不可编辑，Backspace 整个删除；<strong>删 chip 不断线</strong>（连线是关系，chip 只是点名，避免误删关系）</td>
+</tr>
+<tr>
+  <td>@ 菜单</td>
+  <td>贴光标左下 6px，宽 <code>min(300, 100vw-16)</code>，最高 <code>min(360, 60vh)</code> 滚动；下方放不下翻到光标上方</td>
+  <td>分组：预设提示词（P 图标，只在没输入查询时）→「已引用」→「画布中 · 选中后自动连线」（右侧&quot;🔗连线&quot;提示）→ 分隔线 →「素材库 二期」</td>
+  <td><code>↑↓</code> 移动高亮（循环）、<code>Enter/Tab</code> 选中、<code>Esc</code> 只关菜单不失焦；鼠标悬停即高亮；继续输入实时过滤（按名称包含，不区分大小写），每次过滤高亮回到第一项</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>哪些素材能出现在 @ 菜单（&quot;接不了的不显示&quot;）</strong></p>
+<p>同时满足才列出，否则直接不显示（不置灰）：</p>
+<ol>
+<li>不是当前节点自己；</li>
+<li>已经有产出（文本有正文；图片 / 视频 / 音频有当前版本）；</li>
+<li>能接到当前节点：节点种类规则 + 当前模型和生成方式收这种上游，就是 <code>canLinkNodes</code>。比如「文生视频」时菜单只剩文本，切到「全能参考」后图片、视频、音频都回来了；</li>
+<li>不在当前节点的下游（再连回来会成环）。</li>
+</ol>
+<p><strong>@ 未连线的素材 = 自动连一根线</strong>：选中「画布中」的素材时，在插入 chip 的同时补一根 <code>素材 → 当前节点</code> 的连线，引用条末尾多出它的缩略图并 toast &quot;已连线「X」&quot;。连线加上插 chip 在撤销栈里只算<strong>一步</strong>，并且会吞掉正在防抖中的打字步，⌘Z 一次就回到输入 <code>@</code> 之前。</p>
+<p><strong>提示词存储</strong>：仍是纯文本，引用写成 <code>@[素材名](节点 id)</code>，编辑器负责把它渲染成 chip（显示画布上的最新标题，节点被删后才用存下的名字）。字数按素材名计。</p>
+<p><strong>提交时的展开</strong>（<code>buildTaskInput</code>）：</p>
+<ul>
+<li>图片 / 视频 / 音频引用换成「图片1」「视频2」「音频1」，序号是它在提交的 <code>images / videos / audios</code> 里的位置；</li>
+<li>文本引用换成那个文本节点的正文；</li>
+<li>连线已断、或当前生成方式没提交这份素材的，退回成素材名。</li>
+<li><strong class="tag chg">变更：原为</strong>&quot;上游文字优先于手填，接了文本节点提示词框就禁用&quot;。现在提示词框始终可写：手填的优先，没手填才用第一个文本上游的正文，占位文字会说明&quot;留空就用上游「X」的文字&quot;。</li>
+</ul>
+<p><strong>动效</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>@ 菜单出现</td>
+  <td><code>opacity 0→1</code>、<code>scale .96→1</code>、<code>y ∓4→0</code></td>
+  <td><code>DURATION.base</code> 180ms，<code>EASE_OUT</code></td>
+  <td><code><abbr class="gl" tabindex="0" data-tip="缩放、旋转的原点。设成触发点，元素看起来就是从那里长出来的。">transform-origin</abbr></code> 指向光标；在光标下方时从上往下，翻到上方时从下往上</td>
+</tr>
+<tr>
+  <td>@ 菜单消失</td>
+  <td>反向</td>
+  <td>130ms（进入的约 70%）</td>
+  <td>回到光标</td>
+</tr>
+<tr>
+  <td>菜单高亮移动</td>
+  <td>背景色</td>
+  <td>无过渡（键盘连按要跟手）</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>chip 插入</td>
+  <td><code>opacity 0→1</code>、<code>scale .9→1</code></td>
+  <td><code>DURATION.fast</code> 120ms，<code>EASE_OUT</code></td>
+  <td>原地</td>
+</tr>
+<tr>
+  <td>自动连线后新缩略图入场</td>
+  <td><code>opacity 0→1</code>、<code>scale .6→1</code>；先 <code>scrollIntoView</code> 到可见</td>
+  <td><code>SPRING</code></td>
+  <td>原地放大</td>
+</tr>
+<tr>
+  <td>hover 联动描边</td>
+  <td><code>box-shadow</code> / <code>outline</code></td>
+  <td>120ms</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>缩略图按下</td>
+  <td><code>scale .96</code></td>
+  <td><code>TAP</code></td>
+  <td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p>减少动态效果打开时：菜单只淡入淡出，chip 与缩略图直接出现。</p>
+<p><strong>状态</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>没有上游</td>
+  <td>引用条只剩虚线「+」</td>
+</tr>
+<tr>
+  <td>上游还在生成 / 还没产出</td>
+  <td>缩略图是虚线框 + 种类图标，tooltip&quot;还没生成&quot;；@ 菜单里不出现</td>
+</tr>
+<tr>
+  <td>当前生成方式用不到某个上游</td>
+  <td>缩略图 40% 透明；@ 菜单不列它；已有的 chip 保留</td>
+</tr>
+<tr>
+  <td>画布里没有可引用的素材</td>
+  <td>菜单写&quot;画布里还没有能引用的素材&quot;（link 模式写&quot;画布里没有能接进来的素材&quot;），只剩预设和素材库</td>
+</tr>
+<tr>
+  <td>过滤无结果</td>
+  <td>&quot;没有匹配「xx」的素材&quot;</td>
+</tr>
+<tr>
+  <td>引用失效（删节点 / 断线）</td>
+  <td>chip 删除线样式，见上表；发送时失效 chip 按普通文字处理</td>
+</tr>
+<tr>
+  <td>上游很多</td>
+  <td>引用条横向滚动；新加的那张自动滚到可见</td>
+</tr>
+<tr>
+  <td>放大编辑 Dialog</td>
+  <td>同一个编辑器、同一套 @ 菜单（菜单层级在 Dialog 之上）</td>
+</tr>
+<tr>
+  <td>窄屏（&lt;768px）</td>
+  <td>面板变底部 Sheet，引用条照样横滚；@ 菜单宽度贴满屏宽减 16</td>
+</tr>
+<tr>
+  <td>浅色主题</td>
+  <td>全部走 token（<code>surface-2</code>、<code>chrome-border</code>、<code>node-ring</code>、<code>status-success</code>），不写死颜色</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>用户反馈后的修订（2026-10-03）</strong></p>
+<ul>
+<li><strong>每格右上角加 ×</strong>：连线来的点 × 断开连线，<strong>提示词里引用它的 chip 一起删掉</strong>（连同 chip 后面那个空格）；⌘Z 一次，线和 chip 一起回来。手动上传的点 × 移除素材。× 常驻显示，不用悬停。<strong class="tag chg">变更：原为</strong>&quot;连线来的不能删，只能断开连线&quot;。删除线样式只留给节点被删掉的情况。</li>
+<li><strong>节点默认名</strong>，让 @ 菜单里分得清：<ul>
+<li>新建节点：画布里没有同名的就用种类名，有了就依次叫「图片 2」「图片 3」。</li>
+<li>上传的素材：用文件名，去掉扩展名，重名同样编号。</li>
+<li>复制节点（⌘D、⌘C/⌘V、批量生成复制出的节点）：复制一份叫「X 副本」，已被占用就叫「X 副本二」；一次复制好几份叫「X 副本一」「X 副本二」……复制副本时按原名续编，不会叠成「副本 副本」。<strong class="tag chg">变更：原为</strong>复制出「X 2」「X 3」。</li>
+</ul>
+</li>
+<li><strong>节点可改名</strong>：双击节点标题，原地变成输入框，Enter 或失焦提交、Esc 取消。名字会去掉首尾空白，换行收成空格，最长 40 字，清空就退回原名。@ 菜单按节点名搜索，chip 显示最新的名字。名字存在画布 payload 的 <code>label</code> 里，后端不用改。</li>
+<li><strong>还没出图的上游不再报错</strong>：提交时直接跳过，引用条里仍是虚线格加&quot;还没生成&quot;的提示。图片节点连着的图如果都还没出图，就按文生图提交。<strong class="tag chg">变更：原为</strong>提示&quot;上游「X」还没有可用的素材&quot;并且不让发送。</li>
+<li>chip 改成 <code>vertical-align: middle</code>，缩略图不同的 chip 高度一致。</li>
+</ul>
+<p><strong>与原型的出入（实现时定的）</strong></p>
+<ul>
+<li>@ 菜单里不放「选择预设提示词」和「素材库」两行：项目里还没有这两个功能，等做了再加。</li>
+<li>引用条「+」菜单除了「画布中可引用」，末尾还有「上传参考素材」（只在当前生成方式收素材时出现）。它接替了原来参考素材卡片里的上传入口，上传的素材以无链接角标的缩略图出现在引用条里，悬停右上角 × 可以移除。原卡片里的「画布素材」入口由「+」自动连线取代。</li>
+<li>chip 插入动画用 CSS（<code>animate-in fade-in zoom-in-90</code>，120ms）；减少动态效果时只淡入。</li>
+</ul>
+<p><strong>涉及的组件和文件</strong></p>
+<ul>
+<li><code>components/canvas/prompt-mention.tsx</code>（新）：<code>PromptEditor</code>（<abbr class="gl" tabindex="0" data-tip="基于 ProseMirror 的编辑器框架，提示词编辑器用它。">Tiptap</abbr> 编辑器）、素材 chip（节点视图）、@ 菜单、<code>RefThumb</code> 缩略图、引用联动的 context。</li>
+<li><code>components/canvas/ref-strip.tsx</code>（新）：引用条，替换 <code>video-param-panel.tsx</code> 里 <code>section=&quot;refs&quot;</code> 那块，四种节点的面板都用它。</li>
+<li><code>components/canvas/node-prompt-input.tsx</code>：textarea 换成 <code>PromptEditor</code>，没有 Tabs 时引用条顶到第一行；字数按 <code>promptTextLength</code> 算。</li>
+<li><code>utils/canvas/prompt-tokens.ts</code>（新）：token 解析 / 序列化 / 计字数 / 展开，以及和编辑器文档互转。</li>
+<li><code>utils/canvas/link-rule.ts</code>：<code>hasMaterial</code>、<code>mentionableNodes</code>。</li>
+<li><code>utils/tasks/capabilities.ts</code>：<code>buildTaskInput</code> 多收一个 <code>links</code> 参数，用来展开引用；调整提示词优先级。</li>
+<li><code>hooks/use-task-node.ts</code>：引用条数据、@ 素材来源、自动连线。</li>
+<li><code>hooks/use-canvas-history.ts</code>：<code>absorbTyping()</code>，@ 自动连线和正在攒的打字合成一步撤销。</li>
+<li><code>pages/canvas/use-canvas-shortcuts.ts</code>：画布上按 Enter 聚焦提示词时，改成聚焦可编辑 div 并把光标放到末尾。</li>
+<li><code>index.css</code>：<code>.react-flow__node.ref-hl</code> 源节点虚线圈。</li>
+</ul>
+<p><strong>依赖</strong>（用户已同意，已用 <code>bun add</code> 安装，均为 3.31.4，MIT）：<code>@tiptap/react</code>、<code>@tiptap/pm</code>、<code>@tiptap/core</code>、<code>@tiptap/extension-document</code>、<code>@tiptap/extension-paragraph</code>、<code>@tiptap/extension-text</code>、<code>@tiptap/extension-hard-break</code>、<code>@tiptap/extension-mention</code>、<code>@tiptap/suggestion</code>、<code>@tiptap/extensions</code>（只用 UndoRedo）。按需装单个扩展，没装 starter-kit。</p>
+</div><aside class="notes"><div class="note k-code"><b>对应代码</b><p>提示词存纯文本，引用写成 @[素材名](节点 id)；编辑器（Tiptap）把它渲染成 chip，提交时 buildTaskInput 再展开成「图片1」这类编号。</p></div><div class="note k-warn"><b>注意</b><p>删 chip 不断线，点引用条上的 × 却会断线并连带删 chip。两者含义不同：chip 只是"点名"，连线才是"关系"。</p></div></aside></div><div class="sub" id="s6-8"><div class="main"><h3>6.8 快捷键（一期）<a class="anc" href="#s6-8" aria-label="本节链接">#</a></h3>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>键</th>
+  <th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>⌘Z / ⇧⌘Z</td>
+  <td>撤销 / 重做</td>
+</tr>
+<tr>
+  <td>⌘C / ⌘V / ⌘D</td>
+  <td>复制 / 粘贴（落在鼠标位置）/ 原地复制（偏移 24px）</td>
+</tr>
+<tr>
+  <td>Delete / Backspace</td>
+  <td>删除选中的节点或连线</td>
+</tr>
+<tr>
+  <td>V / H / 按住空格</td>
+  <td>选择 / 抓手 / 临时抓手（已有）</td>
+</tr>
+<tr>
+  <td>⇧1 / ⇧0</td>
+  <td>适应全部 / 100%</td>
+</tr>
+<tr>
+  <td>⌘↵</td>
+  <td>发送生成</td>
+</tr>
+<tr>
+  <td>@（提示词里）</td>
+  <td>打开引用菜单；↑↓ 选择，Enter / Tab 插入，Esc 关闭</td>
+</tr>
+</tbody>
+</table></div>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>这张表只列一期范围。@ 引用的键位在 6.7；节点预设（6.13）本期不设全局快捷键。</p></div></aside></div><div class="sub" id="s6-9"><div class="main"><h3>6.9 双击节点预览原图（媒体预览弹层）<a class="anc" href="#s6-9" aria-label="本节链接">#</a></h3>
+<p><strong>问题</strong>：节点里的图只有 384px 宽，低缩放时还只加载缩略图，没法看细节；视频在节点里播放也太小。画布上双击节点目前什么也不发生（标题除外，双击标题是改名）。</p>
+<p><strong>目标</strong>：双击有图片或视频的节点，弹出沉浸式预览，直接看原图 / 原视频；不离开画布就能连续翻看整张画布的成果，看完一键回到节点。</p>
+<p><strong class="tag dec">已定（访谈）</strong>：</p>
+<ul>
+<li>范围：画布上所有有素材的<strong>图片、视频</strong>节点，混排，按位置排序（先按行从上到下，同一行内从左到右；行高容差取 <code>节点高度 / 2</code>，避免略有错位的节点来回乱序）。</li>
+<li>音频、文本节点双击不弹框，也不进缩略图条。</li>
+<li>视频控制条：播放/暂停、进度、时间、倍速、循环、音量；不做清晰度切换（只有一份原文件）。</li>
+</ul>
+<h4>布局草图</h4>
+<pre class="art"><code><i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+<i class="c1">│</i>                                   [832<i class="c1">×</i>480 <i class="c1">·</i> 11.3 MB][<i class="c1">↓</i>][<i class="c1">×</i>]<i class="c1">│</i>  <i class="c2">顶</i><i class="c2">部</i><i class="c2">右</i><i class="c2">：</i><i class="c2">信</i><i class="c2">息</i><i class="c2">胶</i><i class="c2">囊</i> / <i class="c2">下</i><i class="c2">载</i> / <i class="c2">关</i><i class="c2">闭</i>
+<i class="c1">│</i> [<i class="c1">‹</i>]       <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>      [<i class="c1">›</i>] <i class="c1">│</i>
+<i class="c1">│</i>           <i class="c1">│</i>                                      <i class="c1">│</i>          <i class="c1">│</i>
+<i class="c1">│</i>           <i class="c1">│</i>          <i class="c2">原</i><i class="c2">图</i> / <i class="c2">视</i><i class="c2">频</i><i class="c2">画</i><i class="c2">面</i>              <i class="c1">│</i>          <i class="c1">│</i>  <i class="c2">舞</i><i class="c2">台</i><i class="c2">：</i>object-contain<i class="c2">，</i><i class="c2">居</i><i class="c2">中</i>
+<i class="c1">│</i>           <i class="c1">│</i>                                      <i class="c1">│</i>          <i class="c1">│</i>
+<i class="c1">│</i>           <i class="c1">│</i> <i class="c1">▮</i><i class="c1">▮</i>  <i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">●</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i><i class="c1">━</i>  0:01 / 0:15 1x <i class="c1">⟲</i> <i class="c2">🔊</i><i class="c1">│</i>          <i class="c1">│</i>  <i class="c2">视</i><i class="c2">频</i><i class="c2">才</i><i class="c2">有</i><i class="c2">，</i><i class="c2">浮</i><i class="c2">在</i><i class="c2">画</i><i class="c2">面</i><i class="c2">底</i><i class="c2">部</i>
+<i class="c1">│</i>           <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>          <i class="c1">│</i>
+<i class="c1">│</i>        [<i class="c2">相</i><i class="c2">邻</i><i class="c2">节</i><i class="c2">点</i> 2 / 7]  [<i class="c1">←</i> <i class="c1">→</i>  <i class="c2">切</i><i class="c2">换</i>]  [<i class="c1">◎</i> <i class="c2">定</i><i class="c2">位</i><i class="c2">到</i><i class="c2">节</i><i class="c2">点</i>]          <i class="c1">│</i>  <i class="c2">信</i><i class="c2">息</i><i class="c2">行</i>
+<i class="c1">│</i>     <i class="c1">▢</i>  [<i class="c1">▣</i>]  <i class="c1">▢</i>  <i class="c1">▢</i>  <i class="c1">▢</i>  <i class="c1">▢</i>  <i class="c1">▢</i>                                  <i class="c1">│</i>  <i class="c2">缩</i><i class="c2">略</i><i class="c2">图</i><i class="c2">条</i><i class="c2">，</i><i class="c2">当</i><i class="c2">前</i><i class="c2">项</i><i class="c2">描</i><i class="c2">边</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+<i class="c2">背</i><i class="c2">景</i><i class="c2">：</i><i class="c2">全</i><i class="c2">屏</i><i class="c2">黑</i><i class="c2">色</i><i class="c2">遮</i><i class="c2">罩</i><i class="c2">（</i>--cover-scrim<i class="c2">）</i>+ <i class="c2">画</i><i class="c2">布</i><i class="c2">隐</i><i class="c2">约</i><i class="c2">透</i><i class="c2">出</i><i class="c2">，</i><i class="c2">不</i><i class="c2">额</i><i class="c2">外</i><i class="c2">铺</i> blur <i class="c2">层</i>
+</code></pre>
+<h4>控件说明</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>控件</th>
+  <th>位置与尺寸</th>
+  <th>状态与交互</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>遮罩</td>
+  <td>全屏 <code>fixed inset-0</code>，<code>bg-cover-scrim</code></td>
+  <td>点遮罩空白处关闭；<code><abbr class="gl" tabindex="0" data-tip="毛玻璃：模糊元素背后的内容。GPU 开销大，所以限制同屏不超过 6 层。">backdrop-blur</abbr></code> 只用 1 层（弹层本身），不叠加</td>
+</tr>
+<tr>
+  <td>舞台</td>
+  <td>居中，最大 <code>100vw-160px × 100vh-220px</code>，<code>rounded-2xl</code>，<code>object-contain</code></td>
+  <td>图片先显示缩略图（已缓存）→ 原图加载完成后淡入替换，避免黑屏；加载中右上角信息胶囊显示“加载原图…”</td>
+</tr>
+<tr>
+  <td>信息胶囊</td>
+  <td>右上，<code>h-10</code> 胶囊，<code>bg-chrome ring-chrome-border</code></td>
+  <td>显示 <code>宽×高 · 大小</code>，<code>tabular-nums</code>；宽高取自原图 / 视频的 naturalWidth / videoWidth，大小取自原文件响应头 Content-Length，取不到就只显示宽高</td>
+</tr>
+<tr>
+  <td>下载</td>
+  <td>胶囊右侧圆形按钮</td>
+  <td>下载原文件，文件名取节点 <code>fileName</code>，没有就用 <code>节点名.扩展名</code>；Tooltip「下载原文件」</td>
+</tr>
+<tr>
+  <td>关闭</td>
+  <td>最右圆形按钮，下方小字 <code>Esc</code></td>
+  <td><code>Esc</code> / 点遮罩 / 点关闭</td>
+</tr>
+<tr>
+  <td>上一个 / 下一个</td>
+  <td>左右边缘垂直居中的圆形按钮，<code>size-11</code></td>
+  <td>只有 1 个可预览节点时隐藏；到头循环还是停住：<strong>停住并禁用</strong>（缩略图条有位置感，循环会让人迷路）</td>
+</tr>
+<tr>
+  <td>视频控制条</td>
+  <td>舞台底部浮层，渐变底 <code>from-black/45</code>，沿用 <code>VideoControls</code> 风格</td>
+  <td>播放/暂停（空格）、进度条可拖、<code>0:01 / 0:15</code>、倍速（0.5 / 1 / 1.5 / 2 的下拉，Popover 向上弹出）、循环开关（开启态高亮）、音量按钮（静音切换）；打开 / 切换到视频时自动播放；切走时暂停并释放</td>
+</tr>
+<tr>
+  <td>信息行</td>
+  <td>舞台下方居中</td>
+  <td><code>相邻节点 2 / 7</code>、<code>← → 切换</code> 键帽提示、<code>定位到节点</code> 按钮</td>
+</tr>
+<tr>
+  <td>定位到节点</td>
+  <td>信息行右侧</td>
+  <td>关闭弹层，选中该节点，复用 <code>useFocusNode</code> 把视口飞过去（300ms）</td>
+</tr>
+<tr>
+  <td>缩略图条</td>
+  <td>底部居中，单个 <code>h-14 aspect-video</code>，<code>gap-2</code>，超出横向滚动</td>
+  <td>图片用 <code>?v=thumb</code>，视频用 <code>?v=poster</code> 并带小播放角标；当前项 2px <code>--node-ring</code> 描边，切换时自动滚动到可见；点击跳转</td>
+</tr>
+</tbody>
+</table></div>
+<h4>键鼠</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>键</th>
+  <th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>双击节点（图片 / 视频区域）</td>
+  <td>打开预览；标题上的双击仍是改名，输入框、按钮、视频控制条上的双击不触发</td>
+</tr>
+<tr>
+  <td>← / →</td>
+  <td>上一个 / 下一个</td>
+</tr>
+<tr>
+  <td>Esc</td>
+  <td>关闭</td>
+</tr>
+<tr>
+  <td>空格</td>
+  <td>视频播放 / 暂停</td>
+</tr>
+<tr>
+  <td>M</td>
+  <td>视频静音 / 取消</td>
+</tr>
+<tr>
+  <td>在舞台上滚轮</td>
+  <td>不处理（不做缩放，避免和切换手势冲突）</td>
+</tr>
+</tbody>
+</table></div>
+<p>双击不能和已有行为冲突：画布空白双击弹菜单已经排除了 <code>.react-flow__node</code>，节点上的双击是干净的。节点内的视频控制条、按钮、标题输入框都带 <code>nodrag</code> 或自己拦截了事件，在它们上面的双击不触发预览；视频画面区域的双击会先触发两次单击（播放状态切两次，最终不变），再打开预览，预览打开时节点里的视频暂停。</p>
+<h4>动效表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>打开</td>
+  <td>舞台 <code>opacity 0→1</code> + <code>scale 0.96→1</code>；遮罩 <code>opacity 0→1</code></td>
+  <td><code>DURATION.slow</code> 240ms，<code>EASE_OUT</code></td>
+  <td><code>transform-origin</code> 取被双击节点在屏幕上的中心，视觉上是从节点里长出来</td>
+</tr>
+<tr>
+  <td>关闭</td>
+  <td>反向</td>
+  <td>约 170ms（进入的 70%）</td>
+  <td>回到节点中心</td>
+</tr>
+<tr>
+  <td>左右切换</td>
+  <td>画面 <code>opacity 0→1</code> + <code>x ±12→0</code>（按切换方向），旧画面直接淡出</td>
+  <td><code>DURATION.base</code> 180ms</td>
+  <td>下一个：新画面从右往左进；上一个相反</td>
+</tr>
+<tr>
+  <td>缩略图当前项描边</td>
+  <td><code>layoutId=&quot;preview-active&quot;</code></td>
+  <td><code>SPRING</code></td>
+  <td>在缩略图间滑动</td>
+</tr>
+<tr>
+  <td>缩略图条自动滚动</td>
+  <td><code>scrollIntoView({ inline: &quot;center&quot; })</code></td>
+  <td>浏览器 smooth，<code>reduce</code> 时 auto</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>原图加载完成</td>
+  <td>缩略图 → 原图 <code>opacity</code> 交叉淡入</td>
+  <td><code>DURATION.base</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>控制条</td>
+  <td>鼠标 2.5 秒不动淡出，一动淡入 <code>opacity</code>；暂停时常显</td>
+  <td><code>DURATION.fast</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>按钮按下</td>
+  <td><code>whileTap={TAP}</code></td>
+  <td>—</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>减少动态效果</td>
+  <td>全部降级为只做淡入淡出，不做缩放和位移</td>
+  <td>—</td>
+  <td>—</td>
+</tr>
+</tbody>
+</table></div>
+<h4>状态表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>原图加载中</td>
+  <td>先露缩略图（没有缩略图就是骨架屏），信息胶囊显示 <code>加载原图…</code></td>
+</tr>
+<tr>
+  <td>原图失败</td>
+  <td>舞台显示占位图标 + “原图加载失败” + <code>重试</code>、<code>下载</code>仍可用</td>
+</tr>
+<tr>
+  <td>视频加载失败</td>
+  <td>同上，文案“视频无法播放”</td>
+</tr>
+<tr>
+  <td>当前节点在预览期间被删除 / 素材被换掉</td>
+  <td>按列表重算：落到相邻一项；列表空了就关闭弹层</td>
+</tr>
+<tr>
+  <td>预览期间任务完成</td>
+  <td>列表实时更新，缩略图条追加，当前项不跳动</td>
+</tr>
+<tr>
+  <td>只有 1 个可预览节点</td>
+  <td>隐藏左右按钮、<code>相邻节点</code>、缩略图条，只留舞台、信息胶囊、下载、关闭</td>
+</tr>
+<tr>
+  <td>窄屏（&lt; 768px）</td>
+  <td>左右按钮缩到 <code>size-9</code> 贴屏幕边；舞台最大宽度 <code>100vw-16px</code>；信息胶囊与下载、关闭排成一行；缩略图条保留；视频控制条放不下时进度条独占上一行，倍速 / 循环 / 音量在下一行</td>
+</tr>
+<tr>
+  <td>键盘焦点</td>
+  <td>弹层打开时焦点陷在弹层内，关闭后还给被双击的节点（Base UI Dialog 自带）</td>
+</tr>
+<tr>
+  <td>浅色主题</td>
+  <td>弹层本来就是暗场，两套主题共用同一套 <code>--cover-scrim</code> / <code>--cover-foreground</code>，不另做</td>
+</tr>
+</tbody>
+</table></div>
+<h4>涉及的组件与文件</h4>
+<ul>
+<li>新增 <code>components/canvas/media-lightbox.tsx</code>：弹层本身（舞台、信息胶囊、左右按钮、信息行、缩略图条），受控：传入 <code>items</code>、<code>activeId</code>、<code>onActiveChange</code>、<code>onLocate</code>、<code>onClose</code>。</li>
+<li>新增 <code>components/canvas/lightbox-video.tsx</code>：视频舞台 + 带倍速 / 循环的控制条（不改 <code>VideoFacade</code>，避免节点内行为被牵连；时间格式化复用 <code>formatMediaDuration</code>）。</li>
+<li>新增 <code>utils/canvas/preview-items.ts</code>：纯逻辑——从节点列表筛出可预览项、按位置排序、取下一个 / 上一个、被删后的回退。配 <code>web/src/tests/utils/canvas/preview-items.test.ts</code>。</li>
+<li><code>pages/canvas/flow.tsx</code>：给 ReactFlow 挂 <code>onNodeDoubleClick</code>，只对图片 / 视频且有 <code>src</code> 的节点打开；弹层状态放 flow 里（<code>useState</code>，不进 store，避免整张画布重渲染）；<code>onLocate</code> 接 <code>useFocusNode</code>。</li>
+<li><code>components/canvas/media-preview.tsx</code>：不改；弹层里的原图直接用 <code>&lt;img src&gt;</code>，缩略图占位复用 <code>variantUrl(src, &quot;thumb&quot;)</code>。</li>
+<li><code>components/ui/dialog.tsx</code>：不改；弹层基于 Base UI <code>Dialog</code> 原语直接写（<code>DialogContent</code> 自带居中和小尺寸样式，不适合全屏弹层），仍用同一套 Portal / Backdrop。</li>
+<li><code>index.css</code>：无新增 token。</li>
+<li><code>lib/motion.ts</code>：无新增档位。</li>
+</ul>
+<p><strong class="tag chg">变更</strong>：无推翻已有决定。仅补充：节点上的双击除“标题改名”外新增“预览”。</p>
+<p><strong>依赖</strong>：无。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>同目录有配套原型：<a href="媒体预览原型.html">媒体预览原型.html</a>，浏览器直接打开。</p></div></aside></div><div class="sub" id="s6-10"><div class="main"><h3>6.10 节点打组<a class="anc" href="#s6-10" aria-label="本节链接">#</a></h3>
+<blockquote>
+<p>配套原型：<a href="%E6%89%93%E7%BB%84%E5%8E%9F%E5%9E%8B.html">打组原型.html</a>（可拖、可缩放、可改名、可换色、可删，浏览器直接打开）</p>
+</blockquote>
+<p><strong>问题</strong>：节点一多，画布上分不清哪几个属于同一场戏、同一批角色；整理布局只能临时排一次，挪动时还得重新全选。</p>
+<p><strong>目标</strong>：把相关节点框成一个可命名、可着色的&quot;组&quot;，整组一起拖；组的范围可调，别的节点拖进范围就自动入组。</p>
+<p><strong class="tag dec">已定（访谈）</strong>：</p>
+<ul>
+<li>入组判定：松手时<strong>节点中心点落在组框内</strong>就入组，中心点出框就退组（同 Figma Frame）。</li>
+<li>删除组：弹确认框，确认后<strong>组和组内节点一起删除</strong>（⌘Z 可整体恢复）。</li>
+<li>组工具条：<code>颜色 | 整理布局 | 解组 | 删除</code>；颜色分背景色和标签色（参考图 4）。</li>
+</ul>
+<h4>布局草图</h4>
+<pre class="art"><code> <i class="c1">▦</i> <i class="c2">组</i>                                      <i class="c1">←</i> <i class="c2">组</i><i class="c2">名</i><i class="c2">行</i><i class="c2">：</i><i class="c2">框</i><i class="c2">外</i><i class="c2">上</i><i class="c2">方</i> 8px<i class="c2">，</i><i class="c2">图</i><i class="c2">标</i> + <i class="c2">名</i><i class="c2">字</i><i class="c2">，</i><i class="c2">标</i><i class="c2">签</i><i class="c2">色</i><i class="c2">可</i><i class="c2">改</i>
+<i class="c1">┌</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┐</i>   <i class="c1">←</i> <i class="c2">虚</i><i class="c2">线</i><i class="c2">圆</i><i class="c2">角</i><i class="c2">框</i> rounded-3xl<i class="c2">，</i><i class="c2">选</i><i class="c2">中</i><i class="c2">时</i><i class="c2">描</i><i class="c2">边</i><i class="c2">变</i> --node-ring
+<i class="c1">┆</i>   [<i class="c2">节</i><i class="c2">点</i>]   [<i class="c2">节</i><i class="c2">点</i>]   [<i class="c2">节</i><i class="c2">点</i>]               <i class="c1">┆</i>     <i class="c2">四</i><i class="c2">角</i> 10px <i class="c2">小</i><i class="c2">方</i><i class="c2">块</i> = <i class="c2">缩</i><i class="c2">放</i><i class="c2">手</i><i class="c2">柄</i><i class="c2">（</i><i class="c2">只</i><i class="c2">在</i><i class="c2">选</i><i class="c2">中</i><i class="c2">时</i><i class="c2">出</i><i class="c2">现</i><i class="c2">）</i>
+<i class="c1">┆</i>   [<i class="c2">节</i><i class="c2">点</i>]   [<i class="c2">节</i><i class="c2">点</i>]                       <i class="c1">┆</i>
+<i class="c1">└</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┄</i> <i class="c1">┘</i>
+        <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+        <i class="c1">│</i> <i class="c2">颜</i><i class="c2">色</i> <i class="c1">│</i> <i class="c2">整</i><i class="c2">理</i><i class="c2">布</i><i class="c2">局</i> <i class="c1">▾</i> <i class="c1">│</i> <i class="c2">解</i><i class="c2">组</i> <i class="c1">│</i> <i class="c1">🗑</i> <i class="c1">│</i>   <i class="c1">←</i> <i class="c2">选</i><i class="c2">中</i><i class="c2">组</i><i class="c2">时</i><i class="c2">的</i><i class="c2">顶</i><i class="c2">部</i><i class="c2">工</i><i class="c2">具</i><i class="c2">条</i><i class="c2">（</i><i class="c2">同</i> SelectionToolbar <i class="c2">样</i><i class="c2">式</i><i class="c2">）</i>
+        <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+<i class="c2">多</i><i class="c2">选</i> <i class="c1">≥</i>2 <i class="c2">个</i><i class="c2">节</i><i class="c2">点</i><i class="c2">：</i>  [N <i class="c2">个</i><i class="c2">节</i><i class="c2">点</i> <i class="c1">│</i> <i class="c1">▦</i> <i class="c2">打</i><i class="c2">组</i> <i class="c1">⌘</i>G <i class="c1">│</i> <i class="c2">整</i><i class="c2">理</i><i class="c2">布</i><i class="c2">局</i> <i class="c1">▾</i> <i class="c1">│</i> <i class="c2">复</i><i class="c2">制</i> <i class="c1">│</i> <i class="c2">下</i><i class="c2">载</i> <i class="c1">│</i> <i class="c2">删</i><i class="c2">除</i>]   <i class="c1">←</i> <i class="c2">在</i><i class="c2">现</i><i class="c2">有</i><i class="c2">工</i><i class="c2">具</i><i class="c2">条</i><i class="c2">里</i><i class="c2">加</i><i class="c2">「</i><i class="c2">打</i><i class="c2">组</i><i class="c2">」</i>
+</code></pre>
+<h4>控件说明</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>控件</th>
+  <th>位置 / 尺寸</th>
+  <th>状态与交互</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>打组按钮</td>
+  <td>多选工具条，节点数之后、整理布局之前；<code>LayoutGrid</code> 图标 + 文案，Tooltip 写 <code>⌘G</code></td>
+  <td>选中 ≥2 个<strong>节点</strong>时可用（选区里有组则不显示，组不嵌套）。点击后：取选中节点的包围盒，左右和下方留白 48、上方留白 72（节点标题行画在卡片上方、不算在节点尺寸里，要多让出 32 左右；<strong class="tag chg">变更：原为四周 24</strong>，太挤，标题贴着组框上沿）。缩放组框的下限、整理布局后贴合组框用的是同一组留白，建一个组并选中它。已属于别的组的节点会被移进新组；包围盒里<strong>没被选中</strong>的节点不会被带进来。入栈<strong>一步</strong>撤销</td>
+</tr>
+<tr>
+  <td>组框</td>
+  <td>画布层，在节点下面；<code>rounded-3xl</code>，1px 虚线，底 <code>foreground/8%</code>；随画布缩放</td>
+  <td>默认：虚线 <code>foreground/20%</code>；选中：描边 <code>--node-ring</code>；着色后底 <code>色 16%</code>、描边 <code>色 40%</code>；有节点被拖着悬停在上方（中心点入框）：外加 2px <code>--node-ring</code> 描边 + 6px 淡晕，提示&quot;松手入组&quot;</td>
+</tr>
+<tr>
+  <td>组名行</td>
+  <td>框外左上方 8px，高 28，图标 18 + 名字 15px/600</td>
+  <td>默认 <code>text-muted-foreground</code>，设了标签色用标签色；hover 底 <code>chrome-hover</code>；<strong>拖它整组移动</strong>；<strong>双击</strong>，或选中组后按 <code>Enter</code> / <code>F2</code>，原地变输入框并全选；<strong>刚打完组也会自动进入改名</strong>，直接打字即可命名（Esc 保留默认名）。Enter / 失焦提交、Esc 取消，去首尾空白、换行收成空格、最长 40 字，清空退回原名（与节点改名一致，见 <a class="xref" href="#s6-7">6.7</a>）。默认名「组」，重名依次「组 2」「组 3」</td>
+</tr>
+<tr>
+  <td>组的拖动区</td>
+  <td><strong>整个组框内的空白处</strong>，加上组名行</td>
+  <td>按住拖动 = 整组移动，成员跟着走；成员节点在组框之上，点它、拖它是节点自己的操作。<strong class="tag chg">变更：原为</strong>&quot;只有组名行和边缘一圈能拖，框内空白留给框选&quot;。代价：想在组里面起手框选会拖走组，需从组外起手框选（相交即选中，照样能选到组内节点）</td>
+</tr>
+<tr>
+  <td>组菜单（工具条）</td>
+  <td><strong>浮在组的上方</strong>：水平居中于组框，底边距组名行 14px，大小不随画布缩放（同选区工具条的 <code><abbr class="gl" tabindex="0" data-tip="@xyflow/react 提供的组件，把浮层挂在节点旁边，随节点移动和缩放。">NodeToolbar</abbr></code>，<code>position=Top</code>）</td>
+  <td><strong>点一下</strong>组内空白或组名行才弹，详见下方「点击与拖动」；<strong>拖动、缩放时收起</strong>，松手后回到新位置。组靠近视口顶部、上方放不下时翻到组框下方；左右贴视口边留 8px。颜色面板挂在工具条正下方 10px。<strong class="tag chg">变更：原型里曾把工具条固定在视口顶部，改为跟着组走</strong></td>
+</tr>
+<tr>
+  <td>缩放手柄</td>
+  <td>四角 10×10，<code>rounded-[3px]</code>，<code>bg-card</code> + 1.5px <code>--node-ring</code>，命中区扩到 20×20</td>
+  <td>只在组选中时出现。拖动改范围，最小 200×140，且每条边都不能向内越过成员（最小边距：左右下 8、上方 40 给节点标题行；<code>canResizeGroup</code>）。已经偏紧的老组（旧版留白更小）仍能往外拉，只是不能再往里收——<strong>不能</strong>拿默认留白当下限，否则老组一步都缩放不动。<strong>缩放不改变成员关系</strong>：放大后罩住的节点不会自动入组，要手动拖一下才入</td>
+</tr>
+<tr>
+  <td>颜色按钮</td>
+  <td>组工具条第 1 项，图标是一个彩色圆 + &quot;颜色&quot;</td>
+  <td>点击在按钮下方弹出颜色面板，再点收起；点面板外或按 Esc 关闭</td>
+</tr>
+<tr>
+  <td>颜色面板</td>
+  <td>宽 300，<code>rounded-2xl</code>，<code>bg-popover</code>；两个区块，每块一行 5 列</td>
+  <td><strong>背景颜色</strong>：「无」+ 8 色；<strong>标签颜色</strong>：「无」+ 8 色。色块 1:1 <code>rounded-[10px]</code>；当前项外圈 2px <code>--node-ring</code>；点一下即时生效，面板不关，可连续试色。8 色：红、橙、黄、绿、青、蓝、紫、粉。<strong>与参考图的出入</strong>：参考图是 6×7 的整盘加自定义渐变，这里收成 8 色——够区分场次，且全走 token、深浅主题都能看；自定义取色放二期</td>
+</tr>
+<tr>
+  <td>整理布局</td>
+  <td>组工具条第 2 项，同多选工具条里那个</td>
+  <td>把组内节点按网格重排（算法同 <code>arrangeNodes</code> 的 grid），并把组框贴合到新的包围盒；整个过程 260ms 缓动，撤销栈里一步。只有一个节点时按钮禁用</td>
+</tr>
+<tr>
+  <td>解组</td>
+  <td>第 3 项，图标是被斜线划掉的四宫格；Tooltip <code>⌘⇧G</code></td>
+  <td>组框消失，节点<strong>原地保留</strong>并保持选中；toast「已解组，节点原地保留」。⌘Z 可恢复</td>
+</tr>
+<tr>
+  <td>删除</td>
+  <td>第 4 项，垃圾桶，hover 变 <code>--destructive</code></td>
+  <td>弹确认 Dialog：「删除「组名」？」/「里面的 N 个节点会一起被删除，相关连线也会断开。可以用 ⌘Z 恢复。」/ 取消 · <strong>删除组和节点</strong>（危险色）。默认焦点在危险按钮上，Esc = 取消。选中组按 Delete / Backspace 同样走这个弹框。<strong>取舍</strong>：规则要求&quot;不能撤销的才弹确认&quot;，这里虽然 ⌘Z 能恢复，但一个键清掉整片含生成结果的内容代价太高，按用户要求保留确认</td>
+</tr>
+</tbody>
+</table></div>
+<h4>点击与拖动（组菜单何时出现）</h4>
+<p>沿用 6.4 的&quot;只有点击才打开&quot;规则：</p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>操作</th>
+  <th>组被选中</th>
+  <th>组菜单</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>点一下组内空白 / 组名行</td>
+  <td>是</td>
+  <td><strong>弹出</strong></td>
+</tr>
+<tr>
+  <td>按住拖动组（原本没选中，或选中但没开菜单）</td>
+  <td>是</td>
+  <td>不弹；拖完保持不弹，再点一下才弹</td>
+</tr>
+<tr>
+  <td>拖动一个<strong>已经开着菜单</strong>的组</td>
+  <td>是</td>
+  <td>拖动时收起，松手后浮回</td>
+</tr>
+<tr>
+  <td>点成员节点 / 框选 / 点空白</td>
+  <td>按各自规则</td>
+  <td>组菜单关闭</td>
+</tr>
+<tr>
+  <td>刚打完组</td>
+  <td>是</td>
+  <td>弹出（用户刚点过「打组」，下一步多半是命名或着色）</td>
+</tr>
+</tbody>
+</table></div>
+<p>判定&quot;点击还是拖动&quot;：指针位移 &lt; 3px 算点击。点击不进撤销栈，拖动算一步。</p>
+<h4>成员规则</h4>
+<ul>
+<li>一个节点最多属于一个组；<strong>组不嵌套</strong>（组拖到另一个组上不入组）。</li>
+<li><strong>只有用户亲手把节点拖进组，才算入组</strong>。判定仍是&quot;松手时节点中心点是否落在组框内&quot;，只在两个时刻生效：<strong>该节点拖动松手</strong>（中心点在框里 → 入组，出框 → 退组）和<strong>打组</strong>（只有被选中的那些节点入组）。</li>
+<li>以下情况<strong>都不算入组</strong>，成员关系不变（<strong class="tag chg">变更：原为</strong>&quot;组缩放松手时重算成员，罩住的节点自动入组&quot;）：<ul>
+<li>拖动组时，组框从别的节点上面压过去——那些节点只是被盖在下面，不入组、也不跟着走；</li>
+<li>拖四角放大组框，把别的节点罩进去——不入组，想加进来再把它拖一下（中心点在框里松手即入组）；</li>
+<li>打组时，新组框恰好压着的未选中节点。</li>
+</ul>
+</li>
+<li>缩小组框时<strong>任何一条边都不能向内越过成员</strong>（含最小边距），也不小于 200×140，所以缩放永远不会把成员挤到框外；要让成员离开，把它拖出框。</li>
+<li>拖动过程中只做高亮预览，不改数据；<strong>只有被手动拖动的节点才会触发&quot;悬停高亮&quot;</strong>，拖整组时别的节点不会亮。</li>
+<li>拖动组 = 组 + 成员一起平移；拖动成员 = 只动它自己（如果拖出了框，松手即退组）。</li>
+<li>选区里同时有组和它的成员时，成员不重复移动。</li>
+<li>连线不受影响：组内外节点照常连线，连线画在组框上方。</li>
+<li>组框层级在所有节点之下；选中节点不会把组盖住。</li>
+<li>吸附网格、整理布局、复制粘贴（⌘D / ⌘C）：复制一个成员 → 副本同组；复制整个组 → 组和成员一起复制，副本名「X 副本」，规则同 6.7。</li>
+</ul>
+<h4>动效表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>打组</td>
+  <td>组框 <code>opacity 0→1</code> + <code>scale 0.98→1</code></td>
+  <td><code>DURATION.base</code> 180ms，<code>EASE_OUT</code></td>
+  <td><code>transform-origin</code> 取框中心</td>
+</tr>
+<tr>
+  <td>解组 / 删除</td>
+  <td>组框 <code>opacity 1→0</code></td>
+  <td>约 130ms</td>
+  <td>原地</td>
+</tr>
+<tr>
+  <td>组选中 / 取消</td>
+  <td>描边颜色；四角手柄 <code>opacity 0→1</code> + <code>scale 0.6→1</code></td>
+  <td><code>DURATION.fast</code> 120ms / <code>base</code> 180ms</td>
+  <td>原地</td>
+</tr>
+<tr>
+  <td>节点悬停到组上</td>
+  <td>外圈描边 + 淡晕（<code>box-shadow</code>）</td>
+  <td><code>DURATION.fast</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>换背景色 / 标签色</td>
+  <td><code>background-color</code> / <code>color</code></td>
+  <td><code>DURATION.base</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>组工具条出现</td>
+  <td><code>opacity + y 6→0 + scale 0.97→1</code></td>
+  <td><code>DURATION.base</code>，同 SelectionToolbar</td>
+  <td>从下往上（翻到下方时从上往下）</td>
+</tr>
+<tr>
+  <td>颜色面板出现 / 消失</td>
+  <td><code>opacity + y -4→0 + scale 0.96→1</code> / 反向 130ms</td>
+  <td><code>DURATION.base</code></td>
+  <td>向下展开，<code>origin-top-left</code></td>
+</tr>
+<tr>
+  <td>整理布局</td>
+  <td>节点 <code>position</code></td>
+  <td>260ms 缓动（复用现有 arrange 的 rAF 过渡）</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>色块 / 按钮按下</td>
+  <td><code>scale 0.96</code></td>
+  <td><code>TAP</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>减少动态效果</td>
+  <td>全部只做淡入淡出</td>
+  <td>—</td>
+  <td>—</td>
+</tr>
+</tbody>
+</table></div>
+<h4>状态表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>空组（成员全被拖走）</td>
+  <td>保留组框，不自动删除；组名行不变，框内空白。可手动解组或删除</td>
+</tr>
+<tr>
+  <td>只选中 1 个成员</td>
+  <td>走节点自己的面板，不显示组工具条</td>
+</tr>
+<tr>
+  <td>选中组 + 别的节点</td>
+  <td>不显示工具条（工具条只对&quot;纯组&quot;和&quot;纯节点&quot;出现）</td>
+</tr>
+<tr>
+  <td>选中了组但没点开菜单（拖完之后）</td>
+  <td>组描边 + 四角手柄照常显示，只是不出工具条</td>
+</tr>
+<tr>
+  <td>生成中的节点在组里</td>
+  <td>完全不受影响，进度和回填照常</td>
+</tr>
+<tr>
+  <td>节点被删</td>
+  <td>从组里消失，组框不收缩</td>
+</tr>
+<tr>
+  <td>抓手模式</td>
+  <td>组不可拖、不可选，与节点一致</td>
+</tr>
+<tr>
+  <td>低缩放</td>
+  <td><strong>组名自适应</strong>：画布缩小时组名行反向放大 <code>min(1/zoom, 4)</code> 倍（<code>groupTitleScale</code>），屏幕字号保持 15px 可读，放大画布时不缩小；放大后最宽不超过组框宽度，超出省略。组工具条的偏移按放大后的组名行高度算。组框描边保持 1px</td>
+</tr>
+<tr>
+  <td>窄屏（&lt; 768px）</td>
+  <td>工具条与多选工具条同规则，超宽时横向滚动；缩放手柄命中区加大到 28×28</td>
+</tr>
+<tr>
+  <td>浅色主题</td>
+  <td>8 色走 <code>--group-*</code> token（浅色下压暗），背景色混合比例相同，不写死颜色</td>
+</tr>
+<tr>
+  <td>键盘</td>
+  <td>选中组按 Enter / F2 进入改名；色块是 button，方向键按 DOM 顺序 Tab 切换，<code>aria-label</code> 写色名</td>
+</tr>
+</tbody>
+</table></div>
+<h4>数据与实现</h4>
+<p><strong>数据</strong>：用 xyflow 12 原生的 <code>parentId</code> 做父子关系（拖动父节点子节点自动跟着走），不自己维护成员表。</p>
+<pre><code class="language-ts">/** 组节点：和 canvas 节点并列的第二种节点类型 */
+type CanvasGroupNode = Node&lt;{ label: string; color?: GroupHue; labelColor?: GroupHue }, &quot;group&quot;&gt;;
+type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quot;green&quot; | &quot;cyan&quot; | &quot;blue&quot; | &quot;purple&quot; | &quot;pink&quot;;
+/** CanvasNode 的 parentId 指向组；position 变成相对组左上角的坐标 */
+</code></pre>
+<ul>
+<li>持久化：<code>serializeGraph</code> / <code>deserializeGraph</code> 的白名单加上 <code>type: &quot;group&quot;</code>、<code>width</code> / <code>height</code>、<code>parentId</code>、<code>data.color</code> / <code>data.labelColor</code>。<code>PersistedCanvasNodeDto.type</code> 从 <code>&quot;canvas&quot;</code> 放宽到 <code>&quot;canvas&quot; | &quot;group&quot;</code>。数组里<strong>组必须排在它的成员之前</strong>（xyflow 要求）；反序列化时校验，<code>parentId</code> 指向不存在的组就清掉并把坐标换算回绝对坐标。旧数据没有组，天然兼容。<strong>后端不需要加字段（已核实）</strong>：<code>canvas_projects.payload_json</code> 是 <abbr class="gl" tabindex="0" data-tip="PostgreSQL 的二进制 JSON 列。整张画布存在这一列里。">JSONB</abbr>，<code>service/canvas_project.go</code> 只校验它是 JSON 对象，不认识节点字段；<code>model.CanvasPayload</code> 只是注释性结构体，没有任何代码引用；前端 <code>api/canvas</code> 也是原样透传 <code>nodes</code>。已加后端测试 <code>TestCanvasProjectHandler_GroupNodesRoundTrip</code>，钉住「创建、更新、读取后组节点和成员的 <code>parentId</code> 原样返回」。</li>
+<li>缩放：用 xyflow 自带的 <code>NodeResizer</code>（<code>isVisible={selected}</code>，自定义四角手柄样式，<code>minWidth=200 minHeight=140</code>），不引入新依赖。是否在缩放时保持成员的视觉位置不动（v12 的子节点补偿），实现时要在浏览器里确认。</li>
+<li>拖动：组节点不设 <code>dragHandle</code>，整个组框都是拖动区（xyflow 默认行为），成员节点因层级更高先吃到自己的事件。点击与拖动的区分用 <code>onNodeClick</code>（位移超过 <code>nodeClickDistance</code> 时 xyflow 不触发）配合 <code>onNodeDragStart</code>，菜单开关放进 <code>overlay-gate.ts</code> 现有的“点击才打开”逻辑里复用。</li>
+<li>工具条：组选中且“点击已打开”时，用 <code>NodeToolbar nodeId={groupId} position={Position.Top} offset={组名行高度 + 14}</code>，和 <code>SelectionToolbar</code> 同一套写法（<code>nodrag nopan</code>，随缩放不变大小）；NodeToolbar 不会自动翻转，上方空间不足的判断按屏幕矩形自己算，同 10.5 的面板定位风险。</li>
+<li>层级：组节点 <code>zIndex</code> 取负数档，成员自然在上；连线 <code>zIndex</code> 高于组。</li>
+<li>入组判定：只在 <code>onNodeDrag</code>（高亮，用 ref + 直接改 class，不进 React state，避免整张画布重渲染）和 <code>onNodeDragStop</code> 里，对<strong>被拖动的非组节点</strong>调用纯函数 <code>resolveParent(node, groups)</code>，换父时把 <code>position</code> 在绝对 / 相对坐标间换算。拖动组（<code>node.type === &quot;group&quot;</code>）和 <code>onResizeEnd</code> 都不调用它。缩放的下限用 <code>NodeResizer</code> 的 <code>minWidth</code> / <code>minHeight</code>，按成员包围盒在 <code>onResizeStart</code> 时算好传入。</li>
+<li>撤销：<code>structureKey</code> 里加上 <code>parentId</code> 与组的 <code>width/height</code>，打组、解组、入组、缩放各算一步；<code>restoreNodes</code> 对组节点原样取快照。</li>
+<li><strong>所有现有遍历 <code>nodes</code> 的地方要过滤 <code>type === &quot;canvas&quot;</code></strong>，否则组会被当成素材节点：<code>StatsBar</code> 节点数、<code>arrangeNodes</code>、<code>collectPreviewItems</code>、<code>useTaskBackfill</code>、下载 / 复制 / 选区工具条、<code>mentionableNodes</code>、<code>useOverlayGate</code>。</li>
+</ul>
+<p><strong>涉及的文件</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>文件</th>
+  <th>改动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>types/canvas.ts</code>、<code>api/canvas/type.d.ts</code></td>
+  <td><code>CanvasGroupNode</code>、<code>GroupHue</code>；<code>CanvasNode</code> 加可选 <code>parentId</code>；DTO 的 <code>type</code> 放宽</td>
+</tr>
+<tr>
+  <td><code>utils/canvas/canvas-persistence.ts</code></td>
+  <td>序列化 / 反序列化白名单，父子顺序与孤儿修复</td>
+</tr>
+<tr>
+  <td><code>utils/canvas/group.ts</code>（新，纯逻辑）</td>
+  <td><code>createGroup</code>（包围盒 + 留白）、<code>resolveParent</code>（中心点判定）、<code>ungroup</code>、<code>fitGroup</code>、绝对 / 相对坐标换算；配 <code>web/src/tests/utils/canvas/group.test.ts</code></td>
+</tr>
+<tr>
+  <td><code>pages/canvas/group-node.tsx</code>（新）</td>
+  <td>组节点渲染：框、组名行（改名）、<code>NodeResizer</code></td>
+</tr>
+<tr>
+  <td><code>pages/canvas/group-toolbar.tsx</code>（新）</td>
+  <td>组工具条：颜色 / 整理布局 / 解组 / 删除，含颜色面板与删除确认</td>
+</tr>
+<tr>
+  <td><code>pages/canvas/selection-toolbar.tsx</code></td>
+  <td>多选工具条加「打组」；选区逻辑识别纯组</td>
+</tr>
+<tr>
+  <td><code>pages/canvas/flow.tsx</code></td>
+  <td><code>nodeTypes</code> 注册 <code>group</code>；<code>onNodeDrag</code> / <code>onNodeDragStop</code> 接入入组判定</td>
+</tr>
+<tr>
+  <td><code>pages/canvas/use-canvas-shortcuts.ts</code>、<code>chrome/shortcuts-dialog.tsx</code></td>
+  <td>⌘G / ⌘⇧G，Delete 选中组走确认；快捷键列表补两行</td>
+</tr>
+<tr>
+  <td><code>utils/canvas/history.ts</code></td>
+  <td><code>structureKey</code> 带上父子关系和组尺寸</td>
+</tr>
+<tr>
+  <td><code>utils/canvas/duplicate.ts</code></td>
+  <td>复制组 / 复制成员的归属与命名</td>
+</tr>
+<tr>
+  <td><code>utils/canvas/arrange.ts</code> + 现有各处遍历</td>
+  <td>过滤 <code>type === &quot;canvas&quot;</code></td>
+</tr>
+<tr>
+  <td><code>backend/internal/tests/handler/canvas_project_test.go</code></td>
+  <td>加组节点往返测试；内存版仓储的 <code>Update</code> 补上 <code>payload_json</code>（原来只改标题），不改后端业务代码</td>
+</tr>
+<tr>
+  <td><code>index.css</code></td>
+  <td>新增 <code>--group-red</code> … <code>--group-pink</code> 共 8 个 token（<code>:root</code> 与 <code>.dark</code> 各一套）</td>
+</tr>
+<tr>
+  <td><code>components/ui/</code></td>
+  <td>无新增（弹确认框用现有 <code>alert-dialog</code> / <code>dialog</code>，没有就 <code>bunx shadcn@latest add alert-dialog</code>）</td>
+</tr>
+<tr>
+  <td><code>lib/motion.ts</code></td>
+  <td>无新增档位</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>新增 token</strong>（原型里已按此取值，深色 / 浅色成对）：</p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>token</th>
+  <th>深色</th>
+  <th>浅色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>--group-red</code></td>
+  <td><code><abbr class="gl" tabindex="0" data-tip="一种感知均匀的颜色表示：L 明度、C 色度、H 色相。项目的颜色 token 都用它。">oklch</abbr>(0.72 0.17 25)</code></td>
+  <td><code>oklch(0.58 0.2 25)</code></td>
+</tr>
+<tr>
+  <td><code>--group-orange</code></td>
+  <td><code>oklch(0.76 0.16 55)</code></td>
+  <td><code>oklch(0.64 0.17 55)</code></td>
+</tr>
+<tr>
+  <td><code>--group-yellow</code></td>
+  <td><code>oklch(0.84 0.15 90)</code></td>
+  <td><code>oklch(0.7 0.15 90)</code></td>
+</tr>
+<tr>
+  <td><code>--group-green</code></td>
+  <td><code>oklch(0.76 0.17 150)</code></td>
+  <td><code>oklch(0.6 0.17 150)</code></td>
+</tr>
+<tr>
+  <td><code>--group-cyan</code></td>
+  <td><code>oklch(0.8 0.12 205)</code></td>
+  <td><code>oklch(0.62 0.12 205)</code></td>
+</tr>
+<tr>
+  <td><code>--group-blue</code></td>
+  <td><code>oklch(0.72 0.15 255)</code></td>
+  <td><code>oklch(0.55 0.18 255)</code></td>
+</tr>
+<tr>
+  <td><code>--group-purple</code></td>
+  <td><code>oklch(0.7 0.16 295)</code></td>
+  <td><code>oklch(0.55 0.2 295)</code></td>
+</tr>
+<tr>
+  <td><code>--group-pink</code></td>
+  <td><code>oklch(0.74 0.17 345)</code></td>
+  <td><code>oklch(0.6 0.2 345)</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>背景色 = 对应 token 与透明色按 <code>color-mix(in oklch, token 16%, transparent)</code> 混出，不单独存背景 token。</p>
+<p><strong>与参考图的出入</strong>：① 颜色盘 8 色而非整盘（见上）；② 参考图工具条里的圆圈和下载按钮这次不做——用户只点名了颜色、解组、整理布局；组内素材下载放后续，需要时从多选工具条走。</p>
+<p><strong>风险</strong>：① 父子节点下，现有&quot;整理布局 / 引用选中节点生成 / 选区底框&quot;用的是 <code>positionAbsolute</code> 还是 <code>position</code> 要逐个核对；② 组缩放时子节点位置补偿要实机确认；③ <code>NodeResizer</code> 的下限只有尺寸，从左 / 上边缩小时无法保证不压到成员，需要自己在 <code>onResize</code> 里按成员包围盒（用 <code>shouldResize</code> 回调）拦截，实现时在浏览器里确认；④ 组内节点很多时，<code>onNodeDrag</code> 里每帧判定要做成 O(组数)。</p>
+<p><strong>依赖</strong>：无。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>配套原型：<a href="打组原型.html">打组原型.html</a>。</p></div><div class="note k-why"><b>为什么</b><p>入组按"节点中心点是否落在组框内"判定（同 Figma Frame）：中心点没进框，边缘擦到不会入组。</p></div></aside></div><div class="sub" id="s6-11"><div class="main"><h3>6.11 视频节点：封面 ⇄ 视频的过渡<a class="anc" href="#s6-11" aria-label="本节链接">#</a></h3>
+<p>原型：<a href="%E8%A7%86%E9%A2%91%E5%8A%A0%E8%BD%BD%E8%BF%87%E6%B8%A1%E5%8E%9F%E5%9E%8B.html">视频加载过渡原型.html</a>（A / B / C 三种并排，<strong>定稿选 B</strong>，A、C 留在原型里仅供对照）。</p>
+<p><strong>问题</strong>：视频节点平时只显示封面（<code>VideoFacade</code> 不挂载 <code>&lt;video&gt;</code>）。点击播放后直接换成 <code>&lt;video&gt;</code>，首帧解码出来之前是一块黑，过渡很突兀；另外视频一旦挂载，暂停后也不会自己退回封面，白白占着 WebMediaPlayer 名额。</p>
+<p><strong>目标</strong>：① 点击到首帧出来之间有连续、不闪的加载过渡；② 节点没被选中时，视频停止播放并平滑换回封面。</p>
+<h4>布局草图</h4>
+<pre class="art"><code>idle<i class="c2">（</i><i class="c2">封</i><i class="c2">面</i><i class="c2">）</i>          loading<i class="c2">（</i>B<i class="c2">）</i>               playing / paused<i class="c2">（</i><i class="c2">选</i><i class="c2">中</i><i class="c2">）</i>
+<i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>     <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>           <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+<i class="c1">│</i>              <i class="c1">│</i>     <i class="c1">│</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">│</i>           <i class="c1">│</i>              <i class="c1">│</i>
+<i class="c1">│</i>     (<i class="c1">▶</i>)      <i class="c1">│</i> <i class="c1">─</i><i class="c1">─</i><i class="c1">▶</i> <i class="c1">│</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i> <i class="c1">◜</i> <i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">│</i> <i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">▶</i>   <i class="c1">│</i>   <i class="c2">视</i><i class="c2">频</i><i class="c2">画</i><i class="c2">面</i>    <i class="c1">│</i>
+<i class="c1">│</i>        0:15  <i class="c1">│</i>     <i class="c1">│</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i> <i class="c2">封</i><i class="c2">面</i><i class="c2">压</i><i class="c2">暗</i> <i class="c1">▒</i><i class="c1">▒</i><i class="c1">│</i>           <i class="c1">│</i> <i class="c1">▮</i><i class="c1">▮</i> <i class="c1">━</i><i class="c1">●</i><i class="c1">━</i><i class="c1">━</i> 0:06 <i class="c1">│</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>     <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>           <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+</code></pre>
+<h4>控件说明</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>元素</th>
+  <th>规格</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>播放按钮</td>
+  <td><code>size-12</code> 圆形，idle：<code>bg-black/55</code> + <code>backdrop-blur</code> + 白色实心三角</td>
+  <td>hover <code>scale 1.06</code>；按下 <code>TAP</code>；<code>focus-visible</code> 描边</td>
+</tr>
+<tr>
+  <td>加载环</td>
+  <td>28px SVG，白色 2.4px 描边，底圈 25% 不透明，弧 22/66，每 0.9s 一圈线性旋转</td>
+  <td>只在 loading 出现</td>
+</tr>
+<tr>
+  <td>压暗遮罩</td>
+  <td>盖在封面上、按钮下面，<code>bg-black/30</code>，不拦截指针事件</td>
+  <td>只在 loading 出现</td>
+</tr>
+<tr>
+  <td>时长角标</td>
+  <td>沿用现状</td>
+  <td>loading 时随按钮一起保留</td>
+</tr>
+<tr>
+  <td>控制条</td>
+  <td>沿用现状 <code>VideoControls</code></td>
+  <td>视频就绪后才出现，不在 loading 时露出</td>
+</tr>
+</tbody>
+</table></div>
+<h4>动效表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>点击播放（进入 loading）</td>
+  <td>按钮背景 <code>→ transparent</code>；三角 <code>scale 1→0.6</code> + <code>opacity →0</code>；加载环 <code>scale 0.8→1</code> + <code>opacity 0→1</code></td>
+  <td><code>DURATION.fast</code> 120ms，<code>EASE_OUT</code></td>
+  <td>同一个按钮原地变形，不新增元素</td>
+</tr>
+<tr>
+  <td>同上</td>
+  <td>遮罩 <code>opacity 0→1</code></td>
+  <td><code>DURATION.base</code> 180ms</td>
+  <td>整块封面均匀压暗</td>
+</tr>
+<tr>
+  <td>点击瞬间</td>
+  <td>按钮 <code>TAP</code>（<code>scale 0.96</code>）</td>
+  <td>—</td>
+  <td>100ms 内给反馈</td>
+</tr>
+<tr>
+  <td>首帧就绪（loading → playing）</td>
+  <td><code>&lt;video&gt;</code> 在封面上方 <code>opacity 0→1</code>；遮罩、加载环淡出；按钮 <code>scale →0.9</code> + <code>opacity →0</code></td>
+  <td>video 淡入 <code>DURATION.base</code> 180ms；其余淡出 126ms</td>
+  <td>封面始终在底下，不会黑一下</td>
+</tr>
+<tr>
+  <td>退回封面（节点未选中，无论是否在播放）</td>
+  <td><code>&lt;video&gt;</code> <code>opacity 1→0</code> 露出封面；控制条淡出；按钮 <code>scale 0.9→1</code> + <code>opacity 0→1</code></td>
+  <td>淡出 126ms（进入的 70%），按钮 <code>DURATION.base</code></td>
+  <td>回到点击前的样子，按钮在原位</td>
+</tr>
+<tr>
+  <td>加载环旋转</td>
+  <td><code>rotate 0→360°</code></td>
+  <td>0.9s 线性循环</td>
+  <td>生成中类状态指示，属于规范里“常驻循环”的例外，加载结束即停</td>
+</tr>
+<tr>
+  <td>减少动态效果</td>
+  <td>环不旋转（静止弧），所有位移和缩放去掉，只留 <code>opacity</code> 淡入淡出</td>
+  <td>—</td>
+  <td>读屏文本“视频加载中”照常</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>防闪规则</strong>：loading 至少显示 320ms。网络极快时，首帧早于 320ms 也要等到 320ms 再淡入 video，否则环一闪而过，反而像卡了一下。</p>
+<h4>状态表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>idle</td>
+  <td>封面 + 播放按钮 + 时长角标</td>
+</tr>
+<tr>
+  <td>loading</td>
+  <td>封面压暗 + 旋转环；按钮不可再点；容器 <code>role=&quot;status&quot;</code>，读屏读“视频加载中”</td>
+</tr>
+<tr>
+  <td>playing</td>
+  <td>video + 控制条</td>
+</tr>
+<tr>
+  <td>paused 且节点选中</td>
+  <td>保留 video 和控制条，停在当前帧</td>
+</tr>
+<tr>
+  <td>节点变为未选中（playing / paused / loading 均适用）</td>
+  <td>立即 <code>pause()</code>，退回封面（见动效表）；loading 中取消选中则中止加载。再点播放从头开始</td>
+</tr>
+<tr>
+  <td>变更：原为“暂停且未选中才退回，播放中不打断”</td>
+  <td>改为只要未选中就停止并退回封面</td>
+</tr>
+<tr>
+  <td>加载失败（<code>error</code> 事件，或超过 15 秒仍未出首帧）</td>
+  <td>立即退回封面、按钮复位，用 sonner 提示“视频无法播放”；再次点击可重试</td>
+</tr>
+<tr>
+  <td>名额池挤掉（已有逻辑）</td>
+  <td>同样走“退回封面”动效</td>
+</tr>
+<tr>
+  <td>窄屏（&lt; 768px）</td>
+  <td>按钮和环尺寸不变（触控区够大），无其他差异</td>
+</tr>
+<tr>
+  <td>深浅主题</td>
+  <td>遮罩和按钮都是黑色半透明、环是白色，叠在封面上，两套主题表现一致</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>“激活”的定义</strong>：React Flow 的 <code>selected</code>。点击节点（含点播放按钮）即选中。点画布空白或别的节点则取消选中。</p>
+<h4>涉及的组件与文件</h4>
+<ul>
+<li><code>components/canvas/video-facade.tsx</code>：新增 <code>loading</code> 状态、<code>active</code> 属性；加载环、遮罩、video 淡入淡出；监听 <code>loadeddata</code> / <code>error</code> / <code>pause</code> / <code>ended</code>；<code>active</code> 变为 false 时 <code>pause()</code> 并 <code>setPlaying(false)</code>（含 loading 中）。</li>
+<li><code>components/canvas/node-body.tsx</code>：<code>NodeMediaBody</code> 增加 <code>active</code> 并透传给 <code>VideoFacade</code>。</li>
+<li><code>components/canvas/node-video-body.tsx</code>：<code>NodeVideoBody</code> 增加 <code>active</code> 并透传。</li>
+<li><code>pages/canvas/video-node.tsx</code>：把 <code>MediaTaskNode</code> 的 <code>selected</code> 传下去。</li>
+<li><code>lib/motion.ts</code>：<code>DURATION</code> 新增 <code>exit: 0.126</code>（进入 <code>base</code> 的 70%），不在组件里写魔法数。</li>
+<li>释放顺序：退回封面时先让 video 淡出，淡出结束再清 <code>src</code> 并 <code>load()</code> 释放 WebMediaPlayer，否则淡出过程中会看到黑屏；名额池 <code>release</code> 可以立刻执行。实现时在浏览器里确认。</li>
+<li>图片、音频节点不受影响（<code>active</code> 只被视频分支使用）。</li>
+</ul>
+<p><strong>依赖</strong>：无（<code>motion</code>、<code>lucide-react</code> 已有）。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>配套原型：<a href="视频加载过渡原型.html">视频加载过渡原型.html</a>。A / B / C 三种并排，定稿选 B，A、C 只留作对照。</p></div></aside></div><div class="sub" id="s6-12"><div class="main"><h3>6.12 节点内容加载占位（灰色渐变）<a class="anc" href="#s6-12" aria-label="本节链接">#</a></h3>
+<p>原型：<a href="%E8%8A%82%E7%82%B9%E5%8A%A0%E8%BD%BD%E5%8D%A0%E4%BD%8D%E5%8E%9F%E5%9E%8B.html">节点加载占位原型.html</a>（A 扫光 / B 呼吸 / C 静态三种并排，<strong>定稿选 A</strong>，B、C 留在原型里仅供对照）。</p>
+<p><strong>问题</strong>：图片缩略图、原图、视频封面还没返回时，节点预览框只有一块静止的 <code>bg-muted/40</code>，用户分不清是“没内容”还是“还在加载”，内容到了又是硬切。</p>
+<p><strong>目标</strong>：内容没渲染出来时，预览框里有一层灰色的渐变占位；内容到了平滑淡入替换它。</p>
+<h4>范围</h4>
+<ul>
+<li>图片节点：<code>MediaPreview</code> 里缩略图未到、且没有原图可看的阶段。</li>
+<li>视频节点：<code>VideoPoster</code> 的封面未到的阶段。</li>
+<li>不改：生成中 / 排队中 / 转存中的 <code>PendingBox</code>（它是“任务在跑”，保持现状的 <code>animate-pulse</code> 骨架 + 文字）；点击播放后的加载环（6.11）；双击预览弹层的加载（6.9）。</li>
+</ul>
+<h4>布局草图</h4>
+<pre class="art"><code><i class="c2">加</i><i class="c2">载</i><i class="c2">中</i>                         <i class="c2">内</i><i class="c2">容</i><i class="c2">到</i><i class="c2">了</i>
+<i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>          <i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+<i class="c1">│</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">│</i>          <i class="c1">│</i>                  <i class="c1">│</i>
+<i class="c1">│</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i> <i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i><i class="c1">▒</i> <i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">│</i>  <i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">▶</i>   <i class="c1">│</i>      <i class="c2">图</i><i class="c2">片</i> / <i class="c2">封</i><i class="c2">面</i>   <i class="c1">│</i>
+<i class="c1">│</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">░</i><i class="c1">│</i>  <i class="c2">淡</i><i class="c2">入</i>     <i class="c1">│</i>  (<i class="c1">▶</i>)       0:15  <i class="c1">│</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>          <i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+ <i class="c2">灰</i><i class="c2">底</i> + <i class="c2">光</i><i class="c2">带</i><i class="c2">从</i><i class="c2">左</i><i class="c2">扫</i><i class="c2">到</i><i class="c2">右</i>             <i class="c2">占</i><i class="c2">位</i><i class="c2">层</i><i class="c2">淡</i><i class="c2">出</i><i class="c2">，</i><i class="c2">播</i><i class="c2">放</i><i class="c2">钮</i><i class="c2">、</i><i class="c2">时</i><i class="c2">长</i><i class="c2">角</i><i class="c2">标</i><i class="c2">随</i><i class="c2">封</i><i class="c2">面</i><i class="c2">一</i><i class="c2">起</i><i class="c2">出</i><i class="c2">现</i>
+</code></pre>
+<h4>控件说明</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>元素</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>占位层</td>
+  <td>铺满预览框（节点画幅 16:9，圆角跟随父级 <code>rounded-[inherit]</code>），底色 <code>bg-muted</code>。叠在内容层下方，内容淡入后自然被盖住</td>
+</tr>
+<tr>
+  <td>扫光</td>
+  <td>120° 斜向的线性渐变光带，宽度占框的 40%，<code>translateX(-100% → 100%)</code>，1.6s 一轮，<code>ease-in-out</code> 循环</td>
+</tr>
+<tr>
+  <td>内容层</td>
+  <td>缩略图 / 封面。到了之后 <code>opacity 0 → 1</code></td>
+</tr>
+<tr>
+  <td>视频的播放钮、时长角标</td>
+  <td>封面没到之前不显示，和封面同一时刻淡入，不单独先冒出来</td>
+</tr>
+</tbody>
+</table></div>
+<h4>动效表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>等待超过 150ms 仍未到</td>
+  <td>占位层 <code>opacity 0 → 1</code></td>
+  <td><code>DURATION.base</code> 180ms，<code>EASE_OUT</code></td>
+  <td>原地出现</td>
+</tr>
+<tr>
+  <td>内容到达</td>
+  <td>内容层 <code>opacity 0 → 1</code></td>
+  <td><code>DURATION.base</code> 180ms，<code>EASE_OUT</code></td>
+  <td>同一位置，覆盖占位</td>
+</tr>
+<tr>
+  <td>内容到达</td>
+  <td>占位层 <code>opacity 1 → 0</code></td>
+  <td><code>DURATION.exit</code> 126ms，<code>EASE_OUT</code></td>
+  <td>同上</td>
+</tr>
+<tr>
+  <td>扫光循环</td>
+  <td><code>transform: translateX</code></td>
+  <td>1.6s <code>ease-in-out</code>，无限</td>
+  <td>左 → 右</td>
+</tr>
+<tr>
+  <td>减少动态效果</td>
+  <td>循环动画停掉，扫光层退成 4% 前景色静态罩</td>
+  <td>淡入淡出仍为 180ms / 126ms</td>
+  <td>只剩淡入淡出</td>
+</tr>
+</tbody>
+</table></div>
+<p>循环动画属于“加载状态指示”，规范里的常驻循环例外；内容到达后占位层卸载，不留下常驻动画。只动 <code>transform</code> / <code>opacity</code>，不用 <code>filter</code>、不用 <code>backdrop-blur</code>，画布上几十个节点同时加载也走合成线程。</p>
+<h4>状态表</h4>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>请求发出 150ms 内到达（缓存命中等）</td>
+  <td>不出现占位，内容直接 180ms 淡入，避免灰块一闪而过</td>
+</tr>
+<tr>
+  <td>等待超过 150ms</td>
+  <td>占位层淡入并开始循环</td>
+</tr>
+<tr>
+  <td>缩略图到了、原图还在加载</td>
+  <td>不再显示占位（缩略图已经是内容），原图沿用 6.9 的交叉淡入</td>
+</tr>
+<tr>
+  <td>加载失败</td>
+  <td>占位层移除，显示现有的占位图标（<code>ImagePlaceholderIcon</code> / <code>VideoPlaceholderIcon</code>），不变</td>
+</tr>
+<tr>
+  <td>低缩放档（<code>useLowDetail</code>）</td>
+  <td>照常显示；这时只请求缩略图，占位很快就被替换</td>
+</tr>
+<tr>
+  <td>窄屏（&lt; 768px）</td>
+  <td>无差异，占位铺满预览框</td>
+</tr>
+<tr>
+  <td>深浅主题</td>
+  <td>灰底用 <code>muted</code>，光带用新增的 <code>--sheen</code>，两套主题各一条</td>
+</tr>
+<tr>
+  <td>减少动态效果</td>
+  <td>见动效表</td>
+</tr>
+<tr>
+  <td>读屏</td>
+  <td>占位层 <code>aria-hidden</code>；预览框本身沿用现有 <code>alt</code>，不新增“加载中”播报（每个节点都播太吵）</td>
+</tr>
+</tbody>
+</table></div>
+<h4>涉及的组件与文件</h4>
+<ul>
+<li><code>index.css</code>：<code>:root</code> 和 <code>.dark</code> 各补一条 <code>--sheen</code>（浅色 <code>oklch(1 0 0 / 0.7)</code>，深色 <code>oklch(1 0 0 / 0.09)</code>），<code>@theme inline</code> 里映射 <code>--color-sheen</code>；新增 <code>@keyframes node-sheen</code>。</li>
+<li><code>components/canvas/media-skeleton.tsx</code>（新）：<code>MediaSkeleton</code> 占位层，内部带 150ms 的延迟出现逻辑，导出给图片和视频共用。</li>
+<li><code>components/canvas/media-preview.tsx</code>：<code>ImageLayersInner</code> 缩略图和原图都未加载完时渲染 <code>MediaSkeleton</code>，缩略图 <code>&lt;img&gt;</code> 加 <code>opacity</code> 淡入；<code>VideoPosterInner</code> 加 <code>loaded</code> 状态，封面到了再淡入。</li>
+<li><code>components/canvas/video-facade.tsx</code>：播放钮和时长角标跟随封面 <code>loaded</code> 一起淡入（需要 <code>VideoPoster</code> 暴露 <code>onLoad</code>）。</li>
+<li><code>lib/motion.ts</code>：不新增档位，用现有 <code>DURATION.base</code> / <code>DURATION.exit</code>；150ms 延迟作为 <code>SKELETON_DELAY</code> 常量加进来。</li>
+<li><code>ui/skeleton.tsx</code>：不改（它是“生成中”的呼吸骨架，另有用途）。</li>
+</ul>
+<p><strong>依赖</strong>：无。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>配套原型：<a href="节点加载占位原型.html">节点加载占位原型.html</a>。A / B / C 三种并排，定稿选 A（扫光）。</p></div></aside></div><div class="sub" id="s6-13"><div class="main"><h3>6.13 节点预设：风格、运镜、预设模板<a class="anc" href="#s6-13" aria-label="本节链接">#</a></h3>
+<p><strong>问题</strong>：图片和视频节点的提示词全靠用户从零写。风格词、运镜词、宫格模板这类&quot;写法固定、效果靠措辞&quot;的内容，用户记不住也写不准。调研里已有整理好的 87 条（<code>docs/research/open-ai-canvas-prompts.md</code>），缺的是把它们接进生成面板的入口。</p>
+<p><strong>目标</strong>：</p>
+<ol>
+<li>在不挤占面板现有布局（Tabs、引用条、提示词、底栏）的前提下加入口。</li>
+<li>选了预设后，用户看到的仍是一句干净的话；长提示词发送时才展开。</li>
+<li>选之前能看出效果：风格、运镜都看封面 / 示意图选，用途和说明放在卡片的悬停提示里。</li>
+</ol>
+<p><strong>范围</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>节点</th>
+  <th>入口</th>
+  <th>条数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>图片</td>
+  <td>风格、预设模板</td>
+  <td>45 + 9</td>
+</tr>
+<tr>
+  <td>视频</td>
+  <td>运镜</td>
+  <td>33</td>
+</tr>
+<tr>
+  <td>文本、音频</td>
+  <td>不显示</td>
+  <td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p>不做：参考图里的「标记、特效、角色库」（项目里没有对应功能）、用户自定义预设、后台管理预设（数据放前端静态文件，见&quot;数据与实现&quot;）。</p>
+<p><strong>布局草图</strong>（入口在底栏，紧跟参数摘要）</p>
+<pre class="art"><code><i class="c2">图</i><i class="c2">片</i><i class="c2">节</i><i class="c2">点</i>
+<i class="c1">┌</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┐</i>
+<i class="c1">│</i> [<i class="c2">引</i><i class="c2">用</i><i class="c2">条</i> <i class="c1">▣</i><i class="c1">▣</i><i class="c1">▣</i> +]                                      <i class="c1">↗</i> <i class="c1">│</i>
+<i class="c1">│</i> <i class="c2">古</i><i class="c2">风</i><i class="c2">少</i><i class="c2">女</i><i class="c2">立</i><i class="c2">于</i><i class="c2">桥</i><i class="c2">头</i><i class="c2">，</i>[<i class="c1">◼</i> <i class="c2">古</i><i class="c2">装</i><i class="c2">偶</i><i class="c2">像</i>] <i class="c2">细</i><i class="c2">雨</i>                    <i class="c1">│</i>
+<i class="c1">│</i>                                          34/16000    <i class="c1">│</i>
+<i class="c1">│</i> (<i class="c1">◉</i><i class="c2">模</i><i class="c2">型</i> <i class="c1">▾</i>)(<i class="c2">比</i><i class="c2">例</i> 16:9)(4K)  [<i class="c1">◻</i>]<i class="c1">•</i>  [<i class="c1">◈</i>]      [<i class="c1">✦</i> 120 | <i class="c1">↑</i>]  <i class="c1">│</i>
+<i class="c1">└</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">─</i><i class="c1">┘</i>
+                              <i class="c2">风</i><i class="c2">格</i> <i class="c1">┘</i>   <i class="c1">└</i> <i class="c2">预</i><i class="c2">设</i><i class="c2">模</i><i class="c2">板</i>
+
+<i class="c2">视</i><i class="c2">频</i><i class="c2">节</i><i class="c2">点</i>
+<i class="c1">│</i> (<i class="c1">◉</i><i class="c2">模</i><i class="c2">型</i> <i class="c1">▾</i>)(720P <i class="c1">·</i> 5s <i class="c1">▾</i>)  [<i class="c2">🎥</i>]<i class="c1">²</i>                [<i class="c1">✦</i> 120 | <i class="c1">↑</i>] <i class="c1">│</i>
+                           <i class="c1">└</i> <i class="c2">运</i><i class="c2">镜</i><i class="c2">（</i><i class="c2">选</i><i class="c2">了</i> 2 <i class="c2">条</i><i class="c2">，</i><i class="c2">显</i><i class="c2">示</i><i class="c2">数</i><i class="c2">量</i><i class="c2">）</i>
+</code></pre>
+<p><strong>控件说明</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>控件</th>
+  <th>位置 / 尺寸</th>
+  <th>内容与状态</th>
+  <th>交互</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>入口按钮</td>
+  <td>底栏，参数摘要之后、批量之前；36×34 圆胶囊，只有图标，<code>ring-foreground/10</code> 描边，和 <code>PANEL_CHIP_CLASS</code> 同高</td>
+  <td>风格 <code>Box</code>、运镜 <code>Camera</code>、预设模板 <code>Shapes</code>（lucide）。默认：描边；hover：<code>bg-chrome-hover</code>；已选：<code>bg-foreground/10</code> + 右上角 7px <code>--preset</code> 小点，运镜选了 2 条以上改成数量角标；打开中：同已选；生成中：<code>opacity .4</code>、不可点；聚焦：<code>focus-visible</code> 描边</td>
+  <td>点击打开选择器；Tooltip 写类别名，已选时追加&quot;：盘旋下降、环绕拍摄&quot;；只有图标是因为面板默认 480 宽，放不下文字</td>
+</tr>
+<tr>
+  <td>预设 chip</td>
+  <td>提示词行内，和素材 chip 同尺寸（高 26、<code>rounded-md</code>、<code>surface-2</code>、1px <code>chrome-border</code>）</td>
+  <td>20×20 <code>--preset</code> 紫色底白色图标（风格 Box、运镜 Camera、模板 Shapes）+ 名称（最宽 168，超出省略）；预设已下架：透明底 + 名称删除线，tooltip&quot;这个预设已不存在，发送时按普通文字处理&quot;</td>
+  <td>不可编辑，Backspace 整个删除；hover 底色变亮、tooltip 写&quot;风格「古装偶像」· 发送时展开为：…（前 90 字）&quot;；<strong>点击 = 在 chip 旁边弹出同类选择器，用来替换</strong>，见下方&quot;点 chip 替换&quot;</td>
+</tr>
+<tr>
+  <td>风格选择器</td>
+  <td>Popover，从入口按钮向上弹出；宽 <code>min(620px, 100vw-1rem)</code></td>
+  <td>顶部分类标签（全部 + 古装 / 都市 / 年代 / 生活 / 科幻 / 类型 / 写意 / 动画 / 绘画 / 神话，横向滚动）；4 列 16:9 封面卡，名称压在底部渐变条上</td>
+  <td>点击选用，再点取消；悬停提示是名称</td>
+</tr>
+<tr>
+  <td>运镜选择器</td>
+  <td>同上</td>
+  <td>分类标签（全部 + 基础控制 / 人物跟拍 / 揭示转场 / 情绪强化 / 空间航拍）；4 列 1:1 示意图卡，名称压在底部渐变条上</td>
+  <td>点击加入或取消，<strong>选择器不关</strong>；悬停提示是「名称 · 用途」。<strong class="tag chg">变更：原为</strong>悬停播放动图——源文件实际是单帧静态图，不是动图</td>
+</tr>
+<tr>
+  <td>预设模板菜单</td>
+  <td>同上，三栏文字列表（参考图 1 的信息结构）</td>
+  <td>分组：分镜叙事 / 质感调节 / 空间与机位 / 设定图；每项 34×34 图标块 + 名称；已选项图标块换成 <code>--preset</code> 底</td>
+  <td>点击选用并关闭；菜单始终可选，不做禁用，也不要求参考图（见下）</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>数量规则</strong></p>
+<ul>
+<li>风格、预设模板：各至多一个，两类可以共存。再选同类的一个，<strong>在原 chip 的位置替换</strong>；再点已选的那个，取消。</li>
+<li>运镜：可以多选，每条最多一个；点已选的取消。方向相反的组合（上摇 / 下摇、左摇 / 右摇等）<strong>不做任何提醒或限制</strong>，由用户自己决定。</li>
+<li>插入位置：风格、运镜插在提示词里<strong>最后一次的光标处</strong>（没有就末尾），后面带一个空格；预设模板永远插在<strong>最前面</strong>，因为它改写的是整个任务。</li>
+</ul>
+<p><strong>点 chip 替换</strong>（风格、运镜、预设模板的 chip 都一样）</p>
+<ul>
+<li>点提示词里的预设 chip，弹出该类选择器，锚点是这个 chip（不是底栏入口），向上弹出、放不下翻到下方；当前这一条在选择器里显示为已选。</li>
+<li>选另一条：<strong>原位替换</strong>这个 chip，选择器关闭，焦点回到提示词。运镜也是替换点中的那一个，不影响提示词里的其他运镜。</li>
+<li>点当前这一条自己：取消，chip 被移除。</li>
+<li>运镜替换时，选一条已在提示词别处出现的：不执行，也不提示，选择器保持打开。</li>
+<li>从 chip 进入的选择器是一次性的：运镜在这里不保持打开（和从底栏入口进入的多选不同）。</li>
+<li>预设已下架（删除线 chip）同样可以点，用来换成现有的预设。</li>
+<li>键盘：chip 本身不可聚焦，键盘用户用底栏入口按钮；光标在 chip 前后时 Backspace / Delete 删除。</li>
+<li>生成中不响应点击。放大编辑对话框里的 chip 本期不支持点击替换，只能删除。</li>
+</ul>
+<p><strong>提示词存储与展开</strong></p>
+<ul>
+<li>存储仍是纯文本，预设写成 <code>#[名称](种类/id)</code>，例如 <code>#[盘旋下降](motion/descending_orbit)</code>；<code>@</code> 素材引用的写法不变。<code>parsePrompt</code> 多产出一种 <code>preset</code> 段，<code>promptRefIds</code> 不把它当节点引用，字数按名称计。</li>
+<li>提交时（<code>buildTaskInput</code>）展开：风格、运镜 chip <strong>原位</strong>换成预设提示词，前后相邻字符不是标点时补「，」；预设模板换成模板全文放在最前面，用户写的文字接在后面，前面加&quot;补充说明：&quot;。预设 id 在目录里找不到时，按名称当普通文字。</li>
+<li>展开后的长度不计入 16000 字上限的字数显示（和素材引用一致），但提交校验要按展开后的长度检查；超限时在 <code>notice</code> 里说明&quot;展开后超出 N 字&quot;。</li>
+<li>发送时 toast &quot;已把 N 个预设展开成完整提示词&quot;，让用户知道发出去的比看到的长。</li>
+</ul>
+<p><strong>预设模板不要求参考图</strong>：文生图和图生图都能用。有参考图时，图片节点按现有规则自动走图生图，没有就走文生图，模板不额外判断，也不拦发送。</p>
+<p><strong>占位文字</strong>：只放了模板 chip、还没写字时，占位文字跟在 chip 后面，写这条模板的用途，如&quot;生成一个 3x3 九宫格的多机位联系表。可以补充说明，也可以直接发送&quot;。</p>
+<p><strong>键鼠</strong></p>
+<ul>
+<li>选择器内：方向键在卡片间移动，<code>Enter</code> / <code>Space</code> 选中，<code>Esc</code> 关闭并把焦点还给入口按钮，<code>Tab</code> 离开。</li>
+<li>不设全局快捷键：这是低频的&quot;挑一次&quot;操作，选择器里有完整的键盘导航。后续可以考虑在提示词里输入 <code>/</code> 唤起（和 <code>@</code> 对称），本期不做。</li>
+<li>选择器是 Popover，打开期间点编辑器、点面板其他区域都会关闭；运镜多选时保持打开，点选择器外面才关。</li>
+</ul>
+<p><strong>动效</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>触发</th>
+  <th>属性</th>
+  <th>时长 / 曲线</th>
+  <th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>选择器出现</td>
+  <td><code>opacity 0→1</code>、<code>scale .96→1</code>、<code>y 6→0</code></td>
+  <td><code>DURATION.base</code> 180ms，<code>EASE_OUT</code></td>
+  <td><code>transform-origin</code> 在入口按钮，向上弹出；上方放不下翻到下方</td>
+</tr>
+<tr>
+  <td>选择器消失</td>
+  <td>反向</td>
+  <td><code>DURATION.exit</code> 126ms</td>
+  <td>回到入口按钮</td>
+</tr>
+<tr>
+  <td>chip 插入 / 替换</td>
+  <td><code>opacity 0→1</code>、<code>scale .9→1</code></td>
+  <td><code>DURATION.fast</code> 120ms，<code>EASE_OUT</code></td>
+  <td>原地</td>
+</tr>
+<tr>
+  <td>卡片 hover / 聚焦</td>
+  <td><code>box-shadow</code> 描边</td>
+  <td>120ms</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>卡片按下</td>
+  <td><code>scale .97</code></td>
+  <td><code>TAP</code></td>
+  <td>—</td>
+</tr>
+<tr>
+  <td>已选角标、入口小点</td>
+  <td>直接出现，无动画</td>
+  <td>—</td>
+  <td>—</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>选择器里没有随悬停变化的信息条</strong>：弹窗锚在底部，内容高度一变就整体上下跳，鼠标底下的卡片跟着换，会形成持续抖动。<strong class="tag chg">变更：原为</strong>底部 64px 信息条（风格显示 4 张人物参考图、运镜显示用途和提示词）。</li>
+<li>减少动态效果打开时：选择器只淡入淡出，chip 直接出现。</li>
+</ul>
+<p><strong>状态</strong></p>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>状态</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>节点没有可用预设（文本、音频）</td>
+  <td>不渲染入口</td>
+</tr>
+<tr>
+  <td>没有选任何预设</td>
+  <td>入口只有描边，没有小点</td>
+</tr>
+<tr>
+  <td>已选</td>
+  <td>入口高亮 + 小点（运镜 ≥2 显示数量）；提示词里有 chip</td>
+</tr>
+<tr>
+  <td>打开分类后没有结果</td>
+  <td>不会发生：每个分类至少一条；以后若有空分类，写&quot;这个分类下还没有预设&quot;</td>
+</tr>
+<tr>
+  <td>封面加载中</td>
+  <td>卡片底色 <code>surface-3</code>；<code>loading=&quot;lazy&quot;</code>，图到了直接显示，不做淡入</td>
+</tr>
+<tr>
+  <td>封面加载失败</td>
+  <td>保留底色和名称，仍可点选；不弹错误</td>
+</tr>
+<tr>
+  <td>生成中</td>
+  <td>入口禁用（<code>opacity .4</code>）；提示词里已有的 chip 照常显示</td>
+</tr>
+<tr>
+  <td>预设已下架</td>
+  <td>chip 删除线，发送时按普通文字</td>
+</tr>
+<tr>
+  <td>窄屏</td>
+  <td>选择器仍是 Popover，宽度 <code>min(620px, 100vw-1rem)</code>，网格随宽度降列：风格、运镜 2 / 3 / 4 列，模板 1 / 2 / 3 列。<strong class="tag chg">变更：原为</strong>改成底部 Sheet——代码里面板目前没有 Sheet 形态，先不单独做</td>
+</tr>
+<tr>
+  <td>浅色主题</td>
+  <td>全部走 token：<code>--preset</code>（新增，见下）、<code>chrome-border</code>、<code>chrome-hover</code>、<code>node-ring</code>、<code>status-warning</code>；封面压字的渐变条用 <code>--cover-scrim</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>用户在 6.4 里的变更</strong></p>
+<ul>
+<li><strong class="tag chg">变更：原为</strong>图片面板在引用条下面常驻&quot;风格转绘&quot;和&quot;调色盘&quot;两个 chip。实际代码里没有这两个 chip，原型里的占位也一并删掉，由底栏的风格、预设模板入口取代。</li>
+<li>6.4 第 4 条的底栏 chip 行多了一类图标入口：<code>模型 ▾</code>、参数摘要、<strong>预设入口</strong>、<code>批量 ×N</code>、<code>[✦ | ↑]</code>。</li>
+</ul>
+<p><strong>数据与实现</strong></p>
+<ul>
+<li>数据是前端静态常量，不进后端。<code>web/src/constants/presets.ts</code> 导出 <code>STYLE_PRESETS</code>、<code>MOTION_PRESETS</code>、<code>TEMPLATE_PRESETS</code> 三个数组，条目字段：<code>id</code>、<code>name</code>、<code>category</code>、<code>prompt</code>、<code>cover</code>；运镜多 <code>usage</code>；模板多 <code>group</code>、<code>icon</code>、<code>usage</code>。以后切到后端接口时，选择器只依赖这三个数组的形状，不用改。</li>
+<li>素材放 <code>web/public/presets/{style,motion}/</code>，来自 <code>docs/research/open-ai-canvas-assets/</code>，共约 1MB，全部 <code>loading=&quot;lazy&quot;</code>，选择器打开前不请求。风格封面压到 480 宽；运镜示意图原样复制。</li>
+<li>运镜的 33 张示意图实际是单帧静态 webp，不是动图（调研文档里写的&quot;动图&quot;不准确），所以不做悬停播放，也不需要导出首帧。以后拿到真正的动图再加。</li>
+<li>展开逻辑是纯函数，放 <code>utils/canvas/prompt-tokens.ts</code>，加单测（<code>web/src/tests/</code>）：解析 / 序列化 <code>#[名称](种类/id)</code>、字数、<code>expandPrompt</code> 多处理一种段、预设找不到时的退化、模板放最前、同类替换、运镜去重。</li>
+</ul>
+<p><strong>涉及的组件和文件</strong></p>
+<ul>
+<li><code>constants/presets.ts</code>（新）：三类预设数据与分类名。</li>
+<li><code>components/canvas/preset-picker.tsx</code>（新）：入口按钮 + 三种选择器（风格 / 运镜 用 Popover 网格，模板用三栏菜单）。导出可组合部件，选择结果通过上下文交给提示词编辑器。</li>
+<li><code>components/canvas/prompt-mention.tsx</code>：新增预设 chip 的节点视图（Tiptap Node，<code>name: &quot;preset&quot;</code>），<code>PromptEditorHandle</code> 增加 <code>insertPreset(kind, id)</code>、<code>removePreset</code>、<code>replacePreset</code>；模板专用占位文字走 Placeholder 扩展。</li>
+<li><code>components/canvas/node-prompt-input.tsx</code>：<code>toolbarExtra</code> 里放预设入口，<code>NodePromptInput</code> 把 editor <abbr class="gl" tabindex="0" data-tip="节点上能连线的接口点。">handle</abbr> 通过 context 暴露给选择器。</li>
+<li><code>pages/canvas/video-node.tsx</code>：按节点种类传入可用的预设类别。</li>
+<li><code>utils/canvas/prompt-tokens.ts</code>：新增 <code>preset</code> 段与 <code>expandPrompt</code> 的预设展开。</li>
+<li><code>utils/canvas/preset-rules.ts</code>（新）：<code>planPreset</code> 把&quot;同类替换、运镜多选、点 chip 替换&quot;这些数量规则写成纯函数，编辑器按返回的方案去改文档，规则本身有单测。</li>
+<li><code>web/scripts/export-preset-assets.sh</code>（新）：从 <code>docs/research</code> 导出风格封面（压到 480 宽）和运镜示意图到 <code>web/public/presets/</code>。</li>
+<li><code>utils/tasks/capabilities.ts</code>：<code>buildTaskInput</code> 展开预设，并按展开后长度校验。</li>
+<li><code>index.css</code>：<code>:root</code> 和 <code>.dark</code> 同时补 <code>--preset</code>（<code>oklch(0.55 0.2 295)</code> / <code>oklch(0.6 0.19 295)</code>），<code>@theme inline</code> 里补 <code>--color-preset</code>。</li>
+</ul>
+<p><strong>依赖</strong>：无。Popover、Tooltip、Tiptap、motion 都是现有的；图片是静态文件。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>本节最后追加，和 6.4、6.7 有交集：6.4 里原来的「风格转绘 / 调色盘」被取消；预设 chip 和 6.7 的素材 chip 尺寸一致，但存储格式不同：<code>#[名称](种类/id)</code>。</p></div><div class="note k-why"><b>为什么</b><p>「预设模板不要求参考图」是访谈里用户确认的（文生图也能用）。中间曾按"都要参考图"设计过禁用和拦截，已撤销。</p></div><div class="note k-note"><b>注</b><p>看效果：打开 <a href="画布UI原型.html">画布UI原型.html</a>，选图片或视频节点，看底栏的图标入口；点提示词里的预设 chip 可以替换。</p></div></aside></div></section>
+<section class="chapter" id="s7-ch" data-id="s7"><div class="sub" id="s7"><div class="main"><h2>7. 动效规范（Motion）<a class="anc" href="#s7" aria-label="本节链接">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th><abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">Token</abbr></th>
+  <th>值</th>
+  <th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>dur.fast</code></td>
+  <td>120ms <code>ease-out</code></td>
+  <td>hover 状态、按钮按下（<code>scale 0.96</code>）</td>
+</tr>
+<tr>
+  <td><code>dur.base</code></td>
+  <td>180ms <code>[0.2, 0, 0, 1]</code></td>
+  <td>菜单、<abbr class="gl" tabindex="0" data-tip="点击后在触发按钮旁弹出的小浮层，点外面关闭。">Popover</abbr>、浮条出现/消失（<code>opacity + scale 0.96 + y 4</code>）</td>
+</tr>
+<tr>
+  <td><code>dur.slow</code></td>
+  <td>240ms</td>
+  <td><abbr class="gl" tabindex="0" data-tip="从屏幕边缘滑出的抽屉面板。">Sheet</abbr>、Dialog</td>
+</tr>
+<tr>
+  <td><code>spring.snappy</code></td>
+  <td><code>{ type: &quot;spring&quot;, stiffness: 500, damping: 38, mass: 0.8 }</code></td>
+  <td><code><abbr class="gl" tabindex="0" data-tip="motion 的共享布局动画：两个元素用同一个 layoutId，motion 自动补间位置和尺寸，做出&quot;滑块在选项间移动&quot;的效果。">layoutId</abbr></code> 滑块、面板 layout 变宽、进度条</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>出现的方向</strong>：底部工具条的菜单向上弹出（<code>origin-bottom</code>），顶部菜单向下弹出，生成面板从节点方向弹出（<code>y: -6 → 0</code>）。</li>
+<li><strong>退出比进入快</strong>：退出时长 = 进入的 70%。</li>
+<li><strong>只做 transform 和 opacity 动画</strong>：不对 <code>width/height/top</code> 做动画，宽度变化用 <code>layout</code>。</li>
+<li><strong>数字变化</strong>（积分、缩放百分比、进度）：用 <code><abbr class="gl" tabindex="0" data-tip="motion 的弹簧插值 hook，用来让数字平滑滚动。">useSpring</abbr></code> 插值，配合 <code><abbr class="gl" tabindex="0" data-tip="等宽数字。数字变化时每位宽度不变，不会左右抖。">tabular-nums</abbr></code>。</li>
+<li><strong>按下反馈</strong>：所有按钮 <code>whileTap={{ scale: 0.96 }}</code>。</li>
+<li><strong>画布飞行</strong>（定位到失败节点、适应视图）：使用 xyflow <code>setViewport({ duration: 300 })</code>。</li>
+<li><strong><code><abbr class="gl" tabindex="0" data-tip="系统的&quot;减少动态效果&quot;开关。开启后本设计只保留淡入淡出。">prefers-reduced-motion</abbr></code></strong>：通过 <code>&lt;MotionConfig reducedMotion=&quot;user&quot;&gt;</code> 全局降级为只做淡入淡出。</li>
+<li><strong>进入画布（已定：聚焦显影）</strong>：<ul>
+<li>加载层是点阵底，中间是白色取景框 logo，下面写产品名和「正在打开「画布名」」，它们由虚到实、由大到正聚焦出来（0.9s，名字晚 0.12s）。</li>
+<li>数据到了、并且加载层至少停留了 650ms，logo 和名字再虚掉、缩小一点（0.32s），整层随后淡出（0.38s）。</li>
+<li>退场开始时画布内容入场：节点按顺序浮上来，顶栏落下、底栏升起，连线稍后淡入。</li>
+<li>性能约束：<ul>
+<li>加载和入场全部用 CSS 关键帧，只动 transform、opacity，logo 再加一个 filter；这样在合成线程上跑，画布挂载时主线程再忙也不掉帧。</li>
+<li>节点入场不做 blur，节点里有大图，blur 太贵。</li>
+<li>入场靠直接在 DOM 上挂 <code>data-entering</code> 触发，不经过 React state，免得整张画布重渲染。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>连线流光（已定：光带）</strong>：<ul>
+<li>一段两头渐隐的亮带，沿连线从上游扫到下游，平时一趟 2.6s；下游在生成时换成运行色，一趟 1.1s。</li>
+<li>做法是渐变描边加平移渐变，不移动任何形状，所以拖动节点时不会跳帧。</li>
+<li>系统开了「减少动态效果」时只显示静止的底线。</li>
+</ul>
+</li>
+<li><strong>不做</strong>：常驻的循环动画（连线流光保留，但只在生成中的边上显示）。</li>
+</ul>
+</div><aside class="notes"><div class="note k-code"><b>对应代码</b><p>这些 <abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">token</abbr> 在代码里是 web/src/lib/motion.ts 的 DURATION、EASE_OUT、SPRING、TAP。文档里的 dur.fast / dur.base 对应 DURATION.fast / DURATION.base，退出时长对应 DURATION.exit（126ms，约 180ms 的 70%）。</p></div></aside></div></section>
+<section class="chapter" id="s8-ch" data-id="s8"><div class="sub" id="s8"><div class="main"><h2>8. 视觉 Token（新增，深色为主）<a class="anc" href="#s8" aria-label="本节链接">#</a></h2>
+<p>在 <code>index.css</code> 的 <code>.dark</code> 中补充以下 <abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">token</abbr>，组件只引用 token，不再写死颜色：</p>
+<pre><code class="language-css">--canvas-bg: oklch(0.13 0 0); /* 画布底，比 background 更深 */
+--canvas-dot: oklch(1 0 0 / 0.08); /* 点阵 */
+--chrome: oklch(0.2 0 0 / 0.8); /* 浮层胶囊（配合 backdrop-blur） */
+--chrome-border: oklch(1 0 0 / 0.08);
+--node-ring: oklch(1 0 0 / 0.7); /* 选中描边 */
+--credit: oklch(0.82 0.15 85); /* 积分金 */
+--status-running: oklch(0.75 0.12 240);
+--status-success: oklch(0.75 0.15 155);
+--status-warning: oklch(0.8 0.15 75);
+--edge: oklch(1 0 0 / 0.3); /* 连线；选中为 --node-ring，替换写死的 #ff0073 */
+</code></pre>
+<p>浅色主题镜像一套，但不作为一期的验收重点。</p>
+</div><aside class="notes"><div class="note k-warn"><b>注意</b><p>这是提案时的草值。真实取值以 web/src/index.css 为准：实际多了 --chrome-hover、--edge-selected、--cover-scrim、--sheen、--group-* 等；--chrome 透明度是 0.78 而不是 0.8，--node-ring 是 0.72 而不是 0.7。</p></div></aside></div></section>
+<section class="chapter" id="s9-ch" data-id="s9"><div class="sub" id="s9"><div class="main"><h2>9. 状态与异常<a class="anc" href="#s9" aria-label="本节链接">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>场景</th>
+  <th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>画布加载中</td>
+  <td>外壳先渲染（标题显示骨架），画布区域显示点阵；节点就绪后整体淡入</td>
+</tr>
+<tr>
+  <td>空画布</td>
+  <td>正中央显示三张快捷卡片（图片生成 / 视频生成 / 上传素材），点击就在画布中心创建节点并选中；底部「+」轻微脉动一次</td>
+</tr>
+<tr>
+  <td>保存中 / 失败</td>
+  <td>状态显示见左上；失败时 toast 加上顶栏的红色状态，点&quot;重试&quot;立即 <abbr class="gl" tabindex="0" data-tip="立即执行待做的保存，不再等防抖计时。">flush</abbr></td>
+</tr>
+<tr>
+  <td>409 冲突</td>
+  <td>弹窗让用户选：「加载最新」（放弃本地改动，重新挂载，<strong>清空撤销栈</strong>，基线已经变了）或「另存为新画布」（本地内容存成副本后再加载最新）；选择前暂停自动保存</td>
+</tr>
+<tr>
+  <td><abbr class="gl" tabindex="0" data-tip="WebSocket：服务端主动推送任务进度的长连接。">WS</abbr> 断线</td>
+  <td>积分旁的状态点变琥珀色并闪烁；悬停提示&quot;实时进度已断开，正在重连&quot;；生成中的节点进度条改成不确定态</td>
+</tr>
+<tr>
+  <td>生成中 / 失败 / 取消</td>
+  <td>见 <a class="xref" href="#s6-2">6.2</a>；取消和失败时积分数字回滚动画，并 toast &quot;已退回 N 积分&quot;</td>
+</tr>
+<tr>
+  <td>积分不足</td>
+  <td>发送按钮变灰并显示 tooltip；积分胶囊描边变成琥珀色</td>
+</tr>
+</tbody>
+</table></div>
+</div><aside class="notes"><div class="note k-why"><b>为什么</b><p>409 冲突后清空撤销栈：栈里的快照都是旧基线上的，保存基线已经变了，不能再撤销回去。</p></div></aside></div></section>
+<section class="chapter" id="s10-ch" data-id="s10"><div class="sub" id="s10"><div class="main"><h2>10. 数据与工程影响（建议，未改代码）<a class="anc" href="#s10" aria-label="本节链接">#</a></h2>
+</div><aside class="notes"><div class="note k-warn"><b>注意</b><p>标题写着"建议，未改代码"，是提案时的状态，落地时有出入。例如撤销栈实际在 hooks/use-canvas-history.ts 和 utils/canvas/history.ts，不是文中的 store/canvas-history.ts。以代码为准。</p></div></aside></div><div class="sub" id="s10-1"><div class="main"><h3>10.1 生成历史 → payload 字段<a class="anc" href="#s10-1" aria-label="本节链接">#</a></h3>
+<p>在 <code>CanvasNodeData</code> 中新增：</p>
+<pre><code class="language-ts">/** 历次产出，新的在后；src/mediaType/assetId 仍保留为&quot;当前版本&quot;的镜像以兼容旧代码 */
+outputs?: Array&lt;{ id: string; src: string; mediaType: NodeMediaType; assetId?: string;
+                  taskId?: string; model?: string; createdAt: number }&gt;;
+/** 当前选中的 outputs[].id */
+activeOutputId?: string;
+</code></pre>
+<ul>
+<li><code>serializeGraph</code> / <code>deserializeGraph</code> 的白名单要加上这两个字段。旧数据没有 <code>outputs</code> 时，用 <code>src</code> 合成一条记录。</li>
+<li><code>use-task-backfill.ts</code> 在回填时改成 <strong>push 进 outputs，并设为当前版本</strong>，同时镜像到 <code>src</code>。</li>
+<li><strong>保留上限</strong>：每个节点最多 20 条，超出时丢掉最旧的（只删引用，不删素材），避免 payload 膨胀。</li>
+<li>后端不需要改：整个 payload 存在 <abbr class="gl" tabindex="0" data-tip="PostgreSQL 的二进制 JSON 列。整张画布存在这一列里。">JSONB</abbr> 里，结构对后端是透明的。</li>
+</ul>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>后端不用改：整张画布存在 JSONB 一列里，outputs 对后端是不透明的数据。</p></div></aside></div><div class="sub" id="s10-2"><div class="main"><h3>10.2 撤销 / 重做<a class="anc" href="#s10-2" aria-label="本节链接">#</a></h3>
+<ul>
+<li>新建 <code>store/canvas-history.ts</code>（zustand），保存 <code>past/future</code> 两个快照栈，每个快照是 <code>{nodes, edges}</code> 的浅拷贝。上限 100 步。</li>
+<li><strong>入栈时机</strong>：拖拽结束（<code>onNodeDragStop</code>）、增删节点或连线、粘贴、切换历史版本、修改标题。提示词输入以失焦或 800ms 防抖为一步，不按键入逐字入栈。</li>
+<li><strong>不入栈</strong>：任务进度和回填（服务端事件），以及视口变化。</li>
+<li>撤销不会取消已经提交的生成任务。</li>
+</ul>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>提示词输入按 800ms 防抖算一步；和 @ 自动连线合并成一步撤销的做法见 <a class="xref" href="#s6-7">6.7</a>。</p></div></aside></div><div class="sub" id="s10-3"><div class="main"><h3>10.3 复制粘贴<a class="anc" href="#s10-3" aria-label="本节链接">#</a></h3>
+<ul>
+<li>序列化选中的节点，以及<strong>两端都在选区内</strong>的连线，写入剪贴板（<code>application/x-video-canvas</code> + 纯文本兜底）。</li>
+<li>粘贴时重新生成 id，清空 <code>taskId/status</code>，保留 <code>outputs</code>。</li>
+</ul>
+</div><aside class="notes"></aside></div><div class="sub" id="s10-4"><div class="main"><h3>10.4 组件拆分建议<a class="anc" href="#s10-4" aria-label="本节链接">#</a></h3>
+<pre class="art"><code>components/canvas/chrome/   top-left-bar.tsx  top-right-bar.tsx  bottom-toolbar.tsx
+                            view-controls.tsx  stats-bar.tsx  chrome-pill.tsx
+components/canvas/node/     node-history-strip.tsx  generate-panel.tsx  op-tabs.tsx
+                            ref-strip.tsx  prompt-mention.tsx  send-button.tsx
+lib/motion.ts               dur / spring <i class="c2">常</i><i class="c2">量</i> + <i class="c2">常</i><i class="c2">用</i> variants
+</code></pre>
+<p><code>chrome-pill.tsx</code> 遵循 shadcn 的平铺可组合写法（<code>ChromePill</code> / <code>ChromePillButton</code> / <code>ChromePillSeparator</code>），页面直接组合使用。</p>
+</div><aside class="notes"></aside></div><div class="sub" id="s10-5"><div class="main"><h3>10.5 风险<a class="anc" href="#s10-5" aria-label="本节链接">#</a></h3>
+<ul>
+<li><strong>面板定位</strong>：<abbr class="gl" tabindex="0" data-tip="@xyflow/react 提供的组件，把浮层挂在节点旁边，随节点移动和缩放。">NodeToolbar</abbr> 不支持自动翻转，需要自己根据节点的屏幕矩形计算位置（<code>useStore</code> 订阅 transform）。要注意在拖动时节流。</li>
+<li><strong>快照式撤销的内存</strong>：100 步 × 大画布的开销。节点 data 不深拷贝，靠不可变更新共享引用来控制。</li>
+<li><strong><code><abbr class="gl" tabindex="0" data-tip="毛玻璃：模糊元素背后的内容。GPU 开销大，所以限制同屏不超过 6 层。">backdrop-blur</abbr></code> 的性能</strong>：同屏不超过 6 个模糊层；在低端设备上可以用 <code>@supports</code> 或设置项降级为纯色背景。</li>
+</ul>
+</div><aside class="notes"></aside></div></section>
+<section class="chapter" id="s11-ch" data-id="s11"><div class="sub" id="s11"><div class="main"><h2>11. 方案取舍<a class="anc" href="#s11" aria-label="本节链接">#</a></h2>
+<div class="tw"><table>
+<thead>
+<tr>
+  <th>决策</th>
+  <th>选择</th>
+  <th>放弃</th>
+  <th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>面板形态</td>
+  <td>节点下方浮层</td>
+  <td>底部 Dock、右侧栏</td>
+  <td>空间关系最强，和现状一致；遮挡问题用翻转和避让解决</td>
+</tr>
+<tr>
+  <td>历史</td>
+  <td>节点内 outputs[]</td>
+  <td>生成兄弟节点、只放素材库</td>
+  <td>不让画布变乱，又能保证 100% 找回</td>
+</tr>
+<tr>
+  <td>生成方式</td>
+  <td>顶部 Tabs</td>
+  <td>底栏下拉</td>
+  <td>切换一步完成，并且当前方式一眼可见</td>
+</tr>
+<tr>
+  <td>主题</td>
+  <td>深色 + 中性白</td>
+  <td>品牌强调色</td>
+  <td>让颜色留给素材；白色主按钮的辨识度已经足够</td>
+</tr>
+<tr>
+  <td>设置入口</td>
+  <td>右上「…」菜单</td>
+  <td>底部工具条</td>
+  <td>设置是低频操作，底部工具条只放高频操作</td>
+</tr>
+<tr>
+  <td>吉祥物助手、协作、会员</td>
+  <td>不做</td>
+  <td>—</td>
+  <td>本项目没有这些能力，不做空的占位</td>
+</tr>
+</tbody>
+</table></div>
+</div><aside class="notes"></aside></div></section>
+<section class="chapter" id="s12-ch" data-id="s12"><div class="sub" id="s12"><div class="main"><h2>12. MVP 与后续<a class="anc" href="#s12" aria-label="本节链接">#</a></h2>
+<p><strong>一期（本设计的验收范围）</strong></p>
+<ol>
+<li>五区外壳，以及 <code>chrome-pill</code> 组件和 motion <abbr class="gl" tabindex="0" data-tip="设计令牌：给颜色、间距这类值起的名字。组件只引用名字，不写死数值。">token</abbr>。<ul>
+<li>验收：所有入口都可点击；缩放百分比实时显示；画布名可编辑并会保存。</li>
+</ul>
+</li>
+<li>节点卡重做和 ⊕ 的出现动画。<ul>
+<li>验收：选中描边用的是 <code>--node-ring</code>；拉线时不兼容的节点会降低透明度。</li>
+</ul>
+</li>
+<li>生成面板：Tabs、参考素材行、自适应提示词、<abbr class="gl" tabindex="0" data-tip="圆角小标签或胶囊按钮。">chip</abbr> 行、积分加发送按钮、展开 Dialog、翻转定位。<ul>
+<li>验收：在视口底部的节点，面板会自动翻到上方；⌘↵ 能发送。</li>
+</ul>
+</li>
+<li>节点生成历史。<ul>
+<li>验收：重新生成 3 次后浮条显示 3；切换版本后下游参考跟着变；刷新页面后历史还在；旧画布能正常打开。</li>
+</ul>
+</li>
+<li>撤销/重做和复制粘贴。<ul>
+<li>验收：执行 6.5 中的全部快捷键都有效；409 冲突后撤销栈被清空。</li>
+</ul>
+</li>
+<li>动效验收：动画时长符合第 7 节；开启 reduced-motion 后只剩淡入淡出。</li>
+</ol>
+<p><strong>二期</strong>：拖拽和粘贴上传、右键菜单、⌘K 命令面板、小地图、分镜栏编辑、窄屏适配。</p>
+<p><strong>三期</strong>：AI 整理画布助手、协作光标。</p>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>6.7–6.13 是一期验收清单之后追加的功能，没有列在这里；它们的验收看各小节的"状态"表。</p></div></aside></div></section>
+<section class="chapter" id="s13-ch" data-id="s13"><div class="sub" id="s13"><div class="main"><h2>13. 待确认问题<a class="anc" href="#s13" aria-label="本节链接">#</a></h2>
+<ol>
+<li>历史保留上限定为 20 条是否合适？超出后是否要提示用户？</li>
+<li>切换上游版本后，下游节点只标记&quot;上游已变更&quot;，还是给出一键&quot;重跑下游&quot;的入口（类似 Krea 的部分重跑）？</li>
+<li>积分明细 <abbr class="gl" tabindex="0" data-tip="点击后在触发按钮旁弹出的小浮层，点外面关闭。">Popover</abbr> 需要的流水接口后端是否已有？如果没有，一期只显示余额。</li>
+</ol>
+</div><aside class="notes"><div class="note k-note"><b>注</b><p>文档里没有记录这三个问题的答案。</p></div></aside></div></section>
+<section class="chapter" id="s14-ch" data-id="s14"><div class="sub" id="s14"><div class="main"><h2>14. 来源与假设<a class="anc" href="#s14" aria-label="本节链接">#</a></h2>
+<ul>
+<li>neoWow：用户在 2026-10-03 提供的 3 张截图，没有实际操作过产品。</li>
+<li>FLORA：<a target="_blank" rel="noopener" href="https://www.artinput.ai/learn/flora-ai-why-infinite-freeform-canvases-are-the-future-of-ai-image-video-creation">https://www.artinput.ai/learn/flora-ai-why-infinite-freeform-canvases-are-the-future-of-ai-image-video-creation</a>、<a target="_blank" rel="noopener" href="https://www.banani.co/blog/flora-ai-review">https://www.banani.co/blog/flora-ai-review</a></li>
+<li>Krea Nodes：<a target="_blank" rel="noopener" href="https://www.krea.ai/docs/user-guide/features/nodes">https://www.krea.ai/docs/user-guide/features/nodes</a></li>
+<li>tldraw：<a target="_blank" rel="noopener" href="https://tldraw.dev/sdk-features/ui-components">https://tldraw.dev/sdk-features/ui-components</a>、<a target="_blank" rel="noopener" href="https://tldraw.dev/releases/v4.0.0">https://tldraw.dev/releases/v4.0.0</a></li>
+<li>项目文件：见 <a class="xref" href="#s2-1">2.1</a> 节表格。</li>
+<li><strong>假设</strong>：<ul>
+<li>生成方式来自 schema 中的 <code>params.op</code>。</li>
+<li>后端不需要为 outputs 做任何改动。</li>
+<li>不同设备上 <code><abbr class="gl" tabindex="0" data-tip="毛玻璃：模糊元素背后的内容。GPU 开销大，所以限制同屏不超过 6 层。">backdrop-blur</abbr></code> 的性能未验证。</li>
+<li>Figma 的相关结论来自已有知识，没有逐项核实。</li>
+</ul>
+</li>
+</ul>
+</div><aside class="notes"><div class="note k-warn"><b>注意</b><p>标「假设」的几条没验证过。做性能或兼容判断前，先自己验一遍。</p></div></aside></div></section>
+  </main>
+</div>
+<div id="pager" role="navigation" aria-label="翻章">
+  <button class="btn" id="p-prev" aria-label="上一章">←</button>
+  <span class="pn" id="p-n"></span>
+  <button class="btn" id="p-next" aria-label="下一章">→</button>
+  <button class="btn" id="p-exit">退出</button>
+</div>
+<div id="tip" role="tooltip"></div>
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const root = document.documentElement, body = document.body;
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const chapters = $$(".chapter");
+  let cur = 0;
+
+  /* 注释开关 */
+  const bn = $("#b-notes");
+  const setNotes = (on) => { body.classList.toggle("nonotes", !on); bn.setAttribute("aria-pressed", on); store.set("doc-notes", on ? "1" : "0"); };
+  setNotes(store.get("doc-notes") !== "0");
+  bn.onclick = () => setNotes(body.classList.contains("nonotes"));
+
+  /* 主题 */
+  const th = store.get("doc-theme");
+  if (th) root.dataset.theme = th;
+  $("#b-theme").onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark"; store.set("doc-theme", root.dataset.theme);
+  };
+
+  /* 目录：滚动联动 */
+  const links = $$("#toc a");
+  const spy = new IntersectionObserver((es) => {
+    es.forEach((e) => { if (e.isIntersecting) setActive(e.target.id); });
+  }, { rootMargin: "-72px 0px -70% 0px" });
+  $$(".sub").forEach((s) => spy.observe(s));
+  function setActive(id) {
+    const ch = id.replace(/^(s\d+).*/, "$1");
+    links.forEach((a) => a.classList.toggle("on", a.dataset.id === id || (a.dataset.id === ch && !$(`#toc a[data-id="${id}"]`))));
+    $$("#toc .tg").forEach((g) => g.classList.toggle("open", g.dataset.ch === ch));
+    cur = Math.max(0, chapters.findIndex((c) => c.dataset.id === ch));
+  }
+  const prog = $("#prog");
+  addEventListener("scroll", () => {
+    const h = document.documentElement;
+    prog.style.transform = `scaleX(${Math.min(1, h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight))})`;
+  }, { passive: true });
+  $("#navbtn").onclick = () => body.classList.toggle("nav");
+  $("#toc").addEventListener("click", (e) => { if (e.target.closest("a")) body.classList.remove("nav"); });
+
+  /* 术语提示 */
+  const tip = $("#tip");
+  const showTip = (el) => {
+    tip.textContent = el.dataset.tip; tip.classList.add("show");
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    const up = r.top > h + 16;
+    tip.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8) + "px";
+    tip.style.top = (up ? r.top - h - 8 : r.bottom + 8) + "px";
+  };
+  document.addEventListener("mouseover", (e) => { const a = e.target.closest?.("abbr.gl"); if (a) showTip(a); });
+  document.addEventListener("mouseout", (e) => { if (e.target.closest?.("abbr.gl")) tip.classList.remove("show"); });
+  document.addEventListener("focusin", (e) => { const a = e.target.closest?.("abbr.gl"); if (a) showTip(a); });
+  document.addEventListener("focusout", () => tip.classList.remove("show"));
+  addEventListener("scroll", () => tip.classList.remove("show"), { passive: true });
+
+  /* 演示模式 */
+  const bp = $("#b-present"), pn = $("#p-n");
+  function show(i) {
+    cur = Math.min(chapters.length - 1, Math.max(0, i));
+    chapters.forEach((c, k) => c.classList.toggle("cur", k === cur));
+    pn.textContent = `${cur + 1} / ${chapters.length}`;
+    $("#p-prev").disabled = cur === 0; $("#p-next").disabled = cur === chapters.length - 1;
+    scrollTo({ top: 0, behavior: "instant" });
+  }
+  function present(on) {
+    body.classList.toggle("present", on); bp.setAttribute("aria-pressed", on);
+    if (on) show(cur); else { chapters.forEach((c) => c.classList.remove("cur")); $(`#${chapters[cur].id}`)?.scrollIntoView(); }
+  }
+  bp.onclick = () => present(!body.classList.contains("present"));
+  $("#p-exit").onclick = () => present(false);
+  $("#p-prev").onclick = () => show(cur - 1);
+  $("#p-next").onclick = () => show(cur + 1);
+  addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || /input|textarea/i.test(e.target.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k === "p") present(!body.classList.contains("present"));
+    else if (k === "n") setNotes(body.classList.contains("nonotes"));
+    else if (body.classList.contains("present")) {
+      if (e.key === "ArrowRight" || e.key === "PageDown" && e.shiftKey) { e.preventDefault(); show(cur + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); show(cur - 1); }
+      else if (e.key === "Escape") present(false);
+    }
+  });
+  /* 演示模式下点目录外链接 / 站内锚点：切到对应章 */
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href^="#s"]');
+    if (!a || !body.classList.contains("present")) return;
+    const id = a.getAttribute("href").slice(1), ch = id.replace(/^(s\d+).*/, "$1");
+    const i = chapters.findIndex((c) => c.dataset.id === ch);
+    if (i >= 0) { e.preventDefault(); show(i); $(`#${id}`)?.scrollIntoView(); }
+  });
+  if (location.hash) setTimeout(() => $(location.hash)?.scrollIntoView?.(), 0);
+})();
+</script>
+</body>
+</html>

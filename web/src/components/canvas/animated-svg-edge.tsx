@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import type { Edge, EdgeProps, Position } from "@xyflow/react";
 import {
   BaseEdge,
@@ -10,9 +10,11 @@ import {
   useStore,
 } from "@xyflow/react";
 import { Scissors } from "lucide-react";
-import { useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
-import { Button } from "@/components/ui/button";
+import { DURATION, EASE_OUT_CSS, TAP, ms } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import { cutButtonScale, nearestRatio } from "@/utils/canvas/edge-cut";
 
 export type AnimatedSvgEdge = Edge<{
   /**
@@ -91,7 +93,10 @@ export function AnimatedSvgEdge({
   selected,
   target,
 }: EdgeProps<AnimatedSvgEdge>) {
-  const { deleteElements } = useReactFlow();
+  const { deleteElements, screenToFlowPosition } = useReactFlow();
+  // 剪刀贴在线上的位置，用 0-1 的路径比例记：在线上按下鼠标时定，节点被拖动后它还在线上；没点过就在中点
+  const probe = useRef<SVGPathElement>(null);
+  const [cutRatio, setCutRatio] = useState(0.5);
   // 下游在生成：光带换成运行色并加速，一眼看出这根线正在喂数据
   const running = useStore(
     (state) =>
@@ -118,24 +123,37 @@ export function AnimatedSvgEdge({
     path,
   });
 
+  // 在这条线上按下：把按下的点投影到线上，选中后剪刀就出现在鼠标点的位置
+  const rememberClick = (event: React.PointerEvent) => {
+    const el = probe.current;
+    if (!el) return;
+    const total = el.getTotalLength();
+    const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    setCutRatio(nearestRatio((t) => el.getPointAtLength(t * total), at));
+  };
+
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={path}
-        labelX={labelX}
-        labelY={labelY}
-        style={style}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
-        interactionWidth={interactionWidth}
-        label={label}
-        labelStyle={labelStyle}
-        labelShowBg={labelShowBg}
-        labelBgStyle={labelBgStyle}
-        labelBgPadding={labelBgPadding}
-        labelBgBorderRadius={labelBgBorderRadius}
-      />
+      {/* 只用来量路径长度和取点，不画也不吃指针 */}
+      <path ref={probe} d={path} fill="none" stroke="none" pointerEvents="none" />
+      <g onPointerDown={rememberClick}>
+        <BaseEdge
+          id={id}
+          path={path}
+          labelX={labelX}
+          labelY={labelY}
+          style={style}
+          markerStart={markerStart}
+          markerEnd={markerEnd}
+          interactionWidth={interactionWidth}
+          label={label}
+          labelStyle={labelStyle}
+          labelShowBg={labelShowBg}
+          labelBgStyle={labelBgStyle}
+          labelBgPadding={labelBgPadding}
+          labelBgBorderRadius={labelBgBorderRadius}
+        />
+      </g>
       {Shape ? (
         <Shape animateMotionProps={animateMotionProps} />
       ) : (
@@ -148,32 +166,60 @@ export function AnimatedSvgEdge({
           emphasized={!!selected}
         />
       )}
-      {/* 选中这条线就在中点浮出剪刀，点一下断开关联。
-          按 React Flow UI 的 button-edge 写法：EdgeLabelRenderer 把内容搬到画布的
-          变换层上，坐标直接用画布坐标；它的容器不吃指针事件，得由这层定位 div
-          重新打开，再加 nodrag/nopan 免得点按钮被当成拖画布 */}
       {selected && (
-        <EdgeLabelRenderer>
-          <div
-            className="nodrag nopan pointer-events-auto absolute"
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            }}
-          >
-            <Button
-              aria-label="断开连接"
-              title="断开连接"
-              size="icon-sm"
-              variant="secondary"
-              className="hover:text-destructive shadow-sm"
-              onClick={() => deleteElements({ edges: [{ id }] })}
-            >
-              <Scissors />
-            </Button>
-          </div>
-        </EdgeLabelRenderer>
+        <CutButton path={path} ratio={cutRatio} onCut={() => deleteElements({ edges: [{ id }] })} />
       )}
     </>
+  );
+}
+
+/**
+ * 选中一条线时浮在线上的「断开」按钮：玻璃小圆钮 + 细线剪刀，点一下断开（⌘Z 可撤销）。
+ * 按 React Flow UI 的 button-edge 写法：EdgeLabelRenderer 把内容搬到画布的变换层上；
+ * 它的容器不吃指针事件，得由这层定位 div 重新打开，再加 nodrag/nopan 免得点按钮被当成拖画布。
+ * 位置用 CSS offset-path 沿这条线按比例摆放，不用在渲染里量 DOM；
+ * 大小只轻微跟着画布缩放（见 cutButtonScale），靠反向缩放抵掉画布自己的缩放。
+ * 缩放值只在这个组件里订阅，没选中的线不会因为画布缩放而重渲染。
+ */
+function CutButton({ path, ratio, onCut }: { path: string; ratio: number; onCut: () => void }) {
+  const zoom = useStore((state) => state.transform[2]);
+  return (
+    <EdgeLabelRenderer>
+      <div
+        className="nodrag nopan pointer-events-auto absolute top-0 left-0"
+        style={{
+          offsetPath: `path("${path}")`,
+          offsetDistance: `${ratio * 100}%`,
+          offsetRotate: "0deg",
+          transform: `scale(${cutButtonScale(zoom) / zoom})`,
+        }}
+      >
+        <motion.button
+          type="button"
+          whileTap={TAP}
+          aria-label="断开连接"
+          title="断开连接 · Delete"
+          onClick={onCut}
+          style={
+            {
+              "--motion-in": ms(DURATION.fast),
+              "--motion-ease": EASE_OUT_CSS,
+            } as React.CSSProperties
+          }
+          className={cn(
+            "bg-chrome text-foreground ring-chrome-border relative grid size-9 place-items-center rounded-full ring-1 backdrop-blur-xl",
+            "shadow-lg transition-[background-color,color,scale] duration-(--motion-in) ease-(--motion-ease)",
+            "hover:bg-foreground/12 hover:scale-[1.08]",
+            "focus-visible:ring-node-ring outline-none focus-visible:ring-2",
+            // 点击区域向外扩 4px，缩到最小时也有 36px 左右
+            "before:absolute before:-inset-1 before:rounded-full before:content-['']",
+            "animate-in fade-in-0 zoom-in-60 duration-(--motion-in) ease-(--motion-ease) motion-reduce:zoom-in-100",
+          )}
+        >
+          <Scissors className="size-[18px]" strokeWidth={1.75} />
+        </motion.button>
+      </div>
+    </EdgeLabelRenderer>
   );
 }
 

@@ -46,6 +46,7 @@
   --color-chrome-hover: var(--chrome-hover);
   --color-node-ring: var(--node-ring);
   --color-credit: var(--credit);
+  --color-preset: var(--preset);
   --color-status-running: var(--status-running);
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
@@ -104,6 +105,8 @@
   --chrome-hover: oklch(0 0 0 / 0.05);
   --node-ring: oklch(0.2 0 0 / 0.85);
   --credit: oklch(0.72 0.15 75);
+  /* 节点预设 chip 和选中标记（设计稿 6.13） */
+  --preset: oklch(0.55 0.2 295);
   --status-running: oklch(0.58 0.15 250);
   --status-success: oklch(0.6 0.15 155);
   --status-warning: oklch(0.7 0.16 70);
@@ -165,6 +168,7 @@
   --chrome-hover: oklch(1 0 0 / 0.07);
   --node-ring: oklch(1 0 0 / 0.72);
   --credit: oklch(0.82 0.15 85);
+  --preset: oklch(0.6 0.19 295);
   --status-running: oklch(0.75 0.12 240);
   --status-success: oklch(0.75 0.15 155);
   --status-warning: oklch(0.8 0.15 75);
@@ -552,4 +556,11 @@
     animation-duration: 0.01ms;
     animation-delay: 0s;
   }
+}
+
+/* 提示词里只放了预设模板、还没写字：说明文字跟在模板 chip 后面（--tpl-hint 由 PromptEditor 给） */
+.prompt-tpl-hint .ProseMirror > p:first-child::after {
+  content: var(--tpl-hint);
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  pointer-events: none;
 }

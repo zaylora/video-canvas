@@ -1141,24 +1141,6 @@
     color: var(--fg);
     border-color: rgba(255, 255, 255, 0.4);
   }
-  .style-chips {
-    display: flex;
-    gap: 8px;
-  }
-  .sc {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 30px;
-    padding: 0 10px;
-    border-radius: 9px;
-    font-size: 12px;
-    color: var(--fg-3);
-    background: var(--surface-2);
-  }
-  .sc:hover {
-    color: var(--fg);
-  }
   .ta-wrap {
     position: relative;
   }
@@ -1241,6 +1223,346 @@
   }
   .mention.gone .mi-ic {
     opacity: 0.35;
+  }
+  /* ---------- 节点预设（设计稿 6.13）：底栏入口、提示词里的预设 chip、选择器 ---------- */
+  :root {
+    --preset: oklch(0.6 0.19 295);
+  }
+  .pt {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 34px;
+    border-radius: 999px;
+    color: var(--fg-2);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    transition:
+      background 0.12s,
+      color 0.12s,
+      transform 0.12s;
+  }
+  .pt:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fg);
+  }
+  .pt:active {
+    transform: scale(0.96);
+  }
+  .pt.on,
+  .pt[aria-expanded="true"] {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--fg);
+  }
+  .pt[aria-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  .pt svg.i {
+    width: 17px;
+    height: 17px;
+  }
+  .pt .dot {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--preset);
+    box-shadow: 0 0 0 2px #232326;
+  }
+  .pt .cnt {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--preset);
+    color: #fff;
+    font: 600 10px/15px var(--mono);
+    text-align: center;
+  }
+  .pchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    max-width: 168px;
+    margin: 0 2px;
+    padding: 0 8px 0 3px;
+    border-radius: 7px;
+    vertical-align: -7px;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--chrome-border);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--fg);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .pchip:hover {
+    background: var(--surface-3);
+  }
+  .pchip .pi {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: var(--preset);
+    color: #fff;
+    display: grid;
+    place-items: center;
+  }
+  .pchip .pi svg.i {
+    width: 12px;
+    height: 12px;
+  }
+  .pchip .ml {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pchip.gone {
+    background: transparent;
+    color: var(--fg-3);
+  }
+  .pchip.gone .ml {
+    text-decoration: line-through;
+  }
+  /* 只放了模板、还没写字：占位文字跟在 chip 后面 */
+  .pe.tpl-only::after {
+    content: attr(data-ph2);
+    color: var(--fg-3);
+    pointer-events: none;
+  }
+  #pop-preset {
+    z-index: 70;
+    padding: 0;
+    width: min(620px, calc(100vw - 16px));
+    overflow: hidden;
+  }
+  .pk-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 10px 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pk-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .pk-tab {
+    flex: none;
+    height: 28px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--fg-2);
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  .pk-tab:hover {
+    color: var(--fg);
+  }
+  .pk-tab.on {
+    background: var(--surface-3);
+    color: var(--fg);
+  }
+  .pk-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 6px 10px 10px;
+    max-height: min(318px, 46vh);
+    overflow-y: auto;
+  }
+  .pk-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    aspect-ratio: 16 / 9;
+    background: var(--surface-3);
+    text-align: left;
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--chrome-border);
+    transition:
+      box-shadow 0.12s,
+      transform 0.12s;
+  }
+  .pk-grid.sq .pk-card {
+    aspect-ratio: 1;
+  }
+  .pk-card:active {
+    transform: scale(0.97);
+  }
+  .pk-card:hover,
+  .pk-card:focus-visible {
+    box-shadow: inset 0 0 0 1.5px var(--node-ring);
+  }
+  .pk-card.on {
+    box-shadow: 0 0 0 2px var(--preset);
+  }
+  .pk-card img,
+  .pk-card canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .pk-card .nm {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 14px 8px 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.62));
+  }
+  .pk-card .ck {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--preset);
+    color: #fff;
+    display: none;
+    place-items: center;
+  }
+  .pk-card.on .ck {
+    display: grid;
+  }
+  .pk-card .ck svg.i {
+    width: 11px;
+    height: 11px;
+    stroke-width: 3;
+  }
+  /* 信息条会随悬停变高，弹窗锚在底部就会上下抖，已取消；留着节点只为不动脚本 */
+  .pk-foot {
+    display: none !important;
+  }
+  .pk-foot-old {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--chrome-border);
+    font-size: 12px;
+    color: var(--fg-3);
+  }
+  .pk-foot .tx {
+    flex: 1;
+    min-width: 0;
+  }
+  .pk-foot b {
+    display: block;
+    font-size: 13px;
+    color: var(--fg);
+    margin-bottom: 2px;
+  }
+  .pk-foot .sn {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .pk-foot .warn {
+    color: var(--warn);
+  }
+  .pk-foot .refs {
+    display: flex;
+    gap: 4px;
+    flex: none;
+  }
+  .pk-foot .refs span {
+    width: 56px;
+    height: 32px;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    box-shadow: inset 0 0 0 1px var(--chrome-border);
+  }
+  .tpl-cols {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px 12px;
+    padding: 12px 10px 8px;
+    align-items: start;
+  }
+  .tpl-cols .gl {
+    padding: 4px 10px 6px;
+    font-size: 12px;
+    color: var(--fg-3);
+  }
+  .tpl-cols .gap {
+    height: 10px;
+  }
+  .tpl-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    color: var(--fg);
+    outline: none;
+    transition: background 0.12s;
+  }
+  .tpl-item:hover,
+  .tpl-item:focus-visible {
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .tpl-item .ti {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--surface-3);
+    display: grid;
+    place-items: center;
+    color: var(--fg-2);
+  }
+  .tpl-item .ti svg.i {
+    width: 17px;
+    height: 17px;
+  }
+  .tpl-item.on .ti {
+    background: var(--preset);
+    color: #fff;
+  }
+  .tpl-item[aria-disabled="true"] {
+    opacity: 0.4;
+  }
+  @media (max-width: 860px) {
+    .pk-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .tpl-cols {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  @media (max-width: 520px) {
+    .pk-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .tpl-cols {
+      grid-template-columns: 1fr;
+    }
+    .pk-foot .refs {
+      display: none;
+    }
   }
   /* @ 菜单：贴着光标，放不下翻到光标上方 */
   #pop-mention {
@@ -2164,6 +2486,7 @@
 </div>
 <div class="pop" id="pop-model"></div>
 <div class="pop" id="pop-param" style="min-width: 250px"></div>
+<div class="pop" id="pop-preset" role="dialog" aria-label="选择预设"></div>
 <div class="pop" id="pop-mention" role="listbox" aria-label="引用画布素材"></div>
 
 <div class="backdrop" id="backdrop"></div>
@@ -2282,6 +2605,13 @@
       film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/>',
       back: '<path d="m12 19-7-7 7-7M19 12H5"/>',
       x: '<path d="M18 6 6 18M6 6l12 12"/>',
+      camera:
+        '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
+      box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>',
+      shapes:
+        '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/>',
+      user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41m11.32-11.32 1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/>',
       history:
         '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/>',
     };
@@ -2924,7 +3254,53 @@
         : `<span class="${cls}">${ic(KIND[s.kind].icon)}</span>`;
     }
 
-    /* 提示词存成纯文本，引用写成 @[节点 id]；编辑器里渲染成 chip */
+    /* ---------- 节点预设数据（来自 docs/research/open-ai-canvas-prompts.md，封面和动图在 open-ai-canvas-assets） ---------- */
+    const PRESET_RAW = {"style": [[1, "period_idol", "古装偶像", "period", "古偶唯美柔光风格，东方新古典写意浪漫，古装言情影像，ARRI Alexa Mini LF大画幅摄影机拍摄，[50/85/135mm]大光圈定焦镜头，1/8黑柔焦镜+薄雾滤镜效果。低"], [2, "palace_intrigue", "宫廷权谋", "period", "古装宫廷权谋正剧，冷峻肃杀风格，东方写实主义极简美学，ARRI Alexa 35 摄影机拍摄，Super35 画幅，电影级质感。低明度低饱和冷调色盘；大光比硬光布光，侧逆光伦勃朗光"], [3, "wuxia", "武侠江湖", "period", "写实武侠江湖题材，新现实主义武侠风格，沉郁凛冽的江湖烟火气质，院线电影级画面，采用ARRI Alexa 35数字电影摄影机拍摄，Super 35画幅，库克S4/i定焦镜头，35mm"], [4, "cn_urban", "国产都市", "city", "中国新写实主义都市剧情片，纪实美学风格，克制粗粝的本土都市质感，蔡司 CP.3 定焦镜头，35mm 焦段，自然景深；低饱和冷灰基底，小面积高饱和霓虹点缀，中低反差影调，实景自然光源"], [5, "urban_romance", "都市情感", "city", "韩国当代都市情感剧集影像，韩剧都市柔光风格，日常浪漫主义美学，暖柔治愈基调；ARRI Alexa Mini LF 全画幅数字摄影机，35mm 大光圈定焦镜头，1/8 黑柔焦镜，浅景"], [6, "crime_suspense", "现实悬疑", "city", "国产社会派现实主义悬疑，冷峻克制的写实影像风格，沉郁压抑的冷调悬疑气质,ARRI Alexa Mini LF全画幅数字电影机，35mm定焦镜头，电影级浅景深,整体色彩偏沉偏冷,低调"], [7, "korean_muted", "韩国冷淡", "city", "新现实主义写实美学，清冷克制的疏离感，ARRI Alexa Mini 拍摄，Super 35mm 传感器，35mm 定焦人文视角，克制虚化。低饱和冷灰调基底，阴天漫射侧光，低光比平"], [8, "nineties", "90年代", "decade", "90年代新写实主义电影，现实题材纪实感，Super 16mm胶片拍摄，柯达Vision 500T 5279胶片，Arriflex SR3摄影机，手持拍摄轻微呼吸感，蔡司25mm/3"], [9, "golden_age", "黄金时代", "decade", "美式复古好莱坞黄金时代风格，古典制片厂美学，1930s-1960s年代感，强电影叙事感，浪漫与戏剧张力并存，35mm醋酸纤维胶片，Mitchell BNC摄影机，Cooke Spe"], [10, "documentary_realism", "纪实写实", "decade", "复古叙事电影风格，35mm胶片拍摄，ARRICAM摄影机，Cooke经典定焦镜头，诗意现实主义风格，年代剧情片质感，整体暖棕基调，低饱和中低明度色彩，侧逆柔光，伦勃朗布光，中等柔反"], [11, "retro_narrative", "复古叙事", "decade", "现实主义纪实风格，35mm柯达Vision彩色胶片拍摄，Arri BL4胶片摄影机，35mm标准定焦镜头，自然空间透视，纪实自然光效，中等偏粗胶片颗粒，低通透度，空气浮尘朦胧感，强"], [12, "american_nineties", "美式90", "decade", "经典复古剧情片视觉，古典好莱坞摄影美学，35mm胶片质感，沉静叙事感，怀旧厚重氛围，35mm柯达Vision3彩色电影胶片，Arriflex 535B摄影机，180°快门角度，Pa"], [13, "showa_monochrome", "昭和黑白", "decade", "日本昭和黑白电影风格，35mm黑白负片胶片拍摄，机械式胶片电影摄影机，，50mm标准定焦镜头，f/4.0中等光圈，日式写实主义，物哀美学，沉静克制的视觉基调，留白式构图，纯黑白灰阶"], [14, "vintage_industrial", "老式工业", "decade", "20 世纪中期重工业纪实影像，胶片工业美学，冷峻厚重的工业力量感；35mm 柯达 Ektachrome 彩色反转胶片，Arriflex 35 II 摄影机，Cooke Speed "], [15, "sixties_poster", "60海报", "decade", "50-60年代美式复古海报风格，Mid-Century Modern插画美学，高饱和度撞色搭配，强烈的摄影棚硬光与深邃阴影，高反差长调影调，清晰可见的CMYK四色印刷网点与罗塞塔纹"], [16, "hk_retro", "复古港片", "decade", "90年代香港电影风格，35mm柯达500T胶片拍摄，Arriflex 435摄影机，35mm标准定焦镜头，冷暖对冲色彩体系，混合光源照明，硬光侧逆光布光，高反差硬调影调，暗部扎实厚"], [17, "retro_film", "复古胶片", "decade", "复古柯达胶片摄影风格，Kodak Portra 400与Gold 200色彩科学，细腻的ISO 400胶片颗粒质感，暖黄与冷蓝双调的怀旧色偏，定焦老镜头（Helios/Canon "], [18, "healing_life", "生活治愈", "life", "日式生活流治愈影像，整体基调静谧松弛温润，自然主义日常美学；16mm彩色负片拍摄，35mm/50mm/85mm定焦镜头组，漫射自然光为主、暖柔光为辅，软调低反差影调，明暗过渡平缓；"], [19, "youth_film", "青春胶片", "life", "日式青春胶片风格，135 彩色负片，富士 C200 质感，大光圈定焦拍摄，平成青春映画美学，清新写实风格,低饱和高明度色彩，阴影青蓝色偏高光暖黄调，中低反差高调影调，宽动态范围，明"], [20, "atompunk", "原子朋克", "science_fiction", "原子朋克复古科幻，黄金时代科幻美学，1950 年代复古未来主义，前数字时代的未来幻想，冷峻工业感与浪漫人文感交织；35mm 电影胶片，Panavision C 系列变形宽银幕镜头，"], [21, "neon_punk", "霓虹朋克", "science_fiction", "科幻反乌托邦赛博朋克风格，新黑色电影叙事逻辑，高科技低生活二元对立气质，冷峻迷幻的反乌托邦都市基调，ARRI Alexa Mini LF 大画幅摄影机拍摄，变形宽银幕镜头，带水平眩"], [22, "hard_scifi", "硬核科幻", "science_fiction", "硬核科幻风格，严谨的工程技术美学，极低饱和的功能指示色点缀，航天级铝合金与钛合金精密加工质感，暴露可循的管道与电缆走线逻辑，高反差无情阴影，真空级通透度与零浮尘空气感，零颗粒数字成"], [23, "steampunk", "蒸汽朋克", "science_fiction", "维多利亚时代蒸汽朋克风格，复古机械美学与古典贵族服饰融合，中高反差长调影调，金属镜面高光与天鹅绒暗部层次，精密渐开线齿轮与铆接蒸汽管道结构，新艺术运动与哥特复兴装饰纹样，新维多利亚"], [24, "biopunk", "血肉朋克", "science_fiction", "科幻反乌托邦血肉朋克美学，生物工业共生题材，肉体与工业深度侵蚀融合，有机生长替代工业组装，压抑诡谲的生理冲击感，暗黑生物科技基，35mm柯达Vision3 500T胶片拍摄，ARR"], [25, "psychological_horror", "心理恐怖", "type", "院线级恐怖电影，写实主义恐怖风格，哥特暗黑美学，日常空间异化，心理惊悚氛围，35mm胶片拍摄，ARRICAM ST摄影机，老式电影镜头，轻微暗角与呼吸效应，高反差硬调，大面积纯黑暗"], [26, "cult_film", "邪典cult", "type", "美式复古怪诞邪典风格，50-70年代美式复古背景，林奇式超现实悬疑，乡村哥特怪核美学，克制型心理惊悚，平静下的诡异感，35mm彩色胶片拍摄，Arriflex 35mm胶片摄影机，老"], [27, "modern_warfare", "现代战争", "type", "写实复古战争史诗画面，35mm 柯达电影胶片拍摄，潘纳维申复古变形镜头，自然胶片颗粒，轻微镜头眩光与焦外拉丝；低饱和低明度影调，高反差低调硬调，侧逆光硬光布光，冷暖光影对比；中等偏"], [28, "wasteland_road", "荒野公路", "type", "荒野叙事电影质感，新写实主义融合史诗气质，粗粝冷峻的旷野美学，ARRI Alexa Mini LF大画幅数字摄影机，变形宽银幕定焦镜头成像，14档宽动态范围，自然光效主导，黄金时刻"], [29, "western_cowboy", "西部牛仔", "type", "经典美式西部风格，强烈的正午直射阳光，边缘锋利的硬阴影，极高反差的影调结构，风沙扬尘的大气介质，35mm 胶片颗粒感，变形宽银幕的横向拉伸与光学眩光，复古西部电影的严峻史诗氛围，帽"], [30, "neo_chinese", "新兴中式", "poetic", "电影级画面，新中式诗意写实风格，东方人文意境，阿莱Alexa Mini LF拍摄，蔡司电影定焦镜头，35mm柯达夜景胶片质感，霁蓝灰蓝冷蓝辉光，低饱和冷暖对冲，柔光布光，半明半暗留"], [31, "high_key_absurd", "高调荒诞", "poetic", "35mm胶片质感，高调荒诞美学，超现实怪诞风格，ARRICAM胶片摄影机，潘纳维申C系列变形镜头，柯达Vision3 50D彩色负片，高短调影调，大面积柔光照明，光比1:2，高明度"], [32, "shanghai_animation", "上美动漫", "animation", "中国动画学派，上海美术电影制片厂经典风格，手绘赛璐璐动画正片，中国传统工笔重彩，东方古典浪漫主义，影视级叙事质感，ISO100低感光度，平光为主弱塑形光，装饰性布光，中国传统矿物颜"], [33, "otomo_akira", "大友克洋", "animation", "大友克洋风格，硬核科幻写实动画，赛璐璐手绘质感，工业精密美学，冷峻末世基调，低调硬光布光，大光比高反差硬调，人工霓虹混合光源，中低通透度，强空间纵深感，12档动态范围，中高锐度，暗"], [34, "stop_motion", "定格动画", "animation", "逐帧定格动画，物理实体微缩模型，手工制作质感，移轴效果，自然景深，精准透视，柔光主光，低位漫反射补光，中对比度全阶影调，明暗过渡自然，黏土/树脂/布艺/木质实体材质，统一微缩比例，"], [35, "claymation", "黏土动画", "animation", "传统手工黏土定格动画，100mm f/2.8微距镜头，大画幅传感器，宽动态范围，实体塑性黏土材质，表面带手工塑形细微肌理，微缩实体模型场景，手工制作轻微不完美痕迹，45°侧位主光，"], [36, "chinese_ink", "中式水墨", "drawing", "新中式数字水墨影像，东方诗意美学，虚实相生，留白见意，气韵生动，墨分五色，清雅空灵的电影画面，墨色五阶为主色，软反差低对比度，细腻灰阶过渡，自然漫射柔光，阴影边缘晕染虚化，中低调影"], [37, "ukiyo_e", "浮世绘风", "drawing", "日本传统浮世绘木版画风格，葛饰北斋与歌川广重艺术风格，流畅有力的书法性黑色轮廓线，大面积矿物颜料平涂上色，层次分明的硬边阴影切割，无渐变渲染的2-3级色阶，和纸植物纤维的天然纹理质"], [38, "shadow_puppet", "传统皮影", "drawing", "中国传统非遗皮影戏风格，蔡司Supreme Prime定焦镜头，Super 35画幅，16档宽动态范围，中高反差戏剧影调，传统矿物颜料色系，明暗层级丰富，逆光下皮料半通透，手工兽皮"], [39, "egyptian_mural", "埃及壁画", "drawing", "史诗级古埃及壁画风格，平涂矿物色彩，硬朗粗粝的深色轮廓线，几何化边框纹样，象形文字铭文装饰，局部鎏金斑驳质感，极低反差影调，神秘古老仪式氛围，浮尘空气感，ARRI Alexa 65"], [40, "minimal_illustration", "简约插画", "drawing", "现代扁平化设计风格，纯矢量图形质感，极简几何形状构成，高饱和纯色块填充，高对比度色相搭配，清晰锐利的轮廓线条（单像素级），绝对无阴影、无渐变、无纹理、无材质表现的平面设计法则，严格"], [41, "dali_surreal", "荒诞达利", "drawing", "达利式超现实主义影视画面，偏执批判派梦境美学，潜意识荒诞隐喻，古典艺术厚重调性，非逻辑错视空间，写实细节搭配违背物理规则的形态,65mm柯达Vision3 50D胶片拍摄，Pana"], [42, "game_concept", "游戏概念", "drawing", "美国游戏概念艺术，好莱坞写实主义数字概念设计，Master Prime定焦镜头，大光圈浅景深，轻微自然暗角与镜头眩光，低饱和基底色，高对比度点缀色，侧逆轮廓光，伦勃朗布光逻辑，硬调"], [43, "chinese_myth", "传统神话", "myth", "东方新古典神话史诗，新东方主义美学，上古神话题材，兼具洪荒厚重感与空灵仙气，写实与东方写意结合，庄肃瑰丽，65mm大画幅传感器，16mm柯达胶片颗粒，电影级浅景深，变形宽银幕散景，"], [44, "greek_myth", "希腊神话", "myth", "希腊神话史诗风格，35mm柯达胶片拍摄，Vision3胶片质感，中等胶片颗粒，高动态范围，新古典主义史诗风格，沉郁雄浑的神性史诗气质，考古级写实质感，地中海硬调自然光，侧逆光塑造雕"], [45, "western_fantasy", "西式魔幻", "myth", "黑暗奇幻影视，新哥特现实主义风格，史诗悲剧质感，神性陨落与蛮荒生长的核心情绪，辉煌残响中的绝望诗意，写实化奇幻叙事，35mm柯达Vision3 5219胶片拍摄，Panavisio"]], "motion": [[46, "static_shot", "固定镜头", "basic", "建立冷静秩序", "运镜：固定机位，镜头位置和拍摄方向都保持不变，画面构图稳定，由主体动作或画面内部变化形成运动感。"], [47, "tilt_up", "镜头上摇", "basic", "展示高度威压", "运镜：固定机位上摇，镜头位置不移动，只沿垂直方向缓慢向上转动，画面重心从下方逐步移向上方。"], [48, "tilt_down", "镜头下摇", "basic", "从环境落到人", "运镜：固定机位下摇，镜头位置不移动，只沿垂直方向缓慢向下转动，画面重心从上方逐步移向下方。"], [49, "pan_left", "镜头左摇", "basic", "横向展示空间", "运镜：固定机位左摇，镜头位置不移动，只沿水平方向缓慢向左转动，让画面内容从右向左连续变化。"], [50, "pan_right", "镜头右摇", "basic", "引出画外信息", "运镜：固定机位右摇，镜头位置不移动，只沿水平方向缓慢向右转动，让画面内容从左向右连续变化。"], [51, "crane_up", "镜头上升", "basic", "展开场景规模", "运镜：镜头垂直上升，拍摄方向基本保持稳定，机位高度从低到高变化，画面视角随高度产生变化。"], [52, "truck_left", "镜头左移", "basic", "制造空间视差", "运镜：镜头左移，机位整体向左横向平移，拍摄方向基本不变，前景与背景形成自然视差。"], [53, "crane_down", "镜头下降", "basic", "从全局聚焦", "运镜：镜头垂直下降，拍摄方向基本保持稳定，机位高度从高到低变化，画面视角随高度产生变化。"], [54, "truck_right", "镜头右移", "basic", "制造空间视差", "运镜：镜头右移，机位整体向右横向平移，拍摄方向基本不变，前景与背景形成自然视差。"], [55, "dolly_in", "镜头前推", "basic", "强调情绪靠近", "运镜：镜头缓慢前推，机位沿镜头朝向向前移动，主体在画面中逐渐变大，空间层次产生自然视差。"], [56, "dolly_out", "镜头后移", "basic", "展示人物孤独", "运镜：镜头缓慢后拉，机位沿镜头朝向向后移动，主体在画面中逐渐变小，画面范围逐步变宽。"], [57, "zoom_in", "变焦推进", "basic", "突出表情反应", "运镜：缓慢变焦推进，机位保持不动，只通过焦距变化让画面范围逐渐收紧。"], [58, "zoom_out", "变焦拉远", "basic", "从局部到全貌", "运镜：缓慢变焦拉远，机位保持不动，只通过焦距变化让画面范围逐渐放宽。"], [59, "follow_tracking", "跟随拍摄", "follow", "跟住人物行动", "运镜：跟随拍摄，镜头跟随主体运动方向移动，与主体保持相对稳定的距离和构图。"], [60, "leading_tracking", "迎面跟拍", "follow", "保留人物表情", "运镜：迎面跟拍，镜头位于主体前方并随主体运动同步后退，保持主体正面信息稳定可见。"], [61, "profile_tracking", "侧面跟拍", "follow", "强化行进节奏", "运镜：侧面跟拍，镜头在主体侧方与其平行移动，保持侧向构图稳定，并形成横向空间视差。"], [62, "handheld_shot", "手持拍摄", "follow", "增加真实紧张", "运镜：手持拍摄，镜头带轻微自然晃动和近距离临场感，可随主体动作产生小幅调整。"], [63, "pov_shot", "第一视角", "follow", "进入角色视角", "运镜：第一视角，镜头模拟角色视线和身体移动，带轻微头部晃动和主观视角的运动反馈。"], [64, "steadicam_walkthrough", "稳定器行进", "follow", "平稳进入现场", "运镜：稳定器行进，镜头以稳定、连续的方式向前或跟随移动，运动平滑，晃动幅度低。"], [65, "slider_reveal", "横滑揭示", "reveal", "从遮挡露主体", "运镜：横滑揭示，镜头从遮挡关系中横向滑出，逐步露出被遮挡的主体或关键信息。"], [66, "foreground_wipe", "前景擦过", "reveal", "用遮挡完成切换", "运镜：前景擦过，近处遮挡物从镜头前掠过并短暂覆盖画面，随后露出新的画面内容。"], [67, "push_through", "穿越镜头", "reveal", "穿过边界入场", "运镜：穿越镜头，镜头持续快速向前推进，并产生短暂运动模糊，穿过明确的前景边界或空间层次，进入后方画面，最后落到新的构图或目标上。"], [68, "whip_pan", "甩摇", "reveal", "快速切换信息", "运镜：甩摇，镜头快速水平转动并产生短暂运动模糊，最后落到新的构图或目标上。"], [69, "rack_focus", "焦点转移", "reveal", "注意力换目标", "运镜：焦点转移，镜头位置可以不变，焦点从一个画面层次平滑切换到另一个画面层次。"], [70, "crash_zoom", "急速变焦", "emotion", "放大戏剧反应", "运镜：急速变焦推进，机位保持不动，画面范围快速收紧到目标区域，形成突然强调。"], [71, "dolly_zoom", "希区柯克", "emotion", "现实崩塌瞬间", "运镜：希区柯克式变焦，机位移动与反向变焦同时发生，主体大小基本保持稳定，背景透视发生明显变化。"], [72, "orbit_180", "环绕拍摄", "emotion", "强化人物气场", "运镜：环绕拍摄，镜头围绕主体平稳旋转约180度，主体保持在画面核心位置，背景产生连续旋转视差。"], [73, "ascending_orbit", "盘旋抬升", "emotion", "高光登场时刻", "运镜：盘旋抬升，镜头围绕主体旋转的同时逐渐升高，主体保持锁定，机位高度持续变化。"], [74, "descending_orbit", "盘旋下降", "emotion", "巨物压迫登场", "运镜：盘旋下降，镜头围绕主体旋转的同时逐渐降低，主体保持锁定，机位高度持续变化。"], [75, "fpv_flythrough", "穿越机运镜", "aerial", "高速掠过空间", "运镜：穿越机运镜，fpv 镜头以第一视角高速穿行空间，贴近场景边界和主体灵活飞行，带明显速度感与滚转俯仰变化。"], [76, "aerial_establishing", "高空航拍", "aerial", "建立宏大世界", "运镜：高空航拍，镜头以高角度俯视画面，并保持稳定滑行，用于呈现空间关系和整体布局。"], [77, "drone_dive", "俯冲下降", "aerial", "从高空压向目标", "运镜：俯冲下降，镜头从高处向目标方向快速下降并靠近，形成明显速度感和压迫感。"], [78, "pull_away", "拉升离场", "aerial", "人变小世界变大", "运镜：拉升离场，镜头从主体附近向后并向上移动，主体在画面中逐渐变小，画面范围逐步扩大。"]], "tpl": [[79, "multi_camera_nine_grid", "多机位九宫格", "生成一个 3x3 九宫格的多机位联系表"], [80, "story_pitch_four_grid", "剧情推演四宫格", "生成一个 2x2 四宫格的剧情推演联系表"], [81, "character_face_three_view", "角色脸部三视图", "生成一个 3x2 三宫图的角色脸部联系表"], [82, "product_three_view", "产品三视图", "生成一个 3x2 三宫图的产品联系表"], [83, "storyboard_25_grid", "25宫格连贯分镜", "生成一个 5x5 25宫格的连贯分镜联系表"], [84, "cinematic_light_correction", "电影级光影校正", "修正电影灯光，使场景更真实"], [85, "character_three_view_generation", "角色三视图生成", "生成一个 16x9 三宫图的角色角色联系表"], [86, "image_projection_after_3s", "画面推演-3秒后", "创建一个 3秒后投影的图像，作为视频的一帧"], [87, "image_projection_before_5s", "画面推演-5秒前", "创建一个 5秒前投影的图像，作为视频的一帧"]]};
+    const ASSET = "../../research/open-ai-canvas-assets/";
+    const pad3 = (n) => String(n).padStart(3, "0");
+    const STYLE_CAT = { period: "古装", city: "都市", decade: "年代", life: "生活", science_fiction: "科幻", type: "类型", poetic: "写意", animation: "动画", drawing: "绘画", myth: "神话" };
+    const MOTION_CAT = { basic: "基础控制", follow: "人物跟拍", reveal: "揭示转场", emotion: "情绪强化", aerial: "空间航拍" };
+    /* 模板：分组与图标 */
+    const TPL_META = {
+      storyboard_25_grid: ["分镜叙事", "film"],
+      story_pitch_four_grid: ["分镜叙事", "grid"],
+      image_projection_after_3s: ["分镜叙事", "clock"],
+      image_projection_before_5s: ["分镜叙事", "history"],
+      cinematic_light_correction: ["质感调节", "sun"],
+      multi_camera_nine_grid: ["空间与机位", "grid"],
+      character_face_three_view: ["设定图", "user"],
+      character_three_view_generation: ["设定图", "user"],
+      product_three_view: ["设定图", "box"],
+    };
+    const TPL_ORDER = ["storyboard_25_grid", "story_pitch_four_grid", "image_projection_after_3s", "image_projection_before_5s", "cinematic_light_correction", "multi_camera_nine_grid", "character_face_three_view", "character_three_view_generation", "product_three_view"];
+    const PRESET = {
+      style: PRESET_RAW.style.map(([n, id, name, cat, p]) => ({
+        kind: "style", id, n, name, cat, p,
+        img: `${ASSET}style/${pad3(n)}-${id}.webp`,
+        refs: ["male", "female", "youth", "elder"].map((r) => `${ASSET}style-reference/${pad3(n)}-${r}.webp`),
+      })),
+      motion: PRESET_RAW.motion.map(([n, id, name, cat, use, p]) => ({
+        kind: "motion", id, n, name, cat, use, p, img: `${ASSET}motion/${pad3(n)}-${id}.webp`,
+      })),
+      tpl: TPL_ORDER.map((id) => {
+        const r = PRESET_RAW.tpl.find((x) => x[1] === id);
+        return { kind: "tpl", id, n: r[0], name: id === "character_three_view_generation" ? "角色三视图" : r[2], use: r[3], p: r[3], group: TPL_META[id][0], icon: TPL_META[id][1] };
+      }),
+    };
+    const PKIND = {
+      style: { label: "风格", icon: "box", multi: false },
+      motion: { label: "运镜", icon: "camera", multi: true },
+      tpl: { label: "预设模板", icon: "shapes", multi: false },
+    };
+    /* 方向相反的运镜：同时选了只提醒，不拦 */
+    const OPPOSITE = { tilt_up: "tilt_down", tilt_down: "tilt_up", pan_left: "pan_right", pan_right: "pan_left", crane_up: "crane_down", crane_down: "crane_up", truck_left: "truck_right", truck_right: "truck_left", dolly_in: "dolly_out", dolly_out: "dolly_in", zoom_in: "zoom_out", zoom_out: "zoom_in" };
+    const findPreset = (kind, id) => PRESET[kind].find((x) => x.id === id);
+    /* 这个节点能用哪几类：图片 = 风格 + 模板，视频 = 运镜 */
+    const presetKinds = (n) => (n.kind === "image" ? ["style", "tpl"] : n.kind === "video" ? ["motion"] : []);
+    const PTOKEN = /#\[(style|motion|tpl):(\w+)\]/g;
+    const ANYTOKEN = /@\[([\w-]+)\]|#\[(style|motion|tpl):(\w+)\]/g;
+
+    /* 提示词存成纯文本，引用写成 @[节点 id]，预设写成 #[种类:id]；编辑器里渲染成 chip */
     const TOKEN = /@\[([\w-]+)\]/g;
     function chipHTML(id, n) {
       const s = byId(id),
@@ -2933,12 +3309,20 @@
       const tip = ok ? `引用「${label}」` : "引用已断开：重新连线，或删掉这个引用";
       return `<span class="mention${ok ? "" : " gone"}" contenteditable="false" data-ref="${id}" title="${esc(tip)}">${s ? thumbHTML(s, "mi-ic") : `<span class="mi-ic">${ic("x")}</span>`}<span class="ml">${esc(label)}</span></span>`;
     }
+    function pchipHTML(kind, id) {
+      const p = findPreset(kind, id),
+        k = PKIND[kind];
+      const tip = p
+        ? `${k.label}「${p.name}」· 发送时展开为：${p.p}${p.p.length >= 90 ? "…" : ""}`
+        : "这个预设已不存在，发送时按普通文字处理";
+      return `<span class="pchip${p ? "" : " gone"}" contenteditable="false" data-pk="${kind}" data-pid="${id}" title="${esc(tip)}"><span class="pi">${ic(k.icon)}</span><span class="ml">${esc(p ? p.name : "已下架的预设")}</span></span>`;
+    }
     const textHTML = (t) => esc(t).replace(/\n/g, "<br>");
     function promptHTML(str, n) {
       let out = "",
         last = 0;
-      for (const m of str.matchAll(TOKEN)) {
-        out += textHTML(str.slice(last, m.index)) + chipHTML(m[1], n);
+      for (const m of str.matchAll(ANYTOKEN)) {
+        out += textHTML(str.slice(last, m.index)) + (m[1] ? chipHTML(m[1], n) : pchipHTML(m[2], m[3]));
         last = m.index + m[0].length;
       }
       out += textHTML(str.slice(last));
@@ -2950,6 +3334,7 @@
         node.childNodes.forEach((c) => {
           if (c.nodeType === 3) s += c.nodeValue;
           else if (c.classList?.contains("mention")) s += `@[${c.dataset.ref}]`;
+          else if (c.classList?.contains("pchip")) s += `#[${c.dataset.pk}:${c.dataset.pid}]`;
           else if (c.tagName === "BR") s += "\n";
           else {
             if (c.tagName === "DIV" && s && !s.endsWith("\n")) s += "\n";
@@ -2960,9 +3345,16 @@
       return s.replace(/\n$/, "");
     }
     /* 字数：chip 按素材名计 */
-    const promptLen = (str) => (str || "").replace(TOKEN, (_, id) => byId(id)?.label || "").length;
-    const syncEmpty = (el) =>
-      el.classList.toggle("is-empty", !el.textContent && !el.querySelector(".mention"));
+    const promptLen = (str) =>
+      (str || "")
+        .replace(TOKEN, (_, id) => byId(id)?.label || "")
+        .replace(PTOKEN, (_, k, id) => findPreset(k, id)?.name || "").length;
+    const syncEmpty = (el) => {
+      el.classList.toggle("is-empty", !el.textContent && !el.querySelector(".mention, .pchip"));
+      /* 只有模板 chip、没写字：占位文字跟在 chip 后面 */
+      const free = readPrompt(el).replace(ANYTOKEN, "").trim();
+      el.classList.toggle("tpl-only", !free && !!el.querySelector('.pchip[data-pk="tpl"]'));
+    };
     function setEditor(el, n) {
       el.innerHTML = promptHTML(n.prompt || "", n);
       syncEmpty(el);
@@ -3331,7 +3723,6 @@
     }
     <div class="p-top"><div class="refs" id="refs"></div>
       ${ops.length > 1 ? "" : `<button class="expand" id="btn-expand" title="放大编辑" aria-label="放大编辑">${ic("expand")}</button>`}</div>
-    ${n.kind === "image" ? `<div class="style-chips"><button class="sc">风格转绘 ${ic("layers", 14)}</button><button class="sc">调色盘 ${ic("palette", 14)}</button></div>` : ""}
     <div class="ta-wrap"><div class="pe" id="prompt" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" data-ph="${k.ph}输入 @ 引用画布里的素材"></div></div>
     <div class="counter num" id="counter"></div>
     <div class="p-bar">
@@ -3343,6 +3734,7 @@
           : ""
       }
       ${n.kind === "image" ? `<button class="pc" id="chip-param">${ic("crop", 15)}比例 ${n.params.ratio}</button><button class="pc" id="chip-size">${ic("image", 15)}${n.params.size}</button>` : ""}
+      ${presetKinds(n).map((k) => `<button class="pt" id="pt-${k}" data-pk="${k}" aria-haspopup="dialog" aria-expanded="false" aria-label="${PKIND[k].label}"></button>`).join("")}
       <span class="grow"></span>
       <button class="pc" id="chip-batch" title="一次生成多张，结果都进节点历史">${ic("copy", 15)}批量${n.params.batch > 1 ? ` ×${n.params.batch}` : ""}</button>
       <span class="send" id="send"><span class="cost num">${ic("spark")}<span id="cost">${fmt(cost(n))}</span></span><button class="go" id="go" aria-label="发送生成 ⌘↵" title="发送生成 ⌘↵">${ic("up")}</button></span>
@@ -3402,6 +3794,7 @@
             : credits < c
               ? `积分不足，还差 ${fmt(c - credits)}`
               : "";
+      syncPresetUI(n);
       s.classList.toggle("off", !!reason);
       go.title = reason || "发送生成 ⌘↵";
       s.title = reason;
@@ -3463,8 +3856,220 @@
         return openMention({ el: null, n, mode: "link", rect: add.getBoundingClientRect(), q: "" });
       const tile = e.target.closest(".ref[data-ref]");
       if (tile) return insertChipFromTile(tile.dataset.ref);
-      if (e.target.closest(".sc")) return toast("原型：风格转绘 / 调色盘按模型能力显示", "info");
+      const pt = e.target.closest(".pt[data-pk]");
+      if (pt) return openPresetPop(n, pt.dataset.pk, pt);
       if (e.target.closest('[aria-disabled="true"]')) return toast("分镜栏编辑放在二期", "info");
+    });
+    /* ---------- 节点预设：入口状态、插入 / 替换 / 取消 chip、选择器 ---------- */
+    const chipsOf = (el, kind) => $$(`.pchip[data-pk="${kind}"]`, el);
+    /* 入口按钮的选中态（高亮 + 小点，运镜选了 2 条以上显示数量）和模板的占位文字 */
+    function syncPresetUI(n) {
+      const el = $("#prompt");
+      if (!el) return;
+      presetKinds(n).forEach((k) => {
+        const b = $("#pt-" + k);
+        if (!b) return;
+        const cs = chipsOf(el, k),
+          running = n.status === "running";
+        b.classList.toggle("on", cs.length > 0);
+        b.setAttribute("aria-disabled", running ? "true" : "false");
+        const names = cs.map((c) => findPreset(k, c.dataset.pid)?.name).filter(Boolean);
+        b.title = running ? "生成中，暂时不能改预设" : `${PKIND[k].label}${names.length ? "：" + names.join("、") : ""}`;
+        b.innerHTML = ic(PKIND[k].icon) + (cs.length > 1 ? `<span class="cnt num">${cs.length}</span>` : cs.length ? '<i class="dot"></i>' : "");
+      });
+      const t = chipsOf(el, "tpl")[0];
+      el.dataset.ph2 = t ? `${findPreset("tpl", t.dataset.pid)?.use || ""}。可以补充说明，也可以直接发送` : "";
+      syncEmpty(el);
+    }
+    function makeChip(kind, id) {
+      const tmp = document.createElement("span");
+      tmp.innerHTML = pchipHTML(kind, id);
+      return tmp.firstChild;
+    }
+    const popIn = (el) =>
+      M && !REDUCE && M.animate(el, { opacity: [0, 1], scale: [0.9, 1] }, { duration: 0.12, ease: [0.2, 0, 0, 1] });
+    /* 选中一个预设：同类单选的原位替换，运镜点一下加、再点取消；再点已选的单选项也是取消 */
+    function applyPreset(kind, id, target) {
+      const n = sel(),
+        el = $("#prompt");
+      if (!n || !el || n.status === "running") return;
+      const before = takeBefore(),
+        cur = chipsOf(el, kind),
+        same = cur.find((c) => c.dataset.pid === id);
+      const drop = (c) => {
+        const nx = c.nextSibling;
+        if (nx && nx.nodeType === 3 && nx.nodeValue.startsWith(" ")) nx.nodeValue = nx.nodeValue.slice(1);
+        c.remove();
+      };
+      if (same) drop(same);
+      else if (target?.isConnected) {
+        /* 从 chip 点进来的：原位换成选中的这一个 */
+        const nc = makeChip(kind, id);
+        target.replaceWith(nc);
+        popIn(nc);
+      } else if (!PKIND[kind].multi && cur.length) {
+        const nc = makeChip(kind, id);
+        cur[0].replaceWith(nc);
+        popIn(nc);
+      } else {
+        const chip = makeChip(kind, id),
+          sp = document.createTextNode(" ");
+        let r;
+        if (kind === "tpl") {
+          /* 模板是整条任务的说明，永远排在最前面 */
+          r = document.createRange();
+          r.setStart(el, 0);
+          r.collapse(true);
+        } else {
+          r = lastRange && el.contains(lastRange.startContainer) ? lastRange : null;
+          if (!r) {
+            r = document.createRange();
+            r.selectNodeContents(el);
+            r.collapse(false);
+          }
+        }
+        r.deleteContents();
+        r.insertNode(sp);
+        r.insertNode(chip);
+        popIn(chip);
+      }
+      n.prompt = readPrompt(el);
+      syncEmpty(el);
+      commit(before);
+    }
+    const stateText = (kind, p) => {
+      const el = $("#prompt");
+      const opp = kind === "motion" && OPPOSITE[p.id] && chipsOf(el, "motion").find((c) => c.dataset.pid === OPPOSITE[p.id]);
+      return opp ? `<div class="warn">与已选的「${findPreset("motion", opp.dataset.pid).name}」方向相反，模型可能只执行其中一个</div>` : "";
+    };
+    function openPresetPop(n, kind, anchor, target) {
+      if (n.status === "running") return;
+      const pop = $("#pop-preset"),
+        el = $("#prompt");
+      const selected = () => new Set(chipsOf(el, kind).map((c) => c.dataset.pid));
+      const hint = {
+        style: "悬停卡片查看人物参考图；点击选用，再点一次取消",
+        motion: "可多选，点卡片加入或取消，按光标位置写进提示词；悬停播放示意动图",
+        tpl: "预设模板会改写整个任务，只能选一个",
+      }[kind];
+      const foot = (html) => ($("#pk-foot").innerHTML = html || `<div class="tx">${hint}</div>`);
+      let body = "",
+        cat = "all";
+      if (kind === "tpl") {
+        const groups = ["分镜叙事", "质感调节", "空间与机位", "设定图"];
+        const col = (gs) =>
+          `<div>${gs.map((g, i) => `<div class="gl">${g}</div>` + PRESET.tpl.filter((t) => t.group === g).map((t) => `<button class="tpl-item${selected().has(t.id) ? " on" : ""}" data-pid="${t.id}"><span class="ti">${ic(t.icon)}</span>${t.name}</button>`).join("") + (i < gs.length - 1 ? '<div class="gap"></div>' : "")).join("")}</div>`;
+        body = `<div class="tpl-cols">${col([groups[0]])}${col([groups[1], groups[2]])}${col([groups[3]])}</div>`;
+      } else {
+        const cats = kind === "style" ? STYLE_CAT : MOTION_CAT;
+        body = `<div class="pk-tabs" role="tablist"><button class="pk-tab on" data-cat="all">全部</button>${Object.entries(cats).map(([c, l]) => `<button class="pk-tab" data-cat="${c}">${l}</button>`).join("")}</div><div class="pk-grid${kind === "motion" ? " sq" : ""}" id="pk-grid"></div>`;
+      }
+      pop.innerHTML = body + '<div class="pk-foot" id="pk-foot"></div>';
+      foot();
+      const paintGrid = () => {
+        const g = $("#pk-grid");
+        if (!g) return;
+        const sels = selected();
+        g.innerHTML = PRESET[kind].filter((p) => cat === "all" || p.cat === cat).map((p) => `<button class="pk-card${sels.has(p.id) ? " on" : ""}" data-pid="${p.id}" aria-pressed="${sels.has(p.id)}" aria-label="${p.name}">${kind === "style" ? `<img src="${p.img}" alt="" loading="lazy" draggable="false">` : `<canvas width="256" height="256"></canvas>`}<span class="nm">${p.name}</span><span class="ck">${ic("check")}</span></button>`).join("");
+        if (kind === "motion")
+          $$(".pk-card", g).forEach((c) => {
+            /* 动图不能暂停：先解一帧画到 canvas 当静态首帧，悬停才换成真的动图 */
+            const im = new Image();
+            im.onload = () => c.querySelector("canvas")?.getContext("2d").drawImage(im, 0, 0, 256, 256);
+            im.src = findPreset("motion", c.dataset.pid).img;
+          });
+      };
+      const sync = () => {
+        const sels = selected();
+        $$(".pk-card, .tpl-item", pop).forEach((c) => {
+          const on = sels.has(c.dataset.pid);
+          c.classList.toggle("on", on);
+          c.setAttribute("aria-pressed", on);
+        });
+      };
+      paintGrid();
+      const show = (c) => {
+        const p = findPreset(kind, c.dataset.pid);
+        if (!p) return;
+        if (kind === "style")
+          foot(`<div class="tx"><b>${p.name}</b><span class="sn">${esc(p.p)}…</span></div><div class="refs">${p.refs.map((r) => `<span style="background-image:url(${r})"></span>`).join("")}</div>`);
+        else if (kind === "motion")
+          foot(`<div class="tx"><b>${p.name} · ${p.use}</b><span class="sn">${esc(p.p.replace(/^运镜：/, ""))}</span>${stateText(kind, p)}</div>`);
+        else foot(`<div class="tx"><b>${p.name}</b><span class="sn">${esc(p.use)}</span></div>`);
+        if (kind === "motion") {
+          const cv = c.querySelector("canvas");
+          if (cv && !c.querySelector("img")) {
+            const im = document.createElement("img");
+            im.alt = "";
+            im.draggable = false;
+            im.src = p.img + "?r=" + Date.now();
+            c.prepend(im);
+          }
+        }
+      };
+      const leave = (c) => {
+        c.querySelector("img")?.remove();
+        foot();
+      };
+      pop.onmouseover = (e) => {
+        const c = e.target.closest("[data-pid]");
+        if (c && !c.dataset.hot) {
+          c.dataset.hot = "1";
+          show(c);
+        }
+      };
+      pop.onmouseout = (e) => {
+        const c = e.target.closest("[data-pid]");
+        if (c && !c.contains(e.relatedTarget)) {
+          delete c.dataset.hot;
+          leave(c);
+        }
+      };
+      pop.onfocusin = (e) => e.target.dataset?.pid && show(e.target);
+      pop.onfocusout = (e) => e.target.dataset?.pid && leave(e.target);
+      pop.onclick = (e) => {
+        const tab = e.target.closest(".pk-tab");
+        if (tab) {
+          cat = tab.dataset.cat;
+          $$(".pk-tab", pop).forEach((t) => t.classList.toggle("on", t === tab));
+          return paintGrid();
+        }
+        const c = e.target.closest("[data-pid]");
+        if (!c) return;
+        /* 替换模式下，运镜已经在别处选过的那一条不能再选 */
+        if (target && c.dataset.pid !== target.dataset.pid && selected().has(c.dataset.pid)) {
+          foot('<div class="tx" style="color:var(--warn)">这一条已经选过了，换一条别的</div>');
+          return;
+        }
+        applyPreset(kind, c.dataset.pid, target);
+        if (PKIND[kind].multi && !target) {
+          sync();
+          show(c);
+        } else {
+          closePops();
+          el.focus();
+        }
+      };
+      /* 方向键在卡片间移动 */
+      pop.onkeydown = (e) => {
+        const items = $$("[data-pid]:not([aria-disabled='true'])", pop),
+          i = items.indexOf(document.activeElement);
+        if (i < 0 || !e.key.startsWith("Arrow")) return;
+        const cols = kind === "tpl" ? 1 : getComputedStyle($("#pk-grid")).gridTemplateColumns.split(" ").length;
+        const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+        const t = items[i + d];
+        if (t) {
+          e.preventDefault();
+          t.focus();
+        }
+      };
+      openPop(pop, anchor);
+    }
+    /* 点提示词里的预设 chip：在 chip 旁边弹出同类选择器，选另一个就原位替换，点自己就取消 */
+    document.addEventListener("click", (e) => {
+      const chip = e.target.closest("#prompt .pchip[data-pk]");
+      const n = sel();
+      if (chip && n && presetKinds(n).includes(chip.dataset.pk)) openPresetPop(n, chip.dataset.pk, chip, chip);
     });
     function openModelPop(n, anchor) {
       const pop = $("#pop-model");
@@ -3593,6 +4198,8 @@
         ta?.focus();
         return;
       }
+      const np = [...(n.prompt || "").matchAll(PTOKEN)].length;
+      if (np) toast(`已把 ${np} 个预设展开成完整提示词`, "info");
       const c = cost(n);
       if (credits < c) {
         toast(`积分不足，还差 ${fmt(c - credits)}`, "bad");

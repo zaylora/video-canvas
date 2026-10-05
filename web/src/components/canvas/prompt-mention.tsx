@@ -7,13 +7,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Link2, Music } from "lucide-react";
+import { Box, Camera, Link2, Music, Shapes } from "lucide-react";
 import { useNodesData } from "@xyflow/react";
 import { MediaPreview, VideoPoster } from "./media-preview";
+import { Node as TiptapNode } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
 import Mention from "@tiptap/extension-mention";
@@ -31,10 +34,19 @@ import {
 import type { SuggestionProps } from "@tiptap/suggestion";
 
 import { NODE_META } from "@/constants/canvas";
+import { findPreset, type PresetKind } from "@/constants/presets";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { CanvasNode, NodeKind, NodeMediaType } from "@/types";
-import { MENTION_NODE, docToPrompt, promptToDoc } from "@/utils/canvas/prompt-tokens";
+import { planPreset, type PresetPick, type PresetPlan } from "@/utils/canvas/preset-rules";
+import {
+  MENTION_NODE,
+  PRESET_NODE,
+  docToPrompt,
+  parsePrompt,
+  promptPresets,
+  promptToDoc,
+} from "@/utils/canvas/prompt-tokens";
 
 /** 能被引用的一份素材：引用条的一格、@ 菜单的一项、chip 的缩略图都按它画 */
 export type RefSource = {
@@ -62,6 +74,28 @@ export type PromptMentionSource = {
   linkedIds: ReadonlySet<string>;
 };
 
+/** 提示词里被点中的预设 chip：选择器据此在它旁边打开，用来替换 */
+export type PresetChipTarget = {
+  kind: PresetKind;
+  /** 它是提示词里的第几个预设（按出现顺序） */
+  index: number;
+  /** chip 的 DOM，选择器锚在它身上 */
+  anchor: HTMLElement;
+};
+
+/** 节点预设（设计稿 6.13）在面板里的状态和操作，选择器和提示词里的 chip 共用 */
+export type PromptPresets = {
+  /** 提示词里已有的预设，按出现顺序 */
+  selected: readonly PresetPick[];
+  /** 选中一个预设；target 是从 chip 点进来时那个 chip 的序号。返回执行的方案，被拦下时带原因 */
+  apply: (kind: PresetKind, id: string, target?: number) => PresetPlan | undefined;
+  /** 把焦点还给提示词 */
+  focusEditor: () => void;
+  /** 被点中的 chip，没有就是 null */
+  chip: PresetChipTarget | null;
+  setChip: (chip: PresetChipTarget | null) => void;
+};
+
 /** 引用条、chip、画布节点三处联动描边，以及从引用条往提示词里插 chip */
 type PromptRefsValue = {
   /** 眼下接进来的上游 id */
@@ -71,6 +105,8 @@ type PromptRefsValue = {
   setHighlight: (id: string | null) => void;
   /** 在提示词光标处插入这个素材的 chip */
   insertRef: (source: RefSource) => void;
+  /** 节点预设的状态和操作 */
+  presets: PromptPresets;
 };
 
 const PromptRefsContext = createContext<PromptRefsValue | null>(null);
@@ -179,6 +215,64 @@ function MentionChip({ node }: NodeViewProps) {
         />
       </span>
       <span className={cn("truncate", gone && "line-through")}>{label}</span>
+    </NodeViewWrapper>
+  );
+}
+
+/** 预设 chip 的图标：风格、运镜、模板各一个 */
+const PRESET_ICON = { style: Box, motion: Camera, tpl: Shapes } as const;
+
+/**
+ * 提示词里的预设 chip（设计稿 6.13）：紫色图标 + 名称，和素材 chip 同尺寸。
+ * 点它在旁边弹出同类选择器用来替换；预设已下架时删除线，发送时按普通文字。
+ */
+function PresetChip({ node, editor, getPos, extension }: NodeViewProps) {
+  const kind = node.attrs.kind as PresetKind;
+  const id = String(node.attrs.id ?? "");
+  const preset = findPreset(kind, id);
+  const refs = usePromptRefs();
+  const Icon = PRESET_ICON[kind] ?? Box;
+  const label = preset?.name ?? String(node.attrs.label ?? "");
+  const clickable = !!extension.options.clickable && !!refs;
+
+  const open = (event: ReactMouseEvent<HTMLElement>) => {
+    if (!clickable) return;
+    const pos = getPos();
+    if (pos === undefined) return;
+    let index = 0;
+    editor.state.doc.nodesBetween(0, pos, (child) => {
+      if (child.type.name === PRESET_NODE) index += 1;
+    });
+    refs?.presets.setChip({ kind, index, anchor: event.currentTarget });
+  };
+
+  return (
+    <NodeViewWrapper
+      as="span"
+      data-preset={`${kind}/${id}`}
+      title={
+        preset
+          ? `「${label}」${preset.prompt.slice(0, 80)}${preset.prompt.length > 80 ? "…" : ""}${clickable ? "（点击替换）" : ""}`
+          : "这个预设已不存在，发送时按普通文字处理"
+      }
+      onClick={open}
+      className={cn(
+        "mx-0.5 inline-flex h-6.5 max-w-42 items-center gap-1.5 rounded-md py-0 pr-2 pl-[3px] align-middle text-[13px] font-semibold",
+        "ring-chrome-border ring-1 transition-[background-color] duration-120 ring-inset",
+        "animate-in fade-in-0 zoom-in-90 duration-120 motion-reduce:zoom-in-100",
+        preset ? "bg-foreground/[0.07]" : "text-muted-foreground",
+        clickable ? "hover:bg-foreground/12 cursor-pointer" : "cursor-default",
+      )}
+    >
+      <span
+        className={cn(
+          "bg-preset grid size-5 shrink-0 place-items-center rounded-[5px] text-white",
+          !preset && "opacity-35",
+        )}
+      >
+        <Icon className="size-3" />
+      </span>
+      <span className={cn("truncate", !preset && "line-through")}>{label}</span>
     </NodeViewWrapper>
   );
 }
@@ -334,17 +428,36 @@ function MentionMenu({
 function promptExtensions(
   setMenu: (menu: MenuState | null) => void,
   setActive: (index: number) => void,
+  /** 预设 chip 能不能点开选择器；放大编辑里的不能 */
+  presetClickable: boolean,
 ) {
   const showMenu = (props: SuggestionProps) => {
     setMenu({ query: props.query, rect: props.clientRect?.() ?? null, command: props.command });
     setActive(0);
   };
+  /** 预设 chip：行内原子节点，kind / id / label 三个属性，存回提示词是 `#[名称](种类/id)` */
+  const Preset = TiptapNode.create<{ clickable: boolean }>({
+    name: PRESET_NODE,
+    group: "inline",
+    inline: true,
+    atom: true,
+    addOptions: () => ({ clickable: presetClickable }),
+    addAttributes: () => ({
+      kind: { default: "style" },
+      id: { default: "" },
+      label: { default: "" },
+    }),
+    renderText: ({ node }) => String(node.attrs.label ?? ""),
+    renderHTML: ({ node }) => ["span", { "data-preset": `${node.attrs.kind}/${node.attrs.id}` }],
+    addNodeView: () => ReactNodeViewRenderer(PresetChip, { as: "span" }),
+  });
   return [
     Document,
     Paragraph,
     Text,
     HardBreak,
     UndoRedo,
+    Preset,
     Mention.extend({
       addNodeView: () => ReactNodeViewRenderer(MentionChip, { as: "span" }),
     }).configure({
@@ -373,6 +486,13 @@ function promptExtensions(
 export type PromptEditorHandle = {
   /** 在光标处插入一个素材 chip，后面带一个空格 */
   insertRef: (source: RefSource) => void;
+  /**
+   * 选中一个节点预设（设计稿 6.13）：按数量规则取消、替换或插入。模板插在最前面，
+   * 风格和运镜插在最后一次的光标处（没点过编辑器就在末尾），后面带一个空格。
+   */
+  applyPreset: (kind: PresetKind, id: string, target?: number) => PresetPlan | undefined;
+  /** 把焦点还给编辑器 */
+  focus: () => void;
 };
 
 /**
@@ -428,7 +548,9 @@ export function PromptEditor({
   );
 
   // 扩展和初始内容只在创建时用一次；editorProps、onUpdate 每次渲染都会被 useEditor 换成最新的
-  const [extensions] = useState(() => promptExtensions(setMenu, setActive));
+  const [extensions] = useState(() => promptExtensions(setMenu, setActive, !large));
+  /** 用户点过编辑器：没点过的话，插风格和运镜就放在末尾，而不是文档开头 */
+  const touched = useRef(false);
   const [initialContent] = useState(() => promptToDoc(value));
   const editorProps = useMemo<UseEditorOptions["editorProps"]>(
     () => ({
@@ -483,6 +605,9 @@ export function PromptEditor({
     autofocus: autoFocus ? "end" : false,
     shouldRerenderOnTransaction: false,
     editorProps,
+    onFocus: () => {
+      touched.current = true;
+    },
     onUpdate: ({ editor: self }) => onValueChange(docToPrompt(self.getJSON())),
   });
 
@@ -509,13 +634,76 @@ export function PromptEditor({
           ])
           .run();
       },
+      applyPreset: (kind, id, target) => {
+        if (!editor) return undefined;
+        const { doc, schema } = editor.state;
+        const found: { pick: PresetPick; pos: number; size: number }[] = [];
+        doc.descendants((node, pos) => {
+          if (node.type.name === PRESET_NODE)
+            found.push({
+              pick: { kind: node.attrs.kind as PresetKind, id: String(node.attrs.id) },
+              pos,
+              size: node.nodeSize,
+            });
+        });
+        const plan = planPreset(
+          found.map((item) => item.pick),
+          kind,
+          id,
+          target,
+        );
+        const chip = () =>
+          schema.nodes[PRESET_NODE].create({ kind, id, label: findPreset(kind, id)?.name ?? id });
+        const tr = editor.state.tr;
+        if (plan.type === "remove") {
+          const { pos, size } = found[plan.index];
+          // 插 chip 时带的那个空格一起拿掉
+          const spaced =
+            doc.textBetween(pos + size, Math.min(doc.content.size, pos + size + 1)) === " ";
+          tr.delete(pos, pos + size + (spaced ? 1 : 0));
+        } else if (plan.type === "replace") {
+          const { pos, size } = found[plan.index];
+          tr.replaceWith(pos, pos + size, chip());
+        } else if (plan.type === "insert") {
+          const at =
+            plan.at === "start"
+              ? 1
+              : touched.current
+                ? editor.state.selection.to
+                : doc.content.size - 1;
+          tr.insert(at, [chip(), schema.text(" ")]);
+        } else return plan;
+        editor.view.dispatch(tr);
+        return plan;
+      },
+      focus: () => {
+        editor?.commands.focus();
+      },
     }),
     [editor],
   );
 
+  // 提示词里只放了模板、还没写字：占位说明跟在模板 chip 后面
+  const templateHint = useMemo(() => {
+    const tpl = promptPresets(value).find((seg) => seg.kind === "tpl");
+    if (!tpl) return null;
+    const written = parsePrompt(value).some(
+      (seg) => seg.type === "ref" || (seg.type === "text" && seg.text.trim() !== ""),
+    );
+    const preset = findPreset("tpl", tpl.id);
+    return written || !preset ? null : `${preset.usage}。可以补充说明，也可以直接发送`;
+  }, [value]);
+
   return (
     <>
-      <div className={cn("relative", disabled && "opacity-60")}>
+      <div
+        className={cn("relative", disabled && "opacity-60", templateHint && "prompt-tpl-hint")}
+        style={
+          templateHint
+            ? ({ "--tpl-hint": JSON.stringify(templateHint) } as CSSProperties)
+            : undefined
+        }
+      >
         <EditorContent editor={editor} />
         {!value && (
           <span className="text-muted-foreground/70 pointer-events-none absolute inset-x-1 top-0 text-[15px] leading-[1.75]">
