@@ -49,8 +49,7 @@ func (s *SettingsService) RegisterSettings(ctx context.Context) (*model.Register
 		return nil, err
 	}
 	v := &model.RegisterSettingsView{
-		RegisterEnabled:       kv[model.SettingRegisterEnabled] != "false",     // 缺省或任何非 "false" 的值都按开
-		VerifyEmail:           kv[model.SettingRegisterVerifyEmail] != "false", // 同样缺省为开
+		RegisterEnabled:       kv[model.SettingRegisterEnabled] != "false", // 缺省或任何非 "false" 的值都按开
 		InitialCredits:        DefaultInitialCredits,
 		DefaultMaxActiveTasks: DefaultMaxActiveTasks,
 	}
@@ -71,15 +70,6 @@ func (s *SettingsService) RegisterEnabled(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return v.RegisterEnabled, nil
-}
-
-// VerifyEmail 实现 RegisterPolicy：注册是否需要验证邮箱。
-func (s *SettingsService) VerifyEmail(ctx context.Context) (bool, error) {
-	v, err := s.RegisterSettings(ctx)
-	if err != nil {
-		return false, err
-	}
-	return v.VerifyEmail, nil
 }
 
 // InitialCredits 实现 RegisterPolicy：新用户初始积分。
@@ -117,7 +107,6 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 	}
 	err = s.repo.SetMany(ctx, map[string]string{
 		model.SettingRegisterEnabled:       strconv.FormatBool(req.RegisterEnabled),
-		model.SettingRegisterVerifyEmail:   strconv.FormatBool(req.VerifyEmail),
 		model.SettingInitialCredits:        strconv.Itoa(req.InitialCredits),
 		model.SettingDefaultMaxActiveTasks: strconv.Itoa(req.DefaultMaxActiveTasks),
 	}, actorID)
@@ -130,6 +119,6 @@ func (s *SettingsService) UpdateRegisterSettings(ctx context.Context, actorID ui
 		"before": before, "after": req,
 	})
 	return &model.RegisterSettingsView{
-		RegisterEnabled: req.RegisterEnabled, VerifyEmail: req.VerifyEmail, InitialCredits: req.InitialCredits, DefaultMaxActiveTasks: req.DefaultMaxActiveTasks,
+		RegisterEnabled: req.RegisterEnabled, InitialCredits: req.InitialCredits, DefaultMaxActiveTasks: req.DefaultMaxActiveTasks,
 	}, nil
 }

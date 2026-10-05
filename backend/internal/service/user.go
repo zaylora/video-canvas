@@ -50,8 +50,6 @@ type RegisterCodeStore interface {
 type RegisterPolicy interface {
 	// RegisterEnabled 注册开关是否打开。
 	RegisterEnabled(ctx context.Context) (bool, error)
-	// VerifyEmail 「注册需要验证邮箱」开关是否打开；SMTP 没启用时即使打开也不会验证。
-	VerifyEmail(ctx context.Context) (bool, error)
 	// InitialCredits 新用户初始积分。
 	InitialCredits(ctx context.Context) (int, error)
 }

@@ -341,7 +341,7 @@ func TestAuth_Config(t *testing.T) {
 	if !d.RegisterEnabled || d.EmailVerifyRequired {
 		t.Fatalf("%+v", d)
 	}
-	// 配好 SMTP 后开放并要求验证码
+	// 配好 SMTP 后要求验证码
 	env.smtp.row = &model.SMTPSetting{Host: "smtp.example.com", Port: 587, Enabled: true, Encryption: "starttls", FromAddress: "a@x.com"}
 	r = env.do(http.MethodGet, "/api/v1/auth/config", nil, 0)
 	_ = json.Unmarshal(r.Data, &d)
@@ -500,14 +500,14 @@ func TestAdminSettings_Register(t *testing.T) {
 	env := newUAEnv(t)
 	r := env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaAdmin)
 	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"register_enabled":true`) || !strings.Contains(r.Raw, `"initial_credits":50`) || !strings.Contains(r.Raw, `"default_max_active_tasks":4`) || !strings.Contains(r.Raw, `"verify_email":true`) {
+	if !strings.Contains(r.Raw, `"register_enabled":true`) || !strings.Contains(r.Raw, `"initial_credits":50`) || !strings.Contains(r.Raw, `"default_max_active_tasks":4`) {
 		t.Fatalf("%s", r.Raw)
 	}
-	body := map[string]any{"register_enabled": false, "verify_email": false, "initial_credits": 10, "default_max_active_tasks": 6}
+	body := map[string]any{"register_enabled": false, "initial_credits": 10, "default_max_active_tasks": 6}
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaAdmin).want(t, 403, errcode.ErrForbidden.Code) // 写仅 SA
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaSuper).want(t, 200, 0)
 	r = env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaAdmin)
-	if !strings.Contains(r.Raw, `"register_enabled":false`) || !strings.Contains(r.Raw, `"verify_email":false`) || !strings.Contains(r.Raw, `"default_max_active_tasks":6`) {
+	if !strings.Contains(r.Raw, `"register_enabled":false`) || !strings.Contains(r.Raw, `"default_max_active_tasks":6`) {
 		t.Fatalf("保存后读到的不对：%s", r.Raw)
 	}
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": -1, "default_max_active_tasks": 4}, uaSuper).

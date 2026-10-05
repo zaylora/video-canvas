@@ -99,7 +99,6 @@ describe("注册设置校验", () => {
   test("能否保存：有改动、无错误、可写", () => {
     const initial = {
       register_enabled: true,
-      verify_email: true,
       initial_credits: "100",
       default_max_active_tasks: "3",
     };
@@ -107,13 +106,6 @@ describe("注册设置校验", () => {
     expect(
       canSaveRegisterSettings({
         values: { ...initial, register_enabled: false },
-        initial,
-        canWrite: true,
-      }),
-    ).toBe(true);
-    expect(
-      canSaveRegisterSettings({
-        values: { ...initial, verify_email: false },
         initial,
         canWrite: true,
       }),

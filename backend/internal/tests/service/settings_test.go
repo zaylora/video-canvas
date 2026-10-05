@@ -23,7 +23,7 @@ func TestSettingsService_RegisterSettings(t *testing.T) {
 	t.Run("库里没有值时回落代码常量（并发 4、初始积分 50），注册开关默认开", func(t *testing.T) {
 		svc := NewSettingsService(newFakeSettingsRepo(), &fakeAudit{})
 		v, err := svc.RegisterSettings(ctx)
-		if err != nil || !v.RegisterEnabled || !v.VerifyEmail || v.InitialCredits != DefaultInitialCredits || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
+		if err != nil || !v.RegisterEnabled || v.InitialCredits != DefaultInitialCredits || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
 			t.Fatalf("%+v %v", v, err)
 		}
 		if v.InitialCredits != 50 || v.DefaultMaxActiveTasks != 4 {
@@ -32,10 +32,10 @@ func TestSettingsService_RegisterSettings(t *testing.T) {
 	})
 	t.Run("库值优先；非法的库值被忽略", func(t *testing.T) {
 		repo := newFakeSettingsRepo()
-		repo.kv = map[string]string{model.SettingRegisterEnabled: "false", model.SettingRegisterVerifyEmail: "false", model.SettingInitialCredits: "8", model.SettingDefaultMaxActiveTasks: "abc"}
+		repo.kv = map[string]string{model.SettingRegisterEnabled: "false", model.SettingInitialCredits: "8", model.SettingDefaultMaxActiveTasks: "abc"}
 		svc := NewSettingsService(repo, &fakeAudit{})
 		v, _ := svc.RegisterSettings(ctx)
-		if v.RegisterEnabled || v.VerifyEmail || v.InitialCredits != 8 || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
+		if v.RegisterEnabled || v.InitialCredits != 8 || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
 			t.Fatalf("%+v", v)
 		}
 	})
@@ -54,11 +54,11 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	t.Run("成功：写库并写审计（含前后值）", func(t *testing.T) {
 		repo, audit := newFakeSettingsRepo(), &fakeAudit{}
 		svc := NewSettingsService(repo, audit)
-		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, VerifyEmail: false, InitialCredits: 0, DefaultMaxActiveTasks: 5})
-		if err != nil || v.RegisterEnabled || v.VerifyEmail || v.DefaultMaxActiveTasks != 5 {
+		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, InitialCredits: 0, DefaultMaxActiveTasks: 5})
+		if err != nil || v.RegisterEnabled || v.DefaultMaxActiveTasks != 5 {
 			t.Fatalf("%+v %v", v, err)
 		}
-		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingRegisterVerifyEmail] != "false" || repo.kv[model.SettingInitialCredits] != "0" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" || repo.by != 7 {
+		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingInitialCredits] != "0" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" || repo.by != 7 {
 			t.Fatalf("库值不对：%v by=%d", repo.kv, repo.by)
 		}
 		if got := audit.actions(); len(got) != 1 || got[0] != model.AdminAuditSettingsReg || audit.logs[0].ActorID != 7 {

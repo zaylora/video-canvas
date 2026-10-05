@@ -75,17 +75,6 @@ func TestUserService_AuthConfig(t *testing.T) {
 	}
 }
 
-func TestUserService_AuthConfig_VerifyEmailSwitch(t *testing.T) {
-	repo := newFakeUserRepo()
-	repo.seed(model.User{Username: "root"})
-	svc, mail, policy, _ := newUserSvc(repo, nil)
-	mail.enabled, policy.noVerify = true, true
-	got, err := svc.AuthConfig(context.Background())
-	if err != nil || !got.RegisterEnabled || got.EmailVerifyRequired {
-		t.Fatalf("验证开关关闭时应开放且免验证码（即使 SMTP 已启用）：%+v %v", got, err)
-	}
-}
-
 func TestUserService_SendRegisterCode(t *testing.T) {
 	ctx := context.Background()
 	setup := func(mutate func(*fakeUserRepo, *fakeMail, *fakePolicy)) (*UserService, *fakeUserRepo, *fakeMail, *testClock) {
@@ -122,7 +111,6 @@ func TestUserService_SendRegisterCode(t *testing.T) {
 	}{
 		{"注册关闭", func(_ *fakeUserRepo, _ *fakeMail, p *fakePolicy) { p.enabled = false }, "n@x.com", errcode.ErrRegisterClosed.Code},
 		{"未配置 SMTP", func(_ *fakeUserRepo, m *fakeMail, _ *fakePolicy) { m.enabled = false }, "n@x.com", errcode.ErrRegisterClosed.Code},
-		{"验证开关关闭：不需要发码", func(_ *fakeUserRepo, _ *fakeMail, p *fakePolicy) { p.noVerify = true }, "n@x.com", errcode.ErrRegisterClosed.Code},
 		{"邮箱已注册（大小写不敏感）", nil, "TAKEN@x.com", errcode.ErrEmailExists.Code},
 		{"发信失败：返回 53007", func(_ *fakeUserRepo, m *fakeMail, _ *fakePolicy) {
 			m.sendErr = errcode.ErrSMTPSendFailed.WithMsg("连接超时")
@@ -248,17 +236,6 @@ func TestUserService_Register(t *testing.T) {
 		repo := newFakeUserRepo()
 		repo.seed(model.User{Username: "root", Role: model.RoleSuperAdmin})
 		svc, _, _, _ := newUserSvc(repo, nil)
-		view, err := svc.Register(ctx, regReq("bob", "bob@x.com", ""), regMeta)
-		if err != nil || view.Role != model.RoleUser || repo.users[1].EmailVerifiedAt != nil {
-			t.Fatalf("%+v %v", view, err)
-		}
-	})
-
-	t.Run("验证开关关闭：即使 SMTP 已启用也免验证码", func(t *testing.T) {
-		repo := newFakeUserRepo()
-		repo.seed(model.User{Username: "root", Role: model.RoleSuperAdmin})
-		svc, mail, policy, _ := newUserSvc(repo, nil)
-		mail.enabled, policy.noVerify = true, true
 		view, err := svc.Register(ctx, regReq("bob", "bob@x.com", ""), regMeta)
 		if err != nil || view.Role != model.RoleUser || repo.users[1].EmailVerifiedAt != nil {
 			t.Fatalf("%+v %v", view, err)

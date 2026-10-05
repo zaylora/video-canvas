@@ -32,22 +32,14 @@ type registerState struct {
 	open           bool // 当前是否开放注册
 	verifyRequired bool // 注册是否需要邮箱验证码
 	smtpOn         bool // SMTP 是否已启用
-	verifySwitch   bool // 「注册需要验证邮箱」开关
 }
-
-// needVerify 说明验证邮箱是否生效：开关打开且 SMTP 已启用。没启用邮件服务就发不了码，此时不验证。
-func (st registerState) needVerify() bool { return st.verifySwitch && st.smtpOn }
 
 // loadRegisterState 读取注册开关、SMTP 状态与用户表是否为空，按契约算出 register_enabled / email_verify_required：
 //   - 开放 = 注册开关打开；
-//   - 需要验证码 = 「验证邮箱」开关打开 且 SMTP 已启用 且 users 表非空（首个账号免验证）。
-//     没启用邮件服务或关掉验证开关时，邮箱照样必填，只是不验证（不写 email_verified_at）。
+//   - 需要验证码 = SMTP 已启用 且 users 表非空（首个账号免验证）。
+//     「邮件服务」页的启用开关就是是否验证邮箱的选择：没启用时邮箱照样必填，只是不验证（不写 email_verified_at）。
 func (s *UserService) loadRegisterState(ctx context.Context) (registerState, error) {
 	switchOn, err := s.Policy.RegisterEnabled(ctx)
-	if err != nil {
-		return registerState{}, err
-	}
-	verifySwitch, err := s.Policy.VerifyEmail(ctx)
 	if err != nil {
 		return registerState{}, err
 	}
@@ -60,9 +52,7 @@ func (s *UserService) loadRegisterState(ctx context.Context) (registerState, err
 		return registerState{}, err
 	}
 	empty := n == 0
-	st := registerState{open: switchOn, smtpOn: smtpOn, verifySwitch: verifySwitch}
-	st.verifyRequired = st.needVerify() && !empty
-	return st, nil
+	return registerState{open: switchOn, verifyRequired: smtpOn && !empty, smtpOn: smtpOn}, nil
 }
 
 // AuthConfig 返回登录页需要的注册配置（GET /auth/config）。
@@ -81,12 +71,12 @@ func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSp
 func (s *UserService) SendRegisterCode(ctx context.Context, email, ip string) error {
 	email = normalizeEmail(email)
 
-	// 1. 注册关闭、关了验证开关或没有可用的 SMTP 时没有发码的意义，统一返回“暂未开放注册”
+	// 1. 注册关闭或没有启用 SMTP 时没有发码的意义，统一返回“暂未开放注册”
 	st, err := s.loadRegisterState(ctx)
 	if err != nil {
 		return err
 	}
-	if !st.open || !st.needVerify() {
+	if !st.open || !st.smtpOn {
 		return errcode.ErrRegisterClosed
 	}
 
@@ -186,7 +176,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 	// 4. 事务内建号
 	user := &model.User{Username: req.Username, Email: email, Password: string(hashed), Status: model.UserStatusActive}
 	if err := s.Repo.WithTx(ctx, func(tx repository.UserTx) error {
-		return s.registerInTx(ctx, tx, user, initial, verified, st.needVerify(), meta)
+		return s.registerInTx(ctx, tx, user, initial, verified, st.smtpOn, meta)
 	}); err != nil {
 		return nil, err
 	}
@@ -201,7 +191,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 //     否则两个并发请求都会以“免验证码”的身份注册成功，且都当上 super_admin；
 //  3. 查用户名、邮箱唯一性（锁内，结果可靠）；
 //  4. 建用户、积分账户（含 initial 流水）与 register 登录记录。
-func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, user *model.User, initial int, verified, needVerify bool, meta ClientMeta) error {
+func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, user *model.User, initial int, verified, smtpOn bool, meta ClientMeta) error {
 	if err := tx.LockRegistration(ctx); err != nil {
 		return err
 	}
@@ -211,8 +201,8 @@ func (s *UserService) registerInTx(ctx context.Context, tx repository.UserTx, us
 	}
 	first := n == 0
 	if !first {
-		// 验证邮箱生效时，非首个账号必须验证过。这里复核是为了兜住预检与加锁之间的竞态
-		if needVerify && !verified {
+		// 启用了 SMTP 时，非首个账号必须验证过邮箱。这里复核是为了兜住预检与加锁之间的竞态
+		if smtpOn && !verified {
 			return errcode.ErrCodeInvalid
 		}
 	}

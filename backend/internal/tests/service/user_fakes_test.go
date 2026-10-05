@@ -248,14 +248,12 @@ func (r *fakeUserRepo) logResults() []string {
 
 // fakePolicy 实现 service.RegisterPolicy。
 type fakePolicy struct {
-	enabled  bool
-	initial  int
-	noVerify bool // 零值表示「注册需要验证邮箱」开着，和线上默认一致
-	err      error
+	enabled bool
+	initial int
+	err     error
 }
 
 func (p *fakePolicy) RegisterEnabled(context.Context) (bool, error) { return p.enabled, p.err }
-func (p *fakePolicy) VerifyEmail(context.Context) (bool, error)     { return !p.noVerify, p.err }
 func (p *fakePolicy) InitialCredits(context.Context) (int, error)   { return p.initial, p.err }
 
 // fakeMail 实现 service.RegisterMail。

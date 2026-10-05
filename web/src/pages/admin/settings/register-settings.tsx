@@ -31,7 +31,6 @@ import { useRegisterSettings } from "./use-settings";
 
 const toValues = (settings: RegisterSettings): RegisterSettingsValues => ({
   register_enabled: settings.register_enabled,
-  verify_email: settings.verify_email,
   initial_credits: String(settings.initial_credits),
   default_max_active_tasks: String(settings.default_max_active_tasks),
 });
@@ -64,7 +63,6 @@ function RegisterForm({
     try {
       const next = await updateRegisterSettings({
         register_enabled: values.register_enabled,
-        verify_email: values.verify_email,
         initial_credits: Number(values.initial_credits),
         default_max_active_tasks: Number(values.default_max_active_tasks),
       });
@@ -103,25 +101,6 @@ function RegisterForm({
               disabled={!canWrite || saving}
               onCheckedChange={(checked) =>
                 setValues((prev) => ({ ...prev, register_enabled: checked }))
-              }
-            />
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <label htmlFor="register-verify-email" className="text-sm font-medium">
-                注册需要验证邮箱
-              </label>
-              <p className="text-muted-foreground text-xs">
-                打开后注册要填邮件验证码，需要先在「邮件服务」里启用 SMTP；
-                没启用邮件服务时不会验证，邮箱仍然必填。
-              </p>
-            </div>
-            <Switch
-              id="register-verify-email"
-              checked={values.verify_email}
-              disabled={!canWrite || saving}
-              onCheckedChange={(checked) =>
-                setValues((prev) => ({ ...prev, verify_email: checked }))
               }
             />
           </div>

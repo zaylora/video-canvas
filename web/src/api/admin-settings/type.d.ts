@@ -2,8 +2,6 @@
 export interface RegisterSettings {
   /** 是否开放注册 */
   register_enabled: boolean;
-  /** 注册是否需要验证邮箱；SMTP 没启用时不会验证，邮箱仍然必填 */
-  verify_email: boolean;
   /** 新用户初始积分，不小于 0 */
   initial_credits: number;
   /** 默认并发上限，1 到 64 */

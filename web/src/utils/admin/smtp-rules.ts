@@ -30,8 +30,6 @@ export type SmtpErrors = Partial<
 export type RegisterSettingsValues = {
   /** 是否开放注册 */
   register_enabled: boolean;
-  /** 注册是否需要验证邮箱 */
-  verify_email: boolean;
   /** 新用户初始积分输入 */
   initial_credits: string;
   /** 默认并发上限输入 */
