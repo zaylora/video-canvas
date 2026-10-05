@@ -12,6 +12,7 @@ import {
 import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
 import { OpTabs } from "@/components/canvas/op-tabs";
 import { PresetPicker } from "@/components/canvas/preset-picker";
+import { cn } from "@/lib/utils";
 import { RefStrip } from "@/components/canvas/ref-strip";
 import type { GenerationOp } from "@/api/model/type";
 import { Button } from "@/components/ui/button";
@@ -199,7 +200,7 @@ export function TaskPromptPanel({
           <>
             {panelProps && params.length > 0 && (
               <Popover>
-                <PopoverTrigger className={PANEL_CHIP_CLASS} aria-label="生成参数">
+                <PopoverTrigger className={cn(PANEL_CHIP_CLASS, "shrink-0")} aria-label="生成参数">
                   <SlidersHorizontal className="text-muted-foreground" />
                   <span className="min-w-0 truncate">
                     {paramSummary(vm.caps, vm.params) || "参数"}
