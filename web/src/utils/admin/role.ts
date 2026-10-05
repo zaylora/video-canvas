@@ -1,4 +1,4 @@
-import type { AdminRole } from "@/api/admin-ai/type";
+import type { AdminRole } from "@/api/admin/ai/type";
 
 /**
  * 把后端返回的角色收窄成已知值：只有明确是 super_admin 才给运维权限，

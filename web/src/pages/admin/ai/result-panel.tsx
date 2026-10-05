@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 
-import type { TraceStep } from "@/api/admin-ai/type.d";
+import type { TraceStep } from "@/api/admin/ai/type.d";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type.d";
 import { FoldableCode } from "@/components/admin-ui/foldable-code";
 import { Notice } from "@/components/admin-ui/notice";

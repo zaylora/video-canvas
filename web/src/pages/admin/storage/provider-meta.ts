@@ -7,7 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { StorageProvider } from "@/api/admin-storage/type.d";
+import type { StorageProvider } from "@/api/admin/storage/type.d";
 
 /** 页面里每个服务商的展示信息：图标与填写提示。服务商名称、地域、直传方式不在这里，一律来自预设接口 */
 export type ProviderMeta = {

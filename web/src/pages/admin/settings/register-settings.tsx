@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { updateRegisterSettings } from "@/api/admin-settings";
-import type { RegisterSettings } from "@/api/admin-settings/type.d";
+import { updateRegisterSettings } from "@/api/admin/settings";
+import type { RegisterSettings } from "@/api/admin/settings/type.d";
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import { FormField } from "@/components/admin-ui/form-field";
 import {

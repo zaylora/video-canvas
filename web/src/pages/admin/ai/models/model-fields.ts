@@ -1,4 +1,4 @@
-import type { ConfigIssue } from "@/api/admin-ai/type.d";
+import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import { readModelChannel, readModelString } from "@/utils/admin/model-body";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
 

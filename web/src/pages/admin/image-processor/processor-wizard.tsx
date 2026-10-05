@@ -8,14 +8,14 @@ import {
   getImageProcessor,
   publishImageProcessor,
   updateImageProcessor,
-} from "@/api/admin-image-processor";
+} from "@/api/admin/image-processor";
 import type {
   ProcessorConfig,
   ProcessorPreset,
   ProcessorVendor,
   ProcessorView,
-} from "@/api/admin-image-processor/type.d";
-import type { StorageView } from "@/api/admin-storage/type.d";
+} from "@/api/admin/image-processor/type.d";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";

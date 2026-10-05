@@ -1,4 +1,4 @@
-import type { ModelDraft, PluginMeta } from "@/api/admin-ai/type";
+import type { ModelDraft, PluginMeta } from "@/api/admin/ai/type";
 
 import {
   draftToModelBody,

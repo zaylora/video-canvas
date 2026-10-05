@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 
-import { deleteStorage, getStorageDeleteCheck, setDefaultStorage } from "@/api/admin-storage";
-import type { StorageView } from "@/api/admin-storage/type.d";
+import { deleteStorage, getStorageDeleteCheck, setDefaultStorage } from "@/api/admin/storage";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { formatCount } from "@/utils/admin/storage-rules";
 

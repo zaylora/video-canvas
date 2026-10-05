@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ChevronRight, Download, Loader2, Plus, Stethoscope } from "lucide-react";
 
-import { createChannel, getChannel, setChannelSecret, updateChannel } from "@/api/admin-ai";
-import type { ChannelView, PluginView } from "@/api/admin-ai/type.d";
+import { createChannel, getChannel, setChannelSecret, updateChannel } from "@/api/admin/ai";
+import type { ChannelView, PluginView } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";

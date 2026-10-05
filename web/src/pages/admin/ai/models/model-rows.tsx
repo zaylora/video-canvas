@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { Ellipsis, FlaskConical, Pencil, Trash2 } from "lucide-react";
 
-import { listModelRevisions } from "@/api/admin-ai";
+import { listModelRevisions } from "@/api/admin/ai";
 import type {
   ChannelView,
   ConfigListItem,
   ConfigRevision,
   PluginView,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";

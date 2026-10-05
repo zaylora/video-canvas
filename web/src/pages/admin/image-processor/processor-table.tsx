@@ -1,6 +1,6 @@
 import { FlaskConical, Pause, Pencil, Trash2, Undo2 } from "lucide-react";
 
-import type { ProcessorPreset, ProcessorView } from "@/api/admin-image-processor/type.d";
+import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import {

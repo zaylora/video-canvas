@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { listChannelLoads } from "@/api/admin-ai";
-import type { ChannelLoad } from "@/api/admin-ai/type.d";
+import { listChannelLoads } from "@/api/admin/ai";
+import type { ChannelLoad } from "@/api/admin/ai/type.d";
 
 import { useAliveRef } from "../../use-admin";
 

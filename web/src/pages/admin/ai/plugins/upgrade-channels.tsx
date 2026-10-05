@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 
-import { updateChannel } from "@/api/admin-ai";
-import type { ChannelView, PluginView } from "@/api/admin-ai/type.d";
+import { updateChannel } from "@/api/admin/ai";
+import type { ChannelView, PluginView } from "@/api/admin/ai/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { upgradeChannelRequest } from "@/utils/admin/channel-form";
 import { errorMessage } from "@/utils/admin/errors";

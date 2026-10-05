@@ -8,8 +8,8 @@ import {
   getStorage,
   testStorageDraft,
   updateStorage,
-} from "@/api/admin-storage";
-import type { StoragePreset, StorageView } from "@/api/admin-storage/type.d";
+} from "@/api/admin/storage";
+import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import {
   FormSection,
   FormSectionDescription,

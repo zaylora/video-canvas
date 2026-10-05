@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { listStorages, listStoragePresets } from "@/api/admin-storage";
-import type { StoragePreset, StorageView } from "@/api/admin-storage/type.d";
+import { listStorages, listStoragePresets } from "@/api/admin/storage";
+import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 
 import { useAliveRef, type LoadStatus } from "../use-admin";
 

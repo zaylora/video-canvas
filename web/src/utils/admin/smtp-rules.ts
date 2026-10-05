@@ -1,4 +1,4 @@
-import type { SmtpEncryption } from "@/api/admin-settings/type";
+import type { SmtpEncryption } from "@/api/admin/settings/type";
 import { validateEmail } from "@/utils/auth/register-rules";
 
 export type { SmtpEncryption };

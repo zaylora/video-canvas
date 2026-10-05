@@ -1,4 +1,4 @@
-import type { ProcessorConfig, ProcessorPreset } from "@/api/admin-image-processor/type.d";
+import type { ProcessorConfig, ProcessorPreset } from "@/api/admin/image-processor/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";

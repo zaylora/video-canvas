@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { listImageProcessors, listProcessorPresets } from "@/api/admin-image-processor";
-import type { ProcessorPreset, ProcessorView } from "@/api/admin-image-processor/type.d";
-import { listStorages } from "@/api/admin-storage";
-import type { StorageView } from "@/api/admin-storage/type.d";
+import { listImageProcessors, listProcessorPresets } from "@/api/admin/image-processor";
+import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
+import { listStorages } from "@/api/admin/storage";
+import type { StorageView } from "@/api/admin/storage/type.d";
 
 import { useAliveRef, type LoadStatus } from "../use-admin";
 

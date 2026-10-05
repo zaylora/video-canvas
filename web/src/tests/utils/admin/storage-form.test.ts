@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { StoragePreset, StorageView } from "@/api/admin-storage/type";
+import type { StoragePreset, StorageView } from "@/api/admin/storage/type";
 import {
   buildCreateBody,
   buildTestBody,

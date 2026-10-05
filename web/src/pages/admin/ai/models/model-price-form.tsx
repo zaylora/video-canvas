@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 
-import type { ConfigIssue } from "@/api/admin-ai/type.d";
+import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import type { Billing, Capabilities, PriceCost, PriceTier, Pricing } from "@/api/model/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import {

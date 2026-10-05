@@ -8,8 +8,8 @@ import {
   listModels,
   publishModel,
   setModelEnabled,
-} from "@/api/admin-ai";
-import type { ChannelView, ModelDraft, PluginView } from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai";
+import type { ChannelView, ModelDraft, PluginView } from "@/api/admin/ai/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";

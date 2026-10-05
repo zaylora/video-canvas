@@ -3,14 +3,14 @@ import { CircleAlert, Loader2, Lock, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-import { checkDelete, deleteTarget, setModelEnabled } from "@/api/admin-ai";
+import { checkDelete, deleteTarget, setModelEnabled } from "@/api/admin/ai";
 import type {
   ChannelView,
   DeleteBlocker,
   DeleteCheckResult,
   DeleteTarget,
   PluginView,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";

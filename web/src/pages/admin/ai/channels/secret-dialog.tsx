@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { setChannelSecret } from "@/api/admin-ai";
+import { setChannelSecret } from "@/api/admin/ai";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

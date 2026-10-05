@@ -1,7 +1,7 @@
 import { Ban, CircleCheck, Gift, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { UserListItem } from "@/api/admin-users/type.d";
+import type { UserListItem } from "@/api/admin/users/type.d";
 import { DataTableBulkActions } from "@/components/admin-ui/data-table-bulk-actions";
 import { MotionButton } from "@/components/admin-ui/motion-button";
 import { Button } from "@/components/ui/button";

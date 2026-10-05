@@ -1,4 +1,4 @@
-import type { ProcessorStatus, ProcessorView } from "@/api/admin-image-processor/type.d";
+import type { ProcessorStatus, ProcessorView } from "@/api/admin/image-processor/type.d";
 import { Tag, type TagTone } from "@/components/admin-ui/tag";
 
 const STATUS_UI: Record<ProcessorStatus, { label: string; tone: TagTone }> = {

@@ -1,4 +1,4 @@
-import { getModelDetail, publishModel, updateModelDraft } from "@/api/admin-ai";
+import { getModelDetail, publishModel, updateModelDraft } from "@/api/admin/ai";
 import { errorMessage } from "@/utils/admin/errors";
 import { withModelChannel } from "@/utils/admin/model-body";
 

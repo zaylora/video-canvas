@@ -1,4 +1,4 @@
-import type { CloudProvider, StoragePreset } from "@/api/admin-storage/type.d";
+import type { CloudProvider, StoragePreset } from "@/api/admin/storage/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { Skeleton } from "@/components/ui/skeleton";
 

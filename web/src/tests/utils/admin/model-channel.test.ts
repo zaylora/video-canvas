@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ChannelView, PluginView } from "@/api/admin-ai/type";
+import type { ChannelView, PluginView } from "@/api/admin/ai/type";
 import { publishBlockReason, resolveModelChannel } from "@/utils/admin/model-channel";
 
 const plugins = [

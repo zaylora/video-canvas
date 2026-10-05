@@ -1,4 +1,4 @@
-import type { ConfigRevision } from "@/api/admin-ai/type.d";
+import type { ConfigRevision } from "@/api/admin/ai/type.d";
 import {
   describeDefaultPrice,
   readModelChannel,

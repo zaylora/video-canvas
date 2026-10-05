@@ -15,13 +15,13 @@ import {
   testRunModel,
   updateModelDraft,
   validateModel,
-} from "@/api/admin-ai";
+} from "@/api/admin/ai";
 import type {
   ConfigDetail,
   ConfigIssue,
   ConfigListItem,
   ConfigRevision,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { errorMessage, isRunnerDown } from "@/utils/admin/errors";
 import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";

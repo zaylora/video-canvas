@@ -5,7 +5,7 @@ import type {
   ConfigListItem,
   ConfigRevision,
   PluginView,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { DataTableToolbar } from "@/components/admin-ui/data-table-toolbar";
 import { NativeSelect } from "@/components/admin-ui/native-select";

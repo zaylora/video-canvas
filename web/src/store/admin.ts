@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-import { getAdminMe } from "@/api/admin-ai";
-import type { AdminRole } from "@/api/admin-ai/type";
+import { getAdminMe } from "@/api/admin/ai";
+import type { AdminRole } from "@/api/admin/ai/type";
 import { isForbiddenError, normalizeRole } from "@/utils/admin/role";
 import { saveRole } from "@/utils/storage/token";
 

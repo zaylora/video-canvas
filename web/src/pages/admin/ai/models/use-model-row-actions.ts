@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { rollbackModel, setModelEnabled } from "@/api/admin-ai";
-import type { ConfigListItem, ConfigRevision } from "@/api/admin-ai/type.d";
+import { rollbackModel, setModelEnabled } from "@/api/admin/ai";
+import type { ConfigListItem, ConfigRevision } from "@/api/admin/ai/type.d";
 import { publishBlockReason, resolveModelChannel } from "@/utils/admin/model-channel";
 
 import { openDeleteDialog } from "../delete-dialog";

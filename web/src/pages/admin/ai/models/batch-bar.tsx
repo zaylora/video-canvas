@@ -8,7 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import type { ChannelView } from "@/api/admin-ai/type.d";
+import type { ChannelView } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import {
   BulkActionButton,

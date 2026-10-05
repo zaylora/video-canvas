@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { listChannels, listModels, listPlugins } from "@/api/admin-ai";
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin-ai/type.d";
+import { listChannels, listModels, listPlugins } from "@/api/admin/ai";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 
 export type LoadStatus = "loading" | "ready" | "error";
 

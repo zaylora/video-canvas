@@ -4,8 +4,8 @@ import {
   deleteImageProcessor,
   disableImageProcessor,
   rollbackImageProcessor,
-} from "@/api/admin-image-processor";
-import type { ProcessorView } from "@/api/admin-image-processor/type.d";
+} from "@/api/admin/image-processor";
+import type { ProcessorView } from "@/api/admin/image-processor/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 
 /**

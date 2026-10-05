@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
-import type { TraceStep } from "@/api/admin-ai/type.d";
+import type { TraceStep } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import { firstFailedStep, formatDuration, maxStepDuration, toTraceView } from "@/utils/admin/trace";
 

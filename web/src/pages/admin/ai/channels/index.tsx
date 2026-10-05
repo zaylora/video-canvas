@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
-import { updateChannel } from "@/api/admin-ai";
-import type { ChannelView } from "@/api/admin-ai/type.d";
+import { updateChannel } from "@/api/admin/ai";
+import type { ChannelView } from "@/api/admin/ai/type.d";
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import {

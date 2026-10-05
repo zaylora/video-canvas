@@ -1,6 +1,6 @@
 import { Activity, Eye, Loader2, Pencil, Star, Trash2 } from "lucide-react";
 
-import type { StoragePreset, StorageView } from "@/api/admin-storage/type.d";
+import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";

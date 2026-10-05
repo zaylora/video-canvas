@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getRegisterSettings, getSmtpSettings } from "@/api/admin-settings";
-import type { RegisterSettings, SmtpSettings } from "@/api/admin-settings/type.d";
+import { getRegisterSettings, getSmtpSettings } from "@/api/admin/settings";
+import type { RegisterSettings, SmtpSettings } from "@/api/admin/settings/type.d";
 
 import { useAliveRef, type LoadStatus } from "../use-admin";
 

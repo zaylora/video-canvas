@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { StoragePreset } from "@/api/admin-storage/type.d";
+import type { StoragePreset } from "@/api/admin/storage/type.d";
 import { LockHint } from "@/components/admin-ui/lock-hint";
 import {
   type StorageFormErrors,

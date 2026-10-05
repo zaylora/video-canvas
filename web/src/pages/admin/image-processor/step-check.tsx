@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 
-import type { CheckItemStatus, ProcessorView } from "@/api/admin-image-processor/type.d";
+import type { CheckItemStatus, ProcessorView } from "@/api/admin/image-processor/type.d";
 import { Notice } from "@/components/admin-ui/notice";
 import {
   StepList,

@@ -8,14 +8,14 @@ import {
   setUserLimit,
   setUserRole,
   setUserStatus,
-} from "@/api/admin-users";
+} from "@/api/admin/users";
 import type {
   AdjustCreditsRequest,
   UserDetail,
   UserListItem,
   UserRole,
   UserStatus,
-} from "@/api/admin-users/type.d";
+} from "@/api/admin/users/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import {
   batchPlan,

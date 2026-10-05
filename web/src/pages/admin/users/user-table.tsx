@@ -2,7 +2,7 @@ import { Ban, Diff, RotateCw, SearchX } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import type { UserListItem } from "@/api/admin-users/type.d";
+import type { UserListItem } from "@/api/admin/users/type.d";
 import { AnimatedNumber } from "@/components/admin-ui/animated-number";
 import {
   EmptyState,

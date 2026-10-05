@@ -1,7 +1,7 @@
 import { ArrowLeft, Clapperboard } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
-import type { AdminRole } from "@/api/admin-ai/type.d";
+import type { AdminRole } from "@/api/admin/ai/type.d";
 import { NavBrand } from "@/components/admin-ui/nav-brand";
 import { NavGroup } from "@/components/admin-ui/nav-group";
 import { NavUser } from "@/components/admin-ui/nav-user";

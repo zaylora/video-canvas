@@ -13,13 +13,13 @@ import {
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-import { deletePluginVersion, setPluginEnabled } from "@/api/admin-ai";
+import { deletePluginVersion, setPluginEnabled } from "@/api/admin/ai";
 import type {
   ChannelView,
   ConfigListItem,
   PluginVersionView,
   PluginView,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import {

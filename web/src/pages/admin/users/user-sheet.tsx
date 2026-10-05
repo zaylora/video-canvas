@@ -13,7 +13,7 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 
-import type { UserDetail, UserListItem } from "@/api/admin-users/type.d";
+import type { UserDetail, UserListItem } from "@/api/admin/users/type.d";
 import { AnimatedNumber } from "@/components/admin-ui/animated-number";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { Link } from "react-router";
 
-import type { ChannelView, ConfigIssue, PluginView } from "@/api/admin-ai/type.d";
+import type { ChannelView, ConfigIssue, PluginView } from "@/api/admin/ai/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";

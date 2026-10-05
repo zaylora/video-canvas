@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 
-import type { ConfigIssue } from "@/api/admin-ai/type.d";
+import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import type { Capabilities, GenerationOp, ParamField, RefKind, RefSpec } from "@/api/model/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import {

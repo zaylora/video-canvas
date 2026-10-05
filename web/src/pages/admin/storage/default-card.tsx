@@ -1,4 +1,4 @@
-import type { StoragePreset, StorageView } from "@/api/admin-storage/type.d";
+import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import {
   DescriptionDetails,
   DescriptionItem,

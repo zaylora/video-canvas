@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Eye, Star } from "lucide-react";
 
-import type { ConfigListItem } from "@/api/admin-ai/type.d";
+import type { ConfigListItem } from "@/api/admin/ai/type.d";
 import type { Capabilities, Pricing } from "@/api/model/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";

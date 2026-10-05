@@ -1,7 +1,7 @@
 import { BadgeCheck, Clapperboard, Image as ImageIcon, Loader2, Music, Type } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { listUserLedger, listUserLogins, listUserTasks } from "@/api/admin-users";
+import { listUserLedger, listUserLogins, listUserTasks } from "@/api/admin/users";
 import type {
   CursorPage,
   LedgerFilter,
@@ -11,7 +11,7 @@ import type {
   UserLedgerItem,
   UserLoginItem,
   UserTaskItem,
-} from "@/api/admin-users/type.d";
+} from "@/api/admin/users/type.d";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import {
   DescriptionDetails,

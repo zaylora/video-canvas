@@ -1,6 +1,6 @@
 import { Cloud } from "lucide-react";
 
-import type { ProcessorPreset, ProcessorVendor } from "@/api/admin-image-processor/type.d";
+import type { ProcessorPreset, ProcessorVendor } from "@/api/admin/image-processor/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";

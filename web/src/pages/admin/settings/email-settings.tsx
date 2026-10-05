@@ -2,8 +2,8 @@ import { useState } from "react";
 import { KeyRound, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
-import { sendSmtpTest, updateSmtpSettings } from "@/api/admin-settings";
-import type { SmtpSettings } from "@/api/admin-settings/type.d";
+import { sendSmtpTest, updateSmtpSettings } from "@/api/admin/settings";
+import type { SmtpSettings } from "@/api/admin/settings/type.d";
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
@@ -210,7 +210,7 @@ function SmtpForm({
                   启用邮件服务
                 </label>
                 <p className="text-muted-foreground text-xs">
-                  启用后注册需要邮箱验证码；未启用时仅全新环境的首个账号可免验证注册。
+                  启用后注册需要邮件验证码（首个账号免验证）；未启用时注册不验证邮箱，邮箱仍必填。
                 </p>
               </div>
               <Switch

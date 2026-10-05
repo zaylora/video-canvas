@@ -1,7 +1,7 @@
 import { CircleCheck, PlugZap } from "lucide-react";
 
-import type { ProcessorPreset, ProcessorView } from "@/api/admin-image-processor/type.d";
-import type { StorageView } from "@/api/admin-storage/type.d";
+import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";

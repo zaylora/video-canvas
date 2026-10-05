@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import { type ReactNode } from "react";
 
-import { resetUserPassword } from "@/api/admin-users";
-import type { UserRole } from "@/api/admin-users/type.d";
+import { resetUserPassword } from "@/api/admin/users";
+import type { UserRole } from "@/api/admin/users/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";

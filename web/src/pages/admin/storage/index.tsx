@@ -2,8 +2,8 @@ import { Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import { checkStorage } from "@/api/admin-storage";
-import type { StorageView } from "@/api/admin-storage/type.d";
+import { checkStorage } from "@/api/admin/storage";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import type { PluginView } from "@/api/admin-ai/type.d";
+import type { PluginView } from "@/api/admin/ai/type.d";
 import {
   ListPanel,
   ListPanelContent,

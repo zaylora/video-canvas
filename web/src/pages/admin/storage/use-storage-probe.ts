@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import type { ProbeResult } from "@/api/admin-storage/type.d";
+import type { ProbeResult } from "@/api/admin/storage/type.d";
 
 import { useAliveRef } from "../use-admin";
 

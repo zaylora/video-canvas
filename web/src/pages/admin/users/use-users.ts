@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
-import { getUser, listUsers } from "@/api/admin-users";
-import type { UserDetail, UserListItem, UserRole, UserStatus } from "@/api/admin-users/type.d";
+import { getUser, listUsers } from "@/api/admin/users";
+import type { UserDetail, UserListItem, UserRole, UserStatus } from "@/api/admin/users/type.d";
 import { isUserNotFound } from "@/utils/admin/user-rules";
 
 /** 列表默认每页条数 */

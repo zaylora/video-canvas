@@ -5,7 +5,7 @@ import type {
   ProcessorConfig,
   ProcessorPreset,
   ProcessorView,
-} from "@/api/admin-image-processor/type";
+} from "@/api/admin/image-processor/type";
 import {
   bindingOfStorage,
   buildProcessorConfig,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ModelDraft } from "@/api/admin-ai/type";
+import type { ModelDraft } from "@/api/admin/ai/type";
 import {
   buildImportBody,
   checkImportKey,

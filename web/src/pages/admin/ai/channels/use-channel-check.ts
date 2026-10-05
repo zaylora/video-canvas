@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { checkChannel } from "@/api/admin-ai";
+import { checkChannel } from "@/api/admin/ai";
 import { classifyCheck, classifyCheckError, type CheckOutcome } from "@/utils/admin/channel-check";
 
 import { useAliveRef } from "../../use-admin";

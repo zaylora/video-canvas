@@ -23,7 +23,7 @@ import type {
   ConfigListItem,
   ConfigRevision,
   PluginView,
-} from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai/type.d";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import {
   DropdownMenu,

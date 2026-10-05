@@ -1,8 +1,8 @@
 import { Lock, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 
-import type { ProcessorPreset, ProcessorView } from "@/api/admin-image-processor/type.d";
-import type { StorageView } from "@/api/admin-storage/type.d";
+import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import {
   EmptyState,

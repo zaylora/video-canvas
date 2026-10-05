@@ -355,6 +355,7 @@
     </style>
   </head>
   <body class="font-sans antialiased">
+<div style="padding:8px 16px;background:#fef3c7;color:#78350f;font-size:13px;border-bottom:1px solid #fcd34d">本演示是早期版本，已被 <code>用户管理/用户管理原型.html</code> 取代；其中「未配 SMTP」场景是旧规则（2026-10-05 起：没启用邮件服务就不验证邮箱、注册照常开放）。</div>
     <header class="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
       <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
         <div class="mr-2">
@@ -1169,7 +1170,7 @@
       <div class="grid gap-3 sm:grid-cols-2 mt-2"><div><label class="label">新用户初始积分</label><input id="regInit" type="number" min="0" class="input" value="${S.regCfg.initial}" ${d}><div class="hint">可设为 0。</div></div>
         <div><label class="label">默认并发上限</label><input id="regConc" type="number" min="1" class="input" value="${S.defaultConc}" ${d}><div class="hint">单用户未设置时使用。</div></div></div>
       <div class="mt-3 flex justify-end"><button class="btn btn-primary" id="saveReg" ${d}>保存</button></div>
-      ${note("库值优先、config.yaml 的 ai.initial_credits / max_active_tasks_per_user 作为初始默认。变更写审计 settings.register。")}</section>
+      ${note("库值优先，缺省为代码常量（初始积分 50、并发上限 4），配置文件里已无这两项。变更写审计 settings.register。")}</section>
     <section class="mt-4 rounded-xl border p-4"><div class="mb-3 flex items-center justify-between"><div class="text-sm font-medium">邮件服务（SMTP）</div>
       ${s.ok ? `<span class="tag t-ok"><i data-lucide="check"></i> 最近测试通过 · ${s.at}</span>` : `<span class="tag t-bad"><i data-lucide="x"></i> 最近测试失败</span>`}</div>
       <div class="grid gap-3 sm:grid-cols-[1fr_120px_140px]">
@@ -1190,7 +1191,7 @@
         <button class="btn btn-primary ml-auto" id="sSave" ${d}>保存</button></div>
       ${S.testRes ? `<div class="mt-3 rounded-lg border px-3 py-2 text-sm ${S.testRes.ok ? "border-emerald-500/40 bg-emerald-500/10" : "border-red-500/40 bg-red-500/10"}">${S.testRes.msg}</div>` : ""}
       ${note("SMTP 地址由管理员填写，存在 SSRF 风险：复用 provider/netguard 思路，默认拒绝内网与回环地址。待确认：自建邮件服务器是否放开。")}
-      ${note("没配置 SMTP 时：表为空允许首个账号免验证注册；表非空则注册入口显示「暂未开放」。见「登录页注册」场景的环境切换。")}</section>`;
+      ${note("【规则已调整】没启用邮件服务时，所有人注册都不验证邮箱（邮箱仍必填），表为空时第一个账号成为超级管理员；下方「未配 SMTP」场景仍按旧规则演示为「暂未开放」，以 用户管理/接口契约.md 为准。")}</section>`;
         return shell("邮件服务", body);
       }
       function bindSettings() {

@@ -1,6 +1,6 @@
 import { CircleCheck, CircleX, MinusCircle } from "lucide-react";
 
-import type { StorageView } from "@/api/admin-storage/type.d";
+import type { StorageView } from "@/api/admin/storage/type.d";
 import { Tag, type TagTone } from "@/components/admin-ui/tag";
 import { checkStatus } from "@/utils/admin/storage-rules";
 

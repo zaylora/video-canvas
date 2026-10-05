@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
-import type { ProcessorView } from "@/api/admin-image-processor/type.d";
+import type { ProcessorView } from "@/api/admin/image-processor/type.d";
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import {
   EmptyState,
@@ -29,7 +29,7 @@ import { StorageBindingTable } from "./storage-binding-table";
 import { useImageProcessors } from "./use-image-processors";
 
 /**
- * 图片处理服务管理页：处理服务列表 + “存储与处理服务”表 + 右侧抽屉（四步向导）。
+ * 图片服务管理页：处理服务列表 + “存储与处理服务”表 + 右侧抽屉（四步向导）。
  * 写操作（新建、编辑、校验、发布、回滚、停用、删除）只对 super_admin 渲染，admin 只读；
  * 请求错误的全局提示由拦截器弹，这里不重复。
  */
@@ -61,7 +61,7 @@ export default function ImageProcessorPage() {
       <AdminMain>
         <PageHeader>
           <PageHeaderHeading>
-            <PageHeaderTitle>图片处理服务管理</PageHeaderTitle>
+            <PageHeaderTitle>图片服务</PageHeaderTitle>
             <PageHeaderDescription>
               为素材所在的存储配置缩略图 /
               视频封面的处理服务。处理服务只对它绑定的那套存储里的素材生效。

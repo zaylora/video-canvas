@@ -1,11 +1,11 @@
-import type { AdminRole } from "@/api/admin-ai/type";
+import type { AdminRole } from "@/api/admin/ai/type";
 import type {
   CreditMode,
   LedgerType,
   UserListItem,
   UserRole,
   UserStatus,
-} from "@/api/admin-users/type";
+} from "@/api/admin/users/type";
 
 /**
  * 用户管理的纯逻辑：权限禁用原因、积分调整校验与预览、批量跳过规则、时间与 UA 文案。

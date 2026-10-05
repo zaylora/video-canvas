@@ -1,4 +1,4 @@
-import type { StoragePreset, StorageProvider, StorageView } from "@/api/admin-storage/type";
+import type { StoragePreset, StorageProvider, StorageView } from "@/api/admin/storage/type";
 import { formatShortTime } from "@/utils/time";
 
 import type { StorageFormField } from "./storage-form";

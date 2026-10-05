@@ -6,8 +6,8 @@ import {
   publishModel,
   setModelEnabled,
   updateModelDraft,
-} from "@/api/admin-ai";
-import type { ConfigListItem } from "@/api/admin-ai/type.d";
+} from "@/api/admin/ai";
+import type { ConfigListItem } from "@/api/admin/ai/type.d";
 import { errorMessage } from "@/utils/admin/errors";
 import { withDefaultPrice, withModelChannel, withModelField } from "@/utils/admin/model-body";
 

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { replaceStorageSecret } from "@/api/admin-storage";
-import type { CloudProvider, StorageView } from "@/api/admin-storage/type.d";
+import { replaceStorageSecret } from "@/api/admin/storage";
+import type { CloudProvider, StorageView } from "@/api/admin/storage/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";

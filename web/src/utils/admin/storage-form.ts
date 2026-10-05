@@ -7,7 +7,7 @@ import type {
   StorageTestRequest,
   StorageUpdateRequest,
   StorageView,
-} from "@/api/admin-storage/type";
+} from "@/api/admin/storage/type";
 
 import { deriveEndpoint } from "./storage-endpoint";
 import { isFieldLocked } from "./storage-rules";

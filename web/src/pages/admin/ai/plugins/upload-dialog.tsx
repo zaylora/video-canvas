@@ -1,8 +1,8 @@
 import { useRef, useState, type DragEvent } from "react";
 import { FileCode2, Loader2 } from "lucide-react";
 
-import { uploadPlugin } from "@/api/admin-ai";
-import type { PluginUploadResult } from "@/api/admin-ai/type.d";
+import { uploadPlugin } from "@/api/admin/ai";
+import type { PluginUploadResult } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
