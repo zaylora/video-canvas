@@ -1,4 +1,4 @@
-import type { ChannelView, PluginView } from "@/api/admin-ai/type";
+import type { ChannelView, PluginView } from "@/api/admin/ai/type";
 
 import { describeAuth, findPluginVersion, shortSha } from "./plugin";
 import { readModelChannel, readModelKind } from "./model-body";

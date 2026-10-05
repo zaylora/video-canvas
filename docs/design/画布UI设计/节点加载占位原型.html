@@ -1,232 +1,451 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>节点内容加载占位 · 三种方案</title>
-<style>
-  /* token 抄自 web/src/index.css（oklch），动效参数抄自 web/src/lib/motion.ts。
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>节点内容加载占位 · 三种方案</title>
+    <style>
+      /* token 抄自 web/src/index.css（oklch），动效参数抄自 web/src/lib/motion.ts。
      --sheen 是本方案新增的 token（扫光的高光色），落地时要在 index.css 的 :root 和 .dark 各补一条 */
-  :root {
-    color-scheme: light;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --border: oklch(0.922 0 0);
-    --canvas-bg: oklch(0.975 0 0);
-    --canvas-dot: oklch(0 0 0 / 0.14);
-    --chrome: oklch(1 0 0 / 0.82);
-    --chrome-border: oklch(0 0 0 / 0.08);
-    --node-ring: oklch(0.2 0 0 / 0.85);
-    --sheen: oklch(1 0 0 / 0.7);
-    --d-fast: 120ms;
-    --d-base: 180ms;
-    --d-exit: 126ms;
-    --ease-out: cubic-bezier(0.2, 0, 0, 1);
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --border: oklch(1 0 0 / 0.1);
-    --canvas-bg: oklch(0.16 0 0);
-    --canvas-dot: oklch(1 0 0 / 0.14);
-    --chrome: oklch(0.2 0 0 / 0.78);
-    --chrome-border: oklch(1 0 0 / 0.08);
-    --node-ring: oklch(0.9 0 0 / 0.85);
-    --sheen: oklch(1 0 0 / 0.09);
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--canvas-bg); color: var(--foreground);
-    font: 14px/1.5 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
-    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { color: var(--muted-foreground); font-size: 13px; margin: 0 0 16px; }
-  .bar {
-    display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
-    background: var(--chrome); border: 1px solid var(--chrome-border); border-radius: 14px;
-    padding: 10px 14px; margin-bottom: 20px; backdrop-filter: blur(8px);
-  }
-  .bar label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-  .bar input[type=range] { width: 160px; }
-  .tabular { font-variant-numeric: tabular-nums; }
-  button.btn {
-    font: inherit; font-size: 13px; color: var(--foreground); background: var(--card);
-    border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; cursor: pointer;
-    transition: transform var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
-  }
-  button.btn:hover { background: var(--muted); }
-  button.btn:active { transform: scale(0.96); }
-  button.btn:focus-visible { outline: 2px solid var(--node-ring); outline-offset: 2px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-  .col h2 { font-size: 14px; margin: 0 0 2px; }
-  .col p.d { margin: 0 0 10px; color: var(--muted-foreground); font-size: 12px; min-height: 54px; }
+      :root {
+        color-scheme: light;
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --canvas-bg: oklch(0.975 0 0);
+        --canvas-dot: oklch(0 0 0 / 0.14);
+        --chrome: oklch(1 0 0 / 0.82);
+        --chrome-border: oklch(0 0 0 / 0.08);
+        --node-ring: oklch(0.2 0 0 / 0.85);
+        --sheen: oklch(1 0 0 / 0.7);
+        --d-fast: 120ms;
+        --d-base: 180ms;
+        --d-exit: 126ms;
+        --ease-out: cubic-bezier(0.2, 0, 0, 1);
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 0.1);
+        --canvas-bg: oklch(0.16 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.14);
+        --chrome: oklch(0.2 0 0 / 0.78);
+        --chrome-border: oklch(1 0 0 / 0.08);
+        --node-ring: oklch(0.9 0 0 / 0.85);
+        --sheen: oklch(1 0 0 / 0.09);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--canvas-bg);
+        color: var(--foreground);
+        font:
+          14px/1.5 -apple-system,
+          "PingFang SC",
+          "Helvetica Neue",
+          sans-serif;
+        background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted-foreground);
+        font-size: 13px;
+        margin: 0 0 16px;
+      }
+      .bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        align-items: center;
+        background: var(--chrome);
+        border: 1px solid var(--chrome-border);
+        border-radius: 14px;
+        padding: 10px 14px;
+        margin-bottom: 20px;
+        backdrop-filter: blur(8px);
+      }
+      .bar label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .bar input[type="range"] {
+        width: 160px;
+      }
+      .tabular {
+        font-variant-numeric: tabular-nums;
+      }
+      button.btn {
+        font: inherit;
+        font-size: 13px;
+        color: var(--foreground);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px 12px;
+        cursor: pointer;
+        transition:
+          transform var(--d-fast) var(--ease-out),
+          background var(--d-fast) var(--ease-out);
+      }
+      button.btn:hover {
+        background: var(--muted);
+      }
+      button.btn:active {
+        transform: scale(0.96);
+      }
+      button.btn:focus-visible {
+        outline: 2px solid var(--node-ring);
+        outline-offset: 2px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      .col h2 {
+        font-size: 14px;
+        margin: 0 0 2px;
+      }
+      .col p.d {
+        margin: 0 0 10px;
+        color: var(--muted-foreground);
+        font-size: 12px;
+        min-height: 54px;
+      }
 
-  /* ---------- 节点卡片 ---------- */
-  .node {
-    background: var(--card); border-radius: 16px; padding: 6px; margin-bottom: 12px;
-    border: 1px solid var(--border); box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
-  }
-  .node .cap { margin: 6px 4px 2px; font-size: 12px; color: var(--muted-foreground); }
+      /* ---------- 节点卡片 ---------- */
+      .node {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 6px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+        box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
+      }
+      .node .cap {
+        margin: 6px 4px 2px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
 
-  /* ---------- 占位（stage）----------
+      /* ---------- 占位（stage）----------
      结构：.stage > .skel（占位层） + .content（图 / 封面）
      占位层只在「等了超过 150ms 还没到」时才出现（data-skel），内容到了再淡入盖住它。 */
-  .stage {
-    position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 11px;
-    background: color-mix(in oklch, var(--muted) 40%, transparent); /* 对应现状 bg-muted/40 */
-  }
-  .skel {
-    position: absolute; inset: 0; background: var(--muted);
-    opacity: 0; pointer-events: none;
-    transition: opacity var(--d-exit) var(--ease-out);
-  }
-  .stage[data-skel="true"] .skel { opacity: 1; transition-duration: var(--d-base); }
+      .stage {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border-radius: 11px;
+        background: color-mix(in oklch, var(--muted) 40%, transparent); /* 对应现状 bg-muted/40 */
+      }
+      .skel {
+        position: absolute;
+        inset: 0;
+        background: var(--muted);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--d-exit) var(--ease-out);
+      }
+      .stage[data-skel="true"] .skel {
+        opacity: 1;
+        transition-duration: var(--d-base);
+      }
 
-  /* 内容层：图 / 封面，到了才淡入 */
-  .content {
-    position: absolute; inset: 0; opacity: 0;
-    transition: opacity var(--d-base) var(--ease-out);
-  }
-  .stage[data-loaded="true"] .content { opacity: 1; }
-  .img {
-    background:
-      radial-gradient(60% 80% at 25% 30%, oklch(0.78 0.12 60 / 0.9), transparent 60%),
-      radial-gradient(70% 90% at 80% 75%, oklch(0.55 0.14 250 / 0.9), transparent 62%),
-      linear-gradient(135deg, oklch(0.42 0.06 280), oklch(0.3 0.05 240));
-  }
-  .img.b {
-    background:
-      radial-gradient(70% 90% at 70% 25%, oklch(0.8 0.1 150 / 0.85), transparent 62%),
-      radial-gradient(60% 80% at 20% 80%, oklch(0.6 0.15 20 / 0.85), transparent 60%),
-      linear-gradient(135deg, oklch(0.4 0.06 200), oklch(0.3 0.05 260));
-  }
-  .play {
-    position: absolute; inset: 0; margin: auto; width: 48px; height: 48px; border-radius: 999px;
-    background: oklch(0 0 0 / 0.55); color: #fff; display: grid; place-items: center;
-    box-shadow: 0 6px 16px oklch(0 0 0 / 0.25);
-  }
-  .play svg { width: 20px; height: 20px; transform: translateX(1px); }
-  .dur {
-    position: absolute; right: 8px; bottom: 8px; padding: 1px 6px; border-radius: 6px;
-    background: oklch(0 0 0 / 0.55); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums;
-  }
+      /* 内容层：图 / 封面，到了才淡入 */
+      .content {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transition: opacity var(--d-base) var(--ease-out);
+      }
+      .stage[data-loaded="true"] .content {
+        opacity: 1;
+      }
+      .img {
+        background:
+          radial-gradient(60% 80% at 25% 30%, oklch(0.78 0.12 60 / 0.9), transparent 60%),
+          radial-gradient(70% 90% at 80% 75%, oklch(0.55 0.14 250 / 0.9), transparent 62%),
+          linear-gradient(135deg, oklch(0.42 0.06 280), oklch(0.3 0.05 240));
+      }
+      .img.b {
+        background:
+          radial-gradient(70% 90% at 70% 25%, oklch(0.8 0.1 150 / 0.85), transparent 62%),
+          radial-gradient(60% 80% at 20% 80%, oklch(0.6 0.15 20 / 0.85), transparent 60%),
+          linear-gradient(135deg, oklch(0.4 0.06 200), oklch(0.3 0.05 260));
+      }
+      .play {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 48px;
+        height: 48px;
+        border-radius: 999px;
+        background: oklch(0 0 0 / 0.55);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 6px 16px oklch(0 0 0 / 0.25);
+      }
+      .play svg {
+        width: 20px;
+        height: 20px;
+        transform: translateX(1px);
+      }
+      .dur {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        padding: 1px 6px;
+        border-radius: 6px;
+        background: oklch(0 0 0 / 0.55);
+        color: #fff;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
 
-  /* ---------- 方案 A：扫光 shimmer ----------
+      /* ---------- 方案 A：扫光 shimmer ----------
      一条高光带用 transform 平移扫过，只动 transform，合成线程跑 */
-  .a .skel::after {
-    content: ""; position: absolute; inset: 0;
-    background: linear-gradient(120deg, transparent 30%, var(--sheen) 50%, transparent 70%);
-    transform: translateX(-100%);
-    animation: sheen 1.6s ease-in-out infinite;
-  }
-  @keyframes sheen { to { transform: translateX(100%); } }
+      .a .skel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 30%, var(--sheen) 50%, transparent 70%);
+        transform: translateX(-100%);
+        animation: sheen 1.6s ease-in-out infinite;
+      }
+      @keyframes sheen {
+        to {
+          transform: translateX(100%);
+        }
+      }
 
-  /* ---------- 方案 B：呼吸渐变 ----------
+      /* ---------- 方案 B：呼吸渐变 ----------
      灰底上叠一层前景色浅罩，只动 opacity，来回明暗 */
-  .b .skel::after {
-    content: ""; position: absolute; inset: 0;
-    background: color-mix(in oklch, var(--foreground) 7%, transparent);
-    animation: breathe 2s ease-in-out infinite;
-  }
-  @keyframes breathe { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+      .b .skel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: color-mix(in oklch, var(--foreground) 7%, transparent);
+        animation: breathe 2s ease-in-out infinite;
+      }
+      @keyframes breathe {
+        0%,
+        100% {
+          opacity: 0;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
 
-  /* ---------- 方案 C：静态灰底 + 内容淡入 ---------- */
-  /* 占位层不动，什么都不加 */
+      /* ---------- 方案 C：静态灰底 + 内容淡入 ---------- */
+      /* 占位层不动，什么都不加 */
 
-  /* 减少动态效果：循环动画全部停掉，只留淡入淡出 */
-  .reduce .skel::after { animation: none; }
-  .reduce .a .skel::after { transform: none; background: color-mix(in oklch, var(--foreground) 4%, transparent); }
-  .reduce .content, .reduce .skel { transition-duration: var(--d-base); }
+      /* 减少动态效果：循环动画全部停掉，只留淡入淡出 */
+      .reduce .skel::after {
+        animation: none;
+      }
+      .reduce .a .skel::after {
+        transform: none;
+        background: color-mix(in oklch, var(--foreground) 4%, transparent);
+      }
+      .reduce .content,
+      .reduce .skel {
+        transition-duration: var(--d-base);
+      }
 
-  .note { margin-top: 24px; font-size: 12px; color: var(--muted-foreground); max-width: 760px; }
-  .note li { margin-bottom: 4px; }
-  @media (max-width: 768px) { .bar input[type=range] { width: 120px; } }
-</style>
-</head>
-<body>
-<div class="wrap" id="root">
-  <h1>节点内容加载占位 · 三种方案</h1>
-  <p class="sub">图片缩略图、原图、视频封面还没出来时，节点预览框里显示什么。点「重新加载」看每种方案从占位到内容的过渡。</p>
+      .note {
+        margin-top: 24px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+        max-width: 760px;
+      }
+      .note li {
+        margin-bottom: 4px;
+      }
+      @media (max-width: 768px) {
+        .bar input[type="range"] {
+          width: 120px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="root">
+      <h1>节点内容加载占位 · 三种方案</h1>
+      <p class="sub">
+        图片缩略图、原图、视频封面还没出来时，节点预览框里显示什么。点「重新加载」看每种方案从占位到内容的过渡。
+      </p>
 
-  <div class="bar">
-    <button class="btn" id="reload">重新加载</button>
-    <label>模拟加载耗时
-      <input type="range" id="ms" min="50" max="4000" step="50" value="1800" />
-      <span class="tabular" id="msv">1.8s</span>
-    </label>
-    <label><input type="checkbox" id="theme" /> 深色主题</label>
-    <label><input type="checkbox" id="rm" /> 减少动态效果</label>
-  </div>
+      <div class="bar">
+        <button class="btn" id="reload">重新加载</button>
+        <label
+          >模拟加载耗时
+          <input type="range" id="ms" min="50" max="4000" step="50" value="1800" />
+          <span class="tabular" id="msv">1.8s</span>
+        </label>
+        <label><input type="checkbox" id="theme" /> 深色主题</label>
+        <label><input type="checkbox" id="rm" /> 减少动态效果</label>
+      </div>
 
-  <div class="grid">
-    <section class="col a">
-      <h2>A · 扫光 shimmer（推荐）</h2>
-      <p class="d">灰底上一道柔和的浅色光带从左到右缓缓扫过，1.6s 一轮。最像“正在加载”，又不会和「生成中」的呼吸骨架混淆。</p>
-      <div class="node"><div class="stage" data-kind="image"><div class="skel"></div><div class="content img"></div></div><p class="cap">图片节点</p></div>
-      <div class="node"><div class="stage" data-kind="video"><div class="skel"></div><div class="content img b">
-        <div class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></div><span class="dur">0:15</span></div></div><p class="cap">视频节点（封面）</p></div>
-    </section>
+      <div class="grid">
+        <section class="col a">
+          <h2>A · 扫光 shimmer（推荐）</h2>
+          <p class="d">
+            灰底上一道柔和的浅色光带从左到右缓缓扫过，1.6s
+            一轮。最像“正在加载”，又不会和「生成中」的呼吸骨架混淆。
+          </p>
+          <div class="node">
+            <div class="stage" data-kind="image">
+              <div class="skel"></div>
+              <div class="content img"></div>
+            </div>
+            <p class="cap">图片节点</p>
+          </div>
+          <div class="node">
+            <div class="stage" data-kind="video">
+              <div class="skel"></div>
+              <div class="content img b">
+                <div class="play">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
+                </div>
+                <span class="dur">0:15</span>
+              </div>
+            </div>
+            <p class="cap">视频节点（封面）</p>
+          </div>
+        </section>
 
-    <section class="col b">
-      <h2>B · 呼吸渐变</h2>
-      <p class="d">整块灰色在深浅之间缓缓明暗，2s 一轮，更安静。缺点：和「生成中」的 animate-pulse 骨架几乎一样，用户分不清是在等图还是在等生成。</p>
-      <div class="node"><div class="stage" data-kind="image"><div class="skel"></div><div class="content img"></div></div><p class="cap">图片节点</p></div>
-      <div class="node"><div class="stage" data-kind="video"><div class="skel"></div><div class="content img b">
-        <div class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></div><span class="dur">0:15</span></div></div><p class="cap">视频节点（封面）</p></div>
-    </section>
+        <section class="col b">
+          <h2>B · 呼吸渐变</h2>
+          <p class="d">
+            整块灰色在深浅之间缓缓明暗，2s 一轮，更安静。缺点：和「生成中」的 animate-pulse
+            骨架几乎一样，用户分不清是在等图还是在等生成。
+          </p>
+          <div class="node">
+            <div class="stage" data-kind="image">
+              <div class="skel"></div>
+              <div class="content img"></div>
+            </div>
+            <p class="cap">图片节点</p>
+          </div>
+          <div class="node">
+            <div class="stage" data-kind="video">
+              <div class="skel"></div>
+              <div class="content img b">
+                <div class="play">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
+                </div>
+                <span class="dur">0:15</span>
+              </div>
+            </div>
+            <p class="cap">视频节点（封面）</p>
+          </div>
+        </section>
 
-    <section class="col c">
-      <h2>C · 静态灰底 + 内容淡入</h2>
-      <p class="d">占位不动，就是一块灰；内容到了从灰底淡入。最克制，画布上节点多时零开销。缺点：等得久会像卡死。</p>
-      <div class="node"><div class="stage" data-kind="image"><div class="skel"></div><div class="content img"></div></div><p class="cap">图片节点</p></div>
-      <div class="node"><div class="stage" data-kind="video"><div class="skel"></div><div class="content img b">
-        <div class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></div><span class="dur">0:15</span></div></div><p class="cap">视频节点（封面）</p></div>
-    </section>
-  </div>
+        <section class="col c">
+          <h2>C · 静态灰底 + 内容淡入</h2>
+          <p class="d">
+            占位不动，就是一块灰；内容到了从灰底淡入。最克制，画布上节点多时零开销。缺点：等得久会像卡死。
+          </p>
+          <div class="node">
+            <div class="stage" data-kind="image">
+              <div class="skel"></div>
+              <div class="content img"></div>
+            </div>
+            <p class="cap">图片节点</p>
+          </div>
+          <div class="node">
+            <div class="stage" data-kind="video">
+              <div class="skel"></div>
+              <div class="content img b">
+                <div class="play">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z" /></svg>
+                </div>
+                <span class="dur">0:15</span>
+              </div>
+            </div>
+            <p class="cap">视频节点（封面）</p>
+          </div>
+        </section>
+      </div>
 
-  <ul class="note">
-    <li><b>防闪烁：</b>占位层要等 150ms 才出现。把耗时拖到 100ms 以下再点「重新加载」，会看到内容直接淡入、没有灰块一闪而过（命中缓存的场景）。</li>
-    <li><b>过渡：</b>内容到了以后，内容层 180ms 淡入盖住占位层，占位层 126ms 淡出，不会露出空白。</li>
-    <li><b>视频：</b>占位到封面到了为止；播放按钮和时长角标跟着封面一起淡入，不单独先出现。点击播放后的加载环沿用 6.11，不变。</li>
-    <li><b>减少动态效果：</b>勾上后光带和呼吸都停掉，只剩一块静灰底和淡入淡出。</li>
-  </ul>
-</div>
+      <ul class="note">
+        <li>
+          <b>防闪烁：</b>占位层要等 150ms 才出现。把耗时拖到 100ms
+          以下再点「重新加载」，会看到内容直接淡入、没有灰块一闪而过（命中缓存的场景）。
+        </li>
+        <li>
+          <b>过渡：</b>内容到了以后，内容层 180ms 淡入盖住占位层，占位层 126ms 淡出，不会露出空白。
+        </li>
+        <li>
+          <b>视频：</b
+          >占位到封面到了为止；播放按钮和时长角标跟着封面一起淡入，不单独先出现。点击播放后的加载环沿用
+          6.11，不变。
+        </li>
+        <li><b>减少动态效果：</b>勾上后光带和呼吸都停掉，只剩一块静灰底和淡入淡出。</li>
+      </ul>
+    </div>
 
-<script>
-  const root = document.getElementById("root");
-  const stages = [...document.querySelectorAll(".stage")];
-  const SKEL_DELAY = 150;
-  const msInput = document.getElementById("ms");
-  const timers = new WeakMap();
+    <script>
+      const root = document.getElementById("root");
+      const stages = [...document.querySelectorAll(".stage")];
+      const SKEL_DELAY = 150;
+      const msInput = document.getElementById("ms");
+      const timers = new WeakMap();
 
-  function load() {
-    const ms = Number(msInput.value);
-    stages.forEach((s, i) => {
-      clearTimeout(timers.get(s)?.[0]); clearTimeout(timers.get(s)?.[1]);
-      s.dataset.loaded = "false"; s.dataset.skel = "false";
-      // 同一列里错开一点，更像真实网络
-      const t1 = setTimeout(() => { if (s.dataset.loaded !== "true") s.dataset.skel = "true"; }, SKEL_DELAY);
-      const t2 = setTimeout(() => { s.dataset.loaded = "true"; s.dataset.skel = "false"; }, ms + (i % 2) * 250);
-      timers.set(s, [t1, t2]);
-    });
-  }
-  document.getElementById("reload").onclick = load;
-  msInput.oninput = () => { document.getElementById("msv").textContent = (msInput.value / 1000).toFixed(2).replace(/0$/, "") + "s"; };
-  document.getElementById("theme").onchange = (e) => {
-    document.documentElement.dataset.theme = e.target.checked ? "dark" : "light";
-  };
-  document.getElementById("rm").onchange = (e) => root.classList.toggle("reduce", e.target.checked);
-  load();
-</script>
-</body>
+      function load() {
+        const ms = Number(msInput.value);
+        stages.forEach((s, i) => {
+          clearTimeout(timers.get(s)?.[0]);
+          clearTimeout(timers.get(s)?.[1]);
+          s.dataset.loaded = "false";
+          s.dataset.skel = "false";
+          // 同一列里错开一点，更像真实网络
+          const t1 = setTimeout(() => {
+            if (s.dataset.loaded !== "true") s.dataset.skel = "true";
+          }, SKEL_DELAY);
+          const t2 = setTimeout(
+            () => {
+              s.dataset.loaded = "true";
+              s.dataset.skel = "false";
+            },
+            ms + (i % 2) * 250,
+          );
+          timers.set(s, [t1, t2]);
+        });
+      }
+      document.getElementById("reload").onclick = load;
+      msInput.oninput = () => {
+        document.getElementById("msv").textContent =
+          (msInput.value / 1000).toFixed(2).replace(/0$/, "") + "s";
+      };
+      document.getElementById("theme").onchange = (e) => {
+        document.documentElement.dataset.theme = e.target.checked ? "dark" : "light";
+      };
+      document.getElementById("rm").onchange = (e) =>
+        root.classList.toggle("reduce", e.target.checked);
+      load();
+    </script>
+  </body>
 </html>

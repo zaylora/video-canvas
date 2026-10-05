@@ -1,567 +1,1998 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>长任务生成设计</title>
-<style>
-:root{
-  --paper:#F5F3EE; --card:#FFFFFF; --ink:#17191E; --ink2:#3A3E47; --muted:#737884;
-  --line:#DDD8CD; --line2:#ECE8DF; --chip:#ECE7DC;
-  --accent:#D9480F; --accent-soft:#FCE9DE;
-  --blue:#1C6FD1; --blue-soft:#E3EEFB; --green:#2B8A3E; --green-soft:#E3F3E6;
-  --red:#C92A2A; --red-soft:#FBE4E4; --violet:#6741D9; --violet-soft:#ECE6FB;
-  --slate:#5C6B7A; --slate-soft:#E8ECEF; --gray:#9098A1;
-  --code-bg:#1E2127; --code-ink:#E4E6EB;
-  --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC","Hiragino Sans GB",system-ui,sans-serif;
-  --mono:"JetBrains Mono","Cascadia Code","SF Mono",Consolas,"Microsoft YaHei",monospace;
-}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;background:#E4E1D9;overflow:hidden;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
-.stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center;transform:translate(-50%,-50%) scale(var(--s,1))}
-.slide{position:absolute;inset:0;background:var(--paper);padding:64px 96px 84px;display:none;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.12);overflow:hidden}
-.slide.active{display:flex}
-.chrome{position:absolute;left:96px;right:96px;bottom:30px;display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted);pointer-events:none;z-index:5}
-.chrome .pg{font-family:var(--mono);letter-spacing:.04em}
-.progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);transition:width .3s ease;z-index:6}
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>长任务生成设计</title>
+    <style>
+      :root {
+        --paper: #f5f3ee;
+        --card: #ffffff;
+        --ink: #17191e;
+        --ink2: #3a3e47;
+        --muted: #737884;
+        --line: #ddd8cd;
+        --line2: #ece8df;
+        --chip: #ece7dc;
+        --accent: #d9480f;
+        --accent-soft: #fce9de;
+        --blue: #1c6fd1;
+        --blue-soft: #e3eefb;
+        --green: #2b8a3e;
+        --green-soft: #e3f3e6;
+        --red: #c92a2a;
+        --red-soft: #fbe4e4;
+        --violet: #6741d9;
+        --violet-soft: #ece6fb;
+        --slate: #5c6b7a;
+        --slate-soft: #e8ecef;
+        --gray: #9098a1;
+        --code-bg: #1e2127;
+        --code-ink: #e4e6eb;
+        --sans:
+          "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", system-ui,
+          sans-serif;
+        --mono:
+          "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, "Microsoft YaHei", monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #e4e1d9;
+        overflow: hidden;
+        font-family: var(--sans);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1600px;
+        height: 900px;
+        transform-origin: center center;
+        transform: translate(-50%, -50%) scale(var(--s, 1));
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        background: var(--paper);
+        padding: 64px 96px 84px;
+        display: none;
+        flex-direction: column;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+        overflow: hidden;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .chrome {
+        position: absolute;
+        left: 96px;
+        right: 96px;
+        bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        color: var(--muted);
+        pointer-events: none;
+        z-index: 5;
+      }
+      .chrome .pg {
+        font-family: var(--mono);
+        letter-spacing: 0.04em;
+      }
+      .progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 4px;
+        background: var(--accent);
+        transition: width 0.3s ease;
+        z-index: 6;
+      }
 
-/* 排版 */
-.kicker{display:flex;align-items:center;gap:12px;font-size:15px;letter-spacing:.12em;color:var(--accent);font-weight:600;margin-bottom:14px}
-.kicker .num{font-family:var(--mono);background:var(--accent);color:#fff;padding:2px 8px;border-radius:4px;letter-spacing:0}
-h1{font-size:92px;line-height:1.05;margin:0;font-weight:800;letter-spacing:-.01em}
-h2{font-size:46px;line-height:1.2;margin:0 0 30px;font-weight:750;letter-spacing:-.005em}
-h3{font-size:22px;margin:0 0 10px;font-weight:700}
-p{margin:0}
-.lead{font-size:24px;line-height:1.6;color:var(--ink2)}
-.muted{color:var(--muted)}
-.small{font-size:15px}
-code,.mono{font-family:var(--mono)}
-code{font-size:.86em;background:var(--chip);padding:1px 6px;border-radius:4px;white-space:nowrap}
-.hl{color:var(--accent);font-weight:700}
-.grow{flex:1;min-height:0}
-.row{display:flex;gap:28px}
-.col{display:flex;flex-direction:column;gap:18px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
-.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+      /* 排版 */
+      .kicker {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 15px;
+        letter-spacing: 0.12em;
+        color: var(--accent);
+        font-weight: 600;
+        margin-bottom: 14px;
+      }
+      .kicker .num {
+        font-family: var(--mono);
+        background: var(--accent);
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        letter-spacing: 0;
+      }
+      h1 {
+        font-size: 92px;
+        line-height: 1.05;
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 46px;
+        line-height: 1.2;
+        margin: 0 0 30px;
+        font-weight: 750;
+        letter-spacing: -0.005em;
+      }
+      h3 {
+        font-size: 22px;
+        margin: 0 0 10px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0;
+      }
+      .lead {
+        font-size: 24px;
+        line-height: 1.6;
+        color: var(--ink2);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .small {
+        font-size: 15px;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+      }
+      code {
+        font-size: 0.86em;
+        background: var(--chip);
+        padding: 1px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      .hl {
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .grow {
+        flex: 1;
+        min-height: 0;
+      }
+      .row {
+        display: flex;
+        gap: 28px;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+      }
+      .grid3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px;
+      }
+      .grid4 {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+      }
 
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px}
-.card p{font-size:17px;line-height:1.65;color:var(--ink2)}
-.card.accent{border-color:var(--accent);box-shadow:inset 4px 0 0 var(--accent)}
-.card .idx{font-family:var(--mono);font-size:14px;color:var(--accent);font-weight:700;margin-bottom:8px;display:block}
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 22px 24px;
+      }
+      .card p {
+        font-size: 17px;
+        line-height: 1.65;
+        color: var(--ink2);
+      }
+      .card.accent {
+        border-color: var(--accent);
+        box-shadow: inset 4px 0 0 var(--accent);
+      }
+      .card .idx {
+        font-family: var(--mono);
+        font-size: 14px;
+        color: var(--accent);
+        font-weight: 700;
+        margin-bottom: 8px;
+        display: block;
+      }
 
-.callout{border-left:4px solid var(--accent);background:var(--accent-soft);padding:16px 22px;border-radius:0 10px 10px 0;font-size:19px;line-height:1.6}
-.callout b{color:var(--accent)}
+      .callout {
+        border-left: 4px solid var(--accent);
+        background: var(--accent-soft);
+        padding: 16px 22px;
+        border-radius: 0 10px 10px 0;
+        font-size: 19px;
+        line-height: 1.6;
+      }
+      .callout b {
+        color: var(--accent);
+      }
 
-.tbl{width:100%;border-collapse:collapse;font-size:17px;line-height:1.5}
-.tbl th{text-align:left;font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.06em;padding:8px 12px;border-bottom:2px solid var(--ink)}
-.tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink2)}
-.tbl td:first-child{color:var(--ink);font-weight:600}
-.tbl tr.pick td{background:var(--accent-soft)}
-.tbl .ev{font-family:var(--mono);font-size:13.5px;color:var(--muted)}
+      .tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 17px;
+        line-height: 1.5;
+      }
+      .tbl th {
+        text-align: left;
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        padding: 8px 12px;
+        border-bottom: 2px solid var(--ink);
+      }
+      .tbl td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+        color: var(--ink2);
+      }
+      .tbl td:first-child {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .tbl tr.pick td {
+        background: var(--accent-soft);
+      }
+      .tbl .ev {
+        font-family: var(--mono);
+        font-size: 13.5px;
+        color: var(--muted);
+      }
 
-.chip{display:inline-flex;align-items:center;gap:6px;font-size:15px;padding:5px 12px;border-radius:999px;background:var(--chip);color:var(--ink2);white-space:nowrap}
-.chip.dash{background:transparent;border:1.5px dashed var(--gray);color:var(--muted)}
-.pill{display:inline-block;font-family:var(--mono);font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:999px}
-.p-pending{background:#EEE;color:#666}
-.p-queued{background:var(--slate-soft);color:var(--slate)}
-.p-running{background:var(--blue-soft);color:var(--blue)}
-.p-final{background:var(--violet-soft);color:var(--violet)}
-.p-ok{background:var(--green-soft);color:var(--green)}
-.p-fail{background:var(--red-soft);color:var(--red)}
-.p-off{background:#EDEDED;color:#777}
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 15px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        background: var(--chip);
+        color: var(--ink2);
+        white-space: nowrap;
+      }
+      .chip.dash {
+        background: transparent;
+        border: 1.5px dashed var(--gray);
+        color: var(--muted);
+      }
+      .pill {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+      }
+      .p-pending {
+        background: #eee;
+        color: #666;
+      }
+      .p-queued {
+        background: var(--slate-soft);
+        color: var(--slate);
+      }
+      .p-running {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+      .p-final {
+        background: var(--violet-soft);
+        color: var(--violet);
+      }
+      .p-ok {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .p-fail {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .p-off {
+        background: #ededed;
+        color: #777;
+      }
 
-pre.code{margin:0;background:var(--code-bg);color:var(--code-ink);font-family:var(--mono);font-size:15px;line-height:1.65;padding:20px 24px;border-radius:12px;white-space:pre;overflow:hidden}
-pre.code .c{color:#7F8794}.code .k{color:#FF9E64}.code .t{color:#82AAFF}.code .fn{color:#F0C674}.code .s{color:#A5D6A7}
+      pre.code {
+        margin: 0;
+        background: var(--code-bg);
+        color: var(--code-ink);
+        font-family: var(--mono);
+        font-size: 15px;
+        line-height: 1.65;
+        padding: 20px 24px;
+        border-radius: 12px;
+        white-space: pre;
+        overflow: hidden;
+      }
+      pre.code .c {
+        color: #7f8794;
+      }
+      .code .k {
+        color: #ff9e64;
+      }
+      .code .t {
+        color: #82aaff;
+      }
+      .code .fn {
+        color: #f0c674;
+      }
+      .code .s {
+        color: #a5d6a7;
+      }
 
-.frag{opacity:0;transform:translateY(6px);transition:opacity .35s ease,transform .35s ease}
-.frag.on{opacity:1;transform:none}
-g.frag{transform:none}
+      .frag {
+        opacity: 0;
+        transform: translateY(6px);
+        transition:
+          opacity 0.35s ease,
+          transform 0.35s ease;
+      }
+      .frag.on {
+        opacity: 1;
+        transform: none;
+      }
+      g.frag {
+        transform: none;
+      }
 
-/* 封面 */
-.cover{justify-content:center;padding-left:120px}
-.cover .scope{display:flex;align-items:center;gap:14px;margin-top:48px;font-size:22px}
-.cover .scope .node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 20px}
-.cover .scope .arr{color:var(--accent);font-size:26px}
-.cover .keys{position:absolute;left:120px;bottom:90px;font-size:15px;color:var(--muted)}
-kbd{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 7px;background:var(--card);color:var(--ink2)}
-.cover .deco{position:absolute;right:-60px;top:120px;width:620px;opacity:.95}
+      /* 封面 */
+      .cover {
+        justify-content: center;
+        padding-left: 120px;
+      }
+      .cover .scope {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 48px;
+        font-size: 22px;
+      }
+      .cover .scope .node {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 20px;
+      }
+      .cover .scope .arr {
+        color: var(--accent);
+        font-size: 26px;
+      }
+      .cover .keys {
+        position: absolute;
+        left: 120px;
+        bottom: 90px;
+        font-size: 15px;
+        color: var(--muted);
+      }
+      kbd {
+        font-family: var(--mono);
+        font-size: 13px;
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 1px 7px;
+        background: var(--card);
+        color: var(--ink2);
+      }
+      .cover .deco {
+        position: absolute;
+        right: -60px;
+        top: 120px;
+        width: 620px;
+        opacity: 0.95;
+      }
 
-/* 节点 mock */
-.mock{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
-.mock .hd{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--ink2);font-weight:600}
-.mock .pv{height:118px;border-radius:8px;background:#F1EEE7;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--muted);text-align:center;padding:8px}
-.mock .ft{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted);min-height:30px}
-.btn{font-family:var(--sans);font-size:13px;border:1px solid var(--line);background:var(--card);border-radius:7px;padding:5px 12px;color:var(--ink2);cursor:pointer}
-.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
-.btn.acc{background:var(--accent);color:#fff;border-color:var(--accent)}
-.btn:disabled{opacity:.45;cursor:default}
-.mock .pv.skel,.skel{background:linear-gradient(100deg,#ECE8DF 30%,#F8F6F1 50%,#ECE8DF 70%);background-size:300% 100%;animation:sh 1.6s linear infinite}
-@keyframes sh{from{background-position:100% 0}to{background-position:0 0}}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:rot .8s linear infinite;vertical-align:-2px;margin-right:6px}
-@keyframes rot{to{transform:rotate(360deg)}}
-.bar{height:5px;background:var(--line2);border-radius:3px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--blue);border-radius:3px}
-.mock .pv.video{background:linear-gradient(135deg,#2A3342,#5A4632 60%,#A0623A)}
-.play{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:grid;place-items:center}
-.play:after{content:"";border-left:14px solid var(--ink);border-top:9px solid transparent;border-bottom:9px solid transparent;margin-left:4px}
+      /* 节点 mock */
+      .mock {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .mock .hd {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        color: var(--ink2);
+        font-weight: 600;
+      }
+      .mock .pv {
+        height: 118px;
+        border-radius: 8px;
+        background: #f1eee7;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        color: var(--muted);
+        text-align: center;
+        padding: 8px;
+      }
+      .mock .ft {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: var(--muted);
+        min-height: 30px;
+      }
+      .btn {
+        font-family: var(--sans);
+        font-size: 13px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 7px;
+        padding: 5px 12px;
+        color: var(--ink2);
+        cursor: pointer;
+      }
+      .btn.pri {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      .btn.acc {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .mock .pv.skel,
+      .skel {
+        background: linear-gradient(100deg, #ece8df 30%, #f8f6f1 50%, #ece8df 70%);
+        background-size: 300% 100%;
+        animation: sh 1.6s linear infinite;
+      }
+      @keyframes sh {
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: 0 0;
+        }
+      }
+      .spin {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: rot 0.8s linear infinite;
+        vertical-align: -2px;
+        margin-right: 6px;
+      }
+      @keyframes rot {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .bar {
+        height: 5px;
+        background: var(--line2);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        background: var(--blue);
+        border-radius: 3px;
+      }
+      .mock .pv.video {
+        background: linear-gradient(135deg, #2a3342, #5a4632 60%, #a0623a);
+      }
+      .play {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.9);
+        display: grid;
+        place-items: center;
+      }
+      .play:after {
+        content: "";
+        border-left: 14px solid var(--ink);
+        border-top: 9px solid transparent;
+        border-bottom: 9px solid transparent;
+        margin-left: 4px;
+      }
 
-/* 字段卡 */
-.fields{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.fcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
-.fcard h4{margin:0 0 10px;font-size:15px;letter-spacing:.08em;color:var(--accent)}
-.f{display:flex;gap:10px;font-size:15.5px;line-height:1.6;padding:6px 0;border-top:1px dashed var(--line2)}
-.f:first-of-type{border-top:0}
-.f b{font-family:var(--mono);font-weight:600;font-size:15px;color:var(--ink);white-space:nowrap}
-.f span{color:var(--muted)}
+      /* 字段卡 */
+      .fields {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .fcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+      }
+      .fcard h4 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+      }
+      .f {
+        display: flex;
+        gap: 10px;
+        font-size: 15.5px;
+        line-height: 1.6;
+        padding: 6px 0;
+        border-top: 1px dashed var(--line2);
+      }
+      .f:first-of-type {
+        border-top: 0;
+      }
+      .f b {
+        font-family: var(--mono);
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .f span {
+        color: var(--muted);
+      }
 
-/* 积分模拟器 */
-.sim{display:flex;flex-direction:column;gap:14px}
-.meters{display:flex;gap:14px}
-.meter{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
-.meter .l{font-size:13px;color:var(--muted)}
-.meter .v{font-family:var(--mono);font-size:30px;font-weight:700;transition:color .3s}
-.ledger{font-family:var(--mono);font-size:13.5px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper)}
-.ledger div{padding:6px 12px;border-top:1px solid var(--line2);display:flex;gap:16px}
-.ledger div:first-child{border-top:0;color:var(--muted);font-size:12px}
-.ledger .new{animation:flash 1s ease}
-@keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
-.simlog{font-size:15px;min-height:24px;color:var(--ink2)}
-.simlog.warn{color:var(--red)}
+      /* 积分模拟器 */
+      .sim {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .meters {
+        display: flex;
+        gap: 14px;
+      }
+      .meter {
+        flex: 1;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 14px;
+      }
+      .meter .l {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .meter .v {
+        font-family: var(--mono);
+        font-size: 30px;
+        font-weight: 700;
+        transition: color 0.3s;
+      }
+      .ledger {
+        font-family: var(--mono);
+        font-size: 13.5px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--paper);
+      }
+      .ledger div {
+        padding: 6px 12px;
+        border-top: 1px solid var(--line2);
+        display: flex;
+        gap: 16px;
+      }
+      .ledger div:first-child {
+        border-top: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .ledger .new {
+        animation: flash 1s ease;
+      }
+      @keyframes flash {
+        from {
+          background: var(--accent-soft);
+        }
+        to {
+          background: transparent;
+        }
+      }
+      .simlog {
+        font-size: 15px;
+        min-height: 24px;
+        color: var(--ink2);
+      }
+      .simlog.warn {
+        color: var(--red);
+      }
 
-/* 总览 */
-.overview{position:fixed;inset:0;background:#E4E1D9;overflow:auto;display:none;padding:28px;z-index:20}
-.overview.show{display:block}
-.overview .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:18px}
-.thumb{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:8px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.1);outline:3px solid transparent}
-.thumb.cur{outline-color:var(--accent)}
-.thumb .inner{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0}
-.thumb .inner .slide{display:flex;box-shadow:none}
-.thumb .inner .frag{opacity:1;transform:none}
-.thumb .n{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.65);color:#fff;padding:1px 6px;border-radius:4px}
-.nav{position:fixed;right:18px;top:14px;display:flex;gap:8px;z-index:10;opacity:.35;transition:opacity .2s}
-.nav:hover{opacity:1}
-.nav button{font-family:var(--mono);font-size:14px;border:1px solid #CFCAC0;background:#FAF9F6;border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--ink2)}
+      /* 总览 */
+      .overview {
+        position: fixed;
+        inset: 0;
+        background: #e4e1d9;
+        overflow: auto;
+        display: none;
+        padding: 28px;
+        z-index: 20;
+      }
+      .overview.show {
+        display: block;
+      }
+      .overview .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+        gap: 18px;
+      }
+      .thumb {
+        position: relative;
+        aspect-ratio: 16/9;
+        overflow: hidden;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        outline: 3px solid transparent;
+      }
+      .thumb.cur {
+        outline-color: var(--accent);
+      }
+      .thumb .inner {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1600px;
+        height: 900px;
+        transform-origin: 0 0;
+      }
+      .thumb .inner .slide {
+        display: flex;
+        box-shadow: none;
+      }
+      .thumb .inner .frag {
+        opacity: 1;
+        transform: none;
+      }
+      .thumb .n {
+        position: absolute;
+        left: 8px;
+        bottom: 6px;
+        font-family: var(--mono);
+        font-size: 12px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .nav {
+        position: fixed;
+        right: 18px;
+        top: 14px;
+        display: flex;
+        gap: 8px;
+        z-index: 10;
+        opacity: 0.35;
+        transition: opacity 0.2s;
+      }
+      .nav:hover {
+        opacity: 1;
+      }
+      .nav button {
+        font-family: var(--mono);
+        font-size: 14px;
+        border: 1px solid #cfcac0;
+        background: #faf9f6;
+        border-radius: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+        color: var(--ink2);
+      }
 
-@media print{
-  @page{size:1600px 900px;margin:0}
-  html,body{overflow:visible;height:auto;background:#fff}
-  .stage{position:static;transform:none;width:1600px;height:auto}
-  .slide{position:relative;display:flex!important;width:1600px;height:900px;page-break-after:always;box-shadow:none}
-  .frag{opacity:1!important;transform:none!important}
-  .chrome,.progress,.nav,.overview{display:none!important}
-}
-</style>
-</head>
-<body>
-<div class="stage" id="stage">
+      @media print {
+        @page {
+          size: 1600px 900px;
+          margin: 0;
+        }
+        html,
+        body {
+          overflow: visible;
+          height: auto;
+          background: #fff;
+        }
+        .stage {
+          position: static;
+          transform: none;
+          width: 1600px;
+          height: auto;
+        }
+        .slide {
+          position: relative;
+          display: flex !important;
+          width: 1600px;
+          height: 900px;
+          page-break-after: always;
+          box-shadow: none;
+        }
+        .frag {
+          opacity: 1 !important;
+          transform: none !important;
+        }
+        .chrome,
+        .progress,
+        .nav,
+        .overview {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <!-- 1 封面 -->
+      <section class="slide cover">
+        <div class="kicker">设计稿 · 2026-09-29</div>
+        <h1>长任务生成设计</h1>
+        <div style="font-size: 40px; color: var(--muted); margin-top: 14px; font-weight: 600">
+          视频优先 · 任务落库 · 推送通知 · 对账兜底
+        </div>
+        <div class="scope">
+          <span class="node">画布节点选择模型</span><span class="arr">→</span>
+          <span class="node">后端调用生成平台</span><span class="arr">→</span>
+          <span class="node">结果回填画布</span>
+        </div>
+        <svg class="deco" viewBox="0 0 620 620" aria-hidden="true">
+          <circle
+            cx="310"
+            cy="310"
+            r="250"
+            fill="none"
+            stroke="#DDD8CD"
+            stroke-width="2"
+            stroke-dasharray="4 10"
+          />
+          <circle cx="310" cy="310" r="170" fill="none" stroke="#DDD8CD" stroke-width="2" />
+          <path
+            d="M310 60 A250 250 0 0 1 526 435"
+            fill="none"
+            stroke="#D9480F"
+            stroke-width="6"
+            stroke-linecap="round"
+          />
+          <circle cx="526" cy="435" r="12" fill="#D9480F" />
+          <text
+            x="310"
+            y="300"
+            text-anchor="middle"
+            font-family="Consolas,monospace"
+            font-size="54"
+            font-weight="700"
+            fill="#17191E"
+          >
+            01:24
+          </text>
+          <text x="310" y="345" text-anchor="middle" font-size="20" fill="#737884">
+            running · 已耗时
+          </text>
+        </svg>
+        <div class="keys">
+          <kbd>←</kbd> <kbd>→</kbd> 翻页　<kbd>O</kbd> 总览　<kbd>F</kbd> 全屏　<kbd>P</kbd> 打印为
+          PDF
+        </div>
+      </section>
 
-<!-- 1 封面 -->
-<section class="slide cover">
-  <div class="kicker">设计稿 · 2026-09-29</div>
-  <h1>长任务生成设计</h1>
-  <div style="font-size:40px;color:var(--muted);margin-top:14px;font-weight:600">视频优先 · 任务落库 · 推送通知 · 对账兜底</div>
-  <div class="scope">
-    <span class="node">画布节点选择模型</span><span class="arr">→</span>
-    <span class="node">后端调用生成平台</span><span class="arr">→</span>
-    <span class="node">结果回填画布</span>
-  </div>
-  <svg class="deco" viewBox="0 0 620 620" aria-hidden="true">
-    <circle cx="310" cy="310" r="250" fill="none" stroke="#DDD8CD" stroke-width="2" stroke-dasharray="4 10"/>
-    <circle cx="310" cy="310" r="170" fill="none" stroke="#DDD8CD" stroke-width="2"/>
-    <path d="M310 60 A250 250 0 0 1 526 435" fill="none" stroke="#D9480F" stroke-width="6" stroke-linecap="round"/>
-    <circle cx="526" cy="435" r="12" fill="#D9480F"/>
-    <text x="310" y="300" text-anchor="middle" font-family="Consolas,monospace" font-size="54" font-weight="700" fill="#17191E">01:24</text>
-    <text x="310" y="345" text-anchor="middle" font-size="20" fill="#737884">running · 已耗时</text>
-  </svg>
-  <div class="keys"><kbd>←</kbd> <kbd>→</kbd> 翻页　<kbd>O</kbd> 总览　<kbd>F</kbd> 全屏　<kbd>P</kbd> 打印为 PDF</div>
-</section>
+      <!-- 2 问题 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">01</span>设计摘要 · 问题</div>
+        <h2>视频生成一次要 1–5 分钟，<br />不可能让一个 HTTP 请求一直挂着等结果</h2>
+        <div class="card" style="padding: 28px 32px 22px">
+          <svg viewBox="0 0 1360 150" width="100%">
+            <line x1="20" y1="70" x2="1340" y2="70" stroke="#DDD8CD" stroke-width="2" />
+            <g font-family="Consolas,monospace" font-size="15" fill="#737884" text-anchor="middle">
+              <text x="20" y="108">0</text>
+              <text x="284" y="108">1 min</text>
+              <text x="548" y="108">2 min</text>
+              <text x="812" y="108">3 min</text>
+              <text x="1076" y="108">4 min</text>
+              <text x="1340" y="108">5 min</text>
+            </g>
+            <g stroke="#DDD8CD" stroke-width="2">
+              <line x1="284" y1="62" x2="284" y2="78" />
+              <line x1="548" y1="62" x2="548" y2="78" />
+              <line x1="812" y1="62" x2="812" y2="78" />
+              <line x1="1076" y1="62" x2="1076" y2="78" />
+            </g>
+            <rect x="284" y="52" width="1056" height="36" rx="6" fill="#E3EEFB" />
+            <text
+              x="812"
+              y="76"
+              text-anchor="middle"
+              font-size="17"
+              fill="#1C6FD1"
+              font-weight="600"
+            >
+              典型视频生成耗时 1–5 分钟，有时更久
+            </text>
+            <line x1="284" y1="18" x2="284" y2="92" stroke="#C92A2A" stroke-width="3" />
+            <text x="294" y="30" font-size="16" fill="#C92A2A" font-weight="700">
+              http.Server.WriteTimeout = 60s
+            </text>
+            <text x="20" y="140" font-size="16" fill="#3A3E47">
+              同步等待：还没出片，连接就已经被服务端切断
+            </text>
+          </svg>
+        </div>
+        <div class="grid4" style="margin-top: 26px">
+          <div class="card">
+            <h3>关页面</h3>
+            <p>第二天打开，结果要还在</p>
+          </div>
+          <div class="card">
+            <h3>切画布 / 列表页</h3>
+            <p>也要收到“视频已完成”的提示</p>
+          </div>
+          <div class="card">
+            <h3>断网 / 刷新</h3>
+            <p>重连后状态要自动补齐</p>
+          </div>
+          <div class="card">
+            <h3>服务端重启</h3>
+            <p>任务不丢，积分不错</p>
+          </div>
+        </div>
+      </section>
 
-<!-- 2 问题 -->
-<section class="slide">
-  <div class="kicker"><span class="num">01</span>设计摘要 · 问题</div>
-  <h2>视频生成一次要 1–5 分钟，<br>不可能让一个 HTTP 请求一直挂着等结果</h2>
-  <div class="card" style="padding:28px 32px 22px">
-    <svg viewBox="0 0 1360 150" width="100%">
-      <line x1="20" y1="70" x2="1340" y2="70" stroke="#DDD8CD" stroke-width="2"/>
-      <g font-family="Consolas,monospace" font-size="15" fill="#737884" text-anchor="middle">
-        <text x="20" y="108">0</text><text x="284" y="108">1 min</text><text x="548" y="108">2 min</text><text x="812" y="108">3 min</text><text x="1076" y="108">4 min</text><text x="1340" y="108">5 min</text>
-      </g>
-      <g stroke="#DDD8CD" stroke-width="2"><line x1="284" y1="62" x2="284" y2="78"/><line x1="548" y1="62" x2="548" y2="78"/><line x1="812" y1="62" x2="812" y2="78"/><line x1="1076" y1="62" x2="1076" y2="78"/></g>
-      <rect x="284" y="52" width="1056" height="36" rx="6" fill="#E3EEFB"/>
-      <text x="812" y="76" text-anchor="middle" font-size="17" fill="#1C6FD1" font-weight="600">典型视频生成耗时 1–5 分钟，有时更久</text>
-      <line x1="284" y1="18" x2="284" y2="92" stroke="#C92A2A" stroke-width="3"/>
-      <text x="294" y="30" font-size="16" fill="#C92A2A" font-weight="700">http.Server.WriteTimeout = 60s</text>
-      <text x="20" y="140" font-size="16" fill="#3A3E47">同步等待：还没出片，连接就已经被服务端切断</text>
-    </svg>
-  </div>
-  <div class="grid4" style="margin-top:26px">
-    <div class="card"><h3>关页面</h3><p>第二天打开，结果要还在</p></div>
-    <div class="card"><h3>切画布 / 列表页</h3><p>也要收到“视频已完成”的提示</p></div>
-    <div class="card"><h3>断网 / 刷新</h3><p>重连后状态要自动补齐</p></div>
-    <div class="card"><h3>服务端重启</h3><p>任务不丢，积分不错</p></div>
-  </div>
-</section>
+      <!-- 3 结论 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">01</span>设计摘要 · 结论</div>
+        <h2>六个核心决定</h2>
+        <div class="grid3 grow" style="grid-template-rows: 1fr 1fr">
+          <div class="card accent">
+            <span class="idx">01 · 事实来源</span>
+            <h3>任务状态落库，连接只负责通知</h3>
+            <p>
+              通用
+              <code>generation_tasks</code>
+              表是唯一事实来源。任何通道断了都不影响正确性，重新对账就能恢复。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">02 · 后端 ↔ 平台</span>
+            <h3>后台 worker 退避轮询</h3>
+            <p>
+              提交拿到 <code>provider_task_id</code> 后轮询。webhook
+              只触发“立即轮询”，不信任回调内容。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">03 · 浏览器 ↔ 后端</span>
+            <h3>202 + WebSocket + 批量对账</h3>
+            <p>
+              <code>POST</code> 立即返回 <code>202 + task</code>；状态走用户级 WS
+              推送；打开画布或重连时 <code>GET ?ids=</code> 兜底。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">04 · 回填</span>
+            <h3>结果由前端写回节点</h3>
+            <p>后端不改 <code>payload_json</code>，不会与现有 <code>revision</code> 乐观锁冲突。</p>
+          </div>
+          <div class="card">
+            <span class="idx">05 · 转存</span>
+            <h3>成功前必须转存</h3>
+            <p>平台视频 URL 一般 24 小时过期。转存到自有存储，节点只引用 <code>assetId</code>。</p>
+          </div>
+          <div class="card">
+            <span class="idx">06 · 计费</span>
+            <h3>冻结 → 结算 / 退回</h3>
+            <p>提交冻结，成功结算，失败 / 取消 / 超时退回。每用户并发上限，支持软取消。</p>
+          </div>
+        </div>
+      </section>
 
-<!-- 3 结论 -->
-<section class="slide">
-  <div class="kicker"><span class="num">01</span>设计摘要 · 结论</div>
-  <h2>六个核心决定</h2>
-  <div class="grid3 grow" style="grid-template-rows:1fr 1fr">
-    <div class="card accent"><span class="idx">01 · 事实来源</span><h3>任务状态落库，连接只负责通知</h3><p>通用 <code>generation_tasks</code> 表是唯一事实来源。任何通道断了都不影响正确性，重新对账就能恢复。</p></div>
-    <div class="card"><span class="idx">02 · 后端 ↔ 平台</span><h3>后台 worker 退避轮询</h3><p>提交拿到 <code>provider_task_id</code> 后轮询。webhook 只触发“立即轮询”，不信任回调内容。</p></div>
-    <div class="card"><span class="idx">03 · 浏览器 ↔ 后端</span><h3>202 + WebSocket + 批量对账</h3><p><code>POST</code> 立即返回 <code>202 + task</code>；状态走用户级 WS 推送；打开画布或重连时 <code>GET ?ids=</code> 兜底。</p></div>
-    <div class="card"><span class="idx">04 · 回填</span><h3>结果由前端写回节点</h3><p>后端不改 <code>payload_json</code>，不会与现有 <code>revision</code> 乐观锁冲突。</p></div>
-    <div class="card"><span class="idx">05 · 转存</span><h3>成功前必须转存</h3><p>平台视频 URL 一般 24 小时过期。转存到自有存储，节点只引用 <code>assetId</code>。</p></div>
-    <div class="card"><span class="idx">06 · 计费</span><h3>冻结 → 结算 / 退回</h3><p>提交冻结，成功结算，失败 / 取消 / 超时退回。每用户并发上限，支持软取消。</p></div>
-  </div>
-</section>
+      <!-- 4 项目事实 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">02</span>项目现状 · 事实</div>
+        <h2>现在有什么，没有什么</h2>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 62%">事实</th>
+              <th>证据</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>AI 模块只是占位，没有任务、worker 或推送能力</td>
+              <td class="ev">backend/internal/ai/doc.go</td>
+            </tr>
+            <tr>
+              <td>
+                画布内容整体存在 JSONB <code>payload_json</code>，更新走
+                <code>revision</code> 乐观锁，不匹配返回 409
+              </td>
+              <td class="ev">model/canvas_projects.go · 版本控制设计.md</td>
+            </tr>
+            <tr>
+              <td>前端每 800ms 防抖自动保存整张图，409 时重载</td>
+              <td class="ev">web/src/hooks/use-canvas-persistence.ts</td>
+            </tr>
+            <tr>
+              <td>
+                节点状态机在前端：<code>status / src / assetId / error</code> 存在节点 data 里
+              </td>
+              <td class="ev">web/src/types/canvas.ts</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="hl">持久化 DTO 的 status 只有 idle / done / error，没有 running</span>
+              </td>
+              <td class="ev">web/src/api/canvas/type.d.ts</td>
+            </tr>
+            <tr>
+              <td>图片生成是 <code>setTimeout</code> 模拟；视频模型清单是写死的演示数据</td>
+              <td class="ev">use-image-generation.ts · model-library.ts</td>
+            </tr>
+            <tr>
+              <td>自定义模型的 <code>apiKey</code> 只存在浏览器 localStorage</td>
+              <td class="ev">web/src/store/settings.ts</td>
+            </tr>
+            <tr>
+              <td>
+                前端已调用 <code>POST /assets</code> 上传，但后端<span class="hl"
+                  >没有这个路由</span
+                >
+              </td>
+              <td class="ev">api/asset/index.ts · router/router.go</td>
+            </tr>
+            <tr>
+              <td>鉴权只认 <code>Authorization: Bearer</code> 请求头</td>
+              <td class="ev">backend/internal/middleware/auth.go</td>
+            </tr>
+            <tr>
+              <td>
+                <code>http.Server.WriteTimeout = 60s</code>；Redis 可关闭（返回 nil，调用方需降级）
+              </td>
+              <td class="ev">configs/config.yaml · initialize/redis.go</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
-<!-- 4 项目事实 -->
-<section class="slide">
-  <div class="kicker"><span class="num">02</span>项目现状 · 事实</div>
-  <h2>现在有什么，没有什么</h2>
-  <table class="tbl">
-    <thead><tr><th style="width:62%">事实</th><th>证据</th></tr></thead>
-    <tbody>
-      <tr><td>AI 模块只是占位，没有任务、worker 或推送能力</td><td class="ev">backend/internal/ai/doc.go</td></tr>
-      <tr><td>画布内容整体存在 JSONB <code>payload_json</code>，更新走 <code>revision</code> 乐观锁，不匹配返回 409</td><td class="ev">model/canvas_projects.go · 版本控制设计.md</td></tr>
-      <tr><td>前端每 800ms 防抖自动保存整张图，409 时重载</td><td class="ev">web/src/hooks/use-canvas-persistence.ts</td></tr>
-      <tr><td>节点状态机在前端：<code>status / src / assetId / error</code> 存在节点 data 里</td><td class="ev">web/src/types/canvas.ts</td></tr>
-      <tr><td><span class="hl">持久化 DTO 的 status 只有 idle / done / error，没有 running</span></td><td class="ev">web/src/api/canvas/type.d.ts</td></tr>
-      <tr><td>图片生成是 <code>setTimeout</code> 模拟；视频模型清单是写死的演示数据</td><td class="ev">use-image-generation.ts · model-library.ts</td></tr>
-      <tr><td>自定义模型的 <code>apiKey</code> 只存在浏览器 localStorage</td><td class="ev">web/src/store/settings.ts</td></tr>
-      <tr><td>前端已调用 <code>POST /assets</code> 上传，但后端<span class="hl">没有这个路由</span></td><td class="ev">api/asset/index.ts · router/router.go</td></tr>
-      <tr><td>鉴权只认 <code>Authorization: Bearer</code> 请求头</td><td class="ev">backend/internal/middleware/auth.go</td></tr>
-      <tr><td><code>http.Server.WriteTimeout = 60s</code>；Redis 可关闭（返回 nil，调用方需降级）</td><td class="ev">configs/config.yaml · initialize/redis.go</td></tr>
-    </tbody>
-  </table>
-</section>
+      <!-- 5 约束与缺口 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">02</span>项目现状 · 约束与缺口</div>
+        <h2>四条硬约束决定了方案的形状</h2>
+        <div class="grid2">
+          <div class="card">
+            <span class="idx">鉴权</span>
+            <h3>浏览器 WebSocket 不能自定义请求头</h3>
+            <p>现有 JWT 请求头鉴权不能直接复用 → 用一次性 <b>ticket</b> 换连接。</p>
+          </div>
+          <div class="card">
+            <span class="idx">超时</span>
+            <h3>60s WriteTimeout 会切断长连接</h3>
+            <p>WS 升级后必须清掉连接 deadline，并用测试锁定这个行为。</p>
+          </div>
+          <div class="card">
+            <span class="idx">并发写</span>
+            <h3>后端写 payload_json 会递增 revision</h3>
+            <p>正在编辑的前端下次自动保存就会 409 → <b>后端不写画布</b>，结果由前端回填。</p>
+          </div>
+          <div class="card">
+            <span class="idx">降级</span>
+            <h3>Redis 关闭时也要能跑</h3>
+            <p>单实例用内存实现 ticket 存储和推送广播。</p>
+          </div>
+        </div>
+        <div style="margin-top: 34px">
+          <div class="muted" style="font-size: 15px; letter-spacing: 0.08em; margin-bottom: 12px">
+            当前缺口 —— 以下能力都还没有
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap">
+            <span class="chip dash">任务表</span><span class="chip dash">平台适配器</span
+            ><span class="chip dash">worker</span><span class="chip dash">模型清单接口</span
+            ><span class="chip dash">素材存储 /assets</span><span class="chip dash">积分余额</span
+            ><span class="chip dash">WS 推送</span>
+          </div>
+        </div>
+      </section>
 
-<!-- 5 约束与缺口 -->
-<section class="slide">
-  <div class="kicker"><span class="num">02</span>项目现状 · 约束与缺口</div>
-  <h2>四条硬约束决定了方案的形状</h2>
-  <div class="grid2">
-    <div class="card"><span class="idx">鉴权</span><h3>浏览器 WebSocket 不能自定义请求头</h3><p>现有 JWT 请求头鉴权不能直接复用 → 用一次性 <b>ticket</b> 换连接。</p></div>
-    <div class="card"><span class="idx">超时</span><h3>60s WriteTimeout 会切断长连接</h3><p>WS 升级后必须清掉连接 deadline，并用测试锁定这个行为。</p></div>
-    <div class="card"><span class="idx">并发写</span><h3>后端写 payload_json 会递增 revision</h3><p>正在编辑的前端下次自动保存就会 409 → <b>后端不写画布</b>，结果由前端回填。</p></div>
-    <div class="card"><span class="idx">降级</span><h3>Redis 关闭时也要能跑</h3><p>单实例用内存实现 ticket 存储和推送广播。</p></div>
-  </div>
-  <div style="margin-top:34px">
-    <div class="muted" style="font-size:15px;letter-spacing:.08em;margin-bottom:12px">当前缺口 —— 以下能力都还没有</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-      <span class="chip dash">任务表</span><span class="chip dash">平台适配器</span><span class="chip dash">worker</span><span class="chip dash">模型清单接口</span><span class="chip dash">素材存储 /assets</span><span class="chip dash">积分余额</span><span class="chip dash">WS 推送</span>
-    </div>
-  </div>
-</section>
+      <!-- 6 用户与场景 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">03</span>用户与场景</div>
+        <h2>在画布上搭分镜流程的创作者</h2>
+        <div class="row" style="align-items: stretch">
+          <div class="card" style="flex: 1.1">
+            <span class="idx">主任务</span>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                margin-top: 6px;
+                font-size: 19px;
+              "
+            >
+              <div>① 视频节点里写 prompt，或连上参考图</div>
+              <div>② 选模型 → 生成</div>
+              <div>③ 等待期间继续编辑其他节点</div>
+              <div>④ 结果出现在节点上</div>
+            </div>
+            <div class="callout" style="margin-top: 22px; font-size: 17px">
+              会同时跑多个节点：一个场景常常并发生成 <b>2–4 个</b>视频候选。
+            </div>
+          </div>
+          <div class="col" style="flex: 1">
+            <div class="card">
+              <span class="idx">关键场景 A</span>
+              <h3>生成中关掉页面</h3>
+              <p>第二天打开，结果还在。</p>
+            </div>
+            <div class="card">
+              <span class="idx">关键场景 B</span>
+              <h3>切到别的画布或列表页</h3>
+              <p>也能收到“视频已完成”的提示，点击跳回。</p>
+            </div>
+            <div class="card">
+              <span class="idx">关键场景 C</span>
+              <h3>断网或服务重启</h3>
+              <p>任务不丢、积分不错。</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-<!-- 6 用户与场景 -->
-<section class="slide">
-  <div class="kicker"><span class="num">03</span>用户与场景</div>
-  <h2>在画布上搭分镜流程的创作者</h2>
-  <div class="row" style="align-items:stretch">
-    <div class="card" style="flex:1.1">
-      <span class="idx">主任务</span>
-      <div style="display:flex;flex-direction:column;gap:12px;margin-top:6px;font-size:19px">
-        <div>① 视频节点里写 prompt，或连上参考图</div>
-        <div>② 选模型 → 生成</div>
-        <div>③ 等待期间继续编辑其他节点</div>
-        <div>④ 结果出现在节点上</div>
-      </div>
-      <div class="callout" style="margin-top:22px;font-size:17px">会同时跑多个节点：一个场景常常并发生成 <b>2–4 个</b>视频候选。</div>
-    </div>
-    <div class="col" style="flex:1">
-      <div class="card"><span class="idx">关键场景 A</span><h3>生成中关掉页面</h3><p>第二天打开，结果还在。</p></div>
-      <div class="card"><span class="idx">关键场景 B</span><h3>切到别的画布或列表页</h3><p>也能收到“视频已完成”的提示，点击跳回。</p></div>
-      <div class="card"><span class="idx">关键场景 C</span><h3>断网或服务重启</h3><p>任务不丢、积分不错。</p></div>
-    </div>
-  </div>
-</section>
+      <!-- 7 平台调研 -->
+      <section class="slide">
+        <div class="kicker">
+          <span class="num">04</span>调研 · 视频平台 API 形态（访问日期 2026-09-29）
+        </div>
+        <h2>没有平台提供同步长连接</h2>
+        <table class="tbl" style="font-size: 16px">
+          <thead>
+            <tr>
+              <th>平台</th>
+              <th>提交</th>
+              <th>获取结果</th>
+              <th>Webhook</th>
+              <th>结果有效期</th>
+              <th>其他</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Runway</td>
+              <td>task <code>id</code></td>
+              <td><code>GET /v1/tasks/{id}</code>，建议 ≥5s，抖动 + 指数退避</td>
+              <td class="muted">文档未提及</td>
+              <td class="muted">未验证</td>
+              <td>有 cancel；SDK 默认 10 分钟超时</td>
+            </tr>
+            <tr>
+              <td>Luma</td>
+              <td>generation <code>id</code></td>
+              <td><code>dreaming / completed / failed</code></td>
+              <td>callback_url，失败重试 3 次</td>
+              <td class="muted">未验证</td>
+              <td>扩展视频要求源任务 completed</td>
+            </tr>
+            <tr>
+              <td>可灵 Kling</td>
+              <td><code>task_id</code></td>
+              <td><code>submitted / processing / succeeded / failed</code></td>
+              <td>callback_url</td>
+              <td><span class="hl">24h 后变 UNKNOWN</span></td>
+              <td>查询默认限流 20 RPS</td>
+            </tr>
+            <tr>
+              <td>火山方舟 Seedance</td>
+              <td>task id</td>
+              <td><code>queued / running / succeeded / failed / expired</code></td>
+              <td>callback_url，重试 3 次</td>
+              <td><span class="hl">视频 URL 24h</span></td>
+              <td>回调体与查询一致</td>
+            </tr>
+            <tr>
+              <td>内部 AI 服务</td>
+              <td>任务</td>
+              <td>WebSocket 推送，失败回退 HTTP 轮询</td>
+              <td class="muted">—</td>
+              <td class="muted">—</td>
+              <td>与本方案浏览器侧思路一致</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="grid3" style="margin-top: 28px">
+          <div class="callout"><b>统一形态</b>：提交 → 任务 id → 轮询，webhook 可选</div>
+          <div class="callout"><b>输出会过期</b>：必须转存到自有存储</div>
+          <div class="callout"><b>状态枚举各不相同</b>：需要适配层统一</div>
+        </div>
+      </section>
 
-<!-- 7 平台调研 -->
-<section class="slide">
-  <div class="kicker"><span class="num">04</span>调研 · 视频平台 API 形态（访问日期 2026-09-29）</div>
-  <h2>没有平台提供同步长连接</h2>
-  <table class="tbl" style="font-size:16px">
-    <thead><tr><th>平台</th><th>提交</th><th>获取结果</th><th>Webhook</th><th>结果有效期</th><th>其他</th></tr></thead>
-    <tbody>
-      <tr><td>Runway</td><td>task <code>id</code></td><td><code>GET /v1/tasks/{id}</code>，建议 ≥5s，抖动 + 指数退避</td><td class="muted">文档未提及</td><td class="muted">未验证</td><td>有 cancel；SDK 默认 10 分钟超时</td></tr>
-      <tr><td>Luma</td><td>generation <code>id</code></td><td><code>dreaming / completed / failed</code></td><td>callback_url，失败重试 3 次</td><td class="muted">未验证</td><td>扩展视频要求源任务 completed</td></tr>
-      <tr><td>可灵 Kling</td><td><code>task_id</code></td><td><code>submitted / processing / succeeded / failed</code></td><td>callback_url</td><td><span class="hl">24h 后变 UNKNOWN</span></td><td>查询默认限流 20 RPS</td></tr>
-      <tr><td>火山方舟 Seedance</td><td>task id</td><td><code>queued / running / succeeded / failed / expired</code></td><td>callback_url，重试 3 次</td><td><span class="hl">视频 URL 24h</span></td><td>回调体与查询一致</td></tr>
-      <tr><td>内部 AI 服务</td><td>任务</td><td>WebSocket 推送，失败回退 HTTP 轮询</td><td class="muted">—</td><td class="muted">—</td><td>与本方案浏览器侧思路一致</td></tr>
-    </tbody>
-  </table>
-  <div class="grid3" style="margin-top:28px">
-    <div class="callout"><b>统一形态</b>：提交 → 任务 id → 轮询，webhook 可选</div>
-    <div class="callout"><b>输出会过期</b>：必须转存到自有存储</div>
-    <div class="callout"><b>状态枚举各不相同</b>：需要适配层统一</div>
-  </div>
-</section>
+      <!-- 8 通道比较 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">04</span>调研 · 浏览器 ↔ 后端通道</div>
+        <h2>选 WebSocket：为协作预留双向通道</h2>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 20%">维度</th>
+              <th>纯 HTTP 轮询</th>
+              <th>SSE</th>
+              <th style="color: var(--accent)">WebSocket（已选）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>实现复杂度</td>
+              <td>最低</td>
+              <td>低（单向，走 Gin 中间件链）</td>
+              <td>中（引库，自己做心跳、重连、订阅协议）</td>
+            </tr>
+            <tr>
+              <td>完成感知延迟</td>
+              <td>+轮询间隔（3–5s）</td>
+              <td>实时</td>
+              <td>实时</td>
+            </tr>
+            <tr>
+              <td>离开画布也能收到通知</td>
+              <td>需要全局轮询</td>
+              <td>可以</td>
+              <td>可以</td>
+            </tr>
+            <tr>
+              <td>鉴权</td>
+              <td>复用请求头</td>
+              <td>EventSource 不能带请求头，要改 fetch 流</td>
+              <td>不能带请求头，用 ticket</td>
+            </tr>
+            <tr class="pick">
+              <td>双向能力（协作、订阅）</td>
+              <td>无</td>
+              <td>无</td>
+              <td><b>有</b></td>
+            </tr>
+            <tr>
+              <td>60s WriteTimeout</td>
+              <td>不受影响</td>
+              <td>需要单独放开</td>
+              <td>Upgrade 后清掉 deadline</td>
+            </tr>
+            <tr>
+              <td>多实例</td>
+              <td>天然支持</td>
+              <td>需要 pub/sub</td>
+              <td>需要 pub/sub</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout" style="margin-top: 26px">
+          纯任务推送用 SSE 就够了；选 WS 是为未来画布协作的
+          <code>canvas:{id}</code> 频道预留双向通道，代价是多一层连接管理。<b
+            >不管选哪种，正确性都由 DB + 对账保证</b
+          >，通道只影响实时性。
+        </div>
+      </section>
 
-<!-- 8 通道比较 -->
-<section class="slide">
-  <div class="kicker"><span class="num">04</span>调研 · 浏览器 ↔ 后端通道</div>
-  <h2>选 WebSocket：为协作预留双向通道</h2>
-  <table class="tbl">
-    <thead><tr><th style="width:20%">维度</th><th>纯 HTTP 轮询</th><th>SSE</th><th style="color:var(--accent)">WebSocket（已选）</th></tr></thead>
-    <tbody>
-      <tr><td>实现复杂度</td><td>最低</td><td>低（单向，走 Gin 中间件链）</td><td>中（引库，自己做心跳、重连、订阅协议）</td></tr>
-      <tr><td>完成感知延迟</td><td>+轮询间隔（3–5s）</td><td>实时</td><td>实时</td></tr>
-      <tr><td>离开画布也能收到通知</td><td>需要全局轮询</td><td>可以</td><td>可以</td></tr>
-      <tr><td>鉴权</td><td>复用请求头</td><td>EventSource 不能带请求头，要改 fetch 流</td><td>不能带请求头，用 ticket</td></tr>
-      <tr class="pick"><td>双向能力（协作、订阅）</td><td>无</td><td>无</td><td><b>有</b></td></tr>
-      <tr><td>60s WriteTimeout</td><td>不受影响</td><td>需要单独放开</td><td>Upgrade 后清掉 deadline</td></tr>
-      <tr><td>多实例</td><td>天然支持</td><td>需要 pub/sub</td><td>需要 pub/sub</td></tr>
-    </tbody>
-  </table>
-  <div class="callout" style="margin-top:26px">纯任务推送用 SSE 就够了；选 WS 是为未来画布协作的 <code>canvas:{id}</code> 频道预留双向通道，代价是多一层连接管理。<b>不管选哪种，正确性都由 DB + 对账保证</b>，通道只影响实时性。</div>
-</section>
+      <!-- 9 设计原则 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">05</span>设计原则</div>
+        <h2>推送可以丢、可以重、可以乱序</h2>
+        <div class="grid3 grow" style="grid-template-rows: 1fr 1fr">
+          <div class="card">
+            <span class="idx">01</span>
+            <h3>DB 是唯一事实来源</h3>
+            <p>客户端任何时候都能通过查询恢复一致。</p>
+          </div>
+          <div class="card">
+            <span class="idx">02</span>
+            <h3>推送 = 完整快照 + 版本号</h3>
+            <p>客户端按 <code>version</code> 取最新的，天然幂等，不依赖消息顺序。</p>
+          </div>
+          <div class="card">
+            <span class="idx">03</span>
+            <h3>谁拥有数据谁写</h3>
+            <p>任务结果归任务表，画布结构归前端。后端不跨界改 <code>payload_json</code>。</p>
+          </div>
+          <div class="card">
+            <span class="idx">04</span>
+            <h3>钱和状态在同一个事务里变</h3>
+            <p>冻结、结算、退款与状态迁移同事务；流水表唯一约束保证幂等。</p>
+          </div>
+          <div class="card">
+            <span class="idx">05</span>
+            <h3>平台差异封在适配器里</h3>
+            <p>上层只认统一的状态机和统一的错误分类。</p>
+          </div>
+          <div class="card">
+            <span class="idx">06</span>
+            <h3>单实例落地，多实例接口</h3>
+            <p>
+              worker 用 <code>FOR UPDATE SKIP LOCKED</code> 抢任务，推送走
+              <code>Broadcaster</code> 接口，加机器不改协议。
+            </p>
+          </div>
+        </div>
+      </section>
 
-<!-- 9 设计原则 -->
-<section class="slide">
-  <div class="kicker"><span class="num">05</span>设计原则</div>
-  <h2>推送可以丢、可以重、可以乱序</h2>
-  <div class="grid3 grow" style="grid-template-rows:1fr 1fr">
-    <div class="card"><span class="idx">01</span><h3>DB 是唯一事实来源</h3><p>客户端任何时候都能通过查询恢复一致。</p></div>
-    <div class="card"><span class="idx">02</span><h3>推送 = 完整快照 + 版本号</h3><p>客户端按 <code>version</code> 取最新的，天然幂等，不依赖消息顺序。</p></div>
-    <div class="card"><span class="idx">03</span><h3>谁拥有数据谁写</h3><p>任务结果归任务表，画布结构归前端。后端不跨界改 <code>payload_json</code>。</p></div>
-    <div class="card"><span class="idx">04</span><h3>钱和状态在同一个事务里变</h3><p>冻结、结算、退款与状态迁移同事务；流水表唯一约束保证幂等。</p></div>
-    <div class="card"><span class="idx">05</span><h3>平台差异封在适配器里</h3><p>上层只认统一的状态机和统一的错误分类。</p></div>
-    <div class="card"><span class="idx">06</span><h3>单实例落地，多实例接口</h3><p>worker 用 <code>FOR UPDATE SKIP LOCKED</code> 抢任务，推送走 <code>Broadcaster</code> 接口，加机器不改协议。</p></div>
-  </div>
-</section>
+      <!-- 10 整体链路 -->
+      <section class="slide">
+        <div class="kicker">
+          <span class="num">06</span>推荐方案 · 整体链路
+          <span class="muted" style="letter-spacing: 0; font-weight: 400">（按 → 逐步展开）</span>
+        </div>
+        <h2 style="margin-bottom: 10px">一次生成的完整旅程</h2>
+        <svg viewBox="0 0 1400 660" width="1408" height="664" style="margin-top: -4px">
+          <defs>
+            <marker
+              id="ah"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="9"
+              markerHeight="9"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#17191E" />
+            </marker>
+            <marker
+              id="ahA"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="9"
+              markerHeight="9"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#D9480F" />
+            </marker>
+            <marker
+              id="ahM"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="9"
+              markerHeight="9"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#9098A1" />
+            </marker>
+          </defs>
+          <g font-size="18" font-weight="700" text-anchor="middle">
+            <rect x="40" y="6" width="260" height="48" rx="10" fill="#fff" stroke="#DDD8CD" />
+            <text x="170" y="37">浏览器 · 画布</text>
+            <rect x="540" y="6" width="320" height="48" rx="10" fill="#17191E" />
+            <text x="700" y="37" fill="#fff">后端（单进程）API + Worker</text>
+            <rect x="1100" y="6" width="260" height="48" rx="10" fill="#fff" stroke="#DDD8CD" />
+            <text x="1230" y="37">视频平台</text>
+          </g>
+          <g stroke="#CFCAC0" stroke-width="2" stroke-dasharray="4 6">
+            <line x1="170" y1="58" x2="170" y2="652" />
+            <line x1="700" y1="58" x2="700" y2="652" />
+            <line x1="1230" y1="58" x2="1230" y2="652" />
+          </g>
 
-<!-- 10 整体链路 -->
-<section class="slide">
-  <div class="kicker"><span class="num">06</span>推荐方案 · 整体链路 <span class="muted" style="letter-spacing:0;font-weight:400">（按 → 逐步展开）</span></div>
-  <h2 style="margin-bottom:10px">一次生成的完整旅程</h2>
-  <svg viewBox="0 0 1400 660" width="1408" height="664" style="margin-top:-4px">
-    <defs>
-      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17191E"/></marker>
-      <marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10z" fill="#D9480F"/></marker>
-      <marker id="ahM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9098A1"/></marker>
-    </defs>
-    <g font-size="18" font-weight="700" text-anchor="middle">
-      <rect x="40" y="6" width="260" height="48" rx="10" fill="#fff" stroke="#DDD8CD"/><text x="170" y="37">浏览器 · 画布</text>
-      <rect x="540" y="6" width="320" height="48" rx="10" fill="#17191E"/><text x="700" y="37" fill="#fff">后端（单进程）API + Worker</text>
-      <rect x="1100" y="6" width="260" height="48" rx="10" fill="#fff" stroke="#DDD8CD"/><text x="1230" y="37">视频平台</text>
-    </g>
-    <g stroke="#CFCAC0" stroke-width="2" stroke-dasharray="4 6"><line x1="170" y1="58" x2="170" y2="652"/><line x1="700" y1="58" x2="700" y2="652"/><line x1="1230" y1="58" x2="1230" y2="652"/></g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="176"
+              y1="108"
+              x2="692"
+              y2="108"
+              stroke="#17191E"
+              stroke-width="2"
+              marker-end="url(#ah)"
+            />
+            <text x="435" y="98" font-family="Consolas,monospace" font-weight="700">
+              POST /generation-tasks
+            </text>
+            <text x="435" y="132" font-size="14" fill="#737884">
+              事务：校验模型/并发 → 冻结积分 → 插入 task(pending)
+            </text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="694"
+              y1="180"
+              x2="178"
+              y2="180"
+              stroke="#17191E"
+              stroke-width="2"
+              stroke-dasharray="7 5"
+              marker-end="url(#ah)"
+            />
+            <text x="435" y="170" font-family="Consolas,monospace" font-weight="700">
+              202 {task}　p95 &lt; 300ms
+            </text>
+            <text x="435" y="204" font-size="14" fill="#737884">
+              节点写 taskId · status=running；后端 kick worker
+            </text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="706"
+              y1="252"
+              x2="1222"
+              y2="252"
+              stroke="#17191E"
+              stroke-width="2"
+              marker-end="url(#ah)"
+            />
+            <text x="965" y="242" font-family="Consolas,monospace" font-weight="700">Submit</text>
+            <text x="965" y="276" font-size="14" fill="#737884">Worker 提交，平台创建任务</text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="1224"
+              y1="324"
+              x2="708"
+              y2="324"
+              stroke="#17191E"
+              stroke-width="2"
+              stroke-dasharray="7 5"
+              marker-end="url(#ah)"
+            />
+            <text x="965" y="314" font-family="Consolas,monospace" font-weight="700">
+              provider_task_id
+            </text>
+            <text x="965" y="348" font-size="14" fill="#737884">
+              status=queued · next_poll_at = now + 10s
+            </text>
+            <line
+              x1="694"
+              y1="324"
+              x2="178"
+              y2="324"
+              stroke="#D9480F"
+              stroke-width="4"
+              marker-end="url(#ahA)"
+            />
+            <text x="435" y="314" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">
+              WS · task.updated(queued)
+            </text>
+            <text x="435" y="348" font-size="14" fill="#737884">
+              Hub.Publish(user:{id})，事务提交之后发布
+            </text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <rect
+              x="688"
+              y="370"
+              width="556"
+              height="148"
+              rx="8"
+              fill="none"
+              stroke="#9098A1"
+              stroke-dasharray="3 5"
+            />
+            <text
+              x="720"
+              y="390"
+              font-size="13"
+              fill="#737884"
+              text-anchor="start"
+              font-family="Consolas,monospace"
+            >
+              loop
+            </text>
+            <line
+              x1="706"
+              y1="410"
+              x2="1222"
+              y2="410"
+              stroke="#17191E"
+              stroke-width="2"
+              marker-end="url(#ah)"
+            />
+            <text x="965" y="400" font-weight="700">
+              <tspan font-family="Consolas,monospace">Query</tspan>
+              （到点轮询，退避）
+            </text>
+            <line
+              x1="694"
+              y1="410"
+              x2="178"
+              y2="410"
+              stroke="#D9480F"
+              stroke-width="4"
+              marker-end="url(#ahA)"
+            />
+            <text x="435" y="400" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">
+              WS · task.updated(running, progress)
+            </text>
+            <text x="435" y="434" font-size="14" fill="#737884">节点显示已耗时 / 进度百分比</text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="1224"
+              y1="478"
+              x2="708"
+              y2="478"
+              stroke="#17191E"
+              stroke-width="2"
+              stroke-dasharray="7 5"
+              marker-end="url(#ah)"
+            />
+            <text x="965" y="468" font-weight="700">
+              <tspan font-family="Consolas,monospace">succeeded</tspan>
+              + 视频 URL（24h 有效）
+            </text>
+            <text x="965" y="502" font-size="14" fill="#6741D9">
+              finalizing：下载转存 → assets 行 → 同事务 succeeded + 结算
+            </text>
+          </g>
+          <g class="frag" font-size="17" text-anchor="middle">
+            <line
+              x1="694"
+              y1="556"
+              x2="178"
+              y2="556"
+              stroke="#D9480F"
+              stroke-width="4"
+              marker-end="url(#ahA)"
+            />
+            <text x="435" y="546" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">
+              WS · task.updated(succeeded)
+            </text>
+            <text x="435" y="580" font-size="14" fill="#2B8A3E">
+              updateNodeData(src, assetId) → 正常自动保存
+            </text>
+          </g>
+          <g class="frag" font-size="16" text-anchor="middle">
+            <line
+              x1="176"
+              y1="626"
+              x2="692"
+              y2="626"
+              stroke="#9098A1"
+              stroke-width="2"
+              stroke-dasharray="7 5"
+              marker-end="url(#ahM)"
+            />
+            <text x="435" y="616" fill="#5C6B7A">
+              兜底对账
+              <tspan font-family="Consolas,monospace">GET /generation-tasks?ids=…</tspan>
+            </text>
+            <text x="435" y="650" font-size="13.5" fill="#737884">断线 / 重开画布 / 切回前台</text>
+            <line
+              x1="1224"
+              y1="626"
+              x2="708"
+              y2="626"
+              stroke="#9098A1"
+              stroke-width="2"
+              stroke-dasharray="7 5"
+              marker-end="url(#ahM)"
+            />
+            <text x="965" y="616" fill="#5C6B7A">
+              <tspan font-family="Consolas,monospace">POST /webhooks/:provider</tspan>
+              （可选）
+            </text>
+            <text x="965" y="650" font-size="13.5" fill="#737884">
+              只把 next_poll_at 设为 now，不信任回调内容
+            </text>
+          </g>
+        </svg>
+      </section>
 
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="176" y1="108" x2="692" y2="108" stroke="#17191E" stroke-width="2" marker-end="url(#ah)"/>
-      <text x="435" y="98" font-family="Consolas,monospace" font-weight="700">POST /generation-tasks</text>
-      <text x="435" y="132" font-size="14" fill="#737884">事务：校验模型/并发 → 冻结积分 → 插入 task(pending)</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="694" y1="180" x2="178" y2="180" stroke="#17191E" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
-      <text x="435" y="170" font-family="Consolas,monospace" font-weight="700">202 {task}　p95 &lt; 300ms</text>
-      <text x="435" y="204" font-size="14" fill="#737884">节点写 taskId · status=running；后端 kick worker</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="706" y1="252" x2="1222" y2="252" stroke="#17191E" stroke-width="2" marker-end="url(#ah)"/>
-      <text x="965" y="242" font-family="Consolas,monospace" font-weight="700">Submit</text>
-      <text x="965" y="276" font-size="14" fill="#737884">Worker 提交，平台创建任务</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="1224" y1="324" x2="708" y2="324" stroke="#17191E" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
-      <text x="965" y="314" font-family="Consolas,monospace" font-weight="700">provider_task_id</text>
-      <text x="965" y="348" font-size="14" fill="#737884">status=queued · next_poll_at = now + 10s</text>
-      <line x1="694" y1="324" x2="178" y2="324" stroke="#D9480F" stroke-width="4" marker-end="url(#ahA)"/>
-      <text x="435" y="314" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">WS · task.updated(queued)</text>
-      <text x="435" y="348" font-size="14" fill="#737884">Hub.Publish(user:{id})，事务提交之后发布</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <rect x="688" y="370" width="556" height="148" rx="8" fill="none" stroke="#9098A1" stroke-dasharray="3 5"/>
-      <text x="720" y="390" font-size="13" fill="#737884" text-anchor="start" font-family="Consolas,monospace">loop</text>
-      <line x1="706" y1="410" x2="1222" y2="410" stroke="#17191E" stroke-width="2" marker-end="url(#ah)"/>
-      <text x="965" y="400" font-weight="700"><tspan font-family="Consolas,monospace">Query</tspan>（到点轮询，退避）</text>
-      <line x1="694" y1="410" x2="178" y2="410" stroke="#D9480F" stroke-width="4" marker-end="url(#ahA)"/>
-      <text x="435" y="400" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">WS · task.updated(running, progress)</text>
-      <text x="435" y="434" font-size="14" fill="#737884">节点显示已耗时 / 进度百分比</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="1224" y1="478" x2="708" y2="478" stroke="#17191E" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
-      <text x="965" y="468" font-weight="700"><tspan font-family="Consolas,monospace">succeeded</tspan> + 视频 URL（24h 有效）</text>
-      <text x="965" y="502" font-size="14" fill="#6741D9">finalizing：下载转存 → assets 行 → 同事务 succeeded + 结算</text>
-    </g>
-    <g class="frag" font-size="17" text-anchor="middle">
-      <line x1="694" y1="556" x2="178" y2="556" stroke="#D9480F" stroke-width="4" marker-end="url(#ahA)"/>
-      <text x="435" y="546" font-family="Consolas,monospace" font-weight="700" fill="#D9480F">WS · task.updated(succeeded)</text>
-      <text x="435" y="580" font-size="14" fill="#2B8A3E">updateNodeData(src, assetId) → 正常自动保存</text>
-    </g>
-    <g class="frag" font-size="16" text-anchor="middle">
-      <line x1="176" y1="626" x2="692" y2="626" stroke="#9098A1" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ahM)"/>
-      <text x="435" y="616" fill="#5C6B7A">兜底对账 <tspan font-family="Consolas,monospace">GET /generation-tasks?ids=…</tspan></text>
-      <text x="435" y="650" font-size="13.5" fill="#737884">断线 / 重开画布 / 切回前台</text>
-      <line x1="1224" y1="626" x2="708" y2="626" stroke="#9098A1" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#ahM)"/>
-      <text x="965" y="616" fill="#5C6B7A"><tspan font-family="Consolas,monospace">POST /webhooks/:provider</tspan>（可选）</text>
-      <text x="965" y="650" font-size="13.5" fill="#737884">只把 next_poll_at 设为 now，不信任回调内容</text>
-    </g>
-  </svg>
-</section>
+      <!-- 11 状态机 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">06</span>推荐方案 · 任务状态机</div>
+        <h2>四个终态，非成功一律退积分</h2>
+        <svg viewBox="0 0 1400 440" width="1408" height="443">
+          <defs>
+            <marker
+              id="sm"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#3A3E47" />
+            </marker>
+            <marker
+              id="smR"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#C92A2A" />
+            </marker>
+          </defs>
+          <g text-anchor="middle">
+            <rect x="20" y="40" width="200" height="72" rx="12" fill="#EEEEEE" />
+            <text
+              x="120"
+              y="72"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#555"
+            >
+              pending
+            </text>
+            <text x="120" y="97" font-size="14" fill="#737884">已入库，待提交</text>
+            <rect x="305" y="40" width="200" height="72" rx="12" fill="#E8ECEF" />
+            <text
+              x="405"
+              y="72"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#5C6B7A"
+            >
+              queued
+            </text>
+            <text x="405" y="97" font-size="14" fill="#737884">平台排队中</text>
+            <rect x="590" y="40" width="200" height="72" rx="12" fill="#E3EEFB" />
+            <text
+              x="690"
+              y="72"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#1C6FD1"
+            >
+              running
+            </text>
+            <text x="690" y="97" font-size="14" fill="#737884">生成中 · 可带进度</text>
+            <rect x="875" y="40" width="200" height="72" rx="12" fill="#ECE6FB" />
+            <text
+              x="975"
+              y="72"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#6741D9"
+            >
+              finalizing
+            </text>
+            <text x="975" y="97" font-size="14" fill="#737884">已出片，转存中</text>
+            <rect
+              x="1160"
+              y="40"
+              width="200"
+              height="72"
+              rx="12"
+              fill="#E3F3E6"
+              stroke="#2B8A3E"
+              stroke-width="2"
+            />
+            <text
+              x="1260"
+              y="72"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#2B8A3E"
+            >
+              succeeded
+            </text>
+            <text x="1260" y="97" font-size="14" fill="#2B8A3E">终态 · 结算积分</text>
+          </g>
+          <g stroke="#3A3E47" stroke-width="2" marker-end="url(#sm)">
+            <line x1="222" y1="76" x2="301" y2="76" />
+            <line x1="507" y1="76" x2="586" y2="76" />
+            <line x1="792" y1="76" x2="871" y2="76" />
+            <line x1="1077" y1="76" x2="1156" y2="76" />
+          </g>
+          <g font-size="13" fill="#3A3E47" text-anchor="middle">
+            <text x="262" y="30">submit ok</text>
+            <text x="547" y="30">开始生成</text>
+            <text x="832" y="30">平台成功</text>
+            <text x="1117" y="30">转存成功</text>
+          </g>
+          <rect
+            x="20"
+            y="250"
+            width="1055"
+            height="72"
+            rx="12"
+            fill="#FBE4E4"
+            stroke="#C92A2A"
+            stroke-width="2"
+          />
+          <text
+            x="547"
+            y="282"
+            text-anchor="middle"
+            font-family="Consolas,monospace"
+            font-size="21"
+            font-weight="700"
+            fill="#C92A2A"
+          >
+            failed
+          </text>
+          <text x="547" y="307" text-anchor="middle" font-size="14" fill="#C92A2A">
+            终态 · 退回积分 · 统一 error_code + 给用户看的文案
+          </text>
+          <g stroke="#C92A2A" stroke-width="2" marker-end="url(#smR)">
+            <line x1="120" y1="114" x2="120" y2="246" />
+            <line x1="405" y1="114" x2="405" y2="246" />
+            <line x1="690" y1="114" x2="690" y2="246" />
+            <line x1="975" y1="114" x2="975" y2="246" />
+          </g>
+          <g font-size="14" fill="#C92A2A">
+            <text x="130" y="186">submit 终态错误</text>
+            <text x="415" y="186">平台失败</text>
+            <text x="700" y="186">平台失败</text>
+            <text x="985" y="186">转存重试耗尽</text>
+          </g>
+          <g text-anchor="middle">
+            <rect
+              x="1160"
+              y="210"
+              width="200"
+              height="72"
+              rx="12"
+              fill="#F2F2F2"
+              stroke="#9098A1"
+              stroke-width="2"
+              stroke-dasharray="6 5"
+            />
+            <text
+              x="1260"
+              y="242"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#555"
+            >
+              canceled
+            </text>
+            <text x="1260" y="267" font-size="14" fill="#737884">用户取消 · 任一非终态</text>
+            <rect
+              x="1160"
+              y="300"
+              width="200"
+              height="72"
+              rx="12"
+              fill="#F2F2F2"
+              stroke="#9098A1"
+              stroke-width="2"
+              stroke-dasharray="6 5"
+            />
+            <text
+              x="1260"
+              y="332"
+              font-family="Consolas,monospace"
+              font-size="21"
+              font-weight="700"
+              fill="#555"
+            >
+              expired
+            </text>
+            <text x="1260" y="357" font-size="14" fill="#737884">超过 deadline_at</text>
+          </g>
+          <g font-size="16" fill="#3A3E47">
+            <text x="20" y="372">
+              ▸ 进入非成功终态（failed / canceled / expired）一律退回积分；超时先尽力调一次平台
+              Cancel
+            </text>
+            <text x="20" y="404">
+              ▸ 平台状态由适配器映射：方舟
+              <tspan font-family="Consolas,monospace">queued→queued</tspan>
+              · 可灵
+              <tspan font-family="Consolas,monospace">processing→running</tspan>
+              · Luma
+              <tspan font-family="Consolas,monospace">dreaming→running</tspan>
+            </text>
+            <text x="20" y="436">
+              ▸
+              <tspan font-family="Consolas,monospace">finalizing</tspan>
+              表示平台已出片、正在转存，前端显示“即将完成”
+            </text>
+          </g>
+        </svg>
+      </section>
 
-<!-- 11 状态机 -->
-<section class="slide">
-  <div class="kicker"><span class="num">06</span>推荐方案 · 任务状态机</div>
-  <h2>四个终态，非成功一律退积分</h2>
-  <svg viewBox="0 0 1400 440" width="1408" height="443">
-    <defs>
-      <marker id="sm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3A3E47"/></marker>
-      <marker id="smR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#C92A2A"/></marker>
-    </defs>
-    <g text-anchor="middle">
-      <rect x="20" y="40" width="200" height="72" rx="12" fill="#EEEEEE"/><text x="120" y="72" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#555">pending</text><text x="120" y="97" font-size="14" fill="#737884">已入库，待提交</text>
-      <rect x="305" y="40" width="200" height="72" rx="12" fill="#E8ECEF"/><text x="405" y="72" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#5C6B7A">queued</text><text x="405" y="97" font-size="14" fill="#737884">平台排队中</text>
-      <rect x="590" y="40" width="200" height="72" rx="12" fill="#E3EEFB"/><text x="690" y="72" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#1C6FD1">running</text><text x="690" y="97" font-size="14" fill="#737884">生成中 · 可带进度</text>
-      <rect x="875" y="40" width="200" height="72" rx="12" fill="#ECE6FB"/><text x="975" y="72" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#6741D9">finalizing</text><text x="975" y="97" font-size="14" fill="#737884">已出片，转存中</text>
-      <rect x="1160" y="40" width="200" height="72" rx="12" fill="#E3F3E6" stroke="#2B8A3E" stroke-width="2"/><text x="1260" y="72" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#2B8A3E">succeeded</text><text x="1260" y="97" font-size="14" fill="#2B8A3E">终态 · 结算积分</text>
-    </g>
-    <g stroke="#3A3E47" stroke-width="2" marker-end="url(#sm)">
-      <line x1="222" y1="76" x2="301" y2="76"/><line x1="507" y1="76" x2="586" y2="76"/><line x1="792" y1="76" x2="871" y2="76"/><line x1="1077" y1="76" x2="1156" y2="76"/>
-    </g>
-    <g font-size="13" fill="#3A3E47" text-anchor="middle">
-      <text x="262" y="30">submit ok</text><text x="547" y="30">开始生成</text><text x="832" y="30">平台成功</text><text x="1117" y="30">转存成功</text>
-    </g>
-    <rect x="20" y="250" width="1055" height="72" rx="12" fill="#FBE4E4" stroke="#C92A2A" stroke-width="2"/>
-    <text x="547" y="282" text-anchor="middle" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#C92A2A">failed</text>
-    <text x="547" y="307" text-anchor="middle" font-size="14" fill="#C92A2A">终态 · 退回积分 · 统一 error_code + 给用户看的文案</text>
-    <g stroke="#C92A2A" stroke-width="2" marker-end="url(#smR)">
-      <line x1="120" y1="114" x2="120" y2="246"/><line x1="405" y1="114" x2="405" y2="246"/><line x1="690" y1="114" x2="690" y2="246"/><line x1="975" y1="114" x2="975" y2="246"/>
-    </g>
-    <g font-size="14" fill="#C92A2A">
-      <text x="130" y="186">submit 终态错误</text><text x="415" y="186">平台失败</text><text x="700" y="186">平台失败</text><text x="985" y="186">转存重试耗尽</text>
-    </g>
-    <g text-anchor="middle">
-      <rect x="1160" y="210" width="200" height="72" rx="12" fill="#F2F2F2" stroke="#9098A1" stroke-width="2" stroke-dasharray="6 5"/>
-      <text x="1260" y="242" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#555">canceled</text><text x="1260" y="267" font-size="14" fill="#737884">用户取消 · 任一非终态</text>
-      <rect x="1160" y="300" width="200" height="72" rx="12" fill="#F2F2F2" stroke="#9098A1" stroke-width="2" stroke-dasharray="6 5"/>
-      <text x="1260" y="332" font-family="Consolas,monospace" font-size="21" font-weight="700" fill="#555">expired</text><text x="1260" y="357" font-size="14" fill="#737884">超过 deadline_at</text>
-    </g>
-    <g font-size="16" fill="#3A3E47">
-      <text x="20" y="372">▸ 进入非成功终态（failed / canceled / expired）一律退回积分；超时先尽力调一次平台 Cancel</text>
-      <text x="20" y="404">▸ 平台状态由适配器映射：方舟 <tspan font-family="Consolas,monospace">queued→queued</tspan> · 可灵 <tspan font-family="Consolas,monospace">processing→running</tspan> · Luma <tspan font-family="Consolas,monospace">dreaming→running</tspan></text>
-      <text x="20" y="436">▸ <tspan font-family="Consolas,monospace">finalizing</tspan> 表示平台已出片、正在转存，前端显示“即将完成”</text>
-    </g>
-  </svg>
-</section>
+      <!-- 12 节点交互 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">06</span>推荐方案 · 节点侧交互</div>
+        <h2 style="margin-bottom: 22px">每个状态，节点长什么样</h2>
+        <div class="grid4" style="gap: 16px">
+          <div class="mock">
+            <div class="hd">提交中 <span class="pill p-pending">submitting</span></div>
+            <div class="pv">一只橘猫在雨夜的霓虹街头回头…</div>
+            <div class="ft">
+              <span>通常 &lt; 300ms</span
+              ><button class="btn pri"><span class="spin"></span>生成</button>
+            </div>
+          </div>
+          <div class="mock">
+            <div class="hd">排队中 <span class="pill p-queued">queued</span></div>
+            <div class="pv skel">
+              <span style="color: var(--slate); font-weight: 600">排队中</span>
+            </div>
+            <div class="ft"><span>骨架屏</span><button class="btn">取消</button></div>
+          </div>
+          <div class="mock">
+            <div class="hd">生成中 <span class="pill p-running">running</span></div>
+            <div class="pv skel" style="flex-direction: column; gap: 8px">
+              <span style="color: var(--blue); font-weight: 600" class="mono"
+                >已耗时 <span class="elapsed">01:24</span></span
+              >
+              <div class="bar" style="width: 70%"><i style="width: 42%"></i></div>
+              <span style="font-size: 12px">平台提供进度时显示 42%</span>
+            </div>
+            <div class="ft"><span>无进度则只显示计时</span><button class="btn">取消</button></div>
+          </div>
+          <div class="mock">
+            <div class="hd">转存中 <span class="pill p-final">finalizing</span></div>
+            <div
+              class="pv"
+              style="background: var(--violet-soft); color: var(--violet); font-weight: 600"
+            >
+              即将完成
+            </div>
+            <div class="ft"><span>平台已出片，正在转存</span><span>—</span></div>
+          </div>
+          <div class="mock">
+            <div class="hd">成功 <span class="pill p-ok">succeeded</span></div>
+            <div class="pv video">
+              <div class="play"></div>
+              <span
+                style="position: absolute; right: 8px; bottom: 6px; color: #fff; font-size: 12px"
+                class="mono"
+                >0:05</span
+              >
+            </div>
+            <div class="ft"><span>可以播放</span><button class="btn">重新生成</button></div>
+          </div>
+          <div class="mock">
+            <div class="hd">失败 <span class="pill p-fail">failed</span></div>
+            <div class="pv" style="background: var(--red-soft); flex-direction: column; gap: 4px">
+              <b style="color: var(--red)">内容未通过审核</b
+              ><span style="font-size: 13px">积分已退回</span>
+            </div>
+            <div class="ft"><span>统一文案</span><button class="btn acc">重试</button></div>
+          </div>
+          <div class="mock">
+            <div class="hd">取消 / 超时 <span class="pill p-off">expired</span></div>
+            <div class="pv" style="flex-direction: column; gap: 4px">
+              <b style="color: var(--ink2)">生成超时</b
+              ><span style="font-size: 13px">积分已退回</span>
+            </div>
+            <div class="ft"><span>canceled 同理</span><button class="btn acc">重试</button></div>
+          </div>
+          <div class="mock">
+            <div class="hd">积分不足 / 并发已满 <span class="pill p-off">429</span></div>
+            <div
+              class="pv"
+              style="background: #fff8e6; color: #8a5a00; flex-direction: column; gap: 4px"
+            >
+              <b>并发已满（4/4）</b><span style="font-size: 13px">请等待其他任务完成</span>
+            </div>
+            <div class="ft">
+              <span>就地提示，不创建任务</span><button class="btn pri" disabled>生成</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 22px; gap: 16px">
+          <div
+            class="card"
+            style="flex: 1; display: flex; align-items: center; gap: 16px; padding: 14px 20px"
+          >
+            <span class="chip" style="background: #fff3e0; color: #b35c00"
+              >● 连接中断，正在重连</span
+            ><span class="small muted">WS 断开：画布角标提示，节点状态不变</span>
+          </div>
+          <div
+            class="card"
+            style="flex: 1.3; display: flex; align-items: center; gap: 16px; padding: 14px 20px"
+          >
+            <span class="chip" style="background: var(--ink); color: #fff"
+              >✓《分镜 · 第一场》中的视频已生成</span
+            ><span class="small muted">画布外：弹 toast，点击跳转到对应画布</span>
+          </div>
+        </div>
+      </section>
 
-<!-- 12 节点交互 -->
-<section class="slide">
-  <div class="kicker"><span class="num">06</span>推荐方案 · 节点侧交互</div>
-  <h2 style="margin-bottom:22px">每个状态，节点长什么样</h2>
-  <div class="grid4" style="gap:16px">
-    <div class="mock"><div class="hd">提交中 <span class="pill p-pending">submitting</span></div>
-      <div class="pv">一只橘猫在雨夜的霓虹街头回头…</div>
-      <div class="ft"><span>通常 &lt; 300ms</span><button class="btn pri"><span class="spin"></span>生成</button></div></div>
-    <div class="mock"><div class="hd">排队中 <span class="pill p-queued">queued</span></div>
-      <div class="pv skel"><span style="color:var(--slate);font-weight:600">排队中</span></div>
-      <div class="ft"><span>骨架屏</span><button class="btn">取消</button></div></div>
-    <div class="mock"><div class="hd">生成中 <span class="pill p-running">running</span></div>
-      <div class="pv skel" style="flex-direction:column;gap:8px"><span style="color:var(--blue);font-weight:600" class="mono">已耗时 <span class="elapsed">01:24</span></span><div class="bar" style="width:70%"><i style="width:42%"></i></div><span style="font-size:12px">平台提供进度时显示 42%</span></div>
-      <div class="ft"><span>无进度则只显示计时</span><button class="btn">取消</button></div></div>
-    <div class="mock"><div class="hd">转存中 <span class="pill p-final">finalizing</span></div>
-      <div class="pv" style="background:var(--violet-soft);color:var(--violet);font-weight:600">即将完成</div>
-      <div class="ft"><span>平台已出片，正在转存</span><span>—</span></div></div>
-    <div class="mock"><div class="hd">成功 <span class="pill p-ok">succeeded</span></div>
-      <div class="pv video"><div class="play"></div><span style="position:absolute;right:8px;bottom:6px;color:#fff;font-size:12px" class="mono">0:05</span></div>
-      <div class="ft"><span>可以播放</span><button class="btn">重新生成</button></div></div>
-    <div class="mock"><div class="hd">失败 <span class="pill p-fail">failed</span></div>
-      <div class="pv" style="background:var(--red-soft);flex-direction:column;gap:4px"><b style="color:var(--red)">内容未通过审核</b><span style="font-size:13px">积分已退回</span></div>
-      <div class="ft"><span>统一文案</span><button class="btn acc">重试</button></div></div>
-    <div class="mock"><div class="hd">取消 / 超时 <span class="pill p-off">expired</span></div>
-      <div class="pv" style="flex-direction:column;gap:4px"><b style="color:var(--ink2)">生成超时</b><span style="font-size:13px">积分已退回</span></div>
-      <div class="ft"><span>canceled 同理</span><button class="btn acc">重试</button></div></div>
-    <div class="mock"><div class="hd">积分不足 / 并发已满 <span class="pill p-off">429</span></div>
-      <div class="pv" style="background:#FFF8E6;color:#8A5A00;flex-direction:column;gap:4px"><b>并发已满（4/4）</b><span style="font-size:13px">请等待其他任务完成</span></div>
-      <div class="ft"><span>就地提示，不创建任务</span><button class="btn pri" disabled>生成</button></div></div>
-  </div>
-  <div class="row" style="margin-top:22px;gap:16px">
-    <div class="card" style="flex:1;display:flex;align-items:center;gap:16px;padding:14px 20px">
-      <span class="chip" style="background:#FFF3E0;color:#B35C00">● 连接中断，正在重连</span><span class="small muted">WS 断开：画布角标提示，节点状态不变</span></div>
-    <div class="card" style="flex:1.3;display:flex;align-items:center;gap:16px;padding:14px 20px">
-      <span class="chip" style="background:var(--ink);color:#fff">✓《分镜 · 第一场》中的视频已生成</span><span class="small muted">画布外：弹 toast，点击跳转到对应画布</span></div>
-  </div>
-</section>
+      <!-- 13 数据模型 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · 新增表</div>
+        <h2 style="margin-bottom: 22px">generation_tasks：通用任务表，MVP 只接视频</h2>
+        <div class="row" style="gap: 20px">
+          <div class="fields" style="flex: 2.1">
+            <div class="fcard">
+              <h4>归属</h4>
+              <div class="f"><b>id</b><span>uint64 PK</span></div>
+              <div class="f"><b>user_id</b><span>index</span></div>
+              <div class="f"><b>canvas_project_id</b><span>可空</span></div>
+              <div class="f"><b>node_id</b><span>前端节点 id</span></div>
+              <div class="f"><b>kind</b><span>video / image / audio</span></div>
+            </div>
+            <div class="fcard">
+              <h4>模型与平台</h4>
+              <div class="f"><b>model_id</b><span>内部模型 id</span></div>
+              <div class="f"><b>provider</b><span>runway / kling / ark…</span></div>
+              <div class="f"><b>provider_task_id</b><span>提交成功后才有</span></div>
+              <div class="f"><b>config_snapshot</b><span>provider+模型版本快照</span></div>
+              <div class="f"><b>is_test</b><span>运营试跑，不扣不推</span></div>
+            </div>
+            <div class="fcard">
+              <h4>状态与结果</h4>
+              <div class="f"><b>status</b><span>见状态机</span></div>
+              <div class="f"><b>progress</b><span>0–100，可空</span></div>
+              <div class="f"><b>version</b><span>每次变化 +1</span></div>
+              <div class="f"><b>error_code</b><span>moderation / timeout…</span></div>
+              <div class="f"><b>error_message</b><span>给用户看的文案</span></div>
+            </div>
+            <div class="fcard">
+              <h4>输入输出</h4>
+              <div class="f"><b>input_json</b><span>规范化参数 · 参考图 assetId</span></div>
+              <div class="f">
+                <b>output_json</b
+                ><span>[{asset_id, url, duration_ms, width, height, cover_asset_id}]</span>
+              </div>
+            </div>
+            <div class="fcard">
+              <h4>计费与幂等</h4>
+              <div class="f"><b>credits</b><span>冻结的积分快照</span></div>
+              <div class="f"><b>idempotency_key</b><span>与 user_id 唯一</span></div>
+            </div>
+            <div class="fcard">
+              <h4>调度</h4>
+              <div class="f"><b>next_poll_at</b><span>index</span></div>
+              <div class="f"><b>poll_attempts</b><span></span></div>
+              <div class="f"><b>lease_until</b><span>worker 租约</span></div>
+              <div class="f"><b>deadline_at</b><span>默认 30 分钟</span></div>
+            </div>
+          </div>
+          <div class="col" style="flex: 1; gap: 14px">
+            <div class="fcard">
+              <h4>user_credits</h4>
+              <div class="f"><b>user_id</b><span>PK</span></div>
+              <div class="f"><b>balance · frozen</b><span>可用 = balance − frozen</span></div>
+            </div>
+            <div class="fcard">
+              <h4>credit_ledger</h4>
+              <div class="f"><b>type</b><span>freeze / settle / refund</span></div>
+              <div class="f"><b>UNIQUE(task_id, type)</b><span></span></div>
+              <div class="f"><span>每个任务每种流水最多一条，天然幂等</span></div>
+            </div>
+            <div class="fcard">
+              <h4>assets</h4>
+              <div class="f">
+                <span
+                  >storage_key、url、mime_type、byte_size、宽高、duration_ms、source(upload /
+                  generated)、task_id</span
+                >
+              </div>
+            </div>
+            <div class="callout" style="font-size: 15px">
+              索引：<code>(status, next_poll_at)</code> 部分索引，只覆盖非终态；<code
+                >(user_id, status)</code
+              >
+              统计并发数
+            </div>
+          </div>
+        </div>
+      </section>
 
-<!-- 13 数据模型 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · 新增表</div>
-  <h2 style="margin-bottom:22px">generation_tasks：通用任务表，MVP 只接视频</h2>
-  <div class="row" style="gap:20px">
-    <div class="fields" style="flex:2.1">
-      <div class="fcard"><h4>归属</h4>
-        <div class="f"><b>id</b><span>uint64 PK</span></div>
-        <div class="f"><b>user_id</b><span>index</span></div>
-        <div class="f"><b>canvas_project_id</b><span>可空</span></div>
-        <div class="f"><b>node_id</b><span>前端节点 id</span></div>
-        <div class="f"><b>kind</b><span>video / image / audio</span></div></div>
-      <div class="fcard"><h4>模型与平台</h4>
-        <div class="f"><b>model_id</b><span>内部模型 id</span></div>
-        <div class="f"><b>provider</b><span>runway / kling / ark…</span></div>
-        <div class="f"><b>provider_task_id</b><span>提交成功后才有</span></div>
-        <div class="f"><b>config_snapshot</b><span>provider+模型版本快照</span></div>
-        <div class="f"><b>is_test</b><span>运营试跑，不扣不推</span></div></div>
-      <div class="fcard"><h4>状态与结果</h4>
-        <div class="f"><b>status</b><span>见状态机</span></div>
-        <div class="f"><b>progress</b><span>0–100，可空</span></div>
-        <div class="f"><b>version</b><span>每次变化 +1</span></div>
-        <div class="f"><b>error_code</b><span>moderation / timeout…</span></div>
-        <div class="f"><b>error_message</b><span>给用户看的文案</span></div></div>
-      <div class="fcard"><h4>输入输出</h4>
-        <div class="f"><b>input_json</b><span>规范化参数 · 参考图 assetId</span></div>
-        <div class="f"><b>output_json</b><span>[{asset_id, url, duration_ms, width, height, cover_asset_id}]</span></div></div>
-      <div class="fcard"><h4>计费与幂等</h4>
-        <div class="f"><b>credits</b><span>冻结的积分快照</span></div>
-        <div class="f"><b>idempotency_key</b><span>与 user_id 唯一</span></div></div>
-      <div class="fcard"><h4>调度</h4>
-        <div class="f"><b>next_poll_at</b><span>index</span></div>
-        <div class="f"><b>poll_attempts</b><span></span></div>
-        <div class="f"><b>lease_until</b><span>worker 租约</span></div>
-        <div class="f"><b>deadline_at</b><span>默认 30 分钟</span></div></div>
-    </div>
-    <div class="col" style="flex:1;gap:14px">
-      <div class="fcard"><h4>user_credits</h4><div class="f"><b>user_id</b><span>PK</span></div><div class="f"><b>balance · frozen</b><span>可用 = balance − frozen</span></div></div>
-      <div class="fcard"><h4>credit_ledger</h4><div class="f"><b>type</b><span>freeze / settle / refund</span></div><div class="f"><b>UNIQUE(task_id, type)</b><span></span></div><div class="f"><span>每个任务每种流水最多一条，天然幂等</span></div></div>
-      <div class="fcard"><h4>assets</h4><div class="f"><span>storage_key、url、mime_type、byte_size、宽高、duration_ms、source(upload / generated)、task_id</span></div></div>
-      <div class="callout" style="font-size:15px">索引：<code>(status, next_poll_at)</code> 部分索引，只覆盖非终态；<code>(user_id, status)</code> 统计并发数</div>
-    </div>
-  </div>
-</section>
+      <!-- 14 API -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · 新增 API</div>
+        <h2>十个接口</h2>
+        <table class="tbl" style="font-size: 16px">
+          <thead>
+            <tr>
+              <th style="width: 8%">方法</th>
+              <th style="width: 38%">路径</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">GET</td>
+              <td class="mono">/api/v1/models?kind=video</td>
+              <td>
+                模型清单：id、label、credits、hint、能力（t2v/i2v、时长、比例），替换前端
+                <code>MODEL_LIBRARY</code>
+              </td>
+            </tr>
+            <tr class="pick">
+              <td class="mono">POST</td>
+              <td class="mono">/api/v1/generation-tasks</td>
+              <td>
+                请求头带 <code>Idempotency-Key</code>；<code
+                  >{kind, model_id, canvas_id, node_id, input}</code
+                >
+                → <b>202 {task}</b>
+              </td>
+            </tr>
+            <tr>
+              <td class="mono">GET</td>
+              <td class="mono">/api/v1/generation-tasks/:id</td>
+              <td>单个任务</td>
+            </tr>
+            <tr>
+              <td class="mono">GET</td>
+              <td class="mono">/api/v1/generation-tasks?ids=1,2,3</td>
+              <td>批量对账，最多 100 个</td>
+            </tr>
+            <tr>
+              <td class="mono">GET</td>
+              <td class="mono">/api/v1/generation-tasks?status=active</td>
+              <td>当前用户所有进行中的任务（WS 重连后用）</td>
+            </tr>
+            <tr>
+              <td class="mono">POST</td>
+              <td class="mono">/api/v1/generation-tasks/:id/cancel</td>
+              <td>软取消</td>
+            </tr>
+            <tr>
+              <td class="mono">POST</td>
+              <td class="mono">/api/v1/ws/ticket</td>
+              <td>JWT 鉴权 → <code>{ticket, expires_in: 30}</code></td>
+            </tr>
+            <tr>
+              <td class="mono">GET</td>
+              <td class="mono">/api/v1/ws?ticket=…</td>
+              <td>WebSocket 升级</td>
+            </tr>
+            <tr>
+              <td class="mono">POST</td>
+              <td class="mono">/api/v1/webhooks/:provider/:secret</td>
+              <td>平台回调，不走 JWT，路径带服务端密钥</td>
+            </tr>
+            <tr>
+              <td class="mono">POST</td>
+              <td class="mono">/api/v1/assets</td>
+              <td>上传素材（前端已在调用，后端补上）</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display: flex; gap: 12px; align-items: center; margin-top: 22px">
+          <span class="muted small" style="letter-spacing: 0.06em">新增错误码</span>
+          <span class="chip mono">ErrInsufficientCredits</span
+          ><span class="chip mono">ErrTooManyTasks · 429</span
+          ><span class="chip mono">ErrModelUnavailable</span
+          ><span class="chip mono">ErrTaskNotCancelable</span>
+        </div>
+      </section>
 
-<!-- 14 API -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · 新增 API</div>
-  <h2>十个接口</h2>
-  <table class="tbl" style="font-size:16px">
-    <thead><tr><th style="width:8%">方法</th><th style="width:38%">路径</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr><td class="mono">GET</td><td class="mono">/api/v1/models?kind=video</td><td>模型清单：id、label、credits、hint、能力（t2v/i2v、时长、比例），替换前端 <code>MODEL_LIBRARY</code></td></tr>
-      <tr class="pick"><td class="mono">POST</td><td class="mono">/api/v1/generation-tasks</td><td>请求头带 <code>Idempotency-Key</code>；<code>{kind, model_id, canvas_id, node_id, input}</code> → <b>202 {task}</b></td></tr>
-      <tr><td class="mono">GET</td><td class="mono">/api/v1/generation-tasks/:id</td><td>单个任务</td></tr>
-      <tr><td class="mono">GET</td><td class="mono">/api/v1/generation-tasks?ids=1,2,3</td><td>批量对账，最多 100 个</td></tr>
-      <tr><td class="mono">GET</td><td class="mono">/api/v1/generation-tasks?status=active</td><td>当前用户所有进行中的任务（WS 重连后用）</td></tr>
-      <tr><td class="mono">POST</td><td class="mono">/api/v1/generation-tasks/:id/cancel</td><td>软取消</td></tr>
-      <tr><td class="mono">POST</td><td class="mono">/api/v1/ws/ticket</td><td>JWT 鉴权 → <code>{ticket, expires_in: 30}</code></td></tr>
-      <tr><td class="mono">GET</td><td class="mono">/api/v1/ws?ticket=…</td><td>WebSocket 升级</td></tr>
-      <tr><td class="mono">POST</td><td class="mono">/api/v1/webhooks/:provider/:secret</td><td>平台回调，不走 JWT，路径带服务端密钥</td></tr>
-      <tr><td class="mono">POST</td><td class="mono">/api/v1/assets</td><td>上传素材（前端已在调用，后端补上）</td></tr>
-    </tbody>
-  </table>
-  <div style="display:flex;gap:12px;align-items:center;margin-top:22px">
-    <span class="muted small" style="letter-spacing:.06em">新增错误码</span>
-    <span class="chip mono">ErrInsufficientCredits</span><span class="chip mono">ErrTooManyTasks · 429</span><span class="chip mono">ErrModelUnavailable</span><span class="chip mono">ErrTaskNotCancelable</span>
-  </div>
-</section>
-
-<!-- 15 模块划分 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · 后端模块</div>
-  <h2>沿用 repository → service → handler</h2>
-  <div class="row" style="gap:24px">
-    <pre class="code" style="flex:1"><span class="t">internal/ai/</span>
+      <!-- 15 模块划分 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · 后端模块</div>
+        <h2>沿用 repository → service → handler</h2>
+        <div class="row" style="gap: 24px">
+          <pre class="code" style="flex: 1"><span class="t">internal/ai/</span>
   provider/        <span class="c">Provider 接口 + 平台适配器</span>
   registry.go      <span class="c">model_id → provider + 能力 + credits</span>
   worker.go        <span class="c">调度循环与执行池</span>
@@ -571,128 +2002,276 @@ kbd{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-b
 <span class="t">internal/service/</span>
   generation_task.go  <span class="c">提交 · 取消 · 状态迁移(含积分事务)</span>
   asset.go            <span class="c">转存和上传</span></pre>
-    <div class="col" style="flex:1.15;gap:16px">
-      <pre class="code"><span class="c">// 适配器只做协议翻译，不碰 DB</span>
+          <div class="col" style="flex: 1.15; gap: 16px">
+            <pre class="code"><span class="c">// 适配器只做协议翻译，不碰 DB</span>
 <span class="k">type</span> <span class="t">Provider</span> <span class="k">interface</span> {
     <span class="fn">Name</span>() <span class="t">string</span>
     <span class="fn">Submit</span>(ctx, req <span class="t">SubmitRequest</span>) (providerTaskID <span class="t">string</span>, err <span class="t">error</span>)
     <span class="fn">Query</span>(ctx, providerTaskID <span class="t">string</span>) (<span class="t">QueryResult</span>, <span class="t">error</span>)
     <span class="fn">Cancel</span>(ctx, providerTaskID <span class="t">string</span>) <span class="t">error</span> <span class="c">// 不支持 → ErrCancelUnsupported</span>
 }</pre>
-      <div class="grid2" style="gap:14px">
-        <div class="card" style="padding:16px 18px"><span class="pill p-running">ErrRetryable</span><p style="margin-top:8px;font-size:15px">网络 / 5xx / 429 → worker 退避重试</p></div>
-        <div class="card" style="padding:16px 18px"><span class="pill p-fail">ErrTerminal</span><p style="margin-top:8px;font-size:15px">参数 / 审核 → 直接 failed 并退款</p></div>
-      </div>
-    </div>
-  </div>
-  <div class="callout" style="margin-top:22px;font-size:17px"><b>已更新</b>：平台协议、模型和凭证改为 DB 中的声明式配置，热生效。<code>Provider</code> 的唯一实现是通用声明式引擎，首个平台是 <b>RunningHub</b>，详见《平台协议配置化设计》。静态配置只留 <code>max_active_tasks_per_user: 4</code>、<code>webhook_base_url</code>，主密钥走 <code>APP_AI_SECRET_KEY</code>。</div>
-</section>
+            <div class="grid2" style="gap: 14px">
+              <div class="card" style="padding: 16px 18px">
+                <span class="pill p-running">ErrRetryable</span>
+                <p style="margin-top: 8px; font-size: 15px">网络 / 5xx / 429 → worker 退避重试</p>
+              </div>
+              <div class="card" style="padding: 16px 18px">
+                <span class="pill p-fail">ErrTerminal</span>
+                <p style="margin-top: 8px; font-size: 15px">参数 / 审核 → 直接 failed 并退款</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="callout" style="margin-top: 22px; font-size: 17px">
+          <b>已更新</b>：平台协议、模型和凭证改为 DB 中的声明式配置，热生效。<code>Provider</code>
+          的唯一实现是通用声明式引擎，首个平台是
+          <b>RunningHub</b>，详见《平台协议配置化设计》。静态配置只留
+          <code>max_active_tasks_per_user: 4</code>、<code>webhook_base_url</code>，主密钥走
+          <code>APP_AI_SECRET_KEY</code>。
+        </div>
+      </section>
 
-<!-- 16 Worker 调度 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · Worker 调度</div>
-  <h2 style="margin-bottom:22px">PostgreSQL 就是任务队列</h2>
-  <div class="row" style="gap:22px">
-    <div class="col" style="flex:1;gap:14px">
-      <pre class="code" style="font-size:14.5px"><span class="c">-- 每秒一次</span>
+      <!-- 16 Worker 调度 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · Worker 调度</div>
+        <h2 style="margin-bottom: 22px">PostgreSQL 就是任务队列</h2>
+        <div class="row" style="gap: 22px">
+          <div class="col" style="flex: 1; gap: 14px">
+            <pre class="code" style="font-size: 14.5px"><span class="c">-- 每秒一次</span>
 <span class="k">SELECT</span> … <span class="k">FROM</span> generation_tasks
 <span class="k">WHERE</span> status <span class="k">IN</span> (<span class="s">'pending'</span>,<span class="s">'queued'</span>,<span class="s">'running'</span>,<span class="s">'finalizing'</span>)
   <span class="k">AND</span> next_poll_at &lt;= now()
 <span class="k">ORDER BY</span> next_poll_at <span class="k">LIMIT</span> 50
 <span class="k">FOR UPDATE SKIP LOCKED</span>
 <span class="c">-- 选中后 lease_until = now()+60s，交给固定大小执行池</span></pre>
-      <p class="small" style="color:var(--ink2);line-height:1.6">新任务创建后通过进程内 channel <b>kick</b>，不等下一个 tick 就立即提交。</p>
-    </div>
-    <div class="card" style="flex:1.1;padding:18px 22px">
-      <h3 style="font-size:18px">轮询节奏（视频）</h3>
-      <svg viewBox="0 0 700 170" width="100%">
-        <line x1="20" y1="90" x2="690" y2="90" stroke="#DDD8CD" stroke-width="2"/>
-        <g fill="#737884" font-family="Consolas,monospace" font-size="12" text-anchor="middle">
-          <text x="20" y="128">0s</text><text x="107" y="128">10s</text><text x="194" y="128">20s</text><text x="281" y="128">30s</text><text x="368" y="128">40s</text><text x="455" y="128">50s</text><text x="542" y="128">60s</text><text x="629" y="128">70s</text>
-        </g>
-        <g fill="#D9480F" opacity=".16">
-          <rect x="90" y="76" width="34" height="28" rx="4"/><rect x="141" y="76" width="18" height="28" rx="4"/><rect x="203" y="76" width="26" height="28" rx="4"/><rect x="294" y="76" width="40" height="28" rx="4"/><rect x="418" y="76" width="52" height="28" rx="4"/><rect x="549" y="76" width="52" height="28" rx="4"/>
-        </g>
-        <circle cx="20" cy="90" r="7" fill="#17191E"/>
-        <g fill="#D9480F"><circle cx="107" cy="90" r="6"/><circle cx="150" cy="90" r="6"/><circle cx="216" cy="90" r="6"/><circle cx="314" cy="90" r="6"/><circle cx="444" cy="90" r="6"/><circle cx="575" cy="90" r="6"/></g>
-        <g font-size="13" fill="#3A3E47" text-anchor="middle">
-          <text x="16" y="60" text-anchor="start">Submit</text><text x="107" y="60">首查 +10s</text><text x="150" y="42">+5s</text><text x="216" y="60">+≈7.5s</text><text x="314" y="42">+≈11s</text><text x="444" y="60">+15s 上限</text><text x="575" y="42">+15s</text><text x="660" y="60">…</text>
-        </g>
-        <text x="20" y="160" font-size="13" fill="#737884">浅色带 = ±20% 抖动；增长倍率为示意。每个平台一个令牌桶，避免触发可灵 20 RPS 这类限流</text>
-      </svg>
-    </div>
-  </div>
-  <div class="grid4" style="margin-top:20px;gap:16px">
-    <div class="card" style="padding:16px 18px"><span class="idx">服务重启</span><p style="font-size:15px">状态全在 DB，重启后调度循环自然接着处理；租约过期的任务会被重新领取。</p></div>
-    <div class="card" style="padding:16px 18px"><span class="idx">超时</span><p style="font-size:15px">超过 <code>deadline_at</code> 置 <code>expired</code> 并退积分，先尽力调一次平台 Cancel。</p></div>
-    <div class="card accent" style="padding:16px 18px"><span class="idx">提交幂等风险</span><p style="font-size:15px">平台一般无幂等键。只在连接失败 / 429 / 5xx 重试；<b>读超时</b>直接 <code>failed(submit_unknown)</code> 并退积分 + 告警。</p></div>
-    <div class="card" style="padding:16px 18px"><span class="idx">Webhook</span><p style="font-size:15px">校验路径密钥 → 按 <code>provider_task_id</code> 找任务 → <code>next_poll_at = now()</code> → 200。结果仍以 Query 为准。</p></div>
-  </div>
-</section>
-
-<!-- 17 转存 + 积分 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · 转存与积分事务</div>
-  <h2 style="margin-bottom:20px">钱和状态在同一个事务里变</h2>
-  <div class="card" style="padding:16px 22px;display:flex;align-items:center;gap:12px;font-size:16px;flex-wrap:nowrap">
-    <span class="pill p-final">finalizing</span><span class="muted">→</span>
-    <span>下载视频和封面</span><span class="muted">→</span><span>写入自有存储</span><span class="muted">→</span><span>插入 <code>assets</code></span><span class="muted">→</span>
-    <span style="background:var(--green-soft);padding:4px 10px;border-radius:6px">同一事务：<code>output_json</code> + <span class="pill p-ok">succeeded</span> + 结算</span>
-    <span class="muted small" style="margin-left:auto">失败退避重试，须在 24h 内完成；耗尽 → failed + 退款</span>
-  </div>
-  <div class="row" style="margin-top:20px;gap:22px">
-    <div class="card sim" style="flex:1.15">
-      <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">试一试：一个 20 积分的任务</h3><span class="pill p-pending" id="simStatus">未提交</span></div>
-      <div class="meters">
-        <div class="meter"><div class="l">balance 余额</div><div class="v" id="mBal">100</div></div>
-        <div class="meter"><div class="l">frozen 冻结</div><div class="v" id="mFrz">0</div></div>
-        <div class="meter"><div class="l">可用 = balance − frozen</div><div class="v" id="mAvl">100</div></div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn pri" data-sim="submit">提交（冻结）</button>
-        <button class="btn" data-sim="settle">平台成功（结算）</button>
-        <button class="btn" data-sim="refund">失败 / 取消（退回）</button>
-        <button class="btn acc" data-sim="replay">worker 重复执行一次</button>
-        <button class="btn" data-sim="reset" style="margin-left:auto">重置</button>
-      </div>
-      <div class="ledger" id="ledger"><div><span style="width:70px">task_id</span><span style="width:70px">type</span><span>amount</span></div></div>
-      <div class="simlog" id="simLog">点“提交”开始。</div>
-    </div>
-    <div class="col" style="flex:1;gap:12px">
-      <div class="card" style="padding:14px 18px"><span class="idx">提交</span><p style="font-size:15px"><code>SELECT … FROM user_credits WHERE user_id=? FOR UPDATE</code> → 校验余额与并发上限 → <code>frozen += credits</code> → 写 freeze 流水 → 插入任务</p></div>
-      <div class="card" style="padding:14px 18px"><span class="idx">成功</span><p style="font-size:15px"><code>balance -= credits, frozen -= credits</code>，写 settle 流水</p></div>
-      <div class="card" style="padding:14px 18px"><span class="idx">非成功终态</span><p style="font-size:15px"><code>frozen -= credits</code>，写 refund 流水</p></div>
-      <div class="callout" style="font-size:15px"><code>UNIQUE(task_id, type)</code> 防重复扣款 / 退款；状态迁移用 <code>UPDATE … WHERE id=? AND status=?</code> 做 CAS，防并发迁移。</div>
-    </div>
-  </div>
-</section>
-
-<!-- 18 WS 协议 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · WebSocket 协议</div>
-  <h2 style="margin-bottom:22px">用一次性 ticket 建连，不把 JWT 放进 URL</h2>
-  <div class="grid3" style="gap:16px">
-    <div class="card"><span class="idx">01 · 换票</span><p><code>POST /ws/ticket</code>（带 JWT）→ 一次性 ticket，有效 30s。Redis 开启存 Redis，关闭存内存。</p></div>
-    <div class="card"><span class="idx">02 · 连接</span><p><code>new WebSocket("wss://…/api/v1/ws?ticket=…")</code></p></div>
-    <div class="card"><span class="idx">03 · 绑定</span><p>服务端校验并<b>删除</b> ticket，绑定 user_id，自动订阅 <code>user:{id}</code>，下发 <code>hello</code>。</p></div>
-  </div>
-  <div class="row" style="margin-top:20px;gap:22px">
-    <div class="col" style="flex:1;gap:10px">
-      <h3 style="font-size:18px">服务端要点</h3>
-      <div class="card" style="padding:16px 20px">
-        <div style="display:flex;flex-direction:column;gap:10px;font-size:16px;line-height:1.55;color:var(--ink2)">
-          <div>▸ <code>gorilla/websocket</code>：Upgrade 会清掉 deadline，60s WriteTimeout 不再切连接（需测试锁定）</div>
-          <div>▸ <code>CheckOrigin</code> 校验白名单，与 CORS 一致，防跨站 WS 劫持</div>
-          <div>▸ 每连接一个写 goroutine + 有界发送队列，满了断开慢连接，客户端重连后对账</div>
-          <div>▸ 每 25s ping，60s 没收到 pong 就断开</div>
-          <div>▸ 同一用户多连接（多标签页）：<code>user_id → set(conn)</code></div>
-          <div>▸ <b>事务提交之后再发布</b>，避免客户端收到推送去查询却读到旧数据</div>
+            <p class="small" style="color: var(--ink2); line-height: 1.6">
+              新任务创建后通过进程内 channel <b>kick</b>，不等下一个 tick 就立即提交。
+            </p>
+          </div>
+          <div class="card" style="flex: 1.1; padding: 18px 22px">
+            <h3 style="font-size: 18px">轮询节奏（视频）</h3>
+            <svg viewBox="0 0 700 170" width="100%">
+              <line x1="20" y1="90" x2="690" y2="90" stroke="#DDD8CD" stroke-width="2" />
+              <g
+                fill="#737884"
+                font-family="Consolas,monospace"
+                font-size="12"
+                text-anchor="middle"
+              >
+                <text x="20" y="128">0s</text>
+                <text x="107" y="128">10s</text>
+                <text x="194" y="128">20s</text>
+                <text x="281" y="128">30s</text>
+                <text x="368" y="128">40s</text>
+                <text x="455" y="128">50s</text>
+                <text x="542" y="128">60s</text>
+                <text x="629" y="128">70s</text>
+              </g>
+              <g fill="#D9480F" opacity=".16">
+                <rect x="90" y="76" width="34" height="28" rx="4" />
+                <rect x="141" y="76" width="18" height="28" rx="4" />
+                <rect x="203" y="76" width="26" height="28" rx="4" />
+                <rect x="294" y="76" width="40" height="28" rx="4" />
+                <rect x="418" y="76" width="52" height="28" rx="4" />
+                <rect x="549" y="76" width="52" height="28" rx="4" />
+              </g>
+              <circle cx="20" cy="90" r="7" fill="#17191E" />
+              <g fill="#D9480F">
+                <circle cx="107" cy="90" r="6" />
+                <circle cx="150" cy="90" r="6" />
+                <circle cx="216" cy="90" r="6" />
+                <circle cx="314" cy="90" r="6" />
+                <circle cx="444" cy="90" r="6" />
+                <circle cx="575" cy="90" r="6" />
+              </g>
+              <g font-size="13" fill="#3A3E47" text-anchor="middle">
+                <text x="16" y="60" text-anchor="start">Submit</text>
+                <text x="107" y="60">首查 +10s</text>
+                <text x="150" y="42">+5s</text>
+                <text x="216" y="60">+≈7.5s</text>
+                <text x="314" y="42">+≈11s</text>
+                <text x="444" y="60">+15s 上限</text>
+                <text x="575" y="42">+15s</text>
+                <text x="660" y="60">…</text>
+              </g>
+              <text x="20" y="160" font-size="13" fill="#737884">
+                浅色带 = ±20% 抖动；增长倍率为示意。每个平台一个令牌桶，避免触发可灵 20 RPS 这类限流
+              </text>
+            </svg>
+          </div>
         </div>
-      </div>
-    </div>
-    <div class="col" style="flex:1;gap:10px">
-      <h3 style="font-size:18px">消息格式</h3>
-      <pre class="code" style="font-size:14px"><span class="c">// 服务端 → 客户端</span>
+        <div class="grid4" style="margin-top: 20px; gap: 16px">
+          <div class="card" style="padding: 16px 18px">
+            <span class="idx">服务重启</span>
+            <p style="font-size: 15px">
+              状态全在 DB，重启后调度循环自然接着处理；租约过期的任务会被重新领取。
+            </p>
+          </div>
+          <div class="card" style="padding: 16px 18px">
+            <span class="idx">超时</span>
+            <p style="font-size: 15px">
+              超过 <code>deadline_at</code> 置 <code>expired</code> 并退积分，先尽力调一次平台
+              Cancel。
+            </p>
+          </div>
+          <div class="card accent" style="padding: 16px 18px">
+            <span class="idx">提交幂等风险</span>
+            <p style="font-size: 15px">
+              平台一般无幂等键。只在连接失败 / 429 / 5xx 重试；<b>读超时</b>直接
+              <code>failed(submit_unknown)</code> 并退积分 + 告警。
+            </p>
+          </div>
+          <div class="card" style="padding: 16px 18px">
+            <span class="idx">Webhook</span>
+            <p style="font-size: 15px">
+              校验路径密钥 → 按 <code>provider_task_id</code> 找任务 →
+              <code>next_poll_at = now()</code> → 200。结果仍以 Query 为准。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 17 转存 + 积分 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · 转存与积分事务</div>
+        <h2 style="margin-bottom: 20px">钱和状态在同一个事务里变</h2>
+        <div
+          class="card"
+          style="
+            padding: 16px 22px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            flex-wrap: nowrap;
+          "
+        >
+          <span class="pill p-final">finalizing</span><span class="muted">→</span>
+          <span>下载视频和封面</span><span class="muted">→</span><span>写入自有存储</span
+          ><span class="muted">→</span><span>插入 <code>assets</code></span
+          ><span class="muted">→</span>
+          <span style="background: var(--green-soft); padding: 4px 10px; border-radius: 6px"
+            >同一事务：<code>output_json</code> + <span class="pill p-ok">succeeded</span> +
+            结算</span
+          >
+          <span class="muted small" style="margin-left: auto"
+            >失败退避重试，须在 24h 内完成；耗尽 → failed + 退款</span
+          >
+        </div>
+        <div class="row" style="margin-top: 20px; gap: 22px">
+          <div class="card sim" style="flex: 1.15">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <h3 style="margin: 0">试一试：一个 20 积分的任务</h3>
+              <span class="pill p-pending" id="simStatus">未提交</span>
+            </div>
+            <div class="meters">
+              <div class="meter">
+                <div class="l">balance 余额</div>
+                <div class="v" id="mBal">100</div>
+              </div>
+              <div class="meter">
+                <div class="l">frozen 冻结</div>
+                <div class="v" id="mFrz">0</div>
+              </div>
+              <div class="meter">
+                <div class="l">可用 = balance − frozen</div>
+                <div class="v" id="mAvl">100</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button class="btn pri" data-sim="submit">提交（冻结）</button>
+              <button class="btn" data-sim="settle">平台成功（结算）</button>
+              <button class="btn" data-sim="refund">失败 / 取消（退回）</button>
+              <button class="btn acc" data-sim="replay">worker 重复执行一次</button>
+              <button class="btn" data-sim="reset" style="margin-left: auto">重置</button>
+            </div>
+            <div class="ledger" id="ledger">
+              <div>
+                <span style="width: 70px">task_id</span><span style="width: 70px">type</span
+                ><span>amount</span>
+              </div>
+            </div>
+            <div class="simlog" id="simLog">点“提交”开始。</div>
+          </div>
+          <div class="col" style="flex: 1; gap: 12px">
+            <div class="card" style="padding: 14px 18px">
+              <span class="idx">提交</span>
+              <p style="font-size: 15px">
+                <code>SELECT … FROM user_credits WHERE user_id=? FOR UPDATE</code> →
+                校验余额与并发上限 → <code>frozen += credits</code> → 写 freeze 流水 → 插入任务
+              </p>
+            </div>
+            <div class="card" style="padding: 14px 18px">
+              <span class="idx">成功</span>
+              <p style="font-size: 15px">
+                <code>balance -= credits, frozen -= credits</code>，写 settle 流水
+              </p>
+            </div>
+            <div class="card" style="padding: 14px 18px">
+              <span class="idx">非成功终态</span>
+              <p style="font-size: 15px"><code>frozen -= credits</code>，写 refund 流水</p>
+            </div>
+            <div class="callout" style="font-size: 15px">
+              <code>UNIQUE(task_id, type)</code> 防重复扣款 / 退款；状态迁移用
+              <code>UPDATE … WHERE id=? AND status=?</code> 做 CAS，防并发迁移。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 18 WS 协议 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · WebSocket 协议</div>
+        <h2 style="margin-bottom: 22px">用一次性 ticket 建连，不把 JWT 放进 URL</h2>
+        <div class="grid3" style="gap: 16px">
+          <div class="card">
+            <span class="idx">01 · 换票</span>
+            <p>
+              <code>POST /ws/ticket</code>（带 JWT）→ 一次性 ticket，有效 30s。Redis 开启存
+              Redis，关闭存内存。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">02 · 连接</span>
+            <p><code>new WebSocket("wss://…/api/v1/ws?ticket=…")</code></p>
+          </div>
+          <div class="card">
+            <span class="idx">03 · 绑定</span>
+            <p>
+              服务端校验并<b>删除</b> ticket，绑定 user_id，自动订阅 <code>user:{id}</code>，下发
+              <code>hello</code>。
+            </p>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 20px; gap: 22px">
+          <div class="col" style="flex: 1; gap: 10px">
+            <h3 style="font-size: 18px">服务端要点</h3>
+            <div class="card" style="padding: 16px 20px">
+              <div
+                style="
+                  display: flex;
+                  flex-direction: column;
+                  gap: 10px;
+                  font-size: 16px;
+                  line-height: 1.55;
+                  color: var(--ink2);
+                "
+              >
+                <div>
+                  ▸ <code>gorilla/websocket</code>：Upgrade 会清掉 deadline，60s WriteTimeout
+                  不再切连接（需测试锁定）
+                </div>
+                <div>▸ <code>CheckOrigin</code> 校验白名单，与 CORS 一致，防跨站 WS 劫持</div>
+                <div>▸ 每连接一个写 goroutine + 有界发送队列，满了断开慢连接，客户端重连后对账</div>
+                <div>▸ 每 25s ping，60s 没收到 pong 就断开</div>
+                <div>▸ 同一用户多连接（多标签页）：<code>user_id → set(conn)</code></div>
+                <div>▸ <b>事务提交之后再发布</b>，避免客户端收到推送去查询却读到旧数据</div>
+              </div>
+            </div>
+          </div>
+          <div class="col" style="flex: 1; gap: 10px">
+            <h3 style="font-size: 18px">消息格式</h3>
+            <pre class="code" style="font-size: 14px"><span class="c">// 服务端 → 客户端</span>
 { <span class="s">"type"</span>: <span class="s">"task.updated"</span>, <span class="s">"channel"</span>: <span class="s">"user:12"</span>,
   <span class="s">"data"</span>: { <span class="c">/* 完整任务快照，含 version */</span> } }
 { <span class="s">"type"</span>: <span class="s">"hello"</span>, <span class="s">"data"</span>: { <span class="s">"server_time"</span>: <span class="s">"…"</span> } }
@@ -700,314 +2279,766 @@ kbd{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-b
 <span class="c">// 客户端 → 服务端（MVP 只需要 ping）</span>
 { <span class="s">"type"</span>: <span class="s">"subscribe"</span>, <span class="s">"channel"</span>: <span class="s">"canvas:34"</span> }
 <span class="c">// ↑ 为协作预留：校验画布访问权限后才允许订阅</span></pre>
-    </div>
-  </div>
-</section>
-
-<!-- 19 前端改动 -->
-<section class="slide">
-  <div class="kicker"><span class="num">07</span>数据与工程影响 · 前端改动</div>
-  <h2>前端拥有画布，所以由前端回填</h2>
-  <div class="grid3 grow" style="grid-template-rows:1fr 1fr;gap:18px">
-    <div class="card accent"><span class="idx">节点数据</span><p>新增 <code>taskId?: string</code>。持久化 DTO 的 <code>status</code> 增加 <code>running</code>，否则刷新后生成中状态会丢。</p></div>
-    <div class="card"><span class="idx">任务 store（zustand）</span><p><code>tasks: Record&lt;taskId, Task&gt;</code>，由 WS 与对账接口写入，按 <code>version</code> 只保留更新的快照。</p></div>
-    <div class="card"><span class="idx">回填</span><p>终态且节点 <code>taskId</code> 一致时 <code>updateNodeData(id, {status, src, assetId, error})</code>，走现有自动保存；<code>assetId</code> 已相同就跳过。</p></div>
-    <div class="card"><span class="idx">对账时机</span><p>打开画布 → 收集 running 节点 <code>GET ?ids=</code>；WS 重连 → <code>GET ?status=active</code>；切回前台再对一次。</p></div>
-    <div class="card"><span class="idx">全局连接</span><p>登录后在应用根部建一条 WS，列表页也保持连接以弹 toast。重连指数退避 1s → 30s。</p></div>
-    <div class="card"><span class="idx">模型清单 · 多标签页</span><p><code>MODEL_LIBRARY</code> 改读 <code>/models</code>；视频暂不支持自定义模型。两个标签页同时回填，一个会 409 走重载，结果一致可接受。</p></div>
-  </div>
-</section>
-
-<!-- 20 方案取舍 -->
-<section class="slide">
-  <div class="kicker"><span class="num">08</span>方案取舍 · 已确认决策</div>
-  <h2>每个决定都放弃了点什么</h2>
-  <table class="tbl">
-    <thead><tr><th style="width:12%">分叉</th><th style="width:40%">决定</th><th>放弃了什么</th></tr></thead>
-    <tbody>
-      <tr><td>部署</td><td>单实例落地，接口按多实例设计</td><td>暂不做 Redis pub/sub、独立 worker 进程</td></tr>
-      <tr><td>凭证</td><td>平台统一托管，后端下发模型清单</td><td>视频暂不支持用户自带 Key 或自定义模型</td></tr>
-      <tr><td>平台结果</td><td>轮询为主，webhook 只触发立即轮询</td><td>纯 webhook 带来的最低延迟</td></tr>
-      <tr><td>回填</td><td>任务表为准，前端写节点</td><td>关页面后 <code>payload_json</code> 不会自动更新（重开时对账补齐）</td></tr>
-      <tr><td>任务范围</td><td>通用 <code>generation_tasks</code>，MVP 只接视频</td><td>视频专用字段放进 <code>input_json</code>，失去列级约束</td></tr>
-      <tr><td>计费</td><td>冻结 → 结算 / 退回</td><td>更简单的“提交即扣”</td></tr>
-      <tr><td>通道</td><td>用户级 WebSocket + 频道 + 对账兜底</td><td>SSE 更低的实现成本</td></tr>
-      <tr><td>范围</td><td>并发上限 + 软取消</td><td class="muted">—</td></tr>
-      <tr><td>素材存储</td><td>本地磁盘 / S3 / OSS 可配置，磁盘仅开发</td><td class="muted">—</td></tr>
-      <tr><td>删除节点</td><td>任务继续跑，产物进生成记录，照常结算</td><td>删除即取消并退款</td></tr>
-      <tr><td>积分来源</td><td>初始余额固定 50，本期不做充值</td><td>充值与管理员发放入口</td></tr>
-    </tbody>
-  </table>
-</section>
-
-<!-- 21 MQ -->
-<section class="slide">
-  <div class="kicker"><span class="num">08</span>方案取舍 · 为什么不引入 MQ / Kafka</div>
-  <h2 style="margin-bottom:24px">MVP 用 PG 表 + SKIP LOCKED 当队列</h2>
-  <div class="grid4" style="gap:16px">
-    <div class="card"><span class="idx">量级不需要</span><p style="font-size:16px">1000 活跃用户 × 每人并发 4，也只是几千行、每秒几十次查询。</p></div>
-    <div class="card"><span class="idx">状态本来就要落库</span><p style="font-size:16px">再加 MQ 就有两份状态；扣积分与发消息要原子还得做 outbox。</p></div>
-    <div class="card"><span class="idx">核心需求是“定时再查”</span><p style="font-size:16px">Kafka 无延迟消息，RabbitMQ 要插件或死信绕行；一个 <code>next_poll_at</code> 索引即可。</p></div>
-    <div class="card"><span class="idx">运维成本</span><p style="font-size:16px">现在只有 PG + Redis，加 Kafka 就要再维护一套集群。</p></div>
-  </div>
-  <h3 style="margin-top:30px;font-size:19px">什么时候再引入</h3>
-  <table class="tbl" style="font-size:16px">
-    <thead><tr><th style="width:52%">信号</th><th>引入什么</th></tr></thead>
-    <tbody>
-      <tr><td>多实例部署，WS 连接分布在不同机器</td><td><b>Redis Pub/Sub 或 Streams</b>，只广播 <code>task.updated</code>（第一步是它，不是 Kafka）</td></tr>
-      <tr><td>API 与 worker 拆成独立服务，或 worker 按平台隔离扩容</td><td>Redis Streams / RabbitMQ 做提交队列，状态仍以 DB 为准</td></tr>
-      <tr><td>同一事件有多个独立消费方（计费、通知、分析、审计），或提交量上千 / 秒</td><td>Kafka + outbox：状态迁移事务写 outbox，再投递到 Kafka</td></tr>
-    </tbody>
-  </table>
-  <p class="small muted" style="margin-top:14px"><code>Broadcaster</code> 接口与 DB 队列的租约设计已给这些替换留好位置，业务代码不用改。</p>
-</section>
-
-<!-- 22 决策矩阵 -->
-<section class="slide">
-  <div class="kicker"><span class="num">08</span>方案取舍 · 通道决策矩阵</div>
-  <h2>WS 的优势完全来自“协作扩展”</h2>
-  <table class="tbl" style="font-size:18px">
-    <thead><tr><th style="width:16%">方案</th><th>正确性和恢复 · 35%</th><th>实时性 · 20%</th><th>协作扩展 · 20%</th><th>实现成本 · 25%</th><th style="width:34%">加权</th></tr></thead>
-    <tbody>
-      <tr><td>纯轮询</td><td class="mono">5</td><td class="mono">3</td><td class="mono">1</td><td class="mono">5</td><td><div style="display:flex;align-items:center;gap:12px"><div class="bar" style="flex:1;height:14px;border-radius:7px"><i style="width:76%;background:var(--gray)"></i></div><b class="mono">3.80</b></div></td></tr>
-      <tr><td>SSE + 对账</td><td class="mono">5</td><td class="mono">5</td><td class="mono">2</td><td class="mono">4</td><td><div style="display:flex;align-items:center;gap:12px"><div class="bar" style="flex:1;height:14px;border-radius:7px"><i style="width:83%;background:var(--slate)"></i></div><b class="mono">4.15</b></div></td></tr>
-      <tr class="pick"><td>WS + 对账</td><td class="mono">5</td><td class="mono">5</td><td class="mono"><b>5</b></td><td class="mono">3</td><td><div style="display:flex;align-items:center;gap:12px"><div class="bar" style="flex:1;height:14px;border-radius:7px;background:#fff"><i style="width:90%;background:var(--accent)"></i></div><b class="mono" style="color:var(--accent)">4.50</b></div></td></tr>
-    </tbody>
-  </table>
-  <div class="grid2" style="margin-top:34px">
-    <div class="callout">三个方案的<b>正确性和恢复</b>得分相同，因为都靠 DB + 对账保证。</div>
-    <div class="callout">如果以后确定不做实时协作，<b>SSE 是更省的替代</b>，前端对账和任务 store 都不用改。</div>
-  </div>
-</section>
-
-<!-- 23 路线 -->
-<section class="slide">
-  <div class="kicker"><span class="num">09</span>MVP 与后续</div>
-  <h2>三个阶段</h2>
-  <div class="grid3 grow" style="gap:20px">
-    <div class="card accent" style="display:flex;flex-direction:column;gap:12px">
-      <span class="idx">阶段 1 · MVP</span>
-      <div style="display:flex;flex-direction:column;gap:9px;font-size:16.5px;color:var(--ink2);line-height:1.5">
-        <div>▸ 模型清单接口</div>
-        <div>▸ <code>generation_tasks</code> / <code>user_credits</code> / <code>credit_ledger</code> / <code>assets</code> 四张表</div>
-        <div>▸ 接 1 家视频平台（RunningHub）</div>
-        <div>▸ worker 轮询 + 转存（本地磁盘 / S3 / OSS）</div>
-        <div>▸ WS 推送 + 对账</div>
-        <div>▸ 并发上限 4 + 超时 30 分钟 + 软取消</div>
-        <div>▸ 初始积分固定 50，不做充值</div>
-        <div>▸ 前端视频节点接入真实任务</div>
-      </div>
-    </div>
-    <div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <span class="idx">阶段 2</span>
-      <div style="display:flex;flex-direction:column;gap:9px;font-size:16.5px;color:var(--ink2);line-height:1.5">
-        <div>▸ 配置公网地址后启用 webhook 加速</div>
-        <div>▸ 接入第 2、3 家平台</div>
-        <div>▸ 图片、音频节点迁移到任务体系</div>
-        <div>▸ “生成记录”面板：节点被删后的产物也能找到</div>
-        <div>▸ Redis pub/sub 版 Broadcaster，支持多实例</div>
-      </div>
-    </div>
-    <div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <span class="idx">阶段 3</span>
-      <div style="display:flex;flex-direction:column;gap:9px;font-size:16.5px;color:var(--ink2);line-height:1.5">
-        <div>▸ <code>canvas:{id}</code> 频道：协作时实时同步他人发起的生成</div>
-        <div>▸ 排队预估时间</div>
-        <div>▸ 优先级队列</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 24 验收 -->
-<section class="slide">
-  <div class="kicker"><span class="num">09</span>MVP 验收条件</div>
-  <h2>九条可测的验收标准</h2>
-  <div class="grid3 grow" style="grid-template-rows:repeat(3,1fr);gap:16px">
-    <div class="card"><span class="idx">01 · 性能</span><p>提交接口 p95 &lt; 300ms，不依赖平台响应速度</p></div>
-    <div class="card"><span class="idx">02 · 关页面</span><p>生成中关闭页面，重开画布能看到最终结果并可播放</p></div>
-    <div class="card"><span class="idx">03 · 重启</span><p>生成中重启后端，任务继续完成，积分不重扣不漏扣</p></div>
-    <div class="card"><span class="idx">04 · 断网</span><p>断网 30s 再恢复，5s 内节点状态与服务端一致</p></div>
-    <div class="card"><span class="idx">05 · 幂等</span><p>同一 <code>Idempotency-Key</code> 重复提交，只建一个任务、只冻结一次</p></div>
-    <div class="card"><span class="idx">06 · 退款</span><p>失败 / 取消 / 超时全部退回；<code>credit_ledger</code> 与 <code>user_credits</code> 对账零差异</p></div>
-    <div class="card"><span class="idx">07 · 长连接</span><p>WS 连接保持 &gt; 10 分钟不断（验证绕开 60s WriteTimeout）</p></div>
-    <div class="card"><span class="idx">08 · 转存</span><p>平台 URL 过期（&gt; 24h）后，画布里的视频仍能播放</p></div>
-    <div class="card"><span class="idx">09 · 并发</span><p>超过并发上限返回 429，前端就地提示</p></div>
-  </div>
-</section>
-
-<!-- 25 待确认 -->
-<section class="slide">
-  <div class="kicker"><span class="num">10</span>待确认问题 · 已全部拍板（2026-09-29）</div>
-  <h2>五件事，都有了答案</h2>
-  <div class="col" style="gap:14px">
-    <div class="card" style="display:flex;gap:22px;align-items:baseline"><span class="idx" style="min-width:36px">01</span><div><h3>首个接入的平台：RunningHub</h3><p>AI 应用 / 工作流，协议细节见《平台协议配置化设计》。</p></div><span class="pill p-ok" style="margin-left:auto">已确认</span></div>
-    <div class="card" style="display:flex;gap:22px;align-items:baseline"><span class="idx" style="min-width:36px">02</span><div><h3>素材存储：本地磁盘、S3、OSS 都支持</h3><p>通过配置切换；<b>本地磁盘仅用于开发环境</b>。<code>assets</code> 的 URL 策略（公开还是签名）由各存储实现决定。</p></div><span class="pill p-ok" style="margin-left:auto">已确认</span></div>
-    <div class="card" style="display:flex;gap:22px;align-items:baseline"><span class="idx" style="min-width:36px">03</span><div><h3>并发上限 N=4，超时 deadline 30 分钟</h3><p>即 <code>max_active_tasks_per_user: 4</code>，<code>deadline_at</code> 默认 30 分钟。</p></div><span class="pill p-ok" style="margin-left:auto">已确认</span></div>
-    <div class="card" style="display:flex;gap:22px;align-items:baseline"><span class="idx" style="min-width:36px">04</span><div><h3>生成中删除节点：任务继续跑</h3><p>产物进入生成记录，积分照常结算，不自动取消。撤销删除会把节点和 <code>taskId</code> 一起恢复。</p></div><span class="pill p-ok" style="margin-left:auto">已确认</span></div>
-    <div class="card" style="display:flex;gap:22px;align-items:baseline"><span class="idx" style="min-width:36px">05</span><div><h3>积分来源：不在本期范围</h3><p>充值本期不做；每个用户初始余额先<b>固定为 50 积分</b>。</p></div><span class="pill p-ok" style="margin-left:auto">已确认</span></div>
-  </div>
-</section>
-
-<!-- 26 来源 -->
-<section class="slide">
-  <div class="kicker"><span class="num">11</span>来源与假设</div>
-  <h2>来源与未验证项</h2>
-  <div class="row" style="gap:26px">
-    <div class="card" style="flex:1.1">
-      <span class="idx">外部来源（访问日期 2026-09-29）</span>
-      <div style="display:flex;flex-direction:column;gap:12px;font-size:15px;line-height:1.5;margin-top:6px">
-        <div>Runway API SDK 与轮询建议<br><span class="ev mono muted">docs.dev.runwayml.com/api-details/sdks/</span></div>
-        <div>Luma Dream Machine 视频生成<br><span class="mono muted">docs.lumalabs.ai/docs/video-generation</span></div>
-        <div>可灵回调协议<br><span class="mono muted">kling.ai/document-api/api/get-started/callbacks</span></div>
-        <div>可灵视频 API（阿里云百炼）<br><span class="mono muted">help.aliyun.com/en/model-studio/kling-video-generation-api-reference/</span></div>
-        <div>火山方舟创建 / 查询视频生成任务<br><span class="mono muted">docs.volcengine.com/docs/ark/create-video-generation-task-api</span><br><span class="mono muted">www.volcengine.com/docs/82379/1521309</span></div>
-      </div>
-    </div>
-    <div class="col" style="flex:1;gap:14px">
-      <div class="card"><span class="idx">假设 · 未验证</span>
-        <div style="display:flex;flex-direction:column;gap:12px;font-size:16px;line-height:1.55;color:var(--ink2);margin-top:4px">
-          <div>▸ Runway 的 webhook 与输出 URL 有效期未查到，暂按“无 webhook、会过期”处理</div>
-          <div>▸ <code>gorilla/websocket</code> Upgrade 后清除 deadline，需用验收条件 7 的测试确认</div>
-          <div>▸ 各平台进度字段未逐一验证；<code>progress</code> 可空，无进度时显示已耗时</div>
-          <div>▸ 轮询参数（+10s 首查、5→15s）是经验值，上线后按平台 P50 耗时再调</div>
+          </div>
         </div>
+      </section>
+
+      <!-- 19 前端改动 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>数据与工程影响 · 前端改动</div>
+        <h2>前端拥有画布，所以由前端回填</h2>
+        <div class="grid3 grow" style="grid-template-rows: 1fr 1fr; gap: 18px">
+          <div class="card accent">
+            <span class="idx">节点数据</span>
+            <p>
+              新增 <code>taskId?: string</code>。持久化 DTO 的 <code>status</code> 增加
+              <code>running</code>，否则刷新后生成中状态会丢。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">任务 store（zustand）</span>
+            <p>
+              <code>tasks: Record&lt;taskId, Task&gt;</code>，由 WS 与对账接口写入，按
+              <code>version</code> 只保留更新的快照。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">回填</span>
+            <p>
+              终态且节点 <code>taskId</code> 一致时
+              <code>updateNodeData(id, {status, src, assetId, error})</code>，走现有自动保存；<code
+                >assetId</code
+              >
+              已相同就跳过。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">对账时机</span>
+            <p>
+              打开画布 → 收集 running 节点 <code>GET ?ids=</code>；WS 重连 →
+              <code>GET ?status=active</code>；切回前台再对一次。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">全局连接</span>
+            <p>登录后在应用根部建一条 WS，列表页也保持连接以弹 toast。重连指数退避 1s → 30s。</p>
+          </div>
+          <div class="card">
+            <span class="idx">模型清单 · 多标签页</span>
+            <p>
+              <code>MODEL_LIBRARY</code> 改读
+              <code>/models</code>；视频暂不支持自定义模型。两个标签页同时回填，一个会 409
+              走重载，结果一致可接受。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 20 方案取舍 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">08</span>方案取舍 · 已确认决策</div>
+        <h2>每个决定都放弃了点什么</h2>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 12%">分叉</th>
+              <th style="width: 40%">决定</th>
+              <th>放弃了什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>部署</td>
+              <td>单实例落地，接口按多实例设计</td>
+              <td>暂不做 Redis pub/sub、独立 worker 进程</td>
+            </tr>
+            <tr>
+              <td>凭证</td>
+              <td>平台统一托管，后端下发模型清单</td>
+              <td>视频暂不支持用户自带 Key 或自定义模型</td>
+            </tr>
+            <tr>
+              <td>平台结果</td>
+              <td>轮询为主，webhook 只触发立即轮询</td>
+              <td>纯 webhook 带来的最低延迟</td>
+            </tr>
+            <tr>
+              <td>回填</td>
+              <td>任务表为准，前端写节点</td>
+              <td>关页面后 <code>payload_json</code> 不会自动更新（重开时对账补齐）</td>
+            </tr>
+            <tr>
+              <td>任务范围</td>
+              <td>通用 <code>generation_tasks</code>，MVP 只接视频</td>
+              <td>视频专用字段放进 <code>input_json</code>，失去列级约束</td>
+            </tr>
+            <tr>
+              <td>计费</td>
+              <td>冻结 → 结算 / 退回</td>
+              <td>更简单的“提交即扣”</td>
+            </tr>
+            <tr>
+              <td>通道</td>
+              <td>用户级 WebSocket + 频道 + 对账兜底</td>
+              <td>SSE 更低的实现成本</td>
+            </tr>
+            <tr>
+              <td>范围</td>
+              <td>并发上限 + 软取消</td>
+              <td class="muted">—</td>
+            </tr>
+            <tr>
+              <td>素材存储</td>
+              <td>本地磁盘 / S3 / OSS 可配置，磁盘仅开发</td>
+              <td class="muted">—</td>
+            </tr>
+            <tr>
+              <td>删除节点</td>
+              <td>任务继续跑，产物进生成记录，照常结算</td>
+              <td>删除即取消并退款</td>
+            </tr>
+            <tr>
+              <td>积分来源</td>
+              <td>初始余额固定 50，本期不做充值</td>
+              <td>充值与管理员发放入口</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 21 MQ -->
+      <section class="slide">
+        <div class="kicker"><span class="num">08</span>方案取舍 · 为什么不引入 MQ / Kafka</div>
+        <h2 style="margin-bottom: 24px">MVP 用 PG 表 + SKIP LOCKED 当队列</h2>
+        <div class="grid4" style="gap: 16px">
+          <div class="card">
+            <span class="idx">量级不需要</span>
+            <p style="font-size: 16px">
+              1000 活跃用户 × 每人并发 4，也只是几千行、每秒几十次查询。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">状态本来就要落库</span>
+            <p style="font-size: 16px">再加 MQ 就有两份状态；扣积分与发消息要原子还得做 outbox。</p>
+          </div>
+          <div class="card">
+            <span class="idx">核心需求是“定时再查”</span>
+            <p style="font-size: 16px">
+              Kafka 无延迟消息，RabbitMQ 要插件或死信绕行；一个 <code>next_poll_at</code> 索引即可。
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">运维成本</span>
+            <p style="font-size: 16px">现在只有 PG + Redis，加 Kafka 就要再维护一套集群。</p>
+          </div>
+        </div>
+        <h3 style="margin-top: 30px; font-size: 19px">什么时候再引入</h3>
+        <table class="tbl" style="font-size: 16px">
+          <thead>
+            <tr>
+              <th style="width: 52%">信号</th>
+              <th>引入什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>多实例部署，WS 连接分布在不同机器</td>
+              <td>
+                <b>Redis Pub/Sub 或 Streams</b>，只广播 <code>task.updated</code>（第一步是它，不是
+                Kafka）
+              </td>
+            </tr>
+            <tr>
+              <td>API 与 worker 拆成独立服务，或 worker 按平台隔离扩容</td>
+              <td>Redis Streams / RabbitMQ 做提交队列，状态仍以 DB 为准</td>
+            </tr>
+            <tr>
+              <td>同一事件有多个独立消费方（计费、通知、分析、审计），或提交量上千 / 秒</td>
+              <td>Kafka + outbox：状态迁移事务写 outbox，再投递到 Kafka</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="small muted" style="margin-top: 14px">
+          <code>Broadcaster</code> 接口与 DB 队列的租约设计已给这些替换留好位置，业务代码不用改。
+        </p>
+      </section>
+
+      <!-- 22 决策矩阵 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">08</span>方案取舍 · 通道决策矩阵</div>
+        <h2>WS 的优势完全来自“协作扩展”</h2>
+        <table class="tbl" style="font-size: 18px">
+          <thead>
+            <tr>
+              <th style="width: 16%">方案</th>
+              <th>正确性和恢复 · 35%</th>
+              <th>实时性 · 20%</th>
+              <th>协作扩展 · 20%</th>
+              <th>实现成本 · 25%</th>
+              <th style="width: 34%">加权</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>纯轮询</td>
+              <td class="mono">5</td>
+              <td class="mono">3</td>
+              <td class="mono">1</td>
+              <td class="mono">5</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <div class="bar" style="flex: 1; height: 14px; border-radius: 7px">
+                    <i style="width: 76%; background: var(--gray)"></i>
+                  </div>
+                  <b class="mono">3.80</b>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>SSE + 对账</td>
+              <td class="mono">5</td>
+              <td class="mono">5</td>
+              <td class="mono">2</td>
+              <td class="mono">4</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <div class="bar" style="flex: 1; height: 14px; border-radius: 7px">
+                    <i style="width: 83%; background: var(--slate)"></i>
+                  </div>
+                  <b class="mono">4.15</b>
+                </div>
+              </td>
+            </tr>
+            <tr class="pick">
+              <td>WS + 对账</td>
+              <td class="mono">5</td>
+              <td class="mono">5</td>
+              <td class="mono"><b>5</b></td>
+              <td class="mono">3</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <div
+                    class="bar"
+                    style="flex: 1; height: 14px; border-radius: 7px; background: #fff"
+                  >
+                    <i style="width: 90%; background: var(--accent)"></i>
+                  </div>
+                  <b class="mono" style="color: var(--accent)">4.50</b>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="grid2" style="margin-top: 34px">
+          <div class="callout">三个方案的<b>正确性和恢复</b>得分相同，因为都靠 DB + 对账保证。</div>
+          <div class="callout">
+            如果以后确定不做实时协作，<b>SSE 是更省的替代</b>，前端对账和任务 store 都不用改。
+          </div>
+        </div>
+      </section>
+
+      <!-- 23 路线 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">09</span>MVP 与后续</div>
+        <h2>三个阶段</h2>
+        <div class="grid3 grow" style="gap: 20px">
+          <div class="card accent" style="display: flex; flex-direction: column; gap: 12px">
+            <span class="idx">阶段 1 · MVP</span>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 9px;
+                font-size: 16.5px;
+                color: var(--ink2);
+                line-height: 1.5;
+              "
+            >
+              <div>▸ 模型清单接口</div>
+              <div>
+                ▸ <code>generation_tasks</code> / <code>user_credits</code> /
+                <code>credit_ledger</code> / <code>assets</code> 四张表
+              </div>
+              <div>▸ 接 1 家视频平台（RunningHub）</div>
+              <div>▸ worker 轮询 + 转存（本地磁盘 / S3 / OSS）</div>
+              <div>▸ WS 推送 + 对账</div>
+              <div>▸ 并发上限 4 + 超时 30 分钟 + 软取消</div>
+              <div>▸ 初始积分固定 50，不做充值</div>
+              <div>▸ 前端视频节点接入真实任务</div>
+            </div>
+          </div>
+          <div class="card" style="display: flex; flex-direction: column; gap: 12px">
+            <span class="idx">阶段 2</span>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 9px;
+                font-size: 16.5px;
+                color: var(--ink2);
+                line-height: 1.5;
+              "
+            >
+              <div>▸ 配置公网地址后启用 webhook 加速</div>
+              <div>▸ 接入第 2、3 家平台</div>
+              <div>▸ 图片、音频节点迁移到任务体系</div>
+              <div>▸ “生成记录”面板：节点被删后的产物也能找到</div>
+              <div>▸ Redis pub/sub 版 Broadcaster，支持多实例</div>
+            </div>
+          </div>
+          <div class="card" style="display: flex; flex-direction: column; gap: 12px">
+            <span class="idx">阶段 3</span>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 9px;
+                font-size: 16.5px;
+                color: var(--ink2);
+                line-height: 1.5;
+              "
+            >
+              <div>▸ <code>canvas:{id}</code> 频道：协作时实时同步他人发起的生成</div>
+              <div>▸ 排队预估时间</div>
+              <div>▸ 优先级队列</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 24 验收 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">09</span>MVP 验收条件</div>
+        <h2>九条可测的验收标准</h2>
+        <div class="grid3 grow" style="grid-template-rows: repeat(3, 1fr); gap: 16px">
+          <div class="card">
+            <span class="idx">01 · 性能</span>
+            <p>提交接口 p95 &lt; 300ms，不依赖平台响应速度</p>
+          </div>
+          <div class="card">
+            <span class="idx">02 · 关页面</span>
+            <p>生成中关闭页面，重开画布能看到最终结果并可播放</p>
+          </div>
+          <div class="card">
+            <span class="idx">03 · 重启</span>
+            <p>生成中重启后端，任务继续完成，积分不重扣不漏扣</p>
+          </div>
+          <div class="card">
+            <span class="idx">04 · 断网</span>
+            <p>断网 30s 再恢复，5s 内节点状态与服务端一致</p>
+          </div>
+          <div class="card">
+            <span class="idx">05 · 幂等</span>
+            <p>同一 <code>Idempotency-Key</code> 重复提交，只建一个任务、只冻结一次</p>
+          </div>
+          <div class="card">
+            <span class="idx">06 · 退款</span>
+            <p>
+              失败 / 取消 / 超时全部退回；<code>credit_ledger</code> 与
+              <code>user_credits</code> 对账零差异
+            </p>
+          </div>
+          <div class="card">
+            <span class="idx">07 · 长连接</span>
+            <p>WS 连接保持 &gt; 10 分钟不断（验证绕开 60s WriteTimeout）</p>
+          </div>
+          <div class="card">
+            <span class="idx">08 · 转存</span>
+            <p>平台 URL 过期（&gt; 24h）后，画布里的视频仍能播放</p>
+          </div>
+          <div class="card">
+            <span class="idx">09 · 并发</span>
+            <p>超过并发上限返回 429，前端就地提示</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 25 待确认 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">10</span>待确认问题 · 已全部拍板（2026-09-29）</div>
+        <h2>五件事，都有了答案</h2>
+        <div class="col" style="gap: 14px">
+          <div class="card" style="display: flex; gap: 22px; align-items: baseline">
+            <span class="idx" style="min-width: 36px">01</span>
+            <div>
+              <h3>首个接入的平台：RunningHub</h3>
+              <p>AI 应用 / 工作流，协议细节见《平台协议配置化设计》。</p>
+            </div>
+            <span class="pill p-ok" style="margin-left: auto">已确认</span>
+          </div>
+          <div class="card" style="display: flex; gap: 22px; align-items: baseline">
+            <span class="idx" style="min-width: 36px">02</span>
+            <div>
+              <h3>素材存储：本地磁盘、S3、OSS 都支持</h3>
+              <p>
+                通过配置切换；<b>本地磁盘仅用于开发环境</b>。<code>assets</code> 的 URL
+                策略（公开还是签名）由各存储实现决定。
+              </p>
+            </div>
+            <span class="pill p-ok" style="margin-left: auto">已确认</span>
+          </div>
+          <div class="card" style="display: flex; gap: 22px; align-items: baseline">
+            <span class="idx" style="min-width: 36px">03</span>
+            <div>
+              <h3>并发上限 N=4，超时 deadline 30 分钟</h3>
+              <p>
+                即 <code>max_active_tasks_per_user: 4</code>，<code>deadline_at</code> 默认 30
+                分钟。
+              </p>
+            </div>
+            <span class="pill p-ok" style="margin-left: auto">已确认</span>
+          </div>
+          <div class="card" style="display: flex; gap: 22px; align-items: baseline">
+            <span class="idx" style="min-width: 36px">04</span>
+            <div>
+              <h3>生成中删除节点：任务继续跑</h3>
+              <p>
+                产物进入生成记录，积分照常结算，不自动取消。撤销删除会把节点和
+                <code>taskId</code> 一起恢复。
+              </p>
+            </div>
+            <span class="pill p-ok" style="margin-left: auto">已确认</span>
+          </div>
+          <div class="card" style="display: flex; gap: 22px; align-items: baseline">
+            <span class="idx" style="min-width: 36px">05</span>
+            <div>
+              <h3>积分来源：不在本期范围</h3>
+              <p>充值本期不做；每个用户初始余额先<b>固定为 50 积分</b>。</p>
+            </div>
+            <span class="pill p-ok" style="margin-left: auto">已确认</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 26 来源 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">11</span>来源与假设</div>
+        <h2>来源与未验证项</h2>
+        <div class="row" style="gap: 26px">
+          <div class="card" style="flex: 1.1">
+            <span class="idx">外部来源（访问日期 2026-09-29）</span>
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                font-size: 15px;
+                line-height: 1.5;
+                margin-top: 6px;
+              "
+            >
+              <div>
+                Runway API SDK 与轮询建议<br /><span class="ev mono muted"
+                  >docs.dev.runwayml.com/api-details/sdks/</span
+                >
+              </div>
+              <div>
+                Luma Dream Machine 视频生成<br /><span class="mono muted"
+                  >docs.lumalabs.ai/docs/video-generation</span
+                >
+              </div>
+              <div>
+                可灵回调协议<br /><span class="mono muted"
+                  >kling.ai/document-api/api/get-started/callbacks</span
+                >
+              </div>
+              <div>
+                可灵视频 API（阿里云百炼）<br /><span class="mono muted"
+                  >help.aliyun.com/en/model-studio/kling-video-generation-api-reference/</span
+                >
+              </div>
+              <div>
+                火山方舟创建 / 查询视频生成任务<br /><span class="mono muted"
+                  >docs.volcengine.com/docs/ark/create-video-generation-task-api</span
+                ><br /><span class="mono muted">www.volcengine.com/docs/82379/1521309</span>
+              </div>
+            </div>
+          </div>
+          <div class="col" style="flex: 1; gap: 14px">
+            <div class="card">
+              <span class="idx">假设 · 未验证</span>
+              <div
+                style="
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                  font-size: 16px;
+                  line-height: 1.55;
+                  color: var(--ink2);
+                  margin-top: 4px;
+                "
+              >
+                <div>▸ Runway 的 webhook 与输出 URL 有效期未查到，暂按“无 webhook、会过期”处理</div>
+                <div>
+                  ▸ <code>gorilla/websocket</code> Upgrade 后清除 deadline，需用验收条件 7
+                  的测试确认
+                </div>
+                <div>
+                  ▸ 各平台进度字段未逐一验证；<code>progress</code> 可空，无进度时显示已耗时
+                </div>
+                <div>▸ 轮询参数（+10s 首查、5→15s）是经验值，上线后按平台 P50 耗时再调</div>
+              </div>
+            </div>
+            <div class="callout" style="font-size: 17px">
+              项目内证据见第 2 节“项目事实”的证据列。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="chrome">
+        <span>长任务生成设计 · 视频优先</span><span class="pg" id="pg">01 / 26</span>
       </div>
-      <div class="callout" style="font-size:17px">项目内证据见第 2 节“项目事实”的证据列。</div>
+      <div class="progress" id="progress"></div>
     </div>
-  </div>
-</section>
 
-<div class="chrome"><span>长任务生成设计 · 视频优先</span><span class="pg" id="pg">01 / 26</span></div>
-<div class="progress" id="progress"></div>
-</div>
+    <div class="nav">
+      <button id="bPrev" aria-label="上一页">←</button
+      ><button id="bOv" aria-label="总览">总览</button
+      ><button id="bNext" aria-label="下一页">→</button>
+    </div>
+    <div class="overview" id="overview"><div class="grid" id="ovGrid"></div></div>
 
-<div class="nav"><button id="bPrev" aria-label="上一页">←</button><button id="bOv" aria-label="总览">总览</button><button id="bNext" aria-label="下一页">→</button></div>
-<div class="overview" id="overview"><div class="grid" id="ovGrid"></div></div>
+    <script>
+      (function () {
+        const stage = document.getElementById("stage");
+        const slides = [...stage.querySelectorAll(".slide")];
+        const pg = document.getElementById("pg"),
+          bar = document.getElementById("progress");
+        const N = slides.length;
+        let cur = 0;
 
-<script>
-(function(){
-  const stage = document.getElementById('stage');
-  const slides = [...stage.querySelectorAll('.slide')];
-  const pg = document.getElementById('pg'), bar = document.getElementById('progress');
-  const N = slides.length;
-  let cur = 0;
+        function fit() {
+          stage.style.setProperty("--s", Math.min(innerWidth / 1600, innerHeight / 900));
+        }
+        addEventListener("resize", fit);
+        fit();
 
-  function fit(){ stage.style.setProperty('--s', Math.min(innerWidth/1600, innerHeight/900)); }
-  addEventListener('resize', fit); fit();
+        const frags = (s) => [...s.querySelectorAll(".frag")];
+        const pad = (n) => String(n).padStart(2, "0");
 
-  const frags = s => [...s.querySelectorAll('.frag')];
-  const pad = n => String(n).padStart(2,'0');
+        function show(i, revealAll) {
+          cur = Math.max(0, Math.min(N - 1, i));
+          slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+          frags(slides[cur]).forEach((e) => e.classList.toggle("on", !!revealAll));
+          pg.textContent = pad(cur + 1) + " / " + pad(N);
+          bar.style.width = ((cur + 1) / N) * 100 + "%";
+          try {
+            history.replaceState(null, "", "#" + (cur + 1));
+          } catch (e) {}
+        }
+        function next() {
+          const hidden = frags(slides[cur]).filter((e) => !e.classList.contains("on"));
+          if (hidden.length) {
+            hidden[0].classList.add("on");
+            return;
+          }
+          if (cur < N - 1) show(cur + 1, false);
+        }
+        function prev() {
+          const on = frags(slides[cur]).filter((e) => e.classList.contains("on"));
+          if (on.length) {
+            on[on.length - 1].classList.remove("on");
+            return;
+          }
+          if (cur > 0) show(cur - 1, true);
+        }
 
-  function show(i, revealAll){
-    cur = Math.max(0, Math.min(N-1, i));
-    slides.forEach((s,k) => s.classList.toggle('active', k===cur));
-    frags(slides[cur]).forEach(e => e.classList.toggle('on', !!revealAll));
-    pg.textContent = pad(cur+1) + ' / ' + pad(N);
-    bar.style.width = ((cur+1)/N*100) + '%';
-    try { history.replaceState(null, '', '#' + (cur+1)); } catch(e){}
-  }
-  function next(){
-    const hidden = frags(slides[cur]).filter(e => !e.classList.contains('on'));
-    if (hidden.length) { hidden[0].classList.add('on'); return; }
-    if (cur < N-1) show(cur+1, false);
-  }
-  function prev(){
-    const on = frags(slides[cur]).filter(e => e.classList.contains('on'));
-    if (on.length) { on[on.length-1].classList.remove('on'); return; }
-    if (cur > 0) show(cur-1, true);
-  }
+        // 总览
+        const ov = document.getElementById("overview"),
+          ovGrid = document.getElementById("ovGrid");
+        function buildOverview() {
+          ovGrid.innerHTML = "";
+          slides.forEach((s, k) => {
+            const t = document.createElement("div");
+            t.className = "thumb" + (k === cur ? " cur" : "");
+            const inner = document.createElement("div");
+            inner.className = "inner";
+            const c = s.cloneNode(true);
+            c.classList.add("active");
+            c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+            inner.appendChild(c);
+            t.appendChild(inner);
+            const n = document.createElement("span");
+            n.className = "n";
+            n.textContent = pad(k + 1);
+            t.appendChild(n);
+            t.onclick = () => {
+              toggleOverview(false);
+              show(k, true);
+            };
+            ovGrid.appendChild(t);
+          });
+          requestAnimationFrame(() =>
+            ovGrid.querySelectorAll(".thumb").forEach((t) => {
+              t.querySelector(".inner").style.transform = "scale(" + t.clientWidth / 1600 + ")";
+            }),
+          );
+        }
+        function toggleOverview(force) {
+          const want = force === undefined ? !ov.classList.contains("show") : force;
+          if (want) buildOverview();
+          ov.classList.toggle("show", want);
+        }
 
-  // 总览
-  const ov = document.getElementById('overview'), ovGrid = document.getElementById('ovGrid');
-  function buildOverview(){
-    ovGrid.innerHTML = '';
-    slides.forEach((s,k) => {
-      const t = document.createElement('div'); t.className = 'thumb' + (k===cur?' cur':'');
-      const inner = document.createElement('div'); inner.className = 'inner';
-      const c = s.cloneNode(true); c.classList.add('active');
-      c.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
-      inner.appendChild(c); t.appendChild(inner);
-      const n = document.createElement('span'); n.className = 'n'; n.textContent = pad(k+1); t.appendChild(n);
-      t.onclick = () => { toggleOverview(false); show(k, true); };
-      ovGrid.appendChild(t);
-    });
-    requestAnimationFrame(() => ovGrid.querySelectorAll('.thumb').forEach(t => {
-      t.querySelector('.inner').style.transform = 'scale(' + (t.clientWidth/1600) + ')';
-    }));
-  }
-  function toggleOverview(force){
-    const want = force === undefined ? !ov.classList.contains('show') : force;
-    if (want) buildOverview();
-    ov.classList.toggle('show', want);
-  }
+        addEventListener("keydown", (e) => {
+          if (e.target.closest && e.target.closest("input,textarea")) return;
+          const k = e.key;
+          if (ov.classList.contains("show")) {
+            if (k === "Escape" || k === "o" || k === "O") toggleOverview(false);
+            return;
+          }
+          if (["ArrowRight", "ArrowDown", " ", "PageDown", "Enter"].includes(k)) {
+            e.preventDefault();
+            next();
+          } else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(k)) {
+            e.preventDefault();
+            prev();
+          } else if (k === "Home") show(0, false);
+          else if (k === "End") show(N - 1, true);
+          else if (k === "o" || k === "O") toggleOverview(true);
+          else if (k === "f" || k === "F") {
+            document.fullscreenElement
+              ? document.exitFullscreen()
+              : document.documentElement.requestFullscreen &&
+                document.documentElement.requestFullscreen();
+          } else if (k === "p" || k === "P") window.print();
+        });
+        document.getElementById("bNext").onclick = next;
+        document.getElementById("bPrev").onclick = prev;
+        document.getElementById("bOv").onclick = () => toggleOverview();
+        let tx = null;
+        addEventListener(
+          "touchstart",
+          (e) => {
+            tx = e.touches[0].clientX;
+          },
+          { passive: true },
+        );
+        addEventListener("touchend", (e) => {
+          if (tx === null) return;
+          const dx = e.changedTouches[0].clientX - tx;
+          if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+          tx = null;
+        });
 
-  addEventListener('keydown', e => {
-    if (e.target.closest && e.target.closest('input,textarea')) return;
-    const k = e.key;
-    if (ov.classList.contains('show')) { if (k==='Escape' || k==='o' || k==='O') toggleOverview(false); return; }
-    if (['ArrowRight','ArrowDown',' ','PageDown','Enter'].includes(k)) { e.preventDefault(); next(); }
-    else if (['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(k)) { e.preventDefault(); prev(); }
-    else if (k==='Home') show(0, false);
-    else if (k==='End') show(N-1, true);
-    else if (k==='o' || k==='O') toggleOverview(true);
-    else if (k==='f' || k==='F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
-    else if (k==='p' || k==='P') window.print();
-  });
-  document.getElementById('bNext').onclick = next;
-  document.getElementById('bPrev').onclick = prev;
-  document.getElementById('bOv').onclick = () => toggleOverview();
-  let tx = null;
-  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, {passive:true});
-  addEventListener('touchend', e => { if (tx===null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) (dx < 0 ? next : prev)(); tx = null; });
+        const h = parseInt((location.hash || "").slice(1), 10);
+        show(isNaN(h) ? 0 : h - 1, true);
 
-  const h = parseInt((location.hash||'').slice(1), 10);
-  show(isNaN(h) ? 0 : h-1, true);
+        // 生成中计时
+        let secs = 84;
+        setInterval(() => {
+          secs++;
+          const t = pad(Math.floor(secs / 60)) + ":" + pad(secs % 60);
+          document.querySelectorAll(".elapsed").forEach((e) => (e.textContent = t));
+        }, 1000);
 
-  // 生成中计时
-  let secs = 84;
-  setInterval(() => { secs++; const t = pad(Math.floor(secs/60)) + ':' + pad(secs%60); document.querySelectorAll('.elapsed').forEach(e => e.textContent = t); }, 1000);
-
-  // 积分事务模拟
-  const COST = 20, TID = 'T-1024';
-  let st;
-  const $ = id => document.getElementById(id);
-  function reset(){ st = {balance:100, frozen:0, status:'none', ledger:[]}; render(); log('点“提交”开始。'); }
-  function log(msg, warn){ const l = $('simLog'); l.textContent = msg; l.classList.toggle('warn', !!warn); }
-  function render(fresh){
-    $('mBal').textContent = st.balance; $('mFrz').textContent = st.frozen; $('mAvl').textContent = st.balance - st.frozen;
-    const map = {none:['未提交','p-pending'], running:['running','p-running'], succeeded:['succeeded','p-ok'], failed:['failed · 已退回','p-fail']};
-    const [txt, cls] = map[st.status]; const s = $('simStatus'); s.textContent = txt; s.className = 'pill ' + cls;
-    const lg = $('ledger');
-    lg.innerHTML = '<div><span style="width:70px">task_id</span><span style="width:70px">type</span><span>amount</span></div>' +
-      st.ledger.map((r,i) => '<div class="' + (fresh && i===st.ledger.length-1 ? 'new' : '') + '"><span style="width:70px">' + TID + '</span><span style="width:70px">' + r + '</span><span>' + (r==='refund' ? '+' : '-') + COST + '</span></div>').join('');
-  }
-  function insert(type){
-    if (st.ledger.includes(type)) return false;
-    st.ledger.push(type); return true;
-  }
-  function act(a){
-    if (a==='reset') return reset();
-    if (a==='submit'){
-      if (st.status!=='none') return log('幂等：同一 Idempotency-Key 已创建过任务，不会重复冻结。', true);
-      st.frozen += COST; insert('freeze'); st.status='running'; render(true);
-      return log('同一事务：锁 user_credits → 校验可用积分与并发 → frozen += 20 → 写 freeze 流水 → 插入任务。');
-    }
-    if (a==='settle' || a==='refund'){
-      if (st.status==='none') return log('还没有任务。');
-      if (st.status!=='running') return log('CAS 失败：UPDATE … WHERE status=\'running\' 影响 0 行，任务已是终态，什么都不做。', true);
-      if (a==='settle'){ st.balance -= COST; st.frozen -= COST; insert('settle'); st.status='succeeded'; render(true); return log('转存成功 → 同一事务：status=succeeded，balance −20、frozen −20，写 settle 流水。'); }
-      st.frozen -= COST; insert('refund'); st.status='failed'; render(true); return log('非成功终态 → 同一事务：frozen −20，写 refund 流水，可用积分回到 100。');
-    }
-    if (a==='replay'){
-      if (st.status==='none' || st.status==='running') return log('先让任务进入终态，再模拟 worker 因租约过期重复执行。');
-      const type = st.status==='succeeded' ? 'settle' : 'refund';
-      return log('重复执行：CAS 不命中，且 INSERT ' + type + ' 触发 UNIQUE(task_id, type) 冲突 → 余额不变，无副作用。', true);
-    }
-  }
-  document.querySelectorAll('[data-sim]').forEach(b => b.onclick = () => act(b.dataset.sim));
-  reset();
-})();
-</script>
-</body>
+        // 积分事务模拟
+        const COST = 20,
+          TID = "T-1024";
+        let st;
+        const $ = (id) => document.getElementById(id);
+        function reset() {
+          st = { balance: 100, frozen: 0, status: "none", ledger: [] };
+          render();
+          log("点“提交”开始。");
+        }
+        function log(msg, warn) {
+          const l = $("simLog");
+          l.textContent = msg;
+          l.classList.toggle("warn", !!warn);
+        }
+        function render(fresh) {
+          $("mBal").textContent = st.balance;
+          $("mFrz").textContent = st.frozen;
+          $("mAvl").textContent = st.balance - st.frozen;
+          const map = {
+            none: ["未提交", "p-pending"],
+            running: ["running", "p-running"],
+            succeeded: ["succeeded", "p-ok"],
+            failed: ["failed · 已退回", "p-fail"],
+          };
+          const [txt, cls] = map[st.status];
+          const s = $("simStatus");
+          s.textContent = txt;
+          s.className = "pill " + cls;
+          const lg = $("ledger");
+          lg.innerHTML =
+            '<div><span style="width:70px">task_id</span><span style="width:70px">type</span><span>amount</span></div>' +
+            st.ledger
+              .map(
+                (r, i) =>
+                  '<div class="' +
+                  (fresh && i === st.ledger.length - 1 ? "new" : "") +
+                  '"><span style="width:70px">' +
+                  TID +
+                  '</span><span style="width:70px">' +
+                  r +
+                  "</span><span>" +
+                  (r === "refund" ? "+" : "-") +
+                  COST +
+                  "</span></div>",
+              )
+              .join("");
+        }
+        function insert(type) {
+          if (st.ledger.includes(type)) return false;
+          st.ledger.push(type);
+          return true;
+        }
+        function act(a) {
+          if (a === "reset") return reset();
+          if (a === "submit") {
+            if (st.status !== "none")
+              return log("幂等：同一 Idempotency-Key 已创建过任务，不会重复冻结。", true);
+            st.frozen += COST;
+            insert("freeze");
+            st.status = "running";
+            render(true);
+            return log(
+              "同一事务：锁 user_credits → 校验可用积分与并发 → frozen += 20 → 写 freeze 流水 → 插入任务。",
+            );
+          }
+          if (a === "settle" || a === "refund") {
+            if (st.status === "none") return log("还没有任务。");
+            if (st.status !== "running")
+              return log(
+                "CAS 失败：UPDATE … WHERE status='running' 影响 0 行，任务已是终态，什么都不做。",
+                true,
+              );
+            if (a === "settle") {
+              st.balance -= COST;
+              st.frozen -= COST;
+              insert("settle");
+              st.status = "succeeded";
+              render(true);
+              return log(
+                "转存成功 → 同一事务：status=succeeded，balance −20、frozen −20，写 settle 流水。",
+              );
+            }
+            st.frozen -= COST;
+            insert("refund");
+            st.status = "failed";
+            render(true);
+            return log("非成功终态 → 同一事务：frozen −20，写 refund 流水，可用积分回到 100。");
+          }
+          if (a === "replay") {
+            if (st.status === "none" || st.status === "running")
+              return log("先让任务进入终态，再模拟 worker 因租约过期重复执行。");
+            const type = st.status === "succeeded" ? "settle" : "refund";
+            return log(
+              "重复执行：CAS 不命中，且 INSERT " +
+                type +
+                " 触发 UNIQUE(task_id, type) 冲突 → 余额不变，无副作用。",
+              true,
+            );
+          }
+        }
+        document
+          .querySelectorAll("[data-sim]")
+          .forEach((b) => (b.onclick = () => act(b.dataset.sim)));
+        reset();
+      })();
+    </script>
+  </body>
 </html>

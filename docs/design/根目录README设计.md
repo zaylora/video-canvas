@@ -13,23 +13,23 @@
 
 ### 项目事实
 
-| 事实 | 证据 |
-|---|---|
-| 仓库是 monorepo：`backend/`（Go）+ `web/`（React），根目录有 Compose 和启动脚本 | 根目录结构；提交 `85e2b84` |
-| 后端：Go 1.27、Gin、GORM + PostgreSQL（仅支持 PG）、go-redis、Viper、Zap、JWT、goja（JS 插件）、minio-go（S3） | `backend/go.mod`、`backend/AGENTS.md` |
-| 前端：React 19、Vite 8、TypeScript 6、Tailwind 4、shadcn/Base UI、`@xyflow/react`、zustand，包管理器用 bun | `web/package.json`、`web/bun.lock` |
-| 前端页面：登录、画布列表、画布详情、AI 管理后台（模型 / 渠道 / 插件 / 追踪） | `web/src/router/index.tsx`、`web/src/pages/` |
-| 画布节点：文本、图片、视频、音频，外加生成任务节点 | `web/src/components/canvas/`（`TextCanvasNode`、`ImageCanvasNode`、`VideoCanvasNode`、`AudioCanvasNode`、`MediaTaskNode`） |
-| 生成任务异步执行：提交后返回 202，通过 WebSocket 推送 `task.updated`；支持取消，积分会先冻结、取消后退回；新用户初始 50 积分 | `backend/README.md` 接口表；`configs/config.yaml` 中的 `ai.initial_credits` |
-| 模型接入通过 JS 协议插件，插件跑在独立的 plugin-runner 进程里；内置 `plugins/newapi.js` | `backend/README.md`；`backend/plugins/` |
-| 模型配置流程：草稿 → 校验 → dry-run / 试跑 → 发布 / 回滚 | `/api/v1/admin/ai/models/*` |
-| 素材存储支持本地（仅开发用）和 S3 兼容存储（含 OSS） | `backend/internal/storage/` |
-| 画布保存用 `revision` 乐观锁，冲突时返回 409 | `backend/AGENTS.md`、`service/canvas_project.go` |
-| 首个 `super_admin` 只能用 SQL 提升 | `backend/README.md` |
-| Docker 开发环境：前端 `:5173`，后端 `:8080`，PG 对宿主机暴露 **15432**，Redis 暴露 **16379** | `docker-compose.dev.yml` |
-| 本地直跑：`start.sh` / `start.bat` 编译后端、启动 Vite；优先读取 `config.local.yaml`；PG 默认连 `127.0.0.1:5432` | `start.sh`、`backend/configs/config.yaml` |
-| CI 覆盖前后端 lint / test；推送 `v*` tag 时发布两个 GHCR 镜像；CHANGELOG 由 git-cliff 生成 | `.github/workflows/`、`cliff.toml` |
-| 仓库远程：`github.com/zaylora/video-canvas`；**没有 LICENSE 文件** | `git remote -v` |
+| 事实                                                                                                                         | 证据                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 仓库是 monorepo：`backend/`（Go）+ `web/`（React），根目录有 Compose 和启动脚本                                              | 根目录结构；提交 `85e2b84`                                                                                                 |
+| 后端：Go 1.27、Gin、GORM + PostgreSQL（仅支持 PG）、go-redis、Viper、Zap、JWT、goja（JS 插件）、minio-go（S3）               | `backend/go.mod`、`backend/AGENTS.md`                                                                                      |
+| 前端：React 19、Vite 8、TypeScript 6、Tailwind 4、shadcn/Base UI、`@xyflow/react`、zustand，包管理器用 bun                   | `web/package.json`、`web/bun.lock`                                                                                         |
+| 前端页面：登录、画布列表、画布详情、管理后台（AI 配置 / 用户管理 / 系统设置）                                                 | `web/src/router/index.tsx`、`web/src/pages/`                                                                               |
+| 画布节点：文本、图片、视频、音频，外加生成任务节点                                                                           | `web/src/components/canvas/`（`TextCanvasNode`、`ImageCanvasNode`、`VideoCanvasNode`、`AudioCanvasNode`、`MediaTaskNode`） |
+| 生成任务异步执行：提交后返回 202，通过 WebSocket 推送 `task.updated`；支持取消，积分会先冻结、取消后退回；新用户初始 50 积分 | `backend/README.md` 接口表；`service.DefaultInitialCredits`（后台「注册设置」可改）                                                |
+| 模型接入通过 JS 协议插件，插件跑在独立的 plugin-runner 进程里；内置 `plugins/newapi.js`                                      | `backend/README.md`；`backend/plugins/`                                                                                    |
+| 模型配置流程：草稿 → 校验 → dry-run / 试跑 → 发布 / 回滚                                                                     | `/api/v1/admin/ai/models/*`                                                                                                |
+| 素材存储支持本地（仅开发用）和 S3 兼容存储（含 OSS）                                                                         | `backend/internal/storage/`                                                                                                |
+| 画布保存用 `revision` 乐观锁，冲突时返回 409                                                                                 | `backend/AGENTS.md`、`service/canvas_project.go`                                                                           |
+| 首个 `super_admin` 只能用 SQL 提升                                                                                           | `backend/README.md`                                                                                                        |
+| Docker 开发环境：前端 `:5173`，后端 `:8080`，PG 对宿主机暴露 **15432**，Redis 暴露 **16379**                                 | `docker-compose.dev.yml`                                                                                                   |
+| 本地直跑：`start.sh` / `start.bat` 编译后端、启动 Vite；优先读取 `config.local.yaml`；PG 默认连 `127.0.0.1:5432`             | `start.sh`、`backend/configs/config.yaml`                                                                                  |
+| CI 覆盖前后端 lint / test；推送 `v*` tag 时发布两个 GHCR 镜像；CHANGELOG 由 git-cliff 生成                                   | `.github/workflows/`、`cliff.toml`                                                                                         |
+| 仓库远程：`github.com/zaylora/video-canvas`；**没有 LICENSE 文件**                                                           | `git remote -v`                                                                                                            |
 
 ### 设计约束
 
@@ -58,20 +58,20 @@
 
 访问日期均为 2026-10-01。
 
-| 参照 | 来源 | 观察到的做法 | 对本项目的启发 | 不适用之处 |
-|---|---|---|---|---|
-| Standard Readme 规范 | github.com/RichardLitt/standard-readme/blob/main/spec.md | 章节顺序：标题 → 横幅 → 徽章 → 短描述（<120 字符，与仓库描述一致）→ 背景 → 安装 → 使用 → 额外章节 → 贡献 → License（必须放最后） | 采用这个章节顺序；短描述同时用作 GitHub About | 规范要求必须有目录，但少于 100 行的 README 可以不放，本项目用一行锚点导航代替 |
-| Dify | github.com/langgenius/dify | 封面图 + 导航链接 + 徽章；Quick start 先写最低配置，再给 4 行 Docker 命令和启动后要访问的地址；功能用加粗编号列表；高级配置拆到 `docs/ADVANCED_SETUP.md` | Docker 优先、写清前置条件、写清启动后访问哪个地址；把部署细节拆到 docs | 18 种语言的 README、社区徽章墙和 Star History 对 v0.1.0 来说太重 |
-| tldraw | github.com/tldraw/tldraw | Hero 图 + 一句话标语 + Docs · Examples 链接；功能用「粗体关键词 — 一句话」；本地开发只有两段说明加两个代码块；不逐个介绍子包，改为链接 | 功能写法、简短的本地开发说明、子目录用链接分流 | 客户墙和 starter kits 不适用 |
+| 参照                 | 来源                                                     | 观察到的做法                                                                                                                                             | 对本项目的启发                                                         | 不适用之处                                                                    |
+| -------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Standard Readme 规范 | github.com/RichardLitt/standard-readme/blob/main/spec.md | 章节顺序：标题 → 横幅 → 徽章 → 短描述（<120 字符，与仓库描述一致）→ 背景 → 安装 → 使用 → 额外章节 → 贡献 → License（必须放最后）                         | 采用这个章节顺序；短描述同时用作 GitHub About                          | 规范要求必须有目录，但少于 100 行的 README 可以不放，本项目用一行锚点导航代替 |
+| Dify                 | github.com/langgenius/dify                               | 封面图 + 导航链接 + 徽章；Quick start 先写最低配置，再给 4 行 Docker 命令和启动后要访问的地址；功能用加粗编号列表；高级配置拆到 `docs/ADVANCED_SETUP.md` | Docker 优先、写清前置条件、写清启动后访问哪个地址；把部署细节拆到 docs | 18 种语言的 README、社区徽章墙和 Star History 对 v0.1.0 来说太重              |
+| tldraw               | github.com/tldraw/tldraw                                 | Hero 图 + 一句话标语 + Docs · Examples 链接；功能用「粗体关键词 — 一句话」；本地开发只有两段说明加两个代码块；不逐个介绍子包，改为链接                   | 功能写法、简短的本地开发说明、子目录用链接分流                         | 客户墙和 starter kits 不适用                                                  |
 
 **比较结论**（摘取与本项目相关的维度）：
 
-| 维度 | Standard Readme | Dify | tldraw | 本方案取用 |
-|---|---|---|---|---|
-| 首屏信息 | 标题 + 短描述 | 大图 + 大量徽章 | 图 + 标语 + 链接 | 标语 + 少量徽章 + 状态提示 + 图 |
-| 快速开始 | 安装 / 使用代码块 | Docker 4 行 + 访问地址 | 包管理器 2 行 | Docker 为主，另加首次配置 |
-| 文档分流 | 未规定 | 大量外链 | 外部文档站 | 链接到仓库内 `docs/` |
-| 维护成本 | 低 | 高 | 中 | 低：不复制接口表，只做链接 |
+| 维度     | Standard Readme   | Dify                   | tldraw           | 本方案取用                      |
+| -------- | ----------------- | ---------------------- | ---------------- | ------------------------------- |
+| 首屏信息 | 标题 + 短描述     | 大图 + 大量徽章        | 图 + 标语 + 链接 | 标语 + 少量徽章 + 状态提示 + 图 |
+| 快速开始 | 安装 / 使用代码块 | Docker 4 行 + 访问地址 | 包管理器 2 行    | Docker 为主，另加首次配置       |
+| 文档分流 | 未规定            | 大量外链               | 外部文档站       | 链接到仓库内 `docs/`            |
+| 维护成本 | 低                | 高                     | 中               | 低：不复制接口表，只做链接      |
 
 ## 5. 设计原则
 
@@ -102,11 +102,11 @@
 
 ### 素材约定
 
-| 文件 | 内容 |
-|---|---|
-| `docs/assets/readme/canvas-hero.png` | 画布主图：几个已连线的节点，至少有一个视频节点显示了生成结果，1600×900 |
-| `docs/assets/readme/generate.gif` | 从添加节点、写提示词、提交到结果出现的完整过程，15 秒以内，体积不超过 5MB |
-| `docs/assets/readme/admin.png` | AI 管理后台的模型编辑页 |
+| 文件                                 | 内容                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `docs/assets/readme/canvas-hero.png` | 画布主图：几个已连线的节点，至少有一个视频节点显示了生成结果，1600×900    |
+| `docs/assets/readme/generate.gif`    | 从添加节点、写提示词、提交到结果出现的完整过程，15 秒以内，体积不超过 5MB |
+| `docs/assets/readme/admin.png`       | AI 管理后台的模型编辑页                                                   |
 
 注意：`.pre-commit-config.yaml` 中的 `check-added-large-files` 会拦截超过 1024KB 的文件，GIF 需要压缩，或改用 MP4 外链。
 
@@ -155,12 +155,12 @@ cd video-canvas
 
 首次构建需要几分钟。完成后：
 
-| 服务 | 地址 |
-|---|---|
-| 前端 | <http://localhost:5173> |
-| 后端健康检查 | <http://localhost:8080/health> |
-| PostgreSQL | `localhost:15432`（postgres / root，库 `video_canvas`） |
-| Redis | `localhost:16379` |
+| 服务         | 地址                                                    |
+| ------------ | ------------------------------------------------------- |
+| 前端         | <http://localhost:5173>                                 |
+| 后端健康检查 | <http://localhost:8080/health>                          |
+| PostgreSQL   | `localhost:15432`（postgres / root，库 `video_canvas`） |
+| Redis        | `localhost:16379`                                       |
 
 ### 首次配置：完成第一次生成
 
@@ -176,6 +176,7 @@ cd video-canvas
    ```
 
    角色缓存最长 30 秒，稍等片刻后刷新页面。
+
 3. 进入 **管理后台 → 渠道**（`/admin/ai/channels`），新建渠道：选择内置的 NewAPI 插件，填写地址和 API Key，然后点「连通性检查」。
 4. 进入 **管理后台 → 模型**，从渠道导入或新建模型，校验通过后发布。
 5. 回到首页新建画布，添加节点并输入提示词，开始生成。新用户默认有 50 积分。
@@ -209,12 +210,12 @@ flowchart LR
   S -. WebSocket 推送 .-> B
 ```
 
-| 层 | 技术 |
-|---|---|
+| 层   | 技术                                                                             |
+| ---- | -------------------------------------------------------------------------------- |
 | 前端 | React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui · React Flow · zustand |
-| 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja |
-| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / S3 兼容存储 |
-| 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff |
+| 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja                             |
+| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / S3 兼容存储                          |
+| 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff         |
 
 ## 目录结构
 
@@ -233,13 +234,13 @@ video-canvas/
 
 ## 文档
 
-| 想了解 | 看这里 |
-|---|---|
-| 后端结构、配置、完整接口表 | [backend/README.md](backend/README.md) |
-| AI 管理接口、插件契约 | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
-| Docker 开发 / 生产 | [docker-development.md](docs/docker-development.md) · [docker-production.md](docs/docker-production.md) |
-| 设计文档 | [docs/design/](docs/design/) |
-| 变更记录 | [CHANGELOG.md](CHANGELOG.md) |
+| 想了解                     | 看这里                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 后端结构、配置、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
+| AI 管理接口、插件契约      | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
+| Docker 开发 / 生产         | [docker-development.md](docs/docker-development.md) · [docker-production.md](docs/docker-production.md) |
+| 设计文档                   | [docs/design/](docs/design/)                                                                            |
+| 变更记录                   | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
 ## 路线图
 
@@ -270,13 +271,13 @@ video-canvas/
 
 这里的「状态」指读者照着 README 操作时可能遇到的情况：
 
-| 情况 | README 中的处理 |
-|---|---|
-| Docker 未运行 | `start-docker.sh` 会尝试启动 Docker Desktop 并给出提示，README 不再重复 |
-| 端口被占用 | 端口表列出全部端口，读者可以自行排查（提案：后续在 docs 中补一节「常见问题」） |
-| 页面能打开，但无法生成 | 首次配置一节专门处理这种情况 |
-| 刚提权后后台仍提示 403 | 第 2 步提示了角色有 30 秒缓存 |
-| 积分用完 | 未覆盖，本期不提供充值；后续如有需要，可在 FAQ 中说明如何用 SQL 调整积分 |
+| 情况                   | README 中的处理                                                                |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| Docker 未运行          | `start-docker.sh` 会尝试启动 Docker Desktop 并给出提示，README 不再重复        |
+| 端口被占用             | 端口表列出全部端口，读者可以自行排查（提案：后续在 docs 中补一节「常见问题」） |
+| 页面能打开，但无法生成 | 首次配置一节专门处理这种情况                                                   |
+| 刚提权后后台仍提示 403 | 第 2 步提示了角色有 30 秒缓存                                                  |
+| 积分用完               | 未覆盖，本期不提供充值；后续如有需要，可在 FAQ 中说明如何用 SQL 调整积分       |
 
 ## 8. 数据与工程影响
 
@@ -293,21 +294,21 @@ video-canvas/
 
 默认权重：首次跑通 40%（用户已确认面向开源访客，这一项最关键）、可信度 30%、维护成本 30%。
 
-| 方案 | 首次跑通 | 可信度 | 维护成本 | 加权 |
-|---|---|---|---|---|
-| **A. 导航型 + 首次配置**（推荐） | 5 | 5 | 4 | 4.7 |
-| B. 全量型（复制接口表和配置表） | 4 | 4 | 1 | 3.1 |
-| C. 极简型（一句话 + 两行命令） | 2 | 3 | 5 | 3.2 |
+| 方案                             | 首次跑通 | 可信度 | 维护成本 | 加权 |
+| -------------------------------- | -------- | ------ | -------- | ---- |
+| **A. 导航型 + 首次配置**（推荐） | 5        | 5      | 4        | 4.7  |
+| B. 全量型（复制接口表和配置表）  | 4        | 4      | 1        | 3.1  |
+| C. 极简型（一句话 + 两行命令）   | 2        | 3      | 5        | 3.2  |
 
 **明确放弃**：多语言 README、社区徽章墙、Star History、贡献者头像墙、在根 README 放完整接口表。前四项要等项目有社区之后才有意义，接口表已经由 `backend/README.md` 维护。
 
 ## 10. MVP 与后续
 
-| 阶段 | 内容 | 验收 |
-|---|---|---|
-| 1 | 写入 README 草稿，新增 LICENSE，修正开发文档端口 | 在干净机器上只照 README 操作，能完成一次生成；所有相对链接都能打开 |
-| 2 | 补齐 3 个截图素材，填写 GitHub About 和 Topics | 首屏能看到主图；单个素材不超过 1024KB，或改为外链 |
-| 3 | 新增 `CONTRIBUTING.md` 和 FAQ，考虑英文版 | 贡献一节改为链接 CONTRIBUTING；出现海外 issue 后再评估英文版 |
+| 阶段 | 内容                                             | 验收                                                               |
+| ---- | ------------------------------------------------ | ------------------------------------------------------------------ |
+| 1    | 写入 README 草稿，新增 LICENSE，修正开发文档端口 | 在干净机器上只照 README 操作，能完成一次生成；所有相对链接都能打开 |
+| 2    | 补齐 3 个截图素材，填写 GitHub About 和 Topics   | 首屏能看到主图；单个素材不超过 1024KB，或改为外链                  |
+| 3    | 新增 `CONTRIBUTING.md` 和 FAQ，考虑英文版        | 贡献一节改为链接 CONTRIBUTING；出现海外 issue 后再评估英文版       |
 
 ## 11. 已确认事项（2026-10-01）
 

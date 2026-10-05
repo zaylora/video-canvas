@@ -1,8 +1,9 @@
 import { create } from "zustand";
 
-import { getAdminMe } from "@/api/admin-ai";
-import type { AdminRole } from "@/api/admin-ai/type";
+import { getAdminMe } from "@/api/admin/ai";
+import type { AdminRole } from "@/api/admin/ai/type";
 import { isForbiddenError, normalizeRole } from "@/utils/admin/role";
+import { saveRole } from "@/utils/storage/token";
 
 /** 角色加载状态 */
 export type AdminStatus =
@@ -21,6 +22,8 @@ export type AdminStatus =
 export type AdminStore = {
   /** 当前管理端角色；未确认（idle / loading / forbidden / error）时为 null */
   role: AdminRole | null;
+  /** 当前管理员自己的用户 ID；用户管理页据此禁用「对自己的操作」，未确认时为 null */
+  userId: number | null;
   /** 加载状态 */
   status: AdminStatus;
   /**
@@ -35,6 +38,7 @@ export type AdminStore = {
 
 export const useAdminStore = create<AdminStore>((set, get) => ({
   role: null,
+  userId: null,
   status: "idle",
   load: async (force = false) => {
     const { status } = get();
@@ -42,10 +46,16 @@ export const useAdminStore = create<AdminStore>((set, get) => ({
     set({ status: "loading" });
     try {
       const me = await getAdminMe();
-      set({ role: normalizeRole(me?.role), status: "ready" });
+      const role = normalizeRole(me?.role);
+      saveRole(role);
+      set({
+        role,
+        userId: typeof me?.user_id === "number" ? me.user_id : null,
+        status: "ready",
+      });
     } catch (error) {
-      set({ role: null, status: isForbiddenError(error) ? "forbidden" : "error" });
+      set({ role: null, userId: null, status: isForbiddenError(error) ? "forbidden" : "error" });
     }
   },
-  reset: () => set({ role: null, status: "idle" }),
+  reset: () => set({ role: null, userId: null, status: "idle" }),
 }));

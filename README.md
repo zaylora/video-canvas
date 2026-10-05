@@ -74,12 +74,12 @@ cd video-canvas
 
 首次构建需要几分钟。完成后：
 
-| 服务 | 地址 |
-|---|---|
-| 前端 | <http://localhost:5173> |
-| 后端健康检查 | <http://localhost:8080/health> |
-| PostgreSQL | `localhost:15432`（postgres / root，库 `video_canvas`） |
-| Redis | `localhost:16379` |
+| 服务         | 地址                                                    |
+| ------------ | ------------------------------------------------------- |
+| 前端         | <http://localhost:5173>                                 |
+| 后端健康检查 | <http://localhost:8080/health>                          |
+| PostgreSQL   | `localhost:15432`（postgres / root，库 `video_canvas`） |
+| Redis        | `localhost:16379`                                       |
 
 ### 首次配置：完成第一次生成
 
@@ -96,6 +96,7 @@ cd video-canvas
    ```
 
    角色缓存最长 30 秒，稍等片刻后刷新页面。
+
 3. 进入 **管理后台 → 渠道**（`/admin/ai/channels`），新建渠道：选择内置的 NewAPI 插件，填写地址和 API Key，然后点「连通性检查」。
 4. 进入 **管理后台 → 模型**，从渠道导入或新建模型，校验通过后发布。
 5. 回到首页新建画布，添加节点并输入提示词，开始生成。新用户默认有 50 积分。
@@ -129,12 +130,12 @@ flowchart LR
   S -. WebSocket 推送 .-> B
 ```
 
-| 层 | 技术 |
-|---|---|
+| 层   | 技术                                                                             |
+| ---- | -------------------------------------------------------------------------------- |
 | 前端 | React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui · React Flow · zustand |
-| 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja |
-| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / 对象存储（OSS · COS · S3 · R2） |
-| 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff |
+| 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja                             |
+| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / 对象存储（OSS · COS · S3 · R2）      |
+| 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff         |
 
 ## 目录结构
 
@@ -154,13 +155,13 @@ video-canvas/
 
 ## 文档
 
-| 想了解 | 看这里 |
-|---|---|
-| 后端结构、配置、完整接口表 | [backend/README.md](backend/README.md) |
-| AI 管理接口、插件契约 | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
-| Docker 开发 / 生产 | [docker-development.md](docs/docker-development.md) · [docker-production.md](docs/docker-production.md) |
-| 设计文档 | [docs/design/](docs/design/) |
-| 变更记录 | [CHANGELOG.md](CHANGELOG.md) |
+| 想了解                     | 看这里                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 后端结构、配置、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
+| AI 管理接口、插件契约      | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
+| Docker 开发 / 生产         | [docker-development.md](docs/docker-development.md) · [docker-production.md](docs/docker-production.md) |
+| 设计文档                   | [docs/design/](docs/design/)                                                                            |
+| 变更记录                   | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
 ## 路线图
 

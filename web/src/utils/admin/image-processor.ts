@@ -8,8 +8,8 @@ import type {
   ProcessorPreset,
   ProcessorVendor,
   ProcessorView,
-} from "@/api/admin-image-processor/type";
-import type { StorageView } from "@/api/admin-storage/type";
+} from "@/api/admin/image-processor/type";
+import type { StorageView } from "@/api/admin/storage/type";
 
 /** 绑定判定只需要存储的这几个字段 */
 export type BindableStorage = Pick<

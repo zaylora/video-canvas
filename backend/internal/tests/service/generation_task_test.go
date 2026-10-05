@@ -14,7 +14,6 @@ import (
 
 	"gorm.io/datatypes"
 
-	"video-canvas/internal/config"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/ws"
@@ -38,6 +37,7 @@ type fakeTaskRepo struct {
 	hideKeyLookups int              // 前 N 次 FindByIdempotencyKey 假装找不到，模拟并发竞争
 	errs           map[string]error // 方法名 -> 注入的错误
 	txCount        int
+	failUpdateIDs  map[uint64]error // 指定任务 id 的 UpdateIf 返回错误（模拟某一个任务处理失败）
 }
 
 func newFakeTaskRepo() *fakeTaskRepo {
@@ -72,7 +72,7 @@ func (f *fakeTaskRepo) addTask(t model.GenerationTask) *model.GenerationTask {
 
 func (f *fakeTaskRepo) ledgerOf(taskID uint64, typ string) *model.CreditLedger {
 	for i := range f.ledger {
-		if f.ledger[i].TaskID == taskID && f.ledger[i].Type == typ {
+		if f.ledger[i].TaskID != nil && *f.ledger[i].TaskID == taskID && f.ledger[i].Type == typ {
 			return &f.ledger[i]
 		}
 	}
@@ -217,7 +217,7 @@ func (f *fakeTaskRepo) InsertLedger(ctx context.Context, e *model.CreditLedger) 
 	if err := f.errs["InsertLedger"]; err != nil {
 		return false, err
 	}
-	if f.ledgerOf(e.TaskID, e.Type) != nil {
+	if e.TaskID != nil && f.ledgerOf(*e.TaskID, e.Type) != nil {
 		return false, nil
 	}
 	f.ledger = append(f.ledger, *e)
@@ -246,6 +246,9 @@ func (f *fakeTaskRepo) InsertTask(ctx context.Context, t *model.GenerationTask) 
 // UpdateIf 复刻真实仓储的语义：状态不在 from 里返回 ErrStateConflict，命中则套用字段并返回更新后的拷贝。
 func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, fields map[string]any, bump bool) (*model.GenerationTask, error) {
 	if err := f.errs["UpdateIf"]; err != nil {
+		return nil, err
+	}
+	if err := f.failUpdateIDs[id]; err != nil {
 		return nil, err
 	}
 	t, ok := f.tasks[id]
@@ -426,7 +429,8 @@ type taskSvcEnv struct {
 	now      time.Time
 }
 
-func newTaskSvcEnv(cfg config.AI) *taskSvcEnv {
+// newTaskSvcEnv 组装任务服务；limits 决定并发上限与初始积分（生产里来自系统设置，库里没有值时回落到代码常量）。
+func newTaskSvcEnv(limits TaskLimits) *taskSvcEnv {
 	env := &taskSvcEnv{
 		repo:     newFakeTaskRepo(),
 		registry: &fakeTaskRegistry{snap: fakeTaskSnapshot(model.KindVideo, 10)},
@@ -436,15 +440,16 @@ func newTaskSvcEnv(cfg config.AI) *taskSvcEnv {
 		now:      time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC),
 	}
 	env.svc = NewGenerationTaskService(GenerationTaskDeps{
-		Repo: env.repo, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Config: cfg,
+		Repo: env.repo, Registry: env.registry, Executor: env.exec, Assets: env.assets, Broadcaster: env.bc, Limits: limits,
 	},
 		WithTaskClock(func() time.Time { return env.now }),
 	)
 	return env
 }
 
-func defaultTaskCfg() config.AI {
-	return config.AI{MaxActiveTasksPerUser: 2, InitialCredits: 50}
+// defaultTaskLimits 是多数用例的限额：并发上限 2、初始积分 50。
+func defaultTaskLimits() TaskLimits {
+	return &fakeLimits{initial: 50, defMax: 2}
 }
 
 func assertTaskCode(t *testing.T, err error, want int) {
@@ -799,7 +804,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			if tt.setup != nil {
 				tt.setup(env)
 			}
@@ -843,7 +848,7 @@ func TestGenerationTaskService_Create(t *testing.T) {
 // 快照冻结：任务落库的 config_snapshot 必须带上提交时的模型 revision、渠道与插件版本；
 // 之后运营改渠道 / 升级插件都不影响这个任务（worker 只读快照）。
 func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	view, err := createSingle(context.Background(), env.svc, 1, "", validCreateReq())
 	assertTaskCode(t, err, 0)
 
@@ -875,7 +880,7 @@ func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing
 }
 
 func TestGenerationTaskService_Create_WithoutCanvas(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	req := validCreateReq()
 	req.CanvasID = 0
 	view, err := createSingle(context.Background(), env.svc, 1, "", req)
@@ -886,7 +891,7 @@ func TestGenerationTaskService_Create_WithoutCanvas(t *testing.T) {
 }
 
 func TestGenerationTaskService_Create_ErrorMessageContainsFieldErrors(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	req := validCreateReq()
 	req.Input = map[string]any{}
 	_, err := createSingle(context.Background(), env.svc, 1, "", req)
@@ -906,7 +911,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	const user = uint64(1)
 
 	t.Run("同一个 Idempotency-Key 重复提交只创建一个任务、只冻结一次", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
 		kicked(env.svc) // 清掉信号
@@ -926,7 +931,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	})
 
 	t.Run("重复提交时即使积分已不足也返回第一次的任务", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 10, 0)
 		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
@@ -938,7 +943,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	})
 
 	t.Run("不同用户可以使用相同的 key", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		a, _ := createSingle(context.Background(), env.svc, 1, "same", validCreateReq())
 		b, err := createSingle(context.Background(), env.svc, 2, "same", validCreateReq())
 		assertTaskCode(t, err, 0)
@@ -948,7 +953,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	})
 
 	t.Run("并发竞争：幂等查询都没看到，唯一索引拦住后回滚并返回赢家的任务", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		winner := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, IdempotencyKey: "race", Credits: 10})
 		env.repo.hideKeyLookups = 2 // 快速路径和事务内复查都“没看到”赢家
@@ -967,7 +972,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 	})
 
 	t.Run("幂等键查询出错透传", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["FindByIdempotencyKey"] = errors.New("db down")
 		if _, err := createSingle(context.Background(), env.svc, user, "k", validCreateReq()); err == nil {
 			t.Fatal("期望返回错误")
@@ -1014,7 +1019,7 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			if tt.setup != nil {
 				tt.setup(env)
 			}
@@ -1047,7 +1052,7 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 	}
 
 	t.Run("试跑任务用调用方传入的快照（草稿配置）冻结，不读 registry", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.registry.snapErr = errors.New("试跑不应访问 registry")
 		snap := fakeTaskSnapshot(model.KindImage, 10)
 		snap.Channel.Key = "draft-ch"
@@ -1071,7 +1076,7 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 	})
 
 	t.Run("试跑任务在已达并发上限时仍可提交", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		for i := 0; i < 5; i++ {
 			env.repo.addTask(model.GenerationTask{UserID: admin, Status: model.TaskRunning})
 		}
@@ -1081,7 +1086,7 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 	})
 
 	t.Run("试跑任务不出现在普通用户接口里，GetTestTask 可查", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		v, _ := env.svc.SubmitTest(context.Background(), admin, fakeTaskSnapshot(model.KindVideo, 10), map[string]any{"prompt": "x"})
 		assertTaskCode(t, func() error { _, err := env.svc.Get(context.Background(), admin, v.ID); return err }(), errcode.ErrTaskNotFound.Code)
 		if got, err := env.svc.GetTestTask(context.Background(), admin, v.ID); err != nil || got.ID != v.ID {
@@ -1103,7 +1108,7 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGenerationTaskService_Get(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	mine := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, OutputJSON: []byte(`[{"asset_id":5,"url":"http://x/a.mp4","media_type":"video"}]`)})
 	pending := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskPending})
 	theirs := env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskRunning})
@@ -1139,7 +1144,7 @@ func TestGenerationTaskService_Get(t *testing.T) {
 	}
 
 	t.Run("仓储错误透传", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["GetByID"] = errors.New("db down")
 		if _, err := env.svc.Get(context.Background(), 1, 1); err == nil {
 			t.Fatal("期望返回错误")
@@ -1148,7 +1153,7 @@ func TestGenerationTaskService_Get(t *testing.T) {
 }
 
 func TestGenerationTaskService_List(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	a := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskRunning})
 	b := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskSucceeded})
 	theirs := env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskRunning})
@@ -1199,7 +1204,7 @@ func TestGenerationTaskService_List(t *testing.T) {
 	}
 
 	t.Run("仓储错误透传", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["ListActive"] = errors.New("db down")
 		if _, err := env.svc.List(context.Background(), 1, &model.ListGenerationTaskReq{Status: "active"}); err == nil {
 			t.Fatal("期望返回错误")
@@ -1232,7 +1237,7 @@ func TestGenerationTaskService_GetTestTask(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			task := env.repo.addTask(tt.task)
 			id := task.ID
 			if tt.id != 0 {
@@ -1247,7 +1252,7 @@ func TestGenerationTaskService_GetTestTask(t *testing.T) {
 	}
 
 	t.Run("仓储错误透传", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["GetByID"] = errors.New("db down")
 		_, err := env.svc.GetTestTask(context.Background(), admin, 1)
 		assertPlainError(t, err)
@@ -1277,7 +1282,7 @@ func TestGenerationTaskService_GetTestTrace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			task := env.repo.addTask(tt.task)
 			id := task.ID
 			if tt.id != 0 {
@@ -1303,7 +1308,7 @@ func TestGenerationTaskService_GetTestTrace(t *testing.T) {
 	}
 
 	t.Run("仓储错误透传", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.errs["GetByID"] = errors.New("db down")
 		_, err := env.svc.GetTestTrace(context.Background(), admin, 1)
 		assertPlainError(t, err)
@@ -1336,7 +1341,7 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			env.repo.addCredit(user, 50, 10)
 			task := env.repo.addTask(tt.task)
 			env.exec.cancelErr = tt.cancelErr
@@ -1374,7 +1379,7 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	}
 
 	t.Run("取消上游时带冻结的快照与任务引用（渠道与插件版本按快照，不读当前配置）", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		snapJSON, _ := json.Marshal(fakeTaskSnapshot(model.KindVideo, 10))
 		task := env.repo.addTask(model.GenerationTask{
@@ -1396,7 +1401,7 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	})
 
 	t.Run("快照损坏时跳过上游取消，本地取消与退款照常完成", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{
 			UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-9", ConfigSnapshot: []byte(`{bad`),
@@ -1414,7 +1419,7 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	})
 
 	t.Run("CAS 没命中（刚好被别的流程结束）返回不可取消", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
 		env.repo.errs["UpdateIf"] = repository.ErrStateConflict
@@ -1423,7 +1428,7 @@ func TestGenerationTaskService_Cancel(t *testing.T) {
 	})
 
 	t.Run("事务内出错整体回滚，透传错误", func(t *testing.T) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		task := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
 		env.repo.errs["AddCredit"] = errors.New("db down")
@@ -1458,7 +1463,7 @@ func TestGenerationTaskService_GetCredits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := newTaskSvcEnv(defaultTaskCfg())
+			env := newTaskSvcEnv(defaultTaskLimits())
 			tt.setup(env.repo)
 			for k, v := range tt.errs {
 				env.repo.errs[k] = v
@@ -1488,14 +1493,14 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 	env0Now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC) // newTaskSvcEnv 的初始时钟
 
 	newEnv := func(status string, mut func(t *model.GenerationTask)) (*taskSvcEnv, *model.GenerationTask) {
-		env := newTaskSvcEnv(defaultTaskCfg())
+		env := newTaskSvcEnv(defaultTaskLimits())
 		env.repo.addCredit(user, 50, 10)
 		tk := model.GenerationTask{UserID: user, Status: status, Credits: 10, Provider: "p1"}
 		if mut != nil {
 			mut(&tk)
 		}
 		task := env.repo.addTask(tk)
-		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: task.ID, Type: model.LedgerFreeze, Amount: 10})
+		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: 10})
 		return env, task
 	}
 
@@ -1720,7 +1725,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 
 	t.Run("Complete：settle 流水已存在（重放）时不再改余额，状态仍迁移", func(t *testing.T) {
 		env, task := newEnv(model.TaskFinalizing, nil)
-		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: task.ID, Type: model.LedgerSettle, Amount: 10})
+		env.repo.ledger = append(env.repo.ledger, model.CreditLedger{UserID: user, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerSettle, Amount: 10})
 		applied, err := env.svc.Complete(ctx, task, nil, nil)
 		if err != nil || !applied {
 			t.Fatalf("applied=%v err=%v", applied, err)
@@ -2013,7 +2018,7 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 }
 
 func TestGenerationTaskService_Kick(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskCfg())
+	env := newTaskSvcEnv(defaultTaskLimits())
 	// 连续多次 Kick 不阻塞，且只保留一个待消费信号
 	env.svc.Kick()
 	env.svc.Kick()
@@ -2024,4 +2029,91 @@ func TestGenerationTaskService_Kick(t *testing.T) {
 	if kicked(env.svc) {
 		t.Fatal("多次 Kick 应合并成一个信号")
 	}
+}
+
+func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {
+	const user = uint64(1)
+	ctx := context.Background()
+
+	t.Run("取消该用户全部进行中的正式任务并退还冻结；终态、试跑、别人的任务不动", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskLimits())
+		env.repo.addCredit(user, 100, 30)
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskPending, Credits: 10})
+		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10, ProviderTaskID: "pt-1"})
+		c := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskFinalizing, Credits: 10})
+		done := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskSucceeded, Credits: 10})
+		test := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, IsTest: true})
+		env.repo.addCredit(2, 50, 10)
+		other := env.repo.addTask(model.GenerationTask{UserID: 2, Status: model.TaskRunning, Credits: 10})
+
+		res, err := env.svc.CancelActiveByUser(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Canceled != 3 || len(res.Failed) != 0 {
+			t.Fatalf("%+v", res)
+		}
+		for _, tk := range []*model.GenerationTask{a, b, c} {
+			if env.repo.tasks[tk.ID].Status != model.TaskCanceled {
+				t.Fatalf("任务 %d 应已取消：%s", tk.ID, env.repo.tasks[tk.ID].Status)
+			}
+			if l := env.repo.ledgerOf(tk.ID, model.LedgerRefund); l == nil || l.Amount != 10 {
+				t.Fatalf("任务 %d 缺少 refund 流水（复用 settleLedger）", tk.ID)
+			}
+		}
+		if acc := env.repo.credits[user]; acc.Frozen != 0 || acc.Balance != 100 {
+			t.Fatalf("冻结应全部退还、余额不变：%+v", acc)
+		}
+		if env.repo.tasks[done.ID].Status != model.TaskSucceeded || env.repo.tasks[test.ID].Status != model.TaskRunning || env.repo.tasks[other.ID].Status != model.TaskRunning {
+			t.Fatal("终态 / 试跑 / 别人的任务不能被动")
+		}
+		if len(env.exec.cancelCalls) != 1 {
+			t.Fatalf("有上游任务 id 的要通知上游取消：%d", len(env.exec.cancelCalls))
+		}
+	})
+
+	t.Run("单个失败不影响其他：失败的 id 在结果里，已成功的不回滚", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskLimits())
+		env.repo.addCredit(user, 100, 20)
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
+		b := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
+		env.repo.failUpdateIDs = map[uint64]error{b.ID: errors.New("db down")}
+
+		res, err := env.svc.CancelActiveByUser(ctx, user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Canceled != 1 || len(res.Failed) != 1 || res.Failed[0] != b.ID {
+			t.Fatalf("%+v", res)
+		}
+		if env.repo.tasks[a.ID].Status != model.TaskCanceled || env.repo.tasks[b.ID].Status != model.TaskRunning {
+			t.Fatal("a 应已取消，b 保持原状")
+		}
+		if acc := env.repo.credits[user]; acc.Frozen != 10 {
+			t.Fatalf("只退回 a 的冻结：%+v", acc)
+		}
+	})
+
+	t.Run("任务在取消前已被别的流程结束：不算失败也不算取消", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskLimits())
+		env.repo.addCredit(user, 100, 10)
+		a := env.repo.addTask(model.GenerationTask{UserID: user, Status: model.TaskRunning, Credits: 10})
+		env.repo.failUpdateIDs = map[uint64]error{a.ID: repository.ErrStateConflict}
+		res, err := env.svc.CancelActiveByUser(ctx, user)
+		if err != nil || res.Canceled != 0 || len(res.Failed) != 0 {
+			t.Fatalf("%v %+v", err, res)
+		}
+	})
+
+	t.Run("没有进行中任务返回零值；查询进行中任务出错才整体返回错误", func(t *testing.T) {
+		env := newTaskSvcEnv(defaultTaskLimits())
+		res, err := env.svc.CancelActiveByUser(ctx, user)
+		if err != nil || res.Canceled != 0 {
+			t.Fatalf("%v %+v", err, res)
+		}
+		env.repo.errs["ListActive"] = errors.New("boom")
+		if _, err := env.svc.CancelActiveByUser(ctx, user); err == nil {
+			t.Fatal("应返回错误")
+		}
+	})
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
-import { staleCondition, tierDimensions } from "@/pages/admin-ai/models/price-editors";
+import { staleCondition, tierDimensions } from "@/pages/admin/ai/models/price-editors";
 
 describe("按种类预填的能力与定价", () => {
   for (const kind of ["video", "image", "text", "audio"]) {

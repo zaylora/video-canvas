@@ -1,4 +1,4 @@
-import type { ChannelCheckResult } from "@/api/admin-ai/type";
+import type { ChannelCheckResult } from "@/api/admin/ai/type";
 
 import { isRunnerDown, isSecretMissing } from "./errors";
 

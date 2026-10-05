@@ -3,8 +3,6 @@ package middleware
 import (
 	"context"
 	"slices"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,7 +17,8 @@ type RoleLookup func(ctx context.Context, userID uint64) (string, error)
 
 // RequireAdmin 要求当前用户是运营（admin）或运维（super_admin），必须挂在 JWTAuth 之后。
 // super_admin 是 admin 的超集：能做的事只多不少，所以读接口与模型接口也要放行它。
-// 每次都实时（或带短缓存）查角色，而不是把角色写进 JWT：这样降级 / 封禁管理员不必等 token 过期。
+// 每次都实时查角色，而不是把角色写进 JWT：这样降级 / 封禁管理员不必等 token 过期。
+// 查询函数与 RequireActive 共用同一套（UserService.State：Redis 缓存 + 变更时主动失效），没有额外的内存缓存，改角色立即生效。
 func RequireAdmin(lookup RoleLookup) gin.HandlerFunc {
 	return requireRoles(lookup, model.RoleAdmin, model.RoleSuperAdmin)
 }
@@ -51,36 +50,5 @@ func requireRoles(lookup RoleLookup, allowed ...string) gin.HandlerFunc {
 			return
 		}
 		c.Next()
-	}
-}
-
-// NewCachedRoleLookup 给 RoleLookup 加一层内存缓存（ttl 内不重复查库），管理接口访问频率低但每次都查库也没必要。
-// 出错的结果不缓存；缓存意味着角色变更最多延迟 ttl 生效。
-func NewCachedRoleLookup(get RoleLookup, ttl time.Duration) RoleLookup {
-	type item struct {
-		role    string
-		expires time.Time
-	}
-	var (
-		mu    sync.Mutex
-		cache = map[uint64]item{}
-	)
-	return func(ctx context.Context, userID uint64) (string, error) {
-		now := time.Now()
-		mu.Lock()
-		if it, ok := cache[userID]; ok && now.Before(it.expires) {
-			mu.Unlock()
-			return it.role, nil
-		}
-		mu.Unlock()
-
-		role, err := get(ctx, userID)
-		if err != nil {
-			return "", err
-		}
-		mu.Lock()
-		cache[userID] = item{role: role, expires: now.Add(ttl)}
-		mu.Unlock()
-		return role, nil
 	}
 }

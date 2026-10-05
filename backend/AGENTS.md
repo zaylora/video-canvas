@@ -52,6 +52,7 @@ backend/
    - `model` 不依赖任何内部包。
 
    由 `depguard` 检查。
+
 2. **依赖接口声明在 service 包内**（A2）；service 只依赖 `provider` 包里的契约，不依赖 `engine`、`worker`、`dsl`（A3）。
 3. **依赖只在 [initialize/app.go](internal/initialize/app.go) 里手动组装**（A4）。不引入 DI 框架，不做包级可变单例。
 4. **事务只通过 repository 的 `WithTx(ctx, fn)` 开启**（A5）。事务内只用 `tx`，不做网络 I/O。

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+
 	. "video-canvas/internal/pkg/ws"
 
 	"github.com/gorilla/websocket"
@@ -468,4 +469,59 @@ func TestHub_并发Publish与连接进出(t *testing.T) {
 	close(stop)
 	<-pubDone
 	waitFor(t, "连接全部注销", func() bool { return h.ConnCount() == 0 })
+}
+
+func TestHub_DisconnectUser只断开目标用户的全部连接(t *testing.T) {
+	h := NewHub()
+	srv := hubTestServer(t, h)
+	a1 := dialHub(t, srv, 7)
+	a2 := dialHub(t, srv, 7) // 同一用户的第二个标签页
+	b := dialHub(t, srv, 8)
+	waitFor(t, "三条连接注册", func() bool { return h.UserConnCount(7) == 2 && h.UserConnCount(8) == 1 })
+
+	if n := h.DisconnectUser(7); n != 2 {
+		t.Fatalf("应断开 2 条连接，实际 %d", n)
+	}
+	// 目标用户的连接被服务端关闭：读到错误，并最终从 Hub 注销
+	for _, c := range []*websocket.Conn{a1, a2} {
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				break
+			}
+		}
+	}
+	waitFor(t, "目标用户连接注销", func() bool { return h.UserConnCount(7) == 0 })
+
+	// 其他用户不受影响，仍能收到推送
+	h.Publish(context.Background(), UserChannel(8), Message{Type: TypeTaskUpdated, Channel: UserChannel(8)})
+	if m := readMsg(t, b, 2*time.Second); m.Type != TypeTaskUpdated {
+		t.Fatalf("用户 8 应仍能收到推送：%+v", m)
+	}
+	// 没有连接的用户返回 0，不报错
+	if n := h.DisconnectUser(999); n != 0 {
+		t.Fatalf("无连接应返回 0，实际 %d", n)
+	}
+}
+
+func TestHub_DisconnectUser与连接进出并发安全(t *testing.T) {
+	h := NewHub()
+	srv := hubTestServer(t, h)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 50 {
+			h.DisconnectUser(5)
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	for range 10 {
+		url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?uid=5"
+		if c, _, err := websocket.DefaultDialer.Dial(url, nil); err == nil {
+			_ = c.Close()
+		}
+	}
+	<-done
+	h.DisconnectUser(5)
+	waitFor(t, "全部注销", func() bool { return h.UserConnCount(5) == 0 })
 }

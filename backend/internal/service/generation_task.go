@@ -51,7 +51,6 @@ const (
 
 const (
 	defaultTaskDeadline      = 30 * time.Minute // 模型没配置 deadline 时的默认超时
-	defaultMaxActiveTasks    = 4                // 配置缺省时的并发上限
 	maxReconcileIDs          = 100              // 批量对账一次最多查多少个任务
 	maxIdempotencyKeyLen     = 128              // 与 generation_tasks.idempotency_key 列宽一致
 	executorCancelTimeout    = 5 * time.Second  // 取消时“尽力通知上游”的超时
@@ -73,6 +72,7 @@ type GenerationTaskDeps struct {
 	Assets      provider.AssetStore
 	Broadcaster ws.Broadcaster // 为 nil 时不推送
 	Config      config.AI
+	Limits      TaskLimits // 初始积分与并发上限的运行时来源（系统设置 + 单用户覆盖）；为 nil 时只用 Config
 }
 
 // GenerationTaskOption 用于替换可注入的部分（主要给测试用）。
@@ -97,6 +97,7 @@ type GenerationTaskService struct {
 	assets      provider.AssetStore
 	broadcaster ws.Broadcaster
 	cfg         config.AI
+	limits      TaskLimits
 
 	kick chan struct{} // 进程内信号：有新任务 / 需要立即处理时唤醒 worker
 
@@ -120,6 +121,7 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		assets:        deps.Assets,
 		broadcaster:   deps.Broadcaster,
 		cfg:           deps.Config,
+		limits:        deps.Limits,
 		kick:          make(chan struct{}, 1),
 		validateInput: modelcfg.ValidateInput,
 		now:           time.Now,
@@ -144,12 +146,21 @@ func (s *GenerationTaskService) Kick() {
 	}
 }
 
-// maxActiveTasks 返回每个用户进行中任务的上限，配置缺省时用 defaultMaxActiveTasks。
-func (s *GenerationTaskService) maxActiveTasks() int {
-	if s.cfg.MaxActiveTasksPerUser > 0 {
-		return s.cfg.MaxActiveTasksPerUser
+// maxActiveTasks 返回用户进行中任务的上限：单用户覆盖 > 系统设置默认 > DefaultMaxActiveTasks。
+// 没有注入 limits 时用 DefaultMaxActiveTasks。
+func (s *GenerationTaskService) maxActiveTasks(ctx context.Context, userID uint64) (int, error) {
+	if s.limits != nil {
+		return s.limits.MaxActiveTasks(ctx, userID)
 	}
-	return defaultMaxActiveTasks
+	return DefaultMaxActiveTasks, nil
+}
+
+// initialCredits 返回新积分账户的初始积分：系统设置优先，没有注入 limits 时用 DefaultInitialCredits。
+func (s *GenerationTaskService) initialCredits(ctx context.Context) (int, error) {
+	if s.limits != nil {
+		return s.limits.InitialCredits(ctx)
+	}
+	return DefaultInitialCredits, nil
 }
 
 // publish 在事务提交之后向任务所属用户推送最新快照；is_test 任务不推送。

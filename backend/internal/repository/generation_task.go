@@ -23,7 +23,7 @@ type GenerationTaskTx interface {
 	FindByIdempotencyKey(ctx context.Context, userID uint64, key string) (*model.GenerationTask, error)
 	// CountActive 统计用户非终态的正式任务数（不含 is_test）。
 	CountActive(ctx context.Context, userID uint64) (int64, error)
-	// EnsureCredit 账户不存在时以 initial 惰性创建（INSERT … ON CONFLICT DO NOTHING），已存在则什么都不做。
+	// EnsureCredit 账户不存在时以 initial 惰性创建（INSERT … ON CONFLICT DO NOTHING）并在同一事务写一条 initial 流水，已存在则什么都不做。
 	EnsureCredit(ctx context.Context, userID uint64, initial int) error
 	// LockCredit 读取积分账户并加行锁（SELECT … FOR UPDATE），账户不存在返回 ErrNotFound。
 	LockCredit(ctx context.Context, userID uint64) (*model.UserCredit, error)
@@ -121,8 +121,7 @@ func (r *GenerationTaskRepository) CountActive(ctx context.Context, userID uint6
 
 // EnsureCredit 账户不存在时以 initial 惰性创建，已存在则不改动（INSERT … ON CONFLICT DO NOTHING）。
 func (r *GenerationTaskRepository) EnsureCredit(ctx context.Context, userID uint64, initial int) error {
-	acc := &model.UserCredit{UserID: userID, Balance: initial, UpdatedAt: time.Now()}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(acc).Error
+	return insertInitialCredit(ctx, r.db, userID, initial)
 }
 
 // GetCredit 读取积分账户（不加锁），不存在返回 ErrNotFound。
@@ -299,12 +298,14 @@ func (r *GenerationTaskRepository) TouchByProviderTask(ctx context.Context, prov
 
 // CreditReconcile 是一个用户的积分对账结果：账户余额与流水、进行中任务三方互相校验。
 type CreditReconcile struct {
-	Balance       int   // user_credits.balance
-	Frozen        int   // user_credits.frozen
-	FreezeSum     int64 // 流水 freeze 合计
-	SettleSum     int64 // 流水 settle 合计
-	RefundSum     int64 // 流水 refund 合计
-	ActiveCredits int64 // 非终态正式任务冻结的积分合计
+	Balance        int   // user_credits.balance
+	Frozen         int   // user_credits.frozen
+	FreezeSum      int64 // 流水 freeze 合计
+	SettleSum      int64 // 流水 settle 合计
+	RefundSum      int64 // 流水 refund 合计
+	InitialSum     int64 // 流水 initial 合计（积分账户创建时的初始积分）
+	AdminAdjustSum int64 // 流水 admin_adjust 合计（管理员调整，带正负号）
+	ActiveCredits  int64 // 非终态正式任务冻结的积分合计
 }
 
 // FrozenDiff 冻结额与流水推算值（freeze - settle - refund）的差，应为 0。
@@ -315,9 +316,10 @@ func (c CreditReconcile) FrozenDiff() int64 {
 // ActiveDiff 冻结额与进行中任务积分合计的差，应为 0。
 func (c CreditReconcile) ActiveDiff() int64 { return int64(c.Frozen) - c.ActiveCredits }
 
-// BalanceDiff 余额与“初始积分 - 已结算合计”的差，应为 0。
-func (c CreditReconcile) BalanceDiff(initial int) int64 {
-	return int64(c.Balance) - (int64(initial) - c.SettleSum)
+// BalanceDiff 余额与流水推算值的差，应为 0：余额 = Σinitial + Σadmin_adjust - Σsettle。
+// 初始积分与管理员调整都以流水记账，所以不再需要调用方传入初始积分；freeze / refund 只动冻结额，不影响余额。
+func (c CreditReconcile) BalanceDiff() int64 {
+	return int64(c.Balance) - (c.InitialSum + c.AdminAdjustSum - c.SettleSum)
 }
 
 // Reconcile 汇总用户的流水与账户，用于对账；账户不存在返回 ErrNotFound。
@@ -331,8 +333,10 @@ func (r *GenerationTaskRepository) Reconcile(ctx context.Context, userID uint64)
 		SELECT
 		  COALESCE(SUM(amount) FILTER (WHERE type = 'freeze'), 0) AS freeze_sum,
 		  COALESCE(SUM(amount) FILTER (WHERE type = 'settle'), 0) AS settle_sum,
-		  COALESCE(SUM(amount) FILTER (WHERE type = 'refund'), 0) AS refund_sum
-		FROM credit_ledger WHERE user_id = ?`, userID).Row().Scan(&out.FreezeSum, &out.SettleSum, &out.RefundSum)
+		  COALESCE(SUM(amount) FILTER (WHERE type = 'refund'), 0) AS refund_sum,
+		  COALESCE(SUM(amount) FILTER (WHERE type = 'initial'), 0) AS initial_sum,
+		  COALESCE(SUM(amount) FILTER (WHERE type = 'admin_adjust'), 0) AS admin_adjust_sum
+		FROM credit_ledger WHERE user_id = ?`, userID).Row().Scan(&out.FreezeSum, &out.SettleSum, &out.RefundSum, &out.InitialSum, &out.AdminAdjustSum)
 	if err != nil {
 		return nil, err
 	}

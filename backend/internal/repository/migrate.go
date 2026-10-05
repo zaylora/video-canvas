@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -114,4 +115,34 @@ func EnsureBuiltinStorage(ctx context.Context, db *gorm.DB) (uint64, error) {
 		return 0, fmt.Errorf("初始化内置存储失败：%w", err)
 	}
 	return id, nil
+}
+
+// MigrateUserManagement 在 AutoMigrate 之前幂等地处理 AutoMigrate 做不了的积分流水表变更：
+//  1. credit_ledger.task_id 改为可空（管理员调整与初始积分流水没有任务）；
+//  2. 旧的全量唯一索引 uk_ledger_task_type 换成仅对 task_id IS NOT NULL 生效的部分唯一索引。
+//
+// 原因：GORM 的 AutoMigrate 看到同名索引就跳过，不会把旧的全量索引改成部分索引，所以要先删掉旧索引，让随后的 AutoMigrate 按新模型重建。
+// 表不存在（全新库）时什么都不做，由 AutoMigrate 直接建出新结构；可重复执行。
+func MigrateUserManagement(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if !tx.Migrator().HasTable("credit_ledger") {
+			return nil
+		}
+		if err := tx.Exec("ALTER TABLE credit_ledger ALTER COLUMN task_id DROP NOT NULL").Error; err != nil {
+			return fmt.Errorf("放开 credit_ledger.task_id 非空约束失败：%w", err)
+		}
+		// 只删非部分索引：已经是部分索引（indexdef 含 WHERE）说明迁移过了，保留即可
+		var def string
+		err := tx.Raw(`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'credit_ledger' AND indexname = 'uk_ledger_task_type'`).
+			Scan(&def).Error
+		if err != nil {
+			return fmt.Errorf("查询 credit_ledger 索引失败：%w", err)
+		}
+		if def != "" && !strings.Contains(strings.ToUpper(def), " WHERE ") {
+			if err := tx.Exec("DROP INDEX uk_ledger_task_type").Error; err != nil {
+				return fmt.Errorf("删除旧的流水唯一索引失败：%w", err)
+			}
+		}
+		return nil
+	})
 }

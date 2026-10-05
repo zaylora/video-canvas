@@ -1,380 +1,953 @@
 <!doctype html>
 <html lang="zh-CN" class="dark">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>编辑模型补齐 · 演示</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  // 与 AI配置管理-演示.html 相同的 token 命名：颜色走 CSS 变量，明暗主题只换变量
-  const c = (v) => `hsl(var(--${v}) / <alpha-value>)`;
-  tailwind.config = {
-    darkMode: "class",
-    theme: {
-      extend: {
-        fontFamily: {
-          sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
-          mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>编辑模型补齐 · 演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // 与 AI配置管理-演示.html 相同的 token 命名：颜色走 CSS 变量，明暗主题只换变量
+      const c = (v) => `hsl(var(--${v}) / <alpha-value>)`;
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Geist", "PingFang SC", "Microsoft YaHei", "system-ui", "sans-serif"],
+              mono: ["Geist Mono", "SF Mono", "Consolas", "monospace"],
+            },
+            colors: {
+              border: c("border"),
+              input: c("input"),
+              ring: c("ring"),
+              background: c("background"),
+              foreground: c("foreground"),
+              primary: { DEFAULT: c("primary"), foreground: c("primary-foreground") },
+              secondary: { DEFAULT: c("secondary"), foreground: c("secondary-foreground") },
+              muted: { DEFAULT: c("muted"), foreground: c("muted-foreground") },
+              accent: { DEFAULT: c("accent"), foreground: c("accent-foreground") },
+              card: { DEFAULT: c("card"), foreground: c("card-foreground") },
+              popover: { DEFAULT: c("popover"), foreground: c("popover-foreground") },
+            },
+            borderColor: { DEFAULT: "hsl(var(--border))" },
+            borderRadius: {
+              xl: "calc(var(--radius) + 4px)",
+              lg: "var(--radius)",
+              md: "calc(var(--radius) - 2px)",
+              sm: "calc(var(--radius) - 4px)",
+            },
+          },
         },
-        colors: {
-          border: c("border"), input: c("input"), ring: c("ring"),
-          background: c("background"), foreground: c("foreground"),
-          primary: { DEFAULT: c("primary"), foreground: c("primary-foreground") },
-          secondary: { DEFAULT: c("secondary"), foreground: c("secondary-foreground") },
-          muted: { DEFAULT: c("muted"), foreground: c("muted-foreground") },
-          accent: { DEFAULT: c("accent"), foreground: c("accent-foreground") },
-          card: { DEFAULT: c("card"), foreground: c("card-foreground") },
-          popover: { DEFAULT: c("popover"), foreground: c("popover-foreground") },
+      };
+    </script>
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 240 10% 3.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 240 10% 3.9%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 240 4.8% 95.9%;
+        --secondary-foreground: 240 5.9% 10%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --accent: 240 4.8% 95.9%;
+        --accent-foreground: 240 5.9% 10%;
+        --border: 240 5.9% 90%;
+        --input: 240 5.9% 90%;
+        --ring: 240 5.9% 10%;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 3.9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 10% 3.9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+        --border: 240 3.7% 15.9%;
+        --input: 240 3.7% 18%;
+        --ring: 240 4.9% 83.9%;
+        color-scheme: dark;
+      }
+      html,
+      body {
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
+      body {
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .tabular {
+        font-variant-numeric: tabular-nums;
+      }
+      .sw {
+        position: relative;
+        display: inline-flex;
+        height: 20px;
+        width: 36px;
+        flex-shrink: 0;
+        border-radius: 999px;
+        background: hsl(var(--input));
+        transition: background 0.15s;
+        cursor: pointer;
+      }
+      .dark .sw {
+        background: hsl(240 3.7% 24%);
+      }
+      .sw[aria-checked="true"],
+      .dark .sw[aria-checked="true"] {
+        background: hsl(var(--primary));
+      }
+      .sw::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        background: hsl(var(--background));
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+        transition: transform 0.15s;
+      }
+      .sw[aria-checked="true"]::after {
+        transform: translateX(16px);
+      }
+      .sw:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .toast-in {
+        animation: toastIn 0.18s ease-out;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .fade-in {
+        animation: fadeIn 0.12s ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+      input[type="number"]::-webkit-inner-spin-button {
+        opacity: 0.4;
+      }
+      input[type="range"] {
+        accent-color: hsl(var(--primary));
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border-radius: 8px;
+      }
+      pre.json {
+        font-family: "Geist Mono", "SF Mono", Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <header class="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold">编辑模型补齐 · 交互演示</div>
+          <div class="text-xs text-muted-foreground">
+            对应 编辑模型补齐设计.md · 数据结构与计价公式与文档一致 · 全部为前端模拟
+          </div>
+        </div>
+        <div id="scene-seg" class="ml-auto"></div>
+        <div id="preset-seg"></div>
+        <button
+          data-act="theme"
+          class="inline-flex size-8 items-center justify-center rounded-full hover:bg-accent"
+          aria-label="切换主题"
+        >
+          <i data-lucide="sun" class="size-4 dark:hidden"></i
+          ><i data-lucide="moon" class="hidden size-4 dark:block"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-6">
+      <section id="intro" class="mb-5 grid gap-3 md:grid-cols-3"></section>
+      <div id="stage"></div>
+    </main>
+
+    <div
+      id="toasts"
+      class="pointer-events-none fixed bottom-4 right-4 z-[90] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
+    ></div>
+
+    <script>
+      /* ================================================================== 基础小件 */
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+      const I = (n, c = "size-4") => `<i data-lucide="${n}" class="${c}"></i>`;
+      const icons = () => window.lucide && lucide.createIcons();
+      const clone = (o) => JSON.parse(JSON.stringify(o));
+      const TONE = {
+        emerald: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+        sky: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
+        amber: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+        violet: "border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-400",
+        rose: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+        red: "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400",
+        zinc: "border-border bg-muted text-muted-foreground",
+      };
+      const badge = (tone, inner, extra = "") =>
+        `<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs font-medium ${TONE[tone]} ${extra}">${inner}</span>`;
+      const INPUT =
+        "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+      const OUTLINE =
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background font-medium shadow-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
+      const PRIMARY =
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50";
+      const GHOST =
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
+      const sw = (on, attrs = "") =>
+        `<button type="button" role="switch" aria-checked="${!!on}" class="sw" ${attrs}></button>`;
+      const seg = (opts, val, act, extra = "") =>
+        `<div class="inline-flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs ${extra}">${opts.map(([v, l, dis]) => `<button data-act="${act}" data-v="${v}" ${dis ? `disabled title="${esc(dis)}"` : ""} class="rounded-md px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 ${String(val) === String(v) ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}">${l}</button>`).join("")}</div>`;
+      const chip = (on, label, act, v, extra = "") =>
+        `<button data-act="${act}" data-v="${v}" class="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition ${on ? "border-foreground/80 bg-foreground text-background" : "border-input bg-background text-muted-foreground hover:text-foreground"} ${extra}">${on ? I("check", "size-3.5") : ""}${label}</button>`;
+      const help = (t) =>
+        `<span class="group relative inline-flex">${I("circle-help", "size-3.5 text-muted-foreground")}<span class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden w-60 -translate-x-1/2 rounded-md border bg-popover px-2.5 py-2 text-xs font-normal leading-relaxed text-popover-foreground shadow-md group-hover:block">${t}</span></span>`;
+      const fld = (label, control, hint = "", req = false, tip = "") =>
+        `<div class="space-y-2"><label class="flex items-center gap-1.5 text-sm font-medium leading-none">${req ? '<span class="text-red-500">*</span>' : ""}${label}${tip ? help(tip) : ""}</label>${control}${hint ? `<div class="text-[0.8rem] leading-relaxed text-muted-foreground">${hint}</div>` : ""}</div>`;
+      const PHASE = { 1: ["sky", "一期"], 2: ["violet", "二期"], 3: ["amber", "三期"] };
+      const pb = (n) =>
+        `<span class="ml-1.5 rounded border px-1 py-px text-[10px] font-medium ${TONE[PHASE[n][0]]}">${PHASE[n][1]}</span>`;
+      const block = (title, phase, desc, inner) =>
+        `<section class="mb-7 last:mb-0"><div class="mb-3 flex flex-wrap items-baseline gap-x-2"><h3 class="flex items-center text-sm font-semibold">${title}${phase ? pb(phase) : ""}</h3>${desc ? `<p class="text-xs text-muted-foreground">${desc}</p>` : ""}</div>${inner}</section>`;
+      const numIn = (path, val, attrs = "") =>
+        `<input type="number" data-bind="${path}" data-t="num" value="${val ?? ""}" class="${INPUT} tabular" ${attrs}>`;
+      const toast = (msg) => {
+        const el = document.createElement("div");
+        el.className =
+          "toast-in pointer-events-auto rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg";
+        el.textContent = msg;
+        $("#toasts").appendChild(el);
+        setTimeout(() => el.remove(), 2600);
+      };
+      const getp = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
+      const setp = (o, p, v) => {
+        const ks = p.split(".");
+        const last = ks.pop();
+        const t = ks.reduce((a, k) => a[k], o);
+        t[last] = v;
+      };
+
+      /* ================================================================== 厂商 logo（lobe-icons 静态包，版本固定） */
+      const ICON_BASE = "https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.95.1/icons/";
+      // [slug, 名称, 是否有彩色版]（slug 已对照 1.95.1 文件清单核对）
+      const VENDORS = [
+        ["kling", "可灵", 1],
+        ["jimeng", "即梦", 1],
+        ["doubao", "豆包", 1],
+        ["hailuo", "海螺", 1],
+        ["vidu", "Vidu", 1],
+        ["runway", "Runway", 0],
+        ["luma", "Luma", 1],
+        ["pika", "Pika", 0],
+        ["pixverse", "PixVerse", 1],
+        ["sora", "Sora", 1],
+        ["midjourney", "Midjourney", 0],
+        ["flux", "Flux", 0],
+        ["stability", "Stability", 1],
+        ["ideogram", "Ideogram", 0],
+        ["recraft", "Recraft", 0],
+        ["nanobanana", "Nano Banana", 1],
+        ["openai", "OpenAI", 0],
+        ["claude", "Claude", 1],
+        ["gemini", "Gemini", 1],
+        ["deepseek", "DeepSeek", 1],
+        ["qwen", "通义千问", 1],
+        ["kimi", "Kimi", 1],
+        ["zhipu", "智谱", 1],
+        ["minimax", "MiniMax", 1],
+        ["hunyuan", "混元", 1],
+        ["wenxin", "文心", 1],
+        ["spark", "讯飞星火", 1],
+        ["grok", "Grok", 0],
+        ["mistral", "Mistral", 1],
+        ["meta", "Meta", 1],
+        ["suno", "Suno", 0],
+        ["elevenlabs", "ElevenLabs", 0],
+        ["volcengine", "火山引擎", 1],
+        ["bytedance", "字节跳动", 1],
+        ["alibaba", "阿里巴巴", 1],
+        ["tencent", "腾讯", 1],
+        ["baidu", "百度", 1],
+        ["newapi", "New API", 1],
+        ["openrouter", "OpenRouter", 1],
+        ["comfyui", "ComfyUI", 1],
+      ];
+      const VMAP = Object.fromEntries(
+        VENDORS.map(([s, n, c]) => [s, { slug: s, name: n, color: !!c }]),
+      );
+      const GRADS = [
+        "from-amber-400 to-orange-600",
+        "from-sky-400 to-blue-600",
+        "from-emerald-400 to-teal-600",
+        "from-violet-400 to-purple-600",
+        "from-rose-400 to-pink-600",
+      ];
+      const initialOf = (name) =>
+        String(name || "?")
+          .replace(/[（(].*$/, "")
+          .trim()
+          .slice(0, 1)
+          .toUpperCase() || "?";
+      /** 有 vendor 用厂商 logo（白底圆角方块，亮暗主题一致）；没选或加载失败回退首字渐变头像 */
+      const avatar = (m, size = "size-9", text = "text-sm") => {
+        const g =
+          GRADS[
+            [...(m.key || m.label || "?")].reduce((s, c) => s + c.charCodeAt(0), 0) % GRADS.length
+          ];
+        const v = VMAP[m.vendor];
+        const base = `relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-lg shadow-sm`;
+        const init = `<span class="${text} font-semibold text-white">${esc(initialOf(m.label))}</span>`;
+        if (!v) return `<span class="${base} bg-gradient-to-br ${g}">${init}</span>`;
+        const url = `${ICON_BASE}${v.slug}${v.color ? "-color" : ""}.svg`;
+        return `<span class="${base} bg-gradient-to-br ${g}">${init}<img src="${url}" alt="${esc(v.name)}" loading="lazy" onerror="this.remove()" class="absolute inset-0 size-full rounded-lg border bg-white object-contain p-[17%]"></span>`;
+      };
+
+      /* ================================================================== 模型数据（能力由运营在后台手填；插件只负责对接平台，不声明能力） */
+      const RATIOS = ["Auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
+      /** 后端校验用的固定上下限（防手误，不是某个平台的真实上限；参考了影策的取值）。运营在这个范围内自己填 */
+      const HARD = {
+        refMax: 50,
+        refMb: 500,
+        durationMax: 3600,
+        ctxWindow: 10000000,
+        ctxOutMin: 256,
+        ctxOutMax: 1000000,
+      };
+      /** 新增可选值时的常用预设（只是快捷按钮，运营也可以自己输入别的值） */
+      const PRESETS = {
+        ratio: RATIOS,
+        resolution: { video: ["480P", "720P", "1080P", "2K", "4K"], image: ["1K", "2K", "4K"] },
+        count: [1, 2, 4, 8],
+      };
+      const OPS = {
+        t2v: "文生视频",
+        i2v: "图生视频",
+        omni: "全能参考",
+        t2i: "文生图",
+        i2i: "图生图",
+      };
+      const OPS_OF = { video: ["t2v", "i2v", "omni"], image: ["t2i", "i2i"] };
+      const KIND_META = {
+        video: ["sky", "视频", "clapperboard"],
+        image: ["violet", "图片", "image"],
+        text: ["emerald", "文本", "type"],
+        audio: ["amber", "音频", "audio-lines"],
+      };
+      const MEDIA = {
+        image: ["图片", "image"],
+        audio: ["音频", "audio-lines"],
+        video: ["视频", "film"],
+      };
+      /** 各生成方式能引用哪些素材：文生不引用；图生只引用图片；全能参考不区分类型，已开启的素材都可以引用（连什么上游节点就是什么） */
+      function allowedMedia(m, op) {
+        const refs = m.capabilities.refs;
+        if (!refs || !op) return [];
+        const on = Object.keys(refs).filter((k) => refs[k].on && refs[k].max > 0);
+        if (op === "t2v" || op === "t2i") return [];
+        if (op === "i2v" || op === "i2i") return on.filter((k) => k === "image");
+        return on;
+      }
+      const DUR = [
+        ["5m", "5 分钟"],
+        ["10m", "10 分钟"],
+        ["20m", "20 分钟"],
+        ["30m", "30 分钟"],
+        ["60m", "60 分钟"],
+      ];
+
+      const MODELS = {
+        video: {
+          key: "kling-v2-master",
+          kind: "video",
+          label: "可灵 2.0 大师版",
+          vendor: "kling",
+          tags: ["推荐", "带音轨"],
+          hint: "支持文生、图生与全能参考，时长可调。",
+          deadline: "30m",
+          sort: 100,
+          up: "kling-v2-master",
+          enabled: true,
+          channel: "newapi-main",
+          capabilities: {
+            ops: ["t2v", "i2v", "omni"],
+            refs: {
+              image: { on: true, max: 4, mb: 10 },
+              audio: { on: true, max: 1, mb: 15 },
+              video: { on: true, max: 1, mb: 100 },
+            },
+            prompt: { max_length: 2000 },
+            params: {
+              ratio: {
+                type: "enum",
+                label: "比例",
+                open: true,
+                options: [...RATIOS],
+                default: "Auto",
+              },
+              resolution: {
+                type: "enum",
+                label: "清晰度",
+                open: true,
+                options: ["720P", "1080P", "4K"],
+                default: "720P",
+                spec: true,
+              },
+              duration: {
+                type: "number",
+                label: "视频时长",
+                open: true,
+                min: 4,
+                max: 12,
+                default: 5,
+                step: 1,
+                unit: "秒",
+              },
+              audio: { type: "boolean", label: "生成音频", open: true, default: true, spec: true },
+              count: {
+                type: "enum",
+                label: "生成数量",
+                open: true,
+                options: [1, 2, 4],
+                default: 1,
+                fanout: true,
+                unit: "个",
+              },
+            },
+          },
+          pricing: {
+            billing: "per_second",
+            unit: 10,
+            per_second: 2,
+            token: { in: 300, out: 1200 },
+            tiers: [
+              { on: true, when: { audio: "true" }, unit: 3 },
+              { on: true, when: { resolution: "1080P" }, unit: 4 },
+              { on: true, when: { resolution: "1080P", audio: "true" }, unit: 5 },
+              { on: true, when: { resolution: "4K" }, unit: 8 },
+              { on: true, when: { ref_video: "true" }, unit: 2 },
+              { on: true, when: { audio: "true", ref_video: "true" }, unit: 3 },
+            ],
+            cost: { on: true, unit: 6, per_second: 1, in: 100, out: 400 },
+          },
         },
-        borderColor: { DEFAULT: "hsl(var(--border))" },
-        borderRadius: { xl: "calc(var(--radius) + 4px)", lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
-      },
-    },
-  };
-</script>
-<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-<style>
-  :root {
-    --radius: 0.625rem;
-    --background: 0 0% 100%; --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%; --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%; --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%; --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%; --accent-foreground: 240 5.9% 10%;
-    --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
-    color-scheme: light;
-  }
-  .dark {
-    --background: 240 10% 3.9%; --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%; --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%; --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%; --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%; --accent-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%; --input: 240 3.7% 18%; --ring: 240 4.9% 83.9%;
-    color-scheme: dark;
-  }
-  html, body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
-  body { font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  .tabular { font-variant-numeric: tabular-nums; }
-  .sw { position: relative; display: inline-flex; height: 20px; width: 36px; flex-shrink: 0; border-radius: 999px; background: hsl(var(--input)); transition: background .15s; cursor: pointer; }
-  .dark .sw { background: hsl(240 3.7% 24%); }
-  .sw[aria-checked="true"], .dark .sw[aria-checked="true"] { background: hsl(var(--primary)); }
-  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: hsl(var(--background)); box-shadow: 0 1px 2px rgb(0 0 0 / .25); transition: transform .15s; }
-  .sw[aria-checked="true"]::after { transform: translateX(16px); }
-  .sw:disabled { opacity: .4; cursor: not-allowed; }
-  @keyframes toastIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
-  .toast-in { animation: toastIn .18s ease-out; }
-  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-  .fade-in { animation: fadeIn .12s ease-out; }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-  input[type=number]::-webkit-inner-spin-button { opacity: .4; }
-  input[type=range] { accent-color: hsl(var(--primary)); }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
-  pre.json { font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre; overflow: auto; }
-</style>
-</head>
-<body class="min-h-screen">
+        image: {
+          key: "jimeng-image-3",
+          kind: "image",
+          label: "即梦 图片 3.0",
+          vendor: "jimeng",
+          tags: ["推荐"],
+          hint: "文生图与图生图，支持 1K / 2K / 4K，档位不同价格不同。",
+          deadline: "10m",
+          sort: 100,
+          up: "jimeng-image-3.0",
+          enabled: true,
+          channel: "newapi-main",
+          capabilities: {
+            ops: ["t2i", "i2i"],
+            refs: {
+              image: { on: true, max: 4, mb: 10 },
+              audio: { on: false, max: 0, mb: 0 },
+              video: { on: false, max: 0, mb: 0 },
+            },
+            prompt: { max_length: 1500 },
+            params: {
+              ratio: {
+                type: "enum",
+                label: "比例",
+                open: true,
+                options: ["Auto", "1:1", "16:9", "9:16", "4:3", "3:4"],
+                default: "1:1",
+              },
+              resolution: {
+                type: "enum",
+                label: "清晰度",
+                open: true,
+                options: ["1K", "2K", "4K"],
+                default: "1K",
+                spec: true,
+              },
+              count: {
+                type: "enum",
+                label: "生成数量",
+                open: true,
+                options: [1, 2, 4],
+                default: 1,
+                fanout: true,
+                unit: "张",
+              },
+            },
+          },
+          pricing: {
+            billing: "per_call",
+            unit: 4,
+            per_second: 0,
+            token: { in: 300, out: 1200 },
+            tiers: [
+              { on: true, when: { resolution: "2K" }, unit: 8 },
+              { on: true, when: { resolution: "4K" }, unit: 16 },
+            ],
+            cost: { on: true, unit: 2, per_second: 0, in: 0, out: 0 },
+          },
+        },
+        text: {
+          key: "deepseek-chat",
+          kind: "text",
+          label: "DeepSeek 对话",
+          vendor: "deepseek",
+          tags: ["性价比"],
+          hint: "通用对话与写作，支持长上下文。",
+          deadline: "5m",
+          sort: 100,
+          up: "deepseek-chat",
+          enabled: true,
+          channel: "newapi-main",
+          capabilities: {
+            prompt: { max_length: 8000 },
+            context: { window: 128000, output: 8192 },
+            system: "你是一名资深分镜师，回答使用中文。",
+            params: {},
+          },
+          pricing: {
+            billing: "token",
+            unit: 1,
+            per_second: 0,
+            token: { in: 300, out: 1200 },
+            tiers: [],
+            cost: { on: false, unit: 0, per_second: 0, in: 120, out: 480 },
+          },
+        },
+      };
+      const OTHERS = {
+        video: [
+          {
+            label: "即梦 视频 3.0",
+            vendor: "jimeng",
+            price: "1.5 积分/秒起",
+            tags: ["快"],
+            hint: "适合快速出草稿。",
+          },
+          { label: "Runway Gen-4", vendor: "runway", price: "5 积分/秒", tags: [], hint: "" },
+        ],
+        image: [
+          {
+            label: "GPT Image 1",
+            vendor: "openai",
+            price: "6 积分起",
+            tags: [],
+            hint: "文字渲染更稳。",
+          },
+          { label: "Flux Pro", vendor: "flux", price: "3 积分", tags: ["快"], hint: "" },
+        ],
+        text: [
+          {
+            label: "GPT-4.1",
+            vendor: "openai",
+            price: "按 Token",
+            tags: [],
+            hint: "长文本理解更稳。",
+          },
+          { label: "Kimi K2", vendor: "kimi", price: "按 Token", tags: ["长上下文"], hint: "" },
+        ],
+      };
 
-<header class="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-    <div class="min-w-0">
-      <div class="text-sm font-semibold">编辑模型补齐 · 交互演示</div>
-      <div class="text-xs text-muted-foreground">对应 编辑模型补齐设计.md · 数据结构与计价公式与文档一致 · 全部为前端模拟</div>
-    </div>
-    <div id="scene-seg" class="ml-auto"></div>
-    <div id="preset-seg"></div>
-    <button data-act="theme" class="inline-flex size-8 items-center justify-center rounded-full hover:bg-accent" aria-label="切换主题">
-      <i data-lucide="sun" class="size-4 dark:hidden"></i><i data-lucide="moon" class="hidden size-4 dark:block"></i>
-    </button>
-  </div>
-</header>
+      /* ================================================================== 状态 */
+      const S = {
+        scene: "admin",
+        preset: "video",
+        tab: "basic",
+        vpOpen: false,
+        vq: "",
+        view: "admin",
+        canvas: {
+          op: "i2v",
+          params: {},
+          img: false,
+          aud: false,
+          vid: false,
+          failN: 0,
+          lowK: 0,
+          stage: 2,
+        },
+        calc: { chars: 1000, maxOut: 8192, uin: 1200, uout: 3000, noUsage: false, fail: false },
+      };
+      const M = () => MODELS[S.preset];
+      const fix = (n) => (Math.round(n * 100) / 100).toString();
 
-<main class="mx-auto max-w-6xl px-4 py-6">
-  <section id="intro" class="mb-5 grid gap-3 md:grid-cols-3"></section>
-  <div id="stage"></div>
-</main>
+      /** 画布选择与当前模型对齐：方式必须在 ops 里，参数值必须在可选值里 */
+      function syncCanvas() {
+        const m = M(),
+          cs = S.canvas,
+          cap = m.capabilities;
+        if (cap.ops) {
+          if (!cap.ops.includes(cs.op)) cs.op = cap.ops[0] || null;
+        } else cs.op = null;
+        for (const [k, p] of Object.entries(cap.params)) {
+          if (!p.open) {
+            delete cs.params[k];
+            continue;
+          }
+          if (p.type === "enum" && !p.options.some((o) => String(o) === String(cs.params[k])))
+            cs.params[k] = p.default;
+          if (p.type === "number") {
+            const v = cs.params[k];
+            if (v == null || v < p.min || v > p.max)
+              cs.params[k] = Math.min(p.max, Math.max(p.min, p.default));
+          }
+          if (p.type === "boolean" && cs.params[k] == null) cs.params[k] = p.default;
+        }
+      }
 
-<div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-[90] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"></div>
+      /* ================================================================== 计价（Go 与 TS 各一份，共用测试向量；这里是 TS 版） */
+      function specOf(m) {
+        const spec = {
+          op: S.canvas.op,
+          ref_video: String(!!(S.canvas.vid && allowedMedia(m, S.canvas.op).includes("video"))),
+        };
+        for (const [k, p] of Object.entries(m.capabilities.params))
+          spec[k] = p.open ? (S.canvas.params[k] ?? p.default) : p.default;
+        return spec;
+      }
+      /** 命中规格价：条件项最多者胜，并列取书写顺序靠前 */
+      function pickTier(pr, spec) {
+        let best = null,
+          bn = -1;
+        (pr.tiers || []).forEach((t, i) => {
+          if (!t.on) return;
+          const ks = Object.keys(t.when).filter((k) => t.when[k] != null && t.when[k] !== "*");
+          if (
+            ks.length > 0 &&
+            ks.every((k) => String(spec[k]) === String(t.when[k])) &&
+            ks.length > bn
+          ) {
+            best = { ...t, idx: i };
+            bn = ks.length;
+          }
+        });
+        return best;
+      }
+      function quote(m, spec) {
+        const pr = m.pricing,
+          tier = pickTier(pr, spec),
+          cap = m.capabilities;
+        const fk = Object.keys(cap.params).find((k) => cap.params[k].fanout);
+        const n = fk ? Number(spec[fk]) || 1 : 1;
+        const tail = n > 1 ? ` → ${n}${cap.params[fk].unit || ""}共 ${n} 个任务，各自冻结` : "";
+        if (pr.billing === "per_call") {
+          const unit = tier ? tier.unit : pr.unit,
+            one = Math.ceil(unit);
+          return {
+            billing: "per_call",
+            tier,
+            n,
+            one,
+            raw: unit,
+            credits: one * n,
+            formula: `${unit} 积分/次 → 每个任务 ${one}${tail}`,
+          };
+        }
+        if (pr.billing === "per_second") {
+          const rate = tier ? tier.unit : pr.per_second,
+            d = Number(spec.duration) || 0,
+            raw = rate * d,
+            one = Math.ceil(raw);
+          return {
+            billing: "per_second",
+            tier,
+            n,
+            rate,
+            dur: d,
+            one,
+            raw,
+            credits: one * n,
+            formula: `${rate} 积分/秒 × ${d} 秒 = ${fix(raw)} → 每个任务 ${one}${tail}`,
+          };
+        }
+        const inEst = S.calc.chars + (cap.system || "").length,
+          maxOut = Math.min(cap.context.output, S.calc.maxOut || cap.context.output);
+        const raw = (inEst * pr.token.in + maxOut * pr.token.out) / 1e6;
+        return {
+          billing: "token",
+          n: 1,
+          one: Math.max(1, Math.ceil(raw)),
+          inEst,
+          maxOut,
+          raw,
+          credits: Math.max(1, Math.ceil(raw)),
+          formula: `(${inEst} × ${pr.token.in} + ${maxOut} × ${pr.token.out}) ÷ 1,000,000`,
+        };
+      }
+      /** 列表里的价格文案 */
+      function priceLabel(m) {
+        const pr = m.pricing;
+        if (pr.billing === "token") return "按 Token";
+        const base = pr.billing === "per_second" ? pr.per_second : pr.unit;
+        const low = Math.min(base, ...(pr.tiers || []).filter((t) => t.on).map((t) => t.unit));
+        return pr.billing === "per_second"
+          ? `${low} 积分/秒${low < base ? "起" : ""}`
+          : `${low} 积分${(pr.tiers || []).some((t) => t.on) && low < base ? "起" : ""}`;
+      }
+      const marginOf = (price, cost) => (price > 0 && cost != null ? (price - cost) / price : null);
+      const marginBadge = (v) =>
+        v == null
+          ? ""
+          : badge(
+              v < 0 ? "red" : v < 0.2 ? "amber" : "emerald",
+              `利润率 ${(v * 100).toFixed(0)}%`,
+              "tabular",
+            );
 
-<script>
-/* ================================================================== 基础小件 */
-const $ = (s, r = document) => r.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const I = (n, c = "size-4") => `<i data-lucide="${n}" class="${c}"></i>`;
-const icons = () => window.lucide && lucide.createIcons();
-const clone = (o) => JSON.parse(JSON.stringify(o));
-const TONE = {
-  emerald: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  sky: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  amber: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  violet: "border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-400",
-  rose: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400",
-  red: "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400",
-  zinc: "border-border bg-muted text-muted-foreground",
-};
-const badge = (tone, inner, extra = "") => `<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs font-medium ${TONE[tone]} ${extra}">${inner}</span>`;
-const INPUT = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
-const OUTLINE = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background font-medium shadow-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
-const PRIMARY = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary font-medium text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50";
-const GHOST = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
-const sw = (on, attrs = "") => `<button type="button" role="switch" aria-checked="${!!on}" class="sw" ${attrs}></button>`;
-const seg = (opts, val, act, extra = "") => `<div class="inline-flex gap-0.5 rounded-lg bg-muted p-0.5 text-xs ${extra}">${opts.map(([v, l, dis]) => `<button data-act="${act}" data-v="${v}" ${dis ? `disabled title="${esc(dis)}"` : ""} class="rounded-md px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40 ${String(val) === String(v) ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}">${l}</button>`).join("")}</div>`;
-const chip = (on, label, act, v, extra = "") => `<button data-act="${act}" data-v="${v}" class="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition ${on ? "border-foreground/80 bg-foreground text-background" : "border-input bg-background text-muted-foreground hover:text-foreground"} ${extra}">${on ? I("check", "size-3.5") : ""}${label}</button>`;
-const help = (t) => `<span class="group relative inline-flex">${I("circle-help", "size-3.5 text-muted-foreground")}<span class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden w-60 -translate-x-1/2 rounded-md border bg-popover px-2.5 py-2 text-xs font-normal leading-relaxed text-popover-foreground shadow-md group-hover:block">${t}</span></span>`;
-const fld = (label, control, hint = "", req = false, tip = "") => `<div class="space-y-2"><label class="flex items-center gap-1.5 text-sm font-medium leading-none">${req ? '<span class="text-red-500">*</span>' : ""}${label}${tip ? help(tip) : ""}</label>${control}${hint ? `<div class="text-[0.8rem] leading-relaxed text-muted-foreground">${hint}</div>` : ""}</div>`;
-const PHASE = { 1: ["sky", "一期"], 2: ["violet", "二期"], 3: ["amber", "三期"] };
-const pb = (n) => `<span class="ml-1.5 rounded border px-1 py-px text-[10px] font-medium ${TONE[PHASE[n][0]]}">${PHASE[n][1]}</span>`;
-const block = (title, phase, desc, inner) => `<section class="mb-7 last:mb-0"><div class="mb-3 flex flex-wrap items-baseline gap-x-2"><h3 class="flex items-center text-sm font-semibold">${title}${phase ? pb(phase) : ""}</h3>${desc ? `<p class="text-xs text-muted-foreground">${desc}</p>` : ""}</div>${inner}</section>`;
-const numIn = (path, val, attrs = "") => `<input type="number" data-bind="${path}" data-t="num" value="${val ?? ""}" class="${INPUT} tabular" ${attrs}>`;
-const toast = (msg) => { const el = document.createElement("div"); el.className = "toast-in pointer-events-auto rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg"; el.textContent = msg; $("#toasts").appendChild(el); setTimeout(() => el.remove(), 2600); };
-const getp = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
-const setp = (o, p, v) => { const ks = p.split("."); const last = ks.pop(); const t = ks.reduce((a, k) => a[k], o); t[last] = v; };
+      /* ================================================================== 校验：插件上限 + 发布前待办 */
+      function limCheck(path) {
+        const m = M(),
+          cap = m.capabilities,
+          [a, b, c] = path.split(".");
+        if (a === "refs") {
+          const v = cap.refs[b][c],
+            lim = c === "mb" ? HARD.refMb : HARD.refMax;
+          if (!Number.isInteger(v) || v < 0 || v > lim) return `允许范围 0 – ${lim}`;
+        }
+        if (a === "context") {
+          const { window: w, output: o } = cap.context;
+          if (b === "window" && (w < 1 || w > HARD.ctxWindow))
+            return `允许范围 1 – ${HARD.ctxWindow.toLocaleString()}`;
+          if (b === "output" && (o < HARD.ctxOutMin || o > HARD.ctxOutMax || o >= w))
+            return `需 ${HARD.ctxOutMin} – ${HARD.ctxOutMax.toLocaleString()}，且小于上下文窗口`;
+        }
+        if (a === "params") {
+          const p = cap.params[b];
+          if (
+            p.type === "number" &&
+            b === "duration" &&
+            (p.min < 1 ||
+              p.max > HARD.durationMax ||
+              p.max < p.min ||
+              p.default < p.min ||
+              p.default > p.max ||
+              p.step < 1)
+          )
+            return `需满足 1 ≤ 最小 ≤ 默认 ≤ 最大 ≤ ${HARD.durationMax}，步长 ≥ 1`;
+        }
+        return "";
+      }
+      function checksOf() {
+        const m = M(),
+          cap = m.capabilities,
+          out = [];
+        if (!m.label.trim()) out.push(["basic", "填写展示名称"]);
+        if (cap.ops && !cap.ops.length) out.push(["params", "至少开放一种生成方式"]);
+        const lims = [];
+        if (cap.refs)
+          for (const k of Object.keys(cap.refs)) {
+            lims.push(`refs.${k}.max`, `refs.${k}.mb`);
+          }
+        if (cap.context) lims.push("context.window", "context.output");
+        for (const k of Object.keys(cap.params))
+          if (cap.params[k].type === "number") lims.push(`params.${k}.range`);
+        lims.forEach((p) => {
+          const t = limCheck(p.replace(".range", ""));
+          if (t)
+            out.push([
+              "params",
+              `${p
+                .replace(
+                  /^refs\.(\w+)\.(max|mb)$/,
+                  (_, mk, f) => MEDIA[mk][0] + (f === "max" ? "数量" : "大小"),
+                )
+                .replace(/^context\.(\w+)$/, (_, f) => (f === "window" ? "上下文窗口" : "最大输出"))
+                .replace(/^params\.(\w+)\.range$/, (_, k) => cap.params[k].label)}：${t}`,
+            ]);
+        });
+        const pr = m.pricing;
+        if (
+          (pr.billing === "per_call" && !(pr.unit > 0)) ||
+          (pr.billing === "per_second" && !(pr.per_second > 0)) ||
+          (pr.billing === "token" && !(pr.token.in > 0 && pr.token.out > 0))
+        )
+          out.push(["price", "设置积分价格"]);
+        pr.tiers.forEach((t, i) => {
+          if (!Object.entries(t.when).some(([, v]) => v !== "*"))
+            out.push(["price", `规格价格 ${String(i + 2).padStart(2, "0")} 至少要设置一个条件`]);
+          for (const [k, v] of Object.entries(t.when)) {
+            if (v === "*" || k === "op" || k === "ref_video") continue;
+            const p = cap.params[k];
+            if (
+              !p ||
+              (p.type === "boolean"
+                ? !["true", "false"].includes(String(v))
+                : !p.options.some((o) => String(o) === String(v)))
+            ) {
+              out.push([
+                "price",
+                `规格价格 ${String(i + 2).padStart(2, "0")} 的条件「${p ? p.label : k} = ${v}」已不可选`,
+              ]);
+              break;
+            }
+          }
+        });
+        return out;
+      }
 
-/* ================================================================== 厂商 logo（lobe-icons 静态包，版本固定） */
-const ICON_BASE = "https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.95.1/icons/";
-// [slug, 名称, 是否有彩色版]（slug 已对照 1.95.1 文件清单核对）
-const VENDORS = [
-  ["kling", "可灵", 1], ["jimeng", "即梦", 1], ["doubao", "豆包", 1], ["hailuo", "海螺", 1], ["vidu", "Vidu", 1], ["runway", "Runway", 0], ["luma", "Luma", 1], ["pika", "Pika", 0],
-  ["pixverse", "PixVerse", 1], ["sora", "Sora", 1], ["midjourney", "Midjourney", 0], ["flux", "Flux", 0], ["stability", "Stability", 1], ["ideogram", "Ideogram", 0], ["recraft", "Recraft", 0], ["nanobanana", "Nano Banana", 1],
-  ["openai", "OpenAI", 0], ["claude", "Claude", 1], ["gemini", "Gemini", 1], ["deepseek", "DeepSeek", 1], ["qwen", "通义千问", 1], ["kimi", "Kimi", 1], ["zhipu", "智谱", 1], ["minimax", "MiniMax", 1],
-  ["hunyuan", "混元", 1], ["wenxin", "文心", 1], ["spark", "讯飞星火", 1], ["grok", "Grok", 0], ["mistral", "Mistral", 1], ["meta", "Meta", 1], ["suno", "Suno", 0], ["elevenlabs", "ElevenLabs", 0],
-  ["volcengine", "火山引擎", 1], ["bytedance", "字节跳动", 1], ["alibaba", "阿里巴巴", 1], ["tencent", "腾讯", 1], ["baidu", "百度", 1], ["newapi", "New API", 1], ["openrouter", "OpenRouter", 1], ["comfyui", "ComfyUI", 1],
-];
-const VMAP = Object.fromEntries(VENDORS.map(([s, n, c]) => [s, { slug: s, name: n, color: !!c }]));
-const GRADS = ["from-amber-400 to-orange-600", "from-sky-400 to-blue-600", "from-emerald-400 to-teal-600", "from-violet-400 to-purple-600", "from-rose-400 to-pink-600"];
-const initialOf = (name) => (String(name || "?").replace(/[（(].*$/, "").trim().slice(0, 1).toUpperCase() || "?");
-/** 有 vendor 用厂商 logo（白底圆角方块，亮暗主题一致）；没选或加载失败回退首字渐变头像 */
-const avatar = (m, size = "size-9", text = "text-sm") => {
-  const g = GRADS[[...(m.key || m.label || "?")].reduce((s, c) => s + c.charCodeAt(0), 0) % GRADS.length];
-  const v = VMAP[m.vendor];
-  const base = `relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-lg shadow-sm`;
-  const init = `<span class="${text} font-semibold text-white">${esc(initialOf(m.label))}</span>`;
-  if (!v) return `<span class="${base} bg-gradient-to-br ${g}">${init}</span>`;
-  const url = `${ICON_BASE}${v.slug}${v.color ? "-color" : ""}.svg`;
-  return `<span class="${base} bg-gradient-to-br ${g}">${init}<img src="${url}" alt="${esc(v.name)}" loading="lazy" onerror="this.remove()" class="absolute inset-0 size-full rounded-lg border bg-white object-contain p-[17%]"></span>`;
-};
-
-/* ================================================================== 模型数据（能力由运营在后台手填；插件只负责对接平台，不声明能力） */
-const RATIOS = ["Auto", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
-/** 后端校验用的固定上下限（防手误，不是某个平台的真实上限；参考了影策的取值）。运营在这个范围内自己填 */
-const HARD = { refMax: 50, refMb: 500, durationMax: 3600, ctxWindow: 10000000, ctxOutMin: 256, ctxOutMax: 1000000 };
-/** 新增可选值时的常用预设（只是快捷按钮，运营也可以自己输入别的值） */
-const PRESETS = { ratio: RATIOS, resolution: { video: ["480P", "720P", "1080P", "2K", "4K"], image: ["1K", "2K", "4K"] }, count: [1, 2, 4, 8] };
-const OPS = { t2v: "文生视频", i2v: "图生视频", omni: "全能参考", t2i: "文生图", i2i: "图生图" };
-const OPS_OF = { video: ["t2v", "i2v", "omni"], image: ["t2i", "i2i"] };
-const KIND_META = { video: ["sky", "视频", "clapperboard"], image: ["violet", "图片", "image"], text: ["emerald", "文本", "type"], audio: ["amber", "音频", "audio-lines"] };
-const MEDIA = { image: ["图片", "image"], audio: ["音频", "audio-lines"], video: ["视频", "film"] };
-/** 各生成方式能引用哪些素材：文生不引用；图生只引用图片；全能参考不区分类型，已开启的素材都可以引用（连什么上游节点就是什么） */
-function allowedMedia(m, op) {
-  const refs = m.capabilities.refs;
-  if (!refs || !op) return [];
-  const on = Object.keys(refs).filter((k) => refs[k].on && refs[k].max > 0);
-  if (op === "t2v" || op === "t2i") return [];
-  if (op === "i2v" || op === "i2i") return on.filter((k) => k === "image");
-  return on;
-}
-const DUR = [["5m", "5 分钟"], ["10m", "10 分钟"], ["20m", "20 分钟"], ["30m", "30 分钟"], ["60m", "60 分钟"]];
-
-const MODELS = {
-  video: {
-    key: "kling-v2-master", kind: "video", label: "可灵 2.0 大师版", vendor: "kling", tags: ["推荐", "带音轨"],
-    hint: "支持文生、图生与全能参考，时长可调。", deadline: "30m", sort: 100, up: "kling-v2-master", enabled: true, channel: "newapi-main",
-    capabilities: {
-      ops: ["t2v", "i2v", "omni"],
-      refs: { image: { on: true, max: 4, mb: 10 }, audio: { on: true, max: 1, mb: 15 }, video: { on: true, max: 1, mb: 100 } },
-      prompt: { max_length: 2000 },
-      params: {
-        ratio: { type: "enum", label: "比例", open: true, options: [...RATIOS], default: "Auto" },
-        resolution: { type: "enum", label: "清晰度", open: true, options: ["720P", "1080P", "4K"], default: "720P", spec: true },
-        duration: { type: "number", label: "视频时长", open: true, min: 4, max: 12, default: 5, step: 1, unit: "秒" },
-        audio: { type: "boolean", label: "生成音频", open: true, default: true, spec: true },
-        count: { type: "enum", label: "生成数量", open: true, options: [1, 2, 4], default: 1, fanout: true, unit: "个" },
-      },
-    },
-    pricing: {
-      billing: "per_second", unit: 10, per_second: 2, token: { in: 300, out: 1200 },
-      tiers: [{ on: true, when: { audio: "true" }, unit: 3 }, { on: true, when: { resolution: "1080P" }, unit: 4 }, { on: true, when: { resolution: "1080P", audio: "true" }, unit: 5 }, { on: true, when: { resolution: "4K" }, unit: 8 }, { on: true, when: { ref_video: "true" }, unit: 2 }, { on: true, when: { audio: "true", ref_video: "true" }, unit: 3 }],
-      cost: { on: true, unit: 6, per_second: 1, in: 100, out: 400 },
-    },
-  },
-  image: {
-    key: "jimeng-image-3", kind: "image", label: "即梦 图片 3.0", vendor: "jimeng", tags: ["推荐"],
-    hint: "文生图与图生图，支持 1K / 2K / 4K，档位不同价格不同。", deadline: "10m", sort: 100, up: "jimeng-image-3.0", enabled: true, channel: "newapi-main",
-    capabilities: {
-      ops: ["t2i", "i2i"],
-      refs: { image: { on: true, max: 4, mb: 10 }, audio: { on: false, max: 0, mb: 0 }, video: { on: false, max: 0, mb: 0 } },
-      prompt: { max_length: 1500 },
-      params: {
-        ratio: { type: "enum", label: "比例", open: true, options: ["Auto", "1:1", "16:9", "9:16", "4:3", "3:4"], default: "1:1" },
-        resolution: { type: "enum", label: "清晰度", open: true, options: ["1K", "2K", "4K"], default: "1K", spec: true },
-        count: { type: "enum", label: "生成数量", open: true, options: [1, 2, 4], default: 1, fanout: true, unit: "张" },
-      },
-    },
-    pricing: {
-      billing: "per_call", unit: 4, per_second: 0, token: { in: 300, out: 1200 },
-      tiers: [{ on: true, when: { resolution: "2K" }, unit: 8 }, { on: true, when: { resolution: "4K" }, unit: 16 }],
-      cost: { on: true, unit: 2, per_second: 0, in: 0, out: 0 },
-    },
-  },
-  text: {
-    key: "deepseek-chat", kind: "text", label: "DeepSeek 对话", vendor: "deepseek", tags: ["性价比"],
-    hint: "通用对话与写作，支持长上下文。", deadline: "5m", sort: 100, up: "deepseek-chat", enabled: true, channel: "newapi-main",
-    capabilities: {
-      prompt: { max_length: 8000 }, context: { window: 128000, output: 8192 }, system: "你是一名资深分镜师，回答使用中文。",
-      params: {},
-    },
-    pricing: { billing: "token", unit: 1, per_second: 0, token: { in: 300, out: 1200 }, tiers: [], cost: { on: false, unit: 0, per_second: 0, in: 120, out: 480 } },
-  },
-};
-const OTHERS = {
-  video: [{ label: "即梦 视频 3.0", vendor: "jimeng", price: "1.5 积分/秒起", tags: ["快"], hint: "适合快速出草稿。" }, { label: "Runway Gen-4", vendor: "runway", price: "5 积分/秒", tags: [], hint: "" }],
-  image: [{ label: "GPT Image 1", vendor: "openai", price: "6 积分起", tags: [], hint: "文字渲染更稳。" }, { label: "Flux Pro", vendor: "flux", price: "3 积分", tags: ["快"], hint: "" }],
-  text: [{ label: "GPT-4.1", vendor: "openai", price: "按 Token", tags: [], hint: "长文本理解更稳。" }, { label: "Kimi K2", vendor: "kimi", price: "按 Token", tags: ["长上下文"], hint: "" }],
-};
-
-/* ================================================================== 状态 */
-const S = {
-  scene: "admin", preset: "video", tab: "basic", vpOpen: false, vq: "", view: "admin",
-  canvas: { op: "i2v", params: {}, img: false, aud: false, vid: false, failN: 0, lowK: 0, stage: 2 },
-  calc: { chars: 1000, maxOut: 8192, uin: 1200, uout: 3000, noUsage: false, fail: false },
-};
-const M = () => MODELS[S.preset];
-const fix = (n) => (Math.round(n * 100) / 100).toString();
-
-/** 画布选择与当前模型对齐：方式必须在 ops 里，参数值必须在可选值里 */
-function syncCanvas() {
-  const m = M(), cs = S.canvas, cap = m.capabilities;
-  if (cap.ops) { if (!cap.ops.includes(cs.op)) cs.op = cap.ops[0] || null; } else cs.op = null;
-  for (const [k, p] of Object.entries(cap.params)) {
-    if (!p.open) { delete cs.params[k]; continue; }
-    if (p.type === "enum" && !p.options.some((o) => String(o) === String(cs.params[k]))) cs.params[k] = p.default;
-    if (p.type === "number") { const v = cs.params[k]; if (v == null || v < p.min || v > p.max) cs.params[k] = Math.min(p.max, Math.max(p.min, p.default)); }
-    if (p.type === "boolean" && cs.params[k] == null) cs.params[k] = p.default;
-  }
-}
-
-/* ================================================================== 计价（Go 与 TS 各一份，共用测试向量；这里是 TS 版） */
-function specOf(m) {
-  const spec = { op: S.canvas.op, ref_video: String(!!(S.canvas.vid && allowedMedia(m, S.canvas.op).includes("video"))) };
-  for (const [k, p] of Object.entries(m.capabilities.params)) spec[k] = p.open ? (S.canvas.params[k] ?? p.default) : p.default;
-  return spec;
-}
-/** 命中规格价：条件项最多者胜，并列取书写顺序靠前 */
-function pickTier(pr, spec) {
-  let best = null, bn = -1;
-  (pr.tiers || []).forEach((t, i) => {
-    if (!t.on) return;
-    const ks = Object.keys(t.when).filter((k) => t.when[k] != null && t.when[k] !== "*");
-    if (ks.length > 0 && ks.every((k) => String(spec[k]) === String(t.when[k])) && ks.length > bn) { best = { ...t, idx: i }; bn = ks.length; }
-  });
-  return best;
-}
-function quote(m, spec) {
-  const pr = m.pricing, tier = pickTier(pr, spec), cap = m.capabilities;
-  const fk = Object.keys(cap.params).find((k) => cap.params[k].fanout);
-  const n = fk ? Number(spec[fk]) || 1 : 1;
-  const tail = n > 1 ? ` → ${n}${cap.params[fk].unit || ""}共 ${n} 个任务，各自冻结` : "";
-  if (pr.billing === "per_call") { const unit = tier ? tier.unit : pr.unit, one = Math.ceil(unit); return { billing: "per_call", tier, n, one, raw: unit, credits: one * n, formula: `${unit} 积分/次 → 每个任务 ${one}${tail}` }; }
-  if (pr.billing === "per_second") {
-    const rate = tier ? tier.unit : pr.per_second, d = Number(spec.duration) || 0, raw = rate * d, one = Math.ceil(raw);
-    return { billing: "per_second", tier, n, rate, dur: d, one, raw, credits: one * n, formula: `${rate} 积分/秒 × ${d} 秒 = ${fix(raw)} → 每个任务 ${one}${tail}` };
-  }
-  const inEst = S.calc.chars + (cap.system || "").length, maxOut = Math.min(cap.context.output, S.calc.maxOut || cap.context.output);
-  const raw = (inEst * pr.token.in + maxOut * pr.token.out) / 1e6;
-  return { billing: "token", n: 1, one: Math.max(1, Math.ceil(raw)), inEst, maxOut, raw, credits: Math.max(1, Math.ceil(raw)), formula: `(${inEst} × ${pr.token.in} + ${maxOut} × ${pr.token.out}) ÷ 1,000,000` };
-}
-/** 列表里的价格文案 */
-function priceLabel(m) {
-  const pr = m.pricing;
-  if (pr.billing === "token") return "按 Token";
-  const base = pr.billing === "per_second" ? pr.per_second : pr.unit;
-  const low = Math.min(base, ...(pr.tiers || []).filter((t) => t.on).map((t) => t.unit));
-  return pr.billing === "per_second" ? `${low} 积分/秒${low < base ? "起" : ""}` : `${low} 积分${(pr.tiers || []).some((t) => t.on) && low < base ? "起" : ""}`;
-}
-const marginOf = (price, cost) => (price > 0 && cost != null ? (price - cost) / price : null);
-const marginBadge = (v) => (v == null ? "" : badge(v < 0 ? "red" : v < 0.2 ? "amber" : "emerald", `利润率 ${(v * 100).toFixed(0)}%`, "tabular"));
-
-/* ================================================================== 校验：插件上限 + 发布前待办 */
-function limCheck(path) {
-  const m = M(), cap = m.capabilities, [a, b, c] = path.split(".");
-  if (a === "refs") { const v = cap.refs[b][c], lim = c === "mb" ? HARD.refMb : HARD.refMax; if (!Number.isInteger(v) || v < 0 || v > lim) return `允许范围 0 – ${lim}`; }
-  if (a === "context") {
-    const { window: w, output: o } = cap.context;
-    if (b === "window" && (w < 1 || w > HARD.ctxWindow)) return `允许范围 1 – ${HARD.ctxWindow.toLocaleString()}`;
-    if (b === "output" && (o < HARD.ctxOutMin || o > HARD.ctxOutMax || o >= w)) return `需 ${HARD.ctxOutMin} – ${HARD.ctxOutMax.toLocaleString()}，且小于上下文窗口`;
-  }
-  if (a === "params") {
-    const p = cap.params[b];
-    if (p.type === "number" && b === "duration" && (p.min < 1 || p.max > HARD.durationMax || p.max < p.min || p.default < p.min || p.default > p.max || p.step < 1)) return `需满足 1 ≤ 最小 ≤ 默认 ≤ 最大 ≤ ${HARD.durationMax}，步长 ≥ 1`;
-  }
-  return "";
-}
-function checksOf() {
-  const m = M(), cap = m.capabilities, out = [];
-  if (!m.label.trim()) out.push(["basic", "填写展示名称"]);
-  if (cap.ops && !cap.ops.length) out.push(["params", "至少开放一种生成方式"]);
-  const lims = [];
-  if (cap.refs) for (const k of Object.keys(cap.refs)) { lims.push(`refs.${k}.max`, `refs.${k}.mb`); }
-  if (cap.context) lims.push("context.window", "context.output");
-  for (const k of Object.keys(cap.params)) if (cap.params[k].type === "number") lims.push(`params.${k}.range`);
-  lims.forEach((p) => { const t = limCheck(p.replace(".range", "")); if (t) out.push(["params", `${p.replace(/^refs\.(\w+)\.(max|mb)$/, (_, mk, f) => MEDIA[mk][0] + (f === "max" ? "数量" : "大小")).replace(/^context\.(\w+)$/, (_, f) => (f === "window" ? "上下文窗口" : "最大输出")).replace(/^params\.(\w+)\.range$/, (_, k) => cap.params[k].label)}：${t}`]); });
-  const pr = m.pricing;
-  if ((pr.billing === "per_call" && !(pr.unit > 0)) || (pr.billing === "per_second" && !(pr.per_second > 0)) || (pr.billing === "token" && !(pr.token.in > 0 && pr.token.out > 0))) out.push(["price", "设置积分价格"]);
-  pr.tiers.forEach((t, i) => {
-    if (!Object.entries(t.when).some(([, v]) => v !== "*")) out.push(["price", `规格价格 ${String(i + 2).padStart(2, "0")} 至少要设置一个条件`]);
-    for (const [k, v] of Object.entries(t.when)) {
-      if (v === "*" || k === "op" || k === "ref_video") continue;
-      const p = cap.params[k];
-      if (!p || (p.type === "boolean" ? !["true", "false"].includes(String(v)) : !p.options.some((o) => String(o) === String(v)))) { out.push(["price", `规格价格 ${String(i + 2).padStart(2, "0")} 的条件「${p ? p.label : k} = ${v}」已不可选`]); break; }
-    }
-  });
-  return out;
-}
-
-/* ================================================================== 画布节点（管理端预览与画布端共用）
+      /* ================================================================== 画布节点（管理端预览与画布端共用）
    版式参考用户给的 LiblibTV 节点截图：参考素材 → 提示词 → 底栏「模型 · 生成方式 · 参数摘要 · 积分 · 发送」，参数摘要点开是参数面板 */
-const creditText = (q) => (q.billing === "token" ? `≤${q.credits}` : `${q.credits}`);
-const ratioShape = (r) => { if (r === "Auto") return [16, 12]; const [a, b] = r.split(":").map(Number), k = 16 / Math.max(a, b); return [a * k, b * k]; };
-function sumHtml(m) {
-  const cap = m.capabilities, cs = S.canvas, parts = [];
-  for (const [k, p] of Object.entries(cap.params)) {
-    if (!p.open) continue;
-    const v = cs.params[k];
-    parts.push(p.type === "boolean" ? I(v ? "volume-2" : "volume-x", "size-3.5") : `${v}${p.unit || ""}`);
-  }
-  return parts.join('<span class="mx-1 opacity-40">·</span>');
-}
-function popHtml(m) {
-  const cap = m.capabilities, cs = S.canvas;
-  const sec = (t, inner) => `<div><div class="mb-1.5 text-xs font-medium text-muted-foreground">${esc(t)}</div>${inner}</div>`;
-  return `<div class="fade-in space-y-3.5 border-t bg-muted/20 p-3">${Object.entries(cap.params).filter(([, p]) => p.open).map(([k, p]) => {
-    if (p.type === "enum" && k === "ratio") return sec(p.label, `<div class="grid grid-cols-4 gap-1.5">${p.options.map((o) => { const [w, h] = ratioShape(String(o)); return `<button data-act="c-param" data-v="${k}|${esc(o)}" class="flex flex-col items-center gap-1 rounded-lg border py-2 text-[11px] ${String(cs.params[k]) === String(o) ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}"><span class="rounded-[3px] border-2 border-current" style="width:${w}px;height:${h}px"></span>${o}</button>`; }).join("")}</div>`);
-    if (p.type === "enum") return sec(p.label, `<div class="grid gap-1.5" style="grid-template-columns:repeat(${Math.min(p.options.length, 4)},minmax(0,1fr))">${p.options.map((o) => `<button data-act="c-param" data-v="${k}|${esc(o)}" class="h-8 rounded-lg border text-xs ${String(cs.params[k]) === String(o) ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}">${o}${p.unit || ""}</button>`).join("")}</div>`);
-    if (p.type === "number") return sec(p.label, `<div class="flex items-center gap-3"><input type="range" data-cp="${k}" min="${p.min}" max="${p.max}" step="${p.step || 1}" value="${cs.params[k]}" class="h-4 flex-1"><div class="flex items-center gap-1"><input type="number" data-cp="${k}" min="${p.min}" max="${p.max}" step="${p.step || 1}" value="${cs.params[k]}" class="h-8 w-16 rounded-md border border-input bg-transparent px-2 text-center text-xs tabular"><span class="text-xs text-muted-foreground">${p.unit || ""}</span></div></div><div class="mt-1 flex justify-between text-[10px] text-muted-foreground tabular"><span>最短 ${p.min}${p.unit || ""}</span><span>最长 ${p.max}${p.unit || ""}</span></div>`);
-    return sec(p.label, `<div class="grid grid-cols-2 gap-1.5">${[[1, "开启"], [0, "关闭"]].map(([b, l]) => `<button data-act="c-boolset" data-v="${k}|${b}" class="h-8 rounded-lg border text-xs ${(cs.params[k] ? 1 : 0) === b ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}">${l}</button>`).join("")}</div>`);
-  }).join("")}</div>`;
-}
-function nodeHtml() {
-  const m = M(), cap = m.capabilities, cs = S.canvas, spec = specOf(m), q = quote(m, spec), km = KIND_META[m.kind];
-  const allowed = allowedMedia(m, cs.op);
-  const nOf = { image: +cs.img, audio: +cs.aud, video: +cs.vid };
-  const tiles = cap.refs ? (allowed.length
-    ? `<div class="flex flex-wrap gap-2">${allowed.map((k) => `<div class="relative grid size-11 place-items-center rounded-lg ${nOf[k] ? "bg-sky-500/15 text-sky-500" : "bg-muted text-muted-foreground"}" title="${MEDIA[k][0]}：最多 ${cap.refs[k].max} 个，单个 ${cap.refs[k].mb} MB">${I(MEDIA[k][1], "size-5")}<span class="absolute -left-1 -top-1 grid min-w-4 place-items-center rounded-full bg-foreground px-1 text-[10px] font-medium text-background tabular">${nOf[k]}/${cap.refs[k].max}</span></div>`).join("")}</div>`
-    : `<div class="text-[11px] text-muted-foreground">${cs.op ? `${OPS[cs.op]}：只用文字，不引用素材。` : ""}</div>`) : "";
-  const stale = cap.refs && cs.op && ((cs.img && !allowed.includes("image")) || (cs.aud && !allowed.includes("audio")) || (cs.vid && !allowed.includes("video")))
-    ? `<div class="flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-[11px] ${TONE.red}">${I("triangle-alert", "mt-px size-3.5 shrink-0")}已连的${[cs.img && !allowed.includes("image") ? "图片" : "", cs.aud && !allowed.includes("audio") ? "音频" : "", cs.vid && !allowed.includes("video") ? "视频" : ""].filter(Boolean).join("、")}在「${OPS[cs.op]}」下不使用，连线保留，提交时忽略。</div>` : "";
-  const opSel = cap.ops && cap.ops.length > 1
-    ? `<label class="relative inline-flex"><select data-cop class="h-8 cursor-pointer appearance-none rounded-lg border border-input bg-transparent pl-2.5 pr-7 text-xs font-medium">${cap.ops.map((o) => `<option value="${o}" ${cs.op === o ? "selected" : ""}>${OPS[o]}</option>`).join("")}</select>${I("chevron-down", "pointer-events-none absolute right-2 top-2.5 size-3 text-muted-foreground")}</label>`
-    : cap.ops && cap.ops.length === 1 ? `<span class="inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-medium">${OPS[cap.ops[0]]}</span>` : cap.ops ? `<span class="text-[11px] text-red-500">未开放生成方式</span>` : "";
-  const hasOpen = Object.values(cap.params).some((p) => p.open);
-  return `<div class="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">${I(km[2], "size-3.5")}${km[1]}节点 1</div>
+      const creditText = (q) => (q.billing === "token" ? `≤${q.credits}` : `${q.credits}`);
+      const ratioShape = (r) => {
+        if (r === "Auto") return [16, 12];
+        const [a, b] = r.split(":").map(Number),
+          k = 16 / Math.max(a, b);
+        return [a * k, b * k];
+      };
+      function sumHtml(m) {
+        const cap = m.capabilities,
+          cs = S.canvas,
+          parts = [];
+        for (const [k, p] of Object.entries(cap.params)) {
+          if (!p.open) continue;
+          const v = cs.params[k];
+          parts.push(
+            p.type === "boolean"
+              ? I(v ? "volume-2" : "volume-x", "size-3.5")
+              : `${v}${p.unit || ""}`,
+          );
+        }
+        return parts.join('<span class="mx-1 opacity-40">·</span>');
+      }
+      function popHtml(m) {
+        const cap = m.capabilities,
+          cs = S.canvas;
+        const sec = (t, inner) =>
+          `<div><div class="mb-1.5 text-xs font-medium text-muted-foreground">${esc(t)}</div>${inner}</div>`;
+        return `<div class="fade-in space-y-3.5 border-t bg-muted/20 p-3">${Object.entries(
+          cap.params,
+        )
+          .filter(([, p]) => p.open)
+          .map(([k, p]) => {
+            if (p.type === "enum" && k === "ratio")
+              return sec(
+                p.label,
+                `<div class="grid grid-cols-4 gap-1.5">${p.options
+                  .map((o) => {
+                    const [w, h] = ratioShape(String(o));
+                    return `<button data-act="c-param" data-v="${k}|${esc(o)}" class="flex flex-col items-center gap-1 rounded-lg border py-2 text-[11px] ${String(cs.params[k]) === String(o) ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}"><span class="rounded-[3px] border-2 border-current" style="width:${w}px;height:${h}px"></span>${o}</button>`;
+                  })
+                  .join("")}</div>`,
+              );
+            if (p.type === "enum")
+              return sec(
+                p.label,
+                `<div class="grid gap-1.5" style="grid-template-columns:repeat(${Math.min(p.options.length, 4)},minmax(0,1fr))">${p.options.map((o) => `<button data-act="c-param" data-v="${k}|${esc(o)}" class="h-8 rounded-lg border text-xs ${String(cs.params[k]) === String(o) ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}">${o}${p.unit || ""}</button>`).join("")}</div>`,
+              );
+            if (p.type === "number")
+              return sec(
+                p.label,
+                `<div class="flex items-center gap-3"><input type="range" data-cp="${k}" min="${p.min}" max="${p.max}" step="${p.step || 1}" value="${cs.params[k]}" class="h-4 flex-1"><div class="flex items-center gap-1"><input type="number" data-cp="${k}" min="${p.min}" max="${p.max}" step="${p.step || 1}" value="${cs.params[k]}" class="h-8 w-16 rounded-md border border-input bg-transparent px-2 text-center text-xs tabular"><span class="text-xs text-muted-foreground">${p.unit || ""}</span></div></div><div class="mt-1 flex justify-between text-[10px] text-muted-foreground tabular"><span>最短 ${p.min}${p.unit || ""}</span><span>最长 ${p.max}${p.unit || ""}</span></div>`,
+              );
+            return sec(
+              p.label,
+              `<div class="grid grid-cols-2 gap-1.5">${[
+                [1, "开启"],
+                [0, "关闭"],
+              ]
+                .map(
+                  ([b, l]) =>
+                    `<button data-act="c-boolset" data-v="${k}|${b}" class="h-8 rounded-lg border text-xs ${(cs.params[k] ? 1 : 0) === b ? "border-foreground/70 bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}">${l}</button>`,
+                )
+                .join("")}</div>`,
+            );
+          })
+          .join("")}</div>`;
+      }
+      function nodeHtml() {
+        const m = M(),
+          cap = m.capabilities,
+          cs = S.canvas,
+          spec = specOf(m),
+          q = quote(m, spec),
+          km = KIND_META[m.kind];
+        const allowed = allowedMedia(m, cs.op);
+        const nOf = { image: +cs.img, audio: +cs.aud, video: +cs.vid };
+        const tiles = cap.refs
+          ? allowed.length
+            ? `<div class="flex flex-wrap gap-2">${allowed.map((k) => `<div class="relative grid size-11 place-items-center rounded-lg ${nOf[k] ? "bg-sky-500/15 text-sky-500" : "bg-muted text-muted-foreground"}" title="${MEDIA[k][0]}：最多 ${cap.refs[k].max} 个，单个 ${cap.refs[k].mb} MB">${I(MEDIA[k][1], "size-5")}<span class="absolute -left-1 -top-1 grid min-w-4 place-items-center rounded-full bg-foreground px-1 text-[10px] font-medium text-background tabular">${nOf[k]}/${cap.refs[k].max}</span></div>`).join("")}</div>`
+            : `<div class="text-[11px] text-muted-foreground">${cs.op ? `${OPS[cs.op]}：只用文字，不引用素材。` : ""}</div>`
+          : "";
+        const stale =
+          cap.refs &&
+          cs.op &&
+          ((cs.img && !allowed.includes("image")) ||
+            (cs.aud && !allowed.includes("audio")) ||
+            (cs.vid && !allowed.includes("video")))
+            ? `<div class="flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-[11px] ${TONE.red}">${I("triangle-alert", "mt-px size-3.5 shrink-0")}已连的${[cs.img && !allowed.includes("image") ? "图片" : "", cs.aud && !allowed.includes("audio") ? "音频" : "", cs.vid && !allowed.includes("video") ? "视频" : ""].filter(Boolean).join("、")}在「${OPS[cs.op]}」下不使用，连线保留，提交时忽略。</div>`
+            : "";
+        const opSel =
+          cap.ops && cap.ops.length > 1
+            ? `<label class="relative inline-flex"><select data-cop class="h-8 cursor-pointer appearance-none rounded-lg border border-input bg-transparent pl-2.5 pr-7 text-xs font-medium">${cap.ops.map((o) => `<option value="${o}" ${cs.op === o ? "selected" : ""}>${OPS[o]}</option>`).join("")}</select>${I("chevron-down", "pointer-events-none absolute right-2 top-2.5 size-3 text-muted-foreground")}</label>`
+            : cap.ops && cap.ops.length === 1
+              ? `<span class="inline-flex h-8 items-center rounded-lg border px-2.5 text-xs font-medium">${OPS[cap.ops[0]]}</span>`
+              : cap.ops
+                ? `<span class="text-[11px] text-red-500">未开放生成方式</span>`
+                : "";
+        const hasOpen = Object.values(cap.params).some((p) => p.open);
+        return `<div class="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">${I(km[2], "size-3.5")}${km[1]}节点 1</div>
   <div class="overflow-hidden rounded-xl border bg-card shadow-lg">
     <div class="space-y-3 p-3">${tiles}${stale}
       <div class="min-h-[4.5rem] rounded-md text-sm leading-relaxed text-muted-foreground">${m.kind === "text" ? "写一篇 2000 字的分镜脚本…" : m.kind === "image" ? "可直接文字生图，或上传图片输入文字指令进行编辑…" : "描述你想生成的内容，可引用上方素材…"}<div class="mt-2 text-right text-[10px] tabular">0 / ${cap.prompt.max_length}</div></div>
@@ -388,14 +961,18 @@ function nodeHtml() {
     </div>
     ${cs.pop && hasOpen ? popHtml(m) : ""}
   </div>`;
-}
+      }
 
-/* ================================================================== 管理端弹窗 */
-const TABS = [["basic", "基本信息", "info"], ["params", "能力与参数", "sliders-horizontal"], ["price", "积分定价", "coins"]];
+      /* ================================================================== 管理端弹窗 */
+      const TABS = [
+        ["basic", "基本信息", "info"],
+        ["params", "能力与参数", "sliders-horizontal"],
+        ["price", "积分定价", "coins"],
+      ];
 
-function adminShell() {
-  const m = M();
-  return `<div class="flex h-[min(86vh,860px)] min-h-[620px] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl">
+      function adminShell() {
+        const m = M();
+        return `<div class="flex h-[min(86vh,860px)] min-h-[620px] flex-col overflow-hidden rounded-xl border bg-background shadow-2xl">
     <div class="flex items-start gap-4 border-b px-6 py-4">
       <div id="hd-logo">${avatar(m, "size-10", "text-base")}</div>
       <div class="min-w-0 flex-1">
@@ -421,60 +998,90 @@ function adminShell() {
       </div>
     </div>
   </div>`;
-}
+      }
 
-/* ---- 基本信息 */
-function vendorPicker() {
-  const m = M(), v = VMAP[m.vendor];
-  const q = S.vq.trim().toLowerCase();
-  const list = VENDORS.filter(([s, n]) => !q || s.includes(q) || n.toLowerCase().includes(q));
-  return `<div id="vp" class="relative">
+      /* ---- 基本信息 */
+      function vendorPicker() {
+        const m = M(),
+          v = VMAP[m.vendor];
+        const q = S.vq.trim().toLowerCase();
+        const list = VENDORS.filter(([s, n]) => !q || s.includes(q) || n.toLowerCase().includes(q));
+        return `<div id="vp" class="relative">
     <button data-act="vp-toggle" class="${INPUT} items-center gap-2.5 text-left">${avatar(m, "size-6", "text-[11px]")}<span class="flex-1 truncate">${v ? esc(v.name) : '<span class="text-muted-foreground">未选择（使用首字头像）</span>'}</span>${I("chevrons-up-down", "size-4 text-muted-foreground")}</button>
-    ${S.vpOpen ? `<div class="fade-in absolute right-0 top-full z-20 mt-1.5 w-[min(24rem,calc(100vw-3rem))] rounded-xl border bg-popover p-3 shadow-xl">
+    ${
+      S.vpOpen
+        ? `<div class="fade-in absolute right-0 top-full z-20 mt-1.5 w-[min(24rem,calc(100vw-3rem))] rounded-xl border bg-popover p-3 shadow-xl">
       <div class="relative mb-2.5">${I("search", "pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground")}<input id="vq" value="${esc(S.vq)}" placeholder="搜索厂商，如 kling、可灵" class="${INPUT} pl-8"></div>
       <div id="vgrid" class="max-h-64 overflow-y-auto">${vgrid(list)}</div>
       <p class="mt-2 border-t pt-2 text-[11px] leading-relaxed text-muted-foreground">图标来自 lobe-icons（MIT），品牌商标归各厂商所有。清单在代码里维护，新增厂商只需往清单加一项。</p>
-    </div>` : ""}
+    </div>`
+        : ""
+    }
   </div>`;
-}
-const vgrid = (list) => `<div class="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
+      }
+      const vgrid = (list) => `<div class="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
   <button data-act="vp-pick" data-v="" class="flex flex-col items-center gap-1 rounded-lg border border-dashed p-2 text-[11px] text-muted-foreground hover:bg-accent"><span class="grid size-8 place-items-center rounded-lg bg-muted">${I("ban", "size-4")}</span>不选</button>
   ${list.map(([s, n]) => `<button data-act="vp-pick" data-v="${s}" class="flex flex-col items-center gap-1 rounded-lg border p-2 text-[11px] hover:bg-accent ${M().vendor === s ? "border-foreground/70 bg-accent" : "border-transparent"}">${avatar({ vendor: s, label: n, key: s }, "size-8")}<span class="w-full truncate text-center">${esc(n)}</span></button>`).join("")}
   ${list.length ? "" : '<div class="col-span-full py-6 text-center text-xs text-muted-foreground">没有匹配的厂商</div>'}</div>`;
 
-function tagsField() {
-  const t = M().tags;
-  return fld("展示标签", `<div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-dashed border-input p-1.5">
+      function tagsField() {
+        const t = M().tags;
+        return fld(
+          "展示标签",
+          `<div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-dashed border-input p-1.5">
     ${t.map((x, i) => `<span class="inline-flex h-7 items-center gap-1 rounded-md bg-muted pl-2 pr-1 text-xs">${esc(x)}<button data-act="tag-del" data-v="${i}" class="rounded p-0.5 hover:bg-background" aria-label="删除">${I("x", "size-3")}</button></span>`).join("")}
-    ${t.length < 5 ? `<input id="tag-in" maxlength="12" placeholder="${t.length ? "继续添加…" : "输入标签后回车，如：推荐、带音轨"}" class="h-7 min-w-[10rem] flex-1 bg-transparent px-1.5 text-sm outline-none placeholder:text-muted-foreground">` : ""}</div>`, `最多 5 个，每个 12 字。已用 <span id="tag-n">${t.length}</span>/5。`);
-}
+    ${t.length < 5 ? `<input id="tag-in" maxlength="12" placeholder="${t.length ? "继续添加…" : "输入标签后回车，如：推荐、带音轨"}" class="h-7 min-w-[10rem] flex-1 bg-transparent px-1.5 text-sm outline-none placeholder:text-muted-foreground">` : ""}</div>`,
+          `最多 5 个，每个 12 字。已用 <span id="tag-n">${t.length}</span>/5。`,
+        );
+      }
 
-function basicForm() {
-  const m = M();
-  const kindCard = (k, l, d, ic, on) => `<div class="flex items-center gap-2.5 rounded-lg border p-3 ${on ? `${TONE[KIND_META[k][0]]} ring-1 ring-current` : "opacity-45"}">${I(ic, "size-5")}<span><span class="block text-sm font-medium">${l}</span><span class="block text-[11px] opacity-70">${d}</span></span></div>`;
-  return block("模型身份", 0, "区分产品侧的展示标识与上游实际调用的 ID。", `<div class="grid gap-5 md:grid-cols-2">
+      function basicForm() {
+        const m = M();
+        const kindCard = (k, l, d, ic, on) =>
+          `<div class="flex items-center gap-2.5 rounded-lg border p-3 ${on ? `${TONE[KIND_META[k][0]]} ring-1 ring-current` : "opacity-45"}">${I(ic, "size-5")}<span><span class="block text-sm font-medium">${l}</span><span class="block text-[11px] opacity-70">${d}</span></span></div>`;
+        return (
+          block(
+            "模型身份",
+            0,
+            "区分产品侧的展示标识与上游实际调用的 ID。",
+            `<div class="grid gap-5 md:grid-cols-2">
       ${fld("产品模型标识", `<input value="${esc(m.key)}" disabled class="${INPUT} font-mono">`, "", true, "画布、任务与计费都用它引用这个模型，创建后不能修改。")}
       ${fld("上游模型 ID", `<input data-bind="up" value="${esc(m.up)}" class="${INPUT} font-mono">`, "", true, "插件把这个值作为 model 参数发给上游网关。")}
       ${fld("展示名称", `<input data-bind="label" value="${esc(m.label)}" placeholder="用户在画布里看到的名字" class="${INPUT}">`, "", true)}
       ${fld("模型 Logo", vendorPicker(), "使用厂商 logo；不选时用首字头像。")}
-    </div>`).replace("模型身份</h3>", `模型身份</h3>${pb(1)}`) +
-    block("能力与渠道", 0, "新建时选定能力与渠道；保存后不能再改（现状保持）。", `<div class="space-y-5">
+    </div>`,
+          ).replace("模型身份</h3>", `模型身份</h3>${pb(1)}`) +
+          block(
+            "能力与渠道",
+            0,
+            "新建时选定能力与渠道；保存后不能再改（现状保持）。",
+            `<div class="space-y-5">
       ${fld("模型能力", `<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">${kindCard("text", "文本", "对话、写作", "type", m.kind === "text")}${kindCard("image", "图片", "文生图、图生图", "image", m.kind === "image")}${kindCard("video", "视频", "文生、图生视频", "clapperboard", m.kind === "video")}${kindCard("audio", "音频", "语音合成", "audio-lines", false)}</div>`, "", true)}
       ${fld("所属渠道", `<div class="grid gap-2 sm:grid-cols-2"><div class="flex items-start gap-3 rounded-lg border border-foreground/60 bg-accent p-3"><span class="mt-0.5 grid size-4 place-items-center rounded-full border border-foreground"><span class="size-2 rounded-full bg-foreground"></span></span><span class="min-w-0 flex-1"><span class="block text-sm font-medium">自建 New API</span><span class="mt-0.5 block text-xs text-muted-foreground">New API v1.1.0 · ${m.kind === "video" ? "异步" : "同步"}</span></span>${badge("emerald", I("shield-check", "size-3") + "Key")}</div></div>`, "", true)}
-    </div>`) +
-    block("展示信息", 1, "显示在创作端的模型选择器里，不影响调用与计费。", `<div class="space-y-5">
+    </div>`,
+          ) +
+          block(
+            "展示信息",
+            1,
+            "显示在创作端的模型选择器里，不影响调用与计费。",
+            `<div class="space-y-5">
       ${tagsField()}
       <div class="grid gap-5 md:grid-cols-[minmax(0,1fr)_10rem]">
         ${fld("模型描述", `<textarea data-bind="hint" maxlength="500" rows="3" placeholder="说明适用场景和注意事项" class="${INPUT} h-auto py-2">${esc(m.hint)}</textarea>`, `<span class="flex justify-between"><span>在模型选择器里显示在名称下面，可留空。</span><span id="hint-n" class="tabular">${m.hint.length} / 500</span></span>`)}
         ${fld("排序", numIn("sort", m.sort), "越小越靠前。")}
-      </div></div>`);
-}
+      </div></div>`,
+          )
+        );
+      }
 
-/* ---- 能力与参数 */
-function refCard(k) {
-  const m = M(), r = m.capabilities.refs[k];
-  const ops = m.capabilities.ops.filter((o) => allowedMedia(m, o).includes(k)).map((o) => OPS[o]);
-  return `<div class="rounded-lg border p-4 ${r.on ? "" : "opacity-60"}">
+      /* ---- 能力与参数 */
+      function refCard(k) {
+        const m = M(),
+          r = m.capabilities.refs[k];
+        const ops = m.capabilities.ops
+          .filter((o) => allowedMedia(m, o).includes(k))
+          .map((o) => OPS[o]);
+        return `<div class="rounded-lg border p-4 ${r.on ? "" : "opacity-60"}">
     <div class="mb-3 flex items-center gap-2"><span class="grid size-8 place-items-center rounded-md bg-muted">${I(MEDIA[k][1])}</span><div class="flex-1"><div class="text-sm font-medium">${MEDIA[k][0]}</div><div class="text-xs text-muted-foreground">${r.on ? `最多 ${r.max} 个 · 单个 ${r.mb} MB` : "不接收这类素材"}</div></div>${sw(r.on, `data-act="ref-on" data-v="${k}"`)}</div>
     <div class="grid grid-cols-2 gap-3">
       <div class="space-y-1.5"><div class="text-xs text-muted-foreground">最多数量</div>${numIn(`capabilities.refs.${k}.max`, r.max, `min="0" max="${HARD.refMax}" ${r.on ? "" : "disabled"}`)}<div class="text-[11px] text-red-500" data-lim="refs.${k}.max"></div></div>
@@ -483,383 +1090,1053 @@ function refCard(k) {
     <div class="mt-3 flex gap-1.5" data-refbar="${k}">${refBar(k)}</div>
     <div class="mt-2 text-[11px] text-muted-foreground">${ops.length ? `用于：${ops.join("、")}` : "当前勾选的生成方式都不会用到这类素材"}</div>
   </div>`;
-}
-const refBar = (k) => { const r = M().capabilities.refs[k]; return Array.from({ length: 12 }, (_, j) => `<span class="h-1.5 flex-1 rounded-full ${r.on && j < Math.min(r.max, 12) ? "bg-foreground/70" : "bg-muted"}"></span>`).join(""); };
+      }
+      const refBar = (k) => {
+        const r = M().capabilities.refs[k];
+        return Array.from(
+          { length: 12 },
+          (_, j) =>
+            `<span class="h-1.5 flex-1 rounded-full ${r.on && j < Math.min(r.max, 12) ? "bg-foreground/70" : "bg-muted"}"></span>`,
+        ).join("");
+      };
 
-const unionOptions = (k, p) => {
-  const preset = k === "resolution" ? PRESETS.resolution[M().kind] || [] : PRESETS[k] || [];
-  const extra = p.options.filter((o) => !preset.some((x) => String(x) === String(o)));
-  return [...preset, ...extra];
-};
-function paramRow(k) {
-  const m = M(), p = m.capabilities.params[k];
-  const typeName = { enum: "选项", number: "数字（可拖动）", boolean: "开关" }[p.type];
-  const head = `<div class="flex flex-wrap items-start gap-3"><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2 text-sm font-medium">${esc(p.label)}<span class="font-mono text-xs font-normal text-muted-foreground">${k} · ${typeName}</span>${p.spec ? badge("sky", "规格价格维度") : ""}${p.fanout ? badge("amber", "拆成 N 个任务") : ""}</div></div>
+      const unionOptions = (k, p) => {
+        const preset = k === "resolution" ? PRESETS.resolution[M().kind] || [] : PRESETS[k] || [];
+        const extra = p.options.filter((o) => !preset.some((x) => String(x) === String(o)));
+        return [...preset, ...extra];
+      };
+      function paramRow(k) {
+        const m = M(),
+          p = m.capabilities.params[k];
+        const typeName = { enum: "选项", number: "数字（可拖动）", boolean: "开关" }[p.type];
+        const head = `<div class="flex flex-wrap items-start gap-3"><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2 text-sm font-medium">${esc(p.label)}<span class="font-mono text-xs font-normal text-muted-foreground">${k} · ${typeName}</span>${p.spec ? badge("sky", "规格价格维度") : ""}${p.fanout ? badge("amber", "拆成 N 个任务") : ""}</div></div>
     <label class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">开放给用户${sw(p.open, `data-act="opt-open" data-v="${k}"`)}</label></div>`;
-  let body = "";
-  if (p.type === "enum") {
-    const uni = unionOptions(k, p);
-    body = `<div><div class="mb-1.5 text-[11px] text-muted-foreground">可选值 <span class="opacity-70">（点一下勾选 / 取消；下面也可以输入别的值）</span></div><div class="flex flex-wrap items-center gap-2">${uni.map((o) => chip(p.options.some((x) => String(x) === String(o)), o + (p.unit || ""), "opt-choice", `${k}|${esc(o)}`)).join("")}<input data-addopt="${k}" placeholder="自定义值，回车添加" class="h-8 w-40 rounded-md border border-dashed border-input bg-transparent px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:border-solid"></div></div>
+        let body = "";
+        if (p.type === "enum") {
+          const uni = unionOptions(k, p);
+          body = `<div><div class="mb-1.5 text-[11px] text-muted-foreground">可选值 <span class="opacity-70">（点一下勾选 / 取消；下面也可以输入别的值）</span></div><div class="flex flex-wrap items-center gap-2">${uni
+            .map((o) =>
+              chip(
+                p.options.some((x) => String(x) === String(o)),
+                o + (p.unit || ""),
+                "opt-choice",
+                `${k}|${esc(o)}`,
+              ),
+            )
+            .join(
+              "",
+            )}<input data-addopt="${k}" placeholder="自定义值，回车添加" class="h-8 w-40 rounded-md border border-dashed border-input bg-transparent px-2.5 text-xs outline-none placeholder:text-muted-foreground focus:border-solid"></div></div>
       <div class="flex flex-wrap items-center gap-2"><span class="text-[11px] text-muted-foreground">默认值</span>${p.options.map((o) => `<button data-act="opt-def" data-v="${k}|${esc(o)}" class="inline-flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11px] ${String(p.default) === String(o) ? "border-sky-500/50 bg-sky-500/15 text-sky-600 dark:text-sky-400" : "text-muted-foreground hover:text-foreground"}">${String(p.default) === String(o) ? I("star", "size-3") : ""}${o}${p.unit || ""}</button>`).join("")}
       ${p.fanout ? '<span class="ml-auto text-[11px] text-muted-foreground">一次提交拆成 N 个任务，各自冻结积分</span>' : `<label class="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">可作为规格价格条件${sw(p.spec, `data-act="opt-spec" data-v="${k}"`)}</label>`}</div>`;
-  } else if (p.type === "number") {
-    const span = Math.max(p.max - p.min, 1e-9), pct = (v) => Math.min(100, Math.max(0, ((v - p.min) / span) * 100));
-    body = `<div class="relative h-2 rounded-full bg-muted"><span class="absolute inset-y-0 left-0 right-0 rounded-full bg-foreground/50"></span><span class="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-500 bg-background" style="left:${pct(p.default)}%" title="默认值"></span></div>
+        } else if (p.type === "number") {
+          const span = Math.max(p.max - p.min, 1e-9),
+            pct = (v) => Math.min(100, Math.max(0, ((v - p.min) / span) * 100));
+          body = `<div class="relative h-2 rounded-full bg-muted"><span class="absolute inset-y-0 left-0 right-0 rounded-full bg-foreground/50"></span><span class="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-500 bg-background" style="left:${pct(p.default)}%" title="默认值"></span></div>
       <div class="flex justify-between text-[11px] text-muted-foreground tabular"><span>用户可拖动的最小值 ${p.min}${p.unit || ""}</span><span>最大值 ${p.max}${p.unit || ""}</span></div>
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">${[["min", "最小"], ["max", "最大"], ["default", "默认"], ["step", "步长"]].map(([f, l]) => `<div class="space-y-1.5"><div class="text-xs text-muted-foreground">${l}${p.unit && f !== "step" ? `（${p.unit}）` : ""}</div>${numIn(`capabilities.params.${k}.${f}`, p[f], `min="1" max="${HARD.durationMax}"`)}</div>`).join("")}</div>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">${[
+        ["min", "最小"],
+        ["max", "最大"],
+        ["default", "默认"],
+        ["step", "步长"],
+      ]
+        .map(
+          ([f, l]) =>
+            `<div class="space-y-1.5"><div class="text-xs text-muted-foreground">${l}${p.unit && f !== "step" ? `（${p.unit}）` : ""}</div>${numIn(`capabilities.params.${k}.${f}`, p[f], `min="1" max="${HARD.durationMax}"`)}</div>`,
+        )
+        .join("")}</div>
       <div class="text-[11px] text-red-500" data-lim="params.${k}"></div>`;
-  } else body = `<div class="flex flex-wrap items-center gap-3"><label class="flex items-center gap-2 text-xs"><span class="text-muted-foreground">默认</span>${sw(p.default, `data-act="opt-bool" data-v="${k}"`)}${p.default ? "开启" : "关闭"}</label><label class="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">可作为规格价格条件（开启 / 关闭价格不同）${sw(p.spec, `data-act="opt-spec" data-v="${k}"`)}</label></div>`;
-  return `<div class="space-y-3 p-4 ${p.open ? "" : "bg-muted/20"}">${head}${p.open ? "" : `<div class="text-[11px] text-muted-foreground">未开放：不出现在画布节点上，按默认值发送给上游。</div>`}${body}</div>`;
-}
+        } else
+          body = `<div class="flex flex-wrap items-center gap-3"><label class="flex items-center gap-2 text-xs"><span class="text-muted-foreground">默认</span>${sw(p.default, `data-act="opt-bool" data-v="${k}"`)}${p.default ? "开启" : "关闭"}</label><label class="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">可作为规格价格条件（开启 / 关闭价格不同）${sw(p.spec, `data-act="opt-spec" data-v="${k}"`)}</label></div>`;
+        return `<div class="space-y-3 p-4 ${p.open ? "" : "bg-muted/20"}">${head}${p.open ? "" : `<div class="text-[11px] text-muted-foreground">未开放：不出现在画布节点上，按默认值发送给上游。</div>`}${body}</div>`;
+      }
 
-function paramsForm() {
-  const m = M(), cap = m.capabilities, hasOps = !!cap.ops, hasRefs = !!cap.refs, isT = m.kind === "text";
-  let h = block("任务设置", 0, "", fld("任务超时", `<div class="flex flex-wrap gap-2">${DUR.map(([v, l]) => chip(m.deadline === v, l, "deadline", v)).join("")}</div>`, "超过这个时间还没出结果，任务判定失败并退还积分。"));
-  if (hasOps) h += block("生成方式", 2, "勾选的方式会出现在画布节点底栏的下拉里，至少保留一种。", `<div class="flex flex-wrap gap-2">${OPS_OF[m.kind].map((o) => chip(cap.ops.includes(o), OPS[o], "op-toggle", o)).join("")}</div>
+      function paramsForm() {
+        const m = M(),
+          cap = m.capabilities,
+          hasOps = !!cap.ops,
+          hasRefs = !!cap.refs,
+          isT = m.kind === "text";
+        let h = block(
+          "任务设置",
+          0,
+          "",
+          fld(
+            "任务超时",
+            `<div class="flex flex-wrap gap-2">${DUR.map(([v, l]) => chip(m.deadline === v, l, "deadline", v)).join("")}</div>`,
+            "超过这个时间还没出结果，任务判定失败并退还积分。",
+          ),
+        );
+        if (hasOps)
+          h += block(
+            "生成方式",
+            2,
+            "勾选的方式会出现在画布节点底栏的下拉里，至少保留一种。",
+            `<div class="flex flex-wrap gap-2">${OPS_OF[m.kind].map((o) => chip(cap.ops.includes(o), OPS[o], "op-toggle", o)).join("")}</div>
       <div class="mt-3 overflow-hidden rounded-lg border text-xs"><div class="grid grid-cols-[7rem_1fr] border-b bg-muted/40 px-3 py-2 font-medium text-muted-foreground"><span>方式</span><span>可引用的素材（类型由连到节点上的上游节点决定）</span></div>
       ${OPS_OF[m.kind].map((o) => `<div class="grid grid-cols-[7rem_1fr] items-center border-b px-3 py-2 last:border-0 ${cap.ops.includes(o) ? "" : "opacity-40"}"><span class="font-medium">${OPS[o]}</span><span>${o === "omni" ? "不区分类型：下面「参考素材」里已开启的都可以引用" : o === "t2v" || o === "t2i" ? "只用文字，不引用素材" : "图片"}</span></div>`).join("")}</div>
-      <p class="mt-2 text-[11px] text-muted-foreground">${m.kind === "video" ? "首尾帧本版不做。" : ""}素材的数量与大小在下面的「参考素材」里限制。</p>`);
-  if (isT) h += block("上下文能力", 2, "上游文本模型的能力上限，决定一次能带多少输入。", `<div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
-      ${[["window", "上下文窗口"], ["output", "最大输出"]].map(([f, l]) => `<div class="space-y-2"><div class="text-sm font-medium">${l}</div><div class="relative">${numIn(`capabilities.context.${f}`, cap.context[f], 'min="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">Token</span></div><div class="text-[11px] text-red-500" data-lim="context.${f}"></div></div>`).join("")}</div>`);
-  if (hasRefs) h += block("参考素材", 2, "用户可以连到这个节点上的素材；关闭表示不接收。", `<div class="grid gap-3 sm:grid-cols-2">${(m.kind === "image" ? ["image"] : ["image", "audio", "video"]).map(refCard).join("")}</div>`);
-  h += block("生成参数", 2, "开放的参数会收进画布节点底栏的参数面板；不开放的按默认值发送。", `<div class="mb-3 grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_12rem] sm:items-center"><div><div class="text-sm font-medium">提示词字数上限</div><div class="text-xs text-muted-foreground">画布输入框右下角的 0 / N</div></div><div class="relative">${numIn("capabilities.prompt.max_length", cap.prompt.max_length, 'min="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">字</span></div></div>
+      <p class="mt-2 text-[11px] text-muted-foreground">${m.kind === "video" ? "首尾帧本版不做。" : ""}素材的数量与大小在下面的「参考素材」里限制。</p>`,
+          );
+        if (isT)
+          h += block(
+            "上下文能力",
+            2,
+            "上游文本模型的能力上限，决定一次能带多少输入。",
+            `<div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+      ${[
+        ["window", "上下文窗口"],
+        ["output", "最大输出"],
+      ]
+        .map(
+          ([f, l]) =>
+            `<div class="space-y-2"><div class="text-sm font-medium">${l}</div><div class="relative">${numIn(`capabilities.context.${f}`, cap.context[f], 'min="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">Token</span></div><div class="text-[11px] text-red-500" data-lim="context.${f}"></div></div>`,
+        )
+        .join("")}</div>`,
+          );
+        if (hasRefs)
+          h += block(
+            "参考素材",
+            2,
+            "用户可以连到这个节点上的素材；关闭表示不接收。",
+            `<div class="grid gap-3 sm:grid-cols-2">${(m.kind === "image" ? ["image"] : ["image", "audio", "video"]).map(refCard).join("")}</div>`,
+          );
+        h += block(
+          "生成参数",
+          2,
+          "开放的参数会收进画布节点底栏的参数面板；不开放的按默认值发送。",
+          `<div class="mb-3 grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_12rem] sm:items-center"><div><div class="text-sm font-medium">提示词字数上限</div><div class="text-xs text-muted-foreground">画布输入框右下角的 0 / N</div></div><div class="relative">${numIn("capabilities.prompt.max_length", cap.prompt.max_length, 'min="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">字</span></div></div>
     ${Object.keys(cap.params).length ? `<div class="divide-y rounded-lg border">${Object.keys(cap.params).map(paramRow).join("")}</div>` : '<div class="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">这个模型没有可配置的生成参数，画布节点底栏只有模型、积分和发送。</div>'}
-    <button data-act="toast" data-v="添加参数：类型选 选项 / 数字 / 开关，参数名由你填（要和插件约定的字段对应）" class="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed text-sm text-muted-foreground hover:bg-accent/40 hover:text-foreground">${I("plus")}添加参数</button>`);
-  if (isT) h += block("固定系统提示", 2, "每次请求都会带上，用户看不到。", `<textarea data-bind="capabilities.system" rows="3" placeholder="例如：你是一名资深分镜师，回答使用中文。" class="${INPUT} h-auto py-2">${esc(cap.system)}</textarea><p class="mt-1.5 text-[11px] text-muted-foreground">不会下发到画布端（GET /models 会剔除）。</p>`);
-  h += block("固定参数", 0, "每次请求都会带上，由插件解释；宿主不解释所以不做结构化（现状保持）。", `<pre class="json rounded-lg border bg-muted/30 p-3 text-muted-foreground">{ "instanceType": "default" }</pre>`);
-  return h;
-}
+    <button data-act="toast" data-v="添加参数：类型选 选项 / 数字 / 开关，参数名由你填（要和插件约定的字段对应）" class="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed text-sm text-muted-foreground hover:bg-accent/40 hover:text-foreground">${I("plus")}添加参数</button>`,
+        );
+        if (isT)
+          h += block(
+            "固定系统提示",
+            2,
+            "每次请求都会带上，用户看不到。",
+            `<textarea data-bind="capabilities.system" rows="3" placeholder="例如：你是一名资深分镜师，回答使用中文。" class="${INPUT} h-auto py-2">${esc(cap.system)}</textarea><p class="mt-1.5 text-[11px] text-muted-foreground">不会下发到画布端（GET /models 会剔除）。</p>`,
+          );
+        h += block(
+          "固定参数",
+          0,
+          "每次请求都会带上，由插件解释；宿主不解释所以不做结构化（现状保持）。",
+          `<pre class="json rounded-lg border bg-muted/30 p-3 text-muted-foreground">{ "instanceType": "default" }</pre>`,
+        );
+        return h;
+      }
 
-/* ---- 积分定价 */
-function priceForm() {
-  const m = M(), pr = m.pricing, cap = m.capabilities;
-  const specs = Object.entries(cap.params).filter(([, p]) => p.spec);
-  const bill = [["per_call", "按次"], ["per_second", "按秒", cap.params.duration ? "" : "只有带「视频时长」参数的模型才能按秒计费"], ["token", "Token", m.kind === "text" ? "" : "只有文本能按 Token 计费"]];
-  const unitIn = (path, val, unit) => `<div class="relative">${numIn(path, val, 'min="0" step="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">${unit}</span></div>`;
-  const unitTxt = pr.billing === "per_second" ? "积分/秒" : "积分/次";
-  const main = pr.billing === "token"
-    ? `<div class="grid gap-4 sm:grid-cols-2">${fld("输入价格", unitIn("pricing.token.in", pr.token.in, "积分/百万"), "", true)}${fld("输出价格", unitIn("pricing.token.out", pr.token.out, "积分/百万"), "", true)}</div>`
-    : fld(pr.billing === "per_second" ? "每秒消耗积分" : "每次消耗积分", unitIn(pr.billing === "per_second" ? "pricing.per_second" : "pricing.unit", pr.billing === "per_second" ? pr.per_second : pr.unit, unitTxt), "价格是整数积分，最小 1 积分，不能带小数。", true);
-  const costFields = pr.billing === "token"
-    ? fld("输入成本", unitIn("pricing.cost.in", pr.cost.in, "积分/百万")) + fld("输出成本", unitIn("pricing.cost.out", pr.cost.out, "积分/百万"))
-    : fld(pr.billing === "per_second" ? "每秒成本" : "每次成本", unitIn(pr.billing === "per_second" ? "pricing.cost.per_second" : "pricing.cost.unit", pr.billing === "per_second" ? pr.cost.per_second : pr.cost.unit, "积分"));
-  const costBlock = `<div class="rounded-lg border bg-muted/30 p-3"><div class="flex items-center gap-2"><span class="text-sm font-medium">积分成本</span>${badge("zinc", "仅管理员可见")}<span class="hidden text-xs text-muted-foreground sm:inline">填了成本才能看到利润率，不影响用户价格。</span><span class="ml-auto">${sw(pr.cost.on, 'data-act="cost-on"')}</span></div>
+      /* ---- 积分定价 */
+      function priceForm() {
+        const m = M(),
+          pr = m.pricing,
+          cap = m.capabilities;
+        const specs = Object.entries(cap.params).filter(([, p]) => p.spec);
+        const bill = [
+          ["per_call", "按次"],
+          [
+            "per_second",
+            "按秒",
+            cap.params.duration ? "" : "只有带「视频时长」参数的模型才能按秒计费",
+          ],
+          ["token", "Token", m.kind === "text" ? "" : "只有文本能按 Token 计费"],
+        ];
+        const unitIn = (path, val, unit) =>
+          `<div class="relative">${numIn(path, val, 'min="0" step="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">${unit}</span></div>`;
+        const unitTxt = pr.billing === "per_second" ? "积分/秒" : "积分/次";
+        const main =
+          pr.billing === "token"
+            ? `<div class="grid gap-4 sm:grid-cols-2">${fld("输入价格", unitIn("pricing.token.in", pr.token.in, "积分/百万"), "", true)}${fld("输出价格", unitIn("pricing.token.out", pr.token.out, "积分/百万"), "", true)}</div>`
+            : fld(
+                pr.billing === "per_second" ? "每秒消耗积分" : "每次消耗积分",
+                unitIn(
+                  pr.billing === "per_second" ? "pricing.per_second" : "pricing.unit",
+                  pr.billing === "per_second" ? pr.per_second : pr.unit,
+                  unitTxt,
+                ),
+                "价格是整数积分，最小 1 积分，不能带小数。",
+                true,
+              );
+        const costFields =
+          pr.billing === "token"
+            ? fld("输入成本", unitIn("pricing.cost.in", pr.cost.in, "积分/百万")) +
+              fld("输出成本", unitIn("pricing.cost.out", pr.cost.out, "积分/百万"))
+            : fld(
+                pr.billing === "per_second" ? "每秒成本" : "每次成本",
+                unitIn(
+                  pr.billing === "per_second" ? "pricing.cost.per_second" : "pricing.cost.unit",
+                  pr.billing === "per_second" ? pr.cost.per_second : pr.cost.unit,
+                  "积分",
+                ),
+              );
+        const costBlock = `<div class="rounded-lg border bg-muted/30 p-3"><div class="flex items-center gap-2"><span class="text-sm font-medium">积分成本</span>${badge("zinc", "仅管理员可见")}<span class="hidden text-xs text-muted-foreground sm:inline">填了成本才能看到利润率，不影响用户价格。</span><span class="ml-auto">${sw(pr.cost.on, 'data-act="cost-on"')}</span></div>
     ${pr.cost.on ? `<div class="mt-3 grid gap-4 sm:grid-cols-2">${costFields}</div><div class="mt-3 flex flex-wrap gap-2" id="margins">${marginsHtml()}</div>` : ""}</div>`;
-  const condRow = (i, t) => {
-    const chips = (k, label, vals) => fld(esc(label), `<div class="flex flex-wrap gap-2">${chip((t.when[k] ?? "*") === "*", "任意", "tier-cond", `${i}|${k}|*`)}${vals.map(([v, l]) => chip(String(t.when[k]) === String(v), l, "tier-cond", `${i}|${k}|${v}`)).join("")}</div>`);
-    return specs.map(([k, p]) => {
-      if (p.type === "boolean") return chips(k, p.label, [["true", "开启"], ["false", "关闭"]]);
-      const cur = t.when[k] ?? "*", bad = cur !== "*" && !p.options.some((o) => String(o) === String(cur));
-      return fld(esc(p.label), `<div class="flex flex-wrap gap-2">${chip(cur === "*", "任意", "tier-cond", `${i}|${k}|*`)}${p.options.map((o) => chip(String(cur) === String(o), o + (p.unit || ""), "tier-cond", `${i}|${k}|${esc(o)}`)).join("")}${bad ? `<span class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs ${TONE.red}">${I("triangle-alert", "size-3.5")}${cur}${p.unit || ""} 已不可选</span>` : ""}</div>`);
-    }).join("")
-      + (cap.refs && cap.refs.video.on ? chips("ref_video", "参考素材里有视频", [["true", "有"], ["false", "没有"]]) : "")
-      + (cap.ops ? chips("op", "生成方式", cap.ops.map((o) => [o, OPS[o]])) : "");
-  };
-  const tiers = pr.tiers.map((t, i) => `<div class="rounded-xl border ${t.on ? "" : "opacity-60"}">
+        const condRow = (i, t) => {
+          const chips = (k, label, vals) =>
+            fld(
+              esc(label),
+              `<div class="flex flex-wrap gap-2">${chip((t.when[k] ?? "*") === "*", "任意", "tier-cond", `${i}|${k}|*`)}${vals.map(([v, l]) => chip(String(t.when[k]) === String(v), l, "tier-cond", `${i}|${k}|${v}`)).join("")}</div>`,
+            );
+          return (
+            specs
+              .map(([k, p]) => {
+                if (p.type === "boolean")
+                  return chips(k, p.label, [
+                    ["true", "开启"],
+                    ["false", "关闭"],
+                  ]);
+                const cur = t.when[k] ?? "*",
+                  bad = cur !== "*" && !p.options.some((o) => String(o) === String(cur));
+                return fld(
+                  esc(p.label),
+                  `<div class="flex flex-wrap gap-2">${chip(cur === "*", "任意", "tier-cond", `${i}|${k}|*`)}${p.options.map((o) => chip(String(cur) === String(o), o + (p.unit || ""), "tier-cond", `${i}|${k}|${esc(o)}`)).join("")}${bad ? `<span class="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs ${TONE.red}">${I("triangle-alert", "size-3.5")}${cur}${p.unit || ""} 已不可选</span>` : ""}</div>`,
+                );
+              })
+              .join("") +
+            (cap.refs && cap.refs.video.on
+              ? chips("ref_video", "参考素材里有视频", [
+                  ["true", "有"],
+                  ["false", "没有"],
+                ])
+              : "") +
+            (cap.ops
+              ? chips(
+                  "op",
+                  "生成方式",
+                  cap.ops.map((o) => [o, OPS[o]]),
+                )
+              : "")
+          );
+        };
+        const tiers = pr.tiers
+          .map(
+            (t, i) => `<div class="rounded-xl border ${t.on ? "" : "opacity-60"}">
     <div class="flex flex-wrap items-center gap-3 border-b px-4 py-3"><span class="grid size-8 place-items-center rounded-md bg-muted font-mono text-xs">${String(i + 2).padStart(2, "0")}</span><div><div class="text-sm font-semibold">规格价格</div><div class="text-xs text-muted-foreground">满足下面所有条件时使用这个价格</div></div>
       <label class="ml-auto flex items-center gap-2 text-xs text-muted-foreground">可供用户使用${sw(t.on, `data-act="tier-on" data-v="${i}"`)}</label>
       <button data-act="tier-del" data-v="${i}" class="${GHOST} h-8 px-2 text-xs text-red-600 dark:text-red-400">${I("trash-2", "size-3.5")}删除</button></div>
     <div class="space-y-4 p-4">${condRow(i, t)}
       ${fld(pr.billing === "per_second" ? "每秒消耗积分（生成）" : "每次消耗积分", `<div class="relative sm:w-1/2">${numIn(`pricing.tiers.${i}.unit`, t.unit, 'min="0" step="1"')}<span class="pointer-events-none absolute right-8 top-2 text-xs text-muted-foreground">${unitTxt}</span></div>`, "", true)}
       <div class="flex flex-wrap gap-2" id="tmargin-${i}">${tierMargin(i)}</div>
-    </div></div>`).join("");
-  const noTier = pr.billing === "token";
-  return block("用户积分价格", 3, "默认只需一个统一价格；要按清晰度、音频开关等区分时，再加规格价格。", `<div class="rounded-xl border">
+    </div></div>`,
+          )
+          .join("");
+        const noTier = pr.billing === "token";
+        return block(
+          "用户积分价格",
+          3,
+          "默认只需一个统一价格；要按清晰度、音频开关等区分时，再加规格价格。",
+          `<div class="rounded-xl border">
       <div class="flex items-center gap-3 border-b px-4 py-3"><span class="grid size-8 place-items-center rounded-md bg-muted font-mono text-xs">01</span><div><div class="text-sm font-semibold">默认价格</div><div class="text-xs text-muted-foreground">没有命中规格价格的请求都用这个价格</div></div></div>
       <div class="space-y-4 p-4">${fld("计费方式", seg(bill, pr.billing, "billing"), pr.billing === "per_second" ? "按用户拖动的视频时长 × 每秒价格计算。视频模型大多按秒计费。" : pr.billing === "token" ? "下单按上限预冻结，完成后按实际用量多退少补。" : "每生成一次扣一次。图片模型一般按次。", true)}${main}${costBlock}</div></div>
     <div class="mt-4 space-y-4">${tiers}
-      <button data-act="tier-add" class="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-dashed text-sm font-medium text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50" ${noTier ? 'disabled title="文本按输入 / 输出 Token 计费，不需要规格价格"' : ""}>${I("plus")}新增规格价格</button></div>`);
-}
-function marginsHtml() {
-  const m = M(), pr = m.pricing;
-  if (pr.billing === "token") return marginBadge(marginOf(pr.token.out, pr.cost.out)) + `<span class="text-xs text-muted-foreground">（按输出价计算）</span>`;
-  const [price, cost] = costPair(pr, m, null);
-  return marginBadge(marginOf(price, cost)) + `<span class="text-xs text-muted-foreground">（默认价格）</span>`;
-}
-/** 当前计费方式下的 [用户价, 成本]；tier 不为空时用规格价作为用户价 */
-function costPair(pr, m, tier) {
-  if (pr.billing === "per_second") return [tier ? tier.unit : pr.per_second, pr.cost.per_second];
-  return [tier ? tier.unit : pr.unit, pr.cost.unit];
-}
-function tierMargin(i) {
-  const m = M(), pr = m.pricing; if (!pr.cost.on) return "";
-  const [price, cost] = costPair(pr, m, pr.tiers[i]);
-  return marginBadge(marginOf(price, cost)) + `<span class="text-xs text-muted-foreground">（本条规格价格）</span>`;
-}
+      <button data-act="tier-add" class="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-dashed text-sm font-medium text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50" ${noTier ? 'disabled title="文本按输入 / 输出 Token 计费，不需要规格价格"' : ""}>${I("plus")}新增规格价格</button></div>`,
+        );
+      }
+      function marginsHtml() {
+        const m = M(),
+          pr = m.pricing;
+        if (pr.billing === "token")
+          return (
+            marginBadge(marginOf(pr.token.out, pr.cost.out)) +
+            `<span class="text-xs text-muted-foreground">（按输出价计算）</span>`
+          );
+        const [price, cost] = costPair(pr, m, null);
+        return (
+          marginBadge(marginOf(price, cost)) +
+          `<span class="text-xs text-muted-foreground">（默认价格）</span>`
+        );
+      }
+      /** 当前计费方式下的 [用户价, 成本]；tier 不为空时用规格价作为用户价 */
+      function costPair(pr, m, tier) {
+        if (pr.billing === "per_second")
+          return [tier ? tier.unit : pr.per_second, pr.cost.per_second];
+        return [tier ? tier.unit : pr.unit, pr.cost.unit];
+      }
+      function tierMargin(i) {
+        const m = M(),
+          pr = m.pricing;
+        if (!pr.cost.on) return "";
+        const [price, cost] = costPair(pr, m, pr.tiers[i]);
+        return (
+          marginBadge(marginOf(price, cost)) +
+          `<span class="text-xs text-muted-foreground">（本条规格价格）</span>`
+        );
+      }
 
-/* ---- 右侧预览 */
-function pickerRow(x, on) {
-  return `<div class="flex gap-3 rounded-lg p-2.5 ${on ? "bg-accent ring-1 ring-foreground/20" : "opacity-45"}">${avatar(x, "size-9")}
+      /* ---- 右侧预览 */
+      function pickerRow(x, on) {
+        return `<div class="flex gap-3 rounded-lg p-2.5 ${on ? "bg-accent ring-1 ring-foreground/20" : "opacity-45"}">${avatar(x, "size-9")}
     <div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate text-sm font-medium">${esc(x.label || "未命名模型")}</span><span class="ml-auto shrink-0 text-xs text-muted-foreground">${x.priceText}</span></div>
       ${x.tags.length ? `<div class="mt-1 flex flex-wrap gap-1">${x.tags.map((t) => `<span class="rounded bg-foreground/10 px-1.5 py-px text-[10px]">${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.hint ? `<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">${esc(x.hint)}</p>` : ""}</div></div>`;
-}
-const pvTitle = (t) => `<div class="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">${I("eye", "size-3.5")}${t}</div>`;
-function selectorHtml() {
-  const m = M(), km = KIND_META[m.kind];
-  const rows = [{ ...m, priceText: priceLabel(m) }, ...OTHERS[m.kind].map((o) => ({ ...o, key: o.label, priceText: o.price }))];
-  return `<div class="rounded-xl border bg-popover p-2 shadow-lg"><div class="flex items-center gap-2 px-2 pb-2 pt-1 text-xs text-muted-foreground">${I(km[2], "size-3.5")}${km[1]}模型</div>${rows.map((r, i) => pickerRow(r, i === 0)).join("")}</div>`;
-}
-function matrixHtml() {
-  const m = M(), pr = m.pricing, cap = m.capabilities;
-  if (pr.billing === "token") {
-    const q = quote(m, specOf(m)), ex = (1000 * pr.token.in + 3000 * pr.token.out) / 1e6;
-    return `<div class="space-y-2 rounded-xl border bg-card p-4 text-sm"><div class="flex justify-between"><span class="text-muted-foreground">输入</span><span class="tabular font-medium">${pr.token.in} 积分 / 百万 Token</span></div><div class="flex justify-between"><span class="text-muted-foreground">输出</span><span class="tabular font-medium">${pr.token.out} 积分 / 百万 Token</span></div>
+      }
+      const pvTitle = (t) =>
+        `<div class="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">${I("eye", "size-3.5")}${t}</div>`;
+      function selectorHtml() {
+        const m = M(),
+          km = KIND_META[m.kind];
+        const rows = [
+          { ...m, priceText: priceLabel(m) },
+          ...OTHERS[m.kind].map((o) => ({ ...o, key: o.label, priceText: o.price })),
+        ];
+        return `<div class="rounded-xl border bg-popover p-2 shadow-lg"><div class="flex items-center gap-2 px-2 pb-2 pt-1 text-xs text-muted-foreground">${I(km[2], "size-3.5")}${km[1]}模型</div>${rows.map((r, i) => pickerRow(r, i === 0)).join("")}</div>`;
+      }
+      function matrixHtml() {
+        const m = M(),
+          pr = m.pricing,
+          cap = m.capabilities;
+        if (pr.billing === "token") {
+          const q = quote(m, specOf(m)),
+            ex = (1000 * pr.token.in + 3000 * pr.token.out) / 1e6;
+          return `<div class="space-y-2 rounded-xl border bg-card p-4 text-sm"><div class="flex justify-between"><span class="text-muted-foreground">输入</span><span class="tabular font-medium">${pr.token.in} 积分 / 百万 Token</span></div><div class="flex justify-between"><span class="text-muted-foreground">输出</span><span class="tabular font-medium">${pr.token.out} 积分 / 百万 Token</span></div>
       <div class="border-t pt-2 text-xs text-muted-foreground">写一篇 2000 字的分镜脚本（约 1k 输入 + 3k 输出 Token），实际约 <span class="font-medium text-foreground tabular">${fix(ex)}</span> 积分，向上取整 ${Math.max(1, Math.ceil(ex))}；下单时按上限预冻结 <span class="font-medium text-foreground tabular">${q.credits}</span> 积分，多出的完成后退回。</div></div>`;
-  }
-  const mk = Object.keys(cap.params).find((k) => cap.params[k].fanout);
-  const specs = Object.entries(cap.params).filter(([, p]) => p.spec && p.type === "enum" && p.options.length);
-  const base = { ...specOf(m) }; if (mk) base[mk] = 1;
-  const legend = (extra) => `<div class="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground"><span class="inline-flex items-center gap-1"><span class="size-2 rounded-full bg-sky-500"></span>命中规格价格</span>${extra}${mk ? `<span>以上是生成 1 ${cap.params[mk].unit || ""}的价格，多${cap.params[mk].unit || ""}按数量相乘</span>` : ""}</div>`;
-  const th = (t, r) => `<th class="px-2.5 py-2 ${r ? "text-right" : "text-left"} font-medium ${r ? "" : "text-muted-foreground"}">${t}</th>`;
-  if (pr.billing === "per_second") {
-    const d = cap.params.duration, ds = [...new Set([d.min, d.default, d.max])];
-    const [rk, r] = specs[0] || [null, null];
-    const rows = r ? r.options.map((v) => ({ label: v + (r.unit || ""), sp: { ...base, [rk]: v } })) : [{ label: "全部", sp: base }];
-    return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(esc(r ? r.label : "规格"))}${th("每秒", 1)}${ds.map((x) => th(`${x}${d.unit || ""}`, 1)).join("")}</tr></thead><tbody>
-      ${rows.map((row) => { const q1 = quote(m, { ...row.sp, duration: d.default }); return `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${row.label}</td><td class="px-2.5 py-2 text-right tabular ${q1.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q1.rate}</td>${ds.map((x) => `<td class="px-2.5 py-2 text-right tabular ${x === d.default ? "font-semibold" : ""}">${quote(m, { ...row.sp, duration: x }).credits}${x === d.default ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td>`).join("")}</tr>`; }).join("")}</tbody></table></div>
+        }
+        const mk = Object.keys(cap.params).find((k) => cap.params[k].fanout);
+        const specs = Object.entries(cap.params).filter(
+          ([, p]) => p.spec && p.type === "enum" && p.options.length,
+        );
+        const base = { ...specOf(m) };
+        if (mk) base[mk] = 1;
+        const legend = (extra) =>
+          `<div class="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground"><span class="inline-flex items-center gap-1"><span class="size-2 rounded-full bg-sky-500"></span>命中规格价格</span>${extra}${mk ? `<span>以上是生成 1 ${cap.params[mk].unit || ""}的价格，多${cap.params[mk].unit || ""}按数量相乘</span>` : ""}</div>`;
+        const th = (t, r) =>
+          `<th class="px-2.5 py-2 ${r ? "text-right" : "text-left"} font-medium ${r ? "" : "text-muted-foreground"}">${t}</th>`;
+        if (pr.billing === "per_second") {
+          const d = cap.params.duration,
+            ds = [...new Set([d.min, d.default, d.max])];
+          const [rk, r] = specs[0] || [null, null];
+          const rows = r
+            ? r.options.map((v) => ({ label: v + (r.unit || ""), sp: { ...base, [rk]: v } }))
+            : [{ label: "全部", sp: base }];
+          return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(esc(r ? r.label : "规格"))}${th("每秒", 1)}${ds.map((x) => th(`${x}${d.unit || ""}`, 1)).join("")}</tr></thead><tbody>
+      ${rows
+        .map((row) => {
+          const q1 = quote(m, { ...row.sp, duration: d.default });
+          return `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${row.label}</td><td class="px-2.5 py-2 text-right tabular ${q1.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q1.rate}</td>${ds.map((x) => `<td class="px-2.5 py-2 text-right tabular ${x === d.default ? "font-semibold" : ""}">${quote(m, { ...row.sp, duration: x }).credits}${x === d.default ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td>`).join("")}</tr>`;
+        })
+        .join("")}</tbody></table></div>
       ${legend(`<span class="inline-flex items-center gap-1">${I("star", "size-3 text-sky-500")}默认时长</span><span>单位：积分（每秒 / 每个任务）；时长在 ${d.min} – ${d.max}${d.unit || ""} 之间任意拖动，按所选秒数计费</span>`)}`;
-  }
-  if (specs.length >= 2) {
-    const [[rk, r], [ck, c]] = specs;
-    return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(`${esc(r.label)} \\ ${esc(c.label)}`)}${c.options.map((v) => th(v + (c.unit || ""), 1)).join("")}</tr></thead><tbody>
-      ${r.options.map((rv) => `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${rv}${r.unit || ""}</td>${c.options.map((cv) => { const q = quote(m, { ...base, [rk]: rv, [ck]: cv }), isDef = String(rv) === String(r.default) && String(cv) === String(c.default); return `<td class="px-2.5 py-2 text-right tabular ${isDef ? "font-semibold" : ""}"><span class="${q.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q.credits}</span>${isDef ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td>`; }).join("")}</tr>`).join("")}</tbody></table></div>${legend(`<span class="inline-flex items-center gap-1">${I("star", "size-3 text-sky-500")}默认参数</span><span>单位：积分 / 次</span>`)}`;
-  }
-  if (specs.length === 1) {
-    const [rk, r] = specs[0];
-    return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(esc(r.label))}${th("积分 / 次", 1)}</tr></thead><tbody>
-      ${r.options.map((rv) => { const q = quote(m, { ...base, [rk]: rv }), isDef = String(rv) === String(r.default); return `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${rv}${r.unit || ""}${isDef ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td><td class="px-2.5 py-2 text-right tabular ${isDef ? "font-semibold" : ""}"><span class="${q.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q.credits}</span></td></tr>`; }).join("")}</tbody></table></div>${legend(`<span class="inline-flex items-center gap-1">${I("star", "size-3 text-sky-500")}默认档位</span>`)}`;
-  }
-  const q = quote(m, base);
-  return `<div class="rounded-xl border bg-card p-4"><div class="text-xs text-muted-foreground">默认参数下每次消耗</div><div class="mt-1 text-3xl font-bold tabular">${q.credits}<span class="ml-1 text-sm font-normal text-muted-foreground">积分</span></div></div>`;
-}
-function previewHtml() {
-  if (S.tab === "basic") return pvTitle("创作端预览 · 模型选择器") + selectorHtml() + `<p class="mt-3 text-xs leading-relaxed text-muted-foreground">高亮的是当前正在编辑的模型，灰色是同类已上架的模型，方便对照名称、标签和价格是否清楚。</p>`;
-  if (S.tab === "params") return pvTitle("画布节点预览") + `<div id="node">${nodeHtml()}</div><p class="mt-3 text-xs leading-relaxed text-muted-foreground">左边每改一项，这里立即变化。没开放的参数不会出现在节点上，按默认值发送给上游；可以直接在节点里切换方式、选参数。</p>`;
-  return pvTitle("用户看到的价格") + matrixHtml() + `<p class="mt-3 text-xs leading-relaxed text-muted-foreground">价格在用户点“生成”前就会显示在按钮上；积分成本只有管理员能看到。</p>`;
-}
-function checksHtml() {
-  const list = checksOf();
-  $("#checks").innerHTML = list.length ? `<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-6 py-2.5 text-sm ${TONE.amber} rounded-none border-x-0 border-t-0"><span class="inline-flex items-center gap-1.5 font-medium">${I("circle-alert")}发布前还需处理 ${list.length} 项</span>${list.map(([tab, t]) => `<button data-act="tab" data-v="${tab}" class="rounded-md bg-background/60 px-2 py-0.5 text-xs hover:bg-background">${esc(t)}</button>`).join("")}</div>` : "";
-  const pub = $("#publish"); if (pub) { pub.disabled = !!list.length; pub.title = list.length ? "先处理上方的待办项" : ""; }
-  document.querySelectorAll("[data-tabdot]").forEach((d) => { d.innerHTML = list.some(([t]) => t === d.dataset.tabdot) ? '<span class="inline-block size-1.5 rounded-full bg-amber-500"></span>' : ""; });
-  return list;
-}
-/** 只刷新右侧预览、待办、头部与限额提示（不动左侧表单，避免输入框丢焦点） */
-function refreshSide() {
-  const m = M(); syncCanvas();
-  $("#hd-sub").innerHTML = `自建 New API · <span class="font-mono">${esc(m.up || m.key)}</span>`;
-  $("#hd-logo").innerHTML = avatar(m, "size-10", "text-base");
-  $("#pv").innerHTML = previewHtml();
-  checksHtml();
-  document.querySelectorAll("[data-lim]").forEach((el) => { el.textContent = limCheck(el.dataset.lim); });
-  document.querySelectorAll("[data-refbar]").forEach((el) => { el.innerHTML = refBar(el.dataset.refbar); });
-  const mg = $("#margins"); if (mg) mg.innerHTML = marginsHtml();
-  M().pricing.tiers.forEach((_, i) => { const e = $(`#tmargin-${i}`); if (e) e.innerHTML = tierMargin(i); });
-  icons();
-}
-function renderAdminForm() {
-  syncCanvas();
-  $("#form").innerHTML = { basic: basicForm, params: paramsForm, price: priceForm }[S.tab]();
-  refreshSide();
-}
+        }
+        if (specs.length >= 2) {
+          const [[rk, r], [ck, c]] = specs;
+          return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(`${esc(r.label)} \\ ${esc(c.label)}`)}${c.options.map((v) => th(v + (c.unit || ""), 1)).join("")}</tr></thead><tbody>
+      ${r.options
+        .map(
+          (rv) =>
+            `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${rv}${r.unit || ""}</td>${c.options
+              .map((cv) => {
+                const q = quote(m, { ...base, [rk]: rv, [ck]: cv }),
+                  isDef = String(rv) === String(r.default) && String(cv) === String(c.default);
+                return `<td class="px-2.5 py-2 text-right tabular ${isDef ? "font-semibold" : ""}"><span class="${q.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q.credits}</span>${isDef ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td>`;
+              })
+              .join("")}</tr>`,
+        )
+        .join(
+          "",
+        )}</tbody></table></div>${legend(`<span class="inline-flex items-center gap-1">${I("star", "size-3 text-sky-500")}默认参数</span><span>单位：积分 / 次</span>`)}`;
+        }
+        if (specs.length === 1) {
+          const [rk, r] = specs[0];
+          return `<div class="overflow-hidden rounded-xl border bg-card"><table class="w-full text-xs"><thead><tr class="border-b bg-muted/40">${th(esc(r.label))}${th("积分 / 次", 1)}</tr></thead><tbody>
+      ${r.options
+        .map((rv) => {
+          const q = quote(m, { ...base, [rk]: rv }),
+            isDef = String(rv) === String(r.default);
+          return `<tr class="border-b last:border-0"><td class="px-2.5 py-2 font-medium">${rv}${r.unit || ""}${isDef ? I("star", "ml-1 inline size-3 text-sky-500") : ""}</td><td class="px-2.5 py-2 text-right tabular ${isDef ? "font-semibold" : ""}"><span class="${q.tier ? "text-sky-600 dark:text-sky-400" : ""}">${q.credits}</span></td></tr>`;
+        })
+        .join(
+          "",
+        )}</tbody></table></div>${legend(`<span class="inline-flex items-center gap-1">${I("star", "size-3 text-sky-500")}默认档位</span>`)}`;
+        }
+        const q = quote(m, base);
+        return `<div class="rounded-xl border bg-card p-4"><div class="text-xs text-muted-foreground">默认参数下每次消耗</div><div class="mt-1 text-3xl font-bold tabular">${q.credits}<span class="ml-1 text-sm font-normal text-muted-foreground">积分</span></div></div>`;
+      }
+      function previewHtml() {
+        if (S.tab === "basic")
+          return (
+            pvTitle("创作端预览 · 模型选择器") +
+            selectorHtml() +
+            `<p class="mt-3 text-xs leading-relaxed text-muted-foreground">高亮的是当前正在编辑的模型，灰色是同类已上架的模型，方便对照名称、标签和价格是否清楚。</p>`
+          );
+        if (S.tab === "params")
+          return (
+            pvTitle("画布节点预览") +
+            `<div id="node">${nodeHtml()}</div><p class="mt-3 text-xs leading-relaxed text-muted-foreground">左边每改一项，这里立即变化。没开放的参数不会出现在节点上，按默认值发送给上游；可以直接在节点里切换方式、选参数。</p>`
+          );
+        return (
+          pvTitle("用户看到的价格") +
+          matrixHtml() +
+          `<p class="mt-3 text-xs leading-relaxed text-muted-foreground">价格在用户点“生成”前就会显示在按钮上；积分成本只有管理员能看到。</p>`
+        );
+      }
+      function checksHtml() {
+        const list = checksOf();
+        $("#checks").innerHTML = list.length
+          ? `<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-6 py-2.5 text-sm ${TONE.amber} rounded-none border-x-0 border-t-0"><span class="inline-flex items-center gap-1.5 font-medium">${I("circle-alert")}发布前还需处理 ${list.length} 项</span>${list.map(([tab, t]) => `<button data-act="tab" data-v="${tab}" class="rounded-md bg-background/60 px-2 py-0.5 text-xs hover:bg-background">${esc(t)}</button>`).join("")}</div>`
+          : "";
+        const pub = $("#publish");
+        if (pub) {
+          pub.disabled = !!list.length;
+          pub.title = list.length ? "先处理上方的待办项" : "";
+        }
+        document.querySelectorAll("[data-tabdot]").forEach((d) => {
+          d.innerHTML = list.some(([t]) => t === d.dataset.tabdot)
+            ? '<span class="inline-block size-1.5 rounded-full bg-amber-500"></span>'
+            : "";
+        });
+        return list;
+      }
+      /** 只刷新右侧预览、待办、头部与限额提示（不动左侧表单，避免输入框丢焦点） */
+      function refreshSide() {
+        const m = M();
+        syncCanvas();
+        $("#hd-sub").innerHTML =
+          `自建 New API · <span class="font-mono">${esc(m.up || m.key)}</span>`;
+        $("#hd-logo").innerHTML = avatar(m, "size-10", "text-base");
+        $("#pv").innerHTML = previewHtml();
+        checksHtml();
+        document.querySelectorAll("[data-lim]").forEach((el) => {
+          el.textContent = limCheck(el.dataset.lim);
+        });
+        document.querySelectorAll("[data-refbar]").forEach((el) => {
+          el.innerHTML = refBar(el.dataset.refbar);
+        });
+        const mg = $("#margins");
+        if (mg) mg.innerHTML = marginsHtml();
+        M().pricing.tiers.forEach((_, i) => {
+          const e = $(`#tmargin-${i}`);
+          if (e) e.innerHTML = tierMargin(i);
+        });
+        icons();
+      }
+      function renderAdminForm() {
+        syncCanvas();
+        $("#form").innerHTML = { basic: basicForm, params: paramsForm, price: priceForm }[S.tab]();
+        refreshSide();
+      }
 
-/* ================================================================== 画布端 */
-/** 生成数量 N > 1：画布上出现 N 个结果节点，每个节点绑定自己的任务 */
-function fanoutPanel(q, km) {
-  if (q.n <= 1) return "";
-  const cs = S.canvas, cap = M().capabilities, allowed = allowedMedia(M(), cs.op), fail = cs.failN, low = cs.lowK;
-  const ups = [];
-  if (cap.refs && cs.img && allowed.includes("image")) ups.push(["image", "图片节点"]);
-  if (cap.refs && cs.aud && allowed.includes("audio")) ups.push(["audio-lines", "音频节点"]);
-  if (cap.refs && cs.vid && allowed.includes("video")) ups.push(["film", "视频节点"]);
-  const same = ["提示词", "模型", "参数", "生成方式", ups.length ? "引用的素材" : null].filter(Boolean).join("、");
-  const created = cs.stage === 1 ? 0 : low ? Math.min(q.n, low) : q.n;
-  const refunded = cs.stage === 1 || !fail || fail > created ? 0 : q.one;
-  const state = (i) => {
-    if (cs.stage === 1) return ["", `${I("loader-circle", "inline size-3 animate-spin")} 提交中…`];
-    if (low && i > low) return [TONE.red, "积分不足，无法生成 · 没有冻结"];
-    if (fail === i) return [TONE.red, `生成失败（上游返回错误）· 已退回 ${q.one}`];
-    return ["", `生成中 · 冻结 ${q.one}`];
-  };
-  return `<div class="mt-4 rounded-xl border bg-card p-4"><div class="mb-1 flex items-center gap-2 text-sm font-semibold">${I("copy-plus")}点发送：复制出 ${q.n} 个一模一样的${km[1]}节点 · ${q.n} 个任务</div>
+      /* ================================================================== 画布端 */
+      /** 生成数量 N > 1：画布上出现 N 个结果节点，每个节点绑定自己的任务 */
+      function fanoutPanel(q, km) {
+        if (q.n <= 1) return "";
+        const cs = S.canvas,
+          cap = M().capabilities,
+          allowed = allowedMedia(M(), cs.op),
+          fail = cs.failN,
+          low = cs.lowK;
+        const ups = [];
+        if (cap.refs && cs.img && allowed.includes("image")) ups.push(["image", "图片节点"]);
+        if (cap.refs && cs.aud && allowed.includes("audio")) ups.push(["audio-lines", "音频节点"]);
+        if (cap.refs && cs.vid && allowed.includes("video")) ups.push(["film", "视频节点"]);
+        const same = ["提示词", "模型", "参数", "生成方式", ups.length ? "引用的素材" : null]
+          .filter(Boolean)
+          .join("、");
+        const created = cs.stage === 1 ? 0 : low ? Math.min(q.n, low) : q.n;
+        const refunded = cs.stage === 1 || !fail || fail > created ? 0 : q.one;
+        const state = (i) => {
+          if (cs.stage === 1)
+            return ["", `${I("loader-circle", "inline size-3 animate-spin")} 提交中…`];
+          if (low && i > low) return [TONE.red, "积分不足，无法生成 · 没有冻结"];
+          if (fail === i) return [TONE.red, `生成失败（上游返回错误）· 已退回 ${q.one}`];
+          return ["", `生成中 · 冻结 ${q.one}`];
+        };
+        return `<div class="mt-4 rounded-xl border bg-card p-4"><div class="mb-1 flex items-center gap-2 text-sm font-semibold">${I("copy-plus")}点发送：复制出 ${q.n} 个一模一样的${km[1]}节点 · ${q.n} 个任务</div>
     <p class="mb-3 text-xs leading-relaxed text-muted-foreground">像「复制节点」一样：<b>点发送的瞬间</b> ${q.n} 个节点就已经在画布上了（原节点 + ${q.n - 1} 个副本）。副本的${same}都和原节点一样，并且连着<b>同样的上游节点</b>；只有生成结果不复制。<b>哪个节点失败，就哪个节点显示它自己的错误；失败的节点不会被删掉</b>，和单个节点失败一样。</p>
     <div class="flex items-stretch gap-3">
       <div class="flex shrink-0 flex-col justify-center gap-2 text-xs">${ups.length ? ups.map(([ic, l]) => `<div class="flex items-center gap-1.5 rounded-lg border bg-muted/40 px-2.5 py-2">${I(ic, "size-3.5")}${l}</div>`).join("") : '<div class="rounded-lg border border-dashed px-2.5 py-2 text-muted-foreground">没有上游素材</div>'}</div>
       <div class="flex shrink-0 flex-col justify-center text-muted-foreground">${I("chevrons-right", "size-5")}</div>
-      <div class="grid flex-1 gap-2" style="grid-template-columns:repeat(${Math.min(q.n, 2)},minmax(0,1fr))">${Array.from({ length: q.n }, (_, i) => { const [tone, txt] = state(i + 1); return `<div class="rounded-lg border p-2.5 text-xs ${tone}"><div class="flex items-center gap-1.5 font-medium">${I(km[2], "size-3.5")}${km[1]}节点 ${i + 1}${i === 0 ? '<span class="ml-auto rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">原节点</span>' : '<span class="ml-auto rounded bg-sky-500/15 px-1 text-[10px] font-normal text-sky-600 dark:text-sky-400">副本</span>'}</div><div class="mt-1 ${tone ? "" : "text-muted-foreground"}">${txt}</div></div>`; }).join("")}</div>
+      <div class="grid flex-1 gap-2" style="grid-template-columns:repeat(${Math.min(q.n, 2)},minmax(0,1fr))">${Array.from(
+        { length: q.n },
+        (_, i) => {
+          const [tone, txt] = state(i + 1);
+          return `<div class="rounded-lg border p-2.5 text-xs ${tone}"><div class="flex items-center gap-1.5 font-medium">${I(km[2], "size-3.5")}${km[1]}节点 ${i + 1}${i === 0 ? '<span class="ml-auto rounded bg-muted px-1 text-[10px] font-normal text-muted-foreground">原节点</span>' : '<span class="ml-auto rounded bg-sky-500/15 px-1 text-[10px] font-normal text-sky-600 dark:text-sky-400">副本</span>'}</div><div class="mt-1 ${tone ? "" : "text-muted-foreground"}">${txt}</div></div>`;
+        },
+      ).join("")}</div>
     </div>
-    <div class="mt-3 flex flex-wrap items-center gap-2 text-xs"><span class="text-muted-foreground">模拟</span>${seg([["1", "刚点发送"], ["2", "服务端已返回"]], String(cs.stage), "c-stage")}${chip(fail > 0, "第 2 个任务失败", "c-failn", "")}${chip(low > 0, "余额只够 2 个", "c-lowk", "")}<span class="ml-auto tabular">已冻结 ${created * q.one}${refunded ? `，已退回 ${refunded}` : ""}</span></div></div>`;
-}
-function canvasScene() {
-  const m = M(), spec = specOf(m), q = quote(m, spec), cap = m.capabilities;
-  const stateBox = `<div class="mt-4 rounded-xl border bg-card p-4"><div class="mb-3 flex items-center gap-2 text-sm font-semibold">${I("cable")}模拟节点上游</div>
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-xs"><span class="text-muted-foreground">模拟</span>${seg(
+      [
+        ["1", "刚点发送"],
+        ["2", "服务端已返回"],
+      ],
+      String(cs.stage),
+      "c-stage",
+    )}${chip(fail > 0, "第 2 个任务失败", "c-failn", "")}${chip(low > 0, "余额只够 2 个", "c-lowk", "")}<span class="ml-auto tabular">已冻结 ${created * q.one}${refunded ? `，已退回 ${refunded}` : ""}</span></div></div>`;
+      }
+      function canvasScene() {
+        const m = M(),
+          spec = specOf(m),
+          q = quote(m, spec),
+          cap = m.capabilities;
+        const stateBox = `<div class="mt-4 rounded-xl border bg-card p-4"><div class="mb-3 flex items-center gap-2 text-sm font-semibold">${I("cable")}模拟节点上游</div>
     <p class="mb-3 text-xs text-muted-foreground">素材类型由连到节点上的上游节点决定。试试在「文生」下连一张图，再切换到「全能参考」。</p>
     <div class="flex flex-wrap gap-2">${cap.refs ? `${chip(S.canvas.img, "上游：图片节点", "c-img", "")}${cap.refs.audio.on && cap.refs.audio.max > 0 ? chip(S.canvas.aud, "上游：音频节点", "c-aud", "") : ""}${cap.refs.video.on && cap.refs.video.max > 0 ? chip(S.canvas.vid, "上游：视频节点", "c-vid", "") : ""}` : '<span class="text-xs text-muted-foreground">文本模型没有参考素材。</span>'}</div></div>`;
-  return `<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        return `<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
     <div>
       <div class="rounded-xl border bg-card p-4"><div class="mb-1 flex items-center gap-2 text-sm font-semibold">${I("layout-list")}模型选择器<span class="text-xs font-normal text-muted-foreground">画布节点上点开模型下拉</span></div>
         <p class="mb-3 text-xs text-muted-foreground">每行：厂商 logo、名称、价格、标签、描述。没选厂商的模型回退首字头像。</p>${selectorHtml()}</div>
       ${stateBox}
       ${fanoutPanel(q, KIND_META[m.kind])}
       <div class="mt-4 rounded-xl border bg-card p-4 text-xs leading-relaxed text-muted-foreground"><div class="mb-2 text-sm font-semibold text-foreground">当前提交的内容</div><pre class="json text-foreground">${esc(JSON.stringify({ model: m.key, op: spec.op, input: Object.fromEntries(Object.entries(spec).filter(([k]) => k !== "op" && k !== "ref_video")), refs: cap.refs ? { image: S.canvas.img && allowedMedia(m, spec.op).includes("image") ? 1 : 0, audio: S.canvas.aud && allowedMedia(m, spec.op).includes("audio") ? 1 : 0, video: S.canvas.vid && allowedMedia(m, spec.op).includes("video") ? 1 : 0 } : undefined, tasks: q.n, frozen_credits_per_task: q.one, frozen_credits_total: q.credits }, null, 2))}</pre>
-        <p class="mt-1">未开放的参数（<span class="font-mono">${Object.entries(cap.params).filter(([, p]) => !p.open).map(([k]) => k).join(", ") || "无"}</span>）由前端按默认值补齐；上方灰显的素材在当前方式下被忽略。</p></div>
+        <p class="mt-1">未开放的参数（<span class="font-mono">${
+          Object.entries(cap.params)
+            .filter(([, p]) => !p.open)
+            .map(([k]) => k)
+            .join(", ") || "无"
+        }</span>）由前端按默认值补齐；上方灰显的素材在当前方式下被忽略。</p></div>
     </div>
     <div><div class="sticky top-20">${pvTitle("画布节点")}<div id="node">${nodeHtml()}</div></div></div>
   </div>`;
-}
+      }
 
-/* ================================================================== 计价与扣费 */
-function calcScene() {
-  const m = M(), spec = specOf(m), q = quote(m, spec), pr = m.pricing, c = S.calc;
-  let ledger = [], notes = "";
-  const one = q.one;
-  if (q.billing === "token") {
-    const actual = Math.max(1, Math.ceil((c.uin * pr.token.in + c.uout * pr.token.out) / 1e6));
-    if (c.fail) ledger = [["freeze", -one, "冻结（上限）"], ["refund", one, "任务失败，全额退回"]];
-    else if (c.noUsage) { ledger = [["freeze", -one, "冻结（上限）"], ["settle", one, "插件没回传 usage → 按冻结额全额扣（提案）"]]; notes = "缺 usage 的保守策略是提案，见设计文档 §11。"; }
-    else { const settle = Math.min(actual, one); ledger = [["freeze", -one, "冻结（上限）"], ["settle", settle, `实际 ${actual} 积分 = ⌈(${c.uin}×${pr.token.in} + ${c.uout}×${pr.token.out}) ÷ 1e6⌉，取 min(实际, 冻结)`], ...(one - settle ? [["refund", one - settle, "多冻结的部分退回"]] : [])]; }
-  } else ledger = c.fail ? [["freeze", -one, "冻结"], ["refund", one, "任务失败，全额退回"]] : [["freeze", -one, "冻结"], ["settle", one, "任务成功，扣除冻结额"]];
-  const lcolor = { freeze: "text-amber-600 dark:text-amber-400", settle: "text-red-600 dark:text-red-400", refund: "text-emerald-600 dark:text-emerald-400" };
-  const view = clone(m);
-  const cm = { key: view.key, kind: view.kind, label: view.label, hint: view.hint, vendor: view.vendor, tags: view.tags, capabilities: clone(view.capabilities), pricing: clone(view.pricing) };
-  delete cm.capabilities.system; delete cm.pricing.cost;
-  const adm = { key: view.key, kind: view.kind, label: view.label, hint: view.hint, vendor: view.vendor, tags: view.tags, deadline: view.deadline, sort: view.sort, channels: [{ channel: view.channel, upstream_model: view.up }], params: { instanceType: "default" }, capabilities: view.capabilities, pricing: view.pricing };
-  const shown = S.view === "admin" ? adm : cm;
-  const usageInputs = q.billing !== "token" ? "" : `<div class="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-xs">${[["chars", "提示词字数"], ["maxOut", "最大输出 Token"], ["uin", "实际输入 Token（usage）"], ["uout", "实际输出 Token（usage）"]].map(([k, l]) => `<div class="space-y-1.5"><div class="text-muted-foreground">${l}</div><input type="number" data-calc="${k}" value="${c[k]}" class="${INPUT} tabular"></div>`).join("")}</div>`;
-  return `<div class="grid gap-5 lg:grid-cols-2">
+      /* ================================================================== 计价与扣费 */
+      function calcScene() {
+        const m = M(),
+          spec = specOf(m),
+          q = quote(m, spec),
+          pr = m.pricing,
+          c = S.calc;
+        let ledger = [],
+          notes = "";
+        const one = q.one;
+        if (q.billing === "token") {
+          const actual = Math.max(
+            1,
+            Math.ceil((c.uin * pr.token.in + c.uout * pr.token.out) / 1e6),
+          );
+          if (c.fail)
+            ledger = [
+              ["freeze", -one, "冻结（上限）"],
+              ["refund", one, "任务失败，全额退回"],
+            ];
+          else if (c.noUsage) {
+            ledger = [
+              ["freeze", -one, "冻结（上限）"],
+              ["settle", one, "插件没回传 usage → 按冻结额全额扣（提案）"],
+            ];
+            notes = "缺 usage 的保守策略是提案，见设计文档 §11。";
+          } else {
+            const settle = Math.min(actual, one);
+            ledger = [
+              ["freeze", -one, "冻结（上限）"],
+              [
+                "settle",
+                settle,
+                `实际 ${actual} 积分 = ⌈(${c.uin}×${pr.token.in} + ${c.uout}×${pr.token.out}) ÷ 1e6⌉，取 min(实际, 冻结)`,
+              ],
+              ...(one - settle ? [["refund", one - settle, "多冻结的部分退回"]] : []),
+            ];
+          }
+        } else
+          ledger = c.fail
+            ? [
+                ["freeze", -one, "冻结"],
+                ["refund", one, "任务失败，全额退回"],
+              ]
+            : [
+                ["freeze", -one, "冻结"],
+                ["settle", one, "任务成功，扣除冻结额"],
+              ];
+        const lcolor = {
+          freeze: "text-amber-600 dark:text-amber-400",
+          settle: "text-red-600 dark:text-red-400",
+          refund: "text-emerald-600 dark:text-emerald-400",
+        };
+        const view = clone(m);
+        const cm = {
+          key: view.key,
+          kind: view.kind,
+          label: view.label,
+          hint: view.hint,
+          vendor: view.vendor,
+          tags: view.tags,
+          capabilities: clone(view.capabilities),
+          pricing: clone(view.pricing),
+        };
+        delete cm.capabilities.system;
+        delete cm.pricing.cost;
+        const adm = {
+          key: view.key,
+          kind: view.kind,
+          label: view.label,
+          hint: view.hint,
+          vendor: view.vendor,
+          tags: view.tags,
+          deadline: view.deadline,
+          sort: view.sort,
+          channels: [{ channel: view.channel, upstream_model: view.up }],
+          params: { instanceType: "default" },
+          capabilities: view.capabilities,
+          pricing: view.pricing,
+        };
+        const shown = S.view === "admin" ? adm : cm;
+        const usageInputs =
+          q.billing !== "token"
+            ? ""
+            : `<div class="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-xs">${[
+                ["chars", "提示词字数"],
+                ["maxOut", "最大输出 Token"],
+                ["uin", "实际输入 Token（usage）"],
+                ["uout", "实际输出 Token（usage）"],
+              ]
+                .map(
+                  ([k, l]) =>
+                    `<div class="space-y-1.5"><div class="text-muted-foreground">${l}</div><input type="number" data-calc="${k}" value="${c[k]}" class="${INPUT} tabular"></div>`,
+                )
+                .join("")}</div>`;
+        return `<div class="grid gap-5 lg:grid-cols-2">
     <div class="space-y-4">
       <div class="rounded-xl border bg-card p-4"><div class="mb-3 flex items-center gap-2 text-sm font-semibold">${I("calculator")}用户这次的选择</div>
         <div id="node">${nodeHtml()}</div></div>
       <div class="rounded-xl border bg-card p-4"><div class="mb-3 flex items-center gap-2 text-sm font-semibold">${I("receipt")}Quote 计价</div>
         <dl class="space-y-2 text-sm"><div class="flex justify-between gap-3"><dt class="text-muted-foreground">计费方式</dt><dd>${{ per_call: "按次", per_second: "按秒", token: "Token" }[pr.billing]}</dd></div>
           <div class="flex justify-between gap-3"><dt class="text-muted-foreground">规格</dt><dd class="text-right font-mono text-xs">${esc(JSON.stringify(spec))}</dd></div>
-          <div class="flex justify-between gap-3"><dt class="text-muted-foreground">命中</dt><dd class="text-right">${q.tier ? `规格价格 ${String(q.tier.idx + 2).padStart(2, "0")}（${Object.entries(q.tier.when).map(([k, v]) => `${k}=${v}`).join("，")}）` : "默认价格"}</dd></div>
+          <div class="flex justify-between gap-3"><dt class="text-muted-foreground">命中</dt><dd class="text-right">${
+            q.tier
+              ? `规格价格 ${String(q.tier.idx + 2).padStart(2, "0")}（${Object.entries(q.tier.when)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join("，")}）`
+              : "默认价格"
+          }</dd></div>
           <div class="flex justify-between gap-3"><dt class="text-muted-foreground">算式</dt><dd class="text-right font-mono text-xs">${esc(q.formula)}</dd></div>
           <div class="flex justify-between gap-3 border-t pt-2"><dt class="font-medium">${q.n > 1 ? `每个任务冻结 ${one} × ${q.n} 个任务` : q.billing === "token" ? "冻结额（上限，向上取整）" : "冻结额（向上取整）"}</dt><dd class="text-lg font-bold tabular">${q.credits} 积分</dd></div></dl>
         ${usageInputs}
-        <div class="mt-4 flex flex-wrap items-center gap-2 border-t pt-4 text-xs"><span class="text-muted-foreground">任务结果</span>${seg([["ok", "成功"], ["fail", "失败"]], c.fail ? "fail" : "ok", "c-result")}${q.billing === "token" ? `<label class="ml-auto flex items-center gap-2 text-muted-foreground">插件没回传 usage${sw(c.noUsage, 'data-act="c-nousage"')}</label>` : ""}</div>
+        <div class="mt-4 flex flex-wrap items-center gap-2 border-t pt-4 text-xs"><span class="text-muted-foreground">任务结果</span>${seg(
+          [
+            ["ok", "成功"],
+            ["fail", "失败"],
+          ],
+          c.fail ? "fail" : "ok",
+          "c-result",
+        )}${q.billing === "token" ? `<label class="ml-auto flex items-center gap-2 text-muted-foreground">插件没回传 usage${sw(c.noUsage, 'data-act="c-nousage"')}</label>` : ""}</div>
       </div>
       <div class="rounded-xl border bg-card p-4"><div class="mb-3 flex items-center gap-2 text-sm font-semibold">${I("book-open-text")}积分流水<span class="text-xs font-normal text-muted-foreground">${q.n > 1 ? `下面是其中 1 个任务；一共 ${q.n} 个任务，每个都是这几类流水，互不影响（某个失败只退它自己的）` : "一个任务"}</span></div>
         <div class="divide-y rounded-lg border">${ledger.map(([t, n, d]) => `<div class="flex items-center gap-3 px-3 py-2 text-sm"><span class="w-14 font-mono text-xs ${lcolor[t]}">${t}</span><span class="w-14 text-right tabular font-medium ${lcolor[t]}">${n > 0 ? "+" : ""}${n}</span><span class="flex-1 text-xs text-muted-foreground">${esc(d)}</span></div>`).join("")}</div>${notes ? `<p class="mt-2 text-[11px] text-muted-foreground">${notes}</p>` : ""}</div>
     </div>
     <div><div class="sticky top-20 rounded-xl border bg-card">
-      <div class="flex flex-wrap items-center gap-2 border-b p-3"><span class="flex items-center gap-2 text-sm font-semibold">${I("braces")}模型正文</span><span class="ml-auto">${seg([["admin", "管理端（含 cost）"], ["canvas", "画布端 GET /models"]], S.view, "view")}</span></div>
+      <div class="flex flex-wrap items-center gap-2 border-b p-3"><span class="flex items-center gap-2 text-sm font-semibold">${I("braces")}模型正文</span><span class="ml-auto">${seg(
+        [
+          ["admin", "管理端（含 cost）"],
+          ["canvas", "画布端 GET /models"],
+        ],
+        S.view,
+        "view",
+      )}</span></div>
       <pre class="json max-h-[34rem] p-3">${esc(JSON.stringify(shown, null, 2))}</pre>
       <div class="border-t p-3 text-[11px] leading-relaxed text-muted-foreground">${S.view === "canvas" ? `画布端已剔除：<span class="font-mono">pricing.cost</span>（成本价）、<span class="font-mono">capabilities.system</span>（系统提示）、顶层 <span class="font-mono">params</span>（固定参数）、渠道与插件信息。` : "管理端正文：保存/发布的就是这一份；成本价只存在这里。"}</div>
     </div></div>
   </div>`;
-}
+      }
 
-/* ================================================================== 页面框架 */
-function renderIntro() {
-  const items = [[1, "基本信息", ["厂商 Logo（vendor）", "展示标签 ≤5 个 / 12 字", "描述 500 字计数", "选择器预览：logo、标签、价格"]], [2, "能力与参数", ["capabilities 取代 input_schema", "生成方式：文生 / 图生 / 全能参考（不区分素材类型）", "参考素材开关与数量、大小上限", "开放给用户、可选值勾选、时长可拖动（最小 / 最大）", "上下文能力、固定系统提示", "能力由运营手填，后端固定上下限兜底"]], [3, "积分定价", ["按次 / 按秒 / Token", "清晰度档位定价：图片 1K/2K/4K，视频 720P/1080P/4K", "规格价格：清晰度 / 音频开关 / 有无参考视频", "计费方式由模型决定：视频按秒、图片按次、文本 Token", "生成数量 = 复制出 N 个一模一样的节点 + N 个任务，各自冻结", "成本价与利润率（仅管理端）", "前端本地计价，后端冻结为准", "Token 预冻结，多退少补"]]];
-  $("#intro").innerHTML = items.map(([n, t, l]) => `<div class="rounded-xl border bg-card p-4"><div class="mb-2 flex items-center gap-2"><span class="rounded border px-1.5 py-0.5 text-xs font-medium ${TONE[PHASE[n][0]]}">${PHASE[n][1]}</span><span class="text-sm font-semibold">${t}</span></div><ul class="space-y-1 text-xs text-muted-foreground">${l.map((x) => `<li class="flex gap-1.5"><span class="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground/60"></span>${x}</li>`).join("")}</ul></div>`).join("");
-}
-function render() {
-  $("#scene-seg").innerHTML = seg([["admin", "管理端 · 编辑模型"], ["canvas", "画布端"], ["calc", "计价与扣费"]], S.scene, "scene");
-  $("#preset-seg").innerHTML = seg([["video", "视频"], ["image", "图片"], ["text", "文本"]], S.preset, "preset");
-  syncCanvas();
-  if (S.scene === "admin") { $("#stage").innerHTML = adminShell(); renderAdminForm(); }
-  else { $("#stage").innerHTML = S.scene === "canvas" ? canvasScene() : calcScene(); }
-  icons();
-}
-/** 画布端/计价页内，只刷新节点与依赖区域 */
-const rerenderScene = () => { if (S.scene === "admin") { refreshSide(); } else { const y = window.scrollY; render(); window.scrollTo(0, y); } };
+      /* ================================================================== 页面框架 */
+      function renderIntro() {
+        const items = [
+          [
+            1,
+            "基本信息",
+            [
+              "厂商 Logo（vendor）",
+              "展示标签 ≤5 个 / 12 字",
+              "描述 500 字计数",
+              "选择器预览：logo、标签、价格",
+            ],
+          ],
+          [
+            2,
+            "能力与参数",
+            [
+              "capabilities 取代 input_schema",
+              "生成方式：文生 / 图生 / 全能参考（不区分素材类型）",
+              "参考素材开关与数量、大小上限",
+              "开放给用户、可选值勾选、时长可拖动（最小 / 最大）",
+              "上下文能力、固定系统提示",
+              "能力由运营手填，后端固定上下限兜底",
+            ],
+          ],
+          [
+            3,
+            "积分定价",
+            [
+              "按次 / 按秒 / Token",
+              "清晰度档位定价：图片 1K/2K/4K，视频 720P/1080P/4K",
+              "规格价格：清晰度 / 音频开关 / 有无参考视频",
+              "计费方式由模型决定：视频按秒、图片按次、文本 Token",
+              "生成数量 = 复制出 N 个一模一样的节点 + N 个任务，各自冻结",
+              "成本价与利润率（仅管理端）",
+              "前端本地计价，后端冻结为准",
+              "Token 预冻结，多退少补",
+            ],
+          ],
+        ];
+        $("#intro").innerHTML = items
+          .map(
+            ([n, t, l]) =>
+              `<div class="rounded-xl border bg-card p-4"><div class="mb-2 flex items-center gap-2"><span class="rounded border px-1.5 py-0.5 text-xs font-medium ${TONE[PHASE[n][0]]}">${PHASE[n][1]}</span><span class="text-sm font-semibold">${t}</span></div><ul class="space-y-1 text-xs text-muted-foreground">${l.map((x) => `<li class="flex gap-1.5"><span class="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground/60"></span>${x}</li>`).join("")}</ul></div>`,
+          )
+          .join("");
+      }
+      function render() {
+        $("#scene-seg").innerHTML = seg(
+          [
+            ["admin", "管理端 · 编辑模型"],
+            ["canvas", "画布端"],
+            ["calc", "计价与扣费"],
+          ],
+          S.scene,
+          "scene",
+        );
+        $("#preset-seg").innerHTML = seg(
+          [
+            ["video", "视频"],
+            ["image", "图片"],
+            ["text", "文本"],
+          ],
+          S.preset,
+          "preset",
+        );
+        syncCanvas();
+        if (S.scene === "admin") {
+          $("#stage").innerHTML = adminShell();
+          renderAdminForm();
+        } else {
+          $("#stage").innerHTML = S.scene === "canvas" ? canvasScene() : calcScene();
+        }
+        icons();
+      }
+      /** 画布端/计价页内，只刷新节点与依赖区域 */
+      const rerenderScene = () => {
+        if (S.scene === "admin") {
+          refreshSide();
+        } else {
+          const y = window.scrollY;
+          render();
+          window.scrollTo(0, y);
+        }
+      };
 
-/* ================================================================== 事件 */
-const ACT = {
-  scene: (v) => { S.scene = v; S.vpOpen = false; render(); },
-  preset: (v) => { S.preset = v; S.tab = "basic"; S.vpOpen = false; S.canvas.params = {}; render(); },
-  theme: () => { document.documentElement.classList.toggle("dark"); },
-  toast: (v) => toast(v),
-  tab: (v) => { S.tab = v; S.vpOpen = false; render(); },
-  shelf: (_, el) => { const m = M(); m.enabled = !m.enabled; el.setAttribute("aria-checked", m.enabled); },
-  publish: (_, el) => { if (!el.disabled) toast("已发布为新版本 v4（演示）"); },
-  "vp-toggle": () => { S.vpOpen = !S.vpOpen; S.vq = ""; renderAdminForm(); if (S.vpOpen) $("#vq")?.focus(); },
-  "vp-pick": (v) => { M().vendor = v; S.vpOpen = false; renderAdminForm(); },
-  "tag-del": (v) => { M().tags.splice(+v, 1); renderAdminForm(); },
-  deadline: (v) => { M().deadline = v; renderAdminForm(); },
-  "op-toggle": (v) => { const o = M().capabilities.ops, i = o.indexOf(v); i >= 0 ? o.splice(i, 1) : o.push(v); const order = Object.keys(OPS); o.sort((a, b) => order.indexOf(a) - order.indexOf(b)); renderAdminForm(); },
-  "ref-on": (v) => { const r = M().capabilities.refs[v]; r.on = !r.on; if (r.on && r.max === 0) { r.max = 1; r.mb = 10; } renderAdminForm(); },
-  "opt-open": (k) => { const p = M().capabilities.params[k]; p.open = !p.open; renderAdminForm(); },
-  "opt-choice": (v) => {
-    const [k, val] = v.split("|"), p = M().capabilities.params[k], at = p.options.findIndex((o) => String(o) === val);
-    if (at >= 0) { if (p.options.length === 1) return toast("至少保留一个可选值"); p.options.splice(at, 1); if (String(p.default) === val) p.default = p.options[0]; }
-    else { const u = unionOptions(k, p), raw = u.find((o) => String(o) === val); p.options.push(raw); p.options.sort((a, b) => u.findIndex((x) => String(x) === String(a)) - u.findIndex((x) => String(x) === String(b))); }
-    renderAdminForm();
-  },
-  "opt-def": (v) => { const [k, val] = v.split("|"), p = M().capabilities.params[k]; p.default = p.options.find((o) => String(o) === val); renderAdminForm(); },
-  "opt-spec": (k) => { const p = M().capabilities.params[k]; p.spec = !p.spec; renderAdminForm(); },
-  "opt-bool": (k) => { const p = M().capabilities.params[k]; p.default = !p.default; renderAdminForm(); },
-  billing: (v) => { const m = M(), pr = m.pricing; if ((v === "token" && m.kind !== "text") || (v === "per_second" && !m.capabilities.params.duration)) return; if (pr.billing !== v && pr.tiers.length) { pr.tiers = []; toast("切换计费方式会清空规格价格（单位不同）"); } pr.billing = v; renderAdminForm(); },
-  "cost-on": () => { const c = M().pricing.cost; c.on = !c.on; renderAdminForm(); },
-  "tier-add": () => { const m = M(), specs = Object.entries(m.capabilities.params).filter(([, p]) => p.spec); const when = {}; specs.forEach(([k]) => (when[k] = "*")); m.pricing.tiers.push({ on: true, when, unit: costPair(m.pricing, m, null)[0] }); renderAdminForm(); },
-  "tier-del": (v) => { M().pricing.tiers.splice(+v, 1); renderAdminForm(); },
-  "tier-on": (v) => { const t = M().pricing.tiers[+v]; t.on = !t.on; renderAdminForm(); },
-  "tier-cond": (v) => { const [i, k, val] = v.split("|"), t = M().pricing.tiers[+i]; if (val === "*") delete t.when[k]; else t.when[k] = val; if (val === "*" && k !== "op") t.when[k] = "*"; renderAdminForm(); },
-  "c-op": (v) => { S.canvas.op = v; rerenderScene(); },
-  "c-pop": () => { S.canvas.pop = !S.canvas.pop; rerenderScene(); },
-  "c-boolset": (v) => { const [k, b] = v.split("|"); S.canvas.params[k] = b === "1"; rerenderScene(); },
-  "c-param": (v) => { const [k, val] = v.split("|"), p = M().capabilities.params[k]; S.canvas.params[k] = p.options.find((o) => String(o) === val); rerenderScene(); },
-  "c-bool": (k) => { S.canvas.params[k] = !S.canvas.params[k]; rerenderScene(); },
-  "c-img": () => { S.canvas.img = !S.canvas.img; rerenderScene(); },
-  "c-aud": () => { S.canvas.aud = !S.canvas.aud; rerenderScene(); },
-  "c-stage": (v) => { S.canvas.stage = +v; rerenderScene(); },
-  "c-lowk": () => { S.canvas.lowK = S.canvas.lowK ? 0 : 2; rerenderScene(); },
-  "c-failn": () => { S.canvas.failN = S.canvas.failN ? 0 : 2; rerenderScene(); },
-  "c-vid": () => { S.canvas.vid = !S.canvas.vid; rerenderScene(); },
-  "c-result": (v) => { S.calc.fail = v === "fail"; rerenderScene(); },
-  "c-nousage": () => { S.calc.noUsage = !S.calc.noUsage; rerenderScene(); },
-  view: (v) => { S.view = v; render(); },
-};
-document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-act]"); if (!el || el.disabled) return;
-  const f = ACT[el.dataset.act]; if (f) f(el.dataset.v, el);
-  icons();
-});
-document.addEventListener("input", (e) => {
-  const t = e.target;
-  if (t.id === "vq") { S.vq = t.value; const q = t.value.trim().toLowerCase(); $("#vgrid").innerHTML = vgrid(VENDORS.filter(([s, n]) => !q || s.includes(q) || n.toLowerCase().includes(q))); icons(); return; }
-  if (t.dataset.bind) {
-    let v = t.value;
-    if (t.dataset.t === "num") v = t.value === "" ? 0 : Math.round(Number(t.value));
-    setp(M(), t.dataset.bind, v);
-    if (t.dataset.bind === "hint") $("#hint-n").textContent = `${v.length} / 500`;
-    if (/\.(min|max|default)$/.test(t.dataset.bind) && /params\./.test(t.dataset.bind)) { /* 数字参数范围变化需要重画滑轨：失焦时再整体刷新，避免打断输入 */ }
-    refreshSide(); return;
-  }
-  if (t.dataset.cp) {
-    const k = t.dataset.cp, p = M().capabilities.params[k];
-    let v = Number(t.value); if (!Number.isFinite(v)) return;
-    v = Math.min(p.max, Math.max(p.min, v)); S.canvas.params[k] = v;
-    document.querySelectorAll(`[data-cp="${k}"]`).forEach((x) => { if (x !== t) x.value = v; });
-    const q = quote(M(), specOf(M())); document.querySelectorAll("[data-genprice]").forEach((x) => (x.textContent = creditText(q)));
-    document.querySelectorAll("[data-sum]").forEach((x) => (x.innerHTML = sumHtml(M()))); icons();
-    return;
-  }
-  if (t.dataset.calc) { S.calc[t.dataset.calc] = Number(t.value) || 0; const y = window.scrollY, id = t.dataset.calc, pos = t.selectionStart; render(); window.scrollTo(0, y); const n = document.querySelector(`[data-calc="${id}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (_) {} } }
-});
-// 数字参数的范围改完后，失焦时整体刷新左侧（滑轨、默认值点位）
-document.addEventListener("change", (e) => { if (e.target.dataset?.cop !== undefined) { S.canvas.op = e.target.value; rerenderScene(); return; } const b = e.target.dataset?.bind; if (b && /^capabilities\.params\.\w+\.(min|max|default)$/.test(b)) renderAdminForm(); });
-document.addEventListener("keydown", (e) => {
-  if (e.target.dataset?.addopt && e.key === "Enter") {
-    e.preventDefault(); const k = e.target.dataset.addopt, p = M().capabilities.params[k], raw = e.target.value.trim(); if (!raw) return;
-    const val = p.options.every((o) => typeof o === "number") ? Number(raw) : raw;
-    if (typeof val === "number" && !Number.isFinite(val)) return toast("这个参数的可选值是数字");
-    if (p.options.some((o) => String(o) === String(val))) return toast("已经有这个值了");
-    p.options.push(val); renderAdminForm(); document.querySelector(`[data-addopt="${k}"]`)?.focus(); return;
-  }
-  if (e.target.id === "tag-in" && e.key === "Enter") {
-    e.preventDefault(); const v = e.target.value.trim(), t = M().tags;
-    if (!v) return; if (t.includes(v)) return toast("标签已存在"); if (t.length >= 5) return toast("最多 5 个标签");
-    t.push(v.slice(0, 12)); renderAdminForm(); $("#tag-in")?.focus();
-  }
-  if (e.key === "Escape" && S.vpOpen) { S.vpOpen = false; renderAdminForm(); }
-});
-document.addEventListener("mousedown", (e) => { if (S.vpOpen && !e.target.closest("#vp")) { S.vpOpen = false; renderAdminForm(); } });
+      /* ================================================================== 事件 */
+      const ACT = {
+        scene: (v) => {
+          S.scene = v;
+          S.vpOpen = false;
+          render();
+        },
+        preset: (v) => {
+          S.preset = v;
+          S.tab = "basic";
+          S.vpOpen = false;
+          S.canvas.params = {};
+          render();
+        },
+        theme: () => {
+          document.documentElement.classList.toggle("dark");
+        },
+        toast: (v) => toast(v),
+        tab: (v) => {
+          S.tab = v;
+          S.vpOpen = false;
+          render();
+        },
+        shelf: (_, el) => {
+          const m = M();
+          m.enabled = !m.enabled;
+          el.setAttribute("aria-checked", m.enabled);
+        },
+        publish: (_, el) => {
+          if (!el.disabled) toast("已发布为新版本 v4（演示）");
+        },
+        "vp-toggle": () => {
+          S.vpOpen = !S.vpOpen;
+          S.vq = "";
+          renderAdminForm();
+          if (S.vpOpen) $("#vq")?.focus();
+        },
+        "vp-pick": (v) => {
+          M().vendor = v;
+          S.vpOpen = false;
+          renderAdminForm();
+        },
+        "tag-del": (v) => {
+          M().tags.splice(+v, 1);
+          renderAdminForm();
+        },
+        deadline: (v) => {
+          M().deadline = v;
+          renderAdminForm();
+        },
+        "op-toggle": (v) => {
+          const o = M().capabilities.ops,
+            i = o.indexOf(v);
+          i >= 0 ? o.splice(i, 1) : o.push(v);
+          const order = Object.keys(OPS);
+          o.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          renderAdminForm();
+        },
+        "ref-on": (v) => {
+          const r = M().capabilities.refs[v];
+          r.on = !r.on;
+          if (r.on && r.max === 0) {
+            r.max = 1;
+            r.mb = 10;
+          }
+          renderAdminForm();
+        },
+        "opt-open": (k) => {
+          const p = M().capabilities.params[k];
+          p.open = !p.open;
+          renderAdminForm();
+        },
+        "opt-choice": (v) => {
+          const [k, val] = v.split("|"),
+            p = M().capabilities.params[k],
+            at = p.options.findIndex((o) => String(o) === val);
+          if (at >= 0) {
+            if (p.options.length === 1) return toast("至少保留一个可选值");
+            p.options.splice(at, 1);
+            if (String(p.default) === val) p.default = p.options[0];
+          } else {
+            const u = unionOptions(k, p),
+              raw = u.find((o) => String(o) === val);
+            p.options.push(raw);
+            p.options.sort(
+              (a, b) =>
+                u.findIndex((x) => String(x) === String(a)) -
+                u.findIndex((x) => String(x) === String(b)),
+            );
+          }
+          renderAdminForm();
+        },
+        "opt-def": (v) => {
+          const [k, val] = v.split("|"),
+            p = M().capabilities.params[k];
+          p.default = p.options.find((o) => String(o) === val);
+          renderAdminForm();
+        },
+        "opt-spec": (k) => {
+          const p = M().capabilities.params[k];
+          p.spec = !p.spec;
+          renderAdminForm();
+        },
+        "opt-bool": (k) => {
+          const p = M().capabilities.params[k];
+          p.default = !p.default;
+          renderAdminForm();
+        },
+        billing: (v) => {
+          const m = M(),
+            pr = m.pricing;
+          if (
+            (v === "token" && m.kind !== "text") ||
+            (v === "per_second" && !m.capabilities.params.duration)
+          )
+            return;
+          if (pr.billing !== v && pr.tiers.length) {
+            pr.tiers = [];
+            toast("切换计费方式会清空规格价格（单位不同）");
+          }
+          pr.billing = v;
+          renderAdminForm();
+        },
+        "cost-on": () => {
+          const c = M().pricing.cost;
+          c.on = !c.on;
+          renderAdminForm();
+        },
+        "tier-add": () => {
+          const m = M(),
+            specs = Object.entries(m.capabilities.params).filter(([, p]) => p.spec);
+          const when = {};
+          specs.forEach(([k]) => (when[k] = "*"));
+          m.pricing.tiers.push({ on: true, when, unit: costPair(m.pricing, m, null)[0] });
+          renderAdminForm();
+        },
+        "tier-del": (v) => {
+          M().pricing.tiers.splice(+v, 1);
+          renderAdminForm();
+        },
+        "tier-on": (v) => {
+          const t = M().pricing.tiers[+v];
+          t.on = !t.on;
+          renderAdminForm();
+        },
+        "tier-cond": (v) => {
+          const [i, k, val] = v.split("|"),
+            t = M().pricing.tiers[+i];
+          if (val === "*") delete t.when[k];
+          else t.when[k] = val;
+          if (val === "*" && k !== "op") t.when[k] = "*";
+          renderAdminForm();
+        },
+        "c-op": (v) => {
+          S.canvas.op = v;
+          rerenderScene();
+        },
+        "c-pop": () => {
+          S.canvas.pop = !S.canvas.pop;
+          rerenderScene();
+        },
+        "c-boolset": (v) => {
+          const [k, b] = v.split("|");
+          S.canvas.params[k] = b === "1";
+          rerenderScene();
+        },
+        "c-param": (v) => {
+          const [k, val] = v.split("|"),
+            p = M().capabilities.params[k];
+          S.canvas.params[k] = p.options.find((o) => String(o) === val);
+          rerenderScene();
+        },
+        "c-bool": (k) => {
+          S.canvas.params[k] = !S.canvas.params[k];
+          rerenderScene();
+        },
+        "c-img": () => {
+          S.canvas.img = !S.canvas.img;
+          rerenderScene();
+        },
+        "c-aud": () => {
+          S.canvas.aud = !S.canvas.aud;
+          rerenderScene();
+        },
+        "c-stage": (v) => {
+          S.canvas.stage = +v;
+          rerenderScene();
+        },
+        "c-lowk": () => {
+          S.canvas.lowK = S.canvas.lowK ? 0 : 2;
+          rerenderScene();
+        },
+        "c-failn": () => {
+          S.canvas.failN = S.canvas.failN ? 0 : 2;
+          rerenderScene();
+        },
+        "c-vid": () => {
+          S.canvas.vid = !S.canvas.vid;
+          rerenderScene();
+        },
+        "c-result": (v) => {
+          S.calc.fail = v === "fail";
+          rerenderScene();
+        },
+        "c-nousage": () => {
+          S.calc.noUsage = !S.calc.noUsage;
+          rerenderScene();
+        },
+        view: (v) => {
+          S.view = v;
+          render();
+        },
+      };
+      document.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-act]");
+        if (!el || el.disabled) return;
+        const f = ACT[el.dataset.act];
+        if (f) f(el.dataset.v, el);
+        icons();
+      });
+      document.addEventListener("input", (e) => {
+        const t = e.target;
+        if (t.id === "vq") {
+          S.vq = t.value;
+          const q = t.value.trim().toLowerCase();
+          $("#vgrid").innerHTML = vgrid(
+            VENDORS.filter(([s, n]) => !q || s.includes(q) || n.toLowerCase().includes(q)),
+          );
+          icons();
+          return;
+        }
+        if (t.dataset.bind) {
+          let v = t.value;
+          if (t.dataset.t === "num") v = t.value === "" ? 0 : Math.round(Number(t.value));
+          setp(M(), t.dataset.bind, v);
+          if (t.dataset.bind === "hint") $("#hint-n").textContent = `${v.length} / 500`;
+          if (/\.(min|max|default)$/.test(t.dataset.bind) && /params\./.test(t.dataset.bind)) {
+            /* 数字参数范围变化需要重画滑轨：失焦时再整体刷新，避免打断输入 */
+          }
+          refreshSide();
+          return;
+        }
+        if (t.dataset.cp) {
+          const k = t.dataset.cp,
+            p = M().capabilities.params[k];
+          let v = Number(t.value);
+          if (!Number.isFinite(v)) return;
+          v = Math.min(p.max, Math.max(p.min, v));
+          S.canvas.params[k] = v;
+          document.querySelectorAll(`[data-cp="${k}"]`).forEach((x) => {
+            if (x !== t) x.value = v;
+          });
+          const q = quote(M(), specOf(M()));
+          document
+            .querySelectorAll("[data-genprice]")
+            .forEach((x) => (x.textContent = creditText(q)));
+          document.querySelectorAll("[data-sum]").forEach((x) => (x.innerHTML = sumHtml(M())));
+          icons();
+          return;
+        }
+        if (t.dataset.calc) {
+          S.calc[t.dataset.calc] = Number(t.value) || 0;
+          const y = window.scrollY,
+            id = t.dataset.calc,
+            pos = t.selectionStart;
+          render();
+          window.scrollTo(0, y);
+          const n = document.querySelector(`[data-calc="${id}"]`);
+          if (n) {
+            n.focus();
+            try {
+              n.setSelectionRange(pos, pos);
+            } catch (_) {}
+          }
+        }
+      });
+      // 数字参数的范围改完后，失焦时整体刷新左侧（滑轨、默认值点位）
+      document.addEventListener("change", (e) => {
+        if (e.target.dataset?.cop !== undefined) {
+          S.canvas.op = e.target.value;
+          rerenderScene();
+          return;
+        }
+        const b = e.target.dataset?.bind;
+        if (b && /^capabilities\.params\.\w+\.(min|max|default)$/.test(b)) renderAdminForm();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.target.dataset?.addopt && e.key === "Enter") {
+          e.preventDefault();
+          const k = e.target.dataset.addopt,
+            p = M().capabilities.params[k],
+            raw = e.target.value.trim();
+          if (!raw) return;
+          const val = p.options.every((o) => typeof o === "number") ? Number(raw) : raw;
+          if (typeof val === "number" && !Number.isFinite(val))
+            return toast("这个参数的可选值是数字");
+          if (p.options.some((o) => String(o) === String(val))) return toast("已经有这个值了");
+          p.options.push(val);
+          renderAdminForm();
+          document.querySelector(`[data-addopt="${k}"]`)?.focus();
+          return;
+        }
+        if (e.target.id === "tag-in" && e.key === "Enter") {
+          e.preventDefault();
+          const v = e.target.value.trim(),
+            t = M().tags;
+          if (!v) return;
+          if (t.includes(v)) return toast("标签已存在");
+          if (t.length >= 5) return toast("最多 5 个标签");
+          t.push(v.slice(0, 12));
+          renderAdminForm();
+          $("#tag-in")?.focus();
+        }
+        if (e.key === "Escape" && S.vpOpen) {
+          S.vpOpen = false;
+          renderAdminForm();
+        }
+      });
+      document.addEventListener("mousedown", (e) => {
+        if (S.vpOpen && !e.target.closest("#vp")) {
+          S.vpOpen = false;
+          renderAdminForm();
+        }
+      });
 
-renderIntro(); render();
-</script>
-</body>
+      renderIntro();
+      render();
+    </script>
+  </body>
 </html>

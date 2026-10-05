@@ -27,7 +27,10 @@ type Handlers struct {
 	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
 	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
-	AdminRole      middleware.RoleLookup               // 管理接口的角色查询
+	AdminUser      *handler.AdminUserHandler           // 后台用户管理
+	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
+	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
+	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
 }
 
 func New(mode, jwtSecret string, h Handlers) *gin.Engine {
@@ -46,18 +49,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 	v1 := r.Group("/api/v1")
 	{
 		// 无需鉴权
+		v1.GET("/auth/config", h.User.Config)
+		v1.POST("/auth/register/code", h.User.SendRegisterCode)
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
-		// 需要登录
-		auth := v1.Group("", middleware.JWTAuth(jwtSecret))
-
-		// 用户鉴权
-		users := auth.Group("/users")
-		users.GET("", h.User.List)
-		users.GET("/:id", h.User.Get)
+		// 需要登录：JWT 校验之后再查用户状态（停用 → 403，token_version 不符 → 401），封禁与重置密码立即生效
+		auth := v1.Group("", middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState))
 
 		// 画布操作
 		canvas := auth.Group("/canvas")
@@ -156,12 +156,30 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		processors.POST("/:id/disable", superOnly, h.AdminImageProc.Disable)
 		processors.DELETE("/:id", superOnly, h.AdminImageProc.Delete)
 
-		// TODO: middleware/auth.go 里的 JWT 鉴权中间件还是空的，下面这组接口目前未做鉴权
-		// users := v1.Group("/users")
-		// users.POST("", h.User.Create)
-		// users.GET("/:id", h.User.Get)
-		// users.PUT("/:id", h.User.Update)
-		// users.DELETE("/:id", h.User.Delete)
+		// 用户管理：读 = admin 或 super_admin。原先任何登录用户都能调的 GET /users、GET /users/:id 已删除。
+		adminUsers := auth.Group("/admin/users", middleware.RequireAdmin(h.AdminRole))
+		adminUsers.GET("", h.AdminUser.List)
+		// 批量接口的 batch 是静态段，与 /:id/... 在同一层；Gin 优先匹配静态段，不冲突（router 测试覆盖）
+		adminUsers.POST("/batch/credits", h.AdminUser.BatchCredits)
+		adminUsers.PUT("/batch/status", h.AdminUser.BatchStatus)
+		adminUsers.GET("/:id", h.AdminUser.Get)
+		adminUsers.GET("/:id/tasks", h.AdminUser.Tasks)
+		adminUsers.GET("/:id/ledger", h.AdminUser.Ledger)
+		adminUsers.GET("/:id/logins", h.AdminUser.Logins)
+		adminUsers.POST("/:id/credits", h.AdminUser.AdjustCredits)
+		adminUsers.PUT("/:id/limits", h.AdminUser.SetLimit)
+		adminUsers.PUT("/:id/status", h.AdminUser.SetStatus)
+		adminUsers.PUT("/:id/role", superOnly, h.AdminUser.SetRole)                  // 仅 super_admin
+		adminUsers.POST("/:id/reset-password", superOnly, h.AdminUser.ResetPassword) // 仅 super_admin
+
+		// 系统设置（注册 / 邮件）：读 = admin 或 super_admin；写 = 仅 super_admin。SMTP 密码只写不读。
+		settings := auth.Group("/admin/settings", middleware.RequireAdmin(h.AdminRole))
+		settings.GET("/register", h.AdminSettings.GetRegister)
+		settings.PUT("/register", superOnly, h.AdminSettings.UpdateRegister)
+		settings.GET("/smtp", h.AdminSettings.GetSMTP)
+		settings.PUT("/smtp", superOnly, h.AdminSettings.UpdateSMTP)
+		settings.PUT("/smtp/password", superOnly, h.AdminSettings.SetSMTPPassword)
+		settings.POST("/smtp/test", superOnly, h.AdminSettings.TestSMTP)
 	}
 
 	// 素材的稳定地址：画布 payload 里存的就是它，永不过期、换存储也不变。

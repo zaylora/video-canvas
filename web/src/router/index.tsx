@@ -2,13 +2,16 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router
 
 import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
-import AdminAiLayout from "@/pages/admin-ai/layout";
-import ChannelsPage from "@/pages/admin-ai/channels";
-import ModelsPage from "@/pages/admin-ai/models";
-import OverviewPage from "@/pages/admin-ai/overview";
-import PluginsPage from "@/pages/admin-ai/plugins";
-import ImageProcessorPage from "@/pages/admin-image-processor";
-import StoragePage from "@/pages/admin-storage";
+import AdminLayout from "@/pages/admin/layout";
+import ChannelsPage from "@/pages/admin/ai/channels";
+import ModelsPage from "@/pages/admin/ai/models";
+import OverviewPage from "@/pages/admin/ai/overview";
+import PluginsPage from "@/pages/admin/ai/plugins";
+import ImageProcessorPage from "@/pages/admin/image-processor";
+import StoragePage from "@/pages/admin/storage";
+import UsersPage from "@/pages/admin/users";
+import EmailSettingsPage from "@/pages/admin/settings/email-settings";
+import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
 import Home from "@/pages/home";
@@ -72,7 +75,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "admin",
-            element: <AdminAiLayout />,
+            element: <AdminLayout />,
             children: [
               { index: true, element: <Navigate to="ai/overview" replace /> },
               { path: "ai", element: <Navigate to="overview" replace /> },
@@ -81,9 +84,12 @@ export const router = createBrowserRouter([
               { path: "ai/models/new", element: <ModelsPage /> },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
+              { path: "users", element: <UsersPage /> },
               { path: "settings", element: <Navigate to="storage" replace /> },
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },
+              { path: "settings/register", element: <RegisterSettingsPage /> },
+              { path: "settings/email", element: <EmailSettingsPage /> },
             ],
           },
         ],

@@ -5,7 +5,7 @@ import type {
   PluginUploadResult,
   PluginVersionView,
   PluginView,
-} from "@/api/admin-ai/type";
+} from "@/api/admin/ai/type";
 
 /** 插件文件大小上限（与后端 pluginmeta.MaxPluginBytes 一致） */
 export const PLUGIN_MAX_BYTES = 512 * 1024;

@@ -1,4 +1,4 @@
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin-ai/type";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type";
 
 import { availableUpgrade, channelMeta } from "./plugin";
 

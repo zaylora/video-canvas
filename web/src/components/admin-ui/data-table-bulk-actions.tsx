@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
  * 选中行后浮在页面底部的批量操作条（shadcn-admin 的 DataTableBulkActions）。
  * 方向键在按钮间移动，Esc 清除选择；选中数量变化时用 aria-live 播报。
+ * 出现时从底部升起（y 16px → 0 + 淡入，DURATION.base），消失时反向（DURATION.exit）；
+ * 开了「减少动态效果」只保留淡入淡出。count 变成 0 时组件自己播退出动画，所以调用方不要再按选中数卸载它。
  */
 function DataTableBulkActions({
   count,
@@ -60,61 +64,67 @@ function DataTableBulkActions({
     }
   };
 
-  if (count === 0) return null;
-
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <div aria-live="polite" aria-atomic="true" className="sr-only" role="status">
         {announcement}
       </div>
-      <div
-        ref={toolbarRef}
-        role="toolbar"
-        aria-label={`已选 ${count} 个${entityName}的批量操作`}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl",
-          "focus-visible:ring-ring/50 transition-all delay-100 duration-300 ease-out focus-visible:ring-2 focus-visible:outline-none",
+      <AnimatePresence>
+        {count > 0 && (
+          <motion.div
+            key="bulk-actions"
+            ref={toolbarRef}
+            role="toolbar"
+            aria-label={`已选 ${count} 个${entityName}的批量操作`}
+            tabIndex={-1}
+            onKeyDown={onKeyDown}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0, transition: { duration: DURATION.base, ease: EASE_OUT } }}
+            exit={{ opacity: 0, y: 16, transition: { duration: DURATION.exit, ease: EASE_OUT } }}
+            className={cn(
+              "fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl",
+              "focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
+            )}
+          >
+            <div className="bg-background/95 supports-backdrop-filter:bg-background/60 flex items-center gap-x-2 rounded-xl border p-2 shadow-xl backdrop-blur-lg">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={onClear}
+                      className="size-6 rounded-full"
+                      aria-label="清除选择"
+                    />
+                  }
+                >
+                  <X />
+                </TooltipTrigger>
+                <TooltipContent>清除选择（Esc）</TooltipContent>
+              </Tooltip>
+              <Separator
+                orientation="vertical"
+                className="data-[orientation=vertical]:h-5"
+                aria-hidden="true"
+              />
+              <div className="flex items-center gap-x-1 text-sm">
+                <Badge className="min-w-8 rounded-lg" aria-label={`已选 ${count} 个`}>
+                  {count}
+                </Badge>
+                <span className="hidden sm:inline">个{entityName}</span> 已选
+              </div>
+              <Separator
+                orientation="vertical"
+                className="data-[orientation=vertical]:h-5"
+                aria-hidden="true"
+              />
+              {children}
+            </div>
+          </motion.div>
         )}
-      >
-        <div className="bg-background/95 supports-backdrop-filter:bg-background/60 flex items-center gap-x-2 rounded-xl border p-2 shadow-xl backdrop-blur-lg">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={onClear}
-                  className="size-6 rounded-full"
-                  aria-label="清除选择"
-                />
-              }
-            >
-              <X />
-            </TooltipTrigger>
-            <TooltipContent>清除选择（Esc）</TooltipContent>
-          </Tooltip>
-          <Separator
-            orientation="vertical"
-            className="data-[orientation=vertical]:h-5"
-            aria-hidden="true"
-          />
-          <div className="flex items-center gap-x-1 text-sm">
-            <Badge className="min-w-8 rounded-lg" aria-label={`已选 ${count} 个`}>
-              {count}
-            </Badge>
-            <span className="hidden sm:inline">个{entityName}</span> 已选
-          </div>
-          <Separator
-            orientation="vertical"
-            className="data-[orientation=vertical]:h-5"
-            aria-hidden="true"
-          />
-          {children}
-        </div>
-      </div>
-    </>
+      </AnimatePresence>
+    </MotionConfig>
   );
 }
 

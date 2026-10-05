@@ -4,11 +4,7 @@
     {
       "name": "按秒：默认清晰度关音频，取默认每秒价",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -34,21 +30,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -73,11 +62,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -161,11 +146,7 @@
     {
       "name": "按秒：只开音频命中单条件规格价",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -191,21 +172,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -230,11 +204,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -318,11 +288,7 @@
     {
       "name": "按秒：1080P + 音频命中两条件规格价（与设计文档的例子一致）",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -348,21 +314,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -387,11 +346,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -475,11 +430,7 @@
     {
       "name": "按秒：1080P 关音频",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -505,21 +456,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -544,11 +488,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -632,11 +572,7 @@
     {
       "name": "按秒：条件数相同取靠前的（4K + 音频落到先写的音频价）",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -662,21 +598,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -701,11 +630,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -789,11 +714,7 @@
     {
       "name": "按秒：4K 关音频",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -819,21 +740,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -858,11 +772,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -946,11 +856,7 @@
     {
       "name": "按秒：有参考视频（关音频）",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -976,21 +882,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -1015,11 +914,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -1103,11 +998,7 @@
     {
       "name": "按秒：已停用的规格价与没有条件的规格价不参与匹配",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -1133,21 +1024,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -1172,11 +1056,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -1260,11 +1140,7 @@
     {
       "name": "按秒：生成数量用字符串也能识别",
       "capabilities": {
-        "ops": [
-          "t2v",
-          "i2v",
-          "omni"
-        ],
+        "ops": ["t2v", "i2v", "omni"],
         "refs": {
           "image": {
             "on": true,
@@ -1290,21 +1166,14 @@
             "type": "enum",
             "label": "比例",
             "open": true,
-            "options": [
-              "Auto",
-              "16:9"
-            ],
+            "options": ["Auto", "16:9"],
             "default": "Auto"
           },
           "resolution": {
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "720P",
-              "1080P",
-              "4K"
-            ],
+            "options": ["720P", "1080P", "4K"],
             "default": "720P",
             "spec": true
           },
@@ -1329,11 +1198,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "个"
@@ -1417,10 +1282,7 @@
     {
       "name": "按次：默认档位",
       "capabilities": {
-        "ops": [
-          "t2i",
-          "i2i"
-        ],
+        "ops": ["t2i", "i2i"],
         "refs": {
           "image": {
             "on": true,
@@ -1446,11 +1308,7 @@
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "1K",
-              "2K",
-              "4K"
-            ],
+            "options": ["1K", "2K", "4K"],
             "default": "1K",
             "spec": true
           },
@@ -1458,11 +1316,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "张"
@@ -1520,10 +1374,7 @@
     {
       "name": "按次：2K 档位 × 生成 2 张",
       "capabilities": {
-        "ops": [
-          "t2i",
-          "i2i"
-        ],
+        "ops": ["t2i", "i2i"],
         "refs": {
           "image": {
             "on": true,
@@ -1549,11 +1400,7 @@
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "1K",
-              "2K",
-              "4K"
-            ],
+            "options": ["1K", "2K", "4K"],
             "default": "1K",
             "spec": true
           },
@@ -1561,11 +1408,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "张"
@@ -1623,10 +1466,7 @@
     {
       "name": "按次：生成方式作为条件",
       "capabilities": {
-        "ops": [
-          "t2i",
-          "i2i"
-        ],
+        "ops": ["t2i", "i2i"],
         "refs": {
           "image": {
             "on": true,
@@ -1652,11 +1492,7 @@
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "1K",
-              "2K",
-              "4K"
-            ],
+            "options": ["1K", "2K", "4K"],
             "default": "1K",
             "spec": true
           },
@@ -1664,11 +1500,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "张"
@@ -1726,10 +1558,7 @@
     {
       "name": "按次：方式 + 档位两条件胜过单条件",
       "capabilities": {
-        "ops": [
-          "t2i",
-          "i2i"
-        ],
+        "ops": ["t2i", "i2i"],
         "refs": {
           "image": {
             "on": true,
@@ -1755,11 +1584,7 @@
             "type": "enum",
             "label": "清晰度",
             "open": true,
-            "options": [
-              "1K",
-              "2K",
-              "4K"
-            ],
+            "options": ["1K", "2K", "4K"],
             "default": "1K",
             "spec": true
           },
@@ -1767,11 +1592,7 @@
             "type": "enum",
             "label": "生成数量",
             "open": true,
-            "options": [
-              1,
-              2,
-              4
-            ],
+            "options": [1, 2, 4],
             "default": 1,
             "fanout": true,
             "unit": "张"

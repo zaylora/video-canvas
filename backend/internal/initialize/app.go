@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 	"video-canvas/internal/cache"
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
+	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
@@ -36,10 +38,11 @@ type App struct {
 	rdb    *redis.Client
 	server *http.Server
 
-	hub        *ws.Hub               // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskWorker *worker.Worker        // 生成任务调度；配置里关闭时为 nil
-	runnerStop func()                // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
-	assets     *service.AssetService // 素材服务；后台定期用它清理过期未登记的直传对象
+	hub        *ws.Hub                  // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
+	taskWorker *worker.Worker           // 生成任务调度；配置里关闭时为 nil
+	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
+	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
+	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -57,7 +60,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 用户
 	userRepo := repository.NewUserRepository(db)
 	userCache := cache.NewUserCache(rdb)
-	userSvc := service.NewUserService(userRepo, userCache, cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.ExpireHours)
+	// 注册 / 系统设置 / 邮件：设置库值优先、config 兜底；SMTP 密码复用 ai_secrets 的加密（APP_AI_SECRET_KEY），
+	// 发信与主机校验都经 netguard，拒绝内网 / 回环 / 链路本地
+	auditRepo := repository.NewAdminAuditRepository(db)
+	settingsSvc := service.NewSettingsService(repository.NewSystemSettingRepository(db), auditRepo)
+	smtpSvc := service.NewSMTPService(repository.NewSMTPSettingRepository(db), mailer.NewSMTPSender(nil), auditRepo, cfg.AI.SecretKey, service.NewNetguardHostChecker())
+	userSvc := service.NewUserService(service.UserDeps{
+		Repo: userRepo, Cache: userCache, Codes: cache.NewRegisterCodeStore(rdb), Policy: settingsSvc, Mail: smtpSvc,
+		JWTSecret: cfg.JWT.Secret, JWTIssuer: cfg.JWT.Issuer, JWTExpireHours: cfg.JWT.ExpireHours,
+		Debug: cfg.Server.Mode == "debug", // 仅 debug 模式把验证码打到日志
+	})
 
 	// 对外 ID 编码：画布 ID 等以十六进制串暴露，库里主键不变
 	idKey := cfg.Server.IDKey
@@ -124,6 +136,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Assets:      assetSvc,
 		Broadcaster: hub,
 		Config:      cfg.AI,
+		Limits:      service.NewTaskLimitService(settingsSvc, userRepo), // 初始积分 / 并发上限：单用户覆盖 > 系统设置 > config
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
@@ -150,17 +163,22 @@ func NewApp(cfg *config.Config) (*App, error) {
 		})
 	}
 
-	// 管理接口的角色查询：缓存 30 秒，提升角色后最多 30 秒生效
-	roleLookup := middleware.NewCachedRoleLookup(func(ctx context.Context, id uint64) (string, error) {
-		u, err := userRepo.GetByID(ctx, id)
-		if errors.Is(err, repository.ErrNotFound) {
-			return "", nil
+	// 鉴权用的用户状态查询：RequireActive 与 RequireAdmin / RequireSuperAdmin 共用同一套（Redis 缓存，无 Redis 直接查库）。
+	// 封禁、改角色、重置密码时由 UserService.InvalidateUser 主动删缓存，所以不再需要进程内的角色缓存
+	stateLookup := func(ctx context.Context, id uint64) (*middleware.UserState, error) {
+		u, err := userSvc.State(ctx, id)
+		if err != nil || u == nil {
+			return nil, err
 		}
-		if err != nil {
+		return &middleware.UserState{Role: u.Role, Status: u.Status, TokenVersion: u.TokenVersion}, nil
+	}
+	roleLookup := func(ctx context.Context, id uint64) (string, error) {
+		st, err := stateLookup(ctx, id)
+		if err != nil || st == nil {
 			return "", err
 		}
-		return u.Role, nil
-	}, 30*time.Second)
+		return st.Role, nil
+	}
 
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
 		Health:         handler.NewHealthHandler(db, rdb),
@@ -177,7 +195,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
 		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
-		AdminRole:      roleLookup,
+		AdminUser: handler.NewAdminUserHandler(service.NewAdminUserService(userRepo, auditRepo, settingsSvc, service.WithAdminControls(service.AdminControls{
+			Credits: taskRepo, // 积分调整与任务冻结 / 结算共用 LockCredit 行锁
+			Users:   userSvc,  // 封禁 / 启用 / 改并发后清用户状态缓存
+			Tasks:   taskSvc,  // 封禁并取消任务：复用任务服务的取消与退款流程
+			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
+		}))),
+		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
+		AdminRole:     roleLookup,
+		UserState:     stateLookup,
 	})
 
 	return &App{
@@ -188,6 +214,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		taskWorker: taskWorker,
 		runnerStop: runnerStop,
 		assets:     assetSvc,
+		loginLogs:  service.NewLoginLogCleaner(userRepo),
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -330,6 +357,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-cleanDone
 	}()
 
+	// 登录记录清理：同样先于关库停止
+	loginCtx, loginCancel := context.WithCancel(context.Background())
+	loginDone := make(chan struct{})
+	go func() {
+		defer close(loginDone)
+		a.cleanupLoginLogs(loginCtx)
+	}()
+	defer func() {
+		loginCancel()
+		<-loginDone
+	}()
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("http 服务已启动", zap.String("name", a.cfg.Server.Name), zap.String("addr", a.server.Addr))
@@ -379,6 +418,41 @@ func (a *App) cleanupUploads(ctx context.Context) {
 				logger.Info("已清理过期未登记的直传对象", zap.Int("count", n))
 			}
 		}
+	}
+}
+
+// loginLogCleanupInterval 是清理过期登录记录的间隔：记录按天保留，每天扫一次足够。
+const loginLogCleanupInterval = 24 * time.Hour
+
+// loginLogCleanupMaxDelay 是启动后首次清理前的随机延迟上限：错开启动高峰，多实例同时启动时也不会同一秒一起删。
+const loginLogCleanupMaxDelay = 5 * time.Minute
+
+// cleanupLoginLogs 启动后延迟随机一小段时间清理一次，之后每天一次，直到 ctx 取消。
+// 失败只记日志，下一轮会继续清；不影响服务。
+func (a *App) cleanupLoginLogs(ctx context.Context) {
+	delay := time.Minute + time.Duration(rand.Int64N(int64(loginLogCleanupMaxDelay-time.Minute))) //nolint:gosec // 只是错峰用的随机延迟，不需要密码学随机
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			a.cleanupLoginLogsOnce(ctx)
+			timer.Reset(loginLogCleanupInterval)
+		}
+	}
+}
+
+// cleanupLoginLogsOnce 执行一轮清理并记录结果。
+func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
+	n, err := a.loginLogs.Cleanup(ctx)
+	if err != nil {
+		logger.Error("清理过期登录记录失败", zap.Error(err), zap.Int64("deleted", n))
+		return
+	}
+	if n > 0 {
+		logger.Info("已清理过期登录记录", zap.Int64("count", n))
 	}
 }
 

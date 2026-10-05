@@ -1,4 +1,4 @@
-import type { SettingSchema, SettingSpec, SettingType } from "@/api/admin-ai/type";
+import type { SettingSchema, SettingSpec, SettingType } from "@/api/admin/ai/type";
 
 /**
  * 插件声明的设置项（meta.channelSettings / meta.import.args）→ 表单。

@@ -1,411 +1,1522 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>图片处理服务对接演示</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-<style>
-  /* token 与 存储配置原型.html 相同：颜色走 CSS 变量，明暗主题只换变量 */
-  :root {
-    --radius: 0.625rem;
-    --background: 0 0% 100%; --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%; --muted: 240 4.8% 95.9%; --muted-foreground: 240 3.8% 46.1%;
-    --primary: 240 5.9% 10%; --primary-foreground: 0 0% 98%;
-    --accent: 240 4.8% 95.9%; --border: 240 5.9% 90%; --input: 240 5.9% 90%; --ring: 240 5.9% 10%;
-    --ok: 5 150 105; --bad: 220 38 38; --warn: 180 83 9; --info: 2 132 199; --violet: 124 58 237;
-    color-scheme: light;
-  }
-  .dark {
-    --background: 240 10% 3.9%; --foreground: 0 0% 98%;
-    --card: 240 10% 5.5%; --muted: 240 3.7% 15.9%; --muted-foreground: 240 5% 64.9%;
-    --primary: 0 0% 98%; --primary-foreground: 240 5.9% 10%;
-    --accent: 240 3.7% 15.9%; --border: 240 3.7% 17%; --input: 240 3.7% 18%; --ring: 240 4.9% 83.9%;
-    --ok: 52 211 153; --bad: 248 113 113; --warn: 251 191 36; --info: 56 189 248; --violet: 167 139 250;
-    color-scheme: dark;
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: hsl(var(--background)); color: hsl(var(--foreground)); -webkit-font-smoothing: antialiased; line-height: 1.55; }
-  code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
-  [data-lucide] { width: 1em; height: 1em; flex: none; }
-  h1, h2, h3, h4, p { margin: 0; }
-  a { color: inherit; }
-  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
-  table { border-collapse: collapse; width: 100%; }
-  th { font-weight: 500; text-align: left; }
-  .muted { color: hsl(var(--muted-foreground)); }
-  .tn { font-variant-numeric: tabular-nums; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>图片处理服务对接演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* token 与 存储配置原型.html 相同：颜色走 CSS 变量，明暗主题只换变量 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --input: 240 5.9% 90%;
+        --ring: 240 5.9% 10%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --input: 240 3.7% 18%;
+        --ring: 240 4.9% 83.9%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code,
+      .mono {
+        font-family: "Geist Mono", "SF Mono", Consolas, monospace;
+      }
+      [data-lucide] {
+        width: 1em;
+        height: 1em;
+        flex: none;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      p {
+        margin: 0;
+      }
+      a {
+        color: inherit;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th {
+        font-weight: 500;
+        text-align: left;
+      }
+      .muted {
+        color: hsl(var(--muted-foreground));
+      }
+      .tn {
+        font-variant-numeric: tabular-nums;
+      }
 
-  /* ---- 外层页面 ---- */
-  .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / .92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
-  .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
-  .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
-  .brand .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
-  .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
-  .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background .15s, color .15s; }
-  .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
-  .tab[aria-selected="true"] { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
-  .wrap { max-width: 1160px; margin: 0 auto; padding: 28px 20px 80px; }
-  .h1 { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
-  .lead { margin-top: 8px; color: hsl(var(--muted-foreground)); font-size: 14.5px; max-width: 760px; }
-  .sec { margin-top: 36px; }
-  .sec > h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-  .sec > .sub { font-size: 13px; color: hsl(var(--muted-foreground)); margin-bottom: 14px; max-width: 760px; }
-  .card { border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); padding: 16px; }
-  .grid { display: grid; gap: 12px; }
-  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .g4 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-  .row { display: flex; align-items: center; gap: 8px; }
-  .wrapflex { flex-wrap: wrap; }
-  .spacer { margin-left: auto; }
-  .hr { border-top: 1px solid hsl(var(--border)); margin: 12px 0; }
+      /* ---- 外层页面 ---- */
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 56px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+      .brand .logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        display: grid;
+        place-items: center;
+      }
+      .tabs {
+        display: flex;
+        gap: 2px;
+        margin-left: 8px;
+        overflow-x: auto;
+      }
+      .tab {
+        height: 32px;
+        padding: 0 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: hsl(var(--muted-foreground));
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .tab:hover {
+        background: hsl(var(--accent));
+        color: hsl(var(--foreground));
+      }
+      .tab[aria-selected="true"] {
+        background: hsl(var(--accent));
+        color: hsl(var(--foreground));
+      }
+      .wrap {
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 28px 20px 80px;
+      }
+      .h1 {
+        font-size: 26px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .lead {
+        margin-top: 8px;
+        color: hsl(var(--muted-foreground));
+        font-size: 14.5px;
+        max-width: 760px;
+      }
+      .sec {
+        margin-top: 36px;
+      }
+      .sec > h2 {
+        font-size: 17px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .sec > .sub {
+        font-size: 13px;
+        color: hsl(var(--muted-foreground));
+        margin-bottom: 14px;
+        max-width: 760px;
+      }
+      .card {
+        border: 1px solid hsl(var(--border));
+        border-radius: 12px;
+        background: hsl(var(--card));
+        padding: 16px;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+      .g2 {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      }
+      .g3 {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+      .g4 {
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .wrapflex {
+        flex-wrap: wrap;
+      }
+      .spacer {
+        margin-left: auto;
+      }
+      .hr {
+        border-top: 1px solid hsl(var(--border));
+        margin: 12px 0;
+      }
 
-  /* ---- 组件 ---- */
-  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; white-space: nowrap; transition: background .15s, opacity .15s, transform .1s; }
-  .btn:active { transform: scale(.97); }
-  .btn:disabled { opacity: .5; pointer-events: none; }
-  .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
-  .btn-primary:hover { opacity: .9; }
-  .btn-outline { border: 1px solid hsl(var(--border)); }
-  .btn-outline:hover, .btn-ghost:hover { background: hsl(var(--accent)); }
-  .btn-sm { height: 28px; padding: 0 8px; font-size: 12px; }
-  .btn-danger-ghost { color: rgb(var(--bad)); }
-  .input { height: 36px; width: 100%; border: 1px solid hsl(var(--input)); border-radius: 8px; background: transparent; padding: 0 10px; font: inherit; font-size: 13.5px; color: inherit; outline: none; }
-  .input:focus { box-shadow: 0 0 0 2px hsl(var(--ring) / .25); }
-  .input:disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); cursor: not-allowed; }
-  .input.err { border-color: rgb(var(--bad)); }
-  select.input { padding-right: 6px; }
-  .lbl { font-size: 13px; font-weight: 500; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-  .hint { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
-  .errtxt { font-size: 12px; color: rgb(var(--bad)); margin-top: 4px; }
-  .tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 500; white-space: nowrap; line-height: 1.6; }
-  .t-ok { background: rgb(var(--ok) / .13); color: rgb(var(--ok)); }
-  .t-bad { background: rgb(var(--bad) / .12); color: rgb(var(--bad)); }
-  .t-warn { background: rgb(var(--warn) / .14); color: rgb(var(--warn)); }
-  .t-info { background: rgb(var(--info) / .13); color: rgb(var(--info)); }
-  .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
-  .t-vio { background: rgb(var(--violet) / .13); color: rgb(var(--violet)); }
-  .callout { display: flex; gap: 10px; border: 1px solid; border-radius: 10px; padding: 11px 13px; font-size: 13px; }
-  .callout > i { margin-top: 2px; }
-  .c-warn { border-color: rgb(var(--warn) / .4); background: rgb(var(--warn) / .07); }
-  .c-warn > i { color: rgb(var(--warn)); }
-  .c-info { border-color: rgb(var(--info) / .35); background: rgb(var(--info) / .06); }
-  .c-info > i { color: rgb(var(--info)); }
-  .c-bad { border-color: rgb(var(--bad) / .4); background: rgb(var(--bad) / .06); }
-  .c-bad > i { color: rgb(var(--bad)); }
-  .c-ok { border-color: rgb(var(--ok) / .4); background: rgb(var(--ok) / .06); }
-  .c-ok > i { color: rgb(var(--ok)); }
-  .codeblock { position: relative; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--muted) / .6); padding: 9px 40px 9px 10px; font-family: "Geist Mono", Consolas, monospace; font-size: 12px; line-height: 1.6; word-break: break-all; }
-  .codeblock .cp { position: absolute; top: 5px; right: 5px; }
-  .codeblock b { color: rgb(var(--violet)); font-weight: 500; }
-  .switch { position: relative; width: 36px; height: 20px; border-radius: 999px; background: hsl(var(--input)); transition: background .15s; flex: none; }
-  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .25); transition: transform .15s; }
-  .switch[aria-checked="true"] { background: hsl(var(--primary)); }
-  .switch[aria-checked="true"]::after { transform: translateX(16px); }
-  .dark .switch::after { background: hsl(var(--background)); }
-  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; padding: 6px 0; cursor: pointer; }
-  .check input { margin-top: 3px; accent-color: hsl(var(--primary)); }
-  .check.done span { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
-  ul.list { margin: 0; padding-left: 18px; font-size: 13px; }
-  ul.list li { margin: 3px 0; }
-  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; font-size: 13px; }
-  .kv dt { color: hsl(var(--muted-foreground)); }
-  .kv dd { margin: 0; }
+      /* ---- 组件 ---- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          opacity 0.15s,
+          transform 0.1s;
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      .btn-primary {
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+      }
+      .btn-primary:hover {
+        opacity: 0.9;
+      }
+      .btn-outline {
+        border: 1px solid hsl(var(--border));
+      }
+      .btn-outline:hover,
+      .btn-ghost:hover {
+        background: hsl(var(--accent));
+      }
+      .btn-sm {
+        height: 28px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+      .btn-danger-ghost {
+        color: rgb(var(--bad));
+      }
+      .input {
+        height: 36px;
+        width: 100%;
+        border: 1px solid hsl(var(--input));
+        border-radius: 8px;
+        background: transparent;
+        padding: 0 10px;
+        font: inherit;
+        font-size: 13.5px;
+        color: inherit;
+        outline: none;
+      }
+      .input:focus {
+        box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
+      }
+      .input:disabled {
+        background: hsl(var(--muted));
+        color: hsl(var(--muted-foreground));
+        cursor: not-allowed;
+      }
+      .input.err {
+        border-color: rgb(var(--bad));
+      }
+      select.input {
+        padding-right: 6px;
+      }
+      .lbl {
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .hint {
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+        margin-top: 4px;
+      }
+      .errtxt {
+        font-size: 12px;
+        color: rgb(var(--bad));
+        margin-top: 4px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border-radius: 6px;
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        line-height: 1.6;
+      }
+      .t-ok {
+        background: rgb(var(--ok) / 0.13);
+        color: rgb(var(--ok));
+      }
+      .t-bad {
+        background: rgb(var(--bad) / 0.12);
+        color: rgb(var(--bad));
+      }
+      .t-warn {
+        background: rgb(var(--warn) / 0.14);
+        color: rgb(var(--warn));
+      }
+      .t-info {
+        background: rgb(var(--info) / 0.13);
+        color: rgb(var(--info));
+      }
+      .t-mute {
+        background: hsl(var(--muted));
+        color: hsl(var(--muted-foreground));
+      }
+      .t-vio {
+        background: rgb(var(--violet) / 0.13);
+        color: rgb(var(--violet));
+      }
+      .callout {
+        display: flex;
+        gap: 10px;
+        border: 1px solid;
+        border-radius: 10px;
+        padding: 11px 13px;
+        font-size: 13px;
+      }
+      .callout > i {
+        margin-top: 2px;
+      }
+      .c-warn {
+        border-color: rgb(var(--warn) / 0.4);
+        background: rgb(var(--warn) / 0.07);
+      }
+      .c-warn > i {
+        color: rgb(var(--warn));
+      }
+      .c-info {
+        border-color: rgb(var(--info) / 0.35);
+        background: rgb(var(--info) / 0.06);
+      }
+      .c-info > i {
+        color: rgb(var(--info));
+      }
+      .c-bad {
+        border-color: rgb(var(--bad) / 0.4);
+        background: rgb(var(--bad) / 0.06);
+      }
+      .c-bad > i {
+        color: rgb(var(--bad));
+      }
+      .c-ok {
+        border-color: rgb(var(--ok) / 0.4);
+        background: rgb(var(--ok) / 0.06);
+      }
+      .c-ok > i {
+        color: rgb(var(--ok));
+      }
+      .codeblock {
+        position: relative;
+        border: 1px solid hsl(var(--border));
+        border-radius: 8px;
+        background: hsl(var(--muted) / 0.6);
+        padding: 9px 40px 9px 10px;
+        font-family: "Geist Mono", Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        word-break: break-all;
+      }
+      .codeblock .cp {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+      }
+      .codeblock b {
+        color: rgb(var(--violet));
+        font-weight: 500;
+      }
+      .switch {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        border-radius: 999px;
+        background: hsl(var(--input));
+        transition: background 0.15s;
+        flex: none;
+      }
+      .switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+        transition: transform 0.15s;
+      }
+      .switch[aria-checked="true"] {
+        background: hsl(var(--primary));
+      }
+      .switch[aria-checked="true"]::after {
+        transform: translateX(16px);
+      }
+      .dark .switch::after {
+        background: hsl(var(--background));
+      }
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 13px;
+        padding: 6px 0;
+        cursor: pointer;
+      }
+      .check input {
+        margin-top: 3px;
+        accent-color: hsl(var(--primary));
+      }
+      .check.done span {
+        color: hsl(var(--muted-foreground));
+        text-decoration: line-through;
+      }
+      ul.list {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 13px;
+      }
+      ul.list li {
+        margin: 3px 0;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: 96px 1fr;
+        gap: 6px 10px;
+        font-size: 13px;
+      }
+      .kv dt {
+        color: hsl(var(--muted-foreground));
+      }
+      .kv dd {
+        margin: 0;
+      }
 
-  /* ---- 总览：请求链路 ---- */
-  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
-  .flow .node { flex: 1 1 170px; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; background: hsl(var(--card)); font-size: 12.5px; }
-  .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
-  .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
-  .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
-  .cmp { width: 100%; font-size: 12.5px; }
-  .cmp th, .cmp td { padding: 9px 10px; vertical-align: top; border-top: 1px solid hsl(var(--border)); }
-  .cmp thead th { background: hsl(var(--muted) / .5); border-top: 0; font-size: 12px; color: hsl(var(--muted-foreground)); }
-  .cmp tbody th { width: 110px; color: hsl(var(--muted-foreground)); font-weight: 500; }
-  .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: 12px; }
-  .cmp .y { color: rgb(var(--ok)); font-weight: 500; }
-  .cmp .n { color: rgb(var(--bad)); font-weight: 500; }
-  .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
-  .steps { counter-reset: s; display: grid; gap: 10px; }
-  .steps li { list-style: none; position: relative; padding: 2px 0 2px 38px; font-size: 13.5px; }
-  .steps li::before { counter-increment: s; content: counter(s); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
-  .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      /* ---- 总览：请求链路 ---- */
+      .flow {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .flow .node {
+        flex: 1 1 170px;
+        border: 1px solid hsl(var(--border));
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: hsl(var(--card));
+        font-size: 12.5px;
+      }
+      .flow .node b {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 2px;
+      }
+      .flow .arrow {
+        display: grid;
+        place-items: center;
+        color: hsl(var(--muted-foreground));
+      }
+      .flow .node.hl {
+        border-color: hsl(var(--primary));
+        box-shadow: 0 0 0 1px hsl(var(--primary));
+      }
+      .cmp {
+        width: 100%;
+        font-size: 12.5px;
+      }
+      .cmp th,
+      .cmp td {
+        padding: 9px 10px;
+        vertical-align: top;
+        border-top: 1px solid hsl(var(--border));
+      }
+      .cmp thead th {
+        background: hsl(var(--muted) / 0.5);
+        border-top: 0;
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+      }
+      .cmp tbody th {
+        width: 110px;
+        color: hsl(var(--muted-foreground));
+        font-weight: 500;
+      }
+      .cmp-wrap {
+        overflow-x: auto;
+        border: 1px solid hsl(var(--border));
+        border-radius: 12px;
+      }
+      .cmp .y {
+        color: rgb(var(--ok));
+        font-weight: 500;
+      }
+      .cmp .n {
+        color: rgb(var(--bad));
+        font-weight: 500;
+      }
+      .cmp .m {
+        color: rgb(var(--warn));
+        font-weight: 500;
+      }
+      .steps {
+        counter-reset: s;
+        display: grid;
+        gap: 10px;
+      }
+      .steps li {
+        list-style: none;
+        position: relative;
+        padding: 2px 0 2px 38px;
+        font-size: 13.5px;
+      }
+      .steps li::before {
+        counter-increment: s;
+        content: counter(s);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .steps li small {
+        display: block;
+        color: hsl(var(--muted-foreground));
+        font-size: 12px;
+      }
 
-  /* ---- 厂商演示 ---- */
-  .vend { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
-  @media (max-width: 860px) { .vend { grid-template-columns: 1fr; } .vlist { display: flex; overflow-x: auto; gap: 8px; } .vlist button { min-width: 180px; } }
-  .vlist { display: grid; gap: 8px; }
-  .vbtn { text-align: left; border: 1.5px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; transition: border-color .15s; }
-  .vbtn:hover { border-color: hsl(var(--muted-foreground)); }
-  .vbtn.on { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
-  .vbtn .n { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
-  .vbtn .d { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
-  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+      /* ---- 厂商演示 ---- */
+      .vend {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .vend {
+          grid-template-columns: 1fr;
+        }
+        .vlist {
+          display: flex;
+          overflow-x: auto;
+          gap: 8px;
+        }
+        .vlist button {
+          min-width: 180px;
+        }
+      }
+      .vlist {
+        display: grid;
+        gap: 8px;
+      }
+      .vbtn {
+        text-align: left;
+        border: 1.5px solid hsl(var(--border));
+        border-radius: 10px;
+        padding: 10px 12px;
+        transition: border-color 0.15s;
+      }
+      .vbtn:hover {
+        border-color: hsl(var(--muted-foreground));
+      }
+      .vbtn.on {
+        border-color: hsl(var(--primary));
+        box-shadow: 0 0 0 1px hsl(var(--primary));
+      }
+      .vbtn .n {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+      .vbtn .d {
+        font-size: 11.5px;
+        color: hsl(var(--muted-foreground));
+        margin-top: 2px;
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+      }
 
-  /* ---- 原型外框 ---- */
-  .frame { border: 1px solid hsl(var(--border)); border-radius: 14px; overflow: hidden; background: hsl(var(--background)); box-shadow: 0 8px 30px rgb(0 0 0 / .06); }
-  .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .5); font-size: 11.5px; color: hsl(var(--muted-foreground)); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
-  .proto { display: flex; height: 780px; position: relative; overflow: hidden; }
-  .side { width: 210px; flex: none; border-right: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .3); display: flex; flex-direction: column; }
-  @media (max-width: 760px) { .side { display: none; } }
-  .side-h { height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid hsl(var(--border)); }
-  .side nav { padding: 8px; flex: 1; font-size: 13px; }
-  .side .grp { font-size: 11px; font-weight: 500; color: hsl(var(--muted-foreground)); padding: 12px 8px 4px; }
-  .side a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; color: hsl(var(--muted-foreground)); text-decoration: none; cursor: default; }
-  .side a.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
-  .side a.link { cursor: pointer; }
-  .side a.link:hover { background: hsl(var(--accent)); }
-  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .main-h { height: 52px; border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; padding: 0 16px; gap: 10px; font-size: 13px; color: hsl(var(--muted-foreground)); flex: none; }
-  .main-b { flex: 1; overflow-y: auto; padding: 20px; }
-  .p-title { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
-  .ptable { border: 1px solid hsl(var(--border)); border-radius: 10px; overflow-x: auto; }
-  .ptable table { font-size: 13px; min-width: 760px; }
-  .ptable th { background: hsl(var(--muted) / .45); font-size: 12px; color: hsl(var(--muted-foreground)); padding: 9px 12px; }
-  .ptable td { border-top: 1px solid hsl(var(--border)); padding: 11px 12px; vertical-align: top; }
-  .ptable td.act { text-align: right; white-space: nowrap; }
-  .scrim { position: absolute; inset: 0; background: rgb(0 0 0 / .4); z-index: 20; animation: fade .15s ease; }
-  .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(580px, 100%); background: hsl(var(--background)); border-left: 1px solid hsl(var(--border)); z-index: 21; display: flex; flex-direction: column; box-shadow: -10px 0 30px rgb(0 0 0 / .12); animation: slide .2s cubic-bezier(.2,.8,.2,1); }
-  .drawer-h { padding: 14px 18px; border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 8px; }
-  .drawer-b { flex: 1; overflow-y: auto; padding: 18px; }
-  .drawer-f { padding: 12px 18px; border-top: 1px solid hsl(var(--border)); display: flex; gap: 8px; align-items: center; }
-  .stepper { display: flex; gap: 6px; padding: 10px 18px; border-bottom: 1px solid hsl(var(--border)); font-size: 12px; }
-  .stepper .s { display: flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); flex: 1; }
-  .stepper .s i.num { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid hsl(var(--border)); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; flex: none; }
-  .stepper .s.on { color: hsl(var(--foreground)); font-weight: 500; }
-  .stepper .s.on i.num { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
-  .stepper .s.done i.num { background: rgb(var(--ok) / .15); color: rgb(var(--ok)); border-color: rgb(var(--ok) / .5); }
-  .pick { display: block; width: 100%; text-align: left; border: 1.5px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; transition: border-color .15s; }
-  .pick:hover:not(:disabled) { border-color: hsl(var(--muted-foreground)); }
-  .pick.on { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
-  .pick:disabled { opacity: .55; cursor: not-allowed; }
-  .chk-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 13px; }
-  .chk-row + .chk-row { border-top: 1px dashed hsl(var(--border)); }
-  .chk-row .ic { margin-top: 2px; }
-  .spin { animation: spin 1s linear infinite; }
-  .sample { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .sample .box { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px; font-size: 12px; }
-  .sample .pic { border-radius: 6px; margin-bottom: 8px; aspect-ratio: 16/9; background: linear-gradient(135deg, #f59e0b, #ec4899 50%, #6366f1); position: relative; overflow: hidden; }
-  .sample .pic.small { filter: saturate(.9); }
-  .sample .pic::after { content: attr(data-size); position: absolute; right: 6px; bottom: 6px; background: rgb(0 0 0 / .6); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 5px; }
-  .bar { height: 6px; background: hsl(var(--muted)); border-radius: 99px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: hsl(var(--primary)); border-radius: 99px; transition: width .3s; }
-  .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
-  .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
-  .show-notes .note-txt { display: block; }
-  body:not(.show-notes) .note { outline: none; }
-  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
-  .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / .15); animation: pop .18s ease; }
-  .tbl2 { font-size: 12.5px; }
-  .tbl2 th, .tbl2 td { padding: 7px 10px; border-top: 1px solid hsl(var(--border)); vertical-align: top; }
-  .tbl2 thead th { background: hsl(var(--muted) / .5); border-top: 0; font-size: 12px; color: hsl(var(--muted-foreground)); }
-  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
-  @keyframes slide { from { transform: translateX(28px); opacity: .4 } to { transform: none; opacity: 1 } }
-  @keyframes pop { from { transform: translateY(6px); opacity: 0 } to { transform: none; opacity: 1 } }
-  @keyframes spin { to { transform: rotate(360deg) } }
-  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
-  [hidden] { display: none !important; }
-</style>
-</head>
-<body class="show-notes">
-
-<header class="top">
-  <div class="top-in">
-    <div class="brand"><span class="logo"><i data-lucide="image-down"></i></span>图片处理服务对接演示</div>
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>对接总览</button>
-      <button class="tab" role="tab" data-tab="vendors" aria-selected="false"><i data-lucide="plug-zap"></i>厂商对接</button>
-      <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>后台模块原型</button>
-      <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
-    </div>
-    <div class="spacer row">
-      <label class="row muted" style="font-size:12px">设计标注 <button class="switch" id="notesSw" aria-checked="true" onclick="toggleNotes()"></button></label>
-      <button class="btn btn-ghost btn-sm" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
-    </div>
-  </div>
-</header>
-
-<main class="wrap">
-
-<!-- ============ 1. 对接总览 ============ -->
-<section id="tab-overview">
-  <h1 class="h1">给画布素材接上图片处理服务</h1>
-  <p class="lead">缩略图和视频封面不再由后端生成，而是交给云厂商的图片 / 视频处理服务。后台新增一个独立模块「图片处理服务管理」，管理“哪套存储、用哪家服务处理”。这份文档演示三家厂商（Cloudflare R2、腾讯云、阿里云）怎么对接，以及<b>腾讯云这类“必须配套自家存储”的服务</b>怎么在后台里表达。</p>
-
-  <div class="callout c-info" style="margin-top:16px">
-    <i data-lucide="info"></i>
-    <div><b>阅读说明。</b>URL 格式和限制来自各厂商官方文档；标有「未验证」的点必须在真实环境实测。所有数字（耗时、体积）在原型里是示意，没有真实调用任何厂商。后台模块是设计稿，尚未实现。<br>
-    <span class="muted">核实度图例：</span> <span class="tag t-ok">已核对官方页面</span> <span class="tag t-info">调研检索，未逐条复核</span> <span class="tag t-warn">未验证 · 需实测</span></div>
-  </div>
-
-  <div class="sec">
-    <h2>一条请求怎么走</h2>
-    <p class="sub">前端和 payload 都不变，仍然引用稳定地址。后端只多做一件事：按素材所在的存储，找到绑定的已发布处理服务，把请求 302 到厂商的处理 URL。</p>
-    <div class="flow note">
-      <div class="node"><b>浏览器</b><code>&lt;img src="/files/&lt;key&gt;?v=thumb"&gt;</code><br>视频封面用 <code>?v=poster</code></div>
-      <div class="arrow"><i data-lucide="arrow-right"></i></div>
-      <div class="node hl"><b>后端 /files</b>查素材 → 找到它所在的<b>存储</b> → 找到该存储绑定的<b>已发布处理服务</b></div>
-      <div class="arrow"><i data-lucide="arrow-right"></i></div>
-      <div class="node"><b>302 跳转</b>目标是厂商的<b>处理 URL</b>（私有桶会带签名）</div>
-      <div class="arrow"><i data-lucide="arrow-right"></i></div>
-      <div class="node"><b>厂商处理</b>存储侧 / 边缘 / 自部署；结果由厂商缓存</div>
-      <div class="arrow"><i data-lucide="arrow-right"></i></div>
-      <div class="node"><b>小图返回</b>约几十 KB，而不是几 MB 原图</div>
-    </div>
-    <div class="note-txt">设计：后端不读原图、不占 CPU、不装 ffmpeg。处理服务是“存储的附属能力”，所以解析路径是 素材 → 存储 → 处理服务，而不是全局只有一个处理服务。</div>
-    <div class="callout c-warn" style="margin-top:10px">
-      <i data-lucide="corner-down-right"></i>
-      <div><b>没有处理服务时（回退，永远可用）：</b>图片 302 到原图（和今天一样）；视频封面返回 404，前端显示占位图标，点击仍可播放。所以未配置、已停用、处理失败，都不会让画布坏掉。</div>
-    </div>
-  </div>
-
-  <div class="sec">
-    <h2>三种对接形态</h2>
-    <p class="sub">不同厂商的处理服务“长在”不同的地方，这决定了后台里怎么绑定。AWS 动态图片转换需要客户自部署，且官方文档未查到视频首帧支持，<b>本期不做</b>。</p>
-    <div class="grid g3">
-      <div class="card"><div class="row"><i data-lucide="link-2"></i><b>绑定存储型</b></div><div class="row wrapflex" style="margin-top:6px"><span class="tag t-warn">必须用自家存储</span></div>
-        <p class="muted" style="font-size:13px;margin-top:8px"><b>腾讯云数据万象、阿里云 OSS 图片处理。</b>处理能力是存储桶自带的，只能处理存在它自家桶里的素材。</p></div>
-      <div class="card"><div class="row"><i data-lucide="globe"></i><b>边缘域名型</b></div><div class="row wrapflex" style="margin-top:6px"><span class="tag t-info">需要域名接入</span></div>
-        <p class="muted" style="font-size:13px;margin-top:8px"><b>Cloudflare。</b>处理发生在 Cloudflare 的域名上；R2 桶需绑定同账号域名并公开读。</p></div>
-      <div class="card"><div class="row"><i data-lucide="ban"></i><b>不启用</b></div><div class="row wrapflex" style="margin-top:6px"><span class="tag t-mute">默认</span></div>
-        <p class="muted" style="font-size:13px;margin-top:8px"><b>本地磁盘、没配处理服务的存储。</b>回退原图 / 占位，行为和今天完全一致。</p></div>
-    </div>
-  </div>
-
-  <div class="sec">
-    <h2>能力对比</h2>
-    <p class="sub">目标：长边 512px 的缩略图，和视频首帧封面。</p>
-    <div class="cmp-wrap">
-      <table class="cmp">
-        <thead><tr><th></th><th>腾讯云 数据万象</th><th>阿里云 OSS 图片处理</th><th>Cloudflare R2</th></tr></thead>
-        <tbody>
-          <tr><th>绑定关系</th><td><span class="m">必须用腾讯云 COS</span>，数据万象绑定存储桶</td><td><span class="m">必须用阿里云 OSS</span>，处理参数挂在 OSS 域名上</td><td>R2 + 同账号域名<span class="m">公开读</span>，并启用 Transformations</td></tr>
-          <tr><th>图片缩略</th><td class="y">支持 · <code>imageMogr2</code></td><td class="y">支持 · <code>image/resize</code></td><td class="y">支持 · <code>/cdn-cgi/image</code></td></tr>
-          <tr><th>视频首帧</th><td class="y">支持 · 需先开通媒体处理</td><td><span class="m">支持，但仅 H.264 / H.265</span>；S3 协议不支持 <code>video/</code>，需 OSS 原生 SDK 签名</td><td class="y">支持 · 官方保证 H.264 + AAC 的 MP4；mov / webm 未测</td></tr>
-          <tr><th>私有桶访问</th><td>COS 自有签名（q-sign），处理参数建议签入；S3 V4 预签名带参数官方未说明</td><td>OSS V4 签名，<code>x-oss-process</code> 签入；图片走 S3 预签名大概率可行但无保证</td><td class="m">需要公开读；私有桶只能写 Worker</td></tr>
-          <tr><th>透明图转 JPG</th><td>透明处填白</td><td>透明处填白</td><td class="m">未验证：<code>format=auto</code> 是否保留透明文档未说</td></tr>
-          <tr><th>计费</th><td>图片按原图大小，每月前 10TB 免费，超出 0.025 元/GB；截帧 0.1 元/千次</td><td>图片按原图大小，截帧按张数；官方页未给单价</td><td>每月 5000 次免费，之后 $0.50/千次；同一“源 + 参数”每月只计一次</td></tr>
-          <tr><th>客户要做</th><td>新建 COS 存储；开通数据万象与媒体处理</td><td>新建 OSS 存储；绑定自定义域名（默认域名预览会变下载）</td><td>域名接入 Cloudflare；R2 绑域名公开读；启用 Transformations</td></tr>
-          <tr><th>后端依赖</th><td>COS Go SDK，或自行实现 q-sign（提案，待你确认）</td><td>OSS Go SDK（视频首帧必需，提案，待你确认）</td><td>无新增</td></tr>
-          <tr><th>核实度</th><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-ok">已核对官方页面</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="sec">
-    <h2>客户要对接腾讯云时，会发生什么</h2>
-    <p class="sub">腾讯云的图片处理绑定对象存储，必须使用自家的 COS。而素材记录了自己所在的存储，所以这件事分四步，并且有一个需要提前说清的边界。</p>
-    <div class="grid g2">
-      <div class="card"><ol class="steps" style="margin:0;padding:0">
-        <li>在<b>存储配置</b>新建一套腾讯云 COS 存储<small>桶名要带 APPID 后缀，例如 canvas-1250000000</small></li>
-        <li>在腾讯云控制台为该桶开通<b>数据万象</b>，要封面再开通<b>媒体处理</b><small>视频截帧是单独开通、单独计费的</small></li>
-        <li>在<b>图片处理服务管理</b>新建「腾讯云数据万象」，<b>只能绑定这套 COS 存储</b><small>绑到其他存储时被禁用，并写明原因</small></li>
-        <li>校验、试跑通过后<b>发布</b>；把 COS 设为默认存储，之后的新素材才写进去<small>老素材在原存储里，不受影响</small></li>
-      </ol></div>
-      <div class="card">
-        <div class="callout c-warn"><i data-lucide="triangle-alert"></i><div><b>边界：处理服务只覆盖它绑定的存储。</b><br>假设素材现在在 R2，客户新建 COS 并设为默认：
-        <ul class="list" style="margin-top:6px"><li>新上传、新生成的素材写进 COS → 走数据万象，有缩略图</li><li>R2 里的老素材 → 仍由 R2 绑定的处理服务（或回退原图）</li><li>要让老素材也走腾讯云，需要先把它们迁到 COS；存储迁移在存储配置设计里放在二期</li></ul></div></div>
-        <p class="muted" style="font-size:12.5px;margin-top:10px">后台不做覆盖统计，也不做存储迁移（已确认）；这个边界要在交付给客户时说明。</p>
+      /* ---- 原型外框 ---- */
+      .frame {
+        border: 1px solid hsl(var(--border));
+        border-radius: 14px;
+        overflow: hidden;
+        background: hsl(var(--background));
+        box-shadow: 0 8px 30px rgb(0 0 0 / 0.06);
+      }
+      .frame-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-bottom: 1px solid hsl(var(--border));
+        background: hsl(var(--muted) / 0.5);
+        font-size: 11.5px;
+        color: hsl(var(--muted-foreground));
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: hsl(var(--border));
+      }
+      .proto {
+        display: flex;
+        height: 780px;
+        position: relative;
+        overflow: hidden;
+      }
+      .side {
+        width: 210px;
+        flex: none;
+        border-right: 1px solid hsl(var(--border));
+        background: hsl(var(--muted) / 0.3);
+        display: flex;
+        flex-direction: column;
+      }
+      @media (max-width: 760px) {
+        .side {
+          display: none;
+        }
+      }
+      .side-h {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .side nav {
+        padding: 8px;
+        flex: 1;
+        font-size: 13px;
+      }
+      .side .grp {
+        font-size: 11px;
+        font-weight: 500;
+        color: hsl(var(--muted-foreground));
+        padding: 12px 8px 4px;
+      }
+      .side a {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        color: hsl(var(--muted-foreground));
+        text-decoration: none;
+        cursor: default;
+      }
+      .side a.on {
+        background: hsl(var(--accent));
+        color: hsl(var(--foreground));
+        font-weight: 500;
+      }
+      .side a.link {
+        cursor: pointer;
+      }
+      .side a.link:hover {
+        background: hsl(var(--accent));
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .main-h {
+        height: 52px;
+        border-bottom: 1px solid hsl(var(--border));
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 10px;
+        font-size: 13px;
+        color: hsl(var(--muted-foreground));
+        flex: none;
+      }
+      .main-b {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+      }
+      .p-title {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .ptable {
+        border: 1px solid hsl(var(--border));
+        border-radius: 10px;
+        overflow-x: auto;
+      }
+      .ptable table {
+        font-size: 13px;
+        min-width: 760px;
+      }
+      .ptable th {
+        background: hsl(var(--muted) / 0.45);
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+        padding: 9px 12px;
+      }
+      .ptable td {
+        border-top: 1px solid hsl(var(--border));
+        padding: 11px 12px;
+        vertical-align: top;
+      }
+      .ptable td.act {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgb(0 0 0 / 0.4);
+        z-index: 20;
+        animation: fade 0.15s ease;
+      }
+      .drawer {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(580px, 100%);
+        background: hsl(var(--background));
+        border-left: 1px solid hsl(var(--border));
+        z-index: 21;
+        display: flex;
+        flex-direction: column;
+        box-shadow: -10px 0 30px rgb(0 0 0 / 0.12);
+        animation: slide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      .drawer-h {
+        padding: 14px 18px;
+        border-bottom: 1px solid hsl(var(--border));
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .drawer-b {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px;
+      }
+      .drawer-f {
+        padding: 12px 18px;
+        border-top: 1px solid hsl(var(--border));
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .stepper {
+        display: flex;
+        gap: 6px;
+        padding: 10px 18px;
+        border-bottom: 1px solid hsl(var(--border));
+        font-size: 12px;
+      }
+      .stepper .s {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: hsl(var(--muted-foreground));
+        flex: 1;
+      }
+      .stepper .s i.num {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1.5px solid hsl(var(--border));
+        display: grid;
+        place-items: center;
+        font-style: normal;
+        font-size: 11px;
+        font-weight: 600;
+        flex: none;
+      }
+      .stepper .s.on {
+        color: hsl(var(--foreground));
+        font-weight: 500;
+      }
+      .stepper .s.on i.num {
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        border-color: hsl(var(--primary));
+      }
+      .stepper .s.done i.num {
+        background: rgb(var(--ok) / 0.15);
+        color: rgb(var(--ok));
+        border-color: rgb(var(--ok) / 0.5);
+      }
+      .pick {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 1.5px solid hsl(var(--border));
+        border-radius: 10px;
+        padding: 10px 12px;
+        transition: border-color 0.15s;
+      }
+      .pick:hover:not(:disabled) {
+        border-color: hsl(var(--muted-foreground));
+      }
+      .pick.on {
+        border-color: hsl(var(--primary));
+        box-shadow: 0 0 0 1px hsl(var(--primary));
+      }
+      .pick:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .chk-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 13px;
+      }
+      .chk-row + .chk-row {
+        border-top: 1px dashed hsl(var(--border));
+      }
+      .chk-row .ic {
+        margin-top: 2px;
+      }
+      .spin {
+        animation: spin 1s linear infinite;
+      }
+      .sample {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .sample .box {
+        border: 1px solid hsl(var(--border));
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+      }
+      .sample .pic {
+        border-radius: 6px;
+        margin-bottom: 8px;
+        aspect-ratio: 16/9;
+        background: linear-gradient(135deg, #f59e0b, #ec4899 50%, #6366f1);
+        position: relative;
+        overflow: hidden;
+      }
+      .sample .pic.small {
+        filter: saturate(0.9);
+      }
+      .sample .pic::after {
+        content: attr(data-size);
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        background: rgb(0 0 0 / 0.6);
+        color: #fff;
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 5px;
+      }
+      .bar {
+        height: 6px;
+        background: hsl(var(--muted));
+        border-radius: 99px;
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        background: hsl(var(--primary));
+        border-radius: 99px;
+        transition: width 0.3s;
+      }
+      .note {
+        outline: 1.5px dashed rgb(var(--violet));
+        outline-offset: 3px;
+        position: relative;
+      }
+      .note-txt {
+        display: none;
+        margin-top: 6px;
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: rgb(var(--violet));
+      }
+      .show-notes .note-txt {
+        display: block;
+      }
+      body:not(.show-notes) .note {
+        outline: none;
+      }
+      .toast {
+        position: fixed;
+        bottom: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 60;
+        pointer-events: none;
+      }
+      .toast > div {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid hsl(var(--border));
+        background: hsl(var(--card));
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 13px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+        animation: pop 0.18s ease;
+      }
+      .tbl2 {
+        font-size: 12.5px;
+      }
+      .tbl2 th,
+      .tbl2 td {
+        padding: 7px 10px;
+        border-top: 1px solid hsl(var(--border));
+        vertical-align: top;
+      }
+      .tbl2 thead th {
+        background: hsl(var(--muted) / 0.5);
+        border-top: 0;
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes slide {
+        from {
+          transform: translateX(28px);
+          opacity: 0.4;
+        }
+        to {
+          transform: none;
+          opacity: 1;
+        }
+      }
+      @keyframes pop {
+        from {
+          transform: translateY(6px);
+          opacity: 0;
+        }
+        to {
+          transform: none;
+          opacity: 1;
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="image-down"></i></span>图片处理服务对接演示
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true">
+            <i data-lucide="map"></i>对接总览
+          </button>
+          <button class="tab" role="tab" data-tab="vendors" aria-selected="false">
+            <i data-lucide="plug-zap"></i>厂商对接
+          </button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false">
+            <i data-lucide="layout-dashboard"></i>后台模块原型
+          </button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false">
+            <i data-lucide="database"></i>数据与接口
+          </button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px"
+            >设计标注
+            <button class="switch" id="notesSw" aria-checked="true" onclick="toggleNotes()"></button
+          ></label>
+          <button
+            class="btn btn-ghost btn-sm"
+            onclick="document.documentElement.classList.toggle('dark')"
+            aria-label="切换明暗主题"
+          >
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
       </div>
-    </div>
-  </div>
-</section>
+    </header>
 
-<!-- ============ 2. 厂商对接 ============ -->
-<section id="tab-vendors" hidden>
-  <h1 class="h1">厂商对接演示</h1>
-  <p class="lead">选一家厂商，填几个参数，看后端会 302 到什么 URL、客户需要提前做什么、有哪些限制。URL 按官方文档的格式拼接，<b>私有桶的签名部分由 SDK 生成，这里只示意</b>。</p>
-  <div class="vend" style="margin-top:20px">
-    <div class="vlist" id="vlist"></div>
-    <div id="vpanel"></div>
-  </div>
-</section>
+    <main class="wrap">
+      <!-- ============ 1. 对接总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">给画布素材接上图片处理服务</h1>
+        <p class="lead">
+          缩略图和视频封面不再由后端生成，而是交给云厂商的图片 /
+          视频处理服务。后台新增一个独立模块「图片处理服务管理」，管理“哪套存储、用哪家服务处理”。这份文档演示三家厂商（Cloudflare
+          R2、腾讯云、阿里云）怎么对接，以及<b>腾讯云这类“必须配套自家存储”的服务</b>怎么在后台里表达。
+        </p>
 
-<!-- ============ 3. 后台模块原型 ============ -->
-<section id="tab-proto" hidden>
-  <h1 class="h1">后台模块原型：图片处理服务管理</h1>
-  <p class="lead">下面是可点击的原型（数据在内存里，刷新复原）。已预置一个<b>腾讯云数据万象的草稿</b>，绑定在「COS 首尔 · 客户 A」上，可以直接走一遍 校验 → 试跑 → 发布。想看失败怎么提示：域名里写 <code>bad</code>；Cloudflare 的域名和存储公开域名不一致。</p>
-  <div class="frame" style="margin-top:18px">
-    <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:8px">admin.example.com / 系统设置 / 图片处理服务管理</span></div>
-    <div class="proto" id="proto"></div>
-  </div>
-</section>
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>URL
+            格式和限制来自各厂商官方文档；标有「未验证」的点必须在真实环境实测。所有数字（耗时、体积）在原型里是示意，没有真实调用任何厂商。后台模块是设计稿，尚未实现。<br />
+            <span class="muted">核实度图例：</span> <span class="tag t-ok">已核对官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+          </div>
+        </div>
 
-<!-- ============ 4. 数据与接口 ============ -->
-<section id="tab-impl" hidden>
-  <h1 class="h1">数据与接口（提案）</h1>
-  <p class="lead">下面都是设计提案，尚未实现。它把设计文档第 6.2 节里“存储实现 <code>VariantURLer</code>”的想法，升级成一个独立的、可在后台管理的实体。</p>
+        <div class="sec">
+          <h2>一条请求怎么走</h2>
+          <p class="sub">
+            前端和 payload
+            都不变，仍然引用稳定地址。后端只多做一件事：按素材所在的存储，找到绑定的已发布处理服务，把请求
+            302 到厂商的处理 URL。
+          </p>
+          <div class="flow note">
+            <div class="node">
+              <b>浏览器</b><code>&lt;img src="/files/&lt;key&gt;?v=thumb"&gt;</code><br />视频封面用
+              <code>?v=poster</code>
+            </div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl">
+              <b>后端 /files</b>查素材 → 找到它所在的<b>存储</b> → 找到该存储绑定的<b
+                >已发布处理服务</b
+              >
+            </div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>302 跳转</b>目标是厂商的<b>处理 URL</b>（私有桶会带签名）</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>厂商处理</b>存储侧 / 边缘 / 自部署；结果由厂商缓存</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>小图返回</b>约几十 KB，而不是几 MB 原图</div>
+          </div>
+          <div class="note-txt">
+            设计：后端不读原图、不占 CPU、不装 ffmpeg。处理服务是“存储的附属能力”，所以解析路径是
+            素材 → 存储 → 处理服务，而不是全局只有一个处理服务。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>没有处理服务时（回退，永远可用）：</b>图片 302 到原图（和今天一样）；视频封面返回
+              404，前端显示占位图标，点击仍可播放。所以未配置、已停用、处理失败，都不会让画布坏掉。
+            </div>
+          </div>
+        </div>
 
-  <div class="sec">
-    <h2>处理服务和存储的关系</h2>
-    <p class="sub">一个存储同一时间最多绑定一个“已发布”的处理服务；一个处理服务只绑定一个存储。每个厂商只能绑定它允许的存储类型。</p>
-    <div class="cmp-wrap"><table class="cmp">
-      <thead><tr><th>处理服务</th><th>允许绑定的存储</th><th>为什么</th></tr></thead>
-      <tbody>
-        <tr><th>腾讯云数据万象</th><td><code>tencent_cos</code></td><td>数据万象绑定 COS 存储桶，只能处理存在自家桶里的素材</td></tr>
-        <tr><th>阿里云 OSS 图片处理</th><td><code>aliyun_oss</code></td><td><code>x-oss-process</code> 是 OSS 域名的能力</td></tr>
-        <tr><th>Cloudflare</th><td><code>r2</code>，且已设置公开域名</td><td>处理发生在 Cloudflare 域名上，源是 R2 的公开地址</td></tr>
-      </tbody>
-    </table></div>
-  </div>
+        <div class="sec">
+          <h2>三种对接形态</h2>
+          <p class="sub">
+            不同厂商的处理服务“长在”不同的地方，这决定了后台里怎么绑定。AWS
+            动态图片转换需要客户自部署，且官方文档未查到视频首帧支持，<b>本期不做</b>。
+          </p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="link-2"></i><b>绑定存储型</b></div>
+              <div class="row wrapflex" style="margin-top: 6px">
+                <span class="tag t-warn">必须用自家存储</span>
+              </div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>腾讯云数据万象、阿里云 OSS 图片处理。</b
+                >处理能力是存储桶自带的，只能处理存在它自家桶里的素材。
+              </p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="globe"></i><b>边缘域名型</b></div>
+              <div class="row wrapflex" style="margin-top: 6px">
+                <span class="tag t-info">需要域名接入</span>
+              </div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>Cloudflare。</b>处理发生在 Cloudflare 的域名上；R2 桶需绑定同账号域名并公开读。
+              </p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="ban"></i><b>不启用</b></div>
+              <div class="row wrapflex" style="margin-top: 6px">
+                <span class="tag t-mute">默认</span>
+              </div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>本地磁盘、没配处理服务的存储。</b>回退原图 / 占位，行为和今天完全一致。
+              </p>
+            </div>
+          </div>
+        </div>
 
-  <div class="sec">
-    <h2>数据模型</h2>
-    <p class="sub">沿用后台“草稿 → 校验 → 试跑 → 发布 / 回滚”的配置流程（和模型配置一致）。</p>
-    <div class="grid g2">
-      <div class="cmp-wrap"><table class="cmp">
-        <thead><tr><th colspan="2"><code>image_processors</code> 表</th></tr></thead>
-        <tbody>
-          <tr><th>id / name</th><td>主键、显示名</td></tr>
-          <tr><th>vendor</th><td><code>cloudflare</code> / <code>tencent_ci</code> / <code>aliyun_oss_img</code></td></tr>
-          <tr><th>storage_id</th><td>绑定的存储；<b>已发布时唯一</b>（部分唯一索引）</td></tr>
-          <tr><th>status</th><td><code>draft</code> / <code>published</code> / <code>disabled</code></td></tr>
-          <tr><th>draft_json</th><td>草稿配置（不含密钥）</td></tr>
-          <tr><th>published_version</th><td>当前生效的版本号</td></tr>
-          <tr><th>version</th><td>乐观锁版本号</td></tr>
-        </tbody>
-      </table></div>
-      <div class="cmp-wrap"><table class="cmp">
-        <thead><tr><th colspan="2"><code>image_processor_versions</code> 表</th></tr></thead>
-        <tbody>
-          <tr><th>processor_id / version</th><td>每次发布写入一行，用于回滚</td></tr>
-          <tr><th>config_json</th><td>发布时的完整配置快照</td></tr>
-          <tr><th>trial_json</th><td>发布前的试跑结果（体积、耗时）</td></tr>
-          <tr><th>published_by / at</th><td>谁在什么时候发布</td></tr>
-        </tbody>
-      </table>
-      <div style="padding:10px 12px;font-size:12.5px" class="muted">没有新的密钥字段：腾讯云 / 阿里云私有桶签名直接用存储配置里已有的 AccessKey；Cloudflare 公开读不需要密钥。项目已用 AutoMigrate，把两个新模型加进 <code>model.All()</code> 即可建表。</div></div>
-    </div>
-  </div>
+        <div class="sec">
+          <h2>能力对比</h2>
+          <p class="sub">目标：长边 512px 的缩略图，和视频首帧封面。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>腾讯云 数据万象</th>
+                  <th>阿里云 OSS 图片处理</th>
+                  <th>Cloudflare R2</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>绑定关系</th>
+                  <td><span class="m">必须用腾讯云 COS</span>，数据万象绑定存储桶</td>
+                  <td><span class="m">必须用阿里云 OSS</span>，处理参数挂在 OSS 域名上</td>
+                  <td>R2 + 同账号域名<span class="m">公开读</span>，并启用 Transformations</td>
+                </tr>
+                <tr>
+                  <th>图片缩略</th>
+                  <td class="y">支持 · <code>imageMogr2</code></td>
+                  <td class="y">支持 · <code>image/resize</code></td>
+                  <td class="y">支持 · <code>/cdn-cgi/image</code></td>
+                </tr>
+                <tr>
+                  <th>视频首帧</th>
+                  <td class="y">支持 · 需先开通媒体处理</td>
+                  <td>
+                    <span class="m">支持，但仅 H.264 / H.265</span>；S3 协议不支持
+                    <code>video/</code>，需 OSS 原生 SDK 签名
+                  </td>
+                  <td class="y">支持 · 官方保证 H.264 + AAC 的 MP4；mov / webm 未测</td>
+                </tr>
+                <tr>
+                  <th>私有桶访问</th>
+                  <td>COS 自有签名（q-sign），处理参数建议签入；S3 V4 预签名带参数官方未说明</td>
+                  <td>
+                    OSS V4 签名，<code>x-oss-process</code> 签入；图片走 S3 预签名大概率可行但无保证
+                  </td>
+                  <td class="m">需要公开读；私有桶只能写 Worker</td>
+                </tr>
+                <tr>
+                  <th>透明图转 JPG</th>
+                  <td>透明处填白</td>
+                  <td>透明处填白</td>
+                  <td class="m">未验证：<code>format=auto</code> 是否保留透明文档未说</td>
+                </tr>
+                <tr>
+                  <th>计费</th>
+                  <td>图片按原图大小，每月前 10TB 免费，超出 0.025 元/GB；截帧 0.1 元/千次</td>
+                  <td>图片按原图大小，截帧按张数；官方页未给单价</td>
+                  <td>每月 5000 次免费，之后 $0.50/千次；同一“源 + 参数”每月只计一次</td>
+                </tr>
+                <tr>
+                  <th>客户要做</th>
+                  <td>新建 COS 存储；开通数据万象与媒体处理</td>
+                  <td>新建 OSS 存储；绑定自定义域名（默认域名预览会变下载）</td>
+                  <td>域名接入 Cloudflare；R2 绑域名公开读；启用 Transformations</td>
+                </tr>
+                <tr>
+                  <th>后端依赖</th>
+                  <td>COS Go SDK，或自行实现 q-sign（提案，待你确认）</td>
+                  <td>OSS Go SDK（视频首帧必需，提案，待你确认）</td>
+                  <td>无新增</td>
+                </tr>
+                <tr>
+                  <th>核实度</th>
+                  <td><span class="tag t-info">调研检索</span></td>
+                  <td><span class="tag t-info">调研检索</span></td>
+                  <td><span class="tag t-ok">已核对官方页面</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-  <div class="sec">
-    <h2>后台接口</h2>
-    <div class="cmp-wrap"><table class="cmp">
-      <thead><tr><th>方法与路径</th><th>说明</th></tr></thead>
-      <tbody>
-        <tr><th><code>GET /admin/image-processors/presets</code></th><td>下发厂商预设：允许绑定的存储、可配置字段、能力（图片 / 视频封面）、限制提示</td></tr>
-        <tr><th><code>GET|POST /admin/image-processors</code></th><td>列表、新建草稿；绑定关系不匹配返回业务错误</td></tr>
-        <tr><th><code>PUT /admin/image-processors/:id</code></th><td>保存草稿；带版本号做乐观锁</td></tr>
-        <tr><th><code>POST /…/:id/validate</code></th><td>校验：绑定关系、域名可达、厂商前置条件</td></tr>
-        <tr><th><code>POST /…/:id/trial</code></th><td>试跑：用一个真实图片素材和一个视频素材各走一遍，返回体积和耗时</td></tr>
-        <tr><th><code>POST /…/:id/publish</code></th><td>发布（校验和试跑通过才允许）；同存储已有已发布版本时替换它</td></tr>
-        <tr><th><code>POST /…/:id/rollback</code></th><td>回滚到上一个已发布版本</td></tr>
-        <tr><th><code>POST /…/:id/disable</code></th><td>停用：该存储回退原图 / 占位</td></tr>
-        <tr><th><code>DELETE /…/:id</code></th><td>只允许删除草稿或已停用的</td></tr>
-      </tbody>
-    </table></div>
-  </div>
+        <div class="sec">
+          <h2>客户要对接腾讯云时，会发生什么</h2>
+          <p class="sub">
+            腾讯云的图片处理绑定对象存储，必须使用自家的
+            COS。而素材记录了自己所在的存储，所以这件事分四步，并且有一个需要提前说清的边界。
+          </p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li>
+                  在<b>存储配置</b>新建一套腾讯云 COS 存储<small
+                    >桶名要带 APPID 后缀，例如 canvas-1250000000</small
+                  >
+                </li>
+                <li>
+                  在腾讯云控制台为该桶开通<b>数据万象</b>，要封面再开通<b>媒体处理</b
+                  ><small>视频截帧是单独开通、单独计费的</small>
+                </li>
+                <li>
+                  在<b>图片处理服务管理</b>新建「腾讯云数据万象」，<b>只能绑定这套 COS 存储</b
+                  ><small>绑到其他存储时被禁用，并写明原因</small>
+                </li>
+                <li>
+                  校验、试跑通过后<b>发布</b>；把 COS 设为默认存储，之后的新素材才写进去<small
+                    >老素材在原存储里，不受影响</small
+                  >
+                </li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：处理服务只覆盖它绑定的存储。</b><br />假设素材现在在 R2，客户新建 COS
+                  并设为默认：
+                  <ul class="list" style="margin-top: 6px">
+                    <li>新上传、新生成的素材写进 COS → 走数据万象，有缩略图</li>
+                    <li>R2 里的老素材 → 仍由 R2 绑定的处理服务（或回退原图）</li>
+                    <li>
+                      要让老素材也走腾讯云，需要先把它们迁到 COS；存储迁移在存储配置设计里放在二期
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">
+                后台不做覆盖统计，也不做存储迁移（已确认）；这个边界要在交付给客户时说明。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-  <div class="sec">
-    <h2>运行时解析与适配器</h2>
-    <p class="sub">每个厂商是一个适配器，实现同一个 Go 接口；后端按存储缓存已发布的处理服务，版本变了才重建。</p>
-    <div class="codeblock" style="padding-right:10px"><pre style="margin:0;font:inherit;white-space:pre-wrap">// imageproc 包（提案）
+      <!-- ============ 2. 厂商对接 ============ -->
+      <section id="tab-vendors" hidden>
+        <h1 class="h1">厂商对接演示</h1>
+        <p class="lead">
+          选一家厂商，填几个参数，看后端会 302 到什么 URL、客户需要提前做什么、有哪些限制。URL
+          按官方文档的格式拼接，<b>私有桶的签名部分由 SDK 生成，这里只示意</b>。
+        </p>
+        <div class="vend" style="margin-top: 20px">
+          <div class="vlist" id="vlist"></div>
+          <div id="vpanel"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 后台模块原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">后台模块原型：图片处理服务管理</h1>
+        <p class="lead">
+          下面是可点击的原型（数据在内存里，刷新复原）。已预置一个<b>腾讯云数据万象的草稿</b>，绑定在「COS
+          首尔 · 客户 A」上，可以直接走一遍 校验 → 试跑 → 发布。想看失败怎么提示：域名里写
+          <code>bad</code>；Cloudflare 的域名和存储公开域名不一致。
+        </p>
+        <div class="frame" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span
+            ><span style="margin-left: 8px">admin.example.com / 系统设置 / 图片处理服务管理</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">
+          下面都是设计提案，尚未实现。它把设计文档第 6.2 节里“存储实现
+          <code>VariantURLer</code>”的想法，升级成一个独立的、可在后台管理的实体。
+        </p>
+
+        <div class="sec">
+          <h2>处理服务和存储的关系</h2>
+          <p class="sub">
+            一个存储同一时间最多绑定一个“已发布”的处理服务；一个处理服务只绑定一个存储。每个厂商只能绑定它允许的存储类型。
+          </p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead>
+                <tr>
+                  <th>处理服务</th>
+                  <th>允许绑定的存储</th>
+                  <th>为什么</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>腾讯云数据万象</th>
+                  <td><code>tencent_cos</code></td>
+                  <td>数据万象绑定 COS 存储桶，只能处理存在自家桶里的素材</td>
+                </tr>
+                <tr>
+                  <th>阿里云 OSS 图片处理</th>
+                  <td><code>aliyun_oss</code></td>
+                  <td><code>x-oss-process</code> 是 OSS 域名的能力</td>
+                </tr>
+                <tr>
+                  <th>Cloudflare</th>
+                  <td><code>r2</code>，且已设置公开域名</td>
+                  <td>处理发生在 Cloudflare 域名上，源是 R2 的公开地址</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">
+            沿用后台“草稿 → 校验 → 试跑 → 发布 / 回滚”的配置流程（和模型配置一致）。
+          </p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th colspan="2"><code>image_processors</code> 表</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th>id / name</th>
+                    <td>主键、显示名</td>
+                  </tr>
+                  <tr>
+                    <th>vendor</th>
+                    <td>
+                      <code>cloudflare</code> / <code>tencent_ci</code> /
+                      <code>aliyun_oss_img</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>storage_id</th>
+                    <td>绑定的存储；<b>已发布时唯一</b>（部分唯一索引）</td>
+                  </tr>
+                  <tr>
+                    <th>status</th>
+                    <td><code>draft</code> / <code>published</code> / <code>disabled</code></td>
+                  </tr>
+                  <tr>
+                    <th>draft_json</th>
+                    <td>草稿配置（不含密钥）</td>
+                  </tr>
+                  <tr>
+                    <th>published_version</th>
+                    <td>当前生效的版本号</td>
+                  </tr>
+                  <tr>
+                    <th>version</th>
+                    <td>乐观锁版本号</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th colspan="2"><code>image_processor_versions</code> 表</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th>processor_id / version</th>
+                    <td>每次发布写入一行，用于回滚</td>
+                  </tr>
+                  <tr>
+                    <th>config_json</th>
+                    <td>发布时的完整配置快照</td>
+                  </tr>
+                  <tr>
+                    <th>trial_json</th>
+                    <td>发布前的试跑结果（体积、耗时）</td>
+                  </tr>
+                  <tr>
+                    <th>published_by / at</th>
+                    <td>谁在什么时候发布</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style="padding: 10px 12px; font-size: 12.5px" class="muted">
+                没有新的密钥字段：腾讯云 / 阿里云私有桶签名直接用存储配置里已有的
+                AccessKey；Cloudflare 公开读不需要密钥。项目已用 AutoMigrate，把两个新模型加进
+                <code>model.All()</code> 即可建表。
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>后台接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead>
+                <tr>
+                  <th>方法与路径</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th><code>GET /admin/image-processors/presets</code></th>
+                  <td>
+                    下发厂商预设：允许绑定的存储、可配置字段、能力（图片 / 视频封面）、限制提示
+                  </td>
+                </tr>
+                <tr>
+                  <th><code>GET|POST /admin/image-processors</code></th>
+                  <td>列表、新建草稿；绑定关系不匹配返回业务错误</td>
+                </tr>
+                <tr>
+                  <th><code>PUT /admin/image-processors/:id</code></th>
+                  <td>保存草稿；带版本号做乐观锁</td>
+                </tr>
+                <tr>
+                  <th><code>POST /…/:id/validate</code></th>
+                  <td>校验：绑定关系、域名可达、厂商前置条件</td>
+                </tr>
+                <tr>
+                  <th><code>POST /…/:id/trial</code></th>
+                  <td>试跑：用一个真实图片素材和一个视频素材各走一遍，返回体积和耗时</td>
+                </tr>
+                <tr>
+                  <th><code>POST /…/:id/publish</code></th>
+                  <td>发布（校验和试跑通过才允许）；同存储已有已发布版本时替换它</td>
+                </tr>
+                <tr>
+                  <th><code>POST /…/:id/rollback</code></th>
+                  <td>回滚到上一个已发布版本</td>
+                </tr>
+                <tr>
+                  <th><code>POST /…/:id/disable</code></th>
+                  <td>停用：该存储回退原图 / 占位</td>
+                </tr>
+                <tr>
+                  <th><code>DELETE /…/:id</code></th>
+                  <td>只允许删除草稿或已停用的</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>运行时解析与适配器</h2>
+          <p class="sub">
+            每个厂商是一个适配器，实现同一个 Go
+            接口；后端按存储缓存已发布的处理服务，版本变了才重建。
+          </p>
+          <div class="codeblock" style="padding-right: 10px">
+            <pre style="margin: 0; font: inherit; white-space: pre-wrap">
+// imageproc 包（提案）
 type Provider interface {
     Capabilities() Caps                         // 是否支持 thumb / poster
     Validate(ctx, st *storage.Handle) error     // 绑定关系与前置条件
@@ -414,164 +1525,360 @@ type Provider interface {
 
 // ResolveFile(ctx, key, variant)
 //   素材 → 存储 → 已发布的处理服务 → provider.VariantURL(...)
-//   ok=false / 没有处理服务：thumb 回退原图，poster 返回 404</pre></div>
-  </div>
+//   ok=false / 没有处理服务：thumb 回退原图，poster 返回 404</pre>
+          </div>
+        </div>
 
-  <div class="sec">
-    <h2>已确认的决定</h2>
-    <div class="card"><ol class="list" style="padding-left:18px">
-      <li><b>引入 COS Go SDK 与 OSS Go SDK</b>：都引入。COS Go SDK v0.7.75（MIT）、OSS Go SDK v2 v1.6.0（Apache-2.0），用于私有读桶的带处理参数签名，以及阿里云视频首帧。API 与构建细节实现时核对。</li>
-      <li><b>一个存储同时只有一个已发布的处理服务</b>；换厂商时先停用，或发布新的自动替换旧的（可回滚）。</li>
-      <li><b>老素材在别的存储里</b>：不用管。后台不展示覆盖统计，也不做存储迁移。</li>
-      <li><b>AWS 动态图片转换不做</b>：本期只做阿里云、腾讯云、Cloudflare R2。</li>
-      <li><b>Cloudflare 只支持 R2</b>，不处理其他来源的素材。</li>
-      <li><b>主文档已回写</b>：第 6.2 节的存储接口方案已改为这里的处理服务实体，并新增 6.6 节描述后台模块。</li>
-    </ol></div>
-  </div>
-</section>
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li>
+                <b>引入 COS Go SDK 与 OSS Go SDK</b>：都引入。COS Go SDK v0.7.75（MIT）、OSS Go SDK
+                v2 v1.6.0（Apache-2.0），用于私有读桶的带处理参数签名，以及阿里云视频首帧。API
+                与构建细节实现时核对。
+              </li>
+              <li>
+                <b>一个存储同时只有一个已发布的处理服务</b
+                >；换厂商时先停用，或发布新的自动替换旧的（可回滚）。
+              </li>
+              <li><b>老素材在别的存储里</b>：不用管。后台不展示覆盖统计，也不做存储迁移。</li>
+              <li><b>AWS 动态图片转换不做</b>：本期只做阿里云、腾讯云、Cloudflare R2。</li>
+              <li><b>Cloudflare 只支持 R2</b>，不处理其他来源的素材。</li>
+              <li>
+                <b>主文档已回写</b>：第 6.2 节的存储接口方案已改为这里的处理服务实体，并新增 6.6
+                节描述后台模块。
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
 
-</main>
+    <div class="toast" id="toast"></div>
 
-<div class="toast" id="toast"></div>
+    <script>
+      /* ================= 公共 ================= */
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"]/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+        );
+      const fmtN = (n) => Number(n).toLocaleString("zh-CN");
+      const ic = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
 
-<script>
-/* ================= 公共 ================= */
-const $ = (s, r = document) => r.querySelector(s);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const fmtN = (n) => Number(n).toLocaleString("zh-CN");
-const ic = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
-const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", on);
+      }
+      function toast(msg, kind = "ok") {
+        const el = $("#toast");
+        el.innerHTML = `<div>${ic(kind === "ok" ? "circle-check" : "circle-alert")}<span>${esc(msg)}</span></div>`;
+        icons();
+        clearTimeout(toast.t);
+        toast.t = setTimeout(() => (el.innerHTML = ""), 2600);
+      }
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("已复制");
+        } catch {
+          toast("复制失败，请手动选中", "bad");
+        }
+      }
 
-function toggleNotes() {
-  const on = document.body.classList.toggle("show-notes");
-  $("#notesSw").setAttribute("aria-checked", on);
-}
-function toast(msg, kind = "ok") {
-  const el = $("#toast");
-  el.innerHTML = `<div>${ic(kind === "ok" ? "circle-check" : "circle-alert")}<span>${esc(msg)}</span></div>`;
-  icons();
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => (el.innerHTML = ""), 2600);
-}
-async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); toast("已复制"); }
-  catch { toast("复制失败，请手动选中", "bad"); }
-}
+      /* 标签页 */
+      function showTab(id) {
+        document
+          .querySelectorAll("section[id^=tab-]")
+          .forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document
+          .querySelectorAll(".tab")
+          .forEach((t) => t.setAttribute("aria-selected", t.dataset.tab === id));
+        history.replaceState(null, "", "#" + id);
+        window.scrollTo({ top: 0 });
+      }
+      document
+        .querySelectorAll(".tab")
+        .forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
 
-/* 标签页 */
-function showTab(id) {
-  document.querySelectorAll("section[id^=tab-]").forEach((s) => (s.hidden = s.id !== "tab-" + id));
-  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.tab === id));
-  history.replaceState(null, "", "#" + id);
-  window.scrollTo({ top: 0 });
-}
-document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+      /* ================= 厂商定义（对接演示 + 原型共用） ================= */
+      const SRC_CF = [
+        ["Media Transformations", "https://developers.cloudflare.com/stream/transform-videos/"],
+        [
+          "Image Transformations（URL 方式）",
+          "https://developers.cloudflare.com/images/transform-images/transform-via-url/",
+        ],
+        ["R2 公开桶与自定义域名", "https://developers.cloudflare.com/r2/buckets/public-buckets/"],
+      ];
 
-/* ================= 厂商定义（对接演示 + 原型共用） ================= */
-const SRC_CF = [["Media Transformations", "https://developers.cloudflare.com/stream/transform-videos/"], ["Image Transformations（URL 方式）", "https://developers.cloudflare.com/images/transform-images/transform-via-url/"], ["R2 公开桶与自定义域名", "https://developers.cloudflare.com/r2/buckets/public-buckets/"]];
+      const VENDORS = {
+        tencent_ci: {
+          name: "腾讯云 数据万象",
+          short: "COS 图片处理",
+          icon: "cloud-cog",
+          kind: "绑定存储型",
+          storageProvider: "tencent_cos",
+          storageLabel: "腾讯云 COS",
+          bind: "必须使用腾讯云 COS 存储。数据万象绑定在存储桶上，只能处理存在自家 COS 桶里的素材；素材在其他存储里时它不生效。",
+          verify: ["info", "调研检索，未逐条复核"],
+          fields: [
+            {
+              k: "host",
+              label: "访问域名",
+              def: "canvas-1250000000.cos.ap-seoul.myqcloud.com",
+              hint: "COS 默认域名，或绑定的 CDN 自定义域名",
+            },
+            { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
+            { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
+            {
+              k: "format",
+              label: "输出格式",
+              type: "select",
+              opts: ["jpg", "webp"],
+              def: "jpg",
+              hint: "转 JPG 时透明处填白",
+            },
+            { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
+            { k: "priv", label: "桶是私有读", type: "switch", def: true },
+          ],
+          thumb: (c) =>
+            `https://${c.host}/${c.key}?` +
+            (c.priv ? `q-sign-algorithm=sha1&q-ak=<SecretId>&q-signature=<SDK 生成>&` : "") +
+            `imageMogr2/thumbnail/${c.width}x${c.width}%3E/format/${c.format}`,
+          poster: (c) =>
+            `https://${c.host}/${c.key}?ci-process=snapshot&time=${c.time}&width=${c.width}&format=jpg` +
+            (c.priv ? `&q-sign-algorithm=sha1&q-ak=<SecretId>&q-signature=<SDK 生成>` : ""),
+          pre: [
+            "在存储配置里新建腾讯云 COS 存储（桶名带 APPID 后缀）",
+            "为该桶开通数据万象，并绑定存储桶",
+            "要视频封面：另外开通数据万象的媒体处理服务（单独计费）",
+            "私有读桶：确认后端用 COS 签名并把处理参数签入，防止别人去掉参数拿原图",
+          ],
+          limits: [
+            "静图 ≤ 32MB；宽高 ≤ 50000px；总像素 ≤ 2.5 亿",
+            "视频封装 mp4 / mov / webm，编码 H.264 / H.265 / VP8 / VP9 / AV1",
+            "首尔可用；海外媒体处理并发默认 10 QPS",
+            "视频大小、时长上限：未查到",
+          ],
+          cost: [
+            "基础图片处理按原图大小计费，每月前 10TB 免费，超出 0.025 元/GB；首尔单价页面未单列",
+            "视频截帧约 0.1 元/千次，首次使用有 6000 次免费资源包",
+            "同一 URL 经 CDN 命中后是否重复计费：未查到",
+          ],
+          risk: [
+            [
+              "warn",
+              "S3 V4 预签名能否带数据万象参数，官方未说明；稳妥做法是用 COS 原生签名（需 SDK 或自行实现）",
+            ],
+            ["info", "处理参数里的 > 需要 URL 编码（%3E），示例已按此拼接"],
+            ["info", "加 /ignore-error/1 可让超大文件返回原图而不是报错"],
+          ],
+          src: [
+            ["缩放", "https://cloud.tencent.com/document/product/436/113295"],
+            ["视频截帧", "https://cloud.tencent.com/document/product/436/121040"],
+            ["私有读签名", "https://cloud.tencent.com/document/product/436/113294"],
+            ["计费", "https://cloud.tencent.com/document/product/460/58117"],
+          ],
+        },
+        aliyun_img: {
+          name: "阿里云 OSS 图片处理",
+          short: "OSS 图片处理",
+          icon: "cloud",
+          kind: "绑定存储型",
+          storageProvider: "aliyun_oss",
+          storageLabel: "阿里云 OSS",
+          bind: "必须使用阿里云 OSS 存储。处理参数 x-oss-process 是 OSS 域名的能力；素材在其他存储里时它不生效。",
+          verify: ["info", "调研检索，未逐条复核"],
+          fields: [
+            {
+              k: "host",
+              label: "访问域名",
+              def: "img.example.com",
+              hint: "建议绑定自定义域名；默认域名下图片预览会变成下载",
+            },
+            { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
+            { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
+            {
+              k: "format",
+              label: "输出格式",
+              type: "select",
+              opts: ["jpg", "webp"],
+              def: "jpg",
+              hint: "转 JPG 时透明处填白",
+            },
+            { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
+            { k: "priv", label: "桶是私有读", type: "switch", def: true },
+          ],
+          thumb: (c) =>
+            `https://${c.host}/${c.key}?x-oss-process=image/resize,l_${c.width}/format,${c.format}` +
+            (c.priv ? `&x-oss-signature-version=OSS4-HMAC-SHA256&…（SDK 生成）` : ""),
+          poster: (c) =>
+            `https://${c.host}/${c.key}?x-oss-process=video/snapshot,t_${Math.round(c.time * 1000)},f_jpg,w_${c.width},m_fast` +
+            (c.priv ? `&x-oss-signature-version=OSS4-HMAC-SHA256&…（SDK 生成）` : ""),
+          pre: [
+            "在存储配置里新建阿里云 OSS 存储",
+            "为 Bucket 绑定自定义域名（默认域名预览行为为下载）",
+            "私有桶：用 OSS 原生 SDK 的 V4 预签名，把 x-oss-process 签入（不能在签好的 URL 后追加）",
+            "视频封面：确认素材编码为 H.264 / H.265",
+          ],
+          limits: [
+            "原图 ≤ 20MB（可申请调整）；宽高 ≤ 30000px；总像素 ≤ 2.5 亿；缩放后宽高 ≤ 16384px",
+            "视频截帧只支持 H.264 / H.265，不支持杜比视界",
+            "S3 协议下 x-oss-process 只支持 image/ 和 style/，不支持 video/",
+            "mp4 / mov / webm 容器、文件大小、时长上限：文档未写",
+          ],
+          cost: [
+            "图片按原图大小计费，多个操作串联只算一次；视频截帧按截出的张数计费",
+            "官方页未给单价；第三方旧价格表：每月前 10TB 图片处理免费，超出 0.025 元/GB，截帧 0.1 元/千张（下单前请核对）",
+          ],
+          risk: [
+            [
+              "warn",
+              "视频首帧必须换 OSS 原生 SDK 签名，S3 预签名走不通；图片走 S3 预签名大概率可行，但没有官方保证，需实测是否 SignatureDoesNotMatch",
+            ],
+            ["warn", "webm 若编码为 VP9 / AV1，截帧可能不被支持"],
+            ["info", "处理结果的 Cache-Control 是否继承原对象：未查到"],
+          ],
+          src: [
+            ["图片缩放", "https://help.aliyun.com/zh/oss/user-guide/resize-images-4"],
+            ["视频截帧", "https://help.aliyun.com/zh/oss/user-guide/video-snapshots"],
+            [
+              "与 S3 兼容",
+              "https://help.aliyun.com/zh/oss/developer-reference/compatibility-with-amazon-s3",
+            ],
+            ["处理计费", "https://help.aliyun.com/zh/oss/data-processing-fees"],
+          ],
+        },
+        cloudflare: {
+          name: "Cloudflare R2",
+          short: "Image / Media Transformations",
+          icon: "cloud-lightning",
+          kind: "边缘域名型",
+          storageProvider: "r2",
+          storageLabel: "Cloudflare R2",
+          bind: "R2 桶需绑定同一 Cloudflare 账号下的自定义域名并公开读，并在该域名所在 zone 启用 Transformations。处理发生在这个域名上，源就是 R2 的公开地址。",
+          verify: ["ok", "已核对官方页面"],
+          fields: [
+            {
+              k: "host",
+              label: "公开域名（zone）",
+              def: "assets.example.com",
+              hint: "必须和存储配置里的“公开域名”一致",
+            },
+            { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
+            { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
+            { k: "quality", label: "质量", type: "number", def: 75 },
+            {
+              k: "format",
+              label: "输出格式",
+              type: "select",
+              opts: ["auto", "webp", "avif", "jpeg"],
+              def: "auto",
+              hint: "auto 是否保留透明：文档未说明",
+            },
+            { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
+          ],
+          thumb: (c) =>
+            `https://${c.host}/cdn-cgi/image/width=${c.width},fit=scale-down,format=${c.format},quality=${c.quality},onerror=redirect/https://${c.host}/${c.key}`,
+          poster: (c) =>
+            `https://${c.host}/cdn-cgi/media/mode=frame,time=${c.time}s,width=${c.width},format=jpg/https://${c.host}/${c.key}`,
+          pre: [
+            "域名加入 Cloudflare 账号，成为同账号下的 zone（DNS 可走 partial/CNAME 接入，套餐要求未核实）",
+            "R2 桶绑定该自定义域名并公开读；关闭 r2.dev 公开 URL",
+            "在该 zone 的 Transformations 页面启用图片和媒体变换",
+            "后台存储配置里把该 R2 存储的“公开域名”设为这个域名",
+          ],
+          limits: [
+            "视频输入 < 100MB、≤ 10 分钟；官方保证 H.264 + AAC 的 MP4，mov / webm “可能可用但未测”",
+            "源站需支持 HEAD 和 Range，并返回 Content-Range",
+            "图片源 ≤ 100MB、1 亿像素；封面宽 10–2000px",
+            "/cdn-cgi/ 开头的 URL 不能单独 purge，只能清除原图 URL 带走全部变体",
+          ],
+          cost: [
+            "每月 5000 次免费，之后 $0.50/千次；图片和视频共用额度",
+            "一张图 / 一帧计 1 次；同一“源 + 参数”每月只计一次",
+            "处理结果由 Cloudflare 全球网络自动缓存",
+          ],
+          risk: [
+            ["warn", "format=auto 是否保留透明：官方未说明，需用真实透明 PNG 验证"],
+            ["warn", "首帧可能是黑帧：time=0 之外可调 0.5s；首次访问要现算，并发限制未查到"],
+            ["info", "大陆用户：无 ICP 备案时由境外节点服务，速度没有官方数据"],
+            ["info", "公开读后原图地址永不过期；可用 WAF Token Authentication 做防盗链"],
+          ],
+          src: SRC_CF,
+        },
+      };
+      const VENDOR_ORDER = ["tencent_ci", "aliyun_img", "cloudflare"];
+      const PROV_LABEL = {
+        local: "本地磁盘",
+        aliyun_oss: "阿里云 OSS",
+        tencent_cos: "腾讯云 COS",
+        s3: "AWS S3",
+        r2: "Cloudflare R2",
+      };
+      const KIND_TAG = { 绑定存储型: "t-warn", 边缘域名型: "t-info", 自部署型: "t-mute" };
 
-const VENDORS = {
-  tencent_ci: {
-    name: "腾讯云 数据万象", short: "COS 图片处理", icon: "cloud-cog", kind: "绑定存储型", storageProvider: "tencent_cos", storageLabel: "腾讯云 COS",
-    bind: "必须使用腾讯云 COS 存储。数据万象绑定在存储桶上，只能处理存在自家 COS 桶里的素材；素材在其他存储里时它不生效。",
-    verify: ["info", "调研检索，未逐条复核"],
-    fields: [
-      { k: "host", label: "访问域名", def: "canvas-1250000000.cos.ap-seoul.myqcloud.com", hint: "COS 默认域名，或绑定的 CDN 自定义域名" },
-      { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
-      { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
-      { k: "format", label: "输出格式", type: "select", opts: ["jpg", "webp"], def: "jpg", hint: "转 JPG 时透明处填白" },
-      { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
-      { k: "priv", label: "桶是私有读", type: "switch", def: true },
-    ],
-    thumb: (c) => `https://${c.host}/${c.key}?` + (c.priv ? `q-sign-algorithm=sha1&q-ak=<SecretId>&q-signature=<SDK 生成>&` : "") + `imageMogr2/thumbnail/${c.width}x${c.width}%3E/format/${c.format}`,
-    poster: (c) => `https://${c.host}/${c.key}?ci-process=snapshot&time=${c.time}&width=${c.width}&format=jpg` + (c.priv ? `&q-sign-algorithm=sha1&q-ak=<SecretId>&q-signature=<SDK 生成>` : ""),
-    pre: ["在存储配置里新建腾讯云 COS 存储（桶名带 APPID 后缀）", "为该桶开通数据万象，并绑定存储桶", "要视频封面：另外开通数据万象的媒体处理服务（单独计费）", "私有读桶：确认后端用 COS 签名并把处理参数签入，防止别人去掉参数拿原图"],
-    limits: ["静图 ≤ 32MB；宽高 ≤ 50000px；总像素 ≤ 2.5 亿", "视频封装 mp4 / mov / webm，编码 H.264 / H.265 / VP8 / VP9 / AV1", "首尔可用；海外媒体处理并发默认 10 QPS", "视频大小、时长上限：未查到"],
-    cost: ["基础图片处理按原图大小计费，每月前 10TB 免费，超出 0.025 元/GB；首尔单价页面未单列", "视频截帧约 0.1 元/千次，首次使用有 6000 次免费资源包", "同一 URL 经 CDN 命中后是否重复计费：未查到"],
-    risk: [["warn", "S3 V4 预签名能否带数据万象参数，官方未说明；稳妥做法是用 COS 原生签名（需 SDK 或自行实现）"], ["info", "处理参数里的 > 需要 URL 编码（%3E），示例已按此拼接"], ["info", "加 /ignore-error/1 可让超大文件返回原图而不是报错"]],
-    src: [["缩放", "https://cloud.tencent.com/document/product/436/113295"], ["视频截帧", "https://cloud.tencent.com/document/product/436/121040"], ["私有读签名", "https://cloud.tencent.com/document/product/436/113294"], ["计费", "https://cloud.tencent.com/document/product/460/58117"]],
-  },
-  aliyun_img: {
-    name: "阿里云 OSS 图片处理", short: "OSS 图片处理", icon: "cloud", kind: "绑定存储型", storageProvider: "aliyun_oss", storageLabel: "阿里云 OSS",
-    bind: "必须使用阿里云 OSS 存储。处理参数 x-oss-process 是 OSS 域名的能力；素材在其他存储里时它不生效。",
-    verify: ["info", "调研检索，未逐条复核"],
-    fields: [
-      { k: "host", label: "访问域名", def: "img.example.com", hint: "建议绑定自定义域名；默认域名下图片预览会变成下载" },
-      { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
-      { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
-      { k: "format", label: "输出格式", type: "select", opts: ["jpg", "webp"], def: "jpg", hint: "转 JPG 时透明处填白" },
-      { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
-      { k: "priv", label: "桶是私有读", type: "switch", def: true },
-    ],
-    thumb: (c) => `https://${c.host}/${c.key}?x-oss-process=image/resize,l_${c.width}/format,${c.format}` + (c.priv ? `&x-oss-signature-version=OSS4-HMAC-SHA256&…（SDK 生成）` : ""),
-    poster: (c) => `https://${c.host}/${c.key}?x-oss-process=video/snapshot,t_${Math.round(c.time * 1000)},f_jpg,w_${c.width},m_fast` + (c.priv ? `&x-oss-signature-version=OSS4-HMAC-SHA256&…（SDK 生成）` : ""),
-    pre: ["在存储配置里新建阿里云 OSS 存储", "为 Bucket 绑定自定义域名（默认域名预览行为为下载）", "私有桶：用 OSS 原生 SDK 的 V4 预签名，把 x-oss-process 签入（不能在签好的 URL 后追加）", "视频封面：确认素材编码为 H.264 / H.265"],
-    limits: ["原图 ≤ 20MB（可申请调整）；宽高 ≤ 30000px；总像素 ≤ 2.5 亿；缩放后宽高 ≤ 16384px", "视频截帧只支持 H.264 / H.265，不支持杜比视界", "S3 协议下 x-oss-process 只支持 image/ 和 style/，不支持 video/", "mp4 / mov / webm 容器、文件大小、时长上限：文档未写"],
-    cost: ["图片按原图大小计费，多个操作串联只算一次；视频截帧按截出的张数计费", "官方页未给单价；第三方旧价格表：每月前 10TB 图片处理免费，超出 0.025 元/GB，截帧 0.1 元/千张（下单前请核对）"],
-    risk: [["warn", "视频首帧必须换 OSS 原生 SDK 签名，S3 预签名走不通；图片走 S3 预签名大概率可行，但没有官方保证，需实测是否 SignatureDoesNotMatch"], ["warn", "webm 若编码为 VP9 / AV1，截帧可能不被支持"], ["info", "处理结果的 Cache-Control 是否继承原对象：未查到"]],
-    src: [["图片缩放", "https://help.aliyun.com/zh/oss/user-guide/resize-images-4"], ["视频截帧", "https://help.aliyun.com/zh/oss/user-guide/video-snapshots"], ["与 S3 兼容", "https://help.aliyun.com/zh/oss/developer-reference/compatibility-with-amazon-s3"], ["处理计费", "https://help.aliyun.com/zh/oss/data-processing-fees"]],
-  },
-  cloudflare: {
-    name: "Cloudflare R2", short: "Image / Media Transformations", icon: "cloud-lightning", kind: "边缘域名型", storageProvider: "r2", storageLabel: "Cloudflare R2",
-    bind: "R2 桶需绑定同一 Cloudflare 账号下的自定义域名并公开读，并在该域名所在 zone 启用 Transformations。处理发生在这个域名上，源就是 R2 的公开地址。",
-    verify: ["ok", "已核对官方页面"],
-    fields: [
-      { k: "host", label: "公开域名（zone）", def: "assets.example.com", hint: "必须和存储配置里的“公开域名”一致" },
-      { k: "key", label: "对象 key", def: "assets/12/202610/7f3a9c2e5b1d4f6a.png" },
-      { k: "width", label: "缩略图长边（px）", type: "number", def: 512 },
-      { k: "quality", label: "质量", type: "number", def: 75 },
-      { k: "format", label: "输出格式", type: "select", opts: ["auto", "webp", "avif", "jpeg"], def: "auto", hint: "auto 是否保留透明：文档未说明" },
-      { k: "time", label: "封面取帧时间（秒）", type: "number", def: 0 },
-    ],
-    thumb: (c) => `https://${c.host}/cdn-cgi/image/width=${c.width},fit=scale-down,format=${c.format},quality=${c.quality},onerror=redirect/https://${c.host}/${c.key}`,
-    poster: (c) => `https://${c.host}/cdn-cgi/media/mode=frame,time=${c.time}s,width=${c.width},format=jpg/https://${c.host}/${c.key}`,
-    pre: ["域名加入 Cloudflare 账号，成为同账号下的 zone（DNS 可走 partial/CNAME 接入，套餐要求未核实）", "R2 桶绑定该自定义域名并公开读；关闭 r2.dev 公开 URL", "在该 zone 的 Transformations 页面启用图片和媒体变换", "后台存储配置里把该 R2 存储的“公开域名”设为这个域名"],
-    limits: ["视频输入 < 100MB、≤ 10 分钟；官方保证 H.264 + AAC 的 MP4，mov / webm “可能可用但未测”", "源站需支持 HEAD 和 Range，并返回 Content-Range", "图片源 ≤ 100MB、1 亿像素；封面宽 10–2000px", "/cdn-cgi/ 开头的 URL 不能单独 purge，只能清除原图 URL 带走全部变体"],
-    cost: ["每月 5000 次免费，之后 $0.50/千次；图片和视频共用额度", "一张图 / 一帧计 1 次；同一“源 + 参数”每月只计一次", "处理结果由 Cloudflare 全球网络自动缓存"],
-    risk: [["warn", "format=auto 是否保留透明：官方未说明，需用真实透明 PNG 验证"], ["warn", "首帧可能是黑帧：time=0 之外可调 0.5s；首次访问要现算，并发限制未查到"], ["info", "大陆用户：无 ICP 备案时由境外节点服务，速度没有官方数据"], ["info", "公开读后原图地址永不过期；可用 WAF Token Authentication 做防盗链"]],
-    src: SRC_CF,
-  },
-};
-const VENDOR_ORDER = ["tencent_ci", "aliyun_img", "cloudflare"];
-const PROV_LABEL = { local: "本地磁盘", aliyun_oss: "阿里云 OSS", tencent_cos: "腾讯云 COS", s3: "AWS S3", r2: "Cloudflare R2" };
-const KIND_TAG = { "绑定存储型": "t-warn", "边缘域名型": "t-info", "自部署型": "t-mute" };
+      /* ================= 厂商对接演示 ================= */
+      const D = { vendor: "tencent_ci", cfg: {}, checks: {} };
+      VENDOR_ORDER.forEach((id) => {
+        D.cfg[id] = Object.fromEntries(VENDORS[id].fields.map((f) => [f.k, f.def]));
+        D.checks[id] = {};
+      });
 
-/* ================= 厂商对接演示 ================= */
-const D = { vendor: "tencent_ci", cfg: {}, checks: {} };
-VENDOR_ORDER.forEach((id) => { D.cfg[id] = Object.fromEntries(VENDORS[id].fields.map((f) => [f.k, f.def])); D.checks[id] = {}; });
-
-function renderVendorList() {
-  $("#vlist").innerHTML = VENDOR_ORDER.map((id) => {
-    const v = VENDORS[id];
-    return `<button class="vbtn ${D.vendor === id ? "on" : ""}" onclick="pickVendor('${id}')">
+      function renderVendorList() {
+        $("#vlist").innerHTML = VENDOR_ORDER.map((id) => {
+          const v = VENDORS[id];
+          return `<button class="vbtn ${D.vendor === id ? "on" : ""}" onclick="pickVendor('${id}')">
       <div class="n">${ic(v.icon)}${esc(v.name)}</div>
       <div class="d">${esc(v.short)} · ${esc(v.kind)}</div></button>`;
-  }).join("");
-}
-function pickVendor(id) { D.vendor = id; renderVendor(); }
-function setCfg(k, val, isNum) { D.cfg[D.vendor][k] = isNum ? Number(val) : val; renderUrls(); }
-function toggleCfg(k) { D.cfg[D.vendor][k] = !D.cfg[D.vendor][k]; renderVendor(); }
-function toggleCheck(i) { D.checks[D.vendor][i] = !D.checks[D.vendor][i]; renderVendor(); }
+        }).join("");
+      }
+      function pickVendor(id) {
+        D.vendor = id;
+        renderVendor();
+      }
+      function setCfg(k, val, isNum) {
+        D.cfg[D.vendor][k] = isNum ? Number(val) : val;
+        renderUrls();
+      }
+      function toggleCfg(k) {
+        D.cfg[D.vendor][k] = !D.cfg[D.vendor][k];
+        renderVendor();
+      }
+      function toggleCheck(i) {
+        D.checks[D.vendor][i] = !D.checks[D.vendor][i];
+        renderVendor();
+      }
 
-function renderUrls() {
-  const v = VENDORS[D.vendor], c = D.cfg[D.vendor];
-  const thumb = v.thumb(c);
-  const poster = v.poster ? v.poster(c) : null;
-  $("#vurls").innerHTML = `
+      function renderUrls() {
+        const v = VENDORS[D.vendor],
+          c = D.cfg[D.vendor];
+        const thumb = v.thumb(c);
+        const poster = v.poster ? v.poster(c) : null;
+        $("#vurls").innerHTML = `
     <div class="lbl">${ic("image")}缩略图 URL <span class="tag t-mute">/files/&lt;key&gt;?v=thumb 会 302 到这里</span></div>
     <div class="codeblock">${esc(thumb)}<button class="btn btn-ghost btn-sm cp" onclick='copyText(${JSON.stringify(thumb)})' aria-label="复制">${ic("copy")}</button></div>
     <div class="lbl" style="margin-top:12px">${ic("film")}视频封面 URL <span class="tag t-mute">/files/&lt;key&gt;?v=poster</span></div>
-    ${poster
-      ? `<div class="codeblock">${esc(poster)}<button class="btn btn-ghost btn-sm cp" onclick='copyText(${JSON.stringify(poster)})' aria-label="复制">${ic("copy")}</button></div>`
-      : `<div class="callout c-bad">${ic("circle-x")}<div>该厂商<b>不支持视频首帧</b>：<code>?v=poster</code> 返回 404，视频节点显示占位，点击仍可播放。</div></div>`}`;
-  icons();
-}
+    ${
+      poster
+        ? `<div class="codeblock">${esc(poster)}<button class="btn btn-ghost btn-sm cp" onclick='copyText(${JSON.stringify(poster)})' aria-label="复制">${ic("copy")}</button></div>`
+        : `<div class="callout c-bad">${ic("circle-x")}<div>该厂商<b>不支持视频首帧</b>：<code>?v=poster</code> 返回 404，视频节点显示占位，点击仍可播放。</div></div>`
+    }`;
+        icons();
+      }
 
-function renderVendor() {
-  const v = VENDORS[D.vendor], c = D.cfg[D.vendor], chk = D.checks[D.vendor];
-  const done = v.pre.filter((_, i) => chk[i]).length;
-  renderVendorList();
-  $("#vpanel").innerHTML = `
+      function renderVendor() {
+        const v = VENDORS[D.vendor],
+          c = D.cfg[D.vendor],
+          chk = D.checks[D.vendor];
+        const done = v.pre.filter((_, i) => chk[i]).length;
+        renderVendorList();
+        $("#vpanel").innerHTML = `
     <div class="card">
       <div class="row wrapflex">
         <h2 style="font-size:18px;font-weight:600">${esc(v.name)}</h2>
@@ -585,11 +1892,15 @@ function renderVendor() {
 
       <div class="hr"></div>
       <div class="lbl">${ic("sliders-horizontal")}参数（改动后下方 URL 实时变化）</div>
-      <div class="fields">${v.fields.map((f) => {
-        if (f.type === "switch") return `<div><div class="lbl">${esc(f.label)}</div><button class="switch" role="switch" aria-checked="${c[f.k]}" onclick="toggleCfg('${f.k}')"></button>${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
-        if (f.type === "select") return `<div><div class="lbl">${esc(f.label)}</div><select class="input" onchange="setCfg('${f.k}', this.value)">${f.opts.map((o) => `<option ${c[f.k] === o ? "selected" : ""}>${o}</option>`).join("")}</select>${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
-        return `<div><div class="lbl">${esc(f.label)}</div><input class="input ${f.type === "number" ? "tn" : "mono"}" type="${f.type === "number" ? "number" : "text"}" value="${esc(c[f.k])}" oninput="setCfg('${f.k}', this.value, ${f.type === "number"})">${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
-      }).join("")}</div>
+      <div class="fields">${v.fields
+        .map((f) => {
+          if (f.type === "switch")
+            return `<div><div class="lbl">${esc(f.label)}</div><button class="switch" role="switch" aria-checked="${c[f.k]}" onclick="toggleCfg('${f.k}')"></button>${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
+          if (f.type === "select")
+            return `<div><div class="lbl">${esc(f.label)}</div><select class="input" onchange="setCfg('${f.k}', this.value)">${f.opts.map((o) => `<option ${c[f.k] === o ? "selected" : ""}>${o}</option>`).join("")}</select>${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
+          return `<div><div class="lbl">${esc(f.label)}</div><input class="input ${f.type === "number" ? "tn" : "mono"}" type="${f.type === "number" ? "number" : "text"}" value="${esc(c[f.k])}" oninput="setCfg('${f.k}', this.value, ${f.type === "number"})">${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
+        })
+        .join("")}</div>
       <div id="vurls" style="margin-top:14px"></div>
 
       <div class="hr"></div>
@@ -606,44 +1917,133 @@ function renderVendor() {
       <div class="hr"></div>
       <div class="row wrapflex" style="font-size:12.5px"><span class="muted">官方来源（访问日期 2026-10-04）：</span>${v.src.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener" class="tag t-mute" style="text-decoration:none">${esc(t)} ${ic("external-link")}</a>`).join("")}</div>
     </div>`;
-  renderUrls();
-  icons();
-}
+        renderUrls();
+        icons();
+      }
 
-/* ================= 后台原型：图片处理服务管理 ================= */
-const P = {
-  storages: [
-    { id: 1, name: "本地磁盘", provider: "local", builtin: true, assets: 1284, where: "./data/assets" },
-    { id: 2, name: "R2 · 生产", provider: "r2", bucket: "vc-prod", publicBase: "https://assets.example.com", assets: 5230, isDefault: true, where: "vc-prod · auto" },
-    { id: 3, name: "OSS 杭州 · 旧桶", provider: "aliyun_oss", bucket: "vc-legacy", region: "cn-hangzhou", assets: 312, where: "vc-legacy · cn-hangzhou" },
-    { id: 4, name: "COS 首尔 · 客户 A", provider: "tencent_cos", bucket: "canvas-1250000000", region: "ap-seoul", assets: 0, where: "canvas-1250000000 · ap-seoul" },
-    { id: 5, name: "S3 东京", provider: "s3", bucket: "vc-tokyo", region: "ap-northeast-1", assets: 0, where: "vc-tokyo · ap-northeast-1" },
-  ],
-  procs: [
-    { id: 1, name: "R2 · Cloudflare 处理", vendor: "cloudflare", storageId: 2, status: "published", version: 3, prev: 2, updated: "今天 10:21", trial: { img: "3.1MB → 38KB · 286ms", vid: "mp4 28MB → 41KB · 640ms" },
-      cfg: { domain: "assets.example.com", width: 512, quality: 75, format: "auto", time: 0, onerror: true } },
-    { id: 2, name: "COS · 数据万象（客户 A）", vendor: "tencent_ci", storageId: 4, status: "draft", version: 0, prev: 0, updated: "昨天 18:40", trial: null,
-      cfg: { domain: "canvas-1250000000.cos.ap-seoul.myqcloud.com", width: 512, format: "jpg", time: 0, media: true } },
-  ],
-  nextId: 3, wiz: null,
-};
-const STATUS = { draft: ["t-mute", "草稿"], published: ["t-ok", "已发布"], disabled: ["t-warn", "已停用"] };
-const stOf = (id) => P.storages.find((s) => s.id === id);
-const pOf = (id) => P.procs.find((p) => p.id === id);
-const boundProc = (storageId, exceptId) => P.procs.find((p) => p.storageId === storageId && p.status === "published" && p.id !== exceptId);
-const hostOf = (u) => { try { return new URL(u).host; } catch { return ""; } };
+      /* ================= 后台原型：图片处理服务管理 ================= */
+      const P = {
+        storages: [
+          {
+            id: 1,
+            name: "本地磁盘",
+            provider: "local",
+            builtin: true,
+            assets: 1284,
+            where: "./data/assets",
+          },
+          {
+            id: 2,
+            name: "R2 · 生产",
+            provider: "r2",
+            bucket: "vc-prod",
+            publicBase: "https://assets.example.com",
+            assets: 5230,
+            isDefault: true,
+            where: "vc-prod · auto",
+          },
+          {
+            id: 3,
+            name: "OSS 杭州 · 旧桶",
+            provider: "aliyun_oss",
+            bucket: "vc-legacy",
+            region: "cn-hangzhou",
+            assets: 312,
+            where: "vc-legacy · cn-hangzhou",
+          },
+          {
+            id: 4,
+            name: "COS 首尔 · 客户 A",
+            provider: "tencent_cos",
+            bucket: "canvas-1250000000",
+            region: "ap-seoul",
+            assets: 0,
+            where: "canvas-1250000000 · ap-seoul",
+          },
+          {
+            id: 5,
+            name: "S3 东京",
+            provider: "s3",
+            bucket: "vc-tokyo",
+            region: "ap-northeast-1",
+            assets: 0,
+            where: "vc-tokyo · ap-northeast-1",
+          },
+        ],
+        procs: [
+          {
+            id: 1,
+            name: "R2 · Cloudflare 处理",
+            vendor: "cloudflare",
+            storageId: 2,
+            status: "published",
+            version: 3,
+            prev: 2,
+            updated: "今天 10:21",
+            trial: { img: "3.1MB → 38KB · 286ms", vid: "mp4 28MB → 41KB · 640ms" },
+            cfg: {
+              domain: "assets.example.com",
+              width: 512,
+              quality: 75,
+              format: "auto",
+              time: 0,
+              onerror: true,
+            },
+          },
+          {
+            id: 2,
+            name: "COS · 数据万象（客户 A）",
+            vendor: "tencent_ci",
+            storageId: 4,
+            status: "draft",
+            version: 0,
+            prev: 0,
+            updated: "昨天 18:40",
+            trial: null,
+            cfg: {
+              domain: "canvas-1250000000.cos.ap-seoul.myqcloud.com",
+              width: 512,
+              format: "jpg",
+              time: 0,
+              media: true,
+            },
+          },
+        ],
+        nextId: 3,
+        wiz: null,
+      };
+      const STATUS = {
+        draft: ["t-mute", "草稿"],
+        published: ["t-ok", "已发布"],
+        disabled: ["t-warn", "已停用"],
+      };
+      const stOf = (id) => P.storages.find((s) => s.id === id);
+      const pOf = (id) => P.procs.find((p) => p.id === id);
+      const boundProc = (storageId, exceptId) =>
+        P.procs.find(
+          (p) => p.storageId === storageId && p.status === "published" && p.id !== exceptId,
+        );
+      const hostOf = (u) => {
+        try {
+          return new URL(u).host;
+        } catch {
+          return "";
+        }
+      };
 
-function compat(vendorId, st, exceptId) {
-  const v = VENDORS[vendorId];
-  if (st.provider !== v.storageProvider) return `这是「${PROV_LABEL[st.provider]}」存储；${v.name}只能绑定「${v.storageLabel}」存储`;
-  if (vendorId === "cloudflare" && !st.publicBase) return "这套 R2 存储还没设置公开域名：先到存储配置里填写，再回来绑定";
-  const b = boundProc(st.id, exceptId);
-  if (b) return `已被「${b.name}」绑定（同一存储同时只能有一个已发布的处理服务）`;
-  return "";
-}
+      function compat(vendorId, st, exceptId) {
+        const v = VENDORS[vendorId];
+        if (st.provider !== v.storageProvider)
+          return `这是「${PROV_LABEL[st.provider]}」存储；${v.name}只能绑定「${v.storageLabel}」存储`;
+        if (vendorId === "cloudflare" && !st.publicBase)
+          return "这套 R2 存储还没设置公开域名：先到存储配置里填写，再回来绑定";
+        const b = boundProc(st.id, exceptId);
+        if (b) return `已被「${b.name}」绑定（同一存储同时只能有一个已发布的处理服务）`;
+        return "";
+      }
 
-function pRender() {
-  $("#proto").innerHTML = `
+      function pRender() {
+        $("#proto").innerHTML = `
     <aside class="side">
       <div class="side-h"><span class="brand"><span class="logo" style="width:26px;height:26px">${ic("clapperboard")}</span></span><div style="line-height:1.2"><div style="font-size:13px;font-weight:600">Video Canvas</div><div class="muted" style="font-size:11px">后台管理</div></div></div>
       <nav>
@@ -665,10 +2065,13 @@ function pRender() {
         </div>
 
         <h3 style="font-size:14px;font-weight:600;margin:22px 0 8px">处理服务</h3>
-        ${P.procs.length ? `<div class="ptable"><table>
+        ${
+          P.procs.length
+            ? `<div class="ptable"><table>
           <thead><tr><th>名称</th><th>厂商</th><th>绑定存储</th><th>状态</th><th>最近试跑</th><th></th></tr></thead>
           <tbody>${P.procs.map(procRow).join("")}</tbody></table></div>`
-          : `<div class="card muted" style="text-align:center;padding:28px">还没有处理服务。所有存储都回退原图 / 占位。</div>`}
+            : `<div class="card muted" style="text-align:center;padding:28px">还没有处理服务。所有存储都回退原图 / 占位。</div>`
+        }
 
         <div class="note" style="margin-top:22px"><h3 style="font-size:14px;font-weight:600;margin-bottom:8px">存储与处理服务</h3>
           <div class="ptable"><table>
@@ -677,14 +2080,18 @@ function pRender() {
           <div class="note-txt">设计：从“存储”的视角再看一遍。没有处理服务的存储一目了然，并且能直接发起启用；本地磁盘因为无法被厂商访问，按钮禁用并写明原因。不做覆盖统计（已确认）。</div></div>
       </div>
     </div>`;
-  renderWiz();
-  icons();
-}
+        renderWiz();
+        icons();
+      }
 
-function procRow(p) {
-  const st = stOf(p.storageId), v = VENDORS[p.vendor], [cls, label] = STATUS[p.status];
-  const trial = p.trial ? `<div class="tn" style="font-size:12px">${esc(p.trial.img)}</div><div class="tn muted" style="font-size:12px">${esc(p.trial.vid)}</div>` : `<span class="muted">未试跑</span>`;
-  return `<tr>
+      function procRow(p) {
+        const st = stOf(p.storageId),
+          v = VENDORS[p.vendor],
+          [cls, label] = STATUS[p.status];
+        const trial = p.trial
+          ? `<div class="tn" style="font-size:12px">${esc(p.trial.img)}</div><div class="tn muted" style="font-size:12px">${esc(p.trial.vid)}</div>`
+          : `<span class="muted">未试跑</span>`;
+        return `<tr>
     <td><b>${esc(p.name)}</b><div class="muted" style="font-size:11.5px">${p.version ? `v${p.version} · ` : ""}${esc(p.updated)}</div></td>
     <td>${esc(v.name)}<div><span class="tag ${KIND_TAG[v.kind]}">${esc(v.kind)}</span></div></td>
     <td>${esc(st.name)}<div class="muted" style="font-size:11.5px">${esc(PROV_LABEL[st.provider])}</div></td>
@@ -696,182 +2103,377 @@ function procRow(p) {
       ${p.status === "published" && p.prev ? `<button class="btn btn-ghost btn-sm" onclick="rollback(${p.id})">${ic("undo-2")}回滚</button>` : ""}
       ${p.status === "published" ? `<button class="btn btn-ghost btn-sm" onclick="disableProc(${p.id})">${ic("pause")}停用</button>` : `<button class="btn btn-ghost btn-sm btn-danger-ghost" onclick="delProc(${p.id})" aria-label="删除">${ic("trash-2")}</button>`}
     </td></tr>`;
-}
-function storageRow(s) {
-  const b = boundProc(s.id), draft = P.procs.find((p) => p.storageId === s.id && p.status !== "published");
-  const suggest = VENDOR_ORDER.find((id) => VENDORS[id].storageProvider === s.provider);
-  const noWay = s.provider === "local" ? "本地磁盘的地址厂商访问不到，无法接入处理服务" : "";
-  return `<tr>
+      }
+      function storageRow(s) {
+        const b = boundProc(s.id),
+          draft = P.procs.find((p) => p.storageId === s.id && p.status !== "published");
+        const suggest = VENDOR_ORDER.find((id) => VENDORS[id].storageProvider === s.provider);
+        const noWay = s.provider === "local" ? "本地磁盘的地址厂商访问不到，无法接入处理服务" : "";
+        return `<tr>
     <td><b>${esc(s.name)}</b>${s.isDefault ? ` <span class="tag t-info">默认</span>` : ""}<div class="muted mono" style="font-size:11.5px">${esc(s.where)}</div></td>
     <td>${esc(PROV_LABEL[s.provider])}</td>
     <td>${b ? `<span class="tag t-ok">${ic("circle-check")}${esc(b.name)}</span>` : draft ? `<span class="tag t-mute">草稿：${esc(draft.name)}</span>` : `<span class="muted">未启用 · 回退原图 / 占位</span>`}</td>
     <td class="act">${b || draft ? "" : `<span title="${esc(noWay)}"><button class="btn btn-outline btn-sm" ${noWay ? "disabled" : ""} onclick="openWiz(null, 1, ${s.id})">${ic("plug-zap")}启用处理服务</button></span>`}</td>
   </tr>`;
-}
+      }
 
-/* ---- 向导 ---- */
-function newCfg(vendor, st) {
-  const w = 512;
-  if (vendor === "tencent_ci") return { domain: st ? `${st.bucket}.cos.${st.region}.myqcloud.com` : "", width: w, format: "jpg", time: 0, media: true };
-  if (vendor === "aliyun_img") return { domain: "", width: w, format: "jpg", time: 0 };
-  return { domain: st?.publicBase ? hostOf(st.publicBase) : "", width: w, quality: 75, format: "auto", time: 0, onerror: true };
-}
-function openWiz(id, step, storageId) {
-  const p = id ? pOf(id) : null;
-  const sId = p ? p.storageId : storageId || null;
-  P.wiz = {
-    id: p ? p.id : null, step: step || (p ? 3 : 1), vendor: p ? p.vendor : sId ? VENDOR_ORDER.find((x) => VENDORS[x].storageProvider === stOf(sId).provider) || null : null,
-    storageId: sId, name: p ? (p.draft ? p.draft.name : p.name) : "", cfg: p ? { ...(p.draft ? p.draft.cfg : p.cfg) } : null, secret: "", checks: null, running: false, nameTouched: !!p,
-  };
-  if (!P.wiz.cfg && P.wiz.vendor) P.wiz.cfg = newCfg(P.wiz.vendor, sId ? stOf(sId) : null);
-  if (P.wiz.step >= 3 && !P.wiz.cfg) P.wiz.step = 1;
-  renderWiz();
-  if (P.wiz.step === 4) runChecks();
-}
-function closeWiz() { P.wiz = null; renderWiz(); }
-function autoName(w) { return w.vendor && w.storageId ? `${stOf(w.storageId).name} · ${VENDORS[w.vendor].short}` : ""; }
+      /* ---- 向导 ---- */
+      function newCfg(vendor, st) {
+        const w = 512;
+        if (vendor === "tencent_ci")
+          return {
+            domain: st ? `${st.bucket}.cos.${st.region}.myqcloud.com` : "",
+            width: w,
+            format: "jpg",
+            time: 0,
+            media: true,
+          };
+        if (vendor === "aliyun_img") return { domain: "", width: w, format: "jpg", time: 0 };
+        return {
+          domain: st?.publicBase ? hostOf(st.publicBase) : "",
+          width: w,
+          quality: 75,
+          format: "auto",
+          time: 0,
+          onerror: true,
+        };
+      }
+      function openWiz(id, step, storageId) {
+        const p = id ? pOf(id) : null;
+        const sId = p ? p.storageId : storageId || null;
+        P.wiz = {
+          id: p ? p.id : null,
+          step: step || (p ? 3 : 1),
+          vendor: p
+            ? p.vendor
+            : sId
+              ? VENDOR_ORDER.find((x) => VENDORS[x].storageProvider === stOf(sId).provider) || null
+              : null,
+          storageId: sId,
+          name: p ? (p.draft ? p.draft.name : p.name) : "",
+          cfg: p ? { ...(p.draft ? p.draft.cfg : p.cfg) } : null,
+          secret: "",
+          checks: null,
+          running: false,
+          nameTouched: !!p,
+        };
+        if (!P.wiz.cfg && P.wiz.vendor) P.wiz.cfg = newCfg(P.wiz.vendor, sId ? stOf(sId) : null);
+        if (P.wiz.step >= 3 && !P.wiz.cfg) P.wiz.step = 1;
+        renderWiz();
+        if (P.wiz.step === 4) runChecks();
+      }
+      function closeWiz() {
+        P.wiz = null;
+        renderWiz();
+      }
+      function autoName(w) {
+        return w.vendor && w.storageId
+          ? `${stOf(w.storageId).name} · ${VENDORS[w.vendor].short}`
+          : "";
+      }
 
-function pickVendorW(id) {
-  const w = P.wiz;
-  if (w.vendor !== id) { w.vendor = id; w.storageId = null; w.cfg = null; w.checks = null; }
-  renderWiz();
-}
-function pickStorageW(id) {
-  const w = P.wiz;
-  w.storageId = id; w.cfg = newCfg(w.vendor, stOf(id)); w.checks = null;
-  if (!w.nameTouched) w.name = autoName(w);
-  renderWiz();
-}
-/* 文本 / 数字 / 下拉只改状态，不重绘抽屉，否则输入框会失焦 */
-function setW(k, val, num) { P.wiz.cfg[k] = num ? Number(val) : val; P.wiz.checks = null; }
-function toggleW(k) { P.wiz.cfg[k] = !P.wiz.cfg[k]; P.wiz.checks = null; renderWiz(); }
-function wizErrors(w) {
-  const e = {};
-  if (w.step >= 3) {
-    if (!w.name.trim()) e.name = "请填写名称";
-    if (!w.cfg.domain.trim()) e.domain = "请填写访问域名";
-    if (!(w.cfg.width >= 16 && w.cfg.width <= 2000)) e.width = "长边需在 16–2000 之间";
-  }
-  return e;
-}
-function wizNext() {
-  const w = P.wiz;
-  if (w.step === 1 && !w.vendor) return;
-  if (w.step === 2 && !w.storageId) return;
-  if (w.step === 3 && Object.keys(wizErrors(w)).length) { w.showErr = true; return renderWiz(); }
-  w.step++; w.showErr = false;
-  renderWiz();
-  if (w.step === 4 && !w.checks) runChecks();
-}
-function wizPrev() { P.wiz.step--; renderWiz(); }
+      function pickVendorW(id) {
+        const w = P.wiz;
+        if (w.vendor !== id) {
+          w.vendor = id;
+          w.storageId = null;
+          w.cfg = null;
+          w.checks = null;
+        }
+        renderWiz();
+      }
+      function pickStorageW(id) {
+        const w = P.wiz;
+        w.storageId = id;
+        w.cfg = newCfg(w.vendor, stOf(id));
+        w.checks = null;
+        if (!w.nameTouched) w.name = autoName(w);
+        renderWiz();
+      }
+      /* 文本 / 数字 / 下拉只改状态，不重绘抽屉，否则输入框会失焦 */
+      function setW(k, val, num) {
+        P.wiz.cfg[k] = num ? Number(val) : val;
+        P.wiz.checks = null;
+      }
+      function toggleW(k) {
+        P.wiz.cfg[k] = !P.wiz.cfg[k];
+        P.wiz.checks = null;
+        renderWiz();
+      }
+      function wizErrors(w) {
+        const e = {};
+        if (w.step >= 3) {
+          if (!w.name.trim()) e.name = "请填写名称";
+          if (!w.cfg.domain.trim()) e.domain = "请填写访问域名";
+          if (!(w.cfg.width >= 16 && w.cfg.width <= 2000)) e.width = "长边需在 16–2000 之间";
+        }
+        return e;
+      }
+      function wizNext() {
+        const w = P.wiz;
+        if (w.step === 1 && !w.vendor) return;
+        if (w.step === 2 && !w.storageId) return;
+        if (w.step === 3 && Object.keys(wizErrors(w)).length) {
+          w.showErr = true;
+          return renderWiz();
+        }
+        w.step++;
+        w.showErr = false;
+        renderWiz();
+        if (w.step === 4 && !w.checks) runChecks();
+      }
+      function wizPrev() {
+        P.wiz.step--;
+        renderWiz();
+      }
 
-/* 校验 + 试跑（模拟，非真实调用） */
-function buildChecks(w) {
-  const v = VENDORS[w.vendor], c = w.cfg, st = stOf(w.storageId), bad = /bad/i.test(c.domain);
-  const out = [];
-  out.push({ label: "绑定关系：存储厂商与处理服务匹配", st: "ok", msg: `${st.name}（${PROV_LABEL[st.provider]}）↔ ${v.name}` });
-  out.push(bad ? { label: "访问域名可解析、可访问", st: "fail", msg: `${c.domain} 无法访问（示意：域名含 bad）` } : { label: "访问域名可解析、可访问", st: "ok", msg: c.domain });
-  if (w.vendor === "cloudflare") out.push(hostOf(st.publicBase) !== c.domain ? { label: "域名与存储“公开域名”一致", st: "fail", msg: `存储公开域名是 ${hostOf(st.publicBase)}，这里填了 ${c.domain}` } : { label: "域名与存储“公开域名”一致", st: "ok", msg: "一致" });
-  if (w.vendor === "tencent_ci") out.push(c.media ? { label: "数据万象媒体处理已开通", st: "ok", msg: "视频封面可用" } : { label: "数据万象媒体处理已开通", st: "warn", msg: "未开通：视频封面不可用，视频节点显示占位" });
-  if (w.vendor === "aliyun_img") out.push(/^[a-z0-9-]+\.oss-/.test(c.domain) ? { label: "已使用自定义域名", st: "warn", msg: "默认域名下图片预览会变成下载，建议绑定自定义域名" } : { label: "已使用自定义域名", st: "ok", msg: "OK" });
-  if (w.vendor === "tencent_ci" || w.vendor === "aliyun_img") out.push({ label: "私有读签名（用存储配置里的 AccessKey）", st: "ok", msg: "处理参数已签入，SDK 签名通过" });
-  out.push(bad ? { label: "试跑：图片缩略图", st: "fail", msg: "未能取得缩略图" } : { label: "试跑：图片缩略图", st: "ok", msg: `3.1MB → 38KB · 286ms（示意）` });
-  if (!v.poster) out.push({ label: "试跑：视频封面", st: "warn", msg: "该厂商不支持视频首帧：视频回退占位" });
-  else if (w.vendor === "tencent_ci" && !c.media) out.push({ label: "试跑：视频封面", st: "warn", msg: "已跳过（未开通媒体处理）" });
-  else out.push(bad ? { label: "试跑：视频封面", st: "fail", msg: "未能取得封面" } : { label: "试跑：视频封面", st: "ok", msg: `mp4 28MB → 41KB · 640ms（示意）` });
-  return out;
-}
-function runChecks() {
-  const w = P.wiz;
-  const full = buildChecks(w);
-  w.checks = full.map((x) => ({ ...x, shown: "pending" }));
-  w.running = true;
-  renderWiz();
-  let i = 0;
-  const tick = () => {
-    if (!P.wiz || P.wiz !== w) return;
-    if (i < w.checks.length) {
-      w.checks[i].shown = "run"; softRenderWiz();
-      setTimeout(() => { if (P.wiz !== w) return; w.checks[i].shown = full[i].st; i++; softRenderWiz(); setTimeout(tick, 120); }, 420);
-    } else { w.running = false; renderWiz(); }
-  };
-  tick();
-}
-const hasFail = (w) => w.checks && w.checks.some((c) => c.shown === "fail");
-const allDone = (w) => w.checks && !w.running && w.checks.every((c) => c.shown !== "pending" && c.shown !== "run");
+      /* 校验 + 试跑（模拟，非真实调用） */
+      function buildChecks(w) {
+        const v = VENDORS[w.vendor],
+          c = w.cfg,
+          st = stOf(w.storageId),
+          bad = /bad/i.test(c.domain);
+        const out = [];
+        out.push({
+          label: "绑定关系：存储厂商与处理服务匹配",
+          st: "ok",
+          msg: `${st.name}（${PROV_LABEL[st.provider]}）↔ ${v.name}`,
+        });
+        out.push(
+          bad
+            ? {
+                label: "访问域名可解析、可访问",
+                st: "fail",
+                msg: `${c.domain} 无法访问（示意：域名含 bad）`,
+              }
+            : { label: "访问域名可解析、可访问", st: "ok", msg: c.domain },
+        );
+        if (w.vendor === "cloudflare")
+          out.push(
+            hostOf(st.publicBase) !== c.domain
+              ? {
+                  label: "域名与存储“公开域名”一致",
+                  st: "fail",
+                  msg: `存储公开域名是 ${hostOf(st.publicBase)}，这里填了 ${c.domain}`,
+                }
+              : { label: "域名与存储“公开域名”一致", st: "ok", msg: "一致" },
+          );
+        if (w.vendor === "tencent_ci")
+          out.push(
+            c.media
+              ? { label: "数据万象媒体处理已开通", st: "ok", msg: "视频封面可用" }
+              : {
+                  label: "数据万象媒体处理已开通",
+                  st: "warn",
+                  msg: "未开通：视频封面不可用，视频节点显示占位",
+                },
+          );
+        if (w.vendor === "aliyun_img")
+          out.push(
+            /^[a-z0-9-]+\.oss-/.test(c.domain)
+              ? {
+                  label: "已使用自定义域名",
+                  st: "warn",
+                  msg: "默认域名下图片预览会变成下载，建议绑定自定义域名",
+                }
+              : { label: "已使用自定义域名", st: "ok", msg: "OK" },
+          );
+        if (w.vendor === "tencent_ci" || w.vendor === "aliyun_img")
+          out.push({
+            label: "私有读签名（用存储配置里的 AccessKey）",
+            st: "ok",
+            msg: "处理参数已签入，SDK 签名通过",
+          });
+        out.push(
+          bad
+            ? { label: "试跑：图片缩略图", st: "fail", msg: "未能取得缩略图" }
+            : { label: "试跑：图片缩略图", st: "ok", msg: `3.1MB → 38KB · 286ms（示意）` },
+        );
+        if (!v.poster)
+          out.push({
+            label: "试跑：视频封面",
+            st: "warn",
+            msg: "该厂商不支持视频首帧：视频回退占位",
+          });
+        else if (w.vendor === "tencent_ci" && !c.media)
+          out.push({ label: "试跑：视频封面", st: "warn", msg: "已跳过（未开通媒体处理）" });
+        else
+          out.push(
+            bad
+              ? { label: "试跑：视频封面", st: "fail", msg: "未能取得封面" }
+              : { label: "试跑：视频封面", st: "ok", msg: `mp4 28MB → 41KB · 640ms（示意）` },
+          );
+        return out;
+      }
+      function runChecks() {
+        const w = P.wiz;
+        const full = buildChecks(w);
+        w.checks = full.map((x) => ({ ...x, shown: "pending" }));
+        w.running = true;
+        renderWiz();
+        let i = 0;
+        const tick = () => {
+          if (!P.wiz || P.wiz !== w) return;
+          if (i < w.checks.length) {
+            w.checks[i].shown = "run";
+            softRenderWiz();
+            setTimeout(() => {
+              if (P.wiz !== w) return;
+              w.checks[i].shown = full[i].st;
+              i++;
+              softRenderWiz();
+              setTimeout(tick, 120);
+            }, 420);
+          } else {
+            w.running = false;
+            renderWiz();
+          }
+        };
+        tick();
+      }
+      const hasFail = (w) => w.checks && w.checks.some((c) => c.shown === "fail");
+      const allDone = (w) =>
+        w.checks && !w.running && w.checks.every((c) => c.shown !== "pending" && c.shown !== "run");
 
-function trialOf(w) {
-  const img = w.checks.find((c) => c.label === "试跑：图片缩略图"), vid = w.checks.find((c) => c.label === "试跑：视频封面");
-  const f = (c) => (c && c.st === "ok" ? c.msg.replace("（示意）", "") : c && c.st === "warn" ? "不支持 / 已跳过" : "失败");
-  return { img: f(img), vid: f(vid) };
-}
-function saveWiz(publish) {
-  const w = P.wiz;
-  let p = w.id ? pOf(w.id) : null;
-  const wasPublished = p && p.status === "published";
-  if (!p) { p = { id: P.nextId++, prev: 0, version: 0 }; P.procs.push(p); }
-  const trial = allDone(w) && !hasFail(w) ? trialOf(w) : null;
-  const apply = () => { Object.assign(p, { name: w.name.trim(), vendor: w.vendor, storageId: w.storageId, cfg: { ...w.cfg }, updated: "刚刚" }); delete p.draft; if (trial) p.trial = trial; };
-  if (publish) {
-    const old = boundProc(w.storageId, p.id);
-    if (old) old.status = "disabled";
-    apply();
-    p.prev = p.version || 0; p.version = (p.version || 0) + 1; p.status = "published";
-    toast(`已发布 v${p.version}：「${stOf(w.storageId).name}」存储里的素材开始使用处理 URL`);
-  } else if (wasPublished) {
-    p.draft = { name: w.name.trim(), cfg: { ...w.cfg } }; p.updated = "刚刚";
-    toast("已保存为草稿；发布后才会生效，当前线上配置不变");
-  } else {
-    apply(); p.status = "draft";
-    toast("已保存为草稿");
-  }
-  P.wiz = null; pRender();
-}
-function rollback(id) { const p = pOf(id); const from = p.version; p.version = p.prev; p.prev = Math.max(0, p.prev - 1); p.updated = "刚刚"; toast(`已从 v${from} 回滚到 v${p.version}`); pRender(); }
-function disableProc(id) { const p = pOf(id); p.status = "disabled"; p.updated = "刚刚"; toast(`已停用，「${stOf(p.storageId).name}」回退原图 / 占位`); pRender(); }
-function delProc(id) { const p = pOf(id); P.procs = P.procs.filter((x) => x.id !== id); toast(`已删除「${p.name}」`); pRender(); }
+      function trialOf(w) {
+        const img = w.checks.find((c) => c.label === "试跑：图片缩略图"),
+          vid = w.checks.find((c) => c.label === "试跑：视频封面");
+        const f = (c) =>
+          c && c.st === "ok"
+            ? c.msg.replace("（示意）", "")
+            : c && c.st === "warn"
+              ? "不支持 / 已跳过"
+              : "失败";
+        return { img: f(img), vid: f(vid) };
+      }
+      function saveWiz(publish) {
+        const w = P.wiz;
+        let p = w.id ? pOf(w.id) : null;
+        const wasPublished = p && p.status === "published";
+        if (!p) {
+          p = { id: P.nextId++, prev: 0, version: 0 };
+          P.procs.push(p);
+        }
+        const trial = allDone(w) && !hasFail(w) ? trialOf(w) : null;
+        const apply = () => {
+          Object.assign(p, {
+            name: w.name.trim(),
+            vendor: w.vendor,
+            storageId: w.storageId,
+            cfg: { ...w.cfg },
+            updated: "刚刚",
+          });
+          delete p.draft;
+          if (trial) p.trial = trial;
+        };
+        if (publish) {
+          const old = boundProc(w.storageId, p.id);
+          if (old) old.status = "disabled";
+          apply();
+          p.prev = p.version || 0;
+          p.version = (p.version || 0) + 1;
+          p.status = "published";
+          toast(`已发布 v${p.version}：「${stOf(w.storageId).name}」存储里的素材开始使用处理 URL`);
+        } else if (wasPublished) {
+          p.draft = { name: w.name.trim(), cfg: { ...w.cfg } };
+          p.updated = "刚刚";
+          toast("已保存为草稿；发布后才会生效，当前线上配置不变");
+        } else {
+          apply();
+          p.status = "draft";
+          toast("已保存为草稿");
+        }
+        P.wiz = null;
+        pRender();
+      }
+      function rollback(id) {
+        const p = pOf(id);
+        const from = p.version;
+        p.version = p.prev;
+        p.prev = Math.max(0, p.prev - 1);
+        p.updated = "刚刚";
+        toast(`已从 v${from} 回滚到 v${p.version}`);
+        pRender();
+      }
+      function disableProc(id) {
+        const p = pOf(id);
+        p.status = "disabled";
+        p.updated = "刚刚";
+        toast(`已停用，「${stOf(p.storageId).name}」回退原图 / 占位`);
+        pRender();
+      }
+      function delProc(id) {
+        const p = pOf(id);
+        P.procs = P.procs.filter((x) => x.id !== id);
+        toast(`已删除「${p.name}」`);
+        pRender();
+      }
 
-/* ---- 向导渲染 ---- */
-let _wizTimer;
-function softRenderWiz() { clearTimeout(_wizTimer); _wizTimer = setTimeout(renderWiz, 0); }
+      /* ---- 向导渲染 ---- */
+      let _wizTimer;
+      function softRenderWiz() {
+        clearTimeout(_wizTimer);
+        _wizTimer = setTimeout(renderWiz, 0);
+      }
 
-function stepper(w) {
-  const labels = ["选厂商", "绑定存储", "参数", "校验与发布"];
-  return `<div class="stepper">${labels.map((l, i) => `<div class="s ${w.step === i + 1 ? "on" : w.step > i + 1 ? "done" : ""}"><i class="num">${w.step > i + 1 ? "✓" : i + 1}</i>${l}</div>`).join("")}</div>`;
-}
-function stepVendor(w) {
-  return `<div class="lbl">选择图片处理服务厂商</div><div style="display:grid;gap:8px">${VENDOR_ORDER.map((id) => {
-    const v = VENDORS[id];
-    return `<button class="pick ${w.vendor === id ? "on" : ""}" onclick="pickVendorW('${id}')">
+      function stepper(w) {
+        const labels = ["选厂商", "绑定存储", "参数", "校验与发布"];
+        return `<div class="stepper">${labels.map((l, i) => `<div class="s ${w.step === i + 1 ? "on" : w.step > i + 1 ? "done" : ""}"><i class="num">${w.step > i + 1 ? "✓" : i + 1}</i>${l}</div>`).join("")}</div>`;
+      }
+      function stepVendor(w) {
+        return `<div class="lbl">选择图片处理服务厂商</div><div style="display:grid;gap:8px">${VENDOR_ORDER.map(
+          (id) => {
+            const v = VENDORS[id];
+            return `<button class="pick ${w.vendor === id ? "on" : ""}" onclick="pickVendorW('${id}')">
       <div class="row wrapflex"><b>${ic(v.icon)} ${esc(v.name)}</b><span class="tag ${KIND_TAG[v.kind]}">${esc(v.kind)}</span>${v.poster ? "" : `<span class="tag t-bad">无视频封面</span>`}</div>
       <div class="muted" style="font-size:12px;margin-top:4px">${esc(v.bind)}</div></button>`;
-  }).join("")}</div>
+          },
+        ).join("")}</div>
   <div class="note" style="margin-top:12px"><div class="hint">“绑定存储型”会在下一步限制只能选对应厂商的存储。</div>
   <div class="note-txt">设计：把“腾讯云 / 阿里云必须配套自家存储”在第一步就亮出来（黄色标签 + 一句话），不等用户选到一半才发现不行。</div></div>`;
-}
-function stepStorage(w) {
-  const v = VENDORS[w.vendor];
-  const items = P.storages.map((s) => ({ s, why: compat(w.vendor, s, w.id) }));
-  const ok = items.filter((x) => !x.why);
-  return `<div class="callout ${v.kind === "绑定存储型" ? "c-warn" : "c-info"}">${ic(v.kind === "绑定存储型" ? "link-2" : "info")}<div><b>${esc(v.name)}</b>只能绑定「${esc(v.storageLabel)}」存储。${v.kind === "绑定存储型" ? "它的处理能力是存储桶自带的，素材在别的存储里就处理不了。" : ""}</div></div>
+      }
+      function stepStorage(w) {
+        const v = VENDORS[w.vendor];
+        const items = P.storages.map((s) => ({ s, why: compat(w.vendor, s, w.id) }));
+        const ok = items.filter((x) => !x.why);
+        return `<div class="callout ${v.kind === "绑定存储型" ? "c-warn" : "c-info"}">${ic(v.kind === "绑定存储型" ? "link-2" : "info")}<div><b>${esc(v.name)}</b>只能绑定「${esc(v.storageLabel)}」存储。${v.kind === "绑定存储型" ? "它的处理能力是存储桶自带的，素材在别的存储里就处理不了。" : ""}</div></div>
   <div class="lbl" style="margin-top:14px">绑定到哪套存储</div>
-  <div style="display:grid;gap:8px">${items.map(({ s, why }) => `
+  <div style="display:grid;gap:8px">${items
+    .map(
+      ({ s, why }) => `
     <span title="${esc(why)}"><button class="pick ${w.storageId === s.id ? "on" : ""}" ${why ? "disabled" : ""} onclick="pickStorageW(${s.id})">
       <div class="row wrapflex"><b>${esc(s.name)}</b><span class="tag t-mute">${esc(PROV_LABEL[s.provider])}</span></div>
       ${why ? `<div class="row" style="font-size:12px;color:rgb(var(--warn));margin-top:4px">${ic("lock")}${esc(why)}</div>` : `<div class="muted mono" style="font-size:11.5px;margin-top:2px">${esc(s.where)}</div>`}
-    </button></span>`).join("")}</div>
+    </button></span>`,
+    )
+    .join("")}</div>
   ${ok.length ? "" : `<div class="callout c-bad" style="margin-top:14px">${ic("circle-x")}<div><b>没有可绑定的「${esc(v.storageLabel)}」存储。</b><br>请先到存储配置新建一套${esc(v.storageLabel)}，再回来。<br><button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="toast('跳转到存储配置 → 新建存储（原型外）')">${ic("hard-drive")}去存储配置新建</button></div></div>`}
 `;
-}
-function field(label, input, err, hint) {
-  return `<div><div class="lbl">${label}</div>${input}${err ? `<div class="errtxt">${esc(err)}</div>` : hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
-}
-function stepParams(w) {
-  const v = VENDORS[w.vendor], c = w.cfg, st = stOf(w.storageId), e = w.showErr ? wizErrors(w) : {};
-  const domainLabel = { tencent_ci: "访问域名", aliyun_img: "自定义域名", cloudflare: "公开域名（zone）" }[w.vendor];
-  const domainHint = { tencent_ci: "默认是 COS 域名，也可填绑定的 CDN 域名", aliyun_img: "建议绑定自定义域名，否则图片预览会变成下载", cloudflare: `必须与存储的公开域名一致：${hostOf(st.publicBase)}` }[w.vendor];
-  const fmts = { tencent_ci: ["jpg", "webp"], aliyun_img: ["jpg", "webp"], cloudflare: ["auto", "webp", "avif", "jpeg"] }[w.vendor];
-  return `<div class="kv" style="margin-bottom:14px"><dt>厂商</dt><dd>${esc(v.name)}</dd><dt>绑定存储</dt><dd>${esc(st.name)} <span class="tag t-mute">${esc(PROV_LABEL[st.provider])}</span></dd></div>
+      }
+      function field(label, input, err, hint) {
+        return `<div><div class="lbl">${label}</div>${input}${err ? `<div class="errtxt">${esc(err)}</div>` : hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
+      }
+      function stepParams(w) {
+        const v = VENDORS[w.vendor],
+          c = w.cfg,
+          st = stOf(w.storageId),
+          e = w.showErr ? wizErrors(w) : {};
+        const domainLabel = {
+          tencent_ci: "访问域名",
+          aliyun_img: "自定义域名",
+          cloudflare: "公开域名（zone）",
+        }[w.vendor];
+        const domainHint = {
+          tencent_ci: "默认是 COS 域名，也可填绑定的 CDN 域名",
+          aliyun_img: "建议绑定自定义域名，否则图片预览会变成下载",
+          cloudflare: `必须与存储的公开域名一致：${hostOf(st.publicBase)}`,
+        }[w.vendor];
+        const fmts = {
+          tencent_ci: ["jpg", "webp"],
+          aliyun_img: ["jpg", "webp"],
+          cloudflare: ["auto", "webp", "avif", "jpeg"],
+        }[w.vendor];
+        return `<div class="kv" style="margin-bottom:14px"><dt>厂商</dt><dd>${esc(v.name)}</dd><dt>绑定存储</dt><dd>${esc(st.name)} <span class="tag t-mute">${esc(PROV_LABEL[st.provider])}</span></dd></div>
   <div style="display:grid;gap:14px">
     ${field("名称", `<input class="input ${e.name ? "err" : ""}" value="${esc(w.name)}" oninput="P.wiz.name=this.value;P.wiz.nameTouched=true">`, e.name)}
     ${field(domainLabel, `<input class="input mono ${e.domain ? "err" : ""}" value="${esc(c.domain)}" oninput="setW('domain', this.value)" placeholder="例如 img.example.com">`, e.domain, esc(domainHint))}
@@ -884,33 +2486,57 @@ function stepParams(w) {
     ${w.vendor === "cloudflare" ? `<div class="row"><button class="switch" role="switch" aria-checked="${c.onerror}" onclick="toggleW('onerror')"></button><div><b style="font-size:13px">处理失败时回退原图</b><div class="hint">对应 <code>onerror=redirect</code>，只对同域名下的源有效</div></div></div>` : ""}
     ${w.vendor === "tencent_ci" || w.vendor === "aliyun_img" ? `<div class="callout c-info">${ic("key-round")}<div>私有桶签名直接使用「${esc(st.name)}」存储配置里已有的 AccessKey，这里不需要再填密钥。</div></div>` : ""}
   </div>`;
-}
-function stepCheck(w) {
-  const v = VENDORS[w.vendor], st = stOf(w.storageId);
-  const done = allDone(w), fail = hasFail(w), warn = done && w.checks.some((c) => c.shown === "warn");
-  const iconOf = (s) => ({ pending: `<span class="muted">${ic("circle")}</span>`, run: `<span class="spin muted">${ic("loader-circle")}</span>`, ok: `<span style="color:rgb(var(--ok))">${ic("circle-check")}</span>`, warn: `<span style="color:rgb(var(--warn))">${ic("triangle-alert")}</span>`, fail: `<span style="color:rgb(var(--bad))">${ic("circle-x")}</span>` }[s]);
-  const shown = w.checks ? w.checks.filter((c) => c.shown !== "pending" && c.shown !== "run").length : 0;
-  return `<div class="row"><div class="lbl" style="margin:0">校验与试跑</div><span class="muted spacer tn" style="font-size:12px">${shown}/${w.checks ? w.checks.length : 0}</span></div>
+      }
+      function stepCheck(w) {
+        const v = VENDORS[w.vendor],
+          st = stOf(w.storageId);
+        const done = allDone(w),
+          fail = hasFail(w),
+          warn = done && w.checks.some((c) => c.shown === "warn");
+        const iconOf = (s) =>
+          ({
+            pending: `<span class="muted">${ic("circle")}</span>`,
+            run: `<span class="spin muted">${ic("loader-circle")}</span>`,
+            ok: `<span style="color:rgb(var(--ok))">${ic("circle-check")}</span>`,
+            warn: `<span style="color:rgb(var(--warn))">${ic("triangle-alert")}</span>`,
+            fail: `<span style="color:rgb(var(--bad))">${ic("circle-x")}</span>`,
+          })[s];
+        const shown = w.checks
+          ? w.checks.filter((c) => c.shown !== "pending" && c.shown !== "run").length
+          : 0;
+        return `<div class="row"><div class="lbl" style="margin:0">校验与试跑</div><span class="muted spacer tn" style="font-size:12px">${shown}/${w.checks ? w.checks.length : 0}</span></div>
   <div class="bar" style="margin:8px 0 6px"><i style="width:${w.checks ? (shown / w.checks.length) * 100 : 0}%"></i></div>
   <div>${(w.checks || []).map((c) => `<div class="chk-row"><span class="ic">${iconOf(c.shown)}</span><div><div>${esc(c.label)}</div><div class="muted" style="font-size:12px">${c.shown === "pending" || c.shown === "run" ? "…" : esc(c.msg)}</div></div></div>`).join("")}</div>
-  ${done && !fail ? `<div class="sample" style="margin-top:14px">
+  ${
+    done && !fail
+      ? `<div class="sample" style="margin-top:14px">
       <div class="box"><div class="pic" data-size="3.1 MB"></div><b>原图</b><div class="muted">不用处理服务时浏览器要下载的</div></div>
       <div class="box"><div class="pic small" data-size="38 KB"></div><b>缩略图</b><div class="muted">${esc(v.name)} 处理后（示意）</div></div></div>
-    <div class="note-txt" style="display:block;margin-top:6px">示意数据，不是真实调用；真实试跑会用一个真实图片素材和一个视频素材各走一遍。</div>` : ""}
+    <div class="note-txt" style="display:block;margin-top:6px">示意数据，不是真实调用；真实试跑会用一个真实图片素材和一个视频素材各走一遍。</div>`
+      : ""
+  }
   ${done && fail ? `<div class="callout c-bad" style="margin-top:14px">${ic("circle-x")}<div><b>校验未通过，不能发布。</b>改完参数后回到上一步重新校验。</div></div>` : ""}
   ${done && !fail ? `<div class="callout ${warn ? "c-warn" : "c-ok"}" style="margin-top:14px">${ic(warn ? "triangle-alert" : "circle-check")}<div><b>${warn ? "可以发布，但有提示。" : "全部通过，可以发布。"}</b><br>发布后，「${esc(st.name)}」存储里的素材开始使用处理 URL；${boundProc(w.storageId, w.id) ? `它会替换当前已发布的「${esc(boundProc(w.storageId, w.id).name)}」（可回滚）。` : "其他存储里的素材不受影响。"}</div></div>` : ""}`;
-}
-function renderWiz() {
-  const root = $("#proto");
-  if (!root) return;
-  root.querySelectorAll(".scrim, .drawer").forEach((n) => n.remove());
-  const w = P.wiz;
-  if (!w) return;
-  const e = w.step === 3 ? wizErrors(w) : {};
-  const body = w.step === 1 ? stepVendor(w) : w.step === 2 ? stepStorage(w) : w.step === 3 ? stepParams(w) : stepCheck(w);
-  const canNext = w.step === 1 ? !!w.vendor : w.step === 2 ? !!w.storageId : true;
-  const done = allDone(w), fail = hasFail(w);
-  const html = `
+      }
+      function renderWiz() {
+        const root = $("#proto");
+        if (!root) return;
+        root.querySelectorAll(".scrim, .drawer").forEach((n) => n.remove());
+        const w = P.wiz;
+        if (!w) return;
+        const e = w.step === 3 ? wizErrors(w) : {};
+        const body =
+          w.step === 1
+            ? stepVendor(w)
+            : w.step === 2
+              ? stepStorage(w)
+              : w.step === 3
+                ? stepParams(w)
+                : stepCheck(w);
+        const canNext = w.step === 1 ? !!w.vendor : w.step === 2 ? !!w.storageId : true;
+        const done = allDone(w),
+          fail = hasFail(w);
+        const html = `
     <div class="scrim" onclick="closeWiz()"></div>
     <div class="drawer" role="dialog" aria-label="处理服务">
       <div class="drawer-h"><div><b>${w.id ? "编辑处理服务" : "新建处理服务"}</b><div class="muted" style="font-size:12px">${w.id && pOf(w.id).status === "published" ? "已发布的版本不会被直接修改，保存后是新草稿，发布才生效" : "草稿 → 校验与试跑 → 发布"}</div></div>
@@ -920,24 +2546,27 @@ function renderWiz() {
       <div class="drawer-f">
         ${w.step > (w.id ? 3 : 1) ? `<button class="btn btn-outline" onclick="wizPrev()" ${w.running ? "disabled" : ""}>${ic("arrow-left")}上一步</button>` : ""}
         <span class="spacer"></span>
-        ${w.step < 4 ? `<button class="btn btn-primary" ${canNext ? "" : "disabled"} onclick="wizNext()">下一步${ic("arrow-right")}</button>`
-        : `<button class="btn btn-outline" ${w.running ? "disabled" : ""} onclick="saveWiz(false)">保存为草稿</button>
-           <button class="btn btn-primary" ${done && !fail ? "" : "disabled"} onclick="saveWiz(true)">${ic("rocket")}发布</button>`}
+        ${
+          w.step < 4
+            ? `<button class="btn btn-primary" ${canNext ? "" : "disabled"} onclick="wizNext()">下一步${ic("arrow-right")}</button>`
+            : `<button class="btn btn-outline" ${w.running ? "disabled" : ""} onclick="saveWiz(false)">保存为草稿</button>
+           <button class="btn btn-primary" ${done && !fail ? "" : "disabled"} onclick="saveWiz(true)">${ic("rocket")}发布</button>`
+        }
       </div>
     </div>`;
-  root.insertAdjacentHTML("beforeend", html);
-  icons();
-}
+        root.insertAdjacentHTML("beforeend", html);
+        icons();
+      }
 
-/* ================= 初始化 ================= */
-(function init() {
-  renderVendor();
-  pRender();
-  const hash = location.hash.slice(1);
-  showTab(["overview", "vendors", "proto", "impl"].includes(hash) ? hash : "overview");
-  window.addEventListener("load", icons);
-  icons();
-})();
-</script>
-</body>
+      /* ================= 初始化 ================= */
+      (function init() {
+        renderVendor();
+        pRender();
+        const hash = location.hash.slice(1);
+        showTab(["overview", "vendors", "proto", "impl"].includes(hash) ? hash : "overview");
+        window.addEventListener("load", icons);
+        icons();
+      })();
+    </script>
+  </body>
 </html>
