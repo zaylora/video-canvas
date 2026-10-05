@@ -6,7 +6,8 @@ import type {
   RefKind,
 } from "@/api/model/type";
 import type { CanvasNodeData, NodeKind } from "@/types";
-import { expandPrompt } from "@/utils/canvas/prompt-tokens";
+import { findPreset } from "@/constants/presets";
+import { expandPrompt, promptPresets } from "@/utils/canvas/prompt-tokens";
 
 /** 参数 + 参数名，按 capabilities.params 的键顺序排列（也就是参数面板的显示顺序） */
 export type ParamEntry = ParamField & { name: string };
@@ -276,21 +277,26 @@ function checkParam(field: ParamField, value: unknown): { value: unknown } | { e
 const REF_WORD: Record<RefKind, string> = { image: "图片", video: "视频", audio: "音频" };
 
 /**
- * 把提示词里 @ 进来的素材换成模型看得懂的文字：文本上游换成它的正文，
- * 素材换成在 input 里的编号；连线已断、素材没提交的，退回成素材名。
+ * 把提示词里 @ 进来的素材和节点预设换成模型看得懂的文字：文本上游换成它的正文，
+ * 素材换成在 input 里的编号（连线已断、素材没提交的，退回成素材名）；
+ * 预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
  */
 function expandRefs(prompt: string, links: IncomingLink[], input: Record<string, unknown>) {
-  return expandPrompt(prompt, (id, label) => {
-    const link = links.find((item) => item.sourceId === id);
-    if (!link) return label;
-    const port = PORT_OF_KIND[link.sourceKind];
-    if (port === "text") return link.text?.trim() || label;
-    const ref = REF_KEYS.find((item) => item.kind === port);
-    const list = ref ? input[ref.key] : undefined;
-    const asset = toAssetNumber(link.assetId);
-    const index = Array.isArray(list) && asset !== null ? list.indexOf(asset) : -1;
-    return index >= 0 ? `${REF_WORD[port]}${index + 1}` : label;
-  });
+  return expandPrompt(
+    prompt,
+    (id, label) => {
+      const link = links.find((item) => item.sourceId === id);
+      if (!link) return label;
+      const port = PORT_OF_KIND[link.sourceKind];
+      if (port === "text") return link.text?.trim() || label;
+      const ref = REF_KEYS.find((item) => item.kind === port);
+      const list = ref ? input[ref.key] : undefined;
+      const asset = toAssetNumber(link.assetId);
+      const index = Array.isArray(list) && asset !== null ? list.indexOf(asset) : -1;
+      return index >= 0 ? `${REF_WORD[port]}${index + 1}` : label;
+    },
+    (kind, id) => findPreset(kind, id)?.prompt,
+  );
 }
 
 /**
@@ -358,7 +364,9 @@ export function buildTaskInput(
       ? `上游「${link.sourceLabel}」还没有文字`
       : "请填写提示词"
     : maxLength > 0 && [...prompt].length > maxLength
-      ? `提示词不能超过 ${maxLength} 个字`
+      ? promptPresets(typed).length > 0
+        ? `预设展开后提示词超过 ${maxLength} 个字，请去掉一个预设或缩短文字`
+        : `提示词不能超过 ${maxLength} 个字`
       : null;
   // 素材编号要等参考素材收齐才能展开，所以提示词最后算；报错仍排在最前，节点上先提示它
   if (promptError) return { input, errors: { prompt: promptError, ...errors } };

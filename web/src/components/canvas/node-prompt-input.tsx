@@ -16,12 +16,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { promptTextLength } from "@/utils/canvas/prompt-tokens";
+import { promptPresets, promptTextLength } from "@/utils/canvas/prompt-tokens";
 
 import {
   PromptEditor,
   PromptRefsProvider,
   useRefHighlight,
+  type PresetChipTarget,
   type PromptEditorHandle,
   type PromptMentionSource,
 } from "./prompt-mention";
@@ -156,6 +157,7 @@ export function NodePromptInput({
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<PromptEditorHandle>(null);
   const [highlight, setHighlight] = useRefHighlight();
+  const [presetChip, setPresetChip] = useState<PresetChipTarget | null>(null);
   const linkedIds = mention?.linkedIds;
   const refsValue = useMemo(
     () => ({
@@ -164,8 +166,16 @@ export function NodePromptInput({
       setHighlight,
       insertRef: (source: Parameters<PromptEditorHandle["insertRef"]>[0]) =>
         editorRef.current?.insertRef(source),
+      presets: {
+        selected: promptPresets(value).map(({ kind, id }) => ({ kind, id })),
+        apply: (...args: Parameters<PromptEditorHandle["applyPreset"]>) =>
+          editorRef.current?.applyPreset(...args),
+        focusEditor: () => editorRef.current?.focus(),
+        chip: presetChip,
+        setChip: setPresetChip,
+      },
     }),
-    [highlight, linkedIds, setHighlight],
+    [highlight, linkedIds, presetChip, setHighlight, value],
   );
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);

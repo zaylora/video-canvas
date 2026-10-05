@@ -11,6 +11,8 @@ import {
 } from "@/components/canvas";
 import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
 import { OpTabs } from "@/components/canvas/op-tabs";
+import { PresetPicker } from "@/components/canvas/preset-picker";
+import { cn } from "@/lib/utils";
 import { RefStrip } from "@/components/canvas/ref-strip";
 import type { GenerationOp } from "@/api/model/type";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NODE_META } from "@/constants/canvas";
+import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
@@ -38,6 +41,12 @@ import { useMultiSelected } from "./selection-toolbar";
 
 /** 走「提交任务 -> 轮询 / 推送 -> 回填」流程的媒体节点种类 */
 export type MediaTaskKind = "image" | "video" | "audio";
+
+/** 各种节点在面板底栏能用的预设（设计稿 6.13）：图片是风格和模板，视频是运镜，音频没有 */
+const PRESET_KINDS_OF: Partial<Record<NodeKind, readonly PresetKind[]>> = {
+  image: ["style", "tpl"],
+  video: ["motion"],
+};
 
 /** 换模型会丢参数时的确认框；挂在 Portal 里，事件别冒泡回节点 */
 function SwitchModelDialog({ vm }: { vm: TaskNodeModel }) {
@@ -188,26 +197,30 @@ export function TaskPromptPanel({
           ) : null
         }
         toolbarExtra={
-          panelProps &&
-          params.length > 0 && (
-            <Popover>
-              <PopoverTrigger className={PANEL_CHIP_CLASS} aria-label="生成参数">
-                <SlidersHorizontal className="text-muted-foreground" />
-                <span className="min-w-0 truncate">
-                  {paramSummary(vm.caps, vm.params) || "参数"}
-                </span>
-                <ChevronDown className="opacity-50" />
-              </PopoverTrigger>
-              <PopoverContent
-                side="top"
-                align="start"
-                sideOffset={10}
-                className="nodrag nowheel w-80 rounded-xl p-3"
-              >
-                <VideoParamPanel {...panelProps} section="params" />
-              </PopoverContent>
-            </Popover>
-          )
+          <>
+            {panelProps && params.length > 0 && (
+              <Popover>
+                <PopoverTrigger className={cn(PANEL_CHIP_CLASS, "shrink-0")} aria-label="生成参数">
+                  <SlidersHorizontal className="text-muted-foreground" />
+                  <span className="min-w-0 truncate">
+                    {paramSummary(vm.caps, vm.params) || "参数"}
+                  </span>
+                  <ChevronDown className="opacity-50" />
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  sideOffset={10}
+                  className="nodrag nowheel w-80 rounded-xl p-3"
+                >
+                  <VideoParamPanel {...panelProps} section="params" />
+                </PopoverContent>
+              </Popover>
+            )}
+            {PRESET_KINDS_OF[kind] && (
+              <PresetPicker kinds={PRESET_KINDS_OF[kind]} disabled={locked} />
+            )}
+          </>
         }
       >
         <RefStrip

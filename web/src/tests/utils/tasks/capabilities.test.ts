@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
 import { defaultCapabilities } from "@/utils/admin/model-template";
-import { formatPromptRef } from "@/utils/canvas/prompt-tokens";
+import { findPreset } from "@/constants/presets";
+import { formatPromptPreset, formatPromptRef } from "@/utils/canvas/prompt-tokens";
 import {
   buildTaskInput,
   acceptsSourceKind,
@@ -161,6 +162,39 @@ describe("buildTaskInput", () => {
     expect(built.errors).toEqual({});
     expect(built.input.images).toEqual([5, 3]);
     expect(built.input.prompt).toBe("参考图片1，按镜头一，旧图");
+  });
+
+  test("预设展开：运镜换成提示词，模板放最前，只有模板没写字也能提交", () => {
+    const motion = findPreset("motion", "dolly_in")!;
+    const tpl = findPreset("tpl", "multi_camera_nine_grid")!;
+    const caps = { ...video(), prompt: { max_length: 5000 } };
+    const withMotion = buildTaskInput(caps, {
+      prompt: `海边的少年 ${formatPromptPreset("motion", motion.id, motion.name)}`,
+    });
+    expect(withMotion.errors).toEqual({});
+    expect(withMotion.input.prompt).toBe(`海边的少年，${motion.prompt.trim()}`);
+
+    const onlyTpl = buildTaskInput(caps, {
+      prompt: formatPromptPreset("tpl", tpl.id, tpl.name),
+    });
+    expect(onlyTpl.errors).toEqual({});
+    expect(onlyTpl.input.prompt).toBe(tpl.prompt.trim());
+  });
+
+  test("预设已下架：按名称当普通文字，不会漏出 token", () => {
+    const built = buildTaskInput(
+      { ...video(), prompt: { max_length: 100 } },
+      { prompt: `夜景 ${formatPromptPreset("style", "gone", "旧风格")}` },
+    );
+    expect(built.input.prompt).toBe("夜景 旧风格");
+  });
+
+  test("按展开后的长度校验，超限时说明是预设撑大的", () => {
+    const style = findPreset("style", "wuxia")!;
+    const prompt = `夜景 ${formatPromptPreset("style", style.id, style.name)}`;
+    const { errors } = buildTaskInput({ ...video(), prompt: { max_length: 50 } }, { prompt });
+    expect(errors.prompt).toContain("展开");
+    expect(errors.prompt).toContain("50");
   });
 
   test("提示词必填且受字数上限约束", () => {
