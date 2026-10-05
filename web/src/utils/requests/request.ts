@@ -1,7 +1,8 @@
 import axios from "axios";
 import { toast } from "sonner";
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import { getToken, removeToken } from "../storage/token";
+import { clearSession } from "../storage/session";
+import { getToken } from "../storage/token";
 import { recordRequest, redactRequestBody, shouldLogRequest } from "./request-log";
 
 declare module "axios" {
@@ -64,6 +65,22 @@ const reject = (error: ApiError, silent = false) => {
   console.error(`[api] ${error.code}: ${error.message}`);
   if (!silent) toast.error(error.message, { id: `api:${error.code}` });
   return Promise.reject(error);
+};
+
+/** 业务错误码：账号已被停用（契约 53004） */
+const ACCOUNT_DISABLED_CODE = 53004;
+
+/**
+ * 已登录状态下收到「账号已停用」：清掉 token 并回登录页（登录接口自己的 53004 不处理，交给登录页就地提示）。
+ * 提示由随后的 reject 统一弹，这里不重复。
+ * @param url 触发错误的请求路径
+ */
+const handleAccountDisabled = (url?: string) => {
+  if (url?.startsWith("/auth/") || !getToken()) return;
+  clearSession();
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.assign("/login");
+  }
 };
 
 const instance: AxiosInstance = axios.create({
@@ -159,9 +176,10 @@ instance.interceptors.response.use(
       return reject(new ApiError("网络异常，请检查后端服务", "NETWORK_ERROR", 0), silent);
     }
 
-    if (response.status === 401) removeToken();
+    if (response.status === 401) clearSession();
 
     const body = isApiResponse(response.data) ? response.data : undefined;
+    if (body?.code === ACCOUNT_DISABLED_CODE) handleAccountDisabled(error.config?.url);
     const code: ApiErrorCode = body && body.code !== 0 ? body.code : `HTTP_${response.status}`;
 
     return reject(new ApiError(body?.msg || "请求失败", code, response.status, body), silent);

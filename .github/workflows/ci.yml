@@ -19,6 +19,34 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # 仓储 / 并发（积分行锁、首个超管、最后超管保护）的集成测试要真实的 Postgres 和 Redis，
+    # 没有这两个服务时它们会 t.Skip，看起来全绿其实没跑
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: video_canvas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d video_canvas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_DSN: host=127.0.0.1 port=5432 user=test password=test dbname=video_canvas_test sslmode=disable
+      TEST_REDIS_ADDR: 127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
         with:

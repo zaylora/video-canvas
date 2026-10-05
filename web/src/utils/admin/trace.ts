@@ -1,4 +1,4 @@
-import type { TraceStep } from "@/api/admin-ai/type";
+import type { TraceStep } from "@/api/admin/ai/type";
 
 /**
  * 试跑追踪（GET /test-runs/:id/trace）→ 面板上的展示模型。

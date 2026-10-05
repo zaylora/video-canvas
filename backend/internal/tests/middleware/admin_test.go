@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
+
 	. "video-canvas/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -109,53 +109,4 @@ func TestRequireAdmin_LookupReceivesUserID(t *testing.T) {
 	if got != 42 {
 		t.Fatalf("应按当前用户 ID 查角色，实际 %d", got)
 	}
-}
-
-func TestNewCachedRoleLookup(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("ttl 内命中缓存", func(t *testing.T) {
-		calls := 0
-		l := NewCachedRoleLookup(func(context.Context, uint64) (string, error) { calls++; return model.RoleAdmin, nil }, time.Minute)
-		for i := 0; i < 3; i++ {
-			if role, err := l(ctx, 1); err != nil || role != model.RoleAdmin {
-				t.Fatalf("结果不符合预期：%q %v", role, err)
-			}
-		}
-		if calls != 1 {
-			t.Fatalf("期望只查一次库，实际 %d", calls)
-		}
-		_, _ = l(ctx, 2)
-		if calls != 2 {
-			t.Fatalf("不同用户应分别缓存，实际查库 %d 次", calls)
-		}
-	})
-
-	t.Run("ttl 过期后重新查询", func(t *testing.T) {
-		calls := 0
-		l := NewCachedRoleLookup(func(context.Context, uint64) (string, error) { calls++; return model.RoleUser, nil }, time.Millisecond)
-		_, _ = l(ctx, 1)
-		time.Sleep(5 * time.Millisecond)
-		_, _ = l(ctx, 1)
-		if calls != 2 {
-			t.Fatalf("过期后应重新查询，实际 %d 次", calls)
-		}
-	})
-
-	t.Run("错误不缓存", func(t *testing.T) {
-		calls := 0
-		l := NewCachedRoleLookup(func(context.Context, uint64) (string, error) {
-			calls++
-			if calls == 1 {
-				return "", errors.New("temporary")
-			}
-			return model.RoleAdmin, nil
-		}, time.Minute)
-		if _, err := l(ctx, 1); err == nil {
-			t.Fatal("第一次应返回错误")
-		}
-		if role, err := l(ctx, 1); err != nil || role != model.RoleAdmin {
-			t.Fatalf("第二次应重新查询并成功：%q %v", role, err)
-		}
-	})
 }

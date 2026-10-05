@@ -4,7 +4,7 @@ import type {
   ChannelUpdateRequest,
   ChannelView,
   PluginView,
-} from "@/api/admin-ai/type";
+} from "@/api/admin/ai/type";
 import { findPluginVersion } from "./plugin";
 import {
   initialSettingValues,

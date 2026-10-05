@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { TraceStep } from "@/api/admin-ai/type";
+import type { TraceStep } from "@/api/admin/ai/type";
 import {
   durationPercent,
   firstFailedStep,

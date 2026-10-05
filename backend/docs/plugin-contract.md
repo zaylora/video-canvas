@@ -57,13 +57,23 @@ meta: {
 
 ```jsonc
 {
-  "task":    { "id": 123, "providerTaskId": "", "state": null },   // state：插件上次返回的私有状态；providerTaskId 提交前为空
-  "model":   { "key": "kling-i2v", "kind": "video", "upstreamModel": "kling-v2-master", "params": { } },
-  "input":   { "prompt": "...", "op": "i2v", "images": ["input:images.0", "input:images.1"], "duration": 5 },  // 已按模型 capabilities 校验规范化；键是 prompt、op、运营起的生成参数名，以及参考素材数组 images / videos / audios，数组每项是文件引用字符串 "input:<数组名>.<下标>"。文本模型另有 system（固定系统提示）与 max_tokens（最大输出）
+  "task": { "id": 123, "providerTaskId": "", "state": null }, // state：插件上次返回的私有状态；providerTaskId 提交前为空
+  "model": {
+    "key": "kling-i2v",
+    "kind": "video",
+    "upstreamModel": "kling-v2-master",
+    "params": {},
+  },
+  "input": {
+    "prompt": "...",
+    "op": "i2v",
+    "images": ["input:images.0", "input:images.1"],
+    "duration": 5,
+  }, // 已按模型 capabilities 校验规范化；键是 prompt、op、运营起的生成参数名，以及参考素材数组 images / videos / audios，数组每项是文件引用字符串 "input:<数组名>.<下标>"。文本模型另有 system（固定系统提示）与 max_tokens（最大输出）
   "channel": { "baseUrl": "https://...", "settings": { "region": "cn" } },
-  "prepared": null,                      // 仅 buildSubmitRequest：准备阶段的结果
-  "credentials": { "apiKey": "..." },    // 仅当 meta.auth.type == "custom" 且渠道开启 allow_credentials；其余情况没有这个字段
-  "now": 1760000000                      // Unix 秒
+  "prepared": null, // 仅 buildSubmitRequest：准备阶段的结果
+  "credentials": { "apiKey": "..." }, // 仅当 meta.auth.type == "custom" 且渠道开启 allow_credentials；其余情况没有这个字段
+  "now": 1760000000, // Unix 秒
 }
 ```
 
@@ -89,6 +99,7 @@ meta: {
 ```
 
 **文件引用**：`json` / `form` / `multipart.fields` 的任意位置可以放 `{ "__fileRef": "input:images.0", "as": "url" }`，宿主替换成：
+
 - `as: "url"`：自有存储的签名 URL（字符串）；
 - `as: "base64"`：文件内容的标准 base64（字符串）；
 - `as: "dataUrl"`：`data:<mime>;base64,<...>`。
@@ -96,6 +107,7 @@ meta: {
 `multipart.parts[].fileRef` 是文件引用（字符串 `"input:<数组名>.<下标>"`，如 `input:images.0`），宿主流式上传文件内容；`filename` 可选。`base64` / `dataUrl` 会把文件读进内存，受 `media_inline_max_bytes`（默认 10MB）限制。引用必须指向 `ctx.input` 里已填写的参考素材；宿主校验素材归属当前任务用户。
 
 **宿主对请求描述的校验**（任一不通过就是 `terminal` + 插件级失败，不发请求）：
+
 - `method` 合法；`path`/`url` 二选一；`path` 以 `/` 开头、不以 `//` 开头、不含 `..` 段、拼出来的主机必须仍是 `base_url` 的主机与协议；
 - `url` 只允许 http/https、不含用户名密码、主机在 `allowedHosts` 或 base_url 主机；
 - `headers`：禁止 `Authorization`、`Proxy-Authorization`、`Cookie`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`（不区分大小写），以及与 `meta.auth.name`（`header` 类型）同名的头；值不得含换行；
@@ -122,23 +134,24 @@ meta: {
 
 ## 6. 钩子
 
-| 钩子 | 入参 | 返回 |
-|---|---|---|
-| `buildPrepareRequests(ctx)` | ctx | 请求描述数组（≤8 个）；可选 |
-| `parsePrepareResponses(ctx, resps)` | ctx，响应对象数组 | `prepared`（任意 JSON）；放进 `ctx.prepared` 给提交用，并持久化 |
-| `buildSubmitRequest(ctx)` | ctx | 请求描述 |
-| `parseSubmitResponse(ctx, resp)` | ctx，响应 | `{ providerTaskId?, state?, immediate? }` |
-| `buildQueryRequest(ctx)` | ctx（含 `task.providerTaskId`、`task.state`） | 请求描述；async endpoint 必须实现 |
-| `parseQueryResponse(ctx, resp)` | ctx，响应 | 统一结果 |
-| `buildCancelRequest(ctx)` | ctx | 请求描述；可选，没有就走软取消 |
-| `classifyError(ctx, resp)` | ctx，非 2xx 响应 | `{ class, code?, message? }` 或 null；可选 |
-| `buildCheckRequest(ctx)` | ctx | 请求描述（任意 2xx 算连通）；可选 |
-| `buildImportRequest(ctx, args)` | ctx，导入参数 | 请求描述；可选 |
-| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数 | 模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
+| 钩子                                   | 入参                                          | 返回                                                                                               |
+| -------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `buildPrepareRequests(ctx)`            | ctx                                           | 请求描述数组（≤8 个）；可选                                                                        |
+| `parsePrepareResponses(ctx, resps)`    | ctx，响应对象数组                             | `prepared`（任意 JSON）；放进 `ctx.prepared` 给提交用，并持久化                                    |
+| `buildSubmitRequest(ctx)`              | ctx                                           | 请求描述                                                                                           |
+| `parseSubmitResponse(ctx, resp)`       | ctx，响应                                     | `{ providerTaskId?, state?, immediate? }`                                                          |
+| `buildQueryRequest(ctx)`               | ctx（含 `task.providerTaskId`、`task.state`） | 请求描述；async endpoint 必须实现                                                                  |
+| `parseQueryResponse(ctx, resp)`        | ctx，响应                                     | 统一结果                                                                                           |
+| `buildCancelRequest(ctx)`              | ctx                                           | 请求描述；可选，没有就走软取消                                                                     |
+| `classifyError(ctx, resp)`             | ctx，非 2xx 响应                              | `{ class, code?, message? }` 或 null；可选                                                         |
+| `buildCheckRequest(ctx)`               | ctx                                           | 请求描述（任意 2xx 算连通）；可选                                                                  |
+| `buildImportRequest(ctx, args)`        | ctx，导入参数                                 | 请求描述；可选                                                                                     |
+| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数                           | 模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
 
 **提交流程**：`buildPrepareRequests`（若有且 `ctx.prepared` 还没有）→ 宿主依次执行 → `parsePrepareResponses` → 持久化 prepared → `buildSubmitRequest` → 执行 → `parseSubmitResponse`。准备请求与提交请求走同样的校验、鉴权注入、SSRF、限流。
 
 **`parseSubmitResponse` 的返回**：
+
 - `providerTaskId`（字符串或数字，宿主转成字符串）：异步任务必须有，除非返回了 `immediate`；
 - `state`：私有状态，≤64KB，宿主持久化，后续每个钩子的 `ctx.task.state` 里带回；
 - `immediate`：与统一结果同形。**提交即出结果**（同步接口，或上游立刻完成 / 立刻失败）。`sync` endpoint 必须返回 `immediate`，且 `immediate.status` 只能是 `succeeded` 或 `failed`。
@@ -181,30 +194,30 @@ meta: {
 
 ## 7. `utils`（宿主注入的同步函数）
 
-| 函数 | 说明 |
-|---|---|
-| `utils.uuid()` | 随机 UUID v4 字符串 |
-| `utils.unixNow()` | 当前 Unix 秒 |
+| 函数                                                               | 说明                                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `utils.uuid()`                                                     | 随机 UUID v4 字符串                                                    |
+| `utils.unixNow()`                                                  | 当前 Unix 秒                                                           |
 | `utils.base64(s)` / `utils.base64Decode(s)` / `utils.base64URL(s)` | 文本 ↔ base64（标准 / URL 安全无填充）；`base64Decode` 返回 UTF-8 文本 |
-| `utils.sha256(s)` | 小写十六进制 |
-| `utils.hmacSHA256(key, msg)` | 小写十六进制 |
-| `utils.jwtSignHS256(claims, secret)` | 紧凑序列化的 JWT（header 固定 `{"alg":"HS256","typ":"JWT"}`） |
-| `utils.log(msg)` | 进试跑追踪，不进普通日志；单次钩子调用最多 50 条，每条截断到 1KB |
+| `utils.sha256(s)`                                                  | 小写十六进制                                                           |
+| `utils.hmacSHA256(key, msg)`                                       | 小写十六进制                                                           |
+| `utils.jwtSignHS256(claims, secret)`                               | 紧凑序列化的 JWT（header 固定 `{"alg":"HS256","typ":"JWT"}`）          |
+| `utils.log(msg)`                                                   | 进试跑追踪，不进普通日志；单次钩子调用最多 50 条，每条截断到 1KB       |
 
 `utils` 里的函数都要自行限制输入大小（单个输入 ≤256KB），因为 `vm.Interrupt()` 中断不了正在执行的 Go 函数。
 
 ## 8. 错误与重试
 
-| 场景 | 处理 |
-|---|---|
-| 钩子抛异常 / 超时被中断 / 返回值不合规 / 请求描述非法 | `terminal`，插件级失败，退积分；异常信息进追踪与告警，不给用户看 |
-| runner 连不上 | `retryable`，错误码 `plugin_runner_unavailable`；任务保持 pending 直到恢复（不消耗重试次数） |
-| 调用进行中 runner 崩溃 | `retryable`，错误码 `plugin_runner_crashed`；任务重试一次，再次崩溃就失败退积分 |
-| 上游非 2xx | 先 `classifyError`；没实现或返回 null 则用默认规则：响应文本（小写）含 `balance` / `insufficient` / `quota` / `credit` / `余额` / `额度` → `provider_balance`；429 与 5xx → `retryable`；404 / 410 → `terminal`；其余 `terminal` |
-| 网络错误 / 连不上上游 | `retryable` |
-| 提交请求已发出但没收到完整响应（读超时等） | `submit_unknown`（失败并退积分，告警人工核对） |
-| 请求被 SSRF 防护拒绝 | `terminal`，错误码 `ssrf_blocked` |
-| 渠道 Key 未设置 | `terminal`，错误码 `secret_unavailable` |
+| 场景                                                  | 处理                                                                                                                                                                                                                             |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 钩子抛异常 / 超时被中断 / 返回值不合规 / 请求描述非法 | `terminal`，插件级失败，退积分；异常信息进追踪与告警，不给用户看                                                                                                                                                                 |
+| runner 连不上                                         | `retryable`，错误码 `plugin_runner_unavailable`；任务保持 pending 直到恢复（不消耗重试次数）                                                                                                                                     |
+| 调用进行中 runner 崩溃                                | `retryable`，错误码 `plugin_runner_crashed`；任务重试一次，再次崩溃就失败退积分                                                                                                                                                  |
+| 上游非 2xx                                            | 先 `classifyError`；没实现或返回 null 则用默认规则：响应文本（小写）含 `balance` / `insufficient` / `quota` / `credit` / `余额` / `额度` → `provider_balance`；429 与 5xx → `retryable`；404 / 410 → `terminal`；其余 `terminal` |
+| 网络错误 / 连不上上游                                 | `retryable`                                                                                                                                                                                                                      |
+| 提交请求已发出但没收到完整响应（读超时等）            | `submit_unknown`（失败并退积分，告警人工核对）                                                                                                                                                                                   |
+| 请求被 SSRF 防护拒绝                                  | `terminal`，错误码 `ssrf_blocked`                                                                                                                                                                                                |
+| 渠道 Key 未设置                                       | `terminal`，错误码 `secret_unavailable`                                                                                                                                                                                          |
 
 `classifyError` 返回的 `class` 只能是 `retryable / terminal / moderation / provider_balance`；不合规按默认规则处理并告警。
 

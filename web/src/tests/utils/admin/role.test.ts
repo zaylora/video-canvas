@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  canEnterAdmin,
   canManageInfra,
   canManageModels,
   isForbiddenError,
@@ -47,5 +48,18 @@ describe("isForbiddenError", () => {
     expect(isForbiddenError({ status: 500, code: 50000 })).toBe(false);
     expect(isForbiddenError(null)).toBe(false);
     expect(isForbiddenError("403")).toBe(false);
+  });
+});
+
+describe("canEnterAdmin（是否显示「管理后台」入口）", () => {
+  test("只有 admin 与 super_admin 可见", () => {
+    expect(canEnterAdmin("admin")).toBe(true);
+    expect(canEnterAdmin("super_admin")).toBe(true);
+  });
+  test("普通用户、未知角色、没有角色都不可见", () => {
+    expect(canEnterAdmin("user")).toBe(false);
+    expect(canEnterAdmin("owner")).toBe(false);
+    expect(canEnterAdmin(null)).toBe(false);
+    expect(canEnterAdmin(undefined)).toBe(false);
   });
 });

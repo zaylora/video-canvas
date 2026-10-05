@@ -1,4 +1,4 @@
-import type { AdminRole } from "@/api/admin-ai/type";
+import type { AdminRole } from "@/api/admin/ai/type";
 
 /**
  * 把后端返回的角色收窄成已知值：只有明确是 super_admin 才给运维权限，
@@ -7,6 +7,10 @@ import type { AdminRole } from "@/api/admin-ai/type";
 export function normalizeRole(role: unknown): AdminRole {
   return role === "super_admin" ? "super_admin" : "admin";
 }
+
+/** 能否进入管理后台：只有 admin / super_admin；普通用户、未知角色和没有角色都不能（前端只决定入口显不显示，后端仍会校验） */
+export const canEnterAdmin = (role: string | null | undefined) =>
+  role === "admin" || role === "super_admin";
 
 /** 插件上传 / 启停 / 删除版本、渠道新建 / 修改 / Key / 连通性检查：只有 super_admin */
 export const canManageInfra = (role: AdminRole | null | undefined) => role === "super_admin";

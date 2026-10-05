@@ -109,7 +109,7 @@ linters:
         - name: increment-decrement
         - name: blank-imports
         - name: file-length-limit # 单文件不超过 500 行代码（不计注释和空行）（R1）
-          arguments: [{max: 500, skipComments: true, skipBlankLines: true}]
+          arguments: [{ max: 500, skipComments: true, skipBlankLines: true }]
 
     funlen:
       lines: 80

@@ -285,11 +285,20 @@ func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provi
 // 任何一步失败整体回滚，不会出现“积分冻结了但任务没创建”。命中幂等键（事务内复查或唯一索引冲突）时返回已存在的任务。
 func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model.GenerationTask) (*model.GenerationTask, error) {
 	userID, key, credits := task.UserID, task.IdempotencyKey, task.Credits
+	// 事务外先读初始积分与并发上限：它们是设置读取，不属于积分事务，也避免在持有账户行锁时多做查询
+	initial, err := s.initialCredits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	maxActive, err := s.maxActiveTasks(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	var existing *model.GenerationTask
-	err := s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
-		// 1. 惰性创建积分账户（新用户初始积分来自配置），再对账户行加锁：
-		//    同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透
-		if err := tx.EnsureCredit(ctx, userID, s.cfg.InitialCredits); err != nil {
+	err = s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
+		// 1. 惰性创建积分账户（初始积分来自系统设置，缺省 config；真正建出新账户时仓储会在同一事务补写 initial 流水），
+		//    再对账户行加锁：同一个用户的并发提交在这里被串行化，余额与并发数的检查因此不会被并发穿透
+		if err := tx.EnsureCredit(ctx, userID, initial); err != nil {
 			return err
 		}
 		acc, err := tx.LockCredit(ctx, userID)
@@ -308,7 +317,7 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if err != nil {
 			return err
 		}
-		if active >= int64(s.maxActiveTasks()) {
+		if active >= int64(maxActive) {
 			return errcode.ErrTooManyTasks
 		}
 		// 4. 插入任务。即使前面的复查漏掉了（理论上不会），(user_id, idempotency_key) 唯一索引也会拦住：
@@ -324,7 +333,7 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if err := tx.AddCredit(ctx, userID, 0, credits); err != nil {
 			return err
 		}
-		_, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: task.ID, Type: model.LedgerFreeze, Amount: credits})
+		_, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits})
 		return err
 	})
 	// 6. 幂等冲突：事务已回滚，取赢家的任务返回；其它错误原样返回（errcode 直接透传给前端）

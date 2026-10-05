@@ -39,8 +39,6 @@ jwt:
   expire_hours: 72
 
 ai:
-  max_active_tasks_per_user: 4 # 每个用户进行中的任务上限
-  initial_credits: 50 # 新用户初始积分（本期不做充值）
   # secret_key（加解密渠道 Key 的主密钥）只通过环境变量 APP_AI_SECRET_KEY 提供
   plugin_runner: # 协议插件的沙箱执行进程，见 docs/design/协议插件设计.md 6.4
     mode: spawn # spawn（主服务把自己作为 plugin-runner 子进程拉起，开发用）| external（连独立容器，生产用）| inprocess（同进程无隔离，仅测试排障）

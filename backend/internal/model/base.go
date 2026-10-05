@@ -34,5 +34,9 @@ func All() []any {
 		&AIAuditLog{},
 		&ImageProcessor{},
 		&ImageProcessorVersion{},
+		&UserLoginLog{},
+		&AdminAuditLog{},
+		&SystemSetting{},
+		&SMTPSetting{},
 	}
 }

@@ -239,3 +239,33 @@ func NewClient(base http.RoundTripper, allowed []string, maxRedirects int) *http
 func IsGuardError(err error) bool {
 	return errors.Is(err, ErrBlockedAddress) || errors.Is(err, ErrHostNotAllowed) || errors.Is(err, ErrTooManyRedirects)
 }
+
+// CheckHost 校验一个主机名（或字面量 IP）能不能作为出站目标：字面量 IP 直接判断，域名先解析，
+// 任何一个解析结果落在禁止范围（内网、回环、链路本地等）、解析失败或没有结果都返回错误。
+// 用于保存配置时的快速拒绝（如 SMTP 主机）；真正连接时仍要走 DialContext，避免“校验后 DNS 被换成内网”。
+func (c *Config) CheckHost(ctx context.Context, host string) error {
+	host = strings.TrimSuffix(strings.TrimSpace(host), ".")
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		var err error
+		if ips, err = c.Resolver.LookupIP(ctx, host); err != nil {
+			return fmt.Errorf("解析域名 %s 失败：%w", host, err)
+		}
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("域名 %s 没有解析结果", host)
+	}
+	for _, ip := range ips {
+		if !c.IPAllowed(ip) {
+			return fmt.Errorf("%w：%s 解析到 %s", ErrBlockedAddress, host, ip)
+		}
+	}
+	return nil
+}
+
+// DialContext 先解析并校验再直接拨号到校验过的 IP（见 dialContext），供非 HTTP 的出站连接（如 SMTP）使用。
+func (c *Config) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return c.dialContext(ctx, network, addr)
+}

@@ -1,4 +1,4 @@
-import type { DirectMethod, StorageProvider } from "@/api/admin-storage/type";
+import type { DirectMethod, StorageProvider } from "@/api/admin/storage/type";
 
 /**
  * 按服务商规则推导 endpoint，只用于表单里的展示：让管理员看到自己填的地域会连到哪里。

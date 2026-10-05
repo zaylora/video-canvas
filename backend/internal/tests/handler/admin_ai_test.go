@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"video-canvas/internal/middleware"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/utils"
@@ -72,7 +73,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 	cfg.SetTestTaskCreator(env.tasks)
 
 	for id := range env.roles {
-		tok, _, err := utils.GenerateToken(uint(id), fmt.Sprintf("u%d", id), aicJWTSecret, "test", 1)
+		tok, _, err := utils.GenerateToken(uint(id), fmt.Sprintf("u%d", id), 0, aicJWTSecret, "test", 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,8 +87,14 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
+		UserState:    aicActiveState,
 	})
 	return env
+}
+
+// aicActiveState 让所有测试用户都是“正常、token_version 为 0”的状态：这组用例测的是权限与业务，不是停用逻辑。
+func aicActiveState(context.Context, uint64) (*middleware.UserState, error) {
+	return &middleware.UserState{Status: model.UserStatusActive}, nil
 }
 
 // aicResp 是统一响应的解析结果。
@@ -712,6 +719,7 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 		eng := router.New(gin.TestMode, aicJWTSecret, router.Handlers{
 			AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(env2.repo, env2.repo, noKey, env2.repo, env2.ops, noKey)),
 			AdminRole:    func(context.Context, uint64) (string, error) { return model.RoleSuperAdmin, nil },
+			UserState:    aicActiveState,
 		})
 		env2.engine = eng
 		r := env2.super(http.MethodPut, aicBase+"/channels/c/secret", map[string]any{"value": "v"})

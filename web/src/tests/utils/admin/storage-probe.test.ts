@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ProbeResult } from "@/api/admin-storage/type";
+import type { ProbeResult } from "@/api/admin/storage/type";
 import { probeSteps, probeSummary } from "@/utils/admin/storage-probe";
 
 const ok = (index: number, name: string, ms = 40) => ({

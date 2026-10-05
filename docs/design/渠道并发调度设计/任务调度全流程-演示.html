@@ -1,469 +1,1293 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>任务调度全流程</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  /* 与《渠道并发调度设计-演示》同一套 token */
-  :root {
-    --bg: 240 10% 3.9%; --fg: 0 0% 98%;
-    --card: 240 6% 7%; --muted: 240 3.7% 15.9%; --muted-fg: 240 5% 64.9%;
-    --border: 240 3.7% 18%;
-    --blue: 211 90% 62%; --green: 152 60% 50%; --amber: 38 92% 58%; --red: 0 75% 62%; --violet: 262 80% 70%;
-    color-scheme: dark;
-  }
-  :root[data-theme="light"] {
-    --bg: 0 0% 100%; --fg: 240 10% 3.9%;
-    --card: 240 5% 97%; --muted: 240 4.8% 93%; --muted-fg: 240 3.8% 40%;
-    --border: 240 5.9% 86%;
-    --blue: 211 85% 45%; --green: 152 65% 32%; --amber: 32 95% 40%; --red: 0 72% 48%; --violet: 262 60% 50%;
-    color-scheme: light;
-  }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
-      --bg: 0 0% 100%; --fg: 240 10% 3.9%;
-      --card: 240 5% 97%; --muted: 240 4.8% 93%; --muted-fg: 240 3.8% 40%;
-      --border: 240 5.9% 86%;
-      --blue: 211 85% 45%; --green: 152 65% 32%; --amber: 32 95% 40%; --red: 0 72% 48%; --violet: 262 60% 50%;
-      color-scheme: light;
-    }
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: hsl(var(--bg)); color: hsl(var(--fg));
-    font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-  body { overflow: hidden; }
-  code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: .92em; }
-  code { background: hsl(var(--muted)); padding: .05em .35em; border-radius: 4px; }
-  #stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: center; }
-  .slide { position: absolute; inset: 0; padding: 52px 68px 60px; display: none; flex-direction: column; gap: 16px; }
-  .slide.active { display: flex; }
-  .kicker { color: hsl(var(--muted-fg)); font-size: 15px; letter-spacing: .08em; }
-  h1 { font-size: 52px; line-height: 1.15; margin: 0; font-weight: 700; }
-  h2 { font-size: 32px; line-height: 1.2; margin: 0; font-weight: 650; }
-  h3 { font-size: 18px; margin: 0 0 6px; font-weight: 600; }
-  p, li { font-size: 18px; line-height: 1.6; margin: 0; }
-  .lead { font-size: 22px; color: hsl(var(--muted-fg)); line-height: 1.6; }
-  .small { font-size: 14px; color: hsl(var(--muted-fg)); line-height: 1.55; }
-  ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 5px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 16px 18px; }
-  .card p, .card li { font-size: 16px; }
-  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 6px; border: 1px solid currentColor; }
-  .t-blue { color: hsl(var(--blue)); } .t-green { color: hsl(var(--green)); } .t-amber { color: hsl(var(--amber)); }
-  .t-red { color: hsl(var(--red)); } .t-violet { color: hsl(var(--violet)); } .t-muted { color: hsl(var(--muted-fg)); }
-  table { border-collapse: collapse; width: 100%; font-size: 15px; }
-  th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid hsl(var(--border)); vertical-align: top; line-height: 1.5; }
-  th { color: hsl(var(--muted-fg)); font-weight: 500; font-size: 13px; }
-  .new { background: hsl(var(--blue) / .08); }
-  .spacer { flex: 1; }
-  .callout { border-left: 3px solid hsl(var(--blue)); padding: 6px 0 6px 14px; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>任务调度全流程</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* 与《渠道并发调度设计-演示》同一套 token */
+      :root {
+        --bg: 240 10% 3.9%;
+        --fg: 0 0% 98%;
+        --card: 240 6% 7%;
+        --muted: 240 3.7% 15.9%;
+        --muted-fg: 240 5% 64.9%;
+        --border: 240 3.7% 18%;
+        --blue: 211 90% 62%;
+        --green: 152 60% 50%;
+        --amber: 38 92% 58%;
+        --red: 0 75% 62%;
+        --violet: 262 80% 70%;
+        color-scheme: dark;
+      }
+      :root[data-theme="light"] {
+        --bg: 0 0% 100%;
+        --fg: 240 10% 3.9%;
+        --card: 240 5% 97%;
+        --muted: 240 4.8% 93%;
+        --muted-fg: 240 3.8% 40%;
+        --border: 240 5.9% 86%;
+        --blue: 211 85% 45%;
+        --green: 152 65% 32%;
+        --amber: 32 95% 40%;
+        --red: 0 72% 48%;
+        --violet: 262 60% 50%;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) {
+          --bg: 0 0% 100%;
+          --fg: 240 10% 3.9%;
+          --card: 240 5% 97%;
+          --muted: 240 4.8% 93%;
+          --muted-fg: 240 3.8% 40%;
+          --border: 240 5.9% 86%;
+          --blue: 211 85% 45%;
+          --green: 152 65% 32%;
+          --amber: 32 95% 40%;
+          --red: 0 72% 48%;
+          --violet: 262 60% 50%;
+          color-scheme: light;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: hsl(var(--bg));
+        color: hsl(var(--fg));
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      body {
+        overflow: hidden;
+      }
+      code,
+      .mono {
+        font-family: "Geist Mono", "SF Mono", Consolas, monospace;
+        font-size: 0.92em;
+      }
+      code {
+        background: hsl(var(--muted));
+        padding: 0.05em 0.35em;
+        border-radius: 4px;
+      }
+      #stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1280px;
+        height: 720px;
+        transform-origin: center;
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        padding: 52px 68px 60px;
+        display: none;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .kicker {
+        color: hsl(var(--muted-fg));
+        font-size: 15px;
+        letter-spacing: 0.08em;
+      }
+      h1 {
+        font-size: 52px;
+        line-height: 1.15;
+        margin: 0;
+        font-weight: 700;
+      }
+      h2 {
+        font-size: 32px;
+        line-height: 1.2;
+        margin: 0;
+        font-weight: 650;
+      }
+      h3 {
+        font-size: 18px;
+        margin: 0 0 6px;
+        font-weight: 600;
+      }
+      p,
+      li {
+        font-size: 18px;
+        line-height: 1.6;
+        margin: 0;
+      }
+      .lead {
+        font-size: 22px;
+        color: hsl(var(--muted-fg));
+        line-height: 1.6;
+      }
+      .small {
+        font-size: 14px;
+        color: hsl(var(--muted-fg));
+        line-height: 1.55;
+      }
+      ul {
+        margin: 0;
+        padding-left: 1.2em;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .card {
+        background: hsl(var(--card));
+        border: 1px solid hsl(var(--border));
+        border-radius: 14px;
+        padding: 16px 18px;
+      }
+      .card p,
+      .card li {
+        font-size: 16px;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 1px 7px;
+        border-radius: 6px;
+        border: 1px solid currentColor;
+      }
+      .t-blue {
+        color: hsl(var(--blue));
+      }
+      .t-green {
+        color: hsl(var(--green));
+      }
+      .t-amber {
+        color: hsl(var(--amber));
+      }
+      .t-red {
+        color: hsl(var(--red));
+      }
+      .t-violet {
+        color: hsl(var(--violet));
+      }
+      .t-muted {
+        color: hsl(var(--muted-fg));
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 15px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 11px;
+        border-bottom: 1px solid hsl(var(--border));
+        vertical-align: top;
+        line-height: 1.5;
+      }
+      th {
+        color: hsl(var(--muted-fg));
+        font-weight: 500;
+        font-size: 13px;
+      }
+      .new {
+        background: hsl(var(--blue) / 0.08);
+      }
+      .spacer {
+        flex: 1;
+      }
+      .callout {
+        border-left: 3px solid hsl(var(--blue));
+        padding: 6px 0 6px 14px;
+      }
 
-  /* 流程图（SVG）：颜色全部走 token */
-  svg { overflow: visible; }
-  .n rect { fill: hsl(var(--card)); stroke: hsl(var(--border)); stroke-width: 1.5; }
-  .n text { fill: hsl(var(--fg)); font-size: 15px; font-weight: 600; }
-  .n .sub { fill: hsl(var(--muted-fg)); font-size: 12.5px; font-weight: 400; }
-  .gate rect { fill: hsl(var(--amber) / .12); stroke: hsl(var(--amber)); stroke-width: 1.5; }
-  .gate text { fill: hsl(var(--amber)); font-size: 13.5px; font-weight: 600; }
-  .gate.new rect { fill: hsl(var(--blue) / .14); stroke: hsl(var(--blue)); stroke-dasharray: 5 3; }
-  .gate.new text { fill: hsl(var(--blue)); }
-  .st rect { stroke-width: 1.5; }
-  .st.q rect { fill: hsl(var(--amber) / .14); stroke: hsl(var(--amber) / .7); }
-  .st.r rect { fill: hsl(var(--blue) / .14); stroke: hsl(var(--blue) / .7); }
-  .st.f rect { fill: hsl(var(--violet) / .14); stroke: hsl(var(--violet) / .7); }
-  .st.ok rect { fill: hsl(var(--green) / .14); stroke: hsl(var(--green) / .7); }
-  .st.bad rect { fill: hsl(var(--red) / .12); stroke: hsl(var(--red) / .7); }
-  .st text { fill: hsl(var(--fg)); font-size: 14.5px; font-weight: 600; }
-  .st .sub { fill: hsl(var(--muted-fg)); font-size: 12px; font-weight: 400; }
-  .ar { stroke: hsl(var(--muted-fg)); stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
-  .ar.bad { stroke: hsl(var(--red) / .8); marker-end: url(#arrowRed); stroke-dasharray: 4 3; }
-  .ar.loop { stroke: hsl(var(--blue) / .8); marker-end: url(#arrowBlue); }
-  .lbl { fill: hsl(var(--muted-fg)); font-size: 12px; }
-  .lbl.bad { fill: hsl(var(--red)); }
-  .lbl.blue { fill: hsl(var(--blue)); }
-  .head { fill: hsl(var(--muted-fg)); }
-  .headRed { fill: hsl(var(--red) / .8); }
-  .headBlue { fill: hsl(var(--blue) / .8); }
+      /* 流程图（SVG）：颜色全部走 token */
+      svg {
+        overflow: visible;
+      }
+      .n rect {
+        fill: hsl(var(--card));
+        stroke: hsl(var(--border));
+        stroke-width: 1.5;
+      }
+      .n text {
+        fill: hsl(var(--fg));
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .n .sub {
+        fill: hsl(var(--muted-fg));
+        font-size: 12.5px;
+        font-weight: 400;
+      }
+      .gate rect {
+        fill: hsl(var(--amber) / 0.12);
+        stroke: hsl(var(--amber));
+        stroke-width: 1.5;
+      }
+      .gate text {
+        fill: hsl(var(--amber));
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+      .gate.new rect {
+        fill: hsl(var(--blue) / 0.14);
+        stroke: hsl(var(--blue));
+        stroke-dasharray: 5 3;
+      }
+      .gate.new text {
+        fill: hsl(var(--blue));
+      }
+      .st rect {
+        stroke-width: 1.5;
+      }
+      .st.q rect {
+        fill: hsl(var(--amber) / 0.14);
+        stroke: hsl(var(--amber) / 0.7);
+      }
+      .st.r rect {
+        fill: hsl(var(--blue) / 0.14);
+        stroke: hsl(var(--blue) / 0.7);
+      }
+      .st.f rect {
+        fill: hsl(var(--violet) / 0.14);
+        stroke: hsl(var(--violet) / 0.7);
+      }
+      .st.ok rect {
+        fill: hsl(var(--green) / 0.14);
+        stroke: hsl(var(--green) / 0.7);
+      }
+      .st.bad rect {
+        fill: hsl(var(--red) / 0.12);
+        stroke: hsl(var(--red) / 0.7);
+      }
+      .st text {
+        fill: hsl(var(--fg));
+        font-size: 14.5px;
+        font-weight: 600;
+      }
+      .st .sub {
+        fill: hsl(var(--muted-fg));
+        font-size: 12px;
+        font-weight: 400;
+      }
+      .ar {
+        stroke: hsl(var(--muted-fg));
+        stroke-width: 1.6;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .ar.bad {
+        stroke: hsl(var(--red) / 0.8);
+        marker-end: url(#arrowRed);
+        stroke-dasharray: 4 3;
+      }
+      .ar.loop {
+        stroke: hsl(var(--blue) / 0.8);
+        marker-end: url(#arrowBlue);
+      }
+      .lbl {
+        fill: hsl(var(--muted-fg));
+        font-size: 12px;
+      }
+      .lbl.bad {
+        fill: hsl(var(--red));
+      }
+      .lbl.blue {
+        fill: hsl(var(--blue));
+      }
+      .head {
+        fill: hsl(var(--muted-fg));
+      }
+      .headRed {
+        fill: hsl(var(--red) / 0.8);
+      }
+      .headBlue {
+        fill: hsl(var(--blue) / 0.8);
+      }
 
-  /* 时间线 */
-  .tl { display: grid; grid-template-columns: 110px 1fr; gap: 7px 12px; align-items: center; font-size: 14px; }
-  .track { position: relative; height: 24px; background: hsl(var(--muted) / .5); border-radius: 6px; }
-  .seg { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; font-size: 11.5px; display: flex; align-items: center; padding: 0 5px; white-space: nowrap; overflow: hidden; }
-  .seg.wait { background: hsl(var(--amber) / .35); color: hsl(var(--amber)); }
-  .seg.go { background: hsl(var(--green) / .5); color: hsl(var(--fg)); }
-  .axis { display: flex; justify-content: space-between; font-size: 12px; color: hsl(var(--muted-fg)); padding-left: 122px; }
+      /* 时间线 */
+      .tl {
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 7px 12px;
+        align-items: center;
+        font-size: 14px;
+      }
+      .track {
+        position: relative;
+        height: 24px;
+        background: hsl(var(--muted) / 0.5);
+        border-radius: 6px;
+      }
+      .seg {
+        position: absolute;
+        top: 3px;
+        bottom: 3px;
+        border-radius: 4px;
+        font-size: 11.5px;
+        display: flex;
+        align-items: center;
+        padding: 0 5px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .seg.wait {
+        background: hsl(var(--amber) / 0.35);
+        color: hsl(var(--amber));
+      }
+      .seg.go {
+        background: hsl(var(--green) / 0.5);
+        color: hsl(var(--fg));
+      }
+      .axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: hsl(var(--muted-fg));
+        padding-left: 122px;
+      }
 
-  #nav { position: fixed; left: 0; right: 0; bottom: 0; height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px;
-    font-size: 13px; color: hsl(var(--muted-fg)); }
-  #nav button { background: transparent; color: inherit; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 4px 10px; font: inherit; cursor: pointer; }
-  #nav button:hover { color: hsl(var(--fg)); }
-  #progress { position: fixed; left: 0; bottom: 0; height: 3px; background: hsl(var(--blue)); transition: width .2s; }
-  @media print { #nav, #progress { display: none; } }
-</style>
-</head>
-<body>
+      #nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        font-size: 13px;
+        color: hsl(var(--muted-fg));
+      }
+      #nav button {
+        background: transparent;
+        color: inherit;
+        border: 1px solid hsl(var(--border));
+        border-radius: 8px;
+        padding: 4px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #nav button:hover {
+        color: hsl(var(--fg));
+      }
+      #progress {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        height: 3px;
+        background: hsl(var(--blue));
+        transition: width 0.2s;
+      }
+      @media print {
+        #nav,
+        #progress {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 箭头定义：放在页面级，所有流程图共用 -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <marker
+          id="arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="head" />
+        </marker>
+        <marker
+          id="arrowRed"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="headRed" />
+        </marker>
+        <marker
+          id="arrowBlue"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" class="headBlue" />
+        </marker>
+      </defs>
+    </svg>
 
-<!-- 箭头定义：放在页面级，所有流程图共用 -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
-    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headRed"/></marker>
-    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headBlue"/></marker>
-  </defs>
-</svg>
+    <div id="stage">
+      <!-- 1 封面 -->
+      <section class="slide" data-title="封面">
+        <div class="spacer"></div>
+        <div class="kicker">VIDEO-CANVAS · 流程说明 · 2026-10-02</div>
+        <h1>任务调度全流程</h1>
+        <p class="lead" style="max-width: 920px">
+          从用户点“发送”到积分结算，一个生成任务经过哪几步、在哪几道闸门可能停下来、停下来时用户看到什么。
+        </p>
+        <p class="small" style="max-width: 920px; margin-top: 6px">
+          图中<span class="t-blue"><b>蓝色虚线</b></span
+          >是《渠道并发调度设计》方案 A 新增的闸门，其余是现在已有的逻辑。
+        </p>
+        <div class="spacer"></div>
+        <p class="small">← → 翻页，T 切换明暗</p>
+      </section>
 
-<div id="stage">
+      <!-- 2 全景 -->
+      <section class="slide" data-title="全景">
+        <div class="kicker">01 · 一张图</div>
+        <h2>任务的一生，以及四道闸门</h2>
+        <svg viewBox="0 0 1144 520" width="1144" height="520" style="margin-top: 4px">
+          <!-- 第一行：提交 → 排队 → 领取 -->
+          <g class="n">
+            <rect x="0" y="20" width="150" height="64" rx="12" />
+            <text x="75" y="48" text-anchor="middle">用户点发送</text>
+            <text x="75" y="68" text-anchor="middle" class="sub">选了生成 N 个</text>
+          </g>
+          <path class="ar" d="M150,52 L188,52" />
+          <g class="gate">
+            <rect x="190" y="14" width="190" height="76" rx="10" />
+            <text x="285" y="40" text-anchor="middle">① 用户进行中上限</text>
+            <text x="285" y="60" text-anchor="middle">+ 积分是否够</text>
+            <text x="285" y="80" text-anchor="middle" style="font-weight: 400; font-size: 12px">
+              提交接口里检查
+            </text>
+          </g>
+          <path class="ar" d="M380,52 L418,52" />
+          <g class="st q">
+            <rect x="420" y="20" width="170" height="64" rx="12" />
+            <text x="505" y="48" text-anchor="middle">pending</text>
+            <text x="505" y="68" text-anchor="middle" class="sub">画布：排队中</text>
+          </g>
+          <path class="ar" d="M590,52 L628,52" />
+          <g class="gate">
+            <rect x="630" y="14" width="170" height="76" rx="10" />
+            <text x="715" y="40" text-anchor="middle">② worker 执行池</text>
+            <text x="715" y="60" text-anchor="middle">有空位才领</text>
+            <text x="715" y="80" text-anchor="middle" style="font-weight: 400; font-size: 12px">
+              每秒一次
+            </text>
+          </g>
+          <path class="ar" d="M800,52 L838,52" />
+          <g class="gate new">
+            <rect x="840" y="14" width="200" height="76" rx="10" />
+            <text x="940" y="40" text-anchor="middle">③ 渠道同时生成上限</text>
+            <text x="940" y="60" text-anchor="middle">渠道有余量才领</text>
+            <text x="940" y="80" text-anchor="middle" style="font-weight: 400; font-size: 12px">
+              新增 · 只管 pending
+            </text>
+          </g>
+          <!-- 拐到第二行 -->
+          <path class="ar" d="M1040,52 L1100,52 L1100,170 L1046,170" />
+          <text class="lbl" x="1054" y="128">领走</text>
 
-<!-- 1 封面 -->
-<section class="slide" data-title="封面">
-  <div class="spacer"></div>
-  <div class="kicker">VIDEO-CANVAS · 流程说明 · 2026-10-02</div>
-  <h1>任务调度全流程</h1>
-  <p class="lead" style="max-width:920px">从用户点“发送”到积分结算，一个生成任务经过哪几步、在哪几道闸门可能停下来、停下来时用户看到什么。</p>
-  <p class="small" style="max-width:920px;margin-top:6px">图中<span class="t-blue"><b>蓝色虚线</b></span>是《渠道并发调度设计》方案 A 新增的闸门，其余是现在已有的逻辑。</p>
-  <div class="spacer"></div>
-  <p class="small">← → 翻页，T 切换明暗</p>
-</section>
+          <!-- 第二行：提交给上游（反向） -->
+          <g class="n">
+            <rect x="850" y="138" width="194" height="64" rx="12" />
+            <text x="947" y="166" text-anchor="middle">插件构造提交请求</text>
+            <text x="947" y="186" text-anchor="middle" class="sub">沙箱池，几毫秒</text>
+          </g>
+          <path class="ar" d="M850,170 L812,170" />
+          <g class="gate">
+            <rect x="600" y="132" width="210" height="76" rx="10" />
+            <text x="705" y="158" text-anchor="middle">④ 渠道请求限流</text>
+            <text x="705" y="178" text-anchor="middle">同时请求数 → 每秒请求数</text>
+            <text x="705" y="198" text-anchor="middle" style="font-weight: 400; font-size: 12px">
+              发 HTTP 前，每个请求都过
+            </text>
+          </g>
+          <path class="ar" d="M600,170 L562,170" />
+          <g class="n">
+            <rect x="400" y="138" width="160" height="64" rx="12" />
+            <text x="480" y="166" text-anchor="middle">上游平台</text>
+            <text x="480" y="186" text-anchor="middle" class="sub">返回任务号</text>
+          </g>
+          <path class="ar" d="M400,170 L362,170" />
+          <g class="st r">
+            <rect x="190" y="138" width="170" height="64" rx="12" />
+            <text x="275" y="166" text-anchor="middle">queued / running</text>
+            <text x="275" y="186" text-anchor="middle" class="sub">画布：生成中</text>
+          </g>
 
-<!-- 2 全景 -->
-<section class="slide" data-title="全景">
-  <div class="kicker">01 · 一张图</div>
-  <h2>任务的一生，以及四道闸门</h2>
-  <svg viewBox="0 0 1144 520" width="1144" height="520" style="margin-top:4px">
-    <!-- 第一行：提交 → 排队 → 领取 -->
-    <g class="n"><rect x="0" y="20" width="150" height="64" rx="12"/><text x="75" y="48" text-anchor="middle">用户点发送</text><text x="75" y="68" text-anchor="middle" class="sub">选了生成 N 个</text></g>
-    <path class="ar" d="M150,52 L188,52"/>
-    <g class="gate"><rect x="190" y="14" width="190" height="76" rx="10"/><text x="285" y="40" text-anchor="middle">① 用户进行中上限</text><text x="285" y="60" text-anchor="middle">+ 积分是否够</text><text x="285" y="80" text-anchor="middle" style="font-weight:400;font-size:12px">提交接口里检查</text></g>
-    <path class="ar" d="M380,52 L418,52"/>
-    <g class="st q"><rect x="420" y="20" width="170" height="64" rx="12"/><text x="505" y="48" text-anchor="middle">pending</text><text x="505" y="68" text-anchor="middle" class="sub">画布：排队中</text></g>
-    <path class="ar" d="M590,52 L628,52"/>
-    <g class="gate"><rect x="630" y="14" width="170" height="76" rx="10"/><text x="715" y="40" text-anchor="middle">② worker 执行池</text><text x="715" y="60" text-anchor="middle">有空位才领</text><text x="715" y="80" text-anchor="middle" style="font-weight:400;font-size:12px">每秒一次</text></g>
-    <path class="ar" d="M800,52 L838,52"/>
-    <g class="gate new"><rect x="840" y="14" width="200" height="76" rx="10"/><text x="940" y="40" text-anchor="middle">③ 渠道同时生成上限</text><text x="940" y="60" text-anchor="middle">渠道有余量才领</text><text x="940" y="80" text-anchor="middle" style="font-weight:400;font-size:12px">新增 · 只管 pending</text></g>
-    <!-- 拐到第二行 -->
-    <path class="ar" d="M1040,52 L1100,52 L1100,170 L1046,170"/>
-    <text class="lbl" x="1054" y="128">领走</text>
+          <!-- 轮询环 -->
+          <path class="ar loop" d="M275,202 L275,250 L705,250 L705,212" />
+          <text class="lbl blue" x="300" y="268">
+            每 15 秒查一次结果：同样经过 ④，还没好就排到下一次
+          </text>
 
-    <!-- 第二行：提交给上游（反向） -->
-    <g class="n"><rect x="850" y="138" width="194" height="64" rx="12"/><text x="947" y="166" text-anchor="middle">插件构造提交请求</text><text x="947" y="186" text-anchor="middle" class="sub">沙箱池，几毫秒</text></g>
-    <path class="ar" d="M850,170 L812,170"/>
-    <g class="gate"><rect x="600" y="132" width="210" height="76" rx="10"/><text x="705" y="158" text-anchor="middle">④ 渠道请求限流</text><text x="705" y="178" text-anchor="middle">同时请求数 → 每秒请求数</text><text x="705" y="198" text-anchor="middle" style="font-weight:400;font-size:12px">发 HTTP 前，每个请求都过</text></g>
-    <path class="ar" d="M600,170 L562,170"/>
-    <g class="n"><rect x="400" y="138" width="160" height="64" rx="12"/><text x="480" y="166" text-anchor="middle">上游平台</text><text x="480" y="186" text-anchor="middle" class="sub">返回任务号</text></g>
-    <path class="ar" d="M400,170 L362,170"/>
-    <g class="st r"><rect x="190" y="138" width="170" height="64" rx="12"/><text x="275" y="166" text-anchor="middle">queued / running</text><text x="275" y="186" text-anchor="middle" class="sub">画布：生成中</text></g>
+          <!-- 第三行：完成 -->
+          <path class="ar" d="M190,170 L80,170 L80,318" />
+          <text class="lbl" x="88" y="250">上游出结果</text>
+          <g class="st f">
+            <rect x="0" y="320" width="170" height="64" rx="12" />
+            <text x="85" y="348" text-anchor="middle">finalizing</text>
+            <text x="85" y="368" text-anchor="middle" class="sub">画布：即将完成</text>
+          </g>
+          <path class="ar" d="M170,352 L208,352" />
+          <g class="n">
+            <rect x="210" y="320" width="190" height="64" rx="12" />
+            <text x="305" y="348" text-anchor="middle">下载并保存结果</text>
+            <text x="305" y="368" text-anchor="middle" class="sub">占执行池，不占上游</text>
+          </g>
+          <path class="ar" d="M400,352 L438,352" />
+          <g class="st ok">
+            <rect x="440" y="320" width="200" height="64" rx="12" />
+            <text x="540" y="348" text-anchor="middle">succeeded</text>
+            <text x="540" y="368" text-anchor="middle" class="sub">结算：扣冻结的积分</text>
+          </g>
 
-    <!-- 轮询环 -->
-    <path class="ar loop" d="M275,202 L275,250 L705,250 L705,212"/>
-    <text class="lbl blue" x="300" y="268">每 15 秒查一次结果：同样经过 ④，还没好就排到下一次</text>
+          <!-- 失败分支 -->
+          <g class="st bad">
+            <rect x="760" y="320" width="380" height="64" rx="12" />
+            <text x="950" y="348" text-anchor="middle">failed / expired / canceled</text>
+            <text x="950" y="368" text-anchor="middle" class="sub">
+              画布：失败原因 / 回到空闲，冻结的积分全额退回
+            </text>
+          </g>
+          <path class="ar bad" d="M505,84 L505,110 L1120,110 L1120,318" />
+          <text class="lbl bad" x="1000" y="104">排队超时 / 取消</text>
+          <path class="ar bad" d="M480,202 L480,226 L900,226 L900,318" />
+          <text class="lbl bad" x="740" y="294">上游失败 / 重试耗尽 / 生成超时</text>
 
-    <!-- 第三行：完成 -->
-    <path class="ar" d="M190,170 L80,170 L80,318"/>
-    <text class="lbl" x="88" y="250">上游出结果</text>
-    <g class="st f"><rect x="0" y="320" width="170" height="64" rx="12"/><text x="85" y="348" text-anchor="middle">finalizing</text><text x="85" y="368" text-anchor="middle" class="sub">画布：即将完成</text></g>
-    <path class="ar" d="M170,352 L208,352"/>
-    <g class="n"><rect x="210" y="320" width="190" height="64" rx="12"/><text x="305" y="348" text-anchor="middle">下载并保存结果</text><text x="305" y="368" text-anchor="middle" class="sub">占执行池，不占上游</text></g>
-    <path class="ar" d="M400,352 L438,352"/>
-    <g class="st ok"><rect x="440" y="320" width="200" height="64" rx="12"/><text x="540" y="348" text-anchor="middle">succeeded</text><text x="540" y="368" text-anchor="middle" class="sub">结算：扣冻结的积分</text></g>
+          <!-- 图例 -->
+          <g transform="translate(0,430)">
+            <rect
+              x="0"
+              y="0"
+              width="16"
+              height="16"
+              rx="3"
+              style="fill: hsl(var(--amber) / 0.12); stroke: hsl(var(--amber))"
+            />
+            <text class="lbl" x="24" y="13">现有闸门</text>
+            <rect
+              x="110"
+              y="0"
+              width="16"
+              height="16"
+              rx="3"
+              style="fill: hsl(var(--blue) / 0.14); stroke: hsl(var(--blue)); stroke-dasharray: 4 2"
+            />
+            <text class="lbl" x="134" y="13">方案 A 新增</text>
+            <rect
+              x="240"
+              y="0"
+              width="16"
+              height="16"
+              rx="3"
+              style="fill: hsl(var(--amber) / 0.14); stroke: hsl(var(--amber) / 0.7)"
+            />
+            <text class="lbl" x="264" y="13">任务状态（在我们这边）</text>
+            <rect
+              x="430"
+              y="0"
+              width="16"
+              height="16"
+              rx="3"
+              style="fill: hsl(var(--blue) / 0.14); stroke: hsl(var(--blue) / 0.7)"
+            />
+            <text class="lbl" x="454" y="13">任务状态（在上游）</text>
+            <text class="lbl" x="0" y="48">
+              闸门 ① 拦下时直接拒绝，不建任务；② ③ 拦下时任务还在 pending，画布显示“排队中”；④
+              拦的是单个请求，提交时显示排队中、轮询时显示生成中。
+            </text>
+          </g>
+        </svg>
+      </section>
 
-    <!-- 失败分支 -->
-    <g class="st bad"><rect x="760" y="320" width="380" height="64" rx="12"/><text x="950" y="348" text-anchor="middle">failed / expired / canceled</text><text x="950" y="368" text-anchor="middle" class="sub">画布：失败原因 / 回到空闲，冻结的积分全额退回</text></g>
-    <path class="ar bad" d="M505,84 L505,110 L1120,110 L1120,318"/>
-    <text class="lbl bad" x="1000" y="104">排队超时 / 取消</text>
-    <path class="ar bad" d="M480,202 L480,226 L900,226 L900,318"/>
-    <text class="lbl bad" x="740" y="294">上游失败 / 重试耗尽 / 生成超时</text>
+      <!-- 3 四道闸门 -->
+      <section class="slide" data-title="四道闸门">
+        <div class="kicker">02 · 闸门对照</div>
+        <h2>四道闸门分别管什么</h2>
+        <table style="margin-top: 4px">
+          <tr>
+            <th style="width: 16%">闸门</th>
+            <th style="width: 18%">管的对象</th>
+            <th style="width: 20%">什么时候检查</th>
+            <th style="width: 17%">挡住之后</th>
+            <th style="width: 13%">用户看到</th>
+            <th>配置在哪</th>
+          </tr>
+          <tr>
+            <td>① 用户进行中上限</td>
+            <td>每个用户同时进行（排队 + 生成 + 转存）的任务数</td>
+            <td>提交接口，建任务之前</td>
+            <td>不建任务，不冻结积分</td>
+            <td>“同时生成的任务已达上限”</td>
+            <td><code>ai.max_active_tasks_per_user</code>，现在 4</td>
+          </tr>
+          <tr>
+            <td>② worker 执行池</td>
+            <td>整个后端进程同时在处理的任务步骤（提交、查一次、转存）</td>
+            <td>每秒领任务时</td>
+            <td>没空位就不领，任务留在库里</td>
+            <td>排队中</td>
+            <td><code>ai.worker.concurrency</code>，现在 8</td>
+          </tr>
+          <tr class="new">
+            <td><b class="t-blue">③ 渠道同时生成上限</b></td>
+            <td>这个渠道此刻在上游生成的任务数</td>
+            <td>每秒领 pending 任务时</td>
+            <td>渠道满了就不领，空出来先到先领</td>
+            <td>排队中</td>
+            <td>渠道页“最大同时生成数”（新）</td>
+          </tr>
+          <tr>
+            <td>④ 渠道请求限流</td>
+            <td>发给这个渠道的 HTTP 请求：同时几个、每秒几个</td>
+            <td>每次发请求之前（提交、每次查询都算）</td>
+            <td>任务已被领走，在执行位里等名额和令牌</td>
+            <td>提交时排队中，轮询时生成中</td>
+            <td>渠道页“每秒请求数 / 最大并发”</td>
+          </tr>
+        </table>
+        <div class="grid2" style="margin-top: 4px">
+          <div class="card">
+            <h3>② 和 ③ 都在“领任务”这一步</h3>
+            <p>
+              先看执行池有几个空位，再在这些空位里，按每个渠道的余量分配 pending
+              任务。两个都不满足，任务就安静地留在数据库里。
+            </p>
+          </div>
+          <div class="card">
+            <h3>④ 在“发请求”这一步</h3>
+            <p>
+              任务已经领走、占着执行位了，只是在等发令枪。所以 ④
+              设得太严，会让执行池被一批“等发请求”的任务占住，连带拖慢别的渠道。
+            </p>
+          </div>
+        </div>
+      </section>
 
-    <!-- 图例 -->
-    <g transform="translate(0,430)">
-      <rect x="0" y="0" width="16" height="16" rx="3" style="fill:hsl(var(--amber)/.12);stroke:hsl(var(--amber))"/><text class="lbl" x="24" y="13">现有闸门</text>
-      <rect x="110" y="0" width="16" height="16" rx="3" style="fill:hsl(var(--blue)/.14);stroke:hsl(var(--blue));stroke-dasharray:4 2"/><text class="lbl" x="134" y="13">方案 A 新增</text>
-      <rect x="240" y="0" width="16" height="16" rx="3" style="fill:hsl(var(--amber)/.14);stroke:hsl(var(--amber)/.7)"/><text class="lbl" x="264" y="13">任务状态（在我们这边）</text>
-      <rect x="430" y="0" width="16" height="16" rx="3" style="fill:hsl(var(--blue)/.14);stroke:hsl(var(--blue)/.7)"/><text class="lbl" x="454" y="13">任务状态（在上游）</text>
-      <text class="lbl" x="0" y="48">闸门 ① 拦下时直接拒绝，不建任务；② ③ 拦下时任务还在 pending，画布显示“排队中”；④ 拦的是单个请求，提交时显示排队中、轮询时显示生成中。</text>
-    </g>
-  </svg>
-</section>
+      <!-- 4 阶段 1：提交 -->
+      <section class="slide" data-title="阶段 1 提交">
+        <div class="kicker">03 · 阶段 1 · 提交（HTTP 接口，毫秒级）</div>
+        <h2>点发送之后，接口里发生的事</h2>
+        <svg viewBox="0 0 1144 300" width="1144" height="300">
+          <g class="n">
+            <rect x="0" y="30" width="160" height="60" rx="12" />
+            <text x="80" y="56" text-anchor="middle">请求级校验</text>
+            <text x="80" y="76" text-anchor="middle" class="sub">登录、模型、参数、素材</text>
+          </g>
+          <path class="ar" d="M160,60 L198,60" />
+          <g class="n">
+            <rect x="200" y="30" width="170" height="60" rx="12" />
+            <text x="285" y="56" text-anchor="middle">算价格、拆任务</text>
+            <text x="285" y="76" text-anchor="middle" class="sub">每个节点一个任务</text>
+          </g>
+          <path class="ar" d="M370,60 L408,60" />
+          <g class="gate">
+            <rect x="410" y="24" width="200" height="72" rx="10" />
+            <text x="510" y="50" text-anchor="middle">① 用户进行中 &lt; 4 ？</text>
+            <text x="510" y="72" text-anchor="middle">可用积分够 ？</text>
+          </g>
+          <path class="ar" d="M610,60 L648,60" />
+          <text class="lbl" x="616" y="50">都够</text>
+          <g class="n">
+            <rect x="650" y="30" width="200" height="60" rx="12" />
+            <text x="750" y="56" text-anchor="middle">建任务 + 冻结积分</text>
+            <text x="750" y="76" text-anchor="middle" class="sub">同一个事务，原子完成</text>
+          </g>
+          <path class="ar" d="M850,60 L888,60" />
+          <g class="st q">
+            <rect x="890" y="30" width="200" height="60" rx="12" />
+            <text x="990" y="56" text-anchor="middle">pending</text>
+            <text x="990" y="76" text-anchor="middle" class="sub">唤醒 worker，推送给画布</text>
+          </g>
 
-<!-- 3 四道闸门 -->
-<section class="slide" data-title="四道闸门">
-  <div class="kicker">02 · 闸门对照</div>
-  <h2>四道闸门分别管什么</h2>
-  <table style="margin-top:4px">
-    <tr><th style="width:16%">闸门</th><th style="width:18%">管的对象</th><th style="width:20%">什么时候检查</th><th style="width:17%">挡住之后</th><th style="width:13%">用户看到</th><th>配置在哪</th></tr>
-    <tr><td>① 用户进行中上限</td><td>每个用户同时进行（排队 + 生成 + 转存）的任务数</td><td>提交接口，建任务之前</td><td>不建任务，不冻结积分</td><td>“同时生成的任务已达上限”</td><td><code>ai.max_active_tasks_per_user</code>，现在 4</td></tr>
-    <tr><td>② worker 执行池</td><td>整个后端进程同时在处理的任务步骤（提交、查一次、转存）</td><td>每秒领任务时</td><td>没空位就不领，任务留在库里</td><td>排队中</td><td><code>ai.worker.concurrency</code>，现在 8</td></tr>
-    <tr class="new"><td><b class="t-blue">③ 渠道同时生成上限</b></td><td>这个渠道此刻在上游生成的任务数</td><td>每秒领 pending 任务时</td><td>渠道满了就不领，空出来先到先领</td><td>排队中</td><td>渠道页“最大同时生成数”（新）</td></tr>
-    <tr><td>④ 渠道请求限流</td><td>发给这个渠道的 HTTP 请求：同时几个、每秒几个</td><td>每次发请求之前（提交、每次查询都算）</td><td>任务已被领走，在执行位里等名额和令牌</td><td>提交时排队中，轮询时生成中</td><td>渠道页“每秒请求数 / 最大并发”</td></tr>
-  </table>
-  <div class="grid2" style="margin-top:4px">
-    <div class="card"><h3>② 和 ③ 都在“领任务”这一步</h3><p>先看执行池有几个空位，再在这些空位里，按每个渠道的余量分配 pending 任务。两个都不满足，任务就安静地留在数据库里。</p></div>
-    <div class="card"><h3>④ 在“发请求”这一步</h3><p>任务已经领走、占着执行位了，只是在等发令枪。所以 ④ 设得太严，会让执行池被一批“等发请求”的任务占住，连带拖慢别的渠道。</p></div>
-  </div>
-</section>
+          <path class="ar bad" d="M80,90 L80,190" />
+          <g class="st bad">
+            <rect x="0" y="192" width="300" height="60" rx="12" />
+            <text x="150" y="218" text-anchor="middle">整个请求失败（HTTP 4xx）</text>
+            <text x="150" y="238" text-anchor="middle" class="sub">
+              N 个节点都显示这条错误，一个任务都不建
+            </text>
+          </g>
+          <path class="ar bad" d="M510,96 L510,190" />
+          <g class="st bad">
+            <rect x="360" y="192" width="300" height="60" rx="12" />
+            <text x="510" y="218" text-anchor="middle">只有这个节点失败</text>
+            <text x="510" y="238" text-anchor="middle" class="sub">
+              “积分不足”/“并发已满”，不冻结，其他节点照常
+            </text>
+          </g>
+        </svg>
+        <ul>
+          <li>
+            生成 4 个：按节点顺序逐个过 ①，余额只够 2 个时，前 2 个成功，后 2 个各自显示“积分不足”。
+          </li>
+          <li>这一步<b>完全不碰上游</b>，所以很快；闸门 ② ③ ④ 都不在这里。</li>
+          <li>同一次点击的网络重试复用幂等键，不会重复建任务、重复扣积分。</li>
+        </ul>
+      </section>
 
-<!-- 4 阶段 1：提交 -->
-<section class="slide" data-title="阶段 1 提交">
-  <div class="kicker">03 · 阶段 1 · 提交（HTTP 接口，毫秒级）</div>
-  <h2>点发送之后，接口里发生的事</h2>
-  <svg viewBox="0 0 1144 300" width="1144" height="300">
-    <g class="n"><rect x="0" y="30" width="160" height="60" rx="12"/><text x="80" y="56" text-anchor="middle">请求级校验</text><text x="80" y="76" text-anchor="middle" class="sub">登录、模型、参数、素材</text></g>
-    <path class="ar" d="M160,60 L198,60"/>
-    <g class="n"><rect x="200" y="30" width="170" height="60" rx="12"/><text x="285" y="56" text-anchor="middle">算价格、拆任务</text><text x="285" y="76" text-anchor="middle" class="sub">每个节点一个任务</text></g>
-    <path class="ar" d="M370,60 L408,60"/>
-    <g class="gate"><rect x="410" y="24" width="200" height="72" rx="10"/><text x="510" y="50" text-anchor="middle">① 用户进行中 &lt; 4 ？</text><text x="510" y="72" text-anchor="middle">可用积分够 ？</text></g>
-    <path class="ar" d="M610,60 L648,60"/>
-    <text class="lbl" x="616" y="50">都够</text>
-    <g class="n"><rect x="650" y="30" width="200" height="60" rx="12"/><text x="750" y="56" text-anchor="middle">建任务 + 冻结积分</text><text x="750" y="76" text-anchor="middle" class="sub">同一个事务，原子完成</text></g>
-    <path class="ar" d="M850,60 L888,60"/>
-    <g class="st q"><rect x="890" y="30" width="200" height="60" rx="12"/><text x="990" y="56" text-anchor="middle">pending</text><text x="990" y="76" text-anchor="middle" class="sub">唤醒 worker，推送给画布</text></g>
+      <!-- 5 阶段 2：领取 -->
+      <section class="slide" data-title="阶段 2 领取">
+        <div class="kicker">04 · 阶段 2 · 领取（worker 每秒一次）</div>
+        <h2>worker 每秒醒来一次，决定处理哪些任务</h2>
+        <svg viewBox="0 0 1144 270" width="1144" height="270">
+          <g class="n">
+            <rect x="0" y="20" width="170" height="64" rx="12" />
+            <text x="85" y="48" text-anchor="middle">每秒 tick</text>
+            <text x="85" y="68" text-anchor="middle" class="sub">tick = 1s</text>
+          </g>
+          <path class="ar" d="M170,52 L208,52" />
+          <g class="gate">
+            <rect x="210" y="14" width="210" height="76" rx="10" />
+            <text x="315" y="40" text-anchor="middle">② 空位 = 8 − 在处理的</text>
+            <text x="315" y="62" text-anchor="middle">0 个就什么都不领</text>
+          </g>
+          <path class="ar" d="M420,52 L458,52" />
+          <g class="n">
+            <rect x="460" y="20" width="250" height="64" rx="12" />
+            <text x="585" y="48" text-anchor="middle">第一路：在途任务</text>
+            <text x="585" y="68" text-anchor="middle" class="sub">
+              到点要查结果 / 转存的，照常领
+            </text>
+          </g>
+          <path class="ar" d="M710,52 L748,52" />
+          <text class="lbl" x="712" y="42">剩余空位</text>
+          <g class="gate new">
+            <rect x="750" y="14" width="250" height="76" rx="10" />
+            <text x="875" y="40" text-anchor="middle">③ 第二路：pending</text>
+            <text x="875" y="60" text-anchor="middle">每个渠道最多领 上限 − 占位</text>
+            <text x="875" y="80" text-anchor="middle" style="font-weight: 400; font-size: 12px">
+              加锁，多实例不会一起超
+            </text>
+          </g>
+          <path class="ar" d="M875,90 L875,140" />
+          <g class="n">
+            <rect x="700" y="142" width="350" height="64" rx="12" />
+            <text x="875" y="170" text-anchor="middle">写 60 秒租约，交给执行池</text>
+            <text x="875" y="190" text-anchor="middle" class="sub">
+              处理中每 20 秒续租；进程崩了，租约过期别人接手
+            </text>
+          </g>
+          <path class="ar" d="M585,84 L585,174 L698,174" />
+          <g class="st q">
+            <rect x="210" y="142" width="300" height="64" rx="12" />
+            <text x="360" y="170" text-anchor="middle">没领到的 pending</text>
+            <text x="360" y="190" text-anchor="middle" class="sub">
+              留在库里，下一秒再看；画布：排队中
+            </text>
+          </g>
+          <path class="ar" d="M315,90 L315,140" style="stroke-dasharray: 3 3" />
+          <text class="lbl" x="323" y="120">没空位</text>
+          <path class="ar" d="M790,90 L790,116 L460,116 L460,140" style="stroke-dasharray: 3 3" />
+          <text class="lbl" x="616" y="110">渠道满了</text>
+        </svg>
+        <div class="grid2">
+          <div class="card">
+            <h3>为什么在途任务要先领、而且不受 ③ 影响</h3>
+            <p>
+              只有查到结果，任务进入转存或结束，渠道的位置才会空出来。在途任务也排队的话，位置永远空不出来。
+            </p>
+          </div>
+          <div class="card">
+            <h3>现在没有 ③ 时</h3>
+            <p>第二路没有渠道余量这一步，pending 任务只要有空位就领走提交，上游满没满不知道。</p>
+          </div>
+        </div>
+      </section>
 
-    <path class="ar bad" d="M80,90 L80,190"/>
-    <g class="st bad"><rect x="0" y="192" width="300" height="60" rx="12"/><text x="150" y="218" text-anchor="middle">整个请求失败（HTTP 4xx）</text><text x="150" y="238" text-anchor="middle" class="sub">N 个节点都显示这条错误，一个任务都不建</text></g>
-    <path class="ar bad" d="M510,96 L510,190"/>
-    <g class="st bad"><rect x="360" y="192" width="300" height="60" rx="12"/><text x="510" y="218" text-anchor="middle">只有这个节点失败</text><text x="510" y="238" text-anchor="middle" class="sub">“积分不足”/“并发已满”，不冻结，其他节点照常</text></g>
-  </svg>
-  <ul>
-    <li>生成 4 个：按节点顺序逐个过 ①，余额只够 2 个时，前 2 个成功，后 2 个各自显示“积分不足”。</li>
-    <li>这一步<b>完全不碰上游</b>，所以很快；闸门 ② ③ ④ 都不在这里。</li>
-    <li>同一次点击的网络重试复用幂等键，不会重复建任务、重复扣积分。</li>
-  </ul>
-</section>
+      <!-- 6 阶段 3：发请求 -->
+      <section class="slide" data-title="阶段 3 发请求">
+        <div class="kicker">05 · 阶段 3 · 发请求（闸门 ④ 渠道请求限流）</div>
+        <h2>每个发给上游的请求：先拿名额，再拿令牌</h2>
+        <svg viewBox="0 0 1144 150" width="1144" height="150">
+          <g class="n">
+            <rect x="0" y="40" width="170" height="64" rx="12" />
+            <text x="85" y="68" text-anchor="middle">插件构造请求</text>
+            <text x="85" y="88" text-anchor="middle" class="sub">沙箱池，几毫秒</text>
+          </g>
+          <path class="ar" d="M170,72 L208,72" />
+          <g class="gate">
+            <rect x="210" y="34" width="230" height="76" rx="10" />
+            <text x="325" y="60" text-anchor="middle">同时请求名额（信号量）</text>
+            <text x="325" y="82" text-anchor="middle">“最大并发”满了就等</text>
+          </g>
+          <path class="ar" d="M440,72 L478,72" />
+          <g class="gate">
+            <rect x="480" y="34" width="230" height="76" rx="10" />
+            <text x="595" y="60" text-anchor="middle">令牌（令牌桶）</text>
+            <text x="595" y="82" text-anchor="middle">每秒补 rps 个，没有就等</text>
+          </g>
+          <path class="ar" d="M710,72 L748,72" />
+          <g class="n">
+            <rect x="750" y="40" width="170" height="64" rx="12" />
+            <text x="835" y="68" text-anchor="middle">发 HTTP</text>
+            <text x="835" y="88" text-anchor="middle" class="sub">等响应</text>
+          </g>
+          <path class="ar" d="M920,72 L958,72" />
+          <g class="n">
+            <rect x="960" y="40" width="184" height="64" rx="12" />
+            <text x="1052" y="68" text-anchor="middle">收到响应</text>
+            <text x="1052" y="88" text-anchor="middle" class="sub">归还名额</text>
+          </g>
+        </svg>
+        <p class="small">
+          例子：最大并发 3、rps 2，瞬间有 6 个请求要发，每个请求 1.5 秒返回（黄色 = 在等，绿色 =
+          请求在路上）。
+        </p>
+        <div class="tl">
+          <div>请求 1</div>
+          <div class="track"><div class="seg go" style="left: 0; width: 25%">发出</div></div>
+          <div>请求 2</div>
+          <div class="track"><div class="seg go" style="left: 0; width: 25%">发出</div></div>
+          <div>请求 3</div>
+          <div class="track">
+            <div class="seg wait" style="left: 0; width: 8.3%">等</div>
+            <div class="seg go" style="left: 8.3%; width: 25%">发出（等了 0.5s 令牌）</div>
+          </div>
+          <div>请求 4</div>
+          <div class="track">
+            <div class="seg wait" style="left: 0; width: 25%">等名额</div>
+            <div class="seg go" style="left: 25%; width: 25%">发出</div>
+          </div>
+          <div>请求 5</div>
+          <div class="track">
+            <div class="seg wait" style="left: 0; width: 25%">等名额</div>
+            <div class="seg go" style="left: 25%; width: 25%">发出</div>
+          </div>
+          <div>请求 6</div>
+          <div class="track">
+            <div class="seg wait" style="left: 0; width: 33.3%">等名额 + 令牌</div>
+            <div class="seg go" style="left: 33.3%; width: 25%">发出</div>
+          </div>
+        </div>
+        <div class="axis">
+          <span>0s</span><span>1.5s</span><span>3s</span><span>4.5s</span><span>6s</span>
+        </div>
+        <p class="small">
+          桶容量 = rps（这里 2），所以一开始能连发 2
+          个。先拿名额再拿令牌：在等名额的请求不会白白消耗令牌。<b>这一层管的是请求，挡不住“上游同时生成多少个任务”</b>，那是闸门
+          ③ 的事。
+        </p>
+      </section>
 
-<!-- 5 阶段 2：领取 -->
-<section class="slide" data-title="阶段 2 领取">
-  <div class="kicker">04 · 阶段 2 · 领取（worker 每秒一次）</div>
-  <h2>worker 每秒醒来一次，决定处理哪些任务</h2>
-  <svg viewBox="0 0 1144 270" width="1144" height="270">
-    <g class="n"><rect x="0" y="20" width="170" height="64" rx="12"/><text x="85" y="48" text-anchor="middle">每秒 tick</text><text x="85" y="68" text-anchor="middle" class="sub">tick = 1s</text></g>
-    <path class="ar" d="M170,52 L208,52"/>
-    <g class="gate"><rect x="210" y="14" width="210" height="76" rx="10"/><text x="315" y="40" text-anchor="middle">② 空位 = 8 − 在处理的</text><text x="315" y="62" text-anchor="middle">0 个就什么都不领</text></g>
-    <path class="ar" d="M420,52 L458,52"/>
-    <g class="n"><rect x="460" y="20" width="250" height="64" rx="12"/><text x="585" y="48" text-anchor="middle">第一路：在途任务</text><text x="585" y="68" text-anchor="middle" class="sub">到点要查结果 / 转存的，照常领</text></g>
-    <path class="ar" d="M710,52 L748,52"/>
-    <text class="lbl" x="712" y="42">剩余空位</text>
-    <g class="gate new"><rect x="750" y="14" width="250" height="76" rx="10"/><text x="875" y="40" text-anchor="middle">③ 第二路：pending</text><text x="875" y="60" text-anchor="middle">每个渠道最多领 上限 − 占位</text><text x="875" y="80" text-anchor="middle" style="font-weight:400;font-size:12px">加锁，多实例不会一起超</text></g>
-    <path class="ar" d="M875,90 L875,140"/>
-    <g class="n"><rect x="700" y="142" width="350" height="64" rx="12"/><text x="875" y="170" text-anchor="middle">写 60 秒租约，交给执行池</text><text x="875" y="190" text-anchor="middle" class="sub">处理中每 20 秒续租；进程崩了，租约过期别人接手</text></g>
-    <path class="ar" d="M585,84 L585,174 L698,174"/>
-    <g class="st q"><rect x="210" y="142" width="300" height="64" rx="12"/><text x="360" y="170" text-anchor="middle">没领到的 pending</text><text x="360" y="190" text-anchor="middle" class="sub">留在库里，下一秒再看；画布：排队中</text></g>
-    <path class="ar" d="M315,90 L315,140" style="stroke-dasharray:3 3"/>
-    <text class="lbl" x="323" y="120">没空位</text>
-    <path class="ar" d="M790,90 L790,116 L460,116 L460,140" style="stroke-dasharray:3 3"/>
-    <text class="lbl" x="616" y="110">渠道满了</text>
-  </svg>
-  <div class="grid2">
-    <div class="card"><h3>为什么在途任务要先领、而且不受 ③ 影响</h3><p>只有查到结果，任务进入转存或结束，渠道的位置才会空出来。在途任务也排队的话，位置永远空不出来。</p></div>
-    <div class="card"><h3>现在没有 ③ 时</h3><p>第二路没有渠道余量这一步，pending 任务只要有空位就领走提交，上游满没满不知道。</p></div>
-  </div>
-</section>
+      <!-- 7 阶段 4：轮询 -->
+      <section class="slide" data-title="阶段 4 轮询">
+        <div class="kicker">06 · 阶段 4 · 等结果</div>
+        <h2>异步接口：提交拿到任务号，然后隔一段时间查一次</h2>
+        <div class="grid2" style="margin-top: 4px">
+          <div class="card">
+            <h3>查询节奏（插件声明，YSWG）</h3>
+            <ul>
+              <li>提交成功后 15 秒第一次查</li>
+              <li>之后每 15 秒一次，最长 30 秒，带 ±20% 抖动，避免大家同时查</li>
+              <li>
+                每次查询：被领走 → 过 ④ 发请求 → 不到 1 秒 → 排到下一次，<b>马上让出执行位</b>
+              </li>
+              <li>上游内部的排队、出图，我们这边都显示“生成中”</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>同步接口（文本、部分图片）</h3>
+            <ul>
+              <li>一次请求等到结果返回，没有轮询</li>
+              <li>这段时间一直占着执行位和 ④ 的同时请求名额</li>
+              <li>所以同步接口最容易把执行池占满，让别的任务“排队中”</li>
+            </ul>
+          </div>
+        </div>
+        <table>
+          <tr>
+            <th style="width: 22%">查询结果</th>
+            <th style="width: 22%">任务变成</th>
+            <th>接下来</th>
+          </tr>
+          <tr>
+            <td>还在排队 / 生成</td>
+            <td><code>queued</code> / <code>running</code></td>
+            <td>排到下一次查询，有进度就更新进度</td>
+          </tr>
+          <tr>
+            <td>成功，给了结果地址</td>
+            <td><code>finalizing</code></td>
+            <td>立刻安排转存（③ 的位置此刻就空出来了）</td>
+          </tr>
+          <tr>
+            <td>失败</td>
+            <td><code>failed</code></td>
+            <td>按失败类型给统一文案（审核不通过、平台繁忙…），退积分</td>
+          </tr>
+          <tr>
+            <td>查询请求本身出错（网络、5xx）</td>
+            <td>不变</td>
+            <td>退避后再查，不算失败</td>
+          </tr>
+        </table>
+      </section>
 
-<!-- 6 阶段 3：发请求 -->
-<section class="slide" data-title="阶段 3 发请求">
-  <div class="kicker">05 · 阶段 3 · 发请求（闸门 ④ 渠道请求限流）</div>
-  <h2>每个发给上游的请求：先拿名额，再拿令牌</h2>
-  <svg viewBox="0 0 1144 150" width="1144" height="150">
-    <g class="n"><rect x="0" y="40" width="170" height="64" rx="12"/><text x="85" y="68" text-anchor="middle">插件构造请求</text><text x="85" y="88" text-anchor="middle" class="sub">沙箱池，几毫秒</text></g>
-    <path class="ar" d="M170,72 L208,72"/>
-    <g class="gate"><rect x="210" y="34" width="230" height="76" rx="10"/><text x="325" y="60" text-anchor="middle">同时请求名额（信号量）</text><text x="325" y="82" text-anchor="middle">“最大并发”满了就等</text></g>
-    <path class="ar" d="M440,72 L478,72"/>
-    <g class="gate"><rect x="480" y="34" width="230" height="76" rx="10"/><text x="595" y="60" text-anchor="middle">令牌（令牌桶）</text><text x="595" y="82" text-anchor="middle">每秒补 rps 个，没有就等</text></g>
-    <path class="ar" d="M710,72 L748,72"/>
-    <g class="n"><rect x="750" y="40" width="170" height="64" rx="12"/><text x="835" y="68" text-anchor="middle">发 HTTP</text><text x="835" y="88" text-anchor="middle" class="sub">等响应</text></g>
-    <path class="ar" d="M920,72 L958,72"/>
-    <g class="n"><rect x="960" y="40" width="184" height="64" rx="12"/><text x="1052" y="68" text-anchor="middle">收到响应</text><text x="1052" y="88" text-anchor="middle" class="sub">归还名额</text></g>
-  </svg>
-  <p class="small">例子：最大并发 3、rps 2，瞬间有 6 个请求要发，每个请求 1.5 秒返回（黄色 = 在等，绿色 = 请求在路上）。</p>
-  <div class="tl">
-    <div>请求 1</div><div class="track"><div class="seg go" style="left:0;width:25%">发出</div></div>
-    <div>请求 2</div><div class="track"><div class="seg go" style="left:0;width:25%">发出</div></div>
-    <div>请求 3</div><div class="track"><div class="seg wait" style="left:0;width:8.3%">等</div><div class="seg go" style="left:8.3%;width:25%">发出（等了 0.5s 令牌）</div></div>
-    <div>请求 4</div><div class="track"><div class="seg wait" style="left:0;width:25%">等名额</div><div class="seg go" style="left:25%;width:25%">发出</div></div>
-    <div>请求 5</div><div class="track"><div class="seg wait" style="left:0;width:25%">等名额</div><div class="seg go" style="left:25%;width:25%">发出</div></div>
-    <div>请求 6</div><div class="track"><div class="seg wait" style="left:0;width:33.3%">等名额 + 令牌</div><div class="seg go" style="left:33.3%;width:25%">发出</div></div>
-  </div>
-  <div class="axis"><span>0s</span><span>1.5s</span><span>3s</span><span>4.5s</span><span>6s</span></div>
-  <p class="small">桶容量 = rps（这里 2），所以一开始能连发 2 个。先拿名额再拿令牌：在等名额的请求不会白白消耗令牌。<b>这一层管的是请求，挡不住“上游同时生成多少个任务”</b>，那是闸门 ③ 的事。</p>
-</section>
+      <!-- 8 阶段 5：转存结算 -->
+      <section class="slide" data-title="阶段 5 转存结算">
+        <div class="kicker">07 · 阶段 5 · 收尾</div>
+        <h2>转存、结算、退款</h2>
+        <svg viewBox="0 0 1144 200" width="1144" height="200">
+          <g class="st f">
+            <rect x="0" y="30" width="170" height="64" rx="12" />
+            <text x="85" y="58" text-anchor="middle">finalizing</text>
+            <text x="85" y="78" text-anchor="middle" class="sub">即将完成</text>
+          </g>
+          <path class="ar" d="M170,62 L208,62" />
+          <g class="n">
+            <rect x="210" y="30" width="230" height="64" rx="12" />
+            <text x="325" y="58" text-anchor="middle">下载结果，存进自己的存储</text>
+            <text x="325" y="78" text-anchor="middle" class="sub">占执行池，不占上游</text>
+          </g>
+          <path class="ar" d="M440,62 L478,62" />
+          <g class="st ok">
+            <rect x="480" y="30" width="250" height="64" rx="12" />
+            <text x="605" y="58" text-anchor="middle">succeeded，结算</text>
+            <text x="605" y="78" text-anchor="middle" class="sub">
+              扣冻结额；Token 计费扣实际用量
+            </text>
+          </g>
+          <path class="ar" d="M730,62 L768,62" />
+          <g class="n">
+            <rect x="770" y="30" width="230" height="64" rx="12" />
+            <text x="885" y="58" text-anchor="middle">回填到画布节点</text>
+            <text x="885" y="78" text-anchor="middle" class="sub">WebSocket 推送 + 对账</text>
+          </g>
+          <path class="ar bad" d="M325,94 L325,140" />
+          <g class="st bad">
+            <rect x="160" y="142" width="330" height="54" rx="12" />
+            <text x="325" y="166" text-anchor="middle">下载失败：退避重试，最多 10 次</text>
+            <text x="325" y="184" text-anchor="middle" class="sub">还不行就失败，积分全额退回</text>
+          </g>
+        </svg>
+        <table>
+          <tr>
+            <th style="width: 22%">结束方式</th>
+            <th style="width: 28%">积分</th>
+            <th>流水</th>
+          </tr>
+          <tr>
+            <td>成功（按次、按秒）</td>
+            <td>扣冻结额</td>
+            <td>settle 一笔</td>
+          </tr>
+          <tr>
+            <td>成功（按 Token）</td>
+            <td>扣 min(实际用量, 冻结额)，多冻结的退回</td>
+            <td>settle + refund 两笔</td>
+          </tr>
+          <tr>
+            <td>失败 / 超时 / 取消</td>
+            <td>冻结额全额退回</td>
+            <td>refund 一笔</td>
+          </tr>
+          <tr>
+            <td>提交时就失败（积分不足等）</td>
+            <td>没冻结，不涉及</td>
+            <td>无</td>
+          </tr>
+        </table>
+        <p class="small">
+          转存可能超过任务截止时间：上游已经出结果，允许额外 2
+          小时把它存下来，免得临近超时才出片的结果白白浪费。
+        </p>
+      </section>
 
-<!-- 7 阶段 4：轮询 -->
-<section class="slide" data-title="阶段 4 轮询">
-  <div class="kicker">06 · 阶段 4 · 等结果</div>
-  <h2>异步接口：提交拿到任务号，然后隔一段时间查一次</h2>
-  <div class="grid2" style="margin-top:4px">
-    <div class="card">
-      <h3>查询节奏（插件声明，YSWG）</h3>
-      <ul>
-        <li>提交成功后 15 秒第一次查</li>
-        <li>之后每 15 秒一次，最长 30 秒，带 ±20% 抖动，避免大家同时查</li>
-        <li>每次查询：被领走 → 过 ④ 发请求 → 不到 1 秒 → 排到下一次，<b>马上让出执行位</b></li>
-        <li>上游内部的排队、出图，我们这边都显示“生成中”</li>
-      </ul>
+      <!-- 9 状态机 -->
+      <section class="slide" data-title="状态与显示">
+        <div class="kicker">08 · 状态</div>
+        <h2>任务状态 → 画布显示</h2>
+        <svg viewBox="0 0 1144 220" width="1144" height="220">
+          <g class="st q">
+            <rect x="0" y="40" width="190" height="70" rx="12" />
+            <text x="95" y="68" text-anchor="middle">pending</text>
+            <text x="95" y="90" text-anchor="middle" class="sub">排队中 · 没调用上游</text>
+          </g>
+          <path class="ar" d="M190,75 L238,75" />
+          <text class="lbl" x="196" y="65">提交成功</text>
+          <g class="st r">
+            <rect x="240" y="40" width="160" height="70" rx="12" />
+            <text x="320" y="68" text-anchor="middle">queued</text>
+            <text x="320" y="90" text-anchor="middle" class="sub">生成中</text>
+          </g>
+          <path class="ar" d="M400,75 L448,75" />
+          <g class="st r">
+            <rect x="450" y="40" width="160" height="70" rx="12" />
+            <text x="530" y="68" text-anchor="middle">running</text>
+            <text x="530" y="90" text-anchor="middle" class="sub">生成中 · 有进度</text>
+          </g>
+          <path class="ar" d="M610,75 L658,75" />
+          <text class="lbl" x="616" y="65">出结果</text>
+          <g class="st f">
+            <rect x="660" y="40" width="180" height="70" rx="12" />
+            <text x="750" y="68" text-anchor="middle">finalizing</text>
+            <text x="750" y="90" text-anchor="middle" class="sub">即将完成</text>
+          </g>
+          <path class="ar" d="M840,75 L888,75" />
+          <g class="st ok">
+            <rect x="890" y="40" width="200" height="70" rx="12" />
+            <text x="990" y="68" text-anchor="middle">succeeded</text>
+            <text x="990" y="90" text-anchor="middle" class="sub">显示结果</text>
+          </g>
+          <path class="ar" d="M95,40 L95,18 L95,10" style="display: none" />
+          <path class="ar bad" d="M95,110 L95,160" />
+          <path class="ar bad" d="M320,110 L320,160" />
+          <path class="ar bad" d="M530,110 L530,160" />
+          <path class="ar bad" d="M750,110 L750,160" />
+          <g class="st bad">
+            <rect x="0" y="162" width="840" height="50" rx="12" />
+            <text x="420" y="186" text-anchor="middle">
+              failed / expired → 显示失败原因 + 积分已退回　　canceled → 回到空闲 + 积分已退回
+            </text>
+            <text x="420" y="204" text-anchor="middle" class="sub">
+              finalizing 不能取消；pending、queued、running 可以取消
+            </text>
+          </g>
+        </svg>
+        <div class="grid2">
+          <div class="card">
+            <h3>“排队中”只有一种来源：还没调用上游</h3>
+            <p>
+              执行池满（②）、渠道满（③，新增）、提交失败后在退避重试，这三种情况任务都是
+              <code>pending</code>。耗时不计，从提交给上游那一刻才开始计。
+            </p>
+          </div>
+          <div class="card">
+            <h3>“生成中”包括上游自己的排队</h3>
+            <p>
+              上游返回 queued 也显示生成中：已经交出去了，用户不需要分清上游内部在排队还是在出图。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10 例子 -->
+      <section class="slide" data-title="走一遍">
+        <div class="kicker">09 · 例子</div>
+        <h2>3 个用户同时点发送，会发生什么</h2>
+        <p class="small">
+          设置：用户进行中上限 4，执行池 8，YSWG 渠道最大同时生成 3（方案 A 之后），每秒请求数 5。A
+          生成 4 张，B 生成 4 张，C 生成 2 张。
+        </p>
+        <table>
+          <tr>
+            <th style="width: 12%">时间</th>
+            <th>发生了什么</th>
+            <th style="width: 28%">画布</th>
+          </tr>
+          <tr>
+            <td>0 秒</td>
+            <td>提交接口：A 4 个、B 4 个都没超过 ①（每人 4），C 2 个；共建 10 个任务，冻结积分</td>
+            <td>10 个节点都是排队中</td>
+          </tr>
+          <tr>
+            <td>1 秒</td>
+            <td>
+              tick：② 有 8 个空位；③ YSWG 只剩 3 个位置，按创建顺序领 A1、A2、A3；④ 每秒 5 个请求，3
+              个提交瞬间发出
+            </td>
+            <td>A1–A3 生成中，其余 7 个排队中</td>
+          </tr>
+          <tr>
+            <td>2–60 秒</td>
+            <td>
+              A1–A3 在上游生成；每 15 秒查一次，每次过 ④；③ 一直是 3/3，其他 pending
+              每秒都看一眼，领不到
+            </td>
+            <td>不变</td>
+          </tr>
+          <tr class="new">
+            <td>约 60 秒</td>
+            <td>A1 出结果进入 finalizing，不再占位；下一秒 ③ 有 1 个空位，领 A4</td>
+            <td>A1 即将完成 → 成功；A4 生成中</td>
+          </tr>
+          <tr>
+            <td>之后</td>
+            <td>每出一个结果放行一个，B1…B4、C1、C2 依次开始</td>
+            <td>最后一个大约 3 分多钟后完成</td>
+          </tr>
+        </table>
+        <div class="callout">
+          <p>
+            没有方案 A 时：1 秒时 8 个任务一起提交给 YSWG，账号同时生成上限如果是 3，就有 5
+            个会被上游拒绝，重试 5 次仍满就失败退款。
+          </p>
+        </div>
+      </section>
+
+      <!-- 11 配置速查 -->
+      <section class="slide" data-title="配置速查">
+        <div class="kicker">10 · 配置</div>
+        <h2>配置速查</h2>
+        <table style="margin-top: 2px">
+          <tr>
+            <th style="width: 30%">配置</th>
+            <th style="width: 12%">现在</th>
+            <th>作用</th>
+          </tr>
+          <tr>
+            <td><code>ai.max_active_tasks_per_user</code></td>
+            <td>4</td>
+            <td>闸门 ①：每个用户同时进行的任务数，超了直接拒绝</td>
+          </tr>
+          <tr>
+            <td><code>ai.worker.enabled</code></td>
+            <td>true</td>
+            <td>关掉后任务只建不执行，一直排队中</td>
+          </tr>
+          <tr>
+            <td><code>ai.worker.concurrency</code></td>
+            <td>8</td>
+            <td>闸门 ②：同时处理几个任务步骤。异步生图很少卡在这，同步的文本最容易卡</td>
+          </tr>
+          <tr>
+            <td><code>ai.worker.tick</code></td>
+            <td>1s</td>
+            <td>多久领一次任务。调大，排队中的任务多等几秒</td>
+          </tr>
+          <tr>
+            <td><code>ai.worker.batch_size</code></td>
+            <td>50</td>
+            <td>每次最多领几个，实际是 min(空位, 50)，空位只有 8 时用不上</td>
+          </tr>
+          <tr>
+            <td><code>ai.worker.lease</code></td>
+            <td>60s</td>
+            <td>任务被领走后的占用期，处理中自动续；进程崩了，过期后别人接手</td>
+          </tr>
+          <tr class="new">
+            <td>渠道页 · 最大同时生成数（新）</td>
+            <td>—</td>
+            <td>闸门 ③：这个渠道同时在上游生成的任务数，0 或空不限</td>
+          </tr>
+          <tr>
+            <td>渠道页 · 每秒请求数 / 最大并发</td>
+            <td>不限</td>
+            <td>闸门 ④：发给这个渠道的请求频率与同时在路上的请求数</td>
+          </tr>
+          <tr>
+            <td>模型 · 任务超时</td>
+            <td>30m</td>
+            <td>方案 A 之后：从提交给上游起算；排队另有排队超时</td>
+          </tr>
+        </table>
+        <p class="small">
+          <b>注意</b>：Docker 开发环境的后端读的是 <code>backend/configs/config.yaml</code>，不是
+          <code>config.local.yaml</code>（后者只在本机直接运行后端、并用
+          <code>-c</code> 指定时才生效）。改完保存，热重载后日志里“任务 worker 已启动”会打印新的
+          concurrency。② ④ 是每个后端进程各一份，开 2 个实例，实际是 2 倍；③
+          按数据库算，多实例也不会超。
+        </p>
+      </section>
+
+      <!-- 12 常见问题 -->
+      <section class="slide" data-title="常见问题">
+        <div class="kicker">11 · 常见问题</div>
+        <h2>常见问题</h2>
+        <div class="grid2" style="margin-top: 4px">
+          <div class="card">
+            <h3>把 concurrency 设成 2，为什么 4 个任务还能同时生成？</h3>
+            <p>
+              执行池管的是“处理步骤”：提交 1 秒就让出位置。4 个任务 2–3
+              秒内都提交完了，之后在上游生成不占执行池。要限制同时生成，用闸门 ③。
+            </p>
+          </div>
+          <div class="card">
+            <h3>渠道“最大并发”填 3，为什么挡不住？</h3>
+            <p>
+              它管同时在路上的请求。异步接口的请求只有一瞬，上游的生成不占名额。对同步接口它碰巧有效。
+            </p>
+          </div>
+          <div class="card">
+            <h3>一直“排队中”是哪里卡住了？</h3>
+            <p>
+              看后端日志和任务表：worker 没开 / 执行池被同步任务占满 / 渠道满（方案 A 后）/ 在等 ④
+              的令牌 / 提交失败在退避重试。只有最后一种日志里有“提交失败，稍后重试”。
+            </p>
+          </div>
+          <div class="card">
+            <h3>上游平台上看不到任务，画布却在“生成中”？</h3>
+            <p>
+              生成中说明已经拿到上游任务号（<code>provider_task_id</code>）。上游控制台的列表可能有延迟或分页，按任务号查最准。
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
-    <div class="card">
-      <h3>同步接口（文本、部分图片）</h3>
-      <ul>
-        <li>一次请求等到结果返回，没有轮询</li>
-        <li>这段时间一直占着执行位和 ④ 的同时请求名额</li>
-        <li>所以同步接口最容易把执行池占满，让别的任务“排队中”</li>
-      </ul>
+
+    <div id="nav">
+      <span id="title"></span>
+      <span>
+        <button id="prev" aria-label="上一页">←</button>
+        <span id="count" style="margin: 0 10px"></span>
+        <button id="next" aria-label="下一页">→</button>
+        <button id="theme" aria-label="切换明暗" style="margin-left: 10px">T</button>
+      </span>
     </div>
-  </div>
-  <table>
-    <tr><th style="width:22%">查询结果</th><th style="width:22%">任务变成</th><th>接下来</th></tr>
-    <tr><td>还在排队 / 生成</td><td><code>queued</code> / <code>running</code></td><td>排到下一次查询，有进度就更新进度</td></tr>
-    <tr><td>成功，给了结果地址</td><td><code>finalizing</code></td><td>立刻安排转存（③ 的位置此刻就空出来了）</td></tr>
-    <tr><td>失败</td><td><code>failed</code></td><td>按失败类型给统一文案（审核不通过、平台繁忙…），退积分</td></tr>
-    <tr><td>查询请求本身出错（网络、5xx）</td><td>不变</td><td>退避后再查，不算失败</td></tr>
-  </table>
-</section>
+    <div id="progress"></div>
 
-<!-- 8 阶段 5：转存结算 -->
-<section class="slide" data-title="阶段 5 转存结算">
-  <div class="kicker">07 · 阶段 5 · 收尾</div>
-  <h2>转存、结算、退款</h2>
-  <svg viewBox="0 0 1144 200" width="1144" height="200">
-    <g class="st f"><rect x="0" y="30" width="170" height="64" rx="12"/><text x="85" y="58" text-anchor="middle">finalizing</text><text x="85" y="78" text-anchor="middle" class="sub">即将完成</text></g>
-    <path class="ar" d="M170,62 L208,62"/>
-    <g class="n"><rect x="210" y="30" width="230" height="64" rx="12"/><text x="325" y="58" text-anchor="middle">下载结果，存进自己的存储</text><text x="325" y="78" text-anchor="middle" class="sub">占执行池，不占上游</text></g>
-    <path class="ar" d="M440,62 L478,62"/>
-    <g class="st ok"><rect x="480" y="30" width="250" height="64" rx="12"/><text x="605" y="58" text-anchor="middle">succeeded，结算</text><text x="605" y="78" text-anchor="middle" class="sub">扣冻结额；Token 计费扣实际用量</text></g>
-    <path class="ar" d="M730,62 L768,62"/>
-    <g class="n"><rect x="770" y="30" width="230" height="64" rx="12"/><text x="885" y="58" text-anchor="middle">回填到画布节点</text><text x="885" y="78" text-anchor="middle" class="sub">WebSocket 推送 + 对账</text></g>
-    <path class="ar bad" d="M325,94 L325,140"/>
-    <g class="st bad"><rect x="160" y="142" width="330" height="54" rx="12"/><text x="325" y="166" text-anchor="middle">下载失败：退避重试，最多 10 次</text><text x="325" y="184" text-anchor="middle" class="sub">还不行就失败，积分全额退回</text></g>
-  </svg>
-  <table>
-    <tr><th style="width:22%">结束方式</th><th style="width:28%">积分</th><th>流水</th></tr>
-    <tr><td>成功（按次、按秒）</td><td>扣冻结额</td><td>settle 一笔</td></tr>
-    <tr><td>成功（按 Token）</td><td>扣 min(实际用量, 冻结额)，多冻结的退回</td><td>settle + refund 两笔</td></tr>
-    <tr><td>失败 / 超时 / 取消</td><td>冻结额全额退回</td><td>refund 一笔</td></tr>
-    <tr><td>提交时就失败（积分不足等）</td><td>没冻结，不涉及</td><td>无</td></tr>
-  </table>
-  <p class="small">转存可能超过任务截止时间：上游已经出结果，允许额外 2 小时把它存下来，免得临近超时才出片的结果白白浪费。</p>
-</section>
-
-<!-- 9 状态机 -->
-<section class="slide" data-title="状态与显示">
-  <div class="kicker">08 · 状态</div>
-  <h2>任务状态 → 画布显示</h2>
-  <svg viewBox="0 0 1144 220" width="1144" height="220">
-    <g class="st q"><rect x="0" y="40" width="190" height="70" rx="12"/><text x="95" y="68" text-anchor="middle">pending</text><text x="95" y="90" text-anchor="middle" class="sub">排队中 · 没调用上游</text></g>
-    <path class="ar" d="M190,75 L238,75"/><text class="lbl" x="196" y="65">提交成功</text>
-    <g class="st r"><rect x="240" y="40" width="160" height="70" rx="12"/><text x="320" y="68" text-anchor="middle">queued</text><text x="320" y="90" text-anchor="middle" class="sub">生成中</text></g>
-    <path class="ar" d="M400,75 L448,75"/>
-    <g class="st r"><rect x="450" y="40" width="160" height="70" rx="12"/><text x="530" y="68" text-anchor="middle">running</text><text x="530" y="90" text-anchor="middle" class="sub">生成中 · 有进度</text></g>
-    <path class="ar" d="M610,75 L658,75"/><text class="lbl" x="616" y="65">出结果</text>
-    <g class="st f"><rect x="660" y="40" width="180" height="70" rx="12"/><text x="750" y="68" text-anchor="middle">finalizing</text><text x="750" y="90" text-anchor="middle" class="sub">即将完成</text></g>
-    <path class="ar" d="M840,75 L888,75"/>
-    <g class="st ok"><rect x="890" y="40" width="200" height="70" rx="12"/><text x="990" y="68" text-anchor="middle">succeeded</text><text x="990" y="90" text-anchor="middle" class="sub">显示结果</text></g>
-    <path class="ar" d="M95,40 L95,18 L95,10" style="display:none"/>
-    <path class="ar bad" d="M95,110 L95,160"/><path class="ar bad" d="M320,110 L320,160"/><path class="ar bad" d="M530,110 L530,160"/><path class="ar bad" d="M750,110 L750,160"/>
-    <g class="st bad"><rect x="0" y="162" width="840" height="50" rx="12"/><text x="420" y="186" text-anchor="middle">failed / expired → 显示失败原因 + 积分已退回　　canceled → 回到空闲 + 积分已退回</text><text x="420" y="204" text-anchor="middle" class="sub">finalizing 不能取消；pending、queued、running 可以取消</text></g>
-  </svg>
-  <div class="grid2">
-    <div class="card"><h3>“排队中”只有一种来源：还没调用上游</h3><p>执行池满（②）、渠道满（③，新增）、提交失败后在退避重试，这三种情况任务都是 <code>pending</code>。耗时不计，从提交给上游那一刻才开始计。</p></div>
-    <div class="card"><h3>“生成中”包括上游自己的排队</h3><p>上游返回 queued 也显示生成中：已经交出去了，用户不需要分清上游内部在排队还是在出图。</p></div>
-  </div>
-</section>
-
-<!-- 10 例子 -->
-<section class="slide" data-title="走一遍">
-  <div class="kicker">09 · 例子</div>
-  <h2>3 个用户同时点发送，会发生什么</h2>
-  <p class="small">设置：用户进行中上限 4，执行池 8，YSWG 渠道最大同时生成 3（方案 A 之后），每秒请求数 5。A 生成 4 张，B 生成 4 张，C 生成 2 张。</p>
-  <table>
-    <tr><th style="width:12%">时间</th><th>发生了什么</th><th style="width:28%">画布</th></tr>
-    <tr><td>0 秒</td><td>提交接口：A 4 个、B 4 个都没超过 ①（每人 4），C 2 个；共建 10 个任务，冻结积分</td><td>10 个节点都是排队中</td></tr>
-    <tr><td>1 秒</td><td>tick：② 有 8 个空位；③ YSWG 只剩 3 个位置，按创建顺序领 A1、A2、A3；④ 每秒 5 个请求，3 个提交瞬间发出</td><td>A1–A3 生成中，其余 7 个排队中</td></tr>
-    <tr><td>2–60 秒</td><td>A1–A3 在上游生成；每 15 秒查一次，每次过 ④；③ 一直是 3/3，其他 pending 每秒都看一眼，领不到</td><td>不变</td></tr>
-    <tr class="new"><td>约 60 秒</td><td>A1 出结果进入 finalizing，不再占位；下一秒 ③ 有 1 个空位，领 A4</td><td>A1 即将完成 → 成功；A4 生成中</td></tr>
-    <tr><td>之后</td><td>每出一个结果放行一个，B1…B4、C1、C2 依次开始</td><td>最后一个大约 3 分多钟后完成</td></tr>
-  </table>
-  <div class="callout"><p>没有方案 A 时：1 秒时 8 个任务一起提交给 YSWG，账号同时生成上限如果是 3，就有 5 个会被上游拒绝，重试 5 次仍满就失败退款。</p></div>
-</section>
-
-<!-- 11 配置速查 -->
-<section class="slide" data-title="配置速查">
-  <div class="kicker">10 · 配置</div>
-  <h2>配置速查</h2>
-  <table style="margin-top:2px">
-    <tr><th style="width:30%">配置</th><th style="width:12%">现在</th><th>作用</th></tr>
-    <tr><td><code>ai.max_active_tasks_per_user</code></td><td>4</td><td>闸门 ①：每个用户同时进行的任务数，超了直接拒绝</td></tr>
-    <tr><td><code>ai.worker.enabled</code></td><td>true</td><td>关掉后任务只建不执行，一直排队中</td></tr>
-    <tr><td><code>ai.worker.concurrency</code></td><td>8</td><td>闸门 ②：同时处理几个任务步骤。异步生图很少卡在这，同步的文本最容易卡</td></tr>
-    <tr><td><code>ai.worker.tick</code></td><td>1s</td><td>多久领一次任务。调大，排队中的任务多等几秒</td></tr>
-    <tr><td><code>ai.worker.batch_size</code></td><td>50</td><td>每次最多领几个，实际是 min(空位, 50)，空位只有 8 时用不上</td></tr>
-    <tr><td><code>ai.worker.lease</code></td><td>60s</td><td>任务被领走后的占用期，处理中自动续；进程崩了，过期后别人接手</td></tr>
-    <tr class="new"><td>渠道页 · 最大同时生成数（新）</td><td>—</td><td>闸门 ③：这个渠道同时在上游生成的任务数，0 或空不限</td></tr>
-    <tr><td>渠道页 · 每秒请求数 / 最大并发</td><td>不限</td><td>闸门 ④：发给这个渠道的请求频率与同时在路上的请求数</td></tr>
-    <tr><td>模型 · 任务超时</td><td>30m</td><td>方案 A 之后：从提交给上游起算；排队另有排队超时</td></tr>
-  </table>
-  <p class="small"><b>注意</b>：Docker 开发环境的后端读的是 <code>backend/configs/config.yaml</code>，不是 <code>config.local.yaml</code>（后者只在本机直接运行后端、并用 <code>-c</code> 指定时才生效）。改完保存，热重载后日志里“任务 worker 已启动”会打印新的 concurrency。② ④ 是每个后端进程各一份，开 2 个实例，实际是 2 倍；③ 按数据库算，多实例也不会超。</p>
-</section>
-
-<!-- 12 常见问题 -->
-<section class="slide" data-title="常见问题">
-  <div class="kicker">11 · 常见问题</div>
-  <h2>常见问题</h2>
-  <div class="grid2" style="margin-top:4px">
-    <div class="card"><h3>把 concurrency 设成 2，为什么 4 个任务还能同时生成？</h3><p>执行池管的是“处理步骤”：提交 1 秒就让出位置。4 个任务 2–3 秒内都提交完了，之后在上游生成不占执行池。要限制同时生成，用闸门 ③。</p></div>
-    <div class="card"><h3>渠道“最大并发”填 3，为什么挡不住？</h3><p>它管同时在路上的请求。异步接口的请求只有一瞬，上游的生成不占名额。对同步接口它碰巧有效。</p></div>
-    <div class="card"><h3>一直“排队中”是哪里卡住了？</h3><p>看后端日志和任务表：worker 没开 / 执行池被同步任务占满 / 渠道满（方案 A 后）/ 在等 ④ 的令牌 / 提交失败在退避重试。只有最后一种日志里有“提交失败，稍后重试”。</p></div>
-    <div class="card"><h3>上游平台上看不到任务，画布却在“生成中”？</h3><p>生成中说明已经拿到上游任务号（<code>provider_task_id</code>）。上游控制台的列表可能有延迟或分页，按任务号查最准。</p></div>
-  </div>
-</section>
-
-</div>
-
-<div id="nav">
-  <span id="title"></span>
-  <span>
-    <button id="prev" aria-label="上一页">←</button>
-    <span id="count" style="margin:0 10px"></span>
-    <button id="next" aria-label="下一页">→</button>
-    <button id="theme" aria-label="切换明暗" style="margin-left:10px">T</button>
-  </span>
-</div>
-<div id="progress"></div>
-
-<script>
-  // 幻灯片：← → / 空格 / PageUp PageDown / Home End 翻页，T 切明暗，地址栏 #n 记住页码
-  const slides = [...document.querySelectorAll(".slide")];
-  const stage = document.getElementById("stage");
-  let index = 0;
-  function fit() {
-    const s = Math.min(window.innerWidth / 1280, (window.innerHeight - 44) / 720);
-    stage.style.transform = `translate(-50%, calc(-50% - 22px)) scale(${s})`;
-  }
-  function show(i) {
-    index = Math.max(0, Math.min(slides.length - 1, i));
-    slides.forEach((el, n) => el.classList.toggle("active", n === index));
-    document.getElementById("count").textContent = `${index + 1} / ${slides.length}`;
-    document.getElementById("title").textContent = slides[index].dataset.title || "";
-    document.getElementById("progress").style.width = `${((index + 1) / slides.length) * 100}%`;
-    history.replaceState(null, "", `#${index + 1}`);
-  }
-  document.addEventListener("keydown", (e) => {
-    if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(index + 1); }
-    else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(index - 1); }
-    else if (e.key === "Home") show(0);
-    else if (e.key === "End") show(slides.length - 1);
-    else if (e.key.toLowerCase() === "t") toggleTheme();
-  });
-  function toggleTheme() {
-    const root = document.documentElement;
-    const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
-    root.dataset.theme = dark ? "light" : "dark";
-  }
-  document.getElementById("prev").onclick = () => show(index - 1);
-  document.getElementById("next").onclick = () => show(index + 1);
-  document.getElementById("theme").onclick = toggleTheme;
-  window.addEventListener("resize", fit);
-  fit();
-  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
-</script>
-</body>
+    <script>
+      // 幻灯片：← → / 空格 / PageUp PageDown / Home End 翻页，T 切明暗，地址栏 #n 记住页码
+      const slides = [...document.querySelectorAll(".slide")];
+      const stage = document.getElementById("stage");
+      let index = 0;
+      function fit() {
+        const s = Math.min(window.innerWidth / 1280, (window.innerHeight - 44) / 720);
+        stage.style.transform = `translate(-50%, calc(-50% - 22px)) scale(${s})`;
+      }
+      function show(i) {
+        index = Math.max(0, Math.min(slides.length - 1, i));
+        slides.forEach((el, n) => el.classList.toggle("active", n === index));
+        document.getElementById("count").textContent = `${index + 1} / ${slides.length}`;
+        document.getElementById("title").textContent = slides[index].dataset.title || "";
+        document.getElementById("progress").style.width = `${((index + 1) / slides.length) * 100}%`;
+        history.replaceState(null, "", `#${index + 1}`);
+      }
+      document.addEventListener("keydown", (e) => {
+        if (["ArrowRight", "PageDown", " "].includes(e.key)) {
+          e.preventDefault();
+          show(index + 1);
+        } else if (["ArrowLeft", "PageUp"].includes(e.key)) {
+          e.preventDefault();
+          show(index - 1);
+        } else if (e.key === "Home") show(0);
+        else if (e.key === "End") show(slides.length - 1);
+        else if (e.key.toLowerCase() === "t") toggleTheme();
+      });
+      function toggleTheme() {
+        const root = document.documentElement;
+        const dark = root.dataset.theme
+          ? root.dataset.theme === "dark"
+          : !matchMedia("(prefers-color-scheme: light)").matches;
+        root.dataset.theme = dark ? "light" : "dark";
+      }
+      document.getElementById("prev").onclick = () => show(index - 1);
+      document.getElementById("next").onclick = () => show(index + 1);
+      document.getElementById("theme").onclick = toggleTheme;
+      window.addEventListener("resize", fit);
+      fit();
+      show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+    </script>
+  </body>
 </html>

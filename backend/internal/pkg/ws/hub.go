@@ -477,6 +477,25 @@ func (h *Hub) SubscriberCount(channel string) int {
 	return len(h.channels[channel])
 }
 
+// DisconnectUser 立即断开某用户的全部连接（多标签页都断），返回被断开的连接数；用户没有连接时返回 0。
+// 用于封禁账号：已建立的连接不会再做鉴权，必须主动踢掉，否则被封用户还能继续收到推送。
+// 先在读锁内收集连接，释放锁后再 kill：kill 会关底层连接，读循环随之退出并走 unregister（要写锁），不能在持锁时调用。
+// 被踢的连接由 Serve 的收尾流程完成注销；客户端重连会在鉴权（ticket 签发走 RequireActive）处被拒绝。
+func (h *Hub) DisconnectUser(userID uint64) int {
+	h.mu.RLock()
+	set := h.channels[UserChannel(userID)]
+	targets := make([]*client, 0, len(set))
+	for c := range set {
+		targets = append(targets, c)
+	}
+	h.mu.RUnlock()
+
+	for _, c := range targets {
+		c.kill()
+	}
+	return len(targets)
+}
+
 // Shutdown 优雅关闭：拒绝新连接，通知所有连接关闭，并等待它们的 goroutine 全部退出。
 // ctx 超时后会强制断开剩余连接并返回 ctx.Err()。可重复调用。
 func (h *Hub) Shutdown(ctx context.Context) error {

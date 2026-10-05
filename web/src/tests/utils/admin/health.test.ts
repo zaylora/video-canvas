@@ -6,7 +6,7 @@ import type {
   PluginMeta,
   PluginVersionView,
   PluginView,
-} from "@/api/admin-ai/type";
+} from "@/api/admin/ai/type";
 import { adminTodos, channelHealth, modelHealth } from "@/utils/admin/health";
 
 const bearer: PluginMeta = { auth: { type: "bearer" }, endpoints: { video: { mode: "async" } } };

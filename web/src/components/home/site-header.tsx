@@ -19,9 +19,9 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { ThemeSetting } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { CreditsPill, useUsername } from "@/pages/canvas/chrome/top-right-bar";
+import { CreditsPill, useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
 import { useSettingsStore } from "@/store";
-import { removeToken } from "@/utils/storage/token";
+import { logout } from "@/utils/storage/session";
 
 const THEMES: { value: ThemeSetting; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "跟随系统", icon: Monitor },
@@ -33,6 +33,7 @@ const THEMES: { value: ThemeSetting; label: string; icon: typeof Sun }[] = [
 function AccountMenu() {
   const navigate = useNavigate();
   const username = useUsername();
+  const showAdmin = useCanEnterAdmin();
   const theme = useSettingsStore((state) => state.theme);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
 
@@ -72,18 +73,14 @@ function AccountMenu() {
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
-          <ShieldCheck />
-          管理后台
-        </DropdownMenuItem>
+        {showAdmin && (
+          <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
+            <ShieldCheck />
+            管理后台
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={() => {
-            removeToken();
-            navigate("/login", { replace: true });
-          }}
-        >
+        <DropdownMenuItem variant="destructive" onClick={logout}>
           <LogOut />
           退出登录
         </DropdownMenuItem>

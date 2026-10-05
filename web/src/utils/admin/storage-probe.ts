@@ -1,4 +1,4 @@
-import type { ProbeIssue, ProbeResult } from "@/api/admin-storage/type";
+import type { ProbeIssue, ProbeResult } from "@/api/admin/storage/type";
 
 /** 步骤的展示状态：通过、失败、按配置跳过、因前面失败没执行 */
 export type ProbeStepStatus = "ok" | "failed" | "skipped" | "notrun";

@@ -69,11 +69,9 @@ type JWT struct {
 
 // AI 生成任务相关配置。协议插件、渠道、模型、凭证不在这里，存在数据库里（见协议插件设计）。
 type AI struct {
-	MaxActiveTasksPerUser int          `mapstructure:"max_active_tasks_per_user"` // 每个用户进行中任务上限
-	InitialCredits        int          `mapstructure:"initial_credits"`           // 新用户初始积分
-	SecretKey             string       `mapstructure:"secret_key"`                // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
-	Worker                Worker       `mapstructure:"worker"`
-	PluginRunner          PluginRunner `mapstructure:"plugin_runner"`
+	SecretKey    string       `mapstructure:"secret_key"` // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
+	Worker       Worker       `mapstructure:"worker"`
+	PluginRunner PluginRunner `mapstructure:"plugin_runner"`
 }
 
 // PluginRunner 是 plugin-runner 进程（协议插件的沙箱执行环境）的部署与预算配置。

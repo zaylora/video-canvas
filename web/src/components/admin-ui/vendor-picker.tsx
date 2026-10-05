@@ -4,7 +4,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/admin-ui/popover";
 import { VENDORS, vendorOf } from "@/constants/vendors";
 import { cn } from "@/lib/utils";
 

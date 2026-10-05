@@ -560,7 +560,7 @@ func TestGenerationTaskRepo_Credit(t *testing.T) {
 	t.Run("InsertLedger 同 (task,type) 第二次 inserted=false", func(t *testing.T) {
 		u := gtNewUserID()
 		entry := func() *model.CreditLedger {
-			return &model.CreditLedger{UserID: u, TaskID: 777, Type: model.LedgerSettle, Amount: 3}
+			return &model.CreditLedger{UserID: u, TaskID: model.TaskIDPtr(777), Type: model.LedgerSettle, Amount: 3}
 		}
 		if ok, err := repo.InsertLedger(ctx, entry()); err != nil || !ok {
 			t.Fatalf("首次应插入：ok=%v err=%v", ok, err)
@@ -636,7 +636,7 @@ func TestGenerationTaskRepo_Credit(t *testing.T) {
 			if err := tx.AddCredit(ctx, u, -5, 0); err != nil {
 				return err
 			}
-			if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: 1, Type: model.LedgerSettle, Amount: 5}); err != nil {
+			if _, err := tx.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: model.TaskIDPtr(1), Type: model.LedgerSettle, Amount: 5}); err != nil {
 				return err
 			}
 			return boom
@@ -737,10 +737,10 @@ func TestGenerationTaskRepo_Reconcile(t *testing.T) {
 		if _, err := repo.InsertTask(ctx, tk); err != nil {
 			t.Fatal(err)
 		}
-		_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: tk.ID, Type: model.LedgerFreeze, Amount: tk.Credits})
+		_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: model.TaskIDPtr(tk.ID), Type: model.LedgerFreeze, Amount: tk.Credits})
 	}
-	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: settled.ID, Type: model.LedgerSettle, Amount: 4})
-	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: refunded.ID, Type: model.LedgerRefund, Amount: 6})
+	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: model.TaskIDPtr(settled.ID), Type: model.LedgerSettle, Amount: 4})
+	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, TaskID: model.TaskIDPtr(refunded.ID), Type: model.LedgerRefund, Amount: 6})
 	// 账户：冻结 10（active），余额 50 - 4
 	_ = repo.AddCredit(ctx, u, -4, 10)
 
@@ -748,8 +748,21 @@ func TestGenerationTaskRepo_Reconcile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile 失败：%v", err)
 	}
-	if rec.FrozenDiff() != 0 || rec.ActiveDiff() != 0 || rec.BalanceDiff(50) != 0 {
+	if rec.FrozenDiff() != 0 || rec.ActiveDiff() != 0 || rec.BalanceDiff() != 0 {
 		t.Fatalf("对账应零差异：%+v", rec)
+	}
+
+	// 管理员调整（+20）与 initial 一样进流水：余额 = Σinitial + Σadmin_adjust - Σsettle，调整后对账仍为 0
+	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, Type: model.LedgerAdminAdjust, Amount: 20, OperatorID: model.TaskIDPtr(1), Note: "补偿"})
+	_ = repo.AddCredit(ctx, u, 20, 0)
+	_, _ = repo.InsertLedger(ctx, &model.CreditLedger{UserID: u, Type: model.LedgerAdminAdjust, Amount: -5, OperatorID: model.TaskIDPtr(1), Note: "扣减"})
+	_ = repo.AddCredit(ctx, u, -5, 0)
+	rec, err = repo.Reconcile(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.InitialSum != 50 || rec.AdminAdjustSum != 15 || rec.BalanceDiff() != 0 {
+		t.Fatalf("管理员调整后对账应仍为 0：%+v diff=%d", rec, rec.BalanceDiff())
 	}
 
 	// 人为制造差异，确认对账能发现

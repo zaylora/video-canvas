@@ -1,4 +1,4 @@
-import type { ModelDraft } from "@/api/admin-ai/type";
+import type { ModelDraft } from "@/api/admin/ai/type";
 import type { Pricing } from "@/api/model/type";
 
 import { defaultCapabilities, defaultPricing } from "./model-template";

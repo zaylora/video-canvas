@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin-ai/type";
+import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin/ai/type";
 import {
   buildChannelRequest,
   channelFormFromView,
