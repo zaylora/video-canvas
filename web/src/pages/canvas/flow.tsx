@@ -56,6 +56,13 @@ import {
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
+import {
+  createViewportWriter,
+  loadViewport,
+  sameViewport,
+  saveViewport,
+} from "@/utils/canvas/viewport-store";
+import { getCurrentUserId } from "@/utils/storage/user-id";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
@@ -128,6 +135,28 @@ export const Flow = memo(function Flow({
   const changeSaveRef = useRef<boolean | null>(null);
   /** 已经见过的任务号：出现新的就要立刻存，刷新后才能对账回填 */
   const knownTaskIdsRef = useRef(new Set(taskIdsOf(initial.nodes)));
+  /**
+   * 视口是这台设备此刻看哪里，不是画布内容：平移缩放不触发保存，只防抖写进本机 localStorage，
+   * 刷新、返回再进来停在移动之后的位置；云端里的视口只在内容保存时顺带更新，用于第一次打开和换设备。
+   */
+  const userId = useMemo(() => getCurrentUserId(), []);
+  const appliedViewportRef = useRef(initial.viewport);
+  const viewportWriter = useMemo(
+    () =>
+      createViewportWriter((viewport) => {
+        if (userId) saveViewport(userId, canvas.id, viewport);
+      }),
+    [canvas.id, userId],
+  );
+  useEffect(() => {
+    // 页面隐藏、关闭、离开画布时把还没写的视口立刻写出去（localStorage 同步写，一定写得完）
+    const flushViewport = () => viewportWriter.flush();
+    window.addEventListener("pagehide", flushViewport);
+    return () => {
+      window.removeEventListener("pagehide", flushViewport);
+      viewportWriter.flush();
+    };
+  }, [viewportWriter]);
   // 保存发请求的那一刻才取图谱，视口也在这时读，所以平移缩放本身不用触发保存
   const getGraph = useCallback(
     () =>
@@ -545,8 +574,18 @@ export const Flow = memo(function Flow({
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onInit={() => {
-                    void setViewport(initial.viewport);
+                    // 本机视口优先于云端视口：刷新后停在移动之后的位置
+                    const local = userId ? loadViewport(userId, canvas.id) : null;
+                    appliedViewportRef.current = local ?? initial.viewport;
+                    void setViewport(appliedViewportRef.current);
                     hydratedRef.current = true;
+                  }}
+                  onMoveEnd={(_event, viewport) => {
+                    // 恢复视口那一下不算用户移动，别把云端视口写成本机视口
+                    if (!hydratedRef.current || sameViewport(appliedViewportRef.current, viewport))
+                      return;
+                    appliedViewportRef.current = viewport;
+                    viewportWriter.schedule(viewport);
                   }}
                   onNodeDragStart={(event, node, dragged) => {
                     overlayGate.onNodeDragStart(event, node, dragged);

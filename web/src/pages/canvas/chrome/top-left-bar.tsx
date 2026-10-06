@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
-  Circle,
   CloudAlert,
   LoaderCircle,
   Plus,
@@ -93,14 +92,13 @@ function CanvasTitle({ title, onRename }: { title: string; onRename: (title: str
 const SAVE_TEXT: Record<SaveStatus, string> = {
   loading: "加载中",
   saved: "已保存",
-  dirty: "未保存",
-  saving: "保存中",
+  saving: "正在保存",
   error: "保存失败 · 重试",
   conflict: "存在冲突",
 };
 
 /**
- * 保存状态：未保存是个低调的小圆点，点一下立即保存；保存中转圈，保存好的字 2 秒后收起只留勾，失败标红可点重试。
+ * 保存状态：正在保存转圈（连续编辑期间一直保持，不来回闪），保存好的字 2 秒后收起只留勾，失败标红可点重试。
  * 调用方以 status 作 key，状态一变就重挂，收起的计时从头算。
  */
 function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => void }) {
@@ -118,11 +116,9 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
         ? CloudAlert
         : status === "conflict"
           ? RefreshCw
-          : status === "dirty"
-            ? Circle
-            : Check;
+          : Check;
   const error = status === "error";
-  const clickable = error || status === "dirty";
+  const clickable = error;
 
   return (
     <button
@@ -133,17 +129,9 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
       className={cn(
         "text-muted-foreground flex h-8 items-center gap-1.5 rounded-full pr-2.5 pl-1.5 text-xs transition-colors",
         error && "text-destructive hover:bg-destructive/10 cursor-pointer",
-        status === "dirty" && "hover:bg-accent cursor-pointer",
       )}
     >
-      <Icon
-        className={cn(
-          "size-3.5 shrink-0",
-          status === "saving" && "animate-spin",
-          // 未保存只用一个实心小点，不要警告色，免得用户有压力
-          status === "dirty" && "size-2! fill-current",
-        )}
-      />
+      <Icon className={cn("size-3.5 shrink-0", status === "saving" && "animate-spin")} />
       <AnimatePresence>
         {!quiet && (
           <motion.span
