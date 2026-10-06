@@ -6,6 +6,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download && go install github.com/air-verse/air@latest
 
+# 画布 Agent 运行时需要 node（agent.enabled=true 时才用）；依赖在宿主机的 backend/agent-runtime 里 npm ci，源码是挂载进来的
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+
 ENV CGO_ENABLED=0 \
     GOFLAGS=-buildvcs=false
 

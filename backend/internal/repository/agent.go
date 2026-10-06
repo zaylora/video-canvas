@@ -139,6 +139,15 @@ func (r *AgentRepository) UpdateRunIf(ctx context.Context, id uint64, from []str
 	return &run, nil
 }
 
+// InterruptActiveRuns 把还停在 queued / running 的运行标为 interrupted，返回处理的条数。服务启动时调用：
+// 运行进程随旧服务一起没了，这些运行不会再有人推进，却占着画布。等审批和等回答的运行状态在库里，不受影响。
+func (r *AgentRepository) InterruptActiveRuns(ctx context.Context) (int64, error) {
+	res := r.db.WithContext(ctx).Model(&model.AgentRun{}).
+		Where("status IN ?", []string{model.RunQueued, model.RunRunning}).
+		Update("status", model.RunInterrupted)
+	return res.RowsAffected, res.Error
+}
+
 // AddRunUsage 原子地累加运行的步数和已花积分，运行不存在返回 ErrNotFound。
 func (r *AgentRepository) AddRunUsage(ctx context.Context, id uint64, steps, credits int) error {
 	res := r.db.WithContext(ctx).Model(&model.AgentRun{}).Where("id = ?", id).Updates(map[string]any{

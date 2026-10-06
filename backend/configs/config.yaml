@@ -55,6 +55,15 @@ ai:
     batch_size: 50 # 每次轮询任务的批量大小
     lease: 60s # worker 处理任务的租约时长，超过这个时间未完成的任务会被其他 worker 重新抢占
 
+agent:
+  # 画布 Agent。pi 的 agent 循环在独立的 Node 进程里跑（要求 Node >= 22.19，并在 agent-runtime 目录里 npm ci 装好依赖），
+  # 所以默认关闭，显式开启。渠道、模型、凭证和计费在后台的 AI 配置里（模型种类选 agent），不在这里。
+  enabled: false
+  node_path: node # node 可执行文件；不在 PATH 里时写绝对路径
+  runtime_dir: ./agent-runtime # 含 src/main.mjs 和 node_modules 的目录
+  bridge_addr: 127.0.0.1:0 # 桥的监听地址，必须是回环地址；0 表示随机端口。Node 进程通过它回调 Go（模型、工具、状态）
+  work_dir: "" # 每个运行片段的临时目录建在这里，为空用系统临时目录
+
 storage:
   # 对象存储（阿里云 OSS / 腾讯云 COS / S3 / Cloudflare R2）不在这里配，请到后台“存储配置”页面添加。
   # 这里只保留内置的本地磁盘（开发用，也是对象存储配好之前的兜底）和全局上限。

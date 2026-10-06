@@ -361,3 +361,40 @@ func TestAgentApprovals(t *testing.T) {
 		}
 	})
 }
+
+// 服务重启时，运行进程随旧服务一起没了：还停在 queued / running 的运行要标为中断，
+// 否则那个画布会被一个永远不会结束的运行占住；等审批、等回答的运行状态在库里，不受影响。
+func TestInterruptActiveRuns(t *testing.T) {
+	ctx := context.Background()
+	db := agentDB(t)
+	r := NewAgentRepository(db)
+	mk := func(canvas uint64, status string) *model.AgentRun {
+		s := newSession(t, r, 1, canvas)
+		return newRun(t, r, s, status)
+	}
+	queued, running := mk(1, model.RunQueued), mk(2, model.RunRunning)
+	waitingA, waitingI := mk(3, model.RunWaitingApproval), mk(4, model.RunWaitingInput)
+	done := mk(5, model.RunSucceeded)
+
+	n, err := r.InterruptActiveRuns(ctx)
+	if err != nil || n != 2 {
+		t.Fatalf("应只处理 queued 和 running 两个: n=%d err=%v", n, err)
+	}
+	status := func(id uint64) string {
+		var run model.AgentRun
+		db.First(&run, id)
+		return run.Status
+	}
+	if status(queued.ID) != model.RunInterrupted || status(running.ID) != model.RunInterrupted {
+		t.Error("queued 和 running 应变为 interrupted")
+	}
+	if status(waitingA.ID) != model.RunWaitingApproval || status(waitingI.ID) != model.RunWaitingInput || status(done.ID) != model.RunSucceeded {
+		t.Error("等审批、等回答和已结束的运行不能动")
+	}
+	if n, _ := r.InterruptActiveRuns(ctx); n != 0 {
+		t.Errorf("重复执行是幂等的: %d", n)
+	}
+	// 中断之后画布空出来了，可以开新的运行
+	s := newSession(t, r, 1, 1)
+	newRun(t, r, s, model.RunQueued)
+}

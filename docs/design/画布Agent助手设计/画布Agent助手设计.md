@@ -742,8 +742,8 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 - 剧本创编模式里 `update_node` 改的是不是文本节点没有查（要读画布），只限制了操作种类，是已知的限制。
 - 画布目录和运行参数只在用户消息里给一次；同一个片段里后续回合不刷新，模型靠工具结果知道自己改了什么，需要时再调 `canvas_get_state`。
 
-**还没做（装配与上线）**
+**还没做（装配已完成，见下两条；以下是剩余项）**
 
-- 配置开关（`agent.enabled`、Node 路径、runtime 目录）、桥的监听装配（绑定 127.0.0.1）、`ProcessRuntime` 接进 `app.go`（目前仍是 `NoAgentRuntime`，所以对用户来说功能还是关着的）。
-- Docker 镜像装 Node 22 和 `agent-runtime` 依赖。
+- 已装配：配置开关 `agent.enabled`（默认关）、Node 路径、runtime 目录；桥只绑定 127.0.0.1（配置校验和监听时各查一次）；`ProcessRuntime` 已接进 `app.go`，启动时自检 Node 版本，并把上次遗留的活跃运行标为 `interrupted`。开启还需要在后台发布 `agent` 类型的模型。
+- 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `backend/agent-runtime` 里 `npm ci`。
 - 上面列的缺失工具、技能库、后台管理页面。

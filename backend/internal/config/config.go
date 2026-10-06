@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ type Config struct {
 	JWT      JWT      `mapstructure:"jwt"`
 	AI       AI       `mapstructure:"ai"`
 	Storage  Storage  `mapstructure:"storage"`
+	Agent    Agent    `mapstructure:"agent"`
 }
 
 type Server struct {
@@ -65,6 +67,48 @@ type JWT struct {
 	Secret      string `mapstructure:"secret"`
 	Issuer      string `mapstructure:"issuer"`
 	ExpireHours int    `mapstructure:"expire_hours"`
+}
+
+// Agent 是画布 Agent 的运行时配置。它依赖 Node（pi 的 agent 循环在独立的 Node 进程里跑），所以默认关闭，要显式开启。
+// 渠道、模型、凭证和计费都在后台的 AI 配置里，不在这里。
+type Agent struct {
+	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
+	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
+	RuntimeDir string `mapstructure:"runtime_dir"` // agent-runtime 目录（含 src/main.mjs 和已安装的 node_modules），默认 ./agent-runtime
+	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，必须是回环地址，默认 127.0.0.1:0（随机端口）
+	WorkDir    string `mapstructure:"work_dir"`    // 每个运行片段的临时目录建在这里，默认系统临时目录
+}
+
+// WithDefaults 补上没配置的项。
+func (a Agent) WithDefaults() Agent {
+	if a.NodePath == "" {
+		a.NodePath = "node"
+	}
+	if a.RuntimeDir == "" {
+		a.RuntimeDir = "./agent-runtime"
+	}
+	if a.BridgeAddr == "" {
+		a.BridgeAddr = "127.0.0.1:0"
+	}
+	return a
+}
+
+// Validate 校验启用时的配置。桥的端点用一次性令牌鉴权，但它只该被本机的 Node 进程访问，
+// 所以监听地址必须是回环地址：配成 0.0.0.0 或外网地址，令牌之外就没有任何屏障了，直接拒绝启动。
+func (a Agent) Validate() error {
+	if !a.Enabled {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(a.WithDefaults().BridgeAddr)
+	if err != nil {
+		return fmt.Errorf("agent.bridge_addr 必须是 host:port 形式: %w", err)
+	}
+	if host != "localhost" {
+		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+			return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问", host)
+		}
+	}
+	return nil
 }
 
 // AI 生成任务相关配置。协议插件、渠道、模型、凭证不在这里，存在数据库里（见协议插件设计）。
@@ -145,6 +189,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "ai.secret_key", "storage.driver",
+		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {
@@ -154,6 +199,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	cfg.Agent = cfg.Agent.WithDefaults()
+	if err := cfg.Agent.Validate(); err != nil {
+		return nil, err
 	}
 	return &cfg, nil
 }

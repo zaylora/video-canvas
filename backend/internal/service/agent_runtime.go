@@ -47,7 +47,8 @@ type segment struct {
 	proc   Proc
 	token  string
 	dir    string
-	exited chan struct{} // 进程退出并清理完后关闭
+	exited chan struct{} // 进程退出并清理完后关闭（续跑要等它：它退出才意味着历史已保存）
+	done   chan struct{} // 退出后的状态修正（标为中断等）也做完后关闭（服务退出要等它，之后才能关库）
 }
 
 // ProcessRuntime 是 AgentRuntime 的真正实现：每个运行片段起一个 Node 进程，跑完即退出。
@@ -169,7 +170,7 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 		r.mu.Unlock()
 		return errors.New("这个运行已经有一个进程在跑")
 	}
-	seg := &segment{exited: make(chan struct{})}
+	seg := &segment{exited: make(chan struct{}), done: make(chan struct{})}
 	r.segs[run.ID] = seg
 	r.mu.Unlock()
 	release := func() { r.mu.Lock(); delete(r.segs, run.ID); r.mu.Unlock() }
@@ -218,6 +219,7 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 // watch 等进程退出，然后清理；进程没有报告结束就没了、而运行还是 running，标为中断，用户可以点「继续」。
 // 报告过结束的进程（包括因等审批而 paused 的）退出是正常的，不能碰运行状态：运行可能已经被续跑放回 running。
 func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
+	defer close(seg.done)
 	exit := <-seg.proc.Done()
 	// 令牌已被 Finish 收回，说明进程正常报告过结束；还在说明它没报告就没了（崩溃、被杀）。
 	// 必须在收回令牌之前判断
@@ -304,8 +306,8 @@ func (r *ProcessRuntime) Shutdown() {
 	}
 	for _, s := range segs {
 		select {
-		case <-s.exited:
-		case <-time.After(3 * time.Second):
+		case <-s.done: // 等状态修正也做完，调用方随后才能关库
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
