@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本地优先保存设计</title>
+<style>
+:root {
+  --bg: #f6f6f4; --surface: #ffffff; --surface-2: #f0f0ed; --text: #1c1c1a; --muted: #6b6b66;
+  --border: #deded9; --accent: #2f5bea; --accent-soft: #e6ecfd; --ok: #1a7f4b; --ok-soft: #e1f3e9;
+  --warn: #a05a00; --warn-soft: #fbefd9; --bad: #c0352b; --bad-soft: #fbe5e2; --local: #7a3fd1; --local-soft: #eee4fb;
+  --shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --text: #ecece8; --muted: #9a9a93;
+    --border: #34342f; --accent: #7a9bff; --accent-soft: #1f2a4d; --ok: #55c98c; --ok-soft: #14301f;
+    --warn: #e0a24a; --warn-soft: #36290f; --bad: #ff7f74; --bad-soft: #3a1a17; --local: #b58cff; --local-soft: #2a1f44;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141413; --surface: #1d1d1b; --surface-2: #262624; --text: #ecece8; --muted: #9a9a93;
+  --border: #34342f; --accent: #7a9bff; --accent-soft: #1f2a4d; --ok: #55c98c; --ok-soft: #14301f;
+  --warn: #e0a24a; --warn-soft: #36290f; --bad: #ff7f74; --bad-soft: #3a1a17; --local: #b58cff; --local-soft: #2a1f44;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em; }
+code { background: var(--surface-2); padding: .1em .4em; border-radius: 4px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+header.hero { padding: 40px 0 20px; }
+header.hero h1 { font-size: 30px; line-height: 1.25; margin: 0 0 10px; }
+header.hero p { margin: 0; color: var(--muted); max-width: 760px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chip { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
+.chip b { color: var(--text); font-weight: 600; }
+nav.toc { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+nav.toc .wrap { display: flex; gap: 4px; overflow-x: auto; padding-top: 8px; padding-bottom: 8px; }
+nav.toc a { white-space: nowrap; font-size: 13px; color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; }
+nav.toc a:hover { background: var(--surface-2); color: var(--text); }
+section { padding: 36px 0 8px; }
+section > h2 { font-size: 21px; margin: 0 0 14px; }
+section > h2 .no { color: var(--muted); font-weight: 500; margin-right: 8px; }
+h3 { font-size: 16px; margin: 22px 0 8px; }
+p { margin: 8px 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 760px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--surface-2); font-weight: 600; font-size: 13px; }
+tr:last-child td { border-bottom: 0; }
+.tablewrap { overflow-x: auto; }
+.tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; margin-right: 4px; white-space: nowrap; }
+.tag.fact { background: var(--ok-soft); color: var(--ok); }
+.tag.prop { background: var(--warn-soft); color: var(--warn); }
+.tag.dec { background: var(--accent-soft); color: var(--accent); }
+.tag.unv { background: var(--surface-2); color: var(--muted); }
+ul, ol { padding-left: 1.3em; margin: 8px 0; }
+li { margin: 3px 0; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 14px; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+
+/* flow */
+.flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+.flow .step { flex: 1 1 150px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 140px; }
+.flow .step h4 { margin: 0 0 4px; font-size: 14px; }
+.flow .step p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.flow .arrow { align-self: center; padding: 0 6px; color: var(--muted); font-size: 12px; text-align: center; min-width: 74px; }
+.flow .arrow b { display: block; color: var(--text); font-size: 12.5px; }
+.step.mem { border-top: 3px solid var(--muted); }
+.step.loc { border-top: 3px solid var(--local); }
+.step.cld { border-top: 3px solid var(--accent); }
+@media (max-width: 760px) { .flow { flex-direction: column; } .flow .arrow { transform: rotate(90deg); padding: 10px 0; } }
+
+/* simulator */
+.sim { display: grid; grid-template-columns: 1.05fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .sim { grid-template-columns: 1fr; } }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+.toolbar .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+.toolbar .lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+button {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 11px; cursor: pointer; line-height: 1.3;
+}
+button:hover:not(:disabled) { background: var(--surface-2); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+button.danger { color: var(--bad); }
+button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.mock { position: relative; height: 250px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background:
+  radial-gradient(circle, var(--border) 1px, transparent 1.2px) 0 0 / 18px 18px, var(--surface); }
+.mock .stage { position: absolute; inset: 0; transition: transform .25s ease; }
+.mock .node { position: absolute; width: 74px; height: 44px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); font-size: 11px; display: grid; place-items: center; color: var(--muted); }
+.mock .node.new { animation: pop .35s ease; border-color: var(--accent); }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.mock .off { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--surface) 88%, transparent); text-align: center; color: var(--muted); padding: 20px; }
+.statusbar {
+  position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 6px; font-size: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px 4px 8px; color: var(--muted);
+}
+.statusbar.err { color: var(--bad); border-color: var(--bad); cursor: pointer; }
+.statusbar.conf { color: var(--warn); border-color: var(--warn); }
+.statusbar .ic { width: 12px; height: 12px; display: inline-block; }
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: absolute; right: 10px; top: 10px; max-width: 58%; font-size: 12px; background: var(--ok-soft); color: var(--ok); border-radius: 8px; padding: 6px 10px; }
+.banner { position: absolute; left: 0; right: 0; bottom: 0; font-size: 12px; background: var(--warn-soft); color: var(--warn); padding: 6px 12px; }
+.dialog { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; padding: 14px; }
+.dialog .box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; max-width: 360px; }
+.dialog h5 { margin: 0 0 6px; font-size: 14px; }
+.dialog p { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.dialog .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.stores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+@media (max-width: 560px) { .stores { grid-template-columns: 1fr; } }
+.store { border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; background: var(--surface); font-size: 12.5px; }
+.store h5 { margin: 0 0 4px; font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; }
+.store.mem h5 { color: var(--muted); } .store.loc h5 { color: var(--local); } .store.cld h5 { color: var(--accent); }
+.store dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; }
+.store dt { color: var(--muted); } .store dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.bar { height: 5px; background: var(--surface-2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: currentColor; transition: width .1s linear; }
+.store.loc .bar { color: var(--local); } .store.cld .bar { color: var(--accent); }
+.bar-label { font-size: 11px; color: var(--muted); margin-top: 3px; min-height: 16px; }
+.timeline { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 10px 4px; }
+.timeline svg { width: 100%; height: 150px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--muted); padding: 4px 2px 6px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.log { margin-top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; height: 168px; overflow-y: auto; font-size: 12.5px; }
+.log div { padding: 2px 0; border-bottom: 1px dashed var(--border); }
+.log div:last-child { border-bottom: 0; }
+.log .t { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.log .l { color: var(--local); } .log .c { color: var(--accent); } .log .e { color: var(--bad); } .log .o { color: var(--ok); }
+.scen { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 10px; }
+.scen button { text-align: left; padding: 9px 11px; }
+.scen button small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.pill { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); margin-left: 6px; }
+footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>画布保存：本地优先，再同步云端</h1>
+    <p>改动先高频写进浏览器 IndexedDB，再以较长的间隔上传云端。关页、断网、崩溃都不丢内容；云端保持停手 3 秒、最长 10 秒（现状是 3 秒 / 30 秒）。下面有一个可以操作的模拟器，先玩一遍再看设计。</p>
+    <div class="meta">
+      <span class="chip"><b>设计面</b> 项目与版本</span>
+      <span class="chip"><b>状态</b> 设计稿，未改代码</span>
+      <span class="chip"><b>日期</b> 2026-10-06</span>
+      <span class="chip"><b>参考</b> 影策 ddcat-ai/open-ai-canvas</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#sum">摘要</a><a href="#demo">模拟器</a><a href="#now">项目现状</a><a href="#plan">推荐方案</a><a href="#data">数据结构</a>
+  <a href="#states">状态与异常</a><a href="#eng">工程影响</a><a href="#trade">取舍</a><a href="#mvp">MVP</a><a href="#open">待确认</a><a href="#src">来源</a>
+</div></nav>
+
+<main class="wrap">
+
+<section id="sum">
+  <h2><span class="no">1</span>设计摘要</h2>
+  <div class="card">
+    <p><b>问题</b>：现在改动要等云端窗口（停手 3 秒、最长 30 秒）才保存。窗口内关页、崩溃、断网，改动就没了；窗口调短又会让云端请求变密（每次都是整张图谱全量 PUT）。</p>
+    <p><b>方案</b>：保存拆成两层，各管一件事。</p>
+    <div class="flow" style="margin-top:12px">
+      <div class="step mem"><h4>内存（编辑器）</h4><p>用户正在操作的图谱，随时变。</p></div>
+      <div class="arrow"><b>0.3 秒</b>合并窗口</div>
+      <div class="step loc"><h4>本地 IndexedDB 草稿</h4><p>防丢层。几乎每次操作都落盘，不依赖网络。</p></div>
+      <div class="arrow"><b>停手 3 秒</b>最长 10 秒</div>
+      <div class="step cld"><h4>云端 <code>PUT /canvas/:id</code></h4><p>共享层。带 <code>revision</code> 乐观锁，成功后清掉草稿。</p></div>
+    </div>
+    <p style="margin-top:14px"><b>已确认的决定</b></p>
+    <ul>
+      <li><span class="tag dec">用户确认</span>本地 0.3 秒、云端停手 3 秒且最长 10 秒（用户后改：原先定的是 10 秒 / 60 秒）。</li>
+      <li><span class="tag dec">用户确认</span>下次打开发现草稿比云端新：基准版本一致就<b>自动恢复并补传</b>。</li>
+      <li><span class="tag dec">用户确认</span>状态栏只有「正在保存 / 已保存」，云端上传时不额外提示；只有失败、冲突才变色。</li>
+      <li><span class="tag dec">用户确认</span>同一画布在两个标签页打开：后打开的只读，提示「已在另一个标签页打开」。</li>
+      <li><span class="tag dec">用户确认</span>退出画布必须强制保存一次；移动视窗不触发保存，刷新后仍停在移动之后的位置（视口单独存本机，见 4.5）。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="demo">
+  <h2><span class="no">2</span>可操作的模拟器</h2>
+  <p>时间是虚拟的，可以加速。试几个场景：<b>快速点几下「新增节点」</b>看本地先落盘、云端 3 秒后才上传；<b>上传前点「关闭页面」再「重新打开」</b>看草稿自动恢复；<b>打开「断网」</b>看失败重试。这是对设计规则的模拟，不是真实代码。</p>
+
+  <div class="card">
+    <div class="toolbar">
+      <span class="lbl">操作</span>
+      <button id="b-add" class="primary">新增节点</button>
+      <button id="b-type">连续输入文字</button>
+      <button id="b-pan">平移视窗（不触发保存）</button>
+      <button id="b-refresh">刷新页面</button>
+      <span class="sep"></span>
+      <span class="lbl">退出</span>
+      <button id="b-leave">返回列表</button>
+      <button id="b-close">关闭页面</button>
+      <button id="b-open">重新打开画布</button>
+    </div>
+    <div class="toolbar">
+      <span class="lbl">环境</span>
+      <button id="b-net">网络：正常</button>
+      <button id="b-big">画布体积：小（&lt;60KB）</button>
+      <button id="b-other">另一台设备改了云端</button>
+      <button id="b-tab2">另开一个标签页</button>
+      <span class="sep"></span>
+      <span class="lbl">速度</span>
+      <button class="spd on" data-s="1">1×</button><button class="spd" data-s="5">5×</button><button class="spd" data-s="10">10×</button>
+      <button id="b-pause">暂停</button>
+      <button id="b-reset" class="danger">重置</button>
+    </div>
+
+    <div class="sim">
+      <div>
+        <div class="mock" id="mock">
+          <div class="stage" id="stage"></div>
+          <div class="statusbar" id="status" role="status" aria-live="polite"></div>
+          <div class="toast" id="toast" hidden></div>
+          <div class="banner" id="banner" hidden></div>
+          <div class="off" id="off" hidden></div>
+          <div class="dialog" id="dialog" hidden>
+            <div class="box">
+              <h5>画布在别处被修改过</h5>
+              <p>云端版本比你本地基于的版本新。你的本地草稿还在，不会丢。</p>
+              <div class="row"><button id="d-copy">另存为副本</button><button id="d-load" class="primary">加载最新</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="stores">
+          <div class="store mem"><h5>内存</h5><dl><dt>改动数</dt><dd id="m-edits">0</dd><dt>视口</dt><dd id="m-vp">0</dd><dt>本机视口</dt><dd id="m-vpl">0</dd></dl></div>
+          <div class="store loc"><h5>IndexedDB 草稿<span class="pill" id="l-pill">无</span></h5>
+            <dl><dt>改动数</dt><dd id="l-edits">–</dd><dt>基准版本</dt><dd id="l-base">–</dd></dl>
+            <div class="bar"><i id="l-bar"></i></div><div class="bar-label" id="l-label"></div></div>
+          <div class="store cld"><h5>云端<span class="pill" id="c-pill">空闲</span></h5>
+            <dl><dt>改动数</dt><dd id="c-edits">0</dd><dt>revision</dt><dd id="c-rev">3</dd></dl>
+            <div class="bar"><i id="c-bar"></i></div><div class="bar-label" id="c-label"></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="timeline">
+          <svg id="tl" viewBox="0 0 520 150" preserveAspectRatio="none" aria-label="三层保存时间线"></svg>
+          <div class="legend">
+            <span><i style="background:var(--muted)"></i>操作</span>
+            <span><i style="background:var(--local)"></i>本地写入</span>
+            <span><i style="background:var(--accent)"></i>云端上传</span>
+            <span><i style="background:var(--bad)"></i>失败 / 冲突</span>
+            <span>窗口：最近 90 秒（虚拟）</span>
+          </div>
+        </div>
+        <div class="log" id="log" aria-label="事件日志"></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>建议的试玩顺序</h3>
+  <div class="scen">
+    <button data-scen="1">① 日常编辑<small>点 3 次「新增节点」，看本地几乎立即写入，云端晚 3 秒才上传。</small></button>
+    <button data-scen="2">② 上传前关页<small>新增节点后马上「关闭页面」→「重新打开」，看自动恢复并补传。</small></button>
+    <button data-scen="3">③ 大画布关页<small>切到「大」，新增节点后关页：keepalive 发不出，但本地草稿兜住。</small></button>
+    <button data-scen="4">④ 断网编辑<small>断网后编辑：状态栏仍是「已保存」（本地）；云端首次失败不提示，约 5 秒后重试仍失败才变红。</small></button>
+    <button data-scen="5">⑤ 云端被别处改过<small>点「另一台设备改了云端」，再编辑等上传，触发冲突弹窗。</small></button>
+    <button data-scen="6">⑥ 只动视窗再刷新<small>「平移视窗」不产生任何保存；「刷新页面」后视窗仍在移动之后的位置。</small></button>
+  </div>
+  <p style="font-size:13px;color:var(--muted)">点场景按钮会自动重置并替你执行前几步，之后你可以接着手动操作。</p>
+</section>
+
+<section id="now">
+  <h2><span class="no">3</span>项目现状</h2>
+  <p>以下均来自 2026-10-06 对仓库代码的阅读（你撤销之前的改动后，代码是原样）。</p>
+  <div class="tablewrap"><table>
+    <tr><th>类别</th><th>内容</th><th>证据</th></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>云端保存是整张图谱全量 <code>PUT /canvas/:id</code>，带 <code>revision</code>；409 进入冲突弹窗（加载最新 / 另存为）。</td><td><code>web/src/api/canvas/index.ts</code>、<code>web/src/hooks/use-canvas-persistence.ts</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td><b>保存是整图替换，不是差量</b>：前端每次序列化全部节点，后端 service 把 <code>payload_json</code> 整字段写入，仓储层 <code>Updates(fields)</code> 整列覆盖。</td><td><code>web/src/utils/canvas/canvas-persistence.ts</code>（<code>serializeGraph</code>）、<code>backend/internal/service/canvas_project*.go</code>、<code>backend/internal/repository/canvas_project.go</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>云端窗口：停手 3000ms、最长 30000ms；同一时刻只有一个在途请求；失败自动重试 5s / 15s / 30s。</td><td><code>web/src/utils/canvas/save-schedule.ts</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>退出：<code>pagehide</code>/<code>visibilitychange</code> 走 keepalive（体积 ≤ 60KB）；<code>beforeunload</code> 有未保存时弹确认；路由卸载时 <code>flush()</code> 不等结果。</td><td><code>use-canvas-persistence.ts</code>、<code>save-schedule.ts</code>（<code>canKeepalive</code>）</td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>带新 <code>taskId</code> 的任务提交后立即 <code>flush()</code>，否则刷新后无法对账回填。</td><td><code>web/src/pages/canvas/flow.tsx</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>打开画布只有 <code>getCanvas(id)</code>，没有本地草稿；画布以 <code>id:version</code> 作 key 挂载。</td><td><code>web/src/pages/canvas/index.tsx</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>前端无 IndexedDB 相关依赖（无 localforage / idb / dexie）；有 zustand；路由是 <code>createBrowserRouter</code>。</td><td><code>web/package.json</code></td></tr>
+    <tr><td><span class="tag fact">事实</span></td><td>已有设计「自动保存节奏设计」把云端定为停手后再存；本方案是在它前面加本地层，并把云端窗口拉长。</td><td><code>docs/design/自动保存节奏设计/</code></td></tr>
+    <tr><td><span class="tag fact">缺口</span></td><td>云端窗口内关页、崩溃、断网会丢改动；大于 60KB 的画布关页 keepalive 发不出，只剩浏览器确认兜底。</td><td>同上</td></tr>
+  </table></div>
+
+  <h3>影策的做法（读源码所得，访问于 2026-10-06）</h3>
+  <ul>
+    <li><span class="tag fact">事实</span>本地：状态一变，400ms 防抖写入 IndexedDB（localForage），带待写队列，失败保留重试。</li>
+    <li><span class="tag fact">事实</span>云端：内容变化后 1200ms 防抖；只同步有变化的画布；重试 2/4/8/16/30 秒；之后点「立即重试」。</li>
+    <li><span class="tag fact">事实</span>视口不算内容变化（比较时排除 <code>viewport</code>）。</li>
+    <li><span class="tag fact">事实</span>冲突先三方合并，同一字段被两边改才算冲突，此时本地内容存成草稿。</li>
+    <li><span class="tag fact">事实</span>我没在它的前端找到 <code>pagehide</code>、<code>sendBeacon</code>、<code>keepalive</code>；关页只靠 <code>beforeunload</code> 在「正在同步」时弹确认，防丢靠本地 IndexedDB。</li>
+  </ul>
+  <div class="note"><b>借鉴什么、不借鉴什么</b>：借「本地先落盘」和「视口不算内容」。不借三方合并和 1000 多行的同步层，因为这里是单画布、后端 <code>revision</code> 乐观锁为准，复杂度不匹配。</div>
+</section>
+
+<section id="plan">
+  <h2><span class="no">4</span>推荐方案</h2>
+
+  <h3>4.1 触发规则</h3>
+  <div class="tablewrap"><table>
+    <tr><th>事件</th><th>本地草稿</th><th>云端</th></tr>
+    <tr><td>打字、增删节点、连线、拖拽松手、撤销/重做、任务结果回填</td><td>标脏，停手 <b>0.3 秒</b> 写入（最长 1 秒）</td><td>标脏，停手 <b>3 秒</b> 上传（最长 <b>10 秒</b>）</td></tr>
+    <tr><td>拖拽过程中、选中、测量尺寸</td><td>不触发</td><td>不触发</td></tr>
+    <tr><td>平移、缩放视窗</td><td>不触发草稿；视口单独存 localStorage（200ms 防抖），见 4.5</td><td>不触发，也不显示「正在保存」</td></tr>
+    <tr><td>提交生成任务拿到 <code>taskId</code></td><td>立即写入</td><td><b>立即上传</b>（沿用现有约束）</td></tr>
+    <tr><td><b>返回列表、卸载画布</b></td><td><b>强制写入</b>，同步等完成</td><td>立即补传，在后台进行，不阻塞跳转</td></tr>
+    <tr><td><b>关页、刷新、切后台</b></td><td><b>强制写入</b></td><td>keepalive 尽力发；体积超 60KB 就放弃，靠本地草稿兜底</td></tr>
+    <tr><td>Ctrl/Cmd+S、点「重试」</td><td>立即写入</td><td>立即上传</td></tr>
+    <tr><td>改画布名</td><td>—</td><td>保持现状：等在途保存落地后立即发送</td></tr>
+  </table></div>
+
+  <h3>4.2 打开画布：对账规则</h3>
+  <div class="tablewrap"><table>
+    <tr><th>本地草稿</th><th>条件</th><th>行为</th></tr>
+    <tr><td>无</td><td>—</td><td>直接用云端版本，与现在一致</td></tr>
+    <tr><td>有，且已同步（<code>cloudDirty=false</code>）</td><td>—</td><td>丢弃草稿，用云端版本</td></tr>
+    <tr><td>有，未同步</td><td>草稿的 <code>baseVersion</code> = 云端当前 <code>revision</code></td><td><b>自动恢复并补传</b>，右上角提示「已恢复上次未同步的改动」（用户确认）</td></tr>
+    <tr><td>有，未同步</td><td><code>baseVersion</code> ≠ 云端 <code>revision</code></td><td>云端在别处被改过：打开云端最新版本，并弹现有冲突弹窗（加载最新 / 另存为），不静默覆盖。选完后草稿删除（选「另存为」会先把草稿内容存成副本）。内容与云端相同的草稿直接丢弃，不误报冲突。</td></tr>
+  </table></div>
+
+  <h3>4.3 状态栏（用户确认）</h3>
+  <div class="grid3">
+    <div class="card"><b>正在保存</b><br><span style="color:var(--muted);font-size:13px">改动后立即出现，转圈；连续编辑期间一直保持，不随每次 0.3 秒写入来回闪。</span></div>
+    <div class="card"><b>已保存</b><br><span style="color:var(--muted);font-size:13px">最后一次写入后静默 0.8 秒才出现，2 秒后收成对勾。云端上传在后台静默进行，不额外提示。</span></div>
+    <div class="card"><b style="color:var(--bad)">云端保存失败 · 重试</b> / <b style="color:var(--warn)">存在冲突</b><br><span style="color:var(--muted);font-size:13px">只有异常才变色。云端失败要重试一次仍失败才变红；冲突立即显示。内容都在本地，可点重试。</span></div>
+  </div>
+  <h3>状态栏防抖（用户确认）</h3>
+  <div class="tablewrap"><table>
+    <tr><th>转换</th><th>规则</th></tr>
+    <tr><td>已保存 → 正在保存</td><td><b>立即</b>：改动一发生就显示，用户操作后马上有反馈。</td></tr>
+    <tr><td>正在保存 → 已保存</td><td><b>防抖</b>：最后一次本地写入完成后，静默 0.8 秒才切换；期间又有改动或写入，计时重来。</td></tr>
+    <tr><td>云端失败</td><td><b>延后显示（用户确认）</b>：第一次失败不变色，第一次自动重试（约 5 秒后）仍失败才变红「云端保存失败 · 重试」。变红后保持到成功才恢复，避免红色闪烁。内容此时已在本地草稿，晚几秒提示不会丢内容。</td></tr>
+    <tr><td>冲突（409）</td><td><b>立即显示</b>：不是瞬时问题，重试也不会好，不延后。</td></tr>
+  </table></div>
+  <p style="font-size:13.5px;color:var(--muted)">0.8 秒是我定的初值（比 0.3 秒写入窗口略长一个节拍，足以盖住连续编辑的间隙），可以调。「已保存」收成对勾的 2 秒计时从切换那一刻开始。</p>
+  <div class="note warn"><b>要注意</b>：「已保存」现在指「已存到这台浏览器」，不代表云端已有。换设备立刻打开可能看不到最新改动，最久滞后 10 秒。这是你选择安静状态栏的代价，在第 8 节里列为已接受的取舍。</div>
+
+  <h3>4.4 多标签页（用户确认）</h3>
+  <p>每张画布用 Web Locks（<code>navigator.locks</code>）加锁，键为 <code>canvas:{userId}:{canvasId}</code>。先打开的标签页持有锁可编辑；后打开的拿不到锁，<b>不渲染画布</b>，改显示一个提示页「这张画布已在另一个标签页打开」（附「返回画布列表」按钮），同时排队等锁。先开的标签页关闭后，锁自动释放，后开的自动接管并按正常流程打开画布（含草稿对账）。</p>
+  <p style="font-size:13.5px;color:var(--muted)">实现时的取舍：设计稿原写「只读」，但画布里节点上的输入框、生成按钮、快捷键很多，没法安全地全部禁用，漏一个就会写出冲突的草稿，所以改成提示页而不是只读画布。浏览器不支持 Web Locks 时不拦着用户，直接放行。</p>
+
+  <h3>4.5 视口：只移动、刷新后仍停在原位置</h3>
+  <p>视口是「这台设备此刻看哪里」，属于视图状态，不是画布内容。所以<b>不走保存链路</b>，单独存一份：</p>
+  <div class="tablewrap"><table>
+    <tr><th>项</th><th>做法</th></tr>
+    <tr><td>存哪</td><td><code>localStorage</code>，键 <code>viewport:{userId}:{canvasId}</code>，值 <code>{x, y, zoom}</code>，几十字节。</td></tr>
+    <tr><td>何时写</td><td>平移缩放结束（<code>onMoveEnd</code>）后约 200ms 防抖写入。</td></tr>
+    <tr><td>不触发什么</td><td>不标脏、不排云端、不动 <code>revision</code>、不显示「正在保存」、不写草稿。</td></tr>
+    <tr><td>打开时取哪个</td><td>本机视口 &gt; 云端 <code>payload.viewport</code> &gt; 默认视图。</td></tr>
+    <tr><td>云端视口</td><td>仍随内容保存一起带上，只用于「这台设备第一次打开」和换设备时的初始位置。</td></tr>
+    <tr><td>刷新、关页、返回列表</td><td>都不需要额外动作，因为每次移动已经落地。</td></tr>
+  </table></div>
+  <ul>
+    <li><span class="tag dec">用户确认</span>需求：只移动视口、刷新窗口后仍停在移动之后的位置。</li>
+    <li><span class="tag prop">提案</span>为什么用 localStorage 而不是 IndexedDB：同步写入，<code>pagehide</code> 里也一定写得完；视口只有几十字节，不需要异步。</li>
+    <li><span class="tag prop">提案</span>为什么<b>不放进草稿</b>：草稿在云端同步成功后会被清除，刷新时就只剩云端旧视口，位置会跳回去。</li>
+    <li><span class="tag prop">提案</span>本机视口指向的区域已经没有任何节点（比如别的设备删光了）：自动「适应全部内容」，避免一片空白。</li>
+    <li><span class="tag prop">提案</span>清理：退出登录清该用户全部视口记录；画布删除时一并清；超过 30 天未打开的清理。</li>
+    <li><span class="tag prop">提案</span>localStorage 不可用（隐私模式等）：退回云端视口，即只有内容保存时才更新，用户基本无感。</li>
+    <li>换设备打开，看到的是云端最近一次内容保存时的视口，不是最后移动的位置。视口本来就是每台设备自己的视角，作为已接受的取舍。</li>
+    <li><span class="tag fact">事实</span>影策比较内容时排除 <code>viewport</code>（<code>canvas-content.ts</code>），做法一致；tldraw 的 document/session 划分<span class="tag unv">未验证</span>。</li>
+  </ul>
+</section>
+
+<section id="data">
+  <h2><span class="no">5</span>数据结构</h2>
+  <p>草稿存同一份图谱 JSON，和云端 <code>payload_json</code> 一致，<b>不需要改后端、不改 payload</b>。</p>
+<pre class="card mono" style="overflow-x:auto;margin:0"><code>// IndexedDB: 库 video-canvas，对象仓库 canvas-drafts，主键 `${userId}:${canvasId}`
+{
+  schemaVersion: 1,
+  graph: CanvasGraphDto,     // 与 PUT 的 payload_json 同构；其中 viewport 只是上次内容保存时的值，打开时以本机视口为准
+  baseVersion: number,       // 这份草稿基于云端哪个 revision
+  cloudDirty: boolean,       // true = 还没上传成功
+  savedAt: number            // 本地写入时间，用于清理过期草稿
+}</code></pre>
+  <ul>
+    <li><span class="tag prop">提案</span>云端确认成功后，若期间没有新改动，把 <code>cloudDirty</code> 置 false 并删除草稿；有新改动就保留，<code>baseVersion</code> 更新为新 revision。</li>
+    <li><span class="tag prop">提案</span>主键带 <code>userId</code>：换账号看不到上一个人的草稿；退出登录时清空该用户全部草稿（草稿含用户创作内容，共享电脑上必须清）。</li>
+    <li><span class="tag prop">提案</span>清理：打开画布列表时，删除 <code>savedAt</code> 超过 30 天且已同步的草稿。</li>
+    <li><span class="tag prop">提案</span>容量：单个草稿写入失败（配额、隐私模式禁用 IndexedDB）时降级为仅云端保存，并在状态栏保持原样；见第 6 节。</li>
+  </ul>
+</section>
+
+<section id="states">
+  <h2><span class="no">6</span>状态与异常</h2>
+  <div class="tablewrap"><table>
+    <tr><th>情形</th><th>行为</th></tr>
+    <tr><td>首次打开 / 无草稿</td><td>与现在完全一致。</td></tr>
+    <tr><td>本地写入失败（配额满、隐私模式、浏览器禁用）</td><td>降级为只走云端，窗口不变（3 秒 / 10 秒，本来就比现状短）；控制台警告，不打扰用户。</td></tr>
+    <tr><td>云端上传失败（断网、5xx）</td><td>第一次失败状态栏不变色；第一次自动重试（5 秒后）仍失败才变红「云端保存失败 · 重试」；自动重试 5/15/30 秒，<code>online</code> 事件立即重试；内容仍在本地草稿。</td></tr>
+    <tr><td>云端 409 冲突</td><td>弹现有冲突弹窗；冲突期间<b>本地仍继续写草稿</b>，云端暂停上传；选「加载最新」放弃本地改动，选「另存为」把本地内容存成副本；两种选择之后草稿都删除，免得下次打开又弹一次。没有查看备份的界面，所以不留备份。</td></tr>
+    <tr><td>关页时大画布</td><td>keepalive 超 60KB 放弃；本地草稿已在 <code>pagehide</code> 强制写入，下次打开自动恢复。<span class="tag unv">未验证</span>pagehide 时异步 IndexedDB 写入的完成率，需浏览器实测。</td></tr>
+    <tr><td>关页发生在 0.3 秒窗口内</td><td><code>pagehide</code> 先强制写草稿，缩小到「写入未完成就被杀」的极小概率窗口。</td></tr>
+    <tr><td>退出登录</td><td>先尽力把打开着的画布同步到云端（超时 1.5 秒不卡住退出）；<b>同步完才清空该用户全部草稿</b>，视口记录总是清掉。没同步完（断网、冲突）的草稿保留，按用户隔离，下次登录同一账号还能恢复，不会被别人看到。</td></tr>
+    <tr><td>草稿损坏 / schemaVersion 不认识</td><td>忽略草稿，用云端版本，记录警告。</td></tr>
+    <tr><td>撤销/重做</td><td>按普通改动处理，走同一套窗口（用户确认）。</td></tr>
+    <tr><td>权限</td><td>不变；后端仍按 <code>user_id</code> 隔离，草稿主键含 <code>userId</code>。</td></tr>
+  </table></div>
+</section>
+
+<section id="eng">
+  <h2><span class="no">7</span>数据与工程影响</h2>
+  <div class="grid2">
+    <div class="card">
+      <b>可复用</b>
+      <ul>
+        <li><code>use-canvas-persistence.ts</code> 的 <code>exclusive</code> 串行、重试、冲突流程原样保留。</li>
+        <li><code>save-schedule.ts</code> 的 <code>nextSaveDelay</code> 是纯函数，两层各用一组参数即可复用。</li>
+        <li><code>getGraph()</code> 发请求那一刻才序列化，本地写入和云端上传共用。</li>
+        <li>现有冲突弹窗、<code>canKeepalive</code> 不变。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <b>需要新增</b>
+      <ul>
+        <li>草稿存取模块：读、写、删、按用户清空（IndexedDB 薄封装）。</li>
+        <li>第二个调度器：本地 0.3 秒/最长 1 秒。</li>
+        <li><code>canvas/index.tsx</code> 加载时对账（4.2）。</li>
+        <li>卸载与 <code>pagehide</code> 强制写入；<code>useBlocker</code> 非必需（本地兜底后不用拦截路由）。</li>
+        <li>Web Locks 多标签页提示页。</li>
+      </ul>
+    </div>
+  </div>
+  <ul>
+    <li><b>API / payload / revision</b>：本阶段不改。云端最长窗口从 30 秒缩到 10 秒，请求会比现在更密，单次大小不变（仍是整图替换，见第 3 节）。</li>
+    <li><b>主要难点</b>：对账的边界（4.2 第四行）、<code>baseVersion</code> 在上传成功后要及时更新、本地写入与云端上传各自的在途控制。</li>
+    <li><b>测试（TDD）</b>：对账规则、调度窗口、草稿清理、冲突期间继续写草稿都是纯逻辑，可在 <code>web/src/tests/</code> 用假 IndexedDB 做单测；真实浏览器行为（pagehide 写入、Web Locks）需人工点测。</li>
+  </ul>
+  <h3>阶段四预研：差量上传</h3>
+  <p><span class="tag dec">用户确认</span>差量上传排到阶段四，草稿层先上。以下是预研，不是本次范围。</p>
+<pre class="card mono" style="overflow-x:auto;margin:0"><code>PATCH /canvas/:id
+{ revision, ops: [
+  { op: "upsertNode", node },  { op: "removeNode", id },
+  { op: "upsertEdge", edge },  { op: "removeEdge", id },
+  { op: "setMeta", appearance }          // 视口不在这里，见 4.5
+]}</code></pre>
+  <ul>
+    <li><span class="tag prop">提案</span><b>前端</b>：发请求那一刻，拿「上次云端确认的快照」和当前图谱按节点 id 比对算出 ops，不需要追踪每个事件；与「发请求时才序列化」的现有思路一致。</li>
+    <li><span class="tag prop">提案</span><b>后端</b>：事务内读 <code>payload_json</code>、校验 <code>revision</code>、按 id 套用 ops、写回、<code>revision + 1</code>。数据库写入仍是整列，省的是网络上传和前端序列化，不是数据库开销。</li>
+    <li><span class="tag prop">提案</span><b>幂等</b>：upsert / remove 按 id，重发不会重复。「请求成功、响应丢了」时重试会拿旧 <code>revision</code> 撞自己的写入，全量 PUT 现在也有这个问题，需要幂等键或「版本相同视为已应用」。</li>
+    <li><span class="tag prop">提案</span><b>顺带收益</b>：差量包通常很小，大画布关页时 keepalive 的 60KB 上限基本不再是问题。</li>
+    <li><b>代价</b>：前后端都要新写，要测 diff 与套用和全量结果一致；ops 仍基于确切 <code>revision</code>，不一致仍 409，「改不同节点自动合并」是后续能力，不是白送的。</li>
+  </ul>
+  <h3>依赖：IndexedDB 封装</h3>
+  <p><span class="tag dec">用户确认</span>引用库，选定 <b>idb</b>。以下为调研（npm registry 与 bundlephobia，访问于 2026-10-06）。</p>
+  <div class="tablewrap"><table>
+    <tr><th>候选</th><th>版本 / 许可证</th><th>最近发布</th><th>周下载</th><th>gzip</th><th>说明</th></tr>
+    <tr><td><b>idb</b>（选定）</td><td>8.0.4 / ISC</td><td>2026-10-06</td><td>约 3094 万</td><td>约 1.4KB</td><td>IndexedDB 的 Promise 封装，支持索引和游标；按 <code>savedAt</code> 清理过期草稿、按 <code>userId</code> 前缀清空都能直接做</td></tr>
+    <tr><td>idb-keyval</td><td>6.3.0 / Apache-2.0</td><td>2026-07-08</td><td>约 1144 万</td><td>约 0.8KB</td><td>最小，键值读写够用；没有索引，清理要遍历键。我的推荐，用户改选了 idb</td></tr>
+    <tr><td>localforage</td><td>1.10.0 / Apache-2.0</td><td>2022-06-19</td><td>约 1027 万</td><td>未查到</td><td>影策在用；近 4 年无新版，解压 467KB，多后端能力用不上</td></tr>
+    <tr><td>dexie</td><td>4.4.6 / Apache-2.0</td><td>2026-09-10</td><td>约 294 万</td><td>约 31KB</td><td>带查询和版本迁移的完整数据库层，对「每张画布一条草稿」过重</td></tr>
+  </table></div>
+  <ul>
+    <li><b>能覆盖</b>：打开库、建对象仓库、按主键读写删、游标遍历；schema 升级用 <code>upgrade</code> 回调，对应草稿的 <code>schemaVersion</code>。</li>
+    <li><b>仍需自写</b>：草稿的读写封装函数、按用户清空和过期清理、写入失败降级、与调度器的衔接。这些是业务逻辑，任何库都不替代。</li>
+    <li><b>集成成本</b>：纯前端库，不碰后端、<code>payload_json</code>、<code>revision</code>；与 Vite 8、TypeScript 6 无冲突（<span class="tag unv">未验证</span>未实际安装试用）。</li>
+    <li><b>风险</b>：库本身很薄，锁定风险低；主要风险是 IndexedDB 本身在隐私模式、配额满时不可用，见第 6 节降级。</li>
+    <li><b>选择 idb 的理由</b>：用户确认。取舍是体积比 idb-keyval 大约 0.6KB，换来索引和游标，清理逻辑更自然。</li>
+  </ul>
+</section>
+
+<section id="trade">
+  <h2><span class="no">8</span>方案取舍</h2>
+  <div class="grid3">
+    <div class="card"><b>A. 本地优先两层（推荐）</b><p style="font-size:13.5px;margin:6px 0 0">本地 0.3 秒落盘，云端 3 秒 / 10 秒。</p></div>
+    <div class="card"><b>B. 只缩短云端窗口</b><p style="font-size:13.5px;margin:6px 0 0">你上次撤销的做法：云端 0.3 秒。简单，但请求变密，大画布关页仍丢。</p></div>
+    <div class="card"><b>C. 影策式完整同步层</b><p style="font-size:13.5px;margin:6px 0 0">本地库为主，云端是副本，字段级三方合并。最强，改动量也最大。</p></div>
+  </div>
+  <h3>决策矩阵</h3>
+  <p style="font-size:13.5px;color:var(--muted)">权重沿用已有设计里用户确认的优先级（不丢内容 &gt; 改动最小 ≈ 体验安静），默认权重 3/2/2/1；分数 1–5 是我的判断，不是实测。</p>
+  <div class="tablewrap"><table>
+    <tr><th>维度（权重）</th><th>A 本地优先</th><th>B 缩短云端</th><th>C 影策式</th></tr>
+    <tr><td>不丢内容（3）</td><td>5</td><td>2</td><td>5</td></tr>
+    <tr><td>云端请求量（2）</td><td>3</td><td>1</td><td>3</td></tr>
+    <tr><td>改动量小（2）</td><td>3</td><td>5</td><td>1</td></tr>
+    <tr><td>跨设备及时性（1）</td><td>4</td><td>5</td><td>3</td></tr>
+    <tr><th>加权合计</th><th>31</th><th>23</th><th>26</th></tr>
+  </table></div>
+  <h3>明确放弃</h3>
+  <ul>
+    <li>字段级三方合并：冲突仍整体二选一，沿用现有弹窗。</li>
+    <li>增量/patch 保存接口：本阶段云端仍全量 PUT，已排入阶段四（见第 9 节）。</li>
+    <li>两个标签页同时编辑同一画布。</li>
+    <li>状态栏区分「本地已存 / 云端已同步」。</li>
+  </ul>
+  <h3>已接受的代价</h3>
+  <ul>
+    <li>云端最多落后 10 秒，换设备立刻打开可能看不到最新改动。</li>
+    <li>草稿存在浏览器里，换浏览器或清站点数据就没了；它只是防丢层，不是备份。</li>
+    <li>共享电脑上草稿含创作内容，靠「按用户隔离 + 退出登录清空」缓解。</li>
+  </ul>
+</section>
+
+<section id="mvp">
+  <h2><span class="no">9</span>MVP 与后续</h2>
+  <div class="tablewrap"><table>
+    <tr><th>阶段</th><th>范围</th><th>验收条件</th></tr>
+    <tr><td><b>一</b></td><td>草稿存取 + 本地调度 0.3 秒 + 云端窗口改 3s/10s + 退出强制落盘 + 视口单独存本机</td><td>编辑后 0.5 秒内草稿已写入；云端上传在停手 3 秒后、连续编辑最长 10 秒内发出；只移动视窗后刷新、返回再进来，视口仍在移动之后的位置，且全程没有网络请求。</td></tr>
+    <tr><td><b>二</b></td><td>打开对账：自动恢复并补传；冲突沿用现有弹窗；退出登录清草稿</td><td>上传前关页再打开，改动完整恢复并在后台补传；版本对不上时不静默覆盖；换账号看不到上一个人的草稿。</td></tr>
+    <tr><td><b>三</b>（已实现）</td><td>Web Locks 多标签页提示页；写入失败降级；过期草稿清理；去掉 <code>beforeunload</code> 确认</td><td>第二个标签页显示提示页，且另一个标签页关闭后自动接管；禁用 IndexedDB 时仍能正常保存到云端；关页不再弹浏览器确认（草稿不可用时除外）；画布删除时本机草稿和视口一起清掉，打开列表时清理已同步且超过 30 天的草稿。</td></tr>
+    <tr><td><b>四</b></td><td>差量上传：新增 <code>PATCH /canvas/:id</code>，按节点 id 传 ops（第 7 节）</td><td>只改一个节点时请求体只含该节点；大画布关页 keepalive 能发出；幂等重发不产生重复数据；与全量 PUT 的结果逐字段一致。</td></tr>
+    <tr><td>后续</td><td>字段级自动合并、跨设备实时同步</td><td>不在本次范围。</td></tr>
+  </table></div>
+</section>
+
+<section id="open">
+  <h2><span class="no">10</span>待确认问题</h2>
+  <p>原先的 4 项已全部由用户确认：</p>
+  <ol>
+    <li><span class="tag dec">已确认</span><b>退出不再阻塞等云端</b>：只强制写本地，云端后台补传，不拦截跳转。</li>
+    <li><span class="tag dec">已确认</span><b>IndexedDB 封装</b>：引用库，选定 <code>idb</code>（见第 7 节）。</li>
+    <li><span class="tag dec">已确认</span><b>云端请求量</b>：最长窗口 30→10 秒，连续编辑时请求最多变成现在的 3 倍，用户接受。后端承受能力仍未压测。</li>
+    <li><span class="tag dec">已确认</span><b>草稿保留期</b>：已同步的草稿 30 天后清理。</li>
+  </ol>
+  <h3>剩余未决（不阻塞开工，实现时验证）</h3>
+  <ul>
+    <li><span class="tag unv">未验证</span><code>pagehide</code> 时异步写 IndexedDB 的完成率，需浏览器实测。</li>
+    <li><span class="tag unv">未验证</span>后端对更密的全量 PUT 的承受能力，需压测或上线后观察。</li>
+    <li><span class="tag unv">未验证</span>idb 与项目构建栈的实际兼容，装上后跑一遍类型检查和构建确认。</li>
+  </ul>
+</section>
+
+<section id="src">
+  <h2><span class="no">11</span>来源与假设</h2>
+  <ul>
+    <li><b>项目文件</b>：<code>web/src/hooks/use-canvas-persistence.ts</code>、<code>web/src/utils/canvas/save-schedule.ts</code>、<code>web/src/pages/canvas/index.tsx</code>、<code>web/src/pages/canvas/flow.tsx</code>、<code>web/src/api/canvas/index.ts</code>、<code>web/package.json</code>、<code>docs/design/自动保存节奏设计/自动保存节奏设计.md</code>。</li>
+    <li><b>影策源码</b>（访问 2026-10-06）：
+      <a href="https://github.com/ddcat-ai/open-ai-canvas">ddcat-ai/open-ai-canvas</a> 的
+      <a href="https://github.com/ddcat-ai/open-ai-canvas/blob/main/web/src/stores/canvas/use-canvas-store.ts">use-canvas-store.ts</a>（本地 400ms）、
+      <a href="https://github.com/ddcat-ai/open-ai-canvas/blob/main/web/src/services/user-data-sync.ts">user-data-sync.ts</a>（云端 1200ms、重试）、
+      <a href="https://github.com/ddcat-ai/open-ai-canvas/blob/main/web/src/lib/canvas/canvas-content.ts">canvas-content.ts</a>（视口不计入内容比较）。读的是源码，没有运行。</li>
+    <li><b>假设</b>：撤销/重做走同一个 <code>changed()</code>；浏览器支持 Web Locks 和 IndexedDB（主流浏览器均有，<span class="tag unv">未验证</span>具体版本）；<code>pagehide</code> 时异步写入 IndexedDB 大概率完成但无保证。</li>
+    <li><b>依赖调研</b>（访问 2026-10-06）：npm registry（<code>npm view</code>）与 npmjs 下载量接口、bundlephobia 体积接口，对象为 idb、idb-keyval、localforage、dexie。localforage 的 gzip 体积没查到。</li>
+    <li><b>调研受限</b>：本次只读了影策源码，没有访问 Figma、tldraw、Excalidraw 等产品的官方资料，这些的保存机制没有写入本文。</li>
+    <li><b>模拟器</b>：只演示规则，数值（上传耗时 0.8 秒、本地写入耗时 0.25 秒）是演示用的假设，不代表真实性能。</li>
+  </ul>
+</section>
+
+</main>
+<footer><div class="wrap">本地优先保存设计 · 设计稿，未改代码</div></footer>
+
+<script>
+(() => {
+  "use strict";
+  // ---- 参数（与文档第 4 节一致） ----
+  const P = {
+    localIdle: 300, localMax: 1000,
+    cloudIdle: 3000, cloudMax: 10000,
+    uploadMs: 800, localWriteMs: 250, statusSettle: 800,
+    retry: [5000, 15000, 30000],
+    window: 90000,
+  };
+  const $ = (id) => document.getElementById(id);
+  const fmt = (ms) => (ms / 1000).toFixed(1) + "s";
+  const ICON = {
+    spin: '<svg class="ic spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2a6 6 0 1 0 6 6" stroke-linecap="round"/></svg>',
+    ok: '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    err: '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01" stroke-linecap="round"/></svg>',
+    conf: '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8a5 5 0 0 1 9-3M13 8a5 5 0 0 1-9 3M12 2v3h-3M4 14v-3h3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+
+  let S, events, logs, later, timer, paused = false, speed = 1, net = true, big = false;
+
+  function fresh() {
+    S = {
+      now: 0, open: true, readonly: false, tab2: false,
+      mem: { edits: 0, vp: 0 },
+      idb: { exists: false, edits: 0, vp: 0, base: 0, cloudDirty: false },
+      cloud: { rev: 3, edits: 0 },
+      baseRev: 3,                 // 当前编辑会话基于的云端 revision
+      L: { dirty: false, first: 0, last: 0, due: 0 },
+      C: { dirty: false, first: 0, last: 0, due: 0, inflight: null, retry: 0, failed: false },
+      savingUntil: 0, conflict: false, toast: null, vpDirty: false, vpLocal: 0, lastWriteEnd: -1e9,
+      newNode: -1,
+    };
+    events = []; logs = []; later = [];
+  }
+
+  function log(cls, text) {
+    logs.push({ t: S.now, cls, text });
+    if (logs.length > 80) logs.shift();
+  }
+  function ev(lane, type, dur) { events.push({ t: S.now, lane, type, dur: dur || 0 }); }
+
+  // ---- 调度 ----
+  function markLocal() {
+    const L = S.L;
+    if (!L.dirty) { L.dirty = true; L.first = S.now; }
+    L.last = S.now;
+    L.due = Math.min(L.last + P.localIdle, L.first + P.localMax);
+  }
+  function markCloud() {
+    const C = S.C;
+    if (!C.dirty) { C.dirty = true; C.first = S.now; }
+    C.last = S.now;
+    C.failed = false; C.retry = 0;
+    if (!C.inflight) C.due = Math.min(C.last + P.cloudIdle, C.first + P.cloudMax);
+  }
+
+  function edit(label) {
+    if (!S.open || S.readonly) return;
+    S.mem.edits++;
+    S.newNode = S.mem.edits;
+    ev(0, "edit");
+    if (label) log("", label);
+    markLocal(); markCloud();
+  }
+
+  function writeLocal(reason) {
+    S.L.dirty = false;
+    S.idb.exists = true;
+    S.idb.edits = S.mem.edits;
+    S.idb.vp = S.mem.vp;
+    S.idb.base = S.baseRev;
+    S.idb.cloudDirty = S.mem.edits !== S.cloud.edits || S.C.dirty;
+    S.vpDirty = false;
+    S.savingUntil = S.now + P.localWriteMs;
+    S.lastWriteEnd = S.now + P.localWriteMs;
+    ev(1, "write", P.localWriteMs);
+    log("l", "本地草稿写入（" + (reason || "0.3 秒窗口到") + "），改动 " + S.idb.edits);
+  }
+
+  function upload(reason) {
+    const C = S.C;
+    if (C.inflight || S.conflict || !C.dirty) return;
+    const snap = { edits: S.mem.edits, vp: S.mem.vp };
+    if (!net) {
+      ev(2, "fail");
+      C.failed = true;
+      C.failCount = (C.failCount || 0) + 1;
+      const d = P.retry[C.retry];
+      log("e", "云端上传失败（断网）" + (C.failCount === 1 ? "，首次失败不提示" : "，状态栏变红") + (d ? "，" + fmt(d) + " 后自动重试" : "，已停止自动重试，点状态栏重试"));
+      if (d) { C.due = S.now + d; C.retry++; } else { C.due = Infinity; }
+      return;
+    }
+    C.inflight = { snap, start: S.now, done: S.now + P.uploadMs, keepalive: false };
+    log("c", "云端上传开始（" + (reason || "窗口到") + "），带 revision " + S.baseRev);
+  }
+
+  function finishUpload() {
+    const C = S.C, inf = C.inflight;
+    C.inflight = null;
+    if (S.cloud.rev !== S.baseRev) {          // 服务端乐观锁：409
+      ev(2, "conflict");
+      S.conflict = true;
+      C.due = Infinity;
+      log("e", "云端返回 409：revision 已是 " + S.cloud.rev + "，本地基于 " + S.baseRev);
+      ev(2, "bar", inf.done - inf.start);
+      return;
+    }
+    ev(2, "bar", inf.done - inf.start);
+    S.cloud.rev++; S.cloud.edits = inf.snap.edits; S.baseRev = S.cloud.rev;
+    C.failed = false; C.retry = 0; C.failCount = 0;
+    log("o", "云端上传成功，revision → " + S.cloud.rev);
+    if (S.mem.edits === inf.snap.edits) {
+      C.dirty = false;
+      if (S.idb.exists && S.idb.edits === inf.snap.edits && !S.L.dirty) {
+        S.idb.exists = false; S.idb.cloudDirty = false;
+        log("l", "草稿已同步，清除");
+      }
+    } else {
+      C.due = Math.min(S.now + P.cloudIdle, C.first + P.cloudMax);
+      C.first = S.now;
+      if (S.idb.exists) { S.idb.base = S.baseRev; }
+    }
+  }
+
+  // ---- 退出 / 打开 ----
+  function leave(tabClose) {
+    if (!S.open) return;
+    ev(0, "leave");
+    log("", tabClose ? "关闭页面：pagehide 触发" : "返回列表：强制保存");
+    if (S.L.dirty || S.mem.edits !== S.idb.edits) writeLocal("退出强制写入");
+    if (S.C.dirty && !S.conflict) {
+      if (tabClose) {
+        if (big) { log("e", "keepalive 请求体 > 60KB，放弃发送；靠本地草稿兜底"); ev(2, "fail"); }
+        else if (!net) { log("e", "断网，keepalive 发不出；靠本地草稿兜底"); ev(2, "fail"); }
+        else {
+          log("c", "keepalive 上传（页面销毁后仍会发完）");
+          S.C.inflight = { snap: { edits: S.mem.edits, vp: S.mem.vp }, start: S.now, done: S.now + P.uploadMs, keepalive: true };
+        }
+      } else {
+        upload("退出补传");
+      }
+    }
+    S.open = false;
+    S.C.due = S.C.inflight ? S.C.due : Infinity;
+    if (S.tab2) { S.readonly = false; S.tab2 = false; log("", "另一个标签页拿到锁，接管编辑"); }
+    S.mem = { edits: 0, vp: 0 };
+    S.L.dirty = false;
+  }
+
+  function reopen() {
+    if (S.open) return;
+    if (S.C.inflight) { log("", "（等待上一次上传结束后再打开）"); return; }
+    S.open = true; S.conflict = false; S.toast = null;
+    S.C = { dirty: false, first: 0, last: 0, due: 0, inflight: null, retry: 0, failed: false };
+    S.baseRev = S.cloud.rev;
+    const d = S.idb;
+    log("", "打开画布：云端 revision " + S.cloud.rev + "，改动 " + S.cloud.edits);
+    if (d.exists && d.cloudDirty && d.base === S.cloud.rev) {
+      S.mem = { edits: d.edits, vp: S.vpLocal };
+      S.toast = "已恢复上次未同步的改动";
+      log("o", "发现本地草稿（改动 " + d.edits + "，基于 " + d.base + "）→ 自动恢复并补传");
+      ev(0, "restore");
+      markCloud();
+      S.C.due = S.now + P.cloudIdle;
+    } else if (d.exists && d.cloudDirty) {
+      S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
+      S.conflict = true;
+      S.C.due = Infinity;
+      log("e", "草稿基于 " + d.base + "，云端已是 " + S.cloud.rev + " → 冲突，选完后草稿删除");
+      ev(2, "conflict");
+    } else {
+      S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
+      if (d.exists) { S.idb.exists = false; log("l", "草稿已同步，丢弃"); }
+    }
+  }
+
+  function resolveConflict(copy) {
+    if (copy) log("o", "已另存为「画布 副本」（含本地草稿内容）");
+    log("o", "加载云端最新，本地草稿已删除");
+    S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
+    S.baseRev = S.cloud.rev;
+    S.conflict = false; S.C.dirty = false; S.C.inflight = null; S.C.failed = false; S.C.failCount = 0; S.C.due = 0;
+    S.idb.cloudDirty = false;
+  }
+
+  // ---- 主循环 ----
+  function step(dt) {
+    S.now += dt;
+    for (let i = later.length - 1; i >= 0; i--) {
+      if (later[i].at <= S.now) { const f = later[i].fn; later.splice(i, 1); f(); }
+    }
+    if (S.L.dirty && S.now >= S.L.due) writeLocal();
+    const C = S.C;
+    if (C.inflight && S.now >= C.inflight.done) finishUpload();
+    else if (C.dirty && !C.inflight && !S.conflict && S.now >= C.due) upload(C.failed ? "自动重试" : "停手窗口到");
+  }
+
+  // ---- 渲染 ----
+  // 状态栏防抖：有待写入的改动，或最近一次写入后还没静默满 statusSettle，都保持「正在保存」
+  // 云端失败状态延后显示：第一次失败静默，第一次自动重试仍失败（累计 2 次）才变红；冲突不走这里
+  function redVisible() {
+    return (S.C.failCount || 0) >= 2;
+  }
+
+  function savingVisible() {
+    return S.L.dirty || S.now < S.lastWriteEnd + P.statusSettle;
+  }
+
+  function render() {
+    // 状态栏
+    const st = $("status");
+    let cls = "statusbar", html;
+    if (S.conflict) { cls += " conf"; html = ICON.conf + "存在冲突"; }
+    else if (redVisible()) { cls += " err"; html = ICON.err + "云端保存失败 · 重试"; }
+    else if (savingVisible()) html = ICON.spin + "正在保存";
+    else html = ICON.ok + "已保存";
+    if (!S.open) html = ICON.ok + "已离开画布";
+    st.className = cls; st.innerHTML = html;
+    st.onclick = redVisible() ? () => { S.C.retry = 0; upload("手动重试"); } : null;
+
+    // 画布
+    const stage = $("stage");
+    const n = Math.min(S.mem.edits, 12);
+    let h = "";
+    for (let i = 0; i < n; i++) {
+      const x = 22 + (i % 4) * 92, y = 54 + Math.floor(i / 4) * 62;
+      h += '<div class="node' + (S.newNode === i + 1 ? " new" : "") + '" style="left:' + x + "px;top:" + y + 'px">节点 ' + (i + 1) + "</div>";
+    }
+    if (S.mem.edits > 12) h += '<div style="position:absolute;right:12px;bottom:34px;font-size:11px;color:var(--muted)">… 共 ' + S.mem.edits + " 次改动</div>";
+    stage.innerHTML = h;
+    stage.style.transform = "translateX(" + (S.mem.vp % 6) * 14 + "px)";
+
+    const off = $("off");
+    if (!S.open) { off.hidden = false; off.innerHTML = S.idb.exists ? "已离开画布<br><small>本地草稿保留，点「重新打开画布」查看对账</small>" : "已离开画布<br><small>点「重新打开画布」</small>"; }
+    else off.hidden = true;
+
+    $("toast").hidden = !S.toast; $("toast").textContent = S.toast || "";
+    const bn = $("banner");
+    if (S.readonly) { bn.hidden = false; bn.textContent = "已在另一个标签页打开 · 当前只读"; }
+    else if (S.tab2) { bn.hidden = false; bn.style.background = "var(--accent-soft)"; bn.style.color = "var(--accent)"; bn.textContent = "标签页 2 已尝试打开：它拿不到锁，会显示只读"; }
+    else bn.hidden = true;
+    $("dialog").hidden = !(S.conflict && S.open);
+
+    // 三个仓
+    $("m-edits").textContent = S.open ? S.mem.edits : "—";
+    $("m-vp").textContent = S.open ? S.mem.vp : "—";
+    $("m-vpl").textContent = S.vpLocal;
+    $("l-pill").textContent = S.idb.exists ? (S.idb.cloudDirty ? "未同步" : "已同步") : "无";
+    $("l-edits").textContent = S.idb.exists ? S.idb.edits : "–";
+    $("l-base").textContent = S.idb.exists ? S.idb.base : "–";
+    $("c-edits").textContent = S.cloud.edits; $("c-rev").textContent = S.cloud.rev;
+    $("c-pill").textContent = S.C.inflight ? "上传中" : S.conflict ? "冲突" : S.C.failed ? "失败" : S.C.dirty ? "等待窗口" : "空闲";
+
+    const lb = $("l-bar"), ll = $("l-label");
+    if (S.L.dirty) {
+      const total = Math.max(1, S.L.due - S.L.first);
+      lb.style.width = Math.min(100, ((S.now - S.L.first) / total) * 100) + "%";
+      ll.textContent = "约 " + fmt(Math.max(0, S.L.due - S.now)) + " 后写入本地";
+    } else { lb.style.width = "0"; ll.textContent = ""; }
+    const cb = $("c-bar"), cl = $("c-label");
+    if (S.C.inflight) { cb.style.width = "100%"; cl.textContent = "上传中…"; }
+    else if (S.C.dirty && S.C.due !== Infinity && !S.conflict) {
+      const total = Math.max(1, S.C.due - (S.C.failed ? S.C.last : S.C.last));
+      const base = S.C.failed ? S.C.due - P.retry[Math.max(0, S.C.retry - 1)] : S.C.last;
+      cb.style.width = Math.min(100, ((S.now - base) / Math.max(1, S.C.due - base)) * 100) + "%";
+      cl.textContent = (S.C.failed ? "重试倒计时 " : "停手后约 ") + fmt(Math.max(0, S.C.due - S.now)) + (S.C.failed ? "" : "上传（最长 " + fmt(Math.max(0, S.C.first + P.cloudMax - S.now)) + "）");
+    } else { cb.style.width = "0"; cl.textContent = S.conflict ? "已暂停上传，等你处理冲突" : S.C.failed ? "已停止自动重试，点状态栏重试" : ""; }
+
+    // 时间线
+    const W = 520, lanes = [28, 76, 124];
+    const t0 = Math.max(0, S.now - P.window);
+    const X = (t) => ((t - t0) / P.window) * W;
+    let svg = "";
+    const names = ["操作", "本地", "云端"];
+    for (let i = 0; i < 3; i++) {
+      svg += '<line x1="0" x2="' + W + '" y1="' + lanes[i] + '" y2="' + lanes[i] + '" stroke="var(--border)" stroke-dasharray="3 4"/>';
+      svg += '<text x="4" y="' + (lanes[i] - 10) + '" font-size="10" fill="var(--muted)">' + names[i] + "</text>";
+    }
+    for (const e of events) {
+      if (e.t + e.dur < t0) continue;
+      const x = X(e.t), y = lanes[e.lane];
+      if (e.type === "edit") svg += '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="var(--muted)"/>';
+      else if (e.type === "write") svg += '<rect x="' + x + '" y="' + (y - 7) + '" width="5" height="14" rx="1.5" fill="var(--local)"/>';
+      else if (e.type === "bar") svg += '<rect x="' + X(e.t - P.uploadMs) + '" y="' + (y - 8) + '" width="' + Math.max(5, (P.uploadMs / P.window) * W) + '" height="16" rx="3" fill="var(--accent)"/>';
+      else if (e.type === "fail" || e.type === "conflict") svg += '<path d="M' + (x - 5) + " " + (y - 5) + "l10 10m0-10l-10 10" + '" stroke="var(--bad)" stroke-width="2.2" stroke-linecap="round"/>';
+      else if (e.type === "leave") svg += '<line x1="' + x + '" x2="' + x + '" y1="8" y2="142" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="' + (x + 3) + '" y="16" font-size="10" fill="var(--warn)">退出</text>';
+      else if (e.type === "restore") svg += '<line x1="' + x + '" x2="' + x + '" y1="8" y2="142" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="' + (x + 3) + '" y="16" font-size="10" fill="var(--ok)">恢复</text>';
+    }
+    // 云端上传条的起点：事件在结束时记录，已在 X(e.t - uploadMs) 处绘制
+    svg += '<line x1="' + W + '" x2="' + W + '" y1="4" y2="146" stroke="var(--text)" stroke-width="1" opacity=".4"/>';
+    $("tl").innerHTML = svg;
+
+    // 日志
+    const lg = $("log");
+    const stick = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 8;
+    lg.innerHTML = logs.map((l) => '<div><span class="t">' + fmt(l.t) + '</span><span class="' + (l.cls || "") + '">' + l.text + "</span></div>").join("");
+    if (stick) lg.scrollTop = lg.scrollHeight;
+
+    // 按钮可用性
+    const canEdit = S.open && !S.readonly;
+    $("b-add").disabled = !canEdit; $("b-type").disabled = !canEdit; $("b-pan").disabled = !canEdit;
+    $("b-leave").disabled = !S.open; $("b-close").disabled = !S.open; $("b-refresh").disabled = !S.open;
+    $("b-open").disabled = S.open;
+    $("b-tab2").disabled = !S.open || S.tab2;
+  }
+
+  // ---- 交互 ----
+  $("b-add").onclick = () => edit("新增节点");
+  $("b-type").onclick = () => {
+    if (!S.open || S.readonly) return;
+    log("", "连续输入文字：8 次按键，间隔 0.2 秒");
+    for (let i = 0; i < 8; i++) later.push({ at: S.now + i * 200, fn: () => edit() });
+  };
+  $("b-pan").onclick = () => {
+    if (!S.open || S.readonly) return;
+    S.mem.vp++; S.vpLocal = S.mem.vp;
+    log("l", "平移视窗：写入本机视口 " + S.vpLocal + "（localStorage），不标脏、不触发任何保存");
+  };
+  $("b-leave").onclick = () => leave(false);
+  $("b-close").onclick = () => leave(true);
+  $("b-refresh").onclick = () => {
+    if (!S.open) return;
+    log("", "刷新页面：pagehide → 重新加载");
+    leave(true);
+    later.push({ at: S.now + 1200, fn: reopen });
+  };
+  $("b-open").onclick = reopen;
+  $("b-net").onclick = () => {
+    net = !net; $("b-net").textContent = "网络：" + (net ? "正常" : "已断开"); $("b-net").classList.toggle("on", !net);
+    log(net ? "o" : "e", net ? "网络恢复" : "网络断开");
+    if (net && S.C.failed && S.C.dirty) { S.C.retry = 0; S.C.due = S.now; log("c", "online 事件：立即重试"); }
+  };
+  $("b-big").onclick = () => {
+    big = !big; $("b-big").textContent = "画布体积：" + (big ? "大（>60KB）" : "小（<60KB）"); $("b-big").classList.toggle("on", big);
+  };
+  $("b-other").onclick = () => {
+    S.cloud.rev++; S.cloud.edits += 100;
+    log("e", "另一台设备改了云端：revision → " + S.cloud.rev);
+  };
+  $("b-tab2").onclick = () => {
+    S.tab2 = true; log("", "标签页 2 尝试打开同一画布：拿不到锁，只读（标签页 1 关闭后它可接管）");
+  };
+  document.querySelectorAll(".spd").forEach((b) => b.onclick = () => {
+    speed = +b.dataset.s;
+    document.querySelectorAll(".spd").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  $("b-pause").onclick = () => { paused = !paused; $("b-pause").textContent = paused ? "继续" : "暂停"; $("b-pause").classList.toggle("on", paused); };
+  $("d-load").onclick = () => resolveConflict(false);
+  $("d-copy").onclick = () => resolveConflict(true);
+
+  function reset() {
+    fresh(); net = true; big = false; paused = false;
+    $("b-net").textContent = "网络：正常"; $("b-net").classList.remove("on");
+    $("b-big").textContent = "画布体积：小（<60KB）"; $("b-big").classList.remove("on");
+    $("b-pause").textContent = "暂停"; $("b-pause").classList.remove("on");
+    log("", "画布已打开，云端 revision 3，改动 0");
+  }
+  $("b-reset").onclick = () => { reset(); render(); };
+
+  // 场景：重置后替用户做前几步
+  function scenario(n) {
+    reset();
+    const at = (ms, fn) => later.push({ at: S.now + ms, fn });
+    if (n === 1) { at(0, () => edit("新增节点")); at(900, () => edit("新增节点")); at(1800, () => edit("新增节点")); }
+    if (n === 2) { at(0, () => edit("新增节点")); at(700, () => edit("新增节点")); at(2500, () => leave(true)); at(4000, reopen); }
+    if (n === 3) { big = true; $("b-big").textContent = "画布体积：大（>60KB）"; $("b-big").classList.add("on"); at(0, () => edit("新增节点")); at(1200, () => edit("新增节点")); at(2500, () => leave(true)); at(4500, reopen); }
+    if (n === 4) { net = false; $("b-net").textContent = "网络：已断开"; $("b-net").classList.add("on"); log("e", "网络断开"); at(0, () => edit("新增节点")); at(800, () => edit("新增节点")); }
+    if (n === 5) { at(0, () => { S.cloud.rev++; S.cloud.edits += 100; log("e", "另一台设备改了云端：revision → " + S.cloud.rev); }); at(1000, () => edit("新增节点")); }
+    if (n === 6) { at(0, () => edit("新增节点")); at(4500, () => { S.mem.vp++; S.vpLocal = S.mem.vp; log("l", "平移视窗：写入本机视口 " + S.vpLocal + "，不触发任何保存"); }); at(6500, () => { log("", "刷新页面：pagehide → 重新加载"); leave(true); later.push({ at: S.now + 1200, fn: reopen }); }); }
+  }
+  document.querySelectorAll("[data-scen]").forEach((b) => b.onclick = () => { scenario(+b.dataset.scen); render(); document.getElementById("demo").scrollIntoView({ block: "start" }); });
+
+  reset();
+  let last = performance.now();
+  timer = setInterval(() => {
+    const t = performance.now(); const dt = t - last; last = t;
+    if (!paused) {
+      // 大步长拆小，保证 10× 时不跳过窗口边界
+      let rest = dt * speed;
+      while (rest > 0) { const d = Math.min(50, rest); step(d); rest -= d; }
+    }
+    render();
+  }, 100);
+  render();
+})();
+</script>
+</body>
+</html>

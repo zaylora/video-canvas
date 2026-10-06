@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { planPreset, type PresetPick } from "@/utils/canvas/preset-rules";
+import { planPreset, presetOverflow, type PresetPick } from "@/utils/canvas/preset-rules";
+import { findPreset } from "@/constants/presets";
 
 const style = (id: string): PresetPick => ({ kind: "style", id });
 const motion = (id: string): PresetPick => ({ kind: "motion", id });
@@ -8,9 +9,18 @@ const tpl = (id: string): PresetPick => ({ kind: "tpl", id });
 
 describe("planPreset：从入口按钮选", () => {
   test("什么都没选：风格、运镜插在光标处，模板插在最前面", () => {
-    expect(planPreset([], "style", "wuxia")).toEqual({ type: "insert", at: "cursor" });
-    expect(planPreset([], "motion", "dolly_in")).toEqual({ type: "insert", at: "cursor" });
-    expect(planPreset([], "tpl", "storyboard_25_grid")).toEqual({ type: "insert", at: "start" });
+    expect(planPreset([], "style", "wuxia")).toEqual({
+      type: "insert",
+      at: "cursor",
+    });
+    expect(planPreset([], "motion", "dolly_in")).toEqual({
+      type: "insert",
+      at: "cursor",
+    });
+    expect(planPreset([], "tpl", "storyboard_25_grid")).toEqual({
+      type: "insert",
+      at: "start",
+    });
   });
 
   test("风格、运镜、模板各至多一个：再选同类的另一个，原位替换", () => {
@@ -36,7 +46,10 @@ describe("planPreset：从入口按钮选", () => {
   });
 
   test("再点已选的那个：取消", () => {
-    expect(planPreset([style("wuxia")], "style", "wuxia")).toEqual({ type: "remove", index: 0 });
+    expect(planPreset([style("wuxia")], "style", "wuxia")).toEqual({
+      type: "remove",
+      index: 0,
+    });
     expect(planPreset([style("wuxia"), motion("zoom_in")], "motion", "zoom_in")).toEqual({
       type: "remove",
       index: 1,
@@ -48,7 +61,10 @@ describe("planPreset：从入口按钮选", () => {
       type: "insert",
       at: "cursor",
     });
-    expect(planPreset([style("wuxia")], "tpl", "a")).toEqual({ type: "insert", at: "start" });
+    expect(planPreset([style("wuxia")], "tpl", "a")).toEqual({
+      type: "insert",
+      at: "start",
+    });
     expect(planPreset([style("wuxia"), tpl("a")], "motion", "zoom_in")).toEqual({
       type: "insert",
       at: "cursor",
@@ -86,5 +102,23 @@ describe("planPreset：点提示词里的 chip 进来替换", () => {
     expect(planPreset([motion("pan_left"), motion("zoom_in")], "motion", "zoom_in", 0)).toEqual({
       type: "blocked",
     });
+  });
+});
+
+describe("presetOverflow：选预设前就知道会不会超模型字数上限", () => {
+  const tplPreset = findPreset("tpl", "storyboard_25_grid")!;
+  const length = [...tplPreset.prompt.trim()].length;
+
+  test("预设正文比上限长：返回它的字数", () => {
+    expect(presetOverflow(tplPreset, 2000)).toBe(length);
+  });
+
+  test("刚好等于上限不算超", () => {
+    expect(presetOverflow(tplPreset, length)).toBeNull();
+  });
+
+  test("没有上限（0 或没给）不提示", () => {
+    expect(presetOverflow(tplPreset, 0)).toBeNull();
+    expect(presetOverflow(tplPreset, undefined)).toBeNull();
   });
 });

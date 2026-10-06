@@ -87,6 +87,8 @@ export type PresetChipTarget = {
 export type PromptPresets = {
   /** 提示词里已有的预设，按出现顺序 */
   selected: readonly PresetPick[];
+  /** 当前模型的提示词字数上限，选择器据此提示放不下的预设；没有就不提示 */
+  maxLength?: number;
   /** 选中一个预设；target 是从 chip 点进来时那个 chip 的序号。返回执行的方案，被拦下时带原因 */
   apply: (kind: PresetKind, id: string, target?: number) => PresetPlan | undefined;
   /** 把焦点还给提示词 */

@@ -14,7 +14,7 @@ import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
 import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
-import { mentionableNodes, unlinkSource } from "@/utils/canvas/link-rule";
+import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import {
   REF_KEYS,
@@ -149,6 +149,13 @@ export function useTaskNode(
     (source: RefSource, withTyping = false) => {
       if (getEdges().some((edge) => edge.source === source.id && edge.target === id)) return;
       if (withTyping) history?.absorbTyping();
+      // 当前方式收不下这种素材（比如文生视频）就切到全能参考之类收得下的方式
+      const sourceNode = getNodes().find((node) => node.id === source.id);
+      const self = getNodes().find((node) => node.id === id);
+      const nextOp = sourceNode && self && opForLink(sourceNode.data, self.data);
+      if (nextOp) {
+        updateNodeData(id, (node) => ({ params: { ...node.data.params, op: nextOp } }));
+      }
       setEdges((edges) =>
         addEdge(
           {
@@ -162,7 +169,7 @@ export function useTaskNode(
         ),
       );
     },
-    [getEdges, history, id, setEdges],
+    [getEdges, getNodes, history, id, setEdges, updateNodeData],
   );
 
   /**

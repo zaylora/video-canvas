@@ -194,6 +194,42 @@ export function acceptsSourceKind(
   return port === "text" || refKindsOf(caps, refPanelOp(caps, op)).includes(port);
 }
 
+/**
+ * 生成方式在选项里要不要灰掉，灰掉时返回悬浮提示：
+ * 没有参考素材（连线的图片 / 视频 / 音频，或手动添加的）时，要引用素材的方式没法用；
+ * 有参考素材时，不引用素材的文生方式用不上。可选返回 undefined。
+ */
+export function opDisabledHint(
+  caps: Capabilities | undefined,
+  op: GenerationOp,
+  hasRefs: boolean,
+): string | undefined {
+  if (!caps) return undefined;
+  const kinds = REF_KINDS_OF_OP[op];
+  if (kinds.length === 0) return hasRefs ? `已有参考素材，${OP_LABEL[op]}不可用` : undefined;
+  if (hasRefs) return undefined;
+  const labels = kinds
+    .filter((kind) => caps.refs?.[kind]?.on)
+    .map((kind) => REF_KEYS.find((ref) => ref.kind === kind)?.label.replace("参考", ""));
+  return labels.length > 0 ? `需要连接${labels.join("/")}节点` : undefined;
+}
+
+/**
+ * 当前生成方式收不下这种上游时，换成哪种方式就收得下：优先全能参考，
+ * 其次任何收这种素材的方式。已经收得下、清单没到、哪种方式都收不下，都返回 undefined（不切）。
+ * 「文生视频」节点拉出图片线、音频线时靠它自动变成全能参考。
+ */
+export function opToAcceptSource(
+  caps: Capabilities | undefined,
+  op: GenerationOp | undefined,
+  sourceKind: NodeKind,
+): GenerationOp | undefined {
+  if (!caps || acceptsSourceKind(caps, op, sourceKind)) return undefined;
+  const ops = caps.ops ?? [];
+  const accepting = ops.filter((item) => acceptsSourceKind(caps, item, sourceKind));
+  return accepting.includes("omni") ? "omni" : accepting[0];
+}
+
 /** 提示词兼容：旧节点只有 data.prompt，新节点提示词放 params.prompt */
 export function readParams(
   data: Pick<CanvasNodeData, "params" | "prompt">,
@@ -338,8 +374,11 @@ export function buildTaskInput(
   // 参考素材
   const kinds = refKindsOf(caps, op);
   let total = 0;
+  // 连着当前方式收的素材节点（哪怕还没出图）就算有引用，不再拦着
+  let linked = 0;
   for (const ref of REF_KEYS) {
     if (!kinds.includes(ref.kind)) continue;
+    linked += bindings[ref.key].length;
     // 还没出图的上游直接跳过：它在引用条里标着「还没生成」，不拦着整次提交
     const ids = bindings[ref.key]
       .map((item) => toAssetNumber(item.assetId))
@@ -350,9 +389,14 @@ export function buildTaskInput(
     if (all.length > 0) input[ref.key] = all;
     total += all.length;
   }
-  if ((op === "i2v" || op === "i2i") && !input.images && !errors.images)
+  if ((op === "i2v" || op === "i2i") && !input.images && !errors.images && linked === 0)
     errors.images = "图生方式需要至少 1 张参考图片";
-  if (op === "omni" && total === 0 && !Object.keys(errors).some((k) => k in REF_INDEX))
+  if (
+    op === "omni" &&
+    total === 0 &&
+    linked === 0 &&
+    !Object.keys(errors).some((k) => k in REF_INDEX)
+  )
     errors.images = "全能参考需要至少 1 个参考素材";
 
   // 提示词：手填的优先（@ 的素材展开），没手填才用上游文字

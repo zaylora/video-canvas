@@ -56,6 +56,15 @@ import {
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
+import {
+  createViewportWriter,
+  loadViewport,
+  sameViewport,
+  saveViewport,
+} from "@/utils/canvas/viewport-store";
+import { getCurrentUserId } from "@/utils/storage/user-id";
+import { draftStore } from "@/utils/canvas/draft-idb";
+import type { Recovery } from "@/utils/canvas/draft-reconcile";
 import { releaseObjectUrl } from "@/utils/canvas/media";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
@@ -109,9 +118,12 @@ const edgeTypes = { animatedSvgEdge: AnimatedSvgEdge } satisfies EdgeTypes;
  */
 export const Flow = memo(function Flow({
   canvas,
+  recovery,
   onConflict,
 }: {
   canvas: CanvasDetailDto;
+  /** 打开时本地草稿的对账结果：restored 是已用草稿恢复，conflict 是草稿基于的版本已过期 */
+  recovery: Recovery | null;
   onConflict: (canvas: CanvasDetailDto) => void;
 }) {
   const initial = useMemo(() => deserializeGraph(canvas.graph), [canvas.graph]);
@@ -128,6 +140,36 @@ export const Flow = memo(function Flow({
   const changeSaveRef = useRef<boolean | null>(null);
   /** 已经见过的任务号：出现新的就要立刻存，刷新后才能对账回填 */
   const knownTaskIdsRef = useRef(new Set(taskIdsOf(initial.nodes)));
+  /**
+   * 视口是这台设备此刻看哪里，不是画布内容：平移缩放不触发保存，只防抖写进本机 localStorage，
+   * 刷新、返回再进来停在移动之后的位置；云端里的视口只在内容保存时顺带更新，用于第一次打开和换设备。
+   */
+  const userId = useMemo(() => getCurrentUserId(), []);
+  const appliedViewportRef = useRef(initial.viewport);
+  /** 打开时就发现草稿和云端冲突：把草稿内容留给冲突弹窗，让用户选加载最新还是另存为 */
+  const [draftConflict, setDraftConflict] = useState(
+    recovery?.kind === "conflict" ? recovery.graph : null,
+  );
+  /** 冲突处理完（加载最新或另存为）后草稿就没用了，删掉，免得下次打开又弹一次 */
+  const discardDraft = useCallback(() => {
+    if (userId) void draftStore.remove(userId, canvas.id);
+  }, [canvas.id, userId]);
+  const viewportWriter = useMemo(
+    () =>
+      createViewportWriter((viewport) => {
+        if (userId) saveViewport(userId, canvas.id, viewport);
+      }),
+    [canvas.id, userId],
+  );
+  useEffect(() => {
+    // 页面隐藏、关闭、离开画布时把还没写的视口立刻写出去（localStorage 同步写，一定写得完）
+    const flushViewport = () => viewportWriter.flush();
+    window.addEventListener("pagehide", flushViewport);
+    return () => {
+      window.removeEventListener("pagehide", flushViewport);
+      viewportWriter.flush();
+    };
+  }, [viewportWriter]);
   // 保存发请求的那一刻才取图谱，视口也在这时读，所以平移缩放本身不用触发保存
   const getGraph = useCallback(
     () =>
@@ -545,8 +587,23 @@ export const Flow = memo(function Flow({
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onInit={() => {
-                    void setViewport(initial.viewport);
+                    // 本机视口优先于云端视口：刷新后停在移动之后的位置
+                    const local = userId ? loadViewport(userId, canvas.id) : null;
+                    appliedViewportRef.current = local ?? initial.viewport;
+                    void setViewport(appliedViewportRef.current);
                     hydratedRef.current = true;
+                    if (recovery?.kind === "restored") {
+                      // 内容来自本地草稿，云端还没有：标脏让它排上传
+                      changed();
+                      toast.info("已恢复上次未同步的改动");
+                    }
+                  }}
+                  onMoveEnd={(_event, viewport) => {
+                    // 恢复视口那一下不算用户移动，别把云端视口写成本机视口
+                    if (!hydratedRef.current || sameViewport(appliedViewportRef.current, viewport))
+                      return;
+                    appliedViewportRef.current = viewport;
+                    viewportWriter.schedule(viewport);
                   }}
                   onNodeDragStart={(event, node, dragged) => {
                     overlayGate.onNodeDragStart(event, node, dragged);
@@ -690,15 +747,21 @@ export const Flow = memo(function Flow({
                   onCancel={() => setPendingDelete(null)}
                 />
                 <ConflictDialog
-                  open={conflict !== null}
+                  open={conflict !== null || draftConflict !== null}
                   onLoadLatest={() => {
+                    if (draftConflict) {
+                      // 打开时的冲突：当前编辑器本来就是云端最新，丢掉草稿即可
+                      discardDraft();
+                      setDraftConflict(null);
+                      return;
+                    }
                     if (!conflict) return;
                     dismissConflict();
                     onConflict(conflict);
                   }}
                   onSaveAsCopy={async () => {
-                    if (!conflict) return;
-                    const graph = getGraph();
+                    if (!conflict && !draftConflict) return;
+                    const graph = draftConflict ?? getGraph();
                     if (!graph) return;
                     try {
                       const copy = await createCanvas({ title: `${title} 副本`, graph });
@@ -709,6 +772,12 @@ export const Flow = memo(function Flow({
                       toast.error("另存失败，请稍后重试");
                       return;
                     }
+                    if (draftConflict) {
+                      discardDraft();
+                      setDraftConflict(null);
+                      return;
+                    }
+                    if (!conflict) return;
                     dismissConflict();
                     onConflict(conflict);
                   }}

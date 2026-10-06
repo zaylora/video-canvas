@@ -107,7 +107,7 @@ func inputParams(c Capabilities, in, out map[string]any) []FieldError {
 	return errs
 }
 
-// inputRefs 校验参考素材：按生成方式与 refs 开关过滤，检查数量，图生 / 全能参考要求至少有素材。
+// inputRefs 校验参考素材：按生成方式与 refs 开关过滤，检查数量；不要求一定有素材（上游节点可能还没出图）。
 func inputRefs(c Capabilities, op string, in, out map[string]any) []FieldError {
 	var errs []FieldError
 	allowed := refKindsOfOp(op)
@@ -125,12 +125,6 @@ func inputRefs(c Capabilities, op string, in, out map[string]any) []FieldError {
 		case len(ids) > 0:
 			out[m.Key] = ids
 		}
-	}
-	if (op == OpI2V || op == OpI2I) && out[MediaKeyImages] == nil && !hasErr(errs, MediaKeyImages) {
-		errs = append(errs, FieldError{Field: MediaKeyImages, Message: "图生方式需要至少 1 张参考图片"})
-	}
-	if op == OpOmni && !hasAnyMedia(out) && !hasErr(errs, MediaKeyImages, MediaKeyVideos, MediaKeyAudios) {
-		errs = append(errs, FieldError{Field: MediaKeyImages, Message: "全能参考需要至少 1 个参考素材"})
 	}
 	return errs
 }
@@ -181,24 +175,6 @@ func kindLabel(kind string) string {
 		return "视频"
 	}
 	return "音频"
-}
-
-func hasErr(errs []FieldError, fields ...string) bool {
-	for _, e := range errs {
-		if inStrings(fields, e.Field) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasAnyMedia(out map[string]any) bool {
-	for _, m := range MediaKinds {
-		if out[m.Key] != nil {
-			return true
-		}
-	}
-	return false
 }
 
 // isBlank 空白字符串等同于没传（前端表单清空输入框时会传 ""）。

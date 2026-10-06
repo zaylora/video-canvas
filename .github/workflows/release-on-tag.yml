@@ -14,18 +14,13 @@ concurrency:
 
 jobs:
   release:
-    name: Generate changelog and release
+    name: Publish release from confirmed changelog
     runs-on: ubuntu-latest
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
-        with:
-          tool: git-cliff
 
       - name: Validate release tag
         env:
@@ -36,14 +31,23 @@ jobs:
             exit 1
           fi
 
-      - name: Generate release notes
+      - name: Read confirmed release notes
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          git cliff --latest --strip header --output release-notes.md
-          git cliff --output full-changelog.md
+          VERSION_VALUE="${RELEASE_TAG#v}"
+          test -s CHANGELOG.md
+          awk -v version="$VERSION_VALUE" '
+            $0 ~ "^## \\[" version "\\]" || $0 ~ "^## v" version "([[:space:]]|$)" {
+              found = 1
+              print
+              next
+            }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
           test -s release-notes.md
-          test -s full-changelog.md
+          grep -Eq "^## (v$VERSION_VALUE|\\[$VERSION_VALUE\\])([[:space:]]|$|-)" release-notes.md
 
       - name: Create GitHub Release
         env:
@@ -58,21 +62,20 @@ jobs:
               --notes-file release-notes.md
           fi
 
-      - name: Update CHANGELOG.md on master
+      - name: Update VERSION on master
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           VERSION_VALUE="${RELEASE_TAG#v}"
           git fetch origin master
           git switch --force-create release-changelog origin/master
-          cp full-changelog.md CHANGELOG.md
           printf '%s\n' "$VERSION_VALUE" > VERSION
-          if git diff --quiet -- CHANGELOG.md VERSION; then
-            echo "CHANGELOG.md and VERSION are already up to date"
+          if git diff --quiet -- VERSION; then
+            echo "VERSION is already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md VERSION
+          git add VERSION
           git commit -m "docs: update changelog for $RELEASE_TAG"
           git push origin HEAD:master

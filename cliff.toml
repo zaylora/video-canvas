@@ -29,6 +29,9 @@ filter_unconventional = false
 split_commits = false
 commit_preprocessors = []
 commit_parsers = [
+  { message = "^(?i:.*update changelog.*)$", skip = true },
+  { message = "^(?i:.*bump version.*)$", skip = true },
+  { message = "^chore\\((release|changelog)\\)", skip = true },
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
   { message = "^perf|^refactor", group = "Changed" },

@@ -29,7 +29,7 @@ import type {
   PendingGroup,
   UploadNotice,
 } from "@/types";
-import { canLinkFrom, partitionLinkable } from "@/utils/canvas/link-rule";
+import { canLinkFrom, opForLink, partitionLinkable } from "@/utils/canvas/link-rule";
 import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
 import { uploadAsset } from "@/api/asset";
 
@@ -59,10 +59,30 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
+  /** 上游接进来下游当前方式收不下时，下游切到收得下的方式（文生视频 → 全能参考） */
+  const switchOpForLink = useCallback(
+    (sourceId: string, targetId: string) =>
+      setNodes((nds) => {
+        const source = nds.find((node) => node.id === sourceId);
+        const target = nds.find((node) => node.id === targetId);
+        const op = source && target && opForLink(source.data, target.data);
+        if (!op) return nds;
+        return nds.map((node) =>
+          node.id === targetId
+            ? { ...node, data: { ...node.data, params: { ...node.data.params, op } } }
+            : node,
+        );
+      }),
+    [setNodes],
+  );
+
   // 新连线直接套上流动高亮：AnimatedSvgEdge 必须拿到 data.shape 才渲染得出光点
   const onConnect = useCallback<OnConnect>(
-    (connection) => setEdges((eds) => addEdge({ ...connection, ...ANIMATED_EDGE_OPTIONS }, eds)),
-    [setEdges],
+    (connection) => {
+      setEdges((eds) => addEdge({ ...connection, ...ANIMATED_EDGE_OPTIONS }, eds));
+      switchOpForLink(connection.source, connection.target);
+    },
+    [setEdges, switchOpForLink],
   );
 
   // 拉出端是 source 时对方是下游，是 target 时反过来
@@ -89,8 +109,9 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
             };
 
       setEdges((eds) => addEdge({ ...edge, ...ANIMATED_EDGE_OPTIONS }, eds));
+      switchOpForLink(edge.source, edge.target);
     },
-    [setEdges],
+    [setEdges, switchOpForLink],
   );
 
   /** 从多选区右侧拉出来松手：在松手处弹菜单，选完种类后每个接得上的节点各连一根线 */

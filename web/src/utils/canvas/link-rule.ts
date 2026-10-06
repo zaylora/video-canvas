@@ -1,7 +1,13 @@
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useModelsStore } from "@/store/models";
 import type { CanvasNodeData } from "@/types";
-import { acceptsSourceKind, currentOp, readParams } from "@/utils/tasks/capabilities";
+import type { GenerationOp } from "@/api/model/type";
+import {
+  acceptsSourceKind,
+  currentOp,
+  opToAcceptSource,
+  readParams,
+} from "@/utils/tasks/capabilities";
 
 import { canConnectKinds } from "./canvas";
 
@@ -17,14 +23,26 @@ function capabilitiesOf(node: LinkEnd) {
 
 /**
  * 上游能不能连到下游（节点只有一个输入口，所有连线都走这里判断）：
- * 先看节点种类规则（比如音频不能接进文本），再看下游当前模型和生成方式收不收这种上游
- * （比如「文生视频」不收图片）。拖线、落在节点上、落空建节点、倾斜反馈都用同一套。
+ * 先看节点种类规则（比如音频不能接进文本），再看下游的模型有没有哪种生成方式收这种上游。
+ * 当前方式不收但换一种就收的（「文生视频」接图片），也放行，连上后由 opForLink 切方式。
+ * 拖线、落在节点上、落空建节点、倾斜反馈都用同一套。
  * 读模型清单不订阅，拖线时每帧调用也不会引起重渲染。
  */
 export function canLinkNodes(source: LinkEnd, target: LinkEnd): boolean {
   if (!canConnectKinds(source.kind, "source", target.kind)) return false;
   const caps = capabilitiesOf(target);
-  return acceptsSourceKind(caps, currentOp(caps, readParams(target)), source.kind);
+  const op = currentOp(caps, readParams(target));
+  return acceptsSourceKind(caps, op, source.kind) || !!opToAcceptSource(caps, op, source.kind);
+}
+
+/**
+ * 连上这根线时，下游要切到哪种生成方式才收得下上游（比如文生视频 → 全能参考）。
+ * 不用切（本来就收、接不上）返回 undefined。
+ */
+export function opForLink(source: LinkEnd, target: LinkEnd): GenerationOp | undefined {
+  if (!canConnectKinds(source.kind, "source", target.kind)) return undefined;
+  const caps = capabilitiesOf(target);
+  return opToAcceptSource(caps, currentOp(caps, readParams(target)), source.kind);
 }
 
 /** 从 from 节点的某一端拉线，落到 other 节点上能不能接：source 端拉出时 other 是下游 */

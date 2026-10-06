@@ -27,12 +27,16 @@ import {
   type TemplateIcon,
 } from "@/constants/presets";
 import { cn } from "@/lib/utils";
-import type { PresetPick } from "@/utils/canvas/preset-rules";
+import { presetOverflow, type PresetPick } from "@/utils/canvas/preset-rules";
 
 import { usePromptRefs, type PromptPresets } from "./prompt-mention";
 
 /** 入口按钮和选择器各类的图标 */
-const KIND_ICON: Record<PresetKind, LucideIcon> = { style: Box, motion: Camera, tpl: Shapes };
+const KIND_ICON: Record<PresetKind, LucideIcon> = {
+  style: Box,
+  motion: Camera,
+  tpl: Shapes,
+};
 
 const TEMPLATE_ICON: Record<TemplateIcon, LucideIcon> = {
   film: Film,
@@ -93,6 +97,7 @@ const CARD_CLASS = cn(
   "group focus-visible:ring-node-ring relative overflow-hidden rounded-[10px] bg-muted text-left outline-none",
   "ring-chrome-border ring-1 ring-inset transition-[box-shadow,transform] duration-120",
   "hover:ring-node-ring hover:ring-[1.5px] focus-visible:ring-2 active:scale-[0.97]",
+  "aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:grayscale aria-disabled:hover:ring-1 aria-disabled:active:scale-100",
 );
 
 /** 卡片底部压名字的渐变条 */
@@ -107,22 +112,35 @@ const NAME_CLASS =
 function PresetBody({
   kind,
   selected,
+  maxLength,
   onPick,
 }: {
   kind: PresetKind;
   selected: readonly PresetPick[];
+  maxLength?: number;
   onPick: (id: string) => void;
 }) {
   const [category, setCategory] = useState("all");
   const chosen = new Set(selected.filter((item) => item.kind === kind).map((item) => item.id));
   // 从 chip 点进来的是替换：它自己当前那一条在选择器里照样显示为已选
-  const itemProps = (id: string, name: string, hint?: string) => ({
-    "data-preset-item": true,
-    "aria-pressed": chosen.has(id),
-    // 用途和说明放在原生提示里：不占版面，选择器的高度就不会随悬停变化
-    title: hint ? `${name} · ${hint}` : name,
-    onClick: () => onPick(id),
-  });
+  const itemProps = (id: string, name: string, hint?: string) => {
+    const overflow = presetOverflow(findPreset(kind, id) ?? { prompt: "" }, maxLength);
+    const title = hint ? `${name} · ${hint}` : name;
+    return {
+      "data-preset-item": true,
+      "aria-pressed": chosen.has(id),
+      // 展开后比模型字数上限还长，选了也发不出去：置灰不可选。
+      // 不用 disabled：它收不到鼠标事件，悬停提示就出不来
+      "aria-disabled": overflow ? true : undefined,
+      // 用途和说明放在原生提示里：不占版面，选择器的高度就不会随悬停变化
+      title: overflow
+        ? `${title}\n展开后约 ${overflow} 字，超过当前模型的 ${maxLength} 字上限，不能选`
+        : title,
+      onClick: () => {
+        if (!overflow) onPick(id);
+      },
+    };
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!event.key.startsWith("Arrow")) return;
@@ -131,7 +149,12 @@ function PresetBody({
     if (index < 0) return;
     const grid = event.currentTarget.querySelector<HTMLElement>("[data-preset-grid]");
     const columns = grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : 1;
-    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns }[event.key];
+    const step = {
+      ArrowRight: 1,
+      ArrowLeft: -1,
+      ArrowDown: columns,
+      ArrowUp: -columns,
+    }[event.key];
     const next = step ? items[index + step] : undefined;
     if (!next) return;
     event.preventDefault();
@@ -236,7 +259,7 @@ function PresetBody({
                         key={item.id}
                         type="button"
                         {...itemProps(item.id, item.name, item.usage)}
-                        className="hover:bg-chrome-hover focus-visible:ring-node-ring flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2"
+                        className="hover:bg-chrome-hover focus-visible:ring-node-ring flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
                       >
                         <span
                           className={cn(
@@ -248,7 +271,7 @@ function PresetBody({
                         >
                           <Icon className="size-4.5" />
                         </span>
-                        {item.name}
+                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
                       </button>
                     );
                   })}
@@ -328,7 +351,12 @@ function PresetMenu({
         aria-label={`选择${label}`}
         className="nodrag nowheel w-[min(620px,calc(100vw-1rem))] gap-0 overflow-hidden rounded-2xl p-0"
       >
-        <PresetBody kind={kind} selected={presets.selected} onPick={pick} />
+        <PresetBody
+          kind={kind}
+          selected={presets.selected}
+          maxLength={presets.maxLength}
+          onPick={pick}
+        />
       </PopoverContent>
     </Popover>
   );
