@@ -28,10 +28,13 @@ const (
 	KindImage = "image"
 	KindAudio = "audio"
 	KindText  = "text"
+	// KindAgent 是画布 Agent 用的对话大模型：流式输出 + 工具调用。它不走插件（插件钩子是同步的、不能联网），
+	// 由 Go 里的 LLM 网关直接请求渠道的 OpenAI 兼容接口，所以没有生成方式和生成参数，只按 Token 计费。
+	KindAgent = "agent"
 )
 
 // Kinds 是合法的模型种类。
-var Kinds = []string{KindVideo, KindImage, KindAudio, KindText}
+var Kinds = []string{KindVideo, KindImage, KindAudio, KindText, KindAgent}
 
 // DefaultModelDeadline 是模型没配置 deadline 时的默认任务超时。
 const DefaultModelDeadline = 30 * time.Minute
@@ -45,7 +48,7 @@ type ChannelRef struct {
 // ModelConfig 是模型配置（ai_config_revisions 里 target=model 的正文）：画布用户选的那一项。
 type ModelConfig struct {
 	Key          string         `json:"key"`
-	Kind         string         `json:"kind"` // video / image / audio / text
+	Kind         string         `json:"kind"` // video / image / audio / text / agent
 	Label        string         `json:"label"`
 	Hint         string         `json:"hint,omitempty"`   // 模型描述，最多 maxHintLen 个字符
 	Vendor       string         `json:"vendor,omitempty"` // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空

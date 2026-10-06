@@ -161,7 +161,7 @@
 ```jsonc
 {
   "key": "kling-i2v",
-  "kind": "video", // kind：video / image / audio / text
+  "kind": "video", // kind：video / image / audio / text / agent（画布 Agent 用的对话大模型，见下）
   // hint 最多 500 字；vendor 可省略，小写字母/数字/连字符（前端据此显示厂商 logo）；tags 可省略，最多 5 个、每个最多 12 字、不能重复
   "label": "可灵 图生视频",
   "hint": "",
@@ -212,7 +212,7 @@
 
 ## 面向画布的接口（变化）
 
-- `GET /api/v1/models?kind=video|image|audio|text`（登录即可，不要求管理员）：`kind` 新增 `text`，其他取值 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
+- `GET /api/v1/models?kind=video|image|audio|text|agent`（登录即可，不要求管理员）：`kind` 取值之外 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
 - `POST /generation-tasks`：请求新增 `node_ids`（长度等于生成数量，第 i 个任务绑定第 i 个节点；只生成 1 个时可以只传 `node_id`），积分按 `pricing` 计算；响应改为 `{ "items": [ { "node_id", "task" } | { "node_id", "error": { "status", "code", "message" } } ] }`，按节点逐项给出，某个节点失败（402 积分不足、429 并发已满……）不影响其它节点。幂等键覆盖全部任务：第 i 个任务用 `Idempotency-Key#i`（i=0 不加后缀）。任务视图新增 `charged_credits`（实际扣的积分，Token 计费可能小于冻结额）。
 - `POST /generation-tasks` 的 `kind` 新增 `text`；文本任务成功后 `outputs` 是 `[{ "media_type": "text", "text": "正文" }]`（没有 `asset_id` 与 `url`）。
 - `TaskOutput` 新增 `text` 字段，`asset_id` / `url` 在文本产物里不出现。
@@ -246,3 +246,12 @@
 | 50021                 | 503             | 插件运行时（plugin-runner）暂不可用                              |
 | 50022                 | 502             | 连通性检查 / 导入失败（原因在 msg，已脱敏）                      |
 | 50031                 | 409             | 模型还在上线，先下线再删除                                       |
+
+## agent 类型模型（画布 Agent 用的对话大模型）
+
+`kind: "agent"` 不走插件钩子（钩子是同步的、不能联网，没法流式），由后端的 LLM 网关直接请求渠道 `base_url` 下的 OpenAI 兼容接口 `/v1/chat/completions`（`stream: true` + `tools`）。所以：
+
+- **渠道要求**：渠道的插件 `meta.auth.type` 必须是 `bearer`（网关用 `Authorization: Bearer <渠道 Key>`）；**不需要**声明 `endpoints.agent`。不满足时发布返回 `ErrConfigInvalid`（`40010`）。
+- **能力**：必须设置 `capabilities.context`（`window`、`output`）；`capabilities.vision` 声明能不能看图（只有 agent 能设）；`capabilities.prompt.max_length` 在这里表示**用户单条消息的字数上限**；没有 `ops`、`refs`、`params`，也不能设 `system`（系统提示词由平台维护）。
+- **计费**：只能 `pricing.billing = "token"`，`token.in` / `token.out` 是每百万 Token 的积分价。
+- 上架后出现在 `GET /api/v1/models?kind=agent` 和 `GET /api/v1/agent/models`。

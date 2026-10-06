@@ -177,7 +177,7 @@ func modelRuntime(cfg *modelcfg.ModelConfig, runtimes map[string]*provider.Chann
 	if rt == nil {
 		return nil
 	}
-	if _, ok := rt.Plugin.Meta.Endpoint(cfg.Kind); !ok {
+	if !rt.Plugin.Meta.SupportsKind(cfg.Kind) {
 		logger.Warn("渠道当前的插件版本不支持模型的种类，模型暂不可用", zap.String("model", cfg.Key),
 			zap.String("channel", rt.Channel.Key), zap.String("kind", cfg.Kind))
 		return nil

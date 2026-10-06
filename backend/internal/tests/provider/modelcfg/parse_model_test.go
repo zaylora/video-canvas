@@ -214,7 +214,7 @@ func TestParseModel_基础字段与channels规则(t *testing.T) {
 		{"key 为空", func(m map[string]any) { m["key"] = "" }, "key", ""},
 		{"key 以点开头", func(m map[string]any) { m["key"] = ".a" }, "key", ""},
 		{"key 超过 128 位", func(m map[string]any) { m["key"] = strings.Repeat("a", 129) }, "key", "128"},
-		{"kind 非法", func(m map[string]any) { m["kind"] = "3d" }, "kind", "video / image / audio / text"},
+		{"kind 非法", func(m map[string]any) { m["kind"] = "3d" }, "kind", "video / image / audio / text / agent"},
 		{"kind 为空", func(m map[string]any) { m["kind"] = "" }, "kind", ""},
 		{"kind 大小写不符", func(m map[string]any) { m["kind"] = "Video" }, "kind", ""},
 		{"label 为空", func(m map[string]any) { m["label"] = "" }, "label", ""},

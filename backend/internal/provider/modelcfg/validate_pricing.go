@@ -15,6 +15,10 @@ func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) 
 	add := func(path, msg string) {
 		*issues = append(*issues, Issue{Path: joinPath("pricing", path), Message: msg})
 	}
+	if kind == KindAgent && p.Billing != BillingToken {
+		add("billing", "Agent 模型只能按 Token 计费")
+		return
+	}
 	switch p.Billing {
 	case BillingPerCall:
 		checkPrice("unit", p.Unit, true, add)
@@ -24,8 +28,8 @@ func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) 
 		}
 		checkPrice("per_second", p.PerSecond, true, add)
 	case BillingToken:
-		if kind != KindText {
-			add("billing", "只有文本模型可以按 Token 计费")
+		if kind != KindText && kind != KindAgent {
+			add("billing", "只有文本、Agent 模型可以按 Token 计费")
 		}
 		if p.Token == nil {
 			add("token", "按 Token 计费需要设置输入价与输出价")

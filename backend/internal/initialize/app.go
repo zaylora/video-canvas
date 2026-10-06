@@ -113,11 +113,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
 
-	// 画布 Agent：模型清单和运行时在后续切片接入，目前是占位：没有模型，发起运行返回 60002，功能对用户是关着的
+	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时在后续切片接入，目前是占位，发起运行会返回 60005
 	agentRepo := repository.NewAgentRepository(db)
 	agentSvc := service.NewAgentService(service.AgentDeps{
 		Repo: agentRepo, Canvas: service.NewAgentCanvasService(agentRepo, hub),
-		Models: service.NoAgentModels{}, Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
+		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
 	})
 
 	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
