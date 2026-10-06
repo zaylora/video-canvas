@@ -13,6 +13,7 @@ import (
 	"video-canvas/internal/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/repository"
 	. "video-canvas/internal/service"
@@ -166,13 +167,14 @@ func TestAgentApplyOps_SuccessWritesAndPushesPatch(t *testing.T) {
 	if e.repo.muts[0].Kind != model.MutationApplyOps || e.repo.muts[0].ToolCallID != "tc1" {
 		t.Errorf("改动日志不对: %+v", e.repo.muts[0])
 	}
-	if len(e.bc.msgs) != 1 || e.bc.channels[0] != "canvas:7" || e.bc.msgs[0].Type != ws.TypeCanvasPatch {
-		t.Fatalf("应向 canvas:7 推送一条 canvas.patch: %+v %v", e.bc.msgs, e.bc.channels)
+	if len(e.bc.msgs) != 1 || e.bc.channels[0] != "user:1" || e.bc.msgs[0].Type != ws.TypeCanvasPatch {
+		t.Fatalf("应向 user:1 推送一条 canvas.patch: %+v %v", e.bc.msgs, e.bc.channels)
 	}
 	raw, _ := json.Marshal(e.bc.msgs[0].Data)
 	var data struct {
-		MutationID     uint64 `json:"mutation_id"`
-		RunID          uint64 `json:"run_id"`
+		MutationID     string `json:"mutation_id"`
+		RunID          string `json:"run_id"`
+		CanvasID       string `json:"canvas_id"`
 		RevisionBefore uint64 `json:"revision_before"`
 		RevisionAfter  uint64 `json:"revision_after"`
 		Changes        []any  `json:"changes"`
@@ -180,7 +182,10 @@ func TestAgentApplyOps_SuccessWritesAndPushesPatch(t *testing.T) {
 	if err := json.Unmarshal(raw, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.RunID != 1 || data.RevisionBefore != 1 || data.RevisionAfter != 2 || len(data.Changes) == 0 {
+	if data.RunID != idcodec.Encode(1) || data.CanvasID != idcodec.Encode(7) || len(data.MutationID) != idcodec.EncodedLen {
+		t.Errorf("patch 里的 id 应是编码串，前端才能和自己手里的画布 id 比对: %s", raw)
+	}
+	if data.RevisionBefore != 1 || data.RevisionAfter != 2 || len(data.Changes) == 0 {
 		t.Errorf("patch 内容不对: %s", raw)
 	}
 }

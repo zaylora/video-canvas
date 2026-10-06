@@ -51,8 +51,8 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	if err := s.repo.UpdateSession(ctx, userID, sessionID, fields); err != nil {
 		return nil, sessionErr(err)
 	}
-	s.emit(ctx, sess.ID, run.ID, sess.CanvasID, "message.user", map[string]any{"text": msg, "mode": mode, "selection": req.Selection})
-	s.emit(ctx, sess.ID, run.ID, sess.CanvasID, "run.status", map[string]any{"status": run.Status})
+	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "message.user", map[string]any{"text": msg, "mode": mode, "selection": req.Selection})
+	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "run.status", map[string]any{"status": run.Status})
 	// 6. 交给 runtime。启动失败说明运行时不可用：把运行标为失败，画布立刻空出来，返回 60005
 	in := model.AgentRunInput{Message: msg, Mode: mode, Selection: req.Selection, Viewport: req.Viewport, ModelKey: modelKey}
 	if err := s.runtime.Start(ctx, run, in); err != nil {
@@ -80,7 +80,7 @@ func (s *AgentService) Interject(ctx context.Context, userID, runID uint64, mess
 	if err := s.runtime.Interject(ctx, runID, msg); err != nil {
 		return errcode.ErrAgentUnavailable
 	}
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "message.user", map[string]any{"text": msg, "steer": true})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "message.user", map[string]any{"text": msg, "steer": true})
 	return nil
 }
 
@@ -105,7 +105,7 @@ func (s *AgentService) Cancel(ctx context.Context, userID, runID uint64) (*Agent
 		return nil, err
 	}
 	_ = s.runtime.Cancel(ctx, runID) // 画布状态已经以数据库为准，runtime 没收到只会让它多跑一会儿，之后写画布会被状态校验挡住
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunCanceled})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunCanceled})
 	return runView(updated), nil
 }
 
@@ -141,7 +141,7 @@ func (s *AgentService) Resume(ctx context.Context, userID, runID uint64, addBudg
 	case err != nil:
 		return nil, err
 	}
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunQueued, "resumed": true})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunQueued, "resumed": true})
 	if err := s.runtime.Resume(ctx, updated, "resume"); err != nil {
 		s.failRun(ctx, updated, errcode.ErrAgentUnavailable.Code, err)
 		return nil, errcode.ErrAgentUnavailable
@@ -159,7 +159,7 @@ func (s *AgentService) failRun(ctx context.Context, run *model.AgentRun, code in
 		"status": model.RunFailed, "error_code": fmt.Sprint(code), "error_message": errcode.ErrAgentUnavailable.Msg, "ended_at": s.now(),
 	})
 	if err == nil {
-		s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunFailed, "error": msg})
+		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunFailed, "error": msg})
 	}
 }
 

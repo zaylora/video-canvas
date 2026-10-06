@@ -90,8 +90,8 @@ func (s *AgentService) CreateApproval(ctx context.Context, run *model.AgentRun, 
 	if err := s.repo.CreateApproval(ctx, a); err != nil {
 		return nil, err
 	}
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "approval.created", approvalView(a))
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": next})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.created", approvalView(a))
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": next})
 	return approvalView(a), nil
 }
 
@@ -143,11 +143,11 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	}
 	// 5. 执行批准的内容，把结果写回审批；执行失败不让这次请求失败（决定已生效），Agent 会从结果里知道
 	final := s.execute(ctx, run, updated, out)
-	s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "approval.decided", approvalView(final))
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.decided", approvalView(final))
 	// 6. 让运行接着往下走；runtime 不在了就标为中断，用户可以稍后点「继续」
 	if err := s.runtime.Resume(ctx, run, "approval"); err != nil {
 		_, _ = s.repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunInterrupted}) // 已经不在 running 说明别处处理过了，无需再改
-		s.emit(ctx, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted})
+		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted})
 	}
 	return approvalView(final), nil
 }

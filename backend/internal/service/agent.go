@@ -13,6 +13,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/repository"
@@ -238,9 +239,9 @@ func (s *AgentService) checkCanvas(ctx context.Context, userID, canvasID uint64)
 	return nil
 }
 
-// emit 追加一条事件并推送给画布频道。写事件失败只记日志：动作本身已经成功，丢一条事件不该让用户的操作失败，
+// emit 追加一条事件并推送给该用户。写事件失败只记日志：动作本身已经成功，丢一条事件不该让用户的操作失败，
 // 前端会按 seq 对账补回。
-func (s *AgentService) emit(ctx context.Context, sessionID, runID, canvasID uint64, typ string, data any) {
+func (s *AgentService) emit(ctx context.Context, userID, sessionID, runID, canvasID uint64, typ string, data any) {
 	payload, err := json.Marshal(data)
 	if err != nil {
 		logger.Error("序列化 Agent 事件失败", zap.Error(err), zap.String("type", typ))
@@ -251,8 +252,12 @@ func (s *AgentService) emit(ctx context.Context, sessionID, runID, canvasID uint
 		logger.Error("写 Agent 事件失败", zap.Error(err), zap.String("type", typ), zap.Uint64("session_id", sessionID))
 		return
 	}
-	channel := ws.CanvasChannel(canvasID)
-	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: eventView(ev)})
+	// 推到用户频道而不是画布频道：用户频道连接时自动订阅，不需要订阅授权（默认拒绝所有手动订阅）；
+	// 画布频道名用的是原始数字 id，前端手里只有编码串，也拼不出来。前端按事件里的 canvas_id 过滤
+	channel := ws.UserChannel(userID)
+	v := eventView(ev)
+	v.CanvasID = idcodec.ID(canvasID)
+	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: v})
 }
 
 // cleanTitle 规整标题：多空白收成一个，最长 40 字，为空时取 def。
@@ -281,4 +286,9 @@ func runErr(err error) error {
 		return errcode.ErrAgentRunMissing
 	}
 	return err
+}
+
+// Undo 撤销某个运行对画布的全部改动，业务在 AgentCanvasService.Undo。
+func (s *AgentService) Undo(ctx context.Context, userID, runID uint64) (*UndoResult, error) {
+	return s.canvas.Undo(ctx, userID, runID)
 }

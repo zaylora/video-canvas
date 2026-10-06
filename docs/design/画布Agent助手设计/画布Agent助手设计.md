@@ -133,7 +133,7 @@
 ```
 浏览器 Agent 浮窗 ──HTTP──▶ Go API（/api/v1/agent/...）
      ▲                         │  ① 建 run、组装上下文帧
-     │ WS canvas:{id}           │  ② spawn / 调用 agent-runtime（Node + pi）
+     │ WS user:{id}             │  ② spawn / 调用 agent-runtime（Node + pi）
      │  agent.event             ▼
      │  canvas.patch     agent-runtime（Node，零密钥，每轮临时 HOME）
      │                         │  反向桥（一次性 bridgeToken，仅 loopback / unix socket）
@@ -409,8 +409,8 @@ running → interrupted（服务重启 / runtime 崩溃）→ 用户点「继续
 | `POST /api/v1/agent/runs/:rid/resume` | `{add_budget?}` 继续 interrupted、budget_exhausted、step_limit 状态的 run | 60003、40001 |
 | `POST /api/v1/agent/runs/:rid/undo` | 撤销本轮，返回 `{reverted: n, skipped: [{nodeId, field, reason}]}` | 60003（run 仍在运行）、60007（已撤销） |
 | `POST /api/v1/agent/approvals/:aid/decision` | `{decision: approve\|reject, items?: [{index, approve, count?}], answer?: string, add_budget?: int}` | 60004 审批已处理或已过期；60008 超出预算；40001 积分不足 |
-| WS `canvas:{id}` 推送 `agent.event` | `{session_id, run_id, seq, type, data}`；文本 delta 按 50ms 合并后推送 | — |
-| WS `canvas:{id}` 推送 `canvas.patch` | `{mutation_id, run_id, revision_before, revision_after, ops: [{op, id, before, after}]}` | — |
+| WS 用户频道 `user:{id}` 推送 `agent.event` | `{session_id, run_id, seq, type, data}`；文本 delta 按 50ms 合并后推送 | — |
+| WS 用户频道 `user:{id}` 推送 `canvas.patch` | `{mutation_id, run_id, revision_before, revision_after, ops: [{op, id, before, after}]}` | — |
 | 内部 `POST /internal/agent/bridge/{model,tool,event}` | 只供 runtime 调用；用 Bearer bridgeToken 鉴权；model 接口返回 NDJSON 流 | 401（token 无效） |
 
 新增错误码（60xxx，Agent）：`60001` 画布已有运行中的 Agent（409），`60002` Agent 模型不可用（400），`60003` 当前状态不允许该操作（409），`60004` 审批已处理或已过期（409），`60005` Agent 运行时暂不可用（503），`60006` 画布写入冲突重试仍失败（409，只作为工具结果返回），`60007` 本轮已撤销（409），`60008` 超出本轮预算（402），`60010` 会话数量已达上限（409）。
@@ -596,7 +596,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | 1 | `internal/canvasgraph`：画布结构的解析、编辑操作、差异、撤销、目录；与前端共用 fixture | **已完成**（2026-10-07） |
 | 2a | 5 张表的模型、错误码 60xxx、`AgentRepository`（会话、运行、事件、改动日志、审批）及真实数据库的集成测试 | **已完成**（2026-10-07） |
 | 2b-1 | `AgentCanvasService`：应用编辑、排列、批准后的删除、撤销本轮、目录与详情；版本冲突重试；`canvas.patch` 推送 | **已完成**（2026-10-07） |
-| 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | 未开始 |
+| 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | **已完成**（2026-10-07） |
 | 3 | Agent 模型配置（`Kind=agent`）和流式 LLM 网关；token 计费的冻结与结算 | 未开始 |
 | 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 未开始 |
 | 5 | 前端：三方合并、撤销栈 rebase、409 自动合并、WS 消息解析、agent store | 未开始 |
@@ -648,3 +648,16 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   3. 一个节点被保留时，它所在的组和它的连线也一并保留，并分别列入跳过项。
 - **与设计的出入**：工具层的错误（`*canvasgraph.ValidationError`、`canvasgraph.ErrInvalid`）原样返回，由后面的桥转成给模型看的工具错误，不走 `errcode`；`errcode` 只用于面向 HTTP 的业务错误。
 - **验证**：`-race` 通过；`golangci-lint run --new-from-merge-base=master` 0 问题。
+
+### 13.5 切片 2b-2：会话、运行、审批的业务与接口（已完成）
+
+位置 `backend/internal/service/agent*.go`、`backend/internal/handler/agent.go`，接口表见 `backend/README.md`。
+
+- **已实现**：`AgentService`（会话、运行、审批）、`AgentHandler`（12 个接口）、路由和依赖组装；运行时和模型清单是**占位实现**（`NoAgentRuntime`、`NoAgentModels`），所以现在发起运行一律返回 `60002`，功能对用户是关着的，等切片 3 和 4 接入。
+- **与设计的出入**：
+  1. **实时推送改走用户频道 `user:{id}`，不再用 `canvas:{id}`**。原因：WebSocket 中心默认拒绝所有手动订阅（`denyAllAuthorizer`，应用里也没装授权函数），而且画布频道名用的是原始数字 id，前端手里只有编码串，拼不出来。用户频道连接时自动订阅，不需要任何授权；消息里带编码后的 `canvas_id`，前端按它过滤。`canvas.patch` 和 `agent.event` 都这样。
+  2. 所有对外 id（画布、会话、运行、审批、改动）都是编码串，视图结构放在 service 包（`model` 不能依赖内部包）。
+  3. 「发起运行」没有单独做 `Idempotency-Key`：同一画布同时只能有一个活跃运行，由数据库部分唯一索引保证，重复提交的第二次会返回 `60001`，不会产生两个运行。运行结束后的重复提交会创建新运行。
+  4. 删除审批支持逐项勾选节点（连线全部跟随）；生成审批逐项勾选、张数只能少不能多、按批准的内容重新算价。
+  5. 批准后运行回到 `running`、已批准的积分计入已花；`runtime.Resume` 失败时决定仍然生效，运行标为 `interrupted`，用户可以稍后点「继续」。
+- **验证**：service 层用内存假仓储覆盖（会话、运行生命周期、审批的每个业务错误分支）；handler 层 12 个接口各有成功、编码 id 格式错误（400 + 10001）、参数校验失败、业务错误透传的测试；`-race` 通过。

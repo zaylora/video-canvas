@@ -113,6 +113,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
 
+	// 画布 Agent：模型清单和运行时在后续切片接入，目前是占位：没有模型，发起运行返回 60002，功能对用户是关着的
+	agentRepo := repository.NewAgentRepository(db)
+	agentSvc := service.NewAgentService(service.AgentDeps{
+		Repo: agentRepo, Canvas: service.NewAgentCanvasService(agentRepo, hub),
+		Models: service.NoAgentModels{}, Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
+	})
+
 	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
 	if err != nil {
 		closeRedis(rdb)
@@ -184,6 +191,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Health:         handler.NewHealthHandler(db, rdb),
 		User:           handler.NewUserHandler(userSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Agent:          handler.NewAgentHandler(agentSvc),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),

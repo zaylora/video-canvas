@@ -55,6 +55,7 @@ func runView(r *model.AgentRun) *AgentRunView {
 // AgentEventView 是返回给前端的事件（HTTP 回放与 WebSocket 推送共用）。
 type AgentEventView struct {
 	SessionID idcodec.ID      `json:"session_id"` // 所属会话
+	CanvasID  idcodec.ID      `json:"canvas_id"`  // 所属画布：推送走用户频道，前端靠它过滤出当前画布的事件
 	RunID     *idcodec.ID     `json:"run_id"`     // 所属运行，会话级事件为 null
 	Seq       int64           `json:"seq"`        // 会话内递增序号
 	Type      string          `json:"type"`       // 事件类型

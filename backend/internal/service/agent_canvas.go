@@ -8,6 +8,7 @@ import (
 	"video-canvas/internal/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/repository"
 )
@@ -267,16 +268,17 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 	return nil, nil, errcode.ErrAgentWriteConflict
 }
 
-// publishPatch 在写入提交之后向画布频道推送改动，前端据此做三方合并。推送可以丢，前端会按 revision 对账。
+// publishPatch 在写入提交之后向用户推送改动，前端据此做三方合并。推送可以丢，前端会按 revision 对账。
+// 走用户频道（连接时自动订阅，不需要订阅授权），消息里带编码后的 canvas_id，前端按它过滤。
 func (s *AgentCanvasService) publishPatch(ctx context.Context, run *model.AgentRun, m *model.AgentMutation, changes []canvasgraph.Change) {
-	channel := ws.CanvasChannel(run.CanvasID)
+	channel := ws.UserChannel(run.UserID)
 	s.bc.Publish(ctx, channel, ws.Message{
 		Type:    ws.TypeCanvasPatch,
 		Channel: channel,
 		Data: map[string]any{
-			"mutation_id":     m.ID,
-			"run_id":          run.ID,
-			"canvas_id":       run.CanvasID,
+			"mutation_id":     idcodec.ID(m.ID),
+			"run_id":          idcodec.ID(run.ID),
+			"canvas_id":       idcodec.ID(run.CanvasID),
 			"kind":            m.Kind,
 			"revision_before": m.RevisionBefore,
 			"revision_after":  m.RevisionAfter,

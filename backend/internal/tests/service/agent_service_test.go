@@ -9,6 +9,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	. "video-canvas/internal/service"
 )
@@ -162,8 +163,11 @@ func TestAgentStartRun(t *testing.T) {
 		if got := e.repo.eventTypes(); len(got) != 2 {
 			t.Errorf("events=%v", got)
 		}
-		if len(e.bc.msgs) != 2 || e.bc.msgs[0].Type != ws.TypeAgentEvent || e.bc.channels[0] != "canvas:7" {
-			t.Errorf("事件应推到 canvas:7: %+v %v", e.bc.msgs, e.bc.channels)
+		if len(e.bc.msgs) != 2 || e.bc.msgs[0].Type != ws.TypeAgentEvent || e.bc.channels[0] != "user:1" {
+			t.Errorf("事件应推到 user:1: %+v %v", e.bc.msgs, e.bc.channels)
+		}
+		if ev, ok := e.bc.msgs[0].Data.(*AgentEventView); !ok || ev.CanvasID != idcodec.ID(7) || ev.Seq != 1 {
+			t.Errorf("推送的事件应带编码后的 canvas_id 供前端过滤: %+v", e.bc.msgs[0].Data)
 		}
 		list, _ := e.svc.ListSessions(ctx, 1, 7)
 		if list[0].Title != "把剧本拆成分镜" || list[0].ModelKey != "claude" {
