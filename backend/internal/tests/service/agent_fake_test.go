@@ -95,6 +95,8 @@ func (f *fakeAgentCanvasRepo) UpdateSession(_ context.Context, userID, id uint64
 			s.Mode = v.(string)
 		case "model_key":
 			s.ModelKey = v.(string)
+		case "session_jsonl":
+			s.SessionJSONL = v.(string)
 		}
 	}
 	return nil

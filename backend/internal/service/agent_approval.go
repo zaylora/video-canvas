@@ -37,11 +37,19 @@ type DeletePayload struct {
 
 // AskPayload 是提问的内容。
 type AskPayload struct {
-	Question    string   `json:"question"`               // 问题
-	Kind        string   `json:"kind"`                   // choice 或 model
-	Options     []string `json:"options,omitempty"`      // 选项
-	ModelKind   string   `json:"model_kind,omitempty"`   // kind=model 时要选哪类模型
-	AllowCustom bool     `json:"allow_custom,omitempty"` // 是否允许自定义回答
+	Question    string     `json:"question"`               // 问题
+	Kind        string     `json:"kind"`                   // choice 或 model
+	Options     []string   `json:"options,omitempty"`      // 选项
+	ModelKind   string     `json:"model_kind,omitempty"`   // kind=model 时要选哪类模型
+	AllowCustom bool       `json:"allow_custom,omitempty"` // 是否允许自定义回答
+	Models      []AskModel `json:"models,omitempty"`       // kind=model 时可选的已发布模型
+}
+
+// AskModel 是提问里可选的一个生成模型。
+type AskModel struct {
+	Key  string `json:"key"`  // 模型 key
+	Name string `json:"name"` // 显示名
+	Hint string `json:"hint"` // 简介
 }
 
 // AgentGenerationExecutor 在用户批准生成之后真正发起生成任务（以审批 id 作幂等键，续跑不会重复扣费）。

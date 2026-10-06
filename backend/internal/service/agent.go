@@ -260,6 +260,23 @@ func (s *AgentService) emit(ctx context.Context, userID, sessionID, runID, canva
 	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: v})
 }
 
+// push 只推送不落库的临时事件（文本、思考增量）：每个 Token 一次写库代价太大，而且增量丢了不要紧，
+// 结束时的 message.done 带着完整内容，前端按它对账。seq 为 0 表示这是临时事件，不参与回放。
+func (s *AgentService) push(ctx context.Context, userID, sessionID, runID, canvasID uint64, typ string, data any) {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		logger.Error("序列化 Agent 临时事件失败", zap.Error(err), zap.String("type", typ))
+		return
+	}
+	v := &AgentEventView{SessionID: idcodec.ID(sessionID), CanvasID: idcodec.ID(canvasID), Seq: 0, Type: typ, Data: payload, CreatedAt: s.now()}
+	if runID != 0 {
+		id := idcodec.ID(runID)
+		v.RunID = &id
+	}
+	channel := ws.UserChannel(userID)
+	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: v})
+}
+
 // cleanTitle 规整标题：多空白收成一个，最长 40 字，为空时取 def。
 func cleanTitle(raw, def string) string {
 	t := strings.Join(strings.Fields(raw), " ")
