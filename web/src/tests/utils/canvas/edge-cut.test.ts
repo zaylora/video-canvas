@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
-import { cutButtonScale, nearestRatio } from "@/utils/canvas/edge-cut";
+import { cutButtonScale, nearestRatio, shouldShowCutButton } from "@/utils/canvas/edge-cut";
+
+describe("shouldShowCutButton：断开按钮只在单条选中连线上显示", () => {
+  test("当前连线是唯一选中连线时显示", () => {
+    expect(shouldShowCutButton(true, 1)).toBe(true);
+  });
+
+  test("多选连线时隐藏所有断开按钮", () => {
+    expect(shouldShowCutButton(true, 2)).toBe(false);
+  });
+
+  test("当前连线未选中时不显示", () => {
+    expect(shouldShowCutButton(false, 1)).toBe(false);
+  });
+});
 
 describe("cutButtonScale：断开按钮在屏幕上的缩放系数", () => {
   test("100% 缩放时就是原大小", () => {

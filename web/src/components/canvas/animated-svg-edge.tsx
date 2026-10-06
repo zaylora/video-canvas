@@ -14,7 +14,7 @@ import { motion, useReducedMotion } from "motion/react";
 
 import { DURATION, EASE_OUT_CSS, TAP, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { cutButtonScale, nearestRatio } from "@/utils/canvas/edge-cut";
+import { cutButtonScale, nearestRatio, shouldShowCutButton } from "@/utils/canvas/edge-cut";
 
 export type AnimatedSvgEdge = Edge<{
   /**
@@ -102,6 +102,7 @@ export function AnimatedSvgEdge({
     (state) =>
       (state.nodeLookup.get(target)?.data as { status?: string } | undefined)?.status === "running",
   );
+  const selectedEdgeCount = useStore((state) => state.edges.filter((edge) => edge.selected).length);
 
   // data 为空对象时（比如边没带 data 就被创建）回退到默认形状，避免取不到组件
   const Shape = data.shape === "sweep" ? null : (shapes[data.shape] ?? shapes.circle);
@@ -166,7 +167,7 @@ export function AnimatedSvgEdge({
           emphasized={!!selected}
         />
       )}
-      {selected && (
+      {shouldShowCutButton(!!selected, selectedEdgeCount) && (
         <CutButton path={path} ratio={cutRatio} onCut={() => deleteElements({ edges: [{ id }] })} />
       )}
     </>

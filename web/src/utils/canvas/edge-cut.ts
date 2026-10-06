@@ -5,6 +5,12 @@ const CUT_SCALE_MAX = 1.2;
 const CUT_SCALE_FOLLOW = 0.35;
 
 /**
+ * 决定当前连线是否显示断开按钮，避免多选连线时每条线都浮出按钮。
+ */
+export const shouldShowCutButton = (selected: boolean, selectedEdgeCount: number) =>
+  selected && selectedEdgeCount === 1;
+
+/**
  * 断开按钮在屏幕上的缩放系数（相对原大小）：轻微跟着画布缩放，并夹在 0.8 到 1.2 之间。
  * 按钮挂在随画布缩放的图层里，实际要乘 `系数 / zoom` 才能抵掉画布自己的缩放。
  */
