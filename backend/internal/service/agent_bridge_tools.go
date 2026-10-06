@@ -155,6 +155,21 @@ func (b *AgentBridge) handlers() map[string]toolHandler {
 	}
 }
 
+// toolOrder 是全部工具名，给模型的工具顺序固定下来，提示词缓存才稳定。
+var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list"}
+
+// AgentToolsForMode 返回某个任务模式能用的工具名，运行时只把这些声明给模型：
+// 不能用的工具连看都看不到，比调用后被拒绝更省事，也更不容易被诱导。Go 端在执行时仍会再校验一次。
+func AgentToolsForMode(mode string) []string {
+	var out []string
+	for _, t := range toolOrder {
+		if modeAllowsTool(mode, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // modeLabel 是任务模式的中文名。
 func modeLabel(mode string) string {
 	switch mode {

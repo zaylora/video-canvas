@@ -142,7 +142,7 @@ func (s *AgentService) Resume(ctx context.Context, userID, runID uint64, addBudg
 		return nil, err
 	}
 	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunQueued, "resumed": true})
-	if err := s.runtime.Resume(ctx, updated, "resume"); err != nil {
+	if err := s.runtime.Resume(ctx, updated, ResumeInfo{Reason: "resume"}); err != nil {
 		s.failRun(ctx, updated, errcode.ErrAgentUnavailable.Code, err)
 		return nil, errcode.ErrAgentUnavailable
 	}

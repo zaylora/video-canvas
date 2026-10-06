@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -153,7 +155,7 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	final := s.execute(ctx, run, updated, out)
 	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.decided", approvalView(final))
 	// 6. 让运行接着往下走；runtime 不在了就标为中断，用户可以稍后点「继续」
-	if err := s.runtime.Resume(ctx, run, "approval"); err != nil {
+	if err := s.runtime.Resume(ctx, run, ResumeInfo{Reason: "approval", ToolCallID: a.ToolCallID, Content: approvalOutcomeText(final, out)}); err != nil {
 		_, _ = s.repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunInterrupted}) // 已经不在 running 说明别处处理过了，无需再改
 		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted})
 	}
@@ -300,4 +302,65 @@ func (s *AgentService) execute(ctx context.Context, run *model.AgentRun, a *mode
 		return a
 	}
 	return final
+}
+
+// approvalOutcomeText 把审批的结果写成给模型看的工具结果：用户批准了什么、拒绝了什么、回答了什么，
+// 以及批准后执行成功还是失败。模型据此决定下一步，所以要具体、不含糊。
+func approvalOutcomeText(a *model.AgentApproval, out *outcome) string {
+	rejected := out.status == model.ApprovalRejected
+	switch a.Kind {
+	case model.ApprovalAsk:
+		if rejected {
+			return "用户没有回答这个问题。"
+		}
+		return "用户回答：" + fmt.Sprint(out.decision["answer"])
+	case model.ApprovalDelete:
+		return deleteOutcome(a, out, rejected)
+	case model.ApprovalGenerate:
+		return generateOutcome(a, out, rejected)
+	}
+	return "用户已处理。"
+}
+
+func deleteOutcome(a *model.AgentApproval, out *outcome, rejected bool) string {
+	if rejected {
+		return "用户拒绝了删除，没有任何节点或连线被删除。"
+	}
+	scope := "用户批准了删除"
+	if out.status == model.ApprovalPartial {
+		scope = "用户只批准了部分删除"
+	}
+	if a.Status == model.ApprovalFailed {
+		return fmt.Sprintf("%s，但执行失败：%s。画布没有改动。", scope, resultError(a))
+	}
+	return fmt.Sprintf("%s，已删除 %d 个节点。", scope, len(out.nodeIDs))
+}
+
+func generateOutcome(a *model.AgentApproval, out *outcome, rejected bool) string {
+	if rejected {
+		return "用户拒绝了这次生成，没有生成任何内容，也没有花费积分。"
+	}
+	scope := "用户批准了生成"
+	if out.status == model.ApprovalPartial {
+		scope = "用户只批准了部分生成"
+	}
+	names := make([]string, len(out.gen))
+	for i, it := range out.gen {
+		names[i] = fmt.Sprintf("%s×%d", it.Label, it.Count)
+	}
+	if a.Status == model.ApprovalFailed {
+		return fmt.Sprintf("%s（%s），但任务提交失败：%s。没有扣积分。", scope, strings.Join(names, "、"), resultError(a))
+	}
+	return fmt.Sprintf("%s：%s，预估 %d 积分，任务已提交：%s", scope, strings.Join(names, "、"), out.quote, string(a.ResultJSON))
+}
+
+// resultError 取审批结果里记录的失败原因。
+func resultError(a *model.AgentApproval) string {
+	var r struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(a.ResultJSON, &r) == nil && r.Error != "" {
+		return r.Error
+	}
+	return "未知原因"
 }

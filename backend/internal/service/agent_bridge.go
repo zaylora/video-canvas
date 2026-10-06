@@ -87,6 +87,13 @@ func (b *AgentBridge) IssueToken(run *model.AgentRun, in model.AgentRunInput) st
 	return tok
 }
 
+// TokenCount 返回当前有效的令牌数，监控和测试用：运行进程都退出后它应该回到 0。
+func (b *AgentBridge) TokenCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.tokens)
+}
+
 // RevokeToken 让令牌立即失效。
 func (b *AgentBridge) RevokeToken(token string) {
 	b.mu.Lock()

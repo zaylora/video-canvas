@@ -83,7 +83,14 @@ type AgentRuntime interface {
 	// Cancel 中止运行，运行已经不在时不是错误。
 	Cancel(ctx context.Context, runID uint64) error
 	// Resume 在用户决定之后、或点「继续」之后让运行接着往下走。
-	Resume(ctx context.Context, run *model.AgentRun, reason string) error
+	Resume(ctx context.Context, run *model.AgentRun, info ResumeInfo) error
+}
+
+// ResumeInfo 是续跑运行时交给运行时的信息。
+type ResumeInfo struct {
+	Reason     string // approval 是用户对审批做了决定；resume 是用户点了「继续」
+	ToolCallID string // approval：要补上结果的那个工具调用
+	Content    string // approval：给模型看的工具结果，说明用户批准了什么、拒绝了什么、回答了什么
 }
 
 // AgentService 是画布 Agent 的会话、运行、审批业务。改画布本身在 AgentCanvasService。

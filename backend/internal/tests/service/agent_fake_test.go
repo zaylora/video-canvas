@@ -316,6 +316,7 @@ func (f *fakeAgentCanvasRepo) ExpirePendingApprovals(_ context.Context, runID ui
 type fakeAgentRuntime struct {
 	mu                                      sync.Mutex
 	started, interjected, canceled, resumed []uint64
+	resumeInfos                             []ResumeInfo
 	startErr, interjectErr, resumeErr       error
 }
 
@@ -337,10 +338,11 @@ func (r *fakeAgentRuntime) Cancel(_ context.Context, id uint64) error {
 	r.canceled = append(r.canceled, id)
 	return nil
 }
-func (r *fakeAgentRuntime) Resume(_ context.Context, run *model.AgentRun, _ string) error {
+func (r *fakeAgentRuntime) Resume(_ context.Context, run *model.AgentRun, info ResumeInfo) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.resumed = append(r.resumed, run.ID)
+	r.resumeInfos = append(r.resumeInfos, info)
 	return r.resumeErr
 }
 

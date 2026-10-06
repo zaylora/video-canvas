@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -331,6 +332,114 @@ func TestAgentDecideDeleteAndAsk(t *testing.T) {
 		}
 		if e.run(run.ID).Status != model.RunRunning {
 			t.Error("回答后运行应继续")
+		}
+	})
+}
+
+// 用户决定之后，运行时要续跑：交给它的是「哪个工具调用」和「给模型看的结果文字」，
+// 模型据此知道用户批准了什么、删了什么、回答了什么。
+func TestAgentDecide_ResumeInfoTellsTheModelWhatHappened(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("提问：带上用户的回答", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.runningRun(t)
+		v, _ := e.svc.CreateApproval(ctx, run, "tc-ask", model.ApprovalAsk, AskPayload{Question: "画幅？", Kind: "choice", Options: []string{"16:9", "9:16"}}, 0)
+		if _, err := e.svc.Decide(ctx, 1, uint64(v.ID), &model.DecideAgentApprovalReq{Decision: "approve", Answer: "16:9 横屏"}); err != nil {
+			t.Fatal(err)
+		}
+		info := e.rt.resumeInfos[0]
+		if info.Reason != "approval" || info.ToolCallID != "tc-ask" || !strings.Contains(info.Content, "16:9 横屏") {
+			t.Errorf("info=%+v", info)
+		}
+	})
+
+	t.Run("删除：批准并执行", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.runningRun(t)
+		v, _ := e.svc.CreateApproval(ctx, run, "tc-del", model.ApprovalDelete, DeletePayload{NodeIDs: []string{"n_script"}, Labels: []string{"剧本"}}, 0)
+		if _, err := e.svc.Decide(ctx, 1, uint64(v.ID), &model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
+			t.Fatal(err)
+		}
+		info := e.rt.resumeInfos[0]
+		if info.ToolCallID != "tc-del" || !strings.Contains(info.Content, "批准") || !strings.Contains(info.Content, "删除") {
+			t.Errorf("info=%+v", info)
+		}
+	})
+
+	t.Run("删除：拒绝", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.runningRun(t)
+		v, _ := e.svc.CreateApproval(ctx, run, "tc-del", model.ApprovalDelete, DeletePayload{NodeIDs: []string{"n_script"}}, 0)
+		if _, err := e.svc.Decide(ctx, 1, uint64(v.ID), &model.DecideAgentApprovalReq{Decision: "reject"}); err != nil {
+			t.Fatal(err)
+		}
+		if c := e.rt.resumeInfos[0].Content; !strings.Contains(c, "拒绝") || !strings.Contains(c, "没有") {
+			t.Errorf("应明确告诉模型没有删除任何东西: %q", c)
+		}
+	})
+
+	t.Run("删除：批准后执行失败（节点已不存在）", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.runningRun(t)
+		v, _ := e.svc.CreateApproval(ctx, run, "tc-del", model.ApprovalDelete, DeletePayload{NodeIDs: []string{"ghost"}}, 0)
+		if _, err := e.svc.Decide(ctx, 1, uint64(v.ID), &model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
+			t.Fatal(err)
+		}
+		if c := e.rt.resumeInfos[0].Content; !strings.Contains(c, "失败") || !strings.Contains(c, "ghost") {
+			t.Errorf("应说明失败原因: %q", c)
+		}
+	})
+
+	t.Run("生成：部分批准，带上任务信息", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		_ = run
+		if _, err := e.svc.Decide(ctx, 1, id, &model.DecideAgentApprovalReq{Decision: "approve", Items: []model.ApprovalItemDecision{{Index: 0, Approve: true, Count: 1}, {Index: 1, Approve: false}}}); err != nil {
+			t.Fatal(err)
+		}
+		c := e.rt.resumeInfos[0].Content
+		if !strings.Contains(c, "部分") || !strings.Contains(c, "林夏") || !strings.Contains(c, "task_ids") {
+			t.Errorf("应说明批准了哪些、任务已提交: %q", c)
+		}
+		if strings.Contains(c, "老周") {
+			t.Errorf("没批准的条目不该出现在已批准清单里: %q", c)
+		}
+	})
+
+	t.Run("生成：拒绝", func(t *testing.T) {
+		e := newAgentEnv(t)
+		_, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, &model.DecideAgentApprovalReq{Decision: "reject"}); err != nil {
+			t.Fatal(err)
+		}
+		if c := e.rt.resumeInfos[0].Content; !strings.Contains(c, "拒绝") || !strings.Contains(c, "没有") {
+			t.Errorf("c=%q", c)
+		}
+	})
+
+	t.Run("生成：批准后提交失败", func(t *testing.T) {
+		e := newAgentEnv(t)
+		e.gen.err = errAgentBoom
+		_, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, &model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
+			t.Fatal(err)
+		}
+		if c := e.rt.resumeInfos[0].Content; !strings.Contains(c, "失败") {
+			t.Errorf("c=%q", c)
+		}
+	})
+
+	t.Run("点「继续」：原因是 resume，没有工具结果", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.start(t, "x")
+		e.setStatus(uint64(run.ID), model.RunInterrupted)
+		if _, err := e.svc.Resume(ctx, 1, uint64(run.ID), 0); err != nil {
+			t.Fatal(err)
+		}
+		info := e.rt.resumeInfos[0]
+		if info.Reason != "resume" || info.ToolCallID != "" || info.Content != "" {
+			t.Errorf("info=%+v", info)
 		}
 	})
 }

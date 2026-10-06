@@ -32,6 +32,6 @@ func (NoAgentRuntime) Interject(context.Context, uint64, string) error { return 
 func (NoAgentRuntime) Cancel(context.Context, uint64) error { return nil }
 
 // Resume 总是失败。
-func (NoAgentRuntime) Resume(context.Context, *model.AgentRun, string) error {
+func (NoAgentRuntime) Resume(context.Context, *model.AgentRun, ResumeInfo) error {
 	return ErrAgentRuntimeMissing
 }
