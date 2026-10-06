@@ -325,7 +325,7 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
     <tr><td>无</td><td>—</td><td>直接用云端版本，与现在一致</td></tr>
     <tr><td>有，且已同步（<code>cloudDirty=false</code>）</td><td>—</td><td>丢弃草稿，用云端版本</td></tr>
     <tr><td>有，未同步</td><td>草稿的 <code>baseVersion</code> = 云端当前 <code>revision</code></td><td><b>自动恢复并补传</b>，右上角提示「已恢复上次未同步的改动」（用户确认）</td></tr>
-    <tr><td>有，未同步</td><td><code>baseVersion</code> ≠ 云端 <code>revision</code></td><td>云端在别处被改过：弹现有冲突弹窗（加载最新 / 另存为），草稿保留为备份，不静默覆盖</td></tr>
+    <tr><td>有，未同步</td><td><code>baseVersion</code> ≠ 云端 <code>revision</code></td><td>云端在别处被改过：打开云端最新版本，并弹现有冲突弹窗（加载最新 / 另存为），不静默覆盖。选完后草稿删除（选「另存为」会先把草稿内容存成副本）。内容与云端相同的草稿直接丢弃，不误报冲突。</td></tr>
   </table></div>
 
   <h3>4.3 状态栏（用户确认）</h3>
@@ -397,10 +397,10 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
     <tr><td>首次打开 / 无草稿</td><td>与现在完全一致。</td></tr>
     <tr><td>本地写入失败（配额满、隐私模式、浏览器禁用）</td><td>降级为只走云端，窗口不变（3 秒 / 10 秒，本来就比现状短）；控制台警告，不打扰用户。</td></tr>
     <tr><td>云端上传失败（断网、5xx）</td><td>第一次失败状态栏不变色；第一次自动重试（5 秒后）仍失败才变红「云端保存失败 · 重试」；自动重试 5/15/30 秒，<code>online</code> 事件立即重试；内容仍在本地草稿。</td></tr>
-    <tr><td>云端 409 冲突</td><td>弹现有冲突弹窗；冲突期间<b>本地仍继续写草稿</b>，云端暂停上传；选「加载最新」后草稿保留为备份，选「另存为」创建副本。</td></tr>
+    <tr><td>云端 409 冲突</td><td>弹现有冲突弹窗；冲突期间<b>本地仍继续写草稿</b>，云端暂停上传；选「加载最新」放弃本地改动，选「另存为」把本地内容存成副本；两种选择之后草稿都删除，免得下次打开又弹一次。没有查看备份的界面，所以不留备份。</td></tr>
     <tr><td>关页时大画布</td><td>keepalive 超 60KB 放弃；本地草稿已在 <code>pagehide</code> 强制写入，下次打开自动恢复。<span class="tag unv">未验证</span>pagehide 时异步 IndexedDB 写入的完成率，需浏览器实测。</td></tr>
     <tr><td>关页发生在 0.3 秒窗口内</td><td><code>pagehide</code> 先强制写草稿，缩小到「写入未完成就被杀」的极小概率窗口。</td></tr>
-    <tr><td>退出登录</td><td>先尽力 flush 云端，再清空该用户全部草稿。</td></tr>
+    <tr><td>退出登录</td><td>先尽力把打开着的画布同步到云端（超时 1.5 秒不卡住退出）；<b>同步完才清空该用户全部草稿</b>，视口记录总是清掉。没同步完（断网、冲突）的草稿保留，按用户隔离，下次登录同一账号还能恢复，不会被别人看到。</td></tr>
     <tr><td>草稿损坏 / schemaVersion 不认识</td><td>忽略草稿，用云端版本，记录警告。</td></tr>
     <tr><td>撤销/重做</td><td>按普通改动处理，走同一套窗口（用户确认）。</td></tr>
     <tr><td>权限</td><td>不变；后端仍按 <code>user_id</code> 隔离，草稿主键含 <code>userId</code>。</td></tr>
@@ -718,7 +718,7 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
       S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
       S.conflict = true;
       S.C.due = Infinity;
-      log("e", "草稿基于 " + d.base + "，云端已是 " + S.cloud.rev + " → 冲突，草稿保留为备份");
+      log("e", "草稿基于 " + d.base + "，云端已是 " + S.cloud.rev + " → 冲突，选完后草稿删除");
       ev(2, "conflict");
     } else {
       S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
@@ -728,7 +728,7 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
 
   function resolveConflict(copy) {
     if (copy) log("o", "已另存为「画布 副本」（含本地草稿内容）");
-    log("o", "加载云端最新，草稿保留为备份");
+    log("o", "加载云端最新，本地草稿已删除");
     S.mem = { edits: S.cloud.edits, vp: S.vpLocal };
     S.baseRev = S.cloud.rev;
     S.conflict = false; S.C.dirty = false; S.C.inflight = null; S.C.failed = false; S.C.failCount = 0; S.C.due = 0;

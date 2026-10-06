@@ -58,6 +58,25 @@ export function saveViewport(
   }
 }
 
+/** 清掉这个用户的全部视口记录（退出登录用）；前缀带冒号，user 7 不会误删 user 70 */
+export function clearUserViewports(
+  userId: string,
+  storage: Storage | undefined = defaultStorage(),
+) {
+  try {
+    if (!storage) return;
+    const prefix = `viewport:${userId}:`;
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach((key) => storage.removeItem(key));
+  } catch {
+    // 清不掉不影响退出
+  }
+}
+
 /** 两个视口是否相同，容忍浮点误差：打开画布时恢复视口那一下不能被当成用户移动 */
 export function sameViewport(a: StoredViewport, b: StoredViewport) {
   const near = (left: number, right: number) => Math.abs(left - right) < 1e-6;

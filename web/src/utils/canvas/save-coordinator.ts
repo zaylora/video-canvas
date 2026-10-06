@@ -148,7 +148,12 @@ export class SaveCoordinator {
   dismissConflict() {
     this.conflictFlag = false;
     this.dirty = false;
+    this.localDirty = false;
     this.clearCloudTimer();
+    this.clearLocalTimer();
+    // 草稿基于的版本已经过期，选完之后继续留着，下次打开会反复弹冲突
+    const draft = this.deps.draft;
+    if (draft && this.draftOk) void this.enqueue(() => draft.remove(), false);
     this.refreshStatus();
   }
 

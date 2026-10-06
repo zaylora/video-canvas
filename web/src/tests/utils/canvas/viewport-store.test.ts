@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  clearUserViewports,
   createViewportWriter,
   loadViewport,
   sameViewport,
@@ -127,5 +128,30 @@ describe("sameViewport", () => {
 
   test("浮点误差内算相同：恢复视口那一下不能被当成用户移动", () => {
     expect(sameViewport({ x: 1, y: 2, zoom: 1 }, { x: 1 + 1e-9, y: 2, zoom: 1 })).toBe(true);
+  });
+});
+
+describe("clearUserViewports", () => {
+  test("只清这个用户的视口，不误删前缀相同的其他用户，也不动别的键", () => {
+    const storage = fakeStorage();
+    saveViewport("7", "c1", { x: 1, y: 1, zoom: 1 }, storage);
+    saveViewport("7", "c2", { x: 2, y: 2, zoom: 1 }, storage);
+    saveViewport("70", "c1", { x: 3, y: 3, zoom: 1 }, storage);
+    storage.setItem("theme", "dark");
+    clearUserViewports("7", storage);
+    expect(loadViewport("7", "c1", storage)).toBeNull();
+    expect(loadViewport("7", "c2", storage)).toBeNull();
+    expect(loadViewport("70", "c1", storage)).not.toBeNull();
+    expect(storage.getItem("theme")).toBe("dark");
+  });
+
+  test("存储不可用：不抛错", () => {
+    clearUserViewports("7", undefined);
+    const broken = {
+      get length() {
+        throw new Error("denied");
+      },
+    } as unknown as Storage;
+    clearUserViewports("7", broken);
   });
 });

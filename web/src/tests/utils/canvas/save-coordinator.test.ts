@@ -306,6 +306,32 @@ describe("冲突（409）", () => {
   });
 });
 
+describe("冲突解决后清草稿", () => {
+  test("解除冲突后草稿被删，不会下次打开又弹一次", async () => {
+    const t = setup();
+    t.cloud.script.push("conflict");
+    t.coordinator.changed();
+    await t.advance(3000);
+    await t.advance(500);
+    const removesBefore = t.drafts.removes;
+    t.coordinator.dismissConflict();
+    await t.settle();
+    expect(t.drafts.removes).toBe(removesBefore + 1);
+  });
+
+  test("解除冲突时还有没写的改动：不再写草稿", async () => {
+    const t = setup();
+    t.cloud.script.push("conflict");
+    t.coordinator.changed();
+    await t.advance(3000);
+    t.coordinator.changed();
+    const savesBefore = t.drafts.saves.length;
+    t.coordinator.dismissConflict();
+    await t.advance(5000);
+    expect(t.drafts.saves.length).toBe(savesBefore);
+  });
+});
+
 describe("退出：强制保存", () => {
   test("flush：立即写草稿并立即上传，不等窗口", async () => {
     const t = setup();

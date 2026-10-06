@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
 import { getCanvas, saveCanvasGraph, updateCanvas } from "@/api/canvas";
 import { draftStore } from "@/utils/canvas/draft-idb";
+import { registerExitFlush } from "@/utils/canvas/exit-flush";
 import { SaveCoordinator } from "@/utils/canvas/save-coordinator";
 import { canKeepalive } from "@/utils/canvas/save-schedule";
 import type { SaveStatus } from "@/utils/canvas/save-status";
@@ -145,6 +146,8 @@ export function useCanvasPersistence({
     const onOnline = () => {
       if (coordinator.hasPendingCloud && !coordinator.conflicted) void coordinator.flush();
     };
+    // 退出登录时统一同步所有打开的画布，同步完才清草稿
+    const unregisterExitFlush = registerExitFlush(() => coordinator.flush());
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", leaving);
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -153,6 +156,7 @@ export function useCanvasPersistence({
       // 路由跳转离开画布：同步发起草稿写入，云端上传在后台继续。有冲突时不上传，免得又撞一次
       void coordinator.flush();
       coordinator.setActive(false);
+      unregisterExitFlush();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", leaving);
       window.removeEventListener("beforeunload", onBeforeUnload);
