@@ -180,3 +180,31 @@ type AgentApproval struct {
 
 // TableName 表名。
 func (AgentApproval) TableName() string { return "agent_approvals" }
+
+// Agent 对话调用的状态。
+const (
+	ModelCallPending = "pending" // 已发出，还没结算
+	ModelCallSettled = "settled" // 已按实际用量结算（扣费 0 也算）
+)
+
+// AgentModelCall 是一次大模型对话调用的计费记录：Agent 每向模型发一次请求就有一条。
+// 调用结束后按实际用量扣费并写积分流水；流水里的 agent_call_id 指向它，保证同一次调用只扣一次。
+type AgentModelCall struct {
+	ID             uint64     `gorm:"primaryKey" json:"id"`                          // 调用 ID
+	RunID          uint64     `gorm:"not null;index" json:"run_id"`                  // 所属运行
+	UserID         uint64     `gorm:"not null;index" json:"user_id"`                 // 所属用户
+	ModelKey       string     `gorm:"size:128;not null" json:"model_key"`            // Agent 模型 key
+	Status         string     `gorm:"size:16;not null" json:"status"`                // 状态，取值见 ModelCall* 常量
+	InputTokens    int        `gorm:"not null;default:0" json:"input_tokens"`        // 输入 Token
+	OutputTokens   int        `gorm:"not null;default:0" json:"output_tokens"`       // 输出 Token
+	CachedTokens   int        `gorm:"not null;default:0" json:"cached_tokens"`       // 输入里命中缓存的 Token
+	UsageEstimated bool       `gorm:"not null;default:false" json:"usage_estimated"` // 上游没给用量，Token 数是按字数估的
+	Credits        int        `gorm:"not null;default:0" json:"credits"`             // 按用量算出的应收积分
+	Charged        int        `gorm:"not null;default:0" json:"charged"`             // 实际扣的积分，用户余额不够时小于 Credits
+	Error          string     `gorm:"size:255;not null;default:''" json:"error"`     // 调用失败或中断的原因（已脱敏）
+	CreatedAt      time.Time  `json:"created_at"`                                    // 创建时间
+	SettledAt      *time.Time `json:"settled_at"`                                    // 结算时间
+}
+
+// TableName 表名。
+func (AgentModelCall) TableName() string { return "agent_model_calls" }

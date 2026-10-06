@@ -43,5 +43,6 @@ func All() []any {
 		&AgentEvent{},
 		&AgentMutation{},
 		&AgentApproval{},
+		&AgentModelCall{},
 	}
 }
