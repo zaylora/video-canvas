@@ -1,0 +1,21 @@
+{
+  "说明": "节点种类之间能否连线。前端 web/src/tests/utils/canvas/agent-graph-fixture.test.ts 与后端 internal/tests/canvasgraph 读同一份，防止两边规则漂移。",
+  "cases": [
+    {"from": "script", "to": "script", "ok": true},
+    {"from": "script", "to": "image", "ok": true},
+    {"from": "script", "to": "video", "ok": true},
+    {"from": "script", "to": "audio", "ok": true},
+    {"from": "image", "to": "script", "ok": false},
+    {"from": "image", "to": "image", "ok": true},
+    {"from": "image", "to": "video", "ok": true},
+    {"from": "image", "to": "audio", "ok": false},
+    {"from": "video", "to": "script", "ok": false},
+    {"from": "video", "to": "image", "ok": false},
+    {"from": "video", "to": "video", "ok": true},
+    {"from": "video", "to": "audio", "ok": false},
+    {"from": "audio", "to": "script", "ok": false},
+    {"from": "audio", "to": "image", "ok": false},
+    {"from": "audio", "to": "video", "ok": true},
+    {"from": "audio", "to": "audio", "ok": false}
+  ]
+}

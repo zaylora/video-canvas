@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布 Agent 助手演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ================= 可点击原型：颜色抄自 web/src/index.css 的 oklch token，动效取自 web/src/lib/motion.ts ================= */
+      :root {
+        --v-bg: oklch(1 0 0); --v-fg: oklch(0.145 0 0); --v-popover: oklch(1 0 0);
+        --v-muted: oklch(0.97 0 0); --v-muted-fg: oklch(0.556 0 0); --v-border: oklch(0.922 0 0);
+        --v-primary: oklch(0.205 0 0); --v-primary-fg: oklch(0.985 0 0); --v-destructive: oklch(0.577 0.245 27.325);
+        --v-canvas-bg: oklch(0.975 0 0); --v-canvas-dot: oklch(0 0 0 / 0.14);
+        --v-chrome: oklch(1 0 0 / 0.82); --v-chrome-border: oklch(0 0 0 / 0.08); --v-chrome-hover: oklch(0 0 0 / 0.05);
+        --v-node-ring: oklch(0.2 0 0 / 0.85); --v-credit: oklch(0.72 0.15 75); --v-preset: oklch(0.55 0.2 295);
+        --v-running: oklch(0.58 0.15 250); --v-success: oklch(0.6 0.15 155); --v-warning: oklch(0.7 0.16 70);
+        --v-edge: oklch(0 0 0 / 0.28);
+        /* lib/motion.ts：DURATION.fast/base/exit/slow、EASE_OUT */
+        --m-fast: 120ms; --m-base: 180ms; --m-exit: 126ms; --m-slow: 240ms; --m-ease: cubic-bezier(0.2, 0, 0, 1);
+      }
+      .dark {
+        --v-bg: oklch(0.145 0 0); --v-fg: oklch(0.985 0 0); --v-popover: oklch(0.205 0 0);
+        --v-muted: oklch(0.269 0 0); --v-muted-fg: oklch(0.708 0 0); --v-border: oklch(1 0 0 / 10%);
+        --v-primary: oklch(0.922 0 0); --v-primary-fg: oklch(0.205 0 0); --v-destructive: oklch(0.704 0.191 22.216);
+        --v-canvas-bg: oklch(0.13 0 0); --v-canvas-dot: oklch(1 0 0 / 0.08);
+        --v-chrome: oklch(0.2 0 0 / 0.78); --v-chrome-border: oklch(1 0 0 / 0.08); --v-chrome-hover: oklch(1 0 0 / 0.07);
+        --v-node-ring: oklch(1 0 0 / 0.72); --v-credit: oklch(0.82 0.15 85); --v-preset: oklch(0.6 0.19 295);
+        --v-running: oklch(0.75 0.12 240); --v-success: oklch(0.75 0.15 155); --v-warning: oklch(0.8 0.15 75);
+        --v-edge: oklch(1 0 0 / 0.28);
+      }
+      .vc { color: var(--v-fg); }
+      .vc button:focus-visible, .vc [contenteditable]:focus-visible, .vc input:focus-visible { outline: 2px solid color-mix(in oklch, var(--v-node-ring) 60%, transparent); outline-offset: 1px; }
+      .vc .tnum { font-variant-numeric: tabular-nums; }
+      .proto.vc { height: 680px; overflow: hidden; background-color: var(--v-canvas-bg);
+        background-image: radial-gradient(var(--v-canvas-dot) 1px, transparent 1px); background-size: 18px 18px; }
+      .world { position: absolute; left: 12px; top: 56px; width: 680px; height: 480px; transform-origin: 0 0; }
+      .world svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+      .grp { position: absolute; border: 1.5px dashed color-mix(in oklch, var(--v-muted-fg) 50%, transparent); border-radius: 22px; }
+      .grp > span { position: absolute; top: -22px; left: 4px; font-size: 12px; font-weight: 600; color: var(--v-muted-fg); }
+      .cn { position: absolute; width: 135px; height: 60px; border: 1px solid var(--v-chrome-border); background: var(--v-popover); border-radius: 12px; padding: 7px 9px; font-size: 11px; cursor: pointer; transition: box-shadow var(--m-base) var(--m-ease), opacity var(--m-base); overflow: hidden; }
+      .cn .k { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 11.5px; }
+      .cn .p { color: var(--v-muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+      .cn .st { position: absolute; right: 7px; top: 7px; width: 6px; height: 6px; border-radius: 50%; }
+      .cn.sel { box-shadow: 0 0 0 2px var(--v-node-ring); }
+      .cn.flash { box-shadow: 0 0 0 2px var(--v-preset), 0 0 0 6px color-mix(in oklch, var(--v-preset) 20%, transparent); }
+      .cn.danger { box-shadow: 0 0 0 2px var(--v-destructive); opacity: 0.7; }
+      .cn.edited::after { content: "你改过"; position: absolute; right: 7px; bottom: 5px; font-size: 9.5px; color: var(--v-running); }
+      .cv-pill { position: absolute; z-index: 5; display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 4px; border-radius: 999px;
+        background: var(--v-chrome); backdrop-filter: blur(24px); border: 1px solid var(--v-chrome-border); box-shadow: 0 8px 24px oklch(0 0 0 / 0.12); font-size: 13px; }
+      .cv-pill .ib { height: 32px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; transition: background-color var(--m-fast); }
+      .cv-pill .ib:hover { background: var(--v-chrome-hover); }
+      .cv-pill .ib[aria-pressed="true"] { background: color-mix(in oklch, var(--v-fg) 10%, transparent); }
+      .cv-pill .ib.off { opacity: 0.45; cursor: not-allowed; }
+      .vc .kbd { font-family: "Geist Mono", monospace; font-size: 10.5px; padding: 0 5px; border-radius: 4px; color: var(--v-muted-fg); border: 1px solid var(--v-chrome-border); }
+      .editbar { position: absolute; left: 12px; top: 12px; z-index: 5; display: flex; gap: 6px; align-items: center; padding: 4px 6px 4px 12px; font-size: 12px; max-width: calc(100% - 24px); }
+      .editbar input { width: 240px; max-width: 40vw; }
+      .vc .inp { font: inherit; font-size: 12.5px; color: inherit; background: transparent; border: 1px solid var(--v-chrome-border); border-radius: 8px; padding: 5px 9px; outline: none; }
+      .vc .inp:focus { border-color: color-mix(in oklch, var(--v-node-ring) 50%, transparent); }
+
+      /* ---- Agent 浮窗 ---- */
+      .ap { position: absolute; z-index: 20; width: 400px; height: 600px; max-height: calc(100% - 24px); max-width: calc(100% - 24px); display: flex; flex-direction: column;
+        background: color-mix(in oklch, var(--v-popover) 92%, transparent); backdrop-filter: blur(24px); border: 1px solid var(--v-chrome-border);
+        border-radius: 22px; box-shadow: 0 24px 64px oklch(0 0 0 / 0.28); transform-origin: bottom right; }
+      .ap.enter { animation: popIn var(--m-base) var(--m-ease); }
+      .ap.leave { animation: popOut var(--m-exit) var(--m-ease) forwards; }
+      @keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+      @keyframes popOut { to { opacity: 0; transform: translateY(8px) scale(0.96); } }
+      .ap-head { display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 10px 0 18px; cursor: move; user-select: none; flex: none; }
+      .ap-title { font-size: 14.5px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .icb { width: 32px; height: 32px; border-radius: 9px; display: inline-grid; place-items: center; color: var(--v-fg); transition: background-color var(--m-fast), transform var(--m-fast); }
+      .icb:hover { background: var(--v-chrome-hover); }
+      .icb:active { transform: scale(0.96); }
+      .icb:disabled { opacity: 0.4; cursor: not-allowed; background: none; }
+      .icb[aria-expanded="true"] { background: color-mix(in oklch, var(--v-fg) 10%, transparent); }
+      .icb [data-lucide] { width: 17px; height: 17px; }
+      .ap-msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 12px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+      .ap-msgs > * { animation: msgIn var(--m-base) var(--m-ease); }
+      @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } }
+      /* 空状态 */
+      .empty { margin: auto 0 4px; display: grid; justify-items: center; gap: 6px; animation: none !important; }
+      .orb { width: 64px; height: 64px; border-radius: 50%;
+        background: radial-gradient(circle at 34% 30%, oklch(1 0 0 / 0.9) 0 6%, transparent 22%),
+          radial-gradient(circle at 50% 55%, var(--v-running), color-mix(in oklch, var(--v-preset) 80%, var(--v-running)) 70%);
+        box-shadow: 0 0 36px color-mix(in oklch, var(--v-running) 40%, transparent), inset 0 -6px 14px oklch(0 0 0 / 0.18); }
+      .empty h3 { font-size: 16px; font-weight: 600; margin: 10px 0 14px; text-align: center; }
+      .guide { width: 100%; display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 12px; border-radius: 12px; font-size: 13.5px; color: var(--v-muted-fg); text-align: left; transition: background-color var(--m-fast), color var(--m-fast); }
+      .guide:hover { background: var(--v-chrome-hover); color: var(--v-fg); }
+      .guide .ar { margin-left: auto; transition: transform var(--m-fast) var(--m-ease); }
+      .guide:hover .ar { transform: translateX(2px); }
+      /* 消息 */
+      .m-user { align-self: flex-end; max-width: 86%; background: color-mix(in oklch, var(--v-fg) 8%, transparent); padding: 8px 12px; border-radius: 16px 16px 4px 16px; white-space: pre-wrap; line-height: 1.7; }
+      .m-user .steer { display: block; font-size: 10.5px; color: var(--v-muted-fg); }
+      .m-ai { max-width: 94%; white-space: pre-wrap; line-height: 1.65; }
+      .caret { display: inline-block; width: 7px; height: 14px; vertical-align: -2px; background: var(--v-fg); margin-left: 2px; animation: blink 1s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+      .tool { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--v-muted-fg); padding: 2px 4px; border-radius: 8px; cursor: pointer; }
+      .tool:hover { background: var(--v-chrome-hover); color: var(--v-fg); }
+      .tool code { font-size: 11px; background: none; padding: 0; color: var(--v-fg); }
+      .vcard { border: 1px solid var(--v-chrome-border); border-radius: 14px; padding: 10px 12px; background: color-mix(in oklch, var(--v-fg) 3%, transparent); }
+      .vcard .ttl { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+      .vcard .itm { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; }
+      .vcard.appr { border-color: color-mix(in oklch, var(--v-warning) 45%, transparent); }
+      .vcard.del { border-color: color-mix(in oklch, var(--v-destructive) 45%, transparent); }
+      .vcard.ask { border-color: color-mix(in oklch, var(--v-running) 45%, transparent); }
+      .vcard .meta { font-size: 11.5px; color: var(--v-muted-fg); }
+      .mrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 10px; text-align: left; transition: background-color var(--m-fast); }
+      .mrow:hover { background: var(--v-chrome-hover); }
+      .mrow[aria-checked="true"] { background: color-mix(in oklch, var(--v-fg) 9%, transparent); }
+      .mrow .mi { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: color-mix(in oklch, var(--v-fg) 8%, transparent); flex: none; }
+      .mrow b { font-weight: 500; font-size: 13px; display: block; }
+      .mrow small { color: var(--v-muted-fg); font-size: 11.5px; }
+      .notice { font-size: 11.5px; color: var(--v-muted-fg); display: flex; gap: 6px; align-items: flex-start; }
+      .notice.bad { color: var(--v-destructive); }
+      .notice.warn { color: var(--v-warning); }
+      .vbtn { height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; transition: background-color var(--m-fast), transform var(--m-fast), opacity var(--m-fast); }
+      .vbtn:active { transform: scale(0.96); }
+      .vbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .vbtn.pri { background: var(--v-primary); color: var(--v-primary-fg); }
+      .vbtn.dng { background: var(--v-destructive); color: oklch(0.985 0 0); }
+      .vbtn.out { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--v-fg) 14%, transparent); }
+      .vbtn.out:hover { background: var(--v-chrome-hover); }
+      .badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 999px; font-size: 10.5px; font-weight: 500; }
+      .badge.bad { background: color-mix(in oklch, var(--v-destructive) 14%, transparent); color: var(--v-destructive); }
+      .badge.mute { background: color-mix(in oklch, var(--v-fg) 8%, transparent); color: var(--v-muted-fg); }
+      .credit { color: var(--v-credit); }
+      /* 置顶运行条（计划 / 状态） */
+      .strip-wrap { position: relative; padding: 0 12px; flex: none; }
+      .strip { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 10px; margin-bottom: 8px; border-radius: 12px; font-size: 12px;
+        background: color-mix(in oklch, var(--v-fg) 5%, transparent); border: 1px solid var(--v-chrome-border); animation: msgIn var(--m-base) var(--m-ease); }
+      .strip .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .strip .chev { transition: transform var(--m-fast) var(--m-ease); }
+      .strip[aria-expanded="true"] .chev { transform: rotate(180deg); }
+      .ring { width: 18px; height: 18px; transform: rotate(-90deg); flex: none; }
+      .ring circle { fill: none; stroke-width: 2.5; }
+      .ring .bgc { stroke: color-mix(in oklch, var(--v-fg) 14%, transparent); }
+      .ring .fgc { stroke: var(--v-success); stroke-linecap: round; transition: stroke-dashoffset var(--m-slow) var(--m-ease); }
+      .plan-pop { position: absolute; left: 12px; right: 12px; bottom: calc(100% - 0px); padding: 8px 10px; border-radius: 14px; background: var(--v-popover); border: 1px solid var(--v-chrome-border);
+        box-shadow: 0 -10px 30px oklch(0 0 0 / 0.16); transform-origin: bottom center; animation: upIn var(--m-base) var(--m-ease); z-index: 3; }
+      .plan-pop .itm { display: flex; gap: 8px; align-items: center; font-size: 12.5px; padding: 4px 2px; }
+      .plan-pop .itm.done { color: var(--v-muted-fg); }
+      @keyframes upIn { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
+      @keyframes downIn { from { opacity: 0; transform: translateY(-4px) scale(0.96); } }
+      .spin { animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      /* 输入框 */
+      .composer { margin: 0 12px 12px; border-radius: 18px; border: 1px solid color-mix(in oklch, var(--v-fg) 12%, transparent); background: color-mix(in oklch, var(--v-fg) 3%, transparent);
+        padding: 10px 8px 8px; flex: none; transition: border-color var(--m-fast); position: relative; }
+      .composer:focus-within { border-color: color-mix(in oklch, var(--v-fg) 24%, transparent); }
+      .ctxrow { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px 6px; }
+      .ctxrow:empty { display: none; }
+      .editor { min-height: 60px; max-height: 140px; overflow-y: auto; padding: 2px 8px; font-size: 13.5px; line-height: 1.75; outline: none; white-space: pre-wrap; word-break: break-word; }
+      .editor:empty::before { content: attr(data-ph); color: var(--v-muted-fg); pointer-events: none; }
+      .ich { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 4px; margin: 0 2px; border-radius: 7px; vertical-align: 1px; font-size: 12px; line-height: 1;
+        background: color-mix(in oklch, var(--v-fg) 7%, transparent); border: 1px solid var(--v-chrome-border); user-select: none; animation: chipIn var(--m-fast) var(--m-ease); }
+      .ich .ico { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; }
+      .ich .ico [data-lucide] { width: 12px; height: 12px; }
+      .ich.model .ico { background: var(--v-running); color: oklch(0.985 0 0); }
+      .ich.skill .ico { background: var(--v-preset); color: oklch(0.985 0 0); }
+      .ich.node .ico { background: color-mix(in oklch, var(--v-fg) 14%, transparent); }
+      .ich.file .ico { background: color-mix(in oklch, var(--v-fg) 14%, transparent); }
+      .ich .x { margin-left: 2px; opacity: 0.6; }
+      .ich .x:hover { opacity: 1; }
+      @keyframes chipIn { from { opacity: 0; transform: scale(0.9); } }
+      .cbar { display: flex; align-items: center; gap: 2px; padding-top: 6px; }
+      .mode-btn { height: 32px; padding: 0 8px 0 10px; border-radius: 9px; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; transition: background-color var(--m-fast); }
+      .mode-btn:hover, .mode-btn[aria-expanded="true"] { background: var(--v-chrome-hover); }
+      .icb.on { background: color-mix(in oklch, var(--v-fg) 10%, transparent); }
+      .send { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; margin-left: auto; flex: none;
+        background: color-mix(in oklch, var(--v-fg) 18%, transparent); color: var(--v-muted-fg); transition: background-color var(--m-fast), color var(--m-fast), transform var(--m-fast); }
+      .send.ready { background: var(--v-primary); color: var(--v-primary-fg); }
+      .send.stop { background: var(--v-primary); color: var(--v-primary-fg); }
+      .send:active:not(:disabled) { transform: scale(0.96); }
+      .send:disabled { cursor: not-allowed; }
+      .send [data-lucide] { width: 17px; height: 17px; }
+      /* 弹层 */
+      .pop { position: absolute; z-index: 30; background: var(--v-popover); border: 1px solid var(--v-chrome-border); border-radius: 16px; box-shadow: 0 16px 48px oklch(0 0 0 / 0.3); padding: 8px; }
+      .pop.up { transform-origin: bottom left; animation: upIn var(--m-base) var(--m-ease); }
+      .pop.down { transform-origin: top right; animation: downIn var(--m-base) var(--m-ease); }
+      .pop.leave { animation: fadeOut var(--m-exit) var(--m-ease) forwards; }
+      @keyframes fadeOut { to { opacity: 0; transform: scale(0.96); } }
+      .pop h4 { font-size: 14px; font-weight: 600; margin: 4px 6px 10px; display: flex; align-items: center; gap: 8px; }
+      .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px; border-radius: 10px; background: color-mix(in oklch, var(--v-fg) 7%, transparent); margin: 0 4px 8px; position: relative; }
+      .seg button { height: 30px; border-radius: 8px; font-size: 13px; color: var(--v-muted-fg); position: relative; z-index: 1; transition: color var(--m-fast); }
+      .seg button[aria-selected="true"] { color: var(--v-fg); }
+      .seg .thumb { position: absolute; top: 3px; bottom: 3px; border-radius: 8px; background: color-mix(in oklch, var(--v-fg) 12%, transparent); transition: transform var(--m-slow) cubic-bezier(0.3, 1.3, 0.5, 1); }
+      .tabs2 { display: flex; gap: 14px; margin: 0 6px 8px; font-size: 13px; align-items: center; }
+      .tabs2 button { color: var(--v-muted-fg); }
+      .tabs2 button[aria-selected="true"] { color: var(--v-fg); font-weight: 600; }
+      .tabs2 button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+      .slash { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--v-muted-fg); background: color-mix(in oklch, var(--v-fg) 7%, transparent); padding: 1px 6px; border-radius: 5px; margin-left: 6px; }
+      .launcher { right: 12px; bottom: 12px; }
+      .sw { width: 32px; height: 18px; border-radius: 999px; background: color-mix(in oklch, var(--v-fg) 18%, transparent); position: relative; transition: background-color var(--m-fast); flex: none; }
+      .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: oklch(1 0 0); transition: transform var(--m-fast) var(--m-ease); }
+      .sw[aria-checked="true"] { background: var(--v-success); }
+      .sw[aria-checked="true"]::after { transform: translateX(14px); }
+      .tip { position: absolute; z-index: 40; pointer-events: none; padding: 5px 8px; border-radius: 7px; font-size: 11.5px; background: var(--v-fg); color: var(--v-bg); white-space: nowrap; animation: upIn var(--m-fast) var(--m-ease); }
+      .simbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 14px; font-size: 12.5px; }
+      .simbar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+      .opt { text-align: left; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 13px; background: hsl(var(--card)); }
+      .opt[aria-selected="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+      .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; font-size: 13px; }
+      .kv > div:nth-child(odd) { color: hsl(var(--muted-foreground)); }
+      /* 交互演示页沿用的旧卡片样式 */
+      .m-card { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 8px 10px; background: hsl(var(--background)); font-size: 12.5px; }
+      .m-card.appr { border-color: rgb(var(--warn) / 0.5); background: rgb(var(--warn) / 0.05); }
+      .m-card .ttl { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+      .m-card .itm { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+      .m-notice { font-size: 11.5px; color: hsl(var(--muted-foreground)); display: flex; gap: 6px; align-items: flex-start; }
+      .m-notice.bad { color: rgb(var(--bad)); }
+      .chip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 12px; background: hsl(var(--background)); }
+      .btn-sm { height: 26px; padding: 0 9px; font-size: 12px; border-radius: 7px; }
+      .btn-ok { background: rgb(var(--ok)); color: #fff; }
+      @media (max-width: 820px) { .demo-grid { grid-template-columns: 1fr !important; } }
+      /* 窄屏：浮窗变底部 Sheet */
+      @media (max-width: 768px) {
+        .ap { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: 100%; height: 82%; border-radius: 22px 22px 0 0; transform-origin: bottom center; }
+        .ap-head { cursor: default; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .vc *, .vc { animation-name: fadeOnly !important; transition-property: opacity, background-color, color !important; }
+        .vc .spin, .vc .caret { animation: none !important; }
+      }
+      @keyframes fadeOnly { from { opacity: 0; } }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="sparkles"></i></span>画布 Agent 助手</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>交互演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">在画布里说一句话，Agent 帮你把影视链路搭出来</h1>
+        <p class="lead">
+          用户贴一段剧本或一句创意，Agent 读懂画布，按「剧本 → 角色/场景 → 分镜 → 关键帧 → 视频」建好节点组、连好参考、填好提示词。
+          <b>建节点、连线、改提示词、排版直接生效，可一键「撤销本轮」；花积分的生成和删除必须你点批准；已生成的产物永远不会被覆盖。</b>
+          底层用 pi agent，跑在 Go 拉起的 Node 进程里，<b>Node 不持有任何密钥</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目现状来自仓库代码（2026-10-07 核对）；竞品来自调研，影策读了源码，其余多为搜索摘要。
+            本设计<b>尚未实现</b>，原型里的数字、耗时、积分都是示意。完整依据见同目录的
+            <code>画布Agent助手设计.md</code>（准绳）。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对源码 / 官方</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一条请求怎么走</h2>
+          <p class="sub">从你在浮窗里发出一句话，到画布上出现节点，经过哪几层、各自负责什么。</p>
+          <div class="flow note">
+            <div class="node"><b>① 浮窗发送</b>附带选中节点、@ 的节点、视口、本轮预算</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>② Go 建 run</b>校验单运行、模型、余额；组装「上下文帧」</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>③ Node 跑 pi 循环</b>零密钥；模型、工具、事件都经反向桥交回 Go</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>④ Go 执行工具</b>校验 → 按 revision 写 payload → 记改动日志</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>⑤ WS 推 patch</b>前端三方合并，对齐 revision 基线</div>
+          </div>
+          <div class="note-txt">
+            设计：照搬影策的「反向桥」——pi 只管对话循环和会话压缩，密钥、计费、画布写入、审批全部留在 Go。
+            放弃了「浏览器里跑 pi」（实现最省，但关页即中断），因为你选择了关页也能继续跑。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>兜底：</b>没有已发布的 Agent 模型 → 入口按钮置灰并说明原因，画布照常用；
+              Node 运行时挂了 → 发送时提示「Agent 暂不可用」（60005），正在跑的 run 标为「已中断」，回来点「继续」，审批过的生成不会重复扣费；
+              页面关了 → run 继续跑，重开时按事件序号回放消息、拉最新画布。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Agent 能做的三类事</h2>
+          <p class="sub">差别只在于「要不要你点头」。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="eye"></i><b>读</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">直接</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>画布目录、节点详情、看图、查模型和任务、读技能。</b>默认只看目录 + 选中/@ 的节点，需要时再精读。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="pencil"></i><b>编辑</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">直接生效</span><span class="tag t-info">可撤销本轮</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>建节点 / 组、连线、改标题提示词参数、排版。</b>每次最多 30 项；不能写产物字段（src、outputs、taskId…）。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="shield-check"></i><b>生成 · 删除</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">审批卡片</span><span class="tag t-mute">受本轮预算约束</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>发起生成、删节点或连线。</b>卡片列出模型、数量、预估积分或要删的东西；你批准后才执行，拒绝不扣分。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和主流方案比</h2>
+          <p class="sub">我们借了什么、放弃了什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>本方案</th><th>影策</th><th>tldraw agent kit</th><th>FLORA FAUNA</th><th>Krea Node Agent</th></tr></thead>
+              <tbody>
+                <tr><th>改画布方式</th><td class="y">后端落库 + 前端三方合并</td><td class="y">后端落库 + 前端三方合并</td><td>前端流式落 tldraw store</td><td class="m">未验证：实现细节</td><td class="m">未验证：实现细节</td></tr>
+                <tr><th>确认机制</th><td class="y">编辑直接；生成/删除审批</td><td class="y">三档模式；生成必审批</td><td><span class="m">聊天里显示 diff，未见批准按钮</span></td><td class="y">Assist 先列节点+用量再批</td><td class="y">先出可编辑计划</td></tr>
+                <tr><th>撤销</th><td class="y">撤销本轮（后端，字段级跳过冲突）</td><td class="y">按步撤销 + snapshotHash</td><td class="m">history mark（推断）</td><td class="m">未验证</td><td class="m">未验证</td></tr>
+                <tr><th>上下文</th><td>目录 + 选中/@ 完整 + 按需精读 + 看图</td><td>目录 + 分页精读 + 看图</td><td>截图 + 简化形状</td><td>选中 / @ 节点</td><td>整张画布</td></tr>
+                <tr><th>影视链路</th><td class="y">内置 5 个技能；分镜表二期</td><td class="y">分镜表、3D 预演、时间线</td><td class="m">无</td><td>模板</td><td>通用</td></tr>
+                <tr><th>文本流式</th><td class="y">真流式（网关 stream:true）</td><td class="m">模型回调非流式，事后补 delta</td><td class="y">SSE</td><td class="m">未验证</td><td class="m">未验证</td></tr>
+                <tr><th>复杂度</th><td><span class="m">中：新增 Node 运行时 + 6 张表</span></td><td class="m">高：约 150 个 cloud_agent 文件</td><td>中</td><td class="m">未验证</td><td class="m">未验证</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-mute">提案</span></td><td><span class="tag t-ok">已读源码</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>你贴一段剧本说「拆成分镜」时，会发生什么</h2>
+          <p class="sub">主路径一共 8 步，其中两处会停下来等你。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>读技能「剧本拆镜」</b><small>仓库内置的方法文档，告诉它镜号/景别/运镜怎么拆</small></li>
+                <li><b>信息不够就问你</b><small>ask_user 卡片：画幅 16:9 还是 9:16？——本轮暂停等你选</small></li>
+                <li><b>列计划</b><small>计划卡片：角色 → 场景 → 镜头组 → 生成角色图</small></li>
+                <li><b>建角色组、镜头组并连好参考</b><small>每个镜头一组：镜头文本 → 关键帧图 → 视频；节点紫色闪一下</small></li>
+                <li><b>整理布局</b><small>与现有「排列」算法一致</small></li>
+                <li><b>申请生成角色图</b><small>审批卡片：模型、张数、预估积分、本轮剩余预算——本轮暂停</small></li>
+                <li><b>你批准 → 走现有生成任务</b><small>幂等键 = 审批 id；结果照常经 WS 回填</small></li>
+                <li><b>结束，出现「撤销本轮」</b><small>撤销只撤 Agent 的改动；你改过的字段、已有产物的节点会跳过并列出</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：Agent 跑的时候画布不锁，你的修改永远优先。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>同一字段你和 Agent 都改了：保留你的，面板提示一句。</li>
+                    <li>运行中自动保存撞上 409：自动合并重试，不再弹冲突对话框。</li>
+                    <li>撤销本轮不会取消已批准的生成，也不会删掉已有产物的节点。</li>
+                    <li>预算用尽或到 40 步：暂停，可「追加预算并继续」。</li>
+                    <li>同一画布同时只能有一个 Agent 在跑（60001）。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">
+                交付时要提前告知：Agent 的对话本身按 token 扣积分，并计入本轮预算；私有部署需要多一个 Node 22 运行时。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 交互演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">工具、权限和合并规则</h1>
+        <p class="lead">
+          左边选一个 Agent 工具或规则，右边看它属于哪一类、要不要审批、会给画布推什么 patch。
+          生成工具可以改张数和本轮预算，实时看审批卡片能不能直接批。<b>示意数据，价格按「8 积分/张」举例。</b>
+        </p>
+        <div class="grid g2 demo-grid" style="margin-top: 20px; grid-template-columns: 250px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">画布 + Agent 浮窗原型</h1>
+        <p class="lead">
+          数据都在内存里，刷新复原；耗时和积分是示意，不做真实调用。默认深色，右上角可以切换主题。
+          画布已预置一个「剧本」节点和两个废稿。<b>主路径：</b>点空状态里的「从剧本开始拆分镜」，或者在输入框里插入模型、技能后发送。
+          <b>想看失败：</b>消息里带「失败」两字；在 ⚙ 设置里把本轮预算改成 10 再走主路径；勾选下方的「runtime 不可用」或「没有 Agent 模型」。
+          运行结束后点画布上的节点改提示词，再点「撤销本轮」，可以看到哪些字段被跳过。
+        </p>
+        <div class="simbar">
+          <label><input type="checkbox" id="simDown" onchange="P.simDown=this.checked" /> 模拟：runtime 不可用</label>
+          <label><input type="checkbox" id="simNoModel" onchange="P.simNoModel=this.checked; if(this.checked) closePanel(true); renderLauncher()" /> 模拟：没有已发布的 Agent 模型</label>
+          <button class="btn btn-outline btn-sm" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>重置原型</button>
+          <span class="muted">可用积分：<b id="availTxt" class="tnum"></b>（示意）</span>
+        </div>
+        <div class="frame note" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">canvas.example.com / 我的画布 / 雨夜便利店</span>
+          </div>
+          <div class="proto vc" id="proto">
+            <div class="world" id="world"></div>
+            <div class="cv-pill editbar" id="editbar" hidden></div>
+            <div class="cv-pill launcher" id="launcher"></div>
+            <div class="ap" id="ap" hidden></div>
+          </div>
+        </div>
+        <div class="note-txt">
+          设计：参考了你给的截图——顶栏只有标题和图标，空状态用光球加引导项，输入框是一整块大圆角，工具都收在它底部一行。
+          模型、技能、节点都是插在提示词里的行内 chip，一条消息里可以有多个（例如「角色用 A，场景用 B」）。
+          未完成的计划和运行状态合成一条，悬浮在输入框上方；运行中，发送键在输入框为空时是「停止」，有内容时是「插话」。
+          没有照搬的：分享和连接按钮（没有协作）、停靠侧栏（这版不做）、Skill 的「创建 / 收藏 / 我的」（二期）、光球的循环发光（规范不允许常驻循环动画）。
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 设计文档第 6–8 节。<b>复用</b>：画布 revision 乐观锁、模型配置的草稿/校验/试跑/发布、渠道密钥与 netguard、生成任务服务与积分冻结结算、WS <code>canvas:{id}</code> 频道。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁挂在谁下面、为什么。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>对象</th><th>归属</th><th>为什么</th></tr></thead>
+            <tbody>
+              <tr><th>会话 agent_sessions</th><td><code>user_id + canvas_id</code>，每画布 ≤ 50</td><td>每画布多会话（已确认）；不写 payload_json，避免拖大画布保存</td></tr>
+              <tr><th>运行 agent_runs</th><td>属于会话；<b>每画布同时 ≤ 1 个活跃</b></td><td>部分唯一索引保证；避免两个 Agent 同时改一张画布</td></tr>
+              <tr><th>改动 agent_mutations</th><td>属于 run，一次工具调用一条</td><td>撤销本轮按它倒序逆放；记录 revision 前后</td></tr>
+              <tr><th>审批 agent_approvals</th><td>属于 run</td><td>生成/删除/提问三类；id 即生成任务幂等键，崩溃续跑不重复扣费</td></tr>
+              <tr><th>模型调用 agent_model_calls</th><td>属于 run</td><td>token 计费对账；流水用 agent_call_id 幂等</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">迁移沿用后端现有 GORM 迁移机制。字段只列关键项，完整见 Markdown 8.1。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_runs</code></th></tr></thead>
+              <tbody>
+                <tr><th>status</th><td>queued / running / waiting_approval / waiting_input / succeeded / failed / canceled / budget_exhausted / step_limit / timeout / interrupted / expired</td></tr>
+                <tr><th>budget_credits</th><td>int，本轮预算，默认 50，可追加</td></tr>
+                <tr><th>spent_credits</th><td>int，LLM token + 已批准生成</td></tr>
+                <tr><th>steps / max_steps</th><td>int，默认上限 40</td></tr>
+                <tr><th>唯一约束</th><td><code>(canvas_id) WHERE status IN (queued, running, waiting_*)</code></td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_mutations</code></th></tr></thead>
+              <tbody>
+                <tr><th>kind</th><td>apply_ops / arrange / delete / generate_bind / undo</td></tr>
+                <tr><th>ops_json</th><td>jsonb，每项 <code>{op, id, before, after}</code>，只记改动字段</td></tr>
+                <tr><th>revision_before/after</th><td>写入前后的画布 revision</td></tr>
+                <tr><th>undone_at</th><td>撤销时间；已撤销再撤返回 60007</td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_sessions</code> / <code>agent_events</code></th></tr></thead>
+              <tbody>
+                <tr><th>session_jsonl</th><td>text，pi 会话 JSONL（含 compaction）；不含密钥</td></tr>
+                <tr><th>events.seq</th><td>bigint，<code>(session_id, seq)</code> 唯一；断线按 after=seq 回放</td></tr>
+                <tr><th>保留</th><td>事件 90 天（默认值）</td></tr>
+              </tbody>
+            </table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_approvals</code> / <code>credit_ledgers</code>（改）</th></tr></thead>
+              <tbody>
+                <tr><th>kind</th><td>generate / delete / ask</td></tr>
+                <tr><th>status</th><td>pending → approved / partially_approved / rejected / expired（24h）→ executed / failed</td></tr>
+                <tr><th>quote_credits</th><td>批准时实时复核余额与本轮预算</td></tr>
+                <tr><th>ledger.agent_call_id</th><td>新增可空列，<code>(agent_call_id, type)</code> 部分唯一</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>方法与路径</th><th>说明与业务错误</th></tr></thead>
+            <tbody>
+              <tr><th><code>GET /api/v1/agent/models</code></th><td>可用 Agent 模型（是否支持看图、价格摘要）</td></tr>
+              <tr><th><code>GET|POST /api/v1/canvas/:id/agent/sessions</code></th><td>列表 / 新建；30001 画布不存在，60010 会话已达上限</td></tr>
+              <tr><th><code>PATCH|DELETE /api/v1/agent/sessions/:sid</code></th><td>重命名 / 软删；有活跃 run 时删除返回 60001</td></tr>
+              <tr><th><code>GET /api/v1/agent/sessions/:sid/events?after=seq</code></th><td>断线回放，每页 ≤ 200</td></tr>
+              <tr><th><code>POST /api/v1/agent/sessions/:sid/runs</code></th><td><code>{message, mode: all|script|storyboard|prompt, selection[], viewport, budget_credits, agent_model_key}</code> + Idempotency-Key → 202。<code>message</code> 里的行内 chip 序列化为 <code>@[名字](node:id)</code>、<code>@[名字](model:key)</code>、<code>@[名字](skill:key)</code>、<code>@[名字](asset:id)</code>，后端解析并校验模型已发布、技能存在。60001 已有运行中 Agent；60002 模型不可用；40001 积分不足；60005 运行时不可用</td></tr>
+              <tr><th><code>POST /api/v1/agent/runs/:rid/interject</code></th><td><code>{message}</code> 插话（pi steer），仅 running；60003</td></tr>
+              <tr><th><code>POST /api/v1/agent/runs/:rid/cancel</code></th><td>停止；待处理审批置 expired；已完成改动保留</td></tr>
+              <tr><th><code>POST /api/v1/agent/runs/:rid/resume</code></th><td><code>{add_budget?}</code> 继续 interrupted / budget_exhausted / step_limit</td></tr>
+              <tr><th><code>POST /api/v1/agent/runs/:rid/undo</code></th><td>撤销本轮 → <code>{reverted, skipped:[{nodeId, field, reason}]}</code>；60003 仍在运行，60007 已撤销</td></tr>
+              <tr><th><code>POST /api/v1/agent/approvals/:aid/decision</code></th><td><code>{decision, items?, answer?, add_budget?}</code>；60004 已处理/过期，60008 超出本轮预算，40001 积分不足</td></tr>
+              <tr><th>WS <code>agent.event</code></th><td><code>{session_id, run_id, seq, type, data}</code>；文本增量 50ms 合并</td></tr>
+              <tr><th>WS <code>canvas.patch</code></th><td><code>{mutation_id, run_id, revision_before, revision_after, ops:[{op,id,before,after}]}</code></td></tr>
+              <tr><th><code>POST /internal/agent/bridge/{model,tool,event}</code></th><td>仅 loopback / unix socket + 一次性 bridgeToken；model 返回 NDJSON 流</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>工具清单（MVP）</h2>
+          <p class="sub">TypeBox schema 在 Node 声明，校验与执行在 Go。</p>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>工具</th><th>类别</th><th>参数与限制</th></tr></thead>
+            <tbody>
+              <tr><th><code>canvas_get_state</code></th><td>读</td><td><code>{nodeIds?≤50, groupId?, cursor?}</code>；空参返回目录，每页 50</td></tr>
+              <tr><th><code>canvas_inspect_image</code></th><td>读</td><td><code>{nodeId, outputId?}</code>；≤2048px 缩略图；模型不支持视觉时不注册</td></tr>
+              <tr><th><code>model_list</code> / <code>task_get</code></th><td>读</td><td>按 kind 列已发布生成模型与价格 / 查 ≤20 个任务</td></tr>
+              <tr><th><code>skill_search</code> / <code>skill_read</code></th><td>读</td><td>仓库内置 5 个影视技能</td></tr>
+              <tr><th><code>canvas_apply_ops</code></th><td>编辑 · 直接</td><td>1–30 项，整体原子；create_node / update_node / create_group / set_group / connect / move；tempId 可互引；禁写 src/outputs/assetId/taskId/status</td></tr>
+              <tr><th><code>canvas_arrange</code></th><td>编辑 · 直接</td><td>row / column / grid，只改坐标与组尺寸</td></tr>
+              <tr><th><code>canvas_delete</code></th><td>审批</td><td><code>{nodeIds?, edgeIds?, reason}</code>；卡片标明含产物的节点数</td></tr>
+              <tr><th><code>generate_media</code></th><td>审批</td><td><code>{items:[{nodeId, modelKey, params?, count 1–4}]≤10, reason}</code>；校验模型能力、参考连线、价格</td></tr>
+              <tr><th><code>plan_update</code></th><td>流程</td><td>计划 ≤12 步；未完成时悬浮在输入框上方（一行摘要，点开展开）</td></tr>
+              <tr><th><code>ask_user</code></th><td>流程</td><td><code>{question, kind: choice|model, options?(2–4), modelKind?: image|video, allowCustom}</code>；<code>kind=model</code> 时卡片列出已发布的该类模型和单价（用户没在提示词里指定模型时使用）；提问使本轮暂停</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// Go：工具执行器（提案）
+func ExecTool(run, call) Result {
+  switch call.Name {
+  case "generate_media", "canvas_delete", "ask_user":
+    appr := approvals.Create(run, call)            // 报价、预算、余额预检
+    push(agent.event{approval.created})
+    return Result{content: "已提交用户确认，等待决定", terminate: true}   // 结束本 turn，run → waiting_*
+  case "canvas_apply_ops", "canvas_arrange":
+    for attempt := 0; attempt &lt; 3; attempt++ {
+      cv := canvas.Get(run.CanvasID)                 // payload + revision
+      ops, err := canvasgraph.Validate(cv, call.Args) // 连线规则、字段白名单、≤30 项
+      if err != nil { return ToolError(err) }        // 逐项原因回给模型
+      next, diff := canvasgraph.Apply(cv, ops)        // diff 每项带 before/after
+      if canvas.Update(cv.ID, cv.Revision, next) == ErrRevisionConflict { continue }
+      m := mutations.Insert(run, call.ID, diff, cv.Revision, cv.Revision+1)
+      ws.Publish("canvas:"+id, canvas.patch{m})
+      return Result{content: summary(diff), details: idMap}
+    }
+    return ToolError(60006)
+  }
+}
+
+// 前端：合并 canvas.patch（提案）
+for (const op of patch.ops) for (const [field, after] of op.after) {
+  const local = get(op.id, field), before = op.before[field]
+  if (eq(local, before)) set(op.id, field, after)       // 本地没动 → 采用 Agent 的
+  else if (eq(local, after)) continue                    // 已一致
+  else notice(`已保留你对 ${label(op.id)} 的修改`)          // 用户改过 → 保留本地
+}
+history.rebase(patch)            // Agent 改动不成为 Ctrl+Z 的一步
+saver.alignBase(patch.revision_after)
+
+// 撤销本轮（提案）：倒序遍历 mutations，字段当前值 == after 才恢复 before，否则进 skipped；
+// Agent 新建但已有 taskId/outputs 的节点保留不删。</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>第一版主任务是影视链路搭建</b>：工具和提示词围绕剧本 → 分镜 → 生成。</li>
+              <li><b>编辑直接执行，生成需要审批</b>：花钱必须过人手，其余靠撤销兜底。</li>
+              <li><b>pi 跑在影策式 Node sidecar + 反向桥</b>：你优先要关页可继续、与影策同构；浏览器方案已搁置。</li>
+              <li><b>后端落库 + 前端三方合并</b>：前端对齐 revision 基线，运行中保存 409 自动合并。</li>
+              <li><b>复用后台模型配置</b>：新增 agent 用途，按 token 计费。</li>
+              <li><b>可拖动浮动面板</b>。</li>
+              <li><b>可删可改，删除需要审批</b>；产物不覆盖，重做新增。</li>
+              <li><b>撤销走面板「撤销本轮」（后端）</b>，不进 Ctrl+Z。</li>
+              <li><b>MVP 用现有节点 + 打组表达分镜，分镜表节点放二期</b>（访谈中你改过这一题）。</li>
+              <li><b>每画布多会话，存后端</b>。</li>
+              <li><b>护栏：步数上限 + 每画布单运行 + 单轮积分预算</b>。</li>
+              <li><b>MVP 包含插话/取消、看图、ask_user、影视技能库</b>。</li>
+              <li><b>技能库仓库内置，后台管理放二期</b>。</li>
+              <li><b>Agent 对话 token 计入本轮预算</b>；<b>私有部署接受多带 Node 22</b>；<b>撤销栈 rebase 成本过高时退化为清空 Ctrl+Z 栈并提示</b>（原待确认三项，已确认）。</li>
+              <li><b>浮窗按参考截图重做</b>：顶栏 = 标题 + 新对话 / 历史 / 设置 / 最小化（不做分享、连接、停靠侧栏）。</li>
+              <li><b>输入框左下做任务模式</b>：全能创作 / 剧本创编 / 分镜搭建 / 提示词优化，每种 = 追加提示词 + 默认技能 + 工具子集。</li>
+              <li><b>模型是写在提示词里的行内 chip，可多个</b>（如角色用 A、场景用 B）；没指定时 Agent 弹「选择模型」卡片。</li>
+              <li><b>✋ 开关：开 = 生成需审批，关 = 自动生成</b>；本版只做「开」，「关」禁用。</li>
+              <li><b>未完成的计划一直悬浮在输入框上方</b>，默认一行摘要，点开展开；完成后收起并留在消息流。</li>
+              <li><b>已搁置</b>：浏览器跑 pi、运行中锁画布、后端只产 ops、并入 Ctrl+Z、三档权限模式、停靠侧栏、分享。</li>
+              <li><b>主文档已回写</b>：6.2、6.4、6.7、8.2、11。</li>
+            </ol>
+            <div class="callout c-ok" style="margin-top: 12px">
+              <i data-lucide="circle-check"></i>
+              <div><b>没有仍待确认的问题。</b>剩下的未验证项（渠道对 stream + tools 的兼容、pi 1.0.4 接口签名）在阶段 1 试跑时确认。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons(); clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "proto") renderProto();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 交互演示 ================= */
+      const PRICE = 8; // 示意：8 积分/张
+      const D = { sel: "apply", count: 2, items: 2, budget: 50, spent: 3, local: "same" };
+      const OPTS = [
+        { id: "get", name: "canvas_get_state", sub: "读 · 直接" },
+        { id: "inspect", name: "canvas_inspect_image", sub: "读 · 直接" },
+        { id: "apply", name: "canvas_apply_ops", sub: "编辑 · 直接 · 可撤销" },
+        { id: "arrange", name: "canvas_arrange", sub: "编辑 · 直接 · 可撤销" },
+        { id: "gen", name: "generate_media", sub: "生成 · 审批 · 受预算约束" },
+        { id: "del", name: "canvas_delete", sub: "删除 · 审批" },
+        { id: "ask", name: "ask_user", sub: "流程 · 暂停等你回答" },
+        { id: "merge", name: "规则：三方合并", sub: "Agent patch 遇到你的修改" },
+        { id: "undo", name: "规则：撤销本轮", sub: "哪些会被撤、哪些跳过" },
+      ];
+      function renderOptList() {
+        $("#optList").innerHTML = OPTS.map((o) =>
+          `<button class="opt" aria-selected="${o.id === D.sel}" onclick="D.sel='${o.id}';renderOptList();renderOptPanel()"><code>${esc(o.name)}</code><small>${esc(o.sub)}</small></button>`).join("");
+      }
+      function kv(rows) { return `<div class="kv">${rows.map(([k, v]) => `<div>${esc(k)}</div><div>${v}</div>`).join("")}</div>`; }
+      function code(s) { return `<div class="codeblock" style="margin-top:12px"><pre style="margin:0;font:inherit;white-space:pre-wrap">${esc(s)}</pre></div>`; }
+      function renderOptPanel() {
+        const p = $("#optPanel"); let h = "";
+        if (D.sel === "get") {
+          h = `<h3>canvas_get_state <span class="tag t-ok">直接</span></h3>` + kv([
+            ["什么时候用", "上下文帧里只有目录（≤200 个节点、提示词前 60 字），需要完整提示词 / 参数 / 连线时调用"],
+            ["参数", "<code>{nodeIds?≤50, groupId?, cursor?}</code>；空参返回目录"],
+            ["画布变化", "无"],
+            ["为什么", "影策和 FAUNA 的经验：给明确上下文比塞整张画布更准，也省 token"]]) +
+            code(`→ canvas_get_state({ groupId: "g_shot_02" })\n← { nodes: [{ id: "n_s2_img", kind: "image", label: "镜头02 关键帧",\n      prompt: "雨夜便利店门口，林夏撑伞…", model: "seedream-4", hasOutput: false }],\n    edges: [...], nextCursor: null }`);
+        } else if (D.sel === "inspect") {
+          h = `<h3>canvas_inspect_image <span class="tag t-ok">直接</span></h3>` + kv([
+            ["什么时候用", "判断画面内容（人物像不像、构图对不对）。提示词和标题不等于画面"],
+            ["参数", "<code>{nodeId, outputId?}</code>，默认取当前选中的产物"],
+            ["限制", "缩略到 ≤2048px；Agent 模型配置 <code>vision:false</code> 时工具不注册，模型会被告知「无法看图」"],
+            ["画布变化", "无"]]);
+        } else if (D.sel === "apply") {
+          h = `<h3>canvas_apply_ops <span class="tag t-ok">直接生效</span> <span class="tag t-info">可撤销本轮</span></h3>` + kv([
+            ["参数", "<code>{ops: Op[1..30]}</code>，整体原子：任意一项不合法则整体拒绝并返回逐项原因"],
+            ["Op", "create_node · update_node · create_group · set_group · connect · move"],
+            ["禁写字段", "<code>src outputs assetId taskId status activeOutputId</code>（产物神圣）"],
+            ["连线校验", "沿用 <code>DOWNSTREAM_KINDS</code>：script→全部，image→image/video，video→video，audio→video"],
+            ["冲突", "revision 不一致 → 重读最新 payload 重新校验并应用，最多 3 次，仍失败返回 60006"]]) +
+            code(`→ canvas_apply_ops({ ops: [\n    { op: "create_group", tempId: "g1", label: "镜头 01" },\n    { op: "create_node", tempId: "a", kind: "script", label: "镜头01", prompt: "近景，林夏抬头…", parentGroup: "g1" },\n    { op: "create_node", tempId: "b", kind: "image", label: "镜头01 关键帧", parentGroup: "g1" },\n    { op: "connect", source: "a", target: "b" } ] })\n← { ok: true, idMap: { g1: "g_8f2", a: "n_1c0", b: "n_1c1" }, mutationId: 41 }\n\nWS canvas.patch → { mutation_id: 41, revision_before: 87, revision_after: 88,\n  ops: [{ op: "create_node", id: "n_1c0", before: null, after: {...} }, ...] }`);
+        } else if (D.sel === "arrange") {
+          h = `<h3>canvas_arrange <span class="tag t-ok">直接生效</span></h3>` + kv([
+            ["参数", "<code>{target: {groupId}|{nodeIds}, layout: row|column|grid, gap?}</code>"],
+            ["行为", "只改坐标与组尺寸，算法与前端 <code>arrangeNodes</code> / <code>fitGroupToMembers</code> 一致（共享 fixture 测两端）"],
+            ["撤销", "记一条 mutation，撤销时恢复原坐标；你后来拖过的节点跳过"]]);
+        } else if (D.sel === "gen") {
+          const quote = D.items * D.count * PRICE, remain = D.budget - D.spent, ok = quote <= remain;
+          h = `<h3>generate_media <span class="tag t-warn">审批</span></h3>
+            <p class="muted" style="font-size:13px;margin:6px 0 12px">改参数，看审批卡片的状态。Agent 申请后本轮暂停（run → waiting_approval）。</p>
+            <div class="row wrapflex" style="gap:14px;font-size:13px">
+              <label>节点数 <input class="inp" type="number" min="1" max="10" value="${D.items}" style="width:64px" oninput="D.items=Math.max(1,Math.min(10,+this.value||1));deferGen()"></label>
+              <label>每个张数 <input class="inp" type="number" min="1" max="4" value="${D.count}" style="width:64px" oninput="D.count=Math.max(1,Math.min(4,+this.value||1));deferGen()"></label>
+              <label>本轮预算 <input class="inp" type="number" min="0" value="${D.budget}" style="width:72px" oninput="D.budget=Math.max(0,+this.value||0);deferGen()"></label>
+            </div>
+            <div id="genOut" style="margin-top:14px"></div>`;
+          p.innerHTML = h; renderGenOut(); icons(); return;
+        } else if (D.sel === "del") {
+          h = `<h3>canvas_delete <span class="tag t-warn">审批</span></h3>` + kv([
+            ["参数", "<code>{nodeIds?, edgeIds?, reason}</code>"],
+            ["卡片内容", "要删的节点和连线清单；<b>标出其中含产物的节点数</b>；悬停卡片时画布上对应节点红框"],
+            ["批准后", "执行删除并记 mutation（kind=delete），撤销本轮可恢复节点数据；已退款的任务不会恢复"],
+            ["拒绝", "什么都不发生，Agent 收到「用户拒绝」继续对话"]]);
+        } else if (D.sel === "ask") {
+          h = `<h3>ask_user <span class="tag t-info">暂停等回答</span></h3>` + kv([
+            ["参数", "<code>{question, kind: choice|model, options?: string[2..4], modelKind?, allowCustom}</code>"],
+            ["选模型", "<code>kind=model</code>：你没在提示词里插入模型时，卡片列出已发布的该类模型和单价，选一个再继续"],
+            ["行为", "run → waiting_input；你选完后 Go 以 follow-up 续跑同一会话"],
+            ["为什么", "信息不足时问比瞎猜省钱：画幅、时长、风格选错会导致整批生成作废"],
+            ["过期", "24 小时无回答 → expired，run 结束"]]);
+        } else if (D.sel === "merge") {
+          const R = {
+            same: ["本地值 = before（你没动）", "采用 Agent 的 after", "ok"],
+            equal: ["本地值 = after（碰巧一样）", "跳过，无变化", "ok"],
+            diff: ["本地值 ≠ before 且 ≠ after（你改过）", "保留你的修改，面板提示「已保留你对 镜头02 的修改」", "warn"],
+          }[D.local];
+          h = `<h3>三方合并规则 <span class="tag t-mute">提案</span></h3>
+            <p class="muted" style="font-size:13px;margin:6px 0 12px">Agent 把 镜头02 的提示词从「雨夜」改成「黄昏」。你本地这个字段处于哪种状态？</p>
+            <div class="row wrapflex">${[["same", "我没动过"], ["equal", "我也改成了黄昏"], ["diff", "我改成了清晨"]].map(([k, t]) =>
+              `<button class="chip" style="${D.local === k ? "border-color:hsl(var(--primary));box-shadow:0 0 0 1px hsl(var(--primary))" : ""}" onclick="D.local='${k}';renderOptPanel()">${t}</button>`).join("")}</div>
+            <div class="callout c-${R[2]}" style="margin-top:12px"><i data-lucide="git-merge"></i><div><b>${esc(R[0])}</b><br>${esc(R[1])}</div></div>
+            <p class="muted" style="font-size:12.5px;margin-top:10px">合并后：本地撤销栈 rebase（Agent 改动不成为 Ctrl+Z 的一步）；保存基线对齐到 revision_after，有未保存修改则保留脏标记。运行中保存遇到 409 时同样按此规则自动合并重试，不弹冲突对话框。</p>`;
+        } else if (D.sel === "undo") {
+          h = `<h3>撤销本轮 <span class="tag t-mute">提案</span></h3>
+            <div class="cmp-wrap" style="margin-top:10px"><table class="cmp">
+              <thead><tr><th>Agent 本轮做的事</th><th>撤销后</th></tr></thead>
+              <tbody>
+                <tr><th>新建节点，之后没人动</th><td class="y">删除</td></tr>
+                <tr><th>新建节点，你后来改过提示词</th><td class="m">保留，列入 skipped：「你已修改」</td></tr>
+                <tr><th>新建节点，已批准生成（有 taskId / outputs）</th><td class="m">保留，列入 skipped：「已有产物」；不取消任务</td></tr>
+                <tr><th>改了提示词，当前值仍是 Agent 写的</th><td class="y">恢复为改前</td></tr>
+                <tr><th>改了提示词，你又改过</th><td class="m">跳过</td></tr>
+                <tr><th>批准后删除的节点</th><td class="y">恢复节点数据（已退款任务不恢复）</td></tr>
+                <tr><th>再次撤销同一轮</th><td class="m">60007 本轮已撤销</td></tr>
+              </tbody>
+            </table></div>`;
+        }
+        p.innerHTML = h; icons();
+      }
+      let genT; function deferGen() { clearTimeout(genT); genT = setTimeout(renderGenOut, 120); }
+      function renderGenOut() {
+        const quote = D.items * D.count * PRICE, remain = D.budget - D.spent, ok = quote <= remain;
+        $("#genOut").innerHTML = `
+          <div class="m-card appr" style="max-width:420px">
+            <div class="ttl"><i data-lucide="sparkles"></i>申请生成 · ${D.items} 个节点 × ${D.count} 张</div>
+            <div class="itm">模型 Seedream 4 · 预估 <b>${quote}</b> 积分（示意 ${PRICE}/张）</div>
+            <div class="itm muted">本轮预算 ${D.budget} · 已花 ${D.spent}（含对话 token）· 剩余 <b>${remain}</b></div>
+            ${ok ? "" : `<div class="m-notice bad" style="margin-top:4px"><i data-lucide="circle-alert"></i>超出本轮预算 ${quote - remain} 积分（60008）</div>`}
+            <div class="row" style="margin-top:8px">
+              <button class="btn btn-sm btn-ok" ${ok ? "" : "disabled title='超出本轮预算'"}>批准</button>
+              ${ok ? "" : `<button class="btn btn-sm btn-outline">追加 ${quote - remain} 预算并批准</button>`}
+              <button class="btn btn-sm btn-outline">拒绝</button>
+            </div>
+          </div>
+          <p class="muted" style="font-size:12.5px;margin-top:10px">批准时 Go 再实时复核一次可用余额（不足返回 40001）。拒绝不扣积分，Agent 收到「用户拒绝」后继续对话。</p>`;
+        icons();
+      }
+
+      /* ================= 可点击原型（全部为内存模拟，非真实调用） ================= */
+      const W = 135, H = 60;
+      const MODELS = {
+        image: [
+          { key: "seedream-4", name: "Seedream 4.0", desc: "精准生成与编辑，复杂指令稳定", price: 8, icon: "image" },
+          { key: "nano-banana-pro", name: "Nano Banana Pro", desc: "一致性好，适合角色三视图", price: 12, icon: "image" },
+          { key: "gpt-image-2", name: "GPT Image 2", desc: "长文本与版式能力突出", price: 10, icon: "image" },
+        ],
+        video: [
+          { key: "seedance-2", name: "Seedance 2.0", desc: "多镜头叙事，运镜稳定", price: 30, icon: "film" },
+          { key: "kling-2-5", name: "Kling 2.5", desc: "动作自然，人物稳定", price: 25, icon: "film" },
+          { key: "veo-3-1", name: "Veo 3.1", desc: "带同期声", price: 40, icon: "film" },
+        ],
+      };
+      const SKILLS = [
+        { key: "script-breakdown", name: "剧本拆镜", desc: "按场次与镜头拆分：镜号、景别、运镜、画面、台词、时长" },
+        { key: "character-turnaround", name: "角色三视图", desc: "正侧背三视图提示词与一致性要点" },
+        { key: "scene-setting", name: "场景设定", desc: "场景设定图：空间、光线、时代细节" },
+        { key: "keyframe-prompt", name: "关键帧提示词", desc: "镜头关键帧的构图、光影、风格写法" },
+        { key: "video-motion-prompt", name: "视频运镜提示词", desc: "按 Seedance / Kling 区分的运镜与动作写法" },
+      ];
+      const MODES = [
+        { key: "all", name: "全能创作", icon: "sparkles", desc: "可读、可编辑、可申请生成，全部工具" },
+        { key: "script", name: "剧本创编", icon: "feather", desc: "专注写剧本和台词，不建镜头、不生成" },
+        { key: "storyboard", name: "分镜搭建", icon: "layout-grid", desc: "剧本 → 角色 → 镜头组，默认挂「剧本拆镜」" },
+        { key: "prompt", name: "提示词优化", icon: "wand-sparkles", desc: "只改已有节点的提示词，不新建、不生成" },
+      ];
+      const AGENT_MODELS = [
+        { key: "claude", name: "Claude Sonnet", desc: "可看图 · 约 1 积分 / 次（示意）" },
+        { key: "deepseek", name: "DeepSeek V3", desc: "不可看图 · 约 0.3 积分 / 次（示意）" },
+      ];
+      const KICON = { script: "type", image: "image", video: "clapperboard", audio: "audio-lines" };
+      let P;
+      function initialProto() {
+        return {
+          open: false, simDown: $("#simDown")?.checked || false, simNoModel: $("#simNoModel")?.checked || false,
+          avail: 120, budget: 50, spent: 0, steps: 0, status: "idle", tok: 0, pending: null, steer: [],
+          sel: new Set(), editId: null, edited: new Set(), flash: {}, danger: new Set(),
+          mode: "all", agentModel: "claude", thinking: true, pop: null, modelTab: "image", skillQ: "", planOpen: false, range: null,
+          sessions: [
+            { id: "s1", title: "新对话", msgs: [], plan: null, when: "刚刚" },
+            { id: "s2", title: "调色尝试", msgs: [{ t: "user", html: "镜头统一成冷色调试试" }, { t: "ai", text: "画布上还没有镜头组，要先把剧本拆成分镜吗？" }], plan: null, when: "昨天" },
+          ],
+          cur: "s1", runs: [], runSeq: 0,
+          nodes: [
+            { id: "n_script", kind: "script", label: "剧本", prompt: "雨夜，便利店店员林夏遇见浑身湿透的老周，他说自己在等一个十年前的约定……", x: 20, y: 40 },
+            { id: "n_w1", kind: "image", label: "废稿 A", prompt: "测试图，构图失败", x: 20, y: 300, out: true },
+            { id: "n_w2", kind: "image", label: "废稿 B", prompt: "空白草稿", x: 20, y: 390 },
+          ],
+          groups: [], edges: [],
+        };
+      }
+      const cur = () => P.sessions.find((s) => s.id === P.cur);
+      const running = () => ["running", "waiting_input", "waiting_approval"].includes(P.status);
+      const findNode = (id) => P.nodes.find((n) => n.id === id);
+
+      function resetProto() {
+        if (P) P.tok++;
+        P = initialProto(); built = false;
+        const ap = $("#ap"); ap.hidden = true; ap.innerHTML = ""; ap.style.left = ""; ap.style.top = "";
+        renderProto(); toast("原型已重置");
+      }
+      function renderProto() {
+        if (!P) P = initialProto();
+        $("#availTxt").textContent = P.avail;
+        renderWorld(); renderEditbar(); renderLauncher();
+        if (P.open) renderPanel();
+      }
+
+      /* ---- 画布 ---- */
+      function renderWorld() {
+        const proto = $("#proto"), w = $("#world");
+        const scale = proto.clientWidth > 0 ? Math.max(0.3, Math.min(1, (proto.clientWidth - 24) / 680, (proto.clientHeight - 70) / 480)) : 1;
+        w.style.transform = `scale(${scale})`;
+        const byId = Object.fromEntries(P.nodes.map((n) => [n.id, n]));
+        const now = Date.now();
+        let svg = `<svg width="680" height="480">`;
+        for (const e of P.edges) {
+          const a = byId[e.s], b = byId[e.t]; if (!a || !b) continue;
+          const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
+          svg += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="var(--v-edge)" stroke-width="1.3"/>`;
+        }
+        svg += `</svg>`;
+        const gs = P.groups.map((g) => `<div class="grp" style="left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px"><span>${esc(g.label)}</span></div>`).join("");
+        const ns = P.nodes.map((n) => {
+          const st = n.status === "running" ? "var(--v-running)" : n.out ? "var(--v-success)" : "transparent";
+          const cls = ["cn", P.sel.has(n.id) ? "sel" : "", P.flash[n.id] > now ? "flash" : "", P.danger.has(n.id) ? "danger" : "", P.edited.has(n.id) ? "edited" : ""].join(" ");
+          return `<div class="${cls}" style="left:${n.x}px;top:${n.y}px" onclick="clickNode(event,'${n.id}')">
+            <span class="st" style="background:${st}"></span>
+            <div class="k"><i data-lucide="${KICON[n.kind]}"></i>${esc(n.label)}</div>
+            <div class="p">${n.status === "running" ? "生成中…" : n.out ? "✓ 已有产物 · " : ""}${esc(n.prompt || "（空）")}</div></div>`;
+        }).join("");
+        w.innerHTML = svg + gs + ns; icons();
+      }
+      function flash(ids) {
+        const until = Date.now() + 1500; ids.forEach((id) => (P.flash[id] = until));
+        renderWorld(); setTimeout(() => renderWorld(), 1550);
+      }
+      function clickNode(e, id) {
+        if (e.shiftKey || e.metaKey) { P.sel.has(id) ? P.sel.delete(id) : P.sel.add(id); } else { P.sel = new Set([id]); }
+        P.editId = id; renderWorld(); renderEditbar(); renderCtx();
+      }
+      function clearSel() { P.sel.clear(); P.editId = null; renderWorld(); renderEditbar(); renderCtx(); }
+      function renderEditbar() {
+        const b = $("#editbar"), n = findNode(P.editId);
+        if (!n) { b.hidden = true; return; }
+        b.hidden = false;
+        b.innerHTML = `<i data-lucide="pencil"></i><b>${esc(n.label)}</b>
+          <input class="inp" value="${esc(n.prompt)}" oninput="editPrompt(this.value)" aria-label="提示词" />
+          <button class="icb" onclick="clearSel()" aria-label="取消选中"><i data-lucide="x"></i></button>`;
+        icons();
+      }
+      let editT;
+      function editPrompt(v) {
+        const n = findNode(P.editId); if (!n) return;
+        n.prompt = v; P.edited.add(n.id);
+        clearTimeout(editT); editT = setTimeout(renderWorld, 150); // 只重绘画布，输入框不失焦
+      }
+      function renderLauncher() {
+        const off = P.simNoModel;
+        $("#launcher").innerHTML = `<button class="ib ${off ? "off" : ""}" aria-pressed="${P.open}" onclick="togglePanel()"
+          data-tip="${off ? "管理员尚未配置 Agent 模型" : (P.open ? "收起 Agent" : "打开 Agent")} ⌘/">
+          <i data-lucide="sparkles" style="color:var(--v-preset)"></i>Agent<span class="kbd">⌘/</span></button>`;
+        icons();
+      }
+      function togglePanel() {
+        if (P.simNoModel) { toast("管理员尚未配置 Agent 模型", "warn"); return; }
+        P.open ? closePanel() : openPanel();
+      }
+      document.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "/" && !$("#tab-proto").hidden) { e.preventDefault(); togglePanel(); }
+        if (e.key === "Escape" && P?.pop) closePop();
+      });
+
+      /* ---- 浮窗：骨架只搭一次，输入框永不重建（避免失焦） ---- */
+      let built = false;
+      function openPanel() {
+        P.open = true; renderLauncher();
+        const ap = $("#ap"); if (!built) buildPanel();
+        ap.hidden = false; ap.classList.remove("leave"); ap.classList.add("enter");
+        setTimeout(() => ap.classList.remove("enter"), 200);
+        renderPanel(); $("#editor").focus();
+      }
+      function closePanel(instant) {
+        P.open = false; closePop(true); renderLauncher();
+        const ap = $("#ap"); if (ap.hidden) return;
+        if (instant) { ap.hidden = true; return; }
+        ap.classList.add("leave"); setTimeout(() => { if (!P.open) { ap.hidden = true; ap.classList.remove("leave"); } }, 126);
+      }
+      function buildPanel() {
+        built = true;
+        const ap = $("#ap"), pr = $("#proto");
+        if (!ap.style.left) { ap.style.left = Math.max(12, pr.clientWidth - 412) + "px"; ap.style.top = Math.max(12, pr.clientHeight - 664) + "px"; }
+        ap.innerHTML = `
+          <div class="ap-head" onmousedown="dragStart(event)">
+            <div class="ap-title" id="apTitle" ondblclick="renameCur()" title="双击重命名"></div>
+            <button class="icb" id="bNew" data-tip="新对话" onclick="newSession()"><i data-lucide="message-circle-plus"></i></button>
+            <button class="icb" id="bHist" data-tip="历史会话" data-pop-trigger aria-expanded="false" onclick="togglePop('history')"><i data-lucide="history"></i></button>
+            <button class="icb" id="bSet" data-tip="设置" data-pop-trigger aria-expanded="false" onclick="togglePop('settings')"><i data-lucide="sliders-horizontal"></i></button>
+            <button class="icb" data-tip="收起 ⌘/" onclick="closePanel()"><i data-lucide="minus"></i></button>
+          </div>
+          <div class="ap-msgs" id="apMsgs"></div>
+          <div class="strip-wrap" id="stripWrap"></div>
+          <div class="composer" id="composer">
+            <div class="ctxrow" id="ctxRow"></div>
+            <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true"
+              data-ph="描述你的想法，@ 引用节点，或插入模型、技能"></div>
+            <div class="cbar">
+              <button class="icb" id="bPlus" data-tip="添加附件" data-pop-trigger aria-expanded="false" onclick="togglePop('plus')"><i data-lucide="plus"></i></button>
+              <button class="mode-btn" id="bMode" data-pop-trigger aria-expanded="false" onclick="togglePop('mode')"><span id="modeTxt"></span><i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
+              <button class="icb" id="bModel" data-tip="插入模型" data-pop-trigger aria-expanded="false" onclick="togglePop('model')"><i data-lucide="box"></i></button>
+              <button class="icb" id="bSkill" data-tip="插入技能" data-pop-trigger aria-expanded="false" onclick="togglePop('skill')"><i data-lucide="notebook-pen"></i></button>
+              <button class="icb on" id="bHand" aria-pressed="true" data-tip="生成前需要你确认：开 · 「关＝自动生成」二期开放" onclick="toast('「关闭审批、自动生成」将在二期开放，本版生成都需要你确认','warn')"><i data-lucide="hand"></i></button>
+              <button class="send" id="bSend" onclick="sendOrStop()"></button>
+            </div>
+          </div>
+          <div id="popHost"></div>`;
+        const ed = $("#editor");
+        ed.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendOrStop(true); }
+          else if (e.key === "@") { e.preventDefault(); saveRange(); openPop("mention"); }
+          else if (e.key === "Escape") { if (P.pop) { e.stopPropagation(); closePop(); } }
+        });
+        ed.addEventListener("input", () => { if (!ed.textContent.trim() && !ed.querySelector(".ich")) ed.innerHTML = ""; updateSend(); saveRange(); });
+        ["keyup", "mouseup", "focus"].forEach((ev) => ed.addEventListener(ev, saveRange));
+        icons();
+      }
+      function renderPanel() {
+        if (!built || !P.open) return;
+        const s = cur();
+        $("#apTitle").textContent = s.title;
+        $("#bNew").disabled = running(); $("#bNew").dataset.tip = running() ? "运行中不能新建对话" : "新对话";
+        $("#modeTxt").textContent = MODES.find((m) => m.key === P.mode).name;
+        renderMsgs(); renderStrip(); renderCtx(); updateSend();
+      }
+      function renderCtx() {
+        const c = $("#ctxRow"); if (!c) return;
+        c.innerHTML = P.sel.size ? `<span class="ich node"><span class="ico"><i data-lucide="mouse-pointer-2"></i></span>已选中 ${P.sel.size} 个节点
+          <button class="x" onclick="clearSel()" aria-label="移除"><i data-lucide="x" style="width:12px;height:12px"></i></button></span>` : "";
+        icons();
+      }
+      function editorEmpty() { const ed = $("#editor"); return !ed || (!ed.textContent.trim() && !ed.querySelector(".ich")); }
+      function updateSend() {
+        const b = $("#bSend"); if (!b) return;
+        const empty = editorEmpty(), run = running();
+        let icon = "arrow-up", cls = "", tip = "发送 ↵", dis = false;
+        if (run && empty) { icon = "square"; cls = "stop"; tip = "停止"; }
+        else if (run) { cls = "ready"; tip = "插话：补充要求，不打断当前步骤"; }
+        else if (empty) { dis = true; tip = "先输入内容"; }
+        else cls = "ready";
+        b.className = "send " + cls; b.disabled = dis; b.dataset.tip = tip;
+        b.innerHTML = `<i data-lucide="${icon}"></i>`; icons();
+      }
+
+      /* ---- 输入框里的行内 chip ---- */
+      function saveRange() {
+        const sel = window.getSelection(); const ed = $("#editor");
+        if (sel.rangeCount && ed && ed.contains(sel.getRangeAt(0).startContainer)) P.range = sel.getRangeAt(0).cloneRange();
+      }
+      function chipHTML(type, label, icon, removable) {
+        return `<span class="ich ${type}" contenteditable="false" data-type="${type}" data-label="${esc(label)}"><span class="ico"><i data-lucide="${icon}"></i></span>${esc(label)}</span>`;
+      }
+      function insertChip(type, label, icon) {
+        const ed = $("#editor"); ed.focus();
+        const sel = window.getSelection(); sel.removeAllRanges();
+        let r = P.range;
+        if (!r || !ed.contains(r.startContainer)) { r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); }
+        sel.addRange(r);
+        const tpl = document.createElement("template"); tpl.innerHTML = chipHTML(type, label, icon);
+        const chip = tpl.content.firstChild, space = document.createTextNode(" ");
+        r.deleteContents(); r.insertNode(space); r.insertNode(chip);
+        r.setStartAfter(space); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); P.range = r.cloneRange();
+        icons(); updateSend();
+      }
+      function setEditor(html) { const ed = $("#editor"); ed.innerHTML = html; icons(); P.range = null; ed.focus(); const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); updateSend(); }
+      function readEditor() {
+        const ed = $("#editor"); const chips = []; let text = "";
+        ed.childNodes.forEach((n) => {
+          if (n.nodeType === 3) text += n.textContent;
+          else if (n.classList?.contains("ich")) { chips.push({ type: n.dataset.type, label: n.dataset.label }); text += `[${n.dataset.label}]`; }
+          else text += n.textContent;
+        });
+        return { text: text.replace(/ /g, " ").trim(), chips, html: ed.innerHTML };
+      }
+
+      /* ---- 弹层 ---- */
+      const TRIG = { history: "bHist", settings: "bSet", plus: "bPlus", mode: "bMode", model: "bModel", skill: "bSkill", mention: null };
+      function togglePop(name) { P.pop === name ? closePop() : openPop(name); }
+      function openPop(name) {
+        closePop(true); P.pop = name;
+        if (TRIG[name]) $("#" + TRIG[name]).setAttribute("aria-expanded", "true");
+        renderPop(true);
+      }
+      function closePop(instant) {
+        if (!P?.pop) return;
+        const name = P.pop; P.pop = null;
+        if (TRIG[name]) $("#" + TRIG[name])?.setAttribute("aria-expanded", "false");
+        const el = $("#popHost .pop"); if (!el) return;
+        if (instant) { el.remove(); return; }
+        el.classList.add("leave"); setTimeout(() => el.remove(), 126);
+      }
+      document.addEventListener("mousedown", (e) => {
+        if (!P?.pop) return;
+        if (e.target.closest(".pop") || e.target.closest("[data-pop-trigger]")) return;
+        closePop();
+      });
+      function renderPop(anim) {
+        const host = $("#popHost"); if (!host || !P.pop) return;
+        const ap = $("#ap"), comp = $("#composer");
+        const up = !["history", "settings"].includes(P.pop);
+        const width = { plus: 230, mode: 280, model: 340, skill: 372, mention: 260, history: 290, settings: 290 }[P.pop];
+        const pos = up ? `left:12px;bottom:${ap.clientHeight - comp.offsetTop + 8}px` : `right:10px;top:50px`;
+        const max = up ? `max-height:${comp.offsetTop - 16}px` : `max-height:${ap.clientHeight - 66}px`;
+        let h = "";
+        if (P.pop === "plus") {
+          h = `<button class="mrow" onclick="attach('参考图.png','image')"><span class="mi"><i data-lucide="image"></i></span><span><b>上传图片</b><small>作为参考图交给 Agent</small></span></button>
+            <button class="mrow" onclick="attach('剧本.txt','file-text')"><span class="mi"><i data-lucide="file-text"></i></span><span><b>上传故事 / 剧本</b><small>.txt / .md，Agent 读完再改编</small></span></button>
+            <div class="meta" style="padding:6px 8px 2px;font-size:11px;color:var(--v-muted-fg)">示意：实现走现有素材上传接口</div>`;
+        } else if (P.pop === "mode") {
+          h = `<h4>任务模式</h4>` + MODES.map((m) => `<button class="mrow" role="menuitemradio" aria-checked="${m.key === P.mode}" onclick="setMode('${m.key}')">
+            <span class="mi"><i data-lucide="${m.icon}"></i></span><span style="flex:1"><b>${m.name}</b><small>${m.desc}</small></span>
+            ${m.key === P.mode ? '<i data-lucide="check"></i>' : ""}</button>`).join("");
+        } else if (P.pop === "model") {
+          const list = MODELS[P.modelTab];
+          h = `<h4>插入模型 <span class="meta" style="font-weight:400;font-size:11.5px;color:var(--v-muted-fg)">可插多个，写清楚谁用哪个</span></h4>
+            <div class="seg" role="tablist"><span class="thumb" style="width:calc(50% - 3px);transform:translateX(${P.modelTab === "image" ? 0 : 100}%)"></span>
+              <button role="tab" aria-selected="${P.modelTab === "image"}" onclick="P.modelTab='image';renderPop()">图片</button>
+              <button role="tab" aria-selected="${P.modelTab === "video"}" onclick="P.modelTab='video';renderPop()">视频</button></div>` +
+            list.map((m) => `<button class="mrow" onclick="insertChip('model','${m.name}','${m.icon}');toast('已插入「${m.name}」')">
+              <span class="mi"><i data-lucide="${m.icon}"></i></span><span style="flex:1"><b>${m.name}</b><small>${m.desc}</small></span>
+              <span class="tnum credit" style="font-size:11.5px">✦ ${m.price}</span><i data-lucide="circle-plus" style="color:var(--v-muted-fg)"></i></button>`).join("");
+        } else if (P.pop === "skill") {
+          h = `<div class="row" style="margin:2px 4px 8px;gap:8px"><h4 style="margin:0">技能</h4><span class="spacer"></span>
+              <input class="inp" id="skillQ" placeholder="搜索技能" value="${esc(P.skillQ)}" style="width:150px" oninput="P.skillQ=this.value;renderSkillList()"/></div>
+            <div class="tabs2"><button aria-selected="true">内置</button><button aria-disabled="true" data-tip="二期开放">收藏</button><button aria-disabled="true" data-tip="二期开放">我的</button></div>
+            <div id="skillList"></div>`;
+        } else if (P.pop === "mention") {
+          h = `<h4>引用画布节点</h4>` + (P.nodes.length ? P.nodes.map((n) => `<button class="mrow" onclick="insertChip('node','${esc(n.label)}','${KICON[n.kind]}');closePop()">
+              <span class="mi"><i data-lucide="${KICON[n.kind]}"></i></span><span><b>${esc(n.label)}</b><small>${esc((n.prompt || "").slice(0, 18))}</small></span></button>`).join("")
+            : `<div class="meta" style="padding:8px">画布上还没有节点</div>`);
+        } else if (P.pop === "history") {
+          h = `<h4>历史会话 <span class="meta" style="font-weight:400;font-size:11.5px;color:var(--v-muted-fg)">本画布</span></h4>` + P.sessions.map((s, k) => {
+            const lock = running() && s.id !== P.cur;
+            return `<div class="mrow" role="button" aria-checked="${s.id === P.cur}" style="${lock ? "opacity:.5;cursor:not-allowed" : "cursor:pointer"}"
+              ${lock ? 'data-tip="运行中不能切换会话"' : `onclick="switchSession('${s.id}')"`}>
+              <span style="flex:1;min-width:0"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</b>
+              <small>${s.msgs.length} 条消息 · ${s.when}${s.id === P.cur && running() ? ' · <span style="color:var(--v-running)">运行中</span>' : ""}</small></span>
+              ${s.id === P.cur ? '<i data-lucide="check"></i>' : ""}
+              <button class="icb" data-tip="${s.id === P.cur && running() ? "运行中不能删除" : "删除"}" ${s.id === P.cur && running() ? "disabled" : ""} onclick="event.stopPropagation();delSession('${s.id}',this)"><i data-lucide="trash-2"></i></button></div>`;
+          }).join("");
+        } else if (P.pop === "settings") {
+          h = `<h4>设置</h4>
+            <div class="meta" style="margin:0 8px 4px;font-size:11.5px;color:var(--v-muted-fg)">Agent 模型（后台已发布）</div>` +
+            AGENT_MODELS.map((m) => `<button class="mrow" role="menuitemradio" aria-checked="${m.key === P.agentModel}" onclick="P.agentModel='${m.key}';renderPop()">
+              <span style="flex:1"><b>${m.name}</b><small>${m.desc}</small></span>${m.key === P.agentModel ? '<i data-lucide="check"></i>' : ""}</button>`).join("") +
+            `<div class="mrow" style="cursor:default"><span style="flex:1"><b>本轮预算</b><small>${running() ? "运行中请在审批卡片上「追加预算」" : "含对话 token 与生成费用"}</small></span>
+              <input class="inp tnum" type="number" min="0" value="${P.budget}" style="width:72px" ${running() ? "disabled" : ""} oninput="P.budget=Math.max(0,+this.value||0)"/><span class="credit">✦</span></div>
+            <div class="mrow" style="cursor:default"><span style="flex:1"><b>显示思考过程</b><small>默认折叠在回复上方</small></span>
+              <button class="sw" role="switch" aria-checked="${P.thinking}" onclick="P.thinking=!P.thinking;this.setAttribute('aria-checked',P.thinking)"></button></div>
+            <div class="mrow" style="cursor:default"><span style="flex:1"><b>生成前确认</b><small>本版固定开启；自动生成二期开放</small></span>
+              <button class="sw" role="switch" aria-checked="true" disabled style="opacity:.6;cursor:not-allowed"></button></div>`;
+        }
+        host.innerHTML = `<div class="pop ${up ? "up" : "down"}" style="${pos};width:min(${width}px, calc(100% - 24px));${max};overflow-y:auto" ${anim ? "" : 'data-still'}>${h}</div>`;
+        if (!anim) host.firstChild.style.animation = "none";
+        if (P.pop === "skill") { renderSkillList(); if (anim) $("#skillQ").focus(); }
+        icons();
+      }
+      function renderSkillList() {
+        const q = P.skillQ.trim();
+        const list = SKILLS.filter((s) => !q || (s.name + s.key + s.desc).includes(q));
+        $("#skillList").innerHTML = list.length ? list.map((s) => `<button class="mrow" onclick="insertChip('skill','${s.name}','notebook-pen');closePop()">
+            <span class="mi"><i data-lucide="wrench"></i></span><span style="flex:1;min-width:0"><b>${s.name}<span class="slash">/${s.key}</span></b><small>${s.desc}</small></span></button>`).join("")
+          : `<div style="padding:16px 8px;font-size:12.5px;color:var(--v-muted-fg)">没有匹配「${esc(q)}」的技能</div>`;
+        icons();
+      }
+      function attach(name, icon) { closePop(true); insertChip("file", name, icon); toast("示意：已作为附件插入"); }
+      function setMode(k) { P.mode = k; closePop(); $("#modeTxt").textContent = MODES.find((m) => m.key === k).name; }
+
+      /* ---- 会话 ---- */
+      function switchSession(id) { P.cur = id; P.planOpen = false; closePop(); renderPanel(); }
+      function newSession() {
+        if (running()) return;
+        const id = "s" + Date.now(); P.sessions.unshift({ id, title: "新对话", msgs: [], plan: null, when: "刚刚" });
+        P.cur = id; P.planOpen = false; renderPanel(); $("#editor").focus();
+      }
+      function delSession(id, btn) {
+        if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.innerHTML = '<span style="font-size:11px;color:var(--v-destructive);white-space:nowrap">删除?</span>'; return; }
+        P.sessions = P.sessions.filter((s) => s.id !== id);
+        if (!P.sessions.length) P.sessions.push({ id: "s" + Date.now(), title: "新对话", msgs: [], plan: null, when: "刚刚" });
+        if (!P.sessions.some((s) => s.id === P.cur)) P.cur = P.sessions[0].id;
+        renderPanel(); renderPop();
+      }
+      function renameCur() {
+        const t = $("#apTitle"), s = cur();
+        t.innerHTML = `<input class="inp" value="${esc(s.title)}" style="width:100%" maxlength="40"/>`;
+        const inp = t.querySelector("input"); inp.focus(); inp.select();
+        const done = (ok) => { if (ok && inp.value.trim()) s.title = inp.value.trim(); t.textContent = s.title; };
+        inp.onkeydown = (e) => { if (e.key === "Enter") done(true); if (e.key === "Escape") done(false); };
+        inp.onblur = () => done(true);
+      }
+      let drag;
+      function dragStart(e) {
+        if (e.target.closest("button,input") || window.innerWidth <= 768) return;
+        const ap = $("#ap"); drag = { x: e.clientX - ap.offsetLeft, y: e.clientY - ap.offsetTop };
+        const mv = (ev) => {
+          const pr = $("#proto");
+          ap.style.left = Math.max(0, Math.min(pr.clientWidth - ap.offsetWidth, ev.clientX - drag.x)) + "px";
+          ap.style.top = Math.max(0, Math.min(pr.clientHeight - 60, ev.clientY - drag.y)) + "px";
+        };
+        const up = () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); };
+        document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+      }
+
+      /* ---- 消息流：增量渲染，已出现过的不再重放入场动画 ---- */
+      function renderMsgs() {
+        const box = $("#apMsgs"); if (!box) return;
+        const s = cur();
+        if (!s.msgs.length) {
+          box.innerHTML = `<div class="empty">
+            <div class="orb" aria-hidden="true"></div>
+            <h3>让 Agent 帮你把想法搭成分镜</h3>
+            ${[["scan-eye", "感知画布开始创作", "guideSense()"], ["clapperboard", "从剧本开始拆分镜", "guideStory()"], ["file-up", "上传故事来改编", "openPop('plus')"], ["wand-sparkles", "批量优化提示词", "guidePrompt()"]]
+              .map(([ic, t, fn]) => `<button class="guide" data-pop-trigger onclick="${fn}"><i data-lucide="${ic}"></i>${t}<i class="ar" data-lucide="arrow-right"></i></button>`).join("")}
+          </div>`;
+          icons(); return;
+        }
+        const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        box.innerHTML = s.msgs.map((m, i) => `<div class="mw ${m._seen ? "seen" : ""}" data-i="${i}" style="display:flex;flex-direction:column${m._seen ? ";animation:none" : ""}">${renderMsg(m, i)}</div>`).join("");
+        s.msgs.forEach((m) => (m._seen = true));
+        icons(); if (near) box.scrollTop = box.scrollHeight;
+      }
+      function updateMsg(i) {
+        const el = $(`#apMsgs [data-i="${i}"]`); if (!el) return renderMsgs();
+        el.innerHTML = renderMsg(cur().msgs[i], i); icons();
+        const box = $("#apMsgs"); box.scrollTop = box.scrollHeight;
+      }
+      function renderMsg(m, i) {
+        if (m.t === "user") return `<div class="m-user">${m.steer ? '<span class="steer">插话</span>' : ""}${m.html}</div>`;
+        if (m.t === "ai") return `<div class="m-ai">${esc(m.text)}${m.streaming ? '<span class="caret"></span>' : ""}</div>`;
+        if (m.t === "tool") return `<div class="tool" onclick="focusNodes(${i})" title="点击定位到画布">
+            <i data-lucide="${m.done ? "check" : "loader"}" class="${m.done ? "" : "spin"}" style="color:${m.done ? "var(--v-success)" : "var(--v-running)"}"></i>
+            <code>${esc(m.name)}</code><span>${esc(m.summary || "执行中…")}</span></div>`;
+        if (m.t === "plan") return `<div class="vcard"><div class="ttl"><i data-lucide="list-checks"></i>计划已完成</div>
+            ${m.steps.map((x) => `<div class="itm" style="color:var(--v-muted-fg)"><i data-lucide="circle-check" style="color:var(--v-success)"></i>${esc(x.title)}</div>`).join("")}</div>`;
+        if (m.t === "ask") return `<div class="vcard ask"><div class="ttl"><i data-lucide="circle-help"></i>${esc(m.q)}</div>
+            ${m.answer ? `<div class="itm meta">你的回答：<b style="color:var(--v-fg)">${esc(m.answer)}</b></div>` : m.expired ? `<div class="itm meta">已失效</div>` :
+            `<div class="row wrapflex" style="gap:6px">${m.opts.map((o) => `<button class="vbtn out" onclick="answerAsk(${i},'${o}')">${o}</button>`).join("")}
+             <input class="inp" placeholder="自定义…" style="width:96px" onkeydown="if(event.key==='Enter'&&this.value.trim())answerAsk(${i},this.value.trim())"/></div>`}</div>`;
+        if (m.t === "model") return renderModelCard(m, i);
+        if (m.t === "appr") return renderAppr(m, i);
+        if (m.t === "notice") return `<div class="notice ${m.kind || ""}"><i data-lucide="${m.icon || "info"}"></i><span>${esc(m.text)}</span></div>`;
+        if (m.t === "end") return `<div class="notice" style="align-items:center"><i data-lucide="flag"></i><span class="tnum">${esc(m.text)}</span>
+            ${m.undoable && !m.undone ? `<button class="vbtn out" style="margin-left:auto" onclick="undoRun(${m.run},${i})"><i data-lucide="undo-2" style="width:13px;height:13px"></i>撤销本轮</button>` : ""}
+            ${m.undone ? '<span class="badge mute" style="margin-left:auto">已撤销</span>' : ""}</div>`;
+        if (m.t === "err") return `<div class="vcard del"><div class="ttl" style="color:var(--v-destructive)"><i data-lucide="circle-x"></i>${esc(m.title)}</div>
+            <div class="meta">${esc(m.text)}</div>${m.retry ? `<div style="margin-top:8px"><button class="vbtn out" onclick="retry(${i})"><i data-lucide="rotate-cw" style="width:13px;height:13px"></i>换个说法重试</button></div>` : ""}</div>`;
+        return "";
+      }
+      function renderModelCard(m, i) {
+        const list = MODELS[m.kind];
+        if (m.choice) return `<div class="vcard ask"><div class="ttl"><i data-lucide="box"></i>${esc(m.q)}</div><div class="itm meta">已选：<b style="color:var(--v-fg)">${esc(m.choice)}</b></div></div>`;
+        if (m.expired) return `<div class="vcard ask"><div class="ttl"><i data-lucide="box"></i>${esc(m.q)}</div><div class="itm meta">已失效</div></div>`;
+        return `<div class="vcard ask"><div class="ttl"><i data-lucide="box"></i>${esc(m.q)}</div>
+          <div class="meta" style="margin-bottom:4px">你没有指定${m.kind === "image" ? "图片" : "视频"}模型，选一个（下次可以在输入框里直接插入）</div>
+          ${list.map((x) => `<button class="mrow" role="radio" aria-checked="${m.sel === x.name}" onclick="cur().msgs[${i}].sel='${x.name}';updateMsg(${i})">
+            <span class="mi"><i data-lucide="${x.icon}"></i></span><span style="flex:1"><b>${x.name}</b><small>${x.desc}</small></span><span class="tnum credit" style="font-size:11.5px">✦ ${x.price}/张</span></button>`).join("")}
+          <div class="row" style="margin-top:6px"><button class="vbtn pri" ${m.sel ? "" : "disabled"} onclick="chooseModel(${i})">用这个</button></div></div>`;
+      }
+      function renderAppr(m, i) {
+        const del = m.kind === "delete";
+        const on = m.items.filter((x) => x.on);
+        const quote = del ? 0 : on.reduce((a, x) => a + x.price, 0);
+        const remain = P.budget - P.spent, over = !del && quote > remain, poor = !del && quote > P.avail;
+        const head = del ? `<i data-lucide="trash-2" style="color:var(--v-destructive)"></i>申请删除 ${m.items.length} 个节点` :
+          `<i data-lucide="sparkles" style="color:var(--v-warning)"></i>申请生成 · ${m.items.length} 张`;
+        const rows = m.items.map((x, k) => `<label class="itm">${m.state === "pending" ? `<input type="checkbox" ${x.on ? "checked" : ""} onchange="toggleItem(${i},${k},this.checked)"/>` : ""}
+          ${esc(x.label)} ${del ? (x.out ? '<span class="badge bad">含产物</span>' : "") : `<span class="meta">· ${esc(x.model)} · <span class="tnum credit">✦ ${x.price}</span></span>`}</label>`).join("");
+        let foot = "";
+        if (m.state === "pending") {
+          foot = `${del ? "" : `<div class="itm meta tnum">预估 <b class="credit">✦ ${quote}</b> · 本轮剩余 ${remain} · 可用 ${P.avail}</div>`}
+            ${over ? `<div class="notice bad"><i data-lucide="circle-alert"></i>超出本轮预算 ${quote - remain} 积分（60008）</div>` : ""}
+            ${poor ? `<div class="notice bad"><i data-lucide="circle-alert"></i>余额不足（需 ${quote}，可用 ${P.avail}）</div>` : ""}
+            <div class="row wrapflex" style="margin-top:8px;gap:6px">
+              <button class="vbtn ${del ? "dng" : "pri"}" ${over || poor || on.length === 0 ? "disabled" : ""} onclick="decide(${i},'approve')">${del ? "确认删除" : "批准"}</button>
+              ${over && !poor ? `<button class="vbtn out" onclick="addBudget(${quote - remain});decide(${i},'approve')">追加 ${quote - remain} 预算并批准</button>` : ""}
+              <button class="vbtn out" onclick="decide(${i},'reject')">拒绝</button></div>`;
+        } else {
+          foot = `<div class="itm meta">${{ approved: "已批准", rejected: "已拒绝，未扣积分", expired: "已失效（本轮已停止）" }[m.state]}</div>`;
+        }
+        return `<div class="vcard ${del ? "del" : "appr"}" onmouseenter="hoverAppr(${i},true)" onmouseleave="hoverAppr(${i},false)">
+          <div class="ttl">${head}</div><div class="meta" style="margin-bottom:4px">${esc(m.reason)}</div>${rows}${foot}</div>`;
+      }
+      function toggleItem(i, k, on) { cur().msgs[i].items[k].on = on; updateMsg(i); }
+      function hoverAppr(i, on) {
+        const m = cur().msgs[i]; if (!m || m.kind !== "delete" || m.state !== "pending") return;
+        P.danger = on ? new Set(m.items.map((x) => x.id)) : new Set(); renderWorld();
+      }
+      function focusNodes(i) { const m = cur().msgs[i]; if (m.ids?.length) flash(m.ids.filter((id) => findNode(id))); }
+      function retry(i) { setEditor(esc(cur().msgs[i].retry.replace("失败", ""))); }
+
+      /* ---- 置顶运行条：未完成的计划 + 运行状态，悬浮在输入框上方 ---- */
+      function renderStrip() {
+        const wrap = $("#stripWrap"); if (!wrap) return;
+        const s = cur(), plan = s.plan, run = running();
+        const n = plan ? plan.steps.length : 0, done = plan ? plan.steps.filter((x) => x.s === "done").length : 0;
+        const unfinished = plan && done < n && !plan.hidden;
+        if (!unfinished && !run) { wrap.innerHTML = ""; P.planOpen = false; return; }
+        const label = { running: "", waiting_input: "等你回答 · ", waiting_approval: "等你确认 · " }[P.status] ?? "";
+        const meta = run ? `<span class="tnum" style="color:var(--v-muted-fg);white-space:nowrap">${P.steps}/40 步 · <span class="credit">✦ ${P.spent}/${P.budget}</span></span>` : "";
+        let lead, txt;
+        if (unfinished) {
+          const C = 2 * Math.PI * 7, doing = plan.steps.find((x) => x.s === "doing") || plan.steps.find((x) => x.s !== "done");
+          lead = `<svg class="ring" viewBox="0 0 18 18"><circle class="bgc" cx="9" cy="9" r="7"/><circle class="fgc" cx="9" cy="9" r="7" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - done / n)}"/></svg>`;
+          txt = `<b class="tnum">${done}/${n}</b> · ${label}${run ? "正在" : "未完成"}：${esc(doing.title)}`;
+        } else {
+          lead = P.status === "running" ? '<i data-lucide="loader" class="spin" style="color:var(--v-running)"></i>' : '<i data-lucide="hand" style="color:var(--v-warning)"></i>';
+          txt = P.status === "running" ? "思考中…" : label.replace(" · ", "");
+        }
+        wrap.innerHTML = `
+          ${unfinished && P.planOpen ? `<div class="plan-pop" role="list">${plan.steps.map((x) => `<div class="itm ${x.s}" role="listitem">
+              <i data-lucide="${x.s === "done" ? "circle-check" : x.s === "doing" ? "circle-dot" : "circle"}" style="color:${x.s === "done" ? "var(--v-success)" : x.s === "doing" ? "var(--v-running)" : "var(--v-muted-fg)"}"></i>${esc(x.title)}</div>`).join("")}</div>` : ""}
+          <div class="strip" role="${unfinished ? "button" : "status"}" aria-expanded="${!!(unfinished && P.planOpen)}" ${unfinished ? 'onclick="P.planOpen=!P.planOpen;renderStrip()" style="cursor:pointer"' : ""}>
+            ${lead}<span class="txt">${txt}</span>${meta}
+            ${unfinished ? '<i class="chev" data-lucide="chevron-up" style="width:15px;height:15px"></i>' : ""}
+            ${unfinished && !run ? `<button class="icb" style="width:26px;height:26px" data-tip="隐藏这个计划" onclick="event.stopPropagation();cur().plan.hidden=true;renderStrip()"><i data-lucide="x" style="width:14px;height:14px"></i></button>` : ""}
+          </div>`;
+        icons();
+      }
+      function setPlan(steps) { cur().plan = { steps: steps.map((t) => ({ title: t, s: "todo" })), hidden: false }; stepPlan(0); }
+      function stepPlan(k) { const p = cur().plan; p.steps.forEach((x, j) => (x.s = j < k ? "done" : j === k ? "doing" : "todo")); renderStrip(); }
+      function completePlan() {
+        const p = cur().plan; if (!p) return;
+        p.steps.forEach((x) => (x.s = "done")); push({ t: "plan", steps: p.steps.map((x) => ({ ...x })) }); renderStrip();
+      }
+
+      /* ---- 引导项 ---- */
+      function guideSense() { P.mode = "all"; renderPanel(); setEditor("读一下当前画布，告诉我下一步可以做什么"); sendOrStop(true); }
+      function guideStory() {
+        P.mode = "storyboard"; renderPanel();
+        setEditor(`把 ${chipHTML("node", "剧本", "type")}&nbsp;拆成分镜，建好角色和镜头组；角色用&nbsp;`);
+        toast("可以点立方体按钮插入模型，再发送");
+      }
+      function guidePrompt() { P.mode = "prompt"; renderPanel(); setEditor("把镜头关键帧的提示词统一成黄昏暖色调"); }
+
+      /* ---- 模拟运行 ---- */
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      function push(m) { cur().msgs.push(m); renderMsgs(); return cur().msgs.length - 1; }
+      function setStatus(s) { P.status = s; renderPanel(); }
+      function sendOrStop(fromEnter) {
+        if (running() && editorEmpty()) { if (!fromEnter) stopRun(); return; }
+        if (editorEmpty()) return;
+        const { text, chips, html } = readEditor();
+        $("#editor").innerHTML = ""; P.range = null; closePop(true); updateSend();
+        if (running()) { push({ t: "user", html, steer: true }); P.steer.push(text); toast("插话已送达，当前步骤完成后生效"); return; }
+        if (P.simDown) { push({ t: "user", html }); push({ t: "err", title: "Agent 暂不可用（60005）", text: "运行时没有响应，请稍后重试。画布不受影响，可以继续手动编辑。" }); return; }
+        if (P.avail < 1) { toast("积分不足（40001）", "bad"); return; }
+        startRun(text, chips, html);
+      }
+      async function guard(tok) { if (tok !== P.tok) throw "stop"; }
+      async function tick(tok, ms) { await sleep(ms); await guard(tok); }
+      async function stream(tok, text) {
+        const i = push({ t: "ai", text: "", streaming: true }); const m = cur().msgs[i];
+        for (let k = 0; k < text.length; k += 3) { m.text = text.slice(0, k + 3); updateMsg(i); await tick(tok, 28); }
+        m.streaming = false; updateMsg(i);
+        P.spent += 1; P.steps += 1; renderStrip(); // 示意：每次模型调用约 1 积分
+      }
+      async function drainSteer(tok) { while (P.steer.length) { const s = P.steer.shift(); await stream(tok, `收到补充：「${s}」。后面的步骤我会按这个来。`); } }
+      async function tool(tok, name, summary, fn) {
+        const i = push({ t: "tool", name, done: false }); await tick(tok, 650);
+        const ids = fn ? fn() : []; const m = cur().msgs[i]; m.done = true; m.summary = summary; m.ids = ids;
+        P.steps += 1; updateMsg(i); renderStrip(); if (ids?.length) flash(ids); else renderWorld();
+        await drainSteer(tok);
+      }
+      function waitUser() { return new Promise((r) => (P.pending = r)); }
+      function newRun() { P.runSeq++; const r = { id: P.runSeq, created: [], groups: [], edges: [], updates: [], deleted: [] }; P.runs.push(r); return r; }
+
+      async function startRun(text, chips, html) {
+        const tok = ++P.tok; P.spent = 0; P.steps = 0; P.steer = [];
+        push({ t: "user", html });
+        if (cur().title === "新对话") cur().title = text.replace(/\[|\]/g, "").slice(0, 14);
+        const run = newRun(); setStatus("running");
+        const imgModel = chips.find((c) => c.type === "model" && MODELS.image.some((m) => m.name === c.label))?.label;
+        try {
+          if (text.includes("失败")) {
+            await tick(tok, 700);
+            push({ t: "err", title: "模型调用失败", text: "上游返回 502（渠道暂时不可用）。本轮已结束，没有改动画布，也没有扣生成积分。", retry: text });
+            return finish(run, "failed");
+          }
+          if (/读一下|下一步/.test(text)) return await flowSense(tok, run);
+          if (/清|删|废/.test(text)) return await flowDelete(tok, run);
+          if (P.mode === "prompt" || /色调|统一|优化/.test(text)) return await flowRestyle(tok, run);
+          if (/整理|布局/.test(text)) return await flowArrange(tok, run);
+          if (P.mode === "script") return await flowScript(tok, run);
+          return await flowStoryboard(tok, run, imgModel);
+        } catch (e) { if (e !== "stop") throw e; }
+      }
+      function finish(run, status, text) {
+        const undoable = run.created.length || run.updates.length || run.deleted.length;
+        const label = { succeeded: "本轮完成", failed: "本轮失败", canceled: "已停止，已完成的改动保留" }[status];
+        P.status = status;
+        push({ t: "end", text: `${text || label} · ${P.steps} 步 · ✦ ${P.spent}（示意）`, run: run.id, undoable });
+        renderPanel();
+      }
+      function stopRun() {
+        P.tok++; const run = P.runs[P.runs.length - 1];
+        cur().msgs.forEach((m) => {
+          if (m.t === "appr" && m.state === "pending") m.state = "expired";
+          if ((m.t === "ask" && !m.answer) || (m.t === "model" && !m.choice)) m.expired = true;
+          if (m.t === "ai") m.streaming = false;
+          if (m.t === "tool" && !m.done) { m.done = true; m.summary = "已中止"; }
+        });
+        P.pending = null; P.danger.clear(); renderWorld();
+        finish(run, "canceled");
+      }
+      function addBudget(n) { P.budget += n; renderStrip(); toast(`本轮预算已追加 ${n} 积分`); }
+      function resume(v) { setStatus("running"); const r = P.pending; P.pending = null; r && r(v); }
+      function answerAsk(i, a) { const m = cur().msgs[i]; if (m.answer || m.expired) return; m.answer = a; updateMsg(i); resume(a); }
+      function chooseModel(i) { const m = cur().msgs[i]; if (!m.sel || m.choice) return; m.choice = m.sel; updateMsg(i); resume(m.sel); }
+      function decide(i, d) {
+        const m = cur().msgs[i]; if (m.state !== "pending") return;
+        m.state = d === "approve" ? "approved" : "rejected"; P.danger.clear(); updateMsg(i); renderWorld(); resume(d);
+      }
+      function addNode(run, n) { P.nodes.push(n); run.created.push(n.id); return n.id; }
+      function addEdge(run, s, t) { const id = s + ">" + t; if (!P.edges.some((e) => e.id === id)) { P.edges.push({ id, s, t }); run.edges.push(id); } }
+
+      async function flowStoryboard(tok, run, imgModel) {
+        await stream(tok, "好的。我先读一下「剧本拆镜」技能，再看你的剧本。");
+        await tool(tok, "skill_read", "剧本拆镜 script-breakdown");
+        await tool(tok, "canvas_get_state", "读取「剧本」全文", () => ["n_script"]);
+        push({ t: "ask", q: "成片画幅用哪个？", opts: ["16:9 横屏", "9:16 竖屏"] });
+        setStatus("waiting_input");
+        const ratio = await waitUser(); await guard(tok);
+        setPlan(["建角色组：林夏、老周（三视图）", "拆 3 个镜头组：文本 → 关键帧 → 视频", "整理布局", "申请生成角色参考图"]);
+        await tool(tok, "canvas_apply_ops", "新建 角色组 + 2 个图片节点", () => {
+          P.groups.push({ id: "g_char", label: "角色", x: 200, y: 30, w: 300, h: 86 }); run.groups.push("g_char");
+          return [addNode(run, { id: "n_c1", kind: "image", label: "林夏 三视图", prompt: `${ratio}，便利店制服，短发，正侧背三视图`, x: 210, y: 42 }),
+            addNode(run, { id: "n_c2", kind: "image", label: "老周 三视图", prompt: `${ratio}，旧风衣，湿发，正侧背三视图`, x: 355, y: 42 })];
+        });
+        stepPlan(1);
+        const shots = [["镜头01", "远景，雨夜便利店亮着灯"], ["镜头02", "近景，林夏抬头看门口"], ["镜头03", "中景，老周推门而入"]];
+        const ids = [];
+        await tool(tok, "canvas_apply_ops", "新建 3 个镜头组、9 个节点，连好参考（27 项）", () => {
+          shots.forEach(([lb, pr], k) => {
+            const gy = 150 + k * 108, gid = "g_s" + k;
+            P.groups.push({ id: gid, label: lb, x: 200, y: gy, w: 445, h: 84 }); run.groups.push(gid);
+            const s = addNode(run, { id: `n_s${k}`, kind: "script", label: lb, prompt: pr, x: 210, y: gy + 12 });
+            const im = addNode(run, { id: `n_i${k}`, kind: "image", label: lb + " 关键帧", prompt: `${pr}，电影感，${ratio}`, x: 355, y: gy + 12 });
+            const v = addNode(run, { id: `n_v${k}`, kind: "video", label: lb + " 视频", prompt: "缓慢推近，雨丝", x: 500, y: gy + 12 });
+            addEdge(run, "n_script", s); addEdge(run, s, im); addEdge(run, im, v); addEdge(run, "n_c1", im);
+            if (k === 2) addEdge(run, "n_c2", im);
+            ids.push(s, im, v);
+          });
+          return ids;
+        });
+        stepPlan(2);
+        await tool(tok, "canvas_arrange", "按行整理 3 个镜头组", () => ids);
+        stepPlan(3);
+        let model = imgModel;
+        if (!model) {
+          await stream(tok, "结构搭好了。角色参考图会被所有镜头引用，建议先生成。你没有指定图片模型——");
+          push({ t: "model", q: "角色三视图用哪个图片模型？", kind: "image" });
+          setStatus("waiting_input");
+          model = await waitUser(); await guard(tok);
+        } else {
+          await stream(tok, `结构搭好了。角色参考图按你指定的「${model}」生成。`);
+        }
+        const price = MODELS.image.find((m) => m.name === model)?.price ?? 8;
+        const ap = push({ t: "appr", kind: "generate", state: "pending", reason: "先锁定角色外观，后面的关键帧才能保持一致", items: [
+          { id: "n_c1", label: "林夏 三视图", model, price, on: true }, { id: "n_c2", label: "老周 三视图", model, price, on: true }] });
+        setStatus("waiting_approval");
+        const d = await waitUser(); await guard(tok);
+        if (d === "approve") {
+          const items = cur().msgs[ap].items.filter((x) => x.on), cost = items.reduce((a, x) => a + x.price, 0);
+          P.spent += cost; P.avail -= cost; renderStrip(); $("#availTxt").textContent = P.avail;
+          items.forEach((x) => { const n = findNode(x.id); if (n) { n.status = "running"; n.taskId = "t" + x.id; } });
+          push({ t: "notice", icon: "zap", text: `已提交 ${items.length} 个生成任务（幂等键 = 审批 id），结果会自动回填` });
+          renderWorld(); await tick(tok, 1800);
+          items.forEach((x) => { const n = findNode(x.id); if (n) { n.status = "done"; n.out = true; } });
+          flash(items.map((x) => x.id));
+          await stream(tok, "角色图生成好了。下一步可以说「生成全部关键帧」，我会再请你确认。");
+        } else {
+          await stream(tok, "好的，先不生成。节点结构保留着，你可以手动调整提示词后再让我生成。");
+        }
+        completePlan(); finish(run, "succeeded");
+      }
+      async function flowSense(tok, run) {
+        await tool(tok, "canvas_get_state", `读取画布目录（${P.nodes.length} 个节点）`, () => P.nodes.map((n) => n.id));
+        const hasShots = P.nodes.some((n) => /镜头/.test(n.label));
+        await stream(tok, hasShots ? "画布上已经有镜头组了。建议：① 生成全部关键帧；② 统一色调；③ 清掉没用的废稿。" :
+          "我看到一个「剧本」节点和两个没有连线的废稿。建议：① 把剧本拆成分镜；② 先清掉废稿。要从哪个开始？");
+        finish(run, "succeeded");
+      }
+      async function flowScript(tok, run) {
+        await stream(tok, "我按剧本创编模式，把故事扩写成带台词的剧本，写回「剧本」节点。");
+        await tool(tok, "canvas_apply_ops", "更新「剧本」正文", () => {
+          const n = findNode("n_script"); if (!n) return [];
+          const before = n.prompt; n.prompt = before.replace(/……$/, "") + "\n林夏：外面雨这么大，您要不要进来坐会儿？\n老周：我在等人，十年前约好的。";
+          run.updates.push({ id: n.id, field: "prompt", before, after: n.prompt }); return [n.id];
+        });
+        finish(run, "succeeded");
+      }
+      async function flowRestyle(tok, run) {
+        const targets = P.nodes.filter((n) => n.kind === "image" && /关键帧/.test(n.label) && (!P.sel.size || P.sel.has(n.id)));
+        if (!targets.length) { await stream(tok, "画布上还没有镜头关键帧节点。要先把剧本拆成分镜吗？"); return finish(run, "succeeded"); }
+        await stream(tok, `我会把 ${targets.length} 个关键帧的提示词统一成黄昏暖色调，不会动已经生成的图。`);
+        await tool(tok, "canvas_apply_ops", `更新 ${targets.length} 个节点的提示词`, () => {
+          targets.forEach((n) => { const before = n.prompt; n.prompt = before.replace(/，?黄昏暖色调/, "") + "，黄昏暖色调"; run.updates.push({ id: n.id, field: "prompt", before, after: n.prompt }); });
+          return targets.map((n) => n.id);
+        });
+        finish(run, "succeeded");
+      }
+      async function flowArrange(tok, run) {
+        await stream(tok, "我把散落的节点按列排一下。");
+        await tool(tok, "canvas_arrange", "整理未分组的节点", () => {
+          const free = P.nodes.filter((n) => !/^n_(c|s|i|v)\d/.test(n.id));
+          free.forEach((n, k) => { const before = { x: n.x, y: n.y }; n.x = 20; n.y = 40 + k * 90; run.updates.push({ id: n.id, field: "pos", before, after: { x: n.x, y: n.y } }); });
+          return free.map((n) => n.id);
+        });
+        finish(run, "succeeded");
+      }
+      async function flowDelete(tok, run) {
+        await stream(tok, "我找一下看起来没用的节点。");
+        await tool(tok, "canvas_get_state", "读取没有连线的节点");
+        const cands = P.nodes.filter((n) => /废稿/.test(n.label));
+        if (!cands.length) { await stream(tok, "没找到明显的废稿，画布挺干净的。"); return finish(run, "succeeded"); }
+        const ai = push({ t: "appr", kind: "delete", state: "pending", reason: "这些节点没有任何连线，标题标为废稿", items: cands.map((n) => ({ id: n.id, label: n.label, out: !!n.out, on: true })) });
+        setStatus("waiting_approval");
+        const d = await waitUser(); await guard(tok);
+        if (d === "approve") {
+          const ids = cur().msgs[ai].items.filter((x) => x.on).map((x) => x.id);
+          ids.forEach((id) => run.deleted.push({ ...findNode(id) }));
+          P.nodes = P.nodes.filter((n) => !ids.includes(n.id)); P.sel.clear(); renderWorld();
+          await stream(tok, `已删除 ${ids.length} 个节点。需要的话可以点「撤销本轮」恢复。`);
+        } else {
+          await stream(tok, "好的，一个都不删。");
+        }
+        finish(run, "succeeded");
+      }
+
+      /* ---- 撤销本轮（模拟后端：字段级跳过） ---- */
+      function undoRun(runId, i) {
+        if (running()) { toast("运行中不能撤销（60003）", "warn"); return; }
+        const run = P.runs.find((r) => r.id === runId); const skipped = []; let reverted = 0;
+        for (const u of [...run.updates].reverse()) {
+          const n = findNode(u.id); if (!n) { skipped.push(`${u.id}：节点已不存在`); continue; }
+          if (u.field === "prompt") { if (n.prompt === u.after) { n.prompt = u.before; reverted++; } else skipped.push(`${n.label}：你已修改提示词`); }
+          else if (n.x === u.after.x && n.y === u.after.y) { n.x = u.before.x; n.y = u.before.y; reverted++; } else skipped.push(`${n.label}：你已移动`);
+        }
+        const keep = new Set();
+        for (const id of run.created) {
+          const n = findNode(id); if (!n) continue;
+          if (n.out || n.taskId) { keep.add(id); skipped.push(`${n.label}：已有产物，保留`); }
+          else if (P.edited.has(id)) { keep.add(id); skipped.push(`${n.label}：你已修改，保留`); }
+        }
+        P.nodes = P.nodes.filter((n) => !run.created.includes(n.id) || keep.has(n.id));
+        reverted += run.created.length - keep.size;
+        const alive = new Set(P.nodes.map((n) => n.id));
+        P.edges = P.edges.filter((e) => alive.has(e.s) && alive.has(e.t) && (!run.edges.includes(e.id) || (keep.has(e.s) && keep.has(e.t))));
+        P.groups = P.groups.filter((g) => !run.groups.includes(g.id) || P.nodes.some((n) => n.x >= g.x && n.x < g.x + g.w && n.y >= g.y && n.y < g.y + g.h));
+        for (const n of run.deleted) { P.nodes.push(n); reverted++; }
+        cur().msgs[i].undone = true; updateMsg(i);
+        push({ t: "notice", icon: "undo-2", kind: skipped.length ? "warn" : "", text: `已撤销 ${reverted} 项${skipped.length ? `；跳过 ${skipped.length} 项：` + skipped.join("；") : ""}` });
+        P.editId = null; P.sel.clear(); renderWorld(); renderEditbar(); renderCtx();
+      }
+
+      /* ---- Tooltip：悬停 [data-tip] 显示在元素上方 ---- */
+      let tipEl;
+      document.addEventListener("mouseover", (e) => {
+        const t = e.target.closest?.("#proto [data-tip]");
+        if (!t) { tipEl?.remove(); tipEl = null; return; }
+        if (tipEl?._for === t) return;
+        tipEl?.remove();
+        const pr = $("#proto").getBoundingClientRect(), r = t.getBoundingClientRect();
+        tipEl = document.createElement("div"); tipEl.className = "tip"; tipEl._for = t; tipEl.textContent = t.dataset.tip;
+        $("#proto").appendChild(tipEl);
+        const x = Math.max(4, Math.min(pr.width - tipEl.offsetWidth - 4, r.left - pr.left + r.width / 2 - tipEl.offsetWidth / 2));
+        const y = r.top - pr.top - tipEl.offsetHeight - 6;
+        tipEl.style.left = x + "px"; tipEl.style.top = (y < 4 ? r.bottom - pr.top + 6 : y) + "px";
+      });
+
+      window.addEventListener("resize", () => { if (!$("#tab-proto").hidden) renderWorld(); });
+      renderOptList(); renderOptPanel(); P = initialProto(); icons();
+    </script>
+  </body>
+</html>
