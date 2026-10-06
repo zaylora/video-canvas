@@ -5,7 +5,7 @@ rem 一键启动前后端：分别在两个新窗口中运行，关闭窗口即�
 rem   后端: backend\ (Go, 默认 :8080)
 rem   前端: web\     (Vite, 默认 :5173，/api 与 /files 代理到后端)
 
-set "ROOT=%~dp0"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI\"
 
 where go >nul 2>nul
 if errorlevel 1 (

@@ -27,7 +27,7 @@
 | 画布保存用 `revision` 乐观锁，冲突时返回 409                                                                                 | `backend/AGENTS.md`、`service/canvas_project.go`                                                                           |
 | 首个 `super_admin` 只能用 SQL 提升                                                                                           | `backend/README.md`                                                                                                        |
 | Docker 开发环境：前端 `:5173`，后端 `:8080`，PG 对宿主机暴露 **15432**，Redis 暴露 **16379**                                 | `docker-compose.dev.yml`                                                                                                   |
-| 本地直跑：`start.sh` / `start.bat` 编译后端、启动 Vite；优先读取 `config.local.yaml`；PG 默认连 `127.0.0.1:5432`             | `start.sh`、`backend/configs/config.yaml`                                                                                  |
+| 本地直跑：`scripts/start.sh` / `scripts/start.bat` 编译后端、启动 Vite；优先读取 `config.local.yaml`；PG 默认连 `127.0.0.1:5432` | `scripts/start.sh`、`backend/configs/config.yaml`                                                                         |
 | CI 覆盖前后端 lint / test；推送 `v*` tag 时发布两个 GHCR 镜像；CHANGELOG 由 git-cliff 生成                                   | `.github/workflows/`、`cliff.toml`                                                                                         |
 | 仓库远程：`github.com/zaylora/video-canvas`；**没有 LICENSE 文件**                                                           | `git remote -v`                                                                                                            |
 
@@ -150,7 +150,7 @@
 ```bash
 git clone https://github.com/zaylora/video-canvas.git
 cd video-canvas
-./start-docker.sh          # Windows 运行 start-docker.bat；加 -d 后台启动
+./scripts/start-docker.sh  # Windows 运行 scripts/start-docker.bat；加 -d 后台启动
 ```
 
 首次构建需要几分钟。完成后：
@@ -189,7 +189,7 @@ cd video-canvas
 # 按需复制一份本机配置（已被 gitignore），修改数据库连接等
 cp backend/configs/config.yaml backend/configs/config.local.yaml
 
-./start.sh                 # Windows 运行 start.bat；Ctrl+C 同时停止前后端
+./scripts/start.sh         # Windows 运行 scripts/start.bat；Ctrl+C 同时停止前后端
 ```
 
 脚本会编译后端并启动 Vite，前端会把 `/api` 和 `/files` 代理到 `:8080`。配置项都可以用环境变量覆盖，规则是 `APP_` + 大写路径，例如 `APP_DATABASE_DSN`。Redis 可以用 `redis.enabled: false` 关闭，关闭后缓存层会降级为直接查数据库。
@@ -273,7 +273,7 @@ video-canvas/
 
 | 情况                   | README 中的处理                                                                |
 | ---------------------- | ------------------------------------------------------------------------------ |
-| Docker 未运行          | `start-docker.sh` 会尝试启动 Docker Desktop 并给出提示，README 不再重复        |
+| Docker 未运行          | `scripts/start-docker.sh` 会尝试启动 Docker Desktop 并给出提示，README 不再重复 |
 | 端口被占用             | 端口表列出全部端口，读者可以自行排查（提案：后续在 docs 中补一节「常见问题」） |
 | 页面能打开，但无法生成 | 首次配置一节专门处理这种情况                                                   |
 | 刚提权后后台仍提示 403 | 第 2 步提示了角色有 30 秒缓存                                                  |
@@ -324,7 +324,7 @@ video-canvas/
   - Standard Readme 规范：https://github.com/RichardLitt/standard-readme/blob/main/spec.md
   - Dify README：https://github.com/langgenius/dify
   - tldraw README：https://github.com/tldraw/tldraw
-- 项目文件：`backend/README.md`、`backend/AGENTS.md`、`backend/configs/config.yaml`、`backend/go.mod`、`web/package.json`、`web/src/router/index.tsx`、`web/src/components/canvas/`、`docker-compose.dev.yml`、`docker-compose.prod.yml`、`docs/docker-*.md`、`docs/plan/开发计划.md`、`start.sh`、`start-docker.sh`、`.pre-commit-config.yaml`、`.github/workflows/`。
+- 项目文件：`backend/README.md`、`backend/AGENTS.md`、`backend/configs/config.yaml`、`backend/go.mod`、`web/package.json`、`web/src/router/index.tsx`、`web/src/components/canvas/`、`docker-compose.dev.yml`、`docker-compose.prod.yml`、`docs/docker-*.md`、`docs/plan/开发计划.md`、`scripts/start.sh`、`scripts/start-docker.sh`、`.pre-commit-config.yaml`、`.github/workflows/`。
 - 假设与未验证项：
   - 「上游的结果可以作为下游生成的参考」依据是提交 `07b62b3`（修复副生图参考图片）和节点连线实现，但未实际运行验证各类节点组合。
   - 首次配置步骤是根据接口和路由推导的，没有在干净环境中实际操作；第 3、4 步的按钮名称需要对照 UI 确认。

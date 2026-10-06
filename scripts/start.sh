@@ -2,10 +2,10 @@
 # 一键启动前后端（Linux / macOS / Windows Git Bash）
 #   后端: backend/ (Go, 默认 :8080)
 #   前端: web/     (Vite, 默认 :5173，/api 与 /files 代理到后端)
-# 用法: ./start.sh        Ctrl+C 同时停止前后端
+# 用法: ./scripts/start.sh        Ctrl+C 同时停止前后端
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT/backend"
 WEB_DIR="$ROOT/web"
 

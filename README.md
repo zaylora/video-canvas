@@ -33,7 +33,7 @@
 服务器上只需要 [Docker](https://docs.docker.com/get-docker/)（带 Compose v2）和 curl，不用克隆仓库：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash
 ```
 
 脚本会在当前目录的 `video-canvas/` 下载 `docker-compose.yml`，生成带随机密钥的 `.env`，拉取 GHCR 镜像并启动，就绪后打开 <http://localhost> 即可。
@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.
 更新到最新版：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 ```
 
 <details>
@@ -49,11 +49,11 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.
 
 ```bash
 # 自定义端口 / 访问地址 / 固定版本 / 部署目录
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash -s -- \
   --port 8080 --origin https://canvas.example.com --tag 0.1.6 --dir /opt/video-canvas
 
 # 更新时指定目录，或回退到某个版本
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.sh | bash -s -- --dir /opt/video-canvas --tag 0.1.5
+curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash -s -- --dir /opt/video-canvas --tag 0.1.5
 ```
 
 - 已有 `.env` 时部署脚本直接沿用，不会重新生成密钥。
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.
 ```bash
 git clone https://github.com/zaylora/video-canvas.git
 cd video-canvas
-./start-docker.sh          # Windows 运行 start-docker.bat；加 -d 后台启动
+./scripts/start-docker.sh  # Windows 运行 scripts/start-docker.bat；加 -d 后台启动
 ```
 
 首次构建需要几分钟。完成后：
@@ -109,7 +109,7 @@ cd video-canvas
 # 按需复制一份本机配置（已被 gitignore），修改数据库连接等
 cp backend/configs/config.yaml backend/configs/config.local.yaml
 
-./start.sh                 # Windows 运行 start.bat；Ctrl+C 同时停止前后端
+./scripts/start.sh         # Windows 运行 scripts/start.bat；Ctrl+C 同时停止前后端
 ```
 
 脚本会编译后端并启动 Vite，前端会把 `/api` 和 `/files` 代理到 `:8080`。配置项都可以用环境变量覆盖，规则是 `APP_` + 大写路径，例如 `APP_DATABASE_DSN`。Redis 可以用 `redis.enabled: false` 关闭，关闭后缓存层会降级为直接查数据库。
@@ -145,8 +145,7 @@ video-canvas/
 ├── web/            # React 前端：画布、画布列表、AI 管理后台
 ├── docs/           # 部署文档、设计文档、开发计划
 ├── docker-compose.dev.yml / docker-compose.yml   # 开发 / 生产（GHCR 镜像）
-├── deploy.sh / update.sh                         # 生产一键部署 / 更新
-└── start*.sh / start*.bat                        # 开发一键启动脚本
+└── scripts/                                      # 部署、启动和资源导出脚本
 ```
 
 ## 生产部署

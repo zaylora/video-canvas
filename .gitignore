@@ -1,0 +1,22 @@
+# 根目录运行时配置
+.env
+
+# 后端构建产物与运行时数据
+/backend/bin/
+/backend/tmp/
+/backend/**/*.exe
+/backend/data/
+/backend/logs/
+/backend/configs/*.local.yaml
+
+# 前端依赖与构建产物
+/web/node_modules/
+/web/dist/
+
+# IDE
+/.idea/
+/.vscode/
+/backend/.idea/
+/backend/.vscode/
+/web/.idea/
+/web/.vscode/

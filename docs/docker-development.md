@@ -12,17 +12,17 @@ docker compose -f docker-compose.dev.yml up --build
 
 ```bash
 # macOS / Linux
-./start-docker.sh
+./scripts/start-docker.sh
 
 # Windows CMD 或 PowerShell
-start-docker.bat
+scripts/start-docker.bat
 ```
 
 后台启动：
 
 ```bash
-./start-docker.sh --detach
-start-docker.bat --detach
+./scripts/start-docker.sh --detach
+scripts/start-docker.bat --detach
 ```
 
 启动后访问：

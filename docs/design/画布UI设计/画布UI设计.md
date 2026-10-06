@@ -861,7 +861,7 @@ idle（封面）          loading（B）               playing / paused（选中
 - `pages/canvas/video-node.tsx`：按节点种类传入可用的预设类别。
 - `utils/canvas/prompt-tokens.ts`：新增 `preset` 段与 `expandPrompt` 的预设展开。
 - `utils/canvas/preset-rules.ts`（新）：`planPreset` 把"同类替换、运镜多个共存、点 chip 替换"这些数量规则写成纯函数，编辑器按返回的方案去改文档，规则本身有单测。
-- `web/scripts/export-preset-assets.sh`（新）：从 `docs/research` 导出风格封面（压到 480 宽）和运镜示意图到 `web/public/presets/`。
+- `scripts/export-preset-assets.sh`（新）：从 `docs/research` 导出风格封面（压到 480 宽）和运镜示意图到 `web/public/presets/`。
 - `utils/tasks/capabilities.ts`：`buildTaskInput` 展开预设，并按展开后长度校验。
 - `index.css`：`:root` 和 `.dark` 同时补 `--preset`（`oklch(0.55 0.2 295)` / `oklch(0.6 0.19 295)`），`@theme inline` 里补 `--color-preset`。
 

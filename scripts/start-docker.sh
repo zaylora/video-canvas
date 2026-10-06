@@ -2,7 +2,7 @@
 # Docker 开发环境启动脚本（macOS / Linux）
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/docker-compose.dev.yml"
 BUILD=true
 DETACH=false
@@ -17,7 +17,7 @@ for arg in "$@"; do
       ;;
     -h|--help)
       cat <<'EOF'
-用法：./start-docker.sh [选项]
+用法：./scripts/start-docker.sh [选项]
 
 选项：
   -d, --detach   后台启动

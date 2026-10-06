@@ -5,7 +5,7 @@
 #   motion  运镜示意图，原样复制（源文件是单帧静态图，不是动图）
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/../.." && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 src="$root/docs/research/open-ai-canvas-assets"
 dst="$root/web/public/presets"
 

@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal EnableExtensions
 
 rem Docker 开发环境启动脚本（Windows）
-set "ROOT=%~dp0"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI\"
 set "COMPOSE_FILE=%ROOT%docker-compose.dev.yml"
 set "BUILD=--build"
 set "DETACH="

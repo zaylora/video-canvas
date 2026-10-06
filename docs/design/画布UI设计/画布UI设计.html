@@ -2019,7 +2019,7 @@ type GroupHue = &quot;red&quot; | &quot;orange&quot; | &quot;yellow&quot; | &quo
 <li><code>pages/canvas/video-node.tsx</code>：按节点种类传入可用的预设类别。</li>
 <li><code>utils/canvas/prompt-tokens.ts</code>：新增 <code>preset</code> 段与 <code>expandPrompt</code> 的预设展开。</li>
 <li><code>utils/canvas/preset-rules.ts</code>（新）：<code>planPreset</code> 把&quot;同类替换、运镜多个共存、点 chip 替换&quot;这些数量规则写成纯函数，编辑器按返回的方案去改文档，规则本身有单测。</li>
-<li><code>web/scripts/export-preset-assets.sh</code>（新）：从 <code>docs/research</code> 导出风格封面（压到 480 宽）和运镜示意图到 <code>web/public/presets/</code>。</li>
+<li><code>scripts/export-preset-assets.sh</code>（新）：从 <code>docs/research</code> 导出风格封面（压到 480 宽）和运镜示意图到 <code>web/public/presets/</code>。</li>
 <li><code>utils/tasks/capabilities.ts</code>：<code>buildTaskInput</code> 展开预设，并按展开后长度校验。</li>
 <li><code>index.css</code>：<code>:root</code> 和 <code>.dark</code> 同时补 <code>--preset</code>（<code>oklch(0.55 0.2 295)</code> / <code>oklch(0.6 0.19 295)</code>），<code>@theme inline</code> 里补 <code>--color-preset</code>。</li>
 </ul>

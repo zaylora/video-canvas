@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 一键部署（Linux / macOS），无需克隆仓库：
-#   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/deploy.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash
 # 可选参数：bash -s -- --dir PATH --port 8080 --origin https://canvas.example.com --tag 0.1.6
 set -euo pipefail
 
-RAW="https://raw.githubusercontent.com/zaylora/video-canvas/master"
+RAW="https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts"
 DIR="$PWD/video-canvas"
 ORIGIN="http://localhost"
 TAG="latest"

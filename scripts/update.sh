@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # 生产环境更新脚本（Linux / macOS），无需克隆仓库，可直接通过管道运行：
-#   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/update.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 ROOT=""
 TAG=""
 PRUNE=true
