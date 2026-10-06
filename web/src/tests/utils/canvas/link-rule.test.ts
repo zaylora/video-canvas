@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { mentionableNodes, partitionLinkable, unlinkSource } from "@/utils/canvas/link-rule";
+import { useModelsStore } from "@/store/models";
+import {
+  canLinkNodes,
+  mentionableNodes,
+  opForLink,
+  partitionLinkable,
+  unlinkSource,
+} from "@/utils/canvas/link-rule";
 
 const node = (id: string, kind: "script" | "image" | "video" | "audio") => ({ id, kind });
 
@@ -89,5 +96,38 @@ describe("unlinkSource：引用条上点 × 断开某个上游", () => {
 
   test("没有这根线时原样返回同一个数组，不引起多余的保存和撤销步", () => {
     expect(unlinkSource(edges, "nope", "me")).toBe(edges);
+  });
+});
+
+describe("视频节点是文生视频时也能接图片：连上后自动切到全能参考", () => {
+  const caps = {
+    ops: ["t2v", "i2v", "omni"],
+    refs: {
+      image: { on: true, max: 9, max_mb: 10 },
+      audio: { on: true, max: 3, max_mb: 15 },
+      video: { on: false, max: 0, max_mb: 0 },
+    },
+  };
+  const setModels = () =>
+    useModelsStore.setState({
+      byKind: {
+        video: { status: "ready", models: [{ key: "v1", capabilities: caps }] },
+      } as never,
+    });
+
+  test("canLinkNodes：文生视频接图片放行，视频素材关闭仍拒绝", () => {
+    setModels();
+    const target = { kind: "video" as const, model: "v1", params: { op: "t2v" } };
+    expect(canLinkNodes({ kind: "image" }, target)).toBe(true);
+    expect(canLinkNodes({ kind: "video" }, target)).toBe(false);
+  });
+
+  test("opForLink：需要切时给出全能参考，不需要切时是 undefined", () => {
+    setModels();
+    const t2v = { kind: "video" as const, model: "v1", params: { op: "t2v" } };
+    expect(opForLink({ kind: "image" }, t2v)).toBe("omni");
+    expect(opForLink({ kind: "script" }, t2v)).toBeUndefined();
+    expect(opForLink({ kind: "image" }, { ...t2v, params: { op: "omni" } })).toBeUndefined();
+    expect(opForLink({ kind: "image" }, { kind: "image" })).toBeUndefined();
   });
 });

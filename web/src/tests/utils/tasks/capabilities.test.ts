@@ -7,6 +7,8 @@ import { formatPromptPreset, formatPromptRef } from "@/utils/canvas/prompt-token
 import {
   buildTaskInput,
   acceptsSourceKind,
+  opDisabledHint,
+  opToAcceptSource,
   hasImageRefs,
   legacyHandleFixes,
   currentOp,
@@ -246,14 +248,13 @@ describe("buildTaskInput", () => {
     );
     expect(built.errors).toEqual({});
     expect(built.input.images).toEqual([2]);
-    // 全是空的上游，等于没有图：按方式本身的要求提示，不提哪个上游
+    // 全是空的上游：连着节点就不拦，提交时不带素材
     const only = buildTaskInput(
       video(),
       { prompt: "x", op: "i2v" },
       { ...emptyB(), images: [pending] },
     );
-    expect(only.errors.images).toContain("至少 1 张");
-    expect(only.errors.images).not.toContain("图片 1");
+    expect(only.errors).toEqual({});
   });
 
   test("全能参考：至少一个素材", () => {
@@ -268,6 +269,30 @@ describe("buildTaskInput", () => {
     );
     expect(built.errors).toEqual({});
     expect(built.input.audios).toEqual([9]);
+  });
+
+  test("全能参考：前面连着素材节点（哪怕还没出图）就不报错，也能提交", () => {
+    const empty = link({ edgeId: "e", sourceKind: "image" }); // 图片节点还没素材
+    const built = buildTaskInput(
+      video(),
+      { prompt: "x", op: "omni" },
+      { ...emptyB(), images: [empty] },
+    );
+    expect(built.errors).toEqual({});
+    expect(built.input.images).toBeUndefined();
+  });
+
+  test("图生方式：前面连着图片节点（还没出图）也不报错；什么都没连才报错", () => {
+    const empty = link({ edgeId: "e", sourceKind: "image" });
+    const built = buildTaskInput(
+      video(),
+      { prompt: "x", op: "i2v" },
+      { ...emptyB(), images: [empty] },
+    );
+    expect(built.errors).toEqual({});
+    expect(buildTaskInput(video(), { prompt: "x", op: "i2v" }).errors.images).toContain(
+      "至少 1 张",
+    );
   });
 
   test("文本模型没有 op 和素材", () => {
@@ -430,3 +455,49 @@ function emptyB() {
     audios: IncomingLink[];
   };
 }
+
+describe("opToAcceptSource：连线时当前方式收不下就换一种", () => {
+  test("文生视频接图片 / 音频：切到全能参考", () => {
+    expect(opToAcceptSource(video(), "t2v", "image")).toBe("omni");
+    expect(opToAcceptSource(video(), "t2v", "audio")).toBe("omni");
+  });
+
+  test("图生视频接音频：切到全能参考；接图片本来就收，不切", () => {
+    expect(opToAcceptSource(video(), "i2v", "audio")).toBe("omni");
+    expect(opToAcceptSource(video(), "i2v", "image")).toBeUndefined();
+  });
+
+  test("文字总是收，已经是全能参考也不用切", () => {
+    expect(opToAcceptSource(video(), "t2v", "script")).toBeUndefined();
+    expect(opToAcceptSource(video(), "omni", "image")).toBeUndefined();
+  });
+
+  test("没有全能参考的模型：退而求其次切到收这种素材的方式", () => {
+    const caps = { ...video(), ops: ["t2v", "i2v"] as Capabilities["ops"] };
+    expect(opToAcceptSource(caps, "t2v", "image")).toBe("i2v");
+    expect(opToAcceptSource(caps, "t2v", "audio")).toBeUndefined();
+  });
+
+  test("哪种方式都收不下（视频素材关闭）或清单没到：不切", () => {
+    expect(opToAcceptSource(video(), "t2v", "video")).toBeUndefined();
+    expect(opToAcceptSource(undefined, "t2v", "image")).toBeUndefined();
+  });
+});
+
+describe("opDisabledHint：有没有参考素材决定哪些生成方式灰掉", () => {
+  test("没有参考素材：要引用素材的方式禁用，提示要连什么节点", () => {
+    expect(opDisabledHint(video(), "t2v", false)).toBeUndefined();
+    expect(opDisabledHint(video(), "i2v", false)).toBe("需要连接图片节点");
+    expect(opDisabledHint(video(), "omni", false)).toBe("需要连接图片/音频节点"); // 视频素材关闭
+  });
+
+  test("已有参考素材：文生方式禁用，其余可选", () => {
+    expect(opDisabledHint(video(), "t2v", true)).toBe("已有参考素材，文生视频不可用");
+    expect(opDisabledHint(video(), "i2v", true)).toBeUndefined();
+    expect(opDisabledHint(video(), "omni", true)).toBeUndefined();
+  });
+
+  test("清单没到不禁用", () => {
+    expect(opDisabledHint(undefined, "omni", false)).toBeUndefined();
+  });
+});

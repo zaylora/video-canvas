@@ -32,7 +32,15 @@ import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
-import { OP_LABEL, REF_KEYS, openParams, paramSummary } from "@/utils/tasks/capabilities";
+import {
+  OP_LABEL,
+  PORT_OF_KIND,
+  REF_KEYS,
+  manualRefs,
+  opDisabledHint,
+  openParams,
+  paramSummary,
+} from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { NodeOverlays } from "./node-overlays";
@@ -118,6 +126,10 @@ export function TaskPromptPanel({
 }) {
   const meta = NODE_META.get(kind);
   const Icon = meta?.icon;
+  // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
+  const hasRefs =
+    vm.refItems.some((item) => PORT_OF_KIND[item.kind] !== "text") ||
+    REF_KEYS.some((ref) => manualRefs(vm.params, ref.key).length > 0);
   const { modelsStatus, reloadModels } = vm;
 
   // 上次清单没拉下来的话，选中节点时顺手再试一次
@@ -191,7 +203,11 @@ export function TaskPromptPanel({
             <OpTabs
               id={nodeId}
               value={vm.op}
-              options={ops.map((op) => ({ value: op, label: OP_LABEL[op] }))}
+              options={ops.map((op) => ({
+                value: op,
+                label: OP_LABEL[op],
+                disabledHint: opDisabledHint(vm.caps, op, hasRefs),
+              }))}
               onValueChange={(op: GenerationOp) => vm.setOp(op)}
               disabled={locked}
             />

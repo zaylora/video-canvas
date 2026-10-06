@@ -16,7 +16,8 @@ export function OpTabs<T extends string>({
 }: {
   id: string;
   value: T | undefined;
-  options: { value: T; label: string }[];
+  /** disabledHint 有值就灰掉该项，鼠标悬浮时用 title 说明原因 */
+  options: { value: T; label: string; disabledHint?: string }[];
   onValueChange: (value: T) => void;
   disabled?: boolean;
 }) {
@@ -36,11 +37,17 @@ export function OpTabs<T extends string>({
               role="tab"
               aria-selected={active}
               disabled={disabled}
-              onClick={() => onValueChange(option.value)}
+              aria-disabled={!!option.disabledHint}
+              title={option.disabledHint}
+              onClick={() => !option.disabledHint && onValueChange(option.value)}
               className={cn(
                 "relative h-7.5 shrink-0 rounded-full px-3.5 text-[13px] whitespace-nowrap transition-colors outline-none",
                 "focus-visible:ring-node-ring/60 focus-visible:ring-2 disabled:opacity-50",
-                active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                option.disabledHint
+                  ? "text-muted-foreground/40 cursor-not-allowed"
+                  : active
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
               )}
             >
               {active && (
