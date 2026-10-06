@@ -120,13 +120,17 @@ func (r *AgentRepository) ActiveRun(ctx context.Context, canvasID uint64) (*mode
 }
 
 // UpdateRunIf 是运行状态迁移的 CAS：UPDATE … WHERE id=? AND status IN (from) … RETURNING *。
-// 没命中（运行不存在，或状态已不在 from 里）返回 ErrAgentStateConflict。
+// 没命中（运行不存在，或状态已不在 from 里）返回 ErrAgentStateConflict；迁到活跃状态时画布已被别的运行占用返回 ErrDuplicate。
 // 迁移到终态（不再占用画布）时由调用方在 fields 里写 ended_at。
 func (r *AgentRepository) UpdateRunIf(ctx context.Context, id uint64, from []string, fields map[string]any) (*model.AgentRun, error) {
 	var run model.AgentRun
 	res := r.db.WithContext(ctx).Model(&run).Clauses(clause.Returning{}).
 		Where("id = ? AND status IN ?", id, from).Updates(fields)
 	if res.Error != nil {
+		// 迁回活跃状态（如继续运行）时，画布可能已被别的运行占了，由部分唯一索引兜底
+		if isUniqueViolation(res.Error) {
+			return nil, ErrDuplicate
+		}
 		return nil, res.Error
 	}
 	if res.RowsAffected == 0 {
