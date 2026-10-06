@@ -32,6 +32,7 @@ import type {
 import { isGroupNode } from "@/utils/canvas/group";
 import { canLinkFrom, opForLink, partitionLinkable } from "@/utils/canvas/link-rule";
 import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
+import { topLeftFromAnchor } from "@/utils/canvas/placement";
 import { uploadAsset } from "@/api/asset";
 
 type UseCanvasMenuOptions = {
@@ -212,10 +213,18 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
       const meta = NODE_META.get(kind) ?? NODE_LIBRARY[0];
       const { connection, group } = placement;
       const id = crypto.randomUUID();
+      // 拉线生成时让落点落在新节点自己的连接点上，线头才不会飘在半空；从多选区拉出同理，接在新节点左侧
+      const anchor: [number, number] = group
+        ? [0, 0.5]
+        : connection
+          ? connection.handleType === "source"
+            ? [0, 0.5]
+            : [1, 0.5]
+          : [0, 0];
       const node: CanvasNode = {
         id,
         type: "canvas",
-        position: placement.flow,
+        position: topLeftFromAnchor(meta.kind, placement.flow, anchor),
         data: {
           kind: meta.kind,
           // 上传的用文件名，其余按种类名编号（「图片 2」），@ 素材时才分得清
@@ -226,14 +235,6 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
           model: defaultModels?.[meta.kind],
           ...extra,
         },
-        // 拉线生成时让落点落在新节点自己的连接点上，线头才不会飘在半空；从多选区拉出同理，接在新节点左侧
-        origin: group
-          ? [0, 0.5]
-          : connection
-            ? connection.handleType === "source"
-              ? [0, 0.5]
-              : [1, 0.5]
-            : [0, 0],
       };
 
       // 新节点直接选中：面板浮出来就能写提示词

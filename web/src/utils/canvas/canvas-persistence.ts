@@ -4,6 +4,7 @@ import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, FlowNode } from "@/types";
 
 import { isGroupNode, normalizeFlowNodes } from "./group";
+import { dropNodeOrigin } from "./placement";
 
 /** 是否还有「存下来也没有意义」的本地生成中节点，保存要等它们收尾 */
 export function hasVolatileRunning(nodes: FlowNode[]) {
@@ -87,9 +88,12 @@ export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
       nodes.map((node) => {
         const data = node.data as { status?: string; taskId?: string };
         // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理
-        return data.status === "running" && !data.taskId
-          ? { ...node, data: { ...node.data, status: "idle" as const } }
-          : node;
+        const fixed =
+          data.status === "running" && !data.taskId
+            ? { ...node, data: { ...node.data, status: "idle" as const } }
+            : node;
+        // 老存档里带 origin 的节点，position 统一换算成左上角
+        return dropNodeOrigin(fixed as FlowNode);
       }) as FlowNode[],
     ),
     edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],
