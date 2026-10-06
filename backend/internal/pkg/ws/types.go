@@ -10,6 +10,8 @@ import (
 const (
 	TypeHello       = "hello"
 	TypeTaskUpdated = "task.updated"
+	TypeCanvasPatch = "canvas.patch" // Agent 改了画布：带逐节点的改动，前端三方合并
+	TypeAgentEvent  = "agent.event"  // Agent 会话里的一条事件（文本增量、工具调用、审批……）
 
 	// 以下是连接控制类消息（订阅协议与心跳）。
 	TypePing         = "ping"         // 客户端 → 服务端：应用层心跳

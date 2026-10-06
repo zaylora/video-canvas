@@ -7,10 +7,10 @@ import (
 
 // Skip 是撤销时没有处理的一项：用户后来改过，或者已经有了生成产物。
 type Skip struct {
-	Kind   string // node 或 edge
-	NodeID string // 节点或连线 id
-	Field  string // 字段路径，整个对象被保留时为空
-	Reason string // 中文原因
+	Kind   string `json:"kind"`            // node 或 edge
+	NodeID string `json:"node_id"`         // 节点或连线 id
+	Field  string `json:"field,omitempty"` // 字段路径，整个对象被保留时为空
+	Reason string `json:"reason"`          // 中文原因
 }
 
 // RevertResult 是撤销的结果。

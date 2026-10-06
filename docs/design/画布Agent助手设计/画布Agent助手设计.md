@@ -595,7 +595,8 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | --- | --- | --- |
 | 1 | `internal/canvasgraph`：画布结构的解析、编辑操作、差异、撤销、目录；与前端共用 fixture | **已完成**（2026-10-07） |
 | 2a | 5 张表的模型、错误码 60xxx、`AgentRepository`（会话、运行、事件、改动日志、审批）及真实数据库的集成测试 | **已完成**（2026-10-07） |
-| 2b | 会话、运行、审批、撤销的 service 与接口；`canvas.patch` 和 `agent.event` 的 WS 推送 | 未开始 |
+| 2b-1 | `AgentCanvasService`：应用编辑、排列、批准后的删除、撤销本轮、目录与详情；版本冲突重试；`canvas.patch` 推送 | **已完成**（2026-10-07） |
+| 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | 未开始 |
 | 3 | Agent 模型配置（`Kind=agent`）和流式 LLM 网关；token 计费的冻结与结算 | 未开始 |
 | 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 未开始 |
 | 5 | 前端：三方合并、撤销栈 rebase、409 自动合并、WS 消息解析、agent store | 未开始 |
@@ -634,3 +635,16 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   2. `agent_runs` 多了 `lease_until`（runtime 租约到期时间，用来判断中断）和 `mode`；`agent_sessions` 多了 `mode`。
   3. `agent_model_calls` 表和 `credit_ledgers.agent_call_id` 列放到切片 3（LLM 网关）一起做，因为它们只在计费时才用。
 - **验证**：仓储集成测试用本机 PostgreSQL 的 `video_canvas_test` 库，每个用例建独立 schema、结束后删除，运行方式 `TEST_DATABASE_DSN="host=/tmp user=<你> dbname=video_canvas_test sslmode=disable" go test ./internal/tests/repository/`；未设置该变量时这些测试会自动跳过。`-race` 通过，`golangci-lint run --new-from-merge-base=master` 0 问题。
+
+### 13.4 切片 2b-1：改画布的业务（已完成）
+
+位置 `backend/internal/service/agent_canvas.go`，测试 `backend/internal/tests/service/agent_canvas_test.go`（内存假仓储）和 `backend/internal/tests/repository/agent_canvas_integration_test.go`（真实数据库端到端）。
+
+- **已实现**：`ApplyOps`、`Arrange`、`DeleteApproved`、`Undo`、`Catalog`、`Detail`，以及新增的 WS 消息类型 `canvas.patch`、`agent.event`。
+- **写入流程**：读最新画布 → 校验并应用 → 带乐观锁写入并记日志 → 推送 patch。版本冲突（用户刚好保存了）时重读最新画布、重新应用同一批操作，最多 3 次，仍失败返回 `60006`，这样 Agent 的改动总是叠在用户最新的内容上。
+- **撤销的行为**（与设计 6.3 D 一致，补充几个细节）：
+  1. 生成绑定（`bind`）的改动不参与撤销：撤销不会取消已批准的生成，也就不能把节点上的 `taskId` 抹掉。
+  2. 所有东西都被跳过（例如唯一的新节点被用户改过）时没有实际变化，**不写入、不产生新 revision，也不把原改动标为已撤销**，只返回跳过项；用户处理完冲突后可以再撤销。
+  3. 一个节点被保留时，它所在的组和它的连线也一并保留，并分别列入跳过项。
+- **与设计的出入**：工具层的错误（`*canvasgraph.ValidationError`、`canvasgraph.ErrInvalid`）原样返回，由后面的桥转成给模型看的工具错误，不走 `errcode`；`errcode` 只用于面向 HTTP 的业务错误。
+- **验证**：`-race` 通过；`golangci-lint run --new-from-merge-base=master` 0 问题。

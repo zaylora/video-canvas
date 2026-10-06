@@ -184,6 +184,16 @@ func (r *AgentRepository) ListEvents(ctx context.Context, sessionID uint64, afte
 	return out, err
 }
 
+// GetCanvas 按 id + user_id 读画布（含 payload_json），不存在或不属于该用户返回 ErrNotFound。
+// Agent 的工具只能碰运行所属用户自己的画布。
+func (r *AgentRepository) GetCanvas(ctx context.Context, userID, id uint64) (*model.CanvasProject, error) {
+	var c model.CanvasProject
+	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&c).Error; err != nil {
+		return nil, translate(err)
+	}
+	return &c, nil
+}
+
 // CommitInput 是一次画布写入的全部内容。
 type CommitInput struct {
 	UserID       uint64               // 画布所有者
