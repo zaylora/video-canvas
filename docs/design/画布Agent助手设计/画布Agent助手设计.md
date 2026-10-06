@@ -540,6 +540,7 @@ backend/
 19. **模型是写在提示词里的行内 chip，可以有多个**（如角色用 A、场景用 B）；没有指定时，Agent 弹出「选择模型」卡片。
 20. **✋ 开关：开 = 生成需审批，关 = 自动生成**；本版只做「开」，「关」禁用。
 21. **未完成的计划一直悬浮在输入框上方**，默认一行摘要，点开展开。
+22. **前后端规则只共用测试 fixture，不共用规则文件**：规则代码两边各写一份，fixture 防漂移；不为单一来源引入跨目录读取或代码生成。
 
 ### 11.2 已搁置的决定
 
@@ -614,5 +615,5 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   1. 提示词同时写 `data.prompt` 和 `params.prompt`：前端以 `params.prompt` 为准，`data.prompt` 只是旧节点的兜底（见 `utils/tasks/capabilities.ts`）。设计文档原先没写到这一层。
   2. 普通节点的尺寸前端不保存，后端按种类取默认值（视频 432×243，其余 384×216），与 `placement.ts` 的 `defaultNodeSize` 一致。
   3. 差异里的 `Change` 带 `Index`（删除前的下标），这是设计里没有的字段，用于撤销时把节点放回原处。
-- **共用 fixture**（`backend/internal/tests/testdata/canvasgraph/`）：目前覆盖连线规则（4×4 全部组合）和排列算法（横排、竖排、5 个节点的网格）。前端读同一份（`web/src/tests/utils/canvas/agent-graph-fixture.test.ts`）。**打组 / 解组 / 贴合组框的坐标换算还没有共用 fixture**，目前只有后端自己的测试，列入切片 2 之前的补充项。
+- **共用 fixture**（`backend/internal/tests/testdata/canvasgraph/`）：目前覆盖连线规则（4×4 全部组合）、排列算法（横排、竖排、5 个节点的网格）、打组 / 解组 / 贴合组框的坐标换算。前端读同一份（`web/src/tests/utils/canvas/agent-graph-fixture.test.ts`）。共用的是**测试数据**，不是规则代码：两边的规则各自实现，fixture 保证它们不会悄悄不一致（决定见 11.1 第 22 条）。
 - **验证**：`go test -race ./internal/tests/canvasgraph/` 通过；`golangci-lint run` 对新增包 0 问题；`go test ./...` 全部通过；前端 `bun test` 352 个通过、`bun run typecheck` 通过。

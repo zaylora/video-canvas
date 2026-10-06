@@ -85,3 +85,87 @@ func TestArrangeMatchesFrontend(t *testing.T) {
 		})
 	}
 }
+
+type groupCase struct {
+	Name   string
+	Op     string
+	Groups []struct {
+		ID         string
+		X, Y, W, H float64
+	}
+	Nodes []struct {
+		ID, Kind, Parent string
+		X, Y             float64
+	}
+	Members  []string
+	Expected struct {
+		Group *struct{ X, Y, W, H float64 }
+		Nodes map[string]struct {
+			X, Y   float64
+			Parent *string
+		}
+	}
+}
+
+// buildGroupGraph 按 fixture 的描述拼出一张画布。
+func buildGroupGraph(t *testing.T, c groupCase) *canvasgraph.Graph {
+	var parts []string
+	for _, g := range c.Groups {
+		parts = append(parts, fmt.Sprintf(`{"id":%q,"type":"group","position":{"x":%v,"y":%v},"width":%v,"height":%v,"data":{"label":%q}}`, g.ID, g.X, g.Y, g.W, g.H, g.ID))
+	}
+	for _, n := range c.Nodes {
+		parent := ""
+		if n.Parent != "" {
+			parent = fmt.Sprintf(`"parentId":%q,`, n.Parent)
+		}
+		parts = append(parts, fmt.Sprintf(`{"id":%q,"type":"canvas",%s"position":{"x":%v,"y":%v},"data":{"kind":%q,"label":%q}}`, n.ID, parent, n.X, n.Y, n.Kind, n.ID))
+	}
+	return mustParse(t, `{"nodes":[`+strings.Join(parts, ",")+`]}`)
+}
+
+func TestGroupMatchesFrontend(t *testing.T) {
+	var fx struct{ Cases []groupCase }
+	loadFixture(t, "group-cases.json", &fx)
+	for _, c := range fx.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			g := buildGroupGraph(t, c)
+			var res *canvasgraph.Result
+			var err error
+			switch c.Op {
+			case "group":
+				ids, _ := json.Marshal(c.Members)
+				res, err = canvasgraph.Apply(g, mustOps(t, `[{"op":"create_group","tempId":"g","label":"组","memberIds":`+string(ids)+`}]`), canvasgraph.Options{NewID: func(string) string { return "g" }})
+			case "ungroup":
+				res, err = canvasgraph.Delete(g, []string{"g"}, nil)
+			case "fit":
+				// 把第一个成员移到它自己当前的位置：成员有变动，组框随之贴合。
+				first := c.Nodes[0]
+				res, err = canvasgraph.Apply(g, mustOps(t, fmt.Sprintf(`[{"op":"move","id":%q,"position":{"x":%v,"y":%v}}]`, first.ID, first.X, first.Y)), opts())
+			default:
+				t.Fatalf("未知 op %s", c.Op)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := c.Expected.Group; want != nil {
+				grp := node(t, res.Graph, "g")
+				got := struct{ X, Y, W, H float64 }{grp.Position().X, grp.Position().Y, grp.Width(), grp.Height()}
+				if got != *want {
+					t.Errorf("组框应为 %+v，实际 %+v", *want, got)
+				}
+			}
+			for id, want := range c.Expected.Nodes {
+				n := node(t, res.Graph, id)
+				if p := n.Position(); p.X != want.X || p.Y != want.Y {
+					t.Errorf("%s: 应在 (%v,%v)，实际 (%v,%v)", id, want.X, want.Y, p.X, p.Y)
+				}
+				switch {
+				case want.Parent == nil && n.ParentID() != "":
+					t.Errorf("%s: 不应有父组，实际 %s", id, n.ParentID())
+				case want.Parent != nil && n.ParentID() != *want.Parent:
+					t.Errorf("%s: 父组应为 %s，实际 %s", id, *want.Parent, n.ParentID())
+				}
+			}
+		})
+	}
+}
