@@ -184,6 +184,7 @@ export function TaskPromptPanel({
             : `${meta?.placeholder ?? "写下你想要的内容。"}输入 @ 引用画布里的素材。`
         }
         mention={vm.mention}
+        promptMaxLength={vm.caps?.prompt?.max_length}
         notice={notice}
         header={
           ops.length > 1 && !vm.autoOp ? (

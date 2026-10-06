@@ -103,6 +103,8 @@ type NodePromptInputProps = {
   promptNote?: string;
   /** 完全不要提示词框（该模型没有 prompt 字段） */
   hidePrompt?: boolean;
+  /** 当前模型的提示词字数上限，预设选择器用它提示放不下的预设 */
+  promptMaxLength?: number;
   /** 面板最上面一行，放生成方式 Tabs */
   header?: ReactNode;
   /** 提示词框上方的插槽，放引用条；没有 header 时它顶到第一行，和放大按钮并排 */
@@ -146,6 +148,7 @@ export function NodePromptInput({
   promptDisabled,
   promptNote,
   hidePrompt,
+  promptMaxLength,
   header,
   children,
   mention,
@@ -168,6 +171,7 @@ export function NodePromptInput({
         editorRef.current?.insertRef(source),
       presets: {
         selected: promptPresets(value).map(({ kind, id }) => ({ kind, id })),
+        maxLength: promptMaxLength,
         apply: (...args: Parameters<PromptEditorHandle["applyPreset"]>) =>
           editorRef.current?.applyPreset(...args),
         focusEditor: () => editorRef.current?.focus(),
@@ -175,7 +179,7 @@ export function NodePromptInput({
         setChip: setPresetChip,
       },
     }),
-    [highlight, linkedIds, presetChip, setHighlight, value],
+    [highlight, linkedIds, presetChip, promptMaxLength, setHighlight, value],
   );
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);

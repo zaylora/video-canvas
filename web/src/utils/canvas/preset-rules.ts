@@ -1,5 +1,8 @@
 import { PRESET_KINDS, type PresetKind } from "@/constants/presets";
 
+/** 预设里提交时要展开成提示词的那部分，只有正文参与字数 */
+type PresetText = { prompt: string };
+
 /** 提示词里已经放了的一个预设 */
 export type PresetPick = { kind: PresetKind; id: string };
 
@@ -40,4 +43,14 @@ export function planPreset(
     if (existing >= 0) return { type: "replace", index: existing };
   }
   return { type: "insert", at: kind === "tpl" ? "start" : "cursor" };
+}
+
+/**
+ * 预设展开后的正文比模型提示词上限还长时，返回它的字数，否则返回 null。
+ * 提交时按展开后的长度校验，预设本身超限的话选了也一定发不出去，所以选择器里先提示。
+ */
+export function presetOverflow(preset: PresetText, maxLength: number | undefined): number | null {
+  if (!maxLength || maxLength <= 0) return null;
+  const length = [...preset.prompt.trim()].length;
+  return length > maxLength ? length : null;
 }
