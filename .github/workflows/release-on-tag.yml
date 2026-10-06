@@ -49,6 +49,16 @@ jobs:
           test -s release-notes.md
           grep -Eq "^## (v$VERSION_VALUE|\\[$VERSION_VALUE\\])([[:space:]]|$|-)" release-notes.md
 
+      - name: Validate VERSION matches tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION_VALUE="${RELEASE_TAG#v}"
+          if [ "$(tr -d '[:space:]' < VERSION)" != "$VERSION_VALUE" ]; then
+            echo "VERSION ($(cat VERSION)) does not match tag $RELEASE_TAG; update VERSION in the release commit before tagging"
+            exit 1
+          fi
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,21 +71,3 @@ jobs:
               --title "$RELEASE_TAG" \
               --notes-file release-notes.md
           fi
-
-      - name: Update VERSION on master
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          VERSION_VALUE="${RELEASE_TAG#v}"
-          git fetch origin master
-          git switch --force-create release-changelog origin/master
-          printf '%s\n' "$VERSION_VALUE" > VERSION
-          if git diff --quiet -- VERSION; then
-            echo "VERSION is already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "docs: update changelog for $RELEASE_TAG"
-          git push origin HEAD:master
