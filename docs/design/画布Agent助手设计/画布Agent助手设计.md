@@ -130,6 +130,8 @@
 
 ### 6.1 总体架构
 
+> **变更（2026-10-07，第 4 块验证后）**：反向桥的形态、会话持久化和上下文裁剪与下图不同，以 13.7 为准。
+
 ```
 浏览器 Agent 浮窗 ──HTTP──▶ Go API（/api/v1/agent/...）
      ▲                         │  ① 建 run、组装上下文帧
@@ -598,7 +600,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | 2b-1 | `AgentCanvasService`：应用编辑、排列、批准后的删除、撤销本轮、目录与详情；版本冲突重试；`canvas.patch` 推送 | **已完成**（2026-10-07） |
 | 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | **已完成**（2026-10-07） |
 | 3 | Agent 模型配置（`Kind=agent`）、流式 LLM 网关、按 Token 计费 | **后端已完成**（2026-10-07）；后台管理页面（前端）未做 |
-| 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 未开始 |
+| 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 行为验证已完成（见 13.7），方案已按验证结果修订；实现未开始 |
 | 5 | 前端：三方合并、撤销栈 rebase、409 自动合并、WS 消息解析、agent store | 未开始 |
 | 6 | 前端：浮窗 UI（按 6.7）、置顶运行条、行内 chip 编辑器、审批和提问卡片；内置技能和系统提示词 v1 | 未开始 |
 
@@ -675,3 +677,40 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   - 新增 `agent_model_calls` 表和 `credit_ledger.agent_call_id` 列（与 `task_id` 互斥，部分唯一索引）。
 - **未完成**：① 后台管理页面（前端）还不能创建 agent 类型的模型，目前只能用 JSON 接口；② 后台的用户积分流水里，Agent 的扣费显示成没有任务的「冻结/结算」，分不出来源；③ 「试跑」对 agent 类型还没有实现（需要一个不走插件的试跑）。三项都不影响后面的切片，列为待办。
 - **验证**：网关用本地假上游测试（含空闲超时、取消、SSRF、并发限制，`-race` 重复运行）；计费有真实数据库的集成测试（幂等、封顶、冻结中的积分不可动、并发不丢更新、对账等式）；整套后端 `go test -race ./...` 通过，增量 lint 0 问题。
+
+### 13.7 切片 4 前的行为验证（pi 1.0.4）
+
+在临时目录装 `@earendil-works/pi-agent-core@1.0.4`、`pi-ai@1.0.4`（Node 23.6，要求 ≥ 22.19），用脚本化的假大模型和一个本地的 OpenAI 兼容假服务（扮演 Go 桥）共做了 22 条行为检查，**全部通过**。脚本没有提交，实现第 4 块时会改写成 runtime 的契约测试（固定输入 → 期望的桥调用序列）。
+
+**验证到的事实**
+
+| 方面 | 结论 |
+| --- | --- |
+| 上下文形状 | 系统提示和工具声明都放在 transcript 开头的 `system` 消息里（`toolsAdded`），不在 `context.tools` |
+| 工具往返 | 事件顺序 `agent_start → turn_start → message_* → tool_execution_start/end → turn_end → agent_end`；工具结果回传给模型时是 `tool` 消息，带 `tool_call_id` |
+| 等审批 | 工具返回 `terminate: true`，整批工具执行完后循环停下、不再请求模型；之后把最后一条 `toolResult` 的内容改成真实结果，再 `continue()`，模型看到的就是真实结果 |
+| 拦截 | `beforeToolCall` 返回 `{block, reason}`：工具不执行，模型收到 `isError` 的工具结果 |
+| 插话 | `steer()` 在当前工具批结束后注入，模型下一次请求能看到 |
+| 取消 | `abort()`：流中止，最后一条 `stopReason=aborted` 且保留已收到的文本；**桥这一侧能看到连接断开**，所以能按已产生的用量结算 |
+| 历史 | `state.messages` 可直接 JSON 往返、赋值恢复，新 Agent 接着对话 |
+| 工具执行模式 | 默认 `parallel`，**必须设成 `sequential`**，否则同一条消息里的多个画布写入会并发 |
+| 工具异常 | `execute` 抛异常 → 模型收到 `isError` 的工具结果，循环继续 |
+| 上游错误 | 502、401 **都不会自动重试**（桥只收到 1 次请求），不会重复计费；`errorMessage` 带状态码 |
+| 用量 | pi 把缓存命中拆开记（`input` 不含 `cacheRead`）；我们在 Go 侧自己按上游原始用量计费，不依赖它 |
+| 思考内容 | `reasoning_content` 变成独立的 `thinking` 块，不混进正文 |
+| 看图 | 用户消息带图片 → 请求里是 `text` + `image_url` 分段 |
+| 请求字段 | 默认带 `store` 和 `max_completion_tokens`，老的 OpenAI 兼容网关可能不认；在模型上设 `compat: {maxTokensField: "max_tokens", supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false}` 后只剩 `model, messages, stream, stream_options, max_tokens, tools` |
+| 上下文裁剪 | `transformContext` 能在每次请求前改写历史（实验里把旧工具结果替换成占位文字） |
+| 体积与速度 | 冷启动（import）约 0.1–0.17 秒，常驻内存约 70MB；`node_modules` 共 100MB，大头是我们用不到的各家厂商 SDK（openai 27MB、anthropic 14MB、google 11MB、aws 7MB） |
+| `pi-coding-agent` | 解包 22MB、20 多个依赖（终端界面、MCP、WASM 代码沙箱……），为编码场景设计 |
+
+**对第 4 块方案的修订**（与原设计的出入）
+
+1. **桥改成「OpenAI 兼容端点」，不再自定义协议。** Node 里用 pi 自带的 `openai-completions` 提供方，`baseUrl` 指向 Go 暴露的 `POST /internal/agent/bridge/v1/chat/completions`，`apiKey` 是一次性桥令牌。Go 收到的就是标准 OpenAI 请求，用 `llmgateway` 转发到真实渠道并计费，把 SSE 原样回传。这样省掉「transcript → 模型请求」的转换和一套自定义流式协议，也不需要 Node 侧上报文本增量：**Go 在代理流的同时就能看到所有文本、思考、工具调用增量**，直接生成事件推给前端。
+   - 需要给 `llmgateway` 增加一个「透传」入口：接收 pi 已经拼好的请求体，强制覆盖 `model`（上游模型名）、`stream`、`stream_options`，按模型上限收紧 `max_tokens`，边转发边解析用量。
+2. **工具走同步回调：** Node 里每个工具的 `execute` 只是 `POST /internal/agent/bridge/tool`，由 Go 执行（改画布、建审批……）并返回结果；回调失败时抛异常，模型会看到并自行处理。
+3. **等审批 = `terminate` + 续跑：** 生成和删除工具创建审批后返回 `terminate: true`；批准后 Go 把保存的历史里最后一条工具结果改成真实结果，起一个新的 Node 进程 `continue()`。
+4. **每个运行片段一个 Node 进程**（开始、审批后续跑、「继续」各起一个），冷启动约 0.15 秒，崩溃只影响当前片段；插话通过 stdin 发 `steer`，取消发 `abort`。
+5. **不用 `pi-coding-agent`，只用 `pi-agent-core` + `pi-ai`。** 原设计借它的会话 JSONL 和压缩功能，但它太重、且为编码设计。后果：**没有现成的压缩**，改为：会话存的是 `state.messages` 的 JSON（`agent_sessions.session_jsonl` 列沿用，内容是 JSON 而不是 JSONL 树）；上下文超过窗口约 70% 时用 `transformContext` 把旧工具结果替换成占位文字，更进一步的摘要压缩放二期。
+6. **Node 只在每个回合结束时把 `state.messages` 回传一次**（`POST /internal/agent/bridge/state`），Go 落库；其余事件都由 Go 自己生成。
+7. 版本锁定 `1.0.4`（不用 `^`），`package-lock` 提交；runtime 的契约测试固定「输入 → 桥调用序列」。
