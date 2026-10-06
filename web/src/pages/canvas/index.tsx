@@ -3,11 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { getCanvas } from "@/api/canvas";
 import { draftStore } from "@/utils/canvas/draft-idb";
+import { useCanvasLock } from "@/hooks/use-canvas-lock";
 import { loadCanvasForEditing, type OpenedCanvas } from "@/utils/canvas/open-canvas";
 import { getCanvasTitle } from "@/utils/canvas/title-cache";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
 import { CanvasLoader } from "./canvas-loader";
+import { CanvasLockedNotice } from "./canvas-locked-notice";
 import { Flow } from "./flow";
 
 /** 入场动画播多久后摘掉 data-entering，免得之后新建的节点也跟着播一遍 */
@@ -21,9 +23,12 @@ export default function Canvas() {
   /** 加载层已经为哪张画布收起；换画布（id 变了）就重新走一遍加载 */
   const [revealedId, setRevealedId] = useState<string | null>(null);
 
+  /** 同一张画布只让一个标签页编辑：拿到锁才加载，没拿到先提示，对方关闭后自动接管 */
+  const lock = useCanvasLock(id);
+
   useEffect(() => {
     let active = true;
-    if (!id) return;
+    if (!id || lock !== "held") return;
     const userId = getCurrentUserId();
     void loadCanvasForEditing({
       canvasId: id,
@@ -41,7 +46,7 @@ export default function Canvas() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, lock]);
 
   const current = opened && opened.canvas.id === id ? opened : null;
   // 入场直接在画布根节点上挂 data-entering，不走 state：
@@ -57,6 +62,7 @@ export default function Canvas() {
   }, [id]);
 
   if (!id) return null;
+  if (lock === "waiting") return <CanvasLockedNotice />;
   if (error) return <div className="grid min-h-svh place-items-center">画布不存在或无法加载</div>;
   return (
     <>

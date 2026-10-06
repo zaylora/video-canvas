@@ -346,7 +346,8 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
   <div class="note warn"><b>要注意</b>：「已保存」现在指「已存到这台浏览器」，不代表云端已有。换设备立刻打开可能看不到最新改动，最久滞后 10 秒。这是你选择安静状态栏的代价，在第 8 节里列为已接受的取舍。</div>
 
   <h3>4.4 多标签页（用户确认）</h3>
-  <p>每张画布用 Web Locks（<code>navigator.locks</code>）加锁，键为 <code>canvas:{userId}:{canvasId}</code>。先打开的标签页持有锁可编辑；后打开的拿不到锁，进入只读，底部提示「已在另一个标签页打开」。先开的标签页关闭后，后开的可以接管并读取最新草稿。</p>
+  <p>每张画布用 Web Locks（<code>navigator.locks</code>）加锁，键为 <code>canvas:{userId}:{canvasId}</code>。先打开的标签页持有锁可编辑；后打开的拿不到锁，<b>不渲染画布</b>，改显示一个提示页「这张画布已在另一个标签页打开」（附「返回画布列表」按钮），同时排队等锁。先开的标签页关闭后，锁自动释放，后开的自动接管并按正常流程打开画布（含草稿对账）。</p>
+  <p style="font-size:13.5px;color:var(--muted)">实现时的取舍：设计稿原写「只读」，但画布里节点上的输入框、生成按钮、快捷键很多，没法安全地全部禁用，漏一个就会写出冲突的草稿，所以改成提示页而不是只读画布。浏览器不支持 Web Locks 时不拦着用户，直接放行。</p>
 
   <h3>4.5 视口：只移动、刷新后仍停在原位置</h3>
   <p>视口是「这台设备此刻看哪里」，属于视图状态，不是画布内容。所以<b>不走保存链路</b>，单独存一份：</p>
@@ -426,7 +427,7 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
         <li>第二个调度器：本地 0.3 秒/最长 1 秒。</li>
         <li><code>canvas/index.tsx</code> 加载时对账（4.2）。</li>
         <li>卸载与 <code>pagehide</code> 强制写入；<code>useBlocker</code> 非必需（本地兜底后不用拦截路由）。</li>
-        <li>Web Locks 多标签页只读态。</li>
+        <li>Web Locks 多标签页提示页。</li>
       </ul>
     </div>
   </div>
@@ -506,7 +507,7 @@ footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; }
     <tr><th>阶段</th><th>范围</th><th>验收条件</th></tr>
     <tr><td><b>一</b></td><td>草稿存取 + 本地调度 0.3 秒 + 云端窗口改 3s/10s + 退出强制落盘 + 视口单独存本机</td><td>编辑后 0.5 秒内草稿已写入；云端上传在停手 3 秒后、连续编辑最长 10 秒内发出；只移动视窗后刷新、返回再进来，视口仍在移动之后的位置，且全程没有网络请求。</td></tr>
     <tr><td><b>二</b></td><td>打开对账：自动恢复并补传；冲突沿用现有弹窗；退出登录清草稿</td><td>上传前关页再打开，改动完整恢复并在后台补传；版本对不上时不静默覆盖；换账号看不到上一个人的草稿。</td></tr>
-    <tr><td><b>三</b></td><td>Web Locks 多标签页只读；写入失败降级；过期草稿清理</td><td>第二个标签页只读且有提示；禁用 IndexedDB 时仍能正常保存到云端。</td></tr>
+    <tr><td><b>三</b>（已实现）</td><td>Web Locks 多标签页提示页；写入失败降级；过期草稿清理；去掉 <code>beforeunload</code> 确认</td><td>第二个标签页显示提示页，且另一个标签页关闭后自动接管；禁用 IndexedDB 时仍能正常保存到云端；关页不再弹浏览器确认（草稿不可用时除外）；画布删除时本机草稿和视口一起清掉，打开列表时清理已同步且超过 30 天的草稿。</td></tr>
     <tr><td><b>四</b></td><td>差量上传：新增 <code>PATCH /canvas/:id</code>，按节点 id 传 ops（第 7 节）</td><td>只改一个节点时请求体只含该节点；大画布关页 keepalive 能发出；幂等重发不产生重复数据；与全量 PUT 的结果逐字段一致。</td></tr>
     <tr><td>后续</td><td>字段级自动合并、跨设备实时同步</td><td>不在本次范围。</td></tr>
   </table></div>

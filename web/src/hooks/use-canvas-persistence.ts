@@ -78,6 +78,8 @@ export function useCanvasPersistence({
           }
         : null,
       onStatus: setStatus,
+      onDraftUnavailable: () =>
+        console.warn("本地草稿不可用（IndexedDB 被禁用或空间不足），已退化为只保存到云端"),
       now: Date.now,
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (handle) => window.clearTimeout(handle as number),
@@ -138,8 +140,8 @@ export function useCanvasPersistence({
       if (document.visibilityState === "hidden") leaving();
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      // 云端还有没存上的内容（含请求在途、失败、冲突）：让浏览器弹确认
-      if (!coordinator.hasUnsaved) return;
+      // 草稿能兜底时关页不会丢内容，不弹确认；只有没有草稿（或写入失败）时才弹
+      if (!coordinator.needsLeaveWarning) return;
       event.preventDefault();
     };
     // 断网后联网：失败状态下立刻再试一次

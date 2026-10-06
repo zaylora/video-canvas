@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { createCanvas, deleteCanvas, getCanvasList } from "@/api/canvas";
+import { draftStore } from "@/utils/canvas/draft-idb";
+import { DRAFT_RETENTION_MS } from "@/utils/canvas/draft-store";
+import { removeViewport } from "@/utils/canvas/viewport-store";
+import { getCurrentUserId } from "@/utils/storage/user-id";
 import type { CanvasListItemDto } from "@/api/canvas/type";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 
@@ -53,6 +57,12 @@ export function useCanvasList(pageSize: number) {
   const error = !loading && settled.error;
 
   useEffect(() => {
+    // 打开列表时顺手清理已同步且超过保留期的草稿；没同步的草稿永远不清
+    const userId = getCurrentUserId();
+    if (userId) void draftStore.purgeExpired(userId, DRAFT_RETENTION_MS);
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => setKeyword(query.trim()), SEARCH_DEBOUNCE);
     return () => clearTimeout(timer);
   }, [query]);
@@ -83,6 +93,12 @@ export function useCanvasList(pageSize: number) {
     try {
       await deleteCanvas(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
+      // 画布没了，本机的草稿和视口记录也一起清掉
+      const userId = getCurrentUserId();
+      if (userId) {
+        void draftStore.remove(userId, id);
+        removeViewport(userId, id);
+      }
     } catch {
       /** 失败提示拦截器已经弹过，这里只把卡片留在原处 */
     } finally {

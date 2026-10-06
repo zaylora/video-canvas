@@ -58,6 +58,19 @@ export function saveViewport(
   }
 }
 
+/** 删掉某一张画布的视口记录（画布被删除时用） */
+export function removeViewport(
+  userId: string,
+  canvasId: string,
+  storage: Storage | undefined = defaultStorage(),
+) {
+  try {
+    storage?.removeItem(keyOf(userId, canvasId));
+  } catch {
+    // 删不掉不影响删除画布
+  }
+}
+
 /** 清掉这个用户的全部视口记录（退出登录用）；前缀带冒号，user 7 不会误删 user 70 */
 export function clearUserViewports(
   userId: string,

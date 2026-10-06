@@ -27,6 +27,8 @@ type Deps = {
   /** 本地草稿；null 表示不可用（如认不出当前用户），退化为只走云端 */
   draft: Draft | null;
   onStatus: (status: SaveStatus) => void;
+  /** 草稿写入失败、从此退化为只走云端时通知一次（如打日志） */
+  onDraftUnavailable?: () => void;
   now: () => number;
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (handle: unknown) => void;
@@ -90,6 +92,14 @@ export class SaveCoordinator {
   /** 云端还有没存上的内容：改动没发出去，或请求在途 */
   get hasUnsaved() {
     return this.dirty || this.flight !== null;
+  }
+
+  /**
+   * 关页时要不要让浏览器弹确认：草稿能兜底就不用弹，没有草稿（或写入失败）时云端没存上的内容
+   * 就只在内存里，关页会丢，得弹。
+   */
+  get needsLeaveWarning() {
+    return this.hasUnsaved && !(this.draftOk && this.deps.draft !== null);
   }
 
   /** 云端有改动等着上传（不含在途请求） */
@@ -213,7 +223,10 @@ export class SaveCoordinator {
     const baseVersion = this.versionValue;
     const written = this.enqueue(async () => {
       const ok = await draft.save(baseVersion, graph).catch(() => false);
-      if (!ok) this.draftOk = false;
+      if (!ok && this.draftOk) {
+        this.draftOk = false;
+        this.deps.onDraftUnavailable?.();
+      }
       this.lastLocalWriteAt = this.deps.now();
     }, true);
     this.refreshStatus();

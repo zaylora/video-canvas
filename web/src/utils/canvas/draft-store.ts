@@ -26,6 +26,9 @@ export type DraftBackend = {
   keys(): Promise<string[]>;
 };
 
+/** 已同步的草稿保留多久；没同步的草稿是用户唯一的副本，永远不清 */
+export const DRAFT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 const keyOf = (userId: string, canvasId: string) => `${userId}:${canvasId}`;
 
 function isDraft(value: unknown): value is Draft {

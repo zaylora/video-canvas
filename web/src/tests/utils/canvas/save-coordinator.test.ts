@@ -60,6 +60,7 @@ function setup({
   const drafts = { saves: [] as { base: number; graph: CanvasGraphDto }[], removes: 0, ok: true };
   const statuses: SaveStatus[] = [];
   let conflictEntered = 0;
+  let draftUnavailableCalls = 0;
 
   const coordinator = new SaveCoordinator({
     initialVersion,
@@ -97,6 +98,9 @@ function setup({
         }
       : null,
     onStatus: (status) => statuses.push(status),
+    onDraftUnavailable: () => {
+      draftUnavailableCalls += 1;
+    },
     ...clock,
   });
   coordinator.setActive(true);
@@ -111,6 +115,7 @@ function setup({
       graphReady = value;
     },
     conflictEntered: () => conflictEntered,
+    draftUnavailableCalls: () => draftUnavailableCalls,
   };
 }
 
@@ -487,5 +492,56 @@ describe("与改名共用版本号", () => {
     t.coordinator.changed();
     await t.advance(3000);
     expect(t.cloud.calls[0].baseVersion).toBe(9);
+  });
+});
+
+describe("关页确认：草稿能兜底就不弹", () => {
+  test("有可用草稿：云端有未同步内容也不需要弹确认", async () => {
+    const t = setup();
+    t.coordinator.changed();
+    expect(t.coordinator.hasUnsaved).toBe(true);
+    expect(t.coordinator.needsLeaveWarning).toBe(false);
+  });
+
+  test("没有草稿能力：云端有未同步内容就要弹确认", () => {
+    const t = setup({ draft: false });
+    expect(t.coordinator.needsLeaveWarning).toBe(false);
+    t.coordinator.changed();
+    expect(t.coordinator.needsLeaveWarning).toBe(true);
+  });
+
+  test("草稿写入失败后：退回确认弹窗兜底", async () => {
+    const t = setup();
+    t.drafts.ok = false;
+    t.coordinator.changed();
+    await t.advance(300);
+    expect(t.coordinator.needsLeaveWarning).toBe(true);
+  });
+
+  test("云端同步完：不需要弹", async () => {
+    const t = setup({ draft: false });
+    t.coordinator.changed();
+    await t.advance(3000);
+    expect(t.coordinator.needsLeaveWarning).toBe(false);
+  });
+});
+
+describe("草稿不可用通知", () => {
+  test("写入失败时通知一次，之后不再重复", async () => {
+    const t = setup();
+    t.drafts.ok = false;
+    t.coordinator.changed();
+    await t.advance(300);
+    expect(t.draftUnavailableCalls()).toBe(1);
+    t.coordinator.changed();
+    await t.advance(2000);
+    expect(t.draftUnavailableCalls()).toBe(1);
+  });
+
+  test("正常写入不通知", async () => {
+    const t = setup();
+    t.coordinator.changed();
+    await t.advance(500);
+    expect(t.draftUnavailableCalls()).toBe(0);
   });
 });

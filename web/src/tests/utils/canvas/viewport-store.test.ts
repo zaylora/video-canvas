@@ -4,6 +4,7 @@ import {
   clearUserViewports,
   createViewportWriter,
   loadViewport,
+  removeViewport,
   sameViewport,
   saveViewport,
 } from "@/utils/canvas/viewport-store";
@@ -153,5 +154,20 @@ describe("clearUserViewports", () => {
       },
     } as unknown as Storage;
     clearUserViewports("7", broken);
+  });
+});
+
+describe("removeViewport", () => {
+  test("只删这一张画布的视口（画布被删除时用）", () => {
+    const storage = fakeStorage();
+    saveViewport("7", "c1", { x: 1, y: 1, zoom: 1 }, storage);
+    saveViewport("7", "c2", { x: 2, y: 2, zoom: 1 }, storage);
+    removeViewport("7", "c1", storage);
+    expect(loadViewport("7", "c1", storage)).toBeNull();
+    expect(loadViewport("7", "c2", storage)).not.toBeNull();
+  });
+
+  test("存储不可用：不抛错", () => {
+    removeViewport("7", "c1", undefined);
   });
 });

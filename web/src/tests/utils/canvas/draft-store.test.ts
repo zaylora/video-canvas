@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import type { CanvasGraphDto } from "@/api/canvas/type";
-import { createDraftStore, type DraftBackend } from "@/utils/canvas/draft-store";
+import {
+  DRAFT_RETENTION_MS,
+  createDraftStore,
+  type DraftBackend,
+} from "@/utils/canvas/draft-store";
 
 const graph = {
   nodes: [],
@@ -125,5 +129,11 @@ describe("draft-store", () => {
     expect(await store.load("7", "old-synced")).toBeNull();
     expect(await store.load("7", "old-dirty")).not.toBeNull();
     expect(await store.load("7", "fresh-synced")).not.toBeNull();
+  });
+});
+
+describe("DRAFT_RETENTION_MS", () => {
+  test("已同步的草稿保留 30 天", () => {
+    expect(DRAFT_RETENTION_MS).toBe(30 * 24 * 60 * 60 * 1000);
   });
 });
