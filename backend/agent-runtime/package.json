@@ -1,0 +1,13 @@
+{
+  "name": "video-canvas-agent-runtime",
+  "private": true,
+  "type": "module",
+  "description": "画布 Agent 的运行时：在独立的 Node 进程里跑 pi 的 agent 循环；模型、工具、状态都通过桥回到 Go，进程里没有任何密钥",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": { "test": "node --test \"test/*.test.mjs\"" },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.0.4",
+    "@earendil-works/pi-ai": "1.0.4",
+    "typebox": "1.3.27"
+  }
+}
