@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
+import type { NodeKind } from "@/types";
+import { canConnectKinds, getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 
 const options = [{ id: "gpt-x", label: "GPT X", credits: 1 }];
 
@@ -46,5 +47,18 @@ describe("getModelOptions：远程种类只认服务端清单", () => {
     ];
     expect(getModelOptions("script", custom as never, options)).toEqual(options);
     expect(getModelOptions("script", custom as never)).toEqual([]);
+  });
+});
+
+describe("canConnectKinds：对方没有种类（组节点）时不报错", () => {
+  // 组节点的 data 里没有 kind，拉线松手时会被拿来和每个节点比对
+  const noKind = undefined as unknown as NodeKind;
+
+  test("从输入口（target 端）拉线，压到没有种类的节点上：接不上，不抛异常", () => {
+    expect(canConnectKinds("video", "target", noKind)).toBe(false);
+  });
+
+  test("从输出口（source 端）拉线同理", () => {
+    expect(canConnectKinds("video", "source", noKind)).toBe(false);
   });
 });

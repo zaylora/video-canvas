@@ -21,6 +21,7 @@ export function getAllowedKinds(kind: NodeKind, handleType: HandleType): NodeKin
 /**
  * 从某个节点的某一端拉出来的线，能不能接到另一个种类的节点上。
  * 从 source 端拉出时对方是下游，从 target 端拉出时对方得是能生成自己的上游。
+ * 组节点没有种类（kind 为 undefined），谁也接不上，不能因此抛异常。
  */
 export function canConnectKinds(
   fromKind: NodeKind,
@@ -28,8 +29,8 @@ export function canConnectKinds(
   toKind: NodeKind,
 ): boolean {
   return handleType === "source"
-    ? DOWNSTREAM_KINDS[fromKind].includes(toKind)
-    : DOWNSTREAM_KINDS[toKind].includes(fromKind);
+    ? (DOWNSTREAM_KINDS[fromKind]?.includes(toKind) ?? false)
+    : (DOWNSTREAM_KINDS[toKind]?.includes(fromKind) ?? false);
 }
 
 /** 取某种类可选的模型 */

@@ -29,6 +29,7 @@ import type {
   PendingGroup,
   UploadNotice,
 } from "@/types";
+import { isGroupNode } from "@/utils/canvas/group";
 import { canLinkFrom, opForLink, partitionLinkable } from "@/utils/canvas/link-rule";
 import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
 import { uploadAsset } from "@/api/asset";
@@ -173,7 +174,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         .slice()
         .reverse()
         .find((node) => {
-          if (node.id === source.id) return false;
+          if (node.id === source.id || isGroupNode(node)) return false;
           if (!canLinkFrom(source.data, fromHandle.type, node.data)) return false;
 
           const internalNode = getInternalNode(node.id);
