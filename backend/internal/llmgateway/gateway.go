@@ -52,9 +52,9 @@ func New(opts Options) *Gateway {
 //
 // 失败时仍会返回已经收到的部分结果（取消、断流、空闲超时），调用方据此按已产生的用量结算；
 // 上游 HTTP 错误返回 *UpstreamError，被 SSRF 防护拒绝的请求满足 netguard.IsGuardError。
-// 同一渠道的并发和速率受渠道配置限制，排队期间取消 ctx 会立即返回。
+// 同一渠道的并发和速率受限于渠道配置，排队期间取消 ctx 会立即返回。
 func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(Event)) (*Result, error) {
-	// 1. 先校验：渠道地址、Key、上游模型名、消息
+	// 先校验：渠道地址、Key、上游模型名、消息
 	base, err := validateTarget(tg)
 	if err != nil {
 		return nil, err
@@ -66,13 +66,34 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 	if err != nil {
 		return nil, err
 	}
-	// 2. 渠道限流：同时在途数和速率；排队时可被取消
+	return g.run(ctx, tg, base, body, emit, nil)
+}
+
+// StreamRaw 和 Stream 一样发一次流式请求，但请求体由调用方拼好（OpenAI 格式），响应的 SSE 行原样回调给 raw。
+// 用于让 Node 里的 pi 把这里当作一个 OpenAI 兼容端点：请求体先经 sanitizeRaw 收紧（白名单字段、强制模型名和用量、
+// 按 lim 封顶输出），然后和 Stream 走同一条路径，所以限流、SSRF 防护、用量解析、取消和断流的行为完全一致。
+// 上游报错发生在流开始之前，此时 raw 一次都没有被调用，调用方可以据此返回 HTTP 错误码。
+func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim RawLimits, emit func(Event), raw func([]byte)) (*Result, error) {
+	base, err := validateTarget(tg)
+	if err != nil {
+		return nil, err
+	}
+	clean, err := sanitizeRaw(body, tg, lim)
+	if err != nil {
+		return nil, err
+	}
+	return g.run(ctx, tg, base, clean, emit, raw)
+}
+
+// run 是 Stream 和 StreamRaw 共用的主体：渠道限流 → 空闲看门狗 → 发请求读响应 → 区分空闲超时与调用方取消。
+func (g *Gateway) run(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), raw func([]byte)) (*Result, error) {
+	// 1. 渠道限流：同时在途数和速率；排队时可被取消
 	release, err := g.limiters.get(tg.ChannelKey, tg.RPS, tg.MaxConcurrency).acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	// 3. 空闲看门狗：每收到数据重置计时，超时就取消请求
+	// 2. 空闲看门狗：每收到数据重置计时，超时就取消请求
 	ctx2, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var idle atomic.Bool
@@ -80,8 +101,8 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 	defer timer.Stop()
 	touch := func() { timer.Reset(g.opts.IdleTimeout) }
 
-	res, err := g.do(ctx2, tg, base, body, emit, touch)
-	// 4. 把「空闲超时」和「调用方取消」区分开：看门狗触发的取消不是调用方的意思
+	res, err := g.do(ctx2, tg, base, body, emit, touch, raw)
+	// 3. 把「空闲超时」和「调用方取消」区分开：看门狗触发的取消不是调用方的意思
 	switch {
 	case err == nil:
 		return res, nil
@@ -94,7 +115,7 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 }
 
 // do 发请求并读响应。
-func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), touch func()) (*Result, error) {
+func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), touch func(), raw func([]byte)) (*Result, error) {
 	endpoint := strings.TrimRight(base.String(), "/") + chatEndpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -116,9 +137,9 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 		return nil, classifyHTTPError(resp, tg.APIKey)
 	}
 	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
-		return readWhole(resp.Body, emit)
+		return readWhole(resp.Body, emit, raw)
 	}
-	return readSSE(resp.Body, emit, touch)
+	return readSSE(resp.Body, emit, touch, raw)
 }
 
 // transport 懒创建并缓存带 SSRF 拨号校验的传输层。

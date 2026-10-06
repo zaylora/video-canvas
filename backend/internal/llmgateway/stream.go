@@ -139,14 +139,18 @@ func (a *accumulator) result() *Result {
 
 // readSSE 读一个 SSE 流：只认 data 行，注释行和 event 行忽略。
 // 收到 [DONE] 或者「已有 finish_reason 后连接正常关闭」算成功（部分上游不发 [DONE]）；
-// 其余提前关闭返回 ErrStreamTruncated，已收到的部分仍随结果返回。touch 在每读到一行时调用，用来重置空闲计时。
-func readSSE(r io.Reader, emit func(Event), touch func()) (*Result, error) {
+// 其余提前关闭返回 ErrStreamTruncated，已收到的部分仍随结果返回。touch 在每读到一行时调用，用来重置空闲计时；
+// raw 不为 nil 时，每读到一行就原样回调一次（透传）。
+func readSSE(r io.Reader, emit func(Event), touch func(), raw func([]byte)) (*Result, error) {
 	acc := newAccumulator(emit)
 	br := bufio.NewReaderSize(io.LimitReader(r, maxStreamBytes), 64<<10)
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
 			touch()
+			if raw != nil {
+				raw(line) // 原样转给调用方，包括空行分隔符和 [DONE]
+			}
 			done, perr := acc.handleLine(bytes.TrimSpace(line))
 			if perr != nil {
 				return acc.result(), perr
@@ -186,7 +190,7 @@ func (a *accumulator) handleLine(line []byte) (done bool, err error) {
 }
 
 // readWhole 读整段（非流式）JSON 响应，转成同样的事件和结果：上游忽略了 stream 参数时用。
-func readWhole(r io.Reader, emit func(Event)) (*Result, error) {
+func readWhole(r io.Reader, emit func(Event), raw func([]byte)) (*Result, error) {
 	var c wireChunk
 	if err := json.NewDecoder(io.LimitReader(r, maxStreamBytes)).Decode(&c); err != nil {
 		return nil, ErrStreamTruncated
@@ -203,7 +207,13 @@ func readWhole(r io.Reader, emit func(Event)) (*Result, error) {
 	if err := acc.apply(&c); err != nil {
 		return nil, err
 	}
-	return acc.result(), nil
+	res := acc.result()
+	if raw != nil {
+		for _, l := range synthesizeSSE(res) {
+			raw(l)
+		}
+	}
+	return res, nil
 }
 
 func firstNonNil(ps ...*string) string {
