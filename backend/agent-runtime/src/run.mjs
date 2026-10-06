@@ -17,13 +17,16 @@ const MAX_ERROR_CHARS = 300;
  *
  * @param {object} input 启动参数，见 docs/design 的 13.7
  * @param {{ control?: import("node:events").EventEmitter, fetchImpl?: typeof fetch, log?: (msg: string, extra?: object) => void }} [io]
- * @returns {Promise<{ status: "done" | "error", message: string }>}
+ * @returns {Promise<{ status: "done" | "paused" | "error", message: string }>}
  */
 export async function runAgent(input, io = {}) {
   const log = io.log ?? (() => {});
   const bridge = createBridge({ baseUrl: input.bridge_url, token: input.token, fetchImpl: io.fetchImpl });
 
-  const agent = buildAgent(input, bridge);
+  // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
+  // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
+  let paused = false;
+  const agent = buildAgent(input, bridge, () => (paused = true));
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
@@ -40,7 +43,8 @@ export async function runAgent(input, io = {}) {
     await start(agent, input);
     await agent.waitForIdle();
     const err = agent.state.errorMessage;
-    result = err && !aborted ? { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) } : { status: "done", message: "" };
+    if (err && !aborted) result = { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) };
+    else result = { status: paused && !aborted ? "paused" : "done", message: "" };
   } catch (e) {
     log("运行异常", { error: String(e?.message ?? e) });
     result = { status: "error", message: String(e?.message ?? e).slice(0, MAX_ERROR_CHARS) };
@@ -51,7 +55,7 @@ export async function runAgent(input, io = {}) {
 }
 
 /** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
-function buildAgent(input, bridge) {
+function buildAgent(input, bridge, onTerminate) {
   const m = input.model;
   const baseUrl = input.bridge_url.replace(/\/+$/, "") + "/internal/agent/bridge/v1";
   const model = {
@@ -74,7 +78,7 @@ function buildAgent(input, bridge) {
     // 历史通过 initialState 交给 pi：它会用这次的系统提示和工具声明重新生成开头的 system 消息；
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
-      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.allowed_tools),
+      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.allowed_tools, onTerminate),
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),

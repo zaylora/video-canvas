@@ -376,6 +376,20 @@ func TestProcessRuntime_ExitHandling(t *testing.T) {
 		}
 	})
 
+	t.Run("旧进程已报告结束（令牌已收回）才退出，而运行已被续跑放回 running：不能判为崩溃", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		run, in := e.startRun(t, "all")
+		_ = e.br.Finish(context.Background(), in["token"].(string), "paused", "") // 旧进程因等审批而停下，报告了 paused
+		e.setStatus(run.ID, model.RunRunning)                                     // 用户批准，Decide 把运行放回 running
+		_, p := e.l.last()
+		p.done <- ExitInfo{Code: 0}
+		waitFor(t, "进程清理完成", func() bool { return e.br.TokenCount() == 0 })
+		time.Sleep(100 * time.Millisecond)
+		if e.run(run.ID).Status != model.RunRunning {
+			t.Errorf("正常结束的旧进程不能把续跑中的运行标为中断: %s", e.run(run.ID).Status)
+		}
+	})
+
 	t.Run("停在等审批：进程退出是正常的，状态不变", func(t *testing.T) {
 		e := newRuntimeEnv(t)
 		run, _ := e.startRun(t, "all")
@@ -434,6 +448,50 @@ func TestProcessRuntime_Resume(t *testing.T) {
 		}
 		if e.firstLine(t)["mode"] != "resume" || e.run(run.ID).Status != model.RunRunning {
 			t.Errorf("mode=%v status=%s", e.firstLine(t)["mode"], e.run(run.ID).Status)
+		}
+	})
+
+	t.Run("上一个片段的进程还没退出：等它退出再启动（它退出才意味着最终历史已保存）", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		run, _ := e.startRun(t, "all")
+		e.setStatus(run.ID, model.RunRunning) // 用户已经批准：Decide 把运行放回 running，而旧进程还在做收尾
+		_, old := e.l.last()
+
+		errc := make(chan error, 1)
+		go func() {
+			errc <- e.rt.Resume(ctx, run, ResumeInfo{Reason: "approval", ToolCallID: "tc1", Content: "ok"})
+		}()
+		time.Sleep(150 * time.Millisecond)
+		e.l.mu.Lock()
+		launchedEarly := len(e.l.specs) > 1
+		e.l.mu.Unlock()
+		if launchedEarly {
+			t.Fatal("旧进程还没退出就启动了新进程：新进程会读到没保存完的历史")
+		}
+		old.done <- ExitInfo{Code: 0} // 旧进程收尾完毕、退出
+		select {
+		case err := <-errc:
+			if err != nil {
+				t.Fatalf("旧进程退出后应能续跑: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("旧进程退出后续跑应继续")
+		}
+		e.l.mu.Lock()
+		defer e.l.mu.Unlock()
+		if len(e.l.specs) != 2 {
+			t.Errorf("应启动第二个进程: %d", len(e.l.specs))
+		}
+	})
+
+	t.Run("旧进程迟迟不退出：超时返回错误，不会无限等", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		run, _ := e.startRun(t, "all")
+		e.setStatus(run.ID, model.RunRunning)
+		short, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		defer cancel()
+		if err := e.rt.Resume(short, run, ResumeInfo{Reason: "approval", ToolCallID: "tc1", Content: "ok"}); err == nil {
+			t.Error("等不到旧进程退出应返回错误")
 		}
 	})
 

@@ -600,7 +600,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | 2b-1 | `AgentCanvasService`：应用编辑、排列、批准后的删除、撤销本轮、目录与详情；版本冲突重试；`canvas.patch` 推送 | **已完成**（2026-10-07） |
 | 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | **已完成**（2026-10-07） |
 | 3 | Agent 模型配置（`Kind=agent`）、流式 LLM 网关、按 Token 计费 | **后端已完成**（2026-10-07）；后台管理页面（前端）未做 |
-| 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 行为验证已完成（见 13.7），方案已按验证结果修订；实现未开始 |
+| 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | **后端与 Node 运行时已完成并通过端到端测试**（见 13.8）；配置开关与监听装配、Docker、技能库、看图和生成工具未做 |
 | 5 | 前端：三方合并、撤销栈 rebase、409 自动合并、WS 消息解析、agent store | 未开始 |
 | 6 | 前端：浮窗 UI（按 6.7）、置顶运行条、行内 chip 编辑器、审批和提问卡片；内置技能和系统提示词 v1 | 未开始 |
 
@@ -714,3 +714,36 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 5. **不用 `pi-coding-agent`，只用 `pi-agent-core` + `pi-ai`。** 原设计借它的会话 JSONL 和压缩功能，但它太重、且为编码设计。后果：**没有现成的压缩**，改为：会话存的是 `state.messages` 的 JSON（`agent_sessions.session_jsonl` 列沿用，内容是 JSON 而不是 JSONL 树）；上下文超过窗口约 70% 时用 `transformContext` 把旧工具结果替换成占位文字，更进一步的摘要压缩放二期。
 6. **Node 只在每个回合结束时把 `state.messages` 回传一次**（`POST /internal/agent/bridge/state`），Go 落库；其余事件都由 Go 自己生成。
 7. 版本锁定 `1.0.4`（不用 `^`），`package-lock` 提交；runtime 的契约测试固定「输入 → 桥调用序列」。
+
+### 13.8 切片 4：反向桥、Node 运行时、进程监管（已完成，装配未做）
+
+**已实现**（均有测试）
+
+| 部分 | 位置 | 要点 |
+| --- | --- | --- |
+| 网关透传入口 | `internal/llmgateway`（`StreamRaw`） | 请求体白名单（只放行 messages、tools、tool_choice、temperature、top_p、stop），强制覆盖 model、stream、include_usage，按模型上限收紧 max_tokens；SSE 行原样转出，同时解析用量 |
+| 桥服务 | `service/agent_bridge*.go` | 一次性令牌；模型代理（预检 → 透传 → 结算，结算用不会被取消的上下文）；7 个工具；任务模式在 Go 端强制；步数上限；保存/读取历史 |
+| 桥的 HTTP 端点 | `handler/agent_bridge.go`、`router/bridge.go` | OpenAI 兼容的对话端点（错误按 OpenAI 格式返回，pi 据此显示和判断重试），以及 tool / state / finish；设计上只挂在绑定 127.0.0.1 的独立监听上 |
+| Node 运行时 | `backend/agent-runtime` | pi 1.0.4（精确锁定）；工具声明与回调；等审批靠 terminate；历史恢复；上下文裁剪；插话与中止 |
+| 进程监管 | `service/agent_runtime.go`、`agent_process.go` | 每个片段一个进程，最小环境，独立临时目录，限制内存；异常退出标为中断；取消先 abort 再强杀；服务退出杀光进程 |
+| 提示词 | `internal/agentprompts` | 系统提示词（go:embed，带版本号）和用户消息拼装，画布目录与运行参数明确标为数据 |
+
+**端到端测试**（`tests/repository/agent_e2e_test.go`）：真正的 Node 进程 + 真正的桥 HTTP 服务 + 真实 PostgreSQL + 假的 LLM 上游，4 个场景（搭建并计费、删除审批后续跑、流到一半取消仍计费、进程被杀后继续），连跑 8 轮（带 `-race`）全部通过。需要 Node ≥ 22.19 和已 `npm ci` 的 `agent-runtime`，否则自动跳过。
+
+**端到端测试发现并修复的真实问题**
+
+1. **批准得快时的续跑竞态。** 用户点批准时旧进程可能还在收尾（回传最终历史、报告结束）。续跑前必须先等旧进程退出，否则新进程读到没保存完的历史，找不到那条等待中的工具结果。
+2. **旧进程的收尾会误伤新片段。** `Decide` 已把运行放回 `running`，这时旧进程才报告「完成」会把它标成成功，退出时又可能被判成崩溃。修法：Node 因工具要求停下而结束时报 `paused`（Go 只收回令牌，不改状态）；进程退出时看令牌是否已被收回来区分正常退出和崩溃。
+3. **`agent.state.messages` 带着开头的 `system` 消息**（13.7 的验证只看了请求里的角色序列）：保存历史前要去掉它，恢复要通过 `initialState`，否则系统提示丢失或沿用旧的。
+
+**与设计的其他出入**
+
+- 工具暂时是 7 个：`canvas_get_state`、`canvas_apply_ops`、`canvas_arrange`、`canvas_delete`、`plan_update`、`ask_user`、`model_list`。**`generate_media`（以及批准后真正创建生成任务的执行器）、`canvas_inspect_image`、`task_get`、`skill_search`/`skill_read` 还没做**，所以 Agent 现在能搭画布、改提示词、选模型，但还不能替用户发起生成。
+- 剧本创编模式里 `update_node` 改的是不是文本节点没有查（要读画布），只限制了操作种类，是已知的限制。
+- 画布目录和运行参数只在用户消息里给一次；同一个片段里后续回合不刷新，模型靠工具结果知道自己改了什么，需要时再调 `canvas_get_state`。
+
+**还没做（装配与上线）**
+
+- 配置开关（`agent.enabled`、Node 路径、runtime 目录）、桥的监听装配（绑定 127.0.0.1）、`ProcessRuntime` 接进 `app.go`（目前仍是 `NoAgentRuntime`，所以对用户来说功能还是关着的）。
+- Docker 镜像装 Node 22 和 `agent-runtime` 依赖。
+- 上面列的缺失工具、技能库、后台管理页面。

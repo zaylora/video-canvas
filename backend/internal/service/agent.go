@@ -127,6 +127,10 @@ func NewAgentService(d AgentDeps) *AgentService {
 	return s
 }
 
+// SetRuntime 绑定运行时。AgentService 和运行时互相依赖（运行时要写事件，AgentService 要启动运行），
+// 装配时先创建 AgentService、再创建运行时、最后用它绑定。
+func (s *AgentService) SetRuntime(rt AgentRuntime) { s.runtime = rt }
+
 // Models 返回当前可用的 Agent 模型清单。
 func (s *AgentService) Models(ctx context.Context) ([]model.AgentModelView, error) {
 	list, err := s.models.List(ctx)

@@ -555,6 +555,21 @@ func TestAgentBridge_StateAndFinish(t *testing.T) {
 		}
 	})
 
+	t.Run("paused：因为工具要求停下（等审批、等回答）而结束，不改运行状态，只收回令牌", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		// 用户已经批准：Decide 把运行放回 running，而旧进程这时才报告结束
+		if err := b.br.Finish(ctx, tok, "paused", ""); err != nil {
+			t.Fatal(err)
+		}
+		if b.run(run.ID).Status != model.RunRunning {
+			t.Errorf("paused 不能改运行状态（否则会误伤已经续跑的新片段）: %s", b.run(run.ID).Status)
+		}
+		if _, err := b.br.ExecuteTool(ctx, tok, "tc", "plan_update", []byte(`{}`)); !errors.Is(err, ErrBridgeToken) {
+			t.Errorf("令牌应已收回: %v", err)
+		}
+	})
+
 	t.Run("等审批 / 等回答 / 预算用尽 / 已停止：不覆盖", func(t *testing.T) {
 		for _, st := range []string{model.RunWaitingApproval, model.RunWaitingInput, model.RunBudgetExhausted, model.RunStepLimit, model.RunCanceled} {
 			b := newBridgeEnv(t)
@@ -566,6 +581,18 @@ func TestAgentBridge_StateAndFinish(t *testing.T) {
 			if b.run(run.ID).Status != st {
 				t.Errorf("%s 不该被覆盖: %s", st, b.run(run.ID).Status)
 			}
+		}
+	})
+
+	t.Run("令牌是否有效：结束后失效，进程退出时据此区分正常结束和崩溃", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, _ := b.token(t, "all")
+		if !b.br.TokenActive(tok) {
+			t.Fatal("刚签发的令牌应有效")
+		}
+		_ = b.br.Finish(ctx, tok, "done", "")
+		if b.br.TokenActive(tok) {
+			t.Error("Finish 之后令牌应失效")
 		}
 	})
 

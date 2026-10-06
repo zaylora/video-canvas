@@ -51,7 +51,8 @@ test("工具返回 terminate：整批执行完后停下，不再请求模型（�
   }, async (b) => {
     const r = await runAgent(baseInput(b.url));
     assert.equal(b.rec.chats.length, 1, "terminate 后不能再调模型");
-    assert.equal(r.status, "done");
+    assert.equal(r.status, "paused", "因工具要求停下而结束要报 paused：Go 据此不改运行状态，避免误伤已经续跑的新片段");
+    assert.deepEqual(b.rec.finishes.at(-1), { status: "paused", message: "" });
     assert.equal(b.rec.states.at(-1).at(-1).role, "toolResult", "历史停在工具结果上，等审批后续跑");
   });
 });

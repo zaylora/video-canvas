@@ -173,8 +173,8 @@ func (h *AgentBridgeHandler) State(c *gin.Context) {
 
 // finishReq 是片段结束的请求。
 type finishReq struct {
-	Status  string `json:"status" binding:"required,oneof=done error" label:"status"` // done 或 error
-	Message string `json:"message" binding:"max=500" label:"message"`                 // 出错时的说明
+	Status  string `json:"status" binding:"required,oneof=done paused error" label:"status"` // done 跑完 / paused 因工具要求停下 / error 出错
+	Message string `json:"message" binding:"max=500" label:"message"`                        // 出错时的说明
 }
 
 // Finish 报告运行片段结束。

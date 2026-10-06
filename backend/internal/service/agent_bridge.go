@@ -87,6 +87,15 @@ func (b *AgentBridge) IssueToken(run *model.AgentRun, in model.AgentRunInput) st
 	return tok
 }
 
+// TokenActive 判断令牌是否还有效。进程退出时用它区分「报告过结束的正常退出」（令牌已被 Finish 收回）
+// 和「没报告就没了的崩溃」（令牌还在）。
+func (b *AgentBridge) TokenActive(token string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.tokens[token]
+	return ok
+}
+
 // TokenCount 返回当前有效的令牌数，监控和测试用：运行进程都退出后它应该回到 0。
 func (b *AgentBridge) TokenCount() int {
 	b.mu.Lock()
@@ -304,12 +313,16 @@ func (b *AgentBridge) Finish(ctx context.Context, token, status, message string)
 	}
 	fields := map[string]any{"ended_at": b.d.Now()}
 	switch status {
+	case "paused":
+		// 因工具要求停下（等审批、等回答、步数用尽）而结束：运行的状态是别的流程设好的，这里只收回令牌。
+		// 不能改状态：用户批准得快时，运行可能已经被续跑放回 running，旧进程的收尾不能误伤新片段
+		return nil
 	case "done":
 		fields["status"] = model.RunSucceeded
 	case "error":
 		fields["status"], fields["error_code"], fields["error_message"] = model.RunFailed, "agent_error", truncateRunes(message, 200)
 	default:
-		return errcode.ErrInvalidParams.WithMsg("status 只能是 done 或 error")
+		return errcode.ErrInvalidParams.WithMsg("status 只能是 done、paused 或 error")
 	}
 	updated, err := b.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, fields)
 	if err != nil {

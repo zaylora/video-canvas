@@ -36,7 +36,7 @@ export function createBridge({ baseUrl, token, fetchImpl = fetch }) {
     tool: (toolCallId, name, args, signal) => post("/tool", { tool_call_id: toolCallId, name, args }, signal),
     /** 回合结束时交回对话历史 */
     state: (messages) => post("/state", { messages }),
-    /** 报告片段结束：status 为 done 或 error */
+    /** 报告片段结束：done 跑完了；paused 因工具要求停下（等审批、等回答）；error 出错 */
     finish: (status, message = "") => post("/finish", { status, message }),
   };
 }

@@ -105,12 +105,13 @@ export const TOOL_DEFS = [
  * 生成 pi 的工具对象：execute 只是回调 Go。工具层的失败（参数不对、校验不过）是 is_error 的普通结果，
  * 让模型看到并自己改正；回调本身失败（网络、令牌无效）才抛异常，pi 会把它变成给模型的错误结果。
  */
-export function buildTools(bridge, allowed) {
+export function buildTools(bridge, allowed, onTerminate = () => {}) {
   const allow = allowed ? new Set(allowed) : null;
   return TOOL_DEFS.filter((d) => !allow || allow.has(d.name)).map((d) => ({
     ...d,
     execute: async (toolCallId, params, signal) => {
       const r = await bridge.tool(toolCallId, d.name, params, signal);
+      if (r.terminate) onTerminate();
       return { content: [{ type: "text", text: r.content }], details: {}, isError: !!r.is_error, terminate: !!r.terminate };
     },
   }));

@@ -19,6 +19,9 @@ import (
 	"video-canvas/internal/provider"
 )
 
+// waitExitLimit 是续跑前最多等上一个进程退出多久。进程收尾只是回传历史和报告结束，正常是毫秒级。
+const waitExitLimit = 15 * time.Second
+
 // RuntimeConfig 是运行时的配置。
 type RuntimeConfig struct {
 	NodePath    string        // node 可执行文件
@@ -85,6 +88,11 @@ func (r *ProcessRuntime) Start(ctx context.Context, run *model.AgentRun, in mode
 
 // Resume 启动续跑的片段：审批后把真实结果补回工具调用再继续；或用户点「继续」从中断的地方接着走。
 func (r *ProcessRuntime) Resume(ctx context.Context, run *model.AgentRun, info ResumeInfo) error {
+	// 先等上一个片段的进程退出：用户点批准时它可能还在收尾（回传最终的对话历史、报告结束）。
+	// 它退出才意味着历史已保存，这时再读历史，续跑才能找到那条等待中的工具结果；也避免同一个运行出现两个进程
+	if err := r.waitExit(ctx, run.ID); err != nil {
+		return err
+	}
 	// 续跑没有新的用户消息，模型和模式取自会话和运行
 	sess, err := r.d.Repo.GetSession(ctx, run.UserID, run.SessionID)
 	if err != nil {
@@ -105,6 +113,24 @@ func (r *ProcessRuntime) Resume(ctx context.Context, run *model.AgentRun, info R
 		return r.launch(ctx, run, in, input, true)
 	}
 	return fmt.Errorf("未知的续跑原因 %q", info.Reason)
+}
+
+// waitExit 等运行当前的进程退出；没有进程立即返回。等不到（ctx 取消或超过上限）返回错误。
+func (r *ProcessRuntime) waitExit(ctx context.Context, runID uint64) error {
+	r.mu.Lock()
+	seg := r.segs[runID]
+	r.mu.Unlock()
+	if seg == nil {
+		return nil
+	}
+	select {
+	case <-seg.exited:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("等待上一个运行进程退出被中断：%w", ctx.Err())
+	case <-time.After(waitExitLimit):
+		return errors.New("上一个运行进程长时间没有退出")
+	}
 }
 
 // baseInput 组装启动参数里与启动方式无关的部分：模型、系统提示词、可用工具、历史。
@@ -189,9 +215,13 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 	return nil
 }
 
-// watch 等进程退出，然后清理；运行还是 running 说明进程没有报告结束就没了，标为中断，用户可以点「继续」。
+// watch 等进程退出，然后清理；进程没有报告结束就没了、而运行还是 running，标为中断，用户可以点「继续」。
+// 报告过结束的进程（包括因等审批而 paused 的）退出是正常的，不能碰运行状态：运行可能已经被续跑放回 running。
 func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 	exit := <-seg.proc.Done()
+	// 令牌已被 Finish 收回，说明进程正常报告过结束；还在说明它没报告就没了（崩溃、被杀）。
+	// 必须在收回令牌之前判断
+	reported := !r.d.Bridge.TokenActive(seg.token)
 	r.d.Bridge.RevokeToken(seg.token)
 	_ = os.RemoveAll(seg.dir) // 清不掉只是留下一个临时目录，不影响运行
 	r.mu.Lock()
@@ -208,7 +238,7 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 		logger.Error("进程退出后读取运行失败", zap.Error(err), zap.Uint64("run_id", run.ID))
 		return
 	}
-	if cur.Status != model.RunRunning {
+	if reported || cur.Status != model.RunRunning {
 		if exit.Code != 0 {
 			logger.Warn("Agent 进程非零退出，运行状态已由别处处理", zap.Uint64("run_id", run.ID), zap.Int("code", exit.Code), zap.String("status", cur.Status))
 		}

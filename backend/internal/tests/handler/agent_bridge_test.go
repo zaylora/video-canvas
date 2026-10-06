@@ -247,6 +247,17 @@ func TestBridgeHandler_StateAndFinish(t *testing.T) {
 			t.Errorf("status=%d api=%+v", w.Code, api)
 		}
 	})
+	t.Run("结束：paused 也接受（因工具要求停下而结束）", func(t *testing.T) {
+		api := &fakeBridge{}
+		if w := bridgeCall(newBridgeRouter(api), "/finish", "tok", `{"status":"paused"}`); w.Code != 200 || api.finStatus != "paused" {
+			t.Errorf("status=%d api=%+v", w.Code, api)
+		}
+	})
+	t.Run("结束：不认识的 status → 400", func(t *testing.T) {
+		if w := bridgeCall(newBridgeRouter(&fakeBridge{}), "/finish", "tok", `{"status":"weird"}`); w.Code != 400 {
+			t.Errorf("status=%d", w.Code)
+		}
+	})
 	t.Run("结束：status 缺失 → 400", func(t *testing.T) {
 		if w := bridgeCall(newBridgeRouter(&fakeBridge{}), "/finish", "tok", `{}`); w.Code != 400 {
 			t.Errorf("status=%d", w.Code)
