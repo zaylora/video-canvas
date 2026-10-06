@@ -594,7 +594,8 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | 切片 | 内容 | 状态 |
 | --- | --- | --- |
 | 1 | `internal/canvasgraph`：画布结构的解析、编辑操作、差异、撤销、目录；与前端共用 fixture | **已完成**（2026-10-07） |
-| 2 | 6 张表的模型与 repository；错误码 60xxx；会话、run、审批、改动日志的 service 与接口；`canvas.patch` 和 `agent.event` 的 WS 推送 | 未开始 |
+| 2a | 5 张表的模型、错误码 60xxx、`AgentRepository`（会话、运行、事件、改动日志、审批）及真实数据库的集成测试 | **已完成**（2026-10-07） |
+| 2b | 会话、运行、审批、撤销的 service 与接口；`canvas.patch` 和 `agent.event` 的 WS 推送 | 未开始 |
 | 3 | Agent 模型配置（`Kind=agent`）和流式 LLM 网关；token 计费的冻结与结算 | 未开始 |
 | 4 | Node runtime（pi）、反向桥、子进程监管、崩溃恢复 | 未开始 |
 | 5 | 前端：三方合并、撤销栈 rebase、409 自动合并、WS 消息解析、agent store | 未开始 |
@@ -617,3 +618,19 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   3. 差异里的 `Change` 带 `Index`（删除前的下标），这是设计里没有的字段，用于撤销时把节点放回原处。
 - **共用 fixture**（`backend/internal/tests/testdata/canvasgraph/`）：目前覆盖连线规则（4×4 全部组合）、排列算法（横排、竖排、5 个节点的网格）、打组 / 解组 / 贴合组框的坐标换算。前端读同一份（`web/src/tests/utils/canvas/agent-graph-fixture.test.ts`）。共用的是**测试数据**，不是规则代码：两边的规则各自实现，fixture 保证它们不会悄悄不一致（决定见 11.1 第 22 条）。
 - **验证**：`go test -race ./internal/tests/canvasgraph/` 通过；`golangci-lint run` 对新增包 0 问题；`go test ./...` 全部通过；前端 `bun test` 352 个通过、`bun run typecheck` 通过。
+
+### 13.3 切片 2a：数据层（已完成）
+
+位置 `backend/internal/model/agent.go`、`backend/internal/repository/agent.go`，测试 `backend/internal/tests/repository/agent_*_test.go`。
+
+- **已实现**：
+  - 表：`agent_sessions`、`agent_runs`、`agent_events`、`agent_mutations`、`agent_approvals`，已注册进 `model.All()`。
+  - **同一画布只能有一个活跃运行**由部分唯一索引 `uk_agent_runs_active` 保证；仓储把唯一冲突翻译成 `ErrDuplicate`，不会因并发漏判。
+  - **事件序号**在同一事务里用 `UPDATE … RETURNING` 原子分配，20 个并发追加得到的序号连续无重复。
+  - **`CommitCanvasMutation`**：按乐观锁更新画布、记录改动、标记被撤销的改动，在一个事务里完成。revision 不一致时画布和日志都不变。
+  - 运行和审批的状态迁移都是 CAS（`UpdateRunIf`、`UpdateApprovalIf`），重复点击或已过期返回 `ErrAgentStateConflict`。
+- **与设计的出入**：
+  1. 新增错误码 `60011` 会话不存在、`60012` 运行不存在、`60013` 审批不存在（设计里原用通用的 `10002`）。
+  2. `agent_runs` 多了 `lease_until`（runtime 租约到期时间，用来判断中断）和 `mode`；`agent_sessions` 多了 `mode`。
+  3. `agent_model_calls` 表和 `credit_ledgers.agent_call_id` 列放到切片 3（LLM 网关）一起做，因为它们只在计费时才用。
+- **验证**：仓储集成测试用本机 PostgreSQL 的 `video_canvas_test` 库，每个用例建独立 schema、结束后删除，运行方式 `TEST_DATABASE_DSN="host=/tmp user=<你> dbname=video_canvas_test sslmode=disable" go test ./internal/tests/repository/`；未设置该变量时这些测试会自动跳过。`-race` 通过，`golangci-lint run --new-from-merge-base=master` 0 问题。

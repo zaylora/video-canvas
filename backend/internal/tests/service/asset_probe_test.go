@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"strings"
 	"testing"
+
 	. "video-canvas/internal/service"
 )
 

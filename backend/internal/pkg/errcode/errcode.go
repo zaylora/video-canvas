@@ -136,3 +136,19 @@ var (
 	ErrSMTPSendFailed      = New(53007, "邮件发送失败", http.StatusBadGateway)    // 原因写进 Msg（已脱敏）
 	ErrSMTPNotConfigured   = New(53008, "邮件服务未配置", http.StatusConflict)
 )
+
+// 画布 Agent 模块 6xxxx
+var (
+	ErrAgentRunActive      = New(60001, "这个画布上已有运行中的 Agent", http.StatusConflict)
+	ErrAgentModelNA        = New(60002, "Agent 模型不可用", http.StatusBadRequest)
+	ErrAgentState          = New(60003, "当前状态不允许这个操作", http.StatusConflict)
+	ErrAgentApprovalGone   = New(60004, "审批已处理或已过期", http.StatusConflict)
+	ErrAgentUnavailable    = New(60005, "Agent 暂不可用，请稍后重试", http.StatusServiceUnavailable)
+	ErrAgentWriteConflict  = New(60006, "画布写入冲突，重试仍未成功", http.StatusConflict)
+	ErrAgentAlreadyUndone  = New(60007, "本轮已撤销", http.StatusConflict)
+	ErrAgentOverBudget     = New(60008, "超出本轮积分预算", http.StatusPaymentRequired)
+	ErrAgentSessionLimit   = New(60010, "这个画布的会话数量已达上限", http.StatusConflict)
+	ErrAgentSessionMissing = New(60011, "会话不存在", http.StatusNotFound)
+	ErrAgentRunMissing     = New(60012, "运行不存在", http.StatusNotFound)
+	ErrAgentApprovalMiss   = New(60013, "审批不存在", http.StatusNotFound)
+)
