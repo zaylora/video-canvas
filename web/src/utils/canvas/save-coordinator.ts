@@ -6,6 +6,9 @@ import { displayStatus, statusSettleDelay, type SaveStatus } from "./save-status
 /** 云端保存失败后的自动重试间隔，用完了就停下，等用户手动点或联网事件 */
 export const RETRY_DELAYS_MS = [5000, 15_000, 30_000];
 
+/** 一次保存里最多自动合并几次：合并后立刻又冲突说明对面一直在写，交给用户选 */
+export const MAX_AUTO_MERGES = 3;
+
 type Draft = {
   /** 写草稿；返回 false 表示写入失败（配额、隐私模式等） */
   save: (baseVersion: number, graph: CanvasGraphDto) => Promise<boolean>;
@@ -24,6 +27,13 @@ type Deps = {
   isConflict: (error: unknown) => boolean;
   /** 撞上冲突：拉回最新画布交给界面弹窗；返回 false 表示没拉到，当作普通失败 */
   onConflict: () => Promise<boolean>;
+  /**
+   * 撞上冲突时先尝试自动合并（别处的改动是 Agent 写的，不需要让用户选）：把最新画布并进本地，
+   * 返回合并后的服务端版本号，接着用它重新保存；返回 null 表示不能自动合并，走 onConflict 弹窗。
+   */
+  autoMerge?: () => Promise<number | null>;
+  /** 一次云端保存成功后：这份图谱就是服务端在该版本的内容 */
+  onSaved?: (graph: CanvasGraphDto, version: number) => void;
   /** 本地草稿；null 表示不可用（如认不出当前用户），退化为只走云端 */
   draft: Draft | null;
   onStatus: (status: SaveStatus) => void;
@@ -55,6 +65,7 @@ export class SaveCoordinator {
   private flight: Promise<unknown> | null = null;
   private conflictFlag = false;
   private retry = 0;
+  private autoMerges = 0;
   private failCount = 0;
   private active = false;
   private cloudTimer: unknown = null;
@@ -83,6 +94,14 @@ export class SaveCoordinator {
   /** 改名等不经过图谱保存的请求成功后，把服务端返回的新 revision 接过来 */
   acceptVersion(version: number) {
     this.versionValue = version;
+  }
+
+  /**
+   * 别处的改动（Agent 的画布补丁、冲突时拉回的最新画布）已经并进本地：把版本接到它的 revision，
+   * 之后的保存以它为基准。只会往前走，在途保存晚一步返回也不会把它倒回去。
+   */
+  mergeVersion(version: number) {
+    this.versionValue = Math.max(this.versionValue, version);
   }
 
   get conflicted() {
@@ -262,8 +281,10 @@ export class SaveCoordinator {
       const saved = await this.exclusive(() =>
         this.deps.saveCloud({ baseVersion: this.versionValue, graph, keepalive }),
       );
-      this.versionValue = saved.version;
+      this.versionValue = Math.max(this.versionValue, saved.version);
+      this.deps.onSaved?.(graph, saved.version);
       this.retry = 0;
+      this.autoMerges = 0;
       this.failCount = 0;
       if (this.dirty) {
         // 请求期间又有新改动：草稿以新版本为基准重写，云端按窗口补传
@@ -280,6 +301,14 @@ export class SaveCoordinator {
       // 内容没存上：放回脏态，下次保存发的是最新的全量
       this.firstDirtyAt = this.dirty ? Math.min(this.firstDirtyAt, batchStart) : batchStart;
       this.dirty = true;
+      if (this.deps.isConflict(error) && this.autoMerges < MAX_AUTO_MERGES && this.deps.autoMerge) {
+        this.autoMerges += 1;
+        const merged = await this.deps.autoMerge().catch(() => null);
+        if (merged !== null) {
+          this.mergeVersion(merged);
+          return this.save(keepalive);
+        }
+      }
       if (this.deps.isConflict(error) && (await this.deps.onConflict())) {
         this.conflictFlag = true;
         this.clearCloudTimer();

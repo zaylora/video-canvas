@@ -55,6 +55,7 @@ import {
   hasVolatileRunning,
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
+import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import {
   createViewportWriter,
@@ -171,6 +172,8 @@ export const Flow = memo(function Flow({
     };
   }, [viewportWriter]);
   // 保存发请求的那一刻才取图谱，视口也在这时读，所以平移缩放本身不用触发保存
+  /** Agent 改画布的同步（见 useAgentCanvasSync）；保存的回调经它转给同步 */
+  const agentSyncRef = useRef<ReturnType<typeof useAgentCanvasSync> | null>(null);
   const getGraph = useCallback(
     () =>
       hydratedRef.current
@@ -185,11 +188,17 @@ export const Flow = memo(function Flow({
     flush,
     rename,
     dismissConflict,
+    getVersion,
+    mergeVersion,
+    hasUnsaved,
   } = useCanvasPersistence({
     canvasId: canvas.id,
     initialVersion: canvas.version,
     getGraph,
     onConflict,
+    // 同步要等撤销栈建好才能创建，这里先经 ref 转一道
+    autoMerge: () => agentSyncRef.current?.autoMerge() ?? Promise.resolve(null),
+    onSaved: (graph, version) => agentSyncRef.current?.saved(graph, version),
   });
   const overlayGate = useOverlayGate(getNodes);
   const { pruneOnChange } = overlayGate;
@@ -267,6 +276,26 @@ export const Flow = memo(function Flow({
   }, [nodes, edges, changed, flush]);
   const { tool, activeTool, setTool } = useCanvasTool();
   const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+  const agentSync = useAgentCanvasSync({
+    canvas,
+    getVersion,
+    mergeVersion,
+    hasUnsaved,
+    nodesRef,
+    edgesRef,
+    setNodes,
+    setEdges,
+    skipNextSave: () => {
+      changeSaveRef.current = false;
+    },
+    markTasksKnown: (ids) => {
+      for (const id of ids) knownTaskIdsRef.current.add(id);
+    },
+    resetHistory: history.reset,
+  });
+  useEffect(() => {
+    agentSyncRef.current = agentSync;
+  }, [agentSync]);
 
   /**
    * 组（设计稿 6.10）：删除要确认，确认后组和成员一起删。

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { CanvasGraphDto } from "@/api/canvas/type";
-import { SaveCoordinator } from "@/utils/canvas/save-coordinator";
+import { MAX_AUTO_MERGES, SaveCoordinator } from "@/utils/canvas/save-coordinator";
 import type { SaveStatus } from "@/utils/canvas/save-status";
 
 const graphOf = (n: number) =>
@@ -543,5 +543,87 @@ describe("草稿不可用通知", () => {
     t.coordinator.changed();
     await t.advance(500);
     expect(t.draftUnavailableCalls()).toBe(0);
+  });
+});
+
+describe("冲突时自动合并（Agent 写了画布）", () => {
+  /** 最小的协调器：没有草稿，定时器不会真的触发，保存靠 flush 驱动 */
+  function make(over: { autoMerge?: () => Promise<number | null>; script: ("ok" | "conflict")[] }) {
+    const calls: { baseVersion: number }[] = [];
+    const saved: number[] = [];
+    let conflicts = 0;
+    const script = over.script.slice();
+    const coordinator = new SaveCoordinator({
+      initialVersion: 3,
+      getGraph: () => graphOf(1),
+      saveCloud: async (args) => {
+        calls.push({ baseVersion: args.baseVersion });
+        if (script.shift() === "conflict") throw new Error("409");
+        return { version: args.baseVersion + 1 };
+      },
+      isConflict: (e) => e instanceof Error && e.message === "409",
+      onConflict: async () => {
+        conflicts += 1;
+        return true;
+      },
+      autoMerge: over.autoMerge,
+      onSaved: (_graph, version) => void saved.push(version),
+      draft: null,
+      onStatus: () => {},
+      now: () => 1_000_000,
+      setTimer: () => 0,
+      clearTimer: () => {},
+    });
+    coordinator.setActive(true);
+    return { coordinator, calls, saved, conflicts: () => conflicts };
+  }
+
+  test("409 后自动合并成功：以合并后的版本重新保存，不弹冲突", async () => {
+    const t = make({ script: ["conflict", "ok"], autoMerge: async () => 7 });
+    t.coordinator.changed();
+    expect(await t.coordinator.flush()).toBe(true);
+    expect(t.calls.map((c) => c.baseVersion)).toEqual([3, 7]);
+    expect(t.conflicts()).toBe(0);
+    expect(t.coordinator.version).toBe(8);
+    expect(t.saved).toEqual([8]);
+  });
+
+  test("不能自动合并（返回 null）或没有这个能力：照旧走冲突弹窗", async () => {
+    for (const autoMerge of [async () => null, undefined]) {
+      const t = make({ script: ["conflict"], autoMerge });
+      t.coordinator.changed();
+      await t.coordinator.flush();
+      expect(t.conflicts()).toBe(1);
+      expect(t.coordinator.conflicted).toBe(true);
+    }
+  });
+
+  test("合并过程出错：按不能合并处理", async () => {
+    const t = make({
+      script: ["conflict"],
+      autoMerge: async () => Promise.reject(new Error("network")),
+    });
+    t.coordinator.changed();
+    await t.coordinator.flush();
+    expect(t.conflicts()).toBe(1);
+  });
+
+  test("合并后立刻又冲突：最多自动合并 MAX_AUTO_MERGES 次，之后交给用户", async () => {
+    let merges = 0;
+    const t = make({
+      script: Array(MAX_AUTO_MERGES + 2).fill("conflict"),
+      autoMerge: async () => 10 + ++merges,
+    });
+    t.coordinator.changed();
+    await t.coordinator.flush();
+    expect(merges).toBe(MAX_AUTO_MERGES);
+    expect(t.conflicts()).toBe(1);
+  });
+
+  test("mergeVersion 只往前走：在途保存晚返回也不会把版本倒回去", () => {
+    const t = make({ script: [] });
+    t.coordinator.mergeVersion(9);
+    t.coordinator.mergeVersion(5);
+    expect(t.coordinator.version).toBe(9);
   });
 });
