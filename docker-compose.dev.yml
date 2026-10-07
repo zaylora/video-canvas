@@ -45,7 +45,7 @@ services:
       APP_STORAGE_LOCAL_DIR: "/app/data/assets"
       # 画布 Agent：默认关闭。开启前先在宿主机 backend/agent-runtime 下 npm ci（源码是挂载进容器的），
       # 否则启动自检会失败、后端会一直重启。开启：APP_AGENT_ENABLED=true docker compose -f docker-compose.dev.yml up -d
-      APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-false}
+      APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
     ports:
       - "8080:8080"
     healthcheck:

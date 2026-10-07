@@ -43,7 +43,7 @@ services:
       APP_STORAGE_LOCAL_DIR: /app/data/assets
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
       # 画布 Agent：镜像里带了 Node 和运行时，默认关闭，设为 true 开启；还要在后台 AI 配置里发布 agent 类型的模型
-      APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-false}
+      APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
     volumes:
       - backend_assets:/app/data/assets
       - plugin_runner_sock:/run/plugin-runner
