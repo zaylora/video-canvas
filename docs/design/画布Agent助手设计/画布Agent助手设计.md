@@ -751,7 +751,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 **还没做（装配已完成，见下两条；以下是剩余项）**
 
 - 已装配：配置开关 `agent.enabled`（默认关）、Node 路径、runtime 目录；桥只绑定 127.0.0.1（配置校验和监听时各查一次）；`ProcessRuntime` 已接进 `app.go`，启动时自检 Node 版本，并把上次遗留的活跃运行标为 `interrupted`。开启还需要在后台发布 `agent` 类型的模型。
-- 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `agent` 里 `npm ci`。
+- 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，config.yaml 默认 false，compose 默认 true）；开发镜像只带 node 二进制，依赖要在宿主机 `agent` 里 `npm ci`。
 - 视频节点的看图（抽帧或封面）、技能后台管理页面、Agent 模型的试跑（后端 dry-run / test-run 还不认 agent 类型）、后台流水里区分 Agent 的扣费。
 
 ### 13.9 切片 5：前端的数据流与画布合并（已完成）
