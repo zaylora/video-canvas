@@ -103,8 +103,10 @@ type AgentService struct {
 	exec    AgentGenerationExecutor
 	// registry 用来校验消息里引用的生成模型；为 nil 时不校验模型引用
 	registry provider.Registry
-	bc       ws.Broadcaster
-	now      func() time.Time
+	// skills 用来校验消息里引用的技能；为 nil 时只认内置技能
+	skills SkillLibrary
+	bc     ws.Broadcaster
+	now    func() time.Time
 }
 
 // AgentDeps 是创建 AgentService 需要的依赖。
@@ -115,13 +117,14 @@ type AgentDeps struct {
 	Runtime     AgentRuntime            // 运行时
 	Generator   AgentGenerationExecutor // 批准生成后执行，为 nil 时只记录审批不执行
 	Registry    provider.Registry       // 校验消息里引用的生成模型，为 nil 时不校验
+	Skills      SkillLibrary            // 校验消息里引用的技能，为 nil 时只认内置技能
 	Broadcaster ws.Broadcaster          // 为 nil 时不推送
 	Now         func() time.Time        // 为 nil 取系统时间，测试里注入
 }
 
 // NewAgentService 创建服务。
 func NewAgentService(d AgentDeps) *AgentService {
-	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, bc: d.Broadcaster, now: d.Now}
+	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, skills: d.Skills, bc: d.Broadcaster, now: d.Now}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}
 	}
@@ -323,4 +326,12 @@ func runErr(err error) error {
 // Undo 撤销某个运行对画布的全部改动，业务在 AgentCanvasService.Undo。
 func (s *AgentService) Undo(ctx context.Context, userID, runID uint64) (*UndoResult, error) {
 	return s.canvas.Undo(ctx, userID, runID)
+}
+
+// skillLib 返回引用校验使用的技能库：没有配置时只含内置技能。
+func (s *AgentService) skillLib() SkillLibrary {
+	if s.skills != nil {
+		return s.skills
+	}
+	return builtinLibrary{}
 }

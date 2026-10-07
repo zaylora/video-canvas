@@ -1,5 +1,6 @@
 ---
 name: video-motion-prompt
+title: 视频运镜提示词
 description: 视频运镜和动作提示词：描述镜头怎么动、人物做什么，附 Seedance、Kling 这类模型的写法差异和时长建议
 tags: [视频, 运镜, 动作, 提示词, Seedance, Kling]
 ---

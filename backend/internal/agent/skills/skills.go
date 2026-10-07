@@ -19,6 +19,7 @@ const MaxResults = 5
 // Skill 是一个技能。
 type Skill struct {
 	Name        string   // 技能名，也是目录名，如 script-breakdown
+	Title       string   // 中文显示名，@ 弹层和管理页用；缺省取 Name
 	Description string   // 一句话说明，给模型判断要不要读
 	Tags        []string // 搜索用的关键词
 	Body        string   // 正文
@@ -27,6 +28,7 @@ type Skill struct {
 // Brief 是技能的摘要，搜索结果里返回它，不含正文。
 type Brief struct {
 	Name        string `json:"name"`
+	Title       string `json:"title"`
 	Description string `json:"description"`
 }
 
@@ -74,6 +76,8 @@ func parse(raw string) (Skill, error) {
 		switch strings.TrimSpace(k) {
 		case "name":
 			s.Name = v
+		case "title":
+			s.Title = v
 		case "description":
 			s.Description = v
 		case "tags":
@@ -87,6 +91,9 @@ func parse(raw string) (Skill, error) {
 	if s.Name == "" || s.Description == "" {
 		return Skill{}, fmt.Errorf("头部缺少 name 或 description")
 	}
+	if s.Title == "" {
+		s.Title = s.Name
+	}
 	s.Body = strings.TrimSpace(body)
 	return s, nil
 }
@@ -95,7 +102,7 @@ func parse(raw string) (Skill, error) {
 func All() []Brief {
 	out := make([]Brief, len(skills))
 	for i, s := range skills {
-		out[i] = Brief{Name: s.Name, Description: s.Description}
+		out[i] = Brief{Name: s.Name, Title: s.Title, Description: s.Description}
 	}
 	return out
 }
@@ -118,7 +125,7 @@ func Search(query string) []Brief {
 			}
 		}
 		if len(words) == 0 || score > 0 {
-			hits = append(hits, hit{Brief{Name: s.Name, Description: s.Description}, score})
+			hits = append(hits, hit{Brief{Name: s.Name, Title: s.Title, Description: s.Description}, score})
 		}
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
@@ -140,4 +147,14 @@ func Read(name string) (Skill, bool) {
 		}
 	}
 	return Skill{}, false
+}
+
+// Tags 返回内置技能的搜索关键词；技能不存在返回 nil。后台技能库合并搜索时用它给内置技能同样的匹配范围。
+func Tags(name string) []string {
+	for _, s := range skills {
+		if s.Name == name {
+			return s.Tags
+		}
+	}
+	return nil
 }

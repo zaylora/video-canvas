@@ -7,7 +7,6 @@ import (
 	"regexp"
 
 	"video-canvas/internal/agent/canvasgraph"
-	"video-canvas/internal/agent/skills"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/repository"
 )
@@ -77,8 +76,13 @@ func (s *AgentService) checkChip(ctx context.Context, g *canvasgraph.Graph, c Ag
 			return bad("画布上没有这个节点，可能已被删除")
 		}
 	case "skill":
-		if _, ok := skills.Read(c.ID); !ok {
-			return bad("没有这个技能")
+		// 内置技能，或后台已启用的导入技能；停用 / 删除后新发送的消息带这个引用会被拒
+		ok, err := s.skillLib().Has(ctx, c.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return bad("没有这个技能，或已被停用")
 		}
 	case "model":
 		return s.checkModelChip(ctx, c, bad)

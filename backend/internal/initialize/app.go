@@ -42,6 +42,7 @@ type App struct {
 
 	hub        *ws.Hub                  // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
 	taskWorker *worker.Worker           // 生成任务调度；配置里关闭时为 nil
+	skills     *agentsvc.SkillService   // Agent 技能库；后台周期清理过期暂存和待删除的版本
 	agent      *agentRuntime            // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
@@ -148,10 +149,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
 	agentRepo := repository.NewAgentRepository(db)
+	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
+	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
 	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
 		Repo: agentRepo, Canvas: agentCanvasSvc,
-		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc,
+		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc, Skills: skillSvc,
 		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
 	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
@@ -164,7 +167,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -214,6 +217,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		User:           handler.NewUserHandler(userSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Agent:          agenthandler.NewAgentHandler(agentSvc),
+		AgentSkill:     agenthandler.NewSkillHandler(skillSvc),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
@@ -242,6 +246,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		rdb:        rdb,
 		hub:        hub,
 		agent:      agentRT,
+		skills:     skillSvc,
 		taskWorker: taskWorker,
 		runnerStop: runnerStop,
 		assets:     assetSvc,
@@ -400,6 +405,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-loginDone
 	}()
 
+	// 技能库清理：先于关库停止
+	skillCtx, skillCancel := context.WithCancel(context.Background())
+	skillDone := make(chan struct{})
+	go func() {
+		defer close(skillDone)
+		a.skills.RunSweeper(skillCtx, skillSweepInterval)
+	}()
+	defer func() {
+		skillCancel()
+		<-skillDone
+	}()
+
 	if a.agent != nil {
 		go a.agent.serve()
 	}
@@ -433,6 +450,9 @@ func (a *App) Run(ctx context.Context) error {
 	logger.Info("http 服务已停止")
 	return nil
 }
+
+// skillSweepInterval 是清理技能库垃圾（过期暂存、待删除版本）的间隔。
+const skillSweepInterval = 5 * time.Minute
 
 // uploadCleanupInterval 是清理过期直传对象的间隔；意图有效期 15 分钟，每 5 分钟扫一次足够及时。
 const uploadCleanupInterval = 5 * time.Minute

@@ -46,6 +46,7 @@ type BridgeDeps struct {
 	Assets   provider.AssetStore     // 素材（看图）
 	Secrets  provider.SecretResolver // 渠道 Key
 	Streamer ModelStreamer           // 大模型网关
+	Skills   SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
 	Now      func() time.Time        // 为 nil 取系统时间
 	TokenTTL time.Duration           // 令牌有效期，0 取 2 小时
 }
@@ -55,6 +56,7 @@ type bridgeSession struct {
 	runID, userID, sessionID, canvasID uint64
 	modelKey, mode                     string
 	selection                          []string
+	skillPins                          map[string]uint64 // 技能名 → 这次运行已固定的版本 id；只在内存里，随令牌失效
 	expires                            time.Time
 }
 

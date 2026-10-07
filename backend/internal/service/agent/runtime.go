@@ -145,10 +145,19 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		return nil, errcode.ErrAgentModelNA
 	}
 	mode := firstNonEmpty(in.Mode, run.Mode, model.AgentModeAll)
+	// 技能目录随系统提示词：读不出来（数据库故障）不拦住运行，退化成没有目录，模型仍能 skill_search / skill_read
+	var catalog []prompts.SkillItem
+	if brief, err := r.d.Bridge.skillLib().Enabled(ctx); err != nil {
+		logger.Warn("读取技能目录失败，本次运行的提示词不带技能目录", zap.Error(err), zap.Uint64("run_id", run.ID))
+	} else {
+		for _, sk := range brief {
+			catalog = append(catalog, prompts.SkillItem{Name: sk.Name, Description: sk.Description})
+		}
+	}
 	input := map[string]any{
 		"bridge_url":    r.d.Config.BridgeURL,
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
-		"system_prompt": prompts.System(mode),
+		"system_prompt": prompts.SystemWithSkills(mode, catalog),
 		"allowed_tools": AgentToolsFor(mode, caps.Vision),
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)

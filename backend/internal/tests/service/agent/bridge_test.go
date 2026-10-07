@@ -82,7 +82,10 @@ type bridgeEnv struct {
 	now  *time.Time
 }
 
-func newBridgeEnv(t *testing.T) *bridgeEnv {
+func newBridgeEnv(t *testing.T) *bridgeEnv { return newBridgeEnvWithSkills(t, nil) }
+
+// newBridgeEnvWithSkills 同 newBridgeEnv，并给桥配一个技能库（nil 表示只有内置技能）。
+func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
 	t.Helper()
 	e := newAgentEnv(t)
 	bill := &fakeBillingRepo{available: 100}
@@ -99,7 +102,7 @@ func newBridgeEnv(t *testing.T) *bridgeEnv {
 	now := e.now
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
-		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str,
+		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib,
 		Now: func() time.Time { return now }, TokenTTL: time.Hour,
 	})
 	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now}

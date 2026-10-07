@@ -377,3 +377,20 @@ func mustParseGraph(t *testing.T, f *fakeAgentCanvasRepo) *canvasgraph.Graph {
 	}
 	return g
 }
+
+// lastToolEndSummary 返回最近一条 tool.end 事件里的摘要。
+func (f *fakeAgentCanvasRepo) lastToolEndSummary() string {
+	st := f.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for i := len(st.events) - 1; i >= 0; i-- {
+		if st.events[i].Type == "tool.end" {
+			var p struct {
+				Summary string `json:"summary"`
+			}
+			_ = json.Unmarshal(st.events[i].PayloadJSON, &p)
+			return p.Summary
+		}
+	}
+	return ""
+}

@@ -16,6 +16,7 @@ type Handlers struct {
 	User          *handler.UserHandler
 	CanvasProject *handler.CanvasProjectHandler
 	Agent         *agenthandler.AgentHandler // 画布 Agent：会话、运行、审批
+	AgentSkill    *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
@@ -74,6 +75,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		// 画布 Agent：id 与画布一样是十六进制串
 		agent := auth.Group("/agent")
 		agent.GET("/models", h.Agent.Models)
+		agent.GET("/skills", h.AgentSkill.UserList) // 已启用技能的目录（@ 弹层）
 		agent.PATCH("/sessions/:sid", h.Agent.RenameSession)
 		agent.DELETE("/sessions/:sid", h.Agent.DeleteSession)
 		agent.GET("/sessions/:sid/events", h.Agent.Events)  // ?after=序号&limit=
@@ -144,6 +146,25 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI.GET("/test-runs/:id", h.AdminAI.GetTestRun)
 		adminAI.GET("/test-runs/:id/trace", h.AdminAI.GetTestTrace)
 		adminAI.GET("/schema/model", h.AdminAI.Schema)
+
+		// Agent 技能管理：admin 与 super_admin 都能导入、启停、删除（产品决定，不收紧）；全部写操作进审计。
+		// imports 是静态段，与 /:name 同层；Gin 优先匹配静态段。
+		skillsAdmin := auth.Group("/admin/agent/skills", middleware.RequireAdmin(h.AdminRole))
+		skillsAdmin.GET("", h.AgentSkill.List)
+		skillsAdmin.POST("/imports", h.AgentSkill.Import)
+		skillsAdmin.GET("/imports/:id/files", h.AgentSkill.ImportFile)
+		skillsAdmin.DELETE("/imports/:id", h.AgentSkill.DiscardImport)
+		skillsAdmin.POST("/imports/:id/confirm", h.AgentSkill.ConfirmImport)
+		skillsAdmin.GET("/:name", h.AgentSkill.Get)
+		skillsAdmin.PUT("/:name", h.AgentSkill.Rename)
+		skillsAdmin.PUT("/:name/enabled", h.AgentSkill.SetEnabled)
+		skillsAdmin.PUT("/:name/active-version", h.AgentSkill.SetActiveVersion)
+		skillsAdmin.GET("/:name/delete-check", h.AgentSkill.DeleteCheck)
+		skillsAdmin.GET("/:name/versions/:v", h.AgentSkill.Version)
+		skillsAdmin.GET("/:name/versions/:v/files", h.AgentSkill.File)
+		skillsAdmin.GET("/:name/versions/:v/download", h.AgentSkill.Download)
+		skillsAdmin.DELETE("/:name/versions/:v", h.AgentSkill.DeleteVersion)
+		skillsAdmin.DELETE("/:name", h.AgentSkill.Delete)
 
 		// 存储配置（素材存到哪）：读 = admin 或 super_admin；测试 / 创建 / 修改 / 换密钥 / 设默认 / 删除 = 仅 super_admin。
 		// 密钥只写不读，和渠道 Key 同一套规则。

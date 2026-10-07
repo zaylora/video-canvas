@@ -8,6 +8,7 @@ import ModelsPage from "@/pages/admin/ai/models";
 import OverviewPage from "@/pages/admin/ai/overview";
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
+import AgentSkillsPage from "@/pages/admin/agent-skills";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
@@ -84,6 +85,8 @@ export const router = createBrowserRouter([
               { path: "ai/models/new", element: <ModelsPage /> },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
+              { path: "agent", element: <Navigate to="skills" replace /> },
+              { path: "agent/skills", element: <AgentSkillsPage /> },
               { path: "users", element: <UsersPage /> },
               { path: "settings", element: <Navigate to="storage" replace /> },
               { path: "settings/storage", element: <StoragePage /> },

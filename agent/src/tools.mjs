@@ -117,14 +117,17 @@ export const TOOL_DEFS = [
   {
     name: "skill_search",
     label: "搜索技能",
-    description: "在内置的影视技能库里按关键词找方法说明（剧本拆镜、角色三视图、场景设定、关键帧提示词、视频运镜提示词等）。不传关键词列出全部。",
+    description: "在技能库（内置影视技能加管理员导入的技能）里按关键词找方法说明（剧本拆镜、角色三视图、场景设定、关键帧提示词、视频运镜提示词等）。不传关键词列出前几个。",
     parameters: Type.Object({ query: Type.Optional(Type.String({ description: "关键词，空格分隔" })) }),
   },
   {
     name: "skill_read",
     label: "读取技能",
-    description: "读一个技能的完整方法说明。做拆分镜、写角色、场景、关键帧、视频提示词这类事之前先读对应技能。用户消息里的 @[名字](skill:key) 就是在指定要用的技能，key 即技能名。",
-    parameters: Type.Object({ name: Type.String({ description: "技能名，如 script-breakdown" }) }),
+    description: "读一个技能的完整方法说明；技能带资源文件时，正文末尾会列出清单，再传 file 读其中的文本文件。做拆分镜、写角色、场景、关键帧、视频提示词这类事之前先读对应技能。用户消息里的 @[名字](skill:key) 就是在指定要用的技能，key 即技能名。",
+    parameters: Type.Object({
+      name: Type.String({ description: "技能名，如 script-breakdown" }),
+      file: Type.Optional(Type.String({ description: "技能包内的文件路径（相对技能根目录，取自正文末尾的资源清单），不传读正文" })),
+    }),
   },
   {
     name: "canvas_inspect_image",

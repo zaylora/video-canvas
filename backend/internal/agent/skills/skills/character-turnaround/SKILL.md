@@ -1,5 +1,6 @@
 ---
 name: character-turnaround
+title: 角色三视图
 description: 角色三视图参考：给每个角色出一张正面、侧面、背面的参考图，提示词模板和保持前后一致的要点
 tags: [角色, 三视图, 人设, 一致性, 参考图]
 ---

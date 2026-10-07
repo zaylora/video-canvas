@@ -152,3 +152,18 @@ var (
 	ErrAgentRunMissing     = New(60012, "运行不存在", http.StatusNotFound)
 	ErrAgentApprovalMiss   = New(60013, "审批不存在", http.StatusNotFound)
 )
+
+// Agent 技能管理 61xxx
+var (
+	ErrSkillImportGone     = New(61001, "导入已过期或不存在，请重新上传", http.StatusNotFound)
+	ErrSkillPrecheckFailed = New(61002, "预检未通过，不能导入", http.StatusConflict)
+	ErrSkillBuiltinName    = New(61003, "与内置技能同名，不能导入", http.StatusConflict)
+	ErrSkillNotFound       = New(61004, "技能不存在", http.StatusNotFound)
+	ErrSkillVersionMissing = New(61005, "技能版本不存在", http.StatusNotFound)
+	ErrSkillSameContent    = New(61006, "内容与已有版本相同", http.StatusConflict)
+	ErrSkillBuiltin        = New(61007, "内置技能不可修改", http.StatusConflict)
+	ErrSkillActiveVersion  = New(61008, "生效版本不能删除", http.StatusConflict)
+	ErrSkillCannotEnable   = New(61009, "无法启用", http.StatusConflict) // 原因写进 Msg
+	ErrSkillNeedDisable    = New(61010, "技能需先停用才能删除", http.StatusConflict)
+	ErrSkillTooLarge       = New(61011, "技能包超过大小限制", http.StatusRequestEntityTooLarge)
+)

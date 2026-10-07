@@ -130,3 +130,27 @@ func TestAgentInterject_ChipValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAgentStartRun_ImportedSkillChip(t *testing.T) {
+	se := newSkillEnv(t)
+	ctx := context.Background()
+	mustConfirm(t, se, 1, standardPkg(t, "demo", "x"))
+
+	e := newAgentEnv(t)
+	e.svc = NewAgentService(AgentDeps{
+		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Models: fakeAgentModels{list: defaultAgentModels},
+		Runtime: e.rt, Broadcaster: e.bc, Skills: se.svc, Now: func() time.Time { return e.now },
+	})
+	msg := "用 @[演示](skill:demo) 做"
+	err := startWith(e, msg)
+	wantAgentCode(t, err, errcode.ErrInvalidParams) // 默认停用：被拒，点名技能
+	if err == nil || !strings.Contains(err.Error(), "演示") {
+		t.Errorf("应点名被拒的技能: %v", err)
+	}
+	_, _ = se.svc.SetEnabled(ctx, 1, "demo", true)
+	se.svc.Sweep(ctx)
+	// 启用立刻生效（本实例写操作使目录缓存失效）
+	if err := startWith(e, msg); err != nil {
+		t.Errorf("启用后应放行: %v", err)
+	}
+}
