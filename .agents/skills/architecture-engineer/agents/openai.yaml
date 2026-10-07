@@ -1,0 +1,7 @@
+interface:
+  display_name: "架构工程师"
+  short_description: "先调研仓库与成熟方案，再制定可靠实现计划"
+  default_prompt: "使用 $architecture-engineer 分析这个代码任务，调研成熟方案并给出结合仓库现状的实现计划。"
+
+policy:
+  allow_implicit_invocation: true
