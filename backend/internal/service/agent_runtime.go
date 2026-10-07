@@ -149,7 +149,7 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"bridge_url":    r.d.Config.BridgeURL,
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
 		"system_prompt": agentprompts.System(mode),
-		"allowed_tools": AgentToolsForMode(mode),
+		"allowed_tools": AgentToolsFor(mode, caps.Vision),
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {

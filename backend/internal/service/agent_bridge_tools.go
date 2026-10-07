@@ -27,9 +27,16 @@ const (
 
 // ToolResult 是一次工具调用的结果，Node 里的工具原样转给 pi。
 type ToolResult struct {
-	Content   string `json:"content"`   // 给模型看的文字
-	IsError   bool   `json:"is_error"`  // 工具没做成，模型会看到并自行处理
-	Terminate bool   `json:"terminate"` // 本批工具执行完后停下，不再请求模型（等审批、等回答、步数用尽）
+	Content   string      `json:"content"`          // 给模型看的文字
+	IsError   bool        `json:"is_error"`         // 工具没做成，模型会看到并自行处理
+	Images    []ToolImage `json:"images,omitempty"` // 随结果交给模型看的图片（看图工具）
+	Terminate bool        `json:"terminate"`        // 本批工具执行完后停下，不再请求模型（等审批、等回答、步数用尽）
+}
+
+// ToolImage 是随工具结果交给模型的一张图片。
+type ToolImage struct {
+	MimeType string `json:"mime_type"` // image/png 等
+	Data     string `json:"data"`      // base64
 }
 
 // toolFailure 是工具层的失败：回给模型的是说明文字，不是 HTTP 错误。
@@ -43,6 +50,7 @@ func fail(format string, a ...any) error { return &toolFailure{msg: fmt.Sprintf(
 type toolOut struct {
 	content   string
 	summary   string // 记进 tool.end 事件，前端工具行显示它
+	images    []ToolImage
 	terminate bool
 	extra     map[string]any // 一并记进 tool.end 的附加信息，如被改动的节点
 }
@@ -106,7 +114,7 @@ func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, na
 // 画布校验错误列出每一项问题；其余基础设施错误只告诉模型「内部错误」，细节记日志，不外泄。
 func (b *AgentBridge) finishTool(out *toolOut, err error) *ToolResult {
 	if err == nil {
-		return &ToolResult{Content: out.content, Terminate: out.terminate}
+		return &ToolResult{Content: out.content, Terminate: out.terminate, Images: out.images}
 	}
 	var tf *toolFailure
 	var ve *canvasgraph.ValidationError
@@ -145,22 +153,23 @@ type toolHandler func(ctx context.Context, tc *toolCall) (*toolOut, error)
 // handlers 是工具名到处理函数的映射。
 func (b *AgentBridge) handlers() map[string]toolHandler {
 	return map[string]toolHandler{
-		"canvas_get_state": b.toolGetState,
-		"canvas_apply_ops": b.toolApplyOps,
-		"canvas_arrange":   b.toolArrange,
-		"canvas_delete":    b.toolDelete,
-		"plan_update":      b.toolPlan,
-		"ask_user":         b.toolAsk,
-		"model_list":       b.toolModelList,
-		"generate_media":   b.toolGenerate,
-		"task_get":         b.toolTaskGet,
-		"skill_search":     b.toolSkillSearch,
-		"skill_read":       b.toolSkillRead,
+		"canvas_get_state":     b.toolGetState,
+		"canvas_apply_ops":     b.toolApplyOps,
+		"canvas_arrange":       b.toolArrange,
+		"canvas_delete":        b.toolDelete,
+		"plan_update":          b.toolPlan,
+		"ask_user":             b.toolAsk,
+		"model_list":           b.toolModelList,
+		"generate_media":       b.toolGenerate,
+		"task_get":             b.toolTaskGet,
+		"skill_search":         b.toolSkillSearch,
+		"canvas_inspect_image": b.toolInspectImage,
+		"skill_read":           b.toolSkillRead,
 	}
 }
 
 // toolOrder 是全部工具名，给模型的工具顺序固定下来，提示词缓存才稳定。
-var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list", "generate_media", "task_get", "skill_search", "skill_read"}
+var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list", "generate_media", "task_get", "skill_search", "skill_read", "canvas_inspect_image"}
 
 // AgentToolsForMode 返回某个任务模式能用的工具名，运行时只把这些声明给模型：
 // 不能用的工具连看都看不到，比调用后被拒绝更省事，也更不容易被诱导。Go 端在执行时仍会再校验一次。

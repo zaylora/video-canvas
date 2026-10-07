@@ -2,6 +2,7 @@ package canvasgraph_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"video-canvas/internal/canvasgraph"
@@ -92,5 +93,19 @@ func TestBindTasks(t *testing.T) {
 	}
 	if d["params"].(map[string]any)["prompt"] != "推镜" {
 		t.Error("其它字段不变")
+	}
+}
+
+func TestImageRefs(t *testing.T) {
+	g := mustParse(t, genPayload)
+	refs, err := canvasgraph.ImageRefs(g, []string{"n_ref", "n_ref"})
+	if err != nil || len(refs) != 2 || refs[0] != (canvasgraph.ImageRef{NodeID: "n_ref", Label: "角色", AssetID: "42"}) {
+		t.Fatalf("refs=%+v err=%v", refs, err)
+	}
+	for id, want := range map[string]string{"ghost": "不存在", "g1": "不是图片节点", "n_vid": "不是图片节点", "n_text": "不是图片节点", "n_wait": "还没有图片内容"} {
+		_, err := canvasgraph.ImageRefs(g, []string{id})
+		if !errors.Is(err, canvasgraph.ErrInvalid) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s：应返回含 %q 的 ErrInvalid: %v", id, want, err)
+		}
 	}
 }

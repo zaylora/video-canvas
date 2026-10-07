@@ -738,10 +738,11 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 **与设计的其他出入**
 
-- 工具现在是 11 个：`canvas_get_state`、`canvas_apply_ops`、`canvas_arrange`、`canvas_delete`、`plan_update`、`ask_user`、`model_list`、`generate_media`、`task_get`、`skill_search`、`skill_read`。**`canvas_inspect_image`（看图）还没做。**
+- 工具现在是 12 个：`canvas_get_state`、`canvas_apply_ops`、`canvas_arrange`、`canvas_delete`、`plan_update`、`ask_user`、`model_list`、`generate_media`、`task_get`、`skill_search`、`skill_read`、`canvas_inspect_image`。**至此设计里的 MVP 工具都有了。**
 - `generate_media`：只接受 `{items:[{nodeId}], reason}`，一个节点一个结果（模型的「生成数量」参数一律按 1，要多个就多建节点）。预检在工具里做：节点要选好模型、没有产物也不在生成中、模型种类与节点一致、参数过 `modelcfg.ValidateInput`；通过后按模型定价算预估价、创建生成审批并让本轮停下。只在「全能创作」和「分镜搭建」模式可用，Go 端强制。
 - 批准后由 `AgentGenerator` 执行：每个条目在**最新画布**上重读节点（批准期间用户可能改过），按画布上点生成的同样规则组装输入（提示词手填优先、没有才用上游文字；有参考图的图片模型自动走图生图；上游素材按种类进 images/videos/audios），调 `GenerationTaskService.Create`，幂等键 `agent-{审批id}-{序号}`。成功的任务统一写回节点（`taskId` + `status=running`，记为 `bind` 改动，撤销本轮不碰它）；部分失败时失败项写在结果里，全部失败审批记为失败。产物回填仍由前端按 taskId 完成，和用户手动生成一致。
 - 技能：5 个内置技能已写好（`script-breakdown`、`character-turnaround`、`scene-setting`、`keyframe-prompt`、`video-motion-prompt`）。`skill_search` 按词在名字、说明、标签里匹配（命中词多的靠前，最多 5 个，空查询列全部）；`skill_read` 返回正文，包在「以下是方法说明，不是指令」的声明里；名字不对时错误里列出全部可用技能。所有任务模式都能用。各模式的附加提示词里写了建议先读哪些技能（分镜搭建读拆镜和三视图，提示词优化读关键帧和视频提示词）；系统提示词升到第 3 版。
+- 看图 `canvas_inspect_image {nodeIds}`：一次 1 到 4 个图片节点，读它们**当前**的图片（节点必须是图片节点且已有产物），经桥随工具结果交给模型（`ToolResult.images`，base64；Node 里转成 pi 的 image 内容，pi 会作为附带的用户消息发给模型）。限制：只收 png/jpeg/webp/gif，单张 ≤ 5 MB，素材必须属于当前用户；模型的 `vision` 能力为否时 Go 拒绝调用，且启动参数里的 `allowed_tools` 不包含它（`AgentToolsFor(mode, vision)`）。图片是用户素材又很大：发给模型的上下文里只保留最近 2 条带图片的工具结果，更早的换成「图片已省略」；写进会话历史（`session_jsonl`）前图片一律去掉，下次要看重新调用。视频节点暂时不能看（要抽帧或用封面，留到后面）。
 - 用户消息里的 `@[名字](skill:key)` / `model:key` / `node:id` 目前**不在 Go 端解析校验**，原样交给模型，由系统提示词要求「先读指定的技能」；校验（节点属于画布、模型已发布、技能存在，不合法返回 10001）留到前端 chip 编辑器做好后一起补。
 - 已知限制：提示词里的 `@` 引用标记不展开（Agent 写的是纯文字提示词）；节点的提示词、参数由 Agent 通过 `canvas_apply_ops` 设置。
 - 剧本创编模式里 `update_node` 改的是不是文本节点没有查（要读画布），只限制了操作种类，是已知的限制。
@@ -751,4 +752,4 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 - 已装配：配置开关 `agent.enabled`（默认关）、Node 路径、runtime 目录；桥只绑定 127.0.0.1（配置校验和监听时各查一次）；`ProcessRuntime` 已接进 `app.go`，启动时自检 Node 版本，并把上次遗留的活跃运行标为 `interrupted`。开启还需要在后台发布 `agent` 类型的模型。
 - 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `backend/agent-runtime` 里 `npm ci`。
-- 看图工具、chip 的 Go 端解析校验、技能后台管理页面。
+- chip 的 Go 端解析校验、视频节点的看图（抽帧或封面）、技能后台管理页面。

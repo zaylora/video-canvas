@@ -311,3 +311,12 @@ func (s *AgentCanvasService) BindTasks(ctx context.Context, run *model.AgentRun,
 	})
 	return res, err
 }
+
+// ImageRefs 取若干图片节点当前的素材，顺序与 ids 一致，给 Agent「看图」用。
+func (s *AgentCanvasService) ImageRefs(ctx context.Context, run *model.AgentRun, ids []string) ([]canvasgraph.ImageRef, error) {
+	g, _, err := s.load(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	return canvasgraph.ImageRefs(g, ids)
+}

@@ -162,7 +162,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)

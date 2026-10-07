@@ -87,7 +87,7 @@ test("allowed_tools：只把当前模式允许的工具声明给模型", async (
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    assert.equal(b.rec.chats[0].tools.length, 11, "不限制时声明全部工具");
+    assert.equal(b.rec.chats[0].tools.length, 12, "不限制时声明全部工具");
   });
 });
 
@@ -238,5 +238,20 @@ test("看图：启动消息带图片 → 请求里是 image_url 分段", async (
     await runAgent(baseInput(b.url, { prompt: { text: "看这张图", images: [{ data: "AAAA", mime_type: "image/png" }] } }));
     const user = b.rec.chats[0].messages.find((m) => m.role === "user");
     assert.ok(user.content.some((p) => p.type === "image_url"));
+  });
+});
+
+test("看图：图片随工具结果交给模型；保存的历史里没有图片数据", async () => {
+  await withBridge({
+    models: [{ tools: [{ id: "c1", name: "canvas_inspect_image", args: { nodeIds: ["n1"] } }] }, { text: "画面是红衣女孩" }],
+    tool: async () => ({ content: "已附上图片，按顺序是：\n1. 节点 n1", images: [{ mime_type: "image/png", data: "QUJD" }] }),
+  }, async (b) => {
+    const r = await runAgent(baseInput(b.url));
+    assert.equal(r.status, "done");
+    const second = JSON.stringify(b.rec.chats[1].messages);
+    assert.match(second, /data:image\/png;base64,QUJD/, "第二次请求带着图片");
+    const saved = JSON.stringify(b.rec.states.at(-1));
+    assert.doesNotMatch(saved, /QUJD/, "历史里不存图片数据");
+    assert.match(saved, /图片已省略/);
   });
 });

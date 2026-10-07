@@ -126,6 +126,12 @@ export const TOOL_DEFS = [
     description: "读一个技能的完整方法说明。做拆分镜、写角色、场景、关键帧、视频提示词这类事之前先读对应技能。用户消息里的 @[名字](skill:key) 就是在指定要用的技能，key 即技能名。",
     parameters: Type.Object({ name: Type.String({ description: "技能名，如 script-breakdown" }) }),
   },
+  {
+    name: "canvas_inspect_image",
+    label: "查看图片",
+    description: "查看图片节点当前的图片内容（最多 4 张）。标题和提示词不等于画面：判断画面是否符合要求、人物是否一致、要不要重做之前，先看图。只能看已经有图片的图片节点。",
+    parameters: Type.Object({ nodeIds: Type.Array(Type.String(), { description: "图片节点 id，1 到 4 个" }) }),
+  },
 ];
 
 /**
@@ -139,7 +145,8 @@ export function buildTools(bridge, allowed, onTerminate = () => {}) {
     execute: async (toolCallId, params, signal) => {
       const r = await bridge.tool(toolCallId, d.name, params, signal);
       if (r.terminate) onTerminate();
-      return { content: [{ type: "text", text: r.content }], details: {}, isError: !!r.is_error, terminate: !!r.terminate };
+      const images = (r.images ?? []).map((i) => ({ type: "image", data: i.data, mimeType: i.mime_type }));
+      return { content: [{ type: "text", text: r.content }, ...images], details: {}, isError: !!r.is_error, terminate: !!r.terminate };
     },
   }));
 }

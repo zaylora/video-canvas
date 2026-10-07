@@ -38,3 +38,27 @@ export function trimContext(messages, { window, ratio = 0.7, keepLast = 6 }) {
   }
   return out;
 }
+
+/** 图片被去掉后留下的占位文字 */
+export const IMAGE_ELIDED = "[图片已省略；需要再看请重新调用 canvas_inspect_image]";
+
+/**
+ * 把工具结果里的图片换成占位文字，只保留最近 keep 条带图片的工具结果。
+ * keep=0 用于保存历史：图片是用户的素材、又很大，不写进会话历史，下次要看重新读。
+ * 不修改入参。
+ */
+export function dropOldImages(messages, keep = 0) {
+  const hasImage = (m) => m.role === "toolResult" && Array.isArray(m.content) && m.content.some((p) => p.type === "image");
+  const withImages = messages.map((m, i) => (hasImage(m) ? i : -1)).filter((i) => i >= 0);
+  const drop = new Set(keep > 0 ? withImages.slice(0, -keep) : withImages);
+  if (drop.size === 0) return messages;
+  return messages.map((m, i) => {
+    if (!drop.has(i)) return m;
+    const content = [];
+    for (const p of m.content) {
+      if (p.type !== "image") content.push(p);
+      else if (content.at(-1)?.text !== IMAGE_ELIDED) content.push({ type: "text", text: IMAGE_ELIDED });
+    }
+    return { ...m, content };
+  });
+}

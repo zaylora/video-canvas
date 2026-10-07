@@ -2,7 +2,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
-import { trimContext } from "./context.mjs";
+import { dropOldImages, trimContext } from "./context.mjs";
 import { buildTools } from "./tools.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
@@ -82,7 +82,7 @@ function buildAgent(input, bridge, onTerminate) {
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),
-    transformContext: async (messages) => trimContext(messages, { window: m.context_window }),
+    transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
     toolExecution: "sequential",
   });
   return agent;
@@ -130,6 +130,9 @@ export function stripFailedTail(messages) {
  * 去掉开头的 system 消息。系统提示和工具声明每次启动都由 Go 重新给（任务模式、可用工具都可能变），
  * 存进历史会沿用旧的，还白占几 KB。
  */
+/** 发给模型的上下文里最多保留几条带图片的工具结果，更早的换成占位文字 */
+const KEEP_IMAGES = 2;
+
 export function stripSystem(messages) {
   const i = messages.findIndex((m) => m.role !== "system");
   return i < 0 ? [] : messages.slice(i);
@@ -138,7 +141,7 @@ export function stripSystem(messages) {
 /** 把对话历史（不含系统提示）交回 Go；失败只记日志（下个回合会再交一次），不中断运行 */
 async function saveState(agent, bridge, log) {
   try {
-    await bridge.state(stripSystem(JSON.parse(JSON.stringify(agent.state.messages))));
+    await bridge.state(dropOldImages(stripSystem(JSON.parse(JSON.stringify(agent.state.messages)))));
   } catch (e) {
     log("保存对话历史失败", { error: String(e?.message ?? e) });
   }
