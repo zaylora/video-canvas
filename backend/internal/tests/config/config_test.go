@@ -78,16 +78,16 @@ func TestLoad_AgentSectionAndEnvOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Agent.Enabled {
-		t.Error("默认配置里画布 Agent 应是关闭的：它依赖 Node，要显式开启")
+	if !cfg.Agent.Enabled {
+		t.Error("默认配置里画布 Agent 应是开启的：线上要靠它运行；没有 Node 的环境用环境变量关闭")
 	}
-	t.Setenv("APP_AGENT_ENABLED", "true")
+	t.Setenv("APP_AGENT_ENABLED", "false")
 	t.Setenv("APP_AGENT_NODE_PATH", "/opt/node")
 	cfg, err = Load("../../../configs/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Agent.Enabled || cfg.Agent.NodePath != "/opt/node" {
+	if cfg.Agent.Enabled || cfg.Agent.NodePath != "/opt/node" {
 		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
 	}
 }
