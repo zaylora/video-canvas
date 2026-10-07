@@ -23,6 +23,7 @@ import { useFocusNode } from "../chrome/use-focus-node";
 import { toast } from "sonner";
 
 import { ApprovalCard } from "./approval-card";
+import { Markdown } from "./markdown";
 
 /** 离底部多近算「在底部」：在底部时新内容自动滚动，用户往上翻看时不打扰 */
 const STICK_PX = 48;
@@ -165,12 +166,12 @@ function Assistant({
         </div>
       )}
       {item.text && (
-        <p className="text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
-          {item.text}
+        <div className="text-[13.5px] leading-[1.7] break-words">
+          <Markdown text={item.text} />
           {item.streaming && !reduce && (
             <span className="bg-foreground/60 ml-0.5 inline-block h-3.5 w-0.5 translate-y-0.5 animate-pulse" />
           )}
-        </p>
+        </div>
       )}
     </div>
   );
