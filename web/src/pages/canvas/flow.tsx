@@ -55,7 +55,9 @@ import {
   hasVolatileRunning,
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
+import { AnimatePresence } from "motion/react";
 import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
+import { useAgentController, useAgentModels } from "@/hooks/use-agent-controller";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import {
   createViewportWriter,
@@ -84,6 +86,8 @@ import { GroupUiProvider, useGroupUiState } from "./group-ui";
 import { useGroupDrag } from "./use-group-drag";
 import { useGroupOps } from "./use-group-ops";
 import { useFocusNode } from "./chrome/use-focus-node";
+import { AgentPanel } from "./agent/agent-panel";
+import { AgentLauncher } from "./chrome/agent-launcher";
 import { ConflictDialog } from "./conflict-dialog";
 import { buildAddNodeItems } from "./chrome/add-node-items";
 import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
@@ -296,6 +300,26 @@ export const Flow = memo(function Flow({
   useEffect(() => {
     agentSyncRef.current = agentSync;
   }, [agentSync]);
+  // 画布 Agent 浮窗：控制器常驻（收起后运行状态、事件接收照常），⌘/ 开关
+  const agentModels = useAgentModels();
+  const [agentOpen, setAgentOpen] = useState(false);
+  const agentCtl = useAgentController({
+    canvasId: canvas.id,
+    models: agentModels ?? [],
+    getSelection: () => nodesRef.current.filter((node) => node.selected).map((node) => node.id),
+    getViewport,
+  });
+  const toggleAgent = useCallback(() => setAgentOpen((open) => !open), []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
+        event.preventDefault();
+        setAgentOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /**
    * 组（设计稿 6.10）：删除要确认，确认后组和成员一起删。
@@ -753,9 +777,28 @@ export const Flow = memo(function Flow({
                     onOpenShortcuts={openShortcuts}
                   />
                 </ChromeZone>
-                <ChromeZone position="bottom-right" className="max-md:hidden">
-                  <StatsBar />
+                <ChromeZone position="bottom-right">
+                  <AgentLauncher
+                    open={agentOpen}
+                    available={agentModels === null ? null : agentModels.length > 0}
+                    running={agentCtl.busy}
+                    onToggle={toggleAgent}
+                  />
+                  <div className="max-md:hidden">
+                    <StatsBar />
+                  </div>
                 </ChromeZone>
+                <AnimatePresence>
+                  {agentOpen && agentModels && agentModels.length > 0 && (
+                    <AgentPanel
+                      key="agent-panel"
+                      ctl={agentCtl}
+                      models={agentModels}
+                      selectionCount={nodes.filter((node) => node.selected).length}
+                      onClose={toggleAgent}
+                    />
+                  )}
+                </AnimatePresence>
 
                 <SettingsDialog
                   open={settingsOpen}
