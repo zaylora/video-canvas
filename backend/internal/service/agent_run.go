@@ -23,18 +23,24 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	if msg == "" {
 		return nil, errcode.ErrInvalidParams.WithMsg("消息不能为空")
 	}
-	// 2. 补默认值：模式沿用会话的，预算默认 50
+	// 2. 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
+	selection, err := s.checkRefs(ctx, userID, sess.CanvasID, msg, req.Selection)
+	if err != nil {
+		return nil, err
+	}
+	req.Selection = selection
+	// 3. 补默认值：模式沿用会话的，预算默认 50
 	mode := firstNonEmpty(req.Mode, sess.Mode, model.AgentModeAll)
 	budget := defaultRunBudget
 	if req.BudgetCredits != nil {
 		budget = *req.BudgetCredits
 	}
-	// 3. 选 Agent 模型：请求里的 > 会话上次用的 > 清单第一个；必须是已发布的，否则 60002
+	// 4. 选 Agent 模型：请求里的 > 会话上次用的 > 清单第一个；必须是已发布的，否则 60002
 	modelKey, err := s.pickModel(ctx, firstNonEmpty(req.AgentModelKey, sess.ModelKey))
 	if err != nil {
 		return nil, err
 	}
-	// 4. 创建运行。同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证，并发点两次发送也只有一个成功
+	// 5. 创建运行。同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证，并发点两次发送也只有一个成功
 	run := &model.AgentRun{SessionID: sess.ID, CanvasID: sess.CanvasID, UserID: userID, Status: model.RunQueued,
 		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps}
 	if err := s.repo.CreateRun(ctx, run); err != nil {
@@ -43,7 +49,7 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 		}
 		return nil, err
 	}
-	// 5. 记住这次的模式和模型；首条消息顺便当会话标题（会话还叫默认名时）
+	// 6. 记住这次的模式和模型；首条消息顺便当会话标题（会话还叫默认名时）
 	fields := map[string]any{"mode": mode, "model_key": modelKey}
 	if sess.Title == defaultAgentTitle {
 		fields["title"] = cleanTitle(msg, defaultAgentTitle)
@@ -53,7 +59,7 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	}
 	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "message.user", map[string]any{"text": msg, "mode": mode, "selection": req.Selection})
 	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "run.status", map[string]any{"status": run.Status})
-	// 6. 交给 runtime。启动失败说明运行时不可用：把运行标为失败，画布立刻空出来，返回 60005
+	// 7. 交给 runtime。启动失败说明运行时不可用：把运行标为失败，画布立刻空出来，返回 60005
 	in := model.AgentRunInput{Message: msg, Mode: mode, Selection: req.Selection, Viewport: req.Viewport, ModelKey: modelKey}
 	if err := s.runtime.Start(ctx, run, in); err != nil {
 		s.failRun(ctx, run, errcode.ErrAgentUnavailable.Code, err)
@@ -75,6 +81,9 @@ func (s *AgentService) Interject(ctx context.Context, userID, runID uint64, mess
 	}
 	if run.Status != model.RunRunning {
 		return errcode.ErrAgentState
+	}
+	if _, err := s.checkRefs(ctx, run.UserID, run.CanvasID, msg, nil); err != nil {
+		return err
 	}
 	// 2. 先交给 runtime，成功了再记事件，免得记了一条没送达的插话
 	if err := s.runtime.Interject(ctx, runID, msg); err != nil {

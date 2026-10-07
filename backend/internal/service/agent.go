@@ -16,6 +16,7 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
 
@@ -100,8 +101,10 @@ type AgentService struct {
 	models  AgentModels
 	runtime AgentRuntime
 	exec    AgentGenerationExecutor
-	bc      ws.Broadcaster
-	now     func() time.Time
+	// registry 用来校验消息里引用的生成模型；为 nil 时不校验模型引用
+	registry provider.Registry
+	bc       ws.Broadcaster
+	now      func() time.Time
 }
 
 // AgentDeps 是创建 AgentService 需要的依赖。
@@ -111,13 +114,14 @@ type AgentDeps struct {
 	Models      AgentModels             // Agent 模型清单
 	Runtime     AgentRuntime            // 运行时
 	Generator   AgentGenerationExecutor // 批准生成后执行，为 nil 时只记录审批不执行
+	Registry    provider.Registry       // 校验消息里引用的生成模型，为 nil 时不校验
 	Broadcaster ws.Broadcaster          // 为 nil 时不推送
 	Now         func() time.Time        // 为 nil 取系统时间，测试里注入
 }
 
 // NewAgentService 创建服务。
 func NewAgentService(d AgentDeps) *AgentService {
-	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, bc: d.Broadcaster, now: d.Now}
+	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, bc: d.Broadcaster, now: d.Now}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}
 	}

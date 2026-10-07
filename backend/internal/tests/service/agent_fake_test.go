@@ -317,13 +317,15 @@ type fakeAgentRuntime struct {
 	mu                                      sync.Mutex
 	started, interjected, canceled, resumed []uint64
 	resumeInfos                             []ResumeInfo
+	inputs                                  []model.AgentRunInput
 	startErr, interjectErr, resumeErr       error
 }
 
-func (r *fakeAgentRuntime) Start(_ context.Context, run *model.AgentRun, _ model.AgentRunInput) error {
+func (r *fakeAgentRuntime) Start(_ context.Context, run *model.AgentRun, in model.AgentRunInput) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.started = append(r.started, run.ID)
+	r.inputs = append(r.inputs, in)
 	return r.startErr
 }
 func (r *fakeAgentRuntime) Interject(_ context.Context, id uint64, _ string) error {

@@ -149,7 +149,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	agentCanvasSvc := service.NewAgentCanvasService(agentRepo, hub)
 	agentSvc := service.NewAgentService(service.AgentDeps{
 		Repo: agentRepo, Canvas: agentCanvasSvc,
-		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
+		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc,
 		Generator: service.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
 	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
