@@ -114,6 +114,18 @@ export const TOOL_DEFS = [
     description: "查询一个生成任务的状态、进度、失败原因和产物。taskId 是节点数据里记录的任务 id，或批准生成后结果里的 task_id。",
     parameters: Type.Object({ taskId: Type.String() }),
   },
+  {
+    name: "skill_search",
+    label: "搜索技能",
+    description: "在内置的影视技能库里按关键词找方法说明（剧本拆镜、角色三视图、场景设定、关键帧提示词、视频运镜提示词等）。不传关键词列出全部。",
+    parameters: Type.Object({ query: Type.Optional(Type.String({ description: "关键词，空格分隔" })) }),
+  },
+  {
+    name: "skill_read",
+    label: "读取技能",
+    description: "读一个技能的完整方法说明。做拆分镜、写角色、场景、关键帧、视频提示词这类事之前先读对应技能。用户消息里的 @[名字](skill:key) 就是在指定要用的技能，key 即技能名。",
+    parameters: Type.Object({ name: Type.String({ description: "技能名，如 script-breakdown" }) }),
+  },
 ];
 
 /**

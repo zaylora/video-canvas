@@ -11,13 +11,13 @@ import (
 var base string
 
 // Version 是系统提示词的版本号，写在 system.md 开头的注释里；改提示词时同步改它，排查问题时能对上是哪一版。
-const Version = 2
+const Version = 3
 
 // modeAddendum 是各任务模式追加的说明。全能创作不追加。
 var modeAddendum = map[string]string{
-	"script":     "## 当前模式：剧本创编\n你只写剧本和台词：新建或修改文本节点。不要拆镜头，不要建图片、视频节点，不要连线。",
-	"storyboard": "## 当前模式：分镜搭建\n用户想把剧本拆成分镜。先读剧本节点，必要时问画幅和风格，再按「影视链路的搭法」建角色组和镜头组。",
-	"prompt":     "## 当前模式：提示词优化\n你只修改已有节点的提示词（update_node 的 prompt）：不要新建、删除或连线，不要改标题和模型。",
+	"script":     "## 当前模式：剧本创编\n你只写剧本和台词：新建或修改文本节点。不要拆镜头，不要建图片、视频节点，不要连线。写作方法可以参考 script-breakdown 的前半部分。",
+	"storyboard": "## 当前模式：分镜搭建\n用户想把剧本拆成分镜。先 skill_read 读 script-breakdown 和 character-turnaround，再读剧本节点，必要时问画幅和风格，最后按「影视链路的搭法」建角色组和镜头组。",
+	"prompt":     "## 当前模式：提示词优化\n你只修改已有节点的提示词（update_node 的 prompt）：不要新建、删除或连线，不要改标题和模型。先 skill_read 读 keyframe-prompt 和 video-motion-prompt，按它们的写法优化。",
 }
 
 // System 返回某个任务模式的完整系统提示词。

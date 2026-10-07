@@ -87,7 +87,7 @@ test("allowed_tools：只把当前模式允许的工具声明给模型", async (
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    assert.equal(b.rec.chats[0].tools.length, 9, "不限制时声明全部工具");
+    assert.equal(b.rec.chats[0].tools.length, 11, "不限制时声明全部工具");
   });
 });
 
