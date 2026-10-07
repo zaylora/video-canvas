@@ -109,6 +109,7 @@ type agentRuntime struct {
 
 // agentDeps 是装配运行时需要的已有服务。
 type agentDeps struct {
+	tasks    service.AgentGenTasks
 	repo     *repository.AgentRepository
 	agent    *service.AgentService
 	canvas   *service.AgentCanvasService
@@ -133,7 +134,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	}
 	bridge := service.NewAgentBridge(service.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: service.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Streamer: llmgateway.New(llmgateway.Options{}),
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Streamer: llmgateway.New(llmgateway.Options{}),
 	})
 	rt := service.NewProcessRuntime(service.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: service.ExecLauncher{},

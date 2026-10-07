@@ -286,3 +286,28 @@ func (s *AgentCanvasService) publishPatch(ctx context.Context, run *model.AgentR
 		},
 	})
 }
+
+// Generations 读出若干节点发起生成所需的输入，顺序与 ids 一致。任何一个节点不能生成都整体返回 canvasgraph.ErrInvalid。
+func (s *AgentCanvasService) Generations(ctx context.Context, run *model.AgentRun, ids []string) ([]*canvasgraph.GenSource, error) {
+	g, _, err := s.load(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*canvasgraph.GenSource, len(ids))
+	for i, id := range ids {
+		if out[i], err = canvasgraph.Generation(g, id); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// BindTasks 把批准后创建的生成任务绑定到节点（节点 id → 任务 id 的十进制字符串）。
+// 绑定只写 taskId 和状态，记为 bind 改动：撤销本轮不会碰它，因为已提交的任务撤销不了。
+func (s *AgentCanvasService) BindTasks(ctx context.Context, run *model.AgentRun, toolCallID string, tasks map[string]string) (*WriteResult, error) {
+	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationBind, 0, func(g *canvasgraph.Graph) (*edit, error) {
+		r := canvasgraph.BindTasks(g, tasks)
+		return &edit{graph: r.Graph, changes: r.Changes}, nil
+	})
+	return res, err
+}

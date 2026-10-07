@@ -42,6 +42,7 @@ type BridgeDeps struct {
 	Agent    *AgentService           // 审批、事件
 	Billing  *AgentBilling           // 对话计费
 	Registry provider.Registry       // 模型注册表
+	Tasks    AgentGenTasks           // 生成任务（task_get 查进度）
 	Secrets  provider.SecretResolver // 渠道 Key
 	Streamer ModelStreamer           // 大模型网关
 	Now      func() time.Time        // 为 nil 取系统时间

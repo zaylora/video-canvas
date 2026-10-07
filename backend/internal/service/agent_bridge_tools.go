@@ -152,11 +152,13 @@ func (b *AgentBridge) handlers() map[string]toolHandler {
 		"plan_update":      b.toolPlan,
 		"ask_user":         b.toolAsk,
 		"model_list":       b.toolModelList,
+		"generate_media":   b.toolGenerate,
+		"task_get":         b.toolTaskGet,
 	}
 }
 
 // toolOrder 是全部工具名，给模型的工具顺序固定下来，提示词缓存才稳定。
-var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list"}
+var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list", "generate_media", "task_get"}
 
 // AgentToolsForMode 返回某个任务模式能用的工具名，运行时只把这些声明给模型：
 // 不能用的工具连看都看不到，比调用后被拒绝更省事，也更不容易被诱导。Go 端在执行时仍会再校验一次。
@@ -184,11 +186,11 @@ func modeLabel(mode string) string {
 }
 
 // modeAllowsTool 判断任务模式能不能用某个工具：读画布、选模型、计划、提问所有模式都能用；
-// 排列和删除只有全能创作和分镜搭建能用；改画布的工具所有模式都能用，但能做哪些操作由 modeAllowsOps 再限制。
+// 排列、删除和生成只有全能创作和分镜搭建能用；改画布的工具所有模式都能用，但能做哪些操作由 modeAllowsOps 再限制。
 // 这是 Go 端强制的，不依赖提示词约束。
 func modeAllowsTool(mode, tool string) bool {
 	switch tool {
-	case "canvas_arrange", "canvas_delete":
+	case "canvas_arrange", "canvas_delete", "generate_media":
 		return mode == "" || mode == model.AgentModeAll || mode == model.AgentModeStoryboard
 	}
 	return true

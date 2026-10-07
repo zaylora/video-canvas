@@ -114,29 +114,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
 
-	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
-	agentRepo := repository.NewAgentRepository(db)
-	agentCanvasSvc := service.NewAgentCanvasService(agentRepo, hub)
-	agentSvc := service.NewAgentService(service.AgentDeps{
-		Repo: agentRepo, Canvas: agentCanvasSvc,
-		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
-	})
-	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
-	// 不管有没有启用运行时都要做，否则关掉功能后画布仍被占着
-	if n, err := agentRepo.InterruptActiveRuns(context.Background()); err != nil {
-		closeRedis(rdb)
-		closeDB(db)
-		return nil, fmt.Errorf("恢复被中断的 Agent 运行失败：%w", err)
-	} else if n > 0 {
-		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
-	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
-	if err != nil {
-		closeRedis(rdb)
-		closeDB(db)
-		return nil, err
-	}
-
 	runnerClient, runnerStop, err := newPluginRunnerClient(cfg)
 	if err != nil {
 		closeRedis(rdb)
@@ -166,6 +143,32 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。
 	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
+
+	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
+	agentRepo := repository.NewAgentRepository(db)
+	agentCanvasSvc := service.NewAgentCanvasService(agentRepo, hub)
+	agentSvc := service.NewAgentService(service.AgentDeps{
+		Repo: agentRepo, Canvas: agentCanvasSvc,
+		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub,
+		Generator: service.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
+	})
+	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
+	// 不管有没有启用运行时都要做，否则关掉功能后画布仍被占着
+	if n, err := agentRepo.InterruptActiveRuns(context.Background()); err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, fmt.Errorf("恢复被中断的 Agent 运行失败：%w", err)
+	} else if n > 0 {
+		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
+	}
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
+	if err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
 
 	// 插件与渠道管理：aiChannelRepo 同时负责审计日志；变更后经 aiCfgSvc 刷新 Registry
 	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiChannelRepo, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
@@ -537,4 +540,11 @@ func bootstrapStorage(db *gorm.DB, svc *service.StorageConfigService, cfg config
 		return err
 	}
 	return nil
+}
+
+// stopRunner 停掉 plugin-runner 的监督；非 spawn 模式没有它。
+func stopRunner(stop func()) {
+	if stop != nil {
+		stop()
+	}
 }

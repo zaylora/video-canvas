@@ -99,6 +99,21 @@ export const TOOL_DEFS = [
       kind: Type.Union(["image", "video", "audio"].map((v) => Type.Literal(v))),
     }),
   },
+  {
+    name: "generate_media",
+    label: "生成",
+    description: "为画布上的节点申请生成（图片、视频、音频、文本）。不会直接生成：会向用户展示确认卡片（含预估积分），本轮暂停，用户批准后任务才创建，你会收到结果。节点必须已选好模型、写好提示词，且还没有产物（不会覆盖已有产物，需要新版本请先新建节点）。上游连线的文字和素材会自动作为提示词补充和参考。一个节点只生成一个结果，要多个结果请建多个节点。",
+    parameters: Type.Object({
+      items: Type.Array(Type.Object({ nodeId: Type.String() }), { description: "要生成的节点，最多 8 个" }),
+      reason: Type.Optional(Type.String({ description: "给用户看的说明" })),
+    }),
+  },
+  {
+    name: "task_get",
+    label: "查询任务",
+    description: "查询一个生成任务的状态、进度、失败原因和产物。taskId 是节点数据里记录的任务 id，或批准生成后结果里的 task_id。",
+    parameters: Type.Object({ taskId: Type.String() }),
+  },
 ];
 
 /**

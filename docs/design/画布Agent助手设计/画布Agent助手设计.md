@@ -738,7 +738,10 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 **与设计的其他出入**
 
-- 工具暂时是 7 个：`canvas_get_state`、`canvas_apply_ops`、`canvas_arrange`、`canvas_delete`、`plan_update`、`ask_user`、`model_list`。**`generate_media`（以及批准后真正创建生成任务的执行器）、`canvas_inspect_image`、`task_get`、`skill_search`/`skill_read` 还没做**，所以 Agent 现在能搭画布、改提示词、选模型，但还不能替用户发起生成。
+- 工具现在是 9 个：`canvas_get_state`、`canvas_apply_ops`、`canvas_arrange`、`canvas_delete`、`plan_update`、`ask_user`、`model_list`、`generate_media`、`task_get`。**`canvas_inspect_image`（看图）、`skill_search`/`skill_read` 和内置影视技能还没做。**
+- `generate_media`：只接受 `{items:[{nodeId}], reason}`，一个节点一个结果（模型的「生成数量」参数一律按 1，要多个就多建节点）。预检在工具里做：节点要选好模型、没有产物也不在生成中、模型种类与节点一致、参数过 `modelcfg.ValidateInput`；通过后按模型定价算预估价、创建生成审批并让本轮停下。只在「全能创作」和「分镜搭建」模式可用，Go 端强制。
+- 批准后由 `AgentGenerator` 执行：每个条目在**最新画布**上重读节点（批准期间用户可能改过），按画布上点生成的同样规则组装输入（提示词手填优先、没有才用上游文字；有参考图的图片模型自动走图生图；上游素材按种类进 images/videos/audios），调 `GenerationTaskService.Create`，幂等键 `agent-{审批id}-{序号}`。成功的任务统一写回节点（`taskId` + `status=running`，记为 `bind` 改动，撤销本轮不碰它）；部分失败时失败项写在结果里，全部失败审批记为失败。产物回填仍由前端按 taskId 完成，和用户手动生成一致。
+- 已知限制：提示词里的 `@` 引用标记不展开（Agent 写的是纯文字提示词）；节点的提示词、参数由 Agent 通过 `canvas_apply_ops` 设置。
 - 剧本创编模式里 `update_node` 改的是不是文本节点没有查（要读画布），只限制了操作种类，是已知的限制。
 - 画布目录和运行参数只在用户消息里给一次；同一个片段里后续回合不刷新，模型靠工具结果知道自己改了什么，需要时再调 `canvas_get_state`。
 
@@ -746,4 +749,4 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 - 已装配：配置开关 `agent.enabled`（默认关）、Node 路径、runtime 目录；桥只绑定 127.0.0.1（配置校验和监听时各查一次）；`ProcessRuntime` 已接进 `app.go`，启动时自检 Node 版本，并把上次遗留的活跃运行标为 `interrupted`。开启还需要在后台发布 `agent` 类型的模型。
 - 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `backend/agent-runtime` 里 `npm ci`。
-- 上面列的缺失工具、技能库、后台管理页面。
+- 上面列的缺失工具（看图、技能）、技能库、后台管理页面。
