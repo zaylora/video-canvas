@@ -163,7 +163,7 @@ func aiNormalizeTrialInput(snap *provider.Snapshot, input map[string]any) (map[s
 	}
 	normalized, ferrs := modelcfg.ValidateInput(snap.Model.Kind, snap.Model.Capabilities, input)
 	if len(ferrs) > 0 {
-		return nil, errcode.ErrTaskInput.WithMsg("示例输入不合法：" + joinFieldErrors(ferrs))
+		return nil, errcode.ErrTaskInput.WithMsg("示例输入不合法：" + modelcfg.JoinFieldErrors(ferrs))
 	}
 	return normalized, nil
 }

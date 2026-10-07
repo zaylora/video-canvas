@@ -28,7 +28,7 @@ func TestDefaultConfig_NoRemovedKeys(t *testing.T) {
 
 func TestAgentConfig_Defaults(t *testing.T) {
 	a := Agent{Enabled: true}.WithDefaults()
-	if a.NodePath != "node" || a.RuntimeDir != "./agent-runtime" || a.BridgeAddr != "127.0.0.1:0" {
+	if a.NodePath != "node" || a.RuntimeDir != "../agent" || a.BridgeAddr != "127.0.0.1:0" {
 		t.Errorf("默认值不对: %+v", a)
 	}
 	custom := Agent{Enabled: true, NodePath: "/opt/node", RuntimeDir: "/srv/rt", BridgeAddr: "127.0.0.1:9001", WorkDir: "/tmp/x"}.WithDefaults()

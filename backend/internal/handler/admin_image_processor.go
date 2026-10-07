@@ -97,7 +97,7 @@ func (h *AdminImageProcessorHandler) Get(c *gin.Context) {
 // Create 新建一个草稿处理服务。
 func (h *AdminImageProcessorHandler) Create(c *gin.Context) {
 	var req processorCreateReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Create(c.Request.Context(), currentUserID(c), service.ProcessorCreateInput{
@@ -117,7 +117,7 @@ func (h *AdminImageProcessorHandler) Update(c *gin.Context) {
 		return
 	}
 	var req processorUpdateReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Update(c.Request.Context(), currentUserID(c), id, service.ProcessorUpdateInput{
@@ -144,7 +144,7 @@ func (h *AdminImageProcessorHandler) Publish(c *gin.Context) {
 		return
 	}
 	var req processorPublishReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Publish(c.Request.Context(), currentUserID(c), id, req.Version)

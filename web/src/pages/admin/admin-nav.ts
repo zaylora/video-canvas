@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Puzzle,
   RadioTower,
+  Sparkles,
   UserPlus,
   Users,
   type LucideIcon,
@@ -29,6 +30,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/channels", label: "渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
     ],
+  },
+  {
+    label: "Agent",
+    items: [{ to: "agent/skills", label: "技能", icon: Sparkles }],
   },
   {
     label: "用户",

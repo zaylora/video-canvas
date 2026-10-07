@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"video-canvas/internal/canvasgraph"
+	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
 	. "video-canvas/internal/repository"
-	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 )
 
 // 编译期检查：真实仓储满足 service 声明的依赖接口。
-var _ service.AgentCanvasRepo = (*AgentRepository)(nil)
+var _ agentsvc.AgentCanvasRepo = (*AgentRepository)(nil)
 
 // TestAgentCanvasService_EndToEndOnRealDB 在真实数据库上走一遍「应用编辑 → 用户同时保存 → 撤销」，
 // 确认 service、仓储事务、乐观锁三者接得上。
@@ -19,7 +19,7 @@ func TestAgentCanvasService_EndToEndOnRealDB(t *testing.T) {
 	ctx := context.Background()
 	db := agentDB(t)
 	r := NewAgentRepository(db)
-	svc := service.NewAgentCanvasService(r, nil)
+	svc := agentsvc.NewAgentCanvasService(r, nil)
 
 	canvas := &model.CanvasProject{UserID: 1, Title: "画布", Revision: 1,
 		PayloadJSON: []byte(`{"nodes":[{"id":"n_script","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"script","label":"剧本"}}],"edges":[],"viewport":{"zoom":1}}`)}

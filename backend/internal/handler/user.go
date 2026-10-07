@@ -36,7 +36,7 @@ func (h *UserHandler) Config(c *gin.Context) {
 // SendRegisterCode 给邮箱发送注册验证码（POST /auth/register/code）。
 func (h *UserHandler) SendRegisterCode(c *gin.Context) {
 	var req model.SendRegisterCodeReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SendRegisterCode(c.Request.Context(), req.Email, c.ClientIP()); err != nil {
@@ -49,7 +49,7 @@ func (h *UserHandler) SendRegisterCode(c *gin.Context) {
 // Register 用户注册，成功后直接登录并返回 token（POST /auth/register）。
 func (h *UserHandler) Register(c *gin.Context) {
 	var req model.RegisterUserReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Register(c.Request.Context(), &req, clientMeta(c))
@@ -63,7 +63,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 // Login 用户登录，返回 JWT token、过期时间与角色（POST /auth/login）。
 func (h *UserHandler) Login(c *gin.Context) {
 	var req model.LoginUserReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Login(c.Request.Context(), req.Username, req.Password, clientMeta(c))

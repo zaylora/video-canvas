@@ -22,7 +22,7 @@ func NewAdminUserHandler(svc *service.AdminUserService) *AdminUserHandler {
 // List 分页查询用户（GET /admin/users）。
 func (h *AdminUserHandler) List(c *gin.Context) {
 	var req model.ListAdminUserReq
-	if !bindQuery(c, &req) {
+	if !BindQuery(c, &req) {
 		return
 	}
 	items, total, q, err := h.svc.List(c.Request.Context(), &req)
@@ -57,7 +57,7 @@ func (h *AdminUserHandler) Tasks(c *gin.Context) {
 		return
 	}
 	var req model.ListUserTasksReq
-	if !bindQuery(c, &req) {
+	if !BindQuery(c, &req) {
 		return
 	}
 	page, err := h.svc.ListTasks(c.Request.Context(), id, &req)
@@ -75,7 +75,7 @@ func (h *AdminUserHandler) Ledger(c *gin.Context) {
 		return
 	}
 	var req model.ListUserLedgerReq
-	if !bindQuery(c, &req) {
+	if !BindQuery(c, &req) {
 		return
 	}
 	page, err := h.svc.ListLedger(c.Request.Context(), id, &req)
@@ -93,7 +93,7 @@ func (h *AdminUserHandler) Logins(c *gin.Context) {
 		return
 	}
 	var req model.ListUserLoginsReq
-	if !bindQuery(c, &req) {
+	if !BindQuery(c, &req) {
 		return
 	}
 	page, err := h.svc.ListLogins(c.Request.Context(), id, &req)
@@ -111,7 +111,7 @@ func (h *AdminUserHandler) AdjustCredits(c *gin.Context) {
 		return
 	}
 	var req model.AdjustCreditsReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.AdjustCredits(c.Request.Context(), actorID(c), id, &req)
@@ -129,7 +129,7 @@ func (h *AdminUserHandler) SetLimit(c *gin.Context) {
 		return
 	}
 	var req model.SetUserLimitReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetMaxActiveTasks(c.Request.Context(), actorID(c), id, req.MaxActiveTasks); err != nil {
@@ -146,7 +146,7 @@ func (h *AdminUserHandler) SetStatus(c *gin.Context) {
 		return
 	}
 	var req model.SetUserStatusReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.SetStatus(c.Request.Context(), actorID(c), id, req.Status, req.CancelActive)
@@ -160,7 +160,7 @@ func (h *AdminUserHandler) SetStatus(c *gin.Context) {
 // BatchCredits 批量发积分（POST /admin/users/batch/credits），逐项返回结果。
 func (h *AdminUserHandler) BatchCredits(c *gin.Context) {
 	var req model.BatchCreditsReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.BatchAddCredits(c.Request.Context(), actorID(c), req.IDs, req.Amount, req.Note)
@@ -174,7 +174,7 @@ func (h *AdminUserHandler) BatchCredits(c *gin.Context) {
 // BatchStatus 批量封禁 / 启用（PUT /admin/users/batch/status），逐项返回结果。
 func (h *AdminUserHandler) BatchStatus(c *gin.Context) {
 	var req model.BatchStatusReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.BatchSetStatus(c.Request.Context(), actorID(c), req.IDs, req.Status)
@@ -192,7 +192,7 @@ func (h *AdminUserHandler) SetRole(c *gin.Context) {
 		return
 	}
 	var req model.SetUserRoleReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetRole(c.Request.Context(), actorID(c), id, req.Role); err != nil {
@@ -210,7 +210,7 @@ func (h *AdminUserHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 	var req model.ResetPasswordReq
-	if c.Request.ContentLength != 0 && !bindJSON(c, &req) {
+	if c.Request.ContentLength != 0 && !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.ResetPassword(c.Request.Context(), actorID(c), id, req.NewPassword)

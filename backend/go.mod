@@ -9,6 +9,7 @@ require (
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1
 	github.com/go-playground/validator/v10 v10.30.1
+	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -19,6 +20,7 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0
+	golang.org/x/text v0.41.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.3
@@ -42,7 +44,6 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -85,7 +86,6 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.4.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect

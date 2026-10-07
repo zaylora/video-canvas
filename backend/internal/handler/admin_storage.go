@@ -125,7 +125,7 @@ func (h *AdminStorageHandler) Get(c *gin.Context) {
 // Test 测试一份还没保存的配置。
 func (h *AdminStorageHandler) Test(c *gin.Context) {
 	var req storageTestReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.Test(c.Request.Context(), req.input())
@@ -139,7 +139,7 @@ func (h *AdminStorageHandler) Test(c *gin.Context) {
 // Create 新建存储：保存前自动测试，密钥加密存放。
 func (h *AdminStorageHandler) Create(c *gin.Context) {
 	var req storageCreateReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	in := req.input()
@@ -159,7 +159,7 @@ func (h *AdminStorageHandler) Update(c *gin.Context) {
 		return
 	}
 	var req storageUpdateReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Update(c.Request.Context(), currentUserID(c), id, service.StorageUpdateInput{
@@ -181,7 +181,7 @@ func (h *AdminStorageHandler) ReplaceSecret(c *gin.Context) {
 		return
 	}
 	var req storageSecretReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.ReplaceSecret(c.Request.Context(), currentUserID(c), id, req.AccessKeyID, req.SecretKey)
@@ -209,7 +209,7 @@ func (h *AdminStorageHandler) Check(c *gin.Context) {
 // SetDefault 把一套存储设为默认：之后新上传和新生成的素材写入它，已有素材不动。
 func (h *AdminStorageHandler) SetDefault(c *gin.Context) {
 	var req storageDefaultReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetDefault(c.Request.Context(), currentUserID(c), req.ID); err != nil {

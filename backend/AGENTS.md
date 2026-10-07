@@ -24,11 +24,12 @@ backend/
 │   ├── initialize/        # DB / Redis 初始化 + 依赖手动组装（app.go）+ 优雅退出
 │   ├── router/            # 路由注册、中间件挂载、鉴权分组
 │   ├── middleware/        # RequestID / Logger / Recovery / CORS / JWTAuth / Admin
-│   ├── handler/           # HTTP 层：取参 → 调 service → 统一响应；bind.go 放取参工具
-│   ├── service/           # 业务逻辑层；依赖以接口形式声明在本层
+│   ├── handler/           # HTTP 层：取参 → 调 service → 统一响应；bind.go 放取参工具；agent/ 是画布 Agent 的 handler
+│   ├── service/           # 业务逻辑层；依赖以接口形式声明在本层；agent/ 是画布 Agent 的会话、运行、审批、桥和进程监管
 │   ├── repository/        # 数据访问层：只写 GORM 查询，gorm 错误翻译成 ErrNotFound 等
 │   ├── cache/             # Redis 缓存，rdb 为 nil 时为空操作
 │   ├── model/             # 表模型 + 请求/响应结构体（XxxReq / XxxItem / XxxView）
+│   ├── agent/             # 画布 Agent 的纯 Go 部分：canvasgraph（画布图操作）/ skills（内置技能，go:embed）/ prompts（系统提示词，go:embed）
 │   ├── provider/          # 外部平台调用与任务调度：types.go（契约）、engine/、worker/、dsl/
 │   │                      #   ⚠ dsl/ 将按 docs/design/协议插件设计.md 被 JS 插件运行时取代，新代码不要再依赖它
 │   ├── storage/           # 素材对象存储：local（仅开发）/ s3（S3 兼容，含 OSS）

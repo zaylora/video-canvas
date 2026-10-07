@@ -84,7 +84,7 @@ func (h *AdminPluginHandler) SetEnabled(c *gin.Context) {
 		return
 	}
 	var req setEnabledReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetEnabled(c.Request.Context(), currentUserID(c), key, *req.Enabled); err != nil {

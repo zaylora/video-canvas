@@ -115,7 +115,7 @@ type uploadIntentReq struct {
 // 否则返回 mode=proxy，客户端改走 POST /assets 由后端中转。
 func (h *AssetHandler) CreateUploadIntent(c *gin.Context) {
 	var req uploadIntentReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.CreateUploadIntent(c.Request.Context(), currentUserID(c), service.UploadIntentInput{

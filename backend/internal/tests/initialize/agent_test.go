@@ -73,9 +73,9 @@ func TestResolveAgentRuntime_Errors(t *testing.T) {
 	})
 
 	t.Run("完整的目录：解析成绝对路径", func(t *testing.T) {
-		rtDir, _ := filepath.Abs("../../../agent-runtime")
+		rtDir, _ := filepath.Abs("../../../../agent")
 		if _, err := os.Stat(filepath.Join(rtDir, "node_modules")); err != nil {
-			t.Skip("agent-runtime 没有安装依赖")
+			t.Skip("agent 目录没有安装依赖")
 		}
 		p, err := ResolveAgentRuntime(config.Agent{Enabled: true, NodePath: node, RuntimeDir: rtDir})
 		if err != nil {

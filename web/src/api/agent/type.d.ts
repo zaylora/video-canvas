@@ -270,3 +270,15 @@ export interface AgentUndoResult {
   /** 撤销后的画布 revision，没有写入时为 0 */
   revision: number;
 }
+
+/** @ 弹层里的一个技能：已启用的内置技能与导入技能 */
+export interface AgentSkillDto {
+  /** 技能名，Agent 靠它 skill_read，也是 chip 的 id */
+  name: string;
+  /** 显示名，chip 上显示 */
+  title: string;
+  /** 一句话说明 */
+  description: string;
+  /** 来源：builtin 内置 / imported 导入 */
+  source: "builtin" | "imported";
+}

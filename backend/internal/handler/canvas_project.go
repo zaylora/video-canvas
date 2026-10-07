@@ -20,7 +20,7 @@ func NewCanvasProjectHandler(svc *service.CanvasProjectService) *CanvasProjectHa
 // 创建画布
 func (h *CanvasProjectHandler) Create(c *gin.Context) {
 	var req model.CreateCanvasProjectReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	p, err := h.svc.Create(c.Request.Context(), currentUserID(c), &req)
@@ -34,7 +34,7 @@ func (h *CanvasProjectHandler) Create(c *gin.Context) {
 // 画布列表（不含 payload_json）
 func (h *CanvasProjectHandler) List(c *gin.Context) {
 	var req model.ListCanvasProjectReq
-	if !bindQuery(c, &req) {
+	if !BindQuery(c, &req) {
 		return
 	}
 	items, total, q, err := h.svc.List(c.Request.Context(), currentUserID(c), &req)
@@ -47,7 +47,7 @@ func (h *CanvasProjectHandler) List(c *gin.Context) {
 
 // 画布详情（含完整 payload_json）
 func (h *CanvasProjectHandler) Get(c *gin.Context) {
-	id, ok := canvasPathID(c)
+	id, ok := CanvasPathID(c)
 	if !ok {
 		return
 	}
@@ -61,12 +61,12 @@ func (h *CanvasProjectHandler) Get(c *gin.Context) {
 
 // 更新画布，需带上当前 revision，版本不一致返回 409
 func (h *CanvasProjectHandler) Update(c *gin.Context) {
-	id, ok := canvasPathID(c)
+	id, ok := CanvasPathID(c)
 	if !ok {
 		return
 	}
 	var req model.UpdateCanvasProjectReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	p, err := h.svc.Update(c.Request.Context(), currentUserID(c), id, &req)
@@ -79,7 +79,7 @@ func (h *CanvasProjectHandler) Update(c *gin.Context) {
 
 // 删除画布（软删除）
 func (h *CanvasProjectHandler) Delete(c *gin.Context) {
-	id, ok := canvasPathID(c)
+	id, ok := CanvasPathID(c)
 	if !ok {
 		return
 	}

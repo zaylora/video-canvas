@@ -16,13 +16,13 @@ import (
 	"go.uber.org/zap"
 
 	"video-canvas/internal/config"
-	"video-canvas/internal/handler"
+	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
-	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 )
 
 // 运行时要求的最低 Node 版本（pi 1.0.4 的要求）。
@@ -34,7 +34,7 @@ const (
 // AgentRuntimePaths 是解析好的运行时路径。
 type AgentRuntimePaths struct {
 	Node   string // node 可执行文件的绝对路径
-	Script string // agent-runtime/src/main.mjs 的绝对路径
+	Script string // agent/src/main.mjs 的绝对路径
 }
 
 // NodeVersionOK 解析 `node --version` 的输出（如 v23.6.0），判断是否满足最低版本；解析不了返回错误。
@@ -81,7 +81,7 @@ func ResolveAgentRuntime(cfg config.Agent) (AgentRuntimePaths, error) {
 		return AgentRuntimePaths{}, fmt.Errorf("agent.runtime_dir=%q 里找不到 src/main.mjs：%w", cfg.RuntimeDir, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
-		return AgentRuntimePaths{}, fmt.Errorf("agent-runtime 还没有安装依赖，请在 %s 下运行 npm ci：%w", dir, err)
+		return AgentRuntimePaths{}, fmt.Errorf("agent 目录还没有安装依赖，请在 %s 下运行 npm ci：%w", dir, err)
 	}
 	return AgentRuntimePaths{Node: node, Script: script}, nil
 }
@@ -102,20 +102,21 @@ func ListenLoopback(addr string) (net.Listener, error) {
 
 // agentRuntime 是装配好的画布 Agent 运行时：桥的监听服务和进程运行时。
 type agentRuntime struct {
-	rt     *service.ProcessRuntime
+	rt     *agentsvc.ProcessRuntime
 	server *http.Server
 	ln     net.Listener
 }
 
 // agentDeps 是装配运行时需要的已有服务。
 type agentDeps struct {
-	tasks    service.AgentGenTasks
+	tasks    agentsvc.AgentGenTasks
 	assets   provider.AssetStore
 	repo     *repository.AgentRepository
-	agent    *service.AgentService
-	canvas   *service.AgentCanvasService
+	agent    *agentsvc.AgentService
+	canvas   *agentsvc.AgentCanvasService
 	registry provider.Registry
 	secrets  provider.SecretResolver
+	skills   agentsvc.SkillLibrary
 }
 
 // newAgentRuntime 按配置装配运行时：自检 → 监听回环地址 → 创建桥和进程运行时 → 绑定到 AgentService。
@@ -133,19 +134,19 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("监听桥地址失败：%w", err)
 	}
-	bridge := service.NewAgentBridge(service.BridgeDeps{
-		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: service.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{}),
+	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
+		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{}), Skills: d.skills,
 	})
-	rt := service.NewProcessRuntime(service.RuntimeDeps{
-		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: service.ExecLauncher{},
-		Config: service.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir},
+	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
+		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
+		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir},
 	})
 	d.agent.SetRuntime(rt)
 	return &agentRuntime{
 		rt: rt, ln: ln,
 		// 没有读写超时：对话是长连接的流式响应，可能持续几分钟；防慢速攻击靠只监听回环地址
-		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, handler.NewAgentBridgeHandler(bridge)), ReadHeaderTimeout: 10 * time.Second},
+		server: &http.Server{Handler: router.NewBridge(cfg.Server.Mode, agenthandler.NewAgentBridgeHandler(bridge)), ReadHeaderTimeout: 10 * time.Second},
 	}, nil
 }
 

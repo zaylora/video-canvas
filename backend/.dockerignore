@@ -4,6 +4,4 @@ data
 configs/*.local.yaml
 **/*_test.go
 Dockerfile.dev
-agent-runtime/node_modules
-agent-runtime/test
 .air.toml

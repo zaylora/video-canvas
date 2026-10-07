@@ -27,6 +27,8 @@
 
 ## 关键架构记忆
 
+- 仓库根目录 `agent/` 是画布 Agent 的 Node 运行时（pi agent 循环，零密钥，经桥回调 Go）；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。运行时改动在 `agent/` 下跑 `npm test`。
+
 - 产品是 React 无限画布 + Go API 的 AI 视频创作应用。
 - 后端链路为 `router → middleware → handler → service → repository/cache`，异步生成经 worker 和 JS plugin-runner 调用模型供应商。
 - 前端通过 HTTP 请求读写资源，通过 WebSocket 接收任务状态，并用任务对账恢复断线期间的更新。

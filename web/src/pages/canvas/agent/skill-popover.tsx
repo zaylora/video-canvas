@@ -1,21 +1,54 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PenLine, Search } from "lucide-react";
 
+import { getAgentSkills } from "@/api/agent/skill";
+import type { AgentSkillDto } from "@/api/agent/type.d";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { filterSkills } from "@/constants/agent-skills";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Chip } from "@/utils/agent/chips";
+import { filterSkills } from "@/utils/agent/skills";
 
 const TABS = [
-  { id: "builtin", label: "内置", enabled: true },
+  { id: "all", label: "全部", enabled: true },
   { id: "starred", label: "收藏", enabled: false },
   { id: "mine", label: "我的", enabled: false },
 ] as const;
 
+/** 技能目录的加载状态 */
+type SkillsStatus = "loading" | "ready" | "error";
+
 /**
- * 插入技能：只有「内置」可用，「收藏」「我的」二期开放（置灰并说明）；按名称、技能名、说明搜索。
+ * 弹层打开时读技能目录（管理员随时可能启停技能，所以每次打开都刷新）。
+ * 失败时保留上一次成功的列表；请求错误的全局 toast 由拦截器弹，这里只记状态让弹层退化成可重试的提示。
+ */
+function useSkillCatalog(open: boolean) {
+  const [skills, setSkills] = useState<AgentSkillDto[]>([]);
+  const [status, setStatus] = useState<SkillsStatus>("loading");
+  /** 只认最近一次请求的结果，快速开合弹层时旧请求不会盖掉新的 */
+  const latest = useRef(0);
+  const load = useCallback(async () => {
+    const ticket = ++latest.current;
+    setStatus((prev) => (prev === "ready" ? prev : "loading"));
+    try {
+      const list = await getAgentSkills();
+      if (ticket !== latest.current) return;
+      setSkills(list);
+      setStatus("ready");
+    } catch {
+      if (ticket === latest.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
+    }
+  }, []);
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+  return { skills, status, reload: load };
+}
+
+/**
+ * 插入技能：只有「全部」（已启用的内置与导入技能）可用，「收藏」「我的」二期开放（置灰并说明）；按名称、技能名、说明搜索。
  * 点一行插入技能 chip 并关闭弹层。
  */
 export function SkillPopover({
@@ -27,7 +60,8 @@ export function SkillPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const skills = filterSkills(query);
+  const { skills: catalog, status, reload } = useSkillCatalog(open);
+  const skills = filterSkills(catalog, query);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <ChromeTooltip label="插入技能" side="top">
@@ -75,8 +109,32 @@ export function SkillPopover({
             className="h-8 pl-8 text-xs"
           />
         </div>
-        {skills.length === 0 ? (
-          <p className="text-muted-foreground px-3 py-6 text-center text-xs">没有找到匹配的技能</p>
+        {status === "loading" ? (
+          <div
+            className="flex flex-col gap-1.5 px-2.5 py-2"
+            aria-busy="true"
+            aria-label="正在加载技能"
+          >
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="mt-1 h-4 w-20" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+        ) : status === "error" ? (
+          <p className="text-muted-foreground px-3 py-6 text-center text-xs">
+            技能加载失败，
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="text-foreground focus-visible:ring-node-ring/60 rounded underline underline-offset-2 outline-none focus-visible:ring-2"
+            >
+              重试
+            </button>
+          </p>
+        ) : skills.length === 0 ? (
+          <p className="text-muted-foreground px-3 py-6 text-center text-xs">
+            {catalog.length === 0 ? "还没有启用的技能" : "没有找到匹配的技能"}
+          </p>
         ) : (
           <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {skills.map((s) => (
@@ -91,7 +149,9 @@ export function SkillPopover({
                   className="hover:bg-chrome-hover focus-visible:ring-node-ring/60 flex w-full flex-col rounded-lg px-2.5 py-1.5 text-left outline-none focus-visible:ring-2"
                 >
                   <span className="text-[13px] font-medium">{s.title}</span>
-                  <span className="text-muted-foreground text-xs leading-snug">{s.desc}</span>
+                  <span className="text-muted-foreground text-xs leading-snug">
+                    {s.description}
+                  </span>
                 </button>
               </li>
             ))}

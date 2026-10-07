@@ -42,7 +42,7 @@ services:
       APP_AI_PLUGIN_RUNNER_ADDRESS: /run/plugin-runner/runner.sock
       APP_STORAGE_LOCAL_DIR: /app/data/assets
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
-      # 画布 Agent：镜像里带了 Node 和运行时，默认关闭，设为 true 开启；还要在后台 AI 配置里发布 agent 类型的模型
+      # 画布 Agent：镜像里带了 Node 和运行时，compose 默认开启（覆盖 config.yaml 里的默认关闭），设为 false 关闭；还要在后台 AI 配置里发布 agent 类型的模型
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
     volumes:
       - backend_assets:/app/data/assets

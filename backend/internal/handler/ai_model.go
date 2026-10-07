@@ -26,7 +26,7 @@ type listModelsQuery struct {
 // 不含 params / mapping / provider / 凭证等内部配置——这是它的类型保证，不依赖手工过滤。
 func (h *AIModelHandler) List(c *gin.Context) {
 	var q listModelsQuery
-	if !bindQuery(c, &q) {
+	if !BindQuery(c, &q) {
 		return
 	}
 	models, err := h.registry.ListModels(c.Request.Context(), q.Kind)

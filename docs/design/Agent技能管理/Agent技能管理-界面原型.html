@@ -1,0 +1,1245 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 技能管理 · 界面原型</title>
+    <!-- 界面规格见 Agent技能管理.md §6.8。颜色抄自 web/src/index.css 的 .admin-theme；动效参数抄自 web/src/lib/motion.ts。 -->
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/motion@13.2.0/dist/motion.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --radius: 0.625rem;
+        --background: hsl(0 0% 100%);
+        --foreground: hsl(240 10% 3.9%);
+        --card: hsl(0 0% 100%);
+        --popover: hsl(0 0% 100%);
+        --primary: hsl(240 5.9% 10%);
+        --primary-foreground: hsl(0 0% 98%);
+        --secondary: hsl(240 4.8% 95.9%);
+        --muted: hsl(240 4.8% 95.9%);
+        --muted-foreground: hsl(240 3.8% 46.1%);
+        --accent: hsl(240 4.8% 95.9%);
+        --destructive: hsl(0 72% 51%);
+        --border: hsl(240 5.9% 90%);
+        --input: hsl(240 5.9% 90%);
+        --ring: hsl(240 5.9% 10%);
+        --sidebar: hsl(0 0% 98%);
+        --sidebar-foreground: hsl(240 5.3% 26.1%);
+        --sidebar-accent: hsl(240 4.8% 95.9%);
+        --sidebar-border: hsl(220 13% 91%);
+        /* 语气色：admin-ui/tag.tsx 用的 Tailwind emerald / sky / amber / red / violet（500 做描边与底，700 / 400 做文字） */
+        --emerald: oklch(0.696 0.17 162.48);
+        --emerald-t: oklch(0.508 0.118 165.612);
+        --sky: oklch(0.685 0.169 237.323);
+        --sky-t: oklch(0.443 0.11 240.79);
+        --amber: oklch(0.769 0.188 70.08);
+        --amber-t: oklch(0.555 0.163 48.998);
+        --red: oklch(0.637 0.237 25.331);
+        --red-t: oklch(0.505 0.213 27.518);
+        --violet: oklch(0.606 0.25 292.717);
+        --violet-t: oklch(0.491 0.27 292.581);
+        /* lib/motion.ts */
+        --d-fast: 120ms;
+        --d-base: 180ms;
+        --d-exit: 126ms;
+        --d-slow: 240ms;
+        --d-slow-exit: 168ms;
+        --ease: cubic-bezier(0.2, 0, 0, 1);
+      }
+      .dark {
+        color-scheme: dark;
+        --background: hsl(240 10% 3.9%);
+        --foreground: hsl(0 0% 98%);
+        --card: hsl(240 10% 3.9%);
+        --popover: hsl(240 10% 3.9%);
+        --primary: hsl(0 0% 98%);
+        --primary-foreground: hsl(240 5.9% 10%);
+        --secondary: hsl(240 3.7% 15.9%);
+        --muted: hsl(240 3.7% 15.9%);
+        --muted-foreground: hsl(240 5% 64.9%);
+        --accent: hsl(240 3.7% 15.9%);
+        --destructive: hsl(0 62.8% 45%);
+        --border: hsl(240 3.7% 15.9%);
+        --input: hsl(240 3.7% 18%);
+        --ring: hsl(240 4.9% 83.9%);
+        --sidebar: hsl(240 5.9% 10%);
+        --sidebar-foreground: hsl(240 4.8% 95.9%);
+        --sidebar-accent: hsl(240 3.7% 15.9%);
+        --sidebar-border: hsl(240 3.7% 15.9%);
+        --emerald-t: oklch(0.765 0.177 163.223);
+        --sky-t: oklch(0.746 0.16 232.661);
+        --amber-t: oklch(0.828 0.189 84.429);
+        --red-t: oklch(0.704 0.191 22.216);
+        --violet-t: oklch(0.702 0.183 293.541);
+      }
+      * { box-sizing: border-box; border-color: var(--border); }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: "Geist Variable", Geist, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+        font-size: 14px;
+        background: var(--background);
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.5;
+      }
+      code, .mono, kbd { font-family: ui-monospace, "Geist Mono", "SF Mono", Consolas, monospace; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input { font: inherit; color: inherit; }
+      [hidden] { display: none !important; }
+      .tnum { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--muted-foreground); }
+      .xs { font-size: 12px; }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .grow { flex: 1; min-width: 0; }
+      .trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      :focus-visible { outline: 2px solid color-mix(in oklch, var(--ring) 50%, transparent); outline-offset: 2px; }
+
+      /* ---------- 原型控制条（不是产品界面） ---------- */
+      .proto-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-bottom: 1px dashed color-mix(in oklch, var(--violet) 50%, transparent); background: color-mix(in oklch, var(--violet) 6%, var(--background)); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+      .proto-bar b { color: var(--violet-t); font-weight: 600; }
+      .pbtn { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--background); font-size: 12px; }
+      .pbtn:hover { background: var(--accent); }
+      .pbtn[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+
+      /* ---------- 后台外壳 ---------- */
+      .shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); height: calc(100% - 40px); min-height: 0; }
+      .sidebar { background: var(--sidebar); border-right: 1px solid var(--sidebar-border); padding: 12px 8px; overflow: auto; color: var(--sidebar-foreground); }
+      .brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 12px; font-weight: 600; color: var(--foreground); }
+      .brand .lg { width: 24px; height: 24px; border-radius: 7px; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; font-size: 13px; }
+      .nav-grp { padding: 12px 8px 4px; font-size: 12px; color: var(--muted-foreground); }
+      .nav-it { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; font-size: 14px; transition: background var(--d-fast) var(--ease); }
+      .nav-it:hover { background: var(--sidebar-accent); }
+      .nav-it.on { background: var(--sidebar-accent); color: var(--foreground); font-weight: 500; }
+      .nav-it [data-lucide] { color: var(--muted-foreground); font-size: 16px; }
+      .main { overflow: auto; min-width: 0; position: relative; }
+      .page { max-width: 1160px; margin: 0 auto; padding: 24px 28px 64px; }
+      .crumb { font-size: 12px; color: var(--muted-foreground); margin-bottom: 14px; }
+      .crumb b { color: var(--foreground); font-weight: 500; }
+      .ph { display: flex; align-items: flex-start; gap: 16px; }
+      .ph h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+      .ph p { margin-top: 4px; color: var(--muted-foreground); max-width: 560px; }
+
+      /* ---------- 按钮 / 标签 / 输入 ---------- */
+      .btn { height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; transition: background var(--d-fast) var(--ease), border-color var(--d-fast) var(--ease), opacity var(--d-fast) var(--ease); user-select: none; }
+      .btn [data-lucide] { font-size: 16px; }
+      .btn-primary { background: var(--primary); color: var(--primary-foreground); }
+      .btn-primary:hover { background: color-mix(in oklch, var(--primary) 88%, transparent); }
+      .btn-outline { border-color: var(--border); background: var(--background); }
+      .btn-outline:hover { background: var(--accent); }
+      .btn-ghost:hover { background: var(--accent); }
+      .btn-danger { background: color-mix(in oklch, var(--destructive) 12%, transparent); color: var(--red-t); }
+      .btn-danger:hover { background: color-mix(in oklch, var(--destructive) 20%, transparent); }
+      .btn-sm { height: 28px; padding: 0 10px; font-size: 13px; border-radius: 7px; }
+      .btn-icon { width: 32px; padding: 0; }
+      .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+      kbd { font-size: 11px; padding: 0 5px; height: 18px; display: inline-grid; place-items: center; border-radius: 4px; border: 1px solid color-mix(in oklch, currentColor 25%, transparent); opacity: 0.8; }
+      .tag { display: inline-flex; align-items: center; gap: 4px; width: fit-content; flex: none; height: 20px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; white-space: nowrap; }
+      .tag [data-lucide] { font-size: 12px; }
+      .tag.mono { font-family: ui-monospace, "Geist Mono", Consolas, monospace; }
+      .tg-ok { border-color: color-mix(in oklch, var(--emerald) 25%, transparent); background: color-mix(in oklch, var(--emerald) 10%, transparent); color: var(--emerald-t); }
+      .tg-info { border-color: color-mix(in oklch, var(--sky) 25%, transparent); background: color-mix(in oklch, var(--sky) 10%, transparent); color: var(--sky-t); }
+      .tg-warn { border-color: color-mix(in oklch, var(--amber) 30%, transparent); background: color-mix(in oklch, var(--amber) 10%, transparent); color: var(--amber-t); }
+      .tg-bad { border-color: color-mix(in oklch, var(--red) 25%, transparent); background: color-mix(in oklch, var(--red) 10%, transparent); color: var(--red-t); }
+      .tg-vio { border-color: color-mix(in oklch, var(--violet) 25%, transparent); background: color-mix(in oklch, var(--violet) 10%, transparent); color: var(--violet-t); }
+      .inp { height: 32px; border: 1px solid var(--input); background: var(--background); border-radius: 8px; padding: 0 10px 0 32px; font-size: 14px; width: 240px; max-width: 100%; transition: border-color var(--d-fast) var(--ease); }
+      .inp:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent); }
+      .inp-wrap { position: relative; }
+      .inp-wrap > [data-lucide] { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; color: var(--muted-foreground); pointer-events: none; }
+      .inp-plain { padding-left: 10px; }
+      .sw { width: 36px; height: 20px; border-radius: 999px; background: var(--input); position: relative; flex: none; transition: background var(--d-fast) var(--ease); }
+      .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--background); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); transition: transform var(--d-base) var(--ease); }
+      .sw[aria-checked="true"] { background: var(--primary); }
+      .sw[aria-checked="true"]::after { transform: translateX(16px); }
+      .sw:disabled { opacity: 0.5; cursor: not-allowed; }
+      .sw:active:not(:disabled)::after { width: 19px; }
+
+      /* ---------- 分段控件 / 页签（滑块只做 transform） ---------- */
+      .seg { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 8px; background: var(--muted); }
+      .seg button { position: relative; z-index: 1; height: 26px; padding: 0 12px; min-width: 56px; font-size: 13px; color: var(--muted-foreground); border-radius: 6px; transition: color var(--d-fast) var(--ease); white-space: nowrap; }
+      .seg button[aria-pressed="true"] { color: var(--foreground); font-weight: 500; }
+      .seg-ind { position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; border-radius: 6px; background: var(--background); box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); will-change: transform; }
+      .tabs { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 84px; border-bottom: 1px solid var(--border); }
+      .tabs button { height: 36px; font-size: 14px; color: var(--muted-foreground); transition: color var(--d-fast) var(--ease); }
+      .tabs button[aria-selected="true"] { color: var(--foreground); font-weight: 500; }
+      .tabs button:hover { color: var(--foreground); }
+      .tab-ind { position: absolute; bottom: -1px; left: 0; height: 2px; width: 84px; background: var(--primary); will-change: transform; }
+
+      /* ---------- 列表 ---------- */
+      .toolbar { display: flex; align-items: center; gap: 8px; margin: 20px 0 12px; flex-wrap: wrap; }
+      .card { border: 1px solid var(--border); background: var(--card); border-radius: 12px; overflow: hidden; }
+      .sk-head, .sk-row { display: grid; grid-template-columns: minmax(220px, 1.1fr) minmax(0, 1.6fr) 190px 120px 56px; align-items: center; gap: 12px; padding: 0 16px; }
+      .sk-head { height: 36px; background: color-mix(in oklch, var(--muted) 40%, transparent); font-size: 12px; font-weight: 500; color: var(--muted-foreground); border-bottom: 1px solid var(--border); }
+      .sk-row { min-height: 60px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background var(--d-fast) var(--ease); }
+      .sk-row:last-child { border-bottom: 0; }
+      .sk-row:hover { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+      .sk-row:focus-visible { outline-offset: -2px; }
+      .sk-row.fresh { animation: fresh 240ms var(--ease) both; }
+      @keyframes fresh { from { background: color-mix(in oklch, var(--violet) 14%, transparent); } to { background: transparent; } }
+      .tile { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--muted); display: grid; place-items: center; color: var(--muted-foreground); flex: none; font-size: 16px; }
+      .c-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .nm { min-width: 0; display: grid; }
+      .nm b { font-weight: 500; }
+      .slug { font-size: 12px; color: var(--muted-foreground); font-family: ui-monospace, "Geist Mono", Consolas, monospace; }
+      .c-desc { color: var(--muted-foreground); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .c-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+      .c-ver { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .c-sw { display: flex; justify-content: flex-end; }
+      .skel { height: 14px; border-radius: 6px; background: var(--muted); animation: pulse 1.4s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.5; } }
+      .empty { padding: 56px 16px; display: grid; justify-items: center; gap: 6px; text-align: center; }
+      .empty .tile { width: 40px; height: 40px; font-size: 20px; margin-bottom: 6px; }
+      .notice { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid; font-size: 14px; align-items: flex-start; }
+      .notice > [data-lucide] { margin-top: 3px; font-size: 16px; }
+      .n-bad { border-color: color-mix(in oklch, var(--red) 30%, transparent); background: color-mix(in oklch, var(--red) 8%, transparent); }
+      .n-bad > [data-lucide] { color: var(--red-t); }
+      .n-warn { border-color: color-mix(in oklch, var(--amber) 30%, transparent); background: color-mix(in oklch, var(--amber) 8%, transparent); }
+      .n-warn > [data-lucide] { color: var(--amber-t); }
+      .n-info { border-color: color-mix(in oklch, var(--sky) 30%, transparent); background: color-mix(in oklch, var(--sky) 8%, transparent); }
+      .n-info > [data-lucide] { color: var(--sky-t); }
+      .n-ok { border-color: color-mix(in oklch, var(--emerald) 30%, transparent); background: color-mix(in oklch, var(--emerald) 8%, transparent); }
+      .n-ok > [data-lucide] { color: var(--emerald-t); }
+
+      /* ---------- 浮层 ---------- */
+      .layer { position: fixed; inset: 0; z-index: 50; }
+      .scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.1); backdrop-filter: blur(2px); }
+      .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(960px, 100%); background: var(--popover); border-left: 1px solid var(--border); box-shadow: -12px 0 32px rgb(0 0 0 / 0.12); display: flex; flex-direction: column; outline: none; }
+      .sh-head { padding: 16px 20px 0; }
+      .sh-body { flex: 1; min-height: 0; overflow: auto; padding: 20px; }
+      .sh-body.flush { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+      .dlg-wrap { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
+      .dlg { pointer-events: auto; width: min(1080px, 100%); height: min(720px, 100%); background: var(--popover); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 0.22); display: flex; flex-direction: column; overflow: hidden; outline: none; }
+      .dlg.sm { width: min(440px, 100%); height: auto; border-radius: 12px; }
+      .dlg-head { display: flex; align-items: center; gap: 16px; padding: 0 20px; height: 56px; border-bottom: 1px solid var(--border); flex: none; }
+      .dlg-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+      .dlg-foot { display: flex; align-items: center; gap: 8px; padding: 0 20px; height: 60px; border-top: 1px solid var(--border); flex: none; }
+      .stepper { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-left: auto; margin-right: 8px; }
+      .stp { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); }
+      .stp i { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-style: normal; font-size: 12px; font-family: ui-monospace, Consolas, monospace; transition: background var(--d-base) var(--ease), color var(--d-base) var(--ease); }
+      .stp.cur { color: var(--foreground); font-weight: 500; }
+      .stp.cur i { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+      .stp.done i { background: color-mix(in oklch, var(--emerald) 10%, transparent); color: var(--emerald-t); border-color: color-mix(in oklch, var(--emerald) 40%, transparent); }
+      .stp-line { width: 28px; height: 1px; background: var(--border); }
+
+      /* ---------- 导入第 1 步 ---------- */
+      .pick { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr auto; gap: 16px; padding: 20px; overflow: auto; }
+      .dz { border: 1.5px dashed var(--border); border-radius: 12px; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; transition: border-color var(--d-base) var(--ease), background var(--d-base) var(--ease); min-height: 240px; }
+      .dz.over { border-color: var(--primary); background: color-mix(in oklch, var(--primary) 4%, transparent); }
+      .dz .big { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; background: var(--muted); font-size: 22px; color: var(--muted-foreground); }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+      .smp-grp { display: grid; gap: 6px; }
+      .smp-title { font-size: 12px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; }
+      .smp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; }
+      .smp { display: flex; gap: 8px; align-items: flex-start; text-align: left; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; transition: background var(--d-fast) var(--ease); }
+      .smp:hover { background: var(--accent); }
+      .smp [data-lucide] { margin-top: 3px; color: var(--muted-foreground); }
+      .smp b { font-weight: 500; font-size: 13px; display: block; }
+      .smp small { color: var(--muted-foreground); font-size: 12px; display: block; }
+      .prog { display: grid; place-content: center; justify-items: center; gap: 14px; min-height: 240px; }
+      .bar { width: 320px; max-width: 80vw; height: 6px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+      .bar > i { display: block; height: 100%; width: 100%; background: var(--primary); transform-origin: left center; transform: scaleX(0); }
+
+      /* ---------- 导入第 2 步 ---------- */
+      .banner { display: flex; align-items: center; gap: 12px; margin: 16px 20px 0; padding: 12px 14px; border-radius: 10px; border: 1px solid; flex: none; }
+      .banner .ic { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; flex: none; }
+      .b-ok { border-color: color-mix(in oklch, var(--emerald) 30%, transparent); background: color-mix(in oklch, var(--emerald) 8%, transparent); }
+      .b-ok .ic { background: color-mix(in oklch, var(--emerald) 18%, transparent); color: var(--emerald-t); }
+      .b-warn { border-color: color-mix(in oklch, var(--amber) 35%, transparent); background: color-mix(in oklch, var(--amber) 8%, transparent); }
+      .b-warn .ic { background: color-mix(in oklch, var(--amber) 20%, transparent); color: var(--amber-t); }
+      .b-bad { border-color: color-mix(in oklch, var(--red) 30%, transparent); background: color-mix(in oklch, var(--red) 8%, transparent); }
+      .b-bad .ic { background: color-mix(in oklch, var(--red) 18%, transparent); color: var(--red-t); }
+      .banner h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .banner p { font-size: 13px; color: var(--muted-foreground); margin-top: 1px; }
+      .bstats { margin-left: auto; display: flex; gap: 14px; font-size: 12px; color: var(--muted-foreground); white-space: nowrap; }
+      .bstats b { display: block; font-size: 15px; color: var(--foreground); font-weight: 600; }
+      .step2 { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+      /* ---------- 文件工作台（导入与详情共用） ---------- */
+      .wb { flex: 1; min-height: 0; display: grid; grid-template-columns: 296px minmax(0, 1fr); margin-top: 14px; border-top: 1px solid var(--border); }
+      .wb-side { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: color-mix(in oklch, var(--muted) 30%, transparent); }
+      .wb-side .seg { margin: 10px 10px 6px; }
+      .wb-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 6px 10px; }
+      .tr { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding-right: 8px; border-radius: 6px; font-size: 13px; text-align: left; transition: background var(--d-fast) var(--ease); }
+      .tr:hover { background: var(--accent); }
+      .tr[aria-selected="true"] { background: var(--accent); font-weight: 500; box-shadow: inset 2px 0 0 var(--primary); }
+      .tr [data-lucide] { font-size: 14px; color: var(--muted-foreground); }
+      .tr .ch { transition: transform var(--d-fast) var(--ease); }
+      .tr .ch.open { transform: rotate(90deg); }
+      .tr .sz { margin-left: auto; font-size: 12px; color: var(--muted-foreground); }
+      .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+      .dot.bad { background: var(--red); }
+      .dot.warn { background: var(--amber); }
+      .lang { font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: var(--sky-t); }
+      .iss { display: grid; gap: 6px; padding: 4px 10px 12px; }
+      .iss button { text-align: left; display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); font-size: 13px; transition: background var(--d-fast) var(--ease); }
+      .iss button:hover { background: var(--accent); }
+      .iss [data-lucide] { margin-top: 3px; font-size: 14px; }
+      .iss .e [data-lucide] { color: var(--red-t); }
+      .iss .w [data-lucide] { color: var(--amber-t); }
+      .iss .i [data-lucide] { color: var(--sky-t); }
+      .iss code { font-size: 11px; color: var(--muted-foreground); }
+      .iss .p { display: block; font-size: 12px; color: var(--muted-foreground); font-family: ui-monospace, Consolas, monospace; }
+      .wb-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+      .pv-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; border-bottom: 1px solid var(--border); flex: none; }
+      .pv-body { flex: 1; min-height: 0; overflow: auto; }
+      .pv-note { padding: 10px 14px 0; display: grid; gap: 6px; }
+      .code { margin: 0; padding: 10px 0; font-family: ui-monospace, "Geist Mono", Consolas, monospace; font-size: 12.5px; line-height: 20px; }
+      .code .ln { display: grid; grid-template-columns: 44px 1fr; }
+      .code .ln > i { text-align: right; padding-right: 12px; color: var(--muted-foreground); font-style: normal; user-select: none; opacity: 0.7; }
+      .code .ln > span { white-space: pre-wrap; word-break: break-word; padding-right: 14px; }
+      .code .ln.hl { background: color-mix(in oklch, var(--amber) 14%, transparent); box-shadow: inset 2px 0 0 var(--amber); }
+      .code .ln.flash { animation: flash 240ms var(--ease) both; }
+      @keyframes flash { from { background: color-mix(in oklch, var(--violet) 22%, transparent); } }
+      .md { padding: 16px 20px 24px; font-size: 14px; line-height: 1.7; max-width: 760px; }
+      .md h1 { font-size: 20px; margin: 4px 0 10px; }
+      .md h2 { font-size: 16px; margin: 18px 0 6px; }
+      .md h3 { font-size: 14px; margin: 14px 0 4px; }
+      .md p { margin: 6px 0; }
+      .md ul, .md ol { margin: 6px 0; padding-left: 20px; }
+      .md code { font-size: 12.5px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+      .md pre { background: var(--muted); border-radius: 8px; padding: 10px 12px; overflow: auto; font-size: 12.5px; }
+      .md pre code { background: none; padding: 0; }
+      .fmcard { margin: 14px 14px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+      .fmcard .fh { padding: 6px 12px; font-size: 12px; color: var(--muted-foreground); background: color-mix(in oklch, var(--muted) 50%, transparent); border-bottom: 1px solid var(--border); }
+      .fmrow { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; padding: 7px 12px; font-size: 13px; border-bottom: 1px solid var(--border); align-items: start; }
+      .fmrow:last-child { border-bottom: 0; }
+      .fmrow .k { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted-foreground); }
+      .fmrow .v { word-break: break-word; }
+      .bin { display: grid; place-content: center; justify-items: center; gap: 8px; height: 100%; min-height: 220px; color: var(--muted-foreground); text-align: center; }
+      .bin .tile { width: 44px; height: 44px; font-size: 20px; }
+
+      /* ---------- 详情页内容 ---------- */
+      .sec-t { font-size: 13px; font-weight: 500; margin: 0 0 8px; }
+      .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .box { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+      .kv { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px 12px; font-size: 14px; margin: 0; }
+      .kv dt { color: var(--muted-foreground); }
+      .kv dd { margin: 0; min-width: 0; word-break: break-word; }
+      .big-v { font-size: 28px; font-weight: 600; font-family: ui-monospace, Consolas, monospace; letter-spacing: -0.02em; }
+      .tl { position: relative; display: grid; gap: 10px; padding-left: 22px; }
+      .tl::before { content: ""; position: absolute; left: 6px; top: 10px; bottom: 10px; width: 1px; background: var(--border); }
+      .tl-it { position: relative; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+      .tl-it::before { content: ""; position: absolute; left: -21px; top: 18px; width: 11px; height: 11px; border-radius: 50%; background: var(--background); border: 2px solid var(--border); }
+      .tl-it.act { border-color: color-mix(in oklch, var(--emerald) 40%, transparent); background: color-mix(in oklch, var(--emerald) 4%, transparent); }
+      .tl-it.act::before { border-color: var(--emerald); background: var(--emerald); }
+      .tl-it.pend::before { border-color: var(--amber); }
+
+      /* ---------- toast ---------- */
+      .toasts { position: fixed; right: 20px; bottom: 20px; z-index: 90; display: grid; gap: 8px; pointer-events: none; }
+      .toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; min-width: 260px; max-width: 420px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--popover); box-shadow: 0 8px 24px rgb(0 0 0 / 0.14); font-size: 14px; }
+      .toast [data-lucide] { font-size: 16px; }
+
+      /* ---------- 全页拖放提示 ---------- */
+      .dropall { position: fixed; inset: 12px; z-index: 70; border: 2px dashed color-mix(in oklch, var(--primary) 45%, transparent); border-radius: 16px; background: color-mix(in oklch, var(--background) 82%, transparent); backdrop-filter: blur(4px); display: grid; place-content: center; justify-items: center; gap: 8px; pointer-events: none; text-align: center; }
+      .dropall .big { width: 56px; height: 56px; border-radius: 14px; background: var(--primary); color: var(--primary-foreground); display: grid; place-items: center; font-size: 26px; }
+
+      /* ---------- 窄屏 ---------- */
+      @media (max-width: 900px) {
+        .sk-head, .sk-row { grid-template-columns: minmax(180px, 1.2fr) minmax(0, 1.4fr) 150px 110px 52px; }
+      }
+      @media (max-width: 767px) {
+        .shell { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .page { padding: 16px 16px 48px; }
+        .ph { flex-direction: column; gap: 10px; }
+        .sk-head { display: none; }
+        .sk-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name sw" "desc desc" "tags ver"; padding: 12px 14px; gap: 8px 10px; }
+        .c-name { grid-area: name; } .c-desc { grid-area: desc; } .c-tags { grid-area: tags; } .c-ver { grid-area: ver; justify-content: flex-end; } .c-sw { grid-area: sw; }
+        .sheet { width: 100%; }
+        .dlg-wrap { padding: 0; }
+        .dlg { width: 100%; height: 100%; border-radius: 0; border: 0; }
+        .dlg.sm { height: auto; border-radius: 12px; margin: 16px; }
+        .stepper .stp span { display: none; }
+        .wb { grid-template-columns: 1fr; grid-template-rows: 220px minmax(0, 1fr); }
+        .wb-side { border-right: 0; border-bottom: 1px solid var(--border); }
+        .grid2 { grid-template-columns: 1fr; }
+        .bstats { display: none; }
+        .banner { margin: 12px 14px 0; }
+        .tabs { grid-auto-columns: 1fr; }
+        .tab-ind { width: 33.333%; }
+        .toasts { left: 12px; right: 12px; }
+        .toast { max-width: none; }
+      }
+      /* 减少动态效果：只保留淡入淡出，位移、缩放、弹簧全部去掉 */
+      .reduce .sw::after, .reduce .tr .ch, .reduce .seg-ind, .reduce .tab-ind { transition: none !important; }
+      @media (prefers-reduced-motion: reduce) { .sw::after, .tr .ch { transition: none !important; } .sk-row.fresh, .code .ln.flash { animation: none; } }
+    </style>
+  </head>
+
+  <body>
+    <div class="proto-bar" id="protoBar">
+      <b>原型控制</b><span class="muted">（不属于产品界面）</span>
+      <button class="pbtn" data-pc="reset">重置数据</button>
+      <button class="pbtn" data-pc="fail">模拟列表加载失败</button>
+      <button class="pbtn" data-pc="theme">明暗主题</button>
+      <button class="pbtn" data-pc="reduce" aria-pressed="false">减少动态效果</button>
+      <span class="muted">试试：把 zip、文件夹或 SKILL.md 直接拖到页面上；按 <kbd>/</kbd> 搜索；<kbd>Esc</kbd> 关闭浮层</span>
+    </div>
+
+    <div class="shell" id="app">
+      <aside class="sidebar">
+        <div class="brand"><span class="lg"><i data-lucide="clapperboard"></i></span>video-canvas</div>
+        <div class="nav-grp">AI 配置</div>
+        <div class="nav-it"><i data-lucide="boxes"></i>模型</div>
+        <div class="nav-it"><i data-lucide="puzzle"></i>插件</div>
+        <div class="nav-grp">Agent</div>
+        <div class="nav-it on"><i data-lucide="sparkles"></i>技能</div>
+        <div class="nav-grp">系统设置</div>
+        <div class="nav-it"><i data-lucide="hard-drive"></i>存储配置</div>
+      </aside>
+      <main class="main">
+        <div class="page">
+          <div class="crumb">Agent / <b>技能</b></div>
+          <div class="ph">
+            <div class="grow">
+              <h1>技能</h1>
+              <p>管理画布 Agent 能用的技能。导入后默认停用；启用后，<b>新开始的</b>运行才会用到它。</p>
+            </div>
+            <button class="btn btn-primary" id="btnImport"><i data-lucide="upload"></i>导入技能</button>
+          </div>
+          <div class="toolbar">
+            <div class="inp-wrap"><i data-lucide="search"></i><input class="inp" id="q" placeholder="搜索名称或说明（/）" aria-label="搜索技能" /></div>
+            <div class="seg" id="segStatus"></div>
+            <span class="muted xs tnum" style="margin-left: auto" id="countTxt"></span>
+          </div>
+          <div id="listBox"></div>
+        </div>
+      </main>
+    </div>
+
+    <div id="layers"></div>
+    <div class="toasts" id="toasts"></div>
+    <div class="dropall" id="dropAll" hidden>
+      <span class="big"><i data-lucide="upload-cloud"></i></span>
+      <b style="font-size: 17px">松开以导入技能包</b>
+      <span class="muted">支持 .zip 压缩包、文件夹或单个 SKILL.md</span>
+    </div>
+    <input type="file" id="fZip" accept=".zip,application/zip" hidden />
+    <input type="file" id="fDir" webkitdirectory hidden />
+    <input type="file" id="fMd" accept=".md,text/markdown" hidden />
+
+    <script>
+      /* ================================================================
+       * CORE：纯函数，不碰 DOM（测试时单独抽出来跑）
+       * ================================================================ */
+      /*CORE-START*/
+      const BUILTIN = ["script-breakdown", "character-turnaround", "scene-setting", "keyframe-prompt", "video-motion-prompt"];
+      const LIMITS = { zip: 50 * 1048576, files: 500, file: 25 * 1048576, total: 100 * 1048576, preview: 1048576, mdLines: 500 };
+      const KNOWN_FIELDS = ["name", "description", "license", "compatibility", "metadata", "tags"];
+      const SCRIPT_EXT = { py: "python", js: "node", mjs: "node", cjs: "node", ts: "ts", sh: "bash", bash: "bash", rb: "ruby", pl: "perl" };
+      const enc = new TextEncoder();
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const fmtSize = (n) => (n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB");
+
+      /** 按路径和扩展名给文件分类：说明 / 脚本 / 文档 / 资源 / 其他 */
+      function classify(path) {
+        const low = path.toLowerCase();
+        const ext = low.includes(".") ? low.split(".").pop() : "";
+        if (low === "skill.md") return { kind: "skill" };
+        if (low.startsWith("scripts/") || SCRIPT_EXT[ext]) return { kind: "script", lang: SCRIPT_EXT[ext] || "?" };
+        if (low.startsWith("assets/")) return { kind: "asset" };
+        if (ext === "md" || ext === "txt") return { kind: "doc" };
+        if (["png", "jpg", "jpeg", "gif", "webp", "svg", "csv", "json", "yaml", "yml"].includes(ext)) return { kind: "asset" };
+        return { kind: "other" };
+      }
+      /** 文本文件：给 content；二进制：只给 size */
+      const T = (path, content) => ({ path, content, size: enc.encode(content).length, text: true });
+      const B = (path, size) => ({ path, size, text: false });
+      const fm = (name, desc, extra = "") => `---\nname: ${name}\ndescription: ${desc}\n${extra}---\n`;
+
+      /** 内容指纹（原型里代替 sha256，只用来判断“是否完全相同”） */
+      function fingerprint(files) {
+        let h = 0x811c9dc5;
+        const s = [...files].sort((a, b) => a.path.localeCompare(b.path)).map((f) => f.path + "\0" + (f.content ?? "#" + f.size)).join("\u0001");
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+        return h.toString(16).padStart(8, "0");
+      }
+
+      const unq = (s) => String(s).trim().replace(/^(['"])(.*)\1$/, "$2");
+      /** 解析 SKILL.md 头部。支持 key: value、折行块（> |）、列表、一层嵌套；未加引号的冒号也放行（对应后端的兜底） */
+      function parseFrontmatter(raw) {
+        const m = raw.replace(/^﻿/, "").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+        if (!m) return { error: "缺少以 --- 包起来的头部" };
+        const lines = m[1].split(/\r?\n/);
+        const indent = (l) => l.match(/^ */)[0].length;
+        const out = {};
+        let i = 0;
+        while (i < lines.length) {
+          const line = lines[i];
+          if (!line.trim() || line.trim().startsWith("#")) { i++; continue; }
+          const km = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+          if (!km || indent(line) > 0) return { error: `头部第 ${i + 1} 行无法解析：${line.trim().slice(0, 40)}` };
+          const key = km[1], val = km[2];
+          i++;
+          if (/^[>|][+-]?$/.test(val)) {
+            const buf = [];
+            while (i < lines.length && (lines[i].trim() === "" || indent(lines[i]) > 0)) buf.push(lines[i++].trim());
+            out[key] = val.startsWith(">") ? buf.join(" ").replace(/\s+/g, " ").trim() : buf.join("\n").trim();
+          } else if (val === "") {
+            const buf = [];
+            while (i < lines.length && (lines[i].trim() === "" || indent(lines[i]) > 0)) buf.push(lines[i++]);
+            const items = buf.filter((l) => l.trim());
+            if (!items.length) out[key] = "";
+            else if (items.every((l) => /^\s*-\s+/.test(l))) out[key] = items.map((l) => unq(l.replace(/^\s*-\s+/, "")));
+            else {
+              const o = {};
+              for (const l of items) { const mm = l.trim().match(/^([A-Za-z0-9_-]+):\s*(.*)$/); if (mm) o[mm[1]] = unq(mm[2]); }
+              out[key] = o;
+            }
+          } else if (val.startsWith("[") && val.endsWith("]")) out[key] = val.slice(1, -1).split(",").map((s) => unq(s)).filter(Boolean);
+          else out[key] = unq(val);
+        }
+        const headLines = m[1].split(/\r?\n/).length + 2;
+        return { fm: out, body: m[2], bodyLine: headLines + 1 };
+      }
+
+      /**
+       * 预检：输入已读出的文件列表，输出规范化后的文件、问题和“将要发生什么”。
+       * 对应后端 SkillPackage.Precheck（设计文档 §6.7）；这里是原型，symlink、压缩比只能由示例包给出。
+       * @param entries [{path,size,text,content?,link?,head?}]
+       * @param ctx {pkgSize, existing:[skill], form}
+       */
+      function precheck(entries, ctx) {
+        const issues = [];
+        const add = (level, code, path, msg, line) => issues.push({ level, code, path, msg, line });
+        let ignored = 0;
+        let list = [];
+        for (const e of entries) {
+          if (/(^|\/)(__MACOSX|\.git)(\/|$)|(^|\/)(\.DS_Store|Thumbs\.db)$/.test(e.path)) { ignored++; continue; }
+          list.push({ ...e });
+        }
+        if (ignored) add("info", "IGNORED_FILES", "__MACOSX/、.DS_Store 等", `已自动忽略 ${ignored} 个系统文件`);
+        for (const f of list) {
+          const p = f.path;
+          if (p.split("/").includes("..") || p.startsWith("/") || /^[A-Za-z]:/.test(p) || p.includes("\\") || p.includes("\0")) {
+            add("error", "PATH_ESCAPE", p, "路径含 ..、绝对路径或反斜杠，会写到技能目录之外，已拒绝"); f.bad = true;
+          }
+          if (f.link) { add("error", "SYMLINK", p, `符号链接不被允许${f.link === true ? "" : "（指向 " + f.link + "）"}`); f.bad = true; }
+        }
+        // 去掉唯一的外层目录
+        let wrapper = "";
+        const ok = list.filter((f) => !f.bad);
+        const first = ok.length ? ok[0].path.split("/")[0] : "";
+        if (ok.length && ok.every((f) => f.path.includes("/") && f.path.split("/")[0] === first)) {
+          wrapper = first;
+          list = list.map((f) => (f.bad ? f : { ...f, path: f.path.slice(first.length + 1) }));
+        }
+        const seen = new Map();
+        for (const f of list) {
+          const k = f.path.toLowerCase();
+          if (seen.has(k)) add("error", "DUP_PATH", f.path, `与 ${seen.get(k)} 路径重复（大小写不同也算）`);
+          else seen.set(k, f.path);
+        }
+        if (ctx.pkgSize > LIMITS.zip) add("error", "PACKAGE_TOO_LARGE", "（整包）", `压缩包 ${fmtSize(ctx.pkgSize)}，超过 ${fmtSize(LIMITS.zip)} 上限`);
+        if (list.length > LIMITS.files) add("error", "TOO_MANY_FILES", "（整包）", `共 ${list.length} 个文件，超过 ${LIMITS.files} 个上限`);
+        const total = list.reduce((a, f) => a + f.size, 0);
+        if (total > LIMITS.total) add("error", "PACKAGE_TOO_LARGE", "（整包）", `解压后 ${fmtSize(total)}，超过 ${fmtSize(LIMITS.total)}`);
+        for (const f of list) if (f.size > LIMITS.file) add("error", "FILE_TOO_LARGE", f.path, `单个文件 ${fmtSize(f.size)}，超过 ${fmtSize(LIMITS.file)}`);
+        for (const f of list) {
+          if (f.head && /^(7f454c46|4d5a|cffaedfe|feedfacf|cafebabe)/i.test(f.head)) add("warn", "BINARY_EXECUTABLE", f.path, "看起来是可执行二进制文件，不会被执行");
+        }
+        for (const f of list) Object.assign(f, classify(f.path));
+
+        const roots = list.filter((f) => f.path.toLowerCase() === "skill.md");
+        const deeper = list.filter((f) => /\/skill\.md$/i.test(f.path));
+        const res = { files: list, issues, wrapper, total, name: "", title: "", desc: "", fm: null, unsupported: [], fp: fingerprint(list.filter((f) => !f.bad)), plan: null };
+        let skillFile = null;
+        if (roots.length + deeper.length > 1) add("error", "MULTI_SKILL_MD", deeper.map((f) => f.path).concat(roots.map((f) => f.path)).join("、"), "一个包里有多个技能，一次只能导入一个，请拆开");
+        else if (!roots.length) add("error", "NO_SKILL_MD", "（根目录）", deeper.length ? `SKILL.md 在子目录 ${deeper[0].path} 里，请把它放到压缩包根目录或唯一外层文件夹的顶层` : "没有找到 SKILL.md。请把它放在压缩包根目录，或唯一外层文件夹的顶层");
+        else skillFile = roots[0];
+        if (skillFile) {
+          const p = parseFrontmatter(skillFile.content ?? "");
+          if (p.error) add("error", "BAD_YAML", "SKILL.md", p.error + "（已尝试兜底）");
+          else {
+            res.fm = p.fm; res.body = p.body;
+            const name = String(p.fm.name ?? ""), desc = String(p.fm.description ?? "");
+            res.name = name; res.desc = desc; res.title = String(p.fm.metadata?.title ?? "") || name;
+            if (!name || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) || name.length > 64) add("error", "BAD_NAME", "SKILL.md", name ? `name「${name}」不合规：只能用小写字母、数字、连字符，且 ≤ 64 个字符` : "头部缺少 name");
+            if (!desc.trim()) add("error", "BAD_DESCRIPTION", "SKILL.md", "头部缺少 description，或为空。它是 Agent 判断“要不要用这个技能”的依据");
+            else if (desc.length > 1024) add("error", "BAD_DESCRIPTION", "SKILL.md", `description ${desc.length} 个字符，超过 1024`);
+            if (BUILTIN.includes(name)) add("error", "BUILTIN_NAME", "SKILL.md", `${name} 是内置技能，不能覆盖。请把头部 name 改成别的名字再导入`);
+            const ex = ctx.existing.find((s) => s.name === name && s.source === "upload");
+            if (ex) {
+              const same = ex.versions.find((v) => v.fp === res.fp);
+              if (same) add("error", "SAME_AS_VERSION", "（整包）", `内容与 ${name} v${same.v}（${same.fp}）完全相同，无需重复导入`);
+            }
+            res.unsupported = Object.keys(p.fm).filter((k) => !KNOWN_FIELDS.includes(k));
+            if (res.unsupported.length) add("warn", "UNSUPPORTED_FIELD", "SKILL.md", `${res.unsupported.join("、")} 本系统未支持，已原样保存，不会按它们的含义执行`);
+            if (wrapper && name && wrapper !== name) add("warn", "NAME_DIR_MISMATCH", wrapper + "/", `外层目录名与 name 不一致，以 name（${name}）为准`);
+            const lines = (skillFile.content ?? "").split("\n").length;
+            if (lines > LIMITS.mdLines) add("warn", "LONG_SKILL_MD", "SKILL.md", `SKILL.md 有 ${lines} 行，建议控制在 ${LIMITS.mdLines} 行内，把细节拆到 references/`);
+            // 正文里引用的相对路径不在包里：导入后 Agent 读不到
+            const have = new Set(list.map((f) => f.path.toLowerCase()));
+            const refs = new Map();
+            const re = /(?:^|[\s(`「『])((?:scripts|references|assets)\/[\w./-]+|[\w-]+\.md)(?=[\s)`,，。；;:：」』]|$)/g;
+            (skillFile.content ?? "").split("\n").forEach((ln, i) => {
+              if (i < p.bodyLine - 1) return;
+              for (const m of ln.matchAll(re)) { const r = m[1].replace(/[.,]$/, ""); if (r.toLowerCase() !== "skill.md" && !have.has(r.toLowerCase()) && !refs.has(r)) refs.set(r, i + 1); }
+            });
+            for (const [r, line] of refs) add("warn", "MISSING_REF", "SKILL.md", `正文引用了 ${r}，但包里没有这个文件，导入后 Agent 读不到它`, line);
+          }
+        }
+        const scripts = list.filter((f) => f.kind === "script");
+        if (scripts.length) add("warn", "HAS_SCRIPTS", "scripts/", `包含 ${scripts.length} 个脚本（${[...new Set(scripts.map((f) => f.lang))].join("、")}），第 1 期只能被读取，不会被执行`);
+        res.plan = planFor(res, ctx);
+        res.errors = issues.filter((i) => i.level === "error").length;
+        res.warns = issues.filter((i) => i.level === "warn").length;
+        issues.sort((a, b) => ({ error: 0, warn: 1, info: 2 })[a.level] - ({ error: 0, warn: 1, info: 2 })[b.level]);
+        return res;
+      }
+
+      /** “将要发生什么”：新技能 / 新版本 / 被拦住 */
+      function planFor(res, ctx) {
+        if (res.issues.some((i) => i.level === "error")) return { kind: "blocked", head: "有错误，暂时不能导入", text: "处理完下面的错误后重新选择文件即可。" };
+        const ex = ctx.existing.find((s) => s.name === res.name && s.source === "upload");
+        if (ex) { const n = (ex.latest ?? Math.max(...ex.versions.map((v) => v.v))) + 1; return { kind: "version", v: n, head: `${res.name} · 新版本 v${n}`, text: `生效版本仍是 v${ex.active}，不会自动替换。导入后要在详情里点“设为生效”。` }; }
+        return { kind: "new", v: 1, head: `${res.name} · 新技能 v1`, text: "导入后默认停用。看过文件后，在列表里打开开关才会生效。" };
+      }
+
+      /** 极简 Markdown → HTML（原型用；正式实现用 react-markdown） */
+      function mdHtml(src) {
+        const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1");
+        const out = [];
+        let list = null, code = null;
+        const flush = () => { if (list) { out.push(`</${list}>`); list = null; } };
+        for (const line of src.split("\n")) {
+          if (/^```/.test(line)) { if (code === null) { flush(); code = []; } else { out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); code = null; } continue; }
+          if (code !== null) { code.push(line); continue; }
+          let m;
+          if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flush(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
+          else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== "ul") { flush(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+          else if ((m = line.match(/^\s*\d+[.、]\s+(.*)$/))) { if (list !== "ol") { flush(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+          else if (!line.trim()) flush();
+          else { flush(); out.push(`<p>${inline(line)}</p>`); }
+        }
+        flush();
+        return out.join("");
+      }
+      /*CORE-END*/
+
+      /* ================================================================
+       * 示例数据
+       * ================================================================ */
+      const DP_FM = "把剧本对白改得更口语、更有角色感。用户提到润色、台词、对白时使用。";
+      const DP_V1 = [
+        T("SKILL.md", fm("dialogue-polish", DP_FM) + "# 对白润色\n\n按 references/tone-guide.md 的语气表改写。"),
+        T("references/tone-guide.md", "# 语气表\n\n- 少年：短句，语气词多\n- 长辈：慢，带停顿"),
+      ];
+      const DP_V2 = [
+        T("SKILL.md", fm("dialogue-polish", DP_FM) + "# 对白润色\n\n按 references/tone-guide.md 的语气表改写；例子见 references/examples.md。"),
+        T("references/tone-guide.md", "# 语气表\n\n- 少年：短句，语气词多\n- 长辈：慢，带停顿"),
+        T("references/examples.md", "# 改写示例\n\n原：我不同意。\n改：（皱眉）这事儿……我不干。"),
+      ];
+      const SG_FM = "把一个镜头拆成九宫格分镜图的坐标和描述。用户要九宫格、分镜网格时使用。";
+      const SG_V1 = [
+        T("SKILL.md", fm("storyboard-grid", SG_FM, "allowed-tools: Bash(python:*) Read\n") + "# 九宫格分镜\n\n运行 scripts/split_grid.py 得到九个格子的坐标；输出表格见 references/FORMS.md。"),
+        T("scripts/split_grid.py", "import sys\n\nrows = int(sys.argv[1]) if len(sys.argv) > 1 else 3\nfor r in range(rows):\n    for c in range(rows):\n        print(f'cell {r},{c}')\n"),
+        T("references/FORMS.md", "# 输出表格\n\n| 格 | 坐标 | 描述 |\n| --- | --- | --- |"),
+        B("assets/grid-template.png", 48200),
+      ];
+      const builtin = (name, title, desc, body) => ({ name, title, desc, source: "builtin", enabled: true, active: 1, by: "随版本发布", at: "内置", versions: [{ v: 1, by: "—", at: "—", fp: "builtin", files: precheck([T("SKILL.md", fm(name, desc) + body)], { pkgSize: 0, existing: [] }).files }] });
+      const mkSkill = (name, title, enabled, active, by, at, versions) => ({ name, title, desc: "", source: "upload", enabled, active, by, at, versions, latest: Math.max(...versions.map((v) => v.v)) });
+      const mkVer = (v, by, at, files) => {
+        const r = precheck(files, { pkgSize: 0, existing: [] });
+        return { v, by, at, fp: r.fp, files: r.files, issues: r.issues.filter((i) => i.level !== "error"), fm: r.fm, unsupported: r.unsupported, desc: r.desc };
+      };
+      function seed() {
+        const dp = mkSkill("dialogue-polish", "对白润色", true, 2, "运营 小林", "2026-10-05", [mkVer(1, "运营 小林", "2026-09-28", DP_V1), mkVer(2, "运营 小林", "2026-10-05", DP_V2)]);
+        const sg = mkSkill("storyboard-grid", "九宫格分镜", false, 1, "运营 阿杰", "2026-10-03", [mkVer(1, "运营 阿杰", "2026-10-03", SG_V1)]);
+        return [
+          builtin("script-breakdown", "剧本拆镜", "把剧本按场次和镜头拆开，给出景别、运镜、画面、台词、时长", "# 剧本拆镜\n\n1. 先通读剧本，按场次分段。\n2. 每个镜头写一行：镜号｜景别｜运镜｜画面｜台词｜时长。"),
+          builtin("character-turnaround", "角色三视图", "给每个角色出正面、侧面、背面参考图，保持前后一致", "# 角色三视图\n\n先问清画幅与风格，再给每个角色建三张图。"),
+          builtin("scene-setting", "场景设定图", "给每个主要场景出一张空镜参考图", "# 场景设定图\n\n说明空间、光线和氛围。"),
+          builtin("keyframe-prompt", "关键帧提示词", "把一个镜头写成能稳定出图的提示词", "# 关键帧提示词\n\n含景别、构图、光线、风格。"),
+          builtin("video-motion-prompt", "视频运镜提示词", "描述镜头怎么动、人物做什么", "# 视频运镜提示词\n\n一个镜头只写一个主要动作。"),
+          dp, sg,
+        ].map((s) => ({ ...s, desc: s.desc || s.versions[s.versions.length - 1].desc || "" }));
+      }
+      /* 示例包：同一份文件列表走同一条预检流水线，问题是算出来的，不是写死的 */
+      const SAMPLES = [
+        { id: "s1", group: "ok", form: "zip", label: "shot-list-export.zip", hint: "标准包：脚本 + 参考文档 + 模板图", pkg: "shot-list-export", files: [
+          T("shot-list-export/SKILL.md", fm("shot-list-export", "把分镜表导出成 CSV。用户要导出镜头清单时使用。", "allowed-tools: Bash(python:*) Read\nmetadata:\n  title: 镜头清单导出\n") + "# 镜头清单导出\n\n运行 scripts/export_csv.py；列定义见 references/FORMS.md。"),
+          T("shot-list-export/scripts/export_csv.py", "import csv, sys\n# 示意：把镜头列表写成 CSV\nprint('ok')\n"),
+          T("shot-list-export/scripts/lint.sh", "#!/bin/bash\necho lint ok\n"),
+          T("shot-list-export/references/FORMS.md", "# 列定义\n\n镜号, 景别, 运镜, 时长"),
+          B("shot-list-export/assets/template.png", 31200), B("__MACOSX/shot-list-export/._SKILL.md", 120), B("shot-list-export/.DS_Store", 6148),
+        ] },
+        { id: "s2", group: "ok", form: "zip", label: "dialogue-polish-v3.zip", hint: "同名新版本：已有 dialogue-polish v2", files: [
+          T("SKILL.md", fm("dialogue-polish", DP_FM) + "# 对白润色\n\n新增：按人物年龄段分别改写，见 references/tone-guide.md。"),
+          T("references/tone-guide.md", "# 语气表（新）\n\n- 少年 / 青年 / 长辈 / 老者"),
+          T("references/examples.md", "# 改写示例\n\n原：我不同意。\n改：（皱眉）这事儿……我不干。"),
+        ] },
+        { id: "s3", group: "ok", form: "folder", label: "scene_light_notes/（文件夹）", hint: "正文引用了不存在的文件；目录名与 name 不一致", files: [
+          T("scene_light_notes/SKILL.md", fm("scene-light-notes", "给场景设定补充布光说明。用户问光线、布光时使用。") + "# 场景布光笔记\n\n布光见 references/lights.md；机位见 references/camera.md。"),
+          T("scene_light_notes/references/lights.md", "# 布光\n\n三点布光：主光、辅光、轮廓光。"),
+        ] },
+        { id: "s4", group: "ok", form: "file", label: "SKILL.md（单个文件）", hint: "多行 description + metadata，没有脚本和资源", files: [
+          T("SKILL.md", "---\nname: title-card-copy\ndescription: >\n  为短片写片头字幕文案。\n  用户要片头、字幕卡时使用。\nmetadata:\n  title: 片头字幕文案\n---\n# 片头字幕文案\n\n一句主标题，一句副标题，不超过 12 个字。"),
+        ] },
+        { id: "e1", group: "err", form: "zip", label: "no-skill-md.zip", hint: "缺少 SKILL.md", files: [T("README.md", "# readme"), T("scripts/a.py", "print(1)")] },
+        { id: "e2", group: "err", form: "zip", label: "evil-paths.zip", hint: "路径越界 + 符号链接", files: [
+          T("SKILL.md", fm("evil-skill", "x") + "x"), T("../../etc/cron.d/x", "* * * * * x"), { ...B("scripts/latest", 0), link: "/usr/bin/python" },
+        ] },
+        { id: "e3", group: "err", form: "zip", label: "script-breakdown.zip", hint: "与内置技能同名", files: [T("SKILL.md", fm("script-breakdown", "我的版本") + "# 我的拆镜")] },
+        { id: "e4", group: "err", form: "zip", label: "dialogue-polish-same.zip", hint: "与 dialogue-polish v2 内容完全相同", files: DP_V2 },
+        { id: "e5", group: "err", form: "zip", label: "huge-assets.zip（61 MB）", hint: "超过 50 MB，上传前就被拦", pkgSize: 61 * 1048576, files: [] },
+        { id: "x1", group: "fail", form: "zip", label: "color-grade-notes.zip", hint: "预检通过，但点确认时暂存已过期（61001）", expire: true, files: [T("SKILL.md", fm("color-grade-notes", "整理调色参数。用户问调色时使用。") + "# 调色笔记")] },
+      ];
+
+      /* ================================================================
+       * 动效：参数抄自 lib/motion.ts
+       * ================================================================ */
+      const D = { fast: 0.12, base: 0.18, exit: 0.126, slow: 0.24, slowExit: 0.168 };
+      const EASE_CSS = "cubic-bezier(0.2, 0, 0, 1)";
+      const SPRING = { type: "spring", stiffness: 500, damping: 38, mass: 0.8 };
+      const TAP = 0.96;
+      const reduce = { forced: false, get on() { return this.forced || matchMedia("(prefers-reduced-motion: reduce)").matches; } };
+      const tf = (p) => `translate(${p.x || 0}px, ${p.y || 0}px) scale(${p.s ?? 1})`;
+      /** 进入：opacity + transform，结束后清掉填充，避免残留 transform 影响层叠 */
+      function enter(el, from, dur) {
+        const a = el.animate([{ opacity: from.o ?? 0, transform: reduce.on ? "none" : tf(from) }, { opacity: 1, transform: "none" }], { duration: dur * 1000, easing: EASE_CSS });
+        return a.finished.catch(() => {});
+      }
+      /** 退出：时长是进入的 70%，返回 Promise，播完再移除节点 */
+      function leave(el, to, dur) {
+        const a = el.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: reduce.on ? "none" : tf(to) }], { duration: dur * 1000, easing: EASE_CSS, fill: "forwards" });
+        return a.finished.catch(() => {});
+      }
+      /** 滑块：translateX 用弹簧，没有 Motion 时退回 240ms 缓动 */
+      function slide(ind, x, instant) {
+        if (instant || reduce.on || !window.Motion) { ind.style.transform = `translateX(${x}px)`; return; }
+        Motion.animate(ind, { x }, SPRING);
+      }
+      /** 按钮按下回弹（whileTap） */
+      document.addEventListener("pointerdown", (e) => {
+        const b = e.target.closest(".btn");
+        if (!b || b.disabled || reduce.on) return;
+        const a = b.animate([{ transform: "scale(1)" }, { transform: `scale(${TAP})` }], { duration: D.fast * 1000, easing: EASE_CSS, fill: "forwards" });
+        const up = () => { a.cancel(); b.animate([{ transform: `scale(${TAP})` }, { transform: "scale(1)" }], { duration: D.fast * 1000, easing: EASE_CSS }); window.removeEventListener("pointerup", up); };
+        window.addEventListener("pointerup", up);
+      });
+
+      /* ================================================================
+       * 状态
+       * ================================================================ */
+      const $ = (s, r = document) => r.querySelector(s);
+      const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const S = { skills: seed(), q: "", status: "all", list: "idle", failNext: false, sheet: null, imp: null, freshName: null };
+      const findSkill = (n) => S.skills.find((s) => s.name === n);
+      const ver = (s, v) => s.versions.find((x) => x.v === v);
+      const maxV = (s) => Math.max(...s.versions.map((x) => x.v));
+      const curVer = (s) => ver(s, s.active);
+      const hasScripts = (v) => v.files.some((f) => f.kind === "script");
+      const kindIcon = { skill: "file-text", script: "terminal", doc: "file-text", asset: "image", other: "file" };
+
+      /* ---------- toast ---------- */
+      function toast(msg, kind = "ok", undo) {
+        const ic = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind];
+        const col = { ok: "--emerald-t", bad: "--red-t", warn: "--amber-t", info: "--sky-t" }[kind];
+        const el = document.createElement("div");
+        el.className = "toast"; el.setAttribute("role", "status");
+        el.innerHTML = `<i data-lucide="${ic}" style="color: var(${col})"></i><span class="grow">${esc(msg)}</span>${undo ? '<button class="btn btn-ghost btn-sm" data-undo>撤销</button>' : ""}`;
+        $("#toasts").appendChild(el); icons();
+        enter(el, { y: 12 }, D.base);
+        let gone = false;
+        const close = async () => { if (gone) return; gone = true; await leave(el, { y: 8 }, D.exit); el.remove(); };
+        if (undo) $("[data-undo]", el).onclick = () => { undo(); close(); };
+        setTimeout(close, undo ? 5000 : 2800);
+      }
+
+      /* ---------- 分段控件 ---------- */
+      function segHtml(items, cur, attr) { return `<i class="seg-ind"></i>${items.map(([k, t]) => `<button ${attr}="${k}" aria-pressed="${k === cur}">${t}</button>`).join("")}`; }
+      function segSync(seg, instant) {
+        const btns = $$("button", seg); const i = Math.max(0, btns.findIndex((b) => b.getAttribute("aria-pressed") === "true"));
+        const ind = $(".seg-ind", seg); if (!btns.length) return;
+        const w = btns[0].offsetWidth; ind.style.width = w + "px";
+        slide(ind, i * w, instant);
+      }
+
+      /* ================================================================
+       * 列表
+       * ================================================================ */
+      function loadList() {
+        S.list = "idle"; renderList();
+        const fail = S.failNext; S.failNext = false;
+        /* 缓存命中等很快返回的场景不该闪一块灰：骨架屏等 SKELETON_DELAY(150ms) 才出现 */
+        const t1 = setTimeout(() => { S.list = "loading"; renderList(); }, 150);
+        setTimeout(() => { clearTimeout(t1); S.list = fail ? "error" : "ready"; renderList(); }, 700);
+      }
+      function filtered() {
+        const q = S.q.trim().toLowerCase();
+        return S.skills.filter((s) => {
+          if (q && !(s.name + s.title + s.desc).toLowerCase().includes(q)) return false;
+          if (S.status === "on") return s.enabled;
+          if (S.status === "off") return !s.enabled;
+          if (S.status === "builtin") return s.source === "builtin";
+          return true;
+        });
+      }
+      function renderList() {
+        const seg = $("#segStatus");
+        if (!seg.dataset.ready) { seg.innerHTML = segHtml([["all", "全部"], ["on", "已启用"], ["off", "已停用"], ["builtin", "内置"]], S.status, "data-st"); seg.dataset.ready = "1"; requestAnimationFrame(() => segSync(seg, true)); }
+        $$("button", seg).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.st === S.status)));
+        const box = $("#listBox");
+        if (S.list === "idle") { box.innerHTML = ""; $("#countTxt").textContent = ""; return; }
+        if (S.list === "loading") {
+          box.innerHTML = `<div class="card">${[1, 2, 3, 4].map(() => `<div class="sk-row" style="cursor:default"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:40%"></div><div></div></div>`).join("")}</div>`;
+          return;
+        }
+        if (S.list === "error") {
+          box.innerHTML = `<div class="notice n-bad"><i data-lucide="circle-x"></i><div class="grow"><b>技能列表加载失败</b><div class="muted">网络异常或服务暂不可用，已有数据没有变化。</div></div><button class="btn btn-outline btn-sm" id="btnRetry"><i data-lucide="rotate-ccw"></i>重试</button></div>`;
+          $("#countTxt").textContent = ""; icons(); return;
+        }
+        const list = filtered();
+        $("#countTxt").textContent = `共 ${list.length} 个`;
+        const noUpload = !S.skills.some((s) => s.source === "upload");
+        if (noUpload && S.status !== "builtin" && !S.q.trim()) {
+          box.innerHTML = `<div class="card"><div class="empty"><span class="tile"><i data-lucide="sparkles"></i></span><b>还没有导入过技能</b><span class="muted">拖入压缩包、文件夹或单个 SKILL.md，或点下面的按钮</span><button class="btn btn-primary" style="margin-top:10px" data-open-import><i data-lucide="upload"></i>导入技能</button></div></div>`;
+          icons(); return;
+        }
+        if (!list.length) { box.innerHTML = `<div class="card"><div class="empty"><span class="tile"><i data-lucide="search"></i></span><b>没有符合条件的技能</b><span class="muted">换个关键词或筛选条件试试</span></div></div>`; icons(); return; }
+        box.innerHTML = `<div class="card" role="table"><div class="sk-head" role="row"><div>名称</div><div>说明</div><div>来源与内容</div><div>生效版本</div><div></div></div>${list.map(rowHtml).join("")}</div>`;
+        icons();
+      }
+      function rowHtml(s) {
+        const v = curVer(s), pending = maxV(s) > s.active, b = s.source === "builtin";
+        const sw = b
+          ? `<button class="sw" role="switch" aria-checked="true" disabled title="内置技能随版本发布，不能停用" aria-label="内置技能不能停用"></button>`
+          : `<button class="sw" role="switch" aria-checked="${s.enabled}" data-sw="${esc(s.name)}" aria-label="${s.enabled ? "停用" : "启用"} ${esc(s.title)}"></button>`;
+        return `<div class="sk-row ${S.freshName === s.name ? "fresh" : ""}" role="row" tabindex="0" data-open="${esc(s.name)}">
+          <div class="c-name"><span class="tile"><i data-lucide="${b ? "package" : "sparkles"}"></i></span><div class="nm"><b class="trunc">${esc(s.title)}</b><span class="slug trunc">${esc(s.name)}</span></div></div>
+          <div class="c-desc">${esc(s.desc)}</div>
+          <div class="c-tags">${b ? '<span class="tag">内置</span>' : '<span class="tag tg-vio">导入</span>'}${hasScripts(v) ? '<span class="tag tg-info"><i data-lucide="terminal"></i>含脚本</span>' : ""}<span class="tag tnum">${v.files.length} 个文件</span></div>
+          <div class="c-ver">${b ? '<span class="muted">—</span>' : `<span class="mono tnum">v${s.active}</span>`}${pending ? `<span class="tag tg-warn tnum">v${maxV(s)} 待生效</span>` : ""}</div>
+          <div class="c-sw">${sw}</div></div>`;
+      }
+      function setEnabled(name, on, fromUndo) {
+        const s = findSkill(name); if (!s || s.source === "builtin") return;
+        s.enabled = on; s.at = "刚刚";
+        renderList(); if (S.sheet?.name === name) { renderSheetHead(true); renderSheetBody(true); }
+        if (fromUndo) toast("已撤销", "info");
+        else toast(on ? `已启用 ${s.title}，之后新开始的运行会用到它` : `已停用 ${s.title}，Agent 和 @ 弹层里不再出现`, on ? "ok" : "warn", () => setEnabled(name, !on, true));
+      }
+      function setActive(name, v, fromUndo) {
+        const s = findSkill(name), old = s.active; s.active = v; s.at = "刚刚";
+        renderList(); if (S.sheet?.name === name) renderSheetBody(true);
+        if (!fromUndo) toast(`v${v} 已设为生效。${s.enabled ? "之后新开始的运行用它，运行中的会话仍读旧版本。" : "技能当前停用，启用后才会被用到。"}`, "ok", () => { setActive(name, old, true); toast("已撤销", "info"); });
+      }
+
+      /* ================================================================
+       * 浮层管理
+       * ================================================================ */
+      const stack = [];
+      function pushLayer(l) { const below = stack[stack.length - 1]; if (below) below.el.inert = true; stack.push(l); $("#app").inert = true; $("#protoBar").inert = true; }
+      function popLayer(l) { const i = stack.indexOf(l); if (i >= 0) stack.splice(i, 1); const top = stack[stack.length - 1]; if (top) top.el.inert = false; if (!stack.length) { $("#app").inert = false; $("#protoBar").inert = false; } }
+      function mkLayer(cls) { const el = document.createElement("div"); el.className = "layer " + cls; $("#layers").appendChild(el); return el; }
+      async function closeLayer(l) {
+        if (l.closing) return; l.closing = true;
+        const panel = $(".sheet, .dlg", l.el);
+        await Promise.all([leave($(".scrim", l.el), { o: 0 }, l.sheet ? D.slowExit : D.exit), leave(panel, l.sheet ? { x: 40 } : { y: 6, s: 0.98 }, l.sheet ? D.slowExit : D.exit)]);
+        l.el.remove(); popLayer(l); l.onClose?.(); l.prevFocus?.focus?.();
+      }
+
+      /* ---------- 通用确认框（破坏性操作：不能撤销才弹） ---------- */
+      function confirmDlg({ title, body, ok, danger, onOk }) {
+        const el = mkLayer("confirm");
+        el.innerHTML = `<div class="scrim"></div><div class="dlg-wrap"><div class="dlg sm" role="alertdialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1"><div style="padding:18px 20px 6px"><b style="font-size:16px">${esc(title)}</b><div class="muted" style="margin-top:8px;font-size:14px">${body}</div></div><div class="dlg-foot" style="border:0;justify-content:flex-end"><button class="btn btn-outline" data-x>取消</button><button class="btn ${danger ? "btn-danger" : "btn-primary"}" data-ok>${esc(ok)}</button></div></div></div>`;
+        const l = { el, prevFocus: document.activeElement }; pushLayer(l);
+        enter($(".scrim", el), { o: 0 }, D.base); enter($(".dlg", el), { y: 8, s: 0.98 }, D.base); icons();
+        $(".dlg", el).focus();
+        $("[data-x]", el).onclick = () => closeLayer(l);
+        $("[data-ok]", el).onclick = async () => { await closeLayer(l); onOk(); };
+        $(".scrim", el).onclick = () => closeLayer(l);
+        l.esc = () => closeLayer(l);
+      }
+
+      /* ================================================================
+       * 文件工作台（导入与详情共用）
+       * ================================================================ */
+      function issueMap(issues) {
+        const m = new Map();
+        for (const i of issues) { const rank = i.level === "error" ? 2 : i.level === "warn" ? 1 : 0; if (rank === 0) continue; const keys = i.path.split("、"); for (const k of keys) m.set(k, Math.max(m.get(k) ?? 0, rank)); }
+        return m;
+      }
+      function wbMount(host, files, issues, opts = {}) {
+        const st = { files, issues, sel: null, tab: "files", md: "render", open: new Set(files.map((f) => f.path.split("/").slice(0, -1).reduce((a, p) => (a.push((a.length ? a[a.length - 1] + "/" : "") + p), a), [])).flat()), hl: null };
+        const skill = files.find((f) => f.kind === "skill");
+        st.sel = (skill || files[0])?.path ?? null;
+        host._wb = st;
+        if (!host._bound) { wbBind(host); host._bound = true; }
+        host.innerHTML = `<div class="wb"><div class="wb-side">${issues.length ? `<div class="seg wbseg" data-wbseg></div>` : ""}<div class="wb-list" role="tree" aria-label="文件"></div><div class="wb-list iss" hidden></div></div><div class="wb-main"><div class="pv-head"></div><div class="pv-body"></div></div></div>`;
+        const seg = $("[data-wbseg]", host);
+        if (seg) { seg.innerHTML = segHtml([["files", "文件"], ["issues", `问题 ${issues.filter((i) => i.level !== "info").length}`]], "files", "data-wbtab"); requestAnimationFrame(() => segSync(seg, true)); }
+        wbTree(host); wbIssues(host); wbPreview(host);
+      }
+      function wbTree(host) {
+        const st = host._wb, marks = issueMap(st.issues);
+        const dirMark = (d) => Math.max(0, ...[...marks].filter(([k]) => k.startsWith(d + "/")).map(([, v]) => v));
+        const root = { dirs: {}, files: [] };
+        for (const f of st.files) { const parts = f.path.split("/"); let n = root; parts.slice(0, -1).forEach((p) => (n = n.dirs[p] ??= { dirs: {}, files: [] })); n.files.push(f); }
+        const html = [];
+        const walk = (n, depth, prefix) => {
+          Object.keys(n.dirs).sort().forEach((d) => {
+            const path = prefix + d, open = st.open.has(path), mk = dirMark(path);
+            html.push(`<button class="tr" style="padding-left:${6 + depth * 14}px" data-dir="${esc(path)}" role="treeitem" aria-expanded="${open}"><i data-lucide="chevron-right" class="ch ${open ? "open" : ""}"></i><i data-lucide="${open ? "folder-open" : "folder"}"></i><span class="trunc">${esc(d)}</span>${mk ? `<span class="dot ${mk === 2 ? "bad" : "warn"}" style="margin-left:auto"></span>` : ""}</button>`);
+            if (open) walk(n.dirs[d], depth + 1, path + "/");
+          });
+          n.files.sort((a, b) => a.path.localeCompare(b.path)).forEach((f) => {
+            const name = f.path.split("/").pop(), mk = marks.get(f.path) || 0;
+            html.push(`<button class="tr" style="padding-left:${6 + depth * 14 + 20}px" data-file="${esc(f.path)}" role="treeitem" aria-selected="${f.path === st.sel}"><i data-lucide="${kindIcon[f.kind] || "file"}"></i><span class="trunc">${esc(name)}</span>${f.kind === "script" ? `<span class="lang">${esc(f.lang)}</span>` : ""}${mk ? `<span class="dot ${mk === 2 ? "bad" : "warn"}"></span>` : ""}<span class="sz tnum">${fmtSize(f.size)}</span></button>`);
+          });
+        };
+        walk(root, 0, "");
+        const list = $(".wb-list", host), top = list.scrollTop;
+        list.innerHTML = html.join(""); list.scrollTop = top; icons();
+      }
+      function wbIssues(host) {
+        const st = host._wb, el = $(".wb-list.iss", host);
+        const items = st.issues.filter((i) => i.level !== "info");
+        const ic = { error: ["e", "circle-x"], warn: ["w", "triangle-alert"] };
+        el.innerHTML = items.length ? items.map((i, n) => `<button class="${ic[i.level][0]}" data-iss="${n}"><i data-lucide="${ic[i.level][1]}"></i><span class="grow"><b>${i.level === "error" ? "错误" : "提示"}</b> <code>${esc(i.code)}</code><span class="p">${esc(i.path)}${i.line ? ":" + i.line : ""}</span>${esc(i.msg)}</span></button>`).join("") : `<div class="muted" style="padding:12px">没有错误或提示</div>`;
+        icons();
+      }
+      function wbPreview(host, flash) {
+        const st = host._wb, f = st.files.find((x) => x.path === st.sel), head = $(".pv-head", host), body = $(".pv-body", host);
+        if (!f) { head.innerHTML = ""; body.innerHTML = `<div class="bin"><span class="tile"><i data-lucide="file-text"></i></span>这个包里没有可预览的文件</div>`; icons(); return; }
+        const own = st.issues.filter((i) => i.path === f.path && i.level !== "info");
+        const isMd = /\.md$/i.test(f.path) && f.text;
+        const kindTag = { skill: ["说明", ""], doc: ["文档", ""], script: [`脚本 · ${f.lang}`, "tg-info"], asset: [f.text ? "资源" : "二进制", ""], other: ["其他", ""] }[f.kind];
+        head.innerHTML = `<i data-lucide="${kindIcon[f.kind] || "file"}" class="muted"></i><span class="mono trunc" style="font-size:13px">${esc(f.path)}</span><span class="tag ${kindTag[1]}">${kindTag[0]}</span><span class="tag tnum">${fmtSize(f.size)}</span><span class="grow"></span>${isMd ? `<div class="seg" data-mdseg></div>` : ""}${f.text ? `<button class="btn btn-ghost btn-sm" data-copy><i data-lucide="copy"></i>复制</button>` : ""}`;
+        const mseg = $("[data-mdseg]", head);
+        if (mseg) { mseg.innerHTML = segHtml([["render", "渲染"], ["src", "源码"]], st.md, "data-md"); requestAnimationFrame(() => segSync(mseg, true)); }
+        let h = "";
+        if (own.length || f.kind === "script") {
+          h += `<div class="pv-note">${own.map((i) => `<div class="notice ${i.level === "error" ? "n-bad" : "n-warn"}" style="padding:8px 12px"><i data-lucide="${i.level === "error" ? "circle-x" : "triangle-alert"}"></i><div><code>${esc(i.code)}</code> ${esc(i.msg)}</div></div>`).join("")}${f.kind === "script" ? `<div class="notice n-info" style="padding:8px 12px"><i data-lucide="terminal"></i><div>脚本只能被预览和被 Agent 读取，<b>第 1 期不会执行</b>。</div></div>` : ""}</div>`;
+        }
+        if (!f.text) h += `<div class="bin"><span class="tile"><i data-lucide="image"></i></span><b>二进制文件，不能预览</b><span class="xs">Agent 读到它时只会得到“二进制文件，大小 ${fmtSize(f.size)}，无法读取”</span></div>`;
+        else if (f.size > LIMITS.preview) h += `<div class="bin"><span class="tile"><i data-lucide="file-text"></i></span><b>文件超过 1 MB，不预览</b></div>`;
+        else if (isMd && st.md === "render") {
+          let body2 = f.content;
+          if (f.kind === "skill") {
+            const p = parseFrontmatter(f.content);
+            if (p.fm) {
+              body2 = p.body;
+              const rows = Object.entries(p.fm).map(([k, v]) => `<div class="fmrow"><span class="k">${esc(k)}</span><span class="v">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>${KNOWN_FIELDS.includes(k) ? '<span class="tag tg-ok">已采用</span>' : '<span class="tag tg-warn">未支持</span>'}</div>`).join("");
+              h += `<div class="fmcard"><div class="fh">头部字段（${Object.keys(p.fm).length}）</div>${rows}</div>`;
+            }
+          }
+          h += `<div class="md">${mdHtml(body2)}</div>`;
+        } else {
+          const lines = f.content.split("\n"), hl = new Set(own.map((i) => i.line).filter(Boolean));
+          h += `<div class="code">${lines.slice(0, 400).map((l, i) => `<div class="ln ${hl.has(i + 1) ? "hl" : ""} ${flash === i + 1 ? "flash" : ""}" data-ln="${i + 1}"><i>${i + 1}</i><span>${esc(l) || " "}</span></div>`).join("")}${lines.length > 400 ? `<div class="muted xs" style="padding:8px 56px">已截断，只显示前 400 行</div>` : ""}</div>`;
+        }
+        body.innerHTML = h; icons();
+        if (flash) { const t = $(`[data-ln="${flash}"]`, body); t?.scrollIntoView({ block: "center" }); }
+      }
+      function wbSelect(host, path, flashLine) {
+        const st = host._wb; st.sel = path;
+        if (flashLine) st.md = "src";
+        $$("[data-file]", host).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.file === path)));
+        wbPreview(host, flashLine);
+      }
+      /* 工作台事件：挂在 host 上委托 */
+      function wbBind(host) {
+        host.addEventListener("click", (e) => {
+          const st = host._wb; if (!st) return;
+          const t = e.target.closest("[data-file],[data-dir],[data-wbtab],[data-iss],[data-md],[data-copy]"); if (!t) return;
+          if (t.dataset.file) wbSelect(host, t.dataset.file);
+          else if (t.dataset.dir) { st.open.has(t.dataset.dir) ? st.open.delete(t.dataset.dir) : st.open.add(t.dataset.dir); wbTree(host); }
+          else if (t.dataset.wbtab) {
+            st.tab = t.dataset.wbtab; $$("[data-wbtab]", host).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.wbtab === st.tab)));
+            segSync($("[data-wbseg]", host)); $(".wb-list:not(.iss)", host).hidden = st.tab !== "files"; $(".wb-list.iss", host).hidden = st.tab !== "issues";
+          } else if (t.dataset.iss !== undefined) {
+            const i = st.issues.filter((x) => x.level !== "info")[+t.dataset.iss];
+            const target = st.files.find((f) => f.path === i.path) || (i.path.endsWith("/") ? null : null);
+            if (target) { wbSelect(host, target.path, i.line); }
+          } else if (t.dataset.md) { st.md = t.dataset.md; wbPreview(host); }
+          else if (t.dataset.copy) { const f = st.files.find((x) => x.path === st.sel); navigator.clipboard?.writeText(f?.content ?? "").catch(() => {}); toast("已复制文件内容", "ok"); }
+        });
+        host.addEventListener("keydown", (e) => {
+          const st = host._wb; if (!st || !["ArrowDown", "ArrowUp"].includes(e.key) || !e.target.closest(".wb-list")) return;
+          const btns = $$("[data-file]", host), i = btns.findIndex((b) => b.dataset.file === st.sel); if (i < 0) return;
+          const n = btns[Math.max(0, Math.min(btns.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];
+          e.preventDefault(); wbSelect(host, n.dataset.file); n.focus();
+        });
+      }
+
+      /* ================================================================
+       * 详情抽屉
+       * ================================================================ */
+      function openSheet(name) {
+        if (S.sheet) { S.sheet.name = name; S.sheet.tab = "overview"; S.sheet.viewV = null; renderSheetHead(); renderSheetBody(); return; }
+        const el = mkLayer("sheetL");
+        el.innerHTML = `<div class="scrim"></div><aside class="sheet" role="dialog" aria-modal="true" aria-label="技能详情" tabindex="-1"><div class="sh-head"><div class="row" id="shTitle"></div><div class="tabs" id="shTabs" style="margin: 14px -20px 0; padding: 0 20px"><i class="tab-ind"></i><button data-tab="overview">概览</button><button data-tab="files">文件</button><button data-tab="versions">版本</button></div></div><div class="sh-body" id="shBody"></div></aside>`;
+        const l = S.sheet = { el, name, tab: "overview", viewV: null, sheet: true, prevFocus: document.activeElement, onClose: () => { S.sheet = null; } };
+        pushLayer(l);
+        enter($(".scrim", el), { o: 0 }, D.slow); enter($(".sheet", el), { x: 40 }, D.slow);
+        $(".sheet", el).focus(); l.esc = () => closeLayer(l);
+        $(".scrim", el).onclick = () => closeLayer(l);
+        el.addEventListener("click", sheetClick);
+        renderSheetHead(true); renderSheetBody();
+      }
+      function renderSheetHead(instant) {
+        const s = findSkill(S.sheet.name), b = s.source === "builtin";
+        $("#shTitle").innerHTML = `<span class="tile"><i data-lucide="${b ? "package" : "sparkles"}"></i></span><div class="grow nm"><b style="font-size:17px">${esc(s.title)}</b><span class="slug">${esc(s.name)}</span></div>${b ? '<span class="tag">内置</span>' : s.enabled ? '<span class="tag tg-ok">已启用</span>' : '<span class="tag">已停用</span>'}<button class="btn btn-ghost btn-icon" data-close aria-label="关闭"><i data-lucide="x"></i></button>`;
+        const tabs = $("#shTabs"); $$("button", tabs).forEach((x) => x.setAttribute("aria-selected", String(x.dataset.tab === S.sheet.tab)));
+        const i = ["overview", "files", "versions"].indexOf(S.sheet.tab), w = $$("button", tabs)[0].offsetWidth;
+        slide($(".tab-ind", tabs), i * w, instant); icons();
+      }
+      function renderSheetBody(keep) {
+        const s = findSkill(S.sheet.name), body = $("#shBody"), tab = S.sheet.tab;
+        const b = s.source === "builtin";
+        if (tab !== "files") body.classList.remove("flush");
+        if (tab === "overview") {
+          const v = curVer(s), pend = maxV(s) > s.active;
+          const fmRows = v.fm ? Object.entries(v.fm).map(([k, x]) => `<div class="fmrow"><span class="k">${esc(k)}</span><span class="v">${esc(typeof x === "object" ? JSON.stringify(x) : x)}</span>${KNOWN_FIELDS.includes(k) ? '<span class="tag tg-ok">已采用</span>' : '<span class="tag tg-warn">未支持</span>'}</div>`).join("") : "";
+          body.innerHTML = `
+            <div class="grid2">
+              <div class="box"><div class="sec-t">状态</div>
+                <div class="row" style="gap:12px"><button class="sw" role="switch" aria-checked="${s.enabled}" ${b ? "disabled" : `data-sw="${esc(s.name)}"`} aria-label="启用"></button><div class="grow"><b>${b || s.enabled ? "已启用" : "已停用"}</b><div class="muted xs">${b ? "内置技能随版本发布，不能停用、删除或覆盖。" : s.enabled ? "Agent 在新开始的运行里可以发现并使用它。" : "Agent 看不到它，@ 弹层里也不会出现。"}</div></div></div>
+                ${hasScripts(v) ? `<div class="notice n-info" style="margin-top:12px;padding:8px 12px"><i data-lucide="terminal"></i><div class="xs">含脚本：第 1 期只能被读取，不会被执行。</div></div>` : ""}</div>
+              <div class="box"><div class="sec-t">生效版本</div>
+                <div class="row"><span class="big-v tnum">${b ? "内置" : "v" + s.active}</span>${pend ? `<span class="tag tg-warn tnum">v${maxV(s)} 待生效</span>` : ""}</div>
+                <div class="muted xs" style="margin-top:6px">${b ? "只有一份，随程序发布" : pend ? `较新的 v${maxV(s)} 已导入但还没生效。<button class="btn btn-outline btn-sm" style="margin-left:6px" data-goto="versions">去切换</button>` : "没有更新的版本"}</div></div>
+            </div>
+            <div class="box" style="margin-top:12px"><div class="sec-t">基本信息</div><dl class="kv">
+              <dt>显示名</dt><dd>${b ? esc(s.title) : `<div class="row"><input class="inp inp-plain" id="titleInp" value="${esc(S.sheet.titleDraft ?? s.title)}" style="width:240px" aria-label="显示名" /><button class="btn btn-outline btn-sm" data-savetitle>保存</button></div>`}</dd>
+              <dt>name</dt><dd><code class="mono">${esc(s.name)}</code> <span class="muted xs">不可改：它是 skill:key，改名会破坏历史引用</span></dd>
+              <dt>说明</dt><dd>${esc(s.desc)}</dd>
+              <dt>来源</dt><dd>${b ? "内置，随版本发布" : `导入 · ${esc(s.by)} · ${esc(s.at)}`}</dd></dl></div>
+            ${fmRows ? `<div class="box" style="margin-top:12px;padding:0;overflow:hidden"><div class="fh" style="padding:12px 16px 4px"><span class="sec-t">头部字段 · ${esc("v" + s.active)}</span></div>${fmRows}</div>` : ""}
+            ${b ? "" : `<div class="box" style="margin-top:12px"><div class="sec-t">危险操作</div><div class="row"><button class="btn btn-danger" data-del-skill ${s.enabled ? "aria-disabled=true" : ""}><i data-lucide="trash-2"></i>删除技能</button><span class="muted xs">${s.enabled ? "请先停用再删除" : "将删除全部版本和对象存储里的整包，不能恢复"}</span></div></div>`}`;
+          icons(); if (!keep) enter(body, { y: 4 }, D.fast);
+        } else if (tab === "files") {
+          body.classList.add("flush");
+          const vv = ver(s, S.sheet.viewV ?? s.active);
+          body.innerHTML = `<div class="row" style="padding:12px 20px"><span class="muted xs">查看版本</span><div class="seg" data-vseg></div><span class="grow"></span><button class="btn btn-outline btn-sm" ${b ? 'aria-disabled="true" title="内置技能随程序发布，没有整包可下载"' : 'data-dl'}><i data-lucide="download"></i>下载整包</button></div><div class="wbhost" style="flex:1;min-height:0;display:flex;flex-direction:column"></div>`;
+          const vs = $("[data-vseg]", body); vs.innerHTML = segHtml(s.versions.map((x) => [x.v, b ? "内置" : "v" + x.v]), vv.v, "data-vv"); requestAnimationFrame(() => segSync(vs, true));
+          const host = $(".wbhost", body); wbMount(host, vv.files, vv.issues || []);
+          host.style.flex = "1"; $(".wb", host).style.marginTop = "0"; icons(); if (!keep) enter(host, { y: 4 }, D.fast);
+        } else {
+          body.innerHTML = b ? `<div class="empty"><span class="tile"><i data-lucide="package"></i></span><b>内置技能没有版本历史</b><span class="muted">它随程序版本发布，只有一份</span></div>` : `<div class="tl">${[...s.versions].reverse().map((x) => {
+            const act = x.v === s.active, pend = x.v > s.active;
+            return `<div class="tl-it ${act ? "act" : pend ? "pend" : ""}"><div class="row wrapflex" style="flex-wrap:wrap"><b class="mono tnum" style="font-size:15px">v${x.v}</b>${act ? '<span class="tag tg-ok">生效中</span>' : ""}${pend ? '<span class="tag tg-warn">待生效</span>' : ""}<span class="muted xs">${esc(x.by)} · ${esc(x.at)}</span><span class="grow"></span>
+              <button class="btn btn-outline btn-sm" data-act-v="${x.v}" ${act ? 'aria-disabled="true"' : ""}>${x.v < s.active ? "回滚到此版" : "设为生效"}</button>
+              <button class="btn btn-ghost btn-sm" data-view-v="${x.v}"><i data-lucide="file-text"></i>文件</button>
+              <button class="btn btn-ghost btn-icon btn-sm" data-dl aria-label="下载"><i data-lucide="download"></i></button>
+              <button class="btn btn-ghost btn-icon btn-sm" data-del-v="${x.v}" ${act ? 'aria-disabled="true" title="生效版本不能删除，请先切换到别的版本"' : ""} aria-label="删除版本"><i data-lucide="trash-2"></i></button></div>
+              <div class="row xs muted" style="margin-top:6px;gap:12px"><span class="tnum">${x.files.length} 个文件</span>${hasScripts(x) ? '<span class="tag tg-info"><i data-lucide="terminal"></i>含脚本</span>' : ""}<span class="mono">${esc(x.fp)}</span></div></div>`;
+          }).join("")}</div><p class="muted xs" style="margin-top:12px">版本不可变。回滚只是把旧版本设为生效，不会新建版本；设为生效、回滚都可以撤销。</p>`;
+          icons(); if (!keep) enter(body, { y: 4 }, D.fast);
+        }
+      }
+      function sheetClick(e) {
+        const s = findSkill(S.sheet.name), t = e.target.closest("[data-close],[data-tab],[data-sw],[data-goto],[data-savetitle],[data-vv],[data-act-v],[data-view-v],[data-del-v],[data-del-skill],[data-dl]");
+        if (!t) return;
+        if (t.hasAttribute("data-close")) closeLayer(S.sheet);
+        else if (t.dataset.tab) { S.sheet.tab = t.dataset.tab; renderSheetHead(); renderSheetBody(); }
+        else if (t.dataset.goto) { S.sheet.tab = t.dataset.goto; renderSheetHead(); renderSheetBody(); }
+        else if (t.dataset.sw) setEnabled(t.dataset.sw, !s.enabled);
+        else if (t.hasAttribute("data-savetitle")) { const v = $("#titleInp").value.trim(); if (v) { s.title = v; S.sheet.titleDraft = undefined; renderList(); renderSheetHead(); toast("显示名已更新（不产生新版本）", "ok"); } }
+        else if (t.dataset.vv) { S.sheet.viewV = +t.dataset.vv; renderSheetBody(true); }
+        else if (t.dataset.actV) setActive(s.name, +t.dataset.actV);
+        else if (t.dataset.viewV) { S.sheet.tab = "files"; S.sheet.viewV = +t.dataset.viewV; renderSheetHead(); renderSheetBody(); }
+        else if (t.dataset.delV) { const n = +t.dataset.delV; confirmDlg({ title: `删除 v${n}？`, body: "将同时删除对象存储里这个版本的整包，不能恢复。", ok: "删除", danger: true, onOk: () => { s.versions = s.versions.filter((x) => x.v !== n); S.sheet.viewV = null; renderList(); renderSheetBody(true); toast(`已删除 v${n}`, "ok"); } }); }
+        else if (t.hasAttribute("data-del-skill")) {
+          if (s.enabled) return toast("请先停用，再删除这个技能", "warn");
+          confirmDlg({ title: `删除技能 ${s.name}？`, body: `删除预检：共 ${s.versions.length} 个版本，将同时删除对象存储里的全部整包。历史会话里的引用不受影响。<br>这个操作不能撤销。`, ok: "删除技能", danger: true, onOk: () => { const l = S.sheet; S.skills = S.skills.filter((x) => x !== s); closeLayer(l); renderList(); toast(`已删除 ${s.name}`, "ok"); } });
+        } else if (t.hasAttribute("data-dl")) toast("示意：下载规范化整包 .zip", "info");
+      }
+      /* 版本分段（文件页签里）与标题输入不在 sheetClick 的选择器里，单独处理输入草稿 */
+      document.addEventListener("input", (e) => { if (e.target.id === "titleInp" && S.sheet) S.sheet.titleDraft = e.target.value; });
+
+      /* ================================================================
+       * 导入对话框
+       * ================================================================ */
+      function openImport(autoSource) {
+        if (S.imp) { if (autoSource) startImport(autoSource); return; }
+        const el = mkLayer("impL");
+        el.innerHTML = `<div class="scrim"></div><div class="dlg-wrap"><div class="dlg" role="dialog" aria-modal="true" aria-label="导入技能" tabindex="-1">
+          <div class="dlg-head"><b style="font-size:16px">导入技能</b><div class="stepper" id="stp"></div><button class="btn btn-ghost btn-icon" data-x aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <div class="dlg-body" id="impBody"></div><div class="dlg-foot" id="impFoot"></div></div></div>`;
+        const l = S.imp = { el, step: 1, phase: "pick", sheet: false, prevFocus: document.activeElement, onClose: () => { S.imp = null; }, res: null, src: null, err: "" };
+        pushLayer(l);
+        enter($(".scrim", el), { o: 0 }, D.slow); enter($(".dlg", el), { y: 8, s: 0.98 }, D.slow);
+        $(".dlg", el).focus(); l.esc = () => closeLayer(l);
+        $(".scrim", el).onclick = () => closeLayer(l);
+        el.addEventListener("click", impClick);
+        el.addEventListener("dragover", (e) => { e.preventDefault(); $(".dz", el)?.classList.add("over"); });
+        el.addEventListener("dragleave", (e) => { if (!e.relatedTarget || !el.contains(e.relatedTarget)) $(".dz", el)?.classList.remove("over"); });
+        renderImp(); if (autoSource) startImport(autoSource);
+      }
+      function stepper(step) {
+        const s = (n, t) => `<span class="stp ${step === n ? "cur" : step > n ? "done" : ""}"><i>${step > n ? "✓" : n}</i><span>${t}</span></span>`;
+        return s(1, "选择文件") + '<span class="stp-line"></span>' + s(2, "检查并确认");
+      }
+      function renderImp(swap) {
+        const l = S.imp; if (!l) return;
+        $("#stp").innerHTML = stepper(l.step);
+        const body = $("#impBody"), foot = $("#impFoot");
+        const paint = () => {
+          if (l.step === 1 && l.phase === "pick") {
+            const grp = (g, t) => `<div class="smp-grp"><div class="smp-title"><i data-lucide="flask-conical"></i>${t}</div><div class="smp-list">${SAMPLES.filter((x) => x.group === g).map((x) => `<button class="smp" data-smp="${x.id}"><i data-lucide="${x.form === "zip" ? "file-archive" : x.form === "folder" ? "folder" : "file-text"}"></i><span><b>${esc(x.label)}</b><small>${esc(x.hint)}</small></span></button>`).join("")}</div></div>`;
+            body.innerHTML = `<div class="pick"><div class="dz" id="dz"><span class="big"><i data-lucide="upload-cloud"></i></span><b style="font-size:16px">把压缩包、文件夹或 SKILL.md 拖到这里</b><span class="muted">也可以直接拖到页面任意位置</span>
+              <div class="row" style="margin-top:4px"><button class="btn btn-outline" data-pick="zip"><i data-lucide="file-archive"></i>选择压缩包</button><button class="btn btn-outline" data-pick="dir"><i data-lucide="folder-up"></i>选择文件夹</button><button class="btn btn-outline" data-pick="md"><i data-lucide="file-text"></i>选择 SKILL.md</button></div>
+              <div class="chips"><span class="tag tnum">压缩包 ≤ 50 MB</span><span class="tag tnum">≤ 500 个文件</span><span class="tag tnum">单文件 ≤ 25 MB</span></div>
+              ${l.err ? `<div class="notice n-bad" style="text-align:left;margin-top:6px"><i data-lucide="circle-x"></i><div>${esc(l.err)}</div></div>` : ""}</div>
+              <div style="display:grid;gap:12px"><div class="notice n-info"><i data-lucide="info"></i><div class="xs">下面是<b>原型专用的示例包</b>：没有现成技能包时点一个，体验检查流程。真实文件（zip / 文件夹 / SKILL.md）也能直接拖进来，在浏览器里做同样的检查。</div></div>${grp("ok", "能导入的示例")}${grp("err", "会被拦住的示例")}${grp("fail", "检查通过，但确认失败")}</div></div>`;
+            foot.innerHTML = `<span class="muted xs">导入后默认停用，不会影响线上 Agent</span><span class="grow"></span><button class="btn btn-outline" data-x>取消</button>`;
+          } else if (l.step === 1) {
+            body.innerHTML = `<div class="pick" style="grid-template-rows:1fr"><div class="prog"><span class="tile" style="width:44px;height:44px;font-size:20px"><i data-lucide="${l.src.form === "zip" ? "file-archive" : l.src.form === "folder" ? "folder" : "file-text"}"></i></span><b>${esc(l.src.label)}</b><div class="bar"><i id="barFill"></i></div><span class="muted xs" id="progTxt">正在上传…</span><span class="muted xs">模拟进度，非真实上传</span></div></div>`;
+            foot.innerHTML = `<span class="grow"></span><button class="btn btn-outline" data-x>取消</button>`;
+          } else {
+            const r = l.res, p = r.plan, st = r.errors ? "b-bad" : r.warns ? "b-warn" : "b-ok", ic = r.errors ? "shield-x" : r.warns ? "triangle-alert" : "circle-check";
+            const skillCount = r.files.length, scripts = r.files.filter((f) => f.kind === "script").length;
+            body.innerHTML = `<div class="step2"><div class="banner ${st}"><span class="ic"><i data-lucide="${ic}"></i></span><div class="grow"><h3>${esc(p.head)}${p.kind === "version" ? '<span class="tag tg-info">同名新版本</span>' : p.kind === "new" ? '<span class="tag tg-vio">新技能</span>' : ""}</h3><p>${esc(p.text)}${r.errors ? ` · ${r.errors} 个错误` : ""}${r.warns ? ` · ${r.warns} 条提示（不阻断）` : ""}</p></div>
+              <div class="bstats"><span><b class="tnum">${skillCount}</b>文件</span><span><b class="tnum">${fmtSize(r.total)}</b>大小</span><span><b class="tnum">${scripts}</b>脚本</span></div></div>
+              <div id="wbHost" style="flex:1;min-height:0;display:flex;flex-direction:column"></div></div>`;
+            const host = $("#wbHost"); wbMount(host, r.files, r.issues);
+            if (r.errors) { const sg = $("[data-wbseg]", host); if (sg) { host._wb.tab = "issues"; $$("[data-wbtab]", host).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.wbtab === "issues"))); $(".wb-list:not(.iss)", host).hidden = true; $(".wb-list.iss", host).hidden = false; requestAnimationFrame(() => segSync(sg, true)); } }
+            foot.innerHTML = `<button class="btn btn-outline" data-back>重新选择</button><span class="grow"></span>${r.errors ? `<span class="xs" style="color:var(--red-t)">有 ${r.errors} 个错误需要先处理</span>` : ""}<button class="btn btn-outline" data-x>取消</button><button class="btn btn-primary" data-ok ${r.errors ? 'aria-disabled="true"' : ""}>确认导入<kbd>⌘↵</kbd></button>`;
+          }
+          icons();
+        };
+        if (swap && !reduce.on) { const old = body.firstElementChild; (old ? leave(old, { y: -4 }, D.exit) : Promise.resolve()).then(() => { paint(); enter(body.firstElementChild || body, { y: 8 }, D.slow); }); }
+        else { paint(); if (swap) enter(body, { y: 0 }, D.base); }
+      }
+      function impClick(e) {
+        const l = S.imp;
+        const t = e.target.closest("[data-x],[data-smp],[data-pick],[data-back],[data-ok]"); if (!t) return;
+        if (t.hasAttribute("data-x")) closeLayer(l);
+        else if (t.dataset.smp) { const x = SAMPLES.find((s) => s.id === t.dataset.smp); startImport({ form: x.form, label: x.label, pkgSize: x.pkgSize ?? 0, sample: x, load: async () => x.files }); }
+        else if (t.dataset.pick) ({ zip: $("#fZip"), dir: $("#fDir"), md: $("#fMd") })[t.dataset.pick].click();
+        else if (t.hasAttribute("data-back")) { l.step = 1; l.phase = "pick"; l.err = ""; l.res = null; renderImp(true); }
+        else if (t.hasAttribute("data-ok")) confirmImport();
+      }
+      async function startImport(src) {
+        const l = S.imp; if (!l) return;
+        l.src = src; l.err = "";
+        if (src.pkgSize > LIMITS.zip) { l.step = 1; l.phase = "pick"; l.err = `压缩包 ${fmtSize(src.pkgSize)}，超过 ${fmtSize(LIMITS.zip)} 上限。请去掉不需要的大文件后重新打包。`; renderImp(true); return; }
+        l.step = 1; l.phase = "run"; l.res = null; renderImp(true);
+        const my = l.token = Symbol();
+        let entries;
+        try { entries = await src.load(); } catch (err) { if (l.token === my) { l.phase = "pick"; l.err = err.message || "读取失败"; renderImp(true); } return; }
+        if (l.token !== my || !S.imp) return;
+        const t0 = performance.now(); const fill = () => $("#barFill"), txt = () => $("#progTxt");
+        const tick = () => {
+          if (l.token !== my || !S.imp) return;
+          const p = Math.min(1, (performance.now() - t0) / 700);
+          if (fill()) fill().style.transform = `scaleX(${p})`;
+          if (p < 1) return requestAnimationFrame(tick);
+          if (txt()) txt().textContent = "正在解压和检查：路径、大小、头部、文件类型…";
+          setTimeout(() => {
+            if (l.token !== my || !S.imp) return;
+            l.res = precheck(entries, { pkgSize: src.pkgSize ?? 0, existing: S.skills });
+            l.step = 2; l.phase = "done"; renderImp(true);
+          }, 450);
+        };
+        requestAnimationFrame(tick);
+      }
+      function confirmImport() {
+        const l = S.imp, r = l.res; if (!r || r.errors) return;
+        if (l.src.sample?.expire) {
+          toast("61001：预检结果已过期（暂存只保留 1 小时），请重新上传", "bad");
+          l.step = 1; l.phase = "pick"; l.err = "预检结果已过期，请重新选择文件。"; l.res = null; renderImp(true); return;
+        }
+        const files = r.files.filter((f) => !f.bad);
+        const v = { v: r.plan.v, by: "你", at: "刚刚", fp: r.fp, files, issues: r.issues.filter((i) => i.level !== "error"), fm: r.fm, unsupported: r.unsupported, desc: r.desc };
+        let sk = S.skills.find((s) => s.name === r.name && s.source === "upload");
+        if (sk) { sk.versions.push(v); sk.latest = v.v; sk.at = "刚刚"; toast(`已为 ${sk.title} 新增 v${v.v}；生效版本仍是 v${sk.active}`, "ok"); }
+        else { sk = { name: r.name, title: r.title, desc: r.desc, source: "upload", enabled: false, active: 1, by: "你", at: "刚刚", versions: [v], latest: 1 }; S.skills.push(sk); toast(`已导入 ${sk.title} v1，默认停用`, "ok"); }
+        S.freshName = sk.name; S.status = "all"; S.q = ""; $("#q").value = "";
+        closeLayer(l).then(() => { renderList(); setTimeout(() => { S.freshName = null; }, 600); });
+      }
+
+      /* ================================================================
+       * 读取真实文件：拖放 / 选择
+       * ================================================================ */
+      const looksText = (u8) => { if (u8.length > LIMITS.preview) return false; for (let i = 0; i < Math.min(u8.length, 8192); i++) if (u8[i] === 0) return false; try { new TextDecoder("utf-8", { fatal: true }).decode(u8); return true; } catch { return false; } };
+      const hex = (u8) => [...u8.slice(0, 4)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const fromBytes = (path, u8) => { const text = looksText(u8); return { path, size: u8.length, text, content: text ? new TextDecoder().decode(u8) : undefined, head: hex(u8) }; };
+      async function readZip(file) {
+        if (!window.fflate) throw new Error("压缩包解析库没有加载（可能离线），请改用文件夹或示例包。");
+        const u8 = new Uint8Array(await file.arrayBuffer());
+        const data = await new Promise((res, rej) => fflate.unzip(u8, (e, d) => (e ? rej(new Error("不是有效的 zip 文件：" + e.message)) : res(d))));
+        return Object.entries(data).filter(([p]) => !p.endsWith("/")).map(([p, b]) => fromBytes(p, b));
+      }
+      async function readEntry(entry, prefix = "") {
+        if (entry.isFile) { const f = await new Promise((res, rej) => entry.file(res, rej)); return [fromBytes(prefix + entry.name, new Uint8Array(await f.arrayBuffer()))]; }
+        const reader = entry.createReader(); const all = [];
+        for (;;) { const batch = await new Promise((res, rej) => reader.readEntries(res, rej)); if (!batch.length) break; all.push(...batch); }
+        return (await Promise.all(all.map((e) => readEntry(e, prefix + entry.name + "/")))).flat();
+      }
+      /** 把拖进来或选中的东西变成导入来源；items 必须在 drop 事件里同步取出 */
+      function sourceFromEntries(entries, fileList) {
+        if (entries?.length) {
+          if (entries.length === 1 && entries[0].isFile && /\.zip$/i.test(entries[0].name)) { const e = entries[0]; return { form: "zip", label: e.name, load: async () => { const f = await new Promise((r, j) => e.file(r, j)); if (f.size > LIMITS.zip) throw Object.assign(new Error("big"), { size: f.size }); return readZip(f); }, async probe() { const f = await new Promise((r, j) => e.file(r, j)); this.pkgSize = f.size; } }; }
+          const dir = entries.some((e) => e.isDirectory);
+          return { form: dir ? "folder" : entries.length === 1 ? "file" : "folder", label: dir ? entries[0].name + "/（文件夹）" : entries.length === 1 ? entries[0].name : `${entries.length} 个文件`, load: async () => (await Promise.all(entries.map((e) => readEntry(e)))).flat() };
+        }
+        const fl = [...fileList];
+        if (fl.length === 1 && /\.zip$/i.test(fl[0].name)) return { form: "zip", label: fl[0].name, pkgSize: fl[0].size, load: () => readZip(fl[0]) };
+        const dirLike = fl.some((f) => f.webkitRelativePath);
+        return { form: dirLike ? "folder" : "file", label: dirLike ? fl[0].webkitRelativePath.split("/")[0] + "/（文件夹）" : fl[0].name, load: async () => Promise.all(fl.map(async (f) => fromBytes(f.webkitRelativePath || f.name, new Uint8Array(await f.arrayBuffer())))) };
+      }
+      async function handleSource(src) {
+        if (src.probe) await src.probe();
+        openImport(src);
+        if (S.imp && S.imp.src !== src) startImport(src);
+      }
+      /* 全页拖放：dragenter/leave 用计数器防抖动 */
+      let dragN = 0;
+      const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+      window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (++dragN === 1 && !S.imp) { const d = $("#dropAll"); d.hidden = false; enter(d, { s: 0.98 }, D.base); } });
+      window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+      window.addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; if (--dragN <= 0) { dragN = 0; hideDrop(); } });
+      async function hideDrop() { const d = $("#dropAll"); if (d.hidden) return; await leave(d, { s: 0.98 }, D.exit); d.hidden = true; d.getAnimations().forEach((a) => a.cancel()); }
+      window.addEventListener("drop", (e) => {
+        if (!hasFiles(e)) return; e.preventDefault(); dragN = 0; hideDrop(); $(".dz")?.classList.remove("over");
+        const items = [...(e.dataTransfer.items ?? [])].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+        const files = [...e.dataTransfer.files];
+        handleSource(sourceFromEntries(items, files));
+      });
+      $("#fZip").onchange = (e) => { if (e.target.files.length) handleSource(sourceFromEntries(null, e.target.files)); e.target.value = ""; };
+      $("#fDir").onchange = (e) => { if (e.target.files.length) handleSource(sourceFromEntries(null, e.target.files)); e.target.value = ""; };
+      $("#fMd").onchange = (e) => { if (e.target.files.length) handleSource(sourceFromEntries(null, e.target.files)); e.target.value = ""; };
+
+      /* ================================================================
+       * 页面事件
+       * ================================================================ */
+      document.addEventListener("click", (e) => {
+        if (e.target.closest("#btnImport,[data-open-import]")) return openImport();
+        if (e.target.closest("#btnRetry")) return loadList();
+        const st = e.target.closest("[data-st]"); if (st) { S.status = st.dataset.st; renderList(); segSync($("#segStatus")); return; }
+        const sw = e.target.closest(".sk-row [data-sw]"); if (sw) { e.stopPropagation(); setEnabled(sw.dataset.sw, !findSkill(sw.dataset.sw).enabled); return; }
+        if (e.target.closest(".sk-row .sw")) return;
+        const row = e.target.closest("[data-open]"); if (row) openSheet(row.dataset.open);
+      });
+      document.addEventListener("keydown", (e) => {
+        const top = stack[stack.length - 1];
+        if (e.key === "Escape" && top) { e.preventDefault(); top.esc?.(); return; }
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && S.imp && S.imp.step === 2 && top === S.imp) { e.preventDefault(); confirmImport(); return; }
+        if (e.key === "/" && !stack.length && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); $("#q").focus(); return; }
+        if (e.key === "Enter" && e.target.matches?.(".sk-row")) openSheet(e.target.dataset.open);
+      });
+      $("#q").addEventListener("input", (e) => { S.q = e.target.value; renderList(); });
+      $("#protoBar").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-pc]"); if (!b) return;
+        if (b.dataset.pc === "theme") document.documentElement.classList.toggle("dark");
+        if (b.dataset.pc === "reduce") { reduce.forced = !reduce.forced; b.setAttribute("aria-pressed", String(reduce.forced)); document.documentElement.classList.toggle("reduce", reduce.forced); }
+        if (b.dataset.pc === "reset") { stack.slice().forEach((l) => l.el.remove()); stack.length = 0; $("#app").inert = false; $("#protoBar").inert = false; S.sheet = S.imp = null; S.skills = seed(); S.q = ""; $("#q").value = ""; S.status = "all"; loadList(); toast("数据已重置", "info"); }
+        if (b.dataset.pc === "fail") { S.failNext = true; loadList(); }
+      });
+      window.addEventListener("resize", () => { $$(".seg").forEach((s) => segSync(s, true)); });
+
+      loadList();
+      icons();
+    </script>
+  </body>
+</html>
