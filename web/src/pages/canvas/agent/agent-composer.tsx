@@ -1,18 +1,20 @@
-import { useLayoutEffect, type KeyboardEvent, type RefObject } from "react";
+import type { Ref } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, Check, ChevronDown, Hand, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AgentMode } from "@/api/agent/type";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { Chip } from "@/utils/agent/chips";
+
+import { AgentEditor, type AgentEditorHandle, type NodeOption } from "./agent-editor";
+import { AttachPopover } from "./attach-popover";
+import { ModelPopover } from "./model-popover";
+import { SkillPopover } from "./skill-popover";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { AGENT_MODES } from "@/constants/agent";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-
-/** 编辑区高度范围（像素） */
-const MIN_H = 60;
-const MAX_H = 140;
 
 /** 任务模式下拉：向上弹出，每项有名称和一句说明 */
 function ModeMenu({
@@ -64,8 +66,8 @@ function ModeMenu({
  * 运行中：编辑区为空时发送键是「停止」，有内容时是「插话」。
  */
 export function AgentComposer({
-  value,
-  onChange,
+  text,
+  onTextChange,
   onSend,
   onStop,
   busy,
@@ -75,10 +77,13 @@ export function AgentComposer({
   selectionCount,
   useSelection,
   onToggleSelection,
-  inputRef,
+  editorRef,
+  nodes,
+  onAttachImages,
 }: {
-  value: string;
-  onChange: (value: string) => void;
+  /** 编辑器里现在的消息文本 */
+  text: string;
+  onTextChange: (text: string) => void;
   onSend: () => void;
   onStop: () => void;
   /** Agent 正在运行（或在等你） */
@@ -92,27 +97,16 @@ export function AgentComposer({
   /** 发送时是否带上选中的节点 */
   useSelection: boolean;
   onToggleSelection: () => void;
-  /** 编辑区，面板用它在引导项预填文字后把光标放回去 */
-  inputRef: RefObject<HTMLTextAreaElement | null>;
+  /** 编辑器的操作：面板用它预填文字，弹层用它插入 chip */
+  editorRef: Ref<AgentEditorHandle>;
+  /** 画布上能用 @ 引用的节点 */
+  nodes: NodeOption[];
+  /** 把图片传到画布并引用：返回新建节点的 chip */
+  onAttachImages: (files: File[]) => Promise<Chip[]>;
 }) {
-  const ref = inputRef;
-  const empty = value.trim() === "";
+  const handle = editorRef as { current: AgentEditorHandle | null };
+  const empty = text.trim() === "";
   const stopMode = busy && empty;
-
-  // 随内容长高，超过上限后内部滚动
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(MAX_H, Math.max(MIN_H, el.scrollHeight))}px`;
-  }, [ref, value]);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // 输入法选字时的回车不算发送
-    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
-    e.preventDefault();
-    if (!empty && !sending) onSend();
-  };
 
   const sendLabel = stopMode ? "停止" : busy ? "插话" : "发送";
   return (
@@ -132,22 +126,25 @@ export function AgentComposer({
           </span>
         </div>
       )}
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={1}
-        maxLength={20000}
+      <AgentEditor
+        handleRef={editorRef}
+        nodes={nodes}
         placeholder={
-          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，Enter 发送，Shift+Enter 换行"
+          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，或插入模型、技能"
         }
-        aria-label="给 Agent 的消息"
-        className="placeholder:text-muted-foreground/70 w-full resize-none bg-transparent px-1 text-[13.5px] leading-[1.75] outline-none"
-        style={{ minHeight: MIN_H, maxHeight: MAX_H }}
+        onChange={onTextChange}
+        onSubmit={() => !empty && !sending && onSend()}
       />
       <div className="flex items-center gap-1">
+        <AttachPopover
+          onInsertText={(t) => handle.current?.insertText(t)}
+          onAttachImages={async (files) => {
+            for (const chip of await onAttachImages(files)) handle.current?.insertChip(chip);
+          }}
+        />
         <ModeMenu mode={mode} onChange={onModeChange} disabled={busy} />
+        <ModelPopover onPick={(chip) => handle.current?.insertChip(chip)} />
+        <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />
         <ChromeTooltip label="生成前需要你确认（开）· 自动生成（关）二期开放" side="top">
           <button
             type="button"

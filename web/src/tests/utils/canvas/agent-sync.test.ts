@@ -27,7 +27,7 @@ function setup(
     unsaved: false,
     active: over.active ?? false,
     latest: over.latest ?? { nodes: baseNodes, version: over.version ?? 3 },
-    writes: [] as { quiet: boolean; taskIds: string[] }[],
+    writes: [] as { quiet: boolean; taskIds: string[]; touchedIds: string[] }[],
     fetches: 0,
     failFetch: false,
   };
@@ -82,7 +82,7 @@ describe("canvas.patch：接得上本地版本", () => {
     await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
     expect(state.local.nodes[0].data.prompt).toBe("新");
     expect(state.version).toBe(4);
-    expect(state.writes).toEqual([{ quiet: true, taskIds: [] }]);
+    expect(state.writes).toEqual([{ quiet: true, taskIds: [], touchedIds: ["a"] }]);
     expect(state.fetches).toBe(0);
   });
 
@@ -105,6 +105,19 @@ describe("canvas.patch：接得上本地版本", () => {
     await sync.handlePatch(patch(3, 4, [create]));
     expect(state.local.nodes.map((n) => n.id)).toEqual(["a", "n2"]);
     expect(state.writes[0].taskIds).toEqual(["99"]);
+  });
+
+  test("被新建、修改的节点报给调用方高亮；被删的不报", async () => {
+    const { state, sync } = setup({ local: [node("a", { prompt: "旧" }), node("b")] });
+    const create = {
+      kind: "node" as const,
+      op: "create" as const,
+      id: "n2",
+      after: { id: "n2", type: "canvas", "data.kind": "image" },
+    };
+    const del = { kind: "node" as const, op: "delete" as const, id: "b" };
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新"), create, del]));
+    expect(state.writes[0].touchedIds).toEqual(["a", "n2"]);
   });
 
   test("连续两条按序到达：依次并入", async () => {

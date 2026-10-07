@@ -4,6 +4,7 @@ import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
 import { getCanvas } from "@/api/canvas";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import { useAgentStore } from "@/store/agent";
+import { useAgentHighlight } from "@/store/agent-highlight";
 import type { CanvasEdge, FlowNode } from "@/types";
 import { subscribeCanvasPatch } from "@/utils/agent/patch-bus";
 import { activeRunId } from "@/utils/agent/session-state";
@@ -56,7 +57,7 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
       mergeVersion: args.mergeVersion,
       hasUnsaved: args.hasUnsaved,
       getLocal: () => ({ nodes: args.nodesRef.current, edges: args.edgesRef.current }),
-      setLocal: (graph, { quiet, taskIds }) => {
+      setLocal: (graph, { quiet, taskIds, touchedIds }) => {
         args.nodesRef.current = graph.nodes;
         args.edgesRef.current = graph.edges;
         if (quiet) args.skipNextSave();
@@ -64,6 +65,7 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
         args.setNodes(graph.nodes);
         args.setEdges(graph.edges);
         args.resetHistory();
+        useAgentHighlight.getState().touch(touchedIds);
         // 批准生成后绑定的任务可能在补丁到达前就完成了，主动对账一次
         if (taskIds.length > 0) void reconcileTaskIds(taskIds);
       },

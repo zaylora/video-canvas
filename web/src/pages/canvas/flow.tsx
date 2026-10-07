@@ -44,7 +44,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { GRID_SIZE, useSettingsStore } from "@/store";
-import type { CanvasEdge, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
+import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
@@ -310,6 +310,14 @@ export const Flow = memo(function Flow({
     getViewport,
   });
   const toggleAgent = useCallback(() => setAgentOpen((open) => !open), []);
+  /** 输入框里 @ 能引用的节点（组不算） */
+  const agentNodeOptions = useMemo(
+    () =>
+      nodes
+        .filter((node): node is CanvasNode => node.type === "canvas")
+        .map((node) => ({ id: node.id, label: node.data.label, kind: node.data.kind })),
+    [nodes],
+  );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
@@ -528,6 +536,18 @@ export const Flow = memo(function Flow({
     beginUploadAt(viewportCenter());
     uploadInputRef.current?.click();
   }, [beginUploadAt, viewportCenter]);
+  /** 给 Agent 的图片附件：先在画布中心落成图片节点（走现有上传），再把新建的节点作为 chip 引用 */
+  const attachImagesForAgent = useCallback(
+    async (files: File[]) => {
+      const before = new Set(nodesRef.current.map((node) => node.id));
+      beginUploadAt(viewportCenter());
+      showUploadNotice(await addUploadedNodes(files));
+      return nodesRef.current
+        .filter((node): node is CanvasNode => node.type === "canvas" && !before.has(node.id))
+        .map((node) => ({ type: "node" as const, id: node.id, name: node.data.label }));
+    },
+    [addUploadedNodes, beginUploadAt, viewportCenter],
+  );
 
   /** 历史浮条里的缩略图拖到画布上：以那一版为素材建一个新节点 */
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -795,6 +815,8 @@ export const Flow = memo(function Flow({
                       ctl={agentCtl}
                       models={agentModels}
                       selectionCount={nodes.filter((node) => node.selected).length}
+                      nodes={agentNodeOptions}
+                      onAttachImages={attachImagesForAgent}
                       onClose={toggleAgent}
                     />
                   )}

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { RUN_STATUS_TEXT, TOOL_LABELS } from "@/constants/agent";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useAgentHighlight } from "@/store/agent-highlight";
 import { parseMessage } from "@/utils/agent/chips";
 import type { TimelineItem } from "@/utils/agent/timeline";
 import type { AgentController } from "@/hooks/use-agent-controller";
@@ -191,7 +192,10 @@ function ToolRow({ item }: { item: Extract<TimelineItem, { type: "tool" }> }) {
     <button
       type="button"
       disabled={!canLocate}
-      onClick={() => canLocate && item.nodeIds.some((id) => focus(id))}
+      onClick={() => {
+        if (!canLocate) return;
+        if (item.nodeIds.some((id) => focus(id))) useAgentHighlight.getState().touch(item.nodeIds);
+      }}
       className={cn(
         "text-muted-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs outline-none",
         "focus-visible:ring-node-ring/60 focus-visible:ring-2",

@@ -29,9 +29,13 @@ export type AgentSyncDeps<N extends MergeNode, E extends MergeEdge> = {
   getLocal: () => MergeGraph<N, E>;
   /**
    * 写回合并后的本地画布。quiet 为 true 表示本地原本没有未保存的改动，这次合并的内容服务端已经有了，
-   * 不需要再保存一遍；taskIds 是这批改动里带来的生成任务，调用方要对账
+   * 不需要再保存一遍；taskIds 是这批改动里带来的生成任务，调用方要对账；
+   * touchedIds 是被新建或修改的节点，调用方可以短暂高亮
    */
-  setLocal: (graph: MergeGraph<N, E>, meta: { quiet: boolean; taskIds: string[] }) => void;
+  setLocal: (
+    graph: MergeGraph<N, E>,
+    meta: { quiet: boolean; taskIds: string[]; touchedIds: string[] },
+  ) => void;
   /** 这张画布上现在有没有进行中的 Agent 运行 */
   isAgentActive: () => boolean;
   /** 造节点、造连线、整理顺序（前端运行时的默认值） */
@@ -82,8 +86,13 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
     if (changes.length === 0) return;
     const quiet = !deps.hasUnsaved();
     const r = applyChanges(deps.getLocal(), changes, { guard: true, ...deps.merge });
-    if (r.applied > 0)
-      deps.setLocal({ nodes: r.nodes, edges: r.edges }, { quiet, taskIds: r.taskIds });
+    if (r.applied > 0) {
+      const alive = new Set(r.nodes.map((n) => n.id));
+      const touchedIds = changes
+        .filter((c) => c.kind === "node" && c.op !== "delete" && alive.has(c.id))
+        .map((c) => c.id);
+      deps.setLocal({ nodes: r.nodes, edges: r.edges }, { quiet, taskIds: r.taskIds, touchedIds });
+    }
   };
 
   /** 拉最新画布并并进本地；服务端没有比本地更新的版本返回 null */

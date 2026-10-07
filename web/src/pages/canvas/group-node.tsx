@@ -1,3 +1,4 @@
+import { useAgentHighlight } from "@/store/agent-highlight";
 import { memo, useCallback, useEffect, useRef } from "react";
 import {
   NodeResizer,
@@ -131,6 +132,7 @@ export const GroupNodeView = memo(function GroupNodeView({
     [getNodes, id],
   );
 
+  const mark = useAgentHighlight((state) => state.marks[id]);
   const style = {
     "--hue": data.color ? `var(--group-${data.color})` : undefined,
     "--label": data.labelColor ? `var(--group-${data.labelColor})` : undefined,
@@ -154,11 +156,13 @@ export const GroupNodeView = memo(function GroupNodeView({
         data-slot="group-frame"
         data-selected={selected ? "" : undefined}
         data-colored={data.color ? "" : undefined}
+        data-agent-mark={mark}
         className={cn(
           "bg-foreground/8 border-foreground/20 size-full cursor-grab rounded-3xl border border-dashed",
           "transition-[background-color,border-color,box-shadow] duration-150",
           "data-colored:border-[color-mix(in_oklch,var(--hue)_40%,transparent)] data-colored:bg-[color-mix(in_oklch,var(--hue)_16%,transparent)]",
           "data-selected:border-node-ring data-selected:data-colored:border-node-ring",
+          "data-[agent-mark=touched]:border-preset! data-[agent-mark=danger]:border-destructive!",
         )}
       />
       <GroupTitle id={id} label={data.label} />

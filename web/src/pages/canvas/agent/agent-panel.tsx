@@ -9,18 +9,22 @@ import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentSettings } from "@/store/agent-settings";
 
+import type { Chip } from "@/utils/agent/chips";
+import { serializeChip } from "@/utils/agent/chips";
+
 import { AgentComposer } from "./agent-composer";
+import type { AgentEditorHandle, NodeOption } from "./agent-editor";
 import { AgentEmpty } from "./agent-empty";
 import { AgentHeader } from "./agent-header";
 import { MessageList } from "./message-list";
 import { RunStrip } from "./run-strip";
 
-/** 点引导项：直接发的，或者切到对应模式并预填一句话 */
+/** 点引导项：直接发的，或者切到对应模式并预填一句话（拆分镜带上画布里的剧本节点作为 chip） */
 const GUIDE_ACTIONS = {
   inspect: { send: "读一下当前画布，告诉我它现在有什么、还缺什么。" },
-  storyboard: { fill: "把画布上的剧本拆成分镜" },
-  story: { fill: "我想把下面这个故事改编成剧本和分镜：\n" },
-  polish: { fill: "优化选中节点的提示词" },
+  storyboard: { fill: (script?: string) => `把${script ? ` ${script} ` : "画布上的剧本"}拆成分镜` },
+  story: { fill: () => "我想把下面这个故事改编成剧本和分镜：\n" },
+  polish: { fill: () => "优化选中节点的提示词" },
 } as const;
 
 /**
@@ -31,12 +35,18 @@ export function AgentPanel({
   ctl,
   models,
   selectionCount,
+  nodes,
+  onAttachImages,
   onClose,
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
   /** 画布上选中的节点数 */
   selectionCount: number;
+  /** 画布上能用 @ 引用的节点 */
+  nodes: NodeOption[];
+  /** 把图片传到画布，返回新建节点的 chip */
+  onAttachImages: (files: File[]) => Promise<Chip[]>;
   onClose: () => void;
 }) {
   const mobile = useIsMobile();
@@ -44,7 +54,7 @@ export function AgentPanel({
   const showThinking = useAgentSettings((s) => s.showThinking);
   const [text, setText] = useState("");
   const [useSelection, setUseSelection] = useState(true);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const editor = useRef<AgentEditorHandle>(null);
   const bounds = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const controls = useDragControls();
@@ -73,7 +83,7 @@ export function AgentPanel({
     if (mode !== ctl.mode) ctl.setMode(mode);
     const ok = await ctl.send(message, useSelection);
     // 发出去了才清空输入框；没发出去（接口报错）保留原文，用户可以改了再发
-    if (ok) setText("");
+    if (ok) editor.current?.clear();
     return ok;
   };
 
@@ -86,8 +96,13 @@ export function AgentPanel({
       return;
     }
     ctl.setMode(guide.mode);
-    setText(action.fill);
-    requestAnimationFrame(() => input.current?.focus());
+    const script = nodes.find((n) => n.kind === "script");
+    const chip =
+      script && id === "storyboard"
+        ? serializeChip({ type: "node", id: script.id, name: script.label })
+        : undefined;
+    // 空会话里编辑器和引导项同时挂着，所以预填后把光标放进去就能接着写
+    editor.current?.setText(action.fill(chip));
   };
 
   const empty = ctl.timeline.length === 0 && !ctl.busy;
@@ -109,8 +124,8 @@ export function AgentPanel({
       )}
       {ctl.strip && <RunStrip strip={ctl.strip} onHide={ctl.hidePlan} />}
       <AgentComposer
-        value={text}
-        onChange={setText}
+        text={text}
+        onTextChange={setText}
         onSend={() => void send(text)}
         onStop={() => void ctl.stop()}
         busy={ctl.busy}
@@ -120,7 +135,9 @@ export function AgentPanel({
         selectionCount={selectionCount}
         useSelection={useSelection}
         onToggleSelection={() => setUseSelection(false)}
-        inputRef={input}
+        editorRef={editor}
+        nodes={nodes}
+        onAttachImages={onAttachImages}
       />
     </>
   );

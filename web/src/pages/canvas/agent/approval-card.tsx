@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { cn } from "@/lib/utils";
+import { useAgentHighlight } from "@/store/agent-highlight";
 
 import { Card } from "./message-list";
 
@@ -177,6 +178,9 @@ function DeleteCard({ approval, ctl }: { approval: AgentApprovalDto; ctl: AgentC
           "-m-3 flex flex-col gap-2 rounded-xl border p-3",
           pending ? "border-destructive/60" : "border-transparent",
         )}
+        // 悬停时被删的节点在画布上标红，批准前先看清删的是哪几个
+        onMouseEnter={() => pending && useAgentHighlight.getState().setDanger(payload.node_ids)}
+        onMouseLeave={() => useAgentHighlight.getState().setDanger([])}
       >
         <p className="font-medium">
           申请删除 {payload.node_ids.length} 个节点
