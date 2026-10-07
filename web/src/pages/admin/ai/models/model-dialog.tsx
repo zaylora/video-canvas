@@ -459,7 +459,14 @@ export function ModelDialog({
               : "已下线：点「上线」重新对用户开放"}
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button variant="outline" disabled={disabled} onClick={() => setTestOpen(true)}>
+          <Button
+            variant="outline"
+            disabled={disabled || kind === "agent"}
+            title={
+              kind === "agent" ? "Agent 模型暂不支持试跑，发布后在画布里打开 Agent 验证" : undefined
+            }
+            onClick={() => setTestOpen(true)}
+          >
             <FlaskConical />
             测试模型
           </Button>

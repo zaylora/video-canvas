@@ -51,8 +51,23 @@ export const IMAGE_MODEL_TEMPLATE = {
   pricing: defaultPricing("image"),
 };
 
+/** 画布 Agent 的对话大模型（不走插件钩子：后端网关直接请求渠道的 OpenAI 兼容接口，渠道插件需要 Bearer 鉴权） */
+export const AGENT_MODEL_TEMPLATE = {
+  key: "",
+  kind: "agent",
+  label: "",
+  hint: "",
+  deadline: "5m",
+  enabled: false,
+  sort: 100,
+  channels: [{ channel: "", upstream_model: "" }],
+  capabilities: defaultCapabilities("agent"),
+  pricing: defaultPricing("agent"),
+};
+
 export const MODEL_TEMPLATES = [
   { id: "text", label: "文本模型（同步）", body: TEXT_MODEL_TEMPLATE },
   { id: "video", label: "视频模型（异步）", body: VIDEO_MODEL_TEMPLATE },
   { id: "image", label: "图片模型（同步）", body: IMAGE_MODEL_TEMPLATE },
+  { id: "agent", label: "Agent 模型（画布对话）", body: AGENT_MODEL_TEMPLATE },
 ] as const;

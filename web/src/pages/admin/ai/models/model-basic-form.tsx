@@ -57,6 +57,7 @@ const KIND_DESC: Record<string, string> = {
   image: "文生图、图生图",
   video: "文生、图生视频",
   audio: "语音合成",
+  agent: "画布 Agent 的对话大模型",
 };
 
 /** 基本信息页签：模型身份、能力与渠道、展示信息。所有修改都回写 JSON 正文并保持键顺序 */
@@ -223,7 +224,7 @@ export function ModelBasicForm({
             <ChoiceCardGroup
               id="model-kind"
               aria-label="模型能力"
-              className="grid-cols-2 sm:grid-cols-4"
+              className="grid-cols-2 sm:grid-cols-5"
             >
               {KIND_ORDER.map((item) => {
                 const Icon = KIND_STYLE[item].icon;
@@ -232,7 +233,13 @@ export function ModelBasicForm({
                     key={item}
                     selected={item === kind}
                     disabled={kindUnsupported(item)}
-                    title={kindUnsupported(item) ? "所选渠道的插件不支持这个能力" : undefined}
+                    title={
+                      kindUnsupported(item)
+                        ? item === "agent"
+                          ? "Agent 模型要求渠道的插件使用 Bearer 鉴权"
+                          : "所选渠道的插件不支持这个能力"
+                        : undefined
+                    }
                     className={cn(
                       "items-center gap-2.5",
                       item === kind &&
@@ -322,8 +329,9 @@ export function ModelBasicForm({
           )}
           {info.supportsKind === false && (
             <Notice tone="danger">
-              这个渠道的插件版本不支持{MODEL_KIND_LABEL[kind] ?? kind}
-              ，发布会被拒绝。
+              {kind === "agent"
+                ? "Agent 模型要求渠道的插件使用 Bearer 鉴权，这个渠道不满足，发布会被拒绝。"
+                : `这个渠道的插件版本不支持${MODEL_KIND_LABEL[kind] ?? kind}，发布会被拒绝。`}
             </Notice>
           )}
         </div>

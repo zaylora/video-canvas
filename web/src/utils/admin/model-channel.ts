@@ -1,6 +1,6 @@
 import type { ChannelView, PluginView } from "@/api/admin/ai/type";
 
-import { describeAuth, findPluginVersion, shortSha } from "./plugin";
+import { describeAuth, findPluginVersion, metaSupportsKind, shortSha } from "./plugin";
 import { readModelChannel, readModelKind } from "./model-body";
 
 /** 模型正文选中的渠道，连同它的插件信息（模型编辑器的“选中后显示”与发布确认框共用） */
@@ -57,7 +57,6 @@ export function resolveModelChannel(
   });
   const meta = version?.meta ?? null;
   const authType = meta ? (meta.auth?.type ?? "none") : null;
-  const endpoints = meta?.endpoints && typeof meta.endpoints === "object" ? meta.endpoints : null;
   return {
     channelKey,
     channel,
@@ -68,7 +67,7 @@ export function resolveModelChannel(
     authType,
     secretSet: channel.secret_set,
     keyMissing: authType !== null && authType !== "none" && !channel.secret_set,
-    supportsKind: meta && kind ? !!endpoints && kind in endpoints : null,
+    supportsKind: meta && kind ? metaSupportsKind(meta, kind) : null,
   };
 }
 

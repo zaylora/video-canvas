@@ -4,6 +4,7 @@ import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/a
 import {
   availableUpgrade,
   channelSupportsKind,
+  metaSupportsKind,
   channelsForKind,
   checkPluginFile,
   compareSemver,
@@ -173,6 +174,28 @@ describe("findPluginVersion / channelSupportsKind", () => {
     expect(channelSupportsKind(plugins, channel(), "video")).toBe(true);
     expect(channelSupportsKind(plugins, channel(), "text")).toBe(false);
     expect(channelSupportsKind([], channel(), "video")).toBeNull();
+  });
+});
+
+describe("agent 模型对渠道插件的要求：Bearer 鉴权，而不是 endpoints", () => {
+  const bearer: PluginMeta = { auth: { type: "bearer" }, endpoints: { text: { mode: "sync" } } };
+  const none: PluginMeta = { auth: { type: "none" }, endpoints: { text: { mode: "sync" } } };
+
+  test("metaSupportsKind：agent 看 auth.type，其它看 endpoints", () => {
+    expect(metaSupportsKind(bearer, "agent")).toBe(true);
+    expect(metaSupportsKind(none, "agent")).toBe(false);
+    expect(metaSupportsKind({ endpoints: {} }, "agent")).toBe(false);
+    expect(metaSupportsKind(bearer, "text")).toBe(true);
+    expect(metaSupportsKind(bearer, "video")).toBe(false);
+  });
+
+  test("渠道是否支持 agent：不需要声明 endpoints.agent；插件信息未知时返回 null", () => {
+    const plugins = [plugin("p", [version(1, "1.0.0", bearer)])];
+    expect(channelSupportsKind(plugins, channel(), "agent")).toBe(true);
+    expect(
+      channelSupportsKind([plugin("p", [version(1, "1.0.0", none)])], channel(), "agent"),
+    ).toBe(false);
+    expect(channelSupportsKind([], channel(), "agent")).toBeNull();
   });
 });
 

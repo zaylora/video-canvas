@@ -155,6 +155,18 @@ export function channelSupportsKind(
 ): boolean | null {
   const meta = channelMeta(plugins, channel);
   if (!meta) return null;
+  return metaSupportsKind(meta, kind);
+}
+
+/**
+ * 插件版本能不能承接某种模型。普通种类要在 endpoints 里声明；
+ * agent 不走插件钩子（由后端网关直接请求渠道的 OpenAI 兼容接口），只要求 auth.type 是 bearer。
+ */
+export function metaSupportsKind(
+  meta: { auth?: { type?: string } | null; endpoints?: unknown },
+  kind: string,
+): boolean {
+  if (kind === "agent") return meta.auth?.type === "bearer";
   return !!meta.endpoints && typeof meta.endpoints === "object" && kind in meta.endpoints;
 }
 

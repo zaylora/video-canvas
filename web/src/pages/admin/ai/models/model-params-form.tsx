@@ -102,39 +102,43 @@ export function ModelParamsForm({
     caps.prompt.max_length < LIMITS.promptLength[0] ||
     caps.prompt.max_length > LIMITS.promptLength[1];
 
+  const isAgent = kind === "agent";
+
   return (
     <>
-      <FormSection>
-        <FormSectionHeader>
-          <FormSectionTitle>任务设置</FormSectionTitle>
-        </FormSectionHeader>
-        <FormField
-          size="default"
-          label="任务超时"
-          htmlFor="model-deadline"
-          error={deadlineError ?? issueFor(issues, "deadline")}
-          hint="超过这个时间还没出结果，任务判定失败并退还积分。"
-        >
-          <div className="flex flex-wrap items-center gap-2" id="model-deadline">
-            {DEADLINES.map(([value, label]) => (
-              <ToggleChip
-                key={value}
-                pressed={deadline === value}
-                onClick={() => setField("deadline", value)}
-              >
-                {label}
-              </ToggleChip>
-            ))}
-            <Input
-              aria-label="自定义超时"
-              placeholder="自定义，如 90s"
-              className="h-8 w-36 font-mono text-xs"
-              value={custom ? deadline : ""}
-              onChange={(event) => setField("deadline", event.target.value)}
-            />
-          </div>
-        </FormField>
-      </FormSection>
+      {!isAgent && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>任务设置</FormSectionTitle>
+          </FormSectionHeader>
+          <FormField
+            size="default"
+            label="任务超时"
+            htmlFor="model-deadline"
+            error={deadlineError ?? issueFor(issues, "deadline")}
+            hint="超过这个时间还没出结果，任务判定失败并退还积分。"
+          >
+            <div className="flex flex-wrap items-center gap-2" id="model-deadline">
+              {DEADLINES.map(([value, label]) => (
+                <ToggleChip
+                  key={value}
+                  pressed={deadline === value}
+                  onClick={() => setField("deadline", value)}
+                >
+                  {label}
+                </ToggleChip>
+              ))}
+              <Input
+                aria-label="自定义超时"
+                placeholder="自定义，如 90s"
+                className="h-8 w-36 font-mono text-xs"
+                value={custom ? deadline : ""}
+                onChange={(event) => setField("deadline", event.target.value)}
+              />
+            </div>
+          </FormField>
+        </FormSection>
+      )}
 
       {OPS_OF_KIND[kind] && (
         <FormSection>
@@ -155,15 +159,29 @@ export function ModelParamsForm({
         </FormSection>
       )}
 
-      {kind === "text" && (
+      {(kind === "text" || isAgent) && (
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>上下文能力</FormSectionTitle>
             <FormSectionDescription>
               超出允许范围时标红；最大输出会作为每次请求的 max_tokens。
+              {isAgent && "Agent 会把对话历史带进每次请求，窗口太小会频繁省略较早的工具结果。"}
             </FormSectionDescription>
           </FormSectionHeader>
           <ContextEditor value={caps.context} onChange={(context) => patch({ context })} />
+          {isAgent && (
+            <FormField
+              size="default"
+              className="mt-4"
+              label="看图"
+              error={issueFor(issues, "capabilities.vision")}
+              hint="上游模型支持图片输入时打开：Agent 才能查看画布上的图片，判断画面是否符合要求。不能看图的模型拿不到看图工具。"
+            >
+              <ToggleChip pressed={!!caps.vision} onClick={() => patch({ vision: !caps.vision })}>
+                能看图
+              </ToggleChip>
+            </FormField>
+          )}
           {issueFor(issues, "capabilities.context") && (
             <p className="text-destructive mt-2 text-xs">
               {issueFor(issues, "capabilities.context")}
@@ -207,10 +225,14 @@ export function ModelParamsForm({
         </FormSectionHeader>
         <FormField
           size="default"
-          label="字数上限"
+          label={isAgent ? "单条消息字数上限" : "字数上限"}
           htmlFor="model-prompt-length"
           error={promptIssue}
-          hint={`画布输入框右下角显示 0 / 上限；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`}
+          hint={
+            isAgent
+              ? `用户发给 Agent 的单条消息最多多少字；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`
+              : `画布输入框右下角显示 0 / 上限；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`
+          }
         >
           <Input
             id="model-prompt-length"
@@ -225,42 +247,44 @@ export function ModelParamsForm({
         </FormField>
       </FormSection>
 
-      <FormSection>
-        <FormSectionHeader>
-          <FormSectionTitle>生成参数</FormSectionTitle>
-          <FormSectionDescription>
-            每个参数会作为选项出现在画布节点里，书写顺序就是显示顺序；参数名会作为任务输入的键传给插件，
-            要和插件约定的名字对应。
-          </FormSectionDescription>
-        </FormSectionHeader>
-        <div id="model-capabilities-params" className="space-y-3">
-          {Object.keys(params).length === 0 && (
-            <p className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs">
-              {kind === "text" ? "文本模型默认没有生成参数。" : "还没有生成参数。"}
-            </p>
-          )}
-          {Object.entries(params).map(([name, field], index, all) => (
-            <ParamRowEditor
-              key={name}
-              name={name}
-              field={field}
-              first={index === 0}
-              last={index === all.length - 1}
-              error={issueFor(issues, `capabilities.params.${name}`)}
-              onChange={(next) => setParams(paramSetOps.patch(params, name, next))}
-              onMove={(direction) => setParams(paramSetOps.move(params, name, direction))}
-              onRemove={() => setParams(paramSetOps.remove(params, name))}
+      {!isAgent && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>生成参数</FormSectionTitle>
+            <FormSectionDescription>
+              每个参数会作为选项出现在画布节点里，书写顺序就是显示顺序；参数名会作为任务输入的键传给插件，
+              要和插件约定的名字对应。
+            </FormSectionDescription>
+          </FormSectionHeader>
+          <div id="model-capabilities-params" className="space-y-3">
+            {Object.keys(params).length === 0 && (
+              <p className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs">
+                {kind === "text" ? "文本模型默认没有生成参数。" : "还没有生成参数。"}
+              </p>
+            )}
+            {Object.entries(params).map(([name, field], index, all) => (
+              <ParamRowEditor
+                key={name}
+                name={name}
+                field={field}
+                first={index === 0}
+                last={index === all.length - 1}
+                error={issueFor(issues, `capabilities.params.${name}`)}
+                onChange={(next) => setParams(paramSetOps.patch(params, name, next))}
+                onMove={(direction) => setParams(paramSetOps.move(params, name, direction))}
+                onRemove={() => setParams(paramSetOps.remove(params, name))}
+              />
+            ))}
+            <AddParamRow
+              existing={Object.keys(params)}
+              onAdd={(name, field) => setParams(paramSetOps.add(params, name, field))}
             />
-          ))}
-          <AddParamRow
-            existing={Object.keys(params)}
-            onAdd={(name, field) => setParams(paramSetOps.add(params, name, field))}
-          />
-          {issueFor(issues, "capabilities.params") && (
-            <p className="text-destructive text-xs">{issueFor(issues, "capabilities.params")}</p>
-          )}
-        </div>
-      </FormSection>
+            {issueFor(issues, "capabilities.params") && (
+              <p className="text-destructive text-xs">{issueFor(issues, "capabilities.params")}</p>
+            )}
+          </div>
+        </FormSection>
+      )}
 
       {kind === "text" && (
         <FormSection>
@@ -288,20 +312,24 @@ export function ModelParamsForm({
 
       <FormSection>
         <FormSectionHeader>
-          <FormSectionTitle>固定参数</FormSectionTitle>
-          <FormSectionDescription>
-            每次请求都会带上，用户看不到；由插件解释。
-          </FormSectionDescription>
+          <FormSectionTitle>{isAgent ? "高级" : "固定参数"}</FormSectionTitle>
+          {!isAgent && (
+            <FormSectionDescription>
+              每次请求都会带上，用户看不到；由插件解释。
+            </FormSectionDescription>
+          )}
         </FormSectionHeader>
-        <JsonFieldEditor
-          key={`params-${epoch}`}
-          id="model-params"
-          label="params"
-          value={body.params}
-          issue={issueFor(issues, "params")}
-          rows={5}
-          onValid={(value) => setField("params", value)}
-        />
+        {!isAgent && (
+          <JsonFieldEditor
+            key={`params-${epoch}`}
+            id="model-params"
+            label="params"
+            value={body.params}
+            issue={issueFor(issues, "params")}
+            rows={5}
+            onValid={(value) => setField("params", value)}
+          />
+        )}
         <details className="group mt-4 rounded-lg border" open={!!issueFor(issues, "capabilities")}>
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
             <ChevronRight className="size-4 transition group-open:rotate-90" />
