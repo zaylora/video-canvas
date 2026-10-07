@@ -16,19 +16,19 @@ import (
 
 	"gorm.io/gorm"
 
-	"video-canvas/internal/canvasgraph"
-	"video-canvas/internal/handler"
+	"video-canvas/internal/agent/canvasgraph"
+	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
 	. "video-canvas/internal/repository"
 	"video-canvas/internal/router"
-	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 )
 
 // 端到端：真正的 Node 进程 + 真正的 Go 桥 HTTP 服务 + 真实 PostgreSQL + 假的 LLM 上游。
-// 需要 Node（>= 22.19）和已安装依赖的 backend/agent-runtime，以及 TEST_DATABASE_DSN；缺哪个就跳过哪个。
+// 需要 Node（>= 22.19）和已安装依赖的 仓库根目录 agent/，以及 TEST_DATABASE_DSN；缺哪个就跳过哪个。
 
 // ---- 假的 LLM 上游 ----
 
@@ -142,9 +142,9 @@ func (e2eSecrets) Get(context.Context, string) (string, error) { return "sk-e2e"
 type e2eEnv struct {
 	db     *gorm.DB
 	repo   *AgentRepository
-	svc    *service.AgentService
-	rt     *service.ProcessRuntime
-	bridge *service.AgentBridge
+	svc    *agentsvc.AgentService
+	rt     *agentsvc.ProcessRuntime
+	bridge *agentsvc.AgentBridge
 	llm    *fakeLLM
 	sess   *model.AgentSession
 	canvas *model.CanvasProject
@@ -156,9 +156,9 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	if err != nil {
 		t.Skip("没有 node，跳过端到端测试")
 	}
-	dir, _ := filepath.Abs("../../../agent-runtime")
+	dir, _ := filepath.Abs("../../../../agent")
 	if _, err := os.Stat(filepath.Join(dir, "node_modules")); err != nil {
-		t.Skip("agent-runtime 没有安装依赖（npm ci），跳过端到端测试")
+		t.Skip("agent 目录没有安装依赖（npm ci），跳过端到端测试")
 	}
 	db := isolatedDB(t, &model.CanvasProject{}, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{},
 		&model.AgentApproval{}, &model.AgentModelCall{}, &model.UserCredit{}, &model.CreditLedger{}, &model.GenerationTask{})
@@ -174,17 +174,17 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	openAccount(t, db, 1, 100, 0)
 	sess := newSession(t, repo, 1, canvas.ID)
 
-	canvasSvc := service.NewAgentCanvasService(repo, nil)
-	svc := service.NewAgentService(service.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: service.NoAgentRuntime{}})
-	bridge := service.NewAgentBridge(service.BridgeDeps{
-		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: service.NewAgentBilling(repo),
+	canvasSvc := agentsvc.NewAgentCanvasService(repo, nil)
+	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
+	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
+		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
 		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second}),
 	})
-	bridgeSrv := httptest.NewServer(router.NewBridge("test", handler.NewAgentBridgeHandler(bridge)))
+	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge)))
 	t.Cleanup(bridgeSrv.Close)
-	rt := service.NewProcessRuntime(service.RuntimeDeps{
-		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: service.ExecLauncher{},
-		Config: service.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.mjs"), BridgeURL: bridgeSrv.URL, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
+	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
+		Repo: repo, Bridge: bridge, Canvas: canvasSvc, Agent: svc, Registry: e2eRegistry{base: llm.srv.URL}, Launcher: agentsvc.ExecLauncher{},
+		Config: agentsvc.RuntimeConfig{NodePath: node, ScriptPath: filepath.Join(dir, "src/main.mjs"), BridgeURL: bridgeSrv.URL, WorkRoot: t.TempDir(), CancelGrace: 3 * time.Second},
 	})
 	svc.SetRuntime(rt)
 	t.Cleanup(rt.Shutdown)

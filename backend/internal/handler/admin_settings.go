@@ -33,7 +33,7 @@ func (h *AdminSettingsHandler) GetRegister(c *gin.Context) {
 // UpdateRegister 保存注册设置（PUT /admin/settings/register）。
 func (h *AdminSettingsHandler) UpdateRegister(c *gin.Context) {
 	var req model.RegisterSettingsView
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	v, err := h.settings.UpdateRegisterSettings(c.Request.Context(), currentUserID(c), &req)
@@ -57,7 +57,7 @@ func (h *AdminSettingsHandler) GetSMTP(c *gin.Context) {
 // UpdateSMTP 保存邮件服务配置（不含密码）（PUT /admin/settings/smtp）。
 func (h *AdminSettingsHandler) UpdateSMTP(c *gin.Context) {
 	var req model.UpdateSMTPSettingsReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	v, err := h.smtp.Update(c.Request.Context(), currentUserID(c), &req)
@@ -71,7 +71,7 @@ func (h *AdminSettingsHandler) UpdateSMTP(c *gin.Context) {
 // SetSMTPPassword 设置邮件服务密码，只写不读（PUT /admin/settings/smtp/password）。
 func (h *AdminSettingsHandler) SetSMTPPassword(c *gin.Context) {
 	var req model.SetSMTPPasswordReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.smtp.SetPassword(c.Request.Context(), currentUserID(c), req.Password); err != nil {
@@ -84,7 +84,7 @@ func (h *AdminSettingsHandler) SetSMTPPassword(c *gin.Context) {
 // TestSMTP 向指定地址发一封测试邮件（POST /admin/settings/smtp/test）。
 func (h *AdminSettingsHandler) TestSMTP(c *gin.Context) {
 	var req model.TestSMTPReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.smtp.Test(c.Request.Context(), req.To); err != nil {

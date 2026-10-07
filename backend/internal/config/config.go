@@ -74,7 +74,7 @@ type JWT struct {
 type Agent struct {
 	Enabled    bool   `mapstructure:"enabled"`     // 是否启用；关闭时发起运行会返回「Agent 暂不可用」
 	NodePath   string `mapstructure:"node_path"`   // node 可执行文件，默认 node（在 PATH 里找），要求 >= 22.19
-	RuntimeDir string `mapstructure:"runtime_dir"` // agent-runtime 目录（含 src/main.mjs 和已安装的 node_modules），默认 ./agent-runtime
+	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.mjs 和已安装的 node_modules），默认 ../agent
 	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，必须是回环地址，默认 127.0.0.1:0（随机端口）
 	WorkDir    string `mapstructure:"work_dir"`    // 每个运行片段的临时目录建在这里，默认系统临时目录
 }
@@ -85,7 +85,7 @@ func (a Agent) WithDefaults() Agent {
 		a.NodePath = "node"
 	}
 	if a.RuntimeDir == "" {
-		a.RuntimeDir = "./agent-runtime"
+		a.RuntimeDir = "../agent"
 	}
 	if a.BridgeAddr == "" {
 		a.BridgeAddr = "127.0.0.1:0"

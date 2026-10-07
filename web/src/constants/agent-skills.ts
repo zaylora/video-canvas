@@ -1,4 +1,4 @@
-/** 内置影视技能的清单：与后端 backend/internal/agentskills/skills 一一对应（name 就是技能名，Agent 靠它 skill_read） */
+/** 内置影视技能的清单：与后端 backend/internal/agent/skills 一一对应（name 就是技能名，Agent 靠它 skill_read） */
 export const AGENT_SKILLS: ReadonlyArray<{
   /** 技能名（目录名） */
   name: string;

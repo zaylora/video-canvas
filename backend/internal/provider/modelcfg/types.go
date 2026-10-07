@@ -7,6 +7,7 @@ package modelcfg
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,19 @@ type Issue struct {
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+}
+
+// JoinFieldErrors 把字段级错误拼成面向用户的一句话。
+func JoinFieldErrors(errs []FieldError) string {
+	parts := make([]string, 0, len(errs))
+	for _, e := range errs {
+		if e.Field == "" {
+			parts = append(parts, e.Message)
+			continue
+		}
+		parts = append(parts, e.Field+"："+e.Message)
+	}
+	return strings.Join(parts, "；")
 }
 
 // 模型种类。

@@ -10,7 +10,7 @@
 /backend/configs/*.local.yaml
 
 # Agent 运行时（Node）依赖
-/backend/agent-runtime/node_modules/
+/agent/node_modules/
 
 # 前端依赖与构建产物
 /web/node_modules/

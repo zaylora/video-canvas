@@ -8,7 +8,7 @@ import { createGroup, fitGroupToMembers, ungroup } from "@/utils/canvas/group";
 import type { CanvasNode, FlowNode, NodeKind } from "@/types";
 
 /**
- * 与后端 internal/canvasgraph 共用的 fixture：Agent 在后端改画布，规则必须和前端手动操作一致，
+ * 与后端 internal/agent/canvasgraph 共用的 fixture：Agent 在后端改画布，规则必须和前端手动操作一致，
  * 两边读同一份数据，任何一边改了规则而另一边没改，测试会立刻失败。
  */
 const DIR = join(import.meta.dir, "../../../../../backend/internal/tests/testdata/canvasgraph");

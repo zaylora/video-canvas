@@ -43,13 +43,13 @@ func init() {
 	_ = zhtrans.RegisterDefaultTranslations(v, trans)
 }
 
-// bindJSON 解析 JSON 请求体到 req，失败时直接返回中文错误提示并返回 false。
-func bindJSON(c *gin.Context, req any) bool {
+// BindJSON 解析 JSON 请求体到 req，失败时直接返回中文错误提示并返回 false。
+func BindJSON(c *gin.Context, req any) bool {
 	return bindWith(c, c.ShouldBindJSON(req))
 }
 
-// bindQuery 解析 URL 查询参数到 req，行为同 bindJSON。
-func bindQuery(c *gin.Context, req any) bool {
+// BindQuery 解析 URL 查询参数到 req，行为同 bindJSON。
+func BindQuery(c *gin.Context, req any) bool {
 	return bindWith(c, c.ShouldBindQuery(req))
 }
 
@@ -77,8 +77,8 @@ type canvasURI struct {
 	ID string `uri:"id" binding:"required" label:"id"`
 }
 
-// canvasPathID 解析画布路径参数 :id 并还原成主键；格式不对按参数错误返回，和不存在的画布区分开。
-func canvasPathID(c *gin.Context) (uint64, bool) {
+// CanvasPathID 解析画布路径参数 :id 并还原成主键；格式不对按参数错误返回，和不存在的画布区分开。
+func CanvasPathID(c *gin.Context) (uint64, bool) {
 	var uri canvasURI
 	if !bindURI(c, &uri) {
 		return 0, false

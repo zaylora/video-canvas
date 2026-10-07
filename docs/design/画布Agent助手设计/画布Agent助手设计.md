@@ -147,7 +147,7 @@
 
 - **Go 负责**：鉴权，组装上下文帧，LLM 网关（读渠道配置和密钥，流式转发），工具校验和执行，画布写入（乐观锁加重试），改动日志，审批，计费，WS 推送，崩溃恢复。
 - **Node 负责**：pi 的 agent 循环、会话 JSONL、compaction、steer 和 abort。Node 不访问数据库，不持有密钥，不联网（只访问 bridge 地址）。
-- **部署（提案）**：开发环境由 Go 按 run 拉起子进程 `node backend/agent-runtime/runtime.mjs`，输入走 stdin JSON，控制指令（steer/abort）走 stdin JSONL。生产环境在 docker-compose 里新增 `agent-runtime` 服务（与 `plugin-runner` 同构），用 `AGENT_RUNTIME_URL` 开启。远程模式失败时**不回退到本地子进程**，避免同一步执行两次（借鉴影策）。
+- **部署（提案）**：开发环境由 Go 按 run 拉起子进程 `node agent/runtime.mjs`，输入走 stdin JSON，控制指令（steer/abort）走 stdin JSONL。生产环境在 docker-compose 里新增 `agent-runtime` 服务（与 `plugin-runner` 同构），用 `AGENT_RUNTIME_URL` 开启。远程模式失败时**不回退到本地子进程**，避免同一步执行两次（借鉴影策）。
 
 ### 6.2 信息架构与界面
 
@@ -235,7 +235,7 @@
 
 ### 6.6 影视技能库（MVP 内置）
 
-位置：`backend/internal/agentskills/skills/<name>/SKILL.md`（`go:embed` 嵌进二进制，随版本发布；头部 name / description / tags，正文是方法说明）。首批 5 个：
+位置：`backend/internal/agent/skills/skills/<name>/SKILL.md`（`go:embed` 嵌进二进制，随版本发布；头部 name / description / tags，正文是方法说明）。首批 5 个：
 
 1. `script-breakdown`：剧本拆镜。按场次和镜头拆分，输出镜号、景别、运镜、画面、台词、时长，并映射到镜头组。
 2. `character-turnaround`：角色三视图参考，提示词模板与一致性要点。
@@ -432,14 +432,14 @@ running → interrupted（服务重启 / runtime 崩溃）→ 用户点「继续
 
 ```
 backend/
-  agent-runtime/           # Node：package.json(锁定 @earendil-works/pi-coding-agent 1.0.4 等)、runtime.mjs、server.mjs
+  agent/（仓库根目录）           # Node：package.json(锁定 @earendil-works/pi-coding-agent 1.0.4 等)、runtime.mjs、server.mjs
   agent/prompts/           # system.md（带版本号）
   agent/skills/            # 内置技能
   internal/handler/agent*.go
   internal/service/agent_run.go, agent_tools.go, agent_canvas_ops.go, agent_approval.go, agent_undo.go, agent_llm.go
   internal/repository/agent_*.go
   internal/agentruntime/   # 子进程 / 远程客户端、bridge server、supervisor
-  internal/canvasgraph/    # Go 版的画布结构操作：解析 payload、连线规则、组坐标换算、arrange 算法
+  internal/agent/canvasgraph/    # Go 版的画布结构操作：解析 payload、连线规则、组坐标换算、arrange 算法
 ```
 
 `canvasgraph` 需要与前端 `DOWNSTREAM_KINDS`、`arrangeNodes`、组相对坐标的行为保持一致。约定：用一份共享的 JSON fixture（`backend/internal/tests/testdata/canvasgraph/*.json`，前端测试也读取它）分别验证两边。
@@ -565,7 +565,7 @@ backend/
 
 ### 12.1 外部来源（访问日期均为 2026-10-07）
 
-- 影策：https://github.com/ddcat-ai/open-ai-canvas （通过 api.github.com 和 raw.githubusercontent.com 读取 main 分支：`backend/agent-runtime/pi/agent-runtime.mjs`、`backend/internal/app/cloud_agent_tools.go`、`cloud_agent_pi_bridge.go`、`cloud_agent_context_frame.go`、`backend/internal/prompts/agent-system-policy.md`、`web/src/lib/canvas/agent-canvas-patch.ts`、`web/src/services/api/agent.ts`）
+- 影策：https://github.com/ddcat-ai/open-ai-canvas （通过 api.github.com 和 raw.githubusercontent.com 读取 main 分支：`agent/pi/agent-runtime.mjs`、`backend/internal/app/cloud_agent_tools.go`、`cloud_agent_pi_bridge.go`、`cloud_agent_context_frame.go`、`backend/internal/prompts/agent-system-policy.md`、`web/src/lib/canvas/agent-canvas-patch.ts`、`web/src/services/api/agent.ts`）
 - pi：https://github.com/earendil-works/pi （原 badlogic/pi-mono，301 重定向）；registry.npmjs.org/@earendil-works/{pi-ai, pi-agent-core, pi-coding-agent, pi-web-ui}；`packages/agent/README.md`、`packages/agent/src/proxy.ts`、`coding-agent/docs/{session-format, compaction, rpc}.md`
 - tldraw：https://tldraw.dev/starter-kits/agent 、https://github.com/tldraw/agent-template 、issues #10973、#10974
 - FLORA FAUNA：https://docs.flora.ai/editor/fauna 、https://flora.ai/blog/introducing-fauna
@@ -595,7 +595,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 | 切片 | 内容 | 状态 |
 | --- | --- | --- |
-| 1 | `internal/canvasgraph`：画布结构的解析、编辑操作、差异、撤销、目录；与前端共用 fixture | **已完成**（2026-10-07） |
+| 1 | `internal/agent/canvasgraph`：画布结构的解析、编辑操作、差异、撤销、目录；与前端共用 fixture | **已完成**（2026-10-07） |
 | 2a | 5 张表的模型、错误码 60xxx、`AgentRepository`（会话、运行、事件、改动日志、审批）及真实数据库的集成测试 | **已完成**（2026-10-07） |
 | 2b-1 | `AgentCanvasService`：应用编辑、排列、批准后的删除、撤销本轮、目录与详情；版本冲突重试；`canvas.patch` 推送 | **已完成**（2026-10-07） |
 | 2b-2 | 会话、运行、审批的 service 与 HTTP 接口；路由与依赖组装；`agent.event` 推送 | **已完成**（2026-10-07） |
@@ -606,7 +606,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 ### 13.2 切片 1：canvasgraph（已完成）
 
-位置 `backend/internal/canvasgraph/`，测试 `backend/internal/tests/canvasgraph/`。
+位置 `backend/internal/agent/canvasgraph/`，测试 `backend/internal/tests/agent/canvasgraph/`。
 
 - **已实现**：
   - `Parse` / `Marshal` / `Clone`：用 map 保存节点，视口和前端新增的未知字段原样往返。
@@ -620,7 +620,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
   2. 普通节点的尺寸前端不保存，后端按种类取默认值（视频 432×243，其余 384×216），与 `placement.ts` 的 `defaultNodeSize` 一致。
   3. 差异里的 `Change` 带 `Index`（删除前的下标），这是设计里没有的字段，用于撤销时把节点放回原处。
 - **共用 fixture**（`backend/internal/tests/testdata/canvasgraph/`）：目前覆盖连线规则（4×4 全部组合）、排列算法（横排、竖排、5 个节点的网格）、打组 / 解组 / 贴合组框的坐标换算。前端读同一份（`web/src/tests/utils/canvas/agent-graph-fixture.test.ts`）。共用的是**测试数据**，不是规则代码：两边的规则各自实现，fixture 保证它们不会悄悄不一致（决定见 11.1 第 22 条）。
-- **验证**：`go test -race ./internal/tests/canvasgraph/` 通过；`golangci-lint run` 对新增包 0 问题；`go test ./...` 全部通过；前端 `bun test` 352 个通过、`bun run typecheck` 通过。
+- **验证**：`go test -race ./internal/tests/agent/canvasgraph/` 通过；`golangci-lint run` 对新增包 0 问题；`go test ./...` 全部通过；前端 `bun test` 352 个通过、`bun run typecheck` 通过。
 
 ### 13.3 切片 2a：数据层（已完成）
 
@@ -640,7 +640,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 ### 13.4 切片 2b-1：改画布的业务（已完成）
 
-位置 `backend/internal/service/agent_canvas.go`，测试 `backend/internal/tests/service/agent_canvas_test.go`（内存假仓储）和 `backend/internal/tests/repository/agent_canvas_integration_test.go`（真实数据库端到端）。
+位置 `backend/internal/service/agent/canvas.go`，测试 `backend/internal/tests/service/agent/canvas_test.go`（内存假仓储）和 `backend/internal/tests/repository/agent_canvas_integration_test.go`（真实数据库端到端）。
 
 - **已实现**：`ApplyOps`、`Arrange`、`DeleteApproved`、`Undo`、`Catalog`、`Detail`，以及新增的 WS 消息类型 `canvas.patch`、`agent.event`。
 - **写入流程**：读最新画布 → 校验并应用 → 带乐观锁写入并记日志 → 推送 patch。版本冲突（用户刚好保存了）时重读最新画布、重新应用同一批操作，最多 3 次，仍失败返回 `60006`，这样 Agent 的改动总是叠在用户最新的内容上。
@@ -653,7 +653,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 
 ### 13.5 切片 2b-2：会话、运行、审批的业务与接口（已完成）
 
-位置 `backend/internal/service/agent*.go`、`backend/internal/handler/agent.go`，接口表见 `backend/README.md`。
+位置 `backend/internal/service/agent/`、`backend/internal/handler/agent/`，接口表见 `backend/README.md`。
 
 - **已实现**：`AgentService`（会话、运行、审批）、`AgentHandler`（12 个接口）、路由和依赖组装；运行时和模型清单是**占位实现**（`NoAgentRuntime`、`NoAgentModels`），所以现在发起运行一律返回 `60002`，功能对用户是关着的，等切片 3 和 4 接入。
 - **与设计的出入**：
@@ -722,11 +722,11 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 | 部分 | 位置 | 要点 |
 | --- | --- | --- |
 | 网关透传入口 | `internal/llmgateway`（`StreamRaw`） | 请求体白名单（只放行 messages、tools、tool_choice、temperature、top_p、stop），强制覆盖 model、stream、include_usage，按模型上限收紧 max_tokens；SSE 行原样转出，同时解析用量 |
-| 桥服务 | `service/agent_bridge*.go` | 一次性令牌；模型代理（预检 → 透传 → 结算，结算用不会被取消的上下文）；7 个工具；任务模式在 Go 端强制；步数上限；保存/读取历史 |
-| 桥的 HTTP 端点 | `handler/agent_bridge.go`、`router/bridge.go` | OpenAI 兼容的对话端点（错误按 OpenAI 格式返回，pi 据此显示和判断重试），以及 tool / state / finish；设计上只挂在绑定 127.0.0.1 的独立监听上 |
-| Node 运行时 | `backend/agent-runtime` | pi 1.0.4（精确锁定）；工具声明与回调；等审批靠 terminate；历史恢复；上下文裁剪；插话与中止 |
-| 进程监管 | `service/agent_runtime.go`、`agent_process.go` | 每个片段一个进程，最小环境，独立临时目录，限制内存；异常退出标为中断；取消先 abort 再强杀；服务退出杀光进程 |
-| 提示词 | `internal/agentprompts` | 系统提示词（go:embed，带版本号）和用户消息拼装，画布目录与运行参数明确标为数据 |
+| 桥服务 | `service/agent/bridge*.go` | 一次性令牌；模型代理（预检 → 透传 → 结算，结算用不会被取消的上下文）；7 个工具；任务模式在 Go 端强制；步数上限；保存/读取历史 |
+| 桥的 HTTP 端点 | `handler/agent/bridge.go`、`router/bridge.go` | OpenAI 兼容的对话端点（错误按 OpenAI 格式返回，pi 据此显示和判断重试），以及 tool / state / finish；设计上只挂在绑定 127.0.0.1 的独立监听上 |
+| Node 运行时 | `agent` | pi 1.0.4（精确锁定）；工具声明与回调；等审批靠 terminate；历史恢复；上下文裁剪；插话与中止 |
+| 进程监管 | `service/agent/runtime.go`、`process.go` | 每个片段一个进程，最小环境，独立临时目录，限制内存；异常退出标为中断；取消先 abort 再强杀；服务退出杀光进程 |
+| 提示词 | `internal/agent/prompts` | 系统提示词（go:embed，带版本号）和用户消息拼装，画布目录与运行参数明确标为数据 |
 
 **端到端测试**（`tests/repository/agent_e2e_test.go`）：真正的 Node 进程 + 真正的桥 HTTP 服务 + 真实 PostgreSQL + 假的 LLM 上游，4 个场景（搭建并计费、删除审批后续跑、流到一半取消仍计费、进程被杀后继续），连跑 8 轮（带 `-race`）全部通过。需要 Node ≥ 22.19 和已 `npm ci` 的 `agent-runtime`，否则自动跳过。
 
@@ -751,7 +751,7 @@ MVP 按下面 6 个切片自底向上实现，每片先写测试、通过 lint �
 **还没做（装配已完成，见下两条；以下是剩余项）**
 
 - 已装配：配置开关 `agent.enabled`（默认关）、Node 路径、runtime 目录；桥只绑定 127.0.0.1（配置校验和监听时各查一次）；`ProcessRuntime` 已接进 `app.go`，启动时自检 Node 版本，并把上次遗留的活跃运行标为 `interrupted`。开启还需要在后台发布 `agent` 类型的模型。
-- 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `backend/agent-runtime` 里 `npm ci`。
+- 已装配：生产镜像带 Node 22 和 `npm ci --omit=dev` 装好的 `agent-runtime`（环境变量 `APP_AGENT_ENABLED`，compose 默认 false）；开发镜像只带 node 二进制，依赖要在宿主机 `agent` 里 `npm ci`。
 - 视频节点的看图（抽帧或封面）、技能后台管理页面、Agent 模型的试跑（后端 dry-run / test-run 还不认 agent 类型）、后台流水里区分 Agent 的扣费。
 
 ### 13.9 切片 5：前端的数据流与画布合并（已完成）

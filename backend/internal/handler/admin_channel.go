@@ -87,7 +87,7 @@ func (h *AdminChannelHandler) Get(c *gin.Context) {
 // Create 新建渠道。
 func (h *AdminChannelHandler) Create(c *gin.Context) {
 	var req createChannelReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	enabled := true
@@ -113,7 +113,7 @@ func (h *AdminChannelHandler) Update(c *gin.Context) {
 		return
 	}
 	var req updateChannelReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.Update(c.Request.Context(), service.ChannelUpdateInput{
@@ -135,7 +135,7 @@ func (h *AdminChannelHandler) SetSecret(c *gin.Context) {
 		return
 	}
 	var req setSecretReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetSecret(c.Request.Context(), currentUserID(c), key, req.Value); err != nil {

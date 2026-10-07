@@ -108,7 +108,7 @@ func (h *AdminAIHandler) List(c *gin.Context) {
 // Create 新建配置并保存为草稿；正文有校验问题也会保存，问题列表在响应的 issues 里。
 func (h *AdminAIHandler) Create(c *gin.Context) {
 	var req saveConfigReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
@@ -142,7 +142,7 @@ func (h *AdminAIHandler) Update(c *gin.Context) {
 		return
 	}
 	var req saveConfigReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
@@ -194,7 +194,7 @@ func (h *AdminAIHandler) Rollback(c *gin.Context) {
 		return
 	}
 	var req rollbackReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	rev, err := h.svc.Rollback(c.Request.Context(), key, req.RevisionID, currentUserID(c))
@@ -244,7 +244,7 @@ func (h *AdminAIHandler) DryRun(c *gin.Context) {
 		return
 	}
 	var req trialReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	res, err := h.svc.DryRun(c.Request.Context(), key, req.Input)
@@ -262,7 +262,7 @@ func (h *AdminAIHandler) TestRun(c *gin.Context) {
 		return
 	}
 	var req trialReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	view, err := h.svc.TestRun(c.Request.Context(), currentUserID(c), key, req.Input)
@@ -294,7 +294,7 @@ func (h *AdminAIHandler) SetEnabled(c *gin.Context) {
 		return
 	}
 	var req setEnabledReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetModelEnabled(c.Request.Context(), key, *req.Enabled, currentUserID(c)); err != nil {
@@ -311,7 +311,7 @@ func (h *AdminAIHandler) SetSort(c *gin.Context) {
 		return
 	}
 	var req setSortReq
-	if !bindJSON(c, &req) {
+	if !BindJSON(c, &req) {
 		return
 	}
 	if err := h.svc.SetModelSort(c.Request.Context(), key, *req.Sort, currentUserID(c)); err != nil {

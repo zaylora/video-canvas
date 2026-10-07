@@ -17,6 +17,7 @@ import (
 	"video-canvas/internal/cache"
 	"video-canvas/internal/config"
 	"video-canvas/internal/handler"
+	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/pkg/idcodec"
@@ -29,6 +30,7 @@ import (
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
 	"video-canvas/internal/service"
+	agentsvc "video-canvas/internal/service/agent"
 	"video-canvas/internal/storage"
 )
 
@@ -146,11 +148,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
 	agentRepo := repository.NewAgentRepository(db)
-	agentCanvasSvc := service.NewAgentCanvasService(agentRepo, hub)
-	agentSvc := service.NewAgentService(service.AgentDeps{
+	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
+	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
 		Repo: agentRepo, Canvas: agentCanvasSvc,
-		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc,
-		Generator: service.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
+		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc,
+		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
 	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
 	// 不管有没有启用运行时都要做，否则关掉功能后画布仍被占着
@@ -211,7 +213,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Health:         handler.NewHealthHandler(db, rdb),
 		User:           handler.NewUserHandler(userSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
-		Agent:          handler.NewAgentHandler(agentSvc),
+		Agent:          agenthandler.NewAgentHandler(agentSvc),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),

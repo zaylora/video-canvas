@@ -14,7 +14,6 @@ import (
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
 )
 
 // taskView 把任务行转换成对外视图；损坏的输出按空数组降级，避免查询接口返回不可序列化的数据。
@@ -60,19 +59,6 @@ func taskDeadline(snap *provider.Snapshot) time.Duration {
 		return d
 	}
 	return defaultTaskDeadline
-}
-
-// joinFieldErrors 把字段级错误拼成面向用户的一句话。
-func joinFieldErrors(errs []modelcfg.FieldError) string {
-	parts := make([]string, 0, len(errs))
-	for _, e := range errs {
-		if e.Field == "" {
-			parts = append(parts, e.Message)
-			continue
-		}
-		parts = append(parts, e.Field+"："+e.Message)
-	}
-	return strings.Join(parts, "；")
 }
 
 // parseTaskIDs 解析逗号分隔的任务 ID，去重后返回。

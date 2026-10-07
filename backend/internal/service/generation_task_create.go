@@ -353,7 +353,7 @@ func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64,
 	caps := snap.Model.Capabilities
 	input, fieldErrs := s.validateInput(snap.Model.Kind, caps, raw)
 	if len(fieldErrs) > 0 {
-		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + joinFieldErrors(fieldErrs))
+		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + modelcfg.JoinFieldErrors(fieldErrs))
 	}
 
 	// 2. 文本模型：固定系统提示与最大输出由配置决定，用户的输入改不了
@@ -379,7 +379,7 @@ func (s *GenerationTaskService) prepareInput(ctx context.Context, userID uint64,
 		}
 	}
 	if len(assetErrs) > 0 {
-		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + joinFieldErrors(assetErrs))
+		return nil, errcode.ErrTaskInput.WithMsg(taskUserVisibleErrPrefix + modelcfg.JoinFieldErrors(assetErrs))
 	}
 	return input, nil
 }

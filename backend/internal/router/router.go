@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/handler"
+	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/middleware"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/response"
@@ -14,7 +15,7 @@ type Handlers struct {
 	Health        *handler.HealthHandler
 	User          *handler.UserHandler
 	CanvasProject *handler.CanvasProjectHandler
-	Agent         *handler.AgentHandler // 画布 Agent：会话、运行、审批
+	Agent         *agenthandler.AgentHandler // 画布 Agent：会话、运行、审批
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook

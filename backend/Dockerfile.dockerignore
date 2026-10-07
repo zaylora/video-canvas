@@ -1,0 +1,12 @@
+**/.git
+**/node_modules
+backend/bin
+backend/data
+backend/tmp
+backend/configs/*.local.yaml
+backend/**/*_test.go
+backend/Dockerfile.dev
+backend/.air.toml
+agent/test
+web
+docs
