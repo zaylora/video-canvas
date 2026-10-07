@@ -54,8 +54,9 @@ type Capabilities struct {
 	Refs    Refs         `json:"refs"`              // 参考素材：按媒体类型配开关与上限，仅 video / image
 	Prompt  PromptSpec   `json:"prompt"`            // 提示词上限
 	Params  ParamSet     `json:"params,omitempty"`  // 生成参数：有序，书写顺序 = 画布参数面板的显示顺序
-	Context *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text
+	Context *ContextSpec `json:"context,omitempty"` // 上下文能力，仅 text / agent
 	System  string       `json:"system,omitempty"`  // 固定系统提示，仅 text，用户看不到
+	Vision  bool         `json:"vision,omitempty"`  // 能不能看图，仅 agent；不能看图的模型不会收到「看图」工具
 }
 
 // Refs 是三种参考素材的配置。

@@ -1,3 +1,4 @@
+import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
 import type { ConnectionState } from "@/store/ws";
 
@@ -73,6 +74,32 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "canvas.patch": {
+      if (typeof data !== "object" || data === null) return null;
+      const patch = data as Partial<CanvasPatchDto>;
+      if (
+        typeof patch.canvas_id !== "string" ||
+        typeof patch.revision_before !== "number" ||
+        typeof patch.revision_after !== "number" ||
+        !Array.isArray(patch.changes)
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
+    case "agent.event": {
+      if (typeof data !== "object" || data === null) return null;
+      const event = data as Partial<AgentEventDto>;
+      if (
+        typeof event.session_id !== "string" ||
+        typeof event.canvas_id !== "string" ||
+        typeof event.seq !== "number" ||
+        typeof event.type !== "string"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
     default:
       return null;
   }
@@ -102,6 +129,10 @@ export type SocketClientDeps = {
   createSocket: (url: string) => SocketLike;
   /** 收到任务快照 */
   onTask: (view: TaskView) => void;
+  /** 收到 Agent 对画布的改动 */
+  onCanvasPatch?: (patch: CanvasPatchDto) => void;
+  /** 收到画布 Agent 会话里的一条事件 */
+  onAgentEvent?: (event: AgentEventDto) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
   onOpen: () => void;
   onState: (state: ConnectionState) => void;
@@ -252,6 +283,8 @@ export class TaskSocketClient {
       // 服务端确认握手后才算稳定，之前的退避计数在这里清零
       if (msg.type === "hello") this.attempt = 0;
       if (msg.type === "task.updated") this.deps.onTask(msg.data);
+      else if (msg.type === "canvas.patch") this.deps.onCanvasPatch?.(msg.data);
+      else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;

@@ -37,7 +37,13 @@ func validateCapabilities(kind string, c *Capabilities, issues *[]Issue) {
 	validateOps(kind, c, add)
 	validateRefs(kind, c, add)
 	if c.Prompt.MaxLength < 1 || c.Prompt.MaxLength > maxPromptLength {
-		add("prompt.max_length", fmt.Sprintf("提示词字数上限必须在 1 – %d 之间", maxPromptLength))
+		add("prompt.max_length", fmt.Sprintf("提示词字数上限必须在 1 – %d 之间（Agent 模型里是用户单条消息的字数上限）", maxPromptLength))
+	}
+	if kind == KindAgent && len(c.Params) > 0 {
+		add("params", "Agent 模型没有生成参数")
+	}
+	if c.Vision && kind != KindAgent {
+		add("vision", "只有 Agent 模型可以声明 vision（能看图）")
 	}
 	validateParams(c.Params, add)
 	validateContext(kind, c, add)
@@ -47,7 +53,7 @@ func validateOps(kind string, c *Capabilities, add func(path, msg string)) {
 	allowed := opsOfKind[kind]
 	if len(allowed) == 0 {
 		if len(c.Ops) > 0 {
-			add("ops", "文本、音频模型没有生成方式")
+			add("ops", "文本、音频、Agent 模型没有生成方式")
 		}
 		return
 	}
@@ -249,17 +255,20 @@ func validateFanout(base string, f ParamField, add func(path, msg string)) {
 }
 
 func validateContext(kind string, c *Capabilities, add func(path, msg string)) {
-	if kind != KindText {
+	if kind != KindText && kind != KindAgent {
 		if c.Context != nil {
-			add("context", "只有文本模型有上下文能力")
+			add("context", "只有文本、Agent 模型有上下文能力")
 		}
 		if c.System != "" {
 			add("system", "只有文本模型有固定系统提示")
 		}
 		return
 	}
+	if kind == KindAgent && c.System != "" {
+		add("system", "Agent 的系统提示词由平台维护，不能在模型上配置")
+	}
 	if c.Context == nil {
-		add("context", "文本模型必须设置上下文窗口和最大输出")
+		add("context", "文本、Agent 模型必须设置上下文窗口和最大输出")
 	} else {
 		w, o := c.Context.Window, c.Context.Output
 		if w < 1 || w > maxContextWin {

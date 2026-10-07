@@ -39,7 +39,9 @@ const BILLING_LABEL: Record<Billing, string> = {
 function billingBlocked(billing: Billing, kind: string, caps: Capabilities | undefined) {
   if (billing === "per_second" && caps?.params?.duration?.type !== "number")
     return "按秒计费需要一个名为 duration 的数字参数（在「能力与参数」里添加视频时长）";
-  if (billing === "token" && kind !== "text") return "只有文本模型按 Token 计费";
+  if (kind === "agent" && billing !== "token") return "Agent 模型只能按 Token 计费";
+  if (billing === "token" && kind !== "text" && kind !== "agent")
+    return "只有文本、Agent 模型按 Token 计费";
   return null;
 }
 

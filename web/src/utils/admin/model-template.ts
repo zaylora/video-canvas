@@ -100,6 +100,15 @@ export function defaultCapabilities(kind: string): Capabilities {
         prompt: { max_length: 4096 },
         params: {},
       };
+    case "agent":
+      // 画布 Agent 的对话大模型：没有生成方式、素材、参数，只有上下文和能不能看图
+      return {
+        refs: { image: REF_OFF, audio: REF_OFF, video: REF_OFF },
+        prompt: { max_length: 20000 },
+        params: {},
+        context: { window: 200000, output: 8192 },
+        vision: true,
+      };
     default:
       return {
         refs: { image: REF_OFF, audio: REF_OFF, video: REF_OFF },
@@ -138,6 +147,8 @@ export function defaultPricing(kind: string): Pricing {
       };
     case "text":
       return { billing: "token", token: { in: 2, out: 8 } };
+    case "agent":
+      return { billing: "token", token: { in: 3, out: 15 } };
     default:
       return { billing: "per_call", unit: 2 };
   }

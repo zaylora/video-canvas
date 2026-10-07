@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 
 import { getWsTicket } from "@/api/ws";
+import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
+import { publishCanvasPatch } from "@/utils/agent/patch-bus";
 import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
 
@@ -25,9 +27,14 @@ export function useTaskSocket() {
       buildUrl: (ticket) => buildWsUrl(import.meta.env.VITE_API_BASE_URL, ticket),
       createSocket: (url) => new WebSocket(url),
       onTask: (view) => handleTaskView(view, "live"),
+      onCanvasPatch: publishCanvasPatch,
+      onAgentEvent: (event) => useAgentStore.getState().handleEvent(event),
       onOpen: () => {
         void reconcileActiveTasks();
         void useCreditsStore.getState().refresh();
+        // 断线期间可能漏了 Agent 事件：把已经打开过的会话补齐
+        const { sessions, replay } = useAgentStore.getState();
+        for (const id of Object.keys(sessions)) void replay(id).catch(() => undefined);
       },
       onState: setConnection,
       canConnect: () => !!getToken(),

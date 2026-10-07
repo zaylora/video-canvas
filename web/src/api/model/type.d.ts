@@ -53,10 +53,12 @@ export interface Capabilities {
   refs: Record<RefKind, RefSpec>;
   prompt: { max_length: number };
   params?: ParamSet;
-  /** 仅文本 */
+  /** 仅文本、agent */
   context?: { window: number; output: number };
   /** 固定系统提示，仅文本；不会下发给画布 */
   system?: string;
+  /** 能不能看图，仅 agent；不能看图的模型拿不到「看图」工具 */
+  vision?: boolean;
 }
 
 /** 计费方式：按次 / 按秒（× 时长参数 duration）/ 按 Token（仅文本） */

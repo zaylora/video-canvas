@@ -337,7 +337,13 @@ export function ModelRows({
                     className="px-3 py-3 text-right whitespace-nowrap"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <Button size="sm" variant="outline" onClick={() => onTest(item.key)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={item.kind === "agent"}
+                      title={item.kind === "agent" ? "Agent 模型暂不支持试跑" : undefined}
+                      onClick={() => onTest(item.key)}
+                    >
                       <FlaskConical />
                       测试
                     </Button>

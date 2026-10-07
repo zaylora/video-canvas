@@ -58,7 +58,7 @@ import {
 } from "@/utils/admin/plugin";
 import { formatShortTime } from "@/utils/time";
 
-import { KIND_ORDER, KIND_STYLE, KindIcons } from "../kind";
+import { KIND_STYLE, KindIcons, PLUGIN_KIND_ORDER } from "../kind";
 import { ReadOnlyNotice } from "../../shared";
 import { useAliveRef } from "../../use-admin";
 import { confirmUpgradeChannels, outdatedChannels } from "./upgrade-channels";
@@ -270,7 +270,7 @@ export function PluginDetail({
         <CardContent className="border-t pt-4">
           <div className="text-muted-foreground mb-3 text-xs font-medium">支持的生成方式</div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {KIND_ORDER.map((kind) => {
+            {PLUGIN_KIND_ORDER.map((kind) => {
               const style = KIND_STYLE[kind];
               const mode = endpoints[kind]?.mode;
               return (

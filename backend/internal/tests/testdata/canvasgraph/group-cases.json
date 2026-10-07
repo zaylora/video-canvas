@@ -1,0 +1,150 @@
+{
+  "说明": "打组、解组、贴合组框的坐标换算。尺寸取默认值：image/script/audio 为 384×216，video 为 432×243。nodes 里带 parent 的是组成员，x/y 相对组左上角，否则是画布绝对坐标。expected 由前端 group.ts 算出，后端必须得到同样的结果。",
+  "cases": [
+    {
+      "name": "打组：两个节点，视觉位置不变",
+      "op": "group",
+      "nodes": [
+        {
+          "id": "a",
+          "kind": "image",
+          "x": 500,
+          "y": 300
+        },
+        {
+          "id": "b",
+          "kind": "video",
+          "x": 950,
+          "y": 340
+        },
+        {
+          "id": "c",
+          "kind": "script",
+          "x": 10,
+          "y": 10
+        }
+      ],
+      "members": [
+        "a",
+        "b"
+      ],
+      "expected": {
+        "group": {
+          "x": 452,
+          "y": 228,
+          "w": 978,
+          "h": 403
+        },
+        "nodes": {
+          "a": {
+            "x": 48,
+            "y": 72,
+            "parent": "g"
+          },
+          "b": {
+            "x": 498,
+            "y": 112,
+            "parent": "g"
+          },
+          "c": {
+            "x": 10,
+            "y": 10,
+            "parent": null
+          }
+        }
+      }
+    },
+    {
+      "name": "解组：成员回到绝对坐标",
+      "op": "ungroup",
+      "groups": [
+        {
+          "id": "g",
+          "x": 200,
+          "y": 100,
+          "w": 900,
+          "h": 400
+        }
+      ],
+      "nodes": [
+        {
+          "id": "a",
+          "kind": "image",
+          "x": 48,
+          "y": 72,
+          "parent": "g"
+        },
+        {
+          "id": "b",
+          "kind": "video",
+          "x": 552,
+          "y": 90,
+          "parent": "g"
+        }
+      ],
+      "expected": {
+        "nodes": {
+          "a": {
+            "x": 248,
+            "y": 172,
+            "parent": null
+          },
+          "b": {
+            "x": 752,
+            "y": 190,
+            "parent": null
+          }
+        }
+      }
+    },
+    {
+      "name": "贴合：成员散开后组框收紧",
+      "op": "fit",
+      "groups": [
+        {
+          "id": "g",
+          "x": 100,
+          "y": 100,
+          "w": 1600,
+          "h": 900
+        }
+      ],
+      "nodes": [
+        {
+          "id": "a",
+          "kind": "image",
+          "x": 300,
+          "y": 200,
+          "parent": "g"
+        },
+        {
+          "id": "b",
+          "kind": "script",
+          "x": 900,
+          "y": 500,
+          "parent": "g"
+        }
+      ],
+      "expected": {
+        "group": {
+          "x": 352,
+          "y": 228,
+          "w": 1080,
+          "h": 636
+        },
+        "nodes": {
+          "a": {
+            "x": 48,
+            "y": 72,
+            "parent": "g"
+          },
+          "b": {
+            "x": 648,
+            "y": 372,
+            "parent": "g"
+          }
+        }
+      }
+    }
+  ]
+}

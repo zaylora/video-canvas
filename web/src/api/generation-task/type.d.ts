@@ -1,3 +1,4 @@
+import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 /** 生成任务状态 */
 export type TaskStatus =
   /** 已创建，待入队 */
@@ -114,6 +115,10 @@ export type ServerMessage =
   | { type: "hello"; data?: { server_time?: string } }
   /** 任务状态更新推送 */
   | { type: "task.updated"; channel?: string; data: TaskView }
+  /** Agent 改了画布：带逐节点的改动，前端并进当前画布 */
+  | { type: "canvas.patch"; channel?: string; data: CanvasPatchDto }
+  /** 画布 Agent 会话里的一条事件（文本增量、工具调用、审批……） */
+  | { type: "agent.event"; channel?: string; data: AgentEventDto }
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */

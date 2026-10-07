@@ -40,6 +40,7 @@ type App struct {
 
 	hub        *ws.Hub                  // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
 	taskWorker *worker.Worker           // 生成任务调度；配置里关闭时为 nil
+	agent      *agentRuntime            // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
 	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
@@ -143,6 +144,32 @@ func NewApp(cfg *config.Config) (*App, error) {
 	aiCfgSvc.SetDryRunner(executor)
 	aiCfgSvc.SetTestTaskCreator(taskSvc)
 
+	// 画布 Agent：模型清单来自后台已发布的 agent 类型模型；运行时按 agent.enabled 装配，没启用时是占位（发起运行返回 60005）
+	agentRepo := repository.NewAgentRepository(db)
+	agentCanvasSvc := service.NewAgentCanvasService(agentRepo, hub)
+	agentSvc := service.NewAgentService(service.AgentDeps{
+		Repo: agentRepo, Canvas: agentCanvasSvc,
+		Models: service.NewRegistryAgentModels(aiCfgSvc), Runtime: service.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc,
+		Generator: service.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
+	})
+	// 上次服务退出时还停在 queued / running 的运行：它们的进程随旧服务一起没了，不会再有人推进，却占着画布。
+	// 不管有没有启用运行时都要做，否则关掉功能后画布仍被占着
+	if n, err := agentRepo.InterruptActiveRuns(context.Background()); err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, fmt.Errorf("恢复被中断的 Agent 运行失败：%w", err)
+	} else if n > 0 {
+		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
+	}
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc})
+	if err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
+
 	// 插件与渠道管理：aiChannelRepo 同时负责审计日志；变更后经 aiCfgSvc 刷新 Registry
 	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiChannelRepo, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
 	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiPluginRepo, aiCfgSvc, aiChannelRepo, executor, aiCfgSvc)
@@ -184,6 +211,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Health:         handler.NewHealthHandler(db, rdb),
 		User:           handler.NewUserHandler(userSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Agent:          handler.NewAgentHandler(agentSvc),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
@@ -211,6 +239,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		db:         db,
 		rdb:        rdb,
 		hub:        hub,
+		agent:      agentRT,
 		taskWorker: taskWorker,
 		runnerStop: runnerStop,
 		assets:     assetSvc,
@@ -369,6 +398,10 @@ func (a *App) Run(ctx context.Context) error {
 		<-loginDone
 	}()
 
+	if a.agent != nil {
+		go a.agent.serve()
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("http 服务已启动", zap.String("name", a.cfg.Server.Name), zap.String("addr", a.server.Addr))
@@ -457,6 +490,12 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 }
 
 func (a *App) close() {
+	// 画布 Agent 的进程要先于关库停：它们退出后的状态修正（标为中断）还要写库
+	if a.agent != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		a.agent.stop(ctx)
+		cancel()
+	}
 	if a.runnerStop != nil {
 		a.runnerStop()
 	}
@@ -501,4 +540,11 @@ func bootstrapStorage(db *gorm.DB, svc *service.StorageConfigService, cfg config
 		return err
 	}
 	return nil
+}
+
+// stopRunner 停掉 plugin-runner 的监督；非 spawn 模式没有它。
+func stopRunner(stop func()) {
+	if stop != nil {
+		stop()
+	}
 }

@@ -46,7 +46,7 @@ type Meta struct {
 	Description     string              `json:"description,omitempty"`
 	Auth            Auth                `json:"auth"`
 	AllowedHosts    []string            `json:"allowedHosts,omitempty"` // 结果下载可能访问的域名（支持 *.example.com）；请求本身只能去渠道 base_url
-	Endpoints       map[string]Endpoint `json:"endpoints"`              // 键是模型 kind：text / video / image / audio
+	Endpoints       map[string]Endpoint `json:"endpoints"`              // 键是模型 kind：text / video / image / audio；agent 不需要声明
 	ChannelSettings SettingSchema       `json:"channelSettings,omitempty"`
 	Import          *ImportMeta         `json:"import,omitempty"`
 	Poll            *PollMeta           `json:"poll,omitempty"` // 异步任务的轮询节奏，缺省由宿主给默认值
@@ -178,6 +178,17 @@ func (s *SettingSchema) UnmarshalJSON(data []byte) error {
 func (m *Meta) Endpoint(kind string) (Endpoint, bool) {
 	e, ok := m.Endpoints[kind]
 	return e, ok
+}
+
+// SupportsKind 判断插件所在的渠道能不能承接某种模型。普通种类要插件声明对应的 endpoint；
+// agent 不走插件钩子（钩子是同步的、不能联网，没法流式），由 LLM 网关直接用 Bearer 请求渠道的 OpenAI 兼容接口，
+// 所以只要求渠道用 Bearer 鉴权，不要求声明端点。
+func (m *Meta) SupportsKind(kind string) bool {
+	if kind == "agent" {
+		return m.Auth.Type == AuthBearer
+	}
+	_, ok := m.Endpoint(kind)
+	return ok
 }
 
 // Parse 读取已登记版本的 meta_json（宽松解码，不做预检规则校验）。

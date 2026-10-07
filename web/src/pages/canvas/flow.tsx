@@ -44,7 +44,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { GRID_SIZE, useSettingsStore } from "@/store";
-import type { CanvasEdge, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
+import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
@@ -55,6 +55,9 @@ import {
   hasVolatileRunning,
   serializeGraph,
 } from "@/utils/canvas/canvas-persistence";
+import { AnimatePresence } from "motion/react";
+import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
+import { useAgentController, useAgentModels } from "@/hooks/use-agent-controller";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import {
   createViewportWriter,
@@ -83,6 +86,8 @@ import { GroupUiProvider, useGroupUiState } from "./group-ui";
 import { useGroupDrag } from "./use-group-drag";
 import { useGroupOps } from "./use-group-ops";
 import { useFocusNode } from "./chrome/use-focus-node";
+import { AgentPanel } from "./agent/agent-panel";
+import { AgentLauncher } from "./chrome/agent-launcher";
 import { ConflictDialog } from "./conflict-dialog";
 import { buildAddNodeItems } from "./chrome/add-node-items";
 import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
@@ -171,6 +176,8 @@ export const Flow = memo(function Flow({
     };
   }, [viewportWriter]);
   // 保存发请求的那一刻才取图谱，视口也在这时读，所以平移缩放本身不用触发保存
+  /** Agent 改画布的同步（见 useAgentCanvasSync）；保存的回调经它转给同步 */
+  const agentSyncRef = useRef<ReturnType<typeof useAgentCanvasSync> | null>(null);
   const getGraph = useCallback(
     () =>
       hydratedRef.current
@@ -185,11 +192,17 @@ export const Flow = memo(function Flow({
     flush,
     rename,
     dismissConflict,
+    getVersion,
+    mergeVersion,
+    hasUnsaved,
   } = useCanvasPersistence({
     canvasId: canvas.id,
     initialVersion: canvas.version,
     getGraph,
     onConflict,
+    // 同步要等撤销栈建好才能创建，这里先经 ref 转一道
+    autoMerge: () => agentSyncRef.current?.autoMerge() ?? Promise.resolve(null),
+    onSaved: (graph, version) => agentSyncRef.current?.saved(graph, version),
   });
   const overlayGate = useOverlayGate(getNodes);
   const { pruneOnChange } = overlayGate;
@@ -267,6 +280,54 @@ export const Flow = memo(function Flow({
   }, [nodes, edges, changed, flush]);
   const { tool, activeTool, setTool } = useCanvasTool();
   const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+  const agentSync = useAgentCanvasSync({
+    canvas,
+    getVersion,
+    mergeVersion,
+    hasUnsaved,
+    nodesRef,
+    edgesRef,
+    setNodes,
+    setEdges,
+    skipNextSave: () => {
+      changeSaveRef.current = false;
+    },
+    markTasksKnown: (ids) => {
+      for (const id of ids) knownTaskIdsRef.current.add(id);
+    },
+    resetHistory: history.reset,
+  });
+  useEffect(() => {
+    agentSyncRef.current = agentSync;
+  }, [agentSync]);
+  // 画布 Agent 浮窗：控制器常驻（收起后运行状态、事件接收照常），⌘/ 开关
+  const agentModels = useAgentModels();
+  const [agentOpen, setAgentOpen] = useState(false);
+  const agentCtl = useAgentController({
+    canvasId: canvas.id,
+    models: agentModels ?? [],
+    getSelection: () => nodesRef.current.filter((node) => node.selected).map((node) => node.id),
+    getViewport,
+  });
+  const toggleAgent = useCallback(() => setAgentOpen((open) => !open), []);
+  /** 输入框里 @ 能引用的节点（组不算） */
+  const agentNodeOptions = useMemo(
+    () =>
+      nodes
+        .filter((node): node is CanvasNode => node.type === "canvas")
+        .map((node) => ({ id: node.id, label: node.data.label, kind: node.data.kind })),
+    [nodes],
+  );
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
+        event.preventDefault();
+        setAgentOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /**
    * 组（设计稿 6.10）：删除要确认，确认后组和成员一起删。
@@ -475,6 +536,18 @@ export const Flow = memo(function Flow({
     beginUploadAt(viewportCenter());
     uploadInputRef.current?.click();
   }, [beginUploadAt, viewportCenter]);
+  /** 给 Agent 的图片附件：先在画布中心落成图片节点（走现有上传），再把新建的节点作为 chip 引用 */
+  const attachImagesForAgent = useCallback(
+    async (files: File[]) => {
+      const before = new Set(nodesRef.current.map((node) => node.id));
+      beginUploadAt(viewportCenter());
+      showUploadNotice(await addUploadedNodes(files));
+      return nodesRef.current
+        .filter((node): node is CanvasNode => node.type === "canvas" && !before.has(node.id))
+        .map((node) => ({ type: "node" as const, id: node.id, name: node.data.label }));
+    },
+    [addUploadedNodes, beginUploadAt, viewportCenter],
+  );
 
   /** 历史浮条里的缩略图拖到画布上：以那一版为素材建一个新节点 */
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -724,9 +797,30 @@ export const Flow = memo(function Flow({
                     onOpenShortcuts={openShortcuts}
                   />
                 </ChromeZone>
-                <ChromeZone position="bottom-right" className="max-md:hidden">
-                  <StatsBar />
+                <ChromeZone position="bottom-right">
+                  <AgentLauncher
+                    open={agentOpen}
+                    available={agentModels === null ? null : agentModels.length > 0}
+                    running={agentCtl.busy}
+                    onToggle={toggleAgent}
+                  />
+                  <div className="max-md:hidden">
+                    <StatsBar />
+                  </div>
                 </ChromeZone>
+                <AnimatePresence>
+                  {agentOpen && agentModels && agentModels.length > 0 && (
+                    <AgentPanel
+                      key="agent-panel"
+                      ctl={agentCtl}
+                      models={agentModels}
+                      selectionCount={nodes.filter((node) => node.selected).length}
+                      nodes={agentNodeOptions}
+                      onAttachImages={attachImagesForAgent}
+                      onClose={toggleAgent}
+                    />
+                  )}
+                </AnimatePresence>
 
                 <SettingsDialog
                   open={settingsOpen}

@@ -24,6 +24,8 @@ export function useCanvasPersistence({
   initialVersion,
   getGraph,
   onConflict,
+  autoMerge,
+  onSaved,
 }: {
   canvasId: string;
   initialVersion: number;
@@ -31,6 +33,10 @@ export function useCanvasPersistence({
   getGraph: () => CanvasGraphDto | null;
   /** 用户选择「加载最新」后，把别处的最新画布交给外面重挂 */
   onConflict: (current: CanvasDetailDto) => void;
+  /** 保存撞上 409 时先试着自动合并：返回合并后的服务端版本号，null 表示不能合并，走冲突弹窗 */
+  autoMerge?: () => Promise<number | null>;
+  /** 一次保存成功：这份图谱就是服务端在该版本的内容 */
+  onSaved?: (graph: CanvasGraphDto, version: number) => void;
 }) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   /** 保存撞上 409 时拉回来的最新画布；非空期间不再自动上传 */
@@ -38,10 +44,14 @@ export function useCanvasPersistence({
   // 回调放进 ref：flush 的身份不随外面重渲染变，卸载时的 flush 才不会在画布使用中途误触发
   const getGraphRef = useRef(getGraph);
   const onConflictRef = useRef(onConflict);
+  const autoMergeRef = useRef(autoMerge);
+  const onSavedRef = useRef(onSaved);
   useEffect(() => {
     getGraphRef.current = getGraph;
     onConflictRef.current = onConflict;
-  }, [getGraph, onConflict]);
+    autoMergeRef.current = autoMerge;
+    onSavedRef.current = onSaved;
+  }, [getGraph, onConflict, autoMerge, onSaved]);
 
   const [coordinator] = useState(() => {
     // 认不出当前用户就没有草稿：退化为只走云端，行为和以前一致
@@ -62,6 +72,8 @@ export function useCanvasPersistence({
           },
         ),
       isConflict: (error) => error instanceof ApiError && error.status === 409,
+      autoMerge: () => autoMergeRef.current?.() ?? Promise.resolve(null),
+      onSaved: (graph, version) => onSavedRef.current?.(graph, version),
       onConflict: async () => {
         try {
           setConflict(await getCanvas(canvasId));
@@ -166,5 +178,25 @@ export function useCanvasPersistence({
     };
   }, [coordinator]);
 
-  return { status, conflict, changed, flush, rename, dismissConflict };
+  /** 当前的服务端版本号（保存和合并都会推进它） */
+  const getVersion = useCallback(() => coordinator.version, [coordinator]);
+  /** 别处的改动已并进本地：把版本接到它的 revision */
+  const mergeVersion = useCallback(
+    (version: number) => coordinator.mergeVersion(version),
+    [coordinator],
+  );
+  /** 云端还有没存上的内容（改动没发出去，或请求在途） */
+  const hasUnsaved = useCallback(() => coordinator.hasUnsaved, [coordinator]);
+
+  return {
+    status,
+    conflict,
+    changed,
+    flush,
+    rename,
+    dismissConflict,
+    getVersion,
+    mergeVersion,
+    hasUnsaved,
+  };
 }

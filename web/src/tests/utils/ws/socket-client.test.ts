@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { TaskView } from "@/api/generation-task/type";
 import type { ConnectionState } from "@/store/ws";
 
@@ -148,6 +149,8 @@ function setup(
   const sockets: FakeSocket[] = [];
   const states: ConnectionState[] = [];
   const tasks: TaskView[] = [];
+  const patches: CanvasPatchDto[] = [];
+  const agentEvents: AgentEventDto[] = [];
   let opens = 0;
   let tickets = 0;
   const client = new TaskSocketClient({
@@ -164,6 +167,8 @@ function setup(
       return socket;
     },
     onTask: (view) => tasks.push(view),
+    onCanvasPatch: (patch) => patches.push(patch),
+    onAgentEvent: (event) => agentEvents.push(event),
     onOpen: () => {
       opens += 1;
     },
@@ -179,6 +184,8 @@ function setup(
     sockets,
     states,
     tasks,
+    patches,
+    agentEvents,
     advance,
     flush,
     opens: () => opens,
@@ -186,7 +193,61 @@ function setup(
   };
 }
 
+describe("parseServerMessage：Agent 的两种消息", () => {
+  const patch = { canvas_id: "c1", revision_before: 3, revision_after: 4, changes: [] };
+  const event = { session_id: "s1", canvas_id: "c1", seq: 2, type: "run.status", data: {} };
+
+  test("canvas.patch 必须带 canvas_id、前后 revision 和 changes", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "canvas.patch", data: patch }))?.type).toBe(
+      "canvas.patch",
+    );
+    for (const bad of [
+      { ...patch, canvas_id: 1 },
+      { ...patch, revision_after: "4" },
+      { ...patch, changes: null },
+    ]) {
+      expect(parseServerMessage(JSON.stringify({ type: "canvas.patch", data: bad }))).toBeNull();
+    }
+    expect(parseServerMessage('{"type":"canvas.patch"}')).toBeNull();
+  });
+
+  test("agent.event 必须带 session_id、canvas_id、seq（临时事件为 0）和 type", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "agent.event", data: event }))?.type).toBe(
+      "agent.event",
+    );
+    expect(
+      parseServerMessage(JSON.stringify({ type: "agent.event", data: { ...event, seq: 0 } }))?.type,
+    ).toBe("agent.event");
+    for (const bad of [
+      { ...event, seq: "2" },
+      { ...event, type: undefined },
+      { ...event, session_id: 7 },
+    ]) {
+      expect(parseServerMessage(JSON.stringify({ type: "agent.event", data: bad }))).toBeNull();
+    }
+  });
+});
+
 describe("TaskSocketClient", () => {
+  test("收到 canvas.patch 和 agent.event 分别交给各自的回调", async () => {
+    const t = setup();
+    t.client.start();
+    await t.flush();
+    t.sockets[0].open();
+    t.sockets[0].message({
+      type: "canvas.patch",
+      data: { canvas_id: "c1", revision_before: 3, revision_after: 4, changes: [] },
+    });
+    t.sockets[0].message({
+      type: "agent.event",
+      data: { session_id: "s1", canvas_id: "c1", seq: 1, type: "message.user", data: {} },
+    });
+    t.sockets[0].message({ type: "canvas.patch", data: { canvas_id: 5 } });
+    expect(t.patches.map((p) => p.revision_after)).toEqual([4]);
+    expect(t.agentEvents.map((e) => e.seq)).toEqual([1]);
+    expect(t.tasks).toHaveLength(0);
+  });
+
   test("先拿 ticket 再建连；连上后进入 connected 并触发对账回调", async () => {
     const t = setup();
     t.client.start();

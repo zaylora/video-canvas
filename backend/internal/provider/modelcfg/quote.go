@@ -113,6 +113,15 @@ func Settle(p Pricing, frozen int, usage *Usage) int {
 	return min(tokenCredits(p.Token, usage.InputTokens, usage.OutputTokens), frozen)
 }
 
+// TokenCost 按实际用量算 Token 计费的积分，不封顶：画布 Agent 的每次对话调用结束后按它扣费（没有预先冻结的上限可封）。
+// 非 Token 计费的定价返回 0。有用量时最少 1 积分，没有任何用量（0 入 0 出）不收费。
+func TokenCost(p Pricing, in, out int) int {
+	if p.Billing != BillingToken || p.Token == nil || in+out <= 0 {
+		return 0
+	}
+	return tokenCredits(p.Token, in, out)
+}
+
 // tokenCredits 按百万 Token 单价算积分：只有这里会出现小数，向上取整，最少 1 积分。
 func tokenCredits(price *TokenPrice, in, out int) int {
 	if price == nil {

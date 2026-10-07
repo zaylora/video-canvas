@@ -19,6 +19,18 @@ describe("按种类预填的能力与定价", () => {
     expect(defaultCapabilities("text").ops).toBeUndefined();
   });
 
+  test("agent：只按 Token 计费，有上下文和看图，没有生成方式、素材开关、生成参数、系统提示", () => {
+    const caps = defaultCapabilities("agent");
+    expect(defaultPricing("agent")).toEqual({ billing: "token", token: { in: 3, out: 15 } });
+    expect(caps.context).toEqual({ window: 200000, output: 8192 });
+    expect(caps.vision).toBe(true);
+    expect(caps.ops).toBeUndefined();
+    expect(caps.params).toEqual({});
+    expect(caps.system).toBeUndefined();
+    expect(Object.values(caps.refs).every((r) => !r.on)).toBe(true);
+    expect(defaultCapabilities("text").vision).toBeUndefined();
+  });
+
   test("视频、图片带生成数量（fanout）参数", () => {
     expect(defaultCapabilities("video").params?.count?.fanout).toBe(true);
     expect(defaultCapabilities("image").params?.count?.options).toEqual([1, 2, 4]);

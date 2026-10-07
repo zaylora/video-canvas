@@ -104,7 +104,7 @@ export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<
     kind,
     label: draft.label || draft.upstream_model,
     hint: "",
-    deadline: kind === "text" ? "5m" : "30m",
+    deadline: kind === "text" || kind === "agent" ? "5m" : "30m",
     enabled: false,
     sort: 100,
     channels: [{ channel: channelKey, upstream_model: draft.upstream_model }],
@@ -120,6 +120,7 @@ export const MODEL_KIND_LABEL: Record<string, string> = {
   video: "视频",
   image: "图片",
   audio: "音频",
+  agent: "Agent",
 };
 
 /**

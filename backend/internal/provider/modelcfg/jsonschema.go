@@ -74,7 +74,7 @@ func capabilitiesSchema() obj {
 	return object("模型能力：由运营手填，是画布渲染与下单校验的唯一来源", obj{
 		"ops": obj{
 			"type": "array", "uniqueItems": true, "items": obj{"type": "string", "enum": []string{OpT2V, OpI2V, OpOmni, OpT2I, OpI2I}},
-			"description": "生成方式。video：t2v 文生 / i2v 图生 / omni 全能参考；image：t2i 文生图 / i2i 图生图；text、audio 不填",
+			"description": "生成方式。video：t2v 文生 / i2v 图生 / omni 全能参考；image：t2i 文生图 / i2i 图生图；text、audio、agent 不填",
 		},
 		"refs": object("参考素材（video / image）", obj{
 			"image": refSpecSchema("参考图片"), "audio": refSpecSchema("参考音频"), "video": refSpecSchema("参考视频"),
@@ -86,11 +86,12 @@ func capabilitiesSchema() obj {
 			"type": "object", "additionalProperties": paramFieldSchema(),
 			"description": "生成参数：参数名 -> 定义。书写顺序就是画布参数面板的显示顺序；参数名会作为任务输入的键传给插件",
 		},
-		"context": object("上下文能力（仅 text）", obj{
+		"context": object("上下文能力（仅 text / agent）", obj{
 			"window": obj{"type": "integer", "minimum": 1, "maximum": maxContextWin, "description": "上下文窗口（Token）"},
 			"output": obj{"type": "integer", "minimum": minContextOut, "maximum": maxContextOut, "description": "最大输出（Token），小于上下文窗口"},
 		}, "window", "output"),
 		"system": str("固定系统提示（仅 text）：每次请求都会带上，用户看不到"),
+		"vision": obj{"type": "boolean", "description": "能不能看图（仅 agent）：不能看图的模型不会收到「看图」工具"},
 	}, "prompt")
 }
 

@@ -31,7 +31,7 @@ const keyed = (nodes: FlowNode[], edges: CanvasEdge[]): Keyed => {
  * - 任务回填（状态、产物）不算一步，撤销时也不倒回去，见 restoreNodes
  * - 切历史版本这类只改 activeOutputId 的操作，调用方先 record() 再改
  * - 提示词里 @ 素材顺手连的线，调用方先 absorbTyping()，和正在攒的打字算同一步
- * 409 冲突时画布整张重挂，撤销栈随之清空。
+ * 409 冲突时画布整张重挂，撤销栈随之清空；Agent 的改动并进画布时也会清空（reset）。
  */
 export function useCanvasHistory({
   nodes,
@@ -150,6 +150,21 @@ export function useCanvasHistory({
   const undo = useCallback(() => travel(past, future), [travel]);
   const redo = useCallback(() => travel(future, past), [travel]);
 
+  /**
+   * 清空撤销栈：别处的改动（Agent）并进画布之后，栈里更早的整张快照已经不是现在的样子，
+   * 撤销到它们会把别人刚改的内容一起抹掉，所以干脆清掉，从现在重新开始记。
+   */
+  const reset = useCallback(() => {
+    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
+    typingTimer.current = null;
+    typingBase.current = null;
+    absorbNext.current = false;
+    past.current = [];
+    future.current = [];
+    restoring.current = true;
+    sync();
+  }, [sync]);
+
   /** 下一个改动不会被自动发现（比如只换了当前版本）时，先手动记一步 */
   const record = useCallback(() => {
     settleTyping();
@@ -166,6 +181,7 @@ export function useCanvasHistory({
     redo,
     record,
     absorbTyping,
+    reset,
     canUndo: depth.past > 0 || depth.typing,
     canRedo: depth.future > 0,
   };

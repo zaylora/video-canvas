@@ -28,7 +28,7 @@ meta: {
   description: "...",
   auth: { type: "bearer" },   // none / bearer / header(需 name) / query(需 name) / custom
   allowedHosts: [],           // 结果下载可能访问的域名（可含 *.example.com）；请求本身只能去渠道 base_url（或 url 形式指向这里的域名）
-  endpoints: { text: { mode: "sync" }, video: { mode: "async" } },  // 键是模型 kind：text/video/image/audio
+  endpoints: { text: { mode: "sync" }, video: { mode: "async" } },  // 键是模型 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）
   channelSettings: { region: { type: "enum", label: "区域", options: ["cn","global"], default: "cn" } },  // 渠道上的非敏感设置，渲染成表单
   import: { args: { } },      // 可选：“从渠道导入模型”的参数表单
   poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }   // 可选：异步轮询节奏（秒）

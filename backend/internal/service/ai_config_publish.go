@@ -185,9 +185,13 @@ func (s *AIConfigService) resolveChannel(ctx context.Context, cfg *modelcfg.Mode
 		return nil, err
 	}
 	// 4. 插件必须支持这种生成方式，否则宿主拿到任务也不知道该调哪个 endpoint
-	if _, ok := rc.meta.Endpoint(cfg.Kind); !ok {
-		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("渠道 %q 使用的插件 %s@%s 不支持 %s 类型的模型",
-			chKey, rc.version.PluginKey, rc.version.Version, cfg.Kind))
+	if !rc.meta.SupportsKind(cfg.Kind) {
+		why := "不支持"
+		if cfg.Kind == modelcfg.KindAgent {
+			why = "不支持（Agent 模型要求渠道用 Bearer 鉴权）"
+		}
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("渠道 %q 使用的插件 %s@%s %s %s 类型的模型",
+			chKey, rc.version.PluginKey, rc.version.Version, why, cfg.Kind))
 	}
 	return rc, nil
 }

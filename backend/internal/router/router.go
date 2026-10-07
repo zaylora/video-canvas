@@ -14,6 +14,7 @@ type Handlers struct {
 	Health        *handler.HealthHandler
 	User          *handler.UserHandler
 	CanvasProject *handler.CanvasProjectHandler
+	Agent         *handler.AgentHandler // 画布 Agent：会话、运行、审批
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
@@ -66,6 +67,21 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.GET("/:id", h.CanvasProject.Get)
 		canvas.PUT("/:id", h.CanvasProject.Update)
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
+		canvas.GET("/:id/agent/sessions", h.Agent.ListSessions)
+		canvas.POST("/:id/agent/sessions", h.Agent.CreateSession)
+
+		// 画布 Agent：id 与画布一样是十六进制串
+		agent := auth.Group("/agent")
+		agent.GET("/models", h.Agent.Models)
+		agent.PATCH("/sessions/:sid", h.Agent.RenameSession)
+		agent.DELETE("/sessions/:sid", h.Agent.DeleteSession)
+		agent.GET("/sessions/:sid/events", h.Agent.Events)  // ?after=序号&limit=
+		agent.POST("/sessions/:sid/runs", h.Agent.StartRun) // 202
+		agent.POST("/runs/:rid/interject", h.Agent.Interject)
+		agent.POST("/runs/:rid/cancel", h.Agent.Cancel)
+		agent.POST("/runs/:rid/resume", h.Agent.Resume)
+		agent.POST("/runs/:rid/undo", h.Agent.Undo)
+		agent.POST("/approvals/:aid/decision", h.Agent.Decide)
 
 		// 长任务生成
 		auth.POST("/ws/ticket", h.WS.IssueTicket)
