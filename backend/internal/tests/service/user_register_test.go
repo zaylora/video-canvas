@@ -40,7 +40,7 @@ func (c *testClock) add(d time.Duration) {
 var regMeta = ClientMeta{IP: "8.8.4.4", UserAgent: "ua"}
 
 func regReq(name, email, code string) *model.RegisterUserReq {
-	return &model.RegisterUserReq{Username: name, Email: email, Password: "secret1", Code: code}
+	return &model.RegisterUserReq{Username: name, Email: email, Password: "Str0ng-Pass", Code: code}
 }
 
 func TestUserService_AuthConfig(t *testing.T) {
@@ -170,6 +170,33 @@ func TestUserService_SendRegisterCode(t *testing.T) {
 func TestUserService_Register(t *testing.T) {
 	ctx := context.Background()
 
+	t.Run("密码规则与改密码一致：7 位、弱密码、等于用户名都被拒，且不建号", func(t *testing.T) {
+		cases := []struct {
+			name string
+			pw   string
+			want int
+		}{
+			{"7 位：10001", "Ab3$xyz", errcode.ErrInvalidParams.Code},
+			{"超过 72 字节：10001", strings.Repeat("a", 73), errcode.ErrInvalidParams.Code},
+			{"弱密码：55003", "password1", errcode.ErrPasswordWeak.Code},
+			{"等于用户名：55003", "alice_2026", errcode.ErrPasswordWeak.Code},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				repo := newFakeUserRepo()
+				svc, _, _, _ := newUserSvc(repo, nil)
+				req := regReq("alice_2026", "a@x.com", "")
+				req.Password = c.pw
+				if _, err := svc.Register(ctx, req, regMeta); codeOf(err) != c.want {
+					t.Fatalf("期望 %d，实际 %v", c.want, err)
+				}
+				if len(repo.users) != 0 {
+					t.Fatal("不应建号")
+				}
+			})
+		}
+	})
+
 	t.Run("首个账号成为 super_admin：免验证码（SMTP 未配），建积分账户并写 initial 流水与 register 记录，注册即登录", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, _, _, _ := newUserSvc(repo, nil)
@@ -187,7 +214,7 @@ func TestUserService_Register(t *testing.T) {
 		if u.EmailVerifiedAt != nil {
 			t.Fatal("未验证过邮箱不应写 email_verified_at")
 		}
-		if bc := u.Password; bc == "" || bc == "secret1" {
+		if bc := u.Password; bc == "" || bc == "Str0ng-Pass" {
 			t.Fatal("密码必须是哈希")
 		}
 		if repo.credits[u.ID] == nil || repo.credits[u.ID].Balance != 20 || len(repo.ledger) != 1 || repo.ledger[0].Type != model.LedgerInitial || repo.ledger[0].Amount != 20 {

@@ -135,6 +135,9 @@ func (s *UserService) Login(ctx context.Context, username, password string, meta
 	return view, nil
 }
 
+// IssueToken 为用户签发 JWT 并组装登录响应（与登录同构）；个人中心改密码成功后用它给当前设备续签。
+func (s *UserService) IssueToken(u *model.User) (*model.LoginView, error) { return s.issueToken(u) }
+
 // issueToken 为用户签发 JWT 并组装登录响应。
 func (s *UserService) issueToken(u *model.User) (*model.LoginView, error) {
 	token, expireAt, err := utils.GenerateToken(uint(u.ID), u.Username, u.TokenVersion, s.JWTSecret, s.JWTIssuer, s.JWTExpireHours)

@@ -31,7 +31,11 @@ var (
 	ProbeAssetMeta        = probeAssetMeta
 	SanitizeAssetFileName = sanitizeAssetFileName
 	SniffAssetMime        = sniffAssetMime
+	ValidateNewPassword   = validateNewPassword
 )
+
+// WeakPasswordCount 返回内置弱密码表的条数。
+func WeakPasswordCount() int { return len(weakPasswords) }
 
 func (s *AIConfigService) Repo() AIConfigRepo { return s.repo }
 

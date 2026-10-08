@@ -112,6 +112,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// 图片处理服务：给素材所在存储配置的云厂商缩略图 / 视频封面；素材服务通过它解析 /files?v=thumb|poster
 	processorSvc := service.NewImageProcessorService(repository.NewImageProcessorRepository(db), storageRepo, storeRegistry, service.NewHTTPProcessorFetcher())
 	assetSvc.SetVariantResolver(processorSvc)
+	assetSvc.SetAvatarLocator(userRepo) // /files/avatars/... 从用户表反查头像所在的存储
 
 	// 登录页展示：条目引用素材表里的视频 / 封面，地址复用素材服务的稳定地址（/files/<key>），设置走 system_settings 键值表；
 	// 后台素材库列表另需生成任务（带出提示词 / 模型名）和用户名（显示作者）
@@ -203,6 +204,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 		})
 	}
 
+	// 个人中心：头像写默认存储；改密码复用 token_version 失效机制，并断开全部 WS、给当前设备续签
+	meSvc := service.NewMeService(service.MeDeps{
+		Repo: userRepo, Canvases: canvasProjectRepo, Stores: storeRegistry,
+		Limiter: cache.NewPasswordFailLimiter(rdb), // Redis 未启用时降级为进程内计数（单实例部署可接受）
+		Users:   userSvc, Conns: hub, Tokens: userSvc,
+		FileBaseURL: cfg.Storage.Local.BaseURL,
+	})
+
 	// 鉴权用的用户状态查询：RequireActive 与 RequireAdmin / RequireSuperAdmin 共用同一套（Redis 缓存，无 Redis 直接查库）。
 	// 封禁、改角色、重置密码时由 UserService.InvalidateUser 主动删缓存，所以不再需要进程内的角色缓存
 	stateLookup := func(ctx context.Context, id uint64) (*middleware.UserState, error) {
@@ -223,6 +232,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
 		Health:         handler.NewHealthHandler(db, rdb),
 		User:           handler.NewUserHandler(userSvc),
+		Me:             handler.NewMeHandler(meSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
 		Agent:          agenthandler.NewAgentHandler(agentSvc),
 		AgentSkill:     agenthandler.NewSkillHandler(skillSvc),

@@ -149,6 +149,12 @@
   --group-blue: oklch(0.55 0.18 255);
   --group-purple: oklch(0.55 0.2 295);
   --group-pink: oklch(0.6 0.2 345);
+  /* 个人中心活跃热力图（设计 docs/design/个人中心 §6.4）：0 档是 muted，1–4 档是 primary 的透明度梯度 */
+  --heat-0: var(--muted);
+  --heat-1: color-mix(in oklch, var(--primary) 22%, transparent);
+  --heat-2: color-mix(in oklch, var(--primary) 45%, transparent);
+  --heat-3: color-mix(in oklch, var(--primary) 70%, transparent);
+  --heat-4: var(--primary);
 }
 
 .dark {
@@ -221,6 +227,12 @@
   --group-blue: oklch(0.72 0.15 255);
   --group-purple: oklch(0.7 0.16 295);
   --group-pink: oklch(0.74 0.17 345);
+  /* 深色底上浅档要更亮一点才分得出来 */
+  --heat-0: var(--muted);
+  --heat-1: color-mix(in oklch, var(--primary) 28%, transparent);
+  --heat-2: color-mix(in oklch, var(--primary) 50%, transparent);
+  --heat-3: color-mix(in oklch, var(--primary) 74%, transparent);
+  --heat-4: var(--primary);
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰）。浅色下卡片与页面同色、描边取淡一档；深色下卡片比页面亮一档，靠明暗而不是描边分层，和前台一致。

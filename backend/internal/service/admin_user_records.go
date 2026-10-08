@@ -116,16 +116,10 @@ func (s *AdminUserService) ListLedger(ctx context.Context, userID uint64, req *m
 	if err != nil {
 		return nil, err
 	}
-	// 2. 类型筛选映射
-	var types []string
-	switch req.Type {
-	case "", "all":
-	case "admin":
-		types = []string{model.LedgerAdminAdjust}
-	case "task":
-		types = []string{model.LedgerFreeze, model.LedgerSettle, model.LedgerRefund}
-	default:
-		return nil, errcode.ErrInvalidParams.WithMsg("类型筛选值不合法")
+	// 2. 类型筛选映射（与用户侧个人中心的流水共用 ledgerTypes，保证两边口径一致）
+	types, err := ledgerTypes(req.Type)
+	if err != nil {
+		return nil, err
 	}
 	// 3. 多取一条判断是否还有下一页
 	rows, err := s.repo.ListLedger(ctx, repository.LedgerRecordFilter{UserID: userID, Types: types, BeforeID: before, Limit: limit + 1})

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sparkle,
   Sun,
+  User,
 } from "lucide-react";
 
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
@@ -30,12 +31,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { UserAvatar } from "@/components/user-avatar";
 import type { ThemeSetting } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store";
 import { useCreditsStore } from "@/store/credits";
+import { useMeStore } from "@/store/me";
 import { useWsStore, type ConnectionState } from "@/store/ws";
 import { canEnterAdmin } from "@/utils/admin/role";
+import { displayName } from "@/utils/profile/profile-rules";
 import { logout } from "@/utils/storage/session";
 import { getRole, getToken } from "@/utils/storage/token";
 
@@ -53,7 +57,10 @@ const WS_TEXT: Record<ConnectionState, string> = {
   closed: "实时进度已断开",
 };
 
-/** 从登录令牌里读出用户名，读不出就返回 null（令牌是不透明串时） */
+/**
+ * 从登录令牌里读出用户名，读不出就返回 null（令牌是不透明串时）。
+ * 只在 /me 资料还没拉到时兜底，正常显示用 me.nickname || me.username
+ */
 export function useUsername() {
   return useMemo(() => {
     try {
@@ -148,7 +155,9 @@ export function TopRightBar({
   const navigate = useNavigate();
   const theme = useSettingsStore((state) => state.theme);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
-  const username = useUsername();
+  const tokenUsername = useUsername();
+  const me = useMeStore((state) => state.me);
+  const username = displayName(me) || tokenUsername;
   const showAdmin = useCanEnterAdmin();
 
   return (
@@ -204,7 +213,11 @@ export function TopRightBar({
             "hover:ring-node-ring/40 focus-visible:ring-node-ring/60 transition-shadow outline-none focus-visible:ring-2",
           )}
         >
-          {username?.slice(0, 1) ?? "我"}
+          {me ? (
+            <UserAvatar userId={me.id} name={username ?? ""} src={me.avatarUrl} size={40} />
+          ) : (
+            (username?.slice(0, 1) ?? "我")
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={10} className="w-52">
           {username && (
@@ -212,6 +225,10 @@ export function TopRightBar({
               <DropdownMenuLabel className="truncate">{username}</DropdownMenuLabel>
             </DropdownMenuGroup>
           )}
+          <DropdownMenuItem onClick={() => navigate("/profile")}>
+            <User />
+            个人中心
+          </DropdownMenuItem>
           {showAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
               <ShieldCheck />

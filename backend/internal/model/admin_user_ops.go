@@ -44,7 +44,7 @@ type SetUserRoleReq struct {
 
 // ResetPasswordReq 是 POST /admin/users/:id/reset-password 的请求体（仅 super_admin）。
 type ResetPasswordReq struct {
-	NewPassword string `json:"new_password" binding:"omitempty,min=6,max=128" label:"新密码"` // 缺省则由系统生成临时密码
+	NewPassword string `json:"new_password" binding:"omitempty,min=8,max=128" label:"新密码"` // 缺省则由系统生成临时密码；手填时按统一密码规则校验
 }
 
 // ResetPasswordView 是重置密码的响应。TempPassword 仅在这次响应里出现一次，库里只存 bcrypt 哈希，之后无法再查看。

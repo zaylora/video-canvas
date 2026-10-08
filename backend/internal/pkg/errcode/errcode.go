@@ -144,6 +144,16 @@ var (
 	ErrShowcaseOrderMismatch = New(54003, "排序列表与现有条目不一致，请刷新后重试", http.StatusBadRequest) // 多了、少了或重复了条目
 )
 
+// 个人中心 55xxx
+var (
+	ErrOldPasswordWrong    = New(55001, "当前密码错误", http.StatusBadRequest) // 剩余尝试次数写进 Msg
+	ErrPasswordSame        = New(55002, "新密码不能与当前密码相同", http.StatusBadRequest)
+	ErrPasswordWeak        = New(55003, "密码过于常见，请换一个", http.StatusBadRequest) // 等于用户名也归入此码，Msg 为“密码不能与用户名相同”
+	ErrPasswordTooFrequent = New(55004, "尝试过于频繁，请稍后再试", http.StatusTooManyRequests)
+	ErrAvatarFormat        = New(55005, "头像格式不支持，请上传 PNG / JPEG / WebP / GIF", http.StatusBadRequest)
+	ErrAvatarTooLarge      = New(55006, "头像文件过大", http.StatusBadRequest) // 文件超过 2MB 或尺寸超过 2048×2048，原因写进 Msg
+)
+
 // 画布 Agent 模块 6xxxx
 var (
 	ErrAgentRunActive      = New(60001, "这个画布上已有运行中的 Agent", http.StatusConflict)
