@@ -14,6 +14,7 @@ import (
 type Handlers struct {
 	Health        *handler.HealthHandler
 	User          *handler.UserHandler
+	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
 	CanvasProject *handler.CanvasProjectHandler
 	Agent         *agenthandler.AgentHandler // 画布 Agent：会话、运行、审批
 	AgentSkill    *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
@@ -63,6 +64,17 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.GET("/ws", h.WS.Connect)
 		// 需要登录：JWT 校验之后再查用户状态（停用 → 403，token_version 不符 → 401），封禁与重置密码立即生效
 		auth := v1.Group("", middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState))
+
+		// 个人中心：只操作当前登录用户自己的数据
+		me := auth.Group("/me")
+		me.GET("", h.Me.Get)
+		me.PATCH("", h.Me.Patch)
+		me.POST("/avatar", h.Me.UploadAvatar)
+		me.DELETE("/avatar", h.Me.DeleteAvatar)
+		me.PUT("/password", h.Me.ChangePassword)
+		me.GET("/stats", h.Me.Stats)
+		me.GET("/activity", h.Me.Activity)     // ?tz=Asia/Shanghai&year=2026
+		me.GET("/credits/ledger", h.Me.Ledger) // ?type=all|task|admin&page=1&page_size=20
 
 		// 画布操作
 		canvas := auth.Group("/canvas")

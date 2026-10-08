@@ -95,3 +95,10 @@ func (r *CanvasProjectRepository) Delete(ctx context.Context, userID, id uint64)
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
+
+// CountByUser 统计用户未删除的画布数（条件 user_id，软删除的不算）。
+func (r *CanvasProjectRepository) CountByUser(ctx context.Context, userID uint64) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("user_id = ?", userID).Count(&n).Error
+	return n, err
+}

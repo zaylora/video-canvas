@@ -147,7 +147,13 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 		return nil, errcode.ErrRegisterClosed
 	}
 
-	// 2. 需要验证码时校验：缺失、错误、过期、次数用尽统一返回“验证码错误或已过期”，不泄露具体原因；
+	// 2. 密码按统一规则校验（与个人中心改密码同一份实现）。放在验证码之前：
+	//    验证码是一次性的，密码不合规时不能把它白白消费掉，用户改完密码还要能直接提交
+	if err := validateNewPassword(req.Username, req.Password); err != nil {
+		return nil, err
+	}
+
+	// 3. 需要验证码时校验：缺失、错误、过期、次数用尽统一返回“验证码错误或已过期”，不泄露具体原因；
 	//    验证码在这里一次性消费。按契约顺序它排在用户名 / 邮箱唯一性检查之前
 	verified := false
 	if st.verifyRequired {
@@ -163,7 +169,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 		verified = true
 	}
 
-	// 3. 事务外先做耗时操作：bcrypt 哈希与读初始积分，避免持有注册锁时做 CPU 密集计算
+	// 4. 事务外先做耗时操作：bcrypt 哈希与读初始积分，避免持有注册锁时做 CPU 密集计算
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -173,7 +179,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 		return nil, err
 	}
 
-	// 4. 事务内建号
+	// 5. 事务内建号
 	user := &model.User{Username: req.Username, Email: email, Password: string(hashed), Status: model.UserStatusActive}
 	if err := s.Repo.WithTx(ctx, func(tx repository.UserTx) error {
 		return s.registerInTx(ctx, tx, user, initial, verified, st.smtpOn, meta)
@@ -181,7 +187,7 @@ func (s *UserService) Register(ctx context.Context, req *model.RegisterUserReq, 
 		return nil, err
 	}
 
-	// 5. 注册即登录：签发 token
+	// 6. 注册即登录：签发 token
 	return s.issueToken(user)
 }
 

@@ -69,7 +69,17 @@ type AssetService struct {
 	redirects redirectCache        // /files 跳转的签名结果缓存
 	intents   UploadIntentRepo     // 浏览器直传的上传意图；没有开启直传能力时为 nil
 	variants  AssetVariantResolver // 缩略图 / 封面的处理服务解析；没有配置时变体一律回退
+	avatars   AvatarLocator        // 头像反查（头像不在 assets 表里）；为 nil 时 /files/avatars/... 一律 404
 }
+
+// AvatarLocator 按头像 key 反查它所在的存储，由 repository.UserRepository 实现。
+type AvatarLocator interface {
+	// AvatarStorageID 返回正在使用该 key 作为头像的用户所记录的存储 id；没有人在用返回 repository.ErrNotFound。
+	AvatarStorageID(ctx context.Context, key string) (uint64, error)
+}
+
+// SetAvatarLocator 开启 /files 对头像 key 的反查。
+func (s *AssetService) SetAvatarLocator(l AvatarLocator) { s.avatars = l }
 
 var (
 	_ provider.AssetStore = (*AssetService)(nil)
@@ -390,6 +400,11 @@ func (s *AssetService) ingest(ctx context.Context, p assetIngest) (*model.Asset,
 // cleanup 尽力删除存储对象。用脱离请求取消信号的 ctx，因为常见的失败原因就是请求被取消；
 // 删除失败只记日志（无法再补救，运维可按日志清理孤儿对象）。
 func (s *AssetService) cleanup(ctx context.Context, st storage.Storage, key string) {
+	cleanupObject(ctx, st, key)
+}
+
+// cleanupObject 尽力删除一个存储对象（素材清理与头像替换共用），规则同 AssetService.cleanup。
+func cleanupObject(ctx context.Context, st storage.Storage, key string) {
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), assetCleanupTimeout)
 	defer cancel()
 	if err := st.Delete(cctx, key); err != nil {
@@ -526,8 +541,16 @@ func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset
 		return nil, nil, errcode.ErrAssetNotFound
 	}
 
-	// 2. 反查素材：拿到它所在的存储
-	a, err := s.repo.GetByStorageKey(ctx, key)
+	// 2. 反查素材：拿到它所在的存储。头像不进 assets 表，按 avatars/ 前缀改从用户表反查
+	var (
+		a   *model.Asset
+		err error
+	)
+	if strings.HasPrefix(key, AvatarKeyPrefix) {
+		a, err = s.lookupAvatar(ctx, key)
+	} else {
+		a, err = s.repo.GetByStorageKey(ctx, key)
+	}
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil, errcode.ErrAssetNotFound
@@ -541,6 +564,19 @@ func (s *AssetService) lookupFile(ctx context.Context, key string) (*model.Asset
 		return nil, nil, errcode.ErrStorageUnavailable
 	}
 	return a, h, nil
+}
+
+// lookupAvatar 把头像 key 包装成一条只含存储定位信息的“素材”，让 /files 的后续流程（本地直出 / 签名跳转 / 缩略图）原样复用。
+// 只有当前正在使用的头像能被访问：被替换或移除的旧 key 即使文件还没删掉，也返回不存在。
+func (s *AssetService) lookupAvatar(ctx context.Context, key string) (*model.Asset, error) {
+	if s.avatars == nil {
+		return nil, repository.ErrNotFound
+	}
+	storageID, err := s.avatars.AvatarStorageID(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return &model.Asset{StorageID: storageID, StorageKey: key, Kind: "image"}, nil
 }
 
 // targetOf 决定原文件怎么提供：本地磁盘由后端直接提供，对象存储跳转到签名（或公开）地址。

@@ -18,16 +18,18 @@ const (
 // User 是用户表。该结构同时被序列化进 Redis 缓存（user:<id>），所以鉴权要用到的字段都要带 json 标签。
 type User struct {
 	BaseModel
-	Username        string     `gorm:"size:64;uniqueIndex;not null" json:"username"`                       // 用户名，唯一
-	Password        string     `gorm:"size:128;not null" json:"-"`                                         // bcrypt 哈希后的密码
-	Nickname        string     `gorm:"size:64" json:"nickname"`                                            // 昵称
-	Email           string     `gorm:"size:128;uniqueIndex:uk_users_email,where:email <> ''" json:"email"` // 邮箱，统一存小写；空串不参与唯一约束
-	Role            string     `gorm:"size:16;not null;default:user" json:"role"`                          // user / admin / super_admin
-	Status          string     `gorm:"size:16;not null;default:active" json:"status"`                      // active / disabled
-	MaxActiveTasks  *int       `json:"max_active_tasks"`                                                   // 单用户并发上限覆盖，空表示用全局默认
-	EmailVerifiedAt *time.Time `json:"email_verified_at"`                                                  // 邮箱通过验证码验证的时间
-	LastLoginAt     *time.Time `json:"last_login_at"`                                                      // 最近一次登录时间
-	TokenVersion    int        `gorm:"not null;default:0" json:"token_version"`                            // token 版本：重置密码等操作 +1，使旧 token 失效
+	Username        string     `gorm:"size:64;uniqueIndex;not null" json:"username"`                                                     // 用户名，唯一
+	Password        string     `gorm:"size:128;not null" json:"-"`                                                                       // bcrypt 哈希后的密码
+	Nickname        string     `gorm:"size:64" json:"nickname"`                                                                          // 昵称
+	Email           string     `gorm:"size:128;uniqueIndex:uk_users_email,where:email <> ''" json:"email"`                               // 邮箱，统一存小写；空串不参与唯一约束
+	Role            string     `gorm:"size:16;not null;default:user" json:"role"`                                                        // user / admin / super_admin
+	Status          string     `gorm:"size:16;not null;default:active" json:"status"`                                                    // active / disabled
+	MaxActiveTasks  *int       `json:"max_active_tasks"`                                                                                 // 单用户并发上限覆盖，空表示用全局默认
+	EmailVerifiedAt *time.Time `json:"email_verified_at"`                                                                                // 邮箱通过验证码验证的时间
+	LastLoginAt     *time.Time `json:"last_login_at"`                                                                                    // 最近一次登录时间
+	TokenVersion    int        `gorm:"not null;default:0" json:"token_version"`                                                          // token 版本：重置密码等操作 +1，使旧 token 失效
+	AvatarKey       string     `gorm:"size:255;not null;default:'';index:idx_users_avatar_key,where:avatar_key <> ''" json:"avatar_key"` // 头像在对象存储中的 key，空串表示没有头像；对外拼成 /files/<key>
+	AvatarStorageID uint64     `gorm:"not null;default:0" json:"avatar_storage_id"`                                                      // 头像所在的存储（storage_configs.id）：/files 反查与删除旧头像用，换默认存储后旧头像仍可访问
 }
 
 func (User) TableName() string { return "users" }
@@ -42,7 +44,7 @@ type LoginUserReq struct {
 type RegisterUserReq struct {
 	Username string `json:"username" binding:"required,min=3,max=64" label:"用户名"` // 用户名
 	Email    string `json:"email" binding:"required,email,max=128" label:"邮箱"`    // 邮箱（必填，大小写不敏感）
-	Password string `json:"password" binding:"required,min=6,max=128" label:"密码"` // 明文密码
+	Password string `json:"password" binding:"required,min=8,max=128" label:"密码"` // 明文密码；8..72 字节等统一规则在 service 校验
 	Code     string `json:"code" binding:"omitempty,max=16" label:"验证码"`          // 邮箱验证码；需要验证时必填
 }
 

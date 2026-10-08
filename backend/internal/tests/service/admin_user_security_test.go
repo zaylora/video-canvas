@@ -152,8 +152,8 @@ func TestAdminUser_ResetPassword(t *testing.T) {
 			t.Fatal(err)
 		}
 		pwd := view.TempPassword
-		if len(pwd) < 12 {
-			t.Fatalf("临时密码至少 12 位：%q", pwd)
+		if len(pwd) != 16 {
+			t.Fatalf("不传新密码时仍生成 16 位临时密码：%q", pwd)
 		}
 		var hasLetter, hasDigit bool
 		for _, r := range pwd {
@@ -249,6 +249,9 @@ func TestAdminUser_ResetPassword(t *testing.T) {
 			{"admin 想重置超管：没有权限", opsAdmin, opsRoot, "", nil, errcode.ErrForbidden},
 			{"目标不存在", opsRoot, 99, "", nil, errcode.ErrUserNotFound},
 			{"密码太短", opsRoot, opsTom, "12345", nil, errcode.ErrInvalidParams},
+			{"手填 7 位：统一规则要求至少 8 位", opsRoot, opsTom, "Ab3$xyz", nil, errcode.ErrInvalidParams},
+			{"手填弱密码：55003", opsRoot, opsTom, "12345678", nil, errcode.ErrPasswordWeak},
+			{"手填等于目标用户名：55003", opsRoot, opsTom, "tom-2026", func(e *opsEnv) { e.repo.users[2].Username = "tom-2026" }, errcode.ErrPasswordWeak},
 			{"密码太长（>128）", opsRoot, opsTom, strings.Repeat("a", 129), nil, errcode.ErrInvalidParams},
 			{"密码超过 bcrypt 的 72 字节上限", opsRoot, opsTom, strings.Repeat("a", 73), nil, errcode.ErrInvalidParams},
 			{"写库失败", opsRoot, opsTom, "", func(e *opsEnv) { e.repo.errs["ResetPassword"] = errBoom }, nil},

@@ -387,6 +387,7 @@ func TestAdminUser_ResetPassword(t *testing.T) {
 		env := newUAEnv(t)
 		for name, body := range map[string]any{
 			"太短":      map[string]any{"new_password": "12345"},
+			"7 位":     map[string]any{"new_password": "Ab3$xyz"},
 			"太长":      map[string]any{"new_password": strings.Repeat("a", 129)},
 			"不是 JSON": "oops",
 		} {

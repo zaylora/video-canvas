@@ -354,7 +354,7 @@ func TestAuth_Register(t *testing.T) {
 	t.Run("成功：注册即登录，返回 token 与角色", func(t *testing.T) {
 		env := newUAEnv(t)
 		env.users.users = map[uint64]*model.User{} // 空表：首个账号免验证码
-		r := env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "secret1"}, 0)
+		r := env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "Str0ng-Pass"}, 0)
 		r.want(t, 200, 0)
 		var d model.LoginView
 		_ = json.Unmarshal(r.Data, &d)
@@ -365,10 +365,11 @@ func TestAuth_Register(t *testing.T) {
 	t.Run("参数校验失败：400 + 10001", func(t *testing.T) {
 		env := newUAEnv(t)
 		for _, body := range []any{
-			map[string]any{"username": "alice", "password": "secret1"},                          // 缺邮箱
-			map[string]any{"username": "alice", "email": "not-an-email", "password": "secret1"}, // 邮箱格式错
-			map[string]any{"username": "al", "email": "a@b.com", "password": "secret1"},         // 用户名太短
-			map[string]any{"username": "alice", "email": "a@b.com", "password": "123"},          // 密码太短
+			map[string]any{"username": "alice", "password": "Str0ng-Pass"},                          // 缺邮箱
+			map[string]any{"username": "alice", "email": "not-an-email", "password": "Str0ng-Pass"}, // 邮箱格式错
+			map[string]any{"username": "al", "email": "a@b.com", "password": "Str0ng-Pass"},         // 用户名太短
+			map[string]any{"username": "alice", "email": "a@b.com", "password": "123"},              // 密码太短
+			map[string]any{"username": "alice", "email": "a@b.com", "password": "Ab3$xyz"},          // 7 位：注册已提高到 8 位
 			"not json",
 		} {
 			env.do(http.MethodPost, "/api/v1/auth/register", body, 0).want(t, 400, errcode.ErrInvalidParams.Code)
@@ -376,7 +377,7 @@ func TestAuth_Register(t *testing.T) {
 	})
 	t.Run("表非空且 SMTP 未配置：免验证码注册成功，角色是普通用户", func(t *testing.T) {
 		env := newUAEnv(t)
-		r := env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "secret1"}, 0)
+		r := env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "Str0ng-Pass"}, 0)
 		r.want(t, 200, 0)
 		var d model.LoginView
 		_ = json.Unmarshal(r.Data, &d)
@@ -387,7 +388,7 @@ func TestAuth_Register(t *testing.T) {
 	t.Run("业务错误：SMTP 已启用且没带验证码 -> 400 + 53003", func(t *testing.T) {
 		env := newUAEnv(t)
 		env.smtp.row = &model.SMTPSetting{Host: "smtp.example.com", Port: 587, Enabled: true, Encryption: "starttls", FromAddress: "a@x.com"}
-		env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "secret1"}, 0).
+		env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice", "email": "a@b.com", "password": "Str0ng-Pass"}, 0).
 			want(t, 400, errcode.ErrCodeInvalid.Code)
 	})
 }
@@ -429,6 +430,28 @@ func TestAuth_Login(t *testing.T) {
 	env.do(http.MethodPost, "/api/v1/auth/login", map[string]any{"username": "tom", "password": "wrongpw"}, 0).want(t, 401, errcode.ErrInvalidCredential.Code)
 	env.do(http.MethodPost, "/api/v1/auth/login", map[string]any{"username": "tom"}, 0).want(t, 400, errcode.ErrInvalidParams.Code)
 	env.do(http.MethodPost, "/api/v1/auth/login", map[string]any{"username": "bad", "password": "secret1"}, 0).want(t, 403, errcode.ErrAccountDisabled.Code)
+
+	// 存量用户的 6 位老密码仍然可以登录（登录保持 min=6，只有注册 / 改密码提高到 8 位）
+	u.Password = mustBcrypt(t, "abc123")
+	env.do(http.MethodPost, "/api/v1/auth/login", map[string]any{"username": "tom", "password": "abc123"}, 0).want(t, 200, 0)
+}
+
+func TestAuth_RegisterPasswordRules(t *testing.T) {
+	cases := map[string]struct {
+		pw   string
+		code int
+	}{
+		"命中弱密码表：400 + 55003":   {"12345678", errcode.ErrPasswordWeak.Code},
+		"等于用户名：400 + 55003":    {"alice_2026", errcode.ErrPasswordWeak.Code},
+		"超过 72 字节：400 + 10001": {strings.Repeat("密", 25), errcode.ErrInvalidParams.Code},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			env := newUAEnv(t)
+			env.do(http.MethodPost, "/api/v1/auth/register", map[string]any{"username": "alice_2026", "email": "a@b.com", "password": c.pw}, 0).
+				want(t, 400, c.code)
+		})
+	}
 }
 
 // ---- 鉴权与收口 ----
