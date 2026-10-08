@@ -199,6 +199,35 @@ func TestAgentDecideGenerate(t *testing.T) {
 		}
 	})
 
+	t.Run("拒绝并说明：理由记进决定，并转告 Agent", func(t *testing.T) {
+		e := newAgentEnv(t)
+		_, id := pendingGenerate(t, e, 24)
+		v, err := e.svc.Decide(ctx, 1, id, &model.DecideAgentApprovalReq{Decision: "reject", Answer: "改用 Seedream，只生成林夏"})
+		if err != nil || v.Status != model.ApprovalRejected {
+			t.Fatalf("v=%+v err=%v", v, err)
+		}
+		var d map[string]any
+		_ = json.Unmarshal(v.Decision, &d)
+		if d["answer"] != "改用 Seedream，只生成林夏" {
+			t.Errorf("decision=%s", v.Decision)
+		}
+		if len(e.rt.resumeInfos) != 1 || !strings.Contains(e.rt.resumeInfos[0].Content, "改用 Seedream，只生成林夏") {
+			t.Errorf("理由应转告 Agent: %+v", e.rt.resumeInfos)
+		}
+	})
+
+	t.Run("批准扣费后推送 run.usage：已花和预算", func(t *testing.T) {
+		e := newAgentEnv(t)
+		_, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
+			t.Fatal(err)
+		}
+		u := e.repo.lastEvent("run.usage")
+		if u["spent_credits"] != float64(24) || u["budget_credits"] != float64(50) {
+			t.Errorf("run.usage=%v", u)
+		}
+	})
+
 	t.Run("执行失败：审批标为 failed，但决定已生效、运行继续，让 Agent 知道失败了", func(t *testing.T) {
 		e := newAgentEnv(t)
 		e.gen.err = errAgentBoom

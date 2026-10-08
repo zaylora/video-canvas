@@ -255,7 +255,7 @@ export interface DecideAgentApprovalReq {
   decision: "approve" | "reject";
   /** 逐项决定，不传表示整体 */
   items?: ApprovalItemDecision[];
-  /** 提问的回答 */
+  /** 提问的回答；拒绝时是给 Agent 的说明（「拒绝，并告诉 Agent 怎么改」） */
   answer?: string;
   /** 批准时追加的积分预算 */
   add_budget?: number;

@@ -198,6 +198,8 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	if berr != nil {
 		// 结算失败意味着这次调用没收到钱，只能留下线索供对账补扣；不能因此让用户的对话失败
 		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", run.ID))
+	} else if settled.Charged > 0 {
+		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
 	}
 	b.recordMessage(ctx, run, res, settled, serr != nil)
 	return serr

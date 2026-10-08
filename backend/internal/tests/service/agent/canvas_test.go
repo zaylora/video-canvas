@@ -152,6 +152,24 @@ func (e *agentCanvasEnv) payload(t *testing.T) *canvasgraph.Graph {
 	return g
 }
 
+func TestAgentApplyOps_ReportsCreatedAndUpdatedNodes(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	res, err := e.svc.ApplyOps(context.Background(), e.run, "tc1", []byte(buildOps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Created) != 1 || res.Created[0] != res.IDMap["a"] || len(res.Updated) != 0 {
+		t.Fatalf("新建一个节点、连一条线：created 只有新节点，连线不算: %+v", res)
+	}
+	res, err = e.svc.ApplyOps(context.Background(), e.run, "tc2", []byte(`[{"op":"update_node","id":"n_script","prompt":"黄昏"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Created) != 0 || len(res.Updated) != 1 || res.Updated[0] != "n_script" {
+		t.Fatalf("改提示词：updated 是被改的节点: %+v", res)
+	}
+}
+
 func TestAgentApplyOps_SuccessWritesAndPushesPatch(t *testing.T) {
 	e := newAgentCanvasEnv(t)
 	res, err := e.svc.ApplyOps(context.Background(), e.run, "tc1", []byte(buildOps))

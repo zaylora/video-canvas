@@ -53,6 +53,19 @@ type WriteResult struct {
 	MutationID uint64            `json:"mutation_id"`      // 改动日志 id，0 表示没有写入
 	Revision   uint64            `json:"revision"`         // 写入后的画布 revision
 	Changes    int               `json:"changes"`          // 改动项数
+	Created    []string          `json:"-"`                // 新建的节点 id，前端的改动摘要用
+	Updated    []string          `json:"-"`                // 改了字段的节点 id（不含新建和删除）
+}
+
+// nodeIDsByOp 取出差异里某种操作涉及的节点 id，连线不算。
+func nodeIDsByOp(changes []canvasgraph.Change, op string) []string {
+	ids := []string{}
+	for _, c := range changes {
+		if c.Kind == "node" && c.Op == op {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
 }
 
 // UndoResult 是撤销本轮的结果。
@@ -263,7 +276,10 @@ func (s *AgentCanvasService) mutate(ctx context.Context, run *model.AgentRun, to
 			return nil, nil, err
 		}
 		s.publishPatch(ctx, run, mut, ed.changes)
-		return &WriteResult{IDMap: ed.idMap, MutationID: mut.ID, Revision: mut.RevisionAfter, Changes: len(ed.changes)}, ed.extra, nil
+		return &WriteResult{
+			IDMap: ed.idMap, MutationID: mut.ID, Revision: mut.RevisionAfter, Changes: len(ed.changes),
+			Created: nodeIDsByOp(ed.changes, "create"), Updated: nodeIDsByOp(ed.changes, "update"),
+		}, ed.extra, nil
 	}
 	return nil, nil, errcode.ErrAgentWriteConflict
 }

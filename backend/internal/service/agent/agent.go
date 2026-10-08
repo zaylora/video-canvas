@@ -278,6 +278,17 @@ func (s *AgentService) emit(ctx context.Context, userID, sessionID, runID, canva
 	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: v})
 }
 
+// emitUsage 在本轮已花积分变化后推送 run.usage（已花、预算），浮窗的预算环靠它实时更新；
+// 落库是为了断线重连回放后预算环也对。读不到运行时只记日志：不能因为展示数据让扣费流程失败。
+func (s *AgentService) emitUsage(ctx context.Context, run *model.AgentRun) {
+	cur, err := s.repo.GetRun(ctx, run.UserID, run.ID)
+	if err != nil {
+		logger.Error("读取运行用量失败", zap.Error(err), zap.Uint64("run_id", run.ID))
+		return
+	}
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.usage", map[string]any{"spent_credits": cur.SpentCredits, "budget_credits": cur.BudgetCredits})
+}
+
 // push 只推送不落库的临时事件（文本、思考增量）：每个 Token 一次写库代价太大，而且增量丢了不要紧，
 // 结束时的 message.done 带着完整内容，前端按它对账。seq 为 0 表示这是临时事件，不参与回放。
 func (s *AgentService) push(ctx context.Context, userID, sessionID, runID, canvasID uint64, typ string, data any) {

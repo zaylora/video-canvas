@@ -4,6 +4,9 @@ import { toast } from "sonner";
 
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+
+import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
 
 /** 故事文件最大字节数：消息最多 20000 字，文件再大也放不进去 */
 const MAX_STORY_BYTES = 200_000;
@@ -52,7 +55,7 @@ export function AttachPopover({
         <PopoverTrigger
           aria-label="添加附件"
           disabled={disabled}
-          className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground data-popup-open:bg-chrome-hover focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-lg outline-none focus-visible:ring-2 disabled:opacity-40"
+          className={cn(AGENT_ICON_BTN, "size-8 [&_svg]:size-[17px]")}
         >
           <Plus className="size-4" />
         </PopoverTrigger>
@@ -61,7 +64,10 @@ export function AttachPopover({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[min(230px,calc(100vw-24px))] origin-bottom-left gap-0.5 p-1.5"
+        className={cn(
+          AGENT_POP,
+          "w-[min(230px,calc(100vw-24px))] origin-bottom-left gap-0.5 p-1.5",
+        )}
       >
         <button
           type="button"

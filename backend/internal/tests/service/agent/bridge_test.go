@@ -339,6 +339,10 @@ func TestAgentBridge_Tools(t *testing.T) {
 		if len(mustParseGraph(t, b.repo).Nodes) != 2 {
 			t.Error("画布应写入")
 		}
+		end := b.repo.lastEvent("tool.end")
+		if created, _ := end["created"].([]any); len(created) != 1 {
+			t.Errorf("tool.end 应带上新建的节点，前端的改动摘要靠它: %v", end)
+		}
 		bad := b.tool(t, tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{
 			{"op": "update_node", "id": "ghost", "label": "x"}, {"op": "create_node", "kind": "podcast"}}})
 		if !bad.IsError || !strings.Contains(bad.Content, "第 1 项") || !strings.Contains(bad.Content, "第 2 项") {

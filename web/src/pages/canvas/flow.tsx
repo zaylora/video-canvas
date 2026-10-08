@@ -643,171 +643,256 @@ export const Flow = memo(function Flow({
         <OverlayGateProvider value={overlayGate.dragSelected}>
           <GroupUiProvider value={groupUi}>
             <TooltipProvider delay={400}>
-              <div
-                className="bg-canvas relative h-svh w-svw overflow-hidden"
-                data-tool={activeTool}
-                data-canvas-root
-                onDragOver={onDragOver}
-                onPointerDownCapture={overlayGate.onPointerDownCapture}
-                onDrop={onDrop}
-              >
-                <ReactFlow
-                  nodeTypes={nodeTypes}
-                  edgeTypes={edgeTypes}
-                  defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onInit={() => {
-                    // 本机视口优先于云端视口：刷新后停在移动之后的位置
-                    const local = userId ? loadViewport(userId, canvas.id) : null;
-                    appliedViewportRef.current = local ?? initial.viewport;
-                    void setViewport(appliedViewportRef.current);
-                    hydratedRef.current = true;
-                    if (recovery?.kind === "restored") {
-                      // 内容来自本地草稿，云端还没有：标脏让它排上传
-                      changed();
-                      toast.info("已恢复上次未同步的改动");
-                    }
-                  }}
-                  onMoveEnd={(_event, viewport) => {
-                    // 恢复视口那一下不算用户移动，别把云端视口写成本机视口
-                    if (!hydratedRef.current || sameViewport(appliedViewportRef.current, viewport))
-                      return;
-                    appliedViewportRef.current = viewport;
-                    viewportWriter.schedule(viewport);
-                  }}
-                  onNodeDragStart={(event, node, dragged) => {
-                    overlayGate.onNodeDragStart(event, node, dragged);
-                    groupDrag.onNodeDragStart(event, node, dragged);
-                  }}
-                  onNodeDrag={groupDrag.onNodeDrag}
-                  onNodeDragStop={groupDrag.onNodeDragStop}
-                  onNodeClick={(event, node) => {
-                    overlayGate.onNodeClick(event, node);
-                    // 点一下组才弹它的工具条，点别的节点则收起
-                    setMenuId(isGroupNode(node) ? node.id : null);
-                  }}
-                  onBeforeDelete={onBeforeDelete}
-                  onConnect={onConnect}
-                  isValidConnection={isValidConnection}
-                  onConnectEnd={onConnectEnd}
-                  // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
-                  onDoubleClick={isPanning ? undefined : onDoubleClick}
-                  onNodeDoubleClick={isPanning ? undefined : onNodeDoubleClick}
-                  zoomOnDoubleClick={false}
-                  // 大画布要能一眼看全，最小缩到 14%
-                  minZoom={MIN_ZOOM}
-                  // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
-                  // 设置里切成缩放后，滚轮直接缩放，不再需要按键
-                  panOnScroll={!isWheelZoom}
-                  zoomOnScroll={isWheelZoom}
-                  zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
-                  snapToGrid={settings.snapToGrid}
-                  snapGrid={[GRID_SIZE, GRID_SIZE]}
-                  // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
-                  panOnDrag={isPanning ? true : [1]}
-                  selectionOnDrag={!isPanning}
-                  // 框选相交即选中，不要求完整包住
-                  selectionMode={SelectionMode.Partial}
-                  // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
-                  nodesDraggable={!isPanning}
-                  nodesConnectable={!isPanning}
-                  elementsSelectable={!isPanning}
+              {/* 画布和停靠的 Agent 侧栏并排；浮窗时 Agent 盖在画布上（设计稿 画布Agent助手设计 6.8） */}
+              <div className="relative flex h-svh w-svw overflow-hidden">
+                <div
+                  className="bg-canvas relative h-full min-w-0 flex-1 overflow-hidden"
+                  data-tool={activeTool}
+                  data-canvas-root
+                  onDragOver={onDragOver}
+                  onPointerDownCapture={overlayGate.onPointerDownCapture}
+                  onDrop={onDrop}
                 >
-                  {settings.background !== "none" && (
-                    <Background
-                      variant={BACKGROUND_VARIANTS[settings.background]}
-                      gap={GRID_SIZE}
+                  <ReactFlow
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    defaultEdgeOptions={ANIMATED_EDGE_OPTIONS}
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onInit={() => {
+                      // 本机视口优先于云端视口：刷新后停在移动之后的位置
+                      const local = userId ? loadViewport(userId, canvas.id) : null;
+                      appliedViewportRef.current = local ?? initial.viewport;
+                      void setViewport(appliedViewportRef.current);
+                      hydratedRef.current = true;
+                      if (recovery?.kind === "restored") {
+                        // 内容来自本地草稿，云端还没有：标脏让它排上传
+                        changed();
+                        toast.info("已恢复上次未同步的改动");
+                      }
+                    }}
+                    onMoveEnd={(_event, viewport) => {
+                      // 恢复视口那一下不算用户移动，别把云端视口写成本机视口
+                      if (
+                        !hydratedRef.current ||
+                        sameViewport(appliedViewportRef.current, viewport)
+                      )
+                        return;
+                      appliedViewportRef.current = viewport;
+                      viewportWriter.schedule(viewport);
+                    }}
+                    onNodeDragStart={(event, node, dragged) => {
+                      overlayGate.onNodeDragStart(event, node, dragged);
+                      groupDrag.onNodeDragStart(event, node, dragged);
+                    }}
+                    onNodeDrag={groupDrag.onNodeDrag}
+                    onNodeDragStop={groupDrag.onNodeDragStop}
+                    onNodeClick={(event, node) => {
+                      overlayGate.onNodeClick(event, node);
+                      // 点一下组才弹它的工具条，点别的节点则收起
+                      setMenuId(isGroupNode(node) ? node.id : null);
+                    }}
+                    onBeforeDelete={onBeforeDelete}
+                    onConnect={onConnect}
+                    isValidConnection={isValidConnection}
+                    onConnectEnd={onConnectEnd}
+                    // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
+                    onDoubleClick={isPanning ? undefined : onDoubleClick}
+                    onNodeDoubleClick={isPanning ? undefined : onNodeDoubleClick}
+                    zoomOnDoubleClick={false}
+                    // 大画布要能一眼看全，最小缩到 14%
+                    minZoom={MIN_ZOOM}
+                    // 默认滚轮只平移（shift+滚轮由 xyflow 内部转成左右平移），缩放交给 Ctrl/Cmd+滚轮；
+                    // 设置里切成缩放后，滚轮直接缩放，不再需要按键
+                    panOnScroll={!isWheelZoom}
+                    zoomOnScroll={isWheelZoom}
+                    zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
+                    snapToGrid={settings.snapToGrid}
+                    snapGrid={[GRID_SIZE, GRID_SIZE]}
+                    // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
+                    panOnDrag={isPanning ? true : [1]}
+                    selectionOnDrag={!isPanning}
+                    // 框选相交即选中，不要求完整包住
+                    selectionMode={SelectionMode.Partial}
+                    // 抓手是纯粹的画布模式：节点不能拖、不能选，也拉不出连线
+                    nodesDraggable={!isPanning}
+                    nodesConnectable={!isPanning}
+                    elementsSelectable={!isPanning}
+                  >
+                    {settings.background !== "none" && (
+                      <Background
+                        variant={BACKGROUND_VARIANTS[settings.background]}
+                        gap={GRID_SIZE}
+                      />
+                    )}
+                    <SelectionToolbar onFanOut={openGroupMenu} onGroup={groupSelected} />
+                    {minimap && (
+                      <MiniMap
+                        position="bottom-left"
+                        pannable
+                        zoomable
+                        className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
+                        nodeColor="var(--muted-foreground)"
+                        nodeBorderRadius={12}
+                      />
+                    )}
+                  </ReactFlow>
+
+                  {!isPanning && pending && menu && (
+                    <PendingConnectionLine
+                      from={pending.fromScreen}
+                      fromPosition={pending.fromPosition}
+                      to={menu.screen}
                     />
                   )}
-                  <SelectionToolbar onFanOut={openGroupMenu} onGroup={groupSelected} />
-                  {minimap && (
-                    <MiniMap
-                      position="bottom-left"
-                      pannable
-                      zoomable
-                      className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
-                      nodeColor="var(--muted-foreground)"
-                      nodeBorderRadius={12}
-                    />
+                  {!isPanning && pendingGroup && menu && (
+                    <PendingFanLines froms={pendingGroup.froms} to={menu.screen} />
                   )}
-                </ReactFlow>
 
-                {!isPanning && pending && menu && (
-                  <PendingConnectionLine
-                    from={pending.fromScreen}
-                    fromPosition={pending.fromPosition}
-                    to={menu.screen}
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    accept={UPLOAD_ACCEPT}
+                    multiple
+                    className="sr-only"
+                    aria-hidden
+                    tabIndex={-1}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      // 同一批文件连着选两次也得有反应，所以选完就把值清掉
+                      event.target.value = "";
+                      if (files.length) void addUploadedNodes(files).then(showUploadNotice);
+                    }}
                   />
-                )}
-                {!isPanning && pendingGroup && menu && (
-                  <PendingFanLines froms={pendingGroup.froms} to={menu.screen} />
-                )}
 
-                <input
-                  ref={uploadInputRef}
-                  type="file"
-                  accept={UPLOAD_ACCEPT}
-                  multiple
-                  className="sr-only"
-                  aria-hidden
-                  tabIndex={-1}
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files ?? []);
-                    // 同一批文件连着选两次也得有反应，所以选完就把值清掉
-                    event.target.value = "";
-                    if (files.length) void addUploadedNodes(files).then(showUploadNotice);
-                  }}
-                />
+                  {nodes.length === 0 && (
+                    <EmptyState onAdd={addAtCenter} onUpload={uploadAtCenter} />
+                  )}
 
-                {nodes.length === 0 && <EmptyState onAdd={addAtCenter} onUpload={uploadAtCenter} />}
+                  <ChromeZone position="top-left">
+                    <TopLeftBar
+                      title={title}
+                      onRename={onRename}
+                      saveStatus={saveStatus}
+                      onSaveNow={flush}
+                    />
+                  </ChromeZone>
+                  <ChromeZone position="top-right">
+                    <TopRightBar
+                      onOpenSettings={() => setSettingsOpen(true)}
+                      onOpenShortcuts={openShortcuts}
+                    />
+                  </ChromeZone>
+                  <ChromeZone position="bottom-center">
+                    <BottomToolbar
+                      tool={tool}
+                      onToolChange={setTool}
+                      onAdd={addAtCenter}
+                      onUpload={uploadAtCenter}
+                      canUndo={history.canUndo}
+                      canRedo={history.canRedo}
+                      onUndo={history.undo}
+                      onRedo={history.redo}
+                    />
+                  </ChromeZone>
+                  <ChromeZone position="bottom-left" className="max-md:hidden">
+                    <ViewControls
+                      minimap={minimap}
+                      onMinimapChange={setMinimap}
+                      onOpenShortcuts={openShortcuts}
+                    />
+                  </ChromeZone>
+                  <ChromeZone position="bottom-right">
+                    <AgentLauncher
+                      open={agentOpen}
+                      available={agentModels === null ? null : agentModels.length > 0}
+                      running={agentCtl.busy}
+                      onToggle={toggleAgent}
+                    />
+                    <div className="max-md:hidden">
+                      <StatsBar />
+                    </div>
+                  </ChromeZone>
+                  <SettingsDialog
+                    open={settingsOpen}
+                    onOpenChange={setSettingsOpen}
+                    modelGroups={modelGroups}
+                  />
+                  <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+                  <MediaLightbox
+                    items={liveItems ?? lastItems}
+                    target={preview}
+                    onActiveChange={changePreview}
+                    onLocate={locatePreview}
+                    onClose={closePreview}
+                  />
+                  <GroupDeleteDialog
+                    target={deleteTarget}
+                    onConfirm={confirmDeleteGroup}
+                    onCancel={() => setPendingDelete(null)}
+                  />
+                  <ConflictDialog
+                    open={conflict !== null || draftConflict !== null}
+                    onLoadLatest={() => {
+                      if (draftConflict) {
+                        // 打开时的冲突：当前编辑器本来就是云端最新，丢掉草稿即可
+                        discardDraft();
+                        setDraftConflict(null);
+                        return;
+                      }
+                      if (!conflict) return;
+                      dismissConflict();
+                      onConflict(conflict);
+                    }}
+                    onSaveAsCopy={async () => {
+                      if (!conflict && !draftConflict) return;
+                      const graph = draftConflict ?? getGraph();
+                      if (!graph) return;
+                      try {
+                        const copy = await createCanvas({ title: `${title} 副本`, graph });
+                        toast.success(`已另存为「${copy.title}」`, {
+                          action: { label: "打开", onClick: () => navigate(`/canvas/${copy.id}`) },
+                        });
+                      } catch {
+                        toast.error("另存失败，请稍后重试");
+                        return;
+                      }
+                      if (draftConflict) {
+                        discardDraft();
+                        setDraftConflict(null);
+                        return;
+                      }
+                      if (!conflict) return;
+                      dismissConflict();
+                      onConflict(conflict);
+                    }}
+                  />
 
-                <ChromeZone position="top-left">
-                  <TopLeftBar
-                    title={title}
-                    onRename={onRename}
-                    saveStatus={saveStatus}
-                    onSaveNow={flush}
+                  <AddNodeMenu
+                    position={isPanning ? null : (menu?.screen ?? null)}
+                    label={
+                      pendingGroup
+                        ? `引用选中的 ${pendingGroup.nodeIds.length} 个节点生成`
+                        : pending
+                          ? "引用该节点生成"
+                          : "添加节点"
+                    }
+                    items={menuItems}
+                    onClose={closeMenu}
+                    onSelect={(value) => {
+                      // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
+                      if (value === UPLOAD_ACTION) {
+                        beginUpload();
+                        uploadInputRef.current?.click();
+                        return;
+                      }
+
+                      addNode(value as NodeKind);
+                    }}
                   />
-                </ChromeZone>
-                <ChromeZone position="top-right">
-                  <TopRightBar
-                    onOpenSettings={() => setSettingsOpen(true)}
-                    onOpenShortcuts={openShortcuts}
-                  />
-                </ChromeZone>
-                <ChromeZone position="bottom-center">
-                  <BottomToolbar
-                    tool={tool}
-                    onToolChange={setTool}
-                    onAdd={addAtCenter}
-                    onUpload={uploadAtCenter}
-                    canUndo={history.canUndo}
-                    canRedo={history.canRedo}
-                    onUndo={history.undo}
-                    onRedo={history.redo}
-                  />
-                </ChromeZone>
-                <ChromeZone position="bottom-left" className="max-md:hidden">
-                  <ViewControls
-                    minimap={minimap}
-                    onMinimapChange={setMinimap}
-                    onOpenShortcuts={openShortcuts}
-                  />
-                </ChromeZone>
-                <ChromeZone position="bottom-right">
-                  <AgentLauncher
-                    open={agentOpen}
-                    available={agentModels === null ? null : agentModels.length > 0}
-                    running={agentCtl.busy}
-                    onToggle={toggleAgent}
-                  />
-                  <div className="max-md:hidden">
-                    <StatsBar />
-                  </div>
-                </ChromeZone>
+                </div>
                 <AnimatePresence>
                   {agentOpen && agentModels && agentModels.length > 0 && (
                     <AgentPanel
@@ -821,84 +906,6 @@ export const Flow = memo(function Flow({
                     />
                   )}
                 </AnimatePresence>
-
-                <SettingsDialog
-                  open={settingsOpen}
-                  onOpenChange={setSettingsOpen}
-                  modelGroups={modelGroups}
-                />
-                <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-                <MediaLightbox
-                  items={liveItems ?? lastItems}
-                  target={preview}
-                  onActiveChange={changePreview}
-                  onLocate={locatePreview}
-                  onClose={closePreview}
-                />
-                <GroupDeleteDialog
-                  target={deleteTarget}
-                  onConfirm={confirmDeleteGroup}
-                  onCancel={() => setPendingDelete(null)}
-                />
-                <ConflictDialog
-                  open={conflict !== null || draftConflict !== null}
-                  onLoadLatest={() => {
-                    if (draftConflict) {
-                      // 打开时的冲突：当前编辑器本来就是云端最新，丢掉草稿即可
-                      discardDraft();
-                      setDraftConflict(null);
-                      return;
-                    }
-                    if (!conflict) return;
-                    dismissConflict();
-                    onConflict(conflict);
-                  }}
-                  onSaveAsCopy={async () => {
-                    if (!conflict && !draftConflict) return;
-                    const graph = draftConflict ?? getGraph();
-                    if (!graph) return;
-                    try {
-                      const copy = await createCanvas({ title: `${title} 副本`, graph });
-                      toast.success(`已另存为「${copy.title}」`, {
-                        action: { label: "打开", onClick: () => navigate(`/canvas/${copy.id}`) },
-                      });
-                    } catch {
-                      toast.error("另存失败，请稍后重试");
-                      return;
-                    }
-                    if (draftConflict) {
-                      discardDraft();
-                      setDraftConflict(null);
-                      return;
-                    }
-                    if (!conflict) return;
-                    dismissConflict();
-                    onConflict(conflict);
-                  }}
-                />
-
-                <AddNodeMenu
-                  position={isPanning ? null : (menu?.screen ?? null)}
-                  label={
-                    pendingGroup
-                      ? `引用选中的 ${pendingGroup.nodeIds.length} 个节点生成`
-                      : pending
-                        ? "引用该节点生成"
-                        : "添加节点"
-                  }
-                  items={menuItems}
-                  onClose={closeMenu}
-                  onSelect={(value) => {
-                    // 上传得先知道文件是什么才知道建哪种节点，落点先记下，节点等选完再建
-                    if (value === UPLOAD_ACTION) {
-                      beginUpload();
-                      uploadInputRef.current?.click();
-                      return;
-                    }
-
-                    addNode(value as NodeKind);
-                  }}
-                />
               </div>
             </TooltipProvider>
           </GroupUiProvider>

@@ -112,6 +112,10 @@ describe("agent store：事件与会话列表", () => {
       created_at: "",
       ended_at: null,
     });
-    expect(useAgentStore.getState().sessions.s1.runs.r9.status).toBe("running");
+    expect(useAgentStore.getState().sessions.s1.runs.r9).toMatchObject({
+      status: "running",
+      spent: 0,
+      budget: 50,
+    });
   });
 });

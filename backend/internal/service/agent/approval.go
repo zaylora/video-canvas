@@ -150,6 +150,7 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 		if err := s.repo.AddRunUsage(ctx, run.ID, 0, out.quote); err != nil {
 			return nil, err
 		}
+		s.emitUsage(ctx, run)
 	}
 	// 5. 执行批准的内容，把结果写回审批；执行失败不让这次请求失败（决定已生效），Agent 会从结果里知道
 	final := s.execute(ctx, run, updated, out)
@@ -165,7 +166,12 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 // resolveDecision 把用户的决定按审批种类解析成 outcome。
 func (s *AgentService) resolveDecision(a *model.AgentApproval, run *model.AgentRun, req *model.DecideAgentApprovalReq) (*outcome, error) {
 	if req.Decision == "reject" {
-		return &outcome{status: model.ApprovalRejected, decision: map[string]any{"decision": "reject"}}, nil
+		// 拒绝时可以附一句理由（「拒绝，并告诉 Agent 怎么改」），记进决定并转告 Agent
+		decision := map[string]any{"decision": "reject"}
+		if reason := strings.TrimSpace(req.Answer); reason != "" {
+			decision["answer"] = reason
+		}
+		return &outcome{status: model.ApprovalRejected, decision: decision}, nil
 	}
 	switch a.Kind {
 	case model.ApprovalAsk:
@@ -307,6 +313,14 @@ func (s *AgentService) execute(ctx context.Context, run *model.AgentRun, a *mode
 // approvalOutcomeText 把审批的结果写成给模型看的工具结果：用户批准了什么、拒绝了什么、回答了什么，
 // 以及批准后执行成功还是失败。模型据此决定下一步，所以要具体、不含糊。
 func approvalOutcomeText(a *model.AgentApproval, out *outcome) string {
+	text := approvalOutcomeBase(a, out)
+	if reason, ok := out.decision["answer"].(string); ok && out.status == model.ApprovalRejected && reason != "" {
+		text += "用户的说明：" + reason
+	}
+	return text
+}
+
+func approvalOutcomeBase(a *model.AgentApproval, out *outcome) string {
 	rejected := out.status == model.ApprovalRejected
 	switch a.Kind {
 	case model.ApprovalAsk:

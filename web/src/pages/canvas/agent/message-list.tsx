@@ -1,29 +1,31 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
+  ArrowDown,
   Check,
-  ChevronDown,
+  ChevronRight,
   CircleStop,
-  Loader2,
+  Copy,
   Play,
-  RotateCcw,
   TriangleAlert,
-  Undo2,
 } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { RUN_STATUS_TEXT, TOOL_LABELS } from "@/constants/agent";
-import { DURATION, EASE_OUT } from "@/lib/motion";
-import { cn } from "@/lib/utils";
-import { useAgentHighlight } from "@/store/agent-highlight";
-import { parseMessage } from "@/utils/agent/chips";
-import type { TimelineItem } from "@/utils/agent/timeline";
-import type { AgentController } from "@/hooks/use-agent-controller";
-import { useFocusNode } from "../chrome/use-focus-node";
 import { toast } from "sonner";
 
-import { ApprovalCard } from "./approval-card";
+import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
+import { Button } from "@/components/ui/button";
+import { RUN_STATUS_TEXT } from "@/constants/agent";
+import type { AgentController } from "@/hooks/use-agent-controller";
+import { DURATION, EASE_OUT } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import { parseMessage } from "@/utils/agent/chips";
+import type { TimelineItem } from "@/utils/agent/timeline";
+
+import { ActivityGroup } from "./activity-group";
+import type { NodeOption } from "./agent-editor";
+import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
+import { RunSummary } from "./run-summary";
+import { StatusLine } from "./status-line";
 
 /** 离底部多近算「在底部」：在底部时新内容自动滚动，用户往上翻看时不打扰 */
 const STICK_PX = 48;
@@ -59,44 +61,112 @@ export function MessageText({ text }: { text: string }) {
   );
 }
 
-/** 消息流：新增的消息淡入上浮，历史和流式更新不重放；贴着底部时自动跟随 */
+/**
+ * 消息流：新增的消息淡入上浮，历史和流式更新不重放。
+ * 贴着底部时自动跟随（内容高度变化也跟，比如卡片展开、图片加载）；用户往上翻看时不打扰，有新内容就出现「回到底部」。
+ * 末尾是状态行：运行中唯一的实时指示。
+ */
 export function MessageList({
   ctl,
   showThinking,
+  nodes,
+  onScrolled,
 }: {
   ctl: AgentController;
   showThinking: boolean;
+  /** 画布上现有的节点：改动摘要取名字 */
+  nodes: NodeOption[];
+  /** 滚离顶部与否：顶栏据此显示分隔线 */
+  onScrolled: (scrolled: boolean) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
+  const [showJump, setShowJump] = useState(false);
   /** 首次渲染时已有的项不播入场 */
   const [initialCount] = useState(ctl.timeline.length);
   const reduce = useReducedMotion();
 
-  useLayoutEffect(() => {
+  /** 上次看到的内容高度：只有内容真的变高了，才算「有新内容」 */
+  const lastHeight = useRef(0);
+
+  /** 内容变了：贴底就跟到底，否则（且确实长高了）提示有新内容 */
+  const follow = () => {
     const el = scroller.current;
-    if (el && stuck.current) el.scrollTop = el.scrollHeight;
-  });
+    if (!el) return;
+    if (stuck.current) el.scrollTop = el.scrollHeight;
+    else if (el.scrollHeight > lastHeight.current + 1) setShowJump(true);
+    lastHeight.current = el.scrollHeight;
+  };
+  // 每次渲染（新消息、流式文字）后跟随
+  useLayoutEffect(follow);
+  // 渲染之外的高度变化（展开、图片加载）也跟随
+  useEffect(() => {
+    const el = content.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => follow());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const jumpToBottom = () => {
+    const el = scroller.current;
+    if (!el) return;
+    stuck.current = true;
+    setShowJump(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  };
 
   return (
-    <div
-      ref={scroller}
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3"
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-      }}
-    >
-      {ctl.timeline.map((item, index) => (
-        <motion.div
-          key={item.key}
-          initial={index >= initialCount && !reduce ? { opacity: 0, y: 6 } : false}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
-        >
-          <Item item={item} ctl={ctl} showThinking={showThinking} />
-        </motion.div>
-      ))}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scroller}
+        className="agent-fade-y min-h-0 flex-1 overflow-y-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+          if (stuck.current) setShowJump(false);
+          onScrolled(el.scrollTop > 4);
+        }}
+      >
+        <div ref={content} className="flex flex-col gap-3 px-4 pt-3 pb-2">
+          {ctl.timeline.map((item, index) =>
+            item.type === "assistant" && item.streaming && !item.text ? null : (
+              <motion.div
+                key={item.key}
+                initial={index >= initialCount && !reduce ? { opacity: 0, y: 6 } : false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: DURATION.base, ease: EASE_OUT }}
+              >
+                <Item item={item} ctl={ctl} showThinking={showThinking} nodes={nodes} />
+              </motion.div>
+            ),
+          )}
+          <AnimatePresence>
+            {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
+          </AnimatePresence>
+        </div>
+      </div>
+      <AnimatePresence>
+        {showJump && (
+          <motion.button
+            type="button"
+            aria-label="回到底部"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={
+              reduce
+                ? { opacity: 0, transition: { duration: DURATION.fast * 0.7 } }
+                : { opacity: 0, scale: 0.9, transition: { duration: DURATION.fast * 0.7 } }
+            }
+            transition={{ duration: DURATION.fast, ease: EASE_OUT }}
+            onClick={jumpToBottom}
+            className="agent-raised bg-popover text-muted-foreground hover:text-foreground focus-visible:ring-node-ring/60 absolute bottom-2 left-1/2 -ml-3.5 grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2"
+          >
+            <ArrowDown className="size-3.5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -105,40 +175,47 @@ function Item({
   item,
   ctl,
   showThinking,
+  nodes,
 }: {
   item: TimelineItem;
   ctl: AgentController;
   showThinking: boolean;
+  nodes: NodeOption[];
 }) {
   switch (item.type) {
     case "user":
       return (
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
-          <div className="bg-foreground/8 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
+          <div className="agent-inset bg-foreground/7 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
             <MessageText text={item.text} />
           </div>
         </div>
       );
     case "assistant":
       return <Assistant item={item} showThinking={showThinking} />;
-    case "tool":
-      return <ToolRow item={item} />;
+    case "activity":
+      return <ActivityGroup item={item} />;
     case "approval":
-      return <ApprovalCard approvalId={item.approvalId} ctl={ctl} />;
+      return <ApprovalRow approvalId={item.approvalId} ctl={ctl} />;
     case "status":
       return <StatusCard item={item} ctl={ctl} />;
     case "plan-done":
       return (
-        <Card tone="success" icon={<Check className="size-4" />}>
+        <p className="text-muted-foreground flex items-center gap-2 text-[13px]">
+          <Check className="text-status-success size-3.5" />
           计划已完成（{item.total} 步）
-        </Card>
+        </p>
       );
-    case "run-footer":
-      return <RunFooter runId={item.runId} ctl={ctl} />;
+    case "run-summary":
+      return <RunSummary item={item} ctl={ctl} nodes={nodes} />;
   }
 }
 
+/**
+ * 助手的回复：正文不加气泡。思考过程只在结束后出现（「› 已思考」，进行中由状态行表示）；
+ * 悬停或聚焦时下方出现复制。
+ */
 function Assistant({
   item,
   showThinking,
@@ -149,83 +226,66 @@ function Assistant({
   const [open, setOpen] = useState(false);
   const reduce = useReducedMotion();
   return (
-    <div className="flex flex-col gap-1.5">
-      {showThinking && item.thinking && (
-        <div className="text-muted-foreground text-xs">
+    <div className="group/msg flex flex-col gap-1">
+      {showThinking && item.thinking && !item.streaming && (
+        <div className="text-muted-foreground text-[13px]">
           <button
             type="button"
-            className="hover:text-foreground flex items-center gap-1 outline-none"
+            aria-expanded={open}
+            className="hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 -ml-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 outline-none transition-colors duration-120 focus-visible:ring-2"
             onClick={() => setOpen((v) => !v)}
           >
-            <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
-            思考过程
+            <ChevronRight
+              className={cn("size-3.5 transition-transform duration-120", open && "rotate-90")}
+            />
+            已思考
           </button>
           {open && (
-            <p className="mt-1 leading-relaxed break-words whitespace-pre-wrap">{item.thinking}</p>
+            <p className="border-foreground/10 mt-1 ml-1.5 border-l pl-3 text-xs leading-relaxed break-words whitespace-pre-wrap">
+              {item.thinking}
+            </p>
           )}
         </div>
       )}
       {item.text && (
-        <div className="text-[13.5px] leading-[1.7] break-words">
+        <div className="text-foreground/92 text-[13.5px] leading-[1.7] break-words">
           <Markdown text={item.text} />
           {item.streaming && !reduce && (
             <span className="bg-foreground/60 ml-0.5 inline-block h-3.5 w-0.5 translate-y-0.5 animate-pulse" />
           )}
         </div>
       )}
+      {item.text && !item.streaming && (
+        <div className="flex h-6 opacity-0 transition-opacity duration-120 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100">
+          <ChromeTooltip label="复制">
+            <button
+              type="button"
+              aria-label="复制"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(item.text)
+                  .then(() => toast.success("已复制"))
+                  .catch(() => toast.error("复制失败"))
+              }
+              className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 grid size-6 place-items-center rounded-md outline-none focus-visible:ring-2"
+            >
+              <Copy className="size-3.5" />
+            </button>
+          </ChromeTooltip>
+        </div>
+      )}
     </div>
   );
 }
 
-/** 一行一个工具调用：状态图标 + 名称 + 摘要；涉及节点时点击定位 */
-function ToolRow({ item }: { item: Extract<TimelineItem, { type: "tool" }> }) {
-  const focus = useFocusNode();
-  const canLocate = item.nodeIds.length > 0;
-  const Icon =
-    item.status === "running"
-      ? Loader2
-      : item.status === "done"
-        ? Check
-        : item.status === "error"
-          ? TriangleAlert
-          : CircleStop;
-  return (
-    <button
-      type="button"
-      disabled={!canLocate}
-      onClick={() => {
-        if (!canLocate) return;
-        if (item.nodeIds.some((id) => focus(id))) useAgentHighlight.getState().touch(item.nodeIds);
-      }}
-      className={cn(
-        "text-muted-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs outline-none",
-        "focus-visible:ring-node-ring/60 focus-visible:ring-2",
-        canLocate && "hover:bg-chrome-hover hover:text-foreground cursor-pointer",
-      )}
-    >
-      <Icon
-        className={cn(
-          "size-3.5 shrink-0",
-          item.status === "running" && "animate-spin",
-          item.status === "done" && "text-status-success",
-          item.status === "error" && "text-status-warning",
-        )}
-      />
-      <span className="shrink-0 font-mono">{TOOL_LABELS[item.name] ?? item.name}</span>
-      {item.summary && <span className="truncate opacity-80">{item.summary}</span>}
-      {item.status === "aborted" && <span className="opacity-70">已中止</span>}
-    </button>
-  );
-}
-
 /** 消息流里的提示卡 */
-export function Card({
+function Card({
   tone,
   icon,
   children,
   actions,
 }: {
-  tone: "neutral" | "error" | "success" | "info";
+  tone: "neutral" | "error";
   icon?: ReactNode;
   children: ReactNode;
   actions?: ReactNode;
@@ -233,11 +293,10 @@ export function Card({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-xl border px-3 py-2.5 text-[13px] leading-relaxed",
-        tone === "error" && "border-destructive/45 bg-destructive/5",
-        tone === "success" && "border-status-success/40 bg-status-success/5",
-        tone === "info" && "border-status-running/45 bg-status-running/5",
-        tone === "neutral" && "border-chrome-border bg-foreground/4",
+        "agent-inset flex flex-col gap-2 rounded-xl px-3 py-2.5 text-[13px] leading-relaxed",
+        tone === "error" &&
+          "bg-destructive/5 shadow-[0_0_0_1px_color-mix(in_oklab,var(--destructive)_45%,transparent)]",
+        tone === "neutral" && "from-foreground/4 to-foreground/2 bg-linear-to-b",
       )}
     >
       <div className="flex items-start gap-2">
@@ -291,35 +350,5 @@ function StatusCard({
       <p className="font-medium">{text?.title ?? "运行结束"}</p>
       <p className="text-muted-foreground">{item.error || text?.hint}</p>
     </Card>
-  );
-}
-
-/** 一轮运行结束后的操作：撤销本轮 */
-function RunFooter({ runId, ctl }: { runId: string; ctl: AgentController }) {
-  const done = ctl.undone.has(runId);
-  const [pending, setPending] = useState(false);
-  return (
-    <div className="flex justify-start">
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={done || pending}
-        className="text-muted-foreground h-7 gap-1 px-2 text-xs"
-        onClick={async () => {
-          setPending(true);
-          const result = await ctl.undo(runId);
-          setPending(false);
-          if (!result) return;
-          toast.success(
-            result.skipped.length
-              ? `已撤销 ${result.reverted} 项，${result.skipped.length} 项你之后改过，保持不动`
-              : `已撤销 ${result.reverted} 项`,
-          );
-        }}
-      >
-        {done ? <RotateCcw className="size-3.5" /> : <Undo2 className="size-3.5" />}
-        {done ? "已撤销本轮" : "撤销本轮"}
-      </Button>
-    </div>
   );
 }

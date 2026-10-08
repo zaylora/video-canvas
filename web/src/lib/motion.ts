@@ -30,6 +30,9 @@ export const EASE_OUT_CSS = `cubic-bezier(${EASE_OUT.join(", ")})`;
 /** layoutId 滑块、面板变宽、进度条 */
 export const SPRING: Transition = { type: "spring", stiffness: 500, damping: 38, mass: 0.8 };
 
+/** 流光文字扫过一遍的周期（秒）：生成中的状态指示，循环播放 */
+export const SHIMMER = 1.6;
+
 /** 按钮按下的回弹 */
 export const TAP = { scale: 0.96 } as const;
 

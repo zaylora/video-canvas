@@ -24,6 +24,22 @@ export const TOOL_LABELS: Record<string, string> = {
   skill_read: "读取技能",
 };
 
+/** 工具的短动词：活动块收起后的摘要按它计数，如「读取 2 · 修改 3」 */
+export const TOOL_VERBS: Record<string, string> = {
+  canvas_get_state: "读取",
+  canvas_apply_ops: "修改",
+  canvas_arrange: "整理",
+  canvas_delete: "删除",
+  canvas_inspect_image: "看图",
+  plan_update: "计划",
+  ask_user: "提问",
+  model_list: "查模型",
+  generate_media: "生成",
+  task_get: "查任务",
+  skill_search: "技能",
+  skill_read: "技能",
+};
+
 /** 运行状态给用户看的话（只列需要在消息流里提示的） */
 export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = {
   failed: { title: "运行失败", hint: "可以换个说法重试" },
@@ -37,8 +53,32 @@ export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = 
 
 /** 引导项（空会话时显示）：点击后的动作由面板决定 */
 export const AGENT_GUIDES = [
-  { id: "inspect", icon: "scan", title: "感知画布开始创作", mode: "all" as AgentMode },
-  { id: "storyboard", icon: "film", title: "从剧本开始拆分镜", mode: "storyboard" as AgentMode },
-  { id: "story", icon: "upload", title: "上传故事来改编", mode: "script" as AgentMode },
-  { id: "polish", icon: "wand", title: "批量优化提示词", mode: "prompt" as AgentMode },
+  {
+    id: "inspect",
+    icon: "scan",
+    title: "感知画布开始创作",
+    hint: "读一遍画布，说说现在有什么、还缺什么",
+    mode: "all" as AgentMode,
+  },
+  {
+    id: "storyboard",
+    icon: "film",
+    title: "从剧本开始拆分镜",
+    hint: "角色组、镜头组和参考线一次搭好",
+    mode: "storyboard" as AgentMode,
+  },
+  {
+    id: "story",
+    icon: "upload",
+    title: "上传故事来改编",
+    hint: "支持 .txt / .md，先改成剧本",
+    mode: "script" as AgentMode,
+  },
+  {
+    id: "polish",
+    icon: "wand",
+    title: "批量优化提示词",
+    hint: "只改提示词，不动画布结构",
+    mode: "prompt" as AgentMode,
+  },
 ] as const;

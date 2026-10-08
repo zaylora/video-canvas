@@ -23,7 +23,7 @@ import { useAgentSettings } from "@/store/agent-settings";
 import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
-import { buildRunStrip, buildTimeline } from "@/utils/agent/timeline";
+import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
 
 /** 后端错误码：超出本轮积分预算 */
 const OVER_BUDGET_CODE = 60008;
@@ -115,6 +115,21 @@ export function useAgentController({
   const activeRun = useMemo(() => activeRunId(state), [state]);
   const timeline = useMemo(() => buildTimeline(state), [state]);
   const strip = useMemo(() => buildRunStrip(state, hiddenPlans), [state, hiddenPlans]);
+  const statusLine = useMemo(() => buildStatusLine(state), [state]);
+  /** 进行中那一轮在等你决定的审批或提问（运行到审批就暂停，同一时间最多一个）：决定框钉在输入框的位置 */
+  const pending = useMemo(() => {
+    if (!activeRun) return null;
+    const list = Object.values(state.approvals).filter(
+      (a) => a.run_id === activeRun && a.status === "pending",
+    );
+    return list.at(-1) ?? null;
+  }, [activeRun, state.approvals]);
+  /** 本轮用量：运行中取运行的已花和预算，空闲时已花为 0、预算取设置 */
+  const live = activeRun ? state.runs[activeRun] : undefined;
+  const usage = {
+    spent: live?.spent ?? 0,
+    budget: live?.budget ?? settings.budget,
+  };
 
   /** 确保有会话可发：没有就按当前模式和模型新建一个 */
   const ensureSession = useCallback(async () => {
@@ -258,6 +273,9 @@ export function useAgentController({
     state,
     timeline,
     strip,
+    statusLine,
+    pending,
+    usage,
     activeRun,
     busy: activeRun !== null,
     sending,

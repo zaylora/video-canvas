@@ -378,6 +378,21 @@ func mustParseGraph(t *testing.T, f *fakeAgentCanvasRepo) *canvasgraph.Graph {
 	return g
 }
 
+// lastEvent 返回最近一条该类型事件的内容，没有返回 nil。
+func (f *fakeAgentCanvasRepo) lastEvent(typ string) map[string]any {
+	st := f.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for i := len(st.events) - 1; i >= 0; i-- {
+		if st.events[i].Type == typ {
+			var p map[string]any
+			_ = json.Unmarshal(st.events[i].PayloadJSON, &p)
+			return p
+		}
+	}
+	return nil
+}
+
 // lastToolEndSummary 返回最近一条 tool.end 事件里的摘要。
 func (f *fakeAgentCanvasRepo) lastToolEndSummary() string {
 	st := f.st()

@@ -24,3 +24,17 @@ export function useFocusNode() {
     [fitView, getNode, setNodes],
   );
 }
+
+/** 把一批节点一起框进视口（不改选中）；一个都不在画布上时返回 false */
+export function useFitNodes() {
+  const { fitView, getNode } = useReactFlow<CanvasNode, CanvasEdge>();
+  return useCallback(
+    (ids: readonly string[]) => {
+      const nodes = ids.filter((id) => getNode(id)).map((id) => ({ id }));
+      if (nodes.length === 0) return false;
+      void fitView({ nodes, duration: 320, padding: 0.3, maxZoom: 1 });
+      return true;
+    },
+    [fitView, getNode],
+  );
+}

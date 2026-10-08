@@ -296,7 +296,9 @@ func (b *AgentBridge) toolApplyOps(ctx context.Context, tc *toolCall) (*toolOut,
 	for _, id := range res.IDMap {
 		ids = append(ids, id)
 	}
-	return &toolOut{content: content, summary: fmt.Sprintf("应用 %d 项操作", len(ops)), extra: map[string]any{"node_ids": ids}}, err
+	// created / updated 给前端的「本轮改动」摘要分开计数
+	extra := map[string]any{"node_ids": ids, "created": res.Created, "updated": res.Updated}
+	return &toolOut{content: content, summary: fmt.Sprintf("应用 %d 项操作", len(ops)), extra: extra}, err
 }
 
 // toolArrange 整理布局。

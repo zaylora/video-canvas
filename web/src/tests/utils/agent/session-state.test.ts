@@ -95,6 +95,16 @@ describe("衍生状态", () => {
     expect(s.plans.r1).toEqual(steps);
   });
 
+  test("run.usage：记下本轮已花和预算；之后的 run.status 不把它们冲掉", () => {
+    let s = fold([
+      ev(1, "run.status", { status: "running" }),
+      ev(2, "run.usage", { spent_credits: 6, budget_credits: 50 }),
+    ]);
+    expect(s.runs.r1).toMatchObject({ status: "running", spent: 6, budget: 50 });
+    s = applyAgentEvent(s, ev(3, "run.status", { status: "waiting_approval" }));
+    expect(s.runs.r1).toMatchObject({ status: "waiting_approval", spent: 6, budget: 50 });
+  });
+
   test("回放补来的旧事件不会把新状态倒回去", () => {
     let s = fold([ev(1, "message.user"), ev(3, "run.status", { status: "succeeded" })]);
     s = applyAgentEvent(s, ev(2, "run.status", { status: "running" }));

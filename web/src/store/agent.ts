@@ -79,8 +79,22 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set((s) => {
       const current = s.sessions[run.session_id] ?? emptySession();
       const live = current.runs[run.id];
-      if (live && live.status === run.status) return s;
-      const runs = { ...current.runs, [run.id]: { status: run.status, error: run.error_message } };
+      if (
+        live &&
+        live.status === run.status &&
+        live.spent === run.spent_credits &&
+        live.budget === run.budget_credits
+      )
+        return s;
+      const runs = {
+        ...current.runs,
+        [run.id]: {
+          status: run.status,
+          error: run.error_message,
+          spent: run.spent_credits,
+          budget: run.budget_credits,
+        },
+      };
       return { sessions: { ...s.sessions, [run.session_id]: { ...current, runs } } };
     }),
 }));

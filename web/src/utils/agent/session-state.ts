@@ -14,6 +14,10 @@ export type AgentRunLive = {
   status: AgentRunStatus;
   /** 失败或暂停时给用户看的原因，没有为空串 */
   error: string;
+  /** 本轮已花积分（run.usage 或运行接口给出），还不知道时没有 */
+  spent?: number;
+  /** 本轮积分预算，还不知道时没有 */
+  budget?: number;
 };
 
 /** 正在流式输出、还没落成 message.done 的文字 */
@@ -72,12 +76,24 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
     case "run.status": {
       if (!ev.run_id) return state;
       const status = asString(data.status) as AgentRunStatus;
-      const runs = { ...state.runs, [ev.run_id]: { status, error: asString(data.error) } };
+      const prev = state.runs[ev.run_id];
+      const runs = {
+        ...state.runs,
+        [ev.run_id]: { ...prev, status, error: asString(data.error) },
+      };
       // 运行不再进行了，没落成 message.done 的残余文字不再有意义
       const stream = ACTIVE_RUN_STATUSES.includes(status)
         ? state.stream
         : { runId: null, text: "", thinking: "" };
       return { ...state, runs, stream };
+    }
+    case "run.usage": {
+      // 只有已经知道的运行才记用量：用量事件不该凭空造出一轮运行
+      const prev = ev.run_id ? state.runs[ev.run_id] : undefined;
+      if (!ev.run_id || !prev) return state;
+      const spent = typeof data.spent_credits === "number" ? data.spent_credits : prev.spent;
+      const budget = typeof data.budget_credits === "number" ? data.budget_credits : prev.budget;
+      return { ...state, runs: { ...state.runs, [ev.run_id]: { ...prev, spent, budget } } };
     }
     case "approval.created":
     case "approval.decided": {

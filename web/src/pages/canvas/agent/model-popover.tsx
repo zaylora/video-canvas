@@ -10,6 +10,8 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { Chip } from "@/utils/agent/chips";
 
+import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
+
 const KINDS = [
   { value: "image", label: "图片" },
   { value: "video", label: "视频" },
@@ -82,7 +84,7 @@ export function ModelPopover({
         <PopoverTrigger
           aria-label="插入模型"
           disabled={disabled}
-          className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground data-popup-open:bg-chrome-hover focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-lg outline-none focus-visible:ring-2 disabled:opacity-40"
+          className={cn(AGENT_ICON_BTN, "size-8 [&_svg]:size-[17px]")}
         >
           <Box className="size-4" />
         </PopoverTrigger>
@@ -91,7 +93,7 @@ export function ModelPopover({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[min(340px,calc(100vw-24px))] origin-bottom-left gap-2 p-2"
+        className={cn(AGENT_POP, "w-[min(340px,calc(100vw-24px))] origin-bottom-left gap-2 p-2")}
       >
         <LayoutGroup id="agent-model-kind">
           <div

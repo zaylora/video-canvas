@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import type { Chip } from "@/utils/agent/chips";
 import { filterSkills } from "@/utils/agent/skills";
 
+import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
+
 const TABS = [
   { id: "all", label: "全部", enabled: true },
   { id: "starred", label: "收藏", enabled: false },
@@ -68,7 +70,7 @@ export function SkillPopover({
         <PopoverTrigger
           aria-label="插入技能"
           disabled={disabled}
-          className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground data-popup-open:bg-chrome-hover focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-lg outline-none focus-visible:ring-2 disabled:opacity-40"
+          className={cn(AGENT_ICON_BTN, "size-8 [&_svg]:size-[17px]")}
         >
           <PenLine className="size-4" />
         </PopoverTrigger>
@@ -77,7 +79,7 @@ export function SkillPopover({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[min(372px,calc(100vw-24px))] origin-bottom-left gap-2 p-2"
+        className={cn(AGENT_POP, "w-[min(372px,calc(100vw-24px))] origin-bottom-left gap-2 p-2")}
       >
         <div role="tablist" className="flex gap-1">
           {TABS.map((t) => (
