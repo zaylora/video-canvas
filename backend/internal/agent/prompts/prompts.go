@@ -11,7 +11,7 @@ import (
 var base string
 
 // Version 是系统提示词的版本号，写在 system.md 开头的注释里；改提示词时同步改它，排查问题时能对上是哪一版。
-const Version = 5
+const Version = 6
 
 // modeAddendum 是各任务模式追加的说明。全能创作不追加。
 var modeAddendum = map[string]string{

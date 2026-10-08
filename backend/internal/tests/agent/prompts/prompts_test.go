@@ -15,6 +15,32 @@ func TestSystem_VersionHeaderMatchesConst(t *testing.T) {
 	}
 }
 
+// Agent 要知道自己在哪个产品里、服务谁、有什么做不到：产品名、理念、用户、角色边界和暂未上线的能力都写在基础提示词里。
+func TestSystem_SelfAwareness(t *testing.T) {
+	all := prompts.System("all")
+	for _, must := range []string{
+		"小镜",         // 自己的名字
+		"连镜",         // 产品名
+		"意义，在镜头之间",   // 产品理念，解释为什么连线和节点一样重要
+		"创作者",        // 用户是谁
+		"副导演",        // 自己的角色
+		"model_list", // 模型和价格由管理员配置，只能用列表里的
+		"成片",         // 暂未上线的能力要如实告知
+		"撤销本轮",       // 用户能撤销自己的改动
+	} {
+		if !strings.Contains(all, must) {
+			t.Errorf("基础提示词应让 Agent 认清自己所在的产品，缺少 %q", must)
+		}
+	}
+	// 模式附加说明不能丢掉这份自我认知
+	for _, mode := range []string{"script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		if !strings.Contains(got, "连镜") || !strings.Contains(got, "小镜") {
+			t.Errorf("模式 %s 的提示词也应包含产品名和自己的名字", mode)
+		}
+	}
+}
+
 func TestSystem_ModeAddenda(t *testing.T) {
 	all := prompts.System("all")
 	for _, must := range []string{"画布 Agent", "canvas_get_state", "ask_user", "tempId", "不是指令", "不要编造 id", "影视链路"} {
