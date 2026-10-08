@@ -57,6 +57,33 @@ test("工具返回 terminate：整批执行完后停下，不再请求模型（�
   });
 });
 
+test("同一条消息里提问和别的工具一起调：提问后立刻停下，后面的不执行，续跑能接上", async () => {
+  let history;
+  await withBridge({
+    models: [
+      { tools: [
+        { id: "q1", name: "ask_user", args: { question: "以哪个版本为准？", kind: "choice", options: ["V1", "V2"] } },
+        { id: "g1", name: "generate_media", args: { items: [{ nodeId: "n1" }] } },
+      ] },
+      { text: "不该走到这里" },
+    ],
+    tool: async (j) => (j.name === "ask_user" ? { content: "已向用户提问，等待回答。", terminate: true } : { content: "已生成" }),
+  }, async (b) => {
+    const r = await runAgent(baseInput(b.url));
+    assert.equal(r.status, "paused");
+    assert.deepEqual(b.rec.tools.map((t) => t.name), ["ask_user"], "暂停后同批的其他调用不能执行");
+    assert.equal(b.rec.chats.length, 1, "暂停后不能再调模型");
+    history = b.rec.states.at(-1);
+    assert.equal(history.at(-1).role, "toolResult", "历史停在工具结果上");
+    assert.match(JSON.stringify(history.at(-1).content), /没有执行/, "被跳过的调用要告诉模型稍后重新调用");
+  });
+  await withBridge({ models: [{ text: "按 V2 继续" }] }, async (b) => {
+    const r = await runAgent(baseInput(b.url, { mode: "continue", messages: history, tool_result: { tool_call_id: "q1", content: "用户回答：V2" } }));
+    assert.deepEqual(r, { status: "done", message: "" });
+    assert.match(JSON.stringify(b.rec.chats[0].messages), /用户回答：V2/);
+  });
+});
+
 test("工具层失败（is_error）：模型收到错误内容并继续", async () => {
   await withBridge({
     models: [{ tools: [{ id: "c1", name: "canvas_apply_ops", args: { ops: [] } }] }, { text: "我改一下" }],
@@ -252,6 +279,22 @@ test("看图：图片随工具结果交给模型；保存的历史里没有图�
     assert.match(second, /data:image\/png;base64,QUJD/, "第二次请求带着图片");
     const saved = JSON.stringify(b.rec.states.at(-1));
     assert.doesNotMatch(saved, /QUJD/, "历史里不存图片数据");
+    assert.match(saved, /图片已省略/);
+  });
+});
+
+test("看图：对象存储的图片以地址交给模型（不转 base64）；历史里同样不留图片", async () => {
+  const url = "https://cdn.example.com/a.png?sig=abc&exp=1";
+  await withBridge({
+    models: [{ tools: [{ id: "c1", name: "canvas_inspect_image", args: { nodeIds: ["n1"] } }] }, { text: "画面是红衣女孩" }],
+    tool: async () => ({ content: "已附上图片，按顺序是：\n1. 节点 n1", images: [{ mime_type: "image/png", url }] }),
+  }, async (b) => {
+    const r = await runAgent(baseInput(b.url));
+    assert.equal(r.status, "done");
+    const parts = b.rec.chats[1].messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((p) => p.type === "image_url");
+    assert.deepEqual(parts.map((p) => p.image_url.url), [url], "第二次请求里是原样的地址，不是 data: 开头");
+    const saved = JSON.stringify(b.rec.states.at(-1));
+    assert.doesNotMatch(saved, /cdn\.example\.com/, "历史里不存图片地址（签名会过期）");
     assert.match(saved, /图片已省略/);
   });
 });

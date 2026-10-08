@@ -62,3 +62,21 @@ export function dropOldImages(messages, keep = 0) {
     return { ...m, content };
   });
 }
+
+/**
+ * 对象存储里的图片交给模型的是地址，不是内容。pi 的图片块只有 data（base64）和 mimeType 两个字段，
+ * 发请求时一律拼成 data:<类型>;base64,<data>：所以先把地址放进 data，发出前再还原成真正的地址。
+ * base64 的字符里没有冒号，不会和 "https://" 混淆。就地修改并返回请求体。
+ */
+const URL_AS_DATA = /^data:[^;,]+;base64,(https?:\/\/.+)$/;
+
+export function restoreImageUrls(payload) {
+  for (const m of payload?.messages ?? []) {
+    if (!Array.isArray(m.content)) continue;
+    for (const part of m.content) {
+      const hit = part?.type === "image_url" && typeof part.image_url?.url === "string" ? URL_AS_DATA.exec(part.image_url.url) : null;
+      if (hit) part.image_url.url = hit[1];
+    }
+  }
+  return payload;
+}

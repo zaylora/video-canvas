@@ -280,6 +280,8 @@ type AssetFile struct {
 	Asset *model.Asset
 	Body  io.ReadCloser
 	URL   string // 可被上游访问的地址（公开或签名），用于文件引用 as=url
+	// Remote 为真表示素材在对象存储里，URL 是公网可访问的；本地磁盘存储的 URL 指向本服务自己，上游未必够得着
+	Remote bool
 }
 
 // AssetStore 是宿主与任务服务读取素材的接口，所有方法都校验素材归属当前用户。

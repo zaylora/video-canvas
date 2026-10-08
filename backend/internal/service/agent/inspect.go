@@ -17,7 +17,7 @@ import (
 // 看图的限制。
 const (
 	maxInspectImages = 4       // 一次最多看几张
-	maxInspectBytes  = 5 << 20 // 单张图最大字节数；太大的图占的 Token 多，也会拖慢这一轮
+	maxInspectBytes  = 5 << 20 // 本地存储下单张图最大字节数（要转 base64 塞进请求）；对象存储交地址，不受此限
 )
 
 // inspectMimes 是可以交给模型看的图片格式。
@@ -73,7 +73,9 @@ func (b *AgentBridge) toolInspectImage(ctx context.Context, tc *toolCall) (*tool
 	return out, nil
 }
 
-// loadImage 读一张图：素材必须属于该用户、是支持的图片格式、不超过大小上限。
+// loadImage 读一张图：素材必须属于该用户、是支持的图片格式。
+// 素材在对象存储里就交回地址，让模型供应商自己去取，不读内容也不受大小限制；
+// 在本地磁盘上（供应商够不着）才读出内容转 base64，单张不超过大小上限。
 func (b *AgentBridge) loadImage(ctx context.Context, userID uint64, assetID string) (ToolImage, error) {
 	id, err := strconv.ParseUint(assetID, 10, 64)
 	if err != nil {
@@ -87,10 +89,13 @@ func (b *AgentBridge) loadImage(ctx context.Context, userID uint64, assetID stri
 		return ToolImage{}, errcode.ErrInternal
 	}
 	defer f.Body.Close()
-	switch {
-	case !slices.Contains(inspectMimes, f.Asset.MimeType):
+	if !slices.Contains(inspectMimes, f.Asset.MimeType) {
 		return ToolImage{}, fmt.Errorf("图片格式 %s 不支持查看", f.Asset.MimeType)
-	case f.Asset.ByteSize > maxInspectBytes:
+	}
+	if f.Remote && f.URL != "" {
+		return ToolImage{MimeType: f.Asset.MimeType, URL: f.URL}, nil
+	}
+	if f.Asset.ByteSize > maxInspectBytes {
 		return ToolImage{}, fmt.Errorf("图片太大（%d MB），超过 %d MB 的不能查看", f.Asset.ByteSize>>20, maxInspectBytes>>20)
 	}
 	body, err := io.ReadAll(io.LimitReader(f.Body, maxInspectBytes+1))

@@ -3,6 +3,7 @@ package agent_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -17,6 +18,8 @@ type fakeAssets struct {
 	files map[uint64]*model.Asset
 	data  map[uint64][]byte
 	owner uint64
+	// remote 为真表示素材在对象存储里：URL 是上游能直接访问的地址（签名或公开）
+	remote bool
 }
 
 func (f *fakeAssets) Get(_ context.Context, _, id uint64) (*model.Asset, error) {
@@ -31,7 +34,11 @@ func (f *fakeAssets) Open(_ context.Context, userID, id uint64) (*provider.Asset
 	if a == nil || userID != f.owner {
 		return nil, provider.ErrAssetNotFound
 	}
-	return &provider.AssetFile{Asset: a, Body: io.NopCloser(bytes.NewReader(f.data[id]))}, nil
+	file := &provider.AssetFile{Asset: a, Body: io.NopCloser(bytes.NewReader(f.data[id]))}
+	if f.remote {
+		file.Remote, file.URL = true, fmt.Sprintf("https://cdn.example.com/%d?sig=x", id)
+	}
+	return file, nil
 }
 
 const inspectCanvas = `{"nodes":[
@@ -43,12 +50,12 @@ const inspectCanvas = `{"nodes":[
  {"id":"txt","type":"canvas","position":{"x":0,"y":0},"data":{"kind":"script","label":"剧本"}}
 ],"edges":[]}`
 
-func newInspectEnv(t *testing.T, vision bool) (*bridgeEnv, string) {
+func newInspectEnv(t *testing.T, vision bool, remote ...bool) (*bridgeEnv, string) {
 	t.Helper()
 	b := newBridgeEnv(t)
 	b.repo.canvas.PayloadJSON = []byte(inspectCanvas)
 	b.reg.snap.Model.Capabilities.Vision = vision
-	assets := &fakeAssets{owner: 1, files: map[uint64]*model.Asset{
+	assets := &fakeAssets{owner: 1, remote: len(remote) > 0 && remote[0], files: map[uint64]*model.Asset{
 		1: {ID: 1, Kind: "image", MimeType: "image/png", ByteSize: 3},
 		2: {ID: 2, Kind: "image", MimeType: "image/jpeg", ByteSize: 3},
 		3: {ID: 3, Kind: "image", MimeType: "image/png", ByteSize: 6 << 20},
@@ -74,6 +81,25 @@ func TestAgentBridge_InspectImage(t *testing.T) {
 		}
 		if !hasTool(AgentToolsForMode("storyboard"), "canvas_inspect_image") {
 			t.Error("看图是只读工具，各模式都能用")
+		}
+	})
+
+	t.Run("素材在对象存储里：交回签名地址而不是图片内容，大图也不受 5 MB 限制", func(t *testing.T) {
+		b, tok := newInspectEnv(t, true, true)
+		res := b.tool(t, tok, "canvas_inspect_image", map[string]any{"nodeIds": []string{"a", "big"}})
+		if res.IsError || len(res.Images) != 2 {
+			t.Fatalf("res=%+v", res)
+		}
+		if got := res.Images[0]; got.URL != "https://cdn.example.com/1?sig=x" || got.Data != "" || got.MimeType != "image/png" {
+			t.Errorf("应只带地址和类型: %+v", got)
+		}
+		if res.Images[1].URL != "https://cdn.example.com/3?sig=x" {
+			t.Errorf("大图也走地址: %+v", res.Images[1])
+		}
+		// 格式不支持的图，对象存储里也不交给模型
+		bad := b.tool(t, tok, "canvas_inspect_image", map[string]any{"nodeIds": []string{"gif"}})
+		if !bad.IsError || !strings.Contains(bad.Content, "不支持查看") {
+			t.Errorf("bad=%+v", bad)
 		}
 	})
 

@@ -148,7 +148,8 @@ export function buildTools(bridge, allowed, onTerminate = () => {}) {
     execute: async (toolCallId, params, signal) => {
       const r = await bridge.tool(toolCallId, d.name, params, signal);
       if (r.terminate) onTerminate();
-      const images = (r.images ?? []).map((i) => ({ type: "image", data: i.data, mimeType: i.mime_type }));
+      // 对象存储的图片只有地址：先放进 data，发请求前由 restoreImageUrls 还原
+      const images = (r.images ?? []).map((i) => ({ type: "image", data: i.url ?? i.data, mimeType: i.mime_type }));
       return { content: [{ type: "text", text: r.content }, ...images], details: {}, isError: !!r.is_error, terminate: !!r.terminate };
     },
   }));

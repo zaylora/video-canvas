@@ -231,7 +231,7 @@ func (s *AssetService) Open(ctx context.Context, userID, assetID uint64) (*provi
 		_ = body.Close()
 		return nil, fmt.Errorf("生成素材访问地址失败: %w", err)
 	}
-	return &provider.AssetFile{Asset: a, Body: body, URL: url}, nil
+	return &provider.AssetFile{Asset: a, Body: body, URL: url, Remote: h.Provider != storage.ProviderLocal}, nil
 }
 
 // SaveGenerated 实现 provider.AssetSaver：把生成产物转存到自有存储并插入 assets 行，返回素材与访问 URL。

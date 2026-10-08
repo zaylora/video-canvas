@@ -35,8 +35,9 @@ type ToolResult struct {
 
 // ToolImage 是随工具结果交给模型的一张图片。
 type ToolImage struct {
-	MimeType string `json:"mime_type"` // image/png 等
-	Data     string `json:"data"`      // base64
+	MimeType string `json:"mime_type"`      // image/png 等
+	Data     string `json:"data,omitempty"` // base64；素材在对象存储里时不给，改给 URL
+	URL      string `json:"url,omitempty"`  // 上游模型能直接访问的签名或公开地址
 }
 
 // toolFailure 是工具层的失败：回给模型的是说明文字，不是 HTTP 错误。

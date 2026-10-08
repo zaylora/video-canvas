@@ -2,11 +2,12 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
-import { dropOldImages, trimContext } from "./context.mjs";
+import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
 import { buildTools } from "./tools.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
 const MAX_ERROR_CHARS = 300;
+const SKIPPED_TEXT = "本轮已暂停等待用户，这条调用没有执行；用户回应后如仍需要请重新调用。";
 
 /**
  * 跑一个运行片段：开始、审批后续跑、或「继续」。Go 起一个进程调用它一次，片段结束进程就退出。
@@ -26,7 +27,7 @@ export async function runAgent(input, io = {}) {
   // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
   // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
   let paused = false;
-  const agent = buildAgent(input, bridge, () => (paused = true));
+  const agent = buildAgent(input, bridge, () => (paused = true), () => paused);
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
@@ -55,7 +56,7 @@ export async function runAgent(input, io = {}) {
 }
 
 /** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
-function buildAgent(input, bridge, onTerminate) {
+function buildAgent(input, bridge, onTerminate, isPaused) {
   const m = input.model;
   const baseUrl = input.bridge_url.replace(/\/+$/, "") + "/internal/agent/bridge/v1";
   const model = {
@@ -84,6 +85,12 @@ function buildAgent(input, bridge, onTerminate) {
     streamFn: models.streamSimple.bind(models),
     transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
     toolExecution: "sequential",
+    onPayload: async (payload) => restoreImageUrls(payload),
+    // pi 只在整批调用都要求终止时才停。模型把提问或审批和别的工具放在同一条消息里时，
+    // 必须在暂停那一刻停下：后面的调用不执行（告诉模型稍后重调），这一轮结束后不再请求模型，
+    // 历史才会停在工具结果上，续跑时 continue 能接上
+    beforeToolCall: async () => (isPaused() ? { block: true, reason: SKIPPED_TEXT, terminate: true } : undefined),
+    finishTurn: async () => (isPaused() ? { action: "end" } : undefined),
   });
   return agent;
 }

@@ -532,6 +532,22 @@ func TestAssetService_GetOpen(t *testing.T) {
 			t.Fatalf("实际：%q %+v %q", b, f.Asset, f.URL)
 		}
 	})
+	t.Run("Open 标明素材在对象存储还是本地磁盘：只有对象存储的地址上游才够得着", func(t *testing.T) {
+		svc, _, _ := setup()
+		if f, err := svc.Open(context.Background(), 1, 5); err != nil || !f.Remote {
+			t.Fatalf("对象存储应是 Remote：%+v %v", f, err)
+		}
+		repo := newFakeAssetRepo()
+		repo.rows[5] = &model.Asset{ID: 5, UserID: 1, Kind: "image", StorageID: 1, StorageKey: "u1/202609/a.png", MimeType: "image/png"}
+		store := newFakeAssetStore()
+		store.objects["u1/202609/a.png"] = []byte("PNGDATA")
+		reg := newFakeRegistry(1, &storage.Handle{ID: 1, Provider: storage.ProviderLocal, Storage: store})
+		f, err := NewAssetService(repo, reg, config.Storage{}).Open(context.Background(), 1, 5)
+		if err != nil || f.Remote {
+			t.Fatalf("本地磁盘不应是 Remote：%+v %v", f, err)
+		}
+		_ = f.Body.Close()
+	})
 	t.Run("Open 他人素材不打开存储对象", func(t *testing.T) {
 		svc, _, store := setup()
 		if _, err := svc.Open(context.Background(), 2, 5); !errors.Is(err, provider.ErrAssetNotFound) {
