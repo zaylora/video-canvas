@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useNodeId, useStoreApi, type HandleType } from "@xyflow/react";
-import { useReducedMotion, useSpring, type MotionValue } from "motion/react";
+import { useReducedMotion, useSpring, useTransform, type MotionValue } from "motion/react";
+
+import { tiltPerspective } from "@/utils/canvas/connection-tilt";
 
 import { getNodeHit } from "../node-hit-test";
 
@@ -32,6 +34,8 @@ export type ConnectionTilt = {
   scale: MotionValue<number>;
   /** 别人拉线时，本节点接不上就淡下去，一眼看出该往哪儿连 */
   opacity: MotionValue<number>;
+  /** 透视距离：只在倾斜时有值，静止时为 0，免得每个节点都变成 3D 合成层 */
+  transformPerspective: MotionValue<number>;
 };
 
 /** 拉线时接不上的节点淡到多少 */
@@ -62,6 +66,12 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
   const rotateY = useSpring(0, SPRING);
   const scale = useSpring(1, SPRING);
   const opacity = useSpring(1, SPRING);
+  const transformPerspective = useTransform(() =>
+    tiltPerspective(
+      { rotateX: rotateX.get(), rotateY: rotateY.get(), scale: scale.get() },
+      TILT_PERSPECTIVE,
+    ),
+  );
 
   useEffect(() => {
     const rest = () => {
@@ -126,5 +136,5 @@ export function useConnectionTilt({ canAccept }: ConnectionTiltOptions = {}): Co
     };
   }, [nodeId, opacity, prefersReducedMotion, rotateX, rotateY, scale, store]);
 
-  return { rotateX, rotateY, scale, opacity };
+  return { rotateX, rotateY, scale, opacity, transformPerspective };
 }
