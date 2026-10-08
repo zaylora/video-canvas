@@ -50,35 +50,3 @@ export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = 
   canceled: { title: "已停止", hint: "没做完的计划还留着，可以接着让它做" },
   expired: { title: "等待超时", hint: "你太久没有回应，这一轮已经结束" },
 };
-
-/** 引导项（空会话时显示）：点击后的动作由面板决定 */
-export const AGENT_GUIDES = [
-  {
-    id: "inspect",
-    icon: "scan",
-    title: "感知画布开始创作",
-    hint: "读一遍画布，说说现在有什么、还缺什么",
-    mode: "all" as AgentMode,
-  },
-  {
-    id: "storyboard",
-    icon: "film",
-    title: "从剧本开始拆分镜",
-    hint: "角色组、镜头组和参考线一次搭好",
-    mode: "storyboard" as AgentMode,
-  },
-  {
-    id: "story",
-    icon: "upload",
-    title: "上传故事来改编",
-    hint: "支持 .txt / .md，先改成剧本",
-    mode: "script" as AgentMode,
-  },
-  {
-    id: "polish",
-    icon: "wand",
-    title: "批量优化提示词",
-    hint: "只改提示词，不动画布结构",
-    mode: "prompt" as AgentMode,
-  },
-] as const;

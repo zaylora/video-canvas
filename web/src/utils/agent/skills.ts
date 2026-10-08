@@ -14,3 +14,20 @@ export function filterSkills(skills: readonly AgentSkillOption[], query: string)
   if (!q) return [...skills];
   return skills.filter((s) => `${s.title} ${s.name} ${s.description}`.toLowerCase().includes(q));
 }
+
+/** 技能目录的加载状态 */
+export type SkillsStatus = "loading" | "ready" | "error";
+
+/**
+ * 输入 / 弹出的技能菜单没有可选项时，该显示的一句提示；有可选项时返回 null
+ * @param status 目录的加载状态
+ * @param catalogSize 目录里的技能总数
+ * @param matched 当前关键词命中的数量
+ * @returns 提示文字，或 null（直接显示列表）
+ */
+export function skillMenuNotice(status: SkillsStatus, catalogSize: number, matched: number) {
+  if (status === "loading") return "正在加载技能…";
+  if (status === "error") return "技能加载失败，请用下方的技能按钮重试";
+  if (matched > 0) return null;
+  return catalogSize === 0 ? "还没有启用的技能" : "没有找到匹配的技能";
+}

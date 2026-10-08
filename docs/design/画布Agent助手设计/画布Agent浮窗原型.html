@@ -423,20 +423,29 @@
   .pop { border-radius: calc(var(--radius) * 1.8); box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px var(--chrome-border), 0 2px 6px oklch(0 0 0 / 0.08), 0 20px 48px -12px oklch(0 0 0 / 0.4); }
   .jump { box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px var(--chrome-border), 0 6px 16px -4px oklch(0 0 0 / 0.35); }
 
-  /* 空状态 */
-  .orb-wrap { position: relative; display: grid; place-items: center; width: 120px; height: 96px; flex: none; }
-  .orb-wrap::before { content: ""; position: absolute; inset: 0; border-radius: 99px; background: radial-gradient(closest-side, color-mix(in oklab, var(--preset) 30%, transparent), transparent); }
-  .orb { position: relative; width: 64px; height: 64px; box-shadow: inset 0 1px 1px color-mix(in oklab, white 40%, transparent), 0 10px 30px -6px color-mix(in oklab, var(--preset) 60%, transparent); }
-  .empty { gap: 6px; }
-  .empty p { font-size: 17px; letter-spacing: -0.01em; }
-  .empty .sub { font-size: 12.5px; color: var(--muted-foreground); margin-bottom: 14px; text-align: center; }
-  .guide { height: 56px; gap: 12px; padding: 0 12px; flex: none; background: color-mix(in oklab, var(--foreground) 3%, transparent); box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px var(--chrome-border); transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
-  .guide:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px color-mix(in oklab, var(--preset) 35%, transparent); }
-  .guide .tile { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; flex: none; color: var(--foreground); background: color-mix(in oklab, var(--foreground) 6%, transparent); box-shadow: inset 0 1px 0 var(--sheen), 0 0 0 1px var(--chrome-border); transition: color 120ms var(--ease); }
-  .guide:hover .tile { color: var(--preset); }
-  .guide .txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+  /* 空状态（第四轮：扁平化）：无光晕、无投影、无描边；引导项是无框行，hover 才出淡底 */
+  .orb-wrap { display: none; }
+  .empty > * { flex-shrink: 0; }
+  .orb { display: block; width: 40px; height: 40px; box-shadow: none; opacity: 1; margin-bottom: 4px; }
+  .empty { gap: 4px; padding: 20px 12px 16px 20px; scrollbar-gutter: stable; }
+  .empty p { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .empty .sub { font-size: 12px; color: var(--muted-foreground); margin-bottom: 12px; text-align: center; }
+  /* 滚动条常驻可见：6px 细条，让用户知道下面还有内容 */
+  .empty::-webkit-scrollbar { width: 6px; }
+  .empty::-webkit-scrollbar-thumb { border-radius: 99px; background: color-mix(in oklab, var(--foreground) 20%, transparent); }
+  .empty::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--foreground) 32%, transparent); }
+  .empty::-webkit-scrollbar-track { background: transparent; }
+  .guides { gap: 2px; padding-right: 8px; }
+  .guide { height: 44px; gap: 12px; padding: 0 10px; flex: none; border-radius: 10px; background: transparent; box-shadow: none; transition: background-color 120ms var(--ease); }
+  .guide:hover { background: color-mix(in oklab, var(--foreground) 6%, transparent); box-shadow: none; }
+  .guide:focus-visible { outline: 2px solid color-mix(in oklab, var(--preset) 60%, transparent); outline-offset: -2px; }
+  .guide .tile { display: grid; place-items: center; width: 20px; height: 20px; flex: none; background: none; box-shadow: none; border-radius: 0; color: var(--muted-foreground); transition: color 120ms var(--ease); }
+  .guide:hover .tile, .guide:focus-visible .tile { color: var(--preset); }
+  .guide .arr { opacity: 0; transition: opacity 120ms var(--ease), transform 120ms var(--ease); }
+  .guide:hover .arr, .guide:focus-visible .arr { opacity: 1; }
+  .guide .txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
   .guide .txt small { font-size: 11.5px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .empty .hint { margin-top: 12px; font-size: 11.5px; color: var(--muted-foreground); display: flex; gap: 6px; align-items: center; flex: none; }
+  .empty .hint { margin-top: 10px; font-size: 11.5px; color: var(--muted-foreground); display: flex; gap: 6px; align-items: center; flex: none; }
 
   /* 演示控制 */
   .demo { position: fixed; left: 12px; top: 12px; z-index: 60; width: 260px; padding: 10px; border-radius: 14px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); backdrop-filter: blur(16px); font-size: 12px; }
@@ -514,11 +523,10 @@
     </header>
     <div class="stream-wrap">
       <div class="empty" id="empty">
-        <div class="orb-wrap" aria-hidden="true"><div class="orb orb-grad"></div></div>
+        <div class="orb orb-grad" aria-hidden="true"></div>
         <p>让 Agent 帮你把想法搭成分镜</p>
         <div class="sub">读懂画布、搭建节点、整理布局；花积分和删除前都会先问你</div>
-        <div class="guides" id="guides"></div>
-        <div class="hint"><span class="kbd-chip">⌘ /</span>随时唤起 · <span class="kbd-chip">@</span>引用节点</div>
+        <div class="hint"><span class="kbd-chip">⌘ /</span>随时唤起 · <span class="kbd-chip">@</span>引用节点 · <span class="kbd-chip">/</span>插入技能</div>
       </div>
       <div class="stream" id="stream" hidden></div>
       <button class="jump" id="jump" aria-label="回到底部" data-tip="回到底部"></button>
@@ -743,9 +751,6 @@ $("#setBtn", panel).onclick = (e) =>
 $("#newBtn", panel).onclick = () => { if (S.busy) return; stream.innerHTML = ""; stream.hidden = true; empty.hidden = false; $("#title", panel).textContent = "新对话"; setPlan(null); S.spent = 0; renderComposer(); };
 
 /* ======================= 空状态 ======================= */
-$("#guides", panel).innerHTML = [["scan", "感知画布开始创作", "读一遍画布，说说现在有什么、还缺什么"], ["film", "从剧本开始拆分镜", "角色组、镜头组和参考线一次搭好"], ["upload", "上传故事来改编", "支持 .txt / .md，先改成剧本"], ["wand", "批量优化提示词", "只改提示词，不动画布结构"]]
-  .map(([i, t, d]) => `<button class="guide"><span class="tile">${ic(i)}</span><span class="txt"><span>${t}</span><small>${d}</small></span>${ic("arrowR", "arr")}</button>`).join("");
-$("#guides", panel).onclick = (e) => { if (e.target.closest(".guide")) { setText("把 @剧本《雨夜便利店》 拆成分镜，角色用 [Nano Banana Pro]"); } };
 
 /* ======================= 消息流 ======================= */
 let stuck = true;

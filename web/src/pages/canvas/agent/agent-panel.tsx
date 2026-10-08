@@ -17,14 +17,12 @@ import {
 } from "motion/react";
 
 import type { AgentModelDto } from "@/api/agent/type";
-import { AGENT_GUIDES } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
 import type { Chip } from "@/utils/agent/chips";
-import { serializeChip } from "@/utils/agent/chips";
 
 import { AgentComposer } from "./agent-composer";
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
@@ -33,14 +31,6 @@ import { AgentHeader } from "./agent-header";
 import { DecisionDock } from "./decision-dock";
 import { MessageList } from "./message-list";
 import { RunStrip } from "./run-strip";
-
-/** 点引导项：直接发的，或者切到对应模式并预填一句话（拆分镜带上画布里的剧本节点作为 chip） */
-const GUIDE_ACTIONS = {
-  inspect: { send: "读一下当前画布，告诉我它现在有什么、还缺什么。" },
-  storyboard: { fill: (script?: string) => `把${script ? ` ${script} ` : "画布上的剧本"}拆成分镜` },
-  story: { fill: () => "我想把下面这个故事改编成剧本和分镜：\n" },
-  polish: { fill: () => "优化选中节点的提示词" },
-} as const;
 
 /** 停靠后画布至少留这么宽，放不下就临时退回浮窗 */
 const MIN_CANVAS_WIDTH = 480;
@@ -149,24 +139,6 @@ export function AgentPanel({
     return ok;
   };
 
-  const onGuide = (id: (typeof AGENT_GUIDES)[number]["id"]) => {
-    const guide = AGENT_GUIDES.find((g) => g.id === id);
-    const action = GUIDE_ACTIONS[id];
-    if (!guide) return;
-    if ("send" in action) {
-      void send(action.send, guide.mode);
-      return;
-    }
-    ctl.setMode(guide.mode);
-    const script = nodes.find((n) => n.kind === "script");
-    const chip =
-      script && id === "storyboard"
-        ? serializeChip({ type: "node", id: script.id, name: script.label })
-        : undefined;
-    // 空会话里编辑器和引导项同时挂着，所以预填后把光标放进去就能接着写
-    editor.current?.setText(action.fill(chip));
-  };
-
   /** Esc 停止本轮：焦点在浮窗里、输入框为空、没有在等你决定（弹层在浮窗外，按 Esc 只关弹层） */
   const onKeyDown = (e: ReactKeyboardEvent) => {
     if (e.key !== "Escape" || !ctl.busy || ctl.pending || text.trim()) return;
@@ -204,7 +176,7 @@ export function AgentPanel({
         onDragStart={mobile || docked ? undefined : (e) => controls.start(e)}
       />
       {empty ? (
-        <AgentEmpty onGuide={onGuide} />
+        <AgentEmpty />
       ) : (
         <MessageList
           key={ctl.session?.id ?? "new"}

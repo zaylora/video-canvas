@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { PenLine, Search } from "lucide-react";
 
-import { getAgentSkills } from "@/api/agent/skill";
-import type { AgentSkillDto } from "@/api/agent/type.d";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,42 +10,13 @@ import type { Chip } from "@/utils/agent/chips";
 import { filterSkills } from "@/utils/agent/skills";
 
 import { AGENT_ICON_BTN, AGENT_POP } from "./styles";
+import { useSkillCatalog } from "./use-skill-catalog";
 
 const TABS = [
   { id: "all", label: "全部", enabled: true },
   { id: "starred", label: "收藏", enabled: false },
   { id: "mine", label: "我的", enabled: false },
 ] as const;
-
-/** 技能目录的加载状态 */
-type SkillsStatus = "loading" | "ready" | "error";
-
-/**
- * 弹层打开时读技能目录（管理员随时可能启停技能，所以每次打开都刷新）。
- * 失败时保留上一次成功的列表；请求错误的全局 toast 由拦截器弹，这里只记状态让弹层退化成可重试的提示。
- */
-function useSkillCatalog(open: boolean) {
-  const [skills, setSkills] = useState<AgentSkillDto[]>([]);
-  const [status, setStatus] = useState<SkillsStatus>("loading");
-  /** 只认最近一次请求的结果，快速开合弹层时旧请求不会盖掉新的 */
-  const latest = useRef(0);
-  const load = useCallback(async () => {
-    const ticket = ++latest.current;
-    setStatus((prev) => (prev === "ready" ? prev : "loading"));
-    try {
-      const list = await getAgentSkills();
-      if (ticket !== latest.current) return;
-      setSkills(list);
-      setStatus("ready");
-    } catch {
-      if (ticket === latest.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
-    }
-  }, []);
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
-  return { skills, status, reload: load };
-}
 
 /**
  * 插入技能：只有「全部」（已启用的内置与导入技能）可用，「收藏」「我的」二期开放（置灰并说明）；按名称、技能名、说明搜索。

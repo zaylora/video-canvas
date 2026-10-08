@@ -199,7 +199,7 @@ export function AgentComposer({
         handleRef={editorRef}
         nodes={nodes}
         placeholder={
-          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，或插入模型、技能"
+          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
         }
         onChange={onTextChange}
         onSubmit={() => !empty && !sending && onSend()}

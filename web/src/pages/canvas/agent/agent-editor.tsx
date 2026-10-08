@@ -1,5 +1,4 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { createPortal } from "react-dom";
 import {
   Box,
   Clapperboard,
@@ -9,13 +8,14 @@ import {
   Paperclip,
   Sparkles,
 } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
 import Mention from "@tiptap/extension-mention";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
+import { Extension } from "@tiptap/core";
 import { UndoRedo } from "@tiptap/extensions";
+import { PluginKey } from "@tiptap/pm/state";
 import {
   EditorContent,
   NodeViewWrapper,
@@ -23,12 +23,16 @@ import {
   useEditor,
   type NodeViewProps,
 } from "@tiptap/react";
-import type { SuggestionProps } from "@tiptap/suggestion";
+import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 
-import { DURATION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { Chip, ChipType } from "@/utils/agent/chips";
 import { chipNode, docToMessage, messageToDoc, type DocNode } from "@/utils/agent/editor-doc";
+import type { AgentSkillDto } from "@/api/agent/type.d";
+import { filterSkills, skillMenuNotice } from "@/utils/agent/skills";
+
+import { SuggestionMenu } from "./suggestion-menu";
+import { useSkillCatalog } from "./use-skill-catalog";
 
 /** 能用 @ 引用的节点 */
 export type NodeOption = {
@@ -95,6 +99,67 @@ type MenuState = { query: string; rect: DOMRect | null; command: SuggestionProps
 
 const MAX_MENU_ITEMS = 8;
 
+/** / 菜单的状态；选中后写入文档的回调收一个技能 chip */
+type SkillMenuState = MenuState;
+
+/**
+ * 输入 / 唤起技能列表：选中后把「/关键词」换成技能 chip。
+ * 沿用 suggestion 的默认前缀规则（行首或空格后才触发），所以 http://、和/或 这类斜杠不会误弹。
+ */
+function skillSuggestion(onChange: (state: SkillMenuState | null) => void) {
+  const show = (props: SuggestionProps) =>
+    onChange({
+      query: props.query,
+      rect: props.clientRect?.() ?? null,
+      command: props.command,
+    });
+  return Extension.create({
+    name: "skillSuggestion",
+    addProseMirrorPlugins() {
+      return [
+        Suggestion<Chip, Chip>({
+          editor: this.editor,
+          pluginKey: new PluginKey("skillSuggestion"),
+          char: "/",
+          items: () => [],
+          command: ({ editor, range, props }) => {
+            editor
+              .chain()
+              .focus()
+              .insertContentAt(range, [chipNode(props), { type: "text", text: " " }])
+              .run();
+          },
+          render: () => ({
+            onStart: show,
+            onUpdate: show,
+            onExit: () => onChange(null),
+          }),
+        }),
+      ];
+    },
+  });
+}
+
+/** 菜单里的上下键与确认键：返回是否已处理 */
+function handleMenuKey(
+  event: KeyboardEvent,
+  count: number,
+  active: number,
+  setActive: (i: number) => void,
+  pick: (i: number) => void,
+) {
+  if (count === 0) return false;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    setActive((active + (event.key === "ArrowDown" ? 1 : count - 1)) % count);
+    return true;
+  }
+  if (event.key === "Enter" || event.key === "Tab") {
+    pick(active);
+    return true;
+  }
+  return false;
+}
+
 /**
  * 输入区的编辑器：文字 + 行内 chip（节点、模型、技能、附件）。Enter 发送，Shift+Enter 换行，
  * @ 弹出节点列表（向上），输入法选字时的回车不算发送。文本形式见 editor-doc。
@@ -115,19 +180,30 @@ export function AgentEditor({
   /** 按了 Enter */
   onSubmit: () => void;
 }) {
-  const reduce = useReducedMotion();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [active, setActive] = useState(0);
+  const [skillMenu, setSkillMenu] = useState<SkillMenuState | null>(null);
+  const [skillActive, setSkillActive] = useState(0);
+  const catalog = useSkillCatalog(skillMenu !== null);
   const [empty, setEmpty] = useState(true);
   // 键盘处理挂在编辑器创建时，要读最新值，所以放进 ref
-  const live = useRef({ menu, active, items: [] as NodeOption[], onSubmit });
+  const live = useRef({
+    menu,
+    active,
+    items: [] as NodeOption[],
+    skillMenu,
+    skillActive,
+    skillItems: [] as AgentSkillDto[],
+    onSubmit,
+  });
   const items = menu
     ? nodes
         .filter((n) => n.label.toLowerCase().includes(menu.query.toLowerCase()))
         .slice(0, MAX_MENU_ITEMS)
     : [];
+  const skillItems = skillMenu ? filterSkills(catalog.skills, skillMenu.query) : [];
   useEffect(() => {
-    live.current = { menu, active, items, onSubmit };
+    live.current = { menu, active, items, skillMenu, skillActive, skillItems, onSubmit };
   });
 
   const editor = useEditor({
@@ -138,6 +214,10 @@ export function AgentEditor({
       Text,
       HardBreak,
       UndoRedo,
+      skillSuggestion((state) => {
+        setSkillMenu(state);
+        if (state) setSkillActive(0);
+      }),
       Mention.extend({
         addAttributes: () => ({
           id: { default: "" },
@@ -176,17 +256,23 @@ export function AgentEditor({
           "min-h-[60px] max-h-[140px] overflow-y-auto px-1 text-[13.5px] leading-[1.75] outline-none whitespace-pre-wrap break-words",
       },
       handleKeyDown: (_view, event) => {
-        const { menu: m, active: a, items: list, onSubmit: submit } = live.current;
-        if (m && list.length > 0) {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            setActive((a + (event.key === "ArrowDown" ? 1 : list.length - 1)) % list.length);
-            return true;
-          }
-          if (event.key === "Enter" || event.key === "Tab") {
-            const pick = list[a];
-            m.command({ id: pick.id, label: pick.label, ctype: "node" } as never);
-            return true;
-          }
+        const cur = live.current;
+        const { menu: m, items: list, skillMenu: sm, skillItems: skills, onSubmit: submit } = cur;
+        if (
+          m &&
+          handleMenuKey(event, list.length, cur.active, setActive, (i) =>
+            m.command({ id: list[i].id, label: list[i].label, ctype: "node" } as never),
+          )
+        ) {
+          return true;
+        }
+        if (
+          sm &&
+          handleMenuKey(event, skills.length, cur.skillActive, setSkillActive, (i) =>
+            sm.command({ type: "skill", id: skills[i].name, name: skills[i].title } as never),
+          )
+        ) {
+          return true;
         }
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
@@ -236,49 +322,38 @@ export function AgentEditor({
         </span>
       )}
       <EditorContent editor={editor} />
-      {menu?.rect &&
-        items.length > 0 &&
-        createPortal(
-          <motion.ul
-            role="listbox"
-            aria-label="引用节点"
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: DURATION.base }}
-            style={{
-              position: "fixed",
-              left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 248)),
-              bottom: window.innerHeight - menu.rect.top + 6,
-              transformOrigin: "bottom left",
-            }}
-            className="bg-popover text-popover-foreground ring-chrome-border z-[60] flex w-60 flex-col gap-0.5 rounded-xl p-1.5 shadow-lg ring-1"
-          >
-            {items.map((n, i) => {
-              const Icon = KIND_ICON[n.kind];
-              return (
-                <li key={n.id} role="option" aria-selected={i === active}>
-                  <button
-                    type="button"
-                    // 按下时编辑器不要失焦，否则菜单先关了
-                    onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() =>
-                      menu.command({ id: n.id, label: n.label, ctype: "node" } as never)
-                    }
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]",
-                      i === active && "bg-chrome-hover",
-                    )}
-                  >
-                    <Icon className="text-muted-foreground size-4 shrink-0" />
-                    <span className="truncate">{n.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </motion.ul>,
-          document.body,
-        )}
+      <SuggestionMenu
+        label="引用节点"
+        rect={menu?.rect ?? null}
+        width={240}
+        items={items.map((n) => ({ key: n.id, icon: KIND_ICON[n.kind], title: n.label }))}
+        active={active}
+        onActive={setActive}
+        onPick={(i) =>
+          menu?.command({ id: items[i].id, label: items[i].label, ctype: "node" } as never)
+        }
+      />
+      <SuggestionMenu
+        label="插入技能"
+        rect={skillMenu?.rect ?? null}
+        width={300}
+        items={skillItems.map((k) => ({
+          key: k.name,
+          icon: Sparkles,
+          title: k.title,
+          hint: k.description,
+        }))}
+        active={skillActive}
+        notice={skillMenuNotice(catalog.status, catalog.skills.length, skillItems.length)}
+        onActive={setSkillActive}
+        onPick={(i) =>
+          skillMenu?.command({
+            type: "skill",
+            id: skillItems[i].name,
+            name: skillItems[i].title,
+          } as never)
+        }
+      />
     </div>
   );
 }

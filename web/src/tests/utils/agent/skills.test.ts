@@ -3,7 +3,7 @@ import type { AxiosAdapter, InternalAxiosRequestConfig } from "axios";
 
 import { getAgentSkills } from "@/api/agent/skill";
 import instance from "@/utils/requests/request";
-import { filterSkills, type AgentSkillOption } from "@/utils/agent/skills";
+import { filterSkills, skillMenuNotice, type AgentSkillOption } from "@/utils/agent/skills";
 
 const originalAdapter = instance.defaults.adapter;
 
@@ -96,5 +96,21 @@ describe("filterSkills", () => {
     ]);
     expect(filterSkills(skills, "不存在的东西")).toEqual([]);
     expect(filterSkills(skills, "  ")).toHaveLength(3);
+  });
+});
+
+describe("skillMenuNotice：输入 / 弹出的技能菜单没有可选项时给什么提示", () => {
+  test("加载中、加载失败各有提示", () => {
+    expect(skillMenuNotice("loading", 0, 0)).toBe("正在加载技能…");
+    expect(skillMenuNotice("error", 0, 0)).toBe("技能加载失败，请用下方的技能按钮重试");
+  });
+
+  test("目录为空和关键词没命中要分开说", () => {
+    expect(skillMenuNotice("ready", 0, 0)).toBe("还没有启用的技能");
+    expect(skillMenuNotice("ready", 3, 0)).toBe("没有找到匹配的技能");
+  });
+
+  test("有可选项时不给提示", () => {
+    expect(skillMenuNotice("ready", 3, 2)).toBeNull();
   });
 });
