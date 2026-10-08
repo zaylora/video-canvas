@@ -26,3 +26,10 @@ type RegisterSettingsView struct {
 	InitialCredits        int  `json:"initial_credits" binding:"min=0,max=100000000" label:"初始积分"`     // 新用户初始积分
 	DefaultMaxActiveTasks int  `json:"default_max_active_tasks" binding:"min=1,max=64" label:"默认并发上限"` // 默认并发上限
 }
+
+// 登录页展示（showcase）相关的系统设置键，值统一存文本；库值缺省或非法时由 service 回落默认。
+const (
+	SettingShowcaseClipSeconds      = "showcase_clip_seconds"             // 每段视频播放秒数，合法 4–15，缺省 7
+	SettingShowcaseShowOnLogin      = "showcase_show_on_login"            // 登录页是否展示轮播，"true" / "false"，缺省 true
+	SettingShowcasePosterOnSaveData = "showcase_poster_only_on_save_data" // 省流量模式下是否只显示封面，"true" / "false"，缺省 true
+)

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { Notice } from "@/components/admin-ui/notice";
 import {
   PageHeader,
@@ -102,7 +101,7 @@ export default function AgentSkillsPage() {
   return (
     <MotionConfig reducedMotion="user">
       <div {...getRootProps({ className: "h-full overflow-y-auto" })}>
-        <AdminMain>
+        <main className="px-4 py-6 lg:px-6">
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>技能</PageHeaderTitle>
@@ -166,7 +165,7 @@ export default function AgentSkillsPage() {
               onImport={openImport}
             />
           )}
-        </AdminMain>
+        </main>
 
         <SkillSheet name={openName} api={api} onClose={() => setOpenName(null)} />
         <ImportDialog

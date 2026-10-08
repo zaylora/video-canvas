@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Film,
   HardDrive,
   ImageDown,
   Mail,
@@ -15,6 +16,8 @@ import {
 export type AdminNavEntry = {
   /** 相对 /admin 的路径 */
   to: string;
+  /** 侧栏条目右侧的小标，如新功能的「新」；不写则显示条目计数（有的话） */
+  badge?: string;
   label: string;
   icon: LucideIcon;
 };
@@ -46,6 +49,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "settings/image-processor", label: "图片服务", icon: ImageDown },
       { to: "settings/register", label: "注册设置", icon: UserPlus },
       { to: "settings/email", label: "邮件服务", icon: Mail },
+      { to: "settings/showcase", label: "登录页展示", icon: Film, badge: "新" },
     ],
   },
 ];

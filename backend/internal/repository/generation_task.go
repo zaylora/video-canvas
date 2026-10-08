@@ -91,6 +91,18 @@ func (r *GenerationTaskRepository) ListByIDs(ctx context.Context, userID uint64,
 	return list, err
 }
 
+// ListBriefByIDs 按 id 批量查询任务，不带用户条件、不排除 is_test：给后台素材库按素材的 task_id 带出提示词与模型名用。
+// 只取 id、model_id、input_json、config_snapshot 四列（其余列如 trace_json、provider_result 可能很大，这里用不到）；
+// 不存在的 id 缺席，顺序不保证；ids 为空返回 nil。
+func (r *GenerationTaskRepository) ListBriefByIDs(ctx context.Context, ids []uint64) ([]model.GenerationTask, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var list []model.GenerationTask
+	err := r.db.WithContext(ctx).Select("id", "model_id", "input_json", "config_snapshot").Where("id IN ?", ids).Find(&list).Error
+	return list, err
+}
+
 // ListActive 查询该用户所有非终态的正式任务（排除 is_test），按 id 升序。
 func (r *GenerationTaskRepository) ListActive(ctx context.Context, userID uint64) ([]model.GenerationTask, error) {
 	var list []model.GenerationTask

@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { updateChannel } from "@/api/admin/ai";
 import type { ChannelView } from "@/api/admin/ai/type.d";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import {
   PageHeader,
@@ -113,7 +112,7 @@ export default function ChannelsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <div className="flex flex-col">
           <PageHeader>
             <PageHeaderHeading>
@@ -185,7 +184,7 @@ export default function ChannelsPage() {
           }}
           onClose={closeSheet}
         />
-      </AdminMain>
+      </main>
     </div>
   );
 }

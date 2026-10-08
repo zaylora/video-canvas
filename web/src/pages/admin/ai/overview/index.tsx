@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import {
   PageHeader,
   PageHeaderDescription,
@@ -143,7 +142,7 @@ export default function OverviewPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>总览</PageHeaderTitle>
@@ -243,7 +242,7 @@ export default function OverviewPage() {
             </ul>
           )}
         </Card>
-      </AdminMain>
+      </main>
     </div>
   );
 }

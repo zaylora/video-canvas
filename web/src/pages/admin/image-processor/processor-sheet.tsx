@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
 import type { StorageView } from "@/api/admin/storage/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { Sheet, SheetContent } from "@/components/admin-ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useRetained } from "@/hooks/use-retained";
 
 import { ProcessorWizard, type WizardStep } from "./processor-wizard";

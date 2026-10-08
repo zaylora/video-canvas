@@ -11,7 +11,7 @@ import {
 import { MotionButton } from "@/components/admin-ui/motion-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/admin-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { LIMIT_RANGE, validateLimit } from "@/utils/admin/user-rules";
 

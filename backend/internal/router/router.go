@@ -32,6 +32,7 @@ type Handlers struct {
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
 	AdminUser      *handler.AdminUserHandler           // 后台用户管理
 	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
+	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
 	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
 }
@@ -56,6 +57,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.POST("/auth/register/code", h.User.SendRegisterCode)
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
+		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
@@ -218,6 +220,16 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		settings.PUT("/smtp", superOnly, h.AdminSettings.UpdateSMTP)
 		settings.PUT("/smtp/password", superOnly, h.AdminSettings.SetSMTPPassword)
 		settings.POST("/smtp/test", superOnly, h.AdminSettings.TestSMTP)
+
+		// 登录页展示（背景轮播视频）：读 = admin 或 super_admin；写 = 仅 super_admin，全部写操作进审计。
+		// order 是静态段，与 items/:id 不在同一层，不冲突。
+		settings.GET("/showcase", h.Showcase.AdminGet)
+		settings.GET("/showcase/library", h.Showcase.Library) // 素材库：全平台生成的视频，供“从素材库添加”挑选
+		settings.POST("/showcase/items", superOnly, h.Showcase.CreateItem)
+		settings.PUT("/showcase/items/:id", superOnly, h.Showcase.UpdateItem)
+		settings.DELETE("/showcase/items/:id", superOnly, h.Showcase.DeleteItem)
+		settings.PUT("/showcase/order", superOnly, h.Showcase.Reorder)
+		settings.PUT("/showcase/settings", superOnly, h.Showcase.UpdateSettings)
 	}
 
 	// 素材的稳定地址：画布 payload 里存的就是它，永不过期、换存储也不变。

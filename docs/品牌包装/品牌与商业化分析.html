@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>品牌与商业化分析</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/geist/index.css" />
+<style>
+:root {
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --border: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --status-success: oklch(0.6 0.15 155);
+  --status-warning: oklch(0.7 0.16 70);
+  --destructive: oklch(0.577 0.245 27.325);
+  --preset: oklch(0.55 0.2 295);
+  /* 品牌提案色（尚未进入 index.css） */
+  --brand-ink: oklch(0.13 0 0);
+  --brand-amber: oklch(0.78 0.15 70);
+  --brand-amber-deep: oklch(0.62 0.16 55);
+  --brand-paper: oklch(0.97 0.01 85);
+  /* Logo 强调色：浅底用深琥珀，深底用亮琥珀 */
+  --la: var(--brand-amber-deep);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --ring: oklch(0.556 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --status-success: oklch(0.75 0.15 155);
+    --status-warning: oklch(0.8 0.15 75);
+    --destructive: oklch(0.704 0.191 22.216);
+    --preset: oklch(0.6 0.19 295);
+    --la: var(--brand-amber);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --ring: oklch(0.556 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --status-success: oklch(0.75 0.15 155);
+  --status-warning: oklch(0.8 0.15 75);
+  --destructive: oklch(0.704 0.191 22.216);
+  --preset: oklch(0.6 0.19 295);
+  --la: var(--brand-amber);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  font-family: "Geist Variable", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  background: var(--background); color: var(--foreground);
+  font-size: 15px; line-height: 1.75; -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+a:hover { text-decoration-color: currentColor; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; padding: 1px 5px; border-radius: 5px; background: var(--muted); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 56px; max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+.toc { position: sticky; top: 0; height: 100svh; overflow: auto; padding: 40px 0 40px; font-size: 13px; }
+.toc .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; margin-bottom: 20px; }
+.toc .brand svg { width: 22px; height: 22px; }
+.toc ol { list-style: none; display: grid; gap: 1px; }
+.toc a { display: block; padding: 5px 10px; border-radius: 8px; text-decoration: none; color: var(--muted-foreground); transition: background-color 120ms, color 120ms; }
+.toc a:hover { background: var(--muted); color: var(--foreground); }
+.toc a.on { color: var(--foreground); font-weight: 500; background: var(--muted); }
+.toc .theme { margin-top: 20px; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--muted); width: fit-content; }
+.toc .theme button { font: inherit; border: 0; background: none; color: var(--muted-foreground); padding: 3px 10px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.toc .theme button[aria-pressed="true"] { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px oklch(0 0 0 / 0.1); }
+
+main { padding: 56px 0 120px; min-width: 0; max-width: 820px; }
+header.hero { padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+.kicker { font-size: 12px; letter-spacing: 0.08em; color: var(--muted-foreground); }
+h1 { margin-top: 10px; font-size: clamp(30px, 4.4vw, 44px); line-height: 1.15; letter-spacing: -0.03em; font-weight: 600; text-wrap: balance; }
+.lede { margin-top: 16px; font-size: 17px; color: var(--muted-foreground); max-width: 640px; }
+.meta-row { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--muted-foreground); }
+.meta-row span { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); }
+
+section { padding-top: 48px; }
+h2 { font-size: 22px; letter-spacing: -0.02em; font-weight: 600; display: flex; align-items: baseline; gap: 10px; }
+h2 .n { font-size: 13px; color: var(--muted-foreground); font-weight: 500; font-variant-numeric: tabular-nums; }
+h3 { margin-top: 28px; font-size: 16px; font-weight: 600; }
+p, ul, ol { margin-top: 12px; }
+ul, ol { padding-left: 22px; }
+li + li { margin-top: 6px; }
+.muted { color: var(--muted-foreground); }
+strong { font-weight: 600; }
+
+.cards { margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); }
+.card .k { font-size: 12px; color: var(--muted-foreground); }
+.card .v { margin-top: 6px; font-weight: 600; line-height: 1.5; }
+.card .d { margin-top: 6px; font-size: 13.5px; color: var(--muted-foreground); line-height: 1.6; }
+
+.callout { margin-top: 18px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--muted); font-size: 14px; }
+.callout.warn { background: color-mix(in oklch, var(--status-warning) 10%, transparent); border-color: color-mix(in oklch, var(--status-warning) 45%, transparent); }
+.callout b { font-weight: 600; }
+
+.table-wrap { margin-top: 16px; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; line-height: 1.6; }
+th, td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: 0; }
+th { background: var(--muted); font-weight: 500; color: var(--muted-foreground); white-space: nowrap; font-size: 12.5px; }
+td.nowrap { white-space: nowrap; }
+.yes { color: var(--status-success); font-weight: 600; }
+.no { color: var(--muted-foreground); }
+.pill { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.pill.p0 { border-color: color-mix(in oklch, var(--destructive) 50%, transparent); color: var(--destructive); }
+.pill.p1 { border-color: color-mix(in oklch, var(--status-warning) 60%, transparent); }
+.pill.taken { color: var(--destructive); border-color: color-mix(in oklch, var(--destructive) 40%, transparent); }
+.pill.ok { color: var(--status-success); border-color: color-mix(in oklch, var(--status-success) 45%, transparent); }
+
+/* 命名候选 */
+.names { margin-top: 18px; display: grid; gap: 14px; }
+.name { border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; background: var(--card); }
+.name.main { border-color: var(--foreground); }
+.name .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.name .zh { font-size: 28px; font-weight: 600; letter-spacing: 0.02em; }
+.name .en { font-size: 18px; color: var(--muted-foreground); margin-left: 10px; font-weight: 500; letter-spacing: -0.01em; }
+.name .slogan { margin-top: 10px; font-size: 17px; }
+.name dl { margin-top: 14px; display: grid; grid-template-columns: 72px 1fr; gap: 6px 14px; font-size: 13.5px; }
+.name dt { color: var(--muted-foreground); }
+
+/* 品牌视觉 */
+.brand-board { margin-top: 18px; border-radius: 18px; overflow: hidden; border: 1px solid var(--border); }
+.brand-hero { background: var(--brand-ink); color: var(--brand-paper); padding: 40px 32px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.brand-hero svg { width: 72px; height: 72px; flex-shrink: 0; }
+.brand-hero .wm { font-size: 34px; font-weight: 600; letter-spacing: 0.04em; }
+.brand-hero .wm small { font-size: 18px; color: var(--brand-amber); margin-left: 10px; letter-spacing: 0; font-weight: 500; }
+.brand-hero .tag { margin-top: 4px; font-size: 15px; opacity: 0.72; }
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); }
+.sw { padding: 14px 16px 16px; font-size: 12px; min-height: 96px; display: flex; flex-direction: column; justify-content: flex-end; }
+.sw b { font-size: 13px; font-weight: 600; }
+.sw code { background: transparent; padding: 0; font-size: 11px; opacity: 0.8; }
+
+.phases { margin-top: 18px; display: grid; gap: 12px; }
+.phase { border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.phase h4 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.phase ul { margin-top: 8px; }
+
+.link-card { margin-top: 18px; display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 14px; border: 1px solid var(--border); text-decoration: none; transition: background-color 120ms; }
+.link-card:hover { background: var(--muted); }
+.link-card .t { font-weight: 600; }
+.link-card .d { font-size: 13.5px; color: var(--muted-foreground); margin-top: 2px; }
+.link-card .arr { margin-left: auto; font-size: 18px; color: var(--muted-foreground); }
+
+.sources { font-size: 13px; }
+.sources li { word-break: break-all; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; gap: 0; padding: 0 16px; }
+  .toc { position: static; height: auto; padding: 24px 0 0; }
+  .toc ol { display: none; }
+  main { padding-top: 24px; }
+  .cards { grid-template-columns: 1fr; }
+  .swatches { grid-template-columns: repeat(2, 1fr); }
+  .name dl { grid-template-columns: 1fr; gap: 2px; }
+  .name dd { margin-bottom: 8px; }
+}
+
+/* ============================================================ Logo 方案 */
+.mk { display: block; overflow: visible; flex-shrink: 0; }
+.logo-lab.mono * { --la: currentColor !important; }
+.lab-bar { margin-top: 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; }
+.lab-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.lab-switch input { position: absolute; opacity: 0; width: 34px; height: 20px; margin: 0; cursor: pointer; }
+.lab-switch span { position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--border); transition: background-color 120ms; }
+.lab-switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--background); box-shadow: 0 1px 2px oklch(0 0 0 / 0.2); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1); }
+.lab-switch input:checked + span { background: var(--foreground); }
+.lab-switch input:checked + span::after { transform: translateX(14px); }
+.lab-switch input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.logo-grid { margin-top: 16px; display: grid; gap: 16px; }
+.logo-card { border: 1px solid var(--border); border-radius: 18px; padding: 20px; background: var(--card); transition: box-shadow 180ms cubic-bezier(0.2, 0, 0, 1); }
+.logo-card.rec { border-color: var(--foreground); }
+.logo-card.sel { box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand-amber) 55%, transparent); }
+.lc-head { display: flex; align-items: center; gap: 10px; }
+.lc-head .no { font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.lc-head h4 { font-size: 17px; font-weight: 600; }
+.lc-head h4 small { font-size: 13px; color: var(--muted-foreground); font-weight: 500; margin-left: 6px; }
+.lc-head .pill { margin-left: auto; }
+.lc-body { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; }
+.tiles { display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; aspect-ratio: 16 / 10; }
+.tile { border-radius: 12px; display: grid; place-items: center; min-height: 0; }
+.tile .mk { width: 40%; height: auto; }
+.tile.t-dark { grid-row: span 2; background: var(--brand-ink); color: var(--brand-paper); --la: var(--brand-amber); }
+.tile.t-dark .mk { width: 42%; }
+.tile.t-light { background: var(--brand-paper); color: var(--brand-ink); --la: var(--brand-amber-deep); }
+.tile.t-amber { background: var(--brand-amber); color: var(--brand-ink); --la: var(--brand-paper); }
+.lc-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sizes { display: flex; align-items: flex-end; gap: 18px; padding: 12px 14px; border-radius: 12px; background: var(--muted); }
+.sizes figure { display: grid; justify-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.lockup { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); }
+.lockup .wm { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; line-height: 1; white-space: nowrap; }
+.lockup .wm small { font-size: 14px; color: var(--muted-foreground); margin-left: 8px; letter-spacing: 0; font-weight: 500; }
+.lc-text { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; }
+.lc-text p { margin-top: 0; font-size: 14px; }
+.lc-text dl { display: grid; grid-template-columns: 40px 1fr; gap: 4px 10px; font-size: 13px; line-height: 1.65; }
+.lc-text dt { color: var(--muted-foreground); }
+.scores { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.score { font-size: 11.5px; color: var(--muted-foreground); }
+.dots { display: flex; gap: 3px; margin-top: 4px; }
+.dots i { width: 12px; height: 4px; border-radius: 2px; background: var(--border); }
+.dots i.on { background: var(--foreground); }
+.lc-foot { margin-top: 14px; display: flex; justify-content: flex-end; }
+.btn-sm { font: inherit; font-size: 13px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); cursor: pointer; transition: background-color 120ms, color 120ms, transform 120ms cubic-bezier(0.2, 0, 0, 1); }
+.btn-sm:hover { background: var(--muted); }
+.btn-sm:active { transform: scale(0.96); }
+.btn-sm[aria-pressed="true"] { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+
+/* 场景预览 */
+.ctx { margin-top: 14px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.ctx-item { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.ctx-item .cap { margin-top: auto; padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); border-top: 1px solid var(--border); }
+.ctx-tab, .ctx-app { grid-column: span 3; }
+.ctx-side { grid-column: span 2; }
+.ctx-login { grid-column: span 4; }
+.ctx-og { grid-column: span 6; }
+.tabbar { display: flex; align-items: flex-end; gap: 2px; padding: 10px 10px 0; background: var(--muted); }
+.tabbar .tab { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 10px 10px 0 0; background: var(--background); font-size: 12.5px; min-width: 0; max-width: 260px; }
+.tabbar .tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabbar .tab.dim { background: transparent; color: var(--muted-foreground); }
+.urlbar { margin: 8px 10px 14px; height: 30px; border-radius: 999px; background: var(--muted); display: flex; align-items: center; padding: 0 14px; font-size: 12px; color: var(--muted-foreground); }
+.apps { display: flex; gap: 18px; justify-content: center; align-items: flex-end; padding: 22px 12px 18px; }
+.apps figure { display: grid; justify-items: center; gap: 8px; font-size: 11.5px; color: var(--muted-foreground); }
+.app-icon { width: 72px; height: 72px; border-radius: 22%; display: grid; place-items: center; box-shadow: 0 6px 16px -6px oklch(0 0 0 / 0.35); }
+.app-icon .mk { width: 62%; height: 62%; }
+.app-icon.dark { background: var(--brand-ink); color: var(--brand-paper); --la: var(--brand-amber); }
+.app-icon.amber { background: var(--brand-amber); color: var(--brand-ink); --la: var(--brand-paper); }
+.app-icon.light { background: var(--brand-paper); color: var(--brand-ink); --la: var(--brand-amber-deep); box-shadow: 0 0 0 1px var(--border), 0 6px 16px -6px oklch(0 0 0 / 0.2); }
+.side-mock { padding: 14px; display: grid; gap: 8px; background: var(--muted); flex: 1; }
+.side-mock .row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; padding-bottom: 6px; }
+.side-mock .btn-mock { height: 30px; border-radius: 9px; background: var(--foreground); }
+.side-mock .line { height: 10px; border-radius: 5px; background: var(--border); }
+.side-mock .line.s { width: 60%; }
+.login-mock { position: relative; flex: 1; min-height: 190px; background: radial-gradient(ellipse 70% 80% at 75% 20%, oklch(0.42 0.1 60 / 0.6), transparent 70%), radial-gradient(ellipse 60% 60% at 15% 90%, oklch(0.35 0.08 250 / 0.5), transparent 70%), var(--brand-ink); color: var(--brand-paper); --la: var(--brand-amber); }
+.login-mock .top { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 600; font-size: 14px; }
+.login-mock .top .in { margin-left: auto; font-size: 12px; font-weight: 500; height: 26px; padding: 0 12px; border-radius: 999px; background: var(--brand-paper); color: var(--brand-ink); display: grid; place-items: center; }
+.login-mock .h { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-30%); text-align: center; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.og { position: relative; aspect-ratio: 1280 / 640; background: radial-gradient(ellipse 50% 70% at 82% 50%, oklch(0.78 0.15 70 / 0.28), transparent 70%), var(--brand-ink); color: var(--brand-paper); --la: var(--brand-amber); display: flex; align-items: center; gap: 4%; padding: 0 7%; }
+.og .mk { width: 15%; height: auto; }
+.og .wm { font-size: clamp(22px, 4.6vw, 44px); font-weight: 600; letter-spacing: 0.04em; line-height: 1.1; }
+.og .wm small { font-size: 0.5em; color: var(--brand-amber); margin-left: 12px; letter-spacing: 0; }
+.og .sl { margin-top: 10px; font-size: clamp(13px, 2vw, 19px); opacity: 0.8; }
+.og .ft { position: absolute; left: 7%; bottom: 8%; font-size: clamp(10px, 1.4vw, 13px); opacity: 0.55; letter-spacing: 0.04em; }
+
+/* 规范 */
+.spec { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.spec-item b { display: block; margin-top: 10px; font-size: 14px; }
+.spec-item span { font-size: 13px; color: var(--muted-foreground); line-height: 1.6; }
+.spec-demo { position: relative; height: 160px; border-radius: 12px; background: var(--muted); display: flex; align-items: center; justify-content: center; gap: 16px; overflow: hidden; }
+.spec-demo.dark { background: var(--brand-ink); color: var(--brand-paper); --la: var(--brand-amber); }
+.spec-demo .clear-box { position: absolute; width: 144px; height: 144px; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 1px dashed var(--muted-foreground); border-radius: 4px; }
+.spec-demo.busy { background: repeating-linear-gradient(45deg, var(--brand-amber) 0 10px, var(--brand-paper) 10px 20px, var(--muted-foreground) 20px 30px); }
+.donts { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.dont .spec-demo { height: 110px; }
+.dont span { display: block; margin-top: 8px; font-size: 13px; color: var(--destructive); }
+.dont span::before { content: "✕ "; }
+
+@media (max-width: 960px) {
+  .lc-body, .lc-text { grid-template-columns: 1fr; }
+  .ctx-tab, .ctx-app, .ctx-side, .ctx-login { grid-column: span 6; }
+  .spec { grid-template-columns: 1fr; }
+  .donts { grid-template-columns: repeat(2, 1fr); }
+  .scores { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<!-- Logo 图形：五个方向。--la 是强调色（琥珀），单色版时会被换成 currentColor -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="beamFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" />
+      <stop offset="0.5" stop-color="#fff" />
+      <stop offset="1" stop-color="#000" />
+    </linearGradient>
+    <mask id="beamMask" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect x="0" y="0" width="48" height="48" fill="url(#beamFade)" />
+    </mask>
+  </defs>
+
+  <!-- 01 镜间光：两个镜头（括号）之间透出一道光 -->
+  <symbol id="m1" viewBox="0 0 48 48">
+    <path d="M17 7h-5a5 5 0 0 0-5 5v24a5 5 0 0 0 5 5h5" style="fill:none;stroke:currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M31 7h5a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5h-5" style="fill:none;stroke:currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="19" y="8" width="10" height="32" rx="5" style="fill:var(--la)" opacity="0.16" mask="url(#beamMask)" />
+    <rect x="22.2" y="3" width="3.6" height="42" rx="1.8" style="fill:var(--la)" mask="url(#beamMask)" />
+  </symbol>
+  <symbol id="m1s" viewBox="0 0 48 48">
+    <path d="M18 7h-6a5 5 0 0 0-5 5v24a5 5 0 0 0 5 5h6" style="fill:none;stroke:currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M30 7h6a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5h-6" style="fill:none;stroke:currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="20.5" y="12" width="7" height="24" rx="3.5" style="fill:var(--la)" />
+  </symbol>
+
+  <!-- 02 双帧连线：空框是一句话，实框是生成的画面 -->
+  <symbol id="m2" viewBox="0 0 48 48">
+    <rect x="3.5" y="13.5" width="13" height="21" rx="4" style="fill:none;stroke:currentColor" stroke-width="3.4" />
+    <rect x="31" y="11" width="14" height="26" rx="4.5" style="fill:currentColor" />
+    <path d="M18 24h12" style="stroke:var(--la)" stroke-width="3" stroke-linecap="round" />
+    <circle cx="24" cy="24" r="3.6" style="fill:var(--la)" />
+  </symbol>
+
+  <!-- 03 K 字片轨：竖笔是带齿孔的胶片，两撇是从节点伸出的连线 -->
+  <symbol id="m3" viewBox="0 0 48 48">
+    <path fill-rule="evenodd" style="fill:currentColor" d="M10.5 7h4A2.5 2.5 0 0 1 17 9.5v29a2.5 2.5 0 0 1-2.5 2.5h-4A2.5 2.5 0 0 1 8 38.5v-29A2.5 2.5 0 0 1 10.5 7Z M11 11.5h3v3.5h-3Z M11 22.25h3v3.5h-3Z M11 33h3v3.5h-3Z" />
+    <path d="M23.5 24 37 11M23.5 24 37 37" style="fill:none;stroke:currentColor" stroke-width="3.6" stroke-linecap="round" />
+    <circle cx="37.5" cy="10.5" r="4" style="fill:currentColor" />
+    <circle cx="37.5" cy="37.5" r="4" style="fill:currentColor" />
+    <circle cx="23.5" cy="24" r="4.8" style="fill:var(--la)" />
+  </symbol>
+
+  <!-- 04 节点放映盘：胶片盘的孔是节点，都连到琥珀色轴心 -->
+  <symbol id="m4" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="19.5" style="fill:none;stroke:currentColor" stroke-width="3.4" />
+    <path d="M24 24V13M24 24l10.46-3.4M24 24l6.47 8.9M24 24l-6.47 8.9M24 24l-10.46-3.4" style="fill:none;stroke:currentColor" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+    <circle cx="24" cy="13" r="3.8" style="fill:currentColor" />
+    <circle cx="34.46" cy="20.6" r="3.8" style="fill:currentColor" />
+    <circle cx="30.47" cy="32.9" r="3.8" style="fill:currentColor" />
+    <circle cx="17.53" cy="32.9" r="3.8" style="fill:currentColor" />
+    <circle cx="13.54" cy="20.6" r="3.8" style="fill:currentColor" />
+    <circle cx="24" cy="24" r="4.4" style="fill:var(--la)" />
+  </symbol>
+  <symbol id="m4s" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="19" style="fill:none;stroke:currentColor" stroke-width="4.6" />
+    <circle cx="24" cy="13" r="4.4" style="fill:currentColor" />
+    <circle cx="34.46" cy="20.6" r="4.4" style="fill:currentColor" />
+    <circle cx="30.47" cy="32.9" r="4.4" style="fill:currentColor" />
+    <circle cx="17.53" cy="32.9" r="4.4" style="fill:currentColor" />
+    <circle cx="13.54" cy="20.6" r="4.4" style="fill:currentColor" />
+    <circle cx="24" cy="24" r="4.4" style="fill:var(--la)" />
+  </symbol>
+
+  <!-- 05 三点成片：播放三角的三个顶点是节点，琥珀色那个是生成的视频 -->
+  <symbol id="m5" viewBox="0 0 48 48">
+    <path d="M12.5 9.5v29L39.5 24Z" style="fill:currentColor;fill-opacity:0.12;stroke:currentColor" stroke-width="3.4" stroke-linejoin="round" />
+    <circle cx="12.5" cy="9.5" r="4.6" style="fill:currentColor" />
+    <circle cx="12.5" cy="38.5" r="4.6" style="fill:currentColor" />
+    <circle cx="39.5" cy="24" r="5.6" style="fill:var(--la)" />
+  </symbol>
+</svg>
+<div class="layout">
+  <nav class="toc" aria-label="目录">
+    <div class="brand">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><use href="#m1"/></svg>
+      品牌与商业化分析
+    </div>
+    <ol id="tocList">
+      <li><a href="#summary">摘要</a></li>
+      <li><a href="#diagnosis">1. 现状诊断</a></li>
+      <li><a href="#market">2. 竞品格局</a></li>
+      <li><a href="#positioning">3. 定位</a></li>
+      <li><a href="#naming">4. 产品命名</a></li>
+      <li><a href="#slogan">5. Slogan 体系</a></li>
+      <li><a href="#features">6. 功能包装</a></li>
+      <li><a href="#gaps">7. 产品缺口</a></li>
+      <li><a href="#visual">8. 视觉识别与 Logo</a></li>
+      <li><a href="#assets">9. 封面与物料</a></li>
+      <li><a href="#entry">10. 登录页与首页</a></li>
+      <li><a href="#readme">11. README 改造</a></li>
+      <li><a href="#business">12. 商业化</a></li>
+      <li><a href="#roadmap">13. 执行路线</a></li>
+      <li><a href="#risks">14. 风险与待决</a></li>
+      <li><a href="#sources">来源</a></li>
+    </ol>
+    <div class="theme" role="group" aria-label="主题">
+      <button type="button" data-t="auto">跟随系统</button><button type="button" data-t="light">浅色</button><button type="button" data-t="dark">深色</button>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="kicker">VIDEO CANVAS · 品牌包装</div>
+      <h1>把「开源 AI 视频画布」包装成一个有商业价值的产品</h1>
+      <p class="lead lede">产品命名、Slogan、定位、功能卖点、视觉与物料、README 和商业化路径。所有关于现状的判断都基于仓库 v0.2.1 的代码和文档。</p>
+      <div class="meta-row"><span>2026-10-08</span><span>对应版本 v0.2.1</span><span>状态：提案，待拍板</span></div>
+    </header>
+
+    <!-- ============================================================ -->
+    <section id="summary">
+      <h2>摘要</h2>
+      <div class="cards">
+        <div class="card"><div class="k">定位</div><div class="v">可私有化部署的 AI 影视创作平台</div><div class="d">不和即梦等 C 端产品拼流量，主打开源、自部署、能接任意模型、带计费后台。</div></div>
+        <div class="card"><div class="k">主推命名</div><div class="v">连镜 · Kule</div><div class="d">「意义，在镜头之间。」取自库里肖夫效应，和节点连线的交互一一对应。</div></div>
+        <div class="card"><div class="k">最先做的三件事</div><div class="v">定名查商标 → 重写 README → 改版登录页和首页</div><div class="d">一到两周能完成，访客第一眼的观感变化最大。</div></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="diagnosis">
+      <h2><span class="n">01</span>现状诊断</h2>
+      <p>README 第一句是「开源的 AI 视频创作无限画布」。这句话和即梦 Octo、LibTV、Higgsfield Canvas、Topview、Wireflow 的自我介绍几乎一样，访客看完分不出差别，也看不到你真正领先的地方。</p>
+      <h3>你真正有、闭源 SaaS 没有的东西</h3>
+      <div class="table-wrap"><table>
+        <tr><th>能力</th><th>仓库里的依据</th><th>为什么值钱</th></tr>
+        <tr><td>开源、可私有化部署</td><td>MIT 许可；<code>scripts/deploy.sh</code> 一行命令部署；GHCR 镜像</td><td>数据和素材不出门，工作室和企业敢用</td></tr>
+        <tr><td>任意模型都能接</td><td>JS 协议插件跑在隔离的 plugin-runner 里，内置 NewAPI 插件</td><td>不被任何一家模型厂商锁死，新模型出来当天就能接</td></tr>
+        <tr><td>开箱即用的运营后台</td><td>积分冻结与退款、用户注册、渠道、模型「草稿 → 校验 → 试跑 → 发布 / 回滚」</td><td>拿到手就能当成 SaaS 对外运营</td></tr>
+        <tr><td>画布 Agent + 影视技能库</td><td>v0.2.0 的画布 Agent、审批卡片；v0.2.1 的技能导入与版本管理</td><td>用对话就能搭分镜，方法论还能沉淀和复用</td></tr>
+        <tr><td>素材存在自己的存储里</td><td>本地磁盘、OSS、COS、S3、R2，可以建多套</td><td>符合合规要求，存储成本可控</td></tr>
+        <tr><td>保存可靠</td><td>本地优先草稿、<code>revision</code> 乐观锁、多标签页互斥编辑</td><td>永不丢稿，这是专业用户最在意的底线</td></tr>
+      </table></div>
+      <div class="callout warn"><b>README 有几处已经过时，会损害可信度：</b>警告框还写着 v0.1.0，实际已经是 v0.2.1；路线图里「画布 Agent 与 skills 管理」没打勾，其实 v0.2.0 和 v0.2.1 已经发布。</div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="market">
+      <h2><span class="n">02</span>竞品格局</h2>
+      <p>2026 年，「节点画布 + 多模型 + Agent」已经是 AI 视频工具的标准形态，单靠画布形态做不出差异。</p>
+      <div class="table-wrap"><table>
+        <tr><th>产品</th><th>形态</th><th>和我们的关系</th></tr>
+        <tr><td>即梦 Octo</td><td>字节旗下的画布产品，节点里可以对话，分镜一键生成视频，底层是 Seedance 2.0</td><td>C 端流量和模型都是它的优势，<strong>不正面竞争</strong></td></tr>
+        <tr><td>LibTV</td><td>剧本、分镜、角色、运镜、成片放在一张节点画布上</td><td>它有「成片」这个环节，我们还没有</td></tr>
+        <tr><td>Higgsfield Canvas</td><td>节点式画布，接入 Seedance、Kling、Veo 等多个模型</td><td>海外闭源 SaaS</td></tr>
+        <tr><td>Topview Canvas</td><td>无限画布加 AI Agent，覆盖故事、素材、分镜、关键帧</td><td>形态最接近我们，闭源</td></tr>
+        <tr><td>Wireflow / Motn</td><td>节点画布，支持批量变体、通过 API 触发，面向营销团队</td><td>面向团队的商业 SaaS</td></tr>
+        <tr><td>ArcReel</td><td>开源，用 Agent 驱动「小说 → 角色和场景 → 分镜 → 视频」</td><td>开源同类，偏流水线，不是自由画布</td></tr>
+        <tr><td>寻光（阿里达摩院）</td><td>一站式 AI 视频创作平台</td><td>大厂平台</td></tr>
+      </table></div>
+      <p class="muted">表中信息来自 2026-10 的公开资料，见文末「来源」。</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="positioning">
+      <h2><span class="n">03</span>定位</h2>
+      <div class="callout"><b>一句话定位：</b>开源的 AI 影视创作画布，自带 AI 副导演，能接任何模型，部署在你自己的服务器上。</div>
+      <h3>目标客户（按商业价值排序）</h3>
+      <div class="table-wrap"><table>
+        <tr><th>客户</th><th>他们要什么</th><th>我们卖什么</th></tr>
+        <tr><td><strong>API 中转站和代理商</strong></td><td>手里有模型渠道，缺一个能直接面对终端用户的产品</td><td>部署好就能上线一个自有品牌的 AI 视频站，积分、注册、模型上下架都现成。<strong>付费意愿最强</strong></td></tr>
+        <tr><td>漫剧、广告、MCN 工作室</td><td>素材保密、能接自家模型、团队一起用</td><td>私有化部署、画布 Agent、技能库沉淀方法论</td></tr>
+        <tr><td>开发者和技术团队</td><td>可以二次开发、自己写模型插件</td><td>开源代码、插件契约、清晰的分层架构</td></tr>
+      </table></div>
+      <h3>不做什么</h3>
+      <ul>
+        <li>不拼 C 端流量，不自研大模型。</li>
+        <li>不把未上线的能力写进宣传，比如导演台、分镜表、资产管理、版本控制。</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="naming">
+      <h2><span class="n">04</span>产品命名</h2>
+      <h3>命名原则</h3>
+      <ul>
+        <li>中文名两个字、好念、有影视语感；英文名短，能注册域名和 GitHub 组织。</li>
+        <li>名字背后要有能讲的故事，并且和核心交互（节点连线）对得上。</li>
+        <li>避开 AI 视频领域已经在用的名字。</li>
+      </ul>
+      <h3>撞名排查（网页搜索，2026-10）</h3>
+      <div class="table-wrap"><table>
+        <tr><th>候选</th><th>结论</th><th>占用情况</th></tr>
+        <tr><td>Cineloom · 影织</td><td><span class="pill taken">已被占</span></td><td>至少 4 个 AI 影视项目在用，其中一个开源项目的中文名就叫「影织」</td></tr>
+        <tr><td>片场</td><td><span class="pill taken">撞口径</span></td><td>即梦近期的宣传口径就是「搭建一座片场」</td></tr>
+        <tr><td>弧光</td><td><span class="pill taken">已被占</span></td><td>已有开源 AI 小说创作应用叫 CharacterArc（弧光）</td></tr>
+        <tr><td>Arcframe</td><td><span class="pill taken">已被占</span></td><td>已有同名 AI 视频、图像生成平台</td></tr>
+        <tr><td>Montaj / Montage</td><td><span class="pill taken">太拥挤</span></td><td>多个 AI 剪辑产品在用</td></tr>
+        <tr><td>Shotline</td><td><span class="pill taken">已被占</span></td><td>已有同名网页反馈工具和法国 AI 创意工作室</td></tr>
+        <tr><td>连镜 · Kule</td><td><span class="pill ok">未发现冲突</span></td><td>还需要查商标局和域名，Kule 这个词在服装领域有人用</td></tr>
+      </table></div>
+
+      <div class="names">
+        <div class="name main">
+          <div class="top"><div><span class="zh">连镜</span><span class="en">Kule</span></div><span class="pill p0">主推</span></div>
+          <p class="slogan">「意义，在镜头之间。」</p>
+          <dl>
+            <dt>来历</dt><dd>库里肖夫效应（Kuleshov Effect）：1920 年代的电影理论发现，单个镜头的意义有限，意义产生在镜头和镜头的连接上。</dd>
+            <dt>对应产品</dt><dd>节点之间连线、上游结果喂给下游，正是「连接产生意义」。品牌故事和产品交互是同一件事。</dd>
+            <dt>读音</dt><dd>中文「连镜」直白好懂；英文 Kule 读作 /kuːl/，谐音 cool，四个字母。</dd>
+            <dt>风险</dt><dd>中英文名不是直译关系（和「即梦 / Dreamina」类似，问题不大）；要确认软件类别的商标是空的。</dd>
+          </dl>
+        </div>
+        <div class="name">
+          <div class="top"><div><span class="zh">镜野</span><span class="en">Wildframe</span></div><span class="pill">备选 A</span></div>
+          <p class="slogan">「让每一个镜头自由生长。」</p>
+          <dl>
+            <dt>来历</dt><dd>无限画布是一片可以随意铺开镜头的原野，突出空间感和自由度。</dd>
+            <dt>风险</dt><dd>Wildframe 需要查是否已被设计机构或工作室使用。</dd>
+          </dl>
+        </div>
+        <div class="name">
+          <div class="top"><div><span class="zh">镜间</span><span class="en">—</span></div><span class="pill">备选 B</span></div>
+          <p class="slogan">「意义，在镜头之间。」</p>
+          <dl>
+            <dt>来历</dt><dd>和主推同一个理念，更文气。</dd>
+            <dt>风险</dt><dd>不好配英文名，国际化弱。</dd>
+          </dl>
+        </div>
+      </div>
+
+      <h3>定名前必须做的事</h3>
+      <ul>
+        <li>在国家知识产权局商标检索中查第 9 类（软件）、第 41 类（影视制作）、第 42 类（SaaS）。</li>
+        <li>查 <code>.com</code>、<code>.ai</code>、<code>.cn</code> 域名，以及 GitHub 组织名、小红书、B 站、公众号账号名。</li>
+        <li>品类后缀保留原名，写成「连镜 Kule — AI Video Canvas」，老用户不会断层。</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="slogan">
+      <h2><span class="n">05</span>Slogan 体系</h2>
+      <div class="table-wrap"><table>
+        <tr><th>层级</th><th>文案</th><th>用在哪里</th></tr>
+        <tr><td>主 Slogan</td><td><strong>意义，在镜头之间。</strong></td><td>品牌页、README 横幅、发布会、社交媒体封面</td></tr>
+        <tr><td>功能 Slogan</td><td><strong>从一句话，到一部片。</strong></td><td>登录页大标题、落地页首屏（已用在改版原型里）</td></tr>
+        <tr><td>英文</td><td><em>Meaning lives between the shots.</em></td><td>英文 README、海外社区</td></tr>
+        <tr><td>一句话介绍</td><td>开源的 AI 影视创作画布，自带 AI 副导演，接任何模型，部署在你自己的服务器上。</td><td>README 第一行、GitHub 简介、应用商店</td></tr>
+        <tr><td>面向运营者</td><td>今天部署，明天上线你自己的 AI 视频站。</td><td>商业版落地页、渠道合作</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="features">
+      <h2><span class="n">06</span>功能包装：把工程名换成卖点</h2>
+      <p>所有对外物料都按「创作 → 掌控 → 运营」三大支柱的顺序来讲，工程实现细节放进文档。</p>
+      <div class="table-wrap"><table>
+        <tr><th>支柱</th><th>现在的技术说法</th><th>对外卖点</th></tr>
+        <tr><td rowspan="3"><strong>创作</strong></td><td>节点画布、上游参考</td><td><strong>连镜画布</strong>：文本、图片、视频、音频连成一条创作链</td></tr>
+        <tr><td>画布 Agent + 审批卡</td><td><strong>AI 副导演</strong>：活它来干，每一步由你拍板</td></tr>
+        <tr><td>技能库</td><td><strong>导演手册</strong>：角色、场景、分镜、提示词的方法论，可以导入</td></tr>
+        <tr><td rowspan="3"><strong>掌控</strong></td><td>JS 协议插件</td><td><strong>任意模型，一个插件接入</strong>，不被任何一家平台锁住</td></tr>
+        <tr><td>多套对象存储</td><td><strong>素材留在你自己的存储里</strong></td></tr>
+        <tr><td>本地优先 + 乐观锁 + 多标签互斥</td><td><strong>永不丢稿</strong></td></tr>
+        <tr><td rowspan="2"><strong>运营</strong></td><td>积分冻结、失败退回</td><td><strong>失败不扣费</strong>，计费体系开箱即用</td></tr>
+        <tr><td>草稿 → 校验 → 试跑 → 发布 / 回滚</td><td><strong>模型上线像发版本一样稳</strong>，随时回滚</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="gaps">
+      <h2><span class="n">07</span>拉低「高级感」的产品缺口</h2>
+      <p>按投入产出排序。前三项改动小，但对第一印象影响最大。</p>
+      <div class="table-wrap"><table>
+        <tr><th>优先级</th><th>缺口</th><th>现状</th><th>建议</th></tr>
+        <tr><td><span class="pill p0">P0</span></td><td>首页占位内容</td><td>作品广场和 Banner 都是占位</td><td>用登录页与首页改版里的「首页展示」片单替代，见第 10 节</td></tr>
+        <tr><td><span class="pill p0">P0</span></td><td>空画布</td><td>新用户进来面对一张白板</td><td>做 3–5 个官方模板画布：「15 秒产品广告」「漫剧第一集分镜」「MV」</td></tr>
+        <tr><td><span class="pill p0">P0</span></td><td>首次部署门槛</td><td>第一个超级管理员只能用 SQL 设置</td><td>首次启动向导：第一个注册的人自动成为管理员，接着引导配置渠道和模型</td></tr>
+        <tr><td><span class="pill p1">P1</span></td><td>没有「成片」</td><td>能生成素材，但不能拼接和导出</td><td>做成片节点或时间线导出。这是下一个最有商业价值的大功能</td></tr>
+        <tr><td><span class="pill p1">P1</span></td><td>不能白标</td><td>站点名和 Logo 写死在代码里</td><td>后台可以配站点名、Logo、主色。对运营者来说，这一项本身就能单独收费</td></tr>
+        <tr><td><span class="pill p1">P1</span></td><td>没有自助充值</td><td>积分只能由管理员手动调整（<code>/admin/users/:id/credits</code>）</td><td>见第 12 节「变现闭环」</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="visual">
+      <h2><span class="n">08</span>视觉识别与 Logo</h2>
+      <p>现在 Logo 用的是 lucide 的 <code>Film</code> 通用图标，配色是 shadcn 默认的灰阶加紫蓝渐变。和大量 AI 产品撞色，看起来像模板。</p>
+
+      <h3>色彩</h3>
+      <p>放弃紫色 AI 渐变，改用深黑底配放映机琥珀光，带电影院的质感，在同类产品里一眼能认出来。琥珀色只用在品牌位置和关键操作上，界面其余部分继续用中性灰。</p>
+      <div class="brand-board">
+        <div class="swatches">
+          <div class="sw" style="background:var(--brand-ink);color:var(--brand-paper)"><b>放映黑</b><code>oklch(0.13 0 0)</code></div>
+          <div class="sw" style="background:var(--brand-amber);color:var(--brand-ink)"><b>放映机琥珀</b><code>oklch(0.78 0.15 70)</code></div>
+          <div class="sw" style="background:var(--brand-amber-deep);color:var(--brand-paper)"><b>深琥珀</b><code>oklch(0.62 0.16 55)</code></div>
+          <div class="sw" style="background:var(--brand-paper);color:var(--brand-ink)"><b>胶片白</b><code>oklch(0.97 0.01 85)</code></div>
+        </div>
+      </div>
+
+      <h3>五个 Logo 方向</h3>
+      <p>都从同一个品牌理念出发：<strong>镜头与镜头的连接</strong>。每个方向都放在深底、浅底、琥珀底上看一遍，再看 64 到 16 像素的小尺寸表现，以及和文字组合后的样子。这些都是几何概念稿，选定方向后要交给设计师精修线宽、圆角和视觉重心。</p>
+
+      <div class="logo-lab" id="logoLab">
+        <div class="lab-bar">
+          <label class="lab-switch"><input type="checkbox" id="monoToggle" /><span></span>单色版</label>
+          <span class="muted" style="font-size:12.5px">打开后检查：去掉琥珀色，只剩一种颜色时还认不认得出来（印章、烫金、传真这类场景只能用单色）。</span>
+        </div>
+        <div class="logo-grid" id="logoGrid"></div>
+
+        <h3 id="ctxTitle">场景预览</h3>
+        <p class="muted" style="margin-top:6px">在上面任意一张卡片里点「在场景中预览」，就能切换这里展示的 Logo。</p>
+        <div class="ctx" id="ctx"></div>
+      </div>
+
+      <h3>推荐：01 镜间光</h3>
+      <ul>
+        <li><strong>理由：</strong>它是 Slogan「意义，在镜头之间」的直接图形化。品牌故事、产品交互（节点连线）、Logo 三者讲的是同一件事，这是最难被模仿的地方。</li>
+        <li><strong>延展性：</strong>中间那道光可以单独拿出来用，比如加载指示、页面分隔线、生成成功时的一道闪光、视频转场。品牌在界面里会有记忆点，而不只是左上角的一个图标。</li>
+        <li><strong>备选：</strong>如果更看重「一眼看懂是做什么的」，选 02 双帧连线；如果确定英文名就叫 Kule、要做字母标识，选 03。</li>
+        <li><strong>不依赖名字：</strong>除了 03 绑定字母 K，其余四个方向就算最后不叫「连镜」也能用。</li>
+      </ul>
+
+      <h3>使用规范（以 01 镜间光为例）</h3>
+      <div class="spec">
+        <div class="spec-item">
+          <div class="spec-demo clear"><svg class="mk" style="width:96px;height:96px"><use href="#m1"/></svg><span class="clear-box"></span></div>
+          <b>安全区</b><span>四周至少留出图形宽度的 1/4，虚线框内不放其他元素。</span>
+        </div>
+        <div class="spec-item">
+          <div class="spec-demo"><svg class="mk" style="width:16px;height:16px"><use href="#m1s"/></svg><svg class="mk" style="width:24px;height:24px"><use href="#m1s"/></svg><svg class="mk" style="width:40px;height:40px"><use href="#m1"/></svg></div>
+          <b>最小尺寸</b><span>24px 及以下换用小尺寸版：括号加粗，光束改成实心短条，不做渐隐。</span>
+        </div>
+        <div class="spec-item">
+          <div class="spec-demo dark"><svg class="mk" style="width:56px;height:56px"><use href="#m1"/></svg></div>
+          <b>首选用法</b><span>放映黑底 + 胶片白括号 + 琥珀光束。浅底时光束换成深琥珀，保证对比度。</span>
+        </div>
+      </div>
+      <h3>不要这样用</h3>
+      <div class="donts">
+        <div class="dont"><div class="spec-demo"><svg class="mk" style="width:56px;height:56px;transform:scaleX(1.45)"><use href="#m1"/></svg></div><span>拉伸变形</span></div>
+        <div class="dont"><div class="spec-demo"><svg class="mk" style="width:56px;height:56px;transform:rotate(-14deg)"><use href="#m1"/></svg></div><span>旋转倾斜</span></div>
+        <div class="dont"><div class="spec-demo"><svg class="mk" style="width:56px;height:56px;--la:var(--preset)"><use href="#m1"/></svg></div><span>把光束换成紫色等其他颜色</span></div>
+        <div class="dont"><div class="spec-demo busy"><svg class="mk" style="width:56px;height:56px;color:var(--brand-paper)"><use href="#m1"/></svg></div><span>放在杂乱的画面上不加底</span></div>
+      </div>
+
+      <h3>交付清单（给设计师）</h3>
+      <ul>
+        <li>矢量源文件；SVG 标准版、小尺寸版、单色版、反白版。</li>
+        <li>横排、竖排两种中英文组合，以及只有图形的版本。</li>
+        <li>站点图标：<code>favicon.svg</code>、<code>favicon.ico</code>（16/32/48）、<code>apple-touch-icon</code> 180px、Android 512px。</li>
+        <li>GitHub Social Preview（1280 × 640）、README 横幅、社交平台头像。</li>
+        <li>替换代码里的 <code>web/public/favicon.svg</code>，以及登录页、侧栏里的 <code>Film</code> 图标。</li>
+      </ul>
+      <p><strong>字体：</strong>英文继续用 Geist；中文大标题可以试试思源宋体，带一点电影海报的味道。<strong>落地方式：</strong>品牌色补进 <code>web/src/index.css</code> 的 <code>:root</code> 和 <code>.dark</code>，组件只引用 token，不写死颜色。</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="assets">
+      <h2><span class="n">09</span>封面与物料清单</h2>
+      <p>封面好不好，九成取决于演示内容好不好看。建议专门做一个精心打磨的展示画布，所有物料都从它取材。</p>
+      <div class="table-wrap"><table>
+        <tr><th>物料</th><th>规格</th><th>用途</th><th>优先级</th></tr>
+        <tr><td>GitHub Social Preview</td><td class="nowrap">1280 × 640</td><td>仓库链接被分享时的预览图</td><td><span class="pill p0">P0</span></td></tr>
+        <tr><td>README 顶部横幅</td><td class="nowrap">1600 × 600</td><td>Logo + Slogan + 一张带透视的画布截图</td><td><span class="pill p0">P0</span></td></tr>
+        <tr><td>Hero 演示视频 / GIF</td><td class="nowrap">30 秒，≤ 10 MB</td><td>一句话 → 副导演搭分镜 → 生成 → 预览</td><td><span class="pill p0">P0</span></td></tr>
+        <tr><td>功能截图 3–4 张</td><td class="nowrap">统一窗口框和背景</td><td>画布、Agent、后台各一张</td><td><span class="pill p0">P0</span></td></tr>
+        <tr><td>favicon、站点标题、登录页文案</td><td class="nowrap">SVG + 多尺寸 PNG</td><td>代码里统一替换成新品牌</td><td><span class="pill p0">P0</span></td></tr>
+        <tr><td>一页式官网 + Demo 站</td><td>—</td><td>不用部署就能试用</td><td><span class="pill p1">P1</span></td></tr>
+        <tr><td>发布视频</td><td class="nowrap">B 站横屏 / 小红书竖屏</td><td>正式发布时用</td><td><span class="pill">P2</span></td></tr>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="entry">
+      <h2><span class="n">10</span>登录页与首页改版</h2>
+      <p>登录页和首页是访客和用户每天都会看到的「封面」。目前的改版方向已经定好，并做成了可以点的原型：</p>
+      <ul>
+        <li>背景全屏播放平台生成的作品，每条都标出「生成它的那句话」，可以一键「做同款」。</li>
+        <li>登录页先让访客写一句创意，再登录，这句话会带进首页。</li>
+        <li>片单由后台「首页展示」管理，运营者可以换成自己平台的作品。</li>
+      </ul>
+      <a class="link-card" href="登录与首页改版原型.html">
+        <div><div class="t">登录与首页改版原型</div><div class="d">可交互原型：登录页、首页、后台「首页展示」，附动效表、状态表和接口设计</div></div>
+        <span class="arr">→</span>
+      </a>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="readme">
+      <h2><span class="n">11</span>README 改造</h2>
+      <p>README 是开源项目的门面。现在的写法偏工程，开篇就讲技术实现，商业价值要读到很后面才看得到。新结构：</p>
+      <ol>
+        <li>居中横幅：Logo、名称、Slogan、一句话定位、徽章，以及官网、Demo、文档、English 的链接。</li>
+        <li>Hero GIF。</li>
+        <li><strong>为什么选连镜</strong>：三大支柱，每条一到两行。</li>
+        <li>功能亮点：每个支柱配一张截图。</li>
+        <li><strong>对比表</strong>：和闭源画布 SaaS、ComfyUI 比较开源、私有化、任意模型、Agent、计费后台。只写能核实的事实。</li>
+        <li>适用场景：工作室、运营者、开发者。</li>
+        <li>一行命令部署，加首次配置。</li>
+        <li>架构、目录结构、本地开发：折叠进 <code>&lt;details&gt;</code>，或者移到 <code>docs/</code>。</li>
+        <li>路线图（修正勾选状态）、贡献指南、Star History、社区群、License。</li>
+      </ol>
+      <p>另外出一份 <code>README.en.md</code>。GitHub 上的流量大部分来自英文用户。</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="business">
+      <h2><span class="n">12</span>商业化</h2>
+      <h3>许可证：要在项目火起来之前决定</h3>
+      <p>MIT 意味着任何人都可以拿代码换个皮直接卖，你很难再收回来。如果想保留商业空间，许可证要尽早定。</p>
+      <div class="table-wrap"><table>
+        <tr><th>方案</th><th>好处</th><th>代价</th></tr>
+        <tr><td>继续用 MIT</td><td>传播最快，社区和企业没有顾虑</td><td>护城河只剩品牌和服务，别人可以直接换皮商用</td></tr>
+        <tr><td>AGPL-3.0</td><td>别人改了代码拿去提供服务，必须开源</td><td>部分企业会因为合规顾虑不敢用</td></tr>
+        <tr><td><strong>Open-core（推荐）</strong></td><td>社区版开源，换取传播；商业功能单独授权</td><td>要长期维护两条产品线的边界</td></tr>
+        <tr><td>源码可见 + 商业授权（如 BSL）</td><td>保护最强</td><td>不再算严格意义上的开源，社区口碑会受影响</td></tr>
+      </table></div>
+      <p class="muted">已经以 MIT 发布的版本无法收回，新许可证只对之后的版本生效。改许可证前建议先咨询律师。</p>
+
+      <h3>版本划分（提案）</h3>
+      <div class="table-wrap"><table>
+        <tr><th>能力</th><th>社区版</th><th>专业版</th><th>企业版</th></tr>
+        <tr><td>画布、Agent、技能库、插件接模型</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td>积分、注册、模型发布流程</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td>白标（站点名、Logo、主色、自定义域名）</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td>自助充值、套餐、支付对接、兑换码</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td>团队空间、协作、成员权限</td><td class="no">—</td><td class="no">—</td><td class="yes">✓</td></tr>
+        <tr><td>SSO、审计日志、专属部署支持</td><td class="no">—</td><td class="no">—</td><td class="yes">✓</td></tr>
+      </table></div>
+      <p class="muted">定价需要先调研中转站和工作室的付费意愿，这里不给具体数字。</p>
+
+      <h3>变现闭环的缺口</h3>
+      <p>现在积分只有两个来源：注册赠送，以及管理员在后台手动调整（<code>POST /admin/users/:id/credits</code>、<code>/admin/users/batch/credits</code>）。积分不够时接口返回 402「积分不足」，但用户没有地方自己充值。</p>
+      <p>对运营者来说，这一环是最缺的。建议按以下顺序补齐：</p>
+      <ol>
+        <li><strong>兑换码</strong>：后台生成，线下卖给用户。不涉及支付牌照，最快能做。</li>
+        <li><strong>积分套餐 + 订单记录</strong>：为接入支付打好数据基础。</li>
+        <li><strong>支付插件</strong>：沿用现在 JS 插件的思路，支付宝、微信、Stripe 各写一个插件，运营者自己填商户号。</li>
+      </ol>
+
+      <h3>收入来源</h3>
+      <ul>
+        <li><strong>商业授权</strong>：专业版、企业版按年订阅。</li>
+        <li><strong>托管服务</strong>：替不想自己运维的客户部署和维护。</li>
+        <li><strong>技术支持与定制</strong>：工作室定制工作流、技能库、私有模型接入。</li>
+        <li><strong>插件与技能市场</strong>（长期）：第三方模型插件、付费技能包，平台抽成。</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="roadmap">
+      <h2><span class="n">13</span>执行路线</h2>
+      <div class="phases">
+        <div class="phase">
+          <h4><span class="pill p0">P0</span>约 1–2 周：换门面</h4>
+          <ul>
+            <li>定名，查商标、域名和账号名。</li>
+            <li>Logo 和色彩定稿，补进 token。</li>
+            <li>重写 README，做横幅、Hero GIF 和功能截图，修正过时信息。</li>
+            <li>代码里替换品牌：站点标题、favicon、登录页和侧栏文案。</li>
+            <li>按原型实现登录页、首页改版和后台「首页展示」。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h4><span class="pill p1">P1</span>约 1 个月：补体验</h4>
+          <ul>
+            <li>官方模板画布、首次启动向导。</li>
+            <li>一页式官网和 Demo 站。</li>
+            <li>兑换码、积分套餐。</li>
+            <li>决定许可证和商业版边界。</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h4><span class="pill">P2</span>之后：做商业</h4>
+          <ul>
+            <li>成片和导出。</li>
+            <li>白标、支付插件。</li>
+            <li>英文版 README 和文档。</li>
+            <li>正式发布：GitHub、B 站、小红书、V2EX、即刻。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="risks">
+      <h2><span class="n">14</span>风险与待决</h2>
+      <div class="table-wrap"><table>
+        <tr><th>事项</th><th>说明</th><th>谁来定</th></tr>
+        <tr><td>产品名</td><td>三个候选里选一个；网页搜索不能代替商标检索</td><td>你</td></tr>
+        <tr><td>许可证</td><td>MIT、AGPL、open-core 三选一；越晚改越被动</td><td>你，建议咨询律师</td></tr>
+        <tr><td>展示内容的版权</td><td>首页轮播的作品必须是平台自己生成、或者已经拿到授权的内容；原型里的 Mixkit 素材只能用作占位</td><td>运营</td></tr>
+        <tr><td>品牌替换范围</td><td>Docker 镜像名、仓库名、配置前缀（<code>APP_</code>）要不要一起改？改了会影响已经部署的用户，建议只改对外展示的部分</td><td>你</td></tr>
+        <tr><td>首页输入框的提交行为</td><td>原型里是「新建画布，交给 Agent 拆分镜」；Agent 默认关闭时，改成在新画布里放一个文本节点</td><td>你</td></tr>
+      </table></div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="sources">
+      <h2>来源</h2>
+      <p class="muted">访问日期 2026-10-08。</p>
+      <ul class="sources">
+        <li><a href="https://github.com/hojiahao/cineloom" target="_blank" rel="noreferrer">hojiahao/cineloom（CineLoom 影织）</a> · <a href="https://www.cineloom.ai/" target="_blank" rel="noreferrer">CineLoom.ai</a> · <a href="https://cineloom.io/" target="_blank" rel="noreferrer">CineLoom.io</a> · <a href="https://github.com/AbubakarAmin/Cineloop" target="_blank" rel="noreferrer">Cineloop</a></li>
+        <li><a href="https://news.qq.com/rain/a/20260826A0BOOC00" target="_blank" rel="noreferrer">AI 能拍好镜头之后，即梦开始搭建一座片场（腾讯新闻）</a> · <a href="https://m.aitntnews.com/newDetail.html?newId=23928" target="_blank" rel="noreferrer">即梦 Octo</a></li>
+        <li><a href="https://meta.appinn.net/t/topic/86266" target="_blank" rel="noreferrer">CharacterArc（弧光）</a> · <a href="https://xiaoyi.vc/arcreel.html" target="_blank" rel="noreferrer">ArcReel</a> · <a href="https://www.aihub.cn/tools/video/xunguang/" target="_blank" rel="noreferrer">寻光</a></li>
+        <li><a href="https://higgsfield.ai/canvas-intro" target="_blank" rel="noreferrer">Higgsfield Canvas</a> · <a href="https://www.topview.ai/canvas" target="_blank" rel="noreferrer">Topview Canvas</a> · <a href="https://www.wireflow.ai/features/ai-video-pipeline" target="_blank" rel="noreferrer">Wireflow</a> · <a href="https://www.motn.ai/" target="_blank" rel="noreferrer">Motn</a></li>
+        <li><a href="https://arcframe.ai/" target="_blank" rel="noreferrer">Arcframe</a> · <a href="https://tryshotline.com/" target="_blank" rel="noreferrer">Shotline</a> · <a href="https://www.shotlineai.com/" target="_blank" rel="noreferrer">ShotLine AI</a> · <a href="https://www.montaj.dev/" target="_blank" rel="noreferrer">Montaj</a></li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<script>
+/* 主题切换：只存在本机，存不进去也不影响阅读 */
+(() => {
+  const root = document.documentElement;
+  const btns = [...document.querySelectorAll(".theme button")];
+  const apply = (t) => {
+    if (t === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
+    btns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.t === t)));
+  };
+  let saved = "auto";
+  try { saved = localStorage.getItem("doc-theme") || "auto"; } catch {}
+  apply(saved);
+  btns.forEach((b) => (b.onclick = () => { apply(b.dataset.t); try { localStorage.setItem("doc-theme", b.dataset.t); } catch {} }));
+
+  /* 目录高亮当前章节 */
+  const links = [...document.querySelectorAll("#tocList a")];
+  const map = new Map(links.map((a) => [a.getAttribute("href").slice(1), a]));
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      links.forEach((a) => a.classList.remove("on"));
+      map.get(e.target.id)?.classList.add("on");
+    });
+  }, { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("main section[id]").forEach((s) => io.observe(s));
+})();
+
+/* ============================================================ Logo 方案：卡片、场景预览、单色版 */
+(() => {
+  const LOGOS = [
+    {
+      id: "m1", small: "m1s", no: "01", name: "镜间光", en: "The Gap", rec: true,
+      concept: "两个镜头（括号）之间，透出一道琥珀色的光。",
+      story: "直接把 Slogan「意义，在镜头之间」画出来：括号是两个镜头，中间那道光是连接产生的意义，也像放映机穿过片门的光。",
+      pros: "和 Slogan 一一对应，品牌故事最好讲；图形极简，光束可以单独拿出来做加载、分隔线、转场。",
+      cons: "方括号在开发者产品里常见，要靠光束的颜色和渐隐来区分；24px 以下要换成小尺寸版。",
+      scores: [4, 4, 5, 5],
+    },
+    {
+      id: "m2", no: "02", name: "双帧连线", en: "Linked Frames",
+      concept: "左边空框、右边实框，中间一条带节点的连线。",
+      story: "空框是一句话，实框是生成出来的画面，连线就是画布上的边。从无到有，一眼看懂产品在做什么。",
+      pros: "最直白，用户一看就知道是「节点 + 画面」；结构简单，16px 也很稳。",
+      cons: "偏功能图标，品牌个性弱；和流程图、对比类图标有些相似。",
+      scores: [3, 5, 4, 3],
+    },
+    {
+      id: "m3", no: "03", name: "K 字片轨", en: "Kule Monogram",
+      concept: "竖笔是一段带齿孔的胶片，两撇是从琥珀节点伸出的连线，合起来是字母 K。",
+      story: "把名字、胶片、节点三件事压进一个字母里。",
+      pros: "字母标识最容易注册和保护，适合做 App 图标和社交头像。",
+      cons: "和英文名 Kule 绑定，换名就要重画；中文用户对字母标识的记忆弱一些。",
+      scores: [4, 4, 4, 3],
+    },
+    {
+      id: "m4", small: "m4s", no: "04", name: "节点放映盘", en: "Node Reel",
+      concept: "外圈是电影胶片盘，盘里的五个孔是节点，都连到中央的琥珀色轴心。",
+      story: "胶片盘是最经典的电影符号；把孔换成节点，就成了「画布里的每个镜头，都连到同一个故事」。",
+      pros: "电影感最强；圆形适合做头像、贴纸，也能做生成中的旋转指示。",
+      cons: "胶片盘在视频产品里很常见；细节多，小尺寸要去掉辐条。",
+      scores: [3, 2, 4, 4],
+    },
+    {
+      id: "m5", no: "05", name: "三点成片", en: "Play Graph",
+      concept: "一个播放三角，三个顶点是节点：两个是输入，琥珀色那个是生成的视频。",
+      story: "文字加图片，连起来就是一段视频。「三点成片」本身也是一句好记的口号。",
+      pros: "「视频」属性最强，小尺寸非常清楚，适合 App 图标。",
+      cons: "播放三角在视频产品里极其常见，注册和区分的难度最大。",
+      scores: [2, 5, 3, 3],
+    },
+  ];
+  const METRICS = ["辨识度", "小尺寸", "寓意", "延展性"];
+  const mk = (id, size, extra = "") =>
+    `<svg class="mk" viewBox="0 0 48 48" ${size ? `style="width:${size}px;height:${size}px"` : ""} ${extra} aria-hidden="true"><use href="#${id}"/></svg>`;
+  const pick = (l, size) => (size <= 24 && l.small ? l.small : l.id);
+  let sel = "m1";
+
+  const grid = document.getElementById("logoGrid");
+  grid.innerHTML = LOGOS.map((l) => `
+    <article class="logo-card ${l.rec ? "rec" : ""}" data-id="${l.id}">
+      <div class="lc-head">
+        <span class="no">${l.no}</span>
+        <h4>${l.name}<small>${l.en}</small></h4>
+        ${l.rec ? `<span class="pill p0">推荐</span>` : ""}
+      </div>
+      <div class="lc-body">
+        <div class="tiles" role="img" aria-label="${l.name}在深色、浅色、琥珀色背景上">
+          <div class="tile t-dark">${mk(l.id)}</div>
+          <div class="tile t-light">${mk(l.id)}</div>
+          <div class="tile t-amber">${mk(l.id)}</div>
+        </div>
+        <div class="lc-side">
+          <div class="sizes">${[64, 40, 24, 16].map((s) => `<figure>${mk(pick(l, s), s)}<figcaption>${s}px</figcaption></figure>`).join("")}</div>
+          <div class="lockup">${mk(l.id, 36)}<span class="wm">连镜<small>Kule</small></span></div>
+          <div class="scores">${l.scores.map((v, i) => `<div class="score">${METRICS[i]}<div class="dots" aria-label="${v} 分（满分 5）">${[1, 2, 3, 4, 5].map((n) => `<i class="${n <= v ? "on" : ""}"></i>`).join("")}</div></div>`).join("")}</div>
+        </div>
+      </div>
+      <div class="lc-text">
+        <p><strong>${l.concept}</strong><br />${l.story}</p>
+        <dl><dt>优点</dt><dd>${l.pros}</dd><dt>风险</dt><dd>${l.cons}</dd></dl>
+      </div>
+      <div class="lc-foot"><button type="button" class="btn-sm" data-preview="${l.id}" aria-pressed="false">在场景中预览</button></div>
+    </article>`).join("");
+
+  const ctx = document.getElementById("ctx");
+  function renderCtx() {
+    const l = LOGOS.find((x) => x.id === sel);
+    ctx.innerHTML = `
+      <div class="ctx-item ctx-tab">
+        <div class="tabbar"><div class="tab">${mk(pick(l, 16), 16)}<span>连镜 Kule — AI 视频创作画布</span></div><div class="tab dim"><span>新标签页</span></div></div>
+        <div class="urlbar">canvas.example.com</div>
+        <div class="cap">浏览器标签（16px 站点图标）</div>
+      </div>
+      <div class="ctx-item ctx-app">
+        <div class="apps">
+          <figure><span class="app-icon dark">${mk(l.id)}</span>主图标</figure>
+          <figure><span class="app-icon amber">${mk(l.id)}</span>活动版</figure>
+          <figure><span class="app-icon light">${mk(l.id)}</span>浅色版</figure>
+        </div>
+        <div class="cap">App 图标、PWA、社交头像</div>
+      </div>
+      <div class="ctx-item ctx-side">
+        <div class="side-mock"><div class="row">${mk(pick(l, 24), 24)}连镜</div><div class="btn-mock"></div><div class="line"></div><div class="line s"></div><div class="line"></div></div>
+        <div class="cap">首页侧栏（24px）</div>
+      </div>
+      <div class="ctx-item ctx-login">
+        <div class="login-mock"><div class="top">${mk(l.id, 26)}连镜<span class="in">登录</span></div><div class="h">从一句话，到一部片。</div></div>
+        <div class="cap">登录页顶栏（压在视频上）</div>
+      </div>
+      <div class="ctx-item ctx-og">
+        <div class="og">${mk(l.id)}<div><div class="wm">连镜<small>Kule</small></div><div class="sl">意义，在镜头之间。</div></div><div class="ft">开源 · 私有化部署 · 接任意模型</div></div>
+        <div class="cap">GitHub Social Preview / 分享卡片（1280 × 640）</div>
+      </div>`;
+    document.getElementById("ctxTitle").textContent = `场景预览：${l.no} ${l.name}`;
+    grid.querySelectorAll(".logo-card").forEach((c) => c.classList.toggle("sel", c.dataset.id === sel));
+    grid.querySelectorAll("[data-preview]").forEach((b) => {
+      const on = b.dataset.preview === sel;
+      b.setAttribute("aria-pressed", String(on));
+      b.textContent = on ? "正在预览" : "在场景中预览";
+    });
+  }
+  grid.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-preview]");
+    if (!b) return;
+    sel = b.dataset.preview;
+    renderCtx();
+    document.getElementById("ctxTitle").scrollIntoView({ block: "start" });
+  });
+  document.getElementById("monoToggle").addEventListener("change", (e) => {
+    document.getElementById("logoLab").classList.toggle("mono", e.target.checked);
+  });
+  renderCtx();
+})();
+</script>
+</body>
+</html>

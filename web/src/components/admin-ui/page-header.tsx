@@ -27,7 +27,7 @@ function PageHeaderTitle({ className, ...props }: ComponentProps<"h1">) {
   return (
     <h1
       data-slot="page-header-title"
-      className={cn("text-2xl font-bold tracking-tight", className)}
+      className={cn("text-2xl font-semibold tracking-tight", className)}
       {...props}
     />
   );

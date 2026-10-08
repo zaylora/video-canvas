@@ -51,6 +51,13 @@
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
   --color-sheen: var(--sheen);
+  --color-beam: var(--beam);
+  --color-beam-bright: var(--beam-bright);
+  --color-stage: var(--stage);
+  --color-on-stage: var(--on-stage);
+  --color-on-stage-muted: var(--on-stage-muted);
+  --color-stage-glass: var(--stage-glass);
+  --color-stage-glass-border: var(--stage-glass-border);
   --color-cover-scrim: var(--cover-scrim);
   --color-cover-foreground: var(--cover-foreground);
   --color-edge: var(--edge);
@@ -112,6 +119,20 @@
   --status-warning: oklch(0.7 0.16 70);
   --edge: oklch(0 0 0 / 0.28);
   --edge-selected: oklch(0.2 0 0);
+  /* 品牌「连镜」：Logo 镜间光的琥珀光束。beam 跟随主题（浅底用深琥珀），
+     beam-bright 给永远偏暗的底用（登录页舞台），两个主题取同一个值 */
+  --beam: oklch(0.62 0.16 55);
+  --beam-bright: oklch(0.78 0.15 70);
+  /* 登录页舞台：压在视频上的元素。视频永远偏暗，所以深浅主题取同一组值 */
+  --stage: oklch(0.13 0 0);
+  --on-stage: oklch(0.985 0 0);
+  --on-stage-muted: oklch(1 0 0 / 0.68);
+  --stage-glass: oklch(1 0 0 / 0.1);
+  --stage-glass-border: oklch(1 0 0 / 0.2);
+  --stage-scrim-edge: oklch(0 0 0 / 0.55);
+  --stage-scrim-center: oklch(0 0 0 / 0.32);
+  --stage-glow-a: oklch(0.45 0.12 270 / 0.55);
+  --stage-glow-b: oklch(0.4 0.1 330 / 0.4);
   /* 首页卡片封面底部的渐变遮罩：上面压白字，深浅主题都要深色才看得清 */
   --cover-scrim: oklch(0 0 0 / 0.62);
   /* 节点内容加载占位的扫光高光 */
@@ -174,6 +195,17 @@
   --status-warning: oklch(0.8 0.15 75);
   --edge: oklch(1 0 0 / 0.28);
   --edge-selected: oklch(1 0 0 / 0.9);
+  --beam: oklch(0.78 0.15 70);
+  --beam-bright: oklch(0.78 0.15 70);
+  --stage: oklch(0.13 0 0);
+  --on-stage: oklch(0.985 0 0);
+  --on-stage-muted: oklch(1 0 0 / 0.68);
+  --stage-glass: oklch(1 0 0 / 0.1);
+  --stage-glass-border: oklch(1 0 0 / 0.2);
+  --stage-scrim-edge: oklch(0 0 0 / 0.55);
+  --stage-scrim-center: oklch(0 0 0 / 0.32);
+  --stage-glow-a: oklch(0.45 0.12 270 / 0.55);
+  --stage-glow-b: oklch(0.4 0.1 330 / 0.4);
   --cover-scrim: oklch(0 0 0 / 0.7);
   --sheen: oklch(1 0 0 / 0.09);
   --cover-foreground: oklch(0.985 0 0);
@@ -188,7 +220,7 @@
   --group-pink: oklch(0.74 0.17 345);
 }
 
-/* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
+/* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰）。浅色下卡片与页面同色、描边取淡一档；深色下卡片比页面亮一档，靠明暗而不是描边分层，和前台一致。
    只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
 .admin-theme {
   /* 进后台的加载层用 canvas-loader 的点阵底，底色跟后台走 */
@@ -208,7 +240,7 @@
   --accent: hsl(240 4.8% 95.9%);
   --accent-foreground: hsl(240 5.9% 10%);
   --destructive: hsl(0 72% 51%);
-  --border: hsl(240 5.9% 90%);
+  --border: hsl(240 5.9% 91.5%);
   --input: hsl(240 5.9% 90%);
   --ring: hsl(240 5.9% 10%);
   --sidebar: hsl(0 0% 98%);
@@ -225,9 +257,9 @@
   --canvas-bg: hsl(240 10% 3.9%);
   --background: hsl(240 10% 3.9%);
   --foreground: hsl(0 0% 98%);
-  --card: hsl(240 10% 3.9%);
+  --card: hsl(240 6% 7.5%);
   --card-foreground: hsl(0 0% 98%);
-  --popover: hsl(240 10% 3.9%);
+  --popover: hsl(240 6% 7.5%);
   --popover-foreground: hsl(0 0% 98%);
   --primary: hsl(0 0% 98%);
   --primary-foreground: hsl(240 5.9% 10%);
@@ -238,7 +270,7 @@
   --accent: hsl(240 3.7% 15.9%);
   --accent-foreground: hsl(0 0% 98%);
   --destructive: hsl(0 62.8% 45%);
-  --border: hsl(240 3.7% 15.9%);
+  --border: hsl(240 3.7% 13.5%);
   --input: hsl(240 3.7% 18%);
   --ring: hsl(240 4.9% 83.9%);
   --sidebar: hsl(240 5.9% 10%);
@@ -563,4 +595,23 @@
   content: var(--tpl-hint);
   color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
   pointer-events: none;
+}
+
+/* 登录页背景轮播的进度段：一条作品播放多久，这一段就用多久从空走到满；
+   动画结束就是「该切下一条了」的信号，暂停 / 加载中时由 animation-play-state 停住。
+   只动 transform，时长由组件通过 --showcase-clip 传入。 */
+@keyframes showcase-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* 字幕里逐字打出提示词时末尾的光标 */
+@keyframes showcase-caret {
+  50% {
+    opacity: 0;
+  }
 }

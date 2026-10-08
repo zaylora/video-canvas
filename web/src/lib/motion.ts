@@ -17,6 +17,8 @@ export const DURATION = {
   slow: 0.24,
   /** 抽屉、对话框的退出：约为 slow 的 70% */
   slowExit: 0.168,
+  /** 登录页背景作品之间的交叉溶解：是内容转场不是交互反馈，不受 250ms 上限约束 */
+  dissolve: 1,
 } as const;
 
 /** CSS transition / animation 要的毫秒字符串，如 ms(DURATION.base) = "180ms" */

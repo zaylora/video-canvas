@@ -20,12 +20,7 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
-import {
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/admin-ui/sheet";
+import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { isProcessorVersionConflict } from "@/utils/admin/errors";
 import {
   buildProcessorConfig,

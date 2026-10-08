@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
-import { Shield, ShieldCheck } from "lucide-react";
+import { Moon, Shield, ShieldCheck, Sun } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 
 import { FocusLoader } from "@/components/focus-loader";
@@ -11,10 +11,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdminHeader } from "@/components/admin-ui/admin-header";
-import { ThemeSwitch } from "@/components/admin-ui/theme-switch";
 import { useAdminStore } from "@/store/admin";
 import { useSettingsStore } from "@/store/settings";
 import { ROLE_LABEL } from "@/utils/admin/role";
@@ -138,7 +136,8 @@ function AdminBody() {
     <SidebarProvider data-admin-root style={{ "--sidebar-width": "15rem" } as CSSProperties}>
       <AdminSidebar role={role} counts={counts} />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
-        <AdminHeader>
+        <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-6">
+          <SidebarTrigger className="size-8" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden sm:inline-flex">
@@ -159,12 +158,17 @@ function AdminBody() {
               <Shield />
               {role === "super_admin" ? "超级管理员" : "管理员"}
             </Tag>
-            <ThemeSwitch
-              dark={dark}
-              onToggle={() => updateSettings("theme", dark ? "light" : "dark")}
-            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label={dark ? "切换到浅色" : "切换到深色"}
+              onClick={() => updateSettings("theme", dark ? "light" : "dark")}
+            >
+              {dark ? <Moon /> : <Sun />}
+            </Button>{" "}
           </div>
-        </AdminHeader>
+        </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
           <Outlet context={context} />
         </div>

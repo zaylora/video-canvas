@@ -8,7 +8,6 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useRetained } from "@/hooks/use-retained";
 import { publishBlockReason, resolveModelChannel } from "@/utils/admin/model-channel";
 
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import {
   PageHeader,
   PageHeaderActions,
@@ -55,7 +54,7 @@ export default function ModelsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>模型</PageHeaderTitle>
@@ -142,7 +141,7 @@ export default function ModelsPage() {
           onConfirm={() => void ws.confirmRollback()}
           onCancel={ws.cancelRollback}
         />
-      </AdminMain>
+      </main>
     </div>
   );
 }

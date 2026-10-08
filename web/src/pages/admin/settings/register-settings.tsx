@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { updateRegisterSettings } from "@/api/admin/settings";
 import type { RegisterSettings } from "@/api/admin/settings/type.d";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   PageHeader,
@@ -165,7 +164,7 @@ export default function RegisterSettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>注册设置</PageHeaderTitle>
@@ -182,7 +181,7 @@ export default function RegisterSettingsPage() {
         {status === "ready" && data && (
           <RegisterForm settings={data} canWrite={canWrite} onSaved={setData} />
         )}
-      </AdminMain>
+      </main>
     </div>
   );
 }

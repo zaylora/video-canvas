@@ -137,6 +137,13 @@ var (
 	ErrSMTPNotConfigured   = New(53008, "邮件服务未配置", http.StatusConflict)
 )
 
+// 登录页展示 54xxx
+var (
+	ErrShowcaseNotFound      = New(54001, "登录页展示条目不存在", http.StatusNotFound)
+	ErrShowcaseInvalid       = New(54002, "登录页展示参数不合法", http.StatusBadRequest)          // 具体原因写进 Msg
+	ErrShowcaseOrderMismatch = New(54003, "排序列表与现有条目不一致，请刷新后重试", http.StatusBadRequest) // 多了、少了或重复了条目
+)
+
 // 画布 Agent 模块 6xxxx
 var (
 	ErrAgentRunActive      = New(60001, "这个画布上已有运行中的 Agent", http.StatusConflict)

@@ -21,7 +21,7 @@ import { MotionButton } from "@/components/admin-ui/motion-button";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/admin-ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -54,7 +54,7 @@ const TAB_LABEL: Record<UserTab, string> = {
 
 const TAB_ORDER: UserTab[] = ["overview", "tasks", "credits", "logins"];
 
-/** 抽屉：560px，无遮罩，打开时表格仍可滚动、点击；窄屏全宽覆盖 */
+/** 抽屉：560px，窄屏全宽覆盖 */
 const SHEET_CLASS = [
   "gap-0 p-0",
   "data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:md:w-[560px]",
@@ -122,9 +122,13 @@ function UserSheet({
   const user = open ? live : keptUser;
 
   return (
-    <Sheet open={open} modal={false} disablePointerDismissal>
+    <Sheet
+      open={open}
+      onOpenChange={(next, details) => {
+        if (!next && details.reason === "outside-press") onClose();
+      }}
+    >
       <SheetContent
-        overlay={false}
         showCloseButton={false}
         finalFocus={false}
         className={SHEET_CLASS}

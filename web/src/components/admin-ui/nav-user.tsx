@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, LogOut } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -16,10 +17,12 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { logout } from "@/utils/storage/session";
 
 /**
  * 侧栏底部的账号菜单（shadcn-admin 的 NavUser）：头像 + 名称 + 说明，点开是菜单。
- * children 是菜单内容（DropdownMenuGroup / DropdownMenuItem）。
+ * 菜单固定以「退出登录」结尾；children 是它上面的额外菜单项（DropdownMenuGroup / DropdownMenuItem），
+ * 只放针对账号的操作，跳转页面之类的导航不放这里。
  */
 function NavUser({
   name,
@@ -83,6 +86,13 @@ function NavUser({
                 {children}
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem variant="destructive" onClick={logout}>
+                <LogOut />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
