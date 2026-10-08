@@ -54,8 +54,12 @@ describe("flattenHistoryAssets：生成历史", () => {
   });
 
   test("按类型筛：图片、视频各自只留自己的，文档永远为空", () => {
-    expect(filterHistoryAssets(assets, "image", "").every((item) => item.type === "image")).toBe(true);
-    expect(filterHistoryAssets(assets, "video", "").every((item) => item.type === "video")).toBe(true);
+    expect(filterHistoryAssets(assets, "image", "").every((item) => item.type === "image")).toBe(
+      true,
+    );
+    expect(filterHistoryAssets(assets, "video", "").every((item) => item.type === "video")).toBe(
+      true,
+    );
     expect(filterHistoryAssets(assets, "doc", "")).toEqual([]);
   });
 

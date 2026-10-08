@@ -78,7 +78,9 @@ export default function AssetsPage() {
   const visibleHistory = filterHistoryAssets(history, type, list.query);
   const inCanvas = scope === "canvas";
 
-  const empty = inCanvas ? !list.loading && !list.error && list.items.length === 0 : visibleHistory.length === 0;
+  const empty = inCanvas
+    ? !list.loading && !list.error && list.items.length === 0
+    : visibleHistory.length === 0;
   let hint = "在「创作」里生成的内容会出现在这里";
   if (list.query.trim()) hint = "换个关键词试试";
   else if (inCanvas) hint = "新建的画布会出现在这里";

@@ -3,12 +3,7 @@ import { useReducedMotion } from "motion/react";
 
 import type { ShowcaseItemDto } from "@/api/showcase/type";
 import { DURATION } from "@/lib/motion";
-import {
-  clampIndex,
-  nextIndex,
-  shouldAutoAdvance,
-  shouldPlayVideo,
-} from "@/utils/showcase/rules";
+import { clampIndex, nextIndex, shouldAutoAdvance, shouldPlayVideo } from "@/utils/showcase/rules";
 
 /** 视频加载最多等多久（毫秒）：超时就按「只有封面」继续计时，不让进度卡在加载上 */
 const LOAD_TIMEOUT_MS = 4000;

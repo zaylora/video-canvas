@@ -16,7 +16,12 @@ export type CreationModeInfo = {
 
 /** 输入卡片的创作模式，顺序即菜单顺序，第一个是默认 */
 export const CREATION_MODES: CreationModeInfo[] = [
-  { id: "agent", label: "Agent 模式", desc: "说想法或贴剧本，Agent 拆分镜、选模型、一路生成", icon: Bot },
+  {
+    id: "agent",
+    label: "Agent 模式",
+    desc: "说想法或贴剧本，Agent 拆分镜、选模型、一路生成",
+    icon: Bot,
+  },
   { id: "image", label: "图片生成", desc: "直接出图，适合角色设定、场景、海报", icon: Images },
   { id: "video", label: "视频生成", desc: "文生视频或用参考图生成镜头", icon: Clapperboard },
   { id: "audio", label: "音频生成", desc: "配音、音效和配乐", icon: Music },

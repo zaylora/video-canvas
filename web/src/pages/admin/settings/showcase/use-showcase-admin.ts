@@ -136,7 +136,10 @@ export function useShowcaseAdmin() {
           prev ? { ...prev, items: prev.items.filter((entry) => entry.id !== item.id) } : prev,
         );
         toast("已从片单移除", {
-          action: { label: "撤销", onClick: () => void restore(item, Math.max(index, 0)).catch(() => undefined) },
+          action: {
+            label: "撤销",
+            onClick: () => void restore(item, Math.max(index, 0)).catch(() => undefined),
+          },
         });
       } catch {
         // 全局 toast 已弹，条目留在原处
@@ -206,5 +209,17 @@ export function useShowcaseAdmin() {
     [view],
   );
 
-  return { view, status, busyIds, reload, upsert, toggleEnabled, remove, addFromLibrary, reorder, saveSettings, playerItems };
+  return {
+    view,
+    status,
+    busyIds,
+    reload,
+    upsert,
+    toggleEnabled,
+    remove,
+    addFromLibrary,
+    reorder,
+    saveSettings,
+    playerItems,
+  };
 }

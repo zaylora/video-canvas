@@ -113,11 +113,15 @@ function ShowcaseRow({
         <Thumb item={item} index={index} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className={cn("line-clamp-2 text-[13.5px] leading-normal", !item.enabled && "opacity-50")}>
+        <p
+          className={cn("line-clamp-2 text-[13.5px] leading-normal", !item.enabled && "opacity-50")}
+        >
           {item.prompt}
         </p>
         <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs">
-          {item.model_label && <Tag className="group-hover/row:bg-background">{item.model_label}</Tag>}
+          {item.model_label && (
+            <Tag className="group-hover/row:bg-background">{item.model_label}</Tag>
+          )}
           {item.byte_size > 0 && (
             <span className="tabular-nums">{(item.byte_size / 1024 / 1024).toFixed(1)} MB</span>
           )}

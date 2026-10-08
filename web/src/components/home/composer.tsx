@@ -129,8 +129,8 @@ export function Composer({ placement = "page" }: { placement?: "page" | "dock" }
             aria-hidden
             className="text-muted-foreground pointer-events-none absolute inset-x-0 top-0 text-[15px] leading-[1.65]"
           >
-            输入想法、剧本或上传参考，支持 <Hint>/</Hint> 使用技能，<Hint>@</Hint> 引用资产，和 Agent
-            一起创作
+            输入想法、剧本或上传参考，支持 <Hint>/</Hint> 使用技能，<Hint>@</Hint> 引用资产，和
+            Agent 一起创作
           </div>
         )}
       </div>

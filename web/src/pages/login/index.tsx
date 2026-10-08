@@ -184,7 +184,9 @@ export default function Login() {
           <motion.button
             type="button"
             whileTap={TAP}
-            onClick={(event) => openDrawer(registerOpen ? "register" : "login", event.currentTarget)}
+            onClick={(event) =>
+              openDrawer(registerOpen ? "register" : "login", event.currentTarget)
+            }
             className="group/cta bg-on-stage text-stage focus-visible:ring-on-stage/60 mt-8.5 inline-flex h-13 items-center gap-2 rounded-full px-6.5 text-base font-semibold shadow-[0_18px_50px_-20px_oklch(0_0_0/0.7)] outline-none hover:opacity-90 focus-visible:ring-2"
           >
             开始创作
@@ -203,7 +205,10 @@ export default function Login() {
           <ShowcaseProgress
             player={player}
             showPause={false}
-            className={cn("transition-opacity duration-180", drawerOpen && "pointer-events-none opacity-0")}
+            className={cn(
+              "transition-opacity duration-180",
+              drawerOpen && "pointer-events-none opacity-0",
+            )}
           />
         </footer>
       )}

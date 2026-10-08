@@ -56,14 +56,21 @@ export function ConversationRecordView({ record }: { record: ConversationRecord 
               aria-hidden
               className="bg-muted text-muted-foreground border-background grid h-11.5 w-8.5 -rotate-6 place-items-center rounded-md border-2"
             >
-              {record.mode === "agent" ? <Bot className="size-3.5" /> : <Sparkles className="size-3.5" />}
+              {record.mode === "agent" ? (
+                <Bot className="size-3.5" />
+              ) : (
+                <Sparkles className="size-3.5" />
+              )}
             </span>
           )}
         </div>
         <div className="text-muted-foreground flex flex-wrap items-center pb-0.5 text-[13px]">
           <span className="text-foreground font-medium">{MODE_NAME[record.mode]}</span>
           {record.meta.map((item) => (
-            <span key={item} className="before:bg-border before:mx-2 before:inline-block before:h-2.5 before:w-px before:align-[-1px]">
+            <span
+              key={item}
+              className="before:bg-border before:mx-2 before:inline-block before:h-2.5 before:w-px before:align-[-1px]"
+            >
               {item}
             </span>
           ))}

@@ -62,7 +62,10 @@ export const updateShowcaseSettings = (body: ShowcaseSettings) =>
  * @param pageSize 每页条数，最多 100
  * @returns 本页视频和总数，视频为 null 时兜底成空数组
  */
-export const getShowcaseLibrary = async (page: number, pageSize: number): Promise<ShowcaseLibraryPage> => {
+export const getShowcaseLibrary = async (
+  page: number,
+  pageSize: number,
+): Promise<ShowcaseLibraryPage> => {
   const result = await service.get<ShowcaseLibraryPage>("/admin/settings/showcase/library", {
     page,
     page_size: pageSize,
