@@ -1,17 +1,33 @@
-# video-canvas
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-dark.svg" />
+    <img src="docs/assets/brand/logo-light.svg" alt="连镜 Logo：两个镜头之间透出一道光" width="88" />
+  </picture>
+</p>
 
-开源的 AI 视频创作无限画布：用节点串联文本、图片、视频和音频生成。
+<h1 align="center">连镜</h1>
 
-[![Version](https://img.shields.io/github/v/tag/zaylora/video-canvas?label=version)](CHANGELOG.md)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/zaylora/video-canvas/actions/workflows/ci.yml/badge.svg)](https://github.com/zaylora/video-canvas/actions/workflows/ci.yml)
-![Go](https://img.shields.io/badge/Go-1.27-00ADD8)
-![React](https://img.shields.io/badge/React-19-61DAFB)
+<p align="center"><strong>意义，在镜头之间。</strong></p>
+
+<p align="center">从一句话，到一部片。<br />开源的 AI 视频创作无限画布：用节点串联文本、图片、视频和音频生成。</p>
+
+<p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
+
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/github/v/tag/zaylora/video-canvas?label=version" alt="Version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/zaylora/video-canvas/actions/workflows/ci.yml"><img src="https://github.com/zaylora/video-canvas/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/Go-1.27-00ADD8" alt="Go" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB" alt="React" />
+</p>
+
+> [!NOTE]
+> 「连镜」是产品名，Logo 叫「镜间光」：两个镜头之间透出一道光，就像画布上的节点连起来之后才有了故事。
 
 > [!WARNING]
-> 项目处于早期开发阶段（v0.1.0），API、画布数据结构和配置项都可能有不兼容的变动，暂不建议用于生产。
+> 项目处于早期开发阶段，API、画布数据结构和配置项都可能有不兼容的变动，暂不建议用于生产。
 
-![video-canvas 画布](docs/assets/readme/canvas-hero.png)
+![连镜画布](docs/assets/readme/canvas-hero.png)
 
 [功能](#功能) · [快速开始](#快速开始) · [架构](#架构) · [文档](#文档) · [路线图](#路线图) · [参与贡献](#参与贡献)
 

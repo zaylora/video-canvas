@@ -43,6 +43,11 @@
   --scrim-edge: oklch(0 0 0 / 0.55);
   --scrim-center: oklch(0 0 0 / 0.32);
 
+  /* 品牌「连镜」：Logo 镜间光的琥珀光束。浅底用深琥珀，深底和视频上用亮琥珀 */
+  --brand-amber: oklch(0.78 0.15 70);
+  --brand-amber-deep: oklch(0.62 0.16 55);
+  --la: var(--brand-amber-deep);
+
   /* 与 web/src/lib/motion.ts 一致；dissolve 为新增档位 */
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --dur-fast: 120ms;
@@ -54,6 +59,7 @@
 }
 .dark {
   color-scheme: dark;
+  --la: var(--brand-amber);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -202,7 +208,7 @@ html.reduce *, html.reduce *::before, html.reduce *::after {
 .notice.warn { background: color-mix(in oklch, var(--status-warning) 14%, transparent); color: var(--foreground); }
 .notice.warn .icon { color: var(--status-warning); margin-top: 2px; }
 
-/* ============================================================ 视频舞台（登录页 / 首页 Hero / 后台预览 共用） */
+/* ============================================================ 视频舞台（登录页 / 后台预览 共用） */
 .stage { position: absolute; inset: 0; overflow: hidden; background: var(--media-bg); isolation: isolate; }
 .stage .fallback {
   position: absolute; inset: 0;
@@ -223,34 +229,6 @@ html.reduce *, html.reduce *::before, html.reduce *::after {
     linear-gradient(to bottom, var(--scrim-edge) 0%, transparent 24%, transparent 58%, var(--scrim-edge) 100%),
     radial-gradient(ellipse 58% 46% at 50% 47%, var(--scrim-center), transparent 72%);
 }
-
-/* 玻璃输入框：压在视频上的「一句话」 */
-.prompt {
-  display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 10px 0 18px;
-  border-radius: 20px; background: var(--glass); border: 1px solid var(--glass-border);
-  backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  color: var(--on-media); text-align: left;
-  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-slow) var(--ease-out), background-color var(--dur-fast), border-color var(--dur-fast);
-}
-.prompt:focus-within { background: var(--glass-strong); border-color: var(--glass-border-strong); transform: translateY(-1px); box-shadow: 0 24px 60px -24px oklch(0 0 0 / 0.7); }
-.prompt.flash { box-shadow: 0 0 0 4px var(--glass-border-strong), 0 24px 60px -24px oklch(0 0 0 / 0.7); transition-duration: var(--dur-base); }
-.prompt > .icon { color: var(--on-media-muted); }
-.prompt input { flex: 1; min-width: 0; height: 100%; background: transparent; border: 0; outline: none; font-size: 16px; }
-.prompt input::placeholder { color: var(--on-media-muted); }
-.send {
-  width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center;
-  background: var(--on-media); color: var(--media-bg);
-}
-.send:disabled { background: var(--glass); color: var(--on-media-muted); }
-.send:hover:not(:disabled) { opacity: 0.9; }
-
-.chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-.chip {
-  height: 32px; padding: 0 12px; border-radius: 999px; font-size: 12.5px;
-  background: var(--glass); border: 1px solid var(--glass-border); color: var(--on-media-muted);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-}
-.chip:hover { color: var(--on-media); background: var(--glass-strong); }
 
 /* 字幕：生成它的那句话 */
 .caption { color: var(--on-media); min-width: 0; max-width: 520px; }
@@ -289,8 +267,10 @@ html.reduce .pp { display: none; }
 /* ============================================================ 登录页 */
 .login { position: relative; height: 100svh; min-height: 620px; overflow: hidden; color: var(--on-media); background: var(--media-bg); }
 .login-top { position: absolute; top: 0; left: 0; right: 0; z-index: 3; height: 72px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; }
-.brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-.brand-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--on-media); color: var(--media-bg); }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; letter-spacing: 0.04em; --la: var(--brand-amber); }
+/* Logo 镜间光：括号跟随文字色，光束用 --la；24px 及以下换小尺寸版 #logo-s */
+.brand-mark { width: 32px; height: 32px; flex-shrink: 0; }
+.brand-sl { margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--glass-border); font-size: 13px; font-weight: 400; letter-spacing: 0.02em; color: var(--on-media-muted); }
 .top-actions { display: flex; gap: 8px; }
 .ghost-media { height: 36px; padding: 0 14px; border-radius: 999px; color: var(--on-media); }
 .ghost-media:hover { background: var(--glass); }
@@ -306,7 +286,14 @@ html.reduce .pp { display: none; }
 .eyebrow .icon { width: 13px; height: 13px; }
 .login-hero h1 { margin-top: 22px; font-size: clamp(40px, 6.2vw, 80px); line-height: 1.04; letter-spacing: -0.035em; font-weight: 600; text-shadow: 0 2px 30px oklch(0 0 0 / 0.35); }
 .login-hero .lead { margin: 18px auto 0; max-width: 520px; font-size: 17px; line-height: 1.6; color: var(--on-media-muted); }
-.login-hero .prompt { margin-top: 34px; }
+.login-hero .cta {
+  margin-top: 34px; height: 52px; padding: 0 26px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px;
+  background: var(--on-media); color: var(--media-bg); font-size: 16px; font-weight: 600;
+  box-shadow: 0 18px 50px -20px oklch(0 0 0 / 0.7);
+}
+.login-hero .cta:hover { opacity: 0.92; }
+.login-hero .cta .icon { transition: transform var(--dur-fast) var(--ease-out); }
+.login-hero .cta:hover .icon { transform: translateX(2px); }
 
 .login-foot { position: absolute; z-index: 2; left: 32px; right: 32px; bottom: 28px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
 .login.auth-open .login-foot .progress { opacity: 0; pointer-events: none; }
@@ -348,9 +335,9 @@ html.reduce .pp { display: none; }
 @media (max-width: 767px) {
   .login-top { padding: 0 16px; height: 64px; }
   .login-top .ghost-media.reg { display: none; }
+  .brand-sl { display: none; }
   .login-hero { top: 42%; }
   .login-hero .lead { font-size: 15px; }
-  .login-hero .chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; margin-inline: -16px; padding-inline: 16px; scrollbar-width: none; }
   .chip { flex-shrink: 0; }
   .login-foot { left: 16px; right: 16px; bottom: 20px; flex-direction: column; align-items: stretch; gap: 14px; }
   .login-foot .caption { max-width: none; }
@@ -370,21 +357,29 @@ html.reduce .pp { display: none; }
 .sb.collapsed { width: 56px; padding: 12px 8px; }
 .sb-top { height: 36px; display: flex; align-items: center; justify-content: space-between; padding-left: 6px; }
 .sb.collapsed .sb-top { flex-direction: column; height: auto; gap: 10px; padding-left: 0; }
-.sb .logo { display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
-.sb .logo .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); }
+.sb .logo { display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; letter-spacing: 0.04em; }
+.sb .logo .brand-mark { width: 24px; height: 24px; }
 .sb.collapsed .label { display: none; }
-.new-btn { height: 40px; border-radius: 12px; background: var(--primary); color: var(--primary-foreground); display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; white-space: nowrap; }
-.new-btn:hover { opacity: 0.88; }
-.sb.collapsed .new-btn { width: 40px; }
 .nav { display: grid; gap: 2px; }
 .nav-btn { position: relative; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 10px; color: var(--muted-foreground); white-space: nowrap; text-align: left; }
 .nav-btn:hover:not(:disabled) { background: var(--chrome-hover); color: var(--foreground); }
 .nav-btn:disabled { opacity: 0.5; }
-.nav-btn.active { color: var(--foreground); font-weight: 600; }
-.nav-btn.active::before { content: ""; position: absolute; left: -12px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--foreground); }
+.nav-btn.active { color: var(--foreground); font-weight: 600; background: var(--muted); }
 .sb.collapsed .nav-btn { width: 40px; justify-content: center; padding: 0; }
-.sb.collapsed .nav-btn.active::before { left: -8px; }
 .nav-btn .icon { width: 18px; height: 18px; }
+.sb-lists { flex: 1; min-height: 0; overflow-y: auto; margin-inline: -4px; padding-inline: 4px; scrollbar-width: thin; }
+.sb.collapsed .sb-lists { visibility: hidden; }
+.sb-sec { margin-top: 8px; }
+.sb-sec > p { font-size: 12px; color: var(--muted-foreground); padding: 6px 10px; }
+.sb-item { width: 100%; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 10px; border-radius: 10px; color: var(--muted-foreground); text-align: left; white-space: nowrap; }
+.sb-item:hover { background: var(--chrome-hover); color: var(--foreground); }
+.sb-item.active { background: var(--muted); color: var(--foreground); font-weight: 500; }
+.sb-item .th { width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; overflow: hidden; display: grid; place-items: center; background: var(--muted); }
+.sb-item .th img { width: 100%; height: 100%; object-fit: cover; }
+.sb-item .th .icon { width: 13px; height: 13px; }
+.sb-item .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sb-item .pin { width: 13px; height: 13px; opacity: 0.55; }
+.sb-item.enter { animation: card-in var(--dur-base) var(--ease-out); }
 .sb-bottom { margin-top: auto; }
 
 .inset { flex: 1; min-width: 0; }
@@ -394,70 +389,223 @@ html.reduce .pp { display: none; }
 .credit .icon { color: var(--credit); width: 14px; height: 14px; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--primary); color: var(--primary-foreground); font-size: 13px; font-weight: 600; }
 
-.home-main { max-width: 1200px; margin: 0 auto; padding: 4px 24px 96px; }
-.hero { position: relative; height: clamp(480px, 62vh, 640px); border-radius: 28px; overflow: hidden; color: var(--on-media); box-shadow: 0 0 0 1px var(--border); isolation: isolate; }
-.hero-content { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 88px; text-align: center; }
-.hero h1 { font-size: clamp(28px, 3.8vw, 44px); letter-spacing: -0.025em; font-weight: 600; text-shadow: 0 2px 24px oklch(0 0 0 / 0.35); }
-.hero h1 .greet { font-weight: 300; color: var(--on-media-muted); }
-.hero .sub { margin-top: 10px; font-size: 15px; color: var(--on-media-muted); }
-.hero .prompt { width: min(720px, 100%); margin-top: 28px; }
-.hero-foot { position: absolute; z-index: 2; left: 24px; right: 24px; bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
-.hero .caption { max-width: 50%; }
-.hero .cap-prompt { font-size: 14px; }
+.home-main { max-width: 1040px; margin: 0 auto; padding: 0 24px 96px; }
+.create-head { display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 12px; text-align: center; }
+.create-head h1 { font-size: clamp(24px, 3vw, 32px); font-weight: 600; letter-spacing: -0.01em; }
+/* 「创作」两个字用镜间光的琥珀色做一道渐变，呼应 Logo 中间那道光 */
+.create-head h1 .hl { background: linear-gradient(100deg, var(--foreground) 10%, var(--la) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-.recent { margin-top: 32px; }
-.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-.toolbar h2 { font-size: 16px; font-weight: 600; margin-right: 8px; }
-.search { height: 32px; width: 180px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--muted); color: var(--muted-foreground); }
-.search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--foreground); }
-.more { display: inline-flex; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 6px; color: var(--muted-foreground); white-space: nowrap; }
-.more:hover { color: var(--foreground); }
-.more .icon { transition: transform var(--dur-fast) var(--ease-out); }
-.more:hover .icon { transform: translateX(2px); }
-.cards { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 5 * 12px) / 6); gap: 12px; overflow-x: auto; padding-bottom: 4px; }
-.card { position: relative; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden; background: var(--muted); text-align: left; }
-.card img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-slow) var(--ease-out); }
-.card:hover img { transform: scale(1.03); }
-.card .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 10px 9px; background: linear-gradient(to top, var(--cover-scrim), transparent); color: var(--cover-foreground); }
-.card .meta b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card .meta span { font-size: 11px; opacity: 0.75; }
-.card.new { border: 1px dashed var(--border); background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); }
-.card.new:hover { color: var(--foreground); background: var(--muted); }
-.card.new .plus { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--muted); }
-.card.enter { animation: card-in var(--dur-base) var(--ease-out); }
+/* 生成 / 画布：大号胶囊分段，选中块为反色并带一抹琥珀光 */
+.mode-sw { width: min(320px, 100%); padding: 4px; border-radius: 999px; }
+.mode-sw button { flex: 1; height: 36px; border-radius: 999px; font-size: 14px; }
+.mode-sw button[aria-selected="true"] { color: var(--background); }
+.mode-sw .thumb {
+  top: 4px; bottom: 4px; border-radius: 999px;
+  background: radial-gradient(ellipse 60% 120% at 18% 50%, color-mix(in oklch, var(--brand-amber) 55%, transparent), transparent 70%), var(--foreground);
+}
+
+/* 输入卡片 */
+.composer {
+  position: relative; margin-top: 28px; padding: 18px 14px 12px 18px; border-radius: 24px;
+  display: grid; grid-template-columns: auto 1fr; column-gap: 16px; row-gap: 10px;
+  background: var(--card); border: 1px solid var(--border);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 18px 40px -28px oklch(0 0 0 / 0.35);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-slow) var(--ease-out);
+}
+.composer:focus-within { border-color: color-mix(in oklch, var(--foreground) 24%, transparent); }
+.composer.flash, .cp-line.flash { box-shadow: 0 0 0 4px color-mix(in oklch, var(--la) 30%, transparent); transition-duration: var(--dur-base); }
+.ref-tile {
+  width: 56px; height: 72px; border-radius: 10px; display: grid; place-items: center;
+  border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent); background: var(--muted); color: var(--muted-foreground);
+  transform: rotate(-6deg); transition: transform var(--dur-base) var(--ease-out), color var(--dur-fast);
+}
+.ref-tile:hover { transform: rotate(0); color: var(--foreground); }
+.cp-text { position: relative; min-width: 0; }
+.cp-text textarea { display: block; width: 100%; min-height: 84px; max-height: 240px; resize: none; border: 0; outline: none; background: transparent; font-size: 15px; line-height: 1.65; }
+.ph-rich { position: absolute; inset: 0 0 auto 0; pointer-events: none; color: var(--muted-foreground); font-size: 15px; line-height: 1.65; }
+.ph-rich kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin: 0 2px; border-radius: 6px; font: inherit; font-size: 13px; background: var(--muted); border: 1px solid var(--border); color: var(--foreground); vertical-align: 1px; }
+.cp-text.has-value .ph-rich { display: none; }
+.cp-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; }
+.cp-btn { height: 32px; padding: 0 10px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--foreground); }
+.cp-btn:hover { background: var(--muted); }
+.cp-btn.accent { color: var(--la); font-weight: 500; }
+.cp-btn.icon-only { width: 32px; padding: 0; justify-content: center; }
+.cp-btn .chev { width: 13px; height: 13px; transition: transform var(--dur-fast) var(--ease-out); }
+.cp-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.send2 { width: 36px; height: 36px; flex-shrink: 0; border-radius: 999px; display: grid; place-items: center; background: var(--foreground); color: var(--background); }
+.send2:disabled { background: var(--muted); color: var(--muted-foreground); }
+.send2:hover:not(:disabled) { opacity: 0.88; }
+
+/* 模式菜单 */
+.pop-wrap { position: relative; }
+.pop {
+  position: absolute; z-index: 10; top: calc(100% + 6px); left: 0; width: 280px; padding: 6px; border-radius: 14px;
+  background: var(--card); border: 1px solid var(--border); box-shadow: 0 16px 40px -12px oklch(0 0 0 / 0.35);
+  transform-origin: top left; animation: pop-in var(--dur-base) var(--ease-out);
+}
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96) translateY(-4px); } }
+.pop button { width: 100%; display: grid; grid-template-columns: 20px 1fr 16px; gap: 2px 10px; align-items: center; padding: 8px 10px; border-radius: 10px; text-align: left; }
+.pop button:hover { background: var(--muted); }
+.pop button b { font-weight: 500; font-size: 13.5px; }
+.pop button span { grid-column: 2; font-size: 12px; color: var(--muted-foreground); line-height: 1.45; }
+.pop button .ok { grid-row: 1; grid-column: 3; color: var(--la); }
+
+/* 技能 */
+.skills { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.skill { height: 38px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.skill:hover { background: var(--muted); }
+.skill .tag { height: 18px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-grid; place-items: center; }
+.skill .tag.new { background: color-mix(in oklch, var(--la) 16%, transparent); color: var(--la); }
+.skill .tag.hot { background: color-mix(in oklch, var(--destructive) 14%, transparent); color: var(--destructive); }
+.skill.more { color: var(--muted-foreground); }
+.skill.more .icon { width: 14px; height: 14px; }
+
+/* 画布 tab */
+.cv-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.cv-card { position: relative; aspect-ratio: 16 / 10; border-radius: 16px; overflow: hidden; text-align: left; border: 1px solid var(--border); background: var(--card); }
+.cv-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-slow) var(--ease-out); }
+.cv-card:hover img { transform: scale(1.04); }
+.cv-card .shade { position: absolute; inset: 0; background: linear-gradient(to top, var(--cover-scrim), transparent 55%); }
+.cv-card .lbl { position: absolute; left: 12px; right: 12px; bottom: 10px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-card .lbl small { display: block; font-size: 11px; font-weight: 400; opacity: 0.75; }
+.cv-card.on-media .lbl { color: var(--cover-foreground); }
+.cv-card .tag { position: absolute; top: 8px; left: 8px; height: 22px; padding: 0 8px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 11.5px; background: var(--cover-scrim); color: var(--cover-foreground); }
+.cv-card.new, .cv-card.blank { background: radial-gradient(circle, color-mix(in oklch, var(--foreground) 12%, transparent) 1px, transparent 1.3px) 0 0 / 14px 14px, var(--card); }
+.cv-card.new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 500; }
+.cv-card.new .plus { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--foreground); color: var(--background); }
+.cv-card.new:hover .plus { transform: scale(1.06); }
+.cv-card.blank .mid { position: absolute; inset: 0 0 24px; display: grid; place-items: center; color: var(--muted-foreground); }
+.cv-card.enter { animation: card-in var(--dur-base) var(--ease-out); }
 @keyframes card-in { from { opacity: 0; transform: scale(0.96); } }
-.card .badge { position: absolute; top: 8px; left: 8px; height: 22px; padding: 0 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: var(--cover-scrim); color: var(--cover-foreground); }
-.card .badge .icon { width: 12px; height: 12px; }
-.card .ph { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted-foreground); background: radial-gradient(circle, color-mix(in oklch, var(--foreground) 14%, transparent) 1px, transparent 1.3px) 0 0 / 14px 14px, var(--muted); }
+.cp-line {
+  margin: 24px auto 0; width: min(680px, 100%); height: 60px; padding: 0 10px 0 18px; border-radius: 18px;
+  display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-slow) var(--ease-out);
+}
+.cp-line:focus-within { border-color: color-mix(in oklch, var(--foreground) 24%, transparent); }
+.cp-line input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; background: transparent; font-size: 14.5px; }
+.cp-line input::placeholder { color: var(--muted-foreground); }
 
-.works { margin-top: 32px; border: 1px dashed var(--border); border-radius: 20px; padding: 36px 24px; text-align: center; color: var(--muted-foreground); }
-.works b { display: block; color: var(--foreground); font-size: 15px; margin-bottom: 6px; }
+/* 最近上新 */
+.news { margin-top: 56px; }
+.news h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px 2px; }
+.news-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.news-card { position: relative; aspect-ratio: 16 / 10; border-radius: 18px; overflow: hidden; text-align: left; color: var(--cover-foreground); background: var(--media-bg); }
+.news-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-slow) var(--ease-out); }
+.news-card:hover img { transform: scale(1.03); }
+.news-card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, oklch(0 0 0 / 0.72), transparent 60%); }
+.news-card .cap { position: absolute; z-index: 1; left: 16px; right: 16px; bottom: 14px; }
+.news-card .cap .k { font-size: 11px; opacity: 0.72; letter-spacing: 0.02em; }
+.news-card .cap b { display: block; margin-top: 2px; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.news-card .cap span { display: block; margin-top: 4px; font-size: 12px; opacity: 0.75; }
 
+/* 对话 */
+.conv-main { max-width: 1040px; margin: 0 auto; padding: 0 24px; min-height: calc(100svh - 56px); display: flex; flex-direction: column; }
+.conv-feed { flex: 1; padding-bottom: 8px; }
+.cv-day { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 4px 0 18px; }
+.rec { margin-bottom: 32px; }
+.rec.enter { animation: card-in var(--dur-base) var(--ease-out); }
+.rec-head { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 10px; }
+.refs { display: flex; padding: 4px 0 0 2px; }
+.refs > * { width: 34px; height: 46px; border-radius: 6px; object-fit: cover; border: 2px solid var(--background); background: var(--muted); display: grid; place-items: center; color: var(--muted-foreground); transform: rotate(-6deg); }
+.refs > * + * { margin-left: -8px; transform: rotate(5deg); }
+.refs .icon { width: 14px; height: 14px; }
+.rec-meta { display: flex; flex-wrap: wrap; align-items: center; color: var(--muted-foreground); font-size: 13px; padding-bottom: 2px; }
+.rec-meta > span + span::before { content: ""; display: inline-block; width: 1px; height: 11px; margin: 0 8px; background: var(--border); vertical-align: -1px; }
+.rec-meta .md { color: var(--foreground); font-weight: 500; }
+.rec-meta button { display: inline-flex; align-items: center; gap: 3px; color: var(--muted-foreground); }
+.rec-meta button:hover { color: var(--foreground); }
+.rec-meta button .icon { width: 13px; height: 13px; }
+.rec-prompt { max-width: 760px; margin-bottom: 10px; font-size: 14px; line-height: 1.65; }
+.rec-reply { max-width: 760px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.65; color: var(--muted-foreground); }
+.rec-reply .bot { width: 24px; height: 24px; flex-shrink: 0; margin-top: 1px; border-radius: 8px; display: grid; place-items: center; background: var(--muted); color: var(--la); }
+.rec-reply .bot .icon { width: 14px; height: 14px; }
+.rec-media { display: flex; flex-wrap: wrap; gap: 8px; }
+.media { position: relative; height: 240px; border-radius: 12px; overflow: hidden; background: var(--muted); }
+.media.wide { aspect-ratio: 16 / 9; }
+.media.square { aspect-ratio: 1; }
+.media.tall { aspect-ratio: 9 / 16; height: 300px; }
+.media.small { height: 132px; }
+.media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media .play { position: absolute; inset: 0; margin: auto; width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; background: oklch(0 0 0 / 0.45); color: #fff; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.media .play .icon { width: 16px; height: 16px; fill: currentColor; }
+.media .no { position: absolute; left: 8px; top: 8px; height: 20px; padding: 0 6px; border-radius: 6px; font-size: 11px; display: inline-grid; place-items: center; background: var(--cover-scrim); color: var(--cover-foreground); }
+.media.audio { width: 360px; height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 14px; }
+.media.audio .wave { flex: 1; height: 28px; background: repeating-linear-gradient(90deg, color-mix(in oklch, var(--foreground) 45%, transparent) 0 2px, transparent 2px 5px); -webkit-mask: linear-gradient(transparent, #000 30%, #000 70%, transparent); mask: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+.media.pending { display: grid; place-items: center; color: var(--muted-foreground); font-size: 12.5px; background: linear-gradient(100deg, var(--muted) 30%, color-mix(in oklch, var(--muted) 60%, var(--background)) 50%, var(--muted) 70%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { to { background-position: -150% 0; } }
+.rec-actions { display: flex; gap: 8px; margin-top: 10px; }
+.ra { height: 32px; padding: 0 12px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; background: var(--muted); }
+.ra:hover { background: color-mix(in oklch, var(--muted) 70%, var(--foreground) 10%); }
+.ra.icon-only { width: 32px; padding: 0; justify-content: center; }
+.ra.primary { background: var(--foreground); color: var(--background); }
+.ra.primary:hover { opacity: 0.88; }
+.conv-dock { position: sticky; bottom: 0; z-index: 4; padding: 16px 0 20px; background: linear-gradient(to top, var(--background) 72%, transparent); }
+.conv-dock .composer { margin-top: 0; }
+.conv-dock .pop { top: auto; bottom: calc(100% + 6px); transform-origin: bottom left; }
+.conv-dock .cp-text textarea { min-height: 56px; }
+
+/* 资产 */
+.as-top { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.search { height: 32px; width: 200px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--muted); color: var(--muted-foreground); }
+.search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--foreground); }
+.as-filter { display: flex; align-items: center; gap: 4px; margin: 16px 0 18px; flex-wrap: wrap; }
+.as-types { display: flex; gap: 2px; }
+.as-types button, .as-drop { height: 32px; padding: 0 12px; border-radius: 8px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 4px; }
+.as-types button:hover, .as-drop:hover { color: var(--foreground); background: var(--chrome-hover); }
+.as-types button[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
+.as-drop .icon { width: 13px; height: 13px; }
+.vsep { width: 1px; height: 16px; background: var(--border); margin: 0 6px; }
+.as-filter.no-types .as-types, .as-filter.no-types .vsep { display: none; }
+.as-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.as-card { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--muted); text-align: left; }
+.as-card.wide { aspect-ratio: 16 / 10; }
+.as-card img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-slow) var(--ease-out); }
+.as-card:hover img { transform: scale(1.03); }
+.as-card .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 10px 8px; background: linear-gradient(to top, var(--cover-scrim), transparent); color: var(--cover-foreground); font-size: 12px; opacity: 0; transition: opacity var(--dur-fast); }
+.as-card:hover .meta, .as-card:focus-visible .meta { opacity: 1; }
+.as-card .meta p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.as-card .meta span { opacity: 0.72; font-size: 11px; }
+.as-card .dur { position: absolute; top: 8px; right: 8px; height: 20px; padding: 0 6px; border-radius: 6px; font-size: 11px; display: inline-grid; place-items: center; background: var(--cover-scrim); color: var(--cover-foreground); }
+.as-empty { min-height: 46vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted-foreground); font-size: 13px; }
+.as-empty b { color: var(--foreground); font-weight: 500; font-size: 14px; }
+.as-empty-mark { width: 72px; height: 72px; margin-bottom: 10px; color: color-mix(in oklch, var(--foreground) 22%, transparent); }
+
+@media (max-width: 1023px) {
+  .cv-grid { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 767px) {
   .sb { position: fixed; z-index: 30; left: 0; transform: translateX(-100%); transition: transform var(--dur-slow-exit) var(--ease-out); width: 260px !important; padding: 12px !important; }
   .sb.collapsed .label { display: inline; }
+  .sb.collapsed .sb-lists { visibility: visible; }
   .home-wrap.sb-open .sb { transform: none; transition-duration: var(--dur-slow); }
   .sb-scrim { position: fixed; inset: 0; z-index: 29; background: oklch(0 0 0 / 0.4); opacity: 0; pointer-events: none; transition: opacity var(--dur-slow-exit); }
   .home-wrap.sb-open .sb-scrim { opacity: 1; pointer-events: auto; }
   .site-header { padding: 0 16px; }
   .site-header .menu { display: inline-grid; }
-  .home-main { padding: 4px 16px 80px; }
-  .hero { height: 540px; border-radius: 22px; }
-  .hero-content { padding-bottom: 150px; }
-  .hero-foot { left: 16px; right: 16px; bottom: 16px; flex-direction: column; align-items: stretch; gap: 12px; }
-  .hero .caption { max-width: none; }
-  .hero .chips { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; width: calc(100% + 48px); padding-inline: 24px; scrollbar-width: none; }
-  .search { width: 120px; }
-  .toolbar h2 { display: none; }
-  .cards { grid-auto-columns: 42%; }
+  .home-main { padding: 0 16px 80px; }
+  .composer { padding: 14px 10px 10px 14px; column-gap: 12px; }
+  .ref-tile { width: 44px; height: 56px; }
+  .cp-btn span { display: none; }
+  .cp-btn.accent span { display: inline; }
+  .skills { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; margin-inline: -16px; padding-inline: 16px; scrollbar-width: none; }
+  .news-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 82%; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: -16px; padding-inline: 16px; scrollbar-width: none; }
+  .news-card { scroll-snap-align: start; }
+  .search { width: 132px; }
+  .as-grid { grid-template-columns: repeat(2, 1fr); }
+  .conv-main { padding: 0 16px; }
+  .media { height: 180px; }
+  .media.tall { height: 240px; }
+  .media.audio { width: 100%; }
 }
 
-/* ============================================================ 后台 · 首页展示 */
+/* ============================================================ 后台 · 登录页展示 */
 .admin { min-height: 100svh; background: var(--background); color: var(--foreground); }
 .adm-wrap { display: flex; min-height: 100svh; }
 .adm-nav { width: 240px; flex-shrink: 0; padding: 14px 12px; background: var(--sidebar); border-right: 1px solid var(--sidebar-border); position: sticky; top: 0; height: 100svh; overflow: auto; }
 .adm-nav .logo { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 4px 8px 14px; }
-.adm-nav .logo .brand-mark { width: 26px; height: 26px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); }
+.adm-nav .logo .brand-mark { width: 22px; height: 22px; }
+.adm-nav .logo small { font-weight: 400; color: var(--muted-foreground); }
 .adm-group { margin-top: 12px; }
 .adm-group > p { font-size: 12px; color: var(--muted-foreground); padding: 0 8px 6px; }
 .adm-link { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; color: var(--muted-foreground); width: 100%; font-size: 13.5px; }
@@ -503,6 +651,7 @@ html.reduce .pp { display: none; }
 .pv-mock { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding-bottom: 14px; pointer-events: none; }
 .pv-mock .t { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; text-shadow: 0 1px 12px oklch(0 0 0 / 0.4); }
 .pv-mock .bar { width: 70%; height: 22px; border-radius: 8px; background: var(--glass); border: 1px solid var(--glass-border); }
+.pv-mock .bar.pill { width: 22%; height: 18px; border-radius: 999px; background: var(--on-media); border: 0; }
 .pv-mock .side-card { position: absolute; right: 6px; top: 6px; bottom: 6px; width: 28%; border-radius: 8px; background: var(--background); opacity: 0.9; }
 .pv-cap { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 8px; font-size: 11px; color: var(--on-media-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pv-tabs { margin-bottom: 12px; }
@@ -643,8 +792,28 @@ html.reduce .sheet.open { opacity: 1; }
 </head>
 <body>
 
-<!-- 图标：lucide -->
+<!-- 图标：lucide；Logo：连镜「镜间光」，两个镜头（括号）之间透出一道琥珀光，图形与 品牌与商业化分析.html 一致 -->
 <svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="logoBeamFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" /><stop offset="0.5" stop-color="#fff" /><stop offset="1" stop-color="#000" />
+    </linearGradient>
+    <mask id="logoBeamMask" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect x="0" y="0" width="48" height="48" fill="url(#logoBeamFade)" />
+    </mask>
+  </defs>
+  <symbol id="logo" viewBox="0 0 48 48">
+    <path d="M17 7h-5a5 5 0 0 0-5 5v24a5 5 0 0 0 5 5h5" style="fill:none;stroke:currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M31 7h5a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5h-5" style="fill:none;stroke:currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="19" y="8" width="10" height="32" rx="5" style="fill:var(--la)" opacity="0.16" mask="url(#logoBeamMask)" />
+    <rect x="22.2" y="3" width="3.6" height="42" rx="1.8" style="fill:var(--la)" mask="url(#logoBeamMask)" />
+  </symbol>
+  <!-- 小尺寸版（≤24px）：括号加粗，光束改实心短条，不做渐隐 -->
+  <symbol id="logo-s" viewBox="0 0 48 48">
+    <path d="M18 7h-6a5 5 0 0 0-5 5v24a5 5 0 0 0 5 5h6" style="fill:none;stroke:currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M30 7h6a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5h-6" style="fill:none;stroke:currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="20.5" y="12" width="7" height="24" rx="3.5" style="fill:var(--la)" />
+  </symbol>
   <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
   <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
   <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
@@ -677,6 +846,17 @@ html.reduce .sheet.open { opacity: 1; }
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-clapper" viewBox="0 0 24 24"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
 </svg>
 
@@ -685,7 +865,7 @@ html.reduce .sheet.open { opacity: 1; }
   <button class="mini" id="dockMini" type="button"><svg class="icon"><use href="#i-sliders"/></svg>原型控制</button>
   <button class="full" type="button" data-view="login">登录页</button>
   <button class="full" type="button" data-view="home">首页</button>
-  <button class="full" type="button" data-view="admin">后台 · 首页展示</button>
+  <button class="full" type="button" data-view="admin">后台 · 登录页展示</button>
   <button class="full" type="button" data-view="notes">设计说明</button>
   <span class="sep"></span>
   <button class="full" type="button" data-flag="dark" title="切换深浅主题"><span class="dot"></span>深色</button>
@@ -699,7 +879,7 @@ html.reduce .sheet.open { opacity: 1; }
   <div class="stage" id="loginStage"><div class="fallback"></div><div class="scrim"></div></div>
 
   <header class="login-top">
-    <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-film"/></svg></span>Video Canvas</div>
+    <div class="brand"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#logo"/></svg>连镜<span class="brand-sl">意义，在镜头之间。</span></div>
     <div class="top-actions">
       <button class="ghost-media tap" type="button" id="topLogin">登录</button>
       <button class="solid-media tap" type="button" id="topRegister">免费注册</button>
@@ -710,12 +890,7 @@ html.reduce .sheet.open { opacity: 1; }
     <span class="eyebrow"><svg class="icon"><use href="#i-sparkles"/></svg>AI 视频创作画布</span>
     <h1>从一句话，<br />到一部片。</h1>
     <p class="lead">写下脑海里的画面，AI 帮你拆分镜、生成镜头，在一张画布上连成故事。</p>
-    <form class="prompt" id="loginForm" autocomplete="off">
-      <svg class="icon lg"><use href="#i-sparkles"/></svg>
-      <input id="loginIdea" placeholder="描述你想看到的画面 …" aria-label="一句话描述你的创意" maxlength="200" />
-      <button class="send tap" id="loginSend" type="submit" aria-label="开始生成" disabled><svg class="icon lg"><use href="#i-arrow-up"/></svg></button>
-    </form>
-    <div class="chips" id="loginChips"></div>
+    <button class="cta tap" type="button" id="loginStart">开始创作<svg class="icon"><use href="#i-arrow-right"/></svg></button>
   </div>
 
   <footer class="login-foot">
@@ -740,7 +915,7 @@ html.reduce .sheet.open { opacity: 1; }
 
     <div class="carry" id="carry">
       <svg class="icon"><use href="#i-sparkles"/></svg>
-      <div class="t"><div class="k">登录后立即开始生成</div><div class="v" id="carryText"></div></div>
+      <div class="t"><div class="k">做同款：登录后填进首页输入框</div><div class="v" id="carryText"></div></div>
       <button class="icon-btn" type="button" id="carryClear" aria-label="不带入这句话"><svg class="icon"><use href="#i-x"/></svg></button>
     </div>
 
@@ -774,19 +949,20 @@ html.reduce .sheet.open { opacity: 1; }
   <div class="home-wrap" id="homeWrap">
     <aside class="sb" id="sb">
       <div class="sb-top">
-        <div class="logo"><span class="brand-mark"><svg class="icon"><use href="#i-film"/></svg></span><span class="label">Video Canvas</span></div>
+        <div class="logo"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#logo-s"/></svg><span class="label">连镜</span></div>
         <button class="icon-btn" type="button" id="sbToggle" aria-label="收起侧栏" title="收起侧栏（⌘B）"><svg class="icon"><use href="#i-panel"/></svg></button>
       </div>
-      <button class="new-btn tap" type="button" id="sbNew"><svg class="icon lg"><use href="#i-plus"/></svg><span class="label">新建画布</span></button>
-      <nav class="nav">
-        <button class="nav-btn active" type="button"><svg class="icon"><use href="#i-house"/></svg><span class="label">首页</span></button>
-        <button class="nav-btn" type="button"><svg class="icon"><use href="#i-workflow"/></svg><span class="label">无限画布</span></button>
-        <button class="nav-btn" type="button" disabled title="即将上线"><svg class="icon"><use href="#i-tv"/></svg><span class="label">作品广场</span></button>
-        <button class="nav-btn" type="button" disabled title="即将上线"><svg class="icon"><use href="#i-trophy"/></svg><span class="label">创作活动</span></button>
+      <nav class="nav" id="sbNav">
+        <button class="nav-btn active" type="button" data-pane="create"><svg class="icon"><use href="#i-sparkles"/></svg><span class="label">创作</span></button>
+        <button class="nav-btn" type="button" disabled title="即将上线"><svg class="icon"><use href="#i-compass"/></svg><span class="label">探索</span></button>
+        <button class="nav-btn" type="button" data-pane="assets"><svg class="icon"><use href="#i-folder"/></svg><span class="label">资产</span></button>
       </nav>
+      <div class="sb-lists">
+        <div class="sb-sec"><p>对话</p><div id="sbConvs"></div></div>
+        <div class="sb-sec"><p>画布</p><div id="sbCanvases"></div></div>
+      </div>
       <nav class="nav sb-bottom">
         <button class="nav-btn" type="button" data-goto="admin"><svg class="icon"><use href="#i-sliders"/></svg><span class="label">AI 配置</span></button>
-        <button class="nav-btn" type="button" disabled><svg class="icon"><use href="#i-user"/></svg><span class="label">我的账户</span></button>
       </nav>
     </aside>
     <div class="sb-scrim" id="sbScrim"></div>
@@ -799,62 +975,100 @@ html.reduce .sheet.open { opacity: 1; }
         <span class="avatar">S</span>
       </header>
 
-      <main class="home-main">
-        <section class="hero" id="hero">
-          <div class="stage" id="homeStage"><div class="fallback"></div><div class="scrim"></div></div>
-          <div class="hero-content">
-            <h1><span class="greet" id="greet">晚上好，</span>Smooth</h1>
-            <p class="sub">今天，想把哪句话变成画面？</p>
-            <form class="prompt" id="homeForm" autocomplete="off">
-              <svg class="icon lg"><use href="#i-sparkles"/></svg>
-              <input id="homeIdea" placeholder="说出你的创意，在画布上实现 …" aria-label="一句话描述你的创意" maxlength="200" />
-              <button class="send tap" id="homeSend" type="submit" aria-label="新建画布并开始生成" title="新建画布并开始生成（Enter）" disabled><svg class="icon lg"><use href="#i-arrow-up"/></svg></button>
-            </form>
-            <div class="chips" id="homeChips"></div>
+      <!-- 创作 -->
+      <main class="home-main" id="pane-create">
+        <div class="create-head">
+          <h1><span id="greet">晚上好</span>，今天想要<span class="hl">创作</span>什么？</h1>
+          <div class="seg-ctl mode-sw" id="modeTabs" role="tablist" aria-label="创作方式">
+            <span class="thumb"></span>
+            <button type="button" role="tab" aria-selected="true" data-tab="gen">生成</button>
+            <button type="button" role="tab" aria-selected="false" data-tab="canvas">画布</button>
           </div>
-          <div class="hero-foot">
-            <div class="caption" id="homeCap">
-              <div class="cap-label"><svg class="icon"><use href="#i-quote"/></svg>这段画面，由一句话生成</div>
-              <p class="cap-prompt"></p>
-              <div class="cap-meta"><span class="cap-model"></span><button type="button" class="same tap"><svg class="icon"><use href="#i-wand"/></svg>做同款</button></div>
-            </div>
-            <div class="progress" id="homeProg">
-              <div class="segs"></div><span class="count num"></span>
-              <button class="pp tap" type="button" aria-label="暂停背景视频"><svg class="icon"><use href="#i-pause"/></svg></button>
-            </div>
-          </div>
-        </section>
+        </div>
 
-        <section class="recent">
-          <div class="toolbar">
-            <h2>最近画布</h2>
-            <div class="seg-ctl" id="scopeTabs" role="tablist">
-              <span class="thumb"></span>
-              <button type="button" role="tab" aria-selected="false">全部</button>
-              <button type="button" role="tab" aria-selected="true">个人</button>
-              <button type="button" role="tab" aria-selected="false" disabled title="即将上线" style="opacity:.5">协作</button>
+        <!-- 生成：一句话交给 Agent 或直接出图/视频/音频 -->
+        <div id="tab-gen">
+          <form class="composer" id="genForm" autocomplete="off">
+            <button class="ref-tile tap" type="button" id="refTile" aria-label="上传参考图、视频或音频" title="上传参考"><svg class="icon lg"><use href="#i-plus"/></svg></button>
+            <div class="cp-text">
+              <textarea id="genIdea" rows="3" maxlength="2000" aria-label="输入想法、剧本或上传参考"></textarea>
+              <div class="ph-rich" aria-hidden="true">输入想法、剧本或上传参考，支持 <kbd>/</kbd> 使用技能，<kbd>@</kbd> 引用资产，和 Agent 一起创作</div>
             </div>
-            <div style="flex:1"></div>
-            <label class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="搜索" aria-label="搜索画布" /></label>
-            <button class="more" type="button">所有画布<svg class="icon"><use href="#i-chevron-right"/></svg></button>
-          </div>
-          <div class="cards" id="cards"></div>
-        </section>
+            <div class="cp-bar">
+              <div class="pop-wrap">
+                <button class="cp-btn accent tap" type="button" id="modeBtn" aria-haspopup="menu" aria-expanded="false"><svg class="icon"><use href="#i-bot"/></svg><span>Agent 模式</span><svg class="icon chev"><use href="#i-chevron-down"/></svg></button>
+                <div class="pop" id="modeMenu" role="menu" hidden></div>
+              </div>
+              <button class="cp-btn tap" type="button" id="modelBtn" title="选择模型，默认按任务自动选"><svg class="icon"><use href="#i-sliders"/></svg><span>自动</span></button>
+              <button class="cp-btn tap" type="button" id="skillBtn" title="使用技能（输入 / 也可以）"><svg class="icon"><use href="#i-wand"/></svg>技能</button>
+              <button class="cp-btn icon-only tap" type="button" id="atBtn" aria-label="引用资产" title="引用资产（输入 @ 也可以）"><svg class="icon"><use href="#i-at"/></svg></button>
+              <div style="flex:1"></div>
+              <button class="send2 tap" id="genSend" type="submit" aria-label="开始创作" title="开始创作（Enter，Shift+Enter 换行）" disabled><svg class="icon lg"><use href="#i-arrow-up"/></svg></button>
+            </div>
+          </form>
+          <div class="skills" id="skills"></div>
+        </div>
 
-        <section class="works">
-          <b>作品广场即将上线</b>
-          精选作品会出现在这里；管理员也可以在后台「首页展示」里，把好作品挑到首页和登录页的背景轮播。
+        <!-- 画布：新建、最近、模板 + 一句话建画布 -->
+        <div id="tab-canvas" hidden>
+          <div class="cv-grid" id="cvGrid"></div>
+          <form class="cp-line" id="canvasForm" autocomplete="off">
+            <input id="canvasIdea" placeholder="输入想法或剧本，新建画布并让 Agent 拆分镜 …" aria-label="一句话新建画布" maxlength="2000" />
+            <button class="send2 tap" id="canvasSend" type="submit" aria-label="新建画布并开始" title="新建画布并开始（Enter）" disabled><svg class="icon lg"><use href="#i-arrow-up"/></svg></button>
+          </form>
+        </div>
+
+        <section class="news">
+          <h2>最近上新</h2>
+          <div class="news-row" id="newsRow"></div>
         </section>
+      </main>
+
+      <!-- 对话：生成记录按日期排，输入框固定在底部（和创作页共用同一个输入卡片） -->
+      <main class="conv-main" id="pane-conv" hidden>
+        <div class="conv-feed" id="convFeed" aria-live="polite"></div>
+        <div class="conv-dock" id="convDock"></div>
+      </main>
+
+      <!-- 资产 -->
+      <main class="home-main assets" id="pane-assets" hidden>
+        <div class="as-top">
+          <div class="seg-ctl" id="asScope" role="tablist" aria-label="资产范围">
+            <span class="thumb"></span>
+            <button type="button" role="tab" aria-selected="true" data-scope="history">生成历史</button>
+            <button type="button" role="tab" aria-selected="false" data-scope="canvas">画布</button>
+          </div>
+          <div style="flex:1"></div>
+          <label class="search"><svg class="icon"><use href="#i-search"/></svg><input id="asSearch" placeholder="搜索提示词" aria-label="搜索资产" /></label>
+        </div>
+        <div class="as-filter" id="asFilter">
+          <div class="as-types" id="asTypes">
+            <button type="button" aria-pressed="true" data-type="image">图片</button>
+            <button type="button" aria-pressed="false" data-type="video">视频</button>
+            <button type="button" aria-pressed="false" data-type="audio">音频</button>
+            <button type="button" aria-pressed="false" data-type="doc">文档</button>
+          </div>
+          <span class="vsep"></span>
+          <button class="as-drop" type="button" data-drop="模型">筛选<svg class="icon"><use href="#i-chevron-down"/></svg></button>
+          <button class="as-drop" type="button" data-drop="时间">时间<svg class="icon"><use href="#i-chevron-down"/></svg></button>
+          <button class="as-drop" type="button" data-drop="排序">排序<svg class="icon"><use href="#i-chevron-down"/></svg></button>
+        </div>
+        <div class="as-grid" id="asGrid"></div>
+        <div class="as-empty" id="asEmpty" hidden>
+          <svg class="as-empty-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#logo"/></svg>
+          <b>暂无相关资产</b>
+          <span id="asEmptyHint">在「创作」里生成的内容会出现在这里</span>
+        </div>
       </main>
     </div>
   </div>
 </section>
 
-<!-- ============================================================ 后台 · 首页展示 -->
-<section class="view admin admin-theme" id="view-admin" aria-label="后台首页展示">
+<!-- ============================================================ 后台 · 登录页展示 -->
+<section class="view admin admin-theme" id="view-admin" aria-label="后台登录页展示">
   <div class="adm-wrap">
     <aside class="adm-nav">
-      <div class="logo"><span class="brand-mark"><svg class="icon"><use href="#i-film"/></svg></span>管理后台</div>
+      <div class="logo"><svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#logo-s"/></svg>连镜<small>管理后台</small></div>
       <div class="adm-group"><p>AI 配置</p>
         <button class="adm-link" type="button"><svg class="icon"><use href="#i-layers"/></svg>模型</button>
         <button class="adm-link" type="button"><svg class="icon"><use href="#i-workflow"/></svg>渠道</button>
@@ -869,7 +1083,7 @@ html.reduce .sheet.open { opacity: 1; }
         <button class="adm-link" type="button"><svg class="icon"><use href="#i-settings"/></svg>存储配置</button>
         <button class="adm-link" type="button"><svg class="icon"><use href="#i-images"/></svg>图片处理</button>
         <button class="adm-link" type="button"><svg class="icon"><use href="#i-user"/></svg>注册设置</button>
-        <button class="adm-link active" type="button"><svg class="icon"><use href="#i-film"/></svg>首页展示<span class="new-tag">新</span></button>
+        <button class="adm-link active" type="button"><svg class="icon"><use href="#i-film"/></svg>登录页展示<span class="new-tag">新</span></button>
       </div>
       <div class="adm-group">
         <button class="adm-link" type="button" data-goto="home"><svg class="icon"><use href="#i-house"/></svg>返回首页</button>
@@ -877,11 +1091,11 @@ html.reduce .sheet.open { opacity: 1; }
     </aside>
 
     <main class="adm-main">
-      <div class="crumb">系统设置 / 首页展示</div>
+      <div class="crumb">系统设置 / 登录页展示</div>
       <div class="adm-head">
         <div>
-          <h1>首页展示</h1>
-          <p>登录页和首页顶部轮播的作品。每条显示「生成它的那句话」，访客可以一键「做同款」。建议放 4–8 条横屏短片，720p、10 MB 以内。</p>
+          <h1>登录页展示</h1>
+          <p>登录页背景轮播的作品。每条显示「生成它的那句话」，访客可以一键「做同款」。建议放 4–8 条横屏短片，720p、10 MB 以内。</p>
         </div>
         <div class="actions">
           <button class="btn btn-outline tap" type="button" id="openUpload"><svg class="icon"><use href="#i-upload"/></svg>上传视频</button>
@@ -903,14 +1117,9 @@ html.reduce .sheet.open { opacity: 1; }
           <div class="panel">
             <div class="panel-head"><h3>实时预览</h3><span class="muted">改动保存后立即生效</span></div>
             <div class="panel-body">
-              <div class="seg-ctl block pv-tabs" id="pvTabs" role="tablist">
-                <span class="thumb"></span>
-                <button type="button" role="tab" aria-selected="true" data-pv="login">登录页</button>
-                <button type="button" role="tab" aria-selected="false" data-pv="home">首页</button>
-              </div>
               <div class="pv-stage">
                 <div class="stage" id="pvStage"><div class="fallback"></div><div class="scrim"></div></div>
-                <div class="pv-mock" id="pvMock"><span class="t" id="pvTitle">从一句话，到一部片。</span><span class="bar"></span></div>
+                <div class="pv-mock" id="pvMock"><span class="t" id="pvTitle">从一句话，到一部片。</span><span class="bar pill"></span></div>
                 <div class="pv-cap" id="pvCap"></div>
               </div>
               <p class="pv-note" id="pvNote"></p>
@@ -929,7 +1138,6 @@ html.reduce .sheet.open { opacity: 1; }
                 </div>
               </div>
               <div class="set-row"><div class="l"><b>登录页播放</b><span>关闭后显示默认渐变背景</span></div><label class="switch"><input type="checkbox" data-set="onLogin" /><span></span></label></div>
-              <div class="set-row"><div class="l"><b>首页播放</b><span>关闭后 Hero 显示默认渐变背景</span></div><label class="switch"><input type="checkbox" data-set="onHome" /><span></span></label></div>
               <div class="set-row"><div class="l"><b>省流量时只显示封面</b><span>浏览器开启省流量模式时不加载视频</span></div><label class="switch"><input type="checkbox" data-set="posterOnSaveData" /><span></span></label></div>
             </div>
           </div>
@@ -944,7 +1152,7 @@ html.reduce .sheet.open { opacity: 1; }
     <div class="sheet-head"><h3 id="sheetTitle">编辑作品</h3><button class="icon-btn" type="button" data-close aria-label="关闭（Esc）"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <form class="sheet-body" id="sheetForm" novalidate>
       <div id="edMedia"></div>
-      <label class="field"><span>生成它的那句话 <span class="hint">显示在画面左下角，「做同款」会把它填进输入框</span></span>
+      <label class="field"><span>生成它的那句话 <span class="hint">显示在画面左下角，「做同款」会把它带进首页输入框</span></span>
         <textarea class="textarea" name="prompt" maxlength="80" rows="3"></textarea>
         <div style="display:flex;justify-content:space-between"><em class="err" hidden>提示词不能为空，它会显示在画面上</em><span></span><span class="counter num" id="edCounter"></span></div>
       </label>
@@ -975,80 +1183,99 @@ html.reduce .sheet.open { opacity: 1; }
 <section class="view" id="view-notes" aria-label="设计说明">
   <article class="notes">
     <h1>登录页与首页改版：一句话生成的「梦想感」</h1>
-    <p class="lede">设计面：登录页、首页 Hero、后台新增「首页展示」。日期 2026-10-08。本页和原型放在同一个文件里，品牌定位与商业化的整体分析见同目录的 <a href="品牌与商业化分析.html">品牌与商业化分析</a>。</p>
+    <p class="lede">设计面：登录页、首页（创作 / 对话 / 资产）、后台新增「登录页展示」。日期 2026-10-08。本页和原型放在同一个文件里，品牌定位与商业化的整体分析见同目录的 <a href="品牌与商业化分析.html">品牌与商业化分析</a>。</p>
 
     <h2>1. 问题和目标</h2>
     <ul>
-      <li>登录页左半边是静态的紫蓝渐变和一句文案，首页 Hero 是点阵背景。都看不到「AI 生成出来的东西」，也就感受不到「一句话就能做出这样的画面」。</li>
+      <li>登录页左半边是静态的紫蓝渐变和一句文案，看不到「AI 生成出来的东西」，也就感受不到「一句话就能做出这样的画面」。</li>
+      <li>首页只有一个禁用的输入框和最近画布，登录后不知道从哪开始；生成出来的东西散落在各个画布里，没有统一的地方回看。</li>
       <li>目标：第一眼看到真实的生成作品在播放；每个作品都标出「生成它的那句话」，把「输入一句话 → 得到这个画面」的因果直接摆在眼前；看到喜欢的可以一键「做同款」。</li>
-      <li>转化目标：访客<b>先写创意、再登录</b>。写下的这句话会在登录后带进首页，不丢失。</li>
+      <li>转化目标：登录页只负责「看到 → 想做 → 注册」，不在登录前写创意；看中某个作品点「做同款」，它的提示词会在登录后带进首页，不丢失。</li>
     </ul>
 
     <h2>2. 已定决定（访谈）</h2>
     <ol>
       <li>背景形态：<b>全屏单镜头轮换</b>。一次只播一个作品，到时间后交叉溶解到下一个，画面底部显示「生成它的那句话」。</li>
-      <li>登录页：<b>全屏视频 + 先写创意再登录</b>。正中是大标题和输入框；点生成或「登录」，右侧滑出登录卡片；登录后这句话带进首页。</li>
-      <li>首页：<b>Hero 面板内铺满视频</b>。保留侧栏和圆角大面板；最近画布放在面板下方，照常可用。</li>
-      <li>片单来源：<b>后台可配</b>。新增「系统设置 → 首页展示」，登录页和首页共用同一份片单。</li>
+      <li>登录页：<b>全屏视频 + 一个「开始创作」按钮</b>。正中是大标题、一句说明和按钮，<b>不放输入框和快捷 chips</b>（一句话输入只在登录后的首页出现）；点「开始创作」或「注册」右侧滑出注册卡片，点「登录」滑出登录卡片；点字幕里的「做同款」也滑出卡片，并把这条提示词带进首页。</li>
+      <li>首页：<b>不放背景视频，参照即梦的「创作」页</b>。问候语 + 「生成 / 画布」切换 + 输入卡片 + 技能 + 最近上新。</li>
+      <li>侧栏：<b>创作 / 探索 / 资产</b>，不做「主体」；下面两组最近记录「对话」「画布」。探索（作品广场）暂时置灰。</li>
+      <li>生成 tab：输入卡片带参考上传、模式（Agent / 图片 / 视频 / 音频）、模型（默认自动）、技能、<code>@</code> 引用资产。提交后进入<b>对话页</b>：Agent 模式新开一段对话；直接出图/视频/音频归到置顶的「默认创作」。</li>
+      <li>画布 tab：新建画布、最近一张画布、两个模板，下面一行「一句话新建画布」，提交后新建画布并交给 Agent 拆分镜。</li>
+      <li>对话页：生成记录按日期分组，每条显示参考图、模式 · 模型 · 时长 · 清晰度、提示词、结果，以及「重新编辑 / 再次生成 / 更多」；Agent 记录多一段回复和「生成 N 段视频 / 在画布中打开」。输入卡片固定在底部。</li>
+      <li>资产页：「生成历史 / 画布」切换；生成历史按图片 / 视频 / 音频 / 文档过滤，另有筛选、时间、排序；没有内容时显示镜间光空状态。</li>
+      <li>片单来源：<b>后台可配</b>。新增「系统设置 → 登录页展示」，只给登录页背景轮播用。</li>
+      <li>品牌：定名<b>连镜</b>。主 Slogan「意义，在镜头之间。」放在登录页顶栏品牌名旁（767px 以下隐藏）；功能 Slogan「从一句话，到一部片。」做登录页大标题；Logo 用<b>镜间光</b>（两个镜头之间透出一道琥珀光），侧栏、后台这类 24px 及以下的位置换小尺寸版。光束浅底用深琥珀，深底和视频上用亮琥珀，对应新增 token <code>--brand-amber</code> / <code>--brand-amber-deep</code> / <code>--la</code>。</li>
     </ol>
     <h3>默认决定（未单独问，按推荐项定，有异议直接改）</h3>
     <ul>
-      <li><b>首页提交行为</b>：新建画布，把这句话交给画布 Agent 拆分镜；没开 Agent 时，在新画布里落一个文本节点。原来的「发送按钮禁用 + 即将上线」不再保留。</li>
-      <li><b>登录后带入</b>：这句话存进 <code>sessionStorage</code>（不放 URL，免得带进历史记录和日志）。首页读取后填进输入框并聚焦，不自动提交，由用户确认后再发。</li>
+      <li><b>输入卡片只有一份</b>：在创作页和对话页之间移动，模式和没发出去的草稿跟着走。Enter 发送，Shift+Enter 换行。</li>
+      <li><b>「最近上新」</b>先写死三张（精选作品 / 新功能 / 模型上新），后续再考虑放进后台配置。</li>
+      <li>后台没开 Agent 时，模式菜单里隐藏「Agent 模式」，默认选「图片生成」；画布 tab 的一句话输入改为在新画布里落一个文本节点。</li>
+      <li><b>登录后带入</b>（只来自「做同款」）：这句提示词存进 <code>sessionStorage</code>（不放 URL，免得带进历史记录和日志）。首页切到「生成」tab，填进输入卡片并聚焦，不自动提交，由用户确认后再发。</li>
       <li>每条默认播 7 秒，后台可调 4–15 秒；视频静音、循环、<code>playsinline</code>。</li>
-      <li>一直提供<b>暂停按钮</b>（自动轮换超过 5 秒必须能暂停，见 WCAG 2.2.2）；标签页切到后台、首页 Hero 滚出视口时自动暂停。</li>
+      <li>一直提供<b>暂停按钮</b>（自动轮换超过 5 秒必须能暂停，见 WCAG 2.2.2）；标签页切到后台时自动暂停。</li>
       <li>登录卡片跟随主题（浅色为白卡），压在暗色视频上对比最清楚；视频上的文字和控件统一用新增的 <code>--on-media</code> / <code>--glass</code> token，深浅主题取同一组值。</li>
       <li>后台给体积提示：单条超过 15 MB 标黄「首屏会变慢」；竖屏素材标黄「横屏会被裁切」。只提示，不阻止。</li>
-      <li>品牌名暂时沿用 Video Canvas，等定名后统一替换。</li>
     </ul>
 
     <div class="change"><b>变更：</b>原为「轮播自动播放：常驻循环动画违反动效规则，改成手动切换」（<code>docs/design/首页/首页.md</code> 第 2 节）。现改为背景视频自动轮换，并加上这些约束：始终可以暂停；后台标签页和离开视口时停止；系统开启「减少动态效果」时只显示封面、不自动切换。</div>
 
     <h2>3. 布局</h2>
-<pre>登录页（≥1180px）                                 点 ↑ / 登录 之后
+<pre>登录页（≥1180px）                                 点「开始创作」/ 注册 / 做同款 之后
 ┌──────────────────────────────────────────┐    ┌──────────────────────────────────────────┐
-│ ◆ Video Canvas                登录 [注册] │    │ ◆ Video Canvas                ┌─────────┐│
-│                                          │    │                               │ 登录  ✕ ││
-│          ✦ AI 视频创作画布                │    │    从一句话，                 │ ✦ 登录后││
-│         从一句话，到一部片。              │    │    到一部片。   ← 左移 210px  │ 立即生成││
-│   写下脑海里的画面，AI 帮你拆分镜…        │    │   ╭──────────────╮            │ [登录|注册]│
-│  ╭────────────────────────────────╮      │    │   │ ✦ 雨夜霓虹… ↑│            │ 用户名  ││
-│  │ ✦ 描述你想看到的画面…      (↑) │      │    │   ╰──────────────╯            │ 密码    ││
-│  ╰────────────────────────────────╯      │    │                               │[登录并开始]│
-│   [分镜脚本][角色设定][产品广告][AIMV]    │    │ ❝ 这段画面，由一句话生成       └─────────┘│
+│ [┃] 连镜  意义，在镜头之间。  登录 [注册] │    │ [┃] 连镜  意义，在镜头之间。  ┌─────────┐│
+│                                          │    │                               │ 注册  ✕ ││
+│          ✦ AI 视频创作画布                │    │    从一句话，                 │ ❝ 做同款││
+│         从一句话，到一部片。              │    │    到一部片。   ← 左移 210px  │ 时带入  ││
+│   写下脑海里的画面，AI 帮你拆分镜…        │    │                               │ [登录|注册]│
+│                                          │    │      ( 开始创作 → )           │ 用户名  ││
+│            ( 开始创作 → )                │    │                               │ 邮箱    ││
+│                                          │    │                               │ 密码    ││
+│                                          │    │ ❝ 这段画面，由一句话生成       └─────────┘│
 │ ❝ 这段画面，由一句话生成                  │    │ “夜晚的城市俯瞰…”                         │
 │ “夜晚的城市俯瞰，车流像发光的河…”         │    └──────────────────────────────────────────┘
 │ Seedance 2.0 · 官方示例 [做同款]  ━━──── 1/6 ⏸ │
 └──────────────────────────────────────────┘
 
-首页
-┌────┬────────────────────────────────────────┐
-│侧栏│                              [✦ 50] (S) │
-│    │ ╭──────────── Hero（视频铺满）─────────╮ │
-│    │ │        晚上好，Smooth                │ │
-│    │ │   今天，想把哪句话变成画面？          │ │
-│    │ │ ╭──────────────────────────────╮     │ │
-│    │ │ │ ✦ 说出你的创意…          (↑) │     │ │
-│    │ │ ╰──────────────────────────────╯     │ │
-│    │ │ ❝ “俯拍碧蓝的海浪…” [做同款]  ━━── ⏸ │ │
-│    │ ╰──────────────────────────────────────╯ │
-│    │ 最近画布 [全部|个人|协作]   搜索 所有画布>│
-│    │ [＋][□][□][□][□][□]                     │
-└────┴────────────────────────────────────────┘</pre>
+首页 · 创作（生成 tab）                               首页 · 对话
+┌────────┬─────────────────────────────────┐        ┌────────┬─────────────────────────────────┐
+│[┃] 连镜│                         [✦50](S)│        │[┃] 连镜│ 10月8日                 [✦50](S)│
+│✦ 创作  │   下午好，今天想要创作什么？    │        │✦ 创作  │ ▱▱ Agent | 自动 | 4 个分镜 | ⓘ   │
+│◎ 探索  │       [ 生成 |  画布 ]          │        │◎ 探索  │ /分镜脚本 雨夜的城市…           │
+│▭ 资产  │ ╭─────────────────────────────╮ │        │▭ 资产  │ 🤖 拆成了 4 个分镜…             │
+│        │ │▱ 输入想法、剧本或上传参考…  │ │        │        │ [分镜1][分镜2][分镜3][分镜4]    │
+│对话    │ │                             │ │        │对话    │ [生成 4 段视频][在画布中打开]   │
+│ 默认创作│ │Agent▾ 自动 技能 @        (↑)│ │        │ 默认创作│ [重新编辑][再次生成][…]         │
+│ 雨夜…  │ ╰─────────────────────────────╯ │        │▌雨夜…  │                                 │
+│画布    │ [/分镜脚本][/角色设定]…[更多›]  │        │画布    │ ╭─────────────────────────────╮ │
+│ 雨夜…  │ 最近上新                        │        │ 雨夜…  │ │▱ 输入想法…  Agent▾ … (↑)    │ │
+│AI 配置 │ [精选作品][新功能][模型上新]    │        │AI 配置 │ ╰─────────────────────────────╯ │
+└────────┴─────────────────────────────────┘        └────────┴─────────────────────────────────┘
+
+画布 tab：[＋新建画布][最近画布][模板·视频创作][模板·图像创作]，下面一行「输入想法或剧本，新建画布并让 Agent 拆分镜…」
+资产：[生成历史|画布]                搜索      图片 视频 音频 文档 | 筛选▾ 时间▾ 排序▾      网格 / 空状态</pre>
 
     <h2>4. 控件说明</h2>
     <div class="table-scroll"><table>
       <tr><th>控件</th><th>位置 / 尺寸</th><th>状态与交互</th></tr>
-      <tr><td>背景舞台</td><td>登录页满屏；首页 Hero 面板内 <code>clamp(480px, 62vh, 640px)</code>，圆角 28px</td><td>双层 <code>&lt;video&gt;</code> 交替：先显示封面，首帧可播后视频淡入盖住封面；到时长后两层交叉溶解。下一条提前预加载。</td></tr>
+      <tr><td>背景舞台</td><td>登录页满屏</td><td>双层 <code>&lt;video&gt;</code> 交替：先显示封面，首帧可播后视频淡入盖住封面；到时长后两层交叉溶解。下一条提前预加载。</td></tr>
       <tr><td>遮罩</td><td>上下线性渐变 + 中心椭圆压暗</td><td>保证白字在任何画面上可读，新增 token <code>--scrim-edge</code>、<code>--scrim-center</code>。</td></tr>
-      <tr><td>一句话输入框</td><td>高 60px，圆角 20px，最大宽 720px；玻璃材质</td><td>空时发送按钮禁用；Enter 提交；聚焦时上移 1px、加阴影。「做同款」或 chip 填入时外圈闪一下 ring。</td></tr>
-      <tr><td>快捷 chips</td><td>输入框下方，窄屏横向滚动</td><td>点击填入模板文案并聚焦输入框。</td></tr>
-      <tr><td>字幕</td><td>左下角，最大宽 520px（首页为面板一半）</td><td>标签「这段画面，由一句话生成」+ 带引号的提示词 + 模型 · 作者 +「做同款」。切条时淡入，然后逐字打出提示词。</td></tr>
-      <tr><td>做同款</td><td>字幕行内，高 28px 的玻璃胶囊</td><td>把当前作品的提示词填进输入框并聚焦，不自动提交。</td></tr>
+      <tr><td>生成 / 画布切换</td><td>标题下方，宽 320px 的胶囊分段</td><td>选中块反色，左侧带一抹琥珀光（呼应镜间光）；切换时滑块移动。</td></tr>
+      <tr><td>输入卡片</td><td>创作页宽 100%（最大 1040px），圆角 24px；对话页固定在底部</td><td>左侧倾斜的参考上传块，hover 摆正；占位文字里 <code>/</code>、<code>@</code> 显示成按键样式；自动增高到 240px；空时发送按钮禁用。工具条：模式菜单、模型（默认自动）、技能、<code>@</code>。</td></tr>
+      <tr><td>模式菜单</td><td>模式按钮下方（对话页在上方弹出），宽 280px</td><td>Agent / 图片 / 视频 / 音频，每项一行说明；当前项打勾；点外面或 Esc 关闭。</td></tr>
+      <tr><td>技能</td><td>输入卡片下方一排胶囊，窄屏横向滚动</td><td>点击在输入框里填入「/技能名 + 模板文案」并闪一下外圈；标「新」「热」；「更多技能」打开后台启用的技能列表。</td></tr>
+      <tr><td>画布卡片</td><td>4 列（窄于 1024px 变 2 列），16:10</td><td>新建画布（点阵底）、最近画布、两个模板（左上角「模板」标签）。</td></tr>
+      <tr><td>最近上新</td><td>3 列 16:10 大图卡，窄屏横向滑动</td><td>标签 + 标题 + 一行说明，点击看作品或功能介绍。</td></tr>
+      <tr><td>对话记录</td><td>日期标题 + 记录；结果图高 240px，竖版视频 300px</td><td>生成中显示流光占位和百分比；完成后出现操作按钮。重新编辑：切回该记录的模式，把提示词填回输入卡片。再次生成：用同样参数追加一条。</td></tr>
+      <tr><td>侧栏最近记录</td><td>「对话」「画布」两组，各最多 6 条</td><td>当前对话高亮；新建的对话和画布从列表里淡入。</td></tr>
+      <tr><td>资产页</td><td>范围切换 + 类型过滤 + 网格（最小 180px）</td><td>hover 显示提示词和模型；视频右上角显示时长；搜索按提示词过滤。</td></tr>
+      <tr><td>字幕</td><td>左下角，最大宽 520px</td><td>登录页专用。标签「这段画面，由一句话生成」+ 带引号的提示词 + 模型 · 作者 +「做同款」。切条时淡入，然后逐字打出提示词。</td></tr>
+      <tr><td>开始创作</td><td>登录页说明文字下方，高 52px 的实心胶囊，白底黑字</td><td>打开注册卡片（注册关闭时打开登录卡片），不带入任何文字。</td></tr>
+      <tr><td>做同款</td><td>字幕行内，高 28px 的玻璃胶囊</td><td>打开注册卡片，并把这条提示词作为带入内容，登录后填进首页输入卡片。</td></tr>
       <tr><td>进度条</td><td>右下角，每条一段 26×2px，hover 时变 4px 粗</td><td>点某一段直接跳到那条；只有 1 条时隐藏。旁边显示「1 / 6」和暂停/播放按钮。</td></tr>
-      <tr><td>登录卡片</td><td>右侧悬浮，宽 400，上下各留 16px；窄屏变成底部抽屉</td><td>带入创意时顶部显示「登录后立即开始生成」并引用这句话，可以 ✕ 掉。登录/注册用分段控件切换（注册关闭时隐藏）。Esc、✕、点遮罩都能关闭，关闭后焦点回到输入框。</td></tr>
+      <tr><td>登录卡片</td><td>右侧悬浮，宽 400，上下各留 16px；窄屏变成底部抽屉</td><td>从「做同款」进来时顶部显示「做同款：登录后填进首页输入框」并引用这条提示词，可以 ✕ 掉。登录/注册用分段控件切换（注册关闭时隐藏）。Esc、✕、点遮罩都能关闭，关闭后焦点回到「开始创作」按钮。</td></tr>
       <tr><td>后台作品列表</td><td>左栏卡片，每行：拖动手柄、16:9 缩略图（hover 播放）、提示词两行、标签、启用开关、编辑、移除</td><td>拖动排序（实现用 <code>motion</code> 的 <code>Reorder</code>）；移除后 toast 里可以撤销；关闭启用的行半透明显示。</td></tr>
-      <tr><td>实时预览</td><td>右栏，16:10 迷你舞台</td><td>和前台用同一个播放器，可以切登录页/首页两种外观；只播启用的条目。</td></tr>
+      <tr><td>实时预览</td><td>右栏，16:10 迷你舞台</td><td>和登录页用同一个播放器；只播启用的条目。</td></tr>
       <tr><td>编辑抽屉</td><td>右侧 460px</td><td>视频预览、提示词（≤80 字，必填）、模型标签、起始秒数、封面（自动截帧/上传）、启用。</td></tr>
       <tr><td>从素材库添加</td><td>居中对话框，卡片网格</td><td>多选；已在片单里的置灰；提示词和模型从生成记录自动带入。</td></tr>
     </table></div>
@@ -1062,9 +1289,12 @@ html.reduce .sheet.open { opacity: 1; }
       <tr><td>播放中</td><td>当前进度段</td><td>transform scaleX</td><td>跟随播放线性推进</td><td>只动 transform。</td></tr>
       <tr><td>打开登录卡片</td><td>卡片</td><td>x 24px→0 + opacity</td><td>240ms slow；退出 168ms</td><td>窄屏改为 y 24px→0，从底部出现。</td></tr>
       <tr><td>打开登录卡片（≥1180px）</td><td>中央 Hero</td><td>translateX(-210px)</td><td>240ms slow</td><td>给卡片让位，不被遮住。</td></tr>
-      <tr><td>做同款 / chip</td><td>输入框</td><td>外圈 ring 出现后消失</td><td>180ms 出现，停 600ms 后 240ms 消失</td><td>告诉用户文字填到哪了。</td></tr>
+      <tr><td>技能 / 重新编辑 / 登录后带入</td><td>输入卡片</td><td>外圈 ring 出现后消失</td><td>180ms 出现，停 600ms 后 240ms 消失</td><td>告诉用户文字填到哪了。</td></tr>
       <tr><td>登录/注册切换</td><td>分段滑块</td><td>transform</td><td>SPRING（原型用 240ms 近似）</td><td>实现用 <code>layoutId</code>。</td></tr>
-      <tr><td>首页提交成功</td><td>新画布卡片</td><td>opacity + scale .96→1</td><td>180ms</td><td>从最近画布第一格出现。</td></tr>
+      <tr><td>生成 / 画布切换</td><td>分段滑块</td><td>transform + width</td><td>240ms slow</td><td>实现用 <code>layoutId</code>。</td></tr>
+      <tr><td>打开模式菜单</td><td>菜单</td><td>opacity + scale .96→1 + y -4px→0</td><td>180ms</td><td>从按钮方向展开。</td></tr>
+      <tr><td>提交 / 再次生成</td><td>新记录、侧栏新条目、新画布卡片</td><td>opacity + scale .96→1</td><td>180ms</td><td>对话页随后平滑滚到底；打开已有对话时直接定位到最新一条，不滚动。</td></tr>
+      <tr><td>生成中</td><td>结果占位</td><td>背景流光</td><td>1.6s 线性循环</td><td>减少动效时停住。</td></tr>
       <tr><td>按钮按下</td><td>所有按钮</td><td>scale .96</td><td>TAP</td><td></td></tr>
     </table></div>
 
@@ -1078,12 +1308,15 @@ html.reduce .sheet.open { opacity: 1; }
       <tr><td>只有 1 条</td><td>循环播放，隐藏进度条，保留暂停按钮。</td></tr>
       <tr><td>减少动态效果</td><td>只显示封面，不自动切换，不逐字打出提示词；点进度段仍可手动切换，全部用淡入淡出。</td></tr>
       <tr><td>省流量（<code>navigator.connection.saveData</code>）</td><td>后台开关打开时只显示封面。</td></tr>
-      <tr><td>标签页隐藏 / Hero 滚出视口</td><td>暂停视频和计时，回来后从原处继续。</td></tr>
+      <tr><td>标签页隐藏</td><td>暂停视频和计时，回来后从原处继续。</td></tr>
       <tr><td>用户手动暂停</td><td>按钮变成播放图标，视频和计时都停住。</td></tr>
       <tr><td>登录中 / 失败</td><td>按钮转圈并禁用；失败时在表单内显示错误提示，不清空已填的内容。</td></tr>
+      <tr><td>资产为空 / 搜索无结果</td><td>镜间光空状态 +「暂无相关资产」，提示去创作或换个关键词。</td></tr>
+      <tr><td>对话里没有记录</td><td>空状态，输入卡片照常可用。</td></tr>
+      <tr><td>生成失败</td><td>结果位显示失败原因和「重试」，积分已退回时一起说明（原型未做）。</td></tr>
       <tr><td>注册关闭</td><td>隐藏顶栏「免费注册」和卡片里的分段切换。</td></tr>
-      <tr><td>窄屏 &lt;768px</td><td>登录卡片变成底部抽屉；chips 横向滚动；字幕和进度上下堆叠；首页侧栏变成抽屉。</td></tr>
-      <tr><td>深 / 浅主题</td><td>视频区域两套主题一致（本来就是暗的）；登录卡片、首页其余部分、后台跟随主题。</td></tr>
+      <tr><td>窄屏 &lt;768px</td><td>登录卡片变成底部抽屉；字幕和进度上下堆叠；首页侧栏变成抽屉；技能和最近上新横向滑动；输入卡片工具条只保留模式文字，其余只显示图标。</td></tr>
+      <tr><td>深 / 浅主题</td><td>登录页视频区域两套主题一致（本来就是暗的）；登录卡片、首页、后台跟随主题；镜间光的琥珀色浅底用深琥珀。</td></tr>
     </table></div>
 
     <h2>7. 数据与接口（后端）</h2>
@@ -1093,7 +1326,13 @@ html.reduce .sheet.open { opacity: 1; }
 
 系统设置（复用现有设置 KV）
   showcase.clip_seconds = 7       showcase.show_on_login = true
-  showcase.show_on_home = true    showcase.poster_only_on_save_data = true
+  showcase.poster_only_on_save_data = true
+
+首页新增依赖（需要另行设计接口）
+  对话：conversations(id, user_id, title, pinned, mode, updated_at)
+        记录复用现有生成任务，任务上加 conversation_id；Agent 回复存为对话消息
+  资产：按用户分页查询生成任务的产物，可按类型 / 模型 / 时间过滤、按提示词搜索
+  技能：读取后台「Agent → 技能」里已启用的技能
 
 GET    /api/v1/showcase                       公开，无需登录；只返回启用项 + 设置；短缓存
 GET    /api/v1/admin/showcase/items           列表（含禁用项）
@@ -1111,7 +1350,7 @@ PUT    /api/v1/admin/showcase/settings</pre>
     <h2>8. 改动涉及的文件</h2>
     <ul>
       <li>前端新增：<code>components/showcase/</code>（舞台播放器、字幕、进度）、<code>hooks/use-showcase.ts</code>、<code>api/showcase.ts</code>。</li>
-      <li>前端修改：<code>pages/login/index.tsx</code>（重排为全屏 + 登录卡片）、<code>pages/home/index.tsx</code>（Hero 与提交行为）、<code>lib/motion.ts</code>（加 <code>DURATION.dissolve</code>）、<code>index.css</code>（加 media / glass / scrim token）。</li>
+      <li>前端修改：<code>pages/login/index.tsx</code>（重排为全屏 + 登录卡片）、<code>pages/home/index.tsx</code>（创作页：生成 / 画布 tab、输入卡片、技能、最近上新），新增对话页、资产页和侧栏最近记录、<code>lib/motion.ts</code>（加 <code>DURATION.dissolve</code>）、<code>index.css</code>（加 media / glass / scrim token）。</li>
       <li>后台新增：<code>pages/admin/settings/showcase</code>、侧栏菜单项、路由 <code>/admin/settings/showcase</code>。</li>
       <li>后端：model、repository、service、handler、router 各加一层，测试放 <code>backend/internal/tests/</code>。</li>
     </ul>
@@ -1122,7 +1361,8 @@ PUT    /api/v1/admin/showcase/settings</pre>
     <h2>10. 原型说明</h2>
     <ul>
       <li>背景视频是 <a href="https://mixkit.co" target="_blank" rel="noreferrer">Mixkit</a> 的免费素材，只用来占位，配的提示词和模型标签是示意。正式版播放后台配置的真实生成作品。</li>
-      <li>后台的增删、排序、开关、时长改动，会实时同步到原型里的登录页和首页。</li>
+      <li>后台的增删、排序、开关、时长改动，会实时同步到原型里的登录页。</li>
+      <li>首页的对话记录、资产、最近上新都是示意数据；提交后的生成用定时器模拟进度。</li>
     </ul>
   </article>
 </section>
@@ -1161,7 +1401,7 @@ const store = {
     { id: "l4", ...MIX(39874), prompt: "蓝色碎光帘幕前的人像，冷调时尚大片", model: "Wan 2.5", size: 3.4, hue: 210, owner: "Smooth", ago: "上周", portrait: true },
     { id: "l5", ...MIX(34487), prompt: "街头 Vlog：红衣女孩举着稳定器对镜头说话", model: "Kling 2.5", size: 3.4, hue: 0, owner: "阿青", ago: "两周前", portrait: true },
   ],
-  settings: { clipSeconds: 7, onLogin: true, onHome: true, posterOnSaveData: true },
+  settings: { clipSeconds: 7, onLogin: true, posterOnSaveData: true },
   flags: {
     dark: matchMedia("(prefers-color-scheme: dark)").matches,
     reduce: matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -1171,14 +1411,6 @@ const store = {
   carry: "",
 };
 const enabledItems = () => store.items.filter((i) => i.enabled);
-
-const PROMPT_CHIPS = [
-  ["分镜脚本", "把这段故事拆成 6 个分镜："],
-  ["角色设定", "设计一个角色："],
-  ["产品广告", "为这款产品做 15 秒广告："],
-  ["画面风格", "统一画面风格为："],
-  ["AIMV", "根据这首歌的歌词生成 MV 分镜："],
-];
 
 /* ============================================================ Toast */
 function toast(msg, action) {
@@ -1363,32 +1595,12 @@ function selectSeg(ctl, btn) {
   paintSeg(ctl);
 }
 
-/* ============================================================ 输入框公共行为 */
-function wirePrompt(input, send, chipsEl) {
-  const sync = () => (send.disabled = !input.value.trim());
-  input.addEventListener("input", sync);
-  chipsEl.innerHTML = PROMPT_CHIPS.map(([l]) => `<button type="button" class="chip tap">${l}</button>`).join("");
-  $$(".chip", chipsEl).forEach((c, i) => (c.onclick = () => fill(input, PROMPT_CHIPS[i][1])));
-  return sync;
-}
-function fill(input, text) {
-  input.value = text;
-  input.dispatchEvent(new Event("input"));
-  input.focus();
-  input.setSelectionRange(text.length, text.length);
-  const box = input.closest(".prompt");
-  box.classList.add("flash");
-  clearTimeout(box.t);
-  box.t = setTimeout(() => box.classList.remove("flash"), 600);
-}
-
 /* ============================================================ 登录页 */
 const loginView = $("#view-login");
-const loginIdea = $("#loginIdea");
-wirePrompt(loginIdea, $("#loginSend"), $("#loginChips"));
+// 登录页不放输入框：「开始创作」直接打开注册卡片；「做同款」把这条提示词带进登录卡片，登录后填进首页输入框
 const loginPlayer = new Showcase($("#loginStage"), {
   caption: $("#loginCap"), progress: $("#loginProg"),
-  onSame: (item) => fill(loginIdea, item.prompt),
+  onSame: (item) => { store.carry = item.prompt; openAuth("register"); },
 });
 
 let authMode = "login";
@@ -1401,7 +1613,7 @@ function openAuth(mode) {
 function closeAuth() {
   if (!loginView.classList.contains("auth-open")) return;
   loginView.classList.remove("auth-open");
-  loginIdea.focus();
+  $("#loginStart").focus();
 }
 function renderCarry() {
   $("#carry").hidden = !store.carry;
@@ -1416,19 +1628,13 @@ function setAuthMode(mode) {
   selectSeg(tabs, tabs.querySelector(`[data-mode="${mode}"]`));
   $("#loginPanel").hidden = mode !== "login";
   $("#registerPanel").hidden = mode !== "register";
-  $("#authTitle").textContent = mode === "login" ? "欢迎回来" : "加入 Video Canvas";
+  $("#authTitle").textContent = mode === "login" ? "欢迎回来" : "加入连镜";
   $("#authSub").textContent = mode === "login" ? "登录后继续你的创作。" : "填写用户名、邮箱和密码，注册后直接进入画布。";
 }
 $$("#authTabs [data-mode]").forEach((b) => (b.onclick = () => setAuthMode(b.dataset.mode)));
-$("#loginForm").onsubmit = (e) => {
-  e.preventDefault();
-  const v = loginIdea.value.trim();
-  if (!v) return;
-  store.carry = v;
-  openAuth("login");
-};
-$("#topLogin").onclick = () => { store.carry = loginIdea.value.trim(); openAuth("login"); };
-$("#topRegister").onclick = () => { store.carry = loginIdea.value.trim(); openAuth("register"); };
+$("#loginStart").onclick = () => { store.carry = ""; openAuth("register"); };
+$("#topLogin").onclick = () => { store.carry = ""; openAuth("login"); };
+$("#topRegister").onclick = () => { store.carry = ""; openAuth("register"); };
 $("#authClose").onclick = closeAuth;
 $("#authBackdrop").onclick = closeAuth;
 $("#carryClear").onclick = () => { store.carry = ""; renderCarry(); };
@@ -1477,53 +1683,327 @@ function finishAuth(msg) {
   goView("home");
   toast(carry ? `${msg}，你的创意已带进来，确认后按 Enter 开始` : msg);
   store.carry = "";
-  loginIdea.value = ""; loginIdea.dispatchEvent(new Event("input"));
 }
 
 /* ============================================================ 首页 */
-const homeIdea = $("#homeIdea");
-wirePrompt(homeIdea, $("#homeSend"), $("#homeChips"));
-const homePlayer = new Showcase($("#homeStage"), {
-  caption: $("#homeCap"), progress: $("#homeProg"),
-  onSame: (item) => fill(homeIdea, item.prompt),
-});
 const h = new Date().getHours();
-$("#greet").textContent = (h < 6 ? "夜深了" : h < 11 ? "早上好" : h < 13 ? "中午好" : h < 18 ? "下午好" : "晚上好") + "，";
+$("#greet").textContent = h < 6 ? "夜深了" : h < 11 ? "早上好" : h < 13 ? "中午好" : h < 18 ? "下午好" : "晚上好";
 
-const cards = [
+const MODES = [
+  { id: "agent", icon: "bot", label: "Agent 模式", desc: "说想法或贴剧本，Agent 拆分镜、选模型、一路生成" },
+  { id: "image", icon: "images", label: "图片生成", desc: "直接出图，适合角色设定、场景、海报" },
+  { id: "video", icon: "clapper", label: "视频生成", desc: "文生视频或用参考图生成镜头" },
+  { id: "audio", icon: "music", label: "音频生成", desc: "配音、音效和配乐" },
+];
+let mode = MODES[0];
+
+/* 对话：「默认创作」收直接出图/视频/音频的记录；每次用 Agent 模式从首页发起会新开一段对话 */
+const TODAY = `${new Date().getMonth() + 1}月${new Date().getDate()}日`;
+const convs = [
+  { title: "默认创作", pinned: true, records: [
+    { day: "10月6日", mode: "image", prompt: "冬日雪地里，苍白妆容的女人缓缓回头，冷色调时尚大片", meta: ["Seedream 4.0", "1:1", "高清"], refs: [], results: [MIX(39878), MIX(39874)].map((m) => ({ type: "image", src: m.poster, shape: "square" })) },
+    { day: TODAY, mode: "video", prompt: "粉发女孩倚在旧楼门框边，红裙，冷灰墙面，镜头缓慢推近", meta: ["Seedance 2.0", "5s", "720p"], refs: [MIX(1526).thumb, MIX(4883).thumb], results: [{ type: "video", src: MIX(1526).poster, shape: "wide" }] },
+  ] },
+  { title: "雨夜霓虹分镜", cover: MIX(11).thumb, records: [
+    { day: TODAY, mode: "agent", prompt: "/分镜脚本 雨夜的城市，一个外卖骑手在霓虹里穿行，最后停在一扇亮着灯的窗前", meta: ["自动", "4 个分镜"], refs: [],
+      reply: "拆成了 4 个分镜：俯瞰车流 → 骑手穿过路口 → 霓虹倒影 → 停在窗前。先出了分镜图，确认后我再逐个生成视频。",
+      results: [11, 41576, 1610, 1183].map((id, i) => ({ type: "image", src: MIX(id).thumb, shape: "wide", small: true, no: i + 1 })), next: "生成 4 段视频" },
+  ] },
+];
+let currentConv = -1;
+let pane = "create";
+const canvases = [
   { title: "雨夜霓虹短片", ago: "2 小时前", cover: MIX(11).thumb },
   { title: "《山海》第 1 集分镜", ago: "昨天", cover: MIX(41576).thumb },
   { title: "MV · 夏日海风", ago: "3 天前", cover: MIX(1164).thumb },
-  { title: "角色设定 · 阿青", ago: "上周", cover: MIX(1526).thumb },
-  { title: "新品 15 秒广告", ago: "上周", cover: null },
+  { title: "未命名画布", ago: "上周", cover: null },
 ];
-function renderCards(enterFirst) {
-  $("#cards").innerHTML =
-    `<button type="button" class="card new tap" id="newCard"><span class="plus">${ico("plus")}</span>新建画布</button>` +
-    cards.slice(0, 5).map((c, i) => `
-      <button type="button" class="card ${enterFirst && i === 0 ? "enter" : ""}">
-        ${c.cover ? `<img src="${c.cover}" alt="" loading="lazy" />` : `<div class="ph">${ico("workflow")}</div>`}
-        ${c.agent ? `<span class="badge">${ico("bot")}Agent 拆分镜中</span>` : ""}
-        <span class="meta"><b>${esc(c.title)}</b><span>${c.ago}</span></span>
-      </button>`).join("");
-  $("#newCard").onclick = () => toast("实际：新建空白画布并进入");
+const TEMPLATES = [
+  { title: "视频创作", cover: MIX(1526).thumb },
+  { title: "图像创作", cover: MIX(39878).thumb },
+];
+const NEWS = [
+  { k: "精选作品", title: "雨夜霓虹", sub: "@阿青 · Seedance 2.0", cover: MIX(11).poster },
+  { k: "新功能", title: "画布 Agent 内测", sub: "一句话拆分镜，自动选模型生成", cover: MIX(1610).poster },
+  { k: "模型上新", title: "Kling 2.5 已接入", sub: "后台渠道一键导入，按次计费", cover: MIX(1164).poster },
+];
+const SKILLS = [
+  { name: "分镜脚本", text: "把这段故事拆成 6 个分镜：", tag: "new" },
+  { name: "角色设定", text: "设计一个角色：" },
+  { name: "产品广告", text: "为这款产品做 15 秒广告：", tag: "hot" },
+  { name: "画面风格", text: "统一画面风格为：" },
+  { name: "AIMV", text: "根据这首歌的歌词生成 MV 分镜：", tag: "hot" },
+];
+
+/* 侧栏：对话 / 画布 两组最近记录 */
+function sbItem(it, icon, enter, active) {
+  return `<button type="button" class="sb-item tap ${enter ? "enter" : ""} ${active ? "active" : ""}" title="${esc(it.title)}" ${active ? `aria-current="page"` : ""}>
+    <span class="th">${it.cover ? `<img src="${it.cover}" alt="" loading="lazy" />` : ico(icon)}</span>
+    <span class="t">${esc(it.title)}</span>${it.pinned ? `<svg class="icon pin" aria-label="已置顶"><use href="#i-pin"/></svg>` : ""}
+  </button>`;
 }
-renderCards(false);
-$("#homeForm").onsubmit = (e) => {
+function renderSidebar(enter) {
+  $("#sbConvs").innerHTML = convs.slice(0, 6).map((c, i) => sbItem(c, "message", enter === "conv" && i === 1, pane === "conv" && i === currentConv)).join("");
+  $("#sbCanvases").innerHTML = canvases.slice(0, 6).map((c, i) => sbItem(c, "workflow", enter === "canvas" && i === 0)).join("");
+  $$("#sbConvs .sb-item").forEach((b, i) => (b.onclick = () => openConv(i)));
+  $$("#sbCanvases .sb-item").forEach((b) => (b.onclick = () => toast("实际：进入这张画布")));
+}
+
+/* 生成 tab */
+const genIdea = $("#genIdea");
+const syncGen = () => {
+  const v = genIdea.value;
+  $("#genSend").disabled = !v.trim();
+  genIdea.parentElement.classList.toggle("has-value", v.length > 0);
+  genIdea.style.height = "auto";
+  genIdea.style.height = Math.min(genIdea.scrollHeight, 240) + "px";
+};
+genIdea.addEventListener("input", syncGen);
+genIdea.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#genForm").requestSubmit(); }
+});
+function flash(box) {
+  box.classList.add("flash");
+  clearTimeout(box.t);
+  box.t = setTimeout(() => box.classList.remove("flash"), 600);
+}
+function fillGen(text) {
+  genIdea.value = text;
+  syncGen();
+  genIdea.focus();
+  genIdea.setSelectionRange(text.length, text.length);
+  flash($("#genForm"));
+}
+
+function renderModeMenu() {
+  $("#modeMenu").innerHTML = MODES.map((m) => `
+    <button type="button" role="menuitemradio" aria-checked="${m === mode}" data-mode="${m.id}">
+      ${ico(m.icon)}<b>${m.label}</b>${m === mode ? `<svg class="icon ok"><use href="#i-check"/></svg>` : ""}<span>${m.desc}</span>
+    </button>`).join("");
+  $$("#modeMenu [data-mode]").forEach((b) => (b.onclick = () => {
+    mode = MODES.find((m) => m.id === b.dataset.mode);
+    $("#modeBtn").innerHTML = `${ico(mode.icon)}<span>${mode.label}</span><svg class="icon chev"><use href="#i-chevron-down"/></svg>`;
+    toggleModeMenu(false);
+    genIdea.focus();
+  }));
+}
+function toggleModeMenu(open) {
+  $("#modeMenu").hidden = !open;
+  $("#modeBtn").setAttribute("aria-expanded", String(open));
+  if (open) renderModeMenu();
+}
+$("#modeBtn").onclick = (e) => { e.stopPropagation(); toggleModeMenu($("#modeMenu").hidden); };
+document.addEventListener("click", (e) => { if (!e.target.closest(".pop-wrap")) toggleModeMenu(false); });
+$("#modelBtn").onclick = () => toast("实际：弹出模型列表，默认「自动」按任务挑选已发布的模型");
+$("#skillBtn").onclick = () => fillGen("/" + (genIdea.value.startsWith("/") ? genIdea.value.slice(1) : genIdea.value));
+$("#atBtn").onclick = () => { fillGen(genIdea.value + "@"); toast("实际：弹出资产选择，引用生成历史里的图片、视频或音频"); };
+$("#refTile").onclick = () => toast("实际：上传参考图、视频或音频，或从资产里选");
+
+$("#skills").innerHTML = SKILLS.map((s, i) => `
+  <button type="button" class="skill tap" data-i="${i}">/ ${s.name}${s.tag ? `<span class="tag ${s.tag}">${s.tag === "new" ? "新" : "热"}</span>` : ""}</button>`).join("") +
+  `<button type="button" class="skill more tap" id="moreSkills">更多技能${ico("chevron-right")}</button>`;
+$$("#skills [data-i]").forEach((b) => (b.onclick = () => { const s = SKILLS[b.dataset.i]; fillGen(`/${s.name} ${s.text}`); }));
+$("#moreSkills").onclick = () => toast("实际：打开技能列表（后台「Agent → 技能」里启用的技能）");
+
+$("#genForm").onsubmit = (e) => {
   e.preventDefault();
-  const v = homeIdea.value.trim();
+  const v = genIdea.value.trim();
   if (!v) return;
-  const send = $("#homeSend");
+  const send = $("#genSend");
   send.disabled = true;
   send.innerHTML = `<svg class="icon lg spin"><use href="#i-loader"/></svg>`;
   setTimeout(() => {
     send.innerHTML = `<svg class="icon lg"><use href="#i-arrow-up"/></svg>`;
-    cards.unshift({ title: [...v].slice(0, 14).join("") + (v.length > 14 ? "…" : ""), ago: "刚刚", cover: homePlayer.current ? homePlayer.current.thumb : null, agent: true });
-    renderCards(true);
-    homeIdea.value = ""; homeIdea.dispatchEvent(new Event("input"));
-    toast("已新建画布，Agent 正在拆分镜（实际会直接进入画布）");
-  }, 800);
+    genIdea.value = ""; syncGen();
+    const rec = makeRecord(mode.id, v);
+    let target = currentConv;
+    if (pane !== "conv") {
+      if (mode.id === "agent") {
+        convs.splice(1, 0, { title: [...v.replace(/^\/\S+\s*/, "")].slice(0, 12).join("") || "新对话", records: [] });
+        target = 1;
+      } else target = 0;
+    }
+    convs[target].records.push(rec);
+    openConv(target, target === 1 && pane !== "conv" ? "conv" : null);
+    runRecord(rec);
+  }, 500);
 };
+
+/* 对话页 */
+const SAMPLE = { image: [1173, 529, 50847, 1164], video: [1610, 41576, 34487, 11] };
+function makeRecord(m, prompt) {
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const base = { day: TODAY, mode: m, prompt, refs: [], pending: true, enter: true };
+  if (m === "image") return { ...base, meta: ["Seedream 4.0", "1:1", "高清"], results: [0, 1].map(() => ({ type: "image", src: MIX(pick(SAMPLE.image)).poster, shape: "square" })) };
+  if (m === "video") return { ...base, meta: ["Seedance 2.0", "5s", "720p"], results: [{ type: "video", src: MIX(pick(SAMPLE.video)).poster, shape: "wide" }] };
+  if (m === "audio") return { ...base, meta: ["自动", "30s"], results: [{ type: "audio" }] };
+  return { ...base, meta: ["自动", "4 个分镜"], reply: "按你的描述拆成了 4 个分镜，先出了分镜图，确认后我再逐个生成视频。",
+    results: [0, 1, 2, 3].map((i) => ({ type: "image", src: MIX(pick([...SAMPLE.image, ...SAMPLE.video])).thumb, shape: "wide", small: true, no: i + 1 })), next: "生成 4 段视频" };
+}
+function runRecord(rec) {
+  let p = 0;
+  const step = () => {
+    p = Math.min(p + 12 + Math.random() * 20, 100);
+    rec.progress = Math.round(p);
+    if (p >= 100) { rec.pending = false; delete rec.progress; }
+    if (pane === "conv" && convs[currentConv].records.includes(rec)) renderConv(false);
+    if (rec.pending) setTimeout(step, 380);
+  };
+  setTimeout(step, 380);
+}
+const MODE_NAME = { agent: "Agent", image: "图片生成", video: "视频生成", audio: "音频生成" };
+function mediaHtml(r, rec) {
+  if (rec.pending) return `<div class="media pending ${r.shape || "wide"} ${r.small ? "small" : ""}">${r.type === "audio" ? "" : `生成中 · ${rec.progress || 0}%`}</div>`;
+  if (r.type === "audio") return `<div class="media audio">${ico("music")}<span class="wave"></span><span class="num" style="font-size:12px;color:var(--muted-foreground)">0:30</span></div>`;
+  return `<button type="button" class="media ${r.shape} ${r.small ? "small" : ""}" data-media><img src="${r.src}" alt="" loading="lazy" />${r.no ? `<span class="no num">分镜 ${r.no}</span>` : ""}${r.type === "video" ? `<span class="play"><svg class="icon"><use href="#i-play"/></svg></span>` : ""}</button>`;
+}
+function renderConv(scroll) {
+  const c = convs[currentConv];
+  let lastDay = "";
+  $("#convFeed").innerHTML = c.records.map((rec, i) => {
+    const day = rec.day !== lastDay ? `<h2 class="cv-day">${rec.day}</h2>` : "";
+    lastDay = rec.day;
+    const refs = rec.refs.length ? rec.refs.map((u) => `<img src="${u}" alt="" />`).join("") : `<span>${ico(rec.mode === "agent" ? "bot" : "sparkles")}</span>`;
+    const html = `${day}
+      <article class="rec ${rec.enter ? "enter" : ""}" data-i="${i}">
+        <div class="rec-head"><div class="refs">${refs}</div>
+          <div class="rec-meta"><span class="md">${MODE_NAME[rec.mode]}</span>${rec.meta.map((m) => `<span>${esc(m)}</span>`).join("")}<span><button type="button" data-act="info">详细信息${ico("info")}</button></span></div>
+        </div>
+        <p class="rec-prompt">${esc(rec.prompt)}</p>
+        ${rec.reply && !rec.pending ? `<div class="rec-reply"><span class="bot">${ico("bot")}</span><span>${esc(rec.reply)}</span></div>` : ""}
+        <div class="rec-media">${rec.results.map((r) => mediaHtml(r, rec)).join("")}</div>
+        ${rec.pending ? "" : `<div class="rec-actions">
+          ${rec.next ? `<button type="button" class="ra primary tap" data-act="next">${ico("clapper")}${rec.next}</button><button type="button" class="ra tap" data-act="canvas">${ico("workflow")}在画布中打开</button>` : ""}
+          <button type="button" class="ra tap" data-act="edit">${ico("pencil")}重新编辑</button>
+          <button type="button" class="ra tap" data-act="again">${ico("rotate")}再次生成</button>
+          <button type="button" class="ra icon-only tap" data-act="more" aria-label="更多：下载、拖进画布、删除">${ico("more")}</button>
+        </div>`}
+      </article>`;
+    rec.enter = false;
+    return html;
+  }).join("") || `<div class="as-empty"><svg class="as-empty-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#logo"/></svg><b>还没有记录</b><span>在下面输入想法开始</span></div>`;
+  $$("#convFeed .rec").forEach((el) => {
+    const rec = c.records[el.dataset.i];
+    $$("[data-act]", el).forEach((b) => (b.onclick = () => {
+      const a = b.dataset.act;
+      if (a === "edit") { selectMode(rec.mode); fillGen(rec.prompt); }
+      else if (a === "again") { const r = makeRecord(rec.mode, rec.prompt); c.records.push(r); renderConv(true); runRecord(r); }
+      else if (a === "next") { const r = makeRecord("video", "按分镜 1–4 生成视频"); r.meta = ["Seedance 2.0", "4 × 5s", "720p"]; r.results = [11, 41576, 1610, 1183].map((id) => ({ type: "video", src: MIX(id).thumb, shape: "wide", small: true })); c.records.push(r); renderConv(true); runRecord(r); }
+      else if (a === "canvas") toast("实际：新建画布，分镜按顺序落成节点并连好线");
+      else if (a === "info") toast("实际：展示完整提示词、模型、参数、积分消耗和任务 ID");
+      else toast("实际：下载、拖进画布、复制提示词、删除");
+    }));
+    $$("[data-media]", el).forEach((m) => (m.onclick = () => toast("实际：打开大图 / 播放器预览")));
+  });
+  /* 打开对话直接停在最新一条；新增记录时平滑滚到底 */
+  if (scroll) requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: scroll === "jump" || store.flags.reduce ? "auto" : "smooth" }));
+}
+function selectMode(id) {
+  mode = MODES.find((m) => m.id === id) || MODES[0];
+  $("#modeBtn").innerHTML = `${ico(mode.icon)}<span>${mode.label}</span><svg class="icon chev"><use href="#i-chevron-down"/></svg>`;
+}
+function openConv(i, enter) {
+  currentConv = i;
+  showPane("conv");
+  renderSidebar(enter);
+  renderConv("jump");
+}
+
+/* 画布 tab */
+function renderCanvasGrid(enterFirst) {
+  const recent = canvases[0];
+  $("#cvGrid").innerHTML =
+    `<button type="button" class="cv-card new tap" id="cvNew"><span class="plus">${ico("plus")}</span>新建画布</button>` +
+    (recent.cover
+      ? `<button type="button" class="cv-card on-media ${enterFirst ? "enter" : ""}"><img src="${recent.cover}" alt="" loading="lazy" /><span class="shade"></span><span class="lbl">${esc(recent.title)}<small>${recent.ago}</small></span></button>`
+      : `<button type="button" class="cv-card blank ${enterFirst ? "enter" : ""}"><span class="mid">${ico("workflow")}</span><span class="lbl">${esc(recent.title)}<small>${recent.ago}</small></span></button>`) +
+    TEMPLATES.map((t) => `<button type="button" class="cv-card on-media tap"><img src="${t.cover}" alt="" loading="lazy" /><span class="shade"></span><span class="tag">模板</span><span class="lbl">${t.title}</span></button>`).join("");
+  $("#cvNew").onclick = () => toast("实际：新建空白画布并进入");
+  $$("#cvGrid .cv-card:not(.new)").forEach((b) => (b.onclick = () => toast(b.querySelector(".tag") ? "实际：用这个模板新建画布" : "实际：进入这张画布")));
+}
+const canvasIdea = $("#canvasIdea");
+canvasIdea.addEventListener("input", () => ($("#canvasSend").disabled = !canvasIdea.value.trim()));
+$("#canvasForm").onsubmit = (e) => {
+  e.preventDefault();
+  const v = canvasIdea.value.trim();
+  if (!v) return;
+  canvases.unshift({ title: [...v].slice(0, 12).join("") + (v.length > 12 ? "…" : ""), ago: "刚刚", cover: null });
+  canvasIdea.value = ""; $("#canvasSend").disabled = true;
+  renderCanvasGrid(true);
+  renderSidebar("canvas");
+  toast("已新建画布，Agent 正在拆分镜（实际会直接进入画布）");
+};
+
+$$("#modeTabs [role=tab]").forEach((b) => (b.onclick = () => {
+  selectSeg($("#modeTabs"), b);
+  $("#tab-gen").hidden = b.dataset.tab !== "gen";
+  $("#tab-canvas").hidden = b.dataset.tab !== "canvas";
+  (b.dataset.tab === "gen" ? genIdea : canvasIdea).focus();
+}));
+
+$("#newsRow").innerHTML = NEWS.map((n) => `
+  <button type="button" class="news-card tap"><img src="${n.cover}" alt="" loading="lazy" />
+    <span class="cap"><span class="k">${n.k}</span><b>${esc(n.title)}</b><span>${esc(n.sub)}</span></span>
+  </button>`).join("");
+$$("#newsRow .news-card").forEach((b) => (b.onclick = () => toast("实际：打开作品详情或功能介绍")));
+
+/* 资产 */
+const ASSETS = [
+  ...store.library.map((l) => ({ type: "video", ...l })),
+  ...store.items.slice(0, 6).map((l) => ({ type: "video", ...l, owner: "Smooth", ago: "上周" })),
+  ...[11, 1164, 39878, 41576, 1610, 1173, 529, 1183].map((id, i) => ({ type: "image", ...MIX(id), prompt: store.items[i].prompt, model: "Seedream 4.0", ago: i < 3 ? "今天" : "本周" })),
+];
+let asScope = "history", asType = "image";
+function renderAssets() {
+  const q = $("#asSearch").value.trim();
+  $("#asFilter").classList.toggle("no-types", asScope === "canvas");
+  let list;
+  if (asScope === "canvas") {
+    list = canvases.filter((c) => !q || c.title.includes(q)).map((c) => `
+      <button type="button" class="as-card wide">${c.cover ? `<img src="${c.cover}" alt="" loading="lazy" />` : `<div class="cv-card blank" style="position:absolute;inset:0;border:0"><span class="mid">${ico("workflow")}</span></div>`}
+        <span class="meta" style="opacity:1"><p>${esc(c.title)}</p><span>${c.ago}</span></span></button>`);
+  } else {
+    list = ASSETS.filter((a) => a.type === asType && (!q || a.prompt.includes(q))).map((a) => `
+      <button type="button" class="as-card ${a.type === "video" ? "wide" : ""}"><img src="${a.type === "video" ? a.thumb : a.poster}" alt="" loading="lazy" />
+        ${a.type === "video" ? `<span class="dur num">0:0${5 + (a.size | 0) % 5}</span>` : ""}
+        <span class="meta"><p>${esc(a.prompt)}</p><span>${esc(a.model)} · ${a.ago || "本周"}</span></span></button>`);
+  }
+  $("#asGrid").innerHTML = list.join("");
+  $("#asGrid").hidden = !list.length;
+  $("#asEmpty").hidden = !!list.length;
+  $("#asEmptyHint").textContent = q ? "换个关键词试试" : asScope === "canvas" ? "新建的画布会出现在这里" : "在「创作」里生成的内容会出现在这里";
+  $$("#asGrid .as-card").forEach((b) => (b.onclick = () => toast(asScope === "canvas" ? "实际：进入这张画布" : "实际：打开预览，可下载、做同款或拖进画布")));
+}
+$$("#asScope [role=tab]").forEach((b) => (b.onclick = () => { selectSeg($("#asScope"), b); asScope = b.dataset.scope; renderAssets(); }));
+$$("#asTypes [data-type]").forEach((b) => (b.onclick = () => {
+  $$("#asTypes [data-type]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  asType = b.dataset.type; renderAssets();
+}));
+$$(".as-drop").forEach((b) => (b.onclick = () => toast(`实际：按${b.dataset.drop}筛选`)));
+$("#asSearch").addEventListener("input", renderAssets);
+
+/* 侧栏导航：创作 / 资产 两个面板 */
+function showPane(p) {
+  const was = pane;
+  pane = p;
+  $$("#sbNav [data-pane]").forEach((b) => b.classList.toggle("active", b.dataset.pane === p));
+  $("#pane-create").hidden = p !== "create";
+  $("#pane-conv").hidden = p !== "conv";
+  $("#pane-assets").hidden = p !== "assets";
+  $("#homeWrap").classList.remove("sb-open");
+  toggleModeMenu(false);
+  /* 输入卡片只有一份：在创作页和对话页之间搬动，模式、草稿都跟着走 */
+  if (p === "conv") $("#convDock").append($("#genForm"));
+  else if (!$("#skills").previousElementSibling || $("#skills").previousElementSibling.id !== "genForm") $("#skills").before($("#genForm"));
+  if (was === "conv" && p !== "conv") renderSidebar();
+  if (p === "assets") renderAssets();
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => $$(".seg-ctl").forEach(paintSeg));
+}
+$$("#sbNav [data-pane]").forEach((b) => (b.onclick = () => showPane(b.dataset.pane)));
+
+renderSidebar();
+renderCanvasGrid(false);
 $("#sbToggle").onclick = () => {
   const sb = $("#sb");
   sb.classList.toggle("collapsed");
@@ -1531,32 +2011,22 @@ $("#sbToggle").onclick = () => {
 };
 $("#sbOpen").onclick = () => $("#homeWrap").classList.add("sb-open");
 $("#sbScrim").onclick = () => $("#homeWrap").classList.remove("sb-open");
-$("#sbNew").onclick = () => toast("实际：新建空白画布并进入");
 $$("[data-goto]").forEach((b) => (b.onclick = () => goView(b.dataset.goto)));
-$$("#scopeTabs [role=tab]:not(:disabled)").forEach((b) => (b.onclick = () => selectSeg($("#scopeTabs"), b)));
-new IntersectionObserver(([e]) => homePlayer.hold("offscreen", !e.isIntersecting), { threshold: 0.15 }).observe($("#hero"));
 
-/* ============================================================ 后台 · 首页展示 */
+/* ============================================================ 后台 · 登录页展示 */
 const pvPlayer = new Showcase($("#pvStage"), {
   onChange: (item) => { $("#pvCap").textContent = item ? `“${item.prompt}”` : "没有启用的作品，显示默认背景"; },
 });
-let pvMode = "login";
-$$("#pvTabs [data-pv]").forEach((b) => (b.onclick = () => {
-  selectSeg($("#pvTabs"), b);
-  pvMode = b.dataset.pv;
-  $("#pvTitle").textContent = pvMode === "login" ? "从一句话，到一部片。" : "晚上好，Smooth";
-  refreshPlayers();
-}));
 
 function renderAdmin() {
   const list = $("#scList");
   const on = enabledItems().length;
   $("#scCount").textContent = store.items.length ? `${on} / ${store.items.length} 已启用` : "";
   $("#scWarn").innerHTML = store.items.length && !on
-    ? `<div class="notice warn" style="margin:12px 12px 0">${ico("alert")}<span>没有启用的作品，登录页和首页会显示默认渐变背景。</span></div>`
+    ? `<div class="notice warn" style="margin:12px 12px 0">${ico("alert")}<span>没有启用的作品，登录页会显示默认渐变背景。</span></div>`
     : on > 8 ? `<div class="notice warn" style="margin:12px 12px 0">${ico("alert")}<span>已启用 ${on} 条，超过 8 条后访客很难看完一轮，建议精简。</span></div>` : "";
   if (!store.items.length) {
-    list.innerHTML = `<li class="sc-empty"><b>还没有展示作品</b>登录页和首页现在显示默认渐变背景。<br/><button class="btn btn-primary tap" type="button" id="emptyAdd">${ico("images")}从素材库添加</button></li>`;
+    list.innerHTML = `<li class="sc-empty"><b>还没有展示作品</b>登录页现在显示默认渐变背景。<br/><button class="btn btn-primary tap" type="button" id="emptyAdd">${ico("images")}从素材库添加</button></li>`;
     $("#emptyAdd").onclick = openLibrary;
     return;
   }
@@ -1754,15 +2224,14 @@ $("#libAdd").onclick = () => {
 function refreshPlayers() {
   const on = enabledItems();
   loginPlayer.setItems(store.settings.onLogin ? on : []);
-  homePlayer.setItems(store.settings.onHome ? on : []);
-  pvPlayer.setItems((pvMode === "login" ? store.settings.onLogin : store.settings.onHome) ? on : []);
-  $("#pvNote").textContent = (pvMode === "login" ? store.settings.onLogin : store.settings.onHome)
+  pvPlayer.setItems(store.settings.onLogin ? on : []);
+  $("#pvNote").textContent = store.settings.onLogin
     ? `轮播 ${on.length} 条，每条 ${store.settings.clipSeconds} 秒，一轮约 ${on.length * store.settings.clipSeconds} 秒。`
-    : `${pvMode === "login" ? "登录页" : "首页"}播放已关闭，显示默认渐变背景。`;
+    : "登录页播放已关闭，显示默认渐变背景。";
 }
 function changed() { renderAdmin(); renderSettings(); refreshPlayers(); }
 
-const players = { login: [loginPlayer], home: [homePlayer], admin: [pvPlayer], notes: [] };
+const players = { login: [loginPlayer], home: [], admin: [pvPlayer], notes: [] };
 let view = "login";
 function goView(v) {
   view = v;
@@ -1776,7 +2245,12 @@ function goView(v) {
   if (v === "home") {
     let idea = "";
     try { idea = sessionStorage.getItem("pending-idea") || ""; sessionStorage.removeItem("pending-idea"); } catch {}
-    if (idea) setTimeout(() => fill(homeIdea, idea), 120);
+    if (idea) {
+      showPane("create");
+      selectSeg($("#modeTabs"), $('#modeTabs [data-tab="gen"]'));
+      $("#tab-gen").hidden = false; $("#tab-canvas").hidden = true;
+      setTimeout(() => fillGen(idea), 120);
+    }
   }
 }
 $$("#dock [data-view]").forEach((b) => (b.onclick = () => goView(b.dataset.view)));
@@ -1793,16 +2267,17 @@ $$("#dock [data-flag]").forEach((b) => (b.onclick = () => {
   const k = b.dataset.flag;
   store.flags[k] = !store.flags[k];
   applyFlags();
-  if (k === "reduce" || k === "failVideo") [loginPlayer, homePlayer, pvPlayer].forEach((p) => p.reload());
+  if (k === "reduce" || k === "failVideo") [loginPlayer, pvPlayer].forEach((p) => p.reload());
   if (k === "failVideo") toast(store.flags.failVideo ? "已模拟视频加载失败：停在封面，照常轮换" : "已恢复视频加载");
   if (k === "reduce") toast(store.flags.reduce ? "减少动态效果：只显示封面，不自动切换" : "已恢复动态背景");
 }));
 
-document.addEventListener("visibilitychange", () => [loginPlayer, homePlayer, pvPlayer].forEach((p) => p.hold("hidden", document.hidden)));
+document.addEventListener("visibilitychange", () => [loginPlayer, pvPlayer].forEach((p) => p.hold("hidden", document.hidden)));
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if ($("#sheet").classList.contains("open") || $("#library").classList.contains("open")) closeOverlay();
     else if (loginView.classList.contains("auth-open")) closeAuth();
+    else if (!$("#modeMenu").hidden) { toggleModeMenu(false); $("#modeBtn").focus(); }
     else $("#homeWrap").classList.remove("sb-open");
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && view === "home") { e.preventDefault(); $("#sbToggle").click(); }
