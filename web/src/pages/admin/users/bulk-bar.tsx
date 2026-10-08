@@ -185,12 +185,16 @@ function BulkCreditDialog({
             autoComplete="off"
             maxLength={NOTE_MAX}
             aria-label="备注"
-            placeholder="备注（必填，如：国庆活动补发）"
+            placeholder="备注（必填，用户可见，如：国庆活动补发）"
+            aria-describedby="bulk-note-hint"
             value={note}
             disabled={busy}
             onChange={(event) => setNote(event.target.value)}
             onKeyDown={onEnter}
           />
+          <p id="bulk-note-hint" className="text-muted-foreground -mt-1 text-xs">
+            该备注会显示在用户的积分流水中
+          </p>
           <div className="bg-muted rounded-lg px-3 py-2 text-xs" aria-live="polite">
             <span className="tabular-nums">
               {plan.run.length} 人 × {value} ={" "}

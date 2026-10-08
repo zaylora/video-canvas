@@ -44,15 +44,34 @@ export function validateUsername(value: string): string | null {
   return null;
 }
 
+/** 新密码最短字节数：注册与个人中心改密码共用（设计 docs/design/个人中心 §6.8） */
+export const PASSWORD_MIN_BYTES = 8;
+/** 新密码最长字节数：bcrypt 只取前 72 字节，超出部分不参与校验 */
+export const PASSWORD_MAX_BYTES = 72;
+
 /**
- * 校验密码：6 到 128 个字符
+ * 密码按 UTF-8 编码后的字节数：后端 bcrypt 上限按字节算，汉字一个占 3 字节
+ * @param value 密码
+ * @returns 字节数
+ */
+export function passwordBytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+/**
+ * 校验新密码：8 到 72 字节，且不能与用户名相同。注册和个人中心改密码共用这一份规则；
+ * 弱密码表只在后端，命中时由接口返回 55003。登录不走这里，老账号的 6–7 位密码照常能登录。
  * @param value 密码输入
+ * @param username 用户名；空串时跳过「与用户名相同」的检查
  * @returns 错误文案；通过返回 null
  */
-export function validatePassword(value: string): string | null {
+export function validatePassword(value: string, username: string): string | null {
   if (!value) return "请输入密码";
-  if (value.length < 6) return "密码至少 6 位";
-  if (value.length > 128) return "密码最多 128 位";
+  const bytes = passwordBytes(value);
+  if (bytes < PASSWORD_MIN_BYTES) return "密码至少 8 位";
+  if (bytes > PASSWORD_MAX_BYTES) return "密码最多 72 字节（约 24 个汉字或 72 个英文字符）";
+  const name = username.trim();
+  if (name && value === name) return "密码不能与用户名相同";
   return null;
 }
 
@@ -80,7 +99,7 @@ export function validateRegisterForm(values: RegisterValues, needCode: boolean):
   const email = validateEmail(values.email);
   if (email) errors.email = email;
   if (needCode && !/^\d{6}$/.test(values.code.trim())) errors.code = "请输入 6 位数字验证码";
-  const password = validatePassword(values.password);
+  const password = validatePassword(values.password, values.username);
   if (password) errors.password = password;
   const confirm = validateConfirm(values.password, values.confirm);
   if (confirm) errors.confirm = confirm;
@@ -127,13 +146,17 @@ export type AuthErrorHint = {
   message: string;
 };
 
+/** 新密码过于常见或与用户名相同（个人中心号段，注册与改密码共用） */
+export const WEAK_PASSWORD_CODE = 55003;
+
 /**
  * 把后端业务错误码翻译成就地提示。文案与全局 toast 一致，且不泄露额外信息；
  * 其他错误返回 null，只靠全局 toast。
  * @param code ApiError.code
+ * @param message 后端返回的错误文案；55003 同时用于「过于常见」和「与用户名相同」，以后端文案为准
  * @returns 就地提示；不需要就地提示返回 null
  */
-export function mapAuthError(code: unknown): AuthErrorHint | null {
+export function mapAuthError(code: unknown, message?: string): AuthErrorHint | null {
   switch (code) {
     case 20002:
       return { field: "username", message: "用户名已被占用" };
@@ -145,6 +168,8 @@ export function mapAuthError(code: unknown): AuthErrorHint | null {
       return { field: "code", message: "验证码错误或已过期" };
     case 53004:
       return { field: "form", message: "账号已被停用，请联系管理员" };
+    case WEAK_PASSWORD_CODE:
+      return { field: "password", message: message || "这个密码过于常见，请换一个" };
     default:
       return null;
   }

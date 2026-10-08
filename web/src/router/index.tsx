@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router";
 
 import { DialogHost } from "@/components/dialog-host";
@@ -21,12 +22,20 @@ import Conversation from "@/pages/conversation";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
+import Profile from "@/pages/profile";
+import { useMeStore } from "@/store/me";
 import { getToken } from "@/utils/storage/token";
 
 function RequireAuth() {
   const location = useLocation();
+  const loggedIn = !!getToken();
 
-  if (!getToken()) {
+  /** 登录后进入应用、或带着有效令牌启动时，拉一次当前用户资料（侧栏、画布右上角、个人中心共用） */
+  useEffect(() => {
+    if (loggedIn) void useMeStore.getState().fetchMe();
+  }, [loggedIn]);
+
+  if (!loggedIn) {
     const next = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
@@ -69,6 +78,7 @@ export const router = createBrowserRouter([
               { path: "canvases", element: <CanvasList /> },
               { path: "assets", element: <Assets /> },
               { path: "conversations/:id", element: <Conversation /> },
+              { path: "profile", element: <Profile /> },
             ],
           },
           {

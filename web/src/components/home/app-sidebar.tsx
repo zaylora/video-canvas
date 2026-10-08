@@ -20,7 +20,7 @@ import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/canvas/chrome/chrome";
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { SoonTip } from "@/components/home/soon";
-import { DropdownMenuItem, DropdownMenuShortcut } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -40,8 +40,10 @@ import { SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
 import { useAdminStore } from "@/store/admin";
+import { useMeStore } from "@/store/me";
 import { canManageModels } from "@/utils/admin/role";
 import { placeholderBackground } from "@/utils/home/placeholder";
+import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
 
 /** 侧栏里的一项导航 */
 type NavItem = {
@@ -211,7 +213,10 @@ export function AppSidebar() {
    * 这里不主动探测角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
    */
   const isAdmin = useAdminStore((state) => state.status === "ready" && canManageModels(state.role));
-  const username = useUsername();
+  const tokenUsername = useUsername();
+  const me = useMeStore((state) => state.me);
+  /** 显示名优先用资料里的昵称；资料还没拉到时先用令牌里的用户名兜底 */
+  const name = displayName(me) || tokenUsername;
   const canEnterBackend = useCanEnterAdmin();
   const navigate = useNavigate();
 
@@ -315,15 +320,14 @@ export function AppSidebar() {
           )}
         </SidebarMenu>
         <NavUser
-          name={username ?? "我的账户"}
-          description={isAdmin ? "管理员" : undefined}
-          initials={username?.slice(0, 1).toUpperCase() ?? "我"}
+          name={name ?? "我的账户"}
+          description={isAdmin ? "管理员" : me?.nickname ? `@${me.username}` : undefined}
+          initials={name ? avatarInitial(name) : "我"}
+          avatarSrc={me?.avatarUrl}
         >
-          {/* 个人中心页还没有，先禁用 */}
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem onClick={() => navigate("/profile")}>
             <User />
             个人中心
-            <DropdownMenuShortcut>即将上线</DropdownMenuShortcut>
           </DropdownMenuItem>
           {canEnterBackend && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>

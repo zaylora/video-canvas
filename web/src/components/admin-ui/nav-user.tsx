@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronsUpDown, LogOut } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,18 +28,22 @@ function NavUser({
   name,
   description,
   initials,
+  avatarSrc,
   children,
 }: {
   name: string;
   description?: string;
   /** 头像里的文字 */
   initials: string;
+  /** 头像图片地址；不传或加载失败时显示 initials */
+  avatarSrc?: string | null;
   children?: ReactNode;
 }) {
   const { isMobile } = useSidebar();
   const identity = (
     <>
       <Avatar className="size-8 rounded-lg">
+        {avatarSrc && <AvatarImage src={avatarSrc} alt={`${name}的头像`} className="rounded-lg" />}
         <AvatarFallback className="rounded-lg bg-gradient-to-br from-zinc-500 to-zinc-700 text-xs font-semibold text-white">
           {initials}
         </AvatarFallback>

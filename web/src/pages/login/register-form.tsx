@@ -82,8 +82,8 @@ export function RegisterForm({
     setFormError("");
   };
 
-  const applyHint = (code: unknown) => {
-    const hint = mapAuthError(code);
+  const applyHint = (code: unknown, message?: string) => {
+    const hint = mapAuthError(code, message);
     if (!hint) return;
     if (hint.field === "form") setFormError(hint.message);
     else setErrors((prev) => ({ ...prev, [hint.field]: hint.message }));
@@ -124,7 +124,7 @@ export function RegisterForm({
       setToken(result.token, result.expire_at, result.role);
       onSuccess(becameFirstAdmin(result.role));
     } catch (error) {
-      if (error instanceof ApiError) applyHint(error.code);
+      if (error instanceof ApiError) applyHint(error.code, error.message);
     } finally {
       setLoading(false);
     }
@@ -197,7 +197,7 @@ export function RegisterForm({
           id="reg-password"
           autoComplete="new-password"
           maxLength={128}
-          placeholder="至少 6 位"
+          placeholder="至少 8 位"
           value={values.password}
           onChange={(event) => set("password", event.target.value)}
           disabled={loading}
