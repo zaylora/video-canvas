@@ -49,7 +49,8 @@ describe("消息流", () => {
     );
     expect(items.map((i) => i.type)).toEqual(["user", "assistant", "activity"]);
     expect(items[1]).toMatchObject({ text: "我先读剧本", thinking: "想想", streaming: false });
-    expect(items[2]).toMatchObject({ status: "done", errors: 0 });
+    // 运行还在跑，工具之间的空档仍算进行中
+    expect(items[2]).toMatchObject({ status: "running", errors: 0 });
     expect(activity(items[2]).tools).toEqual([
       {
         key: "tc1",
@@ -99,6 +100,19 @@ describe("消息流", () => {
     const block = ended.find((i) => i.type === "activity");
     expect(block).toMatchObject({ status: "aborted" });
     expect(activity(block).tools[0].status).toBe("aborted");
+  });
+
+  test("运行还在跑时，最后一个活动块在工具之间的空档也保持进行中；运行结束后恢复 done", () => {
+    reset();
+    const events = [
+      ev("run.status", { status: "running" }),
+      ev("tool.start", { id: "c1", name: "read_canvas" }),
+      ev("tool.end", { id: "c1", name: "read_canvas" }),
+    ];
+    const live = buildTimeline(fold(events));
+    expect(live[0]).toMatchObject({ type: "activity", status: "running" });
+    const finished = buildTimeline(fold([...events, ev("run.status", { status: "completed" })]));
+    expect(finished.find((i) => i.type === "activity")).toMatchObject({ status: "done" });
   });
 
   test("连续的工具调用合成一个活动块，中间隔了消息就分开；耗时从第一次开始到最后一次结束", () => {

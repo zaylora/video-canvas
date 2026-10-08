@@ -54,7 +54,7 @@ export type TimelineItem =
       key: string;
       runId: string;
       tools: ToolCall[];
-      /** 有调用还在进行就是 running；有被中止的就是 aborted；否则 done */
+      /** 有调用还在进行、或运行还在跑时的最后一块就是 running；有被中止的就是 aborted；否则 done */
       status: "running" | "done" | "aborted";
       /** 失败的调用数 */
       errors: number;
@@ -262,6 +262,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
     items.splice((lastAt.get(runId) ?? 0) + 1, 0, runSummary(state, runId, changes.get(runId)));
 
   const out = groupTools(items);
+  keepLastActivityOpen(out, state);
   if (state.stream.text || state.stream.thinking) {
     out.push({
       type: "assistant",
@@ -343,6 +344,22 @@ function groupTools(items: (TimelineItem | RawTool)[]): TimelineItem[] {
     if (endedAt !== null) block.endedAt = Math.max(block.endedAt ?? endedAt, endedAt);
   }
   return out;
+}
+
+/**
+ * 运行还在进行时，最后一个活动块在工具之间的空档（模型思考中）也算进行中，保持展开；
+ * 后面已经有正文输出，或运行已经结束，就按各自的调用结果收起。
+ */
+function keepLastActivityOpen(out: TimelineItem[], state: AgentSessionState) {
+  for (let i = out.length - 1; i >= 0; i--) {
+    const item = out[i];
+    if (item.type === "assistant" && item.text) return;
+    if (item.type !== "activity") continue;
+    const live: AgentRunLive | undefined = state.runs[item.runId];
+    if (live && ACTIVE_RUN_STATUSES.includes(live.status) && item.status === "done")
+      out[i] = { ...item, status: "running" };
+    return;
+  }
 }
 
 /** 置顶计划条的内容 */
