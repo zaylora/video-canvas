@@ -1,9 +1,10 @@
 import type { ComponentProps } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-/** 语气配色（无描边的浅色底 + 同色文字，和原型一样轻），标签之外的卡片、图标块也用它上色；保留 border 宽度是为了不影响尺寸 */
+/** 语气配色（无描边的浅色底 + 同色文字，和原型一样轻），标签、提示条、卡片、图标块都用它上色；保留 border 宽度是为了不影响尺寸 */
 const toneClasses = {
   neutral: "border-transparent bg-muted text-muted-foreground",
   success: "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
@@ -15,28 +16,25 @@ const toneClasses = {
   orange: "border-transparent bg-orange-500/10 text-orange-700 dark:text-orange-400",
 } as const;
 
-/** 设计稿的 badge */
-const tagVariants = cva(
-  "inline-flex w-fit shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap [&>svg]:size-3 [&>svg]:shrink-0",
-  {
-    variants: { tone: toneClasses, mono: { true: "font-mono" } },
-    defaultVariants: { tone: "neutral" },
-  },
-);
+/** 在 ui/badge 之上加后台的语气和形状：圆角矩形、按内容撑高，语气色盖掉 secondary 的底色 */
+const tagVariants = cva("h-auto rounded-md px-1.5", {
+  variants: { tone: toneClasses, mono: { true: "font-mono" } },
+  defaultVariants: { tone: "neutral" },
+});
 
 /** 小标签的语气 */
 type TagTone = NonNullable<VariantProps<typeof tagVariants>["tone"]>;
 
-/** 小标签：来源、状态、能力、版本等 */
+/** 小标签：来源、状态、能力、版本等。基于 ui/badge，样式变化先看 badge 再看这里的覆盖 */
 function Tag({
   className,
   tone,
   mono,
   ...props
-}: ComponentProps<"span"> & VariantProps<typeof tagVariants>) {
+}: Omit<ComponentProps<typeof Badge>, "variant"> & VariantProps<typeof tagVariants>) {
   return (
-    <span
-      data-slot="tag"
+    <Badge
+      variant="secondary"
       data-tone={tone ?? "neutral"}
       className={cn(tagVariants({ tone, mono }), className)}
       {...props}
