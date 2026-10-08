@@ -12,9 +12,12 @@ import AgentSkillsPage from "@/pages/admin/agent-skills";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
+import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
+import Assets from "@/pages/assets";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
+import Conversation from "@/pages/conversation";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
@@ -64,6 +67,8 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Home /> },
               { path: "canvases", element: <CanvasList /> },
+              { path: "assets", element: <Assets /> },
+              { path: "conversations/:id", element: <Conversation /> },
             ],
           },
           {
@@ -93,6 +98,7 @@ export const router = createBrowserRouter([
               { path: "settings/image-processor", element: <ImageProcessorPage /> },
               { path: "settings/register", element: <RegisterSettingsPage /> },
               { path: "settings/email", element: <EmailSettingsPage /> },
+              { path: "settings/showcase", element: <ShowcaseSettingsPage /> },
             ],
           },
         ],

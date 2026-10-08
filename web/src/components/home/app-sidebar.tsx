@@ -1,20 +1,22 @@
-import type { ComponentType, SVGProps } from "react";
+import { useMemo, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { Link, useLocation } from "react-router";
 import { motion } from "motion/react";
 import {
   CircleUser,
-  House,
-  Loader2,
+  Compass,
+  FolderOpen,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
+  Pin,
   Settings2,
-  Trophy,
-  Tv,
+  Sparkles,
   Workflow,
 } from "lucide-react";
 
+import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/canvas/chrome/chrome";
+import { CanvasCover } from "@/components/home/canvas-cover";
 import { SoonTip } from "@/components/home/soon";
 import {
   Sidebar,
@@ -29,11 +31,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCreateCanvas } from "@/hooks/use-canvas-list";
+import { buildSampleConversations } from "@/constants/conversation-sample";
+import { useRecentCanvases } from "@/hooks/use-recent-canvases";
 import { SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
 import { canManageModels } from "@/utils/admin/role";
+import { placeholderBackground } from "@/utils/home/placeholder";
 
 /** 侧栏里的一项导航 */
 type NavItem = {
@@ -45,11 +49,13 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
-  { label: "首页", icon: House, to: "/" },
-  { label: "无限画布", icon: Workflow, to: "/canvases" },
-  { label: "作品广场", icon: Tv },
-  { label: "创作活动", icon: Trophy },
+  { label: "创作", icon: Sparkles, to: "/" },
+  { label: "探索", icon: Compass },
+  { label: "资产", icon: FolderOpen, to: "/assets" },
 ];
+
+/** 每个分组最多列几项 */
+const LIST_LIMIT = 6;
 
 /**
  * 菜单按钮统一高度 40px，收起后是 40px 见方的图标按钮。
@@ -129,14 +135,73 @@ function CollapseButton() {
   );
 }
 
+/** 分组：一行小标题（右侧可放「全部」之类的入口）+ 下面的列表 */
+function ListSection({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mt-2">
+      <div className="flex h-8 items-center justify-between px-2.5">
+        <p className="text-muted-foreground text-xs">{title}</p>
+        {action}
+      </div>
+      <div className="grid gap-0.5">{children}</div>
+    </section>
+  );
+}
+
+/** 分组里的一项：24px 缩略图（封面或图标）+ 标题，当前项高亮 */
+function ListItem({
+  to,
+  title,
+  active,
+  pinned,
+  thumb,
+}: {
+  to: string;
+  title: string;
+  active: boolean;
+  pinned?: boolean;
+  thumb: ReactNode;
+}) {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <Link
+      to={to}
+      title={title}
+      aria-current={active ? "page" : undefined}
+      onClick={() => setOpenMobile(false)}
+      className={cn(
+        "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center gap-2.5 rounded-[10px] pr-2 pl-2.5 text-sm outline-none focus-visible:ring-3",
+        active && "bg-muted text-foreground font-medium",
+      )}
+    >
+      <span className="bg-muted grid size-6 shrink-0 place-items-center overflow-hidden rounded-[7px] [&_svg]:size-3.5">
+        {thumb}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{title}</span>
+      {pinned && <Pin aria-label="已置顶" className="size-3.5 shrink-0 opacity-55" />}
+    </Link>
+  );
+}
+
 /**
- * 首页与所有画布页的左侧侧栏（设计稿 docs/design/首页 4.0）：
- * Logo、新建画布、导航，底部是 AI 配置（只给已确认的管理员）和我的账户。
+ * 首页、资产、对话和画布列表共用的左侧侧栏（设计稿 docs/品牌包装/登录与首页改版原型）：
+ * 连镜 Logo、导航（创作 / 探索 / 资产）、「对话」和「画布」两组最近记录，
+ * 底部是 AI 配置（只给已确认的管理员）和我的账户。
+ * 对话目前是样例数据；画布是真的最近画布。
  * 桌面端可收起成图标栏（⌘B），窄屏由 shadcn sidebar 换成从左滑出的抽屉。
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
-  const { creating, create } = useCreateCanvas();
+  const canvases = useRecentCanvases(LIST_LIMIT);
+  const conversations = useMemo(() => buildSampleConversations(), []);
   /**
    * 和原来列表页一样，只有 store 里已确认是管理员时才显示后台入口；
    * 这里不主动探测角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
@@ -146,31 +211,17 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="gap-3 px-2 pt-3">
-        <div className="flex h-9 items-center justify-between gap-2 pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:gap-3 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:pl-0">
+        <div className="flex h-9 items-center justify-between gap-2 pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-3 group-data-[collapsible=icon]:pl-0">
           <Link
             to="/"
-            className="flex min-w-0 items-center gap-2 rounded-md text-[15px] font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-label="连镜"
+            className="focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-md text-[15px] font-semibold tracking-wide outline-none focus-visible:ring-3"
           >
-            <img src="/favicon.svg" alt="" className="size-7 shrink-0 rounded-lg" />
-            <span className="truncate group-data-[collapsible=icon]:hidden">Video Canvas</span>
+            <Logo size={24} />
+            <span className="truncate group-data-[collapsible=icon]:hidden">连镜</span>
           </Link>
           <CollapseButton />
         </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="新建画布"
-              disabled={creating}
-              onClick={() => void create()}
-              className="bg-primary text-primary-foreground hover:bg-primary/85 hover:text-primary-foreground active:bg-primary/85 active:text-primary-foreground h-10 justify-center gap-2 rounded-xl font-semibold group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0! [&_svg]:size-[18px]!"
-            >
-              {creating ? <Loader2 className="animate-spin" /> : <Plus />}
-              <span className="group-data-[collapsible=icon]:hidden">
-                {creating ? "正在创建…" : "新建画布"}
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
@@ -183,6 +234,59 @@ export function AppSidebar() {
             ))}
           </SidebarMenu>
         </SidebarGroup>
+
+        {/* 收起成图标栏后放不下列表，整块隐藏 */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 group-data-[collapsible=icon]:hidden">
+          <ListSection title="对话">
+            {conversations.slice(0, LIST_LIMIT).map((conversation) => (
+              <ListItem
+                key={conversation.id}
+                to={`/conversations/${conversation.id}`}
+                title={conversation.title}
+                active={pathname === `/conversations/${conversation.id}`}
+                pinned={conversation.pinned}
+                thumb={
+                  conversation.hue === null ? (
+                    <MessageSquare />
+                  ) : (
+                    <span
+                      aria-hidden
+                      className="size-full"
+                      style={{ background: placeholderBackground(conversation.hue) }}
+                    />
+                  )
+                }
+              />
+            ))}
+          </ListSection>
+          <ListSection
+            title="画布"
+            action={
+              <Link
+                to="/canvases"
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded px-1 text-xs outline-none focus-visible:ring-2"
+              >
+                全部
+              </Link>
+            }
+          >
+            {canvases.map((canvas) => (
+              <ListItem
+                key={canvas.id}
+                to={`/canvas/${canvas.id}`}
+                title={canvas.title}
+                active={false}
+                thumb={
+                  canvas.coverUrl ? (
+                    <CanvasCover id={canvas.id} coverUrl={canvas.coverUrl} />
+                  ) : (
+                    <Workflow />
+                  )
+                }
+              />
+            ))}
+          </ListSection>
+        </div>
       </SidebarContent>
 
       <SidebarFooter className="px-2 pb-3">

@@ -1,7 +1,8 @@
-import { ArrowLeft, Clapperboard } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
 import type { AdminRole } from "@/api/admin/ai/type.d";
+import { Logo } from "@/components/brand/logo";
 import { NavBrand } from "@/components/admin-ui/nav-brand";
 import { NavGroup } from "@/components/admin-ui/nav-group";
 import { NavUser } from "@/components/admin-ui/nav-user";
@@ -19,6 +20,9 @@ import {
 
 import { ADMIN_NAV } from "./admin-nav";
 
+/** 后台侧栏品牌块里的 Logo：块是反色底，括号跟着文字色，光束保持琥珀 */
+const BrandIcon = ({ className }: { className?: string }) => <Logo size={20} className={className} />;
+
 const ROLE_TEXT: Record<AdminRole, string> = { super_admin: "运维", admin: "运营" };
 const ROLE_DESC: Record<AdminRole, string> = { super_admin: "超级管理员", admin: "管理员" };
 
@@ -35,9 +39,9 @@ export function AdminSidebar({
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <NavBrand
-          name="Video Canvas"
+          name="连镜"
           subtitle="AI 配置管理"
-          icon={Clapperboard}
+          icon={BrandIcon}
           render={<Link to="/admin/ai/overview" />}
         />
       </SidebarHeader>
@@ -50,7 +54,7 @@ export function AdminSidebar({
               title: item.label,
               url: `/admin/${item.to}`,
               icon: item.icon,
-              badge: counts[item.to],
+              badge: item.badge ?? counts[item.to],
             }))}
           />
         ))}
