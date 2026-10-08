@@ -20,8 +20,10 @@ import {
 
 import { ADMIN_NAV } from "./admin-nav";
 
-/** 后台侧栏品牌块里的 Logo：块是反色底，括号跟着文字色，光束保持琥珀 */
-const BrandIcon = ({ className }: { className?: string }) => <Logo size={20} className={className} />;
+/** 后台侧栏品牌块里的 Logo：不再垫反色底，括号跟着文字色，光束保持琥珀 */
+const BrandIcon = ({ className }: { className?: string }) => (
+  <Logo size={24} className={className} />
+);
 
 const ROLE_TEXT: Record<AdminRole, string> = { super_admin: "运维", admin: "运营" };
 const ROLE_DESC: Record<AdminRole, string> = { super_admin: "超级管理员", admin: "管理员" };

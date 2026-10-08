@@ -19,8 +19,8 @@ function NavBrand({
     <SidebarMenu data-slot="nav-brand">
       <SidebarMenuItem>
         <SidebarMenuButton size="lg" render={render}>
-          <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-            <Icon className="size-4" />
+          <div className="flex aspect-square size-8 items-center justify-center">
+            <Icon className="size-6" />
           </div>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-semibold">{name}</span>

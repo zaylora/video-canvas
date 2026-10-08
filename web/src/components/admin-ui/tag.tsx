@@ -3,16 +3,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-/** 语气配色（描边 + 浅色底 + 同色文字），标签之外的卡片、图标块也用它上色 */
+/** 语气配色（无描边的浅色底 + 同色文字，和原型一样轻），标签之外的卡片、图标块也用它上色；保留 border 宽度是为了不影响尺寸 */
 const toneClasses = {
-  neutral: "border-border bg-muted text-muted-foreground",
-  success: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  info: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  warning: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  danger: "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400",
-  violet: "border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-400",
-  rose: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400",
-  orange: "border-orange-500/25 bg-orange-500/10 text-orange-700 dark:text-orange-400",
+  neutral: "border-transparent bg-muted text-muted-foreground",
+  success: "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  info: "border-transparent bg-sky-500/10 text-sky-700 dark:text-sky-400",
+  warning: "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  danger: "border-transparent bg-red-500/10 text-red-700 dark:text-red-400",
+  violet: "border-transparent bg-violet-500/10 text-violet-700 dark:text-violet-400",
+  rose: "border-transparent bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  orange: "border-transparent bg-orange-500/10 text-orange-700 dark:text-orange-400",
 } as const;
 
 /** 设计稿的 badge */

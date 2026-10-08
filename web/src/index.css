@@ -220,7 +220,7 @@
   --group-pink: oklch(0.74 0.17 345);
 }
 
-/* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰，卡片与页面同色、靠描边分层）。
+/* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰）。浅色下卡片与页面同色、描边取淡一档；深色下卡片比页面亮一档，靠明暗而不是描边分层，和前台一致。
    只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
 .admin-theme {
   /* 进后台的加载层用 canvas-loader 的点阵底，底色跟后台走 */
@@ -240,7 +240,7 @@
   --accent: hsl(240 4.8% 95.9%);
   --accent-foreground: hsl(240 5.9% 10%);
   --destructive: hsl(0 72% 51%);
-  --border: hsl(240 5.9% 90%);
+  --border: hsl(240 5.9% 91.5%);
   --input: hsl(240 5.9% 90%);
   --ring: hsl(240 5.9% 10%);
   --sidebar: hsl(0 0% 98%);
@@ -257,9 +257,9 @@
   --canvas-bg: hsl(240 10% 3.9%);
   --background: hsl(240 10% 3.9%);
   --foreground: hsl(0 0% 98%);
-  --card: hsl(240 10% 3.9%);
+  --card: hsl(240 6% 7.5%);
   --card-foreground: hsl(0 0% 98%);
-  --popover: hsl(240 10% 3.9%);
+  --popover: hsl(240 6% 7.5%);
   --popover-foreground: hsl(0 0% 98%);
   --primary: hsl(0 0% 98%);
   --primary-foreground: hsl(240 5.9% 10%);
@@ -270,7 +270,7 @@
   --accent: hsl(240 3.7% 15.9%);
   --accent-foreground: hsl(0 0% 98%);
   --destructive: hsl(0 62.8% 45%);
-  --border: hsl(240 3.7% 15.9%);
+  --border: hsl(240 3.7% 13.5%);
   --input: hsl(240 3.7% 18%);
   --ring: hsl(240 4.9% 83.9%);
   --sidebar: hsl(240 5.9% 10%);

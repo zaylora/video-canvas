@@ -78,7 +78,7 @@ function ListPanelItem({
         data-active={active || undefined}
         className={cn(
           "w-full rounded-lg border border-transparent px-3 py-2.5 text-left transition",
-          "hover:bg-accent/60 data-active:bg-accent data-active:border-border",
+          "hover:bg-accent/60 data-active:bg-accent",
           className,
         )}
         {...props}
