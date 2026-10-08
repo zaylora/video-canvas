@@ -118,7 +118,6 @@
   --status-success: oklch(0.6 0.15 155);
   --status-warning: oklch(0.7 0.16 70);
   --edge: oklch(0 0 0 / 0.28);
-  --edge-selected: oklch(0.2 0 0);
   /* 品牌「连镜」：Logo 镜间光的琥珀光束。beam 跟随主题（浅底用深琥珀），
      beam-bright 给永远偏暗的底用（登录页舞台），两个主题取同一个值 */
   --beam: oklch(0.62 0.16 55);
@@ -194,7 +193,6 @@
   --status-success: oklch(0.75 0.15 155);
   --status-warning: oklch(0.8 0.15 75);
   --edge: oklch(1 0 0 / 0.28);
-  --edge-selected: oklch(1 0 0 / 0.9);
   --beam: oklch(0.78 0.15 70);
   --beam-bright: oklch(0.78 0.15 70);
   --stage: oklch(0.13 0 0);
@@ -307,7 +305,8 @@
   --xy-edge-stroke: var(--edge);
   --xy-minimap-background-color: var(--chrome);
   --xy-minimap-mask-background-color: color-mix(in oklch, var(--canvas-bg) 60%, transparent);
-  --edge-shape-color: var(--edge-selected);
+  /* 连线选中、流光都用品牌琥珀光束色，和 Logo、首页「生成」同一档 */
+  --edge-shape-color: var(--beam);
   --xy-controls-button-background-color: var(--card);
   --xy-controls-button-background-color-hover: var(--accent);
   --xy-controls-button-color: var(--card-foreground);
@@ -345,8 +344,12 @@
   cursor: grabbing;
 }
 
-/* 连线选中时提亮并加粗，配合中点浮出的剪刀按钮，一眼看出要剪哪一根。
-   颜色走 --edge-selected，深浅主题各一套，不再写死粉色。 */
+/* 选中节点时，连着它的线换成淡一档的品牌色，看得出选中的东西从哪来、往哪去 */
+.react-flow__edge-path.edge-highlighted {
+  stroke: color-mix(in oklch, var(--edge-shape-color) 60%, transparent);
+}
+
+/* 连线选中时换品牌色并加粗，配合中点浮出的剪刀按钮，一眼看出要剪哪一根。 */
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--edge-shape-color);
   stroke-width: 2;

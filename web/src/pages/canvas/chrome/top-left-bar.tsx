@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { createCanvas } from "@/api/canvas";
+import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import {
   DropdownMenu,
@@ -27,18 +28,6 @@ import { cn } from "@/lib/utils";
 
 /** 画布名最长多少字 */
 const TITLE_MAX = 60;
-
-/** 左上角的品牌标：白底圆角方块里一个镂空的取景框 */
-function BrandMark() {
-  return (
-    <span className="bg-foreground text-background grid size-6 place-items-center rounded-[7px]">
-      <svg viewBox="0 0 16 16" className="size-3.5" fill="none" aria-hidden>
-        <rect x="2.5" y="4" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M10.5 7.2 13.5 5.5v5l-3-1.7" fill="currentColor" />
-      </svg>
-    </span>
-  );
-}
 
 /** 画布名：点一下原地变输入框，Enter / 失焦提交，Esc 放弃 */
 function CanvasTitle({ title, onRename }: { title: string; onRename: (title: string) => void }) {
@@ -199,7 +188,7 @@ export function TopLeftBar({
           <DropdownMenuTrigger
             render={
               <ChromeButton aria-label="画布菜单" className="gap-1 pr-1.5 pl-1">
-                <BrandMark />
+                <Logo size={22} />
                 <ChevronDown className="size-3! opacity-60" />
               </ChromeButton>
             }

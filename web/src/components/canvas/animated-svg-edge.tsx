@@ -15,6 +15,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { DURATION, EASE_OUT_CSS, TAP, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { cutButtonScale, nearestRatio, shouldShowCutButton } from "@/utils/canvas/edge-cut";
+import { isEdgeHighlighted, shouldShowSweep } from "@/utils/canvas/edge-sweep";
 
 export type AnimatedSvgEdge = Edge<{
   /**
@@ -91,6 +92,7 @@ export function AnimatedSvgEdge({
   labelBgBorderRadius,
   // 选中态决定中点那把剪刀露不露面
   selected,
+  source,
   target,
 }: EdgeProps<AnimatedSvgEdge>) {
   const { deleteElements, screenToFlowPosition } = useReactFlow();
@@ -102,7 +104,13 @@ export function AnimatedSvgEdge({
     (state) =>
       (state.nodeLookup.get(target)?.data as { status?: string } | undefined)?.status === "running",
   );
+  // 两端节点有一个被选中，这根线就算「相关」：换品牌色，流光跟着亮
+  const sourceSelected = useStore((state) => !!state.nodeLookup.get(source)?.selected);
+  const targetSelected = useStore((state) => !!state.nodeLookup.get(target)?.selected);
   const selectedEdgeCount = useStore((state) => state.edges.filter((edge) => edge.selected).length);
+  const selection = { edgeSelected: !!selected, sourceSelected, targetSelected };
+  const highlighted = isEdgeHighlighted(selection);
+  const showSweep = shouldShowSweep({ ...selection, running });
 
   // data 为空对象时（比如边没带 data 就被创建）回退到默认形状，避免取不到组件
   const Shape = data.shape === "sweep" ? null : (shapes[data.shape] ?? shapes.circle);
@@ -143,6 +151,7 @@ export function AnimatedSvgEdge({
           path={path}
           labelX={labelX}
           labelY={labelY}
+          className={cn(highlighted && "edge-highlighted")}
           style={style}
           markerStart={markerStart}
           markerEnd={markerEnd}
@@ -158,14 +167,16 @@ export function AnimatedSvgEdge({
       {Shape ? (
         <Shape animateMotionProps={animateMotionProps} />
       ) : (
-        <SweepLight
-          id={id}
-          path={path}
-          from={{ x: sourceX, y: sourceY }}
-          to={{ x: targetX, y: targetY }}
-          running={running}
-          emphasized={!!selected}
-        />
+        showSweep && (
+          <SweepLight
+            id={id}
+            path={path}
+            from={{ x: sourceX, y: sourceY }}
+            to={{ x: targetX, y: targetY }}
+            running={running}
+            emphasized={!!selected}
+          />
+        )
       )}
       {shouldShowCutButton(!!selected, selectedEdgeCount) && (
         <CutButton path={path} ratio={cutRatio} onCut={() => deleteElements({ edges: [{ id }] })} />
@@ -231,6 +242,7 @@ const SWEEP_DURATION = { idle: 2.6, running: 1.1 };
  * 光带流光（设计稿原型「光带」）：一段两头渐隐的亮带沿连线从上游扫到下游。
  * 做法是给连线叠一层渐变描边，渐变方向取上下游连线方向，
  * 再用 animateTransform 把整个渐变从起点外平移到终点外；不移动任何形状，节点挪动时也不会跳帧。
+ * 只在选中连线或它两端的节点、或下游生成中时出现（见 shouldShowSweep），静止的画布上只有底线。
  * 系统开了「减少动态效果」时只留静止的底线，不画光带。
  */
 function SweepLight({
