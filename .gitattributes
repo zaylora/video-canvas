@@ -1,2 +1,6 @@
 # 后端统一使用 LF 换行：gofmt 只认 LF，Windows 上 core.autocrlf=true 会让 make lint 误报（见 docs/standards/06-工程化与协作.md G2）
 * text=auto eol=lf
+
+# Windows 批处理必须使用 CRLF，否则 cmd 解析多行括号/标签会错乱
+*.bat text eol=crlf
+*.cmd text eol=crlf
