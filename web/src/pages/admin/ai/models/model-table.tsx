@@ -7,7 +7,6 @@ import type {
   PluginView,
 } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
-import { DataTableToolbar } from "@/components/admin-ui/data-table-toolbar";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
@@ -100,7 +99,7 @@ export function ModelTable({
 
   return (
     <section className="bg-card rounded-xl border">
-      <DataTableToolbar>
+      <div className="flex flex-wrap items-center gap-2 p-4">
         <SearchInput
           value={query}
           onChange={(event) => filter(setQuery)(event.target.value)}
@@ -149,7 +148,7 @@ export function ModelTable({
         <span className="text-muted-foreground ml-auto text-xs tabular-nums">
           {shown.length} / {models.length}
         </span>
-      </DataTableToolbar>
+      </div>
 
       <div className="flex flex-col gap-4 px-4 pb-4">
         <ModelRows

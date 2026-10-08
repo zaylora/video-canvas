@@ -1,29 +1,25 @@
 import { ArrowLeft } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import type { AdminRole } from "@/api/admin/ai/type.d";
 import { Logo } from "@/components/brand/logo";
-import { NavBrand } from "@/components/admin-ui/nav-brand";
-import { NavGroup } from "@/components/admin-ui/nav-group";
 import { NavUser } from "@/components/admin-ui/nav-user";
 import { DropdownMenuGroup, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 import { ADMIN_NAV } from "./admin-nav";
-
-/** 后台侧栏品牌块里的 Logo：不再垫反色底，括号跟着文字色，光束保持琥珀 */
-const BrandIcon = ({ className }: { className?: string }) => (
-  <Logo size={24} className={className} />
-);
 
 const ROLE_TEXT: Record<AdminRole, string> = { super_admin: "运维", admin: "运营" };
 const ROLE_DESC: Record<AdminRole, string> = { super_admin: "超级管理员", admin: "管理员" };
@@ -36,29 +32,54 @@ export function AdminSidebar({
   counts: Record<string, number | undefined>;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { setOpenMobile } = useSidebar();
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <NavBrand
-          name="连镜"
-          subtitle="AI 配置管理"
-          icon={BrandIcon}
-          render={<Link to="/admin/ai/overview" />}
-        />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" render={<Link to="/admin/ai/overview" />}>
+              <Logo size={24} className="shrink-0" />
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">连镜</span>
+                <span className="text-sidebar-foreground/60 truncate text-xs">AI 配置管理</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         {ADMIN_NAV.map((section) => (
-          <NavGroup
-            key={section.label}
-            title={section.label}
-            items={section.items.map((item) => ({
-              title: item.label,
-              url: `/admin/${item.to}`,
-              icon: item.icon,
-              badge: item.badge ?? counts[item.to],
-            }))}
-          />
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel className="text-sidebar-foreground/55">
+              {section.label}
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {section.items.map((item) => {
+                const url = `/admin/${item.to}`;
+                const badge = item.badge ?? counts[item.to];
+                return (
+                  <SidebarMenuItem key={url}>
+                    <SidebarMenuButton
+                      isActive={pathname === url || pathname.startsWith(`${url}/`)}
+                      tooltip={item.label}
+                      render={<Link to={url} onClick={() => setOpenMobile(false)} />}
+                    >
+                      <item.icon />
+                      <span>{item.label}</span>
+                      {badge !== undefined && (
+                        <span className="text-sidebar-foreground/55 ml-auto font-mono text-xs group-data-[collapsible=icon]:hidden">
+                          {badge}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
         ))}
       </SidebarContent>
       <SidebarFooter className="border-sidebar-border border-t">

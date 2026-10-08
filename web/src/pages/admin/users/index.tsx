@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AdminMain } from "@/components/admin-ui/admin-main";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
-import { DataTableToolbar } from "@/components/admin-ui/data-table-toolbar";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import {
   PageHeader,
@@ -257,7 +256,7 @@ export default function UsersPage() {
           </PageHeader>
 
           <div className="bg-card rounded-xl border">
-            <DataTableToolbar>
+            <div className="flex flex-wrap items-center gap-2 p-4">
               <Tooltip>
                 <TooltipTrigger render={<div className="w-full sm:w-64" />}>
                   <SearchInput
@@ -326,7 +325,7 @@ export default function UsersPage() {
                     ? `筛出 ${list.total} / ${list.overallTotal} 人`
                     : `共 ${list.filtering ? list.total : (list.overallTotal ?? list.total)} 人`}
               </span>
-            </DataTableToolbar>
+            </div>
 
             <UserTable
               items={items}
