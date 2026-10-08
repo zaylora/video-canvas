@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { Sheet, SheetContent } from "@/components/admin-ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useRetained } from "@/hooks/use-retained";
 import { SheetForm } from "./storage-sheet-form";
 

@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { sendSmtpTest, updateSmtpSettings } from "@/api/admin/settings";
 import type { SmtpSettings } from "@/api/admin/settings/type.d";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";
@@ -360,7 +359,7 @@ export default function EmailSettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>邮件服务</PageHeaderTitle>
@@ -379,7 +378,7 @@ export default function EmailSettingsPage() {
         {status === "ready" && data && (
           <SmtpForm settings={data} canWrite={canWrite} onSaved={setData} reload={reload} />
         )}
-      </AdminMain>
+      </main>
     </div>
   );
 }

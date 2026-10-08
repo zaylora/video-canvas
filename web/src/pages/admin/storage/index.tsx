@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { checkStorage } from "@/api/admin/storage";
 import type { StorageView } from "@/api/admin/storage/type.d";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import {
   PageHeader,
@@ -75,7 +74,7 @@ export default function StoragePage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>存储配置</PageHeaderTitle>
@@ -147,7 +146,7 @@ export default function StoragePage() {
           onChanged={replaceOne}
           onClose={() => setTarget(null)}
         />
-      </AdminMain>
+      </main>
     </div>
   );
 }

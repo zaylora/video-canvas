@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { Film, ImageIcon, Minus, Plus, Upload } from "lucide-react";
 
 import type { ShowcaseAdminItem, ShowcaseSettings } from "@/api/admin/showcase/type";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import {
   EmptyState,
   EmptyStateActions,
@@ -86,7 +85,9 @@ function ShowcasePreview({
             <span className="bg-on-stage block h-4.5 w-[22%] rounded-full" />
           </div>
           <p className="text-on-stage-muted absolute inset-x-2.5 bottom-2 z-10 truncate text-[11px]">
-            {playing && player.current ? `“${player.current.prompt}”` : "没有启用的作品，显示默认背景"}
+            {playing && player.current
+              ? `“${player.current.prompt}”`
+              : "没有启用的作品，显示默认背景"}
           </p>
         </div>
         {playing && (
@@ -210,7 +211,7 @@ export default function ShowcaseSettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>登录页展示</PageHeaderTitle>
@@ -243,7 +244,9 @@ export default function ShowcaseSettingsPage() {
               <PanelHead
                 title="展示作品"
                 aside={
-                  view.items.length > 0 ? `${enabledCount} / ${view.items.length} 已启用` : undefined
+                  view.items.length > 0
+                    ? `${enabledCount} / ${view.items.length} 已启用`
+                    : undefined
                 }
               />
               {view.items.length > 0 && enabledCount === 0 && (
@@ -307,7 +310,7 @@ export default function ShowcaseSettingsPage() {
           onClose={() => setLibraryOpen(false)}
           onAdd={admin.addFromLibrary}
         />
-      </AdminMain>
+      </main>
     </div>
   );
 }

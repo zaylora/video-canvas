@@ -14,7 +14,7 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-} from "@/components/admin-ui/sheet";
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -271,7 +271,9 @@ function SheetForm({
             >
               <div>
                 <Upload className="mx-auto size-5" />
-                <b className="text-foreground mt-2 mb-1 block font-medium">拖入视频，或点击选择文件</b>
+                <b className="text-foreground mt-2 mb-1 block font-medium">
+                  拖入视频，或点击选择文件
+                </b>
                 <span className="text-xs">
                   MP4 / WebM · 建议横屏 16:9、720p、5–15 秒、10 MB 以内
                 </span>

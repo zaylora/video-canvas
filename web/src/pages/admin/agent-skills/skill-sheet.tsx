@@ -29,7 +29,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/admin-ui/sheet";
+} from "@/components/ui/sheet";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";

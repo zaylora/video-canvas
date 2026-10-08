@@ -2,7 +2,6 @@ import { Loader2, X } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import {
@@ -61,7 +60,7 @@ const isTyping = (target: EventTarget | null) => {
 };
 
 /**
- * 用户管理页：表格 + 右侧详情抽屉（无遮罩，打开时表格仍可点）+ 勾选后的批量条。
+ * 用户管理页：表格 + 右侧详情抽屉（带遮罩，点遮罩关闭）+ 勾选后的批量条。
  * q / status / role / page / user / tab 都在 URL 里。
  * 快捷键：/ 聚焦搜索；抽屉打开时 ↑ ↓ / K J 切换用户；Esc 按层级依次关闭（浮层 → 勾选 → 抽屉）。
  * 请求失败的全局 toast 由拦截器弹，这里不重复。
@@ -245,7 +244,7 @@ export default function UsersPage() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="h-full overflow-y-auto">
-        <AdminMain className="pb-28">
+        <main className="px-4 pt-6 pb-28 lg:px-6">
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>用户管理</PageHeaderTitle>
@@ -352,7 +351,7 @@ export default function UsersPage() {
               />
             </div>
           </div>
-        </AdminMain>
+        </main>
       </div>
 
       <UserSheet

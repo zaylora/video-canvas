@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/admin-ui/dialog";
+} from "@/components/ui/dialog";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,7 +41,10 @@ export function ShowcaseLibrary({
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[min(640px,calc(100svh-2rem))] w-[min(760px,calc(100%-2rem))] max-md:max-h-svh max-md:w-full max-md:rounded-none">
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[min(640px,calc(100svh-2rem))] w-[min(760px,calc(100%-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 shadow-lg sm:max-w-none max-md:max-h-svh max-md:w-full max-md:rounded-none"
+      >
         <LibraryBody onClose={onClose} onAdd={onAdd} />
       </DialogContent>
     </Dialog>
@@ -112,7 +115,7 @@ function LibraryBody({
 
   return (
     <>
-      <DialogHeader className="flex-row items-start justify-between gap-3 border-b p-5">
+      <DialogHeader className="shrink-0 flex-row items-start justify-between gap-3 border-b p-5">
         <div>
           <DialogTitle className="text-base font-semibold">从素材库添加</DialogTitle>
           <DialogDescription className="mt-0.5 text-[12.5px]">
@@ -229,7 +232,7 @@ function LibraryBody({
         )}
       </div>
 
-      <DialogFooter className="flex-row items-center justify-between border-t p-4">
+      <DialogFooter className="mx-0 mb-0 shrink-0 flex-row items-center justify-between rounded-none border-t bg-transparent p-4">
         <span className="text-muted-foreground text-[13px] tabular-nums">
           {picked.size > 0 ? `已选 ${picked.size} 个` : "未选择"}
         </span>

@@ -5,7 +5,7 @@ import { MotionButton } from "@/components/admin-ui/motion-button";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/admin-ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { CreditMode } from "@/api/admin/users/type.d";
 import { cn } from "@/lib/utils";
 import {

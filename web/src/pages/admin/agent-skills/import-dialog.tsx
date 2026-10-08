@@ -11,7 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/admin-ui/dialog";
+} from "@/components/ui/dialog";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
@@ -75,10 +75,11 @@ export function ImportDialog({
     >
       <DialogContent
         onKeyDown={onKeyDown}
-        className="h-[min(720px,calc(100dvh-2rem))] w-[min(1080px,calc(100vw-2rem))] max-md:h-dvh max-md:w-screen max-md:rounded-none"
+        showCloseButton={false}
+        className="flex h-[min(720px,calc(100dvh-2rem))] w-[min(1080px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 shadow-lg sm:max-w-none max-md:h-dvh max-md:w-screen max-md:rounded-none"
       >
         <MotionConfig reducedMotion="user">
-          <DialogHeader>
+          <DialogHeader className="h-14 shrink-0 flex-row items-center gap-4 border-b px-5">
             <DialogTitle>导入技能</DialogTitle>
             <DialogDescription className="sr-only">
               选择压缩包、文件夹或 SKILL.md，检查通过后确认导入。
@@ -125,7 +126,7 @@ export function ImportDialog({
             </motion.div>
           </AnimatePresence>
 
-          <DialogFooter>
+          <DialogFooter className="mx-0 mb-0 h-15 shrink-0 flex-row items-center gap-2 rounded-none border-t bg-transparent px-5 py-0 sm:justify-start">
             {state.step === "review" ? (
               <>
                 <Button variant="outline" disabled={confirming} onClick={reselect}>

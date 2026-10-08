@@ -18,12 +18,7 @@ import {
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
-import {
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/admin-ui/sheet";
+import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { isStorageFieldLocked, isStorageVersionConflict } from "@/utils/admin/errors";
 import {
   buildCreateBody,

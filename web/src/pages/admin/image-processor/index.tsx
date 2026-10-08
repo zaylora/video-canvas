@@ -2,7 +2,6 @@ import { Plus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import type { ProcessorView } from "@/api/admin/image-processor/type.d";
-import { AdminMain } from "@/components/admin-ui/admin-main";
 import {
   EmptyState,
   EmptyStateActions,
@@ -58,7 +57,7 @@ export default function ImageProcessorPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <AdminMain>
+      <main className="px-4 py-6 lg:px-6">
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>图片服务</PageHeaderTitle>
@@ -154,7 +153,7 @@ export default function ImageProcessorPage() {
             refresh();
           }}
         />
-      </AdminMain>
+      </main>
     </div>
   );
 }
