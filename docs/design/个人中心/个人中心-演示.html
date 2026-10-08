@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>个人中心演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        /* 热力图 5 档：0 档用 muted，1–4 档是 primary 的透明度梯度（提案：落地时写成 --heat-0..4） */
+        --heat-0: hsl(var(--muted));
+        --heat-1: hsl(var(--primary) / 0.22);
+        --heat-2: hsl(var(--primary) / 0.42);
+        --heat-3: hsl(var(--primary) / 0.66);
+        --heat-4: hsl(var(--primary) / 0.92);
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --heat-1: hsl(var(--primary) / 0.2);
+        --heat-2: hsl(var(--primary) / 0.4);
+        --heat-3: hsl(var(--primary) / 0.64);
+        --heat-4: hsl(var(--primary) / 0.9);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-danger { color: rgb(var(--bad)); }
+      .btn-sm { height: 28px; font-size: 12.5px; padding: 0 9px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 560px; position: relative; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); white-space: nowrap; }
+
+      /* ---- 表单 ---- */
+      .field { display: grid; gap: 6px; }
+      .field > label { font-size: 13px; font-weight: 500; }
+      .inp { height: 36px; width: 100%; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 13.5px; color: inherit; outline: none; }
+      .inp:focus { border-color: hsl(var(--foreground) / 0.4); box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.08); }
+      .inp.err { border-color: rgb(var(--bad)); }
+      .inp-wrap { position: relative; }
+      .inp-wrap .inp { padding-right: 36px; }
+      .inp-wrap .eye { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: hsl(var(--muted-foreground)); }
+      .hint { font-size: 12px; color: hsl(var(--muted-foreground)); min-height: 18px; }
+      .hint.bad { color: rgb(var(--bad)); }
+      .hint.ok { color: rgb(var(--ok)); }
+      select.inp { padding-right: 6px; }
+      input[type="range"] { width: 100%; accent-color: hsl(var(--foreground)); }
+
+      /* ---- 热力图 ---- */
+      .hm-scroll { overflow-x: auto; padding-bottom: 4px; }
+      .hm { display: inline-grid; grid-template-columns: 22px auto; grid-template-rows: 16px auto; column-gap: 4px; }
+      .hm-months { grid-column: 2; position: relative; height: 16px; font-size: 10.5px; color: hsl(var(--muted-foreground)); }
+      .hm-months span { position: absolute; top: 0; white-space: nowrap; }
+      .hm-wd { grid-row: 2; display: grid; grid-template-rows: repeat(7, 11px); row-gap: 3px; font-size: 10px; color: hsl(var(--muted-foreground)); line-height: 11px; }
+      .hm-grid { grid-row: 2; grid-column: 2; display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); grid-auto-columns: 11px; gap: 3px; outline: none; }
+      .cell { width: 11px; height: 11px; border-radius: 2px; background: var(--heat-0); outline-offset: 1px; }
+      .cell.ph { visibility: hidden; }
+      .cell.l1 { background: var(--heat-1); }
+      .cell.l2 { background: var(--heat-2); }
+      .cell.l3 { background: var(--heat-3); }
+      .cell.l4 { background: var(--heat-4); }
+      .cell:focus { outline: 2px solid rgb(var(--violet)); }
+      .cell:hover { outline: 1px solid hsl(var(--foreground) / 0.5); }
+      .hm-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .legend { display: inline-flex; align-items: center; gap: 3px; }
+      .legend .cell { display: inline-block; }
+      .hm-dim { opacity: 0.45; transition: opacity 0.15s; pointer-events: none; }
+      .tip { position: fixed; z-index: 80; pointer-events: none; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 12px; padding: 6px 9px; border-radius: 7px; white-space: nowrap; transform: translate(-50%, calc(-100% - 8px)); box-shadow: 0 6px 18px rgb(0 0 0 / 0.18); }
+      .tip small { display: block; opacity: 0.75; font-size: 11.5px; }
+
+      /* ---- 原型 ---- */
+      .app { display: grid; grid-template-columns: 196px minmax(0, 1fr); min-height: 560px; }
+      .side { border-right: 1px solid hsl(var(--border)); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; background: hsl(var(--muted) / 0.4); }
+      .side .it { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 7px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+      .side .it.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
+      .side .acct { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; font-size: 13px; }
+      .main { padding: 20px 22px 28px; min-width: 0; }
+      .av { border-radius: 50%; display: grid; place-items: center; font-weight: 600; color: #fff; overflow: hidden; flex: none; background: hsl(var(--muted)); }
+      .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .idcard { display: flex; align-items: center; gap: 16px; }
+      .ptabs { display: flex; gap: 4px; border-bottom: 1px solid hsl(var(--border)); margin-top: 18px; overflow-x: auto; }
+      .ptab { height: 36px; padding: 0 12px; font-size: 13.5px; color: hsl(var(--muted-foreground)); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+      .ptab[aria-selected="true"] { color: hsl(var(--foreground)); border-color: hsl(var(--foreground)); font-weight: 500; }
+      .stat .k { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .stat .v { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .stat .s { font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .sk { background: hsl(var(--muted)); border-radius: 6px; animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.5; } }
+      .seg { display: inline-flex; padding: 2px; border-radius: 8px; background: hsl(var(--muted)); gap: 2px; }
+      .seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+      .ledger { width: 100%; }
+      .ledger td { padding: 10px 8px; border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
+      .ledger tr:last-child td { border-bottom: 0; }
+      .amt { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; font-weight: 500; }
+      .amt.plus { color: rgb(var(--ok)); }
+      .amt.gray { color: hsl(var(--muted-foreground)); font-weight: 400; }
+      .drop { border: 1.5px dashed hsl(var(--border)); border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; transition: border-color 0.15s, background 0.15s; }
+      .drop.over { border-color: hsl(var(--foreground) / 0.5); background: hsl(var(--muted) / 0.6); }
+      .spin { animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .modal-bg { position: fixed; inset: 0; z-index: 70; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; padding: 16px; }
+      .modal { width: min(400px, 100%); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.3); }
+      .crop { width: 240px; height: 240px; margin: 14px auto 0; position: relative; overflow: hidden; border-radius: 10px; background: #111; cursor: grab; touch-action: none; outline: none; }
+      .crop:focus-visible { box-shadow: 0 0 0 3px rgb(var(--violet)); }
+      .crop img { position: absolute; left: 50%; top: 50%; user-select: none; -webkit-user-drag: none; max-width: none; }
+      .crop .mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 200px rgb(0 0 0 / 0.55); pointer-events: none; border: 1px solid rgb(255 255 255 / 0.6); }
+      .watch { font-size: 12.5px; }
+      .watch .dev { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid hsl(var(--border)); }
+      .watch .dev:last-child { border-bottom: 0; }
+      .log { font-family: "Geist Mono", monospace; font-size: 11.5px; max-height: 150px; overflow: auto; background: hsl(var(--muted)); border-radius: 8px; padding: 8px 10px; }
+
+      @media (max-width: 820px) {
+        .g2, .g3, .g4 { grid-template-columns: 1fr; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .app { grid-template-columns: 1fr; }
+        .side { display: none; }
+        .main { padding: 16px 14px 24px; }
+        .demo-grid { grid-template-columns: 1fr !important; }
+        .brand span.t { display: none; }
+      }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="user-round"></i></span><span class="t">个人中心演示</span></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>热力图演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px; white-space: nowrap">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ================= 总览 ================= -->
+      <section id="tab-overview">
+        <h1 class="h1">给每个用户一个自己的个人中心</h1>
+        <p class="lead">
+          新增独立页面 <code>/profile</code>，用户可以自己<b>改昵称、换头像、改密码</b>，查看过去一年的<b>创作热力图</b>、累计数据和<b>每一笔积分的去向</b>，不用再找管理员。
+          <b>登录用的 username 不开放修改</b>，对外展示的名字改用昵称。改密码后，<b>其他设备立即下线，当前设备保持登录</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>以下都是设计提案，<b>尚未实现</b>。项目现状来自读代码（文件路径见 Markdown §2）；竞品信息来自 2026-10-09 的公开文档调研。原型里的数据、耗时和体积都是<b>示意</b>，不会调用任何真实服务，刷新页面即复原。完整依据见同目录的 <code>个人中心.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：修改密码怎么走</h2>
+          <p class="sub">这是本期唯一涉及安全的操作，所以单独画出来。其他三块（昵称、头像、热力图）都是普通的读写。</p>
+          <div class="flow note">
+            <div class="node"><b>1 · 填写表单</b>当前密码 + 新密码 ×2。前端即时提示长度、两次是否一致</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>2 · 限流 + 规则</b>5 次错误锁 15 分钟；8–72 字节；不能是常见弱密码</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>3 · 比对当前密码</b>bcrypt 比对；错误时提示剩余次数</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>4 · 写入 + 作废旧 token</b>一条 UPDATE 同时改哈希并 <code>token_version+1</code>，清缓存，断开所有 WS</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>5 · 当前设备续签</b>响应里带新 token，前端 <code>setToken</code> 后无感继续</div>
+          </div>
+          <div class="note-txt">设计：第 4 步直接复用后台“重置密码”已有的 <code>repository.ResetPassword</code> 和 <code>RequireActive</code> 版本比对（已核对代码），不新建会话表。代价是没法“只踢某一台设备”，这一点放到第二期。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>兜底：</b>Redis 没开时，失败计数退化为进程内计数，单实例部署下仍然有效。浏览器传来的时区不合法时，热力图回落到 <code>Asia/Shanghai</code>，不报错。头像存储写入失败时保留旧头像，裁剪框不关闭，可以重试。
+              <b>老用户的 6–7 位密码仍然可以登录</b>，新规则只管注册、改密码和后台手填重置，三处共用同一套规则。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>页面里有什么</h2>
+          <p class="sub">顶部常驻身份卡，下面 4 个 tab，<code>?tab=</code> 会同步到地址栏，可以直达。</p>
+          <div class="grid g4">
+            <div class="card">
+              <div class="row"><i data-lucide="activity"></i><b>概览</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认 tab</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>4 张统计卡片 + 热力图。</b>热力图统计<b>提交的生成任务数</b>，不含试跑，可切换年份。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="coins"></i><b>积分</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-vio">新开放给用户</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>余额 + 流水。</b>以前只有后台能看，现在用户能看到自己的每一笔，按页码分页。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="user-pen"></i><b>资料</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">username 不可改</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>昵称 + 头像。</b>头像先圆形裁剪，再导出 512×512 上传；可以移除，回到首字母头像。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="shield-check"></i><b>安全</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">本期只有改密码</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>修改密码。</b>登录记录、退出所有设备、换绑邮箱放到第二期。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么做成独立页，而不是设置弹窗</h2>
+          <p class="sub">对比主流产品的承载形态。第三列是“两者结合”的备选方案。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>独立页 <code>/profile</code>（采用）</th><th>设置弹窗</th><th>独立页展示 + 弹窗编辑</th></tr></thead>
+              <tbody>
+                <tr><th>代表产品</th><td>GitHub、Vercel</td><td>Figma、Notion</td><td>—</td></tr>
+                <tr><th>热力图空间</th><td class="y">充足，53 列不缩小</td><td class="m">拥挤，需要缩小格子或横向滚动</td><td class="y">充足</td></tr>
+                <tr><th>可直达链接</th><td class="y">支持 <code>?tab=security</code></td><td class="m">不支持</td><td><span class="m">只有展示部分能直达</span></td></tr>
+                <tr><th>从画布进入</th><td><span class="m">需要跳页（画布有自动保存）</span></td><td class="y">原地打开</td><td class="m">两套入口</td></tr>
+                <tr><th>实现成本</th><td class="y">低，复用 HomeLayout</td><td>中，需要弹窗路由</td><td class="m">高</td></tr>
+                <tr><th>加权得分</th><td><b>4.4</b></td><td>2.75</td><td>3.55</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对官方文档</span></td><td><span class="tag t-ok">已核对官方帮助中心</span></td><td><span class="tag t-vio">提案对比</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户在公司电脑上忘了退出，回家改了密码，会发生什么</h2>
+          <p class="sub">这是“全部下线、当前设备续签”这个决定最典型的场景。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>在家里的电脑上打开“个人中心 → 安全”，修改密码</b><small>当前密码校验通过，新密码 8 位以上且不在弱密码表里</small></li>
+                <li><b>服务端把 token_version 从 3 改成 4</b><small>同时清掉 Redis 里的用户缓存，并断开这个用户所有的 WebSocket</small></li>
+                <li><b>家里的电脑拿到新 token，页面不刷新，继续可用</b><small>任务推送的 WS 断开后，会用新 token 申请 ticket 并自动重连</small></li>
+                <li><b>公司电脑下一次发请求时收到 401，跳转到登录页</b><small>同一浏览器的其他标签页共享 localStorage，会一起换成新 token，不会被踢</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：没法只踢某一台设备</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>JWT 是无状态的，只能整体作废，所以手机、平板上的登录也会一起失效。</li>
+                    <li>公司电脑上打开着的画布，在下一次保存时收到 401。前端要保证本地草稿不丢（复用现有的本地优先保存）。</li>
+                    <li>如果管理员在同一时间重置了密码，后发生的那次生效，用户可能需要重新登录。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线时要在表单里写清楚：“修改后，其他设备上的登录会立即失效，当前设备保持登录。”</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 热力图演示 ================= -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">热力图是怎么算出来的</h1>
+        <p class="lead">
+          选左边的问题，改参数看结果。数据是一个从 2025-03-12 注册的虚构用户，“今天”固定为 <b>2026-10-09</b>（示意）。
+          <b>分档在前端计算，后端只返回每天的原始计数。</b>演示用 div 网格画，落地时用 SVG，行为相同。
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card" style="min-width: 0"></div>
+        </div>
+      </section>
+
+      <!-- ================= 可点击原型 ================= -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          数据在内存里，刷新即复原。预置了一个用了一年半的账号 <code>lin_studio</code>，<b>当前密码是 <code>oldpass123</code></b>（示意）。
+          想看失败效果：勾选下面的“下一次请求失败”；改密码时输错当前密码，或者把新密码设成 <code>12345678</code>；昵称超过 32 个字；上传一个 txt 文件。勾选“新用户”可以看空状态。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px; font-size: 13px; gap: 14px">
+          <label class="row"><input type="checkbox" id="optFail" /> 下一次请求失败</label>
+          <label class="row"><input type="checkbox" id="optEmpty" /> 新用户（无数据）</label>
+          <button class="btn btn-outline btn-sm" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>复原</button>
+          <span class="muted" style="font-size: 12px">网络延迟 600–900ms 为模拟，非真实调用</span>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" class="mono" id="addr">video-canvas / profile?tab=overview</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="card watch" style="margin-top: 14px">
+          <div class="row"><i data-lucide="eye"></i><b>旁观面板</b><span class="tag t-mute">示意 · 不是产品界面</span><span class="spacer muted">用来观察改密码对各设备的影响</span></div>
+          <div class="grid g2" style="margin-top: 10px">
+            <div id="devices"></div>
+            <div class="log" id="evlog"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 数据与接口 ================= -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 <code>个人中心.md</code> 的 §8（数据与工程影响）和 §11（决定）。<b>能复用的都复用了</b>：token_version、InvalidateUser、对象存储、ledger 的类型筛选、TaskStats 的统计口径。</p>
+
+        <div class="sec">
+          <h2>复用关系</h2>
+          <p class="sub">新功能分别挂在哪个现有机制上，以及为什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>新功能</th><th>复用</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>改密码作废旧 token</th><td><code>repository.ResetPassword</code> + <code>RequireActive</code> + <code>hub.DisconnectUser</code></td><td>后台重置密码已经在用，行为一致；不新增会话表</td></tr>
+                <tr><th>当前设备续签</th><td><code>issueToken</code>（service/user.go:139）</td><td>响应结构与登录相同，前端直接复用 <code>setToken</code></td></tr>
+                <tr><th>改密码限流</th><td><code>RegisterCodeStore</code> 的 Redis 计数写法</td><td>项目里没有通用限流中间件，照现有写法新建 key</td></tr>
+                <tr><th>头像存储</th><td>对象存储（本地 / S3）+ <code>asset_probe</code> 内容嗅探 + <code>/files/&lt;key&gt;</code></td><td><b>不写入 assets 表</b>：该表没有“用途”字段，头像会混进素材库</td></tr>
+                <tr><th>统计卡片</th><td><code>UserRepository.TaskStats</code></td><td>与后台用户详情口径一致：排除 is_test，积分只算 settle</td></tr>
+                <tr><th>积分流水</th><td>后台的 <code>ListLedger</code> service</td><td>筛选条件照搬；<b>分页改为 offset</b>：后台的游标分页不能跳页，用户侧需要页码。新增 <code>ListLedgerPage</code> + <code>CountLedger</code>，排序 <code>created_at DESC, id DESC</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用 GORM AutoMigrate，不写 SQL 迁移文件。User 会序列化进 Redis，新字段要带 json 标签。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>users</code> 表（新增 1 个字段）</th></tr></thead>
+                <tbody>
+                  <tr><th><code>avatar_key</code></th><td><code>varchar(255) NOT NULL DEFAULT ''</code>。存储 key，例如 <code>avatars/42/9f3a…c1.webp</code>；空串表示没有头像。对外拼成 <code>avatar_url</code></td></tr>
+                  <tr><th><code>nickname</code></th><td>已有，<code>size:64</code>。规则：去掉首尾空白后 0–32 个字符，不能含控制字符；为空时显示 username</td></tr>
+                  <tr><th><code>username</code></th><td>已有，不变，<b>不开放修改</b></td></tr>
+                  <tr><th><code>token_version</code></th><td>已有，改密码时 +1</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">新增索引</th></tr></thead>
+                <tbody>
+                  <tr><th><code>idx_task_user_created</code></th><td><code>generation_tasks(user_id, created_at)</code>。用于热力图按天聚合和近 7 天统计。写在 gorm 标签里；如果与现有索引的标签冲突，就在 <code>db.go</code> 里手工 <code>CREATE INDEX IF NOT EXISTS</code></td></tr>
+                  <tr><th>Redis key</th><td><code>pwchg:fail:&lt;uid&gt;</code>：15 分钟窗口内的失败计数，满 5 次后锁 15 分钟</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">都挂在 <code>auth</code> 分组（JWT + RequireActive），前缀 <code>/api/v1</code>，响应沿用 <code>{code,msg,data,request_id}</code>。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>请求</th><th>返回 data</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /me</code></th><td>—</td><td><code>MeView{id, username, nickname, email, role, avatar_url, created_at, email_verified_at}</code></td><td>—</td></tr>
+                <tr><th><code>PATCH /me</code></th><td><code>{nickname}</code></td><td>MeView</td><td>10001 长度超限或含控制字符</td></tr>
+                <tr><th><code>POST /me/avatar</code></th><td>multipart，字段 <code>file</code>，≤2MB，≤2048×2048</td><td>MeView</td><td>55005 格式不支持；55006 文件过大</td></tr>
+                <tr><th><code>DELETE /me/avatar</code></th><td>—</td><td>MeView</td><td>—</td></tr>
+                <tr><th><code>PUT /me/password</code></th><td><code>{old_password, new_password}</code></td><td><code>LoginView{token, expire_at, role}</code></td><td>55001 当前密码错误（附剩余次数）；55002 与当前密码相同；55003 过于常见；55004 过于频繁（429）；10001 长度不合法</td></tr>
+                <tr><th><code>GET /me/stats</code></th><td>—</td><td><code>{total, success, failed, last7d, spent_credits, canvas_count}</code></td><td>—</td></tr>
+                <tr><th><code>GET /me/activity</code></th><td><code>?tz=Asia/Shanghai&amp;year=2026</code>，year 可省略（省略即最近一年）</td><td><code>{tz, start, end, years[], total, days[{date,count,image,video,audio,text}]}</code>，只返回 count&gt;0 的日子</td><td>10001 year 早于注册年份或晚于今年；tz 非法时<b>回落</b>，不报错</td></tr>
+                <tr><th><code>GET /me/credits/ledger</code></th><td><code>?type=all|task|admin&amp;page=1&amp;page_size=20</code>，page_size 只允许 10/20/50</td><td><code>{items[{id,type,amount,task_id,agent_call_id,note,created_at}], total, page, page_size}</code>，note 只在管理员调整时非空，不含 operator_id</td><td>10001 page&lt;1 或 page_size 不合法；page 超出范围时返回空 items 和真实 total</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// service.ChangePassword（提案）
+if limiter.Locked(uid)            → 55004
+validateNewPassword(new)          // 与注册、后台重置共用
+  8 ≤ len([]byte(new)) ≤ 72       else 10001
+  lower(new) ∉ weakList ∧ new ≠ username  else 55003
+u := repo.Get(uid)
+if !bcrypt.Compare(u.Password, old)
+  left := limiter.Fail(uid)       → 55001(剩余 left 次)
+if bcrypt.Compare(u.Password, new) → 55002
+limiter.Reset(uid)
+repo.ResetPassword(uid, bcrypt(new)) // 同时 token_version+1
+InvalidateUser(uid)
+hub.DisconnectUser(uid)
+return issueToken(reload(uid))</pre></div>
+            <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">-- repository.DailyTaskCounts（提案）
+-- service 先 time.LoadLocation(tz)，非法时用 Asia/Shanghai；
+-- 必须 import _ "time/tzdata"（后端目前没有引入）
+SELECT to_char((created_at AT TIME ZONE $tz)::date,
+               'YYYY-MM-DD') AS d,
+       COUNT(*) AS count,
+       COUNT(*) FILTER (WHERE kind='image') AS image,
+       COUNT(*) FILTER (WHERE kind='video') AS video,
+       COUNT(*) FILTER (WHERE kind='audio') AS audio,
+       COUNT(*) FILTER (WHERE kind='text')  AS text
+FROM generation_tasks
+WHERE user_id=$uid AND is_test=FALSE
+  AND created_at &gt;= $startUTC AND created_at &lt; $endUTC
+GROUP BY d ORDER BY d;</pre></div>
+          </div>
+          <div class="codeblock" style="margin-top: 12px"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// web/src/components/profile/heatmap.ts 纯函数（提案，需写单测）
+levelOf(count, nonZeroSorted):
+  if count == 0 → 0
+  if nonZeroSorted.length &lt; 4:  max = last; return count==1 ? 1 : clamp(2 + round((count-1)/(max-1)*2), 2, 4)
+  q1,q2,q3 = sorted[floor((n-1)*.25)], sorted[floor((n-1)*.5)], sorted[floor((n-1)*.75)]
+  return count ≤ q1 ? 1 : count ≤ q2 ? 2 : count ≤ q3 ? 3 : 4
+currentStreak(days, today): 从今天往前数；今天为 0 时从昨天开始
+buildGrid(start, end): 起点回退到周日；7 行 × N 列；范围外的格子占位但不渲染</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>统一密码规则：注册与改密码完全一致</h2>
+          <p class="sub">前后端各只保留一份实现，多个入口共用。对应 Markdown §6.8。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>规则</th><th>注册</th><th>个人中心改密码</th><th>后台重置（手填）</th><th>登录</th></tr></thead>
+              <tbody>
+                <tr><th>8–72 字节</th><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="m">仍接受 6–128，保证老用户能登录</td></tr>
+                <tr><th>不在弱密码表</th><td class="y">✓ · 55003</td><td class="y">✓ · 55003</td><td class="y">✓</td><td>—</td></tr>
+                <tr><th>不等于用户名</th><td class="y">✓ · 55003</td><td class="y">✓ · 55003</td><td class="y">✓</td><td>—</td></tr>
+                <tr><th>不同于当前密码</th><td>—</td><td class="y">✓ · 55002</td><td>—</td><td>—</td></tr>
+                <tr><th>字符组合 / 强度条</th><td colspan="3">都不要求、都不显示</td><td>—</td></tr>
+                <tr><th>后端实现</th><td colspan="4"><code>validateNewPassword(username, pw)</code>，弱密码表用 <code>go:embed</code> 内置；原来 <code>admin_user_security.go</code> 里的 72 字节校验并入此函数</td></tr>
+                <tr><th>前端实现</th><td colspan="4">改造 <code>utils/auth/register-rules.ts</code> 的 <code>validatePassword(value, username)</code>，按字节计长；注册表单 placeholder 改为“至少 8 位”；55003 显示在密码字段下方。弱密码表只放后端</td></tr>
+                <tr><th>binding 变更</th><td colspan="4"><code>RegisterUserReq</code> 和 <code>ResetPasswordReq</code> 改为 <code>min=8</code>；<b><code>LoginUserReq</code> 保持 <code>min=6</code></b></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>前端落点</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>位置</th><th>内容</th></tr></thead>
+              <tbody>
+                <tr><th><code>api/me/</code></th><td>8 个接口 + <code>type.d.ts</code></td></tr>
+                <tr><th><code>store/me.ts</code></th><td>zustand：<code>me</code>、<code>fetchMe</code>、<code>patchMe</code>。显示名不再从 JWT 解析</td></tr>
+                <tr><th><code>pages/profile/</code></th><td>身份卡 + 4 个 tab + <code>avatar-crop-dialog.tsx</code></td></tr>
+                <tr><th><code>components/profile/activity-heatmap.tsx</code></th><td>手写 SVG 热力图，roving tabindex，tooltip 复用 shadcn</td></tr>
+                <tr><th><code>components/user-avatar.tsx</code></th><td>统一头像（图片或首字母兜底），用于替换侧栏、nav-user、画布右上角</td></tr>
+                <tr><th>新依赖</th><td><code>react-easy-crop</code>（MIT，约 8KB gzip，用户已确认）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>只开放修改昵称，username 不可改</b>：username 是登录凭据并写在 JWT 里，改它代价大（GitHub 改名后旧主页会 404）。</li>
+              <li><b>采用独立页 /profile</b>：热力图需要宽度，也需要可直达链接。</li>
+              <li><b>热力图统计生成任务数</b>，排除试跑，tooltip 按图片、视频、音频拆分：口径单一，只要加一个索引。</li>
+              <li><b>改密码后全部下线、当前设备续签</b>：符合 OWASP 的做法，并直接复用 token_version。</li>
+              <li><b>新密码 8–72 字节 + 弱密码黑名单 + 不能与旧密码相同</b>；<b>登录仍然接受 6 位</b>，保证老用户能登录。</li>
+              <li><b>注册的密码规则与改密码完全一致</b>（包括不能等于用户名），前后端各一份共用实现，提示文案相同。这是你在后期补充确认的，主文档新增了 §6.8。</li>
+              <li><b>热力图手写 SVG</b>，不引用第三方库：零依赖，颜色和 tooltip 与现有组件一致。</li>
+              <li><b>头像裁剪引用 react-easy-crop</b>。</li>
+              <li><b>第一期加入统计卡片和积分流水</b>；登录记录、退出所有设备<b>已搁置到第二期</b>（数据和机制都已具备）。</li>
+              <li><b>时区由前端传浏览器的 IANA 时区</b>，非法时回落到 Asia/Shanghai。</li>
+              <li><b>积分流水展示管理员调整的备注，不展示操作人</b>：后台两个备注输入框（<code>credit-popover.tsx</code>、<code>bulk-bar.tsx</code>）同步改成“备注（必填，用户可见）”；上线前需要抽查历史备注。</li>
+              <li><b>积分流水使用页码分页</b>（总条数 + 跳页 + 每页 10/20/50），不使用“加载更多”：这是用户看过原型后提出的，主文档 §6.5 和 §8.2 已回写。</li>
+              <li><b>主文档已回写</b>：积分流水的金额按“余额变化”展示，冻结和退回用灰色、不带正负号（Markdown §6.5）。</li>
+            </ol>
+            <p class="muted" style="font-size: 12.5px; margin-top: 10px">目前没有仍待确认的问题。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    <div class="tip" id="tip" hidden></div>
+    <div id="modalRoot"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        hideTip();
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ===================== 日期与示意数据 ===================== */
+      const DAY = 864e5;
+      const TODAY = Date.UTC(2026, 9, 9); // “今天”固定，示意
+      const REG = Date.UTC(2025, 2, 12); // 注册日
+      const WD = ["日", "一", "二", "三", "四", "五", "六"];
+      const iso = (t) => new Date(t).toISOString().slice(0, 10);
+      const wd = (t) => new Date(t).getUTCDay();
+      const cnDate = (t) => { const d = new Date(t); return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日 星期${WD[d.getUTCDay()]}`; };
+
+      function mulberry32(a) { return function () { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+      const DATA = (() => {
+        const rnd = mulberry32(20261009), m = {};
+        let burst = 1;
+        for (let t = REG; t <= TODAY; t += DAY) {
+          if (rnd() < 0.04) burst = 1 + rnd() * 3; else if (rnd() < 0.1) burst = 1;
+          const w = wd(t), p = (w === 0 || w === 6 ? 0.3 : 0.62) * Math.min(1, 0.5 + (t - REG) / (400 * DAY));
+          if (rnd() > p) continue;
+          const n = 1 + Math.floor(-Math.log(1 - rnd()) * 3.2 * burst);
+          const d = { image: 0, video: 0, audio: 0, text: 0 };
+          for (let i = 0; i < n; i++) { const r = rnd(); d[r < 0.6 ? "image" : r < 0.9 ? "video" : r < 0.97 ? "audio" : "text"]++; }
+          m[iso(t)] = d;
+        }
+        return m;
+      })();
+      const cnt = (d) => (d ? d.image + d.video + d.audio + d.text : 0);
+
+      /* 对应 GET /me/activity：year 为 null 表示最近一年 */
+      function activity(year, scale = 1, empty = false) {
+        let start, end;
+        if (year == null) { end = TODAY; start = TODAY - 364 * DAY; }
+        else { start = Date.UTC(year, 0, 1); end = Math.min(Date.UTC(year, 11, 31), TODAY); }
+        const days = {};
+        if (!empty) for (let t = start; t <= end; t += DAY) {
+          const d = DATA[iso(t)]; if (!d) continue;
+          const s = (k) => Math.round(d[k] * scale);
+          const v = { image: s("image"), video: s("video"), audio: s("audio"), text: s("text") };
+          if (cnt(v) > 0) days[iso(t)] = v;
+        }
+        return { start, end, year, days };
+      }
+
+      /* ===================== 热力图纯函数（对应 heatmap.ts 提案） ===================== */
+      function quartiles(sorted) { const n = sorted.length, q = (p) => sorted[Math.floor((n - 1) * p)]; return [q(0.25), q(0.5), q(0.75)]; }
+      function levelOf(c, sorted) {
+        if (c === 0) return 0;
+        const n = sorted.length;
+        if (n < 4) { const max = sorted[n - 1]; if (c === 1 || max === 1) return 1; return Math.max(2, Math.min(4, 2 + Math.round(((c - 1) / (max - 1)) * 2))); }
+        const [q1, q2, q3] = quartiles(sorted);
+        return c <= q1 ? 1 : c <= q2 ? 2 : c <= q3 ? 3 : 4;
+      }
+      function streaks(act) {
+        let longest = 0, run = 0;
+        for (let t = act.start; t <= act.end; t += DAY) { if (act.days[iso(t)]) { run++; longest = Math.max(longest, run); } else run = 0; }
+        let cur = 0, t = act.end;
+        if (!act.days[iso(t)]) t -= DAY;
+        while (t >= act.start && act.days[iso(t)]) { cur++; t -= DAY; }
+        return { longest, cur };
+      }
+      function tipText(t, d) {
+        const c = cnt(d);
+        if (!c) return [`${cnDate(t)} · 无生成`, ""];
+        const parts = [["图片", d.image], ["视频", d.video], ["音频", d.audio], ["文本", d.text]].filter((x) => x[1] > 0).map((x) => `${x[0]} ${x[1]}`).join(" · ");
+        return [`${cnDate(t)} · ${c} 次生成`, parts];
+      }
+
+      /* 渲染热力图，返回 HTML；之后调用 bindHeatmap(root) 绑定交互 */
+      function heatmapHTML(act, opt = {}) {
+        const vals = Object.values(act.days).map(cnt).filter((c) => c > 0).sort((a, b) => a - b);
+        const gs = act.start - wd(act.start) * DAY;
+        const cols = Math.ceil(((act.end - gs) / DAY + 1) / 7);
+        let cells = "", months = "", lastM = -1, total = 0, active = 0;
+        for (let c = 0; c < cols; c++) {
+          for (let r = 0; r < 7; r++) {
+            const t = gs + (c * 7 + r) * DAY;
+            if (t < act.start || t > act.end) { cells += `<span class="cell ph" aria-hidden="true"></span>`; continue; }
+            const d = act.days[iso(t)], n = cnt(d), lv = levelOf(n, vals);
+            total += n; if (n) active++;
+            const [a, b] = tipText(t, d);
+            cells += `<span class="cell l${lv}" role="gridcell" tabindex="-1" data-r="${r}" data-c="${c}" data-t="${t}" data-a="${esc(a)}" data-b="${esc(b)}" aria-label="${esc(a + (b ? "，" + b : ""))}"></span>`;
+            const dt = new Date(t);
+            if (dt.getUTCDate() <= 7 && r === 0 || (c === 0 && r === 0)) {
+              const m = dt.getUTCMonth();
+              if (m !== lastM && !(c === 0 && dt.getUTCDate() > 20)) { months += `<span style="left:${c * 14}px">${m + 1}月</span>`; lastM = m; }
+            }
+          }
+        }
+        const st = streaks(act);
+        const label = act.year == null ? `过去一年共 <b>${total}</b> 次生成` : `${act.year} 年共 <b>${total}</b> 次生成`;
+        const empty = total === 0 ? `<div class="muted" style="font-size: 12.5px; margin-top: 8px"><i data-lucide="sparkles"></i> 还没有生成记录，去画布里试试</div>` : "";
+        return `
+          <div class="hm-scroll"><div class="hm">
+            <div class="hm-months" style="width:${cols * 14}px">${months}</div>
+            <div class="hm-wd"><span></span><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span></div>
+            <div class="hm-grid" role="grid" aria-label="生成活跃热力图，方向键移动">${cells}</div>
+          </div></div>
+          ${empty}
+          <div class="hm-foot">
+            <span>${label} · 活跃 ${active} 天</span>
+            <span>最长连续 ${st.longest} 天${act.year == null ? ` · 当前连续 ${st.cur} 天` : ""}</span>
+            <span class="spacer legend">少 <span class="cell"></span><span class="cell l1"></span><span class="cell l2"></span><span class="cell l3"></span><span class="cell l4"></span> 多</span>
+          </div>
+          ${opt.showQ && vals.length >= 4 ? `<div class="muted mono" style="font-size: 11.5px; margin-top: 6px">非零天 ${vals.length} 个 · Q1=${quartiles(vals)[0]} · Q2=${quartiles(vals)[1]} · Q3=${quartiles(vals)[2]} · 最大=${vals[vals.length - 1]}</div>` : ""}`;
+      }
+
+      function showTip(el) {
+        const r = el.getBoundingClientRect(), tip = $("#tip");
+        tip.innerHTML = `${esc(el.dataset.a)}${el.dataset.b ? `<small>${esc(el.dataset.b)}</small>` : ""}`;
+        tip.hidden = false;
+        tip.style.left = Math.min(Math.max(r.left + r.width / 2, 110), window.innerWidth - 110) + "px";
+        tip.style.top = r.top + "px";
+      }
+      function hideTip() { $("#tip").hidden = true; }
+
+      function bindHeatmap(root, onKey) {
+        const grid = $(".hm-grid", root); if (!grid) return;
+        const map = {}; let maxC = 0;
+        grid.querySelectorAll(".cell[data-t]").forEach((el) => { map[el.dataset.r + "," + el.dataset.c] = el; maxC = Math.max(maxC, +el.dataset.c); });
+        const all = grid.querySelectorAll(".cell[data-t]");
+        const last = all[all.length - 1];
+        if (last) last.tabIndex = 0;
+        const scroll = $(".hm-scroll", root); if (scroll) scroll.scrollLeft = scroll.scrollWidth; // 默认滚到最近
+        grid.addEventListener("mouseover", (e) => { if (e.target.dataset.t) showTip(e.target); });
+        grid.addEventListener("mouseleave", hideTip);
+        grid.addEventListener("focusin", (e) => { if (e.target.dataset.t) showTip(e.target); });
+        grid.addEventListener("focusout", hideTip);
+        grid.addEventListener("keydown", (e) => {
+          const cur = e.target; if (!cur.dataset.t) return;
+          let r = +cur.dataset.r, c = +cur.dataset.c, next = null;
+          const find = (rr, cc) => map[rr + "," + cc];
+          switch (e.key) {
+            case "ArrowLeft": next = find(r, c - 1); break;
+            case "ArrowRight": next = find(r, c + 1); break;
+            case "ArrowUp": next = find(r - 1, c); break;
+            case "ArrowDown": next = find(r + 1, c); break;
+            case "Home": for (let i = 0; i <= maxC && !next; i++) next = find(r, i); break;
+            case "End": for (let i = maxC; i >= 0 && !next; i--) next = find(r, i); break;
+            case "PageUp": for (let i = 0; i < 7 && !next; i++) next = find(i, c); break;
+            case "PageDown": for (let i = 6; i >= 0 && !next; i--) next = find(i, c); break;
+            case "Enter": toast("点击格子筛选当天任务：第二期，本期不做", "info"); onKey && onKey(e.key, cur); e.preventDefault(); return;
+            default: return;
+          }
+          e.preventDefault();
+          if (next) { cur.tabIndex = -1; next.tabIndex = 0; next.focus(); }
+          onKey && onKey(e.key, next || cur, !next);
+        });
+      }
+
+      /* ===================== 热力图演示页 ===================== */
+      const OPTS = [
+        { id: "level", icon: "layers", t: "颜色分档", d: "为什么同样 10 次，有的深有的浅" },
+        { id: "tz", icon: "globe", t: "时区归日", d: "晚上 0:30 的任务算哪一天" },
+        { id: "kbd", icon: "keyboard", t: "键盘操作", d: "不用鼠标也能逐格查看" },
+      ];
+      let optSel = "level";
+      const demo = { year: null, scale: 1, tz: "Asia/Shanghai", utc: "2026-10-08T16:30", keylog: [] };
+      function renderOpts() {
+        $("#optList").innerHTML = OPTS.map((o) => `
+          <button class="card" style="text-align:left; padding:12px; ${o.id === optSel ? "border-color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground))" : ""}" onclick="selOpt('${o.id}')">
+            <div class="row"><i data-lucide="${o.icon}"></i><b style="font-size:13.5px">${o.t}</b></div>
+            <div class="muted" style="font-size:12.5px; margin-top:4px">${o.d}</div>
+          </button>`).join("");
+        icons();
+      }
+      function selOpt(id) { optSel = id; renderOpts(); renderPanel(); }
+      function yearSeg(cur, fn) {
+        const ys = [null, 2026, 2025];
+        return `<div class="seg">${ys.map((y) => `<button aria-pressed="${y === cur}" onclick="${fn}(${y})">${y == null ? "最近一年" : y}</button>`).join("")}</div>`;
+      }
+      function renderPanel() {
+        const p = $("#optPanel");
+        if (optSel === "level") {
+          p.innerHTML = `
+            <div class="row wrapflex"><b>按每个人自己的四分位数分 5 档</b><span class="tag t-info">参考 GitHub 社区官方说明</span></div>
+            <p class="muted" style="font-size:13px; margin-top:6px">0 次为 0 档；把非零天排序后取 Q1、Q2、Q3，再分成 1–4 档。所以<b>阈值因人而异</b>：常用的人 10 次可能只是浅色，偶尔用的人 3 次就可能是深色。非零天少于 4 天时退化为按最大值线性分档。</p>
+            <div class="row wrapflex" style="margin:14px 0 10px; gap:14px">
+              ${yearSeg(demo.year, "demoYear")}
+              <label class="row" style="font-size:12.5px; flex:1; min-width:200px">数据密度 ×<span id="scaleV" class="mono">${demo.scale.toFixed(1)}</span>
+                <input type="range" min="0.2" max="3" step="0.1" value="${demo.scale}" oninput="demoScale(this.value)" /></label>
+            </div>
+            <div id="demoHm"></div>
+            <div class="callout c-info" style="margin-top:12px"><i data-lucide="info"></i><div>拖动密度滑块：所有格子的次数一起放大，Q1–Q3 也跟着变大，<b>颜色几乎不变</b>。这就是“按相对节奏着色”的效果，不会因为用量整体上涨就全部变成最深色。</div></div>`;
+          drawDemoHm(true);
+        } else if (optSel === "tz") {
+          p.innerHTML = `
+            <div class="row wrapflex"><b>前端传浏览器时区，后端用它切分“一天”</b><span class="tag t-vio">提案</span></div>
+            <p class="muted" style="font-size:13px; margin-top:6px">请求示例 <code>GET /me/activity?tz=Asia/Shanghai</code>。下面用浏览器内置的 Intl 真实计算，演示同一条任务在不同时区算作哪一天。</p>
+            <div class="grid g2" style="margin-top:14px">
+              <div class="field"><label>任务的 created_at（UTC）</label><input class="inp mono" type="datetime-local" value="${demo.utc}" oninput="demo.utc=this.value; drawTz()" /></div>
+              <div class="field"><label>浏览器传来的 tz（可以试试乱填）</label><input class="inp mono" value="${esc(demo.tz)}" oninput="demo.tz=this.value; drawTz()" /></div>
+            </div>
+            <div id="tzOut" style="margin-top:14px"></div>`;
+          drawTz();
+        } else {
+          p.innerHTML = `
+            <div class="row wrapflex"><b>热力图是一个 ARIA grid</b><span class="tag t-ok">参考 GitHub 2023-03 无障碍改进</span></div>
+            <p class="muted" style="font-size:13px; margin-top:6px">点一下任意格子，或者按 Tab 键进入网格（默认聚焦“今天”），然后试试这些键：</p>
+            <div class="row wrapflex" style="margin:10px 0; gap:6px; font-size:12.5px">
+              <span class="tag t-mute">← → ↑ ↓ 逐格</span><span class="tag t-mute">Home / End 行首 / 行尾</span><span class="tag t-mute">PageUp / PageDown 列首 / 列尾</span><span class="tag t-mute">Enter（第二期：筛选当天）</span>
+            </div>
+            <div id="demoHm"></div>
+            <div class="log" id="keylog" style="margin-top:12px">${demo.keylog.length ? demo.keylog.map(esc).join("<br>") : "按键记录会显示在这里"}</div>
+            <p class="muted" style="font-size:12px; margin-top:8px">聚焦和悬停都会显示同一个 tooltip，每格的 aria-label 与 tooltip 文字相同，读屏软件会念出“2026年10月8日 星期四 · 12 次生成，图片 8 · 视频 3 · 音频 1”。</p>`;
+          drawDemoHm(false);
+        }
+        icons();
+      }
+      function drawDemoHm(showQ) {
+        const el = $("#demoHm"); if (!el) return;
+        el.innerHTML = heatmapHTML(activity(demo.year, demo.scale), { showQ });
+        bindHeatmap(el, (k, cell, edge) => {
+          demo.keylog.unshift(`${k.padEnd(9)} → ${cell.dataset.a}${edge ? "（已到边界）" : ""}`);
+          demo.keylog = demo.keylog.slice(0, 8);
+          const lg = $("#keylog"); if (lg) lg.innerHTML = demo.keylog.map(esc).join("<br>");
+        });
+        icons();
+      }
+      function demoYear(y) { demo.year = y; renderPanel(); }
+      let scaleTimer;
+      function demoScale(v) { demo.scale = +v; $("#scaleV").textContent = demo.scale.toFixed(1); clearTimeout(scaleTimer); scaleTimer = setTimeout(() => drawDemoHm(true), 60); }
+      function validTz(tz) { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return !!tz.trim(); } catch { return false; } }
+      function localOf(date, tz) {
+        const f = new Intl.DateTimeFormat("zh-CN", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+        const p = Object.fromEntries(f.formatToParts(date).map((x) => [x.type, x.value]));
+        return { day: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+      }
+      function drawTz() {
+        const out = $("#tzOut"); if (!out) return;
+        const date = new Date(demo.utc + ":00Z");
+        if (isNaN(date)) { out.innerHTML = `<div class="hint bad">时间格式不合法</div>`; return; }
+        const ok = validTz(demo.tz), used = ok ? demo.tz.trim() : "Asia/Shanghai";
+        const main = localOf(date, used);
+        const rows = ["Asia/Shanghai", "Asia/Tokyo", "Europe/London", "America/Los_Angeles"].map((z) => { const l = localOf(date, z); return `<tr><th class="mono">${z}</th><td class="mono">${l.day} ${l.time}</td><td><b class="mono">${l.day}</b></td></tr>`; }).join("");
+        out.innerHTML = `
+          <div class="callout ${ok ? "c-ok" : "c-warn"}"><i data-lucide="${ok ? "circle-check" : "corner-down-right"}"></i><div>
+            ${ok ? `后端使用 <code>${esc(used)}</code>` : `<code>${esc(demo.tz) || "（空）"}</code> 不是合法的 IANA 时区，<b>回落到 Asia/Shanghai</b>，不报错`}：这条任务计入 <b class="mono">${main.day}</b>（当地 ${main.time}）。
+          </div></div>
+          <div class="cmp-wrap" style="margin-top:10px"><table class="cmp"><thead><tr><th>时区</th><th>当地时间</th><th>计入哪一天</th></tr></thead><tbody>${rows}</tbody></table></div>
+          <p class="muted" style="font-size:12px; margin-top:8px">后端必须 <code>import _ "time/tzdata"</code>：容器镜像里可能没有系统时区库，否则 <code>time.LoadLocation</code> 会一律失败。</p>`;
+        icons();
+      }
+
+      /* ===================== 可点击原型 ===================== */
+      const PW0 = "oldpass123";
+      const WEAK = ["password", "12345678", "123456789", "password1", "qwertyui", "11111111", "88888888", "iloveyou", "abc12345", "a1234567", "qwerty123", "1qaz2wsx"];
+      const LIMIT_SEC = 20; // 示意：真实为 15 分钟
+      let S;
+      function freshState() {
+        return {
+          me: { id: 42, username: "lin_studio", nickname: "林间", email: "lin@example.com", role: "user", created: "2025-03-12", avatar: null },
+          tab: "overview", year: null,
+          ov: { loading: true, error: false, stats: null, hm: null, hmLoading: false, hmError: false },
+          led: { items: [], page: 1, size: 20, total: 0, filter: "all", loading: false, error: false, loaded: false },
+          nick: "林间", nickSaving: false, removeArm: false,
+          pw: { cur: PW0, old: "", neu: "", cfm: "", show: {}, left: 5, lockUntil: 0, err: {}, banner: "", saving: false },
+          tokenVersion: 3,
+          devices: [
+            { name: "家里 · MacBook Chrome（当前）", cur: true, st: "在线" },
+            { name: "公司 · Windows Edge", st: "在线" },
+            { name: "iPhone Safari", st: "在线" },
+          ],
+          log: ["[示意] token_version = 3，三台设备都已登录"],
+        };
+      }
+      const color = (id) => `hsl(${(id * 137) % 360} 55% 48%)`;
+      const display = () => S.me.nickname || S.me.username;
+      function avatarHTML(size) {
+        if (S.me.avatar) return `<span class="av" style="width:${size}px;height:${size}px"><img alt="头像" src="${S.me.avatar}"></span>`;
+        return `<span class="av" style="width:${size}px;height:${size}px;background:${color(S.me.id)};font-size:${Math.round(size * 0.42)}px">${esc([...display()][0].toUpperCase())}</span>`;
+      }
+      function fail() { const f = $("#optFail").checked; if (f) $("#optFail").checked = false; return f; }
+      function req(ms = 700) { return new Promise((ok, no) => { const f = fail(); setTimeout(() => (f ? no(new Error("网络异常（模拟）")) : ok()), ms + Math.random() * 200); }); }
+      function logEv(s) { S.log.unshift(s); S.log = S.log.slice(0, 20); renderWatch(); }
+
+      function renderWatch() {
+        $("#devices").innerHTML = `<div class="muted" style="font-size:12px; margin-bottom:4px">token_version = <b class="mono">${S.tokenVersion}</b></div>` +
+          S.devices.map((d) => `<div class="dev"><i data-lucide="${d.cur ? "laptop" : d.name.includes("iPhone") ? "smartphone" : "monitor"}"></i><span>${esc(d.name)}</span><span class="spacer tag ${d.st === "在线" || d.st.startsWith("已续签") ? "t-ok" : "t-bad"}">${esc(d.st)}</span></div>`).join("");
+        $("#evlog").innerHTML = S.log.map(esc).join("<br>");
+        icons();
+      }
+
+      function renderProto() {
+        $("#proto").innerHTML = `
+          <div class="app">
+            <aside class="side">
+              <div class="row" style="padding:4px 8px 12px; font-weight:600; font-size:13.5px"><span class="logo" style="width:22px;height:22px;border-radius:6px"><i data-lucide="clapperboard" style="width:12px;height:12px"></i></span>video-canvas</div>
+              <div class="it"><i data-lucide="house"></i>首页</div>
+              <div class="it"><i data-lucide="layout-grid"></i>我的画布</div>
+              <div class="it"><i data-lucide="images"></i>素材</div>
+              <div class="note" style="margin-top:auto; border-radius:8px">
+                <div class="acct" id="sideAcct"></div>
+                <div class="it on" style="margin:0 4px 4px"><i data-lucide="user-round"></i>个人中心</div>
+              </div>
+              <div class="note-txt">原来这里是 disabled 的“个人中心 · 即将上线”（app-sidebar.tsx:322），现在启用。显示名改用昵称，不再从 JWT 解析 username。</div>
+            </aside>
+            <div class="main">
+              <div class="note" style="border-radius:10px"><div class="idcard" id="idcard"></div></div>
+              <div class="note-txt">身份卡常驻顶部；主标题是昵称，为空时回落到 username；@username 只读。没有头像时，按 user_id 哈希出固定底色、显示首字母，参考 Linear 和 Figma 的兜底做法。</div>
+              <div class="ptabs" role="tablist" id="ptabs"></div>
+              <div id="panel" style="margin-top:18px"></div>
+            </div>
+          </div>`;
+        renderChrome(); renderPTabs(); renderPanelP(); renderWatch();
+      }
+      function renderChrome() {
+        $("#sideAcct").innerHTML = `${avatarHTML(28)}<div style="min-width:0"><div style="font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(display())}</div><div class="muted" style="font-size:11.5px">@${esc(S.me.username)}</div></div>`;
+        $("#idcard").innerHTML = `
+          <button onclick="goTab('profile')" aria-label="编辑头像" title="编辑头像">${avatarHTML(64)}</button>
+          <div style="min-width:0">
+            <div class="row wrapflex"><b style="font-size:20px; letter-spacing:-0.01em">${esc(display())}</b>${S.me.role !== "user" ? `<span class="tag t-vio">管理员</span>` : ""}</div>
+            <div class="muted" style="font-size:13px">@${esc(S.me.username)} · ${esc(S.me.email)}</div>
+            <div class="muted" style="font-size:12px; margin-top:2px"><i data-lucide="calendar"></i> ${S.me.created} 加入</div>
+          </div>
+          <button class="btn btn-outline btn-sm spacer" onclick="goTab('profile')"><i data-lucide="pen-line"></i>编辑资料</button>`;
+        icons();
+      }
+      const PT = [["overview", "概览"], ["credits", "积分"], ["profile", "资料"], ["security", "安全"]];
+      function renderPTabs() {
+        $("#ptabs").innerHTML = PT.map(([k, v]) => `<button class="ptab" role="tab" aria-selected="${S.tab === k}" onclick="goTab('${k}')">${v}</button>`).join("");
+        $("#addr").textContent = `video-canvas / profile?tab=${S.tab}${S.tab === "credits" && S.led.page > 1 ? `&page=${S.led.page}` : ""}`;
+      }
+      function goTab(k) { S.tab = k; S.removeArm = false; hideTip(); renderPTabs(); renderPanelP(); }
+      function empty() { return $("#optEmpty").checked; }
+
+      /* ---- 概览 ---- */
+      function statsFor() {
+        if (empty()) return { total: 0, success: 0, failed: 0, last7d: 0, spent: 0, canvas: 0, avail: 50 };
+        let total = 0, spent = 0, last7d = 0;
+        for (const [k, d] of Object.entries(DATA)) { const c = cnt(d); total += c; spent += d.image * 4 + d.video * 30 + d.audio * 6 + d.text; if (Date.parse(k) > TODAY - 7 * DAY) last7d += c; }
+        const failed = Math.round(total * 0.07);
+        return { total, success: total - failed - 12, failed, last7d, spent, canvas: 14, avail: 1286 };
+      }
+      function loadOverview() {
+        S.ov = { loading: true, error: false, stats: null, hm: null, hmLoading: false, hmError: false };
+        renderPanelP();
+        req(700).then(() => { S.ov.loading = false; S.ov.stats = statsFor(); S.ov.hm = activity(S.year, 1, empty()); if (S.tab === "overview") renderPanelP(); })
+          .catch(() => { S.ov.loading = false; S.ov.error = true; if (S.tab === "overview") renderPanelP(); });
+      }
+      function switchYear(y) {
+        if (S.ov.hmLoading) return;
+        S.year = y; S.ov.hmLoading = true; S.ov.hmError = false; renderOvHm();
+        req(600).then(() => { S.ov.hmLoading = false; S.ov.hm = activity(y, 1, empty()); renderOvHm(); })
+          .catch(() => { S.ov.hmLoading = false; S.ov.hmError = true; renderOvHm(); });
+      }
+      function statCard(k, v, s) { return `<div class="card stat"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`; }
+      function renderOverview(p) {
+        if (S.ov.loading) {
+          p.innerHTML = `<div class="grid g4">${'<div class="card"><div class="sk" style="height:12px;width:50%"></div><div class="sk" style="height:26px;width:70%;margin-top:10px"></div></div>'.repeat(4)}</div>
+            <div class="card" style="margin-top:12px"><div class="sk" style="height:110px"></div></div>`;
+          return;
+        }
+        if (S.ov.error) {
+          p.innerHTML = `<div class="grid g4">${statCard("累计生成", "—", "")}${statCard("成功率", "—", "")}${statCard("画布", "—", "")}${statCard("累计消耗积分", "—", "")}</div>
+            <div class="callout c-bad" style="margin-top:12px"><i data-lucide="circle-x"></i><div><b>概览加载失败</b>（网络异常，模拟）。其他 tab 仍然可以使用。<div style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="loadOverview()"><i data-lucide="rotate-ccw"></i>重试</button></div></div></div>`;
+          icons(); return;
+        }
+        const s = S.ov.stats, den = s.success + s.failed;
+        p.innerHTML = `
+          <div class="grid g4">
+            ${statCard("累计生成", s.total.toLocaleString(), `近 7 天 ${s.last7d} 次`)}
+            ${statCard("成功率", den ? ((s.success / den) * 100).toFixed(1) + "%" : "—", `成功 ${s.success} · 失败 ${s.failed}`)}
+            ${statCard("画布", s.canvas, "未删除的画布")}
+            ${statCard("累计消耗积分", s.spent.toLocaleString(), `当前可用 ${s.avail.toLocaleString()}`)}
+          </div>
+          <div class="note card" style="margin-top:12px">
+            <div class="row wrapflex" style="margin-bottom:10px"><b style="font-size:14px">生成活跃度</b><span class="muted" style="font-size:12px">按本机时区 Asia/Shanghai 计算 · 不含试跑</span><span class="spacer" id="ySeg"></span></div>
+            <div id="ovHm"></div>
+          </div>
+          <div class="note-txt">热力图只统计“提交的生成任务”，成功和失败都算，因为它统计的是创作行为；成功率另外放在统计卡片里。切换年份时保留旧图并降低透明度，避免闪烁。悬停或用键盘聚焦格子都能看到按类型拆分的数字。</div>`;
+        renderOvHm();
+      }
+      function renderOvHm() {
+        const seg = $("#ySeg"), el = $("#ovHm"); if (!el) return;
+        const years = [null, 2026, 2025];
+        seg.innerHTML = `<div class="seg">${years.map((y) => `<button aria-pressed="${y === S.year}" onclick="switchYear(${y})">${y == null ? "最近一年" : y}</button>`).join("")}</div>`;
+        if (S.ov.hmError) {
+          el.innerHTML = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div>热力图加载失败。统计卡片不受影响。<button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="switchYear(S.year)">重试</button></div></div>`;
+        } else {
+          el.innerHTML = heatmapHTML(S.ov.hm);
+          el.classList.toggle("hm-dim", S.ov.hmLoading);
+          bindHeatmap(el);
+        }
+        icons();
+      }
+
+      /* ---- 积分 ---- */
+      const LEDGER = (() => {
+        const out = []; let t = Date.UTC(2026, 9, 9, 6, 20), id = 9000, task = 3120;
+        const rnd = mulberry32(7);
+        for (let i = 0; i < 90; i++) {
+          if (i === 9) { out.push({ id: id--, type: "admin_adjust", amount: 200, note: "国庆活动补发", t }); t -= 3.1e6; continue; }
+          if (i === 17 || i === 61) { out.push({ id: id--, type: "admin_adjust", amount: -30, note: i === 17 ? "任务 #3051 渠道故障已退款两次，扣回重复退款" : "测试账号误发，收回", t }); t -= 4.4e6; continue; }
+          const video = rnd() < 0.35, n = video ? 30 : 4, ok = rnd() > 0.12;
+          out.push({ id: id--, type: ok ? "settle" : "refund", amount: n, task, t: t });
+          out.push({ id: id--, type: "freeze", amount: n, task, t: t - (video ? 9e4 : 2e4) });
+          task -= 1 + Math.floor(rnd() * 3); t -= 3.6e6 * (1 + rnd() * 20);
+        }
+        out.push({ id: id--, type: "initial", amount: 50, t: Date.UTC(2025, 2, 12, 2, 0) });
+        return out;
+      })();
+      const LT = { freeze: ["snowflake", "冻结"], settle: ["receipt", "生成结算"], refund: ["undo-2", "解冻退回"], admin_adjust: ["shield", "管理员调整"], initial: ["gift", "初始积分"] };
+      function ledgerFiltered() {
+        if (empty()) return [];
+        const f = S.led.filter;
+        return LEDGER.filter((x) => f === "all" || (f === "admin" ? x.type === "admin_adjust" : ["freeze", "settle", "refund"].includes(x.type)));
+      }
+      /* 对应 GET /me/credits/ledger?page=&page_size=：返回当前页 items 和 total；页码超出范围时前端跳到末页 */
+      function loadLedger(page) {
+        const L = S.led;
+        L.loading = true; L.error = false; L.page = page;
+        renderPanelP(); renderPTabs();
+        req(650).then(() => {
+          const all = ledgerFiltered(), pages = Math.max(1, Math.ceil(all.length / L.size));
+          L.total = all.length; L.loading = false; L.loaded = true;
+          if (page > pages) { loadLedger(pages); return; }
+          L.items = all.slice((page - 1) * L.size, page * L.size);
+          if (S.tab === "credits") { renderPanelP(); renderPTabs(); const c = $("#ledCard"); c && c.getBoundingClientRect().top < 60 && c.scrollIntoView({ block: "start" }); }
+        }).catch(() => { L.loading = false; L.error = true; L.loaded = true; if (S.tab === "credits") renderPanelP(); });
+      }
+      function setFilter(f) { if (S.led.loading) return; S.led.filter = f; S.led.items = []; loadLedger(1); }
+      function setSize(n) { if (S.led.loading) return; S.led.size = +n; S.led.items = []; loadLedger(1); }
+      function goPage(n) { if (S.led.loading || n === S.led.page && !S.led.error) return; loadLedger(n); }
+      /* 页码最多 7 个：首页、末页常显，中间用省略号折叠 */
+      function pageList(cur, last) {
+        if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1);
+        let lo = Math.max(2, Math.min(cur - 1, last - 4)), hi = Math.min(last - 1, Math.max(cur + 1, 5));
+        if (lo === 3) lo = 2; // 省略号只省一页时，直接显示那一页
+        if (hi === last - 2) hi = last - 1;
+        const out = [1]; if (lo > 2) out.push("…");
+        for (let i = lo; i <= hi; i++) out.push(i);
+        if (hi < last - 1) out.push("…"); out.push(last); return out;
+      }
+      function pagerHTML() {
+        const L = S.led, last = Math.max(1, Math.ceil(L.total / L.size)), dis = L.loading ? "disabled" : "";
+        const nums = last > 1 ? pageList(L.page, last).map((n) => n === "…" ? `<span class="muted" style="padding:0 4px">…</span>`
+          : `<button class="btn btn-sm ${n === L.page ? "btn-primary" : ""}" style="min-width:30px" aria-current="${n === L.page ? "page" : "false"}" onclick="goPage(${n})" ${dis}>${n}</button>`).join("") : "";
+        return `<div class="row wrapflex" style="margin-top:12px; gap:6px; font-size:12.5px">
+          <span class="muted">共 ${L.total} 条</span>
+          ${L.error ? `<span class="hint bad" style="min-height:0">加载失败，</span><button class="btn btn-sm btn-outline" onclick="goPage(${L.page})">重试</button>` : ""}
+          ${L.loading ? `<i data-lucide="loader-circle" class="spin muted"></i>` : ""}
+          <span class="spacer row wrapflex" style="gap:4px">
+            <select class="inp" style="height:28px; width:auto; font-size:12.5px" onchange="setSize(this.value)" aria-label="每页条数" ${dis}>${[10, 20, 50].map((n) => `<option value="${n}" ${n === L.size ? "selected" : ""}>${n} 条/页</option>`).join("")}</select>
+            ${last > 1 ? `<button class="btn btn-sm btn-outline" onclick="goPage(${L.page - 1})" ${L.page <= 1 || L.loading ? "disabled" : ""} aria-label="上一页"><i data-lucide="chevron-left"></i></button>${nums}<button class="btn btn-sm btn-outline" onclick="goPage(${L.page + 1})" ${L.page >= last || L.loading ? "disabled" : ""} aria-label="下一页"><i data-lucide="chevron-right"></i></button>` : ""}
+          </span></div>`;
+      }
+      const fmtT = (t) => { const d = new Date(t + 8 * 3600e3); return d.toISOString().slice(0, 16).replace("T", " "); };
+      function amtCell(x) {
+        if (x.type === "freeze") return `<td class="amt gray">冻结 ${x.amount}</td>`;
+        if (x.type === "refund") return `<td class="amt gray">解冻 ${x.amount}</td>`;
+        if (x.type === "settle") return `<td class="amt">−${x.amount}</td>`;
+        return `<td class="amt ${x.amount > 0 ? "plus" : ""}">${x.amount > 0 ? "+" : "−"}${Math.abs(x.amount)}</td>`;
+      }
+      function renderCredits(p) {
+        if (!S.led.loaded && !S.led.loading) { loadLedger(S.led.page); return; }
+        const bal = empty() ? { a: 50, b: 50, f: 0 } : { a: 1286, b: 1316, f: 30 };
+        const rows = S.led.items.map((x) => `<tr><td style="width:34px"><i data-lucide="${LT[x.type][0]}" class="muted"></i></td><td><div>${LT[x.type][1]}</div><div class="muted" style="font-size:12px">${x.task ? `任务 #${x.task}` : x.type === "admin_adjust" ? `<span title="${esc(x.note)}" style="display:inline-block; max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom">${esc(x.note)}</span>` : "注册赠送"}</div></td><td class="muted" style="font-size:12.5px; white-space:nowrap">${fmtT(x.t)}</td>${amtCell(x)}</tr>`).join("");
+        let body;
+        if (S.led.loading && !S.led.items.length) body = `<div class="grid" style="gap:10px">${'<div class="sk" style="height:34px"></div>'.repeat(5)}</div>`;
+        else if (!S.led.items.length && S.led.error) body = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div>积分流水加载失败。<button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="loadLedger(S.led.page)">重试</button></div></div>`;
+        else if (!S.led.items.length) body = `<div class="muted" style="text-align:center; padding:36px 0; font-size:13px"><i data-lucide="inbox" style="width:22px;height:22px"></i><div style="margin-top:6px">还没有积分记录</div></div>`;
+        else body = `<div style="overflow-x:auto" class="${S.led.loading ? "hm-dim" : ""}"><table class="ledger"><tbody>${rows}</tbody></table></div>${pagerHTML()}`;
+        p.innerHTML = `
+          <div class="grid g3">${statCard("可用", bal.a.toLocaleString(), "可以立即用于生成")}${statCard("余额", bal.b.toLocaleString(), "含冻结部分")}${statCard("冻结", bal.f, "进行中任务占用")}</div>
+          <div class="note card" id="ledCard" style="margin-top:12px; scroll-margin-top:70px">
+            <div class="row wrapflex" style="margin-bottom:8px"><b style="font-size:14px">积分流水</b>
+              <span class="spacer seg">${[["all", "全部"], ["task", "生成任务"], ["admin", "管理员调整"]].map(([k, v]) => `<button aria-pressed="${S.led.filter === k}" onclick="setFilter('${k}')">${v}</button>`).join("")}</span></div>
+            ${body}
+          </div>
+          <div class="note-txt">金额按余额变化展示：只有“生成结算、管理员调整、初始积分”带正负号；冻结和退回只改变冻结额，用灰色显示，避免一次生成看起来被扣了两次。管理员调整显示备注原文（用户已确认），按纯文本渲染，一行截断、悬停看全文；不显示是哪位管理员操作的。页码分页：翻页时保留当前页并变淡，不闪成骨架；切换筛选或每页条数时回到第 1 页；页码同步到地址栏。</div>`;
+        icons();
+      }
+
+      /* ---- 资料 ---- */
+      const runes = (s) => [...s].length;
+      function nickState() {
+        const v = S.nick.trim(), n = runes(v);
+        if (n > 32) return { ok: false, msg: `最多 32 个字，当前 ${n}` };
+        if (/[\u0000-\u001f\u007f]/.test(v)) return { ok: false, msg: "不能包含换行或控制字符" };
+        return { ok: true, msg: v ? `${n} / 32` : `留空时显示为 ${S.me.username}` };
+      }
+      function onNick(v) {
+        S.nick = v; const st = nickState();
+        const h = $("#nickHint"), b = $("#nickSave"), i = $("#nickInp");
+        h.textContent = st.msg; h.className = "hint" + (st.ok ? "" : " bad"); i.classList.toggle("err", !st.ok);
+        b.disabled = !st.ok || S.nickSaving || S.nick.trim() === S.me.nickname;
+      }
+      function saveNick() {
+        S.nickSaving = true; const b = $("#nickSave"); b.disabled = true; b.innerHTML = `<i data-lucide="loader-circle" class="spin"></i>保存中`; icons();
+        req(700).then(() => { S.me.nickname = S.nick.trim(); S.nick = S.me.nickname; S.nickSaving = false; renderChrome(); renderPanelP(); toast("昵称已更新"); logEv(`[PATCH /me] nickname → "${S.me.nickname}"，InvalidateUser`); })
+          .catch(() => { S.nickSaving = false; renderPanelP(); toast("保存失败：网络异常（模拟），请重试", "bad"); });
+      }
+      function renderProfile(p) {
+        const st = nickState();
+        p.innerHTML = `
+          <div class="grid g2" style="align-items:start">
+            <div class="card">
+              <b style="font-size:14px">昵称</b>
+              <p class="muted" style="font-size:12.5px; margin:2px 0 12px">在侧栏、画布右上角和身份卡上显示。登录仍然使用用户名。</p>
+              <div class="field"><label for="nickInp">昵称</label>
+                <input id="nickInp" class="inp ${st.ok ? "" : "err"}" value="${esc(S.nick)}" placeholder="${esc(S.me.username)}" oninput="onNick(this.value)" />
+                <div class="hint ${st.ok ? "" : "bad"}" id="nickHint">${esc(st.msg)}</div></div>
+              <div class="field" style="margin-top:6px"><label>用户名</label><input class="inp" value="${esc(S.me.username)}" disabled />
+                <div class="hint"><i data-lucide="lock"></i> 用户名是登录凭据，不能修改</div></div>
+              <button id="nickSave" class="btn btn-primary" style="margin-top:4px" onclick="saveNick()" ${!st.ok || S.nick.trim() === S.me.nickname ? "disabled" : ""}>保存</button>
+            </div>
+            <div class="card">
+              <b style="font-size:14px">头像</b>
+              <p class="muted" style="font-size:12.5px; margin:2px 0 12px">支持 PNG / JPEG / WebP / GIF，原图不超过 10MB。上传前先裁剪成圆形；动图会保存为静态图。</p>
+              <div class="drop note" id="drop">
+                ${avatarHTML(72)}
+                <div style="display:grid; gap:6px">
+                  <div class="row wrapflex">
+                    <button class="btn btn-outline btn-sm" onclick="$('#file').click()"><i data-lucide="upload"></i>上传新头像</button>
+                    <button class="btn btn-sm" onclick="useSample()"><i data-lucide="image"></i>用示例图片</button>
+                  </div>
+                  ${S.me.avatar ? `<button class="btn btn-sm btn-danger" style="justify-self:start" onclick="removeAvatar()">${S.removeArm ? `<i data-lucide="triangle-alert"></i>再点一次确认移除` : `<i data-lucide="trash-2"></i>移除头像`}</button>` : `<span class="muted" style="font-size:12px">也可以把图片拖到这里</span>`}
+                  <div class="hint bad" id="fileErr"></div>
+                </div>
+              </div>
+              <div class="note-txt">用 react-easy-crop 做圆形裁剪（用户已确认引用）。导出 512×512 WebP 再上传，服务端只校验、不缩放。头像不写入素材库。</div>
+              <input type="file" id="file" hidden accept="image/*,.txt" onchange="pickFile(this.files[0]); this.value=''" />
+            </div>
+          </div>`;
+        const drop = $("#drop");
+        drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+        drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+        drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); pickFile(e.dataTransfer.files[0]); });
+        icons();
+      }
+      function removeAvatar() {
+        if (!S.removeArm) { S.removeArm = true; renderPanelP(); return; }
+        S.removeArm = false;
+        req(500).then(() => { S.me.avatar = null; renderChrome(); renderPanelP(); toast("头像已移除"); logEv("[DELETE /me/avatar] avatar_key → ''，旧文件尽力删除"); })
+          .catch(() => { renderPanelP(); toast("移除失败：网络异常（模拟）", "bad"); });
+      }
+      function pickFile(f) {
+        if (!f) return;
+        const err = $("#fileErr");
+        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(f.type)) { err.textContent = `不支持的格式（${f.type || "未知类型"}），请选择 PNG / JPEG / WebP / GIF`; return; }
+        if (f.size > 10 * 1024 * 1024) { err.textContent = `文件 ${(f.size / 1048576).toFixed(1)}MB，超过 10MB`; return; }
+        err.textContent = "";
+        const r = new FileReader(); r.onload = () => openCrop(r.result, f.type === "image/gif"); r.readAsDataURL(f);
+      }
+      function useSample() {
+        const c = document.createElement("canvas"); c.width = 900; c.height = 600; const g = c.getContext("2d");
+        const gr = g.createLinearGradient(0, 0, 900, 600); gr.addColorStop(0, "#7c3aed"); gr.addColorStop(1, "#f59e0b"); g.fillStyle = gr; g.fillRect(0, 0, 900, 600);
+        g.fillStyle = "rgba(255,255,255,.9)"; g.beginPath(); g.arc(560, 260, 120, 0, 7); g.fill();
+        g.fillStyle = "#111"; g.font = "bold 90px sans-serif"; g.fillText("示例", 470, 290);
+        openCrop(c.toDataURL("image/png"), false);
+      }
+
+      /* 裁剪框：模拟 react-easy-crop 的圆形遮罩 + 缩放 + 拖拽 + 方向键 */
+      let CR = null;
+      const VP = 240;
+      function openCrop(src, gif) {
+        const img = new Image();
+        img.onload = () => {
+          CR = { img, src, gif, zoom: 1, x: 0, y: 0, base: VP / Math.min(img.naturalWidth, img.naturalHeight), saving: false, err: "" };
+          renderCrop();
+        };
+        img.src = src;
+      }
+      function clampCrop() { const w = CR.img.naturalWidth * CR.base * CR.zoom, h = CR.img.naturalHeight * CR.base * CR.zoom; const mx = (w - VP) / 2, my = (h - VP) / 2; CR.x = Math.max(-mx, Math.min(mx, CR.x)); CR.y = Math.max(-my, Math.min(my, CR.y)); }
+      function placeImg() { clampCrop(); const w = CR.img.naturalWidth * CR.base * CR.zoom, h = CR.img.naturalHeight * CR.base * CR.zoom; const el = $("#cropImg"); el.style.width = w + "px"; el.style.height = h + "px"; el.style.transform = `translate(calc(-50% + ${CR.x}px), calc(-50% + ${CR.y}px))`; }
+      function renderCrop() {
+        $("#modalRoot").innerHTML = `
+          <div class="modal-bg" onclick="if(event.target===this && !CR.saving) closeCrop()">
+            <div class="modal note" role="dialog" aria-modal="true" aria-label="裁剪头像">
+              <div class="row"><b>裁剪头像</b><button class="btn btn-sm spacer" onclick="closeCrop()" aria-label="关闭" ${CR.saving ? "disabled" : ""}><i data-lucide="x"></i></button></div>
+              <div class="crop" id="crop" tabindex="0" aria-label="拖动调整位置，方向键微调">
+                <img id="cropImg" src="${CR.src}" alt="" draggable="false" /><div class="mask"></div>
+              </div>
+              <div class="row" style="margin-top:12px; font-size:12.5px"><i data-lucide="zoom-out"></i><input type="range" min="1" max="3" step="0.01" value="${CR.zoom}" oninput="CR.zoom=+this.value; placeImg()" aria-label="缩放" /><i data-lucide="zoom-in"></i></div>
+              ${CR.gif ? `<div class="hint" style="margin-top:4px"><i data-lucide="info"></i> 动图会保存为静态图</div>` : ""}
+              <div class="hint bad" id="cropErr" style="margin-top:4px">${esc(CR.err)}</div>
+              <div class="row" style="margin-top:8px"><span class="muted" style="font-size:11.5px">导出 512×512 WebP（示意）</span>
+                <button class="btn btn-outline btn-sm spacer" onclick="closeCrop()" ${CR.saving ? "disabled" : ""}>取消</button>
+                <button class="btn btn-primary btn-sm" onclick="saveCrop()" ${CR.saving ? "disabled" : ""}>${CR.saving ? `<i data-lucide="loader-circle" class="spin"></i>上传中` : "保存"}</button></div>
+              <div class="note-txt">失败时裁剪框不关闭，保留当前选区，可以直接重试。点遮罩外或按取消都不会改动现有头像。</div>
+            </div>
+          </div>`;
+        icons(); placeImg();
+        const box = $("#crop"); let drag = null;
+        box.addEventListener("pointerdown", (e) => { drag = { x: e.clientX - CR.x, y: e.clientY - CR.y }; box.setPointerCapture(e.pointerId); box.style.cursor = "grabbing"; });
+        box.addEventListener("pointermove", (e) => { if (!drag) return; CR.x = e.clientX - drag.x; CR.y = e.clientY - drag.y; placeImg(); });
+        box.addEventListener("pointerup", () => { drag = null; box.style.cursor = ""; });
+        box.addEventListener("wheel", (e) => { e.preventDefault(); CR.zoom = Math.max(1, Math.min(3, CR.zoom - e.deltaY * 0.002)); $(".modal input[type=range]").value = CR.zoom; placeImg(); }, { passive: false });
+        box.addEventListener("keydown", (e) => { const m = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, -5], ArrowDown: [0, 5] }[e.key]; if (!m) return; e.preventDefault(); CR.x += m[0]; CR.y += m[1]; placeImg(); });
+      }
+      function closeCrop() { CR = null; $("#modalRoot").innerHTML = ""; }
+      function exportCrop() {
+        const c = document.createElement("canvas"); c.width = c.height = 512; const g = c.getContext("2d"), k = 512 / VP;
+        const w = CR.img.naturalWidth * CR.base * CR.zoom, h = CR.img.naturalHeight * CR.base * CR.zoom;
+        g.drawImage(CR.img, (VP / 2 + CR.x - w / 2) * k, (VP / 2 + CR.y - h / 2) * k, w * k, h * k);
+        let url = c.toDataURL("image/webp", 0.9);
+        if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/png");
+        return url;
+      }
+      function saveCrop() {
+        const url = exportCrop(), kb = Math.round((url.length * 3) / 4 / 1024);
+        CR.saving = true; CR.err = ""; renderCrop();
+        req(900).then(() => {
+          S.me.avatar = url; closeCrop(); renderChrome(); if (S.tab === "profile") renderPanelP();
+          toast(`头像已更新（${url.includes("webp") ? "WebP" : "PNG"} · 约 ${kb}KB，示意）`);
+          logEv(`[POST /me/avatar] 512×512 约 ${kb}KB，avatar_key → avatars/42/…，旧文件尽力删除`);
+        }).catch(() => { CR.saving = false; CR.err = "上传失败：头像服务暂不可用（模拟），现有头像未改动，可以重试"; renderCrop(); });
+      }
+
+      /* ---- 安全 ---- */
+      const bytes = (s) => new TextEncoder().encode(s).length;
+      function pwHints() {
+        const p = S.pw, h = {};
+        const nb = bytes(p.neu);
+        if (p.neu) h.neu = nb < 8 ? ["", `已输入 ${nb} / 至少 8 位`] : nb > 72 ? ["bad", `密码最多 72 字节（当前 ${nb}）`] : p.old && p.neu === p.old ? ["bad", "新密码不能与当前密码相同"] : p.neu === S.me.username ? ["bad", "密码不能与用户名相同"] : ["ok", `${nb} 字节 · 长度符合`];
+        else h.neu = ["", "8–72 字节，不要求字符组合；允许粘贴，可配合密码管理器"];
+        if (p.cfm) h.cfm = p.cfm === p.neu ? ["ok", "两次输入一致"] : ["bad", "两次输入不一致"]; else h.cfm = ["", ""];
+        return h;
+      }
+      function locked() { return S.pw.lockUntil > Date.now(); }
+      function canSubmit() { const p = S.pw, nb = bytes(p.neu); return !locked() && !p.saving && p.old && nb >= 8 && nb <= 72 && p.neu !== p.old && p.neu !== S.me.username && p.cfm === p.neu; }
+      function onPw(k, v) {
+        S.pw[k] = v; if (S.pw.err[k]) { delete S.pw.err[k]; const i = $(`#pw_${k}`); i && i.classList.remove("err"); }
+        const h = pwHints();
+        for (const f of ["neu", "cfm"]) { const el = $(`#hint_${f}`); if (!el) continue; const [c, m] = S.pw.err[f] ? ["bad", S.pw.err[f]] : h[f]; el.className = "hint " + c; el.textContent = m; }
+        const oh = $("#hint_old"); if (oh && k === "old") { oh.className = "hint"; oh.textContent = ""; }
+        $("#pwSubmit").disabled = !canSubmit();
+      }
+      function togglePw(k) { S.pw.show[k] = !S.pw.show[k]; const i = $(`#pw_${k}`); i.type = S.pw.show[k] ? "text" : "password"; $(`#eye_${k}`).innerHTML = `<i data-lucide="${S.pw.show[k] ? "eye-off" : "eye"}"></i>`; icons(); }
+      let lockTimer;
+      function tickLock() {
+        clearInterval(lockTimer);
+        lockTimer = setInterval(() => {
+          const b = $("#pwSubmit");
+          if (!locked()) { clearInterval(lockTimer); S.pw.banner = ""; S.pw.left = 5; if (S.tab === "security") renderPanelP(); return; }
+          if (b) b.textContent = `请 ${Math.ceil((S.pw.lockUntil - Date.now()) / 1000)} 秒后再试`;
+        }, 250);
+      }
+      function submitPw() {
+        if (!canSubmit()) return;
+        const p = S.pw; p.saving = true; p.err = {}; p.banner = ""; renderPanelP();
+        req(800).then(() => {
+          p.saving = false;
+          if (p.old !== p.cur) {
+            p.left--;
+            if (p.left <= 0) { p.lockUntil = Date.now() + LIMIT_SEC * 1000; p.banner = "尝试过于频繁，请 15 分钟后再试（55004）。演示中缩短为 20 秒。"; logEv("[PUT /me/password] 55004 已锁定"); tickLock(); }
+            else { p.err.old = `当前密码错误，还可尝试 ${p.left} 次（55001）`; logEv(`[PUT /me/password] 55001 剩余 ${p.left} 次`); }
+            renderPanelP(); return;
+          }
+          if (p.neu === p.cur) { p.err.neu = "新密码不能与当前密码相同（55002）"; renderPanelP(); return; }
+          if (WEAK.includes(p.neu.toLowerCase()) || p.neu === S.me.username) { p.err.neu = "这个密码过于常见，请换一个（55003）"; logEv("[PUT /me/password] 55003 命中弱密码表"); renderPanelP(); return; }
+          p.cur = p.neu; p.left = 5; S.tokenVersion++;
+          S.devices = S.devices.map((d) => ({ ...d, st: d.cur ? "已续签新 token" : "已失效 · 下次请求 401" }));
+          logEv(`[PUT /me/password] 成功：token_version → ${S.tokenVersion}`);
+          logEv("InvalidateUser + hub.DisconnectUser：断开全部 WS");
+          logEv("当前页 setToken(新 token) → WS 用新 ticket 自动重连");
+          p.old = p.neu = p.cfm = ""; p.show = {};
+          renderPanelP(); toast("密码已修改，其他设备已退出登录");
+        }).catch(() => { p.saving = false; p.banner = "网络异常（模拟），密码没有被修改，请重试。"; renderPanelP(); });
+      }
+      function pwField(k, label, ac, ph) {
+        const p = S.pw, h = pwHints(), e = p.err[k];
+        const [c, m] = e ? ["bad", e] : k === "old" ? ["", ""] : h[k];
+        return `<div class="field"><label for="pw_${k}">${label}</label>
+          <div class="inp-wrap"><input id="pw_${k}" class="inp ${e ? "err" : ""}" type="${p.show[k] ? "text" : "password"}" autocomplete="${ac}" placeholder="${ph}" value="${esc(p[k])}" oninput="onPw('${k}', this.value)" ${locked() ? "disabled" : ""} />
+          <button class="eye" id="eye_${k}" type="button" onclick="togglePw('${k}')" aria-label="显示密码"><i data-lucide="${p.show[k] ? "eye-off" : "eye"}"></i></button></div>
+          <div class="hint ${c}" id="hint_${k}">${esc(m)}</div></div>`;
+      }
+      function renderSecurity(p) {
+        const pw = S.pw;
+        p.innerHTML = `
+          <div class="grid g2" style="align-items:start">
+            <div class="card note">
+              <b style="font-size:14px">修改密码</b>
+              <p class="muted" style="font-size:12.5px; margin:2px 0 12px">修改后，其他设备上的登录会立即失效，当前设备保持登录。</p>
+              ${pw.banner ? `<div class="callout c-bad" style="margin-bottom:12px"><i data-lucide="circle-x"></i><div>${esc(pw.banner)}</div></div>` : ""}
+              <form onsubmit="event.preventDefault(); submitPw()" style="display:grid; gap:4px">
+                <input type="text" autocomplete="username" value="${esc(S.me.username)}" hidden readonly />
+                ${pwField("old", "当前密码", "current-password", "演示密码 oldpass123")}
+                ${pwField("neu", "新密码", "new-password", "至少 8 位")}
+                ${pwField("cfm", "确认新密码", "new-password", "再输入一次")}
+                <button id="pwSubmit" class="btn btn-primary" style="justify-self:start; margin-top:4px" ${canSubmit() ? "" : "disabled"}>${pw.saving ? `<i data-lucide="loader-circle" class="spin"></i>提交中` : locked() ? `请 ${Math.ceil((pw.lockUntil - Date.now()) / 1000)} 秒后再试` : "修改密码"}</button>
+              </form>
+            </div>
+            <div class="card">
+              <b style="font-size:14px">规则说明</b>
+              <ul class="list muted" style="margin-top:8px; display:grid; gap:4px">
+                <li>新密码 8–72 字节，<b>不要求</b>大小写、数字、符号的组合（依据 NIST 800-63B）。</li>
+                <li>不能与当前密码相同，不能与用户名相同，也不能是常见弱密码，例如 <code>12345678</code>、<code>password</code>。</li>
+                <li><b>注册时用的是同一套规则</b>，提示文案也一致。</li>
+                <li>当前密码连续输错 5 次，锁定 15 分钟。</li>
+                <li>老账号的 6–7 位密码仍然可以登录，只是下次修改时要满足新规则。</li>
+              </ul>
+              <div class="callout c-info" style="margin-top:12px"><i data-lucide="calendar-clock"></i><div>登录记录、退出所有设备、换绑邮箱、改密码邮件通知：<b>第二期</b>。</div></div>
+            </div>
+          </div>
+          <div class="note-txt">只做长度和黑名单检查，不做组合规则和强度条：这是用户的选择（8 位 + 黑名单），强度计放到第二期。三个输入框都带显示密码开关并允许粘贴，autocomplete 让密码管理器能正确识别。</div>`;
+        icons();
+        if (locked()) tickLock();
+      }
+
+      function renderPanelP() {
+        const p = $("#panel"); if (!p) return;
+        if (S.tab === "overview") { if (!S.ov.stats && !S.ov.loading && !S.ov.error) { loadOverview(); return; } renderOverview(p); }
+        else if (S.tab === "credits") renderCredits(p);
+        else if (S.tab === "profile") renderProfile(p);
+        else renderSecurity(p);
+        icons();
+      }
+      function resetProto() { clearInterval(lockTimer); closeCrop(); S = freshState(); S.ov.loading = false; $("#optFail").checked = false; $("#optEmpty").checked = false; renderProto(); loadOverview(); }
+      $("#optEmpty").addEventListener("change", () => {
+        S.led = { items: [], page: 1, size: S.led.size, total: 0, filter: S.led.filter, loading: false, error: false, loaded: false };
+        S.ov.stats = null; S.ov.loading = false; S.ov.error = false;
+        if (S.tab === "overview") loadOverview(); else renderPanelP();
+      });
+
+      window.addEventListener("scroll", hideTip, { passive: true });
+      renderOpts(); renderPanel();
+      S = freshState(); S.ov.loading = false; renderProto(); loadOverview();
+      icons();
+    </script>
+  </body>
+</html>
