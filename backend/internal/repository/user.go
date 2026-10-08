@@ -63,6 +63,22 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]model.U
 	return users, total, nil
 }
 
+// ListUsernames 按 id 批量取用户名，返回 用户 id -> 用户名；不存在（含已被软删除）的 id 缺席；ids 为空返回空 map。
+func (r *UserRepository) ListUsernames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
+	out := make(map[uint64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var users []model.User
+	if err := r.db.WithContext(ctx).Select("id", "username").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		out[u.ID] = u.Username
+	}
+	return out, nil
+}
+
 // Update 按 id 更新指定字段；用户不存在返回 ErrNotFound。
 func (r *UserRepository) Update(ctx context.Context, id uint64, fields map[string]any) error {
 	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields)

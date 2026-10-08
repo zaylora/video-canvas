@@ -113,6 +113,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 	processorSvc := service.NewImageProcessorService(repository.NewImageProcessorRepository(db), storageRepo, storeRegistry, service.NewHTTPProcessorFetcher())
 	assetSvc.SetVariantResolver(processorSvc)
 
+	// 登录页展示：条目引用素材表里的视频 / 封面，地址复用素材服务的稳定地址（/files/<key>），设置走 system_settings 键值表；
+	// 后台素材库列表另需生成任务（带出提示词 / 模型名）和用户名（显示作者）
+	showcaseSvc := service.NewShowcaseService(service.ShowcaseDeps{
+		Items: repository.NewShowcaseRepository(db), Assets: assetRepo, Views: assetSvc,
+		Tasks: repository.NewGenerationTaskRepository(db), Users: userRepo,
+		Settings: repository.NewSystemSettingRepository(db), Audit: auditRepo,
+	})
+
 	// 实时推送：Redis 开启时 ticket 存 Redis，关闭时降级为进程内存
 	hub := ws.NewHub()
 	ticketStore := ws.NewTicketStore(rdb)
@@ -236,6 +244,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
 		}))),
 		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
+		Showcase:      handler.NewShowcaseHandler(showcaseSvc),
 		AdminRole:     roleLookup,
 		UserState:     stateLookup,
 	})

@@ -38,6 +38,7 @@ func All() []any {
 		&AdminAuditLog{},
 		&SystemSetting{},
 		&SMTPSetting{},
+		&ShowcaseItem{},
 		&AgentSession{},
 		&AgentRun{},
 		&AgentEvent{},
