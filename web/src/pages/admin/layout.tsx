@@ -166,7 +166,7 @@ function AdminBody() {
               onClick={() => updateSettings("theme", dark ? "light" : "dark")}
             >
               {dark ? <Moon /> : <Sun />}
-            </Button>
+            </Button>{" "}
           </div>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">

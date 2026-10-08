@@ -1,8 +1,7 @@
 import { useMemo, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
 import {
-  CircleUser,
   Compass,
   FolderOpen,
   MessageSquare,
@@ -10,14 +9,18 @@ import {
   PanelLeftOpen,
   Pin,
   Settings2,
+  ShieldCheck,
   Sparkles,
+  User,
   Workflow,
 } from "lucide-react";
 
+import { NavUser } from "@/components/admin-ui/nav-user";
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/canvas/chrome/chrome";
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { SoonTip } from "@/components/home/soon";
+import { DropdownMenuItem, DropdownMenuShortcut } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -35,6 +38,7 @@ import { buildSampleConversations } from "@/constants/conversation-sample";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
 import { SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
 import { useAdminStore } from "@/store/admin";
 import { canManageModels } from "@/utils/admin/role";
 import { placeholderBackground } from "@/utils/home/placeholder";
@@ -194,7 +198,7 @@ function ListItem({
 /**
  * 首页、资产、对话和画布列表共用的左侧侧栏（设计稿 docs/品牌包装/登录与首页改版原型）：
  * 连镜 Logo、导航（创作 / 探索 / 资产）、「对话」和「画布」两组最近记录，
- * 底部是 AI 配置（只给已确认的管理员）和我的账户。
+ * 底部是 AI 配置（只给已确认的管理员）和账号菜单（退出登录）。
  * 对话目前是样例数据；画布是真的最近画布。
  * 桌面端可收起成图标栏（⌘B），窄屏由 shadcn sidebar 换成从左滑出的抽屉。
  */
@@ -207,6 +211,9 @@ export function AppSidebar() {
    * 这里不主动探测角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
    */
   const isAdmin = useAdminStore((state) => state.status === "ready" && canManageModels(state.role));
+  const username = useUsername();
+  const canEnterBackend = useCanEnterAdmin();
+  const navigate = useNavigate();
 
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border">
@@ -306,10 +313,25 @@ export function AppSidebar() {
               </SidebarMenuBadge>
             </SidebarMenuItem>
           )}
-          <SidebarMenuItem>
-            <NavButton item={{ label: "我的账户", icon: CircleUser }} active={false} />
-          </SidebarMenuItem>
         </SidebarMenu>
+        <NavUser
+          name={username ?? "我的账户"}
+          description={isAdmin ? "管理员" : undefined}
+          initials={username?.slice(0, 1).toUpperCase() ?? "我"}
+        >
+          {/* 个人中心页还没有，先禁用 */}
+          <DropdownMenuItem disabled>
+            <User />
+            个人中心
+            <DropdownMenuShortcut>即将上线</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          {canEnterBackend && (
+            <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
+              <ShieldCheck />
+              管理后台
+            </DropdownMenuItem>
+          )}
+        </NavUser>
       </SidebarFooter>
     </Sidebar>
   );

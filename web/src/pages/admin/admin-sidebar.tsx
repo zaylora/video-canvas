@@ -1,10 +1,10 @@
-import { ArrowLeft } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { ArrowLeft, User } from "lucide-react";
+import { Link, useLocation } from "react-router";
 
 import type { AdminRole } from "@/api/admin/ai/type.d";
 import { Logo } from "@/components/brand/logo";
 import { NavUser } from "@/components/admin-ui/nav-user";
-import { DropdownMenuGroup, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuShortcut } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -31,7 +31,6 @@ export function AdminSidebar({
   role: AdminRole;
   counts: Record<string, number | undefined>;
 }) {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
 
@@ -51,6 +50,21 @@ export function AdminSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        {/* 离开后台是导航，不是账号操作，放在导航最上面，不放底部的账号区 */}
+        <SidebarGroup className="pb-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="返回画布"
+                className="text-sidebar-foreground/80"
+                render={<Link to="/" onClick={() => setOpenMobile(false)} />}
+              >
+                <ArrowLeft />
+                <span>返回画布</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
         {ADMIN_NAV.map((section) => (
           <SidebarGroup key={section.label}>
             <SidebarGroupLabel className="text-sidebar-foreground/55">
@@ -83,29 +97,17 @@ export function AdminSidebar({
         ))}
       </SidebarContent>
       <SidebarFooter className="border-sidebar-border border-t">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="返回画布"
-              className="text-sidebar-foreground/80"
-              render={<Link to="/" />}
-            >
-              <ArrowLeft />
-              <span>返回画布</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
         <NavUser
           name={ROLE_TEXT[role]}
           description={ROLE_DESC[role]}
           initials={role === "super_admin" ? "运" : "营"}
         >
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => navigate("/")}>
-              <ArrowLeft />
-              返回画布
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
+          {/* 个人中心页还没有，先禁用 */}
+          <DropdownMenuItem disabled>
+            <User />
+            个人中心
+            <DropdownMenuShortcut>即将上线</DropdownMenuShortcut>
+          </DropdownMenuItem>
         </NavUser>
       </SidebarFooter>
       <SidebarRail />
