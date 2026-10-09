@@ -28,8 +28,8 @@ export function StorageStatus({ storage }: { storage: StorageView }) {
           title={status.detail}
           className={
             status.tone === "danger"
-              ? "max-w-[14rem] truncate text-[11px] text-red-600 dark:text-red-400"
-              : "text-muted-foreground text-[11px]"
+              ? "max-w-[14rem] truncate text-xs text-red-600 dark:text-red-400"
+              : "text-muted-foreground text-xs"
           }
         >
           {status.detail}

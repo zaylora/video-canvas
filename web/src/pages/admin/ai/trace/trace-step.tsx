@@ -128,7 +128,7 @@ export function TraceStepRow({
               <div className="text-muted-foreground font-medium">
                 utils.log（{step.logs.length}）
               </div>
-              <ul className="bg-muted rounded-md p-2 font-mono text-[11px] leading-5">
+              <ul className="bg-muted rounded-md p-2 font-mono text-xs leading-5">
                 {step.logs.map((line, index) => (
                   <li key={index} className="break-all whitespace-pre-wrap">
                     {line}

@@ -65,7 +65,7 @@ export function StorageBindingTable({
                     {storage.name}
                     {storage.is_default && <Tag tone="info">默认</Tag>}
                   </div>
-                  <div className="text-muted-foreground font-mono text-[11px]">{where.primary}</div>
+                  <div className="text-muted-foreground font-mono text-xs">{where.primary}</div>
                 </TableCell>
                 <TableCell className="py-3">{storageProviderLabel(storage.provider)}</TableCell>
                 <TableCell className="py-3 whitespace-normal">

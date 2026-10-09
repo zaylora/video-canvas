@@ -228,7 +228,7 @@ export function ResultPanel({
           <TabsTrigger key={item.id} value={item.id}>
             {item.label}
             {badge[item.id] !== null && (
-              <span className="text-muted-foreground text-[11px]">{badge[item.id]}</span>
+              <span className="text-muted-foreground text-xs">{badge[item.id]}</span>
             )}
           </TabsTrigger>
         ))}

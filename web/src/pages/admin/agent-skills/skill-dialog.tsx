@@ -279,7 +279,7 @@ function DialogBody({
             <Sparkles className="size-[18px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <DialogTitle className="truncate text-base">{item.title}</DialogTitle>
+            <DialogTitle className="truncate text-lg font-semibold">{item.title}</DialogTitle>
             <DialogDescription className="truncate font-mono text-xs">
               {item.name}
             </DialogDescription>

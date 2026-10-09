@@ -157,7 +157,7 @@ function UserTable({
       className={cn("border-t transition-opacity", refreshing && !loading && "opacity-60")}
       aria-busy={refreshing}
     >
-      <Table className="text-[13px]">
+      <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="bg-muted/40 w-10 pl-3">
@@ -335,10 +335,10 @@ function UserRow({
             <div className="truncate font-medium">
               {user.username}
               {self && (
-                <span className="text-muted-foreground ml-1.5 text-[11px] font-normal">（你）</span>
+                <span className="text-muted-foreground ml-1.5 text-xs font-normal">（你）</span>
               )}
             </div>
-            <div className="text-muted-foreground truncate text-[11px]">{user.email || "—"}</div>
+            <div className="text-muted-foreground truncate text-xs">{user.email || "—"}</div>
           </div>
         </div>
       </TableCell>
@@ -373,7 +373,7 @@ function UserRow({
               transition={SPRING}
             />
           </span>
-          {conc.custom && <span className="text-muted-foreground text-[10px]">自定</span>}
+          {conc.custom && <span className="text-muted-foreground text-[11px]">自定</span>}
         </div>
       </TableCell>
       <TableCell className={cn("text-muted-foreground text-xs", WIDE_ONLY)}>
@@ -462,7 +462,7 @@ function StatusCell({ disabled }: { disabled: boolean }) {
             {USER_STATUS_LABEL.disabled}
           </Tag>
         ) : (
-          <StatusLabel tone="success" className="text-foreground text-[13px]">
+          <StatusLabel tone="success" className="text-foreground text-sm">
             {USER_STATUS_LABEL.active}
           </StatusLabel>
         )}
@@ -477,7 +477,7 @@ function CreditValue({ user }: { user: UserListItem }) {
     <>
       <AnimatedNumber value={user.available} className="font-mono font-medium" />
       {user.frozen > 0 && (
-        <span className="text-muted-foreground text-[11px] tabular-nums">
+        <span className="text-muted-foreground text-xs tabular-nums">
           冻结 <AnimatedNumber value={user.frozen} />
         </span>
       )}

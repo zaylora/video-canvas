@@ -51,13 +51,13 @@ export function PrecheckBanner({ view }: { view: SkillImportView }) {
         <Icon className="size-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <h3 className="text-foreground flex flex-wrap items-center gap-2 text-[15px] font-semibold">
+        <h3 className="text-foreground flex flex-wrap items-center gap-2 text-base font-semibold">
           <span className="min-w-0 truncate">
             {view.name || "未识别的技能"} · {planLabel(view)}
           </span>
           <Tag tone={tagTone}>{label}</Tag>
         </h3>
-        <p className="text-muted-foreground mt-0.5 text-[13px] break-words">
+        <p className="text-muted-foreground mt-0.5 text-sm break-words">
           {planSummary(view)}
           {notes.length > 0 && (
             <>
@@ -70,7 +70,7 @@ export function PrecheckBanner({ view }: { view: SkillImportView }) {
       <dl className="text-muted-foreground flex shrink-0 gap-4 text-xs max-md:hidden">
         {stats.map((stat) => (
           <div key={stat.label}>
-            <dd className="text-foreground text-[15px] font-semibold tabular-nums">{stat.value}</dd>
+            <dd className="text-foreground text-base font-semibold tabular-nums">{stat.value}</dd>
             <dt>{stat.label}</dt>
           </div>
         ))}

@@ -237,7 +237,7 @@ function TaskRow({ task }: { task: UserTaskItem }) {
       ? `-${task.charged_credits}`
       : "0";
   return (
-    <div className="grid grid-cols-[5.5rem_1fr_auto_4rem_3rem] items-center gap-x-3 border-b py-2.5 text-[13px] last:border-b-0">
+    <div className="grid grid-cols-[5.5rem_1fr_auto_4rem_3rem] items-center gap-x-3 border-b py-2.5 text-sm last:border-b-0">
       <span className="text-muted-foreground text-xs tabular-nums">
         {formatShortTime(task.created_at)}
       </span>
@@ -303,7 +303,7 @@ function CreditsTab({ userId, refreshKey }: { userId: number; refreshKey: number
         {list.items.map((row) => (
           <div
             key={row.id}
-            className="grid grid-cols-[6.5rem_3.5rem_1fr_auto] items-center gap-x-3 border-b py-2.5 text-[13px] last:border-b-0"
+            className="grid grid-cols-[6.5rem_3.5rem_1fr_auto] items-center gap-x-3 border-b py-2.5 text-sm last:border-b-0"
           >
             <span>
               <Tag tone={row.type === "admin_adjust" ? "warning" : "neutral"}>
@@ -364,7 +364,7 @@ function LoginsTab({ userId, refreshKey }: { userId: number; refreshKey: number 
           return (
             <div
               key={row.id}
-              className="grid grid-cols-[5.5rem_5.5rem_1fr_auto] items-center gap-x-3 border-b py-2.5 text-[13px] last:border-b-0"
+              className="grid grid-cols-[5.5rem_5.5rem_1fr_auto] items-center gap-x-3 border-b py-2.5 text-sm last:border-b-0"
             >
               <span className="text-muted-foreground text-xs tabular-nums">
                 {formatShortTime(row.created_at)}

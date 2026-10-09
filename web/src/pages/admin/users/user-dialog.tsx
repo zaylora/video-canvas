@@ -186,7 +186,7 @@ function UserDialog({
                       >
                         {TAB_LABEL[value]}
                         {value === "tasks" && !!user && user.active_tasks > 0 && (
-                          <span className="bg-status-running text-background inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] tabular-nums">
+                          <span className="bg-status-running text-background inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] tabular-nums">
                             {user.active_tasks}
                           </span>
                         )}
@@ -296,7 +296,7 @@ function DialogHead({
         {user ? (
           <>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="truncate text-base font-semibold">{user.username}</span>
+              <span className="truncate text-lg font-semibold">{user.username}</span>
               <Tag tone={USER_ROLE_TONE[user.role]}>{USER_ROLE_LABEL[user.role]}</Tag>
               {user.status === "active" ? (
                 <Tag tone="success">{USER_STATUS_LABEL.active}</Tag>
@@ -418,7 +418,7 @@ function DialogSummary({
         <div className="border-l p-3">
           <div className="text-muted-foreground flex items-center justify-between text-xs">
             <span>并发</span>
-            <span className="text-[10px]">{conc.custom ? "自定义" : "默认"}</span>
+            <span className="text-[11px]">{conc.custom ? "自定义" : "默认"}</span>
           </div>
           <div
             className={cn(

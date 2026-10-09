@@ -241,7 +241,7 @@ export function FileWorkbench({
                   onClick={() => (isDir ? toggleDir(node.path) : select(node.path))}
                   style={{ paddingLeft: 6 + depth * 14 }}
                   className={cn(
-                    "hover:bg-accent focus-visible:ring-ring/50 flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-[13px] outline-none transition-colors duration-(--motion-fast) ease-(--motion-ease) focus-visible:ring-2",
+                    "hover:bg-accent focus-visible:ring-ring/50 flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-sm outline-none transition-colors duration-(--motion-fast) ease-(--motion-ease) focus-visible:ring-2",
                     active && "bg-accent font-medium shadow-[inset_2px_0_0_var(--primary)]",
                   )}
                 >
@@ -258,7 +258,7 @@ export function FileWorkbench({
                   <Icon className="text-muted-foreground size-3.5 shrink-0" />
                   <span className="min-w-0 truncate">{node.name}</span>
                   {file?.kind === "script" && file.lang && (
-                    <span className="font-mono text-[11px] text-sky-600 dark:text-sky-400">
+                    <span className="font-mono text-xs text-sky-600 dark:text-sky-400">
                       {file.lang}
                     </span>
                   )}
@@ -302,9 +302,9 @@ export function FileWorkbench({
                       >
                         {ISSUE_LEVEL_LABEL[issue.level]}
                       </Tag>
-                      <code className="text-muted-foreground text-[11px]">{issue.code}</code>
+                      <code className="text-muted-foreground text-xs">{issue.code}</code>
                     </span>
-                    <span className="mt-1 block text-[13px] leading-snug break-words">
+                    <span className="mt-1 block text-sm leading-snug break-words">
                       {issue.message}
                     </span>
                     {issue.path && (

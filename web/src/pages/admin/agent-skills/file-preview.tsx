@@ -75,17 +75,13 @@ const MD_COMPONENTS: Components = {
   ),
   code: ({ node: _n, className, ...p }) => (
     <code
-      className={cn(
-        "font-mono text-[12.5px]",
-        !className && "bg-muted rounded px-1 py-0.5",
-        className,
-      )}
+      className={cn("font-mono text-xs", !className && "bg-muted rounded px-1 py-0.5", className)}
       {...p}
     />
   ),
   table: ({ node: _n, ...p }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]" {...p} />
+      <table className="w-full border-collapse text-sm" {...p} />
     </div>
   ),
   th: ({ node: _n, ...p }) => (
@@ -118,7 +114,7 @@ export function FrontmatterCard({
         {rows.map(([key, value]) => (
           <div
             key={key}
-            className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-start gap-3 border-b px-3 py-2 text-[13px] last:border-b-0 max-md:grid-cols-[96px_minmax(0,1fr)_auto]"
+            className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-start gap-3 border-b px-3 py-2 text-sm last:border-b-0 max-md:grid-cols-[96px_minmax(0,1fr)_auto]"
           >
             <dt className="text-muted-foreground font-mono text-xs">{key}</dt>
             <dd className="min-w-0 break-words">
@@ -157,7 +153,7 @@ function SourceView({
       <ol
         ref={box}
         data-slot="source-view"
-        className="py-2.5 font-mono text-[12.5px] leading-5 tabular-nums"
+        className="py-2.5 font-mono text-xs leading-5 tabular-nums"
       >
         {shown.map((line, index) => {
           const hit = highlightLine === index + 1;
@@ -294,7 +290,7 @@ export function FilePreview({
     <div data-slot="file-preview" className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3.5">
         <Icon className="text-muted-foreground size-4 shrink-0" />
-        <span className="min-w-0 truncate font-mono text-[13px]" title={file.path}>
+        <span className="min-w-0 truncate font-mono text-sm" title={file.path}>
           {file.path}
         </span>
         <Tag className="max-md:hidden">{fileTagLabel(file)}</Tag>

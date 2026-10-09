@@ -45,7 +45,7 @@ function PanelHead({ title, aside }: { title: string; aside?: string }) {
   return (
     <CardHeader className="flex-row items-center justify-between gap-3 border-b py-3.5">
       <CardTitle className="text-sm">{title}</CardTitle>
-      {aside && <span className="text-muted-foreground text-[12.5px] tabular-nums">{aside}</span>}
+      {aside && <span className="text-muted-foreground text-xs tabular-nums">{aside}</span>}
     </CardHeader>
   );
 }
@@ -113,7 +113,7 @@ function SettingRow({
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 not-first:border-t">
       <div>
-        <label htmlFor={htmlFor} className="block text-[13.5px] font-medium">
+        <label htmlFor={htmlFor} className="block text-sm font-medium">
           {title}
         </label>
         <span className="text-muted-foreground text-xs">{hint}</span>
@@ -153,7 +153,7 @@ function SettingsPanel({
             >
               <Minus className="size-4" />
             </button>
-            <output className="w-11 text-center text-[13px] tabular-nums">
+            <output className="w-11 text-center text-sm tabular-nums">
               {settings.clip_seconds} 秒
             </output>
             <button

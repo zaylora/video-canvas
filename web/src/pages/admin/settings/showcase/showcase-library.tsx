@@ -118,7 +118,7 @@ function LibraryBody({
       <DialogHeader className="shrink-0 flex-row items-start justify-between gap-3 border-b p-5">
         <div>
           <DialogTitle className="text-base font-semibold">从素材库添加</DialogTitle>
-          <DialogDescription className="mt-0.5 text-[12.5px]">
+          <DialogDescription className="mt-0.5 text-xs">
             只列出平台生成的视频，提示词和模型会从生成记录自动带入。
           </DialogDescription>
         </div>
@@ -145,7 +145,7 @@ function LibraryBody({
         )}
         {status === "ready" && items.length === 0 && (
           <div className="text-muted-foreground py-12 text-center text-sm">
-            <b className="text-foreground mb-1 block text-[15px]">还没有平台生成的视频</b>
+            <b className="text-foreground mb-1 block text-base">还没有平台生成的视频</b>
             用户生成视频后会出现在这里，也可以直接上传视频。
           </div>
         )}
@@ -192,7 +192,7 @@ function LibraryBody({
                       )}
                     </div>
                     <div className="px-3 pt-2.5 pb-3">
-                      <p className="line-clamp-2 text-[12.5px] leading-normal">
+                      <p className="line-clamp-2 text-xs leading-normal">
                         {item.prompt || "（没有找到生成它的提示词）"}
                       </p>
                       <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
@@ -233,7 +233,7 @@ function LibraryBody({
       </div>
 
       <DialogFooter className="mx-0 mb-0 shrink-0 flex-row items-center justify-between rounded-none border-t bg-transparent p-4">
-        <span className="text-muted-foreground text-[13px] tabular-nums">
+        <span className="text-muted-foreground text-sm tabular-nums">
           {picked.size > 0 ? `已选 ${picked.size} 个` : "未选择"}
         </span>
         <div className="flex gap-2">

@@ -254,7 +254,7 @@ function CreditForm({
           ) : (
             <>
               确认
-              <span className="rounded border border-current/40 px-1 text-[10px] opacity-60">
+              <span className="rounded border border-current/40 px-1 text-[11px] opacity-60">
                 ⏎
               </span>
             </>

@@ -113,7 +113,7 @@ function ProcessorRow({
     >
       <TableCell className="px-4 py-3 whitespace-normal">
         <div className="font-medium">{processor.name}</div>
-        <div className="text-muted-foreground text-[11px] tabular-nums">
+        <div className="text-muted-foreground text-xs tabular-nums">
           {processor.published_version > 0 && `v${processor.published_version} · `}
           {new Date(processor.updated_at).toLocaleString("zh-CN")}
         </div>

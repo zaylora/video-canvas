@@ -107,7 +107,7 @@ function VersionCell({ item }: { item: SkillItem }) {
   const badge = versionBadge(item);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[13px] tabular-nums">{badge.active}</span>
+      <span className="font-mono text-sm tabular-nums">{badge.active}</span>
       {badge.pending && (
         <Tag tone="warning" className="tabular-nums">
           {badge.pending}
@@ -200,7 +200,7 @@ export function SkillTable({
                 <NameCell item={item} />
                 <SkillSwitch item={item} busy={busyNames.has(item.name)} onToggle={onToggle} />
               </div>
-              <p className="text-muted-foreground line-clamp-2 text-[13px]">{item.description}</p>
+              <p className="text-muted-foreground line-clamp-2 text-sm">{item.description}</p>
               <div className="flex items-center justify-between gap-2">
                 <SourceTags item={item} />
                 <VersionCell item={item} />

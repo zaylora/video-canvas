@@ -22,13 +22,13 @@ function FoldableCode({
   const { folded, preview } = foldText(text, undefined, maxChars);
   return (
     <div data-slot="foldable-code" className={cn("flex flex-col gap-1", className)}>
-      <pre className="bg-muted max-h-[32rem] overflow-auto rounded-md p-2 font-mono text-[11px] leading-5 break-all whitespace-pre-wrap">
+      <pre className="bg-muted max-h-[32rem] overflow-auto rounded-md p-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap">
         {open || !folded ? text : `${preview}\n…`}
       </pre>
       {folded && (
         <button
           type="button"
-          className="text-primary flex items-center gap-1 self-start text-[11px] hover:underline"
+          className="text-primary flex items-center gap-1 self-start text-xs hover:underline"
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >

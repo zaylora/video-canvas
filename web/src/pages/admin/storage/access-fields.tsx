@@ -36,7 +36,7 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
           onClick={() => patch({ access: "private" })}
         >
           <span className="text-sm font-medium">私有桶 · 签名</span>
-          <span className="text-muted-foreground text-[11px]">推荐。按需生成临时地址</span>
+          <span className="text-muted-foreground text-xs">推荐。按需生成临时地址</span>
         </ChoiceCard>
         <ChoiceCard
           selected={form.access === "public"}
@@ -45,7 +45,7 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
           onClick={() => patch({ access: "public" })}
         >
           <span className="text-sm font-medium">公开读 / CDN</span>
-          <span className="text-muted-foreground text-[11px]">地址固定，靠 key 不可猜测</span>
+          <span className="text-muted-foreground text-xs">地址固定，靠 key 不可猜测</span>
         </ChoiceCard>
       </ChoiceCardGroup>
 

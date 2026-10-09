@@ -137,15 +137,13 @@ function StorageRow({
           {storage.builtin && <Tag>内置</Tag>}
         </div>
         {storage.builtin && (
-          <div className="text-muted-foreground text-[11px]">来自 config.yaml，只读</div>
+          <div className="text-muted-foreground text-xs">来自 config.yaml，只读</div>
         )}
       </TableCell>
       <TableCell className="py-3">{providerLabel(storage.provider, presets)}</TableCell>
       <TableCell className="py-3">
         <div className="font-mono text-xs">{where.primary}</div>
-        {where.secondary && (
-          <div className="text-muted-foreground text-[11px]">{where.secondary}</div>
-        )}
+        {where.secondary && <div className="text-muted-foreground text-xs">{where.secondary}</div>}
       </TableCell>
       <TableCell className="py-3">
         {storage.provider === "local" ? (

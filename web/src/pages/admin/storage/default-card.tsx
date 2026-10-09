@@ -49,9 +49,7 @@ export function DefaultStorageCard({
             <DescriptionDetails className="flex-col items-start gap-0">
               <span className="font-mono text-xs">{where.primary}</span>
               {where.secondary && (
-                <span className="text-muted-foreground text-[11px] font-normal">
-                  {where.secondary}
-                </span>
+                <span className="text-muted-foreground text-xs font-normal">{where.secondary}</span>
               )}
             </DescriptionDetails>
           </DescriptionItem>
