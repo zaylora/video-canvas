@@ -137,7 +137,7 @@ function AdminBody() {
       data-admin-root
       style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
     >
-      <AdminSidebar role={role} counts={counts} />
+      <AdminSidebar counts={counts} />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-6">
           <SidebarTrigger className="size-8" />

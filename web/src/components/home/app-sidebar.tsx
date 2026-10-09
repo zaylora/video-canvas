@@ -1,8 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Clapperboard, Compass, FolderOpen, ShieldCheck, User, Workflow } from "lucide-react";
+import { Clapperboard, Compass, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
 
-import { NavUser } from "@/components/admin-ui/nav-user";
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
 import { ListItem, ListSection } from "@/components/home/sidebar-list";
@@ -12,6 +11,7 @@ import {
   NavActiveHighlight,
   SidebarBrand,
 } from "@/components/home/sidebar-nav";
+import { SidebarAccount } from "@/components/home/sidebar-account";
 import { SoonTip } from "@/components/home/soon";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -28,9 +28,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
-import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
-import { useMeStore } from "@/store/me";
-import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
+import { useCanEnterAdmin } from "@/pages/canvas/chrome/top-right-bar";
 
 /** 侧栏里的一项导航 */
 type NavItem = {
@@ -97,10 +95,6 @@ export function AppSidebar() {
    * 读它会让入口凭空消失；这里也不主动请求角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
    */
   const isAdmin = useCanEnterAdmin();
-  const tokenUsername = useUsername();
-  const me = useMeStore((state) => state.me);
-  /** 显示名优先用资料里的昵称；资料还没拉到时先用令牌里的用户名兜底 */
-  const name = displayName(me) || tokenUsername;
   const navigate = useNavigate();
 
   return (
@@ -173,23 +167,14 @@ export function AppSidebar() {
             </SidebarMenuItem>
           )}
         </SidebarMenu>
-        <NavUser
-          name={name ?? "我的账户"}
-          description={isAdmin ? "管理员" : me?.nickname ? `@${me.username}` : undefined}
-          initials={name ? avatarInitial(name) : "我"}
-          avatarSrc={me?.avatarUrl}
-        >
-          <DropdownMenuItem onClick={() => navigate("/profile")}>
-            <User />
-            个人中心
-          </DropdownMenuItem>
+        <SidebarAccount>
           {isAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
               <ShieldCheck />
               管理后台
             </DropdownMenuItem>
           )}
-        </NavUser>
+        </SidebarAccount>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

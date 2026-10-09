@@ -1,15 +1,13 @@
-import { ArrowLeft, User } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
-import type { AdminRole } from "@/api/admin/ai/type.d";
-import { NavUser } from "@/components/admin-ui/nav-user";
 import {
   NAV_ITEM_CLASS,
   NAV_LINK_CLASS,
   NavActiveHighlight,
   SidebarBrand,
 } from "@/components/home/sidebar-nav";
-import { DropdownMenuItem, DropdownMenuShortcut } from "@/components/ui/dropdown-menu";
+import { SidebarAccount } from "@/components/home/sidebar-account";
 import {
   Sidebar,
   SidebarContent,
@@ -26,22 +24,7 @@ import {
 
 import { ADMIN_NAV } from "./admin-nav";
 
-const ROLE_TEXT: Record<AdminRole, string> = {
-  super_admin: "运维",
-  admin: "运营",
-};
-const ROLE_DESC: Record<AdminRole, string> = {
-  super_admin: "超级管理员",
-  admin: "管理员",
-};
-
-export function AdminSidebar({
-  role,
-  counts,
-}: {
-  role: AdminRole;
-  counts: Record<string, number | undefined>;
-}) {
+export function AdminSidebar({ counts }: { counts: Record<string, number | undefined> }) {
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
 
@@ -101,18 +84,7 @@ export function AdminSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <NavUser
-          name={ROLE_TEXT[role]}
-          description={ROLE_DESC[role]}
-          initials={role === "super_admin" ? "运" : "营"}
-        >
-          {/* 个人中心页还没有，先禁用 */}
-          <DropdownMenuItem disabled>
-            <User />
-            个人中心
-            <DropdownMenuShortcut>即将上线</DropdownMenuShortcut>
-          </DropdownMenuItem>
-        </NavUser>
+        <SidebarAccount />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
