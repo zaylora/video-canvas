@@ -13,7 +13,7 @@ import {
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
-import { Tag, toneClasses } from "@/components/admin-ui/tag";
+import { Tag } from "@/components/admin-ui/tag";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
@@ -240,17 +240,10 @@ export function ModelBasicForm({
                           : "所选渠道的插件不支持这个能力"
                         : undefined
                     }
-                    className={cn(
-                      "items-center gap-2.5",
-                      item === kind &&
-                        cn(
-                          toneClasses[KIND_STYLE[item].tone],
-                          "data-selected:bg-transparent ring-1 ring-current",
-                        ),
-                    )}
+                    className="items-center gap-2.5"
                     onClick={() => requestKind(item)}
                   >
-                    <Icon className="size-5 shrink-0" />
+                    <Icon className={cn("size-5 shrink-0", KIND_STYLE[item].text)} />
                     <span>
                       <span className="block text-sm font-medium">{MODEL_KIND_LABEL[item]}</span>
                       <span className="block text-[11px] opacity-70">{KIND_DESC[item]}</span>

@@ -1,12 +1,7 @@
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
-
-import { useAdminStore } from "@/store/admin";
-import { canManageInfra } from "@/utils/admin/role";
-
+import { useEffect, useMemo, useState } from "react";
 import { Upload } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
 
 import {
   PageHeader,
@@ -15,15 +10,24 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
+import { Button } from "@/components/ui/button";
+import { useAdminStore } from "@/store/admin";
+import { parsePluginRoute } from "@/utils/admin/channel-route";
+import { canManageInfra } from "@/utils/admin/role";
+
 import { openDeleteDialog } from "../delete-dialog";
 import { useAdminOutlet, useModelList } from "../../use-admin";
-import { PluginDetail } from "./plugin-detail";
-import { PluginList } from "./plugin-list";
+import { PluginDialog } from "./plugin-dialog";
+import { PluginTable } from "./plugin-table";
 import { UploadDialog } from "./upload-dialog";
+import { confirmUpgradeChannels } from "./upgrade-channels";
+import { usePluginActions } from "./use-plugin-actions";
 
 /**
- * 插件页：左栏插件列表、右栏详情（主从）。?key=<插件 key> 选中某个插件（深链）。
- * 上传、启停、删版本、删除插件只对运维（canManageInfra）渲染；admin 只读。
+ * 插件页：表格 + 详情弹窗。弹窗状态在 URL 里（刷新不丢，渠道页等处的链接直达）：
+ * ?key=<插件 key>[&tab=versions]。
+ * 上传、启停、升级渠道、删除版本、删除插件只对运维（canManageInfra）渲染；admin 只读。
+ * 删除插件时先关详情弹窗再开删除对话框，两个弹窗不叠着。
  */
 export default function PluginsPage() {
   const { catalog } = useAdminOutlet();
@@ -33,10 +37,37 @@ export default function PluginsPage() {
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
   const { models } = useModelList();
+  const { toggling, toggle } = usePluginActions({
+    channels: catalog.channels,
+    models,
+    onChanged: catalog.reloadPlugins,
+  });
 
-  const selectedKey = params.get("key");
-  const selected =
-    catalog.plugins.find((plugin) => plugin.key === selectedKey) ?? catalog.plugins[0] ?? null;
+  const route = parsePluginRoute(params, catalog.plugins, catalog.pluginsStatus === "ready");
+  const routeKey = route.target?.key ?? null;
+  const plugin = useMemo(
+    () => (routeKey ? (catalog.plugins.find((item) => item.key === routeKey) ?? null) : null),
+    [routeKey, catalog.plugins],
+  );
+
+  // 链接里的插件已经不存在（被删了）：提示一次并清掉参数
+  useEffect(() => {
+    if (!route.missing) return;
+    toast.error(`插件 ${route.missing} 不存在`);
+    setParams({}, { replace: true });
+  }, [route.missing, setParams]);
+
+  const closeDialog = () => setParams({}, { replace: true });
+  const requestDelete = (target: { key: string; name: string }) =>
+    openDeleteDialog({
+      target: "plugin",
+      objectKey: target.key,
+      name: target.name,
+      onDeleted: () => {
+        setParams({}, { replace: true });
+        void catalog.reloadPlugins();
+      },
+    });
 
   return (
     <div className="h-full overflow-y-auto">
@@ -57,44 +88,45 @@ export default function PluginsPage() {
             )}
           </PageHeaderActions>
         </PageHeader>
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
-          <PluginList
-            plugins={catalog.plugins}
-            status={catalog.pluginsStatus}
-            selectedKey={selected?.key ?? null}
-            onSelect={(key) => setParams({ key })}
-            onRetry={() => void catalog.reloadPlugins()}
-          />
-          <section className="min-w-0">
-            {selected ? (
-              <PluginDetail
-                key={selected.key}
-                plugin={selected}
-                plugins={catalog.plugins}
-                channels={catalog.channels}
-                onChannelsChanged={catalog.reloadChannels}
-                models={models}
-                canWrite={canWrite}
-                onChanged={catalog.reloadPlugins}
-                onDelete={() =>
-                  openDeleteDialog({
-                    target: "plugin",
-                    objectKey: selected.key,
-                    name: selected.name,
-                    onDeleted: () => {
-                      setParams({}, { replace: true });
-                      void catalog.reloadPlugins();
-                    },
-                  })
-                }
-              />
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                {catalog.pluginsStatus === "loading" ? "加载中…" : "选择左侧的插件查看详情。"}
-              </p>
-            )}
-          </section>
-        </div>
+
+        <PluginTable
+          plugins={catalog.plugins}
+          channels={catalog.channels}
+          status={catalog.pluginsStatus}
+          canWrite={canWrite}
+          toggling={toggling}
+          onOpen={(key) => setParams({ key })}
+          onUpload={() => setUploadOpen(true)}
+          onToggle={toggle}
+          onUpgrade={(target) =>
+            void confirmUpgradeChannels({
+              plugin: target,
+              channels: catalog.channels,
+              plugins: catalog.plugins,
+              onDone: catalog.reloadChannels,
+            })
+          }
+          onDelete={requestDelete}
+          onRetry={() => void catalog.reloadPlugins()}
+        />
+
+        <PluginDialog
+          plugin={plugin}
+          tab={route.target?.tab ?? "overview"}
+          onTabChange={(tab) => routeKey && setParams({ key: routeKey, tab }, { replace: true })}
+          plugins={catalog.plugins}
+          channels={catalog.channels}
+          canWrite={canWrite}
+          toggling={toggling === routeKey}
+          onToggle={toggle}
+          onChanged={catalog.reloadPlugins}
+          onChannelsChanged={catalog.reloadChannels}
+          onDelete={(target) => {
+            closeDialog();
+            requestDelete(target);
+          }}
+          onClose={closeDialog}
+        />
 
         {canWrite && (
           <UploadDialog
@@ -103,7 +135,7 @@ export default function PluginsPage() {
             onUploaded={() => void catalog.reloadPlugins()}
             onNextStep={(pluginKey) => {
               setUploadOpen(false);
-              navigate(`/admin/ai/channels?edit=new&plugin=${encodeURIComponent(pluginKey)}`);
+              navigate(`/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`);
             }}
           />
         )}

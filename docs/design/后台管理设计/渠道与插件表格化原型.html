@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>渠道与插件表格化</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  /* token 抄自 web/src/index.css */
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --popover: oklch(1 0 0);
+    --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --border: oklch(0.922 0 0); --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --status-success: oklch(0.6 0.15 155); --status-warning: oklch(0.7 0.16 70);
+    --status-running: oklch(0.58 0.15 250);
+    --sidebar: oklch(0.985 0 0);
+    --radius: 0.625rem;
+    /* lib/motion.ts */
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --fast: 120ms; --base: 180ms; --exit: 126ms;
+  }
+  .dark {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0);
+    --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0); --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0); --destructive: oklch(0.704 0.191 22.216);
+    --sidebar: oklch(0.205 0 0);
+    --status-running: oklch(0.68 0.13 250);
+  }
+  /* 行内操作的语气色：状态色和 muted-foreground 混合，降低饱和度，只给图标和 hover 底色用 */
+  :root {
+    --op-info: color-mix(in oklch, var(--status-running) 65%, var(--muted-foreground));
+    --op-success: color-mix(in oklch, var(--status-success) 65%, var(--muted-foreground));
+    --op-warning: color-mix(in oklch, var(--status-warning) 65%, var(--muted-foreground));
+    --op-danger: color-mix(in oklch, var(--destructive) 65%, var(--muted-foreground));
+    /* 能力色：同样和 muted-foreground 混合压低饱和，只用于图标和 12% 浅底 */
+    --kind-text: color-mix(in oklch, oklch(0.62 0.13 250) 60%, var(--muted-foreground));
+    --kind-image: color-mix(in oklch, oklch(0.6 0.15 295) 60%, var(--muted-foreground));
+    --kind-video: color-mix(in oklch, oklch(0.62 0.15 15) 60%, var(--muted-foreground));
+    --kind-audio: color-mix(in oklch, oklch(0.7 0.13 60) 60%, var(--muted-foreground));
+  }
+  [data-kind="text"] { --kind: var(--kind-text); } [data-kind="image"] { --kind: var(--kind-image); }
+  [data-kind="video"] { --kind: var(--kind-video); } [data-kind="audio"] { --kind: var(--kind-audio); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  button { font: inherit; color: inherit; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .muted { color: var(--muted-foreground); }
+  .xs { font-size: 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+  svg.lucide { width: 16px; height: 16px; stroke-width: 2; flex-shrink: 0; }
+
+  .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  aside { background: var(--sidebar); border-right: 1px solid var(--border); padding: 16px 12px; }
+  aside .group { font-size: 12px; color: var(--muted-foreground); padding: 12px 8px 4px; }
+  aside .nav { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0;
+    background: none; border-radius: 8px; cursor: pointer; text-align: left; }
+  aside .nav:hover { background: var(--accent); }
+  aside .nav.on { background: var(--accent); font-weight: 500; }
+  aside .nav .cnt { margin-left: auto; font-size: 12px; color: var(--muted-foreground); }
+  main { padding: 24px; min-width: 0; }
+  .head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+  .head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  .head p { margin: 4px 0 0; color: var(--muted-foreground); }
+  .head .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid transparent; background: var(--primary); color: var(--primary-foreground); cursor: pointer;
+    font-size: 13px; font-weight: 500; white-space: nowrap;
+    transition: background var(--fast) var(--ease), transform var(--fast) var(--ease), opacity var(--fast); }
+  .btn:active { transform: scale(0.96); }
+  .btn:focus-visible, .sw:focus-visible, .tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn.outline { background: var(--background); color: var(--foreground); border-color: var(--border); }
+  .btn.outline:hover { background: var(--accent); }
+  .btn.ghost { background: none; color: var(--foreground); }
+  .btn.ghost:hover { background: var(--accent); }
+  .btn.icon { width: 28px; padding: 0; justify-content: center; }
+  .btn:disabled { opacity: 0.5; pointer-events: none; }
+  .spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.4); }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 16px; }
+  .search { position: relative; width: 256px; max-width: 100%; }
+  .search svg { position: absolute; left: 9px; top: 8px; color: var(--muted-foreground); }
+  .search input { width: 100%; height: 32px; padding: 0 10px 0 32px; border-radius: 8px; border: 1px solid var(--input);
+    background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; }
+  .search input:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 40%, transparent); }
+  .toolbar { flex-wrap: wrap; }
+  .toolbar .count { margin-left: auto; }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--muted); }
+  .seg button { border: 0; background: none; padding: 0 10px; height: 26px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    color: var(--muted-foreground); transition: background var(--fast) var(--ease), color var(--fast) var(--ease); }
+  .seg button:hover { color: var(--foreground); }
+  .seg button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .seg button.on { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px oklch(0 0 0 / 0.15); }
+  .dark .seg button.on { background: var(--accent); }
+  .sel { position: relative; display: inline-flex; align-items: center; }
+  .sel select { appearance: none; height: 32px; padding: 0 28px 0 10px; border-radius: 8px; border: 1px solid var(--input);
+    background: transparent; color: var(--foreground); font: inherit; font-size: 12px; cursor: pointer; outline: none; }
+  .dark .sel select { background: color-mix(in oklch, var(--input) 30%, transparent); }
+  .sel select option { background: var(--popover); }
+  .sel select:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 40%, transparent); }
+  .sel.active select { border-color: color-mix(in oklch, var(--foreground) 35%, transparent); }
+  .sel svg { position: absolute; right: 8px; width: 14px; height: 14px; pointer-events: none; color: var(--muted-foreground); }
+  .pager { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 0 16px 16px; }
+  .pager .pl, .pager .pr { display: flex; align-items: center; gap: 8px; }
+  .pager .pr > span { margin-right: 8px; }
+  .pg { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--background); cursor: pointer; font-size: 13px; transition: background var(--fast) var(--ease), transform var(--fast) var(--ease); }
+  .pg:hover { background: var(--accent); } .pg:active { transform: scale(0.96); }
+  .pg.on { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .pg:disabled { opacity: 0.5; pointer-events: none; }
+  .pg:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .tablewrap { margin: 0 16px 16px; border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted-foreground); padding: 8px 12px;
+    border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; transition: background var(--fast) var(--ease); }
+  tbody tr:hover { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+  td.ops { text-align: right; white-space: nowrap; }
+  td.ops > * { vertical-align: middle; }
+  /* 行内操作：图标 + 文字的轻量按钮，常驻显示 */
+  .ops-row { display: inline-flex; align-items: center; gap: 2px; }
+  .op { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px;
+    background: none; cursor: pointer; font-size: 12px; color: var(--muted-foreground); white-space: nowrap;
+    transition: background var(--fast) var(--ease), color var(--fast) var(--ease), transform var(--fast) var(--ease); }
+  .op svg { width: 14px; height: 14px; }
+  .op:hover { background: var(--accent); color: var(--foreground); }
+  .op:active { transform: scale(0.96); }
+  .op:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .op { --tone: var(--muted-foreground); }
+  .op[data-tone="info"] { --tone: var(--op-info); }
+  .op[data-tone="success"] { --tone: var(--op-success); }
+  .op[data-tone="warning"] { --tone: var(--op-warning); }
+  .op[data-tone="danger"] { --tone: var(--op-danger); }
+  .op svg { color: var(--tone); }
+  .op:hover { background: color-mix(in oklch, var(--tone) 10%, transparent); }
+  .op:disabled { opacity: 0.4; pointer-events: none; }
+  .name { font-weight: 500; }
+  .sub { font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
+  .fade-in { animation: fade var(--base) var(--ease); }
+  @keyframes fade { from { opacity: 0; } }
+
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 6px; font-size: 12px;
+    background: var(--muted); color: var(--muted-foreground); white-space: nowrap; }
+  .tag svg { width: 12px; height: 12px; }
+  .tag.warn { background: color-mix(in oklch, var(--status-warning) 12%, transparent); color: var(--status-warning); }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+  .ok { color: var(--status-success); } .warn { color: var(--status-warning); }
+  .bad { color: var(--destructive); } .off { color: var(--muted-foreground); }
+
+  .kinds { display: inline-flex; gap: 4px; }
+  .kinds span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; }
+  .kinds span.on { background: color-mix(in oklch, var(--kind) 14%, transparent); color: var(--kind); }
+  .kinds span.no { color: color-mix(in oklch, var(--muted-foreground) 35%, transparent); }
+  .kinds svg { width: 12px; height: 12px; }
+
+  .sw { position: relative; width: 32px; height: 18px; border-radius: 99px; border: 0; padding: 0; cursor: pointer;
+    background: var(--input); transition: background var(--base) var(--ease); }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 99px;
+    background: var(--background); transition: transform var(--base) var(--ease); }
+  .dark .sw::after { background: var(--foreground); }
+  .sw[aria-checked="true"] { background: var(--primary); }
+  .sw[aria-checked="true"]::after { transform: translateX(14px); }
+  .dark .sw[aria-checked="true"]::after { background: var(--primary-foreground); }
+  .sw:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* 菜单 */
+  .menu { position: fixed; z-index: 60; min-width: 176px; padding: 4px; border-radius: 8px; background: var(--popover);
+    border: 1px solid var(--border); box-shadow: 0 8px 24px oklch(0 0 0 / 0.25); transform-origin: top right;
+    animation: pop var(--base) var(--ease); }
+  .menu.closing { animation: popout var(--exit) var(--ease) forwards; }
+  @keyframes pop { from { opacity: 0; transform: scale(0.95); } }
+  @keyframes popout { to { opacity: 0; transform: scale(0.95); } }
+  .menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 8px; border: 0; background: none;
+    border-radius: 6px; cursor: pointer; font-size: 13px; text-align: left; }
+  .menu button:hover { background: var(--accent); }
+  .menu button.danger { color: var(--destructive); }
+  .menu button:disabled { opacity: 0.5; pointer-events: none; }
+  .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px -4px; }
+
+  /* 弹窗：200ms 进 / 150ms 出，zoom 95（同 ui/dialog） */
+  .overlay { position: fixed; inset: 0; z-index: 50; background: oklch(0 0 0 / 0.1); backdrop-filter: blur(4px);
+    animation: fade 200ms var(--ease); }
+  .overlay.closing { animation: fadeout 150ms var(--ease) forwards; }
+  @keyframes fadeout { to { opacity: 0; } }
+  .dialog { position: fixed; z-index: 51; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(896px, calc(100% - 24px)); height: min(88svh, 800px); display: flex; flex-direction: column;
+    background: var(--popover); border-radius: calc(var(--radius) * 1.4); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent);
+    animation: zin 200ms var(--ease); }
+  .dialog.narrow { width: min(768px, calc(100% - 24px)); height: min(88svh, 760px); }
+  .dialog.closing { animation: zout 150ms var(--ease) forwards; }
+  @keyframes zin { from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); } }
+  @keyframes zout { to { opacity: 0; transform: translate(-50%, -50%) scale(0.95); } }
+  .dhead { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 0; }
+  .dhead .title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .dhead h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .dhead .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .tabs { position: relative; display: inline-flex; gap: 2px; padding: 3px; margin: 12px 16px 0; border-radius: 8px; background: var(--muted); align-self: flex-start; }
+  .tab { position: relative; z-index: 1; border: 0; background: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; color: var(--muted-foreground); transition: color var(--fast) var(--ease); display: inline-flex; gap: 6px; align-items: center; }
+  .tab.on { color: var(--foreground); }
+  .tab .n { font-size: 11px; padding: 0 5px; border-radius: 4px; background: color-mix(in oklch, var(--foreground) 8%, transparent); }
+  .ind { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: var(--background);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.15);
+    transition: transform 220ms cubic-bezier(0.25, 1.1, 0.4, 1), width 220ms cubic-bezier(0.25, 1.1, 0.4, 1); }
+  .dark .ind { background: var(--accent); }
+  .dbody { flex: 1; overflow-y: auto; padding: 16px; border-top: 1px solid var(--border); margin-top: 12px; }
+  .dfoot { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  .dl { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .dl > div { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .dl > div:nth-child(odd) { border-right: 1px solid var(--border); }
+  .dl > div.full { grid-column: 1 / -1; border-right: 0; }
+  .dl dt { font-size: 12px; color: var(--muted-foreground); margin-bottom: 4px; }
+  .dl dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; font-size: 13px; }
+  .code { padding: 2px 8px; border-radius: 6px; background: var(--muted); font-size: 13px; }
+  .section-t { font-size: 12px; color: var(--muted-foreground); font-weight: 500; margin: 0 0 12px; }
+
+  .kcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .kcard { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: color-mix(in oklch, var(--muted) 40%, transparent); }
+  .kcard .ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 6px;
+    background: color-mix(in oklch, var(--kind) 14%, transparent); color: var(--kind); }
+  .kcard.no { border-style: dashed; background: none; color: color-mix(in oklch, var(--muted-foreground) 50%, transparent); }
+  .kcard.no .ic { background: none; color: inherit; }
+
+  .tl { position: relative; padding-left: 28px; }
+  .tl::before { content: ""; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 1px; background: var(--border); }
+  .tli { position: relative; padding-bottom: 20px; }
+  .tli .dot { position: absolute; left: -28px; top: 0; width: 23px; height: 23px; border-radius: 99px; display: grid; place-items: center;
+    background: var(--muted); color: var(--muted-foreground); }
+  .tli .dot.on { background: var(--primary); color: var(--primary-foreground); }
+  .tli .dot svg { width: 12px; height: 12px; }
+  .tli .box { margin-top: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in oklch, var(--muted) 20%, transparent); }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: var(--background); cursor: pointer; }
+  .chip:hover { background: var(--accent); }
+
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field label { font-size: 13px; font-weight: 500; }
+  .field input { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--input); background: transparent; color: inherit; font: inherit; }
+  .zone { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .zone h3 { margin: 0 0 12px; font-size: 13px; font-weight: 500; }
+
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 70; padding: 8px 14px; border-radius: 8px;
+    background: var(--popover); border: 1px solid var(--border); box-shadow: 0 8px 24px oklch(0 0 0 / 0.2); font-size: 13px; animation: fade var(--base) var(--ease); }
+  .bar { position: fixed; right: 16px; top: 12px; z-index: 40; display: flex; gap: 6px; }
+
+  @media (max-width: 767px) {
+    .shell { grid-template-columns: 1fr; } aside { display: none; }
+    main { padding: 16px; } .hide-md { display: none; }
+    .search { width: 100%; } .toolbar .count { margin-left: 0; }
+    .kcards { grid-template-columns: 1fr 1fr; } .dl { grid-template-columns: 1fr; }
+    .dl > div:nth-child(odd) { border-right: 0; }
+  }
+  @media (max-width: 639px) { .hide-sm { display: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dialog, .dialog.closing { animation-name: fade; } .dialog.closing { animation-name: fadeout; }
+    .menu, .menu.closing { animation-name: fade; } .ind { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="btn outline sm" id="role"></button>
+  <button class="btn outline sm" onclick="document.documentElement.classList.toggle('dark')"><i data-lucide="sun-moon"></i>主题</button>
+</div>
+<div class="shell">
+  <aside>
+    <div class="group">AI 配置</div>
+    <button class="nav"><i data-lucide="layout-grid"></i>总览</button>
+    <button class="nav"><i data-lucide="boxes"></i>模型</button>
+    <button class="nav" data-page="channels"><i data-lucide="radio-tower"></i>渠道<span class="cnt">2</span></button>
+    <button class="nav" data-page="plugins"><i data-lucide="puzzle"></i>插件<span class="cnt">2</span></button>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="layer"></div>
+
+<script>
+const KINDS = [["text", "type", "文本"], ["image", "image", "图片"], ["video", "clapperboard", "视频"], ["audio", "audio-lines", "音频"]];
+const state = {
+  page: "channels", canWrite: true, query: "",
+  plugins: [
+    { key: "newapi", name: "New API", source: "builtin", enabled: true, latest: "1.3.0", desc: "兼容 New API 网关的统一协议：文本、图片、视频。",
+      endpoints: { text: "sync", image: "async", video: "async" }, auth: "Bearer Token", import: true,
+      versions: [{ v: "1.3.0", at: "10-08 14:20", kinds: ["text", "image", "video"], channels: ["newapi"] }, { v: "1.2.0", at: "09-30 10:02", kinds: ["text", "image"], channels: [] }] },
+    { key: "yswg-image", name: "YSWG 生图", source: "upload", enabled: true, latest: "1.3.0", desc: "亚盛内部生图服务。",
+      endpoints: { image: "async" }, auth: "自定义", import: false,
+      versions: [{ v: "1.3.0", at: "10-07 09:12", kinds: ["image"], channels: [] }, { v: "1.2.0", at: "10-01 18:40", kinds: ["image"], channels: ["yswg-image-yswg"] }] },
+  ],
+  channels: [
+    { key: "newapi", name: "newapi", plugin: "newapi", version: "1.3.0", url: "https://newapi.vbing.site", enabled: true, secret: true, models: 0, running: 0, limit: 0, waiting: 0, internal: true, updated: "10-08 14:41" },
+    { key: "yswg-image-yswg", name: "亚盛生图", plugin: "yswg-image", version: "1.2.0", url: "https://img.yswg.love", enabled: true, secret: false, models: 4, running: 4, limit: 4, waiting: 2, internal: false, updated: "10-06 11:03" },
+  ],
+  checks: {},
+};
+/* 多造一些渠道和插件，让分页和筛选看得出效果 */
+state.plugins.push(
+  { key: "kling", name: "可灵", source: "upload", enabled: true, latest: "2.0.1", desc: "可灵视频生成。", endpoints: { video: "async" }, auth: "AK/SK", import: true,
+    versions: [{ v: "2.0.1", at: "10-05 16:00", kinds: ["video"], channels: [] }] },
+  { key: "minimax-audio", name: "MiniMax 语音", source: "upload", enabled: false, latest: "1.0.0", desc: "MiniMax 语音合成。", endpoints: { audio: "sync" }, auth: "Bearer Token", import: false,
+    versions: [{ v: "1.0.0", at: "09-28 12:30", kinds: ["audio"], channels: [] }] });
+["华东", "华南", "华北", "海外", "备用", "测试"].forEach((region, i) => {
+  const plugin = ["newapi", "kling", "minimax-audio"][i % 3];
+  const p = state.plugins.find((x) => x.key === plugin);
+  state.channels.push({ key: `${plugin}-${i}`, name: `${p.name} ${region}`, plugin, version: p.latest, url: `https://${plugin}-${i}.example.com`,
+    enabled: i !== 4, secret: i !== 2, models: (i * 3) % 7, running: i % 3, limit: i % 2 ? 4 : 0, waiting: i === 1 ? 3 : 0, internal: false, updated: `10-0${i + 1} 09:${10 + i}` });
+});
+["A", "B", "C", "D", "E"].forEach((x, i) => state.channels.push({ key: `newapi-pool-${x.toLowerCase()}`, name: `New API 池 ${x}`, plugin: "newapi",
+  version: i < 2 ? "1.2.0" : "1.3.0", url: `https://pool-${x.toLowerCase()}.example.com`, enabled: true, secret: true, models: i + 1, running: 0, limit: 0, waiting: 0, internal: false, updated: "10-07 20:00" }));
+state.plugins[0].versions[0].channels = state.channels.filter((c) => c.plugin === "newapi" && c.version === "1.3.0").map((c) => c.key);
+state.plugins[0].versions[1].channels = state.channels.filter((c) => c.plugin === "newapi" && c.version === "1.2.0").map((c) => c.key);
+state.plugins.forEach((p) => p.versions[0].channels.length || (p.versions[0].channels = state.channels.filter((c) => c.plugin === p.key && c.version === p.latest).map((c) => c.key)));
+const $ = (s, r = document) => r.querySelector(s);
+const icons = () => lucide.createIcons();
+const pluginOf = (c) => state.plugins.find((p) => p.key === c.plugin);
+const health = (c) => {
+  if (!c.enabled) return ["off", "已停用", "渠道已停用"];
+  const p = pluginOf(c);
+  if (!p.enabled) return ["bad", "不可用", `插件「${p.name}」已停用`];
+  if (!c.secret) return ["warn", "未设 Key", "还没有设置 Key"];
+  return ["ok", "可用", null];
+};
+const kindIcons = (kinds) => `<span class="kinds">${KINDS.map(([k, ic, l]) =>
+  `<span data-kind="${k}" class="${kinds.includes(k) ? "on" : "no"}" title="${l}${kinds.includes(k) ? "" : "（不支持）"}"><i data-lucide="${ic}"></i></span>`).join("")}</span>`;
+const sw = (on, attrs) => `<button class="sw" role="switch" aria-checked="${on}" ${state.canWrite ? "" : 'disabled title="需要运维权限"'} ${attrs}></button>`;
+function toast(text) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = text; document.body.append(t);
+  setTimeout(() => t.remove(), 1800);
+}
+
+/* ---------- 页面 ---------- */
+function render() {
+  document.querySelectorAll(".nav[data-page]").forEach((n) => n.classList.toggle("on", n.dataset.page === state.page));
+  $("#role").innerHTML = `<i data-lucide="user"></i>${state.canWrite ? "运维（可写）" : "admin（只读）"}`;
+  $("#main").innerHTML = state.page === "channels" ? channelsPage() : pluginsPage();
+  icons();
+}
+/** 筛选与分页：切页面时清空；改任何筛选条件回到第一页 */
+const F = { kind: "", plugin: "", status: "", source: "", page: 1, size: 10 };
+const resetFilters = () => Object.assign(F, { kind: "", plugin: "", status: "", source: "", page: 1 });
+function seg(name, value, opts) {
+  return `<div class="seg" role="group" aria-label="按能力筛选">${opts.map(([v, l]) =>
+    `<button class="${value === v ? "on" : ""}" data-filter="${name}" data-value="${v}">${l}</button>`).join("")}</div>`;
+}
+function sel(name, value, opts, label) {
+  return `<label class="sel ${value ? "active" : ""}"><select data-filter="${name}" aria-label="${label}">${opts.map(([v, l]) =>
+    `<option value="${v}" ${value === v ? "selected" : ""}>${l}</option>`).join("")}</select><i data-lucide="chevron-down"></i></label>`;
+}
+function toolbar(ph, filters, shown, total) {
+  const any = state.query || F.kind || F.plugin || F.status || F.source;
+  return `<div class="toolbar"><label class="search"><i data-lucide="search"></i><input id="q" placeholder="${ph}" value="${state.query}"></label>
+    ${filters}
+    ${any ? `<button class="op" data-reset><i data-lucide="x"></i>重置</button>` : ""}
+    <span class="count muted xs num">${shown} / ${total}</span></div>`;
+}
+/** 分页条：始终显示（照 DataTablePagination）：每页条数 · 共 N 条 | 第 x / y 页 · ‹ 1 2 › */
+function pager(total) {
+  const pages = Math.max(1, Math.ceil(total / F.size)); const cur = Math.min(F.page, pages);
+  const nums = Array.from({ length: pages }, (_, i) => i + 1);
+  return `<div class="pager"><div class="pl"><label class="sel"><select data-size aria-label="每页条数">${[10, 20, 50].map((n) =>
+      `<option ${F.size === n ? "selected" : ""}>${n}</option>`).join("")}</select><i data-lucide="chevron-down"></i></label>
+      <span class="xs muted hide-sm">每页条数</span><span class="xs muted num">共 ${total} 条</span></div>
+    <div class="pr"><span class="xs num">第 ${cur} / ${pages} 页</span>
+      <button class="pg" data-page-to="${cur - 1}" ${cur <= 1 ? "disabled" : ""} aria-label="上一页"><i data-lucide="chevron-left"></i></button>
+      ${nums.map((n) => `<button class="pg num hide-sm ${n === cur ? "on" : ""}" data-page-to="${n}">${n}</button>`).join("")}
+      <button class="pg" data-page-to="${cur + 1}" ${cur >= pages ? "disabled" : ""} aria-label="下一页"><i data-lucide="chevron-right"></i></button></div></div>`;
+}
+const pageSlice = (list) => { const pages = Math.max(1, Math.ceil(list.length / F.size)); const cur = Math.min(F.page, pages); return list.slice((cur - 1) * F.size, cur * F.size); };
+const kindOpts = [["", "全部"], ...KINDS.map(([k, , l]) => [k, l])];
+function channelsPage() {
+  const q = state.query.toLowerCase();
+  const list = state.channels.filter((c) => {
+    const p = pluginOf(c);
+    return (!q || [c.name, c.key, c.url].some((s) => s.toLowerCase().includes(q)))
+      && (!F.kind || p.endpoints[F.kind]) && (!F.plugin || c.plugin === F.plugin)
+      && (!F.status || (F.status === "upgrade" ? c.version !== p.latest : health(c)[0] === F.status));
+  });
+  const filters = seg("kind", F.kind, kindOpts)
+    + sel("plugin", F.plugin, [["", "全部插件"], ...state.plugins.map((p) => [p.key, p.name])], "按插件筛选")
+    + sel("status", F.status, [["", "全部状态"], ["ok", "可用"], ["warn", "未设 Key"], ["bad", "不可用"], ["off", "已停用"], ["upgrade", "可升级"]], "按状态筛选");
+  return `<div class="head"><div><h1>渠道</h1><p>渠道把一个插件版本、一个地址和一个 Key 绑在一起。</p></div>
+    <div class="actions">${state.canWrite ? `<button class="btn" data-act="new"><i data-lucide="plus"></i>新建渠道</button>` : ""}</div></div>
+    <section class="card">${toolbar("搜索名称、key 或地址", filters, list.length, state.channels.length)}
+    <div class="tablewrap"><table><thead><tr><th>渠道</th><th>插件</th><th class="hide-md">能力</th><th>模型</th><th class="hide-md">负载</th><th>状态</th><th>启用</th><th style="text-align:right">操作</th></tr></thead><tbody>
+    ${list.length ? pageSlice(list).map(channelRow).join("") : `<tr><td colspan="8" class="muted" style="text-align:center;height:120px">没有匹配的渠道</td></tr>`}
+    </tbody></table></div>${pager(list.length)}</section>`;
+}
+function channelRow(c) {
+  const p = pluginOf(c); const [tone, label, reason] = health(c); const ck = state.checks[c.key];
+  const upgrade = c.version !== p.latest;
+  const full = c.limit > 0 && c.running >= c.limit;
+  let second = reason ? `<div class="sub">${reason}</div>` : "";
+  if (ck && !ck.busy) second = `<div class="sub fade-in ${ck.ok ? "ok" : "bad"}">${ck.ok ? "✓ 连通正常 · 312ms" : "✕ 401 Key 无效"}</div>`;
+  return `<tr data-row="${c.key}">
+    <td><div class="name">${c.name}</div><div class="sub mono">${c.key}</div></td>
+    <td><div>${p.name} <span class="mono xs muted">v${c.version}</span></div>${upgrade ? `<div class="sub">可升级到 v${p.latest}</div>` : ""}</td>
+    <td class="hide-md">${kindIcons(Object.keys(p.endpoints))}</td>
+    <td class="num">${c.models}</td>
+    <td class="hide-md num xs"><span class="${full ? "warn" : ""}">${c.running}${c.limit ? "/" + c.limit : ""}</span> <span class="muted">·</span> <span class="${c.waiting ? "warn" : ""}">${c.waiting}</span></td>
+    <td><span class="status ${tone}">${label}</span>${second}</td>
+    <td data-stop>${sw(c.enabled, `data-toggle-channel="${c.key}"`)}</td>
+    <td class="ops" data-stop>${channelOps(c)}</td></tr>`;
+}
+/** 行内操作全部露出：检查 · 导入 · 设 Key · 删除；admin 只有导入 */
+function channelOps(c) {
+  const p = pluginOf(c); const busy = state.checks[c.key]?.busy;
+  const items = [];
+  if (state.canWrite) items.push(`<button class="op" data-tone="info" data-check="${c.key}" ${busy ? "disabled" : ""}><i data-lucide="${busy ? "loader-2" : "stethoscope"}" class="${busy ? "spin" : ""}"></i>${busy ? "检查中" : "检查"}</button>`);
+  items.push(`<button class="op" data-tone="success" data-fake="导入模型" ${p.import ? "" : 'disabled title="该插件不支持导入模型"'}><i data-lucide="download"></i>导入</button>`);
+  if (state.canWrite) {
+    items.push(`<button class="op" data-tone="warning" data-fake="设置 Key"><i data-lucide="key-round"></i>${c.secret ? "更新 Key" : "设置 Key"}</button>`);
+    items.push(`<button class="op" data-tone="danger" data-fake="删除渠道"><i data-lucide="trash-2"></i>删除</button>`);
+  }
+  return `<span class="ops-row">${items.join("")}</span>`;
+}
+function checkBtn(c) {
+  if (!state.canWrite) return "";
+  const busy = state.checks[c.key]?.busy;
+  return `<button class="btn outline sm" data-check="${c.key}" ${busy ? "disabled" : ""}><i data-lucide="${busy ? "loader-2" : "stethoscope"}" class="${busy ? "spin" : ""}"></i>${busy ? "检查中" : "检查"}</button>`;
+}
+function pluginsPage() {
+  const q = state.query.toLowerCase();
+  const list = state.plugins.filter((p) =>
+    (!q || [p.name, p.key].some((s) => s.toLowerCase().includes(q)))
+    && (!F.kind || p.endpoints[F.kind]) && (!F.source || p.source === F.source)
+    && (!F.status || (F.status === "on" ? p.enabled : F.status === "off" ? !p.enabled : outdated(p).length > 0)));
+  const filters = seg("kind", F.kind, kindOpts)
+    + sel("source", F.source, [["", "全部来源"], ["builtin", "内置"], ["upload", "已上传"]], "按来源筛选")
+    + sel("status", F.status, [["", "全部状态"], ["on", "已启用"], ["off", "已停用"], ["outdated", "有旧版渠道"]], "按状态筛选");
+  return `<div class="head"><div><h1>插件</h1><p>插件把一种上游协议翻译成统一的请求与结果。</p></div>
+    <div class="actions">${state.canWrite ? `<button class="btn" data-act="upload"><i data-lucide="upload"></i>上传插件</button>` : ""}</div></div>
+    <section class="card">${toolbar("搜索名称或 key", filters, list.length, state.plugins.length)}
+    <div class="tablewrap"><table><thead><tr><th>插件</th><th class="hide-md">来源</th><th class="hide-md">能力</th><th>最新版本</th><th>渠道</th><th>启用</th><th style="text-align:right">操作</th></tr></thead><tbody>
+    ${list.length ? pageSlice(list).map(pluginRow).join("") : `<tr><td colspan="7" class="muted" style="text-align:center;height:120px">没有匹配的插件</td></tr>`}
+    </tbody></table></div>${pager(list.length)}</section>`;
+}
+const pinned = (p) => state.channels.filter((c) => c.plugin === p.key);
+const outdated = (p) => pinned(p).filter((c) => c.version !== p.latest);
+function pluginRow(p) {
+  const o = outdated(p).length;
+  return `<tr data-prow="${p.key}">
+    <td><div class="name">${p.name}</div><div class="sub mono">${p.key}</div></td>
+    <td class="hide-md"><span class="tag">${p.source === "builtin" ? "内置" : "已上传"}</span></td>
+    <td class="hide-md">${kindIcons(Object.keys(p.endpoints))}</td>
+    <td class="mono xs">v${p.latest}</td>
+    <td class="xs num">${pinned(p).length} 个在用${o ? `<span class="muted"> · ${o} 个旧版</span>` : ""}</td>
+    <td data-stop>${sw(p.enabled, `data-toggle-plugin="${p.key}"`)}</td>
+    <td class="ops" data-stop><span class="ops-row">
+      <button class="op" data-prow-open="${p.key}"><i data-lucide="eye"></i>详情</button>
+      ${state.canWrite ? `<button class="op" data-tone="info" data-upgrade="${p.key}" ${o ? "" : 'disabled title="渠道都已是最新版本"'}><i data-lucide="circle-arrow-up"></i>升级渠道${o ? `<span class="num">(${o})</span>` : ""}</button>
+      <button class="op" data-tone="danger" data-fake="删除插件"><i data-lucide="trash-2"></i>删除</button>` : ""}
+    </span></td></tr>`;
+}
+
+/* ---------- 菜单 ---------- */
+let menuEl = null;
+function closeMenu() {
+  if (!menuEl) return; const m = menuEl; menuEl = null;
+  m.classList.add("closing"); m.addEventListener("animationend", () => m.remove(), { once: true });
+}
+function openMenu(btn, spec) {
+  closeMenu();
+  const [type, key] = spec.split(":");
+  let html = "";
+  if (type === "channel") {
+    const c = state.channels.find((x) => x.key === key); const p = pluginOf(c);
+    html = `<button ${p.import ? "" : 'disabled title="该插件不支持导入模型"'} data-fake="导入模型"><i data-lucide="download"></i>导入模型</button>`;
+    if (state.canWrite) html += `<button data-fake="设置 Key"><i data-lucide="key-round"></i>${c.secret ? "更新 Key" : "设置 Key"}</button><hr><button class="danger" data-fake="删除渠道"><i data-lucide="trash-2"></i>删除渠道…</button>`;
+  } else {
+    html = `<button class="danger" data-fake="删除插件"><i data-lucide="trash-2"></i>删除插件…</button>`;
+  }
+  const m = document.createElement("div"); m.className = "menu"; m.innerHTML = html; document.body.append(m);
+  const r = btn.getBoundingClientRect();
+  m.style.top = `${r.bottom + 4}px`; m.style.left = `${r.right - m.offsetWidth}px`;
+  menuEl = m; icons();
+}
+
+/* ---------- 弹窗 ---------- */
+let dlg = null;
+function openDialog(kind, key, tab) {
+  dlg = { kind, key, tab: tab ?? (kind === "new" ? "config" : "overview") };
+  $("#layer").innerHTML = `<div class="overlay"></div><div class="dialog ${kind === "plugin" ? "narrow" : ""}" role="dialog" aria-modal="true"></div>`;
+  renderDialog();
+}
+function closeDialog() {
+  if (!dlg) return; dlg = null;
+  const ov = $(".overlay"), d = $(".dialog");
+  ov.classList.add("closing"); d.classList.add("closing");
+  d.addEventListener("animationend", () => { $("#layer").innerHTML = ""; }, { once: true });
+}
+function tabsHtml(tabs) {
+  return `<div class="tabs" role="tablist"><span class="ind"></span>${tabs.map(([id, label, n]) =>
+    `<button class="tab ${dlg.tab === id ? "on" : ""}" role="tab" data-tab="${id}">${label}${n !== undefined ? `<span class="n num">${n}</span>` : ""}</button>`).join("")}</div>`;
+}
+function moveIndicator(instant) {
+  const on = $(".tab.on"), ind = $(".ind"); if (!on || !ind) return;
+  if (instant) ind.style.transition = "none";
+  ind.style.width = `${on.offsetWidth}px`; ind.style.transform = `translateX(${on.offsetLeft - 3}px)`;
+  if (instant) requestAnimationFrame(() => (ind.style.transition = ""));
+}
+function renderDialog(instantIndicator = true) {
+  const d = $(".dialog"); if (!d || !dlg) return;
+  if (dlg.kind === "plugin") d.innerHTML = pluginDialog();
+  else d.innerHTML = channelDialog();
+  icons(); moveIndicator(instantIndicator);
+}
+function switchTab(id) {
+  if (!dlg || dlg.tab === id) return; dlg.tab = id;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === id));
+  moveIndicator(false);
+  const body = $(".dbody"); body.innerHTML = dlg.kind === "plugin" ? pluginTab() : channelTab(); body.classList.remove("fade-in"); void body.offsetWidth; body.classList.add("fade-in");
+  const foot = $(".dfoot"); if (foot) foot.style.display = dlg.tab === "config" ? "" : "none";
+  icons();
+}
+function channelDialog() {
+  if (dlg.kind === "new") {
+    return `<div class="dhead"><div class="title"><h2>新建渠道</h2></div><div class="right"><button class="btn ghost icon" data-close aria-label="关闭"><i data-lucide="x"></i></button></div></div>
+      <div class="dbody">${configForm(null)}</div><div class="dfoot"><button class="btn" data-save>保存并检查</button></div>`;
+  }
+  const c = state.channels.find((x) => x.key === dlg.key); const [tone, label] = health(c);
+  return `<div class="dhead"><div class="title"><h2>${c.name}</h2><span class="status ${tone}">${label}</span><span class="mono xs muted">${c.key}</span></div>
+    <div class="right">${checkBtn(c)}<button class="btn ghost icon" data-menu="channel:${c.key}" aria-label="更多"><i data-lucide="ellipsis"></i></button>
+    <button class="btn ghost icon" data-close aria-label="关闭"><i data-lucide="x"></i></button></div></div>
+    ${tabsHtml([["overview", "概览"], ["config", "配置"], ["models", "模型", c.models]])}
+    <div class="dbody">${channelTab()}</div>
+    <div class="dfoot" style="${dlg.tab === "config" ? "" : "display:none"}">${state.canWrite ? `<button class="btn" data-save>保存并检查</button>` : `<span class="muted xs">只读</span>`}</div>`;
+}
+function channelTab() {
+  const c = state.channels.find((x) => x.key === dlg.key); const p = pluginOf(c); const ck = state.checks[c.key];
+  if (dlg.tab === "config") return configForm(c);
+  if (dlg.tab === "models") {
+    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><div class="tabs" style="margin:0"><button class="tab on">全部</button>${Object.keys(p.endpoints).map((k) => `<button class="tab">${KINDS.find((x) => x[0] === k)[2]}</button>`).join("")}</div>
+      <button class="btn outline sm" style="margin-left:auto"><i data-lucide="plus"></i>新建模型</button></div>
+      <div class="tablewrap" style="margin:0"><table style="min-width:0"><thead><tr><th>模型</th><th>能力</th><th>状态</th><th>上线</th></tr></thead><tbody>
+      ${c.models ? Array.from({ length: c.models }, (_, i) => `<tr><td><div class="name">gpt-image-${i + 1}</div><div class="sub mono">yswg/img-${i + 1}</div></td><td><span class="tag" data-kind="image"><i data-lucide="image" style="color:var(--kind)"></i>图片</span></td><td><span class="status ${c.secret ? "ok" : "bad"}">${c.secret ? "在线" : "不可用"}</span></td><td data-stop>${sw(true, "")}</td></tr>`).join("")
+        : `<tr><td colspan="4" class="muted" style="text-align:center;height:100px">还没有模型使用这个渠道</td></tr>`}</tbody></table></div>`;
+  }
+  const upgrade = c.version !== p.latest;
+  return `${ck && !ck.busy ? `<p class="xs ${ck.ok ? "ok" : "bad"}" style="margin:0 0 12px">${ck.ok ? "✓ 连通正常 · 312ms" : "✕ 401 Key 无效：上游拒绝了这个 Key"}</p>` : ""}
+    <dl class="dl" style="margin:0">
+      <div class="full"><dt>地址</dt><dd><code class="code mono">${c.url}</code><button class="btn ghost icon" aria-label="复制地址" data-fake="已复制"><i data-lucide="copy"></i></button></dd></div>
+      <div><dt>插件</dt><dd><button class="link" data-goplugin="${p.key}">${p.name}</button><span class="mono xs muted">v${c.version}</span>${upgrade && state.canWrite ? `<button class="link xs muted" data-tab="config">升级到 v${p.latest}</button>` : ""}</dd></div>
+      <div><dt>API Key</dt><dd>${c.secret ? `<i data-lucide="shield-check" class="ok"></i>已设置` : `<span class="warn">未设置</span>${state.canWrite ? `<span class="muted">·</span><button class="link" data-fake="设置 Key">设置</button>` : ""}`}</dd></div>
+      <div><dt>限流</dt><dd class="num">RPS <span class="muted">不限</span> · 同时请求 <span class="muted">不限</span> · 同时生成 ${c.limit || '<span class="muted">不限</span>'}</dd></div>
+      <div><dt>当前负载</dt><dd class="num">生成中 ${c.running}${c.limit ? "/" + c.limit : ""} <span class="muted">·</span> <span class="${c.waiting ? "warn" : ""}">排队 ${c.waiting}</span>${c.limit && c.running >= c.limit ? `<span class="tag warn">已满</span>` : ""}</dd></div>
+      <div><dt>安全开关</dt><dd>${c.internal ? `<span class="tag warn"><i data-lucide="network"></i>内网</span>` : `<span class="muted">均关闭</span>`}</dd></div>
+      <div><dt>最近修改</dt><dd class="num">${c.updated}</dd></div>
+    </dl>`;
+}
+function configForm(c) {
+  const ro = c && !state.canWrite ? "disabled" : "";
+  return `<div class="zone"><h3>1 选平台</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${state.plugins.map((p) =>
+      `<button class="btn outline sm" ${ro} style="${(c ? c.plugin : "newapi") === p.key ? "border-color:var(--foreground)" : ""}">${p.name}</button>`).join("")}</div></div>
+    <div class="zone"><h3>2 连接</h3><div class="field"><label>Base URL</label><input ${ro} value="${c ? c.url : ""}" placeholder="https://"></div>
+      <div class="field" style="margin:0"><label>API Key</label><input ${ro} type="password" placeholder="${c?.secret ? "已设置，留空不修改" : "sk-..."}"></div></div>
+    <div class="zone"><h3>3 名称</h3><div class="field" style="margin:0"><input ${ro} value="${c ? c.name : ""}" placeholder="例如：亚盛生图"></div></div>
+    <p class="xs muted" style="margin:0">› 高级设置（插件版本、限流、安全开关）</p>`;
+}
+function pluginDialog() {
+  const p = state.plugins.find((x) => x.key === dlg.key);
+  return `<div class="dhead"><div style="min-width:0"><div class="title"><h2>${p.name}</h2><span class="tag">${p.source === "builtin" ? "内置" : "已上传"}</span><span class="mono xs muted">${p.key} · v${p.latest}</span></div>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">${p.desc}</p></div>
+    <div class="right"><span class="xs">启用</span>${sw(p.enabled, `data-toggle-plugin="${p.key}"`)}
+    ${state.canWrite ? `<button class="btn ghost icon" data-menu="plugin:${p.key}" aria-label="更多"><i data-lucide="ellipsis"></i></button>` : ""}
+    <button class="btn ghost icon" data-close aria-label="关闭"><i data-lucide="x"></i></button></div></div>
+    ${tabsHtml([["overview", "概览"], ["versions", "版本历史", p.versions.length]])}
+    <div class="dbody">${pluginTab()}</div>`;
+}
+function pluginTab() {
+  const p = state.plugins.find((x) => x.key === dlg.key);
+  if (dlg.tab === "versions") {
+    const o = outdated(p);
+    return `${o.length && state.canWrite ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn outline sm" data-upgrade="${p.key}"><i data-lucide="circle-arrow-up"></i>升级全部 ${o.length} 个渠道到 v${p.latest}</button></div>` : ""}
+      <div class="tl">${p.versions.map((v, i) => {
+        const latest = i === 0; const prev = p.versions[i + 1];
+        const added = prev ? v.kinds.filter((k) => !prev.kinds.includes(k)) : [];
+        return `<div class="tli"><span class="dot ${latest ? "on" : ""}"><i data-lucide="${latest ? "sparkles" : "git-commit-horizontal"}"></i></span>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="mono" style="font-weight:600">v${v.v}</span>${latest ? `<span class="tag">最新</span>` : ""}
+          <span class="xs muted">${v.channels.length ? v.channels.length + " 个渠道在用" : "无渠道使用"}</span><span class="xs muted num" style="margin-left:auto">${v.at} · ${p.source === "builtin" ? "内置" : "用户 #3"}</span></div>
+          <div class="box"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap" class="xs">${kindIcons(v.kinds)}
+            ${added.length ? `<span class="muted">+ 新增 ${added.map((k) => KINDS.find((x) => x[0] === k)[2]).join("、")}</span>` : ""}
+            <span class="tag mono" style="margin-left:auto"><i data-lucide="fingerprint"></i>a91c…7e2d</span></div>
+            ${v.channels.length ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)" class="xs"><span class="muted">在用渠道</span>
+              ${v.channels.map((k) => `<span class="chip" data-gochannel="${k}"><i data-lucide="radio-tower" style="width:12px;height:12px"></i>${state.channels.find((c) => c.key === k).name}</span>`).join("")}
+              ${!latest ? `<span class="muted" style="margin-left:auto">可升级到 v${p.latest}</span>` : ""}</div>` : ""}</div>
+          ${state.canWrite && !latest && !v.channels.length ? `<button class="link xs" style="margin-top:8px;color:var(--destructive)" data-fake="删除版本">删除这个版本</button>` : ""}</div>`;
+      }).join("")}</div>`;
+  }
+  const info = [["插件标识", `<span class="mono">${p.key}</span>`], ["最新版本", `<span class="mono">v${p.latest}</span>`], ["契约版本", "v1"],
+    ["来源", p.source === "builtin" ? "内置（随系统发布）" : "上传 · 用户 #3"], ["鉴权方式", p.auth],
+    ["从渠道导入模型", p.import ? `<i data-lucide="check"></i>支持` : `<span class="muted">不支持</span>`],
+    ["异步任务查询", "提交 10 秒后开始，每 5 秒一次，最长间隔 15 秒"], ["允许下载结果的域名", `<span class="muted">仅渠道的 Base URL</span>`]];
+  return `<p class="section-t">支持的生成方式</p><div class="kcards">${KINDS.map(([k, ic, l]) => {
+      const m = p.endpoints[k];
+      return `<div class="kcard ${m ? "" : "no"}" data-kind="${k}"><span class="ic"><i data-lucide="${ic}"></i></span><div><div style="font-weight:500">${l}</div>
+        <div class="xs ${m ? "muted" : ""}">${!m ? "不支持" : m === "async" ? "异步 · 提交后查询" : "同步 · 直接返回"}</div></div></div>`;
+    }).join("")}</div>
+    <p class="section-t">插件信息</p><dl class="dl" style="margin:0">${info.map(([t, v]) => `<div><dt>${t}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
+}
+
+/* ---------- 事件 ---------- */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button, tr, [data-gochannel]");
+  if (menuEl && !e.target.closest(".menu") && !e.target.closest("[data-menu]")) closeMenu();
+  if (e.target.classList?.contains("overlay")) return closeDialog();
+  if (!t) return;
+  const d = t.dataset;
+  if (d.prowOpen) return openDialog("plugin", d.prowOpen);
+  if (d.filter) { F[d.filter] = d.value; F.page = 1; return render(); }
+  if (d.reset !== undefined) { state.query = ""; resetFilters(); return render(); }
+  if (d.pageTo) { F.page = Number(d.pageTo); return render(); }
+  if (d.page) { state.page = d.page; state.query = ""; resetFilters(); return render(); }
+  if (t.id === "role") { state.canWrite = !state.canWrite; render(); return renderDialog(); }
+  if (d.menu) { e.stopPropagation(); return menuEl ? closeMenu() : openMenu(t, d.menu); }
+  if (d.fake) { closeMenu(); return toast(`（原型）${d.fake}`); }
+  if (d.close !== undefined) return closeDialog();
+  if (d.tab) return switchTab(d.tab);
+  if (d.act === "new") return openDialog("new");
+  if (d.act === "upload") return toast("（原型）上传插件弹窗沿用现有");
+  if (d.save !== undefined) { toast("已保存，正在检查…"); return; }
+  if (d.check) {
+    const key = d.check; state.checks[key] = { busy: true }; render(); renderDialog();
+    setTimeout(() => { state.checks[key] = { busy: false, ok: state.channels.find((c) => c.key === key).secret }; render(); renderDialog(); }, 1200);
+    return;
+  }
+  if (d.toggleChannel) {
+    const c = state.channels.find((x) => x.key === d.toggleChannel);
+    if (c.enabled && !confirm(`停用「${c.name}」后，使用它的模型不再接新任务，进行中的任务不受影响。`)) return;
+    c.enabled = !c.enabled; render(); return renderDialog();
+  }
+  if (d.togglePlugin) {
+    const p = state.plugins.find((x) => x.key === d.togglePlugin);
+    if (p.enabled && !confirm(`停用插件「${p.name}」？停用后 ${pinned(p).length} 个渠道会不可用，进行中的任务不受影响。`)) return;
+    p.enabled = !p.enabled; render(); return renderDialog();
+  }
+  if (d.upgrade) { const p = state.plugins.find((x) => x.key === d.upgrade); outdated(p).forEach((c) => (c.version = p.latest)); p.versions.forEach((v, i) => (v.channels = i === 0 ? pinned(p).map((c) => c.key) : [])); toast("已升级"); render(); return renderDialog(); }
+  if (d.goplugin) { closeDialog(); state.page = "plugins"; render(); return setTimeout(() => openDialog("plugin", d.goplugin), 160); }
+  if (d.gochannel) { closeDialog(); state.page = "channels"; render(); return setTimeout(() => openDialog("channel", d.gochannel), 160); }
+  if (t.tagName === "TR" && !e.target.closest("[data-stop]")) {
+    if (d.row) return openDialog("channel", d.row);
+    if (d.prow) return openDialog("plugin", d.prow);
+  }
+});
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.filter) { F[t.dataset.filter] = t.value; F.page = 1; render(); }
+  if (t.dataset.size !== undefined) { F.size = Number(t.value); F.page = 1; render(); }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "q") return; state.query = e.target.value; F.page = 1;
+  const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (menuEl) closeMenu(); else closeDialog(); } });
+render();
+</script>
+</body>
+</html>

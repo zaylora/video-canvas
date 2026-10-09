@@ -9,17 +9,12 @@ import {
   RadioTower,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import { Link } from "react-router";
-import { toast } from "sonner";
 
-import { deletePluginVersion, setPluginEnabled } from "@/api/admin/ai";
-import type {
-  ChannelView,
-  ConfigListItem,
-  PluginVersionView,
-  PluginView,
-} from "@/api/admin/ai/type.d";
+import { deletePluginVersion } from "@/api/admin/ai";
+import type { ChannelView, PluginVersionView, PluginView } from "@/api/admin/ai/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import {
@@ -28,8 +23,8 @@ import {
   DescriptionList,
   DescriptionTerm,
 } from "@/components/admin-ui/description-list";
-import { Notice } from "@/components/admin-ui/notice";
-import { Tag, toneClasses } from "@/components/admin-ui/tag";
+import { RowAction } from "@/components/admin-ui/row-action";
+import { Tag } from "@/components/admin-ui/tag";
 import {
   Timeline,
   TimelineContent,
@@ -37,30 +32,18 @@ import {
   TimelineIndicator,
   TimelineItem,
 } from "@/components/admin-ui/timeline";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRetained } from "@/hooks/use-retained";
 import { cn } from "@/lib/utils";
+import type { PluginTab } from "@/utils/admin/channel-route";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
-import {
-  describeAuth,
-  latestVersion,
-  pluginChannelCount,
-  shortSha,
-  versionDeleteBlock,
-} from "@/utils/admin/plugin";
+import { describeAuth, latestVersion, shortSha, versionDeleteBlock } from "@/utils/admin/plugin";
 import { formatShortTime } from "@/utils/time";
 
 import { KIND_STYLE, KindIcons, PLUGIN_KIND_ORDER } from "../kind";
-import { ReadOnlyNotice } from "../../shared";
-import { useAliveRef } from "../../use-admin";
 import { confirmUpgradeChannels, outdatedChannels } from "./upgrade-channels";
 
 /** 上传人：内置插件（0）显示“内置”，其余显示用户 ID */
@@ -72,73 +55,112 @@ const kindsOf = (version: PluginVersionView | undefined) =>
   Object.keys(version?.meta?.endpoints ?? {});
 
 /**
- * 插件页右栏（设计稿样式）：头部卡片（启停 + 支持的生成方式）、插件信息、版本历史时间线。
+ * 插件弹窗：头部（名称、来源、启停开关、删除）+ 两个页签。
+ * 概览：支持的生成方式（四格）、插件信息；版本历史：时间线，每个版本的能力、在用渠道、删除。
+ * 状态靠开关和表格表达，不再有“已停用”横幅；颜色只给能力图标，其余中性。
+ * 点击“在用渠道”会跳到渠道页，本页随之卸载，弹窗跟着关闭。
+ * @param plugin 打开的插件；关闭时为 null，弹窗按最后一次的内容播完退出动画
  * @param channels 全部渠道，用来列出每个版本的“在用渠道”
- * @param models 全部模型，停用前算出会波及几个在线模型；没加载到时为空数组
- * @param canWrite 是否有运维权限；没有则启停开关只读、不显示删除
- * @param onChanged 启停或删除版本成功后刷新清单
- * @param onDelete 删除整个插件（打开删除对话框）
  * @param plugins 全部插件（批量升级时算设置项迁移）
+ * @param canWrite 是否有运维权限；没有则开关只读、不显示删除
+ * @param toggling 正在启停（开关禁用）
+ * @param onToggle 开关；停用前的影响确认由页面的 usePluginActions 负责
+ * @param onChanged 删除版本成功后刷新清单
  * @param onChannelsChanged 批量升级渠道后刷新渠道清单
+ * @param onDelete 删除整个插件：页面先关弹窗再打开删除对话框
  */
-export function PluginDetail({
+export function PluginDialog({
   plugin,
+  tab,
+  onTabChange,
   plugins,
   channels,
-  models,
   canWrite,
+  toggling,
+  onToggle,
   onChanged,
   onChannelsChanged,
   onDelete,
+  onClose,
 }: {
-  plugin: PluginView;
+  plugin: PluginView | null;
+  tab: PluginTab;
+  onTabChange: (tab: PluginTab) => void;
   plugins: PluginView[];
   channels: ChannelView[];
-  models: ConfigListItem[];
   canWrite: boolean;
+  toggling: boolean;
+  onToggle: (plugin: PluginView, enabled: boolean) => void;
   onChanged: () => Promise<void>;
   onChannelsChanged: () => Promise<void>;
-  onDelete: () => void;
+  onDelete: (plugin: PluginView) => void;
+  onClose: () => void;
 }) {
-  const outdated = outdatedChannels(plugin, channels);
-  const aliveRef = useAliveRef();
+  // 关闭时 plugin 会被置空，内容按最后一次的对象留到退出动画播完
+  const shown = useRetained(plugin);
+  return (
+    <Dialog open={!!plugin} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[min(88svh,760px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+      >
+        {shown && (
+          <PluginDialogBody
+            key={shown.key}
+            plugin={plugin ?? shown}
+            tab={tab}
+            onTabChange={onTabChange}
+            plugins={plugins}
+            channels={channels}
+            canWrite={canWrite}
+            toggling={toggling}
+            onToggle={onToggle}
+            onChanged={onChanged}
+            onChannelsChanged={onChannelsChanged}
+            onDelete={onDelete}
+            onClose={onClose}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PluginDialogBody({
+  plugin,
+  tab,
+  onTabChange,
+  plugins,
+  channels,
+  canWrite,
+  toggling,
+  onToggle,
+  onChanged,
+  onChannelsChanged,
+  onDelete,
+  onClose,
+}: {
+  plugin: PluginView;
+  tab: PluginTab;
+  onTabChange: (tab: PluginTab) => void;
+  plugins: PluginView[];
+  channels: ChannelView[];
+  canWrite: boolean;
+  toggling: boolean;
+  onToggle: (plugin: PluginView, enabled: boolean) => void;
+  onChanged: () => Promise<void>;
+  onChannelsChanged: () => Promise<void>;
+  onDelete: (plugin: PluginView) => void;
+  onClose: () => void;
+}) {
   const latest = latestVersion(plugin);
   const meta = latest?.meta;
-  const [toggling, setToggling] = useState(false);
-
-  const setEnabled = async (enabled: boolean) => {
-    setToggling(true);
-    try {
-      await setPluginEnabled(plugin.key, enabled);
-      toast.success(`插件「${plugin.name}」已${enabled ? "启用" : "停用"}`);
-      await onChanged();
-    } finally {
-      if (aliveRef.current) setToggling(false);
-    }
-  };
-
-  /** 启用直接生效；停用影响面大（所有用它的渠道、渠道下的模型），先算影响再确认 */
-  const toggle = (enabled: boolean) => {
-    if (enabled) return void setEnabled(true);
-    const pinned = channels.filter((channel) => channel.plugin_key === plugin.key);
-    const online = models.filter(
-      (item) => item.enabled && pinned.some((channel) => channel.key === item.channel),
-    );
-    void confirm({
-      title: `停用插件「${plugin.name}」？`,
-      destructive: true,
-      confirmLabel: "停用",
-      description: (
-        <>
-          停用后{" "}
-          <b>
-            {pinned.length} 个渠道{online.length > 0 && `、${online.length} 个在线模型`}
-          </b>{" "}
-          会不可用，进行中的任务不受影响。
-        </>
-      ),
-      onConfirm: () => setEnabled(false),
-    });
+  const outdated = outdatedChannels(plugin, channels);
+  // 页签先在本地切换（立刻响应），再写回 URL
+  const [current, setCurrent] = useState<PluginTab>(tab);
+  const changeTab = (next: PluginTab) => {
+    setCurrent(next);
+    onTabChange(next);
   };
 
   // 409：有渠道 / 非终态任务引用或内置。全局 toast 已弹，原因由 confirm 留在对话框里
@@ -184,7 +206,7 @@ export function PluginDetail({
     {
       term: "从渠道导入模型",
       value: meta?.import ? (
-        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+        <span className="inline-flex items-center gap-1">
           <Check className="size-3.5" />
           支持
         </span>
@@ -217,118 +239,128 @@ export function PluginDetail({
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      {!canWrite && <ReadOnlyNotice what="上传、启停插件与删除版本" />}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2">
-            <span className="text-xl font-semibold tracking-tight">{plugin.name}</span>
-            <Tag tone={plugin.source === "builtin" ? "neutral" : "violet"}>
-              {plugin.source === "builtin" ? "内置" : "已上传"}
-            </Tag>
+    <>
+      <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+        <div className="min-w-0 flex-1">
+          <DialogTitle className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
+            {plugin.name}
+            <Tag>{plugin.source === "builtin" ? "内置" : "已上传"}</Tag>
             <span className="text-muted-foreground font-mono text-xs font-normal">
               {plugin.key}
               {latest && ` · v${latest.version}`}
             </span>
-          </CardTitle>
-          {meta?.description && <CardDescription>{meta.description}</CardDescription>}
-          <CardAction className="flex items-center gap-3 rounded-lg border px-3 py-2">
-            <div className="text-right">
-              <div className="text-sm font-medium">{plugin.enabled ? "已启用" : "已停用"}</div>
-              <div className="text-muted-foreground text-xs">
-                {pluginChannelCount(plugin)} 个渠道在用
-              </div>
-            </div>
+          </DialogTitle>
+          <DialogDescription className={cn("mt-1", !meta?.description && "sr-only")}>
+            {meta?.description ?? "插件详情：概览与版本历史"}
+          </DialogDescription>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="flex items-center gap-2 text-xs">
+            启用
             <Switch
               checked={plugin.enabled}
               disabled={!canWrite || toggling}
+              title={canWrite ? undefined : "需要运维权限"}
               aria-label={canWrite ? `启用插件 ${plugin.name}` : "插件启用状态"}
-              onCheckedChange={(checked) => toggle(checked)}
+              onCheckedChange={(checked) => onToggle(plugin, checked)}
             />
-            {canWrite && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`删除插件 ${plugin.name}`}
-                title="删除插件（含全部版本）"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={onDelete}
-              >
-                <Trash2 />
-              </Button>
-            )}
-          </CardAction>
-        </CardHeader>
-        {!plugin.enabled && (
-          <CardContent>
-            <Notice tone="warning">
-              已停用：所有使用它的渠道不再接新任务，进行中的任务不受影响。
-            </Notice>
-          </CardContent>
-        )}
-        <CardContent className="border-t pt-4">
-          <div className="text-muted-foreground mb-3 text-xs font-medium">支持的生成方式</div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {PLUGIN_KIND_ORDER.map((kind) => {
-              const style = KIND_STYLE[kind];
-              const mode = endpoints[kind]?.mode;
-              return (
-                <div
-                  key={kind}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg border p-3",
-                    mode ? toneClasses[style.tone] : "border-dashed opacity-40",
-                  )}
-                >
-                  <span
+          </label>
+          {canWrite && (
+            <RowAction
+              tone="danger"
+              title="删除插件（含全部版本）"
+              aria-label={`删除插件 ${plugin.name}`}
+              onClick={() => onDelete(plugin)}
+            >
+              <Trash2 />
+              删除
+            </RowAction>
+          )}
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
+      </div>
+
+      <Tabs
+        value={current}
+        onValueChange={(next) => changeTab(next as PluginTab)}
+        className="min-h-0 flex-1 gap-0"
+      >
+        <div className="border-b px-4 pb-3">
+          <TabsList>
+            <TabsTrigger value="overview" className="px-3">
+              概览
+            </TabsTrigger>
+            <TabsTrigger value="versions" className="px-3">
+              版本历史
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {plugin.versions.length}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto p-4">
+          <section>
+            <h3 className="text-muted-foreground mb-3 text-xs font-medium">支持的生成方式</h3>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {PLUGIN_KIND_ORDER.map((kind) => {
+                const style = KIND_STYLE[kind];
+                const mode = endpoints[kind]?.mode;
+                return (
+                  <div
+                    key={kind}
                     className={cn(
-                      "grid size-9 shrink-0 place-items-center rounded-md",
-                      mode ? "bg-background/50" : "bg-muted",
+                      "flex items-center gap-3 rounded-lg border p-3",
+                      mode ? "bg-muted/40" : "text-muted-foreground/50 border-dashed",
                     )}
                   >
-                    <style.icon className="size-4" />
-                  </span>
-                  <div>
-                    <div className="text-sm font-medium">{MODEL_KIND_LABEL[kind]}</div>
-                    <div className="text-xs opacity-80">
-                      {!mode
-                        ? "不支持"
-                        : mode === "async"
-                          ? "异步 · 提交后查询"
-                          : "同步 · 直接返回"}
+                    <span
+                      className={cn(
+                        "grid size-9 shrink-0 place-items-center rounded-md",
+                        mode && cn(style.soft, style.text),
+                      )}
+                    >
+                      <style.icon className="size-4" />
+                    </span>
+                    <div>
+                      <div className={cn("text-sm font-medium", mode && "text-foreground")}>
+                        {MODEL_KIND_LABEL[kind]}
+                      </div>
+                      <div className={cn("text-xs", mode && "text-muted-foreground")}>
+                        {!mode
+                          ? "不支持"
+                          : mode === "async"
+                            ? "异步 · 提交后查询"
+                            : "同步 · 直接返回"}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                );
+              })}
+            </div>
+          </section>
 
-      <Card className="gap-0 pb-0">
-        <CardHeader className="pb-3">
-          <CardTitle>插件信息</CardTitle>
-          <CardDescription className="text-xs">读取自最新版本的声明</CardDescription>
-        </CardHeader>
-        <DescriptionList className="gap-0 border-t sm:grid-cols-2 md:grid-cols-2 2xl:grid-cols-4">
-          {info.map(({ term, value }) => (
-            <DescriptionItem
-              key={term}
-              className="border-b px-4 py-3.5 sm:odd:border-r 2xl:border-r 2xl:[&:nth-child(4n)]:border-r-0"
-            >
-              <DescriptionTerm>{term}</DescriptionTerm>
-              <DescriptionDetails className="font-normal">{value}</DescriptionDetails>
-            </DescriptionItem>
-          ))}
-        </DescriptionList>
-      </Card>
+          <section className="mt-6">
+            <h3 className="text-muted-foreground mb-3 text-xs font-medium">插件信息</h3>
+            <DescriptionList className="grid-cols-1 gap-0 overflow-hidden rounded-lg border sm:grid-cols-2 md:grid-cols-2 2xl:grid-cols-2">
+              {info.map(({ term, value }) => (
+                <DescriptionItem
+                  key={term}
+                  className="border-b px-4 py-3.5 sm:odd:border-r nth-last-[-n+2]:sm:border-b-0 max-sm:last:border-b-0"
+                >
+                  <DescriptionTerm>{term}</DescriptionTerm>
+                  <DescriptionDetails className="font-normal">{value}</DescriptionDetails>
+                </DescriptionItem>
+              ))}
+            </DescriptionList>
+          </section>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>版本历史</CardTitle>
-          <CardAction className="text-muted-foreground flex items-center gap-2 self-center text-xs">
-            {outdated.length > 0 && canWrite ? (
+        <TabsContent value="versions" className="min-h-0 flex-1 overflow-y-auto p-4">
+          {outdated.length > 0 && canWrite && (
+            <div className="mb-4 flex justify-end">
               <Button
                 size="sm"
                 variant="outline"
@@ -344,12 +376,8 @@ export function PluginDetail({
                 <CircleArrowUp />
                 升级全部 {outdated.length} 个渠道到 v{latest?.version}
               </Button>
-            ) : (
-              "渠道固定在某个版本上，新版本要切换后才生效"
-            )}
-          </CardAction>
-        </CardHeader>
-        <CardContent>
+            </div>
+          )}
           <Timeline>
             {plugin.versions.map((version, index) => {
               const isLatest = version.id === latest?.id;
@@ -371,12 +399,12 @@ export function PluginDetail({
                   <TimelineContent>
                     <TimelineHeader>
                       <span className="font-mono text-base font-semibold">v{version.version}</span>
-                      {isLatest && <Tag tone="info">最新</Tag>}
-                      {version.channel_count > 0 ? (
-                        <Tag tone="success">{version.channel_count} 个渠道在用</Tag>
-                      ) : (
-                        <Tag>无渠道使用</Tag>
-                      )}
+                      {isLatest && <Tag>最新</Tag>}
+                      <span className="text-muted-foreground text-xs">
+                        {version.channel_count > 0
+                          ? `${version.channel_count} 个渠道在用`
+                          : "无渠道使用"}
+                      </span>
                       <span className="text-muted-foreground ml-auto text-xs tabular-nums">
                         {formatShortTime(version.created_at)} · {uploaderLabel(version)}
                       </span>
@@ -385,7 +413,7 @@ export function PluginDetail({
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                         <KindIcons kinds={kinds} />
                         {added.length > 0 && (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                          <span className="text-muted-foreground inline-flex items-center gap-1">
                             <Plus className="size-3" />
                             新增 {added.map((kind) => MODEL_KIND_LABEL[kind] ?? kind).join("、")}
                           </span>
@@ -407,7 +435,7 @@ export function PluginDetail({
                           {pinned.map((channel) => (
                             <Link
                               key={channel.key}
-                              to={`/admin/ai/channels?edit=${encodeURIComponent(channel.key)}`}
+                              to={`/admin/ai/channels?key=${encodeURIComponent(channel.key)}`}
                               className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5"
                             >
                               <RadioTower className="size-3" />
@@ -415,7 +443,7 @@ export function PluginDetail({
                             </Link>
                           ))}
                           {!isLatest && latest && (
-                            <span className="ml-auto inline-flex items-center gap-1 text-sky-600 dark:text-sky-400">
+                            <span className="text-muted-foreground ml-auto inline-flex items-center gap-1">
                               <CircleArrowUp className="size-3.5" />
                               可升级到 v{latest.version}
                             </span>
@@ -424,22 +452,21 @@ export function PluginDetail({
                       )}
                     </div>
                     {canWrite && (
-                      <div className="mt-2 flex items-center gap-2 text-xs">
+                      <div className="mt-1 flex items-center gap-2 text-xs">
                         {block ? (
                           <span className="text-muted-foreground inline-flex items-center gap-1">
                             <Lock className="size-3" />
                             {block}
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 text-red-600 hover:underline dark:text-red-400"
+                          <RowAction
+                            tone="danger"
                             aria-label={`删除 ${version.version}`}
                             onClick={() => requestDeleteVersion(version)}
                           >
-                            <Trash2 className="size-3" />
+                            <Trash2 />
                             删除这个版本
-                          </button>
+                          </RowAction>
                         )}
                       </div>
                     )}
@@ -448,8 +475,8 @@ export function PluginDetail({
               );
             })}
           </Timeline>
-        </CardContent>
-      </Card>
-    </div>
+        </TabsContent>
+      </Tabs>
+    </>
   );
 }

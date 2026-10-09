@@ -39,7 +39,7 @@ function TimelineIndicator({
       data-active={active || undefined}
       className={cn(
         "border-border bg-background text-muted-foreground relative z-10 mt-1 grid size-6 shrink-0 place-items-center rounded-full border-2 [&>svg]:size-3",
-        "data-active:border-sky-500 data-active:bg-sky-500/15 data-active:text-sky-500",
+        "data-active:border-foreground data-active:bg-foreground/10 data-active:text-foreground",
         className,
       )}
       {...props}
