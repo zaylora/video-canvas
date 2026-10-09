@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { CanvasEdge, FlowNode } from "@/types";
 import { isGroupNode } from "@/utils/canvas/group";
@@ -84,15 +92,15 @@ export function useCanvasHistory({
   }, [push, sync]);
 
   useEffect(() => {
-    const current = keyed(nodes, edges);
     const previous = latest.current;
     if (!previous || restoring.current) {
       restoring.current = false;
-      latest.current = current;
+      latest.current = keyed(nodes, edges);
       return;
     }
-    // 拖动、缩放组框的过程中不记，落定时才算一步
+    // 拖动、缩放组框的过程中不记，落定时才算一步；先判断再算 key，拖动时每帧不用把整张画布序列化一遍
     if (nodes.some((node) => node.dragging || node.resizing)) return;
+    const current = keyed(nodes, edges);
     if (current.structure !== previous.structure) {
       // 被打过招呼的这次连线并进攒着的打字：撤销一次回到开始打字之前，而不是停在打了一半的 @ 上
       const base = absorbNext.current ? typingBase.current : null;
@@ -176,15 +184,14 @@ export function useCanvasHistory({
     absorbNext.current = true;
   }, []);
 
-  return {
-    undo,
-    redo,
-    record,
-    absorbTyping,
-    reset,
-    canUndo: depth.past > 0 || depth.typing,
-    canRedo: depth.future > 0,
-  };
+  const canUndo = depth.past > 0 || depth.typing;
+  const canRedo = depth.future > 0;
+  // 返回值经 CanvasHistoryProvider 下发给每个生成节点，而画布拖动时每帧都在重渲染：
+  // 不固定引用的话 context 每帧都变，所有节点绕过 memo 跟着重渲染
+  return useMemo(
+    () => ({ undo, redo, record, absorbTyping, reset, canUndo, canRedo }),
+    [absorbTyping, canRedo, canUndo, record, redo, reset, undo],
+  );
 }
 
 export type CanvasHistory = ReturnType<typeof useCanvasHistory>;
