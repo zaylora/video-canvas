@@ -381,8 +381,13 @@ export function useModelWorkspace(catalog: AdminCatalog) {
    * 保存配置；成功返回模型 key 与校验问题。新建的模型默认不上线，要在列表里打开「上线」开关用户才能用；
    * 已上线的模型保存即生效，校验不过会被后端拒绝。没上线的模型有校验问题也照常保存（允许存半成品），只是上线会被拦。
    * 新建成功后：导入队列里还有草稿就接着处理下一个，否则跳到该模型的页面。
+   * closeAfter：点「保存」按钮时传 true，保存成功后直接回列表关掉弹窗（已保存，不再走放弃修改确认）；
+   * 导入队列里还有下一个草稿时仍留在弹窗里继续处理。
    */
-  const save = async (silent = false): Promise<{ key: string; issues: ConfigIssue[] } | null> => {
+  const save = async (
+    silent = false,
+    closeAfter = false,
+  ): Promise<{ key: string; issues: ConfigIssue[] } | null> => {
     if (selection === "none") return null;
     if (!parsed.ok) {
       pushEntry({ title: "JSON 格式错误，无法保存", tone: "error", text: parsed.message });
@@ -419,7 +424,16 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         });
       }
       void loadList();
-      if (isNew) {
+      const hasNextDraft = isNew && queue.length > 1;
+      if (closeAfter && !hasNextDraft) {
+        if (isNew && importRef.current)
+          updateStashedDrafts(importRef.current.id, {
+            channelKey: importRef.current.channelKey,
+            bodies: [],
+          });
+        setQueue([]);
+        navigate("/admin/ai/models", { replace: true });
+      } else if (isNew) {
         const rest = queue.slice(1);
         if (queue.length > 0 && rest.length > 0) {
           setQueue(rest);

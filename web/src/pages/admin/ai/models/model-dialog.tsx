@@ -316,7 +316,7 @@ export function ModelDialog({
           <Button variant="outline" onClick={ws.closeEditor}>
             取消
           </Button>
-          <Button disabled={disabled} onClick={() => void ws.save()}>
+          <Button disabled={disabled} onClick={() => void ws.save(false, true)}>
             {spinner("save", <Save />)}
             保存
           </Button>
