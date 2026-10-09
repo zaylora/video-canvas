@@ -1,0 +1,1153 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>首页生成与对话演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --amber: 217 119 6;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --amber: 251 191 36;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      button:disabled { cursor: not-allowed; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 80; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 演示控制条 ---- */
+      .ctl { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 16px; padding: 10px 14px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); font-size: 12.5px; }
+      .ctl select { font: inherit; font-size: 12.5px; height: 26px; border-radius: 6px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: inherit; }
+
+      /* ---- 原型：产品界面 ---- */
+      .app { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 640px; position: relative; font-size: 13px; }
+      @media (max-width: 760px) { .app { grid-template-columns: 1fr; } .side { display: none; } }
+      .side { border-right: 1px solid hsl(var(--border)); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+      .s-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 8px 12px; }
+      .s-mark { width: 20px; height: 20px; border-radius: 6px; border: 2px solid rgb(var(--amber)); display: grid; place-items: center; }
+      .s-mark::after { content: ""; width: 2px; height: 10px; background: rgb(var(--amber)); border-radius: 2px; }
+      .s-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; width: 100%; text-align: left; }
+      .s-item:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .s-item.on { background: hsl(var(--accent)); font-weight: 600; }
+      .s-item:disabled { opacity: 0.45; }
+      .s-label { display: flex; align-items: center; justify-content: space-between; padding: 14px 8px 4px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .s-conv { position: relative; }
+      .s-conv .more { visibility: hidden; margin-left: auto; padding: 2px; border-radius: 5px; }
+      .s-conv:hover .more { visibility: visible; }
+      .thumb { width: 22px; height: 22px; border-radius: 6px; flex: none; display: grid; place-items: center; background: hsl(var(--muted)); }
+      .live { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--amber)); flex: none; animation: pulse 1.2s infinite; }
+      @keyframes pulse { 50% { opacity: 0.3; } }
+      .ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+      .main { display: flex; flex-direction: column; min-width: 0; position: relative; }
+      .home { flex: 1; overflow-y: auto; padding: 36px 24px; display: flex; flex-direction: column; align-items: center; }
+      .greet { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+      .greet span { color: rgb(var(--amber)); }
+      .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: hsl(var(--muted)); margin: 16px 0 18px; }
+      .seg button { padding: 5px 26px; border-radius: 999px; font-size: 13px; }
+      .seg .on { background: hsl(var(--card)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); font-weight: 600; }
+      .seg button:disabled { opacity: 0.5; }
+
+      .conv-head { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid hsl(var(--border)); }
+      .conv-head .title { font-weight: 600; font-size: 14px; }
+      .feed { flex: 1; overflow-y: auto; padding: 8px 20px 12px; }
+      .day { font-weight: 700; font-size: 15px; margin: 14px 0 8px; }
+      .rec { padding: 10px 0 14px; border-bottom: 1px solid hsl(var(--border) / 0.6); }
+      .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .meta b { color: hsl(var(--foreground)); font-weight: 600; }
+      .meta .sep { opacity: 0.4; }
+      .prompt { margin: 6px 0 8px; font-weight: 600; font-size: 13px; }
+      .refs { display: flex; gap: 4px; margin-top: 6px; }
+      .refs .r { width: 26px; height: 26px; border-radius: 5px; }
+      .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-width: 760px; }
+      .cell { position: relative; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: hsl(var(--muted)); display: grid; place-items: center; font-size: 12px; text-align: center; padding: 8px; }
+      .cell.audio { aspect-ratio: auto; height: 56px; }
+      .cell .acts { position: absolute; inset: auto 6px 6px 6px; display: none; gap: 4px; justify-content: flex-end; }
+      .cell:hover .acts { display: flex; }
+      .cell .acts button { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: rgb(0 0 0 / 0.55); color: #fff; }
+      .cell .badge { position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / 0.5); color: #fff; }
+      .bar { width: 80%; height: 4px; border-radius: 4px; background: hsl(var(--border)); overflow: hidden; margin: 6px auto 0; }
+      .bar > i { display: block; height: 100%; background: rgb(var(--amber)); transition: width 0.4s; }
+      .shimmer { background: linear-gradient(100deg, hsl(var(--muted)) 30%, hsl(var(--accent)) 50%, hsl(var(--muted)) 70%); background-size: 200% 100%; animation: sh 1.4s linear infinite; }
+      @keyframes sh { to { background-position: -200% 0; } }
+      .ops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; position: relative; }
+      .chip { height: 28px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; background: hsl(var(--muted)); }
+      .chip:hover:not(:disabled) { background: hsl(var(--accent)); outline: 1px solid hsl(var(--border)); }
+      .chip:disabled { opacity: 0.45; }
+      .empty { flex: 1; display: grid; place-items: center; text-align: center; color: hsl(var(--muted-foreground)); padding: 24px; }
+
+      /* 输入卡片 */
+      .cp { position: relative; width: 100%; max-width: 760px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 18px; padding: 12px 12px 10px; }
+      .dock { padding: 10px 20px 14px; display: flex; justify-content: center; }
+      .cp-top { display: flex; gap: 10px; align-items: flex-start; }
+      .ref-list { display: flex; gap: 6px; flex-wrap: wrap; max-width: 220px; }
+      .ref { position: relative; width: 52px; height: 52px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; }
+      .ref.warn { outline: 2px solid rgb(var(--warn)); }
+      .ref .x { position: absolute; right: -5px; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: hsl(var(--foreground)); color: hsl(var(--background)); display: grid; place-items: center; font-size: 10px; }
+      .ref-add { border: 1px dashed hsl(var(--border)); color: hsl(var(--muted-foreground)); transform: rotate(-4deg); }
+      .ref-add:hover:not(:disabled) { color: hsl(var(--foreground)); border-color: hsl(var(--foreground) / 0.4); }
+      .ref-add:disabled { opacity: 0.4; }
+      textarea.inp { flex: 1; min-height: 56px; max-height: 160px; resize: none; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 13.5px; padding: 4px 2px; }
+      .cp-bar { display: flex; align-items: center; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+      .cbtn { height: 30px; padding: 0 9px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; }
+      .cbtn:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .cbtn:disabled { opacity: 0.4; }
+      .cbtn.mode { color: rgb(var(--amber)); font-weight: 600; }
+      .credit { font-size: 12.5px; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; }
+      .credit.low { color: rgb(var(--bad)); font-weight: 600; }
+      .send { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .send:disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .spin { animation: rot 0.8s linear infinite; }
+      @keyframes rot { to { transform: rotate(360deg); } }
+      .hint { font-size: 11.5px; margin-top: 4px; min-height: 16px; }
+      .hint.bad { color: rgb(var(--bad)); }
+      .hint.warn { color: rgb(var(--warn)); }
+
+      .pop { position: absolute; z-index: 20; min-width: 220px; max-width: 300px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 12px; padding: 6px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.18); }
+      .pop .opt { display: flex; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; align-items: flex-start; }
+      .pop .opt:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .pop .opt.on { background: hsl(var(--accent)); }
+      .pop .opt:disabled { opacity: 0.45; }
+      .pop .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+      .pop .grp { font-size: 11.5px; color: hsl(var(--muted-foreground)); padding: 6px 8px 3px; }
+      .pop .segs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 6px; }
+      .pop .segs button { padding: 3px 10px; border-radius: 6px; border: 1px solid hsl(var(--border)); font-size: 12px; }
+      .pop .segs .on { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+
+      .modal-bg { position: absolute; inset: 0; background: rgb(0 0 0 / 0.4); display: grid; place-items: center; z-index: 40; }
+      .modal { width: min(380px, 92%); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px; }
+      .modal h3 { font-size: 15px; }
+      .modal input { width: 100%; height: 34px; margin-top: 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); background: transparent; color: inherit; font: inherit; padding: 0 10px; }
+      .modal .list-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border-radius: 8px; text-align: left; }
+      .modal .list-opt:hover { background: hsl(var(--accent)); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="message-square-plus"></i></span>首页生成与对话</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">首页一句话直接出图、出视频、出音频，结果按对话归档</h1>
+        <p class="lead">
+          首页输入卡片和对话页现在只有样式。这次把它们接上真实的生成任务：选模式和模型、写提示词、看积分、发送，进对话页看进度，再对结果重新编辑、再次生成、用作参考、发到画布。
+          <b>生成 tab 不做 Agent</b>（Agent 只在画布里），<b>本期不做提示词模板和 @ 引用资产</b>，<b>模型必须手选，没有「自动」</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>项目现状来自仓库代码（2026-10-09）；竞品来自公开页面检索；原型里的模型名、价格、耗时都是<b>示意</b>。<b>阶段 1 已按本设计实现</b>（后端 + 前端 + 测试，尚未在浏览器里手点验证），下面的原型是设计演示，不是真实页面。完整依据见
+            <code>首页生成与对话.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一次发送怎么走</h2>
+          <p class="sub">从首页按下发送，到结果出现在对话页，中间经过哪几层。</p>
+          <div class="flow note">
+            <div class="node"><b>输入卡片</b>模式 + 模型 + 参数 + 参考 + 提示词；前端用 <code>quote()</code> 算积分</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>POST 记录</b>后端建一条 <code>conversation_record</code>，保存完整输入快照</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>生成任务</b>复用现有 <code>GenerationTaskService.Create</code>，拆成 1–4 个任务各自冻结积分</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>对话页</b>每个任务一格，进度走现有 WS <code>task.updated</code> + 对账</div>
+          </div>
+          <div class="note-txt">设计：记录只存「这次提交了什么」，任务状态仍然只认 generation_tasks。这样不新增 WS 消息，断线恢复也直接复用现有对账。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>出问题时（兜底）：</b>请求级错误（参数不合法、模型下线）<b>不创建记录</b>，草稿保留；单个任务失败（积分不足、并发满、审核不过）<b>只影响那一格</b>，可以单格重试；网络断开时草稿保留，任务进度在重连后由对账补齐。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三个入口，同一张输入卡片</h2>
+          <p class="sub">在哪里按发送，决定记录进哪段对话。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="house"></i><b>首页发送</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>一律进置顶的「默认创作」</b>，然后跳到它的对话页底部。默认创作不可删除，可改名。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="messages-square"></i><b>对话页底部发送</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">按项目归类</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>进当前这段对话。</b>「再次生成」「单格重试」也追加到当前对话底部，不改写历史。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="plus"></i><b>侧栏「新对话」</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">第一次发送才创建</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>先打开空对话，不建库</b>，避免空对话堆积；第一次发送时创建，标题取提示词前 16 字。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和主流产品比</h2>
+          <p class="sub">我们取了什么、没取什么。竞品细节多为单页应用，部分抓不到。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>即梦</th><th>Lovart</th><th>Runway Chat</th><th>LibTV</th><th>本方案</th></tr></thead>
+              <tbody>
+                <tr><th>模式切换</th><td>Agent 开关</td><td>Agent / Fast / Thinking</td><td>Chat / Tool</td><td>Skill 按钮</td><td class="y">图片 / 视频 / 音频</td></tr>
+                <tr><th>模型选择</th><td class="m">未验证：是否默认自动</td><td>官方称自动选</td><td>固定 Gen-4</td><td class="m">未验证</td><td class="y">必选，按模式记住上次</td></tr>
+                <tr><th>发送前积分</th><td class="m">未验证</td><td class="y">界面标注单次消耗</td><td class="m">未验证</td><td>无</td><td class="y">发送键旁显示，余额不足禁发</td></tr>
+                <tr><th>提交后去哪</th><td>对话 / 画布</td><td>对话 + 画布同屏</td><td>对话流</td><td>自动新建画布</td><td>对话页（可发到画布）</td></tr>
+                <tr><th>结果复用</th><td>当参考、转视频</td><td>对话里引用</td><td class="m">未验证</td><td>引用、重抽</td><td class="y">用作参考、再次生成、发到画布</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-vio">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户把结果「发到画布」时，会发生什么</h2>
+          <p class="sub">分新建画布和已有画布两种；已有画布可能正被另一个标签页打开。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>在结果上点「发到画布」</b><small>单个结果，或记录 ⋯ 里发送这条记录全部成功的结果</small></li>
+                <li><b>选目标：新建画布 / 最近 10 张画布</b><small>复用 useRecentCanvases，可搜索标题</small></li>
+                <li><b>新建：前端带节点调用 createCanvas，然后跳转</b><small>节点带产物、提示词、模型、参数，可直接在画布里再次生成</small></li>
+                <li><b>已有：后端 POST /canvas/:id/imports 写入并推送 canvas.patch</b><small>放在现有内容右侧一行；乐观锁冲突重试 3 次；toast「已发到《X》· 打开」，不自动跳转</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：只发成功的结果，产物以后端任务为准</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>后端只接受属于当前用户、状态为成功的任务，不信任前端传来的地址。</li>
+                    <li>打开着这张画布的标签页靠现有 canvas.patch 三方合并收下新节点 <span class="tag t-warn">未验证：run_id 为空时前端是否接受</span></li>
+                    <li>发过去的节点不能用画布的 Ctrl+Z 撤掉，要在画布里直接删除。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">发到画布在阶段 2 交付；阶段 1 先保证能生成、能回看。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          数据在内存里，刷新复原，所有请求都是<b>模拟</b>。已预置「默认创作」和「雨夜霓虹」两段对话，可以直接在首页发送一条走完整流程。
+          想看失败：提示词里写<b>「失败」</b>会让最后一格生成失败；下面的控制条可以把余额调低、让下一次发送断网、让下一次上传失败、把一个视频模型下线。
+        </p>
+        <div class="ctl">
+          <b>演示控制</b>
+          <label class="row">余额 <select id="ctlBalance" onchange="setBalance(this.value)"><option value="22">22</option><option value="5">5（余额不足）</option><option value="200">200</option></select></label>
+          <label class="row"><input type="checkbox" id="ctlNet" onchange="S.netFail = this.checked" />下一次发送断网</label>
+          <label class="row"><input type="checkbox" id="ctlUp" onchange="S.upFail = this.checked" />下一次上传失败</label>
+          <label class="row"><input type="checkbox" id="ctlOff" onchange="setOffline(this.checked)" />Kling 4.0 已下线</label>
+        </div>
+        <div class="frame note" style="margin-top: 14px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="addr">lianjing.app / 创作</span>
+          </div>
+          <div class="app" id="app"></div>
+        </div>
+        <div class="note-txt">
+          设计：输入卡片全站只有一份，在首页和对话页之间移动，模式、模型、参数、参考和草稿跟着走（原型规则，已有）。技能按钮和快捷条本期隐藏，@ 按钮置灰并写原因——不做的功能不占位，但已经出现过的入口给出解释。
+        </div>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档第 7、8 节。<b>复用现有的生成任务、计价、任务推送和 canvas.patch</b>，只新增两张表和一组对话接口。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁绑谁，以及为什么任务状态不复制到记录里。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>用户 → 对话</th><td>1 : N，其中恰好一个 <code>is_default</code></td><td>首页发送总有去处；部分唯一索引保证只有一个默认创作</td></tr>
+                <tr><th>对话 → 记录</th><td>1 : N，按 id 倒序分页</td><td>一次发送一条记录；再次生成、单格重试都是新记录</td></tr>
+                <tr><th>记录 → 生成任务</th><td>1 : 1–4，<code>task_ids</code> 数组，失败位置为 null</td><td>状态只读 generation_tasks，避免两处不一致；任务的 <code>node_id</code> 写 <code>rec:{recordId}:{i}</code> 便于反查</td></tr>
+                <tr><th>记录 → 画布</th><td>无持久关系</td><td>发到画布是一次性复制节点，之后两边独立</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用 GORM AutoMigrate（<code>model/base.go</code> 注册）、软删除和 idcodec 编码。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>conversations</code></th></tr></thead>
+                <tbody>
+                  <tr><th>id</th><td>bigint 主键</td></tr>
+                  <tr><th>user_id</th><td>bigint；索引 (user_id, last_record_at desc)</td></tr>
+                  <tr><th>title</th><td>varchar(50)；新对话取首条提示词前 16 字</td></tr>
+                  <tr><th>is_default</th><td>bool；部分唯一 (user_id) where is_default and deleted_at is null</td></tr>
+                  <tr><th>record_count</th><td>int；侧栏和删除确认用</td></tr>
+                  <tr><th>last_record_at</th><td>timestamptz 可空；排序</td></tr>
+                  <tr><th>created/updated/deleted_at</th><td>软删除</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>conversation_records</code></th></tr></thead>
+                <tbody>
+                  <tr><th>id</th><td>bigint 主键</td></tr>
+                  <tr><th>conversation_id</th><td>bigint；索引 (conversation_id, id desc)</td></tr>
+                  <tr><th>user_id</th><td>bigint；索引 (user_id, id desc)，资产页跨对话查</td></tr>
+                  <tr><th>kind / model_key</th><td>image|video|audio / varchar(128)</td></tr>
+                  <tr><th>prompt</th><td>text，≤ 4000 字（以模型能力为准）</td></tr>
+                  <tr><th>input_json</th><td>jsonb；完整输入快照（参数、参考 asset id、数量）</td></tr>
+                  <tr><th>count</th><td>int，1–4；生成数量（格子数）</td></tr>
+                  <tr><th>idempotency_key</th><td>varchar(128)；部分唯一 (user_id, key) where key &lt;&gt; '' and deleted_at is null</td></tr>
+                  <tr><th>task_ids</th><td>jsonb <code>[id|null]</code>，长度 = 生成数量</td></tr>
+                  <tr><th>submit_errors</th><td>jsonb <code>[{index, code, message}]</code></td></tr>
+                  <tr><th>quote_credits</th><td>int；后端算出的冻结合计</td></tr>
+                  <tr><th>created/deleted_at</th><td>软删除</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">前缀 <code>/api/v1</code>，全部登录、按 user_id 隔离。新错误码段 62xxx（已核对未占用）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>请求 → 返回</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /conversations</code></th><td>— → <code>[{id,title,is_default,record_count,last_record_at,active,created_at}]</code>，一次返回全部（每人最多 200 段，不分页）；默认创作总在第一条，不存在时自动创建</td><td>—</td></tr>
+                <tr><th><code>POST /conversations</code></th><td><code>{title?}</code> → 对话</td><td>62002 已达 200 段上限</td></tr>
+                <tr><th><code>PATCH /conversations/:id</code></th><td><code>{title}</code>（1–50 字）</td><td>62001</td></tr>
+                <tr><th><code>DELETE /conversations/:id</code></th><td>204；进行中的任务继续跑完，素材留在资产</td><td>62001；62003 默认创作不能删</td></tr>
+                <tr><th><code>GET /conversations/:id/records</code></th><td><code>?before&amp;limit≤50</code>（默认 20）→ <code>{items:[Record + tasks: TaskView[]], next}</code></td><td>62001</td></tr>
+                <tr><th><code>POST /conversations/:id/records</code></th><td>Header <code>Idempotency-Key</code>；<code>{kind, model_id, prompt, input, count 1–4, title?}</code>；<code>:id</code> 可为 <code>default</code> / <code>new</code> → 202 <code>{conversation_id, record}</code></td><td>10001、40003、62001、62002</td></tr>
+                <tr><th><code>DELETE /conversations/:id/records/:rid</code></th><td><code>?cancel_active=true</code> → 204</td><td>62001、62005</td></tr>
+                <tr><th><code>GET /conversation-records</code></th><td>阶段 2，资产页「生成历史」用：<code>?kind&amp;cursor&amp;limit</code></td><td>—</td></tr>
+                <tr><th><code>POST /canvas/:id/imports</code></th><td>阶段 2：<code>{items:[{task_id, output_index?}] ≤20}</code> → <code>{revision, node_ids}</code>，推送 <code>canvas.patch</code>（kind=import）</td><td>30001；40004；10001 任务未成功；62004 写入冲突</td></tr>
+                <tr><th>沿用</th><td><code>POST /generation-tasks/:id/cancel</code>、<code>GET /credits</code>、<code>GET /models?kind=</code>、上传素材、WS <code>task.updated</code></td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>提交记录的后端流程（提案）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// ConversationService.Submit（提案）
+func Submit(userID, convRef, key, req):
+    conv := resolve(convRef)            // default → get-or-create；new → 创建，标题 = prompt 前 16 字
+    if rec := findByIdem(userID, key); rec != nil { return rec }   // 幂等
+    rec := insertRecord(conv, req, taskIDs = [])                    // 先拿 recordId
+    n := fanoutCount(req.input)
+    nodeIDs := ["rec:{rec.id}:0", …, "rec:{rec.id}:{n-1}"]
+    resp, err := generationTasks.Create(userID, key, {kind, model_id, input, node_ids: nodeIDs})
+    if err != nil {                     // 请求级错误：一个任务也没建
+        softDelete(rec); return err
+    }
+    rec.task_ids, rec.submit_errors, rec.quote_credits = fromItems(resp.items)   // 部分失败落到格子上
+    touch(conv.last_record_at, record_count+1)
+    return 202, view(rec, tasks)</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>前端改动清单</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>位置</th><th>改动</th></tr></thead>
+              <tbody>
+                <tr><th><code>constants/creation.ts</code></th><td>模式去掉 agent，默认 image；技能快捷常量暂不使用</td></tr>
+                <tr><th><code>store/composer.ts</code></th><td>加 model、params、refs（含上传状态）；按模式记模型、按模型记参数（localStorage，try/catch）</td></tr>
+                <tr><th><code>components/home/composer.tsx</code></th><td>模型弹层、参数弹层（<code>openParams</code>/<code>paramSummary</code>）、积分（<code>quote</code>）、上传（<code>uploadAsset</code>）、发送；隐藏技能；@ 置灰</td></tr>
+                <tr><th><code>pages/conversation/index.tsx</code></th><td>读接口、向上分页、回到最新、<code>/conversations/new</code></td></tr>
+                <tr><th><code>components/conversation/*</code></th><td>格子接 <code>useTask</code>；重新编辑 / 再次生成 / 取消 / ⋯；新增发到画布弹窗</td></tr>
+                <tr><th><code>components/home/app-sidebar.tsx</code></th><td>对话列表读接口；新对话、重命名、删除、进行中圆点</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>生成 tab 去掉 Agent 模式，只留图片 / 视频 / 音频</b>：Agent 只在画布里。</li>
+              <li><b>默认创作一段 + 可手动新建对话</b>：首页发送进默认创作，对话页发送进当前对话。</li>
+              <li><b>统一 conversations + conversation_records 两张表</b>。</li>
+              <li><b>不要「自动」，必须选模型</b>：按钮显示模型名，按模式记住上次。</li>
+              <li><b>参数收进参数按钮，发送键旁显示预估积分</b>。</li>
+              <li><b>@ 引用资产第一期不做</b>。</li>
+              <li><b>提示词模板先不做</b>：技能按钮和快捷条隐藏。</li>
+              <li><b>结果可发到画布：已有画布或新建</b>。</li>
+              <li><b>实现时的出入（主文档第 13 节已回写）</b>：提交请求多了 <code>count</code>；记录表多了 <code>idempotency_key</code>；对话列表不分页、阶段 1 不做封面。</li>
+              <li><b>已搁置：Agent 会话脱离画布</b>——用户先选了它，随后决定生成 tab 不做 Agent；将来首页做 Agent 时可用 <code>conversations.kind=agent</code> 关联 agent_sessions。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型：内存状态，刷新复原。模型、价格、耗时均为示意 ================= */
+      const MODES = [
+        { id: "image", label: "图片生成", icon: "images", desc: "直接出图，适合角色设定、场景、海报" },
+        { id: "video", label: "视频生成", icon: "clapperboard", desc: "文生视频或用参考图生成镜头" },
+        { id: "audio", label: "音频生成", icon: "music", desc: "配音、音效和配乐" },
+      ];
+      const MODELS = {
+        image: [
+          { key: "seedream", name: "Seedream 4.0", hint: "写实、海报", unit: 2, per: "张", refs: 4 },
+          { key: "nano", name: "Nano Banana Pro", hint: "角色一致性强", unit: 4, per: "张", refs: 8 },
+        ],
+        video: [
+          { key: "seedance", name: "Seedance 2.5", hint: "运镜稳定", unit: 2, per: "秒", refs: 2 },
+          { key: "kling", name: "Kling 4.0", hint: "动作幅度大", unit: 3, per: "秒", refs: 1 },
+        ],
+        audio: [{ key: "speech", name: "MiniMax Speech", hint: "配音", unit: 1, per: "条", refs: 0 }],
+      };
+      const PARAMS = {
+        image: [{ name: "ratio", label: "比例", opts: ["1:1", "16:9", "9:16"] }],
+        video: [
+          { name: "ratio", label: "比例", opts: ["16:9", "9:16"] },
+          { name: "duration", label: "时长", opts: ["5s", "10s"] },
+          { name: "res", label: "清晰度", opts: ["720p", "1080p"] },
+        ],
+        audio: [],
+      };
+      const MODE_NAME = { image: "图片生成", video: "视频生成", audio: "音频生成" };
+      const today = "10月9日";
+      let seq = 100;
+
+      const S = {
+        page: "home", // home | conv
+        convId: null, // null + page=conv 表示 /conversations/new
+        balance: 22,
+        netFail: false,
+        upFail: false,
+        offline: false,
+        mode: "image",
+        modelBy: { image: "seedream", video: "seedance", audio: "speech" },
+        params: { ratio: "16:9", duration: "5s", res: "720p", count: 1 },
+        refs: [],
+        text: "",
+        sending: false,
+        pop: null,
+        modal: null,
+        convs: [
+          {
+            id: "default", title: "默认创作", isDefault: true, records: [
+              rec("image", "seedream", { ratio: "1:1", count: 2 }, "赛博朋克少女角色设定，三视图，白底", [], "10月8日", ["ok", "ok"], 200),
+              rec("video", "seedance", { ratio: "16:9", duration: "5s", res: "720p", count: 2 }, "镜头缓慢推进，霓虹招牌在雨中闪烁", [40], "10月8日", ["ok", "failed"], 30),
+            ],
+          },
+          {
+            id: "neon", title: "雨夜霓虹", records: [
+              rec("image", "nano", { ratio: "16:9", count: 4 }, "雨夜的城市，外卖骑手穿过霓虹路口", [], "10月8日", ["ok", "ok", "ok", "ok"], 260),
+            ],
+          },
+        ],
+      };
+
+      function rec(kind, model, params, prompt, refHues, day, states, hue) {
+        const p = { ratio: "16:9", duration: "5s", res: "720p", count: 1, ...params };
+        return {
+          id: "r" + seq++, day, kind, model, params: p, prompt, refs: refHues.slice(),
+          items: states.map((st, i) => ({
+            status: st === "ok" ? "succeeded" : st, progress: 100, hue: (hue + i * 35) % 360,
+            err: st === "failed" ? "内容审核未通过" : "",
+          })),
+          spent: 0,
+        };
+      }
+
+      /* ---- 计算 ---- */
+      const models = (mode) => MODELS[mode].filter((m) => !(S.offline && m.key === "kling"));
+      const findModel = (key) => Object.values(MODELS).flat().find((m) => m.key === key);
+      const isOffline = (key) => S.offline && key === "kling";
+      function curModel() {
+        const list = models(S.mode);
+        return list.find((m) => m.key === S.modelBy[S.mode]) || list[0] || null;
+      }
+      function quoteOne(kind, m, p) {
+        if (!m) return 0;
+        if (kind === "video") return Math.round(m.unit * parseInt(p.duration) * (p.res === "1080p" ? 1.5 : 1));
+        return m.unit;
+      }
+      const total = () => quoteOne(S.mode, curModel(), S.params) * S.params.count;
+      function summary(kind, p) {
+        const parts = [];
+        if (kind !== "audio") parts.push(p.ratio);
+        if (kind === "video") parts.push(p.duration, p.res);
+        parts.push("×" + p.count);
+        return parts.join(" · ");
+      }
+      const conv = () => S.convs.find((c) => c.id === S.convId);
+      const active = (r) => r.items.some((it) => it.status === "queued" || it.status === "running");
+      const convActive = (c) => c.records.some(active);
+      const ph = (h) => `linear-gradient(135deg, hsl(${h} 60% 62%), hsl(${(h + 40) % 360} 55% 42%))`;
+
+      function sendState() {
+        const m = curModel();
+        const uploading = S.refs.some((r) => r.status === "uploading");
+        const over = m && S.refs.length > m.refs;
+        const need = total();
+        if (S.sending) return { ok: false, hint: "" };
+        if (!m) return { ok: false, hint: "暂无可用模型：管理员尚未配置" + MODE_NAME[S.mode] + "模型", cls: "bad" };
+        if (!S.text.trim() && !S.refs.length) return { ok: false, hint: "" };
+        if (uploading) return { ok: false, hint: "等待参考上传完成", cls: "warn" };
+        if (S.refs.some((r) => r.status === "error")) return { ok: false, hint: "有参考上传失败，重试或移除后再发送", cls: "bad" };
+        if (over) return { ok: false, hint: `当前模型最多 ${m.refs} 张参考，请移除标黄的参考`, cls: "warn" };
+        if (need > S.balance) return { ok: false, hint: `余额不足（需 ${need}，可用 ${S.balance}）`, cls: "bad" };
+        return { ok: true, hint: "" };
+      }
+
+      /* ---- 渲染 ---- */
+      function render() {
+        $("#app").innerHTML = `<aside class="side" id="side"></aside><div class="main" id="mainArea"></div>`;
+        renderSide();
+        renderMain();
+      }
+
+      function renderSide() {
+        const c = S.convId;
+        $("#side").innerHTML = `
+          <div class="s-brand"><span class="s-mark"></span>连镜</div>
+          <button class="s-item ${S.page === "home" ? "on" : ""}" onclick="goHome()"><i data-lucide="sparkles"></i>创作</button>
+          <button class="s-item" disabled title="作品广场即将上线"><i data-lucide="compass"></i>探索</button>
+          <button class="s-item" onclick="toast('资产页：阶段 1 仍是样例数据，阶段 2 改读 /conversation-records','info')"><i data-lucide="folder"></i>资产</button>
+          <div class="s-label">对话 <button class="cbtn" style="height:22px;padding:0 4px" title="新对话" onclick="newConv()"><i data-lucide="plus"></i></button></div>
+          ${S.page === "conv" && !S.convId ? `<div class="s-item on"><span class="thumb"><i data-lucide="message-square-dashed"></i></span><span class="ellip muted">新对话（未发送）</span></div>` : ""}
+          ${S.convs.map((cv) => {
+            const last = [...cv.records].reverse().find((r) => r.items.some((i) => i.status === "succeeded") && r.kind !== "audio");
+            const hue = last ? last.items.find((i) => i.status === "succeeded").hue : null;
+            return `<div class="s-item s-conv ${S.page === "conv" && c === cv.id ? "on" : ""}" role="button" onclick="openConv('${cv.id}')">
+              <span class="thumb" style="${hue != null ? "background:" + ph(hue) : ""}">${hue == null ? '<i data-lucide="message-square"></i>' : ""}</span>
+              <span class="ellip">${esc(cv.title)}</span>
+              ${convActive(cv) ? '<span class="live" title="有生成进行中"></span>' : ""}
+              ${cv.isDefault ? '<i data-lucide="pin" class="muted" style="margin-left:auto;font-size:11px"></i>' : ""}
+              <button class="more" ${cv.isDefault ? 'style="margin-left:4px"' : ""} onclick="event.stopPropagation();convMenu('${cv.id}')"><i data-lucide="ellipsis"></i></button>
+            </div>`;
+          }).join("")}
+          <div class="s-label">画布 <span>全部</span></div>
+          ${S.canvases.slice(0, 3).map((n) => `<div class="s-item"><span class="thumb"><i data-lucide="workflow"></i></span><span class="ellip">${esc(n)}</span></div>`).join("")}
+        `;
+        icons();
+      }
+
+      function renderMain() {
+        const el = $("#mainArea");
+        if (S.page === "home") {
+          $("#addr").textContent = "lianjing.app / 创作";
+          el.innerHTML = `<div class="home">
+              <div class="greet">早上好，今天想要<span>创作</span>什么？</div>
+              <div class="seg"><button class="on">生成</button><button onclick="toast('画布 tab 不在本次范围内','info')">画布</button></div>
+              <div id="cpHost" style="width:100%;display:flex;justify-content:center"></div>
+              <div class="note" style="margin-top:18px;width:100%;max-width:760px;padding:10px;border-radius:10px;text-align:center" >
+                <span class="muted" style="font-size:12px">（技能快捷条本期隐藏）</span>
+              </div>
+              <div class="note-txt" style="max-width:760px">设计：技能原定改成「提示词模板」，用户决定本期不做，所以快捷条和输入卡片里的「技能」按钮都隐藏，不留置灰入口。</div>
+            </div>`;
+        } else {
+          const cv = conv();
+          $("#addr").textContent = "lianjing.app / 对话 / " + (cv ? cv.title : "new");
+          el.innerHTML = `
+            <div class="conv-head">
+              ${cv ? `<span class="title ellip">${esc(cv.title)}</span>
+                <button class="cbtn" title="重命名" onclick="renameConv('${cv.id}')"><i data-lucide="pencil"></i></button>
+                <span class="spacer"></span>
+                ${cv.isDefault ? '<span class="tag t-mute">置顶 · 不可删除</span>' : `<button class="cbtn" onclick="deleteConv('${cv.id}')"><i data-lucide="trash-2"></i>删除对话</button>`}`
+                : `<span class="title muted">新对话</span><span class="tag t-warn" style="margin-left:6px">第一次发送时创建</span>`}
+            </div>
+            <div class="feed" id="feed">${cv ? feedHtml(cv) : ""}</div>
+            ${cv ? "" : `<div class="empty" style="position:absolute;inset:60px 0 170px"><div><i data-lucide="message-square-dashed" style="font-size:28px"></i><p style="margin-top:8px">在下方输入，开始这段对话</p></div></div>`}
+            <div class="dock" id="cpHost"></div>`;
+        }
+        renderComposer();
+        icons();
+        const f = $("#feed");
+        if (f) f.scrollTop = f.scrollHeight;
+      }
+
+      function feedHtml(cv) {
+        let lastDay = "";
+        return cv.records.map((r) => {
+          const head = r.day !== lastDay ? `<div class="day">${r.day}</div>` : "";
+          lastDay = r.day;
+          return head + `<div class="rec" id="rec-${r.id}">${recInner(r)}</div>`;
+        }).join("") || `<div class="empty">还没有记录</div>`;
+      }
+
+      function recInner(r) {
+        const m = findModel(r.model);
+        const done = !active(r);
+        const credits = r.items.reduce((s, it) => s + (it.status === "succeeded" ? quoteOne(r.kind, m, r.params) : 0), 0);
+        const frozen = quoteOne(r.kind, m, r.params) * r.items.filter((it) => it.status !== "submit_error").length;
+        const off = isOffline(r.model);
+        const anyOk = r.items.some((it) => it.status === "succeeded");
+        return `
+          <div class="meta">
+            <b>${MODE_NAME[r.kind]}</b><span class="sep">|</span>${esc(m.name)}${off ? ' <span class="tag t-warn">已下线</span>' : ""}<span class="sep">|</span>${summary(r.kind, r.params)}<span class="sep">|</span>
+            <span title="${done ? "实际扣费合计" : "冻结合计，完成后按实际结算"}">✦ ${done ? credits : frozen}${done ? "" : "（冻结）"}</span>
+          </div>
+          ${r.refs.length ? `<div class="refs">${r.refs.map((h) => `<span class="r" style="background:${ph(h)}"></span>`).join("")}</div>` : ""}
+          <div class="prompt">${esc(r.prompt)}</div>
+          <div class="cells">${r.items.map((it, i) => `<div class="cell ${r.kind === "audio" ? "audio" : ""}" id="cell-${r.id}-${i}">${cellInner(r, it, i)}</div>`).join("")}</div>
+          <div class="ops">
+            <button class="chip" onclick="reEdit('${r.id}')"><i data-lucide="pencil"></i>重新编辑</button>
+            <button class="chip" ${off ? 'disabled title="原模型已下线，请重新编辑"' : ""} onclick="regen('${r.id}')"><i data-lucide="refresh-cw"></i>再次生成 · ✦${quoteOne(r.kind, m, r.params) * r.params.count}</button>
+            ${done ? "" : `<button class="chip" onclick="cancelRec('${r.id}')"><i data-lucide="circle-stop"></i>取消</button>`}
+            <button class="chip" onclick="recMenu('${r.id}')"><i data-lucide="ellipsis"></i></button>
+            ${S.pop === "rec:" + r.id ? `<div class="pop" style="left:0;bottom:34px">
+              <button class="opt" ${anyOk ? "" : 'disabled title="没有成功的结果"'} onclick="sendCanvas('${r.id}',-1)"><i data-lucide="workflow"></i>发到画布（全部成功结果）</button>
+              <button class="opt" ${anyOk ? "" : "disabled"} onclick="closePop();toast('下载 ${r.items.filter((x) => x.status === "succeeded").length} 个文件（示意）')"><i data-lucide="download"></i>下载全部</button>
+              <button class="opt" onclick="closePop();toast('已复制提示词')"><i data-lucide="copy"></i>复制提示词</button>
+              <button class="opt" style="color:rgb(var(--bad))" onclick="deleteRec('${r.id}')"><i data-lucide="trash-2"></i>删除记录</button>
+            </div>` : ""}
+          </div>`;
+      }
+
+      function cellInner(r, it, i) {
+        const shot = r.items.length > 1 ? `<span class="badge">${i + 1}</span>` : "";
+        switch (it.status) {
+          case "submit_error":
+            return `<div><i data-lucide="circle-alert" class="muted"></i><div>提交失败：${esc(it.err)}</div><button class="chip" style="margin-top:6px" onclick="retry('${r.id}',${i})">重试</button></div>`;
+          case "queued":
+            return `<div class="shimmer" style="position:absolute;inset:0"></div><div style="position:relative">排队中<br/><button class="chip" style="margin-top:6px" onclick="cancelRec('${r.id}')">取消</button></div>`;
+          case "running":
+            return `<div style="width:100%">生成中 ${it.progress}%<div class="bar"><i style="width:${it.progress}%"></i></div></div>`;
+          case "failed":
+            return `<div><i data-lucide="circle-x" style="color:rgb(var(--bad))"></i><div>${esc(it.err)}</div><div class="muted" style="font-size:11px">积分已退回</div><button class="chip" style="margin-top:6px" onclick="retry('${r.id}',${i})">重试</button></div>`;
+          case "canceled":
+            return `<div class="muted">已取消 · 积分已退回<br/><button class="chip" style="margin-top:6px" onclick="retry('${r.id}',${i})">重试</button></div>`;
+          default: {
+            const bg = r.kind === "audio"
+              ? `<div style="position:absolute;inset:0;display:flex;align-items:center;gap:8px;padding:0 12px"><i data-lucide="play"></i><div style="flex:1;height:18px;background:repeating-linear-gradient(90deg, rgb(var(--amber)) 0 2px, transparent 2px 5px);opacity:.6"></div><span class="muted">0:12</span></div>`
+              : `<div style="position:absolute;inset:0;background:${ph(it.hue)}"></div>${r.kind === "video" ? '<i data-lucide="play" style="position:relative;color:#fff;font-size:22px"></i>' : ""}`;
+            return `${bg}${shot}<div class="acts">
+              <button title="放大预览" onclick="toast('全屏预览（示意）','info')"><i data-lucide="maximize-2"></i></button>
+              <button title="下载" onclick="toast('开始下载（示意）')"><i data-lucide="download"></i></button>
+              ${r.kind !== "audio" ? `<button title="用作参考" onclick="useRef(${it.hue})"><i data-lucide="image-plus"></i></button>` : ""}
+              <button title="发到画布" onclick="sendCanvas('${r.id}',${i})"><i data-lucide="workflow"></i></button>
+            </div>`;
+          }
+        }
+      }
+
+      function renderComposer() {
+        const host = $("#cpHost");
+        if (!host) return;
+        const m = curModel();
+        const mode = MODES.find((x) => x.id === S.mode);
+        const need = total();
+        const canRef = m && m.refs > 0;
+        host.innerHTML = `
+          <div class="cp note" id="cp">
+            <div class="cp-top">
+              <div class="ref-list">
+                ${S.refs.map((r, i) => `<div class="ref ${m && i >= m.refs ? "warn" : ""}" style="${r.status === "done" ? "background:" + ph(r.hue) : "background:hsl(var(--muted))"}" title="${m && i >= m.refs ? "超出当前模型的参考数量" : ""}">
+                    ${r.status === "uploading" ? '<i data-lucide="loader" class="spin"></i>' : r.status === "error" ? `<button onclick="retryUp(${i})" style="color:rgb(var(--bad));font-size:11px">失败<br/>重试</button>` : ""}
+                    <button class="x" onclick="rmRef(${i})">×</button></div>`).join("")}
+                <button class="ref ref-add" ${canRef ? "" : `disabled title="${m ? "当前模型不支持参考图" : "暂无可用模型"}"`} onclick="addRef()"><i data-lucide="plus"></i></button>
+              </div>
+              <textarea class="inp" id="inp" placeholder="描述你想生成的画面、镜头或声音；Enter 发送，Shift+Enter 换行"></textarea>
+            </div>
+            <div class="cp-bar">
+              <button class="cbtn mode" onclick="togglePop('mode')"><i data-lucide="${mode.icon}"></i>${mode.label}<i data-lucide="chevron-down"></i></button>
+              <button class="cbtn" ${m ? "" : "disabled"} onclick="togglePop('model')"><i data-lucide="box"></i>${m ? esc(m.name) : "暂无可用模型"}<i data-lucide="chevron-down"></i></button>
+              ${m ? `<button class="cbtn" onclick="togglePop('params')"><i data-lucide="sliders-horizontal"></i>${summary(S.mode, S.params)}</button>` : ""}
+              <button class="cbtn" disabled title="引用资产即将上线"><i data-lucide="at-sign"></i></button>
+              <span class="spacer"></span>
+              ${m ? `<span class="credit ${need > S.balance ? "low" : ""}" title="预估，按实际扣费为准；可用 ${S.balance}">✦ ${need}</span>` : ""}
+              <button class="send" id="sendBtn" onclick="send()"><i data-lucide="${S.sending ? "loader" : "arrow-up"}" class="${S.sending ? "spin" : ""}"></i></button>
+            </div>
+            <div class="hint" id="hint"></div>
+            ${popHtml(m)}
+          </div>`;
+        const ta = $("#inp");
+        ta.value = S.text;
+        ta.readOnly = S.sending;
+        ta.addEventListener("input", () => { S.text = ta.value; updateSend(); });
+        ta.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+        });
+        updateSend();
+        icons();
+      }
+
+      function popHtml(m) {
+        const pos = S.page === "home" ? "top:100%;margin-top:6px" : "bottom:100%;margin-bottom:6px";
+        if (S.pop === "mode")
+          return `<div class="pop" style="left:10px;${pos}">${MODES.map((x) => `<button class="opt ${x.id === S.mode ? "on" : ""}" onclick="setMode('${x.id}')"><i data-lucide="${x.icon}"></i><span>${x.label}<small>${x.desc}</small></span></button>`).join("")}
+            <div class="grp" style="border-top:1px solid hsl(var(--border));margin-top:4px">Agent 只在画布里使用</div></div>`;
+        if (S.pop === "model")
+          return `<div class="pop" style="left:120px;${pos}">${models(S.mode).map((x) => `<button class="opt ${m && x.key === m.key ? "on" : ""}" onclick="setModel('${x.key}')"><i data-lucide="box"></i><span>${esc(x.name)}<small>${esc(x.hint)} · ✦${x.unit}/${x.per} · 参考 ≤${x.refs}</small></span></button>`).join("")}
+            ${S.offline && S.mode === "video" ? '<div class="grp">Kling 4.0 已下线，不再列出</div>' : ""}</div>`;
+        if (S.pop === "params")
+          return `<div class="pop" style="left:220px;${pos}">
+            ${PARAMS[S.mode].map((p) => `<div class="grp">${p.label}</div><div class="segs">${p.opts.map((o) => `<button class="${S.params[p.name] === o ? "on" : ""}" onclick="setParam('${p.name}','${o}')">${o}</button>`).join("")}</div>`).join("")}
+            <div class="grp">生成数量</div><div class="segs">${[1, 2, 3, 4].map((n) => `<button class="${S.params.count === n ? "on" : ""}" onclick="setParam('count',${n})">${n}</button>`).join("")}</div>
+            <div class="grp">单价 ✦${quoteOne(S.mode, m, S.params)} × ${S.params.count} = ✦${total()}</div></div>`;
+        return "";
+      }
+
+      function updateSend() {
+        const st = sendState();
+        const b = $("#sendBtn");
+        if (b) b.disabled = !st.ok;
+        const h = $("#hint");
+        if (h) { h.textContent = st.hint; h.className = "hint " + (st.cls || ""); }
+      }
+
+      /* ---- 输入卡片操作 ---- */
+      function togglePop(p) {
+        const was = S.pop;
+        S.pop = was === p ? null : p;
+        if (was && was.startsWith("rec:")) refreshRec(was.slice(4));
+        renderComposer();
+      }
+      function closePop() { if (!S.pop) return; const was = S.pop; S.pop = null; was.startsWith("rec:") ? refreshRec(was.slice(4)) : renderComposer(); }
+      document.addEventListener("click", (e) => {
+        if (!S.pop) return;
+        if (e.target.closest(".pop") || e.target.closest(".cbtn") || e.target.closest(".chip")) return;
+        closePop();
+      });
+      function setMode(id) { S.mode = id; S.pop = null; renderComposer(); }
+      function setModel(k) { S.modelBy[S.mode] = k; S.pop = null; renderComposer(); }
+      function setParam(n, v) { S.params[n] = v; renderComposer(); }
+      function addRef() {
+        const m = curModel();
+        const i = S.refs.push({ status: "uploading", hue: Math.floor(Math.random() * 360) }) - 1;
+        const fail = S.upFail;
+        S.upFail = false; $("#ctlUp").checked = false;
+        renderComposer();
+        setTimeout(() => { if (S.refs[i]) { S.refs[i].status = fail ? "error" : "done"; renderComposer(); } }, 900);
+      }
+      function retryUp(i) { S.refs[i].status = "uploading"; renderComposer(); setTimeout(() => { if (S.refs[i]) { S.refs[i].status = "done"; renderComposer(); } }, 800); }
+      function rmRef(i) { S.refs.splice(i, 1); renderComposer(); }
+      function useRef(hue) {
+        S.refs.push({ status: "done", hue });
+        renderComposer();
+        const m = curModel();
+        if (!m || S.refs.length > m.refs) toast(m && m.refs ? `已加入参考，但当前模型最多 ${m.refs} 张` : "已加入参考，但当前模型不支持参考图", "warn");
+        else toast("已加入输入卡片的参考");
+      }
+
+      /* ---- 发送 ---- */
+      function send() {
+        const st = sendState();
+        if (!st.ok) return;
+        S.sending = true; S.pop = null;
+        renderComposer();
+        if (S.netFail) {
+          S.netFail = false; $("#ctlNet").checked = false;
+          setTimeout(() => { S.sending = false; renderComposer(); toast("网络异常，草稿已保留", "bad"); }, 700);
+          return;
+        }
+        setTimeout(() => {
+          let cv = S.page === "home" ? S.convs.find((c) => c.isDefault) : conv();
+          if (!cv) {
+            cv = { id: "c" + seq++, title: S.text.trim().slice(0, 16) || "新对话", records: [] };
+            S.convs.splice(1, 0, cv);
+          }
+          submitRecord(cv, S.mode, curModel().key, { ...S.params }, S.text.trim(), S.refs.map((r) => r.hue));
+          S.text = ""; S.refs = []; S.sending = false;
+          S.page = "conv"; S.convId = cv.id;
+          render();
+        }, 600);
+      }
+
+      function submitRecord(cv, kind, model, params, prompt, refs) {
+        const m = findModel(model);
+        const one = quoteOne(kind, m, params);
+        const r = { id: "r" + seq++, day: today, kind, model, params, prompt: prompt || "（仅参考图）", refs, items: [] };
+        for (let i = 0; i < params.count; i++) {
+          const it = { status: "queued", progress: 0, hue: Math.floor(Math.random() * 360), err: "", willFail: /失败/.test(prompt) && i === params.count - 1 };
+          if (S.balance >= one) { S.balance -= one; } else { it.status = "submit_error"; it.err = "积分不足"; }
+          r.items.push(it);
+        }
+        cv.records.push(r);
+        syncBalance();
+        return r;
+      }
+
+      /* ---- 任务进度（模拟，非真实调用） ---- */
+      setInterval(() => {
+        let sideDirty = false;
+        S.convs.forEach((cv) => cv.records.forEach((r) => {
+          const was = active(r);
+          if (!was) return;
+          let changed = false;
+          r.items.forEach((it, i) => {
+            if (it.status === "queued") { it.status = "running"; it.progress = 5; changed = true; }
+            else if (it.status === "running") {
+              it.progress = Math.min(100, it.progress + 6 + Math.floor(Math.random() * 14));
+              if (it.willFail && it.progress > 60) {
+                it.status = "failed"; it.err = "内容审核未通过";
+                S.balance += quoteOne(r.kind, findModel(r.model), r.params); syncBalance();
+              } else if (it.progress >= 100) it.status = "succeeded";
+              changed = true;
+            }
+            if (changed) { const c = $(`#cell-${r.id}-${i}`); if (c) { c.innerHTML = cellInner(r, it, i); } }
+          });
+          if (!active(r)) { refreshRec(r.id); sideDirty = true; }
+        }));
+        if (sideDirty && $("#side")) renderSide();
+        icons();
+      }, 500);
+
+      function refreshRec(id) { const el = $("#rec-" + id); const r = findRec(id); if (el && r) { el.innerHTML = recInner(r); icons(); } }
+      function findRec(id) { for (const cv of S.convs) { const r = cv.records.find((x) => x.id === id); if (r) return r; } }
+      function convOf(id) { return S.convs.find((cv) => cv.records.some((x) => x.id === id)); }
+
+      /* ---- 记录操作 ---- */
+      function reEdit(id) {
+        const r = findRec(id);
+        S.mode = r.kind;
+        if (isOffline(r.model)) { S.modelBy[r.kind] = models(r.kind)[0].key; toast("原模型已下线，已换成 " + models(r.kind)[0].name, "warn"); }
+        else { S.modelBy[r.kind] = r.model; toast("已回填到输入卡片，未发送", "info"); }
+        S.params = { ...r.params };
+        S.refs = r.refs.map((h) => ({ status: "done", hue: h }));
+        S.text = r.prompt === "（仅参考图）" ? "" : r.prompt;
+        renderComposer();
+        $("#inp").focus();
+      }
+      function regen(id) {
+        const r = findRec(id);
+        const need = quoteOne(r.kind, findModel(r.model), r.params) * r.params.count;
+        if (need > S.balance) return toast(`余额不足（需 ${need}，可用 ${S.balance}）`, "bad");
+        submitRecord(convOf(id), r.kind, r.model, { ...r.params }, r.prompt, r.refs.slice());
+        renderMain(); renderSide();
+        toast("已作为新记录追加到底部");
+      }
+      function retry(id, i) {
+        const r = findRec(id);
+        if (isOffline(r.model)) return toast("原模型已下线，请重新编辑", "warn");
+        const one = quoteOne(r.kind, findModel(r.model), r.params);
+        if (one > S.balance) return toast(`余额不足（需 ${one}，可用 ${S.balance}）`, "bad");
+        submitRecord(convOf(id), r.kind, r.model, { ...r.params, count: 1 }, r.prompt.replace(/失败/g, ""), r.refs.slice());
+        renderMain(); renderSide();
+        toast("已重试这一格，作为新记录追加");
+      }
+      function cancelRec(id) {
+        const r = findRec(id);
+        let back = 0;
+        r.items.forEach((it) => { if (it.status === "queued" || it.status === "running") { it.status = "canceled"; back += quoteOne(r.kind, findModel(r.model), r.params); } });
+        S.balance += back; syncBalance();
+        refreshRec(id); renderSide();
+        toast(`已取消，退回 ✦${back}`);
+      }
+      function recMenu(id) { S.pop = S.pop === "rec:" + id ? null : "rec:" + id; refreshRec(id); }
+      function deleteRec(id) {
+        S.pop = null;
+        const r = findRec(id);
+        const n = r.items.filter((it) => it.status === "queued" || it.status === "running").length;
+        modal({
+          title: "删除这条记录？",
+          body: n ? `将取消 ${n} 个进行中的生成并退回积分。已生成的素材仍在资产里。` : "已生成的素材仍在资产里。",
+          ok: "删除", danger: true,
+          onOk: () => {
+            if (n) cancelRec(id);
+            const cv = convOf(id); cv.records = cv.records.filter((x) => x.id !== id);
+            renderMain(); renderSide(); toast("已删除");
+          },
+        });
+      }
+
+      /* ---- 发到画布 ---- */
+      S.canvases = ["未命名画布", "产品广告 15s", "（已被删除的画布）"];
+      function sendCanvas(id, i) {
+        S.pop = null; refreshRec(id);
+        const r = findRec(id);
+        const n = i < 0 ? r.items.filter((x) => x.status === "succeeded").length : 1;
+        S.modal = { kind: "canvas", rid: id, n };
+        renderModal();
+      }
+      function pickCanvas(idx) {
+        const st = S.modal; S.modal = null; renderModal();
+        if (idx < 0) { toast(`已新建画布并放入 ${st.n} 个节点，正在跳转（示意）`); return; }
+        const name = S.canvases[idx];
+        toast("写入中…（模拟）", "info");
+        setTimeout(() => {
+          if (name.includes("已被删除")) { S.canvases.splice(idx, 1); renderSide(); toast("画布不存在或已删除，已从列表移除", "bad"); }
+          else toast(`已发到《${name}》，${st.n} 个节点放在现有内容右侧 · 打开`);
+        }, 700);
+      }
+
+      /* ---- 对话管理 ---- */
+      function goHome() { S.page = "home"; S.pop = null; render(); }
+      function openConv(id) { S.page = "conv"; S.convId = id; S.pop = null; render(); }
+      function newConv() { S.page = "conv"; S.convId = null; S.pop = null; render(); toast("新对话：第一次发送时才创建", "info"); }
+      function convMenu(id) {
+        const cv = S.convs.find((c) => c.id === id);
+        S.modal = { kind: "menu", id, isDefault: cv.isDefault };
+        renderModal();
+      }
+      function renameConv(id) {
+        const cv = S.convs.find((c) => c.id === id);
+        S.modal = { kind: "rename", id, val: cv.title };
+        renderModal();
+        const ip = $("#renameIp"); ip.focus(); ip.select();
+      }
+      function deleteConv(id) {
+        const cv = S.convs.find((c) => c.id === id);
+        modal({
+          title: `删除「${cv.title}」？`,
+          body: `对话里的 ${cv.records.length} 条记录将一起删除；进行中的生成会继续跑完，生成的素材仍在资产里。`,
+          ok: "删除", danger: true,
+          onOk: () => { S.convs = S.convs.filter((c) => c !== cv); S.page = "conv"; S.convId = "default"; render(); toast("已删除，回到默认创作"); },
+        });
+      }
+
+      /* ---- 弹窗 ---- */
+      let modalOk = null;
+      function modal(o) { S.modal = { kind: "confirm", ...o }; modalOk = o.onOk; renderModal(); }
+      function renderModal() {
+        const old = $("#modalBg"); if (old) old.remove();
+        const m = S.modal; if (!m) return;
+        let inner = "";
+        if (m.kind === "confirm")
+          inner = `<h3>${esc(m.title)}</h3><p class="muted" style="margin-top:8px;font-size:13px">${esc(m.body)}</p>
+            <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" style="${m.danger ? "background:rgb(var(--bad));color:#fff" : ""}" onclick="const f=modalOk;closeModal();f&&f()">${esc(m.ok)}</button></div>`;
+        if (m.kind === "rename")
+          inner = `<h3>重命名对话</h3><input id="renameIp" maxlength="50" value="${esc(m.val)}" /><p class="muted" style="font-size:11.5px;margin-top:4px">1–50 字</p>
+            <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doRename()">保存</button></div>`;
+        if (m.kind === "menu")
+          inner = `<h3>对话操作</h3><div style="margin-top:8px">
+            <button class="list-opt" onclick="closeModal();renameConv('${m.id}')"><i data-lucide="pencil"></i>重命名</button>
+            <button class="list-opt" ${m.isDefault ? 'disabled style="opacity:.45" title="默认创作不能删除"' : `onclick="closeModal();deleteConv('${m.id}')"`}><i data-lucide="trash-2"></i>删除${m.isDefault ? "（默认创作不能删除）" : ""}</button></div>`;
+        if (m.kind === "canvas")
+          inner = `<h3>发到画布 · ${m.n} 个结果</h3><p class="muted" style="font-size:12px;margin-top:4px">只发送成功的结果；节点带产物、提示词、模型和参数</p>
+            <div style="margin-top:10px">
+              <button class="list-opt" onclick="pickCanvas(-1)"><i data-lucide="plus"></i><b>新建画布</b><span class="muted" style="margin-left:auto;font-size:12px">创建后跳转</span></button>
+              <div class="muted" style="font-size:11.5px;padding:6px 8px 2px">最近画布</div>
+              ${S.canvases.map((n, i) => `<button class="list-opt" onclick="pickCanvas(${i})"><i data-lucide="workflow"></i>${esc(n)}</button>`).join("")}
+            </div>
+            <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" onclick="closeModal()">取消</button></div>`;
+        const bg = document.createElement("div");
+        bg.className = "modal-bg"; bg.id = "modalBg";
+        bg.innerHTML = `<div class="modal">${inner}</div>`;
+        bg.addEventListener("click", (e) => { if (e.target === bg) closeModal(); });
+        $("#app").appendChild(bg);
+        icons();
+      }
+      function closeModal() { S.modal = null; renderModal(); }
+      function doRename() {
+        const v = $("#renameIp").value.trim();
+        if (!v) return toast("标题不能为空", "warn");
+        S.convs.find((c) => c.id === S.modal.id).title = v.slice(0, 50);
+        closeModal(); render(); toast("已重命名");
+      }
+
+      /* ---- 控制条 ---- */
+      function syncBalance() {
+        const sel = $("#ctlBalance");
+        if (![...sel.options].some((o) => +o.value === S.balance)) {
+          const o = document.createElement("option"); o.value = S.balance; o.textContent = S.balance + "（当前）"; sel.appendChild(o);
+        }
+        sel.value = S.balance;
+        updateSend();
+        const c = $(".credit"); if (c) c.classList.toggle("low", total() > S.balance);
+      }
+      function setBalance(v) { S.balance = +v; renderComposer(); }
+      function setOffline(on) { S.offline = on; S.page === "conv" ? renderMain() : renderComposer(); }
+
+      render();
+      icons();
+    </script>
+  </body>
+</html>
