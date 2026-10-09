@@ -29,6 +29,7 @@ type Handlers struct {
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
 	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
+	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
 	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
 	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
@@ -130,6 +131,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI := auth.Group("/admin/ai", middleware.RequireAdmin(h.AdminRole))
 		superOnly := middleware.RequireSuperAdmin(h.AdminRole)
 		adminAI.GET("/me", h.AdminMe.Me)
+		adminAI.GET("/stats", h.AdminStats.Stats)
 
 		plugins := adminAI.Group("/plugins")
 		plugins.GET("", h.AdminPlugin.List)

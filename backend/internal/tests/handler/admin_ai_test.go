@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -46,6 +47,7 @@ type aicEnv struct {
 	dry      *aiconfigfake.DryRunner
 	tasks    *aiconfigfake.TestTasks
 	ops      *aiconfigfake.PluginOps
+	stats    *aiconfigfake.StatsRepo
 	checker  *aiconfigfake.Prechecker
 	roles    map[uint64]string
 	tokens   map[int]string
@@ -64,6 +66,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 			Views: map[uint64]aiconfigfake.TestView{},
 		},
 		ops:      &aiconfigfake.PluginOps{},
+		stats:    &aiconfigfake.StatsRepo{},
 		checker:  &aiconfigfake.Prechecker{ByCode: map[string]*provider.PrecheckResult{}},
 		roles:    map[uint64]string{aicAdminUser: model.RoleAdmin, aicNormalUser: model.RoleUser, aicSuperUser: model.RoleSuperAdmin},
 		tokens:   map[int]string{},
@@ -85,6 +88,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		AdminAI:      NewAdminAIHandler(cfg),
 		AdminPlugin:  NewAdminPluginHandler(service.NewAIPluginService(repo, repo, repo, env.checker, cfg)),
 		AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)),
+		AdminStats:   NewAdminStatsHandler(service.NewAIStatsService(env.stats, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
 		UserState:    aicActiveState,
@@ -323,6 +327,7 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		{http.MethodDelete, "/plugins/kling/versions/1.0.0", true},
 		{http.MethodGet, "/channels", false},
 		{http.MethodGet, "/channels/loads", false},
+		{http.MethodGet, "/stats", false},
 		{http.MethodPost, "/channels", true},
 		{http.MethodGet, "/channels/x", false},
 		{http.MethodPut, "/channels/x", true},
@@ -1078,5 +1083,48 @@ func TestAdminAIHandler_Schema(t *testing.T) {
 	})
 	t.Run("旧的 /schema/provider 已删除", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodGet, aicBase+"/schema/provider", nil), http.StatusNotFound, errcode.ErrNotFound.Code)
+	})
+}
+
+func TestAdminStatsHandler_Stats(t *testing.T) {
+	env := aicNewEnv(t)
+	path := aicBase + "/stats"
+
+	t.Run("不传 days 按 7 天，返回连续 7 天的柱形图数据与占比", func(t *testing.T) {
+		env.stats.ModelKinds = []model.AIStatsModelKind{{Model: "kling-v2", Kind: "video", Count: 3}}
+		r := env.admin(http.MethodGet, path, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var v model.AIStatsView
+		if err := json.Unmarshal(r.Data, &v); err != nil {
+			t.Fatalf("响应解析失败：%v %s", err, r.Raw)
+		}
+		if v.Days != 7 || len(v.Daily) != 7 {
+			t.Fatalf("默认应是 7 天：days=%d len=%d", v.Days, len(v.Daily))
+		}
+		if len(v.ByModel) != 1 || v.ByModel[0].Model != "kling-v2" || v.ByModel[0].Count != 3 ||
+			len(v.ByKind) != 1 || v.ByKind[0].Kind != "video" {
+			t.Fatalf("占比数据不对：%s", r.Raw)
+		}
+	})
+	t.Run("days=30 返回 30 天", func(t *testing.T) {
+		r := env.admin(http.MethodGet, path+"?days=30", nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var v model.AIStatsView
+		if err := json.Unmarshal(r.Data, &v); err != nil || len(v.Daily) != 30 {
+			t.Fatalf("应是 30 天：%v %s", err, r.Raw)
+		}
+	})
+	t.Run("days 不是 7 或 30 返回 400", func(t *testing.T) {
+		for _, q := range []string{"?days=14", "?days=0x", "?days=-7"} {
+			aicWant(t, env.admin(http.MethodGet, path+q, nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		}
+	})
+	t.Run("统计查询失败时返回 500 且不泄露内部错误", func(t *testing.T) {
+		env.stats.Err = errors.New("pq: relation secret_table does not exist")
+		defer func() { env.stats.Err = nil }()
+		r := env.admin(http.MethodGet, path, nil)
+		if r.Status != http.StatusInternalServerError || strings.Contains(r.Raw, "secret_table") {
+			t.Fatalf("应是 500 且不带内部信息：%d %s", r.Status, r.Raw)
+		}
 	})
 }

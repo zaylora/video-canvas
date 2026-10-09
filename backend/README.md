@@ -143,6 +143,7 @@ make run
 | 方法     | 路径                                            | 权限        | 说明                                                                                                                 |
 | -------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | GET      | /api/v1/admin/ai/me                             | admin       | 当前用户 `{user_id, role}`，前端据此隐藏写操作                                                                       |
+| GET      | /api/v1/admin/ai/stats                          | admin       | 总览页任务统计：`?days=7\|30`（默认 7），返回 `daily`（连续 `days` 天的成功 / 失败 / 其他）、`by_model`、`by_kind`；试跑不计 |
 | GET      | /api/v1/admin/ai/plugins                        | admin       | 插件与版本列表（含 meta、渠道数）                                                                                    |
 | POST     | /api/v1/admin/ai/plugins                        | super_admin | 上传插件（multipart，字段 `file`）；预检不通过也返回 200，`accepted=false` + `issues`                                |
 | PUT      | /api/v1/admin/ai/plugins/:key/enabled           | super_admin | 启停插件                                                                                                             |

@@ -65,6 +65,27 @@
 
 内置插件（`backend/plugins/*.js`）在服务启动时按 `key + version` 自动登记为 `builtin`：同一版本重复启动是空操作；版本号没升但代码变了会报错并保持库里的旧代码（版本不可变）；key 已被上传的插件占用会报错、不覆盖。新版本的内置插件随发版登记，渠道仍要显式切换。
 
+## 总览统计（admin 与 super_admin 都能读）
+
+`GET /stats?days=7|30`：后台总览页的任务量柱形图与调用占比数据。`days` 不传按 7，只接受 7 或 30，其他值 400（10001）。
+
+```jsonc
+{
+  "days": 7,
+  "daily": [{ "date": "2026-10-04", "succeeded": 80, "failed": 4, "other": 3 }],
+  "by_model": [{ "model": "kling-v2", "label": "可灵 v2", "count": 250 }],
+  "by_kind": [{ "kind": "video", "count": 540 }],
+}
+```
+
+统计口径（页面上所有数字都用它，能互相对上）：
+
+- 范围：`created_at` 落在区间内的正式任务，`is_test = true` 的运营试跑不算。区间是含今天往前 `days` 天的 0 点到明天 0 点，按 `Asia/Shanghai` 的自然日分桶（与个人中心热力图的默认时区一致）。
+- 每天三个桶，之和就是当天任务数：`succeeded`（状态 `succeeded`）、`failed`（`failed` + `expired`）、`other`（`canceled` 与所有进行中状态）。
+- `daily` 恒为 `days` 项，日期升序，没有任务的日子补 0，**最后一项是今天**（今天还没过完）。
+- `by_model` 给全量，按任务数降序、同数量按 key 升序；`label` 是模型当前展示名，模型已被删除或没有展示名时回退为 `key`。`by_kind` 的 `kind` 为 `video` / `image` / `audio` / `text`。没有任务时两者都是 `[]`。
+- 性能：靠 `generation_tasks.created_at` 单列索引 `idx_task_created`（AutoMigrate 建）；每次请求实时聚合，没有缓存。
+
 ## 渠道（super_admin 写，admin 只读；导入 admin 也能调）
 
 ```jsonc
