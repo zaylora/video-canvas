@@ -49,6 +49,7 @@ type GenerationTask struct {
 	NodeID          string         `gorm:"size:64;not null;default:''" json:"node_id"`                                                                                                                                // 前端节点 id
 	Kind            string         `gorm:"size:16;not null" json:"kind"`                                                                                                                                              // video / image / audio / text
 	ModelKey        string         `gorm:"column:model_id;size:128;not null" json:"model_id"`                                                                                                                         // 模型 key（ai_models.key）
+	TaskRef         string         `gorm:"size:32;not null;default:'';uniqueIndex:uk_task_ref,where:task_ref <> ''" json:"task_ref"`                                                                                  // 任务编号：id 的十六进制编码，界面展示、日志 task_id 都是它；创建时写入，库里可按它直接查原始数据，唯一
 	Provider        string         `gorm:"size:64;not null" json:"provider"`                                                                                                                                          // 平台 key
 	ProviderTaskID  string         `gorm:"size:128;not null;default:'';index:idx_task_provider,priority:2" json:"-"`                                                                                                  // 上游任务 id，提交成功后才有
 	Status          string         `gorm:"size:16;not null;index:idx_task_user_status,priority:2" json:"status"`                                                                                                      // 任务状态，取值见 Task* 常量
@@ -93,6 +94,7 @@ type TaskOutput struct {
 // GenerationTaskView 是返回给前端的任务快照（HTTP 响应与 WebSocket 推送共用），不含快照、输入等内部字段。
 type GenerationTaskView struct {
 	ID              uint64       `json:"id"`              // 任务 ID
+	TaskRef         string       `json:"task_ref"`        // 任务编号：id 的十六进制编码，界面展示，日志里的 task_id 就是它，用来定位问题
 	CanvasProjectID *idcodec.ID  `json:"canvas_id"`       // 所属画布（十六进制串）
 	NodeID          string       `json:"node_id"`         // 前端节点 id
 	Kind            string       `json:"kind"`            // video / image / audio / text

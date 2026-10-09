@@ -33,6 +33,8 @@ export type CanvasNodeData = {
   text?: string | null;
   /** 生成失败的原因，摆给用户看的那句 */
   error?: string | null;
+  /** 生成失败时的任务编号（task_ref），失败那一刻记下，重开画布后仍能拿它查日志 */
+  errorTaskRef?: string | null;
   /** 视频生成任务 id（后端 id 是数字，这里统一存字符串）；status 为 running 时靠它对账回填 */
   taskId?: string;
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */

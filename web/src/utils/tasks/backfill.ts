@@ -20,13 +20,16 @@ const mediaTypeOf = (mediaType: string | undefined): "image" | "video" | "audio"
   return "video";
 };
 
+/** 任务快照里的任务编号，没有为 null */
+const taskRefOf = (view: TaskView): string | null => view.task_ref || null;
+
 /**
  * 任务进入终态、且节点的 taskId 与任务一致时，算出要写回节点的补丁；
  * 节点已经是这个结果就返回 null（幂等，重复推送、重复对账都不会反复写）。
  *
  * - succeeded：媒体节点写 done，产物追加进 outputs 并设为当前版本（镜像到 src / assetId）；
  *   文本节点（script）写 done + 正文 text
- * - failed / expired：error + 文案（「积分已退回」由展示层根据 taskId 补），历史版本不动
+ * - failed / expired：error + 文案 + 任务编号（「积分已退回」由展示层根据 taskId 补），历史版本不动
  * - canceled：taskId 清掉；有历史版本就退回当前那一版（done），没有就回到 idle
  * taskId 在成功、失败时保留，方便追溯；只有 running 的节点才会被重开时对账。
  */
@@ -40,9 +43,11 @@ export function planBackfill(data: CanvasNodeData, view: TaskView): Partial<Canv
         const text = outputText(view);
         if (text === undefined) {
           const message = "生成结果为空，请重试";
-          return data.status === "error" && data.error === message
+          return data.status === "error" &&
+            data.error === message &&
+            (data.errorTaskRef ?? null) === taskRefOf(view)
             ? null
-            : { status: "error", error: message, text: null };
+            : { status: "error", error: message, errorTaskRef: taskRefOf(view), text: null };
         }
         if (data.status === "done" && data.text === text) return null;
         return { status: "done", text, error: null };
@@ -50,9 +55,17 @@ export function planBackfill(data: CanvasNodeData, view: TaskView): Partial<Canv
       const output = firstOutput(view);
       if (!output?.url || output.asset_id == null) {
         const message = "生成结果为空，请重试";
-        return data.status === "error" && data.error === message
+        return data.status === "error" &&
+          data.error === message &&
+          (data.errorTaskRef ?? null) === taskRefOf(view)
           ? null
-          : { status: "error", error: message, src: null, assetId: undefined };
+          : {
+              status: "error",
+              error: message,
+              errorTaskRef: taskRefOf(view),
+              src: null,
+              assetId: undefined,
+            };
       }
       const assetId = String(output.asset_id);
       if (data.status === "done" && data.assetId === assetId) return null;
@@ -75,10 +88,17 @@ export function planBackfill(data: CanvasNodeData, view: TaskView): Partial<Canv
     case "failed":
     case "expired": {
       const message = view.error_message || (view.status === "expired" ? "生成超时" : "生成失败");
-      if (data.status === "error" && data.error === message) return null;
+      const taskRef = taskRefOf(view);
+      if (
+        data.status === "error" &&
+        data.error === message &&
+        (data.errorTaskRef ?? null) === taskRef
+      ) {
+        return null;
+      }
       return data.kind === "script"
-        ? { status: "error", error: message, text: null }
-        : { status: "error", error: message, src: null, assetId: undefined };
+        ? { status: "error", error: message, errorTaskRef: taskRef, text: null }
+        : { status: "error", error: message, errorTaskRef: taskRef, src: null, assetId: undefined };
     }
     case "canceled": {
       if (data.kind === "script") return { status: "idle", taskId: undefined, error: null };

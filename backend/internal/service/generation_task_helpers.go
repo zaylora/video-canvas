@@ -22,13 +22,14 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 	if len(t.OutputJSON) > 0 {
 		var decoded []model.TaskOutput
 		if err := json.Unmarshal(t.OutputJSON, &decoded); err != nil {
-			logger.Warn("解析任务 output_json 失败", zap.Uint64("task_id", t.ID), zap.Error(err))
+			logger.Warn("解析任务 output_json 失败", logger.TaskID(t.ID), zap.Error(err))
 		} else if decoded != nil {
 			outputs = decoded
 		}
 	}
 	return &model.GenerationTaskView{
 		ID:              t.ID,
+		TaskRef:         taskRefOf(t),
 		CanvasProjectID: canvasRef(t.CanvasProjectID),
 		NodeID:          t.NodeID,
 		Kind:            t.Kind,
@@ -46,6 +47,14 @@ func taskView(t *model.GenerationTask) *model.GenerationTaskView {
 		SubmittedAt:     t.SubmittedAt,
 		FinishedAt:      t.FinishedAt,
 	}
+}
+
+// taskRefOf 取任务编号：新任务库里有，加这一列之前创建的旧任务没有，按 id 现算（结果相同）。
+func taskRefOf(t *model.GenerationTask) string {
+	if t.TaskRef != "" {
+		return t.TaskRef
+	}
+	return idcodec.Encode(t.ID)
 }
 
 // providerKeyOf 取快照里的渠道 key，写入任务表用于查询与日志关联。

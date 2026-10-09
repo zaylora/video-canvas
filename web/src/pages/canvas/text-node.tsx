@@ -70,6 +70,7 @@ export function TextCanvasNode({
           status={status}
           text={data.text}
           error={data.error}
+          taskRef={data.taskId ? data.errorTaskRef : null}
           icon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : null}
           placeholder="选中后输入要求生成文本"
         />

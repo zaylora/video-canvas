@@ -58,3 +58,14 @@
 - 生成之后，允许在原文件上做优化修改（样式、交互、封装等）。
 - 项目自己的业务组件放在 `src/components` 其他目录（如 `canvas`、`setting`），不要放进 `ui`。
 - 配置见 `components.json`（style: base-nova，图标库 lucide）。
+
+## 7. 生成任务：统一入口
+
+所有入口（画布节点、首页对话、以后新增的任何地方）提交和取消生成任务，**只经过 `utils/tasks/gateway.ts`**，共用同一套逻辑：
+
+- 幂等键与重试：每次点击一个新的 `Idempotency-Key`，可重试的失败沿用同一个 key。
+- 提交 / 取消成功后：任务快照交给 `handleTaskView` 合并进任务库，并刷新余额（`acceptTasks`）。之后进度只由任务库驱动（WebSocket 推送 + 断线对账），入口只订阅任务库，不自己轮询。
+- 状态怎么理解：进行中 / 终态 / 可取消看 `utils/tasks/status.ts`，排队中 / 生成中 / 即将完成看 `utils/tasks/node-view.ts` 的 `derivePendingPhase`。入口里不要再写自己的状态集合或文案判断。
+- 入口之间只允许在「提交到哪里、结果往哪放」上不同：画布放进节点，对话放进记录。
+- 新增入口时：在 gateway 里加一个 `submitXxxTasks`，内部复用 `submitWithRetry` 和 `acceptTasks`。
+- `src/tests/utils/tasks/gateway-guard.test.ts` 会检查：除 gateway 外没有代码直接调用 `createGenerationTask`、`cancelGenerationTask`、`submitConversationRecord`、`submitWithRetry`，`handleTaskView` 只有 gateway 和 `utils/ws` 能调用。

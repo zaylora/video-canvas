@@ -77,6 +77,8 @@ export const router = createBrowserRouter([
               { index: true, element: <Home /> },
               { path: "canvases", element: <CanvasList /> },
               { path: "assets", element: <Assets /> },
+              /** 旧的「新对话」地址：新建对话现在就是创作页 */
+              { path: "conversations/new", element: <Navigate to="/" replace /> },
               { path: "conversations/:id", element: <Conversation /> },
               { path: "profile", element: <Profile /> },
             ],

@@ -50,8 +50,6 @@ export type Conversation = {
   id: string;
   /** 标题 */
   title: string;
-  /** 置顶：「默认创作」永远在最上面 */
-  pinned?: boolean;
   /** 侧栏缩略图的占位色相；null 表示用图标 */
   hue: number | null;
   /** 记录，按时间正序 */

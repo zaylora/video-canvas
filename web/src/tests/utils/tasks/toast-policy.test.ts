@@ -42,9 +42,70 @@ describe("planTaskToast：画布外的完成提示", () => {
     expect(planTaskToast(makeTask({ status: "expired" }), null, "A")?.title).toContain("超时");
   });
 
+  test("失败提示带任务编号（画布与首页对话都一样），成功不带，后端没给就不带", () => {
+    const canvas = planTaskToast(
+      makeTask({ status: "failed", error_message: "平台繁忙", task_ref: "ab12" }),
+      null,
+      "A",
+    );
+    expect(canvas?.description).toBe("平台繁忙，积分已退回 · 任务 ID：ab12");
+    const conversation = planTaskToast(
+      makeTask({
+        status: "failed",
+        canvas_id: null,
+        node_id: "rec:7:1",
+        error_message: "平台繁忙",
+        task_ref: "cd34",
+      }),
+      null,
+      undefined,
+      "/",
+    );
+    expect(conversation?.description).toBe("平台繁忙，积分已退回 · 任务 ID：cd34");
+    expect(planTaskToast(succeeded(), null, "A")?.description).toBeUndefined();
+    expect(
+      planTaskToast(makeTask({ status: "failed", error_message: "平台繁忙" }), null, "A")
+        ?.description,
+    ).toBe("平台繁忙，积分已退回");
+  });
+
   test("正看着这张画布时不弹（节点自己会变）；取消不弹", () => {
     expect(planTaskToast(succeeded({ canvas_id: "10" }), "10", "A")).toBeNull();
     expect(planTaskToast(makeTask({ status: "canceled" }), null, "A")).toBeNull();
+  });
+});
+
+describe("planTaskToast：首页生成的对话任务（node_id 以 rec: 开头，没有画布）", () => {
+  const conv = (over = {}) =>
+    succeeded({ canvas_id: null, node_id: "rec:7:0", kind: "image", ...over });
+
+  test("正在对话页看着：不弹（格子自己会变）", () => {
+    expect(planTaskToast(conv(), null, undefined, "/conversations/abc")).toBeNull();
+    expect(planTaskToast(conv(), null, undefined, "/conversations/new")).toBeNull();
+  });
+
+  test("在别的页面：用不带画布名的说法，没有跳转", () => {
+    const plan = planTaskToast(conv(), null, undefined, "/");
+    expect(plan).toMatchObject({ tone: "success", title: "图片已生成" });
+    expect(plan?.href).toBeUndefined();
+    const failed = planTaskToast(
+      makeTask({
+        status: "failed",
+        canvas_id: null,
+        node_id: "rec:7:1",
+        kind: "video",
+        error_message: "审核未通过",
+      }),
+      null,
+      undefined,
+      "/assets",
+    );
+    expect(failed).toMatchObject({ tone: "error", title: "视频生成失败" });
+    expect(failed?.description).toBe("审核未通过，积分已退回");
+  });
+
+  test("取消不弹", () => {
+    expect(planTaskToast(conv({ status: "canceled" }), null, undefined, "/")).toBeNull();
   });
 });
 

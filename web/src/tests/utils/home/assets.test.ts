@@ -21,10 +21,9 @@ describe("placeholderBackground：占位封面", () => {
 });
 
 describe("buildSampleConversations：对话样例", () => {
-  test("默认创作置顶，且排在第一位", () => {
-    const [first, ...rest] = buildSampleConversations(NOW);
-    expect(first.pinned).toBe(true);
-    expect(rest.every((item) => !item.pinned)).toBe(true);
+  test("对话 ID 不重复", () => {
+    const ids = buildSampleConversations(NOW).map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   test("记录 ID 不重复，今天的记录用今天的日期标题", () => {

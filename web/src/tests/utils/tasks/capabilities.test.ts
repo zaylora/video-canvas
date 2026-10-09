@@ -5,6 +5,9 @@ import { defaultCapabilities } from "@/utils/admin/model-template";
 import { findPreset } from "@/constants/presets";
 import { formatPromptPreset, formatPromptRef } from "@/utils/canvas/prompt-tokens";
 import {
+  acceptableRefKinds,
+  refKindOfFile,
+  refUploadError,
   buildTaskInput,
   acceptsSourceKind,
   opDisabledHint,
@@ -499,5 +502,37 @@ describe("opDisabledHint：有没有参考素材决定哪些生成方式灰掉",
 
   test("清单没到不禁用", () => {
     expect(opDisabledHint(undefined, "omni", false)).toBeUndefined();
+  });
+});
+
+describe("参考素材的共用规则（画布参考卡和首页输入卡片都用）", () => {
+  test("refKindOfFile：按 MIME 前缀判断种类，其余为 null", () => {
+    expect(refKindOfFile({ type: "image/png" })).toBe("image");
+    expect(refKindOfFile({ type: "video/mp4" })).toBe("video");
+    expect(refKindOfFile({ type: "audio/mpeg" })).toBe("audio");
+    expect(refKindOfFile({ type: "application/pdf" })).toBeNull();
+    expect(refKindOfFile({ type: "" })).toBeNull();
+  });
+
+  test("acceptableRefKinds：开着且至少有一种生成方式收的种类", () => {
+    expect(acceptableRefKinds(video())).toEqual(["image", "audio"]); // 视频参考没开
+    expect(acceptableRefKinds(defaultCapabilities("video"))).toEqual(["image", "video", "audio"]);
+    expect(acceptableRefKinds(defaultCapabilities("image"))).toEqual(["image"]);
+    expect(acceptableRefKinds(defaultCapabilities("audio"))).toEqual([]);
+    expect(acceptableRefKinds(undefined)).toEqual([]);
+  });
+
+  test("refUploadError：不收 / 已满 / 太大 / 可以", () => {
+    const spec = { on: true, max: 2, max_mb: 1 };
+    const small = { size: 100 };
+    expect(refUploadError(undefined, "image", small, 0)).toBe("当前模型不支持参考图片");
+    expect(refUploadError({ on: false, max: 2, max_mb: 1 }, "video", small, 0)).toBe(
+      "当前模型不支持参考视频",
+    );
+    expect(refUploadError(spec, "image", small, 2)).toBe("参考图片最多 2 个");
+    expect(refUploadError(spec, "image", { size: 2 * 1024 * 1024 }, 0)).toBe(
+      "单个参考图片不能超过 1 MB",
+    );
+    expect(refUploadError(spec, "image", small, 1)).toBeNull();
   });
 });

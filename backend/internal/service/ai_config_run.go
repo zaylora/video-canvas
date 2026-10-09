@@ -78,7 +78,7 @@ func (s *AIConfigService) TestRun(ctx context.Context, adminID uint64, modelKey 
 		return nil, err
 	}
 	logger.Info("创建试跑任务", zap.String("model", modelKey), zap.String("channel", snap.Channel.Key),
-		zap.Uint64("admin_id", adminID), zap.Uint64("task_id", view.ID))
+		zap.Uint64("admin_id", adminID), logger.TaskID(view.ID))
 	return view, nil
 }
 

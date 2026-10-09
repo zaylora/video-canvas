@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 	. "video-canvas/internal/repository"
 )
 
@@ -40,6 +41,46 @@ func gtTask(userID uint64, status string, credits int, nextPoll time.Time) *mode
 		Version:        1,
 		NextPollAt:     nextPoll,
 		DeadlineAt:     time.Now().Add(30 * time.Minute),
+	}
+}
+
+// task_ref 在创建时和任务一起落库：数据库里能直接按界面上展示的编号查到原始数据，并且全局唯一。
+func TestGenerationTaskRepo_InsertTaskStoresUniqueTaskRef(t *testing.T) {
+	ctx := context.Background()
+	db := gtTestDB(t)
+	repo := NewGenerationTaskRepository(db)
+	user := gtNewUserID()
+
+	task := gtTask(user, model.TaskPending, 1, time.Now())
+	inserted, err := repo.InsertTask(ctx, task)
+	if err != nil || !inserted {
+		t.Fatalf("插入失败：%v inserted=%v", err, inserted)
+	}
+	if want := idcodec.Encode(task.ID); task.TaskRef != want {
+		t.Fatalf("task_ref 应为 id 的编码 %q，实际 %q", want, task.TaskRef)
+	}
+
+	var found model.GenerationTask
+	if err := db.Where("task_ref = ?", task.TaskRef).First(&found).Error; err != nil {
+		t.Fatalf("应能按 task_ref 查到原始数据：%v", err)
+	}
+	if found.ID != task.ID || found.UserID != user {
+		t.Fatalf("查到的不是这个任务：%+v", found)
+	}
+
+	dup := gtTask(user, model.TaskPending, 1, time.Now())
+	dup.TaskRef = task.TaskRef
+	if err := db.Create(dup).Error; err == nil {
+		t.Fatal("task_ref 重复应被唯一索引拒绝")
+	}
+
+	// 没有 task_ref 的旧行（空串）不受唯一约束影响，可以有多行
+	for range 2 {
+		legacy := gtTask(user, model.TaskSucceeded, 1, time.Now())
+		legacy.TaskRef = ""
+		if err := db.Create(legacy).Error; err != nil {
+			t.Fatalf("空 task_ref 的旧行不应受唯一约束：%v", err)
+		}
 	}
 }
 

@@ -79,16 +79,41 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
     });
   });
 
+  test("失败：任务失败带上任务编号，节点里存的优先，其次任务快照里的；没有任务的本地错误不带", () => {
+    expect(
+      deriveVideoNodeView(
+        { status: "error", error: "平台繁忙", taskId: "42", errorTaskRef: "saved" },
+        makeTask({ status: "failed", task_ref: "live" }),
+        T0,
+      ),
+    ).toMatchObject({ phase: "failed", taskRef: "saved" });
+    expect(
+      deriveVideoNodeView(
+        { status: "error", error: "平台繁忙", taskId: "42" },
+        makeTask({ status: "failed", task_ref: "live" }),
+        T0,
+      ),
+    ).toMatchObject({ taskRef: "live" });
+    expect(
+      deriveVideoNodeView(
+        { status: "error", error: "上传失败，请重试", errorTaskRef: "stale" },
+        undefined,
+        T0,
+      ),
+    ).toMatchObject({ phase: "failed", taskRef: null });
+  });
+
   test("失败：任务失败标注积分已退回，本地错误（如上传失败）不标", () => {
     expect(
       deriveVideoNodeView({ status: "error", error: "内容未通过审核", taskId: "1" }, undefined, T0),
-    ).toEqual({ phase: "failed", message: "内容未通过审核", refunded: true });
+    ).toEqual({ phase: "failed", message: "内容未通过审核", refunded: true, taskRef: null });
     expect(
       deriveVideoNodeView({ status: "error", error: "上传失败，请重试" }, undefined, T0),
     ).toEqual({
       phase: "failed",
       message: "上传失败，请重试",
       refunded: false,
+      taskRef: null,
     });
   });
 });

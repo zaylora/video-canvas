@@ -16,6 +16,7 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
@@ -237,6 +238,7 @@ func (f *fakeTaskRepo) InsertTask(ctx context.Context, t *model.GenerationTask) 
 	}
 	f.nextID++
 	t.ID = f.nextID
+	t.TaskRef = idcodec.Encode(t.ID) // 与真实仓储一致：插入时落库
 	t.CreatedAt = time.Now()
 	cp := *t
 	f.tasks[t.ID] = &cp
@@ -876,6 +878,35 @@ func TestGenerationTaskService_Create_SnapshotFreezesChannelAndPlugin(t *testing
 	_ = json.Unmarshal(env.repo.tasks[view.ID].ConfigSnapshot, &again)
 	if again.Channel.PluginVersionID != 7 {
 		t.Fatalf("已落库的快照不应随配置变化：%+v", again.Channel)
+	}
+}
+
+// 视图带对外的十六进制任务编号：界面上展示它，运维拿它到日志里搜（比十进制的短 id 好搜得多）。
+func TestGenerationTaskService_Create_ViewCarriesTaskRef(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskLimits())
+	env.repo.addCredit(1, 50, 0)
+
+	view, err := createSingle(context.Background(), env.svc, 1, "", validCreateReq())
+	assertTaskCode(t, err, 0)
+	if want := idcodec.Encode(view.ID); view.TaskRef != want || len(view.TaskRef) != idcodec.EncodedLen {
+		t.Fatalf("task_ref 应为 id 的十六进制编码 %q，实际 %q", want, view.TaskRef)
+	}
+	if got := env.repo.tasks[view.ID].TaskRef; got != view.TaskRef {
+		t.Fatalf("视图的 task_ref 应来自库里存的值：库 %q 视图 %q", got, view.TaskRef)
+	}
+}
+
+// 加这一列之前创建的任务库里没有 task_ref，视图回退到按 id 现算，界面照样有编号可显示。
+func TestGenerationTaskService_Get_LegacyTaskWithoutRef(t *testing.T) {
+	env := newTaskSvcEnv(defaultTaskLimits())
+	old := env.repo.addTask(model.GenerationTask{UserID: 1, Status: model.TaskFailed})
+	if old.TaskRef != "" {
+		t.Fatal("测试前提：旧任务没有 task_ref")
+	}
+	v, err := env.svc.Get(context.Background(), 1, old.ID)
+	assertTaskCode(t, err, 0)
+	if v.TaskRef != idcodec.Encode(old.ID) {
+		t.Fatalf("没有存 task_ref 的旧任务应现算：%q", v.TaskRef)
 	}
 }
 

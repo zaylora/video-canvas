@@ -136,9 +136,9 @@ func (w *Worker) log() *zap.Logger {
 	return logger.L()
 }
 
-// taskLog 返回带任务标识的日志：task_id、渠道 key（t.Provider 存的是渠道 key）、模型。
+// taskLog 返回带任务标识的日志：task_id（界面上展示的十六进制编号）、渠道 key（t.Provider 存的是渠道 key）、模型。
 func (w *Worker) taskLog(t *model.GenerationTask) *zap.Logger {
-	return w.log().With(zap.Uint64("task_id", t.ID), zap.String("channel", t.Provider), zap.String("model", t.ModelKey))
+	return w.log().With(logger.TaskID(t.ID), zap.String("channel", t.Provider), zap.String("model", t.ModelKey))
 }
 
 // Run 运行调度循环直到 ctx 取消，然后等待在途任务处理完（最多 ShutdownTimeout）再返回。
@@ -299,7 +299,7 @@ func (w *Worker) startHeartbeat(ctx context.Context, id uint64) (stop func()) {
 			case <-ticker.C:
 				ok, err := w.store.ExtendLease(ctx, id, w.opts.Lease)
 				if err != nil {
-					w.log().Warn("任务续租失败", zap.Uint64("task_id", id), zap.Error(err))
+					w.log().Warn("任务续租失败", logger.TaskID(id), zap.Error(err))
 				}
 				if err != nil || !ok {
 					return

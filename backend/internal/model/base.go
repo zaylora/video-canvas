@@ -48,5 +48,7 @@ func All() []any {
 		&AgentSkill{},
 		&AgentSkillVersion{},
 		&AgentSkillImport{},
+		&Conversation{},
+		&ConversationRecord{},
 	}
 }

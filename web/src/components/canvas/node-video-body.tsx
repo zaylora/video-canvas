@@ -3,6 +3,7 @@ import { Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TaskIdTag } from "@/components/task-id-tag";
 import { formatElapsed, type VideoNodeView } from "@/utils/tasks/node-view";
 
 import { BaseNodeContent } from "./base-node";
@@ -159,6 +160,7 @@ export function NodeVideoBody({
             <TriangleAlert className="size-4 shrink-0" />
             <p className="line-clamp-3 break-words">{view.message}</p>
             {view.refunded && <p className="text-muted-foreground">积分已退回</p>}
+            <TaskIdTag id={view.taskRef} className="nodrag nowheel" />
             {onRetry && (
               <span title={retryHint}>
                 <Button

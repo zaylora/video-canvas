@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/idcodec"
 )
 
 // ErrStateConflict 状态迁移的 CAS 没有命中：任务不存在，或当前状态已不在期望的 from 集合里
@@ -184,7 +185,17 @@ func (r *GenerationTaskRepository) InsertLedger(ctx context.Context, entry *mode
 }
 
 // InsertTask 插入任务。命中 (user_id, idempotency_key) 唯一索引时 DO NOTHING，inserted=false，事务不会被污染。
+// 任务编号 task_ref 由主键编码得到，所以先从序列取号定下主键，再和任务一起写入（调用方已指定 id 时沿用）。
 func (r *GenerationTaskRepository) InsertTask(ctx context.Context, t *model.GenerationTask) (bool, error) {
+	if t.ID == 0 {
+		var id uint64
+		if err := r.db.WithContext(ctx).
+			Raw("SELECT nextval(pg_get_serial_sequence(?, 'id'))", t.TableName()).Scan(&id).Error; err != nil {
+			return false, err
+		}
+		t.ID = id
+	}
+	t.TaskRef = idcodec.Encode(t.ID)
 	res := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(t)
 	if res.Error != nil {
 		return false, res.Error
