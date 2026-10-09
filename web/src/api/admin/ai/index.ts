@@ -3,6 +3,7 @@ import type { TaskView } from "@/api/generation-task/type";
 import { adminAiEndpoints as ep, saveBody } from "./endpoints";
 import type {
   AdminMe,
+  ChannelCheckDraftRequest,
   ChannelCheckResult,
   ChannelCreateRequest,
   ChannelImportResult,
@@ -156,6 +157,14 @@ export const setChannelSecret = (key: string, value: string) =>
  */
 export const checkChannel = (key: string) =>
   service.post<ChannelCheckResult>(ep.channelCheck(key), undefined);
+
+/**
+ * 保存前的连通性检查（super_admin）：用表单里还没保存的地址、插件版本、设置与 Key 检查，不落库
+ * @param body 渠道草稿；编辑已有渠道时带 existing_key，Key 留空则用已保存的
+ * @returns 是否连通、说明与耗时
+ */
+export const checkChannelDraft = (body: ChannelCheckDraftRequest) =>
+  service.post<ChannelCheckResult>(ep.channelCheckDraft(), body);
 
 /**
  * 从渠道导入模型草稿（admin 也能调）；只预填编辑器，不落库

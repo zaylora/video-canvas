@@ -14,18 +14,18 @@ describe("parseChannelRoute", () => {
     });
   });
 
-  test("?key=<key> 打开该渠道的概览", () => {
+  test("?key=<key> 打开该渠道的配置", () => {
     expect(
       parseChannelRoute(params("key=newapi"), channels, { canWrite: true, ready: true }).target,
-    ).toEqual({ kind: "edit", key: "newapi", tab: "overview" });
+    ).toEqual({ kind: "edit", key: "newapi", tab: "config" });
   });
 
-  test("?key=<key>&tab= 指定页签；未知页签回到概览", () => {
+  test("?key=<key>&tab= 指定页签；未知页签回到配置", () => {
     const parse = (query: string) =>
       parseChannelRoute(params(query), channels, { canWrite: true, ready: true }).target;
     expect(parse("key=newapi&tab=config")).toEqual({ kind: "edit", key: "newapi", tab: "config" });
     expect(parse("key=newapi&tab=models")).toEqual({ kind: "edit", key: "newapi", tab: "models" });
-    expect(parse("key=newapi&tab=xxx")).toEqual({ kind: "edit", key: "newapi", tab: "overview" });
+    expect(parse("key=newapi&tab=xxx")).toEqual({ kind: "edit", key: "newapi", tab: "config" });
   });
 
   test("旧链接 ?edit=<key> 打开配置页签", () => {

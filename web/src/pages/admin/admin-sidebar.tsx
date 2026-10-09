@@ -21,8 +21,14 @@ import {
 
 import { ADMIN_NAV } from "./admin-nav";
 
-const ROLE_TEXT: Record<AdminRole, string> = { super_admin: "运维", admin: "运营" };
-const ROLE_DESC: Record<AdminRole, string> = { super_admin: "超级管理员", admin: "管理员" };
+const ROLE_TEXT: Record<AdminRole, string> = {
+  super_admin: "运维",
+  admin: "运营",
+};
+const ROLE_DESC: Record<AdminRole, string> = {
+  super_admin: "超级管理员",
+  admin: "管理员",
+};
 
 export function AdminSidebar({
   role,
@@ -41,7 +47,7 @@ export function AdminSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/admin/ai/overview" />}>
               <Logo size={24} className="shrink-0" />
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-semibold">连镜</span>
                 <span className="text-sidebar-foreground/60 truncate text-xs">AI 配置管理</span>
               </div>
@@ -50,21 +56,6 @@ export function AdminSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {/* 离开后台是导航，不是账号操作，放在导航最上面，不放底部的账号区 */}
-        <SidebarGroup className="pb-0">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="返回画布"
-                className="text-sidebar-foreground/80"
-                render={<Link to="/" onClick={() => setOpenMobile(false)} />}
-              >
-                <ArrowLeft />
-                <span>返回画布</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
         {ADMIN_NAV.map((section) => (
           <SidebarGroup key={section.label}>
             <SidebarGroupLabel className="text-sidebar-foreground/55">
@@ -97,6 +88,19 @@ export function AdminSidebar({
         ))}
       </SidebarContent>
       <SidebarFooter className="border-sidebar-border border-t">
+        {/* 离开后台是导航，不是账号操作，放在底部账号区的上面 */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="返回画布"
+              className="text-sidebar-foreground/80"
+              render={<Link to="/" onClick={() => setOpenMobile(false)} />}
+            >
+              <ArrowLeft />
+              <span>返回画布</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser
           name={ROLE_TEXT[role]}
           description={ROLE_DESC[role]}

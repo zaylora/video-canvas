@@ -117,14 +117,8 @@ export default function PluginsPage() {
           plugins={catalog.plugins}
           channels={catalog.channels}
           canWrite={canWrite}
-          toggling={toggling === routeKey}
-          onToggle={toggle}
           onChanged={catalog.reloadPlugins}
           onChannelsChanged={catalog.reloadChannels}
-          onDelete={(target) => {
-            closeDialog();
-            requestDelete(target);
-          }}
           onClose={closeDialog}
         />
 

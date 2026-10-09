@@ -3,6 +3,9 @@ import { describe, expect, test } from "bun:test";
 import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin/ai/type";
 import {
   buildChannelRequest,
+  buildCheckDraftRequest,
+  canSaveChannel,
+  connectionFingerprint,
   channelFormFromView,
   checkBaseUrl,
   CHANNEL_KEY_PATTERN,
@@ -305,5 +308,111 @@ describe("upgradeChannelRequest", () => {
 
   test("目标版本不存在返回 null", () => {
     expect(upgradeChannelRequest(view(), plugins, "9.9.9")).toBeNull();
+  });
+});
+
+describe("buildCheckDraftRequest", () => {
+  const form = (extra: Partial<ChannelFormState> = {}): ChannelFormState => ({
+    ...channelFormFromView(view(), fields),
+    ...extra,
+  });
+
+  test("只校验连接相关的字段：名称为空也能检查", () => {
+    const result = buildCheckDraftRequest(form({ name: "" }), fields, " sk-1 ", undefined);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.request).toMatchObject({
+      plugin_key: "kling",
+      plugin_version: "0.2.0",
+      base_url: "https://api.klingai.com",
+      trusted_internal: false,
+      allow_credentials: true,
+      secret: "sk-1",
+    });
+    expect(result.request.existing_key).toBeUndefined();
+  });
+
+  test("编辑已有渠道带 existing_key；Key 为空不传 secret", () => {
+    const result = buildCheckDraftRequest(form(), fields, "  ", "kling-direct");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.request.existing_key).toBe("kling-direct");
+    expect(result.request.secret).toBeUndefined();
+  });
+
+  test("地址、插件、设置项不合法：返回对应字段的错误", () => {
+    const bad = buildCheckDraftRequest(
+      form({ baseUrl: "ftp://x", pluginKey: "", settings: { region: "" } }),
+      fields,
+      "",
+      undefined,
+    );
+    expect(bad.ok).toBe(false);
+    if (bad.ok) return;
+    expect(Object.keys(bad.errors)).toEqual(
+      expect.arrayContaining(["baseUrl", "plugin", "settings.region"]),
+    );
+    expect(bad.errors.name).toBeUndefined();
+  });
+});
+
+describe("connectionFingerprint / canSaveChannel", () => {
+  const base = channelFormFromView(view(), fields);
+
+  test("名称、限流、启用不影响指纹；地址、插件版本、设置、开关、Key 会", () => {
+    const fp = connectionFingerprint(base, "");
+    expect(connectionFingerprint({ ...base, name: "改名", rps: "5", enabled: false }, "")).toBe(fp);
+    expect(connectionFingerprint({ ...base, baseUrl: "https://x.com" }, "")).not.toBe(fp);
+    expect(connectionFingerprint({ ...base, pluginVersion: "0.3.0" }, "")).not.toBe(fp);
+    expect(connectionFingerprint({ ...base, trustedInternal: true }, "")).not.toBe(fp);
+    expect(connectionFingerprint({ ...base, settings: { region: "global" } }, "")).not.toBe(fp);
+    expect(connectionFingerprint(base, "sk-new")).not.toBe(fp);
+    expect(connectionFingerprint(base, "  ")).toBe(fp);
+  });
+
+  const fp = connectionFingerprint(base, "");
+  const passed = (fingerprint: string, kind: "ok" | "unsupported" | "failed" = "ok") =>
+    ({ busy: false, fingerprint, outcome: { kind } }) as const;
+
+  test("新建：必须有针对当前配置的通过结果", () => {
+    expect(canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: undefined })).toBe(
+      false,
+    );
+    expect(canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed(fp) })).toBe(
+      true,
+    );
+    expect(
+      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed("旧的") }),
+    ).toBe(false);
+    expect(
+      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed(fp, "failed") }),
+    ).toBe(false);
+    expect(
+      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: { busy: true } }),
+    ).toBe(false);
+  });
+
+  test("插件不支持检查（unsupported）不算失败，允许保存", () => {
+    expect(
+      canSaveChannel({
+        isNew: true,
+        fingerprint: fp,
+        baseline: "",
+        check: passed(fp, "unsupported"),
+      }),
+    ).toBe(true);
+  });
+
+  test("编辑：连接信息没动不用检查；动了就要检查", () => {
+    expect(canSaveChannel({ isNew: false, fingerprint: fp, baseline: fp, check: undefined })).toBe(
+      true,
+    );
+    const changed = connectionFingerprint({ ...base, baseUrl: "https://x.com" }, "");
+    expect(
+      canSaveChannel({ isNew: false, fingerprint: changed, baseline: fp, check: undefined }),
+    ).toBe(false);
+    expect(
+      canSaveChannel({ isNew: false, fingerprint: changed, baseline: fp, check: passed(changed) }),
+    ).toBe(true);
   });
 });

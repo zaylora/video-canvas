@@ -229,6 +229,20 @@ export interface DeleteCheckResult {
   blockers: DeleteBlocker[];
 }
 
+/** POST /admin/ai/channels/check-draft 的请求体：保存前检查，用表单里还没保存的配置，不落库 */
+export interface ChannelCheckDraftRequest {
+  /** 编辑已有渠道时传：secret 留空就用它已保存的 Key */
+  existing_key?: string;
+  plugin_key: string;
+  plugin_version: string;
+  base_url: string;
+  trusted_internal?: boolean;
+  allow_credentials?: boolean;
+  settings?: Record<string, unknown>;
+  /** 草稿 Key 明文，只在这次请求里用，不落库 */
+  secret?: string;
+}
+
 /** 连通性检查结果 */
 export interface ChannelCheckResult {
   /** 是否连通 */

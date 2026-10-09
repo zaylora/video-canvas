@@ -36,6 +36,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
 import { cn } from "@/lib/utils";
 import { findPathInJson } from "@/utils/admin/json";
 import {
@@ -305,27 +306,15 @@ export function ModelDialog({
 
       {/* 页签（JSON 视图下隐藏） */}
       {mode === "form" ? (
-        <div className="flex items-center gap-1 border-b px-4" role="tablist">
+        <UnderlineTabs>
           {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              onClick={() => setTab(item.id)}
-              className={cn(
-                "-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium",
-                tab === item.id
-                  ? "border-foreground text-foreground"
-                  : "text-muted-foreground hover:text-foreground border-transparent",
-              )}
-            >
-              <item.icon className="size-4" />
+            <UnderlineTab key={item.id} selected={tab === item.id} onClick={() => setTab(item.id)}>
+              <item.icon />
               {item.label}
               {checks.some((check) => check.tab === item.id) && <StatusDot tone="warning" />}
-            </button>
+            </UnderlineTab>
           ))}
-        </div>
+        </UnderlineTabs>
       ) : (
         <div className="flex items-center gap-2 border-b px-6 py-2.5 text-sm">
           <Braces className="size-4" />

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, KeyRound, Plus, Trash2, X } from "lucide-react";
 
-import type { ChannelLoad, ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import {
   EmptyState,
@@ -25,7 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
 import { availableUpgrade, channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
 import { filterChannels, paginate } from "@/utils/admin/table-view";
@@ -53,7 +52,6 @@ export function ChannelTable({
   plugins,
   status,
   canWrite,
-  loads,
   models,
   modelsStatus,
   onOpen,
@@ -69,7 +67,6 @@ export function ChannelTable({
   status: LoadStatus;
   canWrite: boolean;
   /** 各渠道当前的生成中 / 排队数，按渠道 key 索引 */
-  loads: Record<string, ChannelLoad>;
   /** 全部模型：算每个渠道有几个模型 */
   models: ConfigListItem[];
   modelsStatus: LoadStatus;
@@ -112,7 +109,7 @@ export function ChannelTable({
       if (item.channel) counts[item.channel] = (counts[item.channel] ?? 0) + 1;
     return counts;
   }, [models]);
-  const columns = 8;
+  const columns = 7;
 
   if (status === "ready" && channels.length === 0) {
     return (
@@ -177,12 +174,6 @@ export function ChannelTable({
                   能力
                 </TableHead>
                 <TableHead className="text-muted-foreground px-3 text-xs">模型</TableHead>
-                <TableHead
-                  className="text-muted-foreground px-3 text-xs max-md:hidden"
-                  title="生成中 · 排队"
-                >
-                  负载
-                </TableHead>
                 <TableHead className="text-muted-foreground px-3 text-xs">状态</TableHead>
                 <TableHead className="text-muted-foreground px-3 text-xs">启用</TableHead>
                 <TableHead className="text-muted-foreground px-3 text-right text-xs">
@@ -224,12 +215,6 @@ export function ChannelTable({
                   const owner = plugins.find((item) => item.key === channel.plugin_key);
                   const health = channelHealth(channel, plugins);
                   const upgrade = availableUpgrade(plugins, channel);
-                  const load = loads[channel.key];
-                  const running = load?.running ?? 0;
-                  const waiting = load?.waiting ?? 0;
-                  const limit = channel.rate_limit?.max_running ?? 0;
-                  // 满了：配了上限，且正在生成的已经顶到上限
-                  const full = limit > 0 && running >= limit;
                   const meta = channelMeta(plugins, channel);
                   const importUnsupported = !!meta && !meta.import;
                   // 状态列第二行：只在“不可用”时写原因，其余看标签就够了
@@ -276,16 +261,6 @@ export function ChannelTable({
                       <TableCell className="px-3 py-3 tabular-nums">
                         {modelsStatus === "ready" ? (modelCount[channel.key] ?? 0) : "—"}
                       </TableCell>
-                      <TableCell className="px-3 py-3 text-xs whitespace-nowrap tabular-nums max-md:hidden">
-                        <span className={cn(full && "text-amber-600 dark:text-amber-400")}>
-                          {running}
-                          {limit > 0 && `/${limit}`}
-                        </span>
-                        <span className="text-muted-foreground"> · </span>
-                        <span className={cn(waiting > 0 && "text-amber-600 dark:text-amber-400")}>
-                          {waiting}
-                        </span>
-                      </TableCell>
                       <TableCell className="px-3 py-3">
                         <StatusLabel tone={HEALTH_UI_TONE[health.tone]}>{health.label}</StatusLabel>
                         {note}
@@ -309,7 +284,7 @@ export function ChannelTable({
                             onClick={() => onImport(channel)}
                           >
                             <Download />
-                            导入
+                            导入模型
                           </RowAction>
                           {canWrite && (
                             <>

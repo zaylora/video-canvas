@@ -1,4 +1,5 @@
 import type {
+  ChannelCheckDraftRequest,
   ChannelCreateRequest,
   ChannelRateLimit,
   ChannelUpdateRequest,
@@ -199,6 +200,87 @@ export function buildChannelRequest(
   if (!sameJson(rateLimit, originalLimit)) update.rate_limit = rateLimit;
   if (create.enabled !== !!original.enabled) update.enabled = create.enabled;
   return { ok: true, create, update, changed: Object.keys(update).length > 0 };
+}
+
+export type CheckDraftResult =
+  | { ok: false; errors: Record<string, string> }
+  | { ok: true; request: ChannelCheckDraftRequest };
+
+/**
+ * 表单 → 保存前检查的请求体：只校验连接相关的字段（地址、插件版本、设置项），名称、标识、限流不影响检查，也不挡着检查。
+ * secret 去掉首尾空白，为空时不传（编辑已有渠道由后端用已保存的 Key）。
+ * 错误键：plugin / baseUrl / settings.<字段名>
+ */
+export function buildCheckDraftRequest(
+  form: ChannelFormState,
+  fields: SettingField[],
+  secret: string,
+  existingKey: string | undefined,
+): CheckDraftResult {
+  const errors: Record<string, string> = {};
+  if (!form.pluginKey || !form.pluginVersion) errors.plugin = "请选择插件与版本";
+  const baseUrlError = checkBaseUrl(form.baseUrl);
+  if (baseUrlError) errors.baseUrl = baseUrlError;
+  const settings = validateSettingValues(fields, form.settings);
+  for (const [field, message] of Object.entries(settings.errors))
+    errors[`settings.${field}`] = message;
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  const request: ChannelCheckDraftRequest = {
+    plugin_key: form.pluginKey,
+    plugin_version: form.pluginVersion,
+    base_url: form.baseUrl.trim(),
+    trusted_internal: form.trustedInternal,
+    allow_credentials: form.allowCredentials,
+    settings: settings.values,
+  };
+  if (existingKey) request.existing_key = existingKey;
+  if (secret.trim()) request.secret = secret.trim();
+  return { ok: true, request };
+}
+
+/**
+ * 影响连通性的配置指纹：地址、插件与版本、设置项、两个安全开关，加上这次填的 Key。
+ * 名称、限流、启用不在其中——改它们不需要重新检查。检查结果记着当时的指纹，指纹变了结果就作废。
+ */
+export function connectionFingerprint(form: ChannelFormState, secret: string): string {
+  return JSON.stringify([
+    form.pluginKey,
+    form.pluginVersion,
+    form.baseUrl.trim(),
+    form.trustedInternal,
+    form.allowCredentials,
+    form.settings,
+    secret.trim(),
+  ]);
+}
+
+/** 保存前检查的状态：进行中，或带着“针对哪份配置”的结果 */
+export type DraftCheckState =
+  | { busy: true }
+  | { busy: false; fingerprint: string; outcome: { kind: string } };
+
+/**
+ * 能不能保存：新建必须有针对当前配置的通过结果；编辑时连接信息没动（指纹与已保存的一致）不用检查，动了就要。
+ * “通过” = 连通，或插件不支持检查（unsupported 不是故障，没法验证也不该把渠道卡住）。
+ */
+export function canSaveChannel({
+  isNew,
+  fingerprint,
+  baseline,
+  check,
+}: {
+  isNew: boolean;
+  fingerprint: string;
+  baseline: string;
+  check: DraftCheckState | undefined;
+}): boolean {
+  if (!isNew && fingerprint === baseline) return true;
+  if (!check || check.busy) return false;
+  return (
+    check.fingerprint === fingerprint &&
+    (check.outcome.kind === "ok" || check.outcome.kind === "unsupported")
+  );
 }
 
 /** 名称里的英文、数字转成 key 片段：小写、非字母数字变连字符、去掉首尾连字符 */

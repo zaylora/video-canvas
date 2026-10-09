@@ -45,6 +45,7 @@ export const adminAiEndpoints = {
   channel,
   channelSecret: (key: string) => `${channel(key)}/secret`,
   channelCheck: (key: string) => `${channel(key)}/check`,
+  channelCheckDraft: () => `${P}/channels/check-draft`,
   channelImport: (key: string) => `${channel(key)}/import`,
 
   models: () => `${P}/models`,

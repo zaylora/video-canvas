@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
+  Boxes,
   ChevronRight,
-  Download,
-  KeyRound,
   Loader2,
-  Plus,
+  Save,
+  SlidersHorizontal,
   Stethoscope,
-  Trash2,
   X,
 } from "lucide-react";
 
 import { createChannel, getChannel, setChannelSecret, updateChannel } from "@/api/admin/ai";
-import type { ChannelLoad, ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -25,11 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
   buildChannelRequest,
+  buildCheckDraftRequest,
+  canSaveChannel,
+  connectionFingerprint,
   channelFormFromView,
   emptyChannelForm,
   rebaseSettings,
@@ -39,7 +40,6 @@ import {
 import { errorMessage, isChannelKeyExists } from "@/utils/admin/errors";
 import {
   availableUpgrade,
-  channelMeta,
   describeAuth,
   findPluginVersion,
   latestVersion,
@@ -53,10 +53,17 @@ import { SettingFields } from "../setting-fields";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { FormField } from "@/components/admin-ui/form-field";
+import {
+  FormSection,
+  FormSectionDescription,
+  FormSectionHeader,
+  FormSectionTitle,
+} from "@/components/admin-ui/form-section";
+import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
+import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";
-import { RowAction, RowActions } from "@/components/admin-ui/row-action";
-import { StatusLabel } from "@/components/admin-ui/status-dot";
+import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { cn } from "@/lib/utils";
 import { KindIcons } from "../kind";
@@ -64,24 +71,41 @@ import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
 import type { ChannelTab } from "@/utils/admin/channel-route";
 import { useAliveRef, type LoadStatus } from "../../use-admin";
 import { ChannelModels, type ChannelModelActions } from "./channel-models";
-import { ChannelOverview } from "./channel-overview";
 import { CheckResult } from "./check-result";
-import type { CheckState } from "./use-channel-check";
+import { useDraftCheck } from "./use-channel-check";
 
 /** 弹窗打开的对象：新建（可预选插件），或已有渠道 */
 export type ChannelDialogTarget =
   | { kind: "new"; pluginKey?: string }
   | { kind: "edit"; channel: ChannelView };
 
-/** 一个分区：标题 + 内容 */
-function Zone({ title, risk, children }: { title: string; risk?: boolean; children: ReactNode }) {
+/** 一个分块：标题 + 一句说明 + 内容；risk 的内容包进琥珀描边框（安全开关） */
+function Zone({
+  title,
+  description,
+  risk,
+  children,
+}: {
+  title: string;
+  description?: string;
+  risk?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <section
-      className={`flex flex-col gap-3 rounded-lg border p-3.5 ${risk ? "border-amber-500/60" : ""}`}
-    >
-      <h3 className="text-sm font-medium">{title}</h3>
-      {children}
-    </section>
+    <FormSection>
+      <FormSectionHeader>
+        <FormSectionTitle>{title}</FormSectionTitle>
+        {description && <FormSectionDescription>{description}</FormSectionDescription>}
+      </FormSectionHeader>
+      <div
+        className={cn(
+          "flex flex-col gap-3",
+          risk && "divide-y rounded-lg border border-amber-500/60 p-3.5 [&>*+*]:pt-3",
+        )}
+      >
+        {children}
+      </div>
+    </FormSection>
   );
 }
 
@@ -119,18 +143,16 @@ function RiskRow({
 
 /**
  * 渠道弹窗：新建 / 编辑；admin 打开为只读（写操作不渲染）。
- * 已有渠道分三个页签：概览（只读字段表）、配置（表单）、模型（使用它的模型）；新建只有配置内容。
+ * 已有渠道分两个页签：配置（表单）、模型（使用它的模型）；新建只有配置内容。
  * 配置页一屏三步：1 选平台（插件卡片）→ 2 连接（地址、Key、插件设置）→ 3 名称（标识按名称自动生成，可改）；
  * 插件版本、限流、启用、安全开关收在“高级设置”里（有新版本时默认展开）。
- * 底部只有一个“保存并检查”：保存渠道 → 写 Key → 检查连通性，通过后给“导入模型 / 新建模型”两个下一步。
+ * 底部是“检查连通性”（只检查已保存的渠道，通过后给“导入模型 / 新建模型”两个下一步）和“保存”。
  * 两个危险开关从关到开要勾选确认；新建时插件是 auth: custom 则“允许插件读取 Key”自动打开（必需）。
  * 配置页签保持挂载，切页签不丢未保存的修改。
  * @param initialTab 打开时停在哪个页签（来自 URL）；之后切换页签通过 onTabChange 写回 URL
- * @param channels 全部渠道：概览取最新的字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
+ * @param channels 全部渠道：配置取最新的字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
  * @param pluginsReady 插件清单已加载（未就绪时显示骨架，避免版本下拉是空的）
  * @param onSaved 新建 / 更新 / 设 Key 后，通知列表刷新
- * @param onImport 导入模型（页面负责先关弹窗、再开导入弹窗，两个弹窗不叠着）
- * @param onSetKey 设置 Key、删除同理：页面先关本弹窗再开对应弹窗
  */
 export function ChannelDialog({
   target,
@@ -139,17 +161,11 @@ export function ChannelDialog({
   pluginsReady,
   canWrite,
   channels,
-  checks,
-  loads,
   models,
   modelsStatus,
   modelActions,
   onTabChange,
-  onCheck,
   onSaved,
-  onImport,
-  onSetKey,
-  onDelete,
   onClose,
 }: {
   target: ChannelDialogTarget | null;
@@ -159,17 +175,11 @@ export function ChannelDialog({
   canWrite: boolean;
   channels: ChannelView[];
   /** 各渠道的检查状态（按 key）；新建成功后弹窗转为编辑态，要按新 key 取 */
-  checks: Record<string, CheckState>;
-  loads: Record<string, ChannelLoad>;
   models: ConfigListItem[];
   modelsStatus: LoadStatus;
   modelActions: ChannelModelActions;
   onTabChange: (tab: ChannelTab) => void;
-  onCheck: (key: string) => void;
   onSaved: () => void;
-  onImport: (channel: ChannelView) => void;
-  onSetKey: (channel: ChannelView) => void;
-  onDelete: (channel: ChannelView) => void;
   onClose: () => void;
 }) {
   /** 由表单上报“是否有未保存修改”，关闭时据此确认 */
@@ -188,7 +198,7 @@ export function ChannelDialog({
       <Dialog open={!!target} onOpenChange={(next) => !next && requestClose()}>
         <DialogContent
           showCloseButton={false}
-          className="flex h-[min(88svh,800px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+          className="flex h-[min(88svh,800px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
         >
           {shown && (
             <DialogBody
@@ -199,19 +209,17 @@ export function ChannelDialog({
               pluginsReady={pluginsReady}
               canWrite={canWrite}
               channels={channels}
-              checks={checks}
-              loads={loads}
               models={models}
               modelsStatus={modelsStatus}
               modelActions={modelActions}
               onTabChange={onTabChange}
-              onCheck={onCheck}
               onSaved={onSaved}
-              onImport={onImport}
-              onSetKey={onSetKey}
-              onDelete={onDelete}
               onDirtyChange={setDirty}
               onClose={requestClose}
+              onFinished={() => {
+                setDirty(false);
+                onClose();
+              }}
             />
           )}
         </DialogContent>
@@ -240,19 +248,15 @@ type DialogBodyProps = {
   pluginsReady: boolean;
   canWrite: boolean;
   channels: ChannelView[];
-  checks: Record<string, CheckState>;
-  loads: Record<string, ChannelLoad>;
   models: ConfigListItem[];
   modelsStatus: LoadStatus;
   modelActions: ChannelModelActions;
   onTabChange: (tab: ChannelTab) => void;
-  onCheck: (key: string) => void;
   onSaved: () => void;
-  onImport: (channel: ChannelView) => void;
-  onSetKey: (channel: ChannelView) => void;
-  onDelete: (channel: ChannelView) => void;
   onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
+  /** 保存成功：直接关闭弹窗（已没有未保存的修改，不再确认） */
+  onFinished: () => void;
 };
 
 function DialogBody({ target, pluginsReady, canWrite, plugins, ...rest }: DialogBodyProps) {
@@ -311,7 +315,6 @@ function DialogBody({ target, pluginsReady, canWrite, plugins, ...rest }: Dialog
       setOriginal={setOriginal}
       plugins={plugins}
       readOnly={readOnly}
-      canWrite={canWrite}
       syncTab={target.kind === "edit"}
       existingKeys={rest.channels.map((item) => item.key)}
       {...rest}
@@ -327,24 +330,18 @@ function DialogForm({
   plugins,
   existingKeys,
   readOnly,
-  canWrite,
   syncTab,
   initialTab,
   channels,
-  checks,
-  loads,
   models,
   modelsStatus,
   modelActions,
   onTabChange,
-  onCheck,
   onSaved,
-  onImport,
-  onSetKey,
-  onDelete,
   onDirtyChange,
   onClose,
-}: Omit<DialogBodyProps, "target" | "pluginsReady"> & {
+  onFinished,
+}: Omit<DialogBodyProps, "target" | "pluginsReady" | "canWrite"> & {
   aliveRef: { current: boolean };
   initialForm: ChannelFormState;
   original: ChannelView | null;
@@ -355,16 +352,15 @@ function DialogForm({
   syncTab: boolean;
 }) {
   const isNew = !original;
-  const check = original ? checks[original.key] : undefined;
+  const { state: check, run: runCheck } = useDraftCheck();
   const [tab, setTab] = useState<ChannelTab>(isNew ? "config" : initialTab);
   const changeTab = (next: ChannelTab) => {
     setTab(next);
     if (syncTab) onTabChange(next);
   };
-  /** 最新的渠道（列表刷新后的值），保存、设 Key 之后概览不用等弹窗重开 */
+  /** 最新的渠道（列表刷新后的值），保存之后不用等弹窗重开 */
   const live = original ? (channels.find((item) => item.key === original.key) ?? original) : null;
   const health = live ? channelHealth(live, plugins) : null;
-  const liveMeta = live ? channelMeta(plugins, live) : undefined;
   const modelCount = live ? models.filter((item) => item.channel === live.key).length : 0;
   const [form, setFormState] = useState<ChannelFormState>(initialForm);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initialForm));
@@ -375,8 +371,8 @@ function DialogForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  /** 这次打开弹窗后点过“保存并检查”：检查通过时给下一步 */
-  const [checked, setChecked] = useState(false);
+  /** 已保存的连接配置指纹：和当前指纹一致就不用重新检查（见 canSaveChannel） */
+  const [baselineFp, setBaselineFp] = useState(() => connectionFingerprint(initialForm, ""));
   const [dropped, setDropped] = useState<string[]>([]);
   const [credsReset, setCredsReset] = useState(false);
   const [risk, setRisk] = useState<"trusted" | "cred" | null>(null);
@@ -392,14 +388,19 @@ function DialogForm({
   const patch = (partial: Partial<ChannelFormState>) => setForm({ ...form, ...partial });
 
   const plugin = plugins.find((item) => item.key === form.pluginKey);
-  const version = findPluginVersion(plugins, form.pluginKey, { version: form.pluginVersion });
+  const version = findPluginVersion(plugins, form.pluginKey, {
+    version: form.pluginVersion,
+  });
   const meta = version?.meta ?? undefined;
   const fields = useMemo(() => settingFields(meta?.channelSettings), [meta]);
   const authType = meta?.auth?.type ?? "none";
   const needsKey = authType !== "none";
   const isCustomAuth = authType === "custom";
   const upgrade = original
-    ? availableUpgrade(plugins, { plugin_key: form.pluginKey, plugin_version: form.pluginVersion })
+    ? availableUpgrade(plugins, {
+        plugin_key: form.pluginKey,
+        plugin_version: form.pluginVersion,
+      })
     : null;
   const switchedVersion = !!original && form.pluginVersion !== original.plugin_version;
   const [advancedOpen, setAdvancedOpen] = useState(!!upgrade);
@@ -416,7 +417,9 @@ function DialogForm({
 
   /** 换插件 / 版本：设置项用 rebaseSettings 迁移，被丢弃的项提示；allow_credentials 不再可用时自动关闭 */
   const changePluginVersion = (pluginKey: string, versionText: string) => {
-    const nextVersion = findPluginVersion(plugins, pluginKey, { version: versionText });
+    const nextVersion = findPluginVersion(plugins, pluginKey, {
+      version: versionText,
+    });
     const nextFields = settingFields(nextVersion?.meta?.channelSettings);
     const nextSettings = rebaseSettings(fields, form.settings, nextFields);
     const gone = fields
@@ -458,10 +461,8 @@ function DialogForm({
   };
 
   /**
-   * 保存并检查，一步完成：
-   * 1. 新建 / 更新渠道（没改动就跳过）；
-   * 2. 填了 Key 就写入（只写不读，明文提交后立刻清空）；
-   * 3. 插件不需要 Key，或 Key 已设置，就跑一次连通性检查，结果显示在弹窗里，通过后给下一步。
+   * 保存：新建 / 更新渠道（没改动就跳过），填了 Key 就写入（只写不读，明文提交后立刻清空）。
+   * 连通性检查是单独的按钮（只检查已保存的渠道）。
    * 第 1 步成功、第 2 步失败时渠道已经保存，弹窗转为编辑态，失败原因留在顶部。
    */
   const save = async () => {
@@ -485,6 +486,7 @@ function DialogForm({
       setOriginal(current);
       setForm(effective, secret);
       setBaseline(JSON.stringify(effective));
+      setBaselineFp(connectionFingerprint(effective, ""));
       setKeyEdited(true);
       setDropped([]);
       setCredsReset(false);
@@ -521,17 +523,31 @@ function DialogForm({
     if (!aliveRef.current) return;
     onDirtyChange(false);
     setSaving(false);
-    setChecked(true);
-    if (!needsKey || current.secret_set) onCheck(current.key);
+    onFinished();
   };
 
   const changeSetting = (name: string, value: SettingFormValue) =>
     setForm({ ...form, settings: { ...form.settings, [name]: value } });
 
   const pluginLabel = plugin ? `${plugin.name} v${form.pluginVersion}` : form.pluginKey;
-  const checkOk = !!check && !check.busy && check.outcome.kind === "ok";
   const checking = !!check?.busy;
   const keyMissing = !!original && needsKey && !original.secret_set;
+  /** 当前连接配置的指纹；检查结果只对检查时的那份配置有效 */
+  const fingerprint = connectionFingerprint(effective, secret);
+  const freshCheck = check && (check.busy || check.fingerprint === fingerprint) ? check : undefined;
+  /** 保存前必须先通过连通性检查（编辑时连接信息没动除外） */
+  const canSave = canSaveChannel({ isNew, fingerprint, baseline: baselineFp, check });
+  /** 用表单里还没保存的配置检查连通性：只校验连接相关字段，不落库 */
+  const checkConnection = () => {
+    const built = buildCheckDraftRequest(effective, fields, secret, original?.key);
+    setFormError(null);
+    if (!built.ok) {
+      setErrors(built.errors);
+      return;
+    }
+    setErrors({});
+    void runCheck(built.request, fingerprint);
+  };
   const settingErrors = Object.fromEntries(
     Object.entries(errors)
       .filter(([key]) => key.startsWith("settings."))
@@ -540,120 +556,60 @@ function DialogForm({
 
   return (
     <>
-      <div className={cn("flex items-start gap-3 px-4 pt-4 pb-3", isNew && "border-b")}>
+      <div className="flex items-start gap-4 border-b px-6 py-4">
+        <InitialAvatar
+          name={live ? live.name : "+"}
+          seed={live ? live.key : "new"}
+          className="size-10 text-base"
+        />
         <div className="min-w-0 flex-1">
-          <DialogTitle className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
-            {live ? live.name : "新建渠道"}
+          <div className="flex flex-wrap items-center gap-2">
+            <DialogTitle className="text-lg font-semibold">
+              {live ? live.name : "新建渠道"}
+            </DialogTitle>
             {live && health && (
-              <StatusLabel tone={HEALTH_UI_TONE[health.tone]} title={health.reason ?? undefined}>
+              <Tag tone={HEALTH_UI_TONE[health.tone]} title={health.reason ?? undefined}>
+                <StatusDot tone={HEALTH_UI_TONE[health.tone]} />
                 {health.label}
-              </StatusLabel>
+              </Tag>
             )}
-            {live && (
-              <span className="text-muted-foreground font-mono text-xs font-normal">
-                {live.key}
-              </span>
+          </div>
+          <DialogDescription className="text-muted-foreground mt-0.5 truncate text-sm">
+            {live ? (
+              <>
+                <span className="font-mono">{live.key}</span>
+                {" · "}
+                {plugins.find((item) => item.key === live.plugin_key)?.name ?? live.plugin_key}
+              </>
+            ) : (
+              "选平台 → 填地址和 Key → 起个名字"
             )}
-          </DialogTitle>
-          <DialogDescription className={cn("mt-1", live && "sr-only")}>
-            {isNew
-              ? "选平台 → 填地址和 Key → 起个名字，点「保存并检查」就能用。"
-              : "渠道详情：概览、配置与使用它的模型"}
           </DialogDescription>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {live && (
-            <RowActions>
-              {canWrite && (
-                <RowAction
-                  tone="info"
-                  disabled={checking}
-                  aria-label={`检查 ${live.name}`}
-                  onClick={() => onCheck(live.key)}
-                >
-                  <Stethoscope />
-                  {checking ? "检查中" : "检查"}
-                </RowAction>
-              )}
-              <RowAction
-                tone="success"
-                disabled={!!liveMeta && !liveMeta.import}
-                title={liveMeta && !liveMeta.import ? "该插件不支持导入模型" : undefined}
-                aria-label={`导入模型 ${live.name}`}
-                onClick={() => onImport(live)}
-              >
-                <Download />
-                导入
-              </RowAction>
-              {canWrite && (
-                <>
-                  <RowAction
-                    tone="warning"
-                    aria-label={`${live.secret_set ? "更新" : "设置"} Key ${live.name}`}
-                    onClick={() => onSetKey(live)}
-                  >
-                    <KeyRound />
-                    {live.secret_set ? "更新 Key" : "设置 Key"}
-                  </RowAction>
-                  <RowAction
-                    tone="danger"
-                    aria-label={`删除 ${live.name}`}
-                    onClick={() => onDelete(live)}
-                  >
-                    <Trash2 />
-                    删除
-                  </RowAction>
-                </>
-              )}
-            </RowActions>
-          )}
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" onClick={onClose}>
-            <X />
-          </Button>
-        </div>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" onClick={onClose}>
+          <X />
+        </Button>
       </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(next) => changeTab(next as ChannelTab)}
-        className="min-h-0 flex-1 gap-0"
-      >
-        {live && (
-          <div className="border-b px-4 pb-3">
-            <TabsList>
-              <TabsTrigger value="overview" className="px-3">
-                概览
-              </TabsTrigger>
-              <TabsTrigger value="config" className="px-3">
-                配置
-              </TabsTrigger>
-              <TabsTrigger value="models" className="px-3">
-                模型
-                {modelsStatus === "ready" && (
-                  <span className="text-muted-foreground text-xs tabular-nums">{modelCount}</span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          </div>
-        )}
-        {live && (
-          <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto p-4">
-            <ChannelOverview
-              channel={live}
-              plugins={plugins}
-              canWrite={canWrite}
-              check={check}
-              load={loads[live.key]}
-              onUpgrade={() => {
-                setAdvancedOpen(true);
-                changeTab("config");
-              }}
-              onSetKey={() => onSetKey(live)}
-            />
-          </TabsContent>
-        )}
-        {live && (
-          <TabsContent value="models" className="min-h-0 flex-1 overflow-y-auto p-4">
+      {live && (
+        <UnderlineTabs>
+          <UnderlineTab selected={tab === "config"} onClick={() => changeTab("config")}>
+            <SlidersHorizontal />
+            配置
+          </UnderlineTab>
+          <UnderlineTab selected={tab === "models"} onClick={() => changeTab("models")}>
+            <Boxes />
+            模型
+            {modelsStatus === "ready" && (
+              <span className="text-muted-foreground text-xs tabular-nums">{modelCount}</span>
+            )}
+          </UnderlineTab>
+        </UnderlineTabs>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        {live && tab === "models" && (
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <ChannelModels
               channel={live}
               channels={channels}
@@ -662,59 +618,32 @@ function DialogForm({
               status={modelsStatus}
               actions={modelActions}
             />
-          </TabsContent>
+          </div>
         )}
-        <TabsContent value="config" keepMounted className="min-h-0 flex-1">
+        {/* 配置页保持挂载，切页签不丢未保存的修改 */}
+        <div className={cn("min-h-0 flex-1", tab !== "config" && "hidden")}>
           <div className="flex h-full min-h-0 flex-col">
             <form
               id="channel-form"
-              className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4"
+              className="min-h-0 flex-1 overflow-y-auto px-6 py-5"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!readOnly) void save();
+                if (!readOnly && canSave) void save();
               }}
             >
               {formError && (
-                <Notice tone="danger" title="没有完成">
+                <Notice tone="danger" title="没有完成" className="mb-4">
                   {formError}
                 </Notice>
               )}
 
-              {checked && original && (checkOk || checking || check) && (
-                <Zone title="连通性检查">
-                  {check && <CheckResult state={check} />}
-                  {checkOk && (
-                    <div className="flex flex-wrap gap-2">
-                      {meta?.import && (
-                        <Button type="button" size="sm" onClick={() => onImport(original)}>
-                          <Download />
-                          从这个渠道导入模型
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={meta?.import ? "outline" : "default"}
-                        render={
-                          <Link
-                            to={`/admin/ai/models/new?channel=${encodeURIComponent(original.key)}`}
-                          />
-                        }
-                      >
-                        <Plus />
-                        用这个渠道新建模型
-                      </Button>
-                    </div>
-                  )}
-                </Zone>
-              )}
-              {checked && keyMissing && (
-                <Notice tone="warning" title="渠道已保存，还没有 Key">
-                  填上 API Key 再点「保存并检查」；没有 Key 的渠道，模型无法上线。
+              {keyMissing && (
+                <Notice tone="warning" title="这个渠道还没有 Key" className="mb-4">
+                  填上 API Key，检查连通性通过后保存；没有 Key 的渠道，模型无法上线。
                 </Notice>
               )}
 
-              <Zone title="1 · 选平台">
+              <Zone title="平台" description="选一个上游协议，决定能用哪些能力">
                 <ChoiceCardGroup aria-label="插件" className="sm:grid-cols-2">
                   {plugins.map((item) => {
                     const latest = latestVersion(item);
@@ -753,59 +682,61 @@ function DialogForm({
                 )}
               </Zone>
 
-              <Zone title="2 · 连接">
-                <FormField
-                  label="接口地址"
-                  htmlFor="channel-base-url"
-                  error={errors.baseUrl}
-                  hint="插件请求只能发到这个地址；http/https，不能带用户名密码"
-                >
-                  <Input
-                    id="channel-base-url"
-                    className="font-mono"
-                    value={form.baseUrl}
-                    placeholder="https://gw.example.com"
-                    disabled={readOnly}
-                    aria-invalid={!!errors.baseUrl}
-                    onChange={(event) => patch({ baseUrl: event.target.value })}
-                  />
-                </FormField>
-                {needsKey && !readOnly && (
+              <Zone title="连接" description="插件请求只能发到这个地址和 Key">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
-                    label={
-                      <span className="flex items-center gap-2">
-                        API Key
-                        {original &&
-                          (original.secret_set ? (
-                            <Tag tone="success">已设置 · {formatTime(original.updated_at)}</Tag>
-                          ) : (
-                            <Tag tone="warning">未设置</Tag>
-                          ))}
-                      </span>
-                    }
-                    htmlFor="channel-secret"
-                    hint={
-                      original?.secret_set && secret.trim()
-                        ? "保存时会覆盖现有 Key"
-                        : "只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里"
-                    }
+                    label="接口地址"
+                    htmlFor="channel-base-url"
+                    error={errors.baseUrl}
+                    hint="插件请求只能发到这个地址；http/https，不能带用户名密码"
                   >
                     <Input
-                      id="channel-secret"
-                      type="password"
-                      autoComplete="new-password"
+                      id="channel-base-url"
                       className="font-mono"
-                      value={secret}
-                      placeholder={
-                        original?.secret_set ? "已设置。要更换就填新的，留空不改" : "sk-..."
-                      }
-                      onChange={(event) => {
-                        setSecret(event.target.value);
-                        setForm(form, event.target.value);
-                      }}
+                      value={form.baseUrl}
+                      placeholder="https://gw.example.com"
+                      disabled={readOnly}
+                      aria-invalid={!!errors.baseUrl}
+                      onChange={(event) => patch({ baseUrl: event.target.value })}
                     />
                   </FormField>
-                )}
+                  {needsKey && !readOnly && (
+                    <FormField
+                      label={
+                        <span className="flex items-center gap-2">
+                          API Key
+                          {original &&
+                            (original.secret_set ? (
+                              <Tag tone="success">已设置 · {formatTime(original.updated_at)}</Tag>
+                            ) : (
+                              <Tag tone="warning">未设置</Tag>
+                            ))}
+                        </span>
+                      }
+                      htmlFor="channel-secret"
+                      hint={
+                        original?.secret_set && secret.trim()
+                          ? "保存时会覆盖现有 Key"
+                          : "只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里"
+                      }
+                    >
+                      <Input
+                        id="channel-secret"
+                        type="password"
+                        autoComplete="new-password"
+                        className="font-mono"
+                        value={secret}
+                        placeholder={
+                          original?.secret_set ? "已设置。要更换就填新的，留空不改" : "sk-..."
+                        }
+                        onChange={(event) => {
+                          setSecret(event.target.value);
+                          setForm(form, event.target.value);
+                        }}
+                      />
+                    </FormField>
+                  )}
+                </div>
                 {needsKey && readOnly && original && (
                   <p className="text-muted-foreground text-xs">
                     API Key：{original.secret_set ? "已设置" : "未设置"}
@@ -831,48 +762,51 @@ function DialogForm({
                 )}
               </Zone>
 
-              <Zone title="3 · 名称">
-                <FormField label="显示名称" htmlFor="channel-name" error={errors.name}>
-                  <Input
-                    id="channel-name"
-                    value={form.name}
-                    placeholder="如 NewAPI 主线"
-                    disabled={readOnly}
-                    aria-invalid={!!errors.name}
-                    onChange={(event) => patch({ name: event.target.value })}
-                  />
-                </FormField>
-                {isNew && !keyEdited ? (
-                  <p className="text-muted-foreground text-xs">
-                    标识自动生成：<code className="font-mono">{effective.key}</code>{" "}
-                    <button
-                      type="button"
-                      className="underline underline-offset-4"
-                      onClick={() => {
-                        setKeyEdited(true);
-                        patch({ key: effective.key });
-                      }}
-                    >
-                      修改
-                    </button>
-                  </p>
-                ) : (
-                  <FormField
-                    label="标识 key"
-                    htmlFor="channel-key"
-                    error={errors.key}
-                    hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : "不可修改"}
-                  >
+              <Zone title="名称" description="渠道在列表和模型里怎么显示">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField label="显示名称" htmlFor="channel-name" error={errors.name}>
                     <Input
-                      id="channel-key"
-                      className="font-mono"
-                      value={form.key}
-                      disabled={!isNew || readOnly}
-                      aria-invalid={!!errors.key}
-                      onChange={(event) => patch({ key: event.target.value })}
+                      id="channel-name"
+                      value={form.name}
+                      placeholder="如 NewAPI 主线"
+                      disabled={readOnly}
+                      aria-invalid={!!errors.name}
+                      onChange={(event) => patch({ name: event.target.value })}
                     />
                   </FormField>
-                )}
+                  {isNew && !keyEdited ? (
+                    <p className="text-muted-foreground text-xs">
+                      标识自动生成：
+                      <code className="font-mono">{effective.key}</code>{" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-4"
+                        onClick={() => {
+                          setKeyEdited(true);
+                          patch({ key: effective.key });
+                        }}
+                      >
+                        修改
+                      </button>
+                    </p>
+                  ) : (
+                    <FormField
+                      label="标识 key"
+                      htmlFor="channel-key"
+                      error={errors.key}
+                      hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : "不可修改"}
+                    >
+                      <Input
+                        id="channel-key"
+                        className="font-mono"
+                        value={form.key}
+                        disabled={!isNew || readOnly}
+                        aria-invalid={!!errors.key}
+                        onChange={(event) => patch({ key: event.target.value })}
+                      />
+                    </FormField>
+                  )}
+                </div>
               </Zone>
 
               <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
@@ -885,7 +819,7 @@ function DialogForm({
                   {upgrade && <Tag>有新版本 {upgrade.version}</Tag>}
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 flex flex-col gap-3.5">
-                  <Zone title="插件版本">
+                  <Zone title="插件版本" description="新任务用这个版本">
                     <FormField label="固定版本" htmlFor="channel-version">
                       <NativeSelect
                         id="channel-version"
@@ -937,7 +871,7 @@ function DialogForm({
                     )}
                   </Zone>
 
-                  <Zone title="限流">
+                  <Zone title="限流与启用" description="0 或留空表示不限">
                     <div className="grid grid-cols-2 gap-3">
                       <FormField label="每秒请求数 rps" htmlFor="channel-rps" error={errors.rps}>
                         <Input
@@ -1000,7 +934,7 @@ function DialogForm({
                     </div>
                   </Zone>
 
-                  <Zone title="安全开关（会记入审计日志）" risk>
+                  <Zone title="安全开关" description="会记入审计日志" risk>
                     <RiskRow
                       id="channel-trusted"
                       title="允许访问内网"
@@ -1038,25 +972,44 @@ function DialogForm({
               </Collapsible>
             </form>
 
-            <div className="flex items-center gap-2 border-t px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
               {readOnly && (
-                <span className="text-muted-foreground text-xs">只读 · 需要运维权限</span>
+                <span className="text-muted-foreground text-xs leading-tight">
+                  只读 · 需要运维权限
+                </span>
               )}
+              {!readOnly && freshCheck && <CheckResult state={freshCheck} />}
               <div className="ml-auto flex items-center gap-2">
+                {!readOnly && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving || checking}
+                    onClick={checkConnection}
+                  >
+                    {checking ? <Loader2 className="animate-spin" /> : <Stethoscope />}
+                    {checking ? "检查中…" : "检查连通性"}
+                  </Button>
+                )}
                 <Button type="button" variant="outline" onClick={onClose}>
                   {readOnly ? "关闭" : "取消"}
                 </Button>
                 {!readOnly && (
-                  <Button type="submit" form="channel-form" disabled={saving || checking}>
-                    {saving || checking ? <Loader2 className="animate-spin" /> : <Stethoscope />}
-                    {saving ? "保存中…" : checking ? "检查中…" : "保存并检查"}
+                  <Button
+                    type="submit"
+                    form="channel-form"
+                    disabled={saving || checking || !canSave}
+                    title={canSave ? undefined : "先通过连通性检查才能保存"}
+                  >
+                    {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                    {saving ? "保存中…" : "保存"}
                   </Button>
                 )}
               </div>
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={risk !== null}

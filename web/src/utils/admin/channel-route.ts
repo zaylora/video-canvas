@@ -1,5 +1,5 @@
 /** 渠道弹窗的页签 */
-export type ChannelTab = "overview" | "config" | "models";
+export type ChannelTab = "config" | "models";
 
 /** 插件弹窗的页签 */
 export type PluginTab = "overview" | "versions";
@@ -9,12 +9,12 @@ export type ChannelRouteTarget =
   | { kind: "new"; pluginKey?: string }
   | { kind: "edit"; key: string; tab: ChannelTab };
 
-const CHANNEL_TABS: readonly string[] = ["overview", "config", "models"];
+const CHANNEL_TABS: readonly string[] = ["config", "models"];
 const PLUGIN_TABS: readonly string[] = ["overview", "versions"];
 
 /**
  * 解析渠道页的 URL 参数：
- * - `?key=<key>[&tab=config|models]` 打开渠道弹窗（默认概览）；
+ * - `?key=<key>[&tab=config|models]` 打开渠道弹窗（默认配置）；
  * - `?new=1[&plugin=<插件 key>]` 新建；
  * - 旧链接 `?edit=new` 等同新建，`?edit=<key>` 打开配置页签（别处的跳转链接还在用）。
  * 渠道不存在时不开弹窗，把缺失的 key 报出来（清单没加载完 ready=false 时先不报，避免闪错）。
@@ -42,11 +42,7 @@ export function parseChannelRoute(
     target: {
       kind: "edit",
       key,
-      tab: CHANNEL_TABS.includes(tab ?? "")
-        ? (tab as ChannelTab)
-        : params.get("key") === null
-          ? "config"
-          : "overview",
+      tab: CHANNEL_TABS.includes(tab ?? "") ? (tab as ChannelTab) : "config",
     },
     missing: null,
   };

@@ -27,8 +27,6 @@ import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
 import { ChannelTable } from "./channel-table";
 import { ImportDialog } from "./import-dialog";
 import { openSecretDialog } from "./secret-dialog";
-import { useChannelChecks } from "./use-channel-check";
-import { useChannelLoads } from "./use-channel-loads";
 
 /**
  * 渠道页：表格 + 详情弹窗。弹窗的状态都在 URL 里（刷新不丢，别处的跳转链接也能直达）：
@@ -44,8 +42,6 @@ export default function ChannelsPage() {
   const canWrite = canManageInfra(role);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { checks, run: runCheck } = useChannelChecks();
-  const loads = useChannelLoads(catalog.channelsStatus === "ready");
   // 模型数、弹窗里“模型”页签
   const { models, status: modelsStatus, reload: reloadModels } = useModelList();
   const row = useModelRowActions(catalog, reloadModels);
@@ -67,11 +63,6 @@ export default function ChannelsPage() {
   const tab: ChannelTab = routeTarget?.kind === "edit" ? routeTarget.tab : "config";
 
   const closeDialog = () => setParams({}, { replace: true });
-  /** 先关渠道弹窗再做事：用于导入、删除这类离开当前渠道的操作 */
-  const closeThen = (action: () => void) => {
-    closeDialog();
-    action();
-  };
 
   // 链接里的渠道已经不存在（被删了）：提示一次并清掉参数
   useEffect(() => {
@@ -169,7 +160,6 @@ export default function ChannelsPage() {
           plugins={catalog.plugins}
           status={catalog.channelsStatus}
           canWrite={canWrite}
-          loads={loads}
           models={models}
           modelsStatus={modelsStatus}
           onOpen={(key) => setParams({ key })}
@@ -188,19 +178,13 @@ export default function ChannelsPage() {
           pluginsReady={catalog.pluginsStatus === "ready"}
           canWrite={canWrite}
           channels={catalog.channels}
-          checks={checks}
-          loads={loads}
           models={models}
           modelsStatus={modelsStatus}
           modelActions={modelActions}
           onTabChange={(next) =>
             routeKey && setParams({ key: routeKey, tab: next }, { replace: true })
           }
-          onCheck={(key) => void runCheck(key)}
           onSaved={() => void catalog.reloadChannels()}
-          onImport={(channel) => closeThen(() => openImport(channel))}
-          onSetKey={openSetKey}
-          onDelete={(channel) => closeThen(() => requestDelete(channel))}
           onClose={closeDialog}
         />
       </main>
