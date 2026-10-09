@@ -48,6 +48,40 @@ describe("planTaskToast：画布外的完成提示", () => {
   });
 });
 
+describe("planTaskToast：首页生成的对话任务（node_id 以 rec: 开头，没有画布）", () => {
+  const conv = (over = {}) =>
+    succeeded({ canvas_id: null, node_id: "rec:7:0", kind: "image", ...over });
+
+  test("正在对话页看着：不弹（格子自己会变）", () => {
+    expect(planTaskToast(conv(), null, undefined, "/conversations/abc")).toBeNull();
+    expect(planTaskToast(conv(), null, undefined, "/conversations/new")).toBeNull();
+  });
+
+  test("在别的页面：用不带画布名的说法，没有跳转", () => {
+    const plan = planTaskToast(conv(), null, undefined, "/");
+    expect(plan).toMatchObject({ tone: "success", title: "图片已生成" });
+    expect(plan?.href).toBeUndefined();
+    const failed = planTaskToast(
+      makeTask({
+        status: "failed",
+        canvas_id: null,
+        node_id: "rec:7:1",
+        kind: "video",
+        error_message: "审核未通过",
+      }),
+      null,
+      undefined,
+      "/assets",
+    );
+    expect(failed).toMatchObject({ tone: "error", title: "视频生成失败" });
+    expect(failed?.description).toBe("审核未通过，积分已退回");
+  });
+
+  test("取消不弹", () => {
+    expect(planTaskToast(conv({ status: "canceled" }), null, undefined, "/")).toBeNull();
+  });
+});
+
 describe("isFreshTerminalTransition：只在刚进入终态时提醒", () => {
   test("进行中 -> 终态提醒；终态 -> 终态、进行中 -> 进行中不提醒", () => {
     expect(isFreshTerminalTransition(makeTask({ status: "running" }), succeeded(), "live")).toBe(

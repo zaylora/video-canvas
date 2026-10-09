@@ -28,6 +28,7 @@ export function handleTaskView(view: TaskView, source: TaskSource) {
     applied.view,
     currentCanvasIdFromPath(window.location.pathname),
     getCanvasTitle(applied.view.canvas_id),
+    window.location.pathname,
   );
   if (!plan) return;
   const { href } = plan;

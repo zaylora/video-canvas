@@ -1,13 +1,11 @@
-import { useMemo, type ComponentType, type ReactNode, type SVGProps } from "react";
+import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
 import {
   Compass,
   FolderOpen,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  Pin,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -19,6 +17,8 @@ import { NavUser } from "@/components/admin-ui/nav-user";
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/canvas/chrome/chrome";
 import { CanvasCover } from "@/components/home/canvas-cover";
+import { ConversationList } from "@/components/home/conversation-list";
+import { ListItem, ListSection } from "@/components/home/sidebar-list";
 import { SoonTip } from "@/components/home/soon";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -34,7 +34,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { buildSampleConversations } from "@/constants/conversation-sample";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
 import { SPRING, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -42,7 +41,6 @@ import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-b
 import { useAdminStore } from "@/store/admin";
 import { useMeStore } from "@/store/me";
 import { canManageModels } from "@/utils/admin/role";
-import { placeholderBackground } from "@/utils/home/placeholder";
 import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
 
 /** 侧栏里的一项导航 */
@@ -141,73 +139,16 @@ function CollapseButton() {
   );
 }
 
-/** 分组：一行小标题（右侧可放「全部」之类的入口）+ 下面的列表 */
-function ListSection({
-  title,
-  action,
-  children,
-}: {
-  title: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="mt-2">
-      <div className="flex h-8 items-center justify-between px-2.5">
-        <p className="text-muted-foreground text-xs">{title}</p>
-        {action}
-      </div>
-      <div className="grid gap-0.5">{children}</div>
-    </section>
-  );
-}
-
-/** 分组里的一项：24px 缩略图（封面或图标）+ 标题，当前项高亮 */
-function ListItem({
-  to,
-  title,
-  active,
-  pinned,
-  thumb,
-}: {
-  to: string;
-  title: string;
-  active: boolean;
-  pinned?: boolean;
-  thumb: ReactNode;
-}) {
-  const { setOpenMobile } = useSidebar();
-  return (
-    <Link
-      to={to}
-      title={title}
-      aria-current={active ? "page" : undefined}
-      onClick={() => setOpenMobile(false)}
-      className={cn(
-        "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 flex h-9 items-center gap-2.5 rounded-[10px] pr-2 pl-2.5 text-sm outline-none focus-visible:ring-3",
-        active && "bg-muted text-foreground font-medium",
-      )}
-    >
-      <span className="bg-muted grid size-6 shrink-0 place-items-center overflow-hidden rounded-[7px] [&_svg]:size-3.5">
-        {thumb}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{title}</span>
-      {pinned && <Pin aria-label="已置顶" className="size-3.5 shrink-0 opacity-55" />}
-    </Link>
-  );
-}
-
 /**
  * 首页、资产、对话和画布列表共用的左侧侧栏（设计稿 docs/品牌包装/登录与首页改版原型）：
  * 连镜 Logo、导航（创作 / 探索 / 资产）、「对话」和「画布」两组最近记录，
  * 底部是 AI 配置（只给已确认的管理员）和账号菜单（退出登录）。
- * 对话目前是样例数据；画布是真的最近画布。
+ * 对话和画布都是真实数据：对话来自 store/conversations，画布是最近画布。
  * 桌面端可收起成图标栏（⌘B），窄屏由 shadcn sidebar 换成从左滑出的抽屉。
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
   const canvases = useRecentCanvases(LIST_LIMIT);
-  const conversations = useMemo(() => buildSampleConversations(), []);
   /**
    * 和原来列表页一样，只有 store 里已确认是管理员时才显示后台入口；
    * 这里不主动探测角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
@@ -249,28 +190,7 @@ export function AppSidebar() {
 
         {/* 收起成图标栏后放不下列表，整块隐藏 */}
         <div className="min-h-0 flex-1 overflow-y-auto px-2 group-data-[collapsible=icon]:hidden">
-          <ListSection title="对话">
-            {conversations.slice(0, LIST_LIMIT).map((conversation) => (
-              <ListItem
-                key={conversation.id}
-                to={`/conversations/${conversation.id}`}
-                title={conversation.title}
-                active={pathname === `/conversations/${conversation.id}`}
-                pinned={conversation.pinned}
-                thumb={
-                  conversation.hue === null ? (
-                    <MessageSquare />
-                  ) : (
-                    <span
-                      aria-hidden
-                      className="size-full"
-                      style={{ background: placeholderBackground(conversation.hue) }}
-                    />
-                  )
-                }
-              />
-            ))}
-          </ListSection>
+          <ConversationList pathname={pathname} />
           <ListSection
             title="画布"
             action={

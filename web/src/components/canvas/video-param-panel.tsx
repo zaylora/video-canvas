@@ -21,6 +21,7 @@ import {
   manualRefs,
   openParams,
   refKindsOf,
+  refUploadError,
   REF_KEYS,
   toAssetNumber,
   type Bindings,
@@ -361,8 +362,10 @@ function RefCard({
   const full = used >= max;
 
   const upload = async (file: File) => {
-    if (file.size > maxMb * 1024 * 1024) {
-      setUploadError(`单个${label}不能超过 ${maxMb} MB`);
+    // 与首页输入卡片共用同一套校验（数量、大小、文案）
+    const reason = refUploadError({ on: true, max, max_mb: maxMb }, kind, file, used);
+    if (reason) {
+      setUploadError(reason);
       return;
     }
     setUploading(true);

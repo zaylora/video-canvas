@@ -37,16 +37,28 @@ export function isFreshTerminalTransition(
   return source === "live";
 }
 
+/** 首页生成的对话任务的 node_id 前缀（rec:{记录id}:{格子序号}），它们没有画布 */
+const CONVERSATION_NODE_PREFIX = "rec:";
+
 /**
  * 画布外的完成提示：用户正看着这张画布时节点自己会变，不弹；
  * 在列表页或别的画布时弹「《画布名》中的视频已生成 / 生成失败」，点击跳转。
+ * 首页生成的对话任务没有画布：正在对话页时格子自己会变，不弹；在别的页面弹不带画布名的说法，没有跳转。
  * 主动取消不提醒。
+ * @param view 任务快照
+ * @param currentCanvasId 正在看的画布 id，不在画布页为 null
+ * @param canvasTitle 任务所属画布的标题
+ * @param pathname 当前地址，判断是不是正在看对话页
  */
 export function planTaskToast(
   view: TaskView,
   currentCanvasId: string | null,
   canvasTitle: string | undefined,
+  pathname = "",
 ): TaskToastPlan | null {
+  if (view.node_id.startsWith(CONVERSATION_NODE_PREFIX)) {
+    return planConversationToast(view, pathname);
+  }
   const canvasId =
     view.canvas_id === null || view.canvas_id === undefined ? null : String(view.canvas_id);
   if (canvasId !== null && canvasId === currentCanvasId) return null;
@@ -67,6 +79,27 @@ export function planTaskToast(
         title: `${name}中的${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
         description: `${view.error_message ? `${view.error_message}，` : ""}积分已退回`,
         href,
+      };
+    default:
+      return null;
+  }
+}
+
+/** 对话任务的提示：不带画布名，没有跳转目标 */
+function planConversationToast(view: TaskView, pathname: string): TaskToastPlan | null {
+  if (pathname.startsWith("/conversations/")) return null;
+  const kind = KIND_LABEL[view.kind] ?? "内容";
+  const id = `task:${taskKey(view.id)}`;
+  switch (view.status) {
+    case "succeeded":
+      return { id, tone: "success", title: `${kind}已生成` };
+    case "failed":
+    case "expired":
+      return {
+        id,
+        tone: "error",
+        title: `${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
+        description: `${view.error_message ? `${view.error_message}，` : ""}积分已退回`,
       };
     default:
       return null;

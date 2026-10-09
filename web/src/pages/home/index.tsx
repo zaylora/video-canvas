@@ -5,7 +5,6 @@ import { CanvasTab } from "@/components/home/canvas-tab";
 import { Composer } from "@/components/home/composer";
 import { NewsRow } from "@/components/home/news-row";
 import { Segmented } from "@/components/home/segmented";
-import { SkillRow } from "@/components/home/skill-row";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useComposerStore } from "@/store/composer";
 import { takeCarry } from "@/utils/home/carry";
@@ -15,8 +14,8 @@ import { greeting } from "@/utils/home/home";
 type CreateTab = "gen" | "canvas";
 
 /**
- * 创作页（设计稿 docs/品牌包装/登录与首页改版原型）：
- * 问候语 + 「生成 / 画布」切换；生成是输入卡片和技能入口，画布是新建与最近画布；底部是「最近上新」。
+ * 创作页（设计稿 docs/design/首页生成与对话）：
+ * 问候语 + 「生成 / 画布」切换；生成是输入卡片（发送后进「默认创作」对话），画布是新建与最近画布；底部是「最近上新」。
  * 不放背景视频，视频只留给登录页。
  */
 export default function Home() {
@@ -60,12 +59,9 @@ export default function Home() {
         transition={{ duration: DURATION.base, ease: EASE_OUT }}
       >
         {tab === "gen" ? (
-          <>
-            <div className="mt-7">
-              <Composer />
-            </div>
-            <SkillRow />
-          </>
+          <div className="mt-7">
+            <Composer target="default" />
+          </div>
         ) : (
           <CanvasTab />
         )}

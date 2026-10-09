@@ -69,3 +69,12 @@ export const uploadAsset = async (file: File): Promise<AssetDto> => {
     await service.post<BackendAssetDto>(`/assets/upload-intents/${plan.intentId}/complete`),
   );
 };
+
+/**
+ * 获取素材信息（地址、尺寸、文件名）。「重新编辑」还原参考图缩略图时用，素材已被清理等失败不弹提示，
+ * 调用方自己决定怎么显示。
+ * @param id 素材 ID
+ * @returns 素材信息
+ */
+export const getAsset = async (id: string | number): Promise<AssetDto> =>
+  mapAsset(await service.get<BackendAssetDto>(`/assets/${id}`, undefined, { silent: true }));

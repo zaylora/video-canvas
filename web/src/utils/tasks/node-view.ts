@@ -16,9 +16,42 @@ export function normalizeProgress(progress: number | null | undefined): number |
   return Math.min(100, Math.max(0, Math.round(progress)));
 }
 
+/** 任务还没结束时的展示阶段：排队中 / 生成中 / 即将完成（转存） */
+export type PendingPhase =
+  | { phase: "queued" }
+  | { phase: "running"; elapsedMs: number | null; progress: number | null }
+  | { phase: "finalizing" };
+
+/**
+ * 任务快照 -> 还没结束时的展示阶段，画布节点和首页对话的结果格子共用这一套说法（设计 6.3 节的表）。
+ * 排队中 = 还没调用上游（pending）；生成中 = 已提交给上游（queued / running），耗时从提交那一刻起算；
+ * 其余（转存中，以及终态但还没被回填的一瞬间）= 即将完成。
+ * @param task 任务快照
+ * @param now 当前时间（毫秒），算已耗时用
+ * @returns 展示阶段
+ */
+export function derivePendingPhase(task: TaskView, now: number): PendingPhase {
+  switch (task.status) {
+    // 排队中：任务还没提交给上游，在等我们这边的执行名额 / 渠道并发限制，此时没有调用上游
+    case "pending":
+      return { phase: "queued" };
+    // 生成中：已经调用上游。上游内部是在排队还是在出图，用户不需要分清，都显示生成中
+    case "queued":
+    case "running": {
+      const started = Date.parse(task.submitted_at ?? task.created_at);
+      return {
+        phase: "running",
+        elapsedMs: Number.isNaN(started) ? null : Math.max(0, now - started),
+        progress: normalizeProgress(task.progress),
+      };
+    }
+    default:
+      return { phase: "finalizing" };
+  }
+}
+
 /**
  * 节点数据 + 任务快照 -> 视频节点的展示状态（设计 6.3 节的表）。
- * 排队中 = 还没调用上游（pending）；生成中 = 已提交给上游（queued / running），耗时从提交那一刻起算。
  * 「提交中」是点击到 202 之间的本地瞬态，不在这里，由生成按钮的 loading 表达。
  */
 export function deriveVideoNodeView(
@@ -27,27 +60,9 @@ export function deriveVideoNodeView(
   now: number,
 ): VideoNodeView {
   switch (data.status) {
-    case "running": {
+    case "running":
       if (!task) return { phase: "running", elapsedMs: null, progress: null };
-      switch (task.status) {
-        // 排队中：任务还没提交给上游，在等我们这边的执行名额 / 渠道并发限制，此时没有调用上游
-        case "pending":
-          return { phase: "queued" };
-        // 生成中：已经调用上游。上游内部是在排队还是在出图，用户不需要分清，都显示生成中
-        case "queued":
-        case "running": {
-          const started = Date.parse(task.submitted_at ?? task.created_at);
-          return {
-            phase: "running",
-            elapsedMs: Number.isNaN(started) ? null : Math.max(0, now - started),
-            progress: normalizeProgress(task.progress),
-          };
-        }
-        // 转存中；终态但节点还没被回填的一瞬间，也显示「即将完成」
-        default:
-          return { phase: "finalizing" };
-      }
-    }
+      return derivePendingPhase(task, now);
     case "error":
       return {
         phase: "failed",

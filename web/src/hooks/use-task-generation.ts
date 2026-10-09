@@ -2,17 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useParams } from "react-router";
 
-import { cancelGenerationTask, createGenerationTask } from "@/api/generation-task";
-import { handleTaskView } from "@/utils/ws/task-events";
 import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
-import { useCreditsStore } from "@/store/credits";
 import type { CanvasEdge, CanvasNode } from "@/types";
 import { duplicateNode } from "@/utils/canvas/duplicate";
 import { releaseObjectUrl } from "@/utils/canvas/media";
+import { cancelTasks, submitCanvasTasks } from "@/utils/tasks/gateway";
 import {
   buildSubmittedPatch,
   describeSubmitError,
-  submitWithRetry,
   type SubmitErrorInfo,
 } from "@/utils/tasks/submit";
 
@@ -92,24 +89,16 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       const nodeIds = fanOut(Math.max(1, args.count ?? 1));
       const multiple = nodeIds.length > 1;
       if (multiple) updateNodeData(nodeId, { status: "running", taskId: undefined, error: null });
-      // 每次点击一个新 key；submitWithRetry 内部的重试沿用它
-      const idempotencyKey = crypto.randomUUID();
       try {
-        const { items } = await submitWithRetry(
-          (key) =>
-            createGenerationTask(
-              {
-                kind: REMOTE_KIND_OF_NODE[nodeKind],
-                model_id: args.modelKey,
-                canvas_id: canvasId,
-                node_id: nodeId,
-                node_ids: nodeIds,
-                input: args.input,
-              },
-              key,
-            ),
-          idempotencyKey,
-        );
+        // 幂等键、重试、快照入库、刷新余额都在统一入口里（utils/tasks/gateway.ts）
+        const items = await submitCanvasTasks({
+          kind: REMOTE_KIND_OF_NODE[nodeKind],
+          model_id: args.modelKey,
+          canvas_id: canvasId,
+          node_id: nodeId,
+          node_ids: nodeIds,
+          input: args.input,
+        });
         let own: SubmitErrorInfo | null = null;
         for (const [index, id] of nodeIds.entries()) {
           const item = items.find((entry) => entry.node_id === id) ?? items[index];
@@ -122,7 +111,6 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
                 taskId: item.task.id,
               });
             }
-            handleTaskView(item.task, "reconcile");
             if (id === nodeId) releaseObjectUrl(args.currentSrc);
             const taskId = String(item.task.id);
             updateNodeData(id, (node) => buildSubmittedPatch(nodeKind, taskId, node.data));
@@ -132,7 +120,6 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
           markFailed(id, info.message, multiple);
           if (id === nodeId) own = info;
         }
-        void useCreditsStore.getState().refresh();
         return own ? { ok: false, error: own } : { ok: true };
       } catch (error) {
         // 请求本身失败（未登录、参数不合法、网络…）：每个节点都显示这条错误，节点保留
@@ -152,11 +139,7 @@ export function useTaskGeneration(nodeId: string, nodeKind: TaskNodeKind) {
       if (cancelling) return;
       setCancelling(true);
       try {
-        const view = await cancelGenerationTask(taskId);
-        // 后端可能直接回最新快照；没有的话等 WebSocket / 对账推终态
-        if (view && typeof view === "object" && "id" in view) {
-          handleTaskView(view, "reconcile");
-        }
+        await cancelTasks([taskId]);
       } finally {
         setCancelling(false);
       }

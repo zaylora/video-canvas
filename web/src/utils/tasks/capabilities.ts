@@ -4,6 +4,7 @@ import type {
   ParamField,
   ParamOption,
   RefKind,
+  RefSpec,
 } from "@/api/model/type";
 import type { CanvasNodeData, NodeKind } from "@/types";
 import { findPreset } from "@/constants/presets";
@@ -228,6 +229,54 @@ export function opToAcceptSource(
   const ops = caps.ops ?? [];
   const accepting = ops.filter((item) => acceptsSourceKind(caps, item, sourceKind));
   return accepting.includes("omni") ? "omni" : accepting[0];
+}
+
+/** 文件属于哪种参考素材：按 MIME 前缀判断，不是图片 / 视频 / 音频返回 null */
+export function refKindOfFile(file: { type: string }): RefKind | null {
+  return REF_KEYS.find((ref) => file.type.startsWith(`${ref.kind}/`))?.kind ?? null;
+}
+
+/**
+ * 模型能接收哪些种类的参考素材：这种素材在 refs 里开着，并且至少有一种生成方式收它。
+ * 当前生成方式暂时不收的（比如「文生视频」不收图片）也算——加进来时会像画布连线一样自动切到收它的方式。
+ * 画布的素材口、首页输入卡片的上传入口共用它。
+ */
+export function acceptableRefKinds(caps: Capabilities | undefined): RefKind[] {
+  if (!caps) return [];
+  const ops = caps.ops ?? [];
+  return REF_KEYS.map((ref) => ref.kind).filter(
+    (kind) =>
+      caps.refs?.[kind]?.on &&
+      ops.some((op) => refKindsOf(caps, refPanelOp(caps, op)).includes(kind)),
+  );
+}
+
+/** 某种参考素材最多几个；模型不收这种素材为 0 */
+export const refMax = (caps: Capabilities | undefined, kind: RefKind): number =>
+  caps?.refs?.[kind]?.on ? caps.refs[kind].max : 0;
+
+/**
+ * 上传一个参考素材前的校验：模型收不收这种素材、这种素材是不是已经满了、单个文件会不会太大。
+ * 画布的参考素材卡和首页输入卡片共用，文案一致。
+ * @param spec 这种素材在模型能力里的配置（caps.refs[kind]）；模型清单还没到为 undefined
+ * @param kind 素材种类
+ * @param file 要上传的文件（只看大小）
+ * @param used 这种素材已经用了几个（连线的、手动添加的、已经放进输入卡片的都算）
+ * @returns 不能上传的原因；可以上传为 null
+ */
+export function refUploadError(
+  spec: RefSpec | undefined,
+  kind: RefKind,
+  file: { size: number },
+  used: number,
+): string | null {
+  const label = REF_KEYS.find((ref) => ref.kind === kind)?.label ?? "参考素材";
+  const max = spec?.on ? spec.max : 0;
+  if (max <= 0) return `当前模型不支持${label}`;
+  if (used >= max) return `${label}最多 ${max} 个`;
+  const maxMb = spec?.max_mb ?? 0;
+  if (maxMb > 0 && file.size > maxMb * 1024 * 1024) return `单个${label}不能超过 ${maxMb} MB`;
+  return null;
 }
 
 /** 提示词兼容：旧节点只有 data.prompt，新节点提示词放 params.prompt */
