@@ -3,11 +3,11 @@ import {
   Film,
   HardDrive,
   ImageDown,
+  Lightbulb,
   Mail,
   LayoutDashboard,
   Puzzle,
   RadioTower,
-  Sparkles,
   UserPlus,
   Users,
   type LucideIcon,
@@ -36,7 +36,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
   },
   {
     label: "Agent",
-    items: [{ to: "agent/skills", label: "技能", icon: Sparkles }],
+    items: [{ to: "agent/skills", label: "技能", icon: Lightbulb }],
   },
   {
     label: "用户",

@@ -1,4 +1,4 @@
-import { Download, Sparkles } from "lucide-react";
+import { Download, Lightbulb } from "lucide-react";
 import { MotionConfig, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
@@ -276,7 +276,7 @@ function DialogBody({
       <DialogHeader className="gap-0 p-0 pr-12">
         <div className="flex items-center gap-3 px-5 pt-4 pb-3">
           <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg border">
-            <Sparkles className="size-[18px]" />
+            <Lightbulb className="size-[18px]" />
           </span>
           <div className="min-w-0 flex-1">
             <DialogTitle className="truncate text-lg font-semibold">{item.title}</DialogTitle>

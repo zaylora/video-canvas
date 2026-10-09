@@ -1,4 +1,4 @@
-import { Sparkles, Upload } from "lucide-react";
+import { Lightbulb, Upload } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
 
 import type { SkillItem } from "@/api/admin/agent-skill/type.d";
@@ -80,7 +80,7 @@ function NameCell({ item }: { item: SkillItem }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <span className="bg-muted text-muted-foreground grid size-8 shrink-0 place-items-center rounded-lg border">
-        <Sparkles className="size-4" />
+        <Lightbulb className="size-4" />
       </span>
       <span className="grid min-w-0">
         <span className="truncate font-medium">{item.title}</span>

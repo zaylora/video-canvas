@@ -6,7 +6,7 @@ import {
   Image as ImageIcon,
   Music,
   Paperclip,
-  Sparkles,
+  Lightbulb,
 } from "lucide-react";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
@@ -76,7 +76,7 @@ const KIND_ICON = {
 function ChipView({ node }: NodeViewProps) {
   const type = (node.attrs.ctype as ChipType) ?? "node";
   const Icon =
-    type === "model" ? Box : type === "skill" ? Sparkles : type === "asset" ? Paperclip : FileText;
+    type === "model" ? Box : type === "skill" ? Lightbulb : type === "asset" ? Paperclip : FileText;
   return (
     <NodeViewWrapper as="span" className="inline-block align-baseline">
       <span
@@ -339,7 +339,7 @@ export function AgentEditor({
         width={300}
         items={skillItems.map((k) => ({
           key: k.name,
-          icon: Sparkles,
+          icon: Lightbulb,
           title: k.title,
           hint: k.description,
         }))}

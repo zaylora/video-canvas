@@ -2,13 +2,13 @@ import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
 import {
+  Clapperboard,
   Compass,
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
   Settings2,
   ShieldCheck,
-  Sparkles,
   User,
   Workflow,
 } from "lucide-react";
@@ -57,7 +57,7 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
-  { label: "创作", icon: Sparkles, to: "/" },
+  { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
 ];
