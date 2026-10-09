@@ -205,7 +205,7 @@ export const Flow = memo(function Flow({
     onSaved: (graph, version) => agentSyncRef.current?.saved(graph, version),
   });
   const overlayGate = useOverlayGate(getNodes);
-  const { pruneOnChange } = overlayGate;
+  const { pruneOnChange, onNodeClick: onGateNodeClick } = overlayGate;
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
       pruneOnChange(changes);
@@ -356,6 +356,15 @@ export const Flow = memo(function Flow({
   const groupOps = useGroupOps(groupUi);
   const groupDrag = useGroupDrag(groupUi);
   const { setMenuId, setRenamingId } = groupUi;
+  /** 会一路传到每个 NodeWrapper，要保持引用稳定，否则每次重渲染 200 个节点外壳的 memo 都失效 */
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: FlowNode) => {
+      onGateNodeClick(event, node);
+      // 点一下组才弹它的工具条，点别的节点则收起
+      setMenuId(isGroupNode(node) ? node.id : null);
+    },
+    [onGateNodeClick, setMenuId],
+  );
   const { groupSelected, ungroupById, selectedGroupId } = groupOps;
   const groupShortcuts = useMemo(
     () => ({
@@ -689,11 +698,7 @@ export const Flow = memo(function Flow({
                     }}
                     onNodeDrag={groupDrag.onNodeDrag}
                     onNodeDragStop={groupDrag.onNodeDragStop}
-                    onNodeClick={(event, node) => {
-                      overlayGate.onNodeClick(event, node);
-                      // 点一下组才弹它的工具条，点别的节点则收起
-                      setMenuId(isGroupNode(node) ? node.id : null);
-                    }}
+                    onNodeClick={onNodeClick}
                     onBeforeDelete={onBeforeDelete}
                     onConnect={onConnect}
                     isValidConnection={isValidConnection}
