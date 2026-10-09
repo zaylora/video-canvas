@@ -14,11 +14,16 @@ import {
 } from "lucide-react";
 
 import { NavUser } from "@/components/admin-ui/nav-user";
-import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/canvas/chrome/chrome";
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
 import { ListItem, ListSection } from "@/components/home/sidebar-list";
+import {
+  NAV_ITEM_CLASS,
+  NAV_LINK_CLASS,
+  NavActiveHighlight,
+  SidebarBrand,
+} from "@/components/home/sidebar-nav";
 import { SoonTip } from "@/components/home/soon";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -35,8 +40,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
-import { SPRING, TAP } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import { TAP } from "@/lib/motion";
 import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
 import { useAdminStore } from "@/store/admin";
 import { useMeStore } from "@/store/me";
@@ -61,24 +65,6 @@ const NAV: NavItem[] = [
 /** 每个分组最多列几项 */
 const LIST_LIMIT = 6;
 
-/**
- * 菜单按钮统一高度 40px，收起后是 40px 见方的图标按钮。
- * overflow-visible：选中块用 layoutId 在项之间滑动，被按钮自带的 overflow-hidden 裁掉就成了“跳”过去
- */
-const ITEM_CLASS =
-  "h-10 gap-3 overflow-visible rounded-[10px] px-2.5 text-muted-foreground hover:bg-chrome-hover hover:text-foreground data-active:bg-transparent data-active:font-semibold data-active:text-foreground group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&>span:last-child]:hidden [&_svg]:size-[18px]!";
-
-/** 当前页的灰块 + 左侧竖条，用 layoutId 在菜单项之间滑动 */
-function ActiveHighlight() {
-  return (
-    <motion.span
-      layoutId="home-nav-active"
-      transition={SPRING}
-      className="bg-muted before:bg-foreground absolute inset-0 -z-10 rounded-[10px] before:absolute before:top-2.5 before:bottom-2.5 before:-left-2 before:w-[3px] before:rounded-r-full"
-    />
-  );
-}
-
 /** 一项导航：能用的是链接，没上线的禁用并提示「即将上线」 */
 function NavButton({ item, active }: { item: NavItem; active: boolean }) {
   const { setOpenMobile } = useSidebar();
@@ -92,7 +78,7 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
   if (!item.to) {
     return (
       <SoonTip side="right" className="block cursor-not-allowed">
-        <SidebarMenuButton disabled className={ITEM_CLASS}>
+        <SidebarMenuButton disabled className={NAV_ITEM_CLASS}>
           {content}
         </SidebarMenuButton>
       </SoonTip>
@@ -102,10 +88,10 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
     <SidebarMenuButton
       isActive={active}
       tooltip={item.label}
-      className={cn(ITEM_CLASS, "relative isolate")}
+      className={NAV_LINK_CLASS}
       render={<Link to={item.to} onClick={() => setOpenMobile(false)} />}
     >
-      {active && <ActiveHighlight />}
+      {active && <NavActiveHighlight layoutId="home-nav-active" />}
       {content}
     </SidebarMenuButton>
   );
@@ -165,14 +151,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="gap-3 px-2 pt-3">
         <div className="flex h-9 items-center justify-between gap-2 pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-3 group-data-[collapsible=icon]:pl-0">
-          <Link
-            to="/"
-            aria-label="连镜"
-            className="focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-md text-[15px] font-semibold tracking-wide outline-none focus-visible:ring-3"
-          >
-            <Logo size={24} />
-            <span className="truncate group-data-[collapsible=icon]:hidden">连镜</span>
-          </Link>
+          <SidebarBrand to="/" />
           <CollapseButton />
         </div>
       </SidebarHeader>
@@ -227,7 +206,7 @@ export function AppSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 tooltip="AI 配置"
-                className={ITEM_CLASS}
+                className={NAV_ITEM_CLASS}
                 render={<Link to="/admin/ai" />}
               >
                 <Settings2 />

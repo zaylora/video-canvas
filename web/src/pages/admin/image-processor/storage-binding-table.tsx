@@ -27,7 +27,7 @@ import { storageLocation } from "@/utils/admin/storage-rules";
  * @param processors 处理服务列表
  * @param presets 厂商预设
  * @param canWrite 是否有写权限；没有则不渲染启用按钮
- * @param onEnable 启用：用这套存储和推荐的厂商打开新建抽屉
+ * @param onEnable 启用：用这套存储和推荐的厂商打开新建弹窗
  */
 export function StorageBindingTable({
   storages,

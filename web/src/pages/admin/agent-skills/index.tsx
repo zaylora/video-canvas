@@ -19,7 +19,7 @@ import { filterSkillItems, importedMessage, type SkillListFilter } from "@/utils
 import { DropOverlay } from "./drop-overlay";
 import { getFilesFromEvent, toPicked } from "./drop-files";
 import { ImportDialog } from "./import-dialog";
-import { SkillSheet } from "./skill-sheet";
+import { SkillDialog } from "./skill-dialog";
 import { SkillTable } from "./skill-table";
 import { useAgentSkills } from "./use-agent-skills";
 import { useSkillImport, type ImportedResult } from "./use-skill-import";
@@ -32,7 +32,7 @@ const FILTERS: { id: SkillListFilter; label: string }[] = [
 ];
 
 /**
- * Agent 技能管理页：列表 + 工具栏 + 右侧详情抽屉 + 居中导入对话框。
+ * Agent 技能管理页：列表 + 工具栏 + 详情弹窗 + 居中导入对话框。
  * 页面根节点是 react-dropzone 的拖放区（noClick），文件拖到页面任意位置都会打开导入对话框并直接上传；
  * 对话框开着时由第 1 步的拖放区高亮。按 / 聚焦搜索。
  */
@@ -163,7 +163,7 @@ export default function AgentSkillsPage() {
           )}
         </main>
 
-        <SkillSheet name={openName} api={api} onClose={() => setOpenName(null)} />
+        <SkillDialog name={openName} api={api} onClose={() => setOpenName(null)} />
         <ImportDialog
           open={dialogOpen}
           importer={importer}

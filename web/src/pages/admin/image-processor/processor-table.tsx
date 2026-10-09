@@ -1,4 +1,4 @@
-import { FlaskConical, Pause, Pencil, Trash2, Undo2 } from "lucide-react";
+import { FlaskConical, Pause, Trash2, Undo2 } from "lucide-react";
 
 import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
 import { Tag } from "@/components/admin-ui/tag";
@@ -11,15 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { isOwnStorageVendor, processorActions, trialSummary } from "@/utils/admin/image-processor";
 
 import { ProcessorStatusTags } from "./processor-status";
 
 /** 一行上的操作回调 */
 export type ProcessorRowActions = {
-  /** 打开抽屉：有写权限是编辑（已发布的编辑产生草稿），否则只读查看 */
+  /** 点击行打开弹窗：有写权限是编辑（已发布的编辑产生草稿），否则只读查看 */
   onOpen: (processor: ProcessorView) => void;
-  /** 打开抽屉并直接进入“校验与发布”一步 */
+  /** 打开弹窗并直接进入“校验与发布”一步 */
   onVerify: (processor: ProcessorView) => void;
   /** 回滚（弹确认框） */
   onRollback: (processor: ProcessorView) => void;
@@ -30,7 +31,8 @@ export type ProcessorRowActions = {
 };
 
 /**
- * 处理服务列表。按钮是否出现由 processorActions 按状态与权限决定：
+ * 处理服务列表。点击行（或聚焦后按 Enter）打开弹窗：super_admin 编辑，admin 只读查看；
+ * 操作列按钮是否出现由 processorActions 按状态与权限决定，admin 没有操作列：
  * 回滚要有上一个版本，停用只对已发布的，删除只对草稿 / 已停用的。
  * @param processors 处理服务列表
  * @param presets 厂商预设（取厂商显示名）
@@ -58,7 +60,7 @@ export function ProcessorTable({
             <TableHead>绑定存储</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>最近试跑</TableHead>
-            <TableHead className="px-4 text-right">操作</TableHead>
+            {canWrite && <TableHead className="px-4 text-right">操作</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -92,9 +94,23 @@ function ProcessorRow({
 }) {
   const can = processorActions(processor, canWrite);
   const trial = trialSummary(processor.check);
-  const published = processor.status === "published";
+  /** 操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
+  const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
   return (
-    <TableRow data-processor-id={processor.id} className="align-top">
+    <TableRow
+      data-processor-id={processor.id}
+      tabIndex={0}
+      aria-label={`${canWrite ? "编辑" : "查看"} ${processor.name}`}
+      className={cn(
+        "cursor-pointer align-top",
+        "focus-visible:ring-ring/50 outline-none focus-visible:ring-2 focus-visible:ring-inset",
+      )}
+      onClick={() => actions.onOpen(processor)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && event.target === event.currentTarget)
+          actions.onOpen(processor);
+      }}
+    >
       <TableCell className="px-4 py-3 whitespace-normal">
         <div className="font-medium">{processor.name}</div>
         <div className="text-muted-foreground text-[11px] tabular-nums">
@@ -120,78 +136,56 @@ function ProcessorRow({
           <span className="text-muted-foreground">未试跑</span>
         )}
       </TableCell>
-      <TableCell className="px-4 py-3">
-        <div className="flex flex-wrap items-center justify-end gap-1">
-          {canWrite ? (
-            <>
-              {can.edit && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`编辑 ${processor.name}`}
-                  onClick={() => actions.onOpen(processor)}
-                >
-                  <Pencil />
-                  {published ? "编辑（新草稿）" : "编辑"}
-                </Button>
-              )}
-              {can.verify && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`校验或发布 ${processor.name}`}
-                  onClick={() => actions.onVerify(processor)}
-                >
-                  <FlaskConical />
-                  校验 / 发布
-                </Button>
-              )}
-              {can.rollback && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`回滚 ${processor.name}`}
-                  onClick={() => actions.onRollback(processor)}
-                >
-                  <Undo2 />
-                  回滚
-                </Button>
-              )}
-              {can.disable && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`停用 ${processor.name}`}
-                  onClick={() => actions.onDisable(processor)}
-                >
-                  <Pause />
-                  停用
-                </Button>
-              )}
-              {can.remove && (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-destructive hover:text-destructive"
-                  aria-label={`删除 ${processor.name}`}
-                  onClick={() => actions.onDelete(processor)}
-                >
-                  <Trash2 />
-                </Button>
-              )}
-            </>
-          ) : (
-            <Button
-              variant="ghost"
-              size="xs"
-              aria-label={`查看 ${processor.name}`}
-              onClick={() => actions.onOpen(processor)}
-            >
-              查看
-            </Button>
-          )}
-        </div>
-      </TableCell>
+      {canWrite && (
+        <TableCell className="px-4 py-3" {...stop}>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            {can.verify && (
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-label={`校验或发布 ${processor.name}`}
+                onClick={() => actions.onVerify(processor)}
+              >
+                <FlaskConical />
+                校验 / 发布
+              </Button>
+            )}
+            {can.rollback && (
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-label={`回滚 ${processor.name}`}
+                onClick={() => actions.onRollback(processor)}
+              >
+                <Undo2 />
+                回滚
+              </Button>
+            )}
+            {can.disable && (
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-label={`停用 ${processor.name}`}
+                onClick={() => actions.onDisable(processor)}
+              >
+                <Pause />
+                停用
+              </Button>
+            )}
+            {can.remove && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-destructive hover:text-destructive"
+                aria-label={`删除 ${processor.name}`}
+                onClick={() => actions.onDelete(processor)}
+              >
+                <Trash2 />
+              </Button>
+            )}
+          </div>
+        </TableCell>
+      )}
     </TableRow>
   );
 }

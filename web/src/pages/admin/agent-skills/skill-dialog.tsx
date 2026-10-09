@@ -24,12 +24,12 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { EmptyState, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -43,10 +43,10 @@ import { SkillOverview } from "./skill-overview";
 import type { AgentSkillsApi } from "./use-agent-skills";
 import { VersionTimeline } from "./version-timeline";
 
-/** 详情抽屉的页签 */
-type SheetTab = "overview" | "files" | "versions";
+/** 详情弹窗的页签 */
+type DialogTab = "overview" | "files" | "versions";
 
-const TABS: { id: SheetTab; label: string }[] = [
+const TABS: { id: DialogTab; label: string }[] = [
   { id: "overview", label: "概览" },
   { id: "files", label: "文件" },
   { id: "versions", label: "版本" },
@@ -78,13 +78,13 @@ function builtinFiles(body: string): SkillFile[] {
 }
 
 /**
- * 详情抽屉（右侧，宽 min(960px, 100%)）：概览 / 文件 / 版本三个页签，下划线滑块用 layoutId + SPRING。
+ * 详情弹窗（居中，宽 min(64rem, 100%)）：概览 / 文件 / 版本三个页签，下划线滑块用 layoutId + SPRING。
  * 技能本身（开关、显示名、版本号）以列表里的最新视图为准；版本列表和各版本的文件按需请求并缓存。
  * @param name 打开的技能名；为空表示关闭
  * @param api 列表与启停（use-agent-skills）
  * @param onClose 请求关闭
  */
-export function SkillSheet({
+export function SkillDialog({
   name,
   api,
   onClose,
@@ -96,15 +96,15 @@ export function SkillSheet({
   const shown = useRetained(name);
   const item = shown ? api.items.find((s) => s.name === shown) : undefined;
   return (
-    <Sheet open={!!name} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="w-full gap-0 data-[side=right]:sm:max-w-[960px]">
-        {item && <SheetBody key={item.name} item={item} api={api} onClose={onClose} />}
-      </SheetContent>
-    </Sheet>
+    <Dialog open={!!name} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="flex h-[min(90svh,880px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        {item && <DialogBody key={item.name} item={item} api={api} onClose={onClose} />}
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function SheetBody({
+function DialogBody({
   item,
   api,
   onClose,
@@ -114,7 +114,7 @@ function SheetBody({
   onClose: () => void;
 }) {
   const { name } = item;
-  const [tab, setTab] = useState<SheetTab>("overview");
+  const [tab, setTab] = useState<DialogTab>("overview");
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [detailFailed, setDetailFailed] = useState(false);
   const [busyVersion, setBusyVersion] = useState<number | null>(null);
@@ -273,14 +273,16 @@ function SheetBody({
 
   return (
     <MotionConfig reducedMotion="user">
-      <SheetHeader className="gap-0 p-0 pr-12">
+      <DialogHeader className="gap-0 p-0 pr-12">
         <div className="flex items-center gap-3 px-5 pt-4 pb-3">
           <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg border">
             <Sparkles className="size-[18px]" />
           </span>
           <div className="min-w-0 flex-1">
-            <SheetTitle className="truncate text-base">{item.title}</SheetTitle>
-            <SheetDescription className="truncate font-mono text-xs">{item.name}</SheetDescription>
+            <DialogTitle className="truncate text-base">{item.title}</DialogTitle>
+            <DialogDescription className="truncate font-mono text-xs">
+              {item.name}
+            </DialogDescription>
           </div>
           {item.readonly ? (
             <Tag>内置</Tag>
@@ -315,7 +317,7 @@ function SheetBody({
                 {t.label}
                 {selected && (
                   <motion.span
-                    layoutId="skill-sheet-tab"
+                    layoutId="skill-dialog-tab"
                     transition={SPRING}
                     className="bg-primary absolute inset-x-0 -bottom-px h-0.5"
                   />
@@ -324,7 +326,7 @@ function SheetBody({
             );
           })}
         </div>
-      </SheetHeader>
+      </DialogHeader>
 
       <motion.div
         key={tab}

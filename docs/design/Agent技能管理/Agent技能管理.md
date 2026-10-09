@@ -461,7 +461,7 @@
 | `…/import-dialog.tsx`、`import-pick.tsx` | 导入对话框、第 1 步 |
 | `…/precheck-banner.tsx` | 第 2 步横幅 |
 | `…/file-workbench.tsx` | 文件树 + 问题列表 + 预览（导入与详情共用） |
-| `…/skill-sheet.tsx`、`version-timeline.tsx` | 详情抽屉、版本时间线 |
+| `…/skill-dialog.tsx`、`version-timeline.tsx` | 详情抽屉、版本时间线 |
 | `…/use-skill-import.ts`、`use-agent-skills.ts` | 导入状态机（选择 → 上传 → 检查 → 确认）、列表与启停 |
 | `web/src/api/admin/agent-skill/index.ts`、`type.d.ts` | 请求与类型（按 `web/docs/coding-standards.md` 写 JSDoc） |
 | `web/src/utils/admin/agent-skill.ts` | 文件类型标签、问题排序、大小格式化等纯函数 |
@@ -617,7 +617,7 @@
 ### 8.4 前端落点（提案）
 
 - `web/src/api/admin/agent-skill/`：请求与类型。
-- `web/src/pages/admin/agent-skills/`：`index.tsx`、`skill-table.tsx`、`drop-overlay.tsx`（全页拖放提示）、`import-dialog.tsx`（两步，居中大对话框）、`import-pick.tsx`（第 1 步）、`precheck-banner.tsx`、`file-workbench.tsx`（文件树 + 预览 + 问题，导入和详情共用）、`skill-sheet.tsx`（概览 / 文件 / 版本）、`version-timeline.tsx`、`use-skill-import.ts`（导入状态机）、`use-agent-skills.ts`。完整清单与组件复用见 §6.8.7。组件用 `components/admin-ui`；后台需要的新行为写进 `admin-ui`，不改共享 `components/ui`。
+- `web/src/pages/admin/agent-skills/`：`index.tsx`、`skill-table.tsx`、`drop-overlay.tsx`（全页拖放提示）、`import-dialog.tsx`（两步，居中大对话框）、`import-pick.tsx`（第 1 步）、`precheck-banner.tsx`、`file-workbench.tsx`（文件树 + 预览 + 问题，导入和详情共用）、`skill-dialog.tsx`（概览 / 文件 / 版本）、`version-timeline.tsx`、`use-skill-import.ts`（导入状态机）、`use-agent-skills.ts`。完整清单与组件复用见 §6.8.7。组件用 `components/admin-ui`；后台需要的新行为写进 `admin-ui`，不改共享 `components/ui`。
 - `admin-nav.ts` 新增分组；`constants/agent-skills.ts` 的常量改成接口读取，删掉与后端的「同名对照」测试，换成接口契约测试。
 - 测试放 `web/src/tests/`、`backend/internal/tests/`，先写失败测试（项目约定）。预检规则做表驱动测试，覆盖 §6.7 每个代码。
 

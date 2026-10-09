@@ -14,7 +14,7 @@ import type { Actor } from "@/utils/admin/user-rules";
 import { BulkBar } from "./bulk-bar";
 import { useUserActions } from "./use-user-actions";
 import { useUserDetail, useUsers, type RoleFilter, type StatusFilter } from "./use-users";
-import { UserSheet } from "./user-sheet";
+import { UserDialog } from "./user-dialog";
 import { UserTable } from "./user-table";
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
@@ -55,9 +55,9 @@ const isTyping = (target: EventTarget | null) => {
 };
 
 /**
- * 用户管理页：表格 + 右侧详情抽屉（带遮罩，点遮罩关闭）+ 勾选后的批量条。
+ * 用户管理页：表格 + 详情弹窗（带遮罩，点遮罩关闭）+ 勾选后的批量条。
  * q / status / role / page / user / tab 都在 URL 里。
- * 快捷键：/ 聚焦搜索；抽屉打开时 ↑ ↓ / K J 切换用户；Esc 按层级依次关闭（浮层 → 勾选 → 抽屉）。
+ * 快捷键：/ 聚焦搜索；弹窗打开时 ↑ ↓ / K J 切换用户；Esc 按层级依次关闭（浮层 → 勾选 → 弹窗）。
  * 请求失败的全局 toast 由拦截器弹，这里不重复。
  */
 export default function UsersPage() {
@@ -68,7 +68,7 @@ export default function UsersPage() {
 
   const { userId, items, page } = list;
   const detail = useUserDetail(userId);
-  /** 对某个用户做完写操作加一，抽屉页签里的列表据此重新拉取 */
+  /** 对某个用户做完写操作加一，弹窗页签里的列表据此重新拉取 */
   const [mutated, setMutated] = useState(0);
 
   const { patchItem, reload } = list;
@@ -142,7 +142,7 @@ export default function UsersPage() {
     lastChecked.current = null;
   }, []);
 
-  // ---------------------------------------------------------------- 抽屉：打开 / 关闭 / 上一个下一个
+  // ---------------------------------------------------------------- 弹窗：打开 / 关闭 / 上一个下一个
   const index = userId === null ? -1 : pageIds.indexOf(userId);
   const totalPages = Math.max(1, Math.ceil(list.total / list.pageSize));
   const canPrev = index > 0 || (index === 0 && page > 1);
@@ -178,7 +178,7 @@ export default function UsersPage() {
     [index, pageIds, openUser, page, totalPages, stepToPage],
   );
 
-  const closeSheet = useCallback(() => {
+  const closeDialog = useCallback(() => {
     const id = userId;
     closeUser();
     // 关闭后焦点回到原来那一行
@@ -189,11 +189,11 @@ export default function UsersPage() {
 
   // ---------------------------------------------------------------- 快捷键
   /** 用 ref 拿最新值：监听器只绑一次，不用每次渲染重绑 */
-  const keys = useRef({ step, closeSheet, clearSelection, selectedCount: 0, userId });
+  const keys = useRef({ step, closeDialog, clearSelection, selectedCount: 0, userId });
   useEffect(() => {
     keys.current = {
       step,
-      closeSheet,
+      closeDialog,
       clearSelection,
       selectedCount: selectedUsers.length,
       userId,
@@ -210,7 +210,7 @@ export default function UsersPage() {
           return;
         }
         if (k.selectedCount > 0) k.clearSelection();
-        else if (k.userId !== null) k.closeSheet();
+        else if (k.userId !== null) k.closeDialog();
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -346,7 +346,7 @@ export default function UsersPage() {
         </main>
       </div>
 
-      <UserSheet
+      <UserDialog
         userId={userId}
         order={pageIds}
         listItem={listItem}
@@ -360,7 +360,7 @@ export default function UsersPage() {
         canNext={canNext}
         onStep={step}
         onTabChange={list.setTab}
-        onClose={closeSheet}
+        onClose={closeDialog}
         onRetry={reloadDetail}
       />
 

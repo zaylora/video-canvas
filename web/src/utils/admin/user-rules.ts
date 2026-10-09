@@ -213,7 +213,7 @@ export type ConcurrencyView = {
   ratio: number;
 };
 
-/** 并发列与抽屉摘要的展示数据 */
+/** 并发列与弹窗摘要的展示数据 */
 export function concurrencyView(
   user: Pick<UserListItem, "active_tasks" | "effective_max_active_tasks" | "max_active_tasks">,
 ): ConcurrencyView {
@@ -419,7 +419,7 @@ export function auditNote(detail: unknown): string {
 const USER_NOT_FOUND_CODE = 20001;
 
 /**
- * 是不是「用户不存在」：404 或业务码 20001。URL 里带了已被删除的 ?user= 时，抽屉据此显示就地提示
+ * 是不是「用户不存在」：404 或业务码 20001。URL 里带了已被删除的 ?user= 时，弹窗据此显示就地提示
  * @param error 请求抛出的错误
  */
 export function isUserNotFound(error: unknown): boolean {

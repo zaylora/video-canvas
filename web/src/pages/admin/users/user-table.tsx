@@ -1,4 +1,4 @@
-import { Ban, Diff, RotateCw, SearchX } from "lucide-react";
+import { Ban, CircleCheck, Diff, Gauge, Loader2, RotateCw, SearchX } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
@@ -18,6 +18,7 @@ import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -96,7 +97,7 @@ function UserTable({
   items: UserListItem[];
   state: ListState;
   refreshing: boolean;
-  /** 抽屉里正打开的用户，行上显示竖条 */
+  /** 弹窗里正打开的用户，行上显示竖条 */
   currentId: number | null;
   actor: Actor | null;
   actions: UserActions;
@@ -186,7 +187,7 @@ function UserTable({
             >
               最近活跃
             </TableHead>
-            <TableHead className="bg-muted/40 w-12" />
+            <TableHead className="bg-muted/40 w-28" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -269,12 +270,14 @@ function UserRow({
 }) {
   const [creditOpen, setCreditOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
-  const menuRef = useRef<HTMLButtonElement>(null);
   /** 记录按下勾选框那一刻 Shift 有没有按着：onCheckedChange 里拿不到修饰键 */
   const shiftRef = useRef(false);
   const disabled = user.status === "disabled";
   const checked = selection.selected.has(user.id);
   const creditDeny = denyReason(actor, user, "credit");
+  const limitDeny = denyReason(actor, user, "limit");
+  const banDeny = denyReason(actor, user, "ban");
+  const statusBusy = actions.isBusy(user.id, "status");
   const conc = concurrencyView(user);
   const self = actor?.id === user.id;
 
@@ -282,7 +285,7 @@ function UserRow({
     if (event.key === "Enter" && event.target === event.currentTarget) onOpen(user.id);
   };
 
-  /** 积分格、勾选框、操作列里的点击不该打开抽屉；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
+  /** 积分格、勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
   const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
 
   return (
@@ -376,25 +379,68 @@ function UserRow({
       <TableCell className={cn("text-muted-foreground text-xs", WIDE_ONLY)}>
         <span title={formatAbsolute(user.last_login_at)}>{formatRelative(user.last_login_at)}</span>
       </TableCell>
-      <TableCell className="w-12" {...stop}>
-        <UserRowMenu
-          user={user}
-          actor={actor}
-          actions={actions}
-          triggerRef={menuRef}
-          onOpen={() => onOpen(user.id)}
-          onAdjustLimit={() => requestAnimationFrame(() => setLimitOpen(true))}
-        />
-        <LimitPopover
-          user={user}
-          actions={actions}
-          open={limitOpen}
-          onOpenChange={setLimitOpen}
-          anchor={menuRef}
-          align="end"
-        />
+      <TableCell className="w-28" {...stop}>
+        <div className="flex items-center justify-end gap-0.5">
+          <RowHint label="调整并发上限" deny={limitDeny}>
+            <LimitPopover
+              user={user}
+              actions={actions}
+              open={limitOpen}
+              onOpenChange={setLimitOpen}
+              align="end"
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={!!limitDeny}
+                  aria-label={`调整 ${user.username} 的并发上限`}
+                />
+              }
+            >
+              <Gauge />
+            </LimitPopover>
+          </RowHint>
+          <RowHint label={disabled ? "启用" : "封禁"} deny={banDeny}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={!!banDeny || statusBusy}
+              className={cn(!disabled && "text-destructive hover:text-destructive")}
+              aria-label={`${disabled ? "启用" : "封禁"} ${user.username}`}
+              onClick={() => void actions.setStatus(user, disabled ? "active" : "disabled")}
+            >
+              {statusBusy ? (
+                <Loader2 className="animate-spin" />
+              ) : disabled ? (
+                <CircleCheck />
+              ) : (
+                <Ban />
+              )}
+            </Button>
+          </RowHint>
+          <UserRowMenu user={user} actor={actor} actions={actions} />
+        </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/** 行内图标按钮的提示：可用时 hover 显示操作名，被禁用时改为说明原因 */
+function RowHint({
+  label,
+  deny,
+  children,
+}: {
+  label: string;
+  deny: string | null;
+  children: React.ReactElement;
+}) {
+  if (deny) return <ReasonTooltip reason={deny}>{children}</ReasonTooltip>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex" />}>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

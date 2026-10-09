@@ -28,7 +28,7 @@ import {
 /** 撤销 toast 停留的时间（毫秒） */
 const UNDO_MS = 5000;
 
-/** 被操作的用户：行与抽屉都能给出这些字段 */
+/** 被操作的用户：行与弹窗都能给出这些字段 */
 export type ActionUser = Pick<
   UserListItem,
   | "id"
@@ -44,12 +44,12 @@ export type ActionUser = Pick<
 >;
 
 /**
- * 用户管理的全部写操作：行菜单、积分格、抽屉、批量条共用。
+ * 用户管理的全部写操作：行菜单、积分格、弹窗、批量条共用。
  * 请求失败的全局 toast 由拦截器弹，这里不重复，只在失败后保持界面状态（按钮恢复、浮层不关）。
- * 成功后用接口返回值原地更新（让数字滚动），再静默刷新列表与抽屉。
+ * 成功后用接口返回值原地更新（让数字滚动），再静默刷新列表与弹窗。
  * @param options.actor 当前管理员，批量跳过规则要用
- * @param options.patch 同时更新列表行与抽屉详情
- * @param options.refresh 静默重新拉取列表与抽屉详情
+ * @param options.patch 同时更新列表行与弹窗详情
+ * @param options.refresh 静默重新拉取列表与弹窗详情
  */
 export function useUserActions(options: {
   actor: Actor | null;
@@ -330,5 +330,5 @@ export function useUserActions(options: {
   };
 }
 
-/** 用户行 / 抽屉共用的动作集合 */
+/** 用户行 / 弹窗共用的动作集合 */
 export type UserActions = ReturnType<typeof useUserActions>;
