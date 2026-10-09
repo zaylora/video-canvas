@@ -49,20 +49,39 @@ describe("deriveCell：任务状态 → 格子状态", () => {
 
   test("成功但没有产出：按失败处理", () => {
     const cell = deriveCell(record(), 0, makeTask({ status: "succeeded", outputs: [] }), NOW);
-    expect(cell).toEqual({ kind: "failed", message: "没有生成出结果" });
+    expect(cell).toEqual({ kind: "failed", message: "没有生成出结果", taskRef: null });
+  });
+
+  test("失败的格子带上任务 ID，方便到日志里定位", () => {
+    const failed = makeTask({
+      id: 123,
+      status: "failed",
+      error_message: "平台繁忙",
+      task_ref: "ab12",
+    });
+    expect(deriveCell(record(), 0, failed, NOW)).toEqual({
+      kind: "failed",
+      message: "平台繁忙",
+      taskRef: "ab12",
+    });
+    expect(
+      deriveCell(record(), 0, makeTask({ status: "expired", task_ref: "cd34" }), NOW),
+    ).toMatchObject({ taskRef: "cd34" });
   });
 
   test("失败、过期：带原因；取消：单独一种", () => {
     expect(
       deriveCell(record(), 0, makeTask({ status: "failed", error_message: "内容审核未通过" }), NOW),
-    ).toEqual({ kind: "failed", message: "内容审核未通过" });
+    ).toEqual({ kind: "failed", message: "内容审核未通过", taskRef: null });
     expect(deriveCell(record(), 0, makeTask({ status: "failed" }), NOW)).toEqual({
       kind: "failed",
       message: "生成失败",
+      taskRef: null,
     });
     expect(deriveCell(record(), 0, makeTask({ status: "expired" }), NOW)).toEqual({
       kind: "failed",
       message: "生成超时",
+      taskRef: null,
     });
     expect(deriveCell(record(), 0, makeTask({ status: "canceled" }), NOW).kind).toBe("canceled");
   });

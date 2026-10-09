@@ -16,6 +16,13 @@ const KIND_LABEL: Record<string, string> = {
   text: "文本",
 };
 
+/** 失败提示的说明：原因 + 退款 + 任务编号（用户把它报给运维，就能在日志里搜到失败原因） */
+function failureDescription(view: TaskView): string {
+  const reason = view.error_message ? `${view.error_message}，` : "";
+  const ref = view.task_ref ? ` · 任务 ID：${view.task_ref}` : "";
+  return `${reason}积分已退回${ref}`;
+}
+
 /** 从当前地址里取出正在看的画布 id；不在画布页返回 null */
 export function currentCanvasIdFromPath(pathname: string): string | null {
   const match = /^\/canvas\/([^/]+)/.exec(pathname);
@@ -77,7 +84,7 @@ export function planTaskToast(
         id,
         tone: "error",
         title: `${name}中的${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
-        description: `${view.error_message ? `${view.error_message}，` : ""}积分已退回`,
+        description: failureDescription(view),
         href,
       };
     default:
@@ -99,7 +106,7 @@ function planConversationToast(view: TaskView, pathname: string): TaskToastPlan 
         id,
         tone: "error",
         title: `${kind}${view.status === "expired" ? "生成超时" : "生成失败"}`,
-        description: `${view.error_message ? `${view.error_message}，` : ""}积分已退回`,
+        description: failureDescription(view),
       };
     default:
       return null;

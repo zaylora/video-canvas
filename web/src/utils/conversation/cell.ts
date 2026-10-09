@@ -17,8 +17,8 @@ export type CellState =
   | { kind: "finalizing" }
   /** 成功，带第一个产出 */
   | { kind: "done"; output: TaskOutput }
-  /** 失败或超时，带给用户看的原因（积分已退回） */
-  | { kind: "failed"; message: string }
+  /** 失败或超时，带给用户看的原因（积分已退回）和任务编号（到后端日志里定位用，后端没给为 null） */
+  | { kind: "failed"; message: string; taskRef: string | null }
   /** 已取消（积分已退回） */
   | { kind: "canceled" };
 
@@ -55,14 +55,24 @@ export function deriveCell(
     }
     case "succeeded": {
       const output = task.outputs?.[0];
-      return output ? { kind: "done", output } : { kind: "failed", message: "没有生成出结果" };
+      return output
+        ? { kind: "done", output }
+        : { kind: "failed", message: "没有生成出结果", taskRef: task.task_ref ?? null };
     }
     case "canceled":
       return { kind: "canceled" };
     case "expired":
-      return { kind: "failed", message: task.error_message || "生成超时" };
+      return {
+        kind: "failed",
+        message: task.error_message || "生成超时",
+        taskRef: task.task_ref ?? null,
+      };
     default:
-      return { kind: "failed", message: task.error_message || "生成失败" };
+      return {
+        kind: "failed",
+        message: task.error_message || "生成失败",
+        taskRef: task.task_ref ?? null,
+      };
   }
 }
 

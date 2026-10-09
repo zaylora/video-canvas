@@ -42,6 +42,33 @@ describe("planTaskToast：画布外的完成提示", () => {
     expect(planTaskToast(makeTask({ status: "expired" }), null, "A")?.title).toContain("超时");
   });
 
+  test("失败提示带任务编号（画布与首页对话都一样），成功不带，后端没给就不带", () => {
+    const canvas = planTaskToast(
+      makeTask({ status: "failed", error_message: "平台繁忙", task_ref: "ab12" }),
+      null,
+      "A",
+    );
+    expect(canvas?.description).toBe("平台繁忙，积分已退回 · 任务 ID：ab12");
+    const conversation = planTaskToast(
+      makeTask({
+        status: "failed",
+        canvas_id: null,
+        node_id: "rec:7:1",
+        error_message: "平台繁忙",
+        task_ref: "cd34",
+      }),
+      null,
+      undefined,
+      "/",
+    );
+    expect(conversation?.description).toBe("平台繁忙，积分已退回 · 任务 ID：cd34");
+    expect(planTaskToast(succeeded(), null, "A")?.description).toBeUndefined();
+    expect(
+      planTaskToast(makeTask({ status: "failed", error_message: "平台繁忙" }), null, "A")
+        ?.description,
+    ).toBe("平台繁忙，积分已退回");
+  });
+
   test("正看着这张画布时不弹（节点自己会变）；取消不弹", () => {
     expect(planTaskToast(succeeded({ canvas_id: "10" }), "10", "A")).toBeNull();
     expect(planTaskToast(makeTask({ status: "canceled" }), null, "A")).toBeNull();

@@ -8,7 +8,7 @@ export type VideoNodeView =
   | { phase: "running"; elapsedMs: number | null; progress: number | null }
   | { phase: "finalizing" }
   | { phase: "done"; src: string }
-  | { phase: "failed"; message: string; refunded: boolean };
+  | { phase: "failed"; message: string; refunded: boolean; taskRef: string | null };
 
 /** 平台给的进度按 0–100 取整并夹住；不是有限数字就当没有 */
 export function normalizeProgress(progress: number | null | undefined): number | null {
@@ -55,7 +55,7 @@ export function derivePendingPhase(task: TaskView, now: number): PendingPhase {
  * 「提交中」是点击到 202 之间的本地瞬态，不在这里，由生成按钮的 loading 表达。
  */
 export function deriveVideoNodeView(
-  data: Pick<CanvasNodeData, "status" | "src" | "error" | "taskId">,
+  data: Pick<CanvasNodeData, "status" | "src" | "error" | "errorTaskRef" | "taskId">,
   task: TaskView | undefined,
   now: number,
 ): VideoNodeView {
@@ -69,6 +69,9 @@ export function deriveVideoNodeView(
         message: data.error || "生成失败",
         // 有 taskId 说明是任务失败，后端已经把冻结的积分退回
         refunded: !!data.taskId,
+        // 任务编号用来到后端日志里定位：节点里存的是失败那一刻记下的，重开画布后也在；
+        // 还没来得及存时看任务快照。没有任务的本地错误（如上传失败）为 null
+        taskRef: data.taskId ? (data.errorTaskRef ?? task?.task_ref ?? null) : null,
       };
     // 上传进来的素材（status 可能还是 idle，src 已经有了）和生成成功的一样直接摆出来
     default:

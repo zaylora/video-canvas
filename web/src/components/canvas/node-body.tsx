@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Loader2, TriangleAlert } from "lucide-react";
 
+import { TaskIdTag } from "@/components/task-id-tag";
+
 import { BaseNodeContent } from "./base-node";
 import { GridReveal } from "@/components/ui/grid-reveal";
 
@@ -103,6 +105,8 @@ type NodeTextBodyProps = {
   text?: string | null;
   /** 调用失败时的原因 */
   error?: string | null;
+  /** 失败任务的编号，到后端日志里定位用；没有为空 */
+  taskRef?: string | null;
   /** 还没跑过时占位框里的大图标 */
   icon: ReactNode;
   /** 占位框的无障碍说明，也是这个节点该干什么 */
@@ -114,7 +118,14 @@ type NodeTextBodyProps = {
  * 出了结果就把正文摊开，失败则把原因摆在明面上。
  * 结果区留着 nodrag/nowheel，好让人在节点里选字、滚长文。
  */
-export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTextBodyProps) {
+export function NodeTextBody({
+  status,
+  text,
+  error,
+  taskRef,
+  icon,
+  placeholder,
+}: NodeTextBodyProps) {
   if (status === "running") {
     return (
       <BaseNodeContent>
@@ -133,12 +144,15 @@ export function NodeTextBody({ status, text, error, icon, placeholder }: NodeTex
     return (
       <BaseNodeContent>
         <div
-          className="bg-destructive/5 text-destructive flex w-full items-center justify-center gap-2 rounded-[inherit] px-3 text-center text-xs"
+          className="bg-destructive/5 text-destructive flex w-full flex-col items-center justify-center gap-1.5 rounded-[inherit] px-3 text-center text-xs"
           style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
           role="alert"
         >
-          <TriangleAlert className="size-4 shrink-0" />
-          <span className="line-clamp-3">{error ?? "生成失败"}</span>
+          <span className="flex items-center gap-2">
+            <TriangleAlert className="size-4 shrink-0" />
+            <span className="line-clamp-3">{error ?? "生成失败"}</span>
+          </span>
+          <TaskIdTag id={taskRef} className="nodrag nowheel" />
         </div>
       </BaseNodeContent>
     );

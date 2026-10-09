@@ -59,6 +59,17 @@ describe("planBackfill：终态回填节点", () => {
     });
   });
 
+  test("failed：把任务编号记进节点，重开画布后还能拿它查日志；重复应用幂等", () => {
+    const data = makeData({ status: "running", taskId: "1" });
+    const failed = makeTask({ status: "failed", error_message: "平台繁忙", task_ref: "ab12" });
+    const patch = planBackfill(data, failed);
+    expect(patch).toMatchObject({ status: "error", errorTaskRef: "ab12" });
+    expect(planBackfill({ ...data, ...patch }, failed)).toBeNull();
+    expect(
+      planBackfill(data, makeTask({ status: "failed", error_message: "平台繁忙" })),
+    ).toMatchObject({ errorTaskRef: null });
+  });
+
   test("expired：给超时文案", () => {
     const patch = planBackfill(
       makeData({ status: "running", taskId: "1" }),
@@ -141,9 +152,14 @@ describe("planBackfill：文本节点（script）", () => {
   test("failed：error + 后端文案，清掉旧正文", () => {
     const patch = planBackfill(
       running(),
-      makeTask({ kind: "text", status: "failed", error_message: "模型超时" }),
+      makeTask({ kind: "text", status: "failed", error_message: "模型超时", task_ref: "ab12" }),
     );
-    expect(patch).toEqual({ status: "error", error: "模型超时", text: null });
+    expect(patch).toEqual({
+      status: "error",
+      error: "模型超时",
+      errorTaskRef: "ab12",
+      text: null,
+    });
   });
 
   test("canceled：回到 idle 并清 taskId", () => {

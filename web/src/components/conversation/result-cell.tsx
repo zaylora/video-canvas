@@ -12,6 +12,7 @@ import {
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput } from "@/api/generation-task/type";
 import { SoonTip } from "@/components/home/soon";
+import { TaskIdTag } from "@/components/task-id-tag";
 import { cn } from "@/lib/utils";
 import { useTask } from "@/store/tasks";
 import { useNow } from "@/hooks/use-now";
@@ -161,6 +162,7 @@ export function ResultCell({
             <CircleX className="text-destructive mb-1 size-4" />
             {cell.message}
             <span className="text-[11px] opacity-70">积分已退回</span>
+            <TaskIdTag id={cell.taskRef} />
             {retry}
           </div>
         </div>

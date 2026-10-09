@@ -58,6 +58,8 @@ export interface TaskView {
   error_code: string | null;
   /** 失败原因 */
   error_message: string | null;
+  /** 任务编号：任务 ID 的十六进制编码，失败时展示给用户，后端日志里的 task_id 就是它，用来定位问题 */
+  task_ref?: string;
   /** 冻结的积分 */
   credits: number;
   /** 实际扣的积分（Token 计费按用量结算，可能小于冻结额），未结算为 null */

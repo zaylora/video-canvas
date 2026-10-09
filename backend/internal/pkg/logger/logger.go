@@ -8,6 +8,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"video-canvas/internal/config"
+	"video-canvas/internal/pkg/idcodec"
 )
 
 // 在 Init 之前调用也是安全的，只是不输出任何内容。
@@ -54,6 +55,10 @@ func Init(cfg config.Log) error {
 }
 
 func L() *zap.Logger { return l }
+
+// TaskID 是任务日志的统一 task_id 字段：值是界面上展示的十六进制任务编号（idcodec 编码），
+// 用户把编号报过来就能原样搜到；不要再写 zap.Uint64("task_id", id)。
+func TaskID(id uint64) zap.Field { return zap.String("task_id", idcodec.Encode(id)) }
 
 func Sync() { _ = l.Sync() }
 

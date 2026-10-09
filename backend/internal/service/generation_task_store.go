@@ -67,7 +67,7 @@ func (s *GenerationTaskService) SaveTrace(ctx context.Context, t *model.Generati
 func (s *GenerationTaskService) restartDeadline(t *model.GenerationTask, now time.Time, fields map[string]any) {
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，保持原有截止时间", zap.Uint64("task_id", t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，保持原有截止时间", logger.TaskID(t.ID), zap.Error(err))
 		return
 	}
 	fields["deadline_at"] = now.Add(taskDeadline(&snap))
@@ -217,11 +217,11 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 func (s *GenerationTaskService) settleAmount(t *model.GenerationTask, usage *modelcfg.Usage) int {
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，按冻结额结算", zap.Uint64("task_id", t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，按冻结额结算", logger.TaskID(t.ID), zap.Error(err))
 		return t.Credits
 	}
 	if snap.Model.Pricing.Billing == modelcfg.BillingToken && usage == nil {
-		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", zap.Uint64("task_id", t.ID), zap.String("model", t.ModelKey))
+		logger.Warn("Token 计费的任务没有回传用量，按冻结额结算", logger.TaskID(t.ID), zap.String("model", t.ModelKey))
 	}
 	return max(modelcfg.Settle(snap.Model.Pricing, t.Credits, usage), 0)
 }
@@ -303,7 +303,7 @@ func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID u
 			res.Canceled++
 		case errors.As(err, &ec) && ec.Code == errcode.ErrTaskNotCancelable.Code:
 		default:
-			logger.Warn("取消进行中任务失败", zap.Error(err), zap.Uint64("task_id", tasks[i].ID), zap.Uint64("user_id", userID))
+			logger.Warn("取消进行中任务失败", zap.Error(err), logger.TaskID(tasks[i].ID), zap.Uint64("user_id", userID))
 			res.Failed = append(res.Failed, tasks[i].ID)
 		}
 	}
@@ -316,7 +316,7 @@ func (s *GenerationTaskService) cancelProvider(ctx context.Context, t *model.Gen
 	}
 	var snap provider.Snapshot
 	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err != nil {
-		logger.Warn("解析任务快照失败，跳过上游取消", zap.Uint64("task_id", t.ID), zap.Error(err))
+		logger.Warn("解析任务快照失败，跳过上游取消", logger.TaskID(t.ID), zap.Error(err))
 		return
 	}
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), executorCancelTimeout)
@@ -325,7 +325,7 @@ func (s *GenerationTaskService) cancelProvider(ctx context.Context, t *model.Gen
 		ID: t.ID, UserID: t.UserID, ProviderTaskID: t.ProviderTaskID,
 	})
 	if err != nil && !errors.Is(err, provider.ErrCancelUnsupported) {
-		logger.Warn("通知上游取消任务失败", zap.Uint64("task_id", t.ID), zap.String("channel", t.Provider), zap.Error(err))
+		logger.Warn("通知上游取消任务失败", logger.TaskID(t.ID), zap.String("channel", t.Provider), zap.Error(err))
 	}
 }
 
@@ -389,7 +389,7 @@ func settleLedger(ctx context.Context, tx repository.GenerationTaskTx, t *model.
 			return err
 		}
 		if !inserted {
-			logger.Warn("积分流水已存在，跳过重复结算", zap.Uint64("task_id", t.ID), zap.String("type", entries[i].Type))
+			logger.Warn("积分流水已存在，跳过重复结算", logger.TaskID(t.ID), zap.String("type", entries[i].Type))
 			return nil
 		}
 	}
