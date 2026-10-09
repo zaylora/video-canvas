@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
-import { useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
+import { useReactFlow } from "@xyflow/react";
 
 import {
   NodeCard,
@@ -9,6 +9,7 @@ import {
   VideoParamPanel,
   type IncomingConnection,
 } from "@/components/canvas";
+import { useHandleRemeasure } from "@/components/canvas/hooks/use-handle-remeasure";
 import { PANEL_CHIP_CLASS } from "@/components/canvas/node-prompt-input";
 import { OpTabs } from "@/components/canvas/op-tabs";
 import { PresetPicker } from "@/components/canvas/preset-picker";
@@ -283,13 +284,10 @@ function MediaTaskNode({
 
   // 输入口随所选模型的 schema 增减；xyflow 只在节点挂载时量一次连接点，
   // 之后口变了必须通知它重新测量，否则连到新口上的线会因为「找不到 handle」被藏起来
-  const updateNodeInternals = useUpdateNodeInternals();
   const handleSignature = vm.handles
     .map((handle) => `${handle.type}:${handle.id ?? ""}:${handle.top ?? ""}`)
     .join("|");
-  useEffect(() => {
-    updateNodeInternals(id);
-  }, [handleSignature, id, updateNodeInternals]);
+  useHandleRemeasure(id, handleSignature);
 
   const canAcceptConnection = useCallback(
     ({ nodeId, handleType }: IncomingConnection) => {

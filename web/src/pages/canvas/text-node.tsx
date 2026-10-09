@@ -1,7 +1,8 @@
-import { useCallback, useEffect } from "react";
-import { useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
+import { useCallback } from "react";
+import { useReactFlow } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
+import { useHandleRemeasure } from "@/components/canvas/hooks/use-handle-remeasure";
 import { NODE_META } from "@/constants/canvas";
 import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
@@ -36,13 +37,10 @@ export function TextCanvasNode({
   const dragSelected = useDragSelected(id);
 
   /** 输入口随模型 schema 增减，xyflow 要被通知重新测量，否则连线会因找不到 handle 被藏起来 */
-  const updateNodeInternals = useUpdateNodeInternals();
   const handleSignature = vm.handles
     .map((handle) => `${handle.type}:${handle.id ?? ""}:${handle.top ?? ""}`)
     .join("|");
-  useEffect(() => {
-    updateNodeInternals(id);
-  }, [handleSignature, id, updateNodeInternals]);
+  useHandleRemeasure(id, handleSignature);
 
   const canAcceptConnection = useCallback(
     ({ nodeId, handleType }: IncomingConnection) => {
