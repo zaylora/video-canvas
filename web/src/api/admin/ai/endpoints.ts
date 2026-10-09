@@ -3,6 +3,7 @@
  * 契约见 backend/docs/admin-ai-api.md；后端路由如有出入，只需要改这里。
  *
  *   GET    /admin/ai/me                                当前角色
+ *   GET    /admin/ai/stats?days=7|30                   总览页任务统计
  *   GET    /admin/ai/plugins                           插件与版本列表
  *   POST   /admin/ai/plugins                           上传插件（multipart，字段 file）
  *   PUT    /admin/ai/plugins/:key/enabled              启停，body = {enabled}
@@ -32,6 +33,7 @@ const channel = (key: string) => `${P}/channels/${seg(key)}`;
 
 export const adminAiEndpoints = {
   me: () => `${P}/me`,
+  stats: () => `${P}/stats`,
 
   plugins: () => `${P}/plugins`,
   plugin: (key: string) => `${P}/plugins/${seg(key)}`,

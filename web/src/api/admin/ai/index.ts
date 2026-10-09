@@ -3,6 +3,8 @@ import type { TaskView } from "@/api/generation-task/type";
 import { adminAiEndpoints as ep, saveBody } from "./endpoints";
 import type {
   AdminMe,
+  AdminStats,
+  AdminStatsDays,
   ChannelCheckDraftRequest,
   ChannelCheckResult,
   ChannelCreateRequest,
@@ -28,6 +30,17 @@ import type {
  * @returns 用户 ID 与角色
  */
 export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined);
+
+// ---------------------------------------------------------------- 总览统计
+
+/**
+ * 总览页任务统计：每日任务量与按模型、按类型的调用占比
+ * @param days 统计天数，7 或 30
+ * @param silent 为 true 时失败不弹全局提示：后台定时刷新用，页面自己显示失败状态
+ * @returns 统计数据
+ */
+export const getAdminStats = (days: AdminStatsDays, silent = false) =>
+  service.get<AdminStats>(ep.stats(), { days }, silent ? { silent: true } : undefined);
 
 // ---------------------------------------------------------------- 插件
 
@@ -112,10 +125,15 @@ export const listChannels = async () =>
 
 /**
  * 各渠道当前的任务负载（生成中 / 排队数）
+ * @param silent 为 true 时失败不弹全局提示：定时轮询用，页面自己显示“刷新失败”
  * @returns 有未完成任务的渠道的负载
  */
-export const listChannelLoads = async () =>
-  (await service.get<ChannelLoad[] | null>(ep.channelLoads(), undefined)) ?? [];
+export const listChannelLoads = async (silent = false) =>
+  (await service.get<ChannelLoad[] | null>(
+    ep.channelLoads(),
+    undefined,
+    silent ? { silent: true } : undefined,
+  )) ?? [];
 
 /**
  * 渠道详情

@@ -379,3 +379,52 @@ export interface TraceStep {
 export interface TestRunTrace {
   steps: TraceStep[];
 }
+
+// ---------------------------------------------------------------- 总览统计
+
+/** 统计范围：只有这两档 */
+export type AdminStatsDays = 7 | 30;
+
+/**
+ * 一天的任务数（试跑不算）。三个桶之和是当天创建的全部正式任务，页面上所有数字用同一口径。
+ */
+export interface AdminStatsDay {
+  /** 日期 YYYY-MM-DD，按上海时区的自然日 */
+  date: string;
+  /** 成功 */
+  succeeded: number;
+  /** 失败（含过期） */
+  failed: number;
+  /** 其他：已取消与仍在进行中 */
+  other: number;
+}
+
+/** 一个模型的调用数 */
+export interface AdminStatsModelCount {
+  /** 模型 key */
+  model: string;
+  /** 展示名；模型已删除或没有展示名时等于 key */
+  label: string;
+  /** 区间内的任务数 */
+  count: number;
+}
+
+/** 一种任务类型的调用数 */
+export interface AdminStatsKindCount {
+  /** video / image / audio / text */
+  kind: string;
+  /** 区间内的任务数 */
+  count: number;
+}
+
+/** GET /admin/ai/stats：总览页的任务量柱形图与调用占比 */
+export interface AdminStats {
+  /** 统计天数 */
+  days: AdminStatsDays;
+  /** 恒为 days 项，日期升序，没有任务的日子是 0，最后一项是今天 */
+  daily: AdminStatsDay[];
+  /** 按任务数降序的全量模型 */
+  by_model: AdminStatsModelCount[];
+  /** 按任务数降序的任务类型 */
+  by_kind: AdminStatsKindCount[];
+}

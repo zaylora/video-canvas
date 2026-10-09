@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>总览页原型</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  /* token 抄自 web/src/index.css 的 .admin-theme / .dark.admin-theme（后台 zinc 冷灰） */
+  :root {
+    --background: hsl(0 0% 100%); --foreground: hsl(240 10% 3.9%);
+    --card: hsl(0 0% 100%);
+    --primary: hsl(240 5.9% 10%); --primary-foreground: hsl(0 0% 98%);
+    --muted: hsl(240 4.8% 95.9%); --muted-foreground: hsl(240 3.8% 46.1%);
+    --accent: hsl(240 4.8% 95.9%); --border: hsl(240 5.9% 91.5%); --input: hsl(240 5.9% 90%);
+    --ring: oklch(0.708 0 0); --destructive: hsl(0 72% 51%);
+    --status-running: oklch(0.58 0.15 250); --status-success: oklch(0.6 0.15 155);
+    --status-warning: oklch(0.7 0.16 70);
+    --radius: 0.625rem;
+    /* 新增：后台图表配色（覆盖 admin-theme 下的 --chart-1..5，原来是灰阶）；--chart-other 给“其他 / 取消”这类中性项 */
+    --chart-1: oklch(0.58 0.15 250); --chart-2: oklch(0.55 0.2 295); --chart-3: oklch(0.62 0.12 205);
+    --chart-4: oklch(0.7 0.16 70);  --chart-5: oklch(0.6 0.2 345);
+    --chart-other: oklch(0.708 0 0 / 0.45);
+    /* lib/motion.ts */
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --fast: 120ms; --base: 180ms; --exit: 126ms; --slow: 240ms; --stagger: 30ms;
+  }
+  .dark {
+    --background: hsl(240 10% 3.9%); --foreground: hsl(0 0% 98%);
+    --card: hsl(240 6% 7.5%);
+    --primary: hsl(0 0% 98%); --primary-foreground: hsl(240 5.9% 10%);
+    --muted: hsl(240 3.7% 15.9%); --muted-foreground: hsl(240 5% 64.9%);
+    --accent: hsl(240 3.7% 15.9%); --border: hsl(240 3.7% 13.5%); --input: hsl(240 3.7% 18%);
+    --ring: oklch(0.556 0 0); --destructive: hsl(0 62.8% 45%);
+    --status-running: oklch(0.75 0.12 240); --status-success: oklch(0.75 0.15 155);
+    --status-warning: oklch(0.8 0.15 75);
+    --chart-1: oklch(0.72 0.14 250); --chart-2: oklch(0.7 0.16 295); --chart-3: oklch(0.8 0.12 205);
+    --chart-4: oklch(0.8 0.15 75);  --chart-5: oklch(0.74 0.17 345);
+    --chart-other: oklch(1 0 0 / 0.22);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  .muted { color: var(--muted-foreground); }
+  .xs { font-size: 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+  svg.lucide { width: 16px; height: 16px; stroke-width: 2; flex-shrink: 0; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  .crumb { padding: 14px 24px; color: var(--muted-foreground); font-size: 14px; }
+  .crumb b { color: var(--foreground); font-weight: 400; }
+  main { padding: 8px 24px 96px; max-width: 1440px; }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  .head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--background); cursor: pointer; font-size: 13px; font-weight: 500;
+    white-space: nowrap; transition: background var(--fast) var(--ease), transform var(--fast) var(--ease); }
+  .btn:hover { background: var(--accent); }
+  .btn:active { transform: scale(0.96); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn.icon { width: 32px; padding: 0; }
+  .btn.ghost { border-color: transparent; background: none; } .btn.ghost:hover { background: var(--accent); }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  .btn.primary:hover { background: color-mix(in oklch, var(--primary) 88%, transparent); }
+  .spin svg { animation: spin 0.8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 0; cursor: pointer;
+    font-size: 13px; font-weight: 500; background: color-mix(in oklch, var(--status-warning) 14%, transparent); color: var(--status-warning);
+    transition: transform var(--fast) var(--ease), background var(--fast); }
+  .chip:hover { background: color-mix(in oklch, var(--status-warning) 22%, transparent); } .chip:active { transform: scale(0.96); }
+  .chip[hidden] { display: none; }
+
+  /* 分段选择：滑块用 transform 滑动（对应实现里的 layoutId + SPRING） */
+  .seg { position: relative; display: inline-flex; padding: 2px; gap: 0; border-radius: 8px; background: var(--muted); font-size: 12px; --w: 72px; }
+  .seg button { position: relative; z-index: 1; width: var(--w); padding: 6px 0; border: 0; background: none; cursor: pointer; font-weight: 500;
+    color: var(--muted-foreground); transition: color var(--fast); }
+  .seg button:hover, .seg button[aria-pressed="true"] { color: var(--foreground); }
+  .seg i { position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; width: var(--w); border-radius: 6px; background: var(--background);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.12); transform: translateX(calc(var(--idx, 0) * var(--w))); transition: transform var(--slow) var(--ease); }
+  .seg.sm { --w: 52px; } .seg.sm button { padding: 4px 0; }
+
+  .card { position: relative; background: var(--card); border-radius: 12px; box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent);
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card h2 { margin: 0; font-size: 16px; font-weight: 500; line-height: 1.3; }
+  .card .sub { font-size: 12px; color: var(--muted-foreground); }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .flash::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    box-shadow: 0 0 0 2px var(--status-warning); opacity: 0; animation: flash 1.2s var(--ease); }
+  @keyframes flash { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* 引导条 */
+  #steps { margin-bottom: 16px; }
+  .steps-slim { flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
+  .steps-slim .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; flex: 1; min-width: 0; font-size: 13px; }
+  .tick { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 999px; background: var(--status-success); color: #fff; }
+  .tick svg { width: 12px; height: 12px; stroke-width: 3; }
+  .step-item { display: inline-flex; align-items: center; gap: 6px; } .step-item .muted { font-size: 12px; }
+  .steps-big { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .steps-big .card { gap: 10px; }
+  .steps-big .card.current { box-shadow: 0 0 0 2px var(--primary); }
+  .step-head { display: flex; align-items: center; gap: 8px; }
+  .step-head .no { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; background: var(--muted); font-size: 12px; font-weight: 600; }
+  .step-head b { font-weight: 500; font-size: 14px; }
+  .big { font-size: 28px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+
+  /* KPI */
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+  .kpi { gap: 4px; text-align: left; font: inherit; border: 0; color: inherit; }
+  button.kpi { cursor: pointer; transition: transform var(--fast) var(--ease), background var(--fast); }
+  button.kpi:hover { background: color-mix(in oklch, var(--foreground) 3%, var(--card)); } button.kpi:active { transform: scale(0.985); }
+  .kpi .label { font-size: 12px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; }
+  .kpi .label svg { width: 14px; height: 14px; }
+  .kpi .val { display: flex; align-items: baseline; gap: 4px; }
+  .kpi .big small { font-size: 16px; font-weight: 500; color: var(--muted-foreground); }
+  .kpi .hint { font-size: 12px; color: var(--muted-foreground); min-height: 18px; }
+  .kpi .hint.bad { color: var(--destructive); } .kpi .hint.warn { color: var(--status-warning); }
+  .kpi .spark { position: absolute; right: 16px; bottom: 14px; }
+  .kpi .go { position: absolute; right: 12px; top: 12px; color: var(--muted-foreground); opacity: 0; transition: opacity var(--fast); }
+  button.kpi:hover .go { opacity: 1; }
+
+  .row { display: grid; gap: 12px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); margin-bottom: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted-foreground); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; } .sw { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* 趋势图 */
+  #trendBox { position: relative; flex: 1; min-height: 240px; }
+  #trendBox svg { display: block; overflow: visible; }
+  .bars { transform-box: view-box; animation: bars-up var(--slow) var(--ease) both; }
+  @keyframes bars-up { from { transform: scaleY(0); } }
+  .tip { position: absolute; z-index: 5; pointer-events: none; min-width: 132px; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+    background: var(--card); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 12%, transparent), 0 8px 24px -8px oklch(0 0 0 / 0.5);
+    opacity: 0; transform: translateY(4px); transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease); }
+  .tip.on { opacity: 1; transform: none; }
+  .tip b { display: block; font-weight: 500; margin-bottom: 4px; }
+  .tip div { display: flex; align-items: center; gap: 6px; line-height: 1.7; } .tip div em { margin-left: auto; padding-left: 16px; font-style: normal; font-weight: 500; }
+  .tip .tot { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; color: var(--muted-foreground); }
+
+  /* 环形图 */
+  .donut-wrap { display: grid; place-items: center; position: relative; height: 148px; }
+  .donut-wrap svg { animation: donut-in var(--slow) var(--ease) both; }
+  @keyframes donut-in { from { opacity: 0; transform: rotate(-50deg) scale(0.94); } }
+  .donut-wrap circle { transition: opacity var(--fast) var(--ease); cursor: pointer; }
+  .donut-wrap.hl circle:not(.on) { opacity: 0.3; }
+  .donut-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; padding: 0 36px; }
+  .donut-center b { font-size: 24px; font-weight: 600; line-height: 1.1; } .donut-center span { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lg-list { display: flex; flex-direction: column; gap: 2px; }
+  .lg { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; cursor: pointer; font-size: 13px; text-align: left;
+    transition: background var(--fast), opacity var(--fast); width: calc(100% + 12px); }
+  .lg:hover { background: var(--accent); }
+  .lg .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lg .ct { color: var(--muted-foreground); } .lg .pc { width: 44px; text-align: right; font-weight: 500; }
+  .lg-list.hl .lg:not(.on) { opacity: 0.45; }
+
+  /* 渠道负载 */
+  .loads { display: flex; flex-direction: column; gap: 14px; }
+  .ld { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 12px; font-size: 13px; }
+  .ld .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ld .nm small { display: block; font-size: 11px; color: var(--muted-foreground); }
+  .track { position: relative; height: 8px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+  .track i { position: absolute; inset: 0; border-radius: 999px; transform-origin: left; transition: transform var(--slow) var(--ease); }
+  .track .w { background: color-mix(in oklch, var(--status-running) 32%, transparent); }
+  .track .r { background: var(--status-running); }
+  .ld.full .r { background: var(--status-warning); } .ld.full .w { background: color-mix(in oklch, var(--status-warning) 32%, transparent); }
+  .ld .st { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 112px; font-size: 12px; color: var(--muted-foreground); white-space: nowrap; }
+  .ld .st b { color: var(--foreground); font-weight: 500; }
+  .ld.off .nm { color: var(--muted-foreground); } .ld.off .track { opacity: 0.5; }
+  .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 6px; font-size: 12px; background: var(--muted); color: var(--muted-foreground); }
+  .tag.warn { background: color-mix(in oklch, var(--status-warning) 14%, transparent); color: var(--status-warning); }
+  .tag.bad { background: color-mix(in oklch, var(--destructive) 16%, transparent); color: var(--destructive); }
+  .tag.info { background: color-mix(in oklch, var(--status-running) 14%, transparent); color: var(--status-running); }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+  .live i { width: 6px; height: 6px; border-radius: 99px; background: var(--status-success); }
+  .more { align-self: flex-start; margin: 2px 0 -4px -8px; }
+
+  /* 待处理 */
+  .todos { display: flex; flex-direction: column; margin: 0 -16px; }
+  .todo { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
+  .todo .ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
+  .todo .ic.bad { background: color-mix(in oklch, var(--destructive) 16%, transparent); color: var(--destructive); }
+  .todo .ic.warn { background: color-mix(in oklch, var(--status-warning) 14%, transparent); color: var(--status-warning); }
+  .todo .ic.info { background: color-mix(in oklch, var(--status-running) 14%, transparent); color: var(--status-running); }
+  .todo p { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 1.45; }
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; flex: 1; min-height: 120px; color: var(--muted-foreground); font-size: 13px; text-align: center; }
+  .empty svg { width: 20px; height: 20px; }
+  .err { color: var(--muted-foreground); }
+
+  .sk { background: var(--muted); border-radius: 6px; animation: pulse 2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: 0.5; } }
+
+  /* 入场：卡片依次浮上来，只动 transform 与 opacity */
+  .rise { animation: rise var(--base) var(--ease) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  @keyframes fade { from { opacity: 0; } }
+
+  @media (max-width: 1100px) { .row { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .steps-big { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { main { padding: 8px 16px 96px; } .kpi .spark { display: none; } .ld { grid-template-columns: 88px minmax(0, 1fr) auto; } }
+  /* 减少动态效果：只保留淡入淡出 */
+  @media (prefers-reduced-motion: reduce) {
+    .rise, .bars, .donut-wrap svg { animation-name: fade !important; animation-delay: 0s !important; }
+    .seg i, .track i, .tip { transition-duration: 0.01ms !important; }
+  }
+
+  /* 原型演示控制（不属于设计） */
+  .demo { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; width: 232px;
+    background: var(--card); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 14%, transparent), 0 12px 32px -8px oklch(0 0 0 / 0.5); font-size: 12px; }
+  .demo .t { color: var(--muted-foreground); } .demo .bs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .demo .btn { height: 26px; font-size: 12px; padding: 0 8px; } .demo .btn[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px); padding: 8px 14px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground);
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity var(--base) var(--ease), transform var(--base) var(--ease); z-index: 60; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<div class="crumb">AI 配置 &nbsp;›&nbsp; <b>总览</b></div>
+<main id="page">
+  <div class="head">
+    <h1>总览</h1>
+    <div class="actions">
+      <button class="chip" id="todoChip" hidden><i data-lucide="triangle-alert"></i><span></span></button>
+      <div class="seg" id="rangeSeg" role="group" aria-label="统计范围" style="--idx:0">
+        <i></i><button data-v="7" aria-pressed="true">近 7 天</button><button data-v="30" aria-pressed="false">近 30 天</button>
+      </div>
+      <button class="btn icon" id="refresh" aria-label="刷新" title="刷新"><i data-lucide="refresh-cw"></i></button>
+    </div>
+  </div>
+
+  <section id="steps" aria-label="上线进度"></section>
+
+  <div id="rest">
+    <section class="kpis" id="kpis" aria-label="关键指标"></section>
+
+    <section class="row">
+      <div class="card" id="trendCard">
+        <div class="card-head">
+          <div><h2>任务量</h2><div class="sub num" id="trendSub"></div></div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="sw" style="background:var(--status-success)"></i>成功</span>
+            <span><i class="sw" style="background:var(--destructive)"></i>失败</span>
+            <span><i class="sw" style="background:var(--chart-other)"></i>其他</span>
+          </div>
+        </div>
+        <div id="trendBox"></div>
+      </div>
+
+      <div class="card" id="shareCard">
+        <div class="card-head">
+          <div><h2>调用占比</h2><div class="sub" id="shareSub"></div></div>
+          <div class="seg sm" id="shareSeg" role="group" aria-label="占比维度" style="--idx:0">
+            <i></i><button data-v="model" aria-pressed="true">模型</button><button data-v="kind" aria-pressed="false">类型</button>
+          </div>
+        </div>
+        <div id="shareBody"></div>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card" id="loadCard">
+        <div class="card-head">
+          <div><h2>渠道负载</h2><div class="sub">生成中 / 同时生成上限，排队的任务叠在后面</div></div>
+          <span class="live"><i></i>每 15 秒刷新</span>
+        </div>
+        <div id="loadBody"></div>
+      </div>
+      <div class="card" id="todoCard">
+        <div class="card-head">
+          <div style="display:flex;align-items:center;gap:8px"><h2>待处理</h2><span class="tag num" id="todoCount">0</span></div>
+        </div>
+        <div id="todoBody" style="display:flex;flex-direction:column;flex:1"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="demo" role="region" aria-label="原型演示控制">
+  <div class="t">原型演示控制（实际页面没有）</div>
+  <div class="bs" id="modes"></div>
+  <div class="t">主题 · 拖窄窗口看窄屏</div>
+  <div class="bs"><button class="btn" id="themeBtn">切换深 / 浅色</button></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ic = (n, extra = "") => `<i data-lucide="${n}" ${extra}></i>`;
+const icons = () => window.lucide && lucide.createIcons();
+const fmt = (n) => n.toLocaleString("en-US");
+
+/* ---------------- 模拟数据 ---------------- */
+function rng(seed) { return () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296; }
+function makeDaily30() {
+  const r = rng(7), out = [], today = new Date(2026, 9, 10);
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today.getTime() - i * 864e5), wk = d.getDay() === 0 || d.getDay() === 6;
+    let total = Math.round((78 + r() * 96) * (wk ? 0.7 : 1) + (29 - i) * 1.2);
+    if (i === 0) total = Math.round(total * 0.62); // 今天还没过完
+    const f = Math.round(total * (0.03 + r() * 0.06)), o = Math.round(total * (0.02 + r() * 0.04));
+    out.push({ date: d, s: total - f - o, f, o });
+  }
+  return out;
+}
+const DAILY30 = makeDaily30();
+const MODELS = [
+  { label: "可灵 v2", kind: "video", w: 0.28 }, { label: "Seedance 1.5", kind: "video", w: 0.22 },
+  { label: "即梦图片 4.0", kind: "image", w: 0.18 }, { label: "GPT Image", kind: "image", w: 0.12 },
+  { label: "Nano Banana", kind: "image", w: 0.08 }, { label: "Veo 3", kind: "video", w: 0.06 },
+  { label: "Qwen TTS", kind: "audio", w: 0.04 }, { label: "DeepSeek Chat", kind: "text", w: 0.02 },
+];
+const KIND_LABEL = { video: "视频", image: "图片", audio: "音频", text: "文本" };
+const CH_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
+
+const S = { mode: "normal", range: 7, shareBy: "model", hl: -1, stepsOpen: null, todos: [] };
+const TODOS = [
+  { id: "p", tone: "bad", icon: "plug-zap", text: "插件「YSWG 生图」已停用，1 个渠道、4 个上架模型实际不可用", btn: "去插件页" },
+  { id: "k", tone: "warn", icon: "key-round", text: "渠道「本地推理」还没设置 Key，2 个模型因此无法上线", btn: "设置 Key" },
+  { id: "u", tone: "info", icon: "circle-arrow-up", text: "New API v1.3.0 可用，1 个渠道还在旧版本", btn: "一键升级" },
+];
+let CHANNELS = [];
+function resetChannels() {
+  CHANNELS = [
+    { name: "newapi", key: "newapi", max: 4, running: 2, waiting: 0, health: "ok" },
+    { name: "亚盛生图", key: "yswg-image", max: 4, running: 4, waiting: 5, health: "ok" },
+    { name: "可灵官方", key: "kling", max: 2, running: 1, waiting: 0, health: "ok" },
+    { name: "本地推理", key: "local-llm", max: 0, running: 0, waiting: 0, health: S.mode === "todos" ? "nokey" : "ok" },
+  ];
+  if (S.mode === "fresh") CHANNELS = [];
+}
+
+/* 当前状态派生出来的数据 */
+function view() {
+  const m = S.mode, empty = m === "empty" || m === "fresh";
+  const daily = DAILY30.slice(-S.range).map((d) => (empty ? { ...d, s: 0, f: 0, o: 0 } : d));
+  const total = daily.reduce((a, d) => a + d.s + d.f + d.o, 0);
+  const sOk = daily.reduce((a, d) => a + d.s, 0), fBad = daily.reduce((a, d) => a + d.f, 0);
+  const today = daily[daily.length - 1], yest = daily[daily.length - 2];
+  const byModel = MODELS.map((x) => ({ label: x.label, kind: x.kind, n: Math.round(total * x.w) })).sort((a, b) => b.n - a.n);
+  const byKind = Object.keys(KIND_LABEL).map((k) => ({ label: KIND_LABEL[k], n: byModel.filter((x) => x.kind === k).reduce((a, x) => a + x.n, 0) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
+  const fresh = m === "fresh", todos = m === "todos";
+  return {
+    daily, total, empty, today: today.s + today.f + today.o, yest: yest.s + yest.f + yest.o,
+    rate: sOk + fBad ? (sOk / (sOk + fBad)) * 100 : null,
+    byModel, byKind,
+    plugins: 3, channelsOk: fresh ? 0 : todos ? 3 : 4, channelsAll: fresh ? 0 : 4,
+    online: fresh ? 0 : todos ? 8 : 10, modelsAll: fresh ? 0 : 12, broken: todos ? 1 : 0,
+    noKey: todos ? 1 : 0,
+  };
+}
+/* 前 N 名 + 其他 */
+function topN(list, n) {
+  if (list.length <= n + 1) return list;
+  const head = list.slice(0, n), rest = list.slice(n);
+  return [...head, { label: "其他", n: rest.reduce((a, x) => a + x.n, 0), other: true }];
+}
+
+/* ---------------- 动效小工具 ---------------- */
+/** FLIP：el 的位置因 fn 改变时，从旧位置滑到新位置，对应实现里 motion 的 layout */
+function flip(el, fn) {
+  const a = el.getBoundingClientRect().top; fn();
+  const dy = a - el.getBoundingClientRect().top;
+  if (dy && !reduced) el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 240, easing: EASE });
+}
+/** 数字滚动：对应实现里的 AnimatedNumber（@number-flow/react） */
+function countTo(el, to, { dec = 0, from } = {}) {
+  const start = from ?? Number(el.dataset.v ?? to); el.dataset.v = to;
+  if (reduced || start === to) { el.textContent = to.toFixed(dec); return; }
+  const t0 = performance.now();
+  (function tick(t) {
+    const p = Math.min((t - t0) / 240, 1), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = (start + (to - start) * e).toFixed(dec);
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 1600);
+}
+const setSeg = (seg, v) => {
+  const bs = $$("button", seg); bs.forEach((b, i) => { const on = b.dataset.v === String(v); b.setAttribute("aria-pressed", on); if (on) seg.style.setProperty("--idx", i); });
+};
+
+/* ---------------- 引导条 ---------------- */
+function renderSteps(animate = true) {
+  const v = view(), el = $("#steps");
+  const steps = [
+    { t: "接入平台", hint: "插件", ok: v.plugins > 0, stat: `${v.plugins} 个可用`, short: `${v.plugins} 个插件`, btn: "上传插件" },
+    { t: "配置渠道", hint: "地址 + Key", ok: v.channelsOk > 0, stat: `${v.channelsOk} / ${v.channelsAll} 个可用`, short: `${v.channelsOk} / ${v.channelsAll} 可用`, btn: "新建渠道" },
+    { t: "上线模型", hint: "用户能在画布里选到", ok: v.online > 0, stat: `${v.online} 个在线`, short: `${v.online} 个在线`, btn: "新建模型" },
+  ];
+  const allOk = steps.every((s) => s.ok), cur = steps.find((s) => !s.ok);
+  const open = S.stepsOpen ?? !allOk; // 没走完默认展开；走完默认收成一行
+  if (S.mode === "loading") { el.innerHTML = `<div class="card steps-slim"><div class="sk" style="height:20px;width:60%"></div></div>`; return; }
+  if (open) {
+    el.innerHTML = `<div class="steps-big">${steps.map((s, i) => `
+      <div class="card ${animate ? "rise" : ""} ${cur === s ? "current" : ""}" style="--i:${i}">
+        <div class="step-head"><span class="no" ${s.ok ? 'style="background:var(--status-success);color:#fff"' : ""}>${s.ok ? ic("check", 'style="width:14px;height:14px;stroke-width:3"') : i + 1}</span><b>${s.t}</b><span class="muted xs">${s.hint}</span></div>
+        <div class="big num">${s.stat}</div>
+        <div><button class="btn sm ${cur === s ? "primary" : ""}" data-toast="${s.btn}">${ic("plus")}${s.btn}</button></div>
+      </div>`).join("")}
+      ${allOk ? `<div style="grid-column:1/-1"><button class="btn sm ghost" id="foldSteps">${ic("chevrons-up")}收起引导</button></div>` : ""}
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="card steps-slim ${animate ? "rise" : ""}">
+      <div class="crumbs">${steps.map((s) => `<span class="step-item"><span class="tick">${ic("check")}</span>${s.t}<span class="muted num">${s.short}</span></span>`).join('<span class="muted">›</span>')}</div>
+      <button class="btn sm ghost" id="foldSteps" aria-expanded="false">${ic("chevrons-down")}展开引导</button></div>`;
+  }
+  const fold = $("#foldSteps");
+  if (fold) fold.onclick = () => { flip($("#rest"), () => { S.stepsOpen = !open; renderSteps(true); icons(); }); };
+  $$("[data-toast]", el).forEach((b) => (b.onclick = () => toast(`原型演示：去「${b.dataset.toast}」`)));
+}
+
+/* ---------------- KPI ---------------- */
+function spark(kind, data, color) {
+  const w = 76, h = 32, max = Math.max(...data, 1), min = kind === "line" ? Math.min(...data) : 0, n = data.length;
+  if (kind === "bars") {
+    const bw = (w - (n - 1) * 3) / n;
+    return `<svg class="spark" width="${w}" height="${h}" aria-hidden="true">${data.map((d, i) => { const bh = Math.max((d / max) * h, d ? 2 : 0); return `<rect x="${i * (bw + 3)}" y="${h - bh}" width="${bw}" height="${bh}" rx="1.5" style="fill:${color};opacity:${i === n - 1 ? 1 : 0.45}"/>`; }).join("")}</svg>`;
+  }
+  const pts = data.map((d, i) => `${(i / (n - 1)) * w},${h - 3 - ((d - min) / (max - min || 1)) * (h - 6)}`).join(" ");
+  return `<svg class="spark" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+const KPI_PREV = [];
+function renderKpis(animate = true) {
+  const v = view(), el = $("#kpis"), m = S.mode;
+  if (m === "loading") { el.innerHTML = [0, 1, 2, 3].map((i) => `<div class="card kpi"><div class="sk" style="height:14px;width:60px"></div><div class="sk" style="height:32px;width:96px;margin-top:6px"></div><div class="sk" style="height:14px;width:80px;margin-top:4px"></div></div>`).join(""); return; }
+  const err = m === "error";
+  const last7 = DAILY30.slice(-7);
+  const rates = last7.map((d) => (d.s / Math.max(d.s + d.f, 1)) * 100);
+  const cards = [
+    { l: "今日任务", icon: "clapperboard", val: err ? null : v.today, unit: "", hint: err ? "统计加载失败" : `昨日 ${fmt(v.yest)}`, sp: err || v.empty ? "" : spark("bars", last7.map((d) => d.s + d.f + d.o), "var(--chart-1)") },
+    { l: `成功率 · 近 ${S.range} 天`, icon: "circle-check", val: err || v.rate == null ? null : v.rate, dec: 1, unit: "%", hint: err ? "统计加载失败" : v.rate == null ? "还没有已结束的任务" : `失败 ${fmt(v.daily.reduce((a, d) => a + d.f, 0))} 次`, sp: err || v.empty ? "" : spark("line", rates, "var(--status-success)") },
+    { l: "在线模型", icon: "boxes", val: v.online, of: v.modelsAll, hint: !v.modelsAll ? "还没有模型" : v.broken ? `${v.broken} 个不可用` : v.modelsAll - v.online ? `${v.modelsAll - v.online} 个未上线` : "全部在线", hintCls: v.broken ? "bad" : "", go: "models" },
+    { l: "可用渠道", icon: "radio-tower", val: v.channelsOk, of: v.channelsAll, hint: !v.channelsAll ? "还没有渠道" : v.noKey ? `${v.noKey} 个未设 Key` : v.channelsAll - v.channelsOk ? `${v.channelsAll - v.channelsOk} 个不可用` : "全部可用", hintCls: v.noKey ? "warn" : "", go: "channels" },
+  ];
+  el.innerHTML = cards.map((c, i) => {
+    const tag = c.go ? "button" : "div";
+    const value = c.val == null ? `<span class="muted">—</span>` : `<span class="n" data-to="${c.val}" data-dec="${c.dec || 0}"></span>${c.of != null ? `<small> / ${c.of}</small>` : ""}${c.unit ? `<small>${c.unit}</small>` : ""}`;
+    return `<${tag} class="card kpi ${animate ? "rise" : ""}" style="--i:${i}" ${c.go ? `data-go="${c.go}"` : ""}>
+      <div class="label">${ic(c.icon)}${c.l}</div>
+      <div class="val"><span class="big num">${value}</span></div>
+      <div class="hint ${c.hintCls || ""}">${c.hint}</div>${c.sp || ""}${c.go ? ic("arrow-up-right", 'class="go"') : ""}</${tag}>`;
+  }).join("");
+  $$(".kpi", el).forEach((card, i) => {
+    const n = $(".n", card); if (!n) { KPI_PREV[i] = undefined; return; }
+    const to = Number(n.dataset.to); countTo(n, to, { dec: Number(n.dataset.dec), from: animate || KPI_PREV[i] == null ? 0 : KPI_PREV[i] }); KPI_PREV[i] = to;
+  });
+  $$("[data-go]", el).forEach((b) => (b.onclick = () => toast(`原型演示：跳转到「${b.dataset.go === "models" ? "模型" : "渠道"}」页`)));
+}
+
+/* ---------------- 趋势图（实现时用 shadcn chart 的 BarChart，这里手写 SVG 还原视觉） ---------------- */
+let trendLayout = null;
+function niceMax(v) {
+  const raw = Math.max(v, 4) / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  return { step, max: step * Math.ceil(Math.max(v, 1) / step) };
+}
+const md = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+const topRound = (x, y, w, h, r) => { r = Math.min(r, h, w / 2); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+function renderTrend() {
+  const box = $("#trendBox"), v = view(), m = S.mode;
+  if (m === "loading") { box.innerHTML = `<div class="sk" style="height:100%;min-height:240px"></div>`; $("#trendSub").textContent = " "; return; }
+  if (m === "error") { box.innerHTML = errState("任务统计加载失败"); bindRetry(); $("#trendSub").textContent = " "; return; }
+  const data = v.daily, n = data.length, W = box.clientWidth, H = Math.max(box.clientHeight, 240);
+  $("#trendSub").textContent = v.empty ? `近 ${S.range} 天` : `近 ${S.range} 天共 ${fmt(v.total)} 次 · 日均 ${fmt(Math.round(v.total / n))}`;
+  const mg = { l: 34, r: 4, t: 8, b: 26 }, iw = W - mg.l - mg.r, ih = H - mg.t - mg.b;
+  const { step, max } = niceMax(Math.max(...data.map((d) => d.s + d.f + d.o)));
+  const y = (val) => mg.t + ih - (val / max) * ih, band = iw / n, bw = Math.min(n <= 7 ? 40 : 18, band * 0.62), rad = n <= 7 ? 4 : 2.5;
+  let g = "", ticks = "";
+  for (let t = 0; t <= max; t += step) ticks += `<line x1="${mg.l}" x2="${W - mg.r}" y1="${y(t)}" y2="${y(t)}" style="stroke:var(--border)" ${t ? 'stroke-dasharray="3 3"' : ""}/><text x="${mg.l - 8}" y="${y(t) + 4}" text-anchor="end" font-size="12" style="fill:var(--muted-foreground)" class="num">${t}</text>`;
+  const xs = data.map((d, i) => {
+    const cx = mg.l + band * i + band / 2, last = i === n - 1;
+    const show = n <= 7 || (n - 1 - i) % 5 === 0;
+    return show ? `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="12" style="fill:${last ? "var(--foreground)" : "var(--muted-foreground)"}">${last ? "今天" : md(d.date)}</text>` : "";
+  }).join("");
+  data.forEach((d, i) => {
+    const x = mg.l + band * i + (band - bw) / 2, segs = [["s", "var(--status-success)"], ["o", "var(--chart-other)"], ["f", "var(--destructive)"]].filter(([k]) => d[k] > 0);
+    let acc = 0;
+    segs.forEach(([k, color], si) => {
+      const h = (d[k] / max) * ih, top = si === segs.length - 1, yy = y(acc + d[k]); acc += d[k];
+      g += top ? `<path d="${topRound(x, yy, bw, h, rad)}" style="fill:${color};stroke:var(--card)" stroke-width="1"/>` : `<rect x="${x}" y="${yy}" width="${bw}" height="${h}" style="fill:${color};stroke:var(--card)" stroke-width="1"/>`;
+    });
+  });
+  box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${S.range} 天任务量柱形图，按成功、失败、其他堆叠">
+    ${ticks}<rect id="cursor" y="${mg.t}" height="${ih}" width="${band}" rx="6" style="fill:var(--muted)" opacity="0"/>
+    <g class="bars" style="transform-origin:0 ${mg.t + ih}px">${g}</g>${xs}</svg><div class="tip" id="tip"></div>`;
+  if (v.empty) box.insertAdjacentHTML("beforeend", `<div class="empty" style="position:absolute;inset:0;pointer-events:none;background:none;min-height:0">这段时间还没有任务<span class="xs">有人在画布里生成后，这里就会出现柱子</span></div>`);
+  trendLayout = { mg, band, W, H, n, data };
+}
+function bindTrend() {
+  const box = $("#trendBox");
+  box.addEventListener("mousemove", (e) => {
+    if (!trendLayout || S.mode !== "normal" && S.mode !== "todos") return;
+    const { mg, band, n, data, W } = trendLayout, r = box.getBoundingClientRect();
+    const i = Math.floor((e.clientX - r.left - mg.l) / band), tip = $("#tip"), cur = $("#cursor");
+    if (i < 0 || i >= n) return leave();
+    const d = data[i], cx = mg.l + band * i + band / 2;
+    cur.setAttribute("x", mg.l + band * i); cur.setAttribute("opacity", 0.55);
+    const wk = "日一二三四五六"[d.date.getDay()];
+    tip.innerHTML = `<b>${d.date.getMonth() + 1} 月 ${d.date.getDate()} 日 · 周${wk}</b>
+      <div><i class="sw" style="background:var(--status-success)"></i>成功<em class="num">${d.s}</em></div>
+      <div><i class="sw" style="background:var(--destructive)"></i>失败<em class="num">${d.f}</em></div>
+      <div><i class="sw" style="background:var(--chart-other)"></i>其他<em class="num">${d.o}</em></div>
+      <div class="tot">合计<em class="num">${d.s + d.f + d.o}</em></div>`;
+    tip.classList.add("on");
+    const tw = tip.offsetWidth;
+    tip.style.left = (cx + 14 + tw > W ? cx - tw - 14 : cx + 14) + "px"; // 靠右时翻到柱子左边，不出界
+    tip.style.top = "8px";
+  });
+  const leave = () => { const t = $("#tip"), c = $("#cursor"); if (t) t.classList.remove("on"); if (c) c.setAttribute("opacity", 0); };
+  box.addEventListener("mouseleave", leave);
+}
+
+/* ---------------- 占比环形图 ---------------- */
+function renderShare(animate = true) {
+  const body = $("#shareBody"), v = view(), m = S.mode;
+  if (m === "loading") { body.innerHTML = `<div class="sk" style="height:148px;width:148px;border-radius:99px;margin:0 auto"></div><div class="sk" style="height:96px;margin-top:12px"></div>`; $("#shareSub").textContent = " "; return; }
+  if (m === "error") { body.innerHTML = errState("占比统计加载失败"); bindRetry(); $("#shareSub").textContent = " "; return; }
+  const raw = S.shareBy === "model" ? v.byModel : v.byKind, items = topN(raw, 5), total = items.reduce((a, x) => a + x.n, 0);
+  $("#shareSub").textContent = S.shareBy === "model" ? `近 ${S.range} 天 · 前 5 名` : `近 ${S.range} 天 · 按生成类型`;
+  const R = 56, C = 2 * Math.PI * R, sw = 18, gap = items.length > 1 ? 2.5 : 0;
+  let off = 0, circles = "";
+  if (!total) circles = `<circle cx="74" cy="74" r="${R}" fill="none" style="stroke:var(--border)" stroke-width="${sw}" stroke-dasharray="3 5"/>`;
+  items.forEach((it, i) => {
+    const len = Math.max((it.n / total) * C - gap, 0.5), color = it.other ? "var(--chart-other)" : CH_COLORS[i % 5];
+    circles += `<circle data-i="${i}" cx="74" cy="74" r="${R}" fill="none" style="stroke:${color}" stroke-width="${sw}" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 74 74)"/>`;
+    off += (it.n / total) * C;
+  });
+  body.innerHTML = `<div class="donut-wrap" id="donut"><svg width="148" height="148" viewBox="0 0 148 148" role="img" aria-label="调用占比环形图" ${animate ? "" : 'style="animation:none"'}>${circles}</svg>
+      <div class="donut-center"><b class="num" id="dcNum">${fmt(total)}</b><span id="dcLbl">次调用</span></div></div>
+    ${total ? `<div class="lg-list" id="lgList">${items.map((it, i) => `<button class="lg" data-i="${i}"><i class="sw" style="background:${it.other ? "var(--chart-other)" : CH_COLORS[i % 5]}"></i><span class="nm">${it.label}</span><span class="ct num">${fmt(it.n)}</span><span class="pc num">${((it.n / total) * 100).toFixed(1)}%</span></button>`).join("")}</div>`
+      : `<div class="empty" style="min-height:96px">这段时间还没有任务</div>`}`;
+  const donut = $("#donut"), list = $("#lgList");
+  const hl = (i) => {
+    S.hl = i; const on = i >= 0;
+    donut.classList.toggle("hl", on); list && list.classList.toggle("hl", on);
+    $$("circle[data-i]", donut).forEach((c) => c.classList.toggle("on", +c.dataset.i === i));
+    $$(".lg", body).forEach((b) => b.classList.toggle("on", +b.dataset.i === i));
+    $("#dcNum").textContent = on ? fmt(items[i].n) : fmt(total);
+    $("#dcLbl").textContent = on ? `${items[i].label} · ${((items[i].n / total) * 100).toFixed(1)}%` : "次调用";
+  };
+  $$("circle[data-i], .lg", body).forEach((el) => { el.onmouseenter = () => hl(+el.dataset.i); el.onfocus = () => hl(+el.dataset.i); el.onmouseleave = () => hl(-1); el.onblur = () => hl(-1); });
+}
+
+/* ---------------- 渠道负载 ---------------- */
+function renderLoad(animate = true) {
+  const body = $("#loadBody"), m = S.mode;
+  if (m === "loading") { body.innerHTML = `<div class="loads">${[0, 1, 2].map(() => `<div class="sk" style="height:20px"></div>`).join("")}</div>`; return; }
+  if (!CHANNELS.length) { body.innerHTML = `<div class="empty">${ic("radio-tower")}还没有渠道<button class="btn sm" data-toast="新建渠道">${ic("plus")}新建渠道</button></div>`; $$("[data-toast]", body).forEach((b) => (b.onclick = () => toast("原型演示：新建渠道"))); return; }
+  const rank = (c) => (c.health !== "ok" ? -1 : c.running + c.waiting);
+  const list = [...CHANNELS].sort((a, b) => rank(b) - rank(a));
+  body.innerHTML = `<div class="loads">${list.map((c, i) => `
+    <div class="ld ${animate ? "rise" : ""}" style="--i:${i}" data-k="${c.key}">
+      <div class="nm">${c.name}<small>${c.key}</small></div>
+      <div class="track" role="img"><i class="w" style="transform:scaleX(0)"></i><i class="r" style="transform:scaleX(0)"></i></div>
+      <div class="st"></div></div>`).join("")}</div>
+    <button class="btn sm ghost more" data-toast="渠道页">全部 ${CHANNELS.length} 个渠道 ${ic("arrow-right")}</button>`;
+  $$("[data-toast]", body).forEach((b) => (b.onclick = () => toast("原型演示：跳转到「渠道」页")));
+  requestAnimationFrame(() => requestAnimationFrame(updateLoad));
+}
+function updateLoad() {
+  const scale = Math.max(...CHANNELS.map((c) => (c.max ? c.max : 0)), ...CHANNELS.map((c) => c.running + c.waiting), 1);
+  CHANNELS.forEach((c) => {
+    const row = $(`.ld[data-k="${c.key}"]`); if (!row) return;
+    const base = c.max || scale, denom = Math.max(base, c.running + c.waiting);
+    $(".r", row).style.transform = `scaleX(${Math.min(c.running / denom, 1)})`;
+    $(".w", row).style.transform = `scaleX(${Math.min((c.running + c.waiting) / denom, 1)})`;
+    const full = c.max && c.running >= c.max; row.classList.toggle("full", !!full); row.classList.toggle("off", c.health !== "ok");
+    const st = $(".st", row);
+    st.innerHTML = c.health === "nokey" ? `<span class="tag warn">未设 Key</span>`
+      : c.health === "off" ? `<span class="tag">已停用</span>`
+      : !c.running && !c.waiting ? `空闲`
+      : `<span><b class="num">${c.running}</b> / ${c.max || "不限"}</span>${c.waiting ? `<span class="tag info num">排队 ${c.waiting}</span>` : ""}${full && !c.waiting ? `<span class="tag warn">满载</span>` : ""}`;
+    row.querySelector(".track").setAttribute("aria-label", `${c.name}：生成中 ${c.running}，排队 ${c.waiting}，上限 ${c.max || "不限"}`);
+  });
+}
+
+/* ---------------- 待处理 ---------------- */
+function renderTodos(animate = true) {
+  const body = $("#todoBody"), m = S.mode, ready = m !== "loading", chip = $("#todoChip");
+  $("#todoCount").textContent = ready ? S.todos.length : "";
+  $("#todoCount").style.display = ready ? "" : "none";
+  chip.hidden = !(ready && S.todos.length); $("span", chip).textContent = `${S.todos.length} 项待处理`;
+  if (!ready) { body.innerHTML = `<div class="sk" style="height:44px"></div><div class="sk" style="height:44px;margin-top:8px"></div>`; return; }
+  if (!S.todos.length) { body.innerHTML = `<div class="empty">${ic("party-popper")}一切正常，没有要处理的事</div>`; return; }
+  body.innerHTML = `<div class="todos">${S.todos.map((t, i) => `
+    <div class="todo ${animate ? "rise" : ""}" style="--i:${i}" data-id="${t.id}">
+      <span class="ic ${t.tone}">${ic(t.icon)}</span><p>${t.text}</p><button class="btn sm" data-fix="${t.id}">${t.btn}</button></div>`).join("")}</div>`;
+  $$("[data-fix]", body).forEach((b) => (b.onclick = () => fixTodo(b.dataset.fix)));
+}
+function fixTodo(id) {
+  const row = $(`.todo[data-id="${id}"]`); if (!row) return;
+  const done = () => {
+    const tops = new Map($$(".todo").map((r) => [r.dataset.id, r.getBoundingClientRect().top]));
+    S.todos = S.todos.filter((t) => t.id !== id); renderTodos(false); icons();
+    $$(".todo").forEach((r) => { const dy = tops.get(r.dataset.id) - r.getBoundingClientRect().top; if (dy && !reduced) r.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 240, easing: EASE }); });
+    icons(); toast("原型演示：已处理");
+  };
+  if (reduced) return done();
+  row.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(8px)" }], { duration: 126, easing: EASE, fill: "forwards" }).onfinish = done;
+}
+
+/* ---------------- 错误 / 重试 ---------------- */
+const errState = (msg) => `<div class="empty err">${ic("cloud-off")}${msg}<button class="btn sm" data-retry>${ic("rotate-cw")}重试</button></div>`;
+function bindRetry() { $$("[data-retry]").forEach((b) => (b.onclick = () => setMode("normal"))); icons(); }
+
+/* ---------------- 总装 ---------------- */
+function renderAll(animate = true) {
+  renderSteps(animate); renderKpis(animate); renderShare(animate); renderTrend(); renderLoad(animate); renderTodos(animate); icons();
+}
+function setMode(mode) {
+  S.mode = mode; S.stepsOpen = null; S.todos = mode === "todos" ? [...TODOS] : [];
+  resetChannels();
+  $$("#modes button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === mode));
+  renderAll(true);
+}
+/* 切换范围 / 维度：只重绘受影响的部分；柱子与环形图重播入场 */
+$("#rangeSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return; S.range = +b.dataset.v; setSeg($("#rangeSeg"), S.range);
+  renderKpis(false); renderShare(true); renderTrend(); icons();
+});
+$("#shareSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return; S.shareBy = b.dataset.v; setSeg($("#shareSeg"), S.shareBy); renderShare(true);
+});
+$("#refresh").addEventListener("click", (e) => {
+  const btn = e.currentTarget; btn.classList.add("spin"); btn.disabled = true;
+  setTimeout(() => { btn.classList.remove("spin"); btn.disabled = false; renderKpis(false); toast("已刷新"); icons(); }, 700);
+});
+$("#todoChip").addEventListener("click", () => {
+  const c = $("#todoCard"); c.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+  c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash");
+});
+$("#themeBtn").addEventListener("click", () => { document.documentElement.classList.toggle("dark"); renderTrend(); });
+$("#modes").innerHTML = [["normal", "正常"], ["todos", "有待处理"], ["fresh", "新装未完成"], ["empty", "还没有任务"], ["loading", "加载中"], ["error", "统计失败"]].map(([m, t]) => `<button class="btn" data-m="${m}" aria-pressed="${m === "normal"}">${t}</button>`).join("");
+$("#modes").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.m); });
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderTrend, 80); });
+
+/* 渠道负载每 15 秒刷新一次；这里为了演示缩短到 3 秒 */
+setInterval(() => {
+  if (document.hidden || (S.mode !== "normal" && S.mode !== "todos")) return;
+  CHANNELS.forEach((c) => {
+    if (c.health !== "ok") return;
+    const cap = c.max || 3; c.running = Math.max(0, Math.min(cap, c.running + [-1, 0, 0, 1][Math.floor(Math.random() * 4)]));
+    c.waiting = c.running >= cap ? Math.max(0, c.waiting + [-1, 0, 1][Math.floor(Math.random() * 3)]) : 0;
+  });
+  updateLoad();
+}, 3000);
+
+bindTrend(); setMode("normal");
+</script>
+</body>
+</html>
