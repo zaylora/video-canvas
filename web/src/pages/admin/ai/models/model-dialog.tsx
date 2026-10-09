@@ -1,16 +1,9 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   Braces,
-  CheckCheck,
-  CircleAlert,
   Coins,
-  Ellipsis,
-  FlaskConical,
-  History,
   Info,
   Loader2,
-  EyeOff,
-  Rocket,
   Save,
   SlidersHorizontal,
   X,
@@ -23,18 +16,6 @@ import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
 import { cn } from "@/lib/utils";
 import { findPathInJson } from "@/utils/admin/json";
@@ -54,7 +35,6 @@ import { fieldOfPath, modelChecks, type ModelTabId } from "./model-fields";
 import { ModelParamsForm } from "./model-params-form";
 import { PickerPreview, PreviewFrame, PricePreview } from "./model-previews";
 import { ModelPriceForm } from "./model-price-form";
-import { ModelTestDialog } from "./model-test-dialog";
 import { TestNode } from "./test-node";
 import type { ModelWorkspace } from "./use-model-workspace";
 
@@ -84,7 +64,6 @@ export function ModelDialog({
   ref?: Ref<ModelDialogHandle>;
 }) {
   const [tab, setTab] = useState<ModelTabId>("basic");
-  const [testOpen, setTestOpen] = useState(false);
   const [pendingLocate, setPendingLocate] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { mode, body } = ws;
@@ -124,9 +103,7 @@ export function ModelDialog({
   const checks = modelChecks(body, ws.info, ws.issues);
   const disabled = ws.working || ws.loadingDetail;
   const published = ws.detail?.published;
-  const online = !!published && !!ws.detail?.enabled;
   const draft = ws.detail?.draft;
-  const rollbackable = ws.revisions?.filter((revision) => revision.status !== "draft") ?? [];
   const spinner = (name: string, icon: React.ReactNode) =>
     ws.busy === name ? <Loader2 className="animate-spin" /> : icon;
   const channelsReady = catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready";
@@ -143,10 +120,7 @@ export function ModelDialog({
       models={ws.models}
     />
   ) : tab === "params" ? (
-    <PreviewFrame
-      title="画布节点预览"
-      note="左边每改一项，这里立即变化。可以直接在节点里选参数，点按钮用这些参数测试。"
-    >
+    <PreviewFrame title="画布节点预览" note="左边每改一项，这里立即变化。">
       <TestNode
         modelKey={ws.modelKey}
         vendor={readModelString(body, "vendor")}
@@ -161,7 +135,6 @@ export function ModelDialog({
         onChange={ws.setTestParam}
         onAddRef={ws.addTestRef}
         onRemoveRef={ws.removeTestRef}
-        action={{ label: "测试", onClick: () => setTestOpen(true) }}
       />
     </PreviewFrame>
   ) : (
@@ -202,100 +175,6 @@ export function ModelDialog({
             <span className="font-mono">{upstream || ws.modelKey || "未填写"}</span>
           </p>
         </div>
-        {/* 发布前待办：放在头部空白处 */}
-        {checks.length > 0 && (
-          <div className="flex max-w-[45%] flex-wrap items-center justify-end gap-x-2 gap-y-1.5 self-center rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400">
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <CircleAlert className="size-4" />
-              发布前还需处理 {checks.length} 项
-            </span>
-            {checks.map((check, index) => (
-              <button
-                key={`${check.text}-${index}`}
-                type="button"
-                className="bg-background/60 hover:bg-background rounded-md px-2 py-0.5 text-xs"
-                onClick={() => (check.path ? locate(check.path) : setTab(check.tab))}
-              >
-                {check.text}
-              </button>
-            ))}
-          </div>
-        )}
-        <DropdownMenu
-          modal={false}
-          onOpenChange={(open) => {
-            if (open && ws.key) void ws.loadRevisions();
-          }}
-        >
-          <DropdownMenuTrigger
-            render={<Button variant="ghost" size="icon-sm" aria-label="更多操作" />}
-          >
-            <Ellipsis />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => ws.switchMode(mode === "json" ? "form" : "json")}>
-                <Braces />
-                {mode === "json" ? "回到表单" : "编辑 JSON"}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={disabled} onClick={() => void ws.validate()}>
-                <CheckCheck />
-                校验配置
-              </DropdownMenuItem>
-              {online && (
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={disabled}
-                  onClick={() => void ws.toggleEnabled(false)}
-                >
-                  <EyeOff />
-                  下线
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuGroup>
-            {!ws.isNew && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger disabled={disabled}>
-                    <History />
-                    回滚到历史版本
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-72">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>回滚到历史版本</DropdownMenuLabel>
-                      {ws.revisions === null && (
-                        <p className="text-muted-foreground px-1.5 py-2 text-xs">加载中…</p>
-                      )}
-                      {ws.revisions !== null && rollbackable.length === 0 && (
-                        <p className="text-muted-foreground px-1.5 py-2 text-xs">
-                          没有可回滚的历史版本
-                        </p>
-                      )}
-                      {rollbackable.map((revision) => (
-                        <DropdownMenuItem
-                          key={revision.id}
-                          onClick={() => ws.requestRollback(revision)}
-                        >
-                          <span className="flex min-w-0 flex-1 flex-col">
-                            <span>
-                              第 {revision.revision_no} 版 ·{" "}
-                              {revision.status === "published" ? "当前发布" : "历史"}
-                            </span>
-                            <span className="text-muted-foreground truncate text-xs">
-                              {new Date(revision.created_at).toLocaleString()}
-                              {revision.note ? ` · ${revision.note}` : ""}
-                            </span>
-                          </span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
         <Button variant="ghost" size="icon-sm" aria-label="关闭" onClick={ws.closeEditor}>
           <X />
         </Button>
@@ -435,39 +314,18 @@ export function ModelDialog({
         </div>
       )}
 
-      {/* 底栏：测试 / 取消 / 保存草稿 / 上线（= 保存 + 发布 + 上架，一步完成）；下线在“更多”里 */}
+      {/* 底栏：取消 / 保存（保存草稿） */}
       <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={disabled || kind === "agent"}
-            title={
-              kind === "agent" ? "Agent 模型暂不支持试跑，发布后在画布里打开 Agent 验证" : undefined
-            }
-            onClick={() => setTestOpen(true)}
-          >
-            <FlaskConical />
-            测试模型
-          </Button>
           <Button variant="outline" onClick={ws.closeEditor}>
             取消
           </Button>
-          <Button variant="outline" disabled={disabled} onClick={() => void ws.save()}>
+          <Button disabled={disabled} onClick={() => void ws.save()}>
             {spinner("save", <Save />)}
-            保存草稿
-          </Button>
-          <Button
-            disabled={disabled || checks.length > 0}
-            title={checks.length > 0 ? "先处理上方的待办项" : undefined}
-            onClick={() => void ws.requestPublish()}
-          >
-            {spinner("publish", <Rocket />)}
-            {online ? "更新上线版本" : "上线"}
+            保存
           </Button>
         </div>
       </div>
-
-      <ModelTestDialog open={testOpen} ws={ws} onClose={() => setTestOpen(false)} />
     </div>
   );
 }
