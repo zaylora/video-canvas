@@ -73,7 +73,7 @@ export function AdminSidebar({
                     >
                       {active && <NavActiveHighlight layoutId="admin-nav-active" />}
                       <item.icon />
-                      <span>{item.label}</span>
+                      <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
                       {badge !== undefined && (
                         <span className="text-sidebar-foreground/55 ml-auto font-mono text-xs group-data-[collapsible=icon]:hidden">
                           {badge}
