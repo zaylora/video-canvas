@@ -158,11 +158,13 @@ export function ResultCell({
     case "failed":
       return (
         <div data-slot="result-cell" className={cn(PLACEHOLDER, size)}>
-          <div className="grid justify-items-center">
-            <CircleX className="text-destructive mb-1 size-4" />
-            {cell.message}
-            <span className="text-[11px] opacity-70">积分已退回</span>
-            <TaskIdTag id={cell.taskRef} />
+          <div className="grid justify-items-center gap-2">
+            <CircleX className="text-destructive size-4" />
+            <div className="grid justify-items-center gap-1">
+              <span>{cell.message}</span>
+              <span className="text-[11px] opacity-70">积分已退回</span>
+              <TaskIdTag id={cell.taskRef} className="mt-0.5" />
+            </div>
             {retry}
           </div>
         </div>
