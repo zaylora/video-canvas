@@ -93,7 +93,7 @@ export function useRecordActions(conversationId: string) {
 
   /** 用记录的快照再提交一次：count 为 null 表示沿用原数量，否则只生成这么多（重试一格用 1） */
   const resubmit = useCallback(
-    async (record: RecordDto, count: number | null, done: string) => {
+    async (record: RecordDto, count: number | null) => {
       const { loaded, model } = modelOf(record);
       if (loaded && !model) {
         toast.error("原模型已下线，请重新编辑后选择其他模型");
@@ -112,7 +112,6 @@ export function useRecordActions(conversationId: string) {
           input,
           count: nextCount,
         });
-        toast.success(done);
       } catch {
         // 提示由请求层统一弹
       } finally {
@@ -122,15 +121,9 @@ export function useRecordActions(conversationId: string) {
     [conversationId],
   );
 
-  const regenerate = useCallback(
-    (record: RecordDto) => resubmit(record, null, "已作为新记录追加到底部"),
-    [resubmit],
-  );
+  const regenerate = useCallback((record: RecordDto) => resubmit(record, null), [resubmit]);
 
-  const retryCell = useCallback(
-    (record: RecordDto) => resubmit(record, 1, "已重试这一格，作为新记录追加到底部"),
-    [resubmit],
-  );
+  const retryCell = useCallback((record: RecordDto) => resubmit(record, 1), [resubmit]);
 
   /** 取消记录里还能取消的任务，积分退回；统一入口逐个取消，某个失败不影响其他 */
   const cancel = useCallback(async (record: RecordDto) => {
