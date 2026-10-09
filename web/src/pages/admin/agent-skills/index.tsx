@@ -8,7 +8,6 @@ import { Notice } from "@/components/admin-ui/notice";
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -105,9 +104,6 @@ export default function AgentSkillsPage() {
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>技能</PageHeaderTitle>
-              <PageHeaderDescription>
-                管理画布 Agent 能用的技能。导入后默认停用；启用后，新开始的运行才会用到它。
-              </PageHeaderDescription>
             </PageHeaderHeading>
             <PageHeaderActions>
               <Button onClick={openImport}>

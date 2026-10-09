@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 /**
  * 页面标题区：
  * <PageHeader>
- *   <PageHeaderHeading><PageHeaderTitle /><PageHeaderDescription /></PageHeaderHeading>
+ *   <PageHeaderHeading><PageHeaderTitle /></PageHeaderHeading>
  *   <PageHeaderActions />
  * </PageHeader>
  */
@@ -33,16 +33,6 @@ function PageHeaderTitle({ className, ...props }: ComponentProps<"h1">) {
   );
 }
 
-function PageHeaderDescription({ className, ...props }: ComponentProps<"p">) {
-  return (
-    <p
-      data-slot="page-header-description"
-      className={cn("text-muted-foreground mt-1 max-w-3xl text-sm", className)}
-      {...props}
-    />
-  );
-}
-
 function PageHeaderActions({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
@@ -53,4 +43,4 @@ function PageHeaderActions({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-export { PageHeader, PageHeaderActions, PageHeaderDescription, PageHeaderHeading, PageHeaderTitle };
+export { PageHeader, PageHeaderActions, PageHeaderHeading, PageHeaderTitle };

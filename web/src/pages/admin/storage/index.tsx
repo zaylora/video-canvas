@@ -8,7 +8,6 @@ import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/adm
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -78,9 +77,6 @@ export default function StoragePage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>存储配置</PageHeaderTitle>
-            <PageHeaderDescription>
-              素材（上传与生成产物）存到哪里。切换默认只影响新文件，已有素材始终从它所在的存储读取。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>

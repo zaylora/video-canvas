@@ -11,7 +11,6 @@ import { publishBlockReason, resolveModelChannel } from "@/utils/admin/model-cha
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -61,9 +60,6 @@ export default function ModelsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>模型</PageHeaderTitle>
-            <PageHeaderDescription>
-              模型是画布里用户能选到的生成能力。编辑后可以先保存草稿，测试通过点「上线」，用户就能在画布里选到。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           <PageHeaderActions>
             <Button onClick={ws.startNew}>

@@ -13,7 +13,6 @@ import { Notice } from "@/components/admin-ui/notice";
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -215,10 +214,6 @@ export default function ShowcaseSettingsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>登录页展示</PageHeaderTitle>
-            <PageHeaderDescription>
-              登录页背景轮播的作品。每条显示「生成它的那句话」，访客可以一键「做同款」。建议放 4–8
-              条横屏短片，720p、15 MB 以内。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>

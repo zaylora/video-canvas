@@ -5,12 +5,7 @@ import { toast } from "sonner";
 import { updateRegisterSettings } from "@/api/admin/settings";
 import type { RegisterSettings } from "@/api/admin/settings/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
-import {
-  PageHeader,
-  PageHeaderDescription,
-  PageHeaderHeading,
-  PageHeaderTitle,
-} from "@/components/admin-ui/page-header";
+import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -168,9 +163,6 @@ export default function RegisterSettingsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>注册设置</PageHeaderTitle>
-            <PageHeaderDescription>
-              控制是否开放自助注册，以及新用户的初始积分与默认并发上限。
-            </PageHeaderDescription>
           </PageHeaderHeading>
         </PageHeader>
 

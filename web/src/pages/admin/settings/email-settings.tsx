@@ -7,12 +7,7 @@ import type { SmtpSettings } from "@/api/admin/settings/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { Notice } from "@/components/admin-ui/notice";
-import {
-  PageHeader,
-  PageHeaderDescription,
-  PageHeaderHeading,
-  PageHeaderTitle,
-} from "@/components/admin-ui/page-header";
+import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -363,9 +358,6 @@ export default function EmailSettingsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>邮件服务</PageHeaderTitle>
-            <PageHeaderDescription>
-              用于发送注册验证码。SMTP 密码加密存储，保存后不会再显示。
-            </PageHeaderDescription>
           </PageHeaderHeading>
         </PageHeader>
 

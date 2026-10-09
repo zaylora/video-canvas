@@ -11,7 +11,6 @@ import {
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -61,10 +60,6 @@ export default function ImageProcessorPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>图片服务</PageHeaderTitle>
-            <PageHeaderDescription>
-              为素材所在的存储配置缩略图 /
-              视频封面的处理服务。处理服务只对它绑定的那套存储里的素材生效。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>

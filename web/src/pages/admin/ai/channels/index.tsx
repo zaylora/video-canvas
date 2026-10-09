@@ -9,7 +9,6 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -141,9 +140,6 @@ export default function ChannelsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>渠道</PageHeaderTitle>
-            <PageHeaderDescription>
-              渠道把一个插件版本、一个地址和一个 Key 绑在一起，模型通过渠道调用上游。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           <PageHeaderActions>
             {canWrite && (

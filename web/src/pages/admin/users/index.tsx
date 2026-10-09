@@ -4,12 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { NativeSelect } from "@/components/admin-ui/native-select";
-import {
-  PageHeader,
-  PageHeaderDescription,
-  PageHeaderHeading,
-  PageHeaderTitle,
-} from "@/components/admin-ui/page-header";
+import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -248,9 +243,6 @@ export default function UsersPage() {
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>用户管理</PageHeaderTitle>
-              <PageHeaderDescription>
-                查看用户、调整积分与并发、封禁账号，查看生成与登录记录。
-              </PageHeaderDescription>
             </PageHeaderHeading>
           </PageHeader>
 

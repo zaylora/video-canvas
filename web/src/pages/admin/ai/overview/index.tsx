@@ -12,12 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
-import {
-  PageHeader,
-  PageHeaderDescription,
-  PageHeaderHeading,
-  PageHeaderTitle,
-} from "@/components/admin-ui/page-header";
+import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { Tag, toneClasses } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,10 +141,6 @@ export default function OverviewPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>总览</PageHeaderTitle>
-            <PageHeaderDescription>
-              现在系统能不能用、哪里需要处理，一眼看完。上线一个模型要走三步：接入平台 → 配置渠道 →
-              上线模型。
-            </PageHeaderDescription>
           </PageHeaderHeading>
         </PageHeader>
 

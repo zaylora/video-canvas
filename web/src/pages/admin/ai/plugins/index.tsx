@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -75,9 +74,6 @@ export default function PluginsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>插件</PageHeaderTitle>
-            <PageHeaderDescription>
-              插件把一种上游协议翻译成统一的请求与结果；渠道固定在插件的某个版本上，版本登记后不可变。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           <PageHeaderActions>
             {canWrite && (
