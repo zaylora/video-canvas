@@ -558,7 +558,7 @@ export function AddParamRow({
       />
       <select
         aria-label="新参数类型"
-        className="border-input bg-background h-8 rounded-lg border px-2 text-xs"
+        className="border-input focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 h-8 rounded-lg border bg-transparent px-2.5 text-xs outline-none transition-colors focus-visible:ring-1"
         value={type}
         onChange={(event) => setType(event.target.value as ParamType)}
       >

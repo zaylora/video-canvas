@@ -236,7 +236,7 @@
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰）。浅色下卡片与页面同色、描边取淡一档；深色下卡片比页面亮一档，靠明暗而不是描边分层，和前台一致。
-   聚焦环 --ring 取中灰：输入框聚焦时边框只亮一档、光晕淡，不会出现一圈亮白的硬框。
+   聚焦环 --ring 不在这里覆盖，沿用前台的中灰，后台与前台的输入框聚焦样式保持一致。
    只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
 .admin-theme {
   /* 进后台的加载层用 canvas-loader 的点阵底，底色跟后台走 */
@@ -258,7 +258,6 @@
   --destructive: hsl(0 72% 51%);
   --border: hsl(240 5.9% 91.5%);
   --input: hsl(240 5.9% 90%);
-  --ring: hsl(240 4% 62%);
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
   --sidebar-primary: hsl(240 5.9% 10%);
@@ -266,7 +265,6 @@
   --sidebar-accent: hsl(240 4.8% 95.9%);
   --sidebar-accent-foreground: hsl(240 5.9% 10%);
   --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(240 4% 62%);
 }
 
 .dark.admin-theme {
@@ -288,7 +286,6 @@
   --destructive: hsl(0 62.8% 45%);
   --border: hsl(240 3.7% 13.5%);
   --input: hsl(240 3.7% 18%);
-  --ring: hsl(240 5% 42%);
   --sidebar: hsl(240 5.9% 10%);
   --sidebar-foreground: hsl(240 4.8% 95.9%);
   --sidebar-primary: hsl(0 0% 98%);
@@ -296,20 +293,6 @@
   --sidebar-accent: hsl(240 3.7% 15.9%);
   --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
   --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(240 5% 42%);
-}
-
-/* 后台表单控件聚焦时只留 1px 淡光晕（共享组件默认 3px 太厚）。
-   写在 @layer 之外，优先级高于 Tailwind 的 focus-visible:ring-3，且只在 admin-theme 下生效。 */
-.admin-theme
-  :is(
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"],
-    [data-slot="native-select"]
-  ):focus-visible,
-.admin-theme [data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible) {
-  --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color);
 }
 
 @layer base {

@@ -11,7 +11,7 @@ export function PasswordField({ className, ...props }: Omit<ComponentProps<typeo
     <div className="relative">
       <Input
         type={shown ? "text" : "password"}
-        className={cn("h-11 pr-11", className)}
+        className={cn("h-10 pr-11", className)}
         {...props}
       />
       <button

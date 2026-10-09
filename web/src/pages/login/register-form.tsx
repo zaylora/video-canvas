@@ -149,7 +149,7 @@ export function RegisterForm({
           onChange={(event) => set("username", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.username}
-          className="h-11"
+          className="h-10"
         />
       </Field>
       <Field id="reg-email" label="邮箱" error={errors.email}>
@@ -162,7 +162,7 @@ export function RegisterForm({
           onChange={(event) => set("email", event.target.value)}
           disabled={loading}
           aria-invalid={!!errors.email}
-          className="h-11"
+          className="h-10"
         />
       </Field>
       {needCode && (
@@ -178,12 +178,12 @@ export function RegisterForm({
               onChange={(event) => set("code", event.target.value.replace(/\D/g, ""))}
               disabled={loading}
               aria-invalid={!!errors.code}
-              className="h-11"
+              className="h-10"
             />
             <Button
               type="button"
               variant="outline"
-              className="h-11 w-32 shrink-0 tabular-nums"
+              className="h-10 w-32 shrink-0 tabular-nums"
               disabled={codeButton.disabled || loading}
               onClick={() => void sendCode()}
             >
@@ -223,7 +223,7 @@ export function RegisterForm({
         </p>
       )}
 
-      <Button type="submit" size="lg" disabled={loading} className="h-11 w-full justify-center">
+      <Button type="submit" size="lg" disabled={loading} className="h-10 w-full justify-center">
         {loading ? (
           <>
             <LoaderCircle className="size-4 animate-spin" /> 注册中...
