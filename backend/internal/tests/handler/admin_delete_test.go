@@ -31,7 +31,7 @@ func aicBlockers(t *testing.T, r aicResp) []model.DeleteBlocker {
 
 func TestAdminAIHandler_DeleteModel(t *testing.T) {
 	env := aicNewEnv(t)
-	env.publishAll(t) // m1 已发布并上架
+	env.enableAll(t) // m1 已发布并上架
 
 	t.Run("预检：上架中返回 model_enabled；参数校验失败 400；不存在 404", func(t *testing.T) {
 		bs := aicBlockers(t, env.admin(http.MethodGet, aicBase+"/models/m1/delete-check", nil))
@@ -68,23 +68,19 @@ func TestAdminAIHandler_DeleteModel(t *testing.T) {
 			t.Fatalf("公开清单不应有已删除的模型：%s", r.Data)
 		}
 	})
-	t.Run("同名 key 可以重新新建，版本号从 1 开始", func(t *testing.T) {
-		r := env.admin(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")})
+	t.Run("同名 key 可以重新新建，并且是全新的（未启用）", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusOK, 0)
+		r := env.admin(http.MethodGet, aicBase+"/models/m1", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var res struct {
-			Revision struct {
-				RevisionNo int `json:"revision_no"`
-			} `json:"revision"`
-		}
-		if err := json.Unmarshal(r.Data, &res); err != nil || res.Revision.RevisionNo != 1 {
-			t.Fatalf("revision_no 应从 1 开始：%v %s", err, r.Raw)
+		if !strings.Contains(r.Raw, `"enabled":false`) {
+			t.Fatalf("重新新建的模型应未启用：%s", r.Raw)
 		}
 	})
 }
 
 func TestAdminChannelHandler_Delete(t *testing.T) {
 	env := aicNewEnv(t)
-	env.publishAll(t) // 渠道 kling-main 被模型 m1 引用
+	env.enableAll(t) // 渠道 kling-main 被模型 m1 引用
 
 	t.Run("权限：admin 调用预检与删除都是 403", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodGet, aicBase+"/channels/kling-main/delete-check", nil), http.StatusForbidden, errcode.ErrForbidden.Code)

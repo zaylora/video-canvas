@@ -100,7 +100,7 @@ export function useAgentSkills() {
 
   /**
    * 启用 / 停用：成功后 toast 带“撤销”（5 秒内），撤销即切回原状态（不再弹新的撤销）。
-   * @returns 成功与否，调用方（抽屉）据此刷新自己的详情
+   * @returns 成功与否，调用方（弹窗）据此刷新自己的详情
    */
   const toggleEnabled = useCallback(
     async (item: SkillItem, enabled: boolean): Promise<boolean> => {
@@ -164,5 +164,5 @@ export function useAgentSkills() {
   };
 }
 
-/** useAgentSkills 的返回值，传给表格与抽屉 */
+/** useAgentSkills 的返回值，传给表格与弹窗 */
 export type AgentSkillsApi = ReturnType<typeof useAgentSkills>;

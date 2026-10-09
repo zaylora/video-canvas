@@ -2,31 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import {
-  createModelDraft,
+  createModel,
   dryRunModel,
   getModelDetail,
   getTestRun,
   getTestRunTrace,
-  listModelRevisions,
   listModels,
-  publishModel,
-  rollbackModel,
   setModelEnabled,
   testRunModel,
-  updateModelDraft,
+  updateModel,
   validateModel,
 } from "@/api/admin/ai";
-import type {
-  ConfigDetail,
-  ConfigIssue,
-  ConfigListItem,
-  ConfigRevision,
-} from "@/api/admin/ai/type.d";
-import { errorMessage, isRunnerDown } from "@/utils/admin/errors";
+import type { ConfigDetail, ConfigIssue, ConfigListItem } from "@/api/admin/ai/type.d";
+import { isRunnerDown } from "@/utils/admin/errors";
 import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";
 import { withModelChannel } from "@/utils/admin/model-body";
-import { resolveModelChannel, publishBlockReason } from "@/utils/admin/model-channel";
+import { resolveModelChannel } from "@/utils/admin/model-channel";
 import { toast } from "sonner";
 
 import type { Capabilities } from "@/api/model/type.d";
@@ -52,7 +44,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /**
  * 模型页的全部状态与动作：列表、选中、JSON 正文（事实来源）、表单 / JSON 视图切换、
- * 保存 / 校验 / dry-run / 试跑 / 发布 / 回滚 / 上下架、导入草稿队列、结果面板与追踪。
+ * 保存 / 校验 / dry-run / 试跑 / 上线下线、导入草稿队列、结果面板与追踪。
  * 选中的模型由 URL 决定（?key=<key>，/models/new 是新建），所以刷新与深链都能还原。
  * 请求失败的全局 toast 由拦截器统一弹；这里 catch 只做状态恢复或把原因翻译成就地提示。
  */
@@ -91,7 +83,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const [epoch, setEpoch] = useState(0);
   const [issues, setIssues] = useState<ConfigIssue[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
 
   // ---- 结果面板
   const [dryRun, setDryRun] = useState<DryRunState | null>(null);
@@ -100,10 +91,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   const [resultTab, setResultTab] = useState<ResultTabId>("run");
 
   // ---- 对话框
-  const [publishKey, setPublishKey] = useState<string | null>(null);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [rollbackTarget, setRollbackTarget] = useState<ConfigRevision | null>(null);
-  const [rollbackError, setRollbackError] = useState<string | null>(null);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
   // ---- 导入草稿队列（队首就是编辑器里当前的那个）
@@ -165,7 +152,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
       return next;
     });
   }, []);
-  const publishBlock = publishBlockReason(info, catalog.channelsStatus === "ready");
   const working = busy !== null;
 
   // ------------------------------------------------------------ 结果面板
@@ -221,13 +207,12 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     async (nextKey: string, keepResults = false) => {
       latestKeyRef.current = nextKey;
       if (!keepResults) resetResults();
-      setRevisions(null);
       setLoadingDetail(true);
       try {
         const data = await getModelDetail(nextKey);
         if (!aliveRef.current || latestKeyRef.current !== nextKey) return;
         setDetail(data);
-        loadIntoEditor(data.draft?.body_json ?? data.published?.body_json ?? {});
+        loadIntoEditor(data.body ?? {});
       } catch {
         // 全局 toast 已弹；详情取不到就清空编辑器，避免拿上一个模型的内容去保存
         if (aliveRef.current && latestKeyRef.current === nextKey) {
@@ -247,7 +232,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     latestKeyRef.current = null;
     resetResults();
     setDetail(null);
-    setRevisions(null);
     setLoadingDetail(false);
     const stashed = readStashedDrafts(draftId);
     if (stashed) {
@@ -257,7 +241,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
       pushEntry({
         title: `已带入 ${stashed.bodies.length} 个草稿`,
         tone: "info",
-        text: "导入的只是草稿，不会上架。逐个确认、保存、试跑后再发布。",
+        text: "导入的只是草稿，保存后默认不上线。逐个确认、保存、试跑后，再在列表里打开「上线」开关。",
       });
       return;
     }
@@ -394,10 +378,16 @@ export function useModelWorkspace(catalog: AdminCatalog) {
   // ------------------------------------------------------------ 动作
 
   /**
-   * 保存草稿；成功返回模型 key 与校验问题。有校验问题也照常保存（后端允许存半成品），只是发布会被拦。
+   * 保存配置；成功返回模型 key 与校验问题。新建的模型默认不上线，要在列表里打开「上线」开关用户才能用；
+   * 已上线的模型保存即生效，校验不过会被后端拒绝。没上线的模型有校验问题也照常保存（允许存半成品），只是上线会被拦。
    * 新建成功后：导入队列里还有草稿就接着处理下一个，否则跳到该模型的页面。
+   * closeAfter：点「保存」按钮时传 true，保存成功后直接回列表关掉弹窗（已保存，不再走放弃修改确认）；
+   * 导入队列里还有下一个草稿时仍留在弹窗里继续处理。
    */
-  const save = async (silent = false): Promise<{ key: string; issues: ConfigIssue[] } | null> => {
+  const save = async (
+    silent = false,
+    closeAfter = false,
+  ): Promise<{ key: string; issues: ConfigIssue[] } | null> => {
     if (selection === "none") return null;
     if (!parsed.ok) {
       pushEntry({ title: "JSON 格式错误，无法保存", tone: "error", text: parsed.message });
@@ -417,24 +407,33 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     setIssues([]);
     try {
       const result = isNew
-        ? await createModelDraft(parsed.value)
-        : await updateModelDraft(key as string, parsed.value);
+        ? await createModel(parsed.value)
+        : await updateModel(key as string, parsed.value);
       if (!aliveRef.current) return null;
       setSavedText(sentText);
       setIssues(result.issues);
       if (!silent || result.issues.length > 0) {
         pushEntry({
-          title: `草稿已保存（第 ${result.revision.revision_no} 版）`,
+          title: "已保存",
           tone: result.issues.length > 0 ? "info" : "success",
           text:
             result.issues.length > 0
-              ? `有 ${result.issues.length} 个问题，修复后才能发布。`
+              ? `有 ${result.issues.length} 个问题，修复后才能上线。`
               : undefined,
           issues: result.issues,
         });
       }
       void loadList();
-      if (isNew) {
+      const hasNextDraft = isNew && queue.length > 1;
+      if (closeAfter && !hasNextDraft) {
+        if (isNew && importRef.current)
+          updateStashedDrafts(importRef.current.id, {
+            channelKey: importRef.current.channelKey,
+            bodies: [],
+          });
+        setQueue([]);
+        navigate("/admin/ai/models", { replace: true });
+      } else if (isNew) {
         const rest = queue.slice(1);
         if (queue.length > 0 && rest.length > 0) {
           setQueue(rest);
@@ -466,7 +465,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     }
   };
 
-  /** dry-run / 试跑 / 发布都基于服务端已保存的草稿，有未保存改动先存；返回可用的模型 key */
+  /** dry-run / 试跑都基于服务端已保存的配置，有未保存改动先存；返回可用的模型 key */
   const ensureSaved = async (): Promise<{ key: string; issues: ConfigIssue[] } | null> => {
     if (dirty || isNew) return save(true);
     const existing = key ?? bodyKey;
@@ -612,109 +611,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     if (taskId !== undefined) void loadTrace(taskId);
   };
 
-  /** 点“上线”：先保存，有校验问题就留在问题标签；否则打开确认框 */
-  const requestPublish = async () => {
-    if (selection === "none") return;
-    const saved = await ensureSaved();
-    if (!saved) return;
-    if (saved.issues.length > 0) {
-      pushEntry({
-        title: `还有 ${saved.issues.length} 个问题，暂时不能上线`,
-        tone: "error",
-        text: "问题已标在对应字段上，修复后再发布。",
-      });
-      return;
-    }
-    setPublishError(null);
-    setPublishKey(saved.key);
-  };
-
-  /**
-   * 确认上线：发布草稿，没上架的接着上架——对运营来说“发布”和“上架”是一件事，合成一步。
-   * 发布成功但上架失败时，版本已经发布，提示用户在列表里再打开开关。
-   */
-  const confirmPublish = async () => {
-    if (!publishKey) return;
-    setBusy("publish");
-    setPublishError(null);
-    try {
-      const revision = await publishModel(publishKey);
-      const wasEnabled = !!detail?.enabled && detail.key === publishKey;
-      if (!wasEnabled) {
-        try {
-          await setModelEnabled(publishKey, true);
-        } catch {
-          if (!aliveRef.current) return;
-          pushEntry({
-            title: `已发布第 ${revision.revision_no} 版，但没能对用户开放`,
-            tone: "error",
-            text: "在模型列表里打开「上线」开关重试。",
-          });
-          setPublishKey(null);
-          void loadList();
-          void openDetail(publishKey, true);
-          return;
-        }
-      }
-      if (!aliveRef.current) return;
-      pushEntry({
-        title: wasEnabled
-          ? `已更新上线版本（第 ${revision.revision_no} 版）`
-          : `已上线（第 ${revision.revision_no} 版），用户现在就能在画布里选到`,
-        tone: "success",
-      });
-      setPublishKey(null);
-      void loadList();
-      void openDetail(publishKey, true);
-    } catch (error) {
-      // 全局 toast 已弹；原因留在确认框里，配置校验未通过（40010）时同时回到问题标签
-      if (!aliveRef.current) return;
-      const message = errorMessage(error, "上线失败");
-      setPublishError(message);
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        (error as { code?: unknown }).code === 40010
-      ) {
-        pushEntry({ title: "上线被拦截：配置校验未通过", tone: "error", text: message });
-      }
-    } finally {
-      if (aliveRef.current) setBusy(null);
-    }
-  };
-
-  const loadRevisions = async () => {
-    if (!key) return;
-    try {
-      setRevisions(await listModelRevisions(key));
-    } catch {
-      setRevisions([]);
-    }
-  };
-
-  const requestRollback = (revision: ConfigRevision) => {
-    setRollbackError(null);
-    setRollbackTarget(revision);
-  };
-
-  const confirmRollback = async () => {
-    if (!key || !rollbackTarget) return;
-    setBusy("rollback");
-    setRollbackError(null);
-    try {
-      await rollbackModel(key, rollbackTarget.id);
-      if (!aliveRef.current) return;
-      pushEntry({ title: `已回滚到第 ${rollbackTarget.revision_no} 版`, tone: "success" });
-      setRollbackTarget(null);
-      void loadList();
-      void openDetail(key, true);
-    } catch (error) {
-      if (aliveRef.current) setRollbackError(errorMessage(error, "回滚失败"));
-    } finally {
-      if (aliveRef.current) setBusy(null);
-    }
-  };
-
   const toggleEnabled = async (enabled: boolean) => {
     if (!key) return;
     setBusy("enabled");
@@ -791,7 +687,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     busy,
     working,
     info,
-    publishBlock,
     // 动作
     selectModel,
     closeEditor,
@@ -800,13 +695,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     validate,
     doDryRun,
     doTestRun,
-    requestPublish,
-    confirmPublish,
-    requestRollback,
-    confirmRollback,
     toggleEnabled,
-    loadRevisions,
-    revisions,
     refreshTrace,
     // 结果
     dryRun,
@@ -817,12 +706,6 @@ export function useModelWorkspace(catalog: AdminCatalog) {
     clearResults,
     pushEntry,
     // 对话框
-    publishKey,
-    publishError,
-    cancelPublish: () => setPublishKey(null),
-    rollbackTarget,
-    rollbackError,
-    cancelRollback: () => setRollbackTarget(null),
     pendingNav,
     confirmNav,
     cancelNav: () => setPendingNav(null),

@@ -143,7 +143,7 @@ function SegmentedControl({
         aria-invalid={invalid}
         disabled={disabled}
         value={value === undefined ? "" : String(value)}
-        className="border-input bg-transparent focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive h-8 w-full rounded-lg border px-2 text-xs outline-none focus-visible:ring-3 disabled:opacity-50 dark:bg-input/30"
+        className="border-input bg-transparent focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive h-8 w-full rounded-lg border px-2.5 text-xs outline-none transition-colors focus-visible:ring-1 disabled:opacity-50 dark:bg-input/30"
         onChange={(event) => {
           const option = options.find((item) => String(item.value) === event.target.value);
           onChange(option ? option.value : undefined);

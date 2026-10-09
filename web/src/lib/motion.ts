@@ -36,6 +36,9 @@ export const SHIMMER = 1.6;
 /** 按钮按下的回弹 */
 export const TAP = { scale: 0.96 } as const;
 
+/** 整张卡片被按下的回弹：卡片面积大，用按钮的 0.96 会晃眼，压得更浅 */
+export const TAP_CARD = { scale: 0.985 } as const;
+
 /** 列表卡片依次入场的间隔（秒），超过 STAGGER_MAX 张后不再往后错开，免得长列表等太久 */
 export const STAGGER = 0.03;
 export const STAGGER_MAX = 6;

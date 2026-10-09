@@ -1,24 +1,17 @@
 import type { ComponentType, SVGProps } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { motion } from "motion/react";
-import {
-  Compass,
-  FolderOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-  User,
-  Workflow,
-} from "lucide-react";
+import { Clapperboard, Compass, FolderOpen, ShieldCheck, Workflow } from "lucide-react";
 
-import { NavUser } from "@/components/admin-ui/nav-user";
-import { Logo } from "@/components/brand/logo";
-import { Kbd } from "@/components/canvas/chrome/chrome";
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
 import { ListItem, ListSection } from "@/components/home/sidebar-list";
+import {
+  NAV_ITEM_CLASS,
+  NAV_LINK_CLASS,
+  NavActiveHighlight,
+  SidebarBrand,
+} from "@/components/home/sidebar-nav";
+import { SidebarAccount } from "@/components/home/sidebar-account";
 import { SoonTip } from "@/components/home/soon";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -31,17 +24,11 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRecentCanvases } from "@/hooks/use-recent-canvases";
-import { SPRING, TAP } from "@/lib/motion";
-import { cn } from "@/lib/utils";
-import { useCanEnterAdmin, useUsername } from "@/pages/canvas/chrome/top-right-bar";
-import { useAdminStore } from "@/store/admin";
-import { useMeStore } from "@/store/me";
-import { canManageModels } from "@/utils/admin/role";
-import { avatarInitial, displayName } from "@/utils/profile/profile-rules";
+import { useCanEnterAdmin } from "@/pages/canvas/chrome/top-right-bar";
 
 /** 侧栏里的一项导航 */
 type NavItem = {
@@ -53,31 +40,13 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
-  { label: "创作", icon: Sparkles, to: "/" },
+  { label: "创作", icon: Clapperboard, to: "/" },
   { label: "探索", icon: Compass },
   { label: "资产", icon: FolderOpen, to: "/assets" },
 ];
 
 /** 每个分组最多列几项 */
 const LIST_LIMIT = 6;
-
-/**
- * 菜单按钮统一高度 40px，收起后是 40px 见方的图标按钮。
- * overflow-visible：选中块用 layoutId 在项之间滑动，被按钮自带的 overflow-hidden 裁掉就成了“跳”过去
- */
-const ITEM_CLASS =
-  "h-10 gap-3 overflow-visible rounded-[10px] px-2.5 text-muted-foreground hover:bg-chrome-hover hover:text-foreground data-active:bg-transparent data-active:font-semibold data-active:text-foreground group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&>span:last-child]:hidden [&_svg]:size-[18px]!";
-
-/** 当前页的灰块 + 左侧竖条，用 layoutId 在菜单项之间滑动 */
-function ActiveHighlight() {
-  return (
-    <motion.span
-      layoutId="home-nav-active"
-      transition={SPRING}
-      className="bg-muted before:bg-foreground absolute inset-0 -z-10 rounded-[10px] before:absolute before:top-2.5 before:bottom-2.5 before:-left-2 before:w-[3px] before:rounded-r-full"
-    />
-  );
-}
 
 /** 一项导航：能用的是链接，没上线的禁用并提示「即将上线」 */
 function NavButton({ item, active }: { item: NavItem; active: boolean }) {
@@ -92,7 +61,7 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
   if (!item.to) {
     return (
       <SoonTip side="right" className="block cursor-not-allowed">
-        <SidebarMenuButton disabled className={ITEM_CLASS}>
+        <SidebarMenuButton disabled className={NAV_ITEM_CLASS}>
           {content}
         </SidebarMenuButton>
       </SoonTip>
@@ -102,78 +71,37 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
     <SidebarMenuButton
       isActive={active}
       tooltip={item.label}
-      className={cn(ITEM_CLASS, "relative isolate")}
+      className={NAV_LINK_CLASS}
       render={<Link to={item.to} onClick={() => setOpenMobile(false)} />}
     >
-      {active && <ActiveHighlight />}
+      {active && <NavActiveHighlight layoutId="home-nav-active" />}
       {content}
     </SidebarMenuButton>
-  );
-}
-
-/** 展开 / 收起按钮，Tooltip 里写快捷键 */
-function CollapseButton() {
-  const { state, toggleSidebar, isMobile } = useSidebar();
-  if (isMobile) return null;
-  const collapsed = state === "collapsed";
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <motion.button
-            type="button"
-            whileTap={TAP}
-            onClick={toggleSidebar}
-            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-            className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-8 shrink-0 place-items-center rounded-lg outline-none focus-visible:ring-3 [&_svg]:size-4"
-          />
-        }
-      >
-        {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-      </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8}>
-        {collapsed ? "展开侧栏" : "收起侧栏"}
-        <Kbd>⌘B</Kbd>
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
 /**
  * 首页、资产、对话和画布列表共用的左侧侧栏（设计稿 docs/品牌包装/登录与首页改版原型）：
  * 连镜 Logo、导航（创作 / 探索 / 资产）、「对话」和「画布」两组最近记录，
- * 底部是 AI 配置（只给已确认的管理员）和账号菜单（退出登录）。
+ * 底部是管理后台入口（只给已确认的管理员）和账号菜单（退出登录）。
  * 对话和画布都是真实数据：对话来自 store/conversations，画布是最近画布。
- * 桌面端可收起成图标栏（⌘B），窄屏由 shadcn sidebar 换成从左滑出的抽屉。
+ * 桌面端可收起成图标栏（⌘B），和后台一样：收起按钮在顶栏左侧（SiteHeader），侧栏右边缘还有一条可点的 Rail；窄屏由 shadcn sidebar 换成从左滑出的抽屉。
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
   const canvases = useRecentCanvases(LIST_LIMIT);
   /**
-   * 和原来列表页一样，只有 store 里已确认是管理员时才显示后台入口；
-   * 这里不主动探测角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
+   * 管理后台入口、管理员徽标都读登录时存在本机的角色：刷新页面后 store/admin 回到未加载，
+   * 读它会让入口凭空消失；这里也不主动请求角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
    */
-  const isAdmin = useAdminStore((state) => state.status === "ready" && canManageModels(state.role));
-  const tokenUsername = useUsername();
-  const me = useMeStore((state) => state.me);
-  /** 显示名优先用资料里的昵称；资料还没拉到时先用令牌里的用户名兜底 */
-  const name = displayName(me) || tokenUsername;
-  const canEnterBackend = useCanEnterAdmin();
+  const isAdmin = useCanEnterAdmin();
   const navigate = useNavigate();
 
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="gap-3 px-2 pt-3">
-        <div className="flex h-9 items-center justify-between gap-2 pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-3 group-data-[collapsible=icon]:pl-0">
-          <Link
-            to="/"
-            aria-label="连镜"
-            className="focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-md text-[15px] font-semibold tracking-wide outline-none focus-visible:ring-3"
-          >
-            <Logo size={24} />
-            <span className="truncate group-data-[collapsible=icon]:hidden">连镜</span>
-          </Link>
-          <CollapseButton />
+        <div className="flex h-9 items-center pl-1.5 group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
+          <SidebarBrand to="/" />
         </div>
       </SidebarHeader>
 
@@ -226,12 +154,12 @@ export function AppSidebar() {
           {isAdmin && (
             <SidebarMenuItem>
               <SidebarMenuButton
-                tooltip="AI 配置"
-                className={ITEM_CLASS}
+                tooltip="管理后台"
+                className={NAV_ITEM_CLASS}
                 render={<Link to="/admin/ai" />}
               >
-                <Settings2 />
-                <span>AI 配置</span>
+                <ShieldCheck />
+                <span>管理后台</span>
               </SidebarMenuButton>
               <SidebarMenuBadge className="bg-muted text-muted-foreground top-2.5! right-2 font-normal">
                 管理员
@@ -239,24 +167,16 @@ export function AppSidebar() {
             </SidebarMenuItem>
           )}
         </SidebarMenu>
-        <NavUser
-          name={name ?? "我的账户"}
-          description={isAdmin ? "管理员" : me?.nickname ? `@${me.username}` : undefined}
-          initials={name ? avatarInitial(name) : "我"}
-          avatarSrc={me?.avatarUrl}
-        >
-          <DropdownMenuItem onClick={() => navigate("/profile")}>
-            <User />
-            个人中心
-          </DropdownMenuItem>
-          {canEnterBackend && (
+        <SidebarAccount>
+          {isAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
               <ShieldCheck />
               管理后台
             </DropdownMenuItem>
           )}
-        </NavUser>
+        </SidebarAccount>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }

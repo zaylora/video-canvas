@@ -610,6 +610,131 @@ func TestAIChannelService_Check(t *testing.T) {
 	})
 }
 
+func TestAIChannelService_CheckDraft(t *testing.T) {
+	ctx := context.Background()
+	draft := func() ChannelCheckDraftInput {
+		return ChannelCheckDraftInput{
+			PluginKey: "kling", PluginVersion: "1.0.0", BaseURL: "https://gw.example.com",
+			Settings: map[string]any{"tenant": "t1"}, Secret: "sk-draft-value",
+		}
+	}
+
+	t.Run("成功：用草稿里的地址、设置和 Key 检查，不落库", func(t *testing.T) {
+		e := newAchEnv(t)
+		e.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 80}
+		res, err := e.svc.CheckDraft(ctx, draft())
+		if err != nil || !res.OK || res.Message != "HTTP 200" {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+		rt := e.ops.GotRuntime
+		if e.ops.DraftCalls != 1 || e.ops.GotSecret != "sk-draft-value" {
+			t.Fatalf("应带着草稿 Key 调宿主：calls=%d secret=%q", e.ops.DraftCalls, e.ops.GotSecret)
+		}
+		if rt == nil || rt.Channel.BaseURL != "https://gw.example.com" || rt.Plugin.Version != "1.0.0" ||
+			rt.Channel.Settings["tenant"] != "t1" || rt.Channel.Settings["region"] != "cn" {
+			t.Fatalf("运行时不符合预期（settings 应补默认值）：%+v", rt)
+		}
+		if chs, _ := e.repo.ListChannels(ctx); len(chs) != 0 {
+			t.Fatalf("检查草稿不该写库：%v", chs)
+		}
+	})
+
+	t.Run("编辑已有渠道、Key 留空：用已保存的 Key，按渠道 key 检查", func(t *testing.T) {
+		e := newAchEnv(t)
+		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.SetSecret(ctx, 1, "kling-main", "sk-stored"); err != nil {
+			t.Fatal(err)
+		}
+		e.ops.CheckResult = &provider.CheckResult{OK: true}
+		in := draft()
+		in.Secret, in.ExistingKey = "", "kling-main"
+		in.BaseURL = "https://other.example.com"
+		res, err := e.svc.CheckDraft(ctx, in)
+		if err != nil || !res.OK {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+		if e.ops.DraftCalls != 0 || e.ops.GotRuntime.Channel.Key != "kling-main" || e.ops.GotRuntime.Channel.BaseURL != "https://other.example.com" {
+			t.Fatalf("应走已保存 Key 的检查，并使用草稿里的新地址：%+v", e.ops.GotRuntime)
+		}
+	})
+
+	t.Run("需要 Key 而没填、也没有已保存的 Key：409（50015），不调用宿主", func(t *testing.T) {
+		e := newAchEnv(t)
+		in := draft()
+		in.Secret = ""
+		_, err := e.svc.CheckDraft(ctx, in)
+		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
+		if e.ops.Calls != 0 {
+			t.Fatal("不该调用宿主")
+		}
+	})
+
+	t.Run("鉴权 none 的插件不要 Key", func(t *testing.T) {
+		e := newAchEnv(t)
+		e.ops.CheckResult = &provider.CheckResult{OK: true}
+		in := draft()
+		in.PluginKey, in.Settings, in.Secret = "loose", nil, ""
+		if res, err := e.svc.CheckDraft(ctx, in); err != nil || !res.OK {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+	})
+
+	t.Run("参数不合法：400 类（50010），不调用宿主", func(t *testing.T) {
+		cases := map[string]func(*ChannelCheckDraftInput){
+			"地址不是 http(s)": func(in *ChannelCheckDraftInput) { in.BaseURL = "ftp://x" },
+			"地址带用户名密码":     func(in *ChannelCheckDraftInput) { in.BaseURL = "https://u:p@x.com" },
+			"插件版本不存在":      func(in *ChannelCheckDraftInput) { in.PluginVersion = "9.9.9" },
+			"设置项缺必填":       func(in *ChannelCheckDraftInput) { in.Settings = map[string]any{} },
+		}
+		for name, mutate := range cases {
+			t.Run(name, func(t *testing.T) {
+				e := newAchEnv(t)
+				in := draft()
+				mutate(&in)
+				_, err := e.svc.CheckDraft(ctx, in)
+				adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
+				if e.ops.Calls != 0 {
+					t.Fatal("不该调用宿主")
+				}
+			})
+		}
+	})
+
+	t.Run("上游不通：宿主同时返回结果与错误，按 ok=false 返回，草稿 Key 被脱敏", func(t *testing.T) {
+		e := newAchEnv(t)
+		e.ops.CheckResult = &provider.CheckResult{Message: "echo sk-draft-value", DurationMs: 30}
+		e.ops.CheckErr = errors.New("http 401")
+		res, err := e.svc.CheckDraft(ctx, draft())
+		if err != nil || res.OK || strings.Contains(res.Message, "sk-draft-value") {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+	})
+
+	t.Run("插件本身出错 502（50022），原因里的草稿 Key 被脱敏", func(t *testing.T) {
+		e := newAchEnv(t)
+		e.ops.CheckErr = errors.New("钩子异常：token=sk-draft-value 无效")
+		_, err := e.svc.CheckDraft(ctx, draft())
+		ec := adminWantCodeErr(t, err, errcode.ErrPluginOpFailed.Code)
+		if strings.Contains(ec.Msg, "sk-draft-value") {
+			t.Fatalf("Key 应被脱敏：%s", ec.Msg)
+		}
+	})
+
+	t.Run("插件没实现检查钩子 / runner 不可用", func(t *testing.T) {
+		e := newAchEnv(t)
+		e.ops.CheckErr = provider.ErrCheckUnsupported
+		res, err := e.svc.CheckDraft(ctx, draft())
+		if err != nil || res.OK || res.Message != "插件不支持连通性检查" {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+		e.ops.CheckErr = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
+		_, err = e.svc.CheckDraft(ctx, draft())
+		adminWantCode(t, err, errcode.ErrRunnerUnavailable.Code)
+	})
+}
+
 func TestAIChannelService_Import(t *testing.T) {
 	ctx := context.Background()
 	setup := func(t *testing.T, withSecret bool) *achEnv {

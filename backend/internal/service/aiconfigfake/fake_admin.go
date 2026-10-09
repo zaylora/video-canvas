@@ -221,6 +221,8 @@ type PluginOps struct {
 
 	GotRuntime *provider.ChannelRuntime
 	GotArgs    map[string]any
+	GotSecret  string // 最近一次 CheckDraft 收到的草稿 Key
+	DraftCalls int    // CheckDraft 的调用次数
 	Calls      int
 }
 
@@ -228,6 +230,14 @@ type PluginOps struct {
 func (o *PluginOps) Check(_ context.Context, rt *provider.ChannelRuntime) (*provider.CheckResult, error) {
 	o.Calls++
 	o.GotRuntime = rt
+	return o.CheckResult, o.CheckErr
+}
+
+// CheckDraft 记录调用（含草稿 Key）并返回预设结果。
+func (o *PluginOps) CheckDraft(_ context.Context, rt *provider.ChannelRuntime, secret string) (*provider.CheckResult, error) {
+	o.Calls++
+	o.DraftCalls++
+	o.GotRuntime, o.GotSecret = rt, secret
 	return o.CheckResult, o.CheckErr
 }
 

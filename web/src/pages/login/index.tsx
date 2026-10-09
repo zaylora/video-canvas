@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Clapperboard } from "lucide-react";
 import { toast } from "sonner";
 
 import { getAuthConfig, login, type AuthConfig } from "@/api/auth";
 import { Logo } from "@/components/brand/logo";
+import { TypewriterTitle } from "@/components/brand/typewriter-title";
 import { ShowcaseCaption } from "@/components/showcase/showcase-caption";
 import { ShowcaseLayers } from "@/components/showcase/showcase-layers";
 import { ShowcaseProgress } from "@/components/showcase/showcase-progress";
@@ -27,6 +28,9 @@ const NO_ITEMS: ShowcaseItemDto[] = [];
 
 /** 品牌主 Slogan，登录页顶栏用 */
 const BRAND_SLOGAN = "意义，在镜头之间。";
+
+/** 登录页大标题：开场打出「从一句话，到一部片。」，之后把「片」删掉换成「电影」，打完就停；宽屏一行，窄屏在逗号后换行 */
+const HERO_TITLE = { lead: "从一句话，", stem: "到一部", words: ["片", "电影"], end: "。" };
 
 function getDestination(search: string) {
   const next = new URLSearchParams(search).get("next");
@@ -165,20 +169,19 @@ export default function Login() {
         <div
           data-shift={drawerOpen || undefined}
           className={cn(
-            "w-[min(760px,100%)] text-center transition-transform duration-240 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+            "w-[min(1040px,100%)] text-center transition-transform duration-240 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
             "min-[1180px]:data-shift:-translate-x-[210px]",
           )}
         >
           <span className="bg-stage-glass border-stage-glass-border text-on-stage-muted inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs backdrop-blur-md">
-            <Sparkles className="size-3.5" />
+            <Clapperboard className="size-3.5" />
             AI 视频创作画布
           </span>
-          <h1 className="mt-5 text-[clamp(40px,6.2vw,80px)] leading-[1.04] font-semibold tracking-[-0.035em] [text-shadow:0_2px_30px_oklch(0_0_0/0.35)]">
-            从一句话，
-            <br />
-            到一部片。
-          </h1>
-          <p className="text-on-stage-muted mx-auto mt-4.5 max-w-[520px] text-[15px] leading-relaxed md:text-[17px]">
+          <TypewriterTitle
+            {...HERO_TITLE}
+            className="mt-5 text-[clamp(40px,6.2vw,80px)] leading-[1.04] font-semibold tracking-[-0.035em] [text-shadow:0_2px_30px_oklch(0_0_0/0.35)]"
+          />
+          <p className="text-on-stage-muted mx-auto mt-4.5 max-w-[520px] text-[15px] leading-relaxed md:max-w-none md:text-[17px] md:whitespace-nowrap">
             写下脑海里的画面，AI 帮你拆分镜、生成镜头，在一张画布上连成故事。
           </p>
           <motion.button

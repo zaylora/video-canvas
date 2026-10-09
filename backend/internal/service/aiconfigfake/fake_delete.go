@@ -45,12 +45,11 @@ func (m *MemRepo) CountChannelRefs(_ context.Context, key string) (repository.Ch
 	return m.channelRefs(key), nil
 }
 
-// channelRefs 计算渠道引用（调用方持有锁）：label 优先取已发布版本的，与真实仓储一致。
+// channelRefs 计算渠道引用（调用方持有锁），与真实仓储一致：每个模型只有一份配置。
 func (m *MemRepo) channelRefs(key string) repository.ChannelRefs {
-	type hit struct{ draft, published string }
-	hits := map[string]*hit{}
+	refs := repository.ChannelRefs{Models: []repository.ChannelModelRef{}, ActiveTasks: m.ChannelTaskRefs[key]}
 	for _, rev := range m.Revs {
-		if rev.Target != model.ConfigTargetModel || (rev.Status != model.RevisionDraft && rev.Status != model.RevisionPublished) {
+		if rev.Target != model.ConfigTargetModel {
 			continue
 		}
 		if _, ok := m.Models[rev.TargetKey]; !ok {
@@ -65,30 +64,12 @@ func (m *MemRepo) channelRefs(key string) repository.ChannelRefs {
 		if json.Unmarshal(rev.BodyJSON, &body) != nil || !refsChannel(body.Channels, key) {
 			continue
 		}
-		h := hits[rev.TargetKey]
-		if h == nil {
-			h = &hit{}
-			hits[rev.TargetKey] = h
-		}
-		if rev.Status == model.RevisionPublished {
-			h.published = body.Label
-		} else {
-			h.draft = body.Label
-		}
-	}
-	refs := repository.ChannelRefs{Models: []repository.ChannelModelRef{}, ActiveTasks: m.ChannelTaskRefs[key]}
-	for k, h := range hits {
-		label := h.published
-		if label == "" {
-			label = h.draft
-		}
-		refs.Models = append(refs.Models, repository.ChannelModelRef{Key: k, Label: label})
+		refs.Models = append(refs.Models, repository.ChannelModelRef{Key: rev.TargetKey, Label: body.Label})
 	}
 	sort.Slice(refs.Models, func(i, j int) bool { return refs.Models[i].Key < refs.Models[j].Key })
 	return refs
 }
 
-// refsChannel 判断 channels 列表里是否有一项指向 key。
 func refsChannel(list []struct {
 	Channel string `json:"channel"`
 }, key string) bool {

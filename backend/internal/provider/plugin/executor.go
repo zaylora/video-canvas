@@ -315,14 +315,28 @@ func (c *cancelOnClose) Close() error {
 	return err
 }
 
-// Check 执行渠道连通性检查。
+// Check 执行渠道连通性检查，Key 取已保存的渠道 Key。
 func (e *Executor) Check(ctx context.Context, rt *provider.ChannelRuntime) (*provider.CheckResult, error) {
+	return e.check(ctx, rt, nil)
+}
+
+// CheckDraft 执行渠道连通性检查，Key 用调用方给的草稿值（保存前检查）：不读 ai_secrets，并像已保存的 Key 一样登记脱敏。
+func (e *Executor) CheckDraft(ctx context.Context, rt *provider.ChannelRuntime, secret string) (*provider.CheckResult, error) {
+	return e.check(ctx, rt, &secret)
+}
+
+// check 是 Check / CheckDraft 的共同实现：draftSecret 非 nil 时直接作为 Key，否则按渠道 key 解析已保存的 Key。
+func (e *Executor) check(ctx context.Context, rt *provider.ChannelRuntime, draftSecret *string) (*provider.CheckResult, error) {
 	if rt == nil {
 		return nil, terminalErr(codeInvalidSnapshot, "缺少渠道运行时", nil)
 	}
 	o, err := e.newOperation(ctx, rt, nil, provider.TaskRef{})
 	if err != nil {
 		return nil, err
+	}
+	if draftSecret != nil && *draftSecret != "" {
+		o.secret, o.secretLoaded = *draftSecret, true
+		o.red.add(*draftSecret)
 	}
 	if !e.loader.mayHave(rt.Plugin.SHA256, pluginproto.HookBuildCheckRequest) {
 		return nil, provider.ErrCheckUnsupported

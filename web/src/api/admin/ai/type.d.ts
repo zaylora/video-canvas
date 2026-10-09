@@ -229,6 +229,20 @@ export interface DeleteCheckResult {
   blockers: DeleteBlocker[];
 }
 
+/** POST /admin/ai/channels/check-draft 的请求体：保存前检查，用表单里还没保存的配置，不落库 */
+export interface ChannelCheckDraftRequest {
+  /** 编辑已有渠道时传：secret 留空就用它已保存的 Key */
+  existing_key?: string;
+  plugin_key: string;
+  plugin_version: string;
+  base_url: string;
+  trusted_internal?: boolean;
+  allow_credentials?: boolean;
+  settings?: Record<string, unknown>;
+  /** 草稿 Key 明文，只在这次请求里用，不落库 */
+  secret?: string;
+}
+
 /** 连通性检查结果 */
 export interface ChannelCheckResult {
   /** 是否连通 */
@@ -280,41 +294,11 @@ export interface ConfigListItem {
   enabled?: boolean;
   /** 排序值 */
   sort?: number;
-  /** 已发布版本 ID，未发布为 null */
-  published_revision_id: number | null;
-  /** 已发布版本号，未发布为 null */
-  published_revision_no: number | null;
-  /** 草稿版本号，无草稿为 null */
-  draft_revision_no: number | null;
-  /** 是否存在尚未发布的草稿 */
-  has_unpublished_draft: boolean;
   /** 最近更新时间 */
   updated_at: string;
 }
 
-/** 模型配置的一个历史版本 */
-export interface ConfigRevision {
-  /** 版本 ID */
-  id: number;
-  /** 配置目标类型（只剩 model） */
-  target: string;
-  /** 模型 key */
-  target_key: string;
-  /** 版本号 */
-  revision_no: number;
-  /** 配置正文（JSON） */
-  body_json: unknown;
-  /** 版本状态：草稿 / 已发布 / 已归档 */
-  status: "draft" | "published" | "archived";
-  /** 创建人用户 ID */
-  created_by: number;
-  /** 版本备注 */
-  note: string;
-  /** 创建时间 */
-  created_at: string;
-}
-
-/** 模型详情：草稿与已发布正文 */
+/** 模型详情：配置正文与启用状态 */
 export interface ConfigDetail {
   /** 配置目标类型 */
   target: string;
@@ -326,19 +310,15 @@ export interface ConfigDetail {
   enabled?: boolean;
   /** 排序值 */
   sort?: number;
-  /** 最新草稿，无草稿为 null */
-  draft: ConfigRevision | null;
-  /** 当前已发布版本，未发布为 null */
-  published: ConfigRevision | null;
+  /** 配置正文（JSON 对象） */
+  body: unknown;
   /** 最近更新时间 */
   updated_at: string;
 }
 
-/** 保存草稿的结果 */
-export interface SaveDraftResult {
-  /** 保存后的草稿版本 */
-  revision: ConfigRevision;
-  /** 校验发现的问题 */
+/** 保存的结果 */
+export interface SaveModelResult {
+  /** 校验发现的问题（有问题也已保存，但启用会被拦） */
   issues: ConfigIssue[];
 }
 
@@ -398,4 +378,53 @@ export interface TraceStep {
 /** GET /admin/ai/test-runs/:id/trace */
 export interface TestRunTrace {
   steps: TraceStep[];
+}
+
+// ---------------------------------------------------------------- 总览统计
+
+/** 统计范围：只有这两档 */
+export type AdminStatsDays = 7 | 30;
+
+/**
+ * 一天的任务数（试跑不算）。三个桶之和是当天创建的全部正式任务，页面上所有数字用同一口径。
+ */
+export interface AdminStatsDay {
+  /** 日期 YYYY-MM-DD，按上海时区的自然日 */
+  date: string;
+  /** 成功 */
+  succeeded: number;
+  /** 失败（含过期） */
+  failed: number;
+  /** 其他：已取消与仍在进行中 */
+  other: number;
+}
+
+/** 一个模型的调用数 */
+export interface AdminStatsModelCount {
+  /** 模型 key */
+  model: string;
+  /** 展示名；模型已删除或没有展示名时等于 key */
+  label: string;
+  /** 区间内的任务数 */
+  count: number;
+}
+
+/** 一种任务类型的调用数 */
+export interface AdminStatsKindCount {
+  /** video / image / audio / text */
+  kind: string;
+  /** 区间内的任务数 */
+  count: number;
+}
+
+/** GET /admin/ai/stats：总览页的任务量柱形图与调用占比 */
+export interface AdminStats {
+  /** 统计天数 */
+  days: AdminStatsDays;
+  /** 恒为 days 项，日期升序，没有任务的日子是 0，最后一项是今天 */
+  daily: AdminStatsDay[];
+  /** 按任务数降序的全量模型 */
+  by_model: AdminStatsModelCount[];
+  /** 按任务数降序的任务类型 */
+  by_kind: AdminStatsKindCount[];
 }

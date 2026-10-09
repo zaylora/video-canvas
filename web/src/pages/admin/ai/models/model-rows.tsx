@@ -1,27 +1,12 @@
-import { useState, type ReactNode } from "react";
-import { Ellipsis, FlaskConical, Pencil, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
+import { FlaskConical, Trash2 } from "lucide-react";
 
-import { listModelRevisions } from "@/api/admin/ai";
-import type {
-  ChannelView,
-  ConfigListItem,
-  ConfigRevision,
-  PluginView,
-} from "@/api/admin/ai/type.d";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
-import { Button } from "@/components/ui/button";
+import { RowIconAction } from "@/components/admin-ui/row-icon-action";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -45,123 +30,33 @@ import {
 import { KindTag } from "../kind";
 
 /**
- * 状态列：对运营只露一个状态（在线 / 不可用 / 已下线 / 未上线），渠道层面的问题写在下面一行，
- * 有未上线的修改再加一个标签。插件停用、渠道缺 Key 等会传到这里，不会再显示“已上架”却用不了。
+ * 状态列：对运营只露一个状态（在线 / 不可用 / 未上线），渠道层面的问题写在下面一行。
+ * 插件停用、渠道缺 Key 等会传到这里，不会再显示“已上线”却用不了。
  */
-function StatusCell({ item, health }: { item: ConfigListItem; health: ModelHealth }) {
+function StatusCell({ health }: { health: ModelHealth }) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <div className="flex flex-wrap items-center gap-1">
-        <Tag tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]}>
-          <StatusDot tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]} />
-          {MODEL_STATUS_LABEL[health.status]}
-          {item.published_revision_no !== null && (
-            <span className="font-mono opacity-70">v{item.published_revision_no}</span>
-          )}
-        </Tag>
-        {item.has_unpublished_draft && <Tag tone="info">有未上线的修改</Tag>}
-      </div>
-      {health.reason && health.status !== "offline" && (
+      <Tag tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]}>
+        <StatusDot tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]} />
+        {MODEL_STATUS_LABEL[health.status]}
+      </Tag>
+      {health.reason && (
         <span
           className={cn(
             "text-xs",
             health.status === "broken" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
           )}
         >
-          {health.status === "unpublished" ? `上线前要处理：${health.reason}` : health.reason}
+          {health.status === "offline" ? `上线前要处理：${health.reason}` : health.reason}
         </span>
       )}
     </div>
   );
 }
 
-/** 行尾“更多”：编辑 + 版本历史（归档版本可回滚，打开时才拉历史）+ 删除 */
-function RowMenu({
-  item,
-  onEdit,
-  onRollback,
-  onDelete,
-}: {
-  item: ConfigListItem;
-  onEdit: () => void;
-  onRollback: (revision: ConfigRevision) => void;
-  onDelete?: () => void;
-}) {
-  const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
-  return (
-    <DropdownMenu
-      modal={false}
-      onOpenChange={(open) => {
-        if (open) void listModelRevisions(item.key).then(setRevisions, () => setRevisions([]));
-      }}
-    >
-      <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={`更多：${item.key}`} />}
-      >
-        <Ellipsis />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil />
-            编辑
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>版本历史</DropdownMenuLabel>
-          {revisions === null && (
-            <p className="text-muted-foreground px-2 py-1.5 text-sm">加载中…</p>
-          )}
-          {revisions?.length === 0 && (
-            <p className="text-muted-foreground px-2 py-1.5 text-sm">还没有发布过</p>
-          )}
-          {revisions?.map((revision) => {
-            const tag =
-              revision.status === "draft" ? (
-                <Tag tone="info">草稿</Tag>
-              ) : revision.status === "published" ? (
-                <Tag tone="success">线上</Tag>
-              ) : (
-                <Tag>已归档</Tag>
-              );
-            const label: ReactNode = (
-              <>
-                <span className="w-8 font-mono">v{revision.revision_no}</span>
-                {tag}
-              </>
-            );
-            return revision.status === "archived" ? (
-              <DropdownMenuItem key={revision.id} onClick={() => onRollback(revision)}>
-                {label}
-                <span className="text-muted-foreground ml-auto text-xs">回滚</span>
-              </DropdownMenuItem>
-            ) : (
-              <div key={revision.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
-                {label}
-              </div>
-            );
-          })}
-        </DropdownMenuGroup>
-        {onDelete && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 />
-                删除…
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 /**
  * 模型表格（设计稿 modelTable）：模型 / 能力 / 渠道 / 状态 / 上线 / 操作，点整行打开编辑弹窗。
- * 行内按钮是“测试”（编辑靠点整行，更多菜单里也有）；删除在更多菜单底部。
+ * 行内常驻“测试 / 删除”（编辑靠点整行），样式同渠道页与插件页。
  * 模型页和渠道页“使用这个渠道的模型”共用；渠道页传 hideChannel 去掉渠道列。
  * 传 selected 时第一列是勾选框（批量操作用）。
  */
@@ -178,7 +73,6 @@ export function ModelRows({
   onEdit,
   onTest,
   onToggleEnabled,
-  onRollback,
   onDelete,
   channelsReady = true,
   onRetry,
@@ -191,12 +85,11 @@ export function ModelRows({
   selected?: string[];
   onSelectedChange?: (keys: string[]) => void;
   empty?: ReactNode;
-  /** 正在切换上架的模型 */
+  /** 正在切换上线的模型 */
   busyKey?: string | null;
   onEdit: (key: string) => void;
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
-  onRollback: (key: string, revision: ConfigRevision) => void;
   /** 删除；不传则不显示删除入口 */
   onDelete?: (item: ConfigListItem) => void;
   /** 渠道与插件清单已加载；没加载完不下“不可用”的结论 */
@@ -282,7 +175,6 @@ export function ModelRows({
               const plugin = channel
                 ? plugins.find((p) => p.key === channel.plugin_key)
                 : undefined;
-              const neverPublished = item.published_revision_no === null;
               const health = modelHealth(item, channels, plugins, channelsReady);
               return (
                 <TableRow
@@ -322,39 +214,37 @@ export function ModelRows({
                     </TableCell>
                   )}
                   <TableCell className="px-3 py-3">
-                    <StatusCell item={item} health={health} />
+                    <StatusCell health={health} />
                   </TableCell>
                   <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                     <Switch
                       checked={!!item.enabled}
-                      disabled={neverPublished || busyKey === item.key}
-                      title={neverPublished ? "还没上线过：打开编辑，点「上线」" : undefined}
+                      disabled={busyKey === item.key}
                       aria-label={`上线 ${label}`}
                       onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
                     />
                   </TableCell>
-                  <TableCell
-                    className="px-3 py-3 text-right whitespace-nowrap"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={item.kind === "agent"}
-                      title={item.kind === "agent" ? "Agent 模型暂不支持试跑" : undefined}
-                      onClick={() => onTest(item.key)}
-                    >
-                      <FlaskConical />
-                      测试
-                    </Button>
-                    <span className="ml-1 inline-block">
-                      <RowMenu
-                        item={item}
-                        onEdit={() => onEdit(item.key)}
-                        onRollback={(revision) => onRollback(item.key, revision)}
-                        onDelete={onDelete && (() => onDelete(item))}
-                      />
-                    </span>
+                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-0.5">
+                      <RowIconAction
+                        label="测试"
+                        deny={item.kind === "agent" ? "Agent 模型暂不支持试跑" : null}
+                        target={label}
+                        onClick={() => onTest(item.key)}
+                      >
+                        <FlaskConical />
+                      </RowIconAction>
+                      {onDelete && (
+                        <RowIconAction
+                          label="删除"
+                          destructive
+                          target={label}
+                          onClick={() => onDelete(item)}
+                        >
+                          <Trash2 />
+                        </RowIconAction>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );

@@ -55,10 +55,6 @@ const model = (extra: Partial<ConfigListItem> = {}): ConfigListItem => ({
   key: "m1",
   channel: "c1",
   enabled: true,
-  published_revision_id: 1,
-  published_revision_no: 1,
-  draft_revision_no: null,
-  has_unpublished_draft: false,
   updated_at: "",
   ...extra,
 });
@@ -91,10 +87,10 @@ describe("modelHealth", () => {
     expect(health.reason).toBe("渠道「主线」插件「插件P」已停用");
   });
 
-  test("未上线 / 已下线优先，但仍带上渠道问题", () => {
+  test("没启用的模型是未上线，但仍带上渠道问题", () => {
     const missingKey = [channel({ secret_set: false })];
-    expect(modelHealth(model({ published_revision_no: null }), missingKey, [plugin()])).toEqual({
-      status: "unpublished",
+    expect(modelHealth(model({ enabled: false }), missingKey, [plugin()])).toEqual({
+      status: "offline",
       reason: "渠道「主线」还没有设置 Key",
     });
     expect(modelHealth(model({ enabled: false }), [channel()], [plugin()]).status).toBe("offline");
@@ -115,7 +111,7 @@ describe("modelHealth", () => {
 });
 
 describe("adminTodos", () => {
-  test("按严重度排序：插件停用 > 缺 Key > 可升级 > 未上线的修改", () => {
+  test("按严重度排序：插件停用 > 缺 Key > 可升级", () => {
     const plugins = [
       plugin({ versions: [version(2, "1.1.0"), version(1, "1.0.0")] }),
       plugin({ key: "q", name: "插件Q", enabled: false }),
@@ -124,9 +120,9 @@ describe("adminTodos", () => {
       channel({ secret_set: false }),
       channel({ key: "c2", name: "Q线", plugin_key: "q" }),
     ];
-    const models = [model({ has_unpublished_draft: true }), model({ key: "m2", channel: "c2" })];
+    const models = [model(), model({ key: "m2", channel: "c2" })];
     const todos = adminTodos(models, channels, plugins);
-    expect(todos.map((t) => t.id)).toEqual(["plugin-off:q", "key:c1", "upgrade:p", "drafts"]);
+    expect(todos.map((t) => t.id)).toEqual(["plugin-off:q", "key:c1", "upgrade:p"]);
     expect(todos[2].text).toBe("插件P v1.1.0 可用，1 个渠道还在旧版本");
     expect(todos[0].text).toBe("插件「插件Q」已停用，1 个渠道、1 个上架模型实际不可用");
     expect(todos[1].action).toEqual({ kind: "set-key", channelKey: "c1" });

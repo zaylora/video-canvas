@@ -8,7 +8,7 @@ import { isUserNotFound } from "@/utils/admin/user-rules";
 /** 列表默认每页条数 */
 export const DEFAULT_PAGE_SIZE = 20;
 
-/** 抽屉页签；同步到 ?tab= */
+/** 弹窗页签；同步到 ?tab= */
 export type UserTab = "overview" | "tasks" | "credits" | "logins";
 
 /** 状态筛选：all 为不筛 */
@@ -51,7 +51,7 @@ export function useUsers() {
   const [refreshing, setRefreshing] = useState(false);
   const [version, setVersion] = useState(0);
   const seq = useRef(0);
-  /** 抽屉里 ↑↓ 走出当前页后翻页：记下目标页与方向，列表回来时自动打开新页的首条（下一个）或末条（上一个） */
+  /** 弹窗里 ↑↓ 走出当前页后翻页：记下目标页与方向，列表回来时自动打开新页的首条（下一个）或末条（上一个） */
   const pendingStep = useRef<{ dir: 1 | -1; page: number } | null>(null);
 
   /**
@@ -146,11 +146,11 @@ export function useUsers() {
         setPageSizeState(value);
         update({ page: null });
       },
-      /** 清除全部筛选（保留抽屉） */
+      /** 清除全部筛选（保留弹窗） */
       clearFilters: () => update({ q: null, status: null, role: null, page: null }),
-      /** 打开某个用户的抽屉；换用户时保留页签 */
+      /** 打开某个用户的弹窗；换用户时保留页签 */
       openUser: (id: number) => update({ user: String(id) }),
-      /** 关闭抽屉，同时去掉 user 和 tab */
+      /** 关闭弹窗，同时去掉 user 和 tab */
       closeUser: () => update({ user: null, tab: null }),
       setTab: (value: UserTab) => update({ tab: value === "overview" ? null : value }),
       /** 走出当前页：翻到目标页，数据回来后自动打开首条（dir=1）或末条（dir=-1） */
@@ -184,12 +184,12 @@ export function useUsers() {
   };
 }
 
-/** 抽屉里的详情状态：notfound 对应 URL 里的用户已不存在 */
+/** 弹窗里的详情状态：notfound 对应 URL 里的用户已不存在 */
 export type DetailState = "loading" | "ready" | "error" | "notfound";
 
 /**
- * 抽屉里的用户详情。切换用户时先清掉旧详情再拉新的，保证头部和摘要不会短暂显示上一个人的数据。
- * @param id 当前打开的用户；null 表示抽屉关着，不请求
+ * 弹窗里的用户详情。切换用户时先清掉旧详情再拉新的，保证头部和摘要不会短暂显示上一个人的数据。
+ * @param id 当前打开的用户；null 表示弹窗关着，不请求
  */
 export function useUserDetail(id: number | null) {
   const [detail, setDetail] = useState<UserDetail | null>(null);
@@ -221,7 +221,7 @@ export function useUserDetail(id: number | null) {
   }, [id, version]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
-  /** 只改 id 对得上的那份详情：行上的操作可能针对的不是抽屉里这个人 */
+  /** 只改 id 对得上的那份详情：行上的操作可能针对的不是弹窗里这个人 */
   const patch = useCallback((targetId: number, patchValue: Partial<UserDetail>) => {
     setDetail((value) => (value && value.id === targetId ? { ...value, ...patchValue } : value));
   }, []);

@@ -341,7 +341,8 @@ function BlockerItem({
                 </Button>
               </div>
               <p className="text-muted-foreground text-xs">
-                已上线的模型会用新渠道重新发布；有未上线修改的模型，这些修改会一起上线。
+                迁移后模型改用新渠道，已上线的立即生效；新渠道不满足条件（缺
+                Key、不支持该类型）的模型会迁移失败，保持原样。
               </p>
             </>
           ) : (

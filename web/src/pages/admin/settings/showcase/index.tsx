@@ -13,7 +13,6 @@ import { Notice } from "@/components/admin-ui/notice";
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -46,7 +45,7 @@ function PanelHead({ title, aside }: { title: string; aside?: string }) {
   return (
     <CardHeader className="flex-row items-center justify-between gap-3 border-b py-3.5">
       <CardTitle className="text-sm">{title}</CardTitle>
-      {aside && <span className="text-muted-foreground text-[12.5px] tabular-nums">{aside}</span>}
+      {aside && <span className="text-muted-foreground text-xs tabular-nums">{aside}</span>}
     </CardHeader>
   );
 }
@@ -114,7 +113,7 @@ function SettingRow({
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 not-first:border-t">
       <div>
-        <label htmlFor={htmlFor} className="block text-[13.5px] font-medium">
+        <label htmlFor={htmlFor} className="block text-sm font-medium">
           {title}
         </label>
         <span className="text-muted-foreground text-xs">{hint}</span>
@@ -154,7 +153,7 @@ function SettingsPanel({
             >
               <Minus className="size-4" />
             </button>
-            <output className="w-11 text-center text-[13px] tabular-nums">
+            <output className="w-11 text-center text-sm tabular-nums">
               {settings.clip_seconds} 秒
             </output>
             <button
@@ -215,10 +214,6 @@ export default function ShowcaseSettingsPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>登录页展示</PageHeaderTitle>
-            <PageHeaderDescription>
-              登录页背景轮播的作品。每条显示「生成它的那句话」，访客可以一键「做同款」。建议放 4–8
-              条横屏短片，720p、15 MB 以内。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>

@@ -21,6 +21,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-chart-other: var(--chart-other);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -95,6 +96,8 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  /* 图表里“其他 / 取消”这类中性项：不占类别色 */
+  --chart-other: oklch(0.708 0 0 / 0.45);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -182,6 +185,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --chart-other: oklch(1 0 0 / 0.22);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -236,6 +240,7 @@
 }
 
 /* 后台管理的配色（设计稿 docs/design/后台管理设计：zinc 冷灰）。浅色下卡片与页面同色、描边取淡一档；深色下卡片比页面亮一档，靠明暗而不是描边分层，和前台一致。
+   聚焦环 --ring 不在这里覆盖，沿用前台的中灰，后台与前台的输入框聚焦样式保持一致。
    只在进入后台时由布局给 <html> 加上 admin-theme，画布页不受影响；弹窗挂在 body 上也能拿到。 */
 .admin-theme {
   /* 进后台的加载层用 canvas-loader 的点阵底，底色跟后台走 */
@@ -257,7 +262,6 @@
   --destructive: hsl(0 72% 51%);
   --border: hsl(240 5.9% 91.5%);
   --input: hsl(240 5.9% 90%);
-  --ring: hsl(240 5.9% 10%);
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
   --sidebar-primary: hsl(240 5.9% 10%);
@@ -265,7 +269,12 @@
   --sidebar-accent: hsl(240 4.8% 95.9%);
   --sidebar-accent-foreground: hsl(240 5.9% 10%);
   --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(240 5.9% 10%);
+  /* 后台图表的类别色（总览占比图）：前台沿用灰阶的 --chart-*，后台要分得出片，所以在这里覆盖成蓝 / 紫 / 青 / 琥珀 / 粉 */
+  --chart-1: oklch(0.58 0.15 250);
+  --chart-2: oklch(0.55 0.2 295);
+  --chart-3: oklch(0.62 0.12 205);
+  --chart-4: oklch(0.7 0.16 70);
+  --chart-5: oklch(0.6 0.2 345);
 }
 
 .dark.admin-theme {
@@ -287,7 +296,6 @@
   --destructive: hsl(0 62.8% 45%);
   --border: hsl(240 3.7% 13.5%);
   --input: hsl(240 3.7% 18%);
-  --ring: hsl(240 4.9% 83.9%);
   --sidebar: hsl(240 5.9% 10%);
   --sidebar-foreground: hsl(240 4.8% 95.9%);
   --sidebar-primary: hsl(0 0% 98%);
@@ -295,7 +303,11 @@
   --sidebar-accent: hsl(240 3.7% 15.9%);
   --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
   --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(240 4.9% 83.9%);
+  --chart-1: oklch(0.72 0.14 250);
+  --chart-2: oklch(0.7 0.16 295);
+  --chart-3: oklch(0.8 0.12 205);
+  --chart-4: oklch(0.8 0.15 75);
+  --chart-5: oklch(0.74 0.17 345);
 }
 
 @layer base {
@@ -568,6 +580,41 @@
 }
 [data-entering] [data-slot="admin-outlet"] {
   animation: canvas-node-in 0.5s cubic-bezier(0.2, 0, 0, 1) 0.16s both;
+}
+/* 总览图表入场（设计稿 docs/design/总览页 第 4 节）：recharts 自带动画改的是 SVG 属性，不是 transform，所以关掉它，改用这里的关键帧。
+   柱形图：整组柱子从绘图区底边长起来。原点取 view-box 底边往上 24px，24px 是 task-trend-chart 里 X 轴的高度，
+   改那边的 XAxis height 时要一起改；环形图：整个环绕环心转进来。时长与曲线同 lib/motion.ts 的 DURATION.slow / EASE_OUT。 */
+.chart-bars-rise .recharts-bar {
+  transform-box: view-box;
+  transform-origin: 0 calc(100% - 24px);
+  animation: chart-bars-rise 0.24s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.chart-donut-in .recharts-pie {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: chart-donut-in 0.24s cubic-bezier(0.2, 0, 0, 1) both;
+}
+@keyframes chart-bars-rise {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes chart-donut-in {
+  from {
+    opacity: 0;
+    transform: rotate(-50deg) scale(0.94);
+  }
+}
+@keyframes chart-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-bars-rise .recharts-bar,
+  .chart-donut-in .recharts-pie {
+    animation: chart-fade-in 0.24s ease-out both;
+  }
 }
 @keyframes admin-sidebar-in {
   from {

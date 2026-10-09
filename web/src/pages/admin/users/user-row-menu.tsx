@@ -1,13 +1,4 @@
-import {
-  Ban,
-  CircleCheck,
-  Ellipsis,
-  Gauge,
-  KeyRound,
-  OctagonX,
-  PanelRightOpen,
-  Shield,
-} from "lucide-react";
+import { KeyRound, OctagonX, Shield } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { resetUserPassword } from "@/api/admin/users";
@@ -15,6 +6,7 @@ import type { UserRole } from "@/api/admin/users/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
+import { RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,20 +17,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { openDialog, type DialogControl } from "@/store/dialog";
 import { denyReason, USER_ROLE_LABEL, type Actor } from "@/utils/admin/user-rules";
 
@@ -94,32 +81,23 @@ async function requestResetPassword(user: ActionUser) {
 }
 
 /**
- * 行菜单与抽屉「⋯」共用的菜单项。无权限的项禁用而不是隐藏，hover 用 ReasonTooltip 写原因；
- * 「封禁并取消 N 个任务」只在有进行中任务时出现。
- * @param variant row 是行菜单（含查看详情、并发、封禁 / 启用），sheet 是抽屉里的「⋯」（这些已在操作行上，只留危险项）
+ * 行末与弹窗「⋯」共用的菜单项（查看详情、并发上限、封禁 / 启用已在行内按钮和弹窗操作行上，这里只留其余的）。
+ * 无权限的项禁用而不是隐藏，hover 用 ReasonTooltip 写原因；「封禁并取消 N 个任务」只在有进行中任务时出现。
  */
 function UserMenuItems({
   user,
   actor,
   actions,
-  variant,
-  onOpen,
-  onAdjustLimit,
 }: {
   user: ActionUser;
   actor: Actor | null;
   actions: UserActions;
-  variant: "row" | "sheet";
-  onOpen?: () => void;
-  onAdjustLimit?: () => void;
 }) {
   const banDeny = denyReason(actor, user, "ban");
-  const limitDeny = denyReason(actor, user, "limit");
   const roleDeny = denyReason(actor, user, "role");
   const resetDeny = denyReason(actor, user, "reset");
   const disabled = user.status === "disabled";
   const canCancel = !disabled && user.active_tasks > 0;
-  const row = variant === "row";
 
   const guarded = (reason: string | null, node: ReactNode) => (
     <ReasonTooltip reason={reason} className="block w-full">
@@ -129,60 +107,24 @@ function UserMenuItems({
 
   return (
     <>
-      {row && (
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onOpen}>
-            <PanelRightOpen />
-            查看详情
-            <DropdownMenuShortcut>⏎</DropdownMenuShortcut>
-          </DropdownMenuItem>
-          {guarded(
-            limitDeny,
-            <DropdownMenuItem disabled={!!limitDeny} onClick={onAdjustLimit}>
-              <Gauge />
-              调整并发上限…
-            </DropdownMenuItem>,
-          )}
-        </DropdownMenuGroup>
-      )}
-      {row && <DropdownMenuSeparator />}
-      <DropdownMenuGroup>
-        {row &&
-          guarded(
-            banDeny,
-            disabled ? (
-              <DropdownMenuItem
-                disabled={!!banDeny}
-                onClick={() => void actions.setStatus(user, "active")}
-              >
-                <CircleCheck />
-                启用
-              </DropdownMenuItem>
-            ) : (
+      {canCancel && (
+        <>
+          <DropdownMenuGroup>
+            {guarded(
+              banDeny,
               <DropdownMenuItem
                 variant="destructive"
                 disabled={!!banDeny}
-                onClick={() => void actions.setStatus(user, "disabled")}
+                onClick={() => void actions.banAndCancel(user)}
               >
-                <Ban />
-                封禁
-              </DropdownMenuItem>
-            ),
-          )}
-        {canCancel &&
-          guarded(
-            banDeny,
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={!!banDeny}
-              onClick={() => void actions.banAndCancel(user)}
-            >
-              <OctagonX />
-              封禁并取消 {user.active_tasks} 个任务…
-            </DropdownMenuItem>,
-          )}
-      </DropdownMenuGroup>
-      {(row || canCancel) && <DropdownMenuSeparator />}
+                <OctagonX />
+                封禁并取消 {user.active_tasks} 个任务…
+              </DropdownMenuItem>,
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+        </>
+      )}
       <DropdownMenuGroup>
         {guarded(
           roleDeny,
@@ -220,54 +162,21 @@ function UserMenuItems({
 }
 
 /**
- * 「⋯」菜单按钮 + 菜单。row 用在表格行末，sheet 用在抽屉操作行。
- * 触发按钮的 ref 交给调用方：从菜单打开并发浮层时，浮层要对齐到这个按钮。
+ * 「⋯」菜单按钮 + 菜单，用在表格行末和弹窗操作行。
  */
 function UserRowMenu({
   user,
   actor,
   actions,
-  variant = "row",
-  triggerRef,
-  onOpen,
-  onAdjustLimit,
 }: {
   user: ActionUser;
   actor: Actor | null;
   actions: UserActions;
-  variant?: "row" | "sheet";
-  triggerRef?: React.Ref<HTMLButtonElement>;
-  onOpen?: () => void;
-  onAdjustLimit?: () => void;
 }) {
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DropdownMenuTrigger
-              ref={triggerRef}
-              render={
-                <Button variant="ghost" size="icon-sm" aria-label={`${user.username} 的更多操作`} />
-              }
-            />
-          }
-        >
-          <Ellipsis />
-        </TooltipTrigger>
-        <TooltipContent>更多操作</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" className="w-60">
-        <UserMenuItems
-          user={user}
-          actor={actor}
-          actions={actions}
-          variant={variant}
-          onOpen={onOpen}
-          onAdjustLimit={onAdjustLimit}
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowMoreMenu label={`${user.username} 的更多操作`} className="w-60">
+      <UserMenuItems user={user} actor={actor} actions={actions} />
+    </RowMoreMenu>
   );
 }
 

@@ -20,7 +20,7 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
-import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isProcessorVersionConflict } from "@/utils/admin/errors";
 import {
   buildProcessorConfig,
@@ -77,7 +77,7 @@ function draftFromProcessor(processor: ProcessorView): Draft {
 }
 
 /**
- * 抽屉里的四步向导。表单状态只在这里；父级用“打开一次一个实例”控制何时重新初始化。
+ * 弹窗里的四步向导。表单状态只在这里；父级用“打开一次一个实例”控制何时重新初始化。
  * 第三步“保存并校验”会保存草稿（新建或带 version 更新）再调 /check；已发布的处理服务保存的是草稿，发布才生效。
  * 版本冲突（52004）时重新拉取并重置表单；有 fail 或校验过期不能发布。
  * @param initial 编辑的处理服务；新建时为 null
@@ -87,8 +87,8 @@ function draftFromProcessor(processor: ProcessorView): Draft {
  * @param storages 全部存储
  * @param processors 全部处理服务（判定存储占用）
  * @param canWrite 是否有写权限；没有则整个向导只读
- * @param onChanged 处理服务在抽屉里变了（创建、保存、校验、冲突后重新拉取），用最新视图更新列表
- * @param onPublished 发布成功后（页面负责刷新列表并关闭抽屉）
+ * @param onChanged 处理服务在弹窗里变了（创建、保存、校验、冲突后重新拉取），用最新视图更新列表
+ * @param onPublished 发布成功后（页面负责刷新列表并关闭弹窗）
  * @param onDirtyChange 上报是否有未保存的修改，关闭时据此确认
  * @param onClose 请求关闭
  */
@@ -297,11 +297,11 @@ export function ProcessorWizard({
 
   return (
     <>
-      <SheetHeader className="border-b">
-        <SheetTitle>{title}</SheetTitle>
-        <SheetDescription>
+      <DialogHeader className="gap-0.5 border-b p-4 pr-12">
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>
           为素材所在的存储配置缩略图 / 视频封面的处理服务，只对绑定的那套存储生效。
-        </SheetDescription>
+        </DialogDescription>
         <Stepper className="mt-2" aria-label="向导步骤">
           {STEP_LABELS.map((label, index) => (
             <StepperItem
@@ -313,7 +313,7 @@ export function ProcessorWizard({
             </StepperItem>
           ))}
         </Stepper>
-      </SheetHeader>
+      </DialogHeader>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {readOnly && <ReadOnlyNotice what="新建、编辑、校验、发布处理服务" className="mb-4" />}
@@ -357,7 +357,7 @@ export function ProcessorWizard({
         {step === 4 && <StepCheck processor={proc} running={busy === "check"} />}
       </div>
 
-      <SheetFooter className="flex-row items-center border-t">
+      <DialogFooter className="m-0 flex-row items-center rounded-none border-t bg-transparent p-4 sm:justify-start">
         {step > 1 && (
           <Button
             type="button"
@@ -398,7 +398,7 @@ export function ProcessorWizard({
             </>
           )}
         </div>
-      </SheetFooter>
+      </DialogFooter>
     </>
   );
 }

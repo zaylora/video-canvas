@@ -29,6 +29,7 @@ type Handlers struct {
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
 	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
+	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
 	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
 	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
@@ -130,6 +131,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI := auth.Group("/admin/ai", middleware.RequireAdmin(h.AdminRole))
 		superOnly := middleware.RequireSuperAdmin(h.AdminRole)
 		adminAI.GET("/me", h.AdminMe.Me)
+		adminAI.GET("/stats", h.AdminStats.Stats)
 
 		plugins := adminAI.Group("/plugins")
 		plugins.GET("", h.AdminPlugin.List)
@@ -146,6 +148,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.GET("/:key", h.AdminChannel.Get)
 		channels.PUT("/:key", superOnly, h.AdminChannel.Update)
 		channels.PUT("/:key/secret", superOnly, h.AdminChannel.SetSecret)
+		channels.POST("/check-draft", superOnly, h.AdminChannel.CheckDraft)
 		channels.POST("/:key/check", superOnly, h.AdminChannel.Check)
 		channels.POST("/:key/import", h.AdminChannel.Import)
 		channels.GET("/:key/delete-check", superOnly, h.AdminChannel.DeleteCheck)
@@ -157,10 +160,6 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		models.GET("/:key", h.AdminAI.Get)
 		models.PUT("/:key", h.AdminAI.Update)
 		models.POST("/:key/validate", h.AdminAI.Validate)
-		models.POST("/:key/publish", h.AdminAI.Publish)
-		models.POST("/:key/rollback", h.AdminAI.Rollback)
-		models.GET("/:key/revisions", h.AdminAI.Revisions)
-		models.GET("/:key/revisions/:rid", h.AdminAI.Revision)
 		models.POST("/:key/dry-run", h.AdminAI.DryRun)
 		models.POST("/:key/test-run", h.AdminAI.TestRun)
 		models.PUT("/:key/enabled", h.AdminAI.SetEnabled)

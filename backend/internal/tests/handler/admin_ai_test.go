@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -46,6 +47,7 @@ type aicEnv struct {
 	dry      *aiconfigfake.DryRunner
 	tasks    *aiconfigfake.TestTasks
 	ops      *aiconfigfake.PluginOps
+	stats    *aiconfigfake.StatsRepo
 	checker  *aiconfigfake.Prechecker
 	roles    map[uint64]string
 	tokens   map[int]string
@@ -64,6 +66,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 			Views: map[uint64]aiconfigfake.TestView{},
 		},
 		ops:      &aiconfigfake.PluginOps{},
+		stats:    &aiconfigfake.StatsRepo{},
 		checker:  &aiconfigfake.Prechecker{ByCode: map[string]*provider.PrecheckResult{}},
 		roles:    map[uint64]string{aicAdminUser: model.RoleAdmin, aicNormalUser: model.RoleUser, aicSuperUser: model.RoleSuperAdmin},
 		tokens:   map[int]string{},
@@ -85,6 +88,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		AdminAI:      NewAdminAIHandler(cfg),
 		AdminPlugin:  NewAdminPluginHandler(service.NewAIPluginService(repo, repo, repo, env.checker, cfg)),
 		AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)),
+		AdminStats:   NewAdminStatsHandler(service.NewAIStatsService(env.stats, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
 		UserState:    aicActiveState,
@@ -222,8 +226,8 @@ func aicModelJSON(key, kind, channel string) map[string]any {
 	}
 }
 
-// publishAll 通过接口完成：（预置插件）→ 建渠道 → 设 Key → 建模型草稿 → 发布。
-func (e *aicEnv) publishAll(t *testing.T) {
+// enableAll 通过接口完成：（预置插件）→ 建渠道 → 设 Key → 保存模型 → 启用。
+func (e *aicEnv) enableAll(t *testing.T) {
 	t.Helper()
 	e.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
 	steps := []struct {
@@ -233,7 +237,7 @@ func (e *aicEnv) publishAll(t *testing.T) {
 		{http.MethodPost, aicBase + "/channels", aicChannelJSON("kling-main", "1.0.0")},
 		{http.MethodPut, aicBase + "/channels/kling-main/secret", map[string]any{"value": "sk-super-secret"}},
 		{http.MethodPost, aicBase + "/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}},
-		{http.MethodPost, aicBase + "/models/m1/publish", nil},
+		{http.MethodPut, aicBase + "/models/m1/enabled", map[string]any{"enabled": true}},
 	}
 	for _, s := range steps {
 		if r := e.super(s.method, s.path, s.body); r.Status != http.StatusOK || r.Code != 0 {
@@ -248,7 +252,7 @@ func (e *aicEnv) publishAll(t *testing.T) {
 
 func TestAIModelHandler_List(t *testing.T) {
 	env := aicNewEnv(t)
-	env.publishAll(t)
+	env.enableAll(t)
 
 	t.Run("返回模型清单且不泄露内部字段", func(t *testing.T) {
 		r := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
@@ -278,7 +282,7 @@ func TestAIModelHandler_List(t *testing.T) {
 	})
 	t.Run("kind=text 合法：文本节点能拿到清单", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("t1", "text", "kling-main")}), http.StatusOK, 0)
-		aicWant(t, env.super(http.MethodPost, aicBase+"/models/t1/publish", nil), http.StatusOK, 0)
+		aicWant(t, env.super(http.MethodPut, aicBase+"/models/t1/enabled", map[string]any{"enabled": true}), http.StatusOK, 0)
 		r := env.do(http.MethodGet, "/api/v1/models?kind=text", nil, aicNormalUser)
 		aicWant(t, r, http.StatusOK, 0)
 		var list []map[string]any
@@ -323,19 +327,19 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		{http.MethodDelete, "/plugins/kling/versions/1.0.0", true},
 		{http.MethodGet, "/channels", false},
 		{http.MethodGet, "/channels/loads", false},
+		{http.MethodGet, "/stats", false},
 		{http.MethodPost, "/channels", true},
 		{http.MethodGet, "/channels/x", false},
 		{http.MethodPut, "/channels/x", true},
 		{http.MethodPut, "/channels/x/secret", true},
 		{http.MethodPost, "/channels/x/check", true},
+		{http.MethodPost, "/channels/check-draft", true},
 		{http.MethodPost, "/channels/x/import", false},
 		{http.MethodGet, "/models", false},
 		{http.MethodPost, "/models", false},
 		{http.MethodGet, "/models/m1", false},
 		{http.MethodPut, "/models/m1", false},
 		{http.MethodPost, "/models/m1/validate", false},
-		{http.MethodPost, "/models/m1/publish", false},
-		{http.MethodPost, "/models/m1/rollback", false},
 		{http.MethodPost, "/models/m1/dry-run", false},
 		{http.MethodPost, "/models/m1/test-run", false},
 		{http.MethodPut, "/models/m1/enabled", false},
@@ -730,6 +734,41 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 	})
 }
 
+func TestAdminChannelHandler_CheckDraft(t *testing.T) {
+	env := aicNewEnv(t)
+	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
+	url := aicBase + "/channels/check-draft"
+	body := func(mutate func(map[string]any)) map[string]any {
+		m := map[string]any{
+			"plugin_key": "kling", "plugin_version": "1.0.0", "base_url": "https://gw.example.com",
+			"settings": map[string]any{"tenant": "t1"}, "secret": "sk-draft-value",
+		}
+		if mutate != nil {
+			mutate(m)
+		}
+		return m
+	}
+
+	t.Run("成功：渠道还没保存也能检查，响应不含 Key", func(t *testing.T) {
+		env.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 90}
+		r := env.super(http.MethodPost, url, body(nil))
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"ok":true`) || !strings.Contains(r.Raw, `"duration_ms":90`) || strings.Contains(r.Raw, "sk-draft-value") {
+			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+		if env.ops.GotSecret != "sk-draft-value" {
+			t.Fatalf("草稿 Key 应传给宿主：%q", env.ops.GotSecret)
+		}
+	})
+	t.Run("缺必填字段：400（10001）", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "base_url") })), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+	t.Run("业务错误：地址不合法 400 类（50013）；没有 Key 409（50015）", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { m["base_url"] = "ftp://x" })), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "secret") })), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
+	})
+}
+
 func TestAdminChannelHandler_CheckAndImport(t *testing.T) {
 	env := aicNewEnv(t)
 	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
@@ -791,7 +830,7 @@ func TestAdminChannelHandler_CheckAndImport(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 模型：草稿 / 校验 / 发布 / 回滚 / 列表 / 试跑 / 追踪 / schema
+// 模型：保存 / 校验 / 启用 / 列表 / 试跑 / 追踪 / schema
 // ---------------------------------------------------------------------------
 
 func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
@@ -799,15 +838,28 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
 	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main", "1.0.0")), http.StatusOK, 0)
 
-	t.Run("新建模型草稿：成功并返回 issues 列表", func(t *testing.T) {
+	t.Run("新建模型：成功并返回 issues 列表，没有版本信息", func(t *testing.T) {
 		r := env.admin(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main"), "note": "初版"})
 		aicWant(t, r, http.StatusOK, 0)
 		var d struct {
-			Revision model.AIConfigRevision `json:"revision"`
-			Issues   []any                  `json:"issues"`
+			Issues []any `json:"issues"`
 		}
-		if err := json.Unmarshal(r.Data, &d); err != nil || d.Revision.RevisionNo != 1 || d.Revision.Note != "初版" || d.Revision.CreatedBy != aicAdminUser || d.Issues == nil || len(d.Issues) != 0 {
+		if err := json.Unmarshal(r.Data, &d); err != nil || d.Issues == nil || len(d.Issues) != 0 {
 			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+		if strings.Contains(r.Raw, "revision") {
+			t.Fatalf("响应不应带版本信息：%s", r.Raw)
+		}
+	})
+	t.Run("新建的模型默认没启用，用户看不到", func(t *testing.T) {
+		r := env.admin(http.MethodGet, aicBase+"/models/m1", nil)
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"enabled":false`) {
+			t.Fatalf("新建的模型应未启用：%s", r.Raw)
+		}
+		r = env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
+		if strings.Contains(r.Raw, `"m1"`) {
+			t.Fatalf("未启用的模型不应出现在用户清单里：%s", r.Raw)
 		}
 	})
 	t.Run("重复新建返回 400 + 配置错误码", func(t *testing.T) {
@@ -818,84 +870,74 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		aicWant(t, env.admin(http.MethodPost, aicBase+"/models", map[string]any{"body": []int{1}}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		aicWant(t, env.admin(http.MethodPost, aicBase+"/models", "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 	})
-	t.Run("PUT：路径 key 与正文不一致 400；不存在 404；成功版本号递增", func(t *testing.T) {
+	t.Run("PUT：路径 key 与正文不一致 400；不存在 404；成功覆盖原配置", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/other", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/none", map[string]any{"body": aicModelJSON("none", "video", "kling-main")}), http.StatusNotFound, errcode.ErrConfigNotFound.Code)
-		r := env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")})
-		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"revision_no":2`) {
-			t.Fatalf("revision_no 应为 2：%s", r.Raw)
+		body := aicModelJSON("m1", "video", "kling-main")
+		body["label"] = "改名后"
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": body}), http.StatusOK, 0)
+		r := env.admin(http.MethodGet, aicBase+"/models/m1", nil)
+		if !strings.Contains(r.Raw, "改名后") {
+			t.Fatalf("详情应是最新保存的内容：%s", r.Raw)
 		}
 	})
-	t.Run("校验：不传 body 校验草稿；传 body 校验传入内容（渠道不存在也会报）", func(t *testing.T) {
+	t.Run("校验：不传 body 校验已保存的配置；传 body 校验传入内容（渠道不存在也会报）", func(t *testing.T) {
 		r := env.admin(http.MethodPost, aicBase+"/models/m1/validate", nil)
 		aicWant(t, r, http.StatusOK, 0)
 		if !strings.Contains(r.Raw, `"valid":true`) {
-			t.Fatalf("草稿应通过校验：%s", r.Raw)
+			t.Fatalf("已保存的配置应通过校验：%s", r.Raw)
 		}
 		r = env.admin(http.MethodPost, aicBase+"/models/m1/validate", map[string]any{"body": aicModelJSON("m1", "video", "ghost")})
 		aicWant(t, r, http.StatusOK, 0)
 		if !strings.Contains(r.Raw, `"valid":false`) || !strings.Contains(r.Raw, `"path":"channels[0].channel"`) {
 			t.Fatalf("应返回带路径的问题：%s", r.Raw)
 		}
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/none/validate", nil), http.StatusConflict, errcode.ErrConfigNoDraft.Code)
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/none/validate", nil), http.StatusNotFound, errcode.ErrConfigNotFound.Code)
 	})
-	t.Run("渠道 Key 未设置时发布返回 409（50015）", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
+	t.Run("渠道 Key 未设置时启用返回 409（50015）", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
 	})
-	t.Run("渠道停用时发布返回 409（50014）", func(t *testing.T) {
+	t.Run("渠道停用时启用返回 409（50014）", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main", map[string]any{"enabled": false}), http.StatusOK, 0)
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil), http.StatusConflict, errcode.ErrChannelDisabled.Code)
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusConflict, errcode.ErrChannelDisabled.Code)
 		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main", map[string]any{"enabled": true}), http.StatusOK, 0)
 	})
-	t.Run("super_admin 设置 Key 后，admin 可以发布", func(t *testing.T) {
+	t.Run("super_admin 设置 Key 后，admin 可以启用，用户随即可见", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-1"}), http.StatusOK, 0)
-		r := env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil)
-		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"status":"published"`) {
-			t.Fatalf("应返回已发布的 revision：%s", r.Raw)
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusOK, 0)
+		r := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
+		if !strings.Contains(r.Raw, `"m1"`) {
+			t.Fatalf("启用后用户清单里应有 m1：%s", r.Raw)
 		}
 	})
-	t.Run("发布后再发布返回 409（没有草稿）", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil), http.StatusConflict, errcode.ErrConfigNoDraft.Code)
+	t.Run("已启用的模型保存即生效；校验不过的保存被拒绝", func(t *testing.T) {
+		body := aicModelJSON("m1", "video", "kling-main")
+		body["label"] = "线上新名"
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": body}), http.StatusOK, 0)
+		r := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser)
+		if !strings.Contains(r.Raw, "线上新名") {
+			t.Fatalf("保存后用户立刻看到新配置：%s", r.Raw)
+		}
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": aicModelJSON("m1", "video", "ghost")}), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
 	})
-	t.Run("详情包含已发布正文与 revision 元信息；不存在 404", func(t *testing.T) {
+	t.Run("详情包含配置正文与启用状态，不含版本信息；不存在 404", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/models/m1", nil)
 		aicWant(t, r, http.StatusOK, 0)
 		var d service.ConfigDetail
-		if err := json.Unmarshal(r.Data, &d); err != nil || d.Published == nil || d.Published.Status != model.RevisionPublished || len(d.Published.BodyJSON) == 0 || d.Draft != nil {
+		if err := json.Unmarshal(r.Data, &d); err != nil || !d.Enabled || len(d.Body) == 0 {
 			t.Fatalf("详情不符合预期：%v %s", err, r.Raw)
+		}
+		for _, bad := range []string{"revision", "draft", "published"} {
+			if strings.Contains(r.Raw, bad) {
+				t.Fatalf("详情不应带 %q：%s", bad, r.Raw)
+			}
 		}
 		aicWant(t, env.admin(http.MethodGet, aicBase+"/models/none", nil), http.StatusNotFound, errcode.ErrConfigNotFound.Code)
 	})
-	t.Run("再改一版并发布，然后回滚到第一次发布的版本", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusOK, 0)
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil), http.StatusOK, 0)
-
-		r := env.admin(http.MethodGet, aicBase+"/models/m1/revisions", nil)
-		aicWant(t, r, http.StatusOK, 0)
-		var revs []model.AIConfigRevision
-		_ = json.Unmarshal(r.Data, &revs)
-		if len(revs) < 3 || strings.Contains(r.Raw, `body_json":{`) {
-			t.Fatalf("历史列表不符合预期（应不含正文）：%s", r.Raw)
-		}
-		var first uint64
-		for _, rv := range revs {
-			if rv.RevisionNo == 2 { // 第 2 版是第一次发布的版本，此时已归档
-				first = rv.ID
-			}
-		}
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/rollback", map[string]any{"revision_id": first}), http.StatusOK, 0)
-		r = env.admin(http.MethodGet, fmt.Sprintf("%s/models/m1/revisions/%d", aicBase, first), nil)
-		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, "body_json") {
-			t.Fatalf("单个 revision 应带正文：%s", r.Raw)
-		}
-	})
-	t.Run("回滚参数校验；revision id 非法", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/rollback", map[string]any{}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
-		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/rollback", map[string]any{"revision_id": 99999}), http.StatusNotFound, errcode.ErrConfigNotFound.Code)
-		aicWant(t, env.admin(http.MethodGet, aicBase+"/models/m1/revisions/abc", nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	t.Run("发布 / 回滚 / 历史版本接口已移除", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/publish", nil), http.StatusNotFound, errcode.ErrNotFound.Code)
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/m1/rollback", map[string]any{"revision_id": 1}), http.StatusNotFound, errcode.ErrNotFound.Code)
+		aicWant(t, env.admin(http.MethodGet, aicBase+"/models/m1/revisions", nil), http.StatusNotFound, errcode.ErrNotFound.Code)
 	})
 	t.Run("列表带 label 与 channel，且不含正文", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/models", nil)
@@ -904,7 +946,7 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 1 {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
-		if list[0]["key"] != "m1" || list[0]["label"] != "模型-m1" || list[0]["channel"] != "kling-main" || list[0]["kind"] != "video" {
+		if list[0]["key"] != "m1" || list[0]["label"] != "线上新名" || list[0]["channel"] != "kling-main" || list[0]["kind"] != "video" {
 			t.Fatalf("列表项字段不符合预期：%v", list[0])
 		}
 		if strings.Contains(r.Raw, "body_json") || strings.Contains(r.Raw, "capabilities") {
@@ -939,7 +981,7 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 
 func TestAdminAIHandler_ModelEnabledAndSort(t *testing.T) {
 	env := aicNewEnv(t)
-	env.publishAll(t)
+	env.enableAll(t)
 	base := aicBase + "/models/m1"
 
 	tests := []struct {
@@ -967,8 +1009,8 @@ func TestAdminAIHandler_ModelEnabledAndSort(t *testing.T) {
 
 func TestAdminAIHandler_DryRunTestRunAndTrace(t *testing.T) {
 	env := aicNewEnv(t)
-	env.publishAll(t)
-	// 再存一个草稿用于试跑
+	env.enableAll(t)
+	// 再保存一次用于试跑
 	aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusOK, 0)
 	base := aicBase + "/models/m1"
 
@@ -1041,5 +1083,48 @@ func TestAdminAIHandler_Schema(t *testing.T) {
 	})
 	t.Run("旧的 /schema/provider 已删除", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodGet, aicBase+"/schema/provider", nil), http.StatusNotFound, errcode.ErrNotFound.Code)
+	})
+}
+
+func TestAdminStatsHandler_Stats(t *testing.T) {
+	env := aicNewEnv(t)
+	path := aicBase + "/stats"
+
+	t.Run("不传 days 按 7 天，返回连续 7 天的柱形图数据与占比", func(t *testing.T) {
+		env.stats.ModelKinds = []model.AIStatsModelKind{{Model: "kling-v2", Kind: "video", Count: 3}}
+		r := env.admin(http.MethodGet, path, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var v model.AIStatsView
+		if err := json.Unmarshal(r.Data, &v); err != nil {
+			t.Fatalf("响应解析失败：%v %s", err, r.Raw)
+		}
+		if v.Days != 7 || len(v.Daily) != 7 {
+			t.Fatalf("默认应是 7 天：days=%d len=%d", v.Days, len(v.Daily))
+		}
+		if len(v.ByModel) != 1 || v.ByModel[0].Model != "kling-v2" || v.ByModel[0].Count != 3 ||
+			len(v.ByKind) != 1 || v.ByKind[0].Kind != "video" {
+			t.Fatalf("占比数据不对：%s", r.Raw)
+		}
+	})
+	t.Run("days=30 返回 30 天", func(t *testing.T) {
+		r := env.admin(http.MethodGet, path+"?days=30", nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var v model.AIStatsView
+		if err := json.Unmarshal(r.Data, &v); err != nil || len(v.Daily) != 30 {
+			t.Fatalf("应是 30 天：%v %s", err, r.Raw)
+		}
+	})
+	t.Run("days 不是 7 或 30 返回 400", func(t *testing.T) {
+		for _, q := range []string{"?days=14", "?days=0x", "?days=-7"} {
+			aicWant(t, env.admin(http.MethodGet, path+q, nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		}
+	})
+	t.Run("统计查询失败时返回 500 且不泄露内部错误", func(t *testing.T) {
+		env.stats.Err = errors.New("pq: relation secret_table does not exist")
+		defer func() { env.stats.Err = nil }()
+		r := env.admin(http.MethodGet, path, nil)
+		if r.Status != http.StatusInternalServerError || strings.Contains(r.Raw, "secret_table") {
+			t.Fatalf("应是 500 且不带内部信息：%d %s", r.Status, r.Raw)
+		}
 	})
 }

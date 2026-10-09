@@ -12,7 +12,6 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/repository"
 	"video-canvas/internal/service/aiconfigfake"
 )
 
@@ -34,16 +33,16 @@ func aicRunSetup(t *testing.T) (*AIConfigService, *aiconfigfake.MemRepo, *aiconf
 func TestAIConfigService_DryRun(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("用草稿组装快照（渠道 + 固定的插件版本），输入规范化后交给宿主，结果脱敏", func(t *testing.T) {
+	t.Run("用已保存的配置组装快照（渠道 + 固定的插件版本），输入规范化后交给宿主，结果脱敏", func(t *testing.T) {
 		svc, repo, dry, _ := aicRunSetup(t)
 		res, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "hi"})
 		aicWantCode(t, err, 0)
 		if dry.Snap == nil || dry.Snap.Model.Key != "m1" || dry.Snap.Channel.Key != "c1" || dry.Snap.Plugin.Version != "1.0.0" {
 			t.Fatalf("快照不符合预期：%+v", dry.Snap)
 		}
-		draft, _ := repo.GetDraft(ctx, model.ConfigTargetModel, "m1")
-		if dry.Snap.ModelRevisionID != draft.ID {
-			t.Fatalf("应使用草稿 revision：%d vs %d", dry.Snap.ModelRevisionID, draft.ID)
+		cur, _ := repo.GetModelConfig(ctx, "m1")
+		if dry.Snap.ModelRevisionID != cur.ID {
+			t.Fatalf("应使用已保存的配置：%d vs %d", dry.Snap.ModelRevisionID, cur.ID)
 		}
 		if dry.Input["prompt"] != "hi" {
 			t.Fatalf("宿主应收到规范化后的输入：%v", dry.Input)
@@ -57,14 +56,10 @@ func TestAIConfigService_DryRun(t *testing.T) {
 		}
 	})
 
-	t.Run("没有草稿时用已发布版本", func(t *testing.T) {
+	t.Run("模型没启用也能 dry-run（用于启用前检查配置）", func(t *testing.T) {
 		svc, repo, dry, _ := aicRunSetup(t)
-		if _, err := svc.Publish(ctx, "m1", 1); err != nil {
-			t.Fatal(err)
-		}
-		// 发布后草稿变成 published，没有 draft 了
-		if _, err := repo.GetDraft(ctx, model.ConfigTargetModel, "m1"); !errors.Is(err, repository.ErrNotFound) {
-			t.Fatal("发布后不应再有草稿")
+		if repo.Models["m1"].Enabled {
+			t.Fatal("前置：新保存的模型应未启用")
 		}
 		_, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, 0)

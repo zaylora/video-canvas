@@ -34,12 +34,12 @@ export const issueFor = (issues: ConfigIssue[], path: string) =>
       issue.path === path || issue.path.startsWith(`${path}.`) || issue.path.startsWith(`${path}[`),
   )?.message;
 
-/** 发布前待办的一项 */
+/** 上线前待办的一项 */
 export type ModelCheck = { tab: ModelTabId; text: string; path?: string };
 
 /**
- * 发布前还需处理的事：必填项没填、渠道不可用 / 缺 Key，以及最近一次保存 / 校验返回的问题。
- * 和后端 publishBlockReason 一致的部分只是提前提示，最终以后端为准。
+ * 上线前还需处理的事：必填项没填、渠道不可用 / 缺 Key，以及最近一次保存 / 校验返回的问题。
+ * 和后端启用检查一致的部分只是提前提示，最终以后端为准。
  */
 export function modelChecks(
   body: Record<string, unknown> | null,

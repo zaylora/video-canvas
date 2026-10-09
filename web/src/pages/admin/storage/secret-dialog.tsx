@@ -25,7 +25,7 @@ import { PROVIDER_META } from "./provider-meta";
  * - 输入框从空白开始，type=password、autocomplete=new-password；
  * - 明文只存在于对话框 state 里，提交时取走并立刻清空，不进 URL、store、日志；
  * - AccessKey ID 与 Secret 必须一起换；后端先用新凭证测试，不通过就什么都不改，原凭证继续可用。
- * 在抽屉里是受控的子弹窗（不走全局弹窗 store），这样 Esc 只关它自己。
+ * 在弹窗里是受控的子弹窗（不走全局弹窗 store），这样 Esc 只关它自己。
  * @param storage 要替换凭证的存储
  * @param onReplaced 替换成功后，带回更新后的视图
  */

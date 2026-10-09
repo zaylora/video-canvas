@@ -9,7 +9,7 @@ import {
 } from "@/utils/admin/storage-form";
 import { isFieldLocked, lockReason } from "@/utils/admin/storage-rules";
 
-/** 抽屉里各分区共用的属性 */
+/** 弹窗里各分区共用的属性 */
 export type SectionProps = {
   /** 表单状态 */
   form: StorageFormState;

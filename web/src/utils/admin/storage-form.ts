@@ -39,7 +39,7 @@ export type StorageFormField =
   | "signedTtlSec"
   | "directUpload";
 
-/** 存储抽屉里的表单状态；文本字段保持用户输入的原样，提交时才去空白 */
+/** 存储弹窗里的表单状态；文本字段保持用户输入的原样，提交时才去空白 */
 export type StorageFormState = {
   /** 显示名称 */
   name: string;

@@ -42,20 +42,18 @@ export function channelHealth(channel: ChannelView, plugins: readonly PluginView
 }
 
 /** 模型对运营只露一个状态 */
-export type ModelStatus = "online" | "broken" | "offline" | "unpublished";
+export type ModelStatus = "online" | "broken" | "offline";
 
 export const MODEL_STATUS_LABEL: Record<ModelStatus, string> = {
   online: "在线",
   broken: "不可用",
-  offline: "已下线",
-  unpublished: "未上线",
+  offline: "未上线",
 };
 
 export const MODEL_STATUS_TONE: Record<ModelStatus, HealthTone> = {
   online: "ok",
   broken: "bad",
   offline: "off",
-  unpublished: "off",
 };
 
 export type ModelHealth = {
@@ -69,9 +67,8 @@ export type ModelHealth = {
 
 /**
  * 模型对用户的真实状态：
- * - 未上线：从没发布过；
- * - 已下线：发布过但没上架；
- * - 不可用：已上架，但渠道不存在 / 停用 / 插件停用 / 缺 Key，用户实际用不了；
+ * - 未上线：没启用（保存后默认就是这个状态），用户看不到；
+ * - 不可用：已启用，但渠道不存在 / 停用 / 插件停用 / 缺 Key，用户实际用不了；
  * - 在线：其余。
  * @param channelsReady 渠道与插件清单都已加载；没加载完不下“不可用”的结论
  */
@@ -91,7 +88,6 @@ export function modelHealth(
       if (health.reason) reason = `渠道「${channel.name}」${health.reason}`;
     }
   }
-  if (item.published_revision_no === null) return { status: "unpublished", reason };
   if (!item.enabled) return { status: "offline", reason };
   return { status: reason ? "broken" : "online", reason };
 }
@@ -107,13 +103,12 @@ export type AdminTodo = {
     | { kind: "set-key"; channelKey: string }
     | { kind: "open-plugin"; pluginKey: string }
     | { kind: "open-channel"; channelKey: string }
-    | { kind: "upgrade-plugin"; pluginKey: string }
-    | { kind: "open-models"; filter: string };
+    | { kind: "upgrade-plugin"; pluginKey: string };
 };
 
 /**
  * 总览页的待处理清单，按严重度排：插件停用波及在线模型 → 渠道问题导致模型不可用 → 缺 Key →
- * 插件可升级 → 有未上线的修改。
+ * 插件可升级。
  */
 export function adminTodos(
   models: readonly ConfigListItem[],
@@ -170,16 +165,6 @@ export function adminTodos(
       tone: "info",
       text: `${plugin.name} v${latest.version} 可用，${outdated.length} 个渠道还在旧版本`,
       action: { kind: "upgrade-plugin", pluginKey: plugin.key },
-    });
-  }
-
-  const drafts = models.filter((m) => m.has_unpublished_draft && m.published_revision_no !== null);
-  if (drafts.length > 0) {
-    todos.push({
-      id: "drafts",
-      tone: "info",
-      text: `${drafts.length} 个已上线过的模型有改动还没上线`,
-      action: { kind: "open-models", filter: "draft" },
     });
   }
 

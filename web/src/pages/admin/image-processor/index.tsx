@@ -11,7 +11,6 @@ import {
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -22,13 +21,13 @@ import { canManageInfra } from "@/utils/admin/role";
 
 import { ReadOnlyNotice } from "../shared";
 import { confirmDelete, confirmDisable, confirmRollback } from "./processor-actions";
-import { ProcessorSheet, type ProcessorSheetTarget } from "./processor-sheet";
+import { ProcessorDialog, type ProcessorDialogTarget } from "./processor-dialog";
 import { ProcessorTable } from "./processor-table";
 import { StorageBindingTable } from "./storage-binding-table";
 import { useImageProcessors } from "./use-image-processors";
 
 /**
- * 图片服务管理页：处理服务列表 + “存储与处理服务”表 + 右侧抽屉（四步向导）。
+ * 图片服务管理页：处理服务列表 + “存储与处理服务”表 + 弹窗（四步向导）。
  * 写操作（新建、编辑、校验、发布、回滚、停用、删除）只对 super_admin 渲染，admin 只读；
  * 请求错误的全局提示由拦截器弹，这里不重复。
  */
@@ -36,12 +35,12 @@ export default function ImageProcessorPage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const { processors, presets, storages, status, reload, upsertOne } = useImageProcessors();
-  const [target, setTarget] = useState<ProcessorSheetTarget | null>(null);
-  /** 每次打开抽屉递增，让向导重新初始化 */
+  const [target, setTarget] = useState<ProcessorDialogTarget | null>(null);
+  /** 每次打开弹窗递增，让向导重新初始化 */
   const nonceRef = useRef(0);
 
   const open = useCallback(
-    (next: DistributiveOmit<ProcessorSheetTarget, "nonce">) =>
+    (next: DistributiveOmit<ProcessorDialogTarget, "nonce">) =>
       setTarget({ ...next, nonce: ++nonceRef.current }),
     [],
   );
@@ -61,10 +60,6 @@ export default function ImageProcessorPage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>图片服务</PageHeaderTitle>
-            <PageHeaderDescription>
-              为素材所在的存储配置缩略图 /
-              视频封面的处理服务。处理服务只对它绑定的那套存储里的素材生效。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>
@@ -137,7 +132,7 @@ export default function ImageProcessorPage() {
           </div>
         )}
 
-        <ProcessorSheet
+        <ProcessorDialog
           target={target}
           processors={processors}
           presets={presets}

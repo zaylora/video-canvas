@@ -16,22 +16,12 @@ import (
 // AIConfigRepo 是 AI 配置服务依赖的数据访问接口（模型配置的 revision 与指针行、渠道凭证），
 // 由 repository.AIConfigRepository 实现，测试里用内存 fake 替换。协议插件设计之后配置目标只有模型。
 type AIConfigRepo interface {
-	// SaveDraft 在事务里 upsert 指针行、归档旧草稿并插入新草稿。
-	SaveDraft(ctx context.Context, in repository.SaveDraftInput) (*model.AIConfigRevision, error)
-	// GetDraft 返回最新草稿，没有返回 repository.ErrNotFound。
-	GetDraft(ctx context.Context, target, key string) (*model.AIConfigRevision, error)
-	// GetRevision 按 id 查询 revision（含正文），不存在返回 repository.ErrNotFound。
-	GetRevision(ctx context.Context, id uint64) (*model.AIConfigRevision, error)
-	// GetPublishedRevision 返回当前发布的 revision，目标不存在或未发布返回 repository.ErrNotFound。
-	GetPublishedRevision(ctx context.Context, target, key string) (*model.AIConfigRevision, error)
-	// ListRevisions 返回历史版本（不含正文），新到旧。
-	ListRevisions(ctx context.Context, target, key string, limit int) ([]model.AIConfigRevision, error)
-	// ListRevisionHeads 返回所有当前的 draft 与 published revision，withBody=false 时不读正文。
-	ListRevisionHeads(ctx context.Context, target string, withBody bool) ([]model.AIConfigRevision, error)
-	// PublishDraft 发布指定草稿；不存在返回 ErrNotFound，已不是草稿返回 ErrRevisionConflict。
-	PublishDraft(ctx context.Context, ptr repository.ConfigPointer, revisionID uint64) (*model.AIConfigRevision, error)
-	// Rollback 把发布指针改回已归档的 revision，错误约定同 PublishDraft。
-	Rollback(ctx context.Context, ptr repository.ConfigPointer, revisionID uint64) (*model.AIConfigRevision, error)
+	// SaveModel 在事务里 upsert 指针行并原地覆盖配置正文（每个模型只有一份配置，没有版本历史）。
+	SaveModel(ctx context.Context, in repository.SaveModelInput) (*model.AIConfigRevision, error)
+	// GetModelConfig 返回模型的配置（含正文），模型不存在或没有配置返回 repository.ErrNotFound。
+	GetModelConfig(ctx context.Context, key string) (*model.AIConfigRevision, error)
+	// ListModelConfigs 返回所有模型的配置（含正文），列表页取展示名与渠道用。
+	ListModelConfigs(ctx context.Context) ([]model.AIConfigRevision, error)
 
 	// GetModelPointer 返回模型指针行，不存在返回 repository.ErrNotFound。
 	GetModelPointer(ctx context.Context, key string) (*model.AIModel, error)
@@ -41,8 +31,8 @@ type AIConfigRepo interface {
 	SetModelEnabled(ctx context.Context, key string, enabled bool) error
 	// SetModelSort 修改排序，模型不存在返回 repository.ErrNotFound。
 	SetModelSort(ctx context.Context, key string, sort int) error
-	// LoadPublishedModels 一次取出所有已发布的模型（指针行 + 发布版本正文）。
-	LoadPublishedModels(ctx context.Context) ([]repository.PublishedModel, error)
+	// LoadModels 一次取出所有模型（指针行 + 配置正文，含未启用的）。
+	LoadModels(ctx context.Context) ([]repository.PublishedModel, error)
 	// DeleteModel 事务内锁住指针行后硬删除模型（全部 revision + 指针行）：仍上架返回 repository.ErrInUse，不存在返回 repository.ErrNotFound。
 	DeleteModel(ctx context.Context, key string) error
 
@@ -105,18 +95,17 @@ type RegistryInvalidator interface {
 
 // 缓存与列表相关的默认参数。
 const (
-	aiRegistryTTL       = 30 * time.Second // Registry 内存缓存的兜底过期时间（多实例没有广播时，最迟 30 秒对齐）
-	aiSecretCacheTTL    = 30 * time.Second // 凭证明文的内存缓存时间，SetSecret 会立即清除本实例缓存
-	aiRevisionListLimit = 100              // 历史版本列表条数上限
-	aiModelKeyMaxLen    = 128              // 模型 key 的最大长度，与 ai_models.key 列宽一致
-	aiModelKindMaxLen   = 16               // kind 的最大长度，与 ai_models.kind 列宽一致
+	aiRegistryTTL     = 30 * time.Second // Registry 内存缓存的兜底过期时间（多实例没有广播时，最迟 30 秒对齐）
+	aiSecretCacheTTL  = 30 * time.Second // 凭证明文的内存缓存时间，SetSecret 会立即清除本实例缓存
+	aiModelKeyMaxLen  = 128              // 模型 key 的最大长度，与 ai_models.key 列宽一致
+	aiModelKindMaxLen = 16               // kind 的最大长度，与 ai_models.kind 列宽一致
 )
 
 // aiConfigKeyRe 限制模型 key 的字符集：key 会出现在 URL 路径、缓存 key 和日志里，不允许特殊字符。
 var aiConfigKeyRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.\-]*$`)
 
-// AIConfigService 管理模型配置的草稿 / 发布 / 回滚与渠道凭证，同时实现 provider.Registry（只读已发布模型 + 渠道 + 插件版本）
-// 与 provider.SecretResolver（解密渠道 Key 给插件宿主注入鉴权）。发布后立即刷新本实例内存，热生效。
+// AIConfigService 管理模型配置（保存即写入，启用后用户可见）与渠道凭证，同时实现 provider.Registry（只读模型 + 渠道 + 插件版本）
+// 与 provider.SecretResolver（解密渠道 Key 给插件宿主注入鉴权）。保存、启停后立即刷新本实例内存，热生效。
 // 插件与渠道的管理在别的服务里，它们变更后调用 RefreshRegistry 让 Registry 立即对齐。
 type AIConfigService struct {
 	repo     AIConfigRepo
@@ -135,11 +124,10 @@ type AIConfigService struct {
 	secCache map[string]aiSecretCacheItem
 
 	// Registry 内存状态。regMu 保护 regState 的读写；regLoadMu 串行化刷新，避免并发刷新打爆数据库。
-	regMu      sync.RWMutex
-	regState   *aiRegistryState
-	regLoadMu  sync.Mutex
-	regTTL     time.Duration
-	modelParse map[uint64]*modelcfg.ModelConfig // 按 revision_id 缓存的解析结果（只在 regLoadMu 保护下访问）
+	regMu     sync.RWMutex
+	regState  *aiRegistryState
+	regLoadMu sync.Mutex
+	regTTL    time.Duration
 }
 
 var (
@@ -151,14 +139,13 @@ var (
 // secretKey 是凭证主密钥（cfg.AI.SecretKey），为空时服务照常启动，但设置 / 读取凭证会返回明确错误。
 func NewAIConfigService(repo AIConfigRepo, channels AIChannelReader, plugins AIPluginReader, secretKey string) *AIConfigService {
 	return &AIConfigService{
-		repo:       repo,
-		channels:   channels,
-		plugins:    plugins,
-		now:        time.Now,
-		cipher:     newAISecretCipher(secretKey),
-		secCache:   map[string]aiSecretCacheItem{},
-		regTTL:     aiRegistryTTL,
-		modelParse: map[uint64]*modelcfg.ModelConfig{},
+		repo:     repo,
+		channels: channels,
+		plugins:  plugins,
+		now:      time.Now,
+		cipher:   newAISecretCipher(secretKey),
+		secCache: map[string]aiSecretCacheItem{},
+		regTTL:   aiRegistryTTL,
 	}
 }
 
@@ -175,8 +162,8 @@ func (s *AIConfigService) SetInvalidator(i RegistryInvalidator) { s.invalidator 
 // 请求 / 响应结构
 // ---------------------------------------------------------------------------
 
-// ModelDraftInput 是保存模型草稿的参数。
-type ModelDraftInput struct {
+// ModelSaveInput 是保存模型配置的参数。
+type ModelSaveInput struct {
 	Key     string          // 更新时是路径里的 key；新建时忽略（取正文里的 key）
 	Create  bool            // true 新建（key 已存在则报错），false 更新（key 必须已存在）
 	Body    json.RawMessage // 配置正文（JSON 对象）
@@ -184,10 +171,9 @@ type ModelDraftInput struct {
 	AdminID uint64          // 操作人
 }
 
-// SaveDraftResult 是保存草稿的结果：草稿一定已保存，Issues 是当前校验发现的问题（有问题时不能发布）。
-type SaveDraftResult struct {
-	Revision *model.AIConfigRevision `json:"revision"`
-	Issues   []modelcfg.Issue        `json:"issues"`
+// SaveModelResult 是保存的结果：配置一定已保存，Issues 是当前校验发现的问题（有问题时不能启用）。
+type SaveModelResult struct {
+	Issues []modelcfg.Issue `json:"issues"`
 }
 
 // ValidateResult 是校验结果。
@@ -196,33 +182,28 @@ type ValidateResult struct {
 	Issues []modelcfg.Issue `json:"issues"`
 }
 
-// ConfigListItem 是管理端模型列表的一行：指针行信息 + 草稿 / 发布状态汇总，不含正文。
+// ConfigListItem 是管理端模型列表的一行：指针行信息 + 展示用的 label / channel 等，不含正文。
 type ConfigListItem struct {
-	Key                 string    `json:"key"`
-	Kind                string    `json:"kind"`
-	Vendor              string    `json:"vendor"`  // 厂商 slug，取值规则同 label；没有为空串
-	Tags                []string  `json:"tags"`    // 展示标签，取值规则同 label；没有为 []
-	Label               string    `json:"label"`   // 展示名：取已发布版本的 label，没发布过取最新草稿的
-	Channel             string    `json:"channel"` // 绑定的渠道 key（channels[0].channel），同样先看已发布版本；正文里没写为空串
-	Enabled             bool      `json:"enabled"`
-	Sort                int       `json:"sort"`
-	PublishedRevisionID *uint64   `json:"published_revision_id"`
-	PublishedRevisionNo *int      `json:"published_revision_no"`
-	DraftRevisionNo     *int      `json:"draft_revision_no"`
-	HasUnpublishedDraft bool      `json:"has_unpublished_draft"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	Key       string    `json:"key"`
+	Kind      string    `json:"kind"`
+	Vendor    string    `json:"vendor"`  // 厂商 slug，取自配置正文；没有为空串
+	Tags      []string  `json:"tags"`    // 展示标签，取自配置正文；没有为 []
+	Label     string    `json:"label"`   // 展示名，取自配置正文
+	Channel   string    `json:"channel"` // 绑定的渠道 key（channels[0].channel）；正文里没写为空串
+	Enabled   bool      `json:"enabled"`
+	Sort      int       `json:"sort"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ConfigDetail 是管理端模型详情：草稿与已发布正文（含 revision 元信息）。
+// ConfigDetail 是管理端模型详情：指针行信息 + 配置正文。
 type ConfigDetail struct {
-	Target    string                  `json:"target"` // 固定为 model，保留字段以兼容前端
-	Key       string                  `json:"key"`
-	Kind      string                  `json:"kind"`
-	Enabled   bool                    `json:"enabled"`
-	Sort      int                     `json:"sort"`
-	Draft     *model.AIConfigRevision `json:"draft"`
-	Published *model.AIConfigRevision `json:"published"`
-	UpdatedAt time.Time               `json:"updated_at"`
+	Target    string          `json:"target"` // 固定为 model，保留字段以兼容前端
+	Key       string          `json:"key"`
+	Kind      string          `json:"kind"`
+	Enabled   bool            `json:"enabled"`
+	Sort      int             `json:"sort"`
+	Body      json.RawMessage `json:"body"` // 配置正文；还没有配置时为 null
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // TestTraceView 是试跑追踪的响应：GET /admin/ai/test-runs/:id/trace。

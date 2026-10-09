@@ -143,6 +143,7 @@ make run
 | 方法     | 路径                                            | 权限        | 说明                                                                                                                 |
 | -------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | GET      | /api/v1/admin/ai/me                             | admin       | 当前用户 `{user_id, role}`，前端据此隐藏写操作                                                                       |
+| GET      | /api/v1/admin/ai/stats                          | admin       | 总览页任务统计：`?days=7\|30`（默认 7），返回 `daily`（连续 `days` 天的成功 / 失败 / 其他）、`by_model`、`by_kind`；试跑不计 |
 | GET      | /api/v1/admin/ai/plugins                        | admin       | 插件与版本列表（含 meta、渠道数）                                                                                    |
 | POST     | /api/v1/admin/ai/plugins                        | super_admin | 上传插件（multipart，字段 `file`）；预检不通过也返回 200，`accepted=false` + `issues`                                |
 | PUT      | /api/v1/admin/ai/plugins/:key/enabled           | super_admin | 启停插件                                                                                                             |
@@ -154,6 +155,7 @@ make run
 | POST     | /api/v1/admin/ai/channels                       | super_admin | 新建渠道                                                                                                             |
 | PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本）                                                             |
 | PUT      | /api/v1/admin/ai/channels/:key/secret           | super_admin | 设置渠道 Key（只写）                                                                                                 |
+| POST     | /api/v1/admin/ai/channels/check-draft          | super_admin | 保存前检查：用表单草稿（含 Key，不落库）做连通性检查                                                                                                           |
 | POST     | /api/v1/admin/ai/channels/:key/check            | super_admin | 连通性检查                                                                                                           |
 | POST     | /api/v1/admin/ai/channels/:key/import           | admin       | 从渠道导入模型草稿（只预填，不落库）                                                                                 |
 | GET      | /api/v1/admin/ai/channels/:key/delete-check     | super_admin | 删除预检，kind 为 `channel_models`（refs 是模型）/ `active_tasks`                                                    |
@@ -177,16 +179,14 @@ make run
 | POST     | /api/v1/admin/image-processors/:id/rollback     | super_admin | 回滚到上一个已发布版本，没有 409 / 52009                                                                             |
 | POST     | /api/v1/admin/image-processors/:id/disable      | super_admin | 停用：该存储回退原图 / 占位                                                                                          |
 | DELETE   | /api/v1/admin/image-processors/:id              | super_admin | 删除草稿或已停用的；已发布的 409 / 52008                                                                             |
-| GET/POST | /api/v1/admin/ai/models                         | admin       | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦）                       |
-| GET/PUT  | /api/v1/admin/ai/models/:key                    | admin       | 详情（草稿 + 已发布） / 更新草稿                                                                                     |
+| GET/POST | /api/v1/admin/ai/models                         | admin       | 列表（含 `label`、`channel`、`enabled`）/ 新建（body `{body, note}`，默认未启用；有校验问题也会保存，启用时才拦）                       |
+| GET/PUT  | /api/v1/admin/ai/models/:key                    | admin       | 详情（配置正文 `body`） / 更新（已启用的保存即生效，校验不过拒绝）                                                                                     |
 | POST     | /api/v1/admin/ai/models/:key/validate           | admin       | 校验（错误精确到 JSON 路径）                                                                                         |
-| POST     | /api/v1/admin/ai/models/:key/publish、/rollback | admin       | 发布 / 回滚（`{revision_id}`）                                                                                       |
-| GET      | /api/v1/admin/ai/models/:key/revisions[/:rid]   | admin       | 版本历史                                                                                                             |
 | POST     | /api/v1/admin/ai/models/:key/dry-run            | admin       | 渲染请求描述但不发送（不含注入后的鉴权头，凭证脱敏）                                                                 |
-| POST     | /api/v1/admin/ai/models/:key/test-run           | admin       | 用草稿真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪             |
-| PUT      | /api/v1/admin/ai/models/:key/enabled、/sort     | admin       | 上下架 / 排序                                                                                                        |
+| POST     | /api/v1/admin/ai/models/:key/test-run           | admin       | 用已保存的配置真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪             |
+| PUT      | /api/v1/admin/ai/models/:key/enabled、/sort     | admin       | 启用 / 停用（启用前检查配置、渠道与 Key）/ 排序                                                                                                        |
 | GET      | /api/v1/admin/ai/models/:key/delete-check       | admin       | 删除预检，kind 为 `model_enabled`                                                                                    |
-| DELETE   | /api/v1/admin/ai/models/:key                    | admin       | 硬删除模型及其全部版本（必须先下架，否则 409 / 50031），不可恢复；之后同名 key 可以重新新建 / 导入                   |
+| DELETE   | /api/v1/admin/ai/models/:key                    | admin       | 硬删除模型（必须先下架，否则 409 / 50031），不可恢复；之后同名 key 可以重新新建 / 导入                   |
 | GET      | /api/v1/admin/ai/schema/model                   | admin       | 模型配置的 JSON Schema                                                                                               |
 
 统一响应格式：

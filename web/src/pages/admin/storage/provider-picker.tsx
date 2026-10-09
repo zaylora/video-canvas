@@ -39,7 +39,7 @@ export function ProviderPicker({
               <Icon className="size-4 shrink-0" />
               {preset.name}
             </span>
-            <span className="text-muted-foreground text-[11px]">{hint}</span>
+            <span className="text-muted-foreground text-xs">{hint}</span>
           </ChoiceCard>
         );
       })}

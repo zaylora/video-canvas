@@ -8,7 +8,6 @@ import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/adm
 import {
   PageHeader,
   PageHeaderActions,
-  PageHeaderDescription,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
@@ -21,12 +20,12 @@ import { probeSummary } from "@/utils/admin/storage-probe";
 import { ReadOnlyNotice } from "../shared";
 import { DefaultStorageCard, LocalDefaultNotice } from "./default-card";
 import { confirmSetDefault, requestDeleteStorage } from "./storage-dialogs";
-import { StorageSheet, type StorageSheetTarget } from "./storage-sheet";
+import { StorageDialog, type StorageDialogTarget } from "./storage-dialog";
 import { StorageTable } from "./storage-table";
 import { useStorages } from "./use-storages";
 
 /**
- * 存储配置页：默认存储卡片 + 存储列表 + 右侧抽屉（新建 / 编辑）。
+ * 存储配置页：默认存储卡片 + 存储列表 + 弹窗（新建 / 编辑）。
  * 写操作（新建、编辑、测试、设为默认、删除）只对 super_admin 渲染，admin 只读；
  * 请求错误的全局提示由拦截器弹，这里不重复。
  */
@@ -34,7 +33,7 @@ export default function StoragePage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const { storages, presets, status, reload, replaceOne } = useStorages();
-  const [target, setTarget] = useState<StorageSheetTarget | null>(null);
+  const [target, setTarget] = useState<StorageDialogTarget | null>(null);
   /** 正在测试或做删除预检的存储，对应行的按钮转圈并禁用 */
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -78,9 +77,6 @@ export default function StoragePage() {
         <PageHeader>
           <PageHeaderHeading>
             <PageHeaderTitle>存储配置</PageHeaderTitle>
-            <PageHeaderDescription>
-              素材（上传与生成产物）存到哪里。切换默认只影响新文件，已有素材始终从它所在的存储读取。
-            </PageHeaderDescription>
           </PageHeaderHeading>
           {canWrite && (
             <PageHeaderActions>
@@ -134,7 +130,7 @@ export default function StoragePage() {
           </div>
         )}
 
-        <StorageSheet
+        <StorageDialog
           target={target}
           storages={storages}
           presets={presets}

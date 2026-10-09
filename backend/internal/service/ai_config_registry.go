@@ -103,7 +103,7 @@ func (s *AIConfigService) registryState(ctx context.Context) (*aiRegistryState, 
 	return fresh, nil
 }
 
-// reload 加载所有已发布模型与可用的渠道运行时，并原子替换内存状态。
+// reload 加载所有模型与可用的渠道运行时，并原子替换内存状态。
 // force=false 时，拿到加载锁后会再确认一次别的 goroutine 是否已经刷新过，避免过期瞬间的并发风暴。
 func (s *AIConfigService) reload(ctx context.Context, force bool) (*aiRegistryState, error) {
 	s.regLoadMu.Lock()
@@ -118,9 +118,9 @@ func (s *AIConfigService) reload(ctx context.Context, force bool) (*aiRegistrySt
 		}
 	}
 
-	rows, err := s.repo.LoadPublishedModels(ctx)
+	rows, err := s.repo.LoadModels(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("加载已发布模型失败：%w", err)
+		return nil, fmt.Errorf("加载模型失败：%w", err)
 	}
 	runtimes, err := s.loadRuntimes(ctx)
 	if err != nil {
@@ -134,24 +134,19 @@ func (s *AIConfigService) reload(ctx context.Context, force bool) (*aiRegistrySt
 	return st, nil
 }
 
-// buildState 由已发布模型与渠道运行时组装内存状态（调用方持有 regLoadMu）。
-// 解析结果按 revision_id 缓存：发布版本不可变，同一个 revision 只解析一次；本次没用到的缓存项会被清理。
+// buildState 由模型配置与渠道运行时组装内存状态（调用方持有 regLoadMu）。
+// 配置正文解析不过的模型不进内存：已启用的记一条错误日志（线上有模型用不了，需要处理），没启用的是还没填完的半成品，静默跳过。
 func (s *AIConfigService) buildState(rows []repository.PublishedModel, runtimes map[string]*provider.ChannelRuntime) *aiRegistryState {
-	parsed := make(map[uint64]*modelcfg.ModelConfig, len(rows))
 	st := &aiRegistryState{loadedAt: s.now(), models: map[string]*aiRegModel{}}
 	for _, row := range rows {
-		cfg, ok := s.modelParse[row.RevisionID]
-		if !ok {
-			var issues []modelcfg.Issue
-			cfg, issues = modelcfg.ParseModel(row.Body)
-			if len(issues) > 0 || cfg == nil {
-				// 已发布的版本都通过了校验；万一不通过（比如手工改库），让它不可用而不是带病运行
-				logger.Error("已发布的模型配置无法解析，已忽略", zap.String("model", row.Key),
+		cfg, issues := modelcfg.ParseModel(row.Body)
+		if len(issues) > 0 || cfg == nil {
+			if row.Enabled {
+				logger.Error("已启用的模型配置无法解析，已忽略", zap.String("model", row.Key),
 					zap.Uint64("revision_id", row.RevisionID), zap.String("issues", aiFormatIssues(issues)))
-				continue
 			}
+			continue
 		}
-		parsed[row.RevisionID] = cfg
 		m := &aiRegModel{key: row.Key, enabled: row.Enabled, sort: row.Sort, revisionID: row.RevisionID, cfg: cfg,
 			rt: modelRuntime(cfg, runtimes)}
 		st.models[row.Key] = m
@@ -163,7 +158,6 @@ func (s *AIConfigService) buildState(rows []repository.PublishedModel, runtimes 
 		}
 		return st.ordered[i].key < st.ordered[j].key
 	})
-	s.modelParse = parsed
 	return st
 }
 

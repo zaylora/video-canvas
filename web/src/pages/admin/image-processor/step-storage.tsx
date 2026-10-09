@@ -91,7 +91,7 @@ export function StepStorage({
                     {choice.reason}
                   </span>
                 ) : (
-                  <span className="text-muted-foreground font-mono text-[11px]">
+                  <span className="text-muted-foreground font-mono text-xs">
                     {where.primary}
                     {where.secondary && ` · ${where.secondary}`}
                   </span>

@@ -40,7 +40,7 @@ export function useImageProcessors() {
     void reload();
   }, [reload]);
 
-  /** 用最新视图替换列表里的同一条；列表里还没有（刚在抽屉里新建）就追加 */
+  /** 用最新视图替换列表里的同一条；列表里还没有（刚在弹窗里新建）就追加 */
   const upsertOne = useCallback((view: ProcessorView) => {
     setProcessors((prev) =>
       prev.some((item) => item.id === view.id)

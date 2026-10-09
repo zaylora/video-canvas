@@ -3,11 +3,11 @@ import {
   Film,
   HardDrive,
   ImageDown,
+  Lightbulb,
   Mail,
   LayoutDashboard,
   Puzzle,
   RadioTower,
-  Sparkles,
   UserPlus,
   Users,
   type LucideIcon,
@@ -36,7 +36,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
   },
   {
     label: "Agent",
-    items: [{ to: "agent/skills", label: "技能", icon: Sparkles }],
+    items: [{ to: "agent/skills", label: "技能", icon: Lightbulb }],
   },
   {
     label: "用户",
@@ -49,7 +49,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "settings/image-processor", label: "图片服务", icon: ImageDown },
       { to: "settings/register", label: "注册设置", icon: UserPlus },
       { to: "settings/email", label: "邮件服务", icon: Mail },
-      { to: "settings/showcase", label: "登录页展示", icon: Film, badge: "新" },
+      { to: "settings/showcase", label: "登录页展示", icon: Film },
     ],
   },
 ];

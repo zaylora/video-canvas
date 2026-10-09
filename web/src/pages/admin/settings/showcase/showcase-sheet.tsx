@@ -357,7 +357,7 @@ function SheetForm({
             {coverOptions.map((option) => (
               <label
                 key={option.value}
-                className="has-checked:border-foreground flex h-9 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[13px]"
+                className="has-checked:border-foreground flex h-9 flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm"
               >
                 <input
                   type="radio"
@@ -409,7 +409,7 @@ function SheetForm({
 
         <div className="flex items-center justify-between gap-4">
           <div>
-            <label htmlFor="showcase-enabled" className="text-[13.5px] font-medium">
+            <label htmlFor="showcase-enabled" className="text-sm font-medium">
               启用
             </label>
             <p className="text-muted-foreground text-xs">关闭后保留在列表，不参与轮播</p>

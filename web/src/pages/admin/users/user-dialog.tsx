@@ -21,7 +21,7 @@ import { MotionButton } from "@/components/admin-ui/motion-button";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -42,7 +42,7 @@ import { CreditPopover } from "./credit-popover";
 import { LimitPopover } from "./limit-popover";
 import type { DetailState, UserTab } from "./use-users";
 import type { UserActions } from "./use-user-actions";
-import { CreditsTab, LoginsTab, OverviewTab, TasksTab } from "./user-sheet-tabs";
+import { CreditsTab, LoginsTab, OverviewTab, TasksTab } from "./user-dialog-tabs";
 import { UserRowMenu } from "./user-row-menu";
 
 const TAB_LABEL: Record<UserTab, string> = {
@@ -54,20 +54,16 @@ const TAB_LABEL: Record<UserTab, string> = {
 
 const TAB_ORDER: UserTab[] = ["overview", "tasks", "credits", "logins"];
 
-/** 抽屉：560px，窄屏全宽覆盖 */
-const SHEET_CLASS = [
-  "gap-0 p-0",
-  "data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:md:w-[560px]",
-  "data-[side=right]:data-starting-style:translate-x-full data-[side=right]:data-ending-style:translate-x-full",
-  "motion-reduce:data-[side=right]:data-starting-style:translate-x-0 motion-reduce:data-[side=right]:data-ending-style:translate-x-0",
-].join(" ");
+/** 弹窗：固定高度，头部与摘要常驻，页签内容在里面滚动；窄屏左右各留 0.75rem */
+const DIALOG_CLASS =
+  "flex h-[min(90svh,880px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl";
 
 /**
- * 用户详情抽屉：顶部摘要常驻 + 概览 / 生成 / 积分 / 登录四个页签（页签内容独立滚动）。
- * 抽屉外框只在打开 / 关闭时滑动，切换用户时只有内容按方向淡入位移 8px。
- * Esc 由页面按层级统一处理（浮层 → 勾选 → 抽屉），所以这里不响应 Base UI 自己的关闭请求。
+ * 用户详情弹窗：顶部摘要常驻 + 概览 / 生成 / 积分 / 登录四个页签（页签内容独立滚动）。
+ * 弹窗外框只在打开 / 关闭时缩放淡入，切换用户时只有内容按方向淡入位移 8px。
+ * Esc 由页面按层级统一处理（浮层 → 勾选 → 弹窗），所以这里不响应 Base UI 自己的关闭请求。
  */
-function UserSheet({
+function UserDialog({
   userId,
   order,
   listItem,
@@ -84,7 +80,7 @@ function UserSheet({
   onClose,
   onRetry,
 }: {
-  /** 当前打开的用户；null 表示抽屉关闭 */
+  /** 当前打开的用户；null 表示弹窗关闭 */
   userId: number | null;
   /** 当前表格的用户顺序，用来判断切换方向 */
   order: number[];
@@ -122,20 +118,24 @@ function UserSheet({
   const user = open ? live : keptUser;
 
   return (
-    <Sheet
+    <Dialog
       open={open}
       onOpenChange={(next, details) => {
         if (!next && details.reason === "outside-press") onClose();
       }}
     >
-      <SheetContent
+      <DialogContent
         showCloseButton={false}
         finalFocus={false}
-        className={SHEET_CLASS}
+        className={DIALOG_CLASS}
         aria-label="用户详情"
       >
-        <SheetTitle className="sr-only">{user ? `${user.username} 的详情` : "用户详情"}</SheetTitle>
-        <SheetDescription className="sr-only">查看用户、调整积分与并发、封禁账号</SheetDescription>
+        <DialogTitle className="sr-only">
+          {user ? `${user.username} 的详情` : "用户详情"}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          查看用户、调整积分与并发、封禁账号
+        </DialogDescription>
         {shownId !== null && (
           <motion.div
             key={shownId}
@@ -145,30 +145,30 @@ function UserSheet({
             transition={{ duration: DURATION.base, ease: EASE_OUT }}
           >
             {detailState === "notfound" ? (
-              <SheetMessage icon={<UserX className="size-8" />} title="用户不存在或已被删除">
+              <DialogMessage icon={<UserX className="size-8" />} title="用户不存在或已被删除">
                 <Button variant="outline" onClick={onClose}>
                   关闭
                 </Button>
-              </SheetMessage>
+              </DialogMessage>
             ) : !user && detailState === "error" ? (
-              <SheetMessage icon={<RotateCw className="size-8" />} title="加载失败">
+              <DialogMessage icon={<RotateCw className="size-8" />} title="加载失败">
                 <Button variant="outline" onClick={onRetry}>
                   重试
                 </Button>
                 <Button variant="ghost" onClick={onClose}>
                   关闭
                 </Button>
-              </SheetMessage>
+              </DialogMessage>
             ) : (
               <>
-                <SheetHead
+                <DialogHead
                   user={user}
                   canPrev={canPrev}
                   canNext={canNext}
                   onStep={onStep}
                   onClose={onClose}
                 />
-                <SheetSummary user={user} actor={actor} actions={actions} />
+                <DialogSummary user={user} actor={actor} actions={actions} />
                 <Tabs
                   value={tab}
                   onValueChange={(value) => onTabChange(value as UserTab)}
@@ -186,13 +186,13 @@ function UserSheet({
                       >
                         {TAB_LABEL[value]}
                         {value === "tasks" && !!user && user.active_tasks > 0 && (
-                          <span className="bg-status-running text-background inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] tabular-nums">
+                          <span className="bg-status-running text-background inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] tabular-nums">
                             {user.active_tasks}
                           </span>
                         )}
                         {tab === value && (
                           <motion.span
-                            layoutId="user-sheet-tab-line"
+                            layoutId="user-dialog-tab-line"
                             transition={SPRING}
                             className="bg-foreground absolute inset-x-0 -bottom-px h-0.5"
                           />
@@ -228,8 +228,8 @@ function UserSheet({
             )}
           </motion.div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -249,7 +249,7 @@ function Fade({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SheetMessage({
+function DialogMessage({
   icon,
   title,
   children,
@@ -268,7 +268,7 @@ function SheetMessage({
 }
 
 /** 头部：头像、名字、角色 / 状态 Tag、邮箱 · ID · 注册时间，以及 上一个 / 下一个 / 关闭 */
-function SheetHead({
+function DialogHead({
   user,
   canPrev,
   canNext,
@@ -296,7 +296,7 @@ function SheetHead({
         {user ? (
           <>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="truncate text-base font-semibold">{user.username}</span>
+              <span className="truncate text-lg font-semibold">{user.username}</span>
               <Tag tone={USER_ROLE_TONE[user.role]}>{USER_ROLE_LABEL[user.role]}</Tag>
               {user.status === "active" ? (
                 <Tag tone="success">{USER_STATUS_LABEL.active}</Tag>
@@ -370,7 +370,7 @@ function StepButton({
 }
 
 /** 摘要三格（可用积分 / 冻结 / 并发）与操作行（调整积分 / 并发上限 / 封禁·启用 / ⋯） */
-function SheetSummary({
+function DialogSummary({
   user,
   actor,
   actions,
@@ -418,7 +418,7 @@ function SheetSummary({
         <div className="border-l p-3">
           <div className="text-muted-foreground flex items-center justify-between text-xs">
             <span>并发</span>
-            <span className="text-[10px]">{conc.custom ? "自定义" : "默认"}</span>
+            <span className="text-[11px]">{conc.custom ? "自定义" : "默认"}</span>
           </div>
           <div
             className={cn(
@@ -491,11 +491,11 @@ function SheetSummary({
           </MotionButton>
         </ReasonTooltip>
         <div className="ml-auto">
-          <UserRowMenu user={user} actor={actor} actions={actions} variant="sheet" />
+          <UserRowMenu user={user} actor={actor} actions={actions} />
         </div>
       </div>
     </div>
   );
 }
 
-export { UserSheet };
+export { UserDialog };

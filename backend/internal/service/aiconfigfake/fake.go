@@ -23,8 +23,8 @@ type MemRepo struct {
 	Plugins  map[string]*model.AIPlugin
 	Versions map[uint64]*model.AIPluginVersion
 
-	LoadPublishedCalls int
-	FailLoad           error
+	LoadCalls int
+	FailLoad  error
 
 	// 以下用来在测试里模拟插件 / 渠道 / 审计仓储的各种情形。
 	Audits         []model.AIAuditLog
@@ -60,7 +60,8 @@ func (m *MemRepo) find(id uint64) *model.AIConfigRevision {
 	return nil
 }
 
-func (m *MemRepo) SaveDraft(_ context.Context, in repository.SaveDraftInput) (*model.AIConfigRevision, error) {
+// SaveModel 与真实仓储一致：已有配置行就原地覆盖，没有就新建一行并让指针指向它。
+func (m *MemRepo) SaveModel(_ context.Context, in repository.SaveModelInput) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -75,63 +76,30 @@ func (m *MemRepo) SaveDraft(_ context.Context, in repository.SaveDraftInput) (*m
 	}
 	row.Kind = in.Pointer.Kind
 
-	maxNo := 0
-	for _, rev := range m.Revs {
-		if rev.Target != model.ConfigTargetModel || rev.TargetKey != in.Pointer.Key {
-			continue
-		}
-		if rev.RevisionNo > maxNo {
-			maxNo = rev.RevisionNo
-		}
-		if rev.Status == model.RevisionDraft {
-			rev.Status = model.RevisionArchived
+	if row.PublishedRevisionID != nil {
+		if cur := m.find(*row.PublishedRevisionID); cur != nil {
+			cur.BodyJSON = model.JSONText(append([]byte(nil), in.Body...))
+			cur.CreatedBy, cur.Note = in.CreatedBy, in.Note
+			copyRev := *cur
+			return &copyRev, nil
 		}
 	}
 	m.nextID++
 	rev := &model.AIConfigRevision{
 		ID: m.nextID, Target: model.ConfigTargetModel, TargetKey: in.Pointer.Key,
-		RevisionNo: maxNo + 1, BodyJSON: model.JSONText(append([]byte(nil), in.Body...)),
-		Status: model.RevisionDraft, CreatedBy: in.CreatedBy, Note: in.Note, CreatedAt: time.Now(),
+		RevisionNo: 1, BodyJSON: model.JSONText(append([]byte(nil), in.Body...)),
+		Status: model.RevisionPublished, CreatedBy: in.CreatedBy, Note: in.Note, CreatedAt: time.Now(),
 	}
 	m.Revs = append(m.Revs, rev)
+	rid := rev.ID
+	row.PublishedRevisionID = &rid
 	copyRev := *rev
 	return &copyRev, nil
 }
 
-func (m *MemRepo) GetDraft(_ context.Context, target, key string) (*model.AIConfigRevision, error) {
+func (m *MemRepo) GetModelConfig(_ context.Context, key string) (*model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var best *model.AIConfigRevision
-	for _, rev := range m.Revs {
-		if rev.Target == target && rev.TargetKey == key && rev.Status == model.RevisionDraft &&
-			(best == nil || rev.RevisionNo > best.RevisionNo) {
-			best = rev
-		}
-	}
-	if best == nil {
-		return nil, repository.ErrNotFound
-	}
-	copyRev := *best
-	return &copyRev, nil
-}
-
-func (m *MemRepo) GetRevision(_ context.Context, id uint64) (*model.AIConfigRevision, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	rev := m.find(id)
-	if rev == nil {
-		return nil, repository.ErrNotFound
-	}
-	copyRev := *rev
-	return &copyRev, nil
-}
-
-func (m *MemRepo) GetPublishedRevision(_ context.Context, target, key string) (*model.AIConfigRevision, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if target != model.ConfigTargetModel {
-		return nil, repository.ErrNotFound
-	}
 	row, ok := m.Models[key]
 	if !ok || row.PublishedRevisionID == nil {
 		return nil, repository.ErrNotFound
@@ -144,75 +112,20 @@ func (m *MemRepo) GetPublishedRevision(_ context.Context, target, key string) (*
 	return &copyRev, nil
 }
 
-func (m *MemRepo) ListRevisions(_ context.Context, target, key string, limit int) ([]model.AIConfigRevision, error) {
+func (m *MemRepo) ListModelConfigs(_ context.Context) ([]model.AIConfigRevision, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]model.AIConfigRevision, 0)
-	for _, rev := range m.Revs {
-		if rev.Target != target || rev.TargetKey != key {
+	for _, row := range m.Models {
+		if row.PublishedRevisionID == nil {
 			continue
 		}
-		copyRev := *rev
-		copyRev.BodyJSON = nil
-		out = append(out, copyRev)
+		if rev := m.find(*row.PublishedRevisionID); rev != nil {
+			out = append(out, *rev)
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].RevisionNo > out[j].RevisionNo })
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
-	}
+	sort.Slice(out, func(i, j int) bool { return out[i].TargetKey < out[j].TargetKey })
 	return out, nil
-}
-
-func (m *MemRepo) ListRevisionHeads(_ context.Context, target string, withBody bool) ([]model.AIConfigRevision, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]model.AIConfigRevision, 0)
-	for _, rev := range m.Revs {
-		if rev.Target != target || (rev.Status != model.RevisionDraft && rev.Status != model.RevisionPublished) {
-			continue
-		}
-		copyRev := *rev
-		if !withBody {
-			copyRev.BodyJSON = nil
-		}
-		out = append(out, copyRev)
-	}
-	return out, nil
-}
-
-func (m *MemRepo) PublishDraft(_ context.Context, ptr repository.ConfigPointer, id uint64) (*model.AIConfigRevision, error) {
-	return m.switchPublished(ptr, id, model.RevisionDraft)
-}
-
-func (m *MemRepo) Rollback(_ context.Context, ptr repository.ConfigPointer, id uint64) (*model.AIConfigRevision, error) {
-	return m.switchPublished(ptr, id, model.RevisionArchived)
-}
-
-func (m *MemRepo) switchPublished(ptr repository.ConfigPointer, id uint64, want string) (*model.AIConfigRevision, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	row, ok := m.Models[ptr.Key]
-	if !ok {
-		return nil, repository.ErrNotFound
-	}
-	rev := m.find(id)
-	if rev == nil || rev.Target != model.ConfigTargetModel || rev.TargetKey != ptr.Key {
-		return nil, repository.ErrNotFound
-	}
-	if rev.Status != want {
-		return nil, repository.ErrRevisionConflict
-	}
-	if row.PublishedRevisionID != nil && *row.PublishedRevisionID != rev.ID {
-		if old := m.find(*row.PublishedRevisionID); old != nil {
-			old.Status = model.RevisionArchived
-		}
-	}
-	rev.Status = model.RevisionPublished
-	rid := rev.ID
-	row.PublishedRevisionID = &rid
-	row.Kind = ptr.Kind
-	copyRev := *rev
-	return &copyRev, nil
 }
 
 func (m *MemRepo) GetModelPointer(_ context.Context, key string) (*model.AIModel, error) {
@@ -264,10 +177,10 @@ func (m *MemRepo) SetModelSort(_ context.Context, key string, sortNo int) error 
 	return nil
 }
 
-func (m *MemRepo) LoadPublishedModels(_ context.Context) ([]repository.PublishedModel, error) {
+func (m *MemRepo) LoadModels(_ context.Context) ([]repository.PublishedModel, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.LoadPublishedCalls++
+	m.LoadCalls++
 	if m.FailLoad != nil {
 		return nil, m.FailLoad
 	}

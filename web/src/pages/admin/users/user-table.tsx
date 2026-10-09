@@ -1,4 +1,4 @@
-import { Ban, Diff, RotateCw, SearchX } from "lucide-react";
+import { Ban, CircleCheck, Diff, Gauge, Loader2, RotateCw, SearchX } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
@@ -13,6 +13,7 @@ import {
 } from "@/components/admin-ui/empty-state";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
+import { RowHint } from "@/components/admin-ui/row-icon-action";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -96,7 +97,7 @@ function UserTable({
   items: UserListItem[];
   state: ListState;
   refreshing: boolean;
-  /** 抽屉里正打开的用户，行上显示竖条 */
+  /** 弹窗里正打开的用户，行上显示竖条 */
   currentId: number | null;
   actor: Actor | null;
   actions: UserActions;
@@ -156,7 +157,7 @@ function UserTable({
       className={cn("border-t transition-opacity", refreshing && !loading && "opacity-60")}
       aria-busy={refreshing}
     >
-      <Table className="text-[13px]">
+      <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="bg-muted/40 w-10 pl-3">
@@ -186,7 +187,9 @@ function UserTable({
             >
               最近活跃
             </TableHead>
-            <TableHead className="bg-muted/40 w-12" />
+            <TableHead className="bg-muted/40 text-muted-foreground w-28 text-right text-xs">
+              操作
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -269,12 +272,14 @@ function UserRow({
 }) {
   const [creditOpen, setCreditOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
-  const menuRef = useRef<HTMLButtonElement>(null);
   /** 记录按下勾选框那一刻 Shift 有没有按着：onCheckedChange 里拿不到修饰键 */
   const shiftRef = useRef(false);
   const disabled = user.status === "disabled";
   const checked = selection.selected.has(user.id);
   const creditDeny = denyReason(actor, user, "credit");
+  const limitDeny = denyReason(actor, user, "limit");
+  const banDeny = denyReason(actor, user, "ban");
+  const statusBusy = actions.isBusy(user.id, "status");
   const conc = concurrencyView(user);
   const self = actor?.id === user.id;
 
@@ -282,7 +287,7 @@ function UserRow({
     if (event.key === "Enter" && event.target === event.currentTarget) onOpen(user.id);
   };
 
-  /** 积分格、勾选框、操作列里的点击不该打开抽屉；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
+  /** 积分格、勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
   const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
 
   return (
@@ -332,10 +337,10 @@ function UserRow({
             <div className="truncate font-medium">
               {user.username}
               {self && (
-                <span className="text-muted-foreground ml-1.5 text-[11px] font-normal">（你）</span>
+                <span className="text-muted-foreground ml-1.5 text-xs font-normal">（你）</span>
               )}
             </div>
-            <div className="text-muted-foreground truncate text-[11px]">{user.email || "—"}</div>
+            <div className="text-muted-foreground truncate text-xs">{user.email || "—"}</div>
           </div>
         </div>
       </TableCell>
@@ -370,29 +375,53 @@ function UserRow({
               transition={SPRING}
             />
           </span>
-          {conc.custom && <span className="text-muted-foreground text-[10px]">自定</span>}
+          {conc.custom && <span className="text-muted-foreground text-[11px]">自定</span>}
         </div>
       </TableCell>
       <TableCell className={cn("text-muted-foreground text-xs", WIDE_ONLY)}>
         <span title={formatAbsolute(user.last_login_at)}>{formatRelative(user.last_login_at)}</span>
       </TableCell>
-      <TableCell className="w-12" {...stop}>
-        <UserRowMenu
-          user={user}
-          actor={actor}
-          actions={actions}
-          triggerRef={menuRef}
-          onOpen={() => onOpen(user.id)}
-          onAdjustLimit={() => requestAnimationFrame(() => setLimitOpen(true))}
-        />
-        <LimitPopover
-          user={user}
-          actions={actions}
-          open={limitOpen}
-          onOpenChange={setLimitOpen}
-          anchor={menuRef}
-          align="end"
-        />
+      <TableCell className="w-28" {...stop}>
+        <div className="flex items-center justify-end gap-0.5">
+          <RowHint label="调整并发上限" deny={limitDeny}>
+            <LimitPopover
+              user={user}
+              actions={actions}
+              open={limitOpen}
+              onOpenChange={setLimitOpen}
+              align="end"
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={!!limitDeny}
+                  aria-label={`调整 ${user.username} 的并发上限`}
+                />
+              }
+            >
+              <Gauge />
+            </LimitPopover>
+          </RowHint>
+          <RowHint label={disabled ? "启用" : "封禁"} deny={banDeny}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={!!banDeny || statusBusy}
+              className={cn(!disabled && "text-destructive hover:text-destructive")}
+              aria-label={`${disabled ? "启用" : "封禁"} ${user.username}`}
+              onClick={() => void actions.setStatus(user, disabled ? "active" : "disabled")}
+            >
+              {statusBusy ? (
+                <Loader2 className="animate-spin" />
+              ) : disabled ? (
+                <CircleCheck />
+              ) : (
+                <Ban />
+              )}
+            </Button>
+          </RowHint>
+          <UserRowMenu user={user} actor={actor} actions={actions} />
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -416,7 +445,7 @@ function StatusCell({ disabled }: { disabled: boolean }) {
             {USER_STATUS_LABEL.disabled}
           </Tag>
         ) : (
-          <StatusLabel tone="success" className="text-foreground text-[13px]">
+          <StatusLabel tone="success" className="text-foreground text-sm">
             {USER_STATUS_LABEL.active}
           </StatusLabel>
         )}
@@ -431,7 +460,7 @@ function CreditValue({ user }: { user: UserListItem }) {
     <>
       <AnimatedNumber value={user.available} className="font-mono font-medium" />
       {user.frozen > 0 && (
-        <span className="text-muted-foreground text-[11px] tabular-nums">
+        <span className="text-muted-foreground text-xs tabular-nums">
           冻结 <AnimatedNumber value={user.frozen} />
         </span>
       )}

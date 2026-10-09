@@ -14,7 +14,7 @@ export type ProbeState =
   | { kind: "done"; result: ProbeResult; source: "draft" | "saved" };
 
 /**
- * 抽屉里的测试连接状态机。请求抛错（配置不合法等）时回到 idle，原因由全局 toast 展示；
+ * 弹窗里的测试连接状态机。请求抛错（配置不合法等）时回到 idle，原因由全局 toast 展示；
  * 组件卸载后到达的结果会被丢弃。
  * @returns 当前状态，执行测试的 run，以及让旧结果作废的 reset
  */

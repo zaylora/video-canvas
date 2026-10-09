@@ -17,17 +17,20 @@ import type { ModelWorkspace } from "./use-model-workspace";
 
 /**
  * 测试模型（设计稿的二级弹窗）：左边是模拟画布节点，像在画布上一样选参数、传素材；
- * 右边是结果 / 请求描述 / 追踪 / 日志。用当前草稿真实调用一次上游，不扣用户积分，结果不进素材库。
- * 有未保存的修改会先自动保存草稿。
+ * 右边是结果 / 请求描述 / 追踪 / 日志。用当前配置真实调用一次上游，不扣用户积分，结果不进素材库。
+ * 有未保存的修改会先自动保存。
  */
 export function ModelTestDialog({
   open,
   ws,
   onClose,
+  onClosed,
 }: {
   open: boolean;
   ws: ModelWorkspace;
   onClose: () => void;
+  /** 退出动画播完后回调 */
+  onClosed?: () => void;
 }) {
   const body = ws.body;
   const label = body ? readModelString(body, "label") : "";
@@ -35,7 +38,13 @@ export function ModelTestDialog({
   const busy = ws.busy === "test-run" || ws.busy === "dry-run" || ws.busy === "save";
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      onOpenChangeComplete={(next) => {
+        if (!next) onClosed?.();
+      }}
+    >
       <DialogContent className="flex h-[min(88svh,820px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
         <div className="flex items-start gap-3 border-b px-6 py-4 pr-12">
           <VendorAvatar
@@ -46,8 +55,8 @@ export function ModelTestDialog({
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-base font-semibold">测试 {label || "模型"}</DialogTitle>
             <DialogDescription className="text-xs">
-              用当前草稿真实调用一次上游，不扣用户积分，结果不进素材库。
-              {ws.dirty && "有未保存的修改，开始前会先保存草稿。"}
+              用当前配置真实调用一次上游，不扣用户积分，结果不进素材库。
+              {ws.dirty && "有未保存的修改，开始前会先保存。"}
             </DialogDescription>
           </div>
         </div>

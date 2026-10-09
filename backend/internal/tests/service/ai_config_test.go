@@ -3,7 +3,6 @@ package service_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,7 +11,6 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/repository"
 	"video-canvas/internal/service/aiconfigfake"
 )
 
@@ -76,24 +74,24 @@ func aicSeedChannel(t *testing.T, svc *AIConfigService, repo *aiconfigfake.MemRe
 	}
 }
 
-// aicSave 保存模型草稿；create=true 新建（key 取正文），否则更新 key。
-func aicSave(svc *AIConfigService, key string, create bool, body json.RawMessage) (*SaveDraftResult, error) {
-	return svc.SaveDraft(context.Background(), ModelDraftInput{Key: key, Create: create, Body: body, Note: "备注", AdminID: 9})
+// aicSave 保存模型配置；create=true 新建（key 取正文），否则更新 key。
+func aicSave(svc *AIConfigService, key string, create bool, body json.RawMessage) (*SaveModelResult, error) {
+	return svc.SaveModel(context.Background(), ModelSaveInput{Key: key, Create: create, Body: body, Note: "备注", AdminID: 9})
 }
 
-// aicPublishModel 保存并发布一个模型（渠道 c1 必须已就绪）。
-func aicPublishModel(t *testing.T, svc *AIConfigService, key, channel string) {
+// aicEnableModel 保存并启用一个模型（渠道 c1 必须已就绪）。
+func aicEnableModel(t *testing.T, svc *AIConfigService, key, channel string) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := svc.SaveDraft(ctx, ModelDraftInput{Create: true, Body: aicModelBody(key, channel, ""), AdminID: 1}); err != nil {
+	if _, err := svc.SaveModel(ctx, ModelSaveInput{Create: true, Body: aicModelBody(key, channel, ""), AdminID: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Publish(ctx, key, 1); err != nil {
+	if err := svc.SetModelEnabled(ctx, key, true, 1); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestAIConfigService_SaveDraft(t *testing.T) {
+func TestAIConfigService_SaveModel(t *testing.T) {
 	tests := []struct {
 		name     string
 		key      string
@@ -103,7 +101,7 @@ func TestAIConfigService_SaveDraft(t *testing.T) {
 		wantCode int
 		wantIss  int
 	}{
-		{"新建模型草稿成功", "", true, aicModelBody("m1", "c1", ""), nil, 0, 0},
+		{"新建模型成功", "", true, aicModelBody("m1", "c1", ""), nil, 0, 0},
 		{"key 已存在不能再新建", "", true, aicModelBody("m1", "c1", ""), func(s *AIConfigService) {
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 		}, errcode.ErrConfigInvalid.Code, 0},
@@ -131,20 +129,20 @@ func TestAIConfigService_SaveDraft(t *testing.T) {
 			if len(res.Issues) != tt.wantIss || res.Issues == nil {
 				t.Fatalf("Issue 数量期望 %d（且非 nil），实际 %v", tt.wantIss, res.Issues)
 			}
-			if res.Revision.Status != model.RevisionDraft || res.Revision.CreatedBy != 9 || res.Revision.Note != "备注" {
-				t.Fatalf("revision 不符合预期：%+v", res.Revision)
+			// 有问题也已经落库
+			var meta struct {
+				Key string `json:"key"`
 			}
-			if tt.wantIss > 0 {
-				// 有问题也已经落库
-				if _, err := repo.GetDraft(context.Background(), model.ConfigTargetModel, res.Revision.TargetKey); err != nil {
-					t.Fatalf("草稿应已保存：%v", err)
-				}
+			_ = json.Unmarshal(tt.body, &meta)
+			cur, err := repo.GetModelConfig(context.Background(), meta.Key)
+			if err != nil || cur.CreatedBy != 9 || cur.Note != "备注" {
+				t.Fatalf("配置应已保存：%+v %v", cur, err)
 			}
 		})
 	}
 }
 
-func TestAIConfigService_SaveDraft_CrossObjectIssues(t *testing.T) {
+func TestAIConfigService_SaveModel_CrossObjectIssues(t *testing.T) {
 	// 渠道停用、插件停用、插件不支持这个 kind：都是跨对象问题，保存时以 Issue 报出而不是拒绝
 	tests := []struct {
 		name    string
@@ -177,7 +175,7 @@ func TestAIConfigService_SaveDraft_CrossObjectIssues(t *testing.T) {
 	}
 }
 
-func TestAIConfigService_SaveDraft_Revisions(t *testing.T) {
+func TestAIConfigService_SaveModel_OverwritesInPlace(t *testing.T) {
 	svc, repo, _ := aicNewSvc()
 	aicSeedChannel(t, svc, repo, "c1", true)
 	aicSeedChannel(t, svc, repo, "c2", true)
@@ -185,31 +183,77 @@ func TestAIConfigService_SaveDraft_Revisions(t *testing.T) {
 	if _, err := aicSave(svc, "", true, aicModelBody("m1", "c1", "")); err != nil {
 		t.Fatal(err)
 	}
-	// 上下架状态由接口独占：先改 enabled，再保存草稿不应被正文覆盖
+	// 启用状态与排序由接口独占：先改 enabled / sort，再保存不应被正文覆盖
 	repo.Models["m1"].Enabled = false
 	repo.Models["m1"].Sort = 77
-	res, err := aicSave(svc, "m1", false, aicModelBody("m1", "c2", ""))
-	if err != nil {
+	if _, err := aicSave(svc, "m1", false, aicModelBody("m1", "c2", "")); err != nil {
 		t.Fatal(err)
-	}
-	if res.Revision.RevisionNo != 2 {
-		t.Fatalf("revision_no 期望 2，实际 %d", res.Revision.RevisionNo)
 	}
 	if repo.Models["m1"].Enabled || repo.Models["m1"].Sort != 77 {
 		t.Fatalf("已存在的指针行不应被正文覆盖 enabled/sort：%+v", repo.Models["m1"])
 	}
-	drafts := 0
-	for _, r := range repo.Revs {
-		if r.Status == model.RevisionDraft {
-			drafts++
+	if len(repo.Revs) != 1 {
+		t.Fatalf("每个模型只应有一份配置，实际 %d 行", len(repo.Revs))
+	}
+	if cur, _ := repo.GetModelConfig(ctx, "m1"); !strings.Contains(string(cur.BodyJSON), `"c2"`) {
+		t.Fatalf("配置应是第二次保存的内容：%s", cur.BodyJSON)
+	}
+}
+
+func TestAIConfigService_SaveModel_EnabledModelSavesLive(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("已启用的模型保存后立即用上新配置，并广播失效", func(t *testing.T) {
+		svc, repo, inv := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		aicSeedChannel(t, svc, repo, "c2", true)
+		aicEnableModel(t, svc, "m1", "c1")
+		before := len(inv.Reasons)
+		if _, err := aicSave(svc, "m1", false, aicModelBody("m1", "c2", "")); err != nil {
+			t.Fatal(err)
 		}
-	}
-	if drafts != 1 {
-		t.Fatalf("同一目标只应保留 1 个草稿，实际 %d", drafts)
-	}
-	if d, _ := repo.GetDraft(ctx, model.ConfigTargetModel, "m1"); !strings.Contains(string(d.BodyJSON), `"c2"`) {
-		t.Fatalf("最新草稿应是第二版：%s", d.BodyJSON)
-	}
+		snap, err := svc.Snapshot(ctx, "m1")
+		if err != nil || snap.Channel.Key != "c2" {
+			t.Fatalf("保存后新任务应走新渠道：%+v %v", snap, err)
+		}
+		if len(inv.Reasons) != before+1 {
+			t.Fatalf("保存应广播一次失效，实际 %v", inv.Reasons)
+		}
+	})
+
+	t.Run("已启用的模型保存时校验不过：拒绝保存，线上配置不变", func(t *testing.T) {
+		svc, repo, _ := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		aicEnableModel(t, svc, "m1", "c1")
+		_, err := aicSave(svc, "m1", false, aicModelBody("m1", "c1", `"bad":true`))
+		aicWantCode(t, err, errcode.ErrConfigInvalid.Code)
+		cur, _ := repo.GetModelConfig(ctx, "m1")
+		if strings.Contains(string(cur.BodyJSON), `"bad"`) {
+			t.Fatal("被拒绝的内容不应落库")
+		}
+	})
+
+	t.Run("已启用的模型改绑到不存在的渠道：拒绝保存", func(t *testing.T) {
+		svc, repo, _ := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		aicEnableModel(t, svc, "m1", "c1")
+		_, err := aicSave(svc, "m1", false, aicModelBody("m1", "ghost", ""))
+		aicWantCode(t, err, errcode.ErrChannelNotFound.Code)
+	})
+
+	t.Run("没启用的模型有问题也能保存", func(t *testing.T) {
+		svc, repo, _ := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		aicEnableModel(t, svc, "m1", "c1")
+		if err := svc.SetModelEnabled(ctx, "m1", false, 1); err != nil {
+			t.Fatal(err)
+		}
+		res, err := aicSave(svc, "m1", false, aicModelBody("m1", "c1", `"bad":true`))
+		aicWantCode(t, err, 0)
+		if len(res.Issues) == 0 {
+			t.Fatal("应返回校验问题")
+		}
+	})
 }
 
 func TestAIConfigService_NewModelInitialValues(t *testing.T) {
@@ -219,8 +263,9 @@ func TestAIConfigService_NewModelInitialValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := repo.Models["m1"]
-	if !m.Enabled || m.Sort != 10 || m.Kind != "video" {
-		t.Fatalf("新建模型的指针行应取正文初始值：%+v", m)
+	// 新建的模型一律没启用（哪怕正文里写了 enabled:true），得点启用并通过检查后用户才能用
+	if m.Enabled || m.Sort != 10 || m.Kind != "video" {
+		t.Fatalf("新建模型的指针行不符合预期：%+v", m)
 	}
 }
 
@@ -238,12 +283,12 @@ func TestAIConfigService_Validate(t *testing.T) {
 		wantCode  int
 		wantValid bool
 	}{
-		{"校验已保存的草稿：有问题", "m1", nil, 0, false},
+		{"校验已保存的配置：有问题", "m1", nil, 0, false},
 		{"校验传入的正文：通过", "m1", aicModelBody("m1", "c1", ""), 0, true},
 		{"传入正文的 key 与目标不一致", "m1", aicModelBody("other", "c1", ""), 0, false},
 		{"传入正文不是对象", "m1", json.RawMessage(`"x"`), 0, false},
 		{"传入正文的渠道不存在", "m1", aicModelBody("m1", "ghost", ""), 0, false},
-		{"没有草稿", "none", nil, errcode.ErrConfigNoDraft.Code, false},
+		{"模型不存在", "none", nil, errcode.ErrConfigNotFound.Code, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -259,7 +304,7 @@ func TestAIConfigService_Validate(t *testing.T) {
 	}
 }
 
-func TestAIConfigService_Publish(t *testing.T) {
+func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name     string
@@ -267,8 +312,8 @@ func TestAIConfigService_Publish(t *testing.T) {
 		key      string
 		wantCode int
 	}{
-		{"没有草稿", nil, "m1", errcode.ErrConfigNoDraft.Code},
-		{"草稿有校验问题不能发布", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"模型不存在", nil, "m1", errcode.ErrConfigNotFound.Code},
+		{"配置有校验问题不能启用", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", `"bad":true`))
 		}, "m1", errcode.ErrConfigInvalid.Code},
@@ -301,7 +346,7 @@ func TestAIConfigService_Publish(t *testing.T) {
 			aicSeedChannel(t, s, r, "c1", false)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 		}, "m1", errcode.ErrChannelSecretUnset.Code},
-		{"渠道 Key 已设置，发布成功", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"渠道 Key 已设置，启用成功", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 		}, "m1", 0},
@@ -318,47 +363,23 @@ func TestAIConfigService_Publish(t *testing.T) {
 				tt.setup(t, svc, repo)
 			}
 			before := len(inv.Reasons)
-			rev, err := svc.Publish(ctx, tt.key, 1)
+			err := svc.SetModelEnabled(ctx, tt.key, true, 1)
 			aicWantCode(t, err, tt.wantCode)
 			if tt.wantCode != 0 {
 				if len(inv.Reasons) != before {
-					t.Fatal("发布失败不应触发失效广播")
+					t.Fatal("启用失败不应触发失效广播")
+				}
+				if row, ok := repo.Models[tt.key]; ok && row.Enabled {
+					t.Fatal("启用失败不应改变启用状态")
 				}
 				return
 			}
-			if rev.Status != model.RevisionPublished {
-				t.Fatalf("状态应为 published：%+v", rev)
-			}
-			pub, err := repo.GetPublishedRevision(ctx, model.ConfigTargetModel, tt.key)
-			if err != nil || pub.ID != rev.ID {
-				t.Fatalf("指针未指向新发布的版本：%v", err)
+			if !repo.Models[tt.key].Enabled {
+				t.Fatal("启用成功后指针行应为启用")
 			}
 			if len(inv.Reasons) != before+1 {
-				t.Fatalf("发布成功应广播一次失效，实际 %v", inv.Reasons)
+				t.Fatalf("启用成功应广播一次失效，实际 %v", inv.Reasons)
 			}
 		})
-	}
-}
-
-// aicRacyRepo 在发布前偷偷保存一个新草稿，模拟“校验之后草稿被别人改掉”。
-type aicRacyRepo struct{ *aiconfigfake.MemRepo }
-
-func (r aicRacyRepo) PublishDraft(ctx context.Context, ptr repository.ConfigPointer, id uint64) (*model.AIConfigRevision, error) {
-	_, _ = r.SaveDraft(ctx, repository.SaveDraftInput{Pointer: ptr, Body: aicModelBody(ptr.Key, "c1", `"x":1`)})
-	return r.MemRepo.PublishDraft(ctx, ptr, id)
-}
-
-func TestAIConfigService_Publish_DraftChangedConcurrently(t *testing.T) {
-	ctx := context.Background()
-	mem := aiconfigfake.NewMemRepo()
-	svc := NewAIConfigService(aicRacyRepo{mem}, mem, mem, "k")
-	aicSeedChannel(t, svc, mem, "c1", true)
-	if _, err := aicSave(svc, "", true, aicModelBody("m1", "c1", "")); err != nil {
-		t.Fatal(err)
-	}
-	_, err := svc.Publish(ctx, "m1", 1)
-	aicWantCode(t, err, errcode.ErrConfigNoDraft.Code)
-	if _, err := mem.GetPublishedRevision(ctx, model.ConfigTargetModel, "m1"); !errors.Is(err, repository.ErrNotFound) {
-		t.Fatal("冲突时不应发布任何版本")
 	}
 }

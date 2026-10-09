@@ -40,7 +40,7 @@ function CopyBlockCode({ className, ...props }: ComponentProps<"pre">) {
   return (
     <pre
       data-slot="copy-block-code"
-      className={cn("overflow-x-auto font-mono text-[11px] leading-relaxed", className)}
+      className={cn("overflow-x-auto font-mono text-xs leading-relaxed", className)}
       {...props}
     />
   );

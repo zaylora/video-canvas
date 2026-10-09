@@ -252,7 +252,7 @@ function AiPromptHint() {
         <summary className="text-muted-foreground hover:text-foreground cursor-pointer select-none">
           预览提示词
         </summary>
-        <pre className="bg-background mt-1.5 max-h-56 overflow-auto rounded-md border p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+        <pre className="bg-background mt-1.5 max-h-56 overflow-auto rounded-md border p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
           {PLUGIN_AUTHORING_PROMPT}
         </pre>
       </details>

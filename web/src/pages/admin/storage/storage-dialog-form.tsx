@@ -18,7 +18,7 @@ import {
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
-import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isStorageFieldLocked, isStorageVersionConflict } from "@/utils/admin/errors";
 import {
   buildCreateBody,
@@ -77,17 +77,17 @@ const TEST_FIELDS: StorageFormField[] = [
 const LIVE_FIELDS: StorageFormField[] = ["bucket", "accountId", "pathPrefix", "publicBaseUrl"];
 
 /**
- * 抽屉里的表单：新建或编辑一套存储。表单状态只在这里；父级用 key 控制“何时重新初始化”。
+ * 弹窗里的表单：新建或编辑一套存储。表单状态只在这里；父级用 key 控制“何时重新初始化”。
  * @param storage 编辑的存储；新建时为 null
  * @param presets 服务商预设
  * @param canWrite 是否有写权限；没有则整个表单只读
  * @param onSaved 创建 / 更新成功后
- * @param onChanged 这条存储在抽屉里变了（测试结果、替换凭证、冲突后重新拉取）
+ * @param onChanged 这条存储在弹窗里变了（测试结果、替换凭证、冲突后重新拉取）
  * @param onConflict 版本冲突或定位字段被锁、已重新拉取之后：让父级重置表单
  * @param onDirtyChange 上报是否有未保存的修改，关闭时据此确认
  * @param onClose 请求关闭
  */
-export function SheetForm({
+export function StorageForm({
   storage,
   presets,
   canWrite,
@@ -118,7 +118,7 @@ export function SheetForm({
   const [secretOpen, setSecretOpen] = useState(false);
   const probe = useStorageProbe();
 
-  /** 抽屉卸载（关闭、切换对象）时清掉脏标记，避免下次打开误提示“放弃修改” */
+  /** 弹窗卸载（关闭、切换对象）时清掉脏标记，避免下次打开误提示“放弃修改” */
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   const update = (next: StorageFormState) => {
@@ -224,18 +224,18 @@ export function SheetForm({
 
   return (
     <>
-      <SheetHeader className="border-b">
-        <SheetTitle>{title}</SheetTitle>
-        <SheetDescription>
+      <DialogHeader className="gap-0.5 border-b p-4 pr-12">
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>
           {editing && locked && storage
             ? `已有 ${formatCount(storage.asset_count)} 个素材，定位字段已锁定`
             : "保存时会自动测试连接"}
-        </SheetDescription>
-      </SheetHeader>
+        </DialogDescription>
+      </DialogHeader>
 
       <form
         id="storage-form"
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4"
         onSubmit={(event) => {
           event.preventDefault();
           if (!readOnly) void save();
@@ -309,7 +309,7 @@ export function SheetForm({
         </FormSection>
       </form>
 
-      <SheetFooter className="flex-row items-center border-t">
+      <DialogFooter className="m-0 flex-row items-center rounded-none border-t bg-transparent p-4 sm:justify-start">
         {!readOnly && (
           <Button
             type="button"
@@ -332,7 +332,7 @@ export function SheetForm({
             </Button>
           )}
         </div>
-      </SheetFooter>
+      </DialogFooter>
 
       {storage && (
         <SecretDialog

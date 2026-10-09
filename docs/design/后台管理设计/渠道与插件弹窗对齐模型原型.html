@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>渠道与插件弹窗对齐模型 · 原型</title>
+<style>
+  /* token 抄自 web/src/index.css */
+  :root {
+    color-scheme: light;
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
+    --status-success: oklch(0.6 0.15 155);
+    --tone-success-fg: oklch(0.45 0.13 155); --tone-warning-fg: oklch(0.5 0.13 70);
+    --tone-success-bg: oklch(0.6 0.15 155 / 0.12); --tone-warning-bg: oklch(0.7 0.16 70 / 0.14);
+    --kind-video: oklch(0.55 0.2 15); --kind-video-bg: oklch(0.6 0.2 15 / 0.1);
+    --overlay: oklch(0 0 0 / 0.5);
+  }
+  .dark {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0); --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
+    --status-success: oklch(0.75 0.15 155);
+    --tone-success-fg: oklch(0.8 0.15 155); --tone-warning-fg: oklch(0.82 0.14 75);
+    --tone-success-bg: oklch(0.75 0.15 155 / 0.14); --tone-warning-bg: oklch(0.8 0.15 75 / 0.14);
+    --kind-video: oklch(0.75 0.15 15); --kind-video-bg: oklch(0.7 0.18 15 / 0.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "PingFang SC", sans-serif; background: var(--muted); color: var(--foreground); }
+  .bar { display: flex; gap: 8px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
+  .bar span { color: var(--muted-foreground); font-size: 12px; margin-left: auto; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .btn { height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--input); background: transparent; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 14px; }
+  .btn:active { transform: scale(0.97); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  .btn.ghost { border-color: transparent; }
+  .btn.on { background: var(--foreground); color: var(--background); border-color: transparent; }
+  .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  .overlay { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: 12px; }
+  .dialog { width: 100%; max-width: 768px; height: min(88vh, 800px); background: var(--card); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px oklch(0 0 0 / 0.3); animation: pop .2s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: scale(.95); } }
+  @media (prefers-reduced-motion: reduce) { .dialog { animation: none; } }
+
+  .head { display: flex; align-items: flex-start; gap: 16px; border-bottom: 1px solid var(--border); padding: 16px 24px; }
+  .avatar { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-size: 16px; font-weight: 600; flex: none; }
+  .head .meta { flex: 1; min-width: 0; }
+  .title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; }
+  .sub { color: var(--muted-foreground); font-size: 14px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+  .tag.success { background: var(--tone-success-bg); color: var(--tone-success-fg); }
+  .tag.warning { background: var(--tone-warning-bg); color: var(--tone-warning-fg); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .icon-btn { width: 28px; height: 28px; border: 0; background: transparent; border-radius: 8px; display: grid; place-items: center; color: var(--muted-foreground); }
+  .icon-btn:hover { background: var(--muted); color: var(--foreground); }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 16px; }
+  .tab { margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-bottom: 2px solid transparent; background: none; padding: 12px 12px; font-size: 14px; font-weight: 500; color: var(--muted-foreground); }
+  .tab:hover { color: var(--foreground); }
+  .tab[aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--foreground); }
+  .tab small { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+  svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border-bottom: 1px solid var(--border); padding: 10px 24px; font-size: 14px; }
+  .strip .ok { color: var(--tone-success-fg); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+  .strip .right { margin-left: auto; display: flex; gap: 8px; }
+
+  .body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; }
+  .sec { margin-bottom: 28px; }
+  .sec:last-child { margin-bottom: 0; }
+  .sec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin-bottom: 12px; }
+  .sec-h h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .sec-h p { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .dialog { height: 94vh; } }
+  label.f { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+  label.f i { color: var(--destructive); font-style: normal; margin-right: 2px; }
+  .input { width: 100%; height: 36px; border-radius: 8px; border: 1px solid var(--input); background: transparent; color: inherit; padding: 0 12px; font: inherit; }
+  .input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  .hint { margin: 4px 0 0; font-size: 12px; color: var(--muted-foreground); }
+
+  .choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .choice { text-align: left; display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: transparent; }
+  .choice:hover { background: var(--muted); }
+  .choice[aria-pressed="true"] { border-color: var(--foreground); background: var(--muted); }
+  .radio { width: 16px; height: 16px; border: 1px solid var(--input); border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .choice[aria-pressed="true"] .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--foreground); }
+  .choice b { font-size: 14px; font-weight: 500; display: block; }
+  .choice small { font-size: 12px; color: var(--muted-foreground); }
+
+  .fold { width: 100%; display: flex; align-items: baseline; gap: 8px; border: 0; background: none; padding: 0; text-align: left; }
+  .fold h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .fold p { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+  .fold svg { transition: transform .15s; align-self: center; }
+  .fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .adv { margin-top: 16px; display: none; }
+  .adv.open { display: block; }
+  .risk { border: 1px solid oklch(0.7 0.16 70 / 0.6); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+  .risk .row { display: flex; gap: 12px; align-items: flex-start; }
+  .risk .row div { flex: 1; font-size: 14px; }
+  .risk .row small { display: block; color: var(--muted-foreground); font-size: 12px; margin-top: 2px; }
+  .sw { width: 32px; height: 18px; border-radius: 9px; background: var(--input); position: relative; border: 0; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--background); transition: transform .15s; }
+  .sw[aria-checked="true"] { background: var(--primary); }
+  .sw[aria-checked="true"]::after { transform: translateX(14px); }
+
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid var(--border); padding: 14px 24px; }
+  .foot .hintl { font-size: 12px; color: var(--muted-foreground); line-height: 1.3; }
+  .foot .acts { margin-left: auto; display: flex; gap: 8px; }
+
+  .lead { margin: 0 0 20px; color: var(--muted-foreground); }
+  .kinds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 640px) { .kinds { grid-template-columns: repeat(2, 1fr); } }
+  .kind { display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in oklch, var(--muted) 40%, transparent); }
+  .kind .ic { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--muted); }
+  .kind.on .ic { background: var(--kind-video-bg); color: var(--kind-video); }
+  .kind b { font-weight: 500; display: block; }
+  .kind small { color: var(--muted-foreground); font-size: 12px; }
+  .kind.off { border-style: dashed; background: transparent; color: color-mix(in oklch, var(--muted-foreground) 55%, transparent); }
+  .dl { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin: 0; }
+  @media (max-width: 640px) { .dl { grid-template-columns: 1fr; } }
+  .dl dt { font-size: 12px; color: var(--muted-foreground); }
+  .dl dd { margin: 4px 0 0; font-weight: 500; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .dl .wide { grid-column: 1 / -1; }
+  .chip { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--muted); border-radius: 6px; padding: 2px 8px; font-weight: 400; }
+  .tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+  .tl li { display: flex; gap: 12px; }
+  .tl .pt { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--border); flex: none; }
+  .tl li:first-child .pt { background: var(--foreground); }
+  .tl small { color: var(--muted-foreground); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="btn sm on" data-scene="channel">渠道 · 编辑</button>
+  <button class="btn sm" data-scene="new">渠道 · 新建</button>
+  <button class="btn sm" data-scene="plugin">插件</button>
+  <button class="btn sm ghost" id="theme">切换深 / 浅</button>
+  <span>点页签、高级设置、保存并检查都能操作；对照模型弹窗的头部、页签、分块和底栏</span>
+</div>
+
+<div class="overlay" id="stage"></div>
+
+<template id="i-sliders"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></template>
+
+<script>
+const I = {
+  sliders: '<svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>',
+  boxes: '<svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg>',
+  info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>',
+  history: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+  chev: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>',
+  pulse: '<svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  film: '<svg viewBox="0 0 24 24"><path d="M4 8h16v12H4zM4 8l2-4 4 2-2 4M12 6l4-2 2 4"/></svg>',
+  type: '<svg viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>',
+  img: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>',
+  wave: '<svg viewBox="0 0 24 24"><path d="M4 10v4M8 6v12M12 3v18M16 8v8M20 11v2"/></svg>',
+  spin: '<svg viewBox="0 0 24 24" style="animation:r 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg><style>@keyframes r{to{transform:rotate(360deg)}}</style>',
+};
+const stage = document.getElementById('stage');
+const state = { scene: 'channel', tab: { channel: 'config', plugin: 'overview' }, adv: false, check: 'ok', cred: false, net: false };
+
+const sec = (t, d, body) => `<section class="sec"><div class="sec-h"><h3>${t}</h3><p>${d}</p></div>${body}</section>`;
+const tabs = (items, cur, key) => `<div class="tabs" role="tablist">${items.map(([id, ic, label, n]) =>
+  `<button class="tab" role="tab" aria-selected="${cur === id}" data-tab="${key}:${id}">${I[ic]}${label}${n != null ? `<small>${n}</small>` : ''}</button>`).join('')}</div>`;
+const sw = (k) => `<button class="sw" role="switch" aria-checked="${state[k]}" data-sw="${k}"></button>`;
+
+function channelBody(isNew) {
+  const plat = ['New API', 'AutoDL', 'YSWG 生图'].map((n, i) =>
+    `<button class="choice" aria-pressed="${i === 0}" data-choice><span class="radio"></span><span><b>${n}</b><small>${I.type.replace('<svg','<svg style="width:12px;height:12px;vertical-align:-2px"')} 需要 Key</small></span></button>`).join('');
+  return `
+  ${sec('平台', '选一个上游协议，决定能用哪些能力', `<div class="choices">${plat}</div>`)}
+  ${sec('连接', '插件请求只能发到这个地址；http/https，不能带用户名密码', `<div class="grid2">
+    <div><label class="f"><i>*</i>接口地址</label><input class="input mono" value="${isNew ? '' : 'https://newapi.vbing.site'}" placeholder="https://gw.example.com"></div>
+    <div><label class="f">API Key ${isNew ? '' : '<span class="tag success">已设置 · 10-08 14:41</span>'}</label><input class="input" type="password" placeholder="${isNew ? '粘贴上游给的 Key' : '留空则不修改'}"><p class="hint">只写不读：保存后不会再显示</p></div></div>`)}
+  ${sec('名称', '渠道在列表和模型里怎么显示', `<div class="grid2">
+    <div><label class="f"><i>*</i>渠道名称</label><input class="input" value="${isNew ? '' : 'newapi'}"></div>
+    <div><label class="f"><i>*</i>渠道标识</label><input class="input mono" value="${isNew ? '' : 'newapi'}" ${isNew ? '' : 'disabled'}><p class="hint">${isNew ? '按名称自动生成，可改' : '创建后不可修改'}</p></div></div>`)}
+  <section class="sec">
+    <button class="fold" aria-expanded="${state.adv}" data-fold>${I.chev}<h3>高级设置</h3><p>插件版本、限流、启用、安全开关</p></button>
+    <div class="adv ${state.adv ? 'open' : ''}">
+      ${sec('限流', '0 表示不限', `<div class="grid2"><div><label class="f">RPS</label><input class="input" value="0"></div><div><label class="f">同时请求</label><input class="input" value="0"></div></div>`)}
+      ${sec('安全开关', '会记入审计日志，开启前要确认', `<div class="risk">
+        <div class="row"><div>允许插件读取 Key <span class="mono" style="font-size:12px;color:var(--muted-foreground)">allow_credentials</span><small>只有你信任插件代码时才开</small></div>${sw('cred')}</div>
+        <div class="row"><div>允许访问内网 <span class="mono" style="font-size:12px;color:var(--muted-foreground)">allow_private_net</span><small>上游地址在内网时才需要</small></div>${sw('net')}</div></div>`)}
+    </div>
+  </section>`;
+}
+
+function channel(isNew) {
+  const t = isNew ? 'config' : state.tab.channel;
+  const checkStrip = !isNew && t === 'config' ? (state.check === 'busy'
+    ? `<div class="strip">${I.spin}正在检查连通性…</div>`
+    : state.check === 'ok' ? `<div class="strip"><span class="ok">${I.check}连通正常 · 230ms</span><span class="right"><button class="btn sm primary">导入模型</button><button class="btn sm">新建模型</button></span></div>` : '') : '';
+  return `<div class="dialog" role="dialog">
+    <div class="head" ${isNew ? '' : ''}>
+      <div class="avatar" style="background:linear-gradient(135deg,oklch(.75 .15 230),oklch(.55 .2 260))">${isNew ? '+' : 'N'}</div>
+      <div class="meta">
+        <div class="title">${isNew ? '新建渠道' : 'newapi'}${isNew ? '' : '<span class="tag success"><i class="dot"></i>可用</span>'}</div>
+        <div class="sub">${isNew ? '选平台 → 填地址和 Key → 起个名字' : '<span class="mono">newapi</span> · New API v1.3.0'}</div>
+      </div>
+      <button class="icon-btn" data-close aria-label="关闭">${I.x}</button>
+    </div>
+    ${isNew ? '' : tabs([['config', 'sliders', '配置'], ['models', 'boxes', '模型', 1]], t, 'channel')}
+    ${checkStrip}
+    <div class="body">${t === 'models'
+      ? `<p class="lead" style="margin:0">使用 newapi 的模型（1）</p><div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between"><span><b>gpt-5.5</b> <span class="mono" style="color:var(--muted-foreground);font-size:12px">gpt-5-5</span></span><span class="tag success"><i class="dot"></i>已上架</span></div>`
+      : channelBody(isNew)}</div>
+    ${t === 'config' ? `<div class="foot"><div class="hintl">${isNew ? '选平台 → 填地址和 Key → 起个名字，点「保存并检查」就能用' : '保存后自动检查连通性'}</div>
+      <div class="acts"><button class="btn" data-close>取消</button><button class="btn primary" data-save>${state.check === 'busy' ? I.spin + '检查中…' : I.pulse + '保存并检查'}</button></div></div>` : ''}
+  </div>`;
+}
+
+function plugin() {
+  const t = state.tab.plugin;
+  const kind = (ic, n, d, on) => `<div class="kind ${on ? 'on' : 'off'}"><span class="ic">${I[ic]}</span><span><b>${n}</b><small>${d}</small></span></div>`;
+  const overview = `<p class="lead">通过 AutoDL.Art ComfyUI 工作流生成 MiniMax H3 视频</p>
+    ${sec('生成方式', '插件声明的能力与调用方式', `<div class="kinds">${kind('type', '文本', '不支持')}${kind('img', '图片', '不支持')}${kind('film', '视频', '异步 · 提交后查询', true)}${kind('wave', '音频', '不支持')}</div>`)}
+    ${sec('插件信息', '标识、鉴权与下载限制', `<dl class="dl">
+      <div><dt>插件标识</dt><dd class="mono">autodl-minimax-h3-zm-u08</dd></div><div><dt>最新版本</dt><dd class="mono">v1.2.0</dd></div>
+      <div><dt>契约版本</dt><dd>v1</dd></div><div><dt>来源</dt><dd>上传 · 用户 #1</dd></div>
+      <div><dt>鉴权方式</dt><dd>Bearer（宿主注入 Authorization 头）</dd></div><div><dt>从渠道导入模型</dt><dd>${I.check} 支持</dd></div>
+      <div><dt>异步任务查询</dt><dd>提交 10 秒后开始，每 5 秒一次，最长间隔 15 秒</dd></div>
+      <div><dt>允许下载结果的域名</dt><dd><span class="chip">autodl.art</span><span class="chip">*.autodl.art</span><span class="chip">*.ksyuncs.com</span></dd></div></dl>`)}`;
+  const versions = `<ul class="tl">${[['v1.2.0', '最新 · 10-06 15:34'], ['v1.1.0', '09-28 11:02'], ['v1.0.0', '09-20 09:40']].map(([v, d]) => `<li><span class="pt"></span><div><b class="mono">${v}</b> <small>${d}</small></div></li>`).join('')}</ul>`;
+  return `<div class="dialog" role="dialog">
+    <div class="head"><div class="avatar" style="background:linear-gradient(135deg,oklch(.75 .15 55),oklch(.6 .2 40))">A</div>
+      <div class="meta"><div class="title">AutoDL MiniMax H3 多图多音频生视频<span class="tag">已上传</span></div>
+      <div class="sub"><span class="mono">autodl-minimax-h3-zm-u08</span> · v1.2.0</div></div>
+      <button class="icon-btn" data-close aria-label="关闭">${I.x}</button></div>
+    ${tabs([['overview', 'info', '概览'], ['versions', 'history', '版本历史', 3]], t, 'plugin')}
+    <div class="body">${t === 'overview' ? overview : sec('版本历史', '最新版本在上', versions)}</div>
+  </div>`;
+}
+
+function render() {
+  stage.hidden = false;
+  stage.innerHTML = state.scene === 'plugin' ? plugin() : channel(state.scene === 'new');
+  document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('on', b.dataset.scene === state.scene));
+}
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-scene],[data-tab],[data-fold],[data-sw],[data-choice],[data-close],[data-save],#theme');
+  if (!t) return;
+  if (t.dataset.scene) { state.scene = t.dataset.scene; render(); }
+  else if (t.dataset.tab) { const [k, v] = t.dataset.tab.split(':'); state.tab[k] = v; render(); }
+  else if (t.hasAttribute('data-fold')) { state.adv = !state.adv; render(); }
+  else if (t.dataset.sw) { state[t.dataset.sw] = !state[t.dataset.sw]; render(); }
+  else if (t.hasAttribute('data-choice')) { t.parentElement.querySelectorAll('.choice').forEach(c => c.setAttribute('aria-pressed', c === t)); }
+  else if (t.hasAttribute('data-close')) { stage.hidden = true; }
+  else if (t.hasAttribute('data-save')) { state.check = 'busy'; render(); setTimeout(() => { state.check = 'ok'; render(); }, 900); }
+  else if (t.id === 'theme') { document.documentElement.classList.toggle('dark'); }
+});
+render();
+</script>
+</body>
+</html>

@@ -82,11 +82,11 @@ func TestMigrateLegacyAIConfig(t *testing.T) {
 			t.Fatalf("AutoMigrate 失败：%v", err)
 		}
 		r := NewAIConfigRepository(db)
-		_, err := r.SaveDraft(ctx, SaveDraftInput{
+		_, err := r.SaveModel(ctx, SaveModelInput{
 			Pointer: ConfigPointer{Target: model.ConfigTargetModel, Key: "new-m", Kind: "video"}, Body: []byte(`{}`),
 		})
 		if err != nil {
-			t.Fatalf("清理后保存模型草稿失败：%v", err)
+			t.Fatalf("清理后保存模型失败：%v", err)
 		}
 	})
 
@@ -103,11 +103,11 @@ func TestMigrateLegacyAIConfig(t *testing.T) {
 	t.Run("已是新结构的库上执行不改动数据", func(t *testing.T) {
 		db := isolatedDB(t, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
 		r := NewAIConfigRepository(db)
-		rev := aicRepoSaveModel(t, r, "keep-m", `{}`)
+		aicRepoSaveModel(t, r, "keep-m", `{}`)
 		if err := MigrateLegacyAIConfig(db); err != nil {
 			t.Fatal(err)
 		}
-		if got, err := r.GetRevision(ctx, rev.ID); err != nil || got.TargetKey != "keep-m" {
+		if got, err := r.GetModelConfig(ctx, "keep-m"); err != nil || got.TargetKey != "keep-m" {
 			t.Fatalf("模型 revision 应保留：%+v %v", got, err)
 		}
 	})
@@ -155,11 +155,14 @@ func TestMigrateLegacyAIConfig_DropModelSoftDelete(t *testing.T) {
 		if err != nil || len(list) != 1 || list[0].Key != "live-b" {
 			t.Fatalf("只应保留未删除的模型：%+v %v", list, err)
 		}
-		if revs, _ := r.ListRevisions(ctx, model.ConfigTargetModel, "soft-a", 0); len(revs) != 0 {
-			t.Fatalf("已软删除模型的 revision 应一并删除：%d", len(revs))
+		var softN, liveN int64
+		db.Model(&model.AIConfigRevision{}).Where("target_key = ?", "soft-a").Count(&softN)
+		db.Model(&model.AIConfigRevision{}).Where("target_key = ?", "live-b").Count(&liveN)
+		if softN != 0 {
+			t.Fatalf("已软删除模型的 revision 应一并删除：%d", softN)
 		}
-		if revs, _ := r.ListRevisions(ctx, model.ConfigTargetModel, "live-b", 0); len(revs) != 1 {
-			t.Fatalf("未删除模型的 revision 应保留：%d", len(revs))
+		if liveN != 1 {
+			t.Fatalf("未删除模型的 revision 应保留：%d", liveN)
 		}
 	})
 
@@ -170,7 +173,7 @@ func TestMigrateLegacyAIConfig_DropModelSoftDelete(t *testing.T) {
 		}
 		rev := aicRepoSaveModel(t, NewAIConfigRepository(db), "soft-a", `{}`)
 		if rev.RevisionNo != 1 {
-			t.Fatalf("revision_no 应从 1 开始：%d", rev.RevisionNo)
+			t.Fatalf("revision_no 应为 1：%d", rev.RevisionNo)
 		}
 	})
 }

@@ -22,7 +22,7 @@ import { FrontmatterCard } from "./file-preview";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 text-[13px] font-medium">{title}</h3>
+      <h3 className="mb-2 text-sm font-medium">{title}</h3>
       {children}
     </section>
   );
@@ -118,7 +118,7 @@ function TitleField({
 }
 
 /**
- * 详情抽屉的“概览”：状态卡（开关 + 一句话）、生效版本卡、基本信息（显示名可改）、头部字段（已采用 / 未支持）、危险操作。
+ * 详情弹窗的“概览”：状态卡（开关 + 一句话）、生效版本卡、基本信息（显示名可改）、头部字段（已采用 / 未支持）、危险操作。
  * @param item 技能（列表里的最新视图）
  * @param version 生效版本的完整信息（取头部字段）；内置技能或还没加载完为 null
  * @param busy 正在启停：开关禁用
@@ -169,7 +169,7 @@ export function SkillOverview({
             </ReasonTooltip>
             <span className="text-sm font-medium">{item.enabled ? "已启用" : "已停用"}</span>
           </div>
-          <p className="text-muted-foreground mt-2 text-[13px] leading-relaxed">
+          <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
             {item.readonly
               ? "内置技能随版本发布，一直可用，不能停用。"
               : item.enabled
@@ -184,10 +184,10 @@ export function SkillOverview({
             {badge.active}
           </p>
           {item.source === "builtin" ? (
-            <p className="text-muted-foreground mt-2 text-[13px]">内置技能没有版本历史。</p>
+            <p className="text-muted-foreground mt-2 text-sm">内置技能没有版本历史。</p>
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-muted-foreground text-[13px] tabular-nums">
+              <span className="text-muted-foreground text-sm tabular-nums">
                 共 {item.version_count} 个版本
               </span>
               {badge.pending && (
@@ -212,7 +212,7 @@ export function SkillOverview({
             <TitleField item={item} onRenamed={onRenamed} />
           </dd>
           <dt className="text-muted-foreground">技能名</dt>
-          <dd className="font-mono text-[13px]">{item.name}</dd>
+          <dd className="font-mono text-sm">{item.name}</dd>
           <dt className="text-muted-foreground">说明</dt>
           <dd className="min-w-0 break-words">{item.description}</dd>
           <dt className="text-muted-foreground">来源</dt>
@@ -237,7 +237,7 @@ export function SkillOverview({
       {!item.readonly && (
         <Section title="危险操作">
           <div className="border-destructive/30 flex flex-wrap items-center gap-3 rounded-xl border p-4">
-            <div className="min-w-0 flex-1 text-[13px]">
+            <div className="min-w-0 flex-1 text-sm">
               <p className="font-medium">删除技能</p>
               <p className="text-muted-foreground mt-0.5">
                 {deleteReason ?? "删除全部版本和整包，不能撤销。历史会话不受影响。"}

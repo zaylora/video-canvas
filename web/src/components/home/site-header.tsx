@@ -7,7 +7,7 @@ import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";
 
 /**
  * 首页与所有画布页的顶栏：吸顶、半透明，滚动后多一条底边。
- * 左边的汉堡按钮只在窄屏出现（桌面端侧栏自己有收起按钮），右边是主题切换和积分；账号相关的都在侧栏底部的账号菜单里。
+ * 左边是侧栏开关（桌面端收起 / 展开，窄屏打开抽屉，和后台顶栏一致），右边是主题切换和积分；账号相关的都在侧栏底部的账号菜单里。
  */
 export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
@@ -27,7 +27,7 @@ export function SiteHeader() {
         scrolled && "border-border",
       )}
     >
-      <SidebarTrigger className="md:hidden" aria-label="打开菜单" />
+      <SidebarTrigger className="size-8" />
       <div className="flex-1" />
       <ThemeToggle />
       <CreditsPill />

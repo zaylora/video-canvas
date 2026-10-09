@@ -47,6 +47,37 @@ func MigrateLegacyAIConfig(db *gorm.DB) error {
 	})
 }
 
+// MigrateModelSingleConfig 幂等地把模型的多版本数据收敛成“每个模型一份配置”（模型不再有版本管理）：
+// 有草稿的模型以最新草稿为准（运营最后改的内容），没有草稿就用已发布版本；其余历史版本全部删除，
+// 留下的那一行记为 revision_no=1 / published，并让指针指向它。上下架与排序不动。
+// 应在 AutoMigrate 之后调用；表不存在、或已经收敛过时什么都不做。
+func MigrateModelSingleConfig(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&model.AIConfigRevision{}) || !db.Migrator().HasTable(&model.AIModel{}) {
+		return nil
+	}
+	stmts := []string{
+		// 1. 有草稿的模型：指针改指最新草稿
+		`UPDATE ai_models m SET published_revision_id = d.id
+			FROM (SELECT DISTINCT ON (target_key) id, target_key FROM ai_config_revisions
+				WHERE target = 'model' AND status = 'draft' ORDER BY target_key, revision_no DESC) d
+			WHERE m.key = d.target_key`,
+		// 2. 指针没指到的 revision 全部删除
+		`DELETE FROM ai_config_revisions r WHERE r.target = 'model'
+			AND NOT EXISTS (SELECT 1 FROM ai_models m WHERE m.published_revision_id = r.id)`,
+		// 3. 留下的统一成 published / 1
+		`UPDATE ai_config_revisions SET status = 'published', revision_no = 1
+			WHERE target = 'model' AND (status <> 'published' OR revision_no <> 1)`,
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, stmt := range stmts {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("收敛模型配置版本失败（%s）：%w", stmt, err)
+			}
+		}
+		return nil
+	})
+}
+
 // dropModelSoftDelete 清理模型软删除方案的遗留（模型删除已改为硬删除）：ai_models 有 deleted_at 列时，
 // 先把 deleted_at 非空的模型连同它们的全部 revision 删掉（否则去掉这列后它们会重新出现在列表里），再删掉这列与它的索引。
 // 没有这列（全新库或已清理过）时什么都不做，所以可以重复执行。

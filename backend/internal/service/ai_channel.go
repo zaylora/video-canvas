@@ -28,7 +28,7 @@ type AIChannelRepo interface {
 	ListChannels(ctx context.Context) ([]model.AIChannel, error)
 	// ChannelLoads 返回每个有未完成任务的渠道的负载（生成中 / 排队数），没有任务的渠道不在结果里。
 	ChannelLoads(ctx context.Context, now time.Time) ([]model.ChannelLoad, error)
-	// CountChannelRefs 统计渠道被模型（最新草稿 / 已发布版本）与非终态任务引用的情况，渠道不存在返回 repository.ErrNotFound。
+	// CountChannelRefs 统计渠道被模型与非终态任务引用的情况，渠道不存在返回 repository.ErrNotFound。
 	CountChannelRefs(ctx context.Context, key string) (repository.ChannelRefs, error)
 	// DeleteChannel 事务内锁住渠道行、重新统计引用后删除渠道与它的 Key：仍被引用时返回当时的引用与 repository.ErrInUse，
 	// 不存在返回 repository.ErrNotFound。
@@ -131,6 +131,19 @@ type ChannelUpdateInput struct {
 	RateLimit        *provider.RateLimit // nil 表示不改
 	Enabled          *bool
 	ActorID          uint64
+}
+
+// ChannelCheckDraftInput 是保存前连通性检查的参数：表单里还没保存的渠道草稿，字段含义同 ChannelCreateInput。
+// ExistingKey 非空表示正在编辑这个已有渠道：Secret 留空时用它已保存的 Key；新建渠道留空。Secret 明文只在这次请求里用。
+type ChannelCheckDraftInput struct {
+	ExistingKey      string
+	PluginKey        string
+	PluginVersion    string
+	BaseURL          string
+	TrustedInternal  bool
+	AllowCredentials bool
+	Settings         map[string]any
+	Secret           string
 }
 
 // ChannelImportResult 是从渠道导入模型的结果：草稿只用来预填模型编辑器，不落库。

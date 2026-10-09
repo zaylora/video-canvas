@@ -65,6 +65,27 @@
 
 内置插件（`backend/plugins/*.js`）在服务启动时按 `key + version` 自动登记为 `builtin`：同一版本重复启动是空操作；版本号没升但代码变了会报错并保持库里的旧代码（版本不可变）；key 已被上传的插件占用会报错、不覆盖。新版本的内置插件随发版登记，渠道仍要显式切换。
 
+## 总览统计（admin 与 super_admin 都能读）
+
+`GET /stats?days=7|30`：后台总览页的任务量柱形图与调用占比数据。`days` 不传按 7，只接受 7 或 30，其他值 400（10001）。
+
+```jsonc
+{
+  "days": 7,
+  "daily": [{ "date": "2026-10-04", "succeeded": 80, "failed": 4, "other": 3 }],
+  "by_model": [{ "model": "kling-v2", "label": "可灵 v2", "count": 250 }],
+  "by_kind": [{ "kind": "video", "count": 540 }],
+}
+```
+
+统计口径（页面上所有数字都用它，能互相对上）：
+
+- 范围：`created_at` 落在区间内的正式任务，`is_test = true` 的运营试跑不算。区间是含今天往前 `days` 天的 0 点到明天 0 点，按 `Asia/Shanghai` 的自然日分桶（与个人中心热力图的默认时区一致）。
+- 每天三个桶，之和就是当天任务数：`succeeded`（状态 `succeeded`）、`failed`（`failed` + `expired`）、`other`（`canceled` 与所有进行中状态）。
+- `daily` 恒为 `days` 项，日期升序，没有任务的日子补 0，**最后一项是今天**（今天还没过完）。
+- `by_model` 给全量，按任务数降序、同数量按 key 升序；`label` 是模型当前展示名，模型已被删除或没有展示名时回退为 `key`。`by_kind` 的 `kind` 为 `video` / `image` / `audio` / `text`。没有任务时两者都是 `[]`。
+- 性能：靠 `generation_tasks.created_at` 单列索引 `idx_task_created`（AutoMigrate 建）；每次请求实时聚合，没有缓存。
+
 ## 渠道（super_admin 写，admin 只读；导入 admin 也能调）
 
 ```jsonc
@@ -97,6 +118,7 @@
 | POST   | `/channels`                   | 新建（super_admin）：`{ key, name, plugin_key, plugin_version, base_url, trusted_internal?, allow_credentials?, settings?, rate_limit?, enabled? }`。`plugin_version` 是 semver 字符串（固定到这个版本）；`enabled` 不传按 true。key 重复 409（50012）；缺必填字段 400（10001）；业务校验失败 400（50013，所有问题一次报出，原因在 msg）：key 格式（`^[a-z0-9][a-z0-9-]{0,63}$`）、name 非空且 ≤128 字、插件版本存在**且插件启用**、`base_url` 是 http/https、有主机、**无用户名密码、无查询参数与片段**、`settings` 符合插件 `channelSettings`（未声明的名字、类型、enum 取值、必填项；没填的项补默认值）、`rate_limit` 的 `rps` / `max_concurrency` / `max_running` 非负 |
 | PUT    | `/channels/:key`              | 更新（super_admin），字段都可选（不传表示不改）：`name`、`plugin_version`、`base_url`、`trusted_internal`、`allow_credentials`、`settings`（整体替换）、`rate_limit`（整体替换）、`enabled`。插件本身不能换（要换插件请新建渠道），改 `plugin_version` 即“升级插件后切换渠道”：新版本必须存在且插件启用（不切版本时，插件停用不挡其他修改），并且 `settings`（不传则用现有取值）按新版本的 `channelSettings` 重新校验。渠道不存在 404（50011）；校验失败 400（50013）                                                                                                                                                                                                      |
 | PUT    | `/channels/:key/secret`       | 设置渠道 Key：`{ "value": "..." }`（去掉首尾空白，≤4096 字节），存 `ai_secrets`，名字 `channel:<key>`，只写、响应无 `data`、不回显。没有配置主密钥 `APP_AI_SECRET_KEY` 时 500 并在 msg 里说明；渠道不存在 404                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| POST   | `/channels/check-draft`       | 保存前连通性检查（super_admin）：请求体 `{ plugin_key, plugin_version, base_url, settings, trusted_internal, allow_credentials, secret, existing_key }`，用表单里还没保存的草稿检查，**不写库、不写审计**，`secret` 明文只在这次请求里用（结果文本里同样脱敏）。`existing_key` 只在编辑已有渠道时传：`secret` 留空就用它已保存的 Key。返回同 `/channels/:key/check`。地址 / 插件版本 / settings 不合法 400（50013，原因写在 msg）；插件要求 Key 而 `secret` 为空且没有已保存的 Key 409（50015）；runner 不可用 503（50021）；插件本身出错 502（50022） |
 | POST   | `/channels/:key/check`        | 连通性检查（super_admin）→ `{ "ok": true, "message": "HTTP 200", "duration_ms": 120 }`。上游不通是正常的检查结果 `ok=false`（原因在 message，已脱敏）；插件没实现 `buildCheckRequest` 时 `ok=false, message="插件不支持连通性检查"`；需要宿主注入鉴权（插件 `auth.type` 不是 `none`）而 Key 没设置 409（50015）；runner 不可用 503（50021）；插件本身出错（钩子异常、请求描述非法等）502（50022，msg 已脱敏）                                                                                                                                                                                                                                                              |
 | GET    | `/channels/:key/delete-check` | 删除预检（super_admin）；kind：`channel_models`（refs 是引用它的模型 key + 展示名 label，没有 label 用 key）、`active_tasks`。渠道不存在 404（50011）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | DELETE | `/channels/:key`              | 硬删除渠道，连同 ai_secrets 里的 `channel:<key>`（super_admin）：仍被模型（**最新草稿或已发布版本**的 `channels[].channel`，归档版本与已删除模型不算）或非终态任务的快照引用 409（50016，msg 带数量）；不存在 404（50011）。写审计 `channel.delete` 并刷新 Registry                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -123,18 +145,17 @@
 
 | 方法       | 路径                                                    | 说明                                                                                                                                                                                                                                                                                                                        |
 | ---------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET / POST | `/models`                                               | 列表 / 新建草稿。列表项：`key / kind / label / channel / enabled / sort / published_revision_id / published_revision_no / draft_revision_no / has_unpublished_draft / updated_at`，不含正文。`label`、`channel`（绑定的渠道 key，即 `channels[0].channel`）优先取已发布版本的正文，没发布过取最新草稿的，正文里没有则为空串 |
-| GET / PUT  | `/models/:key`                                          | 详情（草稿 + 已发布）/ 更新草稿                                                                                                                                                                                                                                                                                             |
-| POST       | `/models/:key/validate`、`/publish`、`/rollback`        | 校验 / 发布 / 回滚                                                                                                                                                                                                                                                                                                          |
-| GET        | `/models/:key/revisions`、`/models/:key/revisions/:rid` | 历史                                                                                                                                                                                                                                                                                                                        |
+| GET / POST | `/models` | 列表 / 新建（保存配置，**默认未启用**，不看正文里的 `enabled`）。列表项：`key / kind / label / vendor / tags / channel / enabled / sort / updated_at`，不含正文；`label`、`channel`（绑定的渠道 key，即 `channels[0].channel`）取自配置正文，正文里没有则为空串。响应 `{ issues: [] }`：有校验问题也已保存，但启用会被拦 |
+| GET / PUT  | `/models/:key` | 详情 `{ key, kind, enabled, sort, body, updated_at }`（没有版本历史，每个模型只有一份配置）/ 更新配置。**已启用的模型保存即生效**，所以保存前要过和启用时一样的检查，不通过 400/409 拒绝、不落库 |
+| POST       | `/models/:key/validate` | 校验：不传 body 校验已保存的配置（模型不存在 404 / 40011），传 body 校验传入内容 |
 | POST       | `/models/:key/dry-run`                                  | `{ "input": {} }` → 渲染出**插件返回的请求描述**（宿主校验后的 method / url / query / headers / body 等），不发送。**不含宿主注入后的鉴权头**（Key 在 dry-run 里不解析，鉴权注入处以 `***` 占位），响应经过脱敏，所以不要把它当成“最终请求”                                                                                 |
 | POST       | `/models/:key/test-run`                                 | `{ "input": {} }` → 试跑任务视图（is_test，不扣积分）                                                                                                                                                                                                                                                                       |
 | GET        | `/test-runs/:id`                                        | 试跑任务视图（只能查自己创建的，查不到 404 / 40004）                                                                                                                                                                                                                                                                        |
 | GET        | `/test-runs/:id/trace`                                  | 试跑追踪：`{ "steps": [TraceStep] }`（每次钩子的输入 / 输出 / `utils.log`，每次 HTTP 的请求与响应，均已脱敏）；任务还没有追踪时 `steps: []`；归属规则同上，别人的任务 / 不存在 / 非试跑任务统一 404（40004）                                                                                                                |
-| PUT        | `/models/:key/enabled`、`/models/:key/sort`             | 上下架 / 排序：`{ "enabled": true }`、`{ "sort": 5 }`；上架要求已发布过                                                                                                                                                                                                                                                     |
+| PUT        | `/models/:key/enabled`、`/models/:key/sort` | 启用 / 停用、排序：`{ "enabled": true }`、`{ "sort": 5 }`；**启用前检查已保存的配置**（见下），不通过不能启用；用户只能看到并使用已启用的模型 |
 | GET        | `/schema/model`                                         | 模型配置的 JSON Schema（`/schema/provider` 已删除）                                                                                                                                                                                                                                                                         |
 | GET        | `/models/:key/delete-check`                             | 删除预检；kind：`model_enabled`。模型不存在 404（40011）                                                                                                                                                                                                                                                                    |
-| DELETE     | `/models/:key`                                          | **硬删除**：事务内锁住模型行 → 还在上架 409（50031）→ 删掉该模型的全部版本（草稿 / 已发布 / 归档）→ 删掉模型行，不可恢复；不存在 404（40011）。进行中与历史任务不受影响（它们只读自己的配置快照）。之后**同名 key 可以重新新建 / 导入**，版本号从 1 开始                                                                    |
+| DELETE     | `/models/:key`                                          | **硬删除**：事务内锁住模型行 → 还在上架 409（50031）→ 删掉该模型的配置→ 删掉模型行，不可恢复；不存在 404（40011）。进行中与历史任务不受影响（它们只读自己的配置快照）。之后**同名 key 可以重新新建 / 导入**                                                                    |
 
 ### 删除预检
 
@@ -156,7 +177,7 @@
 
 `dry-run` / `test-run` 请求里的 `use_provider_draft` 字段已废弃（忽略）。
 
-### 模型配置正文（draft / published 的 body）
+### 模型配置正文（body）
 
 ```jsonc
 {
@@ -206,9 +227,9 @@
 }
 ```
 
-保存草稿时的跨对象检查（渠道存在且启用、插件启用、插件版本支持该 kind）以 `issues`（路径 `channels[0].channel`）报出，不阻塞保存。
+保存时的跨对象检查（渠道存在且启用、插件启用、插件版本支持该 kind）以 `issues`（路径 `channels[0].channel`）报出，不阻塞保存。
 
-发布（publish / rollback）的前置检查，不满足分别返回：正文无校验问题（400 / 40010）→ 渠道存在（404 / 50011）且启用（409 / 50014）→ 插件存在且启用（400 / 50013 或 409 / 50004）→ 渠道固定的插件版本存在（400 / 50013）→ 插件版本的 `endpoints` 里有这个模型的 `kind`（400 / 40010）→ 渠道用的插件 `auth.type` 不是 `none` 时渠道 Key 已设置（409 / 50015）。
+启用（`PUT /models/:key/enabled`，以及保存已启用的模型）的前置检查，不满足分别返回：正文无校验问题（400 / 40010）→ 渠道存在（404 / 50011）且启用（409 / 50014）→ 插件存在且启用（400 / 50013 或 409 / 50004）→ 渠道固定的插件版本存在（400 / 50013）→ 插件版本的 `endpoints` 里有这个模型的 `kind`（400 / 40010）→ 渠道用的插件 `auth.type` 不是 `none` 时渠道 Key 已设置（409 / 50015）。
 
 ## 面向画布的接口（变化）
 
@@ -228,7 +249,7 @@
 | 10002                 | 404             | 路由不存在（如已删除的 `/secrets*`）                             |
 | 40004                 | 404             | 试跑任务不存在                                                   |
 | 40006                 | 400             | 示例输入不合法（dry-run / test-run）                             |
-| 40010 / 40011 / 40012 | 400 / 404 / 409 | 模型配置：校验未通过 / 不存在 / 没有可发布的草稿                 |
+| 40010 / 40011         | 400 / 404       | 模型配置：校验未通过 / 不存在                                    |
 | 50001                 | 404             | 插件（版本）不存在                                               |
 | 50002                 | 400             | 插件预检未通过（上传接口里以 `accepted=false` 返回，不用这个码） |
 | 50003                 | 409             | 插件版本号已存在（上传接口里以 `issues` 返回，不用这个码）       |

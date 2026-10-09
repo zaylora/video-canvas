@@ -185,11 +185,10 @@ type ChannelRefs struct {
 // InUse 判断渠道是否仍被引用。
 func (r ChannelRefs) InUse() bool { return len(r.Models) > 0 || r.ActiveTasks > 0 }
 
-// channelModelRefRow 是引用查询的一行：同一模型可能有草稿与已发布两行。
+// channelModelRefRow 是引用查询的一行。
 type channelModelRefRow struct {
-	Key    string
-	Status string
-	Label  string
+	Key   string
+	Label string
 }
 
 // modelRefsChannelSQL 匹配“正文 channels 数组里有一项的 channel 等于某渠道 key”的 revision。
@@ -213,19 +212,19 @@ func (r *AIChannelRepository) CountChannelRefs(ctx context.Context, key string) 
 }
 
 // countChannelRefs 统计渠道的引用，db 可以是普通连接也可以是事务。
-// 模型口径：target=model、状态是 draft / published（已归档的历史版本不算）、指针行存在。
+// 模型口径：target=model、指针行存在（每个模型只有一份配置）。
 func countChannelRefs(db *gorm.DB, key string) (ChannelRefs, error) {
 	var rows []channelModelRefRow
 	err := db.Table("ai_config_revisions AS r").
-		Select("r.target_key AS key, r.status AS status, COALESCE(r.body_json::jsonb ->> 'label', '') AS label").
+		Select("r.target_key AS key, COALESCE(r.body_json::jsonb ->> 'label', '') AS label").
 		Joins("JOIN ai_models AS m ON m.key = r.target_key").
-		Where("r.target = ? AND r.status IN ?", model.ConfigTargetModel, []string{model.RevisionDraft, model.RevisionPublished}).
+		Where("r.target = ?", model.ConfigTargetModel).
 		Where(modelRefsChannelSQL, key).
 		Order("r.target_key ASC").Scan(&rows).Error
 	if err != nil {
 		return ChannelRefs{}, err
 	}
-	refs := ChannelRefs{Models: mergeChannelModelRefs(rows)}
+	refs := ChannelRefs{Models: channelModelRefs(rows)}
 	err = db.Model(&model.GenerationTask{}).Where(taskRefsChannelSQL, activeStatuses(), key).Count(&refs.ActiveTasks).Error
 	if err != nil {
 		return ChannelRefs{}, err
@@ -233,20 +232,11 @@ func countChannelRefs(db *gorm.DB, key string) (ChannelRefs, error) {
 	return refs, nil
 }
 
-// mergeChannelModelRefs 把同一模型的草稿 / 已发布两行合并成一项（rows 已按 key 升序）：label 优先取已发布版本的。
-func mergeChannelModelRefs(rows []channelModelRefRow) []ChannelModelRef {
-	out := []ChannelModelRef{}
-	idx := map[string]int{}
+// channelModelRefs 把查询行转成引用项（rows 已按 key 升序，每个模型只有一行）。
+func channelModelRefs(rows []channelModelRefRow) []ChannelModelRef {
+	out := make([]ChannelModelRef, 0, len(rows))
 	for _, row := range rows {
-		i, ok := idx[row.Key]
-		if !ok {
-			idx[row.Key] = len(out)
-			out = append(out, ChannelModelRef{Key: row.Key, Label: row.Label})
-			continue
-		}
-		if row.Status == model.RevisionPublished && row.Label != "" {
-			out[i].Label = row.Label
-		}
+		out = append(out, ChannelModelRef(row))
 	}
 	return out
 }

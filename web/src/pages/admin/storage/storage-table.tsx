@@ -1,4 +1,4 @@
-import { Activity, Eye, Loader2, Pencil, Star, Trash2 } from "lucide-react";
+import { Activity, Loader2, Star, Trash2 } from "lucide-react";
 
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import {
   accessLabel,
   defaultBlockReason,
@@ -25,7 +26,7 @@ import { StorageStatus } from "./storage-status";
 
 /** 一行上的操作回调 */
 export type StorageRowActions = {
-  /** 打开抽屉：super_admin 是编辑，admin 是只读查看 */
+  /** 点击行打开弹窗：super_admin 是编辑，admin 是只读查看；内置存储来自 config.yaml，不可点开 */
   onOpen: (storage: StorageView) => void;
   /** 用已存密钥重新测试 */
   onCheck: (storage: StorageView) => void;
@@ -36,7 +37,8 @@ export type StorageRowActions = {
 };
 
 /**
- * 存储列表。写操作（编辑、测试、设为默认、删除）只对 super_admin 渲染，admin 只有“查看”；
+ * 存储列表。点击行（或聚焦后按 Enter）打开弹窗：super_admin 编辑，admin 只读查看；
+ * 操作列的写操作（测试、设为默认、删除）只对 super_admin 渲染，admin 没有操作列；
  * 设为默认、删除被禁用时，悬停按钮能看到原因，不让人猜。
  * @param storages 存储列表
  * @param presets 服务商预设（取服务商显示名）
@@ -69,7 +71,7 @@ export function StorageTable({
             <TableHead>直传</TableHead>
             <TableHead className="text-right">素材数</TableHead>
             <TableHead>连通状态</TableHead>
-            <TableHead className="px-4 text-right">操作</TableHead>
+            {canWrite && <TableHead className="px-4 text-right">操作</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -105,8 +107,29 @@ function StorageRow({
   const where = storageLocation(storage);
   const defaultReason = defaultBlockReason(storage);
   const deleteReason = deleteBlockReason(storage);
+  const openable = !storage.builtin;
+  /** 操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
+  const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
   return (
-    <TableRow data-storage-id={storage.id} className="align-top">
+    <TableRow
+      data-storage-id={storage.id}
+      tabIndex={openable ? 0 : undefined}
+      aria-label={openable ? `${canWrite ? "编辑" : "查看"} ${storage.name}` : undefined}
+      className={cn(
+        "align-top",
+        openable &&
+          "focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset",
+      )}
+      onClick={openable ? () => actions.onOpen(storage) : undefined}
+      onKeyDown={
+        openable
+          ? (event) => {
+              if (event.key === "Enter" && event.target === event.currentTarget)
+                actions.onOpen(storage);
+            }
+          : undefined
+      }
+    >
       <TableCell className="px-4 py-3 whitespace-normal">
         <div className="flex flex-wrap items-center gap-1.5 font-medium">
           {storage.name}
@@ -114,15 +137,13 @@ function StorageRow({
           {storage.builtin && <Tag>内置</Tag>}
         </div>
         {storage.builtin && (
-          <div className="text-muted-foreground text-[11px]">来自 config.yaml，只读</div>
+          <div className="text-muted-foreground text-xs">来自 config.yaml，只读</div>
         )}
       </TableCell>
       <TableCell className="py-3">{providerLabel(storage.provider, presets)}</TableCell>
       <TableCell className="py-3">
         <div className="font-mono text-xs">{where.primary}</div>
-        {where.secondary && (
-          <div className="text-muted-foreground text-[11px]">{where.secondary}</div>
-        )}
+        {where.secondary && <div className="text-muted-foreground text-xs">{where.secondary}</div>}
       </TableCell>
       <TableCell className="py-3">
         {storage.provider === "local" ? (
@@ -146,71 +167,46 @@ function StorageRow({
       <TableCell className="py-3">
         <StorageStatus storage={storage} />
       </TableCell>
-      <TableCell className="px-4 py-3">
-        <div className="flex items-center justify-end gap-1">
-          {canWrite ? (
-            <>
-              {!storage.builtin && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`编辑 ${storage.name}`}
-                  onClick={() => actions.onOpen(storage)}
-                >
-                  <Pencil />
-                  编辑
-                </Button>
-              )}
+      {canWrite && (
+        <TableCell className="px-4 py-3" {...stop}>
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              aria-label={`测试 ${storage.name}`}
+              onClick={() => actions.onCheck(storage)}
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <Activity />}
+              测试
+            </Button>
+            <ReasonTooltip reason={defaultReason}>
               <Button
                 variant="ghost"
                 size="xs"
-                disabled={busy}
-                aria-label={`测试 ${storage.name}`}
-                onClick={() => actions.onCheck(storage)}
+                disabled={!!defaultReason}
+                aria-label={`把 ${storage.name} 设为默认`}
+                onClick={() => actions.onSetDefault(storage)}
               >
-                {busy ? <Loader2 className="animate-spin" /> : <Activity />}
-                测试
+                <Star />
+                设为默认
               </Button>
-              <ReasonTooltip reason={defaultReason}>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  disabled={!!defaultReason}
-                  aria-label={`把 ${storage.name} 设为默认`}
-                  onClick={() => actions.onSetDefault(storage)}
-                >
-                  <Star />
-                  设为默认
-                </Button>
-              </ReasonTooltip>
-              <ReasonTooltip reason={deleteReason}>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-destructive hover:text-destructive"
-                  disabled={!!deleteReason || busy}
-                  aria-label={`删除 ${storage.name}`}
-                  onClick={() => actions.onDelete(storage)}
-                >
-                  <Trash2 />
-                </Button>
-              </ReasonTooltip>
-            </>
-          ) : (
-            !storage.builtin && (
+            </ReasonTooltip>
+            <ReasonTooltip reason={deleteReason}>
               <Button
                 variant="ghost"
-                size="xs"
-                aria-label={`查看 ${storage.name}`}
-                onClick={() => actions.onOpen(storage)}
+                size="icon-xs"
+                className="text-destructive hover:text-destructive"
+                disabled={!!deleteReason || busy}
+                aria-label={`删除 ${storage.name}`}
+                onClick={() => actions.onDelete(storage)}
               >
-                <Eye />
-                查看
+                <Trash2 />
               </Button>
-            )
-          )}
-        </div>
-      </TableCell>
+            </ReasonTooltip>
+          </div>
+        </TableCell>
+      )}
     </TableRow>
   );
 }

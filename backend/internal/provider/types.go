@@ -223,6 +223,8 @@ type ModelDraft struct {
 type PluginOps interface {
 	// Check 调插件的 buildCheckRequest 发一次请求，确认地址和 Key 可用；插件没实现该钩子返回 ErrCheckUnsupported。
 	Check(ctx context.Context, rt *ChannelRuntime) (*CheckResult, error)
+	// CheckDraft 与 Check 相同，但 Key 由调用方直接给出（渠道还没保存 / Key 还没写入时的“保存前检查”），不读 ai_secrets，明文不落库。
+	CheckDraft(ctx context.Context, rt *ChannelRuntime, secret string) (*CheckResult, error)
 	// Import 按插件 meta.import.args 的取值调 buildImportRequest / parseImportResponse，返回模型草稿；
 	// 插件没实现这两个钩子返回 ErrImportUnsupported。
 	Import(ctx context.Context, rt *ChannelRuntime, args map[string]any) ([]ModelDraft, error)

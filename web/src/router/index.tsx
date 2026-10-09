@@ -6,7 +6,6 @@ import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
 import ChannelsPage from "@/pages/admin/ai/channels";
 import ModelsPage from "@/pages/admin/ai/models";
-import OverviewPage from "@/pages/admin/ai/overview";
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
@@ -97,7 +96,13 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="ai/overview" replace /> },
               { path: "ai", element: <Navigate to="overview" replace /> },
-              { path: "ai/overview", element: <OverviewPage /> },
+              {
+                path: "ai/overview",
+                /** 总览带图表库（recharts，体量大），按路由拆成单独的包，不拖慢画布与其他页面的首屏 */
+                lazy: async () => ({
+                  Component: (await import("@/pages/admin/ai/overview")).default,
+                }),
+              },
               { path: "ai/models", element: <ModelsPage /> },
               { path: "ai/models/new", element: <ModelsPage /> },
               { path: "ai/channels", element: <ChannelsPage /> },

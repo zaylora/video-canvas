@@ -3,7 +3,7 @@ import type { ChannelView, PluginView } from "@/api/admin/ai/type";
 import { describeAuth, findPluginVersion, metaSupportsKind, shortSha } from "./plugin";
 import { readModelChannel, readModelKind } from "./model-body";
 
-/** 模型正文选中的渠道，连同它的插件信息（模型编辑器的“选中后显示”与发布确认框共用） */
+/** 模型正文选中的渠道，连同它的插件信息（模型编辑器的“选中后显示”共用） */
 export type ModelChannelInfo = {
   /** channels[0].channel；没选为空串 */
   channelKey: string;
@@ -21,7 +21,7 @@ export type ModelChannelInfo = {
   authType: string | null;
   /** 渠道 Key 是否已设置；没选渠道为 false */
   secretSet: boolean;
-  /** 需要 Key 却没设置：发布会被后端拦（50015），前端提前禁用发布 */
+  /** 需要 Key 却没设置：上线会被后端拦（50015），前端提前提示 */
   keyMissing: boolean;
   /** 插件版本的 endpoints 里是否有该模型的 kind；插件信息未知为 null */
   supportsKind: boolean | null;
@@ -72,7 +72,7 @@ export function resolveModelChannel(
 }
 
 /**
- * 发布（回滚）被禁用的原因；可以发布返回 null。
+ * 模型上线被拦的原因；可以上线返回 null。
  * 只挡后端一定会拒绝、且前端有把握判断的情况：渠道不存在、渠道停用、需要 Key 却没设置。
  * 清单还没加载好（channelsReady=false）时不下结论。
  */
@@ -82,6 +82,6 @@ export function publishBlockReason(info: ModelChannelInfo, channelsReady: boolea
   if (!info.channel) return `渠道 ${info.channelKey} 不存在`;
   if (!info.channel.enabled) return `渠道 ${info.channel.name} 已停用`;
   if (info.keyMissing)
-    return `渠道 ${info.channel.name} 还没有设置 Key，模型无法发布。请联系运维在“渠道”页设置 Key。`;
+    return `渠道 ${info.channel.name} 还没有设置 Key，模型无法上线。请联系运维在“渠道”页设置 Key。`;
   return null;
 }

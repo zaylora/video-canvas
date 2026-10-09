@@ -2,52 +2,67 @@ import { CheckCircle2, CircleAlert, Loader2, MinusCircle, TriangleAlert } from "
 
 import type { CheckOutcome } from "@/utils/admin/channel-check";
 
-import { Tag, type TagTone } from "@/components/admin-ui/tag";
+import { cn } from "@/lib/utils";
 import type { CheckState } from "./use-channel-check";
 
-const TONE: Record<CheckOutcome["tone"], { tag: TagTone; icon: typeof CheckCircle2 }> = {
-  success: { tag: "success", icon: CheckCircle2 },
-  neutral: { tag: "neutral", icon: MinusCircle },
-  warning: { tag: "warning", icon: TriangleAlert },
-  danger: { tag: "danger", icon: CircleAlert },
+/** 检查结果的图标和文字色（和状态列的 StatusLabel 同一套，不另起颜色） */
+const TONE: Record<CheckOutcome["tone"], { text: string; icon: typeof CheckCircle2 }> = {
+  success: { text: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
+  neutral: { text: "text-muted-foreground", icon: MinusCircle },
+  warning: { text: "text-amber-600 dark:text-amber-400", icon: TriangleAlert },
+  danger: { text: "text-red-600 dark:text-red-400", icon: CircleAlert },
 };
 
 /**
  * 检查结果：图标加文字，不只靠颜色。
- * compact 用于列表行（一个小标签，说明放 title）；否则内联展开说明（抽屉里）。
+ * inline 用于表格状态列的第二行（一行小字，说明放 title）；否则在弹窗里展开说明。
  */
 export function CheckResult({
   state,
-  compact,
+  inline,
+  className,
 }: {
   state: CheckState | undefined;
-  compact?: boolean;
+  inline?: boolean;
+  className?: string;
 }) {
   if (!state) return null;
   if (state.busy) {
     return (
-      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs" role="status">
+      <span
+        className={cn("text-muted-foreground inline-flex items-center gap-1 text-xs", className)}
+        role="status"
+      >
         <Loader2 className="size-3 animate-spin" />
         检查中…
       </span>
     );
   }
   const { outcome } = state;
-  const { tag, icon: Icon } = TONE[outcome.tone];
-  if (compact) {
+  const { text, icon: Icon } = TONE[outcome.tone];
+  if (inline) {
     return (
-      <Tag tone={tag} title={[outcome.title, outcome.detail].filter(Boolean).join("：")}>
-        <Icon className="size-3" />
-        {outcome.title}
-      </Tag>
+      <span
+        role="status"
+        data-check-kind={outcome.kind}
+        title={[outcome.title, outcome.detail].filter(Boolean).join("：")}
+        className={cn("inline-flex items-center gap-1 text-xs", text, className)}
+      >
+        <Icon className="size-3 shrink-0" />
+        <span className="truncate">{outcome.title}</span>
+      </span>
     );
   }
   return (
-    <div className="flex flex-col gap-0.5 text-xs" role="status" data-check-kind={outcome.kind}>
-      <Tag tone={tag} className="self-start">
-        <Icon className="size-3" />
+    <div
+      className={cn("flex flex-col gap-0.5 text-xs", className)}
+      role="status"
+      data-check-kind={outcome.kind}
+    >
+      <span className={cn("inline-flex items-center gap-1 font-medium", text)}>
+        <Icon className="size-3.5" />
         {outcome.title}
-      </Tag>
+      </span>
       {outcome.detail && <span className="text-muted-foreground">{outcome.detail}</span>}
     </div>
   );

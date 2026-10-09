@@ -45,6 +45,19 @@ type updateChannelReq struct {
 	Enabled          *bool               `json:"enabled"`
 }
 
+// checkDraftChannelReq 保存前检查：表单里还没保存的渠道草稿。existing_key 只在编辑已有渠道时传（secret 留空时用它已保存的 Key）；
+// 地址 / 设置 / 插件版本的业务规则由 service 校验（50013），这里只拦“没传”和明显超长。secret 只在这次请求里用，不落库。
+type checkDraftChannelReq struct {
+	ExistingKey      string         `json:"existing_key" binding:"omitempty,max=64" label:"existing_key"`
+	PluginKey        string         `json:"plugin_key" binding:"required,max=30" label:"plugin_key"`
+	PluginVersion    string         `json:"plugin_version" binding:"required,max=32" label:"plugin_version"`
+	BaseURL          string         `json:"base_url" binding:"required,max=512" label:"base_url"`
+	TrustedInternal  bool           `json:"trusted_internal"`
+	AllowCredentials bool           `json:"allow_credentials"`
+	Settings         map[string]any `json:"settings"`
+	Secret           string         `json:"secret" binding:"omitempty,max=4096" label:"Key"`
+}
+
 // importChannelReq 导入模型：args 的取值按插件 meta.import.args，可以不传。
 type importChannelReq struct {
 	Args map[string]any `json:"args"`
@@ -152,6 +165,23 @@ func (h *AdminChannelHandler) Check(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.Check(c.Request.Context(), key)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// CheckDraft 保存前的连通性检查：用表单里的草稿（含 Key）检查，不落库。
+func (h *AdminChannelHandler) CheckDraft(c *gin.Context) {
+	var req checkDraftChannelReq
+	if !BindJSON(c, &req) {
+		return
+	}
+	res, err := h.svc.CheckDraft(c.Request.Context(), service.ChannelCheckDraftInput{
+		ExistingKey: req.ExistingKey, PluginKey: req.PluginKey, PluginVersion: req.PluginVersion, BaseURL: req.BaseURL,
+		TrustedInternal: req.TrustedInternal, AllowCredentials: req.AllowCredentials, Settings: req.Settings, Secret: req.Secret,
+	})
 	if err != nil {
 		response.Fail(c, err)
 		return

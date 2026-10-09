@@ -1,11 +1,6 @@
 import { useMemo, useState } from "react";
 
-import type {
-  ChannelView,
-  ConfigListItem,
-  ConfigRevision,
-  PluginView,
-} from "@/api/admin/ai/type.d";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { NativeSelect } from "@/components/admin-ui/native-select";
 import { SearchInput } from "@/components/admin-ui/search-input";
@@ -16,14 +11,12 @@ import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
 import { KIND_ORDER } from "../kind";
 import { ModelRows } from "./model-rows";
 
-/** 状态筛选：与状态列一致（在线 / 不可用 / 已下线 / 未上线），外加“有未上线的修改” */
+/** 状态筛选：与状态列一致（在线 / 不可用 / 未上线） */
 const STATES: Array<[string, string]> = [
   ["", "全部状态"],
   ["online", MODEL_STATUS_LABEL.online],
   ["broken", MODEL_STATUS_LABEL.broken],
   ["offline", MODEL_STATUS_LABEL.offline],
-  ["unpublished", MODEL_STATUS_LABEL.unpublished],
-  ["draft", "有未上线的修改"],
 ];
 
 /**
@@ -41,7 +34,6 @@ export function ModelTable({
   onEdit,
   onTest,
   onToggleEnabled,
-  onRollback,
   onDelete,
   channelsReady,
   initialState = "",
@@ -58,7 +50,6 @@ export function ModelTable({
   onEdit: (key: string) => void;
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
-  onRollback: (key: string, revision: ConfigRevision) => void;
   onDelete: (item: ConfigListItem) => void;
   channelsReady: boolean;
   /** 初始的状态筛选（总览页“去查看”带过来的 ?status=） */
@@ -86,10 +77,7 @@ export function ModelTable({
           [item.key, item.label, item.name].some((t) => (t ?? "").toLowerCase().includes(text))) &&
         (!kind || item.kind === kind) &&
         (!channel || item.channel === channel) &&
-        (!state ||
-          (state === "draft"
-            ? item.has_unpublished_draft
-            : modelHealth(item, channels, plugins, channelsReady).status === state)),
+        (!state || modelHealth(item, channels, plugins, channelsReady).status === state),
     );
   }, [models, query, kind, channel, state, channels, plugins, channelsReady]);
 
@@ -174,7 +162,6 @@ export function ModelTable({
           onEdit={onEdit}
           onTest={onTest}
           onToggleEnabled={onToggleEnabled}
-          onRollback={onRollback}
           onDelete={onDelete}
           channelsReady={channelsReady}
           onRetry={onRetry}
