@@ -193,6 +193,16 @@ func TestSkillService_ConfirmGuards(t *testing.T) {
 			t.Errorf("过期暂存应被清理: %v %d", e.store.keys(), len(e.repo.imports))
 		}
 	})
+	t.Run("暂存对象已被赢家删除：输家得到 61001 而不是内部错误", func(t *testing.T) {
+		e := newSkillEnv(t)
+		v := mustImport(t, e, 1, standardPkg(t, "demo", "x"))
+		for _, k := range e.store.keys() {
+			_ = e.store.Delete(ctx, k)
+		}
+		if _, err := e.svc.ConfirmImport(ctx, 1, v.ID); codeOf(err) != 61001 {
+			t.Errorf("应为 61001: %v", err)
+		}
+	})
 	t.Run("并发确认同一个暂存：只有一个成功，没有多余版本和对象", func(t *testing.T) {
 		e := newSkillEnv(t)
 		v := mustImport(t, e, 1, standardPkg(t, "demo", "x"))

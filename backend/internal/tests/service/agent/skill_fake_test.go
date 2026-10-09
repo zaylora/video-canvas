@@ -441,10 +441,16 @@ func newSkillEnv(t *testing.T) *skillEnv {
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	e := &skillEnv{store: newMemStore(), audit: &auditSink{}, now: &now}
 	e.repo = newMemSkillRepo(func() time.Time { return now })
+	var seqMu sync.Mutex // 并发确认用例会同时调 NewID
 	seq := 0
 	e.svc = NewSkillService(e.repo, memStores{e.store}, e.audit, SkillOptions{
-		Now:   func() time.Time { return now },
-		NewID: func() string { seq++; return "id-" + string(rune('a'+seq)) },
+		Now: func() time.Time { return now },
+		NewID: func() string {
+			seqMu.Lock()
+			defer seqMu.Unlock()
+			seq++
+			return "id-" + string(rune('a'+seq))
+		},
 	})
 	return e
 }

@@ -21,6 +21,7 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
+	"video-canvas/internal/storage"
 )
 
 // SkillAuditWriter 是技能管理写审计的依赖，由 repository.AdminAuditRepository 实现（同后台运营审计）。
@@ -329,6 +330,10 @@ func (s *SkillService) ConfirmImport(ctx context.Context, actorID uint64, id str
 	}
 	// 2. 读回暂存包并重新预检：不信任暂存行里的结果，包本身才是准绳
 	pkg, err := s.readObject(ctx, imp.StorageID, imp.PackageKey, maxStagedZipBytes)
+	if errors.Is(err, storage.ErrNotFound) {
+		// 并发的赢家已认领暂存并删掉了对象，输家按"暂存已失效"处理
+		return nil, errcode.ErrSkillImportGone
+	}
 	if err != nil {
 		return nil, err
 	}
