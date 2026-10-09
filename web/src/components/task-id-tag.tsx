@@ -37,11 +37,15 @@ export function TaskIdTag({ id, className }: { id?: string | null; className?: s
       aria-label={`任务 ID ${id}，点击复制`}
       onClick={() => void copy()}
       className={cn(
-        "text-muted-foreground/80 hover:text-foreground max-w-full cursor-pointer text-[10px] leading-tight break-all outline-none focus-visible:underline",
+        "text-muted-foreground/80 hover:text-foreground grid max-w-full cursor-pointer text-[10px] leading-tight break-all outline-none focus-visible:underline",
         className,
       )}
     >
-      {copied ? "已复制任务 ID" : `任务 ID：${id}`}
+      {/* 两段文字叠在同一格里，按钮尺寸由较高的那段定；复制后只切换可见性，不改行数，周围的内容不会跟着跳 */}
+      <span className={cn("col-start-1 row-start-1", copied && "invisible")}>任务 ID：{id}</span>
+      <span aria-hidden className={cn("col-start-1 row-start-1", !copied && "invisible")}>
+        已复制任务 ID
+      </span>
     </button>
   );
 }
