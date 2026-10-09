@@ -46,7 +46,7 @@ func delModelSvc(t *testing.T) (*AIConfigService, *aiconfigfake.MemRepo, *aiconf
 	svc, repo, inv := aicNewSvc()
 	svc.SetDryRunner(&aiconfigfake.DryRunner{Result: map[string]any{}})
 	aicSeedChannel(t, svc, repo, "c1", true)
-	aicPublishModel(t, svc, "m1", "c1")
+	aicEnableModel(t, svc, "m1", "c1")
 	return svc, repo, inv
 }
 
@@ -144,21 +144,16 @@ func TestAIConfigService_DeletedModelGone(t *testing.T) {
 	if _, err := aicSave(svc, "m1", false, aicModelBody("m1", "c1", "")); err != nil {
 		t.Fatal(err)
 	}
-	revs, _ := svc.ListRevisions(ctx, "m1")
 	if err := svc.DeleteModel(ctx, "m1", 1); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Run("后台列表、详情、历史版本、公开清单、下单快照都没有它", func(t *testing.T) {
+	t.Run("后台列表、详情、公开清单、下单快照都没有它", func(t *testing.T) {
 		items, err := svc.ListConfigs(ctx)
 		if err != nil || len(items) != 0 {
 			t.Fatalf("列表里不应有已删除的模型：%+v %v", items, err)
 		}
 		_, err = svc.GetConfig(ctx, "m1")
-		aicWantCode(t, err, errcode.ErrConfigNotFound.Code)
-		_, err = svc.ListRevisions(ctx, "m1")
-		aicWantCode(t, err, errcode.ErrConfigNotFound.Code)
-		_, err = svc.GetRevision(ctx, "m1", revs[0].ID)
 		aicWantCode(t, err, errcode.ErrConfigNotFound.Code)
 		if list, err := svc.ListModels(ctx, ""); err != nil || len(list) != 0 {
 			t.Fatalf("公开清单里不应有已删除的模型：%+v %v", list, err)
@@ -171,16 +166,12 @@ func TestAIConfigService_DeletedModelGone(t *testing.T) {
 		aicWantCode(t, svc.DeleteModel(ctx, "m1", 1), errcode.ErrConfigNotFound.Code)
 	})
 
-	t.Run("同名 key 可以重新新建，revision_no 从 1 开始", func(t *testing.T) {
-		res, err := aicSave(svc, "", true, aicModelBody("m1", "c1", ""))
-		if err != nil {
+	t.Run("同名 key 可以重新新建并启用", func(t *testing.T) {
+		if _, err := aicSave(svc, "", true, aicModelBody("m1", "c1", "")); err != nil {
 			t.Fatal(err)
 		}
-		if res.Revision.RevisionNo != 1 {
-			t.Fatalf("revision_no 应从 1 开始：%d", res.Revision.RevisionNo)
-		}
-		if _, err := svc.Publish(ctx, "m1", 1); err != nil {
-			t.Fatalf("重新新建的模型应能发布：%v", err)
+		if err := svc.SetModelEnabled(ctx, "m1", true, 1); err != nil {
+			t.Fatalf("重新新建的模型应能启用：%v", err)
 		}
 	})
 }

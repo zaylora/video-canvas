@@ -178,16 +178,14 @@ make run
 | POST     | /api/v1/admin/image-processors/:id/rollback     | super_admin | 回滚到上一个已发布版本，没有 409 / 52009                                                                             |
 | POST     | /api/v1/admin/image-processors/:id/disable      | super_admin | 停用：该存储回退原图 / 占位                                                                                          |
 | DELETE   | /api/v1/admin/image-processors/:id              | super_admin | 删除草稿或已停用的；已发布的 409 / 52008                                                                             |
-| GET/POST | /api/v1/admin/ai/models                         | admin       | 列表（含 `label`、`channel`）/ 新建草稿（body `{body, note}`，有校验问题也会保存，发布时才拦）                       |
-| GET/PUT  | /api/v1/admin/ai/models/:key                    | admin       | 详情（草稿 + 已发布） / 更新草稿                                                                                     |
+| GET/POST | /api/v1/admin/ai/models                         | admin       | 列表（含 `label`、`channel`、`enabled`）/ 新建（body `{body, note}`，默认未启用；有校验问题也会保存，启用时才拦）                       |
+| GET/PUT  | /api/v1/admin/ai/models/:key                    | admin       | 详情（配置正文 `body`） / 更新（已启用的保存即生效，校验不过拒绝）                                                                                     |
 | POST     | /api/v1/admin/ai/models/:key/validate           | admin       | 校验（错误精确到 JSON 路径）                                                                                         |
-| POST     | /api/v1/admin/ai/models/:key/publish、/rollback | admin       | 发布 / 回滚（`{revision_id}`）                                                                                       |
-| GET      | /api/v1/admin/ai/models/:key/revisions[/:rid]   | admin       | 版本历史                                                                                                             |
 | POST     | /api/v1/admin/ai/models/:key/dry-run            | admin       | 渲染请求描述但不发送（不含注入后的鉴权头，凭证脱敏）                                                                 |
-| POST     | /api/v1/admin/ai/models/:key/test-run           | admin       | 用草稿真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪             |
-| PUT      | /api/v1/admin/ai/models/:key/enabled、/sort     | admin       | 上下架 / 排序                                                                                                        |
+| POST     | /api/v1/admin/ai/models/:key/test-run           | admin       | 用已保存的配置真实试跑，不扣积分；`GET /admin/ai/test-runs/:id` 轮询，`GET /admin/ai/test-runs/:id/trace` 看追踪             |
+| PUT      | /api/v1/admin/ai/models/:key/enabled、/sort     | admin       | 启用 / 停用（启用前检查配置、渠道与 Key）/ 排序                                                                                                        |
 | GET      | /api/v1/admin/ai/models/:key/delete-check       | admin       | 删除预检，kind 为 `model_enabled`                                                                                    |
-| DELETE   | /api/v1/admin/ai/models/:key                    | admin       | 硬删除模型及其全部版本（必须先下架，否则 409 / 50031），不可恢复；之后同名 key 可以重新新建 / 导入                   |
+| DELETE   | /api/v1/admin/ai/models/:key                    | admin       | 硬删除模型（必须先下架，否则 409 / 50031），不可恢复；之后同名 key 可以重新新建 / 导入                   |
 | GET      | /api/v1/admin/ai/schema/model                   | admin       | 模型配置的 JSON Schema                                                                                               |
 
 统一响应格式：

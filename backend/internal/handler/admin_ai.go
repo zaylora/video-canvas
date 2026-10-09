@@ -12,7 +12,7 @@ import (
 	"video-canvas/internal/service"
 )
 
-// AdminAIHandler 是 AI 模型配置的管理接口（草稿 / 发布 / 试跑 / 追踪），
+// AdminAIHandler 是 AI 模型配置的管理接口（保存 / 启停 / 试跑 / 追踪），
 // 必须挂在 JWTAuth + RequireAdmin 之后。插件与渠道见 AdminPluginHandler、AdminChannelHandler。
 type AdminAIHandler struct {
 	svc *service.AIConfigService
@@ -31,26 +31,15 @@ type keyURI struct {
 	Key string `uri:"key" binding:"required,max=128" label:"key"`
 }
 
-// revisionURI 是 /:key/revisions/:rid 路径参数。
-type revisionURI struct {
-	Key string `uri:"key" binding:"required,max=128" label:"key"`
-	RID uint64 `uri:"rid" binding:"required,min=1" label:"revision id"`
-}
-
-// saveConfigReq 保存草稿：body 是配置正文（JSON 对象），note 是本次修改说明。
+// saveConfigReq 保存配置：body 是配置正文（JSON 对象），note 是本次修改说明。
 type saveConfigReq struct {
 	Body json.RawMessage `json:"body" binding:"required" label:"配置正文"`
 	Note string          `json:"note" binding:"max=255" label:"备注"`
 }
 
-// validateReq 校验请求：body 可选，不传则校验已保存的最新草稿。
+// validateReq 校验请求：body 可选，不传则校验已保存的配置。
 type validateReq struct {
 	Body json.RawMessage `json:"body"`
-}
-
-// rollbackReq 回滚请求。
-type rollbackReq struct {
-	RevisionID uint64 `json:"revision_id" binding:"required,min=1" label:"revision_id"`
 }
 
 // trialReq 是 dry-run / 试跑请求：input 是示例输入。
@@ -105,13 +94,13 @@ func (h *AdminAIHandler) List(c *gin.Context) {
 	response.OK(c, items)
 }
 
-// Create 新建配置并保存为草稿；正文有校验问题也会保存，问题列表在响应的 issues 里。
+// Create 新建配置并保存；正文有校验问题也会保存，问题列表在响应的 issues 里。
 func (h *AdminAIHandler) Create(c *gin.Context) {
 	var req saveConfigReq
 	if !BindJSON(c, &req) {
 		return
 	}
-	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
+	res, err := h.svc.SaveModel(c.Request.Context(), service.ModelSaveInput{
 		Create: true, Body: req.Body, Note: req.Note, AdminID: currentUserID(c),
 	})
 	if err != nil {
@@ -121,7 +110,7 @@ func (h *AdminAIHandler) Create(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// Get 读取配置详情：最新草稿与已发布版本的正文及 revision 元信息。
+// Get 读取配置详情：指针行信息与配置正文（body）。
 func (h *AdminAIHandler) Get(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
@@ -135,7 +124,7 @@ func (h *AdminAIHandler) Get(c *gin.Context) {
 	response.OK(c, detail)
 }
 
-// Update 更新已有配置的草稿。
+// Update 更新已有配置；已启用的模型保存即生效，校验不通过会被拒绝。
 func (h *AdminAIHandler) Update(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
@@ -145,7 +134,7 @@ func (h *AdminAIHandler) Update(c *gin.Context) {
 	if !BindJSON(c, &req) {
 		return
 	}
-	res, err := h.svc.SaveDraft(c.Request.Context(), service.ModelDraftInput{
+	res, err := h.svc.SaveModel(c.Request.Context(), service.ModelSaveInput{
 		Key: key, Body: req.Body, Note: req.Note, AdminID: currentUserID(c),
 	})
 	if err != nil {
@@ -155,7 +144,7 @@ func (h *AdminAIHandler) Update(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// Validate 校验草稿（或请求里传入的正文），返回问题列表。
+// Validate 校验已保存的配置（或请求里传入的正文），返回问题列表。
 func (h *AdminAIHandler) Validate(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
@@ -173,71 +162,11 @@ func (h *AdminAIHandler) Validate(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// Publish 发布最新草稿，成功后立即热生效。
-func (h *AdminAIHandler) Publish(c *gin.Context) {
-	key, ok := pathKey(c)
-	if !ok {
-		return
-	}
-	rev, err := h.svc.Publish(c.Request.Context(), key, currentUserID(c))
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, rev)
-}
-
-// Rollback 回滚到指定的历史版本。
-func (h *AdminAIHandler) Rollback(c *gin.Context) {
-	key, ok := pathKey(c)
-	if !ok {
-		return
-	}
-	var req rollbackReq
-	if !BindJSON(c, &req) {
-		return
-	}
-	rev, err := h.svc.Rollback(c.Request.Context(), key, req.RevisionID, currentUserID(c))
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, rev)
-}
-
-// Revisions 列出历史版本（不含正文）。
-func (h *AdminAIHandler) Revisions(c *gin.Context) {
-	key, ok := pathKey(c)
-	if !ok {
-		return
-	}
-	list, err := h.svc.ListRevisions(c.Request.Context(), key)
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, list)
-}
-
-// Revision 读取某个历史版本的完整正文（回滚前预览）。
-func (h *AdminAIHandler) Revision(c *gin.Context) {
-	var uri revisionURI
-	if !bindURI(c, &uri) {
-		return
-	}
-	rev, err := h.svc.GetRevision(c.Request.Context(), uri.Key, uri.RID)
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, rev)
-}
-
 // ---------------------------------------------------------------------------
 // 模型专属接口
 // ---------------------------------------------------------------------------
 
-// DryRun 用草稿渲染请求但不发送，返回脱敏后的渲染结果。
+// DryRun 用已保存的配置渲染请求但不发送，返回脱敏后的渲染结果。
 func (h *AdminAIHandler) DryRun(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {
@@ -255,7 +184,7 @@ func (h *AdminAIHandler) DryRun(c *gin.Context) {
 	response.OK(c, res)
 }
 
-// TestRun 用草稿真实跑一次（不扣积分），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
+// TestRun 用已保存的配置真实跑一次（不扣积分），返回试跑任务视图，前端随后轮询 GET /test-runs/:id。
 func (h *AdminAIHandler) TestRun(c *gin.Context) {
 	key, ok := pathKey(c)
 	if !ok {

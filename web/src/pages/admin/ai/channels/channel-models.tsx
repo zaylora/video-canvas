@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
-import type {
-  ChannelView,
-  ConfigListItem,
-  ConfigRevision,
-  PluginView,
-} from "@/api/admin/ai/type.d";
+import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Button } from "@/components/ui/button";
 import { channelSupportsKind } from "@/utils/admin/plugin";
@@ -24,7 +19,6 @@ export type ChannelModelActions = {
   onTest: (key: string) => void;
   onNew: (channelKey: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
-  onRollback: (key: string, revision: ConfigRevision) => void;
   onDelete: (item: ConfigListItem) => void;
 };
 
@@ -88,7 +82,6 @@ export function ChannelModels({
         onEdit={actions.onEdit}
         onTest={actions.onTest}
         onToggleEnabled={actions.onToggleEnabled}
-        onRollback={actions.onRollback}
         onDelete={actions.onDelete}
       />
     </div>

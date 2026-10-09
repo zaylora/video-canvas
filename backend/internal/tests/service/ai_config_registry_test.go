@@ -23,8 +23,8 @@ func aicKindBody(key, channel, kind string, sort int) json.RawMessage {
 	return json.RawMessage(body)
 }
 
-// aicPublishBody 保存并发布一份指定正文的新模型。
-func aicPublishBody(t *testing.T, svc *AIConfigService, body json.RawMessage) {
+// aicEnableBody 保存并启用一份指定正文的新模型。
+func aicEnableBody(t *testing.T, svc *AIConfigService, body json.RawMessage) {
 	t.Helper()
 	var head struct {
 		Key string `json:"key"`
@@ -32,10 +32,10 @@ func aicPublishBody(t *testing.T, svc *AIConfigService, body json.RawMessage) {
 	if err := json.Unmarshal(body, &head); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.SaveDraft(context.Background(), ModelDraftInput{Create: true, Body: body, AdminID: 1}); err != nil {
+	if _, err := svc.SaveModel(context.Background(), ModelSaveInput{Create: true, Body: body, AdminID: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Publish(context.Background(), head.Key, 1); err != nil {
+	if err := svc.SetModelEnabled(context.Background(), head.Key, true, 1); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -44,10 +44,10 @@ func TestAIConfigService_Registry_ListModels(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
 	aicSeedChannel(t, svc, repo, "c1", true)
-	aicPublishModel(t, svc, "m-b", "c1")
-	aicPublishModel(t, svc, "m-a", "c1")
+	aicEnableModel(t, svc, "m-b", "c1")
+	aicEnableModel(t, svc, "m-a", "c1")
 	// 一个 text 模型，排序更靠前
-	aicPublishBody(t, svc, aicKindBody("m-txt", "c1", "text", 1))
+	aicEnableBody(t, svc, aicKindBody("m-txt", "c1", "text", 1))
 	// 只有草稿、未发布的模型不出现
 	if _, err := aicSave(svc, "", true, aicModelBody("m-draft", "c1", "")); err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
 	aicSeedChannel(t, svc, repo, "c1", true)
-	aicPublishModel(t, svc, "m1", "c1")
+	aicEnableModel(t, svc, "m1", "c1")
 
 	t.Run("冻结模型、渠道、插件版本，不含 Key", func(t *testing.T) {
 		snap, err := svc.Snapshot(ctx, "m1")
@@ -132,7 +132,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		if snap.Plugin.Key != "kling" || snap.Plugin.Version != "1.0.0" || snap.Plugin.SHA256 != "seed" || snap.Plugin.Meta.Key != "kling" {
 			t.Fatalf("插件部分不符合预期：%+v", snap.Plugin)
 		}
-		pub, _ := repo.GetPublishedRevision(ctx, model.ConfigTargetModel, "m1")
+		pub, _ := repo.GetModelConfig(ctx, "m1")
 		if snap.ModelRevisionID != pub.ID {
 			t.Fatalf("revision id 不符合预期：%d vs %d", snap.ModelRevisionID, pub.ID)
 		}
@@ -171,7 +171,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		t.Run("不可用："+tt.name, func(t *testing.T) {
 			s, r, _ := aicNewSvc()
 			aicSeedChannel(t, s, r, "c1", true)
-			aicPublishModel(t, s, "m1", "c1")
+			aicEnableModel(t, s, "m1", "c1")
 			tt.mutate(r)
 			if err := s.RefreshRegistry(ctx); err != nil {
 				t.Fatal(err)
@@ -213,52 +213,31 @@ func TestAIConfigService_Registry_CacheAndHotRefresh(t *testing.T) {
 	clock := time.Now()
 	svc.SetNow(func() time.Time { return clock })
 	aicSeedChannel(t, svc, repo, "c1", true)
-	aicPublishModel(t, svc, "m1", "c1")
+	aicEnableModel(t, svc, "m1", "c1")
 
 	t.Run("缓存命中不再查库", func(t *testing.T) {
 		_ = svc.RefreshRegistry(ctx)
-		base := repo.LoadPublishedCalls
+		base := repo.LoadCalls
 		for i := 0; i < 5; i++ {
 			if _, err := svc.ListModels(ctx, ""); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if repo.LoadPublishedCalls != base {
-			t.Fatalf("缓存未过期时不应查库：%d -> %d", base, repo.LoadPublishedCalls)
+		if repo.LoadCalls != base {
+			t.Fatalf("缓存未过期时不应查库：%d -> %d", base, repo.LoadCalls)
 		}
 	})
 
-	t.Run("发布后立即热生效", func(t *testing.T) {
-		before, _ := svc.Snapshot(ctx, "m1")
+	t.Run("保存后立即热生效", func(t *testing.T) {
 		if _, err := aicSave(svc, "m1", false, aicModelBody("m1", "c1", `"deadline":"45m"`)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := svc.Publish(ctx, "m1", 1); err != nil {
 			t.Fatal(err)
 		}
 		after, err := svc.Snapshot(ctx, "m1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if after.ModelRevisionID == before.ModelRevisionID || after.Model.Deadline.D() != 45*time.Minute {
-			t.Fatalf("发布后快照应立即指向新 revision：%d -> %d，deadline=%v", before.ModelRevisionID, after.ModelRevisionID, after.Model.Deadline.D())
-		}
-	})
-
-	t.Run("回滚后立即指回旧 revision", func(t *testing.T) {
-		revs, _ := svc.ListRevisions(ctx, "m1")
-		var oldID uint64
-		for _, r := range revs {
-			if r.RevisionNo == 1 {
-				oldID = r.ID
-			}
-		}
-		if _, err := svc.Rollback(ctx, "m1", oldID, 1); err != nil {
-			t.Fatal(err)
-		}
-		snap, _ := svc.Snapshot(ctx, "m1")
-		if snap.ModelRevisionID != oldID {
-			t.Fatalf("回滚后快照应指向旧 revision %d，实际 %d", oldID, snap.ModelRevisionID)
+		if after.Model.Deadline.D() != 45*time.Minute {
+			t.Fatalf("保存后快照应立即用新配置，deadline=%v", after.Model.Deadline.D())
 		}
 	})
 
@@ -278,13 +257,13 @@ func TestAIConfigService_Registry_CacheAndHotRefresh(t *testing.T) {
 
 	t.Run("缓存过期后重新加载（多实例没有广播时的兜底）", func(t *testing.T) {
 		_ = svc.RefreshRegistry(ctx)
-		base := repo.LoadPublishedCalls
+		base := repo.LoadCalls
 		clock = clock.Add(AIRegistryTTL + time.Second)
 		if _, err := svc.ListModels(ctx, ""); err != nil {
 			t.Fatal(err)
 		}
-		if repo.LoadPublishedCalls != base+1 {
-			t.Fatalf("过期后应重新加载一次：%d -> %d", base, repo.LoadPublishedCalls)
+		if repo.LoadCalls != base+1 {
+			t.Fatalf("过期后应重新加载一次：%d -> %d", base, repo.LoadCalls)
 		}
 	})
 
@@ -312,19 +291,18 @@ func TestAIConfigService_Registry_LoadFailureWithoutState(t *testing.T) {
 	}
 }
 
-func TestAIConfigService_Registry_InvalidPublishedConfigIgnored(t *testing.T) {
+func TestAIConfigService_Registry_InvalidConfigIgnored(t *testing.T) {
 	ctx := context.Background()
 	svc, repo, _ := aicNewSvc()
 	aicSeedChannel(t, svc, repo, "c1", true)
-	aicPublishModel(t, svc, "m1", "c1")
-	// 手工把已发布的模型正文改成解析会失败的内容：不应带病运行，也不应拖垮其他模型
-	aicPublishModel(t, svc, "m2", "c1")
+	aicEnableModel(t, svc, "m1", "c1")
+	// 手工把已启用的模型正文改成解析会失败的内容：不应带病运行，也不应拖垮其他模型
+	aicEnableModel(t, svc, "m2", "c1")
 	for _, r := range repo.Revs {
 		if r.TargetKey == "m1" {
 			r.BodyJSON = []byte(`{"key":"m1","bad":true}`)
 		}
 	}
-	svc.ResetModelParse() // 发布版本不可变，正常情况下缓存不会失效；这里模拟进程重启后的冷加载
 	if err := svc.RefreshRegistry(ctx); err != nil {
 		t.Fatal(err)
 	}

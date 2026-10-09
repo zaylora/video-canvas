@@ -309,7 +309,7 @@ export function ModelBasicForm({
           {info.channel && info.keyMissing && (
             <Notice
               tone="warning"
-              title="这个渠道还没有设置 Key，模型无法发布"
+              title="这个渠道还没有设置 Key，模型无法上线"
               action={
                 <Link
                   className="text-xs font-medium underline underline-offset-4"
@@ -323,8 +323,8 @@ export function ModelBasicForm({
           {info.supportsKind === false && (
             <Notice tone="danger">
               {kind === "agent"
-                ? "Agent 模型要求渠道的插件使用 Bearer 鉴权，这个渠道不满足，发布会被拒绝。"
-                : `这个渠道的插件版本不支持${MODEL_KIND_LABEL[kind] ?? kind}，发布会被拒绝。`}
+                ? "Agent 模型要求渠道的插件使用 Bearer 鉴权，这个渠道不满足，上线会被拒绝。"
+                : `这个渠道的插件版本不支持${MODEL_KIND_LABEL[kind] ?? kind}，上线会被拒绝。`}
             </Notice>
           )}
         </div>
@@ -414,7 +414,7 @@ export function ModelBasicForm({
             {shownKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
             「能力与参数」和「积分定价」会重置成
             {MODEL_KIND_LABEL[shownKind?.kind ?? ""] ?? shownKind?.kind}
-            模型的默认值，当前的配置会被替换。改动保存为草稿，发布后才对用户生效。
+            模型的默认值，当前的配置会被替换。保存后，已上线的模型立即生效。
           </>
         }
         confirmLabel="确认修改"

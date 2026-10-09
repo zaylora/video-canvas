@@ -12,12 +12,11 @@ import type {
   ChannelView,
   ConfigDetail,
   ConfigListItem,
-  ConfigRevision,
   DeleteCheckResult,
   DeleteTarget,
   PluginUploadResult,
   PluginView,
-  SaveDraftResult,
+  SaveModelResult,
   TestRunTrace,
   ValidateResult,
 } from "./type";
@@ -190,38 +189,38 @@ export const listModels = async () =>
   (await service.get<ConfigListItem[] | null>(ep.models(), undefined)) ?? [];
 
 /**
- * 模型详情（草稿 + 已发布）
+ * 模型详情（配置正文 + 启用状态）
  * @param key 模型 key
  * @returns 模型详情
  */
 export const getModelDetail = (key: string) => service.get<ConfigDetail>(ep.model(key), undefined);
 
 /**
- * 新建模型草稿
+ * 新建模型：保存配置，默认未启用，启用后用户才能用
  * @param config 配置正文
  * @param note 备注
  * @returns 保存结果
  */
-export const createModelDraft = async (config: unknown, note?: string) =>
-  normalizeSave(await service.post<SaveDraftResult>(ep.models(), saveBody(config, note)));
+export const createModel = async (config: unknown, note?: string) =>
+  normalizeSave(await service.post<SaveModelResult>(ep.models(), saveBody(config, note)));
 
 /**
- * 更新模型草稿
+ * 更新模型：已启用的模型保存即生效（校验不过会被后端拒绝）
  * @param key 模型 key
  * @param config 配置正文
  * @param note 备注
  * @returns 保存结果
  */
-export const updateModelDraft = async (key: string, config: unknown, note?: string) =>
-  normalizeSave(await service.put<SaveDraftResult>(ep.model(key), saveBody(config, note)));
+export const updateModel = async (key: string, config: unknown, note?: string) =>
+  normalizeSave(await service.put<SaveModelResult>(ep.model(key), saveBody(config, note)));
 
-const normalizeSave = (result: SaveDraftResult): SaveDraftResult => ({
+const normalizeSave = (result: SaveModelResult): SaveModelResult => ({
   ...result,
   issues: result?.issues ?? [],
 });
 
 /**
- * 校验模型配置；config 不传就校验已保存的最新草稿
+ * 校验模型配置；config 不传就校验已保存的配置
  * @param key 模型 key
  * @param config 待校验的配置正文
  * @returns 校验结果
@@ -235,43 +234,9 @@ export const validateModel = async (key: string, config?: unknown): Promise<Vali
 };
 
 /**
- * 发布模型草稿
+ * 模型启用 / 停用：启用前后端会检查配置、渠道与 Key，不通过会报错
  * @param key 模型 key
- * @returns 新发布的版本
- */
-export const publishModel = (key: string) =>
-  service.post<ConfigRevision>(ep.modelPublish(key), undefined);
-
-/**
- * 模型历史版本
- * @param key 模型 key
- * @returns 历史版本列表
- */
-export const listModelRevisions = async (key: string) =>
-  (await service.get<ConfigRevision[] | null>(ep.modelRevisions(key), undefined)) ?? [];
-
-/**
- * 模型的某个历史版本
- * @param key 模型 key
- * @param revisionId 版本 ID
- * @returns 版本详情
- */
-export const getModelRevision = (key: string, revisionId: number) =>
-  service.get<ConfigRevision>(ep.modelRevision(key, revisionId), undefined);
-
-/**
- * 回滚到指定历史版本
- * @param key 模型 key
- * @param revisionId 目标版本 ID
- * @returns 回滚后的版本
- */
-export const rollbackModel = (key: string, revisionId: number) =>
-  service.post<ConfigRevision>(ep.modelRollback(key), { revision_id: revisionId });
-
-/**
- * 模型上下架
- * @param key 模型 key
- * @param enabled 是否上架
+ * @param enabled 是否启用
  */
 export const setModelEnabled = (key: string, enabled: boolean) =>
   service.put<unknown>(ep.modelEnabled(key), { enabled });

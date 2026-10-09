@@ -176,16 +176,16 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		}
 	}
 
-	// 5. 用草稿建模型 → 发布 → 出现在清单里
+	// 5. 保存模型 → 启用 → 出现在清单里
 	body := `{"key":"gpt","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
 		`"channels":[{"channel":"newapi-main","upstream_model":"gpt-4o"}],` +
 		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`
-	saved, err := e.cfg.SaveDraft(ctx, ModelDraftInput{Create: true, Body: json.RawMessage(body), AdminID: 1})
+	saved, err := e.cfg.SaveModel(ctx, ModelSaveInput{Create: true, Body: json.RawMessage(body), AdminID: 1})
 	if err != nil || len(saved.Issues) != 0 {
-		t.Fatalf("保存草稿失败：%+v %v", saved, err)
+		t.Fatalf("保存失败：%+v %v", saved, err)
 	}
-	if _, err := e.cfg.Publish(ctx, "gpt", 1); err != nil {
-		t.Fatalf("发布失败：%v", err)
+	if err := e.cfg.SetModelEnabled(ctx, "gpt", true, 1); err != nil {
+		t.Fatalf("启用失败：%v", err)
 	}
 	models, err := e.cfg.ListModels(ctx, "text")
 	if err != nil || len(models) != 1 || models[0].Key != "gpt" {

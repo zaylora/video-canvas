@@ -51,8 +51,8 @@ const TABS: Array<{ id: ModelTabId; label: string; icon: LucideIcon }> = [
 const LINE_HEIGHT = 20;
 
 /**
- * 模型编辑弹窗（设计稿样式）：顶部身份与版本、三个页签、发布前待办、左表单右预览、底部上架与操作。
- * JSON 是事实来源，表单只是对它的读写；“更多”里可以切到 JSON 直接编辑、校验、回滚。
+ * 模型编辑弹窗（设计稿样式）：顶部身份与上线状态、三个页签、上线前待办、左表单右预览、底部取消 / 保存。
+ * JSON 是事实来源，表单只是对它的读写。
  */
 export function ModelDialog({
   ws,
@@ -102,8 +102,7 @@ export function ModelDialog({
   const upstream = body ? readModelChannel(body).upstreamModel : "";
   const checks = modelChecks(body, ws.info, ws.issues);
   const disabled = ws.working || ws.loadingDetail;
-  const published = ws.detail?.published;
-  const draft = ws.detail?.draft;
+  const online = !!ws.detail?.enabled;
   const spinner = (name: string, icon: React.ReactNode) =>
     ws.busy === name ? <Loader2 className="animate-spin" /> : icon;
   const channelsReady = catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready";
@@ -143,7 +142,7 @@ export function ModelDialog({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 顶部：头像、标题与版本、渠道 · 上游 ID、更多、关闭 */}
+      {/* 顶部：头像、标题与上线状态、渠道 · 上游 ID、关闭 */}
       <div className="flex items-start gap-4 border-b px-6 py-4">
         <VendorAvatar
           vendor={body ? readModelString(body, "vendor") : ""}
@@ -157,17 +156,14 @@ export function ModelDialog({
               {ws.isNew ? "新建模型" : "编辑模型"}
             </DialogTitle>
             {!ws.isNew &&
-              (published ? (
+              (online ? (
                 <Tag tone="success">
                   <StatusDot tone="success" />
-                  已发布 v{published.revision_no}
+                  已上线
                 </Tag>
               ) : (
-                <Tag>未发布</Tag>
+                <Tag>未上线</Tag>
               ))}
-            {draft && draft.id !== published?.id && (
-              <Tag tone="info">草稿 v{draft.revision_no} 待发布</Tag>
-            )}
             {ws.dirty && <Tag tone="warning">有未保存修改</Tag>}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-sm">
@@ -226,8 +222,8 @@ export function ModelDialog({
                 </div>
               }
             >
-              这是从渠道导入的草稿，<b>不会自动上架</b>
-              。逐个确认、保存草稿、测试，再发布。
+              这是从渠道导入的草稿，保存后<b>默认不上线</b>
+              。逐个确认、保存、测试，再在列表里打开「上线」开关。
             </Notice>
           )}
         </div>
@@ -314,7 +310,7 @@ export function ModelDialog({
         </div>
       )}
 
-      {/* 底栏：取消 / 保存（保存草稿） */}
+      {/* 底栏：取消 / 保存（已上线的模型保存即生效） */}
       <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={ws.closeEditor}>

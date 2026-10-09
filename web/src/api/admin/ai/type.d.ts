@@ -294,41 +294,11 @@ export interface ConfigListItem {
   enabled?: boolean;
   /** 排序值 */
   sort?: number;
-  /** 已发布版本 ID，未发布为 null */
-  published_revision_id: number | null;
-  /** 已发布版本号，未发布为 null */
-  published_revision_no: number | null;
-  /** 草稿版本号，无草稿为 null */
-  draft_revision_no: number | null;
-  /** 是否存在尚未发布的草稿 */
-  has_unpublished_draft: boolean;
   /** 最近更新时间 */
   updated_at: string;
 }
 
-/** 模型配置的一个历史版本 */
-export interface ConfigRevision {
-  /** 版本 ID */
-  id: number;
-  /** 配置目标类型（只剩 model） */
-  target: string;
-  /** 模型 key */
-  target_key: string;
-  /** 版本号 */
-  revision_no: number;
-  /** 配置正文（JSON） */
-  body_json: unknown;
-  /** 版本状态：草稿 / 已发布 / 已归档 */
-  status: "draft" | "published" | "archived";
-  /** 创建人用户 ID */
-  created_by: number;
-  /** 版本备注 */
-  note: string;
-  /** 创建时间 */
-  created_at: string;
-}
-
-/** 模型详情：草稿与已发布正文 */
+/** 模型详情：配置正文与启用状态 */
 export interface ConfigDetail {
   /** 配置目标类型 */
   target: string;
@@ -340,19 +310,15 @@ export interface ConfigDetail {
   enabled?: boolean;
   /** 排序值 */
   sort?: number;
-  /** 最新草稿，无草稿为 null */
-  draft: ConfigRevision | null;
-  /** 当前已发布版本，未发布为 null */
-  published: ConfigRevision | null;
+  /** 配置正文（JSON 对象） */
+  body: unknown;
   /** 最近更新时间 */
   updated_at: string;
 }
 
-/** 保存草稿的结果 */
-export interface SaveDraftResult {
-  /** 保存后的草稿版本 */
-  revision: ConfigRevision;
-  /** 校验发现的问题 */
+/** 保存的结果 */
+export interface SaveModelResult {
+  /** 校验发现的问题（有问题也已保存，但启用会被拦） */
   issues: ConfigIssue[];
 }
 

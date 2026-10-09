@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Loader2,
-  PencilLine,
-  Rocket,
-  Trash2,
-} from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Loader2, PencilLine, Trash2 } from "lucide-react";
 
 import type { ChannelView } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
@@ -34,7 +27,7 @@ import { Notice } from "@/components/admin-ui/notice";
 import { batchLabel, type BatchPatch, type ModelBatch } from "./use-model-batch";
 
 /**
- * 勾选后出现的批量操作条：批量上线 / 下线 / 上线修改 / 修改 / 删除。
+ * 勾选后出现的批量操作条：批量上线 / 下线 / 修改 / 删除。
  * 删除先二次确认；每个操作完成后弹出逐项结果。
  */
 export function BatchBar({
@@ -60,7 +53,7 @@ export function BatchBar({
       destructive: true,
       confirmLabel: "删除",
       description:
-        "还在上线的会跳过（要先下线）。模型连同全部历史版本彻底删除，不能恢复；历史生成任务照常可以查看。",
+        "还在上线的会跳过（要先下线）。模型彻底删除，不能恢复；历史生成任务照常可以查看。",
       onConfirm: () => void batch.remove(selected),
     });
 
@@ -79,12 +72,6 @@ export function BatchBar({
             icon={<ArrowDownToLine />}
             disabled={busy}
             onClick={() => void batch.setEnabled(selected, false)}
-          />
-          <BulkActionButton
-            label="上线修改"
-            icon={<Rocket />}
-            disabled={busy}
-            onClick={() => void batch.publishDrafts(selected)}
           />
           <BulkActionButton
             label="批量修改"
@@ -117,9 +104,9 @@ export function BatchBar({
         count={selected.length}
         channels={channels}
         onClose={() => setEditing(false)}
-        onSubmit={(patch, publish) => {
+        onSubmit={(patch) => {
           setEditing(false);
-          void batch.edit(selected, patch, publish);
+          void batch.edit(selected, patch);
         }}
       />
 
@@ -185,7 +172,7 @@ function EditDialog({
   count: number;
   channels: ChannelView[];
   onClose: () => void;
-  onSubmit: (patch: BatchPatch, publish: boolean) => void;
+  onSubmit: (patch: BatchPatch) => void;
 }) {
   const [creditsOn, setCreditsOn] = useState(false);
   const [credits, setCredits] = useState("");
@@ -193,7 +180,6 @@ function EditDialog({
   const [deadline, setDeadline] = useState("30m");
   const [channelOn, setChannelOn] = useState(false);
   const [channel, setChannel] = useState("");
-  const [publish, setPublish] = useState(false);
 
   const creditsValue = Number(credits);
   const creditsError =
@@ -210,7 +196,7 @@ function EditDialog({
     if (creditsOn) patch.price = creditsValue;
     if (deadlineOn) patch.deadline = deadline.trim();
     if (channelOn) patch.channel = channel;
-    onSubmit(patch, publish);
+    onSubmit(patch);
   };
 
   return (
@@ -219,7 +205,7 @@ function EditDialog({
         <DialogHeader>
           <DialogTitle>批量修改 {count} 个模型</DialogTitle>
           <DialogDescription>
-            只改勾选的字段，其余保持不变。修改保存为新草稿，不影响线上版本。
+            只改勾选的字段，其余保持不变。已上线的模型保存后立即生效。
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -270,7 +256,7 @@ function EditDialog({
             {channelOn && (
               <FormField
                 label="统一切换到"
-                hint="上游模型 ID 不变；渠道不支持该类型时发布会被拒绝"
+                hint="上游模型 ID 不变；渠道不支持该类型时，已上线的模型会保存失败"
                 error={channelError ?? undefined}
               >
                 <NativeSelect
@@ -288,10 +274,6 @@ function EditDialog({
               </FormField>
             )}
           </div>
-          <label className="flex items-center gap-2 border-t pt-3 text-sm">
-            <Checkbox checked={publish} onCheckedChange={(v) => setPublish(!!v)} />
-            保存后立即发布（直接影响线上）
-          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

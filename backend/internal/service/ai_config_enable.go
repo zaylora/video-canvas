@@ -22,92 +22,28 @@ type aiResolvedChannel struct {
 	meta    *pluginmeta.Meta
 }
 
-// Publish 发布最新草稿。发布前置检查见 checkPublishable（正文无问题、渠道与插件可用、插件支持该 kind、需要鉴权时渠道 Key 已设置）。
-// 发布成功后立即刷新 Registry 内存，新任务马上使用新版本，进行中的任务仍按各自的快照执行。
-func (s *AIConfigService) Publish(ctx context.Context, key string, adminID uint64) (*model.AIConfigRevision, error) {
-	// 1. 取最新草稿：没有草稿返回 409
-	draft, err := s.repo.GetDraft(ctx, model.ConfigTargetModel, key)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrConfigNoDraft
-	}
-	if err != nil {
-		return nil, err
-	}
-	// 2. 发布前置检查
-	ptr, err := s.checkPublishable(ctx, key, draft.BodyJSON)
-	if err != nil {
-		return nil, err
-	}
-	// 3. 事务里切换发布指针。用 draft.ID 而不是“最新草稿”，
-	//    这样校验之后草稿又被别人改掉时不会把没校验过的正文发布出去，而是返回冲突让运营刷新
-	rev, err := s.repo.PublishDraft(ctx, ptr, draft.ID)
-	if errors.Is(err, repository.ErrNotFound) || errors.Is(err, repository.ErrRevisionConflict) {
-		return nil, errcode.ErrConfigNoDraft.WithMsg("草稿已发生变化，请刷新后重新发布")
-	}
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("发布模型配置", zap.String("key", key), zap.Uint64("revision_id", rev.ID),
-		zap.Int("revision_no", rev.RevisionNo), zap.Uint64("admin_id", adminID))
-	// 4. 热生效：刷新本实例内存并广播
-	s.notifyChanged(ctx, "publish model/"+key)
-	return rev, nil
-}
-
-// Rollback 把发布指针改回历史版本。只允许回到已归档的版本；回滚前按发布同样的标准重新检查，
-// 避免回到一个当时没校验过的旧草稿，或者它的渠道 / 插件 / 凭证已经不满足条件的版本。
-func (s *AIConfigService) Rollback(ctx context.Context, key string, revisionID, adminID uint64) (*model.AIConfigRevision, error) {
-	// 1. 取出目标 revision 并核对归属
-	rev, err := s.GetRevision(ctx, key, revisionID)
-	if err != nil {
-		return nil, err
-	}
-	// 2. 状态检查：当前已发布的没必要回滚，草稿不是历史版本
-	switch rev.Status {
-	case model.RevisionPublished:
-		return nil, errcode.ErrConfigInvalid.WithMsg("该版本已是当前发布版本")
-	case model.RevisionDraft:
-		return nil, errcode.ErrConfigInvalid.WithMsg("草稿不是历史版本，请使用发布")
-	}
-	// 3. 发布前置检查
-	ptr, err := s.checkPublishable(ctx, key, rev.BodyJSON)
-	if err != nil {
-		return nil, err
-	}
-	// 4. 事务里改回指针；并发被别人改动（状态变化）时返回冲突
-	out, err := s.repo.Rollback(ctx, ptr, rev.ID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrConfigNotFound
-	}
-	if errors.Is(err, repository.ErrRevisionConflict) {
-		return nil, errcode.ErrConfigInvalid.WithMsg("版本状态已变化，请刷新后重试")
-	}
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("回滚模型配置", zap.String("key", key), zap.Uint64("revision_id", out.ID),
-		zap.Int("revision_no", out.RevisionNo), zap.Uint64("admin_id", adminID))
-	// 5. 热生效
-	s.notifyChanged(ctx, "rollback model/"+key)
-	return out, nil
-}
-
-// SetModelEnabled 上架 / 下架模型。上架要求模型已经发布过；下架立即生效，进行中的任务不受影响。
+// SetModelEnabled 启用 / 停用模型，启用后用户才能使用。启用前按 checkEnableable 检查已保存的配置，不通过不能启用；停用立即生效，进行中的任务不受影响。
 func (s *AIConfigService) SetModelEnabled(ctx context.Context, key string, enabled bool, adminID uint64) error {
 	// 1. 模型必须存在
-	m, err := s.repo.GetModelPointer(ctx, key)
+	_, err := s.repo.GetModelPointer(ctx, key)
 	if err != nil {
 		return aiNotFound(err)
 	}
-	// 2. 上架前必须已发布：没发布的模型上架后也不会出现在清单里，属于误操作，提前拦下
-	if enabled && m.PublishedRevisionID == nil {
-		return errcode.ErrConfigInvalid.WithMsg("模型尚未发布，无法上架")
+	// 2. 启用前检查已保存的配置：不满足条件的模型启用后也不会出现在清单里（或任务会失败），属于误操作，提前拦下
+	if enabled {
+		cur, err := s.repo.GetModelConfig(ctx, key)
+		if err != nil {
+			return aiNotFound(err)
+		}
+		if _, err := s.checkEnableable(ctx, key, cur.BodyJSON); err != nil {
+			return err
+		}
 	}
 	// 3. 写库并热生效
 	if err := s.repo.SetModelEnabled(ctx, key, enabled); err != nil {
 		return aiNotFound(err)
 	}
-	logger.Info("模型上下架", zap.String("key", key), zap.Bool("enabled", enabled), zap.Uint64("admin_id", adminID))
+	logger.Info("模型启停", zap.String("key", key), zap.Bool("enabled", enabled), zap.Uint64("admin_id", adminID))
 	s.notifyChanged(ctx, "enabled "+key)
 	return nil
 }
@@ -124,11 +60,11 @@ func (s *AIConfigService) SetModelSort(ctx context.Context, key string, sort int
 	return nil
 }
 
-// checkPublishable 是发布和回滚共用的前置检查（admin-ai-api.md“发布前置检查”），通过后返回要同步到指针行的冗余字段：
+// checkEnableable 是启用模型、保存已启用模型共用的前置检查，通过后返回要同步到指针行的冗余字段：
 // 正文无校验问题 → 渠道存在且启用、插件启用、插件版本支持该 kind → 插件需要鉴权时渠道 Key 已设置。
 // 每一项不满足都返回对应的业务错误，而不是笼统的“配置无效”，运营据此知道该找谁（渠道 / Key 由 super_admin 管）。
-func (s *AIConfigService) checkPublishable(ctx context.Context, key string, body []byte) (repository.ConfigPointer, error) {
-	// 1. 正文校验：有任何问题都不允许发布
+func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body []byte) (repository.ConfigPointer, error) {
+	// 1. 正文校验：有任何问题都不允许启用
 	meta, cfg, issues := aiBodyIssues(key, body)
 	if meta == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置正文不是合法的 JSON 对象")
@@ -136,12 +72,12 @@ func (s *AIConfigService) checkPublishable(ctx context.Context, key string, body
 	if len(issues) > 0 || cfg == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置校验未通过：" + aiFormatIssues(issues))
 	}
-	// 2. 渠道与插件可用：否则发布后模型也不会出现在清单里，属于无效发布
+	// 2. 渠道与插件可用：否则启用后模型也不会出现在清单里
 	rc, err := s.resolveChannel(ctx, cfg)
 	if err != nil {
 		return repository.ConfigPointer{}, err
 	}
-	// 3. 渠道 Key 已设置：否则发布后每个任务都会因缺凭证而失败
+	// 3. 渠道 Key 已设置：否则启用后每个任务都会因缺凭证而失败
 	if err := s.checkChannelSecret(ctx, rc); err != nil {
 		return repository.ConfigPointer{}, err
 	}
@@ -151,7 +87,7 @@ func (s *AIConfigService) checkPublishable(ctx context.Context, key string, body
 // resolveChannel 按模型的 channels[0] 找到渠道、它固定的插件版本与 meta，并做可用性检查：
 // 渠道存在（ErrChannelNotFound）且启用（ErrChannelDisabled）；插件存在且启用（ErrChannelInvalid / ErrPluginDisabled）；
 // 版本行存在、属于该插件、meta 能解析（ErrChannelInvalid）；插件 endpoints 里有模型的 kind（ErrConfigInvalid：是模型选错了渠道）。
-// 仓储的其他错误原样返回。发布检查、保存时的跨对象检查、试跑都用它，保证三处的标准一致。
+// 仓储的其他错误原样返回。启用检查、保存时的跨对象检查、试跑都用它，保证三处的标准一致。
 func (s *AIConfigService) resolveChannel(ctx context.Context, cfg *modelcfg.ModelConfig) (*aiResolvedChannel, error) {
 	// 1. 渠道：已校验过的配置 channels 恰好一个，这里的判空只是防御
 	if len(cfg.Channels) == 0 {

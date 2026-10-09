@@ -43,7 +43,7 @@ func (s *AIConfigService) DeleteModel(ctx context.Context, key string, adminID u
 	if m.Enabled {
 		return errcode.ErrModelEnabled
 	}
-	// 2. 事务内加锁复查并删除全部 revision 与指针行；并发被重新上架时仓储返回 ErrInUse，翻译成同一个 409
+	// 2. 事务内加锁复查并删除配置行与指针行；并发被重新上架时仓储返回 ErrInUse，翻译成同一个 409
 	err = s.repo.DeleteModel(ctx, key)
 	if errors.Is(err, repository.ErrInUse) {
 		return errcode.ErrModelEnabled
@@ -52,7 +52,7 @@ func (s *AIConfigService) DeleteModel(ctx context.Context, key string, adminID u
 		return aiNotFound(err)
 	}
 	// 3. 热生效：已下架的模型本来就不在公开清单里，刷新是为了让 Registry 里彻底没有它（试跑、dry-run 也找不到）。
-	//    模型配置的写操作不写审计表（审计表只覆盖插件 / 渠道 / 凭证），与发布、上下架一样记业务日志
+	//    模型配置的写操作不写审计表（审计表只覆盖插件 / 渠道 / 凭证），与保存、启停一样记业务日志
 	logger.Info("删除模型", zap.String("key", key), zap.Uint64("admin_id", adminID))
 	s.notifyChanged(ctx, "delete model/"+key)
 	return nil

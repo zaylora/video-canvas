@@ -27,14 +27,10 @@ func delModelBody(key, label, channel string) string {
 	return `{"key":"` + key + `","label":"` + label + `","channels":[{"channel":"` + channel + `","upstream_model":"x"}]}`
 }
 
-// delPublish 保存并发布一个模型版本。
+// delPublish 保存一个模型配置。
 func delPublish(t *testing.T, r *AIConfigRepository, key, body string) {
 	t.Helper()
-	rev := aicRepoSaveModel(t, r, key, body)
-	ptr := ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video"}
-	if _, err := r.PublishDraft(context.Background(), ptr, rev.ID); err != nil {
-		t.Fatalf("发布失败：%v", err)
-	}
+	aicRepoSaveModel(t, r, key, body)
 }
 
 // delChannelTask 插入一个快照冻结了渠道 channelKey 的任务。
@@ -80,20 +76,22 @@ func TestAIConfigRepository_DeleteModel(t *testing.T) {
 		if left != 0 {
 			t.Fatalf("revision 应全部删除：还剩 %d", left)
 		}
-		pub, _ := r.LoadPublishedModels(ctx)
+		pub, _ := r.LoadModels(ctx)
 		for _, m := range pub {
 			if m.Key == "m-del" {
 				t.Fatal("Registry 加载结果里不应有已删除的模型")
 			}
 		}
-		if revs, _ := r.ListRevisions(ctx, model.ConfigTargetModel, "m-keep", 0); len(revs) != 1 {
-			t.Fatalf("其他模型的 revision 不应受影响：%d", len(revs))
+		var keep int64
+		db.Model(&model.AIConfigRevision{}).Where("target_key = ?", "m-keep").Count(&keep)
+		if keep != 1 {
+			t.Fatalf("其他模型的配置不应受影响：%d", keep)
 		}
 		rev := aicRepoSaveModel(t, r, "m-del", `{"a":3}`)
 		if rev.RevisionNo != 1 {
 			t.Fatalf("同名 key 重新新建时 revision_no 应从 1 开始：%d", rev.RevisionNo)
 		}
-		if p, err := r.GetModelPointer(ctx, "m-del"); err != nil || p.Enabled || p.PublishedRevisionID != nil {
+		if p, err := r.GetModelPointer(ctx, "m-del"); err != nil || p.Enabled {
 			t.Fatalf("重新新建的指针行应是全新的：%+v %v", p, err)
 		}
 	})
@@ -111,10 +109,9 @@ func TestAIChannelRepository_DeleteChannel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// m-pub：已发布版本引用 c-used（label 取已发布的）；m-draft：只有草稿引用；
-	// m-arch：只有已归档的历史版本引用（不算）；m-gone：已删除（不算）
-	delPublish(t, mr, "m-pub", delModelBody("m-pub", "发布名", "c-used"))
-	aicRepoSaveModel(t, mr, "m-pub", delModelBody("m-pub", "草稿名", "c-used"))
+	// m-pub、m-draft：当前配置引用 c-used；m-arch：先引用 c-used、后改绑 c-free（保存是覆盖，旧引用不算）；
+	// m-gone：已删除（不算）
+	delPublish(t, mr, "m-pub", delModelBody("m-pub", "名称", "c-used"))
 	aicRepoSaveModel(t, mr, "m-draft", delModelBody("m-draft", "", "c-used"))
 	delPublish(t, mr, "m-arch", delModelBody("m-arch", "旧", "c-used"))
 	delPublish(t, mr, "m-arch", delModelBody("m-arch", "新", "c-free"))
@@ -125,16 +122,16 @@ func TestAIChannelRepository_DeleteChannel(t *testing.T) {
 	delChannelTask(t, db, model.TaskRunning, "c-task")
 	delChannelTask(t, db, model.TaskSucceeded, "c-empty") // 终态任务不算
 
-	t.Run("统计口径：草稿 / 已发布算，归档版本与已删除模型不算", func(t *testing.T) {
+	t.Run("统计口径：只算模型当前配置，已改绑的旧引用与已删除模型不算", func(t *testing.T) {
 		if refs, _ := cr.CountChannelRefs(ctx, "c-free"); len(refs.Models) != 1 || refs.Models[0].Key != "m-arch" || refs.Models[0].Label != "新" {
-			t.Fatalf("c-free 只应被 m-arch 的当前发布版本引用：%+v", refs)
+			t.Fatalf("c-free 只应被 m-arch 的当前配置引用：%+v", refs)
 		}
 		refs, err := cr.CountChannelRefs(ctx, "c-used")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(refs.Models) != 2 || refs.Models[0].Key != "m-draft" || refs.Models[1].Key != "m-pub" ||
-			refs.Models[1].Label != "发布名" || refs.Models[0].Label != "" || refs.ActiveTasks != 0 {
+			refs.Models[1].Label != "名称" || refs.Models[0].Label != "" || refs.ActiveTasks != 0 {
 			t.Fatalf("引用不符合预期：%+v", refs)
 		}
 		refs, _ = cr.CountChannelRefs(ctx, "c-task")

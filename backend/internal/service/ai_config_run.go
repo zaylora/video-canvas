@@ -20,7 +20,7 @@ import (
 // aiRedactMask 是凭证明文在输出里的替换文本。
 const aiRedactMask = "***"
 
-// DryRun 用模型草稿（没有草稿则用已发布版本）+ 渠道当前配置 + 渠道固定的插件版本组装快照，按模型能力校验示例输入，
+// DryRun 用模型已保存的配置 + 渠道当前配置 + 渠道固定的插件版本组装快照，按模型能力校验示例输入，
 // 交给宿主渲染请求但不发送，返回脱敏后的渲染结果（插件返回的请求描述与宿主注入鉴权后的最终请求）。
 func (s *AIConfigService) DryRun(ctx context.Context, modelKey string, input map[string]any) (any, error) {
 	// 1. 依赖检查：宿主适配器在接线时注入
@@ -121,14 +121,11 @@ func (s *AIConfigService) GetTestTrace(ctx context.Context, adminID, taskID uint
 	return &TestTraceView{Steps: steps}, nil
 }
 
-// buildTrialSnapshot 用模型草稿（没有草稿用已发布版本）+ 渠道当前配置 + 渠道固定的插件版本组装试跑快照。
-// 配置本身校验不通过、渠道 / 插件不可用时直接报错（与发布检查同一套标准），不拿有问题的配置去试跑。
+// buildTrialSnapshot 用模型已保存的配置 + 渠道当前配置 + 渠道固定的插件版本组装试跑快照。
+// 配置本身校验不通过、渠道 / 插件不可用时直接报错（与启用检查同一套标准），不拿有问题的配置去试跑。
 func (s *AIConfigService) buildTrialSnapshot(ctx context.Context, modelKey string) (*provider.Snapshot, error) {
-	// 1. 模型 revision：优先最新草稿
-	rev, err := s.repo.GetDraft(ctx, model.ConfigTargetModel, modelKey)
-	if errors.Is(err, repository.ErrNotFound) {
-		rev, err = s.repo.GetPublishedRevision(ctx, model.ConfigTargetModel, modelKey)
-	}
+	// 1. 模型已保存的配置
+	rev, err := s.repo.GetModelConfig(ctx, modelKey)
 	if err != nil {
 		return nil, aiNotFound(err)
 	}

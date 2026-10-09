@@ -148,7 +148,7 @@ export function parseImportPrice(
   return { ok: true, value: Number(value) };
 }
 
-/** 批量方式：只存草稿 / 存完直接上线 */
+/** 批量方式：只保存（默认不上线）/ 保存后直接上线 */
 export type ImportMode = "draft" | "online";
 
 /** 一行的处理结果 */
@@ -158,16 +158,14 @@ export type ImportOutcome = {
   status: "done" | "skipped" | "failed";
   /** 跳过 / 失败的原因，或成功时的补充说明 */
   reason?: string;
-  /** 草稿是否已落库（上线失败但草稿已存也算），用于更新“已存在”列表，避免重复创建 */
+  /** 模型是否已落库（上线失败但已保存也算），用于更新“已存在”列表，避免重复创建 */
   saved: boolean;
 };
 
 /** 批量处理用到的接口（调用方注入真实请求，测试注入假的） */
 export type ImportApi = {
-  /** 新建草稿，返回校验问题 */
-  createDraft: (body: Record<string, unknown>) => Promise<{ issues: readonly unknown[] }>;
-  /** 发布草稿 */
-  publish: (key: string) => Promise<unknown>;
+  /** 新建模型（保存，默认不上线），返回校验问题 */
+  create: (body: Record<string, unknown>) => Promise<{ issues: readonly unknown[] }>;
   /** 上线 / 下线 */
   setEnabled: (key: string, enabled: boolean) => Promise<unknown>;
 };
@@ -179,8 +177,8 @@ const TOKEN_NOTE = "按 Token 计费，没有统一价格，价格未改";
 
 /**
  * 逐个（串行）保存导入的模型：不因某一个失败而中断，每个都给出结果。
- * - draft：只保存草稿；
- * - online：保存后有校验问题的只留草稿（记为跳过），没问题的发布并上线。
+ * - draft：只保存，不上线；
+ * - online：保存后有校验问题的只保存不上线（记为跳过），没问题的接着上线。
  * @param jobs 待处理的正文
  * @param mode 处理方式
  * @param api 请求函数
@@ -199,19 +197,18 @@ export async function runImportJobs(
     const base = { key: job.key, label: job.label, saved: false };
     const note = job.priceSkipped ? TOKEN_NOTE : undefined;
     try {
-      const result = await api.createDraft(job.body);
+      const result = await api.create(job.body);
       base.saved = true;
       if (mode === "online" && result.issues.length > 0) {
         out.push({
           ...base,
           status: "skipped",
-          reason: [`有 ${result.issues.length} 个问题，已存为草稿`, note]
+          reason: [`有 ${result.issues.length} 个问题，已保存但没上线`, note]
             .filter(Boolean)
             .join("；"),
         });
       } else {
         if (mode === "online") {
-          await api.publish(job.key);
           await api.setEnabled(job.key, true);
         }
         out.push({ ...base, status: "done", reason: note });
@@ -221,7 +218,7 @@ export async function runImportJobs(
       out.push({
         ...base,
         status: "failed",
-        reason: base.saved ? `已存为草稿，上线失败：${reason}` : reason,
+        reason: base.saved ? `已保存，上线失败：${reason}` : reason,
       });
     }
     onProgress(index + 1, jobs.length);

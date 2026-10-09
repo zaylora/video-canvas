@@ -2,13 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
-import {
-  createModelDraft,
-  importFromChannel,
-  listModels,
-  publishModel,
-  setModelEnabled,
-} from "@/api/admin/ai";
+import { createModel, importFromChannel, listModels, setModelEnabled } from "@/api/admin/ai";
 import type { ChannelView, ModelDraft, PluginView } from "@/api/admin/ai/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { NativeSelect } from "@/components/admin-ui/native-select";
@@ -71,7 +65,7 @@ import { useAliveRef } from "../../use-admin";
  * 从渠道导入模型（admin 与 super_admin 都可用）：
  * 1. 参数：按插件 meta.import.args 渲染，没有参数就直接拉取；
  * 2. 批量处理表格：勾选、就地改展示名 / 能力类型 / 产品标识，上方统一设置默认价格；
- * 3. 处理方式：「全部保存为草稿」「全部上线」在对话框里逐个处理并给出结果；
+ * 3. 处理方式：「全部保存」「全部上线」在对话框里逐个处理并给出结果；
  *    「逐个编辑」沿用旧流程，草稿经 sessionStorage 带到模型页逐个处理。
  * 执行中不能关闭对话框。走全局弹窗 store：openDialog(ImportDialog, { channel, plugins, onImported })。
  * @param onImported 「逐个编辑」暂存成功（或用户选择不预填继续）后跳转到模型页；draftId 为 null 表示不预填
@@ -291,8 +285,7 @@ function ImportBody({
         jobs,
         mode,
         {
-          createDraft: (body) => createModelDraft(body, "从渠道导入"),
-          publish: publishModel,
+          create: (body) => createModel(body, "从渠道导入"),
           setEnabled: setModelEnabled,
         },
         (done, total) => aliveRef.current && setProgress({ done, total }),
@@ -327,7 +320,7 @@ function ImportBody({
         <DialogTitle>从渠道导入模型</DialogTitle>
         <DialogDescription>
           渠道 <b>{channel.name}</b>
-          。勾选要导入的模型，可以直接保存为草稿或一键上线；需要细调的选「逐个编辑」。
+          。勾选要导入的模型，可以直接保存（默认不上线）或一键上线；需要细调的选「逐个编辑」。
         </DialogDescription>
       </DialogHeader>
 
@@ -470,7 +463,7 @@ function ImportBody({
             </div>
           }
         >
-          上线后用户马上能用；有问题的只存为草稿，不会上线。
+          上线后用户马上能用；有问题的只保存、不会上线。
         </Notice>
       )}
 
@@ -520,7 +513,7 @@ function ImportBody({
             </Button>
           }
         >
-          可能是隐私模式。草稿无法带入编辑器，可以改用「全部保存为草稿」，或进入模型页后手动填写。
+          可能是隐私模式。草稿无法带入编辑器，可以改用「全部保存」，或进入模型页后手动填写。
         </Notice>
       )}
 
@@ -547,7 +540,7 @@ function ImportBody({
             </Button>
             <Button variant="outline" disabled={blocked} onClick={() => void runBatch("draft")}>
               {running === "draft" && <Loader2 className="animate-spin" />}
-              全部保存为草稿（{order.length}）
+              全部保存（{order.length}，不上线）
             </Button>
             <Button disabled={blocked || !!onlineBlock} onClick={() => setConfirmOnline(true)}>
               {running === "online" && <Loader2 className="animate-spin" />}

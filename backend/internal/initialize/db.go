@@ -54,6 +54,10 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 		if err := db.AutoMigrate(model.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)
 		}
+		// 模型不再有版本管理：把老库里的多版本收敛成每个模型一份配置（草稿优先）；幂等，必须在 AutoMigrate 之后
+		if err := repository.MigrateModelSingleConfig(db); err != nil {
+			return nil, fmt.Errorf("migrate model single config: %w", err)
+		}
 		// worker 每秒扫描非终态任务：只给非终态建部分索引，终态任务（绝大多数）不占索引空间。
 		// GORM 的 where 标签不方便写 IN 列表，所以在迁移后补建。
 		if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_task_poll ON generation_tasks (next_poll_at) ` +

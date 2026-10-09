@@ -22,12 +22,13 @@ const aiIssuesShown = 10
 // aiIssuePathChannel 是跨对象检查（渠道 / 插件）问题的 JSON 路径：首期只有一个渠道。
 const aiIssuePathChannel = "channels[0].channel"
 
-// SaveDraft 保存模型配置草稿并返回校验发现的问题。in.Create=true 是新建（key 取自正文，已存在则报错），
+// SaveModel 保存模型配置并返回校验发现的问题。in.Create=true 是新建（key 取自正文，已存在则报错），
 // false 是更新（key 来自路径，必须已存在，且与正文里的 key 一致）。
-// 有校验问题也照常保存（运营需要保存半成品），只是发布时会被拦下。
-func (s *AIConfigService) SaveDraft(ctx context.Context, in ModelDraftInput) (*SaveDraftResult, error) {
+// 保存只写配置，不改启用状态：没启用的模型保存后用户仍看不到，有校验问题也照常保存（运营需要保存半成品），只是启用时会被拦下；
+// 已启用的模型保存即生效，所以必须通过和启用时同样的检查，否则拒绝保存，避免线上模型被改坏。
+func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*SaveModelResult, error) {
 	// 1. 解析正文里的 key / kind：这些字段要同步到指针行，所以正文必须至少是个带 key 的 JSON 对象，
-	//    否则无法确定这份草稿属于谁，无法保存
+	//    否则无法确定这份配置属于谁，无法保存
 	meta, err := aiParseMeta(in.Body)
 	if err != nil {
 		return nil, err
@@ -43,54 +44,61 @@ func (s *AIConfigService) SaveDraft(ctx context.Context, in ModelDraftInput) (*S
 	}
 
 	// 2. 新建要求 key 未被占用，更新要求已存在（避免 PUT 拼错 key 悄悄新建一个配置）
-	exists, err := s.pointerExists(ctx, key)
-	if err != nil {
+	ptr, err := s.repo.GetModelPointer(ctx, key)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
+	exists := err == nil
 	if in.Create && exists {
-		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("模型 %q 已存在，请使用 PUT 更新草稿", key))
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("模型 %q 已存在，请使用 PUT 更新", key))
 	}
 	if !in.Create && !exists {
 		return nil, errcode.ErrConfigNotFound
 	}
 
-	// 3. 校验正文（不阻塞保存）：正文本身的问题 + 渠道 / 插件的跨对象问题
+	// 3. 已启用的模型保存即生效：先过启用检查，不通过就拒绝，不落库
+	if exists && ptr.Enabled {
+		if _, err := s.checkEnableable(ctx, key, in.Body); err != nil {
+			return nil, err
+		}
+	}
+
+	// 4. 校验正文（不阻塞保存）：正文本身的问题 + 渠道 / 插件的跨对象问题
 	issues, err := s.collectIssues(ctx, key, in.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. 写入草稿：repo 事务里同步指针行、归档旧草稿、递增版本号。
-	//    enabled / sort 只在模型首次创建时取正文里的值，之后由上下架接口独占，避免改 JSON 时悄悄改变上架状态
-	rev, err := s.repo.SaveDraft(ctx, repository.SaveDraftInput{
+	// 5. 写入：repo 事务里同步指针行并覆盖配置正文。
+	//    新建的模型一律未启用（不看正文里的 enabled），得在列表里点启用并通过检查后用户才能用；
+	//    sort 只在首次创建时取正文里的值，之后启停与排序由接口独占，避免改 JSON 时悄悄改变上架状态
+	if _, err := s.repo.SaveModel(ctx, repository.SaveModelInput{
 		Pointer:        aiPointer(meta),
 		Body:           in.Body,
 		CreatedBy:      in.AdminID,
 		Note:           in.Note,
-		InitialEnabled: meta.Enabled,
+		InitialEnabled: false,
 		InitialSort:    meta.Sort,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
-	logger.Info("保存模型配置草稿", zap.String("key", key), zap.String("channel", meta.channel()),
-		zap.Int("revision_no", rev.RevisionNo), zap.Uint64("admin_id", in.AdminID), zap.Int("issues", len(issues)))
-	return &SaveDraftResult{Revision: rev, Issues: issues}, nil
+	logger.Info("保存模型配置", zap.String("key", key), zap.String("channel", meta.channel()),
+		zap.Uint64("admin_id", in.AdminID), zap.Int("issues", len(issues)))
+	// 6. 热生效：已启用的模型马上用新配置，没启用的也刷新一次（Registry 里的半成品不影响用户）
+	s.notifyChanged(ctx, "save model/"+key)
+	return &SaveModelResult{Issues: issues}, nil
 }
 
 // Validate 校验模型配置。body 非空时校验传入的正文（编辑器实时校验，不落库）；
-// 为空时校验已保存的最新草稿，没有草稿返回 ErrConfigNoDraft。
+// 为空时校验已保存的配置，没有保存过返回 ErrConfigNotFound。
 func (s *AIConfigService) Validate(ctx context.Context, key string, body json.RawMessage) (*ValidateResult, error) {
-	// 1. 没有传正文就取最新草稿
+	// 1. 没有传正文就取已保存的配置
 	if len(body) == 0 {
-		draft, err := s.repo.GetDraft(ctx, model.ConfigTargetModel, key)
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, errcode.ErrConfigNoDraft
-		}
+		cur, err := s.repo.GetModelConfig(ctx, key)
 		if err != nil {
-			return nil, err
+			return nil, aiNotFound(err)
 		}
-		body = json.RawMessage(draft.BodyJSON)
+		body = json.RawMessage(cur.BodyJSON)
 	}
 	// 2. 收集问题；Issues 保证是非 nil 切片，前端可以直接遍历
 	issues, err := s.collectIssues(ctx, key, body)
@@ -149,15 +157,6 @@ func aiBodyIssues(key string, body []byte) (*aiConfigMeta, *modelcfg.ModelConfig
 		return meta, nil, issues
 	}
 	return meta, cfg, issues
-}
-
-// pointerExists 判断模型指针行是否存在。
-func (s *AIConfigService) pointerExists(ctx context.Context, key string) (bool, error) {
-	_, err := s.repo.GetModelPointer(ctx, key)
-	if errors.Is(err, repository.ErrNotFound) {
-		return false, nil
-	}
-	return err == nil, err
 }
 
 // aiParseMeta 从正文宽松取出同步字段；正文不是 JSON 对象、缺少 key、这几个字段类型不对都返回参数错误。

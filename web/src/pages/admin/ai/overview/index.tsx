@@ -1,7 +1,6 @@
 import {
   Check,
   ChevronRight,
-  CircleAlert,
   CircleArrowUp,
   KeyRound,
   PartyPopper,
@@ -31,14 +30,13 @@ const TODO_ICON: Record<AdminTodo["action"]["kind"], LucideIcon> = {
   "set-key": KeyRound,
   "open-plugin": PlugZap,
   "open-channel": RadioTower,
-  "open-models": CircleAlert,
   "upgrade-plugin": CircleArrowUp,
 };
 
 /**
  * 总览页（后台首页）：一眼看清“系统能不能用、哪里要处理”。
  * - 上线进度：接入平台（插件）→ 配置渠道 → 上线模型，卡住的那一步高亮并给主按钮；
- * - 待处理：插件停用波及模型、渠道缺 Key、渠道停用、插件可升级、有未上线的修改，
+ * - 待处理：插件停用波及模型、渠道缺 Key、渠道停用、插件可升级，
  *   每条一个修复按钮，能就地修的就地修（设置 Key），其余深链到对应位置。
  * 数据全部来自现有清单接口，在前端计算（见 utils/admin/health.ts）。
  */
@@ -114,10 +112,8 @@ export default function OverviewPage() {
         return;
       }
       navigate(`/admin/ai/plugins?key=${encodeURIComponent(action.pluginKey)}`);
-    } else if (action.kind === "open-channel") {
-      navigate(`/admin/ai/channels?key=${encodeURIComponent(action.channelKey)}`);
     } else {
-      navigate(`/admin/ai/models?status=${encodeURIComponent(action.filter)}`);
+      navigate(`/admin/ai/channels?key=${encodeURIComponent(action.channelKey)}`);
     }
   };
   const todoLabel = ({ action }: AdminTodo) =>
@@ -129,11 +125,9 @@ export default function OverviewPage() {
         ? "去插件页"
         : action.kind === "open-channel"
           ? "查看渠道"
-          : action.kind === "upgrade-plugin"
-            ? canWrite
-              ? "一键升级"
-              : "去插件页"
-            : "去查看";
+          : canWrite
+            ? "一键升级"
+            : "去插件页";
 
   return (
     <div className="h-full overflow-y-auto">

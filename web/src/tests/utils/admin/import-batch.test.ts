@@ -147,26 +147,25 @@ describe("runImportJobs", () => {
   });
 
   /** 假接口：按 key 决定行为，并记录调用 */
-  const fakeApi = (opts: { issues?: string[]; createFail?: string[]; publishFail?: string[] }) => {
+  const fakeApi = (opts: { issues?: string[]; createFail?: string[]; enableFail?: string[] }) => {
     const calls: string[] = [];
     const api: ImportApi = {
-      createDraft: async (body) => {
+      create: async (body) => {
         const key = body.key as string;
         calls.push(`create:${key}`);
         if (opts.createFail?.includes(key)) throw { message: `${key} 创建失败` };
         return { issues: opts.issues?.includes(key) ? [{}, {}] : [] };
       },
-      publish: async (key) => {
-        calls.push(`publish:${key}`);
-        if (opts.publishFail?.includes(key)) throw { message: "渠道未设置 Key" };
+      setEnabled: async (key, enabled) => {
+        calls.push(`enable:${key}:${enabled}`);
+        if (enabled && opts.enableFail?.includes(key)) throw { message: "渠道未设置 Key" };
       },
-      setEnabled: async (key, enabled) => void calls.push(`enable:${key}:${enabled}`),
     };
     return { api, calls };
   };
   const describeError = (error: unknown) => (error as { message: string }).message;
 
-  test("draft：只保存草稿，失败不中断，进度逐个回调", async () => {
+  test("draft：只保存不上线，失败不中断，进度逐个回调", async () => {
     const { api, calls } = fakeApi({ createFail: ["b"] });
     const progress: string[] = [];
     const out = await runImportJobs(
@@ -184,8 +183,8 @@ describe("runImportJobs", () => {
     expect(savedKeys(out)).toEqual(["a", "c"]);
   });
 
-  test("online：有问题的只存草稿记为跳过，没问题的发布并上线", async () => {
-    const { api, calls } = fakeApi({ issues: ["b"], publishFail: ["c"] });
+  test("online：有问题的只保存记为跳过，没问题的接着上线", async () => {
+    const { api, calls } = fakeApi({ issues: ["b"], enableFail: ["c"] });
     const out = await runImportJobs(
       [job("a"), job("b"), job("c")],
       "online",
@@ -193,20 +192,13 @@ describe("runImportJobs", () => {
       undefined,
       describeError,
     );
-    expect(calls).toEqual([
-      "create:a",
-      "publish:a",
-      "enable:a:true",
-      "create:b",
-      "create:c",
-      "publish:c",
-    ]);
+    expect(calls).toEqual(["create:a", "enable:a:true", "create:b", "create:c", "enable:c:true"]);
     expect(out[0]).toMatchObject({ status: "done", saved: true });
-    expect(out[1]).toMatchObject({ status: "skipped", reason: "有 2 个问题，已存为草稿" });
+    expect(out[1]).toMatchObject({ status: "skipped", reason: "有 2 个问题，已保存但没上线" });
     expect(out[2]).toMatchObject({
       status: "failed",
       saved: true,
-      reason: "已存为草稿，上线失败：渠道未设置 Key",
+      reason: "已保存，上线失败：渠道未设置 Key",
     });
     expect(savedKeys(out)).toEqual(["a", "b", "c"]);
     expect(summarizeImport(out)).toEqual({ done: 1, skipped: 1, failed: 1 });

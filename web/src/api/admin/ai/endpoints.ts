@@ -8,7 +8,7 @@
  *   PUT    /admin/ai/plugins/:key/enabled              启停，body = {enabled}
  *   DELETE /admin/ai/plugins/:key/versions/:version    删除未被引用的版本
  *   GET    /admin/ai/{plugins|channels|models}/:key/delete-check   删除预检：谁在引用它
- *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（模型连同全部历史版本，key 之后可以重新使用）
+ *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（key 之后可以重新使用）
  *   GET    /admin/ai/channels[/:key]                   渠道列表 / 详情
  *   GET    /admin/ai/channels/loads                    各渠道当前的生成中 / 排队任务数
  *   POST   /admin/ai/channels                          新建渠道
@@ -16,11 +16,10 @@
  *   PUT    /admin/ai/channels/:key/secret              设置 Key，body = {value}，只写
  *   POST   /admin/ai/channels/:key/check               连通性检查
  *   POST   /admin/ai/channels/:key/import              导入模型草稿，body = {args}
- *   GET|POST /admin/ai/models                          模型列表 / 新建草稿
- *   GET|PUT  /admin/ai/models/:key                     详情 / 更新草稿
- *   POST   /admin/ai/models/:key/{validate|publish|rollback|dry-run|test-run}
- *   GET    /admin/ai/models/:key/revisions[/:rid]      历史
- *   PUT    /admin/ai/models/:key/{enabled|sort}        上下架 / 排序
+ *   GET|POST /admin/ai/models                          模型列表 / 新建（保存，默认未启用）
+ *   GET|PUT  /admin/ai/models/:key                     详情 / 更新（已启用的保存即生效）
+ *   POST   /admin/ai/models/:key/{validate|dry-run|test-run}
+ *   PUT    /admin/ai/models/:key/{enabled|sort}        启用 / 停用、排序
  *   GET    /admin/ai/test-runs/:id[/trace]             试跑任务视图 / 追踪
  *   GET    /admin/ai/schema/model                      模型配置 JSON Schema
  */
@@ -51,11 +50,6 @@ export const adminAiEndpoints = {
   models: () => `${P}/models`,
   model,
   modelValidate: (key: string) => `${model(key)}/validate`,
-  modelPublish: (key: string) => `${model(key)}/publish`,
-  modelRollback: (key: string) => `${model(key)}/rollback`,
-  modelRevisions: (key: string) => `${model(key)}/revisions`,
-  modelRevision: (key: string, revisionId: number | string) =>
-    `${model(key)}/revisions/${seg(revisionId)}`,
   modelEnabled: (key: string) => `${model(key)}/enabled`,
   modelSort: (key: string) => `${model(key)}/sort`,
   modelDryRun: (key: string) => `${model(key)}/dry-run`,
@@ -67,7 +61,7 @@ export const adminAiEndpoints = {
   remove: (target: DeleteTarget, key: string) => `${P}/${target}s/${seg(key)}`,
 } as const;
 
-/** 保存草稿的请求体：正文放 body，备注放 note */
+/** 保存的请求体：正文放 body，备注放 note */
 export const saveBody = (config: unknown, note?: string) => ({
   body: config,
   ...(note ? { note } : {}),

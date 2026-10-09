@@ -31,7 +31,7 @@ import { openSecretDialog } from "./secret-dialog";
  * 渠道页：表格 + 详情弹窗。弹窗的状态都在 URL 里（刷新不丢，别处的跳转链接也能直达）：
  * ?key=<key>[&tab=config|models] 打开渠道，?new=1[&plugin=<插件 key>] 新建；
  * 旧链接 ?edit=<key> / ?edit=new 仍然有效（见 parseChannelRoute）。
- * 页面级弹窗（设置 Key、导入、停用确认、删除、回滚）都走全局弹窗 store；
+ * 页面级弹窗（设置 Key、导入、停用确认、删除）都走全局弹窗 store；
  * 从渠道弹窗里导入模型、删除渠道时先关掉渠道弹窗再开对应弹窗（两个弹窗不叠着）；设置 Key 留在原地，设完概览立刻刷新。
  * 新建、检查、设 Key、停用、删除只对运维渲染；导入 admin 也能用；admin 打开弹窗为只读。
  */
@@ -43,7 +43,7 @@ export default function ChannelsPage() {
   const [params, setParams] = useSearchParams();
   // 模型数、弹窗里“模型”页签
   const { models, status: modelsStatus, reload: reloadModels } = useModelList();
-  const row = useModelRowActions(catalog, reloadModels);
+  const row = useModelRowActions(reloadModels);
 
   const route = parseChannelRoute(params, catalog.channels, {
     canWrite,
@@ -130,7 +130,6 @@ export default function ChannelsPage() {
     onNew: (channelKey) =>
       navigate(`/admin/ai/models/new?channel=${encodeURIComponent(channelKey)}`),
     onToggleEnabled: (key, enabled) => void row.toggleEnabled(key, enabled),
-    onRollback: row.requestRollback,
     onDelete: row.requestDelete,
   };
 

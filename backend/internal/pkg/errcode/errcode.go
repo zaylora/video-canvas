@@ -66,7 +66,6 @@ var (
 	ErrAssetTooLarge       = New(40009, "素材超过大小限制", http.StatusRequestEntityTooLarge)
 	ErrConfigInvalid       = New(40010, "配置校验未通过", http.StatusBadRequest) // 错误列表写进 Msg
 	ErrConfigNotFound      = New(40011, "配置不存在", http.StatusNotFound)
-	ErrConfigNoDraft       = New(40012, "没有可发布的草稿", http.StatusConflict)
 	ErrSecretNotSet        = New(40013, "凭证尚未设置", http.StatusConflict)
 	ErrWSTicketInvalid     = New(40014, "连接凭证无效或已过期", http.StatusUnauthorized)
 )
