@@ -1,4 +1,4 @@
-import { Ellipsis, KeyRound, OctagonX, Shield } from "lucide-react";
+import { KeyRound, OctagonX, Shield } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { resetUserPassword } from "@/api/admin/users";
@@ -6,6 +6,7 @@ import type { UserRole } from "@/api/admin/users/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
+import { RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,8 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -26,9 +25,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { openDialog, type DialogControl } from "@/store/dialog";
 import { denyReason, USER_ROLE_LABEL, type Actor } from "@/utils/admin/user-rules";
 
@@ -177,25 +174,9 @@ function UserRowMenu({
   actions: UserActions;
 }) {
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DropdownMenuTrigger
-              render={
-                <Button variant="ghost" size="icon-sm" aria-label={`${user.username} 的更多操作`} />
-              }
-            />
-          }
-        >
-          <Ellipsis />
-        </TooltipTrigger>
-        <TooltipContent>更多操作</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" className="w-60">
-        <UserMenuItems user={user} actor={actor} actions={actions} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowMoreMenu label={`${user.username} 的更多操作`} className="w-60">
+      <UserMenuItems user={user} actor={actor} actions={actions} />
+    </RowMoreMenu>
   );
 }
 

@@ -13,12 +13,12 @@ import {
 } from "@/components/admin-ui/empty-state";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
+import { RowHint } from "@/components/admin-ui/row-icon-action";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -187,7 +187,9 @@ function UserTable({
             >
               最近活跃
             </TableHead>
-            <TableHead className="bg-muted/40 w-28" />
+            <TableHead className="bg-muted/40 text-muted-foreground w-28 text-right text-xs">
+              操作
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -422,25 +424,6 @@ function UserRow({
         </div>
       </TableCell>
     </TableRow>
-  );
-}
-
-/** 行内图标按钮的提示：可用时 hover 显示操作名，被禁用时改为说明原因 */
-function RowHint({
-  label,
-  deny,
-  children,
-}: {
-  label: string;
-  deny: string | null;
-  children: React.ReactElement;
-}) {
-  if (deny) return <ReasonTooltip reason={deny}>{children}</ReasonTooltip>;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex" />}>{children}</TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   );
 }
 

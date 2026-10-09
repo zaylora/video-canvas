@@ -19,8 +19,8 @@ const toneClasses = {
 type RowActionTone = keyof typeof toneClasses;
 
 /**
- * 表格行内操作：图标 + 文字的轻量按钮，所有操作常驻露出（不收进“更多”菜单）。
- * 放在 RowActions 里；点击不会冒泡到整行的点击。
+ * 带文字的轻量按钮，用在表格工具栏里（如「清除筛选」）；表格行内的操作用 RowIconAction。
+ * 点击不会冒泡到整行的点击。
  * 禁用时收不到指针事件，用 title 说明原因；按下有回弹，开了「减少动态效果」时 motion 自动去掉缩放。
  */
 function RowAction({
@@ -51,16 +51,4 @@ function RowAction({
   );
 }
 
-/** 操作单元格里一排 RowAction：右对齐，点击空白处也不触发整行 */
-function RowActions({ className, ...props }: ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="row-actions"
-      className={cn("flex items-center justify-end gap-0.5", className)}
-      onClick={(event) => event.stopPropagation()}
-      {...props}
-    />
-  );
-}
-
-export { RowAction, RowActions };
+export { RowAction };

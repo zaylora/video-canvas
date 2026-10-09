@@ -10,7 +10,9 @@ import {
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
-import { RowAction, RowActions } from "@/components/admin-ui/row-action";
+import { RowAction } from "@/components/admin-ui/row-action";
+import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
@@ -46,7 +48,7 @@ const STATUS_OPTIONS = [
 const channelKinds = (plugins: PluginView[], channel: ChannelView) =>
   PLUGIN_KIND_ORDER.filter((kind) => channelSupportsKind(plugins, channel, kind) === true);
 
-/** 渠道页的表格：搜索、筛选、分页，行内常驻操作；点整行打开渠道弹窗 */
+/** 渠道页的表格：搜索、筛选、分页，行内图标操作加「⋯」菜单；点整行打开渠道弹窗 */
 export function ChannelTable({
   channels,
   plugins,
@@ -274,39 +276,37 @@ export function ChannelTable({
                           onCheckedChange={() => onToggle(channel)}
                         />
                       </TableCell>
-                      <TableCell className="px-3 py-3">
-                        <RowActions>
-                          <RowAction
-                            tone="success"
-                            disabled={importUnsupported}
-                            title={importUnsupported ? "该插件不支持导入模型" : undefined}
-                            aria-label={`导入模型 ${channel.name}`}
+                      <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <RowIconAction
+                            label="导入模型"
+                            target={channel.name}
+                            deny={importUnsupported ? "该插件不支持导入模型" : null}
                             onClick={() => onImport(channel)}
                           >
                             <Download />
-                            导入模型
-                          </RowAction>
+                          </RowIconAction>
                           {canWrite && (
                             <>
-                              <RowAction
-                                tone="warning"
-                                aria-label={`${channel.secret_set ? "更新" : "设置"} Key ${channel.name}`}
+                              <RowIconAction
+                                label={channel.secret_set ? "更新 Key" : "设置 Key"}
+                                target={channel.name}
                                 onClick={() => onSetKey(channel)}
                               >
                                 <KeyRound />
-                                {channel.secret_set ? "更新 Key" : "设置 Key"}
-                              </RowAction>
-                              <RowAction
-                                tone="danger"
-                                aria-label={`删除 ${channel.name}`}
-                                onClick={() => onDelete(channel)}
-                              >
-                                <Trash2 />
-                                删除
-                              </RowAction>
+                              </RowIconAction>
+                              <RowMoreMenu label={`${channel.name} 的更多操作`}>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => onDelete(channel)}
+                                >
+                                  <Trash2 />
+                                  删除
+                                </DropdownMenuItem>
+                              </RowMoreMenu>
                             </>
                           )}
-                        </RowActions>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

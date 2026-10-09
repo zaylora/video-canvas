@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { CircleArrowUp, Eye, Trash2, Upload, X } from "lucide-react";
+import { CircleArrowUp, Trash2, Upload, X } from "lucide-react";
 
 import type { ChannelView, PluginView } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
-import { RowAction, RowActions } from "@/components/admin-ui/row-action";
+import { RowAction } from "@/components/admin-ui/row-action";
+import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Tag } from "@/components/admin-ui/tag";
 import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
@@ -41,7 +43,7 @@ const SOURCE_OPTIONS = [
   ["uploaded", "已上传"],
 ] as const;
 
-/** 插件页的表格：搜索、筛选、分页，行内常驻操作；点整行打开插件弹窗 */
+/** 插件页的表格：搜索、筛选、分页，行内图标操作加「⋯」菜单；点整行打开插件弹窗 */
 export function PluginTable({
   plugins,
   channels,
@@ -238,40 +240,28 @@ export function PluginTable({
                           onCheckedChange={(checked) => onToggle(plugin, checked)}
                         />
                       </TableCell>
-                      <TableCell className="px-3 py-3">
-                        <RowActions>
-                          <RowAction
-                            aria-label={`查看 ${plugin.name}`}
-                            onClick={() => onOpen(plugin.key)}
-                          >
-                            <Eye />
-                            详情
-                          </RowAction>
-                          {canWrite && (
-                            <>
-                              <RowAction
-                                tone="info"
-                                disabled={outdated === 0}
-                                title={outdated === 0 ? "渠道都已是最新版本" : undefined}
-                                aria-label={`升级渠道 ${plugin.name}`}
-                                onClick={() => onUpgrade(plugin)}
-                              >
-                                <CircleArrowUp />
-                                升级渠道
-                                {outdated > 0 && <span className="tabular-nums">({outdated})</span>}
-                              </RowAction>
-                              <RowAction
-                                tone="danger"
-                                title="删除插件（含全部版本）"
-                                aria-label={`删除插件 ${plugin.name}`}
+                      <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                        {canWrite && (
+                          <div className="flex items-center justify-end gap-0.5">
+                            <RowIconAction
+                              label={outdated > 0 ? `升级渠道（${outdated}）` : "升级渠道"}
+                              target={plugin.name}
+                              deny={outdated === 0 ? "渠道都已是最新版本" : null}
+                              onClick={() => onUpgrade(plugin)}
+                            >
+                              <CircleArrowUp />
+                            </RowIconAction>
+                            <RowMoreMenu label={`${plugin.name} 的更多操作`}>
+                              <DropdownMenuItem
+                                variant="destructive"
                                 onClick={() => onDelete(plugin)}
                               >
                                 <Trash2 />
-                                删除
-                              </RowAction>
-                            </>
-                          )}
-                        </RowActions>
+                                删除插件
+                              </DropdownMenuItem>
+                            </RowMoreMenu>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

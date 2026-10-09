@@ -5,7 +5,7 @@ import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/typ
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
-import { RowAction, RowActions } from "@/components/admin-ui/row-action";
+import { RowIconAction } from "@/components/admin-ui/row-icon-action";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -224,29 +224,27 @@ export function ModelRows({
                       onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
                     />
                   </TableCell>
-                  <TableCell className="px-3 py-3">
-                    <RowActions>
-                      <RowAction
-                        tone="info"
-                        disabled={item.kind === "agent"}
-                        title={item.kind === "agent" ? "Agent 模型暂不支持试跑" : undefined}
-                        aria-label={`测试 ${label}`}
+                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-0.5">
+                      <RowIconAction
+                        label="测试"
+                        deny={item.kind === "agent" ? "Agent 模型暂不支持试跑" : null}
+                        target={label}
                         onClick={() => onTest(item.key)}
                       >
                         <FlaskConical />
-                        测试
-                      </RowAction>
+                      </RowIconAction>
                       {onDelete && (
-                        <RowAction
-                          tone="danger"
-                          aria-label={`删除 ${label}`}
+                        <RowIconAction
+                          label="删除"
+                          destructive
+                          target={label}
                           onClick={() => onDelete(item)}
                         >
                           <Trash2 />
-                          删除
-                        </RowAction>
+                        </RowIconAction>
                       )}
-                    </RowActions>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
