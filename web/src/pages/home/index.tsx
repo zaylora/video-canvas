@@ -15,7 +15,7 @@ type CreateTab = "gen" | "canvas";
 
 /**
  * 创作页（设计稿 docs/design/首页生成与对话）：
- * 问候语 + 「生成 / 画布」切换；生成是输入卡片（发送后进「默认创作」对话），画布是新建与最近画布；底部是「最近上新」。
+ * 问候语 + 「生成 / 画布」切换；生成是输入卡片（每次发送都新建一段对话并进入），画布是新建与最近画布；底部是「最近上新」。
  * 不放背景视频，视频只留给登录页。
  */
 export default function Home() {
@@ -60,7 +60,7 @@ export default function Home() {
       >
         {tab === "gen" ? (
           <div className="mt-7">
-            <Composer target="default" />
+            <Composer target="new" />
           </div>
         ) : (
           <CanvasTab />

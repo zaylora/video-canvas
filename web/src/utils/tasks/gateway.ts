@@ -54,7 +54,7 @@ export async function submitCanvasTasks(data: CreateTaskRequest): Promise<Create
 /**
  * 提交首页对话的一条生成记录：一条记录对应 1–4 个任务，后端把记录和任务一起创建。
  * 请求本身失败会抛错；某一格提交失败（积分不足、并发已满）不抛错，在记录的 submitErrors 里。
- * @param target 提交到默认创作、新建一段对话，或某段对话
+ * @param target 新建一段对话（"new"），或某段对话的 ID
  * @param data 提交内容
  * @returns 记录和所在对话
  */

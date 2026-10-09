@@ -22,7 +22,7 @@ export type SubmitArgs = {
  * 输入卡片的发送：提交一条生成记录（见 store/conversation-records.ts 的 submit），
  * 成功后清空草稿并跳到记录所在的对话；请求失败时草稿原样保留，用户可以直接再发。
  * 发送期间输入卡片只读（composer.sending），避免重复提交。
- * @param target 提交到哪里：首页是默认创作，对话页是当前对话，新对话页是 new
+ * @param target 提交到哪里：首页是 new（新建一段对话），对话页是当前对话
  * @returns submit：发送；返回是否发送成功
  */
 export function useConversationSubmit(target: SubmitTarget) {
@@ -44,8 +44,7 @@ export function useConversationSubmit(target: SubmitTarget) {
         });
         useComposerStore.getState().clearDraft();
         const next = `/conversations/${result.conversationId}`;
-        // 新对话页发完把地址换成真实对话，返回键不会回到空的「新对话」
-        if (pathname !== next) navigate(next, { replace: target === "new" });
+        if (pathname !== next) navigate(next);
         return true;
       } catch {
         // 提示由请求层统一弹；草稿保留

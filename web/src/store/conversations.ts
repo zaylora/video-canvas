@@ -9,7 +9,7 @@ import {
 import type { ConversationDto } from "@/api/conversation/type";
 
 type ConversationsState = {
-  /** 对话列表：默认创作第一条，其余按最近记录时间倒序 */
+  /** 对话列表：按最近记录时间倒序 */
   items: ConversationDto[];
   /** 加载状态 */
   status: "idle" | "loading" | "ready" | "error";

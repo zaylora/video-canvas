@@ -5,7 +5,7 @@ import { formatDayTitle } from "@/utils/home/placeholder";
  * 对话页的样例数据：对话接口还没有，页面先用它把样式铺出来。
  * 接口就绪后删掉这个文件，侧栏和对话页改读接口；这里的内容只是占位，不代表真实用户数据。
  * @param now 当前时间，决定「今天」的日期标题
- * @returns 两段样例对话：置顶的「默认创作」和一段 Agent 对话
+ * @returns 两段样例对话：一段图片/视频生成和一段 Agent 对话
  */
 export const buildSampleConversations = (now: Date = new Date()): Conversation[] => {
   const today = formatDayTitle(now);
@@ -13,9 +13,8 @@ export const buildSampleConversations = (now: Date = new Date()): Conversation[]
 
   return [
     {
-      id: "default",
-      title: "默认创作",
-      pinned: true,
+      id: "snow-street",
+      title: "雪地与旧楼",
       hue: null,
       records: [
         {

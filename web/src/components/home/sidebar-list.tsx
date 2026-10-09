@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { Pin } from "lucide-react";
 
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -34,14 +33,12 @@ export function ListItem({
   to,
   title,
   active,
-  pinned,
   thumb,
   trailing,
 }: {
   to: string;
   title: string;
   active: boolean;
-  pinned?: boolean;
   thumb: ReactNode;
   trailing?: ReactNode;
 }) {
@@ -63,7 +60,6 @@ export function ListItem({
           {thumb}
         </span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        {pinned && <Pin aria-label="已置顶" className="size-3.5 shrink-0 opacity-55" />}
       </Link>
       {trailing && <div className="absolute top-1/2 right-1.5 -translate-y-1/2">{trailing}</div>}
     </div>

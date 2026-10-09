@@ -8,15 +8,13 @@ import (
 	"video-canvas/internal/pkg/idcodec" //nolint:depguard // 对外 id 用十六进制串，与画布、任务视图（存量代码）一致
 )
 
-// Conversation 是首页生成的一段对话：一组按时间排列的生成记录。
-// 每个用户有且只有一段 IsDefault 的「默认创作」，首页提交都进它。
+// Conversation 是首页生成的一段对话：一组按时间排列的生成记录。所有对话地位相同，没有特殊的默认对话。
 type Conversation struct {
 	BaseModel
-	UserID       uint64     `gorm:"not null;index:idx_conversations_user_last,priority:1;uniqueIndex:uk_conversations_default,where:is_default AND deleted_at IS NULL" json:"user_id"` // 所属用户；默认创作每人只有一段
-	Title        string     `gorm:"size:50;not null;default:''" json:"title"`                                                                                                          // 标题，1–50 字
-	IsDefault    bool       `gorm:"not null;default:false" json:"is_default"`                                                                                                          // 是否默认创作：不能删除
-	RecordCount  int        `gorm:"not null;default:0" json:"record_count"`                                                                                                            // 记录条数
-	LastRecordAt *time.Time `gorm:"index:idx_conversations_user_last,priority:2,sort:desc" json:"last_record_at"`                                                                      // 最近一条记录的时间，侧栏排序用
+	UserID       uint64     `gorm:"not null;index:idx_conversations_user_last,priority:1" json:"user_id"`         // 所属用户
+	Title        string     `gorm:"size:50;not null;default:''" json:"title"`                                     // 标题，1–50 字
+	RecordCount  int        `gorm:"not null;default:0" json:"record_count"`                                       // 记录条数
+	LastRecordAt *time.Time `gorm:"index:idx_conversations_user_last,priority:2,sort:desc" json:"last_record_at"` // 最近一条记录的时间，侧栏排序用
 }
 
 // TableName 表名。
@@ -54,7 +52,6 @@ type RecordSubmitError struct {
 type ConversationView struct {
 	ID           idcodec.ID `json:"id"`             // 对话 ID（十六进制串）
 	Title        string     `json:"title"`          // 标题
-	IsDefault    bool       `json:"is_default"`     // 是否默认创作
 	RecordCount  int        `json:"record_count"`   // 记录条数
 	LastRecordAt *time.Time `json:"last_record_at"` // 最近记录时间
 	Active       bool       `json:"active"`         // 是否有进行中的生成任务

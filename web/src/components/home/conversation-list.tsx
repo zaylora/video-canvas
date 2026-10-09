@@ -18,15 +18,15 @@ import { useConversationsStore } from "@/store/conversations";
 import { useTasksStore } from "@/store/tasks";
 import { isActiveStatus } from "@/utils/tasks/status";
 
-/** 侧栏最多列几段对话，更多的从「默认创作」之外按最近使用排序，滚动查看 */
+/** 侧栏最多列几段对话，按最近使用排序，更多的滚动查看 */
 const LIST_LIMIT = 20;
 
 /** 对话任务的 node_id 前缀（rec:{记录id}:{格子序号}），用来在任务库里认出它们 */
 const RECORD_NODE_PREFIX = "rec:";
 
 /**
- * 侧栏「对话」分组：默认创作置顶，其余按最近记录排序；标题右侧的 + 打开一段新对话（第一次发送才创建）。
- * 有进行中生成的对话右侧亮一个小圆点；每项悬停出现「⋯」：重命名、删除（默认创作不能删）。
+ * 侧栏「对话」分组：所有对话一视同仁，按最近记录排序；标题右侧的 + 回到创作页，在那里发送即新建一段对话。
+ * 有进行中生成的对话右侧亮一个小圆点；每项悬停出现「⋯」：重命名、删除。
  * 进行中的生成全部结束时重新拉一次列表，圆点才会跟着熄灭。
  * @param pathname 当前路径，用来高亮当前对话
  */
@@ -79,7 +79,7 @@ export function ConversationList({ pathname }: { pathname: string }) {
             type="button"
             aria-label="新对话"
             title="新对话"
-            onClick={() => navigate("/conversations/new")}
+            onClick={() => navigate("/")}
             className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 grid size-6 place-items-center rounded-md outline-none focus-visible:ring-2"
           >
             <Plus className="size-3.5" />
@@ -101,16 +101,12 @@ export function ConversationList({ pathname }: { pathname: string }) {
             加载失败 · 重试
           </button>
         )}
-        {pathname === "/conversations/new" && (
-          <ListItem to="/conversations/new" title="新对话" active thumb={<MessageSquare />} />
-        )}
         {items.slice(0, LIST_LIMIT).map((conversation) => (
           <ListItem
             key={conversation.id}
             to={`/conversations/${conversation.id}`}
             title={conversation.title}
             active={pathname === `/conversations/${conversation.id}`}
-            pinned={conversation.isDefault}
             thumb={<MessageSquare />}
             trailing={
               <div className="flex items-center gap-1">
@@ -134,15 +130,13 @@ export function ConversationList({ pathname }: { pathname: string }) {
                       <Pencil />
                       重命名
                     </DropdownMenuItem>
-                    {!conversation.isDefault && (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setDeleting(conversation)}
-                      >
-                        <Trash2 />
-                        删除
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setDeleting(conversation)}
+                    >
+                      <Trash2 />
+                      删除
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

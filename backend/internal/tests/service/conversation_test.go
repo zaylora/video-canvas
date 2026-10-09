@@ -14,7 +14,6 @@ import (
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
-	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/service"
 )
@@ -33,20 +32,6 @@ func newConvRepo() *convRepo {
 }
 
 func (r *convRepo) id() uint64 { r.next++; return r.next }
-
-func (r *convRepo) EnsureDefault(_ context.Context, userID uint64) (*model.Conversation, error) {
-	for _, c := range r.convs {
-		if c.UserID == userID && c.IsDefault {
-			cp := *c
-			return &cp, nil
-		}
-	}
-	c := &model.Conversation{UserID: userID, Title: "默认创作", IsDefault: true}
-	c.ID = r.id()
-	r.convs[c.ID] = c
-	cp := *c
-	return &cp, nil
-}
 
 func (r *convRepo) Create(_ context.Context, c *model.Conversation) error {
 	c.ID = r.id()
@@ -71,12 +56,7 @@ func (r *convRepo) List(_ context.Context, userID uint64) ([]model.Conversation,
 			out = append(out, *c)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].IsDefault != out[j].IsDefault {
-			return out[i].IsDefault
-		}
-		return out[i].ID > out[j].ID
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out, nil
 }
 
@@ -264,22 +244,27 @@ func wantConvErr(t *testing.T, err error, want *errcode.Error) {
 	}
 }
 
-// 列表：没有默认创作时自动创建，并且永远排第一。
-func TestConversationService_ListCreatesDefaultFirst(t *testing.T) {
+// 列表：没有任何对话时是空的（不再自动创建「默认创作」），只返回自己的对话，所有对话地位相同。
+func TestConversationService_ListHasNoSpecialConversation(t *testing.T) {
 	svc, _, _ := newConvSvc()
 	ctx := context.Background()
-	if _, err := svc.Create(ctx, 1, &model.CreateConversationReq{Title: "雨夜霓虹"}); err != nil {
-		t.Fatal(err)
+	if items, err := svc.List(ctx, 1); err != nil || len(items) != 0 {
+		t.Fatalf("没有对话时列表应为空：%+v %v", items, err)
+	}
+	for _, title := range []string{"雨夜霓虹", "海边日落"} {
+		if _, err := svc.Create(ctx, 1, &model.CreateConversationReq{Title: title}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	items, err := svc.List(ctx, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 2 || !items[0].IsDefault || items[0].Title != "默认创作" || items[1].Title != "雨夜霓虹" {
-		t.Fatalf("默认创作应自动创建并排第一：%+v", items)
+	if len(items) != 2 || items[0].Title != "海边日落" || items[1].Title != "雨夜霓虹" {
+		t.Fatalf("应只有自己建的两段对话，新的在前：%+v", items)
 	}
-	if other, _ := svc.List(ctx, 2); len(other) != 1 {
-		t.Errorf("别的用户只会得到自己的默认创作：%+v", other)
+	if other, _ := svc.List(ctx, 2); len(other) != 0 {
+		t.Errorf("别的用户看不到这些对话：%+v", other)
 	}
 }
 
@@ -287,7 +272,7 @@ func TestConversationService_ListCreatesDefaultFirst(t *testing.T) {
 func TestConversationService_ListMarksActive(t *testing.T) {
 	svc, repo, tasks := newConvSvc()
 	ctx := context.Background()
-	if _, err := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "k1", submitReq(1)); err != nil {
+	if _, err := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "k1", submitReq(1)); err != nil {
 		t.Fatal(err)
 	}
 	var recID uint64
@@ -303,7 +288,7 @@ func TestConversationService_ListMarksActive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !items[0].Active {
-		t.Errorf("默认创作有进行中的任务，应标记 active：%+v", items[0])
+		t.Errorf("有进行中的任务，应标记 active：%+v", items[0])
 	}
 }
 
@@ -320,7 +305,7 @@ func TestConversationService_Create(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			svc, _, _ := newConvSvc()
 			v, err := svc.Create(context.Background(), 1, &model.CreateConversationReq{Title: c.title})
-			if err != nil || v.Title != c.want || v.IsDefault {
+			if err != nil || v.Title != c.want {
 				t.Fatalf("得到 %+v %v", v, err)
 			}
 		})
@@ -345,7 +330,7 @@ func TestConversationService_Rename(t *testing.T) {
 	if err := svc.Rename(ctx, 1, id, "  新名字 "); err != nil {
 		t.Fatalf("改名失败：%v", err)
 	}
-	if items, _ := svc.List(ctx, 1); items[1].Title != "新名字" {
+	if items, _ := svc.List(ctx, 1); items[0].Title != "新名字" {
 		t.Errorf("标题应已更新并去掉空白：%+v", items)
 	}
 	wantConvErr(t, svc.Rename(ctx, 1, id, "   "), errcode.ErrInvalidParams)
@@ -356,9 +341,6 @@ func TestConversationService_Rename(t *testing.T) {
 func TestConversationService_Delete(t *testing.T) {
 	svc, _, _ := newConvSvc()
 	ctx := context.Background()
-	items, _ := svc.List(ctx, 1)
-	wantConvErr(t, svc.Delete(ctx, 1, uint64(items[0].ID)), errcode.ErrConversationDefault)
-
 	v, _ := svc.Create(ctx, 1, &model.CreateConversationReq{Title: "a"})
 	wantConvErr(t, svc.Delete(ctx, 2, uint64(v.ID)), errcode.ErrConversationNotFound)
 	if err := svc.Delete(ctx, 1, uint64(v.ID)); err != nil {
@@ -367,12 +349,13 @@ func TestConversationService_Delete(t *testing.T) {
 	wantConvErr(t, svc.Delete(ctx, 1, uint64(v.ID)), errcode.ErrConversationNotFound)
 }
 
-// 提交到默认创作：建记录、按 rec:{记录id}:{序号} 给任务节点 id、保存任务 id 和冻结积分、更新对话计数。
-func TestConversationService_SubmitToDefault(t *testing.T) {
+// 提交到已有对话：建记录、按 rec:{记录id}:{序号} 给任务节点 id、保存任务 id 和冻结积分、更新对话计数。
+func TestConversationService_SubmitToExisting(t *testing.T) {
 	svc, repo, tasks := newConvSvc()
 	ctx := context.Background()
+	v, _ := svc.Create(ctx, 1, &model.CreateConversationReq{Title: "a"})
 
-	resp, err := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "key-1", submitReq(2))
+	resp, err := svc.Submit(ctx, 1, service.ConversationTarget{ID: uint64(v.ID)}, "key-1", submitReq(2))
 	if err != nil {
 		t.Fatalf("提交失败：%v", err)
 	}
@@ -395,8 +378,8 @@ func TestConversationService_SubmitToDefault(t *testing.T) {
 		t.Errorf("库里应保存任务 id 和完整输入快照：%+v %s", ids, stored.InputJSON)
 	}
 	conv := repo.convs[uint64(resp.ConversationID)]
-	if !conv.IsDefault || conv.RecordCount != 1 || conv.LastRecordAt == nil {
-		t.Errorf("默认创作的计数应更新：%+v", conv)
+	if resp.ConversationID != v.ID || conv.RecordCount != 1 || conv.LastRecordAt == nil {
+		t.Errorf("对话的计数应更新：%+v", conv)
 	}
 }
 
@@ -412,7 +395,7 @@ func TestConversationService_SubmitToNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	conv := repo.convs[uint64(resp.ConversationID)]
-	if conv.IsDefault || conv.Title != "雨夜的城市，外卖骑手穿过霓虹路口" {
+	if conv.Title != "雨夜的城市，外卖骑手穿过霓虹路口" {
 		t.Errorf("标题应取提示词前 16 个字：%q", conv.Title)
 	}
 
@@ -461,7 +444,7 @@ func TestConversationService_SubmitPartialFailure(t *testing.T) {
 	svc, _, tasks := newConvSvc()
 	tasks.failIdx[1] = errcode.ErrInsufficientCredits
 
-	resp, err := svc.Submit(context.Background(), 1, service.ConversationTarget{Default: true}, "", submitReq(2))
+	resp, err := svc.Submit(context.Background(), 1, service.ConversationTarget{New: true}, "", submitReq(2))
 	if err != nil {
 		t.Fatalf("部分失败不应让整个请求失败：%v", err)
 	}
@@ -505,11 +488,11 @@ func TestConversationService_SubmitRequestLevelErrorCleansUp(t *testing.T) {
 func TestConversationService_SubmitIdempotent(t *testing.T) {
 	svc, _, tasks := newConvSvc()
 	ctx := context.Background()
-	first, err := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "same", submitReq(1))
+	first, err := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "same", submitReq(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "same", submitReq(1))
+	second, err := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "same", submitReq(1))
 	if err != nil || second.Record.ID != first.Record.ID || second.ConversationID != first.ConversationID {
 		t.Fatalf("重复提交应返回同一条记录：%+v %v", second, err)
 	}
@@ -525,13 +508,12 @@ func TestConversationService_ListRecordsPaging(t *testing.T) {
 	svc, _, tasks := newConvSvc()
 	ctx := context.Background()
 	tasks.failIdx[1] = errcode.ErrTooManyTasks
-	var convID idcodec.ID
+	conv, _ := svc.Create(ctx, 1, &model.CreateConversationReq{Title: "a"})
+	convID := conv.ID
 	for i := 0; i < 3; i++ {
-		resp, err := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "", submitReq(2))
-		if err != nil {
+		if _, err := svc.Submit(ctx, 1, service.ConversationTarget{ID: uint64(convID)}, "", submitReq(2)); err != nil {
 			t.Fatal(err)
 		}
-		convID = resp.ConversationID
 	}
 
 	page, err := svc.ListRecords(ctx, 1, uint64(convID), &model.ListConversationRecordsReq{Limit: 2}, 0)
@@ -556,8 +538,8 @@ func TestConversationService_ListRecordsPaging(t *testing.T) {
 func TestConversationService_ListRecordsLimitDefaults(t *testing.T) {
 	svc, repo, _ := newConvSvc()
 	ctx := context.Background()
-	def, _ := svc.List(ctx, 1)
-	convID := uint64(def[0].ID)
+	conv, _ := svc.Create(ctx, 1, &model.CreateConversationReq{Title: "a"})
+	convID := uint64(conv.ID)
 	for i := 0; i < 25; i++ {
 		_ = repo.CreateRecord(ctx, &model.ConversationRecord{ConversationID: convID, UserID: 1, Kind: "image", Count: 1})
 	}
@@ -575,7 +557,7 @@ func TestConversationService_ListRecordsLimitDefaults(t *testing.T) {
 func TestConversationService_DeleteRecord(t *testing.T) {
 	svc, repo, tasks := newConvSvc()
 	ctx := context.Background()
-	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "", submitReq(2))
+	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "", submitReq(2))
 	tasks.views[resp.Record.Tasks[1].ID].Status = model.TaskSucceeded
 
 	if err := svc.DeleteRecord(ctx, 1, uint64(resp.ConversationID), uint64(resp.Record.ID), true); err != nil {
@@ -593,7 +575,7 @@ func TestConversationService_DeleteRecord(t *testing.T) {
 func TestConversationService_DeleteRecordWithoutCancelKeepsTasks(t *testing.T) {
 	svc, _, tasks := newConvSvc()
 	ctx := context.Background()
-	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "", submitReq(1))
+	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "", submitReq(1))
 	if err := svc.DeleteRecord(ctx, 1, uint64(resp.ConversationID), uint64(resp.Record.ID), false); err != nil {
 		t.Fatal(err)
 	}
@@ -605,7 +587,7 @@ func TestConversationService_DeleteRecordWithoutCancelKeepsTasks(t *testing.T) {
 func TestConversationService_DeleteRecordGuards(t *testing.T) {
 	svc, _, _ := newConvSvc()
 	ctx := context.Background()
-	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{Default: true}, "", submitReq(1))
+	resp, _ := svc.Submit(ctx, 1, service.ConversationTarget{New: true}, "", submitReq(1))
 	conv, rec := uint64(resp.ConversationID), uint64(resp.Record.ID)
 
 	wantConvErr(t, svc.DeleteRecord(ctx, 2, conv, rec, false), errcode.ErrConversationNotFound)
@@ -615,7 +597,7 @@ func TestConversationService_DeleteRecordGuards(t *testing.T) {
 
 func TestConversationService_SubmitRejectsLongIdempotencyKey(t *testing.T) {
 	svc, _, tasks := newConvSvc()
-	_, err := svc.Submit(context.Background(), 1, service.ConversationTarget{Default: true}, strings.Repeat("a", 200), submitReq(1))
+	_, err := svc.Submit(context.Background(), 1, service.ConversationTarget{New: true}, strings.Repeat("a", 200), submitReq(1))
 	wantConvErr(t, err, errcode.ErrInvalidParams)
 	if len(tasks.creates) != 0 {
 		t.Errorf("不应创建任务")

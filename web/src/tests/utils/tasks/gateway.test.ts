@@ -137,7 +137,7 @@ describe("submitCanvasTasks：画布节点的提交", () => {
 
 describe("submitRecordTasks：首页对话的提交", () => {
   test("记录里已创建的任务入库，提交失败的格子不影响其他；同样刷新余额", async () => {
-    const result = await submitRecordTasks("default", {
+    const result = await submitRecordTasks("new", {
       kind: "image",
       modelId: "m",
       prompt: "p",
@@ -147,7 +147,7 @@ describe("submitRecordTasks：首页对话的提交", () => {
     await settle();
     expect(result.record.submitErrors).toHaveLength(1);
     expect(Object.keys(useTasksStore.getState().tasks)).toEqual(["11"]);
-    expect(calls.record[0].target).toBe("default");
+    expect(calls.record[0].target).toBe("new");
     expect(calls.record[0].key).toHaveLength(36);
     expect(calls.credits).toBe(1);
   });

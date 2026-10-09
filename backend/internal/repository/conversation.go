@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"gorm.io/datatypes"
@@ -10,9 +9,6 @@ import (
 
 	"video-canvas/internal/model"
 )
-
-// defaultConversationTitle 是默认创作的标题。
-const defaultConversationTitle = "默认创作"
 
 // ConversationRepository 是首页对话与生成记录的数据访问层。所有查询都带 user_id。
 type ConversationRepository struct {
@@ -22,29 +18,6 @@ type ConversationRepository struct {
 // NewConversationRepository 创建对话仓储。
 func NewConversationRepository(db *gorm.DB) *ConversationRepository {
 	return &ConversationRepository{db: db}
-}
-
-// EnsureDefault 返回用户的默认创作，不存在时创建。并发创建时靠部分唯一索引 uk_conversations_default 兜底：
-// 后到的请求撞上唯一冲突，改为读取先到的那一段。
-func (r *ConversationRepository) EnsureDefault(ctx context.Context, userID uint64) (*model.Conversation, error) {
-	var c model.Conversation
-	err := r.db.WithContext(ctx).Where("user_id = ? AND is_default", userID).First(&c).Error
-	if err == nil {
-		return &c, nil
-	}
-	if !errors.Is(translate(err), ErrNotFound) {
-		return nil, err
-	}
-	c = model.Conversation{UserID: userID, Title: defaultConversationTitle, IsDefault: true}
-	if err := r.db.WithContext(ctx).Create(&c).Error; err != nil {
-		if !isUniqueViolation(err) {
-			return nil, err
-		}
-		if err := r.db.WithContext(ctx).Where("user_id = ? AND is_default", userID).First(&c).Error; err != nil {
-			return nil, translate(err)
-		}
-	}
-	return &c, nil
 }
 
 // Create 新建对话。
@@ -61,15 +34,15 @@ func (r *ConversationRepository) GetByID(ctx context.Context, userID, id uint64)
 	return &c, nil
 }
 
-// List 返回用户全部未删除的对话：默认创作在前，其余按最近记录时间倒序（没有记录的排最后），时间相同按 id 倒序。
+// List 返回用户全部未删除的对话：按最近记录时间倒序（没有记录的排最后），时间相同按 id 倒序。
 func (r *ConversationRepository) List(ctx context.Context, userID uint64) ([]model.Conversation, error) {
 	var out []model.Conversation
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID).
-		Order("is_default DESC, last_record_at DESC NULLS LAST, id DESC").Find(&out).Error
+		Order("last_record_at DESC NULLS LAST, id DESC").Find(&out).Error
 	return out, err
 }
 
-// Count 统计用户未删除的对话数（含默认创作）。
+// Count 统计用户未删除的对话数。
 func (r *ConversationRepository) Count(ctx context.Context, userID uint64) (int64, error) {
 	var n int64
 	err := r.db.WithContext(ctx).Model(&model.Conversation{}).Where("user_id = ?", userID).Count(&n).Error

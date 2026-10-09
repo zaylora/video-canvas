@@ -51,11 +51,11 @@ const BAR_BUTTON =
  * 发送键旁显示预估积分，余额不足、参考图没传完、提示词不合法时禁用并写明原因。
  * 引用资产（@）要等素材列表接口，先禁用；Agent 只在画布里，这里没有。
  * @param placement page 是创作页里的大卡片；dock 是对话页贴在底部的那一份，菜单向上弹、输入框矮一点
- * @param target 记录提交到哪里：首页是默认创作，对话页是当前对话，新对话页是 new
+ * @param target 记录提交到哪里：首页是 new（新建一段对话），对话页是当前对话
  */
 export function Composer({
   placement = "page",
-  target = "default",
+  target = "new",
 }: {
   placement?: "page" | "dock";
   target?: SubmitTarget;

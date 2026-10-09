@@ -19,23 +19,18 @@ import { useConversationRecordsStore } from "@/store/conversation-records";
 import { useConversationsStore } from "@/store/conversations";
 import { dayTitle } from "@/utils/conversation/day";
 
-/** 新对话页的路径片段：第一次发送时才真正创建对话 */
-const NEW_ID = "new";
-
 /**
  * 对话页：生成记录按日期分组、时间正序，打开时停在最新一条；输入卡片固定在页面底部，
  * 和创作页共用同一份模式、模型、参数与草稿。在这里发送会追加到当前对话。
- * `/conversations/new` 是还没创建的新对话：先显示空状态，第一次发送时由后端创建并把地址换成真实对话。
  * 记录的结果状态来自任务库，断线重连后由对账补齐。
  */
 export default function ConversationPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const isNew = id === NEW_ID;
 
   const conversation = useConversationsStore((state) => state.items.find((item) => item.id === id));
   const loadConversations = useConversationsStore((state) => state.load);
-  const entry = useConversationRecordsStore((state) => (isNew ? undefined : state.byId[id]));
+  const entry = useConversationRecordsStore((state) => state.byId[id]);
   const loadRecords = useConversationRecordsStore((state) => state.load);
   const loadMore = useConversationRecordsStore((state) => state.loadMore);
 
@@ -49,8 +44,8 @@ export default function ConversationPage() {
 
   /** 进入或切换对话时加载最新一页；已有缓存先显示缓存 */
   useEffect(() => {
-    if (!isNew && id) void loadRecords(id);
-  }, [id, isNew, loadRecords]);
+    if (id) void loadRecords(id);
+  }, [id, loadRecords]);
 
   const items = useMemo(() => entry?.items ?? [], [entry]);
 
@@ -74,8 +69,8 @@ export default function ConversationPage() {
    * 记录加载失败：对话被删除（62001）或网络异常。不能靠「列表里没有它」判断——
    * 刚在新对话页发送成功时列表还没刷新，会闪一下「不存在」。
    */
-  const failed = !isNew && entry?.status === "error";
-  const title = isNew ? "新对话" : (conversation?.title ?? "");
+  const failed = entry?.status === "error";
+  const title = conversation?.title ?? "";
 
   const confirmDelete = async () => {
     if (!conversation) return;
@@ -110,12 +105,10 @@ export default function ConversationPage() {
                   <Pencil />
                   重命名
                 </DropdownMenuItem>
-                {!conversation.isDefault && (
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
-                    <Trash2 />
-                    删除对话
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+                  <Trash2 />
+                  删除对话
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -139,8 +132,6 @@ export default function ConversationPage() {
               </span>
             }
           />
-        ) : isNew ? (
-          <EmptyMark title="新对话" hint="在下面输入，开始这段对话" />
         ) : !entry || entry.status === "loading" ? (
           <div className="grid gap-6 pt-2" aria-busy>
             <Skeleton className="h-6 w-2/3" />
@@ -184,7 +175,7 @@ export default function ConversationPage() {
       </div>
 
       <div className="from-background via-background sticky bottom-0 z-10 bg-linear-to-t via-70% to-transparent pt-4 pb-5">
-        <Composer placement="dock" target={isNew ? "new" : id} />
+        <Composer placement="dock" target={id} />
       </div>
 
       {conversation && (

@@ -73,6 +73,28 @@ func dropModelSoftDelete(tx *gorm.DB) error {
 	return nil
 }
 
+// MigrateConversationDefault 幂等地清理「默认创作」的遗留：conversations 有 is_default 列时，
+// 先删掉只服务于它的部分唯一索引 uk_conversations_default，再删这一列。
+// 原来的「默认创作」行保留，变成一段普通对话（标题仍叫「默认创作」，用户可以改名或删除）。
+// 应在 AutoMigrate 之前调用；表或列不存在（全新库、已清理过）时什么都不做，可以重复执行。
+func MigrateConversationDefault(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if !tx.Migrator().HasColumn("conversations", "is_default") {
+			return nil
+		}
+		stmts := []string{
+			"DROP INDEX IF EXISTS uk_conversations_default",
+			"ALTER TABLE conversations DROP COLUMN IF EXISTS is_default",
+		}
+		for _, stmt := range stmts {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("清理默认创作遗留失败（%s）：%w", stmt, err)
+			}
+		}
+		return nil
+	})
+}
+
 // builtinStorageName 是内置本地磁盘存储的显示名。
 const builtinStorageName = "本地磁盘"
 

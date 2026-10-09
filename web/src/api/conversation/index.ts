@@ -15,7 +15,6 @@ import type {
 interface BackendConversationDto {
   id: string;
   title: string;
-  is_default: boolean;
   record_count: number;
   last_record_at: string | null;
   active: boolean;
@@ -52,7 +51,6 @@ interface BackendSubmitResultDto {
 const mapConversation = (raw: BackendConversationDto): ConversationDto => ({
   id: raw.id,
   title: raw.title,
-  isDefault: raw.is_default,
   recordCount: raw.record_count,
   lastRecordAt: raw.last_record_at,
   active: raw.active,
@@ -78,7 +76,7 @@ export const mapRecord = (raw: BackendRecordDto): RecordDto => {
 };
 
 /**
- * 获取对话列表：默认创作永远第一条，其余按最近记录时间倒序
+ * 获取对话列表：按最近记录时间倒序
  * @returns 对话列表
  */
 export const getConversations = async (): Promise<ConversationDto[]> =>
@@ -103,7 +101,7 @@ export const renameConversation = (id: string, title: string) =>
   service.patch<null>(`/conversations/${id}`, { title });
 
 /**
- * 删除对话（软删除）；默认创作不能删。对话里进行中的任务继续跑完，素材仍在资产里
+ * 删除对话（软删除）。对话里进行中的任务继续跑完，素材仍在资产里
  * @param id 对话 ID
  */
 export const deleteConversation = (id: string) => service.delete<null>(`/conversations/${id}`);
@@ -125,7 +123,7 @@ export const getConversationRecords = async (
 /**
  * 提交一条生成记录（HTTP 202）。同一次点击的重试必须复用同一个 idempotencyKey，
  * 后端据此去重，重复提交只会得到同一条记录。
- * @param target 提交到默认创作、新建一段对话，或某段对话
+ * @param target 新建一段对话（"new"），或某段对话的 ID
  * @param data 提交内容
  * @param idempotencyKey 幂等键
  * @returns 记录和所在对话

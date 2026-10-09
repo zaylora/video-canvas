@@ -32,20 +32,6 @@ type hConvRepo struct {
 
 func (r *hConvRepo) id() uint64 { r.next++; return r.next }
 
-func (r *hConvRepo) EnsureDefault(_ context.Context, userID uint64) (*model.Conversation, error) {
-	for _, c := range r.convs {
-		if c.UserID == userID && c.IsDefault {
-			cp := *c
-			return &cp, nil
-		}
-	}
-	c := &model.Conversation{UserID: userID, Title: "默认创作", IsDefault: true}
-	c.ID = r.id()
-	r.convs[c.ID] = c
-	cp := *c
-	return &cp, nil
-}
-
 func (r *hConvRepo) Create(_ context.Context, c *model.Conversation) error {
 	c.ID = r.id()
 	cp := *c
@@ -69,7 +55,7 @@ func (r *hConvRepo) List(_ context.Context, userID uint64) ([]model.Conversation
 			out = append(out, *c)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].IsDefault && !out[j].IsDefault })
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out, nil
 }
 
@@ -234,17 +220,22 @@ func respCode(resp map[string]any) int { return int(resp["code"].(float64)) }
 
 const submitBody = `{"kind":"image","model_id":"m1","prompt":"雨夜","input":{"ratio":"16:9"},"count":2}`
 
-// 列表：第一次访问自动出现默认创作，id 是十六进制串。
+// 列表：没有对话时为空（不再自动出现默认创作），建了之后 id 是十六进制串，也没有 is_default 字段。
 func TestConversationHandler_List(t *testing.T) {
 	r, _, _ := newConvRouter()
 	status, resp := convCall(t, r, http.MethodGet, "/api/v1/conversations", "")
+	if items, _ := resp["data"].([]any); status != http.StatusOK || len(items) != 0 {
+		t.Fatalf("没有对话时应为空：%d %v", status, resp)
+	}
+	convCall(t, r, http.MethodPost, "/api/v1/conversations", `{"title":"雨夜霓虹"}`)
+	_, resp = convCall(t, r, http.MethodGet, "/api/v1/conversations", "")
 	items, _ := resp["data"].([]any)
-	if status != http.StatusOK || len(items) != 1 {
-		t.Fatalf("应返回默认创作：%d %v", status, resp)
+	if len(items) != 1 {
+		t.Fatalf("应返回刚建的对话：%v", resp)
 	}
 	first := items[0].(map[string]any)
-	if first["is_default"] != true || len(first["id"].(string)) != idcodec.EncodedLen {
-		t.Errorf("默认创作和十六进制 ID 不对：%v", first)
+	if _, has := first["is_default"]; has || len(first["id"].(string)) != idcodec.EncodedLen {
+		t.Errorf("不应再有 is_default，ID 应是十六进制串：%v", first)
 	}
 }
 
@@ -275,25 +266,14 @@ func TestConversationHandler_CreateRenameDelete(t *testing.T) {
 	}
 }
 
-// 默认创作不能删除。
-func TestConversationHandler_DeleteDefault(t *testing.T) {
-	r, _, _ := newConvRouter()
-	_, resp := convCall(t, r, http.MethodGet, "/api/v1/conversations", "")
-	id := resp["data"].([]any)[0].(map[string]any)["id"].(string)
-	status, resp := convCall(t, r, http.MethodDelete, "/api/v1/conversations/"+id, "")
-	if status != http.StatusConflict || respCode(resp) != errcode.ErrConversationDefault.Code {
-		t.Errorf("删默认创作应 409 + 62003：%d %v", status, resp)
-	}
-}
-
-// 提交：default / new / 具体 id 三种目标；成功返回 202，带记录和任务快照。
+// 提交：new / 具体 id 两种目标；成功返回 202，带记录和任务快照。
 func TestConversationHandler_Submit(t *testing.T) {
 	r, repo, _ := newConvRouter()
 
-	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", submitBody, "Idempotency-Key", "k1")
+	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody, "Idempotency-Key", "k1")
 	data, _ := resp["data"].(map[string]any)
 	if status != http.StatusAccepted || data == nil {
-		t.Fatalf("提交到默认创作应 202：%d %v", status, resp)
+		t.Fatalf("提交到 new 应 202：%d %v", status, resp)
 	}
 	rec := data["record"].(map[string]any)
 	tasks := rec["tasks"].([]any)
@@ -303,7 +283,7 @@ func TestConversationHandler_Submit(t *testing.T) {
 
 	status, resp = convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody)
 	if status != http.StatusAccepted || len(repo.convs) != 2 {
-		t.Fatalf("提交到 new 应新建一段对话：%d %v", status, resp)
+		t.Fatalf("每次提交到 new 都应新建一段对话：%d %v", status, resp)
 	}
 	convID := resp["data"].(map[string]any)["conversation_id"].(string)
 	if status, _ = convCall(t, r, http.MethodPost, "/api/v1/conversations/"+convID+"/records", submitBody); status != http.StatusAccepted {
@@ -321,14 +301,16 @@ func TestConversationHandler_SubmitValidation(t *testing.T) {
 		"缺少 input": `{"kind":"image","model_id":"m","count":1}`,
 	}
 	for name, body := range cases {
-		status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", body)
+		status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", body)
 		if status != http.StatusBadRequest || respCode(resp) != errcode.ErrInvalidParams.Code {
 			t.Errorf("%s：应 400 + 10001，得到 %d %v", name, status, resp)
 		}
 	}
-	// 目标既不是 default / new，也不是合法的十六进制串
-	if status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/xyz/records", submitBody); status != http.StatusBadRequest || respCode(resp) != errcode.ErrInvalidParams.Code {
-		t.Errorf("非法目标应 400 + 10001：%d %v", status, resp)
+	// 目标既不是 new，也不是合法的十六进制串（default 已取消，同样非法）
+	for _, target := range []string{"xyz", "default"} {
+		if status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/"+target+"/records", submitBody); status != http.StatusBadRequest || respCode(resp) != errcode.ErrInvalidParams.Code {
+			t.Errorf("非法目标 %s 应 400 + 10001：%d %v", target, status, resp)
+		}
 	}
 }
 
@@ -336,7 +318,7 @@ func TestConversationHandler_SubmitValidation(t *testing.T) {
 func TestConversationHandler_SubmitBusinessError(t *testing.T) {
 	r, repo, tasks := newConvRouter()
 	tasks.createErr = errcode.ErrModelUnavailable
-	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", submitBody)
+	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody)
 	if status != http.StatusBadRequest || respCode(resp) != errcode.ErrModelUnavailable.Code {
 		t.Fatalf("应 400 + 40003：%d %v", status, resp)
 	}
@@ -353,7 +335,7 @@ func TestConversationHandler_SubmitBusinessError(t *testing.T) {
 
 func TestConversationHandler_SubmitIdempotencyKeyTooLong(t *testing.T) {
 	r, _, _ := newConvRouter()
-	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", submitBody, "Idempotency-Key", strings.Repeat("a", 200))
+	status, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody, "Idempotency-Key", strings.Repeat("a", 200))
 	if status != http.StatusBadRequest || respCode(resp) != errcode.ErrInvalidParams.Code {
 		t.Errorf("过长的幂等键应 400 + 10001：%d %v", status, resp)
 	}
@@ -361,7 +343,7 @@ func TestConversationHandler_SubmitIdempotencyKeyTooLong(t *testing.T) {
 
 func TestConversationHandler_ListRecords(t *testing.T) {
 	r, _, _ := newConvRouter()
-	_, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", submitBody)
+	_, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody)
 	convID := resp["data"].(map[string]any)["conversation_id"].(string)
 	for i := 0; i < 2; i++ {
 		convCall(t, r, http.MethodPost, "/api/v1/conversations/"+convID+"/records", submitBody)
@@ -390,7 +372,7 @@ func TestConversationHandler_ListRecords(t *testing.T) {
 
 func TestConversationHandler_DeleteRecord(t *testing.T) {
 	r, _, tasks := newConvRouter()
-	_, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/default/records", submitBody)
+	_, resp := convCall(t, r, http.MethodPost, "/api/v1/conversations/new/records", submitBody)
 	data := resp["data"].(map[string]any)
 	convID, recID := data["conversation_id"].(string), data["record"].(map[string]any)["id"].(string)
 

@@ -9,8 +9,6 @@ export interface ConversationDto {
   id: string;
   /** 标题 */
   title: string;
-  /** 是否默认创作：置顶，不能删除 */
-  isDefault: boolean;
   /** 记录条数 */
   recordCount: number;
   /** 最近一条记录的时间，没有记录为 null */
@@ -67,8 +65,8 @@ export interface RecordPageDto {
   next: string | null;
 }
 
-/** 提交到哪里：默认创作、新建一段对话，或某段对话的 ID */
-export type SubmitTarget = "default" | "new" | (string & {});
+/** 提交到哪里：新建一段对话（"new"），或某段对话的 ID */
+export type SubmitTarget = "new" | (string & {});
 
 /** 提交一条生成记录的请求 */
 export interface SubmitRecordRequest {

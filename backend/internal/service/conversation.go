@@ -19,15 +19,13 @@ import (
 
 // ConversationRepo 是对话与生成记录的数据访问接口（真实实现是 repository.ConversationRepository）。
 type ConversationRepo interface {
-	// EnsureDefault 返回用户的默认创作，不存在时创建；并发创建时以唯一索引兜底，后到的读取先到的。
-	EnsureDefault(ctx context.Context, userID uint64) (*model.Conversation, error)
 	// Create 新建对话。
 	Create(ctx context.Context, c *model.Conversation) error
 	// GetByID 按 id + user_id 查询，不存在或不属于该用户返回 repository.ErrNotFound。
 	GetByID(ctx context.Context, userID, id uint64) (*model.Conversation, error)
-	// List 返回用户全部未删除的对话：默认创作在前，其余按最近记录时间倒序。
+	// List 返回用户全部未删除的对话，按最近记录时间倒序。
 	List(ctx context.Context, userID uint64) ([]model.Conversation, error)
-	// Count 统计用户未删除的对话数（含默认创作）。
+	// Count 统计用户未删除的对话数。
 	Count(ctx context.Context, userID uint64) (int64, error)
 	// Rename 改标题，不存在或不属于该用户返回 repository.ErrNotFound。
 	Rename(ctx context.Context, userID, id uint64, title string) error
@@ -67,7 +65,7 @@ type ConversationTasks interface {
 var _ ConversationTasks = (*GenerationTaskService)(nil)
 
 const (
-	// MaxConversations 是每个用户最多的对话数（含默认创作），防止空对话无限增长。
+	// MaxConversations 是每个用户最多的对话数，防止空对话无限增长。
 	MaxConversations = 200
 
 	newConversationTitle = "新对话"
@@ -79,11 +77,10 @@ const (
 	recordNodePrefix = "rec:"
 )
 
-// ConversationTarget 指明提交到哪段对话：Default 是默认创作，New 是新建一段，否则用 ID。
+// ConversationTarget 指明提交到哪段对话：New 是新建一段，否则用 ID。
 type ConversationTarget struct {
-	ID      uint64 // 已有对话的主键
-	Default bool   // 默认创作（不存在时自动创建）
-	New     bool   // 新建一段对话
+	ID  uint64 // 已有对话的主键
+	New bool   // 新建一段对话
 }
 
 // ConversationService 是首页生成的对话与记录业务。任务状态只认 generation_tasks，这里只保存「提交了什么」。
@@ -98,17 +95,13 @@ func NewConversationService(repo ConversationRepo, tasks ConversationTasks) *Con
 	return &ConversationService{repo: repo, tasks: tasks, now: time.Now}
 }
 
-// List 返回当前用户的对话列表：默认创作永远第一条（没有时自动创建），并标出有进行中任务的对话。
+// List 返回当前用户的对话列表（最近记录在前），并标出有进行中任务的对话。
 func (s *ConversationService) List(ctx context.Context, userID uint64) ([]model.ConversationView, error) {
-	// 1. 先保证默认创作存在，侧栏永远有地方可去
-	if _, err := s.repo.EnsureDefault(ctx, userID); err != nil {
-		return nil, err
-	}
 	convs, err := s.repo.List(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	// 2. 进行中的任务 → 记录 → 对话：只看 node_id 带 rec: 前缀的任务，画布节点的任务不影响对话
+	// 进行中的任务 → 记录 → 对话：只看 node_id 带 rec: 前缀的任务，画布节点的任务不影响对话
 	active, err := s.activeConversations(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -178,7 +171,7 @@ func (s *ConversationService) createConversation(ctx context.Context, userID uin
 	return c, nil
 }
 
-// Rename 改对话标题（含默认创作）。别人的对话和不存在的对话统一返回「对话不存在」。
+// Rename 改对话标题。别人的对话和不存在的对话统一返回「对话不存在」。
 func (s *ConversationService) Rename(ctx context.Context, userID, id uint64, title string) error {
 	// 1. 标题不能为空白，按字数限制 50
 	title = strings.TrimSpace(title)
@@ -196,18 +189,10 @@ func (s *ConversationService) Rename(ctx context.Context, userID, id uint64, tit
 	return err
 }
 
-// Delete 软删除对话。默认创作不能删；对话里进行中的任务继续跑完，素材仍在资产里。
+// Delete 软删除对话；对话里进行中的任务继续跑完，素材仍在资产里。
+// 别人的对话和不存在的对话统一返回「对话不存在」，并发删除时后到的也得到「不存在」。
 func (s *ConversationService) Delete(ctx context.Context, userID, id uint64) error {
-	// 1. 先读出来：要判断是不是默认创作，也顺便确认归属
-	c, err := s.getConversation(ctx, userID, id)
-	if err != nil {
-		return err
-	}
-	if c.IsDefault {
-		return errcode.ErrConversationDefault
-	}
-	// 2. 软删除；并发删除时后到的得到「不存在」
-	err = s.repo.Delete(ctx, userID, id)
+	err := s.repo.Delete(ctx, userID, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return errcode.ErrConversationNotFound
 	}
@@ -269,7 +254,7 @@ func (s *ConversationService) Submit(ctx context.Context, userID uint64, target 
 		}
 	}
 
-	// 2. 解析目标对话：默认创作自动创建；new 先检查数量上限再新建
+	// 2. 解析目标对话：new 先检查数量上限再新建
 	conv, created, err := s.resolveTarget(ctx, userID, target, req)
 	if err != nil {
 		return nil, err
@@ -398,9 +383,6 @@ func (s *ConversationService) existingSubmit(ctx context.Context, userID uint64,
 // resolveTarget 解析提交目标，返回对话以及它是不是本次新建的（失败时要回收）。
 func (s *ConversationService) resolveTarget(ctx context.Context, userID uint64, target ConversationTarget, req *model.SubmitConversationRecordReq) (*model.Conversation, bool, error) {
 	switch {
-	case target.Default:
-		c, err := s.repo.EnsureDefault(ctx, userID)
-		return c, false, err
 	case target.New:
 		c, err := s.createConversation(ctx, userID, newTitle(req))
 		return c, true, err
@@ -553,7 +535,7 @@ func recordView(rec *model.ConversationRecord, tasks map[uint64]model.Generation
 // conversationView 转成列表项。
 func conversationView(c *model.Conversation, active bool) model.ConversationView {
 	return model.ConversationView{
-		ID: idcodec.ID(c.ID), Title: c.Title, IsDefault: c.IsDefault, RecordCount: c.RecordCount,
+		ID: idcodec.ID(c.ID), Title: c.Title, RecordCount: c.RecordCount,
 		LastRecordAt: c.LastRecordAt, Active: active, CreatedAt: c.CreatedAt,
 	}
 }

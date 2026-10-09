@@ -47,6 +47,10 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 		if err := repository.MigrateUserManagement(db); err != nil {
 			return nil, fmt.Errorf("migrate user management: %w", err)
 		}
+		// 对话不再有「默认创作」：删掉 is_default 列和它的部分唯一索引；幂等
+		if err := repository.MigrateConversationDefault(db); err != nil {
+			return nil, fmt.Errorf("migrate conversation default: %w", err)
+		}
 		if err := db.AutoMigrate(model.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)
 		}

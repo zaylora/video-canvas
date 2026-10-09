@@ -3,7 +3,6 @@ package repository_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -35,60 +34,10 @@ func newRec(t *testing.T, r *ConversationRepository, c *model.Conversation, key 
 	return rec
 }
 
-// 默认创作：每个用户只有一段；并发创建时只会建出一段。
-func TestConversationRepo_EnsureDefaultOnlyOne(t *testing.T) {
-	ctx := context.Background()
-	r := NewConversationRepository(convDB(t))
-
-	var wg sync.WaitGroup
-	ids := make([]uint64, 8)
-	for i := range ids {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, err := r.EnsureDefault(ctx, 1)
-			if err != nil {
-				t.Errorf("EnsureDefault 失败：%v", err)
-				return
-			}
-			ids[i] = c.ID
-		}()
-	}
-	wg.Wait()
-	for _, id := range ids {
-		if id == 0 || id != ids[0] {
-			t.Fatalf("并发拿到的默认创作应是同一段：%v", ids)
-		}
-	}
-	c, _ := r.EnsureDefault(ctx, 1)
-	if !c.IsDefault || c.Title != "默认创作" {
-		t.Errorf("默认创作字段不对：%+v", c)
-	}
-	if other, _ := r.EnsureDefault(ctx, 2); other.ID == c.ID {
-		t.Errorf("不同用户有各自的默认创作")
-	}
-}
-
-// 默认创作被删除后（不该发生，但数据可能被人工改过），可以重新建一段。
-func TestConversationRepo_EnsureDefaultAfterSoftDelete(t *testing.T) {
-	ctx := context.Background()
-	db := convDB(t)
-	r := NewConversationRepository(db)
-	first, _ := r.EnsureDefault(ctx, 1)
-	if err := db.Delete(&model.Conversation{}, first.ID).Error; err != nil {
-		t.Fatal(err)
-	}
-	second, err := r.EnsureDefault(ctx, 1)
-	if err != nil || second.ID == first.ID {
-		t.Fatalf("软删除后应重建默认创作：%+v %v", second, err)
-	}
-}
-
-// 列表：默认创作在前，其余按最近记录时间倒序，没有记录的排在后面；只含自己的、未删除的。
+// 列表：按最近记录时间倒序，没有记录的排在后面（时间相同按 id 倒序）；只含自己的、未删除的。
 func TestConversationRepo_ListOrderAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	r := NewConversationRepository(convDB(t))
-	def, _ := r.EnsureDefault(ctx, 1)
 	a := newConv(t, r, 1, "a")
 	b := newConv(t, r, 1, "b")
 	empty := newConv(t, r, 1, "empty")
@@ -108,16 +57,16 @@ func TestConversationRepo_ListOrderAndIsolation(t *testing.T) {
 	for _, c := range got {
 		titles = append(titles, c.Title)
 	}
-	want := []string{def.Title, b.Title, a.Title, empty.Title}
+	want := []string{b.Title, a.Title, empty.Title}
 	if len(titles) != len(want) {
-		t.Fatalf("应只返回自己未删除的 4 段：%v", titles)
+		t.Fatalf("应只返回自己未删除的 3 段：%v", titles)
 	}
 	for i := range want {
 		if titles[i] != want[i] {
 			t.Fatalf("排序不对：%v 期望 %v", titles, want)
 		}
 	}
-	if n, _ := r.Count(ctx, 1); n != 4 {
+	if n, _ := r.Count(ctx, 1); n != 3 {
 		t.Errorf("Count 应与列表一致：%d", n)
 	}
 }
