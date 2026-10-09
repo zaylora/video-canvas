@@ -177,9 +177,11 @@ export function ModelParamsForm({
               error={issueFor(issues, "capabilities.vision")}
               hint="上游模型支持图片输入时打开：Agent 才能查看画布上的图片，判断画面是否符合要求。不能看图的模型拿不到看图工具。"
             >
-              <ToggleChip pressed={!!caps.vision} onClick={() => patch({ vision: !caps.vision })}>
-                能看图
-              </ToggleChip>
+              <div className="flex">
+                <ToggleChip pressed={!!caps.vision} onClick={() => patch({ vision: !caps.vision })}>
+                  能看图
+                </ToggleChip>
+              </div>
             </FormField>
           )}
           {issueFor(issues, "capabilities.context") && (

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Ellipsis, FlaskConical, Pencil, Trash2 } from "lucide-react";
+import { FlaskConical, History, Trash2 } from "lucide-react";
 
 import { listModelRevisions } from "@/api/admin/ai";
 import type {
@@ -11,7 +11,7 @@ import type {
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
-import { Button } from "@/components/ui/button";
+import { RowAction, RowActions } from "@/components/admin-ui/row-action";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -19,7 +19,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,17 +74,13 @@ function StatusCell({ item, health }: { item: ConfigListItem; health: ModelHealt
   );
 }
 
-/** 行尾“更多”：编辑 + 版本历史（归档版本可回滚，打开时才拉历史）+ 删除 */
-function RowMenu({
+/** 行内“版本历史”：点开列出版本，归档版本可回滚（打开时才拉历史） */
+function VersionHistory({
   item,
-  onEdit,
   onRollback,
-  onDelete,
 }: {
   item: ConfigListItem;
-  onEdit: () => void;
   onRollback: (revision: ConfigRevision) => void;
-  onDelete?: () => void;
 }) {
   const [revisions, setRevisions] = useState<ConfigRevision[] | null>(null);
   return (
@@ -95,19 +90,11 @@ function RowMenu({
         if (open) void listModelRevisions(item.key).then(setRevisions, () => setRevisions([]));
       }}
     >
-      <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={`更多：${item.key}`} />}
-      >
-        <Ellipsis />
+      <DropdownMenuTrigger render={<RowAction aria-label={`版本历史 ${item.key}`} />}>
+        <History />
+        版本历史
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil />
-            编辑
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel>版本历史</DropdownMenuLabel>
           {revisions === null && (
@@ -143,17 +130,6 @@ function RowMenu({
             );
           })}
         </DropdownMenuGroup>
-        {onDelete && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 />
-                删除…
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -161,7 +137,7 @@ function RowMenu({
 
 /**
  * 模型表格（设计稿 modelTable）：模型 / 能力 / 渠道 / 状态 / 上线 / 操作，点整行打开编辑弹窗。
- * 行内按钮是“测试”（编辑靠点整行，更多菜单里也有）；删除在更多菜单底部。
+ * 行内常驻“测试 / 版本历史 / 删除”（编辑靠点整行），样式同渠道页与插件页。
  * 模型页和渠道页“使用这个渠道的模型”共用；渠道页传 hideChannel 去掉渠道列。
  * 传 selected 时第一列是勾选框（批量操作用）。
  */
@@ -333,28 +309,33 @@ export function ModelRows({
                       onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
                     />
                   </TableCell>
-                  <TableCell
-                    className="px-3 py-3 text-right whitespace-nowrap"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={item.kind === "agent"}
-                      title={item.kind === "agent" ? "Agent 模型暂不支持试跑" : undefined}
-                      onClick={() => onTest(item.key)}
-                    >
-                      <FlaskConical />
-                      测试
-                    </Button>
-                    <span className="ml-1 inline-block">
-                      <RowMenu
+                  <TableCell className="px-3 py-3">
+                    <RowActions>
+                      <RowAction
+                        tone="info"
+                        disabled={item.kind === "agent"}
+                        title={item.kind === "agent" ? "Agent 模型暂不支持试跑" : undefined}
+                        aria-label={`测试 ${label}`}
+                        onClick={() => onTest(item.key)}
+                      >
+                        <FlaskConical />
+                        测试
+                      </RowAction>
+                      <VersionHistory
                         item={item}
-                        onEdit={() => onEdit(item.key)}
                         onRollback={(revision) => onRollback(item.key, revision)}
-                        onDelete={onDelete && (() => onDelete(item))}
                       />
-                    </span>
+                      {onDelete && (
+                        <RowAction
+                          tone="danger"
+                          aria-label={`删除 ${label}`}
+                          onClick={() => onDelete(item)}
+                        >
+                          <Trash2 />
+                          删除
+                        </RowAction>
+                      )}
+                    </RowActions>
                   </TableCell>
                 </TableRow>
               );

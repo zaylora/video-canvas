@@ -1,5 +1,4 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useSearchParams } from "react-router";
 import {
   Braces,
   CheckCheck,
@@ -85,9 +84,7 @@ export function ModelDialog({
   ref?: Ref<ModelDialogHandle>;
 }) {
   const [tab, setTab] = useState<ModelTabId>("basic");
-  // 从列表“更多 → 测试模型”进来时带 ?test=1，直接打开测试弹窗
-  const [params] = useSearchParams();
-  const [testOpen, setTestOpen] = useState(() => params.get("test") === "1");
+  const [testOpen, setTestOpen] = useState(false);
   const [pendingLocate, setPendingLocate] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { mode, body } = ws;
@@ -438,15 +435,8 @@ export function ModelDialog({
         </div>
       )}
 
-      {/* 底栏：当前状态 + 测试 / 取消 / 保存草稿 / 上线（= 保存 + 发布 + 上架，一步完成）；下线在“更多”里 */}
+      {/* 底栏：测试 / 取消 / 保存草稿 / 上线（= 保存 + 发布 + 上架，一步完成）；下线在“更多”里 */}
       <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
-        <div className="text-muted-foreground text-xs leading-tight">
-          {!published
-            ? "还没上线：点「上线」后用户就能在画布里选到"
-            : online
-              ? "在线中：改完点「更新上线版本」，立即对所有用户生效"
-              : "已下线：点「上线」重新对用户开放"}
-        </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button
             variant="outline"

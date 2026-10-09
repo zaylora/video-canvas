@@ -17,6 +17,7 @@ import {
 } from "@/components/admin-ui/page-header";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { useAdminOutlet } from "../../use-admin";
+import { ModelTestDialog } from "./model-test-dialog";
 import { ModelDialog, type ModelDialogHandle } from "./model-dialog";
 import { BatchBar } from "./batch-bar";
 import { useModelBatch } from "./use-model-batch";
@@ -34,6 +35,8 @@ export default function ModelsPage() {
   const { catalog } = useAdminOutlet();
   const ws = useModelWorkspace(catalog);
   const [params] = useSearchParams();
+  // 列表里点“测试”会带 ?test=1：只弹测试弹窗，不显示编辑弹窗
+  const testOnly = params.get("test") === "1" && ws.selection === "model";
   const editorRef = useRef<ModelDialogHandle>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const batch = useModelBatch(ws.models, ws.reloadList);
@@ -95,7 +98,7 @@ export default function ModelsPage() {
         />
 
         <Dialog
-          open={ws.selection !== "none"}
+          open={ws.selection !== "none" && !testOnly}
           onOpenChange={(open) => {
             if (!open) ws.closeEditor();
           }}
@@ -110,6 +113,13 @@ export default function ModelsPage() {
             <ModelDialog ref={editorRef} ws={ws} catalog={catalog} />
           </DialogContent>
         </Dialog>
+
+        <ModelTestDialog
+          open={testOnly}
+          ws={ws}
+          onClose={ws.closeEditor}
+          onClosed={ws.clearEditor}
+        />
 
         <ConfirmDialog
           open={!!ws.pendingNav}

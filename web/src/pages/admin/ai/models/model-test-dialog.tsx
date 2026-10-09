@@ -24,10 +24,13 @@ export function ModelTestDialog({
   open,
   ws,
   onClose,
+  onClosed,
 }: {
   open: boolean;
   ws: ModelWorkspace;
   onClose: () => void;
+  /** 退出动画播完后回调 */
+  onClosed?: () => void;
 }) {
   const body = ws.body;
   const label = body ? readModelString(body, "label") : "";
@@ -35,7 +38,13 @@ export function ModelTestDialog({
   const busy = ws.busy === "test-run" || ws.busy === "dry-run" || ws.busy === "save";
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      onOpenChangeComplete={(next) => {
+        if (!next) onClosed?.();
+      }}
+    >
       <DialogContent className="flex h-[min(88svh,820px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
         <div className="flex items-start gap-3 border-b px-6 py-4 pr-12">
           <VendorAvatar
