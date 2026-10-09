@@ -133,6 +133,19 @@ type ChannelUpdateInput struct {
 	ActorID          uint64
 }
 
+// ChannelCheckDraftInput 是保存前连通性检查的参数：表单里还没保存的渠道草稿，字段含义同 ChannelCreateInput。
+// ExistingKey 非空表示正在编辑这个已有渠道：Secret 留空时用它已保存的 Key；新建渠道留空。Secret 明文只在这次请求里用。
+type ChannelCheckDraftInput struct {
+	ExistingKey      string
+	PluginKey        string
+	PluginVersion    string
+	BaseURL          string
+	TrustedInternal  bool
+	AllowCredentials bool
+	Settings         map[string]any
+	Secret           string
+}
+
 // ChannelImportResult 是从渠道导入模型的结果：草稿只用来预填模型编辑器，不落库。
 type ChannelImportResult struct {
 	Drafts []provider.ModelDraft `json:"drafts"`

@@ -365,6 +365,33 @@ func TestNewAPICheck(t *testing.T) {
 	}
 }
 
+// 保存前检查：Key 用调用方给的草稿值（不是已保存的 sk-newapi），结果里也不会带出草稿 Key。
+func TestNewAPICheckDraft(t *testing.T) {
+	env := newNewAPIEnv(t, nil)
+	srv := &fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	res, err := env.exec.CheckDraft(context.Background(), env.runtime(ts.URL), "sk-draft")
+	if err != nil || res == nil || !res.OK {
+		t.Fatalf("检查应成功：%+v %v", res, err)
+	}
+	if got := srv.last(); got.Path != "/v1/models" || got.Auth != "Bearer sk-draft" {
+		t.Fatalf("应使用草稿 Key 发请求：%+v", got)
+	}
+
+	bad := httptest.NewServer(&fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid token sk-draft"}}`))
+	}})
+	defer bad.Close()
+	res, err = env.exec.CheckDraft(context.Background(), env.runtime(bad.URL), "sk-draft")
+	if err == nil || res == nil || res.OK || strings.Contains(res.Message, "sk-draft") {
+		t.Fatalf("401 应失败，且原因里不含草稿 Key：%+v %v", res, err)
+	}
+}
+
 // 导入：GET /v1/models，按模型名推断 text / video / image / audio，其余（向量、转写）跳过；草稿的上游模型名与输入表单齐全。
 func TestNewAPIImport(t *testing.T) {
 	srv := httptest.NewServer(&fakeNewAPI{handler: func(w http.ResponseWriter, r *http.Request, _ map[string]any) {

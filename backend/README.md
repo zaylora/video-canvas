@@ -154,6 +154,7 @@ make run
 | POST     | /api/v1/admin/ai/channels                       | super_admin | 新建渠道                                                                                                             |
 | PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本）                                                             |
 | PUT      | /api/v1/admin/ai/channels/:key/secret           | super_admin | 设置渠道 Key（只写）                                                                                                 |
+| POST     | /api/v1/admin/ai/channels/check-draft          | super_admin | 保存前检查：用表单草稿（含 Key，不落库）做连通性检查                                                                                                           |
 | POST     | /api/v1/admin/ai/channels/:key/check            | super_admin | 连通性检查                                                                                                           |
 | POST     | /api/v1/admin/ai/channels/:key/import           | admin       | 从渠道导入模型草稿（只预填，不落库）                                                                                 |
 | GET      | /api/v1/admin/ai/channels/:key/delete-check     | super_admin | 删除预检，kind 为 `channel_models`（refs 是模型）/ `active_tasks`                                                    |

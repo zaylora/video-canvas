@@ -146,6 +146,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.GET("/:key", h.AdminChannel.Get)
 		channels.PUT("/:key", superOnly, h.AdminChannel.Update)
 		channels.PUT("/:key/secret", superOnly, h.AdminChannel.SetSecret)
+		channels.POST("/check-draft", superOnly, h.AdminChannel.CheckDraft)
 		channels.POST("/:key/check", superOnly, h.AdminChannel.Check)
 		channels.POST("/:key/import", h.AdminChannel.Import)
 		channels.GET("/:key/delete-check", superOnly, h.AdminChannel.DeleteCheck)

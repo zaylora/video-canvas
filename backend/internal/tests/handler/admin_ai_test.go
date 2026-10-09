@@ -328,6 +328,7 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		{http.MethodPut, "/channels/x", true},
 		{http.MethodPut, "/channels/x/secret", true},
 		{http.MethodPost, "/channels/x/check", true},
+		{http.MethodPost, "/channels/check-draft", true},
 		{http.MethodPost, "/channels/x/import", false},
 		{http.MethodGet, "/models", false},
 		{http.MethodPost, "/models", false},
@@ -727,6 +728,41 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 		if !strings.Contains(r.Msg, "APP_AI_SECRET_KEY") {
 			t.Fatalf("提示应说明缺少主密钥：%s", r.Raw)
 		}
+	})
+}
+
+func TestAdminChannelHandler_CheckDraft(t *testing.T) {
+	env := aicNewEnv(t)
+	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
+	url := aicBase + "/channels/check-draft"
+	body := func(mutate func(map[string]any)) map[string]any {
+		m := map[string]any{
+			"plugin_key": "kling", "plugin_version": "1.0.0", "base_url": "https://gw.example.com",
+			"settings": map[string]any{"tenant": "t1"}, "secret": "sk-draft-value",
+		}
+		if mutate != nil {
+			mutate(m)
+		}
+		return m
+	}
+
+	t.Run("成功：渠道还没保存也能检查，响应不含 Key", func(t *testing.T) {
+		env.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 90}
+		r := env.super(http.MethodPost, url, body(nil))
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"ok":true`) || !strings.Contains(r.Raw, `"duration_ms":90`) || strings.Contains(r.Raw, "sk-draft-value") {
+			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+		if env.ops.GotSecret != "sk-draft-value" {
+			t.Fatalf("草稿 Key 应传给宿主：%q", env.ops.GotSecret)
+		}
+	})
+	t.Run("缺必填字段：400（10001）", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "base_url") })), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+	t.Run("业务错误：地址不合法 400 类（50013）；没有 Key 409（50015）", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { m["base_url"] = "ftp://x" })), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
+		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "secret") })), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
 	})
 }
 
