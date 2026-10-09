@@ -16,8 +16,9 @@ type Handlers struct {
 	User          *handler.UserHandler
 	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
 	CanvasProject *handler.CanvasProjectHandler
-	Agent         *agenthandler.AgentHandler // 画布 Agent：会话、运行、审批
-	AgentSkill    *agenthandler.SkillHandler // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	Conversation  *handler.ConversationHandler // 首页生成：对话与生成记录
+	Agent         *agenthandler.AgentHandler   // 画布 Agent：会话、运行、审批
+	AgentSkill    *agenthandler.SkillHandler   // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
@@ -85,6 +86,16 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
 		canvas.GET("/:id/agent/sessions", h.Agent.ListSessions)
 		canvas.POST("/:id/agent/sessions", h.Agent.CreateSession)
+
+		// 首页生成的对话：对话和记录的 id 与画布一样是十六进制串；POST /:id/records 的 id 还可以是 default / new
+		conv := auth.Group("/conversations")
+		conv.GET("", h.Conversation.List)
+		conv.POST("", h.Conversation.Create)
+		conv.PATCH("/:id", h.Conversation.Rename)
+		conv.DELETE("/:id", h.Conversation.Delete)
+		conv.GET("/:id/records", h.Conversation.ListRecords)          // ?before=&limit=
+		conv.POST("/:id/records", h.Conversation.Submit)              // 202
+		conv.DELETE("/:id/records/:rid", h.Conversation.DeleteRecord) // ?cancel_active=true
 
 		// 画布 Agent：id 与画布一样是十六进制串
 		agent := auth.Group("/agent")

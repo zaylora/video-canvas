@@ -184,3 +184,11 @@ var (
 	ErrSkillNeedDisable    = New(61010, "技能需先停用才能删除", http.StatusConflict)
 	ErrSkillTooLarge       = New(61011, "技能包超过大小限制", http.StatusRequestEntityTooLarge)
 )
+
+// 首页对话 62xxx（62004 留给「发到画布」）
+var (
+	ErrConversationNotFound = New(62001, "对话不存在", http.StatusNotFound)
+	ErrConversationLimit    = New(62002, "对话数量已达上限，请先删除不用的对话", http.StatusConflict)
+	ErrConversationDefault  = New(62003, "默认创作不能删除", http.StatusConflict)
+	ErrRecordNotFound       = New(62005, "记录不存在", http.StatusNotFound)
+)

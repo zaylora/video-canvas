@@ -234,6 +234,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		User:           handler.NewUserHandler(userSvc),
 		Me:             handler.NewMeHandler(meSvc),
 		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Conversation:   handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		Agent:          agenthandler.NewAgentHandler(agentSvc),
 		AgentSkill:     agenthandler.NewSkillHandler(skillSvc),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),

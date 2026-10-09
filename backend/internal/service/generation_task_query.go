@@ -101,6 +101,23 @@ func (s *GenerationTaskService) List(ctx context.Context, userID uint64, req *mo
 	return views, nil
 }
 
+// ViewsByIDs 批量查询该用户的正式任务快照（对话记录用）。id 超过一次对账上限时分批查询；
+// 别人的任务、不存在的任务、试跑任务都不会出现在结果里，调用方按 id 自行对齐。
+func (s *GenerationTaskService) ViewsByIDs(ctx context.Context, userID uint64, ids []uint64) ([]model.GenerationTaskView, error) {
+	views := make([]model.GenerationTaskView, 0, len(ids))
+	for start := 0; start < len(ids); start += maxReconcileIDs {
+		end := min(start+maxReconcileIDs, len(ids))
+		tasks, err := s.repo.ListByIDs(ctx, userID, ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for i := range tasks {
+			views = append(views, *taskView(&tasks[i]))
+		}
+	}
+	return views, nil
+}
+
 // GetCredits 返回当前用户的积分。账户不存在时按配置的初始积分惰性创建后再返回。
 func (s *GenerationTaskService) GetCredits(ctx context.Context, userID uint64) (*model.CreditView, error) {
 	// 1. 惰性创建账户：已存在时是空操作，不会覆盖余额；初始积分来自系统设置（缺省 config），
