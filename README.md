@@ -9,8 +9,6 @@
 
 <p align="center"><strong>意义，在镜头之间。</strong></p>
 
-<p align="center">从一句话，到一部片。<br />开源的 AI 视频创作无限画布：用节点串联文本、图片、视频和音频生成。</p>
-
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
 <p align="center">
@@ -45,8 +43,6 @@
 ## 快速开始
 
 ### 一键部署（Docker）
-
-服务器上只需要 [Docker](https://docs.docker.com/get-docker/)（带 Compose v2）和 curl，不用克隆仓库：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash
@@ -97,38 +93,15 @@ cd video-canvas
 | PostgreSQL   | `localhost:15432`（postgres / root，库 `video_canvas`） |
 | Redis        | `localhost:16379`                                       |
 
-### 首次配置：完成第一次生成
-
-刚启动时没有可用的模型，需要先完成以下配置：
-
-1. 打开前端，注册一个账号。
-2. 把这个账号提升为超级管理员（第一个 `super_admin` 只能用 SQL 设置）：
-
-   ```bash
-   # 一键部署的环境：在部署目录（默认 video-canvas/）执行；开发环境把 docker compose 换成 docker compose -f docker-compose.dev.yml
-   docker compose exec postgres \
-     psql -U postgres -d video_canvas \
-     -c "UPDATE users SET role = 'super_admin' WHERE username = '你的用户名';"
-   ```
-
-   角色缓存最长 30 秒，稍等片刻后刷新页面。
-
-3. 进入 **管理后台 → 渠道**（`/admin/ai/channels`），新建渠道：选择内置的 NewAPI 插件，填写地址和 API Key，然后点「连通性检查」。
-4. 进入 **管理后台 → 模型**，从渠道导入或新建模型，校验通过后发布。
-5. 回到首页新建画布，添加节点并输入提示词，开始生成。新用户默认有 50 积分。
-
 ## 本地开发
 
-不用 Docker 时需要：Go 1.27、[Bun](https://bun.sh)（也可以用 npm）、PostgreSQL 16、Redis 7。
+不用 Docker 时需要：Go 1.27、[Bun](https://bun.sh)、PostgreSQL 16、Redis 7。
 
 ```bash
-# 按需复制一份本机配置（已被 gitignore），修改数据库连接等
 cp backend/configs/config.yaml backend/configs/config.local.yaml
 
-./scripts/start.sh         # Windows 运行 scripts/start.bat；Ctrl+C 同时停止前后端
+./scripts/start.sh         # Windows 运行 scripts/start.bat；
 ```
-
-脚本会编译后端并启动 Vite，前端会把 `/api` 和 `/files` 代理到 `:8080`。配置项都可以用环境变量覆盖，规则是 `APP_` + 大写路径，例如 `APP_DATABASE_DSN`。Redis 可以用 `redis.enabled: false` 关闭，关闭后缓存层会降级为直接查数据库。
 
 ## 架构
 
