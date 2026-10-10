@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { AnimatePresence } from "motion/react";
 import { useReactFlow } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
@@ -86,13 +87,15 @@ export function TextCanvasNode({
           onTextChange={vm.submitting ? undefined : onTextChange}
         />
       </NodeCard>
-      {selected && !multiSelected && !dragSelected && (
-        <NodeOverlays id={id} data={data} showHistory={false}>
-          {(width) => (
-            <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
-          )}
-        </NodeOverlays>
-      )}
+      <AnimatePresence>
+        {selected && !multiSelected && !dragSelected && (
+          <NodeOverlays key="overlays" id={id} data={data}>
+            {(width) => (
+              <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
+            )}
+          </NodeOverlays>
+        )}
+      </AnimatePresence>
     </>
   );
 }

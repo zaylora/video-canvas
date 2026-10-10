@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 
@@ -352,11 +353,15 @@ function MediaTaskNode({
           active={!!selected}
         />
       </NodeCard>
-      {selected && !multiSelected && !dragSelected && !uploading && !uploadFailed && (
-        <NodeOverlays id={id} data={data} showHistory>
-          {(width) => <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />}
-        </NodeOverlays>
-      )}
+      <AnimatePresence>
+        {selected && !multiSelected && !dragSelected && !uploading && !uploadFailed && (
+          <NodeOverlays key="overlays" id={id} data={data}>
+            {(width) => (
+              <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />
+            )}
+          </NodeOverlays>
+        )}
+      </AnimatePresence>
     </>
   );
 }

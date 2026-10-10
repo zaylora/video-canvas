@@ -94,6 +94,7 @@ import { AgentLauncher } from "./chrome/agent-launcher";
 import { ConflictDialog } from "./conflict-dialog";
 import { buildAddNodeItems } from "./chrome/add-node-items";
 import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
+import { NodePreviewProvider } from "./preview-context";
 import { MultiSelectProvider, SelectionToolbar } from "./selection-toolbar";
 import { useCanvasShortcuts } from "./use-canvas-shortcuts";
 
@@ -490,21 +491,34 @@ export const Flow = memo(function Flow({
     },
     [focusNode],
   );
-  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: FlowNode) => {
-    if (isGroupNode(node)) return;
-    // 视频控制条、按钮、输入框上的双击是它们自己的事
-    if ((event.target as Element).closest("button, input, textarea, a, .nodrag")) return;
-    if (collectPreviewItems([node]).length === 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+  /** 打开预览灯箱；origin 是节点在屏幕上的矩形，弹层从它的中心长出来 */
+  const startPreview = useCallback((id: string, rect: DOMRect | null) => {
     // 节点里正在播的视频让位给预览，免得两路声音叠在一起
     document
       .querySelectorAll<HTMLVideoElement>(".react-flow__node video")
       .forEach((v) => v.pause());
     setPreview({
-      id: node.id,
-      origin: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      id,
+      origin: rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null,
     });
   }, []);
+  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: FlowNode) => {
+    if (isGroupNode(node)) return;
+    // 视频控制条、按钮、输入框上的双击是它们自己的事
+    if ((event.target as Element).closest("button, input, textarea, a, .nodrag")) return;
+    if (collectPreviewItems([node]).length === 0) return;
+    startPreview(node.id, event.currentTarget.getBoundingClientRect());
+  }, [startPreview]);
+  /** 功能区的「放大」：和双击一样的效果，弹层从节点中心长出来 */
+  const previewNode = useCallback(
+    (id: string) => {
+      const node = getNode(id);
+      if (!node || isGroupNode(node) || collectPreviewItems([node]).length === 0) return;
+      const element = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+      startPreview(id, element?.getBoundingClientRect() ?? null);
+    },
+    [getNode, startPreview],
+  );
   const {
     menu,
     pending,
@@ -682,6 +696,7 @@ export const Flow = memo(function Flow({
       <MultiSelectProvider value={multiSelected}>
         <OverlayGateProvider value={overlayGate.dragSelected}>
           <GroupUiProvider value={groupUi}>
+            <NodePreviewProvider value={previewNode}>
             <TooltipProvider delay={400}>
               {/* 画布和停靠的 Agent 侧栏并排；浮窗时 Agent 盖在画布上（设计稿 画布Agent助手设计 6.8） */}
               <div className="relative flex h-svh w-svw overflow-hidden">
@@ -944,6 +959,7 @@ export const Flow = memo(function Flow({
                 </AnimatePresence>
               </div>
             </TooltipProvider>
+            </NodePreviewProvider>
           </GroupUiProvider>
         </OverlayGateProvider>
       </MultiSelectProvider>
