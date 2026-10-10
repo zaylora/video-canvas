@@ -4,6 +4,7 @@ import type { UploadIntent } from "@/api/asset/type";
 import {
   buildDirectRequest,
   buildIntentBody,
+  isUploadAborted,
   planUpload,
   sendDirect,
 } from "@/utils/asset/direct-upload";
@@ -159,40 +160,155 @@ describe("buildDirectRequest", () => {
   });
 });
 
-describe("sendDirect：直传结果判定（注入 fetch，不发真实网络请求）", () => {
-  const request = { url: "https://x", init: { method: "PUT" as const, body: png() } };
+/** 假的 XMLHttpRequest：记下收到的调用，由测试决定什么时候给什么结果 */
+class FakeXhr {
+  method = "";
+  url = "";
+  headers: Record<string, string> = {};
+  body: unknown = null;
+  withCredentials = true;
+  status = 0;
+  aborted = false;
+  upload: { onprogress: ((event: unknown) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  ontimeout: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  open(method: string, url: string) {
+    this.method = method;
+    this.url = url;
+  }
+  setRequestHeader(key: string, value: string) {
+    this.headers[key] = value;
+  }
+  send(body: unknown) {
+    this.body = body;
+  }
+  abort() {
+    this.aborted = true;
+    this.onabort?.();
+  }
+  /** 服务端回了某个状态码 */
+  respond(status: number) {
+    this.status = status;
+    this.onload?.();
+  }
+  /** 上传了多少字节 */
+  progress(loaded: number, total: number, lengthComputable = true) {
+    this.upload.onprogress?.({ loaded, total, lengthComputable });
+  }
+}
 
+/** 发一次直传，返回假 XHR 和结果 promise */
+function send(
+  options: Omit<NonNullable<Parameters<typeof sendDirect>[1]>, "createXhr"> = {},
+  request: Parameters<typeof sendDirect>[0] = {
+    url: "https://x",
+    init: { method: "PUT", body: png() },
+  },
+) {
+  const xhr = new FakeXhr();
+  const result = sendDirect(request, {
+    ...options,
+    createXhr: () => xhr as unknown as XMLHttpRequest,
+  });
+  return { xhr, result };
+}
+
+describe("sendDirect：直传结果判定（注入假 XHR，不发真实网络请求）", () => {
   test("2xx 算成功（S3 的 POST Policy 成功返回 204）", async () => {
     for (const status of [200, 201, 204]) {
-      const fake = (async () => new Response(null, { status })) as unknown as typeof fetch;
-      expect(await sendDirect(request, fake)).toBe(true);
+      const { xhr, result } = send();
+      xhr.respond(status);
+      expect(await result).toBe(true);
     }
   });
 
   test("非 2xx 算失败，需要降级", async () => {
-    for (const status of [301, 403, 404, 500]) {
-      const fake = (async () => new Response(null, { status })) as unknown as typeof fetch;
-      expect(await sendDirect(request, fake)).toBe(false);
+    for (const status of [403, 404, 500]) {
+      const { xhr, result } = send();
+      xhr.respond(status);
+      expect(await result).toBe(false);
     }
   });
 
-  test("fetch 抛错（CORS、断网）算失败，不向外抛", async () => {
-    const fake = (async () => {
-      throw new TypeError("Failed to fetch");
-    }) as unknown as typeof fetch;
-    expect(await sendDirect(request, fake)).toBe(false);
+  test("网络出错、超时（CORS、断网）算失败，不向外抛", async () => {
+    const first = send();
+    first.xhr.onerror?.();
+    expect(await first.result).toBe(false);
+
+    const second = send();
+    second.xhr.ontimeout?.();
+    expect(await second.result).toBe(false);
   });
 
-  test("原样把 url 与 init 交给 fetch，并且不带登录头、不带 cookie", async () => {
-    let seen: { url: unknown; init: RequestInit | undefined } | null = null;
-    const fake = (async (url: unknown, init?: RequestInit) => {
-      seen = { url, init };
-      return new Response(null, { status: 204 });
-    }) as unknown as typeof fetch;
-    await sendDirect(request, fake);
-    expect(seen!.url).toBe("https://x");
-    expect(seen!.init?.method).toBe("PUT");
-    expect(seen!.init?.credentials).toBe("omit");
-    expect(new Headers(seen!.init?.headers).has("authorization")).toBe(false);
+  test("原样交出方法、地址、请求头和 body，并且不带 cookie", async () => {
+    const file = png();
+    const { xhr, result } = send(
+      {},
+      {
+        url: "https://x",
+        init: { method: "PUT", headers: { "Content-Type": "image/png" }, body: file },
+      },
+    );
+    xhr.respond(204);
+    await result;
+    expect(xhr.method).toBe("PUT");
+    expect(xhr.url).toBe("https://x");
+    expect(xhr.headers).toEqual({ "Content-Type": "image/png" });
+    expect(xhr.body).toBe(file);
+    expect(xhr.withCredentials).toBe(false);
+  });
+});
+
+describe("sendDirect：上传进度", () => {
+  test("按字节算整数百分比回调，向下取整", async () => {
+    const seen: number[] = [];
+    const { xhr, result } = send({ onProgress: (percent) => seen.push(percent) });
+    xhr.progress(0, 200);
+    xhr.progress(1, 200);
+    xhr.progress(100, 200);
+    xhr.progress(200, 200);
+    xhr.respond(204);
+    await result;
+    expect(seen).toEqual([0, 0, 50, 100]);
+  });
+
+  test("总大小算不出来时不回调，免得报出 NaN", async () => {
+    const seen: number[] = [];
+    const { xhr, result } = send({ onProgress: (percent) => seen.push(percent) });
+    xhr.progress(10, 0, false);
+    xhr.respond(204);
+    await result;
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("sendDirect：取消", () => {
+  test("信号中止就中止请求，并抛出 AbortError，不当成失败去降级", async () => {
+    const controller = new AbortController();
+    const { xhr, result } = send({ signal: controller.signal });
+    controller.abort();
+    expect(xhr.aborted).toBe(true);
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  test("发出之前信号就已经中止：不发请求直接抛 AbortError", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { xhr, result } = send({ signal: controller.signal });
+    expect(xhr.body).toBeNull();
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("isUploadAborted：认出取消", () => {
+  test("浏览器的 AbortError 和 axios 的 CanceledError 都算取消，其他错误不算", () => {
+    expect(isUploadAborted(new DOMException("x", "AbortError"))).toBe(true);
+    expect(isUploadAborted(Object.assign(new Error("canceled"), { name: "CanceledError" }))).toBe(
+      true,
+    );
+    expect(isUploadAborted(new Error("boom"))).toBe(false);
+    expect(isUploadAborted(null)).toBe(false);
   });
 });

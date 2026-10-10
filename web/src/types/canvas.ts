@@ -19,6 +19,8 @@ export type CanvasNodeData = {
   model?: string;
   /** 产出进度，缺省按 idle 处理 */
   status?: NodeStatus;
+  /** 本地文件的上传进度，0-100 的整数；只在上传中（status 为 running）才有，不持久化 */
+  uploadProgress?: number;
   /** 出图结果或上传素材的地址，生成中为 null */
   src?: string | null;
   /** src 那份素材是图、视频还是音频 */
@@ -140,7 +142,7 @@ export type UploadNotice = {
 
 /** 收下一个上传文件的结果：认下来给素材，认不下给一句能直接摆出去的话 */
 export type UploadTaken =
-  /** 认下来：素材类型与本地预览地址 */
-  | { mediaType: MediaType; src: string }
+  /** 认下来：素材类型 */
+  | { mediaType: MediaType }
   /** 认不下：能直接展示给用户的原因 */
   | { error: string };

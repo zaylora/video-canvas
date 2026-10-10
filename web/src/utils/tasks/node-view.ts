@@ -1,5 +1,6 @@
 import type { TaskView } from "@/api/generation-task/type";
 import type { CanvasNodeData } from "@/types";
+import { isUploading } from "@/utils/canvas/upload-state";
 
 /** 视频节点正文该长什么样 */
 export type VideoNodeView =
@@ -7,6 +8,7 @@ export type VideoNodeView =
   | { phase: "queued" }
   | { phase: "running"; elapsedMs: number | null; progress: number | null }
   | { phase: "finalizing" }
+  | { phase: "uploading"; progress: number }
   | { phase: "done"; src: string }
   | { phase: "failed"; message: string; refunded: boolean; taskRef: string | null };
 
@@ -55,12 +57,17 @@ export function derivePendingPhase(task: TaskView, now: number): PendingPhase {
  * 「提交中」是点击到 202 之间的本地瞬态，不在这里，由生成按钮的 loading 表达。
  */
 export function deriveVideoNodeView(
-  data: Pick<CanvasNodeData, "status" | "src" | "error" | "errorTaskRef" | "taskId">,
+  data: Pick<
+    CanvasNodeData,
+    "status" | "src" | "error" | "errorTaskRef" | "taskId" | "uploadProgress"
+  >,
   task: TaskView | undefined,
   now: number,
 ): VideoNodeView {
   switch (data.status) {
     case "running":
+      // 本地文件在上传：展示上传进度，不是生成任务
+      if (isUploading(data)) return { phase: "uploading", progress: data.uploadProgress ?? 0 };
       if (!task) return { phase: "running", elapsedMs: null, progress: null };
       return derivePendingPhase(task, now);
     case "error":

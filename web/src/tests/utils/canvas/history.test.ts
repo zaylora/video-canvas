@@ -49,6 +49,13 @@ describe("restoreNodes", () => {
     expect(restored.data.outputs).toHaveLength(1);
   });
 
+  test("上传进度取眼下的：撤销别的操作不会把还在传的节点进度倒回快照时的 0", () => {
+    const saved = node("n1", { status: "running", uploadProgress: 0 });
+    const now = node("n1", { status: "running", uploadProgress: 64 });
+    const [restored] = restoreNodes([saved], [now]);
+    expect(restored.data.uploadProgress).toBe(64);
+  });
+
   test("快照里的当前版本按眼下的历史重新镜像", () => {
     const saved = node("n1", { activeOutputId: "1" });
     const now = node("n1", {

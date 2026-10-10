@@ -18,7 +18,7 @@ function getMediaType(file: File): MediaType | null {
 }
 
 /**
- * 收下一个选中的文件：认种类、卡大小，都过了才挂成本地地址。
+ * 收下一个选中的文件：认种类、卡大小。
  * 不合规时给一句能直接摆给用户看的话。
  */
 export function takeUploadFile(file: File): UploadTaken {
@@ -30,5 +30,5 @@ export function takeUploadFile(file: File): UploadTaken {
     return { error: `文件超过 ${Math.round(limit / 1024 / 1024)}MB，换个小点的` };
   }
 
-  return { mediaType, src: URL.createObjectURL(file) };
+  return { mediaType };
 }

@@ -15,6 +15,7 @@ export type HistorySnapshot = { nodes: FlowNode[]; edges: CanvasEdge[] };
  */
 const TASK_FIELDS = [
   "status",
+  "uploadProgress",
   "taskId",
   "error",
   "text",

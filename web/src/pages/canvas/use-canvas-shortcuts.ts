@@ -36,6 +36,7 @@ function isBusyTarget(target: EventTarget | null) {
 function cloneData(data: CanvasNodeData): CanvasNodeData {
   const next = structuredClone(data);
   delete next.taskId;
+  delete next.uploadProgress;
   if (next.status === "running" || next.status === "error") {
     next.status = next.src ? "done" : "idle";
     next.error = null;

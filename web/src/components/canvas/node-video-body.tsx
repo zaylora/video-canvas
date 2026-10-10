@@ -143,6 +143,15 @@ export function NodeVideoBody({
           cancelling={cancelling}
         />
       );
+    case "uploading":
+      // 字节传完后服务端还要登记、处理一会儿，进度条满了也不算完成
+      return (
+        <PendingBox
+          title={view.progress >= 100 ? "处理中" : "上传中"}
+          detail={view.progress >= 100 ? "文件已传完，正在保存" : undefined}
+          progress={view.progress}
+        />
+      );
     case "finalizing":
       return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
     case "done":

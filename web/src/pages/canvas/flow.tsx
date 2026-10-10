@@ -70,6 +70,7 @@ import { getCurrentUserId } from "@/utils/storage/user-id";
 import { draftStore } from "@/utils/canvas/draft-idb";
 import type { Recovery } from "@/utils/canvas/draft-reconcile";
 import { releaseObjectUrl } from "@/utils/canvas/media";
+import { uploadRunner } from "@/utils/canvas/upload-runner";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
 
@@ -212,6 +213,8 @@ export const Flow = memo(function Flow({
       pruneOnChange(changes);
       for (const change of changes) {
         if (change.type === "remove") {
+          // 删掉还在上传的节点就是取消上传
+          uploadRunner.cancel(change.id);
           const removed = nodesRef.current.find((node) => node.id === change.id);
           if (removed && !isGroupNode(removed)) releaseObjectUrl(removed.data.src);
         }
@@ -255,6 +258,8 @@ export const Flow = memo(function Flow({
   );
   useEffect(
     () => () => {
+      // 离开画布：还在传的文件一并取消，节点没存，传完也没处挂
+      uploadRunner.cancelAll();
       for (const node of nodesRef.current) if (!isGroupNode(node)) releaseObjectUrl(node.data.src);
     },
     [],

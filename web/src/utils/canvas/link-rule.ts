@@ -10,9 +10,13 @@ import {
 } from "@/utils/tasks/capabilities";
 
 import { canConnectKinds } from "./canvas";
+import { isUploading } from "./upload-state";
 
 /** 判断连线只要节点的这几项 */
-export type LinkEnd = Pick<CanvasNodeData, "kind" | "model" | "params" | "prompt">;
+export type LinkEnd = Pick<
+  CanvasNodeData,
+  "kind" | "model" | "params" | "prompt" | "status" | "uploadProgress"
+>;
 
 /** 下游节点当前模型的能力：节点没选模型就按清单第一条，清单还没到返回 undefined */
 function capabilitiesOf(node: LinkEnd) {
@@ -29,6 +33,8 @@ function capabilitiesOf(node: LinkEnd) {
  * 读模型清单不订阅，拖线时每帧调用也不会引起重渲染。
  */
 export function canLinkNodes(source: LinkEnd, target: LinkEnd): boolean {
+  // 还在上传的节点没有正式素材，没东西可引用
+  if (isUploading(source)) return false;
   if (!canConnectKinds(source.kind, "source", target.kind)) return false;
   const caps = capabilitiesOf(target);
   const op = currentOp(caps, readParams(target));

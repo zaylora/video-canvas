@@ -78,3 +78,11 @@ export type UploadIntent = {
   /** 凭证过期时间（ISO 时间串） */
   expires_at?: string;
 };
+
+/** 上传素材的可选项 */
+export interface UploadOptions {
+  /** 上传进度回调，参数是 0-100 的整数百分比；字节传完后服务端还要处理一会儿，所以到 100 不代表已完成 */
+  onProgress?: (percent: number) => void;
+  /** 中止信号：触发后上传被取消，uploadAsset 抛出 AbortError / CanceledError（用 isUploadAborted 认） */
+  signal?: AbortSignal;
+}

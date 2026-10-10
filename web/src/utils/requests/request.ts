@@ -154,6 +154,8 @@ instance.interceptors.response.use(
     return response.data.data;
   },
   (error: unknown) => {
+    // 调用方主动取消（AbortController）不是出错：原样抛回去，不记日志、不弹提示
+    if (axios.isCancel(error)) return Promise.reject(error);
     if (axios.isAxiosError(error)) {
       logResponse(
         error.config,

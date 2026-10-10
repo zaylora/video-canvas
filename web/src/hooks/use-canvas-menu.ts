@@ -31,9 +31,9 @@ import type {
 } from "@/types";
 import { isGroupNode } from "@/utils/canvas/group";
 import { canLinkFrom, opForLink, partitionLinkable } from "@/utils/canvas/link-rule";
-import { releaseObjectUrl, takeUploadFile } from "@/utils/canvas/media";
+import { takeUploadFile } from "@/utils/canvas/media";
 import { topLeftFromAnchor } from "@/utils/canvas/placement";
-import { uploadAsset } from "@/api/asset";
+import { uploadRunner, type UploadOutcome } from "@/utils/canvas/upload-runner";
 
 type UseCanvasMenuOptions = {
   setNodes: React.Dispatch<React.SetStateAction<CanvasNode[]>>;
@@ -301,64 +301,40 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     setMenu(null);
   }, [menu]);
 
+  /** 把上传的进度和结果写回节点；节点已经被删了就没有对应的节点可写 */
+  const patchNode = useCallback(
+    (id: string, patch: Partial<CanvasNodeData>) =>
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id ? { ...node, data: { ...node.data, ...patch } } : node,
+        ),
+      ),
+    [setNodes],
+  );
+
   /**
-   * 落一个收下的文件：先按类型建出节点挂上本地预览，再把文件传上去换成正式地址。
+   * 落一个收下的文件：先按类型建出一个「上传中」的节点（显示进度，不能被引用），
+   * 再交给上传流程去传；传完节点自己变成正式素材，失败则留着等重试。
    * 回一份结果交给调用方汇总文案——多文件时每个都自说自话会刷屏。
    */
   const placeUploadedNode = useCallback(
     async (
-      item: { file: File; mediaType: MediaType; src: string },
+      item: { file: File; mediaType: MediaType },
       placement: CanvasMenuState,
-    ): Promise<{ uploaded: boolean; detached: boolean }> => {
+    ): Promise<{ outcome: UploadOutcome; detached: boolean }> => {
       const kind = UPLOAD_TARGET_KIND[item.mediaType];
       const { id, connected } = placeNode(kind, placement, {
-        status: "idle",
-        src: item.src,
+        status: "running",
+        uploadProgress: 0,
         mediaType: item.mediaType,
         uploaded: true,
         fileName: item.file.name,
       });
       const detached = !!placement.connection && !connected;
-
-      try {
-        const asset = await uploadAsset(item.file);
-        releaseObjectUrl(item.src);
-        setNodes((nodes) =>
-          nodes.map((node) =>
-            node.id === id
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    status: "done",
-                    src: asset.url,
-                    assetId: asset.id,
-                  },
-                }
-              : node,
-          ),
-        );
-      } catch {
-        setNodes((nodes) =>
-          nodes.map((node) =>
-            node.id === id
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    status: "error",
-                    error: "上传失败，请重试",
-                  },
-                }
-              : node,
-          ),
-        );
-        return { uploaded: false, detached };
-      }
-
-      return { uploaded: true, detached };
+      const outcome = await uploadRunner.start(id, item.file, patchNode);
+      return { outcome, detached };
     },
-    [placeNode, setNodes],
+    [patchNode, placeNode],
   );
 
   /**
@@ -373,7 +349,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
       if (!placement || files.length === 0) return null;
 
       // 先把不合规的挑出去，剩下的才按序号排位置，免得中间空出格子
-      const taken: { file: File; mediaType: MediaType; src: string }[] = [];
+      const taken: { file: File; mediaType: MediaType }[] = [];
       const rejected: string[] = [];
       for (const file of files) {
         const result = takeUploadFile(file);
@@ -409,12 +385,14 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
         };
       }
 
-      const failed = results.filter((result) => !result.uploaded).length;
+      const failed = results.filter((result) => result.outcome === "failed").length;
       if (failed) {
         return {
           tone: "error",
           text:
-            failed === 1 ? "上传失败，本地预览已保留" : `${failed} 个文件上传失败，本地预览已保留`,
+            failed === 1
+              ? "上传失败，可以在节点上重试"
+              : `${failed} 个文件上传失败，可以在节点上重试`,
         };
       }
 
