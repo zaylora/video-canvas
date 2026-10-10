@@ -49,7 +49,8 @@ func Generation(g *Graph, nodeID string) (*GenSource, error) {
 	}
 	delete(src.Params, "prompt")
 	for _, e := range g.Edges {
-		if e.Target() == nodeID {
+		// 来源线只记派生关系，不是参考素材
+		if e.Target() == nodeID && !e.IsSource() {
 			src.addUpstream(g.Node(e.Source()))
 		}
 	}

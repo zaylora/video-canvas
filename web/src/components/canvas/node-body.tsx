@@ -9,6 +9,7 @@ import { GridReveal } from "@/components/ui/grid-reveal";
 
 import { MediaPreview } from "./media-preview";
 import { ImagePlaceholderIcon } from "./placeholder-icons";
+import { FramePickLayer } from "./frame-pick-layer";
 import { VideoFacade } from "./video-facade";
 
 /** 节点的产出进度：没跑过、生成中、已产出、调用失败 */
@@ -288,7 +289,10 @@ export function NodeMediaBody({
             <audio src={src} controls className="nodrag nowheel w-full" />
           </div>
         ) : (
-          <VideoFacade src={src} durationMs={durationMs} active={active} />
+          <div className="relative size-full">
+            <VideoFacade src={src} durationMs={durationMs} active={active} />
+            <FramePickLayer />
+          </div>
         )}
       </div>
     </BaseNodeContent>

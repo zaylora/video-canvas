@@ -6,6 +6,7 @@ import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, CanvasNodeData, FlowNode } from "@/types";
 import { absolutePosition, isGroupNode } from "@/utils/canvas/group";
 import { copyLabels } from "@/utils/canvas/node-label";
+import { isSourceEdge } from "@/utils/canvas/source-edge";
 import {
   clipboardTextOf,
   decidePaste,
@@ -92,7 +93,9 @@ function cloneGroup(
   });
   const edges = source.edges.map((edge) => ({
     ...edge,
+    // 来源线要保持来源线的类型，其余连线套默认的流动高亮
     ...ANIMATED_EDGE_OPTIONS,
+    ...(isSourceEdge(edge) ? { type: edge.type } : {}),
     id: crypto.randomUUID(),
     source: ids.get(edge.source) as string,
     target: ids.get(edge.target) as string,

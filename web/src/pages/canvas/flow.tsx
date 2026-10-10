@@ -38,6 +38,7 @@ import {
 } from "@/constants/canvas";
 import { CanvasHistoryProvider, useCanvasHistory } from "@/hooks/use-canvas-history";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
+import { SOURCE_EDGE_TYPE } from "@/utils/canvas/source-edge";
 import { useContentNodes } from "@/hooks/use-content-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
@@ -118,7 +119,11 @@ const taskIdsOf = (nodes: FlowNode[]) =>
 const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView } satisfies NodeTypes;
 
 /** 供 ReactFlow 使用的边类型表 */
-const edgeTypes = { animatedSvgEdge: AnimatedSvgEdge } satisfies EdgeTypes;
+const edgeTypes = {
+  animatedSvgEdge: AnimatedSvgEdge,
+  // 来源线外观和普通连线一样，类型不同只是为了让生成逻辑认得出、跳过它
+  [SOURCE_EDGE_TYPE]: AnimatedSvgEdge,
+} satisfies EdgeTypes;
 
 /**
  * 画布主体。加载层退场时外面会在根节点（data-canvas-root）挂 data-entering 播入场，样式见 index.css；

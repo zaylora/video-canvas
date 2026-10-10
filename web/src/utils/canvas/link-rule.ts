@@ -10,6 +10,7 @@ import {
 } from "@/utils/tasks/capabilities";
 
 import { canConnectKinds } from "./canvas";
+import { isSourceEdge, withoutSourceEdges } from "./source-edge";
 import { isUploading } from "./upload-state";
 
 /** 判断连线只要节点的这几项 */
@@ -108,8 +109,10 @@ function downstreamOf(start: string, edges: readonly { source: string; target: s
 export function mentionableNodes<T extends { id: string; data: MaterialEnd }>(
   targetId: string,
   nodes: readonly T[],
-  edges: readonly { source: string; target: string }[],
+  allEdges: readonly { source: string; target: string; type?: string }[],
 ) {
+  // 来源线只是派生关系，不算「已连上」，也不算下游（否则视频引不了自己截出来的帧）
+  const edges = withoutSourceEdges(allEdges);
   const target = nodes.find((node) => node.id === targetId);
   if (!target) return { linked: [] as T[], canvas: [] as T[] };
   const ok = (node: T) =>
@@ -132,11 +135,14 @@ export function mentionableNodes<T extends { id: string; data: MaterialEnd }>(
  * 断开某个上游连到 targetId 的线（引用条上点 ×）。同一对节点有几根就都删；
  * 一根都没有时返回原数组，免得多记一步撤销、多存一次。
  */
-export function unlinkSource<T extends { source: string; target: string }>(
+export function unlinkSource<T extends { source: string; target: string; type?: string }>(
   edges: T[],
   sourceId: string,
   targetId: string,
 ): T[] {
-  const kept = edges.filter((edge) => edge.source !== sourceId || edge.target !== targetId);
+  // 来源线不是引用，引用条上点 × 不该把它一起断掉
+  const kept = edges.filter(
+    (edge) => isSourceEdge(edge) || edge.source !== sourceId || edge.target !== targetId,
+  );
   return kept.length === edges.length ? edges : kept;
 }

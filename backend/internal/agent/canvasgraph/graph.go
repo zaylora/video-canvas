@@ -205,6 +205,16 @@ func (e Edge) Source() string { return str(e["source"]) }
 // Target 返回终点节点 id。
 func (e Edge) Target() string { return str(e["target"]) }
 
+// RelationSource 是来源线的 relation 取值：节点之间只有派生关系（比如视频截出来的帧图），
+// 不是参考素材，生成时不能把它当上游。
+const RelationSource = "source"
+
+// Relation 返回连线的含义：来源线是 RelationSource，普通连线为空。
+func (e Edge) Relation() string { return str(e["relation"]) }
+
+// IsSource 报告这根线是不是来源线。
+func (e Edge) IsSource() bool { return e.Relation() == RelationSource }
+
 // str 把任意值当字符串读，不是字符串返回空串。
 func str(v any) string {
 	s, _ := v.(string)

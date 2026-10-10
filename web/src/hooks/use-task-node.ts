@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Position, addEdge, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
+import {
+  Position,
+  addEdge,
+  useNodeConnections,
+  useNodesData,
+  useReactFlow,
+  useStore,
+} from "@xyflow/react";
 
 import type { GenerationOp, ModelInfo } from "@/api/model/type";
 import type { NodeCardHandle } from "@/components/canvas";
@@ -16,6 +23,7 @@ import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
+import { isSourceEdge } from "@/utils/canvas/source-edge";
 import { referencedText } from "@/utils/canvas/text-body";
 import {
   REF_KEYS,
@@ -87,7 +95,13 @@ export function useTaskNode(
 
   // ---- 参数、生成方式与上游连线 ----
   const params = useMemo(() => readParams(data), [data]);
-  const connections = useNodeConnections({ id, handleType: "target" });
+  // 来源线只是派生关系，不是引用：从连线里去掉，不进引用条，也不进提交的素材
+  const edgeLookup = useStore((state) => state.edgeLookup);
+  const allConnections = useNodeConnections({ id, handleType: "target" });
+  const connections = useMemo(
+    () => allConnections.filter((item) => !isSourceEdge(edgeLookup.get(item.edgeId) ?? {})),
+    [allConnections, edgeLookup],
+  );
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
   const links = useMemo<IncomingLink[]>(() => {
     const byId = new Map(upstream.map((node) => [node.id, node.data]));

@@ -7,6 +7,8 @@
  * 与后端 internal/agent/canvasgraph 的 Change 同构：节点字段拍平成「路径 → 值」，data 展开一层。
  */
 
+import { SOURCE_EDGE_TYPE, SOURCE_RELATION } from "./source-edge";
+
 /** 一次改动里某个节点或连线的变化 */
 export type GraphChange = {
   /** 节点或连线 */
@@ -162,22 +164,31 @@ export function diffGraph<N extends MergeNode, E extends MergeEdge>(
         kind: "edge",
         op: "create",
         id: e.id,
-        after: { id: e.id, source: e.source, target: e.target, ...pickHandles(e) },
+        after: { id: e.id, source: e.source, target: e.target, ...pickEdgeFields(e) },
       });
   for (const e of a.edges)
     if (!edgesB.has(e.id)) out.push({ kind: "edge", op: "delete", id: e.id });
   return out;
 }
 
-/** 连线的连接点字段（有才带） */
-function pickHandles(e: MergeEdge) {
-  const { sourceHandle, targetHandle } = e as {
+/**
+ * 连线除了两端以外要带上的字段（有才带）：连接点，以及来源线的标记。
+ * 来源线只记派生关系、不参与生成，合并时丢了标记，它就会被重建成会当参考素材的普通连线。
+ * 本地的画布线用 type 标记，存档里的线用 relation 标记，两种都认，统一写成 relation。
+ */
+function pickEdgeFields(e: MergeEdge) {
+  const { sourceHandle, targetHandle, relation, type } = e as {
     sourceHandle?: string | null;
     targetHandle?: string | null;
+    relation?: string;
+    type?: string;
   };
   return {
     ...(nil(sourceHandle) ? {} : { sourceHandle }),
     ...(nil(targetHandle) ? {} : { targetHandle }),
+    ...(relation === SOURCE_RELATION || type === SOURCE_EDGE_TYPE
+      ? { relation: SOURCE_RELATION }
+      : {}),
   };
 }
 

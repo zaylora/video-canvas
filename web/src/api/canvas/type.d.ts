@@ -84,6 +84,8 @@ export interface PersistedCanvasEdgeDto {
   sourceHandle?: string | null;
   /** 终点 handle ID */
   targetHandle?: string | null;
+  /** 连线含义：source 是来源线（派生关系，不参与生成）；普通连线没有这个字段 */
+  relation?: "source";
 }
 
 /** 画布图谱：节点、连线和视口 */

@@ -161,3 +161,46 @@ describe("上传流程：取消", () => {
     expect(calls.map((call) => call.options.signal?.aborted)).toEqual([true, true]);
   });
 });
+
+describe("hold：文件还没到手时先占着位置", () => {
+  test("占位后节点算在途，不会被当成被中断的上传；释放（cancel）后不再算", () => {
+    const runner = createUploadRunner(controlled().upload);
+    expect(runner.isActive("n")).toBe(false);
+    runner.hold("n");
+    expect(runner.isActive("n")).toBe(true);
+    expect(runner.canRetry("n")).toBe(false);
+    runner.cancel("n");
+    expect(runner.isActive("n")).toBe(false);
+  });
+
+  test("占位之后开始上传：照常在途，传完不再算", async () => {
+    const { upload, calls } = controlled();
+    const runner = createUploadRunner(upload);
+    runner.hold("n");
+    const done = runner.start("n", file(), () => {});
+    expect(runner.isActive("n")).toBe(true);
+    calls[0]?.ok(asset());
+    expect(await done).toBe("done");
+    expect(runner.isActive("n")).toBe(false);
+  });
+
+  test("占位后上传失败：不再算在途，文件留着可以重试", async () => {
+    const { upload, calls } = controlled();
+    const runner = createUploadRunner(upload);
+    runner.hold("n");
+    const done = runner.start("n", file(), () => {});
+    calls[0]?.fail(new Error("boom"));
+    expect(await done).toBe("failed");
+    expect(runner.isActive("n")).toBe(false);
+    expect(runner.canRetry("n")).toBe(true);
+  });
+
+  test("cancelAll 也清掉占位", () => {
+    const runner = createUploadRunner(controlled().upload);
+    runner.hold("a");
+    runner.hold("b");
+    runner.cancelAll();
+    expect(runner.isActive("a")).toBe(false);
+    expect(runner.isActive("b")).toBe(false);
+  });
+});

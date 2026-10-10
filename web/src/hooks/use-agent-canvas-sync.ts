@@ -2,7 +2,6 @@ import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction
 
 import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
 import { getCanvas } from "@/api/canvas";
-import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import { useAgentStore } from "@/store/agent";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import type { CanvasEdge, FlowNode } from "@/types";
@@ -80,7 +79,11 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
           deserializeGraph({
             nodes: [unflatten(fields) as unknown as CanvasGraphDto["nodes"][number]],
           }).nodes[0],
-        makeEdge: (fields) => ({ ...fields, ...ANIMATED_EDGE_OPTIONS }) as unknown as CanvasEdge,
+        // 和 makeNode 一样走 deserializeGraph：普通连线套流动高亮，来源线保持来源线
+        makeEdge: (fields) =>
+          deserializeGraph({
+            edges: [fields as unknown as CanvasGraphDto["edges"][number]],
+          }).edges[0] as CanvasEdge,
         normalize: normalizeFlowNodes,
       },
     }),

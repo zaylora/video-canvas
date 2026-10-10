@@ -6,6 +6,14 @@ import type { CanvasEdge, FlowNode } from "@/types";
 import { isGroupNode, normalizeFlowNodes } from "./group";
 import { isUploading } from "./upload-state";
 import { dropNodeOrigin } from "./placement";
+import { SOURCE_EDGE_TYPE, SOURCE_RELATION, isSourceEdge } from "./source-edge";
+
+/** 存档里的连线还原成画布上的连线：都套流动高亮，来源线只是类型不同（语义上不参与生成） */
+function asFlowEdge(edge: CanvasGraphDto["edges"][number]) {
+  return edge.relation === SOURCE_RELATION
+    ? { ...edge, ...ANIMATED_EDGE_OPTIONS, type: SOURCE_EDGE_TYPE }
+    : { ...edge, ...ANIMATED_EDGE_OPTIONS };
+}
 
 /**
  * 是否还有「存下来也没有意义」的本地生成中节点，保存要等它们收尾。
@@ -26,65 +34,69 @@ export function serializeGraph(
   edges: CanvasEdge[],
   viewport: Viewport,
 ): CanvasGraphDto {
+  // 上传中的节点还没有正式素材，存下来重开画布也是空壳，直接不存
+  const saved = nodes.filter((node) => isGroupNode(node) || !isUploading(node.data));
+  const omitted = new Set(nodes.filter((node) => !saved.includes(node)).map((node) => node.id));
   return {
-    // 上传中的节点还没有正式素材，存下来重开画布也是空壳，直接不存
-    nodes: nodes
-      .filter((node) => isGroupNode(node) || !isUploading(node.data))
-      .map((node) => {
-        if (isGroupNode(node)) {
-          const { label, color, labelColor } = node.data;
-          return {
-            id: node.id,
-            type: "group" as const,
-            position: { x: node.position.x, y: node.position.y },
-            width: node.width ?? node.measured?.width ?? 0,
-            height: node.height ?? node.measured?.height ?? 0,
-            data: {
-              label,
-              ...(color ? { color } : {}),
-              ...(labelColor ? { labelColor } : {}),
-            },
-          };
-        }
-        const { status, ...rest } = node.data;
-        const data = {
-          kind: rest.kind,
-          label: rest.label,
-          ...(rest.prompt !== undefined ? { prompt: rest.prompt } : {}),
-          ...(rest.model !== undefined ? { model: rest.model } : {}),
-          ...(status
-            ? { status: status === "running" && !rest.taskId ? ("idle" as const) : status }
-            : {}),
-          ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
-          ...(rest.params !== undefined ? { params: rest.params } : {}),
-          ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
-          ...(rest.src !== undefined ? { src: rest.src } : {}),
-          ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
-          ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
-          ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
-          ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),
-          ...(rest.text !== undefined ? { text: rest.text } : {}),
-          ...(rest.error !== undefined ? { error: rest.error } : {}),
-          ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
-          ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
-        };
-        if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
+    nodes: saved.map((node) => {
+      if (isGroupNode(node)) {
+        const { label, color, labelColor } = node.data;
         return {
           id: node.id,
-          type: "canvas",
+          type: "group" as const,
           position: { x: node.position.x, y: node.position.y },
-          ...(node.parentId ? { parentId: node.parentId } : {}),
-          ...(node.origin ? { origin: node.origin as [number, number] } : {}),
-          data,
+          width: node.width ?? node.measured?.width ?? 0,
+          height: node.height ?? node.measured?.height ?? 0,
+          data: {
+            label,
+            ...(color ? { color } : {}),
+            ...(labelColor ? { labelColor } : {}),
+          },
         };
-      }),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      ...(edge.sourceHandle !== undefined ? { sourceHandle: edge.sourceHandle } : {}),
-      ...(edge.targetHandle !== undefined ? { targetHandle: edge.targetHandle } : {}),
-    })),
+      }
+      const { status, ...rest } = node.data;
+      const data = {
+        kind: rest.kind,
+        label: rest.label,
+        ...(rest.prompt !== undefined ? { prompt: rest.prompt } : {}),
+        ...(rest.model !== undefined ? { model: rest.model } : {}),
+        ...(status
+          ? { status: status === "running" && !rest.taskId ? ("idle" as const) : status }
+          : {}),
+        ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
+        ...(rest.params !== undefined ? { params: rest.params } : {}),
+        ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
+        ...(rest.src !== undefined ? { src: rest.src } : {}),
+        ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
+        ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
+        ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
+        ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),
+        ...(rest.text !== undefined ? { text: rest.text } : {}),
+        ...(rest.error !== undefined ? { error: rest.error } : {}),
+        ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
+        ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
+      };
+      if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
+      return {
+        id: node.id,
+        type: "canvas",
+        position: { x: node.position.x, y: node.position.y },
+        ...(node.parentId ? { parentId: node.parentId } : {}),
+        ...(node.origin ? { origin: node.origin as [number, number] } : {}),
+        data,
+      };
+    }),
+    // 端点是没存下来的上传中节点（比如刚截出来、还在上传的帧图连着的来源线），连线也不存，免得留下悬空的线
+    edges: edges
+      .filter((edge) => !omitted.has(edge.source) && !omitted.has(edge.target))
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        ...(edge.sourceHandle !== undefined ? { sourceHandle: edge.sourceHandle } : {}),
+        ...(edge.targetHandle !== undefined ? { targetHandle: edge.targetHandle } : {}),
+        ...(isSourceEdge(edge) ? { relation: SOURCE_RELATION } : {}),
+      })),
     viewport,
   };
 }
@@ -107,7 +119,7 @@ export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
         return dropNodeOrigin(fixed as FlowNode);
       }) as FlowNode[],
     ),
-    edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],
+    edges: edges.map((edge) => asFlowEdge(edge)) as CanvasEdge[],
     viewport,
   };
 }

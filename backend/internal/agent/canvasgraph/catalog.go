@@ -114,6 +114,8 @@ type DetailEdge struct {
 	ID     string `json:"id"`     // 连线 id
 	Source string `json:"source"` // 起点
 	Target string `json:"target"` // 终点
+	// Relation 为 source 表示来源线：只记派生关系（如视频截出的帧图），不是参考素材；普通连线为空
+	Relation string `json:"relation,omitempty"`
 }
 
 // DetailResult 是 Detail 的结果。
@@ -145,7 +147,7 @@ func Detail(g *Graph, ids []string) (*DetailResult, error) {
 	}
 	for _, e := range g.Edges {
 		if want[e.Source()] || want[e.Target()] {
-			res.Edges = append(res.Edges, DetailEdge{ID: e.ID(), Source: e.Source(), Target: e.Target()})
+			res.Edges = append(res.Edges, DetailEdge{ID: e.ID(), Source: e.Source(), Target: e.Target(), Relation: e.Relation()})
 		}
 	}
 	return res, nil

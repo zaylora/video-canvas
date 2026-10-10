@@ -26,9 +26,12 @@ export function createUploadRunner(
   const running = new Map<string, AbortController>();
   /** 留着的文件：上传中和失败后都在，成功或取消就丢 */
   const files = new Map<string, File>();
+  /** 占着位置、文件还没到手的节点（比如正在从视频里截帧）：算在途，不然会被误判成被中断的上传 */
+  const held = new Set<string>();
 
   const start = async (id: string, file: File, patch: PatchNode): Promise<UploadOutcome> => {
     const controller = new AbortController();
+    held.delete(id);
     running.set(id, controller);
     files.set(id, file);
     patch(id, { status: "running", uploadProgress: 0, error: null });
@@ -69,6 +72,14 @@ export function createUploadRunner(
      */
     start,
     /**
+     * 先给一个节点占位：节点已经建出来、文件还没准备好（比如正在截帧）时调用，
+     * 这段时间它算「在途」，不会被当成被中断的上传标红。随后 start 接手，或 cancel 释放。
+     * @param id 节点 id
+     */
+    hold: (id: string) => {
+      held.add(id);
+    },
+    /**
      * 重试失败的上传：用留着的文件在同一个节点上重新开始。文件已经没了或正在传时不动，按失败返回。
      * @param id 节点 id
      * @param patch 把进度和结果写回节点
@@ -86,15 +97,17 @@ export function createUploadRunner(
       running.get(id)?.abort();
       running.delete(id);
       files.delete(id);
+      held.delete(id);
     },
     /** 取消所有上传：画布关闭时调用 */
     cancelAll: () => {
       for (const controller of running.values()) controller.abort();
       running.clear();
       files.clear();
+      held.clear();
     },
     /** 这个节点是不是真有一个上传在跑（撤销恢复出来的上传中节点没有，只是个空壳） */
-    isActive: (id: string) => running.has(id),
+    isActive: (id: string) => running.has(id) || held.has(id),
     /** 这个节点失败后还留着文件，可以重试 */
     canRetry: (id: string) => files.has(id) && !running.has(id),
   };
