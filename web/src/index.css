@@ -43,6 +43,7 @@
   --color-canvas: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
   --color-panel: var(--panel);
+  --color-menu: var(--menu);
   --color-chrome: var(--chrome);
   --color-chrome-border: var(--chrome-border);
   --color-chrome-hover: var(--chrome-hover);
@@ -113,6 +114,8 @@
   --canvas-dot: oklch(0 0 0 / 0.14);
   /* 节点下方的生成面板：实色，浅色靠阴影和发丝线与画布区分 */
   --panel: oklch(1 0 0);
+  /* 添加节点菜单：比画布明显亮一档的实色，浅色靠阴影区分 */
+  --menu: oklch(1 0 0);
   --chrome: oklch(1 0 0 / 0.82);
   --chrome-border: oklch(0 0 0 / 0.08);
   --chrome-hover: oklch(0 0 0 / 0.05);
@@ -200,6 +203,7 @@
   --canvas-bg: oklch(0.13 0 0);
   --canvas-dot: oklch(1 0 0 / 0.08);
   --panel: oklch(0.243 0 0);
+  --menu: oklch(0.269 0 0);
   --chrome: oklch(0.2 0 0 / 0.78);
   --chrome-border: oklch(1 0 0 / 0.08);
   --chrome-hover: oklch(1 0 0 / 0.07);

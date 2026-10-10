@@ -14,7 +14,6 @@ export function buildAddNodeItems(disabled: (kind: NodeKind) => boolean = () => 
     return {
       value: entry.kind,
       label: entry.title,
-      description: entry.description,
       icon: Icon ? <Icon /> : undefined,
       disabled: disabled(entry.kind),
     };
@@ -22,7 +21,6 @@ export function buildAddNodeItems(disabled: (kind: NodeKind) => boolean = () => 
   items.push({
     value: UPLOAD_ACTION,
     label: "上传素材",
-    hint: "图片、视频、音频",
     icon: <Upload />,
     // 传进来的素材落成图片、视频或音频节点，三种都接不上就没法上传
     disabled: disabled("image") && disabled("video") && disabled("audio"),
