@@ -45,6 +45,15 @@ export const BACKGROUND_VARIANTS: Record<Exclude<CanvasBackground, "none">, Back
   cross: BackgroundVariant.Cross,
 };
 
+/**
+ * 点阵圆点的屏幕直径（像素），不随画布缩放变化。xyflow 默认是 1 且随缩放变小，
+ * 缩到 64% 只剩半个像素；取 2 对齐节点功能区原型里半径 1px 的圆点
+ */
+export const BACKGROUND_DOT_SIZE = 2;
+
+/** 缩放低于这个值就不画点阵：点距太小，点会挨成一片灰 */
+export const BACKGROUND_DOT_MIN_ZOOM = 0.5;
+
 /** 演示用的出图耗时，同时交给 GridReveal 当进度爬升的预估时长 */
 export const IMAGE_ESTIMATED_DURATION = 3200;
 

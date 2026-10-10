@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Background,
   MiniMap,
   ReactFlow,
   SelectionMode,
@@ -24,6 +23,7 @@ import {
   useCanvasTool,
   type AddNodeMenuItem,
 } from "@/components/canvas";
+import { CanvasBackgroundLayer } from "@/components/canvas/canvas-background";
 import { ChromeZone } from "@/components/canvas/chrome/chrome";
 import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
 import { NODE_OUTPUT_MIME } from "@/components/canvas/node-history-strip";
@@ -31,7 +31,6 @@ import { SettingsDialog, type SettingModelGroup } from "@/components/setting";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ANIMATED_EDGE_OPTIONS,
-  BACKGROUND_VARIANTS,
   NODE_LIBRARY,
   REMOTE_KIND_OF_NODE,
   UPLOAD_ACCEPT,
@@ -772,12 +771,7 @@ export const Flow = memo(function Flow({
                     nodesConnectable={!isPanning}
                     elementsSelectable={!isPanning}
                   >
-                    {settings.background !== "none" && (
-                      <Background
-                        variant={BACKGROUND_VARIANTS[settings.background]}
-                        gap={GRID_SIZE}
-                      />
-                    )}
+                    <CanvasBackgroundLayer background={settings.background} />
                     <SelectionToolbar onFanOut={openGroupMenu} onGroup={groupSelected} />
                     {minimap && (
                       <MiniMap
