@@ -2,13 +2,15 @@ import type { XYPosition } from "@xyflow/react";
 
 import type { CanvasNode } from "@/types";
 
+import { DEFAULT_NODE_SIZE } from "./placement";
+
 export type ArrangeMode = "row" | "column" | "grid";
 
 /** 节点之间的空隙：横向要让出连接点的 ⊕，纵向要让出卡片上方的标题行 */
 export const ARRANGE_GAP = { x: 120, y: 80 };
 
 /** 还没测量过的节点按这个尺寸排 */
-const FALLBACK = { width: 384, height: 216 };
+const FALLBACK = DEFAULT_NODE_SIZE;
 
 const sizeOf = (node: CanvasNode) => ({
   width: node.measured?.width ?? node.width ?? FALLBACK.width,

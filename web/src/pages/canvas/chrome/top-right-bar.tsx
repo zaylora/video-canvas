@@ -14,7 +14,12 @@ import {
   User,
 } from "lucide-react";
 
-import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
+import {
+  ChromeButton,
+  ChromePill,
+  ChromeSeparator,
+  ChromeTooltip,
+} from "@/components/canvas/chrome/chrome";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,8 +85,8 @@ export function useCanEnterAdmin() {
   return useMemo(() => canEnterAdmin(getRole()), []);
 }
 
-/** 积分胶囊：左边是实时连接状态点，点开看余额明细 */
-export function CreditsPill() {
+/** 积分菜单（不带胶囊）：左边是实时连接状态点，点开看余额明细；放进任意 ChromePill 里用 */
+export function CreditsMenu() {
   const credits = useCreditsStore((state) => state.credits);
   const refresh = useCreditsStore((state) => state.refresh);
   const connection = useWsStore((state) => state.connection);
@@ -90,34 +95,32 @@ export function CreditsPill() {
 
   return (
     <Popover onOpenChange={(open) => open && void refresh()}>
-      <ChromePill>
-        <PopoverTrigger
-          render={
-            <ChromeButton
-              aria-label={`积分，${WS_TEXT[connection]}`}
-              className="text-foreground gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold"
-            >
-              <span
-                title={WS_TEXT[connection]}
-                className={cn(
-                  "size-1.5 rounded-full",
-                  down
-                    ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
-                    : pending
-                      ? "bg-muted-foreground/50"
-                      : "bg-status-success ring-status-success/15 ring-3",
-                )}
-              />
-              <Sparkle className="fill-credit text-credit size-4!" strokeWidth={0} />
-              {credits ? (
-                <NumberFlow value={credits.available} className="tabular-nums" />
-              ) : (
-                <span className="text-muted-foreground">—</span>
+      <PopoverTrigger
+        render={
+          <ChromeButton
+            aria-label={`积分，${WS_TEXT[connection]}`}
+            className="text-foreground h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold"
+          >
+            <span
+              title={WS_TEXT[connection]}
+              className={cn(
+                "size-1.5 rounded-full",
+                down
+                  ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
+                  : pending
+                    ? "bg-muted-foreground/50"
+                    : "bg-status-success ring-status-success/15 ring-3",
               )}
-            </ChromeButton>
-          }
-        />
-      </ChromePill>
+            />
+            <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
+            {credits ? (
+              <NumberFlow value={credits.available} className="tabular-nums" />
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </ChromeButton>
+        }
+      />
       <PopoverContent align="end" sideOffset={10} className="w-64 gap-0 rounded-xl p-0">
         <div className="flex items-baseline gap-2 px-4 pt-4 pb-3">
           <span className="font-mono text-2xl font-semibold tabular-nums">
@@ -141,6 +144,15 @@ export function CreditsPill() {
         </p>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** 积分胶囊：只有积分一个按钮，首页顶栏用；画布右上角把积分和头像合在一个胶囊里 */
+export function CreditsPill() {
+  return (
+    <ChromePill>
+      <CreditsMenu />
+    </ChromePill>
   );
 }
 
@@ -203,45 +215,46 @@ export function TopRightBar({
         </DropdownMenu>
       </ChromePill>
 
-      <CreditsPill />
-
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger
-          aria-label="账户"
-          className={cn(
-            "bg-chrome ring-chrome-border grid size-10 place-items-center rounded-full text-sm font-semibold uppercase shadow-lg ring-1 backdrop-blur-xl",
-            "hover:ring-node-ring/40 focus-visible:ring-node-ring/60 transition-shadow outline-none focus-visible:ring-2",
-          )}
-        >
-          {me ? (
-            <UserAvatar userId={me.id} name={username ?? ""} src={me.avatarUrl} size={40} />
-          ) : (
-            (username?.slice(0, 1) ?? "我")
-          )}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={10} className="w-52">
-          {username && (
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="truncate">{username}</DropdownMenuLabel>
-            </DropdownMenuGroup>
-          )}
-          <DropdownMenuItem onClick={() => navigate("/profile")}>
-            <User />
-            个人中心
-          </DropdownMenuItem>
-          {showAdmin && (
-            <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
-              <ShieldCheck />
-              管理后台
+      {/* 积分和头像合在一个胶囊里，头像 32px，比原来的 40px 小一圈，不抢积分的视线（设计稿 6.15） */}
+      <ChromePill>
+        <CreditsMenu />
+        <ChromeSeparator />
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger
+            render={<ChromeButton aria-label="账户" className="size-9 min-w-9 px-0" />}
+          >
+            {me ? (
+              <UserAvatar userId={me.id} name={username ?? ""} src={me.avatarUrl} size={32} />
+            ) : (
+              <span className="bg-muted-foreground grid size-8 place-items-center rounded-full text-sm font-semibold text-white uppercase">
+                {username?.slice(0, 1) ?? "我"}
+              </span>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={10} className="w-52">
+            {username && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="truncate">{username}</DropdownMenuLabel>
+              </DropdownMenuGroup>
+            )}
+            <DropdownMenuItem onClick={() => navigate("/profile")}>
+              <User />
+              个人中心
             </DropdownMenuItem>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={logout}>
-            <LogOut />
-            退出登录
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {showAdmin && (
+              <DropdownMenuItem onClick={() => navigate("/admin/ai")}>
+                <ShieldCheck />
+                管理后台
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={logout}>
+              <LogOut />
+              退出登录
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ChromePill>
     </>
   );
 }

@@ -285,10 +285,10 @@ function PresetBody({
   );
 }
 
-/** 入口按钮的样式：只有图标，和面板底栏的 chip 同高 */
+/** 入口按钮的样式：只有图标、无描边，和面板底栏的 chip 同高 */
 const TRIGGER_CLASS = cn(
-  "nodrag text-muted-foreground relative inline-grid h-8.5 w-9 shrink-0 place-items-center rounded-full",
-  "ring-1 ring-foreground/10 transition-[background-color,color,transform] hover:bg-chrome-hover hover:text-foreground",
+  "nodrag text-muted-foreground relative inline-grid size-8 shrink-0 place-items-center rounded-md",
+  "transition-[background-color,color,transform] hover:bg-chrome-hover hover:text-foreground",
   "focus-visible:ring-node-ring/60 outline-none focus-visible:ring-2 active:scale-[0.96]",
   "data-popup-open:bg-foreground/10 data-popup-open:text-foreground",
   "disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4",
@@ -336,11 +336,11 @@ function PresetMenu({
       >
         <Icon />
         {mine.length > 1 ? (
-          <span className="bg-preset ring-popover absolute -top-0.5 -right-0.5 min-w-3.75 rounded-full px-1 text-center font-mono text-[10px] leading-3.75 font-semibold text-white tabular-nums ring-2">
+          <span className="bg-preset ring-panel absolute -top-0.5 -right-0.5 min-w-3.75 rounded-full px-1 text-center font-mono text-[10px] leading-3.75 font-semibold text-white tabular-nums ring-2">
             {mine.length}
           </span>
         ) : mine.length === 1 ? (
-          <span className="bg-preset ring-popover absolute top-1 right-1.5 size-1.75 rounded-full ring-2" />
+          <span className="bg-preset ring-panel absolute top-1 right-1.5 size-1.75 rounded-full ring-2" />
         ) : null}
       </PopoverTrigger>
       <PopoverContent

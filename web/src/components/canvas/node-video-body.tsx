@@ -25,8 +25,6 @@ const SAVING_TEXT: Record<NodeMediaType, string> = {
 type NodeVideoBodyProps = {
   /** 由节点数据 + 任务快照推出的展示状态 */
   view: VideoNodeView;
-  /** 素材下方的一行小字 */
-  caption?: string;
   /** 占位框的无障碍说明 */
   placeholder: string;
   /** 产物种类，决定成功后怎么摆；默认视频 */
@@ -108,7 +106,6 @@ function PendingBox({
  */
 export function NodeVideoBody({
   view,
-  caption,
   placeholder,
   mediaType = "video",
   placeholderIcon,
@@ -143,12 +140,19 @@ export function NodeVideoBody({
           cancelling={cancelling}
         />
       );
+    case "uploading":
+      // 字节传完后服务端还要登记、处理一会儿，进度条满了也不算完成
+      return (
+        <PendingBox
+          title={view.progress >= 100 ? "处理中" : "上传中"}
+          detail={view.progress >= 100 ? "文件已传完，正在保存" : undefined}
+          progress={view.progress}
+        />
+      );
     case "finalizing":
       return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
     case "done":
-      return (
-        <NodeMediaBody src={view.src} mediaType={mediaType} caption={caption} active={active} />
-      );
+      return <NodeMediaBody src={view.src} mediaType={mediaType} active={active} />;
     case "failed":
       return (
         <BaseNodeContent>

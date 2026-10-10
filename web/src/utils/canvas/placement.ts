@@ -2,9 +2,12 @@ import type { XYPosition } from "@xyflow/react";
 
 import type { FlowNode, NodeKind } from "@/types";
 
-/** 新节点还没测量时的默认尺寸，要和节点组件的 className（w-96 / 视频 w-[27rem]）保持一致 */
-export function defaultNodeSize(kind: NodeKind) {
-  return kind === "video" ? { width: 432, height: 243 } : { width: 384, height: 216 };
+/** 节点还没测量时的默认尺寸（16:9），要和节点外壳 NodeCard 的宽度 w-xl 保持一致 */
+export const DEFAULT_NODE_SIZE = { width: 576, height: 324 } as const;
+
+/** 新节点还没测量时的默认尺寸，所有种类一样大 */
+export function defaultNodeSize(_kind: NodeKind) {
+  return { ...DEFAULT_NODE_SIZE };
 }
 
 /**

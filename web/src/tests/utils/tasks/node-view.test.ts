@@ -6,6 +6,18 @@ import { makeTask } from "./fixtures";
 const T0 = Date.parse("2026-09-29T10:00:00Z");
 
 describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", () => {
+  test("上传中：带着上传进度，不是生成中，也不显示本地预览", () => {
+    expect(
+      deriveVideoNodeView({ status: "running", uploadProgress: 37, src: "blob:x" }, undefined, T0),
+    ).toEqual({ phase: "uploading", progress: 37 });
+  });
+
+  test("没有上传进度的 running 仍是生成中", () => {
+    expect(deriveVideoNodeView({ status: "running" }, undefined, T0)).toMatchObject({
+      phase: "running",
+    });
+  });
+
   test("没跑过：idle；上传来的素材直接展示", () => {
     expect(deriveVideoNodeView({}, undefined, T0)).toEqual({ phase: "idle" });
     expect(deriveVideoNodeView({ status: "idle", src: "blob:x" }, undefined, T0)).toEqual({

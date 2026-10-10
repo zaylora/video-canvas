@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>生成面板原型</title>
+<style>
+  /* 颜色与时长抄自 web/src/index.css、web/src/lib/motion.ts；--panel 是本次新增的 token */
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --popover: oklch(1 0 0);
+    --panel: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05);
+    --credit: oklch(0.72 0.15 75);
+    --status-warning: oklch(0.75 0.15 75);
+    --destructive: oklch(0.577 0.245 27.325);
+    --node-ring: oklch(0.2 0 0 / 0.85);
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --d-fast: 120ms;
+    --d-base: 180ms;
+  }
+  [data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --popover: oklch(0.205 0 0);
+    --panel: oklch(0.243 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --credit: oklch(0.82 0.15 85);
+    --node-ring: oklch(1 0 0 / 0.72);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .bar {
+    position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; align-items: center;
+    padding: 6px; border-radius: 12px; background: var(--card); border: 1px solid var(--chrome-border);
+    font-size: 12px;
+  }
+  .seg { display: flex; padding: 2px; border-radius: 8px; background: var(--muted); }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted-foreground); font: inherit; padding: 4px 10px;
+    border-radius: 6px; cursor: pointer; transition: background-color var(--d-fast), color var(--d-fast);
+  }
+  .seg button[aria-pressed="true"] { background: var(--background); color: var(--foreground); }
+  .tip { position: fixed; left: 16px; top: 14px; font-size: 12px; color: var(--muted-foreground); max-width: 360px; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; padding: 90px 16px 40px; }
+  .node {
+    position: relative; width: 576px; max-width: 100%; aspect-ratio: 16 / 9; border-radius: 8px;
+    background: var(--card); box-shadow: 0 0 0 2px var(--node-ring);
+    display: grid; place-items: center; color: var(--muted-foreground); font-size: 12px;
+  }
+  .node-title { position: absolute; left: 2px; bottom: calc(100% + 8px); font-size: 13px; font-weight: 600; color: var(--foreground); }
+  .slot { width: 100%; display: flex; justify-content: center; margin-top: 16px; }
+
+  /* ===== 面板：基础 ===== */
+  .panel {
+    --pad: 16px;
+    width: min(680px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; text-align: left;
+    animation: enter var(--d-base) var(--ease-out);
+  }
+  @keyframes enter { from { opacity: 0; transform: translateY(-6px) scale(0.985); } }
+  @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+  .top { display: flex; align-items: flex-start; gap: 8px; }
+  .top .refs { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; overflow-x: auto; scrollbar-width: none; }
+  .tile {
+    position: relative; flex: none; display: grid; place-items: center; overflow: hidden; border: 0; padding: 0;
+    color: var(--foreground); font-size: 12px; cursor: pointer;
+    transition: background-color var(--d-fast), box-shadow var(--d-fast);
+  }
+  .tile .badge {
+    position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 5px; background: rgba(0,0,0,.6);
+    display: grid; place-items: center; color: #fff; font-size: 9px;
+  }
+  .tile .x {
+    position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 5px; background: rgba(0,0,0,.6);
+    display: grid; place-items: center; color: rgba(255,255,255,.8); font-size: 10px; line-height: 1;
+  }
+  .tile.thumb { background: color-mix(in oklch, var(--foreground) 8%, transparent); box-shadow: inset 0 0 0 1px var(--chrome-border); }
+  .expand {
+    flex: none; display: grid; place-items: center; color: var(--muted-foreground); cursor: pointer; background: transparent;
+    transition: background-color var(--d-fast), color var(--d-fast);
+  }
+  .editor {
+    width: 100%; border: 0; outline: 0; resize: none; background: transparent; color: inherit; font: inherit;
+    font-size: 15px; line-height: 1.75; padding: 0 4px; overflow-y: auto; max-height: 200px;
+  }
+  .editor::placeholder { color: var(--muted-foreground); opacity: .8; }
+  .count { align-self: flex-end; font: 12px ui-monospace, monospace; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--muted-foreground) 60%, transparent); }
+  .count.warn { color: var(--status-warning); }
+  .bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ctl {
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; white-space: nowrap;
+    border: 0; background: transparent; color: var(--foreground); font: inherit; cursor: pointer;
+    transition: background-color var(--d-fast), color var(--d-fast);
+  }
+  .ctl .t { overflow: hidden; text-overflow: ellipsis; }
+  .ctl .chev { opacity: .5; font-size: 10px; }
+  .ctl:hover, .expand:hover { background: var(--chrome-hover); }
+  .spacer { margin-left: auto; }
+  .credits { display: inline-flex; align-items: center; gap: 4px; }
+  .credits svg { width: 14px; height: 14px; }
+  .send {
+    flex: none; display: grid; place-items: center; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--foreground); color: var(--background);
+    transition: transform var(--d-fast) var(--ease-out), opacity var(--d-fast), background-color var(--d-fast);
+  }
+  .send:not(:disabled):hover { transform: scale(1.05); }
+  .send:not(:disabled):active { transform: scale(0.92); }
+  .send:disabled { cursor: not-allowed; }
+  .notice { border-radius: 8px; padding: 6px 10px; font-size: 12px; background: color-mix(in oklch, var(--destructive) 10%, transparent); color: var(--destructive); }
+  .menu {
+    position: absolute; z-index: 5; min-width: 220px; padding: 4px; border-radius: 12px; background: var(--popover);
+    border: 1px solid var(--chrome-border); box-shadow: 0 12px 32px rgba(0,0,0,.35); animation: enter var(--d-base) var(--ease-out);
+  }
+  .menu button {
+    display: flex; width: 100%; gap: 8px; align-items: center; border: 0; background: transparent; color: inherit; font: inherit;
+    padding: 8px; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  .menu button:hover { background: var(--chrome-hover); }
+  .menu small { margin-left: auto; color: var(--muted-foreground); }
+  .av { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; color: #fff; background: #7c5cff; }
+
+  /* ===== 现状 ===== */
+  [data-variant="old"] .panel-shell {
+    width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 22px;
+    background: color-mix(in oklch, var(--popover) 95%, transparent); box-shadow: 0 0 0 1px var(--chrome-border), 0 25px 50px -12px rgba(0,0,0,.5);
+    backdrop-filter: blur(40px);
+  }
+  [data-variant="old"] .panel { width: min(740px, calc(100vw - 24px)); }
+  [data-variant="old"] .tile { width: 56px; height: 56px; border-radius: 10px; }
+  [data-variant="old"] .tile.add { background: transparent; border: 1.5px dashed color-mix(in oklch, var(--foreground) 18%, transparent); color: var(--muted-foreground); font-size: 20px; }
+  [data-variant="old"] .expand { width: 32px; height: 32px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--chrome-border); }
+  [data-variant="old"] .editor { min-height: 48px; }
+  [data-variant="old"] .count { visibility: visible !important; }
+  [data-variant="old"] .ctl { height: 34px; padding: 0 12px; border-radius: 999px; font-size: 13px; box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); }
+  [data-variant="old"] .ctl.model { padding-left: 6px; }
+  [data-variant="old"] .ctl .av { width: 22px; height: 22px; border-radius: 999px; }
+  [data-variant="old"] .ctl.icon { width: 36px; padding: 0; justify-content: center; }
+  [data-variant="old"] .only-new { display: none !important; }
+  [data-variant="old"] .cap {
+    margin-left: auto; display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 3px 0 12px; border-radius: 999px;
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent);
+  }
+  [data-variant="old"] .cap .credits { font: 600 15px ui-monospace, monospace; padding-right: 6px; gap: 6px; }
+  [data-variant="old"] .cap .credits svg { width: 16px; height: 16px; }
+  [data-variant="old"] .send { width: 34px; height: 34px; }
+  [data-variant="old"] .send:disabled { opacity: .5; }
+  [data-variant="old"] .cap.blocked { opacity: .5; }
+
+  /* ===== 改版后 ===== */
+  [data-variant="new"] .panel-shell {
+    width: 100%; display: flex; flex-direction: column; gap: 12px; padding: var(--pad); border-radius: 18px;
+    background: var(--panel); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent), 0 25px 50px -12px rgba(0,0,0,.5);
+  }
+  [data-variant="new"] .tile { width: 48px; height: 48px; border-radius: 8px; }
+  [data-variant="new"] .tile.add {
+    background: color-mix(in oklch, var(--foreground) 5%, transparent); color: var(--muted-foreground); font-size: 20px;
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 8%, transparent);
+  }
+  [data-variant="new"] .tile.add:hover { background: color-mix(in oklch, var(--foreground) 10%, transparent); color: var(--foreground); }
+  [data-variant="new"] .expand { width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+  [data-variant="new"] .expand:hover { color: var(--foreground); }
+  [data-variant="new"] .editor { min-height: 72px; }
+  [data-variant="new"] .count[data-empty="true"] { visibility: hidden; }
+  [data-variant="new"] .ctl { height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 500; }
+  [data-variant="new"] .ctl.icon { width: 32px; padding: 0; justify-content: center; color: var(--muted-foreground); }
+  [data-variant="new"] .ctl.icon:hover { color: var(--foreground); }
+  [data-variant="new"] .only-old { display: none !important; }
+  [data-variant="new"] .cap { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  [data-variant="new"] .cap .credits { font-size: 13px; font-weight: 500; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  [data-variant="new"] .send { width: 32px; height: 32px; }
+  [data-variant="new"] .send:disabled { background: color-mix(in oklch, var(--foreground) 35%, transparent); }
+  .star { fill: var(--muted-foreground); }
+  .ready .star { fill: var(--credit); }
+  .meta { margin-top: 20px; font-size: 12px; color: var(--muted-foreground); text-align: center; line-height: 1.8; }
+  .meta b { color: var(--foreground); font-weight: 600; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="tip">改版对照参考图一：先在右上角切「现状 / 改版后」看差别；输入文字看字数出现、发送键变实心；点模型 / 参数试试悬停和弹层。</div>
+<div class="bar">
+  <div class="seg" id="variant">
+    <button aria-pressed="false" data-v="old">现状</button>
+    <button aria-pressed="true" data-v="new">改版后</button>
+  </div>
+  <div class="seg" id="theme">
+    <button aria-pressed="true" data-t="dark">深色</button>
+    <button aria-pressed="false" data-t="light">浅色</button>
+  </div>
+  <div class="seg" id="state">
+    <button aria-pressed="true" data-s="normal">正常</button>
+    <button aria-pressed="false" data-s="running">生成中</button>
+    <button aria-pressed="false" data-s="error">失败提示</button>
+  </div>
+</div>
+
+<div class="stage" id="stage" data-variant="new">
+  <div class="node"><span class="node-title">▢ 视频 1</span>选中后的节点（576×324）</div>
+  <div class="slot">
+    <div class="panel" id="panel">
+      <div class="panel-shell" style="position:relative">
+        <div class="top">
+          <div class="refs">
+            <span class="tile thumb" title="分镜脚本"><span class="badge">🔗</span><span class="x">✕</span>T</span>
+            <span class="tile thumb" title="关键帧"><span class="badge">🔗</span><span class="x">✕</span>▣</span>
+            <button class="tile add" aria-label="引用画布里的素材">＋</button>
+          </div>
+          <button class="expand" aria-label="放大编辑提示词" title="放大编辑">⤢</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <textarea class="editor" id="editor" rows="1" placeholder="描述镜头怎么动、画面里发生什么。输入 @ 引用画布里的素材。"></textarea>
+          <span class="count" id="count" data-empty="true">0/16000</span>
+        </div>
+
+        <p class="notice" id="notice" hidden>上游「分镜脚本」还没有生成，先生成它再试一次</p>
+
+        <div class="bottom">
+          <button class="ctl model" id="modelBtn" aria-label="选择模型">
+            <span class="av only-old">即</span><span class="t">即梦 Seedance 2.0</span><span class="chev">⌄</span>
+          </button>
+          <button class="ctl" id="paramBtn" aria-label="生成参数">
+            <span class="only-old" style="color:var(--muted-foreground)">⚙</span><span class="t">16:9 · 720P · 1</span><span class="chev">⌄</span>
+          </button>
+          <button class="ctl icon" aria-label="风格" title="风格">⬡</button>
+          <button class="ctl icon" aria-label="预设模板" title="预设模板">▦</button>
+          <span class="cap" id="cap" title="先写点提示词 · 本次消耗 56 积分">
+            <span class="credits">
+              <svg viewBox="0 0 24 24" class="star"><path d="M12 2l2.4 7.1L22 12l-7.6 2.9L12 22l-2.4-7.1L2 12l7.6-2.9z"/></svg>56
+            </span>
+            <button class="send" id="send" aria-label="开始生成" disabled>
+              <svg id="sendIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </span>
+        </div>
+        <div class="menu" id="menu" hidden></div>
+      </div>
+    </div>
+  </div>
+  <div class="meta" id="meta"></div>
+</div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const stage = $("#stage"), editor = $("#editor"), send = $("#send"), cap = $("#cap");
+  let state = "normal";
+
+  function pressed(group, btn) { group.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn))); }
+  $("#variant").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pressed($("#variant"), b); stage.dataset.variant = b.dataset.v; replay(); measure();
+  });
+  $("#theme").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pressed($("#theme"), b); document.body.dataset.theme = b.dataset.t;
+  });
+  $("#state").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    pressed($("#state"), b); state = b.dataset.s; sync();
+  });
+  function replay() { const p = $("#panel"); p.style.animation = "none"; void p.offsetWidth; p.style.animation = ""; }
+
+  function sync() {
+    const len = [...editor.value].length;
+    const filled = editor.value.trim().length > 0;
+    const count = $("#count");
+    count.textContent = `${len}/16000`;
+    count.dataset.empty = String(len === 0);
+    count.classList.toggle("warn", len > 16000 * 0.94);
+    const running = state === "running";
+    const canSend = filled && !running;
+    send.disabled = !canSend;
+    cap.classList.toggle("ready", canSend);
+    cap.classList.toggle("blocked", !canSend && !running);
+    $("#sendIcon").outerHTML = running
+      ? '<svg id="sendIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" ><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite"/></path></svg>'
+      : '<svg id="sendIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+    cap.title = running ? "生成中" : filled ? "开始生成 · 本次消耗 56 积分" : "先写点提示词 · 本次消耗 56 积分";
+    $("#notice").hidden = state !== "error";
+    editor.style.height = "auto"; editor.style.height = Math.min(editor.scrollHeight, 200) + "px";
+    measure();
+  }
+  editor.addEventListener("input", sync);
+  send.addEventListener("click", () => { if (!send.disabled) { state = "running"; pressed($("#state"), document.querySelector('#state [data-s="running"]')); sync(); } });
+
+  /* 弹层：只演示悬停和出现动效，不接数据 */
+  const menu = $("#menu");
+  function openMenu(anchor, html) {
+    const shell = anchor.closest(".panel-shell").getBoundingClientRect(), r = anchor.getBoundingClientRect();
+    menu.innerHTML = html; menu.hidden = false;
+    menu.style.left = r.left - shell.left + "px";
+    menu.style.bottom = shell.bottom - r.top + 8 + "px";
+    menu.style.animation = "none"; void menu.offsetWidth; menu.style.animation = "";
+  }
+  $("#modelBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openMenu(e.currentTarget, `<button><span class="av">即</span>即梦 Seedance 2.0<small>2 积分/秒起</small></button><button><span class="av" style="background:#2f9e6e">K</span>可灵 2.1<small>3 积分/秒起</small></button>`);
+  });
+  $("#paramBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openMenu(e.currentTarget, `<button>画幅 <small>16:9</small></button><button>清晰度 <small>720P</small></button><button>时长 <small>5s</small></button>`);
+  });
+  document.addEventListener("click", () => { menu.hidden = true; });
+
+  function measure() {
+    requestAnimationFrame(() => {
+      const n = $(".node").getBoundingClientRect(), p = $(".panel-shell").getBoundingClientRect();
+      $("#meta").innerHTML = `节点 <b>${Math.round(n.width)}×${Math.round(n.height)}</b> · 面板 <b>${Math.round(p.width)}×${Math.round(p.height)}</b>（节点宽 +${Math.round(p.width - n.width)}）<br>参考图一：680×208，节点宽 +104`;
+    });
+  }
+  sync();
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>顶栏原型</title>
+<style>
+  /* 颜色抄自 web/src/index.css；Logo 用小尺寸版近似，真实渲染用 Logo 组件 */
+  :root {
+    --canvas-bg: oklch(0.975 0 0); --foreground: oklch(0.145 0 0); --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0); --chrome: oklch(1 0 0 / 0.82); --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05); --credit: oklch(0.72 0.15 75); --status-success: oklch(0.65 0.15 155);
+    --beam: oklch(0.72 0.15 75);
+  }
+  [data-theme="dark"] {
+    --canvas-bg: oklch(0.13 0 0); --foreground: oklch(0.985 0 0); --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0); --chrome: oklch(0.2 0 0 / 0.78); --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07); --credit: oklch(0.82 0.15 85); --status-success: oklch(0.75 0.15 155);
+    --beam: oklch(0.82 0.15 85);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--canvas-bg); color: var(--foreground);
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .tools { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 8px; padding: 6px; border-radius: 12px; background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border); font-size: 12px; z-index: 5; }
+  .seg { display: flex; padding: 2px; border-radius: 8px; background: var(--muted); }
+  .seg button { border: 0; background: transparent; color: var(--muted-foreground); font: inherit; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--canvas-bg); color: var(--foreground); }
+  .top { position: fixed; inset: 12px 12px auto 12px; display: flex; justify-content: space-between; align-items: center; }
+  .zone { display: flex; gap: 8px; align-items: center; }
+  .pill {
+    display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 4px; border-radius: 999px;
+    background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border), 0 10px 15px -3px rgba(0,0,0,.25); backdrop-filter: blur(24px);
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-width: 32px; padding: 0 8px;
+    border: 0; border-radius: 999px; background: transparent; color: var(--muted-foreground); font: inherit; cursor: pointer;
+    transition: background-color 150ms, color 150ms;
+  }
+  .btn:hover { background: var(--chrome-hover); color: var(--foreground); }
+  .btn svg { flex: none; }
+  .logo-btn { gap: 4px; padding: 0 6px 0 4px; }
+  .title { font-weight: 600; padding: 0 8px; color: var(--foreground); }
+  .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--chrome-border); }
+  .credits { color: var(--foreground); gap: 8px; padding: 0 12px 0 10px; font: 600 14px ui-monospace, monospace; }
+  .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--status-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-success) 15%, transparent); }
+  .avatar { border-radius: 999px; display: grid; place-items: center; color: #fff; font-weight: 600; background: #0e8cc0; }
+
+  /* 现状 */
+  [data-variant="old"] .logo { width: 16px; height: 16px; }
+  [data-variant="old"] .account { width: 40px; height: 40px; border: 0; padding: 0; cursor: pointer; border-radius: 999px;
+    background: var(--chrome); box-shadow: 0 0 0 1px var(--chrome-border), 0 10px 15px -3px rgba(0,0,0,.25); backdrop-filter: blur(24px); display: grid; place-items: center; }
+  [data-variant="old"] .account .avatar { width: 40px; height: 40px; font-size: 17px; }
+  [data-variant="old"] .only-new { display: none !important; }
+  [data-variant="old"] .title, [data-variant="old"] .credits { font-size: 14px; }
+  /* 改版后 */
+  [data-variant="new"] .title { font-size: 13px; }
+  [data-variant="new"] .credits { font-size: 14px; height: 36px; }
+  [data-variant="new"] .credits svg { width: 18px; height: 18px; }
+  [data-variant="new"] .logo { width: 30px; height: 30px; }
+  [data-variant="new"] .account-btn { width: 36px; height: 36px; padding: 0; }
+  [data-variant="new"] .account-btn .avatar { width: 32px; height: 32px; font-size: 14px; }
+  [data-variant="new"] .only-old { display: none !important; }
+</style>
+</head>
+<body data-theme="dark" data-variant="new">
+<div class="top">
+  <div class="zone">
+    <div class="pill" style="padding-right:4px">
+      <button class="btn logo-btn" aria-label="画布菜单">
+        <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M18 7h-6a5 5 0 0 0-5 5v24a5 5 0 0 0 5 5h6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M30 7h6a5 5 0 0 1 5 5v24a5 5 0 0 1-5 5h-6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="20.5" y="12" width="7" height="24" rx="3.5" fill="var(--beam)"/>
+        </svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="opacity:.6"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <span class="title">未命名画布</span>
+      <button class="btn" aria-label="已保存"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+    </div>
+  </div>
+
+  <div class="zone">
+    <div class="pill"><button class="btn" aria-label="更多"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button></div>
+
+    <!-- 现状：积分胶囊 + 单独的头像圆；改版后：积分和头像同一个胶囊 -->
+    <div class="pill" id="creditsPill">
+      <button class="btn credits"><span class="dot"></span>
+        <svg width="16" height="16" viewBox="0 0 24 24" style="fill:var(--credit)"><path d="M12 2l2.4 7.1L22 12l-7.6 2.9L12 22l-2.4-7.1L2 12l7.6-2.9z"/></svg>974
+      </button>
+      <span class="sep only-new"></span>
+      <button class="btn account-btn only-new" aria-label="账户"><span class="avatar">A</span></button>
+    </div>
+    <button class="account only-old" aria-label="账户"><span class="avatar">A</span></button>
+  </div>
+</div>
+
+<div class="tools">
+  <div class="seg" id="variant"><button data-v="old" aria-pressed="false">现状</button><button data-v="new" aria-pressed="true">改版后</button></div>
+  <div class="seg" id="theme"><button data-t="dark" aria-pressed="true">深色</button><button data-t="light" aria-pressed="false">浅色</button></div>
+</div>
+
+<script>
+  function pressed(g, b) { g.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); }
+  document.querySelector("#variant").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; pressed(e.currentTarget, b); document.body.dataset.variant = b.dataset.v; });
+  document.querySelector("#theme").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; pressed(e.currentTarget, b); document.body.dataset.theme = b.dataset.t; });
+</script>
+</body>
+</html>

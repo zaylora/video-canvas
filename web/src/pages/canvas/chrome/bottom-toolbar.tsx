@@ -23,7 +23,7 @@ import { AssetsSheet } from "./assets-sheet";
 import { MOD } from "./keys";
 import { TasksSheet } from "./tasks-sheet";
 
-/** 底部居中的主工具条：添加节点、选择 / 抓手、撤销重做、素材库、任务历史 */
+/** 左侧居中的主工具条（竖排）：添加节点、选择 / 抓手、撤销重做、素材库、任务历史 */
 export function BottomToolbar({
   tool,
   onToolChange,
@@ -48,9 +48,9 @@ export function BottomToolbar({
 
   return (
     <>
-      <ChromePill size="lg">
+      <ChromePill size="lg" orientation="vertical">
         <DropdownMenu modal={false}>
-          <ChromeTooltip label="添加节点">
+          <ChromeTooltip label="添加节点" side="right">
             <DropdownMenuTrigger
               render={<ChromeButton variant="primary" size="lg" aria-label="添加节点" />}
             >
@@ -58,7 +58,7 @@ export function BottomToolbar({
             </DropdownMenuTrigger>
           </ChromeTooltip>
           <DropdownMenuContent
-            side="top"
+            side="right"
             align="start"
             sideOffset={14}
             className={ADD_NODE_MENU_CONTENT_CLASS}
@@ -73,11 +73,13 @@ export function BottomToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <ChromeSeparator />
+        <ChromeSeparator orientation="horizontal" />
 
         <ChromeSegment
           id="canvas-tool"
           size="lg"
+          orientation="vertical"
+          tooltipSide="right"
           value={tool}
           onValueChange={onToolChange}
           items={[
@@ -86,22 +88,22 @@ export function BottomToolbar({
           ]}
         />
 
-        <ChromeSeparator />
+        <ChromeSeparator orientation="horizontal" />
 
-        <ChromeTooltip label="撤销" shortcut={`${MOD}Z`}>
+        <ChromeTooltip label="撤销" shortcut={`${MOD}Z`} side="right">
           <ChromeButton size="lg" aria-label="撤销" disabled={!canUndo} onClick={onUndo}>
             <Undo2 />
           </ChromeButton>
         </ChromeTooltip>
-        <ChromeTooltip label="重做" shortcut={`⇧${MOD}Z`}>
+        <ChromeTooltip label="重做" shortcut={`⇧${MOD}Z`} side="right">
           <ChromeButton size="lg" aria-label="重做" disabled={!canRedo} onClick={onRedo}>
             <Redo2 />
           </ChromeButton>
         </ChromeTooltip>
 
-        <ChromeSeparator className="max-sm:hidden" />
+        <ChromeSeparator orientation="horizontal" className="max-sm:hidden" />
 
-        <ChromeTooltip label="画布素材">
+        <ChromeTooltip label="画布素材" side="right">
           <ChromeButton
             size="lg"
             aria-label="画布素材"
@@ -112,7 +114,7 @@ export function BottomToolbar({
             <FolderOpen />
           </ChromeButton>
         </ChromeTooltip>
-        <ChromeTooltip label="任务历史">
+        <ChromeTooltip label="任务历史" side="right">
           <ChromeButton
             size="lg"
             aria-label="任务历史"

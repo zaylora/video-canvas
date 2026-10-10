@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { AnimatePresence } from "motion/react";
 import { useReactFlow } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
@@ -7,6 +8,7 @@ import { NODE_META } from "@/constants/canvas";
 import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { textEditPatch } from "@/utils/canvas/text-body";
 
 import { NodeOverlays } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
@@ -42,6 +44,15 @@ export function TextCanvasNode({
     .join("|");
   useHandleRemeasure(id, handleSignature);
 
+  /** 双击编辑完正文：写回节点，正文就是下游引用到的那份 */
+  const onTextChange = useCallback(
+    (draft: string) => {
+      const patch = textEditPatch(data, draft);
+      if (patch) updateNodeData(id, patch);
+    },
+    [data, id, updateNodeData],
+  );
+
   const canAcceptConnection = useCallback(
     ({ nodeId, handleType }: IncomingConnection) => {
       const from = getNode(nodeId);
@@ -72,16 +83,19 @@ export function TextCanvasNode({
           error={data.error}
           taskRef={data.taskId ? data.errorTaskRef : null}
           icon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : null}
-          placeholder="选中后输入要求生成文本"
+          placeholder="双击输入文字，或选中后写提示词生成"
+          onTextChange={vm.submitting ? undefined : onTextChange}
         />
       </NodeCard>
-      {selected && !multiSelected && !dragSelected && (
-        <NodeOverlays id={id} data={data} showHistory={false}>
-          {(width) => (
-            <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
-          )}
-        </NodeOverlays>
-      )}
+      <AnimatePresence>
+        {selected && !multiSelected && !dragSelected && (
+          <NodeOverlays key="overlays" id={id} data={data}>
+            {(width) => (
+              <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
+            )}
+          </NodeOverlays>
+        )}
+      </AnimatePresence>
     </>
   );
 }

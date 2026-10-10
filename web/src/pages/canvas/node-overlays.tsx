@@ -1,66 +1,69 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { NodeToolbar, Position, useReactFlow } from "@xyflow/react";
+import { NodeToolbar, Position, useReactFlow, useStore } from "@xyflow/react";
+import { toast } from "sonner";
 
-import { NodeHistoryStrip } from "@/components/canvas/node-history-strip";
+import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import {
   PANEL_OFFSET,
   useNodeDragging,
   usePaneBusy,
   usePanelPlacement,
 } from "@/components/canvas/hooks/use-panel-placement";
+import { NODE_TOOLBAR } from "@/constants/node-toolbar";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import { downloadMedia, downloadName } from "@/utils/canvas/download";
+import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
 
-/** 历史浮条离节点卡片顶边的距离：让过卡片上方的标题行 */
-const STRIP_OFFSET_TOP = 44;
-const STRIP_OFFSET_BOTTOM = 14;
+import { useNodePreview } from "./preview-context";
+
+/** 标题行（13px 字加 8px 间距）在画布 100% 时离卡片顶边的高度，随缩放一起缩 */
+const TITLE_ROW_HEIGHT = 28;
+/** 功能区离标题行的距离，不随缩放：100% 时合起来是 44，和原来的历史浮条一致 */
+const TOOLBAR_GAP = 16;
+/** 功能区往上浮的距离：出现和退出都是这么多（设计稿 6.16 动效表） */
+const TOOLBAR_RISE = 6;
 
 /**
- * 选中节点时浮出的两块：上方的「节点生成历史」浮条、下方的生成面板。
+ * 选中节点时浮出的两块：上方的功能区（设计稿 6.16，历史也在里面）、下方的生成面板。
+ * 空节点没有可加工的素材，不出功能区；上传的素材不是模型生成的，不出生成面板。
  * 只在选中时挂载，所以摆法计算（订阅视口变化）只花在一个节点上。
- * 面板下方放不下时翻到节点上方，浮条随之挪到节点下方；拖动画布或节点时两者淡下去。
+ * 面板始终在节点下方、功能区始终在上方，位置不随视口里的空间变化；拖动画布或节点时两者淡下去。
+ * 退出动画靠外层的 AnimatePresence：两块都带 exit，取消选中时一起淡出。
  */
 export function NodeOverlays({
   id,
   data,
-  showHistory,
   children,
 }: {
   id: string;
   data: CanvasNodeData;
-  /** 文本节点没有素材版本，不显示历史浮条 */
-  showHistory: boolean;
   /** 生成面板，拿到算好的宽度 */
   children: (width: number) => ReactNode;
 }) {
   const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [panelHeight, setPanelHeight] = useState(300);
-  const { position, width, shift } = usePanelPlacement(id, panelHeight);
+  const previewNode = useNodePreview();
+  const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
   const nodeDragging = useNodeDragging(id);
-  const flipped = position === Position.Top;
+  const zoom = useStore((state) => state.transform[2]);
 
-  // 拖动时面板卸掉、松手后是新的元素，所以跟着 nodeDragging 重新挂监听
-  useLayoutEffect(() => {
-    const element = panelRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setPanelHeight(Math.round(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height)),
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [nodeDragging]);
+  const config = NODE_TOOLBAR[data.kind];
+  const gate = toolbarGate(data);
+  const outputs = readOutputs(data);
 
   const selectVersion = useCallback(
     (outputId: string) => {
       // 生成中不切：正文显示的是任务进度，切了也看不到，还会把状态改乱
+      if (data.status === "running") {
+        toast("生成中不能切换版本");
+        return;
+      }
       // 失败后点当前那一版，等于把它找回来，照样放行
-      if (data.status === "running") return;
       if (outputId === activeOutputIdOf(data) && data.status === "done") return;
       history?.record();
       updateNodeData(id, (node) => {
@@ -71,44 +74,79 @@ export function NodeOverlays({
     [data, history, id, updateNodeData],
   );
 
+  const { src, text, label, fileName } = data;
+  const onTail = {
+    // 灯箱只认图片和视频，文本、音频的放大先当占位
+    zoom:
+      previewNode && (data.kind === "image" || data.kind === "video")
+        ? () => previewNode(id)
+        : undefined,
+    download: src ? () => void downloadMedia(src, downloadName(label, src, fileName)) : undefined,
+    copy: text
+      ? () =>
+          void navigator.clipboard.writeText(text).then(
+            () => toast.success("已复制文本"),
+            () => toast.error("复制失败，请手动选中复制"),
+          )
+      : undefined,
+  };
+
   const fade = {
     opacity: paneBusy ? 0.35 : 1,
     pointerEvents: paneBusy ? ("none" as const) : undefined,
   };
+  const exit = { opacity: 0, transition: { duration: DURATION.exit, ease: EASE_OUT } };
 
   // 拖着这个节点时两块都收起，松手后重新浮出来
   if (nodeDragging) return null;
 
   return (
     <>
-      {showHistory && (
+      {gate.visible && (
         <NodeToolbar
           isVisible
-          position={flipped ? Position.Bottom : Position.Top}
-          offset={flipped ? STRIP_OFFSET_BOTTOM : STRIP_OFFSET_TOP}
+          position={Position.Top}
+          offset={TITLE_ROW_HEIGHT * zoom + TOOLBAR_GAP}
         >
-          <div style={{ ...fade, transition: "opacity 150ms" }}>
-            <NodeHistoryStrip
-              nodeId={id}
-              outputs={readOutputs(data)}
-              activeId={activeOutputIdOf(data)}
-              running={data.status === "running"}
-              onSelect={selectVersion}
+          <motion.div
+            initial={{ opacity: 0, y: TOOLBAR_RISE }}
+            animate={{ opacity: fade.opacity, y: 0 }}
+            exit={{ ...exit, y: TOOLBAR_RISE }}
+            transition={{ duration: DURATION.base, ease: EASE_OUT }}
+            style={{ pointerEvents: fade.pointerEvents }}
+          >
+            <NodeActionBar
+              config={config}
+              label={label}
+              gate={gate}
+              history={
+                config.tail.includes("history")
+                  ? {
+                      nodeId: id,
+                      outputs,
+                      activeId: activeOutputIdOf(data),
+                      onSelect: selectVersion,
+                    }
+                  : undefined
+              }
+              onTail={onTail}
             />
-          </div>
+          </motion.div>
         </NodeToolbar>
       )}
-      <NodeToolbar isVisible position={position} offset={PANEL_OFFSET}>
-        <motion.div
-          ref={panelRef}
-          initial={{ opacity: 0, y: flipped ? 6 : -6, scale: 0.985 }}
-          animate={{ opacity: fade.opacity, y: 0, scale: 1 }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
-          style={{ translate: `${shift}px 0`, pointerEvents: fade.pointerEvents }}
-        >
-          {children(width)}
-        </motion.div>
-      </NodeToolbar>
+      {!data.uploaded && (
+        <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.985 }}
+            animate={{ opacity: fade.opacity, y: 0, scale: 1 }}
+            exit={exit}
+            transition={{ duration: DURATION.base, ease: EASE_OUT }}
+            style={{ translate: `${shift}px 0`, pointerEvents: fade.pointerEvents }}
+          >
+            {children(width)}
+          </motion.div>
+        </NodeToolbar>
+      )}
     </>
   );
 }

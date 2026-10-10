@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import { ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 
 import {
@@ -33,6 +34,8 @@ import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
+import { uploadRunner } from "@/utils/canvas/upload-runner";
 import {
   OP_LABEL,
   PORT_OF_KIND,
@@ -84,13 +87,29 @@ function SwitchModelDialog({ vm }: { vm: TaskNodeModel }) {
   );
 }
 
-/** 节点标题行右侧的状态：生成中带进度，失败标红 */
+/** 撤销恢复出来的上传中节点没有对应的上传任务，只能当作中断了 */
+const INTERRUPTED_VIEW: VideoNodeView = {
+  phase: "failed",
+  message: "上传已中断，请删除后重新上传",
+  refunded: false,
+  taskRef: null,
+};
+
+/** 节点标题行右侧的状态：上传中、生成中带进度，失败标红；uploadFailed 表示失败的是上传 */
 export function NodeStatusLabel({
   view,
+  uploadFailed,
 }: {
   view: Pick<VideoNodeView, "phase"> & { progress?: number | null };
+  uploadFailed?: boolean;
 }) {
   switch (view.phase) {
+    case "uploading":
+      return (
+        <span className="text-status-running font-mono tabular-nums">
+          上传中{typeof view.progress === "number" ? ` ${view.progress}%` : ""}
+        </span>
+      );
     case "queued":
       return <span className="text-muted-foreground">排队中</span>;
     case "running":
@@ -102,7 +121,7 @@ export function NodeStatusLabel({
     case "finalizing":
       return <span className="text-status-running">即将完成</span>;
     case "failed":
-      return <span className="text-destructive">生成失败</span>;
+      return <span className="text-destructive">{uploadFailed ? "上传失败" : "生成失败"}</span>;
     default:
       return null;
   }
@@ -126,7 +145,6 @@ export function TaskPromptPanel({
   width: number;
 }) {
   const meta = NODE_META.get(kind);
-  const Icon = meta?.icon;
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
   const hasRefs =
     vm.refItems.some((item) => PORT_OF_KIND[item.kind] !== "text") ||
@@ -176,7 +194,6 @@ export function TaskPromptPanel({
         width={width}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
-        icon={Icon ? <Icon className="size-4" /> : undefined}
         models={vm.modelOptions}
         modelId={vm.modelKey ?? ""}
         onModelChange={vm.setModel}
@@ -219,7 +236,6 @@ export function TaskPromptPanel({
             {panelProps && params.length > 0 && (
               <Popover>
                 <PopoverTrigger className={cn(PANEL_CHIP_CLASS, "shrink-0")} aria-label="生成参数">
-                  <SlidersHorizontal className="text-muted-foreground" />
                   <span className="min-w-0 truncate">
                     {paramSummary(vm.caps, vm.params) || "参数"}
                   </span>
@@ -297,7 +313,18 @@ function MediaTaskNode({
     [data, getNode],
   );
 
-  const retryable = vm.view.phase === "failed";
+  // 上传中的节点只有 running 状态，没有上传任务在跑时（撤销恢复的空壳）按中断处理
+  const uploading = isUploading(data);
+  const interrupted = uploading && !uploadRunner.isActive(id);
+  const view = interrupted ? INTERRUPTED_VIEW : vm.view;
+  const uploadFailed = interrupted || isUploadFailed(data);
+  const retryable = view.phase === "failed";
+  /** 上传失败的重试是用留着的文件重新传，不是重新提交生成任务；文件没了（刷新后）就没有重试 */
+  const retry = uploadFailed
+    ? uploadRunner.canRetry(id)
+      ? () => void uploadRunner.retry(id, (nodeId, patch) => updateNodeData(nodeId, patch))
+      : undefined
+    : () => void vm.submit();
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
 
@@ -307,15 +334,12 @@ function MediaTaskNode({
         title={data.label}
         onRename={(label) => updateNodeData(id, { label })}
         icon={KindIcon ? <KindIcon /> : undefined}
-        status={<NodeStatusLabel view={vm.view} />}
+        status={<NodeStatusLabel view={view} uploadFailed={uploadFailed} />}
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
-        // 视频要看画面细节，比默认的 w-96 略宽一点
-        className={kind === "video" ? "w-[27rem]" : undefined}
       >
         <NodeVideoBody
-          view={vm.view}
-          caption={data.fileName}
+          view={view}
           placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
           mediaType={data.mediaType ?? kind}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
@@ -323,17 +347,21 @@ function MediaTaskNode({
             vm.view.phase === "queued" || vm.view.phase === "running" ? vm.cancel : undefined
           }
           cancelling={vm.cancelling}
-          onRetry={retryable ? () => void vm.submit() : undefined}
-          retryDisabled={!!vm.blockedReason}
-          retryHint={vm.blockedReason ?? undefined}
+          onRetry={retryable ? retry : undefined}
+          retryDisabled={!uploadFailed && !!vm.blockedReason}
+          retryHint={(!uploadFailed && vm.blockedReason) || undefined}
           active={!!selected}
         />
       </NodeCard>
-      {selected && !multiSelected && !dragSelected && (
-        <NodeOverlays id={id} data={data} showHistory>
-          {(width) => <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />}
-        </NodeOverlays>
-      )}
+      <AnimatePresence>
+        {selected && !multiSelected && !dragSelected && !uploading && !uploadFailed && (
+          <NodeOverlays key="overlays" id={id} data={data}>
+            {(width) => (
+              <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />
+            )}
+          </NodeOverlays>
+        )}
+      </AnimatePresence>
     </>
   );
 }

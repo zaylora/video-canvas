@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * 画布外壳的积木（设计稿 docs/design/画布UI设计 6.1）：
- * 四角 + 底部居中五个区，每个区里摆半透明胶囊，胶囊里是图标按钮、分隔线、分段控件。
+ * 四角 + 左侧居中五个区，每个区里摆半透明胶囊，胶囊里是图标按钮、分隔线、分段控件。
  * 只管长相，摆什么按钮由页面组合。
  */
 
@@ -16,7 +16,7 @@ const ZONE_CLASS = {
   "top-right": "top-3 right-3",
   "bottom-left": "bottom-3.5 left-3",
   "bottom-right": "bottom-3.5 right-3",
-  "bottom-center": "bottom-3.5 left-1/2 -translate-x-1/2",
+  "left-center": "top-1/2 left-3 -translate-y-1/2",
 } as const;
 
 /** 外壳的一个区：贴在画布的某个角上。canvas-overlay-interactive 让它在抓手模式下照样能点 */
@@ -39,18 +39,26 @@ export function ChromeZone({
   );
 }
 
-/** 半透明胶囊：外壳上所有控件的底 */
+/** 半透明胶囊：外壳上所有控件的底。vertical 是竖着排的，贴在左侧边用 */
 export function ChromePill({
   size = "default",
+  orientation = "horizontal",
   className,
   ...props
-}: ComponentProps<"div"> & { size?: "default" | "lg" }) {
+}: ComponentProps<"div"> & { size?: "default" | "lg"; orientation?: "horizontal" | "vertical" }) {
+  const vertical = orientation === "vertical";
   return (
     <div
       data-slot="chrome-pill"
       className={cn(
-        "bg-chrome text-foreground flex items-center gap-0.5 rounded-full px-1 shadow-lg ring-1 ring-chrome-border backdrop-blur-xl backdrop-saturate-150",
-        size === "lg" ? "h-13 gap-1 px-1.5" : "h-10",
+        "bg-chrome text-foreground flex items-center gap-0.5 rounded-full shadow-lg ring-1 ring-chrome-border backdrop-blur-xl backdrop-saturate-150",
+        vertical
+          ? size === "lg"
+            ? "w-13 flex-col gap-1 py-1.5"
+            : "w-10 flex-col py-1"
+          : size === "lg"
+            ? "h-13 gap-1 px-1.5"
+            : "h-10 px-1",
         className,
       )}
       {...props}
@@ -58,13 +66,21 @@ export function ChromePill({
   );
 }
 
-/** 胶囊里的竖分隔线 */
-export function ChromeSeparator({ className, ...props }: ComponentProps<"div">) {
+/** 胶囊里的分隔线：横排的胶囊里是竖线，竖排的胶囊里是横线 */
+export function ChromeSeparator({
+  orientation = "vertical",
+  className,
+  ...props
+}: ComponentProps<"div"> & { orientation?: "horizontal" | "vertical" }) {
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
-      className={cn("bg-chrome-border mx-1 h-4.5 w-px shrink-0", className)}
+      aria-orientation={orientation}
+      className={cn(
+        "bg-chrome-border shrink-0",
+        orientation === "vertical" ? "mx-1 h-4.5 w-px" : "my-1 h-px w-4.5",
+        className,
+      )}
       {...props}
     />
   );
@@ -159,6 +175,7 @@ export function ChromeSegment<T extends string>({
   onValueChange,
   items,
   size = "default",
+  orientation = "horizontal",
   tooltipSide = "top",
 }: {
   id: string;
@@ -166,11 +183,15 @@ export function ChromeSegment<T extends string>({
   onValueChange: (value: T) => void;
   items: ChromeSegmentItem<T>[];
   size?: "default" | "lg";
-  tooltipSide?: "top" | "bottom";
+  orientation?: "horizontal" | "vertical";
+  tooltipSide?: "top" | "bottom" | "left" | "right";
 }) {
   return (
     <LayoutGroup id={id}>
-      <div role="radiogroup" className="flex items-center gap-0.5">
+      <div
+        role="radiogroup"
+        className={cn("flex items-center gap-0.5", orientation === "vertical" && "flex-col")}
+      >
         {items.map((item) => {
           const active = item.value === value;
           return (

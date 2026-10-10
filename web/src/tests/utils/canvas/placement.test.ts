@@ -3,29 +3,26 @@ import { describe, expect, test } from "bun:test";
 import { defaultNodeSize, topLeftFromAnchor } from "@/utils/canvas/placement";
 
 describe("defaultNodeSize：新节点还没测量时的默认尺寸", () => {
-  test("视频节点比其他节点宽一点（432×243）", () => {
-    expect(defaultNodeSize("video")).toEqual({ width: 432, height: 243 });
-  });
-
-  test("其余种类 384×216", () => {
-    expect(defaultNodeSize("image")).toEqual({ width: 384, height: 216 });
-    expect(defaultNodeSize("text")).toEqual({ width: 384, height: 216 });
+  test("所有种类一样大（576×324，16:9）", () => {
+    for (const kind of ["video", "image", "text", "audio"] as const) {
+      expect(defaultNodeSize(kind)).toEqual({ width: 576, height: 324 });
+    }
   });
 });
 
 describe("topLeftFromAnchor：让落点落在新节点自己的连接点上", () => {
   test("从 source 端拉出：落点是新节点左侧中点", () => {
-    expect(topLeftFromAnchor("image", { x: 500, y: 300 }, [0, 0.5])).toEqual({ x: 500, y: 192 });
+    expect(topLeftFromAnchor("image", { x: 500, y: 300 }, [0, 0.5])).toEqual({ x: 500, y: 138 });
   });
 
   test("从 target 端拉出：落点是新节点右侧中点", () => {
-    expect(topLeftFromAnchor("image", { x: 500, y: 300 }, [1, 0.5])).toEqual({ x: 116, y: 192 });
+    expect(topLeftFromAnchor("image", { x: 500, y: 300 }, [1, 0.5])).toEqual({ x: -76, y: 138 });
   });
 
-  test("视频节点按自己的尺寸算", () => {
+  test("视频节点和图片节点一样大", () => {
     expect(topLeftFromAnchor("video", { x: 500, y: 300 }, [1, 0.5])).toEqual({
-      x: 68,
-      y: 178.5,
+      x: -76,
+      y: 138,
     });
   });
 
@@ -50,13 +47,13 @@ describe("读档：老存档里带 origin 的节点统一换算成左上角", ()
 
   test("右中锚点：position 换成画面左上角，origin 去掉", () => {
     const [node] = saved([imageNode({ origin: [1, 0.5] })]).nodes;
-    expect(node.position).toEqual({ x: 116, y: 192 });
+    expect(node.position).toEqual({ x: -76, y: 138 });
     expect(node.origin).toBeUndefined();
   });
 
   test("左中锚点同理", () => {
     const [node] = saved([imageNode({ origin: [0, 0.5] })]).nodes;
-    expect(node.position).toEqual({ x: 500, y: 192 });
+    expect(node.position).toEqual({ x: 500, y: 138 });
     expect(node.origin).toBeUndefined();
   });
 
@@ -64,7 +61,7 @@ describe("读档：老存档里带 origin 的节点统一换算成左上角", ()
     const [node] = saved([
       imageNode({ origin: [1, 0.5], data: { kind: "video", label: "V" } }),
     ]).nodes;
-    expect(node.position).toEqual({ x: 68, y: 178.5 });
+    expect(node.position).toEqual({ x: -76, y: 138 });
   });
 
   test("没有 origin 的节点原样不动", () => {

@@ -9,25 +9,26 @@ export function releaseObjectUrl(src?: string | null) {
   if (src?.startsWith("blob:")) URL.revokeObjectURL(src);
 }
 
-/** 按 MIME 前缀认种类，两类之外的文件一概不收 */
+/** 按 MIME 前缀认种类，三类之外的文件一概不收 */
 function getMediaType(file: File): MediaType | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
   return null;
 }
 
 /**
- * 收下一个选中的文件：认种类、卡大小，都过了才挂成本地地址。
+ * 收下一个选中的文件：认种类、卡大小。
  * 不合规时给一句能直接摆给用户看的话。
  */
 export function takeUploadFile(file: File): UploadTaken {
   const mediaType = getMediaType(file);
-  if (!mediaType) return { error: "只收图片和视频，换个文件试试" };
+  if (!mediaType) return { error: "只收图片、视频和音频，换个文件试试" };
 
   const limit = UPLOAD_SIZE_LIMIT[mediaType];
   if (file.size > limit) {
     return { error: `文件超过 ${Math.round(limit / 1024 / 1024)}MB，换个小点的` };
   }
 
-  return { mediaType, src: URL.createObjectURL(file) };
+  return { mediaType };
 }

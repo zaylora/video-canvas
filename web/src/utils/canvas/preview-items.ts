@@ -1,9 +1,10 @@
 import type { FlowNode } from "@/types";
 
 import { absolutePosition, isGroupNode } from "./group";
+import { DEFAULT_NODE_SIZE } from "./placement";
 
 /** 节点没测量出高度时按这个值估算行高容差的基准 */
-const FALLBACK_NODE_HEIGHT = 270;
+const FALLBACK_NODE_HEIGHT = DEFAULT_NODE_SIZE.height;
 
 /** 预览弹层里的一项：画布上一个有图片或视频的节点 */
 export type PreviewItem = {
