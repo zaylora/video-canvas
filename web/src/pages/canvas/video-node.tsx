@@ -339,8 +339,6 @@ function MediaTaskNode({
         status={<NodeStatusLabel view={view} uploadFailed={uploadFailed} />}
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
-        // 视频要看画面细节，比默认的 w-96 大一圈（576×324，16:9）
-        className={kind === "video" ? "w-xl" : undefined}
       >
         <NodeVideoBody
           view={view}

@@ -23,6 +23,12 @@ describe("文本节点正文", () => {
     expect(out).toContain("粘贴来的一段话");
   });
 
+  test("有内容时和占位态同一副 16:9 画幅，生成完节点不变矮", () => {
+    const filled = render({ status: "done", text: "一句话" });
+    expect(filled).toContain("aspect-ratio:1.7777777777777777");
+    expect(filled).not.toContain("max-h-");
+  });
+
   test("只读的正文不挡拖拽：抓着正文就能拖动节点", () => {
     const out = render({ status: "done", text: "粘贴来的一段话" });
     expect(out).not.toContain("nodrag");

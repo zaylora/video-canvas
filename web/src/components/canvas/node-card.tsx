@@ -238,7 +238,7 @@ export function NodeCard({
     // 倾斜留在包装层，BaseNode 里连接点的绝对定位和 .selected 样式都不受影响；
     // 透视只在倾斜时才有，静止的节点不做 3D 变换、不占独立合成层
     <motion.div style={{ transformPerspective, rotateX, rotateY, scale, opacity }}>
-      <BaseNode aria-label={title} className={cn("group/node w-96", className)}>
+      <BaseNode aria-label={title} className={cn("group/node w-xl", className)}>
         <div className="text-foreground pointer-events-none absolute right-0.5 bottom-full left-0.5 mb-2 flex items-center gap-2 text-[13px] font-semibold">
           {icon && <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>}
           <NodeTitle title={title} onRename={onRename} />

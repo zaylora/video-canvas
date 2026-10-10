@@ -3,6 +3,7 @@ import type { XYPosition } from "@xyflow/react";
 import type { CanvasGroupNode, CanvasNode, FlowNode } from "@/types";
 
 import { newNodeLabel } from "./node-label";
+import { DEFAULT_NODE_SIZE } from "./placement";
 
 /**
  * 组框比成员包围盒多出的留白（画布单位）。组名行画在框外，但节点自己的标题行画在卡片上方、
@@ -22,7 +23,7 @@ export const GROUP_Z_INDEX = -2000;
 export const GROUP_TITLE_MAX_SCALE = 4;
 
 /** 还没测量过的普通节点按这个尺寸算 */
-const FALLBACK_NODE = { width: 384, height: 216 };
+const FALLBACK_NODE = DEFAULT_NODE_SIZE;
 
 /** 是不是组节点 */
 export const isGroupNode = (node: FlowNode): node is CanvasGroupNode => node.type === "group";

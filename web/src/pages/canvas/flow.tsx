@@ -51,6 +51,7 @@ import type { CanvasDetailDto } from "@/api/canvas/type";
 import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
 import { TEXT_BODY_MAX, clipFileName, clipText, type ClipboardContent } from "@/utils/canvas/paste";
 import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
+import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
 import {
   deserializeGraph,
   hasVolatileRunning,
@@ -100,7 +101,7 @@ import { useCanvasShortcuts } from "./use-canvas-shortcuts";
 const MIN_ZOOM = 0.14;
 
 /** 新节点的估算尺寸：从视口中心落节点时，让节点正中对准视口中心 */
-const NEW_NODE_SIZE = { width: 384, height: 216 };
+const NEW_NODE_SIZE = DEFAULT_NODE_SIZE;
 
 /** 上传完那句话按语气挑 toast */
 function showUploadNotice(notice: UploadNotice | null) {

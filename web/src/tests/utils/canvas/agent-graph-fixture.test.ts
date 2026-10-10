@@ -34,9 +34,9 @@ type ArrangeCase = {
 
 /** 后端按种类使用的默认尺寸，前端测量后得到的就是这个值 */
 const SIZE: Record<NodeKind, { width: number; height: number }> = {
-  script: { width: 384, height: 216 },
-  image: { width: 384, height: 216 },
-  audio: { width: 384, height: 216 },
+  script: { width: 576, height: 324 },
+  image: { width: 576, height: 324 },
+  audio: { width: 576, height: 324 },
   video: { width: 576, height: 324 },
 };
 

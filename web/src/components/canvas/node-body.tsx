@@ -227,7 +227,10 @@ function TextBodyView({
   if (status === "done" && text) {
     return (
       <BaseNodeContent>
-        <div className="nowheel bg-muted/40 max-h-48 min-h-24 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap select-none">
+        <div
+          className="nowheel bg-muted/40 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap select-none"
+          style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
+        >
           {text}
         </div>
       </BaseNodeContent>

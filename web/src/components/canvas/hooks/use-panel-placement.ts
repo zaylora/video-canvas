@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { useStore, type ReactFlowState } from "@xyflow/react";
 
+import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
+
 /** 面板宽度：跟着节点在屏幕上的宽度走，但不随缩放变得太窄或太宽 */
 const PANEL_MIN_WIDTH = 480;
 const PANEL_MAX_WIDTH = 720;
@@ -32,7 +34,7 @@ export function usePanelPlacement(nodeId: string): PanelPlacement {
       const node = state.nodeLookup.get(nodeId);
       if (!node) return DEFAULT_PLACEMENT;
       const [tx, , zoom] = state.transform;
-      const width = (node.measured.width ?? 384) * zoom;
+      const width = (node.measured.width ?? DEFAULT_NODE_SIZE.width) * zoom;
       const left = node.internals.positionAbsolute.x * zoom + tx;
 
       const panelWidth = Math.min(
