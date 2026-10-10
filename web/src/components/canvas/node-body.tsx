@@ -250,8 +250,6 @@ type NodeMediaBodyProps = {
   mediaType: NodeMediaType;
   /** 图片替代文字 */
   alt?: string;
-  /** 摆在素材下面的一行小字，通常是文件名 */
-  caption?: string;
   /** 预览画幅 */
   aspect?: number;
   /** 视频时长，毫秒；节点数据里没有就不传，视频封面不显示时长角标 */
@@ -269,7 +267,6 @@ export function NodeMediaBody({
   src,
   mediaType,
   alt,
-  caption,
   aspect = NODE_PREVIEW_ASPECT,
   durationMs,
   active,
@@ -291,11 +288,6 @@ export function NodeMediaBody({
           <VideoFacade src={src} durationMs={durationMs} active={active} />
         )}
       </div>
-      {caption && (
-        <p className="text-muted-foreground truncate text-xs" title={caption}>
-          {caption}
-        </p>
-      )}
     </BaseNodeContent>
   );
 }

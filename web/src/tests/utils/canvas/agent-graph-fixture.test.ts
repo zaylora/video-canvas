@@ -37,7 +37,7 @@ const SIZE: Record<NodeKind, { width: number; height: number }> = {
   script: { width: 384, height: 216 },
   image: { width: 384, height: 216 },
   audio: { width: 384, height: 216 },
-  video: { width: 432, height: 243 },
+  video: { width: 576, height: 324 },
 };
 
 describe("与后端共用的排列算法", () => {

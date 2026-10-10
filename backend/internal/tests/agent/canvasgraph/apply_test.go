@@ -43,7 +43,7 @@ func TestApplyBuildsShotGroup(t *testing.T) {
 	}
 	// 三个成员横向依次排开，组框要能框住最右边的成员。
 	last := node(t, res.Graph, res.IDMap["c"])
-	right := last.Position().X + 432
+	right := last.Position().X + 576
 	if grp.Width() < right {
 		t.Errorf("组宽 %.0f 框不住最右成员（右边界 %.0f）", grp.Width(), right)
 	}

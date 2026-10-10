@@ -42,13 +42,13 @@ type ArrangeTarget struct {
 // rect 是画布绝对坐标下的矩形。
 type rect struct{ x, y, w, h float64 }
 
-// nodeSize 返回节点尺寸。前端不保存普通节点的尺寸，这里按默认尺寸算：视频 432×243，其余 384×216。
+// nodeSize 返回节点尺寸。前端不保存普通节点的尺寸，这里按默认尺寸算：视频 576×324，其余 384×216。
 func nodeSize(n Node) (w, h float64) {
 	if n.IsGroup() {
 		return math.Max(groupMinW, n.Width()), math.Max(groupMinH, n.Height())
 	}
 	if n.Kind() == KindVideo {
-		return 432, 243
+		return 576, 324
 	}
 	return 384, 216
 }

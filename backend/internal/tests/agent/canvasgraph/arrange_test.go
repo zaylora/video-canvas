@@ -17,8 +17,8 @@ func TestArrangeRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 按 x 排序 a(100) c(300) b(900)；起点是左上角 (100,50)；图片宽 384、间距 120，视频宽 432。
-	wantX := map[string]float64{"a": 100, "c": 100 + 384 + 120, "b": 100 + 384 + 120 + 432 + 120}
+	// 按 x 排序 a(100) c(300) b(900)；起点是左上角 (100,50)；图片宽 384、间距 120，视频宽 576。
+	wantX := map[string]float64{"a": 100, "c": 100 + 384 + 120, "b": 100 + 384 + 120 + 576 + 120}
 	for id, x := range wantX {
 		p := node(t, res.Graph, id).Position()
 		if p.X != x || p.Y != 50 {

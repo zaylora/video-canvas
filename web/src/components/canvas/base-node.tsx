@@ -18,7 +18,7 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
     <div
       data-agent-mark={mark}
       className={cn(
-        "bg-card text-card-foreground relative rounded-2xl ring-1 ring-foreground/8 outline-none",
+        "bg-card text-card-foreground relative rounded-md ring-1 ring-foreground/8 outline-none",
         "transition-[box-shadow] duration-150 hover:ring-foreground/20",
         "in-[.selected]:ring-node-ring in-[.selected]:shadow-2xl in-[.selected]:ring-2",
         "focus-visible:ring-node-ring/60 focus-visible:ring-2",

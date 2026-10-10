@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 const SRC = join(import.meta.dir, "../../..");
 
-/** 后台用到的源码：页面与后台专用组件 */
+/** 后台用到的源码：页面与后台专用组件；Windows 下扫出来是反斜杠，统一成正斜杠好做路径判断 */
 const FILES = [
   ...new Bun.Glob("pages/admin/**/*.tsx").scanSync({ cwd: SRC }),
   ...new Bun.Glob("components/admin-ui/**/*.tsx").scanSync({ cwd: SRC }),
-];
+].map((file) => file.replaceAll("\\", "/"));
 
 /** 找出写死像素字号（text-[13px] 这种）的位置，返回「文件:行 字号」 */
 function pixelSizes(filter: (file: string, px: string) => boolean) {

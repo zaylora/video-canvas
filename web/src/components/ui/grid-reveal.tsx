@@ -618,7 +618,7 @@ export function GridReveal({
       ref={frameRef}
       data-slot="grid-reveal"
       className={cn(
-        "relative w-full overflow-hidden rounded-2xl bg-muted [corner-shape:squircle]",
+        "relative w-full overflow-hidden rounded-[inherit] bg-muted [corner-shape:squircle]",
         className,
       )}
       style={{ aspectRatio: ratio, ...style }}

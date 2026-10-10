@@ -25,6 +25,15 @@ describe("上传中的节点正文", () => {
   });
 });
 
+describe("成功的节点正文", () => {
+  test("素材下面不再显示文件名", () => {
+    // 老调用方可能还在传 caption，传了也不能渲染出来
+    const props = { caption: "镜头8.mp4" } as never;
+    const out = render({ phase: "done", src: "https://example.com/a.mp4" }, props);
+    expect(out).not.toContain("镜头8.mp4");
+  });
+});
+
 describe("上传失败的节点正文", () => {
   const failed: VideoNodeView = {
     phase: "failed",

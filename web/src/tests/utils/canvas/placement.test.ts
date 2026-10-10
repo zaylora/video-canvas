@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { defaultNodeSize, topLeftFromAnchor } from "@/utils/canvas/placement";
 
 describe("defaultNodeSize：新节点还没测量时的默认尺寸", () => {
-  test("视频节点比其他节点宽一点（432×243）", () => {
-    expect(defaultNodeSize("video")).toEqual({ width: 432, height: 243 });
+  test("视频节点比其他节点大（576×324）", () => {
+    expect(defaultNodeSize("video")).toEqual({ width: 576, height: 324 });
   });
 
   test("其余种类 384×216", () => {
@@ -24,8 +24,8 @@ describe("topLeftFromAnchor：让落点落在新节点自己的连接点上", ()
 
   test("视频节点按自己的尺寸算", () => {
     expect(topLeftFromAnchor("video", { x: 500, y: 300 }, [1, 0.5])).toEqual({
-      x: 68,
-      y: 178.5,
+      x: -76,
+      y: 138,
     });
   });
 
@@ -64,7 +64,7 @@ describe("读档：老存档里带 origin 的节点统一换算成左上角", ()
     const [node] = saved([
       imageNode({ origin: [1, 0.5], data: { kind: "video", label: "V" } }),
     ]).nodes;
-    expect(node.position).toEqual({ x: 68, y: 178.5 });
+    expect(node.position).toEqual({ x: -76, y: 138 });
   });
 
   test("没有 origin 的节点原样不动", () => {

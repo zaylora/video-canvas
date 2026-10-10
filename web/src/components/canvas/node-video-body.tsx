@@ -25,8 +25,6 @@ const SAVING_TEXT: Record<NodeMediaType, string> = {
 type NodeVideoBodyProps = {
   /** 由节点数据 + 任务快照推出的展示状态 */
   view: VideoNodeView;
-  /** 素材下方的一行小字 */
-  caption?: string;
   /** 占位框的无障碍说明 */
   placeholder: string;
   /** 产物种类，决定成功后怎么摆；默认视频 */
@@ -108,7 +106,6 @@ function PendingBox({
  */
 export function NodeVideoBody({
   view,
-  caption,
   placeholder,
   mediaType = "video",
   placeholderIcon,
@@ -155,9 +152,7 @@ export function NodeVideoBody({
     case "finalizing":
       return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
     case "done":
-      return (
-        <NodeMediaBody src={view.src} mediaType={mediaType} caption={caption} active={active} />
-      );
+      return <NodeMediaBody src={view.src} mediaType={mediaType} active={active} />;
     case "failed":
       return (
         <BaseNodeContent>

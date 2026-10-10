@@ -339,12 +339,11 @@ function MediaTaskNode({
         status={<NodeStatusLabel view={view} uploadFailed={uploadFailed} />}
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
-        // 视频要看画面细节，比默认的 w-96 略宽一点
-        className={kind === "video" ? "w-[27rem]" : undefined}
+        // 视频要看画面细节，比默认的 w-96 大一圈（576×324，16:9）
+        className={kind === "video" ? "w-xl" : undefined}
       >
         <NodeVideoBody
           view={view}
-          caption={data.fileName}
           placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
           mediaType={data.mediaType ?? kind}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
