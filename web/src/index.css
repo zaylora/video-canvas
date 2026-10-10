@@ -42,6 +42,7 @@
   --color-background: var(--background);
   --color-canvas: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
+  --color-panel: var(--panel);
   --color-chrome: var(--chrome);
   --color-chrome-border: var(--chrome-border);
   --color-chrome-hover: var(--chrome-hover);
@@ -110,6 +111,8 @@
   /* 画布：设计稿 docs/design/画布UI设计。外壳是半透明浮层，颜色只留给素材、积分和状态 */
   --canvas-bg: oklch(0.975 0 0);
   --canvas-dot: oklch(0 0 0 / 0.14);
+  /* 节点下方的生成面板：实色，浅色靠阴影和发丝线与画布区分 */
+  --panel: oklch(1 0 0);
   --chrome: oklch(1 0 0 / 0.82);
   --chrome-border: oklch(0 0 0 / 0.08);
   --chrome-hover: oklch(0 0 0 / 0.05);
@@ -196,6 +199,7 @@
   --sidebar-ring: oklch(0.556 0 0);
   --canvas-bg: oklch(0.13 0 0);
   --canvas-dot: oklch(1 0 0 / 0.08);
+  --panel: oklch(0.243 0 0);
   --chrome: oklch(0.2 0 0 / 0.78);
   --chrome-border: oklch(1 0 0 / 0.08);
   --chrome-hover: oklch(1 0 0 / 0.07);

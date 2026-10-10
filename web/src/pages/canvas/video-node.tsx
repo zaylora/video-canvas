@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 
 import {
@@ -144,7 +144,6 @@ export function TaskPromptPanel({
   width: number;
 }) {
   const meta = NODE_META.get(kind);
-  const Icon = meta?.icon;
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
   const hasRefs =
     vm.refItems.some((item) => PORT_OF_KIND[item.kind] !== "text") ||
@@ -194,7 +193,6 @@ export function TaskPromptPanel({
         width={width}
         value={typeof vm.params.prompt === "string" ? vm.params.prompt : ""}
         onValueChange={vm.setPrompt}
-        icon={Icon ? <Icon className="size-4" /> : undefined}
         models={vm.modelOptions}
         modelId={vm.modelKey ?? ""}
         onModelChange={vm.setModel}
@@ -237,7 +235,6 @@ export function TaskPromptPanel({
             {panelProps && params.length > 0 && (
               <Popover>
                 <PopoverTrigger className={cn(PANEL_CHIP_CLASS, "shrink-0")} aria-label="生成参数">
-                  <SlidersHorizontal className="text-muted-foreground" />
                   <span className="min-w-0 truncate">
                     {paramSummary(vm.caps, vm.params) || "参数"}
                   </span>

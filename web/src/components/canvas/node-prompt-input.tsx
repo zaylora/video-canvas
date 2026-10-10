@@ -50,12 +50,12 @@ export type NodeModelOption = {
   tags?: readonly string[];
 };
 
-/** 面板底栏上的胶囊按钮样式，参数摘要、批量这类按钮共用 */
+/** 面板底栏上的纯文字按钮样式（无描边，只有悬停底色），模型、参数摘要这类按钮共用 */
 export const PANEL_CHIP_CLASS = cn(
-  "nodrag inline-flex h-8.5 min-w-0 shrink items-center gap-1.5 rounded-full px-3 text-[13px] whitespace-nowrap",
-  "ring-1 ring-foreground/10 transition-[background-color,color] hover:bg-chrome-hover",
+  "nodrag inline-flex h-8 min-w-0 shrink items-center gap-1 rounded-md px-2.5 text-[13px] font-medium whitespace-nowrap",
+  "transition-[background-color,color] hover:bg-chrome-hover data-popup-open:bg-chrome-hover",
   "focus-visible:ring-node-ring/60 outline-none focus-visible:ring-2",
-  "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5 [&_svg]:shrink-0",
+  "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3 [&_svg]:shrink-0",
 );
 
 type NodePromptInputProps = {
@@ -64,8 +64,6 @@ type NodePromptInputProps = {
   onValueChange: (value: string) => void;
   /** 空输入时的提示 */
   placeholder?: string;
-  /** 模型名左边的小图标 */
-  icon?: ReactNode;
   /** 可选模型清单 */
   models: readonly NodeModelOption[];
   /** 当前选中的模型 id */
@@ -129,7 +127,6 @@ export function NodePromptInput({
   value,
   onValueChange,
   placeholder = "写下你想要的内容",
-  icon,
   models,
   modelId,
   onModelChange,
@@ -215,7 +212,7 @@ export function NodePromptInput({
       <div
         style={{ width }}
         className={cn(
-          "nodrag nopan bg-popover/95 text-popover-foreground ring-chrome-border flex flex-col gap-3 rounded-[22px] p-3.5 text-left shadow-2xl ring-1 backdrop-blur-2xl",
+          "nodrag nopan bg-panel text-popover-foreground ring-foreground/5 flex flex-col gap-3 rounded-2xl p-4 text-left shadow-2xl ring-1",
           className,
         )}
       >
@@ -230,9 +227,9 @@ export function NodePromptInput({
                 title="放大编辑"
                 disabled={promptDisabled}
                 onClick={() => setExpanded(true)}
-                className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground ring-chrome-border grid size-8 shrink-0 place-items-center rounded-[9px] ring-1 transition-colors disabled:opacity-40"
+                className="text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-node-ring/60 grid size-7 shrink-0 place-items-center rounded-md outline-none transition-colors focus-visible:ring-2 disabled:opacity-40"
               >
-                <Maximize2 className="size-4" />
+                <Maximize2 className="size-3.5" />
               </motion.button>
             )}
           </div>
@@ -251,10 +248,12 @@ export function NodePromptInput({
               onSubmit={submit}
               mention={mention}
             />
+            {/* 没写字时不显示，但占着位置，免得一输入面板就往下顶 */}
             <span
               className={cn(
                 "self-end font-mono text-xs tabular-nums",
                 nearLimit ? "text-status-warning" : "text-muted-foreground/60",
+                length === 0 && "invisible",
               )}
             >
               {length}/{PROMPT_MAX_LENGTH}
@@ -279,19 +278,9 @@ export function NodePromptInput({
         <div className="flex min-w-0 items-center gap-2">
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger
-              className={cn(PANEL_CHIP_CLASS, "pl-1.5", modelInvalid && "text-destructive")}
+              className={cn(PANEL_CHIP_CLASS, modelInvalid && "text-destructive")}
               aria-label="选择模型"
             >
-              {model ? (
-                <VendorAvatar
-                  vendor={model.vendor}
-                  name={model.label}
-                  seed={model.id}
-                  className="size-5.5 rounded-full text-[10px]"
-                />
-              ) : (
-                icon
-              )}
               <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
               <ChevronDown className="opacity-50" />
             </DropdownMenuTrigger>
@@ -342,17 +331,11 @@ export function NodePromptInput({
 
           {toolbarExtra}
 
-          {/* 积分和发送拼成一颗胶囊：要花多少一眼看到，不用二次确认 */}
-          <span
-            className={cn(
-              "ring-foreground/10 ml-auto flex h-10 shrink-0 items-center gap-1 rounded-full pr-[3px] pl-3 ring-1 transition-opacity",
-              blocked && !busy && "opacity-50",
-            )}
-            title={creditsTitle}
-          >
-            <span className="flex items-center gap-1.5 pr-1.5 font-mono text-[15px] font-semibold tabular-nums">
+          {/* 积分是灰色小字，发送键是独立的实心圆：要花多少一眼看到，不用二次确认 */}
+          <span className="ml-auto flex shrink-0 items-center gap-3" title={creditsTitle}>
+            <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
               <Sparkle
-                className={cn("size-4", blocked && !busy ? "fill-muted-foreground" : "fill-credit")}
+                className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
                 strokeWidth={0}
               />
               {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
@@ -364,7 +347,10 @@ export function NodePromptInput({
               aria-label={busy ? "生成中" : "开始生成"}
               disabled={blocked}
               onClick={submit}
-              className="bg-foreground text-background grid size-8.5 place-items-center rounded-full disabled:pointer-events-none"
+              className={cn(
+                "bg-foreground text-background focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 disabled:pointer-events-none",
+                blocked && "bg-foreground/35",
+              )}
             >
               {busy ? (
                 <Loader2 className="size-4 animate-spin" />

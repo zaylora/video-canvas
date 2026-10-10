@@ -47,7 +47,7 @@ export type UploadKind = {
 const ACCEPT: Record<RefKind, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
 
 const TILE =
-  "relative grid size-14 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-foreground/8 outline-none ring-1 ring-chrome-border transition-[box-shadow,opacity] duration-120 focus-visible:ring-2 focus-visible:ring-node-ring";
+  "relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-foreground/8 outline-none ring-1 ring-chrome-border transition-[box-shadow,opacity] duration-120 focus-visible:ring-2 focus-visible:ring-node-ring";
 
 /** 缩略图右上角的 ×：连线来的是断开连线，手动上传的是移除素材 */
 function RemoveButton({
@@ -266,7 +266,7 @@ export function RefStrip({
             title="引用画布里的素材（会自动连线）"
             className={cn(
               TILE,
-              "text-muted-foreground hover:text-foreground border-foreground/18 hover:border-foreground/40 border-[1.5px] border-dashed bg-transparent ring-0 disabled:opacity-50",
+              "text-muted-foreground hover:text-foreground bg-foreground/5 ring-foreground/8 hover:bg-foreground/10 disabled:opacity-50",
             )}
           >
             {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}

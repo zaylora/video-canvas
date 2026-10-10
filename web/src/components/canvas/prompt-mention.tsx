@@ -565,7 +565,7 @@ export function PromptEditor({
         // nowheel 把滚轮留给编辑器，别让画布跟着平移
         class: cn(
           "nowheel w-full overflow-y-auto px-1 text-[15px] leading-[1.75] break-words whitespace-pre-wrap outline-none",
-          large ? "max-h-[60vh] min-h-72" : "max-h-50 min-h-12",
+          large ? "max-h-[60vh] min-h-72" : "max-h-50 min-h-18",
         ),
       },
       // 直接挂在 view 上的按键先于 suggestion 插件处理，菜单的上下、选中就在这里接
