@@ -26,6 +26,8 @@ type MediaPreviewProps = {
   className?: string;
   /** 拖拽缩略图时要禁掉浏览器原生的图片拖拽 */
   draggable?: boolean;
+  /** 图片（缩略图或原图，比例一样）加载出来后回调真实的像素尺寸，节点据此按图片比例显示 */
+  onNaturalSize?: (width: number, height: number) => void;
 };
 
 /**
@@ -63,6 +65,7 @@ function ImageLayersInner({
   fit = "contain",
   className,
   draggable,
+  onNaturalSize,
 }: ImageLayersProps) {
   const reduce = useReducedMotion();
   const thumb = variantUrl(src, "thumb");
@@ -107,10 +110,16 @@ function ImageLayersInner({
           initial={false}
           animate={{ opacity: thumbState === "loaded" ? 1 : 0 }}
           transition={{ duration: DURATION.base, ease: EASE_OUT }}
-          onLoad={() => setThumbState("loaded")}
+          onLoad={(event) => {
+            setThumbState("loaded");
+            onNaturalSize?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+          }}
           onError={() => setThumbState("failed")}
           ref={(el: HTMLImageElement | null) => {
-            if (el?.complete && el.naturalWidth > 0) setThumbState("loaded");
+            if (el?.complete && el.naturalWidth > 0) {
+              setThumbState("loaded");
+              onNaturalSize?.(el.naturalWidth, el.naturalHeight);
+            }
           }}
           className={cn("absolute inset-0 size-full", fitClass)}
         />
@@ -125,10 +134,16 @@ function ImageLayersInner({
           initial={false}
           animate={{ opacity: originalState === "loaded" ? 1 : 0 }}
           transition={{ duration: reduce ? 0 : DURATION.base, ease: EASE_OUT }}
-          onLoad={() => setOriginalState("loaded")}
+          onLoad={(event) => {
+            setOriginalState("loaded");
+            onNaturalSize?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+          }}
           onError={() => setOriginalState("failed")}
           ref={(el: HTMLImageElement | null) => {
-            if (el?.complete && el.naturalWidth > 0) setOriginalState("loaded");
+            if (el?.complete && el.naturalWidth > 0) {
+              setOriginalState("loaded");
+              onNaturalSize?.(el.naturalWidth, el.naturalHeight);
+            }
           }}
           className={cn("absolute inset-0 size-full", fitClass)}
         />

@@ -34,6 +34,7 @@ import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { imageNodeAspect } from "@/utils/canvas/node-aspect";
 import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 import {
@@ -328,6 +329,27 @@ function MediaTaskNode({
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
 
+  // 图片节点的画幅：出了图按图片自己的真实比例，没出图按面板选的比例（设计稿 6.17）；视频、音频仍是 16:9
+  const aspect =
+    kind === "image"
+      ? imageNodeAspect({
+          done: view.phase === "done",
+          measured: data.aspect,
+          caps: vm.caps,
+          params: vm.params,
+        })
+      : undefined;
+  /** 图片加载出来后记下真实比例，下次打开画布节点一开始就是对的高度；差不到 1% 不写，免得缩略图和原图来回改 */
+  const reportImageSize = useCallback(
+    (width: number, height: number) => {
+      if (width <= 0 || height <= 0) return;
+      const ratio = width / height;
+      if (data.aspect !== undefined && Math.abs(data.aspect / ratio - 1) < 0.01) return;
+      updateNodeData(id, { aspect: ratio });
+    },
+    [data.aspect, id, updateNodeData],
+  );
+
   return (
     <>
       <NodeCard
@@ -351,6 +373,8 @@ function MediaTaskNode({
           retryDisabled={!uploadFailed && !!vm.blockedReason}
           retryHint={(!uploadFailed && vm.blockedReason) || undefined}
           active={!!selected}
+          aspect={aspect}
+          onImageSize={kind === "image" ? reportImageSize : undefined}
         />
       </NodeCard>
       <AnimatePresence>

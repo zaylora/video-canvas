@@ -41,6 +41,10 @@ type NodeVideoBodyProps = {
   retryHint?: string;
   /** 节点是否被选中；视频失去选中会停止播放并退回封面 */
   active?: boolean;
+  /** 预览画幅（宽 / 高），默认 16:9；图片节点按图片真实比例或面板选的比例传进来 */
+  aspect?: number;
+  /** 图片加载出来后回调真实的像素尺寸 */
+  onImageSize?: (width: number, height: number) => void;
 };
 
 /** 排队中、生成中、转存中共用的骨架屏，中间叠一行状态文字 */
@@ -50,7 +54,9 @@ function PendingBox({
   progress,
   onCancel,
   cancelling,
+  aspect = NODE_PREVIEW_ASPECT,
 }: {
+  aspect?: number;
   title: string;
   detail?: string;
   progress?: number | null;
@@ -61,7 +67,7 @@ function PendingBox({
     <BaseNodeContent>
       <div
         className="relative w-full overflow-hidden rounded-[inherit]"
-        style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
+        style={{ aspectRatio: aspect }}
         role="status"
         aria-live="polite"
       >
@@ -115,6 +121,8 @@ export function NodeVideoBody({
   retryDisabled,
   retryHint,
   active,
+  aspect = NODE_PREVIEW_ASPECT,
+  onImageSize,
 }: NodeVideoBodyProps) {
   switch (view.phase) {
     case "queued":
@@ -124,6 +132,7 @@ export function NodeVideoBody({
           detail="前面的任务处理完后会自动开始"
           onCancel={onCancel}
           cancelling={cancelling}
+          aspect={aspect}
         />
       );
     case "running":
@@ -138,6 +147,7 @@ export function NodeVideoBody({
           progress={view.progress}
           onCancel={onCancel}
           cancelling={cancelling}
+          aspect={aspect}
         />
       );
     case "uploading":
@@ -147,18 +157,27 @@ export function NodeVideoBody({
           title={view.progress >= 100 ? "处理中" : "上传中"}
           detail={view.progress >= 100 ? "文件已传完，正在保存" : undefined}
           progress={view.progress}
+          aspect={aspect}
         />
       );
     case "finalizing":
-      return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} />;
+      return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} aspect={aspect} />;
     case "done":
-      return <NodeMediaBody src={view.src} mediaType={mediaType} active={active} />;
+      return (
+        <NodeMediaBody
+          src={view.src}
+          mediaType={mediaType}
+          active={active}
+          aspect={aspect}
+          onImageSize={onImageSize}
+        />
+      );
     case "failed":
       return (
         <BaseNodeContent>
           <div
             className="bg-destructive/5 text-destructive flex w-full flex-col items-center justify-center gap-2 rounded-[inherit] px-4 text-center text-xs"
-            style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
+            style={{ aspectRatio: aspect }}
             role="alert"
           >
             <TriangleAlert className="size-4 shrink-0" />
@@ -187,6 +206,7 @@ export function NodeVideoBody({
         <NodePlaceholderBody
           icon={placeholderIcon ?? <VideoPlaceholderIcon className="size-10" />}
           label={placeholder}
+          aspect={aspect}
         />
       );
   }

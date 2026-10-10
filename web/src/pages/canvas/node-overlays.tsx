@@ -1,5 +1,5 @@
 import { useCallback, useEffect, type ReactNode } from "react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { NodeToolbar, Position, useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
@@ -16,11 +16,13 @@ import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useFramePickStore } from "@/store/frame-pick";
+import { useOutpaintStore } from "@/store/outpaint";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
 
+import { OutpaintSession } from "./outpaint-session";
 import { useNodePreview } from "./preview-context";
 
 /** 标题行（13px 字加 8px 间距）在画布 100% 时离卡片顶边的高度，随缩放一起缩 */
@@ -57,6 +59,11 @@ export function NodeOverlays({
   const endPick = useFramePickStore((state) => state.end);
   // 选中了别的节点、功能区被收走时，这个节点退出选帧（只会清自己的，不碰别人的）
   useEffect(() => () => endPick(id), [endPick, id]);
+  // 图片的扩图同理：状态在 store 里，选中了别的节点时这个节点退出扩图
+  const outpainting = useOutpaintStore((state) => state.nodeId === id);
+  const beginOutpaint = useOutpaintStore((state) => state.begin);
+  const endOutpaint = useOutpaintStore((state) => state.end);
+  useEffect(() => () => endOutpaint(id), [endOutpaint, id]);
   const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
   const nodeDragging = useNodeDragging(id);
@@ -101,7 +108,8 @@ export function NodeOverlays({
       : undefined,
   };
 
-  // 视频的「截取帧」：首帧、尾帧一键截；自定义在节点下方换上选帧面板
+  // 视频的「截取帧」：首帧、尾帧一键截；自定义在节点下方换上选帧面板。
+  // 图片的「扩图」：节点周围出现框，节点下方换上比例条和提示词面板
   const onAction =
     data.kind === "video"
       ? {
@@ -109,7 +117,9 @@ export function NodeOverlays({
           "frame-last": () => void captureQuick(id, "last"),
           "frame-custom": () => beginPick(id),
         }
-      : undefined;
+      : data.kind === "image"
+        ? { outpaint: () => beginOutpaint(id) }
+        : undefined;
   const confirmPick = (files: File[]) => {
     placeFrames(id, files);
     endPick(id);
@@ -121,12 +131,12 @@ export function NodeOverlays({
   };
   const exit = { opacity: 0, transition: { duration: DURATION.exit, ease: EASE_OUT } };
 
-  // 拖着这个节点时两块都收起，松手后重新浮出来；选帧中不收，不然暂存的帧会跟着丢
-  if (nodeDragging && !picking) return null;
+  // 拖着这个节点时两块都收起，松手后重新浮出来；选帧、扩图中不收，不然暂存的帧、画好的框会跟着丢
+  if (nodeDragging && !picking && !outpainting) return null;
 
   return (
     <>
-      {gate.visible && !picking && (
+      {gate.visible && !picking && !outpainting && (
         <NodeToolbar
           isVisible
           position={Position.Top}
@@ -159,7 +169,7 @@ export function NodeOverlays({
           </motion.div>
         </NodeToolbar>
       )}
-      {(picking || !data.uploaded) && (
+      {(picking || !data.uploaded) && !outpainting && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.985 }}
@@ -182,6 +192,10 @@ export function NodeOverlays({
           </motion.div>
         </NodeToolbar>
       )}
+      {/* 扩图：框在画布里、面板在节点下方；退出时两者一起淡出 */}
+      <AnimatePresence>
+        {outpainting && <OutpaintSession key="outpaint" id={id} data={data} />}
+      </AnimatePresence>
     </>
   );
 }

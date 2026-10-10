@@ -27,6 +27,11 @@ export type CanvasNodeData = {
   mediaType?: NodeMediaType;
   /** 服务端素材记录 id；有它的 URL 才能安全持久化 */
   assetId?: string;
+  /**
+   * 图片节点预览画幅的宽 / 高：图片出来后量出真实比例写在这里，重开画布时节点一开始就是对的高度；
+   * 扩图结果节点建出来时也先写上框的比例。没有时按面板选的比例或 16:9 显示（见 node-aspect.ts）。
+   */
+  aspect?: number;
   /** 素材是从本机传进来的，不是模型生成的 */
   uploaded?: boolean;
   /** 上传的文件名，摆在素材下面 */

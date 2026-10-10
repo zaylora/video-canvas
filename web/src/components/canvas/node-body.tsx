@@ -260,6 +260,8 @@ type NodeMediaBodyProps = {
   durationMs?: number | null;
   /** 所在节点是否被选中；视频失去选中会停止播放并退回封面，默认不受约束 */
   active?: boolean;
+  /** 图片加载出来后回调真实的像素尺寸，节点据此按图片比例显示 */
+  onImageSize?: (width: number, height: number) => void;
 };
 
 /**
@@ -274,6 +276,7 @@ export function NodeMediaBody({
   aspect = NODE_PREVIEW_ASPECT,
   durationMs,
   active,
+  onImageSize,
 }: NodeMediaBodyProps) {
   return (
     <BaseNodeContent>
@@ -282,7 +285,7 @@ export function NodeMediaBody({
         style={{ aspectRatio: aspect }}
       >
         {mediaType === "image" ? (
-          <MediaPreview src={src} alt={alt} />
+          <MediaPreview src={src} alt={alt} onNaturalSize={onImageSize} />
         ) : mediaType === "audio" ? (
           // 音频没有画面，播放器居中摆在同一副画幅里
           <div className="flex size-full items-center justify-center px-4">
