@@ -46,7 +46,7 @@ function CanvasTitle({ title, onRename }: { title: string; onRename: (title: str
   return (
     <span className="relative grid min-w-0">
       {/* 隐形的同文本撑出宽度，输入框跟着字数变宽 */}
-      <span className="invisible col-start-1 row-start-1 max-w-[28ch] truncate px-2 text-sm font-semibold whitespace-pre">
+      <span className="invisible col-start-1 row-start-1 max-w-[28ch] truncate px-2 text-[13px] font-semibold whitespace-pre">
         {shown || " "}
       </span>
       <input
@@ -56,7 +56,7 @@ function CanvasTitle({ title, onRename }: { title: string; onRename: (title: str
         aria-label="画布名称"
         spellCheck={false}
         className={cn(
-          "col-start-1 row-start-1 h-8 w-full min-w-[4ch] truncate rounded-lg bg-transparent px-2 text-sm font-semibold outline-none",
+          "col-start-1 row-start-1 h-8 w-full min-w-[4ch] truncate rounded-lg bg-transparent px-2 text-[13px] font-semibold outline-none",
           "hover:bg-chrome-hover focus:bg-chrome-hover transition-colors",
         )}
         onFocus={(event) => {
@@ -188,7 +188,8 @@ export function TopLeftBar({
           <DropdownMenuTrigger
             render={
               <ChromeButton aria-label="画布菜单" className="gap-1 pr-1.5 pl-1">
-                <Logo size={22} />
+                {/* 按钮带着 [&_svg]:size-4 会把 svg 压成 16px，这里用 ! 压回来，字形才有 21px 高 */}
+                <Logo size={30} className="size-7.5!" />
                 <ChevronDown className="size-3! opacity-60" />
               </ChromeButton>
             }
