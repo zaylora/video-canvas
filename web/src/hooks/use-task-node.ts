@@ -16,6 +16,7 @@ import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
+import { referencedText } from "@/utils/canvas/text-body";
 import {
   REF_KEYS,
   PORT_OF_KIND,
@@ -102,7 +103,7 @@ export function useTaskNode(
           sourceLabel: source.fileName ? `${source.label}（${source.fileName}）` : source.label,
           targetHandle: connection.targetHandle ?? null,
           assetId: generating ? undefined : source.assetId,
-          text: generating ? undefined : (source.text ?? source.prompt),
+          text: referencedText(source),
         },
       ];
     });

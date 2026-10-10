@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Loader2, TriangleAlert } from "lucide-react";
 
 import { TaskIdTag } from "@/components/task-id-tag";
+import { TEXT_BODY_MAX } from "@/utils/canvas/paste";
 
 import { BaseNodeContent } from "./base-node";
 import { GridReveal } from "@/components/ui/grid-reveal";
@@ -111,21 +112,85 @@ type NodeTextBodyProps = {
   icon: ReactNode;
   /** 占位框的无障碍说明，也是这个节点该干什么 */
   placeholder: string;
+  /** 双击正文编辑完（失焦或按 Esc）后回调，参数是编辑框里的全文；不给就不能编辑，生成中也不能编辑 */
+  onTextChange?: (text: string) => void;
 };
 
 /**
- * 文本节点的正文：跑之前是占位框，跑起来占位框里转圈，
- * 出了结果就把正文摊开，失败则把原因摆在明面上。
- * 结果区留着 nodrag/nowheel，好让人在节点里选字、滚长文。
+ * 文本节点的正文：双击进入原地编辑，失焦或按 Esc 保存；
+ * 生成中锁定，免得和即将回填的结果打架。
  */
-export function NodeTextBody({
+export function NodeTextBody({ onTextChange, ...view }: NodeTextBodyProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const editable = !!onTextChange && view.status !== "running";
+  // 编辑中途变成不可编辑（比如任务回填触发了生成中），丢掉编辑态，免得生成完又弹回来
+  if (draft !== null && !editable) setDraft(null);
+
+  if (draft !== null && onTextChange) {
+    return (
+      <BaseNodeContent>
+        <textarea
+          autoFocus
+          value={draft}
+          maxLength={TEXT_BODY_MAX}
+          aria-label="文本内容"
+          placeholder="输入文字…"
+          onFocus={(event) => {
+            // 光标放到末尾，接着写
+            const end = event.currentTarget.value.length;
+            event.currentTarget.setSelectionRange(end, end);
+          }}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              event.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            setDraft(null);
+            onTextChange(draft);
+          }}
+          // 选字、拖光标、滚长文都不能把节点或画布带走
+          className="nodrag nowheel nopan bg-muted/40 block w-full resize-none rounded-[inherit] p-4 text-sm leading-6 outline-none"
+          style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
+        />
+      </BaseNodeContent>
+    );
+  }
+
+  return (
+    // contents 的外层只用来接双击，不参与布局
+    <div
+      className="contents"
+      title={editable ? "双击编辑" : undefined}
+      onDoubleClick={(event) => {
+        if (!editable) return;
+        // 别让画布把这次双击当成「在空白处新建节点」
+        event.stopPropagation();
+        setDraft(view.text ?? "");
+      }}
+    >
+      <TextBodyView {...view} />
+    </div>
+  );
+}
+
+/**
+ * 文本节点正文的展示：跑之前是占位框，跑起来占位框里转圈，
+ * 出了结果就把正文摊开，失败则把原因摆在明面上。
+ * 结果区只留 nowheel 好滚长文，不挡拖拽（整张卡片几乎都是正文，挡了就拖不动节点）；
+ * 要选字、复制就双击进编辑框。
+ */
+function TextBodyView({
   status,
   text,
   error,
   taskRef,
   icon,
   placeholder,
-}: NodeTextBodyProps) {
+}: Omit<NodeTextBodyProps, "onTextChange">) {
   if (status === "running") {
     return (
       <BaseNodeContent>
@@ -162,7 +227,7 @@ export function NodeTextBody({
   if (status === "done" && text) {
     return (
       <BaseNodeContent>
-        <div className="nodrag nowheel bg-muted/40 max-h-48 min-h-24 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap">
+        <div className="nowheel bg-muted/40 max-h-48 min-h-24 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap select-none">
           {text}
         </div>
       </BaseNodeContent>
@@ -172,11 +237,11 @@ export function NodeTextBody({
   return <NodePlaceholderBody icon={icon} label={placeholder} />;
 }
 
-/** 本地上传能传进画布的素材：图片和视频两类 */
-export type MediaType = "image" | "video";
+/** 本地上传能传进画布的素材：图片、视频和音频三类 */
+export type MediaType = "image" | "video" | "audio";
 
-/** 节点里摆得下的素材：上传的两类，加上生成出来的音频 */
-export type NodeMediaType = MediaType | "audio";
+/** 节点里摆得下的素材，和上传的种类一致 */
+export type NodeMediaType = MediaType;
 
 type NodeMediaBodyProps = {
   /** 素材地址 */

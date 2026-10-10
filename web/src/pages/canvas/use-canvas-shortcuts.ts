@@ -6,11 +6,23 @@ import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, CanvasNodeData, FlowNode } from "@/types";
 import { absolutePosition, isGroupNode } from "@/utils/canvas/group";
 import { copyLabels } from "@/utils/canvas/node-label";
+import {
+  clipboardTextOf,
+  decidePaste,
+  readClipboard,
+  type ClipboardContent,
+} from "@/utils/canvas/paste";
 
 import { VIEWPORT_DURATION } from "./chrome/view-controls";
 
 /** 复制到剪贴板的节点：跨画布也能粘（同一个标签页里） */
 let clipboard: { nodes: FlowNode[]; edges: CanvasEdge[] } | null = null;
+
+/** 复制节点时写进系统剪贴板的文字：粘贴时靠它认出剪贴板里还是不是刚复制的那批节点 */
+let clipboardText = "";
+
+/** 刚按下复制、等着 copy 事件取走的那段文字；copy 事件一过就清空 */
+let pendingCopyText: string | null = null;
 
 /** 焦点在能打字的地方、或者在弹窗菜单里时，按键是给那边的 */
 function isBusyTarget(target: EventTarget | null) {
@@ -143,6 +155,7 @@ export function useCanvasShortcuts({
   openShortcuts,
   save,
   group,
+  paste,
 }: {
   undo: () => void;
   redo: () => void;
@@ -152,6 +165,8 @@ export function useCanvasShortcuts({
   save: () => void;
   /** 组的快捷键：⌘G 打组、⇧⌘G 解组、Enter / F2 给选中的组改名 */
   group: { group: () => void; ungroup: () => void; rename: () => boolean };
+  /** 粘贴来自剪贴板的外部内容（文件或文字）；at 是指针处的画布坐标，指针不在画布上为 null */
+  paste: (content: ClipboardContent, at: { x: number; y: number } | null) => void;
 }) {
   const {
     getNodes,
@@ -175,6 +190,40 @@ export function useCanvasShortcuts({
     };
 
     const { insert, selection } = selectionOps({ getNodes, getEdges, setNodes, setEdges });
+
+    /** 粘回复制的节点：有指针就粘到指针处（以选区左上角对齐），没有就在原位错开一点 */
+    const pasteNodes = (source: { nodes: FlowNode[]; edges: CanvasEdge[] }) => {
+      // 对齐的是最外层元素的左上角：组和不在这次复制范围内的组里的节点，按绝对位置算
+      const copiedIds = new Set(source.nodes.map((node) => node.id));
+      const outer = source.nodes.filter((node) => !node.parentId || !copiedIds.has(node.parentId));
+      const everything = getNodes();
+      const left = Math.min(...outer.map((node) => absolutePosition(node, everything).x));
+      const top = Math.min(...outer.map((node) => absolutePosition(node, everything).y));
+      const at = pointer.current ? screenToFlowPosition(pointer.current) : null;
+      const offset = at ? { x: at.x - left, y: at.y - top } : { x: 48, y: 48 };
+      insert(cloneGroup(source, offset, getNodes()));
+      if (!at) clipboard = cloneGroup(source, { x: 48, y: 48 });
+    };
+
+    /** 复制节点时顺手把节点文字写进系统剪贴板，粘贴时靠它分清是粘节点还是粘外部内容 */
+    const onCopy = (event: ClipboardEvent) => {
+      if (pendingCopyText === null || !event.clipboardData) return;
+      event.clipboardData.setData("text/plain", pendingCopyText);
+      event.preventDefault();
+      clipboardText = pendingCopyText;
+      pendingCopyText = null;
+    };
+
+    /** 粘贴：粘回复制的节点，或把剪贴板里的文件、文字交给调用方落成节点；输入框里的粘贴不管 */
+    const onPaste = (event: ClipboardEvent) => {
+      if (isBusyTarget(event.target) || !event.clipboardData) return;
+      const content = readClipboard(event.clipboardData);
+      const decision = decidePaste(content, clipboardText, !!clipboard?.nodes.length);
+      if (decision === "ignore") return;
+      event.preventDefault();
+      if (decision === "nodes" && clipboard) pasteNodes(clipboard);
+      else paste(content, pointer.current ? screenToFlowPosition(pointer.current) : null);
+    };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing) return;
@@ -202,25 +251,14 @@ export function useCanvasShortcuts({
       }
       if (mod && key === "c") {
         const picked = selection();
-        if (picked.nodes.length) clipboard = structuredClone(picked);
-        return;
-      }
-      if (mod && key === "v") {
-        if (!clipboard?.nodes.length) return;
-        event.preventDefault();
-        // 有指针就粘到指针处（以选区左上角对齐），没有就在原位错开一点
-        // 对齐的是最外层元素的左上角：组和不在这次复制范围内的组里的节点，按绝对位置算
-        const copiedIds = new Set(clipboard.nodes.map((node) => node.id));
-        const outer = clipboard.nodes.filter(
-          (node) => !node.parentId || !copiedIds.has(node.parentId),
-        );
-        const everything = getNodes();
-        const left = Math.min(...outer.map((node) => absolutePosition(node, everything).x));
-        const top = Math.min(...outer.map((node) => absolutePosition(node, everything).y));
-        const at = pointer.current ? screenToFlowPosition(pointer.current) : null;
-        const offset = at ? { x: at.x - left, y: at.y - top } : { x: 48, y: 48 };
-        insert(cloneGroup(clipboard, offset, getNodes()));
-        if (!at) clipboard = cloneGroup(clipboard, { x: 48, y: 48 });
+        if (picked.nodes.length) {
+          clipboard = structuredClone(picked);
+          // 紧接着的 copy 事件把这段文字写进系统剪贴板；事件没来就作废，免得盖掉之后别处的复制
+          pendingCopyText = clipboardTextOf(
+            picked.nodes.flatMap((node) => (isGroupNode(node) ? [] : [node.data])),
+          );
+          window.setTimeout(() => (pendingCopyText = null), 0);
+        }
         return;
       }
       if (mod && key === "g") {
@@ -284,9 +322,13 @@ export function useCanvasShortcuts({
 
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("copy", onCopy);
+    window.addEventListener("paste", onPaste);
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("paste", onPaste);
     };
   }, [
     fitView,
@@ -294,6 +336,7 @@ export function useCanvasShortcuts({
     getNodes,
     openShortcuts,
     group,
+    paste,
     redo,
     save,
     screenToFlowPosition,

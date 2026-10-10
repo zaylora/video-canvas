@@ -34,7 +34,7 @@ export function EmptyState({
       key: "upload",
       icon: <Upload className="size-5" />,
       title: "上传素材",
-      hint: "图片、视频",
+      hint: "图片、视频、音频",
       onClick: onUpload,
     },
   ];

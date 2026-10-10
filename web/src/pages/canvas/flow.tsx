@@ -49,6 +49,7 @@ import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
+import { TEXT_BODY_MAX, clipFileName, clipText, type ClipboardContent } from "@/utils/canvas/paste";
 import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
 import {
   deserializeGraph,
@@ -424,14 +425,6 @@ export const Flow = memo(function Flow({
   const [minimap, setMinimap] = useState(false);
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   const saveNow = useCallback(() => void flush(), [flush]);
-  useCanvasShortcuts({
-    undo: history.undo,
-    redo: history.redo,
-    setTool,
-    openShortcuts,
-    save: saveNow,
-    group: groupShortcuts,
-  });
   // 画布把设置里的几项都用上了，整份订阅，省去逐个 selector
   const settings = useSettingsStore();
   const video = useRemoteModels(REMOTE_KIND_OF_NODE.video);
@@ -557,6 +550,38 @@ export const Flow = memo(function Flow({
     },
     [addUploadedNodes, beginUploadAt, viewportCenter],
   );
+
+  /**
+   * 粘贴来的外部内容落到画布：文件走和「上传素材」一样的流程（本地预览、上传、换正式地址），
+   * 文字直接落成文本节点，正文就是粘贴的内容。落点是指针处，指针不在画布上就落在视口中心。
+   */
+  const pasteContent = useCallback(
+    (content: ClipboardContent, at: { x: number; y: number } | null) => {
+      const origin = at ?? viewportCenter();
+      if (content.files.length > 0) {
+        beginUploadAt(origin);
+        const files = content.files.map(
+          (file) => new File([file], clipFileName(file), { type: file.type }),
+        );
+        void addUploadedNodes(files).then(showUploadNotice);
+        return;
+      }
+
+      const { text, clipped } = clipText(content.text);
+      addNodeAt("script", origin, { status: "done", text });
+      if (clipped) toast.info(`文字太长，只放进了前 ${TEXT_BODY_MAX} 个字`);
+    },
+    [addNodeAt, addUploadedNodes, beginUploadAt, viewportCenter],
+  );
+  useCanvasShortcuts({
+    undo: history.undo,
+    redo: history.redo,
+    setTool,
+    openShortcuts,
+    save: saveNow,
+    group: groupShortcuts,
+    paste: pasteContent,
+  });
 
   /** 历史浮条里的缩略图拖到画布上：以那一版为素材建一个新节点 */
   const onDragOver = useCallback((event: React.DragEvent) => {

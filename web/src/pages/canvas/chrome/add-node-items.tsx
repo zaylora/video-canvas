@@ -22,10 +22,10 @@ export function buildAddNodeItems(disabled: (kind: NodeKind) => boolean = () => 
   items.push({
     value: UPLOAD_ACTION,
     label: "上传素材",
-    hint: "图片、视频",
+    hint: "图片、视频、音频",
     icon: <Upload />,
-    // 传进来的素材落成图片或视频节点，这两种都接不上就没法上传
-    disabled: disabled("image") && disabled("video"),
+    // 传进来的素材落成图片、视频或音频节点，三种都接不上就没法上传
+    disabled: disabled("image") && disabled("video") && disabled("audio"),
     separated: true,
   });
   return items;

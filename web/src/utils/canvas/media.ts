@@ -9,10 +9,11 @@ export function releaseObjectUrl(src?: string | null) {
   if (src?.startsWith("blob:")) URL.revokeObjectURL(src);
 }
 
-/** 按 MIME 前缀认种类，两类之外的文件一概不收 */
+/** 按 MIME 前缀认种类，三类之外的文件一概不收 */
 function getMediaType(file: File): MediaType | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
   return null;
 }
 
@@ -22,7 +23,7 @@ function getMediaType(file: File): MediaType | null {
  */
 export function takeUploadFile(file: File): UploadTaken {
   const mediaType = getMediaType(file);
-  if (!mediaType) return { error: "只收图片和视频，换个文件试试" };
+  if (!mediaType) return { error: "只收图片、视频和音频，换个文件试试" };
 
   const limit = UPLOAD_SIZE_LIMIT[mediaType];
   if (file.size > limit) {

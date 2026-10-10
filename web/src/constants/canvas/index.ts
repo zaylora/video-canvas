@@ -52,12 +52,13 @@ export const IMAGE_ESTIMATED_DURATION = 3200;
 export const UPLOAD_ACTION = "action:upload";
 
 /** 文件选择框收的类型 */
-export const UPLOAD_ACCEPT = "image/*,video/*";
+export const UPLOAD_ACCEPT = "image/*,video/*,audio/*";
 
-/** 单个文件的大小上限，图片和视频分开定 */
+/** 单个文件的大小上限，三类分开定 */
 export const UPLOAD_SIZE_LIMIT: Record<MediaType, number> = {
   image: 20 * 1024 * 1024,
   video: 200 * 1024 * 1024,
+  audio: 50 * 1024 * 1024,
 };
 
 /**
@@ -71,6 +72,7 @@ export const UPLOAD_STACK_COLUMNS = 3;
 export const UPLOAD_TARGET_KIND: Record<MediaType, NodeKind> = {
   image: "image",
   video: "video",
+  audio: "audio",
 };
 
 /** 上传那句话在画布上停留的时长 */
