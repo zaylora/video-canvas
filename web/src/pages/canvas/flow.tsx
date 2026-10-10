@@ -768,7 +768,7 @@ export const Flow = memo(function Flow({
                         position="bottom-left"
                         pannable
                         zoomable
-                        className="canvas-overlay-interactive !bottom-16 !left-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
+                        className="canvas-overlay-interactive !bottom-16 !left-[76px] overflow-hidden rounded-xl shadow-lg ring-1 ring-chrome-border"
                         nodeColor="var(--muted-foreground)"
                         nodeBorderRadius={12}
                       />
@@ -820,7 +820,7 @@ export const Flow = memo(function Flow({
                       onOpenShortcuts={openShortcuts}
                     />
                   </ChromeZone>
-                  <ChromeZone position="bottom-center">
+                  <ChromeZone position="left-center">
                     <BottomToolbar
                       tool={tool}
                       onToolChange={setTool}

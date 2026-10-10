@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { NodeToolbar, Position, useReactFlow } from "@xyflow/react";
 
@@ -16,12 +16,11 @@ import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outp
 
 /** 历史浮条离节点卡片顶边的距离：让过卡片上方的标题行 */
 const STRIP_OFFSET_TOP = 44;
-const STRIP_OFFSET_BOTTOM = 14;
 
 /**
  * 选中节点时浮出的两块：上方的「节点生成历史」浮条、下方的生成面板。
  * 只在选中时挂载，所以摆法计算（订阅视口变化）只花在一个节点上。
- * 面板下方放不下时翻到节点上方，浮条随之挪到节点下方；拖动画布或节点时两者淡下去。
+ * 面板始终在节点下方、浮条始终在上方，位置不随视口里的空间变化；拖动画布或节点时两者淡下去。
  */
 export function NodeOverlays({
   id,
@@ -38,23 +37,9 @@ export function NodeOverlays({
 }) {
   const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
   const history = useCanvasHistoryContext();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [panelHeight, setPanelHeight] = useState(300);
-  const { position, width, shift } = usePanelPlacement(id, panelHeight);
+  const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
   const nodeDragging = useNodeDragging(id);
-  const flipped = position === Position.Top;
-
-  // 拖动时面板卸掉、松手后是新的元素，所以跟着 nodeDragging 重新挂监听
-  useLayoutEffect(() => {
-    const element = panelRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setPanelHeight(Math.round(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height)),
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [nodeDragging]);
 
   const selectVersion = useCallback(
     (outputId: string) => {
@@ -84,8 +69,8 @@ export function NodeOverlays({
       {showHistory && (
         <NodeToolbar
           isVisible
-          position={flipped ? Position.Bottom : Position.Top}
-          offset={flipped ? STRIP_OFFSET_BOTTOM : STRIP_OFFSET_TOP}
+          position={Position.Top}
+          offset={STRIP_OFFSET_TOP}
         >
           <div style={{ ...fade, transition: "opacity 150ms" }}>
             <NodeHistoryStrip
@@ -98,10 +83,9 @@ export function NodeOverlays({
           </div>
         </NodeToolbar>
       )}
-      <NodeToolbar isVisible position={position} offset={PANEL_OFFSET}>
+      <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
         <motion.div
-          ref={panelRef}
-          initial={{ opacity: 0, y: flipped ? 6 : -6, scale: 0.985 }}
+          initial={{ opacity: 0, y: -6, scale: 0.985 }}
           animate={{ opacity: fade.opacity, y: 0, scale: 1 }}
           transition={{ duration: DURATION.base, ease: EASE_OUT }}
           style={{ translate: `${shift}px 0`, pointerEvents: fade.pointerEvents }}
