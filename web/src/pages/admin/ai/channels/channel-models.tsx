@@ -11,11 +11,11 @@ import { KIND_ORDER } from "../kind";
 import { ModelRows } from "../models/model-rows";
 import type { LoadStatus } from "../../use-admin";
 
-/** 渠道弹窗“模型”页签里对模型的操作（页面持有，和模型页共用同一套） */
+/** 渠道弹窗“模型”页签里对模型的操作（页面持有；新建、编辑在渠道页就地开模型弹窗，测试跳到模型页） */
 export type ChannelModelActions = {
   /** 正在切换上线的模型 */
   busyKey: string | null;
-  onEdit: (key: string) => void;
+  onEdit: (key: string, channel: string) => void;
   onTest: (key: string) => void;
   onNew: (channelKey: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
@@ -79,7 +79,7 @@ export function ChannelModels({
         hideChannel
         busyKey={actions.busyKey}
         empty="还没有模型使用这个渠道"
-        onEdit={actions.onEdit}
+        onEdit={(key) => actions.onEdit(key, channel.key)}
         onTest={actions.onTest}
         onToggleEnabled={actions.onToggleEnabled}
         onDelete={actions.onDelete}

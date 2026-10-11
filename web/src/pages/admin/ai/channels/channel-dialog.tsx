@@ -167,6 +167,7 @@ export function ChannelDialog({
   onTabChange,
   onSaved,
   onClose,
+  children,
 }: {
   target: ChannelDialogTarget | null;
   initialTab: ChannelTab;
@@ -181,6 +182,8 @@ export function ChannelDialog({
   onTabChange: (tab: ChannelTab) => void;
   onSaved: () => void;
   onClose: () => void;
+  /** 挂在弹窗内部的子弹窗（模型编辑），放在这里才算嵌套，点子弹窗不会被当成点了外面 */
+  children?: ReactNode;
 }) {
   /** 由表单上报“是否有未保存修改”，关闭时据此确认 */
   const [dirty, setDirty] = useState(false);
@@ -222,6 +225,7 @@ export function ChannelDialog({
               }}
             />
           )}
+          {children}
         </DialogContent>
       </Dialog>
       <ConfirmDialog

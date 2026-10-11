@@ -1,9 +1,8 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 import {
   PageHeader,
@@ -11,10 +10,9 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { useAdminOutlet } from "../../use-admin";
-import { ModelTestDialog } from "./model-test-dialog";
-import { ModelDialog, type ModelDialogHandle } from "./model-dialog";
+import { ModelEditorDialogs } from "./model-editor-dialogs";
+import { useUrlModelRoute } from "./model-route";
 import { BatchBar } from "./batch-bar";
 import { useModelBatch } from "./use-model-batch";
 import { useModelRowActions } from "./use-model-row-actions";
@@ -28,11 +26,10 @@ import { useModelWorkspace } from "./use-model-workspace";
  */
 export default function ModelsPage() {
   const { catalog } = useAdminOutlet();
-  const ws = useModelWorkspace(catalog);
+  const ws = useModelWorkspace(catalog, useUrlModelRoute());
   const [params] = useSearchParams();
   // 列表里点“测试”会带 ?test=1：只弹测试弹窗，不显示编辑弹窗
   const testOnly = params.get("test") === "1" && ws.selection === "model";
-  const editorRef = useRef<ModelDialogHandle>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const batch = useModelBatch(ws.models, ws.reloadList);
   const row = useModelRowActions(ws.reloadList);
@@ -77,39 +74,7 @@ export default function ModelsPage() {
           onRetry={() => void ws.reloadList()}
         />
 
-        <Dialog
-          open={ws.selection !== "none" && !testOnly}
-          onOpenChange={(open) => {
-            if (!open) ws.closeEditor();
-          }}
-          onOpenChangeComplete={(open) => {
-            if (!open) ws.clearEditor();
-          }}
-        >
-          <DialogContent
-            showCloseButton={false}
-            className="flex h-[min(92svh,920px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
-          >
-            <ModelDialog ref={editorRef} ws={ws} catalog={catalog} />
-          </DialogContent>
-        </Dialog>
-
-        <ModelTestDialog
-          open={testOnly}
-          ws={ws}
-          onClose={ws.closeEditor}
-          onClosed={ws.clearEditor}
-        />
-
-        <ConfirmDialog
-          open={!!ws.pendingNav}
-          title="放弃未保存的修改？"
-          description="当前模型有未保存的修改，离开后这些修改会丢失。"
-          confirmLabel="放弃修改"
-          destructive
-          onConfirm={ws.confirmNav}
-          onCancel={ws.cancelNav}
-        />
+        <ModelEditorDialogs ws={ws} catalog={catalog} testOnly={testOnly} />
       </main>
     </div>
   );

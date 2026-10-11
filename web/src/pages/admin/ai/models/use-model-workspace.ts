@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import {
   createModel,
@@ -30,6 +29,7 @@ import type { DryRunState, ResultNotice, ResultTabId, RunState, TraceState } fro
 import { MODEL_TEMPLATES } from "../templates";
 import type { AdminCatalog } from "../../use-admin";
 import { useAliveRef } from "../../use-admin";
+import type { ModelRoute } from "./model-route";
 
 /** 编辑器的两种视图 */
 export type EditorMode = "form" | "json";
@@ -48,18 +48,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * 选中的模型由 URL 决定（?key=<key>，/models/new 是新建），所以刷新与深链都能还原。
  * 请求失败的全局 toast 由拦截器统一弹；这里 catch 只做状态恢复或把原因翻译成就地提示。
  */
-export function useModelWorkspace(catalog: AdminCatalog) {
+export function useModelWorkspace(
+  catalog: AdminCatalog,
+  route: ModelRoute,
+  /** 保存 / 上下线让模型列表变了之后回调（宿主页面有自己的模型列表时用来刷新） */
+  onListChanged?: () => void,
+) {
   const aliveRef = useAliveRef();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [params] = useSearchParams();
+  const onListChangedRef = useRef(onListChanged);
+  onListChangedRef.current = onListChanged;
 
-  const isNewRoute = location.pathname.replace(/\/+$/, "").endsWith("/models/new");
-  const key = isNewRoute ? null : params.get("key");
-  const draftId = isNewRoute ? params.get("draft") : null;
-  const fromImport = isNewRoute && params.get("from") === "import";
-  const presetChannel = isNewRoute ? params.get("channel") : null;
-  const selection: "none" | "new" | "model" = isNewRoute ? "new" : key ? "model" : "none";
+  const { key, draftId, fromImport, presetChannel } = route;
+  const selection: "none" | "new" | "model" = route.isNew ? "new" : key ? "model" : "none";
   const isNew = selection === "new";
 
   // ---- 列表
@@ -311,18 +311,14 @@ export function useModelWorkspace(catalog: AdminCatalog) {
 
   /** 打开某个模型的编辑弹窗；test 为 true 时同时打开测试弹窗 */
   const selectModel = (nextKey: string, options?: { test?: boolean }) =>
-    guard(() =>
-      navigate(
-        `/admin/ai/models?key=${encodeURIComponent(nextKey)}${options?.test ? "&test=1" : ""}`,
-      ),
-    );
+    guard(() => route.openModel(nextKey, options));
 
   /** 关闭编辑弹窗回到列表；有未保存修改时先确认 */
-  const closeEditor = () => guard(() => navigate("/admin/ai/models"));
+  const closeEditor = () => guard(() => route.close());
 
   const startNew = () =>
     guard(() => {
-      if (isNewRoute && !draftId && !fromImport) {
+      if (route.isNew && !draftId && !fromImport) {
         // 已经在新建页：直接重置成空白模板
         importRef.current = null;
         setQueue([]);
@@ -330,7 +326,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         resetResults();
         return;
       }
-      navigate("/admin/ai/models/new");
+      route.openNew();
     });
 
   // ------------------------------------------------------------ 编辑
@@ -424,6 +420,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
         });
       }
       void loadList();
+      onListChangedRef.current?.();
       const hasNextDraft = isNew && queue.length > 1;
       if (closeAfter && !hasNextDraft) {
         if (isNew && importRef.current)
@@ -432,7 +429,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
             bodies: [],
           });
         setQueue([]);
-        navigate("/admin/ai/models", { replace: true });
+        route.close({ replace: true });
       } else if (isNew) {
         const rest = queue.slice(1);
         if (queue.length > 0 && rest.length > 0) {
@@ -456,7 +453,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
             });
           setQueue([]);
           keepResultsForRef.current = newKey;
-          navigate(`/admin/ai/models?key=${encodeURIComponent(newKey)}`, { replace: true });
+          route.openModel(newKey, { replace: true });
         }
       }
       return { key: newKey, issues: result.issues };
@@ -619,6 +616,7 @@ export function useModelWorkspace(catalog: AdminCatalog) {
       if (!aliveRef.current) return;
       pushEntry({ title: `${key} 已${enabled ? "上线" : "下线"}`, tone: "success" });
       void loadList();
+      onListChangedRef.current?.();
       setDetail((prev) => (prev ? { ...prev, enabled } : prev));
     } finally {
       if (aliveRef.current) setBusy(null);

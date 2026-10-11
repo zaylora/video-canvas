@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import { useModelRowActions } from "../models/use-model-row-actions";
 import { useAdminOutlet, useModelList } from "../../use-admin";
 import type { ChannelModelActions } from "./channel-models";
 import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
+import { ChannelModelEditor, type ChannelModelEditing } from "./channel-model-editor";
 import { ChannelTable } from "./channel-table";
 import { ImportDialog } from "./import-dialog";
 import { openSecretDialog } from "./secret-dialog";
@@ -62,6 +63,11 @@ export default function ChannelsPage() {
   const tab: ChannelTab = routeTarget?.kind === "edit" ? routeTarget.tab : "config";
 
   const closeDialog = () => setParams({}, { replace: true });
+
+  // 渠道弹窗“模型”页签里新建 / 编辑模型：叠在渠道弹窗上，关掉后渠道弹窗保持原样
+  const [editing, setEditing] = useState<ChannelModelEditing | null>(null);
+  const closeModelEditor = useCallback(() => setEditing(null), []);
+  const refreshModels = useCallback(() => void reloadModels(), [reloadModels]);
 
   // 链接里的渠道已经不存在（被删了）：提示一次并清掉参数
   useEffect(() => {
@@ -125,10 +131,9 @@ export default function ChannelsPage() {
 
   const modelActions: ChannelModelActions = {
     busyKey: row.busyKey,
-    onEdit: (key) => navigate(`/admin/ai/models?key=${encodeURIComponent(key)}`),
+    onEdit: (key, channel) => setEditing({ channel, key }),
     onTest: (key) => navigate(`/admin/ai/models?key=${encodeURIComponent(key)}&test=1`),
-    onNew: (channelKey) =>
-      navigate(`/admin/ai/models/new?channel=${encodeURIComponent(channelKey)}`),
+    onNew: (channel) => setEditing({ channel, key: null }),
     onToggleEnabled: (key, enabled) => void row.toggleEnabled(key, enabled),
     onDelete: row.requestDelete,
   };
@@ -181,7 +186,15 @@ export default function ChannelsPage() {
           }
           onSaved={() => void catalog.reloadChannels()}
           onClose={closeDialog}
-        />
+        >
+          <ChannelModelEditor
+            catalog={catalog}
+            editing={editing}
+            onChange={setEditing}
+            onClose={closeModelEditor}
+            onListChanged={refreshModels}
+          />
+        </ChannelDialog>
       </main>
     </div>
   );
