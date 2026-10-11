@@ -138,10 +138,11 @@ func MigrateChannelTrustedInternal(db *gorm.DB, log *zap.Logger) error {
 			return nil
 		}
 		var rows []struct {
-			ChannelKey string
-			BaseURL    string
+			Key     string
+			BaseURL string
 		}
-		if err := tx.Table("ai_channels").Select("channel_key, base_url").Where("trusted_internal").Order("id").Find(&rows).Error; err != nil {
+		// 渠道的主键列就叫 key（model.AIChannel.Key），没有 id 列，按 key 排序保证日志顺序稳定
+		if err := tx.Table("ai_channels").Select(`"key", base_url`).Where("trusted_internal").Order(`"key"`).Find(&rows).Error; err != nil {
 			return fmt.Errorf("查询开着“允许访问内网”的渠道失败：%w", err)
 		}
 		for _, r := range rows {
@@ -150,7 +151,7 @@ func MigrateChannelTrustedInternal(db *gorm.DB, log *zap.Logger) error {
 				host = u.Host
 			}
 			log.Warn("渠道开着“允许访问内网”，该开关已取消：升级后这个渠道不能再访问内网地址，base_url 指向内网的需要换成公网可访问的地址",
-				zap.String("channel", r.ChannelKey), zap.String("base_url_host", host))
+				zap.String("channel", r.Key), zap.String("base_url_host", host))
 		}
 		if err := tx.Exec("ALTER TABLE ai_channels DROP COLUMN IF EXISTS trusted_internal").Error; err != nil {
 			return fmt.Errorf("删除 ai_channels.trusted_internal 失败：%w", err)

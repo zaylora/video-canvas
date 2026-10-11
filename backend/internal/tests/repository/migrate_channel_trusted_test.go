@@ -17,10 +17,12 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 	t.Run("旧表升级：先对开着开关的渠道打 WARN，再删列，数据保留且可重复执行", func(t *testing.T) {
 		db := isolatedDB(t)
 		stmts := []string{
-			`CREATE TABLE ai_channels (id bigserial PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
-				channel_key varchar(64) NOT NULL, name varchar(128) NOT NULL DEFAULT '', base_url varchar(512) NOT NULL DEFAULT '',
-				trusted_internal boolean NOT NULL DEFAULT false, allow_credentials boolean NOT NULL DEFAULT false)`,
-			`INSERT INTO ai_channels (channel_key, name, base_url, trusted_internal) VALUES
+			// 旧表结构照真实的 model.AIChannel 写：主键是 key（varchar），没有 id 列
+			`CREATE TABLE ai_channels (key varchar(64) PRIMARY KEY, name varchar(128) NOT NULL DEFAULT '', plugin_key varchar(30) NOT NULL DEFAULT '',
+				plugin_version_id bigint NOT NULL DEFAULT 0, base_url varchar(512) NOT NULL DEFAULT '',
+				trusted_internal boolean NOT NULL DEFAULT false, allow_credentials boolean NOT NULL DEFAULT false,
+				enabled boolean NOT NULL DEFAULT true, created_at timestamptz, updated_at timestamptz)`,
+			`INSERT INTO ai_channels (key, name, base_url, trusted_internal) VALUES
 				('self-hosted', '自建网关', 'http://192.168.1.10:3000/v1', true),
 				('public-gw', '公网网关', 'https://api.example.com', false),
 				('also-internal', '另一个内网', 'http://newapi.corp.local', true)`,
@@ -42,7 +44,7 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 			t.Error("trusted_internal 列应已删除")
 		}
 		var keys []string
-		db.Table("ai_channels").Order("id").Pluck("channel_key", &keys)
+		db.Table("ai_channels").Order("key").Pluck("key", &keys)
 		if len(keys) != 3 {
 			t.Errorf("渠道行应全部保留：%v", keys)
 		}
@@ -88,4 +90,27 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 			t.Errorf("全新库不应有 WARN：%d", logs.Len())
 		}
 	})
+}
+
+// 用 GORM 按当前模型真实建出来的表，再补回旧版的 trusted_internal 列：迁移里的 SQL 必须和真实列名一致。
+// （只靠手写的旧表测，列名写错了也发现不了：这次启动就是因为查了不存在的 channel_key 列而退出。）
+func TestMigrateChannelTrustedInternal_RealSchema(t *testing.T) {
+	db := isolatedDB(t, &model.AIChannel{})
+	if err := db.Exec(`ALTER TABLE ai_channels ADD COLUMN trusted_internal boolean NOT NULL DEFAULT false`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO ai_channels (key, name, plugin_key, plugin_version_id, base_url, settings_json, rate_limit_json, trusted_internal)
+		VALUES ('lan-gw', '内网网关', 'newapi', 1, 'http://10.0.0.8:3000', '{}', '{}', true)`).Error; err != nil {
+		t.Fatalf("插入渠道失败：%v", err)
+	}
+	core, logs := observer.New(zap.WarnLevel)
+	if err := MigrateChannelTrustedInternal(db, zap.New(core)); err != nil {
+		t.Fatalf("在真实表结构上迁移失败：%v", err)
+	}
+	if db.Migrator().HasColumn("ai_channels", "trusted_internal") {
+		t.Error("trusted_internal 列应已删除")
+	}
+	if logs.Len() != 1 || logs.All()[0].ContextMap()["channel"] != "lan-gw" {
+		t.Errorf("应对 lan-gw 打一条 WARN：%+v", logs.All())
+	}
 }
