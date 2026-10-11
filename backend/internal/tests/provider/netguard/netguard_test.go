@@ -670,3 +670,31 @@ func TestCheckURLScheme(t *testing.T) {
 		}
 	}
 }
+
+// 开发机上代理工具的 Fake-IP 模式把所有域名解析到 198.18.0.0/15：打开这个选项只放行这一个网段，其余内网照拦。
+func TestIPAllowedWithFakeIP(t *testing.T) {
+	tests := []struct {
+		ip         string
+		wantStrict bool // 默认策略（IsBlockedIP 取反）
+		wantFake   bool // 放行 Fake-IP 的策略
+	}{
+		{"198.18.0.35", false, true}, {"198.19.255.255", false, true}, {"198.18.0.0", false, true},
+		{"::ffff:198.18.0.35", false, true},                        // IPv4 映射写法同样放行
+		{"198.17.255.255", true, true}, {"198.20.0.0", true, true}, // 相邻网段本来就不在黑名单里
+		{"127.0.0.1", false, false}, {"10.0.0.5", false, false}, {"192.168.1.1", false, false},
+		{"169.254.169.254", false, false}, {"100.100.100.200", false, false}, {"::1", false, false},
+		{"8.8.8.8", true, true},
+	}
+	for _, tt := range tests {
+		ip := net.ParseIP(tt.ip)
+		if got := !netguard.IsBlockedIP(ip); got != tt.wantStrict {
+			t.Errorf("默认策略 %s = %v，期望 %v", tt.ip, got, tt.wantStrict)
+		}
+		if got := netguard.IPAllowedWithFakeIP(ip); got != tt.wantFake {
+			t.Errorf("放行 Fake-IP 的策略 %s = %v，期望 %v", tt.ip, got, tt.wantFake)
+		}
+	}
+	if netguard.IPAllowedWithFakeIP(nil) {
+		t.Error("nil 必须被拒绝")
+	}
+}

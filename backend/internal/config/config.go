@@ -113,7 +113,10 @@ func (a Agent) Validate() error {
 
 // AI 生成任务相关配置。协议插件、渠道、模型、凭证不在这里，存在数据库里（见协议插件设计）。
 type AI struct {
-	SecretKey    string       `mapstructure:"secret_key"` // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
+	SecretKey string `mapstructure:"secret_key"` // 加解密 ai_secrets 的主密钥，只通过环境变量 APP_AI_SECRET_KEY 提供
+	// AllowFakeIP 放行 198.18.0.0/15（代理工具 Fake-IP 模式给域名分配的假地址），其余内网照拦。
+	// 只给开发机用：本机开了 Fake-IP 的代理时，所有域名都解析到这个网段，不放行连不上任何外部接口。默认关，线上不要开。
+	AllowFakeIP  bool         `mapstructure:"allow_fake_ip"`
 	Worker       Worker       `mapstructure:"worker"`
 	PluginRunner PluginRunner `mapstructure:"plugin_runner"`
 }
@@ -188,7 +191,7 @@ func Load(path string) (*Config, error) {
 	// 其中 storage.driver 与 storage.s3.* 是旧版对象存储的环境变量，YAML 里已经没有这些项，仍需要绑定才能读到，
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
-		"server.id_key", "ai.secret_key", "storage.driver",
+		"server.id_key", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",

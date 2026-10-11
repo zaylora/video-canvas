@@ -91,3 +91,23 @@ func TestLoad_AgentSectionAndEnvOverride(t *testing.T) {
 		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
 	}
 }
+
+// ai.allow_fake_ip：开发机上代理工具的 Fake-IP 模式会把所有域名解析到 198.18.0.0/15，默认关（线上保持严格），
+// 开发环境用环境变量 APP_AI_ALLOW_FAKE_IP 打开；YAML 里没写这一项，也必须能被环境变量覆盖。
+func TestLoad_AllowFakeIP(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AI.AllowFakeIP {
+		t.Error("默认必须是关闭的：线上不放行 198.18.0.0/15")
+	}
+	t.Setenv("APP_AI_ALLOW_FAKE_IP", "true")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AI.AllowFakeIP {
+		t.Error("环境变量 APP_AI_ALLOW_FAKE_IP=true 应能打开")
+	}
+}

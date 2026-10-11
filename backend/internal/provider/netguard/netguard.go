@@ -117,6 +117,22 @@ func IsBlockedIP(ip net.IP) bool {
 	return false
 }
 
+// fakeIPNet 是代理工具 Fake-IP 模式（Clash、sing-box 等）给域名分配假地址的网段，同时也是 RFC 2544 基准测试网段。
+var fakeIPNet = mustCIDRs("198.18.0.0/15")[0]
+
+// IPAllowedWithFakeIP 是“放行 Fake-IP”的 IP 策略：198.18.0.0/15 放行，其余照 IsBlockedIP 判断（回环、私网、链路本地等仍拦截）。
+// 只给开发机用：本机开了代理的 Fake-IP 模式时，所有域名都被解析到这个网段，不放行就一个外部接口都连不上。
+// 线上不要打开：这个网段在公网上不路由，只有本机有接管流量的代理时才有意义。
+func IPAllowedWithFakeIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if fakeIPNet.Contains(ip) {
+		return true
+	}
+	return !IsBlockedIP(ip)
+}
+
 // Config 是防护的运行参数。
 type Config struct {
 	IPAllowed    func(net.IP) bool // 返回 true 表示允许连接该 IP

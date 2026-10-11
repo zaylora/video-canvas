@@ -249,3 +249,33 @@ func TestOpenHostsLegacyAllowedHostsIgnored(t *testing.T) {
 		t.Fatalf("其余字段应照常解析：%+v", m)
 	}
 }
+
+// 开发机的代理工具开着 Fake-IP 模式：域名被解析到 198.18.0.0/15。默认策略拒绝；
+// 宿主选项配成 netguard.IPAllowedWithFakeIP 后放行，但解析到真正内网（10.x）的域名仍被拦。
+func TestFakeIPPolicyOnExecutor(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer upstream.Close()
+	port := portOf(t, upstream.URL)
+	dns := fakeDNS{"api.fake.test": net.ParseIP("198.18.0.35"), "lan.fake.test": net.ParseIP("10.0.0.5")}
+	// 把连接改道到本机的 httptest 服务，只验证 IP 策略（真实拨号会去 198.18.0.35）
+	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, "127.0.0.1:"+port)
+	}
+	mk := func(allowed func(net.IP) bool) *plugin.Executor {
+		return execWith(syncTextPlugin, func(o *plugin.Options) { o.Resolver, o.IPAllowed, o.Dial = dns, allowed, dial })
+	}
+	snap := func(host string) *provider.Snapshot {
+		return syncSnapshot("http://"+host+":"+port, syncTextPlugin, "ch-fake", provider.RateLimit{})
+	}
+	in := provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}}
+
+	if _, err := mk(nil).Submit(context.Background(), snap("api.fake.test"), in); !errors.Is(err, netguard.ErrBlockedAddress) {
+		t.Fatalf("默认策略应拦截 198.18.x：%v", err)
+	}
+	if _, err := mk(netguard.IPAllowedWithFakeIP).Submit(context.Background(), snap("api.fake.test"), in); err != nil {
+		t.Fatalf("放行 Fake-IP 后应能连上：%v", err)
+	}
+	if _, err := mk(netguard.IPAllowedWithFakeIP).Submit(context.Background(), snap("lan.fake.test"), in); !errors.Is(err, netguard.ErrBlockedAddress) {
+		t.Fatalf("放行 Fake-IP 不等于放行内网，10.x 仍应被拦：%v", err)
+	}
+}

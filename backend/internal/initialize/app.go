@@ -133,11 +133,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	executor := plugin.New(plugin.Options{
-		Runner:  runnerClient,
-		Codes:   pluginCodeStore{repo: aiPluginRepo},
-		Secrets: aiCfgSvc,
-		Assets:  assetSvc,
-		Saver:   assetSvc,
+		Runner:    runnerClient,
+		Codes:     pluginCodeStore{repo: aiPluginRepo},
+		Secrets:   aiCfgSvc,
+		Assets:    assetSvc,
+		Saver:     assetSvc,
+		IPAllowed: outboundIPPolicy(cfg),
 	})
 
 	// 生成任务：提交 / 对账 / 取消 / 积分事务
@@ -176,7 +177,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, ipAllowed: outboundIPPolicy(cfg)})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)

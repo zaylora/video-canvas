@@ -42,6 +42,8 @@ services:
       APP_REDIS_ADDR: "redis:6379"
       APP_JWT_SECRET: "change-me-in-dev"
       APP_AI_SECRET_KEY: "video-canvas-dev-ai-secret"
+      # 开发机常开着代理工具的 Fake-IP 模式（所有域名被解析到 198.18.0.0/15），不放行就连不上任何外部接口；线上不要设
+      APP_AI_ALLOW_FAKE_IP: "true"
       APP_STORAGE_LOCAL_DIR: "/app/data/assets"
       # 画布 Agent：compose 默认开启，需先在宿主机仓库根目录 agent/ 下 npm ci（整个目录挂载进容器的 /agent），
       # 否则启动自检会失败、后端会一直重启。不想装依赖：APP_AGENT_ENABLED=false docker compose -f docker-compose.dev.yml up -d
