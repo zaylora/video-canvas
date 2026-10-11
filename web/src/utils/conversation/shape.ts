@@ -1,26 +1,13 @@
-/** 结果格子的画幅：决定格子的宽高比 */
-export type CellShape = "square" | "wide" | "tall";
+import { parseAspect } from "@/utils/canvas/node-frame";
 
-/**
- * 由记录输入里的比例参数（如「16:9」）推出格子画幅。
- * 比例是「Auto」或写法不认识时按横版画：多数模型的默认输出是横版。
- * @param ratio input 里的比例参数值
- * @returns 画幅
- */
-export function shapeOf(ratio: unknown): CellShape {
-  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(String(ratio ?? ""));
-  if (!match) return "wide";
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (width === height) return "square";
-  return width > height ? "wide" : "tall";
-}
+/** 结果格子的画幅档位：只决定格子的高度，宽度由宽高比算出 */
+export type CellShape = "square" | "wide" | "tall";
 
 /** 宽高比和 1 相差不到这个比例就算方形，免得 1024×1008 这类被画成横图 */
 const SQUARE_TOLERANCE = 0.02;
 
 /**
- * 由成片量到的真实宽高比推出格子画幅，用来挑格子的高度档位。
+ * 由宽高比推出格子画幅，用来挑格子的高度档位。
  * @param aspect 宽 / 高；无效值按横版
  * @returns 画幅
  */
@@ -37,3 +24,14 @@ export function shapeOfAspect(aspect: number): CellShape {
  */
 export const ratioOf = (input: Record<string, unknown>): unknown =>
   input.aspect_ratio ?? input.ratio;
+
+/**
+ * 格子此刻该用的宽高比：量到的成片真实比例优先，其次是用户选的比例（和画布节点同一套解析）。
+ * 生成中、失败、成功各阶段都用它画框，框的比例才不会在加载前后变。
+ * @param input 记录的输入快照
+ * @param measured 成片实际的宽 / 高；还没量到为 null
+ * @returns 宽 / 高；Auto 或写法不认识且没量到成片时为 null，由调用方按默认横版画
+ */
+export function cellAspect(input: Record<string, unknown>, measured: number | null): number | null {
+  return measured ?? parseAspect(ratioOf(input));
+}

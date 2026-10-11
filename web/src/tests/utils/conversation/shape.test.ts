@@ -1,20 +1,25 @@
 import { describe, expect, test } from "bun:test";
 
-import { ratioOf, shapeOf, shapeOfAspect } from "@/utils/conversation/shape";
+import { cellAspect, ratioOf, shapeOfAspect } from "@/utils/conversation/shape";
 
-describe("shapeOf：比例 → 格子画幅", () => {
-  test("宽大于高是横版，高大于宽是竖版，相等是方形", () => {
-    expect(shapeOf("16:9")).toBe("wide");
-    expect(shapeOf("21:9")).toBe("wide");
-    expect(shapeOf("9:16")).toBe("tall");
-    expect(shapeOf("3:4")).toBe("tall");
-    expect(shapeOf("1:1")).toBe("square");
+describe("cellAspect：格子此刻该用的宽高比", () => {
+  test("生成前按所选比例画框：4:3 就是 4/3，不会被归到 16:9", () => {
+    expect(cellAspect({ aspect_ratio: "4:3" }, null)).toBeCloseTo(4 / 3);
+    expect(cellAspect({ ratio: "9:16" }, null)).toBeCloseTo(9 / 16);
+    expect(cellAspect({ aspect_ratio: "1:1" }, null)).toBe(1);
+    expect(cellAspect({ aspect_ratio: "21:9" }, null)).toBeCloseTo(21 / 9);
   });
 
-  test("Auto、空、不认识的写法按横版", () => {
+  test("量到成片的真实比例后以它为准", () => {
+    expect(cellAspect({ aspect_ratio: "4:3" }, 1.5)).toBe(1.5);
+    expect(cellAspect({}, 0.75)).toBe(0.75);
+  });
+
+  test("Auto、空、不认识的写法且没量到成片：返回 null，调用方按默认横版", () => {
     for (const value of ["Auto", "", undefined, null, "wide", "16x9"]) {
-      expect(shapeOf(value)).toBe("wide");
+      expect(cellAspect({ aspect_ratio: value }, null)).toBeNull();
     }
+    expect(cellAspect({}, null)).toBeNull();
   });
 });
 
