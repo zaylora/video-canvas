@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ratioOf, shapeOf } from "@/utils/conversation/shape";
+import { ratioOf, shapeOf, shapeOfAspect } from "@/utils/conversation/shape";
 
 describe("shapeOf：比例 → 格子画幅", () => {
   test("宽大于高是横版，高大于宽是竖版，相等是方形", () => {
@@ -23,5 +23,25 @@ describe("ratioOf：不同模型的比例参数名", () => {
     expect(ratioOf({ aspect_ratio: "9:16", ratio: "1:1" })).toBe("9:16");
     expect(ratioOf({ ratio: "1:1" })).toBe("1:1");
     expect(ratioOf({})).toBeUndefined();
+  });
+});
+
+describe("shapeOfAspect：量到的真实宽高比 → 格子画幅", () => {
+  test("横图是横版，竖图是竖版", () => {
+    expect(shapeOfAspect(16 / 9)).toBe("wide");
+    expect(shapeOfAspect(4 / 3)).toBe("wide");
+    expect(shapeOfAspect(9 / 16)).toBe("tall");
+  });
+
+  test("接近正方形（误差 2% 以内）算方形，1024×1008 这类不会被当成横图", () => {
+    expect(shapeOfAspect(1)).toBe("square");
+    expect(shapeOfAspect(1024 / 1008)).toBe("square");
+    expect(shapeOfAspect(1008 / 1024)).toBe("square");
+  });
+
+  test("无效值按横版", () => {
+    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(shapeOfAspect(value)).toBe("wide");
+    }
   });
 });

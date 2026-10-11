@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { RecordDto } from "@/api/conversation/type";
 import { makeTask, succeeded } from "../tasks/fixtures";
-import { deriveCell, recordActive, recordCredits } from "@/utils/conversation/cell";
+import { cellNeedsClock, deriveCell, recordActive, recordCredits } from "@/utils/conversation/cell";
 
 /** 固定「现在」：任务创建 10 分钟后 */
 const NOW = Date.parse("2026-09-29T10:10:00Z");
@@ -133,5 +133,26 @@ describe("recordActive / recordCredits", () => {
       credits: 4,
       frozen: false,
     });
+  });
+});
+
+describe("cellNeedsClock：什么时候格子要走表刷新「已耗时」", () => {
+  test("同步接口请求上游期间状态一直是 pending，也要走表，否则耗时停在 0 秒", () => {
+    expect(
+      cellNeedsClock(makeTask({ status: "pending", submitted_at: "2026-09-29T10:07:30Z" })),
+    ).toBe(true);
+  });
+
+  test("和画布一致：任务没结束（排队、生成中、转存中）都走表", () => {
+    for (const status of ["pending", "queued", "running", "finalizing"] as const) {
+      expect(cellNeedsClock(makeTask({ status }))).toBe(true);
+    }
+  });
+
+  test("已结束、没有任务都不走表", () => {
+    for (const status of ["succeeded", "failed", "canceled", "expired"] as const) {
+      expect(cellNeedsClock(makeTask({ status }))).toBe(false);
+    }
+    expect(cellNeedsClock(undefined)).toBe(false);
   });
 });

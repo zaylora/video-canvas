@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   CircleAlert,
   CircleX,
@@ -11,14 +12,16 @@ import {
 
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput } from "@/api/generation-task/type";
+import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
 import { SoonTip } from "@/components/home/soon";
 import { TaskIdTag } from "@/components/task-id-tag";
 import { cn } from "@/lib/utils";
 import { useTask } from "@/store/tasks";
 import { useNow } from "@/hooks/use-now";
-import { deriveCell } from "@/utils/conversation/cell";
+import { cellNeedsClock, deriveCell } from "@/utils/conversation/cell";
 import { formatElapsed } from "@/utils/tasks/node-view";
-import { ratioOf, shapeOf } from "@/utils/conversation/shape";
+import { ratioOf, shapeOf, shapeOfAspect } from "@/utils/conversation/shape";
+import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { downloadMedia } from "@/utils/canvas/download";
 
 /** 各画幅的尺寸：高度固定，宽度由宽高比决定 */
@@ -79,13 +82,22 @@ function Pending({
   );
 }
 
+/** 点开预览时交给调用方的信息：看哪个任务的产出，以及弹层从屏幕哪个点长出来 */
+export type CellPreviewTarget = {
+  /** 任务 ID，灯箱靠它认出点开的是哪一项 */
+  id: string;
+  output: TaskOutput;
+  /** 被点格子在屏幕上的中心，灯箱的缩放原点 */
+  origin: { x: number; y: number };
+};
+
 /**
  * 一条记录里的一个结果格子。状态由任务快照推出（见 utils/conversation/cell.ts），
  * 格子自己订阅任务库，WebSocket 推送和断线对账来的新进度会直接反映在这里。
  * 失败、取消、提交失败的格子可以单独重试；成功的格子可以预览、下载、用作参考。
  * @param record 所在记录
  * @param index 格子序号，从 0 开始
- * @param onPreview 点开预览
+ * @param onPreview 点开预览：图片、视频进媒体灯箱，音频进播放弹窗，由调用方分流
  * @param onRetry 重试这一格
  * @param onUseAsRef 把这个结果用作参考图
  */
@@ -98,18 +110,29 @@ export function ResultCell({
 }: {
   record: RecordDto;
   index: number;
-  onPreview: (output: TaskOutput) => void;
+  onPreview: (target: CellPreviewTarget) => void;
   onRetry: (index: number) => void;
   onUseAsRef: (output: TaskOutput) => void;
 }) {
   const initial = record.tasks[index];
   const live = useTask(initial ? String(initial.id) : undefined);
   const task = live ?? initial ?? undefined;
-  /** 生成中才走表：已耗时每秒刷新一次，其余状态不用 */
-  const now = useNow(task?.status === "queued" || task?.status === "running");
+  /** 任务没结束就走表：已耗时每秒刷新一次，和画布节点一致（见 cellNeedsClock） */
+  const now = useNow(cellNeedsClock(task));
   const cell = deriveCell(record, index, task, now);
   const audio = record.kind === "audio";
-  const size = audio ? "h-18 w-full max-w-90" : SHAPE[shapeOf(ratioOf(record.input))];
+  /** 成片的真实宽高比：量到之前为 null，格子先按所选比例占位；Auto 比例靠它才知道真实画幅 */
+  /** 视频封面是否已就绪：就绪后播放按钮才和封面一起淡入 */
+  const [posterSettled, setPosterSettled] = useState(false);
+  const doneOutput = cell.kind === "done" ? cell.output : null;
+  const mediaType =
+    doneOutput?.media_type === "image" || doneOutput?.media_type === "video"
+      ? doneOutput.media_type
+      : undefined;
+  const measured = useMediaAspect(doneOutput?.url, mediaType);
+  const size = audio
+    ? "h-18 w-full max-w-90"
+    : SHAPE[measured === null ? shapeOf(ratioOf(record.input)) : shapeOfAspect(measured)];
   const retry = (
     <button
       type="button"
@@ -187,12 +210,21 @@ export function ResultCell({
   return (
     <div
       data-slot="result-cell"
-      className={cn("group/cell relative overflow-hidden rounded-xl", size)}
+      className={cn("group/cell relative max-w-full overflow-hidden rounded-xl", size)}
+      /** 宽高比取成片真实值：整张图完整显示，不裁切；量到之前沿用画幅档位的占位比例 */
+      style={!audio && measured !== null ? { aspectRatio: measured } : undefined}
     >
       <button
         type="button"
         aria-label={audio ? "播放音频" : output.media_type === "video" ? "播放视频" : "查看大图"}
-        onClick={() => onPreview(output)}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          onPreview({
+            id: String(task?.id),
+            output,
+            origin: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+          });
+        }}
         className="focus-visible:ring-ring/60 bg-muted block size-full outline-none focus-visible:ring-3"
       >
         {audio ? (
@@ -203,19 +235,18 @@ export function ResultCell({
           </span>
         ) : output.media_type === "video" ? (
           <>
-            <video
-              src={url}
-              muted
-              preload="metadata"
-              playsInline
-              className="size-full object-cover"
-            />
-            <span className="absolute inset-0 m-auto grid size-11 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm">
+            <VideoPoster src={url} onSettledChange={setPosterSettled} />
+            <span
+              className={cn(
+                "absolute inset-0 m-auto grid size-11 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm transition-opacity duration-200",
+                !posterSettled && "opacity-0",
+              )}
+            >
               <Play className="size-4 fill-current" />
             </span>
           </>
         ) : (
-          <img src={url} alt={record.prompt} loading="lazy" className="size-full object-cover" />
+          <MediaPreview src={url} alt={record.prompt} mode="full" draggable={false} />
         )}
       </button>
       {record.count > 1 && (

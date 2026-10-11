@@ -18,9 +18,10 @@ type MediaPreviewProps = {
   /**
    * 加载策略：
    * lod 按画布缩放与节点选中状态在缩略图和原图间切换，只能用在画布节点内；
-   * thumb 固定只看缩略图（素材抽屉、历史条等小图位），缩略图失败才退回原图。
+   * thumb 固定只看缩略图（素材抽屉、历史条等小图位），缩略图失败才退回原图；
+   * full 不依赖画布缩放，先出缩略图、原图加载完再叠上去（对话结果格等画布外的大图位）。
    */
-  mode?: "lod" | "thumb";
+  mode?: "lod" | "thumb" | "full";
   /** img 的 object-fit 类，默认 contain */
   fit?: "contain" | "cover";
   className?: string;
@@ -36,7 +37,11 @@ type MediaPreviewProps = {
  * 填满父级盒子，画幅由父级决定（节点预览框固定 16:9）。
  */
 export function MediaPreview({ mode = "lod", ...rest }: MediaPreviewProps) {
-  return mode === "lod" ? <LodImage {...rest} /> : <ImageLayers {...rest} preferThumb />;
+  return mode === "lod" ? (
+    <LodImage {...rest} />
+  ) : (
+    <ImageLayers {...rest} preferThumb={mode === "thumb"} />
+  );
 }
 
 /** 订阅缩放与选中的外壳：布尔值翻转才会重渲染 */

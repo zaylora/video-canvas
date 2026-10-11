@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,35 @@ export function ListItem({
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </Link>
       {trailing && <div className="absolute top-1/2 right-1.5 -translate-y-1/2">{trailing}</div>}
+    </div>
+  );
+}
+
+/** 骨架屏标题条的宽度，错开一点，看起来像真实的长短不一的标题 */
+const SKELETON_TITLE_WIDTHS = ["70%", "55%", "80%", "60%"];
+
+/**
+ * 分组加载中的占位：每行的高度、缩略图和间距都和 ListItem 一致，数据到了直接替换，不会跳动。
+ * @param rows 占几行
+ */
+export function ListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div aria-busy className="grid gap-0.5">
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={index}
+          data-slot="list-skeleton-row"
+          className="flex h-9 items-center gap-2.5 pr-2 pl-2.5"
+        >
+          <Skeleton className="size-6 shrink-0 rounded-[7px] motion-reduce:animate-none" />
+          <Skeleton
+            className="h-3.5 motion-reduce:animate-none"
+            style={{
+              width: SKELETON_TITLE_WIDTHS[index % SKELETON_TITLE_WIDTHS.length],
+            }}
+          />
+        </div>
+      ))}
     </div>
   );
 }
