@@ -20,8 +20,9 @@ import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput } from "@/api/generation-task/type";
 import type { RefKind } from "@/api/model/type";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
+import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
 import { PreviewDialog } from "@/components/conversation/preview-dialog";
-import { ResultCell } from "@/components/conversation/result-cell";
+import { ResultCell, type CellPreviewTarget } from "@/components/conversation/result-cell";
 import { SoonTip } from "@/components/home/soon";
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useConversationRecordsStore } from "@/store/conversation-records";
 import { downloadMedia } from "@/utils/canvas/download";
 import { recordActive, recordCredits } from "@/utils/conversation/cell";
+import { recordPreviewItems } from "@/utils/conversation/preview-items";
 import { restoreComposer } from "@/utils/conversation/restore";
 import { isCancelableStatus } from "@/utils/tasks/status";
 import { useAssetUrls } from "@/hooks/use-asset-urls";
@@ -132,7 +134,10 @@ export function RecordView({
   const tasks = useRecordTasks(record);
   const { models, status } = useRemoteModels(record.kind);
   const actions = useRecordActions(conversationId);
-  const [preview, setPreview] = useState<TaskOutput | null>(null);
+  /** 图片、视频的灯箱目标；null 表示关着 */
+  const [lightbox, setLightbox] = useState<LightboxTarget | null>(null);
+  /** 音频没有画面，放不进灯箱，仍用播放弹窗 */
+  const [audioPreview, setAudioPreview] = useState<TaskOutput | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -149,6 +154,11 @@ export function RecordView({
   const succeeded = tasks.flatMap((task) =>
     task.status === "succeeded" ? (task.outputs ?? []) : [],
   );
+  const previewItems = recordPreviewItems(record, tasks);
+  const openPreview = ({ id, output, origin }: CellPreviewTarget) => {
+    if (output.media_type === "audio") setAudioPreview(output);
+    else setLightbox({ id, origin });
+  };
   const refs = restoreComposer(record).refs;
   const refCount = refs.length;
   const long = record.prompt.length > LONG_PROMPT;
@@ -222,7 +232,7 @@ export function RecordView({
             key={index}
             record={record}
             index={index}
-            onPreview={setPreview}
+            onPreview={openPreview}
             onRetry={() => void actions.retryCell(record)}
             onUseAsRef={onUseAsRef}
           />
@@ -304,7 +314,18 @@ export function RecordView({
         </DropdownMenu>
       </div>
 
-      <PreviewDialog output={preview} title={record.prompt} onClose={() => setPreview(null)} />
+      <MediaLightbox
+        items={previewItems}
+        target={lightbox}
+        countLabel="本条记录"
+        onActiveChange={(id) => setLightbox((current) => (current ? { ...current, id } : current))}
+        onClose={() => setLightbox(null)}
+      />
+      <PreviewDialog
+        output={audioPreview}
+        title={record.prompt}
+        onClose={() => setAudioPreview(null)}
+      />
       <ConfirmDialog
         open={confirmDelete}
         title="删除这条记录？"

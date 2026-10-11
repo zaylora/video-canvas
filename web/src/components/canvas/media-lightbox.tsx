@@ -41,8 +41,10 @@ type MediaLightboxProps = {
   target: LightboxTarget | null;
   /** 翻页后回调 */
   onActiveChange: (id: string) => void;
-  /** 「定位到节点」：弹层已请求关闭，调用方负责选中并飞过去 */
-  onLocate: (id: string) => void;
+  /** 「定位到节点」：弹层已请求关闭，调用方负责选中并飞过去；不传就不显示这个按钮（画布外使用时） */
+  onLocate?: (id: string) => void;
+  /** 位置胶囊的前缀，默认「相邻节点」；画布外按各自的说法改，如「本条记录」 */
+  countLabel?: string;
   onClose: () => void;
 };
 
@@ -226,6 +228,7 @@ export function MediaLightbox({
   target,
   onActiveChange,
   onLocate,
+  countLabel = "相邻节点",
   onClose,
 }: MediaLightboxProps) {
   const reduce = useReducedMotion();
@@ -441,7 +444,7 @@ export function MediaLightbox({
             <div className="text-muted-foreground flex items-center gap-2 text-xs">
               {many && (
                 <span className="bg-chrome ring-chrome-border flex h-7 items-center rounded-full px-3 tabular-nums ring-1">
-                  相邻节点 {index + 1} / {items.length}
+                  {countLabel} {index + 1} / {items.length}
                 </span>
               )}
               {many && (
@@ -451,16 +454,18 @@ export function MediaLightbox({
                   切换
                 </span>
               )}
-              <motion.button
-                type="button"
-                whileTap={TAP}
-                disabled={!item}
-                onClick={() => item && onLocate(item.id)}
-                className="bg-chrome ring-chrome-border text-foreground hover:bg-chrome-hover flex h-7 items-center gap-1.5 rounded-full px-3 ring-1 transition-colors outline-none focus-visible:ring-node-ring focus-visible:ring-2"
-              >
-                <Crosshair className="size-3.5" />
-                定位到节点
-              </motion.button>
+              {onLocate && (
+                <motion.button
+                  type="button"
+                  whileTap={TAP}
+                  disabled={!item}
+                  onClick={() => item && onLocate(item.id)}
+                  className="bg-chrome ring-chrome-border text-foreground hover:bg-chrome-hover flex h-7 items-center gap-1.5 rounded-full px-3 ring-1 transition-colors outline-none focus-visible:ring-node-ring focus-visible:ring-2"
+                >
+                  <Crosshair className="size-3.5" />
+                  定位到节点
+                </motion.button>
+              )}
             </div>
             {many && (
               <div className="flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-w-[calc(100vw-32px)] gap-2 overflow-x-auto p-1">

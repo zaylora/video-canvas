@@ -16,6 +16,20 @@ export function shapeOf(ratio: unknown): CellShape {
   return width > height ? "wide" : "tall";
 }
 
+/** 宽高比和 1 相差不到这个比例就算方形，免得 1024×1008 这类被画成横图 */
+const SQUARE_TOLERANCE = 0.02;
+
+/**
+ * 由成片量到的真实宽高比推出格子画幅，用来挑格子的高度档位。
+ * @param aspect 宽 / 高；无效值按横版
+ * @returns 画幅
+ */
+export function shapeOfAspect(aspect: number): CellShape {
+  if (!Number.isFinite(aspect) || aspect <= 0) return "wide";
+  if (Math.abs(aspect - 1) < SQUARE_TOLERANCE) return "square";
+  return aspect > 1 ? "wide" : "tall";
+}
+
 /**
  * 记录输入里的比例参数：不同模型叫法不同（aspect_ratio / ratio），都认。
  * @param input 记录的输入快照

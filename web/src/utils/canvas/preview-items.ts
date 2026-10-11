@@ -6,9 +6,9 @@ import { DEFAULT_NODE_SIZE } from "./placement";
 /** 节点没测量出高度时按这个值估算行高容差的基准 */
 const FALLBACK_NODE_HEIGHT = DEFAULT_NODE_SIZE.height;
 
-/** 预览弹层里的一项：画布上一个有图片或视频的节点 */
+/** 预览弹层里的一项：一张图片或一段视频（画布节点、对话里的一个结果） */
 export type PreviewItem = {
-  /** 节点 id，定位到节点、被删后回退都靠它 */
+  /** 项的 id（画布上是节点 id），翻页、被删后回退都靠它 */
   id: string;
   /** 素材地址（payload 里的稳定地址，不带变体） */
   src: string;
@@ -17,10 +17,10 @@ export type PreviewItem = {
   label: string;
   /** 上传素材的原文件名 */
   fileName?: string;
-  /** 节点在画布上的位置，只用来排序 */
-  x: number;
-  y: number;
 };
+
+/** 画布上的预览项：多带节点位置，只用来排序 */
+type PositionedPreviewItem = PreviewItem & { x: number; y: number };
 
 /**
  * 收集画布上可以预览的节点，按「先行后列」排好：从上到下一行行排，同一行内从左到右。
@@ -31,7 +31,7 @@ export type PreviewItem = {
  * @returns 可预览项，顺序即翻页顺序
  */
 export function collectPreviewItems(nodes: FlowNode[]): PreviewItem[] {
-  const picked: Array<PreviewItem & { height: number }> = [];
+  const picked: Array<PositionedPreviewItem & { height: number }> = [];
   for (const node of nodes) {
     if (isGroupNode(node)) continue;
     const { src, mediaType, kind, label, fileName } = node.data;

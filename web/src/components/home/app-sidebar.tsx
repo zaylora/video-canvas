@@ -4,7 +4,7 @@ import { Clapperboard, Compass, FolderOpen, ShieldCheck, Workflow } from "lucide
 
 import { CanvasCover } from "@/components/home/canvas-cover";
 import { ConversationList } from "@/components/home/conversation-list";
-import { ListItem, ListSection } from "@/components/home/sidebar-list";
+import { ListItem, ListSection, ListSkeleton } from "@/components/home/sidebar-list";
 import {
   NAV_ITEM_CLASS,
   NAV_LINK_CLASS,
@@ -89,7 +89,7 @@ function NavButton({ item, active }: { item: NavItem; active: boolean }) {
  */
 export function AppSidebar() {
   const { pathname } = useLocation();
-  const canvases = useRecentCanvases(LIST_LIMIT);
+  const { items: canvases, loading: canvasesLoading } = useRecentCanvases(LIST_LIMIT);
   /**
    * 管理后台入口、管理员徽标都读登录时存在本机的角色：刷新页面后 store/admin 回到未加载，
    * 读它会让入口凭空消失；这里也不主动请求角色，普通用户调 /admin/ai/me 会 403 并弹全局 toast。
@@ -130,6 +130,7 @@ export function AppSidebar() {
               </Link>
             }
           >
+            {canvasesLoading && canvases.length === 0 && <ListSkeleton />}
             {canvases.map((canvas) => (
               <ListItem
                 key={canvas.id}

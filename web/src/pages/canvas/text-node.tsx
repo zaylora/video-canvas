@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { AnimatePresence } from "motion/react";
 import { useReactFlow } from "@xyflow/react";
 
 import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
@@ -10,7 +9,7 @@ import type { CanvasNode, CanvasNodeData } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { textEditPatch } from "@/utils/canvas/text-body";
 
-import { NodeOverlays } from "./node-overlays";
+import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
@@ -87,15 +86,15 @@ export function TextCanvasNode({
           onTextChange={vm.submitting ? undefined : onTextChange}
         />
       </NodeCard>
-      <AnimatePresence>
-        {selected && !multiSelected && !dragSelected && (
+      <NodeOverlaysPresence multiSelected={multiSelected}>
+        {selected && !dragSelected && (
           <NodeOverlays key="overlays" id={id} data={data}>
             {(width) => (
               <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
             )}
           </NodeOverlays>
         )}
-      </AnimatePresence>
+      </NodeOverlaysPresence>
     </>
   );
 }

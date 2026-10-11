@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>图片扩图原型</title>
+<style>
+  /* 颜色与时长抄自 web/src/index.css、web/src/lib/motion.ts，没有自造的 UI 颜色（画面里的风景是示意素材） */
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --canvas-bg: oklch(0.975 0 0);
+    --canvas-dot: oklch(0 0 0 / 0.16);
+    --panel: oklch(1 0 0);
+    --menu: oklch(1 0 0);
+    --chrome: oklch(1 0 0 / 0.82);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05);
+    --node-ring: oklch(0.2 0 0 / 0.85);
+    --credit: oklch(0.72 0.15 75);
+    --status-running: oklch(0.58 0.15 250);
+    --status-success: oklch(0.6 0.15 155);
+    --edge: oklch(0 0 0 / 0.28);
+    --beam: oklch(0.62 0.16 55);
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --d-fast: 120ms;
+    --d-base: 180ms;
+    --d-exit: 126ms;
+  }
+  [data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --canvas-bg: oklch(0.13 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.14);
+    --panel: oklch(0.243 0 0);
+    --menu: oklch(0.269 0 0);
+    --chrome: oklch(0.2 0 0 / 0.78);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --node-ring: oklch(1 0 0 / 0.72);
+    --credit: oklch(0.82 0.15 85);
+    --status-running: oklch(0.75 0.12 240);
+    --status-success: oklch(0.75 0.15 155);
+    --edge: oklch(1 0 0 / 0.28);
+    --beam: oklch(0.78 0.15 70);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--canvas-bg); color: var(--foreground);
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; overflow-x: hidden;
+  }
+  button { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ===== 原型控制条（不属于产品） ===== */
+  .ctrl {
+    position: fixed; top: 12px; left: 12px; right: 12px; z-index: 50; display: flex; flex-wrap: wrap; gap: 8px 16px;
+    align-items: center; padding: 6px 10px; border-radius: 12px; background: var(--card);
+    border: 1px solid var(--chrome-border); font-size: 12px; color: var(--muted-foreground);
+  }
+  .ctrl .grp { display: flex; align-items: center; gap: 6px; }
+  .seg { display: flex; padding: 2px; border-radius: 8px; background: var(--muted); }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted-foreground); padding: 3px 10px; border-radius: 6px; cursor: pointer;
+    transition: background-color var(--d-fast), color var(--d-fast);
+  }
+  .seg button[aria-pressed="true"] { background: var(--background); color: var(--foreground); }
+  .ctrl .ghost { border: 1px solid var(--chrome-border); background: transparent; border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+  .ctrl .ghost:hover { background: var(--chrome-hover); }
+
+  /* ===== 画布 ===== */
+  .stage {
+    position: relative; min-height: 940px; margin-top: 0; overflow: hidden;
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 20px 20px;
+  }
+  .edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .edge-path { fill: none; stroke: var(--edge); stroke-width: 1.5; }
+  .edge-beam { fill: none; stroke: var(--beam); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 26 400; animation: beam 1.6s linear infinite; }
+  @keyframes beam { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -426; } }
+
+  .node { position: absolute; }
+  .node-title {
+    position: absolute; left: 2px; right: 2px; bottom: calc(100% + 8px); display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600; white-space: nowrap; pointer-events: none;
+  }
+  .node-title svg { width: 14px; height: 14px; color: var(--muted-foreground); }
+  .node-title .st { margin-left: auto; font-weight: 400; font-size: 12px; }
+  .node-title .st.err { color: var(--destructive); }
+  .node-title .st.run { color: var(--status-running); }
+  .node-title .st.ok { color: var(--status-success); }
+  .node-card { position: relative; width: 100%; height: 100%; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px var(--chrome-border); background: var(--card); }
+  .node.selected .node-card { box-shadow: 0 0 0 2px var(--node-ring); }
+  .node-card canvas { display: block; }
+  .node-state { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); text-align: center; padding: 12px; }
+  .node-state.err { color: var(--destructive); background: color-mix(in oklch, var(--destructive) 8%, var(--card)); }
+  .shimmer { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in oklch, var(--foreground) 9%, transparent) 50%, transparent 70%); background-size: 220% 100%; animation: sheen 1.4s linear infinite; }
+  @keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  .bar { width: 120px; height: 3px; border-radius: 2px; background: var(--chrome-border); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 40%; background: var(--status-running); border-radius: 2px; transition: width 240ms linear; }
+  .retry { border: 1px solid var(--chrome-border); background: var(--card); color: var(--foreground); border-radius: 8px; padding: 3px 12px; cursor: pointer; }
+  .retry:hover { background: var(--chrome-hover); }
+  .fade-in { animation: fade-in var(--d-base) var(--ease-out); }
+  @keyframes fade-in { from { opacity: 0; } }
+
+  /* ===== 功能区（抄自节点功能区原型，只留本次要用的按钮） ===== */
+  .tb-anchor { position: absolute; z-index: 20; translate: -50% 0; }
+  .tb-anchor.enter { animation: tb-in var(--d-base) var(--ease-out); }
+  .tb-anchor.exit { animation: tb-out var(--d-exit) var(--ease-out) forwards; pointer-events: none; }
+  @keyframes tb-in { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes tb-out { to { opacity: 0; transform: translateY(6px); } }
+  .tb {
+    display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 4px; border-radius: 999px; white-space: nowrap;
+    background: var(--chrome); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.2), 0 0 0 1px var(--chrome-border);
+    backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  }
+  .tb-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--chrome-border); }
+  .tb-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: 999px;
+    background: transparent; font-size: 14px; cursor: pointer; outline: none;
+    transition: background-color var(--d-fast), transform var(--d-fast) var(--ease-out);
+  }
+  .tb-btn:hover { background: var(--chrome-hover); }
+  .tb-btn:active { transform: scale(0.96); }
+  .tb-btn:focus-visible { box-shadow: 0 0 0 2px var(--node-ring); }
+  .tb-btn.icon { padding: 0 8px; color: var(--muted-foreground); }
+  .tb-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .tb-btn .paid { width: 12px; height: 12px; color: var(--credit); fill: currentColor; stroke: none; margin-left: -2px; }
+  .tb-btn .chev { width: 14px; height: 14px; opacity: 0.6; }
+
+  /* ===== 扩图：框 ===== */
+  .frame { position: absolute; z-index: 10; pointer-events: none; }
+  .frame.enter { animation: fade-in var(--d-base) var(--ease-out); }
+  .frame.exit { animation: fade-out var(--d-exit) var(--ease-out) forwards; }
+  @keyframes fade-out { to { opacity: 0; } }
+  /* 框内是「要新生成的区域」：棋盘格 = 透明，和原图拼成一张图后交给模型 */
+  .frame .checker {
+    position: absolute; inset: 0;
+    --a: color-mix(in oklch, var(--foreground) 5%, var(--canvas-bg));
+    --b: color-mix(in oklch, var(--foreground) 10%, var(--canvas-bg));
+    background-color: var(--a);
+    background-image: conic-gradient(var(--b) 25%, transparent 0 50%, var(--b) 0 75%, transparent 0);
+    background-size: 24px 24px;
+  }
+  .frame .line { position: absolute; inset: 0; box-shadow: 0 0 0 1.5px oklch(1 0 0); border-radius: 1px; }
+  .frame.anim, .frame.anim .checker, .frame.anim .line { transition: left var(--d-base) var(--ease-out), top var(--d-base) var(--ease-out), width var(--d-base) var(--ease-out), height var(--d-base) var(--ease-out); }
+  .frame .orig-slot { position: absolute; pointer-events: none; }
+  .frame.anim .orig-slot { transition: left var(--d-base) var(--ease-out), top var(--d-base) var(--ease-out); }
+  /* 框体：在框里按住拖动就是平移框（大小不变），框始终包住原图；盖在原图和棋盘格上，手柄在它上面 */
+  .move { position: absolute; inset: 0; pointer-events: auto; cursor: grab; touch-action: none; outline: none; }
+  .move.nomove { cursor: default; }
+  .move.moving { cursor: grabbing; }
+  .move:focus-visible { box-shadow: inset 0 0 0 2px var(--node-ring); }
+  .size-chip {
+    position: absolute; left: 0; bottom: calc(100% + 8px); padding: 1px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap;
+    background: var(--panel); color: var(--foreground); box-shadow: 0 0 0 1px var(--chrome-border);
+  }
+  .size-chip em { font-style: normal; color: var(--muted-foreground); }
+  .h { position: absolute; pointer-events: auto; touch-action: none; outline: none; }
+  .h::after { content: ""; position: absolute; background: oklch(1 0 0); border-radius: 2px; box-shadow: 0 0 0 1px oklch(0 0 0 / 0.45); transition: transform var(--d-fast) var(--ease-out); }
+  .h:hover::after, .h:focus-visible::after, .h.on::after { transform: scale(1.18); }
+  .h:focus-visible::after { box-shadow: 0 0 0 2px var(--node-ring); }
+  .h.e-l, .h.e-r { width: 20px; top: 50%; height: 40px; margin-top: -20px; cursor: ew-resize; }
+  .h.e-t, .h.e-b { height: 20px; left: 50%; width: 40px; margin-left: -20px; cursor: ns-resize; }
+  .h.e-l { left: -10px; } .h.e-r { right: -10px; } .h.e-t { top: -10px; } .h.e-b { bottom: -10px; }
+  .h.e-l::after, .h.e-r::after { left: 8px; top: 8px; width: 4px; height: 24px; }
+  .h.e-t::after, .h.e-b::after { top: 8px; left: 8px; height: 4px; width: 24px; }
+  .h.c { width: 28px; height: 28px; }
+  .h.c-tl { left: -14px; top: -14px; cursor: nwse-resize; } .h.c-br { right: -14px; bottom: -14px; cursor: nwse-resize; }
+  .h.c-tr { right: -14px; top: -14px; cursor: nesw-resize; } .h.c-bl { left: -14px; bottom: -14px; cursor: nesw-resize; }
+  /* 角手柄画成 L 形折角 */
+  .h.c::after { width: 14px; height: 14px; background: transparent; border: 0 solid oklch(1 0 0); box-shadow: none; border-radius: 0; filter: drop-shadow(0 0 1px oklch(0 0 0 / 0.55)); }
+  .h.c-tl::after { left: 9px; top: 9px; border-width: 3px 0 0 3px; } .h.c-tr::after { right: 9px; top: 9px; border-width: 3px 3px 0 0; }
+  .h.c-bl::after { left: 9px; bottom: 9px; border-width: 0 0 3px 3px; } .h.c-br::after { right: 9px; bottom: 9px; border-width: 0 3px 3px 0; }
+  .frame.locked .h, .frame.locked .move { pointer-events: none; }
+
+  /* ===== 扩图：底部面板 ===== */
+  .panel { position: absolute; z-index: 15; translate: -50% 0; width: min(560px, calc(100vw - 24px)); display: grid; gap: 8px; }
+  .panel.enter { animation: panel-in var(--d-base) var(--ease-out); }
+  .panel.exit { animation: panel-out var(--d-exit) var(--ease-out) forwards; pointer-events: none; }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(-6px) scale(0.985); } }
+  @keyframes panel-out { to { opacity: 0; } }
+  .panel.anim { transition: top var(--d-base) var(--ease-out); }
+  .ratio-bar {
+    justify-self: center; max-width: 100%; display: flex; align-items: center; gap: 2px; padding: 6px; border-radius: 14px;
+    background: var(--panel); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.25), 0 0 0 1px var(--chrome-border); overflow-x: auto;
+  }
+  .ratio-bar::-webkit-scrollbar { display: none; }
+  .ratio-bar .sep { width: 1px; height: 20px; margin: 0 6px; background: var(--chrome-border); flex: none; }
+  .chip {
+    position: relative; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+    background: transparent; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; outline: none; flex: none;
+    transition: background-color var(--d-fast), opacity var(--d-fast), transform var(--d-fast) var(--ease-out);
+  }
+  .chip:hover { background: var(--chrome-hover); }
+  .chip:active { transform: scale(0.96); }
+  .chip:focus-visible { box-shadow: 0 0 0 2px var(--node-ring); }
+  .chip[aria-pressed="true"] { background: var(--muted); }
+  .chip:disabled { opacity: 0.35; pointer-events: none; }
+  .chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .chip .rr { stroke-width: 1.6; }
+  .mult { padding: 0 10px; gap: 4px; }
+  .mult .chev { width: 14px; height: 14px; opacity: 0.6; transition: transform var(--d-fast) var(--ease-out); }
+  .mult[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .menu {
+    position: absolute; left: 6px; top: calc(100% + 6px); z-index: 30; min-width: 120px; padding: 6px; border-radius: 12px;
+    background: var(--menu); box-shadow: 0 10px 15px -3px oklch(0 0 0 / 0.3), 0 0 0 1px var(--chrome-border); transform-origin: top left;
+  }
+  .menu.enter { animation: menu-in var(--d-base) var(--ease-out); }
+  .menu.exit { animation: fade-out var(--d-exit) var(--ease-out) forwards; pointer-events: none; }
+  @keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } }
+  .menu button {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 8px;
+    background: transparent; font-size: 13px; cursor: pointer; text-align: left;
+  }
+  .menu button:hover, .menu button:focus-visible { background: var(--chrome-hover); outline: none; }
+  .menu svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .prompt {
+    display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: 16px; background: var(--panel);
+    box-shadow: 0 25px 50px -12px oklch(0 0 0 / 0.35), 0 0 0 1px var(--chrome-border);
+  }
+  .prompt textarea {
+    flex: 1; min-width: 0; resize: none; border: 0; outline: none; background: transparent; color: var(--foreground);
+    font: inherit; line-height: 24px; height: 24px; max-height: 120px; padding: 0;
+  }
+  .prompt textarea::placeholder { color: var(--muted-foreground); }
+  .cost { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted-foreground); }
+  .cost svg { width: 12px; height: 12px; fill: var(--credit); color: var(--credit); }
+  .cost.low { color: var(--destructive); }
+  .send {
+    display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--foreground); color: var(--background); outline: none;
+    transition: transform var(--d-fast) var(--ease-out), opacity var(--d-fast);
+  }
+  .send:active { transform: scale(0.96); }
+  .send:focus-visible { box-shadow: 0 0 0 2px var(--node-ring); }
+  .send:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .send svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .spin { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .limit-toast {
+    position: absolute; z-index: 40; translate: -50% 0; padding: 4px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap;
+    background: var(--foreground); color: var(--background); opacity: 0; pointer-events: none; transition: opacity var(--d-fast);
+  }
+  .limit-toast.on { opacity: 1; }
+  .hint { position: fixed; left: 12px; bottom: 12px; z-index: 50; padding: 6px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--chrome-border); font-size: 12px; color: var(--muted-foreground); max-width: calc(100vw - 24px); }
+  .hint b { color: var(--foreground); font-weight: 600; }
+
+  /* 窄屏：功能区只留图标，面板占满宽度，比例条横向滚动 */
+  @media (max-width: 767px) { .tb-btn .lbl, .tb-btn .paid { display: none; } .tb-btn { padding: 0 8px; } .chip[data-k="orig"] .lbl-ratio { display: none; } }
+  /* 减少动态效果：位移和缩放全部去掉，只剩淡入淡出 */
+  .rm .tb-anchor.enter, .rm .tb-anchor.exit { animation-name: fade-in; }
+  .rm .tb-anchor.exit { animation-name: fade-out; }
+  .rm .panel.enter { animation-name: fade-in; }
+  .rm .menu.enter { animation-name: fade-in; }
+  .rm .frame.anim .orig-slot, .rm .frame.anim, .rm .frame.anim .checker, .rm .frame.anim .line, .rm .panel.anim { transition: none; }
+  .rm .edge-beam, .rm .shimmer { animation: none; }
+  .rm .chip:active, .rm .send:active, .rm .tb-btn:active { transform: none; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="ctrl" role="group" aria-label="原型控制条">
+  <div class="grp">原图比例
+    <div class="seg" id="segAspect">
+      <button data-v="16:9" aria-pressed="true">16:9</button><button data-v="4:3" aria-pressed="false">4:3</button><button data-v="9:16" aria-pressed="false">9:16</button>
+    </div>
+  </div>
+  <div class="grp">画布缩放
+    <div class="seg" id="segZoom">
+      <button data-v="0.5" aria-pressed="true">50%</button><button data-v="0.75" aria-pressed="false">75%</button><button data-v="1" aria-pressed="false">100%</button>
+    </div>
+  </div>
+  <div class="grp">提交结果
+    <div class="seg" id="segResult">
+      <button data-v="ok" aria-pressed="true">成功</button><button data-v="fail" aria-pressed="false">失败</button>
+    </div>
+  </div>
+  <div class="grp">积分
+    <div class="seg" id="segCredit">
+      <button data-v="ok" aria-pressed="true">充足</button><button data-v="low" aria-pressed="false">不足</button>
+    </div>
+  </div>
+  <div class="grp">主题
+    <div class="seg" id="segTheme">
+      <button data-v="dark" aria-pressed="true">深色</button><button data-v="light" aria-pressed="false">浅色</button>
+    </div>
+  </div>
+  <div class="grp"><label><input type="checkbox" id="cbRm" /> 减少动态效果</label></div>
+  <div class="grp"><button class="ghost" id="btnReset">重置</button></div>
+</div>
+
+<div class="stage" id="stage">
+  <svg class="edges" id="edges" aria-hidden="true"></svg>
+
+  <div class="node selected" id="nodeA">
+    <div class="node-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+      <span>图片 1</span>
+    </div>
+    <div class="node-card"><canvas id="cvA"></canvas></div>
+  </div>
+
+  <div class="node" id="nodeB" hidden>
+    <div class="node-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+      <span>图片 1-扩图</span><span class="st run tnum" id="stB">生成中</span>
+    </div>
+    <div class="node-card" id="cardB"></div>
+  </div>
+
+  <div class="tb-anchor" id="tbAnchor">
+    <div class="tb" role="toolbar" aria-label="图片 1 的功能区">
+      <button class="tb-btn"><span class="lbl">局部重绘</span><svg class="paid" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg></button>
+      <button class="tb-btn"><span class="lbl">智能超清</span><svg class="paid" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg></button>
+      <button class="tb-btn"><span class="lbl">图片编辑</span><svg class="paid" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg></button>
+      <button class="tb-btn" id="btnOutpaint" aria-label="扩图" title="扩图">
+        <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        <span class="lbl">扩图</span><svg class="paid" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg>
+      </button>
+      <button class="tb-btn"><span class="lbl">工具</span><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn icon" aria-label="放大预览"><svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+      <button class="tb-btn icon" aria-label="下载"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+    </div>
+  </div>
+
+  <div class="frame" id="frame" hidden>
+    <div class="checker"></div>
+    <div class="orig-slot" id="origSlot"></div>
+    <div class="line"></div>
+    <div class="move" id="moveEl" tabindex="0" role="application" aria-label="移动框（方向键微调，框始终包住原图）"></div>
+    <div class="size-chip tnum" id="sizeChip"></div>
+    <div class="h e-t" data-h="t" tabindex="0" role="slider" aria-label="上边"></div>
+    <div class="h e-b" data-h="b" tabindex="0" role="slider" aria-label="下边"></div>
+    <div class="h e-l" data-h="l" tabindex="0" role="slider" aria-label="左边"></div>
+    <div class="h e-r" data-h="r" tabindex="0" role="slider" aria-label="右边"></div>
+    <div class="h c c-tl" data-h="tl" tabindex="0" role="slider" aria-label="左上角（等比）"></div>
+    <div class="h c c-tr" data-h="tr" tabindex="0" role="slider" aria-label="右上角（等比）"></div>
+    <div class="h c c-bl" data-h="bl" tabindex="0" role="slider" aria-label="左下角（等比）"></div>
+    <div class="h c c-br" data-h="br" tabindex="0" role="slider" aria-label="右下角（等比）"></div>
+  </div>
+
+  <div class="panel" id="panel" hidden>
+    <div class="ratio-bar" id="ratioBar" role="toolbar" aria-label="扩图比例">
+      <button class="chip mult" id="btnMult" aria-haspopup="menu" aria-expanded="false" aria-label="扩大倍数"><span id="multLbl" class="tnum">1.5x</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+      <span class="sep"></span>
+    </div>
+    <div class="prompt">
+      <textarea id="prompt" rows="1" placeholder="描述你想如何修改图片" aria-label="提示词"></textarea>
+      <span class="cost tnum" id="cost"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg>1</span>
+      <button class="send" id="btnSend" aria-label="生成"><svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+    </div>
+  </div>
+
+  <div class="limit-toast" id="limitToast" role="status">已到 3 倍上限</div>
+</div>
+
+<div class="hint" id="hint"></div>
+
+<script>
+/* ---------- 数据 ---------- */
+// 世界坐标 = 真实画布 100% 缩放下的像素；原图左上角在 (0,0)
+const ORIGINS = {
+  '16:9': { w: 576, h: 324, px: [1920, 1080] },
+  '4:3':  { w: 480, h: 360, px: [1600, 1200] },
+  '9:16': { w: 252, h: 448, px: [1080, 1920] },
+};
+const RATIOS = [ // 比例条上的预设
+  { key: '21:9', r: 21 / 9 }, { key: '4:3', r: 4 / 3 }, { key: '1:1', r: 1 }, { key: '3:4', r: 3 / 4 }, { key: '9:16', r: 9 / 16 },
+];
+const MULTS = [1, 1.25, 1.5, 2, 3];
+const MAX_MULT = 3;              // 框的最长边最多是原图最长边的 3 倍
+const EPS = 0.004;               // 判断「比例相同」的相对误差
+
+const $ = (s) => document.querySelector(s);
+const stage = $('#stage'), frameEl = $('#frame'), panelEl = $('#panel'), tbEl = $('#tbAnchor');
+const nodeA = $('#nodeA'), nodeB = $('#nodeB'), cvA = $('#cvA'), cardB = $('#cardB');
+const hint = $('#hint');
+
+const S = {
+  aspect: '16:9', z: 0.5, result: 'ok', credit: 'ok', mode: false, busy: false, submitted: false,
+  mult: 1.5, f: null, cx: 0, cy: 420, drag: null, anim: false,
+};
+const O = () => ORIGINS[S.aspect];
+const cap = () => MAX_MULT * Math.max(O().w, O().h);
+
+/* ---------- 框的几何（世界坐标，相对原图左上角） ---------- */
+const fw = (f = S.f) => f.x1 - f.x0, fh = (f = S.f) => f.y1 - f.y0;
+const centered = (w, h) => ({ x0: -(w - O().w) / 2, y0: -(h - O().h) / 2, x1: O().w + (w - O().w) / 2, y1: O().h + (h - O().h) / 2 });
+const byMult = (m) => centered(O().w * m, O().h * m);
+// 比例预设：刚好包住原图的最小框，原图居中
+function byRatio(r) {
+  const { w, h } = O();
+  return w / h >= r ? centered(w, w / r) : centered(h * r, h);
+}
+const fitsCap = (f) => Math.max(fw(f), fh(f)) <= cap() + 0.01;
+// 当前框的比例对应哪个按钮：原图比例优先，其次预设，都不是返回 null（拖手柄拖出了自定义比例）
+function detect() {
+  const ratio = fw() / fh(), orig = O().w / O().h;
+  if (Math.abs(ratio / orig - 1) < EPS) return 'orig';
+  const hit = RATIOS.find((x) => Math.abs(ratio / x.r - 1) < EPS);
+  return hit ? hit.key : null;
+}
+const longMult = () => Math.max(fw(), fh()) / Math.max(O().w, O().h);
+const fmtMult = (m) => (Math.round(m * 100) / 100).toString().replace(/\.0+$/, '') + 'x';
+
+/* ---------- 示意风景（画面素材，不是 UI 颜色） ---------- */
+const rnd = (n) => { const t = Math.sin(n * 127.1) * 43758.5453; return t - Math.floor(t); };
+// 把世界坐标里的 rect 画成一张宽 cssW 的画布。原图和扩图结果画的是同一个世界，所以原图部分完全一致
+function drawScene(cv, rect, cssW) {
+  const o = O(), dpr = Math.min(2, window.devicePixelRatio || 1), k = cssW / rect.w;
+  const cssH = rect.h * k;
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+  const c = cv.getContext('2d'), s = k * dpr;
+  const X = (x) => (x - rect.x) * s, Y = (y) => (y - rect.y) * s;
+  const hor = o.h * 0.62;
+  const sky = c.createLinearGradient(0, Y(-o.h * 2.4), 0, Y(hor));
+  sky.addColorStop(0, '#141d38'); sky.addColorStop(0.55, '#4a5c8e'); sky.addColorStop(0.85, '#d98f6c'); sky.addColorStop(1, '#f3b27a');
+  c.fillStyle = sky; c.fillRect(0, 0, cv.width, cv.height);
+  // 星星
+  c.fillStyle = 'rgba(255,255,255,0.8)';
+  for (let n = Math.floor(rect.x / 40) - 1; n < (rect.x + rect.w) / 40 + 1; n++) for (let m = 0; m < 5; m++) {
+    const sx = n * 40 + rnd(n * 7 + m) * 40, sy = -o.h * 2.2 + rnd(n * 13 + m * 5) * o.h * 1.5;
+    c.fillRect(X(sx), Y(sy), Math.max(1, 1.2 * s), Math.max(1, 1.2 * s));
+  }
+  // 太阳
+  const sx = o.w * 0.68, sy = hor - o.h * 0.1, sr = o.h * 0.085;
+  const glow = c.createRadialGradient(X(sx), Y(sy), 0, X(sx), Y(sy), sr * 5);
+  glow.addColorStop(0, 'rgba(255,214,150,0.85)'); glow.addColorStop(0.25, 'rgba(255,170,110,0.35)'); glow.addColorStop(1, 'rgba(255,150,100,0)');
+  c.fillStyle = glow; c.fillRect(0, 0, cv.width, cv.height);
+  c.fillStyle = '#ffe3b0'; c.beginPath(); c.arc(X(sx), Y(sy), sr * s, 0, 7); c.fill();
+  // 远山三层
+  const cols = ['#6e6a8a', '#4c4a6a', '#2f2f4a'];
+  for (let i = 0; i < 3; i++) {
+    const base = hor - o.h * (0.04 + 0.05 * (2 - i)), amp = o.h * (0.1 + 0.03 * i);
+    c.fillStyle = cols[i]; c.beginPath(); c.moveTo(0, cv.height);
+    for (let x = rect.x - 8; x <= rect.x + rect.w + 8; x += Math.max(2, 4 / k)) {
+      const y = base - amp * (0.55 + 0.45 * Math.sin(x * 0.011 + i * 2.1) + 0.25 * Math.sin(x * 0.027 + i));
+      c.lineTo(X(x), Y(y));
+    }
+    c.lineTo(cv.width, cv.height); c.closePath(); c.fill();
+  }
+  // 地面
+  const ground = c.createLinearGradient(0, Y(hor - o.h * 0.04), 0, Y(hor + o.h * 2));
+  ground.addColorStop(0, '#2a3a38'); ground.addColorStop(1, '#0f1614');
+  c.fillStyle = ground; c.fillRect(0, Y(hor - o.h * 0.04), cv.width, cv.height);
+  // 树
+  for (let n = Math.floor(rect.x / 46) - 1; n < (rect.x + rect.w) / 46 + 1; n++) {
+    const tx = n * 46 + rnd(n) * 30, ty = hor + rnd(n + 9) * o.h * 0.5 - o.h * 0.02, th = o.h * (0.1 + rnd(n + 3) * 0.12);
+    c.fillStyle = '#17231f'; c.beginPath(); c.moveTo(X(tx), Y(ty - th)); c.lineTo(X(tx - th * 0.28), Y(ty)); c.lineTo(X(tx + th * 0.28), Y(ty)); c.closePath(); c.fill();
+  }
+}
+
+/* ---------- 布局 ---------- */
+const nodeRect = () => { const o = O(); const w = o.w * S.z, h = o.h * S.z; return { l: S.cx - w / 2, t: S.cy - h / 2, w, h }; };
+const frameRect = () => {
+  const n = nodeRect(), f = S.f, z = S.z;
+  return { l: n.l + f.x0 * z, t: n.t + f.y0 * z, w: fw() * z, h: fh() * z };
+};
+function place(el, l, t, w, h) { el.style.left = l + 'px'; el.style.top = t + 'px'; if (w != null) el.style.width = w + 'px'; if (h != null) el.style.height = h + 'px'; }
+
+function layout() {
+  S.cx = stage.clientWidth / 2;
+  const n = nodeRect();
+  place(nodeA, n.l, n.t, n.w, n.h);
+  drawScene(cvA, { x: 0, y: 0, w: O().w, h: O().h }, n.w);
+  // 功能区：在节点标题行上方 16px，居中
+  tbEl.style.left = S.cx + 'px'; tbEl.style.top = (n.t - 28 * S.z - 16 - 40) + 'px';
+  if (S.mode && S.f) {
+    const r = frameRect();
+    place(frameEl, r.l, r.t, r.w, r.h);
+    const slot = $('#origSlot');
+    place(slot, -S.f.x0 * S.z, -S.f.y0 * S.z, n.w, n.h);
+    // 原图盖在棋盘格上：直接复用节点上的画布内容
+    syncOrig(n);
+    const o = O(), sc = o.px[0] / o.w;
+    $('#sizeChip').innerHTML = `${Math.round(fw() * sc)} × ${Math.round(fh() * sc)} <em>输出</em>`;
+    panelEl.style.left = S.cx + 'px'; panelEl.style.top = (r.t + r.h + 14) + 'px';
+    updateBar();
+    const slack = fw() - O().w > 0.5 || fh() - O().h > 0.5;
+    moveEl.classList.toggle('nomove', !slack);
+  }
+  const b = nodeRect();
+  if (!nodeB.hidden) layoutB(b);
+  drawEdge();
+}
+function syncOrig(n) {
+  const slot = $('#origSlot');
+  let cv = slot.firstChild;
+  if (!cv) { cv = document.createElement('canvas'); slot.appendChild(cv); }
+  drawScene(cv, { x: 0, y: 0, w: O().w, h: O().h }, n.w);
+}
+
+/* ---------- 比例条 ---------- */
+const ICON_RR = (r) => { // 比例小图标：按宽高比画圆角矩形
+  const w = r >= 1 ? 14 : 14 * r, h = r >= 1 ? 14 / r : 14;
+  return `<svg viewBox="0 0 16 16"><rect class="rr" x="${8 - w / 2}" y="${8 - h / 2}" width="${w}" height="${h}" rx="2.4" fill="none"/></svg>`;
+};
+const ICON_ORIG = '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="none"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>';
+function buildBar() {
+  const bar = $('#ratioBar');
+  bar.querySelectorAll('.chip[data-k]').forEach((x) => x.remove());
+  const add = (key, html, label) => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.dataset.k = key; b.innerHTML = html + `<span class="lbl-ratio">${label}</span>`;
+    b.addEventListener('click', () => pickRatio(key));
+    bar.appendChild(b); return b;
+  };
+  add('orig', ICON_ORIG, '原比例');
+  RATIOS.forEach((x) => add(x.key, ICON_RR(x.r), x.key));
+}
+function updateBar() {
+  const cur = detect();
+  document.querySelectorAll('#ratioBar .chip[data-k]').forEach((b) => {
+    const k = b.dataset.k;
+    b.setAttribute('aria-pressed', String(cur === k));
+    const r = RATIOS.find((x) => x.key === k);
+    const over = r && !fitsCap(byRatio(r.r));
+    b.disabled = !!over; b.title = over ? '超过 3 倍上限' : '';
+  });
+  const mb = $('#btnMult'), isOrig = cur === 'orig';
+  mb.disabled = !isOrig; mb.title = isOrig ? '扩大倍数' : '倍数只在「原比例」下可选';
+  $('#multLbl').textContent = isOrig ? fmtMult(longMult()) : '—';
+  const low = S.credit === 'low';
+  $('#cost').classList.toggle('low', low); $('#btnSend').disabled = low || S.busy; $('#btnSend').title = low ? '积分不足' : '';
+  hint.innerHTML = hintText(cur);
+}
+function hintText(cur) {
+  const o = O();
+  return `<b>扩图</b>：框必须包住原图，只能往外拖；最长边最多 ${MAX_MULT} 倍（${Math.round(MAX_MULT * Math.max(o.w, o.h))} 世界像素）。` +
+    `角手柄等比，边手柄自由，框内按住可平移（始终包住原图）。当前 ${cur === 'orig' ? '原比例 ' + fmtMult(longMult()) : cur ? cur : '自定义比例'} · Esc 退出`;
+}
+function pickRatio(key) {
+  if (S.busy) return;
+  S.anim = true;
+  if (key === 'orig') S.f = byMult(S.mult);
+  else S.f = byRatio(RATIOS.find((x) => x.key === key).r);
+  withAnim(layout);
+}
+function pickMult(m) {
+  S.mult = m; S.f = byMult(m); closeMenu(); withAnim(layout);
+}
+function withAnim(fn) {
+  frameEl.classList.add('anim'); panelEl.classList.add('anim');
+  fn();
+  clearTimeout(withAnim.t); withAnim.t = setTimeout(() => { frameEl.classList.remove('anim'); panelEl.classList.remove('anim'); }, 220);
+}
+
+/* ---------- 倍数菜单 ---------- */
+let menuEl = null;
+function openMenu() {
+  if (menuEl || $('#btnMult').disabled) return;
+  menuEl = document.createElement('div'); menuEl.className = 'menu enter'; menuEl.setAttribute('role', 'menu');
+  const cur = detect() === 'orig' ? longMult() : 0;
+  MULTS.forEach((m) => {
+    const b = document.createElement('button'); b.setAttribute('role', 'menuitem');
+    const on = Math.abs(cur - m) < 0.005;
+    b.innerHTML = `<span class="tnum">${fmtMult(m)}</span>${on ? '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>' : ''}`;
+    b.addEventListener('click', () => pickMult(m));
+    menuEl.appendChild(b);
+  });
+  panelEl.appendChild(menuEl);
+  menuEl.style.left = $('#btnMult').getBoundingClientRect().left - panelEl.getBoundingClientRect().left + 'px';
+  menuEl.style.top = $('#ratioBar').offsetHeight + 6 + 'px';
+  $('#btnMult').setAttribute('aria-expanded', 'true');
+  menuEl.querySelector('button').focus();
+}
+function closeMenu() {
+  if (!menuEl) return;
+  const m = menuEl; menuEl = null; m.classList.remove('enter'); m.classList.add('exit'); setTimeout(() => m.remove(), 130);
+  $('#btnMult').setAttribute('aria-expanded', 'false');
+}
+
+/* ---------- 手柄拖动 ---------- */
+let toastT;
+function flashLimit(px, py) {
+  const t = $('#limitToast'); t.style.left = px + 'px'; t.style.top = py + 'px'; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1400);
+}
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+// 平移框：大小不变，只能在「仍然包住原图」的范围里动，不会把原图露在框外
+function moveFrame(s, dx, dy) {
+  const o = O(), w = s.x1 - s.x0, h = s.y1 - s.y0;
+  const x0 = clamp(s.x0 + dx, o.w - w, 0), y0 = clamp(s.y0 + dy, o.h - h, 0);
+  return { x0, y0, x1: x0 + w, y1: y0 + h };
+}
+// 按手柄和位移算新框；返回 {f, limited}
+function resize(h, s, dx, dy) {
+  const o = O(), C = cap();
+  let { x0, y0, x1, y1 } = s, limited = false;
+  if (h.length === 1) { // 边：自由比例
+    if (h === 'l') { const want = s.x0 + dx; x0 = clamp(want, s.x1 - C, 0); if (want < s.x1 - C) limited = true; }
+    if (h === 'r') { const want = s.x1 + dx; x1 = clamp(want, o.w, s.x0 + C); if (want > s.x0 + C) limited = true; }
+    if (h === 't') { const want = s.y0 + dy; y0 = clamp(want, s.y1 - C, 0); if (want < s.y1 - C) limited = true; }
+    if (h === 'b') { const want = s.y1 + dy; y1 = clamp(want, o.h, s.y0 + C); if (want > s.y0 + C) limited = true; }
+    return { f: { x0, y0, x1, y1 }, limited };
+  }
+  // 角：锁定当前比例，对角固定
+  const sw = s.x1 - s.x0, sh = s.y1 - s.y0, A = sw / sh;
+  const hx = h.includes('l') ? -1 : 1, hy = h.includes('t') ? -1 : 1;
+  const ax = hx < 0 ? s.x1 : s.x0, ay = hy < 0 ? s.y1 : s.y0;
+  const want = ((sw + hx * dx) + (sh + hy * dy) * A) / 2;
+  const lo = Math.max(hx > 0 ? o.w - ax : ax, (hy > 0 ? o.h - ay : ay) * A);
+  const hi = Math.min(C, C * A);
+  const w = clamp(want, lo, Math.max(lo, hi)); if (want > hi + 0.5) limited = true;
+  const hh = w / A;
+  return { f: { x0: hx > 0 ? ax : ax - w, x1: hx > 0 ? ax + w : ax, y0: hy > 0 ? ay : ay - hh, y1: hy > 0 ? ay + hh : ay }, limited };
+}
+frameEl.querySelectorAll('.h').forEach((el) => {
+  el.addEventListener('pointerdown', (e) => {
+    if (S.busy) return;
+    el.setPointerCapture(e.pointerId); el.classList.add('on');
+    S.drag = { h: el.dataset.h, sx: e.clientX, sy: e.clientY, s: { ...S.f } };
+    closeMenu(); e.preventDefault();
+  });
+  el.addEventListener('pointermove', (e) => {
+    const d = S.drag; if (!d || d.move) return;
+    const r = resize(d.h, d.s, (e.clientX - d.sx) / S.z, (e.clientY - d.sy) / S.z);
+    S.f = r.f; layout();
+    if (r.limited) { const fr = frameRect(); flashLimit(fr.l + fr.w / 2, fr.t - 44); }
+  });
+  const end = () => { S.drag = null; el.classList.remove('on'); };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  el.addEventListener('keydown', (e) => { // 键盘：方向键微调，Shift 加大步长
+    const step = (e.shiftKey ? 32 : 8), k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!k) return; e.preventDefault();
+    const r = resize(el.dataset.h, S.f, k[0] * step, k[1] * step); S.f = r.f; layout();
+    if (r.limited) { const fr = frameRect(); flashLimit(fr.l + fr.w / 2, fr.t - 44); }
+  });
+});
+
+const moveEl = $('#moveEl');
+moveEl.addEventListener('pointerdown', (e) => {
+  if (S.busy) return;
+  moveEl.setPointerCapture(e.pointerId); moveEl.classList.add('moving');
+  S.drag = { move: true, sx: e.clientX, sy: e.clientY, s: { ...S.f } };
+  closeMenu(); e.preventDefault();
+});
+moveEl.addEventListener('pointermove', (e) => {
+  const d = S.drag; if (!d || !d.move) return;
+  S.f = moveFrame(d.s, (e.clientX - d.sx) / S.z, (e.clientY - d.sy) / S.z); layout();
+});
+const endMove = () => { if (S.drag && S.drag.move) S.drag = null; moveEl.classList.remove('moving'); };
+moveEl.addEventListener('pointerup', endMove); moveEl.addEventListener('pointercancel', endMove);
+moveEl.addEventListener('keydown', (e) => {
+  const step = e.shiftKey ? 32 : 8, k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!k) return; e.preventDefault(); S.f = moveFrame(S.f, k[0] * step, k[1] * step); layout();
+});
+
+/* ---------- 进入 / 退出 ---------- */
+function enter() {
+  if (S.mode || S.submitted && S.busy) return;
+  S.mode = true; S.f = byMult(S.mult);
+  tbEl.classList.remove('enter'); tbEl.classList.add('exit');
+  setTimeout(() => { tbEl.hidden = true; }, 130);
+  frameEl.hidden = false; panelEl.hidden = false;
+  frameEl.classList.remove('exit'); panelEl.classList.remove('exit');
+  frameEl.classList.add('enter'); panelEl.classList.add('enter');
+  buildBar(); layout();
+  setTimeout(() => $('#prompt').focus(), 60);
+}
+function leave() {
+  if (!S.mode) return;
+  S.mode = false; closeMenu();
+  frameEl.classList.remove('enter'); panelEl.classList.remove('enter');
+  frameEl.classList.add('exit'); panelEl.classList.add('exit');
+  tbEl.hidden = false; tbEl.classList.remove('exit'); tbEl.classList.add('enter');
+  setTimeout(() => { frameEl.hidden = true; panelEl.hidden = true; }, 130);
+  hint.innerHTML = defaultHint;
+}
+$('#btnOutpaint').addEventListener('click', enter);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (menuEl) closeMenu(); else leave(); } });
+stage.addEventListener('pointerdown', (e) => { if (S.mode && !e.target.closest('.frame, .panel, .tb-anchor, .node')) leave(); });
+$('#btnMult').addEventListener('click', () => (menuEl ? closeMenu() : openMenu()));
+document.addEventListener('pointerdown', (e) => { if (menuEl && !e.target.closest('.menu, #btnMult')) closeMenu(); });
+
+/* ---------- 提交：先建出结果节点，进度显示在节点里 ---------- */
+function layoutB() {
+  const ar = S.bAspect || (O().w / O().h), a = nodeRect();
+  const longCss = Math.max(a.w, a.h);
+  const w = ar >= 1 ? longCss : longCss * ar, h = ar >= 1 ? longCss / ar : longCss;
+  place(nodeB, a.l + a.w + 80, S.cy - h / 2, w, h);
+}
+function drawEdge() {
+  const svg = $('#edges'); svg.innerHTML = '';
+  if (nodeB.hidden) return;
+  const a = nodeRect(), bl = parseFloat(nodeB.style.left), bt = parseFloat(nodeB.style.top), bh = parseFloat(nodeB.style.height);
+  const x1 = a.l + a.w, y1 = a.t + a.h / 2, x2 = bl, y2 = bt + bh / 2, dx = Math.max(40, (x2 - x1) / 2);
+  const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+  svg.insertAdjacentHTML('beforeend', `<path class="edge-path" d="${d}"/>` + (S.bRun ? `<path class="edge-beam" d="${d}"/>` : ''));
+}
+function submit() {
+  if (!S.mode || S.busy || S.credit === 'low') return;
+  S.busy = true; S.submitted = true; frameEl.classList.add('locked');
+  $('#btnSend').innerHTML = '<svg class="spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>'; updateBar();
+  const fr = { ...S.f }; // 记下这次的范围
+  S.bAspect = fw(fr) / fh(fr); S.bRect = { x: fr.x0, y: fr.y0, w: fw(fr), h: fh(fr) };
+  setTimeout(() => { // 点下去 100ms 内就有反馈：节点立刻出现
+    leave(); showResultLoading();
+    S.busy = false; frameEl.classList.remove('locked');
+    $('#btnSend').innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+  }, 220);
+}
+function showResultLoading() {
+  nodeB.hidden = false; nodeB.classList.add('fade-in'); S.bRun = true;
+  const st = $('#stB'); st.className = 'st run tnum'; st.textContent = '生成中 0%';
+  cardB.innerHTML = '<div class="node-state"><div class="shimmer"></div><div class="bar"><i id="barI"></i></div><span>正在扩图…</span></div>';
+  layoutB(); drawEdge();
+  let p = 0; const tick = setInterval(() => {
+    p += 9 + Math.random() * 10; if (p >= 100) p = 100;
+    st.textContent = `生成中 ${Math.round(p)}%`; const i = $('#barI'); if (i) i.style.width = p + '%';
+    if (p >= 100) { clearInterval(tick); setTimeout(finishResult, 240); }
+  }, 260);
+  S.tick = tick;
+}
+function finishResult() {
+  S.bRun = false; const st = $('#stB');
+  if (S.result === 'fail') {
+    st.className = 'st err'; st.textContent = '生成失败';
+    cardB.innerHTML = '<div class="node-state err fade-in"><span>模型没有返回图片，请重试</span><button class="retry" id="btnRetry">重试</button></div>';
+    $('#btnRetry').addEventListener('click', () => { S.bRun = true; showResultLoading(); });
+  } else {
+    st.className = 'st ok'; st.textContent = '完成';
+    const a = nodeRect(), ar = S.bAspect, longCss = Math.max(a.w, a.h), w = ar >= 1 ? longCss : longCss * ar;
+    cardB.innerHTML = '<canvas class="fade-in"></canvas>';
+    drawScene(cardB.firstChild, S.bRect, w);
+  }
+  drawEdge();
+}
+$('#btnSend').addEventListener('click', submit);
+$('#prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
+$('#prompt').addEventListener('input', (e) => { e.target.style.height = '24px'; e.target.style.height = Math.min(120, e.target.scrollHeight) + 'px'; layout(); });
+
+/* ---------- 控制条 ---------- */
+function seg(id, fn) {
+  const el = $(id);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    el.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); fn(b.dataset.v);
+  });
+}
+seg('#segAspect', (v) => { S.aspect = v; resetResult(); if (S.mode) S.f = byMult(S.mult); layout(); });
+seg('#segZoom', (v) => { S.z = parseFloat(v); layout(); });
+seg('#segResult', (v) => { S.result = v; });
+seg('#segCredit', (v) => { S.credit = v; if (S.mode) updateBar(); });
+seg('#segTheme', (v) => { document.body.dataset.theme = v; });
+$('#cbRm').addEventListener('change', (e) => document.body.classList.toggle('rm', e.target.checked));
+function resetResult() { clearInterval(S.tick); nodeB.hidden = true; S.bRun = false; $('#edges').innerHTML = ''; }
+$('#btnReset').addEventListener('click', () => { resetResult(); leave(); S.mult = 1.5; layout(); });
+window.addEventListener('resize', layout);
+
+const defaultHint = '点功能区的 <b>扩图</b> 进入；拖手柄改范围，点比例条换比例；点击发送后在右侧生成新节点。';
+hint.innerHTML = defaultHint;
+tbEl.classList.add('enter');
+layout();
+</script>
+</body>
+</html>

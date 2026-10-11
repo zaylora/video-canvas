@@ -50,6 +50,11 @@ export function usePaneBusy() {
   return useStore((state: ReactFlowState) => state.paneDragging || state.userSelectionActive);
 }
 
+/** 正在框选（鼠标还没松开）：这时选中谁都不算数，浮层一律不出，松手后按最终选区决定 */
+export function useMarqueeSelecting() {
+  return useStore((state: ReactFlowState) => state.userSelectionActive);
+}
+
 /** 这个节点自己正在被拖：浮层整个收起，松手再出来 */
 export function useNodeDragging(nodeId: string) {
   return useStore(

@@ -23,6 +23,16 @@ export type CellState =
   | { kind: "canceled" };
 
 /**
+ * 格子要不要走表（每秒刷新「已耗时」）：任务没结束就走，和画布节点「生成中就走表」一致。
+ * 不能只看 queued / running：同步接口请求上游期间状态一直是 pending（只多了提交时间），
+ * 格子已经显示「生成中」，不走表耗时就会停在 0 秒。
+ * @param task 这一格的最新任务快照；没有为 undefined
+ */
+export function cellNeedsClock(task: TaskView | undefined): boolean {
+  return task !== undefined && isActiveStatus(task.status);
+}
+
+/**
  * 把任务状态翻成格子状态。
  * @param record 所在记录：没有任务时从它的 submitErrors 里找这一格的失败原因
  * @param index 格子序号，从 0 开始
