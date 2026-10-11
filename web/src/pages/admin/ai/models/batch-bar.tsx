@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { checkDeadline } from "@/utils/admin/model-body";
 
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { batchLabel, type BatchPatch, type ModelBatch } from "./use-model-batch";
 
@@ -259,18 +259,15 @@ function EditDialog({
                 hint="上游模型 ID 不变；渠道不支持该类型时，已上线的模型会保存失败"
                 error={channelError ?? undefined}
               >
-                <NativeSelect
+                <OptionSelect
                   value={channel}
-                  onChange={(event) => setChannel(event.target.value)}
+                  onValueChange={setChannel}
                   aria-label="所属渠道"
-                >
-                  <option value="">选择渠道</option>
-                  {channels.map((item) => (
-                    <option key={item.key} value={item.key}>
-                      {item.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  options={[
+                    { value: "", label: "选择渠道" },
+                    ...channels.map((item) => ({ value: item.key, label: item.name })),
+                  ]}
+                />
               </FormField>
             )}
           </div>

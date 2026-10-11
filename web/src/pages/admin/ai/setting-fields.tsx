@@ -7,7 +7,7 @@ import type {
 } from "@/utils/admin/settings-form";
 
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 
 /**
  * 按插件声明（channelSettings / import.args）渲染的表单字段，顺序即声明顺序。
@@ -62,20 +62,17 @@ export function SettingFields({
               error={error}
               required={field.required}
             >
-              <NativeSelect
+              <OptionSelect
                 id={id}
                 value={typeof value === "string" ? value : ""}
                 disabled={disabled}
-                aria-invalid={!!error}
-                onChange={(event) => onChange(field.name, event.target.value)}
-              >
-                <option value="">{field.required ? "请选择" : "（不设置）"}</option>
-                {field.options.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </NativeSelect>
+                invalid={!!error}
+                onValueChange={(next) => onChange(field.name, next)}
+                options={[
+                  { value: "", label: field.required ? "请选择" : "（不设置）" },
+                  ...field.options.map((option) => ({ value: option, label: option })),
+                ]}
+              />
             </FormField>
           );
         }

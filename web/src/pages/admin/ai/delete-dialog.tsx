@@ -11,7 +11,7 @@ import type {
   DeleteTarget,
   PluginView,
 } from "@/api/admin/ai/type.d";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -313,18 +313,17 @@ function BlockerItem({
             <>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground shrink-0 text-xs">全部迁到</span>
-                <NativeSelect
-                  className="h-8 text-xs"
+                <OptionSelect
+                  size="sm"
+                  className="text-xs"
                   aria-label="迁移到的渠道"
                   value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                >
-                  {others.map((item) => (
-                    <option key={item.key} value={item.key}>
-                      {item.name}（{channelHealth(item, plugins).label}）
-                    </option>
-                  ))}
-                </NativeSelect>
+                  onValueChange={setTo}
+                  options={others.map((item) => ({
+                    value: item.key,
+                    label: `${item.name}（${channelHealth(item, plugins).label}）`,
+                  }))}
+                />
                 <Button
                   size="sm"
                   variant="outline"

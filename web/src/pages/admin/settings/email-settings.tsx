@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { sendSmtpTest, updateSmtpSettings } from "@/api/admin/settings";
 import type { SmtpSettings } from "@/api/admin/settings/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
@@ -237,12 +237,16 @@ function SmtpForm({
                 />
               </FormField>
               <FormField label="加密" htmlFor="smtp-encryption">
-                <NativeSelect
+                <OptionSelect
                   id="smtp-encryption"
                   value={values.encryption}
                   disabled={disabled}
-                  onChange={(event) => {
-                    const encryption = event.target.value as SmtpEncryption;
+                  options={(Object.keys(ENCRYPTION_LABEL) as SmtpEncryption[]).map((key) => ({
+                    value: key,
+                    label: ENCRYPTION_LABEL[key],
+                  }))}
+                  onValueChange={(value) => {
+                    const encryption = value as SmtpEncryption;
                     // 端口还是上一种加密方式的默认值时，顺手换成新方式的默认值
                     const isDefault = values.port === SMTP_DEFAULT_PORT[values.encryption];
                     patch({
@@ -250,13 +254,7 @@ function SmtpForm({
                       ...(isDefault ? { port: SMTP_DEFAULT_PORT[encryption] } : {}),
                     });
                   }}
-                >
-                  {(Object.keys(ENCRYPTION_LABEL) as SmtpEncryption[]).map((key) => (
-                    <option key={key} value={key}>
-                      {ENCRYPTION_LABEL[key]}
-                    </option>
-                  ))}
-                </NativeSelect>
+                />
               </FormField>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

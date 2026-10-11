@@ -127,13 +127,13 @@ export function PluginTable({
         <FilterSelect
           aria-label="按来源筛选"
           value={source}
-          onChange={(event) => filter(setSource)(event.target.value)}
+          onValueChange={filter(setSource)}
           options={SOURCE_OPTIONS}
         />
         <FilterSelect
           aria-label="按状态筛选"
           value={state}
-          onChange={(event) => filter(setState)(event.target.value)}
+          onValueChange={filter(setState)}
           options={STATUS_OPTIONS}
         />
         {filtering && (

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { MODEL_STATUS_LABEL, modelHealth } from "@/utils/admin/health";
@@ -108,31 +108,25 @@ export function ModelTable({
             ),
           )}
         </Segmented>
-        <NativeSelect
+        <OptionSelect
           aria-label="按渠道筛选"
-          className="h-8 w-auto text-xs"
+          size="sm"
+          className="w-auto text-xs"
           value={channel}
-          onChange={(event) => filter(setChannel)(event.target.value)}
-        >
-          <option value="">全部渠道</option>
-          {channels.map((item) => (
-            <option key={item.key} value={item.key}>
-              {item.name}
-            </option>
-          ))}
-        </NativeSelect>
-        <NativeSelect
+          onValueChange={filter(setChannel)}
+          options={[
+            { value: "", label: "全部渠道" },
+            ...channels.map((item) => ({ value: item.key, label: item.name })),
+          ]}
+        />
+        <OptionSelect
           aria-label="按状态筛选"
-          className="h-8 w-auto text-xs"
+          size="sm"
+          className="w-auto text-xs"
           value={state}
-          onChange={(event) => filter(setState)(event.target.value)}
-        >
-          {STATES.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </NativeSelect>
+          onValueChange={filter(setState)}
+          options={STATES.map(([value, label]) => ({ value, label }))}
+        />
         <span className="text-muted-foreground ml-auto text-xs tabular-nums">
           {shown.length} / {models.length}
         </span>

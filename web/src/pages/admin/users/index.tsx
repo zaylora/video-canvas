@@ -3,7 +3,7 @@ import { MotionConfig } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
@@ -294,18 +294,17 @@ export default function UsersPage() {
                   </SegmentedItem>
                 ))}
               </Segmented>
-              <NativeSelect
+              <OptionSelect
                 aria-label="角色筛选"
+                size="sm"
                 className="w-34"
                 value={list.role}
-                onChange={(event) => list.setRole(event.target.value as RoleFilter)}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </NativeSelect>
+                onValueChange={(value) => list.setRole(value as RoleFilter)}
+                options={ROLE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
               <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs tabular-nums">
                 {list.refreshing && list.state !== "loading" && (
                   <Loader2 className="size-3.5 animate-spin" aria-label="加载中" />

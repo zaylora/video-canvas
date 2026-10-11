@@ -61,7 +61,7 @@ import {
 } from "@/components/admin-ui/form-section";
 import { InitialAvatar } from "@/components/admin-ui/initial-avatar";
 import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
@@ -455,6 +455,24 @@ function DialogForm({
     changePluginVersion(key, latestVersion(next)?.version ?? "");
   };
 
+  /** 插件是否支持某种类型 */
+  const supportsKind = (item: PluginView, kind: string) =>
+    kind in (latestVersion(item)?.meta?.endpoints ?? {});
+
+  /**
+   * 切协议类型筛选：下拉里只剩这个类型的协议；新建时如果当前选中的不属于它，就改选这个类型里第一个可用的协议。
+   * 编辑已有渠道时只筛选列表，不替它换协议。
+   */
+  const changePluginKind = (kind: string) => {
+    setPluginKind(kind);
+    if (!isNew || !kind) return;
+    const matches = plugins.filter((item) => item.enabled && supportsKind(item, kind));
+    const current = plugins.find((item) => item.key === form.pluginKey);
+    if (matches.length > 0 && !(current && supportsKind(current, kind))) {
+      onPluginChange(matches[0].key);
+    }
+  };
+
   const openCredConfirm = () => {
     setCredConfirmChecked(false);
     setCredConfirmOpen(true);
@@ -650,7 +668,7 @@ function DialogForm({
                 {!readOnly && (
                   <KindFilter
                     value={pluginKind}
-                    onChange={setPluginKind}
+                    onChange={changePluginKind}
                     slideId="channel-plugin-kind"
                   />
                 )}
@@ -676,7 +694,7 @@ function DialogForm({
                       .filter(
                         (item) =>
                           !pluginKind ||
-                          pluginKind in (latestVersion(item)?.meta?.endpoints ?? {}) ||
+                          supportsKind(item, pluginKind) ||
                           item.key === form.pluginKey,
                       )
                       .map((item) => (
@@ -826,25 +844,27 @@ function DialogForm({
                 <CollapsibleContent className="mt-2 flex flex-col gap-3.5">
                   <Zone title="插件版本">
                     <FormField label="固定版本" htmlFor="channel-version">
-                      <NativeSelect
+                      <OptionSelect
                         id="channel-version"
                         value={form.pluginVersion}
                         disabled={readOnly}
-                        onChange={(event) =>
-                          changePluginVersion(form.pluginKey, event.target.value)
-                        }
-                      >
-                        {!version && (
-                          <option value={form.pluginVersion}>
-                            {form.pluginVersion || "请选择"}
-                          </option>
-                        )}
-                        {(plugin?.versions ?? []).map((item) => (
-                          <option key={item.id} value={item.version}>
-                            {item.version}
-                          </option>
-                        ))}
-                      </NativeSelect>
+                        placeholder="请选择"
+                        onValueChange={(value) => changePluginVersion(form.pluginKey, value)}
+                        options={[
+                          ...(version
+                            ? []
+                            : [
+                                {
+                                  value: form.pluginVersion,
+                                  label: form.pluginVersion || "请选择",
+                                },
+                              ]),
+                          ...(plugin?.versions ?? []).map((item) => ({
+                            value: item.version,
+                            label: item.version,
+                          })),
+                        ]}
+                      />
                     </FormField>
                     {upgrade && (
                       <Notice tone="info" title={`有新版本 ${upgrade.version}`}>

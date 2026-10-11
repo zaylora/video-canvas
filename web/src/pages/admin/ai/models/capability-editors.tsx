@@ -13,6 +13,7 @@ import type {
 } from "@/api/model/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { ToggleChip } from "@/components/admin-ui/toggle-chip";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -555,16 +556,18 @@ export function AddParamRow({
         value={label}
         onChange={(event) => setLabel(event.target.value)}
       />
-      <select
+      <OptionSelect
         aria-label="新参数类型"
-        className="border-input focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 h-8 rounded-lg border bg-transparent px-2.5 text-xs outline-none transition-colors focus-visible:ring-1"
+        size="sm"
+        className="w-24 text-xs"
         value={type}
-        onChange={(event) => setType(event.target.value as ParamType)}
-      >
-        <option value="enum">枚举</option>
-        <option value="number">数字</option>
-        <option value="boolean">开关</option>
-      </select>
+        onValueChange={(next) => setType(next as ParamType)}
+        options={[
+          { value: "enum", label: "枚举" },
+          { value: "number", label: "数字" },
+          { value: "boolean", label: "开关" },
+        ]}
+      />
       <Button size="sm" variant="outline" disabled={!nameOk} onClick={add}>
         <Plus />
         添加参数

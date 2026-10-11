@@ -9,7 +9,7 @@ import {
 } from "@/components/admin-ui/copy-block";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Tag } from "@/components/admin-ui/tag";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,19 +61,17 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
             </>
           }
         >
-          <NativeSelect
+          <OptionSelect
             id="storage-ttl"
-            value={form.signedTtlSec}
+            value={String(form.signedTtlSec)}
             disabled={readOnly}
-            aria-invalid={!!errors.signedTtlSec}
-            onChange={(event) => patch({ signedTtlSec: Number(event.target.value) })}
-          >
-            {ttlOptions(form.signedTtlSec).map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </NativeSelect>
+            invalid={!!errors.signedTtlSec}
+            onValueChange={(value) => patch({ signedTtlSec: Number(value) })}
+            options={ttlOptions(form.signedTtlSec).map((item) => ({
+              value: String(item.value),
+              label: item.label,
+            }))}
+          />
         </FormField>
       ) : (
         <FormField

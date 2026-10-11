@@ -147,13 +147,13 @@ export function ChannelTable({
         <FilterSelect
           aria-label="按插件筛选"
           value={plugin}
-          onChange={(event) => filter(setPlugin)(event.target.value)}
+          onValueChange={filter(setPlugin)}
           options={[["", "全部插件"], ...plugins.map((item) => [item.key, item.name] as const)]}
         />
         <FilterSelect
           aria-label="按状态筛选"
           value={state}
-          onChange={(event) => filter(setState)(event.target.value)}
+          onValueChange={filter(setState)}
           options={STATUS_OPTIONS}
         />
         {filtering && (
