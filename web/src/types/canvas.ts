@@ -47,6 +47,8 @@ export type CanvasNodeData = {
   outputs?: NodeOutput[];
   /** 当前选中的 outputs[].id */
   activeOutputId?: string;
+  /** 这个节点是从哪个节点扩图出来的（原图节点 id）。两者之间的连线只表示来源，不当参考图，参考图只有合成图 */
+  outpaintFrom?: string;
 };
 
 /** 节点的一版生成产物 */

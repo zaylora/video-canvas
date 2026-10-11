@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
+import { toast } from "sonner";
 
 import {
   NodeCard,
@@ -29,12 +30,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { NODE_META } from "@/constants/canvas";
 import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
+import { useOutpaintStore } from "@/store/outpaint";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
+import { outpaintRunner } from "@/utils/canvas/outpaint-run";
 import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 import {
@@ -327,14 +330,30 @@ function MediaTaskNode({
   });
   const uploadFailed = interrupted || isUploadFailed(data);
   const retryable = view.phase === "failed";
+  /** 扩图的合成图还没传上去（读图 / 合成 / 上传阶段失败）：重试是从合成重来，不是重新提交任务 */
+  const outpaintBeforeUpload = !!data.outpaintFrom && manualRefs(vm.params, "images").length === 0;
+  const retryOutpaint = useCallback(async () => {
+    const started = await outpaintRunner.retry(id, (nodeId, update) =>
+      updateNodeData(nodeId, (node) => update(node.data)),
+    );
+    if (!started) toast("扩图的重试材料已经失效，请回到原图重新扩图");
+  }, [id, updateNodeData]);
   /** 上传失败的重试是用留着的文件重新传，不是重新提交生成任务；文件没了（刷新后）就没有重试 */
   const retry = uploadFailed
     ? uploadRunner.canRetry(id)
       ? () => void uploadRunner.retry(id, (nodeId, patch) => updateNodeData(nodeId, patch))
       : undefined
-    : () => void vm.submit();
+    : outpaintBeforeUpload
+      ? () => void retryOutpaint()
+      : () => void vm.submit();
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
+
+  // 取消选中或变成多选时退出扩图模式（只在这里退，不靠卸载：开发环境的严格模式会让卸载清理多跑一次）
+  const leaveOutpaint = useOutpaintStore((state) => state.leave);
+  useEffect(() => {
+    if (!selected || multiSelected) leaveOutpaint(id);
+  }, [id, leaveOutpaint, multiSelected, selected]);
 
   return (
     <>
@@ -353,13 +372,17 @@ function MediaTaskNode({
           placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
           mediaType={mediaType}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
+          // 扩图在合成 / 上传的阶段还没有任务，没有可取消的东西（设计稿 6.17：本期不做）
           onCancel={
-            vm.view.phase === "queued" || vm.view.phase === "running" ? vm.cancel : undefined
+            (vm.view.phase === "queued" || vm.view.phase === "running") &&
+            !outpaintRunner.isActive(id)
+              ? vm.cancel
+              : undefined
           }
           cancelling={vm.cancelling}
           onRetry={retryable ? retry : undefined}
-          retryDisabled={!uploadFailed && !!vm.blockedReason}
-          retryHint={(!uploadFailed && vm.blockedReason) || undefined}
+          retryDisabled={!uploadFailed && !outpaintBeforeUpload && !!vm.blockedReason}
+          retryHint={(!uploadFailed && !outpaintBeforeUpload && vm.blockedReason) || undefined}
           active={!!selected}
         />
       </NodeCard>

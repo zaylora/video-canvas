@@ -67,6 +67,7 @@ export function serializeGraph(
           ...(rest.error !== undefined ? { error: rest.error } : {}),
           ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
           ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
+          ...(rest.outpaintFrom !== undefined ? { outpaintFrom: rest.outpaintFrom } : {}),
         };
         if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
         return {

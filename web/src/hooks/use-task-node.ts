@@ -15,6 +15,7 @@ import { useCreditsStore } from "@/store/credits";
 import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
+import { withoutOutpaintSource } from "@/utils/canvas/outpaint-node";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import { referencedText } from "@/utils/canvas/text-body";
 import {
@@ -87,7 +88,12 @@ export function useTaskNode(
 
   // ---- 参数、生成方式与上游连线 ----
   const params = useMemo(() => readParams(data), [data]);
-  const connections = useNodeConnections({ id, handleType: "target" });
+  const allConnections = useNodeConnections({ id, handleType: "target" });
+  // 扩图出来的节点：来自原图的那条线只表示来源，参考图只有合成图（设计稿 6.17）
+  const connections = useMemo(
+    () => withoutOutpaintSource(allConnections, data.outpaintFrom),
+    [allConnections, data.outpaintFrom],
+  );
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
   const links = useMemo<IncomingLink[]>(() => {
     const byId = new Map(upstream.map((node) => [node.id, node.data]));

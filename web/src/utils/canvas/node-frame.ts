@@ -1,5 +1,5 @@
 import type { Capabilities } from "@/api/model/type";
-import { effectiveValue, paramEntries } from "@/utils/tasks/capabilities";
+import { effectiveValue, paramEntries, type ParamEntry } from "@/utils/tasks/capabilities";
 
 /** 还不知道画幅时节点用的宽高比：16:9 */
 export const DEFAULT_NODE_ASPECT = 16 / 9;
@@ -53,10 +53,18 @@ export function paramAspect(
   caps: Capabilities | undefined,
   params: Record<string, unknown>,
 ): number | null {
-  const entry = paramEntries(caps).find((field) =>
+  const entry = ratioParam(caps);
+  return entry ? parseAspect(effectiveValue(entry, params, entry.name)) : null;
+}
+
+/**
+ * 模型的比例参数（aspect_ratio 或 ratio）。
+ * @returns 参数名、是否开放给用户、可选值等；模型没有比例参数时为 undefined
+ */
+export function ratioParam(caps: Capabilities | undefined): ParamEntry | undefined {
+  return paramEntries(caps).find((field) =>
     (RATIO_PARAM_NAMES as readonly string[]).includes(field.name),
   );
-  return entry ? parseAspect(effectiveValue(entry, params, entry.name)) : null;
 }
 
 /**

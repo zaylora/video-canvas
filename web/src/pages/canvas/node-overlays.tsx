@@ -4,6 +4,7 @@ import { NodeToolbar, Position, useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
+import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
 import {
   PANEL_OFFSET,
   useMarqueeSelecting,
@@ -13,11 +14,14 @@ import {
 } from "@/components/canvas/hooks/use-panel-placement";
 import { NODE_TOOLBAR } from "@/constants/node-toolbar";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
+import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
+import { useOutpaintStore } from "@/store/outpaint";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
+import { outpaintModels } from "@/utils/canvas/outpaint-node";
 
 import { useNodePreview } from "./preview-context";
 
@@ -73,6 +77,9 @@ export function NodeOverlays({
   const paneBusy = usePaneBusy();
   const nodeDragging = useNodeDragging(id);
   const zoom = useStore((state) => state.transform[2]);
+  const outpainting = useOutpaintStore((state) => state.nodeId === id);
+  const enterOutpaint = useOutpaintStore((state) => state.enter);
+  const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
   const gate = toolbarGate(data);
@@ -95,6 +102,20 @@ export function NodeOverlays({
     },
     [data, history, id, updateNodeData],
   );
+
+  /** 点「扩图」：只进入扩图模式、摆出框和面板，不生成任何图片；没有能做扩图的模型就不进 */
+  const startOutpaint = useCallback(() => {
+    if (imageModels.status !== "ready") {
+      toast("正在加载模型清单，稍后再试");
+      return;
+    }
+    if (outpaintModels(imageModels.models).length === 0) {
+      toast("暂无支持图生图的模型");
+      return;
+    }
+    enterOutpaint(id);
+  }, [enterOutpaint, id, imageModels.models, imageModels.status]);
+  const onAction = data.kind === "image" ? { outpaint: startOutpaint } : undefined;
 
   const { src, text, label, fileName } = data;
   const onTail = {
@@ -121,6 +142,9 @@ export function NodeOverlays({
 
   // 拖着这个节点时两块都收起，松手后重新浮出来
   if (nodeDragging) return null;
+
+  // 扩图模式：框 + 面板取代平时的功能区和生成面板
+  if (outpainting) return <OutpaintOverlay id={id} data={data} />;
 
   return (
     <>
@@ -151,6 +175,7 @@ export function NodeOverlays({
                     }
                   : undefined
               }
+              onAction={onAction}
               onTail={onTail}
             />
           </motion.div>
