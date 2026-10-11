@@ -3,6 +3,7 @@ import type {
   ConfigIssue,
   PluginMeta,
   PluginUploadResult,
+  PluginVersionAdjusted,
   PluginVersionView,
   PluginView,
 } from "@/api/admin/ai/type";
@@ -68,6 +69,42 @@ export function summarizeUpload(result: PluginUploadResult | null | undefined): 
     title: issues.length > 0 ? `预检未通过：${issues.length} 个问题` : "预检未通过",
     issues,
   };
+}
+
+/**
+ * 这次预检未通过，是不是只因为“代码与已有版本完全相同”（后端把问题挂在 meta 上）。
+ * 这时没有哪里要改，发给 AI 没有意义，不给“复制修复信息”。
+ * 宁可漏判也不误判：每个问题都必须是 meta 路径且文案含“完全相同”；后端改了措辞这里返回 false，
+ * 只是按钮重新出现，无害；误判则会把“没导出 meta”之类真问题的按钮藏掉。
+ */
+export function isSameCodeRejection(issues: ConfigIssue[] | null | undefined): boolean {
+  return (
+    !!issues?.length &&
+    issues.every((issue) => issue.path === "meta" && issue.message.includes("完全相同"))
+  );
+}
+
+/** 版本号被自动调整后给人看的提示：一句结果加一句后续操作 */
+export type VersionAdjustedNotice = {
+  /** 代码里写的是什么、实际登记成了什么 */
+  title: string;
+  /** 提醒渠道要自己切到新版本 */
+  hint: string;
+};
+
+/**
+ * 上传时版本号被自动调整（见 PluginUploadResult.version_adjusted）→ 提示文案。
+ * from 为空串说明代码里没写或写得不合法。没有调整（字段缺失或为 null）、登记版本号为空时返回 null。
+ * 渠道固定在旧版本上，登记新版本不会让渠道自动切换，所以总要带上“去升级渠道”的提醒。
+ */
+export function describeVersionAdjusted(
+  adjusted: PluginVersionAdjusted | null | undefined,
+): VersionAdjustedNotice | null {
+  if (!adjusted?.to) return null;
+  const title = adjusted.from
+    ? `代码里写的是 v${adjusted.from}，已自动登记为 v${adjusted.to}`
+    : `代码里没有写合法的版本号，已自动登记为 v${adjusted.to}`;
+  return { title, hint: "渠道不会自动切换版本，请到“升级渠道”里切过去。" };
 }
 
 /** sha256 前 8 位 */

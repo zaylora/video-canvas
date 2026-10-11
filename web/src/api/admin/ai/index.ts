@@ -54,7 +54,8 @@ export const listPlugins = async (): Promise<PluginView[]> => {
 };
 
 /**
- * 上传插件文件（super_admin）；预检不通过也返回 200，结果在 accepted / issues 里
+ * 上传插件文件（super_admin）；预检不通过也返回 200，结果在 accepted / issues 里。
+ * 版本号被自动调整时结果带 version_adjusted，没有调整时为 null
  * @param file .js 文件（≤512KB）
  * @returns 预检结果
  */
@@ -66,6 +67,7 @@ export const uploadPlugin = async (file: File): Promise<PluginUploadResult> => {
     accepted: !!result?.accepted,
     issues: result?.issues ?? [],
     version: result?.version ?? null,
+    version_adjusted: result?.version_adjusted ?? null,
   };
 };
 

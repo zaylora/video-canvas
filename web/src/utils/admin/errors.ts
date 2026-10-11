@@ -24,6 +24,8 @@ export const ADMIN_ERROR_CODE = {
   CHANNEL_SECRET_MISSING: 50015,
   /** 插件运行器不可用 */
   RUNNER_UNAVAILABLE: 50021,
+  /** 插件调用失败：连通性检查 / 导入时插件抛异常、返回不合规，原因在 msg（已脱敏） */
+  PLUGIN_OP_FAILED: 50022,
   /** 存储：已有素材引用，定位字段不能修改（被锁字段写在 msg 里） */
   STORAGE_FIELD_LOCKED: 51005,
   /** 存储：配置已被其他人修改（version 过期） */
@@ -37,6 +39,10 @@ export const isRunnerDown = (error: unknown) => {
   const e = asErrorLike(error);
   return e.status === 503 || e.code === ADMIN_ERROR_CODE.RUNNER_UNAVAILABLE;
 };
+
+/** 插件本身出错：业务码 50022（502）；原因在错误的 message 里 */
+export const isPluginOpFailed = (error: unknown) =>
+  asErrorLike(error).code === ADMIN_ERROR_CODE.PLUGIN_OP_FAILED;
 
 /** 渠道 Key 未设置：409 且业务码 50015（只看 409 会把其他冲突也算进来） */
 export const isSecretMissing = (error: unknown) => {

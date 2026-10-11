@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from "react";
 import { FileCode2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { uploadPlugin } from "@/api/admin/ai";
 import type { PluginUploadResult } from "@/api/admin/ai/type.d";
@@ -14,7 +15,15 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { isRunnerDown, isTooLarge } from "@/utils/admin/errors";
-import { checkPluginFile, shortSha, summarizeUpload, PLUGIN_MAX_BYTES } from "@/utils/admin/plugin";
+import {
+  checkPluginFile,
+  describeVersionAdjusted,
+  isSameCodeRejection,
+  shortSha,
+  summarizeUpload,
+  PLUGIN_MAX_BYTES,
+} from "@/utils/admin/plugin";
+import { buildUploadRepairReport, REPAIR_COPY_FAILED } from "@/utils/admin/repair-report";
 
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import { Notice } from "@/components/admin-ui/notice";
@@ -25,7 +34,8 @@ import { PLUGIN_AUTHORING_PROMPT } from "./plugin-prompt";
  * 上传插件对话框（仅运维）。
  * - 选文件后先做本地检查（扩展名、大小），不通过不发请求；
  * - 预检不通过也是 HTTP 200：问题精确到字段路径、内联显示，对话框不关闭，用户换文件可再传；
- * - 通过后切成功态，给“下一步：新建渠道”；
+ *   问题旁有“复制修复信息”，把问题整理成一段文本，发给 AI 修好再传；
+ * - 通过后切成功态，给“下一步：新建渠道”；版本号被自动调整时在成功态里内联提示，并提醒渠道不会自动切换；
  * - 503 / 50021：提示 runner 不可用，保留已选文件可重试。
  * @param onUploaded 预检通过并登记后（刷新插件清单）
  * @param onNextStep 点“下一步：新建渠道”，带上插件 key
@@ -72,6 +82,15 @@ function UploadBody({
 
   const summary = result ? summarizeUpload(result) : null;
   const accepted = !!result?.accepted;
+  const versionNotice = accepted ? describeVersionAdjusted(result?.version_adjusted) : null;
+  /** 预检未通过且有问题可发时的修复信息（代码与已有版本完全相同时没有东西可改，不给）；未通过时上传结果里没有版本对象，通常拿不到插件 key，那就不写“插件：”这一行 */
+  const repairText =
+    summary && !accepted && summary.issues.length > 0 && !isSameCodeRejection(summary.issues)
+      ? buildUploadRepairReport({
+          issues: summary.issues,
+          pluginKey: result?.version?.plugin_key,
+        })
+      : null;
 
   const pick = (next: File | null) => {
     setResult(null);
@@ -179,7 +198,20 @@ function UploadBody({
 
       {summary && !accepted && (
         <section aria-label="预检结果" className="flex flex-col gap-2">
-          <Notice tone="danger" title={summary.title} />
+          <Notice
+            tone="danger"
+            title={summary.title}
+            action={
+              repairText ? (
+                <CopyButton
+                  variant="outline"
+                  text={repairText}
+                  label="复制修复信息"
+                  onError={() => toast.error(REPAIR_COPY_FAILED)}
+                />
+              ) : undefined
+            }
+          />
           <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
             {summary.issues.map((issue, index) => (
               <li
@@ -196,7 +228,11 @@ function UploadBody({
               </li>
             ))}
           </ul>
-          <p className="text-muted-foreground text-xs">修改文件后重新选择即可再次上传。</p>
+          <p className="text-muted-foreground text-xs">
+            {repairText
+              ? "把“复制修复信息”发给 AI 修好后，重新选择文件即可再次上传，版本号不用改。"
+              : "修改文件后重新选择即可再次上传。"}
+          </p>
         </section>
       )}
 
@@ -210,6 +246,12 @@ function UploadBody({
               {shortSha(result.version.sha256)}…
             </dd>
           </dl>
+        </Notice>
+      )}
+
+      {versionNotice && (
+        <Notice tone="warning" title={versionNotice.title}>
+          {versionNotice.hint}
         </Notice>
       )}
 

@@ -112,14 +112,24 @@ export interface PluginView {
   versions: PluginVersionView[];
 }
 
+/** 上传时版本号被自动调整：代码里写的版本号缺失、不合法、已被占用或不比已有版本高 */
+export interface PluginVersionAdjusted {
+  /** 代码里写的版本号；空串表示没写或写得不合法 */
+  from: string;
+  /** 实际登记的版本号 */
+  to: string;
+}
+
 /** POST /admin/ai/plugins（上传）的结果：预检不通过也是 200 */
 export interface PluginUploadResult {
   /** 是否通过预检并登记 */
   accepted: boolean;
   /** 预检问题 */
   issues: ConfigIssue[];
-  /** 通过时是新登记的版本 */
+  /** 通过时是新登记的版本；未通过时为 null（拿不到插件 key） */
   version: PluginVersionView | null;
+  /** 版本号被自动调整时才有；没有调整、预检未通过时缺省或为 null */
+  version_adjusted?: PluginVersionAdjusted | null;
 }
 
 // ---------------------------------------------------------------- 渠道

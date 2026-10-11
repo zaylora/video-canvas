@@ -967,7 +967,12 @@ function DialogForm({
                   只读 · 需要运维权限
                 </span>
               )}
-              {!readOnly && freshCheck && <CheckResult state={freshCheck} />}
+              {!readOnly && freshCheck && (
+                <CheckResult
+                  state={freshCheck}
+                  plugin={{ key: form.pluginKey, version: form.pluginVersion }}
+                />
+              )}
               <div className="ml-auto flex items-center gap-2">
                 {!readOnly && (
                   <Button
