@@ -35,4 +35,22 @@ describe("协议插件编写提示词", () => {
     expect(PLUGIN_AUTHORING_PROMPT).not.toContain("RunningHub");
     expect(PLUGIN_AUTHORING_PROMPT).not.toContain("ComfyUI");
   });
+
+  test("不再要求声明结果下载域名：提示词里没有 allowedHosts", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("allowedHosts");
+  });
+
+  test("请求描述的绝对地址可以是任意公网地址，只有和渠道 baseUrl 同源才注入 Key", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("任意公网 http/https 地址");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain(
+      "只有和渠道 baseUrl 的协议、域名、端口都一致时，宿主才会注入 Key",
+    );
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("其他地址不会带 Key");
+  });
+
+  test("统一结果的 url 产物不需要声明域名", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain(
+      "url 产物必须是 http/https 地址，结果文件可以放在任意公网域名，不需要声明域名",
+    );
+  });
 });

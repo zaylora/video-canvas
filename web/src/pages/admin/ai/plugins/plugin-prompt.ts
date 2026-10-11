@@ -31,7 +31,6 @@ module.exports.meta 示例：
   version: "1.0.0",                 // semver；同一 key 下唯一，上传后不可修改，改代码必须升版本号
   description: "一句话说明",
   auth: { type: "bearer" },         // none / bearer / header(需 name) / query(需 name) / custom
-  allowedHosts: [],                 // 结果文件可能下载自哪些域名（小写域名或 *.example.com，不要 IP/端口/协议）
   endpoints: {                      // 键是模型种类：text / video / image / audio
     text:  { mode: "sync" },        // sync：一次请求直接出结果
     video: { mode: "async" }        // async：先提交拿到任务 id，再轮询
@@ -79,7 +78,7 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   模型/�
 {
   method: "POST",                        // GET / POST / PUT / PATCH / DELETE
   path: "/v1/xxx",                       // 相对渠道 baseUrl，必须以 / 开头，不能含 .. 或以 // 开头；与 url 二选一
-  url: "https://cdn.example.com/x",      // 绝对地址，主机必须在 allowedHosts 内；与 path 二选一
+  url: "https://cdn.example.com/x",      // 绝对地址，可以是任意公网 http/https 地址，但只有和渠道 baseUrl 的协议、域名、端口都一致时，宿主才会注入 Key，其他地址不会带 Key；与 path 二选一
   query: { a: 1, b: "x" },               // 值只能是字符串/数字/布尔，null 与 undefined 会被忽略
   headers: { "X-Foo": "bar" },           // 禁止 Authorization、Cookie、Host、Content-Length 等；鉴权由宿主注入
   json: { ... },                         // 与 form / multipart 三选一，都不写表示无请求体
@@ -118,7 +117,7 @@ buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   模型/�
 - error.class 只能是：retryable（可重试）/ terminal（终止）/ moderation（内容审核不通过）/ provider_balance（上游余额不足）。
 - 上游因为“账号并发已满 / 系统繁忙 / 限流（如 HTTP 429、对应业务错误码）”拒绝提交时，一定要归为 retryable，不要归为 terminal：宿主会退避后重试（提交阶段最多 5 次）；归为 terminal 会直接让任务失败并退款。参数错误、鉴权失败、余额不足、内容审核不通过才是 terminal / provider_balance / moderation。
 - 宿主已经在渠道层面限制了“同时在上游生成的任务数”（运营在渠道里配“最大同时生成数”），超出的任务会在平台排队，不会打到上游；插件不需要自己做并发控制或排队。
-- text 模型的产物必须是 text；其他模型不能返回 text。url 产物必须是 http/https，且主机在 allowedHosts 或渠道 baseUrl 主机内（所以要把结果文件所在的域名写进 allowedHosts）。
+- text 模型的产物必须是 text；其他模型不能返回 text。url 产物必须是 http/https 地址，结果文件可以放在任意公网域名，不需要声明域名。
 - 只支持 url 与 asset 两种文件产物，不支持内联 base64；上游只给 base64 时，返回 failed 并说明原因。
 - 文本产物请带上 usage：从上游响应里取实际 Token 用量（OpenAI 风格是 usage.prompt_tokens / completion_tokens），换成 { input_tokens, output_tokens }。按 Token 计费的模型会先按上限冻结积分，完成后按这个用量多退少补；不带 usage 时按冻结额全扣。
 - 一个任务对应画布上的一个节点、一个结果：不要让上游一次生成多张 / 多段（如 n、imageCount 大于 1），否则多出来的结果用户只付了一份钱、画布上也只显示一个。
@@ -171,7 +170,6 @@ module.exports = {
     name: "Demo 平台",
     version: "1.0.0",
     auth: { type: "bearer" },
-    allowedHosts: [],
     endpoints: { text: { mode: "sync" }, video: { mode: "async" } },
     import: { args: {} }
   },
@@ -252,7 +250,6 @@ module.exports = {
 - async endpoint 实现了 buildQueryRequest / parseQueryResponse；sync endpoint 的 parseSubmitResponse 返回了 immediate。
 - 没有使用 ES6 以上语法、没有 require / 网络 / 定时器；所有返回值可 JSON.stringify。
 - 请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有把文件内容内联进请求。
-- 产物的域名已写进 allowedHosts（或就在渠道 baseUrl 的主机上）。
 - 连通性检查与模型导入是本次生成的默认交付内容：已实现廉价只读的 buildCheckRequest；已在 meta 里声明 import，且 buildImportRequest / parseImportResponse 成对实现；检查和导入都没有提交生成任务；导入草稿含 upstreamModel / kind / label / params / paramHints，工作流草稿的 params 映射与 buildSubmitRequest 完全一致；paramHints 的参数名是模板里的，可选值和 params 里的档位对照表一致。
 - 文件输入已按上游字段要求选择直接 __fileRef、multipart fileRef 或经过校验的 prepared 值；提交代码没有无条件读取可能不存在的 ctx.prepared，也没有把文件内容内联进请求。
 - 读取的是 ctx.input.images / videos / audios 数组，不是旧的单个 image 字段；没有让上游一次出多个结果；文本产物带了 usage；没有在插件里处理积分或生成数量。

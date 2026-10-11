@@ -147,7 +147,7 @@ function RiskRow({
  * 配置页一屏三步：1 选平台（插件卡片）→ 2 连接（地址、Key、插件设置）→ 3 名称（标识按名称自动生成，可改）；
  * 插件版本、限流、启用、安全开关收在“高级设置”里（有新版本时默认展开）。
  * 底部是“检查连通性”（只检查已保存的渠道，通过后给“导入模型 / 新建模型”两个下一步）和“保存”。
- * 两个危险开关从关到开要勾选确认；新建时插件是 auth: custom 则“允许插件读取 Key”自动打开（必需）。
+ * “允许插件读取 Key”从关到开要勾选确认；新建时插件是 auth: custom 则它自动打开（必需）。
  * 配置页签保持挂载，切页签不丢未保存的修改。
  * @param initialTab 打开时停在哪个页签（来自 URL）；之后切换页签通过 onTabChange 写回 URL
  * @param channels 全部渠道：配置取最新的字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
@@ -375,8 +375,9 @@ function DialogForm({
   const [baselineFp, setBaselineFp] = useState(() => connectionFingerprint(initialForm, ""));
   const [dropped, setDropped] = useState<string[]>([]);
   const [credsReset, setCredsReset] = useState(false);
-  const [risk, setRisk] = useState<"trusted" | "cred" | null>(null);
-  const [riskChecked, setRiskChecked] = useState(false);
+  /** “允许插件读取 Key”的确认弹窗是否打开，以及里面的确认勾选 */
+  const [credConfirmOpen, setCredConfirmOpen] = useState(false);
+  const [credConfirmChecked, setCredConfirmChecked] = useState(false);
 
   /** 弹窗卸载（关闭、切换对象）时清掉脏标记，避免下次打开误提示“放弃修改” */
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
@@ -449,15 +450,14 @@ function DialogForm({
     changePluginVersion(key, latestVersion(next)?.version ?? "");
   };
 
-  const openRisk = (which: "trusted" | "cred") => {
-    setRiskChecked(false);
-    setRisk(which);
+  const openCredConfirm = () => {
+    setCredConfirmChecked(false);
+    setCredConfirmOpen(true);
   };
 
-  const confirmRisk = () => {
-    if (risk === "trusted") patch({ trustedInternal: true });
-    if (risk === "cred") patch({ allowCredentials: true });
-    setRisk(null);
+  const confirmCred = () => {
+    patch({ allowCredentials: true });
+    setCredConfirmOpen(false);
   };
 
   /**
@@ -936,17 +936,6 @@ function DialogForm({
 
                   <Zone title="安全开关" description="会记入审计日志" risk>
                     <RiskRow
-                      id="channel-trusted"
-                      title="允许访问内网"
-                      field="trusted_internal"
-                      checked={form.trustedInternal}
-                      disabled={readOnly}
-                      description="允许接口地址解析到内网地址（自建网关需要）。开启后，这个渠道的插件请求可以访问内网。"
-                      onChange={(checked) =>
-                        checked ? openRisk("trusted") : patch({ trustedInternal: false })
-                      }
-                    />
-                    <RiskRow
                       id="channel-cred"
                       title="允许插件读取 Key"
                       field="allow_credentials"
@@ -964,7 +953,7 @@ function DialogForm({
                             : "所选插件版本不需要接触 Key（鉴权由宿主注入），此开关不可用。"
                       }
                       onChange={(checked) =>
-                        checked ? openRisk("cred") : patch({ allowCredentials: false })
+                        checked ? openCredConfirm() : patch({ allowCredentials: false })
                       }
                     />
                   </Zone>
@@ -1012,40 +1001,32 @@ function DialogForm({
       </div>
 
       <ConfirmDialog
-        open={risk !== null}
-        title={risk === "cred" ? "开启“允许插件读取 Key”？" : "开启“允许访问内网”？"}
+        open={credConfirmOpen}
+        title="开启“允许插件读取 Key”？"
         destructive
         confirmLabel="开启"
-        confirmDisabled={!riskChecked}
+        confirmDisabled={!credConfirmChecked}
         description={
-          risk === "cred" ? (
-            <>
-              开启后，<b>{pluginLabel}</b>
-              {version && (
-                <>
-                  （sha256 <span className="font-mono">{shortSha(version.sha256)}</span>）
-                </>
-              )}
-              的代码能读取这个渠道的
-              Key。插件代码未经过评审，请确认你信任这份代码。此操作会记入审计日志。
-            </>
-          ) : (
-            <>
-              开启后，这个渠道的插件请求可以访问内网地址。请确认{" "}
-              <span className="font-mono">{form.baseUrl.trim() || "（未填写）"}</span>{" "}
-              是受信任的内部服务。此操作会记入审计日志。
-            </>
-          )
+          <>
+            开启后，<b>{pluginLabel}</b>
+            {version && (
+              <>
+                （sha256 <span className="font-mono">{shortSha(version.sha256)}</span>）
+              </>
+            )}
+            的代码能读取这个渠道的
+            Key。插件代码未经过评审，请确认你信任这份代码。此操作会记入审计日志。
+          </>
         }
-        onConfirm={confirmRisk}
-        onCancel={() => setRisk(null)}
+        onConfirm={confirmCred}
+        onCancel={() => setCredConfirmOpen(false)}
       >
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
-            checked={riskChecked}
-            onCheckedChange={(checked) => setRiskChecked(checked === true)}
+            checked={credConfirmChecked}
+            onCheckedChange={(checked) => setCredConfirmChecked(checked === true)}
           />
-          {risk === "cred" ? "我确认信任这份插件代码" : "我确认这个地址是受信任的内部服务"}
+          我确认信任这份插件代码
         </label>
       </ConfirmDialog>
     </>

@@ -66,8 +66,6 @@ export interface PluginMeta {
   description?: string;
   /** 鉴权声明；name 用于 header（头名）与 query（参数名） */
   auth?: { type?: PluginAuthType | string; name?: string } | null;
-  /** 结果下载可能访问的域名 */
-  allowedHosts?: string[] | null;
   /** 支持的生成方式，键是模型 kind */
   endpoints?: Record<string, { mode?: "sync" | "async" | string }> | null;
   /** 渠道上的额外设置 */
@@ -160,8 +158,6 @@ export interface ChannelView {
   plugin_version: string;
   /** 插件请求只能去这个地址 */
   base_url: string;
-  /** 允许 base_url 解析到内网地址 */
-  trusted_internal: boolean;
   /** 允许把 Key 交给 auth: custom 的插件 */
   allow_credentials: boolean;
   /** 插件 channelSettings 的取值 */
@@ -188,7 +184,6 @@ export interface ChannelCreateRequest {
   /** semver 字符串，固定到这个版本 */
   plugin_version: string;
   base_url: string;
-  trusted_internal?: boolean;
   allow_credentials?: boolean;
   settings?: Record<string, unknown>;
   rate_limit?: ChannelRateLimit;
@@ -236,7 +231,6 @@ export interface ChannelCheckDraftRequest {
   plugin_key: string;
   plugin_version: string;
   base_url: string;
-  trusted_internal?: boolean;
   allow_credentials?: boolean;
   settings?: Record<string, unknown>;
   /** 草稿 Key 明文，只在这次请求里用，不落库 */

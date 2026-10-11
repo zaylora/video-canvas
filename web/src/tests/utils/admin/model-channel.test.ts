@@ -51,7 +51,6 @@ const channel = (over: Partial<ChannelView>): ChannelView => ({
   plugin_version_id: 2,
   plugin_version: "0.2.0",
   base_url: "https://x.test",
-  trusted_internal: false,
   allow_credentials: true,
   settings: null,
   rate_limit: null,

@@ -56,7 +56,6 @@ const channel = (extra: Partial<ChannelView> = {}): ChannelView => ({
   plugin_version_id: 1,
   plugin_version: "1.0.0",
   base_url: "https://x.test",
-  trusted_internal: false,
   allow_credentials: false,
   settings: null,
   rate_limit: null,
@@ -145,19 +144,23 @@ describe("shortSha / describeAuth / metaSummary", () => {
     expect(metaSummary(null).endpoints).toEqual([]);
     const summary = metaSummary({
       auth: { type: "custom" },
-      allowedHosts: null,
       endpoints: { video: { mode: "async" }, text: {} },
       channelSettings: { region: { type: "enum", label: "区域" } },
       import: {},
     });
     expect(summary.authType).toBe("custom");
-    expect(summary.allowedHosts).toEqual([]);
     expect(summary.endpoints).toEqual([
       { kind: "video", mode: "async" },
       { kind: "text", mode: "?" },
     ]);
     expect(summary.settingNames).toEqual(["region"]);
     expect(summary.importable).toBe(true);
+  });
+
+  test("摘要里不再有结果下载域名白名单：旧版本 meta 里残留的 allowedHosts 也不会带出来", () => {
+    const legacyMeta = { auth: { type: "bearer" }, allowedHosts: ["cdn.example.com"] };
+    expect(Object.keys(metaSummary(legacyMeta))).not.toContain("allowedHosts");
+    expect(Object.keys(metaSummary(null))).not.toContain("allowedHosts");
   });
 });
 

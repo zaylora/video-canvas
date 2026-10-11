@@ -97,7 +97,6 @@ export type MetaSummary = {
   authType: string;
   auth: string;
   endpoints: Array<{ kind: string; mode: string }>;
-  allowedHosts: string[];
   settingNames: string[];
   importable: boolean;
   description?: string;
@@ -113,7 +112,6 @@ export function metaSummary(meta: PluginMeta | null | undefined): MetaSummary {
       kind,
       mode: value?.mode ?? "?",
     })),
-    allowedHosts: Array.isArray(meta?.allowedHosts) ? meta.allowedHosts : [],
     settingNames:
       meta?.channelSettings && typeof meta.channelSettings === "object"
         ? Object.keys(meta.channelSettings)

@@ -25,7 +25,6 @@ export type ChannelFormState = {
   pluginKey: string;
   pluginVersion: string;
   baseUrl: string;
-  trustedInternal: boolean;
   allowCredentials: boolean;
   enabled: boolean;
   rps: string;
@@ -43,7 +42,6 @@ export function emptyChannelForm(plugins: readonly PluginView[]): ChannelFormSta
     pluginKey: plugin?.key ?? "",
     pluginVersion: plugin?.versions?.[0]?.version ?? "",
     baseUrl: "https://",
-    trustedInternal: false,
     allowCredentials: false,
     enabled: true,
     rps: "",
@@ -64,7 +62,6 @@ export function channelFormFromView(view: ChannelView, fields: SettingField[]): 
     pluginKey: view.plugin_key ?? "",
     pluginVersion: view.plugin_version ?? "",
     baseUrl: view.base_url ?? "",
-    trustedInternal: !!view.trusted_internal,
     allowCredentials: !!view.allow_credentials,
     enabled: !!view.enabled,
     rps: numText(view.rate_limit?.rps),
@@ -169,7 +166,6 @@ export function buildChannelRequest(
     plugin_key: form.pluginKey,
     plugin_version: form.pluginVersion,
     base_url: form.baseUrl.trim(),
-    trusted_internal: form.trustedInternal,
     allow_credentials: form.allowCredentials,
     settings: settings.values,
     rate_limit: rateLimit,
@@ -187,8 +183,6 @@ export function buildChannelRequest(
     update.plugin_version = create.plugin_version;
   }
   if (create.base_url !== original.base_url) update.base_url = create.base_url;
-  if (create.trusted_internal !== !!original.trusted_internal)
-    update.trusted_internal = create.trusted_internal;
   if (create.allow_credentials !== !!original.allow_credentials)
     update.allow_credentials = create.allow_credentials;
   if (!sameJson(create.settings, original.settings)) update.settings = create.settings;
@@ -230,7 +224,6 @@ export function buildCheckDraftRequest(
     plugin_key: form.pluginKey,
     plugin_version: form.pluginVersion,
     base_url: form.baseUrl.trim(),
-    trusted_internal: form.trustedInternal,
     allow_credentials: form.allowCredentials,
     settings: settings.values,
   };
@@ -240,7 +233,7 @@ export function buildCheckDraftRequest(
 }
 
 /**
- * 影响连通性的配置指纹：地址、插件与版本、设置项、两个安全开关，加上这次填的 Key。
+ * 影响连通性的配置指纹：地址、插件与版本、设置项、“允许插件读取 Key”开关，加上这次填的 Key。
  * 名称、限流、启用不在其中——改它们不需要重新检查。检查结果记着当时的指纹，指纹变了结果就作废。
  */
 export function connectionFingerprint(form: ChannelFormState, secret: string): string {
@@ -248,7 +241,6 @@ export function connectionFingerprint(form: ChannelFormState, secret: string): s
     form.pluginKey,
     form.pluginVersion,
     form.baseUrl.trim(),
-    form.trustedInternal,
     form.allowCredentials,
     form.settings,
     secret.trim(),

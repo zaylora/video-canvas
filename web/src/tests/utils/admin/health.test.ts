@@ -39,7 +39,6 @@ const channel = (extra: Partial<ChannelView> = {}): ChannelView => ({
   plugin_version_id: 1,
   plugin_version: "1.0.0",
   base_url: "https://x.test",
-  trusted_internal: false,
   allow_credentials: false,
   settings: null,
   rate_limit: null,
