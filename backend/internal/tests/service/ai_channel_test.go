@@ -76,16 +76,16 @@ func TestAIChannelService_Create(t *testing.T) {
 		}
 	})
 
-	t.Run("enabled=false 与两个安全开关：创建时同样留痕", func(t *testing.T) {
+	t.Run("enabled=false 与“允许插件读取 Key”：创建时同样留痕", func(t *testing.T) {
 		e := newAchEnv(t)
 		in := createInput()
-		in.Enabled, in.TrustedInternal, in.AllowCredentials = false, true, true
+		in.Enabled, in.AllowCredentials = false, true
 		view, err := e.svc.Create(ctx, in)
-		if err != nil || view.Enabled || !view.TrustedInternal || !view.AllowCredentials {
+		if err != nil || view.Enabled || !view.AllowCredentials {
 			t.Fatalf("结果不符合预期：%+v %v", view, err)
 		}
 		got := strings.Join(e.repo.AuditActions(), ",")
-		want := strings.Join([]string{model.AuditChannelCreate, model.AuditChannelTrusted, model.AuditChannelCred}, ",")
+		want := strings.Join([]string{model.AuditChannelCreate, model.AuditChannelCred}, ",")
 		if got != want {
 			t.Fatalf("审计应为 %s，实际 %s", want, got)
 		}
@@ -313,12 +313,12 @@ func TestAIChannelService_Update(t *testing.T) {
 	t.Run("安全开关与启停：各写一条带前后值的审计", func(t *testing.T) {
 		e := newAchEnv(t)
 		seed(t, e)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", TrustedInternal: &yes, AllowCredentials: &yes, Enabled: &no, ActorID: 9})
-		if err != nil || !view.TrustedInternal || !view.AllowCredentials || view.Enabled {
+		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", AllowCredentials: &yes, Enabled: &no, ActorID: 9})
+		if err != nil || !view.AllowCredentials || view.Enabled {
 			t.Fatalf("结果不符合预期：%+v %v", view, err)
 		}
 		got := strings.Join(e.repo.AuditActions(), ",")
-		want := strings.Join([]string{model.AuditChannelTrusted, model.AuditChannelCred, model.AuditChannelEnable}, ",")
+		want := strings.Join([]string{model.AuditChannelCred, model.AuditChannelEnable}, ",")
 		if got != want {
 			t.Fatalf("审计应为 %s，实际 %s", want, got)
 		}
@@ -327,7 +327,7 @@ func TestAIChannelService_Update(t *testing.T) {
 		}
 		// 再次设成同样的值：没有变化，不再写审计
 		e.repo.Audits = nil
-		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", TrustedInternal: &yes}); err != nil {
+		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", AllowCredentials: &yes}); err != nil {
 			t.Fatal(err)
 		}
 		if len(e.repo.Audits) != 0 {

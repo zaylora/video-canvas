@@ -48,7 +48,7 @@ func newNewAPIEnv(t *testing.T, mod func(*plugin.Options)) *newapiEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := plugin.Options{Runner: runner, Codes: codeStore{"code": code}, Secrets: secretResolver{value: "sk-newapi"}}
+	opts := plugin.Options{Runner: runner, Codes: codeStore{"code": code}, Secrets: secretResolver{value: "sk-newapi"}, IPAllowed: allowLoopback}
 	if mod != nil {
 		mod(&opts)
 	}
@@ -59,7 +59,7 @@ func (e *newapiEnv) snapshot(baseURL, kind string, caps modelcfg.Capabilities) *
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: "up-model", Capabilities: caps},
 		Channel: provider.ChannelSnapshot{
-			Key: "newapi-main", PluginKey: "newapi", PluginVersionID: 1, BaseURL: baseURL, TrustedInternal: true,
+			Key: "newapi-main", PluginKey: "newapi", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "newapi", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 		ModelRevisionID: 1,
@@ -537,5 +537,28 @@ func TestNewAPIAudioSpeech(t *testing.T) {
 	out := sub.Immediate.Outputs[0]
 	if out.Type != provider.OutputAsset || out.AssetID != 77 || out.MediaType != "audio" || out.Mime != "audio/mpeg" {
 		t.Fatalf("语音产物不符：%+v", out)
+	}
+}
+
+// 内置插件的 meta 里不再有 allowedHosts（结果下载不限域名），版本号随之升到 1.3.1（内置插件改了代码必须升版本号）。
+func TestNewAPIBuiltinMetaHasNoAllowedHosts(t *testing.T) {
+	list, err := plugins.Builtin()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("读取内置插件失败：%v", err)
+	}
+	runner := plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler())
+	pre, err := runner.Precheck(context.Background(), string(list[0]))
+	if err != nil || !pre.OK {
+		t.Fatalf("内置 newapi.js 预检没有通过：%+v %v", pre, err)
+	}
+	if strings.Contains(string(pre.Meta), "allowedHosts") {
+		t.Fatalf("内置插件 meta 不应再声明 allowedHosts：%s", pre.Meta)
+	}
+	meta, err := pluginmeta.Parse(pre.Meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Version != "1.3.1" {
+		t.Fatalf("改了内置插件代码，版本号应升到 1.3.1，实际 %s", meta.Version)
 	}
 }

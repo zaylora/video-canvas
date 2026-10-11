@@ -31,10 +31,9 @@ module.exports = {
     apiVersion: 1,
     key: "newapi",
     name: "New API",
-    version: "1.3.0",
+    version: "1.3.1",
     description: "对接 New API 网关：文本、图片、语音（同步）与视频（异步）",
     auth: { type: "bearer" },
-    allowedHosts: [],
     endpoints: {
       text: { mode: "sync" },
       video: { mode: "async" },

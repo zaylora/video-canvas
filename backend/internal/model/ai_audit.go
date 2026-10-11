@@ -10,7 +10,7 @@ const (
 	AuditChannelCreate   = "channel.create"     // 新建渠道
 	AuditChannelUpdate   = "channel.update"     // 修改渠道（含切换插件版本）
 	AuditChannelSecret   = "channel.secret"     // 设置渠道 Key（不记值）
-	AuditChannelTrusted  = "channel.trusted"    // 开关 trusted_internal
+	AuditChannelTrusted  = "channel.trusted"    // 历史记录：已取消的“允许访问内网”开关（trusted_internal），不再产生新记录，展示旧审计时要认得
 	AuditChannelCred     = "channel.credential" // 开关 allow_credentials
 	AuditChannelEnable   = "channel.enable"     // 启用 / 停用渠道
 	AuditChannelAutoOff  = "channel.auto_off"   // 连续插件级失败，自动停用（actor 为 0）
@@ -26,7 +26,7 @@ const (
 	AuditTargetPluginVer = "plugin_version"
 )
 
-// AIAuditLog 审计日志：插件上传、渠道变更、凭证变更、trusted_internal 与 allow_credentials 开关。只增不改不删。
+// AIAuditLog 审计日志：插件上传、渠道变更、凭证变更、allow_credentials 开关（历史上还有 trusted_internal）。只增不改不删。
 type AIAuditLog struct {
 	ID         uint64    `gorm:"primaryKey" json:"id"`                      // 日志 ID
 	ActorID    uint64    `gorm:"not null;default:0;index" json:"actor_id"`  // 操作人（系统动作为 0）

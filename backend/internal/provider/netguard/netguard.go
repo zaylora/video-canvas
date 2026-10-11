@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,7 +18,8 @@ import (
 // 本文件是 SSRF 防护：白名单校验、内网 IP 拦截、DNS 解析后校验并直接拨号（防 DNS rebinding）。
 //
 // 三道关口：
-//  1. hostGuardRT（RoundTripper）：每次请求和每次重定向都校验域名在 allowed_hosts 内；
+//  1. hostGuardRT（RoundTripper）：每次请求和每次重定向都校验协议和用户名密码；传了域名白名单时，还校验域名在白名单内
+//     （白名单为 nil 表示不限域名，只靠第 2 道关口拦截内网，插件宿主就是这样用的）；
 //  2. guardDialer（DialContext）：先自己解析 DNS，校验所有解析结果不在内网段，再直接拨 IP，
 //     这样“校验时解析到公网、连接时解析到内网”的 rebinding 攻击没有可乘之机；
 //  3. CheckRedirect：限制重定向次数。
@@ -25,7 +27,7 @@ import (
 // ErrBlockedAddress 目标地址落在被禁止的网段（内网、回环、链路本地等）。
 var ErrBlockedAddress = errors.New("目标地址不允许访问")
 
-// ErrHostNotAllowed 目标域名不在 allowed_hosts 白名单内。
+// ErrHostNotAllowed 目标不允许：域名不在白名单内、协议不是 http(s)，或者 URL 带了用户名密码。
 var ErrHostNotAllowed = errors.New("目标域名不在白名单内")
 
 // ErrTooManyRedirects 重定向次数超过上限。
@@ -190,14 +192,14 @@ func (c *Config) dialContext(ctx context.Context, network, addr string) (net.Con
 	return nil, lastErr
 }
 
-// hostGuardRT 在每次 RoundTrip（含重定向）前校验域名白名单与协议。
+// hostGuardRT 在每次 RoundTrip（含重定向）前校验协议，传了域名白名单时再校验域名。
 type hostGuardRT struct {
-	allowed []string
+	allowed []string // nil 表示不限域名
 	base    http.RoundTripper
 }
 
 func (g *hostGuardRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := CheckURLAllowed(g.allowed, req.URL.Scheme, req.URL.Hostname(), req.URL.User != nil); err != nil {
+	if err := g.check(req.URL); err != nil {
 		if req.Body != nil {
 			_ = req.Body.Close()
 		}
@@ -206,13 +208,18 @@ func (g *hostGuardRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	return g.base.RoundTrip(req)
 }
 
-// CheckURLAllowed 校验协议、域名白名单、不带用户名密码。
-func CheckURLAllowed(allowed []string, scheme, host string, hasUserinfo bool) error {
-	if scheme != "https" && scheme != "http" {
-		return fmt.Errorf("%w：不支持的协议 %q", ErrHostNotAllowed, scheme)
+func (g *hostGuardRT) check(u *url.URL) error {
+	if g.allowed == nil {
+		return CheckURLScheme(u.Scheme, u.Hostname(), u.User != nil)
 	}
-	if hasUserinfo {
-		return fmt.Errorf("%w：URL 不能包含用户名密码", ErrHostNotAllowed)
+	return CheckURLAllowed(g.allowed, u.Scheme, u.Hostname(), u.User != nil)
+}
+
+// CheckURLAllowed 校验协议、域名白名单、不带用户名密码。allowed 为空表示白名单里什么都没有，拒绝一切域名；
+// 不想限制域名时用 CheckURLScheme。
+func CheckURLAllowed(allowed []string, scheme, host string, hasUserinfo bool) error {
+	if err := CheckURLScheme(scheme, host, hasUserinfo); err != nil {
+		return err
 	}
 	if !modelcfg.MatchHost(allowed, host) {
 		return fmt.Errorf("%w：%s", ErrHostNotAllowed, host)
@@ -220,8 +227,24 @@ func CheckURLAllowed(allowed []string, scheme, host string, hasUserinfo bool) er
 	return nil
 }
 
-// NewClient 创建一个绑定白名单的客户端。共享 base 传输层以复用连接池；白名单只在 RoundTripper 里检查，
-// 所以不同渠道可以共用同一个连接池。maxRedirects 是最多跟随的重定向次数（<=0 表示不跟随任何重定向，
+// CheckURLScheme 只校验协议是 http(s)、有主机名、不带用户名密码，不限制域名。
+// 内网地址不在这里拦：由拨号时的 IP 校验负责，那里按 DNS 解析结果判断，域名指到内网也拦得住。
+func CheckURLScheme(scheme, host string, hasUserinfo bool) error {
+	if scheme != "https" && scheme != "http" {
+		return fmt.Errorf("%w：不支持的协议 %q", ErrHostNotAllowed, scheme)
+	}
+	if hasUserinfo {
+		return fmt.Errorf("%w：URL 不能包含用户名密码", ErrHostNotAllowed)
+	}
+	if strings.TrimSuffix(host, ".") == "" {
+		return fmt.Errorf("%w：缺少主机名", ErrHostNotAllowed)
+	}
+	return nil
+}
+
+// NewClient 创建一个受防护的客户端。共享 base 传输层以复用连接池；白名单只在 RoundTripper 里检查，
+// 所以不同渠道可以共用同一个连接池。allowed 传 nil 表示不限域名（仍然只允许 http(s)、不带用户名密码，
+// 内网拦截在 base 传输层的拨号里）；传空切片（非 nil）表示白名单为空、拒绝一切域名。maxRedirects 是最多跟随的重定向次数（<=0 表示不跟随任何重定向，
 // 与 Config.ApplyDefaults 把 <=0 补成 3 不同：直接调用 NewClient 时由调用方决定）。
 func NewClient(base http.RoundTripper, allowed []string, maxRedirects int) *http.Client {
 	return &http.Client{
@@ -230,7 +253,7 @@ func NewClient(base http.RoundTripper, allowed []string, maxRedirects int) *http
 			if len(via) > maxRedirects {
 				return ErrTooManyRedirects
 			}
-			return nil // 域名白名单由 hostGuardRT 在跟随重定向时再次校验
+			return nil // 协议与域名白名单由 hostGuardRT 在跟随重定向时再次校验
 		},
 	}
 }

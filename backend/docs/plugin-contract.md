@@ -27,7 +27,6 @@ meta: {
   version: "1.0.0",           // semver；同一 key 下唯一，上传后不可修改
   description: "...",
   auth: { type: "bearer" },   // none / bearer / header(需 name) / query(需 name) / custom
-  allowedHosts: [],           // 结果下载可能访问的域名（可含 *.example.com）；请求本身只能去渠道 base_url（或 url 形式指向这里的域名）
   endpoints: { text: { mode: "sync" }, video: { mode: "async" } },  // 键是模型 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）
   channelSettings: { region: { type: "enum", label: "区域", options: ["cn","global"], default: "cn" } },  // 渠道上的非敏感设置，渲染成表单
   import: { args: { } },      // 可选：“从渠道导入模型”的参数表单
@@ -44,7 +43,7 @@ meta: {
   - `async` 必须实现 `buildQueryRequest` 与 `parseQueryResponse`；
   - 任何 endpoint 都必须实现 `buildSubmitRequest` 与 `parseSubmitResponse`；
   - `sync` 的 `parseSubmitResponse` 必须返回 `immediate`（运行时检查，预检只检查钩子存在）。
-- `allowedHosts` 每项通过 `modelcfg.ValidateHostPattern`（小写域名或 `*.example.com`；不含 IP、端口、协议、过宽通配）。
+- 不再有 `allowedHosts`：结果文件可以放在任意公网域名，不需要声明。旧插件里写了这个字段也不报错，宿主直接忽略。
 - `channelSettings` / `import.args` 每项：`type` 是 string/number/boolean/enum；`label` 非空；`enum` 必须有非空 `options`；`default`（若有）类型匹配、enum 的 default 必须在 options 里；名字匹配 `^[A-Za-z_][A-Za-z0-9_]{0,31}$`。
 - `poll` 各值非负，`jitter` 在 0–1。
 - 成对钩子：实现了 `buildPrepareRequests` 必须同时实现 `parsePrepareResponses`；`buildImportRequest` 与 `parseImportResponse` 必须同时存在；导出的函数名必须是契约认识的钩子（多余的导出函数只警告不拒绝——**这里不拒绝**）。
@@ -86,7 +85,7 @@ meta: {
 {
   "method": "POST",                      // GET / POST / PUT / PATCH / DELETE
   "path": "/v1/video/generations",       // 相对渠道 base_url，必须以 / 开头；与 url 二选一
-  "url": "https://cdn.example.com/x",    // 绝对 URL，主机必须在 meta.allowedHosts（或就是 base_url 的主机）里；与 path 二选一
+  "url": "https://cdn.example.com/x",    // 绝对 URL，任意公网 http/https 地址；只有和 base_url 同源（协议、域名、端口都一致）时宿主才注入 Key；与 path 二选一
   "query": { "a": 1, "b": "x", "c": true },   // 值是字符串 / 数字 / 布尔，null 与 undefined 的键被忽略
   "headers": { "X-Foo": "bar" },
   "json": { ... },                       // 与 form / multipart 三选一，都没有表示无请求体
@@ -109,13 +108,15 @@ meta: {
 **宿主对请求描述的校验**（任一不通过就是 `terminal` + 插件级失败，不发请求）：
 
 - `method` 合法；`path`/`url` 二选一；`path` 以 `/` 开头、不以 `//` 开头、不含 `..` 段、拼出来的主机必须仍是 `base_url` 的主机与协议；
-- `url` 只允许 http/https、不含用户名密码、主机在 `allowedHosts` 或 base_url 主机；
+- `url` 只允许 http/https、不含用户名密码、主机不限（内网地址在拨号时一律拦截，没有“允许访问内网”的例外）；
 - `headers`：禁止 `Authorization`、`Proxy-Authorization`、`Cookie`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`（不区分大小写），以及与 `meta.auth.name`（`header` 类型）同名的头；值不得含换行；
 - 请求体编码后 ≤1MB（`multipart` 的文件内容不计入）；
 - `timeout` 超过上限按上限；`responseType` 合法；
 - `auth.type` 只能是 bearer / header / query / none。
 
 **鉴权注入**（宿主在请求描述通过校验后做）：`bearer` → `Authorization: Bearer <key>`；`header` → `<auth.name>: <key>`；`query` → 查询参数 `<auth.name>=<key>`；`custom` / `none` → 宿主不注入。请求级 `auth` 覆盖 `meta.auth`（但 `custom` 插件的请求级 `auth` 同样只能是上面四种之一）。
+
+**Key 只注入同源请求**：目标地址和渠道 `base_url` 的协议、主机名、端口都一致（不区分大小写，缺省端口按协议补齐）时才注入 Key。`path` 形式的请求永远同源；`url` 形式发往别的域名、或同域名不同端口时，宿主不注入 Key（请求照常发出），试跑追踪里会多一条 http 步骤说明“目标不是渠道地址，未注入 Key”。所以预签名上传地址这类自带签名的地址可以直接写成 `url`，上游需要平台 Key 的接口要放在渠道 `base_url` 下。
 
 ## 5. 响应对象（`parse*` / `classifyError` 的第二个参数）
 
@@ -174,7 +175,20 @@ meta: {
 }
 ```
 
-宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https 且主机在 `allowedHosts` 或渠道 `base_url` 的主机上；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
+**简写**：宿主在校验之前先补全几种常见的漏写，完整写法照旧可用。只放宽“漏写”，不放宽“写错”：
+
+| 写法 | 补全成 |
+| --- | --- |
+| `outputs: ["https://a.com/x.png"]`（非文本模型） | `{ "type": "url", "url": "https://a.com/x.png" }`，`media_type` 取模型种类 |
+| `outputs: ["正文"]`（文本模型） | `{ "type": "text", "text": "正文" }` |
+| `outputs` 里的对象缺 `type`，有 `url` | `type` 补 `"url"` |
+| `outputs` 里的对象缺 `type`，有 `text` | `type` 补 `"text"` |
+| `error: "原因"`（非空字符串） | `{ "class": "terminal", "message": "原因" }` |
+| `error` 是对象但缺 `class` | `class` 补 `"terminal"` |
+
+不补全、仍按插件故障处理的情况：`status` 不是四个合法值之一（宿主不替插件猜“上游的哪个状态算成功”）；`error.class` 写了但不合法；`error` 是空字符串或空对象；对象既没有 `type` 也没有 `url` / `text`；非文本模型的字符串不是 http/https 地址（含 `data:` 的 base64，本契约不支持内联 base64 产物）。`immediate` 与 `parseQueryResponse` 的返回值走同一套规则。
+
+宿主校验（不合规就按 `terminal` 失败并告警，且算插件级失败）：`status` 是四个值之一；`succeeded` 必须有非空 `outputs`；`url` 产物必须是 http/https（主机不限，内网地址在下载时拦截）；`text` 产物的 `text` 是字符串且 ≤256KB；`media_type` 缺省取模型 kind（text 模型的产物必须是 `text` 类型、其余模型的产物不能是 `text`）；`failed` 必须有 `error`，`error.class` 合法；`progress` 夹到 0–100；`state` ≤64KB。
 
 **导入草稿的参数预填建议（`paramHints`，可选）**：模型能力由运营在后台配置，插件不声明；但导入时插件可以告诉平台“这个模型的某个生成参数建议配成什么”，平台在导入那一刻按种类套默认能力模板后，用它覆盖**模板里同名参数**的取值设置。之后运营可以随意修改，后端校验与下单都不读它。
 

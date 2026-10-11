@@ -53,7 +53,6 @@ func Validate(raw []byte, hooks []string) (*Meta, []modelcfg.Issue) {
 	v.identity(obj, m)
 	v.auth(obj, m)
 	v.endpoints(obj, m)
-	v.allowedHosts(obj, m)
 	m.ChannelSettings = v.settings("meta.channelSettings", obj["channelSettings"])
 	v.importMeta(obj, m)
 	v.poll(obj, m)
@@ -227,27 +226,6 @@ func (v *validator) endpoints(obj jsonObject, m *Meta) {
 		if !v.hooks[h] {
 			v.add("exports."+h, "缺少钩子 %s：每种 endpoint 都要实现提交", h)
 		}
-	}
-}
-
-// allowedHosts 检查结果下载域名白名单：每项是小写域名或 *.example.com，不含 IP 与过宽通配。
-func (v *validator) allowedHosts(obj jsonObject, m *Meta) {
-	var raws []json.RawMessage
-	if !v.field(obj, "meta", "allowedHosts", &raws) {
-		return
-	}
-	for i, raw := range raws {
-		path := fmt.Sprintf("meta.allowedHosts[%d]", i)
-		var h string
-		if err := json.Unmarshal(raw, &h); err != nil {
-			v.add(path, "类型不对，应为字符串")
-			continue
-		}
-		if err := modelcfg.ValidateHostPattern(h); err != nil {
-			v.add(path, "%s", err.Error())
-			continue
-		}
-		m.AllowedHosts = append(m.AllowedHosts, h)
 	}
 }
 

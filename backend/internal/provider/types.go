@@ -198,7 +198,7 @@ type Executor interface {
 	Query(ctx context.Context, snap *Snapshot, task TaskRef) (*QueryResult, error)
 	// Cancel 尽力取消；插件没有 buildCancelRequest 时返回 ErrCancelUnsupported。
 	Cancel(ctx context.Context, snap *Snapshot, task TaskRef) error
-	// Download 下载上游产物，校验域名（插件 allowedHosts + 渠道 base_url 主机）、内网 IP、重定向和 DNS rebinding。
+	// Download 下载上游产物：域名不限（结果文件可以放在任意公网域名），校验协议、内网 IP、重定向和 DNS rebinding。
 	Download(ctx context.Context, snap *Snapshot, url string) (*Download, error)
 }
 

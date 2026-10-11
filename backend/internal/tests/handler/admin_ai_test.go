@@ -561,8 +561,11 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 			t.Fatal(err)
 		}
 		if v["key"] != "kling-main" || v["plugin_version"] != "1.0.0" || v["secret_set"] != false || v["enabled"] != true ||
-			v["trusted_internal"] != false || v["allow_credentials"] != false || v["base_url"] != "https://gw.example.com" {
+			v["allow_credentials"] != false || v["base_url"] != "https://gw.example.com" {
 			t.Fatalf("视图不符合预期：%v", v)
+		}
+		if _, has := v["trusted_internal"]; has {
+			t.Fatalf("渠道视图不应再有 trusted_internal（“允许访问内网”已取消）：%v", v)
 		}
 		if st := v["settings"].(map[string]any); st["tenant"] != "t1" || st["region"] != "cn" {
 			t.Fatalf("settings 应带默认值：%v", st)
@@ -604,13 +607,16 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 			t.Fatalf("msg 应指出必填设置项：%s", r.Msg)
 		}
 	})
-	t.Run("enabled=false 与两个安全开关可在创建时指定", func(t *testing.T) {
+	t.Run("enabled=false 与“允许插件读取 Key”可在创建时指定；旧客户端传 trusted_internal 被忽略", func(t *testing.T) {
 		body := aicChannelJSON("kling-off", "1.0.0")
 		body["enabled"], body["trusted_internal"], body["allow_credentials"] = false, true, true
 		r := env.super(http.MethodPost, path, body)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"enabled":false`) || !strings.Contains(r.Raw, `"trusted_internal":true`) || !strings.Contains(r.Raw, `"allow_credentials":true`) {
+		if !strings.Contains(r.Raw, `"enabled":false`) || !strings.Contains(r.Raw, `"allow_credentials":true`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+		if strings.Contains(r.Raw, "trusted_internal") {
+			t.Fatalf("响应不应再有 trusted_internal：%s", r.Raw)
 		}
 	})
 	t.Run("列表与详情：admin 可读", func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -76,13 +77,15 @@ func usageChunk(in, out, cached int) string {
 	return fmt.Sprintf(`{"id":"c1","choices":[],"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"prompt_tokens_details":{"cached_tokens":%d}}}`, in, out, in+out, cached)
 }
 
-// target 指向假上游；渠道默认「可信内网」，因为 httptest 监听在回环地址。
+// target 指向假上游。
 func target(u *upstream) llmgateway.Target {
-	return llmgateway.Target{ChannelKey: "ch1", BaseURL: u.srv.URL, APIKey: "sk-secret-key", UpstreamModel: "gpt-up", TrustedInternal: true}
+	return llmgateway.Target{ChannelKey: "ch1", BaseURL: u.srv.URL, APIKey: "sk-secret-key", UpstreamModel: "gpt-up"}
 }
 
+// gateway 创建测试用网关：假上游监听在回环地址，所以默认放行回环（生产没有这个放行，所有内网地址都拒绝）；
+// 需要验证默认拦截行为的用例传 func(o){ o.IPAllowed = nil } 取消放行。
 func gateway(opts ...func(*llmgateway.Options)) *llmgateway.Gateway {
-	o := llmgateway.Options{IdleTimeout: 2 * time.Second}
+	o := llmgateway.Options{IdleTimeout: 2 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}
 	for _, f := range opts {
 		f(&o)
 	}

@@ -45,8 +45,7 @@ type Meta struct {
 	Version         string              `json:"version"` // semver，同一 key 下唯一
 	Description     string              `json:"description,omitempty"`
 	Auth            Auth                `json:"auth"`
-	AllowedHosts    []string            `json:"allowedHosts,omitempty"` // 结果下载可能访问的域名（支持 *.example.com）；请求本身只能去渠道 base_url
-	Endpoints       map[string]Endpoint `json:"endpoints"`              // 键是模型 kind：text / video / image / audio；agent 不需要声明
+	Endpoints       map[string]Endpoint `json:"endpoints"` // 键是模型 kind：text / video / image / audio；agent 不需要声明
 	ChannelSettings SettingSchema       `json:"channelSettings,omitempty"`
 	Import          *ImportMeta         `json:"import,omitempty"`
 	Poll            *PollMeta           `json:"poll,omitempty"` // 异步任务的轮询节奏，缺省由宿主给默认值

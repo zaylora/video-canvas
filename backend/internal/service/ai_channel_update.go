@@ -14,7 +14,7 @@ import (
 
 // Update 更新渠道（不传的字段不改）。改 plugin_version 即“升级插件后切换渠道”：新版本必须存在，且插件启用；
 // settings 会按目标版本的 channelSettings 重新校验（切版本时即使没传 settings，也校验现有取值）。
-// 修改会写审计：channel.update 记被改的字段名与版本变化；trusted_internal / allow_credentials / enabled 的变化各记一条带前后值的审计。
+// 修改会写审计：channel.update 记被改的字段名与版本变化；allow_credentials / enabled 的变化各记一条带前后值的审计。
 func (s *AIChannelService) Update(ctx context.Context, in ChannelUpdateInput) (*ChannelView, error) {
 	// 1. 取当前渠道与它现在固定的版本
 	cur, err := s.load(ctx, in.Key)
@@ -96,9 +96,6 @@ func applyUpdateFields(next *model.AIChannel, in ChannelUpdateInput) []string {
 		problems = appendIf(problems, msg)
 		next.BaseURL = baseURL
 	}
-	if in.TrustedInternal != nil {
-		next.TrustedInternal = *in.TrustedInternal
-	}
 	if in.AllowCredentials != nil {
 		next.AllowCredentials = *in.AllowCredentials
 	}
@@ -152,10 +149,6 @@ func (s *AIChannelService) auditUpdate(ctx context.Context, actor uint64, before
 			}
 		}
 		aiAudit(ctx, s.audit, actor, model.AuditChannelUpdate, model.AuditTargetChannel, after.Key, detail)
-	}
-	if before.TrustedInternal != after.TrustedInternal {
-		aiAudit(ctx, s.audit, actor, model.AuditChannelTrusted, model.AuditTargetChannel, after.Key,
-			map[string]any{"from": before.TrustedInternal, "to": after.TrustedInternal})
 	}
 	if before.AllowCredentials != after.AllowCredentials {
 		aiAudit(ctx, s.audit, actor, model.AuditChannelCred, model.AuditTargetChannel, after.Key,

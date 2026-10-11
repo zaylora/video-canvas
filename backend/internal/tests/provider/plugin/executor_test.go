@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,9 @@ import (
 	"video-canvas/internal/provider/pluginmeta"
 	"video-canvas/internal/provider/pluginrunner"
 )
+
+// allowLoopback 让宿主把回环地址当作可连接：测试上游都是本机 httptest 服务；其余内网地址仍然被拒。
+func allowLoopback(ip net.IP) bool { return ip.IsLoopback() }
 
 type codeStore map[string]string
 
@@ -42,9 +46,10 @@ func testExecutor(t *testing.T, code, secret string) *plugin.Executor {
 	t.Helper()
 	runner := plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler())
 	return plugin.New(plugin.Options{
-		Runner:  runner,
-		Codes:   codeStore{"code": code},
-		Secrets: secretResolver{value: secret},
+		Runner:    runner,
+		Codes:     codeStore{"code": code},
+		Secrets:   secretResolver{value: secret},
+		IPAllowed: allowLoopback, // 上游是本机 httptest 服务
 	})
 }
 
@@ -57,7 +62,7 @@ func testSnapshot(baseURL, code, kind string, auth pluginmeta.Auth) *provider.Sn
 		},
 		Channel: provider.ChannelSnapshot{
 			Key: "test-channel", PluginKey: "test-plugin", PluginVersionID: 1,
-			BaseURL: baseURL, TrustedInternal: true,
+			BaseURL: baseURL,
 		},
 		Plugin: provider.PluginSnapshot{
 			Key: "test-plugin", Version: "1.0.0", SHA256: hex.EncodeToString(sum[:]),

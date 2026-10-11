@@ -20,7 +20,6 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 	t.Run("新建渠道回填时间，空 JSON 列补成 {}", func(t *testing.T) {
 		c := plChannel("c-a", "ch", vid)
 		c.Enabled = true
-		c.TrustedInternal = true
 		c.UpdatedBy = 3
 		if err := r.CreateChannel(ctx, c); err != nil {
 			t.Fatal(err)
@@ -32,7 +31,7 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !got.Enabled || got.PluginVersionID != vid || got.BaseURL != c.BaseURL || !got.TrustedInternal || got.AllowCredentials || got.UpdatedBy != 3 {
+		if !got.Enabled || got.PluginVersionID != vid || got.BaseURL != c.BaseURL || got.AllowCredentials || got.UpdatedBy != 3 {
 			t.Fatalf("渠道不符合预期：%+v", got)
 		}
 		if string(got.SettingsJSON) != "{}" || string(got.RateLimitJSON) != "{}" {
@@ -109,7 +108,7 @@ func TestAIChannelRepository_UpdateChannel(t *testing.T) {
 		time.Sleep(5 * time.Millisecond) // 制造 updated_at 的先后差异
 		c := &model.AIChannel{
 			Key: "u-a", Name: "新名", PluginKey: "up", PluginVersionID: v2, BaseURL: "https://new.example.com",
-			TrustedInternal: false, AllowCredentials: true, Enabled: false, UpdatedBy: 8,
+			AllowCredentials: true, Enabled: false, UpdatedBy: 8,
 			SettingsJSON: model.JSONText(`{"x":1}`),
 		}
 		if err := r.UpdateChannel(ctx, c); err != nil {
@@ -117,7 +116,7 @@ func TestAIChannelRepository_UpdateChannel(t *testing.T) {
 		}
 		got, _ := r.GetChannel(ctx, "u-a")
 		if got.Name != "新名" || got.PluginVersionID != v2 || got.BaseURL != "https://new.example.com" ||
-			got.TrustedInternal || !got.AllowCredentials || got.Enabled || got.UpdatedBy != 8 {
+			!got.AllowCredentials || got.Enabled || got.UpdatedBy != 8 {
 			t.Fatalf("更新不符合预期：%+v", got)
 		}
 		if string(got.SettingsJSON) != `{"x":1}` || string(got.RateLimitJSON) != "{}" {

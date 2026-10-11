@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,7 +121,7 @@ func (r e2eRegistry) Snapshot(context.Context, string) (*provider.Snapshot, erro
 		Model: provider.ModelSnapshot{Key: "claude", Kind: "agent", Label: "Claude", UpstreamModel: "claude-up",
 			Pricing:      modelcfg.Pricing{Billing: modelcfg.BillingToken, Token: &modelcfg.TokenPrice{In: 3, Out: 15}},
 			Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 200000, Output: 8192}, Vision: true}},
-		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: r.base, TrustedInternal: true},
+		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: r.base},
 	}, nil
 }
 func (r e2eRegistry) ListModels(context.Context, string) ([]provider.ModelInfo, error) {
@@ -178,7 +179,7 @@ func newE2E(t *testing.T, turns ...llmTurn) *e2eEnv {
 	svc := agentsvc.NewAgentService(agentsvc.AgentDeps{Repo: repo, Canvas: canvasSvc, Models: e2eModels{}, Runtime: agentsvc.NoAgentRuntime{}})
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: repo, Canvas: canvasSvc, Agent: svc, Billing: agentsvc.NewAgentBilling(repo),
-		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second}),
+		Registry: e2eRegistry{base: llm.srv.URL}, Secrets: e2eSecrets{}, Streamer: llmgateway.New(llmgateway.Options{IdleTimeout: 10 * time.Second, IPAllowed: func(ip net.IP) bool { return ip.IsLoopback() }}), // 假上游在本机回环
 	})
 	bridgeSrv := httptest.NewServer(router.NewBridge("test", agenthandler.NewAgentBridgeHandler(bridge)))
 	t.Cleanup(bridgeSrv.Close)

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"time"
 
@@ -93,4 +94,23 @@ type hookOutcome struct {
 	logs     []string
 	err      error
 	duration time.Duration
+}
+
+// keySkippedNote 是追踪里“没有注入渠道 Key”的固定说明文字。
+const keySkippedNote = "目标不是渠道地址，未注入 Key"
+
+// noteKeySkipped 在追踪里记一条 http 步骤：这次请求的目标不是渠道地址，宿主没有注入渠道 Key。
+// 上游因此返回 401 / 403 时，管理员能直接在试跑追踪里看到原因。说明写在请求体里而不是 Error：这不是失败，
+// 前端看到 Error 会把步骤标红。地址只写协议、主机和路径，不带查询参数。
+func (o *operation) noteKeySkipped(method string, u *url.URL) {
+	if o.trace == nil {
+		return
+	}
+	shown := *u
+	shown.RawQuery, shown.Fragment = "", ""
+	o.trace.Add(provider.TraceStep{
+		Name:    "http:" + method,
+		Kind:    "http",
+		Request: &provider.TraceRequest{Method: method, URL: o.red.str(shown.String()), Body: keySkippedNote},
+	})
 }

@@ -69,7 +69,7 @@ func lockVersionShared(tx *gorm.DB, id uint64) error {
 	return translate(err)
 }
 
-// UpdateChannel 更新渠道的可变字段（name、plugin_key、plugin_version_id、base_url、trusted_internal、allow_credentials、
+// UpdateChannel 更新渠道的可变字段（name、plugin_key、plugin_version_id、base_url、allow_credentials、
 // settings_json、rate_limit_json、enabled、updated_by、updated_at）；key 与 created_at 不变。渠道不存在返回 ErrNotFound。
 // settings_json / rate_limit_json 为空时按 {} 写入；事务内对新的 plugin_version_id 加共享锁，
 // 版本不存在同样返回 ErrNotFound（语义见 CreateChannel）。成功后 c.UpdatedAt 已回填。
@@ -85,7 +85,6 @@ func (r *AIChannelRepository) UpdateChannel(ctx context.Context, c *model.AIChan
 			"plugin_key":        c.PluginKey,
 			"plugin_version_id": c.PluginVersionID,
 			"base_url":          c.BaseURL,
-			"trusted_internal":  c.TrustedInternal,
 			"allow_credentials": c.AllowCredentials,
 			"settings_json":     c.SettingsJSON,
 			"rate_limit_json":   c.RateLimitJSON,

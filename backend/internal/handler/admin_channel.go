@@ -26,7 +26,6 @@ type createChannelReq struct {
 	PluginKey        string             `json:"plugin_key" binding:"required,max=30" label:"plugin_key"`
 	PluginVersion    string             `json:"plugin_version" binding:"required,max=32" label:"plugin_version"`
 	BaseURL          string             `json:"base_url" binding:"required,max=512" label:"base_url"`
-	TrustedInternal  bool               `json:"trusted_internal"`
 	AllowCredentials bool               `json:"allow_credentials"`
 	Settings         map[string]any     `json:"settings"`
 	RateLimit        provider.RateLimit `json:"rate_limit"`
@@ -38,7 +37,6 @@ type updateChannelReq struct {
 	Name             *string             `json:"name" binding:"omitempty,max=128" label:"name"`
 	PluginVersion    *string             `json:"plugin_version" binding:"omitempty,max=32" label:"plugin_version"`
 	BaseURL          *string             `json:"base_url" binding:"omitempty,max=512" label:"base_url"`
-	TrustedInternal  *bool               `json:"trusted_internal"`
 	AllowCredentials *bool               `json:"allow_credentials"`
 	Settings         map[string]any      `json:"settings"`
 	RateLimit        *provider.RateLimit `json:"rate_limit"`
@@ -52,7 +50,6 @@ type checkDraftChannelReq struct {
 	PluginKey        string         `json:"plugin_key" binding:"required,max=30" label:"plugin_key"`
 	PluginVersion    string         `json:"plugin_version" binding:"required,max=32" label:"plugin_version"`
 	BaseURL          string         `json:"base_url" binding:"required,max=512" label:"base_url"`
-	TrustedInternal  bool           `json:"trusted_internal"`
 	AllowCredentials bool           `json:"allow_credentials"`
 	Settings         map[string]any `json:"settings"`
 	Secret           string         `json:"secret" binding:"omitempty,max=4096" label:"Key"`
@@ -109,8 +106,8 @@ func (h *AdminChannelHandler) Create(c *gin.Context) {
 	}
 	view, err := h.svc.Create(c.Request.Context(), service.ChannelCreateInput{
 		Key: req.Key, Name: req.Name, PluginKey: req.PluginKey, PluginVersion: req.PluginVersion, BaseURL: req.BaseURL,
-		TrustedInternal: req.TrustedInternal, AllowCredentials: req.AllowCredentials,
-		Settings: req.Settings, RateLimit: req.RateLimit, Enabled: enabled, ActorID: currentUserID(c),
+		AllowCredentials: req.AllowCredentials,
+		Settings:         req.Settings, RateLimit: req.RateLimit, Enabled: enabled, ActorID: currentUserID(c),
 	})
 	if err != nil {
 		response.Fail(c, err)
@@ -131,8 +128,8 @@ func (h *AdminChannelHandler) Update(c *gin.Context) {
 	}
 	view, err := h.svc.Update(c.Request.Context(), service.ChannelUpdateInput{
 		Key: key, Name: req.Name, PluginVersion: req.PluginVersion, BaseURL: req.BaseURL,
-		TrustedInternal: req.TrustedInternal, AllowCredentials: req.AllowCredentials,
-		Settings: req.Settings, RateLimit: req.RateLimit, Enabled: req.Enabled, ActorID: currentUserID(c),
+		AllowCredentials: req.AllowCredentials,
+		Settings:         req.Settings, RateLimit: req.RateLimit, Enabled: req.Enabled, ActorID: currentUserID(c),
 	})
 	if err != nil {
 		response.Fail(c, err)
@@ -180,7 +177,7 @@ func (h *AdminChannelHandler) CheckDraft(c *gin.Context) {
 	}
 	res, err := h.svc.CheckDraft(c.Request.Context(), service.ChannelCheckDraftInput{
 		ExistingKey: req.ExistingKey, PluginKey: req.PluginKey, PluginVersion: req.PluginVersion, BaseURL: req.BaseURL,
-		TrustedInternal: req.TrustedInternal, AllowCredentials: req.AllowCredentials, Settings: req.Settings, Secret: req.Secret,
+		AllowCredentials: req.AllowCredentials, Settings: req.Settings, Secret: req.Secret,
 	})
 	if err != nil {
 		response.Fail(c, err)

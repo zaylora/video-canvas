@@ -132,10 +132,10 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	// 内置插件不能删
 	adminWantCode(t, e.plugins.DeleteVersion(ctx, 1, "newapi", newapi.Versions[0].Version), errcode.ErrPluginBuiltin.Code)
 
-	// 2. 建渠道（自建网关在内网：trusted_internal），设 Key
+	// 2. 建渠道（上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
 	view, err := e.channels.Create(ctx, ChannelCreateInput{
 		Key: "newapi-main", Name: "自建 New API", PluginKey: "newapi", PluginVersion: newapi.Versions[0].Version,
-		BaseURL: e.upstream.URL, TrustedInternal: true, Enabled: true, ActorID: 1,
+		BaseURL: e.upstream.URL, Enabled: true, ActorID: 1,
 	})
 	if err != nil || view.SecretSet {
 		t.Fatalf("建渠道失败：%+v %v", view, err)

@@ -13,13 +13,12 @@ import (
 // baseMeta 是一份能通过预检的 meta，各用例在它上面改一处。
 func baseMeta() map[string]any {
 	return map[string]any{
-		"apiVersion":   1,
-		"key":          "newapi",
-		"name":         "New API",
-		"version":      "1.0.0",
-		"description":  "自建 New API 网关",
-		"auth":         map[string]any{"type": "bearer"},
-		"allowedHosts": []any{"cdn.example.com", "*.example.org"},
+		"apiVersion":  1,
+		"key":         "newapi",
+		"name":        "New API",
+		"version":     "1.0.0",
+		"description": "自建 New API 网关",
+		"auth":        map[string]any{"type": "bearer"},
 		"endpoints": map[string]any{
 			"text":  map[string]any{"mode": "sync"},
 			"video": map[string]any{"mode": "async"},
@@ -84,7 +83,7 @@ func TestValidate_Rules(t *testing.T) {
 			m["endpoints"] = map[string]any{"text": map[string]any{"mode": "sync"}}
 		}, without(fullHooks(), pluginproto.HookBuildQueryRequest, pluginproto.HookParseQueryResponse), nil},
 		{"可选字段全部省略也能通过", func(m map[string]any) {
-			for _, k := range []string{"description", "allowedHosts", "channelSettings", "import", "poll"} {
+			for _, k := range []string{"description", "channelSettings", "import", "poll"} {
 				delete(m, k)
 			}
 		}, []string{pluginproto.HookBuildSubmitRequest, pluginproto.HookParseSubmitResponse,
@@ -141,12 +140,9 @@ func TestValidate_Rules(t *testing.T) {
 		{"缺提交钩子", nil, without(fullHooks(), pluginproto.HookBuildSubmitRequest, pluginproto.HookParseSubmitResponse),
 			[]string{"exports.buildSubmitRequest", "exports.parseSubmitResponse"}},
 
-		{"allowedHosts 含 IP", func(m map[string]any) { m["allowedHosts"] = []any{"10.0.0.1"} }, nil, []string{"meta.allowedHosts[0]"}},
-		{"allowedHosts 过宽通配", func(m map[string]any) { m["allowedHosts"] = []any{"ok.com", "*.com"} }, nil, []string{"meta.allowedHosts[1]"}},
-		{"allowedHosts 中段通配", func(m map[string]any) { m["allowedHosts"] = []any{"a.*.com"} }, nil, []string{"meta.allowedHosts[0]"}},
-		{"allowedHosts 带端口", func(m map[string]any) { m["allowedHosts"] = []any{"a.com:443"} }, nil, []string{"meta.allowedHosts[0]"}},
-		{"allowedHosts 项不是字符串", func(m map[string]any) { m["allowedHosts"] = []any{1} }, nil, []string{"meta.allowedHosts[0]"}},
-		{"allowedHosts 不是数组", func(m map[string]any) { m["allowedHosts"] = "a.com" }, nil, []string{"meta.allowedHosts"}},
+		{"旧插件残留 allowedHosts（合法值）也能通过", func(m map[string]any) { m["allowedHosts"] = []any{"cdn.example.com", "*.example.org"} }, nil, nil},
+		{"旧插件残留 allowedHosts（非法值）同样忽略，不报错", func(m map[string]any) { m["allowedHosts"] = []any{"10.0.0.1", "*.com", 1} }, nil, nil},
+		{"allowedHosts 类型不对也忽略", func(m map[string]any) { m["allowedHosts"] = "a.com" }, nil, nil},
 
 		{"设置项 type 非法", func(m map[string]any) {
 			m["channelSettings"] = map[string]any{"x": map[string]any{"type": "date", "label": "X"}}
@@ -240,9 +236,8 @@ func TestValidate_ReportsAllIssuesAtOnce(t *testing.T) {
 	m["apiVersion"] = 3
 	m["key"] = "Bad Key"
 	m["auth"] = map[string]any{"type": "query"}
-	m["allowedHosts"] = []any{"127.0.0.1"}
 	_, issues := Validate(mustJSON(t, m), without(fullHooks(), pluginproto.HookBuildQueryRequest))
-	for _, p := range []string{"meta.apiVersion", "meta.key", "meta.auth.name", "meta.allowedHosts[0]", "meta.endpoints.video.mode"} {
+	for _, p := range []string{"meta.apiVersion", "meta.key", "meta.auth.name", "meta.endpoints.video.mode"} {
 		if !hasPath(issues, p) {
 			t.Fatalf("期望一次报出 %q，实际：%+v", p, issues)
 		}
