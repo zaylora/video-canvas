@@ -20,7 +20,6 @@ func baseMeta() map[string]any {
 		"description": "自建 New API 网关",
 		"auth":        map[string]any{"type": "bearer"},
 		"endpoints": map[string]any{
-			"text":  map[string]any{"mode": "sync"},
 			"video": map[string]any{"mode": "async"},
 		},
 		"channelSettings": map[string]any{
@@ -123,6 +122,9 @@ func TestValidate_Rules(t *testing.T) {
 
 		{"缺少 endpoints", func(m map[string]any) { delete(m, "endpoints") }, nil, []string{"meta.endpoints"}},
 		{"endpoints 为空对象", func(m map[string]any) { m["endpoints"] = map[string]any{} }, nil, []string{"meta.endpoints"}},
+		{"同时声明多个类型", func(m map[string]any) {
+			m["endpoints"] = map[string]any{"text": map[string]any{"mode": "sync"}, "video": map[string]any{"mode": "async"}}
+		}, nil, []string{"meta.endpoints"}},
 		{"endpoints 不是对象", func(m map[string]any) { m["endpoints"] = []any{"text"} }, nil, []string{"meta.endpoints"}},
 		{"未知 kind", func(m map[string]any) {
 			m["endpoints"] = map[string]any{"music": map[string]any{"mode": "sync"}}

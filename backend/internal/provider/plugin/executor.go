@@ -167,6 +167,7 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	if err != nil {
 		return nil, err
 	}
+	hc.Prepared = nonEmptyJSON(o.task.Prepared) // 契约 §3：准备阶段的结果只在 buildSubmitRequest 的 ctx 里
 	raw, err := o.require(ctx, pluginproto.HookBuildSubmitRequest, hc)
 	if err != nil {
 		return nil, err

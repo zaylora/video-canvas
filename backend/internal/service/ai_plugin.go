@@ -321,6 +321,79 @@ func (s *AIPluginService) RegisterBuiltin(ctx context.Context, sources [][]byte)
 	return out, errors.Join(errs...)
 }
 
+// BuiltinPruneResult 是清理旧内置插件的结果，两个列表都按 key 升序。
+type BuiltinPruneResult struct {
+	Removed []string // 已删除的插件 key
+	InUse   []string // 不再随发版但仍被渠道固定或有进行中任务的插件 key：保留，等引用处理完后下次启动再清
+}
+
+// PruneBuiltin 清理库里“来源是内置、但已不在本次发版清单（keep）里”的插件：发版时删掉或改了 key 的内置插件，
+// 旧行不会自己消失，会一直挂在插件列表里。只动内置来源：上传的插件永远不碰；仍被渠道固定或有非终态任务引用的保留并报出，
+// 不能因为清理让线上渠道和进行中的任务失效。删除走与手动删除插件相同的事务（加锁后重新统计引用），写审计（操作人 0 表示系统）。
+// keep 为空直接返回：清单读取失败时宁可不清，也不能把全部内置插件当成“已下线”删掉。
+func (s *AIPluginService) PruneBuiltin(ctx context.Context, keep []string) (*BuiltinPruneResult, error) {
+	res := &BuiltinPruneResult{Removed: []string{}, InUse: []string{}}
+	if len(keep) == 0 {
+		return res, nil
+	}
+	shipped := make(map[string]bool, len(keep))
+	for _, k := range keep {
+		shipped[k] = true
+	}
+	plugins, err := s.repo.ListPlugins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var errs []error
+	for _, p := range plugins {
+		if p.Source != model.PluginSourceBuiltin || shipped[p.Key] {
+			continue
+		}
+		removed, err := s.pruneOneBuiltin(ctx, p.Key)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("清理旧内置插件 %s 失败：%w", p.Key, err))
+		case removed:
+			res.Removed = append(res.Removed, p.Key)
+		default:
+			res.InUse = append(res.InUse, p.Key)
+		}
+	}
+	return res, errors.Join(errs...)
+}
+
+// pruneOneBuiltin 删除一个旧内置插件；仍被引用（预检时或事务内复查时）返回 removed=false。
+func (s *AIPluginService) pruneOneBuiltin(ctx context.Context, key string) (removed bool, err error) {
+	refs, err := s.repo.CountPluginRefs(ctx, key)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil // 被别的实例先清掉了
+	}
+	if err != nil {
+		return false, err
+	}
+	if refs.InUse() {
+		return false, nil
+	}
+	versions, err := s.repo.ListVersions(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	if _, err := s.repo.DeletePlugin(ctx, key); errors.Is(err, repository.ErrInUse) {
+		return false, nil
+	} else if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	vers := make([]map[string]any, 0, len(versions))
+	for _, v := range versions {
+		vers = append(vers, map[string]any{"version": v.Version, "sha256": v.SHA256})
+	}
+	aiAudit(ctx, s.audit, 0, model.AuditPluginDelete, model.AuditTargetPlugin, key,
+		map[string]any{"versions": vers, "reason": "内置插件已随发版下线"})
+	return true, nil
+}
+
 // registerOneBuiltin 登记一个内置插件。
 func (s *AIPluginService) registerOneBuiltin(ctx context.Context, code []byte) (*BuiltinRegistration, error) {
 	// 1. 预检拿到 meta：内置插件也走同一套预检，代码写错在启动时就暴露

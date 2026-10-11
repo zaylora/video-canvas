@@ -54,8 +54,8 @@ func (c e2eCodes) Code(_ context.Context, versionID uint64, _ string) (string, e
 	return v.Code, nil
 }
 
-// e2eEnv 是“管理层 + 真实插件运行时”的端到端环境：真实的 runner（进程内）、真实的宿主、内置的 newapi.js，
-// 只有数据库用内存仓储、上游 New API 用 httptest 模拟。
+// e2eEnv 是“管理层 + 真实插件运行时”的端到端环境：真实的 runner（进程内）、真实的宿主、内置的 openai.js，
+// 只有数据库用内存仓储、上游 OpenAI 用 httptest 模拟。
 type e2eEnv struct {
 	cfg      *AIConfigService
 	plugins  *AIPluginService
@@ -95,7 +95,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	return e
 }
 
-// 端到端：启动登记内置 newapi.js → 建渠道 → 设 Key → 连通性检查 → 导入模型 → 保存草稿 → 发布 → dry-run，
+// 端到端：启动登记内置 openai.js → 建渠道 → 设 Key → 连通性检查 → 导入模型 → 保存草稿 → 发布 → dry-run，
 // 验证管理层各服务与真实插件运行时首尾相接，且 Key 全程不出现在任何管理响应里。
 func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	ctx := context.Background()
@@ -115,37 +115,37 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var newapi *PluginView
+	var openai *PluginView
 	for i := range list {
-		if list[i].Key == "newapi" {
-			newapi = &list[i]
+		if list[i].Key == "openai" {
+			openai = &list[i]
 		}
 	}
-	if newapi == nil || newapi.Source != model.PluginSourceBuiltin || !newapi.Enabled || len(newapi.Versions) != 1 ||
-		newapi.Versions[0].Meta == nil || newapi.Versions[0].Meta.Endpoints["text"].Mode != "sync" {
-		t.Fatalf("newapi 应已登记为 builtin：%+v", list)
+	if openai == nil || openai.Source != model.PluginSourceBuiltin || !openai.Enabled || len(openai.Versions) != 1 ||
+		openai.Versions[0].Meta == nil || openai.Versions[0].Meta.Endpoints["text"].Mode != "sync" {
+		t.Fatalf("openai 应已登记为 builtin：%+v", list)
 	}
 	// 重启后再次登记是空操作
 	if regs, err := e.plugins.RegisterBuiltin(ctx, sources); err != nil || regs[0].Registered {
 		t.Fatalf("第二次登记应是空操作：%+v %v", regs, err)
 	}
 	// 内置插件不能删
-	adminWantCode(t, e.plugins.DeleteVersion(ctx, 1, "newapi", newapi.Versions[0].Version), errcode.ErrPluginBuiltin.Code)
+	adminWantCode(t, e.plugins.DeleteVersion(ctx, 1, "openai", openai.Versions[0].Version), errcode.ErrPluginBuiltin.Code)
 
 	// 2. 建渠道（上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
 	view, err := e.channels.Create(ctx, ChannelCreateInput{
-		Key: "newapi-main", Name: "自建 New API", PluginKey: "newapi", PluginVersion: newapi.Versions[0].Version,
+		Key: "openai-main", Name: "OpenAI 渠道", PluginKey: "openai", PluginVersion: openai.Versions[0].Version,
 		BaseURL: e.upstream.URL, Enabled: true, ActorID: 1,
 	})
 	if err != nil || view.SecretSet {
 		t.Fatalf("建渠道失败：%+v %v", view, err)
 	}
-	if err := e.channels.SetSecret(ctx, 1, "newapi-main", secret); err != nil {
+	if err := e.channels.SetSecret(ctx, 1, "openai-main", secret); err != nil {
 		t.Fatal(err)
 	}
 
-	// 3. 连通性检查：真实执行 newapi.js 的 buildCheckRequest，宿主注入 Bearer
-	res, err := e.channels.Check(ctx, "newapi-main")
+	// 3. 连通性检查：真实执行 openai.js 的 buildCheckRequest，宿主注入 Bearer
+	res, err := e.channels.Check(ctx, "openai-main")
 	if err != nil || !res.OK {
 		t.Fatalf("连通性检查应成功：%+v %v", res, err)
 	}
@@ -156,8 +156,8 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	}
 	e.mu.Unlock()
 
-	// 4. 导入模型：newapi.js 的导入钩子把 /v1/models 转成草稿（只有文本 / 视频模型）
-	imp, err := e.channels.Import(ctx, "newapi-main", nil)
+	// 4. 导入模型：openai.js 的导入钩子把 /v1/models 转成草稿（只有文本 / 视频模型）
+	imp, err := e.channels.Import(ctx, "openai-main", nil)
 	if err != nil {
 		t.Fatalf("导入失败：%v", err)
 	}
@@ -178,7 +178,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 
 	// 5. 保存模型 → 启用 → 出现在清单里
 	body := `{"key":"gpt","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
-		`"channels":[{"channel":"newapi-main","upstream_model":"gpt-4o"}],` +
+		`"channels":[{"channel":"openai-main","upstream_model":"gpt-4o"}],` +
 		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`
 	saved, err := e.cfg.SaveModel(ctx, ModelSaveInput{Create: true, Body: json.RawMessage(body), AdminID: 1})
 	if err != nil || len(saved.Issues) != 0 {
@@ -192,7 +192,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		t.Fatalf("文本模型应出现在清单里：%+v %v", models, err)
 	}
 	items, _ := e.cfg.ListConfigs(ctx)
-	if len(items) != 1 || items[0].Label != "GPT" || items[0].Channel != "newapi-main" {
+	if len(items) != 1 || items[0].Label != "GPT" || items[0].Channel != "openai-main" {
 		t.Fatalf("管理列表应带 label / channel：%+v", items)
 	}
 
@@ -202,13 +202,13 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		t.Fatalf("dry-run 失败：%v", err)
 	}
 	text := aicJSON(out)
-	if strings.Contains(text, secret) || !strings.Contains(text, "/v1/chat/completions") || !strings.Contains(text, "你好") {
+	if strings.Contains(text, secret) || !strings.Contains(text, "/v1/responses") || !strings.Contains(text, "你好") {
 		t.Fatalf("dry-run 结果不符合预期：%s", text)
 	}
 
 	// 7. 全程管理响应都不含 Key
 	all, _ := json.Marshal([]any{view, res, imp, saved, items, out})
-	if v, _ := e.channels.Get(ctx, "newapi-main"); v != nil {
+	if v, _ := e.channels.Get(ctx, "openai-main"); v != nil {
 		b, _ := json.Marshal(v)
 		all = append(all, b...)
 		if !v.SecretSet {

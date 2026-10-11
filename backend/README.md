@@ -137,7 +137,7 @@ make run
 `UPDATE users SET role = 'super_admin' WHERE username = 'xxx';`（角色最多缓存 30 秒）。
 
 协议由**插件**（JS，跑在独立的 plugin-runner 进程里）实现，渠道固定一个插件版本 + 地址 + 加密的 Key，模型绑定渠道。
-内置插件（`plugins/newapi.js`）启动时按 key + version 自动登记，不能删除。渠道 Key 只写不读，主密钥来自环境变量 `APP_AI_SECRET_KEY`。
+内置插件（`plugins/*.js`，一个插件只管一种类型：文本 / 图片 / 视频 / 音频）启动时按 key + version 自动登记，不能删除。渠道 Key 只写不读，主密钥来自环境变量 `APP_AI_SECRET_KEY`。
 完整的请求 / 响应见 [admin-ai-api.md](docs/admin-ai-api.md)，插件契约见 [plugin-contract.md](docs/plugin-contract.md)。
 
 | 方法     | 路径                                            | 权限        | 说明                                                                                                                 |

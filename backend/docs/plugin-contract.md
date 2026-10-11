@@ -22,12 +22,12 @@ module.exports = { meta: {...}, buildSubmitRequest(ctx) {...}, parseSubmitRespon
 ```js
 meta: {
   apiVersion: 1,
-  key: "newapi",              // 小写字母、数字、连字符，≤30
-  name: "New API",
+  key: "demo-video",           // 小写字母、数字、连字符，≤30
+  name: "Demo 视频",
   version: "1.0.0",           // semver，可以不写：上传时由服务端决定最终登记的版本号（见下）；同一 key 下唯一，登记后不可修改
   description: "...",
   auth: { type: "bearer" },   // none / bearer / header(需 name) / query(需 name) / custom
-  endpoints: { text: { mode: "sync" }, video: { mode: "async" } },  // 键是模型 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）
+  endpoints: { video: { mode: "async" } },  // 只能声明一个 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）；一个插件只管一种类型，同一平台有多种类型就拆成多个插件
   channelSettings: { region: { type: "enum", label: "区域", options: ["cn","global"], default: "cn" } },  // 渠道上的非敏感设置，渲染成表单
   import: { args: { } },      // 可选：“从渠道导入模型”的参数表单
   poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }   // 可选：异步轮询节奏（秒）
@@ -39,7 +39,7 @@ meta: {
 - 能编译并执行到导出；导出对象上有 `meta`；`meta.apiVersion === 1`。
 - `key` 匹配 `^[a-z0-9][a-z0-9-]{0,29}$`；`name` 非空。`version` 不是预检项：没写、不是 semver、写成数字都不报问题。
 - `auth.type` 是枚举值；`header` / `query` 必须有 `auth.name`（合法头名 / 非空参数名）。
-- `endpoints` 非空；键必须是 text/video/image/audio；`mode` 是 sync/async；
+- `endpoints` 恰好一项（**一个插件只能支持一种类型**，声明多个会报 `meta.endpoints`）；键必须是 text/video/image/audio；`mode` 是 sync/async；
   - `async` 必须实现 `buildQueryRequest` 与 `parseQueryResponse`；
   - 任何 endpoint 都必须实现 `buildSubmitRequest` 与 `parseSubmitResponse`；
   - `sync` 的 `parseSubmitResponse` 必须返回 `immediate`（运行时检查，预检只检查钩子存在）。
@@ -221,7 +221,9 @@ meta: {
 | `utils.base64(s)` / `utils.base64Decode(s)` / `utils.base64URL(s)` | 文本 ↔ base64（标准 / URL 安全无填充）；`base64Decode` 返回 UTF-8 文本 |
 | `utils.sha256(s)`                                                  | 小写十六进制                                                           |
 | `utils.hmacSHA256(key, msg)`                                       | 小写十六进制                                                           |
+| `utils.hmacSHA256Hex(hexKey, msg)`                                 | 密钥是十六进制文本（解码成字节再签），输出小写十六进制；上一步 `hmacSHA256` 的输出可直接当下一步密钥，用于逐级派生密钥的签名（火山引擎 V4） |
 | `utils.jwtSignHS256(claims, secret)`                               | 紧凑序列化的 JWT（header 固定 `{"alg":"HS256","typ":"JWT"}`）          |
+| `utils.jwtSignRS256(claims, pem)`                                  | RS256 JWT（header 固定 `{"alg":"RS256","typ":"JWT"}`），`pem` 是 PKCS#8 或 PKCS#1 的 RSA 私钥（服务账号 JSON 里的 `private_key`） |
 | `utils.log(msg)`                                                   | 进试跑追踪，不进普通日志；单次钩子调用最多 50 条，每条截断到 1KB       |
 
 `utils` 里的函数都要自行限制输入大小（单个输入 ≤256KB），因为 `vm.Interrupt()` 中断不了正在执行的 Go 函数。

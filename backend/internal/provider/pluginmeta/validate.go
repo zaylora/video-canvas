@@ -186,11 +186,14 @@ func (v *validator) auth(obj jsonObject, m *Meta) {
 	}
 }
 
-// endpoints 检查 endpoint 声明，并按 mode 检查必须实现的钩子。
+// endpoints 检查 endpoint 声明（一个插件只管一种类型），并按 mode 检查必须实现的钩子。
 func (v *validator) endpoints(obj jsonObject, m *Meta) {
 	eps, ok := v.object(obj["endpoints"], "meta.endpoints")
 	if (ok && len(eps) == 0) || !isPresent(obj, "endpoints") {
 		v.add("meta.endpoints", "至少声明一种 endpoint（%s）", strings.Join(modelcfg.Kinds, " / "))
+	}
+	if len(eps) > 1 {
+		v.add("meta.endpoints", "一个插件只能支持一种类型（现在声明了 %s），请按类型拆成多个插件", strings.Join(sortedKeys(eps), " / "))
 	}
 	m.Endpoints = map[string]Endpoint{}
 	for _, kind := range sortedKeys(eps) {
