@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>插件简化演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, textarea, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .switch.sw-plain[aria-checked="true"] { background: hsl(var(--primary)); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .side { grid-template-columns: 240px minmax(0, 1fr); }
+      @media (max-width: 820px) { .g2, .g3, .side { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .brand span.t { display: none; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .cmp .x { color: rgb(var(--bad)); }
+      .cmp del { color: hsl(var(--muted-foreground)); }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre-wrap; word-break: break-all; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 420px; position: relative; padding: 16px; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 本页补充 ---- */
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt:hover { background: hsl(var(--accent)); }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field > span { color: hsl(var(--muted-foreground)); }
+      .inp { width: 100%; height: 34px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); border-radius: 8px; padding: 0 10px; font-size: 13px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      textarea.inp { height: 150px; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+      .seg { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 2px; gap: 2px; }
+      .seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+      @media (max-width: 820px) { .kv { grid-template-columns: 1fr; } }
+      .kv dt { font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .kv dd { margin: 2px 0 0; font-size: 14px; }
+      .removed { border: 1px dashed rgb(var(--bad) / 0.5); border-radius: 8px; padding: 8px 10px; opacity: 0.75; }
+      .removed .strike { text-decoration: line-through; }
+      .subtabs { display: flex; gap: 2px; border-bottom: 1px solid hsl(var(--border)); margin: -16px -16px 16px; padding: 0 12px; overflow-x: auto; }
+      .subtabs button { height: 40px; padding: 0 12px; font-size: 13px; color: hsl(var(--muted-foreground)); border-bottom: 2px solid transparent; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+      .subtabs button[aria-selected="true"] { color: hsl(var(--foreground)); border-color: hsl(var(--foreground)); }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .verlist { display: flex; gap: 6px; flex-wrap: wrap; }
+      .issue { display: flex; gap: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: rgb(var(--bad) / 0.06); }
+      .issue code { flex: none; }
+      .trace { display: grid; gap: 6px; }
+      .trace .st { display: flex; gap: 8px; align-items: center; font-size: 12.5px; padding: 6px 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); }
+      .trace .st.bad { border-color: rgb(var(--bad) / 0.5); background: rgb(var(--bad) / 0.05); }
+      .pill-dl { display: inline-flex; padding: 3px 8px; border-radius: 6px; background: hsl(var(--muted)); font-family: "Geist Mono", monospace; font-size: 12.5px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="puzzle"></i></span><span class="t">协议插件简化</span></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>交互演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            <span class="t">设计标注</span>
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()" aria-label="设计标注"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">让 AI 写插件少走几轮</h1>
+        <p class="lead">
+          插件要来回调好几次，一大原因是契约里有不少 AI 从 API 文档里推不出来的“平台专属规则”。这次<b>删掉结果下载域名白名单，删掉“允许访问内网”开关</b>，让结果支持简写，提示词变短，版本号自动递增，出错时一键把修复信息复制给 AI。
+          <b>安全边界：渠道 Key 只会发往渠道自己的 base_url，任何请求都不能访问内网。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>现状来自仓库代码（2026-10-11，<code>feature/插件重构</code> 分支），新方案都是<b>提案，尚未实现</b>。完整依据和文件路径见同目录的
+            <code>插件简化.md</code>。原型和演示里的数据都是示意，状态只存在内存里，刷新就复原。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 实测</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一个生成任务的请求怎么走（改后）</h2>
+          <p class="sub">回答：去掉白名单以后，宿主靠什么守住 Key 和内网。</p>
+          <div class="flow note">
+            <div class="node"><b>插件返回请求描述</b><code>path</code> 或绝对地址 <code>url</code></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>宿主判断“是不是渠道地址”</b>协议、域名、端口和 base_url 完全一致，才注入 Key</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>拨号时拦截内网</b>所有渠道一样；按 DNS 解析结果判断，防止域名临时指向内网</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>插件返回结果</b>可以简写，宿主补全成完整格式</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>下载结果</b>任何公网域名都行；重定向 ≤3 次，有大小上限和超时</div>
+          </div>
+          <div class="note-txt">
+            设计：白名单原来同时管着“结果从哪下载”和“请求能去哪”。拆开以后，<b>Key 的安全靠“同源才注入”</b>，<b>内网的安全靠拨号拦截</b>，两件事都不再需要插件声明域名。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>兜底：</b>旧插件里写的 <code>allowedHosts</code> 会被直接忽略，不报错，不用重新上传。绝对地址请求如果上游需要 Key，就会收到 401/403，按“终止”失败；试跑追踪里会写明“目标不是渠道地址，未注入 Key”，方便定位。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>这次改了哪几类东西</h2>
+          <p class="sub">回答：哪些是安全边界的变化，哪些只是写插件更省事。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="shield"></i><b>安全边界</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-vio">第 1 期</span><span class="tag t-warn">升级需留意</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>删掉白名单和“允许访问内网”。</b>结果可以从任意公网域名下载；Key 只发往 base_url；所有渠道都拦截内网。
+              </p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="file-code-2"></i><b>契约放宽</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-vio">第 1 期</span><span class="tag t-ok">旧插件零改动</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>结果和失败可以简写。</b><code>outputs: ["https://…"]</code>、<code>error: "原因"</code>，分类不写就按“终止”处理。
+              </p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="sparkles"></i><b>写插件体验</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-vio">第 2 期</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">
+                <b>提示词变短、放开现代语法，版本号自动递增，可以一键复制修复信息。</b>“先提问再出码”保留不变。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>改前 vs 改后</h2>
+          <p class="sub">回答：AI 写插件时少考虑了哪些东西，安全上换成了什么保证。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>现在</th><th>改后（提案）</th></tr></thead>
+              <tbody>
+                <tr><th>结果下载域名</th><td class="m">必须写进 <code>allowedHosts</code>，漏写就试跑失败</td><td class="y">不用写；任意公网域名</td></tr>
+                <tr><th>绝对地址 <code>url</code> 请求</th><td>只能去白名单域名，<b>会带 Key</b></td><td class="y">任意公网域名；只有发往 base_url 时才带 Key</td></tr>
+                <tr><th>访问内网</th><td class="m">渠道开了“允许访问内网”就放行</td><td class="y">开关删掉，一律拦截</td></tr>
+                <tr><th>结果格式</th><td class="m">每个产物都要写 <code>type</code>；失败必须带合法的 <code>error.class</code></td><td class="y">字符串简写；<code>class</code> 缺省为 <code>terminal</code>；写错仍然报错</td></tr>
+                <tr><th>JS 语法</th><td class="m">提示词要求只写 ES5</td><td class="y">可以用 <code>?.</code>、<code>??</code>、箭头函数、<code>class</code> 等（实测当前 goja 全部支持）</td></tr>
+                <tr><th>提示词</th><td>28.6KB，所有能力混在一起讲</td><td>核心 + 进阶附录，正文目标 ≤ 50%（<span class="tag t-warn">估算</span>）</td></tr>
+                <tr><th>版本号</th><td class="m">每改一次都要手动升，忘了就被拒</td><td class="y">冲突或没写时自动补丁位 +1</td></tr>
+                <tr><th>出错后</th><td>自己把问题、追踪整理给 AI</td><td class="y">一键复制修复信息（已脱敏、已截断）</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-vio">提案</span> · 语法一项 <span class="tag t-ok">已实测</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接入 YSWG 这类平台时，会发生什么</h2>
+          <p class="sub">回答：结果放在第三方 OSS 上的平台，从写插件到出图的路径，以及需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>复制提示词，粘贴平台文档发给 AI</b><small>AI 先检查信息是否齐全，缺什么就问什么（保留现状）</small></li>
+                <li><b>AI 输出插件，里面不再有域名清单</b><small>结果可以直接写 <code>outputs: [body.data.url]</code></small></li>
+                <li><b>上传预检</b><small>如果失败，点“复制修复信息”发回给 AI；改完直接重新上传，版本号自动递增</small></li>
+                <li><b>试跑</b><small>结果在 <code>cyapi-ai.oss-us-west-1.aliyuncs.com</code> 上也能直接下载入库</small></li>
+                <li><b>如果失败，再复制一次修复信息</b><small>里面带失败步骤的输入和输出，已脱敏</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：Key 不会跟着绝对地址出门。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>平台如果要求“先 PUT 到 OSS 预签名地址”，可以做，因为这类地址本身不需要我们的 Key。</li>
+                    <li>平台如果把接口拆到两个域名（如 <code>api.x.com</code> 和 <code>upload.x.com</code>），而且都要 Key，第二个域名拿不到 Key。这种情况需要渠道拆开，或者插件改用 <code>auth: custom</code>（插件自己持有 Key，需要超级管理员开“允许插件读取 Key”）。</li>
+                    <li>升级前开过“允许访问内网”的渠道，升级后会失败，日志里会有 WARN。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线前要在 CHANGELOG 里写明：白名单字段 <code>allowedHosts</code> 已删除、“允许访问内网”开关已删除。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 交互演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">改几个值，看宿主怎么处理</h1>
+        <p class="lead">
+          左边选一个演示，右边改输入，结果实时变化。<b>判断逻辑按设计文档 §6.1 和 §6.3 写成，是示意。</b>内网判断这里只看字面 IP 和 <code>localhost</code>；真实实现以拨号时的 DNS 解析结果为准。
+        </p>
+        <div class="grid side" style="margin-top: 20px">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">后台：上传、试跑、概览</h1>
+        <p class="lead">
+          数据在内存里，刷新就复原。已经预置插件 <code>yswg-image</code>（已有 v1.3.0、v1.3.1）。可以试这几条路径：
+          上传“漏写查询钩子”的文件，看<b>预检失败 + 复制修复信息</b>；上传“已修复、版本号没改”的文件，看<b>版本自动递增</b>；再传一次同一份文件，看<b>“代码完全相同”被拒</b>。试跑页可以触发两种失败。
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">admin.example.com / AI 配置 / 插件 / yswg-image</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">
+          设计：修复闭环是“复制 → 发给 AI → 重新上传”，中间不需要人动版本号，也不需要人整理报错。原型里复制的文本会显示在下方，方便核对格式（真实产品只写入剪贴板）。
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 设计文档的 §6、§8。<b>没有新增表</b>：删掉一列，改一个接口的返回，其余是宿主规则和前端。</p>
+
+        <div class="sec">
+          <h2>规则关系</h2>
+          <p class="sub">回答：哪类出站请求允许去哪，带不带 Key。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>出站请求</th><th>允许的目标</th><th>带 Key</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>请求描述 <code>path</code></th><td>只有 base_url</td><td>是</td><td>不变</td></tr>
+                <tr><th>请求描述 <code>url</code>，同源</th><td>base_url 的协议、域名、端口</td><td>是</td><td>等价于 path</td></tr>
+                <tr><th>请求描述 <code>url</code>，非同源</th><td>任意公网 http/https</td><td><b>否</b></td><td>用于预签名上传等场景；Key 不离开渠道</td></tr>
+                <tr><th>下载结果</th><td>任意公网 http/https</td><td>否（现状也不带）</td><td>结果域名不可预知</td></tr>
+                <tr><th>Agent 大模型网关</th><td>只有 base_url</td><td>是</td><td>不变，只去掉内网放行</td></tr>
+                <tr><th>任何请求访问内网</th><td>一律拦截</td><td>—</td><td>“允许访问内网”删除</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用 <code>repository/migrate.go</code> 已有的“可重复执行”收敛模式删列；插件版本表不变。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>ai_channels</code> 表</th></tr></thead>
+                <tbody>
+                  <tr><th><del>trusted_internal</del></th><td><b>删除</b>。迁移前先查出值为 true 的渠道，逐个打 WARN（渠道 key + base_url 主机）；表或列不存在时跳过</td></tr>
+                  <tr><th>allow_credentials</th><td>不变（“允许插件读取 Key”）</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">插件 <code>meta</code>（存在 <code>ai_plugin_versions.meta_json</code>）</th></tr></thead>
+                <tbody>
+                  <tr><th><del>allowedHosts</del></th><td><b>删除</b>（就是白名单）。结构体、预检、宿主校验、界面、提示词、契约文档、内置插件里全部删掉；插件代码里还写着时直接忽略，不报错（旧版本不可修改，AI 也可能照旧写上）</td></tr>
+                  <tr><th>version</th><td>可以不写；登记时由 service 决定最终值，并回写到 meta_json；代码原文和 sha256 不变</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>变化</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /admin/ai/plugins</code>（上传）</th><td>返回增加 <code>version_adjusted: { from, to }</code>（有调整时才返回）。新增拒绝原因：代码与已有版本完全相同（<code>accepted=false</code>，问题挂在 <code>meta</code>）。版本号已存在不再拒绝，改成自动递增。</td></tr>
+                <tr><th>渠道创建 / 更新 / 详情</th><td>请求和返回都删掉 <code>trusted_internal</code>；旧客户端传这个字段会被忽略</td></tr>
+                <tr><th>插件详情</th><td><code>meta.allowedHosts</code> 不再返回</td></tr>
+                <tr><th>试跑追踪</th><td>非同源请求的步骤增加说明：“目标不是渠道地址，未注入 Key”</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心逻辑伪代码</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre>// 宿主：请求鉴权注入（提案）
+func (o *operation) injectAuth(u *url.URL, b *builtRequest) {
+  if !sameOrigin(u, o.base) {   // scheme + host(含端口) 不区分大小写
+    o.trace.note("目标不是渠道地址，未注入 Key")
+    return
+  }
+  switch b.auth.Type { case bearer, header, query: 注入 }
+}
+
+// 宿主：结果规范化，在原校验之前（提案）
+func normalize(r *result, kind string) {
+  for i, o := range r.Outputs {
+    if s, ok := o.(string); ok {
+      if kind == "text" { r.Outputs[i] = {type:"text", text:s} }
+      else              { r.Outputs[i] = {type:"url",  url:s} }
+    } else if o.type == "" {
+      if o.url  != "" { o.type = "url"  }
+      if o.text != "" { o.type = "text" }
+    }
+  }
+  if s, ok := r.Error.(string); ok { r.Error = {class:"terminal", message:s} }
+  if r.Error != nil && r.Error.class == "" { r.Error.class = "terminal" }
+  // status 不放宽；class 写了但不合法 → 仍然算插件故障
+}</pre></div>
+            <div class="codeblock"><pre>// 服务：上传时决定版本号（提案，仅上传的插件）
+func decideVersion(meta, existing, sha) (string, error) {
+  if len(existing) == 0 {
+    if validSemver(meta.Version) { return meta.Version }
+    return "1.0.0"
+  }
+  if v := existing.findBySHA(sha); v != nil {
+    return reject("代码与 v" + v + " 完全相同，没有产生新版本")
+  }
+  max := existing.maxSemver()
+  if validSemver(meta.Version) && !existing.has(meta.Version) &&
+     semverGT(meta.Version, max) {
+    return meta.Version
+  }
+  return fmt.Sprintf("%d.%d.%d", max.Major, max.Minor, max.Patch+1)
+}
+// 撞唯一索引：重算，最多 3 次，仍冲突按“版本号已存在”拒绝
+
+// 前端：复制修复信息 utils/admin/repair-report.ts（提案）
+// 每块截断到 2KB，全文截断到 16KB；追踪已由后端脱敏</pre></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>保留“信息不全先提问”</b>：检查和导入仍然必须实现，提示词这一部分不动。</li>
+              <li><b>绝对地址请求允许任意公网域名，但不带 Key</b>：用户从“照常带 Key”更正为这个选项，Key 只发往 base_url。</li>
+              <li><b>契约放宽只做“产物和失败支持简写”</b>：推断 sync/async、字符串文件引用、base64 产物本期不做，已搁置，留档在主文档 §9。</li>
+              <li><b>提示词与流程四项都做</b>：放开现代语法、拆成核心 + 进阶、版本号自动递增、一键复制修复信息。</li>
+              <li><b>直接删掉“允许访问内网”</b>：所有渠道一律拦截内网。</li>
+              <li><b>主文档已回写</b>：本页内容和 <code>插件简化.md</code> §6–§11 一致。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 交互演示 ================= */
+      const demo = {
+        cur: "req",
+        req: { base: "https://api.yswg.love/v1", url: "https://cyapi-ai.oss-us-west-1.aliyuncs.com/upload/a.png?sig=xx", auth: "bearer" },
+        res: { kind: "image", preset: "shortUrl", text: "" },
+      };
+      const presets = {
+        shortUrl: { label: "简写：URL 字符串", kind: "image", body: { status: "succeeded", outputs: ["https://cyapi-ai.oss-us-west-1.aliyuncs.com/r/1.png"] } },
+        shortObj: { label: "对象缺 type", kind: "image", body: { status: "succeeded", outputs: [{ url: "https://img.deepwl.cn/a.png", mime: "image/png" }] } },
+        textStr: { label: "文本模型：字符串", kind: "text", body: { status: "succeeded", outputs: ["这是生成的正文"] } },
+        errStr: { label: "失败：error 是字符串", kind: "image", body: { status: "failed", error: "上游提示：内容审核未通过" } },
+        errNoClass: { label: "失败：缺 class", kind: "image", body: { status: "failed", error: { code: "E1002", message: "账号余额不足" } } },
+        errBadClass: { label: "失败：class 写错", kind: "image", body: { status: "failed", error: { class: "fatal", message: "x" } } },
+        badStatus: { label: "status 写成 SUCCESS", kind: "image", body: { status: "SUCCESS", outputs: ["https://a.com/1.png"] } },
+        notUrl: { label: "图片模型返回了非地址", kind: "image", body: { status: "succeeded", outputs: ["data:image/png;base64,iVBOR..."] } },
+      };
+      demo.res.text = JSON.stringify(presets.shortUrl.body, null, 2);
+
+      const demoOpts = [
+        { id: "req", icon: "send", title: "请求去哪、带不带 Key", sub: "§6.1 绝对地址与注入规则" },
+        { id: "res", icon: "wand-sparkles", title: "结果简写怎么补全", sub: "§6.3 规范化规则" },
+      ];
+      function renderDemoList() {
+        $("#optList").innerHTML = demoOpts
+          .map((o) => `<button class="opt" aria-pressed="${o.id === demo.cur}" onclick="pickDemo('${o.id}')"><span class="row"><i data-lucide="${o.icon}"></i><b>${esc(o.title)}</b></span><small>${esc(o.sub)}</small></button>`)
+          .join("");
+      }
+      function pickDemo(id) { demo.cur = id; renderDemoList(); renderDemoPanel(); icons(); }
+
+      function isPrivateHost(h) {
+        h = h.replace(/^\[|\]$/g, "").toLowerCase();
+        if (h === "localhost" || h.endsWith(".localhost")) return true;
+        if (h === "::1") return true;
+        const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+        if (!m) return false;
+        const [a, b] = [Number(m[1]), Number(m[2])];
+        return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+      }
+      function evalReq() {
+        let base, u;
+        try { base = new URL(demo.req.base); } catch { return { kind: "bad", head: "base_url 不合法", lines: ["渠道保存时就会被拒绝"] }; }
+        try { u = new URL(demo.req.url); } catch { return { kind: "bad", head: "插件故障：url 不合法", lines: ["请求不发出，任务按“终止”失败，算插件故障"] }; }
+        if (u.protocol !== "http:" && u.protocol !== "https:") return { kind: "bad", head: "插件故障：只支持 http/https", lines: [`协议 ${u.protocol} 不允许`] };
+        if (u.username || u.password) return { kind: "bad", head: "插件故障：url 不能带用户名密码", lines: [] };
+        if (u.pathname.split("/").some((s) => s === ".." || s.toLowerCase() === "%2e%2e")) return { kind: "bad", head: "插件故障：url 不能含 .. 段", lines: [] };
+        if (isPrivateHost(u.hostname)) return { kind: "bad", head: "拦截：ssrf_blocked（终止）", lines: ["目标是内网地址。改后所有渠道一律拦截，不再有“允许访问内网”。", "真实实现在拨号时按 DNS 解析结果判断（示意里只看字面 IP）。"] };
+        const same = u.protocol === base.protocol && u.host.toLowerCase() === base.host.toLowerCase();
+        const how = { bearer: "Authorization: Bearer ***", header: "X-Api-Key: ***", query: "?key=***", none: "无" }[demo.req.auth];
+        if (same) return { kind: "ok", head: "发出请求，注入 Key", lines: [`和 base_url 同源（${base.host}）`, `注入：${how}`] };
+        return { kind: "warn", head: "发出请求，不注入 Key", lines: [`${u.host} 不是渠道地址 ${base.host}（端口不同也算不同源）`, "试跑追踪记一条：目标不是渠道地址，未注入 Key", demo.req.auth === "none" ? "插件本来就不需要 Key，没有影响" : "上游如果需要 Key 会返回 401/403，按“终止”失败"] };
+      }
+      function renderReqResult() {
+        const r = evalReq();
+        const cls = { ok: "c-ok", warn: "c-warn", bad: "c-bad" }[r.kind];
+        const ic = { ok: "circle-check", warn: "key-round", bad: "shield-x" }[r.kind];
+        $("#reqOut").innerHTML = `<div class="callout ${cls}"><i data-lucide="${ic}"></i><div><b>${esc(r.head)}</b>${r.lines.length ? `<ul class="list" style="margin-top:6px">${r.lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}</div></div>`;
+        icons();
+      }
+      function setReq(k, v) { demo.req[k] = v; renderReqResult(); }
+      function quickUrl(v) { demo.req.url = v; $("#reqUrl").value = v; renderReqResult(); }
+
+      const CLASSES = ["retryable", "terminal", "moderation", "provider_balance"];
+      function normalize(raw, kind) {
+        const notes = [];
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { err: "统一结果必须是对象" };
+        const r = JSON.parse(JSON.stringify(raw));
+        if (!["queued", "running", "succeeded", "failed"].includes(r.status)) return { err: "统一结果的 status 不合法（不放宽：宿主不替插件猜状态）" };
+        if (r.status === "succeeded") {
+          if (!Array.isArray(r.outputs) || !r.outputs.length) return { err: "succeeded 结果必须包含产物" };
+          for (let i = 0; i < r.outputs.length; i++) {
+            let o = r.outputs[i];
+            if (typeof o === "string") {
+              o = kind === "text" ? { type: "text", text: o } : { type: "url", url: o };
+              notes.push(`第 ${i + 1} 个产物：字符串 → ${o.type} 对象`);
+            } else if (o && typeof o === "object" && !o.type) {
+              if (o.url) { o.type = "url"; notes.push(`第 ${i + 1} 个产物：补 type = "url"`); }
+              else if (o.text) { o.type = "text"; notes.push(`第 ${i + 1} 个产物：补 type = "text"`); }
+            }
+            if (!o || typeof o !== "object" || !["url", "text", "asset"].includes(o.type)) return { err: `第 ${i + 1} 个产物 type 不合法` };
+            if (o.type === "text" && kind !== "text") return { err: `第 ${i + 1} 个 text 产物不属于文本模型` };
+            if (o.type === "url") {
+              if (kind === "text") return { err: "文本模型不能返回 url 产物" };
+              let u; try { u = new URL(o.url); } catch { return { err: "url 产物地址不合法" }; }
+              if (u.protocol !== "http:" && u.protocol !== "https:") return { err: "url 产物地址不合法（只支持 http/https；本期不支持 base64 产物）" };
+              notes.push(`第 ${i + 1} 个产物：域名 ${u.hostname} 不再校验白名单`);
+            }
+            if (!o.media_type) { o.media_type = kind; }
+            r.outputs[i] = o;
+          }
+        }
+        if (r.status === "failed") {
+          if (r.error == null) return { err: "failed 结果必须包含 error" };
+          if (typeof r.error === "string") { r.error = { class: "terminal", message: r.error }; notes.push('error 字符串 → { class: "terminal", message }'); }
+          else if (!r.error.class) { r.error.class = "terminal"; notes.push('error 缺 class → 补 "terminal"'); }
+          if (!CLASSES.includes(r.error.class)) return { err: `error.class "${r.error.class}" 不合法（写了就要写对，不静默改）` };
+        }
+        return { ok: r, notes };
+      }
+      function renderResResult() {
+        let raw;
+        try { raw = JSON.parse(demo.res.text); } catch { $("#resOut").innerHTML = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>JSON 写错了</b>（演示用 JSON 表示插件返回值，真实插件返回 JS 对象）</div></div>`; icons(); return; }
+        const r = normalize(raw, demo.res.kind);
+        if (r.err) {
+          $("#resOut").innerHTML = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>插件故障，任务按“终止”失败</b><div style="margin-top:4px">${esc(r.err)}</div></div></div>`;
+        } else {
+          $("#resOut").innerHTML = `<div class="callout c-ok"><i data-lucide="circle-check"></i><div><b>通过</b>${r.notes.length ? `<ul class="list" style="margin-top:6px">${r.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<div class="muted">已经是完整写法，宿主没有补全</div>`}</div></div>
+            <div class="muted" style="font-size:12px;margin:10px 0 4px">宿主补全后的完整结果</div><div class="codeblock"><pre>${esc(JSON.stringify(r.ok, null, 2))}</pre></div>`;
+        }
+        icons();
+      }
+      function pickPreset(k) {
+        demo.res.preset = k;
+        demo.res.kind = presets[k].kind;
+        demo.res.text = JSON.stringify(presets[k].body, null, 2);
+        renderDemoPanel(); icons();
+      }
+      function setKind(k) { demo.res.kind = k; document.querySelectorAll("#kindSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k))); renderResResult(); }
+      function onResInput(v) { demo.res.text = v; demo.res.preset = ""; clearTimeout(window._rt); window._rt = setTimeout(renderResResult, 150); }
+
+      function renderDemoPanel() {
+        if (demo.cur === "req") {
+          $("#optPanel").innerHTML = `
+            <h3 style="font-size:15px">插件请求里写绝对地址 <code>url</code>，宿主怎么处理</h3>
+            <p class="muted" style="font-size:13px;margin:4px 0 14px">修改 base_url、请求地址和鉴权方式，下面的结论会跟着变。</p>
+            <div class="grid" style="gap:10px">
+              <label class="field"><span>渠道 base_url</span><input class="inp" value="${esc(demo.req.base)}" oninput="setReq('base', this.value)" /></label>
+              <label class="field"><span>请求描述 url</span><input id="reqUrl" class="inp" value="${esc(demo.req.url)}" oninput="setReq('url', this.value)" /></label>
+              <div class="row wrapflex" style="font-size:12px">
+                <span class="muted">快速填：</span>
+                <button class="btn btn-outline" style="height:26px" onclick="quickUrl('https://api.yswg.love/v1/tasks/123')">同源</button>
+                <button class="btn btn-outline" style="height:26px" onclick="quickUrl('https://api.yswg.love:8443/v1/tasks')">端口不同</button>
+                <button class="btn btn-outline" style="height:26px" onclick="quickUrl('https://cyapi-ai.oss-us-west-1.aliyuncs.com/upload/a.png?sig=xx')">OSS 预签名</button>
+                <button class="btn btn-outline" style="height:26px" onclick="quickUrl('http://169.254.169.254/latest/meta-data/')">云元数据</button>
+                <button class="btn btn-outline" style="height:26px" onclick="quickUrl('http://192.168.1.10:3000/v1/models')">内网网关</button>
+              </div>
+              <label class="field"><span>插件 meta.auth.type</span>
+                <select class="inp" onchange="setReq('auth', this.value)">
+                  ${["bearer", "header", "query", "none"].map((a) => `<option ${a === demo.req.auth ? "selected" : ""}>${a}</option>`).join("")}
+                </select>
+              </label>
+            </div>
+            <div id="reqOut" style="margin-top:14px"></div>
+            <div class="note-txt">设计：同源判断包含端口，和浏览器的同源规则一致；判断不出“是不是同一家公司”，所以不按根域名放宽。</div>`;
+          renderReqResult();
+        } else {
+          $("#optPanel").innerHTML = `
+            <h3 style="font-size:15px">插件返回的统一结果，宿主怎么补全</h3>
+            <p class="muted" style="font-size:13px;margin:4px 0 12px">选一个例子，或者直接改 JSON。只放宽“漏写”，不放宽“写错”。</p>
+            <div class="row wrapflex" style="gap:6px;margin-bottom:10px">
+              ${Object.entries(presets).map(([k, p]) => `<button class="opt" style="padding:5px 9px;font-size:12px" aria-pressed="${k === demo.res.preset}" onclick="pickPreset('${k}')">${esc(p.label)}</button>`).join("")}
+            </div>
+            <div class="row" style="margin-bottom:8px;font-size:12.5px"><span class="muted">模型种类</span>
+              <span class="seg" id="kindSeg">${["image", "video", "text"].map((k) => `<button data-k="${k}" aria-pressed="${k === demo.res.kind}" onclick="setKind('${k}')">${k}</button>`).join("")}</span>
+            </div>
+            <textarea class="inp" spellcheck="false" oninput="onResInput(this.value)">${esc(demo.res.text)}</textarea>
+            <div id="resOut" style="margin-top:12px"></div>
+            <div class="note-txt">设计：status 不接受同义词（如 SUCCESS、completed），因为“上游的哪个状态算成功”只有插件知道；宿主猜错会把失败当成功入库。</div>`;
+          renderResResult();
+        }
+      }
+
+      /* ================= 可点击原型 ================= */
+      const P = {
+        sub: "upload",
+        versions: [
+          { v: "1.3.0", sha: "a1" },
+          { v: "1.3.1", sha: "b2" },
+        ],
+        file: "missingQuery",
+        upload: { phase: "idle", result: null },
+        run: { scenario: "ok", phase: "idle", result: null },
+        copied: "",
+        safeCred: false,
+      };
+      const files = {
+        missingQuery: { name: "yswg-image.js", desc: "漏写 buildQueryRequest，版本号写 1.3.1", key: "yswg-image", version: "1.3.1", sha: "c3", issues: [
+          { path: "exports.buildQueryRequest", msg: "endpoints.image.mode 为 async，必须实现 buildQueryRequest 与 parseQueryResponse" },
+          { path: "meta.auth.name", msg: "auth.type 为 header 时必须写 auth.name" },
+        ] },
+        fixed: { name: "yswg-image.js", desc: "已修复，但版本号仍写 1.3.1", key: "yswg-image", version: "1.3.1", sha: "d4" },
+        fixedHigh: { name: "yswg-image.js", desc: "已修复，主动写了 1.4.0", key: "yswg-image", version: "1.4.0", sha: "e5" },
+        same: { name: "yswg-image.js", desc: "和已登记的 v1.3.1 完全相同", key: "yswg-image", version: "1.3.1", sha: "b2" },
+        newNoVer: { name: "kling-video.js", desc: "新插件，没写 version", key: "kling-video", version: "", sha: "f6" },
+      };
+      const otherPlugins = {}; // 新 key 的版本
+
+      function semverParse(v) { const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)(-.+)?$/); return m ? { a: +m[1], b: +m[2], c: +m[3], pre: m[4] || "" } : null; }
+      function semverGT(x, y) { const p = semverParse(x), q = semverParse(y); if (p.a !== q.a) return p.a > q.a; if (p.b !== q.b) return p.b > q.b; if (p.c !== q.c) return p.c > q.c; return !p.pre && !!q.pre; }
+      function decideVersion(f, existing) {
+        if (!existing.length) return { to: semverParse(f.version) ? f.version : "1.0.0" };
+        const hit = existing.find((e) => e.sha === f.sha);
+        if (hit) return { reject: `代码与 v${hit.v} 完全相同，没有产生新版本` };
+        const max = existing.reduce((m, e) => (semverGT(e.v, m) ? e.v : m), existing[0].v);
+        if (semverParse(f.version) && !existing.some((e) => e.v === f.version) && semverGT(f.version, max)) return { to: f.version };
+        const q = semverParse(max);
+        return { to: `${q.a}.${q.b}.${q.c + 1}` };
+      }
+
+      function doUpload() {
+        P.upload = { phase: "loading", result: null };
+        P.copied = "";
+        renderProto();
+        setTimeout(() => {
+          const f = files[P.file];
+          if (f.issues) { P.upload = { phase: "done", result: { ok: false, issues: f.issues, f } }; renderProto(); return; }
+          const list = f.key === "yswg-image" ? P.versions : (otherPlugins[f.key] = otherPlugins[f.key] || []);
+          const d = decideVersion(f, list);
+          if (d.reject) { P.upload = { phase: "done", result: { ok: false, issues: [{ path: "meta", msg: d.reject }], f } }; renderProto(); return; }
+          list.push({ v: d.to, sha: f.sha });
+          P.upload = { phase: "done", result: { ok: true, f, to: d.to, from: f.version, adjusted: f.version !== d.to } };
+          renderProto();
+          toast(`已登记 ${f.key} v${d.to}`);
+        }, 900);
+      }
+
+      const scenarios = {
+        ok: { label: "成功：结果在第三方 OSS", desc: "插件返回 outputs: [\"https://cyapi-ai.oss-…/r/1.png\"]" },
+        badStatus: { label: "失败：status 写成 SUCCESS", desc: "parseQueryResponse 把上游状态原样返回" },
+        noKey: { label: "失败：查询走了别的域名", desc: "buildQueryRequest 用绝对地址 https://task.yswg.love/…" },
+      };
+      function latestYswg() { return P.versions.reduce((m, e) => (semverGT(e.v, m) ? e.v : m), P.versions[0].v); }
+      function doRun() {
+        P.run = { ...P.run, phase: "loading", result: null };
+        P.copied = "";
+        renderProto();
+        setTimeout(() => {
+          const s = P.run.scenario;
+          const steps = [
+            { n: "buildSubmitRequest", t: "hook", ok: true },
+            { n: "POST /v1/images/generations", t: "http", ok: true, st: 200 },
+            { n: "parseSubmitResponse", t: "hook", ok: true },
+            { n: "buildQueryRequest", t: "hook", ok: true },
+          ];
+          if (s === "ok") {
+            steps.push({ n: "GET /v1/tasks/8812", t: "http", ok: true, st: 200 }, { n: "parseQueryResponse", t: "hook", ok: true }, { n: "下载 cyapi-ai.oss-us-west-1.aliyuncs.com/r/1.png", t: "http", ok: true, st: 200 });
+            P.run.result = { ok: true, steps };
+          } else if (s === "badStatus") {
+            steps.push({ n: "GET /v1/tasks/8812", t: "http", ok: true, st: 200 }, { n: "parseQueryResponse", t: "hook", ok: false, err: "统一结果的 status 不合法", input: '{"status":200,"body":{"state":"SUCCESS","data":{"url":"https://cyapi-ai.oss-…/r/1.png"}}}', output: '{"status":"SUCCESS","outputs":["https://cyapi-ai.oss-…/r/1.png"]}' });
+            P.run.result = { ok: false, code: "plugin_error", msg: "统一结果的 status 不合法", steps };
+          } else {
+            steps.push({ n: "GET https://task.yswg.love/v1/tasks/8812", t: "http", ok: false, st: 401, note: "目标不是渠道地址，未注入 Key", input: "请求头：无 Authorization", output: '{"error":"missing api key"}' });
+            P.run.result = { ok: false, code: "http_401", msg: "上游返回 401（终止）", steps };
+          }
+          P.run.phase = "done";
+          renderProto();
+        }, 1100);
+      }
+
+      function repairText(kind) {
+        const head = "我的 video-canvas 协议插件出错了，请按插件契约修复，输出完整的 .js 文件（版本号不用改，上传时会自动递增）。\n\n";
+        const cut = (s) => (s.length > 2048 ? s.slice(0, 2048) + "…（已截断）" : s);
+        if (kind === "upload") {
+          const r = P.upload.result;
+          return head + `插件：${r.f.key}（代码里的版本 ${r.f.version || "未写"}）\n阶段：上传预检\n\n问题：\n` + r.issues.map((i) => `- ${i.path}：${i.msg}`).join("\n");
+        }
+        const r = P.run.result;
+        const bad = r.steps.map((s, i) => ({ ...s, i: i + 1 })).filter((s) => !s.ok);
+        return head + `插件：yswg-image v${latestYswg()}\n阶段：试跑（图片模型 yswg-gpt-image）\n错误：${r.code} · ${r.msg}\n\n失败步骤：\n` +
+          bad.map((s) => `[${s.i}] ${s.n}${s.note ? `\n  说明：${s.note}` : ""}${s.input ? `\n  输入（截断到 2KB）：${cut(s.input)}` : ""}${s.output ? `\n  输出：${cut(s.output)}` : ""}`).join("\n");
+      }
+      function copyRepair(kind) {
+        P.copied = repairText(kind);
+        try { navigator.clipboard && navigator.clipboard.writeText(P.copied).catch(() => {}); } catch {}
+        renderProto();
+        toast("修复信息已复制，发给 AI 即可");
+      }
+
+      function renderUpload() {
+        const u = P.upload;
+        let body = "";
+        if (u.phase === "idle") {
+          body = `<div class="muted" style="font-size:13px;padding:18px;text-align:center;border:1px dashed hsl(var(--border));border-radius:10px"><i data-lucide="upload"></i> 选一个示例文件，点“上传”</div>`;
+        } else if (u.phase === "loading") {
+          body = `<div class="row muted" style="font-size:13px;padding:18px"><i data-lucide="loader-circle" class="spin"></i>预检中…（在沙箱里编译并检查钩子，模拟）</div>`;
+        } else if (u.result.ok) {
+          const r = u.result;
+          body = `<div class="callout c-ok"><i data-lucide="circle-check"></i><div><b>已登记 ${esc(r.f.key)} v${esc(r.to)}</b>
+            ${r.adjusted ? `<div class="note" style="margin-top:6px;padding:4px 6px;border-radius:6px">代码里写的是 ${r.from ? "v" + esc(r.from) : "（未写版本号）"}，已自动登记为 <b>v${esc(r.to)}</b>。代码原文不变。</div><div class="note-txt">设计：只加补丁位，不猜“这次改动大不大”；想升主/次版本，就在代码里写一个更大的版本号。</div>` : `<div class="muted">使用代码里写的版本号。</div>`}
+            <div class="muted" style="margin-top:6px">渠道不会自动切换版本，请到“升级渠道”里切过去。</div></div></div>`;
+        } else {
+          const r = u.result;
+          body = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div style="flex:1;min-width:0"><b>预检未通过，没有登记</b>
+            <div class="grid" style="gap:6px;margin-top:8px">${r.issues.map((i) => `<div class="issue"><code>${esc(i.path)}</code><span>${esc(i.msg)}</span></div>`).join("")}</div>
+            <div class="note" style="margin-top:10px;display:inline-block;border-radius:8px"><button class="btn btn-outline" onclick="copyRepair('upload')"><i data-lucide="clipboard-copy"></i>复制修复信息</button></div>
+            <div class="note-txt">新增：现在只能逐条复制路径；改成一次性复制全部问题和修复要求。</div></div></div>`;
+        }
+        return `
+          <div class="grid g2" style="grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)">
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">示例文件（模拟“选择文件”）</div>
+              <div class="grid" style="gap:6px">
+                ${Object.entries(files).map(([k, f]) => `<button class="opt" aria-pressed="${k === P.file}" onclick="P.file='${k}';renderProto()"><b class="mono" style="font-size:12.5px">${esc(f.name)}</b><small>${esc(f.desc)}</small></button>`).join("")}
+              </div>
+              <div class="row" style="margin-top:10px"><button class="btn btn-primary" ${u.phase === "loading" ? "disabled" : ""} onclick="doUpload()"><i data-lucide="upload"></i>上传</button>
+                <span class="muted" style="font-size:12px">插件文件 ≤512KB</span></div>
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">预检结果</div>
+              ${body}
+              <div style="margin-top:14px;font-size:12.5px" class="muted">yswg-image 已登记的版本</div>
+              <div class="verlist" style="margin-top:6px">${P.versions.map((e) => `<span class="tag t-mute mono">v${esc(e.v)}</span>`).join("")}</div>
+              ${Object.keys(otherPlugins).map((k) => `<div style="margin-top:8px;font-size:12.5px" class="muted">${esc(k)} 已登记的版本</div><div class="verlist" style="margin-top:6px">${otherPlugins[k].map((e) => `<span class="tag t-mute mono">v${esc(e.v)}</span>`).join("")}</div>`).join("")}
+            </div>
+          </div>`;
+      }
+
+      function renderRun() {
+        const r = P.run;
+        let body = "";
+        if (r.phase === "idle") body = `<div class="muted" style="font-size:13px;padding:18px;text-align:center;border:1px dashed hsl(var(--border));border-radius:10px">选一个场景，点“试跑”（不扣积分，模拟）</div>`;
+        else if (r.phase === "loading") body = `<div class="row muted" style="font-size:13px;padding:18px"><i data-lucide="loader-circle" class="spin"></i>生成中…（模拟，非真实调用）</div>`;
+        else {
+          const res = r.result;
+          body = `${res.ok
+            ? `<div class="callout c-ok"><i data-lucide="circle-check"></i><div><b>试跑成功</b><div class="muted">结果已从 cyapi-ai.oss-us-west-1.aliyuncs.com 下载入库，<b>不需要配置任何域名</b>。</div></div></div>`
+            : `<div class="callout c-bad"><i data-lucide="circle-x"></i><div style="flex:1"><b>试跑失败</b><div class="mono" style="font-size:12.5px;margin-top:2px">${esc(res.code)} · ${esc(res.msg)}</div>
+                <div class="note" style="margin-top:10px;display:inline-block;border-radius:8px"><button class="btn btn-outline" onclick="copyRepair('run')"><i data-lucide="clipboard-copy"></i>复制修复信息</button></div>
+                <div class="note-txt">只带失败步骤的输入和输出，每块 2KB、全文 16KB；追踪已由后端脱敏，Key 不会出现在文本里。</div></div></div>`}
+            <div style="font-size:12.5px;margin:12px 0 6px" class="muted">执行追踪</div>
+            <div class="trace">${res.steps.map((s, i) => `<div class="st ${s.ok ? "" : "bad"}"><span class="tag ${s.t === "hook" ? "t-vio" : "t-info"}">${s.t === "hook" ? "钩子" : "HTTP"}</span><span class="mono" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i + 1}. ${esc(s.n)}</span>${s.st ? `<span class="tag ${s.st < 300 ? "t-ok" : "t-bad"}">${s.st}</span>` : ""}${s.note ? `<span class="tag t-warn">未注入 Key</span>` : ""}${s.err ? `<span class="tag t-bad">故障</span>` : ""}</div>`).join("")}</div>`;
+        }
+        return `
+          <div class="grid g2" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)">
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px">模型 <span class="mono">yswg-gpt-image</span> · 插件 v${esc(latestYswg())}</div>
+              <div class="grid" style="gap:6px">
+                ${Object.entries(scenarios).map(([k, s]) => `<button class="opt" aria-pressed="${k === r.scenario}" onclick="P.run.scenario='${k}';renderProto()"><b>${esc(s.label)}</b><small>${esc(s.desc)}</small></button>`).join("")}
+              </div>
+              <button class="btn btn-primary" style="margin-top:10px" ${r.phase === "loading" ? "disabled" : ""} onclick="doRun()"><i data-lucide="play"></i>试跑</button>
+            </div>
+            <div>${body}</div>
+          </div>`;
+      }
+
+      function renderOverview() {
+        return `
+          <div style="font-size:13px" class="muted">通过 YSWG 图像模型异步生成图片</div>
+          <div class="sec" style="margin-top:18px"><h2 style="font-size:15px">插件信息</h2>
+            <dl class="kv" style="margin-top:12px">
+              <div><dt>插件标识</dt><dd class="mono">yswg-image</dd></div>
+              <div><dt>最新版本</dt><dd class="mono">v${esc(latestYswg())}</dd></div>
+              <div><dt>契约版本</dt><dd>v1</dd></div>
+              <div><dt>来源</dt><dd>上传 · 用户 #1</dd></div>
+              <div><dt>鉴权方式</dt><dd>Bearer（宿主注入 Authorization 头，只发往渠道地址）</dd></div>
+              <div><dt>从渠道导入模型</dt><dd>✓ 支持</dd></div>
+              <div><dt>异步任务查询</dt><dd>提交 15 秒后开始，每 15 秒一次，最长间隔 30 秒</dd></div>
+              <div class="note" style="border-radius:8px"><div class="removed"><dt>允许下载结果的域名</dt><dd class="strike"><span class="pill-dl">www.yswg.love</span> <span class="pill-dl">*.deepwl.cn</span></dd></div>
+                <div class="note-txt">删除：这一项不再展示。结果可以从任意公网域名下载；旧插件里的这个字段会被忽略。</div></div>
+            </dl>
+          </div>
+          <div class="sec" style="margin-top:22px"><h2 style="font-size:15px">渠道弹窗 · 安全设置（对照）</h2>
+            <div class="card" style="margin-top:10px;display:grid;gap:12px">
+              <div class="row"><div style="flex:1"><b style="font-size:13.5px">允许插件读取 Key</b><div class="muted" style="font-size:12.5px">只给 auth: custom 的签名类插件用，不变</div></div>
+                <button class="switch sw-plain" role="switch" aria-checked="${P.safeCred}" onclick="P.safeCred=!P.safeCred;renderProto()" aria-label="允许插件读取 Key"></button></div>
+              <div class="note" style="border-radius:8px"><div class="row removed"><div style="flex:1"><b class="strike" style="font-size:13.5px">允许访问内网</b><div class="muted" style="font-size:12.5px">删除：所有渠道一律拦截内网地址</div></div>
+                <button class="switch sw-plain" role="switch" aria-checked="false" disabled title="已删除" aria-label="允许访问内网（已删除）"></button></div>
+                <div class="note-txt">删除原因：去掉白名单以后，这个开关等于让插件访问整个内网。用户确认不在内网自建网关。升级时会对仍开着这个开关的渠道打 WARN。</div></div>
+            </div>
+          </div>`;
+      }
+
+      function renderProto() {
+        const tabs = [
+          ["upload", "upload", "上传插件"],
+          ["run", "play", "试跑模型"],
+          ["overview", "info", "插件概览"],
+        ];
+        const content = P.sub === "upload" ? renderUpload() : P.sub === "run" ? renderRun() : renderOverview();
+        $("#proto").innerHTML = `
+          <div class="subtabs">${tabs.map(([k, ic, t]) => `<button aria-selected="${k === P.sub}" onclick="P.sub='${k}';P.copied='';renderProto()"><i data-lucide="${ic}"></i>${t}</button>`).join("")}</div>
+          ${content}
+          ${P.copied ? `<div style="margin-top:16px"><div class="row" style="font-size:12.5px"><i data-lucide="clipboard-check"></i><b>剪贴板内容（原型里展示出来方便核对格式）</b></div><div class="codeblock" style="margin-top:6px"><pre>${esc(P.copied)}</pre></div></div>` : ""}`;
+        icons();
+      }
+
+      renderDemoList();
+      renderDemoPanel();
+      renderProto();
+      icons();
+    </script>
+  </body>
+</html>
