@@ -1,11 +1,12 @@
 import { useCallback, type ReactNode } from "react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { NodeToolbar, Position, useReactFlow, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import {
   PANEL_OFFSET,
+  useMarqueeSelecting,
   useNodeDragging,
   usePaneBusy,
   usePanelPlacement,
@@ -26,6 +27,27 @@ const TITLE_ROW_HEIGHT = 28;
 const TOOLBAR_GAP = 16;
 /** 功能区往上浮的距离：出现和退出都是这么多（设计稿 6.16 动效表） */
 const TOOLBAR_RISE = 6;
+
+/**
+ * 节点浮层的出场容器：单选时靠 AnimatePresence 给淡出，多选和框选中则整个卸载、不留退出动画。
+ * 框选时节点会先后被单独选中，浮层刚进场就被「多选」打断；退出动画一旦没走完，
+ * AnimatePresence 就不会摘掉它，浮层会残留在选区工具条旁边（刷新才消失）。
+ * 多选本来就由选区工具条接管；框选没松手时选区还在变，只框中一个也不该先弹出半透明的浮层，
+ * 这两种情况都不需要淡出，直接卸载最稳，松手后若是单选再正常进场。
+ * @param props.multiSelected 画布当前是否选中了多个节点
+ * @param props.children 浮层本身，带 key，出现与否由调用方按选中状态决定
+ */
+export function NodeOverlaysPresence({
+  multiSelected,
+  children,
+}: {
+  multiSelected: boolean;
+  children: ReactNode;
+}) {
+  const marquee = useMarqueeSelecting();
+  if (multiSelected || marquee) return null;
+  return <AnimatePresence>{children}</AnimatePresence>;
+}
 
 /**
  * 选中节点时浮出的两块：上方的功能区（设计稿 6.16，历史也在里面）、下方的生成面板。

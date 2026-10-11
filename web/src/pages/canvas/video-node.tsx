@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 
@@ -49,7 +48,7 @@ import {
 } from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
-import { NodeOverlays } from "./node-overlays";
+import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
 
@@ -364,15 +363,15 @@ function MediaTaskNode({
           active={!!selected}
         />
       </NodeCard>
-      <AnimatePresence>
-        {selected && !multiSelected && !dragSelected && !uploading && !uploadFailed && (
+      <NodeOverlaysPresence multiSelected={multiSelected}>
+        {selected && !dragSelected && !uploading && !uploadFailed && (
           <NodeOverlays key="overlays" id={id} data={data}>
             {(width) => (
               <TaskPromptPanel vm={vm} data={data} kind={kind} nodeId={id} width={width} />
             )}
           </NodeOverlays>
         )}
-      </AnimatePresence>
+      </NodeOverlaysPresence>
     </>
   );
 }
