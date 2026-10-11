@@ -31,9 +31,11 @@ import { NODE_META } from "@/constants/canvas";
 import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
+import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
 import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 import {
@@ -317,6 +319,13 @@ function MediaTaskNode({
   const uploading = isUploading(data);
   const interrupted = uploading && !uploadRunner.isActive(id);
   const view = interrupted ? INTERRUPTED_VIEW : vm.view;
+  // 框的画幅：成片出来后以成片实际的宽高比为准，出来之前（含生成中、失败）跟着参数面板选的比例
+  const mediaType = data.mediaType ?? kind;
+  const measuredAspect = useMediaAspect(view.phase === "done" ? view.src : null, mediaType);
+  const aspect = resolveNodeAspect({
+    measured: measuredAspect,
+    selected: paramAspect(vm.caps, vm.params),
+  });
   const uploadFailed = interrupted || isUploadFailed(data);
   const retryable = view.phase === "failed";
   /** 上传失败的重试是用留着的文件重新传，不是重新提交生成任务；文件没了（刷新后）就没有重试 */
@@ -337,11 +346,13 @@ function MediaTaskNode({
         status={<NodeStatusLabel view={view} uploadFailed={uploadFailed} />}
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
+        width={nodeFrameSize(aspect).width}
       >
         <NodeVideoBody
           view={view}
+          aspect={aspect}
           placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
-          mediaType={data.mediaType ?? kind}
+          mediaType={mediaType}
           placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
           onCancel={
             vm.view.phase === "queued" || vm.view.phase === "running" ? vm.cancel : undefined

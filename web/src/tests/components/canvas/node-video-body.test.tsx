@@ -51,3 +51,30 @@ describe("上传失败的节点正文", () => {
     expect(render(failed, { onRetry: () => {} })).not.toContain("积分已退回");
   });
 });
+
+describe("节点框画幅跟着 aspect 走", () => {
+  const PORTRAIT = 9 / 16;
+  const phases: Array<[string, VideoNodeView]> = [
+    ["还没生成的占位框", { phase: "idle" }],
+    ["排队中", { phase: "queued" }],
+    ["生成中", { phase: "running", progress: null, elapsedMs: null }],
+    ["上传中", { phase: "uploading", progress: 10 }],
+    ["即将完成", { phase: "finalizing" }],
+    ["成片", { phase: "done", src: "https://example.com/a.mp4" }],
+    ["失败", { phase: "failed", message: "x", refunded: false, taskRef: null }],
+  ];
+
+  for (const [name, view] of phases) {
+    test(`${name}按给定画幅撑高`, () => {
+      // 图片成片要挂在 ReactFlowProvider 里才能渲染，这里用视频走成片分支
+      const mediaType = view.phase === "done" ? "video" : "image";
+      const out = render(view, { aspect: PORTRAIT, mediaType });
+      expect(out).toContain(`aspect-ratio:${PORTRAIT}`);
+      expect(out).not.toContain(`aspect-ratio:${16 / 9}`);
+    });
+  }
+
+  test("不给 aspect 时仍是默认的 16:9", () => {
+    expect(render({ phase: "queued" })).toContain(`aspect-ratio:${16 / 9}`);
+  });
+});
