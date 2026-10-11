@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -89,6 +90,8 @@ type UploadResult struct {
 	Accepted bool               `json:"accepted"`
 	Issues   []modelcfg.Issue   `json:"issues"`
 	Version  *PluginVersionView `json:"version"` // 通过时是新登记的版本，否则为 null
+	// VersionAdjusted 只在登记的版本号和代码里写的不一样时才有（没写、不合法、已被占用、比已有版本低）；没有调整时不返回。
+	VersionAdjusted *VersionAdjusted `json:"version_adjusted,omitempty"`
 }
 
 // BuiltinRegistration 是一个内置插件的登记结果。
@@ -137,9 +140,10 @@ func (s *AIPluginService) List(ctx context.Context) ([]PluginView, error) {
 	return out, nil
 }
 
-// Upload 上传一个插件文件：预检 → 版本号查重 → 登记为不可变版本（记 sha256）→ 写审计。
-// 预检不通过、版本号已存在都不是 HTTP 错误，而是 Accepted=false 加问题列表（前端要把问题精确标在字段上）；
-// 文件超限、runner 不可用、往内置插件下上传才是错误。
+// Upload 上传一个插件文件：预检 → 决定版本号 → 登记为不可变版本（记 sha256）→ 写审计。
+// 预检不通过、代码与已有版本完全相同都不是 HTTP 错误，而是 Accepted=false 加问题列表（前端要把问题精确标在字段上）；
+// 文件超限、runner 不可用、往内置插件下上传才是错误。版本号由服务端决定（见本文件 decideVersion）：代码里的能用就用，
+// 不能用就接着最高版本往上加，所以改了代码不用再手动升版本号。
 func (s *AIPluginService) Upload(ctx context.Context, actorID uint64, code []byte) (*UploadResult, error) {
 	// 1. 大小检查放在预检之前：超限的文件不该白白送进 runner
 	if len(code) == 0 {
@@ -171,29 +175,60 @@ func (s *AIPluginService) Upload(ctx context.Context, actorID uint64, code []byt
 	if err == nil && existing.Source == model.PluginSourceBuiltin {
 		return nil, errcode.ErrPluginBuiltin.WithMsg(fmt.Sprintf("%q 是内置插件，不能上传同名插件", meta.Key))
 	}
-	// 4. 版本号查重（版本不可变）：已存在报在 meta.version 上，要求改版本号
-	if _, err := s.repo.FindVersion(ctx, meta.Key, meta.Version); err == nil {
-		return rejected(versionDupIssues(meta)), nil
-	} else if !errors.Is(err, repository.ErrNotFound) {
-		return nil, err
+	// 4. 决定版本号并登记。sha256 用服务端对原文件自己算的值，不信任 runner 回传（它只用于展示）；
+	//    并发上传撞上唯一索引时，重新读已有版本再决定一次，最多 maxVersionAttempts 次
+	sum := codeSHA256(code)
+	for attempt := 0; attempt < maxVersionAttempts; attempt++ {
+		versions, err := s.repo.ListVersions(ctx, meta.Key)
+		if err != nil {
+			return nil, err
+		}
+		decision, err := decideVersion(meta.Version, sum, versions)
+		if err != nil {
+			return rejected([]modelcfg.Issue{{Path: aiIssuePathVersion, Message: "无法自动决定版本号：" + err.Error()}}), nil
+		}
+		if decision.reject != "" {
+			return rejected([]modelcfg.Issue{{Path: aiIssuePathMeta, Message: decision.reject}}), nil
+		}
+		metaJSON := res.Meta
+		if decision.version != meta.Version {
+			// meta_json 里的 version 要和登记的版本号一致；代码原文和 sha256 不动
+			if metaJSON, err = metaWithVersion(res.Meta, decision.version); err != nil {
+				return nil, fmt.Errorf("回写版本号失败：%w", err)
+			}
+		}
+		ver := &model.AIPluginVersion{
+			PluginKey: meta.Key, Version: decision.version, SHA256: sum, Code: string(code),
+			MetaJSON: model.JSONText(metaJSON), CreatedBy: actorID,
+		}
+		plugin := &model.AIPlugin{Key: meta.Key, Name: meta.Name, Source: model.PluginSourceUploaded, Enabled: true}
+		if err := s.repo.SaveVersion(ctx, plugin, ver); errors.Is(err, repository.ErrDuplicate) {
+			if attempt == maxVersionAttempts-1 {
+				return rejected(versionDupIssuesFor(meta, decision.version)), nil
+			}
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		// 5. 审计：操作人、插件、版本、sha256（代码本身不进审计）
+		aiAudit(ctx, s.audit, actorID, model.AuditPluginUpload, model.AuditTargetPluginVer, meta.Key,
+			map[string]any{"version": ver.Version, "sha256": ver.SHA256})
+		view := pluginVersionView(ver, 0)
+		out := &UploadResult{Accepted: true, Issues: []modelcfg.Issue{}, Version: &view}
+		if decision.version != meta.Version {
+			out.VersionAdjusted = &VersionAdjusted{From: declaredVersion(meta.Version), To: decision.version}
+		}
+		return out, nil
 	}
-	// 5. 登记。sha256 用服务端对原文件自己算的值，不信任 runner 回传（它只用于展示）；
-	//    并发上传同一版本时唯一索引兜底，同样按“版本号已存在”处理
-	ver := &model.AIPluginVersion{
-		PluginKey: meta.Key, Version: meta.Version, SHA256: codeSHA256(code), Code: string(code),
-		MetaJSON: model.JSONText(res.Meta), CreatedBy: actorID,
+	return rejected(versionDupIssuesFor(meta, meta.Version)), nil // 不可达：循环里最后一次一定返回
+}
+
+// declaredVersion 返回“代码里声明的版本号”：不合法的写法（如 v1.0、1.0）视为没写，返回空串。
+func declaredVersion(v string) string {
+	if pluginmeta.IsValidVersion(v) {
+		return v
 	}
-	plugin := &model.AIPlugin{Key: meta.Key, Name: meta.Name, Source: model.PluginSourceUploaded, Enabled: true}
-	if err := s.repo.SaveVersion(ctx, plugin, ver); errors.Is(err, repository.ErrDuplicate) {
-		return rejected(versionDupIssues(meta)), nil
-	} else if err != nil {
-		return nil, err
-	}
-	// 6. 审计：操作人、插件、版本、sha256（代码本身不进审计）
-	aiAudit(ctx, s.audit, actorID, model.AuditPluginUpload, model.AuditTargetPluginVer, meta.Key,
-		map[string]any{"version": meta.Version, "sha256": ver.SHA256})
-	view := pluginVersionView(ver, 0)
-	return &UploadResult{Accepted: true, Issues: []modelcfg.Issue{}, Version: &view}, nil
+	return ""
 }
 
 // rejected 组装“预检不通过”的上传结果，问题列表永远是数组。
@@ -202,11 +237,6 @@ func rejected(issues []modelcfg.Issue) *UploadResult {
 		issues = []modelcfg.Issue{}
 	}
 	return &UploadResult{Accepted: false, Issues: issues}
-}
-
-// versionDupIssues 是版本号已存在的问题列表。
-func versionDupIssues(meta *pluginmeta.Meta) []modelcfg.Issue {
-	return []modelcfg.Issue{{Path: aiIssuePathVersion, Message: fmt.Sprintf("插件 %s 的版本 %s 已存在（版本不可变），请修改 meta.version", meta.Key, meta.Version)}}
 }
 
 // SetEnabled 启用 / 停用插件：停用后所有使用它的渠道不再接新任务（进行中的任务按快照继续）。
@@ -305,6 +335,10 @@ func (s *AIPluginService) registerOneBuiltin(ctx context.Context, code []byte) (
 	if err != nil {
 		return nil, fmt.Errorf("内置插件 meta 无法解析：%w", err)
 	}
+	// 内置插件的版本号由发版决定，不会自动补：必须写合法的 semver
+	if !pluginmeta.IsValidVersion(meta.Version) {
+		return nil, fmt.Errorf("内置插件 %s 必须在 meta.version 里写合法的 semver 版本号（如 1.2.3），实际是 %q", meta.Key, meta.Version)
+	}
 	reg := &BuiltinRegistration{Key: meta.Key, Version: meta.Version}
 	sum := codeSHA256(code)
 
@@ -373,4 +407,96 @@ func shortSHA(sum string) string {
 		return sum[:12]
 	}
 	return sum
+}
+
+// 以下是上传插件时版本号的决定（docs/design/插件简化/插件简化.md §6.5）。
+//
+// 版本不可变，所以每改一次代码都得换一个版本号；让人（或 AI）手动改既容易忘，又要多一轮来回。
+// 现在由服务端决定：代码里的版本号可以用就用，不能用就接着已有的最高版本往上加。
+// 只对上传的插件生效；内置插件的版本号由发版决定，登记时必须是合法的 semver（见 registerOneBuiltin）。
+
+// maxVersionAttempts 是并发上传撞上唯一索引时，重新决定版本号再保存的最多次数。
+const maxVersionAttempts = 3
+
+// aiIssuePathMeta 是“代码与已有版本完全相同”这类整体问题的 JSON 路径。
+const aiIssuePathMeta = "meta"
+
+// VersionAdjusted 说明登记的版本号和代码里写的不一样。From 是代码里写的版本号，没写或不合法为空串。
+type VersionAdjusted struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// versionDecision 是一次版本号决定的结果：要么是最终版本号，要么是拒绝的原因。
+type versionDecision struct {
+	version string
+	reject  string
+}
+
+// decideVersion 决定上传的代码登记成哪个版本号。declared 是代码里写的版本号（没写为空串），
+// existing 是这个插件已登记的版本（可以为空），sha 是这份代码的 sha256。按顺序判断：
+//  1. 还没有任何版本：代码里的版本号合法就用它，否则用 1.0.0；
+//  2. 代码和某个已有版本完全相同：拒绝，没有产生新版本；
+//  3. 代码里的版本号合法、没被占用、并且比已有的最高版本高：用它；
+//  4. 其他情况：取已有的最高版本，补丁位加 1（预发布后缀去掉）。
+func decideVersion(declared, sha string, existing []model.AIPluginVersion) (versionDecision, error) {
+	if len(existing) == 0 {
+		if pluginmeta.IsValidVersion(declared) {
+			return versionDecision{version: declared}, nil
+		}
+		return versionDecision{version: "1.0.0"}, nil
+	}
+	taken := make([]string, 0, len(existing))
+	for i := range existing {
+		if existing[i].SHA256 == sha {
+			return versionDecision{reject: fmt.Sprintf("代码与 v%s 完全相同，没有产生新版本", existing[i].Version)}, nil
+		}
+		taken = append(taken, existing[i].Version)
+	}
+	highest := pluginmeta.HighestVersion(taken)
+	if pluginmeta.IsValidVersion(declared) && !containsString(taken, declared) &&
+		(highest == "" || pluginmeta.CompareVersions(declared, highest) > 0) {
+		return versionDecision{version: declared}, nil
+	}
+	if highest == "" {
+		// 库里一个合法的版本号都没有（不该发生）：当作还没有版本
+		if pluginmeta.IsValidVersion(declared) && !containsString(taken, declared) {
+			return versionDecision{version: declared}, nil
+		}
+		return versionDecision{version: "1.0.0"}, nil
+	}
+	next, err := pluginmeta.NextPatchVersion(highest)
+	if err != nil {
+		return versionDecision{}, err
+	}
+	return versionDecision{version: next}, nil
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// metaWithVersion 把 meta JSON 里的 version 换成最终登记的版本号，其余字段原样保留。
+// channelSettings 等有序对象的内部顺序不受影响：这里只把顶层字段当作原始 JSON 搬运，不解开嵌套内容。
+func metaWithVersion(raw []byte, version string) ([]byte, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return nil, fmt.Errorf("meta 不是 JSON 对象：%w", err)
+	}
+	v, err := json.Marshal(version)
+	if err != nil {
+		return nil, err
+	}
+	obj["version"] = v
+	return json.Marshal(obj)
+}
+
+// versionDupIssuesFor 是连续几次都撞上同一个版本号时的问题列表。
+func versionDupIssuesFor(meta *pluginmeta.Meta, version string) []modelcfg.Issue {
+	return []modelcfg.Issue{{Path: aiIssuePathVersion, Message: fmt.Sprintf("插件 %s 的版本 %s 已存在（版本不可变），请稍后重试或修改 meta.version", meta.Key, version)}}
 }

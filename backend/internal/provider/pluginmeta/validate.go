@@ -134,11 +134,13 @@ func (v *validator) identity(obj jsonObject, m *Meta) {
 			v.add("meta.name", "最长 %d 个字符", MaxNameLen)
 		}
 	}
-	if v.required(obj, "version", &m.Version) {
-		if len(m.Version) > MaxVersionLen {
-			v.add("meta.version", "最长 %d 个字符", MaxVersionLen)
-		} else if !semverRe.MatchString(m.Version) {
-			v.add("meta.version", "必须是 semver 版本号，如 1.2.3 或 1.2.3-rc.1")
+	// version 不是预检的必填项：代码里没写、写成数字、不是 semver 都不报问题。
+	// 上传时由服务层决定最终登记的版本号（缺失或不合法就自动补，见 docs/design/插件简化/插件简化.md §6.5）；
+	// 这里只把代码里写的字符串原样带出来，让服务层判断“代码里声明的是什么”。内置插件必须写合法的版本号，登记时另行检查。
+	if raw, ok := obj["version"]; ok {
+		var declared string
+		if json.Unmarshal(raw, &declared) == nil {
+			m.Version = declared
 		}
 	}
 	v.field(obj, "meta", "description", &m.Description)

@@ -190,6 +190,25 @@ func (m *Meta) SupportsKind(kind string) bool {
 	return ok
 }
 
+// UnmarshalJSON 解码 meta：除 version 外和默认行为一致。version 不是字符串（写成数字、对象等）时当作没写，
+// 不让解码失败：预检放行了这种写法，上传时由服务层补版本号（docs/design/插件简化/插件简化.md §6.5）。
+func (m *Meta) UnmarshalJSON(data []byte) error {
+	type plain Meta // 去掉方法集，避免递归调用本函数
+	aux := struct {
+		*plain
+		Version json.RawMessage `json:"version"`
+	}{plain: (*plain)(m)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	m.Version = ""
+	var declared string
+	if len(aux.Version) > 0 && json.Unmarshal(aux.Version, &declared) == nil {
+		m.Version = declared
+	}
+	return nil
+}
+
 // Parse 读取已登记版本的 meta_json（宽松解码，不做预检规则校验）。
 func Parse(raw []byte) (*Meta, error) {
 	var m Meta

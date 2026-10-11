@@ -100,9 +100,12 @@ func TestValidate_Rules(t *testing.T) {
 		{"缺少 key", func(m map[string]any) { delete(m, "key") }, nil, []string{"meta.key"}},
 		{"name 为空白", func(m map[string]any) { m["name"] = "  " }, nil, []string{"meta.name"}},
 		{"name 过长", func(m map[string]any) { m["name"] = strings.Repeat("名", 129) }, nil, []string{"meta.name"}},
-		{"version 不是 semver", func(m map[string]any) { m["version"] = "1.0" }, nil, []string{"meta.version"}},
-		{"version 带 v 前缀", func(m map[string]any) { m["version"] = "v1.0.0" }, nil, []string{"meta.version"}},
-		{"version 过长", func(m map[string]any) { m["version"] = "1.0.0-" + strings.Repeat("a", 30) }, nil, []string{"meta.version"}},
+		// version 不再是预检的必填项：缺失、不是 semver、写成数字都不报问题，上传时由服务层决定最终的版本号（§6.5）
+		{"version 缺失也能通过", func(m map[string]any) { delete(m, "version") }, nil, nil},
+		{"version 不是 semver 也能通过", func(m map[string]any) { m["version"] = "1.0" }, nil, nil},
+		{"version 带 v 前缀也能通过", func(m map[string]any) { m["version"] = "v1.0.0" }, nil, nil},
+		{"version 过长也能通过", func(m map[string]any) { m["version"] = "1.0.0-" + strings.Repeat("a", 30) }, nil, nil},
+		{"version 写成数字也能通过", func(m map[string]any) { m["version"] = 1.0 }, nil, nil},
 		{"description 类型不对", func(m map[string]any) { m["description"] = 1 }, nil, []string{"meta.description"}},
 
 		{"缺少 auth", func(m map[string]any) { delete(m, "auth") }, nil, []string{"meta.auth"}},
@@ -265,5 +268,34 @@ func TestValidate_ParsedMeta(t *testing.T) {
 	}
 	if len(got.ChannelSettings) != 2 || got.ChannelSettings[0].Name != "zeta" || got.ChannelSettings[1].Name != "alpha" {
 		t.Fatalf("设置项顺序不对：%+v", got.ChannelSettings)
+	}
+}
+
+// Meta.Version 只在代码里写了字符串时才有值：服务层靠它判断“代码里声明的版本号”，非字符串当作没写。
+func TestValidate_DeclaredVersion(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(m map[string]any)
+		want   string
+	}{
+		{"合法版本原样保留", nil, "1.0.0"},
+		{"不合法的字符串也原样保留，由服务层判断", func(m map[string]any) { m["version"] = "v1.0" }, "v1.0"},
+		{"缺失为空串", func(m map[string]any) { delete(m, "version") }, ""},
+		{"数字当作没写", func(m map[string]any) { m["version"] = 1.5 }, ""},
+		{"null 当作没写", func(m map[string]any) { m["version"] = nil }, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := baseMeta()
+			if tt.mutate != nil {
+				tt.mutate(m)
+			}
+			got, issues := Validate(mustJSON(t, m), fullHooks())
+			if len(issues) != 0 {
+				t.Fatalf("期望通过：%+v", issues)
+			}
+			if got.Version != tt.want {
+				t.Fatalf("Meta.Version = %q，期望 %q", got.Version, tt.want)
+			}
+		})
 	}
 }

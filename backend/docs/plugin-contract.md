@@ -24,7 +24,7 @@ meta: {
   apiVersion: 1,
   key: "newapi",              // 小写字母、数字、连字符，≤30
   name: "New API",
-  version: "1.0.0",           // semver；同一 key 下唯一，上传后不可修改
+  version: "1.0.0",           // semver，可以不写：上传时由服务端决定最终登记的版本号（见下）；同一 key 下唯一，登记后不可修改
   description: "...",
   auth: { type: "bearer" },   // none / bearer / header(需 name) / query(需 name) / custom
   endpoints: { text: { mode: "sync" }, video: { mode: "async" } },  // 键是模型 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）
@@ -37,7 +37,7 @@ meta: {
 预检规则（任一不通过就拒绝上传，Issue 的 `path` 精确到字段，如 `meta.endpoints.video.mode`）：
 
 - 能编译并执行到导出；导出对象上有 `meta`；`meta.apiVersion === 1`。
-- `key` 匹配 `^[a-z0-9][a-z0-9-]{0,29}$`；`version` 是 semver（`1.2.3`，可带 `-rc.1` 预发布后缀）；`name` 非空。
+- `key` 匹配 `^[a-z0-9][a-z0-9-]{0,29}$`；`name` 非空。`version` 不是预检项：没写、不是 semver、写成数字都不报问题。
 - `auth.type` 是枚举值；`header` / `query` 必须有 `auth.name`（合法头名 / 非空参数名）。
 - `endpoints` 非空；键必须是 text/video/image/audio；`mode` 是 sync/async；
   - `async` 必须实现 `buildQueryRequest` 与 `parseQueryResponse`；
@@ -48,7 +48,13 @@ meta: {
 - `poll` 各值非负，`jitter` 在 0–1。
 - 成对钩子：实现了 `buildPrepareRequests` 必须同时实现 `parsePrepareResponses`；`buildImportRequest` 与 `parseImportResponse` 必须同时存在；导出的函数名必须是契约认识的钩子（多余的导出函数只警告不拒绝——**这里不拒绝**）。
 - 文件 ≤512KB；`meta` 编码后 ≤64KB。
-- 版本号是否被占用由 service 层检查（不在 runner）。
+- **版本号由 service 层在上传时决定**（不在 runner），改了代码不用手动升版本号：
+  1. 这个 key 还没有版本：`meta.version` 是合法 semver（`1.2.3`，可带 `-rc.1` 后缀，≤32 字符）就用它，否则用 `1.0.0`；
+  2. 代码与已有某个版本完全相同（sha256 一样）：拒绝，提示没有产生新版本；
+  3. `meta.version` 合法、没被占用、并且比已有最高版本高（按 semver 比较）：用它；
+  4. 其他情况（没写、不合法、被占用、比最高版本低）：取已有最高版本，补丁位加 1，预发布后缀去掉（`1.3.1` → `1.3.2`，`2.0.0-rc.1` → `2.0.1`）。
+
+  登记的版本号会同步写回库里的 `meta_json`，代码原文与 sha256 不变。**内置插件**（`backend/plugins/*.js`）不适用：版本号由发版决定，必须写合法的 semver，否则启动登记报错。
 
 ## 3. `ctx`
 

@@ -101,24 +101,7 @@ func TestAIPluginService_Upload(t *testing.T) {
 		}
 	})
 
-	t.Run("版本号已存在：报在 meta.version 上而不是 HTTP 错误", func(t *testing.T) {
-		e := newAplEnv()
-		if res, err := e.svc.Upload(ctx, 1, e.code("v1", adminPass(adminMetaJSON("kling", "1.0.0")))); err != nil || !res.Accepted {
-			t.Fatalf("第一次应成功：%+v %v", res, err)
-		}
-		res, err := e.svc.Upload(ctx, 1, e.code("v1-changed", adminPass(adminMetaJSON("kling", "1.0.0"))))
-		if err != nil || res.Accepted {
-			t.Fatalf("重复版本应被拒绝：%+v %v", res, err)
-		}
-		if len(res.Issues) != 1 || res.Issues[0].Path != "meta.version" {
-			t.Fatalf("应报在 meta.version：%+v", res.Issues)
-		}
-		if len(e.repo.Versions) != 1 || len(e.repo.Audits) != 1 {
-			t.Fatalf("重复上传不该新增版本或审计：%d 个版本，%d 条审计", len(e.repo.Versions), len(e.repo.Audits))
-		}
-	})
-
-	t.Run("并发上传同一版本：唯一索引冲突同样按版本号已存在处理", func(t *testing.T) {
+	t.Run("唯一索引一直冲突：重试 3 次后按“版本号已存在”拒绝，报在 meta.version", func(t *testing.T) {
 		e := newAplEnv()
 		e.repo.SaveVersionErr = repository.ErrDuplicate
 		res, err := e.svc.Upload(ctx, 1, e.code("race", adminPass(adminMetaJSON("kling", "1.0.0"))))

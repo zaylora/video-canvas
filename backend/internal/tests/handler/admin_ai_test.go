@@ -453,12 +453,41 @@ func TestAdminPluginHandler_Upload(t *testing.T) {
 		}
 	})
 
-	t.Run("版本号重复：200 + issues 报在 meta.version", func(t *testing.T) {
+	t.Run("版本号没调整：响应里没有 version_adjusted", func(t *testing.T) {
+		env := newEnv(t)
+		r := env.upload("file", "a.js", []byte("good-v1"), aicSuperUser)
+		aicWant(t, r, http.StatusOK, 0)
+		if strings.Contains(r.Raw, "version_adjusted") {
+			t.Fatalf("没有调整时不该返回 version_adjusted：%s", r.Raw)
+		}
+	})
+
+	t.Run("代码改了、版本号没改：自动登记为下一个补丁版本，响应带 version_adjusted", func(t *testing.T) {
+		env := newEnv(t)
+		env.checker.ByCode["good-v1-fixed"] = &provider.PrecheckResult{OK: true, Meta: json.RawMessage(aicMeta("kling", "1.0.0"))}
+		aicWant(t, env.upload("file", "a.js", []byte("good-v1"), aicSuperUser), http.StatusOK, 0)
+		r := env.upload("file", "a.js", []byte("good-v1-fixed"), aicSuperUser)
+		aicWant(t, r, http.StatusOK, 0)
+		var d struct {
+			Accepted        bool           `json:"accepted"`
+			Version         map[string]any `json:"version"`
+			VersionAdjusted map[string]any `json:"version_adjusted"`
+		}
+		if err := json.Unmarshal(r.Data, &d); err != nil || !d.Accepted || d.Version["version"] != "1.0.1" {
+			t.Fatalf("应登记为 1.0.1：%v %s", err, r.Raw)
+		}
+		if d.VersionAdjusted["from"] != "1.0.0" || d.VersionAdjusted["to"] != "1.0.1" {
+			t.Fatalf("version_adjusted 不符合预期：%v", d.VersionAdjusted)
+		}
+	})
+
+	t.Run("代码与已有版本完全相同：200 + accepted=false，问题报在 meta 上", func(t *testing.T) {
 		env := newEnv(t)
 		aicWant(t, env.upload("file", "a.js", []byte("good-v1"), aicSuperUser), http.StatusOK, 0)
 		r := env.upload("file", "a.js", []byte("good-v1"), aicSuperUser)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"accepted":false`) || !strings.Contains(r.Raw, `"path":"meta.version"`) {
+		if !strings.Contains(r.Raw, `"accepted":false`) || !strings.Contains(r.Raw, `"path":"meta"`) || !strings.Contains(r.Raw, "完全相同") ||
+			!strings.Contains(r.Raw, `"version":null`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
 		}
 	})

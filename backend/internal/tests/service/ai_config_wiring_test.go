@@ -247,9 +247,31 @@ func TestAdminLayer_UploadPluginEndToEnd(t *testing.T) {
 		t.Fatalf("登记的版本不符合预期：%+v", stored)
 	}
 
+	// 原样再传一遍：代码与已有版本完全相同，没有产生新版本
 	dup, err := e.plugins.Upload(ctx, 7, code("1.0.0"))
-	if err != nil || dup.Accepted || len(dup.Issues) != 1 || dup.Issues[0].Path != "meta.version" {
-		t.Fatalf("重复版本应报在 meta.version：%+v %v", dup, err)
+	if err != nil || dup.Accepted || len(dup.Issues) != 1 || dup.Issues[0].Path != "meta" || !strings.Contains(dup.Issues[0].Message, "完全相同") {
+		t.Fatalf("相同代码应被拒绝并报在 meta：%+v %v", dup, err)
+	}
+
+	// 改了代码、版本号没改：自动登记为 1.0.1，meta_json 里的版本号同步，代码原文不变
+	changed := append(code("1.0.0"), []byte("\n// 修复了一个问题\n")...)
+	next, err := e.plugins.Upload(ctx, 7, changed)
+	if err != nil || !next.Accepted || next.Version == nil || next.Version.Version != "1.0.1" ||
+		next.VersionAdjusted == nil || next.VersionAdjusted.From != "1.0.0" || next.VersionAdjusted.To != "1.0.1" {
+		t.Fatalf("应自动登记为 1.0.1：%+v %v", next, err)
+	}
+	if stored := e.repo.Versions[next.Version.ID]; stored == nil || stored.Code != string(changed) || !strings.Contains(string(stored.MetaJSON), `"version":"1.0.1"`) {
+		t.Fatalf("登记的版本不符合预期：%+v", stored)
+	}
+
+	// 没写版本号的插件：预检放行，登记为 1.0.0
+	noVersion, err := e.plugins.Upload(ctx, 7, []byte(`module.exports = {
+  meta: { apiVersion: 1, key: "nover", name: "没写版本号", auth: { type: "none" }, endpoints: { text: { mode: "sync" } } },
+  buildSubmitRequest: function (ctx) { return { method: "GET", path: "/x" }; },
+  parseSubmitResponse: function (ctx, resp) { return { immediate: { status: "succeeded", outputs: ["ok"] } }; }
+};`))
+	if err != nil || !noVersion.Accepted || noVersion.Version.Version != "1.0.0" || noVersion.VersionAdjusted == nil || noVersion.VersionAdjusted.From != "" {
+		t.Fatalf("没写版本号应登记为 1.0.0：%+v %v", noVersion, err)
 	}
 
 	// 缺少 async 必需的 query 钩子：预检精确指出字段
