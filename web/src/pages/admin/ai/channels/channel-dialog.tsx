@@ -24,6 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -38,20 +45,13 @@ import {
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
 import { errorMessage, isChannelKeyExists } from "@/utils/admin/errors";
-import {
-  availableUpgrade,
-  describeAuth,
-  findPluginVersion,
-  latestVersion,
-  shortSha,
-} from "@/utils/admin/plugin";
+import { availableUpgrade, findPluginVersion, latestVersion, shortSha } from "@/utils/admin/plugin";
 import { settingFields, type SettingFormValue } from "@/utils/admin/settings-form";
 import { formatTime } from "@/utils/time";
 
 import { useRetained } from "@/hooks/use-retained";
 import { SettingFields } from "../setting-fields";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
-import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
@@ -66,7 +66,7 @@ import { Notice } from "@/components/admin-ui/notice";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { cn } from "@/lib/utils";
-import { KindIcons } from "../kind";
+import { KindFilter, KindIcons } from "../kind";
 import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
 import type { ChannelTab } from "@/utils/admin/channel-route";
 import { useAliveRef, type LoadStatus } from "../../use-admin";
@@ -144,7 +144,7 @@ function RiskRow({
 /**
  * 渠道弹窗：新建 / 编辑；admin 打开为只读（写操作不渲染）。
  * 已有渠道分两个页签：配置（表单）、模型（使用它的模型）；新建只有配置内容。
- * 配置页一屏三步：1 选平台（插件卡片）→ 2 连接（地址、Key、插件设置）→ 3 名称（标识按名称自动生成，可改）；
+ * 配置页一屏三步：1 选协议（下拉，可按类型筛选）→ 2 连接（地址、Key、插件设置）→ 3 名称（标识按名称自动生成，可改）；
  * 插件版本、限流、启用、安全开关收在“高级设置”里（有新版本时默认展开）。
  * 底部是“检查连通性”（只检查已保存的渠道，通过后给“导入模型 / 新建模型”两个下一步）和“保存”。
  * “允许插件读取 Key”从关到开要勾选确认；新建时插件是 auth: custom 则它自动打开（必需）。
@@ -368,6 +368,7 @@ function DialogForm({
   const [secret, setSecret] = useState("");
   /** 新建时用户手动改过标识：之后不再按名称自动生成 */
   const [keyEdited, setKeyEdited] = useState(false);
+  const [pluginKind, setPluginKind] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -581,9 +582,7 @@ function DialogForm({
                 {" · "}
                 {plugins.find((item) => item.key === live.plugin_key)?.name ?? live.plugin_key}
               </>
-            ) : (
-              "选平台 → 填地址和 Key → 起个名字"
-            )}
+            ) : null}
           </DialogDescription>
         </div>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭" onClick={onClose}>
@@ -643,33 +642,58 @@ function DialogForm({
                 </Notice>
               )}
 
-              <Zone title="平台" description="选一个上游协议，决定能用哪些能力">
-                <ChoiceCardGroup aria-label="插件" className="sm:grid-cols-2">
-                  {plugins.map((item) => {
-                    const latest = latestVersion(item);
-                    const auth = latest?.meta?.auth?.type ?? "none";
-                    return (
-                      <ChoiceCard
-                        key={item.key}
-                        indicator
-                        selected={item.key === form.pluginKey}
-                        disabled={readOnly || (!item.enabled && item.key !== form.pluginKey)}
-                        onClick={() => onPluginChange(item.key)}
-                      >
-                        <span className="flex min-w-0 flex-col gap-1">
-                          <span className="truncate text-sm font-medium">
-                            {item.name}
-                            {!item.enabled && "（已停用）"}
+              <Zone title="协议">
+                {!readOnly && (
+                  <KindFilter
+                    value={pluginKind}
+                    onChange={setPluginKind}
+                    slideId="channel-plugin-kind"
+                  />
+                )}
+                <Select
+                  value={form.pluginKey}
+                  disabled={readOnly}
+                  onValueChange={(value) => value && onPluginChange(value)}
+                >
+                  <SelectTrigger
+                    className="w-full"
+                    aria-label="协议"
+                    aria-invalid={!!errors.plugin}
+                  >
+                    <SelectValue placeholder="请选择协议">
+                      {(value: string) => {
+                        const item = plugins.find((p) => p.key === value);
+                        return item ? item.name : value;
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    {plugins
+                      .filter(
+                        (item) =>
+                          !pluginKind ||
+                          pluginKind in (latestVersion(item)?.meta?.endpoints ?? {}) ||
+                          item.key === form.pluginKey,
+                      )
+                      .map((item) => (
+                        <SelectItem
+                          key={item.key}
+                          value={item.key}
+                          disabled={!item.enabled && item.key !== form.pluginKey}
+                        >
+                          <span className="flex flex-1 items-center justify-between gap-3">
+                            <span>
+                              {item.name}
+                              {!item.enabled && "（已停用）"}
+                            </span>
+                            <KindIcons
+                              kinds={Object.keys(latestVersion(item)?.meta?.endpoints ?? {})}
+                            />
                           </span>
-                          <span className="text-muted-foreground flex items-center gap-2 text-xs">
-                            <KindIcons kinds={Object.keys(latest?.meta?.endpoints ?? {})} />
-                            {auth === "none" ? "无需 Key" : "需要 Key"}
-                          </span>
-                        </span>
-                      </ChoiceCard>
-                    );
-                  })}
-                </ChoiceCardGroup>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
                 {errors.plugin && <p className="text-destructive text-xs">{errors.plugin}</p>}
                 {plugins.length === 0 && (
                   <p className="text-muted-foreground text-xs">
@@ -682,14 +706,9 @@ function DialogForm({
                 )}
               </Zone>
 
-              <Zone title="连接" description="插件请求只能发到这个地址和 Key">
+              <Zone title="连接">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    label="接口地址"
-                    htmlFor="channel-base-url"
-                    error={errors.baseUrl}
-                    hint="插件请求只能发到这个地址；http/https，不能带用户名密码"
-                  >
+                  <FormField label="接口地址" htmlFor="channel-base-url" error={errors.baseUrl}>
                     <Input
                       id="channel-base-url"
                       className="font-mono"
@@ -715,9 +734,7 @@ function DialogForm({
                       }
                       htmlFor="channel-secret"
                       hint={
-                        original?.secret_set && secret.trim()
-                          ? "保存时会覆盖现有 Key"
-                          : "只写不读：保存后不会再显示，也不会出现在任何请求地址或缓存里"
+                        original?.secret_set && secret.trim() ? "保存时会覆盖现有 Key" : undefined
                       }
                     >
                       <Input
@@ -762,34 +779,19 @@ function DialogForm({
                 )}
               </Zone>
 
-              <Zone title="名称" description="渠道在列表和模型里怎么显示">
+              <Zone title="名称">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField label="显示名称" htmlFor="channel-name" error={errors.name}>
                     <Input
                       id="channel-name"
                       value={form.name}
-                      placeholder="如 NewAPI 主线"
+                      placeholder="如 OpenAI 主线"
                       disabled={readOnly}
                       aria-invalid={!!errors.name}
                       onChange={(event) => patch({ name: event.target.value })}
                     />
                   </FormField>
-                  {isNew && !keyEdited ? (
-                    <p className="text-muted-foreground text-xs">
-                      标识自动生成：
-                      <code className="font-mono">{effective.key}</code>{" "}
-                      <button
-                        type="button"
-                        className="underline underline-offset-4"
-                        onClick={() => {
-                          setKeyEdited(true);
-                          patch({ key: effective.key });
-                        }}
-                      >
-                        修改
-                      </button>
-                    </p>
-                  ) : (
+                  {isNew && !keyEdited ? null : (
                     <FormField
                       label="标识 key"
                       htmlFor="channel-key"
@@ -815,11 +817,10 @@ function DialogForm({
                     className={cn("size-4 transition-transform", advancedOpen && "rotate-90")}
                   />
                   高级设置
-                  <span className="text-xs">（插件版本、限流、启用、安全开关）</span>
                   {upgrade && <Tag>有新版本 {upgrade.version}</Tag>}
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 flex flex-col gap-3.5">
-                  <Zone title="插件版本" description="新任务用这个版本">
+                  <Zone title="插件版本">
                     <FormField label="固定版本" htmlFor="channel-version">
                       <NativeSelect
                         id="channel-version"
@@ -841,12 +842,6 @@ function DialogForm({
                         ))}
                       </NativeSelect>
                     </FormField>
-                    {version && (
-                      <p className="text-muted-foreground text-xs">
-                        鉴权：{describeAuth(meta?.auth)} · sha256{" "}
-                        <span className="font-mono">{shortSha(version.sha256)}</span>
-                      </p>
-                    )}
                     {upgrade && (
                       <Notice tone="info" title={`有新版本 ${upgrade.version}`}>
                         切换后新任务用新版本，进行中的任务按旧版本跑完。
@@ -871,7 +866,7 @@ function DialogForm({
                     )}
                   </Zone>
 
-                  <Zone title="限流与启用" description="0 或留空表示不限">
+                  <Zone title="限流与启用">
                     <div className="grid grid-cols-2 gap-3">
                       <FormField label="每秒请求数 rps" htmlFor="channel-rps" error={errors.rps}>
                         <Input
@@ -916,10 +911,6 @@ function DialogForm({
                         />
                       </FormField>
                     </div>
-                    <p className="text-muted-foreground text-xs">
-                      0 或留空表示不限。「最大同时请求数」限制同时发给上游的 HTTP 请求；
-                      「最大同时生成数」限制同时在上游生成的任务数，填上游账号允许的并发，超出的任务在平台里显示“排队中”，等有空位再提交。
-                    </p>
                     <div className="flex items-center gap-2 text-sm">
                       <Switch
                         id="channel-enabled"

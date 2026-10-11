@@ -30,7 +30,7 @@ module.exports.meta 示例：
   name: "我的平台",
   version: "1.0.0",                 // 可以不写或不改：上传时服务端自动决定最终版本号
   auth: { type: "bearer" },         // none / bearer / header(需 name) / query(需 name)；自己签名的见附录
-  endpoints: {                      // 键是模型种类 text / image / video / audio，只写平台真实支持的
+  endpoints: {                      // 键是模型种类 text / image / video / audio；一个插件只能写一种，平台有多种类型就分开写多个插件
     image: { mode: "async" }        // sync：一次请求直接出结果；async：先提交拿到任务 id，再轮询
   },
   import: { args: {} }              // 必填：声明“从渠道导入模型”；args 为空对象表示不需要参数
@@ -129,7 +129,7 @@ module.exports = {
 };
 
 # 十一、写完后请自查
-- meta.apiVersion 为 1，endpoints 里声明的每种 kind 都有对应的提交/解析分支；async 实现了 query 两个钩子；sync 的 parseSubmitResponse 返回了 immediate。
+- meta.apiVersion 为 1，endpoints 只声明一种 kind（一个插件只管一种类型），提交/解析都按这一种写；async 实现了 query 两个钩子；sync 的 parseSubmitResponse 返回了 immediate。
 - 没有 async / Promise / require / 网络 / 定时器；请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有内联文件内容。
 - 读取的是 ctx.input.images / videos / audios 数组；没有让上游一次出多个结果；文本产物带了 usage；没有处理积分或生成数量。
 - 连通性检查与模型导入是默认交付内容：已实现只读的 buildCheckRequest；meta.import 已声明，buildImportRequest / parseImportResponse 成对实现；检查和导入都没有提交生成任务。

@@ -50,21 +50,19 @@ export function KindTag({ kind }: { kind: string }) {
   );
 }
 
-/** 四种插件能力的小图标排成一行：支持的带浅色底，不支持的淡出（插件表、渠道表、版本历史用） */
+/** 支持的能力的小图标排成一行（带浅色底），不支持的不显示；一个都没有时显示 —（插件表、渠道表、版本历史用） */
 export function KindIcons({ kinds }: { kinds: string[] }) {
+  const supported = PLUGIN_KIND_ORDER.filter((kind) => kinds.includes(kind));
+  if (supported.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
   return (
     <span className="inline-flex items-center gap-1">
-      {PLUGIN_KIND_ORDER.map((kind) => {
+      {supported.map((kind) => {
         const style = KIND_STYLE[kind];
-        const on = kinds.includes(kind);
         return (
           <span
             key={kind}
-            title={`${MODEL_KIND_LABEL[kind]}${on ? "" : "（不支持）"}`}
-            className={cn(
-              "grid size-6 place-items-center rounded-md",
-              on ? cn(style.soft, style.text) : "text-muted-foreground/30",
-            )}
+            title={MODEL_KIND_LABEL[kind]}
+            className={cn("grid size-6 place-items-center rounded-md", style.soft, style.text)}
           >
             <style.icon className="size-3.5" />
           </span>
