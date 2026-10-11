@@ -460,12 +460,11 @@ function DialogForm({
     kind in (latestVersion(item)?.meta?.endpoints ?? {});
 
   /**
-   * 切协议类型筛选：下拉里只剩这个类型的协议；新建时如果当前选中的不属于它，就改选这个类型里第一个可用的协议。
-   * 编辑已有渠道时只筛选列表，不替它换协议。
+   * 切协议类型筛选：下拉里只剩这个类型的协议；如果当前选中的不属于它，就改选这个类型里第一个可用的协议（新建、编辑都一样）。
    */
   const changePluginKind = (kind: string) => {
     setPluginKind(kind);
-    if (!isNew || !kind) return;
+    if (!kind) return;
     const matches = plugins.filter((item) => item.enabled && supportsKind(item, kind));
     const current = plugins.find((item) => item.key === form.pluginKey);
     if (matches.length > 0 && !(current && supportsKind(current, kind))) {
@@ -818,7 +817,7 @@ function DialogForm({
                       label="标识 key"
                       htmlFor="channel-key"
                       error={errors.key}
-                      hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : "不可修改"}
+                      hint={isNew ? "小写字母、数字、连字符；创建后不可修改" : undefined}
                     >
                       <Input
                         id="channel-key"
