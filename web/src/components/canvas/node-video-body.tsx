@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-import { Loader2, RotateCcw, TriangleAlert, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { TaskIdTag } from "@/components/task-id-tag";
-import { formatElapsed, type VideoNodeView } from "@/utils/tasks/node-view";
+import { FailedPlaceholder, PendingPlaceholder } from "@/components/generation-placeholder";
+import { pendingCopy } from "@/utils/tasks/pending-copy";
+import type { VideoNodeView } from "@/utils/tasks/node-view";
 
 import { BaseNodeContent } from "./base-node";
 import {
@@ -14,13 +12,6 @@ import {
   type NodeMediaType,
 } from "./node-body";
 import { VideoPlaceholderIcon } from "./placeholder-icons";
-
-/** 各种素材在「即将完成」时的说法 */
-const SAVING_TEXT: Record<NodeMediaType, string> = {
-  image: "正在保存图片",
-  video: "正在保存视频",
-  audio: "正在保存音频",
-};
 
 type NodeVideoBodyProps = {
   /** 由节点数据 + 任务快照推出的展示状态 */
@@ -45,63 +36,8 @@ type NodeVideoBodyProps = {
   aspect?: number;
 };
 
-/** 排队中、生成中、转存中共用的骨架屏，中间叠一行状态文字 */
-function PendingBox({
-  title,
-  detail,
-  progress,
-  onCancel,
-  cancelling,
-  aspect,
-}: {
-  title: string;
-  detail?: string;
-  progress?: number | null;
-  onCancel?: () => void;
-  cancelling?: boolean;
-  aspect: number;
-}) {
-  return (
-    <BaseNodeContent>
-      <div
-        className="relative w-full overflow-hidden rounded-[inherit]"
-        style={{ aspectRatio: aspect }}
-        role="status"
-        aria-live="polite"
-      >
-        <Skeleton className="absolute inset-0 rounded-none" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
-          <div className="text-foreground/80 flex items-center gap-2 text-sm font-medium">
-            <Loader2 className="size-4 animate-spin" />
-            {title}
-            {progress != null && <span className="tabular-nums">{progress}%</span>}
-          </div>
-          {detail && <p className="text-muted-foreground text-xs tabular-nums">{detail}</p>}
-          {progress != null && (
-            <div className="bg-foreground/10 h-1 w-32 overflow-hidden rounded-full">
-              <div
-                className="bg-foreground/60 h-full rounded-full transition-[width] duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
-        </div>
-        {onCancel && (
-          <Button
-            variant="outline"
-            size="xs"
-            className="nodrag bg-card/80 absolute right-2 bottom-2 backdrop-blur"
-            disabled={cancelling}
-            onClick={onCancel}
-          >
-            {cancelling ? <Loader2 className="animate-spin" /> : <X />}
-            取消
-          </Button>
-        )}
-      </div>
-    </BaseNodeContent>
-  );
-}
+/** 节点里的占位框：外层负责圆角和画幅，各阶段共用，状态切换时框不变形 */
+const BOX_CLASS = "w-full rounded-[inherit]";
 
 /**
  * 视频节点的正文，按设计 6.3 节的状态表：
@@ -123,71 +59,50 @@ export function NodeVideoBody({
 }: NodeVideoBodyProps) {
   switch (view.phase) {
     case "queued":
-      return (
-        <PendingBox
-          title="排队中"
-          detail="前面的任务处理完后会自动开始"
-          onCancel={onCancel}
-          cancelling={cancelling}
-          aspect={aspect}
-        />
-      );
     case "running":
+    case "finalizing": {
+      const copy = pendingCopy(view, mediaType);
       return (
-        <PendingBox
-          title="生成中"
-          detail={
-            view.elapsedMs === null
-              ? "正在同步任务状态…"
-              : `已耗时 ${formatElapsed(view.elapsedMs)}`
-          }
-          progress={view.progress}
-          onCancel={onCancel}
-          cancelling={cancelling}
-          aspect={aspect}
-        />
+        <BaseNodeContent>
+          <PendingPlaceholder
+            {...copy}
+            // 转存中不能取消
+            onCancel={view.phase === "finalizing" ? undefined : onCancel}
+            cancelling={cancelling}
+            className={BOX_CLASS}
+            style={{ aspectRatio: aspect }}
+          />
+        </BaseNodeContent>
       );
+    }
     case "uploading":
       // 字节传完后服务端还要登记、处理一会儿，进度条满了也不算完成
       return (
-        <PendingBox
-          title={view.progress >= 100 ? "处理中" : "上传中"}
-          detail={view.progress >= 100 ? "文件已传完，正在保存" : undefined}
-          progress={view.progress}
-          aspect={aspect}
-        />
+        <BaseNodeContent>
+          <PendingPlaceholder
+            title={view.progress >= 100 ? "处理中" : "上传中"}
+            detail={view.progress >= 100 ? "文件已传完，正在保存" : undefined}
+            progress={view.progress}
+            className={BOX_CLASS}
+            style={{ aspectRatio: aspect }}
+          />
+        </BaseNodeContent>
       );
-    case "finalizing":
-      return <PendingBox title="即将完成" detail={SAVING_TEXT[mediaType]} aspect={aspect} />;
     case "done":
       return <NodeMediaBody src={view.src} mediaType={mediaType} active={active} aspect={aspect} />;
     case "failed":
       return (
         <BaseNodeContent>
-          <div
-            className="bg-destructive/5 text-destructive flex w-full flex-col items-center justify-center gap-2 rounded-[inherit] px-4 text-center text-xs"
+          <FailedPlaceholder
+            message={view.message}
+            refunded={view.refunded}
+            taskRef={view.taskRef}
+            onRetry={onRetry}
+            retryDisabled={retryDisabled}
+            retryHint={retryHint}
+            className={BOX_CLASS}
             style={{ aspectRatio: aspect }}
-            role="alert"
-          >
-            <TriangleAlert className="size-4 shrink-0" />
-            <p className="line-clamp-3 break-words">{view.message}</p>
-            {view.refunded && <p className="text-muted-foreground">积分已退回</p>}
-            <TaskIdTag id={view.taskRef} className="nodrag nowheel" />
-            {onRetry && (
-              <span title={retryHint}>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="nodrag"
-                  disabled={retryDisabled}
-                  onClick={onRetry}
-                >
-                  <RotateCcw />
-                  重试
-                </Button>
-              </span>
-            )}
-          </div>
+          />
         </BaseNodeContent>
       );
     default:

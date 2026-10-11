@@ -1,26 +1,17 @@
 import { useState } from "react";
-import {
-  CircleAlert,
-  CircleX,
-  Download,
-  ImagePlus,
-  Loader2,
-  Music,
-  Play,
-  RotateCw,
-} from "lucide-react";
+import { CircleAlert, Download, ImagePlus, Music, Play, RotateCw } from "lucide-react";
 
 import type { RecordDto } from "@/api/conversation/type";
 import type { TaskOutput } from "@/api/generation-task/type";
 import { MediaPreview, VideoPoster } from "@/components/canvas/media-preview";
+import { FailedPlaceholder, PendingPlaceholder } from "@/components/generation-placeholder";
 import { SoonTip } from "@/components/home/soon";
-import { TaskIdTag } from "@/components/task-id-tag";
 import { cn } from "@/lib/utils";
 import { useTask } from "@/store/tasks";
 import { useNow } from "@/hooks/use-now";
 import { cellNeedsClock, deriveCell } from "@/utils/conversation/cell";
-import { formatElapsed } from "@/utils/tasks/node-view";
-import { ratioOf, shapeOf, shapeOfAspect } from "@/utils/conversation/shape";
+import { pendingCopy } from "@/utils/tasks/pending-copy";
+import { cellAspect, shapeOfAspect } from "@/utils/conversation/shape";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { downloadMedia } from "@/utils/canvas/download";
 
@@ -38,49 +29,6 @@ const OVERLAY_BUTTON =
 /** 没有结果时的占位格：灰底、居中内容 */
 const PLACEHOLDER =
   "bg-muted text-muted-foreground grid place-items-center rounded-xl px-3 text-center text-[12.5px]";
-
-/** 各种素材在「即将完成」时的说法，与画布节点一致 */
-const SAVING_TEXT = {
-  image: "正在保存图片",
-  video: "正在保存视频",
-  audio: "正在保存音频",
-} as const;
-
-/** 排队中 / 生成中 / 即将完成共用的占位：转圈 + 标题（+ 进度），下面一行小字，进度已知时再画进度条 */
-function Pending({
-  size,
-  title,
-  detail,
-  progress,
-}: {
-  size: string;
-  title: string;
-  detail: string;
-  progress?: number | null;
-}) {
-  return (
-    <div data-slot="result-cell" role="status" aria-live="polite" className={cn(PLACEHOLDER, size)}>
-      <div className="grid justify-items-center gap-1.5">
-        <span className="text-foreground/80 inline-flex items-center gap-1.5 text-sm font-medium">
-          <Loader2 className="size-3.5 animate-spin" />
-          {title}
-          {progress !== null && progress !== undefined && (
-            <span className="tabular-nums">{progress}%</span>
-          )}
-        </span>
-        <span className="text-xs tabular-nums">{detail}</span>
-        {progress !== null && progress !== undefined && (
-          <span className="bg-foreground/10 h-1 w-28 overflow-hidden rounded-full">
-            <span
-              className="bg-foreground/60 block h-full rounded-full transition-[width] duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /** 点开预览时交给调用方的信息：看哪个任务的产出，以及弹层从屏幕哪个点长出来 */
 export type CellPreviewTarget = {
@@ -121,7 +69,6 @@ export function ResultCell({
   const now = useNow(cellNeedsClock(task));
   const cell = deriveCell(record, index, task, now);
   const audio = record.kind === "audio";
-  /** 成片的真实宽高比：量到之前为 null，格子先按所选比例占位；Auto 比例靠它才知道真实画幅 */
   /** 视频封面是否已就绪：就绪后播放按钮才和封面一起淡入 */
   const [posterSettled, setPosterSettled] = useState(false);
   const doneOutput = cell.kind === "done" ? cell.output : null;
@@ -130,9 +77,13 @@ export function ResultCell({
       ? doneOutput.media_type
       : undefined;
   const measured = useMediaAspect(doneOutput?.url, mediaType);
+  /** 各阶段共用同一个宽高比：成片真实比例优先，其次所选比例，Auto 且没量到时按默认横版 */
+  const aspect = audio ? null : cellAspect(record.input, measured);
   const size = audio
     ? "h-18 w-full max-w-90"
-    : SHAPE[measured === null ? shapeOf(ratioOf(record.input)) : shapeOfAspect(measured)];
+    : SHAPE[aspect === null ? "wide" : shapeOfAspect(aspect)];
+  /** 按宽高比定宽度（高度由档位类给）；占位和成片都用它，加载前后框不变形 */
+  const frame = aspect === null ? undefined : { aspectRatio: aspect };
   const retry = (
     <button
       type="button"
@@ -147,7 +98,7 @@ export function ResultCell({
   switch (cell.kind) {
     case "submit_error":
       return (
-        <div data-slot="result-cell" className={cn(PLACEHOLDER, size)}>
+        <div className={cn(PLACEHOLDER, size)} style={frame}>
           <div className="grid justify-items-center">
             <CircleAlert className="mb-1 size-4" />
             提交失败：{cell.message}
@@ -157,44 +108,40 @@ export function ResultCell({
       );
     case "missing":
       return (
-        <div data-slot="result-cell" className={cn(PLACEHOLDER, size)}>
+        <div className={cn(PLACEHOLDER, size)} style={frame}>
           找不到这个任务
         </div>
       );
     case "queued":
-      return <Pending size={size} title="排队中" detail="前面的任务处理完后会自动开始" />;
     case "running":
+    case "finalizing": {
+      // 和画布节点共用占位和文案（见 PendingPlaceholder、pendingCopy）
+      const phase =
+        cell.kind === "running"
+          ? ({ phase: "running", elapsedMs: cell.elapsedMs, progress: cell.progress } as const)
+          : ({ phase: cell.kind } as const);
       return (
-        <Pending
-          size={size}
-          title="生成中"
-          progress={cell.progress}
-          detail={
-            cell.elapsedMs === null
-              ? "正在同步任务状态…"
-              : `已耗时 ${formatElapsed(cell.elapsedMs)}`
-          }
+        <PendingPlaceholder
+          {...pendingCopy(phase, record.kind)}
+          className={cn("rounded-xl", size)}
+          style={frame}
         />
       );
-    case "finalizing":
-      return <Pending size={size} title="即将完成" detail={SAVING_TEXT[record.kind]} />;
+    }
     case "failed":
       return (
-        <div data-slot="result-cell" className={cn(PLACEHOLDER, size)}>
-          <div className="grid justify-items-center gap-2">
-            <CircleX className="text-destructive size-4" />
-            <div className="grid justify-items-center gap-1">
-              <span>{cell.message}</span>
-              <span className="text-[11px] opacity-70">积分已退回</span>
-              <TaskIdTag id={cell.taskRef} className="mt-0.5" />
-            </div>
-            {retry}
-          </div>
-        </div>
+        <FailedPlaceholder
+          message={cell.message}
+          refunded
+          taskRef={cell.taskRef}
+          onRetry={() => onRetry(index)}
+          className={cn("rounded-xl", size)}
+          style={frame}
+        />
       );
     case "canceled":
       return (
-        <div data-slot="result-cell" className={cn(PLACEHOLDER, size)}>
+        <div className={cn(PLACEHOLDER, size)} style={frame}>
           <div className="grid justify-items-center">
             已取消 · 积分已退回
             {retry}
@@ -211,8 +158,7 @@ export function ResultCell({
     <div
       data-slot="result-cell"
       className={cn("group/cell relative max-w-full overflow-hidden rounded-xl", size)}
-      /** 宽高比取成片真实值：整张图完整显示，不裁切；量到之前沿用画幅档位的占位比例 */
-      style={!audio && measured !== null ? { aspectRatio: measured } : undefined}
+      style={frame}
     >
       <button
         type="button"
