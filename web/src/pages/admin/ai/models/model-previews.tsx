@@ -102,10 +102,7 @@ export function PickerPreview({
     .filter((item) => item.kind === kind && item.key !== modelKey && item.enabled)
     .slice(0, 2);
   return (
-    <PreviewFrame
-      title="创作端预览 · 模型选择器"
-      note="高亮的是当前正在编辑的模型，灰色是同类已上架的模型，方便对照名称是否清楚。"
-    >
+    <PreviewFrame title="创作端预览 · 模型选择器">
       <div className="bg-popover rounded-xl border p-2 shadow-lg">
         <div className="text-muted-foreground px-2 pt-1 pb-2 text-xs">
           {MODEL_KIND_LABEL[kind] ?? kind}模型
@@ -214,11 +211,9 @@ export function PricePreview({
   pricing: Pricing | null;
   caps: Capabilities | undefined;
 }) {
-  const note =
-    "价格在用户点「生成」前就会显示在按钮上；生成多个时按钮上是合计。积分成本只有管理员能看到。";
   if (!pricing) {
     return (
-      <PreviewFrame title="用户看到的价格" note={note}>
+      <PreviewFrame title="用户看到的价格">
         <p className="text-muted-foreground text-xs">还没有配置定价。</p>
       </PreviewFrame>
     );
@@ -237,7 +232,7 @@ export function PricePreview({
     const output = caps?.context?.output ?? 0;
     const sample = quote(pricing, caps, { ...base, promptChars: 1000 });
     return (
-      <PreviewFrame title="用户看到的价格" note={note}>
+      <PreviewFrame title="用户看到的价格">
         <div className="bg-card space-y-2 rounded-xl border p-4 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">输入</span>
@@ -265,7 +260,7 @@ export function PricePreview({
     ].filter((item): item is [string, number] => typeof item[1] === "number");
     const rows = row ? row.values : [{ value: undefined, text: "全部" }];
     return (
-      <PreviewFrame title="用户看到的价格" note={note}>
+      <PreviewFrame title="用户看到的价格">
         <div className="bg-card overflow-hidden rounded-xl border">
           <table className="w-full text-xs">
             <thead>
@@ -314,7 +309,7 @@ export function PricePreview({
 
   if (!row) {
     return (
-      <PreviewFrame title="用户看到的价格" note={note}>
+      <PreviewFrame title="用户看到的价格">
         <div className="bg-card rounded-xl border p-4">
           <div className="text-muted-foreground text-xs">默认参数下每次消耗</div>
           <div className="mt-1 text-3xl font-bold tabular-nums">
@@ -327,7 +322,7 @@ export function PricePreview({
   }
 
   return (
-    <PreviewFrame title="用户看到的价格" note={note}>
+    <PreviewFrame title="用户看到的价格">
       <div className="bg-card overflow-hidden rounded-xl border">
         <table className="w-full text-xs">
           <thead>

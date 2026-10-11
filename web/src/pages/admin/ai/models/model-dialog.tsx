@@ -119,7 +119,7 @@ export function ModelDialog({
       models={ws.models}
     />
   ) : tab === "params" ? (
-    <PreviewFrame title="画布节点预览" note="左边每改一项，这里立即变化。">
+    <PreviewFrame title="画布节点预览">
       <TestNode
         modelKey={ws.modelKey}
         vendor={readModelString(body, "vendor")}

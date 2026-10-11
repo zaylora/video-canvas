@@ -8,7 +8,6 @@ import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
@@ -130,7 +129,6 @@ export function ModelBasicForm({
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>模型身份</FormSectionTitle>
-          <FormSectionDescription>区分产品侧的展示标识与上游实际调用的 ID。</FormSectionDescription>
         </FormSectionHeader>
         <div className="grid gap-5 md:grid-cols-2">
           <FormField
@@ -140,7 +138,6 @@ export function ModelBasicForm({
             required
             error={issueFor(issues, "key")}
             tip="画布、任务与计费都用它引用这个模型，创建后不能修改。"
-            hint={isNew ? "小写字母、数字、连字符，保存后不能修改。" : undefined}
           >
             <div className="flex gap-2">
               <Input
@@ -199,7 +196,6 @@ export function ModelBasicForm({
             label="模型 Logo"
             htmlFor="model-vendor"
             error={issueFor(issues, "vendor")}
-            hint="选厂商后，模型选择器里显示该厂商的 logo；不选则显示名称首字。"
           >
             <VendorPicker
               id="model-vendor"
@@ -215,9 +211,6 @@ export function ModelBasicForm({
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>能力与渠道</FormSectionTitle>
-          <FormSectionDescription>
-            能力与渠道都可以修改；所选渠道的插件不支持的能力会置灰。换能力会把能力与参数、定价重置成新能力的默认值。
-          </FormSectionDescription>
         </FormSectionHeader>
         <div className="space-y-5">
           <FormField size="default" label="模型能力" required error={issueFor(issues, "kind")}>
@@ -333,9 +326,6 @@ export function ModelBasicForm({
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>展示信息</FormSectionTitle>
-          <FormSectionDescription>
-            显示在创作端的模型选择器里，不影响调用与计费。
-          </FormSectionDescription>
         </FormSectionHeader>
         <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_10rem]">
           <FormField
@@ -345,7 +335,6 @@ export function ModelBasicForm({
             error={issueFor(issues, "hint")}
             hint={
               <span className="flex justify-between gap-2">
-                <span>在模型选择器里显示在名称下面，可留空。</span>
                 <span
                   className={cn(
                     "tabular-nums",
@@ -371,7 +360,6 @@ export function ModelBasicForm({
             label="排序"
             htmlFor="model-sort"
             error={issueFor(issues, "sort")}
-            hint="越小越靠前。"
           >
             <Input
               id="model-sort"
@@ -393,7 +381,6 @@ export function ModelBasicForm({
             htmlFor="model-tags"
             className="md:col-span-2"
             error={issueFor(issues, "tags")}
-            hint={`显示在模型名称旁，如「推荐」「带音轨」。最多 ${MODEL_TAGS_MAX} 个，每个不超过 ${MODEL_TAG_MAX_LENGTH} 字。`}
           >
             <TagInput
               id="model-tags"

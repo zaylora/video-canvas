@@ -5,12 +5,10 @@ import type { Billing, Capabilities, PriceCost, PriceTier, Pricing } from "@/api
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { MarginBadge } from "@/components/admin-ui/margin-badge";
-import { Notice } from "@/components/admin-ui/notice";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Tag } from "@/components/admin-ui/tag";
 import { Switch } from "@/components/ui/switch";
@@ -93,9 +91,6 @@ export function ModelPriceForm({
     <FormSection>
       <FormSectionHeader>
         <FormSectionTitle>用户积分价格</FormSectionTitle>
-        <FormSectionDescription>
-          价格都是整数积分。默认价格对所有请求生效；要按清晰度、音频、生成方式等区分时，再加规格价格。
-        </FormSectionDescription>
       </FormSectionHeader>
 
       <div className="rounded-xl border" id="model-pricing">
@@ -105,7 +100,6 @@ export function ModelPriceForm({
           </span>
           <div>
             <div className="text-sm font-semibold">默认价格</div>
-            <div className="text-muted-foreground text-xs">没有命中规格价格的请求都用这个价格</div>
           </div>
           {!isToken && sameUnitCost !== undefined && (
             <MarginBadge className="ml-auto" price={defaultUnit(pricing)} cost={sameUnitCost} />
@@ -117,13 +111,6 @@ export function ModelPriceForm({
             label="计费方式"
             required
             error={issueFor(issues, "pricing.billing")}
-            hint={
-              pricing.billing === "per_second"
-                ? "每秒价 × 用户拖动的时长；切换计费方式会清空规格价格。"
-                : isToken
-                  ? "按上限预冻结，完成后按实际用量结算，多冻结的退回。"
-                  : "每生成一次扣一次；切换计费方式会清空规格价格。"
-            }
           >
             <Segmented aria-label="计费方式" className="w-fit">
               {(Object.keys(BILLING_LABEL) as Billing[]).map((billing) => {
@@ -191,9 +178,6 @@ export function ModelPriceForm({
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">积分成本</span>
               <Tag>仅管理员可见</Tag>
-              <span className="text-muted-foreground hidden text-xs sm:inline">
-                填了成本才能看到利润率，不影响用户价格，也不会下发给画布。
-              </span>
               <Switch
                 className="ml-auto"
                 checked={!!cost?.on}
@@ -240,11 +224,7 @@ export function ModelPriceForm({
         </div>
       </div>
 
-      {isToken ? (
-        <Notice tone="info" className="mt-4">
-          按 Token 计费不需要规格价格：费用按输入、输出 Token 数自动计算。
-        </Notice>
-      ) : (
+      {isToken ? null : (
         <>
           <div className="mt-4 flex flex-col gap-3">
             {tiers.map((tier, index) => (

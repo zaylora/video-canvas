@@ -165,7 +165,6 @@ export function ContextEditor({
           className="w-28"
           onChange={(next) => onChange({ window, output: next ?? 0 })}
         />
-        <span className="text-muted-foreground text-xs">Token，须小于窗口</span>
       </label>
     </div>
   );
