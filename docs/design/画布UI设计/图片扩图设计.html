@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>图片扩图设计</title>
+    <!-- 写法见 .agents/skills/design/html-demo-guide.md。可点击原型直接内嵌同目录的「图片扩图原型.html」。 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr !important; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      ul.list li, ol.list li { margin: 3px 0; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .pick { background: rgb(var(--ok) / 0.05); }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; margin: 0; padding: 0; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto iframe { display: block; width: 100%; height: 1000px; border: 0; background: #111; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* 交互演示 */
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field > span { color: hsl(var(--muted-foreground)); }
+      .inp, .sel { height: 32px; padding: 0 10px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); width: 100%; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip { height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+      .chip:hover { background: hsl(var(--accent)); }
+      .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+      .chip:disabled { opacity: 0.4; cursor: not-allowed; }
+      .stage { height: 190px; display: grid; place-items: center; border-radius: var(--radius); background: hsl(var(--muted)); }
+      .stage .outer { position: relative; background: repeating-conic-gradient(hsl(var(--border)) 0 25%, transparent 0 50%) 0 0 / 14px 14px; outline: 1.5px solid hsl(var(--foreground) / 0.7); }
+      .stage .inner { position: absolute; background: linear-gradient(135deg, rgb(var(--info) / 0.55), rgb(var(--violet) / 0.55)); outline: 1px solid hsl(var(--background)); display: grid; place-items: center; font-size: 11px; color: #fff; }
+      .kv { display: grid; grid-template-columns: 112px 1fr; gap: 6px 12px; font-size: 13px; }
+      .kv dt { color: hsl(var(--muted-foreground)); }
+      .kv dd { margin: 0; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="expand"></i></span>图片扩图设计</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>比例与尺寸演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>实现方案（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">图片扩图：在画布上把一张图往外“画大”</h1>
+        <p class="lead">
+          选中一张图片，点功能区的<b>「扩图」</b>，在图外拖出一个更大的框，选好比例、模型、写几句提示词，发送后在右侧得到一张<b>扩大了的新图片节点</b>。
+          <b>点「扩图」时只摆一个占位框，不生成任何图片；点发送之后才合成图片、上传、调用模型。</b>
+          整个功能只改前端，后端接口和画布存档格式不变。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页是设计稿，<b>代码已按它实现（2026-10-11），但界面还没有在浏览器里实机验证，也没有拿真实模型跑过完整扩图</b>。“项目现状”都来自读代码（标「已核对代码」）；界面样子以同目录的
+            <a href="图片扩图原型.html" target="_blank" rel="noopener">图片扩图原型.html</a> 为准，本页「可点击原型」里直接嵌入了它；
+            「比例与尺寸演示」里的数字用的是真实要写进代码的算法，但原图尺寸、模型支持的比例是演示用的假数据（示意）。
+            对应的 Markdown 主文档是 <code>画布UI设计.md</code> 的 6.17 节，<b>已回写</b>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">提案</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：从点“扩图”到拿到新图</h2>
+          <p class="sub">这张图回答：什么时候花钱、什么时候花时间、哪一步最容易出问题。</p>
+          <div class="flow note">
+            <div class="node"><b>1 点「扩图」</b>摆出框和底部面板，不生成图片</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>2 调整</b>拖手柄、选比例/倍数、选模型、写提示词</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>3 点发送</b>右侧立刻出现“生成中”的新节点并连线</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>4 合成 + 上传</b>原图贴进透明大图，导出 PNG 传到对象存储，拿到素材</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>5 提交任务</b>图生图 <code>i2i</code>，参考图是合成图素材</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>6 回填</b>走现有任务推送，结果写回新节点</div>
+          </div>
+          <div class="note-txt">设计：把重活（读原图、合成、上传）全部推迟到点发送之后，进入扩图模式只是摆几个 DOM 元素，所以拖框不卡。第 3 步先出节点再做第 4 步，是为了点下去 100ms 内就有反馈。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>出错时（节点保留，可重试）：</b>读不到原图、合成失败、上传失败，节点显示失败原因，点重试从第 4 步重来；任务提交或生成失败走现有的失败展示和退积分逻辑。
+              <b>刷新页面会丢掉“还没上传完”的重试材料</b>，此时提示“请回到原图重新扩图”。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>框怎么调：三种方式，最后落成同一个框</h2>
+          <p class="sub">都沿用原型的行为。框始终包住原图，只能往外扩；最长边最多是原图最长边的 3 倍。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="ratio"></i><b>比例预设</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">21:9 · 4:3 · 1:1 · 3:4 · 9:16</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>刚好包住原图的最小框，原图居中。</b>放不下（超过 3 倍）的预设置灰并写原因。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="scaling"></i><b>倍数（原比例）</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">1 · 1.25 · 1.5 · 2 · 3x</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>只在「原比例」下可选</b>，其它比例下倍数按钮置灰。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="move-diagonal"></i><b>手柄拖动</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">8 个手柄 + 框内平移</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>角手柄等比，边手柄自由。</b>拖出来的比例不在预设里时，比例条上没有按钮高亮。方向键可微调。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>原图和新节点之间的连线怎么处理</h2>
+          <p class="sub">现有规则下，连到图片节点的图片连线会自动成为参考图。扩图要的参考图只有“合成图”一张，所以要对这条线特殊处理。<b>已选第一种。</b></p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th class="pick">画线，但不当参考图（已选）</th><th>不画线</th><th>画线并当参考图</th></tr></thead>
+              <tbody>
+                <tr><th>模型收到几张参考图</th><td class="pick y">1 张（合成图）</td><td class="y">1 张（合成图）</td><td class="m">2 张（原图 + 合成图），效果很可能变差</td></tr>
+                <tr><th>看得出来源</th><td class="pick y">看得出，和原型一致</td><td class="m">看不出</td><td class="y">看得出</td></tr>
+                <tr><th>在新节点点“重新生成”</th><td class="pick y">仍只传合成图</td><td class="y">仍只传合成图</td><td class="m">带上原图，和第一次不同</td></tr>
+                <tr><th>要改的规则</th><td class="pick m">在组装参考图的地方，跳过这条线（新节点记下“来自哪个扩图原图”）</td><td class="y">无</td><td class="y">无</td></tr>
+                <tr><th>核实度</th><td class="pick"><span class="tag t-info">提案</span> 读代码推演，未实测</td><td><span class="tag t-info">提案</span></td><td><span class="tag t-info">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note-txt">为什么不把标记放在连线上：画布存档只保存连线的起止和连接点（<code>canvas-persistence.ts</code>），读档时还会用默认配置覆盖连线数据，标记会丢。放在新节点自己的数据里才存得住。</div>
+        </div>
+
+        <div class="sec">
+          <h2>用户把 1920×1080 的图扩成 3 倍，会发生什么</h2>
+          <p class="sub">一次最极端的操作，看看每一步有多大、哪里会被限制。数字见「比例与尺寸演示」。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps">
+                <li><b>框拖到 3 倍后再也拖不动</b><small>弹一条“已到 3 倍上限”，框停在 5760×3240。</small></li>
+                <li><b>点发送，右侧立刻出现“图片 1-扩图”</b><small>状态“生成中”，原图和它之间连一条线。</small></li>
+                <li><b>合成图被压到最长边 4096</b><small>5760×3240 → 4096×2304，原图部分等比缩小贴进去，其余是透明。</small></li>
+                <li><b>导出 PNG、上传、提交 i2i</b><small>比例按 <code>16:9</code> 这种整数比写进模型的比例参数。</small></li>
+                <li><b>结果回来，节点按成片真实宽高比显示</b><small>用的是现有的任务推送和回填，不新增轮询。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：模型最终出多大图由模型决定</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>合成图只是“参考图 + 比例”，不保证输出像素等于框的尺寸；框上的尺寸角标是<b>按原图像素换算的预期值</b>。</li>
+                    <li>原图部分是否“一个像素都不变”取决于模型，我们只负责告诉它“保持原图内容不变”。</li>
+                    <li>积分在提交任务时冻结，合成或上传失败不会扣积分。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付前要告知：扩图效果好坏主要看所选模型的图生图能力。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 比例与尺寸演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">比例与尺寸演示</h1>
+        <p class="lead">
+          改原图尺寸和框，实时看<b>框的尺寸、合成图尺寸、写进模型参数的比例</b>。算法与要写进代码的一致（<span class="tag t-info">提案</span>）；
+          <b>原图尺寸、模型支持的比例都是演示用的假数据（示意）</b>。
+        </p>
+        <div class="grid" style="margin-top: 20px; grid-template-columns: 320px minmax(0, 1fr)" id="demoGrid">
+          <div class="card grid" style="align-content: start; gap: 14px">
+            <label class="field"><span>原图（像素）</span>
+              <select class="sel" id="dOrig">
+                <option value="1920x1080">1920 × 1080（16:9）</option>
+                <option value="1600x1200">1600 × 1200（4:3）</option>
+                <option value="1080x1920">1080 × 1920（9:16）</option>
+                <option value="1024x1024">1024 × 1024（1:1）</option>
+              </select>
+            </label>
+            <div class="field"><span>框怎么定</span>
+              <div class="chips" id="dMode">
+                <button class="chip" data-mode="mult" aria-pressed="true">原比例 × 倍数</button>
+                <button class="chip" data-mode="ratio" aria-pressed="false">比例预设</button>
+                <button class="chip" data-mode="custom" aria-pressed="false">自定义（模拟手柄）</button>
+              </div>
+            </div>
+            <div class="field" id="dMultBox"><span>倍数（最长边相对原图）</span><div class="chips" id="dMult"></div></div>
+            <div class="field" id="dRatioBox" hidden><span>比例预设（放不下的置灰）</span><div class="chips" id="dRatio"></div></div>
+            <div id="dCustomBox" hidden class="grid g2" style="gap: 10px">
+              <label class="field"><span>框宽 ÷ 原图宽</span><input class="inp" id="dCw" type="number" step="0.05" min="1" max="3" value="1.37" /></label>
+              <label class="field"><span>框高 ÷ 原图高</span><input class="inp" id="dCh" type="number" step="0.05" min="1" max="3" value="1.1" /></label>
+            </div>
+            <div class="field"><span>所选模型的比例参数（示意）</span>
+              <select class="sel" id="dModel">
+                <option value="any">不限制（任意 W:H）</option>
+                <option value="enum">枚举：1:1 · 16:9 · 9:16 · 4:3 · 3:4 · 3:2 · 2:3</option>
+                <option value="enum2">枚举：1:1 · 16:9 · 9:16</option>
+              </select>
+            </div>
+          </div>
+          <div class="card grid" style="gap: 14px">
+            <div class="stage note"><div class="outer" id="dOuter"><div class="inner" id="dInner">原图</div></div></div>
+            <div class="note-txt" style="margin-top: -6px">棋盘格是要新生成的透明区域，彩色块是原图。框始终包住原图。</div>
+            <dl class="kv" id="dOut"></dl>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          下面直接嵌入已有的 <b>图片扩图原型.html</b>（<span class="tag t-mute">示意</span>，数据在内存里，刷新复原）。
+          点功能区「扩图」进入；拖手柄、点比例条、点倍数菜单；点发送后右侧出现新节点。想看失败：顶部「提交结果」切到<b>失败</b>再发送；想看积分不足：切「积分」到<b>不足</b>。
+          <b>原型里的进度是假的，且没有模型选择，这两点实现时与原型不同，见下表。</b>
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">video-canvas / 画布 / 图片 1 · 扩图</span>
+          </div>
+          <div class="proto"><iframe src="图片扩图原型.html" title="图片扩图原型" loading="lazy"></iframe></div>
+        </div>
+        <div class="note-txt">原型颜色和时长直接抄自 <code>web/src/index.css</code> 与 <code>web/src/lib/motion.ts</code>，所以明暗主题下看起来就是真实产品。原型里的“风景”是示意素材。</div>
+
+        <div class="sec">
+          <h2>实现和原型有哪些不同</h2>
+          <p class="sub">原型是“这个交互好不好”的样子；落到真实画布时有三处必须调整。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>地方</th><th>原型</th><th>实现</th><th>原因</th></tr></thead>
+              <tbody>
+                <tr><th>模型</th><td>面板里没有模型选择</td><td class="y"><b>提示词栏里加模型选择</b>，只列支持图生图的图片模型</td><td>用户已确认；真实任务必须指定模型，积分也随模型变</td></tr>
+                <tr><th>生成进度</th><td>假进度条，几秒走完</td><td class="y">新节点走现有任务状态：生成中 → 即将完成 → 完成/失败</td><td>复用现有节点展示和失败退积分，不另写一套</td></tr>
+                <tr><th>结果图</th><td>用同一份示意风景画出来</td><td class="y">模型返回的真实图片</td><td>—</td></tr>
+                <tr><th>比例传给模型</th><td>只显示角标尺寸</td><td class="y">把比例写进模型的 <code>aspect_ratio</code>/<code>ratio</code> 参数，如 <code>16:9</code></td><td>用户已确认：整数比，不用小数</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>各种状态怎么表现</h2>
+          <p class="sub">空、加载、成功、失败、不可用，一个都不落。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>状态</th><th>表现</th><th>下一步</th></tr></thead>
+              <tbody>
+                <tr><th>不可用：原图没有完成</th><td>空节点、上传中、生成中、失败的节点，功能区本来就不出现或按钮置灰（<span class="tag t-ok">已核对代码</span> <code>node-toolbar-state.ts</code>）</td><td>等图出来再扩</td></tr>
+                <tr><th>不可用：没有支持图生图的模型</th><td>点「扩图」不进入模式，提示“暂无支持图生图的模型”</td><td>联系管理员在后台开启</td></tr>
+                <tr><th>不可用：比例超过 3 倍</th><td>该比例预设置灰，悬停写“超过 3 倍上限”；拖手柄到顶弹“已到 3 倍上限”</td><td>选别的比例或缩小框</td></tr>
+                <tr><th>不可用：积分不足</th><td>积分数变红，发送键置灰，悬停写“积分不足”</td><td>充值或换更便宜的模型</td></tr>
+                <tr><th>加载：合成/上传/排队/生成中</th><td>新节点标题行显示“生成中”，节点里是流光占位；原图和新节点之间的线有流光</td><td>等待；可离开页面，任务继续</td></tr>
+                <tr><th>成功</th><td>新节点按成片真实宽高比显示图片，状态消失</td><td>可继续用它的面板改提示词重新生成</td></tr>
+                <tr><th>失败：合成/上传阶段</th><td>新节点显示失败原因和重试按钮（例：“无法读取原图”“上传失败”）</td><td>点重试；刷新后重试材料丢失则提示回原图重新扩图</td></tr>
+                <tr><th>失败：任务阶段</th><td>沿用现有失败展示：原因、任务编号、已退回积分</td><td>点重试（参考图就是已上传的合成图）</td></tr>
+                <tr><th>窄屏 &lt; 768px</th><td>功能区只留图标；面板占满宽度，比例条横向滚动（同原型）</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 实现方案（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">实现方案（提案）</h1>
+        <p class="lead">
+          下面是设计时定下的实现方案，<b>代码已按它写完</b>（单测与类型检查通过，界面未实机验证）。<b>只改前端，不新增后端接口、不改画布存档的整体结构</b>（只多存新节点上的一个字段）。对应主文档 <code>画布UI设计.md</code> 的 6.17 节，已回写。
+        </p>
+
+        <div class="sec">
+          <h2>现有能力哪些直接复用</h2>
+          <p class="sub">下面每一项都读过代码核实。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>要做的事</th><th>复用什么</th><th>核实度</th></tr></thead>
+              <tbody>
+                <tr><th>“扩图”按钮</th><td><code>constants/node-toolbar.ts</code> 里图片节点已有 <code>outpaint</code> 按钮，目前点了只弹“敬请期待”</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>上传合成图</th><td><code>api/asset/index.ts</code> 的 <code>uploadAsset(file)</code>：默认存储开了直传就直传对象存储，否则走后端中转；返回素材 <code>id</code> 和 <code>url</code></td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>提交图生图</th><td><code>utils/tasks/gateway.ts</code> 的 <code>submitCanvasTasks</code>；任务 <code>input</code> 里 <code>op: "i2i"</code>、<code>images: [素材id]</code>。<b>素材引用用的是素材 id，不是 URL</b>，后端负责换成上游可访问的地址</td><td><span class="tag t-ok">已核对代码</span> <code>capabilities.ts</code> <code>buildTaskInput</code></td></tr>
+                <tr><th>拼 input + 校验 + 计价</th><td><code>buildTaskInput</code>（补参数默认值、检查参考图个数）、<code>quote</code> + <code>priceSpecOf</code>（积分）</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>比例参数名和写法</th><td><code>utils/canvas/node-frame.ts</code> 里比例参数叫 <code>aspect_ratio</code> 或 <code>ratio</code>，值是 <code>W:H</code> 字符串</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>新节点的状态展示</th><td>节点正文由 <code>deriveVideoNodeView</code> 决定：状态 <code>running</code> 且还没有任务时显示“生成中”</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>读原图像素</th><td><code>utils/canvas/download.ts</code> 的做法：先 <code>fetch</code> 成 blob 再用，避免跨域读不了</td><td><span class="tag t-ok">已核对代码</span>；跨域对象存储是否都放行 <span class="tag t-warn">未验证 · 需实测</span></td></tr>
+                <tr><th>模型清单/积分</th><td><code>useRemoteModels("image")</code>、积分 store</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>新增哪些模块</h2>
+          <p class="sub">每个单元一个职责，几何和换算是纯函数，先写测试。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>模块（提案路径）</th><th>职责</th><th>依赖</th></tr></thead>
+              <tbody>
+                <tr><th><code>utils/canvas/outpaint-frame.ts</code></th><td>框的几何：包住原图、3 倍上限、角手柄等比、边手柄自由、框内平移、比例预设、倍数、判断当前比例；比例转 <code>W:H</code>、取最接近的枚举项。算法照原型移植</td><td>无（纯函数）</td></tr>
+                <tr><th><code>utils/canvas/outpaint-compose.ts</code></th><td>算合成方案（输出像素、原图贴的位置、是否压缩到 4096），再用浏览器 canvas 导出透明 PNG；读原图（fetch 成 blob）</td><td>浏览器 canvas</td></tr>
+                <tr><th><code>utils/canvas/outpaint-node.ts</code></th><td>造新节点和连线：标题“原标题-扩图”、摆在原图右侧 80px 外且避开已有节点、预置模型/提示词/参数</td><td><code>node-label</code>、<code>node-frame</code></td></tr>
+                <tr><th><code>utils/canvas/outpaint-run.ts</code></th><td>提交流程（依赖全部注入，便于测试）：合成 → 上传 → 拼 input → 提交 → 写回新节点；各步失败写入节点；留一份内存里的重试材料</td><td>上面三个 + <code>uploadAsset</code>、网关</td></tr>
+                <tr><th><code>store/outpaint.ts</code></th><td>当前处于扩图模式的节点 id（只在内存，不存档）；进入、退出</td><td>zustand</td></tr>
+                <tr><th><code>components/canvas/outpaint-overlay.tsx</code></th><td>框（棋盘格 + 8 个手柄 + 尺寸角标，画在画布坐标系里随缩放，手柄反向缩放保持固定屏幕大小）和底部面板（比例条 + 倍数菜单 + 提示词栏）。提示词栏复用现有 <code>NodePromptInput</code>，比例条放它的 <code>header</code> 位</td><td>xyflow、store、模型清单</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note-txt">改动的现有文件：<code>node-overlays.tsx</code>（扩图模式下用扩图浮层替换功能区和生成面板）、<code>video-node.tsx</code>（接“扩图”按钮、取消选中时退出模式、新节点没有任务时不显示取消键）、<code>use-task-node.ts</code>（跳过扩图来源连线）、<code>canvas-persistence.ts</code> 与 <code>types/canvas.ts</code>（多存一个字段）。</div>
+        </div>
+
+        <div class="sec">
+          <h2>新节点上存什么</h2>
+          <p class="sub">全部是现有节点字段，只多一个 <code>outpaintFrom</code>。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2">结果节点 <code>CanvasNodeData</code></th></tr></thead>
+              <tbody>
+                <tr><th><code>kind</code></th><td><code>"image"</code></td></tr>
+                <tr><th><code>label</code></th><td>“原标题-扩图”，超过 40 字按现有规则截断；重名按现有规则加编号</td></tr>
+                <tr><th><code>model</code></th><td>面板里选的模型 key</td></tr>
+                <tr><th><code>params.op</code></th><td><code>"i2i"</code></td></tr>
+                <tr><th><code>params.images</code></th><td><code>[合成图素材id]</code>，上传完才有</td></tr>
+                <tr><th><code>params.prompt</code> / <code>prompt</code></th><td>完整提示词 = 固定指令 + 用户写的内容（见下）。<b>写完整版</b>，这样在新节点点“重新生成”结果一致</td></tr>
+                <tr><th><code>params.aspect_ratio</code>（或 <code>ratio</code>）</th><td>整数比 <code>W:H</code>；模型没有这个参数就不写</td></tr>
+                <tr><th><code>paramAssets</code></th><td>合成图的缩略图地址，给参考条显示用</td></tr>
+                <tr><th><code>outpaintFrom</code> <span class="tag t-info">新增</span></th><td>原图节点 id（字符串）。<b>画布存档白名单里加上它</b>；组装参考图时，来自这个节点的连线不算参考图</td></tr>
+                <tr><th><code>status</code> / <code>taskId</code></th><td>创建时 <code>running</code>、无 <code>taskId</code>；提交成功后用现有 <code>buildSubmittedPatch</code> 写入。存档时“running 且没有 taskId”本来就存成 idle（<span class="tag t-ok">已核对代码</span>）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>任务请求（沿用现有接口，不新增）</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /assets/upload-intents</code> → 直传 → <code>POST /assets/upload-intents/:id/complete</code>，或 <code>POST /assets</code></th><td>由 <code>uploadAsset</code> 自动选择。业务错误：类型不合法、超限（真错误，不降级）</td></tr>
+                <tr><th><code>POST /generation-tasks</code></th><td><code>kind: "image"</code>，<code>input: { op: "i2i", images: [素材id], prompt, aspect_ratio, …模型其它开放参数的默认值 }</code>。业务错误沿用：402 积分不足、429 并发已满等，写进新节点的失败信息</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>提交流程伪代码（提案）</h2>
+          <div class="codeblock"><pre>// outpaint-run.ts —— 依赖都注入，测试里换成假的
+async function runOutpaint({ source, frame, model, userPrompt, ratio }, deps) {
+  // 1. 点发送的瞬间，先造节点和线（100ms 内有反馈）
+  const node = buildOutpaintNode(source, { model, ratio, prompt })   // status: running，无 taskId
+  deps.addNode(node); deps.addEdge(source.id → node.id)
+
+  try {
+    // 2. 合成：fetch 原图 blob → canvas 贴进透明大图 → PNG
+    const plan = planCompose(naturalSize, frame, originNodeSize, MAX_EDGE = 4096)
+    const png  = await deps.compose(source.src, plan)
+    if (png.size > caps.refs.image.max_mb * MB) throw new UserError('合成图超过模型参考图大小上限')
+
+    // 3. 上传 → 拿到素材 id
+    const asset = await deps.upload(new File([png], 'outpaint.png', { type: 'image/png' }))
+
+    // 4. 拼 input（含参数默认值与校验），提交 i2i
+    const { input, errors } = buildTaskInput(caps, { prompt, images: [asset.id], [ratioKey]: ratio }, emptyBindings, 'i2i')
+    if (errors.length) throw new UserError(firstError)
+    const items = await deps.submit({ kind: 'image', model_id: model, canvas_id, node_id: node.id, input })
+    // 5. 成功：写 taskId、params.images；之后完全由任务 store 回填
+    deps.patch(node.id, { ...buildSubmittedPatch('image', taskId), params: {…, images: [asset.id]} })
+  } catch (e) {
+    deps.patch(node.id, { status: 'error', error: describe(e) })   // 节点保留，retryStash 留着合成参数
+  }
+}
+
+// 提示词：
+fullPrompt = INSTRUCTION + userPrompt   // INSTRUCTION = "保持原图内容不变，自然补全图片中的透明区域。"
+
+// 比例：预设按预设名原样写（如 "21:9"）；原比例/自定义用 toRatio(w/h)
+function toRatio(r) {            // 分子分母都在 1–24 里，找误差最小的；并列取和更小的
+  best = argmin over p,q in 1..24 of |ln((p/q) / r)|, tie → smaller p+q
+  return `${p}:${q}`
+}
+// 模型的比例参数是枚举时，取数值上最接近的一项（跳过 Auto 之类读不出比例的选项）</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>对现有系统的影响</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方面</th><th>影响</th></tr></thead>
+              <tbody>
+                <tr><th>后端 / 数据库</th><td>无改动</td></tr>
+                <tr><th>画布存档</th><td>结果节点多一个字段 <code>outpaintFrom</code>；老版本前端打开会忽略它。<b>连线不存任何新数据</b></td></tr>
+                <tr><th>撤销/重做</th><td>点发送建节点和线算一步撤销；合成/上传/任务写回的字段属于“任务字段”，撤销不会倒回去（现有机制，<span class="tag t-ok">已核对代码</span> <code>history.ts</code>）</td></tr>
+                <tr><th>素材库</th><td><b>合成图不会出现在素材库里</b>：画布的素材库和“选择画布素材”都是从画布上的节点（<code>src</code> / <code>outputs</code>）里取素材，没有服务端的用户素材列表（<span class="tag t-ok">已核对代码</span> <code>assets-sheet.tsx</code>、<code>use-task-node.ts</code>）。合成图只作为参考图挂在新节点的参考条里，不是任何节点的产物。文件会留在对象存储里，本期不清理</td></tr>
+                <tr><th>多选/框选</th><td>多选或框选中不进入扩图（沿用浮层闸门 <code>NodeOverlaysPresence</code>）</td></tr>
+                <tr><th>只读/被锁画布</th><td>沿用现有画布锁：只读时不出功能区，也就进不去扩图</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>测试清单（先写失败测试，再实现；不用 Playwright）</h2>
+          <div class="card">
+            <ul class="list">
+              <li><code>outpaint-frame</code>：框包住原图；最长边 ≤ 3 倍；角手柄等比；边手柄自由；平移不露出原图；预设框居中；倍数；识别当前比例；到上限返回“受限”。</li>
+              <li>比例换算：<code>1920×1080 → 16:9</code>、<code>1600×1200 → 4:3</code>、极扁比例 <code>24:1</code>；预设原样输出；枚举取最接近；跳过 Auto。</li>
+              <li>合成方案：像素换算、超过 4096 等比压缩、原图贴的位置。</li>
+              <li><code>outpaint-run</code>（假上传、假提交）：先建节点再提交；各步失败后的节点状态；上传成功但提交失败时 <code>images</code> 已写入；重试；积分不足、并发已满的提示。</li>
+              <li>连线例外：带 <code>outpaintFrom</code> 的节点，来自原图的连线不进参考图；其它连线照常。存档往返不丢字段。</li>
+              <li>接线：「扩图」按钮不再弹“敬请期待”；没有 i2i 模型时的提示；模型默认值（沿用原图节点的模型，不支持则取第一个）。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>点「扩图」先摆占位，点发送之后才生成图片</b>：否则拖框会很卡（用户）。</li>
+              <li><b>合成图先上传到对象存储拿到素材，再带着它走图生图</b>：即调用现有的编辑/图生图能力（用户）。</li>
+              <li><b>面板里加模型选择</b>，只列支持图生图的图片模型（用户）。</li>
+              <li><b>比例写进模型的比例参数，用 <code>16:9</code>、<code>24:1</code> 这种整数比，不用小数</b>（用户）。</li>
+              <li><b>原图和新节点之间画线，但这条线不当参考图</b>（用户）。</li>
+              <li><b>合成图不出现在素材库里</b>（用户）：读代码确认素材库只列节点产物，所以无需额外处理。</li>
+              <li><b>跨域读原图不用考虑</b>（用户）：对象存储的跨域已配好；读不到时仍给一句失败提示，不做降级。</li>
+              <li><b>合成和上传阶段不做取消</b>（用户）：这段时间新节点不显示取消键，任务提交后沿用现有取消。</li>
+            </ol>
+          </div>
+          <h3 style="font-size: 14px; margin: 18px 0 8px">默认值（我按讨论定的，审阅时可改）</h3>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>固定指令</b>：“保持原图内容不变，自然补全图片中的透明区域。”，拼在用户提示词前面，提示词可以留空。</li>
+              <li><b>合成图最长边 ≤ 4096</b>；PNG 超过模型参考图大小上限时提示。</li>
+              <li><b>自定义比例取分子分母都 ≤ 24 的最接近整数比</b>；预设和原图比例按其名字/最简比写。</li>
+              <li><b>默认模型</b>：原图节点的模型（不支持图生图时取清单里第一个支持的）。</li>
+              <li><b>新节点位置</b>：原图右侧 80px，垂直居中，撞到别的节点就向下错开。</li>
+              <li><b>原图必须是已完成的图片</b>（生成完成或上传完成，且不是本地临时地址）。</li>
+            </ol>
+          </div>
+          <h3 style="font-size: 14px; margin: 18px 0 8px">仍待确认</h3>
+          <div class="card">
+            <p class="muted" style="font-size: 13.5px">暂无。上一版的三个问题已在上面“已确认的决定”里回答。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 比例与尺寸演示（算法与提案一致，数据为示意） ================= */
+      const MAX_MULT = 3, MAX_EDGE = 4096, MAX_TERM = 24;
+      const MULTS = [1, 1.25, 1.5, 2, 3];
+      const PRESETS = [["21:9", 21 / 9], ["4:3", 4 / 3], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]];
+      const MODELS = { any: null, enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"], enum2: ["1:1", "16:9", "9:16"] };
+      const D = { mode: "mult", mult: 1.5, preset: "21:9" };
+
+      /* 比例转整数比：分子分母都在 1–24 里找误差最小的，并列取和更小的 */
+      function toRatio(r) {
+        let best = null;
+        for (let p = 1; p <= MAX_TERM; p++) for (let q = 1; q <= MAX_TERM; q++) {
+          const err = Math.abs(Math.log(p / q / r));
+          if (!best || err < best.err - 1e-9 || (Math.abs(err - best.err) <= 1e-9 && p + q < best.p + best.q)) best = { p, q, err };
+        }
+        return `${best.p}:${best.q}`;
+      }
+      const ratioValue = (s) => { const [a, b] = s.split(":").map(Number); return a / b; };
+      /* 模型比例参数是枚举时，取数值上最接近的一项 */
+      function snap(ratio, options) {
+        if (!options) return ratio;
+        const r = ratioValue(ratio);
+        return options.reduce((best, o) => (Math.abs(Math.log(ratioValue(o) / r)) < Math.abs(Math.log(ratioValue(best) / r)) ? o : best));
+      }
+      const origin = () => { const [w, h] = $("#dOrig").value.split("x").map(Number); return { w, h }; };
+      const cap = (o) => MAX_MULT * Math.max(o.w, o.h);
+      const centered = (o, w, h) => ({ w, h });
+      function frameFor(o) {
+        if (D.mode === "mult") return { w: o.w * D.mult, h: o.h * D.mult, ratio: toRatio(o.w / o.h) };
+        if (D.mode === "ratio") {
+          const r = PRESETS.find((p) => p[0] === D.preset)[1];
+          const f = o.w / o.h >= r ? { w: o.w, h: o.w / r } : { w: o.h * r, h: o.h };
+          return { ...f, ratio: D.preset };
+        }
+        const cw = clamp(parseFloat($("#dCw").value) || 1, 1, 3), ch = clamp(parseFloat($("#dCh").value) || 1, 1, 3);
+        let w = o.w * cw, h = o.h * ch; const k = Math.min(1, cap(o) / Math.max(w, h)); w *= k; h *= k;
+        return { w, h, ratio: toRatio(w / h) };
+      }
+      const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+      const fits = (o, r) => { const f = o.w / o.h >= r ? { w: o.w, h: o.w / r } : { w: o.h * r, h: o.h }; return Math.max(f.w, f.h) <= cap(o) + 0.01; };
+
+      function drawChips() {
+        const o = origin();
+        $("#dMult").innerHTML = MULTS.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${D.mult === m}">${m}x</button>`).join("");
+        $("#dRatio").innerHTML = PRESETS.map(([k, r]) => {
+          const over = !fits(o, r);
+          return `<button class="chip" data-p="${k}" aria-pressed="${D.preset === k}" ${over ? 'disabled title="超过 3 倍上限"' : ""}>${esc(k)}</button>`;
+        }).join("");
+        // 当前预设放不下时，退回第一个放得下的
+        const cur = PRESETS.find((p) => p[0] === D.preset);
+        if (cur && !fits(o, cur[1])) { const ok = PRESETS.find((p) => fits(o, p[1])); if (ok) { D.preset = ok[0]; drawChips(); return; } }
+      }
+      function paint() {
+        const o = origin(), f = frameFor(o);
+        const natural = o; // 演示里原图像素 = 原图尺寸，换算比例为 1
+        const longest = Math.max(f.w, f.h), k = longest > MAX_EDGE ? MAX_EDGE / longest : 1;
+        const out = { w: Math.round(f.w * k), h: Math.round(f.h * k) };
+        const sent = snap(f.ratio, MODELS[$("#dModel").value]);
+        const mult = Math.max(f.w, f.h) / Math.max(o.w, o.h);
+        // 图示
+        const box = 150, s = box / Math.max(f.w, f.h);
+        $("#dOuter").style.cssText = `width:${f.w * s}px;height:${f.h * s}px`;
+        const ix = ((f.w - o.w) / 2) * s, iy = ((f.h - o.h) / 2) * s;
+        $("#dInner").style.cssText = `left:${ix}px;top:${iy}px;width:${o.w * s}px;height:${o.h * s}px`;
+        const rows = [
+          ["原图", `${o.w} × ${o.h}`],
+          ["框", `${Math.round(f.w)} × ${Math.round(f.h)}（最长边 ${fmt(mult)}x，上限 3x = ${cap(o)}）`],
+          ["合成图", `${out.w} × ${out.h}` + (k < 1 ? ` <span class="tag t-warn">已压缩到最长边 ${MAX_EDGE}（×${k.toFixed(3)}）</span>` : ` <span class="tag t-ok">不压缩</span>`)],
+          ["原图贴的位置", `距左 ${Math.round(((f.w - o.w) / 2) * k)}，距上 ${Math.round(((f.h - o.h) / 2) * k)}，大小 ${Math.round(natural.w * k)} × ${Math.round(natural.h * k)}`],
+          ["框的比例", `${esc(f.ratio)}${D.mode === "custom" ? ` <span class="muted">（自定义，取分子分母 ≤ ${MAX_TERM} 的最接近整数比）</span>` : ""}`],
+          ["写进模型的比例", `<code>${esc(sent)}</code>` + (sent !== f.ratio ? ` <span class="tag t-warn">模型不支持 ${esc(f.ratio)}，取最接近的</span>` : "")],
+        ];
+        $("#dOut").innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${b}</dd>`).join("");
+      }
+      const fmt = (m) => (Math.round(m * 100) / 100).toString();
+      function setModeUI() {
+        document.querySelectorAll("#dMode .chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.mode === D.mode)));
+        $("#dMultBox").hidden = D.mode !== "mult"; $("#dRatioBox").hidden = D.mode !== "ratio"; $("#dCustomBox").hidden = D.mode !== "custom";
+      }
+      $("#dMode").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; D.mode = b.dataset.mode; setModeUI(); paint(); });
+      $("#dMult").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return; D.mult = parseFloat(b.dataset.m); drawChips(); paint(); });
+      $("#dRatio").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b || b.disabled) return; D.preset = b.dataset.p; drawChips(); paint(); });
+      $("#dOrig").addEventListener("change", () => { drawChips(); paint(); });
+      $("#dModel").addEventListener("change", paint);
+      /* 输入框只改状态、局部重绘，不整体替换，避免失焦 */
+      $("#dCw").addEventListener("input", paint); $("#dCh").addEventListener("input", paint);
+
+      drawChips(); setModeUI(); paint(); icons();
+    </script>
+  </body>
+</html>
