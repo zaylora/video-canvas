@@ -78,6 +78,8 @@ type wkStore struct {
 	saveTraceErr error
 	// beforeMarkSubmitted 在 MarkSubmitted / MarkImmediate 内部触发（测试用来模拟“提交期间被取消”）
 	beforeMarkSubmitted func(id uint64)
+	// beforeMarkSubmitting 在 MarkSubmitting 内部触发（测试用来模拟“领取后、开始调用上游前被取消”）
+	beforeMarkSubmitting func(id uint64)
 }
 
 func newWkStore(clock *wkClock) *wkStore {
@@ -237,6 +239,23 @@ func (s *wkStore) SaveProviderState(ctx context.Context, t *model.GenerationTask
 	cur.ProviderState, _ = json.Marshal(st)
 	s.rec("SaveProviderState:%d", t.ID)
 	return nil
+}
+
+func (s *wkStore) MarkSubmitting(ctx context.Context, t *model.GenerationTask) (bool, error) {
+	if s.beforeMarkSubmitting != nil {
+		s.beforeMarkSubmitting(t.ID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := s.cas(t.ID, model.TaskPending)
+	if cur == nil {
+		s.rec("MarkSubmitting:%d:conflict", t.ID)
+		return false, nil
+	}
+	now := s.clock.Now()
+	cur.SubmittedAt = &now
+	s.rec("MarkSubmitting:%d", t.ID)
+	return true, nil
 }
 
 func (s *wkStore) MarkSubmitted(ctx context.Context, t *model.GenerationTask, pid string, pluginState json.RawMessage, next time.Time) (bool, error) {

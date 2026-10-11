@@ -32,6 +32,15 @@ describe("deriveCell：任务状态 → 格子状态", () => {
     );
   });
 
+  test("pending 但已记下提交时间（同步接口正在请求上游）：是生成中，不是排队", () => {
+    const calling = makeTask({ status: "pending", submitted_at: "2026-09-29T10:07:30Z" });
+    expect(deriveCell(record(), 0, calling, NOW)).toEqual({
+      kind: "running",
+      elapsedMs: 150_000,
+      progress: null,
+    });
+  });
+
   test("和画布节点同一套说法：queued（已提交给上游）也是生成中，耗时从提交那一刻起算", () => {
     const submitted = makeTask({ status: "queued", submitted_at: "2026-09-29T10:07:30Z" });
     expect(deriveCell(record(), 0, submitted, NOW)).toEqual({

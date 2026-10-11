@@ -1554,6 +1554,36 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		}
 	})
 
+	t.Run("MarkSubmitting：开始调用上游，仍是 pending，记录提交时间并推送", func(t *testing.T) {
+		env, task := newEnv(model.TaskPending, nil)
+		applied, err := env.svc.MarkSubmitting(ctx, task)
+		if err != nil || !applied {
+			t.Fatalf("applied=%v err=%v", applied, err)
+		}
+		got := env.repo.tasks[task.ID]
+		if got.Status != model.TaskPending || got.SubmittedAt == nil || !got.SubmittedAt.Equal(env0Now) || got.Version != 2 {
+			t.Fatalf("字段不对：%+v", got)
+		}
+		if len(env.bc.msgs) != 1 {
+			t.Fatalf("应推送一次：%d", len(env.bc.msgs))
+		}
+		// 前端靠 pending + submitted_at 非空判断“正在请求上游”，显示生成中
+		if v, ok := env.bc.msgs[0].Data.(*model.GenerationTaskView); !ok || v.SubmittedAt == nil || v.Status != model.TaskPending {
+			t.Fatalf("推送的视图应带 submitted_at：%+v", env.bc.msgs[0].Data)
+		}
+	})
+
+	t.Run("MarkSubmitting：任务已被取消则不迁移、不推送", func(t *testing.T) {
+		env, task := newEnv(model.TaskCanceled, nil)
+		applied, err := env.svc.MarkSubmitting(ctx, task)
+		if err != nil || applied {
+			t.Fatalf("applied=%v err=%v，期望 false/nil", applied, err)
+		}
+		if len(env.bc.msgs) != 0 {
+			t.Fatal("未迁移不应推送")
+		}
+	})
+
 	t.Run("MarkSubmitted：生成超时从受理时刻重新计算，排队时间不占用", func(t *testing.T) {
 		env, task := newEnv(model.TaskPending, func(tk *model.GenerationTask) {
 			tk.DeadlineAt = env0Now.Add(30 * time.Minute) // 创建时算的：创建时间 + 超时

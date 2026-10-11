@@ -23,7 +23,19 @@ func (w *Worker) submit(ctx context.Context, t *model.GenerationTask, snap *prov
 		return
 	}
 
-	// 2. 提交。带上已有的 provider_state：上次准备阶段成功、提交失败重试时，宿主看到 Prepared 非空就跳过准备，不会重复上传
+	// 2. 开始调用上游：记下提交时间并推送，界面从“排队中”变成“生成中”（排队 = 还没轮到名额，这里已经轮到了）。
+	//    提交重试时已经有了就不再写；任务已被取消 / 超时就别去请求上游；写失败只影响界面显示，不拦提交
+	if t.SubmittedAt == nil {
+		applied, err := w.store.MarkSubmitting(ctx, t)
+		if err != nil {
+			log.Warn("记录开始提交失败，界面可能仍显示排队中", zap.Error(err))
+		} else if !applied {
+			log.Info("任务在开始提交前已被取消或超时，不调用上游")
+			return
+		}
+	}
+
+	// 3. 提交。带上已有的 provider_state：上次准备阶段成功、提交失败重试时，宿主看到 Prepared 非空就跳过准备，不会重复上传
 	st := w.providerState(t)
 	cctx, cancel := context.WithTimeout(ctx, w.opts.OperationTimeout)
 	defer cancel()
@@ -42,7 +54,7 @@ func (w *Worker) submit(ctx context.Context, t *model.GenerationTask, snap *prov
 		return
 	}
 
-	// 3. 按结果分流。Immediate 的 queued / running 等同于异步受理（上游只是顺便报了个状态）
+	// 4. 按结果分流。Immediate 的 queued / running 等同于异步受理（上游只是顺便报了个状态）
 	if im := res.Immediate; im != nil {
 		switch im.Status {
 		case provider.StatusSucceeded:

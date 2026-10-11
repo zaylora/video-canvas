@@ -73,6 +73,17 @@ func (s *GenerationTaskService) restartDeadline(t *model.GenerationTask, now tim
 	fields["deadline_at"] = now.Add(taskDeadline(&snap))
 }
 
+// MarkSubmitting 记录任务开始调用上游：状态保持 pending，写入提交时间并推送。
+// 拿到并发名额、真正去请求上游才算“生成中”；同步接口在上游返回前都是这个状态。
+func (s *GenerationTaskService) MarkSubmitting(ctx context.Context, t *model.GenerationTask) (bool, error) {
+	updated, applied, err := s.transit(ctx, t.ID, []string{model.TaskPending}, map[string]any{"submitted_at": s.now()}, true)
+	if err != nil || !applied {
+		return false, err
+	}
+	s.publish(ctx, updated)
+	return true, nil
+}
+
 // MarkSubmitted 记录异步任务已被上游受理，并从受理时刻起重新计算生成超时。
 func (s *GenerationTaskService) MarkSubmitted(ctx context.Context, t *model.GenerationTask, providerTaskID string, pluginState json.RawMessage, nextPollAt time.Time) (bool, error) {
 	now := s.now()

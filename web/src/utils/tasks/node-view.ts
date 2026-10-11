@@ -26,30 +26,26 @@ export type PendingPhase =
 
 /**
  * 任务快照 -> 还没结束时的展示阶段，画布节点和首页对话的结果格子共用这一套说法（设计 6.3 节的表）。
- * 排队中 = 还没调用上游（pending）；生成中 = 已提交给上游（queued / running），耗时从提交那一刻起算；
+ * 排队中 = 还没调用上游（pending 且没有提交时间）；生成中 = 已经在调用上游，耗时从提交那一刻起算：
+ * 异步接口是已被上游受理（queued / running），同步接口（如生图）则是请求还没返回、状态仍是 pending 但已记下提交时间；
  * 其余（转存中，以及终态但还没被回填的一瞬间）= 即将完成。
  * @param task 任务快照
  * @param now 当前时间（毫秒），算已耗时用
  * @returns 展示阶段
  */
 export function derivePendingPhase(task: TaskView, now: number): PendingPhase {
-  switch (task.status) {
-    // 排队中：任务还没提交给上游，在等我们这边的执行名额 / 渠道并发限制，此时没有调用上游
-    case "pending":
-      return { phase: "queued" };
-    // 生成中：已经调用上游。上游内部是在排队还是在出图，用户不需要分清，都显示生成中
-    case "queued":
-    case "running": {
-      const started = Date.parse(task.submitted_at ?? task.created_at);
-      return {
-        phase: "running",
-        elapsedMs: Number.isNaN(started) ? null : Math.max(0, now - started),
-        progress: normalizeProgress(task.progress),
-      };
-    }
-    default:
-      return { phase: "finalizing" };
+  // 排队中：pending 且没有提交时间，任务还没提交给上游，在等我们这边的执行名额 / 渠道并发限制
+  if (task.status === "pending" && !task.submitted_at) return { phase: "queued" };
+  // 生成中：已经调用上游（含 pending 但已记下提交时间的同步请求）。上游内部是在排队还是在出图，用户不需要分清
+  if (task.status === "pending" || task.status === "queued" || task.status === "running") {
+    const started = Date.parse(task.submitted_at ?? task.created_at);
+    return {
+      phase: "running",
+      elapsedMs: Number.isNaN(started) ? null : Math.max(0, now - started),
+      progress: normalizeProgress(task.progress),
+    };
   }
+  return { phase: "finalizing" };
 }
 
 /**

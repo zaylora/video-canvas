@@ -22,6 +22,9 @@ type TaskStore interface {
 	// SaveProviderState 只更新 provider_state，不改状态、不 bump version、不推送（准备阶段落库时用）。
 	// 任务已终态或不存在时静默忽略（返回 nil）。
 	SaveProviderState(ctx context.Context, t *model.GenerationTask, st ProviderState) error
+	// MarkSubmitting 记录“开始调用上游”：状态仍是 pending，写入 submitted_at 并推送，界面据此从“排队中”变成“生成中”。
+	// 同步接口（生图等）在上游返回前一直是 pending，不记这一步用户会一直看到排队中。
+	MarkSubmitting(ctx context.Context, t *model.GenerationTask) (bool, error)
 	// MarkSubmitted pending → queued，记录上游任务 id 与插件 state（pluginState 为 nil 表示不变），安排第一次查询。
 	MarkSubmitted(ctx context.Context, t *model.GenerationTask, providerTaskID string, pluginState json.RawMessage, nextPollAt time.Time) (bool, error)
 	// MarkImmediate pending → finalizing：提交即成功（同步接口）。outputs（[]Output 的 JSON）写进 provider_result，

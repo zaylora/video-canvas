@@ -227,6 +227,59 @@ func TestWorker_Fail_LogTaskIDIsHex(t *testing.T) {
 	}
 }
 
+// 同步接口（生图）在上游返回前一直是 pending：开始调用上游时就要记下 submitted_at，界面才显示“生成中”而不是“排队中”
+func TestWorker_Submit_MarksSubmittingBeforeCallingUpstream(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, nil)
+	var during model.GenerationTask
+	env.exec.submitFn = func(int, provider.SubmitInput) (*provider.SubmitResult, error) {
+		during = env.store.get(1) // 上游请求还在进行中的任务快照
+		return &provider.SubmitResult{Immediate: &provider.QueryResult{
+			Status:  provider.StatusSucceeded,
+			Outputs: []provider.Output{{Type: provider.OutputText, Text: "ok"}},
+		}}, nil
+	}
+	env.runOnce(t)
+
+	if during.Status != model.TaskPending || during.SubmittedAt == nil || !during.SubmittedAt.Equal(env.clock.Now()) {
+		t.Fatalf("调用上游期间应是 pending 且已记下 submitted_at：%+v", during)
+	}
+	if env.store.count("MarkSubmitting:1") != 1 {
+		t.Fatalf("应记录一次开始提交：%v", env.store.callList())
+	}
+}
+
+// 提交重试时已经有 submitted_at，不重复写（也就不重复推送）
+func TestWorker_Submit_RetryDoesNotMarkSubmittingAgain(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, nil)
+	env.exec.submitFn = func(n int, in provider.SubmitInput) (*provider.SubmitResult, error) {
+		if n == 1 {
+			return nil, &provider.Error{Class: provider.ClassRetryable, Message: "429"}
+		}
+		return &provider.SubmitResult{ProviderTaskID: "pt-ok"}, nil
+	}
+	env.runOnce(t)
+	env.clock.Advance(2 * time.Second)
+	env.runOnce(t)
+
+	if n := env.store.count("MarkSubmitting:1"); n != 1 {
+		t.Fatalf("重试不应再次记录开始提交：%d %v", n, env.store.callList())
+	}
+}
+
+// 领取后、开始调用上游前任务已被取消：别再去请求上游白白花钱
+func TestWorker_Submit_CanceledBeforeCallingUpstreamSkipsSubmit(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, nil)
+	env.store.beforeMarkSubmitting = func(id uint64) { env.store.setStatus(id, model.TaskCanceled) }
+	env.runOnce(t)
+
+	if s, _, _ := env.exec.counts(); s != 0 {
+		t.Fatalf("任务已取消，不应调用上游：%d", s)
+	}
+}
+
 func TestWorker_Submit_RetryableBackoff(t *testing.T) {
 	env := newWkEnv(func(o *Options) { o.MaxSubmitRetries = 3 })
 	env.task(1, model.TaskPending, nil)

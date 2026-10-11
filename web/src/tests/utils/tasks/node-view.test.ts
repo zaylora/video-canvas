@@ -32,6 +32,15 @@ describe("deriveVideoNodeView：节点状态 -> 展示状态（设计 6.3）", (
     ).toEqual({ phase: "queued" });
   });
 
+  test("同步接口（生图）请求上游期间状态仍是 pending，但已记下提交时间：算生成中，耗时从提交起算", () => {
+    const task = makeTask({ status: "pending", submitted_at: "2026-09-29T10:00:40Z" });
+    expect(deriveVideoNodeView({ status: "running", taskId: "1" }, task, T0 + 65_000)).toEqual({
+      phase: "running",
+      elapsedMs: 25_000,
+      progress: null,
+    });
+  });
+
   test("生成中：queued 和 running 都算（已经调用上游），平台给进度就带进度", () => {
     for (const status of ["queued", "running"] as const) {
       const view = deriveVideoNodeView(
