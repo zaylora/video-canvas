@@ -26,6 +26,13 @@ import { useModelWorkspace } from "./use-model-workspace";
 /** 列表认的筛选参数：能力、渠道、状态（概览页“去查看”会带 ?status=） */
 const MODEL_FILTERS = ["kind", "channel", "status"] as const;
 
+/** 能力标签（kind）在前端筛：后端把全部模型返回，切换标签不发请求 */
+const MODEL_LOCAL_FILTER = {
+  keys: ["kind"],
+  match: (item: ModelListItem, filters: Record<string, string>) =>
+    !filters.kind || item.kind === filters.kind,
+};
+
 /**
  * 模型页：左侧模型列表，中间编辑器（表单 / JSON），右侧结果面板（问题 / 请求描述 / 试跑 / 追踪）。
  * 选中的模型在 URL 里（?key=<key>；/models/new 是新建，?from=import&draft=<id> 带入导入草稿），
@@ -34,7 +41,11 @@ const MODEL_FILTERS = ["kind", "channel", "status"] as const;
 export default function ModelsPage() {
   const { catalog } = useAdminCatalogOptions();
   // 保存 / 上下线让模型变了：重新拉取当前页（由 list.reload 提供，先建 list 再把它交给工作区）
-  const list = useAdminList<ModelListItem>(MODEL_FILTERS, (query) => listModels(query));
+  const list = useAdminList<ModelListItem>(
+    MODEL_FILTERS,
+    (query) => listModels(query),
+    MODEL_LOCAL_FILTER,
+  );
   const ws = useModelWorkspace(catalog, useUrlModelRoute(), list.reload);
   const [params] = useSearchParams();
   // 列表里点“测试”会带 ?test=1：只弹测试弹窗，不显示编辑弹窗
@@ -45,7 +56,7 @@ export default function ModelsPage() {
   const filterKey = JSON.stringify(filters);
   useEffect(() => setSelected([]), [q, page, filterKey, list.pageSize]);
   const batch = useModelBatch(list.items, list.reload);
-  const row = useModelRowActions(list.reload);
+  const row = useModelRowActions(list.reload, list.patchItems);
   // 列表刷新后丢掉已经不存在的勾选
   const checked = selected.filter((key) => list.items.some((item) => item.key === key));
 
@@ -81,7 +92,12 @@ export default function ModelsPage() {
         onNew={ws.startNew}
       />
 
-      <ModelEditorDialogs ws={ws} catalog={catalog} testOnly={testOnly} />
+      <ModelEditorDialogs
+        ws={ws}
+        catalog={catalog}
+        testOnly={testOnly}
+        seed={list.items.find((item) => item.key === ws.modelKey)}
+      />
     </DataPage>
   );
 }

@@ -13,6 +13,7 @@ import type { LoadStatus } from "./use-admin";
 
 /** 没有数据时的空列表：引用稳定，依赖它的 effect 不会每次渲染都触发 */
 const EMPTY: never[] = [];
+const EMPTY_KEYS: readonly string[] = [];
 
 /** 搜索框停止输入多久后才发请求 */
 export const SEARCH_DEBOUNCE_MS = 300;
@@ -24,6 +25,18 @@ export const ADMIN_PAGE_SIZE = 20;
 export type AdminPageResult<T> = { list: T[]; total: number };
 
 /**
+ * 前端筛选：keys 里的筛选项不发给后端，后端一次返回全部（hook 自己按 100 条翻页取完），
+ * 筛选与分页都在前端做，切换时不发请求。
+ */
+export type LocalFilter<T> = {
+  keys: readonly string[];
+  match: (item: T, filters: Record<string, string>) => boolean;
+};
+
+/** 前端筛选时每次向后端取的条数（后端上限） */
+const FETCH_ALL_SIZE = 100;
+
+/**
  * 后台列表的服务端分页 + 搜索 + 筛选。
  * q / page / 筛选都在 URL 里（刷新不丢）；翻页和筛选时保留旧数据（refreshing 为 true），
  * 首次加载没有数据才是 loading；改搜索词或筛选时页码回到第 1 页；过期的响应会被丢掉。
@@ -33,6 +46,7 @@ export type AdminPageResult<T> = { list: T[]; total: number };
 export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T>>(
   filterKeys: readonly string[],
   fetcher: (query: Record<string, string | number>) => Promise<R>,
+  local?: LocalFilter<T>,
 ) {
   const [params, setParams] = useSearchParams();
   const keysKey = filterKeys.join(",");
@@ -52,13 +66,33 @@ export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T
   });
 
   // 请求只依赖这个字符串：参数没变就不重发
-  const queryKey = JSON.stringify(toListQuery(list, pageSize));
+  const localKeys = local?.keys ?? EMPTY_KEYS;
+  const serverFilters = Object.fromEntries(
+    Object.entries(list.filters).filter(([key]) => !localKeys.includes(key)),
+  );
+  const queryKey = JSON.stringify(
+    local
+      ? toListQuery({ ...list, page: 1, filters: serverFilters }, FETCH_ALL_SIZE)
+      : toListQuery(list, pageSize),
+  );
+  const fetchAll = !!local;
 
   useEffect(() => {
     const mine = ++seq.current;
     setRefreshing(true);
-    fetcherRef
-      .current(JSON.parse(queryKey) as Record<string, string | number>)
+    const query = JSON.parse(queryKey) as Record<string, string | number>;
+    const load = async (): Promise<R> => {
+      const first = await fetcherRef.current(query);
+      if (!fetchAll) return first;
+      const all = [...first.list];
+      for (let page = 2; all.length < first.total && page <= 50; page++) {
+        const next = await fetcherRef.current({ ...query, page });
+        if (next.list.length === 0) break;
+        all.push(...next.list);
+      }
+      return { ...first, list: all };
+    };
+    load()
       .then((next) => {
         if (mine !== seq.current) return;
         setResult(next);
@@ -71,7 +105,7 @@ export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T
       .finally(() => {
         if (mine === seq.current) setRefreshing(false);
       });
-  }, [queryKey, version]);
+  }, [queryKey, version, fetchAll]);
 
   const setParam = useCallback(
     (key: string, value: string | null) =>
@@ -99,11 +133,27 @@ export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T
   /** 重新拉取当前页；不清空旧数据 */
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
+  /** 就地改当前已取到的行（乐观更新用）；之后 reload 会用后端数据覆盖 */
+  const patchItems = useCallback(
+    (fn: (items: T[]) => T[]) =>
+      setResult((prev) => (prev ? { ...prev, list: fn(prev.list) } : prev)),
+    [],
+  );
+
+  const all = result?.list ?? (EMPTY as T[]);
+  const matched = useMemo(
+    () => (local ? all.filter((item) => local.match(item, list.filters)) : all),
+    // local 每次渲染是新对象，只在数据和筛选变化时重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, list.filters, fetchAll],
+  );
+  const items = local ? matched.slice((list.page - 1) * pageSize, list.page * pageSize) : matched;
+
   return {
     ...list,
     pageSize,
-    items: result?.list ?? (EMPTY as T[]),
-    total: result?.total ?? 0,
+    items,
+    total: local ? matched.length : (result?.total ?? 0),
     /** 接口返回的整份结果（取额外字段用，如存储的 default_id） */
     result,
     state,
@@ -116,6 +166,7 @@ export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T
     setPageSize,
     clear,
     reload,
+    patchItems,
   };
 }
 
