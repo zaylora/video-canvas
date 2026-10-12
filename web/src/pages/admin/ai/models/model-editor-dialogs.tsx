@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import type { ModelListItem } from "@/api/admin/ai/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
@@ -16,7 +17,9 @@ export function ModelEditorDialogs({
   ws,
   catalog,
   testOnly = false,
+  seed,
 }: {
+  seed?: ModelListItem;
   ws: ModelWorkspace;
   catalog: AdminCatalog;
   testOnly?: boolean;
@@ -37,7 +40,7 @@ export function ModelEditorDialogs({
           showCloseButton={false}
           className="flex h-[min(92svh,920px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
         >
-          <ModelDialog ref={editorRef} ws={ws} catalog={catalog} />
+          <ModelDialog ref={editorRef} ws={ws} catalog={catalog} seed={seed} />
         </DialogContent>
       </Dialog>
 

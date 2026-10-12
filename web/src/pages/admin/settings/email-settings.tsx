@@ -127,11 +127,6 @@ function TestCard({
             发送
           </Button>
         </div>
-        {canWrite && !configured && (
-          <p className="text-muted-foreground text-xs">
-            先保存服务器、发件人并设置密码，才能发测试邮件。
-          </p>
-        )}
         {canWrite && configured && dirty && (
           <p className="text-muted-foreground text-xs">有未保存的修改，先保存再测试。</p>
         )}
@@ -203,9 +198,6 @@ function SmtpForm({
                 <label htmlFor="smtp-enabled" className="text-sm font-medium">
                   启用邮件服务
                 </label>
-                <p className="text-muted-foreground text-xs">
-                  启用后注册需要邮件验证码（首个账号免验证）；未启用时注册不验证邮箱，邮箱仍必填。
-                </p>
               </div>
               <Switch
                 id="smtp-enabled"
@@ -258,7 +250,7 @@ function SmtpForm({
               </FormField>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="用户名" htmlFor="smtp-username" hint="免认证的 SMTP 可留空。">
+              <FormField label="用户名" htmlFor="smtp-username">
                 <Input
                   id="smtp-username"
                   autoComplete="off"
@@ -267,11 +259,7 @@ function SmtpForm({
                   onChange={(event) => patch({ username: event.target.value })}
                 />
               </FormField>
-              <FormField
-                label="密码"
-                htmlFor="smtp-password-state"
-                hint="密码只写不读，保存后不会再显示。"
-              >
+              <FormField label="密码" htmlFor="smtp-password-state">
                 <div className="flex items-center gap-2">
                   <Input
                     id="smtp-password-state"

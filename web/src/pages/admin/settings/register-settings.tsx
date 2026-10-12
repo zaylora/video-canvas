@@ -85,9 +85,6 @@ function RegisterForm({
               <label htmlFor="register-enabled" className="text-sm font-medium">
                 开放注册
               </label>
-              <p className="text-muted-foreground text-xs">
-                关闭后登录页不再显示注册入口，注册接口也会拒绝请求。
-              </p>
             </div>
             <Switch
               id="register-enabled"
@@ -102,7 +99,6 @@ function RegisterForm({
             <FormField
               label="新用户初始积分"
               htmlFor="register-credits"
-              hint="注册成功时发放，并记一条流水。"
               error={errors.initial_credits}
             >
               <Input
@@ -119,7 +115,6 @@ function RegisterForm({
             <FormField
               label="默认并发上限"
               htmlFor="register-limit"
-              hint="每个用户同时进行的任务数（1 到 64），可在用户详情里单独覆盖。"
               error={errors.default_max_active_tasks}
             >
               <Input

@@ -14,16 +14,6 @@ import { deriveEndpoint } from "@/utils/admin/storage-endpoint";
 import { ADDRESSING_OPTIONS, PROVIDER_META } from "./provider-meta";
 import { fieldLock, type SectionProps } from "./section-props";
 
-/** 固定项的说明：预设强制 HTTPS 或固定寻址方式时，告诉管理员这些不用也不能自己选 */
-function fixedNote(preset: SectionProps["preset"]) {
-  if (!preset) return undefined;
-  const parts: string[] = [];
-  if (preset.force_ssl) parts.push("强制 HTTPS");
-  if (preset.addressing === "virtual") parts.push("固定虚拟主机寻址");
-  if (preset.addressing === "path") parts.push("固定路径寻址");
-  return parts.length ? `${parts.join("，")}，无需设置。` : undefined;
-}
-
 /**
  * 基本信息：名称、地域（R2 换成 Account ID）、endpoint 只读推导、桶名、路径前缀。
  * Endpoint 只是按规则推导的展示，真正使用的值由后端按同样规则算出并保存。
@@ -65,7 +55,6 @@ export function LocationFields(props: SectionProps) {
           label={<>Account ID{account.lock}</>}
           htmlFor="storage-account"
           error={errors.accountId}
-          hint="32 位十六进制，R2 概览页右侧可复制。Region 固定为 auto，无需选择"
           required
         >
           <Input
@@ -119,15 +108,11 @@ export function LocationFields(props: SectionProps) {
           />
         </FormField>
       </div>
-      {fixedNote(preset) && (
-        <p className="text-muted-foreground -mt-1 text-xs">{fixedNote(preset)}</p>
-      )}
 
       <FormField
         label={<>Bucket{bucket.lock}</>}
         htmlFor="storage-bucket"
         error={errors.bucket}
-        hint={meta.bucketHint}
         required
       >
         <Input

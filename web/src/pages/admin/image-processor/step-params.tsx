@@ -24,7 +24,6 @@ const numberText = (value: number | undefined) =>
  * @param name 处理服务名称
  * @param config 参数
  * @param errors 要显示的校验错误
- * @param published 是否是已发布的处理服务：保存的是草稿，发布后才生效
  * @param disabled 整个表单只读
  * @param onNameChange 改名称
  * @param onConfigChange 改参数（局部）
@@ -35,7 +34,6 @@ export function StepParams({
   name,
   config,
   errors,
-  published,
   disabled,
   onNameChange,
   onConfigChange,
@@ -45,7 +43,6 @@ export function StepParams({
   name: string;
   config: ProcessorConfig;
   errors: ProcessorFormErrors;
-  published: boolean;
   disabled: boolean;
   onNameChange: (name: string) => void;
   onConfigChange: (patch: Partial<ProcessorConfig>) => void;
@@ -63,12 +60,6 @@ export function StepParams({
         <dt className="text-muted-foreground">绑定存储</dt>
         <dd>{storageName}</dd>
       </dl>
-
-      {published && (
-        <Notice tone="info" title="已发布的处理服务">
-          这里保存的是草稿，重新校验并发布后才生效，线上配置不变。
-        </Notice>
-      )}
 
       <FormField label="名称" htmlFor="processor-name" error={errors.name} required>
         <Input
@@ -143,12 +134,7 @@ export function StepParams({
       )}
 
       {fields.time ? (
-        <FormField
-          label="视频封面取帧时间（秒）"
-          htmlFor="processor-time"
-          error={errors.time_sec}
-          hint="AI 视频第 0 秒可能是黑帧，可以调到 0.5"
-        >
+        <FormField label="视频封面取帧时间（秒）" htmlFor="processor-time" error={errors.time_sec}>
           <Input
             id="processor-time"
             type="number"
@@ -180,7 +166,6 @@ export function StepParams({
         <SwitchRow
           id="processor-onerror"
           title="处理失败时回退原图"
-          hint="处理失败（超限、格式不支持）时直接返回原图，而不是报错。"
           checked={config.on_error_redirect ?? true}
           onChange={(checked) => onConfigChange({ on_error_redirect: checked })}
         />
@@ -204,7 +189,7 @@ function SwitchRow({
 }: {
   id: string;
   title: string;
-  hint: string;
+  hint?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
@@ -212,7 +197,7 @@ function SwitchRow({
     <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
       <label htmlFor={id} className="min-w-0 text-sm">
         <span className="font-medium">{title}</span>
-        <span className="text-muted-foreground mt-0.5 block text-xs">{hint}</span>
+        {hint && <span className="text-muted-foreground mt-0.5 block text-xs">{hint}</span>}
       </label>
       <Switch id={id} checked={checked} onCheckedChange={onChange} />
     </div>

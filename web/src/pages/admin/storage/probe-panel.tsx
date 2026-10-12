@@ -18,14 +18,7 @@ import type { ProbeState } from "./use-storage-probe";
  * @param withDirect 勾选了浏览器直传：提示这一步无法在这里验证
  */
 export function ProbePanel({ state, withDirect }: { state: ProbeState; withDirect: boolean }) {
-  if (state.kind === "idle") {
-    return (
-      <div className="text-muted-foreground rounded-lg border border-dashed p-3 text-xs">
-        还没有测试。点“测试连接”，会依次验证鉴权、写入、读取、签名访问、删除
-        {withDirect ? "；浏览器直传（CORS）需要在桶上配置后自行确认。" : "。"}
-      </div>
-    );
-  }
+  if (state.kind === "idle") return null;
   if (state.kind === "running") {
     return (
       <div className="rounded-lg border p-3" aria-busy="true">

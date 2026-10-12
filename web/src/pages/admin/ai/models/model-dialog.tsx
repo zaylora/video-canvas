@@ -27,6 +27,7 @@ import {
   readModelStrings,
 } from "@/utils/admin/model-body";
 
+import type { ModelListItem } from "@/api/admin/ai/type.d";
 import type { AdminCatalog } from "../../use-admin";
 import { priceLabel } from "@/utils/pricing/quote";
 
@@ -58,9 +59,12 @@ export function ModelDialog({
   ws,
   catalog,
   ref,
+  seed,
 }: {
   ws: ModelWorkspace;
   catalog: AdminCatalog;
+  /** 列表行里已有的信息：详情还在加载时先用它渲染头部 */
+  seed?: ModelListItem;
   ref?: Ref<ModelDialogHandle>;
 }) {
   const [tab, setTab] = useState<ModelTabId>("basic");
@@ -96,13 +100,13 @@ export function ModelDialog({
     textarea.scrollTop = Math.max(0, (hit.line - 3) * LINE_HEIGHT);
   }, [pendingLocate, mode, ws.text]);
 
-  const label = body ? readModelString(body, "label") : "";
+  const label = body ? readModelString(body, "label") : (seed?.label ?? "");
   const kind = body ? readModelKind(body) : "";
   const pricing = body ? readModelPricing(body) : null;
   const upstream = body ? readModelChannel(body).upstreamModel : "";
   const checks = modelChecks(body, ws.info, ws.issues);
   const disabled = ws.working || ws.loadingDetail;
-  const online = !!ws.detail?.enabled;
+  const online = ws.detail ? !!ws.detail.enabled : !!seed?.enabled;
   const spinner = (name: string, icon: React.ReactNode) =>
     ws.busy === name ? <Loader2 className="animate-spin" /> : icon;
   const channelsReady = catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready";
@@ -144,7 +148,7 @@ export function ModelDialog({
       {/* 顶部：头像、标题与上线状态、渠道 · 上游 ID、关闭 */}
       <div className="flex items-start gap-4 border-b px-6 py-4">
         <VendorAvatar
-          vendor={body ? readModelString(body, "vendor") : ""}
+          vendor={body ? readModelString(body, "vendor") : (seed?.vendor ?? "")}
           name={label || "?"}
           seed={ws.modelKey}
           className="size-10 text-base"
@@ -166,7 +170,7 @@ export function ModelDialog({
             {ws.dirty && <Tag tone="warning">有未保存修改</Tag>}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-sm">
-            {ws.info.channel?.name ?? "未选渠道"} ·{" "}
+            {ws.info.channel?.name ?? (body ? "未选渠道" : seed?.channel_name || "未选渠道")} ·{" "}
             <span className="font-mono">{upstream || ws.modelKey || "未填写"}</span>
           </p>
         </div>
