@@ -28,18 +28,32 @@ type OverviewTodo struct {
 // OverviewTodos 返回待处理清单，按严重度排：插件停用波及在线模型 → 渠道不可用 / 缺 Key → 插件可升级。
 func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []CatalogPlugin) []OverviewTodo {
 	todos := []OverviewTodo{}
-	usedBy := func(channelKey string) (all, online int) {
-		for _, m := range models {
-			if m.Channel == channelKey {
-				all++
-				if m.Enabled {
-					online++
-				}
-			}
-		}
-		return
-	}
+	todos = append(todos, pluginOffTodos(models, channels, plugins)...)
+	todos = append(todos, channelTodos(models, channels, plugins)...)
+	todos = append(todos, upgradeTodos(channels, plugins)...)
 
+	rank := map[string]int{"bad": 0, "warn": 1, "info": 2}
+	sort.SliceStable(todos, func(i, j int) bool { return rank[todos[i].Tone] < rank[todos[j].Tone] })
+	return todos
+}
+
+// modelCountsOf 统计使用某渠道的模型数：all 是全部，online 是已上架的。
+func modelCountsOf(models []CatalogModel, channelKey string) (all, online int) {
+	for _, m := range models {
+		if m.Channel != channelKey {
+			continue
+		}
+		all++
+		if m.Enabled {
+			online++
+		}
+	}
+	return all, online
+}
+
+// pluginOffTodos 是“插件已停用”：有渠道固定在已停用的插件上，渠道实际不可用，并统计波及的上架模型。
+func pluginOffTodos(models []CatalogModel, channels []CatalogChannel, plugins []CatalogPlugin) []OverviewTodo {
+	var todos []OverviewTodo
 	for _, p := range plugins {
 		var pinned []CatalogChannel
 		for _, c := range channels {
@@ -52,7 +66,7 @@ func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []C
 		}
 		hit := 0
 		for _, c := range pinned {
-			_, online := usedBy(c.Key)
+			_, online := modelCountsOf(models, c.Key)
 			hit += online
 		}
 		suffix := ""
@@ -65,11 +79,17 @@ func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []C
 			Action: OverviewTodoAction{Kind: "open-plugin", PluginKey: p.Key},
 		})
 	}
+	return todos
+}
 
+// channelTodos 是渠道自身的问题：缺 Key（优先），或已停用但仍有上架模型。
+func channelTodos(models []CatalogModel, channels []CatalogChannel, plugins []CatalogPlugin) []OverviewTodo {
+	var todos []OverviewTodo
 	for _, c := range channels {
 		health := ChannelHealthOf(c, plugins)
-		used, online := usedBy(c.Key)
-		if health.Label == "未设 Key" {
+		used, online := modelCountsOf(models, c.Key)
+		switch {
+		case health.Label == "未设 Key":
 			suffix := ""
 			if used > 0 {
 				suffix = fmt.Sprintf("，%d 个模型因此无法上线", used)
@@ -79,7 +99,7 @@ func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []C
 				Text:   fmt.Sprintf("渠道「%s」还没设置 Key%s", c.Name, suffix),
 				Action: OverviewTodoAction{Kind: "set-key", ChannelKey: c.Key, ChannelName: c.Name},
 			})
-		} else if !c.Enabled && online > 0 {
+		case !c.Enabled && online > 0:
 			todos = append(todos, OverviewTodo{
 				ID: "channel-off:" + c.Key, Tone: "bad",
 				Text:   fmt.Sprintf("渠道「%s」已停用，%d 个上架模型实际不可用", c.Name, online),
@@ -87,8 +107,12 @@ func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []C
 			})
 		}
 	}
+	return todos
+}
 
-	// 可升级按插件合并成一条：总览页上一键把这个插件的旧版本渠道全部升级
+// upgradeTodos 是“插件可升级”：按插件合并成一条，总览页上一键把这个插件的旧版本渠道全部升级。
+func upgradeTodos(channels []CatalogChannel, plugins []CatalogPlugin) []OverviewTodo {
+	var todos []OverviewTodo
 	for _, p := range plugins {
 		outdated := 0
 		for _, c := range channels {
@@ -106,9 +130,6 @@ func OverviewTodos(models []CatalogModel, channels []CatalogChannel, plugins []C
 			Action: OverviewTodoAction{Kind: "upgrade-plugin", PluginKey: p.Key},
 		})
 	}
-
-	rank := map[string]int{"bad": 0, "warn": 1, "info": 2}
-	sort.SliceStable(todos, func(i, j int) bool { return rank[todos[i].Tone] < rank[todos[j].Tone] })
 	return todos
 }
 
