@@ -154,7 +154,7 @@ function UserTable({
   return (
     <div
       data-slot="user-table"
-      className={cn("border-t transition-opacity", refreshing && !loading && "opacity-60")}
+      className={cn("transition-opacity", refreshing && !loading && "opacity-60")}
       aria-busy={refreshing}
     >
       <Table>
@@ -208,7 +208,6 @@ function UserTable({
               ))}
         </TableBody>
       </Table>
-      {loading && !skeleton && <div className="h-[28rem]" aria-hidden />}
     </div>
   );
 }
@@ -288,7 +287,9 @@ function UserRow({
   };
 
   /** 积分格、勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
-  const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
+  const stop = {
+    onClick: (event: React.MouseEvent) => event.stopPropagation(),
+  };
 
   return (
     <TableRow

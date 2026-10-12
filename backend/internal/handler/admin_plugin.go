@@ -33,16 +33,6 @@ type pluginVersionURI struct {
 	Version string `uri:"version" binding:"required,max=32" label:"版本号"`
 }
 
-// List 返回所有插件与它们的版本。
-func (h *AdminPluginHandler) List(c *gin.Context) {
-	list, err := h.svc.List(c.Request.Context())
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, list)
-}
-
 // Upload 上传插件文件（multipart，字段 file）。预检不通过也返回 200，问题在响应的 issues 里。
 func (h *AdminPluginHandler) Upload(c *gin.Context) {
 	// 1. 先限制请求体总大小，再取文件字段；超限（读取时被截断）统一返回 413

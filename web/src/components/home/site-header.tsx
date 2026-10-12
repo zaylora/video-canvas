@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ThemeToggle } from "@/components/home/theme-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { CreditsPill } from "@/pages/canvas/chrome/top-right-bar";

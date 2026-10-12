@@ -80,23 +80,24 @@ function builtinFiles(body: string): SkillFile[] {
 /**
  * 详情弹窗（居中，宽 min(64rem, 100%)）：概览 / 文件 / 版本三个页签，下划线滑块用 layoutId + SPRING。
  * 技能本身（开关、显示名、版本号）以列表里的最新视图为准；版本列表和各版本的文件按需请求并缓存。
- * @param name 打开的技能名；为空表示关闭
+ * @param target 打开的技能（打开时列表里的那一行）；为空表示关闭
  * @param api 列表与启停（use-agent-skills）
  * @param onClose 请求关闭
  */
 export function SkillDialog({
-  name,
+  target,
   api,
   onClose,
 }: {
-  name: string | null;
+  target: SkillItem | null;
   api: AgentSkillsApi;
   onClose: () => void;
 }) {
-  const shown = useRetained(name);
-  const item = shown ? api.items.find((s) => s.name === shown) : undefined;
+  const shown = useRetained(target);
+  // 当页里有这一条就用最新的（启停、改名后立刻跟上），翻页或被筛掉了就用打开时带来的
+  const item = shown ? (api.items.find((s) => s.name === shown.name) ?? shown) : undefined;
   return (
-    <Dialog open={!!name} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={!!target} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="flex h-[min(90svh,880px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
         {item && <DialogBody key={item.name} item={item} api={api} onClose={onClose} />}
       </DialogContent>
@@ -232,7 +233,7 @@ function DialogBody({
         versionCache.current.delete(head.version);
         if (viewVersion === head.version) setViewVersion(null);
         toast.success(`已删除 v${head.version}`);
-        await Promise.all([reloadDetail(), api.reload()]);
+        await reloadDetail();
       },
     });
   };
@@ -253,7 +254,6 @@ function DialogBody({
       blockReason: check.can_delete ? null : (check.reason ?? "暂时不能删除"),
       onConfirm: async () => {
         await deleteSkill(name);
-        api.removeOne(name);
         onClose();
         toast.success(`已删除「${item.title}」`);
       },

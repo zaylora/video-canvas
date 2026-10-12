@@ -1,6 +1,6 @@
-import type { AdminStatsDay, ChannelLoad, ChannelView, PluginView } from "@/api/admin/ai/type";
+import type { AdminStatsDay, ChannelLoad, OverviewChannel } from "@/api/admin/ai/type";
 
-import { channelHealth, type HealthTone } from "./health";
+import type { HealthTone } from "./health";
 
 /**
  * 总览页图表的纯逻辑：统计口径的汇总、刻度、占比归并、渠道负载条的比例。
@@ -158,13 +158,12 @@ export type LoadRow = {
  * @returns 排好序的行
  */
 export function loadRows(
-  channels: readonly ChannelView[],
-  plugins: readonly PluginView[],
+  channels: readonly OverviewChannel[],
   loads: readonly ChannelLoad[],
 ): LoadRow[] {
   const loadOf = new Map(loads.map((l) => [l.channel, l]));
   const base = channels.map((channel) => {
-    const health = channelHealth(channel, plugins);
+    const health = channel.health;
     const load = loadOf.get(channel.key);
     return {
       channel,
@@ -177,7 +176,7 @@ export function loadRows(
   const busiest = Math.max(1, ...base.filter((b) => b.usable).map((b) => b.running + b.waiting));
 
   const rows = base.map(({ channel, health, usable, running, waiting }): LoadRow => {
-    const max = channel.rate_limit?.max_running ?? 0;
+    const max = channel.max_running;
     const denom = max > 0 ? Math.max(max, running + waiting) : busiest;
     return {
       key: channel.key,

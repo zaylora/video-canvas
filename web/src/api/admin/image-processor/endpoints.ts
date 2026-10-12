@@ -3,7 +3,8 @@
  * 契约见 docs/design/画布素材加载设计/图片处理服务接口契约.md 第 2.2 节；后端路由如有出入，只需要改这里。
  *
  *   GET    /admin/image-processors/presets        厂商预设
- *   GET    /admin/image-processors                处理服务列表
+ *   GET    /admin/image-processors                处理服务列表（分页，?q=&status=&page=&page_size=）
+ *   GET    /admin/image-processors/options        全部处理服务的精简视图（不分页，判定存储占用用）
  *   GET    /admin/image-processors/:id            处理服务详情
  *   POST   /admin/image-processors                新建草稿（super_admin）
  *   PUT    /admin/image-processors/:id            保存草稿，带 version（super_admin）
@@ -20,6 +21,7 @@ const one = (id: number) => `${P}/${seg(id)}`;
 export const adminImageProcessorEndpoints = {
   list: () => P,
   presets: () => `${P}/presets`,
+  options: () => `${P}/options`,
   detail: one,
   create: () => P,
   update: one,

@@ -1,10 +1,16 @@
 package pluginrunner
 
 import (
+	"crypto"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"sync"
@@ -251,6 +257,36 @@ func installUtils(rt *runtime) error {
 	}); err != nil {
 		return err
 	}
+	// hmacSHA256Hex 的密钥是十六进制文本：上一步 hmacSHA256 的输出可直接作下一步的密钥（逐级派生密钥的签名，如火山引擎）。
+	if err := set("hmacSHA256Hex", func(call goja.FunctionCall) goja.Value {
+		key, err := hex.DecodeString(utilityString(call, 0))
+		if err != nil {
+			panic(vm.ToValue("hmacSHA256Hex 的密钥必须是十六进制文本"))
+		}
+		msg := utilityString(call, 1)
+		mac := hmac.New(sha256.New, key)
+		_, _ = mac.Write([]byte(msg))
+		return vm.ToValue(hex.EncodeToString(mac.Sum(nil)))
+	}); err != nil {
+		return err
+	}
+	if err := set("jwtSignRS256", func(call goja.FunctionCall) goja.Value {
+		claims := call.Argument(0).Export()
+		key := parseRSAPrivateKey(vm, utilityString(call, 1))
+		payload, err := json.Marshal(claims)
+		if err != nil {
+			panic(vm.ToValue("JWT claims 不能编码成 JSON"))
+		}
+		input := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`)) + "." + base64.RawURLEncoding.EncodeToString(payload)
+		sum := sha256.Sum256([]byte(input))
+		sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+		if err != nil {
+			panic(vm.ToValue("RS256 签名失败"))
+		}
+		return vm.ToValue(input + "." + base64.RawURLEncoding.EncodeToString(sig))
+	}); err != nil {
+		return err
+	}
 	if err := set("jwtSignHS256", func(call goja.FunctionCall) goja.Value {
 		claims := call.Argument(0).Export()
 		secret := utilityString(call, 1)
@@ -282,6 +318,25 @@ func installUtils(rt *runtime) error {
 		return err
 	}
 	return nil
+}
+
+// parseRSAPrivateKey 解析 PEM 私钥（PKCS#8 或 PKCS#1）；服务账号 JSON 里的 private_key 是 PKCS#8。
+func parseRSAPrivateKey(vm *goja.Runtime, pemText string) *rsa.PrivateKey {
+	block, _ := pem.Decode([]byte(pemText))
+	if block == nil {
+		panic(vm.ToValue("RS256 私钥不是有效的 PEM"))
+	}
+	if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		if rk, ok := k.(*rsa.PrivateKey); ok {
+			return rk
+		}
+		panic(vm.ToValue("RS256 私钥必须是 RSA 密钥"))
+	}
+	k, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		panic(vm.ToValue("RS256 私钥无法解析"))
+	}
+	return k
 }
 
 func utilityString(call goja.FunctionCall, index int) string {

@@ -14,8 +14,10 @@ import (
 
 	. "video-canvas/internal/handler/agent"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	agentsvc "video-canvas/internal/service/agent"
+	"video-canvas/pkg/pagination"
 )
 
 // fakeSkillAPI 记录 handler 传给业务层的参数，并按 err 返回业务错误。
@@ -27,11 +29,13 @@ type fakeSkillAPI struct {
 	gotVer    int
 	gotOn     bool
 	gotActor  uint64
+	gotList   model.ListSkillReq
 }
 
 func (f *fakeSkillAPI) rec(n string) error { f.calls = append(f.calls, n); return f.err }
-func (f *fakeSkillAPI) List(context.Context, string, string) ([]agentsvc.SkillItem, error) {
-	return []agentsvc.SkillItem{{Name: "demo"}}, f.rec("list")
+func (f *fakeSkillAPI) List(_ context.Context, req *model.ListSkillReq) (*agentsvc.SkillPage, error) {
+	f.gotList = *req
+	return &agentsvc.SkillPage{Result: pagination.Result[agentsvc.SkillItem]{List: []agentsvc.SkillItem{{Name: "demo"}}, Total: 1, Page: 1, PageSize: 20}}, f.rec("list")
 }
 func (f *fakeSkillAPI) Get(_ context.Context, n string) (*agentsvc.SkillDetail, error) {
 	f.gotName = n
@@ -106,6 +110,31 @@ func newSkillRouter(api SkillAPI) *gin.Engine {
 	a.DELETE("/:name/versions/:v", h.DeleteVersion)
 	a.DELETE("/:name", h.Delete)
 	return r
+}
+
+func TestSkillHandler_ListQuery(t *testing.T) {
+	base := "/api/v1/admin/agent/skills"
+	t.Run("q / status / page / page_size 原样传给 service", func(t *testing.T) {
+		api := &fakeSkillAPI{}
+		r := newSkillRouter(api)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", base+"?q=a&status=builtin&page=2&page_size=30", nil))
+		got := api.gotList
+		if w.Code != 200 || got.Q != "a" || got.Status != "builtin" || got.Page != 2 || got.PageSize != 30 {
+			t.Fatalf("实际 %d %+v", w.Code, got)
+		}
+		if !strings.Contains(w.Body.String(), `"total":1`) || !strings.Contains(w.Body.String(), `"list"`) {
+			t.Errorf("响应应是分页结构：%s", w.Body.String())
+		}
+	})
+	t.Run("非法状态 400", func(t *testing.T) {
+		r := newSkillRouter(&fakeSkillAPI{})
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", base+"?status=bogus", nil))
+		if w.Code != 400 {
+			t.Fatalf("实际 %d", w.Code)
+		}
+	})
 }
 
 func TestSkillHandler_Endpoints(t *testing.T) {

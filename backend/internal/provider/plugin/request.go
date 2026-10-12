@@ -203,13 +203,14 @@ func (o *operation) urlFromPath(p string) (*url.URL, error) {
 	return u, nil
 }
 
-// urlFromAbsolute 校验绝对 URL：只允许 http/https、不含用户名密码、主机在 allowedHosts 或 base_url 的主机上。
+// urlFromAbsolute 校验绝对 URL：只允许 http/https、不含用户名密码，域名不限（预签名上传地址等常在第三方域名上）。
+// 内网由拨号时的 IP 校验拦截；渠道 Key 只会注入发往 base_url 同源的请求（见 sameOrigin）。
 func (o *operation) urlFromAbsolute(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
 		return nil, pluginFaultf("请求描述的 url %q 不合法", raw)
 	}
-	if err := netguard.CheckURLAllowed(o.hosts, u.Scheme, u.Hostname(), u.User != nil); err != nil {
+	if err := netguard.CheckURLScheme(u.Scheme, u.Hostname(), u.User != nil); err != nil {
 		return nil, &provider.Error{Class: provider.ClassTerminal, Code: provider.CodePluginError, PluginFault: true,
 			Message: "请求描述的 url 不允许：" + err.Error(), Cause: redactError(err, o.red.str)}
 	}
@@ -257,7 +258,7 @@ func (o *operation) buildAuth(d *requestDesc, b *builtRequest) error {
 
 // buildHeaders 校验插件写的请求头：黑名单、与注入头同名、非法名字与换行都拒绝。
 // 例外：auth: custom 且渠道开启 allow_credentials 的插件本来就持有 Key（签名类鉴权要写 Authorization，如 JWT），
-// 允许它自己写 Authorization；这不扩大泄露面，因为请求只能去 base_url 与 allowedHosts。
+// 允许它自己写 Authorization；这类插件本来就持有 Key（“允许插件读取 Key”由超级管理员显式开启）。
 func (o *operation) buildHeaders(d *requestDesc, b *builtRequest) error {
 	injected := map[string]bool{}
 	for _, a := range []pluginmeta.Auth{o.rt.Plugin.Meta.Auth, b.auth} {

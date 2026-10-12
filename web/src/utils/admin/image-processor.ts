@@ -9,16 +9,16 @@ import type {
   ProcessorVendor,
   ProcessorView,
 } from "@/api/admin/image-processor/type";
-import type { StorageView } from "@/api/admin/storage/type";
+import type { StorageOption } from "@/api/admin/storage/type";
 
 /** 绑定判定只需要存储的这几个字段 */
 export type BindableStorage = Pick<
-  StorageView,
+  StorageOption,
   "id" | "name" | "provider" | "bucket" | "region" | "public_base_url"
 >;
 
 /** 判定占用关系只需要处理服务的这几个字段 */
-type BindingProcessor = Pick<ProcessorView, "id" | "name" | "storage_id" | "status">;
+export type BindingProcessor = Pick<ProcessorView, "id" | "name" | "storage_id" | "status">;
 
 /** 存储服务商的中文名；只用于写禁用原因，与存储配置页的预设名保持一致 */
 const STORAGE_PROVIDER_LABEL: Record<string, string> = {

@@ -27,6 +27,7 @@ type Handlers struct {
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
+	AdminCatalog   *handler.AdminCatalogHandler        // 渠道 / 插件 / 模型的分页列表与下拉 options
 	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
 	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
@@ -132,9 +133,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		superOnly := middleware.RequireSuperAdmin(h.AdminRole)
 		adminAI.GET("/me", h.AdminMe.Me)
 		adminAI.GET("/stats", h.AdminStats.Stats)
+		adminAI.GET("/overview", h.AdminCatalog.Overview)
 
 		plugins := adminAI.Group("/plugins")
-		plugins.GET("", h.AdminPlugin.List)
+		plugins.GET("", h.AdminCatalog.ListPlugins)
+		plugins.GET("/options", h.AdminCatalog.PluginOptions)
+		plugins.GET("/:key", h.AdminCatalog.GetPlugin)
 		plugins.POST("", superOnly, h.AdminPlugin.Upload)
 		plugins.PUT("/:key/enabled", superOnly, h.AdminPlugin.SetEnabled)
 		plugins.DELETE("/:key/versions/:version", superOnly, h.AdminPlugin.DeleteVersion)
@@ -142,7 +146,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		plugins.DELETE("/:key", superOnly, h.AdminPlugin.Delete)
 
 		channels := adminAI.Group("/channels")
-		channels.GET("", h.AdminChannel.List)
+		channels.GET("", h.AdminCatalog.ListChannels)
+		channels.GET("/options", h.AdminCatalog.ChannelOptions)
 		channels.GET("/loads", h.AdminChannel.Loads)
 		channels.POST("", superOnly, h.AdminChannel.Create)
 		channels.GET("/:key", h.AdminChannel.Get)
@@ -155,7 +160,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.DELETE("/:key", superOnly, h.AdminChannel.Delete)
 
 		models := adminAI.Group("/models")
-		models.GET("", h.AdminAI.List)
+		models.GET("", h.AdminCatalog.ListModels)
+		models.GET("/options", h.AdminCatalog.ModelOptions)
 		models.POST("", h.AdminAI.Create)
 		models.GET("/:key", h.AdminAI.Get)
 		models.PUT("/:key", h.AdminAI.Update)
@@ -195,6 +201,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		storages := auth.Group("/admin/storages", middleware.RequireAdmin(h.AdminRole))
 		storages.GET("", h.AdminStorage.List)
 		storages.GET("/presets", h.AdminStorage.Presets)
+		storages.GET("/options", h.AdminStorage.Options)
 		storages.POST("/test", superOnly, h.AdminStorage.Test)
 		storages.POST("", superOnly, h.AdminStorage.Create)
 		storages.PUT("/default", superOnly, h.AdminStorage.SetDefault)
@@ -209,6 +216,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		processors := auth.Group("/admin/image-processors", middleware.RequireAdmin(h.AdminRole))
 		processors.GET("", h.AdminImageProc.List)
 		processors.GET("/presets", h.AdminImageProc.Presets)
+		processors.GET("/options", h.AdminImageProc.Options)
 		processors.POST("", superOnly, h.AdminImageProc.Create)
 		processors.GET("/:id", h.AdminImageProc.Get)
 		processors.PUT("/:id", superOnly, h.AdminImageProc.Update)

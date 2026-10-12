@@ -163,3 +163,23 @@ export interface ProcessorPublishRequest {
   /** 要发布的草稿版本号，必须等于最近一次校验针对的 version */
   version: number;
 }
+
+/** 处理服务列表一页：当页的行与命中总数 */
+export interface ProcessorPage {
+  list: ProcessorView[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 处理服务列表的查询参数 */
+export interface ListProcessorsParams {
+  /** 关键字：名称 / 厂商 / 绑定的存储名 */
+  q?: string;
+  status?: ProcessorStatus;
+  page?: number;
+  page_size?: number;
+}
+
+/** 存储绑定判定用的处理服务精简视图（全部，不分页） */
+export type ProcessorOption = Pick<ProcessorView, "id" | "name" | "storage_id" | "status">;

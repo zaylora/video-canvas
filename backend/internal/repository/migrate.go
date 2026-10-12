@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -121,6 +123,38 @@ func MigrateConversationDefault(db *gorm.DB) error {
 			if err := tx.Exec(stmt).Error; err != nil {
 				return fmt.Errorf("清理默认创作遗留失败（%s）：%w", stmt, err)
 			}
+		}
+		return nil
+	})
+}
+
+// MigrateChannelTrustedInternal 幂等地删除 ai_channels.trusted_internal 列（“允许访问内网”开关已取消，所有渠道一律拦截内网）。
+// 删列前对仍然开着开关的渠道各打一条 WARN（渠道 key 和 base_url 的主机放在字段里），提醒运维：
+// 升级后这些渠道不能再访问内网，base_url 指向内网的需要换成公网可访问的地址。
+// 应在 AutoMigrate 之前调用；表或列不存在（全新库、已清理过）时什么都不做，可以重复执行。
+func MigrateChannelTrustedInternal(db *gorm.DB, log *zap.Logger) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if !tx.Migrator().HasColumn("ai_channels", "trusted_internal") {
+			return nil
+		}
+		var rows []struct {
+			Key     string
+			BaseURL string
+		}
+		// 渠道的主键列就叫 key（model.AIChannel.Key），没有 id 列，按 key 排序保证日志顺序稳定
+		if err := tx.Table("ai_channels").Select(`"key", base_url`).Where("trusted_internal").Order(`"key"`).Find(&rows).Error; err != nil {
+			return fmt.Errorf("查询开着“允许访问内网”的渠道失败：%w", err)
+		}
+		for _, r := range rows {
+			host := r.BaseURL
+			if u, err := url.Parse(r.BaseURL); err == nil && u.Host != "" {
+				host = u.Host
+			}
+			log.Warn("渠道开着“允许访问内网”，该开关已取消：升级后这个渠道不能再访问内网地址，base_url 指向内网的需要换成公网可访问的地址",
+				zap.String("channel", r.Key), zap.String("base_url_host", host))
+		}
+		if err := tx.Exec("ALTER TABLE ai_channels DROP COLUMN IF EXISTS trusted_internal").Error; err != nil {
+			return fmt.Errorf("删除 ai_channels.trusted_internal 失败：%w", err)
 		}
 		return nil
 	})

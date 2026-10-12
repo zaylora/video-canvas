@@ -12,6 +12,7 @@ import (
 
 	"video-canvas/internal/config"
 	"video-canvas/internal/model"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
 )
 
@@ -50,6 +51,10 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 		// 对话不再有「默认创作」：删掉 is_default 列和它的部分唯一索引；幂等
 		if err := repository.MigrateConversationDefault(db); err != nil {
 			return nil, fmt.Errorf("migrate conversation default: %w", err)
+		}
+		// 渠道不再有“允许访问内网”开关：删 trusted_internal 列（对仍开着的渠道打 WARN）；幂等，必须在 AutoMigrate 之前
+		if err := repository.MigrateChannelTrustedInternal(db, logger.L()); err != nil {
+			return nil, fmt.Errorf("migrate channel trusted internal: %w", err)
 		}
 		if err := db.AutoMigrate(model.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)

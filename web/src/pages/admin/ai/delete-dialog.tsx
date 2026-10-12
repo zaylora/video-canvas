@@ -5,13 +5,12 @@ import { toast } from "sonner";
 
 import { checkDelete, deleteTarget, setModelEnabled } from "@/api/admin/ai";
 import type {
-  ChannelView,
+  ChannelOption,
   DeleteBlocker,
   DeleteCheckResult,
   DeleteTarget,
-  PluginView,
 } from "@/api/admin/ai/type.d";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +26,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { openDialog, type DialogControl } from "@/store/dialog";
 import { errorMessage } from "@/utils/admin/errors";
-import { channelHealth } from "@/utils/admin/health";
 
 import { migrateModelsToChannel } from "./models/migrate-channel";
 import { useAliveRef } from "../use-admin";
@@ -55,8 +53,7 @@ export type DeleteDialogProps = {
   /** 显示名 */
   name: string;
   /** 渠道迁移的候选（删渠道时用），打开时的快照 */
-  channels?: ChannelView[];
-  plugins?: PluginView[];
+  channels?: ChannelOption[];
   /** 删除成功后（刷新列表、改选中项） */
   onDeleted: () => void;
   /** 迁移等就地处理改了别的数据后（刷新模型列表） */
@@ -76,7 +73,6 @@ function DeleteDialog({
   objectKey,
   name,
   channels = [],
-  plugins = [],
   onDeleted,
   onChanged,
   open,
@@ -198,7 +194,6 @@ function DeleteDialog({
                 target={target}
                 objectKey={objectKey}
                 channels={channels}
-                plugins={plugins}
                 busy={busy}
                 onDisableAndDelete={() => void remove(true)}
                 onMigrate={(keys, to) => void migrate(keys, to)}
@@ -263,7 +258,6 @@ function BlockerItem({
   target,
   objectKey,
   channels,
-  plugins,
   busy,
   onDisableAndDelete,
   onMigrate,
@@ -271,8 +265,7 @@ function BlockerItem({
   blocker: DeleteBlocker;
   target: DeleteTarget;
   objectKey: string;
-  channels: ChannelView[];
-  plugins: PluginView[];
+  channels: ChannelOption[];
   busy: "delete" | "disable" | "migrate" | null;
   onDisableAndDelete: () => void;
   onMigrate: (keys: string[], to: string) => void;
@@ -313,18 +306,17 @@ function BlockerItem({
             <>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground shrink-0 text-xs">全部迁到</span>
-                <NativeSelect
-                  className="h-8 text-xs"
+                <OptionSelect
+                  size="sm"
+                  className="text-xs"
                   aria-label="迁移到的渠道"
                   value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                >
-                  {others.map((item) => (
-                    <option key={item.key} value={item.key}>
-                      {item.name}（{channelHealth(item, plugins).label}）
-                    </option>
-                  ))}
-                </NativeSelect>
+                  onValueChange={setTo}
+                  options={others.map((item) => ({
+                    value: item.key,
+                    label: `${item.name}（${item.health.label}）`,
+                  }))}
+                />
                 <Button
                   size="sm"
                   variant="outline"

@@ -2,8 +2,13 @@ import { Loader2, X } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import {
+  DataPage,
+  DataPanel,
+  DataPanelBody,
+  DataPanelPagination,
+} from "@/components/admin-ui/data-panel";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
@@ -13,6 +18,7 @@ import type { Actor } from "@/utils/admin/user-rules";
 
 import { BulkBar } from "./bulk-bar";
 import { useUserActions } from "./use-user-actions";
+import { useDebouncedSearch } from "../use-admin-list";
 import { useUserDetail, useUsers, type RoleFilter, type StatusFilter } from "./use-users";
 import { UserDialog } from "./user-dialog";
 import { UserTable } from "./user-table";
@@ -29,9 +35,6 @@ const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
   { value: "admin", label: "管理员" },
   { value: "super_admin", label: "超级管理员" },
 ];
-
-/** 搜索框停止输入多久后才去查询（毫秒） */
-const SEARCH_DEBOUNCE = 300;
 
 /** 这些浮层打开时，单键快捷键和 Esc 都交给浮层自己（Base UI 会关掉它） */
 const FLOATING_OPEN = [
@@ -91,15 +94,9 @@ export default function UsersPage() {
   const actions = useUserActions({ actor, patch, refresh });
 
   // ---------------------------------------------------------------- 搜索（300ms 防抖，同步到 ?q=）
-  const [qInput, setQInput] = useState(list.q);
   const searchRef = useRef<HTMLInputElement>(null);
   const { setQ } = list;
-  useEffect(() => setQInput(list.q), [list.q]);
-  useEffect(() => {
-    if (qInput === list.q) return;
-    const timer = setTimeout(() => setQ(qInput), SEARCH_DEBOUNCE);
-    return () => clearTimeout(timer);
-  }, [qInput, list.q, setQ]);
+  const [qInput, setQInput] = useDebouncedSearch(list.q, setQ);
 
   // ---------------------------------------------------------------- 勾选（只在当前页，换页 / 筛选后清空）
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
@@ -189,7 +186,13 @@ export default function UsersPage() {
 
   // ---------------------------------------------------------------- 快捷键
   /** 用 ref 拿最新值：监听器只绑一次，不用每次渲染重绑 */
-  const keys = useRef({ step, closeDialog, clearSelection, selectedCount: 0, userId });
+  const keys = useRef({
+    step,
+    closeDialog,
+    clearSelection,
+    selectedCount: 0,
+    userId,
+  });
   useEffect(() => {
     keys.current = {
       step,
@@ -238,15 +241,15 @@ export default function UsersPage() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="h-full overflow-y-auto">
-        <main className="px-4 pt-6 pb-28 lg:px-6">
+      <div className="h-full">
+        <DataPage>
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>用户管理</PageHeaderTitle>
             </PageHeaderHeading>
           </PageHeader>
 
-          <div className="bg-card rounded-xl border">
+          <DataPanel>
             <div className="flex flex-wrap items-center gap-2 p-4">
               <Tooltip>
                 <TooltipTrigger render={<div className="w-full sm:w-64" />}>
@@ -294,18 +297,17 @@ export default function UsersPage() {
                   </SegmentedItem>
                 ))}
               </Segmented>
-              <NativeSelect
+              <OptionSelect
                 aria-label="角色筛选"
+                size="sm"
                 className="w-34"
                 value={list.role}
-                onChange={(event) => list.setRole(event.target.value as RoleFilter)}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </NativeSelect>
+                onValueChange={(value) => list.setRole(value as RoleFilter)}
+                options={ROLE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
               <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs tabular-nums">
                 {list.refreshing && list.state !== "loading" && (
                   <Loader2 className="size-3.5 animate-spin" aria-label="加载中" />
@@ -318,32 +320,32 @@ export default function UsersPage() {
               </span>
             </div>
 
-            <UserTable
-              items={items}
-              state={list.state}
-              refreshing={list.refreshing}
-              currentId={userId}
-              actor={actor}
-              actions={actions}
-              selection={selection}
-              filterText={list.q}
-              filtering={list.filtering}
-              onOpen={openUser}
-              onRetry={list.reload}
-              onClearFilters={list.clearFilters}
-            />
-
-            <div className="border-t py-3">
-              <DataTablePagination
-                page={page}
-                pageSize={list.pageSize}
-                total={list.total}
-                onPageChange={setPage}
-                onPageSizeChange={list.setPageSize}
+            <DataPanelBody>
+              <UserTable
+                items={items}
+                state={list.state}
+                refreshing={list.refreshing}
+                currentId={userId}
+                actor={actor}
+                actions={actions}
+                selection={selection}
+                filterText={list.q}
+                filtering={list.filtering}
+                onOpen={openUser}
+                onRetry={list.reload}
+                onClearFilters={list.clearFilters}
               />
-            </div>
-          </div>
-        </main>
+            </DataPanelBody>
+
+            <DataPanelPagination
+              page={page}
+              pageSize={list.pageSize}
+              total={list.total}
+              onPageChange={setPage}
+              onPageSizeChange={list.setPageSize}
+            />
+          </DataPanel>
+        </DataPage>
       </div>
 
       <UserDialog

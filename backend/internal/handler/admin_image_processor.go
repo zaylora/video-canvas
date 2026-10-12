@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/imageproc"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 )
@@ -13,7 +14,8 @@ import (
 // ImageProcessorAdminService 是图片处理服务管理接口依赖的业务能力，由 service.ImageProcessorService 实现。
 type ImageProcessorAdminService interface {
 	Presets() []imageproc.Preset
-	List(ctx context.Context) ([]service.ProcessorView, error)
+	List(ctx context.Context, req *model.ListProcessorReq) (*service.ProcessorPage, error)
+	Options(ctx context.Context) ([]service.ProcessorOption, error)
 	Get(ctx context.Context, id uint64) (*service.ProcessorView, error)
 	Create(ctx context.Context, actorID uint64, in service.ProcessorCreateInput) (*service.ProcessorView, error)
 	Update(ctx context.Context, actorID, id uint64, in service.ProcessorUpdateInput) (*service.ProcessorView, error)
@@ -79,9 +81,23 @@ func (h *AdminImageProcessorHandler) Presets(c *gin.Context) {
 	response.OK(c, h.svc.Presets())
 }
 
-// List 返回所有处理服务。
+// List 按关键字和状态筛选并分页返回处理服务（GET /admin/image-processors?q=&status=&page=&page_size=）。
 func (h *AdminImageProcessorHandler) List(c *gin.Context) {
-	list, err := h.svc.List(c.Request.Context())
+	var req model.ListProcessorReq
+	if !BindQuery(c, &req) {
+		return
+	}
+	page, err := h.svc.List(c.Request.Context(), &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, page)
+}
+
+// Options 返回全部处理服务的精简视图，不分页（GET /admin/image-processors/options）。
+func (h *AdminImageProcessorHandler) Options(c *gin.Context) {
+	list, err := h.svc.Options(c.Request.Context())
 	if err != nil {
 		response.Fail(c, err)
 		return

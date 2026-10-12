@@ -1,8 +1,10 @@
 import { useState, useSyncExternalStore } from "react";
 import { Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import type { TraceStep } from "@/api/admin/ai/type.d";
 import type { TaskOutput, TaskView } from "@/api/generation-task/type.d";
+import { CopyButton } from "@/components/admin-ui/copy-button";
 import { FoldableCode } from "@/components/admin-ui/foldable-code";
 import { Notice } from "@/components/admin-ui/notice";
 import { RequestLog, RequestLogItem } from "@/components/admin-ui/request-log";
@@ -10,6 +12,12 @@ import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  buildRunRepairReport,
+  REPAIR_COPY_FAILED,
+  type RepairPlugin,
+} from "@/utils/admin/repair-report";
+import { toTraceView } from "@/utils/admin/trace";
 import { clearRequestLog, getRequestLog, subscribeRequestLog } from "@/utils/requests/request-log";
 import { isTerminalStatus } from "@/utils/tasks/status";
 
@@ -95,7 +103,50 @@ export function OutputPreview({ output }: { output: TaskOutput }) {
   );
 }
 
-function RunView({ run }: { run: RunState }) {
+/** “复制修复信息”按钮：两种复制方式都失败时用 toast 说明，因为这段文本不在界面上，用户没有手动选取的退路 */
+function RepairCopyButton({ text }: { text: string }) {
+  return (
+    <CopyButton
+      variant="outline"
+      text={text}
+      label="复制修复信息"
+      onError={() => toast.error(REPAIR_COPY_FAILED)}
+    />
+  );
+}
+
+/**
+ * 试跑失败时的“复制修复信息”：任务的错误码与文案 + 追踪里的失败步骤，整理成一段文本发给 AI。
+ * 只在任务真正失败（failed）时给：过期、取消不是插件的问题，复制出去没有意义。
+ * 追踪还在拉取、或不属于这次试跑时不给：这时复制会漏掉失败步骤；追踪拉取失败则只带错误码与文案。
+ * @param run 这次试跑
+ * @param trace 这次试跑的追踪
+ * @param plugin 模型所用渠道的插件与版本，拿不到就不传
+ * @returns 修复信息；不该显示按钮时为 null
+ */
+function buildRepairText(
+  run: RunState | null,
+  trace: TraceState | null,
+  plugin?: RepairPlugin | null,
+): string | null {
+  if (!run || run.view.status !== "failed") return null;
+  if (trace?.taskId !== run.taskId || trace.status === "loading") return null;
+  const { view } = run;
+  return buildRunRepairReport({
+    plugin,
+    modelKey: view.model_id,
+    kind: view.kind,
+    errorCode: view.error_code,
+    errorMessage: view.error_message,
+    steps: toTraceView(trace.steps).steps,
+  });
+}
+
+/**
+ * “结果”标签：试跑任务的状态、产物或失败原因。
+ * @param repairText 试跑失败时的“复制修复信息”文本（见 ResultPanel 里的 buildRepairText）；没有就不显示按钮
+ */
+function RunView({ run, repairText }: { run: RunState; repairText: string | null }) {
   const { view } = run;
   const terminal = isTerminalStatus(view.status);
   const ok = view.status === "succeeded";
@@ -129,7 +180,11 @@ function RunView({ run }: { run: RunState }) {
         </>
       )}
       {terminal && !ok && (
-        <Notice tone="danger" title="测试失败">
+        <Notice
+          tone="danger"
+          title="测试失败"
+          action={repairText ? <RepairCopyButton text={repairText} /> : undefined}
+        >
           {view.error_message || "上游没有返回原因，看“追踪”定位失败的那一步。"}
         </Notice>
       )}
@@ -193,6 +248,7 @@ function LogView({ modelKey, taskId }: { modelKey: string; taskId?: number | str
  * 测试结果：结果 / 请求描述 / 追踪 / 日志。
  * dry-run 的标题写“请求描述”而不是“最终请求”：后端返回的是插件给出的请求描述，
  * 并不含宿主注入后的鉴权头。试跑结束后由工作区把标签切到“追踪”。
+ * @param plugin 模型所用渠道的插件与版本；试跑失败时写进“复制修复信息”，拿不到就不传
  */
 export function ResultPanel({
   tab,
@@ -201,6 +257,7 @@ export function ResultPanel({
   dryRun,
   run,
   trace,
+  plugin,
   onRefreshTrace,
 }: {
   tab: ResultTabId;
@@ -209,8 +266,10 @@ export function ResultPanel({
   dryRun: DryRunState | null;
   run: RunState | null;
   trace: TraceState | null;
+  plugin?: RepairPlugin | null;
   onRefreshTrace: () => void;
 }) {
+  const repairText = buildRepairText(run, trace, plugin);
   const badge: Record<ResultTabId, number | null> = {
     run: run ? 1 : null,
     "dry-run": dryRun ? 1 : null,
@@ -244,7 +303,7 @@ export function ResultPanel({
               在左边的节点里选好参数，点“开始测试”真实调用一次上游，不扣用户积分，结果不进素材库。
             </p>
           ) : (
-            <RunView run={run} />
+            <RunView run={run} repairText={repairText} />
           ))}
 
         {tab === "dry-run" &&
@@ -284,6 +343,7 @@ export function ResultPanel({
               steps={trace.steps}
               loading={trace.status === "loading"}
               onRefresh={onRefreshTrace}
+              actions={repairText ? <RepairCopyButton text={repairText} /> : undefined}
             />
           ))}
 

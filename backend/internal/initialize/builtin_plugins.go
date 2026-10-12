@@ -36,6 +36,7 @@ func registerBuiltinPlugins(ctx context.Context, svc *service.AIPluginService) {
 			}
 		}
 		if err == nil {
+			pruneBuiltinPlugins(ctx, svc, regs)
 			return
 		}
 		if provider.CodeOf(err) != provider.CodeRunnerUnavailable || attempt >= builtinRegisterAttempts {
@@ -49,5 +50,27 @@ func registerBuiltinPlugins(ctx context.Context, svc *service.AIPluginService) {
 			return
 		case <-time.After(builtinRegisterWait):
 		}
+	}
+}
+
+// pruneBuiltinPlugins 清理库里已不随发版的旧内置插件（见 AIPluginService.PruneBuiltin）。
+// 只在全部内置插件都登记成功后才调：有一个预检失败时拿不到它的 key，清理会把它误判成“已下线”。
+func pruneBuiltinPlugins(ctx context.Context, svc *service.AIPluginService, regs []service.BuiltinRegistration) {
+	keep := make([]string, 0, len(regs))
+	for _, r := range regs {
+		keep = append(keep, r.Key)
+	}
+	res, err := svc.PruneBuiltin(ctx, keep)
+	if err != nil {
+		logger.Error("清理旧内置插件失败", zap.Error(err))
+	}
+	if res == nil {
+		return
+	}
+	for _, key := range res.Removed {
+		logger.Info("清理旧内置插件", zap.String("key", key))
+	}
+	for _, key := range res.InUse {
+		logger.Warn("旧内置插件已不随发版，但仍被渠道或进行中的任务使用，暂不清理", zap.String("key", key))
 	}
 }

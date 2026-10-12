@@ -6,17 +6,25 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"video-canvas/internal/agent/skills"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/repository"
+	"video-canvas/pkg/pagination"
 )
 
-// List 返回管理页列表：内置技能（只读，永远启用）加导入技能。
-// q 在名字、显示名、说明里做不区分大小写的包含匹配；status 为 enabled / disabled 时按启停过滤，空取全部。
-func (s *SkillService) List(ctx context.Context, q, status string) ([]SkillItem, error) {
+// SkillPage 是技能列表的一页。HasImported 表示整张列表里有没有导入的技能（不受搜索和筛选影响），
+// 页面用它区分“还没导入过技能”和“没有命中”两种空态。
+type SkillPage struct {
+	pagination.Result[SkillItem]
+	HasImported bool `json:"has_imported"`
+}
+
+// List 返回管理页列表（分页）：内置技能（只读，永远启用）加导入技能。
+// q 在名字、显示名、说明里做不区分大小写的包含匹配；status 为 enabled / disabled 时按启停过滤，
+// builtin 只要内置技能，空取全部。
+func (s *SkillService) List(ctx context.Context, req *model.ListSkillReq) (*SkillPage, error) {
 	// 1. 导入技能：三次查询（技能、生效版本头、版本号）凑齐一页，避免逐个技能查
 	list, err := s.repo.ListSkills(ctx)
 	if err != nil {
@@ -39,19 +47,22 @@ func (s *SkillService) List(ctx context.Context, q, status string) ([]SkillItem,
 		v := active[list[i].ID]
 		out = append(out, importedItem(&list[i], &v, nums[list[i].ID]))
 	}
-	// 3. 过滤
-	q = strings.ToLower(strings.TrimSpace(q))
-	res := out[:0]
-	for _, it := range out {
-		if q != "" && !strings.Contains(strings.ToLower(it.Name+" "+it.Title+" "+it.Description), q) {
-			continue
+	// 3. 先过滤、再取当页
+	found := pagination.Paginate(out, pagination.AdminQuery(req.Page, req.PageSize), func(it SkillItem) bool {
+		if !pagination.MatchKeyword(req.Q, it.Name, it.Title, it.Description) {
+			return false
 		}
-		if (status == "enabled" && !it.Enabled) || (status == "disabled" && it.Enabled) {
-			continue
+		switch req.Status {
+		case "enabled":
+			return it.Enabled
+		case "disabled":
+			return !it.Enabled
+		case "builtin":
+			return it.Source == SkillSourceBuiltin
 		}
-		res = append(res, it)
-	}
-	return res, nil
+		return true
+	})
+	return &SkillPage{Result: found, HasImported: len(list) > 0}, nil
 }
 
 func builtinItem(b skills.Brief) SkillItem {

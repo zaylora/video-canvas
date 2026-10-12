@@ -3,7 +3,7 @@ export type ThemeSetting = "system" | "light" | "dark";
 
 const query = window.matchMedia("(prefers-color-scheme: dark)");
 
-let current: ThemeSetting = "system";
+let current: ThemeSetting = "dark";
 
 function sync() {
   const dark = current === "system" ? query.matches : current === "dark";

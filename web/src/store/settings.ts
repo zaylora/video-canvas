@@ -63,7 +63,7 @@ const DEFAULT_SETTINGS: Settings = {
   background: "dots",
   snapToGrid: false,
   wheelMode: "pan",
-  theme: "system",
+  theme: "dark",
   showHints: true,
   defaultModels: {},
   customModels: [],

@@ -82,13 +82,12 @@ type Request struct {
 
 // Target 是请求发往的渠道。
 type Target struct {
-	ChannelKey      string  // 渠道 key，限流按它分组
-	BaseURL         string  // 渠道地址，请求发往 BaseURL + /v1/chat/completions
-	APIKey          string  // 渠道 Key，用 Bearer 鉴权
-	UpstreamModel   string  // 上游模型名
-	TrustedInternal bool    // 允许地址解析到内网（自建网关）；只有超级管理员能给渠道开启
-	RPS             float64 // 每秒最多发起几次请求，0 不限
-	MaxConcurrency  int     // 同时在途的请求数上限，0 不限
+	ChannelKey     string  // 渠道 key，限流按它分组
+	BaseURL        string  // 渠道地址，请求发往 BaseURL + /v1/chat/completions
+	APIKey         string  // 渠道 Key，用 Bearer 鉴权
+	UpstreamModel  string  // 上游模型名
+	RPS            float64 // 每秒最多发起几次请求，0 不限
+	MaxConcurrency int     // 同时在途的请求数上限，0 不限
 }
 
 // Usage 是上游报告的 Token 用量。

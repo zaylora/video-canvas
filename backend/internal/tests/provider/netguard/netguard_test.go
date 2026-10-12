@@ -305,7 +305,7 @@ func TestClient_解析失败与无结果(t *testing.T) {
 
 func TestClient_自定义IPAllowed让白名单域名落在回环(t *testing.T) {
 	// 证明拨号确实使用注入的解析结果（而不是系统 DNS）：域名根本不存在，却能连上测试服务器
-	// （这也是“渠道级内网例外”的用法：trusted_internal 的渠道传入放行内网的 IPAllowed）
+	// （测试和本机开发注入 IPAllowed 的用法；渠道上不再有“允许访问内网”开关）
 	srv, hits := countingServer(t)
 	u, _ := url.Parse(srv.URL)
 	cfg := &netguard.Config{
@@ -575,4 +575,126 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 			t.Fatal("自定义 Resolver 被覆盖")
 		}
 	})
+}
+
+// allowed 传 nil 表示不限域名：任意域名都能连（只要 IP 不在内网），内网仍然拦截；传空切片则拒绝一切域名。
+func TestClient_不限域名时只拦内网(t *testing.T) {
+	srv, hits := countingServer(t)
+	u, _ := url.Parse(srv.URL)
+	cfg := &netguard.Config{
+		Resolver:  mapResolver{"cdn.any-host.test": {ip("127.0.0.1")}, "evil.any-host.test": {ip("10.0.0.5")}},
+		IPAllowed: onlyLoopback,
+	}
+	port := u.Port()
+
+	if _, err := get(newClient(cfg, nil), "http://cdn.any-host.test:"+port); err != nil {
+		t.Fatalf("不限域名时任意域名都应放行：%v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("请求应到达服务器，实际 %d 次", hits.Load())
+	}
+
+	before := hits.Load()
+	_, err := get(newClient(cfg, nil), "http://evil.any-host.test:"+port)
+	if !errors.Is(err, netguard.ErrBlockedAddress) {
+		t.Fatalf("解析到内网的域名仍应被拦截：%v", err)
+	}
+	if hits.Load() != before {
+		t.Fatal("被拦截的请求不应到达服务器")
+	}
+
+	// 不限域名不等于不检查协议与用户名密码
+	for _, target := range []string{"ftp://cdn.any-host.test/x", "http://user:pw@cdn.any-host.test:" + port + "/"} {
+		if _, err := get(newClient(cfg, nil), target); !errors.Is(err, netguard.ErrHostNotAllowed) {
+			t.Errorf("%s 应被拒绝：%v", target, err)
+		}
+	}
+
+	// 空切片（非 nil）依旧是“白名单为空，拒绝一切”
+	if _, err := get(newClient(cfg, []string{}), "http://cdn.any-host.test:"+port); !errors.Is(err, netguard.ErrHostNotAllowed) {
+		t.Fatalf("空白名单应拒绝一切域名：%v", err)
+	}
+}
+
+// 不限域名时，重定向到内网也要在拨号时被拦住。
+func TestClient_不限域名时重定向到内网被拦截(t *testing.T) {
+	var internalHits atomic.Int32
+	internal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		internalHits.Add(1)
+		_, _ = w.Write([]byte("secret"))
+	}))
+	t.Cleanup(internal.Close)
+	iu, _ := url.Parse(internal.URL)
+
+	publicSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://internal.any-host.test:"+iu.Port()+"/x", http.StatusFound)
+	}))
+	t.Cleanup(publicSrv.Close)
+	pu, _ := url.Parse(publicSrv.URL)
+
+	cfg := &netguard.Config{
+		Resolver:  mapResolver{"public.any-host.test": {ip("127.0.0.1")}, "internal.any-host.test": {ip("10.0.0.5")}},
+		IPAllowed: onlyLoopback,
+	}
+	_, err := get(newClient(cfg, nil), "http://public.any-host.test:"+pu.Port())
+	if !errors.Is(err, netguard.ErrBlockedAddress) {
+		t.Fatalf("重定向到内网应被拦截：%v", err)
+	}
+	if internalHits.Load() != 0 {
+		t.Fatal("重定向目标不应被访问")
+	}
+}
+
+func TestCheckURLScheme(t *testing.T) {
+	tests := []struct {
+		scheme, host string
+		userinfo     bool
+		wantErr      bool
+	}{
+		{"https", "any.example.com", false, false},
+		{"http", "cdn.any-host.test", false, false},
+		{"https", "93.184.216.34", false, false}, // 字面量 IP 交给拨号时的内网校验
+		{"ftp", "a.com", false, true},
+		{"file", "", false, true},
+		{"https", "", false, true},
+		{"https", ".", false, true},
+		{"https", "a.com", true, true},
+	}
+	for _, tt := range tests {
+		err := netguard.CheckURLScheme(tt.scheme, tt.host, tt.userinfo)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("%+v: err=%v", tt, err)
+		}
+		if err != nil && !errors.Is(err, netguard.ErrHostNotAllowed) {
+			t.Errorf("%+v: 应是 ErrHostNotAllowed：%v", tt, err)
+		}
+	}
+}
+
+// 开发机上代理工具的 Fake-IP 模式把所有域名解析到 198.18.0.0/15：打开这个选项只放行这一个网段，其余内网照拦。
+func TestIPAllowedWithFakeIP(t *testing.T) {
+	tests := []struct {
+		ip         string
+		wantStrict bool // 默认策略（IsBlockedIP 取反）
+		wantFake   bool // 放行 Fake-IP 的策略
+	}{
+		{"198.18.0.35", false, true}, {"198.19.255.255", false, true}, {"198.18.0.0", false, true},
+		{"::ffff:198.18.0.35", false, true},                        // IPv4 映射写法同样放行
+		{"198.17.255.255", true, true}, {"198.20.0.0", true, true}, // 相邻网段本来就不在黑名单里
+		{"127.0.0.1", false, false}, {"10.0.0.5", false, false}, {"192.168.1.1", false, false},
+		{"169.254.169.254", false, false}, {"100.100.100.200", false, false}, {"::1", false, false},
+		{"8.8.8.8", true, true},
+	}
+	for _, tt := range tests {
+		ip := net.ParseIP(tt.ip)
+		if got := !netguard.IsBlockedIP(ip); got != tt.wantStrict {
+			t.Errorf("默认策略 %s = %v，期望 %v", tt.ip, got, tt.wantStrict)
+		}
+		if got := netguard.IPAllowedWithFakeIP(ip); got != tt.wantFake {
+			t.Errorf("放行 Fake-IP 的策略 %s = %v，期望 %v", tt.ip, got, tt.wantFake)
+		}
+	}
+	if netguard.IPAllowedWithFakeIP(nil) {
+		t.Error("nil 必须被拒绝")
+	}
 }

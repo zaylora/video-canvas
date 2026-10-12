@@ -15,8 +15,10 @@ import (
 
 	"video-canvas/internal/imageproc"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/service"
+	"video-canvas/pkg/pagination"
 )
 
 // fakeProcessorAdmin 实现 handler.ImageProcessorAdminService，记录收到的参数，可注入业务错误。
@@ -29,6 +31,7 @@ type fakeProcessorAdmin struct {
 	targetID  uint64
 	published int
 	calls     []string
+	listReq   model.ListProcessorReq // List 收到的查询参数
 }
 
 func (f *fakeProcessorAdmin) view(id uint64) *service.ProcessorView {
@@ -36,11 +39,18 @@ func (f *fakeProcessorAdmin) view(id uint64) *service.ProcessorView {
 }
 
 func (f *fakeProcessorAdmin) Presets() []imageproc.Preset { return imageproc.Presets() }
-func (f *fakeProcessorAdmin) List(context.Context) ([]service.ProcessorView, error) {
+func (f *fakeProcessorAdmin) List(_ context.Context, req *model.ListProcessorReq) (*service.ProcessorPage, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	return []service.ProcessorView{*f.view(1)}, nil
+	f.listReq = *req
+	return &service.ProcessorPage{Result: pagination.Result[service.ProcessorView]{List: []service.ProcessorView{*f.view(1)}, Total: 1, Page: 1, PageSize: 20}}, nil
+}
+func (f *fakeProcessorAdmin) Options(context.Context) ([]service.ProcessorOption, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []service.ProcessorOption{{ID: 1, Name: "R2 处理", StorageID: 2, Status: "draft"}}, nil
 }
 func (f *fakeProcessorAdmin) Get(_ context.Context, id uint64) (*service.ProcessorView, error) {
 	f.targetID = id
@@ -117,6 +127,7 @@ func newProcessorEnv() *processorEnv {
 	g := r.Group(processorBase)
 	g.GET("", h.List)
 	g.GET("/presets", h.Presets)
+	g.GET("/options", h.Options)
 	g.POST("", h.Create)
 	g.GET("/:id", h.Get)
 	g.PUT("/:id", h.Update)
@@ -144,6 +155,37 @@ func (e *processorEnv) do(t *testing.T, method, path string, body any) (*httptes
 	var resp storageResp
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	return w, resp
+}
+
+func TestAdminImageProcessor_ListQueryAndOptions(t *testing.T) {
+	t.Run("响应是分页结构", func(t *testing.T) {
+		env := newProcessorEnv()
+		w, resp := env.do(t, http.MethodGet, processorBase, nil)
+		if w.Code != http.StatusOK || !strings.Contains(string(resp.Data), `"list"`) || !strings.Contains(string(resp.Data), `"total":1`) {
+			t.Fatalf("实际 %d %s", w.Code, w.Body.String())
+		}
+	})
+	t.Run("q / status / page / page_size 原样传给 service", func(t *testing.T) {
+		env := newProcessorEnv()
+		env.do(t, http.MethodGet, processorBase+"?q=cf&status=published&page=2&page_size=30", nil)
+		got := env.svc.listReq
+		if got.Q != "cf" || got.Status != "published" || got.Page != 2 || got.PageSize != 30 {
+			t.Errorf("参数没传对：%+v", got)
+		}
+	})
+	t.Run("非法状态 400", func(t *testing.T) {
+		env := newProcessorEnv()
+		if w, _ := env.do(t, http.MethodGet, processorBase+"?status=bogus", nil); w.Code != http.StatusBadRequest {
+			t.Fatalf("实际 %d", w.Code)
+		}
+	})
+	t.Run("options 返回不分页的数组", func(t *testing.T) {
+		env := newProcessorEnv()
+		w, resp := env.do(t, http.MethodGet, processorBase+"/options", nil)
+		if w.Code != http.StatusOK || !strings.HasPrefix(string(resp.Data), "[") || !strings.Contains(string(resp.Data), "storage_id") {
+			t.Fatalf("实际 %d %s", w.Code, w.Body.String())
+		}
+	})
 }
 
 func TestAdminImageProcessor_ListGetPresets(t *testing.T) {

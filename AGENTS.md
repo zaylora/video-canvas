@@ -24,6 +24,7 @@
 - 不覆盖或回退用户已有的未提交改动。修改前查看 `git status`，只编辑当前任务需要的文件。
 - 不把密钥、令牌、真实数据库连接串或生成的运行时数据写入仓库。
 - 不需要使用 playright 进行端到端测试
+- 前端格式化和 lint 只用仓库自带的 oxfmt / oxlint（`web/` 下 `bun run format`、`bun run format:check`、`bun run lint`），不要用 prettier 或编辑器的默认格式化，否则会把无关代码改成另一种风格。本机默认 node 是 v16，直接跑会报 `ERR_UNKNOWN_FILE_EXTENSION`，改用 `bun node_modules/oxfmt/bin/oxfmt <文件>` 和 `bun node_modules/oxlint/bin/oxlint src`。
 
 ## 关键架构记忆
 

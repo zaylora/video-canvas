@@ -177,7 +177,6 @@ function PluginDialogBody({
   const endpoints = meta?.endpoints ?? {};
   const hasAsync = Object.values(endpoints).some((value) => value?.mode === "async");
   const poll = meta?.poll ?? {};
-  const hosts = Array.isArray(meta?.allowedHosts) ? meta.allowedHosts : [];
   const info: Array<{ term: string; value: ReactNode }> = [
     {
       term: "插件标识",
@@ -213,20 +212,6 @@ function PluginDialogBody({
         `提交 ${poll.firstDelay ?? 10} 秒后开始，每 ${poll.interval ?? 5} 秒一次，最长间隔 ${poll.maxInterval ?? 15} 秒`
       ) : (
         <span className="text-muted-foreground">全部同步返回，无需查询</span>
-      ),
-    },
-    {
-      term: "允许下载结果的域名",
-      value: hosts.length ? (
-        <span className="flex flex-wrap gap-1">
-          {hosts.map((host) => (
-            <Tag key={host} mono>
-              {host}
-            </Tag>
-          ))}
-        </span>
-      ) : (
-        <span className="text-muted-foreground">仅渠道的 Base URL</span>
       ),
     },
   ];

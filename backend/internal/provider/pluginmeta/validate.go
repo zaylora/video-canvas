@@ -53,7 +53,6 @@ func Validate(raw []byte, hooks []string) (*Meta, []modelcfg.Issue) {
 	v.identity(obj, m)
 	v.auth(obj, m)
 	v.endpoints(obj, m)
-	v.allowedHosts(obj, m)
 	m.ChannelSettings = v.settings("meta.channelSettings", obj["channelSettings"])
 	v.importMeta(obj, m)
 	v.poll(obj, m)
@@ -135,11 +134,13 @@ func (v *validator) identity(obj jsonObject, m *Meta) {
 			v.add("meta.name", "最长 %d 个字符", MaxNameLen)
 		}
 	}
-	if v.required(obj, "version", &m.Version) {
-		if len(m.Version) > MaxVersionLen {
-			v.add("meta.version", "最长 %d 个字符", MaxVersionLen)
-		} else if !semverRe.MatchString(m.Version) {
-			v.add("meta.version", "必须是 semver 版本号，如 1.2.3 或 1.2.3-rc.1")
+	// version 不是预检的必填项：代码里没写、写成数字、不是 semver 都不报问题。
+	// 上传时由服务层决定最终登记的版本号（缺失或不合法就自动补，见 docs/design/插件简化/插件简化.md §6.5）；
+	// 这里只把代码里写的字符串原样带出来，让服务层判断“代码里声明的是什么”。内置插件必须写合法的版本号，登记时另行检查。
+	if raw, ok := obj["version"]; ok {
+		var declared string
+		if json.Unmarshal(raw, &declared) == nil {
+			m.Version = declared
 		}
 	}
 	v.field(obj, "meta", "description", &m.Description)
@@ -185,11 +186,14 @@ func (v *validator) auth(obj jsonObject, m *Meta) {
 	}
 }
 
-// endpoints 检查 endpoint 声明，并按 mode 检查必须实现的钩子。
+// endpoints 检查 endpoint 声明（一个插件只管一种类型），并按 mode 检查必须实现的钩子。
 func (v *validator) endpoints(obj jsonObject, m *Meta) {
 	eps, ok := v.object(obj["endpoints"], "meta.endpoints")
 	if (ok && len(eps) == 0) || !isPresent(obj, "endpoints") {
 		v.add("meta.endpoints", "至少声明一种 endpoint（%s）", strings.Join(modelcfg.Kinds, " / "))
+	}
+	if len(eps) > 1 {
+		v.add("meta.endpoints", "一个插件只能支持一种类型（现在声明了 %s），请按类型拆成多个插件", strings.Join(sortedKeys(eps), " / "))
 	}
 	m.Endpoints = map[string]Endpoint{}
 	for _, kind := range sortedKeys(eps) {
@@ -227,27 +231,6 @@ func (v *validator) endpoints(obj jsonObject, m *Meta) {
 		if !v.hooks[h] {
 			v.add("exports."+h, "缺少钩子 %s：每种 endpoint 都要实现提交", h)
 		}
-	}
-}
-
-// allowedHosts 检查结果下载域名白名单：每项是小写域名或 *.example.com，不含 IP 与过宽通配。
-func (v *validator) allowedHosts(obj jsonObject, m *Meta) {
-	var raws []json.RawMessage
-	if !v.field(obj, "meta", "allowedHosts", &raws) {
-		return
-	}
-	for i, raw := range raws {
-		path := fmt.Sprintf("meta.allowedHosts[%d]", i)
-		var h string
-		if err := json.Unmarshal(raw, &h); err != nil {
-			v.add(path, "类型不对，应为字符串")
-			continue
-		}
-		if err := modelcfg.ValidateHostPattern(h); err != nil {
-			v.add(path, "%s", err.Error())
-			continue
-		}
-		m.AllowedHosts = append(m.AllowedHosts, h)
 	}
 }
 

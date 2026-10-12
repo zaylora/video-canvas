@@ -83,11 +83,14 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		env.tokens[int(id)] = tok
 	}
 	lookup := func(_ context.Context, id uint64) (string, error) { return env.roles[id], nil }
+	pluginSvc := service.NewAIPluginService(repo, repo, repo, env.checker, cfg)
+	channelSvc := service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)
 	env.engine = router.New(gin.TestMode, aicJWTSecret, router.Handlers{
 		AIModel:      NewAIModelHandler(cfg),
 		AdminAI:      NewAdminAIHandler(cfg),
-		AdminPlugin:  NewAdminPluginHandler(service.NewAIPluginService(repo, repo, repo, env.checker, cfg)),
-		AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)),
+		AdminCatalog: NewAdminCatalogHandler(service.NewAICatalogService(channelSvc, pluginSvc, cfg)),
+		AdminPlugin:  NewAdminPluginHandler(pluginSvc),
+		AdminChannel: NewAdminChannelHandler(channelSvc),
 		AdminStats:   NewAdminStatsHandler(service.NewAIStatsService(env.stats, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
@@ -453,12 +456,41 @@ func TestAdminPluginHandler_Upload(t *testing.T) {
 		}
 	})
 
-	t.Run("版本号重复：200 + issues 报在 meta.version", func(t *testing.T) {
+	t.Run("版本号没调整：响应里没有 version_adjusted", func(t *testing.T) {
+		env := newEnv(t)
+		r := env.upload("file", "a.js", []byte("good-v1"), aicSuperUser)
+		aicWant(t, r, http.StatusOK, 0)
+		if strings.Contains(r.Raw, "version_adjusted") {
+			t.Fatalf("没有调整时不该返回 version_adjusted：%s", r.Raw)
+		}
+	})
+
+	t.Run("代码改了、版本号没改：自动登记为下一个补丁版本，响应带 version_adjusted", func(t *testing.T) {
+		env := newEnv(t)
+		env.checker.ByCode["good-v1-fixed"] = &provider.PrecheckResult{OK: true, Meta: json.RawMessage(aicMeta("kling", "1.0.0"))}
+		aicWant(t, env.upload("file", "a.js", []byte("good-v1"), aicSuperUser), http.StatusOK, 0)
+		r := env.upload("file", "a.js", []byte("good-v1-fixed"), aicSuperUser)
+		aicWant(t, r, http.StatusOK, 0)
+		var d struct {
+			Accepted        bool           `json:"accepted"`
+			Version         map[string]any `json:"version"`
+			VersionAdjusted map[string]any `json:"version_adjusted"`
+		}
+		if err := json.Unmarshal(r.Data, &d); err != nil || !d.Accepted || d.Version["version"] != "1.0.1" {
+			t.Fatalf("应登记为 1.0.1：%v %s", err, r.Raw)
+		}
+		if d.VersionAdjusted["from"] != "1.0.0" || d.VersionAdjusted["to"] != "1.0.1" {
+			t.Fatalf("version_adjusted 不符合预期：%v", d.VersionAdjusted)
+		}
+	})
+
+	t.Run("代码与已有版本完全相同：200 + accepted=false，问题报在 meta 上", func(t *testing.T) {
 		env := newEnv(t)
 		aicWant(t, env.upload("file", "a.js", []byte("good-v1"), aicSuperUser), http.StatusOK, 0)
 		r := env.upload("file", "a.js", []byte("good-v1"), aicSuperUser)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"accepted":false`) || !strings.Contains(r.Raw, `"path":"meta.version"`) {
+		if !strings.Contains(r.Raw, `"accepted":false`) || !strings.Contains(r.Raw, `"path":"meta"`) || !strings.Contains(r.Raw, "完全相同") ||
+			!strings.Contains(r.Raw, `"version":null`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
 		}
 	})
@@ -498,15 +530,18 @@ func TestAdminPluginHandler_ListEnabledDelete(t *testing.T) {
 	t.Run("列表：admin 可读，带版本与 meta", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/plugins", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []struct {
-			Key      string `json:"key"`
-			Versions []struct {
-				Version      string         `json:"version"`
-				ChannelCount int            `json:"channel_count"`
-				Meta         map[string]any `json:"meta"`
-			} `json:"versions"`
+		var page struct {
+			List []struct {
+				Key      string `json:"key"`
+				Versions []struct {
+					Version      string         `json:"version"`
+					ChannelCount int            `json:"channel_count"`
+					Meta         map[string]any `json:"meta"`
+				} `json:"versions"`
+			} `json:"list"`
 		}
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 2 || len(list[0].Versions) != 1 || list[0].Versions[0].Meta["key"] != "kling" {
+		list := &page.List
+		if err := json.Unmarshal(r.Data, &page); err != nil || len(*list) != 2 || len((*list)[0].Versions) != 1 || (*list)[0].Versions[0].Meta["key"] != "kling" {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		if strings.Contains(r.Raw, `"code":"`) {
@@ -561,8 +596,11 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 			t.Fatal(err)
 		}
 		if v["key"] != "kling-main" || v["plugin_version"] != "1.0.0" || v["secret_set"] != false || v["enabled"] != true ||
-			v["trusted_internal"] != false || v["allow_credentials"] != false || v["base_url"] != "https://gw.example.com" {
+			v["allow_credentials"] != false || v["base_url"] != "https://gw.example.com" {
 			t.Fatalf("视图不符合预期：%v", v)
+		}
+		if _, has := v["trusted_internal"]; has {
+			t.Fatalf("渠道视图不应再有 trusted_internal（“允许访问内网”已取消）：%v", v)
 		}
 		if st := v["settings"].(map[string]any); st["tenant"] != "t1" || st["region"] != "cn" {
 			t.Fatalf("settings 应带默认值：%v", st)
@@ -604,20 +642,26 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 			t.Fatalf("msg 应指出必填设置项：%s", r.Msg)
 		}
 	})
-	t.Run("enabled=false 与两个安全开关可在创建时指定", func(t *testing.T) {
+	t.Run("enabled=false 与“允许插件读取 Key”可在创建时指定；旧客户端传 trusted_internal 被忽略", func(t *testing.T) {
 		body := aicChannelJSON("kling-off", "1.0.0")
 		body["enabled"], body["trusted_internal"], body["allow_credentials"] = false, true, true
 		r := env.super(http.MethodPost, path, body)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"enabled":false`) || !strings.Contains(r.Raw, `"trusted_internal":true`) || !strings.Contains(r.Raw, `"allow_credentials":true`) {
+		if !strings.Contains(r.Raw, `"enabled":false`) || !strings.Contains(r.Raw, `"allow_credentials":true`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+		if strings.Contains(r.Raw, "trusted_internal") {
+			t.Fatalf("响应不应再有 trusted_internal：%s", r.Raw)
 		}
 	})
 	t.Run("列表与详情：admin 可读", func(t *testing.T) {
 		r := env.admin(http.MethodGet, path, nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 2 || list[0]["key"] != "kling-main" {
+		var page struct {
+			List  []map[string]any `json:"list"`
+			Total int              `json:"total"`
+		}
+		if err := json.Unmarshal(r.Data, &page); err != nil || page.Total != 2 || len(page.List) != 2 || page.List[0]["key"] != "kling-main" {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		aicWant(t, env.admin(http.MethodGet, path+"/kling-main", nil), http.StatusOK, 0)
@@ -942,8 +986,8 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 	t.Run("列表带 label 与 channel，且不含正文", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/models", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 1 {
+		list, err := aicPageList(r)
+		if err != nil || len(list) != 1 {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		if list[0]["key"] != "m1" || list[0]["label"] != "线上新名" || list[0]["channel"] != "kling-main" || list[0]["kind"] != "video" {
@@ -961,8 +1005,8 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		body["vendor"], body["tags"] = "kling", []any{"推荐", "带音轨"}
 		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": body}), http.StatusOK, 0)
 		r := env.admin(http.MethodGet, aicBase+"/models", nil)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil {
+		list, err := aicPageList(r)
+		if err != nil {
 			t.Fatal(err)
 		}
 		for _, it := range list {

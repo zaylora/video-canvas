@@ -93,7 +93,6 @@ type ChannelView struct {
 	PluginVersionID  uint64             `json:"plugin_version_id"`
 	PluginVersion    string             `json:"plugin_version"` // 固定的插件版本号（semver）；版本行缺失时为空串
 	BaseURL          string             `json:"base_url"`
-	TrustedInternal  bool               `json:"trusted_internal"`
 	AllowCredentials bool               `json:"allow_credentials"`
 	Settings         map[string]any     `json:"settings"`
 	RateLimit        provider.RateLimit `json:"rate_limit"`
@@ -111,7 +110,6 @@ type ChannelCreateInput struct {
 	PluginKey        string
 	PluginVersion    string // semver 字符串，固定到这个版本
 	BaseURL          string
-	TrustedInternal  bool
 	AllowCredentials bool
 	Settings         map[string]any
 	RateLimit        provider.RateLimit
@@ -125,7 +123,6 @@ type ChannelUpdateInput struct {
 	Name             *string
 	PluginVersion    *string
 	BaseURL          *string
-	TrustedInternal  *bool
 	AllowCredentials *bool
 	Settings         map[string]any      // nil 表示不改；非 nil（含空对象）表示整体替换
 	RateLimit        *provider.RateLimit // nil 表示不改
@@ -140,7 +137,6 @@ type ChannelCheckDraftInput struct {
 	PluginKey        string
 	PluginVersion    string
 	BaseURL          string
-	TrustedInternal  bool
 	AllowCredentials bool
 	Settings         map[string]any
 	Secret           string
@@ -207,7 +203,7 @@ func (s *AIChannelService) Get(ctx context.Context, key string) (*ChannelView, e
 }
 
 // Create 新建渠道。所有校验不通过都返回 ErrChannelInvalid（原因写进 msg），key 重复返回 ErrChannelExists。
-// trusted_internal / allow_credentials 一开始就是 true 的，各补一条审计（这两个开关是安全边界，创建时打开同样要留痕）。
+// allow_credentials 一开始就是 true 的，补一条审计（这个开关是安全边界，创建时打开同样要留痕）。
 func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*ChannelView, error) {
 	// 1. 基础字段
 	var problems []string
@@ -245,8 +241,8 @@ func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*
 	}
 	ch := &model.AIChannel{
 		Key: in.Key, Name: name, PluginKey: in.PluginKey, PluginVersionID: target.version.ID, BaseURL: baseURL,
-		TrustedInternal: in.TrustedInternal, AllowCredentials: in.AllowCredentials,
-		SettingsJSON: model.JSONText(settingsJSON), RateLimitJSON: model.JSONText(rateJSON),
+		AllowCredentials: in.AllowCredentials,
+		SettingsJSON:     model.JSONText(settingsJSON), RateLimitJSON: model.JSONText(rateJSON),
 		Enabled: in.Enabled, UpdatedBy: in.ActorID,
 	}
 	if err := s.repo.CreateChannel(ctx, ch); errors.Is(err, repository.ErrDuplicate) {
@@ -260,9 +256,6 @@ func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*
 	aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelCreate, model.AuditTargetChannel, ch.Key, map[string]any{
 		"plugin_key": ch.PluginKey, "plugin_version": target.version.Version, "enabled": ch.Enabled,
 	})
-	if ch.TrustedInternal {
-		aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelTrusted, model.AuditTargetChannel, ch.Key, map[string]any{"from": false, "to": true})
-	}
 	if ch.AllowCredentials {
 		aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelCred, model.AuditTargetChannel, ch.Key, map[string]any{"from": false, "to": true})
 	}
@@ -287,7 +280,7 @@ func (s *AIChannelService) view(ctx context.Context, ch *model.AIChannel, versio
 	}
 	v := &ChannelView{
 		Key: ch.Key, Name: ch.Name, PluginKey: ch.PluginKey, PluginVersionID: ch.PluginVersionID, PluginVersion: version,
-		BaseURL: ch.BaseURL, TrustedInternal: ch.TrustedInternal, AllowCredentials: ch.AllowCredentials,
+		BaseURL: ch.BaseURL, AllowCredentials: ch.AllowCredentials,
 		Settings: decodeObject(ch.SettingsJSON), Enabled: ch.Enabled, SecretSet: set,
 		UpdatedBy: ch.UpdatedBy, UpdatedAt: ch.UpdatedAt, CreatedAt: ch.CreatedAt,
 	}

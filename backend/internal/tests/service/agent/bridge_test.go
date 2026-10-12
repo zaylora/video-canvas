@@ -93,7 +93,7 @@ func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
 	caps.Vision = true
 	reg := &fakeBridgeRegistry{snap: &provider.Snapshot{
 		Model:   provider.ModelSnapshot{Key: "claude", Kind: "agent", UpstreamModel: "claude-up", Pricing: billingPricing, Capabilities: caps},
-		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: "https://llm.example", TrustedInternal: true, RateLimit: provider.RateLimit{RPS: 2, MaxConcurrency: 3}},
+		Channel: provider.ChannelSnapshot{Key: "ch1", BaseURL: "https://llm.example", RateLimit: provider.RateLimit{RPS: 2, MaxConcurrency: 3}},
 	}, models: []provider.ModelInfo{
 		{Key: "seedream", Kind: "image", Label: "Seedream", Hint: "图片模型", Capabilities: modelcfg.Capabilities{Ops: []string{"t2i"}}},
 		{Key: "claude", Kind: "agent", Label: "Claude"},
@@ -179,7 +179,7 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		}
 		s := b.str
 		if s.tg.BaseURL != "https://llm.example" || s.tg.APIKey != "sk-test" || s.tg.UpstreamModel != "claude-up" || s.tg.ChannelKey != "ch1" ||
-			s.tg.RPS != 2 || s.tg.MaxConcurrency != 3 || !s.tg.TrustedInternal {
+			s.tg.RPS != 2 || s.tg.MaxConcurrency != 3 {
 			t.Errorf("目标应来自渠道快照和凭证: %+v", s.tg)
 		}
 		if s.lim.MaxTokens != 8192 || string(s.body) != string(body) {

@@ -3,12 +3,16 @@ import type { TaskView } from "@/api/generation-task/type";
 import { adminAiEndpoints as ep, saveBody } from "./endpoints";
 import type {
   AdminMe,
+  AdminOverview,
+  AdminPage,
   AdminStats,
   AdminStatsDays,
   ChannelCheckDraftRequest,
   ChannelCheckResult,
   ChannelCreateRequest,
   ChannelImportResult,
+  ChannelListItem,
+  ChannelOption,
   ChannelUpdateRequest,
   ChannelLoad,
   ChannelView,
@@ -16,6 +20,11 @@ import type {
   ConfigListItem,
   DeleteCheckResult,
   DeleteTarget,
+  ListChannelsParams,
+  ListModelsParams,
+  ListPluginsParams,
+  ModelListItem,
+  PluginListItem,
   PluginUploadResult,
   PluginView,
   SaveModelResult,
@@ -42,19 +51,75 @@ export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined);
 export const getAdminStats = (days: AdminStatsDays, silent = false) =>
   service.get<AdminStats>(ep.stats(), { days }, silent ? { silent: true } : undefined);
 
+/**
+ * 总览页汇总：各类数量、可用数、待处理清单、渠道负载卡片要的精简渠道；一次请求，不拉全量清单
+ * @param silent 为 true 时失败不弹全局提示：后台刷新用，页面自己显示失败状态
+ * @returns 汇总；数组字段缺失时补成空数组
+ */
+export const getAdminOverview = async (silent = false): Promise<AdminOverview> => {
+  const ov = await service.get<AdminOverview>(
+    ep.overview(),
+    undefined,
+    silent ? { silent: true } : undefined,
+  );
+  return { ...ov, todos: ov.todos ?? [], channel_briefs: ov.channel_briefs ?? [] };
+};
+
 // ---------------------------------------------------------------- 插件
 
+/** 去掉空值，免得把 `q=` 之类的空参数发给后端 */
+const clean = (params: object) =>
+  Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ""));
+
+/** 分页响应兜底：后端对空列表可能返回 null */
+const pageOf = <T>(
+  page: AdminPage<T> | null | undefined,
+  params: { page?: number; page_size?: number },
+): AdminPage<T> => ({
+  list: page?.list ?? [],
+  total: page?.total ?? 0,
+  page: page?.page ?? params.page ?? 1,
+  page_size: page?.page_size ?? params.page_size ?? 20,
+});
+
+const withVersions = <T extends PluginView>(item: T): T => ({
+  ...item,
+  versions: item.versions ?? [],
+});
+
 /**
- * 插件与版本列表；versions 缺失时补成空数组
- * @returns 插件列表
+ * 插件分页列表（后端分页）；每行带版本、渠道数、旧版渠道数、在线模型数
+ * @param params 搜索词、能力、来源、状态与分页
+ * @returns 当前页插件与命中总数
  */
-export const listPlugins = async (): Promise<PluginView[]> => {
-  const list = await service.get<PluginView[] | null>(ep.plugins(), undefined);
-  return (list ?? []).map((item) => ({ ...item, versions: item.versions ?? [] }));
+export const listPlugins = async (
+  params: ListPluginsParams = {},
+): Promise<AdminPage<PluginListItem>> => {
+  const page = pageOf(
+    await service.get<AdminPage<PluginListItem> | null>(ep.plugins(), clean(params)),
+    params,
+  );
+  return { ...page, list: page.list.map(withVersions) };
 };
 
 /**
- * 上传插件文件（super_admin）；预检不通过也返回 200，结果在 accepted / issues 里
+ * 全部插件（带全部版本和 meta，不分页）：渠道弹窗选插件 / 版本、渲染设置项用
+ * @returns 插件列表；versions 缺失时补成空数组
+ */
+export const listPluginOptions = async (): Promise<PluginView[]> =>
+  ((await service.get<PluginView[] | null>(ep.pluginOptions(), undefined)) ?? []).map(withVersions);
+
+/**
+ * 插件详情（带全部版本）：深链 ?key= 打开插件弹窗时用，不依赖列表
+ * @param key 插件 key
+ * @returns 插件视图
+ */
+export const getPlugin = async (key: string): Promise<PluginView> =>
+  withVersions(await service.get<PluginView>(ep.plugin(key), undefined));
+
+/**
+ * 上传插件文件（super_admin）；预检不通过也返回 200，结果在 accepted / issues 里。
+ * 版本号被自动调整时结果带 version_adjusted，没有调整时为 null
  * @param file .js 文件（≤512KB）
  * @returns 预检结果
  */
@@ -66,6 +131,7 @@ export const uploadPlugin = async (file: File): Promise<PluginUploadResult> => {
     accepted: !!result?.accepted,
     issues: result?.issues ?? [],
     version: result?.version ?? null,
+    version_adjusted: result?.version_adjusted ?? null,
   };
 };
 
@@ -117,11 +183,24 @@ export const deleteTarget = (target: DeleteTarget, key: string) =>
 // ---------------------------------------------------------------- 渠道
 
 /**
- * 渠道列表
+ * 渠道分页列表（后端分页）；每行带健康状态、可升级版本、能力和模型数
+ * @param params 搜索词、能力、插件、状态与分页
+ * @returns 当前页渠道与命中总数
+ */
+export const listChannels = async (
+  params: ListChannelsParams = {},
+): Promise<AdminPage<ChannelListItem>> =>
+  pageOf(
+    await service.get<AdminPage<ChannelListItem> | null>(ep.channels(), clean(params)),
+    params,
+  );
+
+/**
+ * 全部渠道（带健康状态，不分页）：模型弹窗选渠道、批量迁移、导入、升级、概览用
  * @returns 渠道列表
  */
-export const listChannels = async () =>
-  (await service.get<ChannelView[] | null>(ep.channels(), undefined)) ?? [];
+export const listChannelOptions = async (): Promise<ChannelOption[]> =>
+  (await service.get<ChannelOption[] | null>(ep.channelOptions(), undefined)) ?? [];
 
 /**
  * 各渠道当前的任务负载（生成中 / 排队数）
@@ -200,11 +279,21 @@ export const importFromChannel = async (
 // ---------------------------------------------------------------- 模型
 
 /**
- * 模型列表
- * @returns 模型列表
+ * 模型分页列表（后端分页）；每行带状态、原因和渠道名
+ * @param params 搜索词、类型、渠道、状态与分页
+ * @returns 当前页模型与命中总数
  */
-export const listModels = async () =>
-  (await service.get<ConfigListItem[] | null>(ep.models(), undefined)) ?? [];
+export const listModels = async (
+  params: ListModelsParams = {},
+): Promise<AdminPage<ModelListItem>> =>
+  pageOf(await service.get<AdminPage<ModelListItem> | null>(ep.models(), clean(params)), params);
+
+/**
+ * 全部模型的列表项（不分页，不含状态）：概览、渠道导入弹窗判重用
+ * @returns 模型列表项
+ */
+export const listModelOptions = async (): Promise<ConfigListItem[]> =>
+  (await service.get<ConfigListItem[] | null>(ep.modelOptions(), undefined)) ?? [];
 
 /**
  * 模型详情（配置正文 + 启用状态）

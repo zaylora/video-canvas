@@ -17,6 +17,7 @@ import (
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/storage"
+	"video-canvas/pkg/pagination"
 )
 
 // StorageConfigRepo 是存储配置服务的数据访问接口，由 repository.StorageConfigRepository 实现。
@@ -242,23 +243,81 @@ func (s *StorageConfigService) view(row *model.StorageConfig, assets int64, secr
 	return v
 }
 
-// List 返回全部存储（内置本地磁盘在最前），带素材数、是否被锁定、最近一次测试结果。
-func (s *StorageConfigService) List(ctx context.Context) ([]StorageView, error) {
+// StoragePage 是存储列表的一页：命中总数、当页行，以及默认存储的完整视图
+// （默认存储卡片据此展示，不受搜索和分页影响，它不在当页时也照样返回）。
+type StoragePage struct {
+	pagination.Result[StorageView]
+	Default *StorageView `json:"default"` // 没有默认存储为 null
+}
+
+// List 按关键字（名称 / 服务商 / 桶 / endpoint）筛选并分页返回存储（内置本地磁盘在最前），
+// 带素材数、是否被锁定、最近一次测试结果。素材数和密钥状态只对当页的行查询。
+func (s *StorageConfigService) List(ctx context.Context, req *model.ListStorageReq) (*StoragePage, error) {
 	rows, err := s.repo.List(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var defaultRow *model.StorageConfig
+	for i := range rows {
+		if rows[i].IsDefault {
+			defaultRow = &rows[i]
+		}
+	}
+	found := pagination.Paginate(rows, pagination.AdminQuery(req.Page, req.PageSize), func(r model.StorageConfig) bool {
+		return pagination.MatchKeyword(req.Q, r.Name, r.Provider, r.Bucket, r.Endpoint)
+	})
+	pageRows := found.List
 	counts, err := s.repo.AssetCounts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]StorageView, 0, len(rows))
-	for i := range rows {
-		set, err := s.secretSet(ctx, &rows[i])
+	out := make([]StorageView, 0, len(pageRows))
+	for i := range pageRows {
+		set, err := s.secretSet(ctx, &pageRows[i])
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *s.view(&rows[i], counts[rows[i].ID], set))
+		out = append(out, *s.view(&pageRows[i], counts[pageRows[i].ID], set))
+	}
+	page := &StoragePage{Result: pagination.Result[StorageView]{List: out, Total: found.Total, Page: found.Page, PageSize: found.PageSize}}
+	if defaultRow != nil {
+		set, err := s.secretSet(ctx, defaultRow)
+		if err != nil {
+			return nil, err
+		}
+		page.Default = s.view(defaultRow, counts[defaultRow.ID], set)
+	}
+	return page, nil
+}
+
+// StorageOption 是下拉和绑定判定用的存储精简视图：不含密钥状态、素材数、测试结果。
+type StorageOption struct {
+	ID            uint64 `json:"id"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+	Bucket        string `json:"bucket"`
+	Region        string `json:"region"`
+	Endpoint      string `json:"endpoint"`
+	PathPrefix    string `json:"path_prefix"`
+	PublicBaseURL string `json:"public_base_url"`
+	LocalDir      string `json:"local_dir,omitempty"` // 仅内置本地存储
+	IsDefault     bool   `json:"is_default"`
+}
+
+// Options 返回全部存储的精简视图（不分页，内置本地磁盘在最前），给图片服务的绑定表和向导用。
+func (s *StorageConfigService) Options(ctx context.Context) ([]StorageOption, error) {
+	rows, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]StorageOption, 0, len(rows))
+	for _, r := range rows {
+		o := StorageOption{ID: r.ID, Name: r.Name, Provider: r.Provider, Bucket: r.Bucket, Region: r.Region,
+			Endpoint: r.Endpoint, PathPrefix: r.PathPrefix, PublicBaseURL: r.PublicBaseURL, IsDefault: r.IsDefault}
+		if r.Builtin {
+			o.LocalDir = s.local.Dir
+		}
+		out = append(out, o)
 	}
 	return out, nil
 }

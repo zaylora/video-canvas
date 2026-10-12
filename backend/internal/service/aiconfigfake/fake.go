@@ -28,11 +28,14 @@ type MemRepo struct {
 
 	// 以下用来在测试里模拟插件 / 渠道 / 审计仓储的各种情形。
 	Audits         []model.AIAuditLog
-	AuditErr       error               // 非空时 InsertAudit 返回它
-	SaveVersionErr error               // 非空时 SaveVersion 返回它
-	ActiveTaskRefs map[uint64]int64    // 版本 id → 快照引用它的非终态任务数
-	Loads          []model.ChannelLoad // ChannelLoads 的返回值
-	DeleteInUse    bool                // 为 true 时 DeleteVersion / DeleteChannel / DeletePlugin / DeleteModel 一律返回 ErrInUse（模拟并发下被新引用）
+	AuditErr       error // 非空时 InsertAudit 返回它
+	SaveVersionErr error // 非空时 SaveVersion 返回它
+	// SaveVersionConflicts 模拟并发上传：大于 0 时，SaveVersion 先替“别人”登记一个同版本号的占位版本再返回 ErrDuplicate，
+	// 并把计数减 1；重试时重新读到的版本列表里就有对手的版本，和真实的唯一索引冲突一致。
+	SaveVersionConflicts int
+	ActiveTaskRefs       map[uint64]int64    // 版本 id → 快照引用它的非终态任务数
+	Loads                []model.ChannelLoad // ChannelLoads 的返回值
+	DeleteInUse          bool                // 为 true 时 DeleteVersion / DeleteChannel / DeletePlugin / DeleteModel 一律返回 ErrInUse（模拟并发下被新引用）
 
 	ChannelTaskRefs map[string]int64 // 渠道 key → 快照引用它的非终态任务数
 }

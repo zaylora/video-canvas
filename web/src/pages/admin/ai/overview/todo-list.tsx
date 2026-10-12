@@ -9,20 +9,20 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
+import { listChannelOptions, listPluginOptions } from "@/api/admin/ai";
+import type { OverviewTodo } from "@/api/admin/ai/type";
 import { Tag, toneClasses } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { AdminTodo } from "@/utils/admin/health";
 
 import { openSecretDialog } from "../channels/secret-dialog";
 import { confirmUpgradeChannels } from "../plugins/upgrade-channels";
-import type { AdminCatalog } from "../../use-admin";
 
 const TODO_TONE = { bad: "danger", warn: "warning", info: "info" } as const;
-const TODO_ICON: Record<AdminTodo["action"]["kind"], LucideIcon> = {
+const TODO_ICON: Record<OverviewTodo["action"]["kind"], LucideIcon> = {
   "set-key": KeyRound,
   "open-plugin": PlugZap,
   "open-channel": RadioTower,
@@ -30,64 +30,72 @@ const TODO_ICON: Record<AdminTodo["action"]["kind"], LucideIcon> = {
 };
 
 /**
- * 待处理清单：数据来自 adminTodos()，每条一个修复按钮，能就地修的就地修（设置 Key、一键升级），其余深链到对应位置。
+ * 待处理清单：数据来自后端汇总（GET /admin/ai/overview 的 todos），每条一个修复按钮，能就地修的就地修（设置 Key、一键升级），其余深链到对应位置。
  * - 修好之后清单重新计算，这一条向右淡出（DURATION.exit），其余行用 layout 补位；
  * - flash 变化时描边闪一下（总览顶部的“N 项待处理”点击后触发）；
  * - 没有写权限（非 super_admin）时按钮降级为“查看 / 去插件页”。
  * @param todos 待处理清单，没就绪时传空数组
- * @param ready 清单、渠道、插件都已加载
+ * @param ready 汇总已加载
  * @param canWrite 是否能管理渠道与插件
- * @param catalog 插件与渠道清单（修复后要刷新）
+ * @param onChanged 就地修复（设置 Key、一键升级）成功后，刷新汇总
  * @param flash 每变一次闪一次描边，0 表示不闪
  */
 export function TodoList({
   todos,
   ready,
   canWrite,
-  catalog,
+  onChanged,
   flash,
 }: {
-  todos: AdminTodo[];
+  todos: OverviewTodo[];
   ready: boolean;
   canWrite: boolean;
-  catalog: AdminCatalog;
+  onChanged: () => void;
   flash: number;
 }) {
   const navigate = useNavigate();
 
-  const run = ({ action }: AdminTodo) => {
+  const run = async ({ action }: OverviewTodo) => {
+    const channelKey = encodeURIComponent(action.channel_key ?? "");
+    const pluginKey = encodeURIComponent(action.plugin_key ?? "");
     if (action.kind === "set-key") {
-      const channel = catalog.channels.find((item) => item.key === action.channelKey);
-      if (canWrite && channel) {
+      // 待处理里的“设置 Key”一定是还没设置过 Key 的渠道，名字由后端一并带来
+      if (canWrite && action.channel_key) {
         openSecretDialog({
-          channelKey: channel.key,
-          channelName: channel.name,
-          secretSet: channel.secret_set,
-          onSaved: () => void catalog.reloadChannels(),
+          channelKey: action.channel_key,
+          channelName: action.channel_name ?? action.channel_key,
+          secretSet: false,
+          onSaved: onChanged,
         });
         return;
       }
-      navigate(`/admin/ai/channels?key=${encodeURIComponent(action.channelKey)}`);
+      navigate(`/admin/ai/channels?key=${channelKey}`);
     } else if (action.kind === "open-plugin") {
-      navigate(`/admin/ai/plugins?key=${encodeURIComponent(action.pluginKey)}`);
+      navigate(`/admin/ai/plugins?key=${pluginKey}`);
     } else if (action.kind === "upgrade-plugin") {
-      const plugin = catalog.plugins.find((item) => item.key === action.pluginKey);
-      if (canWrite && plugin) {
-        void confirmUpgradeChannels({
-          plugin,
-          channels: catalog.channels,
-          plugins: catalog.plugins,
-          onDone: catalog.reloadChannels,
-        });
-        return;
+      if (canWrite) {
+        // 升级要对照全量插件版本和渠道，点了才取（按需，不预加载）
+        try {
+          const [plugins, channels] = await Promise.all([
+            listPluginOptions(),
+            listChannelOptions(),
+          ]);
+          const plugin = plugins.find((item) => item.key === action.plugin_key);
+          if (plugin) {
+            void confirmUpgradeChannels({ plugin, channels, plugins, onDone: onChanged });
+            return;
+          }
+        } catch {
+          // 请求失败的全局 toast 已弹，退回到去插件页
+        }
       }
-      navigate(`/admin/ai/plugins?key=${encodeURIComponent(action.pluginKey)}`);
+      navigate(`/admin/ai/plugins?key=${pluginKey}`);
     } else {
-      navigate(`/admin/ai/channels?key=${encodeURIComponent(action.channelKey)}`);
+      navigate(`/admin/ai/channels?key=${channelKey}`);
     }
   };
 
-  const label = ({ action }: AdminTodo) =>
+  const label = ({ action }: OverviewTodo) =>
     action.kind === "set-key"
       ? canWrite
         ? "设置 Key"
@@ -149,7 +157,7 @@ export function TodoList({
                     size="sm"
                     variant="outline"
                     className="shrink-0"
-                    onClick={() => run(todo)}
+                    onClick={() => void run(todo)}
                   >
                     {label(todo)}
                   </Button>

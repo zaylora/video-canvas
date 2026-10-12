@@ -42,7 +42,7 @@ func realRunner(opts pluginrunner.Options) plugin.RunnerClient {
 }
 
 func execOn(runner plugin.RunnerClient, code string, mod func(*plugin.Options)) *plugin.Executor {
-	opts := plugin.Options{Runner: runner, Codes: codeStore{"code": code}, Secrets: secretResolver{value: "k"}}
+	opts := plugin.Options{Runner: runner, Codes: codeStore{"code": code}, Secrets: secretResolver{value: "k"}, IPAllowed: allowLoopback}
 	if mod != nil {
 		mod(&opts)
 	}
@@ -107,7 +107,8 @@ module.exports = {
 	}
 }
 
-// 请求描述指向非法主机：不发送，报插件级失败。
+// 请求描述写法非法（用户名密码、path 换主机、非 http 协议、路径穿越）：不发送，报插件级失败。
+// 绝对地址指向别的域名不再算非法（去掉了域名白名单），见 executor_open_hosts_test.go。
 func TestExecutorRejectsIllegalHosts(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,12 +118,11 @@ func TestExecutorRejectsIllegalHosts(t *testing.T) {
 	defer upstream.Close()
 
 	cases := map[string]string{
-		"不在白名单的绝对地址": `{method: "GET", url: "http://evil.example.org/steal"}`,
-		"带用户名密码":     `{method: "GET", url: "http://user:pw@evil.example.org/"}`,
-		"path 换主机":   `{method: "GET", path: "//evil.example.org/x"}`,
-		"path 里的 @":  `{method: "GET", path: "@evil.example.org/x"}`,
-		"非 http 协议":  `{method: "GET", url: "file:///etc/passwd"}`,
-		"路径穿越":       `{method: "GET", path: "/a/../../b"}`,
+		"带用户名密码":    `{method: "GET", url: "http://user:pw@evil.example.org/"}`,
+		"path 换主机":  `{method: "GET", path: "//evil.example.org/x"}`,
+		"path 里的 @": `{method: "GET", path: "@evil.example.org/x"}`,
+		"非 http 协议": `{method: "GET", url: "file:///etc/passwd"}`,
+		"路径穿越":      `{method: "GET", path: "/a/../../b"}`,
 	}
 	for name, desc := range cases {
 		t.Run(name, func(t *testing.T) {

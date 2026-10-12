@@ -100,7 +100,12 @@ export function accessLabel(view: StorageView): string {
  * “桶 · 地域”列：本地显示目录；对象存储第一行是桶名，第二行是地域与路径前缀（R2 写 R2 · auto）
  * @param view 存储视图
  */
-export function storageLocation(view: StorageView): { primary: string; secondary: string } {
+export function storageLocation(
+  view: Pick<
+    StorageView,
+    "provider" | "local_dir" | "region" | "endpoint" | "path_prefix" | "bucket"
+  >,
+): { primary: string; secondary: string } {
   if (view.provider === "local") return { primary: view.local_dir ?? "", secondary: "" };
   const where = view.provider === "r2" ? "R2 · auto" : view.region || view.endpoint;
   const prefix = view.path_prefix ? `/${view.path_prefix}` : "";

@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import type {
   AdminStatsDay,
+  ChannelHealth,
   ChannelLoad,
-  ChannelView,
-  PluginMeta,
-  PluginView,
+  OverviewChannel,
 } from "@/api/admin/ai/type";
 import {
   dayTotal,
@@ -116,43 +115,15 @@ describe("日期格式", () => {
 });
 
 describe("loadRows", () => {
-  const bearer: PluginMeta = { auth: { type: "bearer" } };
-  const plugin = (extra: Partial<PluginView> = {}): PluginView => ({
-    key: "p",
-    name: "插件P",
-    source: "uploaded",
-    enabled: true,
-    updated_at: "",
-    versions: [
-      {
-        id: 1,
-        plugin_key: "p",
-        version: "1.0.0",
-        sha256: "",
-        created_at: "",
-        created_by: 0,
-        channel_count: 0,
-        meta: bearer,
-      },
-    ],
-    ...extra,
-  });
-  const channel = (key: string, extra: Partial<ChannelView> = {}): ChannelView => ({
+  const OK: ChannelHealth = { tone: "ok", label: "可用", reason: "" };
+  const NO_KEY: ChannelHealth = { tone: "warn", label: "未设 Key", reason: "还没有设置 Key" };
+  const OFF: ChannelHealth = { tone: "off", label: "已停用", reason: "渠道已停用" };
+  /** 后端给的精简渠道：健康状态已经算好 */
+  const channel = (key: string, extra: Partial<OverviewChannel> = {}): OverviewChannel => ({
     key,
     name: key.toUpperCase(),
-    plugin_key: "p",
-    plugin_version_id: 1,
-    plugin_version: "1.0.0",
-    base_url: "https://x.test",
-    trusted_internal: false,
-    allow_credentials: false,
-    settings: null,
-    rate_limit: null,
-    enabled: true,
-    secret_set: true,
-    updated_by: 0,
-    updated_at: "",
-    created_at: "",
+    max_running: 0,
+    health: OK,
     ...extra,
   });
   const load = (key: string, running: number, waiting: number): ChannelLoad => ({
@@ -162,15 +133,15 @@ describe("loadRows", () => {
   });
 
   test("没有出现在负载里的渠道按空闲处理", () => {
-    const [row] = loadRows([channel("a")], [plugin()], []);
+    const [row] = loadRows([channel("a")], []);
     expect(row).toMatchObject({ key: "a", running: 0, waiting: 0, usable: true, idle: true });
     expect(row.runningRatio).toBe(0);
     expect(row.queuedRatio).toBe(0);
   });
 
   test("有上限时分母是上限：生成中 2 / 4 占一半，排队叠在后面", () => {
-    const ch = channel("a", { rate_limit: { max_running: 4 } });
-    const [row] = loadRows([ch], [plugin()], [load("a", 2, 1)]);
+    const ch = channel("a", { max_running: 4 });
+    const [row] = loadRows([ch], [load("a", 2, 1)]);
     expect(row.max).toBe(4);
     expect(row.runningRatio).toBe(0.5);
     expect(row.queuedRatio).toBe(0.75);
@@ -178,19 +149,15 @@ describe("loadRows", () => {
   });
 
   test("满载：生成中达到上限，排队超出上限时分母取两者之和，条不溢出", () => {
-    const ch = channel("a", { rate_limit: { max_running: 4 } });
-    const [row] = loadRows([ch], [plugin()], [load("a", 4, 4)]);
+    const ch = channel("a", { max_running: 4 });
+    const [row] = loadRows([ch], [load("a", 4, 4)]);
     expect(row.full).toBe(true);
     expect(row.runningRatio).toBe(0.5);
     expect(row.queuedRatio).toBe(1);
   });
 
-  test("不限（max_running 为 0 或没配）：分母取所有可用渠道里最大的占用，永远不算满载", () => {
-    const rows = loadRows(
-      [channel("a"), channel("b", { rate_limit: { rps: 5 } })],
-      [plugin()],
-      [load("a", 3, 1), load("b", 1, 0)],
-    );
+  test("不限（max_running 为 0）：分母取所有可用渠道里最大的占用，永远不算满载", () => {
+    const rows = loadRows([channel("a"), channel("b")], [load("a", 3, 1), load("b", 1, 0)]);
     const a = rows.find((r) => r.key === "a")!;
     const b = rows.find((r) => r.key === "b")!;
     expect(a.max).toBe(0);
@@ -203,12 +170,11 @@ describe("loadRows", () => {
   test("不可用的渠道（缺 Key / 停用）不画负载，带原因标签，排在最后", () => {
     const rows = loadRows(
       [
-        channel("nokey", { secret_set: false }),
-        channel("off", { enabled: false }),
+        channel("nokey", { health: NO_KEY }),
+        channel("off", { health: OFF }),
         channel("busy"),
         channel("idle"),
       ],
-      [plugin()],
       [load("busy", 2, 0), load("nokey", 3, 0)],
     );
     expect(rows.map((r) => r.key)).toEqual(["busy", "idle", "nokey", "off"]);
@@ -225,13 +191,12 @@ describe("loadRows", () => {
   test("可用渠道按“生成中 + 排队”降序，同样大按 key 升序", () => {
     const rows = loadRows(
       [channel("c"), channel("a"), channel("b")],
-      [plugin()],
       [load("a", 1, 0), load("b", 1, 0), load("c", 0, 5)],
     );
     expect(rows.map((r) => r.key)).toEqual(["c", "a", "b"]);
   });
 
   test("没有渠道返回空数组", () => {
-    expect(loadRows([], [plugin()], [])).toEqual([]);
+    expect(loadRows([], [])).toEqual([]);
   });
 });

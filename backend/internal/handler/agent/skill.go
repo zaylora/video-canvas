@@ -14,6 +14,7 @@ import (
 	"video-canvas/internal/agent/skillpkg"
 	"video-canvas/internal/handler"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/response"
 	agentsvc "video-canvas/internal/service/agent"
@@ -21,8 +22,8 @@ import (
 
 // SkillAPI 是技能管理接口依赖的业务，由 *agentsvc.SkillService 实现；声明成接口是为了 handler 测试不必搭存储。
 type SkillAPI interface {
-	// List 返回管理页列表（内置 + 导入），q 按名字/显示名/说明过滤，status 为 enabled / disabled。
-	List(ctx context.Context, q, status string) ([]agentsvc.SkillItem, error)
+	// List 返回管理页列表（内置 + 导入，分页），q 按名字/显示名/说明过滤，status 为 enabled / disabled / builtin。
+	List(ctx context.Context, req *model.ListSkillReq) (*agentsvc.SkillPage, error)
 	// Get 返回技能详情。
 	Get(ctx context.Context, name string) (*agentsvc.SkillDetail, error)
 	// Version 返回某版本的完整信息。
@@ -95,23 +96,18 @@ func (h *SkillHandler) UserList(c *gin.Context) {
 
 // ---- 管理端：读 ----
 
-type listQuery struct {
-	Q      string `form:"q" binding:"max=100" label:"关键词"`
-	Status string `form:"status" binding:"omitempty,oneof=enabled disabled" label:"状态"`
-}
-
-// List 返回技能列表。
+// List 返回技能列表（GET /admin/agent/skills?q=&status=&page=&page_size=）。
 func (h *SkillHandler) List(c *gin.Context) {
-	var q listQuery
-	if !handler.BindQuery(c, &q) {
+	var req model.ListSkillReq
+	if !handler.BindQuery(c, &req) {
 		return
 	}
-	list, err := h.svc.List(c.Request.Context(), q.Q, q.Status)
+	page, err := h.svc.List(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, err)
 		return
 	}
-	response.OK(c, list)
+	response.OK(c, page)
 }
 
 // Get 返回技能详情。

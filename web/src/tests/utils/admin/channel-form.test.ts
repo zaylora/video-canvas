@@ -29,7 +29,6 @@ const view = (extra: Partial<ChannelView> = {}): ChannelView => ({
   plugin_version_id: 2,
   plugin_version: "0.2.0",
   base_url: "https://api.klingai.com",
-  trusted_internal: false,
   allow_credentials: true,
   settings: { region: "cn" },
   rate_limit: { rps: 5, max_concurrency: 0 },
@@ -63,7 +62,7 @@ describe("emptyChannelForm", () => {
     expect(form.pluginKey).toBe("ok");
     expect(form.pluginVersion).toBe("2.0.0");
     expect(form.enabled).toBe(true);
-    expect(form.trustedInternal).toBe(false);
+    expect(form).not.toHaveProperty("trustedInternal");
   });
 
   test("没有可用插件时插件为空", () => {
@@ -79,6 +78,11 @@ describe("channelFormFromView", () => {
     expect(form.maxConcurrency).toBe("");
     expect(form.settings.region).toBe("cn");
     expect(form.allowCredentials).toBe(true);
+  });
+
+  test("不再有“允许访问内网”：后端旧响应里残留的 trusted_internal 不会进表单", () => {
+    const legacy = { ...view(), trusted_internal: true } as ChannelView;
+    expect(channelFormFromView(legacy, fields)).not.toHaveProperty("trustedInternal");
   });
 });
 
@@ -146,6 +150,13 @@ describe("buildChannelRequest（新建）", () => {
     });
   });
 
+  test("create 请求不再带 trusted_internal", () => {
+    const result = buildChannelRequest(newForm(), fields);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.create).not.toHaveProperty("trusted_internal");
+  });
+
   test("字段错误按键返回：key、名称、地址、限流、设置项", () => {
     const result = buildChannelRequest(
       newForm({
@@ -191,7 +202,6 @@ describe("buildChannelRequest（编辑）", () => {
       key: "ignored",
       name: "改名",
       pluginVersion: "0.3.0",
-      trustedInternal: true,
       rps: "10",
     };
     const result = buildChannelRequest(form, fields, original);
@@ -201,7 +211,6 @@ describe("buildChannelRequest（编辑）", () => {
       name: "改名",
       plugin_key: "kling",
       plugin_version: "0.3.0",
-      trusted_internal: true,
       rate_limit: { rps: 10, max_concurrency: 0, max_running: 0 },
     });
     expect(result.create.key).toBe("kling-direct");
@@ -325,10 +334,10 @@ describe("buildCheckDraftRequest", () => {
       plugin_key: "kling",
       plugin_version: "0.2.0",
       base_url: "https://api.klingai.com",
-      trusted_internal: false,
       allow_credentials: true,
       secret: "sk-1",
     });
+    expect(result.request).not.toHaveProperty("trusted_internal");
     expect(result.request.existing_key).toBeUndefined();
   });
 
@@ -364,7 +373,9 @@ describe("connectionFingerprint / canSaveChannel", () => {
     expect(connectionFingerprint({ ...base, name: "改名", rps: "5", enabled: false }, "")).toBe(fp);
     expect(connectionFingerprint({ ...base, baseUrl: "https://x.com" }, "")).not.toBe(fp);
     expect(connectionFingerprint({ ...base, pluginVersion: "0.3.0" }, "")).not.toBe(fp);
-    expect(connectionFingerprint({ ...base, trustedInternal: true }, "")).not.toBe(fp);
+    expect(
+      connectionFingerprint({ ...base, allowCredentials: !base.allowCredentials }, ""),
+    ).not.toBe(fp);
     expect(connectionFingerprint({ ...base, settings: { region: "global" } }, "")).not.toBe(fp);
     expect(connectionFingerprint(base, "sk-new")).not.toBe(fp);
     expect(connectionFingerprint(base, "  ")).toBe(fp);

@@ -22,6 +22,13 @@ func (m *MemRepo) SaveVersion(_ context.Context, p *model.AIPlugin, v *model.AIP
 	if m.SaveVersionErr != nil {
 		return m.SaveVersionErr
 	}
+	if m.SaveVersionConflicts > 0 {
+		m.SaveVersionConflicts--
+		m.nextID++
+		rival := &model.AIPluginVersion{ID: m.nextID, PluginKey: p.Key, Version: v.Version, SHA256: "rival-" + v.SHA256, CreatedAt: time.Now()}
+		m.Versions[rival.ID] = rival
+		return repository.ErrDuplicate
+	}
 	for _, old := range m.Versions {
 		if old.PluginKey == p.Key && old.Version == v.Version {
 			return repository.ErrDuplicate

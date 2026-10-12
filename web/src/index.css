@@ -484,14 +484,6 @@
   }
 }
 
-/* 后台的原生下拉（admin-ui/native-select）：去掉系统箭头，换成和设计稿一致的灰色 chevron */
-[data-slot="native-select"] {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-position: right 0.6rem center;
-  background-repeat: no-repeat;
-  background-size: 1rem;
-}
-
 /* ---------- 进入画布：聚焦显影加载（设计稿原型 A） ---------- */
 /* 全部用 CSS 关键帧：浏览器在合成线程上跑，画布挂载、解码图片占住主线程时也不掉帧。
    别改成 JS 逐帧驱动（motion 的 scale 等单独变换走主线程），进画布那一下正好最忙。 */

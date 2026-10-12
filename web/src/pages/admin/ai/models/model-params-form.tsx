@@ -116,7 +116,6 @@ export function ModelParamsForm({
             label="任务超时"
             htmlFor="model-deadline"
             error={deadlineError ?? issueFor(issues, "deadline")}
-            hint="超过这个时间还没出结果，任务判定失败并退还积分。"
           >
             <div className="flex flex-wrap items-center gap-2" id="model-deadline">
               {DEADLINES.map(([value, label]) => (
@@ -163,10 +162,11 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>上下文能力</FormSectionTitle>
-            <FormSectionDescription>
-              超出允许范围时标红；最大输出会作为每次请求的 max_tokens。
-              {isAgent && "Agent 会把对话历史带进每次请求，窗口太小会频繁省略较早的工具结果。"}
-            </FormSectionDescription>
+            {isAgent && (
+              <FormSectionDescription>
+                Agent 会把对话历史带进每次请求，窗口太小会频繁省略较早的工具结果。
+              </FormSectionDescription>
+            )}
           </FormSectionHeader>
           <ContextEditor value={caps.context} onChange={(context) => patch({ context })} />
           {isAgent && (
@@ -233,7 +233,7 @@ export function ModelParamsForm({
           hint={
             isAgent
               ? `用户发给 Agent 的单条消息最多多少字；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`
-              : `画布输入框右下角显示 0 / 上限；允许范围 ${LIMITS.promptLength[0]} – ${LIMITS.promptLength[1]}。`
+              : undefined
           }
         >
           <Input
@@ -253,10 +253,6 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>生成参数</FormSectionTitle>
-            <FormSectionDescription>
-              每个参数会作为选项出现在画布节点里，书写顺序就是显示顺序；参数名会作为任务输入的键传给插件，
-              要和插件约定的名字对应。
-            </FormSectionDescription>
           </FormSectionHeader>
           <div id="model-capabilities-params" className="space-y-3">
             {Object.keys(params).length === 0 && (
@@ -292,9 +288,6 @@ export function ModelParamsForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>固定系统提示</FormSectionTitle>
-            <FormSectionDescription>
-              每次请求都会带上，用户看不到，也不会下发给画布。
-            </FormSectionDescription>
           </FormSectionHeader>
           <Textarea
             id="model-system"
@@ -315,11 +308,6 @@ export function ModelParamsForm({
       <FormSection>
         <FormSectionHeader>
           <FormSectionTitle>{isAgent ? "高级" : "固定参数"}</FormSectionTitle>
-          {!isAgent && (
-            <FormSectionDescription>
-              每次请求都会带上，用户看不到；由插件解释。
-            </FormSectionDescription>
-          )}
         </FormSectionHeader>
         {!isAgent && (
           <JsonFieldEditor
@@ -336,9 +324,6 @@ export function ModelParamsForm({
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
             <ChevronRight className="size-4 transition group-open:rotate-90" />
             用 JSON 编辑全部能力
-            <span className="text-muted-foreground text-xs font-normal">
-              capabilities，和上面的表单是同一份数据
-            </span>
           </summary>
           <div className="border-t p-3">
             <JsonFieldEditor

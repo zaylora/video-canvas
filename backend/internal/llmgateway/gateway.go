@@ -30,14 +30,17 @@ type Options struct {
 	IdleTimeout time.Duration
 	// Dial 用于测试里替换拨号；生产不设。
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// IPAllowed 用于测试里放行回环等内网地址（假上游是本机 httptest 服务）；生产不设，默认拒绝全部内网地址。
+	// 渠道上没有“允许访问内网”开关：任何渠道都不能让服务器访问内网。
+	IPAllowed func(net.IP) bool
 }
 
 // Gateway 向渠道的 OpenAI 兼容接口发流式对话请求。可以并发使用。
 type Gateway struct {
-	opts       Options
-	limiters   limiterSet
-	transports [2]*http.Transport // 0 普通渠道，1 可信内网渠道
-	tmu        sync.Mutex
+	opts     Options
+	limiters limiterSet
+	outbound *http.Transport
+	tmu      sync.Mutex
 }
 
 // New 创建网关。
@@ -126,7 +129,7 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	req.Header.Set("Authorization", "Bearer "+tg.APIKey)
 
 	// 白名单只有渠道自己的域名；重定向一律不跟随，否则带着 Key 的请求会被转到别处
-	client := netguard.NewClient(g.transport(tg.TrustedInternal), []string{strings.ToLower(base.Hostname())}, 0)
+	client := netguard.NewClient(g.transport(), []string{strings.ToLower(base.Hostname())}, 0)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, redactErr(err, tg.APIKey)
@@ -142,23 +145,16 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	return readSSE(resp.Body, emit, touch, raw)
 }
 
-// transport 懒创建并缓存带 SSRF 拨号校验的传输层。
-func (g *Gateway) transport(trusted bool) *http.Transport {
-	idx := 0
-	if trusted {
-		idx = 1
-	}
+// transport 懒创建并缓存带 SSRF 拨号校验的传输层，所有渠道共用。
+func (g *Gateway) transport() *http.Transport {
 	g.tmu.Lock()
 	defer g.tmu.Unlock()
-	if g.transports[idx] == nil {
-		cfg := &netguard.Config{Dial: g.opts.Dial}
-		if trusted {
-			cfg.IPAllowed = func(net.IP) bool { return true }
-		}
+	if g.outbound == nil {
+		cfg := &netguard.Config{Dial: g.opts.Dial, IPAllowed: g.opts.IPAllowed}
 		cfg.ApplyDefaults()
-		g.transports[idx] = netguard.NewTransport(cfg)
+		g.outbound = netguard.NewTransport(cfg)
 	}
-	return g.transports[idx]
+	return g.outbound
 }
 
 // validateTarget 校验渠道配置，返回解析后的地址：必须是 http(s)、有主机、不带用户名密码。

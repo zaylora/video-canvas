@@ -47,7 +47,6 @@ type ChannelSnapshot struct {
 	PluginKey        string         `json:"plugin_key"`
 	PluginVersionID  uint64         `json:"plugin_version_id"`
 	BaseURL          string         `json:"base_url"`
-	TrustedInternal  bool           `json:"trusted_internal"`
 	AllowCredentials bool           `json:"allow_credentials"`
 	Settings         map[string]any `json:"settings,omitempty"`
 	RateLimit        RateLimit      `json:"rate_limit"`
@@ -76,7 +75,7 @@ func RuntimeOf(ch *model.AIChannel, ver *model.AIPluginVersion) (*ChannelRuntime
 	}
 	cs := ChannelSnapshot{
 		Key: ch.Key, PluginKey: ch.PluginKey, PluginVersionID: ch.PluginVersionID, BaseURL: ch.BaseURL,
-		TrustedInternal: ch.TrustedInternal, AllowCredentials: ch.AllowCredentials,
+		AllowCredentials: ch.AllowCredentials,
 	}
 	if len(ch.SettingsJSON) > 0 {
 		if err := json.Unmarshal(ch.SettingsJSON, &cs.Settings); err != nil {

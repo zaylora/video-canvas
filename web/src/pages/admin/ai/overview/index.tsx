@@ -18,17 +18,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
-import { adminTodos, channelHealth, modelHealth } from "@/utils/admin/health";
 import { canManageInfra } from "@/utils/admin/role";
 
-import { useAdminOutlet, useModelList } from "../../use-admin";
 import { ChannelLoad } from "./channel-load";
 import { KpiRow } from "./kpi-row";
 import { OnboardingSteps, type OnboardingStep } from "./onboarding-steps";
 import { ShareDonut } from "./share-donut";
 import { TaskTrendChart } from "./task-trend-chart";
 import { TodoList } from "./todo-list";
-import { useChannelLoads, useOverviewStats } from "./use-overview-stats";
+import { useChannelLoads, useOverview, useOverviewStats } from "./use-overview-stats";
 
 const RANGES: { days: AdminStatsDays; label: string }[] = [
   { days: 7, label: "近 7 天" },
@@ -45,8 +43,7 @@ const RANGES: { days: AdminStatsDays; label: string }[] = [
  * 配置类数据来自现有清单接口、在前端计算（utils/admin/health.ts），运行类数据来自 GET /admin/ai/stats。
  */
 export default function OverviewPage() {
-  const { catalog } = useAdminOutlet();
-  const { models, status: modelsStatus, reload: reloadModels } = useModelList();
+  const { overview, status: overviewStatus, reload: reloadOverview } = useOverview();
   const stats = useOverviewStats();
   const loads = useChannelLoads();
   const role = useAdminStore((state) => state.role);
@@ -57,19 +54,16 @@ export default function OverviewPage() {
   const [flash, setFlash] = useState(0);
   const todoCardRef = useRef<HTMLDivElement>(null);
 
-  const ready =
-    catalog.pluginsStatus === "ready" &&
-    catalog.channelsStatus === "ready" &&
-    modelsStatus === "ready";
-  const catalogReady = catalog.pluginsStatus === "ready" && catalog.channelsStatus === "ready";
-  const usablePlugins = catalog.plugins.filter((item) => item.enabled).length;
-  const channelStates = catalog.channels.map((item) => channelHealth(item, catalog.plugins));
-  const usableChannels = channelStates.filter((item) => item.tone === "ok").length;
-  const noKeyChannels = channelStates.filter((item) => item.label === "未设 Key").length;
-  const modelStates = models.map((item) => modelHealth(item, catalog.channels, catalog.plugins));
-  const online = modelStates.filter((item) => item.status === "online").length;
-  const brokenModels = modelStates.filter((item) => item.status === "broken").length;
-  const todos = ready ? adminTodos(models, catalog.channels, catalog.plugins) : [];
+  // 配置类数据都由后端汇总好（GET /admin/ai/overview），没加载到时按 0 / 空处理，由 ready 控制骨架
+  const ready = overviewStatus === "ready" && overview !== null;
+  const usablePlugins = overview?.plugins.usable ?? 0;
+  const channelTotal = overview?.channels.total ?? 0;
+  const usableChannels = overview?.channels.usable ?? 0;
+  const noKeyChannels = overview?.channels.no_key ?? 0;
+  const modelTotal = overview?.models.total ?? 0;
+  const online = overview?.models.online ?? 0;
+  const brokenModels = overview?.models.broken ?? 0;
+  const todos = overview?.todos ?? [];
 
   const steps: OnboardingStep[] = [
     {
@@ -84,8 +78,8 @@ export default function OverviewPage() {
       title: "配置渠道",
       hint: "地址 + Key",
       ok: usableChannels > 0,
-      stat: `${usableChannels} / ${catalog.channels.length} 个可用`,
-      short: `${usableChannels} / ${catalog.channels.length} 可用`,
+      stat: `${usableChannels} / ${channelTotal} 个可用`,
+      short: `${usableChannels} / ${channelTotal} 可用`,
       action: canWrite ? { label: "新建渠道", to: "/admin/ai/channels?edit=new" } : null,
     },
     {
@@ -98,17 +92,11 @@ export default function OverviewPage() {
     },
   ];
 
-  /** 刷新全部：统计、渠道负载和三份配置清单；各自的失败在对应卡片里显示，这里只管等它们结束 */
+  /** 刷新全部：统计、渠道负载和配置汇总；各自的失败在对应卡片里显示，这里只管等它们结束 */
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        stats.reload(),
-        loads.reload(),
-        catalog.reloadPlugins(),
-        catalog.reloadChannels(),
-        reloadModels(),
-      ]);
+      await Promise.all([stats.reload(), loads.reload(), reloadOverview()]);
     } finally {
       setRefreshing(false);
     }
@@ -199,10 +187,10 @@ export default function OverviewPage() {
               days={stats.days}
               configReady={ready}
               online={online}
-              modelTotal={models.length}
+              modelTotal={modelTotal}
               brokenModels={brokenModels}
               usableChannels={usableChannels}
-              channelTotal={catalog.channels.length}
+              channelTotal={channelTotal}
               noKeyChannels={noKeyChannels}
               onOpenModels={() => navigate("/admin/ai/models")}
               onOpenChannels={() => navigate("/admin/ai/channels")}
@@ -234,9 +222,8 @@ export default function OverviewPage() {
             >
               <Reveal index={7} className="min-w-0">
                 <ChannelLoad
-                  channels={catalog.channels}
-                  plugins={catalog.plugins}
-                  catalogReady={catalogReady}
+                  channels={overview?.channel_briefs ?? []}
+                  catalogReady={ready}
                   loads={loads.loads}
                   status={loads.status}
                   stale={loads.stale}
@@ -251,7 +238,7 @@ export default function OverviewPage() {
                     todos={todos}
                     ready={ready}
                     canWrite={canWrite}
-                    catalog={catalog}
+                    onChanged={() => void reloadOverview()}
                     flash={flash}
                   />
                 </div>

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
-import { createModel, importFromChannel, listModels, setModelEnabled } from "@/api/admin/ai";
+import { createModel, importFromChannel, listModelOptions, setModelEnabled } from "@/api/admin/ai";
 import type { ChannelView, ModelDraft, PluginView } from "@/api/admin/ai/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -164,7 +164,7 @@ function ImportBody({
 
   useEffect(() => {
     let cancelled = false;
-    listModels()
+    listModelOptions()
       .then((list) => !cancelled && setExisting(new Set(list.map((item) => item.key))))
       .catch(() => !cancelled && setExistingFailed(true));
     return () => {
@@ -616,20 +616,20 @@ function ImportRow({
         {row.certain ? (
           <Tag className="mt-1.5">{MODEL_KIND_LABEL[row.kind] ?? row.kind}</Tag>
         ) : (
-          <NativeSelect
-            aria-label={`${upstream} 的能力类型`}
-            title="插件没给出能力类型，请确认"
-            className="h-8 border-amber-500/60"
-            value={row.kind}
-            disabled={locked}
-            onChange={(event) => onChange({ kind: event.target.value })}
-          >
-            {kindOptions.map((kind) => (
-              <option key={kind} value={kind}>
-                {MODEL_KIND_LABEL[kind] ?? kind}
-              </option>
-            ))}
-          </NativeSelect>
+          <div title="插件没给出能力类型，请确认">
+            <OptionSelect
+              aria-label={`${upstream} 的能力类型`}
+              size="sm"
+              className="border-amber-500/60"
+              value={row.kind}
+              disabled={locked}
+              onValueChange={(kind) => onChange({ kind })}
+              options={kindOptions.map((kind) => ({
+                value: kind,
+                label: MODEL_KIND_LABEL[kind] ?? kind,
+              }))}
+            />
+          </div>
         )}
       </TableCell>
       <TableCell className="align-top">

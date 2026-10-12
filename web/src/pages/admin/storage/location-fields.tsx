@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,21 +92,21 @@ export function LocationFields(props: SectionProps) {
             error={errors.region}
             required
           >
-            <NativeSelect
+            <OptionSelect
               id="storage-region"
               value={form.region}
+              placeholder="请选择"
               disabled={region.disabled || regions.length === 0}
-              aria-invalid={!!errors.region}
-              onChange={(event) => patch({ region: event.target.value })}
-            >
-              {form.region === "" && <option value="">请选择</option>}
-              {regionMissing && <option value={form.region}>{form.region}</option>}
-              {regions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.id}
-                </option>
-              ))}
-            </NativeSelect>
+              invalid={!!errors.region}
+              onValueChange={(value) => patch({ region: value })}
+              options={[
+                ...(regionMissing ? [{ value: form.region, label: form.region }] : []),
+                ...regions.map((item) => ({
+                  value: item.id,
+                  label: `${item.name} · ${item.id}`,
+                })),
+              ]}
+            />
           </FormField>
         )}
         <FormField label={<>Endpoint{endpoint.lock}</>} htmlFor="storage-endpoint">
@@ -201,20 +201,13 @@ export function AdvancedFields(props: SectionProps) {
           />
         </FormField>
         <FormField label={<>寻址方式{addressing.lock}</>} htmlFor="storage-addressing">
-          <NativeSelect
+          <OptionSelect
             id="storage-addressing"
             value={form.addressing}
             disabled={addressing.disabled}
-            onChange={(event) =>
-              patch({ addressing: event.target.value as (typeof form)["addressing"] })
-            }
-          >
-            {ADDRESSING_OPTIONS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </NativeSelect>
+            onValueChange={(value) => patch({ addressing: value as (typeof form)["addressing"] })}
+            options={ADDRESSING_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+          />
         </FormField>
         <div className="flex items-center gap-2 text-sm">
           <Switch

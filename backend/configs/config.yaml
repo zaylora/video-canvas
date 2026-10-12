@@ -40,6 +40,8 @@ jwt:
 
 ai:
   # secret_key（加解密渠道 Key 的主密钥）只通过环境变量 APP_AI_SECRET_KEY 提供
+  # allow_fake_ip：放行 198.18.0.0/15（代理工具 Fake-IP 模式给域名分配的假地址），其余内网照拦。只给开发机用，线上不要开；
+  # 开发环境用环境变量 APP_AI_ALLOW_FAKE_IP=true 打开（docker-compose.dev.yml 里已设）。
   plugin_runner: # 协议插件的沙箱执行进程，见 docs/design/协议插件设计.md 6.4
     mode: spawn # spawn（主服务把自己作为 plugin-runner 子进程拉起，开发用）| external（连独立容器，生产用）| inprocess（同进程无隔离，仅测试排障）
     network: tcp # unix | tcp；生产用 unix（共享卷里的 socket），开发用本机回环 tcp

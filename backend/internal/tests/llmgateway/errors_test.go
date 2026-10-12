@@ -102,17 +102,17 @@ func TestStream_IdleTimeout(t *testing.T) {
 	}
 }
 
-func TestStream_BlocksInternalAddressesUnlessTrusted(t *testing.T) {
+// 渠道上没有“允许访问内网”开关了：默认策略下，连回环地址的渠道被 SSRF 防护拒绝，请求不会发出。
+func TestStream_BlocksInternalAddresses(t *testing.T) {
 	var hits atomic.Int32
 	up := newUpstream(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
 		hits.Add(1)
 		sse(w, chunk(`{"content":"x"}`, "stop"), "[DONE]")
 	})
-	tg := target(up)
-	tg.TrustedInternal = false // httptest 在回环地址上，普通渠道不能访问
-	_, err := streamOnce(t, gateway(), tg)
+	strict := gateway(func(o *llmgateway.Options) { o.IPAllowed = nil }) // 默认策略：httptest 在回环地址上，不能访问
+	_, err := streamOnce(t, strict, target(up))
 	if err == nil || !netguard.IsGuardError(err) {
-		t.Fatalf("普通渠道访问回环地址应被 SSRF 防护拒绝: %v", err)
+		t.Fatalf("渠道访问回环地址应被 SSRF 防护拒绝: %v", err)
 	}
 	if hits.Load() != 0 {
 		t.Error("被拒绝时不能发出请求")

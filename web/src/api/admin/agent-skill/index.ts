@@ -1,13 +1,14 @@
 import service from "@/utils/requests/service";
 import { adminAgentSkillEndpoints as ep } from "./endpoints";
 import type {
+  ListSkillsParams,
   SkillDeleteCheck,
   SkillDetail,
   SkillFileContent,
   SkillImportInput,
   SkillImportView,
   SkillItem,
-  SkillStatusFilter,
+  SkillPage,
   SkillVersionView,
 } from "./type";
 
@@ -25,17 +26,24 @@ const normalizeImport = (view: SkillImportView): SkillImportView => ({
   issues: view.issues ?? [],
 });
 
+/** 去掉空值，免得把 `q=` 之类的空参数发给后端 */
+const clean = (params: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ""));
+
 /**
- * 技能列表（含只读内置）；后端可能返回 null，统一补成空数组
- * @param params q 按名称 / 显示名 / 说明搜索；status 只看已启用或已停用
- * @returns 技能列表
+ * 技能列表（含只读内置，后端分页）；list 缺失时补成空数组
+ * @param params q 按名称 / 显示名 / 说明搜索；status 只看已启用 / 已停用 / 内置；page、page_size 分页
+ * @returns 当前页技能、命中总数，以及整张列表里有没有导入过的技能
  */
-export const listSkills = async (params?: {
-  q?: string;
-  status?: SkillStatusFilter;
-}): Promise<SkillItem[]> => {
-  const list = await service.get<SkillItem[] | null>(ep.list(), params);
-  return (list ?? []).map(normalizeItem);
+export const listSkills = async (params: ListSkillsParams = {}): Promise<SkillPage> => {
+  const page = await service.get<SkillPage | null>(ep.list(), clean({ ...params }));
+  return {
+    list: (page?.list ?? []).map(normalizeItem),
+    total: page?.total ?? 0,
+    page: page?.page ?? params.page ?? 1,
+    page_size: page?.page_size ?? params.page_size ?? 20,
+    has_imported: page?.has_imported ?? false,
+  };
 };
 
 /**

@@ -9,12 +9,14 @@ import {
   checkPluginFile,
   compareSemver,
   describeAuth,
+  describeVersionAdjusted,
   findPluginVersion,
   latestVersion,
   metaSummary,
   normalizeIssues,
   pluginChannelCount,
   shortSha,
+  isSameCodeRejection,
   summarizeUpload,
   versionDeleteBlock,
 } from "@/utils/admin/plugin";
@@ -56,7 +58,6 @@ const channel = (extra: Partial<ChannelView> = {}): ChannelView => ({
   plugin_version_id: 1,
   plugin_version: "1.0.0",
   base_url: "https://x.test",
-  trusted_internal: false,
   allow_credentials: false,
   settings: null,
   rate_limit: null,
@@ -145,19 +146,23 @@ describe("shortSha / describeAuth / metaSummary", () => {
     expect(metaSummary(null).endpoints).toEqual([]);
     const summary = metaSummary({
       auth: { type: "custom" },
-      allowedHosts: null,
       endpoints: { video: { mode: "async" }, text: {} },
       channelSettings: { region: { type: "enum", label: "区域" } },
       import: {},
     });
     expect(summary.authType).toBe("custom");
-    expect(summary.allowedHosts).toEqual([]);
     expect(summary.endpoints).toEqual([
       { kind: "video", mode: "async" },
       { kind: "text", mode: "?" },
     ]);
     expect(summary.settingNames).toEqual(["region"]);
     expect(summary.importable).toBe(true);
+  });
+
+  test("摘要里不再有结果下载域名白名单：旧版本 meta 里残留的 allowedHosts 也不会带出来", () => {
+    const legacyMeta = { auth: { type: "bearer" }, allowedHosts: ["cdn.example.com"] };
+    expect(Object.keys(metaSummary(legacyMeta))).not.toContain("allowedHosts");
+    expect(Object.keys(metaSummary(null))).not.toContain("allowedHosts");
   });
 });
 
@@ -272,5 +277,45 @@ describe("versionDeleteBlock / pluginChannelCount", () => {
       }),
     ).toBe(3);
     expect(pluginChannelCount({ versions: [] })).toBe(0);
+  });
+});
+
+describe("describeVersionAdjusted：上传时版本号被自动调整的提示", () => {
+  test("代码里写了版本号：说明写的是哪个、登记成了哪个，并提醒渠道不会自动切换", () => {
+    const notice = describeVersionAdjusted({ from: "1.3.1", to: "1.3.2" });
+    expect(notice?.title).toBe("代码里写的是 v1.3.1，已自动登记为 v1.3.2");
+    expect(notice?.hint).toBe("渠道不会自动切换版本，请到“升级渠道”里切过去。");
+  });
+
+  test("代码里没写或写得不合法（from 为空串）：提示没有合法的版本号", () => {
+    const notice = describeVersionAdjusted({ from: "", to: "1.0.0" });
+    expect(notice?.title).toBe("代码里没有写合法的版本号，已自动登记为 v1.0.0");
+    expect(notice?.hint).toBe("渠道不会自动切换版本，请到“升级渠道”里切过去。");
+  });
+
+  test("没有调整（字段缺失、null）或登记版本为空：不提示", () => {
+    expect(describeVersionAdjusted(undefined)).toBeNull();
+    expect(describeVersionAdjusted(null)).toBeNull();
+    expect(describeVersionAdjusted({ from: "1.0.0", to: "" })).toBeNull();
+  });
+});
+
+describe("isSameCodeRejection：上传的代码与已有版本完全相同", () => {
+  const same = { path: "meta", message: "代码与 v1.3.1 完全相同，没有产生新版本" };
+
+  test("只有这一条问题：是（这时发给 AI 没有意义，不该给“复制修复信息”）", () => {
+    expect(isSameCodeRejection([same])).toBe(true);
+  });
+
+  test("路径也是 meta 的真问题（比如没导出 meta）：不是，仍然要能发给 AI", () => {
+    expect(isSameCodeRejection([{ path: "meta", message: "插件必须导出 meta 对象" }])).toBe(false);
+  });
+
+  test("夹着别的问题、没有问题、路径不是 meta：都不是", () => {
+    expect(isSameCodeRejection([same, { path: "meta.key", message: "缺少 key" }])).toBe(false);
+    expect(isSameCodeRejection([])).toBe(false);
+    expect(isSameCodeRejection([{ path: "meta.version", message: "完全相同" }])).toBe(false);
+    expect(isSameCodeRejection(null)).toBe(false);
+    expect(isSameCodeRejection(undefined)).toBe(false);
   });
 });

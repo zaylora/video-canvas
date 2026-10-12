@@ -92,8 +92,8 @@ func (s *AIChannelService) CheckDraft(ctx context.Context, in ChannelCheckDraftI
 	}
 	rt, err := provider.RuntimeOf(&model.AIChannel{
 		Key: key, PluginKey: in.PluginKey, PluginVersionID: target.version.ID, BaseURL: baseURL,
-		TrustedInternal: in.TrustedInternal, AllowCredentials: in.AllowCredentials,
-		SettingsJSON: model.JSONText(settingsJSON),
+		AllowCredentials: in.AllowCredentials,
+		SettingsJSON:     model.JSONText(settingsJSON),
 	}, target.version)
 	if err != nil {
 		return nil, errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { TraceStep } from "@/api/admin/ai/type.d";
@@ -19,17 +19,20 @@ import { TraceStepRow } from "./trace-step";
  * @param taskId 试跑任务 ID，显示在标题里
  * @param loading 正在拉取追踪
  * @param onRefresh 刷新追踪；不传则不显示刷新按钮
+ * @param actions 放在“复制全部（JSON）”旁边的额外操作（如试跑失败时的“复制修复信息”）；组件本身不关心它是什么
  */
 export function TraceTimeline({
   taskId,
   steps,
   loading,
   onRefresh,
+  actions,
 }: {
   taskId: number | string;
   steps: TraceStep[];
   loading?: boolean;
   onRefresh?: () => void;
+  actions?: ReactNode;
 }) {
   const view = useMemo(() => toTraceView(steps), [steps]);
   const maxMs = maxStepDuration(view);
@@ -57,6 +60,7 @@ export function TraceTimeline({
               刷新
             </Button>
           )}
+          {actions}
           {view.steps.length > 0 && (
             <CopyButton text={JSON.stringify(steps, null, 2)} label="复制全部（JSON）" />
           )}

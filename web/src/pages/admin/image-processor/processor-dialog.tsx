@@ -1,27 +1,28 @@
 import { useState } from "react";
 
 import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
-import type { StorageView } from "@/api/admin/storage/type.d";
+import type { StorageOption } from "@/api/admin/storage/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useRetained } from "@/hooks/use-retained";
+import type { BindingProcessor } from "@/utils/admin/image-processor";
 
 import { ProcessorWizard, type WizardStep } from "./processor-wizard";
 
-/** 弹窗打开的对象：新建（可预选存储），或按 ID 编辑已有处理服务（可直达某一步）。nonce 每次打开递增，用来重置向导 */
+/** 弹窗打开的对象：新建（可预选存储），或编辑已有处理服务（带上打开时的视图，可直达某一步）。nonce 每次打开递增，用来重置向导 */
 export type ProcessorDialogTarget = { nonce: number } & (
   | { kind: "new"; storageId?: number }
-  | { kind: "edit"; id: number; step?: WizardStep }
+  | { kind: "edit"; id: number; view: ProcessorView; step?: WizardStep }
 );
 
 /**
  * 处理服务弹窗：包四步向导；关闭时有未保存修改先确认。
  * @param target 打开的对象，为空表示关闭
- * @param processors 全部处理服务（编辑时按 ID 取视图，也用来判定存储占用）
+ * @param processors 全部处理服务的精简视图（判定存储占用）
  * @param presets 厂商预设
  * @param storages 全部存储
  * @param canWrite 是否有写权限
- * @param onChanged 处理服务在弹窗里变了，用最新视图更新列表
+ * @param onChanged 处理服务在弹窗里保存 / 校验过了（页面据此重新拉取列表）
  * @param onPublished 发布成功后（页面负责刷新列表并关闭弹窗）
  * @param onClose 请求关闭
  */
@@ -36,9 +37,9 @@ export function ProcessorDialog({
   onClose,
 }: {
   target: ProcessorDialogTarget | null;
-  processors: ProcessorView[];
+  processors: BindingProcessor[];
   presets: ProcessorPreset[];
-  storages: StorageView[];
+  storages: StorageOption[];
   canWrite: boolean;
   onChanged: (view: ProcessorView) => void;
   onPublished: () => void;
@@ -47,8 +48,7 @@ export function ProcessorDialog({
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const shown = useRetained(target);
-  const processor =
-    shown?.kind === "edit" ? processors.find((item) => item.id === shown.id) : undefined;
+  const processor = shown?.kind === "edit" ? shown.view : undefined;
 
   const requestClose = () => {
     if (dirty) setConfirmClose(true);

@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { isOwnStorageVendor, processorActions, trialSummary } from "@/utils/admin/image-processor";
 
+import { TableSkeletonRows } from "@/components/admin-ui/table-skeleton-rows";
 import { ProcessorStatusTags } from "./processor-status";
 
 /** 一行上的操作回调 */
@@ -43,15 +44,18 @@ export function ProcessorTable({
   processors,
   presets,
   canWrite,
+  loading = false,
   actions,
 }: {
   processors: ProcessorView[];
   presets: ProcessorPreset[];
   canWrite: boolean;
+  /** 加载中：表头照常显示，表格体换成骨架行 */
+  loading?: boolean;
   actions: ProcessorRowActions;
 }) {
   return (
-    <div data-slot="processor-table" className="bg-card overflow-hidden rounded-xl border">
+    <div data-slot="processor-table" className="overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -64,6 +68,7 @@ export function ProcessorTable({
           </TableRow>
         </TableHeader>
         <TableBody>
+          {loading && <TableSkeletonRows columns={canWrite ? 6 : 5} />}
           {processors.map((processor) => (
             <ProcessorRow
               key={processor.id}
@@ -95,7 +100,9 @@ function ProcessorRow({
   const can = processorActions(processor, canWrite);
   const trial = trialSummary(processor.check);
   /** 操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
-  const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
+  const stop = {
+    onClick: (event: React.MouseEvent) => event.stopPropagation(),
+  };
   return (
     <TableRow
       data-processor-id={processor.id}

@@ -33,3 +33,13 @@ func Builtin() ([][]byte, error) {
 	}
 	return out, nil
 }
+
+// Source 返回指定内置插件的源码。约定：文件名（去掉 .js）就是插件的 key，测试和排查时按 key 取，
+// 不依赖 Builtin() 的顺序（新增内置插件会改变顺序）。
+func Source(key string) ([]byte, error) {
+	b, err := files.ReadFile(key + ".js")
+	if err != nil {
+		return nil, fmt.Errorf("读取内置插件 %s 失败：%w", key, err)
+	}
+	return b, nil
+}

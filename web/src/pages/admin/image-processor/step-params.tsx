@@ -1,6 +1,6 @@
 import type { ProcessorConfig, ProcessorPreset } from "@/api/admin/image-processor/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
-import { NativeSelect } from "@/components/admin-ui/native-select";
+import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Notice } from "@/components/admin-ui/notice";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -115,17 +115,12 @@ export function StepParams({
           />
         </FormField>
         <FormField label="输出格式" htmlFor="processor-format">
-          <NativeSelect
+          <OptionSelect
             id="processor-format"
             value={config.format}
-            onChange={(event) => onConfigChange({ format: event.target.value })}
-          >
-            {formats.map((format) => (
-              <option key={format} value={format}>
-                {format}
-              </option>
-            ))}
-          </NativeSelect>
+            onValueChange={(format) => onConfigChange({ format })}
+            options={formats.map((format) => ({ value: format, label: format }))}
+          />
         </FormField>
       </div>
 

@@ -10,7 +10,6 @@ type AIChannel struct {
 	PluginKey        string    `gorm:"size:30;not null;index" json:"plugin_key"`        // 使用的插件
 	PluginVersionID  uint64    `gorm:"not null;index" json:"plugin_version_id"`         // 固定到一个插件版本；升级插件要显式改这里
 	BaseURL          string    `gorm:"size:512;not null" json:"base_url"`               // 插件请求只能去这个地址
-	TrustedInternal  bool      `gorm:"not null;default:false" json:"trusted_internal"`  // 允许 base_url 解析到内网地址（自建 New API）；只有 super_admin 能开，记审计日志
 	AllowCredentials bool      `gorm:"not null;default:false" json:"allow_credentials"` // 插件声明 auth: custom 时必须开启，才会把 Key 放进 ctx.credentials；记审计日志
 	SettingsJSON     JSONText  `gorm:"type:json;not null" json:"settings_json"`         // 插件 channelSettings 的取值（对象）
 	RateLimitJSON    JSONText  `gorm:"type:json;not null" json:"rate_limit_json"`       // {"rps":5,"max_concurrency":20,"max_running":2}，缺省不限；max_running 是同时在上游生成的任务数上限

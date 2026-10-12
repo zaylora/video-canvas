@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useOutletContext } from "react-router";
 
-import { listChannels, listModels, listPlugins } from "@/api/admin/ai";
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import { listChannelOptions, listPluginOptions } from "@/api/admin/ai";
+import type { ChannelOption, PluginView } from "@/api/admin/ai/type.d";
 
 export type LoadStatus = "loading" | "ready" | "error";
 
@@ -22,7 +21,8 @@ export function useAliveRef() {
 export type AdminCatalog = {
   plugins: PluginView[];
   pluginsStatus: LoadStatus;
-  channels: ChannelView[];
+  /** 全部渠道（options：带健康状态和能力），弹窗下拉和概览用 */
+  channels: ChannelOption[];
   channelsStatus: LoadStatus;
   reloadPlugins: () => Promise<void>;
   reloadChannels: () => Promise<void>;
@@ -36,12 +36,12 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
   const aliveRef = useAliveRef();
   const [plugins, setPlugins] = useState<PluginView[]>([]);
   const [pluginsStatus, setPluginsStatus] = useState<LoadStatus>("loading");
-  const [channels, setChannels] = useState<ChannelView[]>([]);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [channelsStatus, setChannelsStatus] = useState<LoadStatus>("loading");
 
   const reloadPlugins = useCallback(async () => {
     try {
-      const list = await listPlugins();
+      const list = await listPluginOptions();
       if (!aliveRef.current) return;
       setPlugins(list);
       setPluginsStatus("ready");
@@ -52,7 +52,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
 
   const reloadChannels = useCallback(async () => {
     try {
-      const list = await listChannels();
+      const list = await listChannelOptions();
       if (!aliveRef.current) return;
       setChannels(list);
       setChannelsStatus("ready");
@@ -78,34 +78,9 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
 }
 
 /**
- * 模型清单（总览、渠道、插件页用来算“谁在用”“影响几个模型”；模型页有自己的工作区，不用这个）。
- * @returns 清单、加载状态与刷新函数
+ * 页面自己取全量插件与渠道（options）：只有用到的页面才请求，进后台不再预加载。
+ * 渠道页、插件页、模型页的弹窗下拉要用；概览页暂时也靠它。
  */
-export function useModelList() {
-  const aliveRef = useAliveRef();
-  const [models, setModels] = useState<ConfigListItem[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const reload = useCallback(async () => {
-    try {
-      const list = await listModels();
-      if (!aliveRef.current) return;
-      setModels(list);
-      setStatus("ready");
-    } catch {
-      if (aliveRef.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
-    }
-  }, [aliveRef]);
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-  return { models, status, reload };
+export function useAdminCatalogOptions(): { catalog: AdminCatalog } {
+  return { catalog: useAdminCatalog(true) };
 }
-
-/** 布局通过 Outlet 传给三个子页的上下文 */
-export type AdminOutletContext = {
-  /** 插件与渠道清单（三页共用一份，避免各自请求） */
-  catalog: AdminCatalog;
-};
-
-/** 子页取布局上下文 */
-export const useAdminOutlet = () => useOutletContext<AdminOutletContext>();

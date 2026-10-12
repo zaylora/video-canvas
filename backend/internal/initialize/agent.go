@@ -117,6 +117,8 @@ type agentDeps struct {
 	registry provider.Registry
 	secrets  provider.SecretResolver
 	skills   agentsvc.SkillLibrary
+	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
+	ipAllowed func(net.IP) bool
 }
 
 // newAgentRuntime 按配置装配运行时：自检 → 监听回环地址 → 创建桥和进程运行时 → 绑定到 AgentService。
@@ -136,7 +138,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	}
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{}), Skills: d.skills,
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills,
 	})
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},

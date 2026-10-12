@@ -209,8 +209,26 @@ export type SkillDeleteCheck = {
   version_count: number;
 };
 
-/** 列表的状态筛选（后端只认 enabled / disabled，内置在前端过滤） */
-export type SkillStatusFilter = "enabled" | "disabled";
+/** 列表的状态筛选（后端按它过滤；builtin 只看内置技能） */
+export type SkillStatusFilter = "enabled" | "disabled" | "builtin";
+
+/** 技能列表一页：当页的行、命中总数，以及整张列表里有没有导入过的技能（不受搜索和筛选影响） */
+export interface SkillPage {
+  list: SkillItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_imported: boolean;
+}
+
+/** 技能列表的查询参数 */
+export interface ListSkillsParams {
+  /** 关键字：技能名 / 显示名 / 说明 */
+  q?: string;
+  status?: SkillStatusFilter;
+  page?: number;
+  page_size?: number;
+}
 
 /** 导入请求：zip 单文件，或文件夹 / 单个 SKILL.md 展开的成对 files 与 paths */
 export type SkillImportInput =

@@ -101,11 +101,11 @@ type Executor struct {
 	loader   *loader
 	limiters *limiterSet
 
-	// 出站 Transport 按 trusted_internal 维度各缓存一个，复用连接池。
-	// SSRF 防护不受影响：域名白名单在每次请求的 hostGuardRT 里检查（http.Client 每次按白名单新建，很轻），
-	// IP 校验在共享 Transport 的 DialContext 里对每条新连接执行。
+	// 出站 Transport 懒创建并缓存，所有渠道共用同一个连接池。
+	// SSRF 防护不受影响：协议与用户名密码在每次请求的 hostGuardRT 里检查（http.Client 每次新建，很轻），
+	// 内网拦截在共享 Transport 的 DialContext 里对每条新连接执行（按 DNS 解析结果判断，防 rebinding）。
 	transportMu sync.Mutex
-	transports  [2]*http.Transport // 0 = 普通渠道，1 = trusted_internal
+	outbound    *http.Transport
 }
 
 var (
@@ -167,6 +167,7 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	if err != nil {
 		return nil, err
 	}
+	hc.Prepared = nonEmptyJSON(o.task.Prepared) // 契约 §3：准备阶段的结果只在 buildSubmitRequest 的 ctx 里
 	raw, err := o.require(ctx, pluginproto.HookBuildSubmitRequest, hc)
 	if err != nil {
 		return nil, err
@@ -268,14 +269,12 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 	if err != nil || u.Host == "" {
 		return nil, terminalErr(provider.CodeSSRFBlocked, "产物地址不合法", err)
 	}
-	allowed := append([]string(nil), snap.Plugin.Meta.AllowedHosts...)
-	// base_url 在渠道创建期校验过，但快照可能来自老数据；解析失败按快照不合法处理，不能解引用 nil
-	base, err := url.Parse(snap.Channel.BaseURL)
-	if err != nil || base.Hostname() == "" {
+	// base_url 在渠道创建期校验过，但快照可能来自老数据；解析失败按快照不合法处理
+	if base, err := url.Parse(snap.Channel.BaseURL); err != nil || base.Hostname() == "" {
 		return nil, terminalErr(codeInvalidSnapshot, fmt.Sprintf("渠道 %s 的 base_url 不合法", snap.Channel.Key), err)
 	}
-	allowed = append(allowed, strings.ToLower(base.Hostname()))
-	if err := netguard.CheckURLAllowed(allowed, u.Scheme, u.Hostname(), u.User != nil); err != nil {
+	// 结果文件可以放在任意公网域名：这里只检查协议与用户名密码，内网由拨号时的 IP 校验拦截
+	if err := netguard.CheckURLScheme(u.Scheme, u.Hostname(), u.User != nil); err != nil {
 		return nil, &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, func(s string) string { return s })}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -283,7 +282,7 @@ func (e *Executor) Download(ctx context.Context, snap *provider.Snapshot, rawURL
 		return nil, retryableErr(codeDownloadFailed, "构造产物下载请求失败", err)
 	}
 	req.Header.Set("User-Agent", defaultUserAgent)
-	client := e.client(allowed, snap.Channel.TrustedInternal)
+	client := e.client()
 	// 超时 context 必须活到调用方把 Body 读完：Body 绑在它上面，Download 返回时就取消会让后续读取全部
 	// 报 context canceled。所以不能 defer cancel，改由 Body.Close 取消；出错的分支自己取消。
 	dctx, cancel := context.WithTimeout(ctx, e.opts.DownloadTimeout)
@@ -541,7 +540,7 @@ func (o *operation) execute(ctx context.Context, b *builtRequest, phase string) 
 		return hookResponse{}, err
 	}
 	defer cleanup()
-	resp, err := o.e.client(o.hosts, o.rt.Channel.TrustedInternal).Do(req)
+	resp, err := o.e.client().Do(req)
 	if err != nil {
 		return hookResponse{}, o.requestError(phase, err)
 	}
@@ -665,6 +664,7 @@ func (o *operation) parseSubmitResult(raw json.RawMessage, mode string) (*provid
 }
 
 func (o *operation) parseQueryResult(raw json.RawMessage) (*provider.QueryResult, error) {
+	raw = o.normalizeResult(raw) // 先补全常见的漏写（见 result_shorthand.go），再走下面的严格校验
 	var v struct {
 		Status   string            `json:"status"`
 		Progress *float64          `json:"progress"`
@@ -736,7 +736,7 @@ func (o *operation) validateOutputs(outputs []provider.Output) error {
 			if err != nil {
 				return pluginFault("url 产物地址不合法")
 			}
-			if err := netguard.CheckURLAllowed(o.hosts, u.Scheme, u.Hostname(), u.User != nil); err != nil {
+			if err := netguard.CheckURLScheme(u.Scheme, u.Hostname(), u.User != nil); err != nil {
 				return &provider.Error{Class: provider.ClassTerminal, Code: provider.CodeSSRFBlocked, Message: "产物地址不允许", Cause: redactError(err, o.red.str), PluginFault: true}
 			}
 		case provider.OutputAsset:
@@ -767,28 +767,21 @@ func (e *Executor) limit(ctx context.Context, ch provider.ChannelSnapshot) (func
 	return e.limiters.get(ch.Key, ch.RateLimit.RPS, ch.RateLimit.MaxConcurrency).acquire(ctx)
 }
 
-// client 返回绑定白名单的客户端；底层 Transport 按 trusted 维度缓存复用。
-func (e *Executor) client(allowed []string, trusted bool) *http.Client {
-	return netguard.NewClient(e.transport(trusted), allowed, e.opts.MaxRedirects)
+// client 返回受防护的客户端：不限域名，只允许 http(s)、不带用户名密码；底层 Transport 复用，内网在拨号时拦截。
+func (e *Executor) client() *http.Client {
+	return netguard.NewClient(e.transport(), nil, e.opts.MaxRedirects)
 }
 
 // transport 懒创建并缓存带 SSRF 拨号校验的 Transport。
-func (e *Executor) transport(trusted bool) *http.Transport {
-	idx := 0
-	if trusted {
-		idx = 1
-	}
+func (e *Executor) transport() *http.Transport {
 	e.transportMu.Lock()
 	defer e.transportMu.Unlock()
-	if e.transports[idx] == nil {
+	if e.outbound == nil {
 		cfg := &netguard.Config{IPAllowed: e.opts.IPAllowed, Resolver: e.opts.Resolver, Dial: e.opts.Dial, MaxRedirects: e.opts.MaxRedirects}
-		if trusted && cfg.IPAllowed == nil {
-			cfg.IPAllowed = func(net.IP) bool { return true }
-		}
 		cfg.ApplyDefaults()
-		e.transports[idx] = netguard.NewTransport(cfg)
+		e.outbound = netguard.NewTransport(cfg)
 	}
-	return e.transports[idx]
+	return e.outbound
 }
 
 func responseHeaders(h http.Header) map[string]string {
@@ -987,8 +980,30 @@ func (o *operation) httpRequest(ctx context.Context, b *builtRequest) (*http.Req
 	return req, cleanup, nil
 }
 
+// sameOrigin 判断目标地址和渠道 base_url 是否同源：协议、主机名、端口都一致（不区分大小写，缺省端口按协议补齐）。
+// 渠道 Key 只注入同源请求：去掉域名白名单后，插件可以把请求发往任意公网地址，Key 不能跟着出去。
+func sameOrigin(u, base *url.URL) bool {
+	return strings.EqualFold(u.Scheme, base.Scheme) &&
+		strings.EqualFold(strings.TrimSuffix(u.Hostname(), "."), strings.TrimSuffix(base.Hostname(), ".")) &&
+		originPort(u) == originPort(base)
+}
+
+func originPort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	return "80"
+}
+
 func (o *operation) injectAuth(req *http.Request, b *builtRequest) error {
 	if b.auth.Type == pluginmeta.AuthNone || b.auth.Type == pluginmeta.AuthCustom {
+		return nil
+	}
+	if !sameOrigin(req.URL, o.base) {
+		o.noteKeySkipped(req.Method, req.URL)
 		return nil
 	}
 	key, err := o.loadSecret(req.Context())

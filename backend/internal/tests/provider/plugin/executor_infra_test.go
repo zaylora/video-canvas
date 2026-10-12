@@ -32,9 +32,10 @@ module.exports = {
 // execWith 用自定义宿主选项建执行器，runner 是进程内的真实 runner。
 func execWith(code string, mod func(*plugin.Options)) *plugin.Executor {
 	opts := plugin.Options{
-		Runner:  plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler()),
-		Codes:   codeStore{"code": code},
-		Secrets: secretResolver{value: "k"},
+		Runner:    plugin.NewInProcessRunnerClient(pluginrunner.NewServer(pluginrunner.Options{}).Handler()),
+		Codes:     codeStore{"code": code},
+		Secrets:   secretResolver{value: "k"},
+		IPAllowed: allowLoopback,
 	}
 	if mod != nil {
 		mod(&opts)
@@ -42,11 +43,10 @@ func execWith(code string, mod func(*plugin.Options)) *plugin.Executor {
 	return plugin.New(opts)
 }
 
-func syncSnapshot(baseURL, code, channelKey string, rl provider.RateLimit, trusted bool) *provider.Snapshot {
+func syncSnapshot(baseURL, code, channelKey string, rl provider.RateLimit) *provider.Snapshot {
 	snap := testSnapshot(baseURL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthNone})
 	snap.Channel.Key = channelKey
 	snap.Channel.RateLimit = rl
-	snap.Channel.TrustedInternal = trusted
 	return snap
 }
 
@@ -92,7 +92,7 @@ func TestExecutorChannelMaxConcurrency(t *testing.T) {
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
 
-	limited := syncSnapshot(upstream.URL, syncTextPlugin, "ch-limited", provider.RateLimit{MaxConcurrency: 2}, true)
+	limited := syncSnapshot(upstream.URL, syncTextPlugin, "ch-limited", provider.RateLimit{MaxConcurrency: 2})
 	submitAll(t, exec, limited, limited, limited, limited, limited, limited)
 	if got := probe.max.Load(); got != 2 {
 		t.Fatalf("max_concurrency=2 时并发峰值应为 2，实际 %d", got)
@@ -106,7 +106,7 @@ func TestExecutorNoRateLimitIsUnlimited(t *testing.T) {
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
 
-	free := syncSnapshot(upstream.URL, syncTextPlugin, "ch-free", provider.RateLimit{}, true)
+	free := syncSnapshot(upstream.URL, syncTextPlugin, "ch-free", provider.RateLimit{})
 	submitAll(t, exec, free, free, free, free)
 	if got := probe.max.Load(); got < 3 {
 		t.Fatalf("不限流时应能并发，实际峰值 %d", got)
@@ -120,8 +120,8 @@ func TestExecutorLimiterIsPerChannelNotPerHost(t *testing.T) {
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
 
-	a := syncSnapshot(upstream.URL, syncTextPlugin, "ch-a", provider.RateLimit{MaxConcurrency: 1}, true)
-	b := syncSnapshot(upstream.URL, syncTextPlugin, "ch-b", provider.RateLimit{MaxConcurrency: 1}, true)
+	a := syncSnapshot(upstream.URL, syncTextPlugin, "ch-a", provider.RateLimit{MaxConcurrency: 1})
+	b := syncSnapshot(upstream.URL, syncTextPlugin, "ch-b", provider.RateLimit{MaxConcurrency: 1})
 	submitAll(t, exec, a, b)
 	if got := probe.max.Load(); got != 2 {
 		t.Fatalf("两个渠道各限 1 并发，同一主机上的峰值应为 2，实际 %d", got)
@@ -133,7 +133,7 @@ func TestExecutorChannelRPS(t *testing.T) {
 	upstream := httptest.NewServer(&concurrencyProbe{})
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
-	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-rps", provider.RateLimit{RPS: 10}, true)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-rps", provider.RateLimit{RPS: 10})
 
 	start := time.Now()
 	// 突发量是 ceil(rps)=10，第 11~13 次请求各需等约 100ms
@@ -157,7 +157,7 @@ func TestExecutorLimiterWaitHonorsContext(t *testing.T) {
 	defer upstream.Close()
 	defer close(release)
 	exec := execWith(syncTextPlugin, nil)
-	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-block", provider.RateLimit{MaxConcurrency: 1}, true)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-block", provider.RateLimit{MaxConcurrency: 1})
 
 	go func() {
 		_, _ = exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
@@ -184,7 +184,7 @@ func TestExecutorReusesConnections(t *testing.T) {
 	upstream.Start()
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
-	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-pool", provider.RateLimit{}, true)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-pool", provider.RateLimit{})
 
 	for i := 0; i < 6; i++ {
 		if _, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: uint64(i + 1)}, Input: map[string]any{"prompt": "hi"}}); err != nil {
@@ -196,8 +196,8 @@ func TestExecutorReusesConnections(t *testing.T) {
 	}
 }
 
-// 缓存 Transport 后 SSRF 拨号校验仍然生效：非 trusted 渠道连回环地址被拒；
-// trusted 渠道与非 trusted 渠道各有自己的 Transport，互不串味（信任不会泄漏给普通渠道）。
+// 缓存 Transport 后 SSRF 拨号校验仍然生效：默认宿主拒绝回环等内网地址，重复请求也一样；
+// 只有宿主选项显式放行（测试和本机开发用）时才连得上。渠道上不再有“允许访问内网”的开关。
 func TestExecutorSSRFStillEnforcedWithSharedTransport(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -206,21 +206,21 @@ func TestExecutorSSRFStillEnforcedWithSharedTransport(t *testing.T) {
 	}))
 	defer upstream.Close() // 监听在 127.0.0.1，属于内网地址
 
-	exec := execWith(syncTextPlugin, nil)
-	untrusted := syncSnapshot(upstream.URL, syncTextPlugin, "ch-plain", provider.RateLimit{}, false)
-	trusted := syncSnapshot(upstream.URL, syncTextPlugin, "ch-trusted", provider.RateLimit{}, true)
+	strict := execWith(syncTextPlugin, func(o *plugin.Options) { o.IPAllowed = nil }) // 默认策略
+	open := execWith(syncTextPlugin, nil)                                             // 放行回环
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-plain", provider.RateLimit{})
 
 	for i := 0; i < 2; i++ {
 		before := hits.Load()
-		_, err := exec.Submit(context.Background(), untrusted, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
+		_, err := strict.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
 		if !errors.Is(err, netguard.ErrBlockedAddress) {
-			t.Fatalf("第 %d 次：非 trusted 渠道连内网地址应被拒：%v", i+1, err)
+			t.Fatalf("第 %d 次：默认策略连内网地址应被拒：%v", i+1, err)
 		}
 		if hits.Load() != before {
 			t.Fatal("被拒的请求不应到达上游")
 		}
-		if _, err := exec.Submit(context.Background(), trusted, provider.SubmitInput{Task: provider.TaskRef{ID: 2}, Input: map[string]any{"prompt": "hi"}}); err != nil {
-			t.Fatalf("trusted 渠道应可访问内网：%v", err)
+		if _, err := open.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 2}, Input: map[string]any{"prompt": "hi"}}); err != nil {
+			t.Fatalf("显式放行回环后应能连上：%v", err)
 		}
 	}
 }
@@ -229,8 +229,7 @@ func TestExecutorSSRFStillEnforcedWithSharedTransport(t *testing.T) {
 func TestExecutorDownloadInvalidBaseURL(t *testing.T) {
 	exec := execWith(syncTextPlugin, nil)
 	for _, base := range []string{"http://[::1", "", "://bad"} {
-		snap := syncSnapshot(base, syncTextPlugin, "ch-bad", provider.RateLimit{}, true)
-		snap.Plugin.Meta.AllowedHosts = []string{"cdn.example.com"}
+		snap := syncSnapshot(base, syncTextPlugin, "ch-bad", provider.RateLimit{})
 		dl, err := exec.Download(context.Background(), snap, "https://cdn.example.com/a.mp4")
 		if err == nil || dl != nil {
 			t.Fatalf("base_url=%q 应返回错误：%v", base, err)
@@ -253,7 +252,7 @@ func TestExecutorDownloadBodyReadableAfterReturn(t *testing.T) {
 	}))
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
-	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-dl-body", provider.RateLimit{}, true)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-dl-body", provider.RateLimit{})
 
 	dl, err := exec.Download(context.Background(), snap, upstream.URL+"/a.png")
 	if err != nil {
@@ -276,7 +275,7 @@ func TestExecutorDownloadInvalidURL(t *testing.T) {
 	upstream := httptest.NewServer(http.NotFoundHandler())
 	defer upstream.Close()
 	exec := execWith(syncTextPlugin, nil)
-	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-dl", provider.RateLimit{}, true)
+	snap := syncSnapshot(upstream.URL, syncTextPlugin, "ch-dl", provider.RateLimit{})
 	for _, raw := range []string{"http://[::1", "%zz", "/relative", ""} {
 		if _, err := exec.Download(context.Background(), snap, raw); err == nil {
 			t.Fatalf("产物地址 %q 应被拒绝", raw)

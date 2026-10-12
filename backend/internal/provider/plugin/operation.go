@@ -26,7 +26,6 @@ type operation struct {
 	model *provider.ModelSnapshot // Check / Import 为 nil
 	task  provider.TaskRef
 	base  *url.URL // 渠道 base_url
-	hosts []string // 请求与产物可访问的主机：插件 allowedHosts ∪ base_url 主机
 	trace *provider.Trace
 	red   redactor
 
@@ -45,8 +44,7 @@ func (e *Executor) newOperation(ctx context.Context, rt *provider.ChannelRuntime
 	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil {
 		return nil, terminalErr(codeInvalidSnapshot, fmt.Sprintf("渠道 %s 的 base_url 不合法", rt.Channel.Key), nil)
 	}
-	hosts := append(append([]string(nil), rt.Plugin.Meta.AllowedHosts...), strings.ToLower(base.Hostname()))
-	return &operation{e: e, rt: rt, model: ms, task: task, base: base, hosts: hosts, trace: provider.TraceFrom(ctx)}, nil
+	return &operation{e: e, rt: rt, model: ms, task: task, base: base, trace: provider.TraceFrom(ctx)}, nil
 }
 
 // setInput 登记规范化后的输入与其中的参考素材：o.media 的键是文件引用名 images.0 / videos.1 …，值是素材 id。

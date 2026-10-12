@@ -24,7 +24,7 @@ import {
 
 import { ADMIN_NAV } from "./admin-nav";
 
-export function AdminSidebar({ counts }: { counts: Record<string, number | undefined> }) {
+export function AdminSidebar() {
   const { pathname } = useLocation();
   const { setOpenMobile } = useSidebar();
 
@@ -44,7 +44,7 @@ export function AdminSidebar({ counts }: { counts: Record<string, number | undef
             <SidebarMenu className="gap-0.5">
               {section.items.map((item) => {
                 const url = `/admin/${item.to}`;
-                const badge = item.badge ?? counts[item.to];
+                const badge = item.badge;
                 const active = pathname === url || pathname.startsWith(`${url}/`);
                 return (
                   <SidebarMenuItem key={url}>

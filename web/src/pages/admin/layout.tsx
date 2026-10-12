@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
-import { Moon, Shield, ShieldCheck, Sun } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 
 import { FocusLoader } from "@/components/focus-loader";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -14,14 +15,10 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
-import { useSettingsStore } from "@/store/settings";
-import { ROLE_LABEL } from "@/utils/admin/role";
 
 import { AdminSidebar } from "./admin-sidebar";
 import { findNav } from "./admin-nav";
-import { Tag } from "@/components/admin-ui/tag";
 import { ForbiddenView } from "./shared";
-import { useAdminCatalog, type AdminOutletContext } from "./use-admin";
 
 /** 入场动画播多久后摘掉 data-entering，和画布页一致 */
 const ENTERING_MS = 1200;
@@ -79,14 +76,10 @@ function AdminBody() {
   const status = useAdminStore((state) => state.status);
   const load = useAdminStore((state) => state.load);
   const { pathname } = useLocation();
-  const theme = useSettingsStore((state) => state.theme);
-  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  const catalog = useAdminCatalog(status === "ready");
 
   if (status === "forbidden") return <ForbiddenView onRetry={() => void load(true)} />;
 
@@ -121,23 +114,14 @@ function AdminBody() {
     );
   }
 
-  const context: AdminOutletContext = { catalog };
-  const counts = {
-    "ai/channels": catalog.channelsStatus === "ready" ? catalog.channels.length : undefined,
-    "ai/plugins": catalog.pluginsStatus === "ready" ? catalog.plugins.length : undefined,
-  };
   const current = findNav(pathname);
-
-  const dark =
-    theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
     <SidebarProvider
       data-admin-root
       style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
     >
-      <AdminSidebar counts={counts} />
+      <AdminSidebar />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-6">
           <SidebarTrigger className="size-8" />
@@ -153,27 +137,11 @@ function AdminBody() {
             </BreadcrumbList>
           </Breadcrumb>
           <div className="ml-auto flex items-center gap-2">
-            <Tag
-              tone={role === "super_admin" ? "info" : "neutral"}
-              title={ROLE_LABEL[role]}
-              className="hidden sm:inline-flex"
-            >
-              <Shield />
-              {role === "super_admin" ? "超级管理员" : "管理员"}
-            </Tag>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-full"
-              aria-label={dark ? "切换到浅色" : "切换到深色"}
-              onClick={() => updateSettings("theme", dark ? "light" : "dark")}
-            >
-              {dark ? <Moon /> : <Sun />}
-            </Button>{" "}
+            <ThemeToggle />
           </div>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
-          <Outlet context={context} />
+          <Outlet />
         </div>
       </SidebarInset>
     </SidebarProvider>

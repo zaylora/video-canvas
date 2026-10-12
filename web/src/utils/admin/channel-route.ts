@@ -10,7 +10,6 @@ export type ChannelRouteTarget =
   | { kind: "edit"; key: string; tab: ChannelTab };
 
 const CHANNEL_TABS: readonly string[] = ["config", "models"];
-const PLUGIN_TABS: readonly string[] = ["overview", "versions"];
 
 /**
  * 解析渠道页的 URL 参数：
@@ -44,24 +43,6 @@ export function parseChannelRoute(
       key,
       tab: CHANNEL_TABS.includes(tab ?? "") ? (tab as ChannelTab) : "config",
     },
-    missing: null,
-  };
-}
-
-/** 解析插件页的 URL 参数：`?key=<key>[&tab=versions]`；插件不存在的处理同渠道 */
-export function parsePluginRoute(
-  params: URLSearchParams,
-  plugins: ReadonlyArray<{ key: string }>,
-  ready: boolean,
-): { target: { key: string; tab: PluginTab } | null; missing: string | null } {
-  const key = params.get("key");
-  if (!key) return { target: null, missing: null };
-  if (!plugins.some((plugin) => plugin.key === key)) {
-    return { target: null, missing: ready ? key : null };
-  }
-  const tab = params.get("tab");
-  return {
-    target: { key, tab: PLUGIN_TABS.includes(tab ?? "") ? (tab as PluginTab) : "overview" },
     missing: null,
   };
 }
