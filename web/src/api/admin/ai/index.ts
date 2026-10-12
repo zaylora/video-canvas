@@ -286,10 +286,7 @@ export const importFromChannel = async (
 export const listModels = async (
   params: ListModelsParams = {},
 ): Promise<AdminPage<ModelListItem>> =>
-  pageOf(
-    await service.get<AdminPage<ModelListItem> | null>(ep.models(), clean(params)),
-    params,
-  );
+  pageOf(await service.get<AdminPage<ModelListItem> | null>(ep.models(), clean(params)), params);
 
 /**
  * 全部模型的列表项（不分页，不含状态）：概览、渠道导入弹窗判重用

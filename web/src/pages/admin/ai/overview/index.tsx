@@ -96,11 +96,7 @@ export default function OverviewPage() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        stats.reload(),
-        loads.reload(),
-        reloadOverview(),
-      ]);
+      await Promise.all([stats.reload(), loads.reload(), reloadOverview()]);
     } finally {
       setRefreshing(false);
     }

@@ -101,7 +101,10 @@ export function accessLabel(view: StorageView): string {
  * @param view 存储视图
  */
 export function storageLocation(
-  view: Pick<StorageView, "provider" | "local_dir" | "region" | "endpoint" | "path_prefix" | "bucket">,
+  view: Pick<
+    StorageView,
+    "provider" | "local_dir" | "region" | "endpoint" | "path_prefix" | "bucket"
+  >,
 ): { primary: string; secondary: string } {
   if (view.provider === "local") return { primary: view.local_dir ?? "", secondary: "" };
   const where = view.provider === "r2" ? "R2 · auto" : view.region || view.endpoint;

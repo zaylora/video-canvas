@@ -119,10 +119,7 @@ describe("loadRows", () => {
   const NO_KEY: ChannelHealth = { tone: "warn", label: "未设 Key", reason: "还没有设置 Key" };
   const OFF: ChannelHealth = { tone: "off", label: "已停用", reason: "渠道已停用" };
   /** 后端给的精简渠道：健康状态已经算好 */
-  const channel = (
-    key: string,
-    extra: Partial<OverviewChannel> = {},
-  ): OverviewChannel => ({
+  const channel = (key: string, extra: Partial<OverviewChannel> = {}): OverviewChannel => ({
     key,
     name: key.toUpperCase(),
     max_running: 0,

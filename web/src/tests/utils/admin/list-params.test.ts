@@ -37,9 +37,12 @@ describe("parseListParams", () => {
 
 describe("toListQuery", () => {
   test("去掉空值，q 去首尾空格，带上分页", () => {
-    expect(
-      toListQuery({ q: "  oss ", page: 2, filters: { status: "on" } }, 20),
-    ).toEqual({ q: "oss", page: 2, page_size: 20, status: "on" });
+    expect(toListQuery({ q: "  oss ", page: 2, filters: { status: "on" } }, 20)).toEqual({
+      q: "oss",
+      page: 2,
+      page_size: 20,
+      status: "on",
+    });
   });
 
   test("q 为空时不带 q", () => {

@@ -76,7 +76,10 @@ export function TodoList({
       if (canWrite) {
         // 升级要对照全量插件版本和渠道，点了才取（按需，不预加载）
         try {
-          const [plugins, channels] = await Promise.all([listPluginOptions(), listChannelOptions()]);
+          const [plugins, channels] = await Promise.all([
+            listPluginOptions(),
+            listChannelOptions(),
+          ]);
           const plugin = plugins.find((item) => item.key === action.plugin_key);
           if (plugin) {
             void confirmUpgradeChannels({ plugin, channels, plugins, onDone: onChanged });

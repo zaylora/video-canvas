@@ -15,7 +15,10 @@ const unset = (value: string | null | undefined): boolean => !value || value ===
  * @param params 当前 URL 的查询参数
  * @param filterKeys 本列表认的筛选参数名（白名单，其它参数忽略）
  */
-export function parseListParams(params: URLSearchParams, filterKeys: readonly string[]): ListParams {
+export function parseListParams(
+  params: URLSearchParams,
+  filterKeys: readonly string[],
+): ListParams {
   const filters: Record<string, string> = {};
   for (const key of filterKeys) {
     const value = params.get(key);
