@@ -6,7 +6,7 @@ import {
   getModelDetail,
   getTestRun,
   getTestRunTrace,
-  listModels,
+  listModelOptions,
   setModelEnabled,
   testRunModel,
   updateModel,
@@ -181,7 +181,7 @@ export function useModelWorkspace(
 
   const loadList = useCallback(async () => {
     try {
-      const list = await listModels();
+      const list = await listModelOptions();
       if (!aliveRef.current) return;
       setModels(list);
       setListState("ready");

@@ -432,3 +432,108 @@ export interface AdminStats {
   /** 按任务数降序的任务类型 */
   by_kind: AdminStatsKindCount[];
 }
+
+// ---------------------------------------------------------------- 分页列表（渠道 / 插件 / 模型）
+
+/** 渠道健康色调：ok 可用、warn 缺 Key、bad 不可用、off 已停用 */
+export type HealthTone = "ok" | "warn" | "bad" | "off";
+
+/** 渠道实际能不能用（后端算好）：插件停用 / 不存在 / 缺 Key 都会让渠道不可用，即使渠道本身是“启用” */
+export interface ChannelHealth {
+  tone: HealthTone;
+  /** 列表里的短标签 */
+  label: string;
+  /** 不可用的原因（整句）；可用时为空串 */
+  reason: string;
+}
+
+/** 模型对运营露出的唯一状态：在线 / 不可用（已上架但渠道用不了）/ 未上线 */
+export type ModelStatus = "online" | "broken" | "offline";
+
+/** 模型状态（后端算好）；reason 是渠道层面的问题，未上线的模型也可能有 */
+export interface ModelHealth {
+  status: ModelStatus;
+  reason: string;
+}
+
+/** 通用分页结果 */
+export interface AdminPage<T> {
+  list: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 渠道列表的一行：渠道 + 健康状态、可升级版本、能力、模型数 */
+export interface ChannelListItem extends ChannelView {
+  health: ChannelHealth;
+  /** 有更新版本时是最高版本号，否则为空串 */
+  upgrade_to: string;
+  /** 所用插件版本支持的生成方式（含 agent） */
+  kinds: string[];
+  model_count: number;
+  /** 其中已上架的 */
+  online_model_count: number;
+}
+
+/** 渠道 options（弹窗下拉、概览用）：完整渠道视图 + 健康状态和能力，不分页 */
+export interface ChannelOption extends ChannelView {
+  health: ChannelHealth;
+  kinds: string[];
+}
+
+/** 插件列表的一行：插件（带全部版本）+ 渠道数、旧版渠道数、在线模型数、最新版本 */
+export interface PluginListItem extends PluginView {
+  /** 按 semver 最高的版本号；没有版本为空串 */
+  latest_version: string;
+  /** 在用这个插件的渠道数 */
+  channel_count: number;
+  /** 其中固定在旧版本上的渠道数 */
+  outdated_channel_count: number;
+  /** 这些渠道下已上架的模型数 */
+  online_model_count: number;
+}
+
+/** 模型列表的一行：列表项 + 状态和渠道名 */
+export interface ModelListItem extends ConfigListItem {
+  health: ModelHealth;
+  /** 绑定渠道的显示名；没绑或渠道不存在为空串 */
+  channel_name: string;
+}
+
+/** 渠道列表的查询参数 */
+export interface ListChannelsParams {
+  q?: string;
+  /** text / image / video / audio / agent */
+  kind?: string;
+  /** 插件 key */
+  plugin?: string;
+  /** ok / warn / bad / off / upgrade */
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+/** 插件列表的查询参数 */
+export interface ListPluginsParams {
+  q?: string;
+  kind?: string;
+  /** builtin / uploaded */
+  source?: string;
+  /** on / off / outdated */
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+/** 模型列表的查询参数 */
+export interface ListModelsParams {
+  q?: string;
+  kind?: string;
+  /** 渠道 key */
+  channel?: string;
+  /** online / broken / offline */
+  status?: string;
+  page?: number;
+  page_size?: number;
+}

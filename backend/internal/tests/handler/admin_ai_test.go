@@ -83,11 +83,14 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		env.tokens[int(id)] = tok
 	}
 	lookup := func(_ context.Context, id uint64) (string, error) { return env.roles[id], nil }
+	pluginSvc := service.NewAIPluginService(repo, repo, repo, env.checker, cfg)
+	channelSvc := service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)
 	env.engine = router.New(gin.TestMode, aicJWTSecret, router.Handlers{
 		AIModel:      NewAIModelHandler(cfg),
 		AdminAI:      NewAdminAIHandler(cfg),
-		AdminPlugin:  NewAdminPluginHandler(service.NewAIPluginService(repo, repo, repo, env.checker, cfg)),
-		AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)),
+		AdminCatalog: NewAdminCatalogHandler(service.NewAICatalogService(channelSvc, pluginSvc, cfg)),
+		AdminPlugin:  NewAdminPluginHandler(pluginSvc),
+		AdminChannel: NewAdminChannelHandler(channelSvc),
 		AdminStats:   NewAdminStatsHandler(service.NewAIStatsService(env.stats, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
@@ -527,15 +530,18 @@ func TestAdminPluginHandler_ListEnabledDelete(t *testing.T) {
 	t.Run("列表：admin 可读，带版本与 meta", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/plugins", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []struct {
-			Key      string `json:"key"`
-			Versions []struct {
-				Version      string         `json:"version"`
-				ChannelCount int            `json:"channel_count"`
-				Meta         map[string]any `json:"meta"`
-			} `json:"versions"`
+		var page struct {
+			List []struct {
+				Key      string `json:"key"`
+				Versions []struct {
+					Version      string         `json:"version"`
+					ChannelCount int            `json:"channel_count"`
+					Meta         map[string]any `json:"meta"`
+				} `json:"versions"`
+			} `json:"list"`
 		}
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 2 || len(list[0].Versions) != 1 || list[0].Versions[0].Meta["key"] != "kling" {
+		list := &page.List
+		if err := json.Unmarshal(r.Data, &page); err != nil || len(*list) != 2 || len((*list)[0].Versions) != 1 || (*list)[0].Versions[0].Meta["key"] != "kling" {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		if strings.Contains(r.Raw, `"code":"`) {
@@ -651,8 +657,11 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 	t.Run("列表与详情：admin 可读", func(t *testing.T) {
 		r := env.admin(http.MethodGet, path, nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 2 || list[0]["key"] != "kling-main" {
+		var page struct {
+			List  []map[string]any `json:"list"`
+			Total int              `json:"total"`
+		}
+		if err := json.Unmarshal(r.Data, &page); err != nil || page.Total != 2 || len(page.List) != 2 || page.List[0]["key"] != "kling-main" {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		aicWant(t, env.admin(http.MethodGet, path+"/kling-main", nil), http.StatusOK, 0)
@@ -977,8 +986,8 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 	t.Run("列表带 label 与 channel，且不含正文", func(t *testing.T) {
 		r := env.admin(http.MethodGet, aicBase+"/models", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil || len(list) != 1 {
+		list, err := aicPageList(r)
+		if err != nil || len(list) != 1 {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		if list[0]["key"] != "m1" || list[0]["label"] != "线上新名" || list[0]["channel"] != "kling-main" || list[0]["kind"] != "video" {
@@ -996,8 +1005,8 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 		body["vendor"], body["tags"] = "kling", []any{"推荐", "带音轨"}
 		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": body}), http.StatusOK, 0)
 		r := env.admin(http.MethodGet, aicBase+"/models", nil)
-		var list []map[string]any
-		if err := json.Unmarshal(r.Data, &list); err != nil {
+		list, err := aicPageList(r)
+		if err != nil {
 			t.Fatal(err)
 		}
 		for _, it := range list {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { listChannels, listModels, listPlugins } from "@/api/admin/ai";
+import { listChannelOptions, listModelOptions, listPluginOptions } from "@/api/admin/ai";
 import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
 
 export type LoadStatus = "loading" | "ready" | "error";
@@ -41,7 +41,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
 
   const reloadPlugins = useCallback(async () => {
     try {
-      const list = await listPlugins();
+      const list = await listPluginOptions();
       if (!aliveRef.current) return;
       setPlugins(list);
       setPluginsStatus("ready");
@@ -52,7 +52,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
 
   const reloadChannels = useCallback(async () => {
     try {
-      const list = await listChannels();
+      const list = await listChannelOptions();
       if (!aliveRef.current) return;
       setChannels(list);
       setChannelsStatus("ready");
@@ -87,7 +87,7 @@ export function useModelList() {
   const [status, setStatus] = useState<LoadStatus>("loading");
   const reload = useCallback(async () => {
     try {
-      const list = await listModels();
+      const list = await listModelOptions();
       if (!aliveRef.current) return;
       setModels(list);
       setStatus("ready");

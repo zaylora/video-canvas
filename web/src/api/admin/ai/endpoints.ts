@@ -4,20 +4,26 @@
  *
  *   GET    /admin/ai/me                                当前角色
  *   GET    /admin/ai/stats?days=7|30                   总览页任务统计
- *   GET    /admin/ai/plugins                           插件与版本列表
+ *   GET    /admin/ai/plugins                           插件分页列表（?q=&kind=&source=&status=&page=&page_size=）
+ *   GET    /admin/ai/plugins/options                   全部插件（带版本和 meta，不分页）
+ *   GET    /admin/ai/plugins/:key                      插件详情
  *   POST   /admin/ai/plugins                           上传插件（multipart，字段 file）
  *   PUT    /admin/ai/plugins/:key/enabled              启停，body = {enabled}
  *   DELETE /admin/ai/plugins/:key/versions/:version    删除未被引用的版本
  *   GET    /admin/ai/{plugins|channels|models}/:key/delete-check   删除预检：谁在引用它
  *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（key 之后可以重新使用）
- *   GET    /admin/ai/channels[/:key]                   渠道列表 / 详情
+ *   GET    /admin/ai/channels                          渠道分页列表（?q=&kind=&plugin=&status=&page=&page_size=）
+ *   GET    /admin/ai/channels/options                  全部渠道（带健康状态，不分页）
+ *   GET    /admin/ai/channels/:key                     渠道详情
  *   GET    /admin/ai/channels/loads                    各渠道当前的生成中 / 排队任务数
  *   POST   /admin/ai/channels                          新建渠道
  *   PUT    /admin/ai/channels/:key                     更新渠道（字段都可选）
  *   PUT    /admin/ai/channels/:key/secret              设置 Key，body = {value}，只写
  *   POST   /admin/ai/channels/:key/check               连通性检查
  *   POST   /admin/ai/channels/:key/import              导入模型草稿，body = {args}
- *   GET|POST /admin/ai/models                          模型列表 / 新建（保存，默认未启用）
+ *   GET    /admin/ai/models                            模型分页列表（?q=&kind=&channel=&status=&page=&page_size=）
+ *   GET    /admin/ai/models/options                    全部模型的列表项（不分页）
+ *   POST   /admin/ai/models                            新建（保存，默认未启用）
  *   GET|PUT  /admin/ai/models/:key                     详情 / 更新（已启用的保存即生效）
  *   POST   /admin/ai/models/:key/{validate|dry-run|test-run}
  *   PUT    /admin/ai/models/:key/{enabled|sort}        启用 / 停用、排序
@@ -36,12 +42,14 @@ export const adminAiEndpoints = {
   stats: () => `${P}/stats`,
 
   plugins: () => `${P}/plugins`,
+  pluginOptions: () => `${P}/plugins/options`,
   plugin: (key: string) => `${P}/plugins/${seg(key)}`,
   pluginEnabled: (key: string) => `${P}/plugins/${seg(key)}/enabled`,
   pluginVersion: (key: string, version: string) =>
     `${P}/plugins/${seg(key)}/versions/${seg(version)}`,
 
   channels: () => `${P}/channels`,
+  channelOptions: () => `${P}/channels/options`,
   channelLoads: () => `${P}/channels/loads`,
   channel,
   channelSecret: (key: string) => `${channel(key)}/secret`,
@@ -50,6 +58,7 @@ export const adminAiEndpoints = {
   channelImport: (key: string) => `${channel(key)}/import`,
 
   models: () => `${P}/models`,
+  modelOptions: () => `${P}/models/options`,
   model,
   modelValidate: (key: string) => `${model(key)}/validate`,
   modelEnabled: (key: string) => `${model(key)}/enabled`,

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
-import { createModel, importFromChannel, listModels, setModelEnabled } from "@/api/admin/ai";
+import {
+  createModel,
+  importFromChannel,
+  listModelOptions,
+  setModelEnabled,
+} from "@/api/admin/ai";
 import type { ChannelView, ModelDraft, PluginView } from "@/api/admin/ai/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
 import { OptionSelect } from "@/components/admin-ui/option-select";
@@ -164,7 +169,7 @@ function ImportBody({
 
   useEffect(() => {
     let cancelled = false;
-    listModels()
+    listModelOptions()
       .then((list) => !cancelled && setExisting(new Set(list.map((item) => item.key))))
       .catch(() => !cancelled && setExistingFailed(true));
     return () => {

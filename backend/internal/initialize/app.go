@@ -244,6 +244,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Files:          handler.NewFilesHandler(assetSvc),
 		AIModel:        handler.NewAIModelHandler(aiCfgSvc),
 		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),
+		AdminCatalog:   handler.NewAdminCatalogHandler(service.NewAICatalogService(aiChannelSvc, aiPluginSvc, aiCfgSvc)),
 		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
 		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc),
 		AdminStats:     handler.NewAdminStatsHandler(service.NewAIStatsService(repository.NewAIStatsRepository(db), aiCfgSvc)),
