@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
-import { Moon, Shield, ShieldCheck, Sun } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 
 import { FocusLoader } from "@/components/focus-loader";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -14,12 +15,9 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
-import { useSettingsStore } from "@/store/settings";
-import { ROLE_LABEL } from "@/utils/admin/role";
 
 import { AdminSidebar } from "./admin-sidebar";
 import { findNav } from "./admin-nav";
-import { Tag } from "@/components/admin-ui/tag";
 import { ForbiddenView } from "./shared";
 
 /** 入场动画播多久后摘掉 data-entering，和画布页一致 */
@@ -78,8 +76,6 @@ function AdminBody() {
   const status = useAdminStore((state) => state.status);
   const load = useAdminStore((state) => state.load);
   const { pathname } = useLocation();
-  const theme = useSettingsStore((state) => state.theme);
-  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   useEffect(() => {
     void load();
@@ -120,10 +116,6 @@ function AdminBody() {
 
   const current = findNav(pathname);
 
-  const dark =
-    theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
   return (
     <SidebarProvider
       data-admin-root
@@ -145,23 +137,7 @@ function AdminBody() {
             </BreadcrumbList>
           </Breadcrumb>
           <div className="ml-auto flex items-center gap-2">
-            <Tag
-              tone={role === "super_admin" ? "info" : "neutral"}
-              title={ROLE_LABEL[role]}
-              className="hidden sm:inline-flex"
-            >
-              <Shield />
-              {role === "super_admin" ? "超级管理员" : "管理员"}
-            </Tag>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-full"
-              aria-label={dark ? "切换到浅色" : "切换到深色"}
-              onClick={() => updateSettings("theme", dark ? "light" : "dark")}
-            >
-              {dark ? <Moon /> : <Sun />}
-            </Button>{" "}
+            <ThemeToggle />
           </div>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
