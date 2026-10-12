@@ -1,29 +1,15 @@
 import { CircleArrowUp, Trash2, Upload, X } from "lucide-react";
 
 import type { PluginListItem } from "@/api/admin/ai/type.d";
-import {
-  DataPanel,
-  DataPanelBody,
-  DataPanelPagination,
-} from "@/components/admin-ui/data-panel";
-import {
-  EmptyState,
-  EmptyStateActions,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { DataPanel, DataPanelBody, DataPanelPagination } from "@/components/admin-ui/data-panel";
+import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { RowAction } from "@/components/admin-ui/row-action";
-import {
-  RowIconAction,
-  RowMoreMenu,
-} from "@/components/admin-ui/row-icon-action";
+import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { Tag } from "@/components/admin-ui/tag";
-import {
-  TableToolbar,
-  TableToolbarCount,
-} from "@/components/admin-ui/table-toolbar";
+import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -132,27 +118,17 @@ export function PluginTable({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                插件
-              </TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">插件</TableHead>
               <TableHead className="text-muted-foreground px-3 text-xs max-md:hidden">
                 来源
               </TableHead>
               <TableHead className="text-muted-foreground px-3 text-xs max-md:hidden">
                 能力
               </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                最新版本
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                渠道
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                启用
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-right text-xs">
-                操作
-              </TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">最新版本</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">渠道</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">启用</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -166,16 +142,9 @@ export function PluginTable({
               ))}
             {status === "error" && (
               <TableRow>
-                <TableCell
-                  colSpan={columns}
-                  className="text-destructive h-32 text-center"
-                >
+                <TableCell colSpan={columns} className="text-destructive h-32 text-center">
                   加载失败
-                  <button
-                    type="button"
-                    className="ml-1 underline"
-                    onClick={list.reload}
-                  >
+                  <button type="button" className="ml-1 underline" onClick={list.reload}>
                     重试
                   </button>
                 </TableCell>
@@ -193,9 +162,7 @@ export function PluginTable({
             )}
             {status === "ready" &&
               rows.map((plugin) => {
-                const latest = plugin.versions.find(
-                  (v) => v.version === plugin.latest_version,
-                );
+                const latest = plugin.versions.find((v) => v.version === plugin.latest_version);
                 const outdated = plugin.outdated_channel_count;
                 return (
                   <TableRow
@@ -216,33 +183,21 @@ export function PluginTable({
                       </div>
                     </TableCell>
                     <TableCell className="px-3 py-3 max-md:hidden">
-                      <Tag>
-                        {plugin.source === "builtin" ? "内置" : "已上传"}
-                      </Tag>
+                      <Tag>{plugin.source === "builtin" ? "内置" : "已上传"}</Tag>
                     </TableCell>
                     <TableCell className="px-3 py-3 max-md:hidden">
-                      <KindIcons
-                        kinds={Object.keys(latest?.meta?.endpoints ?? {})}
-                      />
+                      <KindIcons kinds={Object.keys(latest?.meta?.endpoints ?? {})} />
                     </TableCell>
                     <TableCell className="px-3 py-3 font-mono text-xs">
-                      {plugin.latest_version
-                        ? `v${plugin.latest_version}`
-                        : "—"}
+                      {plugin.latest_version ? `v${plugin.latest_version}` : "—"}
                     </TableCell>
                     <TableCell className="px-3 py-3 text-xs whitespace-nowrap tabular-nums">
                       {plugin.channel_count} 个在用
                       {outdated > 0 && (
-                        <span className="text-muted-foreground">
-                          {" "}
-                          · {outdated} 个旧版
-                        </span>
+                        <span className="text-muted-foreground"> · {outdated} 个旧版</span>
                       )}
                     </TableCell>
-                    <TableCell
-                      className="px-3 py-3"
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <Switch
                         checked={plugin.enabled}
                         disabled={!canWrite || toggling === plugin.key}
@@ -251,18 +206,11 @@ export function PluginTable({
                         onCheckedChange={(checked) => onToggle(plugin, checked)}
                       />
                     </TableCell>
-                    <TableCell
-                      className="px-3 py-3"
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       {canWrite && (
                         <div className="flex items-center justify-end gap-0.5">
                           <RowIconAction
-                            label={
-                              outdated > 0
-                                ? `升级渠道（${outdated}）`
-                                : "升级渠道"
-                            }
+                            label={outdated > 0 ? `升级渠道（${outdated}）` : "升级渠道"}
                             target={plugin.name}
                             deny={outdated === 0 ? "渠道都已是最新版本" : null}
                             onClick={() => onUpgrade(plugin)}

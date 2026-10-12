@@ -42,9 +42,7 @@ export default function PluginsPage() {
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
   // 插件分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量插件和渠道在 catalog 里（options）
-  const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) =>
-    listPlugins(query),
-  );
+  const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) => listPlugins(query));
   /** 插件有改动之后：重新拉当前页，并刷新弹窗用的全量插件 */
   const { reload: reloadList } = list;
   const { reloadPlugins, reloadChannels } = catalog;
@@ -129,9 +127,7 @@ export default function PluginsPage() {
       <PluginDialog
         plugin={plugin}
         tab={tab}
-        onTabChange={(tab) =>
-          routeKey && setParams({ key: routeKey, tab }, { replace: true })
-        }
+        onTabChange={(tab) => routeKey && setParams({ key: routeKey, tab }, { replace: true })}
         plugins={catalog.plugins}
         channels={catalog.channels}
         canWrite={canWrite}
@@ -150,9 +146,7 @@ export default function PluginsPage() {
           onUploaded={() => void refresh()}
           onNextStep={(pluginKey) => {
             setUploadOpen(false);
-            navigate(
-              `/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`,
-            );
+            navigate(`/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`);
           }}
         />
       )}

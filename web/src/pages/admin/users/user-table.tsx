@@ -1,12 +1,4 @@
-import {
-  Ban,
-  CircleCheck,
-  Diff,
-  Gauge,
-  Loader2,
-  RotateCw,
-  SearchX,
-} from "lucide-react";
+import { Ban, CircleCheck, Diff, Gauge, Loader2, RotateCw, SearchX } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
@@ -123,9 +115,7 @@ function UserTable({
     return (
       <EmptyState className="m-4 mt-0">
         <EmptyStateTitle>加载失败</EmptyStateTitle>
-        <EmptyStateDescription>
-          用户列表没有加载出来，请检查网络后重试。
-        </EmptyStateDescription>
+        <EmptyStateDescription>用户列表没有加载出来，请检查网络后重试。</EmptyStateDescription>
         <EmptyStateActions>
           <Button variant="outline" onClick={onRetry}>
             <RotateCw />
@@ -143,13 +133,9 @@ function UserTable({
           <SearchX />
         </EmptyStateIcon>
         <EmptyStateTitle>
-          {filterText.trim()
-            ? `没有匹配 “${filterText.trim()}” 的用户`
-            : "没有匹配条件的用户"}
+          {filterText.trim() ? `没有匹配 “${filterText.trim()}” 的用户` : "没有匹配条件的用户"}
         </EmptyStateTitle>
-        <EmptyStateDescription>
-          换个关键词，或清除筛选条件。
-        </EmptyStateDescription>
+        <EmptyStateDescription>换个关键词，或清除筛选条件。</EmptyStateDescription>
         {filtering && (
           <EmptyStateActions>
             <Button variant="outline" onClick={onClearFilters}>
@@ -162,18 +148,13 @@ function UserTable({
   }
 
   const pageIds = items.map((item) => item.id);
-  const checkedCount = pageIds.filter((id) =>
-    selection.selected.has(id),
-  ).length;
+  const checkedCount = pageIds.filter((id) => selection.selected.has(id)).length;
   const loading = state === "loading";
 
   return (
     <div
       data-slot="user-table"
-      className={cn(
-        "transition-opacity",
-        refreshing && !loading && "opacity-60",
-      )}
+      className={cn("transition-opacity", refreshing && !loading && "opacity-60")}
       aria-busy={refreshing}
     >
       <Table>
@@ -184,37 +165,25 @@ function UserTable({
                 aria-label="全选当前页"
                 disabled={loading}
                 checked={checkedCount > 0 && checkedCount === pageIds.length}
-                indeterminate={
-                  checkedCount > 0 && checkedCount < pageIds.length
-                }
+                indeterminate={checkedCount > 0 && checkedCount < pageIds.length}
                 onCheckedChange={(checked) => selection.onTogglePage(checked)}
               />
             </TableHead>
             <TableHead className="bg-muted/40 text-muted-foreground min-w-[200px] text-xs">
               用户
             </TableHead>
-            <TableHead className="bg-muted/40 text-muted-foreground w-24 text-xs">
-              角色
-            </TableHead>
+            <TableHead className="bg-muted/40 text-muted-foreground w-24 text-xs">角色</TableHead>
             <TableHead className="bg-muted/40 text-muted-foreground w-[88px] text-xs">
               状态
             </TableHead>
             <TableHead className="bg-muted/40 text-muted-foreground w-[120px] text-right text-xs">
               可用积分
             </TableHead>
-            <TableHead
-              className={cn(
-                "bg-muted/40 text-muted-foreground w-28 text-xs",
-                WIDE_ONLY,
-              )}
-            >
+            <TableHead className={cn("bg-muted/40 text-muted-foreground w-28 text-xs", WIDE_ONLY)}>
               并发
             </TableHead>
             <TableHead
-              className={cn(
-                "bg-muted/40 text-muted-foreground w-[104px] text-xs",
-                WIDE_ONLY,
-              )}
+              className={cn("bg-muted/40 text-muted-foreground w-[104px] text-xs", WIDE_ONLY)}
             >
               最近活跃
             </TableHead>
@@ -239,7 +208,6 @@ function UserTable({
               ))}
         </TableBody>
       </Table>
-      {loading && !skeleton && <div className="h-[28rem]" aria-hidden />}
     </div>
   );
 }
@@ -315,8 +283,7 @@ function UserRow({
   const self = actor?.id === user.id;
 
   const onKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
-    if (event.key === "Enter" && event.target === event.currentTarget)
-      onOpen(user.id);
+    if (event.key === "Enter" && event.target === event.currentTarget) onOpen(user.id);
   };
 
   /** 积分格、勾选框、操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
@@ -371,14 +338,10 @@ function UserRow({
             <div className="truncate font-medium">
               {user.username}
               {self && (
-                <span className="text-muted-foreground ml-1.5 text-xs font-normal">
-                  （你）
-                </span>
+                <span className="text-muted-foreground ml-1.5 text-xs font-normal">（你）</span>
               )}
             </div>
-            <div className="text-muted-foreground truncate text-xs">
-              {user.email || "—"}
-            </div>
+            <div className="text-muted-foreground truncate text-xs">{user.email || "—"}</div>
           </div>
         </div>
       </TableCell>
@@ -399,18 +362,10 @@ function UserRow({
       </TableCell>
       <TableCell className={WIDE_ONLY}>
         <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "font-mono tabular-nums",
-              conc.full && "text-status-warning",
-            )}
-          >
+          <span className={cn("font-mono tabular-nums", conc.full && "text-status-warning")}>
             {conc.active}/{conc.limit}
           </span>
-          <span
-            className="bg-muted h-1 w-12 overflow-hidden rounded-full"
-            aria-hidden
-          >
+          <span className="bg-muted h-1 w-12 overflow-hidden rounded-full" aria-hidden>
             <motion.span
               className={cn(
                 "block h-full w-full origin-left rounded-full",
@@ -421,15 +376,11 @@ function UserRow({
               transition={SPRING}
             />
           </span>
-          {conc.custom && (
-            <span className="text-muted-foreground text-[11px]">自定</span>
-          )}
+          {conc.custom && <span className="text-muted-foreground text-[11px]">自定</span>}
         </div>
       </TableCell>
       <TableCell className={cn("text-muted-foreground text-xs", WIDE_ONLY)}>
-        <span title={formatAbsolute(user.last_login_at)}>
-          {formatRelative(user.last_login_at)}
-        </span>
+        <span title={formatAbsolute(user.last_login_at)}>{formatRelative(user.last_login_at)}</span>
       </TableCell>
       <TableCell className="w-28" {...stop}>
         <div className="flex items-center justify-end gap-0.5">
@@ -457,13 +408,9 @@ function UserRow({
               variant="ghost"
               size="icon-sm"
               disabled={!!banDeny || statusBusy}
-              className={cn(
-                !disabled && "text-destructive hover:text-destructive",
-              )}
+              className={cn(!disabled && "text-destructive hover:text-destructive")}
               aria-label={`${disabled ? "启用" : "封禁"} ${user.username}`}
-              onClick={() =>
-                void actions.setStatus(user, disabled ? "active" : "disabled")
-              }
+              onClick={() => void actions.setStatus(user, disabled ? "active" : "disabled")}
             >
               {statusBusy ? (
                 <Loader2 className="animate-spin" />
@@ -512,10 +459,7 @@ function StatusCell({ disabled }: { disabled: boolean }) {
 function CreditValue({ user }: { user: UserListItem }) {
   return (
     <>
-      <AnimatedNumber
-        value={user.available}
-        className="font-mono font-medium"
-      />
+      <AnimatedNumber value={user.available} className="font-mono font-medium" />
       {user.frozen > 0 && (
         <span className="text-muted-foreground text-xs tabular-nums">
           冻结 <AnimatedNumber value={user.frozen} />
@@ -545,11 +489,7 @@ function CreditCell({
   if (deny) {
     return (
       <ReasonTooltip reason={deny}>
-        <button
-          type="button"
-          disabled
-          className={cn(CREDIT_CELL, "cursor-default")}
-        >
+        <button type="button" disabled className={cn(CREDIT_CELL, "cursor-default")}>
           <CreditValue user={user} />
         </button>
       </ReasonTooltip>

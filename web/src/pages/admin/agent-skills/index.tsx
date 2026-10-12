@@ -23,10 +23,7 @@ import {
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  importedMessage,
-  type SkillListFilter,
-} from "@/utils/admin/agent-skill";
+import { importedMessage, type SkillListFilter } from "@/utils/admin/agent-skill";
 
 import { DropOverlay } from "./drop-overlay";
 import { getFilesFromEvent, toPicked } from "./drop-files";
@@ -87,18 +84,13 @@ export default function AgentSkillsPage() {
       }
       void importer.begin(toPicked(files));
     },
-    onError: () =>
-      toast.error("读取拖入的文件失败，请改用“选择文件夹”或压缩包"),
+    onError: () => toast.error("读取拖入的文件失败，请改用“选择文件夹”或压缩包"),
   });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (
-        event.key !== "/" ||
-        target?.closest("input, textarea, [contenteditable]")
-      )
-        return;
+      if (event.key !== "/" || target?.closest("input, textarea, [contenteditable]")) return;
       event.preventDefault();
       searchRef.current?.focus();
     };
@@ -155,11 +147,7 @@ export default function AgentSkillsPage() {
                   title="技能列表加载失败"
                   className="m-4"
                   action={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void api.reload()}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => void api.reload()}>
                       重试
                     </Button>
                   }
@@ -171,9 +159,7 @@ export default function AgentSkillsPage() {
                   busyNames={api.busyNames}
                   freshName={api.freshName}
                   onOpen={(item) => setOpenSkill(item)}
-                  onToggle={(item, enabled) =>
-                    void api.toggleEnabled(item, enabled)
-                  }
+                  onToggle={(item, enabled) => void api.toggleEnabled(item, enabled)}
                 />
               )}
             </DataPanelBody>

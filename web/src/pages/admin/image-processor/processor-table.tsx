@@ -1,9 +1,6 @@
 import { FlaskConical, Pause, Trash2, Undo2 } from "lucide-react";
 
-import type {
-  ProcessorPreset,
-  ProcessorView,
-} from "@/api/admin/image-processor/type.d";
+import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,12 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import {
-  isOwnStorageVendor,
-  processorActions,
-  trialSummary,
-} from "@/utils/admin/image-processor";
+import { isOwnStorageVendor, processorActions, trialSummary } from "@/utils/admin/image-processor";
 
+import { TableSkeletonRows } from "@/components/admin-ui/table-skeleton-rows";
 import { ProcessorStatusTags } from "./processor-status";
 
 /** 一行上的操作回调 */
@@ -50,11 +44,14 @@ export function ProcessorTable({
   processors,
   presets,
   canWrite,
+  loading = false,
   actions,
 }: {
   processors: ProcessorView[];
   presets: ProcessorPreset[];
   canWrite: boolean;
+  /** 加载中：表头照常显示，表格体换成骨架行 */
+  loading?: boolean;
   actions: ProcessorRowActions;
 }) {
   return (
@@ -67,19 +64,17 @@ export function ProcessorTable({
             <TableHead>绑定存储</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>最近试跑</TableHead>
-            {canWrite && (
-              <TableHead className="px-4 text-right">操作</TableHead>
-            )}
+            {canWrite && <TableHead className="px-4 text-right">操作</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
+          {loading && <TableSkeletonRows columns={canWrite ? 6 : 5} />}
           {processors.map((processor) => (
             <ProcessorRow
               key={processor.id}
               processor={processor}
               vendorName={
-                presets.find((item) => item.vendor === processor.vendor)
-                  ?.name ?? processor.vendor
+                presets.find((item) => item.vendor === processor.vendor)?.name ?? processor.vendor
               }
               canWrite={canWrite}
               actions={actions}
@@ -126,36 +121,23 @@ function ProcessorRow({
       <TableCell className="px-4 py-3 whitespace-normal">
         <div className="font-medium">{processor.name}</div>
         <div className="text-muted-foreground text-xs tabular-nums">
-          {processor.published_version > 0 &&
-            `v${processor.published_version} · `}
+          {processor.published_version > 0 && `v${processor.published_version} · `}
           {new Date(processor.updated_at).toLocaleString("zh-CN")}
         </div>
       </TableCell>
       <TableCell className="py-3 whitespace-normal">
         <div>{vendorName}</div>
-        {isOwnStorageVendor(processor.vendor) && (
-          <Tag tone="warning">必须使用自家存储</Tag>
-        )}
+        {isOwnStorageVendor(processor.vendor) && <Tag tone="warning">必须使用自家存储</Tag>}
       </TableCell>
-      <TableCell className="py-3 whitespace-normal">
-        {processor.storage_name}
-      </TableCell>
+      <TableCell className="py-3 whitespace-normal">{processor.storage_name}</TableCell>
       <TableCell className="py-3">
         <ProcessorStatusTags processor={processor} />
       </TableCell>
       <TableCell className="py-3 whitespace-normal">
         {processor.check ? (
           <div className="font-mono text-xs tabular-nums">
-            <div>
-              {trial.image ?? (
-                <span className="text-muted-foreground">图片：无素材</span>
-              )}
-            </div>
-            <div>
-              {trial.video ?? (
-                <span className="text-muted-foreground">视频：无封面</span>
-              )}
-            </div>
+            <div>{trial.image ?? <span className="text-muted-foreground">图片：无素材</span>}</div>
+            <div>{trial.video ?? <span className="text-muted-foreground">视频：无封面</span>}</div>
           </div>
         ) : (
           <span className="text-muted-foreground">未试跑</span>

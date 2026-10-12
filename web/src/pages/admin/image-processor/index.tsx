@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import type { ProcessorView } from "@/api/admin/image-processor/type.d";
 import {
@@ -22,28 +23,16 @@ import {
 } from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { OptionSelect } from "@/components/admin-ui/option-select";
-import {
-  TableToolbar,
-  TableToolbarCount,
-} from "@/components/admin-ui/table-toolbar";
+import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { ReadOnlyNotice } from "../shared";
-import {
-  confirmDelete,
-  confirmDisable,
-  confirmRollback,
-} from "./processor-actions";
-import {
-  ProcessorDialog,
-  type ProcessorDialogTarget,
-} from "./processor-dialog";
+import { confirmDelete, confirmDisable, confirmRollback } from "./processor-actions";
+import { ProcessorDialog, type ProcessorDialogTarget } from "./processor-dialog";
 import { ProcessorTable } from "./processor-table";
-import { StorageBindingTable } from "./storage-binding-table";
 import { useImageProcessors } from "./use-image-processors";
 
 const STATUS_OPTIONS = [
@@ -54,7 +43,7 @@ const STATUS_OPTIONS = [
 ];
 
 /**
- * 图片服务管理页：处理服务列表 + “存储与处理服务”表 + 弹窗（四步向导）。
+ * 图片服务管理页：处理服务列表 + 弹窗（四步向导）。存储视角（哪个存储启用了图片处理）在存储配置页的「图片处理」列，那里的「启用」跳到本页并带 ?new=<存储 ID>。
  * 写操作（新建、编辑、校验、发布、回滚、停用、删除）只对 super_admin 渲染，admin 只读；
  * 请求错误的全局提示由拦截器弹，这里不重复。
  */
@@ -62,14 +51,7 @@ export default function ImageProcessorPage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const list = useImageProcessors();
-  const {
-    items: processors,
-    presets,
-    storages,
-    bindings,
-    status,
-    reload,
-  } = list;
+  const { items: processors, presets, storages, bindings, status, reload } = list;
   const [target, setTarget] = useState<ProcessorDialogTarget | null>(null);
   /** 每次打开弹窗递增，让向导重新初始化 */
   const nonceRef = useRef(0);
@@ -81,17 +63,22 @@ export default function ImageProcessorPage() {
   );
   const refresh = useCallback(() => void reload(), [reload]);
 
+  /** 存储配置页的「启用」带 ?new=<存储 ID> 跳过来：数据就绪后打开新建弹窗并预选该存储，随即清掉参数 */
+  const [params, setParams] = useSearchParams();
+  const newStorage = params.get("new");
+  useEffect(() => {
+    if (newStorage === null || status !== "ready") return;
+    setParams({}, { replace: true });
+    if (canWrite) open({ kind: "new", storageId: Number(newStorage) || undefined });
+  }, [newStorage, status, canWrite, open, setParams]);
+
   const actions = {
-    onOpen: (processor: ProcessorView) =>
-      open({ kind: "edit", id: processor.id, view: processor }),
+    onOpen: (processor: ProcessorView) => open({ kind: "edit", id: processor.id, view: processor }),
     onVerify: (processor: ProcessorView) =>
       open({ kind: "edit", id: processor.id, view: processor, step: 4 }),
-    onRollback: (processor: ProcessorView) =>
-      void confirmRollback(processor, refresh),
-    onDisable: (processor: ProcessorView) =>
-      void confirmDisable(processor, refresh),
-    onDelete: (processor: ProcessorView) =>
-      void confirmDelete(processor, refresh),
+    onRollback: (processor: ProcessorView) => void confirmRollback(processor, refresh),
+    onDisable: (processor: ProcessorView) => void confirmDisable(processor, refresh),
+    onDelete: (processor: ProcessorView) => void confirmDelete(processor, refresh),
   };
 
   return (
@@ -102,10 +89,7 @@ export default function ImageProcessorPage() {
         </PageHeaderHeading>
         {canWrite && (
           <PageHeaderActions>
-            <Button
-              disabled={status !== "ready"}
-              onClick={() => open({ kind: "new" })}
-            >
+            <Button disabled={status !== "ready"} onClick={() => open({ kind: "new" })}>
               <Plus />
               新建处理服务
             </Button>
@@ -114,24 +98,12 @@ export default function ImageProcessorPage() {
       </PageHeader>
 
       {!canWrite && (
-        <ReadOnlyNotice
-          className="mb-4"
-          what="新建、编辑、校验、发布、回滚、停用、删除处理服务"
-        />
-      )}
-
-      {status === "loading" && (
-        <div className="flex flex-col gap-4" aria-busy="true">
-          <Skeleton className="h-40" />
-          <Skeleton className="h-48" />
-        </div>
+        <ReadOnlyNotice className="mb-4" what="新建、编辑、校验、发布、回滚、停用、删除处理服务" />
       )}
 
       {status === "error" && (
         <EmptyState>
-          <EmptyStateTitle className="text-destructive">
-            加载失败
-          </EmptyStateTitle>
+          <EmptyStateTitle className="text-destructive">加载失败</EmptyStateTitle>
           <EmptyStateActions>
             <Button variant="outline" size="sm" onClick={() => void reload()}>
               重试
@@ -140,15 +112,9 @@ export default function ImageProcessorPage() {
         </EmptyState>
       )}
 
-      {status === "ready" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-6">
-          <section
-            aria-labelledby="processor-list-title"
-            className="flex min-h-0 flex-1 flex-col gap-2"
-          >
-            <h2 id="processor-list-title" className="text-sm font-semibold">
-              处理服务
-            </h2>
+      {status !== "error" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <section aria-label="处理服务" className="flex min-h-0 flex-1 flex-col">
             <DataPanel className={cn(list.refreshing && "opacity-60")}>
               <TableToolbar>
                 <ListSearch
@@ -164,38 +130,28 @@ export default function ImageProcessorPage() {
                   onValueChange={(value) => list.setFilter("status", value)}
                   options={STATUS_OPTIONS}
                 />
-                <TableToolbarCount
-                  shown={processors.length}
-                  total={list.total}
-                />
+                <TableToolbarCount shown={processors.length} total={list.total} />
               </TableToolbar>
               <DataPanelBody>
-                {processors.length > 0 ? (
+                {status === "loading" || processors.length > 0 ? (
                   <ProcessorTable
                     processors={processors}
                     presets={presets}
                     canWrite={canWrite}
+                    loading={status === "loading"}
                     actions={actions}
                   />
                 ) : (
                   <EmptyState>
                     <EmptyStateTitle>
-                      {list.filtering
-                        ? "没有符合条件的处理服务"
-                        : "还没有处理服务"}
+                      {list.filtering ? "没有符合条件的处理服务" : "还没有处理服务"}
                     </EmptyStateTitle>
                     <EmptyStateDescription>
-                      {list.filtering
-                        ? "换个关键字或状态试试。"
-                        : "所有存储都回退原图 / 占位。"}
+                      {list.filtering ? "换个关键字或状态试试。" : "所有存储都回退原图 / 占位。"}
                     </EmptyStateDescription>
                     {list.filtering && (
                       <EmptyStateActions>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={list.clear}
-                        >
+                        <Button variant="outline" size="sm" onClick={list.clear}>
                           清除筛选
                         </Button>
                       </EmptyStateActions>
@@ -203,32 +159,16 @@ export default function ImageProcessorPage() {
                   </EmptyState>
                 )}
               </DataPanelBody>
-              <DataPanelPagination
-                page={list.page}
-                pageSize={list.pageSize}
-                total={list.total}
-                onPageChange={list.setPage}
-                onPageSizeChange={list.setPageSize}
-              />
+              {status === "ready" && (
+                <DataPanelPagination
+                  page={list.page}
+                  pageSize={list.pageSize}
+                  total={list.total}
+                  onPageChange={list.setPage}
+                  onPageSizeChange={list.setPageSize}
+                />
+              )}
             </DataPanel>
-          </section>
-
-          <section
-            aria-labelledby="storage-binding-title"
-            className="flex shrink-0 flex-col gap-2"
-          >
-            <h2 id="storage-binding-title" className="text-sm font-semibold">
-              存储与处理服务
-            </h2>
-            <StorageBindingTable
-              storages={storages}
-              processors={bindings}
-              presets={presets}
-              canWrite={canWrite}
-              onEnable={(storage) =>
-                open({ kind: "new", storageId: storage.id })
-              }
-            />
           </section>
         </div>
       )}
@@ -254,6 +194,4 @@ export default function ImageProcessorPage() {
 }
 
 /** 对联合类型的每个分支分别去掉字段（Omit 会把联合压扁） */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
-  ? Omit<T, K>
-  : never;
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

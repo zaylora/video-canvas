@@ -16,10 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAdminStore } from "@/store/admin";
 import { openDialog } from "@/store/dialog";
-import {
-  parseChannelRoute,
-  type ChannelTab,
-} from "@/utils/admin/channel-route";
+import { parseChannelRoute, type ChannelTab } from "@/utils/admin/channel-route";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
@@ -28,10 +25,7 @@ import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
 import type { ChannelModelActions } from "./channel-models";
 import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
-import {
-  ChannelModelEditor,
-  type ChannelModelEditing,
-} from "./channel-model-editor";
+import { ChannelModelEditor, type ChannelModelEditing } from "./channel-model-editor";
 import { ChannelTable } from "./channel-table";
 import { ImportDialog } from "./import-dialog";
 import { openSecretDialog } from "./secret-dialog";
@@ -54,9 +48,7 @@ export default function ChannelsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // 渠道分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量渠道和插件在 catalog 里（options）
-  const list = useAdminList<ChannelListItem>(CHANNEL_FILTERS, (query) =>
-    listChannels(query),
-  );
+  const list = useAdminList<ChannelListItem>(CHANNEL_FILTERS, (query) => listChannels(query));
   /** 渠道有改动之后：重新拉当前页，并刷新弹窗用的全量渠道（健康状态、固定版本） */
   const { reload: reloadList } = list;
   const { reloadChannels } = catalog;
@@ -78,19 +70,15 @@ export default function ChannelsPage() {
   });
   const routeTarget = route.target;
   const routeKey = routeTarget?.kind === "edit" ? routeTarget.key : null;
-  const routePlugin =
-    routeTarget?.kind === "new" ? routeTarget.pluginKey : undefined;
+  const routePlugin = routeTarget?.kind === "new" ? routeTarget.pluginKey : undefined;
   const isNew = routeTarget?.kind === "new";
   // 弹窗靠 useRetained 在关闭时保留内容，target 要是稳定引用，所以用 useMemo
   const target = useMemo<ChannelDialogTarget | null>(() => {
     if (isNew) return { kind: "new", pluginKey: routePlugin };
-    const channel = routeKey
-      ? catalog.channels.find((item) => item.key === routeKey)
-      : undefined;
+    const channel = routeKey ? catalog.channels.find((item) => item.key === routeKey) : undefined;
     return channel ? { kind: "edit", channel } : null;
   }, [isNew, routePlugin, routeKey, catalog.channels]);
-  const tab: ChannelTab =
-    routeTarget?.kind === "edit" ? routeTarget.tab : "config";
+  const tab: ChannelTab = routeTarget?.kind === "edit" ? routeTarget.tab : "config";
 
   const closeDialog = () => setParams({}, { replace: true });
 
@@ -139,9 +127,7 @@ export default function ChannelsPage() {
         : `启用「${channel.name}」后，使用它的模型可以接新任务。`,
       onConfirm: async () => {
         await updateChannel(channel.key, { enabled: !channel.enabled });
-        toast.success(
-          `渠道「${channel.name}」已${channel.enabled ? "停用" : "启用"}`,
-        );
+        toast.success(`渠道「${channel.name}」已${channel.enabled ? "停用" : "启用"}`);
         refreshChannels();
       },
     });
@@ -164,8 +150,7 @@ export default function ChannelsPage() {
   const modelActions: ChannelModelActions = {
     busyKey: row.busyKey,
     onEdit: (key, channel) => setEditing({ channel, key }),
-    onTest: (key) =>
-      navigate(`/admin/ai/models?key=${encodeURIComponent(key)}&test=1`),
+    onTest: (key) => navigate(`/admin/ai/models?key=${encodeURIComponent(key)}&test=1`),
     onNew: (channel) => setEditing({ channel, key: null }),
     onToggleEnabled: (key, enabled) => void row.toggleEnabled(key, enabled),
     onDelete: row.requestDelete,

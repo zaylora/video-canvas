@@ -77,9 +77,7 @@ function NameCell({ item }: { item: SkillItem }) {
       </span>
       <span className="grid min-w-0">
         <span className="truncate font-medium">{item.title}</span>
-        <span className="text-muted-foreground truncate font-mono text-xs">
-          {item.name}
-        </span>
+        <span className="text-muted-foreground truncate font-mono text-xs">{item.name}</span>
       </span>
     </div>
   );
@@ -150,10 +148,7 @@ export function SkillTable({
       <div data-slot="skill-table" aria-busy="true" className="flex flex-col">
         {showSkeleton &&
           [0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="flex min-h-15 items-center gap-3 border-b px-4 last:border-b-0"
-            >
+            <div key={i} className="flex min-h-15 items-center gap-3 border-b px-4 last:border-b-0">
               <Skeleton className="size-8 rounded-lg" />
               <Skeleton className="h-4 w-40" />
               <Skeleton className="ml-auto h-4 w-24" />
@@ -186,15 +181,9 @@ export function SkillTable({
             >
               <div className="flex items-center justify-between gap-3">
                 <NameCell item={item} />
-                <SkillSwitch
-                  item={item}
-                  busy={busyNames.has(item.name)}
-                  onToggle={onToggle}
-                />
+                <SkillSwitch item={item} busy={busyNames.has(item.name)} onToggle={onToggle} />
               </div>
-              <p className="text-muted-foreground line-clamp-2 text-sm">
-                {item.description}
-              </p>
+              <p className="text-muted-foreground line-clamp-2 text-sm">{item.description}</p>
               <div className="flex items-center justify-between gap-2">
                 <SourceTags item={item} />
                 <VersionCell item={item} />
@@ -240,11 +229,7 @@ export function SkillTable({
                     <VersionCell item={item} />
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
-                    <SkillSwitch
-                      item={item}
-                      busy={busyNames.has(item.name)}
-                      onToggle={onToggle}
-                    />
+                    <SkillSwitch item={item} busy={busyNames.has(item.name)} onToggle={onToggle} />
                   </TableCell>
                 </TableRow>
               ))}

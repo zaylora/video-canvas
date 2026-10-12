@@ -61,10 +61,7 @@ function DataPanelBody({ className, ...props }: ComponentProps<"div">) {
 }
 
 /** 表格卡片底部的分页条：始终贴在卡片底部，不随表格滚动；参数同 DataTablePagination */
-function DataPanelPagination({
-  className,
-  ...props
-}: ComponentProps<typeof DataTablePagination>) {
+function DataPanelPagination({ className, ...props }: ComponentProps<typeof DataTablePagination>) {
   return (
     <div data-slot="data-panel-footer" className="shrink-0 border-t py-3">
       <DataTablePagination className={className} {...props} />

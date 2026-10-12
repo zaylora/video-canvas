@@ -34,9 +34,7 @@ const MODEL_FILTERS = ["kind", "channel", "status"] as const;
 export default function ModelsPage() {
   const { catalog } = useAdminCatalogOptions();
   // 保存 / 上下线让模型变了：重新拉取当前页（由 list.reload 提供，先建 list 再把它交给工作区）
-  const list = useAdminList<ModelListItem>(MODEL_FILTERS, (query) =>
-    listModels(query),
-  );
+  const list = useAdminList<ModelListItem>(MODEL_FILTERS, (query) => listModels(query));
   const ws = useModelWorkspace(catalog, useUrlModelRoute(), list.reload);
   const [params] = useSearchParams();
   // 列表里点“测试”会带 ?test=1：只弹测试弹窗，不显示编辑弹窗
@@ -49,9 +47,7 @@ export default function ModelsPage() {
   const batch = useModelBatch(list.items, list.reload);
   const row = useModelRowActions(list.reload);
   // 列表刷新后丢掉已经不存在的勾选
-  const checked = selected.filter((key) =>
-    list.items.some((item) => item.key === key),
-  );
+  const checked = selected.filter((key) => list.items.some((item) => item.key === key));
 
   return (
     <DataPage>

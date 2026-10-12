@@ -1,9 +1,5 @@
 import type { ChannelOption, ModelListItem } from "@/api/admin/ai/type.d";
-import {
-  DataPanel,
-  DataPanelBody,
-  DataPanelPagination,
-} from "@/components/admin-ui/data-panel";
+import { DataPanel, DataPanelBody, DataPanelPagination } from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
@@ -63,18 +59,17 @@ export function ModelTable({
           className="[&_input]:h-8"
         />
         <Segmented aria-label="按能力筛选">
-          {[
-            ["", "全部"],
-            ...KIND_ORDER.map((k) => [k, MODEL_KIND_LABEL[k] ?? k]),
-          ].map(([value, label]) => (
-            <SegmentedItem
-              key={value}
-              active={kind === value}
-              onClick={() => list.setFilter("kind", value)}
-            >
-              {label}
-            </SegmentedItem>
-          ))}
+          {[["", "全部"], ...KIND_ORDER.map((k) => [k, MODEL_KIND_LABEL[k] ?? k])].map(
+            ([value, label]) => (
+              <SegmentedItem
+                key={value}
+                active={kind === value}
+                onClick={() => list.setFilter("kind", value)}
+              >
+                {label}
+              </SegmentedItem>
+            ),
+          )}
         </Segmented>
         <OptionSelect
           aria-label="按渠道筛选"

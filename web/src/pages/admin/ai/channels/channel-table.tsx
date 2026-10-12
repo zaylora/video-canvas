@@ -1,11 +1,7 @@
 import { Download, KeyRound, Plus, Trash2, X } from "lucide-react";
 
 import type { ChannelListItem, PluginView } from "@/api/admin/ai/type.d";
-import {
-  DataPanel,
-  DataPanelBody,
-  DataPanelPagination,
-} from "@/components/admin-ui/data-panel";
+import { DataPanel, DataPanelBody, DataPanelPagination } from "@/components/admin-ui/data-panel";
 import {
   EmptyState,
   EmptyStateActions,
@@ -14,17 +10,11 @@ import {
 } from "@/components/admin-ui/empty-state";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { RowAction } from "@/components/admin-ui/row-action";
-import {
-  RowIconAction,
-  RowMoreMenu,
-} from "@/components/admin-ui/row-icon-action";
+import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
-import {
-  TableToolbar,
-  TableToolbarCount,
-} from "@/components/admin-ui/table-toolbar";
+import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -53,9 +43,7 @@ const STATUS_OPTIONS = [
 
 /** 渠道所用插件版本是否支持“导入模型”；读不到插件版本的 meta 时不当成“不支持” */
 const importable = (owner: PluginView, channel: ChannelListItem) => {
-  const meta = owner.versions.find(
-    (v) => v.id === channel.plugin_version_id,
-  )?.meta;
+  const meta = owner.versions.find((v) => v.id === channel.plugin_version_id)?.meta;
   return !meta || !!meta.import;
 };
 
@@ -96,8 +84,7 @@ export function ChannelTable({
       <EmptyState>
         <EmptyStateTitle>还没有渠道</EmptyStateTitle>
         <EmptyStateDescription>
-          渠道把一个插件版本、一个地址和一个 Key
-          绑在一起，模型通过渠道调用上游。
+          渠道把一个插件版本、一个地址和一个 Key 绑在一起，模型通过渠道调用上游。
           {!canWrite && "请联系运维新建。"}
         </EmptyStateDescription>
         {canWrite && (
@@ -130,10 +117,7 @@ export function ChannelTable({
           aria-label="按插件筛选"
           value={list.filters.plugin ?? ""}
           onValueChange={(value) => list.setFilter("plugin", value)}
-          options={[
-            ["", "全部插件"],
-            ...plugins.map((item) => [item.key, item.name] as const),
-          ]}
+          options={[["", "全部插件"], ...plugins.map((item) => [item.key, item.name] as const)]}
         />
         <FilterSelect
           aria-label="按状态筛选"
@@ -154,27 +138,15 @@ export function ChannelTable({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                渠道
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                插件
-              </TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">渠道</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">插件</TableHead>
               <TableHead className="text-muted-foreground px-3 text-xs max-md:hidden">
                 能力
               </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                模型
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                状态
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-xs">
-                启用
-              </TableHead>
-              <TableHead className="text-muted-foreground px-3 text-right text-xs">
-                操作
-              </TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">模型</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">状态</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">启用</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -188,16 +160,9 @@ export function ChannelTable({
               ))}
             {status === "error" && (
               <TableRow>
-                <TableCell
-                  colSpan={columns}
-                  className="text-destructive h-32 text-center"
-                >
+                <TableCell colSpan={columns} className="text-destructive h-32 text-center">
                   加载失败
-                  <button
-                    type="button"
-                    className="ml-1 underline"
-                    onClick={list.reload}
-                  >
+                  <button type="button" className="ml-1 underline" onClick={list.reload}>
                     重试
                   </button>
                 </TableCell>
@@ -215,13 +180,10 @@ export function ChannelTable({
             )}
             {status === "ready" &&
               rows.map((channel) => {
-                const owner = plugins.find(
-                  (item) => item.key === channel.plugin_key,
-                );
+                const owner = plugins.find((item) => item.key === channel.plugin_key);
                 const health = channel.health;
                 const upgrade = channel.upgrade_to;
-                const importUnsupported =
-                  !!owner && !importable(owner, channel);
+                const importUnsupported = !!owner && !importable(owner, channel);
                 // 状态列第二行：只在“不可用”时写原因，其余看标签就够了
                 const note =
                   health.tone === "bad" && health.reason ? (
@@ -255,27 +217,18 @@ export function ChannelTable({
                         </span>
                       </div>
                       {upgrade && (
-                        <div className="text-muted-foreground text-xs">
-                          可升级到 v{upgrade}
-                        </div>
+                        <div className="text-muted-foreground text-xs">可升级到 v{upgrade}</div>
                       )}
                     </TableCell>
                     <TableCell className="px-3 py-3 max-md:hidden">
                       <KindIcons kinds={channelKinds(channel)} />
                     </TableCell>
-                    <TableCell className="px-3 py-3 tabular-nums">
-                      {channel.model_count}
-                    </TableCell>
+                    <TableCell className="px-3 py-3 tabular-nums">{channel.model_count}</TableCell>
                     <TableCell className="px-3 py-3">
-                      <StatusLabel tone={HEALTH_UI_TONE[health.tone]}>
-                        {health.label}
-                      </StatusLabel>
+                      <StatusLabel tone={HEALTH_UI_TONE[health.tone]}>{health.label}</StatusLabel>
                       {note}
                     </TableCell>
-                    <TableCell
-                      className="px-3 py-3"
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <Switch
                         checked={channel.enabled}
                         disabled={!canWrite}
@@ -284,17 +237,12 @@ export function ChannelTable({
                         onCheckedChange={() => onToggle(channel)}
                       />
                     </TableCell>
-                    <TableCell
-                      className="px-3 py-3"
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex items-center justify-end gap-0.5">
                         <RowIconAction
                           label="导入模型"
                           target={channel.name}
-                          deny={
-                            importUnsupported ? "该插件不支持导入模型" : null
-                          }
+                          deny={importUnsupported ? "该插件不支持导入模型" : null}
                           onClick={() => onImport(channel)}
                         >
                           <Download />
@@ -302,9 +250,7 @@ export function ChannelTable({
                         {canWrite && (
                           <>
                             <RowIconAction
-                              label={
-                                channel.secret_set ? "更新 Key" : "设置 Key"
-                              }
+                              label={channel.secret_set ? "更新 Key" : "设置 Key"}
                               target={channel.name}
                               onClick={() => onSetKey(channel)}
                             >
