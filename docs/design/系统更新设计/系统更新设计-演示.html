@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>系统更新 · 设计演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 原型：假后台、版本卡片、版本日志、进度、确认框 ---- */
+      .ad { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 560px; }
+      .ad-side { border-right: 1px solid hsl(var(--border)); background: hsl(var(--card)); padding: 12px 8px; font-size: 13px; }
+      .ad-side .grp { font-size: 11px; color: hsl(var(--muted-foreground)); padding: 10px 8px 4px; }
+      .ad-side .it { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 8px; color: hsl(var(--muted-foreground)); }
+      .ad-side .it.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
+      .ad-side .bdg { margin-left: auto; font-size: 11px; padding: 0 6px; border-radius: 999px; background: rgb(var(--warn) / 0.15); color: rgb(var(--warn)); }
+      .ad-main { padding: 20px 24px; min-width: 0; }
+      .ad-main h3 { font-size: 18px; font-weight: 600; }
+      @media (max-width: 820px) { .ad { grid-template-columns: 1fr; } .ad-side { display: none; } .ad-main { padding: 16px; } }
+      .ver-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      @media (max-width: 820px) { .ver-grid { grid-template-columns: 1fr; } }
+      .ver { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 12px 14px; }
+      .ver small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .ver b { font-size: 20px; font-weight: 700; font-family: "Geist Mono", Consolas, monospace; }
+      .rel { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+      .rel.newer { border-color: rgb(var(--warn) / 0.5); background: rgb(var(--warn) / 0.05); }
+      .rel.cur { border-color: rgb(var(--ok) / 0.5); }
+      .rel-body { font-size: 13px; margin-top: 8px; }
+      .rel-body h4 { font-size: 13px; font-weight: 600; margin: 8px 0 2px; }
+      .rel-body ul { margin: 2px 0; padding-left: 18px; }
+      .stp { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+      .stp span { height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; display: inline-flex; align-items: center; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .stp .done { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .stp .now { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .stp .bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .log { background: hsl(var(--muted)); border-radius: 8px; padding: 8px 10px; font-family: "Geist Mono", Consolas, monospace; font-size: 12px; max-height: 140px; overflow: auto; white-space: pre-wrap; }
+      .mask { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; z-index: 20; padding: 16px; }
+      .dlg { width: min(480px, 100%); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 18px; }
+      .inp { width: 100%; height: 34px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: hsl(var(--foreground)); padding: 0 10px; font: inherit; }
+      .ctl { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 12.5px; margin-top: 14px; }
+      .ctl select { height: 28px; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; padding: 0 6px; }
+      .btn-danger { background: rgb(var(--bad)); color: #fff; }
+      .btn-danger:hover { background: rgb(var(--bad) / 0.9); }
+      .list-pick { display: grid; gap: 6px; }
+      .list-pick button { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+      .list-pick button[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .list-pick small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="refresh-cw"></i></span>系统更新 · 设计演示
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>更新与回退推演</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">在后台看版本、读日志，一键更新，不满意退回去</h1>
+        <p class="lead">
+          管理员现在要登录服务器跑 <code>update.sh</code> 才能更新，后台里连当前版本都看不到。这个设计分两期补上：<b>一期只读</b>，显示版本、提示新版本、展示版本日志；<b>二期才能执行</b>，由宿主机上的 Host Updater 完成更新和回退。<b>回退会把数据库一起还原到更新前，更新之后产生的数据会丢，且只能退回最近一次更新。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页是设计提案，<b>尚未实现</b>，对应 Markdown 设计文档（<code>系统更新设计.md</code>）。版本号、时间、耗时、磁盘大小都是示意数据；参考项目的做法来自 2026-10-12 读到的源码和文档。原型里的更新、回退都在浏览器内存里模拟，刷新复原，不会碰任何服务器。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码或官方文档</span>
+            <span class="tag t-info">调研读取，未运行验证</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案 / 示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一次更新怎么走</h2>
+          <p class="sub">从点击到恢复可用，谁在做什么。顺序是备份 → 拉镜像 → 停服，与 open-ai-canvas 一致。</p>
+          <div class="flow note">
+            <div class="node"><b>1 后台点更新</b>只有 super_admin；backend 做权限和并发检查</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>2 前置检查 + 备份</b>应用还在运行；失败了服务毫发无损</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>3 拉取镜像</b>应用仍在运行；拉不下来就停在这，服务不受影响</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>4 停服</b>停服窗口从这里开始；PG、Redis 保持运行</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>5 切换 + 启动</b>改镜像版本，新 backend 启动时自动迁移数据库</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>6 健康验证</b>通过后才算成功；不通过自动回退</div>
+          </div>
+          <div class="note-txt">设计：backend 容器自己重建不了自己，也不能持有 docker.sock（它面向公网，还跑用户上传的插件）。所以第 2~6 步全部由宿主机上的 Host Updater 做，backend 只通过带 token 的 Unix Socket 下达命令、读取状态。状态存在 Updater 一侧，backend 被停掉期间页面断线也不影响。放弃：让 backend 直接调 docker。</div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="triangle-alert"></i>
+            <div>
+              <b>兜底与边界。</b>第 2、3 步失败（备份、拉镜像）：应用一直在运行，状态 <code>failed</code>。第 4 步停不掉容器：用旧镜像重新拉起，状态 <code>failed</code>。第 5、6 步失败：自动还原备份并启动旧版本，状态 <code>rolled_back</code>，<b>但备份之后到停服之前的写入会丢</b>；回退也失败则进入 <code>manual_intervention</code>，页面给出备份文件名和排查命令，<b>不伪造成功</b>。
+              <span class="tag t-mute">提案</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>分两期交付</h2>
+          <p class="sub">一期没有任何特权组件，上线后管理员马上有用；二期的安全面（Socket 鉴权、Docker 调用、备份还原）单独评审。</p>
+          <div class="grid g2">
+            <div class="card note">
+              <div class="row"><i data-lucide="eye"></i><b>一期 · 检查与日志</b><span class="tag t-info spacer">只读</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">后台新增「系统更新」页：<b>当前版本、最新版本、版本日志</b>，侧栏有新版本时出现“新”。要更新时页面给出可复制的 <code>update.sh --tag</code> 命令，仍需在服务器上执行。</p>
+            </div>
+            <div class="card note">
+              <div class="row"><i data-lucide="rocket"></i><b>二期 · 一键更新与回退</b><span class="tag t-warn spacer">需装 Updater</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">宿主机装 <b>Host Updater</b>，页面上<b>开始更新</b>和<b>回退</b>由它执行；更新前自动备份 PostgreSQL，失败自动回退。未安装时按钮禁用并写明原因。</p>
+            </div>
+          </div>
+          <div class="note-txt">设计：一期价值不依赖二期。放弃：一期就做完整闭环（Updater 的安全面会和页面一起评审，出问题难定位）。</div>
+        </div>
+
+        <div class="sec">
+          <h2>两个参考项目是怎么做的</h2>
+          <p class="sub">用户指定参考 sub2api 和 open-ai-canvas。本项目是 Docker Compose 部署，更接近后者。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>sub2api</th><th>open-ai-canvas</th><th>本项目（提案）</th></tr></thead>
+              <tbody>
+                <tr><th>更新对象</th><td>单个二进制，原子替换自己</td><td class="y">compose 里的镜像</td><td class="y">compose 里的镜像（backend、plugin-runner、web）</td></tr>
+                <tr><th>谁来执行</th><td class="m">应用进程自己；Docker 部署<b>不支持</b>后台更新，要手动 pull</td><td class="y">宿主机 Host Updater，经 Unix Socket</td><td class="y">宿主机 Host Updater（已确认）</td></tr>
+                <tr><th>数据库</th><td class="m">读到的代码里没有备份步骤</td><td class="y">更新前 pg_dump，回退 pg_restore</td><td class="y">更新前 pg_dump，回退还原（已确认）</td></tr>
+                <tr><th>回退范围</th><td>恢复 .backup，或最近 3 个旧版本</td><td>有已校验备份才开放</td><td class="m">只回退最近一次更新（已确认）</td></tr>
+                <tr><th>版本日志</th><td>下拉卡片里显示 Release 说明</td><td>独立页面显示官方 Release</td><td>Release 列表，含新版与历史（已确认）</td></tr>
+                <tr><th>更新顺序</th><td>—</td><td class="y">备份 → 拉镜像 → 停服；备份之后的写入回退时会丢</td><td class="y">备份 → 拉镜像 → 停服（已确认，同左）</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">读了服务、handler、徽标源码；未运行</span></td><td><span class="tag t-info">读了文档、类型、handler、页面源码；未运行</span></td><td><span class="tag t-mute">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>更新后发现有问题，点回退，会发生什么</h2>
+          <p class="sub">管理员最担心的是“退回去”到底退了什么。</p>
+          <div class="grid g2">
+            <ol class="steps">
+              <li><b>点“回退到 v0.3.0”</b><small>只有最近一次更新成功、备份已通过校验时才可点；否则按钮禁用并写原因</small></li>
+              <li><b>确认框写明会丢什么</b><small>“将还原到 10-14 03:05（备份时刻）的数据库，此后产生的画布、任务、积分变动都会丢失”，并要求填写原因</small></li>
+              <li><b>停应用、还原备份、切回旧镜像</b><small>校验备份的 SHA-256 后才开始；校验失败直接停，进入人工介入</small></li>
+              <li><b>健康验证通过，状态变为“已回退”</b><small>回退入口消失，不能连续回退；下次更新会生成新的备份</small></li>
+            </ol>
+            <div class="callout c-bad note" style="align-self: start">
+              <i data-lucide="octagon-alert"></i>
+              <div>
+                <b>边界和后果。</b>① 从<b>备份时刻</b>起到回退之前新增的数据<b>全部丢失</b>，包括拉镜像期间、更新之后用户新建的画布。② 素材文件不在数据库里，不会被还原，期间新上传的素材会变成没有记录的孤儿文件，占空间但不影响使用。③ 只能回退最近一次，不能回到更早的版本。
+                <div class="note-txt">设计：为什么不只切镜像不动库？启动即自动迁移，迁移里有 DROP COLUMN（v0.3.0 就删过一列），旧代码遇到被删的列可能起不来，健康检查也发现不了。放弃：不丢数据的回退。</div>
+              </div>
+            </div>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前告知：备份只含 PostgreSQL；回退窗口只有最近一次；更新前建议通知用户暂停使用。</p>
+        </div>
+      </section>
+
+      <!-- ============ 2. 更新与回退推演 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">更新与回退推演</h1>
+        <p class="lead">
+          选一个场景，看状态机每一步停在哪、<b>服务停了多久、数据丢不丢</b>。耗时由下面两个滑块估算，<b>全部是示意数字</b>，真实耗时要在真机上测。
+        </p>
+
+        <div class="ctl">
+          <label class="row">数据库大小
+            <input type="range" id="dbGb" min="1" max="200" value="20" oninput="renderDemo()" />
+            <b id="dbGbV" class="mono">20 GB</b>
+          </label>
+          <label class="row">镜像拉取
+            <input type="range" id="pullMin" min="1" max="15" value="3" oninput="renderDemo()" />
+            <b id="pullMinV" class="mono">3 分钟</b>
+          </label>
+          <label class="row">备份后到停服的写入
+            <select id="gap" onchange="renderDemo()"><option value="0">无</option><option value="1" selected>有（拉镜像期间用户在使用）</option></select></label>
+          <span class="tag t-mute">示意：备份约 1 GB / 10 秒，还原约 1 GB / 25 秒，启动与验证约 90 秒</span>
+        </div>
+
+        <div class="grid g2" style="grid-template-columns: 260px minmax(0, 1fr); margin-top: 16px; align-items: start">
+          <div class="list-pick" id="scList"></div>
+          <div id="scPanel"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">系统更新页（可点击原型）</h1>
+        <p class="lead">
+          数据在内存里，刷新复原。已预置：当前 <b>v0.3.0</b>，GitHub 上有 <b>v0.3.1</b>（含一条破坏性变更）。先点<b>检查更新</b>，再<b>开始更新</b>，更新成功后会出现<b>回退</b>。想看失败：左上“场景”选 <b>拉取失败 / 备份失败 / 新版本起不来 / 回退时备份损坏 / GitHub 不可达 / 未安装 Updater / 开发版本</b>，再点更新或检查。全部是模拟，非真实调用。
+        </p>
+        <div class="ctl">
+          <label class="row">场景
+            <select id="pScene" onchange="pSetScene(this.value)">
+              <option value="ok">正常</option>
+              <option value="pullfail">拉取镜像失败</option>
+              <option value="bakfail">备份失败（磁盘写满）</option>
+              <option value="startfail">新版本起不来（自动回退）</option>
+              <option value="rbfail">回退时备份损坏</option>
+              <option value="ghdown">GitHub 不可达</option>
+              <option value="noupd">未安装 Host Updater</option>
+              <option value="dev">开发版本（dev）</option>
+            </select>
+          </label>
+          <label class="row">当前角色
+            <select id="pRole" onchange="pSetRole(this.value)">
+              <option value="super">super_admin</option>
+              <option value="admin">admin（只读）</option>
+            </select>
+          </label>
+          <button class="btn btn-outline" onclick="pReset()"><i data-lucide="rotate-ccw"></i>复位</button>
+        </div>
+        <div class="frame note" style="margin-top: 14px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">admin.example.com / 系统设置 / 系统更新</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt">设计：入口放在侧栏“系统设置”下，用“新”标记提示，而不是顶栏徽标。放弃：顶栏版本徽标（后台顶栏没有现成位置，一期价值已被侧栏标记覆盖）。按钮不可用时禁用并写原因，不隐藏。</div>
+      </section>
+
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">
+          下面都是设计提案，<b>尚未实现</b>。对应 Markdown 设计文档第 7、8 节。<b>不新增数据库表</b>：版本信息来自 GitHub，更新状态在 Updater 的 <code>state.json</code>，审计复用现有 <code>admin_audit_logs</code>。
+        </p>
+
+        <div class="sec">
+          <h2>谁绑谁</h2>
+          <p class="sub">一期和二期各自依赖什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>依赖</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>版本信息</th><td>GitHub Releases API（<code>api.github.com</code>）</td><td>Release 正文本来就取自 <code>CHANGELOG.md</code>，不另建数据源</td></tr>
+                <tr><th>当前版本</th><td><code>pkg/version.Get()</code>（已有）</td><td>构建时用 ldflags 注入，<code>/health</code> 已返回</td></tr>
+                <tr><th>读接口</th><td><code>admin</code> + <code>super_admin</code></td><td>与现有“读 = admin、写 = super_admin”一致</td></tr>
+                <tr><th>检查 / 更新 / 回退</th><td>仅 <code>super_admin</code></td><td>检查会外连并占 GitHub 额度，收紧（默认值，未单独确认）</td></tr>
+                <tr><th>更新、回退执行</th><td>Host Updater（二期）</td><td>backend 不能碰 docker.sock</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一期接口</h2>
+          <p class="sub">响应沿用项目的 <code>{code,msg,data}</code>，字段 snake_case，与 <code>version.Info</code> 一致。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>权限</th><th>说明与业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /admin/system/update</code></th><td>admin</td><td>当前版本、最新版本、最近 10 个 Release。读缓存，缓存为空才拉一次</td></tr>
+                <tr><th><code>POST /admin/system/update/check</code></th><td>super_admin</td><td>强制刷新并写审计。GitHub 不可达且无缓存 → <code>63007</code></td></tr>
+                <tr><th><code>GET /admin/system/update/badge</code></th><td>admin</td><td>只返回 <code>{update_available, latest_version}</code>，供侧栏每 10 分钟轮询</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="codeblock" style="margin-top: 12px"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// GET /admin/system/update 返回（提案，示意数据）
+{
+  "current": { "version": "0.3.0", "git_commit": "3544492", "build_time": "…", "comparable": true },
+  "latest":  { "version": "0.3.1", "published_at": "…", "url": "…" },
+  "update_available": true,
+  "releases": [ { "version": "0.3.1", "body": "…", "prerelease": false,
+                  "breaking": true, "is_current": false, "is_newer": true } ],
+  "fetched_at": "…", "stale": false, "warning": ""
+}</pre></div>
+          <ul class="list" style="margin-top: 10px">
+            <li><code>comparable</code>：当前版本是合法语义版本。<code>dev</code>、<code>sha-*</code> 为 false，此时 <code>update_available</code> 恒为 false。</li>
+            <li><code>latest</code>：非草稿、非预发布的最高版本；没有则 null。预发布保留在列表里但标记，不参与“最新”。</li>
+            <li><code>breaking</code>：Release 正文存在 <code>### 破坏性变更</code> 标题（本仓库 CHANGELOG 的固定写法）。</li>
+            <li><code>stale</code> / <code>warning</code>：GitHub 失败而返回缓存时为 true 并写原因。</li>
+          </ul>
+        </div>
+
+        <div class="sec">
+          <h2>二期接口与 Updater</h2>
+          <p class="sub">二期起 <code>GET /admin/system/update</code> 额外返回 <code>deployment</code>、<code>checks</code>、<code>operation</code>、<code>rollback</code> 四块。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>权限</th><th>说明与业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /admin/system/update/start</code></th><td>super_admin</td><td>请求 <code>{"target_version"}</code>；返回 202 和当前 operation，异步执行。<code>63001/63002/63003/63004/63006</code></td></tr>
+                <tr><th><code>POST /admin/system/update/rollback</code></th><td>super_admin</td><td>请求 <code>{"reason"}</code>（1~200 字）；回退最近一次更新。<code>63001/63002/63005/63006</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th>错误码</th><th>HTTP</th><th>含义</th><th>期次</th></tr></thead>
+              <tbody>
+                <tr><th><code>63001</code></th><td>409</td><td>当前部署不支持在线更新</td><td>二期</td></tr>
+                <tr><th><code>63002</code></th><td>409</td><td>已有更新操作正在进行</td><td>二期</td></tr>
+                <tr><th><code>63003</code></th><td>409</td><td>已是最新版本</td><td>二期</td></tr>
+                <tr><th><code>63004</code></th><td>400</td><td>目标版本不存在，或不是比当前更新的正式版</td><td>二期</td></tr>
+                <tr><th><code>63005</code></th><td>409</td><td>没有可回退的更新（无备份或备份未通过校验）</td><td>二期</td></tr>
+                <tr><th><code>63006</code></th><td>503</td><td>无法连接 Host Updater</td><td>二期</td></tr>
+                <tr><th><code>63007</code></th><td>502</td><td>无法读取版本信息（GitHub 不可达且无缓存，仅 check）</td><td>一期</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="list" style="margin-top: 10px">
+            <li><b>通信</b>：宿主机 Unix Socket，请求带 <code>Authorization: Bearer &lt;token&gt;</code>。Updater 只接受 <code>status / start / rollback / logs</code> 四个动作，没有通用命令执行。</li>
+            <li><b>状态</b>：<code>state.json</code> 在 Updater 目录，含 <code>operation</code>、<code>last_backup</code>（只记文件名和 SHA-256）、<code>rollback_available</code>。</li>
+            <li><b>备份</b>：<code>backup-时间-旧版本.dump</code> + <code>.sha256</code>，先写 <code>.partial</code>，<code>fsync</code> 后原子改名；保留最近 3 份，页面只能用最近一次。</li>
+            <li><b>请求体</b>：<code>start</code> / <code>rollback</code> 的请求体上限 16KB（提案，参考 open-ai-canvas）；先写审计再调用 Updater，Updater 返回“已有操作”时映射为 <code>63002</code>。</li>
+          </ul>
+        </div>
+
+        <div class="sec">
+          <h2>状态机（二期）</h2>
+          <p class="sub">与 open-ai-canvas 的阶段名和顺序一致，去掉 <code>migrating</code>（迁移随新 backend 启动完成，合并进 <code>switching</code>）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>阶段</th><th>含义</th><th>进行中</th><th>转到</th></tr></thead>
+              <tbody>
+                <tr><th><code>idle</code></th><td>无操作</td><td>否</td><td><code>preflight</code></td></tr>
+                <tr><th><code>preflight</code></th><td>前置检查</td><td>是</td><td><code>backing_up</code> / <code>failed</code></td></tr>
+                <tr><th><code>backing_up</code></th><td>pg_dump + 校验，应用仍在运行</td><td>是</td><td><code>pulling</code> / <code>failed</code></td></tr>
+                <tr><th><code>pulling</code></th><td>拉取目标镜像，应用仍在运行</td><td>是</td><td><code>draining</code> / <code>failed</code></td></tr>
+                <tr><th><code>draining</code></th><td>停 backend、web、plugin-runner；PG 和 Redis 保持运行</td><td>是</td><td><code>switching</code> / <code>failed</code></td></tr>
+                <tr><th><code>switching</code></th><td>改 .env、启动新版本（含启动期迁移）</td><td>是</td><td><code>verifying</code> / <code>rolling_back</code></td></tr>
+                <tr><th><code>verifying</code></th><td>健康验证 + 稳定窗口</td><td>是</td><td><code>succeeded</code> / <code>rolling_back</code></td></tr>
+                <tr><th><code>succeeded</code></th><td>更新成功，回退可用</td><td>否</td><td><code>idle</code></td></tr>
+                <tr><th><code>rolling_back</code></th><td>还原备份并启动旧版本</td><td>是</td><td><code>rolled_back</code> / <code>manual_intervention</code></td></tr>
+                <tr><th><code>rolled_back</code></th><td>已回到更新前</td><td>否</td><td><code>idle</code></td></tr>
+                <tr><th><code>failed</code></th><td>切换前失败，旧版本在运行，库未改动</td><td>否</td><td><code>idle</code></td></tr>
+                <tr><th><code>manual_intervention</code></th><td>回退也失败，不再自动操作</td><td>否</td><td>人工处理后复位</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="list" style="margin-top: 10px">
+            <li>同一时间只允许一个操作；进行中再点任何操作返回 <code>63002</code>。</li>
+            <li>Updater 重启后发现停在进行中阶段：按 <code>manual_intervention</code> 处理，<b>不自动续跑</b>。</li>
+            <li><code>preflight</code> / <code>backing_up</code> / <code>pulling</code> 失败：应用从未停过，终态 <code>failed</code>，库未改动。<code>draining</code> 失败：用旧镜像重新拉起，终态 <code>failed</code>。</li>
+            <li>进入 <code>switching</code> 之后失败才会 <code>rolling_back</code>。<b>备份之后到停服之前的写入，自动回退和手动回退都会丢</b>，丢失起点都是备份时刻。</li>
+          </ul>
+        </div>
+
+        <div class="sec">
+          <h2>版本比较（提案）</h2>
+          <p class="sub">引用 <code>golang.org/x/mod/semver</code>（v0.42.0，2026-10-09 发布）。比较前统一去掉 <code>v</code> 再补回，因为线上镜像里版本串带不带 <code>v</code> 未验证。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 提案，未实现
+func normalize(v string) (string, bool) {
+    v = "v" + strings.TrimPrefix(strings.TrimSpace(v), "v")
+    return v, semver.IsValid(v)          // dev、sha-xxxx 不合法 → 不可比较
+}
+
+func latestStable(releases []Release) *Release {
+    var best *Release
+    var bestVer string
+    for i := range releases {
+        r := &amp;releases[i]
+        v, ok := normalize(r.Tag)
+        if !ok || r.Draft || r.Prerelease { continue }
+        if best == nil || semver.Compare(v, bestVer) > 0 { best, bestVer = r, v }
+    }
+    return best
+}
+
+updateAvailable = current.comparable &amp;&amp; latest != nil &amp;&amp;
+                  semver.Compare(cur, lat) &lt; 0</pre></div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">缓存：进程内，TTL 默认 20 分钟，<code>singleflight</code> 合并并发刷新；GitHub 失败时保留旧值并标 <code>stale</code>。出站固定 <code>api.github.com</code>，10 秒超时，响应体限 1 MB。仓库名走配置 <code>update.repository</code>，不写死。<code>semver</code> 各函数对非法串的具体行为<span class="tag t-warn">未运行验证</span>，实现时用单元测试固定。</p>
+        </div>
+
+        <div class="sec">
+          <h2>审计（提案）</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>action</th><th>detail（不含密钥）</th><th>期次</th></tr></thead>
+              <tbody>
+                <tr><th><code>system.update_check</code></th><td><code>{latest}</code></td><td>一期</td></tr>
+                <tr><th><code>system.update_start</code></th><td><code>{from, to, backup_id}</code></td><td>二期</td></tr>
+                <tr><th><code>system.update_result</code></th><td><code>{from, to, phase, automatic_rollback}</code></td><td>二期</td></tr>
+                <tr><th><code>system.rollback</code></th><td><code>{from, to, reason, backup_id}</code></td><td>二期</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">更新期间 backend 不可用，<code>update_result</code> 由 backend 恢复后读取 Updater 的最终状态补写（提案，细节待确认）。</p>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>更新由宿主机 Host Updater 执行</b>：backend 只通过 Unix Socket 通信，不碰 Docker。搁置：独立 updater 容器（要挂 docker.sock）、只检查不执行。</li>
+              <li><b>回退 = 还原更新前备份</b>：连数据库一起还原。搁置：只回退镜像（旧代码遇到被删列可能起不来）、按迁移是否可逆自动选。</li>
+              <li><b>只备份 PostgreSQL</b>：不含素材卷。后果：回退后可能有孤儿素材文件。搁置：备份带素材、让管理员勾选。</li>
+              <li><b>只回退最近一次更新</b>。搁置：回退到任意保留的备份。</li>
+              <li><b>版本日志用 Release 列表，含新版与历史</b>：GitHub 不可达时只能看缓存。搁置：镜像内置 CHANGELOG 兜底。</li>
+              <li><b>分两期交付</b>：一期检查 + 日志，二期更新 + 回退。</li>
+              <li><b>引用 <code>golang.org/x/mod/semver</code></b>：用于版本比较。</li>
+              <li><b>更新顺序：备份 → 拉镜像 → 停服</b>：你看到我最初写的“拉镜像 → 停应用 → 备份”后纠正，与 open-ai-canvas 一致。代价是备份之后到停服之前的写入，回退时会丢，确认框要写明。</li>
+              <li><b>主文档已回写</b>：Markdown 第 5 节原则 3、6.4、7.2、8.5、10、11 已按新顺序改完；其余默认值与待确认问题见第 11 节。</li>
+            </ol>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="circle-help"></i>
+            <div>
+              <b>仍待确认。</b>① 健康验证的稳定窗口和超时多久？（需真机测）② 更新时进行中的生成任务怎么处理？（未读 worker 代码，<span class="tag t-warn">未验证</span>）③ 是否需要 Windows 生产部署支持？④ Updater 作为 Release 附件分发，还是由 deploy.sh 一并安装？⑤ 磁盘空间前置阈值（“2 倍库大小”是猜测）。
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      /* 动态内容进 innerHTML 前必须过 esc() */
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "demo") renderDemo();
+        if (id === "proto") pRender();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 更新与回退推演：全部示意数字 ================= */
+      const SCENES = [
+        { id: "ok", t: "更新成功", d: "一切正常" },
+        { id: "pull", t: "拉取镜像失败", d: "网络中断或镜像不存在" },
+        { id: "bak", t: "备份失败", d: "磁盘写满，应用仍在运行" },
+        { id: "start", t: "新版本起不来", d: "迁移失败或健康检查超时" },
+        { id: "manual", t: "更新成功后手动回退", d: "管理员不满意" },
+        { id: "rbbad", t: "回退时备份损坏", d: "SHA-256 校验不通过" },
+      ];
+      let scSel = "ok";
+
+      /* 示意估算：备份 ~10s/GB，还原 ~25s/GB，启动+验证 ~90s */
+      function calc() {
+        const gb = +$("#dbGb").value, pull = +$("#pullMin").value;
+        const bak = gb * 10, rst = gb * 25, boot = 90, stop = 15, gap = $("#gap") ? $("#gap").value === "1" : true;
+        return { gb, pull, bak, rst, boot, stop, gap };
+      }
+      const fmt = (s) => (s < 90 ? `${Math.round(s)} 秒` : `${(s / 60).toFixed(1)} 分钟`);
+
+      function steps(id, c) {
+        /* 返回 [{name, state: done|now|bad|skip, note}]，以及停服秒数、数据结果 */
+        const S = (name, state, note = "") => ({ name, state, note });
+        if (id === "ok")
+          return { steps: [S("前置检查", "done", "磁盘、compose 配置、版本"), S("备份", "done", `${fmt(c.bak)}，SHA-256 已校验，应用仍在运行`), S("拉取镜像", "done", `${c.pull} 分钟，应用仍在运行`), S("停服", "done", "PG 与 Redis 保持运行"), S("切换并启动", "done", "新 backend 启动时自动迁移"), S("健康验证", "done", `${fmt(c.boot)}，过稳定窗口`)], down: c.stop + c.boot, end: "succeeded", data: "不丢数据；回退入口开放（只有这一次）", tone: "ok" };
+        if (id === "pull")
+          return { steps: [S("前置检查", "done"), S("备份", "done", "已生成，应用仍在运行"), S("拉取镜像", "bad", "拉取失败，应用从未停过")], down: 0, end: "failed", data: "不丢数据；服务一直可用（多了一份备份，下次更新会覆盖）", tone: "ok" };
+        if (id === "bak")
+          return { steps: [S("前置检查", "done"), S("备份", "bad", "磁盘写满，备份中止，应用一直在运行")], down: 0, end: "failed", data: "不丢数据；服务一直可用，数据库未改动", tone: "ok" };
+        if (id === "start")
+          return { steps: [S("前置检查", "done"), S("备份", "done", "应用仍在运行"), S("拉取镜像", "done"), S("停服", "done"), S("切换并启动", "bad", "迁移失败，新 backend 起不来"), S("自动回退：还原备份", "done", fmt(c.rst)), S("启动旧版本并验证", "done")], down: c.stop + 30 + c.rst + c.boot, end: "rolled_back（automatic）", data: c.gap ? "备份之后到停服之前的写入丢失（拉镜像期间用户产生的画布、任务）" : "不丢数据：备份之后没有新写入", tone: c.gap ? "bad" : "warn" };
+        if (id === "manual")
+          return { steps: [S("（更新已成功）", "done", "运行新版本一段时间，产生了新数据"), S("点回退并确认", "done", "确认框写明会丢失备份之后的数据"), S("停止应用", "done"), S("校验备份", "done"), S("还原备份", "done", fmt(c.rst)), S("切回旧镜像并验证", "done", fmt(c.boot))], down: c.stop + c.rst + c.boot, end: "rolled_back", data: "备份时刻之后产生的画布、任务、积分变动全部丢失（含拉镜像期间和更新成功之后）", tone: "bad" };
+        return { steps: [S("（更新已成功）", "done"), S("点回退并确认", "done"), S("停止应用", "done"), S("校验备份", "bad", "SHA-256 不一致，拒绝还原"), S("进入人工介入", "bad", "不再自动操作，页面显示备份文件名与排查命令")], down: c.stop, end: "manual_intervention", data: "库未被改动，但应用已停；需要人工处理", tone: "bad" };
+      }
+
+      function renderDemo() {
+        const c = calc();
+        $("#dbGbV").textContent = c.gb + " GB";
+        $("#pullMinV").textContent = c.pull + " 分钟";
+        $("#scList").innerHTML = SCENES.map((s) => `<button aria-pressed="${s.id === scSel}" onclick="scSel='${s.id}';renderDemo()"><b>${esc(s.t)}</b><small>${esc(s.d)}</small></button>`).join("");
+        const r = steps(scSel, c);
+        const cls = { done: "done", now: "now", bad: "bad" };
+        const total = r.down || 1;
+        $("#scPanel").innerHTML = `
+          <div class="card">
+            <div class="row wrapflex"><b>步骤</b><span class="tag t-mute">终态 ${esc(r.end)}</span></div>
+            <div class="stp">${r.steps.map((s) => `<span class="${cls[s.state] || ""}" title="${esc(s.note)}">${esc(s.name)}</span>`).join("")}</div>
+            <ul class="list">${r.steps.filter((s) => s.note).map((s) => `<li><b>${esc(s.name)}</b>：${esc(s.note)}</li>`).join("")}</ul>
+          </div>
+          <div class="grid g2" style="margin-top: 12px">
+            <div class="card"><small class="muted">服务不可用时长（示意）</small><div style="font-size: 22px; font-weight: 700">${r.down ? fmt(r.down) : "0"}</div><div class="muted" style="font-size: 12.5px">${r.down ? "从“停服”起算；备份和拉镜像都在应用运行时完成，不计入" : "应用从未停止"}</div></div>
+            <div class="card"><small class="muted">数据</small><div style="font-size: 15px; font-weight: 600; color: rgb(var(--${r.tone}))">${esc(r.data)}</div></div>
+          </div>
+          ${c.gb >= 100 ? `<div class="callout c-warn" style="margin-top: 12px"><i data-lucide="triangle-alert"></i><div>数据库 ${c.gb} GB 时，备份约 ${fmt(c.bak)}，拉镜像 ${c.pull} 分钟，这两段时间应用仍在运行、用户仍在写库。这段写入在回退时会丢，所以确认框要写明。</div></div>` : ""}`;
+        icons();
+      }
+
+      /* ================= 可点击原型：全部在内存，异步用 setTimeout 模拟 ================= */
+      const RELS = [
+        { v: "0.3.1", date: "2026-10-14", breaking: true, body: [["新增", ["后台新增“系统更新”页。"]], ["修复", ["修复插件提交阶段取不到上传文件的问题。"]], ["破坏性变更", ["删除 ai_channels.legacy_mode 列，旧版本回退后需还原备份。"]]] },
+        { v: "0.3.0", date: "2026-10-12", breaking: true, body: [["新增", ["新增 18 个单类型内置协议插件。"]], ["改进", ["后台列表改为服务端分页和搜索。"]], ["破坏性变更", ["插件不再支持 allowedHosts；删除渠道“允许访问内网”开关，升级时删除 trusted_internal 列。"]]] },
+        { v: "0.2.10", date: "2026-10-11", breaking: false, body: [["修复", ["修复素材上传后缩略图偶发缺失。"]]] },
+        { v: "0.2.9", date: "2026-10-10", breaking: false, body: [["改进", ["视频截取帧改为浏览器内完成。"]]] },
+      ];
+      const P0 = () => ({
+        scene: "ok", role: "super", cur: "0.3.0", checked: false, checking: false, stale: false,
+        op: { phase: "idle", from: "", to: "", logs: [], auto: false, err: "" },
+        rb: { available: false, to: "", at: "" },
+        dlg: null, /* {kind:'start'|'rollback', reason:''} */
+      });
+      let P = P0();
+      let pTimers = [];
+      const pLater = (fn, ms) => pTimers.push(setTimeout(fn, ms));
+      const pClear = () => { pTimers.forEach(clearTimeout); pTimers = []; };
+      function pFresh(scene, role) { pClear(); P = P0(); P.scene = scene; P.role = role; if (scene === "dev") P.cur = "dev"; }
+      function pReset() { pFresh(P.scene, P.role); pRender(); toast("原型已复位", "warn"); }
+      function pSetScene(v) { pFresh(v, P.role); pRender(); }
+      function pSetRole(v) { P.role = v; pRender(); }
+
+      const PH_LABEL = { idle: "空闲", preflight: "前置检查", pulling: "拉取镜像", draining: "停止应用", backing_up: "备份数据库", switching: "切换版本", verifying: "健康验证", succeeded: "更新成功", rolling_back: "还原中", rolled_back: "已回退", failed: "更新失败", manual_intervention: "需人工介入" };
+      const ACTIVE = new Set(["preflight", "pulling", "draining", "backing_up", "switching", "verifying", "rolling_back"]);
+      const cmpOk = () => P.cur !== "dev";
+      const verNum = (v) => v.split(".").map(Number).reduce((a, n) => a * 1000 + n, 0);
+      const hasNew = () => cmpOk() && P.checked === true && verNum(P.cur) < verNum(RELS[0].v);
+      const busy = () => ACTIVE.has(P.op.phase);
+      const isSuper = () => P.role === "super";
+      function pLog(m) { const t = new Date(); P.op.logs.push(`${String(t.getMinutes()).padStart(2, "0")}:${String(t.getSeconds()).padStart(2, "0")}  ${m}`); }
+
+      /* ---- 检查更新（模拟）：GitHub 不可达时，第一次无缓存失败，之后用缓存 ---- */
+      function pCheck() {
+        if (!isSuper() || P.checking) return;
+        P.checking = true; pRender();
+        pLater(() => {
+          P.checking = false;
+          if (P.scene === "ghdown") {
+            if (P.checked === true) { P.stale = true; toast("GitHub 不可达，显示缓存数据", "warn"); }
+            else { P.checked = "fail"; toast("无法读取版本信息（63007）", "bad"); }
+          } else {
+            P.checked = true; P.stale = false;
+            toast(hasNew() ? "发现新版本 v" + RELS[0].v : "当前已是最新版本");
+          }
+          pRender();
+        }, 700);
+      }
+
+      /* ---- 更新：按状态机逐步推进，失败场景在对应阶段中断 ---- */
+      function pOpenDlg(kind) { P.dlg = { kind, reason: "" }; pRender(); }
+      function pCloseDlg() { P.dlg = null; pRender(); }
+      function pSetReason(v) { if (P.dlg) P.dlg.reason = v; const b = $("#dlgOk"); if (b) b.disabled = !v.trim(); }
+
+      function pStep(list, i) {
+        if (i >= list.length) return;
+        const [phase, msg, ms, fn] = list[i];
+        pLater(() => {
+          P.op.phase = phase; pLog(msg);
+          const stop = fn ? fn() : false;
+          pRender();
+          if (!stop) pStep(list, i + 1);
+        }, ms);
+      }
+
+      function pStart() {
+        const to = RELS[0].v;
+        P.dlg = null;
+        P.op = { phase: "preflight", from: P.cur, to, logs: [], auto: false, err: "" };
+        pLog(`开始更新 v${P.cur} → v${to}`);
+        const sc = P.scene;
+        const fail = (m) => () => { P.op.phase = "failed"; P.op.err = m; pLog("失败：" + m); toast("更新失败", "bad"); return true; };
+        const steps = [
+          ["preflight", "前置检查通过：磁盘可用 38 GB，compose 配置有效", 600],
+          ["backing_up", "pg_dump 备份并校验 SHA-256（应用仍在运行）", 900, sc === "bakfail" ? fail("备份失败：磁盘空间不足。应用一直在运行，数据库未改动。") : null],
+          ["pulling", "拉取镜像 video-canvas-backend:" + to, 900, sc === "pullfail" ? fail("拉取镜像失败：网络中断。应用从未停止，仍运行 v" + P.cur + "（备份已生成，不影响使用）。") : null],
+          ["draining", "停止 backend / web / plugin-runner（PG、Redis 保持运行）", 700],
+          ["switching", "IMAGE_TAG → " + to + "，启动新版本（启动期迁移）", 900, sc === "startfail" ? () => { pLog("失败：迁移报错，新 backend 无法启动"); pAutoRollback(); return true; } : null],
+          ["verifying", "健康验证，等待稳定窗口", 900],
+          ["succeeded", "更新成功", 500, () => { P.cur = to; P.rb = { available: true, to: P.op.from, at: "2026-10-14 03:05" }; toast("更新成功"); return true; }],
+        ];
+        pRender();
+        pStep(steps, 0);
+      }
+
+      function pAutoRollback() {
+        P.op.auto = true;
+        const steps = [
+          ["rolling_back", "自动回退：校验备份 SHA-256", 600],
+          ["rolling_back", "pg_restore 还原到更新前", 900],
+          ["rolling_back", "恢复旧 .env 与 compose，启动 v" + P.op.from, 800],
+          ["rolled_back", "已回退到 v" + P.op.from, 400, () => { P.op.err = "数据库已还原到备份时刻，备份之后到停服之前的写入已丢失。"; toast("已自动回退", "warn"); return true; }],
+        ];
+        pStep(steps, 0);
+      }
+
+      function pRollback() {
+        const reason = P.dlg.reason.trim();
+        P.dlg = null;
+        const from = P.cur, to = P.rb.to;
+        P.op = { phase: "rolling_back", from, to, logs: [], auto: false, err: "" };
+        pLog(`人工回退 v${from} → v${to}，原因：${reason}`);
+        const sc = P.scene;
+        const steps = [
+          ["rolling_back", "停止应用，校验备份 SHA-256", 700, sc === "rbfail" ? () => { P.op.phase = "manual_intervention"; P.op.err = "备份校验失败：SHA-256 不一致，已拒绝还原。数据库未被改动，但应用已停止。"; pLog("失败：备份损坏"); toast("回退失败，需人工介入", "bad"); return true; } : null],
+          ["rolling_back", "pg_restore 还原到更新前", 1000],
+          ["rolling_back", "恢复旧版本并启动", 800],
+          ["rolled_back", "已回退到 v" + to, 400, () => { P.cur = to; P.rb = { available: false, to: "", at: "" }; P.op.err = "备份时刻之后产生的数据已丢失。"; toast("已回退到 v" + to, "warn"); return true; }],
+        ];
+        pRender();
+        pStep(steps, 0);
+      }
+
+      /* ---- 渲染：确认框 ---- */
+      function pDlg() {
+        const d = P.dlg;
+        if (d.kind === "start") {
+          const r = RELS[0];
+          return `<div class="mask"><div class="dlg"><h3 style="font-size: 16px">更新到 v${esc(r.v)}？</h3>
+            <p class="muted" style="font-size: 13px; margin-top: 8px">系统会先<b>备份数据库</b>、拉取镜像（这两步应用仍可使用），再<b>停服</b>并切换版本。停服通常数分钟（示意）。</p>
+            <div class="callout c-warn" style="margin-top: 10px"><i data-lucide="triangle-alert"></i><div><b>备份之后产生的数据，若更新失败自动回退、或之后手动回退，都会丢失。</b>建议更新前通知用户暂停使用。</div></div>
+            ${r.breaking ? `<div class="callout c-bad" style="margin-top: 10px"><i data-lucide="triangle-alert"></i><div><b>该版本含破坏性变更：</b>${esc(r.body.find((b) => b[0] === "破坏性变更")[1].join("；"))}</div></div>` : ""}
+            <p class="muted" style="font-size: 12.5px; margin-top: 10px">停服后失败会自动回退并还原备份。有进行中的生成任务时会被中断（恢复方式未验证）。</p>
+            <div class="row" style="justify-content: flex-end; margin-top: 14px"><button class="btn btn-outline" onclick="pCloseDlg()">取消</button><button class="btn btn-primary" onclick="pStart()">确认并开始更新</button></div></div></div>`;
+        }
+        return `<div class="mask"><div class="dlg"><h3 style="font-size: 16px">回退到 v${esc(P.rb.to)}？</h3>
+          <div class="callout c-bad" style="margin-top: 10px"><i data-lucide="octagon-alert"></i><div><b>将还原到 ${esc(P.rb.at)}（备份时刻）的数据库。此后产生的画布、任务、积分变动都会丢失，</b>包括备份之后、停服之前那段时间的写入。素材文件不会被还原，期间新上传的素材会成为没有记录的文件。</div></div>
+          <p class="muted" style="font-size: 12.5px; margin: 10px 0 6px">回退原因（必填，写入审计）</p>
+          <input class="inp" maxlength="200" placeholder="例如：新版本导出视频报错" oninput="pSetReason(this.value)" value="${esc(d.reason)}" />
+          <div class="row" style="justify-content: flex-end; margin-top: 14px"><button class="btn btn-outline" onclick="pCloseDlg()">取消</button><button class="btn btn-danger" id="dlgOk" ${d.reason.trim() ? "" : "disabled"} onclick="pRollback()">开始回退</button></div></div></div>`;
+      }
+
+      /* ---- 渲染：横幅（状态说明） ---- */
+      function pBanners() {
+        const c = (k, ic, h) => `<div class="callout c-${k}" style="margin-top: 12px"><i data-lucide="${ic}"></i><div>${h}</div></div>`;
+        let b = "";
+        if (P.scene === "ghdown" && P.stale) b += c("warn", "triangle-alert", "<b>GitHub 暂不可达</b>，以下是 10-14 03:05 的缓存数据。");
+        if (P.scene === "ghdown" && P.checked === "fail") b += c("bad", "circle-x", `<b>无法读取版本信息</b>（63007）：GitHub 不可达且没有缓存。<button class="btn btn-outline" style="margin-left: 8px" onclick="pCheck()">重试</button>`);
+        if (!cmpOk()) b += c("info", "info", "<b>开发版本，无法比较。</b>当前版本 <code>dev</code> 不是语义版本，不显示“有新版本”。版本日志仍可查看。");
+        if (P.scene === "noupd") b += c("warn", "plug-zap", "<b>当前部署不支持后台在线更新。</b>未检测到 Host Updater（原因 <code>updater_not_installed</code>）。可用下方命令在服务器上更新。");
+        const ph = P.op.phase;
+        if (ph === "manual_intervention") b += c("bad", "octagon-alert", `<b>需要人工介入。</b>${esc(P.op.err)}<br />备份文件：<code>backup-20261014-030512-0.3.0.dump</code>，SHA-256 见同名 <code>.sha256</code>。请在服务器上检查 <code>docker compose logs --tail=100 backend</code>。`);
+        if (ph === "failed") b += c("bad", "circle-x", `<b>更新失败。</b>${esc(P.op.err)}`);
+        if (ph === "rolled_back") b += c("ok", "circle-check", `<b>${P.op.auto ? "新版本未通过验证，已自动回退" : "已回退"}。</b>当前运行 v${esc(P.cur)}。${esc(P.op.err)}`);
+        if (ph === "succeeded") b += c("ok", "circle-check", `<b>更新成功。</b>当前运行 v${esc(P.cur)}。不满意可以回退到更新前。`);
+        return b;
+      }
+
+      /* ---- 渲染：进度与日志 ---- */
+      function pProgress() {
+        const ph = P.op.phase;
+        if (ph === "idle") return "";
+        const order = ["preflight", "backing_up", "pulling", "draining", "switching", "verifying"];
+        const j = order.indexOf(ph);
+        const chips = order.map((p, i) => `<span class="${ph === "succeeded" || (j > i) ? "done" : j === i ? "now" : ""}">${esc(PH_LABEL[p])}</span>`).join("");
+        const rb = ph === "rolling_back" ? `<div class="stp"><span class="now">还原备份并启动旧版本</span></div>` : "";
+        const warn = ["draining", "switching", "verifying", "rolling_back"].includes(ph) ? `<div class="callout c-info" style="margin: 8px 0"><i data-lucide="loader"></i><div><b>应用已停止或正在切换，页面可能暂时无法访问，</b>稍后会自动重新连接。进度由宿主机上的 Updater 保存，不受影响。</div></div>` : "";
+        return `<div class="sec" style="margin-top: 18px"><h2 style="font-size: 15px">更新进度 <span class="tag ${busy() ? "t-info" : "t-mute"}">${esc(PH_LABEL[ph])}</span></h2><div class="stp">${chips}</div>${rb}${warn}<div class="log">${esc(P.op.logs.join("\n"))}</div></div>`;
+      }
+
+      /* ---- 渲染：版本日志（Release 列表，当前标“当前”，更新的高亮） ---- */
+      function pReleases() {
+        return RELS.map((r) => {
+          const isCur = cmpOk() && r.v === P.cur;
+          const isNew = cmpOk() && P.checked === true && verNum(r.v) > verNum(P.cur);
+          const tag = isCur ? `<span class="tag t-ok">当前</span>` : isNew ? `<span class="tag t-warn">新</span>` : "";
+          const brk = r.breaking ? `<span class="tag t-bad">含破坏性变更</span>` : "";
+          const body = r.body.map(([h, items]) => `<h4>${esc(h)}</h4><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`).join("");
+          return `<div class="rel ${isCur ? "cur" : isNew ? "newer" : ""}"><div class="row wrapflex"><b class="mono">v${esc(r.v)}</b>${tag}${brk}<span class="muted spacer" style="font-size: 12px">${esc(r.date)}</span></div><div class="rel-body">${body}</div></div>`;
+        }).join("");
+      }
+
+      /* ---- 主渲染 ---- */
+      function pRender() {
+        const el = $("#proto");
+        if (!el) return;
+        const lat = RELS[0], upd = hasNew(), unsup = P.scene === "noupd";
+        const sideNew = upd || (!P.checked && cmpOk() && P.scene !== "ghdown" && P.scene !== "noupd") ? `<span class="bdg">新</span>` : "";
+
+        /* 主按钮：不可用就禁用并写原因，不隐藏 */
+        let why = "";
+        if (!isSuper()) why = "仅 super_admin 可更新";
+        else if (unsup) why = "未安装 Host Updater";
+        else if (!cmpOk()) why = "开发版本无法比较";
+        else if (busy()) why = "已有操作进行中";
+        else if (!upd) why = P.checked === true ? "已是最新版本" : "请先检查更新";
+
+        let rbWhy = "";
+        if (!isSuper()) rbWhy = "仅 super_admin 可回退";
+        else if (unsup) rbWhy = "未安装 Host Updater";
+        else if (busy()) rbWhy = "已有操作进行中";
+        else if (!P.rb.available) rbWhy = "没有可回退的更新（仅最近一次更新成功后可用）";
+
+        const status = !cmpOk() ? "无法比较" : upd ? "可更新" : P.checked === true ? "已是最新" : "未检查";
+        const latV = P.checked === true || P.stale ? "v" + lat.v : "—";
+        const latSub = P.checked === true || P.stale ? "发布于 " + lat.date : P.checked === "fail" ? "读取失败" : "尚未检查";
+        const chkDis = !isSuper() || P.checking || busy();
+
+        el.innerHTML = `
+          <div class="ad">
+            <div class="ad-side">
+              <div class="grp">AI 配置</div><div class="it">总览</div><div class="it">模型</div>
+              <div class="grp">用户</div><div class="it">用户管理</div>
+              <div class="grp">系统设置</div><div class="it">存储配置</div><div class="it">注册设置</div>
+              <div class="it on"><i data-lucide="refresh-cw"></i>系统更新${sideNew}</div>
+            </div>
+            <div class="ad-main">
+              <div class="row wrapflex"><h3>系统更新</h3><span class="tag t-mute">原型 · 示意数据</span>
+                <button class="btn btn-outline spacer" ${chkDis ? "disabled" : ""} onclick="pCheck()" title="${!isSuper() ? "仅 super_admin 可检查更新" : ""}"><i data-lucide="refresh-cw"></i>${P.checking ? "检查中…" : "检查更新"}</button></div>
+              ${pBanners()}
+              <div class="ver-grid">
+                <div class="ver"><small>当前版本</small><b>${cmpOk() ? "v" + esc(P.cur) : "dev"}</b><small>提交 3544492 · 构建 2026-10-12</small></div>
+                <div class="ver"><small>最新版本</small><b>${latV}</b><small>${esc(latSub)}</small></div>
+                <div class="ver"><small>状态</small><b style="font-size: 16px; font-family: inherit">${status}</b><small>&nbsp;</small></div>
+              </div>
+              <div class="row wrapflex" style="margin-top: 14px">
+                <button class="btn btn-primary" ${why ? "disabled" : ""} onclick="pOpenDlg('start')"><i data-lucide="rocket"></i>更新到 v${esc(lat.v)}</button>
+                ${why ? `<small class="muted">${esc(why)}</small>` : ""}
+                <span class="spacer"></span>
+                ${rbWhy ? `<small class="muted">${esc(rbWhy)}</small>` : ""}
+                <button class="btn btn-outline" ${rbWhy ? "disabled" : ""} onclick="pOpenDlg('rollback')"><i data-lucide="undo-2"></i>回退到 v${esc(P.rb.to || "—")}</button>
+              </div>
+              <div class="callout c-info" style="margin-top: 12px"><i data-lucide="terminal"></i><div>一期（没有 Updater）：在服务器上执行 <code>./update.sh --tag ${esc(lat.v)}</code>，更新前请先备份数据库。</div></div>
+              ${pProgress()}
+              <div class="sec" style="margin-top: 22px"><h2 style="font-size: 15px">版本日志</h2>${pReleases()}</div>
+            </div>
+          </div>
+          ${P.dlg ? pDlg() : ""}`;
+        icons();
+      }
+
+      /* 输入框失焦保护：确认框里输入只改状态，不整体重绘（pSetReason 只切按钮禁用态） */
+      renderDemo();
+      pRender();
+      icons();
+    </script>
+  </body>
+</html>
