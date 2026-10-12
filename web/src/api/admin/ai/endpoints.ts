@@ -4,6 +4,7 @@
  *
  *   GET    /admin/ai/me                                当前角色
  *   GET    /admin/ai/stats?days=7|30                   总览页任务统计
+ *   GET    /admin/ai/overview                          总览页汇总（数量、待处理清单、精简渠道）
  *   GET    /admin/ai/plugins                           插件分页列表（?q=&kind=&source=&status=&page=&page_size=）
  *   GET    /admin/ai/plugins/options                   全部插件（带版本和 meta，不分页）
  *   GET    /admin/ai/plugins/:key                      插件详情
@@ -40,6 +41,7 @@ const channel = (key: string) => `${P}/channels/${seg(key)}`;
 export const adminAiEndpoints = {
   me: () => `${P}/me`,
   stats: () => `${P}/stats`,
+  overview: () => `${P}/overview`,
 
   plugins: () => `${P}/plugins`,
   pluginOptions: () => `${P}/plugins/options`,

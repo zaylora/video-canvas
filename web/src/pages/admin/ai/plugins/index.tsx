@@ -16,7 +16,7 @@ import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
-import { useAdminOutlet } from "../../use-admin";
+import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
 import { PluginDialog } from "./plugin-dialog";
 import { PluginTable } from "./plugin-table";
@@ -34,7 +34,7 @@ const PLUGIN_FILTERS = ["kind", "source", "status"] as const;
  * 删除插件时先关详情弹窗再开删除对话框，两个弹窗不叠着。
  */
 export default function PluginsPage() {
-  const { catalog } = useAdminOutlet();
+  const { catalog } = useAdminCatalogOptions();
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const navigate = useNavigate();

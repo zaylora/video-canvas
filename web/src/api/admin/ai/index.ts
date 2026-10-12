@@ -3,6 +3,7 @@ import type { TaskView } from "@/api/generation-task/type";
 import { adminAiEndpoints as ep, saveBody } from "./endpoints";
 import type {
   AdminMe,
+  AdminOverview,
   AdminPage,
   AdminStats,
   AdminStatsDays,
@@ -49,6 +50,20 @@ export const getAdminMe = () => service.get<AdminMe>(ep.me(), undefined);
  */
 export const getAdminStats = (days: AdminStatsDays, silent = false) =>
   service.get<AdminStats>(ep.stats(), { days }, silent ? { silent: true } : undefined);
+
+/**
+ * 总览页汇总：各类数量、可用数、待处理清单、渠道负载卡片要的精简渠道；一次请求，不拉全量清单
+ * @param silent 为 true 时失败不弹全局提示：后台刷新用，页面自己显示失败状态
+ * @returns 汇总；数组字段缺失时补成空数组
+ */
+export const getAdminOverview = async (silent = false): Promise<AdminOverview> => {
+  const ov = await service.get<AdminOverview>(
+    ep.overview(),
+    undefined,
+    silent ? { silent: true } : undefined,
+  );
+  return { ...ov, todos: ov.todos ?? [], channel_briefs: ov.channel_briefs ?? [] };
+};
 
 // ---------------------------------------------------------------- 插件
 

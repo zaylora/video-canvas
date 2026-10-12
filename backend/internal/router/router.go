@@ -133,6 +133,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		superOnly := middleware.RequireSuperAdmin(h.AdminRole)
 		adminAI.GET("/me", h.AdminMe.Me)
 		adminAI.GET("/stats", h.AdminStats.Stats)
+		adminAI.GET("/overview", h.AdminCatalog.Overview)
 
 		plugins := adminAI.Group("/plugins")
 		plugins.GET("", h.AdminCatalog.ListPlugins)

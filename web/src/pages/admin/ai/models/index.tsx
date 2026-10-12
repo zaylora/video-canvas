@@ -12,7 +12,7 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { useAdminOutlet } from "../../use-admin";
+import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
 import { ModelEditorDialogs } from "./model-editor-dialogs";
 import { useUrlModelRoute } from "./model-route";
@@ -31,7 +31,7 @@ const MODEL_FILTERS = ["kind", "channel", "status"] as const;
  * 状态与动作都在 useModelWorkspace，这里只负责拼装与放弃修改的确认框。
  */
 export default function ModelsPage() {
-  const { catalog } = useAdminOutlet();
+  const { catalog } = useAdminCatalogOptions();
   // 保存 / 上下线让模型变了：重新拉取当前页（由 list.reload 提供，先建 list 再把它交给工作区）
   const list = useAdminList<ModelListItem>(MODEL_FILTERS, (query) => listModels(query));
   const ws = useModelWorkspace(catalog, useUrlModelRoute(), list.reload);

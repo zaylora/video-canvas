@@ -104,3 +104,13 @@ func (h *AdminCatalogHandler) ModelOptions(c *gin.Context) {
 	}
 	response.OK(c, list)
 }
+
+// Overview 返回总览页的汇总（GET /admin/ai/overview）：数量、可用数、待处理清单、精简渠道。
+func (h *AdminCatalogHandler) Overview(c *gin.Context) {
+	ov, err := h.svc.Overview(c.Request.Context())
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, ov)
+}

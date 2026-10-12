@@ -537,3 +537,42 @@ export interface ListModelsParams {
   page?: number;
   page_size?: number;
 }
+
+// ---------------------------------------------------------------- 总览汇总
+
+/** 待处理项的修复动作 */
+export interface OverviewTodoAction {
+  /** set-key 设置 Key / open-plugin 去插件页 / open-channel 去渠道页 / upgrade-plugin 一键升级 */
+  kind: "set-key" | "open-plugin" | "open-channel" | "upgrade-plugin";
+  channel_key?: string;
+  /** set-key 弹窗里要显示的渠道名 */
+  channel_name?: string;
+  plugin_key?: string;
+}
+
+/** 总览页“待处理”的一条（后端按严重度排好） */
+export interface OverviewTodo {
+  /** 稳定 id（React key） */
+  id: string;
+  tone: "bad" | "warn" | "info";
+  text: string;
+  action: OverviewTodoAction;
+}
+
+/** “渠道负载”卡片要的精简渠道 */
+export interface OverviewChannel {
+  key: string;
+  name: string;
+  /** 同时生成上限；0 表示不限 */
+  max_running: number;
+  health: ChannelHealth;
+}
+
+/** GET /admin/ai/overview：总览页的汇总，前端不再拉全量清单 */
+export interface AdminOverview {
+  plugins: { total: number; usable: number };
+  channels: { total: number; usable: number; no_key: number };
+  models: { total: number; online: number; broken: number };
+  todos: OverviewTodo[];
+  channel_briefs: OverviewChannel[];
+}

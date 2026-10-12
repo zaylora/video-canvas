@@ -20,7 +20,7 @@ import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
 import { useModelRowActions } from "../models/use-model-row-actions";
-import { useAdminOutlet } from "../../use-admin";
+import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
 import type { ChannelModelActions } from "./channel-models";
 import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
@@ -41,7 +41,7 @@ const CHANNEL_FILTERS = ["kind", "plugin", "status"] as const;
  * 新建、检查、设 Key、停用、删除只对运维渲染；导入 admin 也能用；admin 打开弹窗为只读。
  */
 export default function ChannelsPage() {
-  const { catalog } = useAdminOutlet();
+  const { catalog } = useAdminCatalogOptions();
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const navigate = useNavigate();
@@ -138,7 +138,6 @@ export default function ChannelsPage() {
       objectKey: channel.key,
       name: channel.name,
       channels: catalog.channels,
-      plugins: catalog.plugins,
       onDeleted: () => {
         setParams({}, { replace: true });
         refreshChannels();

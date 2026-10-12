@@ -84,16 +84,6 @@ func pathKey(c *gin.Context) (string, bool) {
 // 模型配置接口
 // ---------------------------------------------------------------------------
 
-// List 列出配置概览（不含正文）。
-func (h *AdminAIHandler) List(c *gin.Context) {
-	items, err := h.svc.ListConfigs(c.Request.Context())
-	if err != nil {
-		response.Fail(c, err)
-		return
-	}
-	response.OK(c, items)
-}
-
 // Create 新建配置并保存；正文有校验问题也会保存，问题列表在响应的 issues 里。
 func (h *AdminAIHandler) Create(c *gin.Context) {
 	var req saveConfigReq

@@ -1,7 +1,7 @@
 import { ArrowRight, Plus, RadioTower } from "lucide-react";
 import { useMemo } from "react";
 
-import type { ChannelLoad as ChannelLoadDto, ChannelView, PluginView } from "@/api/admin/ai/type";
+import type { ChannelLoad as ChannelLoadDto, OverviewChannel } from "@/api/admin/ai/type";
 import {
   EmptyState,
   EmptyStateActions,
@@ -55,9 +55,8 @@ function RowStatus({ row }: { row: LoadRow }) {
  * - 不可用的渠道（缺 Key、停用）不画负载，写原因，排在最后；最多列 6 行，其余去渠道页；
  * - 负载接口失败时：已有数据就保留并提示“显示的是旧数据”，从没成功过才整卡显示失败；
  * - 没有渠道时引导新建（只有运维能写）。
- * @param channels 渠道清单
- * @param plugins 插件清单
- * @param catalogReady 渠道与插件清单都已加载
+ * @param channels 精简渠道（后端汇总里的 channel_briefs，健康状态已算好）
+ * @param catalogReady 配置汇总已加载
  * @param loads 各渠道负载
  * @param status 负载的加载状态
  * @param stale 最近一次刷新失败
@@ -67,7 +66,6 @@ function RowStatus({ row }: { row: LoadRow }) {
  */
 export function ChannelLoad({
   channels,
-  plugins,
   catalogReady,
   loads,
   status,
@@ -76,8 +74,7 @@ export function ChannelLoad({
   onOpenChannels,
   onCreateChannel,
 }: {
-  channels: ChannelView[];
-  plugins: PluginView[];
+  channels: OverviewChannel[];
   catalogReady: boolean;
   loads: ChannelLoadDto[];
   status: LoadStatus;
@@ -86,7 +83,7 @@ export function ChannelLoad({
   onOpenChannels: () => void;
   onCreateChannel: (() => void) | null;
 }) {
-  const rows = useMemo(() => loadRows(channels, plugins, loads), [channels, plugins, loads]);
+  const rows = useMemo(() => loadRows(channels, loads), [channels, loads]);
   const loading = !catalogReady || status === "loading";
 
   return (

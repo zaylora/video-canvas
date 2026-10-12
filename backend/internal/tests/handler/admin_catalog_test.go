@@ -174,3 +174,34 @@ func TestAdminCatalogHandler_ModelList(t *testing.T) {
 		aicWant(t, env.do(http.MethodGet, aicBase+"/models/options", nil, aicNormalUser), http.StatusForbidden, errcode.ErrForbidden.Code)
 	})
 }
+
+func TestAdminCatalogHandler_Overview(t *testing.T) {
+	env := aicNewEnv(t)
+	seedCatalog(t, env)
+
+	t.Run("admin 可读，返回汇总、待处理清单和精简渠道", func(t *testing.T) {
+		r := env.admin(http.MethodGet, aicBase+"/overview", nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var ov struct {
+			Plugins  struct{ Total, Usable int } `json:"plugins"`
+			Channels struct {
+				Total  int `json:"total"`
+				Usable int `json:"usable"`
+				NoKey  int `json:"no_key"`
+			} `json:"channels"`
+			Models        struct{ Total, Online, Broken int } `json:"models"`
+			Todos         []map[string]any                    `json:"todos"`
+			ChannelBriefs []map[string]any                    `json:"channel_briefs"`
+		}
+		if err := json.Unmarshal(r.Data, &ov); err != nil || ov.Plugins.Total != 1 || ov.Channels.Total != 2 {
+			t.Fatalf("汇总不对：%v %s", err, r.Raw)
+		}
+		if ov.Todos == nil || len(ov.ChannelBriefs) != 2 || ov.ChannelBriefs[0]["health"] == nil {
+			t.Fatalf("应带 todos 和 channel_briefs：%s", r.Raw)
+		}
+	})
+	t.Run("普通用户 403，未登录 401", func(t *testing.T) {
+		aicWant(t, env.do(http.MethodGet, aicBase+"/overview", nil, aicNormalUser), http.StatusForbidden, errcode.ErrForbidden.Code)
+		aicWant(t, env.do(http.MethodGet, aicBase+"/overview", nil, 0), http.StatusUnauthorized, errcode.ErrUnauthorized.Code)
+	})
+}

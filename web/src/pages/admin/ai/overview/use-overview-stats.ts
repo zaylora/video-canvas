@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getAdminStats, listChannelLoads } from "@/api/admin/ai";
-import type { AdminStats, AdminStatsDays, ChannelLoad } from "@/api/admin/ai/type";
+import { getAdminOverview, getAdminStats, listChannelLoads } from "@/api/admin/ai";
+import type { AdminOverview, AdminStats, AdminStatsDays, ChannelLoad } from "@/api/admin/ai/type";
 
 import { useAliveRef, type LoadStatus } from "../../use-admin";
 import { useVisibleInterval } from "./use-visible-interval";
@@ -87,4 +87,32 @@ export function useChannelLoads() {
   useVisibleInterval(() => void reload(), LOADS_POLL_MS);
 
   return { loads, status, stale, reload };
+}
+
+/**
+ * 总览页的配置汇总（数量、待处理清单、精简渠道）：进页面加载一次，reload 静默刷新，失败时保留上一次的数据。
+ * 一个请求取代了原来的三份全量清单。
+ * @returns 汇总、加载状态与刷新函数
+ */
+export function useOverview() {
+  const aliveRef = useAliveRef();
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [status, setStatus] = useState<LoadStatus>("loading");
+
+  const reload = useCallback(async () => {
+    try {
+      const next = await getAdminOverview();
+      if (!aliveRef.current) return;
+      setOverview(next);
+      setStatus("ready");
+    } catch {
+      if (aliveRef.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
+    }
+  }, [aliveRef]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  return { overview, status, reload };
 }
