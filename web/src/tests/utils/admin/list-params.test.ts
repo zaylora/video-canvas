@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseListParams, toListQuery, withListParam } from "@/utils/admin/list-params";
+import {
+  clearListParams,
+  parseListParams,
+  toListQuery,
+  withListParam,
+} from "@/utils/admin/list-params";
 
 const parse = (search: string, keys: string[] = []) =>
   parseListParams(new URLSearchParams(search), keys);
@@ -64,5 +69,20 @@ describe("withListParam", () => {
     const next = withListParam(src, "status", "all");
     expect(next.has("status")).toBe(false);
     expect(src.get("status")).toBe("on");
+  });
+});
+
+describe("clearListParams", () => {
+  test("只清搜索词、页码和本列表的筛选，弹窗的 key / tab 等其它参数保留", () => {
+    const next = clearListParams(new URLSearchParams("q=a&page=3&status=on&key=c1&tab=models"), [
+      "status",
+    ]);
+    expect(next.toString()).toBe("key=c1&tab=models");
+  });
+
+  test("不修改传入对象", () => {
+    const src = new URLSearchParams("q=a&key=c1");
+    clearListParams(src, []);
+    expect(src.get("q")).toBe("a");
   });
 });

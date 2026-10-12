@@ -116,7 +116,6 @@ export function ModelDialog({
       tags={readModelStrings(body, "tags")}
       price={priceLabel(pricing ?? undefined)}
       hint={readModelString(body, "hint")}
-      models={ws.models}
     />
   ) : tab === "params" ? (
     <PreviewFrame title="画布节点预览">

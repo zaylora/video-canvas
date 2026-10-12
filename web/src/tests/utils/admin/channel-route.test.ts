@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseChannelRoute, parsePluginRoute } from "@/utils/admin/channel-route";
+import { parseChannelRoute } from "@/utils/admin/channel-route";
 
 const channels = [{ key: "newapi" }, { key: "yswg" }];
-const plugins = [{ key: "newapi" }, { key: "yswg-image" }];
 const params = (query: string) => new URLSearchParams(query);
 
 describe("parseChannelRoute", () => {
@@ -54,37 +53,5 @@ describe("parseChannelRoute", () => {
     expect(
       parseChannelRoute(params("key=gone"), channels, { canWrite: true, ready: false }),
     ).toEqual({ target: null, missing: null });
-  });
-});
-
-describe("parsePluginRoute", () => {
-  test("没有参数：不开弹窗", () => {
-    expect(parsePluginRoute(params(""), plugins, true)).toEqual({ target: null, missing: null });
-  });
-
-  test("?key=<key> 打开概览，?tab=versions 打开版本历史", () => {
-    expect(parsePluginRoute(params("key=newapi"), plugins, true).target).toEqual({
-      key: "newapi",
-      tab: "overview",
-    });
-    expect(parsePluginRoute(params("key=newapi&tab=versions"), plugins, true).target).toEqual({
-      key: "newapi",
-      tab: "versions",
-    });
-    expect(parsePluginRoute(params("key=newapi&tab=xxx"), plugins, true).target).toEqual({
-      key: "newapi",
-      tab: "overview",
-    });
-  });
-
-  test("插件不存在：报告缺失；清单没加载完时先不报", () => {
-    expect(parsePluginRoute(params("key=gone"), plugins, true)).toEqual({
-      target: null,
-      missing: "gone",
-    });
-    expect(parsePluginRoute(params("key=gone"), plugins, false)).toEqual({
-      target: null,
-      missing: null,
-    });
   });
 });

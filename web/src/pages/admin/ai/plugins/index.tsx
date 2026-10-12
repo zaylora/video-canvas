@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Upload } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
+import { getPlugin, listPlugins } from "@/api/admin/ai";
+import type { PluginListItem, PluginView } from "@/api/admin/ai/type.d";
 import {
   PageHeader,
   PageHeaderActions,
@@ -11,16 +13,19 @@ import {
 } from "@/components/admin-ui/page-header";
 import { Button } from "@/components/ui/button";
 import { useAdminStore } from "@/store/admin";
-import { parsePluginRoute } from "@/utils/admin/channel-route";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
-import { useAdminOutlet, useModelList } from "../../use-admin";
+import { useAdminOutlet } from "../../use-admin";
+import { useAdminList } from "../../use-admin-list";
 import { PluginDialog } from "./plugin-dialog";
 import { PluginTable } from "./plugin-table";
 import { UploadDialog } from "./upload-dialog";
 import { confirmUpgradeChannels } from "./upgrade-channels";
 import { usePluginActions } from "./use-plugin-actions";
+
+/** 列表认的筛选参数：能力、来源、状态 */
+const PLUGIN_FILTERS = ["kind", "source", "status"] as const;
 
 /**
  * 插件页：表格 + 详情弹窗。弹窗状态在 URL 里（刷新不丢，渠道页等处的链接直达）：
@@ -35,26 +40,42 @@ export default function PluginsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
-  const { models } = useModelList();
-  const { toggling, toggle } = usePluginActions({
-    channels: catalog.channels,
-    models,
-    onChanged: catalog.reloadPlugins,
-  });
+  // 插件分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量插件和渠道在 catalog 里（options）
+  const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) => listPlugins(query));
+  /** 插件有改动之后：重新拉当前页，并刷新弹窗用的全量插件 */
+  const { reload: reloadList } = list;
+  const { reloadPlugins, reloadChannels } = catalog;
+  const refresh = useCallback(async () => {
+    reloadList();
+    await reloadPlugins();
+  }, [reloadList, reloadPlugins]);
+  const refreshChannels = useCallback(async () => {
+    reloadList(); // 行上的旧版渠道数要跟着变
+    await reloadChannels();
+  }, [reloadList, reloadChannels]);
+  const { toggling, toggle } = usePluginActions({ onChanged: refresh });
 
-  const route = parsePluginRoute(params, catalog.plugins, catalog.pluginsStatus === "ready");
-  const routeKey = route.target?.key ?? null;
-  const plugin = useMemo(
-    () => (routeKey ? (catalog.plugins.find((item) => item.key === routeKey) ?? null) : null),
-    [routeKey, catalog.plugins],
-  );
-
-  // 链接里的插件已经不存在（被删了）：提示一次并清掉参数
+  // 弹窗里的插件按 ?key= 单独取，不依赖列表里有没有这一行（深链、翻页都不影响）
+  const routeKey = params.get("key");
+  const tab = params.get("tab") === "versions" ? "versions" : "overview";
+  const [plugin, setPlugin] = useState<PluginView | null>(null);
+  /** 弹窗里的改动（删版本、启停）后加一，重新取详情 */
+  const [detailVersion, setDetailVersion] = useState(0);
   useEffect(() => {
-    if (!route.missing) return;
-    toast.error(`插件 ${route.missing} 不存在`);
-    setParams({}, { replace: true });
-  }, [route.missing, setParams]);
+    if (!routeKey) return setPlugin(null);
+    let cancelled = false;
+    getPlugin(routeKey)
+      .then((next) => !cancelled && setPlugin(next))
+      .catch(() => {
+        // 插件已经不存在（被删了）：提示一次并清掉参数
+        if (cancelled) return;
+        toast.error(`插件 ${routeKey} 不存在`);
+        setParams({}, { replace: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [routeKey, detailVersion, setParams]);
 
   const closeDialog = () => setParams({}, { replace: true });
   const requestDelete = (target: { key: string; name: string }) =>
@@ -64,7 +85,7 @@ export default function PluginsPage() {
       name: target.name,
       onDeleted: () => {
         setParams({}, { replace: true });
-        void catalog.reloadPlugins();
+        void refresh();
       },
     });
 
@@ -86,9 +107,7 @@ export default function PluginsPage() {
         </PageHeader>
 
         <PluginTable
-          plugins={catalog.plugins}
-          channels={catalog.channels}
-          status={catalog.pluginsStatus}
+          list={list}
           canWrite={canWrite}
           toggling={toggling}
           onOpen={(key) => setParams({ key })}
@@ -99,22 +118,24 @@ export default function PluginsPage() {
               plugin: target,
               channels: catalog.channels,
               plugins: catalog.plugins,
-              onDone: catalog.reloadChannels,
+              onDone: refreshChannels,
             })
           }
           onDelete={requestDelete}
-          onRetry={() => void catalog.reloadPlugins()}
         />
 
         <PluginDialog
           plugin={plugin}
-          tab={route.target?.tab ?? "overview"}
+          tab={tab}
           onTabChange={(tab) => routeKey && setParams({ key: routeKey, tab }, { replace: true })}
           plugins={catalog.plugins}
           channels={catalog.channels}
           canWrite={canWrite}
-          onChanged={catalog.reloadPlugins}
-          onChannelsChanged={catalog.reloadChannels}
+          onChanged={async () => {
+            setDetailVersion((n) => n + 1);
+            await refresh();
+          }}
+          onChannelsChanged={refreshChannels}
           onClose={closeDialog}
         />
 
@@ -122,7 +143,7 @@ export default function PluginsPage() {
           <UploadDialog
             open={uploadOpen}
             onClose={() => setUploadOpen(false)}
-            onUploaded={() => void catalog.reloadPlugins()}
+            onUploaded={() => void refresh()}
             onNextStep={(pluginKey) => {
               setUploadOpen(false);
               navigate(`/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`);

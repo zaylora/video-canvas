@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import {
+  clearListParams,
   parseListParams,
   toListQuery,
   withListParam,
@@ -87,8 +88,11 @@ export function useAdminList<T, R extends AdminPageResult<T> = AdminPageResult<T
     },
     [setParam],
   );
-  /** 清掉搜索词和全部筛选，回到第 1 页 */
-  const clear = useCallback(() => setParams({}, { replace: true }), [setParams]);
+  /** 清掉搜索词和本列表的筛选，回到第 1 页；URL 里的其它参数（弹窗的 ?key= 等）保留 */
+  const clear = useCallback(
+    () => setParams((prev) => clearListParams(prev, keysKey ? keysKey.split(",") : []), { replace: true }),
+    [setParams, keysKey],
+  );
   /** 重新拉取当前页；不清空旧数据 */
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 

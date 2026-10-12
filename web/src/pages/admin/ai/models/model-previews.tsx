@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Eye, Star } from "lucide-react";
 
-import type { ConfigListItem } from "@/api/admin/ai/type.d";
+import { listModels } from "@/api/admin/ai";
+import type { ModelListItem } from "@/api/admin/ai/type.d";
 import type { Capabilities, Pricing } from "@/api/model/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
@@ -87,7 +88,6 @@ export function PickerPreview({
   tags,
   price,
   hint,
-  models,
 }: {
   modelKey: string;
   label: string;
@@ -96,11 +96,21 @@ export function PickerPreview({
   tags: readonly string[];
   price: string;
   hint: string;
-  models: ConfigListItem[];
 }) {
-  const others = models
-    .filter((item) => item.kind === kind && item.key !== modelKey && item.enabled)
-    .slice(0, 2);
+  // 灰色的“同类已上架的模型”：向后端要同类型在线的前 3 个，排除自己后留 2 个
+  const [others, setOthers] = useState<ModelListItem[]>([]);
+  useEffect(() => {
+    if (!kind) return setOthers([]);
+    let cancelled = false;
+    listModels({ kind, status: "online", page: 1, page_size: 3 })
+      .then((page) => {
+        if (!cancelled) setOthers(page.list.filter((item) => item.key !== modelKey).slice(0, 2));
+      })
+      .catch(() => !cancelled && setOthers([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, modelKey]);
   return (
     <PreviewFrame title="创作端预览 · 模型选择器">
       <div className="bg-popover rounded-xl border p-2 shadow-lg">

@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
 import { Download, KeyRound, Plus, Trash2, X } from "lucide-react";
 
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import type { ChannelListItem, PluginView } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import {
   EmptyState,
@@ -13,7 +12,7 @@ import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { RowAction } from "@/components/admin-ui/row-action";
 import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { SearchInput } from "@/components/admin-ui/search-input";
+import { ListSearch } from "@/components/admin-ui/list-search";
 import { StatusLabel } from "@/components/admin-ui/status-dot";
 import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
@@ -27,12 +26,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
-import { availableUpgrade, channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
-import { filterChannels, paginate } from "@/utils/admin/table-view";
+import { HEALTH_UI_TONE } from "@/utils/admin/health";
 
 import { KindFilter, KindIcons, PLUGIN_KIND_ORDER } from "../kind";
-import type { LoadStatus } from "../../use-admin";
+import type { useAdminList } from "../../use-admin-list";
 
 /** 状态筛选：与状态列一致（可用 / 未设 Key / 不可用 / 已停用），外加“可升级” */
 const STATUS_OPTIONS = [
@@ -44,76 +41,45 @@ const STATUS_OPTIONS = [
   ["upgrade", "可升级"],
 ] as const;
 
-/** 渠道能支持的能力（给“能力”列的小图标用）；读不到插件版本时为空 */
-const channelKinds = (plugins: PluginView[], channel: ChannelView) =>
-  PLUGIN_KIND_ORDER.filter((kind) => channelSupportsKind(plugins, channel, kind) === true);
+/** 渠道所用插件版本是否支持“导入模型”；读不到插件版本的 meta 时不当成“不支持” */
+const importable = (owner: PluginView, channel: ChannelListItem) => {
+  const meta = owner.versions.find((v) => v.id === channel.plugin_version_id)?.meta;
+  return !meta || !!meta.import;
+};
 
-/** 渠道页的表格：搜索、筛选、分页，行内图标操作加「⋯」菜单；点整行打开渠道弹窗 */
+/** 渠道能支持的能力（给“能力”列的小图标用），按固定顺序；后端读不到插件版本时为空 */
+const channelKinds = (channel: ChannelListItem) =>
+  PLUGIN_KIND_ORDER.filter((kind) => channel.kinds.includes(kind));
+
+/** 渠道页的表格：搜索、筛选、分页都在服务端，行内图标操作加「⋯」菜单；点整行打开渠道弹窗 */
 export function ChannelTable({
-  channels,
+  list,
   plugins,
-  status,
   canWrite,
-  models,
-  modelsStatus,
   onOpen,
   onNew,
   onImport,
   onSetKey,
   onToggle,
   onDelete,
-  onRetry,
 }: {
-  channels: ChannelView[];
+  /** 渠道分页列表（useAdminList）：当页的行、总数、搜索 / 筛选 / 翻页 */
+  list: ReturnType<typeof useAdminList<ChannelListItem>>;
+  /** 全部插件：插件筛选下拉和“插件”列显示名要用 */
   plugins: PluginView[];
-  status: LoadStatus;
   canWrite: boolean;
-  /** 各渠道当前的生成中 / 排队数，按渠道 key 索引 */
-  /** 全部模型：算每个渠道有几个模型 */
-  models: ConfigListItem[];
-  modelsStatus: LoadStatus;
   onOpen: (key: string) => void;
   onNew: () => void;
-  onImport: (channel: ChannelView) => void;
-  onSetKey: (channel: ChannelView) => void;
-  onToggle: (channel: ChannelView) => void;
-  onDelete: (channel: ChannelView) => void;
-  onRetry: () => void;
+  onImport: (channel: ChannelListItem) => void;
+  onSetKey: (channel: ChannelListItem) => void;
+  onToggle: (channel: ChannelListItem) => void;
+  onDelete: (channel: ChannelListItem) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("");
-  const [plugin, setPlugin] = useState("");
-  const [state, setState] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  /** 改筛选条件后回到第一页 */
-  const filter = (setter: (value: string) => void) => (value: string) => {
-    setter(value);
-    setPage(1);
-  };
-  const filtering = !!(query || kind || plugin || state);
-  const reset = () => {
-    setQuery("");
-    setKind("");
-    setPlugin("");
-    setState("");
-    setPage(1);
-  };
-
-  const shown = useMemo(
-    () => filterChannels(channels, plugins, { query, kind, plugin, status: state }),
-    [channels, plugins, query, kind, plugin, state],
-  );
-  const { rows, page: current } = paginate(shown, page, pageSize);
-  const modelCount = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of models)
-      if (item.channel) counts[item.channel] = (counts[item.channel] ?? 0) + 1;
-    return counts;
-  }, [models]);
+  const { items: rows, state: status } = list;
+  const kind = list.filters.kind ?? "";
   const columns = 7;
 
-  if (status === "ready" && channels.length === 0) {
+  if (status === "ready" && list.total === 0 && !list.filtering) {
     return (
       <EmptyState>
         <EmptyStateTitle>还没有渠道</EmptyStateTitle>
@@ -136,33 +102,36 @@ export function ChannelTable({
   return (
     <section className="bg-card rounded-xl border">
       <TableToolbar>
-        <SearchInput
-          value={query}
-          onChange={(event) => filter(setQuery)(event.target.value)}
+        <ListSearch
+          value={list.q}
+          onCommit={list.setQ}
           placeholder="搜索名称、key 或地址"
-          aria-label="搜索渠道"
-          className="w-full sm:w-64 [&_input]:h-8"
+          className="[&_input]:h-8"
         />
-        <KindFilter value={kind} onChange={filter(setKind)} slideId="channel-kind" />
+        <KindFilter
+          value={kind}
+          onChange={(value) => list.setFilter("kind", value)}
+          slideId="channel-kind"
+        />
         <FilterSelect
           aria-label="按插件筛选"
-          value={plugin}
-          onValueChange={filter(setPlugin)}
+          value={list.filters.plugin ?? ""}
+          onValueChange={(value) => list.setFilter("plugin", value)}
           options={[["", "全部插件"], ...plugins.map((item) => [item.key, item.name] as const)]}
         />
         <FilterSelect
           aria-label="按状态筛选"
-          value={state}
-          onValueChange={filter(setState)}
+          value={list.filters.status ?? ""}
+          onValueChange={(value) => list.setFilter("status", value)}
           options={STATUS_OPTIONS}
         />
-        {filtering && (
-          <RowAction onClick={reset}>
+        {list.filtering && (
+          <RowAction onClick={list.clear}>
             <X />
             重置
           </RowAction>
         )}
-        <TableToolbarCount shown={shown.length} total={channels.length} />
+        <TableToolbarCount shown={rows.length} total={list.total} />
       </TableToolbar>
 
       <div className="flex flex-col gap-4 px-4 pb-4">
@@ -196,7 +165,7 @@ export function ChannelTable({
                 <TableRow>
                   <TableCell colSpan={columns} className="text-destructive h-32 text-center">
                     加载失败
-                    <button type="button" className="ml-1 underline" onClick={onRetry}>
+                    <button type="button" className="ml-1 underline" onClick={list.reload}>
                       重试
                     </button>
                   </TableCell>
@@ -215,10 +184,9 @@ export function ChannelTable({
               {status === "ready" &&
                 rows.map((channel) => {
                   const owner = plugins.find((item) => item.key === channel.plugin_key);
-                  const health = channelHealth(channel, plugins);
-                  const upgrade = availableUpgrade(plugins, channel);
-                  const meta = channelMeta(plugins, channel);
-                  const importUnsupported = !!meta && !meta.import;
+                  const health = channel.health;
+                  const upgrade = channel.upgrade_to;
+                  const importUnsupported = !!owner && !importable(owner, channel);
                   // 状态列第二行：只在“不可用”时写原因，其余看标签就够了
                   const note =
                     health.tone === "bad" && health.reason ? (
@@ -253,15 +221,15 @@ export function ChannelTable({
                         </div>
                         {upgrade && (
                           <div className="text-muted-foreground text-xs">
-                            可升级到 v{upgrade.version}
+                            可升级到 v{upgrade}
                           </div>
                         )}
                       </TableCell>
                       <TableCell className="px-3 py-3 max-md:hidden">
-                        <KindIcons kinds={channelKinds(plugins, channel)} />
+                        <KindIcons kinds={channelKinds(channel)} />
                       </TableCell>
                       <TableCell className="px-3 py-3 tabular-nums">
-                        {modelsStatus === "ready" ? (modelCount[channel.key] ?? 0) : "—"}
+                        {channel.model_count}
                       </TableCell>
                       <TableCell className="px-3 py-3">
                         <StatusLabel tone={HEALTH_UI_TONE[health.tone]}>{health.label}</StatusLabel>
@@ -316,14 +284,11 @@ export function ChannelTable({
         </div>
         {status === "ready" && (
           <DataTablePagination
-            page={current}
-            pageSize={pageSize}
-            total={shown.length}
-            onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPage(1);
-            }}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={list.total}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         )}
       </div>

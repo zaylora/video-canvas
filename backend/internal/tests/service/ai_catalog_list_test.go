@@ -112,6 +112,14 @@ func TestCatalog_ListChannels(t *testing.T) {
 			t.Errorf("没有渠道用 loose 插件：%+v", page)
 		}
 	})
+	t.Run("能力筛选：读不到插件版本的渠道不被排除，免得整张表被筛空", func(t *testing.T) {
+		e.repo.Channels["z-orphan"] = &model.AIChannel{Key: "z-orphan", Name: "孤儿", PluginKey: "gone", PluginVersionID: 999, Enabled: true}
+		defer delete(e.repo.Channels, "z-orphan")
+		page, _ := e.cat.ListChannels(ctx, chanReq("", "image", "", "", 0, 0))
+		if page.Total != 1 || page.List[0].Key != "z-orphan" {
+			t.Fatalf("没有渠道声明 image，但读不到版本的孤儿渠道要保留：%+v", page)
+		}
+	})
 	t.Run("分页", func(t *testing.T) {
 		page, _ := e.cat.ListChannels(ctx, chanReq("", "", "", "", 2, 2))
 		if page.Total != 3 || len(page.List) != 1 || page.Page != 2 || page.PageSize != 2 {
@@ -275,6 +283,12 @@ func TestCatalog_ListModels(t *testing.T) {
 			if page, _ := e.cat.ListModels(ctx, modelReq("", "", "", status, 0, 0)); int(page.Total) != want {
 				t.Errorf("status=%s 期望 %d，实际 %+v", status, want, page)
 			}
+		}
+	})
+	t.Run("创作端预览用：只取某类型已上线的前几条", func(t *testing.T) {
+		page, _ := e.cat.ListModels(ctx, modelReq("", "video", "", "online", 1, 2))
+		if page.Total != 1 || len(page.List) != 1 || page.List[0].Key != "m-online" {
+			t.Fatalf("实际 %+v", page)
 		}
 	})
 	t.Run("按渠道和类型筛选", func(t *testing.T) {

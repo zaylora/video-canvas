@@ -60,3 +60,16 @@ export function withListParam(
   next.delete("page");
   return next;
 }
+
+/**
+ * 清掉搜索词、页码和本列表的筛选，回到第 1 页；URL 里的其它参数（比如渠道页的 ?key= 弹窗）保留。
+ * 返回新的 URLSearchParams，不修改传入对象。
+ */
+export function clearListParams(
+  params: URLSearchParams,
+  filterKeys: readonly string[],
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  for (const key of ["q", "page", ...filterKeys]) next.delete(key);
+  return next;
+}

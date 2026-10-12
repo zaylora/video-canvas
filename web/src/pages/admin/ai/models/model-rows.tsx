@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { FlaskConical, Trash2 } from "lucide-react";
 
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import type { ChannelOption, ModelHealth, ModelListItem } from "@/api/admin/ai/type.d";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
@@ -19,13 +19,7 @@ import {
 } from "@/components/ui/table";
 
 import { cn } from "@/lib/utils";
-import {
-  HEALTH_UI_TONE,
-  MODEL_STATUS_LABEL,
-  MODEL_STATUS_TONE,
-  modelHealth,
-  type ModelHealth,
-} from "@/utils/admin/health";
+import { HEALTH_UI_TONE, MODEL_STATUS_LABEL, MODEL_STATUS_TONE } from "@/utils/admin/health";
 
 import { KindTag } from "../kind";
 
@@ -64,7 +58,6 @@ export function ModelRows({
   models,
   status = "ready",
   channels,
-  plugins,
   hideChannel,
   selected,
   onSelectedChange,
@@ -74,13 +67,13 @@ export function ModelRows({
   onTest,
   onToggleEnabled,
   onDelete,
-  channelsReady = true,
   onRetry,
 }: {
-  models: ConfigListItem[];
+  /** 当页的模型（状态和渠道名由后端算好） */
+  models: ModelListItem[];
   status?: "loading" | "ready" | "error";
-  channels: ChannelView[];
-  plugins: PluginView[];
+  /** 全部渠道（options）：第二行显示渠道所属插件名；没传或没加载好就只显示渠道名 */
+  channels?: ChannelOption[];
   hideChannel?: boolean;
   selected?: string[];
   onSelectedChange?: (keys: string[]) => void;
@@ -91,9 +84,7 @@ export function ModelRows({
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
   /** 删除；不传则不显示删除入口 */
-  onDelete?: (item: ConfigListItem) => void;
-  /** 渠道与插件清单已加载；没加载完不下“不可用”的结论 */
-  channelsReady?: boolean;
+  onDelete?: (item: ModelListItem) => void;
   onRetry?: () => void;
 }) {
   const selectable = !!selected && !!onSelectedChange;
@@ -169,13 +160,10 @@ export function ModelRows({
           {status === "ready" &&
             models.map((item) => {
               const label = item.label || item.name || item.key;
-              const channel = item.channel
-                ? channels.find((c) => c.key === item.channel)
+              const pluginKey = item.channel
+                ? channels?.find((c) => c.key === item.channel)?.plugin_key
                 : undefined;
-              const plugin = channel
-                ? plugins.find((p) => p.key === channel.plugin_key)
-                : undefined;
-              const health = modelHealth(item, channels, plugins, channelsReady);
+              const health = item.health;
               return (
                 <TableRow
                   key={item.key}
@@ -209,8 +197,10 @@ export function ModelRows({
                   </TableCell>
                   {!hideChannel && (
                     <TableCell className="px-3 py-3">
-                      <div className="text-sm">{channel?.name ?? item.channel ?? "—"}</div>
-                      {plugin && <div className="text-muted-foreground text-xs">{plugin.name}</div>}
+                      <div className="text-sm">{item.channel_name || item.channel || "—"}</div>
+                      {pluginKey && (
+                        <div className="text-muted-foreground text-xs">{pluginKey}</div>
+                      )}
                     </TableCell>
                   )}
                   <TableCell className="px-3 py-3">

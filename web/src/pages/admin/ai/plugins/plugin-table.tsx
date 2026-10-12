@@ -1,14 +1,13 @@
-import { useMemo, useState } from "react";
 import { CircleArrowUp, Trash2, Upload, X } from "lucide-react";
 
-import type { ChannelView, PluginView } from "@/api/admin/ai/type.d";
+import type { PluginListItem } from "@/api/admin/ai/type.d";
 import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
 import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { FilterSelect } from "@/components/admin-ui/filter-select";
 import { RowAction } from "@/components/admin-ui/row-action";
 import { RowIconAction, RowMoreMenu } from "@/components/admin-ui/row-icon-action";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { SearchInput } from "@/components/admin-ui/search-input";
+import { ListSearch } from "@/components/admin-ui/list-search";
 import { Tag } from "@/components/admin-ui/tag";
 import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
@@ -22,12 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { latestVersion, pluginChannelCount } from "@/utils/admin/plugin";
-import { filterPlugins, paginate } from "@/utils/admin/table-view";
-
 import { KindFilter, KindIcons } from "../kind";
-import type { LoadStatus } from "../../use-admin";
-import { outdatedChannels } from "./upgrade-channels";
+import type { useAdminList } from "../../use-admin-list";
 
 /** 状态筛选：启用 / 停用，外加“有旧版渠道”（有渠道固定在旧版本上，可以升级） */
 const STATUS_OPTIONS = [
@@ -43,11 +38,9 @@ const SOURCE_OPTIONS = [
   ["uploaded", "已上传"],
 ] as const;
 
-/** 插件页的表格：搜索、筛选、分页，行内图标操作加「⋯」菜单；点整行打开插件弹窗 */
+/** 插件页的表格：搜索、筛选、分页都在服务端，行内图标操作加「⋯」菜单；点整行打开插件弹窗 */
 export function PluginTable({
-  plugins,
-  channels,
-  status,
+  list,
   canWrite,
   toggling,
   onOpen,
@@ -55,49 +48,22 @@ export function PluginTable({
   onToggle,
   onUpgrade,
   onDelete,
-  onRetry,
 }: {
-  plugins: PluginView[];
-  channels: ChannelView[];
-  status: LoadStatus;
+  /** 插件分页列表（useAdminList）：当页的行、总数、搜索 / 筛选 / 翻页 */
+  list: ReturnType<typeof useAdminList<PluginListItem>>;
   canWrite: boolean;
   /** 正在启停的插件 key */
   toggling: string | null;
   onOpen: (key: string) => void;
   onUpload: () => void;
-  onToggle: (plugin: PluginView, enabled: boolean) => void;
-  onUpgrade: (plugin: PluginView) => void;
-  onDelete: (plugin: PluginView) => void;
-  onRetry: () => void;
+  onToggle: (plugin: PluginListItem, enabled: boolean) => void;
+  onUpgrade: (plugin: PluginListItem) => void;
+  onDelete: (plugin: PluginListItem) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("");
-  const [source, setSource] = useState("");
-  const [state, setState] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  /** 改筛选条件后回到第一页 */
-  const filter = (setter: (value: string) => void) => (value: string) => {
-    setter(value);
-    setPage(1);
-  };
-  const filtering = !!(query || kind || source || state);
-  const reset = () => {
-    setQuery("");
-    setKind("");
-    setSource("");
-    setState("");
-    setPage(1);
-  };
-
-  const shown = useMemo(
-    () => filterPlugins(plugins, channels, { query, kind, source, status: state }),
-    [plugins, channels, query, kind, source, state],
-  );
-  const { rows, page: current } = paginate(shown, page, pageSize);
+  const { items: rows, state: status } = list;
   const columns = 7;
 
-  if (status === "ready" && plugins.length === 0) {
+  if (status === "ready" && list.total === 0 && !list.filtering) {
     return (
       <EmptyState>
         <EmptyStateTitle>还没有插件</EmptyStateTitle>
@@ -116,33 +82,36 @@ export function PluginTable({
   return (
     <section className="bg-card rounded-xl border">
       <TableToolbar>
-        <SearchInput
-          value={query}
-          onChange={(event) => filter(setQuery)(event.target.value)}
+        <ListSearch
+          value={list.q}
+          onCommit={list.setQ}
           placeholder="搜索名称或 key"
-          aria-label="搜索插件"
-          className="w-full sm:w-64 [&_input]:h-8"
+          className="[&_input]:h-8"
         />
-        <KindFilter value={kind} onChange={filter(setKind)} slideId="plugin-kind" />
+        <KindFilter
+          value={list.filters.kind ?? ""}
+          onChange={(value) => list.setFilter("kind", value)}
+          slideId="plugin-kind"
+        />
         <FilterSelect
           aria-label="按来源筛选"
-          value={source}
-          onValueChange={filter(setSource)}
+          value={list.filters.source ?? ""}
+          onValueChange={(value) => list.setFilter("source", value)}
           options={SOURCE_OPTIONS}
         />
         <FilterSelect
           aria-label="按状态筛选"
-          value={state}
-          onValueChange={filter(setState)}
+          value={list.filters.status ?? ""}
+          onValueChange={(value) => list.setFilter("status", value)}
           options={STATUS_OPTIONS}
         />
-        {filtering && (
-          <RowAction onClick={reset}>
+        {list.filtering && (
+          <RowAction onClick={list.clear}>
             <X />
             重置
           </RowAction>
         )}
-        <TableToolbarCount shown={shown.length} total={plugins.length} />
+        <TableToolbarCount shown={rows.length} total={list.total} />
       </TableToolbar>
 
       <div className="flex flex-col gap-4 px-4 pb-4">
@@ -178,7 +147,7 @@ export function PluginTable({
                 <TableRow>
                   <TableCell colSpan={columns} className="text-destructive h-32 text-center">
                     加载失败
-                    <button type="button" className="ml-1 underline" onClick={onRetry}>
+                    <button type="button" className="ml-1 underline" onClick={list.reload}>
                       重试
                     </button>
                   </TableCell>
@@ -196,8 +165,8 @@ export function PluginTable({
               )}
               {status === "ready" &&
                 rows.map((plugin) => {
-                  const latest = latestVersion(plugin);
-                  const outdated = outdatedChannels(plugin, channels).length;
+                  const latest = plugin.versions.find((v) => v.version === plugin.latest_version);
+                  const outdated = plugin.outdated_channel_count;
                   return (
                     <TableRow
                       key={plugin.key}
@@ -223,10 +192,10 @@ export function PluginTable({
                         <KindIcons kinds={Object.keys(latest?.meta?.endpoints ?? {})} />
                       </TableCell>
                       <TableCell className="px-3 py-3 font-mono text-xs">
-                        {latest ? `v${latest.version}` : "—"}
+                        {plugin.latest_version ? `v${plugin.latest_version}` : "—"}
                       </TableCell>
                       <TableCell className="px-3 py-3 text-xs whitespace-nowrap tabular-nums">
-                        {pluginChannelCount(plugin)} 个在用
+                        {plugin.channel_count} 个在用
                         {outdated > 0 && (
                           <span className="text-muted-foreground"> · {outdated} 个旧版</span>
                         )}
@@ -271,14 +240,11 @@ export function PluginTable({
         </div>
         {status === "ready" && (
           <DataTablePagination
-            page={current}
-            pageSize={pageSize}
-            total={shown.length}
-            onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPage(1);
-            }}
+            page={list.page}
+            pageSize={list.pageSize}
+            total={list.total}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
           />
         )}
       </div>

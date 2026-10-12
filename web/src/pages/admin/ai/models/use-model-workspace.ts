@@ -6,13 +6,12 @@ import {
   getModelDetail,
   getTestRun,
   getTestRunTrace,
-  listModelOptions,
   setModelEnabled,
   testRunModel,
   updateModel,
   validateModel,
 } from "@/api/admin/ai";
-import type { ConfigDetail, ConfigIssue, ConfigListItem } from "@/api/admin/ai/type.d";
+import type { ConfigDetail, ConfigIssue } from "@/api/admin/ai/type.d";
 import { isRunnerDown } from "@/utils/admin/errors";
 import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";
@@ -63,8 +62,6 @@ export function useModelWorkspace(
   const isNew = selection === "new";
 
   // ---- 列表
-  const [models, setModels] = useState<ConfigListItem[]>([]);
-  const [listState, setListState] = useState<"loading" | "ready" | "error">("loading");
 
   // ---- 编辑器
   const [detail, setDetail] = useState<ConfigDetail | null>(null);
@@ -178,21 +175,6 @@ export function useModelWorkspace(
   const clearResults = resetResults;
 
   // ------------------------------------------------------------ 列表与详情
-
-  const loadList = useCallback(async () => {
-    try {
-      const list = await listModelOptions();
-      if (!aliveRef.current) return;
-      setModels(list);
-      setListState("ready");
-    } catch {
-      if (aliveRef.current) setListState((prev) => (prev === "ready" ? prev : "error"));
-    }
-  }, [aliveRef]);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList]);
 
   /** 把一份正文放进编辑器：JSON 文本、已保存基线、视图与 JSON 编辑框一并重置 */
   const loadIntoEditor = useCallback((next: unknown) => {
@@ -419,7 +401,6 @@ export function useModelWorkspace(
           issues: result.issues,
         });
       }
-      void loadList();
       onListChangedRef.current?.();
       const hasNextDraft = isNew && queue.length > 1;
       if (closeAfter && !hasNextDraft) {
@@ -615,7 +596,6 @@ export function useModelWorkspace(
       await setModelEnabled(key, enabled);
       if (!aliveRef.current) return;
       pushEntry({ title: `${key} 已${enabled ? "上线" : "下线"}`, tone: "success" });
-      void loadList();
       onListChangedRef.current?.();
       setDetail((prev) => (prev ? { ...prev, enabled } : prev));
     } finally {
@@ -654,9 +634,6 @@ export function useModelWorkspace(
     isNew,
     modelKey,
     // 列表
-    models,
-    listState,
-    reloadList: loadList,
     // 编辑器
     clearEditor,
     detail,

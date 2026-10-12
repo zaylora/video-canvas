@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { createChannel, getChannel, setChannelSecret, updateChannel } from "@/api/admin/ai";
-import type { ChannelView, ConfigListItem, PluginView } from "@/api/admin/ai/type.d";
+import type { ChannelOption, ChannelView, PluginView } from "@/api/admin/ai/type.d";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -67,9 +67,9 @@ import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { cn } from "@/lib/utils";
 import { KindFilter, KindIcons } from "../kind";
-import { channelHealth, HEALTH_UI_TONE } from "@/utils/admin/health";
+import { HEALTH_UI_TONE } from "@/utils/admin/health";
 import type { ChannelTab } from "@/utils/admin/channel-route";
-import { useAliveRef, type LoadStatus } from "../../use-admin";
+import { useAliveRef } from "../../use-admin";
 import { ChannelModels, type ChannelModelActions } from "./channel-models";
 import { CheckResult } from "./check-result";
 import { useDraftCheck } from "./use-channel-check";
@@ -150,7 +150,8 @@ function RiskRow({
  * “允许插件读取 Key”从关到开要勾选确认；新建时插件是 auth: custom 则它自动打开（必需）。
  * 配置页签保持挂载，切页签不丢未保存的修改。
  * @param initialTab 打开时停在哪个页签（来自 URL）；之后切换页签通过 onTabChange 写回 URL
- * @param channels 全部渠道：配置取最新的字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
+ * @param channels 全部渠道（options）：取最新的健康状态和字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
+ * @param modelsRefreshKey 递增即重新拉取“模型”页签（模型有改动之后）
  * @param pluginsReady 插件清单已加载（未就绪时显示骨架，避免版本下拉是空的）
  * @param onSaved 新建 / 更新 / 设 Key 后，通知列表刷新
  */
@@ -161,8 +162,7 @@ export function ChannelDialog({
   pluginsReady,
   canWrite,
   channels,
-  models,
-  modelsStatus,
+  modelsRefreshKey,
   modelActions,
   onTabChange,
   onSaved,
@@ -174,10 +174,8 @@ export function ChannelDialog({
   plugins: PluginView[];
   pluginsReady: boolean;
   canWrite: boolean;
-  channels: ChannelView[];
-  /** 各渠道的检查状态（按 key）；新建成功后弹窗转为编辑态，要按新 key 取 */
-  models: ConfigListItem[];
-  modelsStatus: LoadStatus;
+  channels: ChannelOption[];
+  modelsRefreshKey: number;
   modelActions: ChannelModelActions;
   onTabChange: (tab: ChannelTab) => void;
   onSaved: () => void;
@@ -212,8 +210,7 @@ export function ChannelDialog({
               pluginsReady={pluginsReady}
               canWrite={canWrite}
               channels={channels}
-              models={models}
-              modelsStatus={modelsStatus}
+              modelsRefreshKey={modelsRefreshKey}
               modelActions={modelActions}
               onTabChange={onTabChange}
               onSaved={onSaved}
@@ -251,9 +248,8 @@ type DialogBodyProps = {
   plugins: PluginView[];
   pluginsReady: boolean;
   canWrite: boolean;
-  channels: ChannelView[];
-  models: ConfigListItem[];
-  modelsStatus: LoadStatus;
+  channels: ChannelOption[];
+  modelsRefreshKey: number;
   modelActions: ChannelModelActions;
   onTabChange: (tab: ChannelTab) => void;
   onSaved: () => void;
@@ -337,8 +333,7 @@ function DialogForm({
   syncTab,
   initialTab,
   channels,
-  models,
-  modelsStatus,
+  modelsRefreshKey,
   modelActions,
   onTabChange,
   onSaved,
@@ -363,9 +358,11 @@ function DialogForm({
     if (syncTab) onTabChange(next);
   };
   /** 最新的渠道（列表刷新后的值），保存之后不用等弹窗重开 */
-  const live = original ? (channels.find((item) => item.key === original.key) ?? original) : null;
-  const health = live ? channelHealth(live, plugins) : null;
-  const modelCount = live ? models.filter((item) => item.channel === live.key).length : 0;
+  const option = original ? channels.find((item) => item.key === original.key) : undefined;
+  const live: ChannelView | null = original ? (option ?? original) : null;
+  const health = option?.health ?? null;
+  /** “模型”页签上的数量角标：页签挂载后由它自己上报；没打开过时为 null */
+  const [modelCount, setModelCount] = useState<number | null>(null);
   const [form, setFormState] = useState<ChannelFormState>(initialForm);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initialForm));
   /** Key 明文只在这里，提交时取走并立刻清空；不进 form，不参与脏比较的 JSON */
@@ -590,7 +587,7 @@ function DialogForm({
               {live ? live.name : "新建渠道"}
             </DialogTitle>
             {live && health && (
-              <Tag tone={HEALTH_UI_TONE[health.tone]} title={health.reason ?? undefined}>
+              <Tag tone={HEALTH_UI_TONE[health.tone]} title={health.reason || undefined}>
                 <StatusDot tone={HEALTH_UI_TONE[health.tone]} />
                 {health.label}
               </Tag>
@@ -620,7 +617,7 @@ function DialogForm({
           <UnderlineTab selected={tab === "models"} onClick={() => changeTab("models")}>
             <Boxes />
             模型
-            {modelsStatus === "ready" && (
+            {modelCount !== null && (
               <span className="text-muted-foreground text-xs tabular-nums">{modelCount}</span>
             )}
           </UnderlineTab>
@@ -633,10 +630,10 @@ function DialogForm({
             <ChannelModels
               channel={live}
               channels={channels}
-              plugins={plugins}
-              models={models}
-              status={modelsStatus}
+              kinds={option?.kinds ?? []}
+              refreshKey={modelsRefreshKey}
               actions={modelActions}
+              onTotal={setModelCount}
             />
           </div>
         )}

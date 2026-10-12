@@ -21,7 +21,6 @@ import { AdminSidebar } from "./admin-sidebar";
 import { findNav } from "./admin-nav";
 import { Tag } from "@/components/admin-ui/tag";
 import { ForbiddenView } from "./shared";
-import { useAdminCatalog, type AdminOutletContext } from "./use-admin";
 
 /** 入场动画播多久后摘掉 data-entering，和画布页一致 */
 const ENTERING_MS = 1200;
@@ -86,8 +85,6 @@ function AdminBody() {
     void load();
   }, [load]);
 
-  const catalog = useAdminCatalog(status === "ready");
-
   if (status === "forbidden") return <ForbiddenView onRetry={() => void load(true)} />;
 
   if (status === "error") {
@@ -121,11 +118,6 @@ function AdminBody() {
     );
   }
 
-  const context: AdminOutletContext = { catalog };
-  const counts = {
-    "ai/channels": catalog.channelsStatus === "ready" ? catalog.channels.length : undefined,
-    "ai/plugins": catalog.pluginsStatus === "ready" ? catalog.plugins.length : undefined,
-  };
   const current = findNav(pathname);
 
   const dark =
@@ -137,7 +129,7 @@ function AdminBody() {
       data-admin-root
       style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
     >
-      <AdminSidebar counts={counts} />
+      <AdminSidebar />
       <SidebarInset className="h-svh min-w-0 overflow-hidden">
         <header className="bg-background/85 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 px-4 backdrop-blur lg:px-6">
           <SidebarTrigger className="size-8" />
@@ -173,7 +165,7 @@ function AdminBody() {
           </div>
         </header>
         <div data-slot="admin-outlet" className="min-h-0 flex-1">
-          <Outlet context={context} />
+          <Outlet />
         </div>
       </SidebarInset>
     </SidebarProvider>
