@@ -77,7 +77,9 @@ function NameCell({ item }: { item: SkillItem }) {
       </span>
       <span className="grid min-w-0">
         <span className="truncate font-medium">{item.title}</span>
-        <span className="text-muted-foreground truncate font-mono text-xs">{item.name}</span>
+        <span className="text-muted-foreground truncate font-mono text-xs">
+          {item.name}
+        </span>
       </span>
     </div>
   );
@@ -145,14 +147,13 @@ export function SkillTable({
 
   if (loading) {
     return (
-      <div
-        data-slot="skill-table"
-        aria-busy="true"
-        className="bg-card flex flex-col overflow-hidden rounded-xl border"
-      >
+      <div data-slot="skill-table" aria-busy="true" className="flex flex-col">
         {showSkeleton &&
           [0, 1, 2, 3].map((i) => (
-            <div key={i} className="flex min-h-15 items-center gap-3 border-b px-4 last:border-b-0">
+            <div
+              key={i}
+              className="flex min-h-15 items-center gap-3 border-b px-4 last:border-b-0"
+            >
               <Skeleton className="size-8 rounded-lg" />
               <Skeleton className="h-4 w-40" />
               <Skeleton className="ml-auto h-4 w-24" />
@@ -164,13 +165,13 @@ export function SkillTable({
   }
 
   return (
-    <div data-slot="skill-table" className="flex flex-col gap-4">
+    <div data-slot="skill-table" className="flex flex-col">
       {items.length === 0 ? (
         <EmptyState>
           <EmptyStateTitle>没有符合条件的技能</EmptyStateTitle>
         </EmptyState>
       ) : mobile ? (
-        <ul className="flex flex-col gap-2.5">
+        <ul className="flex flex-col gap-2.5 p-3">
           {items.map((item) => (
             <li
               key={item.name}
@@ -185,9 +186,15 @@ export function SkillTable({
             >
               <div className="flex items-center justify-between gap-3">
                 <NameCell item={item} />
-                <SkillSwitch item={item} busy={busyNames.has(item.name)} onToggle={onToggle} />
+                <SkillSwitch
+                  item={item}
+                  busy={busyNames.has(item.name)}
+                  onToggle={onToggle}
+                />
               </div>
-              <p className="text-muted-foreground line-clamp-2 text-sm">{item.description}</p>
+              <p className="text-muted-foreground line-clamp-2 text-sm">
+                {item.description}
+              </p>
               <div className="flex items-center justify-between gap-2">
                 <SourceTags item={item} />
                 <VersionCell item={item} />
@@ -196,7 +203,7 @@ export function SkillTable({
           ))}
         </ul>
       ) : (
-        <div className="bg-card overflow-hidden rounded-xl border">
+        <div>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -233,7 +240,11 @@ export function SkillTable({
                     <VersionCell item={item} />
                   </TableCell>
                   <TableCell className="px-4 py-3 text-right">
-                    <SkillSwitch item={item} busy={busyNames.has(item.name)} onToggle={onToggle} />
+                    <SkillSwitch
+                      item={item}
+                      busy={busyNames.has(item.name)}
+                      onToggle={onToggle}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

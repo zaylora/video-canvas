@@ -1,5 +1,9 @@
 import type { ChannelOption, ModelListItem } from "@/api/admin/ai/type.d";
-import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import {
+  DataPanel,
+  DataPanelBody,
+  DataPanelPagination,
+} from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
@@ -50,7 +54,7 @@ export function ModelTable({
   const kind = list.filters.kind ?? "";
 
   return (
-    <section className="bg-card rounded-xl border">
+    <DataPanel>
       <div className="flex flex-wrap items-center gap-2 p-4">
         <ListSearch
           value={list.q}
@@ -59,17 +63,18 @@ export function ModelTable({
           className="[&_input]:h-8"
         />
         <Segmented aria-label="按能力筛选">
-          {[["", "全部"], ...KIND_ORDER.map((k) => [k, MODEL_KIND_LABEL[k] ?? k])].map(
-            ([value, label]) => (
-              <SegmentedItem
-                key={value}
-                active={kind === value}
-                onClick={() => list.setFilter("kind", value)}
-              >
-                {label}
-              </SegmentedItem>
-            ),
-          )}
+          {[
+            ["", "全部"],
+            ...KIND_ORDER.map((k) => [k, MODEL_KIND_LABEL[k] ?? k]),
+          ].map(([value, label]) => (
+            <SegmentedItem
+              key={value}
+              active={kind === value}
+              onClick={() => list.setFilter("kind", value)}
+            >
+              {label}
+            </SegmentedItem>
+          ))}
         </Segmented>
         <OptionSelect
           aria-label="按渠道筛选"
@@ -95,8 +100,9 @@ export function ModelTable({
         </span>
       </div>
 
-      <div className="flex flex-col gap-4 px-4 pb-4">
+      <DataPanelBody>
         <ModelRows
+          className="rounded-none border-0"
           models={list.items}
           status={list.state}
           channels={channels}
@@ -121,16 +127,16 @@ export function ModelTable({
           onDelete={onDelete}
           onRetry={list.reload}
         />
-        {list.state === "ready" && (
-          <DataTablePagination
-            page={list.page}
-            pageSize={list.pageSize}
-            total={list.total}
-            onPageChange={list.setPage}
-            onPageSizeChange={list.setPageSize}
-          />
-        )}
-      </div>
-    </section>
+      </DataPanelBody>
+      {list.state === "ready" && (
+        <DataPanelPagination
+          page={list.page}
+          pageSize={list.pageSize}
+          total={list.total}
+          onPageChange={list.setPage}
+          onPageSizeChange={list.setPageSize}
+        />
+      )}
+    </DataPanel>
   );
 }

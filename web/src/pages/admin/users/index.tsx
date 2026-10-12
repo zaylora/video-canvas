@@ -2,19 +2,37 @@ import { Loader2, X } from "lucide-react";
 import { MotionConfig } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import {
+  DataPage,
+  DataPanel,
+  DataPanelBody,
+  DataPanelPagination,
+} from "@/components/admin-ui/data-panel";
 import { OptionSelect } from "@/components/admin-ui/option-select";
-import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
+import {
+  PageHeader,
+  PageHeaderHeading,
+  PageHeaderTitle,
+} from "@/components/admin-ui/page-header";
 import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAdminStore } from "@/store/admin";
 import type { Actor } from "@/utils/admin/user-rules";
 
 import { BulkBar } from "./bulk-bar";
 import { useUserActions } from "./use-user-actions";
 import { useDebouncedSearch } from "../use-admin-list";
-import { useUserDetail, useUsers, type RoleFilter, type StatusFilter } from "./use-users";
+import {
+  useUserDetail,
+  useUsers,
+  type RoleFilter,
+  type StatusFilter,
+} from "./use-users";
 import { UserDialog } from "./user-dialog";
 import { UserTable } from "./user-table";
 
@@ -45,11 +63,17 @@ const FLOATING_OPEN = [
 /** 焦点在文本输入里：单键快捷键不该响应；勾选框、按钮不算 */
 const isTyping = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+  if (
+    target.isContentEditable ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  ) {
     return true;
   }
   if (target.tagName !== "INPUT") return false;
-  return !["checkbox", "radio", "button", "submit"].includes((target as HTMLInputElement).type);
+  return !["checkbox", "radio", "button", "submit"].includes(
+    (target as HTMLInputElement).type,
+  );
 };
 
 /**
@@ -62,7 +86,10 @@ export default function UsersPage() {
   const list = useUsers();
   const role = useAdminStore((state) => state.role);
   const myId = useAdminStore((state) => state.userId);
-  const actor = useMemo<Actor | null>(() => (role ? { id: myId ?? -1, role } : null), [role, myId]);
+  const actor = useMemo<Actor | null>(
+    () => (role ? { id: myId ?? -1, role } : null),
+    [role, myId],
+  );
 
   const { userId, items, page } = list;
   const detail = useUserDetail(userId);
@@ -113,11 +140,16 @@ export default function UsersPage() {
       onToggle: (id: number, checked: boolean, shift: boolean) =>
         setSelected((prev) => {
           const next = new Set(prev);
-          const from = lastChecked.current === null ? -1 : pageIds.indexOf(lastChecked.current);
+          const from =
+            lastChecked.current === null
+              ? -1
+              : pageIds.indexOf(lastChecked.current);
           const to = pageIds.indexOf(id);
           // Shift + 点击：连选上一次点到这一次之间的所有行
           const range =
-            shift && from >= 0 ? pageIds.slice(Math.min(from, to), Math.max(from, to) + 1) : [id];
+            shift && from >= 0
+              ? pageIds.slice(Math.min(from, to), Math.max(from, to) + 1)
+              : [id];
           for (const key of range) {
             if (checked) next.add(key);
             else next.delete(key);
@@ -125,7 +157,8 @@ export default function UsersPage() {
           lastChecked.current = id;
           return next;
         }),
-      onTogglePage: (checked: boolean) => setSelected(checked ? new Set(pageIds) : new Set()),
+      onTogglePage: (checked: boolean) =>
+        setSelected(checked ? new Set(pageIds) : new Set()),
     }),
     [pageIds, selectedUsers],
   );
@@ -175,13 +208,21 @@ export default function UsersPage() {
     closeUser();
     // 关闭后焦点回到原来那一行
     requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>(`[data-user-id="${id}"]`)?.focus({ preventScroll: true }),
+      document
+        .querySelector<HTMLElement>(`[data-user-id="${id}"]`)
+        ?.focus({ preventScroll: true }),
     );
   }, [userId, closeUser]);
 
   // ---------------------------------------------------------------- 快捷键
   /** 用 ref 拿最新值：监听器只绑一次，不用每次渲染重绑 */
-  const keys = useRef({ step, closeDialog, clearSelection, selectedCount: 0, userId });
+  const keys = useRef({
+    step,
+    closeDialog,
+    clearSelection,
+    selectedCount: 0,
+    userId,
+  });
   useEffect(() => {
     keys.current = {
       step,
@@ -206,7 +247,8 @@ export default function UsersPage() {
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (isTyping(event.target) || document.querySelector(FLOATING_OPEN)) return;
+      if (isTyping(event.target) || document.querySelector(FLOATING_OPEN))
+        return;
       if (event.key === "/") {
         event.preventDefault();
         searchRef.current?.focus();
@@ -226,19 +268,20 @@ export default function UsersPage() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
-  const listItem = userId === null ? null : (items.find((item) => item.id === userId) ?? null);
+  const listItem =
+    userId === null ? null : (items.find((item) => item.id === userId) ?? null);
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="h-full overflow-y-auto">
-        <main className="px-4 pt-6 pb-28 lg:px-6">
+      <div className="h-full">
+        <DataPage>
           <PageHeader>
             <PageHeaderHeading>
               <PageHeaderTitle>用户管理</PageHeaderTitle>
             </PageHeaderHeading>
           </PageHeader>
 
-          <div className="bg-card rounded-xl border">
+          <DataPanel>
             <div className="flex flex-wrap items-center gap-2 p-4">
               <Tooltip>
                 <TooltipTrigger render={<div className="w-full sm:w-64" />}>
@@ -299,7 +342,10 @@ export default function UsersPage() {
               />
               <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs tabular-nums">
                 {list.refreshing && list.state !== "loading" && (
-                  <Loader2 className="size-3.5 animate-spin" aria-label="加载中" />
+                  <Loader2
+                    className="size-3.5 animate-spin"
+                    aria-label="加载中"
+                  />
                 )}
                 {list.state === "error"
                   ? ""
@@ -309,32 +355,32 @@ export default function UsersPage() {
               </span>
             </div>
 
-            <UserTable
-              items={items}
-              state={list.state}
-              refreshing={list.refreshing}
-              currentId={userId}
-              actor={actor}
-              actions={actions}
-              selection={selection}
-              filterText={list.q}
-              filtering={list.filtering}
-              onOpen={openUser}
-              onRetry={list.reload}
-              onClearFilters={list.clearFilters}
-            />
-
-            <div className="border-t py-3">
-              <DataTablePagination
-                page={page}
-                pageSize={list.pageSize}
-                total={list.total}
-                onPageChange={setPage}
-                onPageSizeChange={list.setPageSize}
+            <DataPanelBody>
+              <UserTable
+                items={items}
+                state={list.state}
+                refreshing={list.refreshing}
+                currentId={userId}
+                actor={actor}
+                actions={actions}
+                selection={selection}
+                filterText={list.q}
+                filtering={list.filtering}
+                onOpen={openUser}
+                onRetry={list.reload}
+                onClearFilters={list.clearFilters}
               />
-            </div>
-          </div>
-        </main>
+            </DataPanelBody>
+
+            <DataPanelPagination
+              page={page}
+              pageSize={list.pageSize}
+              total={list.total}
+              onPageChange={setPage}
+              onPageSizeChange={list.setPageSize}
+            />
+          </DataPanel>
+        </DataPage>
       </div>
 
       <UserDialog

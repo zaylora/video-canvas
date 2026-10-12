@@ -4,16 +4,28 @@ import { toast } from "sonner";
 
 import { checkStorage } from "@/api/admin/storage";
 import type { StorageView } from "@/api/admin/storage/type.d";
-import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
+import {
+  EmptyState,
+  EmptyStateActions,
+  EmptyStateTitle,
+} from "@/components/admin-ui/empty-state";
 import {
   PageHeader,
   PageHeaderActions,
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import {
+  DataPage,
+  DataPanel,
+  DataPanelBody,
+  DataPanelPagination,
+} from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
-import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
+import {
+  TableToolbar,
+  TableToolbarCount,
+} from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,7 +49,13 @@ export default function StoragePage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const list = useStorages();
-  const { items: storages, presets, state: status, reload, defaultStorage: current } = list;
+  const {
+    items: storages,
+    presets,
+    state: status,
+    reload,
+    defaultStorage: current,
+  } = list;
   const [target, setTarget] = useState<StorageDialogTarget | null>(null);
   /** 正在测试或做删除预检的存储，对应行的按钮转圈并禁用 */
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -75,57 +93,67 @@ export default function StoragePage() {
   );
 
   return (
-    <div className="h-full overflow-y-auto">
-      <main className="px-4 py-6 lg:px-6">
-        <PageHeader>
-          <PageHeaderHeading>
-            <PageHeaderTitle>存储配置</PageHeaderTitle>
-          </PageHeaderHeading>
-          {canWrite && (
-            <PageHeaderActions>
-              <Button disabled={status !== "ready"} onClick={() => setTarget({ kind: "new" })}>
-                <Plus />
-                新建存储
-              </Button>
-            </PageHeaderActions>
+    <DataPage>
+      <PageHeader>
+        <PageHeaderHeading>
+          <PageHeaderTitle>存储配置</PageHeaderTitle>
+        </PageHeaderHeading>
+        {canWrite && (
+          <PageHeaderActions>
+            <Button
+              disabled={status !== "ready"}
+              onClick={() => setTarget({ kind: "new" })}
+            >
+              <Plus />
+              新建存储
+            </Button>
+          </PageHeaderActions>
+        )}
+      </PageHeader>
+
+      {!canWrite && (
+        <ReadOnlyNotice
+          className="mb-4"
+          what="新建、编辑、测试、设为默认、删除存储"
+        />
+      )}
+
+      {status === "loading" && (
+        <div className="flex flex-col gap-4" aria-busy="true">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-48" />
+        </div>
+      )}
+
+      {status === "error" && (
+        <EmptyState>
+          <EmptyStateTitle className="text-destructive">
+            加载失败
+          </EmptyStateTitle>
+          <EmptyStateActions>
+            <Button variant="outline" size="sm" onClick={() => void reload()}>
+              重试
+            </Button>
+          </EmptyStateActions>
+        </EmptyState>
+      )}
+
+      {status === "ready" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          {current?.provider === "local" && <LocalDefaultNotice />}
+          {current && (
+            <DefaultStorageCard storage={current} presets={presets} />
           )}
-        </PageHeader>
-
-        {!canWrite && (
-          <ReadOnlyNotice className="mb-4" what="新建、编辑、测试、设为默认、删除存储" />
-        )}
-
-        {status === "loading" && (
-          <div className="flex flex-col gap-4" aria-busy="true">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-48" />
-          </div>
-        )}
-
-        {status === "error" && (
-          <EmptyState>
-            <EmptyStateTitle className="text-destructive">加载失败</EmptyStateTitle>
-            <EmptyStateActions>
-              <Button variant="outline" size="sm" onClick={() => void reload()}>
-                重试
-              </Button>
-            </EmptyStateActions>
-          </EmptyState>
-        )}
-
-        {status === "ready" && (
-          <div className="flex flex-col gap-4">
-            {current?.provider === "local" && <LocalDefaultNotice />}
-            {current && <DefaultStorageCard storage={current} presets={presets} />}
-            <div className={cn("bg-card rounded-xl border", list.refreshing && "opacity-60")}>
-              <TableToolbar>
-                <ListSearch
-                  value={list.q}
-                  onCommit={list.setQ}
-                  placeholder="搜索名称、服务商、桶或 Endpoint"
-                />
-                <TableToolbarCount shown={storages.length} total={list.total} />
-              </TableToolbar>
+          <DataPanel className={cn(list.refreshing && "opacity-60")}>
+            <TableToolbar>
+              <ListSearch
+                value={list.q}
+                onCommit={list.setQ}
+                placeholder="搜索名称、服务商、桶或 Endpoint"
+              />
+              <TableToolbarCount shown={storages.length} total={list.total} />
+            </TableToolbar>
+            <DataPanelBody>
               <StorageTable
                 storages={storages}
                 presets={presets}
@@ -134,39 +162,42 @@ export default function StoragePage() {
                 filtering={list.filtering}
                 onClearFilters={list.clear}
                 actions={{
-                  onOpen: (storage) => setTarget({ kind: "edit", id: storage.id, view: storage }),
+                  onOpen: (storage) =>
+                    setTarget({ kind: "edit", id: storage.id, view: storage }),
                   onCheck: (storage) => void check(storage),
                   onSetDefault: (storage) =>
-                    void confirmSetDefault(storage, current ?? undefined, () => void reload()),
+                    void confirmSetDefault(
+                      storage,
+                      current ?? undefined,
+                      () => void reload(),
+                    ),
                   onDelete: (storage) => void remove(storage),
                 }}
               />
-              <div className="border-t py-3">
-                <DataTablePagination
-                  page={list.page}
-                  pageSize={list.pageSize}
-                  total={list.total}
-                  onPageChange={list.setPage}
-                  onPageSizeChange={list.setPageSize}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+            </DataPanelBody>
+            <DataPanelPagination
+              page={list.page}
+              pageSize={list.pageSize}
+              total={list.total}
+              onPageChange={list.setPage}
+              onPageSizeChange={list.setPageSize}
+            />
+          </DataPanel>
+        </div>
+      )}
 
-        <StorageDialog
-          target={target}
-          storages={storages}
-          presets={presets}
-          canWrite={canWrite}
-          onSaved={() => {
-            setTarget(null);
-            void reload();
-          }}
-          onChanged={() => void reload()}
-          onClose={() => setTarget(null)}
-        />
-      </main>
-    </div>
+      <StorageDialog
+        target={target}
+        storages={storages}
+        presets={presets}
+        canWrite={canWrite}
+        onSaved={() => {
+          setTarget(null);
+          void reload();
+        }}
+        onChanged={() => void reload()}
+        onClose={() => setTarget(null)}
+      />
+    </DataPage>
   );
 }

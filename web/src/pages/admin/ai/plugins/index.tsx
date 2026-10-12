@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { getPlugin, listPlugins } from "@/api/admin/ai";
 import type { PluginListItem, PluginView } from "@/api/admin/ai/type.d";
+import { DataPage } from "@/components/admin-ui/data-panel";
 import {
   PageHeader,
   PageHeaderActions,
@@ -41,7 +42,9 @@ export default function PluginsPage() {
   const [params, setParams] = useSearchParams();
   const [uploadOpen, setUploadOpen] = useState(false);
   // 插件分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量插件和渠道在 catalog 里（options）
-  const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) => listPlugins(query));
+  const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) =>
+    listPlugins(query),
+  );
   /** 插件有改动之后：重新拉当前页，并刷新弹窗用的全量插件 */
   const { reload: reloadList } = list;
   const { reloadPlugins, reloadChannels } = catalog;
@@ -90,67 +93,69 @@ export default function PluginsPage() {
     });
 
   return (
-    <div className="h-full overflow-y-auto">
-      <main className="px-4 py-6 lg:px-6">
-        <PageHeader>
-          <PageHeaderHeading>
-            <PageHeaderTitle>插件</PageHeaderTitle>
-          </PageHeaderHeading>
-          <PageHeaderActions>
-            {canWrite && (
-              <Button onClick={() => setUploadOpen(true)}>
-                <Upload />
-                上传插件
-              </Button>
-            )}
-          </PageHeaderActions>
-        </PageHeader>
+    <DataPage>
+      <PageHeader>
+        <PageHeaderHeading>
+          <PageHeaderTitle>插件</PageHeaderTitle>
+        </PageHeaderHeading>
+        <PageHeaderActions>
+          {canWrite && (
+            <Button onClick={() => setUploadOpen(true)}>
+              <Upload />
+              上传插件
+            </Button>
+          )}
+        </PageHeaderActions>
+      </PageHeader>
 
-        <PluginTable
-          list={list}
-          canWrite={canWrite}
-          toggling={toggling}
-          onOpen={(key) => setParams({ key })}
-          onUpload={() => setUploadOpen(true)}
-          onToggle={toggle}
-          onUpgrade={(target) =>
-            void confirmUpgradeChannels({
-              plugin: target,
-              channels: catalog.channels,
-              plugins: catalog.plugins,
-              onDone: refreshChannels,
-            })
-          }
-          onDelete={requestDelete}
-        />
+      <PluginTable
+        list={list}
+        canWrite={canWrite}
+        toggling={toggling}
+        onOpen={(key) => setParams({ key })}
+        onUpload={() => setUploadOpen(true)}
+        onToggle={toggle}
+        onUpgrade={(target) =>
+          void confirmUpgradeChannels({
+            plugin: target,
+            channels: catalog.channels,
+            plugins: catalog.plugins,
+            onDone: refreshChannels,
+          })
+        }
+        onDelete={requestDelete}
+      />
 
-        <PluginDialog
-          plugin={plugin}
-          tab={tab}
-          onTabChange={(tab) => routeKey && setParams({ key: routeKey, tab }, { replace: true })}
-          plugins={catalog.plugins}
-          channels={catalog.channels}
-          canWrite={canWrite}
-          onChanged={async () => {
-            setDetailVersion((n) => n + 1);
-            await refresh();
+      <PluginDialog
+        plugin={plugin}
+        tab={tab}
+        onTabChange={(tab) =>
+          routeKey && setParams({ key: routeKey, tab }, { replace: true })
+        }
+        plugins={catalog.plugins}
+        channels={catalog.channels}
+        canWrite={canWrite}
+        onChanged={async () => {
+          setDetailVersion((n) => n + 1);
+          await refresh();
+        }}
+        onChannelsChanged={refreshChannels}
+        onClose={closeDialog}
+      />
+
+      {canWrite && (
+        <UploadDialog
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => void refresh()}
+          onNextStep={(pluginKey) => {
+            setUploadOpen(false);
+            navigate(
+              `/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`,
+            );
           }}
-          onChannelsChanged={refreshChannels}
-          onClose={closeDialog}
         />
-
-        {canWrite && (
-          <UploadDialog
-            open={uploadOpen}
-            onClose={() => setUploadOpen(false)}
-            onUploaded={() => void refresh()}
-            onNextStep={(pluginKey) => {
-              setUploadOpen(false);
-              navigate(`/admin/ai/channels?new=1&plugin=${encodeURIComponent(pluginKey)}`);
-            }}
-          />
-        )}
-      </main>
-    </div>
+      )}
+    </DataPage>
   );
 }

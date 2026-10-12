@@ -14,10 +14,18 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import {
+  DataPage,
+  DataPanel,
+  DataPanelBody,
+  DataPanelPagination,
+} from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { OptionSelect } from "@/components/admin-ui/option-select";
-import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
+import {
+  TableToolbar,
+  TableToolbarCount,
+} from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,8 +33,15 @@ import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { ReadOnlyNotice } from "../shared";
-import { confirmDelete, confirmDisable, confirmRollback } from "./processor-actions";
-import { ProcessorDialog, type ProcessorDialogTarget } from "./processor-dialog";
+import {
+  confirmDelete,
+  confirmDisable,
+  confirmRollback,
+} from "./processor-actions";
+import {
+  ProcessorDialog,
+  type ProcessorDialogTarget,
+} from "./processor-dialog";
 import { ProcessorTable } from "./processor-table";
 import { StorageBindingTable } from "./storage-binding-table";
 import { useImageProcessors } from "./use-image-processors";
@@ -47,7 +62,14 @@ export default function ImageProcessorPage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const list = useImageProcessors();
-  const { items: processors, presets, storages, bindings, status, reload } = list;
+  const {
+    items: processors,
+    presets,
+    storages,
+    bindings,
+    status,
+    reload,
+  } = list;
   const [target, setTarget] = useState<ProcessorDialogTarget | null>(null);
   /** 每次打开弹窗递增，让向导重新初始化 */
   const nonceRef = useRef(0);
@@ -64,76 +86,90 @@ export default function ImageProcessorPage() {
       open({ kind: "edit", id: processor.id, view: processor }),
     onVerify: (processor: ProcessorView) =>
       open({ kind: "edit", id: processor.id, view: processor, step: 4 }),
-    onRollback: (processor: ProcessorView) => void confirmRollback(processor, refresh),
-    onDisable: (processor: ProcessorView) => void confirmDisable(processor, refresh),
-    onDelete: (processor: ProcessorView) => void confirmDelete(processor, refresh),
+    onRollback: (processor: ProcessorView) =>
+      void confirmRollback(processor, refresh),
+    onDisable: (processor: ProcessorView) =>
+      void confirmDisable(processor, refresh),
+    onDelete: (processor: ProcessorView) =>
+      void confirmDelete(processor, refresh),
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <main className="px-4 py-6 lg:px-6">
-        <PageHeader>
-          <PageHeaderHeading>
-            <PageHeaderTitle>图片服务</PageHeaderTitle>
-          </PageHeaderHeading>
-          {canWrite && (
-            <PageHeaderActions>
-              <Button disabled={status !== "ready"} onClick={() => open({ kind: "new" })}>
-                <Plus />
-                新建处理服务
-              </Button>
-            </PageHeaderActions>
-          )}
-        </PageHeader>
-
-        {!canWrite && (
-          <ReadOnlyNotice
-            className="mb-4"
-            what="新建、编辑、校验、发布、回滚、停用、删除处理服务"
-          />
+    <DataPage>
+      <PageHeader>
+        <PageHeaderHeading>
+          <PageHeaderTitle>图片服务</PageHeaderTitle>
+        </PageHeaderHeading>
+        {canWrite && (
+          <PageHeaderActions>
+            <Button
+              disabled={status !== "ready"}
+              onClick={() => open({ kind: "new" })}
+            >
+              <Plus />
+              新建处理服务
+            </Button>
+          </PageHeaderActions>
         )}
+      </PageHeader>
 
-        {status === "loading" && (
-          <div className="flex flex-col gap-4" aria-busy="true">
-            <Skeleton className="h-40" />
-            <Skeleton className="h-48" />
-          </div>
-        )}
+      {!canWrite && (
+        <ReadOnlyNotice
+          className="mb-4"
+          what="新建、编辑、校验、发布、回滚、停用、删除处理服务"
+        />
+      )}
 
-        {status === "error" && (
-          <EmptyState>
-            <EmptyStateTitle className="text-destructive">加载失败</EmptyStateTitle>
-            <EmptyStateActions>
-              <Button variant="outline" size="sm" onClick={() => void reload()}>
-                重试
-              </Button>
-            </EmptyStateActions>
-          </EmptyState>
-        )}
+      {status === "loading" && (
+        <div className="flex flex-col gap-4" aria-busy="true">
+          <Skeleton className="h-40" />
+          <Skeleton className="h-48" />
+        </div>
+      )}
 
-        {status === "ready" && (
-          <div className="flex flex-col gap-6">
-            <section aria-labelledby="processor-list-title" className="flex flex-col gap-2">
-              <h2 id="processor-list-title" className="text-sm font-semibold">
-                处理服务
-              </h2>
-              <div className={cn("bg-card rounded-xl border", list.refreshing && "opacity-60")}>
-                <TableToolbar>
-                  <ListSearch
-                    value={list.q}
-                    onCommit={list.setQ}
-                    placeholder="搜索名称、厂商或绑定的存储"
-                  />
-                  <OptionSelect
-                    aria-label="状态筛选"
-                    size="sm"
-                    className="w-32"
-                    value={list.filters.status ?? "all"}
-                    onValueChange={(value) => list.setFilter("status", value)}
-                    options={STATUS_OPTIONS}
-                  />
-                  <TableToolbarCount shown={processors.length} total={list.total} />
-                </TableToolbar>
+      {status === "error" && (
+        <EmptyState>
+          <EmptyStateTitle className="text-destructive">
+            加载失败
+          </EmptyStateTitle>
+          <EmptyStateActions>
+            <Button variant="outline" size="sm" onClick={() => void reload()}>
+              重试
+            </Button>
+          </EmptyStateActions>
+        </EmptyState>
+      )}
+
+      {status === "ready" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-6">
+          <section
+            aria-labelledby="processor-list-title"
+            className="flex min-h-0 flex-1 flex-col gap-2"
+          >
+            <h2 id="processor-list-title" className="text-sm font-semibold">
+              处理服务
+            </h2>
+            <DataPanel className={cn(list.refreshing && "opacity-60")}>
+              <TableToolbar>
+                <ListSearch
+                  value={list.q}
+                  onCommit={list.setQ}
+                  placeholder="搜索名称、厂商或绑定的存储"
+                />
+                <OptionSelect
+                  aria-label="状态筛选"
+                  size="sm"
+                  className="w-32"
+                  value={list.filters.status ?? "all"}
+                  onValueChange={(value) => list.setFilter("status", value)}
+                  options={STATUS_OPTIONS}
+                />
+                <TableToolbarCount
+                  shown={processors.length}
+                  total={list.total}
+                />
+              </TableToolbar>
+              <DataPanelBody>
                 {processors.length > 0 ? (
                   <ProcessorTable
                     processors={processors}
@@ -144,67 +180,80 @@ export default function ImageProcessorPage() {
                 ) : (
                   <EmptyState>
                     <EmptyStateTitle>
-                      {list.filtering ? "没有符合条件的处理服务" : "还没有处理服务"}
+                      {list.filtering
+                        ? "没有符合条件的处理服务"
+                        : "还没有处理服务"}
                     </EmptyStateTitle>
                     <EmptyStateDescription>
-                      {list.filtering ? "换个关键字或状态试试。" : "所有存储都回退原图 / 占位。"}
+                      {list.filtering
+                        ? "换个关键字或状态试试。"
+                        : "所有存储都回退原图 / 占位。"}
                     </EmptyStateDescription>
                     {list.filtering && (
                       <EmptyStateActions>
-                        <Button variant="outline" size="sm" onClick={list.clear}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={list.clear}
+                        >
                           清除筛选
                         </Button>
                       </EmptyStateActions>
                     )}
                   </EmptyState>
                 )}
-                <div className="border-t py-3">
-                  <DataTablePagination
-                    page={list.page}
-                    pageSize={list.pageSize}
-                    total={list.total}
-                    onPageChange={list.setPage}
-                    onPageSizeChange={list.setPageSize}
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section aria-labelledby="storage-binding-title" className="flex flex-col gap-2">
-              <h2 id="storage-binding-title" className="text-sm font-semibold">
-                存储与处理服务
-              </h2>
-              <StorageBindingTable
-                storages={storages}
-                processors={bindings}
-                presets={presets}
-                canWrite={canWrite}
-                onEnable={(storage) => open({ kind: "new", storageId: storage.id })}
+              </DataPanelBody>
+              <DataPanelPagination
+                page={list.page}
+                pageSize={list.pageSize}
+                total={list.total}
+                onPageChange={list.setPage}
+                onPageSizeChange={list.setPageSize}
               />
-            </section>
-          </div>
-        )}
+            </DataPanel>
+          </section>
 
-        <ProcessorDialog
-          target={target}
-          processors={bindings}
-          presets={presets}
-          storages={storages}
-          canWrite={canWrite}
-          onChanged={() => undefined}
-          onPublished={() => {
-            setTarget(null);
-            refresh();
-          }}
-          onClose={() => {
-            setTarget(null);
-            refresh();
-          }}
-        />
-      </main>
-    </div>
+          <section
+            aria-labelledby="storage-binding-title"
+            className="flex shrink-0 flex-col gap-2"
+          >
+            <h2 id="storage-binding-title" className="text-sm font-semibold">
+              存储与处理服务
+            </h2>
+            <StorageBindingTable
+              storages={storages}
+              processors={bindings}
+              presets={presets}
+              canWrite={canWrite}
+              onEnable={(storage) =>
+                open({ kind: "new", storageId: storage.id })
+              }
+            />
+          </section>
+        </div>
+      )}
+
+      <ProcessorDialog
+        target={target}
+        processors={bindings}
+        presets={presets}
+        storages={storages}
+        canWrite={canWrite}
+        onChanged={() => undefined}
+        onPublished={() => {
+          setTarget(null);
+          refresh();
+        }}
+        onClose={() => {
+          setTarget(null);
+          refresh();
+        }}
+      />
+    </DataPage>
   );
 }
 
 /** 对联合类型的每个分支分别去掉字段（Omit 会把联合压扁） */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;

@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import { FlaskConical, Trash2 } from "lucide-react";
 
-import type { ChannelOption, ModelHealth, ModelListItem } from "@/api/admin/ai/type.d";
+import type {
+  ChannelOption,
+  ModelHealth,
+  ModelListItem,
+} from "@/api/admin/ai/type.d";
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
@@ -19,7 +23,11 @@ import {
 } from "@/components/ui/table";
 
 import { cn } from "@/lib/utils";
-import { HEALTH_UI_TONE, MODEL_STATUS_LABEL, MODEL_STATUS_TONE } from "@/utils/admin/health";
+import {
+  HEALTH_UI_TONE,
+  MODEL_STATUS_LABEL,
+  MODEL_STATUS_TONE,
+} from "@/utils/admin/health";
 
 import { KindTag } from "../kind";
 
@@ -38,10 +46,14 @@ function StatusCell({ health }: { health: ModelHealth }) {
         <span
           className={cn(
             "text-xs",
-            health.status === "broken" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+            health.status === "broken"
+              ? "text-red-600 dark:text-red-400"
+              : "text-muted-foreground",
           )}
         >
-          {health.status === "offline" ? `上线前要处理：${health.reason}` : health.reason}
+          {health.status === "offline"
+            ? `上线前要处理：${health.reason}`
+            : health.reason}
         </span>
       )}
     </div>
@@ -59,6 +71,7 @@ export function ModelRows({
   status = "ready",
   channels,
   hideChannel,
+  className,
   selected,
   onSelectedChange,
   empty = "没有匹配的模型",
@@ -75,6 +88,8 @@ export function ModelRows({
   /** 全部渠道（options）：第二行显示渠道所属插件名；没传或没加载好就只显示渠道名 */
   channels?: ChannelOption[];
   hideChannel?: boolean;
+  /** 外层容器的额外类名（嵌进别的卡片时去掉自带的边框） */
+  className?: string;
   selected?: string[];
   onSelectedChange?: (keys: string[]) => void;
   empty?: ReactNode;
@@ -89,14 +104,21 @@ export function ModelRows({
 }) {
   const selectable = !!selected && !!onSelectedChange;
   const keys = models.map((item) => item.key);
-  const all = selectable && keys.length > 0 && keys.every((key) => selected.includes(key));
+  const all =
+    selectable &&
+    keys.length > 0 &&
+    keys.every((key) => selected.includes(key));
   const some = selectable && keys.some((key) => selected.includes(key));
   const columns = 5 + (hideChannel ? 0 : 1) + (selectable ? 1 : 0);
   const toggle = (key: string, on: boolean) =>
-    onSelectedChange?.(on ? [...(selected ?? []), key] : (selected ?? []).filter((k) => k !== key));
+    onSelectedChange?.(
+      on
+        ? [...(selected ?? []), key]
+        : (selected ?? []).filter((k) => k !== key),
+    );
 
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div className={cn("overflow-hidden rounded-md border", className)}>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -109,21 +131,36 @@ export function ModelRows({
                   onCheckedChange={(value) =>
                     onSelectedChange?.(
                       value
-                        ? [...selected, ...keys.filter((key) => !selected.includes(key))]
+                        ? [
+                            ...selected,
+                            ...keys.filter((key) => !selected.includes(key)),
+                          ]
                         : selected.filter((key) => !keys.includes(key)),
                     )
                   }
                 />
               </TableHead>
             )}
-            <TableHead className="text-muted-foreground px-3 text-xs">模型</TableHead>
-            <TableHead className="text-muted-foreground px-3 text-xs">能力</TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">
+              模型
+            </TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">
+              能力
+            </TableHead>
             {!hideChannel && (
-              <TableHead className="text-muted-foreground px-3 text-xs">渠道</TableHead>
+              <TableHead className="text-muted-foreground px-3 text-xs">
+                渠道
+              </TableHead>
             )}
-            <TableHead className="text-muted-foreground px-3 text-xs">状态</TableHead>
-            <TableHead className="text-muted-foreground px-3 text-xs">上线</TableHead>
-            <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">
+              状态
+            </TableHead>
+            <TableHead className="text-muted-foreground px-3 text-xs">
+              上线
+            </TableHead>
+            <TableHead className="text-muted-foreground px-3 text-right text-xs">
+              操作
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -137,10 +174,17 @@ export function ModelRows({
             ))}
           {status === "error" && (
             <TableRow>
-              <TableCell colSpan={columns} className="text-destructive h-32 text-center">
+              <TableCell
+                colSpan={columns}
+                className="text-destructive h-32 text-center"
+              >
                 加载失败
                 {onRetry && (
-                  <button type="button" className="ml-1 underline" onClick={onRetry}>
+                  <button
+                    type="button"
+                    className="ml-1 underline"
+                    onClick={onRetry}
+                  >
                     重试
                   </button>
                 )}
@@ -168,12 +212,17 @@ export function ModelRows({
                 <TableRow
                   key={item.key}
                   data-model={item.key}
-                  data-state={selected?.includes(item.key) ? "selected" : undefined}
+                  data-state={
+                    selected?.includes(item.key) ? "selected" : undefined
+                  }
                   className="cursor-pointer"
                   onClick={() => onEdit(item.key)}
                 >
                   {selectable && (
-                    <TableCell className="pl-3" onClick={(event) => event.stopPropagation()}>
+                    <TableCell
+                      className="pl-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <Checkbox
                         aria-label={`选择 ${label}`}
                         checked={selected.includes(item.key)}
@@ -183,7 +232,11 @@ export function ModelRows({
                   )}
                   <TableCell className="px-3 py-3">
                     <div className="flex items-center gap-3">
-                      <VendorAvatar vendor={item.vendor} name={label} seed={item.key} />
+                      <VendorAvatar
+                        vendor={item.vendor}
+                        name={label}
+                        seed={item.key}
+                      />
                       <div className="min-w-0">
                         <div className="truncate font-medium">{label}</div>
                         <div className="text-muted-foreground truncate font-mono text-xs">
@@ -197,28 +250,44 @@ export function ModelRows({
                   </TableCell>
                   {!hideChannel && (
                     <TableCell className="px-3 py-3">
-                      <div className="text-sm">{item.channel_name || item.channel || "—"}</div>
+                      <div className="text-sm">
+                        {item.channel_name || item.channel || "—"}
+                      </div>
                       {pluginKey && (
-                        <div className="text-muted-foreground text-xs">{pluginKey}</div>
+                        <div className="text-muted-foreground text-xs">
+                          {pluginKey}
+                        </div>
                       )}
                     </TableCell>
                   )}
                   <TableCell className="px-3 py-3">
                     <StatusCell health={health} />
                   </TableCell>
-                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                  <TableCell
+                    className="px-3 py-3"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <Switch
                       checked={!!item.enabled}
                       disabled={busyKey === item.key}
                       aria-label={`上线 ${label}`}
-                      onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
+                      onCheckedChange={(checked) =>
+                        onToggleEnabled(item.key, checked)
+                      }
                     />
                   </TableCell>
-                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+                  <TableCell
+                    className="px-3 py-3"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <div className="flex items-center justify-end gap-0.5">
                       <RowIconAction
                         label="测试"
-                        deny={item.kind === "agent" ? "Agent 模型暂不支持试跑" : null}
+                        deny={
+                          item.kind === "agent"
+                            ? "Agent 模型暂不支持试跑"
+                            : null
+                        }
                         target={label}
                         onClick={() => onTest(item.key)}
                       >

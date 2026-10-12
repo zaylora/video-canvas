@@ -1,7 +1,11 @@
 import { Activity, Loader2, Star, Trash2 } from "lucide-react";
 
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
-import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
+import {
+  EmptyState,
+  EmptyStateActions,
+  EmptyStateTitle,
+} from "@/components/admin-ui/empty-state";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -69,7 +73,9 @@ export function StorageTable({
   if (storages.length === 0) {
     return (
       <EmptyState data-slot="storage-table">
-        <EmptyStateTitle>{filtering ? "没有符合条件的存储" : "还没有存储"}</EmptyStateTitle>
+        <EmptyStateTitle>
+          {filtering ? "没有符合条件的存储" : "还没有存储"}
+        </EmptyStateTitle>
         {filtering && (
           <EmptyStateActions>
             <Button variant="outline" size="sm" onClick={onClearFilters}>
@@ -81,7 +87,7 @@ export function StorageTable({
     );
   }
   return (
-    <div data-slot="storage-table" className="overflow-hidden border-t">
+    <div data-slot="storage-table" className="overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -92,7 +98,9 @@ export function StorageTable({
             <TableHead>直传</TableHead>
             <TableHead className="text-right">素材数</TableHead>
             <TableHead>连通状态</TableHead>
-            {canWrite && <TableHead className="px-4 text-right">操作</TableHead>}
+            {canWrite && (
+              <TableHead className="px-4 text-right">操作</TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -130,12 +138,16 @@ function StorageRow({
   const deleteReason = deleteBlockReason(storage);
   const openable = !storage.builtin;
   /** 操作列里的点击不该打开弹窗；浮层 portal 出去的事件也会沿 React 树冒泡到这里 */
-  const stop = { onClick: (event: React.MouseEvent) => event.stopPropagation() };
+  const stop = {
+    onClick: (event: React.MouseEvent) => event.stopPropagation(),
+  };
   return (
     <TableRow
       data-storage-id={storage.id}
       tabIndex={openable ? 0 : undefined}
-      aria-label={openable ? `${canWrite ? "编辑" : "查看"} ${storage.name}` : undefined}
+      aria-label={
+        openable ? `${canWrite ? "编辑" : "查看"} ${storage.name}` : undefined
+      }
       className={cn(
         "align-top",
         openable &&
@@ -158,13 +170,19 @@ function StorageRow({
           {storage.builtin && <Tag>内置</Tag>}
         </div>
         {storage.builtin && (
-          <div className="text-muted-foreground text-xs">来自 config.yaml，只读</div>
+          <div className="text-muted-foreground text-xs">
+            来自 config.yaml，只读
+          </div>
         )}
       </TableCell>
-      <TableCell className="py-3">{providerLabel(storage.provider, presets)}</TableCell>
+      <TableCell className="py-3">
+        {providerLabel(storage.provider, presets)}
+      </TableCell>
       <TableCell className="py-3">
         <div className="font-mono text-xs">{where.primary}</div>
-        {where.secondary && <div className="text-muted-foreground text-xs">{where.secondary}</div>}
+        {where.secondary && (
+          <div className="text-muted-foreground text-xs">{where.secondary}</div>
+        )}
       </TableCell>
       <TableCell className="py-3">
         {storage.provider === "local" ? (
