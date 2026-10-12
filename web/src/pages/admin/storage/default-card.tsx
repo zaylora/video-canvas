@@ -34,9 +34,6 @@ export function DefaultStorageCard({
           <Icon className="size-5" />
         </span>
         <div className="min-w-0">
-          <div className="text-muted-foreground text-xs">
-            默认存储 · 新上传和新生成的素材写到这里
-          </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 font-medium">
             {storage.name}
             <Tag>{providerLabel(storage.provider, presets)}</Tag>

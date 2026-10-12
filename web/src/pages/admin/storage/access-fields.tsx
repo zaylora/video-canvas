@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { corsRules } from "@/utils/admin/storage-endpoint";
 import { ttlOptions } from "@/utils/admin/storage-rules";
 
-import { DIRECT_METHOD_LABEL, PROVIDER_META } from "./provider-meta";
+import { DIRECT_METHOD_LABEL } from "./provider-meta";
 import type { SectionProps } from "./section-props";
 
 /**
@@ -25,7 +25,6 @@ import type { SectionProps } from "./section-props";
  * 画布里存的是稳定地址 /files/<key>，签名有效期只影响单次访问，不会让画布里的素材失效。
  */
 export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
-  const meta = PROVIDER_META[form.provider];
   return (
     <div className="flex flex-col gap-3">
       <ChoiceCardGroup aria-label="访问方式" className="grid-cols-2">
@@ -78,7 +77,6 @@ export function AccessFields({ form, patch, errors, readOnly }: SectionProps) {
           label="公开访问域名"
           htmlFor="storage-public-url"
           error={errors.publicBaseUrl}
-          hint={meta.publicHint || undefined}
           required
         >
           <Input
@@ -144,9 +142,6 @@ export function DirectUploadFields({ form, patch, readOnly, preset }: SectionPro
               <CopyButton text={rules} label="复制规则" />
             </CopyBlockHeader>
             <CopyBlockCode>{rules}</CopyBlockCode>
-            <p className="text-muted-foreground">
-              请在云控制台的跨域设置里添加以上规则。此处不会自动验证浏览器直传，未配置时直传会失败并自动回退到后端中转。
-            </p>
           </CopyBlock>
         </>
       )}

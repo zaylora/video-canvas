@@ -48,9 +48,6 @@ export function CredentialFields({
             )}
           </div>
         </FormField>
-        <p className="text-muted-foreground text-xs">
-          凭证只写不读，保存后无法查看。{meta.credentialHint}
-        </p>
       </div>
     );
   }
@@ -88,7 +85,6 @@ export function CredentialFields({
           onChange={(event) => patch({ secretKey: event.target.value })}
         />
       </FormField>
-      <p className="text-muted-foreground text-xs">{meta.credentialHint}</p>
     </div>
   );
 }

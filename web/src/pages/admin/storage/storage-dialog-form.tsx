@@ -12,7 +12,6 @@ import {
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 import {
   FormSection,
-  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
@@ -32,7 +31,6 @@ import {
   type StorageFormField,
   type StorageFormState,
 } from "@/utils/admin/storage-form";
-import { formatCount } from "@/utils/admin/storage-rules";
 
 import { useAliveRef } from "../use-admin";
 import { ReadOnlyNotice } from "../shared";
@@ -226,11 +224,7 @@ export function StorageForm({
     <>
       <DialogHeader className="gap-0.5 border-b p-4 pr-12">
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          {editing && locked && storage
-            ? `已有 ${formatCount(storage.asset_count)} 个素材，定位字段已锁定`
-            : "保存时会自动测试连接"}
-        </DialogDescription>
+        {!(editing && locked) && <DialogDescription>保存时会自动测试连接</DialogDescription>}
       </DialogHeader>
 
       <form
@@ -251,7 +245,6 @@ export function StorageForm({
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>服务商</FormSectionTitle>
-            {editing && <FormSectionDescription>创建后不可更改。</FormSectionDescription>}
           </FormSectionHeader>
           <ProviderPicker
             presets={presets}
@@ -301,11 +294,6 @@ export function StorageForm({
 
         <FormSection>
           <ProbePanel state={probe.state} withDirect={form.directUpload} />
-          {editing && !readOnly && (
-            <p className="text-muted-foreground mt-2 text-xs">
-              “测试连接”使用已保存的配置与密钥；修改连接字段并保存后会自动重新测试。
-            </p>
-          )}
         </FormSection>
       </form>
 

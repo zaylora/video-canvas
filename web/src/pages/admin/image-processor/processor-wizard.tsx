@@ -20,7 +20,7 @@ import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
 import { Button } from "@/components/ui/button";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isProcessorVersionConflict } from "@/utils/admin/errors";
 import {
   buildProcessorConfig,
@@ -300,9 +300,6 @@ export function ProcessorWizard({
     <>
       <DialogHeader className="gap-0.5 border-b p-4 pr-12">
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          为素材所在的存储配置缩略图 / 视频封面的处理服务，只对绑定的那套存储生效。
-        </DialogDescription>
         <Stepper className="mt-2" aria-label="向导步骤">
           {STEP_LABELS.map((label, index) => (
             <StepperItem
@@ -345,7 +342,6 @@ export function ProcessorWizard({
             name={draft.name}
             config={draft.config}
             errors={submitted ? errors : {}}
-            published={proc?.status === "published"}
             disabled={readOnly}
             onNameChange={(name) => setDraft((prev) => ({ ...prev, name, nameTouched: true }))}
             onConfigChange={(patch) =>
