@@ -27,7 +27,7 @@ const FRESH_MS = 1500;
 export function useAgentSkills() {
   const aliveRef = useAliveRef();
   const list = useAdminList<SkillItem, SkillPage>(SKILL_FILTERS, (query) => listSkills(query));
-  const { items: pageItems, result, state, reload } = list;
+  const { items: pageItems, state, reload } = list;
   /** 当页的行：本地可以先于服务端改（乐观更新），列表重新拉回来后以服务端为准 */
   const [items, setItems] = useState<SkillItem[]>([]);
   useEffect(() => setItems(pageItems), [pageItems]);
@@ -141,8 +141,6 @@ export function useAgentSkills() {
     ...list,
     items,
     status,
-    /** 整张列表里有没有导入过的技能（不受搜索和筛选影响） */
-    hasImported: result?.has_imported ?? false,
     busyNames,
     freshName,
     reload,

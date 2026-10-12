@@ -149,12 +149,10 @@ export default function AgentSkillsPage() {
               <SkillTable
                 items={api.items}
                 loading={api.status === "loading"}
-                hasImported={api.hasImported}
                 busyNames={api.busyNames}
                 freshName={api.freshName}
                 onOpen={(item) => setOpenSkill(item)}
                 onToggle={(item, enabled) => void api.toggleEnabled(item, enabled)}
-                onImport={openImport}
               />
               <div className="mt-3 border-t py-3">
                 <DataTablePagination

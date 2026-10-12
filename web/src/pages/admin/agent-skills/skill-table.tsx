@@ -1,17 +1,10 @@
-import { Lightbulb, Upload } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
 
 import type { SkillItem } from "@/api/admin/agent-skill/type.d";
-import {
-  EmptyState,
-  EmptyStateActions,
-  EmptyStateDescription,
-  EmptyStateIcon,
-  EmptyStateTitle,
-} from "@/components/admin-ui/empty-state";
+import { EmptyState, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -124,34 +117,28 @@ const openOnEnter = (event: KeyboardEvent<HTMLElement>, open: () => void) => {
 
 /**
  * 技能列表：≥ 768 px 用表格，窄屏变卡片（名称 + 开关 / 说明 / 标签 + 版本）。
- * 点行或在行上按 Enter 打开详情；加载超过 150 ms 才显示骨架行；筛选无结果与“还没有导入过技能”各有说明。
+ * 点行或在行上按 Enter 打开详情；加载超过 150 ms 才显示骨架行；筛选无结果有说明。
  * @param items 已过滤的行
  * @param loading 首次加载中
- * @param hasImported 全部技能里有没有导入过的（没有则在表下方提示去导入）
  * @param busyNames 正在启停的技能名
  * @param freshName 刚导入的技能名，对应行一次性高亮
  * @param onOpen 打开详情
  * @param onToggle 启停
- * @param onImport 打开导入对话框
  */
 export function SkillTable({
   items,
   loading,
-  hasImported,
   busyNames,
   freshName,
   onOpen,
   onToggle,
-  onImport,
 }: {
   items: SkillItem[];
   loading: boolean;
-  hasImported: boolean;
   busyNames: ReadonlySet<string>;
   freshName: string | null;
   onOpen: (item: SkillItem) => void;
   onToggle: (item: SkillItem, enabled: boolean) => void;
-  onImport: () => void;
 }) {
   const mobile = useIsMobile();
   const showSkeleton = useDelayedFlag(loading, SKELETON_DELAY * 1000);
@@ -253,22 +240,6 @@ export function SkillTable({
             </TableBody>
           </Table>
         </div>
-      )}
-
-      {!hasImported && (
-        <EmptyState>
-          <EmptyStateIcon>
-            <Upload />
-          </EmptyStateIcon>
-          <EmptyStateTitle>还没有导入过技能</EmptyStateTitle>
-          <EmptyStateDescription>支持 zip、文件夹或单个 SKILL.md</EmptyStateDescription>
-          <EmptyStateActions>
-            <Button onClick={onImport}>
-              <Upload />
-              导入技能
-            </Button>
-          </EmptyStateActions>
-        </EmptyState>
       )}
     </div>
   );
