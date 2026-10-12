@@ -13,6 +13,7 @@ import type { Actor } from "@/utils/admin/user-rules";
 
 import { BulkBar } from "./bulk-bar";
 import { useUserActions } from "./use-user-actions";
+import { useDebouncedSearch } from "../use-admin-list";
 import { useUserDetail, useUsers, type RoleFilter, type StatusFilter } from "./use-users";
 import { UserDialog } from "./user-dialog";
 import { UserTable } from "./user-table";
@@ -29,9 +30,6 @@ const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
   { value: "admin", label: "管理员" },
   { value: "super_admin", label: "超级管理员" },
 ];
-
-/** 搜索框停止输入多久后才去查询（毫秒） */
-const SEARCH_DEBOUNCE = 300;
 
 /** 这些浮层打开时，单键快捷键和 Esc 都交给浮层自己（Base UI 会关掉它） */
 const FLOATING_OPEN = [
@@ -91,15 +89,9 @@ export default function UsersPage() {
   const actions = useUserActions({ actor, patch, refresh });
 
   // ---------------------------------------------------------------- 搜索（300ms 防抖，同步到 ?q=）
-  const [qInput, setQInput] = useState(list.q);
   const searchRef = useRef<HTMLInputElement>(null);
   const { setQ } = list;
-  useEffect(() => setQInput(list.q), [list.q]);
-  useEffect(() => {
-    if (qInput === list.q) return;
-    const timer = setTimeout(() => setQ(qInput), SEARCH_DEBOUNCE);
-    return () => clearTimeout(timer);
-  }, [qInput, list.q, setQ]);
+  const [qInput, setQInput] = useDebouncedSearch(list.q, setQ);
 
   // ---------------------------------------------------------------- 勾选（只在当前页，换页 / 筛选后清空）
   const [selected, setSelected] = useState<Set<number>>(() => new Set());

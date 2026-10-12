@@ -16,6 +16,7 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/storage"
+	"video-canvas/pkg/pagination"
 )
 
 const (
@@ -123,8 +124,13 @@ type ProcessorUpdateInput struct {
 // Presets 返回全部厂商预设，给后台表单用。
 func (s *ImageProcessorService) Presets() []imageproc.Preset { return imageproc.Presets() }
 
-// List 返回全部处理服务（含绑定的存储名、可回滚版本）。
-func (s *ImageProcessorService) List(ctx context.Context) ([]ProcessorView, error) {
+// ProcessorPage 是处理服务列表的一页。
+type ProcessorPage struct {
+	pagination.Result[ProcessorView]
+}
+
+// List 按关键字（名称 / 厂商 / 绑定的存储名）和状态筛选并分页返回处理服务（含绑定的存储名、可回滚版本）。
+func (s *ImageProcessorService) List(ctx context.Context, req *model.ListProcessorReq) (*ProcessorPage, error) {
 	// 1. 读处理服务、存储与可回滚版本；存储按 id 建索引，避免每行再查一次
 	rows, err := s.repo.List(ctx)
 	if err != nil {
@@ -143,14 +149,45 @@ func (s *ImageProcessorService) List(ctx context.Context) ([]ProcessorView, erro
 		return nil, err
 	}
 
-	// 2. 组装视图
-	out := make([]ProcessorView, 0, len(rows))
-	for i := range rows {
-		v, err := s.view(&rows[i], byID[rows[i].StorageID], prev)
+	// 2. 先筛选、再取当页，只给当页的行组装视图
+	storageName := func(id uint64) string {
+		if st := byID[id]; st != nil {
+			return st.Name
+		}
+		return ""
+	}
+	found := pagination.Paginate(rows, pagination.AdminQuery(req.Page, req.PageSize), func(r model.ImageProcessor) bool {
+		return (req.Status == "" || r.Status == req.Status) &&
+			pagination.MatchKeyword(req.Q, r.Name, r.Vendor, storageName(r.StorageID))
+	})
+	out := make([]ProcessorView, 0, len(found.List))
+	for i := range found.List {
+		v, err := s.view(&found.List[i], byID[found.List[i].StorageID], prev)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, *v)
+	}
+	return &ProcessorPage{Result: pagination.Result[ProcessorView]{List: out, Total: found.Total, Page: found.Page, PageSize: found.PageSize}}, nil
+}
+
+// ProcessorOption 是存储绑定判定用的处理服务精简视图。
+type ProcessorOption struct {
+	ID        uint64 `json:"id"`
+	Name      string `json:"name"`
+	StorageID uint64 `json:"storage_id"`
+	Status    string `json:"status"`
+}
+
+// Options 返回全部处理服务的精简视图（不分页），图片服务页的“存储与处理服务”表和向导判定占用关系用。
+func (s *ImageProcessorService) Options(ctx context.Context) ([]ProcessorOption, error) {
+	rows, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProcessorOption, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ProcessorOption{ID: r.ID, Name: r.Name, StorageID: r.StorageID, Status: r.Status})
 	}
 	return out, nil
 }

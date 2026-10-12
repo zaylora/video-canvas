@@ -165,23 +165,15 @@ export function planSummary(view: SkillImportView): string {
   return sortIssues(view.issues).find((i) => i.level === "error")?.message ?? "存在错误，无法导入";
 }
 
-/** 列表的状态筛选项 */
+/** 列表的状态筛选项（后端按它过滤） */
 export type SkillListFilter = "all" | "enabled" | "disabled" | "builtin";
 
-/** 按名称、技能名、说明搜索并按状态过滤 */
-export function filterSkillItems(
-  items: readonly SkillItem[],
-  query: string,
-  status: SkillListFilter,
-): SkillItem[] {
-  const q = query.trim().toLowerCase();
-  return items.filter((item) => {
-    if (status === "enabled" && !item.enabled) return false;
-    if (status === "disabled" && item.enabled) return false;
-    if (status === "builtin" && item.source !== "builtin") return false;
-    if (!q) return true;
-    return `${item.title} ${item.name} ${item.description}`.toLowerCase().includes(q);
-  });
+/**
+ * 原地替换当页里同名的一行（启停的乐观更新用）；当页没有这一行时原样返回同一个数组。
+ */
+export function replaceSkillRow(items: SkillItem[], next: SkillItem): SkillItem[] {
+  if (!items.some((item) => item.name === next.name)) return items;
+  return items.map((item) => (item.name === next.name ? next : item));
 }
 
 /** 生效版本列的内容：内置显示“—”；有更新版本未生效时附带“vN 待生效” */

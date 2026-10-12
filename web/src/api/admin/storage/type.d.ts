@@ -225,3 +225,35 @@ export interface StorageDeleteCheck {
   /** 未过期且未完成的上传意图数 */
   pending_uploads: number;
 }
+
+/** 存储列表一页：当页的行、命中总数，以及默认存储的完整视图（不受搜索和分页影响，没有默认为 null） */
+export interface StoragePage {
+  list: StorageView[];
+  total: number;
+  page: number;
+  page_size: number;
+  default: StorageView | null;
+}
+
+/** 存储列表的查询参数 */
+export interface ListStoragesParams {
+  /** 关键字：名称 / 服务商 / 桶 / endpoint */
+  q?: string;
+  page?: number;
+  page_size?: number;
+}
+
+/** 下拉和绑定判定用的存储精简视图 */
+export type StorageOption = Pick<
+  StorageView,
+  | "id"
+  | "name"
+  | "provider"
+  | "bucket"
+  | "region"
+  | "endpoint"
+  | "path_prefix"
+  | "public_base_url"
+  | "local_dir"
+  | "is_default"
+>;

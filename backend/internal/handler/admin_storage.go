@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/response"
 	"video-canvas/internal/service"
 	"video-canvas/internal/storage"
@@ -13,7 +14,8 @@ import (
 // StorageAdminService 是存储配置管理接口依赖的业务能力，由 service.StorageConfigService 实现。
 type StorageAdminService interface {
 	Presets() []storage.Preset
-	List(ctx context.Context) ([]service.StorageView, error)
+	List(ctx context.Context, req *model.ListStorageReq) (*service.StoragePage, error)
+	Options(ctx context.Context) ([]service.StorageOption, error)
 	Get(ctx context.Context, id uint64) (*service.StorageView, error)
 	Test(ctx context.Context, in service.StorageCreateInput) (storage.ProbeResult, error)
 	Create(ctx context.Context, actorID uint64, in service.StorageCreateInput) (*service.StorageView, error)
@@ -98,9 +100,23 @@ func (h *AdminStorageHandler) Presets(c *gin.Context) {
 	response.OK(c, h.svc.Presets())
 }
 
-// List 返回所有存储。
+// List 按关键字筛选并分页返回存储（GET /admin/storages?q=&page=&page_size=）。
 func (h *AdminStorageHandler) List(c *gin.Context) {
-	list, err := h.svc.List(c.Request.Context())
+	var req model.ListStorageReq
+	if !BindQuery(c, &req) {
+		return
+	}
+	page, err := h.svc.List(c.Request.Context(), &req)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, page)
+}
+
+// Options 返回全部存储的精简视图，不分页（GET /admin/storages/options），给下拉和绑定判定用。
+func (h *AdminStorageHandler) Options(c *gin.Context) {
+	list, err := h.svc.Options(c.Request.Context())
 	if err != nil {
 		response.Fail(c, err)
 		return

@@ -321,12 +321,12 @@ func TestSkillService_ListAndRead(t *testing.T) {
 	ctx := context.Background()
 	mustConfirm(t, e, 1, standardPkg(t, "demo", "正文 v1"))
 
-	list, err := e.svc.List(ctx, "", "")
+	page, err := e.svc.List(ctx, &model.ListSkillReq{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var builtin, imported int
-	for _, it := range list {
+	for _, it := range page.List {
 		if it.Source == SkillSourceBuiltin {
 			builtin++
 			if !it.Readonly || !it.Enabled {
@@ -336,14 +336,32 @@ func TestSkillService_ListAndRead(t *testing.T) {
 			imported++
 		}
 	}
-	if builtin != 5 || imported != 1 {
-		t.Errorf("内置 5 + 导入 1: %d %d", builtin, imported)
+	if builtin != 5 || imported != 1 || page.Total != 6 {
+		t.Errorf("内置 5 + 导入 1，total 6: %d %d %d", builtin, imported, page.Total)
 	}
-	if got, _ := e.svc.List(ctx, "", "disabled"); len(got) != 1 || got[0].Name != "demo" {
+	req := func(q, status string, p, size int) *model.ListSkillReq {
+		return &model.ListSkillReq{AdminListReq: model.AdminListReq{Q: q, Page: p, PageSize: size}, Status: status}
+	}
+	if got, _ := e.svc.List(ctx, req("", "disabled", 0, 0)); len(got.List) != 1 || got.List[0].Name != "demo" || got.Total != 1 {
 		t.Errorf("status=disabled: %+v", got)
 	}
-	if got, _ := e.svc.List(ctx, "关键帧", ""); len(got) != 1 || got[0].Name != "keyframe-prompt" {
+	if got, _ := e.svc.List(ctx, req("", "builtin", 0, 0)); got.Total != 5 {
+		t.Errorf("status=builtin 只要内置的 5 个: %+v", got)
+	}
+	if got, _ := e.svc.List(ctx, req("关键帧", "", 0, 0)); len(got.List) != 1 || got.List[0].Name != "keyframe-prompt" {
 		t.Errorf("q 按显示名过滤: %+v", got)
+	}
+	if got, _ := e.svc.List(ctx, req("", "", 2, 4)); got.Total != 6 || len(got.List) != 2 || got.Page != 2 || got.PageSize != 4 {
+		t.Errorf("分页第 2 页剩 2 条，total 仍是 6: %+v", got)
+	}
+	if got, _ := e.svc.List(ctx, req("没有这个", "", 0, 0)); got.Total != 0 || got.List == nil {
+		t.Errorf("没有命中要返回空切片: %+v", got)
+	}
+	if got, _ := e.svc.List(ctx, req("", "", 0, 0)); !got.HasImported {
+		t.Errorf("整张列表里有导入技能时 has_imported 为 true: %+v", got)
+	}
+	if got, _ := e.svc.List(ctx, req("", "builtin", 0, 0)); !got.HasImported {
+		t.Errorf("has_imported 不受筛选影响（空态文案据此区分）: %+v", got)
 	}
 
 	t.Run("停用时目录、搜索、读取都看不到", func(t *testing.T) {

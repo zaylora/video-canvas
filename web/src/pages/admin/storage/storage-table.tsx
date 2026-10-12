@@ -1,6 +1,7 @@
 import { Activity, Loader2, Star, Trash2 } from "lucide-react";
 
 import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
+import { EmptyState, EmptyStateActions, EmptyStateTitle } from "@/components/admin-ui/empty-state";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,8 @@ export type StorageRowActions = {
  * @param presets 服务商预设（取服务商显示名）
  * @param canWrite 是否有写权限
  * @param busyId 正在测试或预检的存储 ID，对应行的按钮转圈
+ * @param filtering 当前有搜索词（空列表时区分“没有存储”和“没有命中”）
+ * @param onClearFilters 清除搜索
  * @param actions 行操作回调
  */
 export function StorageTable({
@@ -51,16 +54,34 @@ export function StorageTable({
   presets,
   canWrite,
   busyId,
+  filtering,
+  onClearFilters,
   actions,
 }: {
   storages: StorageView[];
   presets: StoragePreset[];
   canWrite: boolean;
   busyId: number | null;
+  filtering: boolean;
+  onClearFilters: () => void;
   actions: StorageRowActions;
 }) {
+  if (storages.length === 0) {
+    return (
+      <EmptyState data-slot="storage-table">
+        <EmptyStateTitle>{filtering ? "没有符合条件的存储" : "还没有存储"}</EmptyStateTitle>
+        {filtering && (
+          <EmptyStateActions>
+            <Button variant="outline" size="sm" onClick={onClearFilters}>
+              清除搜索
+            </Button>
+          </EmptyStateActions>
+        )}
+      </EmptyState>
+    );
+  }
   return (
-    <div data-slot="storage-table" className="bg-card overflow-hidden rounded-xl border">
+    <div data-slot="storage-table" className="overflow-hidden border-t">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">

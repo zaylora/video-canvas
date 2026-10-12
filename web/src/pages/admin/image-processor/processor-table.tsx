@@ -51,7 +51,7 @@ export function ProcessorTable({
   actions: ProcessorRowActions;
 }) {
   return (
-    <div data-slot="processor-table" className="bg-card overflow-hidden rounded-xl border">
+    <div data-slot="processor-table" className="overflow-hidden border-t">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">

@@ -14,7 +14,12 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
+import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import { ListSearch } from "@/components/admin-ui/list-search";
+import { OptionSelect } from "@/components/admin-ui/option-select";
+import { TableToolbar, TableToolbarCount } from "@/components/admin-ui/table-toolbar";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
 import { canManageInfra } from "@/utils/admin/role";
@@ -26,6 +31,13 @@ import { ProcessorTable } from "./processor-table";
 import { StorageBindingTable } from "./storage-binding-table";
 import { useImageProcessors } from "./use-image-processors";
 
+const STATUS_OPTIONS = [
+  { value: "all", label: "全部状态" },
+  { value: "published", label: "已发布" },
+  { value: "draft", label: "草稿" },
+  { value: "disabled", label: "已停用" },
+];
+
 /**
  * 图片服务管理页：处理服务列表 + “存储与处理服务”表 + 弹窗（四步向导）。
  * 写操作（新建、编辑、校验、发布、回滚、停用、删除）只对 super_admin 渲染，admin 只读；
@@ -34,7 +46,8 @@ import { useImageProcessors } from "./use-image-processors";
 export default function ImageProcessorPage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
-  const { processors, presets, storages, status, reload, upsertOne } = useImageProcessors();
+  const list = useImageProcessors();
+  const { items: processors, presets, storages, bindings, status, reload } = list;
   const [target, setTarget] = useState<ProcessorDialogTarget | null>(null);
   /** 每次打开弹窗递增，让向导重新初始化 */
   const nonceRef = useRef(0);
@@ -47,8 +60,10 @@ export default function ImageProcessorPage() {
   const refresh = useCallback(() => void reload(), [reload]);
 
   const actions = {
-    onOpen: (processor: ProcessorView) => open({ kind: "edit", id: processor.id }),
-    onVerify: (processor: ProcessorView) => open({ kind: "edit", id: processor.id, step: 4 }),
+    onOpen: (processor: ProcessorView) =>
+      open({ kind: "edit", id: processor.id, view: processor }),
+    onVerify: (processor: ProcessorView) =>
+      open({ kind: "edit", id: processor.id, view: processor, step: 4 }),
     onRollback: (processor: ProcessorView) => void confirmRollback(processor, refresh),
     onDisable: (processor: ProcessorView) => void confirmDisable(processor, refresh),
     onDelete: (processor: ProcessorView) => void confirmDelete(processor, refresh),
@@ -102,19 +117,57 @@ export default function ImageProcessorPage() {
               <h2 id="processor-list-title" className="text-sm font-semibold">
                 处理服务
               </h2>
-              {processors.length > 0 ? (
-                <ProcessorTable
-                  processors={processors}
-                  presets={presets}
-                  canWrite={canWrite}
-                  actions={actions}
-                />
-              ) : (
-                <EmptyState>
-                  <EmptyStateTitle>还没有处理服务</EmptyStateTitle>
-                  <EmptyStateDescription>所有存储都回退原图 / 占位。</EmptyStateDescription>
-                </EmptyState>
-              )}
+              <div className={cn("bg-card rounded-xl border", list.refreshing && "opacity-60")}>
+                <TableToolbar>
+                  <ListSearch
+                    value={list.q}
+                    onCommit={list.setQ}
+                    placeholder="搜索名称、厂商或绑定的存储"
+                  />
+                  <OptionSelect
+                    aria-label="状态筛选"
+                    size="sm"
+                    className="w-32"
+                    value={list.filters.status ?? "all"}
+                    onValueChange={(value) => list.setFilter("status", value)}
+                    options={STATUS_OPTIONS}
+                  />
+                  <TableToolbarCount shown={processors.length} total={list.total} />
+                </TableToolbar>
+                {processors.length > 0 ? (
+                  <ProcessorTable
+                    processors={processors}
+                    presets={presets}
+                    canWrite={canWrite}
+                    actions={actions}
+                  />
+                ) : (
+                  <EmptyState>
+                    <EmptyStateTitle>
+                      {list.filtering ? "没有符合条件的处理服务" : "还没有处理服务"}
+                    </EmptyStateTitle>
+                    <EmptyStateDescription>
+                      {list.filtering ? "换个关键字或状态试试。" : "所有存储都回退原图 / 占位。"}
+                    </EmptyStateDescription>
+                    {list.filtering && (
+                      <EmptyStateActions>
+                        <Button variant="outline" size="sm" onClick={list.clear}>
+                          清除筛选
+                        </Button>
+                      </EmptyStateActions>
+                    )}
+                  </EmptyState>
+                )}
+                <div className="border-t py-3">
+                  <DataTablePagination
+                    page={list.page}
+                    pageSize={list.pageSize}
+                    total={list.total}
+                    onPageChange={list.setPage}
+                    onPageSizeChange={list.setPageSize}
+                  />
+                </div>
+              </div>
             </section>
 
             <section aria-labelledby="storage-binding-title" className="flex flex-col gap-2">
@@ -123,7 +176,7 @@ export default function ImageProcessorPage() {
               </h2>
               <StorageBindingTable
                 storages={storages}
-                processors={processors}
+                processors={bindings}
                 presets={presets}
                 canWrite={canWrite}
                 onEnable={(storage) => open({ kind: "new", storageId: storage.id })}
@@ -134,11 +187,11 @@ export default function ImageProcessorPage() {
 
         <ProcessorDialog
           target={target}
-          processors={processors}
+          processors={bindings}
           presets={presets}
           storages={storages}
           canWrite={canWrite}
-          onChanged={upsertOne}
+          onChanged={() => undefined}
           onPublished={() => {
             setTarget(null);
             refresh();

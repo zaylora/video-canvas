@@ -1,9 +1,12 @@
 import service from "@/utils/requests/service";
 import { adminStorageEndpoints as ep } from "./endpoints";
 import type {
+  ListStoragesParams,
   ProbeResult,
   StorageCreateRequest,
   StorageDeleteCheck,
+  StorageOption,
+  StoragePage,
   StoragePreset,
   StorageSecretRequest,
   StorageTestRequest,
@@ -11,12 +14,32 @@ import type {
   StorageView,
 } from "./type";
 
+/** 去掉空值，免得把 `q=` 之类的空参数发给后端 */
+const clean = (params: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ""));
+
 /**
- * 存储列表；后端可能返回 null，统一补成空数组
- * @returns 全部存储（含内置本地磁盘）
+ * 存储列表（后端分页，内置本地磁盘在最前）；list 缺失时补成空数组
+ * @param params 搜索词与分页
+ * @returns 当前页存储、命中总数与默认存储 id
  */
-export const listStorages = async (): Promise<StorageView[]> =>
-  (await service.get<StorageView[] | null>(ep.list(), undefined)) ?? [];
+export const listStorages = async (params: ListStoragesParams = {}): Promise<StoragePage> => {
+  const page = await service.get<StoragePage | null>(ep.list(), clean({ ...params }));
+  return {
+    list: page?.list ?? [],
+    total: page?.total ?? 0,
+    page: page?.page ?? params.page ?? 1,
+    page_size: page?.page_size ?? params.page_size ?? 20,
+    default: page?.default ?? null,
+  };
+};
+
+/**
+ * 全部存储的精简视图（不分页，内置本地磁盘在最前），图片服务的绑定表和向导用
+ * @returns 精简存储列表；后端可能返回 null，统一补成空数组
+ */
+export const listStorageOptions = async (): Promise<StorageOption[]> =>
+  (await service.get<StorageOption[] | null>(ep.options(), undefined)) ?? [];
 
 /**
  * 服务商预设：名称、地域列表、直传方式都来自这里；后端可能返回 null，统一补成空数组

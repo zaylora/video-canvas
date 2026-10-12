@@ -695,10 +695,11 @@ func TestProcessorList(t *testing.T) {
 	_, _ = w.svc.Check(ctx, 1, a.ID)
 	_, _ = w.svc.Publish(ctx, 1, a.ID, a.Version)
 
-	list, err := w.svc.List(ctx)
-	if err != nil || len(list) != 2 {
-		t.Fatalf("实际 %v %+v", err, list)
+	page, err := w.svc.List(ctx, &model.ListProcessorReq{})
+	if err != nil || len(page.List) != 2 || page.Total != 2 {
+		t.Fatalf("实际 %v %+v", err, page)
 	}
+	list := page.List
 	if list[0].Name != "A" || list[0].Status != model.ProcessorPublished || list[1].Status != model.ProcessorDraft {
 		t.Fatalf("实际 %+v", list)
 	}
@@ -706,6 +707,62 @@ func TestProcessorList(t *testing.T) {
 	b, err := json.Marshal(list)
 	if err != nil || strings.Contains(string(b), "secret") || strings.Contains(string(b), "AKID") {
 		t.Fatalf("序列化异常或泄露凭证：%v %s", err, b)
+	}
+}
+
+func TestProcessorListSearchAndPaging(t *testing.T) {
+	ctx := context.Background()
+	w := newProcWorld(t)
+	a := w.createCF(t, "CF 主站")
+	_, _ = w.svc.Create(ctx, 1, ProcessorCreateInput{Name: "腾讯 CI", Vendor: imageproc.VendorTencentCI, StorageID: 3, Config: imageproc.Config{Domain: "x.example.com"}})
+	_, _ = w.svc.Check(ctx, 1, a.ID)
+	_, _ = w.svc.Publish(ctx, 1, a.ID, a.Version)
+
+	req := func(q, status string, page, size int) *model.ListProcessorReq {
+		return &model.ListProcessorReq{AdminListReq: model.AdminListReq{Q: q, Page: page, PageSize: size}, Status: status}
+	}
+	t.Run("按名称匹配", func(t *testing.T) {
+		p, err := w.svc.List(ctx, req("腾讯", "", 0, 0))
+		if err != nil || p.Total != 1 || p.List[0].Name != "腾讯 CI" {
+			t.Fatalf("实际 %v %+v", err, p)
+		}
+	})
+	t.Run("按绑定的存储名匹配", func(t *testing.T) {
+		p, _ := w.svc.List(ctx, req(a.StorageName, "", 0, 0))
+		if a.StorageName == "" || p.Total < 1 {
+			t.Fatalf("存储名应可搜索：%+v", p)
+		}
+	})
+	t.Run("按状态筛选", func(t *testing.T) {
+		p, _ := w.svc.List(ctx, req("", model.ProcessorPublished, 0, 0))
+		if p.Total != 1 || p.List[0].Name != "CF 主站" {
+			t.Fatalf("实际 %+v", p)
+		}
+	})
+	t.Run("分页：第 2 页只剩一条，total 是总数", func(t *testing.T) {
+		p, _ := w.svc.List(ctx, req("", "", 2, 1))
+		if p.Total != 2 || len(p.List) != 1 || p.Page != 2 || p.PageSize != 1 {
+			t.Fatalf("实际 %+v", p)
+		}
+	})
+	t.Run("没有命中返回空列表而不是 nil", func(t *testing.T) {
+		p, _ := w.svc.List(ctx, req("没有这个", "", 0, 0))
+		if p.Total != 0 || p.List == nil {
+			t.Fatalf("实际 %+v", p)
+		}
+	})
+}
+
+func TestProcessorOptions(t *testing.T) {
+	ctx := context.Background()
+	w := newProcWorld(t)
+	w.createCF(t, "A")
+	opts, err := w.svc.Options(ctx)
+	if err != nil || len(opts) != 1 {
+		t.Fatalf("应返回全部处理服务，不分页：%v %+v", err, opts)
+	}
+	if opts[0].Name != "A" || opts[0].StorageID == 0 || opts[0].Status != model.ProcessorDraft {
+		t.Errorf("绑定判定要用 id / name / storage_id / status：%+v", opts[0])
 	}
 }
 

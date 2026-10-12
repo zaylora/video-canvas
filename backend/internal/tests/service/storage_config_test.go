@@ -654,10 +654,11 @@ func TestStorageConfigService_ListAndGet(t *testing.T) {
 	})
 	e.repo.assets[a] = 3
 
-	list, err := e.svc.List(ctx)
-	if err != nil || len(list) != 2 {
-		t.Fatalf("实际 %+v err=%v", list, err)
+	page, err := e.svc.List(ctx, &model.ListStorageReq{})
+	if err != nil || len(page.List) != 2 || page.Total != 2 {
+		t.Fatalf("实际 %+v err=%v", page, err)
 	}
+	list := page.List
 	if list[0].AssetCount != 3 || !list[0].Locked || list[1].Locked || !list[1].IsDefault || list[1].Access != "public" {
 		t.Errorf("素材数 / 锁定 / 默认 / 访问方式不对：%+v %+v", list[0], list[1])
 	}
@@ -666,6 +667,9 @@ func TestStorageConfigService_ListAndGet(t *testing.T) {
 			t.Errorf("seed 的存储都有密钥：%+v", v)
 		}
 	}
+	if page.Default == nil || page.Default.ID != b || !page.Default.IsDefault {
+		t.Errorf("响应应带默认存储的完整视图 %d，实际 %+v", b, page.Default)
+	}
 	if _, err := e.svc.Get(ctx, 999); storCode(t, err) != errcode.ErrStorageNotFound.Code {
 		t.Errorf("不存在：%v", err)
 	}
@@ -673,6 +677,86 @@ func TestStorageConfigService_ListAndGet(t *testing.T) {
 	if got.AssetCount != 0 || got.Locked {
 		t.Errorf("实际 %+v", got)
 	}
+}
+
+func TestStorageConfigService_Options(t *testing.T) {
+	ctx := context.Background()
+	e := newStorEnv(t)
+	e.seed(func(r *model.StorageConfig) { r.Name = "杭州 OSS"; r.Bucket = "vc-hz"; r.IsDefault = true })
+	e.seed(func(r *model.StorageConfig) {
+		r.Name = "北京 OSS"
+		r.Bucket = "vc-bj"
+		r.PathPrefix = "media"
+		r.PublicBaseURL = "https://cdn.example.com"
+	})
+
+	opts, err := e.svc.Options(ctx)
+	if err != nil || len(opts) != 2 {
+		t.Fatalf("应返回全部存储，不分页：%+v err=%v", opts, err)
+	}
+	if opts[0].Name != "杭州 OSS" || !opts[0].IsDefault || opts[0].Bucket != "vc-hz" || opts[0].Region != "cn-hangzhou" || opts[0].Provider != storage.ProviderAliyunOSS {
+		t.Errorf("字段不对：%+v", opts[0])
+	}
+	if opts[1].PublicBaseURL != "https://cdn.example.com" {
+		t.Errorf("绑定判定要用公开域名：%+v", opts[1])
+	}
+	if opts[1].Endpoint != "oss-cn-hangzhou.aliyuncs.com" || opts[1].PathPrefix != "media" {
+		t.Errorf("“桶 · 地域”展示要用 endpoint 和路径前缀：%+v", opts[1])
+	}
+}
+
+func TestStorageConfigService_ListSearchAndPaging(t *testing.T) {
+	ctx := context.Background()
+	e := newStorEnv(t)
+	e.seed(func(r *model.StorageConfig) { r.Name = "杭州 OSS"; r.Bucket = "vc-hz" })
+	e.seed(func(r *model.StorageConfig) { r.Name = "北京 OSS"; r.Bucket = "vc-bj" })
+	e.seed(func(r *model.StorageConfig) {
+		r.Name = "R2 备份"
+		r.Provider = storage.ProviderR2
+		r.Endpoint = "acc.r2.cloudflarestorage.com"
+		r.Bucket = "backup"
+	})
+
+	t.Run("按名称模糊匹配，total 是命中总数", func(t *testing.T) {
+		page, err := e.svc.List(ctx, &model.ListStorageReq{AdminListReq: model.AdminListReq{Q: "oss"}})
+		if err != nil || page.Total != 2 || len(page.List) != 2 {
+			t.Fatalf("实际 %+v err=%v", page, err)
+		}
+	})
+	t.Run("按桶名匹配，关键字首尾空格被忽略", func(t *testing.T) {
+		page, _ := e.svc.List(ctx, &model.ListStorageReq{AdminListReq: model.AdminListReq{Q: " BACKUP "}})
+		if page.Total != 1 || page.List[0].Name != "R2 备份" {
+			t.Fatalf("实际 %+v", page)
+		}
+	})
+	t.Run("分页：第 2 页只剩最后一条，total 仍是总数", func(t *testing.T) {
+		page, _ := e.svc.List(ctx, &model.ListStorageReq{AdminListReq: model.AdminListReq{Page: 2, PageSize: 2}})
+		if page.Total != 3 || len(page.List) != 1 || page.Page != 2 || page.PageSize != 2 {
+			t.Fatalf("实际 %+v", page)
+		}
+	})
+	t.Run("搜索不影响默认存储：它不在命中结果里也照样返回", func(t *testing.T) {
+		d := newStorEnv(t)
+		d.seed(func(r *model.StorageConfig) { r.Name = "主存储"; r.IsDefault = true; r.Bucket = "main" })
+		d.seed(func(r *model.StorageConfig) { r.Name = "备份"; r.Bucket = "bak" })
+		page, _ := d.svc.List(ctx, &model.ListStorageReq{AdminListReq: model.AdminListReq{Q: "备份"}})
+		if page.Total != 1 || page.Default == nil || page.Default.Name != "主存储" || !page.Default.SecretSet {
+			t.Fatalf("实际 %+v default=%+v", page, page.Default)
+		}
+	})
+	t.Run("没有默认存储时 Default 为 nil", func(t *testing.T) {
+		d := newStorEnv(t)
+		d.seed(nil)
+		if page, _ := d.svc.List(ctx, &model.ListStorageReq{}); page.Default != nil {
+			t.Fatalf("实际 %+v", page.Default)
+		}
+	})
+	t.Run("没有命中返回空列表而不是 nil", func(t *testing.T) {
+		page, _ := e.svc.List(ctx, &model.ListStorageReq{AdminListReq: model.AdminListReq{Q: "没有这个"}})
+		if page.Total != 0 || page.List == nil || len(page.List) != 0 {
+			t.Fatalf("实际 %+v", page)
+		}
+	})
 }
 
 func TestStorageConfigService_TestAndCheck(t *testing.T) {

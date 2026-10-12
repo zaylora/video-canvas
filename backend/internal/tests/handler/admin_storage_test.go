@@ -14,9 +14,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/service"
 	"video-canvas/internal/storage"
+	"video-canvas/pkg/pagination"
 )
 
 // fakeStorageAdmin 实现 handler.StorageAdminService，记录收到的参数，可注入业务错误。
@@ -31,14 +33,25 @@ type fakeStorageAdmin struct {
 	secretSK   string
 	defaultSet uint64
 	deleted    uint64
+	listReq    model.ListStorageReq // List 收到的查询参数
 }
 
 func (f *fakeStorageAdmin) Presets() []storage.Preset { return storage.Presets() }
-func (f *fakeStorageAdmin) List(ctx context.Context) ([]service.StorageView, error) {
+func (f *fakeStorageAdmin) List(ctx context.Context, req *model.ListStorageReq) (*service.StoragePage, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	return []service.StorageView{{ID: 1, Name: "本地磁盘", Provider: "local", Builtin: true, IsDefault: true}}, nil
+	f.listReq = *req
+	return &service.StoragePage{
+		Result:  pagination.Result[service.StorageView]{List: []service.StorageView{{ID: 1, Name: "本地磁盘", Provider: "local", Builtin: true, IsDefault: true}}, Total: 1, Page: 1, PageSize: 20},
+		Default: &service.StorageView{ID: 1, Name: "本地磁盘", Provider: "local", Builtin: true, IsDefault: true},
+	}, nil
+}
+func (f *fakeStorageAdmin) Options(ctx context.Context) ([]service.StorageOption, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []service.StorageOption{{ID: 1, Name: "本地磁盘", Provider: "local", IsDefault: true}}, nil
 }
 func (f *fakeStorageAdmin) Get(ctx context.Context, id uint64) (*service.StorageView, error) {
 	if f.err != nil {
@@ -110,6 +123,7 @@ func newStorageAdminEnv() *storageAdminEnv {
 	g := r.Group("/api/v1/admin/storages")
 	g.GET("", h.List)
 	g.GET("/presets", h.Presets)
+	g.GET("/options", h.Options)
 	g.POST("/test", h.Test)
 	g.POST("", h.Create)
 	g.GET("/:id", h.Get)
@@ -151,6 +165,40 @@ const storageBase = "/api/v1/admin/storages"
 func validCreateBody() map[string]any {
 	return map[string]any{"name": "OSS 杭州", "provider": "aliyun_oss", "region": "cn-hangzhou", "bucket": "vc-bucket",
 		"access_key_id": "LTAI123", "secret_key": "sk", "direct_upload": true}
+}
+
+func TestAdminStorageHandler_ListQuery(t *testing.T) {
+	t.Run("响应是分页结构，带默认存储 id", func(t *testing.T) {
+		env := newStorageAdminEnv()
+		w, resp := env.do(t, http.MethodGet, storageBase, nil)
+		body := string(resp.Data)
+		if w.Code != http.StatusOK || !strings.Contains(body, `"list"`) || !strings.Contains(body, `"total":1`) || !strings.Contains(body, `"default":{`) {
+			t.Fatalf("实际 %d %s", w.Code, w.Body.String())
+		}
+	})
+	t.Run("q / page / page_size 原样传给 service", func(t *testing.T) {
+		env := newStorageAdminEnv()
+		env.do(t, http.MethodGet, storageBase+"?q=oss&page=2&page_size=30", nil)
+		got := env.svc.listReq
+		if got.Q != "oss" || got.Page != 2 || got.PageSize != 30 {
+			t.Errorf("参数没传对：%+v", got)
+		}
+	})
+	t.Run("关键字超长 400", func(t *testing.T) {
+		env := newStorageAdminEnv()
+		w, resp := env.do(t, http.MethodGet, storageBase+"?q="+strings.Repeat("a", 65), nil)
+		if w.Code != http.StatusBadRequest || resp.Code != errcode.ErrInvalidParams.Code {
+			t.Fatalf("实际 %d %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestAdminStorageHandler_Options(t *testing.T) {
+	env := newStorageAdminEnv()
+	w, resp := env.do(t, http.MethodGet, storageBase+"/options", nil)
+	if w.Code != http.StatusOK || resp.Code != 0 || !strings.Contains(string(resp.Data), "本地磁盘") || strings.HasPrefix(string(resp.Data), "{") {
+		t.Fatalf("options 应返回不分页的数组：%d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestAdminStorageHandler_ListGetPresets(t *testing.T) {

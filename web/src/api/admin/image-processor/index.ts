@@ -1,7 +1,10 @@
 import service from "@/utils/requests/service";
 import { adminImageProcessorEndpoints as ep } from "./endpoints";
 import type {
+  ListProcessorsParams,
   ProcessorCreateRequest,
+  ProcessorOption,
+  ProcessorPage,
   ProcessorPreset,
   ProcessorPublishRequest,
   ProcessorUpdateRequest,
@@ -17,12 +20,33 @@ export const listProcessorPresets = async (): Promise<ProcessorPreset[]> => {
   return (list ?? []).map((item) => ({ ...item, formats: item.formats ?? [] }));
 };
 
+/** 去掉空值，免得把 `q=` 之类的空参数发给后端 */
+const clean = (params: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ""));
+
 /**
- * 处理服务列表；后端可能返回 null，统一补成空数组
- * @returns 全部处理服务
+ * 处理服务列表（后端分页）；list 缺失时补成空数组
+ * @param params 搜索词、状态与分页
+ * @returns 当前页处理服务与命中总数
  */
-export const listImageProcessors = async (): Promise<ProcessorView[]> =>
-  (await service.get<ProcessorView[] | null>(ep.list(), undefined)) ?? [];
+export const listImageProcessors = async (
+  params: ListProcessorsParams = {},
+): Promise<ProcessorPage> => {
+  const page = await service.get<ProcessorPage | null>(ep.list(), clean({ ...params }));
+  return {
+    list: page?.list ?? [],
+    total: page?.total ?? 0,
+    page: page?.page ?? params.page ?? 1,
+    page_size: page?.page_size ?? params.page_size ?? 20,
+  };
+};
+
+/**
+ * 全部处理服务的精简视图（不分页），判定存储占用用
+ * @returns 精简处理服务列表；后端可能返回 null，统一补成空数组
+ */
+export const listProcessorOptions = async (): Promise<ProcessorOption[]> =>
+  (await service.get<ProcessorOption[] | null>(ep.options(), undefined)) ?? [];
 
 /**
  * 处理服务详情（409 冲突后用它重新拉取最新版本）

@@ -41,9 +41,6 @@ type AdminUserSettings interface {
 	InitialCredits(ctx context.Context) (int, error)
 }
 
-// adminUserMaxPageSize 是后台用户列表的单页上限（比通用分页的 50 大，运营需要一屏看更多）。
-const adminUserMaxPageSize = 100
-
 // AdminUserService 提供后台用户管理：查询（列表、详情、三个记录列表）与管控（积分、并发上限、封禁 / 启用、批量）。
 type AdminUserService struct {
 	repo     AdminUserRepo
@@ -63,12 +60,8 @@ func NewAdminUserService(repo AdminUserRepo, audit AdminAuditWriter, defaults Ad
 
 // List 分页查询用户，返回列表项、总数和修正后的分页参数（供响应回显）。
 func (s *AdminUserService) List(ctx context.Context, req *model.ListAdminUserReq) ([]model.AdminUserListItem, int64, pagination.Query, error) {
-	// 1. 修正分页：沿用通用规则（page<1 取 1，page_size<1 取 10），上限放宽到 100
-	q := pagination.Query{Page: req.Page, PageSize: req.PageSize}
-	q.Normalize()
-	if req.PageSize > q.PageSize {
-		q.PageSize = min(req.PageSize, adminUserMaxPageSize)
-	}
+	// 1. 修正分页：沿用用户列表原来的默认每页 10，上限放宽到 100（运营需要一屏看更多）
+	q := pagination.NewQuery(req.Page, req.PageSize, pagination.Options{DefaultSize: pagination.DefaultPageSize, MaxSize: pagination.AdminOptions.MaxSize})
 
 	// 2. 读全局默认并发上限：每行的“实际生效上限”要用它兜底单用户覆盖
 	defMax, err := s.defaults.DefaultMaxActiveTasks(ctx)

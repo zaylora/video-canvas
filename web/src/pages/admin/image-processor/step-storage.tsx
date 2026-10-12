@@ -1,8 +1,8 @@
 import { Lock, TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 
-import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
-import type { StorageView } from "@/api/admin/storage/type.d";
+import type { ProcessorPreset } from "@/api/admin/image-processor/type.d";
+import type { StorageOption } from "@/api/admin/storage/type.d";
 import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
 import {
   EmptyState,
@@ -12,7 +12,11 @@ import {
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
-import { evaluateStorage, storageProviderLabel } from "@/utils/admin/image-processor";
+import {
+  evaluateStorage,
+  storageProviderLabel,
+  type BindingProcessor,
+} from "@/utils/admin/image-processor";
 import { storageLocation } from "@/utils/admin/storage-rules";
 
 /**
@@ -36,12 +40,12 @@ export function StepStorage({
   onChange,
 }: {
   preset: ProcessorPreset;
-  storages: StorageView[];
-  processors: ProcessorView[];
+  storages: StorageOption[];
+  processors: BindingProcessor[];
   value: number | null;
   selfId: number | null;
   disabled: boolean;
-  onChange: (storage: StorageView) => void;
+  onChange: (storage: StorageOption) => void;
 }) {
   const items = storages.map((storage) => ({
     storage,

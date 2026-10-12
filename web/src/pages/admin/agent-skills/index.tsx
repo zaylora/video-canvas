@@ -1,9 +1,12 @@
 import { Upload } from "lucide-react";
 import { MotionConfig } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 
+import type { SkillItem } from "@/api/admin/agent-skill/type.d";
+import { DataTablePagination } from "@/components/admin-ui/data-table-pagination";
+import { ListSearch } from "@/components/admin-ui/list-search";
 import { Notice } from "@/components/admin-ui/notice";
 import {
   PageHeader,
@@ -11,10 +14,10 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
-import { SearchInput } from "@/components/admin-ui/search-input";
 import { Segmented, SegmentedItem } from "@/components/admin-ui/segmented";
 import { Button } from "@/components/ui/button";
-import { filterSkillItems, importedMessage, type SkillListFilter } from "@/utils/admin/agent-skill";
+import { cn } from "@/lib/utils";
+import { importedMessage, type SkillListFilter } from "@/utils/admin/agent-skill";
 
 import { DropOverlay } from "./drop-overlay";
 import { getFilesFromEvent, toPicked } from "./drop-files";
@@ -38,18 +41,16 @@ const FILTERS: { id: SkillListFilter; label: string }[] = [
  */
 export default function AgentSkillsPage() {
   const api = useAgentSkills();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<SkillListFilter>("all");
-  const [openName, setOpenName] = useState<string | null>(null);
+  const [openSkill, setOpenSkill] = useState<SkillItem | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const onImported = useCallback(
     ({ item, view }: ImportedResult) => {
-      api.replaceOne(item);
+      setDialogOpen(false);
       api.markFresh(item.name);
       toast.success(importedMessage(view));
-      setDialogOpen(false);
+      api.reload();
     },
     [api],
   );
@@ -91,11 +92,6 @@ export default function AgentSkillsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const visible = useMemo(
-    () => filterSkillItems(api.items, query, filter),
-    [api.items, query, filter],
-  );
-  const hasImported = api.items.some((item) => item.source === "imported");
 
   return (
     <MotionConfig reducedMotion="user">
@@ -114,28 +110,27 @@ export default function AgentSkillsPage() {
           </PageHeader>
 
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <SearchInput
+            <ListSearch
               ref={searchRef}
               className="w-60 max-md:w-full"
               placeholder="搜索名称或说明（/）"
-              aria-label="搜索技能"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={api.q}
+              onCommit={api.setQ}
             />
             <Segmented aria-label="状态筛选">
               {FILTERS.map((f) => (
                 <SegmentedItem
                   key={f.id}
                   slideId="skill-filter"
-                  active={filter === f.id}
-                  onClick={() => setFilter(f.id)}
+                  active={(api.filters.status ?? "all") === f.id}
+                  onClick={() => api.setFilter("status", f.id)}
                 >
                   {f.label}
                 </SegmentedItem>
               ))}
             </Segmented>
             <span className="text-muted-foreground ml-auto text-xs tabular-nums">
-              共 {visible.length} 个
+              共 {api.total} 个
             </span>
           </div>
 
@@ -150,20 +145,38 @@ export default function AgentSkillsPage() {
               }
             />
           ) : (
-            <SkillTable
-              items={visible}
-              loading={api.status === "loading"}
-              hasImported={hasImported}
-              busyNames={api.busyNames}
-              freshName={api.freshName}
-              onOpen={(item) => setOpenName(item.name)}
-              onToggle={(item, enabled) => void api.toggleEnabled(item, enabled)}
-              onImport={openImport}
-            />
+            <div className={cn(api.refreshing && "opacity-60")}>
+              <SkillTable
+                items={api.items}
+                loading={api.status === "loading"}
+                hasImported={api.hasImported}
+                busyNames={api.busyNames}
+                freshName={api.freshName}
+                onOpen={(item) => setOpenSkill(item)}
+                onToggle={(item, enabled) => void api.toggleEnabled(item, enabled)}
+                onImport={openImport}
+              />
+              <div className="mt-3 border-t py-3">
+                <DataTablePagination
+                  page={api.page}
+                  pageSize={api.pageSize}
+                  total={api.total}
+                  onPageChange={api.setPage}
+                  onPageSizeChange={api.setPageSize}
+                />
+              </div>
+            </div>
           )}
         </main>
 
-        <SkillDialog name={openName} api={api} onClose={() => setOpenName(null)} />
+        <SkillDialog
+          target={openSkill}
+          api={api}
+          onClose={() => {
+            setOpenSkill(null);
+            api.reload();
+          }}
+        />
         <ImportDialog
           open={dialogOpen}
           importer={importer}

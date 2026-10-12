@@ -2,9 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { listSkills, setSkillActiveVersion, setSkillEnabled } from "@/api/admin/agent-skill";
-import type { SkillItem } from "@/api/admin/agent-skill/type.d";
+import type { SkillItem, SkillPage } from "@/api/admin/agent-skill/type.d";
+import { replaceSkillRow } from "@/utils/admin/agent-skill";
 
-import { useAliveRef, type LoadStatus } from "../use-admin";
+import { useAliveRef } from "../use-admin";
+import { useAdminList } from "../use-admin-list";
+
+/** 状态筛选取值 */
+const SKILL_FILTERS = ["status"] as const;
 
 /** “撤销”toast 停留多久（毫秒）：设计稿规定 5 秒内可撤销 */
 const UNDO_MS = 5000;
@@ -13,35 +18,25 @@ const UNDO_MS = 5000;
 const FRESH_MS = 1500;
 
 /**
- * 技能列表与启停：进页面加载一次，之后 reload 静默刷新，失败时保留上一次的数据。
- * 搜索与状态筛选在前端做（列表不大），所以这里总是读全量。
+ * 技能列表（服务端分页 + 搜索 + 状态筛选）与启停：按 URL 里的 q / status / page 请求当前页，
+ * 刷新时保留旧数据，失败时保留上一次的数据。启停是对当页那一行的乐观更新，失败回滚；
+ * 其它改动（导入、改名、删除）完成后重新拉取当前页。
  * 请求错误的全局提示由拦截器弹，这里只记状态、回滚乐观更新。
- * @returns 列表、加载状态、刷新与各种修改方法
+ * @returns 列表状态与操作、各种修改方法
  */
 export function useAgentSkills() {
   const aliveRef = useAliveRef();
+  const list = useAdminList<SkillItem, SkillPage>(SKILL_FILTERS, (query) => listSkills(query));
+  const { items: pageItems, result, state, reload } = list;
+  /** 当页的行：本地可以先于服务端改（乐观更新），列表重新拉回来后以服务端为准 */
   const [items, setItems] = useState<SkillItem[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
+  useEffect(() => setItems(pageItems), [pageItems]);
+  const status = state;
   /** 正在启停的技能名：开关禁用，防止连点 */
   const [busyNames, setBusyNames] = useState<ReadonlySet<string>>(new Set());
   /** 刚导入的技能名，对应行一次性高亮 */
   const [freshName, setFreshName] = useState<string | null>(null);
   const freshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const reload = useCallback(async () => {
-    try {
-      const list = await listSkills();
-      if (!aliveRef.current) return;
-      setItems(list);
-      setStatus("ready");
-    } catch {
-      if (aliveRef.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
-    }
-  }, [aliveRef]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
 
   useEffect(
     () => () => {
@@ -50,17 +45,9 @@ export function useAgentSkills() {
     [],
   );
 
-  /** 用最新的视图替换列表里的同一条；列表里还没有就加到末尾（导入了新技能） */
+  /** 用最新的视图替换当页里的同一条（乐观更新、设为生效之后）；当页没有这一条就不动 */
   const replaceOne = useCallback((next: SkillItem) => {
-    setItems((prev) =>
-      prev.some((item) => item.name === next.name)
-        ? prev.map((item) => (item.name === next.name ? next : item))
-        : [...prev, next].sort((a, b) => a.name.localeCompare(b.name)),
-    );
-  }, []);
-
-  const removeOne = useCallback((name: string) => {
-    setItems((prev) => prev.filter((item) => item.name !== name));
+    setItems((prev) => replaceSkillRow(prev, next));
   }, []);
 
   const markFresh = useCallback((name: string) => {
@@ -151,13 +138,15 @@ export function useAgentSkills() {
   );
 
   return {
+    ...list,
     items,
     status,
+    /** 整张列表里有没有导入过的技能（不受搜索和筛选影响） */
+    hasImported: result?.has_imported ?? false,
     busyNames,
     freshName,
     reload,
     replaceOne,
-    removeOne,
     markFresh,
     toggleEnabled,
     activateVersion,

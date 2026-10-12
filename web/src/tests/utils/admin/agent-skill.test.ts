@@ -13,13 +13,13 @@ import {
   countIssues,
   deleteBlockReason,
   fileTagLabel,
-  filterSkillItems,
   formatDateTime,
   formatSize,
   importedMessage,
   issueLevelByPath,
   locateLine,
   planSummary,
+  replaceSkillRow,
   sortIssues,
   stripFrontmatter,
   toggleBlockReason,
@@ -238,17 +238,15 @@ describe("列表", () => {
     item({ name: "c", title: "剧本拆镜", source: "builtin", readonly: true, enabled: true }),
   ];
 
-  test("按名称、技能名、说明搜索，忽略大小写与首尾空格", () => {
-    expect(filterSkillItems(list, " 对白 ", "all").map((i) => i.name)).toEqual(["a"]);
-    expect(filterSkillItems(list, "B", "all").map((i) => i.name)).toEqual(["b"]);
-    expect(filterSkillItems(list, "拆", "all").map((i) => i.name)).toEqual(["b", "c"]);
+  test("原地替换当页里同名的一行，其它行不动", () => {
+    const next = replaceSkillRow(list, item({ name: "b", title: "九宫格", enabled: true }));
+    expect(next.map((i) => i.enabled)).toEqual([true, true, true]);
+    expect(next[0]).toBe(list[0]);
+    expect(next[2]).toBe(list[2]);
   });
 
-  test("状态筛选：已启用、已停用、内置", () => {
-    expect(filterSkillItems(list, "", "enabled").map((i) => i.name)).toEqual(["a", "c"]);
-    expect(filterSkillItems(list, "", "disabled").map((i) => i.name)).toEqual(["b"]);
-    expect(filterSkillItems(list, "", "builtin").map((i) => i.name)).toEqual(["c"]);
-    expect(filterSkillItems(list, "", "all")).toHaveLength(3);
+  test("当页没有这一行（翻到别页、被筛掉）时列表原样返回", () => {
+    expect(replaceSkillRow(list, item({ name: "zzz" }))).toBe(list);
   });
 
   test("版本标记：内置显示 —，待生效带最新版本号", () => {

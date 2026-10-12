@@ -1,7 +1,7 @@
 import { CircleCheck, PlugZap } from "lucide-react";
 
-import type { ProcessorPreset, ProcessorView } from "@/api/admin/image-processor/type.d";
-import type { StorageView } from "@/api/admin/storage/type.d";
+import type { ProcessorPreset } from "@/api/admin/image-processor/type.d";
+import type { StorageOption } from "@/api/admin/storage/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   bindingOfStorage,
   enableTarget,
   storageProviderLabel,
+  type BindingProcessor,
 } from "@/utils/admin/image-processor";
 import { storageLocation } from "@/utils/admin/storage-rules";
 
@@ -36,11 +37,11 @@ export function StorageBindingTable({
   canWrite,
   onEnable,
 }: {
-  storages: StorageView[];
-  processors: ProcessorView[];
+  storages: StorageOption[];
+  processors: BindingProcessor[];
   presets: ProcessorPreset[];
   canWrite: boolean;
-  onEnable: (storage: StorageView, preset: ProcessorPreset) => void;
+  onEnable: (storage: StorageOption, preset: ProcessorPreset) => void;
 }) {
   return (
     <div data-slot="storage-binding-table" className="bg-card overflow-hidden rounded-xl border">

@@ -15,7 +15,7 @@ import type {
   ProcessorVendor,
   ProcessorView,
 } from "@/api/admin/image-processor/type.d";
-import type { StorageView } from "@/api/admin/storage/type.d";
+import type { StorageOption } from "@/api/admin/storage/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Stepper, StepperItem } from "@/components/admin-ui/stepper";
@@ -30,6 +30,7 @@ import {
   evaluateStorage,
   publishBlockReason,
   validateProcessorForm,
+  type BindingProcessor,
 } from "@/utils/admin/image-processor";
 
 import { ReadOnlyNotice } from "../shared";
@@ -54,7 +55,7 @@ type Draft = {
   config: ProcessorConfig | null;
 };
 
-const autoName = (storage: StorageView, preset: ProcessorPreset) =>
+const autoName = (storage: StorageOption, preset: ProcessorPreset) =>
   `${storage.name} · ${preset.name}`;
 
 /** 判断“有没有未保存修改”用的指纹：只含会提交给后端的内容 */
@@ -85,7 +86,7 @@ function draftFromProcessor(processor: ProcessorView): Draft {
  * @param startStep 初始步骤；编辑默认第三步
  * @param presets 厂商预设
  * @param storages 全部存储
- * @param processors 全部处理服务（判定存储占用）
+ * @param processors 全部处理服务的精简视图（判定存储占用）
  * @param canWrite 是否有写权限；没有则整个向导只读
  * @param onChanged 处理服务在弹窗里变了（创建、保存、校验、冲突后重新拉取），用最新视图更新列表
  * @param onPublished 发布成功后（页面负责刷新列表并关闭弹窗）
@@ -109,8 +110,8 @@ export function ProcessorWizard({
   startStorageId?: number;
   startStep?: WizardStep;
   presets: ProcessorPreset[];
-  storages: StorageView[];
-  processors: ProcessorView[];
+  storages: StorageOption[];
+  processors: BindingProcessor[];
   canWrite: boolean;
   onChanged: (view: ProcessorView) => void;
   onPublished: () => void;
@@ -164,7 +165,7 @@ export function ProcessorWizard({
     setDraft({ vendor, storageId: null, name: "", nameTouched: false, config: null });
   };
 
-  const pickStorage = (next: StorageView) => {
+  const pickStorage = (next: StorageOption) => {
     if (!preset) return;
     setDraft((prev) => ({
       ...prev,

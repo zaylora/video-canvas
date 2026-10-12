@@ -1,41 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { listStorages, listStoragePresets } from "@/api/admin/storage";
-import type { StoragePreset, StorageView } from "@/api/admin/storage/type.d";
+import type { StoragePage, StoragePreset, StorageView } from "@/api/admin/storage/type.d";
 
-import { useAliveRef, type LoadStatus } from "../use-admin";
+import { useAdminList } from "../use-admin-list";
+import { useAliveRef } from "../use-admin";
 
 /**
- * 存储列表与服务商预设：进页面时一起加载；之后 reload 静默刷新，失败时保留上一次的数据。
- * 请求错误的全局提示由拦截器负责，这里只记状态。
- * @returns 列表、预设、加载状态，以及刷新整表与替换单条的方法
+ * 存储列表（服务端分页 + 搜索）与服务商预设。
+ * 列表按 URL 里的 q / page 请求当前页；预设进页面时加载一次。
+ * 默认存储的完整视图随列表一起返回，不受搜索和分页影响，所以搜索时默认存储卡片不会消失。
+ * @returns 列表状态与操作，以及预设
  */
 export function useStorages() {
   const aliveRef = useAliveRef();
-  const [storages, setStorages] = useState<StorageView[]>([]);
+  const list = useAdminList<StorageView, StoragePage>([], (query) => listStorages(query));
   const [presets, setPresets] = useState<StoragePreset[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
 
-  const reload = useCallback(async () => {
+  const loadPresets = useCallback(async () => {
     try {
-      const [list, presetList] = await Promise.all([listStorages(), listStoragePresets()]);
-      if (!aliveRef.current) return;
-      setStorages(list);
-      setPresets(presetList);
-      setStatus("ready");
+      const next = await listStoragePresets();
+      if (aliveRef.current) setPresets(next);
     } catch {
-      if (aliveRef.current) setStatus((prev) => (prev === "ready" ? prev : "error"));
+      // 请求失败的全局 toast 已弹；预设为空时表单里服务商名称回退为 id
     }
   }, [aliveRef]);
-
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void loadPresets();
+  }, [loadPresets]);
 
-  /** 用最新的视图替换列表里的同一条（保存、替换凭证、重新拉取之后），不整表刷新 */
-  const replaceOne = useCallback((view: StorageView) => {
-    setStorages((prev) => prev.map((item) => (item.id === view.id ? view : item)));
-  }, []);
-
-  return { storages, presets, status, reload, replaceOne };
+  return { ...list, presets, defaultStorage: list.result?.default ?? null };
 }
