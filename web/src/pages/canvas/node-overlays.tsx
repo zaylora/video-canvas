@@ -181,7 +181,8 @@ export function NodeOverlays({
           </motion.div>
         </NodeToolbar>
       )}
-      {!data.uploaded && (
+      {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
+      {!data.uploaded && !data.outpaintFrom && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.985 }}
