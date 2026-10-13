@@ -83,12 +83,9 @@ export default function PluginsPage() {
       cancelled = true;
     };
   }, [routeKey, detailVersion, setOpen]);
-  /** 先用目录里已有的，详情回来换成最新的；换了插件时不能拿上一个的详情顶着 */
-  const plugin = routeKey
-    ? detail?.key === routeKey
-      ? detail
-      : (catalog.plugins.find((item) => item.key === routeKey) ?? null)
-    : null;
+  /** 头部用目录里已有的这一行；内容区只认详情接口返回的，换了插件时不能拿上一个的顶着 */
+  const summary = routeKey ? (catalog.plugins.find((item) => item.key === routeKey) ?? null) : null;
+  const plugin = routeKey && detail?.key === routeKey ? detail : null;
 
   const closeDialog = () => setOpen(null);
   const requestDelete = (target: { key: string; name: string }) =>
@@ -138,7 +135,9 @@ export default function PluginsPage() {
 
       <PluginDialog
         open={!!open}
-        plugin={plugin}
+        pluginKey={routeKey}
+        summary={summary}
+        detail={plugin}
         tab={open?.tab ?? "overview"}
         plugins={catalog.plugins}
         channels={catalog.channels}

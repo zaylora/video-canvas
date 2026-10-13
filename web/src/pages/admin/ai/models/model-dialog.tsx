@@ -16,6 +16,7 @@ import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
 import { cn } from "@/lib/utils";
 import { findPathInJson } from "@/utils/admin/json";
@@ -272,9 +273,7 @@ export function ModelDialog({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-h-0 overflow-y-auto px-6 py-5">
             {ws.loadingDetail ? (
-              <p className="text-muted-foreground text-sm" role="status">
-                正在加载…
-              </p>
+              <ModelFormSkeleton />
             ) : !body ? (
               <Notice tone="danger" title="正文不是合法的 JSON 对象">
                 从“更多 → 编辑 JSON”修复后再回来。
@@ -308,7 +307,7 @@ export function ModelDialog({
             )}
           </div>
           <aside className="bg-muted/20 hidden min-h-0 overflow-y-auto border-l p-5 lg:block">
-            {preview}
+            {ws.loadingDetail ? <Skeleton className="h-40 w-full" /> : preview}
           </aside>
         </div>
       )}
@@ -325,6 +324,20 @@ export function ModelDialog({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 详情还没回来时的表单骨架：几组“标签 + 输入框”，版式接近基本信息页签 */
+function ModelFormSkeleton() {
+  return (
+    <div className="flex flex-col gap-5" role="status" aria-busy="true" aria-label="正在加载">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ))}
     </div>
   );
 }
