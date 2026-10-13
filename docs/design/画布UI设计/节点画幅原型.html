@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>节点画幅原型</title>
+    <style>
+      /* token 抄自 web/src/index.css 的 .dark */
+      :root {
+        --canvas-bg: oklch(0.13 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.14);
+        --card: oklch(0.205 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --foreground: oklch(0.985 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --node-ring: oklch(1 0 0 / 0.72);
+        --chrome: oklch(0.205 0 0);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--canvas-bg);
+        background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+        background-size: 20px 20px;
+        color: var(--foreground);
+        font: 13px/1.5 system-ui, "PingFang SC", sans-serif;
+        padding: 16px;
+      }
+      .bar {
+        position: sticky; top: 16px; z-index: 1;
+        display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+        width: fit-content; max-width: 100%;
+        padding: 8px 12px; margin-bottom: 24px;
+        background: var(--chrome); border: 1px solid var(--border); border-radius: 12px;
+      }
+      .bar button {
+        font: inherit; color: var(--muted-foreground); background: none;
+        border: 0; border-radius: 8px; padding: 4px 12px; cursor: pointer;
+      }
+      .bar button:hover { color: var(--foreground); }
+      .bar button:focus-visible { outline: 2px solid var(--node-ring); }
+      .bar button[aria-pressed="true"] { color: var(--foreground); background: oklch(1 0 0 / 0.1); }
+      .note { color: var(--muted-foreground); }
+      .row { display: flex; flex-wrap: wrap; gap: 32px 40px; align-items: flex-start; }
+      .node { flex: none; }
+      .title { margin-bottom: 8px; color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+      .title b { color: var(--foreground); font-weight: 600; }
+      .card {
+        background: var(--card); border: 1px dashed var(--border); border-radius: 16px;
+        display: grid; place-items: center; color: var(--muted-foreground); font-size: 12px;
+        text-align: center; padding: 8px;
+      }
+      .card.ref { border-style: solid; border-color: var(--node-ring); }
+    </style>
+  </head>
+  <body>
+    <div class="bar" role="group" aria-label="切换规则">
+      <button type="button" id="old" aria-pressed="false">现行：576×324 包围盒</button>
+      <button type="button" id="new" aria-pressed="true">新：短边都是 324</button>
+      <span class="note">缩放 <input id="zoom" type="range" min="30" max="100" value="60" /> <span id="zv">60%</span></span>
+    </div>
+    <div class="row" id="row"></div>
+
+    <script>
+      const RATIOS = [
+        ["16:9", 16, 9], ["1:1", 1, 1], ["4:3", 4, 3], ["3:4", 3, 4],
+        ["21:9", 21, 9], ["9:16", 9, 16], ["1:4", 1, 4],
+      ];
+      /* 现行：包围盒 576×324，最小 160×120（node-frame.ts） */
+      function oldSize(r) {
+        const MAX = { w: 576, h: 324 }, MIN = { w: 160, h: 120 };
+        const c = Math.min(Math.max(r, MIN.w / MAX.h), MAX.w / MIN.h);
+        return c >= MAX.w / MAX.h
+          ? { w: MAX.w, h: Math.round(MAX.w / c) }
+          : { w: Math.round(MAX.h * c), h: MAX.h };
+      }
+      /* 新：短边 324，长边不封顶 */
+      function newSize(r) {
+        return r >= 1
+          ? { w: Math.round(324 * r), h: 324 }
+          : { w: 324, h: Math.round(324 / r) };
+      }
+      let mode = "new";
+      const row = document.getElementById("row");
+      function render() {
+        const z = Number(document.getElementById("zoom").value) / 100;
+        document.getElementById("zv").textContent = Math.round(z * 100) + "%";
+        row.innerHTML = RATIOS.map(([name, a, b]) => {
+          const s = (mode === "new" ? newSize : oldSize)(a / b);
+          const ref = name === "16:9" || name === "1:1";
+          return `<div class="node"><div class="title"><b>${name}</b> · ${s.w}×${s.h}</div>
+            <div class="card${ref ? " ref" : ""}" style="width:${s.w * z}px;height:${s.h * z}px">选中后输入提示词生成图片</div></div>`;
+        }).join("");
+      }
+      for (const id of ["old", "new"]) {
+        document.getElementById(id).addEventListener("click", () => {
+          mode = id;
+          document.getElementById("old").setAttribute("aria-pressed", String(id === "old"));
+          document.getElementById("new").setAttribute("aria-pressed", String(id === "new"));
+          render();
+        });
+      }
+      document.getElementById("zoom").addEventListener("input", render);
+      render();
+    </script>
+  </body>
+</html>
