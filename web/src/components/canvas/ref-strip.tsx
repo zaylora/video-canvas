@@ -184,7 +184,6 @@ export function RefStrip({
             return (
               <motion.span
                 key={item.id}
-                layout="position"
                 {...enter}
                 exit={exit}
                 transition={SPRING}
@@ -229,7 +228,6 @@ export function RefStrip({
           {manual.map((ref) => (
             <motion.span
               key={`${ref.key}:${ref.assetId}`}
-              layout="position"
               {...enter}
               exit={exit}
               transition={SPRING}
