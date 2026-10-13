@@ -35,6 +35,7 @@ import {
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import type { ModelChannelInfo } from "@/utils/admin/model-channel";
 import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
 import { channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
@@ -306,7 +307,8 @@ export function ModelBasicForm({
               action={
                 <Link
                   className="text-xs font-medium underline underline-offset-4"
-                  to={`/admin/ai/channels?edit=${encodeURIComponent(info.channel.key)}`}
+                  to="/admin/ai/channels"
+                  state={dialogEntry({ kind: "edit", key: info.channel.key })}
                 >
                   去渠道页
                 </Link>

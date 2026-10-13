@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 import { listChannels, updateChannel } from "@/api/admin/ai";
@@ -16,13 +16,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAdminStore } from "@/store/admin";
 import { openDialog } from "@/store/dialog";
-import { parseChannelRoute, type ChannelTab } from "@/utils/admin/channel-route";
+import {
+  resolveChannelDialog,
+  type ChannelDialogOpen,
+  type ChannelTab,
+} from "@/utils/admin/channel-route";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
 import { useModelRowActions } from "../models/use-model-row-actions";
 import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
+import { useDialogTarget } from "../../use-dialog-target";
 import type { ChannelModelActions } from "./channel-models";
 import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
 import { ChannelModelEditor, type ChannelModelEditing } from "./channel-model-editor";
@@ -34,9 +40,9 @@ import { openSecretDialog } from "./secret-dialog";
 const CHANNEL_FILTERS = ["kind", "plugin", "status"] as const;
 
 /**
- * 渠道页：表格 + 详情弹窗。弹窗的状态都在 URL 里（刷新不丢，别处的跳转链接也能直达）：
- * ?key=<key>[&tab=config|models] 打开渠道，?new=1[&plugin=<插件 key>] 新建；
- * 旧链接 ?edit=<key> / ?edit=new 仍然有效（见 parseChannelRoute）。
+ * 渠道页：表格 + 详情弹窗。弹窗开着什么放在页面自己的 state 里，不进 URL
+ * （进了 URL 会把类型、搜索、页码筛选冲掉）；别的页面要直达，用 dialogEntry 经路由 state 带过来
+ * （见 ChannelDialogOpen：打开某个渠道的某个页签，或新建并预选插件）。
  * 页面级弹窗（设置 Key、导入、停用确认、删除）都走全局弹窗 store；
  * 从渠道弹窗里导入模型、删除渠道时先关掉渠道弹窗再开对应弹窗（两个弹窗不叠着）；设置 Key 留在原地，设完概览立刻刷新。
  * 新建、检查、设 Key、停用、删除只对运维渲染；导入 admin 也能用；admin 打开弹窗为只读。
@@ -46,7 +52,7 @@ export default function ChannelsPage() {
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
+  const [open, setOpen] = useDialogTarget<ChannelDialogOpen>();
   // 渠道分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量渠道和插件在 catalog 里（options）
   const list = useAdminList<ChannelListItem>(CHANNEL_FILTERS, (query) => listChannels(query));
   /** 渠道有改动之后：重新拉当前页，并刷新弹窗用的全量渠道（健康状态、固定版本） */
@@ -64,7 +70,7 @@ export default function ChannelsPage() {
   }, [reloadList]);
   const row = useModelRowActions(reloadModels);
 
-  const route = parseChannelRoute(params, catalog.channels, {
+  const route = resolveChannelDialog(open, catalog.channels, {
     canWrite,
     ready: catalog.channelsStatus === "ready",
   });
@@ -80,7 +86,7 @@ export default function ChannelsPage() {
   }, [isNew, routePlugin, routeKey, catalog.channels]);
   const tab: ChannelTab = routeTarget?.kind === "edit" ? routeTarget.tab : "config";
 
-  const closeDialog = () => setParams({}, { replace: true });
+  const closeDialog = () => setOpen(null);
 
   // 渠道弹窗“模型”页签里新建 / 编辑模型：叠在渠道弹窗上，关掉后渠道弹窗保持原样
   const [editing, setEditing] = useState<ChannelModelEditing | null>(null);
@@ -88,12 +94,12 @@ export default function ChannelsPage() {
   const refreshModels = useCallback(() => void reloadModels(), [reloadModels]);
   /** 弹窗用的全量插件和渠道要先到位，才能判断深链里的渠道存不存在 */
 
-  // 链接里的渠道已经不存在（被删了）：提示一次并清掉参数
+  // 要打开的渠道已经不存在（被删了）：提示一次并清掉
   useEffect(() => {
     if (!route.missing) return;
     toast.error(`渠道 ${route.missing} 不存在`);
-    setParams({}, { replace: true });
-  }, [route.missing, setParams]);
+    setOpen(null);
+  }, [route.missing, setOpen]);
 
   const openImport = (channel: ChannelListItem) =>
     openDialog(ImportDialog, {
@@ -101,11 +107,13 @@ export default function ChannelsPage() {
       plugins: catalog.plugins,
       onSaved: () => void reloadModels(),
       onImported: (draftId: string | null) =>
-        navigate(
-          draftId
-            ? `/admin/ai/models/new?from=import&draft=${encodeURIComponent(draftId)}`
-            : `/admin/ai/models/new?channel=${encodeURIComponent(channel.key)}`,
-        ),
+        navigate("/admin/ai/models", {
+          state: dialogEntry(
+            draftId
+              ? { isNew: true, fromImport: true, draftId }
+              : { isNew: true, presetChannel: channel.key },
+          ),
+        }),
     });
 
   const openSetKey = (channel: ChannelListItem) =>
@@ -140,7 +148,7 @@ export default function ChannelsPage() {
       name: channel.name,
       channels: catalog.channels,
       onDeleted: () => {
-        setParams({}, { replace: true });
+        setOpen(null);
         refreshChannels();
         void reloadModels();
       },
@@ -150,7 +158,7 @@ export default function ChannelsPage() {
   const modelActions: ChannelModelActions = {
     busyKey: row.busyKey,
     onEdit: (key, channel) => setEditing({ channel, key }),
-    onTest: (key) => navigate(`/admin/ai/models?key=${encodeURIComponent(key)}&test=1`),
+    onTest: (key) => navigate("/admin/ai/models", { state: dialogEntry({ key, test: true }) }),
     onNew: (channel) => setEditing({ channel, key: null }),
     onToggleEnabled: (key, enabled) => void row.toggleEnabled(key, enabled),
     onDelete: row.requestDelete,
@@ -164,7 +172,7 @@ export default function ChannelsPage() {
         </PageHeaderHeading>
         <PageHeaderActions>
           {canWrite && (
-            <Button onClick={() => setParams({ new: "1" })}>
+            <Button onClick={() => setOpen({ kind: "new" })}>
               <Plus />
               新建渠道
             </Button>
@@ -176,8 +184,8 @@ export default function ChannelsPage() {
         list={list}
         plugins={catalog.plugins}
         canWrite={canWrite}
-        onOpen={(key) => setParams({ key })}
-        onNew={() => setParams({ new: "1" })}
+        onOpen={(key) => setOpen({ kind: "edit", key })}
+        onNew={() => setOpen({ kind: "new" })}
         onImport={openImport}
         onSetKey={openSetKey}
         onToggle={requestToggle}
@@ -193,9 +201,6 @@ export default function ChannelsPage() {
         channels={catalog.channels}
         modelsRefreshKey={modelsRefreshKey}
         modelActions={modelActions}
-        onTabChange={(next) =>
-          routeKey && setParams({ key: routeKey, tab: next }, { replace: true })
-        }
         onSaved={refreshChannels}
         onClose={closeDialog}
       >

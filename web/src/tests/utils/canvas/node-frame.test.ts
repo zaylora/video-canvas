@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
 import {
+  AUDIO_NODE_ASPECT,
   DEFAULT_NODE_ASPECT,
-  NODE_FRAME_MAX,
   nodeFrameSize,
   paramAspect,
   parseAspect,
@@ -35,30 +35,28 @@ describe("parseAspect：把比例参数值读成宽高比", () => {
   });
 });
 
-describe("nodeFrameSize：框限定在 576×324 内", () => {
-  test("16:9 就是整个包围盒", () => {
-    expect(nodeFrameSize(16 / 9)).toEqual({ width: NODE_FRAME_MAX.width, height: 324 });
+describe("nodeFrameSize：所有比例的短边都是 324", () => {
+  test("16:9 保持 576×324", () => {
+    expect(nodeFrameSize(16 / 9)).toEqual({ width: 576, height: 324 });
   });
 
-  test("比 16:9 更宽的横图保持 576 宽，高度变矮", () => {
-    const size = nodeFrameSize(21 / 9);
-    expect(size.width).toBe(576);
-    expect(size.height).toBeCloseTo(576 / (21 / 9), 0);
-  });
-
-  test("竖图保持 324 高，宽度按比例收窄", () => {
-    const size = nodeFrameSize(9 / 16);
-    expect(size.height).toBe(324);
-    expect(size.width).toBeCloseTo(324 * (9 / 16), 0);
-  });
-
-  test("1:1 取高度 324 的正方形", () => {
+  test("1:1 保持 324×324", () => {
     expect(nodeFrameSize(1)).toEqual({ width: 324, height: 324 });
   });
 
-  test("极端比例收在上下限内，框不会窄到放不下按钮和文字", () => {
-    expect(nodeFrameSize(1 / 10).width).toBeGreaterThanOrEqual(160);
-    expect(nodeFrameSize(10).height).toBeGreaterThanOrEqual(120);
+  test("横图高度固定 324，宽度按比例变宽", () => {
+    expect(nodeFrameSize(4 / 3)).toEqual({ width: 432, height: 324 });
+    expect(nodeFrameSize(21 / 9)).toEqual({ width: 756, height: 324 });
+  });
+
+  test("竖图宽度固定 324，高度按比例变高", () => {
+    expect(nodeFrameSize(3 / 4)).toEqual({ width: 324, height: 432 });
+    expect(nodeFrameSize(9 / 16)).toEqual({ width: 324, height: 576 });
+  });
+
+  test("极端比例长边不封顶，短边仍是 324", () => {
+    expect(nodeFrameSize(1 / 8)).toEqual({ width: 324, height: 2592 });
+    expect(nodeFrameSize(8)).toEqual({ width: 2592, height: 324 });
   });
 
   test("宽高比无效时按默认 16:9 画", () => {
@@ -70,6 +68,7 @@ describe("nodeFrameSize：框限定在 576×324 内", () => {
   test("宽度 / 高度的比与目标比例一致，框不会和内容对不上", () => {
     for (const aspect of [9 / 16, 3 / 4, 1, 4 / 3, 16 / 9, 21 / 9]) {
       const { width, height } = nodeFrameSize(aspect);
+      expect(Math.min(width, height)).toBe(324);
       expect(width / height).toBeCloseTo(aspect, 1);
     }
   });
@@ -111,5 +110,23 @@ describe("resolveNodeAspect：成片 > 所选比例 > 16:9", () => {
 
   test("都没有，用默认 16:9", () => {
     expect(resolveNodeAspect({ measured: null, selected: null })).toBe(DEFAULT_NODE_ASPECT);
+  });
+});
+
+describe("音频节点：固定 1:1", () => {
+  test("音频不管量到什么、选了什么，画幅都是 1:1", () => {
+    expect(AUDIO_NODE_ASPECT).toBe(1);
+    expect(resolveNodeAspect({ measured: null, selected: null, mediaType: "audio" })).toBe(1);
+    expect(resolveNodeAspect({ measured: 16 / 9, selected: 9 / 16, mediaType: "audio" })).toBe(1);
+    expect(nodeFrameSize(AUDIO_NODE_ASPECT)).toEqual({ width: 324, height: 324 });
+  });
+
+  test("图片和视频照旧：成片 > 所选比例 > 16:9", () => {
+    expect(resolveNodeAspect({ measured: null, selected: null, mediaType: "video" })).toBe(
+      DEFAULT_NODE_ASPECT,
+    );
+    expect(resolveNodeAspect({ measured: 3 / 4, selected: null, mediaType: "image" })).toBeCloseTo(
+      3 / 4,
+    );
   });
 });

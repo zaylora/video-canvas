@@ -88,6 +88,24 @@ describe("buildOutpaintNode 造新节点和连线", () => {
     expect(node.position.y).toBeCloseTo(200);
   });
 
+  test("竖图比例的新节点框是 324×576，按它的高居中、按原图的右边摆", () => {
+    const { node } = buildOutpaintNode({ ...args, ratio: "9:16" });
+    expect(node.position.x).toBe(100 + 576 + 80);
+    expect(node.position.y).toBeCloseTo(200 + 324 / 2 - 576 / 2);
+  });
+
+  test("新节点按自己的框宽判断右侧有没有被占", () => {
+    const blocker: CanvasNode = {
+      id: "b",
+      type: "canvas",
+      position: { x: 756 + 324 - 10, y: 200 },
+      measured: { width: 576, height: 324 },
+      data: makeData({ kind: "image", label: "挡路" }),
+    };
+    const { node } = buildOutpaintNode({ ...args, ratio: "9:16", nodes: [source, blocker] });
+    expect(node.position.y).toBeGreaterThanOrEqual(200 + 324);
+  });
+
   test("右侧被占了就向下错开，不压在别的节点上", () => {
     const blocker: CanvasNode = {
       id: "b",

@@ -1,14 +1,15 @@
 import type { Capabilities } from "@/api/model/type";
+import type { NodeMediaType } from "@/types";
 import { effectiveValue, paramEntries, type ParamEntry } from "@/utils/tasks/capabilities";
 
 /** 还不知道画幅时节点用的宽高比：16:9 */
 export const DEFAULT_NODE_ASPECT = 16 / 9;
 
-/** 节点框的包围盒（像素）：任何画幅都收在里面，横图贴满宽，竖图贴满高 */
-export const NODE_FRAME_MAX = { width: 576, height: 324 } as const;
+/** 音频节点的宽高比：1:1。音频没有画面也没有比例参数，不跟成片和参数走 */
+export const AUDIO_NODE_ASPECT = 1;
 
-/** 框最窄、最矮的限度（像素），再极端的比例也要放得下占位文字和按钮 */
-const NODE_FRAME_MIN = { width: 160, height: 120 } as const;
+/** 节点框的短边（像素）：任何画幅的短边都一样，16:9 的高、1:1 的边长都是它 */
+export const NODE_FRAME_SHORT_SIDE = 324;
 
 /** 不同模型给比例参数起的名字 */
 const RATIO_PARAM_NAMES = ["aspect_ratio", "ratio"] as const;
@@ -27,20 +28,16 @@ export function parseAspect(value: unknown): number | null {
 }
 
 /**
- * 按宽高比算节点框的像素尺寸：限定在 NODE_FRAME_MAX 内，横图贴满宽、竖图贴满高。
- * 极端比例会被收在 NODE_FRAME_MIN 之上，免得框窄到放不下内容。
+ * 按宽高比算节点框的像素尺寸：短边固定 NODE_FRAME_SHORT_SIDE，横图定高、竖图定宽。
+ * 长边不封顶，极端比例会很长。
  * @param aspect 宽 / 高；无效值按默认 16:9
  * @returns 框的宽、高（像素）
  */
 export function nodeFrameSize(aspect: number): { width: number; height: number } {
   const ratio = Number.isFinite(aspect) && aspect > 0 ? aspect : DEFAULT_NODE_ASPECT;
-  const minRatio = NODE_FRAME_MIN.width / NODE_FRAME_MAX.height;
-  const maxRatio = NODE_FRAME_MAX.width / NODE_FRAME_MIN.height;
-  const clamped = Math.min(Math.max(ratio, minRatio), maxRatio);
-  const boxRatio = NODE_FRAME_MAX.width / NODE_FRAME_MAX.height;
-  return clamped >= boxRatio
-    ? { width: NODE_FRAME_MAX.width, height: Math.round(NODE_FRAME_MAX.width / clamped) }
-    : { width: Math.round(NODE_FRAME_MAX.height * clamped), height: NODE_FRAME_MAX.height };
+  return ratio >= 1
+    ? { width: Math.round(NODE_FRAME_SHORT_SIDE * ratio), height: NODE_FRAME_SHORT_SIDE }
+    : { width: NODE_FRAME_SHORT_SIDE, height: Math.round(NODE_FRAME_SHORT_SIDE / ratio) };
 }
 
 /**
@@ -68,14 +65,17 @@ export function ratioParam(caps: Capabilities | undefined): ParamEntry | undefin
 }
 
 /**
- * 节点框此刻该用的宽高比：量到的成片画幅优先，其次是所选比例，都没有就 16:9。
+ * 节点框此刻该用的宽高比：音频固定 1:1；其余量到的成片画幅优先，其次是所选比例，都没有就 16:9。
  * @param input.measured 成片实际的宽 / 高；还没量到为 null
  * @param input.selected 参数面板里所选比例对应的宽 / 高；没有为 null
+ * @param input.mediaType 节点的素材种类；不给按图片 / 视频处理
  * @returns 宽 / 高
  */
 export function resolveNodeAspect(input: {
   measured: number | null;
   selected: number | null;
+  mediaType?: NodeMediaType;
 }): number {
+  if (input.mediaType === "audio") return AUDIO_NODE_ASPECT;
   return input.measured ?? input.selected ?? DEFAULT_NODE_ASPECT;
 }

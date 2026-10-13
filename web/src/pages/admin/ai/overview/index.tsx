@@ -18,8 +18,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
+import type { ChannelDialogOpen } from "@/utils/admin/channel-route";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import { canManageInfra } from "@/utils/admin/role";
 
+import type { ModelDialogOpen } from "../models/model-route";
 import { ChannelLoad } from "./channel-load";
 import { KpiRow } from "./kpi-row";
 import { OnboardingSteps, type OnboardingStep } from "./onboarding-steps";
@@ -80,7 +83,13 @@ export default function OverviewPage() {
       ok: usableChannels > 0,
       stat: `${usableChannels} / ${channelTotal} 个可用`,
       short: `${usableChannels} / ${channelTotal} 可用`,
-      action: canWrite ? { label: "新建渠道", to: "/admin/ai/channels?edit=new" } : null,
+      action: canWrite
+        ? {
+            label: "新建渠道",
+            to: "/admin/ai/channels",
+            state: dialogEntry<ChannelDialogOpen>({ kind: "new" }),
+          }
+        : null,
     },
     {
       title: "上线模型",
@@ -88,7 +97,11 @@ export default function OverviewPage() {
       ok: online > 0,
       stat: `${online} 个在线`,
       short: `${online} 个在线`,
-      action: { label: "新建模型", to: "/admin/ai/models/new" },
+      action: {
+        label: "新建模型",
+        to: "/admin/ai/models",
+        state: dialogEntry<ModelDialogOpen>({ isNew: true }),
+      },
     },
   ];
 
@@ -177,7 +190,11 @@ export default function OverviewPage() {
           </PageHeader>
 
           <Reveal>
-            <OnboardingSteps steps={steps} ready={ready} onNavigate={navigate} />
+            <OnboardingSteps
+              steps={steps}
+              ready={ready}
+              onNavigate={(to, state) => navigate(to, { state })}
+            />
           </Reveal>
 
           <div className="grid gap-3">
@@ -229,7 +246,14 @@ export default function OverviewPage() {
                   stale={loads.stale}
                   onRetry={() => void loads.reload()}
                   onOpenChannels={() => navigate("/admin/ai/channels")}
-                  onCreateChannel={canWrite ? () => navigate("/admin/ai/channels?edit=new") : null}
+                  onCreateChannel={
+                    canWrite
+                      ? () =>
+                          navigate("/admin/ai/channels", {
+                            state: dialogEntry<ChannelDialogOpen>({ kind: "new" }),
+                          })
+                      : null
+                  }
                 />
               </Reveal>
               <Reveal index={8} className="min-w-0">

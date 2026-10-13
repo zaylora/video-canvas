@@ -44,7 +44,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * 模型页的全部状态与动作：列表、选中、JSON 正文（事实来源）、表单 / JSON 视图切换、
  * 保存 / 校验 / dry-run / 试跑 / 上线下线、导入草稿队列、结果面板与追踪。
- * 选中的模型由 URL 决定（?key=<key>，/models/new 是新建），所以刷新与深链都能还原。
+ * 选中的模型由 route 决定（模型页放在自己的 state 里，渠道页从弹窗里编辑时也是）。
  * 请求失败的全局 toast 由拦截器统一弹；这里 catch 只做状态恢复或把原因翻译成就地提示。
  */
 export function useModelWorkspace(

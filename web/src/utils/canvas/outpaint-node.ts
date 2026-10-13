@@ -72,8 +72,8 @@ export function buildOutpaintNode(input: {
 
   const size = sizeOf(source);
   const origin = absolutePosition(source, nodes);
-  const newHeight = nodeFrameSize(parseAspect(ratio) ?? size.width / size.height).height;
-  const newSize = { width: size.width, height: newHeight };
+  const newSize = nodeFrameSize(parseAspect(ratio) ?? size.width / size.height);
+  const newHeight = newSize.height;
   const taken: Rect[] = nodes.map((node) => ({
     ...absolutePosition(node, nodes),
     ...sizeOf(node),
