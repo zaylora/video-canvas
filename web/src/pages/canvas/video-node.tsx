@@ -327,6 +327,7 @@ function MediaTaskNode({
   const aspect = resolveNodeAspect({
     measured: measuredAspect,
     selected: paramAspect(vm.caps, vm.params),
+    mediaType,
   });
   const uploadFailed = interrupted || isUploadFailed(data);
   const retryable = view.phase === "failed";

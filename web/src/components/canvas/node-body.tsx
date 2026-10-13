@@ -4,6 +4,7 @@ import { Loader2, TriangleAlert } from "lucide-react";
 import { TaskIdTag } from "@/components/task-id-tag";
 import { TEXT_BODY_MAX } from "@/utils/canvas/paste";
 
+import { AudioPlayer } from "./audio-player";
 import { BaseNodeContent } from "./base-node";
 import { GridReveal } from "@/components/ui/grid-reveal";
 
@@ -257,14 +258,14 @@ type NodeMediaBodyProps = {
   aspect?: number;
   /** 视频时长，毫秒；节点数据里没有就不传，视频封面不显示时长角标 */
   durationMs?: number | null;
-  /** 所在节点是否被选中；视频失去选中会停止播放并退回封面，默认不受约束 */
+  /** 所在节点是否被选中；视频、音频失去选中会停止播放，默认不受约束 */
   active?: boolean;
 };
 
 /**
  * 现成素材的正文：本地传进来的、或是生成服务交回来的一份图/视频，
  * 摆在和别的节点一样的画幅里。
- * 图片按画布缩放分档加载缩略图 / 原图；视频平时只是封面，点击才挂载 video。
+ * 图片按画布缩放分档加载缩略图 / 原图；视频平时只是封面，点击才挂载 video；音频是波形播放器。
  */
 export function NodeMediaBody({
   src,
@@ -283,10 +284,8 @@ export function NodeMediaBody({
         {mediaType === "image" ? (
           <MediaPreview src={src} alt={alt} />
         ) : mediaType === "audio" ? (
-          // 音频没有画面，播放器居中摆在同一副画幅里
-          <div className="flex size-full items-center justify-center px-4">
-            <audio src={src} controls className="nodrag nowheel w-full" />
-          </div>
+          // 音频没有画面：波形播放器填满同一个盒子（画幅固定 1:1，设计 6.18）
+          <AudioPlayer src={src} active={active} />
         ) : (
           <VideoFacade src={src} durationMs={durationMs} active={active} />
         )}

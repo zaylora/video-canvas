@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Capabilities } from "@/api/model/type";
 import {
+  AUDIO_NODE_ASPECT,
   DEFAULT_NODE_ASPECT,
   nodeFrameSize,
   paramAspect,
@@ -109,5 +110,23 @@ describe("resolveNodeAspect：成片 > 所选比例 > 16:9", () => {
 
   test("都没有，用默认 16:9", () => {
     expect(resolveNodeAspect({ measured: null, selected: null })).toBe(DEFAULT_NODE_ASPECT);
+  });
+});
+
+describe("音频节点：固定 1:1", () => {
+  test("音频不管量到什么、选了什么，画幅都是 1:1", () => {
+    expect(AUDIO_NODE_ASPECT).toBe(1);
+    expect(resolveNodeAspect({ measured: null, selected: null, mediaType: "audio" })).toBe(1);
+    expect(resolveNodeAspect({ measured: 16 / 9, selected: 9 / 16, mediaType: "audio" })).toBe(1);
+    expect(nodeFrameSize(AUDIO_NODE_ASPECT)).toEqual({ width: 324, height: 324 });
+  });
+
+  test("图片和视频照旧：成片 > 所选比例 > 16:9", () => {
+    expect(resolveNodeAspect({ measured: null, selected: null, mediaType: "video" })).toBe(
+      DEFAULT_NODE_ASPECT,
+    );
+    expect(resolveNodeAspect({ measured: 3 / 4, selected: null, mediaType: "image" })).toBeCloseTo(
+      3 / 4,
+    );
   });
 });

@@ -78,3 +78,30 @@ describe("节点框画幅跟着 aspect 走", () => {
     expect(render({ phase: "queued" })).toContain(`aspect-ratio:${16 / 9}`);
   });
 });
+
+describe("音频节点正文（设计 6.18）", () => {
+  const audio = (view: VideoNodeView) => render(view, { mediaType: "audio", aspect: 1 });
+
+  test("完成后是自绘播放器：播放键、进度滑块和时间，不用原生 controls", () => {
+    const out = audio({ phase: "done", src: "https://example.com/a.mp3" });
+    expect(out).toContain('aria-label="播放"');
+    expect(out).toContain('role="slider"');
+    expect(out).toContain("00:00:0");
+    expect(out).not.toContain("controls");
+  });
+
+  test("波形区拦住拖动和滚轮，拖播放头不会带走节点", () => {
+    const out = audio({ phase: "done", src: "https://example.com/a.mp3" });
+    expect(out).toContain("nodrag nowheel nopan");
+  });
+
+  test("占位、生成中、失败都跟着 1:1 画幅，状态切换框不变形", () => {
+    const phases: VideoNodeView[] = [
+      { phase: "idle" },
+      { phase: "queued" },
+      { phase: "running", progress: null, elapsedMs: null },
+      { phase: "failed", message: "x", refunded: false, taskRef: null },
+    ];
+    for (const view of phases) expect(audio(view)).toContain("aspect-ratio:1");
+  });
+});

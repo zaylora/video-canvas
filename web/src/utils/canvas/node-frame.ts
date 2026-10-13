@@ -1,8 +1,12 @@
 import type { Capabilities } from "@/api/model/type";
+import type { NodeMediaType } from "@/types";
 import { effectiveValue, paramEntries, type ParamEntry } from "@/utils/tasks/capabilities";
 
 /** 还不知道画幅时节点用的宽高比：16:9 */
 export const DEFAULT_NODE_ASPECT = 16 / 9;
+
+/** 音频节点的宽高比：1:1。音频没有画面也没有比例参数，不跟成片和参数走 */
+export const AUDIO_NODE_ASPECT = 1;
 
 /** 节点框的短边（像素）：任何画幅的短边都一样，16:9 的高、1:1 的边长都是它 */
 export const NODE_FRAME_SHORT_SIDE = 324;
@@ -61,14 +65,17 @@ export function ratioParam(caps: Capabilities | undefined): ParamEntry | undefin
 }
 
 /**
- * 节点框此刻该用的宽高比：量到的成片画幅优先，其次是所选比例，都没有就 16:9。
+ * 节点框此刻该用的宽高比：音频固定 1:1；其余量到的成片画幅优先，其次是所选比例，都没有就 16:9。
  * @param input.measured 成片实际的宽 / 高；还没量到为 null
  * @param input.selected 参数面板里所选比例对应的宽 / 高；没有为 null
+ * @param input.mediaType 节点的素材种类；不给按图片 / 视频处理
  * @returns 宽 / 高
  */
 export function resolveNodeAspect(input: {
   measured: number | null;
   selected: number | null;
+  mediaType?: NodeMediaType;
 }): number {
+  if (input.mediaType === "audio") return AUDIO_NODE_ASPECT;
   return input.measured ?? input.selected ?? DEFAULT_NODE_ASPECT;
 }

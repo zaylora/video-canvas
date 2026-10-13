@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>音频节点原型</title>
+    <style>
+      /* token 抄自 web/src/index.css 的 .dark */
+      :root {
+        --canvas-bg: oklch(0.13 0 0);
+        --canvas-dot: oklch(1 0 0 / 0.14);
+        --card: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0);
+        --foreground: oklch(0.985 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --chrome: oklch(0.205 0 0);
+        --node-ring: oklch(1 0 0 / 0.72);
+        --status-running: oklch(0.75 0.12 240);
+        --ease: cubic-bezier(0.2, 0, 0, 1);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 16px; min-height: 100vh;
+        background: var(--canvas-bg);
+        background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+        background-size: 20px 20px;
+        color: var(--foreground);
+        font: 13px/1.5 system-ui, "PingFang SC", sans-serif;
+      }
+      .bar {
+        display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: fit-content; max-width: 100%;
+        padding: 6px; margin-bottom: 32px;
+        background: var(--chrome); border: 1px solid var(--border); border-radius: 12px;
+      }
+      .bar button {
+        font: inherit; color: var(--muted-foreground); background: none; border: 0;
+        border-radius: 8px; padding: 4px 12px; cursor: pointer;
+      }
+      .bar button:hover { color: var(--foreground); }
+      .bar button[aria-pressed="true"] { color: var(--foreground); background: oklch(1 0 0 / 0.1); }
+      .bar button:focus-visible, .play:focus-visible { outline: 2px solid var(--node-ring); }
+      .title { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--foreground); font-weight: 600; }
+      .title svg { color: var(--muted-foreground); }
+      .card {
+        width: 324px; height: 324px; position: relative; overflow: hidden;
+        background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      }
+      .card.dashed { border-style: dashed; }
+      .center {
+        position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+        color: var(--muted-foreground); font-size: 12px; padding: 16px;
+      }
+      .wave { position: absolute; left: 20px; right: 20px; top: 48px; height: 160px; cursor: ew-resize; touch-action: none; }
+      .wave canvas { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 180ms var(--ease); }
+      .wave canvas.in { opacity: 1; }
+      .head { position: absolute; left: 0; top: -8px; height: 176px; width: 24px; margin-left: -12px; will-change: transform; }
+      .head::before { content: ""; position: absolute; left: 11px; top: 8px; bottom: 0; width: 2px; background: var(--status-running); }
+      .head::after { content: ""; position: absolute; left: 9px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); }
+      .time { position: absolute; left: 20px; bottom: 20px; font-size: 20px; font-variant-numeric: tabular-nums; }
+      .time .z { color: var(--muted-foreground); }
+      .play {
+        position: absolute; right: 20px; bottom: 16px; width: 32px; height: 32px; border-radius: 50%;
+        border: 0; background: var(--muted); color: var(--foreground); display: grid; place-items: center; cursor: pointer;
+        transition: background 120ms var(--ease), transform 120ms var(--ease);
+      }
+      .play:hover { background: oklch(0.35 0 0); }
+      .play:active { transform: scale(0.96); }
+      .bar2 { height: 2px; background: var(--muted); border-radius: 1px; margin-top: 12px; width: 160px; overflow: hidden; }
+      .bar2 i { display: block; height: 100%; width: 40%; background: var(--foreground); animation: slide 1.6s infinite var(--ease); }
+      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      .fail { color: oklch(0.704 0.191 22.216); }
+      @media (prefers-reduced-motion: reduce) { .bar2 i { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="bar" role="group" aria-label="状态">
+      <button type="button" data-s="idle">空</button>
+      <button type="button" data-s="running">生成中</button>
+      <button type="button" data-s="done" aria-pressed="true">完成</button>
+      <button type="button" data-s="failed">失败</button>
+    </div>
+    <div>
+      <div class="title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        音频 1
+      </div>
+      <div class="card" id="card"></div>
+      <p style="color:var(--muted-foreground);margin-top:16px;max-width:324px">324×324，1:1。完成态：拖蓝色播放头（或在波形上任意处按下）调进度，拖动时暂停、松手接着播；点右下角播放。（原型用模拟波形和时钟。）</p>
+    </div>
+
+    <script>
+      const TOTAL = 24; // 秒
+      const BARS = 56; // 整首均分成 56 根；宽 284 = 56 × 5 - 间隔
+      const PITCH = 5; // 条宽 2 + 间隔 3
+      const WAVE_W = BARS * PITCH - 3;
+      const peaks = Array.from({ length: BARS }, (_, i) => {
+        if (i < 8 || i > 49) return 0.01; // 首尾静音，画成圆点
+        const e = Math.sin(i / 4) * 0.5 + 0.5;
+        return Math.max(0.08, Math.min(1, e * (0.3 + Math.abs(Math.sin(i * 1.7)) * 0.7)));
+      });
+      const card = document.getElementById("card");
+      let state = "done", t = 1, playing = false, last = 0, raf = 0;
+
+      const pad = (n) => String(n).padStart(2, "0");
+      function timeHtml(sec) {
+        const s = Math.floor(sec), parts = [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(pad);
+        const str = parts.join(":");
+        const first = str.search(/[1-9]/);
+        const cut = first === -1 ? str.length - 1 : first;
+        return `<span class="z">${str.slice(0, cut)}</span>${str.slice(cut)}`;
+      }
+      const ICON = {
+        play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+        pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>',
+      };
+
+      function draw(canvas) {
+        const dpr = devicePixelRatio || 1, w = canvas.clientWidth, hh = canvas.clientHeight;
+        if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = hh * dpr; }
+        const g = canvas.getContext("2d");
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, hh);
+        const played = getComputedStyle(document.documentElement).getPropertyValue("--foreground");
+        const rest = "oklch(0.708 0 0 / 0.6)", mid = hh / 2, ratio = t / TOTAL;
+        peaks.forEach((p, i) => {
+          const x = i * PITCH;
+          g.fillStyle = (i + 0.5) / BARS <= ratio ? played : rest;
+          if (p < 0.03) { g.beginPath(); g.arc(x + 1, mid, 1, 0, 7); g.fill(); return; } // 静音：圆点
+          const half = p * (hh / 2 - 8);
+          g.beginPath(); g.roundRect(x, mid - half, 2, half * 2, 1); g.fill();
+        });
+      }
+
+      function renderDone() {
+        card.className = "card";
+        card.innerHTML = `
+          <div class="wave" id="wave"><canvas></canvas><div class="head" id="head" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="24"></div></div>
+          <div class="time" id="time"></div>
+          <button class="play" id="play" type="button" aria-label="播放">${ICON.play}</button>`;
+        const wave = card.querySelector("#wave"), canvas = wave.querySelector("canvas");
+        const head = card.querySelector("#head");
+        const update = () => {
+          draw(canvas);
+          head.style.transform = `translateX(${(t / TOTAL) * WAVE_W}px)`;
+          head.setAttribute("aria-valuenow", Math.round(t));
+          card.querySelector("#time").innerHTML = timeHtml(t);
+        };
+        update();
+        requestAnimationFrame(() => canvas.classList.add("in"));
+        const btn = card.querySelector("#play");
+        const sync = () => { btn.innerHTML = playing ? ICON.pause : ICON.play; btn.setAttribute("aria-label", playing ? "暂停" : "播放"); };
+        btn.onclick = () => { playing = !playing; last = performance.now(); sync(); };
+        // 拖播放头；在波形任意处按下，播放头先跳过去再接着拖。拖动时暂停，松手后若拖之前在播就接着播
+        let drag = null;
+        const seek = (e) => {
+          const r = wave.getBoundingClientRect();
+          t = Math.min(TOTAL, Math.max(0, ((e.clientX - r.left) / WAVE_W) * TOTAL));
+          update();
+        };
+        wave.onpointerdown = (e) => {
+          wave.setPointerCapture(e.pointerId);
+          drag = { wasPlaying: playing };
+          playing = false; sync(); seek(e);
+        };
+        wave.onpointermove = (e) => { if (drag) seek(e); };
+        const end = () => {
+          if (!drag) return;
+          playing = drag.wasPlaying; last = performance.now(); drag = null; sync();
+        };
+        wave.onpointerup = end; wave.onpointercancel = end;
+        cancelAnimationFrame(raf);
+        const tick = (now) => {
+          if (playing) {
+            t = Math.min(TOTAL, t + (now - last) / 1000); last = now;
+            if (t >= TOTAL) { playing = false; t = 0; sync(); }
+            update();
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      }
+
+      function render() {
+        cancelAnimationFrame(raf); playing = false;
+        if (state === "done") return renderDone();
+        card.className = "card" + (state === "idle" ? " dashed" : "");
+        card.innerHTML = {
+          idle: '<div class="center">选中后输入提示词生成音频</div>',
+          running: '<div class="center"><div>生成中<div class="bar2"><i></i></div></div></div>',
+          failed: '<div class="center fail"><div>生成失败：模型服务繁忙<br /><span style="color:var(--muted-foreground)">积分已退回 · 重试</span></div></div>',
+        }[state];
+      }
+      document.querySelectorAll(".bar button").forEach((b) => b.addEventListener("click", () => {
+        state = b.dataset.s;
+        document.querySelectorAll(".bar button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        render();
+      }));
+      render();
+    </script>
+  </body>
+</html>
