@@ -4,45 +4,32 @@ export type ChannelTab = "config" | "models";
 /** 插件弹窗的页签 */
 export type PluginTab = "overview" | "versions";
 
-/** 渠道页 URL 要打开的弹窗：新建（可预选插件），或已有渠道的某个页签 */
+/** 渠道页要打开的弹窗：新建（可预选插件），或已有渠道的某个页签（不给页签停在配置） */
+export type ChannelDialogOpen =
+  | { kind: "new"; pluginKey?: string }
+  | { kind: "edit"; key: string; tab?: ChannelTab };
+
+/** 解析后的弹窗目标：页签已补全 */
 export type ChannelRouteTarget =
   | { kind: "new"; pluginKey?: string }
   | { kind: "edit"; key: string; tab: ChannelTab };
 
-const CHANNEL_TABS: readonly string[] = ["config", "models"];
-
 /**
- * 解析渠道页的 URL 参数：
- * - `?key=<key>[&tab=config|models]` 打开渠道弹窗（默认配置）；
- * - `?new=1[&plugin=<插件 key>]` 新建；
- * - 旧链接 `?edit=new` 等同新建，`?edit=<key>` 打开配置页签（别处的跳转链接还在用）。
- * 渠道不存在时不开弹窗，把缺失的 key 报出来（清单没加载完 ready=false 时先不报，避免闪错）。
- * 新建需要写权限。
+ * 渠道页弹窗的状态放在页面自己的 state 里，不进 URL（进了 URL 会把列表的类型、搜索、页码筛选冲掉）。
+ * 这里把它解析成能直接渲染的目标：
+ * 渠道不存在时不开弹窗，把缺失的 key 报出来（清单没加载完 ready=false 时先不报，避免闪错）；新建需要写权限。
  */
-export function parseChannelRoute(
-  params: URLSearchParams,
+export function resolveChannelDialog(
+  open: ChannelDialogOpen | null,
   channels: ReadonlyArray<{ key: string }>,
   { canWrite, ready }: { canWrite: boolean; ready: boolean },
 ): { target: ChannelRouteTarget | null; missing: string | null } {
-  const edit = params.get("edit");
-  if (params.get("new") === "1" || edit === "new") {
-    return {
-      target: canWrite ? { kind: "new", pluginKey: params.get("plugin") ?? undefined } : null,
-      missing: null,
-    };
+  if (!open) return { target: null, missing: null };
+  if (open.kind === "new") {
+    return { target: canWrite ? { kind: "new", pluginKey: open.pluginKey } : null, missing: null };
   }
-  const key = params.get("key") ?? edit;
-  if (!key) return { target: null, missing: null };
-  if (!channels.some((channel) => channel.key === key)) {
-    return { target: null, missing: ready ? key : null };
+  if (!channels.some((channel) => channel.key === open.key)) {
+    return { target: null, missing: ready ? open.key : null };
   }
-  const tab = params.get("tab");
-  return {
-    target: {
-      kind: "edit",
-      key,
-      tab: CHANNEL_TABS.includes(tab ?? "") ? (tab as ChannelTab) : "config",
-    },
-    missing: null,
-  };
+  return { target: { kind: "edit", key: open.key, tab: open.tab ?? "config" }, missing: null };
 }

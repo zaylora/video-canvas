@@ -6,6 +6,7 @@ import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
 import ChannelsPage from "@/pages/admin/ai/channels";
 import ModelsPage from "@/pages/admin/ai/models";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
@@ -104,7 +105,13 @@ export const router = createBrowserRouter([
                 }),
               },
               { path: "ai/models", element: <ModelsPage /> },
-              { path: "ai/models/new", element: <ModelsPage /> },
+              {
+                // 旧链接：新建模型现在是模型页里的弹窗，不再占用 URL
+                path: "ai/models/new",
+                element: (
+                  <Navigate to="/admin/ai/models" replace state={dialogEntry({ isNew: true })} />
+                ),
+              },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },

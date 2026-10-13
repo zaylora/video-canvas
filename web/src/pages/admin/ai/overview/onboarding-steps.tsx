@@ -21,7 +21,11 @@ export type OnboardingStep = {
   /** 细条里的简写，如“3 个插件” */
   short: string;
   /** 这一步的操作按钮；没有权限时为 null */
-  action: { label: string; to: string } | null;
+  action: {
+    label: string;
+    to: string;
+    /** 跳转时带的路由 state，用来让目标页直接打开弹窗 */ state?: unknown;
+  } | null;
 };
 
 /**
@@ -43,7 +47,7 @@ export function OnboardingSteps({
 }: {
   steps: OnboardingStep[];
   ready: boolean;
-  onNavigate: (to: string) => void;
+  onNavigate: (to: string, state?: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -86,7 +90,7 @@ export function OnboardingSteps({
               <Button
                 size="sm"
                 variant={current?.title === step.title ? "default" : "outline"}
-                onClick={() => onNavigate(step.action!.to)}
+                onClick={() => onNavigate(step.action!.to, step.action!.state)}
               >
                 <Plus />
                 {step.action.label}

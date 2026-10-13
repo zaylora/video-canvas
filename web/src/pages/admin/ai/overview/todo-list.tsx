@@ -17,6 +17,8 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import type { ChannelDialogOpen } from "@/utils/admin/channel-route";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 
 import { openSecretDialog } from "../channels/secret-dialog";
 import { confirmUpgradeChannels } from "../plugins/upgrade-channels";
@@ -56,8 +58,14 @@ export function TodoList({
   const navigate = useNavigate();
 
   const run = async ({ action }: OverviewTodo) => {
-    const channelKey = encodeURIComponent(action.channel_key ?? "");
-    const pluginKey = encodeURIComponent(action.plugin_key ?? "");
+    const channelKey = action.channel_key ?? "";
+    const pluginKey = action.plugin_key ?? "";
+    const openChannel = () =>
+      navigate("/admin/ai/channels", {
+        state: dialogEntry<ChannelDialogOpen>({ kind: "edit", key: channelKey }),
+      });
+    const openPlugin = () =>
+      navigate("/admin/ai/plugins", { state: dialogEntry({ key: pluginKey }) });
     if (action.kind === "set-key") {
       // 待处理里的“设置 Key”一定是还没设置过 Key 的渠道，名字由后端一并带来
       if (canWrite && action.channel_key) {
@@ -69,9 +77,9 @@ export function TodoList({
         });
         return;
       }
-      navigate(`/admin/ai/channels?key=${channelKey}`);
+      openChannel();
     } else if (action.kind === "open-plugin") {
-      navigate(`/admin/ai/plugins?key=${pluginKey}`);
+      openPlugin();
     } else if (action.kind === "upgrade-plugin") {
       if (canWrite) {
         // 升级要对照全量插件版本和渠道，点了才取（按需，不预加载）
@@ -89,9 +97,9 @@ export function TodoList({
           // 请求失败的全局 toast 已弹，退回到去插件页
         }
       }
-      navigate(`/admin/ai/plugins?key=${pluginKey}`);
+      openPlugin();
     } else {
-      navigate(`/admin/ai/channels?key=${channelKey}`);
+      openChannel();
     }
   };
 

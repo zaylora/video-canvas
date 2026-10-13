@@ -1,57 +1,55 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseChannelRoute } from "@/utils/admin/channel-route";
+import { resolveChannelDialog } from "@/utils/admin/channel-route";
 
 const channels = [{ key: "newapi" }, { key: "yswg" }];
-const params = (query: string) => new URLSearchParams(query);
+const ready = { canWrite: true, ready: true };
 
-describe("parseChannelRoute", () => {
-  test("没有参数：不开弹窗", () => {
-    expect(parseChannelRoute(params(""), channels, { canWrite: true, ready: true })).toEqual({
-      target: null,
-      missing: null,
+describe("resolveChannelDialog", () => {
+  test("没有要打开的弹窗：不开", () => {
+    expect(resolveChannelDialog(null, channels, ready)).toEqual({ target: null, missing: null });
+  });
+
+  test("打开已有渠道，默认停在配置页签", () => {
+    expect(resolveChannelDialog({ kind: "edit", key: "newapi" }, channels, ready).target).toEqual({
+      kind: "edit",
+      key: "newapi",
+      tab: "config",
     });
   });
 
-  test("?key=<key> 打开该渠道的配置", () => {
+  test("可以指定页签", () => {
     expect(
-      parseChannelRoute(params("key=newapi"), channels, { canWrite: true, ready: true }).target,
-    ).toEqual({ kind: "edit", key: "newapi", tab: "config" });
+      resolveChannelDialog({ kind: "edit", key: "newapi", tab: "models" }, channels, ready).target,
+    ).toEqual({ kind: "edit", key: "newapi", tab: "models" });
   });
 
-  test("?key=<key>&tab= 指定页签；未知页签回到配置", () => {
-    const parse = (query: string) =>
-      parseChannelRoute(params(query), channels, { canWrite: true, ready: true }).target;
-    expect(parse("key=newapi&tab=config")).toEqual({ kind: "edit", key: "newapi", tab: "config" });
-    expect(parse("key=newapi&tab=models")).toEqual({ kind: "edit", key: "newapi", tab: "models" });
-    expect(parse("key=newapi&tab=xxx")).toEqual({ kind: "edit", key: "newapi", tab: "config" });
-  });
-
-  test("旧链接 ?edit=<key> 打开配置页签", () => {
+  test("新建可预选插件", () => {
     expect(
-      parseChannelRoute(params("edit=yswg"), channels, { canWrite: true, ready: true }).target,
-    ).toEqual({ kind: "edit", key: "yswg", tab: "config" });
-  });
-
-  test("?new=1 与旧链接 ?edit=new 都是新建，可预选插件", () => {
-    const parse = (query: string) =>
-      parseChannelRoute(params(query), channels, { canWrite: true, ready: true }).target;
-    expect(parse("new=1")).toEqual({ kind: "new", pluginKey: undefined });
-    expect(parse("edit=new&plugin=newapi")).toEqual({ kind: "new", pluginKey: "newapi" });
+      resolveChannelDialog({ kind: "new", pluginKey: "newapi" }, channels, ready).target,
+    ).toEqual({ kind: "new", pluginKey: "newapi" });
+    expect(resolveChannelDialog({ kind: "new" }, channels, ready).target).toEqual({
+      kind: "new",
+      pluginKey: undefined,
+    });
   });
 
   test("没有写权限不能新建", () => {
     expect(
-      parseChannelRoute(params("new=1"), channels, { canWrite: false, ready: true }).target,
+      resolveChannelDialog({ kind: "new" }, channels, { canWrite: false, ready: true }).target,
     ).toBeNull();
   });
 
   test("渠道不存在：不开弹窗并报告缺失的 key；清单没加载完时先不报", () => {
+    expect(resolveChannelDialog({ kind: "edit", key: "gone" }, channels, ready)).toEqual({
+      target: null,
+      missing: "gone",
+    });
     expect(
-      parseChannelRoute(params("key=gone"), channels, { canWrite: true, ready: true }),
-    ).toEqual({ target: null, missing: "gone" });
-    expect(
-      parseChannelRoute(params("key=gone"), channels, { canWrite: true, ready: false }),
+      resolveChannelDialog({ kind: "edit", key: "gone" }, channels, {
+        canWrite: true,
+        ready: false,
+      }),
     ).toEqual({ target: null, missing: null });
   });
 });

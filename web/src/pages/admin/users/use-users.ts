@@ -8,7 +8,7 @@ import { isUserNotFound } from "@/utils/admin/user-rules";
 /** 列表默认每页条数 */
 export const DEFAULT_PAGE_SIZE = 20;
 
-/** 弹窗页签；同步到 ?tab= */
+/** 弹窗页签 */
 export type UserTab = "overview" | "tasks" | "credits" | "logins";
 
 /** 状态筛选：all 为不筛 */
@@ -17,7 +17,6 @@ export type StatusFilter = "all" | UserStatus;
 /** 角色筛选：all 为不筛 */
 export type RoleFilter = "all" | UserRole;
 
-const TABS: UserTab[] = ["overview", "tasks", "credits", "logins"];
 const STATUSES: StatusFilter[] = ["all", "active", "disabled"];
 const ROLES: RoleFilter[] = ["all", "user", "admin", "super_admin"];
 
@@ -28,7 +27,8 @@ const pick = <T extends string>(value: string | null, allowed: T[], fallback: T)
 export type ListState = "loading" | "ready" | "error";
 
 /**
- * 用户列表：q / status / role / page / user / tab 都在 URL 里（刷新不丢，也能把链接发给同事）。
+ * 用户列表：q / status / role / page 在 URL 里（刷新不丢，也能把链接发给同事）。
+ * 弹窗开着哪个用户、停在哪个页签放在页面自己的 state 里，不进 URL，打开关闭弹窗不碰筛选。
  * 翻页和筛选时保留旧数据（refreshing 为 true），首次加载没有数据才是 loading。
  * 所有 URL 更新都用 replace：↑↓ 连续切换用户不该在历史记录里堆一串。
  */
@@ -38,9 +38,8 @@ export function useUsers() {
   const status = pick(params.get("status"), STATUSES, "all");
   const role = pick(params.get("role"), ROLES, "all");
   const page = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
-  const userParam = Math.floor(Number(params.get("user")));
-  const userId = userParam > 0 ? userParam : null;
-  const tab = pick(params.get("tab"), TABS, "overview");
+  const [userId, setUserId] = useState<number | null>(null);
+  const [tab, setTab] = useState<UserTab>("overview");
 
   const [pageSize, setPageSizeState] = useState(DEFAULT_PAGE_SIZE);
   const [items, setItems] = useState<UserListItem[]>([]);
@@ -96,7 +95,7 @@ export function useUsers() {
         if (pending && pending.page === page) {
           pendingStep.current = null;
           const target = pending.dir > 0 ? result.list[0] : result.list[result.list.length - 1];
-          if (target) update({ user: String(target.id) });
+          if (target) setUserId(target.id);
         }
         setState("ready");
         setLoadedPage(page);
@@ -109,7 +108,7 @@ export function useUsers() {
       .finally(() => {
         if (mine === seq.current) setRefreshing(false);
       });
-  }, [q, status, role, page, pageSize, version, filtering, update]);
+  }, [q, status, role, page, pageSize, version, filtering]);
 
   /** 有筛选时「筛出 N / 总数 人」需要总数：没见过无筛选的总数就单独问一次 */
   useEffect(() => {
@@ -149,17 +148,20 @@ export function useUsers() {
       /** 清除全部筛选（保留弹窗） */
       clearFilters: () => update({ q: null, status: null, role: null, page: null }),
       /** 打开某个用户的弹窗；换用户时保留页签 */
-      openUser: (id: number) => update({ user: String(id) }),
-      /** 关闭弹窗，同时去掉 user 和 tab */
-      closeUser: () => update({ user: null, tab: null }),
-      setTab: (value: UserTab) => update({ tab: value === "overview" ? null : value }),
+      openUser: (id: number) => setUserId(id),
+      /** 关闭弹窗，页签回到概览 */
+      closeUser: () => {
+        setUserId(null);
+        setTab("overview");
+      },
+      setTab,
       /** 走出当前页：翻到目标页，数据回来后自动打开首条（dir=1）或末条（dir=-1） */
       stepToPage: (dir: 1 | -1, target: number) => {
         pendingStep.current = { dir, page: target };
         update({ page: target > 1 ? String(target) : null });
       },
     }),
-    [update, setPageSizeState],
+    [update, setPageSizeState, setUserId, setTab],
   );
 
   return {

@@ -43,10 +43,12 @@ import {
   TimelineItem,
 } from "@/components/admin-ui/timeline";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useRetained } from "@/hooks/use-retained";
 import { cn } from "@/lib/utils";
 import type { PluginTab } from "@/utils/admin/channel-route";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import { MODEL_KIND_LABEL } from "@/utils/admin/model-body";
 import { describeAuth, latestVersion, shortSha, versionDeleteBlock } from "@/utils/admin/plugin";
 import { formatShortTime } from "@/utils/time";
@@ -67,7 +69,8 @@ const kindsOf = (version: PluginVersionView | undefined) =>
  * 概览：支持的生成方式（四格）、插件信息；版本历史：时间线，每个版本的能力、在用渠道、删除。
  * 状态靠开关和表格表达，不再有“已停用”横幅；颜色只给能力图标，其余中性。
  * 点击“在用渠道”会跳到渠道页，本页随之卸载，弹窗跟着关闭。
- * @param plugin 打开的插件；关闭时为 null，弹窗按最后一次的内容播完退出动画
+ * @param open 弹窗是否打开；点了就先开，内容还没到时显示加载占位，不等接口返回
+ * @param plugin 要显示的插件（列表里已有的先用，详情回来后换成最新的）；还没有时为 null
  * @param channels 全部渠道，用来列出每个版本的“在用渠道”
  * @param plugins 全部插件（批量升级时算设置项迁移）
  * @param canWrite 是否有运维权限；没有则不显示版本删除、升级渠道
@@ -75,9 +78,9 @@ const kindsOf = (version: PluginVersionView | undefined) =>
  * @param onChannelsChanged 批量升级渠道后刷新渠道清单
  */
 export function PluginDialog({
+  open,
   plugin,
   tab,
-  onTabChange,
   plugins,
   channels,
   canWrite,
@@ -85,9 +88,9 @@ export function PluginDialog({
   onChannelsChanged,
   onClose,
 }: {
+  open: boolean;
   plugin: PluginView | null;
   tab: PluginTab;
-  onTabChange: (tab: PluginTab) => void;
   plugins: PluginView[];
   channels: ChannelView[];
   canWrite: boolean;
@@ -95,20 +98,20 @@ export function PluginDialog({
   onChannelsChanged: () => Promise<void>;
   onClose: () => void;
 }) {
-  // 关闭时 plugin 会被置空，内容按最后一次的对象留到退出动画播完
-  const shown = useRetained(plugin);
+  // 关闭后内容按最后一次的对象留到退出动画播完；打开着时只认当前的 plugin，没有就是还在加载
+  const retained = useRetained(plugin);
+  const shown = open ? plugin : retained;
   return (
-    <Dialog open={!!plugin} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         showCloseButton={false}
         className="flex h-[min(88svh,760px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
       >
-        {shown && (
+        {shown ? (
           <PluginDialogBody
             key={shown.key}
-            plugin={plugin ?? shown}
+            plugin={shown}
             tab={tab}
-            onTabChange={onTabChange}
             plugins={plugins}
             channels={channels}
             canWrite={canWrite}
@@ -116,6 +119,16 @@ export function PluginDialog({
             onChannelsChanged={onChannelsChanged}
             onClose={onClose}
           />
+        ) : (
+          <div className="flex flex-1 flex-col gap-4 p-6">
+            <DialogTitle className="sr-only">插件详情</DialogTitle>
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-10 rounded-xl" />
+              <Skeleton className="h-5 w-48" />
+            </div>
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -125,7 +138,6 @@ export function PluginDialog({
 function PluginDialogBody({
   plugin,
   tab,
-  onTabChange,
   plugins,
   channels,
   canWrite,
@@ -135,7 +147,6 @@ function PluginDialogBody({
 }: {
   plugin: PluginView;
   tab: PluginTab;
-  onTabChange: (tab: PluginTab) => void;
   plugins: PluginView[];
   channels: ChannelView[];
   canWrite: boolean;
@@ -146,12 +157,7 @@ function PluginDialogBody({
   const latest = latestVersion(plugin);
   const meta = latest?.meta;
   const outdated = outdatedChannels(plugin, channels);
-  // 页签先在本地切换（立刻响应），再写回 URL
-  const [current, setCurrent] = useState<PluginTab>(tab);
-  const changeTab = (next: PluginTab) => {
-    setCurrent(next);
-    onTabChange(next);
-  };
+  const [current, changeTab] = useState<PluginTab>(tab);
 
   // 409：有渠道 / 非终态任务引用或内置。全局 toast 已弹，原因由 confirm 留在对话框里
   const requestDeleteVersion = (version: PluginVersionView) =>
@@ -395,7 +401,8 @@ function PluginDialogBody({
                             {pinned.map((channel) => (
                               <Link
                                 key={channel.key}
-                                to={`/admin/ai/channels?key=${encodeURIComponent(channel.key)}`}
+                                to="/admin/ai/channels"
+                                state={dialogEntry({ kind: "edit", key: channel.key })}
                                 className="bg-background hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-0.5"
                               >
                                 <RadioTower className="size-3" />

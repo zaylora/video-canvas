@@ -149,7 +149,7 @@ function RiskRow({
  * 底部是“检查连通性”（只检查已保存的渠道，通过后给“导入模型 / 新建模型”两个下一步）和“保存”。
  * “允许插件读取 Key”从关到开要勾选确认；新建时插件是 auth: custom 则它自动打开（必需）。
  * 配置页签保持挂载，切页签不丢未保存的修改。
- * @param initialTab 打开时停在哪个页签（来自 URL）；之后切换页签通过 onTabChange 写回 URL
+ * @param initialTab 打开时停在哪个页签
  * @param channels 全部渠道（options）：取最新的健康状态和字段值，保存后不用等弹窗重开；自动生成标识时避开已有的
  * @param modelsRefreshKey 递增即重新拉取“模型”页签（模型有改动之后）
  * @param pluginsReady 插件清单已加载（未就绪时显示骨架，避免版本下拉是空的）
@@ -164,7 +164,6 @@ export function ChannelDialog({
   channels,
   modelsRefreshKey,
   modelActions,
-  onTabChange,
   onSaved,
   onClose,
   children,
@@ -177,7 +176,6 @@ export function ChannelDialog({
   channels: ChannelOption[];
   modelsRefreshKey: number;
   modelActions: ChannelModelActions;
-  onTabChange: (tab: ChannelTab) => void;
   onSaved: () => void;
   onClose: () => void;
   /** 挂在弹窗内部的子弹窗（模型编辑），放在这里才算嵌套，点子弹窗不会被当成点了外面 */
@@ -212,7 +210,6 @@ export function ChannelDialog({
               channels={channels}
               modelsRefreshKey={modelsRefreshKey}
               modelActions={modelActions}
-              onTabChange={onTabChange}
               onSaved={onSaved}
               onDirtyChange={setDirty}
               onClose={requestClose}
@@ -251,7 +248,6 @@ type DialogBodyProps = {
   channels: ChannelOption[];
   modelsRefreshKey: number;
   modelActions: ChannelModelActions;
-  onTabChange: (tab: ChannelTab) => void;
   onSaved: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
@@ -315,7 +311,6 @@ function DialogBody({ target, pluginsReady, canWrite, plugins, ...rest }: Dialog
       setOriginal={setOriginal}
       plugins={plugins}
       readOnly={readOnly}
-      syncTab={target.kind === "edit"}
       existingKeys={rest.channels.map((item) => item.key)}
       {...rest}
     />
@@ -330,12 +325,10 @@ function DialogForm({
   plugins,
   existingKeys,
   readOnly,
-  syncTab,
   initialTab,
   channels,
   modelsRefreshKey,
   modelActions,
-  onTabChange,
   onSaved,
   onDirtyChange,
   onClose,
@@ -347,16 +340,11 @@ function DialogForm({
   setOriginal: (channel: ChannelView) => void;
   existingKeys: string[];
   readOnly: boolean;
-  /** 打开的是已有渠道：切页签同步到 URL；新建的没有可写进 URL 的 key */
-  syncTab: boolean;
 }) {
   const isNew = !original;
   const { state: check, run: runCheck } = useDraftCheck();
   const [tab, setTab] = useState<ChannelTab>(isNew ? "config" : initialTab);
-  const changeTab = (next: ChannelTab) => {
-    setTab(next);
-    if (syncTab) onTabChange(next);
-  };
+  const changeTab = setTab;
   /** 最新的渠道（列表刷新后的值），保存之后不用等弹窗重开 */
   const option = original ? channels.find((item) => item.key === original.key) : undefined;
   const live: ChannelView | null = original ? (option ?? original) : null;

@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { openDialog, type DialogControl } from "@/store/dialog";
+import { dialogEntry } from "@/utils/admin/dialog-entry";
 import { errorMessage } from "@/utils/admin/errors";
 
 import { migrateModelsToChannel } from "./models/migrate-channel";
@@ -295,7 +296,8 @@ function BlockerItem({
             {blocker.refs.map((ref) => (
               <Link
                 key={ref.key}
-                to={`/admin/ai/models?key=${encodeURIComponent(ref.key)}`}
+                to="/admin/ai/models"
+                state={dialogEntry({ key: ref.key })}
                 className="bg-background hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
               >
                 {ref.name || ref.key}
@@ -348,7 +350,8 @@ function BlockerItem({
           {blocker.refs.map((ref) => (
             <Link
               key={ref.key}
-              to={`/admin/ai/channels?key=${encodeURIComponent(ref.key)}`}
+              to="/admin/ai/channels"
+              state={dialogEntry({ kind: "edit", key: ref.key })}
               className="bg-background hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
             >
               {ref.name || ref.key}
