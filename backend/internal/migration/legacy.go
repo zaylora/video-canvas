@@ -1,18 +1,51 @@
-package repository
+package migration
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
-	"video-canvas/internal/model"
+	"video-canvas/internal/migration/legacymodel"
 )
+
+// UpgradeLegacy 把接入版本化迁移之前、由 AutoMigrate 建出的老库（任意 ≤ v0.3.2 的版本）补齐到基线结构，
+// 顺序与 v0.3.2 的启动流程完全一致。它和 legacymodel 一样是冻结的：只服务老库的首次接入，永久保留，不再修改。
+// 每一步都幂等，失败后下次启动可以重来。
+func UpgradeLegacy(db *gorm.DB, log *zap.Logger) error {
+	// 先清旧版遗留的结构（ai_providers、ai_models.provider_key、模型软删除的 deleted_at 及已软删除的模型）
+	if err := MigrateLegacyAIConfig(db); err != nil {
+		return fmt.Errorf("migrate legacy ai config: %w", err)
+	}
+	// 积分流水表的变更（task_id 可空、唯一索引改部分索引）：AutoMigrate 做不了，必须在它之前
+	if err := MigrateUserManagement(db); err != nil {
+		return fmt.Errorf("migrate user management: %w", err)
+	}
+	// 对话不再有「默认创作」：删掉 is_default 列和它的部分唯一索引
+	if err := MigrateConversationDefault(db); err != nil {
+		return fmt.Errorf("migrate conversation default: %w", err)
+	}
+	// 渠道不再有“允许访问内网”开关：删 trusted_internal 列（对仍开着的渠道打 WARN）
+	if err := MigrateChannelTrustedInternal(db, log); err != nil {
+		return fmt.Errorf("migrate channel trusted internal: %w", err)
+	}
+	// 用冻结的 v0.3.2 模型补齐表、列和索引；不能用 model.All()，否则老库会被建成以后版本的结构
+	if err := db.AutoMigrate(legacymodel.All()...); err != nil {
+		return fmt.Errorf("auto migrate legacy models: %w", err)
+	}
+	// 模型不再有版本管理：把老库里的多版本收敛成每个模型一份配置（草稿优先），必须在 AutoMigrate 之后
+	if err := MigrateModelSingleConfig(db); err != nil {
+		return fmt.Errorf("migrate model single config: %w", err)
+	}
+	// worker 扫描非终态任务用的部分索引，GORM 标签表达不了
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_task_poll ON generation_tasks (next_poll_at) ` +
+		`WHERE status IN ('pending','queued','running','finalizing')`).Error; err != nil {
+		return fmt.Errorf("create idx_task_poll: %w", err)
+	}
+	return nil
+}
 
 // legacyAIConfigSQL 是清理旧版（平台协议配置化）遗留的语句，全部幂等，顺序无关。
 // ai_secrets 里不带 channel: 前缀的旧凭证故意不动：凭证是只写不读的，删掉就无法再找回。
@@ -38,7 +71,7 @@ func MigrateLegacyAIConfig(db *gorm.DB) error {
 		if err := dropModelSoftDelete(tx); err != nil {
 			return err
 		}
-		if !tx.Migrator().HasTable(&model.AIConfigRevision{}) {
+		if !tx.Migrator().HasTable(&legacymodel.AIConfigRevision{}) {
 			return nil
 		}
 		err := tx.Exec("DELETE FROM ai_config_revisions WHERE target = ?", "provider").Error
@@ -54,7 +87,7 @@ func MigrateLegacyAIConfig(db *gorm.DB) error {
 // 留下的那一行记为 revision_no=1 / published，并让指针指向它。上下架与排序不动。
 // 应在 AutoMigrate 之后调用；表不存在、或已经收敛过时什么都不做。
 func MigrateModelSingleConfig(db *gorm.DB) error {
-	if !db.Migrator().HasTable(&model.AIConfigRevision{}) || !db.Migrator().HasTable(&model.AIModel{}) {
+	if !db.Migrator().HasTable(&legacymodel.AIConfigRevision{}) || !db.Migrator().HasTable(&legacymodel.AIModel{}) {
 		return nil
 	}
 	stmts := []string{
@@ -141,7 +174,7 @@ func MigrateChannelTrustedInternal(db *gorm.DB, log *zap.Logger) error {
 			Key     string
 			BaseURL string
 		}
-		// 渠道的主键列就叫 key（model.AIChannel.Key），没有 id 列，按 key 排序保证日志顺序稳定
+		// 渠道的主键列就叫 key（legacymodel.AIChannel.Key），没有 id 列，按 key 排序保证日志顺序稳定
 		if err := tx.Table("ai_channels").Select(`"key", base_url`).Where("trusted_internal").Order(`"key"`).Find(&rows).Error; err != nil {
 			return fmt.Errorf("查询开着“允许访问内网”的渠道失败：%w", err)
 		}
@@ -158,50 +191,6 @@ func MigrateChannelTrustedInternal(db *gorm.DB, log *zap.Logger) error {
 		}
 		return nil
 	})
-}
-
-// builtinStorageName 是内置本地磁盘存储的显示名。
-const builtinStorageName = "本地磁盘"
-
-// EnsureBuiltinStorage 幂等地确保内置本地磁盘存储存在，返回它的 id：
-//  1. 没有内置存储就创建一条（配置来自 YAML，这里只占一行，让它能像其他存储一样被选为默认、被素材引用）；
-//  2. 全表没有默认存储时，把它设为默认（已有别的默认就不抢）；
-//  3. 把升级前留下的素材（storage_id = 0）回填到它。
-//
-// 应在 AutoMigrate 之后调用；多个实例同时启动也安全（名称唯一索引保证只有一条内置存储）。
-func EnsureBuiltinStorage(ctx context.Context, db *gorm.DB) (uint64, error) {
-	var id uint64
-	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var s model.StorageConfig
-		err := tx.Where("builtin").First(&s).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			s = model.StorageConfig{Name: builtinStorageName, Provider: "local", Builtin: true, Addressing: "auto", UseSSL: true, SignedTTLSec: 3600, Version: 1}
-			// 并发启动时另一个实例可能刚建好：冲突就忽略，再读一次
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error; err != nil {
-				return err
-			}
-			err = tx.Where("builtin").First(&s).Error
-		}
-		if err != nil {
-			return err
-		}
-		id = s.ID
-
-		var defaults int64
-		if err := tx.Model(&model.StorageConfig{}).Where("is_default").Count(&defaults).Error; err != nil {
-			return err
-		}
-		if defaults == 0 {
-			if err := tx.Model(&model.StorageConfig{}).Where("id = ?", id).UpdateColumn("is_default", true).Error; err != nil {
-				return err
-			}
-		}
-		return tx.Model(&model.Asset{}).Where("storage_id = 0").UpdateColumn("storage_id", id).Error
-	})
-	if err != nil {
-		return 0, fmt.Errorf("初始化内置存储失败：%w", err)
-	}
-	return id, nil
 }
 
 // MigrateUserManagement 在 AutoMigrate 之前幂等地处理 AutoMigrate 做不了的积分流水表变更：

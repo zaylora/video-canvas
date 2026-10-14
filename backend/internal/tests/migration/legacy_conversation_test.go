@@ -1,10 +1,10 @@
-package repository_test
+package migration_test
 
 import (
 	"testing"
 
-	"video-canvas/internal/model"
-	. "video-canvas/internal/repository"
+	. "video-canvas/internal/migration"
+	"video-canvas/internal/migration/legacymodel"
 )
 
 // 旧库里 conversations 带 is_default 列和部分唯一索引：迁移后列与索引都没有，原来的「默认创作」变成普通对话。
@@ -28,7 +28,7 @@ func TestMigrateConversationDefault(t *testing.T) {
 			if err := MigrateConversationDefault(db); err != nil {
 				t.Fatalf("MigrateConversationDefault 失败：%v", err)
 			}
-			if err := db.AutoMigrate(&model.Conversation{}); err != nil {
+			if err := db.AutoMigrate(&legacymodel.Conversation{}); err != nil {
 				t.Fatalf("AutoMigrate 失败：%v", err)
 			}
 		}
@@ -42,13 +42,13 @@ func TestMigrateConversationDefault(t *testing.T) {
 			t.Error("uk_conversations_default 应已删除")
 		}
 		var titles []string
-		db.Model(&model.Conversation{}).Where("user_id = 1").Order("id").Pluck("title", &titles)
+		db.Model(&legacymodel.Conversation{}).Where("user_id = 1").Order("id").Pluck("title", &titles)
 		if len(titles) != 2 || titles[0] != "默认创作" {
 			t.Errorf("原有对话应保留，原「默认创作」成为普通对话：%v", titles)
 		}
 		// 同一用户可以有任意多段同名对话，也都能删除
 		for range 2 {
-			if err := db.Create(&model.Conversation{UserID: 1, Title: "默认创作"}).Error; err != nil {
+			if err := db.Create(&legacymodel.Conversation{UserID: 1, Title: "默认创作"}).Error; err != nil {
 				t.Fatalf("不应再有每人一段的唯一限制：%v", err)
 			}
 		}
@@ -60,7 +60,7 @@ func TestMigrateConversationDefault(t *testing.T) {
 			if err := MigrateConversationDefault(db); err != nil {
 				t.Fatalf("全新库应无报错：%v", err)
 			}
-			if err := db.AutoMigrate(&model.Conversation{}); err != nil {
+			if err := db.AutoMigrate(&legacymodel.Conversation{}); err != nil {
 				t.Fatal(err)
 			}
 		}

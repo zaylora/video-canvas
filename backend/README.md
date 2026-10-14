@@ -8,6 +8,7 @@ Gin + GORM + go-redis + Viper + Zap 的 Go 后端骨架。
 backend/
 ├── cmd/server/          # 程序入口
 ├── configs/             # 配置文件
+├── migrations/          # 版本化数据库迁移 SQL（内嵌进二进制）
 ├── internal/            # 项目内部代码（核心）
 │   ├── config/          # 配置定义
 │   ├── model/           # 数据模型
@@ -21,6 +22,7 @@ backend/
 │   ├── storage/         # 素材存储：内置本地磁盘 + S3 兼容对象存储（OSS / COS / S3 / R2），Registry 按 id 解析
 │   ├── cache/           # Redis 缓存
 │   ├── initialize/      # 初始化
+│   ├── migration/       # 迁移执行器 + 老库补齐（启动时自动执行）
 │   └── pkg/             # 内部通用工具包
 │       └── # response / errcode / logger / utils
 ├── pkg/                 # 可被外部引用的公共包（version / pagination）
@@ -38,7 +40,7 @@ go run ./cmd/server -c configs/config.yaml
 make run
 ```
 
-数据库仅支持 PostgreSQL，启动前需准备好数据库并在 `database.dsn` 中填写连接信息。
+数据库仅支持 PostgreSQL，启动前需准备好数据库并在 `database.dsn` 中填写连接信息。启动时会自动执行 `migrations/` 里还没执行过的迁移（`database.auto_migrate`，默认开），迁移失败则不启动；`go run ./cmd/server migrate status` 查看迁移状态。写迁移的规则见 [AGENTS.md](AGENTS.md)「数据库迁移」。
 
 - 启用 Redis：`redis.enabled` 改为 `true`
 - 环境变量覆盖：`APP_` + 配置路径，如 `APP_SERVER_PORT=9000`

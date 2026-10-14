@@ -1,4 +1,4 @@
-package repository_test
+package migration_test
 
 import (
 	"strings"
@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"video-canvas/internal/model"
-	. "video-canvas/internal/repository"
+	. "video-canvas/internal/migration"
+	"video-canvas/internal/migration/legacymodel"
 )
 
 // legacyLedgerDB 建出升级前的 credit_ledger（task_id NOT NULL + 全量唯一索引）与 users 表，并塞入一条旧流水。
@@ -35,7 +35,7 @@ func migrateAll(t *testing.T, db *gorm.DB) {
 	if err := MigrateUserManagement(db); err != nil {
 		t.Fatalf("MigrateUserManagement 失败：%v", err)
 	}
-	if err := db.AutoMigrate(model.All()...); err != nil {
+	if err := db.AutoMigrate(legacymodel.All()...); err != nil {
 		t.Fatalf("AutoMigrate 失败：%v", err)
 	}
 }
@@ -48,7 +48,7 @@ func TestMigrateUserManagement(t *testing.T) {
 		}
 		// 管理员调整 / 初始积分流水没有 task_id：同类型可以有多条
 		for range 2 {
-			err := db.Create(&model.CreditLedger{UserID: 1, Type: model.LedgerAdminAdjust, Amount: 3, Note: "补偿"}).Error
+			err := db.Create(&legacymodel.CreditLedger{UserID: 1, Type: legacymodel.LedgerAdminAdjust, Amount: 3, Note: "补偿"}).Error
 			if err != nil {
 				t.Fatalf("task_id 为空的流水应可重复写入：%v", err)
 			}
@@ -59,7 +59,7 @@ func TestMigrateUserManagement(t *testing.T) {
 			t.Fatalf("同一任务同类型流水应被唯一索引挡住：%v affected=%d", res.Error, res.RowsAffected)
 		}
 		var n int64
-		db.Model(&model.CreditLedger{}).Where("task_id = 100").Count(&n)
+		db.Model(&legacymodel.CreditLedger{}).Where("task_id = 100").Count(&n)
 		if n != 1 {
 			t.Fatalf("旧流水应保留：%d", n)
 		}
@@ -100,14 +100,14 @@ func TestMigrateUserManagement(t *testing.T) {
 		db.Exec(`CREATE UNIQUE INDEX idx_users_username ON users (username)`)
 		db.Exec(`INSERT INTO users (username, password, email) VALUES ('a', 'x', ''), ('b', 'x', '')`)
 		migrateAll(t, db)
-		var u model.User
-		if err := db.First(&u, "username = ?", "a").Error; err != nil || u.Status != model.UserStatusActive || u.TokenVersion != 0 {
+		var u legacymodel.User
+		if err := db.First(&u, "username = ?", "a").Error; err != nil || u.Status != legacymodel.UserStatusActive || u.TokenVersion != 0 {
 			t.Fatalf("旧用户应为 active：%+v %v", u, err)
 		}
-		if err := db.Create(&model.User{Username: "c", Password: "x", Email: "x@y.com"}).Error; err != nil {
+		if err := db.Create(&legacymodel.User{Username: "c", Password: "x", Email: "x@y.com"}).Error; err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Create(&model.User{Username: "d", Password: "x", Email: "x@y.com"}).Error; err == nil {
+		if err := db.Create(&legacymodel.User{Username: "d", Password: "x", Email: "x@y.com"}).Error; err == nil {
 			t.Fatal("相同邮箱应被唯一索引拒绝")
 		}
 	})

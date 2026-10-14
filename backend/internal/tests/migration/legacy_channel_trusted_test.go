@@ -1,4 +1,4 @@
-package repository_test
+package migration_test
 
 import (
 	"strings"
@@ -7,8 +7,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
-	"video-canvas/internal/model"
-	. "video-canvas/internal/repository"
+	. "video-canvas/internal/migration"
+	"video-canvas/internal/migration/legacymodel"
 )
 
 // 旧库里 ai_channels 带 trusted_internal 列：迁移后列没有了，开着“允许访问内网”的渠道各打一条 WARN，
@@ -17,7 +17,7 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 	t.Run("旧表升级：先对开着开关的渠道打 WARN，再删列，数据保留且可重复执行", func(t *testing.T) {
 		db := isolatedDB(t)
 		stmts := []string{
-			// 旧表结构照真实的 model.AIChannel 写：主键是 key（varchar），没有 id 列
+			// 旧表结构照真实的 legacymodel.AIChannel 写：主键是 key（varchar），没有 id 列
 			`CREATE TABLE ai_channels (key varchar(64) PRIMARY KEY, name varchar(128) NOT NULL DEFAULT '', plugin_key varchar(30) NOT NULL DEFAULT '',
 				plugin_version_id bigint NOT NULL DEFAULT 0, base_url varchar(512) NOT NULL DEFAULT '',
 				trusted_internal boolean NOT NULL DEFAULT false, allow_credentials boolean NOT NULL DEFAULT false,
@@ -79,7 +79,7 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 			if err := MigrateChannelTrustedInternal(db, zap.New(core)); err != nil {
 				t.Fatalf("全新库应无报错：%v", err)
 			}
-			if err := db.AutoMigrate(&model.AIChannel{}); err != nil {
+			if err := db.AutoMigrate(&legacymodel.AIChannel{}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -95,7 +95,7 @@ func TestMigrateChannelTrustedInternal(t *testing.T) {
 // 用 GORM 按当前模型真实建出来的表，再补回旧版的 trusted_internal 列：迁移里的 SQL 必须和真实列名一致。
 // （只靠手写的旧表测，列名写错了也发现不了：这次启动就是因为查了不存在的 channel_key 列而退出。）
 func TestMigrateChannelTrustedInternal_RealSchema(t *testing.T) {
-	db := isolatedDB(t, &model.AIChannel{})
+	db := isolatedDB(t, &legacymodel.AIChannel{})
 	if err := db.Exec(`ALTER TABLE ai_channels ADD COLUMN trusted_internal boolean NOT NULL DEFAULT false`).Error; err != nil {
 		t.Fatal(err)
 	}

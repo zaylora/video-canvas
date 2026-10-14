@@ -157,6 +157,9 @@ linters:
       # export_testing.go 只给测试用
       - path: export_testing\.go
         linters: [revive]
+    # v0.3.2 模型的冻结副本，只给老库补齐用，按规定原样保留、永不修改，存量问题不在这里修
+    paths:
+      - internal/migration/legacymodel/
 
 formatters:
   enable:

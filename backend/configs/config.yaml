@@ -24,7 +24,8 @@ database:
   max_idle_conns: 10
   max_open_conns: 100
   conn_max_lifetime: 1h
-  auto_migrate: true
+  auto_migrate: true # 启动时执行 backend/migrations 里未执行的迁移
+  allow_newer_schema: false # 库比程序新（回退了镜像）时仍然启动；只在确认迁移向后兼容时打开
   log_level: warn # silent | error | warn | info
 
 redis:

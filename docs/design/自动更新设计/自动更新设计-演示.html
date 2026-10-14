@@ -1,0 +1,1163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>自动更新设计 · 演示</title>
+    <style>
+      :root {
+        --paper: #f5f3ee;
+        --card: #ffffff;
+        --ink: #17191e;
+        --ink2: #3a3e47;
+        --muted: #737884;
+        --line: #ddd8cd;
+        --line2: #ece8df;
+        --chip: #ece7dc;
+        --accent: #d9480f;
+        --accent-soft: #fce9de;
+        --blue: #1c6fd1;
+        --blue-soft: #e3eefb;
+        --green: #2b8a3e;
+        --green-soft: #e3f3e6;
+        --red: #c92a2a;
+        --red-soft: #fbe4e4;
+        --amber: #b26a00;
+        --amber-soft: #fdf0d5;
+        --violet: #6741d9;
+        --violet-soft: #ece6fb;
+        --code-bg: #1e2127;
+        --code-ink: #e4e6eb;
+        --sans:
+          "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", system-ui,
+          sans-serif;
+        --mono:
+          "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, "Microsoft YaHei", monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #e4e1d9;
+        overflow: hidden;
+        font-family: var(--sans);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1600px;
+        height: 900px;
+        transform: translate(-50%, -50%) scale(var(--s, 1));
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        background: var(--paper);
+        padding: 60px 96px 84px;
+        display: none;
+        flex-direction: column;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+        overflow: hidden;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .chrome {
+        position: absolute;
+        left: 96px;
+        right: 96px;
+        bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        color: var(--muted);
+        pointer-events: none;
+        z-index: 5;
+      }
+      .chrome .pg {
+        font-family: var(--mono);
+      }
+      .progress {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 4px;
+        background: var(--accent);
+        transition: width 0.3s ease;
+        z-index: 6;
+      }
+      .kicker {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 15px;
+        letter-spacing: 0.12em;
+        color: var(--accent);
+        font-weight: 600;
+        margin-bottom: 14px;
+      }
+      .kicker .num {
+        font-family: var(--mono);
+        background: var(--accent);
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        letter-spacing: 0;
+      }
+      h1 {
+        font-size: 88px;
+        line-height: 1.08;
+        margin: 0;
+        font-weight: 800;
+      }
+      h2 {
+        font-size: 42px;
+        line-height: 1.25;
+        margin: 0 0 26px;
+        font-weight: 750;
+      }
+      h3 {
+        font-size: 24px;
+        margin: 0 0 10px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0;
+      }
+      .lead {
+        font-size: 24px;
+        line-height: 1.6;
+        color: var(--ink2);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.9em;
+      }
+      code {
+        background: var(--chip);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .row {
+        display: flex;
+        gap: 24px;
+      }
+      .col {
+        flex: 1;
+        min-width: 0;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 22px 26px;
+      }
+      .card p,
+      .card li {
+        font-size: 19px;
+        line-height: 1.6;
+        color: var(--ink2);
+      }
+      .card ul {
+        margin: 0;
+        padding-left: 22px;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 999px;
+        margin-right: 6px;
+      }
+      .t-green {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .t-red {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .t-blue {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+      .t-amber {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+      .t-violet {
+        background: var(--violet-soft);
+        color: var(--violet);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 19px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line2);
+        vertical-align: top;
+        line-height: 1.45;
+      }
+      th {
+        font-size: 15px;
+        color: var(--muted);
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid var(--line);
+      }
+      pre {
+        margin: 0;
+        background: var(--code-bg);
+        color: var(--code-ink);
+        border-radius: 12px;
+        padding: 20px 24px;
+        font-family: var(--mono);
+        font-size: 16px;
+        line-height: 1.65;
+        white-space: pre;
+        overflow: hidden;
+      }
+      pre .c {
+        color: #8b93a1;
+      }
+      pre .k {
+        color: #f0a86a;
+      }
+      pre .g {
+        color: #8fd19e;
+      }
+
+      /* 封面 */
+      .cover {
+        justify-content: center;
+      }
+      .cover .sub {
+        font-size: 30px;
+        color: var(--ink2);
+        margin-top: 26px;
+        line-height: 1.5;
+      }
+      .cover .meta {
+        margin-top: 56px;
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .cover .meta span {
+        font-size: 17px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 18px;
+        color: var(--ink2);
+      }
+
+      /* 对比 */
+      .vs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+      .box {
+        border: 2px solid var(--line);
+        border-radius: 14px;
+        padding: 18px 20px;
+        background: var(--card);
+      }
+      .box .lbl {
+        font-size: 15px;
+        color: var(--muted);
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+      .ctn {
+        border: 1.5px dashed var(--line);
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 10px;
+        font-size: 17px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .ctn.hot {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .ctn.stale {
+        border-color: var(--red);
+        background: var(--red-soft);
+      }
+
+      /* 决定列表 */
+      .dec {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 22px;
+      }
+      .dec .d {
+        display: flex;
+        gap: 14px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 18px;
+      }
+      .dec .id {
+        font-family: var(--mono);
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 18px;
+        padding-top: 2px;
+      }
+      .dec b {
+        font-size: 19px;
+        display: block;
+        margin-bottom: 4px;
+      }
+      .dec span {
+        font-size: 16px;
+        color: var(--ink2);
+        line-height: 1.5;
+      }
+
+      /* 交互 */
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .btn {
+        font-family: var(--sans);
+        font-size: 16px;
+        padding: 9px 16px;
+        border-radius: 10px;
+        border: 1.5px solid var(--line);
+        background: var(--card);
+        color: var(--ink2);
+        cursor: pointer;
+      }
+      .btn:hover {
+        border-color: var(--ink2);
+      }
+      .btn.on {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .steps {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 34px 1fr auto;
+        align-items: center;
+        gap: 12px;
+        background: var(--card);
+        border: 1px solid var(--line2);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 17px;
+        line-height: 1.45;
+        opacity: 0;
+        transform: translateY(6px);
+        animation: in 0.25s ease forwards;
+      }
+      @keyframes in {
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .step .ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .ic.ok {
+        background: var(--green);
+      }
+      .ic.skip {
+        background: var(--muted);
+      }
+      .ic.wait {
+        background: var(--amber);
+      }
+      .ic.bad {
+        background: var(--red);
+      }
+      .ic.run {
+        background: var(--blue);
+      }
+      .step.dim {
+        opacity: 0.4 !important;
+      }
+      .verdict {
+        margin-top: 16px;
+        padding: 14px 18px;
+        border-radius: 12px;
+        font-size: 19px;
+        line-height: 1.5;
+        font-weight: 600;
+      }
+
+      /* 版本面板 mockup */
+      .mock {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      .mock .hd {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--line2);
+      }
+      .mock .bd {
+        padding: 18px 22px;
+        font-size: 16px;
+        color: var(--ink2);
+        line-height: 1.6;
+      }
+      .ver {
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .side {
+        width: 240px;
+        background: #22252b;
+        color: #c9ced6;
+        border-radius: 16px;
+        padding: 18px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 16px;
+      }
+      .side .it {
+        padding: 8px 12px;
+        border-radius: 8px;
+      }
+      .side .it.on {
+        background: #34383f;
+        color: #fff;
+      }
+      .side .badge {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid #3a3e46;
+        border-radius: 10px;
+        font-family: var(--mono);
+        font-size: 15px;
+        position: relative;
+      }
+      .side .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px rgba(217, 72, 15, 0.25);
+      }
+
+      /* 拓扑 */
+      .topo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: nowrap;
+      }
+      .node {
+        background: var(--card);
+        border: 1.5px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 17px;
+        text-align: center;
+        min-width: 120px;
+      }
+      .node small {
+        display: block;
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .node.hl {
+        border-color: var(--violet);
+        background: var(--violet-soft);
+      }
+      .node.danger {
+        border-color: var(--red);
+        background: var(--red-soft);
+      }
+      .arr {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+        min-width: 70px;
+      }
+      .arr::after {
+        content: "────▶";
+        display: block;
+        letter-spacing: -2px;
+        color: var(--line);
+        font-size: 16px;
+      }
+
+      /* 分期 */
+      .phase {
+        flex: 1;
+        border-radius: 14px;
+        padding: 22px 24px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-top: 6px solid var(--accent);
+      }
+      .phase.p2 {
+        border-top-color: var(--blue);
+      }
+      .phase.p3 {
+        border-top-color: var(--violet);
+      }
+      .phase .pn {
+        font-family: var(--mono);
+        font-size: 15px;
+        color: var(--muted);
+      }
+      .phase h3 {
+        font-size: 26px;
+        margin: 6px 0 12px;
+      }
+      .phase li {
+        font-size: 17px;
+        line-height: 1.6;
+        color: var(--ink2);
+      }
+      .phase ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .ec {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .ec .card {
+        padding: 16px 18px;
+      }
+      .ec .vt {
+        font-family: var(--mono);
+        font-size: 15px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .ec p {
+        font-size: 17px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <!-- 1 封面 -->
+      <section class="slide cover">
+        <div class="kicker">VIDEO-CANVAS · 设计稿</div>
+        <h1>自动更新设计</h1>
+        <p class="sub">版本化数据库迁移 · 后台检查新版本 · 一键升级<br />借鉴 sub2api，但按我们的 Docker Compose 部署重新设计</p>
+        <div class="meta">
+          <span>2026-10-14</span><span>状态：设计稿，未改代码</span><span>← → 翻页</span
+          ><span>配套：自动更新设计.md</span>
+        </div>
+      </section>
+
+      <!-- 2 问题 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">01</span>现状</div>
+        <h2>现在升级一个版本，有三件事没人管</h2>
+        <div class="row">
+          <div class="card col">
+            <span class="tag t-red">迁移</span>
+            <h3 style="margin-top: 12px">没有迁移记录</h3>
+            <p>启动时 4 个手写 <code>Migrate*</code> → <code>AutoMigrate</code> → 又 1 个 <code>Migrate*</code> → 手建索引。</p>
+            <p style="margin-top: 10px">顺序只靠注释约定；做过哪些变更库里查不到；多实例同时启动没有互斥。</p>
+          </div>
+          <div class="card col">
+            <span class="tag t-amber">感知</span>
+            <h3 style="margin-top: 12px">不知道有新版本</h3>
+            <p>后台看不到当前版本和最新版本。</p>
+            <p style="margin-top: 10px">其实 <code>/health</code> 已经返回 version，打 tag 也已经自动建 GitHub Release，只差把它们接起来。</p>
+          </div>
+          <div class="card col">
+            <span class="tag t-blue">执行</span>
+            <h3 style="margin-top: 12px">升级全靠手工</h3>
+            <p>登录服务器、改 <code>IMAGE_TAG</code>、<code>pull</code>、<code>up -d</code>。</p>
+            <p style="margin-top: 10px">没有升级前备份提醒，失败了也没有固定的回退步骤。</p>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 30px">
+          证据：<code>backend/internal/initialize/db.go:41-82</code>、<code>repository/migrate.go</code>、<code>pkg/version</code>、<code>release-on-tag.yml</code>
+        </p>
+      </section>
+
+      <!-- 3 sub2api 不能照搬 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">02</span>为什么不照搬 sub2api</div>
+        <h2>它换的是「一个文件」，我们要换的是「一组容器」</h2>
+        <div class="vs">
+          <div class="box">
+            <div class="lbl">sub2api：单二进制 + systemd</div>
+            <div class="ctn hot"><span>sub2api（后端 + 内嵌前端 + 内嵌 SQL）</span><b>替换文件</b></div>
+            <p style="font-size: 18px; line-height: 1.6; color: var(--ink2); margin-top: 12px">
+              下载 Release 包 → 校验 SHA-256 → rename 替换 → <code>os.Exit(0)</code> → systemd 拉起新进程。<br />一个文件就是全部，换完即升级。
+            </p>
+          </div>
+          <div class="box">
+            <div class="lbl">video-canvas：Docker Compose 五个服务</div>
+            <div class="ctn hot"><span>backend：/app/server</span><b>只换这个？</b></div>
+            <div class="ctn stale"><span>backend：Node + agent/src + node_modules</span><span>仍是旧的</span></div>
+            <div class="ctn stale"><span>plugin-runner（同镜像、另一个容器）</span><span>仍是旧的</span></div>
+            <div class="ctn stale"><span>web（nginx 前端镜像）</span><span>仍是旧的</span></div>
+            <div class="ctn"><span>postgres · redis</span><span class="muted">不动</span></div>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 26px">
+          只换容器里的二进制，<b>重建容器就丢</b>，而且前后端版本对不上，比不升级还糟。<br />
+          → 借鉴它的<b>迁移器、版本检查、前端交互</b>；执行升级改成「<b>换镜像 tag、重建容器</b>」。
+        </p>
+      </section>
+
+      <!-- 4 决定 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">03</span>推荐结论</div>
+        <h2>七个决定</h2>
+        <div class="dec">
+          <div class="d"><div class="id">D1</div><div><b>不做二进制自替换</b><span>升级的单位是镜像，不是文件</span></div></div>
+          <div class="d"><div class="id">D2</div><div><b>生产用 SQL 迁移取代 AutoMigrate</b><span>go:embed SQL + schema_migrations + advisory lock + 每文件一事务</span></div></div>
+          <div class="d"><div class="id">D3</div><div><b>基线 = v0.3.2 的库结构</b><span>新库执行基线；老库跑冻结的旧链后只记录基线</span></div></div>
+          <div class="d"><div class="id">D4</div><div><b>测试仍可 AutoMigrate</b><span>结构一致性测试比对「SQL 建出的」与「模型建出的」</span></div></div>
+          <div class="d"><div class="id">D5</div><div><b>只向前，Expand–Contract</b><span>不写 down；删列改名分两个版本；回退数据库靠备份</span></div></div>
+          <div class="d"><div class="id">D6</div><div><b>检查更新走 GitHub Releases</b><span>只读、只提示、给命令；内网部署可关闭</span></div></div>
+          <div class="d" style="grid-column: span 2"><div class="id">D7</div><div><b>一键升级 = 可选的 updater 容器，默认关</b><span>它挂 docker.sock，负责备份 → 换 tag → 拉镜像 → 重建 → 健康检查 → 失败退回旧 tag；不自动回滚数据库</span></div></div>
+        </div>
+      </section>
+
+      <!-- 5 迁移器 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">04</span>一期 · 版本化迁移</div>
+        <h2>迁移器：启动时、HTTP 之前，跑完才放行</h2>
+        <div class="row">
+          <div class="col" style="flex: 1.15">
+            <pre><span class="c">backend/migrations/</span>
+  embed.go            <span class="c">// go:embed *.sql</span>
+  0001_baseline.sql   <span class="c">// v0.3.2 完整结构</span>
+  0002_add_xxx.sql
+  0003_idx_xxx<span class="k">.notx</span>.sql  <span class="c">// 不包事务</span>
+
+<span class="k">CREATE TABLE</span> schema_migrations (
+  filename     TEXT PRIMARY KEY,
+  checksum     TEXT,   <span class="c">-- SHA-256</span>
+  app_version  TEXT,   <span class="c">-- 谁执行的，回退时要用</span>
+  duration_ms  INT,
+  applied_at   TIMESTAMPTZ
+);</pre>
+          </div>
+          <div class="col">
+            <div class="steps" style="gap: 10px">
+              <div class="step" style="animation-delay: 0s"><div class="ic run">1</div><div>固定一条连接，<code>pg_try_advisory_lock</code> 循环等锁（≤10 分钟）</div><span></span></div>
+              <div class="step" style="animation-delay: 0.05s"><div class="ic run">2</div><div>建 <code>schema_migrations</code>；判定基线（新库 / 老库 / 已接入）</div><span></span></div>
+              <div class="step" style="animation-delay: 0.1s"><div class="ic run">3</div><div>按文件名遍历：已记录且 checksum 一致 → 跳过</div><span></span></div>
+              <div class="step" style="animation-delay: 0.15s"><div class="ic bad">!</div><div>checksum 不一致 → 中止（已发布的文件被改了）</div><span></span></div>
+              <div class="step" style="animation-delay: 0.2s"><div class="ic bad">!</div><div>库里有程序不认识的文件 → 中止（旧镜像跑新库）</div><span></span></div>
+              <div class="step" style="animation-delay: 0.25s"><div class="ic ok">✓</div><div>未记录 → <code>BEGIN</code>；执行；写记录；<code>COMMIT</code></div><span></span></div>
+              <div class="step" style="animation-delay: 0.3s"><div class="ic run">4</div><div>解锁 → 启动 HTTP。任一步失败：进程退出</div><span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 模拟：迁移 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">05</span>一期 · 动手试试</div>
+        <h2>不同的库，启动时会发生什么？</h2>
+        <div class="btns" id="migBtns">
+          <button class="btn" data-mig="fresh">全新空库</button>
+          <button class="btn" data-mig="legacy">v0.3.2 老库（AutoMigrate 建的）</button>
+          <button class="btn" data-mig="normal">已接入，新版本带 0002</button>
+          <button class="btn" data-mig="tamper">有人改了 0001</button>
+          <button class="btn" data-mig="newer">退回旧镜像跑新库</button>
+          <button class="btn" data-mig="race">两个实例同时启动</button>
+          <button class="btn" data-mig="fail">0003 写错了</button>
+        </div>
+        <div class="steps" id="migSteps"></div>
+        <div class="verdict" id="migVerdict"></div>
+      </section>
+
+      <!-- 7 老库与测试 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">06</span>一期 · 难点与兜底</div>
+        <h2>老库怎么接进来，模型和 SQL 怎么不跑偏</h2>
+        <div class="row">
+          <div class="card col">
+            <span class="tag t-amber">老库接入</span>
+            <ul style="margin-top: 12px">
+              <li>现有 5 个 <code>Migrate*</code> + 手建索引原样搬进 <code>migration/legacy.go</code>，冻结</li>
+              <li>其中的 AutoMigrate <b>不用 model.All()</b>，用复制出来的 <b>v0.3.2 冻结模型</b>，否则老库会被建成「未来的结构」</li>
+              <li>补齐后只记录 <code>0001_baseline.sql</code>，不执行它</li>
+              <li>旧链永久保留：任何老版本都能一步升到最新</li>
+            </ul>
+          </div>
+          <div class="card col">
+            <span class="tag t-green">测试</span>
+            <ul style="margin-top: 12px">
+              <li><b>结构一致性</b>：schema A 跑全部 SQL，schema B 跑 <code>AutoMigrate(model.All())</code>，比列和索引；改模型忘写迁移就红</li>
+              <li><b>老库升级</b>：冻结模型建库 + 样例数据 → Run → 结构等于 A，数据还在</li>
+              <li><b>迁移器行为</b>：幂等、篡改、并发、notx、失败回滚</li>
+              <li>现有 <code>isolatedDB</code> 不用改</li>
+            </ul>
+          </div>
+          <div class="card col">
+            <span class="tag t-blue">防护</span>
+            <ul style="margin-top: 12px">
+              <li>CI：对比最近 tag，<code>backend/migrations/</code> <b>只许新增</b></li>
+              <li>每个迁移事务 <code>SET LOCAL lock_timeout='30s'</code></li>
+              <li>大表索引 <code>.notx.sql</code> + <code>CONCURRENTLY IF NOT EXISTS</code></li>
+              <li><code>/app/server migrate status</code> 子命令</li>
+              <li>规则写进 <code>backend/AGENTS.md</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8 Expand-Contract -->
+      <section class="slide">
+        <div class="kicker"><span class="num">07</span>一期 · 写迁移的规矩</div>
+        <h2>只向前；破坏性变更拆成两个版本</h2>
+        <p class="lead" style="margin-bottom: 22px">例：把 <code>users.nickname</code> 改名为 <code>display_name</code></p>
+        <div class="ec">
+          <div class="card">
+            <div class="vt">v0.4.0 · Expand</div>
+            <h3>加新列，两边都写</h3>
+            <p><code>ADD COLUMN IF NOT EXISTS display_name</code>，回填数据；代码读新列、同时写新旧两列。</p>
+            <p style="margin-top: 8px"><span class="tag t-green">退回 0.3.x 安全</span></p>
+          </div>
+          <div class="card">
+            <div class="vt">v0.4.x · 观察</div>
+            <h3>代码只用新列</h3>
+            <p>确认没有任何代码再读 <code>nickname</code>。这个版本不动结构。</p>
+            <p style="margin-top: 8px"><span class="tag t-green">退回 0.4.0 安全</span></p>
+          </div>
+          <div class="card">
+            <div class="vt">v0.5.0 · Contract</div>
+            <h3>删旧列</h3>
+            <p><code>DROP COLUMN nickname</code>。此时上一个版本已经不依赖它。</p>
+            <p style="margin-top: 8px"><span class="tag t-green">退回 0.4.x 安全</span></p>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 28px">
+          对照：现有迁移里直接删过 <code>trusted_internal</code>、<code>is_default</code>，那种写法下退回旧镜像就会坏。<br />
+          不写 down 脚本；真要退回数据库，用升级前的 <code>pg_dump</code> 备份。
+        </p>
+      </section>
+
+      <!-- 9 二期 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">08</span>二期 · 检查更新</div>
+        <h2>后台左下角一个版本标记，点开就是升级说明</h2>
+        <div class="row" style="align-items: stretch">
+          <div class="side">
+            <div class="it">总览</div>
+            <div class="it">用户管理</div>
+            <div class="it">AI 配置</div>
+            <div class="it on">系统设置</div>
+            <div class="badge"><span>v0.3.2</span><span class="dot"></span><span style="color: var(--accent); margin-left: auto">新版本</span></div>
+          </div>
+          <div class="mock col">
+            <div class="hd">
+              <div><span class="ver">v0.3.2</span><span class="muted"> → </span><span class="ver" style="color: var(--accent)">v0.4.0</span></div>
+              <span class="muted" style="font-size: 15px">2026-10-20 发布 · 检查于 3 分钟前 · 重新检查</span>
+            </div>
+            <div class="bd">
+              <b>更新日志</b>（GitHub Release 正文，即 CHANGELOG 对应段落）<br />
+              <span class="muted">· 新增 …… · 修复 …… · 数据库：新增 2 个迁移</span>
+              <pre style="margin-top: 14px; font-size: 14px; padding: 14px 18px"><span class="c"># 1. 备份数据库</span>
+docker compose exec -T postgres pg_dump -U postgres -Fc video_canvas &gt; backup-0.3.2.dump
+<span class="c"># 2. 把 .env 里的 IMAGE_TAG 改成 0.4.0</span>
+<span class="c"># 3. 拉取并重建（新 backend 启动时自动迁移）</span>
+docker compose pull &amp;&amp; docker compose up -d</pre>
+              <div style="margin-top: 12px" class="muted">数据库迁移：已执行到 <code>0001_baseline.sql</code></div>
+            </div>
+          </div>
+          <div class="card" style="width: 380px">
+            <h3>后端</h3>
+            <ul>
+              <li><code>GET /admin/system/version</code></li>
+              <li><code>GET /admin/system/updates?force=1</code></li>
+              <li><code>GET /admin/system/migrations</code></li>
+              <li>读 <code>releases/latest</code>（不含预发布），semver 比较</li>
+              <li>缓存 1 小时；GitHub 失败返回旧缓存 + warning，不报 500</li>
+              <li><code>dev</code> 构建不检查；<code>update.check_enabled</code> 可关</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10 三期拓扑 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">09</span>三期 · 一键升级（可选）</div>
+        <h2>谁来「重建自己」？交给一个独立的 updater</h2>
+        <div class="topo" style="margin: 10px 0 30px">
+          <div class="node">浏览器<small>super_admin</small></div>
+          <div class="arr">HTTP</div>
+          <div class="node">web<small>nginx</small></div>
+          <div class="arr"></div>
+          <div class="node">backend<small>非 root、无 docker 权限</small></div>
+          <div class="arr">unix socket<br />+ token</div>
+          <div class="node hl">updater<small>profile: updater，默认不启</small></div>
+          <div class="arr">docker.sock</div>
+          <div class="node danger">Docker Engine<small>≈ 宿主机 root</small></div>
+        </div>
+        <div class="row">
+          <div class="card col">
+            <h3>为什么不让 backend 自己做</h3>
+            <ul>
+              <li>拿 docker.sock 等于拿宿主机 root，不该给对外服务的进程</li>
+              <li>重建到一半，发命令的进程自己就没了</li>
+            </ul>
+          </div>
+          <div class="card col">
+            <h3>updater 只会三件事</h3>
+            <ul>
+              <li><code>upgrade</code>（目标必须是 GitHub 正式 Release）</li>
+              <li><code>rollback</code>（只退一个版本）</li>
+              <li><code>status</code>；不接受任意命令或镜像名；只动 backend / plugin-runner / web</li>
+              <li>升级步骤<b>复用 <code>scripts/update.sh</code></b>，updater 只是外壳（脚本尚未实测，动手时先验证再改）</li>
+            </ul>
+          </div>
+          <div class="card col">
+            <h3>为什么不用 Watchtower</h3>
+            <ul>
+              <li>发现新镜像就重建：没有备份、不认我们的健康标准、失败不回退、不能从后台控制时机</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 11 模拟：升级 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">10</span>三期 · 动手试试</div>
+        <h2>升级到 0.4.0，在不同地方出错会怎样？</h2>
+        <div class="btns" id="upBtns">
+          <button class="btn" data-up="ok">一切顺利</button>
+          <button class="btn" data-up="pull">镜像拉不下来</button>
+          <button class="btn" data-up="boot">新进程起不来（配置错）</button>
+          <button class="btn" data-up="migfail">迁移 0003 失败</button>
+          <button class="btn" data-up="health">迁移成功，但健康检查不过</button>
+          <button class="btn" data-up="latest">部署用的是 latest</button>
+        </div>
+        <div class="steps" id="upSteps"></div>
+        <div class="verdict" id="upVerdict"></div>
+      </section>
+
+      <!-- 12 回退与安全 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">11</span>三期 · 回退与安全</div>
+        <h2>镜像可以退，数据库只能人来决定</h2>
+        <div class="row">
+          <div class="col">
+            <table>
+              <tr><th>情况</th><th>处理</th></tr>
+              <tr><td>新版本没执行迁移</td><td>直接换回旧 tag 重建</td></tr>
+              <tr><td>执行了，都是 Expand（只加不删）</td><td>面板列出这些迁移，确认后写入 <code>allow_newer_schema</code>，旧版本照常运行</td></tr>
+              <tr><td>执行了，含删除或改名</td><td>给出备份恢复命令；<b>不提供一键恢复</b>，恢复会丢掉升级后的新数据</td></tr>
+            </table>
+            <p class="muted" style="font-size: 17px; margin-top: 14px">判断依据：<code>schema_migrations.app_version</code> 记录了每个迁移是哪个版本执行的。</p>
+          </div>
+          <div class="col">
+            <table>
+              <tr><th>风险</th><th>措施</th></tr>
+              <tr><td>docker.sock ≈ root</td><td>默认不启用；只监听 unix socket；三个固定动作</td></tr>
+              <tr><td>后台账号被盗</td><td>仅 super_admin；目标必须是正式 Release；全程写 <code>admin_audit_logs</code></td></tr>
+              <tr><td>镜像被篡改</td><td>来源固定为自己的 GHCR；cosign 签名校验留作后续</td></tr>
+              <tr><td>备份泄露</td><td>备份卷只挂给 postgres 和 updater</td></tr>
+              <tr><td>中断生成任务</td><td>升级前显示进行中任务数并二次确认；重启后任务对账恢复</td></tr>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 13 分期与待确认 -->
+      <section class="slide">
+        <div class="kicker"><span class="num">12</span>落地</div>
+        <h2>三期，每期都能单独上线</h2>
+        <div class="row">
+          <div class="phase">
+            <div class="pn">一期 · 建议先做 · 中</div>
+            <h3>版本化迁移</h3>
+            <ul>
+              <li>先验证 pgx 多语句执行</li>
+              <li>Runner：锁、记录、校验、事务、notx</li>
+              <li>基线 SQL + 冻结旧链 + 冻结模型</li>
+              <li>一致性 / 老库升级测试</li>
+              <li>替换 NewDB；status 子命令；CI 防护</li>
+            </ul>
+          </div>
+          <div class="phase p2">
+            <div class="pn">二期 · 小</div>
+            <h3>检查更新</h3>
+            <ul>
+              <li>UpdateCheckService（httptest 模拟 GitHub）</li>
+              <li>三个只读接口 + 配置项</li>
+              <li>侧边栏版本标记 + 面板</li>
+            </ul>
+          </div>
+          <div class="phase p3">
+            <div class="pn">三期 · 已确认要做 · 大</div>
+            <h3>一键升级</h3>
+            <ul>
+              <li>updater 程序、镜像、compose profile、CI</li>
+              <li>升级 / 回退 / 状态接口，锁，审计</li>
+              <li>前端进度页与断线轮询</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card" style="margin-top: 22px">
+          <h3>待你确认</h3>
+          <p>① <s>三期要不要做</s> 已确认要做，升级前备份由 updater 负责　② <s>检查更新默认开还是关</s> 已确认默认开　③ <s>旧迁移链保留多久</s> 已确认一直保留　④ <s><code>feature/版本管理2</code> 是否已有相关改动</s> 已确认没有</p>
+        </div>
+      </section>
+
+      <div class="chrome"><span>自动更新设计</span><span class="pg" id="pg"></span></div>
+      <div class="progress" id="bar"></div>
+    </div>
+
+    <script>
+      (function () {
+        const slides = [...document.querySelectorAll(".slide")];
+        const stage = document.getElementById("stage");
+        let cur = 0;
+        function fit() {
+          const s = Math.min(innerWidth / 1600, innerHeight / 900);
+          stage.style.setProperty("--s", s);
+        }
+        function show(i) {
+          cur = Math.max(0, Math.min(slides.length - 1, i));
+          slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+          document.getElementById("pg").textContent =
+            String(cur + 1).padStart(2, "0") + " / " + String(slides.length).padStart(2, "0");
+          document.getElementById("bar").style.width = ((cur + 1) / slides.length) * 100 + "%";
+          history.replaceState(null, "", "#" + (cur + 1));
+        }
+        const next = () => show(cur + 1);
+        const prev = () => show(cur - 1);
+        addEventListener("resize", fit);
+        addEventListener("keydown", (e) => {
+          if (["ArrowRight", "PageDown", " "].includes(e.key)) next();
+          if (["ArrowLeft", "PageUp"].includes(e.key)) prev();
+          if (e.key === "Home") show(0);
+          if (e.key === "End") show(slides.length - 1);
+        });
+        let tx = null;
+        addEventListener("touchstart", (e) => (tx = e.touches[0].clientX));
+        addEventListener("touchend", (e) => {
+          if (tx === null) return;
+          const dx = e.changedTouches[0].clientX - tx;
+          if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+          tx = null;
+        });
+        fit();
+        const h = parseInt((location.hash || "").slice(1), 10);
+        show(isNaN(h) ? 0 : h - 1);
+
+        // ---- 模拟器通用渲染 ----
+        // 每一步：[状态 ok|skip|wait|bad|run|dim, 文本, 右侧备注]
+        const ICON = { ok: "✓", skip: "–", wait: "…", bad: "✗", run: "▶", dim: "·" };
+        function renderSim(stepsEl, verdictEl, sc) {
+          stepsEl.innerHTML = "";
+          sc.steps.forEach(([st, text, note], i) => {
+            const d = document.createElement("div");
+            d.className = "step" + (st === "dim" ? " dim" : "");
+            d.style.animationDelay = i * 0.09 + "s";
+            d.innerHTML =
+              '<div class="ic ' + (st === "dim" ? "skip" : st) + '">' + ICON[st] + "</div><div>" + text +
+              '</div><span class="muted" style="font-size:15px">' + (note || "") + "</span>";
+            stepsEl.appendChild(d);
+          });
+          const tone = { good: ["--green-soft", "--green"], bad: ["--red-soft", "--red"], warn: ["--amber-soft", "--amber"] }[sc.tone];
+          verdictEl.style.background = "var(" + tone[0] + ")";
+          verdictEl.style.color = "var(" + tone[1] + ")";
+          verdictEl.textContent = sc.verdict;
+        }
+        function bindSim(btnBox, attr, stepsId, verdictId, scenarios, first) {
+          const stepsEl = document.getElementById(stepsId);
+          const verdictEl = document.getElementById(verdictId);
+          const btns = document.querySelectorAll("#" + btnBox + " [data-" + attr + "]");
+          function pick(key) {
+            btns.forEach((b) => b.classList.toggle("on", b.dataset[attr] === key));
+            renderSim(stepsEl, verdictEl, scenarios[key]);
+          }
+          btns.forEach((b) => (b.onclick = () => pick(b.dataset[attr])));
+          pick(first);
+        }
+
+        // ---- 迁移模拟 ----
+        const LOCK = ["ok", "拿到 advisory lock", "立即"];
+        const TABLE = ["ok", "CREATE TABLE IF NOT EXISTS schema_migrations", ""];
+        const MIG = {
+          fresh: {
+            steps: [LOCK, TABLE,
+              ["ok", "没有记录，也没有 users 表 → 判定为全新库", "基线判定"],
+              ["ok", "执行 0001_baseline.sql（事务）并记录", "1.2s"],
+              ["ok", "执行 0002_add_xxx.sql 并记录", "40ms"],
+              ["ok", "解锁 → 启动 HTTP", ""]],
+            tone: "good", verdict: "全新部署一步到位：结构完全来自 SQL 文件，schema_migrations 里有两条记录。",
+          },
+          legacy: {
+            steps: [LOCK, TABLE,
+              ["ok", "没有记录，但有 users 表 → 判定为 AutoMigrate 建的老库", "基线判定"],
+              ["run", "执行冻结旧链：4 个 Migrate* → 冻结模型 AutoMigrate → MigrateModelSingleConfig → idx_task_poll", "补齐到 v0.3.2"],
+              ["skip", "只记录 0001_baseline.sql，不执行", "不重复建表"],
+              ["ok", "执行 0002_add_xxx.sql 并记录", "40ms"],
+              ["ok", "解锁 → 启动 HTTP", ""]],
+            tone: "good", verdict: "老用户无感升级：不用手工处理，从下一个版本起就和新库走同一条路。",
+          },
+          normal: {
+            steps: [LOCK, TABLE,
+              ["ok", "有 0001_baseline.sql 记录 → 已接入", "基线判定"],
+              ["skip", "0001_baseline.sql：checksum 一致，跳过", ""],
+              ["ok", "0002_add_xxx.sql：未记录 → 事务执行并记录", "40ms"],
+              ["ok", "解锁 → 启动 HTTP", ""]],
+            tone: "good", verdict: "日常升级：只执行新增的文件，旧文件全部跳过。",
+          },
+          tamper: {
+            steps: [LOCK, TABLE,
+              ["ok", "已接入", "基线判定"],
+              ["bad", "0001_baseline.sql：checksum 与记录不一致", "中止"],
+              ["dim", "后续文件不再执行", ""],
+              ["ok", "解锁；NewDB 返回错误，进程退出", ""]],
+            tone: "bad", verdict: "已发布的迁移被改过 → 拒绝启动。要修正就新加一个文件；CI 也会在合并前拦住这种改动。",
+          },
+          newer: {
+            steps: [LOCK, TABLE,
+              ["ok", "已接入", "基线判定"],
+              ["skip", "0001、0002 一致，跳过", ""],
+              ["bad", "库里有 0003_xxx.sql（app_version=0.4.0），这个程序里没有", "中止"],
+              ["ok", "解锁；报错：数据库已被 v0.4.0 迁移过，当前程序是 v0.3.3", ""]],
+            tone: "warn", verdict: "旧程序不会带着不认识的结构继续跑。确认 0003 是只加不删的变更后，可以设置 allow_newer_schema 放行；否则用备份恢复。",
+          },
+          race: {
+            steps: [
+              ["ok", "实例 A 拿到 advisory lock", "A"],
+              ["wait", "实例 B 拿不到锁，每秒重试一次", "B 等待中"],
+              ["ok", "A 执行 0002 并记录 → 解锁 → A 启动 HTTP", "A"],
+              ["ok", "B 拿到锁", "B"],
+              ["skip", "B 看到 0001、0002 都已记录，全部跳过", "B"],
+              ["ok", "B 解锁 → 启动 HTTP", "B"]],
+            tone: "good", verdict: "多副本同时启动是安全的：只有一个实例真正执行迁移，另一个等它做完。",
+          },
+          fail: {
+            steps: [LOCK, TABLE,
+              ["ok", "已接入；0001、0002 跳过", ""],
+              ["bad", "0003：BEGIN → 第 2 条语句报错 → ROLLBACK", "整个文件撤销"],
+              ["dim", "0003 没有写入记录", ""],
+              ["ok", "解锁；进程退出，compose 按 restart 策略重试，日志里有具体的 SQL 错误", ""]],
+            tone: "bad", verdict: "失败的文件不留痕迹，之前成功的 0001、0002 保持不变。修好后发新版本，或把镜像退回上一个版本。",
+          },
+        };
+        bindSim("migBtns", "mig", "migSteps", "migVerdict", MIG, "legacy");
+
+        // ---- 升级模拟 ----
+        const PRE = [
+          ["ok", "backend：校验目标是正式 Release，拿升级锁，写审计", ""],
+          ["ok", "updater → update.sh --tag 0.4.0：记下旧 tag 0.3.2，改 .env，取 v0.4.0 的 compose 文件", ""],
+        ];
+        const PULLED = [
+          ["ok", "docker compose pull", ""],
+          ["ok", "pg_dump → backups/pre-0.4.0.dump", "保留 3 份"],
+        ];
+        const UP = {
+          ok: {
+            steps: [...PRE, ...PULLED,
+              ["ok", "docker compose up -d --remove-orphans", "重建"],
+              ["ok", "新 backend 启动：执行 0002、0003 迁移", ""],
+              ["ok", "/health：status=ok 且 version=0.4.0", "约 20 秒"],
+              ["ok", "状态 succeeded → 前端刷新页面", ""]],
+            tone: "good", verdict: "升级完成。前端在 backend 重启期间改为轮询 /health，看到新版本号就刷新。",
+          },
+          pull: {
+            steps: [...PRE,
+              ["bad", "docker compose pull 失败（网络 / 鉴权）", ""],
+              ["ok", "改回 IMAGE_TAG=0.3.2 和旧 compose 文件", ""],
+              ["dim", "不备份、不重建任何容器", ""]],
+            tone: "warn", verdict: "服务全程没停，库也没动。状态 failed，附上 pull 的错误输出。",
+          },
+          boot: {
+            steps: [...PRE,
+              ...PULLED,
+              ["ok", "up -d 重建", ""],
+              ["bad", "新 backend 读配置失败，迁移之前就退出", "库没动"],
+              ["wait", "/health 5 分钟内没有等到 version=0.4.0", ""],
+              ["ok", "改回 0.3.2，再 up -d → 旧版本恢复服务", ""]],
+            tone: "warn", verdict: "状态 failed_rolled_back，附新 backend 最后 100 行日志。库没有变化，旧版本可以直接运行。",
+          },
+          migfail: {
+            steps: [...PRE,
+              ...PULLED,
+              ["ok", "up -d 重建", ""],
+              ["ok", "新 backend：0002 成功并记录", ""],
+              ["bad", "0003 失败 → 回滚这个文件 → 进程退出", ""],
+              ["ok", "改回 0.3.2，再 up -d", ""],
+              ["bad", "旧 backend 启动：库里有不认识的 0002 → 拒绝启动", ""]],
+            tone: "bad", verdict: "状态 failed_needs_attention。面板列出 0002 的内容：只加不删就允许旧版本运行；否则按给出的命令用备份恢复。",
+          },
+          health: {
+            steps: [...PRE,
+              ...PULLED,
+              ["ok", "up -d 重建", ""],
+              ["ok", "新 backend：0002、0003 迁移成功", ""],
+              ["bad", "/health 一直是 degraded（例如连不上 plugin-runner）", ""],
+              ["ok", "改回 0.3.2，再 up -d", ""],
+              ["bad", "旧 backend：库里有不认识的 0002、0003 → 拒绝启动", ""]],
+            tone: "bad", verdict: "和上一种一样需要人决定。这就是为什么要按 Expand–Contract 写迁移：只加不删时，旧版本可以安全放行。",
+          },
+          latest: {
+            steps: [
+              ["ok", "backend：校验目标、拿锁", ""],
+              ["bad", "updater 读到 .env 里是 IMAGE_TAG=latest", ""],
+              ["dim", "不执行升级", ""]],
+            tone: "warn", verdict: "用 latest 时既没法指定目标，也退不回去。面板提示先把 IMAGE_TAG 固定为具体版本，再使用一键升级。",
+          },
+        };
+        bindSim("upBtns", "up", "upSteps", "upVerdict", UP, "ok");
+      })();
+    </script>
+  </body>
+</html>

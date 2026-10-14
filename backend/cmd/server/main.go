@@ -30,6 +30,10 @@ func main() {
 func run() error {
 	configPath := flag.String("c", "configs/config.yaml", "配置文件路径")
 	flag.Parse()
+	// migrate 子命令：镜像的 ENTRYPOINT 已经带了 -c，所以子命令出现在 -c 之后（server -c x migrate status）
+	if flag.Arg(0) == "migrate" {
+		return runMigrate(flag.Args()[1:], *configPath, os.Stdout)
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {

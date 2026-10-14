@@ -64,6 +64,19 @@ jobs:
           working-directory: backend
           args: --new-from-merge-base=origin/master ./...
 
+      # 迁移只向前：已发布（最近一个 v* tag 里已有）的迁移文件不能修改、删除或改名，要修正就新增文件。
+      # 启动时的 checksum 校验会拒绝被改过的迁移，这一步让问题在合并前暴露
+      - name: 已发布的迁移文件只能新增
+        run: |
+          tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -z "$tag" ]; then echo "没有 v* tag，跳过"; exit 0; fi
+          changed="$(git diff --name-status "$tag" -- migrations/ | grep -v '^A' || true)"
+          if [ -n "$changed" ]; then
+            echo "相对 $tag，以下迁移文件被修改、删除或改名（已发布的迁移只能新增）："
+            echo "$changed"
+            exit 1
+          fi
+
       - name: Build
         run: go build ./...
 

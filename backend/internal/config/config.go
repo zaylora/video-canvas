@@ -52,8 +52,10 @@ type Database struct {
 	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
-	AutoMigrate     bool          `mapstructure:"auto_migrate"`
-	LogLevel        string        `mapstructure:"log_level"`
+	AutoMigrate     bool          `mapstructure:"auto_migrate"` // 启动时执行 backend/migrations 里未执行的迁移
+	// AllowNewerSchema 为 true 时，库里有本程序不认识的迁移（回退到旧镜像）也照常启动；只在确认那些迁移向后兼容时打开
+	AllowNewerSchema bool   `mapstructure:"allow_newer_schema"`
+	LogLevel         string `mapstructure:"log_level"`
 }
 
 type Redis struct {
@@ -191,7 +193,7 @@ func Load(path string) (*Config, error) {
 	// 其中 storage.driver 与 storage.s3.* 是旧版对象存储的环境变量，YAML 里已经没有这些项，仍需要绑定才能读到，
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
-		"server.id_key", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
+		"server.id_key", "database.allow_newer_schema", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
