@@ -152,70 +152,74 @@ export default function VersionSettingsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader>
-        <PageHeaderHeading>
-          <PageHeaderTitle>版本与升级</PageHeaderTitle>
-        </PageHeaderHeading>
-        <PageHeaderActions>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={checking || busy}
-            onClick={() => void loadCheck(true)}
-          >
-            <RefreshCw className={cn(checking && "animate-spin motion-reduce:animate-none")} />
-            {checking ? "检查中…" : "重新检查"}
-          </Button>
-        </PageHeaderActions>
-      </PageHeader>
+    <div className="h-full overflow-y-auto">
+      <main className="px-4 py-6 lg:px-6">
+        <PageHeader>
+          <PageHeaderHeading>
+            <PageHeaderTitle>版本与升级</PageHeaderTitle>
+          </PageHeaderHeading>
+          <PageHeaderActions>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={checking || busy}
+              onClick={() => void loadCheck(true)}
+            >
+              <RefreshCw className={cn(checking && "animate-spin motion-reduce:animate-none")} />
+              {checking ? "检查中…" : "重新检查"}
+            </Button>
+          </PageHeaderActions>
+        </PageHeader>
 
-      {failed && !version ? (
-        <SettingsError
-          onRetry={() => {
-            setFailed(false);
-            setAttempt((n) => n + 1);
-          }}
-        />
-      ) : (
-        <>
-          <VersionCard
-            version={version}
-            check={check}
-            info={info}
-            showUpgrade={hasUpdate && !busy && !!info?.available}
-            block={block}
-            onUpgrade={() => void upgrade()}
-          />
-          {run && (
-            <UpgradeProgressCard
-              run={run}
-              info={info}
-              reconnecting={reconnecting}
-              finished={finished}
-              current={current}
-              onDismiss={dismiss}
+        <div className="flex flex-col gap-4">
+          {failed && !version ? (
+            <SettingsError
+              onRetry={() => {
+                setFailed(false);
+                setAttempt((n) => n + 1);
+              }}
             />
+          ) : (
+            <>
+              <VersionCard
+                version={version}
+                check={check}
+                info={info}
+                showUpgrade={hasUpdate && !busy && !!info?.available}
+                block={block}
+                onUpgrade={() => void upgrade()}
+              />
+              {run && (
+                <UpgradeProgressCard
+                  run={run}
+                  info={info}
+                  reconnecting={reconnecting}
+                  finished={finished}
+                  current={current}
+                  onDismiss={dismiss}
+                />
+              )}
+              {hasUpdate && check && <ChangelogCard check={check} />}
+              {hasUpdate && check?.latest && info && (!info.available || info.uses_latest) && (
+                <ManualStepsCard
+                  current={current}
+                  target={check.latest}
+                  usesLatest={info.uses_latest}
+                />
+              )}
+              <MigrationsCard files={migrations} />
+              {info?.available && (
+                <UpgradeHistoryCard
+                  info={info}
+                  current={current}
+                  rollbackBlock={busy ? "正在升级" : block}
+                  onRollback={() => void rollback()}
+                />
+              )}
+            </>
           )}
-          {hasUpdate && check && <ChangelogCard check={check} />}
-          {hasUpdate && check?.latest && info && (!info.available || info.uses_latest) && (
-            <ManualStepsCard
-              current={current}
-              target={check.latest}
-              usesLatest={info.uses_latest}
-            />
-          )}
-          <MigrationsCard files={migrations} />
-          {info?.available && (
-            <UpgradeHistoryCard
-              info={info}
-              current={current}
-              rollbackBlock={busy ? "正在升级" : block}
-              onRollback={() => void rollback()}
-            />
-          )}
-        </>
-      )}
+        </div>
+      </main>
     </div>
   );
 }
