@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布对齐线演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --beam: 194 105 8;
+        --canvas: 0 0% 97.5%;
+        --dot: 0 0% 0% / 0.16;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --beam: 251 176 64;
+        --canvas: 240 10% 7%;
+        --dot: 0 0% 100% / 0.14;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .split { grid-template-columns: 1fr !important; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 150px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; margin: 0; padding: 0; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 原型：画布 ---- */
+      .split { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+      .stage { position: relative; height: 440px; overflow: hidden; background: hsl(var(--canvas)); background-image: radial-gradient(circle, hsl(var(--dot)) 1px, transparent 1.3px); background-size: 20px 20px; touch-action: none; user-select: none; }
+      .world { position: absolute; left: 0; top: 0; width: 720px; height: 440px; transform-origin: 0 0; }
+      .pn { position: absolute; border-radius: 12px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); display: grid; place-items: center; font-size: 12.5px; cursor: grab; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+      .pn small { display: block; color: hsl(var(--muted-foreground)); font-size: 11px; text-align: center; }
+      .pn.sel { box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.8); }
+      .pn.drag { cursor: grabbing; z-index: 5; }
+      .pn.unmeasured { border-style: dashed; color: hsl(var(--muted-foreground)); }
+      .pg { position: absolute; border-radius: 16px; border: 1.5px dashed hsl(var(--foreground) / 0.35); background: hsl(var(--foreground) / 0.03); cursor: grab; }
+      .pg b { position: absolute; left: 12px; top: 8px; font-size: 12px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+      .guides { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 9; }
+      .opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid hsl(var(--border)); }
+      .opt:last-of-type { border-bottom: 0; }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+      .readout { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; display: grid; gap: 4px; }
+      .readout div { display: flex; justify-content: space-between; gap: 8px; }
+      .readout span:first-child { color: hsl(var(--muted-foreground)); }
+      input[type="range"] { width: 100%; accent-color: rgb(var(--violet)); }
+      kbd { font-family: "Geist Mono", Consolas, monospace; font-size: 11.5px; border: 1px solid hsl(var(--border)); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: hsl(var(--muted)); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="ruler"></i></span>画布对齐线演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>可拖动原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>实现细节（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark'); redraw()" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">拖一个节点靠近另一个，自动吸齐并画一条线</h1>
+        <p class="lead">
+          拖动<b>单个节点</b>时，它的左/中/右、上/中/下与其他节点对应位置相差不到 <b>4 个屏幕像素</b>就吸过去，并画<b>细点线，只画在两个节点之间的空隙里</b>；拖远到 8 像素才松开。<b>对齐常开，没有开关，也没有临时关闭键；</b>多选、拖组时不吸附。同时把设置里的“对齐网格”<b>整个移除</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页对应 Markdown 设计文档 <code>画布对齐线设计.md</code>。“可拖动原型”里的吸附算法与文档 §6.3 一致，但画面、颜色、节点尺寸是示意，不是真实产品。<b>设计稿尚未实现。</b><br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码/官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一次拖动是怎么走的</h2>
+          <p class="sub">回答：吸附逻辑放在哪里、什么时候算、松手时会不会跳。</p>
+          <div class="flow note">
+            <div class="node"><b>开始拖动</b>只在单选、非组时建目标索引</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>每帧：改写坐标</b>在 <code>applyNodesChange</code> 之前，按原始坐标算两轴吸附</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>更新辅助线</b>写独立 store，只有覆盖层重渲染</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>松手：复用修正量</b>xyflow 会再发一条原始坐标，必须一并改写</div>
+          </div>
+          <div class="note-txt">设计：不替换现有 onNodesChange（它还管保存判定和取消上传），只在入口处改写拖动变更；辅助线不进 nodes，所以不触发保存、不进撤销栈。参考稿漏掉了“松手那一条”，会让节点在松手瞬间跳回未吸附位置，这一点在原型里可以勾选复现。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>附近没有可吸附的目标时（回退，永远可用）：</b>没有已测量的普通节点、或拖的是多选 / 组时，节点坐标就是鼠标算出来的原始坐标，和今天完全一致。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>什么时候吸，什么时候不吸</h2>
+          <p class="sub">三类情形，由“拖了什么”决定；对齐常开，不能关闭。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="magnet"></i><b>单个节点</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">吸附 + 画线</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>普通节点和组成员</b>都可以，目标是其他普通节点；<b>组框不当目标</b>。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="boxes"></i><b>多选 / 拖组本身</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">不介入</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>整体平移</b>，不破坏已排好的相对布局。多选整体吸附留到后续。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="minus"></i><b>辅助线长什么样</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">细点线</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>只连空隙</b>，不贯穿节点；顶 / 中 / 底同时对齐就同时出现多条。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和主流工具对比</h2>
+          <p class="sub">做法大体一致，差别在于要不要等间距吸附、能不能单独引用。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>本方案（提案）</th><th>Figma</th><th>tldraw</th><th>React Flow Helper Lines</th></tr></thead>
+              <tbody>
+                <tr><th>对齐目标</th><td class="y">边 + 中心</td><td class="y">中心和最外缘</td><td class="y">边、中心、角</td><td class="y">锚点（边）</td></tr>
+                <tr><th>等间距</th><td><span class="m">一期不做</span></td><td>另有 Smart selection</td><td class="y">有（gap 吸附）</td><td>未验证：示例未提及</td></tr>
+                <tr><th>阈值随缩放</th><td class="y">屏幕像素 ÷ zoom</td><td>未验证</td><td class="y">snapThreshold / zoom</td><td class="y">随缩放平移保持准确</td></tr>
+                <tr><th>能否关闭</th><td><span class="m">常开，不可关闭</span></td><td class="y">按住 Ctrl 临时关闭</td><td class="y">按住 Ctrl/Cmd 临时关闭</td><td>未验证</td></tr>
+                <tr><th>能否引用</th><td>自研</td><td>闭源产品</td><td><span class="m">绑定自家编辑器</span></td><td><span class="m">Pro 付费</span></td></tr>
+                <tr><th>核实度</th><td><span class="tag t-vio">提案</span></td><td><span class="tag t-ok">官方页面</span></td><td><span class="tag t-ok">官方文档</span></td><td><span class="tag t-ok">官方页面</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">来源与访问日期（2026-10-14）见 Markdown §4。</p>
+        </div>
+
+        <div class="sec">
+          <h2>当用户把节点拖到另一个节点旁边时，会发生什么</h2>
+          <p class="sub">一次典型的整理动作分五步，以及一个需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps">
+                <li><b>按下并拖动节点 A</b><small>单选、非组节点才会建立目标索引</small></li>
+                <li><b>A 的上边靠近 B 的上边，相差 3px</b><small>小于 4px，立刻吸齐，并在 A 和 B 之间的空隙里出现细点线（顶 / 中 / 底同时对齐就是多条）</small></li>
+                <li><b>继续向下拖 6px，仍在 8px 内</b><small>保持吸附，线不消失——这就是“黏性”</small></li>
+                <li><b>拖出 8px</b><small>释放，线消失，A 回到鼠标所在位置</small></li>
+                <li><b>松手</b><small>A 停在最后一帧的位置，不跳；位置作为普通坐标走现有保存流程</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：只和“已测量尺寸”的普通节点对齐</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>刚加载、还没量出宽高的节点不参与，不会被当成 0×0。</li>
+                    <li>组框再大也不当目标，节点不会被吸到组框的边上。</li>
+                    <li>线只连被拖节点和锁定的那一个目标；同一目标上多个锚点同时对齐就同时出现多条。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前告知：对齐常开、无法关闭；“对齐网格”设置项会消失，用过的用户需要知道新的对齐方式。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 可拖动原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可拖动原型</h1>
+        <p class="lead">
+          下面是一块迷你画布，<b>直接拖节点</b>就能看到吸附和辅助线。已预置 4 个普通节点、1 个组（里面有 1 个成员）和 1 个“未测量”节点。试试：<b>拖到别的节点的边或中心旁</b>（把“音频”拖到和“文本”同一水平线附近，试试顶 / 中 / 底多条线）；<b>Shift 点选两个再拖</b>；<b>拖组框</b>；<b>拖“未测量”节点或把别的节点靠近它</b>；把<b>缩放</b>调到 0.25 再拖，触发距离仍是 4 屏幕像素。数据在内存里，刷新复原。
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">app.example.com / 画布 / 未命名画布（示意，非真实调用）</span>
+          </div>
+          <div class="split" style="padding: 12px">
+            <div class="stage" id="stage"><div class="world" id="world"></div></div>
+            <div class="card" style="padding: 12px">
+              <div class="opt" style="display: block">
+                <div class="row" style="justify-content: space-between">缩放<span class="mono" id="zoomVal">1.00</span></div>
+                <input id="zoom" type="range" min="0.25" max="2" step="0.05" value="1" />
+              </div>
+              <div class="opt">
+                <span>演示：不处理松手那一帧<small>复现参考稿的缺陷：松手时节点跳回</small></span>
+                <button class="switch" id="swBug" role="switch" aria-checked="false"></button>
+              </div>
+              <div style="margin: 12px 0 6px; font-size: 12.5px" class="muted">实时读数</div>
+              <div class="readout" id="readout"></div>
+              <div class="row" style="margin-top: 12px"><button class="btn btn-outline" id="reset"><i data-lucide="rotate-ccw"></i>复位</button></div>
+            </div>
+          </div>
+          <div class="note-txt" style="padding: 0 12px 12px">
+            设计：右侧读数只是为了看懂机制，真实产品里没有任何开关，对齐常开。“不处理松手那一帧”是对参考稿缺陷的演示，不会出现在产品里。线是 0.75 屏幕像素宽的细点线，缩放后看起来一样细。
+          </div>
+        </div>
+        <div class="callout c-info" style="margin-top: 12px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>怎么看失败 / 不可用情形：</b>选中两个以上节点拖动时，读数里“模式”显示<code>不介入（多选）</code>；拖组框显示<code>不介入（组）</code>。虚线“未测量”节点永远不是目标，也不会被吸附。
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 实现细节（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">实现细节（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档 §6、§8。<b>没有后端接口和数据库改动</b>：只涉及前端模块、一个设置字段和一个不持久化的 store。</p>
+
+        <div class="sec">
+          <h2>谁参与吸附</h2>
+          <p class="sub">哪些节点能当被拖对象、哪些能当目标，以及为什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>被拖时</th><th>当目标</th><th>原因</th></tr></thead>
+              <tbody>
+                <tr><th>普通节点</th><td><span class="tag t-ok">吸附</span></td><td><span class="tag t-ok">是</span></td><td>核心场景</td></tr>
+                <tr><th>组成员</th><td><span class="tag t-ok">吸附</span></td><td><span class="tag t-ok">是</span></td><td>用 <code>absolutePosition()</code> 换算成绝对坐标再比较；位移量对相对/绝对坐标相同</td></tr>
+                <tr><th>组节点</th><td><span class="tag t-mute">不介入</span></td><td><span class="tag t-bad">否</span></td><td>用户已确认：组框又大又带内边距，会造成误吸附</td></tr>
+                <tr><th>未测量节点</th><td><span class="tag t-mute">不介入</span></td><td><span class="tag t-bad">否</span></td><td>宽高缺失或为 0，不能当 0×0</td></tr>
+                <tr><th>多选拖动</th><td><span class="tag t-mute">不介入</span></td><td>—</td><td>用户已确认：不破坏相对布局</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用现有 zustand + persist 设置存储，不新增表、不改画布 payload。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">设置 <code>Settings</code>（localStorage，<code>video-design-settings</code>）</th></tr></thead>
+                <tbody>
+                  <tr><th>（无新增）</th><td><b>不新增设置项</b>：对齐常开，没有开关</td></tr>
+                  <tr><th><code>snapToGrid</code></th><td><b>删除</b>。旧存档里的残留键不再写回，内存里无害，<b>不做迁移</b></td></tr>
+                  <tr><th><code>GRID_SIZE</code></th><td>保留（背景点阵在用）；注释改为“背景点阵的间距”</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">辅助线 store（不持久化）</th></tr></thead>
+                <tbody>
+                  <tr><th><code>guides</code></th><td><code>Guide[]</code>，最多 2 条（x、y 各一）</td></tr>
+                  <tr><th><code>setGuides</code></th><td>浅比较，无变化不写入，避免无谓重渲染</td></tr>
+                  <tr><th><code>clear</code></th><td>松手、关闭、卸载时调用</td></tr>
+                  <tr><th><code>Guide</code></th><td><code>{ axis: 'x'|'y', value, from, to }</code>，单位为画布坐标；<code>from</code>/<code>to</code> 是两个节点之间的空隙（另一轴有重叠则为重叠段），无留白</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>模块接口（没有 HTTP 接口）</h2>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>模块与函数</th><th>说明与边界</th></tr></thead>
+              <tbody>
+                <tr><th><code>alignment.ts</code><br /><code>findAxisSnap</code></th><td>入参：被拖矩形、目标矩形数组、轴、<code>enter</code>、<code>release</code>、上次的锁。返回 <code>{ delta, lock } | null</code>。进入阈值用严格小于；释放阈值用小于等于</td></tr>
+                <tr><th><code>alignment.ts</code><br /><code>alignmentGuides</code></th><td>入参：<b>吸附修正之后</b>的被拖矩形、目标矩形、轴。返回这条轴上所有对齐锚点（相差 ≤ 0.5）各一条 <code>Guide</code>，按位置从小到大；线只覆盖两节点之间的空隙，贴着没有空隙返回空数组</td></tr>
+                <tr><th><code>use-align-guides.ts</code><br /><code>adjustChanges</code></th><td>入参 <code>NodeChange[]</code>，返回改写后的数组。只改“被拖节点”的 <code>position</code> 变更：同时改 <code>position</code> 和 <code>positionAbsolute</code>（若有）；<b>包含 <code>dragging:false</code> 的那一条</b>。其余变更原样返回</td></tr>
+                <tr><th><code>onNodeDragStart</code></th><td>入参含被拖节点列表。仅当 <code>列表长度 = 1</code> 且非组且已量出尺寸，才建会话；目标与父节点位置一次用 Map 建好，O(节点数)</td></tr>
+                <tr><th><code>onNodeDragStop</code></th><td>结束会话，清锁清线</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre>// use-align-guides.ts（提案）
+adjustChanges(changes):
+  if !session: return changes
+  c = changes.find(type==='position' && id===session.id && c.position)
+  if !c: return changes
+
+  if c.dragging === false:                 // 松手那一条：xyflow 给的是原始坐标
+    return apply(changes, session.lastDelta)   // 不重算，复用最后一次修正量
+
+  cur  = lookup(session.id)
+  raw  = translate(session.rect, c.position - cur.position)   // 原始绝对矩形
+  enter   = ENTER_PX / zoom
+  release = RELEASE_PX / zoom
+  sx = findAxisSnap(raw, session.targets, 'x', enter, release, locks.x)
+  sy = findAxisSnap(raw, session.targets, 'y', enter, release, locks.y)
+  locks = { x: sx?.lock, y: sy?.lock }
+  session.lastDelta = { x: sx?.delta ?? 0, y: sy?.delta ?? 0 }
+  snapped = translate(raw, session.lastDelta)          // 辅助线按吸附之后的位置算
+  guides = []
+  for (axis, snap) of [('x', sx), ('y', sy)]:
+    if snap: guides += alignmentGuides(snapped, session.rects[snap.lock.targetId], axis)
+  setGuides(guides)                                    // 浅比较，没变就不写
+  return apply(changes, session.lastDelta)   // position 与 positionAbsolute 同时 + delta</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>一期做边/中心对齐 + 磁吸</b>：不做等间距、也不做只画线。</li>
+              <li><b>组框不作为吸附目标</b>：避免大边框造成误吸附。</li>
+              <li><b>对齐常开、不可取消</b>：不监听 Ctrl，也不提供设置开关。用户后来改了主意，取代此前“按住 Ctrl/Cmd 临时关闭 + 设置总开关”。</li>
+              <li><b>多选拖动不吸附不画线</b>：不破坏已排好的相对布局；整体吸附列为后续。</li>
+              <li><b>辅助线只连两个节点范围，浅灰色</b>：画面干净，节点多时不被满屏长线干扰。颜色取主题令牌 <code>--muted-foreground</code>（初版用品牌色，用户要求改浅灰），需用户打开页面确认视觉。</li>
+              <li><b>移除“对齐网格”</b>：用户在“与网格关系”一题中直接给出，取代了原本的让位/优先方案。已搁置：网格开时对齐线让位或优先。</li>
+              <li><b>辅助线样式参照用户给的三张参考截图</b>：只画在两个节点之间的空隙里，细点线（0.75 屏幕像素宽）；顶 / 中 / 底同时对齐时同时出现多条。</li>
+              <li><b>性能是硬约束</b>：不得让画布拖动变卡。辅助线状态独立于 Flow、覆盖层只在有线时挂载、拖动开始 O(n) 建索引、回调引用稳定。</li>
+              <li><b>默认值（非用户决定）</b>：4px 进入 / 8px 释放（初版 6/14，用户试玩后反馈太强而下调），实现后仍可凭手感调。</li>
+              <li><b>主文档已回写</b>：松手那一帧的处理、辅助线 store 独立于 Flow 状态，均已写入 Markdown §6.7 与 §7。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "proto") redraw();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 对齐算法（与 Markdown §6.3 一致；示意实现） ================= */
+      const ENTER_PX = 4, RELEASE_PX = 8, EPS = 0.5;
+      const ANCHOR_NAME = { x: ["左边", "中心", "右边"], y: ["上边", "中心", "下边"] };
+      const anchorValue = (r, axis, i) => {
+        const s = axis === "x" ? r.x : r.y, z = axis === "x" ? r.w : r.h;
+        return i === 0 ? s : i === 2 ? s + z : s + z / 2;
+      };
+      function findAxisSnap(moving, targets, axis, enter, release, lock) {
+        if (lock) {
+          const t = targets.find((x) => x.id === lock.targetId);
+          if (t) {
+            const delta = lock.value - anchorValue(moving, axis, lock.mi);
+            if (Math.abs(delta) <= release) return { delta, lock, target: t, mi: lock.mi, ti: lock.ti };
+          }
+        }
+        let best = null, min = enter;
+        for (const t of targets)
+          for (let mi = 0; mi < 3; mi++) {
+            const sv = anchorValue(moving, axis, mi);
+            for (let ti = 0; ti < 3; ti++) {
+              const tv = anchorValue(t.rect, axis, ti), delta = tv - sv, d = Math.abs(delta);
+              if (d < min) { min = d; best = { delta, lock: { targetId: t.id, mi, ti, value: tv }, target: t, mi, ti }; }
+            }
+          }
+        return best;
+      }
+      /* 吸附之后要画的线：对齐的每个锚点各一条，只画在两个节点之间的空隙里 */
+      function alignmentGuides(moving, target, axis) {
+        const along = axis === "x" ? "y" : "x", size = axis === "x" ? "h" : "w";
+        const m0 = moving[along], m1 = m0 + moving[size], t0 = target[along], t1 = t0 + target[size];
+        const from = m1 < t0 ? m1 : t1 < m0 ? t1 : Math.max(m0, t0);
+        const to = m1 < t0 ? t0 : t1 < m0 ? m0 : Math.min(m1, t1);
+        if (to <= from) return [];
+        const values = [];
+        for (let mi = 0; mi < 3; mi++)
+          for (let ti = 0; ti < 3; ti++) {
+            const v = anchorValue(target, axis, ti);
+            if (Math.abs(v - anchorValue(moving, axis, mi)) <= EPS && !values.includes(v)) values.push(v);
+          }
+        return values.sort((a, b) => a - b).map((value) => ({ axis, value, from, to }));
+      }
+
+      /* ================= 原型：内存状态，刷新复原 ================= */
+      const initial = () => ({
+        nodes: [
+          { id: "a", x: 70, y: 60, w: 120, h: 70, label: "文本", measured: true },
+          { id: "b", x: 330, y: 150, w: 160, h: 90, label: "图片", measured: true },
+          { id: "c", x: 90, y: 250, w: 100, h: 60, label: "视频", measured: true },
+          { id: "d", x: 560, y: 50, w: 110, h: 110, label: "音频", measured: true },
+          { id: "u", x: 560, y: 190, w: 100, h: 50, label: "未测量", measured: false },
+          { id: "m", x: 250, y: 330, w: 110, h: 60, label: "组成员", measured: true, parent: "g" },
+        ],
+        group: { id: "g", x: 220, y: 300, w: 220, h: 120, label: "组 1" },
+      });
+      let S = initial();
+      let sel = new Set();
+      let bug = false, zoom = 1;
+      let session = null;
+      let guides = [];
+      let status = "空闲", lastText = "—";
+
+      const stage = $("#stage"), world = $("#world");
+      const rectOf = (n) => ({ x: n.x, y: n.y, w: n.w, h: n.h });
+
+      function redraw() {
+        world.style.transform = `scale(${zoom})`;
+        const g = S.group;
+        let html = `<div class="pg" data-id="g" style="left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px"><b>${esc(g.label)}</b></div>`;
+        for (const n of S.nodes) {
+          const cls = ["pn", sel.has(n.id) ? "sel" : "", session && session.ids.includes(n.id) ? "drag" : "", n.measured ? "" : "unmeasured"].join(" ");
+          html += `<div class="${cls}" data-id="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px"><div>${esc(n.label)}<small>${n.measured ? n.w + "×" + n.h : "尺寸未知"}</small></div></div>`;
+        }
+        /* 细点线：0.75 屏幕像素宽、点距 2/2 屏幕像素，都按 1/zoom 换成画布单位 */
+        let svg = "";
+        for (const gd of guides) {
+          const v = gd.axis === "x";
+          svg += `<line x1="${v ? gd.value : gd.from}" y1="${v ? gd.from : gd.value}" x2="${v ? gd.value : gd.to}" y2="${v ? gd.to : gd.value}" stroke="hsl(var(--muted-foreground))" stroke-width="${0.75 / zoom}" stroke-dasharray="${2 / zoom} ${2 / zoom}"/>`;
+        }
+        world.innerHTML = html + `<svg class="guides">${svg}</svg>`;
+        readout();
+      }
+      function readout() {
+        $("#zoomVal").textContent = zoom.toFixed(2);
+        const rows = [
+          ["模式", status],
+          ["进入 / 释放", `${(ENTER_PX / zoom).toFixed(1)} / ${(RELEASE_PX / zoom).toFixed(1)} 画布单位`],
+          ["屏幕像素", `${ENTER_PX} / ${RELEASE_PX}`],
+          ["辅助线", guides.length ? guides.map((x) => x.axis.toUpperCase() + "=" + Math.round(x.value)).join("，") : "无"],
+          ["吸附", lastText],
+        ];
+        $("#readout").innerHTML = rows.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
+      }
+
+      function targetsFor(ids) {
+        // 目标：非组、已测量、不是被拖节点；组成员的坐标在示意里本来就是绝对坐标（真实实现用父组位置换算）
+        return S.nodes.filter((n) => n.measured && !ids.includes(n.id)).map((n) => ({ id: n.id, label: n.label, rect: rectOf(n) }));
+      }
+
+      stage.addEventListener("pointerdown", (e) => {
+        const el = e.target.closest("[data-id]");
+        if (!el) { sel.clear(); redraw(); return; }
+        const id = el.dataset.id;
+        const isGroup = id === "g";
+        if (e.shiftKey) { sel.has(id) ? sel.delete(id) : sel.add(id); }
+        else if (!sel.has(id)) { sel = new Set([id]); }
+        const members = S.nodes.filter((n) => n.parent === "g").map((n) => n.id);
+        const ids = isGroup ? ["g", ...members] : [...sel].flatMap((x) => (x === "g" ? ["g", ...members] : [x]));
+        const dragIds = [...new Set(ids)];
+        const single = dragIds.length === 1 && !isGroup;
+        const origin = Object.fromEntries(dragIds.map((x) => { const o = x === "g" ? S.group : S.nodes.find((n) => n.id === x); return [x, { x: o.x, y: o.y }]; }));
+        session = { ids: dragIds, single, group: isGroup, ptr: { x: e.clientX, y: e.clientY }, origin, locks: {}, lastDelta: { x: 0, y: 0 }, raw: null };
+        if (single) session.targets = targetsFor(dragIds);
+        stage.setPointerCapture(e.pointerId);
+        status = isGroup ? "不介入（组）" : !single ? "不介入（多选）" : "吸附中";
+        redraw();
+      });
+      stage.addEventListener("pointermove", (e) => {
+        if (!session) return;
+        const dx = (e.clientX - session.ptr.x) / zoom, dy = (e.clientY - session.ptr.y) / zoom;
+        let delta = { x: 0, y: 0 };
+        guides = [];
+        lastText = "—";
+        if (session.group) status = "不介入（组）";
+        else if (!session.single) status = "不介入（多选）";
+        else status = "吸附中";
+        if (session.single) {
+          const id = session.ids[0], o = session.origin[id], n = S.nodes.find((x) => x.id === id);
+          const raw = { x: o.x + dx, y: o.y + dy, w: n.w, h: n.h };
+          session.raw = raw;
+          if (n.measured) {
+            const enter = ENTER_PX / zoom, release = RELEASE_PX / zoom;
+            const sx = findAxisSnap(raw, session.targets, "x", enter, release, session.locks.x);
+            const sy = findAxisSnap(raw, session.targets, "y", enter, release, session.locks.y);
+            session.locks = { x: sx?.lock, y: sy?.lock };
+            delta = { x: sx?.delta ?? 0, y: sy?.delta ?? 0 };
+            const snapped = { ...raw, x: raw.x + delta.x, y: raw.y + delta.y };
+            for (const [axis, snap] of [["x", sx], ["y", sy]]) if (snap) guides.push(...alignmentGuides(snapped, snap.target.rect, axis));
+            const t = [];
+            if (sx) t.push(`X：我的${ANCHOR_NAME.x[sx.mi]}↔${sx.target.label}${ANCHOR_NAME.x[sx.ti]}`);
+            if (sy) t.push(`Y：我的${ANCHOR_NAME.y[sy.mi]}↔${sy.target.label}${ANCHOR_NAME.y[sy.ti]}`);
+            lastText = t.join("；") || "无";
+          } else { status = "不介入（未测量）"; }
+        }
+        session.lastDelta = delta;
+        for (const id of session.ids) {
+          const o = session.origin[id];
+          const x = o.x + dx + delta.x, y = o.y + dy + delta.y;
+          if (id === "g") { S.group.x = x; S.group.y = y; } else { const n = S.nodes.find((q) => q.id === id); n.x = x; n.y = y; }
+        }
+        redraw();
+      });
+      const endDrag = () => {
+        if (!session) return;
+        // 松手：xyflow 会再发一条 dragging:false，坐标是原始坐标。正确做法复用最后修正量；演示开关会让它跳回原始位置
+        if (bug && session.single && session.raw && (session.lastDelta.x || session.lastDelta.y)) {
+          const n = S.nodes.find((q) => q.id === session.ids[0]);
+          n.x = session.raw.x; n.y = session.raw.y;
+          toast("节点在松手瞬间跳回了未吸附位置（参考稿缺陷）", "warn");
+        }
+        session = null; guides = []; status = "空闲"; lastText = "—";
+        redraw();
+      };
+      stage.addEventListener("pointerup", endDrag);
+      stage.addEventListener("pointercancel", endDrag);
+
+      $("#swBug").addEventListener("click", (e) => { bug = !bug; e.currentTarget.setAttribute("aria-checked", String(bug)); });
+      $("#zoom").addEventListener("input", (e) => { zoom = +e.target.value; redraw(); });
+      $("#reset").addEventListener("click", () => { S = initial(); sel = new Set(); guides = []; session = null; status = "空闲"; lastText = "—"; redraw(); toast("已复位"); });
+
+      icons();
+      redraw();
+    </script>
+  </body>
+</html>
