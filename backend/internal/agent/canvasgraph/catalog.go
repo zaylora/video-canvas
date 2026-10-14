@@ -123,7 +123,7 @@ type DetailResult struct {
 }
 
 // 详情里不给模型看的字段：媒体地址和素材 id 属于用户的私有资源，模型不需要。
-var hiddenData = []string{"src", "assetId", "outputs", "paramAssets", "fileName"}
+var hiddenData = []string{"src", "assetId", "outputs", "pendingTaskIds", "paramAssets", "fileName"}
 
 // Detail 读取一批节点的详情，最多 MaxDetailNodes 个；任何一个不存在都报错，让模型改对再读。
 func Detail(g *Graph, ids []string) (*DetailResult, error) {

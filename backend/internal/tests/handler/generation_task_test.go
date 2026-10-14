@@ -398,6 +398,68 @@ func TestGenerationTaskHandler_Create(t *testing.T) {
 		}
 	})
 
+	// 多结果归并到同一节点（docs/design/多结果归并）：node_ids 允许重复，多个任务绑同一个节点，
+	// 响应按下标逐项对应，积分不足 / 幂等重试都按下标处理。
+	t.Run("node_ids 全是同一个节点：建 2 个任务都绑它（测试环境并发上限 2），响应按下标对应", func(t *testing.T) {
+		env := newGenTaskEnv(t)
+		env.registry.snap.Model.Capabilities.Params[0].Options = []any{1.0, 2.0, 3.0}
+		body := `{"kind":"video","model_id":"m1","node_id":"a","node_ids":["a","a"],"input":{"prompt":"猫","count":2}}`
+		status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "same-node"})
+		if status != http.StatusAccepted {
+			t.Fatalf("应是 202：%d %v", status, resp)
+		}
+		seen := map[any]bool{}
+		for i := 0; i < 2; i++ {
+			item := genTaskItem(t, resp, i)
+			task, _ := item["task"].(map[string]any)
+			if item["node_id"] != "a" || task == nil || task["node_id"] != "a" {
+				t.Fatalf("第 %d 项应是节点 a 的任务：%v", i, item)
+			}
+			seen[task["id"]] = true
+		}
+		if len(seen) != 2 || len(env.repo.tasks) != 2 {
+			t.Fatalf("应建 2 个不同的任务：%v %d", seen, len(env.repo.tasks))
+		}
+		for _, task := range env.repo.tasks {
+			if task.NodeID != "a" {
+				t.Fatalf("任务应绑定节点 a：%+v", task)
+			}
+		}
+
+		// 同一个 Idempotency-Key 重发：每个下标返回已创建的任务，不会多建
+		_, again := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, map[string]string{"Idempotency-Key": "same-node"})
+		for i := 0; i < 2; i++ {
+			if genTaskItem(t, again, i)["task"].(map[string]any)["id"] != genTaskItem(t, resp, i)["task"].(map[string]any)["id"] {
+				t.Fatalf("重发时第 %d 项应原样返回", i)
+			}
+		}
+		if len(env.repo.tasks) != 2 {
+			t.Fatalf("重发不应多建任务：%d", len(env.repo.tasks))
+		}
+	})
+
+	t.Run("node_ids 全是同一个节点、余额只够 2 个：前 2 项有任务，第 3 项积分不足", func(t *testing.T) {
+		env := newGenTaskEnv(t)
+		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 25}
+		env.registry.snap.Model.Capabilities.Params[0].Options = []any{1.0, 2.0, 3.0}
+		body := `{"kind":"video","model_id":"m1","node_ids":["a","a","a"],"input":{"prompt":"猫","count":3}}`
+		status, resp := env.call(t, http.MethodPost, "/api/v1/generation-tasks", body, nil)
+		if status != http.StatusAccepted {
+			t.Fatalf("应是 202：%d %v", status, resp)
+		}
+		for i := 0; i < 2; i++ {
+			if genTaskItem(t, resp, i)["task"] == nil {
+				t.Fatalf("第 %d 项应有任务：%v", i, resp)
+			}
+		}
+		if e, _ := genTaskItem(t, resp, 2)["error"].(map[string]any); e == nil || e["code"] != float64(errcode.ErrInsufficientCredits.Code) {
+			t.Fatalf("第 3 项应是积分不足：%v", resp)
+		}
+		if env.repo.credits[1].Frozen != 20 || len(env.repo.tasks) != 2 {
+			t.Fatalf("应建 2 个任务、各冻结 10：%+v %d", env.repo.credits[1], len(env.repo.tasks))
+		}
+	})
+
 	t.Run("生成 3 个、余额只够 2 个：前 2 个节点成功，第 3 个节点积分不足", func(t *testing.T) {
 		env := newGenTaskEnv(t)
 		env.repo.credits[1] = &model.UserCredit{UserID: 1, Balance: 25}

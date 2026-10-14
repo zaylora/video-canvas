@@ -45,6 +45,11 @@ type MediaLightboxProps = {
   onLocate?: (id: string) => void;
   /** 位置胶囊的前缀，默认「相邻节点」；画布外按各自的说法改，如「本条记录」 */
   countLabel?: string;
+  /**
+   * 底部信息行里额外的操作（比如「设为主图」），拿到当前项；不传就没有，行为和以前一致。
+   * 画布外使用时也可以不管它。
+   */
+  renderAction?: (item: PreviewItem) => React.ReactNode;
   onClose: () => void;
 };
 
@@ -229,6 +234,7 @@ export function MediaLightbox({
   onActiveChange,
   onLocate,
   countLabel = "相邻节点",
+  renderAction,
   onClose,
 }: MediaLightboxProps) {
   const reduce = useReducedMotion();
@@ -454,6 +460,7 @@ export function MediaLightbox({
                   切换
                 </span>
               )}
+              {item && renderAction?.(item)}
               {onLocate && (
                 <motion.button
                   type="button"

@@ -1,3 +1,5 @@
+import type { XYPosition } from "@xyflow/react";
+
 import type { CanvasEdge, CanvasNode, FlowNode } from "@/types";
 
 import { absolutePosition } from "./group";
@@ -23,6 +25,41 @@ const overlaps = (a: Rect, b: Rect) =>
   b.y < a.y + a.height + GAP;
 
 /**
+ * 在源节点右侧找 count 个空位：先往右排（每行 4 个），撞到别的节点就换下一行，避开已有节点；
+ * 组内节点的 position 是相对组的，一律按画布上的绝对位置算，结果落在画布上、不入组。
+ * 「复制节点」和「把历史版本添加到画布」共用。
+ */
+export function findSlotsBeside(
+  source: CanvasNode,
+  nodes: FlowNode[],
+  count: number,
+): XYPosition[] {
+  const size = sizeOf(source);
+  const origin = absolutePosition(source, nodes);
+  const taken: Rect[] = nodes.map((node) => ({
+    ...absolutePosition(node, nodes),
+    ...sizeOf(node),
+  }));
+  const slots: XYPosition[] = [];
+  for (let i = 0; i < count; i++) {
+    let position = { x: origin.x, y: origin.y };
+    for (let step = 1; ; step++) {
+      const row = Math.floor((step - 1) / 4);
+      const col = ((step - 1) % 4) + 1;
+      position = {
+        x: origin.x + col * (size.width + GAP),
+        y: origin.y + row * (size.height + GAP),
+      };
+      if (!taken.some((rect) => overlaps({ ...position, ...size }, rect))) break;
+      if (step > 200) break; // 极端拥挤时不再找，叠放也比卡死好
+    }
+    taken.push({ ...position, ...size });
+    slots.push(position);
+  }
+  return slots;
+}
+
+/**
  * 像「复制节点」一样复制出 count 个副本：
  * 复制提示词、模型、参数、手动选的参考素材（prompt / model / params / paramAssets），
  * 每个副本都复制一份原节点「进来的连线」（同样的上游、同样的连接口），所以引用的素材和原节点完全一样；
@@ -37,13 +74,7 @@ export function duplicateNode(
   count: number,
   newId: () => string = () => crypto.randomUUID(),
 ): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
-  const size = sizeOf(source);
-  // 组内节点的 position 是相对组的，摆放一律按画布上的绝对位置算；副本落在画布上，不入组
-  const origin = absolutePosition(source, nodes);
-  const taken: Rect[] = nodes.map((node) => ({
-    ...absolutePosition(node, nodes),
-    ...sizeOf(node),
-  }));
+  const slots = findSlotsBeside(source, nodes, count);
   const labels = copyLabels(
     source.data.label,
     nodes.map((node) => node.data.label),
@@ -54,19 +85,7 @@ export function duplicateNode(
   const outEdges: CanvasEdge[] = [];
 
   for (let i = 0; i < count; i++) {
-    // 先往右排，撞到别的节点就换下一行
-    let position = { x: origin.x, y: origin.y };
-    for (let step = 1; ; step++) {
-      const row = Math.floor((step - 1) / 4);
-      const col = ((step - 1) % 4) + 1;
-      position = {
-        x: origin.x + col * (size.width + GAP),
-        y: origin.y + row * (size.height + GAP),
-      };
-      if (!taken.some((rect) => overlaps({ ...position, ...size }, rect))) break;
-      if (step > 200) break; // 极端拥挤时不再找，叠放也比卡死好
-    }
-    taken.push({ ...position, ...size });
+    const position = slots[i];
 
     const { data } = source;
     const id = newId();

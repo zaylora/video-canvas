@@ -43,6 +43,7 @@ function collectTaskIds(nodes: CanvasNode[]) {
   const ids = new Set<string>();
   for (const node of nodes) {
     if (node.data.taskId) ids.add(node.data.taskId);
+    for (const id of node.data.pendingTaskIds ?? []) ids.add(id);
     for (const output of node.data.outputs ?? []) if (output.taskId) ids.add(output.taskId);
   }
   return [...ids];

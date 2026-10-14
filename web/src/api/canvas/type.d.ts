@@ -40,6 +40,8 @@ export interface PersistedCanvasNodeDto {
     errorTaskRef?: string | null;
     /** 生成任务 id（字符串）；running 状态靠它在刷新/重开后对账回填 */
     taskId?: string;
+    /** 本节点进行中的任务 id 集合（一次提交多个任务时才有） */
+    pendingTaskIds?: string[];
     /** 按模型 capabilities 存的参数值（提示词、生成方式、生成参数、手动添加的参考素材） */
     params?: Record<string, unknown>;
     /** 参数里媒体字段所选素材的展示信息 */

@@ -85,6 +85,7 @@ export function serializeGraph(
               }
             : {}),
           ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
+          ...(rest.pendingTaskIds?.length ? { pendingTaskIds: rest.pendingTaskIds } : {}),
           ...(rest.params !== undefined ? { params: rest.params } : {}),
           ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
           ...(rest.src !== undefined ? { src: rest.src } : {}),

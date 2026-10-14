@@ -17,6 +17,7 @@ const TASK_FIELDS = [
   "status",
   "uploadProgress",
   "taskId",
+  "pendingTaskIds",
   "error",
   "text",
   "outputs",

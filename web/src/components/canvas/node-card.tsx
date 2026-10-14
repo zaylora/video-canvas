@@ -213,6 +213,8 @@ type NodeCardProps = {
   /** 卡片宽度（像素）；不给就是默认的 w-xl。正文按宽高比撑高，所以宽度决定了框的画幅 */
   width?: number;
   className?: string;
+  /** 浮在卡片右上角的小控件（多版本徽标），不占布局 */
+  corner?: ReactNode;
   /** 节点正文，通常是一个 BaseNodeContent */
   children: ReactNode;
 };
@@ -230,6 +232,7 @@ export function NodeCard({
   canAcceptConnection,
   width,
   className,
+  corner,
   children,
 }: NodeCardProps) {
   const { rotateX, rotateY, scale, opacity, transformPerspective } = useConnectionTilt({
@@ -252,6 +255,7 @@ export function NodeCard({
           {status && <span className="ml-auto shrink-0 text-xs font-medium">{status}</span>}
         </div>
         {children}
+        {corner}
         {handles.map((handle) => (
           <NodeCardHandleDot
             key={`${handle.type}-${handle.position}-${handle.id ?? ""}`}

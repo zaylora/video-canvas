@@ -39,6 +39,11 @@ export type CanvasNodeData = {
   errorTaskRef?: string | null;
   /** 视频生成任务 id（后端 id 是数字，这里统一存字符串）；status 为 running 时靠它对账回填 */
   taskId?: string;
+  /**
+   * 本节点进行中的任务 id 集合：一次提交了 ≥2 个任务（生成数量 N）才有，都绑在这个节点上。
+   * 任务到达终态时回填把它移出，空了就删掉这个字段；taskId 是其中第一个，保持原语义。
+   */
+  pendingTaskIds?: string[];
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */

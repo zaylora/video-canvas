@@ -27,8 +27,8 @@ import {
 import { AlignGuidesLayer } from "@/components/canvas/align-guides-layer";
 import { CanvasBackgroundLayer } from "@/components/canvas/canvas-background";
 import { ChromeZone } from "@/components/canvas/chrome/chrome";
+import { NodeHistoryDialog } from "@/components/canvas/history-dialog";
 import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
-import { NODE_OUTPUT_MIME } from "@/components/canvas/node-history-strip";
 import { SettingsDialog, type SettingModelGroup } from "@/components/setting";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -47,13 +47,12 @@ import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { useSettingsStore } from "@/store";
 import { useFramePickStore } from "@/store/frame-pick";
 import { useTrimStore } from "@/store/trim";
-import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
+import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
 import type { CanvasDetailDto } from "@/api/canvas/type";
 import { canLinkFrom, canLinkNodes } from "@/utils/canvas/link-rule";
 import { TEXT_BODY_MAX, clipFileName, clipText, type ClipboardContent } from "@/utils/canvas/paste";
-import { MEDIA_KIND_OF } from "@/utils/canvas/outputs";
 import { DEFAULT_NODE_SIZE } from "@/utils/canvas/placement";
 import {
   deserializeGraph,
@@ -116,9 +115,13 @@ function showUploadNotice(notice: UploadNotice | null) {
   else toast.info(notice.text);
 }
 
-/** 节点上挂着的任务号 */
+/** 节点上挂着的任务号（含批次里还没结清的） */
 const taskIdsOf = (nodes: FlowNode[]) =>
-  nodes.flatMap((node) => (!isGroupNode(node) && node.data.taskId ? [node.data.taskId] : []));
+  nodes.flatMap((node) =>
+    isGroupNode(node)
+      ? []
+      : [...(node.data.taskId ? [node.data.taskId] : []), ...(node.data.pendingTaskIds ?? [])],
+  );
 
 /** 供 ReactFlow 使用的节点类型表，摆在模块顶层，重渲染时不会换新对象 */
 const nodeTypes = { canvas: CanvasNodeView, group: GroupNodeView } satisfies NodeTypes;
@@ -639,39 +642,6 @@ export const Flow = memo(function Flow({
     paste: pasteContent,
   });
 
-  /** 历史浮条里的缩略图拖到画布上：以那一版为素材建一个新节点 */
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    if (!event.dataTransfer.types.includes(NODE_OUTPUT_MIME)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  }, []);
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      const raw = event.dataTransfer.getData(NODE_OUTPUT_MIME);
-      if (!raw) return;
-      event.preventDefault();
-      try {
-        const output = JSON.parse(raw) as NodeOutput;
-        const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-        addNodeAt(
-          MEDIA_KIND_OF[output.mediaType],
-          { x: flow.x - NEW_NODE_SIZE.width / 2, y: flow.y - NEW_NODE_SIZE.height / 2 },
-          {
-            status: "done",
-            src: output.src,
-            assetId: output.assetId,
-            mediaType: output.mediaType,
-            outputs: [output],
-            activeOutputId: output.id,
-          },
-        );
-      } catch {
-        // 拖进来的不是我们塞的数据，不理它
-      }
-    },
-    [addNodeAt, screenToFlowPosition],
-  );
-
   // 设置里要列的模型清单：每种节点一行，内置清单后面接上自定义模型
   const modelGroups = useMemo<SettingModelGroup[]>(
     () =>
@@ -740,9 +710,7 @@ export const Flow = memo(function Flow({
                     className="bg-canvas relative h-full min-w-0 flex-1 overflow-hidden"
                     data-tool={activeTool}
                     data-canvas-root
-                    onDragOver={onDragOver}
                     onPointerDownCapture={overlayGate.onPointerDownCapture}
-                    onDrop={onDrop}
                   >
                     <ReactFlow
                       nodeTypes={nodeTypes}
@@ -903,6 +871,7 @@ export const Flow = memo(function Flow({
                       modelGroups={modelGroups}
                     />
                     <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+                    <NodeHistoryDialog />
                     <MediaLightbox
                       items={liveItems ?? lastItems}
                       target={preview}

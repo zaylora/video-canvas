@@ -6,6 +6,8 @@ import {
   MAX_NODE_OUTPUTS,
   activeOutputIdOf,
   appendOutput,
+  appendOutputs,
+  isGenerating,
   readOutputs,
   selectOutput,
 } from "@/utils/canvas/outputs";
@@ -144,5 +146,83 @@ describe("回填与提交保留历史", () => {
       { x: 0, y: 0, zoom: 1 },
     );
     expect(graph.nodes[0].data).toMatchObject({ outputs: [out("1")], activeOutputId: "1" });
+  });
+});
+
+describe("appendOutputs：一次追加多版（一个任务返回多张，或一批任务陆续到达）", () => {
+  test("activeIsFirst：第一版设为当前版本，镜像字段跟着换，其余只追加", () => {
+    const data = makeData({ outputs: [out("1")], activeOutputId: "1", src: "/files/1.png" });
+    const patch = appendOutputs(data, [out("2"), out("3")], { activeIsFirst: true });
+    expect(patch.outputs?.map((item) => item.id)).toEqual(["1", "2", "3"]);
+    expect(patch).toMatchObject({ activeOutputId: "2", src: "/files/2.png", assetId: "2" });
+  });
+
+  test("不设主图：当前版本和镜像字段都不动", () => {
+    const data = makeData({ outputs: [out("1")], activeOutputId: "1", src: "/files/1.png" });
+    const patch = appendOutputs(data, [out("2")], { activeIsFirst: false });
+    expect(patch.outputs?.map((item) => item.id)).toEqual(["1", "2"]);
+    expect(patch.activeOutputId).toBe("1");
+    expect(patch).not.toHaveProperty("src");
+  });
+
+  test("旧画布只有 src：追加前先把它当成一版，并把当前版本记下来，免得被「认最后一版」顶掉", () => {
+    const data = makeData({ src: "/files/5.png", assetId: "5", mediaType: "image" });
+    const patch = appendOutputs(data, [out("6")], { activeIsFirst: false });
+    expect(patch.outputs?.map((item) => item.id)).toEqual(["5", "6"]);
+    expect(patch.activeOutputId).toBe("5");
+  });
+
+  test("同一素材不重复入列；列表里已有的只切过去（activeIsFirst）", () => {
+    const data = makeData({ outputs: [out("1"), out("2")], activeOutputId: "1" });
+    const patch = appendOutputs(data, [out("2"), out("3")], { activeIsFirst: true });
+    expect(patch.outputs?.map((item) => item.id)).toEqual(["1", "2", "3"]);
+    expect(patch.activeOutputId).toBe("2");
+  });
+
+  test(`超过 ${MAX_NODE_OUTPUTS} 版丢最旧的；当前版本被丢掉时改成最新一版`, () => {
+    expect(MAX_NODE_OUTPUTS).toBe(50);
+    const outputs = Array.from({ length: MAX_NODE_OUTPUTS }, (_, i) => out(String(i)));
+    const patch = appendOutputs(
+      makeData({ outputs, activeOutputId: "0", src: "/files/0.png" }),
+      [out("a"), out("b")],
+      { activeIsFirst: false },
+    );
+    expect(patch.outputs).toHaveLength(MAX_NODE_OUTPUTS);
+    expect(patch.outputs?.[0].id).toBe("2");
+    expect(patch.activeOutputId).toBe("b");
+    expect(patch).toMatchObject({ src: "/files/b.png", assetId: "b" });
+  });
+});
+
+describe("isGenerating：节点是否还有任务在跑", () => {
+  test("running 或还有进行中的任务都算", () => {
+    expect(isGenerating(makeData({ status: "running" }))).toBe(true);
+    expect(isGenerating(makeData({ status: "done", pendingTaskIds: ["2"] }))).toBe(true);
+    expect(isGenerating(makeData({ status: "done" }))).toBe(false);
+    expect(isGenerating(makeData({ status: "done", pendingTaskIds: [] }))).toBe(false);
+  });
+});
+
+describe("序列化与提交保留 pendingTaskIds", () => {
+  test("序列化带上 pendingTaskIds", () => {
+    const graph = serializeGraph(
+      [
+        {
+          id: "n1",
+          type: "canvas",
+          position: { x: 0, y: 0 },
+          data: makeData({
+            status: "done",
+            taskId: "1",
+            pendingTaskIds: ["2", "3"],
+            outputs: [out("1")],
+            activeOutputId: "1",
+          }),
+        },
+      ],
+      [],
+      { x: 0, y: 0, zoom: 1 },
+    );
+    expect(graph.nodes[0].data).toMatchObject({ pendingTaskIds: ["2", "3"], status: "done" });
   });
 });

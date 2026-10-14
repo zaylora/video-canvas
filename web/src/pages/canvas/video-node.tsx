@@ -55,6 +55,9 @@ import {
 } from "@/utils/tasks/capabilities";
 import type { VideoNodeView } from "@/utils/tasks/node-view";
 
+import { VersionBadge } from "@/components/canvas/version-badge";
+import { showVersionBadge } from "@/utils/canvas/versions";
+
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
@@ -376,6 +379,8 @@ function MediaTaskNode({
     if (!selected || multiSelected) leaveFramePick(id);
   }, [id, leaveFramePick, multiSelected, selected]);
 
+  const badge = showVersionBadge(data);
+
   return (
     <>
       <NodeCard
@@ -394,6 +399,7 @@ function MediaTaskNode({
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
         width={nodeFrameSize(aspect).width}
+        corner={badge ? <VersionBadge nodeId={id} badge={badge} /> : undefined}
       >
         {trimming && view.phase === "done" ? (
           <TrimStage src={view.src} aspect={aspect} />
