@@ -18,6 +18,16 @@ type Config struct {
 	AI       AI       `mapstructure:"ai"`
 	Storage  Storage  `mapstructure:"storage"`
 	Agent    Agent    `mapstructure:"agent"`
+	Update   Update   `mapstructure:"update"`
+}
+
+// DefaultUpdateRepo 是检查新版本用的 GitHub 仓库。
+const DefaultUpdateRepo = "zaylora/video-canvas"
+
+// Update 是后台「检查新版本」的配置：读 GitHub Releases 的最新正式版本，只提示、不自动升级。
+type Update struct {
+	CheckEnabled bool   `mapstructure:"check_enabled"` // 内网或离线部署可关闭
+	Repo         string `mapstructure:"repo"`          // owner/name；为空时用 DefaultUpdateRepo
 }
 
 type Server struct {
@@ -184,6 +194,8 @@ func Load(path string) (*Config, error) {
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.SetDefault("update.check_enabled", true)
+	v.SetDefault("update.repo", DefaultUpdateRepo)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)

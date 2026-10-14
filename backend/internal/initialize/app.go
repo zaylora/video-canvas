@@ -27,11 +27,13 @@ import (
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 	"video-canvas/internal/provider/worker"
+	"video-canvas/internal/release"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
 	"video-canvas/internal/service"
 	agentsvc "video-canvas/internal/service/agent"
 	"video-canvas/internal/storage"
+	"video-canvas/pkg/version"
 )
 
 type App struct {
@@ -258,9 +260,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
 		}))),
 		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
-		Showcase:      handler.NewShowcaseHandler(showcaseSvc),
-		AdminRole:     roleLookup,
-		UserState:     stateLookup,
+		AdminSystem: handler.NewAdminSystemHandler(service.NewSystemUpdateService(service.SystemUpdateOptions{
+			CurrentVersion: version.Version,
+			CheckEnabled:   cfg.Update.CheckEnabled,
+			Releases:       release.NewGitHubClient(cfg.Update.Repo, release.Options{UserAgent: "video-canvas/" + version.Version}),
+			Migrations:     repository.NewMigrationStatusRepository(db),
+		})),
+		Showcase:  handler.NewShowcaseHandler(showcaseSvc),
+		AdminRole: roleLookup,
+		UserState: stateLookup,
 	})
 
 	return &App{
