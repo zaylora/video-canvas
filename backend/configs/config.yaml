@@ -82,6 +82,8 @@ storage:
 update:
   check_enabled: true # 后台检查新版本（只读 GitHub 公开接口，不上报任何信息）；内网或离线部署设为 false
   repo: zaylora/video-canvas # 检查哪个 GitHub 仓库的正式发布
+  # 一键升级（可选）：updater 容器监听的 socket；token 用环境变量 APP_UPDATE_UPDATER_TOKEN 提供，为空表示没启用
+  updater_socket: /run/updater/updater.sock
 
 # 所有配置项都可以用环境变量覆盖，规则：APP_ + 大写路径，点换成下划线
 # 例如 APP_SERVER_PORT=9000、APP_DATABASE_DSN=...、APP_JWT_SECRET=...

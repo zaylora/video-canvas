@@ -28,6 +28,9 @@ const DefaultUpdateRepo = "zaylora/video-canvas"
 type Update struct {
 	CheckEnabled bool   `mapstructure:"check_enabled"` // 内网或离线部署可关闭
 	Repo         string `mapstructure:"repo"`          // owner/name；为空时用 DefaultUpdateRepo
+	// 一键升级：updater 容器监听的 unix socket 与共享 token。token 为空表示没启用 updater
+	UpdaterSocket string `mapstructure:"updater_socket"`
+	UpdaterToken  string `mapstructure:"updater_token"`
 }
 
 type Server struct {
@@ -196,6 +199,7 @@ func Load(path string) (*Config, error) {
 	v.AutomaticEnv()
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
+	v.SetDefault("update.updater_socket", "/run/updater/updater.sock")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
@@ -205,7 +209,7 @@ func Load(path string) (*Config, error) {
 	// 其中 storage.driver 与 storage.s3.* 是旧版对象存储的环境变量，YAML 里已经没有这些项，仍需要绑定才能读到，
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
-		"server.id_key", "database.allow_newer_schema", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
+		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",

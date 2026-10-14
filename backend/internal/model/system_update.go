@@ -43,3 +43,59 @@ type MigrationFileView struct {
 	Modified   bool       `json:"modified"` // 已执行，但文件内容和执行时不一样
 	Unknown    bool       `json:"unknown"`  // 库里有记录，程序里没有（库比程序新）
 }
+
+// UpgradeRunStatus 是 update.sh 写的进度文件（--status-file），updater 原样转给 backend。
+type UpgradeRunStatus struct {
+	Target    string `json:"target"`
+	Previous  string `json:"previous"`
+	Phase     string `json:"phase"`   // prepare / compose / pull / backup / recreate / health / rollback / finish
+	State     string `json:"state"`   // 见 UpgradeState* 常量
+	Message   string `json:"message"` // 给管理员看的说明；失败时是原因和处理建议
+	Backup    string `json:"backup"`  // 这次升级前的数据库备份路径（部署目录内），没有备份时为空
+	UpdatedAt string `json:"updated_at"`
+}
+
+// update.sh 运行状态。
+const (
+	UpgradeStateRunning           = "running"
+	UpgradeStateSucceeded         = "succeeded"
+	UpgradeStateFailed            = "failed"                 // 没改动运行中的服务（拉取失败、备份失败等）
+	UpgradeStateFailedRolledBack  = "failed_rolled_back"     // 新版本没起来，已退回旧版本且服务正常
+	UpgradeStateFailedNeedsAction = "failed_needs_attention" // 退回后旧版本也没起来，要人工处理
+)
+
+// UpgradeBackup 是部署目录 backups/ 下的一份数据库备份。
+type UpgradeBackup struct {
+	Name    string    `json:"name"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"mod_time"`
+}
+
+// UpdaterStatus 是 updater 容器 GET /status 的返回。
+type UpdaterStatus struct {
+	Running  bool              `json:"running"`   // update.sh 正在执行
+	ImageTag string            `json:"image_tag"` // 部署目录 .env 里的 IMAGE_TAG
+	Last     *UpgradeRunStatus `json:"last"`      // 最近一次运行的状态；从没运行过为 nil
+	Backups  []UpgradeBackup   `json:"backups"`
+	LogTail  string            `json:"log_tail"` // 最近一次运行输出的最后若干行，失败时给管理员排查
+}
+
+// UpgradeInfoView 是后台升级面板的数据（GET /admin/system/upgrade）。
+type UpgradeInfoView struct {
+	Available         bool              `json:"available"`          // updater 已启用且连得上
+	UnavailableReason string            `json:"unavailable_reason"` // 不可用的原因；可用时为空
+	ImageTag          string            `json:"image_tag"`
+	UsesLatest        bool              `json:"uses_latest"` // IMAGE_TAG=latest，不能一键升级
+	Running           bool              `json:"running"`
+	Last              *UpgradeRunStatus `json:"last"`
+	Backups           []UpgradeBackup   `json:"backups"`
+	LogTail           string            `json:"log_tail"`
+	ActiveTasks       int64             `json:"active_tasks"`       // 全站进行中的生成任务数，升级会中断它们
+	RollbackTarget    string            `json:"rollback_target"`    // 可以回退到的版本（最近一次成功升级前的版本）；不能回退时为空
+	CurrentMigrations []string          `json:"current_migrations"` // 当前版本执行过的数据库迁移，回退时提示这些变更不会撤销
+}
+
+// UpgradeReq 是升级 / 回退请求。
+type UpgradeReq struct {
+	Target string `json:"target" binding:"required" label:"目标版本"`
+}

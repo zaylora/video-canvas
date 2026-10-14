@@ -20,10 +20,13 @@ const (
 	AdminAuditShowcaseDelete   = "showcase.delete"
 	AdminAuditShowcaseOrder    = "showcase.order"
 	AdminAuditShowcaseSettings = "showcase.settings"
+	AdminAuditSystemUpgrade    = "system.upgrade"
+	AdminAuditSystemRollback   = "system.rollback"
 
 	AdminAuditTargetUser     = "user"
 	AdminAuditTargetSettings = "settings"
 	AdminAuditTargetShowcase = "showcase"
+	AdminAuditTargetSystem   = "system"
 )
 
 // AdminAuditLog 后台运营审计日志（用户管理与系统设置）：只增不改不删。detail 不含任何密码、密钥。

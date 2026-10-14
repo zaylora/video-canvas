@@ -190,3 +190,11 @@ var (
 	ErrConversationLimit    = New(62002, "对话数量已达上限，请先删除不用的对话", http.StatusConflict)
 	ErrRecordNotFound       = New(62005, "记录不存在", http.StatusNotFound)
 )
+
+// 系统升级 63xxx
+var (
+	ErrUpdaterUnavailable = New(63001, "一键升级未启用或无法连接", http.StatusConflict) // 原因写进 Msg
+	ErrUpgradeRunning     = New(63002, "已有升级在进行中", http.StatusConflict)
+	ErrUpgradeTarget      = New(63003, "不能升级或回退到这个版本", http.StatusBadRequest) // 原因写进 Msg
+	ErrUpgradeLatestTag   = New(63004, "部署使用 latest 镜像，不能一键升级", http.StatusConflict)
+)

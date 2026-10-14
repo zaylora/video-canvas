@@ -134,6 +134,11 @@ func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
 		t.Fatalf("配置文件里没有 update 段时也应取默认值：%+v", cfg.Update)
 	}
 
+	if cfg.Update.UpdaterSocket != "/run/updater/updater.sock" || cfg.Update.UpdaterToken != "" {
+		t.Fatalf("updater 默认 socket 固定、token 为空（未启用）：%+v", cfg.Update)
+	}
+
+	t.Setenv("APP_UPDATE_UPDATER_TOKEN", "tok")
 	t.Setenv("APP_UPDATE_CHECK_ENABLED", "false")
 	cfg, err = Load(path)
 	if err != nil {
@@ -141,5 +146,8 @@ func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
 	}
 	if cfg.Update.CheckEnabled {
 		t.Fatal("APP_UPDATE_CHECK_ENABLED=false 应能关闭")
+	}
+	if cfg.Update.UpdaterToken != "tok" {
+		t.Fatal("APP_UPDATE_UPDATER_TOKEN 应能设置 token（YAML 里没有这一项）")
 	}
 }

@@ -6,9 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	. "video-canvas/internal/handler"
+	"video-canvas/internal/middleware"
+	"video-canvas/internal/pkg/errcode"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,14 +43,44 @@ func (f *fakeSystemService) Migrations(context.Context) ([]model.MigrationFileVi
 	return []model.MigrationFileView{{Filename: "0001_baseline.sql", Applied: true}}, nil
 }
 
+// fakeUpgradeService 实现 handler.UpgradeService，记录调用参数。
+type fakeUpgradeService struct {
+	actor    uint64
+	upgraded string
+	rolled   string
+	err      error
+}
+
+func (f *fakeUpgradeService) Info(context.Context) (*model.UpgradeInfoView, error) {
+	return &model.UpgradeInfoView{Available: true, ImageTag: "0.4.0", ActiveTasks: 2}, nil
+}
+
+func (f *fakeUpgradeService) Upgrade(_ context.Context, actor uint64, target string) error {
+	f.actor, f.upgraded = actor, target
+	return f.err
+}
+
+func (f *fakeUpgradeService) Rollback(_ context.Context, actor uint64, target string) error {
+	f.actor, f.rolled = actor, target
+	return f.err
+}
+
 func newSystemEnv(svc *fakeSystemService) *gin.Engine {
+	return newSystemEnvWith(svc, &fakeUpgradeService{})
+}
+
+func newSystemEnvWith(svc *fakeSystemService, up *fakeUpgradeService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := NewAdminSystemHandler(svc)
+	h := NewAdminSystemHandler(svc, up)
 	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(9)) })
 	g := r.Group("/api/v1/admin/system")
 	g.GET("/version", h.Version)
 	g.GET("/updates", h.Updates)
 	g.GET("/migrations", h.Migrations)
+	g.GET("/upgrade", h.UpgradeInfo)
+	g.POST("/upgrade", h.Upgrade)
+	g.POST("/rollback", h.Rollback)
 	return r
 }
 
@@ -105,6 +138,58 @@ func TestAdminSystemHandler(t *testing.T) {
 			if code, body := getSystem(t, r, p); code == http.StatusOK && body.Code == 0 {
 				t.Fatalf("%s 读库失败不应返回成功", p)
 			}
+		}
+	})
+}
+
+func postSystem(t *testing.T, r *gin.Engine, path, body string) int {
+	t.Helper()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w.Code
+}
+
+func TestAdminSystemHandler_Upgrade(t *testing.T) {
+	t.Run("升级面板数据", func(t *testing.T) {
+		code, body := getSystem(t, newSystemEnv(&fakeSystemService{}), "/api/v1/admin/system/upgrade")
+		var v model.UpgradeInfoView
+		_ = json.Unmarshal(body.Data, &v)
+		if code != http.StatusOK || !v.Available || v.ActiveTasks != 2 {
+			t.Fatalf("%d %s", code, body.Data)
+		}
+	})
+
+	t.Run("升级：返回 202，带上操作人", func(t *testing.T) {
+		up := &fakeUpgradeService{}
+		code := postSystem(t, newSystemEnvWith(&fakeSystemService{}, up), "/api/v1/admin/system/upgrade", `{"target":"0.5.0"}`)
+		if code != http.StatusAccepted || up.upgraded != "0.5.0" || up.actor != 9 {
+			t.Fatalf("%d %+v", code, up)
+		}
+	})
+
+	t.Run("回退", func(t *testing.T) {
+		up := &fakeUpgradeService{}
+		code := postSystem(t, newSystemEnvWith(&fakeSystemService{}, up), "/api/v1/admin/system/rollback", `{"target":"0.4.0"}`)
+		if code != http.StatusAccepted || up.rolled != "0.4.0" {
+			t.Fatalf("%d %+v", code, up)
+		}
+	})
+
+	t.Run("缺少 target 时 400，不调用业务", func(t *testing.T) {
+		up := &fakeUpgradeService{}
+		code := postSystem(t, newSystemEnvWith(&fakeSystemService{}, up), "/api/v1/admin/system/upgrade", `{}`)
+		if code != http.StatusBadRequest || up.upgraded != "" {
+			t.Fatalf("%d %+v", code, up)
+		}
+	})
+
+	t.Run("业务错误按错误码的状态返回", func(t *testing.T) {
+		up := &fakeUpgradeService{err: errcode.ErrUpgradeRunning}
+		code := postSystem(t, newSystemEnvWith(&fakeSystemService{}, up), "/api/v1/admin/system/upgrade", `{"target":"0.5.0"}`)
+		if code != http.StatusConflict {
+			t.Fatalf("%d", code)
 		}
 	})
 }

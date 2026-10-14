@@ -132,6 +132,15 @@ func (r *GenerationTaskRepository) CountActive(ctx context.Context, userID uint6
 	return n, err
 }
 
+// CountAllActive 统计全站非终态的正式任务数（不含 is_test），升级前提示会中断多少任务。
+func (r *GenerationTaskRepository) CountAllActive(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.GenerationTask{}).
+		Where("is_test = FALSE AND status IN ?", activeStatuses()).
+		Count(&n).Error
+	return n, err
+}
+
 // EnsureCredit 账户不存在时以 initial 惰性创建，已存在则不改动（INSERT … ON CONFLICT DO NOTHING）。
 func (r *GenerationTaskRepository) EnsureCredit(ctx context.Context, userID uint64, initial int) error {
 	return insertInitialCredit(ctx, r.db, userID, initial)
