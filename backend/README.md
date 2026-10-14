@@ -8,6 +8,7 @@ Gin + GORM + go-redis + Viper + Zap 的 Go 后端骨架。
 backend/
 ├── cmd/server/          # 程序入口
 ├── configs/             # 配置文件
+├── migrations/          # 版本化数据库迁移 SQL（内嵌进二进制）
 ├── internal/            # 项目内部代码（核心）
 │   ├── config/          # 配置定义
 │   ├── model/           # 数据模型
@@ -21,6 +22,7 @@ backend/
 │   ├── storage/         # 素材存储：内置本地磁盘 + S3 兼容对象存储（OSS / COS / S3 / R2），Registry 按 id 解析
 │   ├── cache/           # Redis 缓存
 │   ├── initialize/      # 初始化
+│   ├── migration/       # 迁移执行器 + 老库补齐（启动时自动执行）
 │   └── pkg/             # 内部通用工具包
 │       └── # response / errcode / logger / utils
 ├── pkg/                 # 可被外部引用的公共包（version / pagination）
@@ -38,7 +40,7 @@ go run ./cmd/server -c configs/config.yaml
 make run
 ```
 
-数据库仅支持 PostgreSQL，启动前需准备好数据库并在 `database.dsn` 中填写连接信息。
+数据库仅支持 PostgreSQL，启动前需准备好数据库并在 `database.dsn` 中填写连接信息。启动时会自动执行 `migrations/` 里还没执行过的迁移（`database.auto_migrate`，默认开），迁移失败则不启动；`go run ./cmd/server migrate status` 查看迁移状态。写迁移的规则见 [AGENTS.md](AGENTS.md)「数据库迁移」。
 
 - 启用 Redis：`redis.enabled` 改为 `true`
 - 环境变量覆盖：`APP_` + 配置路径，如 `APP_SERVER_PORT=9000`
@@ -69,6 +71,12 @@ make run
 | POST                | /api/v1/admin/users/:id/reset-password                | **super_admin** 重置密码 `{new_password?}`（手填时按统一密码规则：8..72 字节、不等于用户名、不在弱密码表，否则 10001 / 55003）（可省略整个 body；可重置自己的）；缺省生成 16 位强随机临时密码（crypto/rand，字母数字、去掉易混淆字符）；返回 `{temp_password}`，**仅此一次**（指定了 `new_password` 时返回同一值）；bcrypt 存储，`token_version` +1 并清缓存，该用户已签发的 token 立即 401；审计 `user.reset_password` 只记 `{generated}`，日志与审计不含明文 |
 | POST                | /api/v1/admin/users/batch/credits                     | admin 批量发积分 `{ids(≤200，去重), amount>0, note}`，返回 `{results:[{id, ok, error?}]}`，每个用户独立权限判断与事务                                                                                                                                                                                                                                                              |
 | PUT                 | /api/v1/admin/users/batch/status                      | admin 批量封禁 / 启用 `{ids(≤200，去重), status}`（不取消任务），返回同上                                                                                                                                                                                                                                                                                                          |
+| GET                 | /api/v1/admin/system/version                          | admin 当前版本 `{version, git_commit, build_time, go_version, latest_migration}`                                                                                                                                                                                                                                                                           |
+| GET                 | /api/v1/admin/system/updates                          | admin 检查新版本（GitHub Releases 最新正式版，缓存 1 小时；`?force=1` 强制，30 秒内复用）；失败也返回 200，原因在 `warning`；`update.check_enabled=false` 时 `enabled=false`                                                                                                                                                                                                                |
+| GET                 | /api/v1/admin/system/migrations                       | admin 每个数据库迁移文件的执行状态 `[{filename, applied, applied_at, app_version, modified, unknown}]`                                                                                                                                                                                                                                                               |
+| GET                 | /api/v1/admin/system/upgrade                          | admin 一键升级面板 `{available, unavailable_reason, image_tag, uses_latest, running, last, backups, log_tail, active_tasks, rollback_target, current_migrations}`；updater 未启用或连不上不算错误                                                                                                                                                                        |
+| POST                | /api/v1/admin/system/upgrade                          | super_admin 一键升级 `{target}`：只能是检查到的最新版本；updater 执行 update.sh，立即返回 202；正在升级 409 / 63002，用 latest 409 / 63004，审计 `system.upgrade`                                                                                                                                                                                                                        |
+| POST                | /api/v1/admin/system/rollback                         | super_admin 回退 `{target}`：只能是最近一次一键升级之前的版本（`rollback_target`），数据库迁移不撤销；审计 `system.rollback`                                                                                                                                                                                                                                                            |
 | GET                 | /api/v1/admin/settings/register                       | admin 注册设置 `{register_enabled, initial_credits, default_max_active_tasks}`（库值优先，缺省为代码常量：初始积分 50、并发上限 4）                                                                                                                                                                                                                                                |
 | PUT                 | /api/v1/admin/settings/register                       | super_admin 保存注册设置，写审计                                                                                                                                                                                                                                                                                                                                                   |
 | GET                 | /api/v1/admin/settings/smtp                           | admin 邮件服务配置，**密码永不返回**，只给 `has_password`                                                                                                                                                                                                                                                                                                                          |

@@ -733,6 +733,12 @@ func TestGenerationTaskRepo_Queries(t *testing.T) {
 			t.Fatalf("got=%v err=%v", got, err)
 		}
 	})
+	t.Run("CountAllActive 统计全站非终态正式任务（升级前提示会中断几个）", func(t *testing.T) {
+		n, err := repo.CountAllActive(ctx)
+		if err != nil || n != 2 {
+			t.Fatalf("应为 mine + theirs 共 2 个：n=%d err=%v", n, err)
+		}
+	})
 	t.Run("CountActive 不统计 is_test", func(t *testing.T) {
 		n, err := repo.CountActive(ctx, user)
 		if err != nil || n != 1 {

@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -11,13 +12,42 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/config"
-	"video-canvas/internal/model"
+	"video-canvas/internal/migration"
 	"video-canvas/internal/pkg/logger"
-	"video-canvas/internal/repository"
+	"video-canvas/pkg/version"
 )
 
-// NewDB 按配置连接 PostgreSQL，设置连接池，并按需自动迁移表结构。
+// migrateTimeout 是启动时执行数据库迁移的总时限，包含等待其他实例释放迁移锁的时间。
+const migrateTimeout = 15 * time.Minute
+
+// NewDB 按配置连接 PostgreSQL，设置连接池，并按需执行数据库迁移（backend/migrations）。
+// 迁移失败返回错误，调用方应中止启动：不能让新代码跑在没迁移完的库上。
 func NewDB(cfg config.Database) (*gorm.DB, error) {
+	db, err := OpenDB(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AutoMigrate {
+		ctx, cancel := context.WithTimeout(context.Background(), migrateTimeout)
+		defer cancel()
+		if err := migration.Run(ctx, db, MigrationOptions(cfg)); err != nil {
+			return nil, fmt.Errorf("数据库迁移失败: %w", err)
+		}
+	}
+	return db, nil
+}
+
+// MigrationOptions 由数据库配置得到迁移参数。
+func MigrationOptions(cfg config.Database) migration.Options {
+	return migration.Options{
+		AppVersion:       version.Version,
+		AllowNewerSchema: cfg.AllowNewerSchema,
+		Logger:           logger.L(),
+	}
+}
+
+// OpenDB 按配置连接 PostgreSQL 并设置连接池，不执行迁移。
+func OpenDB(cfg config.Database) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{
 		Logger: gormlogger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), gormlogger.Config{
 			SlowThreshold:             200 * time.Millisecond,
@@ -37,39 +67,6 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-
-	if cfg.AutoMigrate {
-		// 先清旧版遗留的结构（ai_providers、ai_models.provider_key、模型软删除的 deleted_at 及已软删除的模型），幂等；
-		// 不清的话旧库上新建模型会因 NOT NULL 报 500，已软删除的模型也会在去掉 deleted_at 字段后重新出现
-		if err := repository.MigrateLegacyAIConfig(db); err != nil {
-			return nil, fmt.Errorf("migrate legacy ai config: %w", err)
-		}
-		// 再处理积分流水表的变更（task_id 可空、唯一索引改部分索引）：AutoMigrate 做不了，必须在它之前；幂等
-		if err := repository.MigrateUserManagement(db); err != nil {
-			return nil, fmt.Errorf("migrate user management: %w", err)
-		}
-		// 对话不再有「默认创作」：删掉 is_default 列和它的部分唯一索引；幂等
-		if err := repository.MigrateConversationDefault(db); err != nil {
-			return nil, fmt.Errorf("migrate conversation default: %w", err)
-		}
-		// 渠道不再有“允许访问内网”开关：删 trusted_internal 列（对仍开着的渠道打 WARN）；幂等，必须在 AutoMigrate 之前
-		if err := repository.MigrateChannelTrustedInternal(db, logger.L()); err != nil {
-			return nil, fmt.Errorf("migrate channel trusted internal: %w", err)
-		}
-		if err := db.AutoMigrate(model.All()...); err != nil {
-			return nil, fmt.Errorf("auto migrate: %w", err)
-		}
-		// 模型不再有版本管理：把老库里的多版本收敛成每个模型一份配置（草稿优先）；幂等，必须在 AutoMigrate 之后
-		if err := repository.MigrateModelSingleConfig(db); err != nil {
-			return nil, fmt.Errorf("migrate model single config: %w", err)
-		}
-		// worker 每秒扫描非终态任务：只给非终态建部分索引，终态任务（绝大多数）不占索引空间。
-		// GORM 的 where 标签不方便写 IN 列表，所以在迁移后补建。
-		if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_task_poll ON generation_tasks (next_poll_at) ` +
-			`WHERE status IN ('pending','queued','running','finalizing')`).Error; err != nil {
-			return nil, fmt.Errorf("create idx_task_poll: %w", err)
-		}
-	}
 	return db, nil
 }
 

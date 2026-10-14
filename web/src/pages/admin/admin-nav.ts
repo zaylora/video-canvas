@@ -1,4 +1,5 @@
 import {
+  ArrowUpCircle,
   Boxes,
   Film,
   HardDrive,
@@ -50,6 +51,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "settings/register", label: "注册设置", icon: UserPlus },
       { to: "settings/email", label: "邮件服务", icon: Mail },
       { to: "settings/showcase", label: "登录页展示", icon: Film },
+      { to: "settings/version", label: "版本与升级", icon: ArrowUpCircle },
     ],
   },
 ];

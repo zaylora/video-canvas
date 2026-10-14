@@ -48,7 +48,7 @@ const KIND_ICON: Record<SkillFileKind, typeof FileText> = {
 };
 
 /** 渲染态里的 Markdown 排版：全部走 token，间距取 4 的倍数 */
-const MD_COMPONENTS: Components = {
+export const MD_COMPONENTS: Components = {
   h1: ({ node: _n, ...p }) => <h1 className="mt-1 mb-3 text-xl font-semibold" {...p} />,
   h2: ({ node: _n, ...p }) => <h2 className="mt-5 mb-2 text-base font-semibold" {...p} />,
   h3: ({ node: _n, ...p }) => <h3 className="mt-4 mb-1 text-sm font-semibold" {...p} />,

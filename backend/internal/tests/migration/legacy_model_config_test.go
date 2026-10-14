@@ -1,18 +1,17 @@
-package repository_test
+package migration_test
 
 import (
-	"context"
+	"fmt"
 	"strings"
 	"testing"
 
-	"video-canvas/internal/model"
-	. "video-canvas/internal/repository"
+	. "video-canvas/internal/migration"
+	"video-canvas/internal/migration/legacymodel"
 )
 
 // 模型取消版本管理后，老库里的多版本数据要收敛成每个模型一份配置：有草稿以最新草稿为准，没有草稿用已发布版本。
 func TestMigrateModelSingleConfig(t *testing.T) {
-	ctx := context.Background()
-	db := isolatedDB(t, &model.AIModel{}, &model.AIConfigRevision{})
+	db := isolatedDB(t, &legacymodel.AIModel{}, &legacymodel.AIConfigRevision{})
 	seed := []string{
 		// both：已发布 v1（已归档 v1、发布 v2）+ 更新的草稿 v3，已启用
 		`INSERT INTO ai_models (key, kind, enabled, sort, published_revision_id) VALUES ('both', 'video', true, 10, 2)`,
@@ -43,30 +42,43 @@ func TestMigrateModelSingleConfig(t *testing.T) {
 		}
 	}
 
-	r := NewAIConfigRepository(db)
+	// 按指针取模型当前的配置；不经仓储层，避免依赖以后会变的 repository/model
+	getConfig := func(key string) (legacymodel.AIConfigRevision, error) {
+		var rev legacymodel.AIConfigRevision
+		err := db.Raw(`SELECT r.* FROM ai_models m JOIN ai_config_revisions r ON r.id = m.published_revision_id WHERE m.key = ?`, key).Scan(&rev).Error
+		if err == nil && rev.ID == 0 {
+			err = fmt.Errorf("没有配置")
+		}
+		return rev, err
+	}
+	getPointer := func(key string) legacymodel.AIModel {
+		var m legacymodel.AIModel
+		db.Where("key = ?", key).First(&m)
+		return m
+	}
 	want := map[string]string{"both": `{"v":3}`, "pubonly": `{"v":2}`, "draftonly": `{"v":2}`}
 	for key, body := range want {
-		rev, err := r.GetModelConfig(ctx, key)
+		rev, err := getConfig(key)
 		if err != nil {
 			t.Fatalf("%s 应有一份配置：%v", key, err)
 		}
 		if strings.ReplaceAll(string(rev.BodyJSON), " ", "") != body {
 			t.Fatalf("%s 的配置不符合预期：%s", key, rev.BodyJSON)
 		}
-		if rev.RevisionNo != 1 || rev.Status != model.RevisionPublished {
+		if rev.RevisionNo != 1 || rev.Status != legacymodel.RevisionPublished {
 			t.Fatalf("%s 的配置应为 revision_no=1 / published：%+v", key, rev)
 		}
 		var n int64
-		db.Model(&model.AIConfigRevision{}).Where("target_key = ?", key).Count(&n)
+		db.Model(&legacymodel.AIConfigRevision{}).Where("target_key = ?", key).Count(&n)
 		if n != 1 {
 			t.Fatalf("%s 应只剩一行：%d", key, n)
 		}
 	}
 	// 上线状态与排序不动
-	if p, _ := r.GetModelPointer(ctx, "both"); !p.Enabled || p.Sort != 10 {
+	if p := getPointer("both"); !p.Enabled || p.Sort != 10 {
 		t.Fatalf("启用状态与排序不应改变：%+v", p)
 	}
-	if p, _ := r.GetModelPointer(ctx, "draftonly"); p.Enabled {
+	if p := getPointer("draftonly"); p.Enabled {
 		t.Fatalf("没发布过的模型不应被启用：%+v", p)
 	}
 }

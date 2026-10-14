@@ -17,11 +17,13 @@
 
 ```
 backend/
-├── cmd/server/            # 入口：解析 -c、加载配置、初始化日志、启动 App、监听退出信号
+├── cmd/server/            # 入口：解析 -c、加载配置、初始化日志、启动 App、监听退出信号；子命令 plugin-runner、migrate
+├── migrations/            # 版本化迁移 SQL（go:embed 进二进制），启动时自动执行，规则见下文「数据库迁移」
 ├── configs/config.yaml    # 默认配置；本地私有配置用 configs/*.local.yaml（已 gitignore）
 ├── internal/
 │   ├── config/            # 配置结构体与 Load()
 │   ├── initialize/        # DB / Redis 初始化 + 依赖手动组装（app.go）+ 优雅退出
+│   ├── migration/         # 迁移执行器（runner.go）+ 老库补齐（legacy.go，冻结）+ v0.3.2 模型冻结副本（legacymodel/，永不修改）
 │   ├── router/            # 路由注册、中间件挂载、鉴权分组
 │   ├── middleware/        # RequestID / Logger / Recovery / CORS / JWTAuth / Admin
 │   ├── handler/           # HTTP 层：取参 → 调 service → 统一响应；bind.go 放取参工具；agent/ 是画布 Agent 的 handler
@@ -99,9 +101,22 @@ service 是业务规则唯一的落点。读代码的人应该只看注释就能
 
 handler 和 repository 层：导出方法写一行以方法名开头的中文注释。repository 的注释还要写明查询条件，以及会返回哪些哨兵错误。
 
+### 数据库迁移
+
+生产库结构只由 [migrations/](migrations/) 里的 SQL 文件决定，服务启动时由 [internal/migration](internal/migration/runner.go) 执行未执行过的文件，记录在 `schema_migrations`。设计见 [自动更新设计](../docs/design/自动更新设计/自动更新设计.md) 第 3 节。
+
+15. **改了 `internal/model` 的表结构（新表、新列、改类型、索引），必须同时新增迁移文件。** `tests/migration` 的结构一致性测试会比较「只跑 SQL 迁移」和「只跑 AutoMigrate」两边的结构，不一致就失败。测试里的 `isolatedDB` 仍然用 AutoMigrate 建表，不受影响。
+16. **文件名** `NNNN_小写下划线描述.sql`，四位编号接着最后一个往下排。一个文件在一个事务里执行，可以有多条语句。`CREATE INDEX CONCURRENTLY` 这类不能放进事务的语句用 `NNNN_xxx.notx.sql`，一个文件只写一条，并且要幂等（`IF NOT EXISTS`）。
+17. **已发布的迁移文件永远不改、不删、不改名**，要修正就新增一个文件。改过的文件会在启动时因 checksum 不一致被拒绝，CI 也会检查。
+18. **只向前，不写 down 脚本。删列、改名、改类型分两个版本做（Expand–Contract）**：第 N 版加新列、代码兼容新旧两种结构；确认没有代码再读旧列后，第 N+1 版或更晚再删。这样升级出问题时，退回上一个版本的镜像仍能用当前的库。
+19. 大表加索引用 `.notx.sql` + `CREATE INDEX CONCURRENTLY IF NOT EXISTS`。
+20. 不要修改 `internal/migration/legacy.go` 和 `internal/migration/legacymodel/`：它们是 v0.3.2 的冻结快照，只用来把接入迁移器之前的老库补齐到基线，永久保留。
+
+查看迁移状态：`go run ./cmd/server migrate status`（容器里：`docker compose run --rm backend migrate status`）。
+
 ### 提交前
 
-15. 以下三条命令**全部通过**才算完成：
+21. 以下三条命令**全部通过**才算完成：
 
 ```bash
 make fmt    # golangci-lint fmt ./...
@@ -116,6 +131,7 @@ make test   # go test ./...；涉及 goroutine / worker / ws 的改动再跑 mak
 以新增 `xxx` 模块为例，按顺序完成：
 
 1. `internal/model/xxx.go`：表模型（嵌入 `BaseModel`，写 `TableName()`）+ 请求结构体（`binding` + `label`）。部分更新的字段用指针。新表要加进 `model.All()`。
+   同时在 `migrations/` 新增建表的迁移文件，见「数据库迁移」。
 2. `internal/pkg/errcode/errcode.go`：在该模块的号段里新增业务错误码。
 3. `internal/repository/xxx.go`：数据访问方法，gorm 错误用 `translate()` 翻译。
 4. `internal/service/xxx.go`：声明 `XxxRepo` 接口，实现业务方法，**并按上面的要求写逻辑注释**。

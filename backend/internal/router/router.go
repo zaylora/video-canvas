@@ -36,6 +36,7 @@ type Handlers struct {
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
 	AdminUser      *handler.AdminUserHandler           // 后台用户管理
 	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
+	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
 	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
@@ -241,6 +242,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminUsers.PUT("/:id/status", h.AdminUser.SetStatus)
 		adminUsers.PUT("/:id/role", superOnly, h.AdminUser.SetRole)                  // 仅 super_admin
 		adminUsers.POST("/:id/reset-password", superOnly, h.AdminUser.ResetPassword) // 仅 super_admin
+
+		// 版本面板：admin 与 super_admin 可读；一键升级与回退仅 super_admin
+		system := auth.Group("/admin/system", middleware.RequireAdmin(h.AdminRole))
+		system.GET("/version", h.AdminSystem.Version)
+		system.GET("/updates", h.AdminSystem.Updates)
+		system.GET("/migrations", h.AdminSystem.Migrations)
+		system.GET("/upgrade", h.AdminSystem.UpgradeInfo)
+		system.POST("/upgrade", superOnly, h.AdminSystem.Upgrade)   // 仅 super_admin，写审计
+		system.POST("/rollback", superOnly, h.AdminSystem.Rollback) // 仅 super_admin，写审计
 
 		// 系统设置（注册 / 邮件）：读 = admin 或 super_admin；写 = 仅 super_admin。SMTP 密码只写不读。
 		settings := auth.Group("/admin/settings", middleware.RequireAdmin(h.AdminRole))

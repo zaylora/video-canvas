@@ -70,7 +70,8 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 
 - 已有 `.env` 时部署脚本直接沿用，不会重新生成密钥。
 - 请备份 `.env`：`APP_AI_SECRET_KEY` 丢失后，已加密保存的模型和存储密钥无法解密。
-- 指定版本更新后服务没有恢复健康，会自动回滚到更新前的版本。
+- 默认部署和更新到 GitHub 上最新的正式版本，并把具体版本号写进 `.env`。
+- 更新前会先备份数据库到部署目录的 `backups/`（保留最近 3 份）；新版本没有正常启动、或启动的不是目标版本，会自动回滚到更新前的版本。
 - 镜像为私有时，先执行 `docker login ghcr.io`。
 - 更多生产配置见 [生产 Docker 部署](docs/docker-production.md)。
 

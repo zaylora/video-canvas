@@ -111,3 +111,43 @@ func TestLoad_AllowFakeIP(t *testing.T) {
 		t.Error("环境变量 APP_AI_ALLOW_FAKE_IP=true 应能打开")
 	}
 }
+
+// update：检查新版本默认开、默认仓库；老部署挂载的配置文件里没有 update 段也一样；环境变量能关闭。
+func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Update.CheckEnabled || cfg.Update.Repo != DefaultUpdateRepo {
+		t.Fatalf("默认应开启检查、使用默认仓库：%+v", cfg.Update)
+	}
+
+	path := t.TempDir() + "/old.yaml"
+	if err := os.WriteFile(path, []byte("server:\n  port: 8080\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Update.CheckEnabled || cfg.Update.Repo != DefaultUpdateRepo {
+		t.Fatalf("配置文件里没有 update 段时也应取默认值：%+v", cfg.Update)
+	}
+
+	if cfg.Update.UpdaterSocket != "/run/updater/updater.sock" || cfg.Update.UpdaterToken != "" {
+		t.Fatalf("updater 默认 socket 固定、token 为空（未启用）：%+v", cfg.Update)
+	}
+
+	t.Setenv("APP_UPDATE_UPDATER_TOKEN", "tok")
+	t.Setenv("APP_UPDATE_CHECK_ENABLED", "false")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Update.CheckEnabled {
+		t.Fatal("APP_UPDATE_CHECK_ENABLED=false 应能关闭")
+	}
+	if cfg.Update.UpdaterToken != "tok" {
+		t.Fatal("APP_UPDATE_UPDATER_TOKEN 应能设置 token（YAML 里没有这一项）")
+	}
+}

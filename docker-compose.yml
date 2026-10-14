@@ -33,6 +33,8 @@ services:
     environment:
       APP_SERVER_MODE: release
       APP_DATABASE_DSN: host=postgres user=${POSTGRES_USER:-postgres} password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required} dbname=${POSTGRES_DB:-video_canvas} port=5432 sslmode=disable TimeZone=Asia/Shanghai
+      # 退回旧版本镜像、而数据库已被新版本迁移过时，旧版本默认拒绝启动；确认那些迁移只新增表或列后在 .env 设为 true 放行
+      APP_DATABASE_ALLOW_NEWER_SCHEMA: ${APP_DATABASE_ALLOW_NEWER_SCHEMA:-false}
       APP_REDIS_ENABLED: "true"
       APP_REDIS_ADDR: redis:6379
       APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET is required}
@@ -44,9 +46,12 @@ services:
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
       # 画布 Agent：镜像里带了 Node 和运行时，compose 默认开启（覆盖 config.yaml 里的默认关闭），设为 false 关闭；还要在后台 AI 配置里发布 agent 类型的模型
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
+      # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
+      APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
       - backend_assets:/app/data/assets
       - plugin_runner_sock:/run/plugin-runner
+      - updater_sock:/run/updater
     expose:
       - "8080"
     healthcheck:
@@ -105,8 +110,25 @@ services:
       backend:
         condition: service_healthy
 
+  # 后台「一键升级」的执行端，默认不启动。它挂载 docker.sock，等同服务器 root 权限，按需启用：
+  #   1. 在 .env 里加一行 UPDATER_TOKEN=<随机字符串>（如 openssl rand -hex 32）
+  #   2. 在本目录执行 docker compose --profile updater up -d
+  # 它只执行镜像自带的 update.sh（备份 → 拉镜像 → 重建 → 等就绪 → 失败回退），只接受 backend 发来的版本号。
+  # 升级时它自己不会被重建；要升级 updater 本身，在本目录再执行一次第 2 步。
+  updater:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_OWNER:-zaylora}/video-canvas-updater:${IMAGE_TAG:-latest}
+    profiles: ["updater"]
+    restart: unless-stopped
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/deploy
+      - updater_sock:/run/updater
+
 volumes:
   postgres_data:
   redis_data:
   backend_assets:
   plugin_runner_sock:
+  updater_sock:

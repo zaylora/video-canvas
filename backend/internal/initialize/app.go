@@ -27,11 +27,14 @@ import (
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
 	"video-canvas/internal/provider/worker"
+	"video-canvas/internal/release"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
 	"video-canvas/internal/service"
 	agentsvc "video-canvas/internal/service/agent"
 	"video-canvas/internal/storage"
+	"video-canvas/internal/updater"
+	"video-canvas/pkg/version"
 )
 
 type App struct {
@@ -258,6 +261,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
 		}))),
 		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
+		AdminSystem:   newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:      handler.NewShowcaseHandler(showcaseSvc),
 		AdminRole:     roleLookup,
 		UserState:     stateLookup,
@@ -566,6 +570,30 @@ func closeDB(db *gorm.DB) {
 	if err := sqlDB.Close(); err != nil {
 		logger.Warn("数据库关闭失败", zap.Error(err))
 	}
+}
+
+// newAdminSystemHandler 组装版本面板：检查新版本、迁移状态、一键升级。
+// 没配置 updater token 时不创建 updater 客户端，升级面板显示「未启用」和手动升级步骤。
+func newAdminSystemHandler(cfg *config.Config, db *gorm.DB, tasks *repository.GenerationTaskRepository, audit *repository.AdminAuditRepository) *handler.AdminSystemHandler {
+	migrations := repository.NewMigrationStatusRepository(db)
+	updates := service.NewSystemUpdateService(service.SystemUpdateOptions{
+		CurrentVersion: version.Version,
+		CheckEnabled:   cfg.Update.CheckEnabled,
+		Releases:       release.NewGitHubClient(cfg.Update.Repo, release.Options{UserAgent: "video-canvas/" + version.Version}),
+		Migrations:     migrations,
+	})
+	opts := service.SystemUpgradeOptions{
+		CurrentVersion: version.Version,
+		Tasks:          tasks,
+		Checker:        updates,
+		Migrations:     migrations,
+		Audit:          audit,
+	}
+	// 不能把 nil 的 *updater.Client 赋给接口：那样接口不为 nil，service 会以为启用了
+	if cfg.Update.UpdaterToken != "" {
+		opts.Updater = updater.NewClient("unix", cfg.Update.UpdaterSocket, cfg.Update.UpdaterToken)
+	}
+	return handler.NewAdminSystemHandler(updates, service.NewSystemUpgradeService(opts))
 }
 
 // bootstrapStorage 在启动时准备存储配置，必须在任何素材读写之前完成：
