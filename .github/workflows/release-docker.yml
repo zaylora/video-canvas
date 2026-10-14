@@ -37,8 +37,13 @@ jobs:
         run: |
           VERSION_VALUE="${RELEASE_TAG#v}"
           test -s CHANGELOG.md
+          # 用 index() 做字面量匹配：awk 字符串里的 \[ 会被当成普通 [，正则会匹配不到标题
           awk -v version="$VERSION_VALUE" '
-            $0 ~ "^## \[" version "\]" || $0 ~ "^## v" version "([[:space:]]|$)" {
+            BEGIN {
+              bracket = "## [" version "]"
+              plain = "## v" version
+            }
+            index($0, bracket) == 1 || (index($0, plain) == 1 && substr($0, length(plain) + 1) ~ /^([[:space:]]|$)/) {
               found = 1
               print
               next
