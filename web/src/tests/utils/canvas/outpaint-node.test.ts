@@ -69,6 +69,16 @@ describe("buildOutpaintNode 造新节点和连线", () => {
     expect(node.data.params).toEqual({ prompt: buildOutpaintPrompt("把天空补完整"), op: "i2i" });
   });
 
+  test("节点记下所选比例作为画幅", () => {
+    const { node } = buildOutpaintNode({ ...args, ratio: "9:16" });
+    expect(node.data.mediaAspect).toBeCloseTo(9 / 16);
+  });
+
+  test("比例是 Auto（读不出来）时沿用原图的画幅", () => {
+    const { node } = buildOutpaintNode({ ...args, ratio: "Auto" });
+    expect(node.data.mediaAspect).toBeCloseTo(576 / 324);
+  });
+
   test("连一条原图到新节点的普通连线", () => {
     const { edge } = buildOutpaintNode(args);
     expect(edge).toMatchObject({

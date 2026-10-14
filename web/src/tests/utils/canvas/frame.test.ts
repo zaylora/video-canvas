@@ -99,6 +99,11 @@ describe("buildFrameNodes 造帧图节点和连线", () => {
     expect(nodes[0].data.prompt).toBeUndefined();
   });
 
+  test("节点记下源视频的画幅，上传期间就按它占位", () => {
+    const { nodes } = buildFrameNodes(args(["a.png"], { aspect: 9 / 16 }));
+    expect(nodes[0].data.mediaAspect).toBeCloseTo(9 / 16);
+  });
+
   test("每个节点一根从视频出来的普通连线", () => {
     const { nodes, edges } = buildFrameNodes(args(["a.png", "b.png"]));
     expect(edges).toHaveLength(2);

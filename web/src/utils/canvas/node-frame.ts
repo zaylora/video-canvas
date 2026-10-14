@@ -65,17 +65,20 @@ export function ratioParam(caps: Capabilities | undefined): ParamEntry | undefin
 }
 
 /**
- * 节点框此刻该用的宽高比：音频固定 1:1；其余量到的成片画幅优先，其次是所选比例，都没有就 16:9。
+ * 节点框此刻该用的宽高比：音频固定 1:1；其余量到的成片画幅优先，其次是节点提前记下的画幅，
+ * 再其次是所选比例，都没有就 16:9。
  * @param input.measured 成片实际的宽 / 高；还没量到为 null
+ * @param input.declared 节点数据里提前记下的宽 / 高（data.mediaAspect）；没记过不给或为 null
  * @param input.selected 参数面板里所选比例对应的宽 / 高；没有为 null
  * @param input.mediaType 节点的素材种类；不给按图片 / 视频处理
  * @returns 宽 / 高
  */
 export function resolveNodeAspect(input: {
   measured: number | null;
+  declared?: number | null;
   selected: number | null;
   mediaType?: NodeMediaType;
 }): number {
   if (input.mediaType === "audio") return AUDIO_NODE_ASPECT;
-  return input.measured ?? input.selected ?? DEFAULT_NODE_ASPECT;
+  return input.measured ?? input.declared ?? input.selected ?? DEFAULT_NODE_ASPECT;
 }

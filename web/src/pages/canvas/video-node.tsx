@@ -40,6 +40,7 @@ import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskNode } from "@/hooks/use-task-node";
 import type { CanvasNode, CanvasNodeData, NodeKind } from "@/types";
 import { canLinkFrom } from "@/utils/canvas/link-rule";
+import { shouldRecordAspect } from "@/utils/canvas/media-aspect";
 import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
 import { outpaintRunner } from "@/utils/canvas/outpaint-run";
 import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
@@ -331,8 +332,15 @@ function MediaTaskNode({
   // 框的画幅：成片出来后以成片实际的宽高比为准，出来之前（含生成中、失败）跟着参数面板选的比例
   const mediaType = data.mediaType ?? kind;
   const measuredAspect = useMediaAspect(view.phase === "done" ? view.src : null, mediaType);
+  // 量到成片画幅后记进节点：下次打开、刷新时占位就直接是对的比例
+  useEffect(() => {
+    if (measuredAspect !== null && shouldRecordAspect(data.mediaAspect, measuredAspect)) {
+      updateNodeData(id, { mediaAspect: measuredAspect });
+    }
+  }, [data.mediaAspect, id, measuredAspect, updateNodeData]);
   const aspect = resolveNodeAspect({
     measured: measuredAspect,
+    declared: data.mediaAspect,
     selected: paramAspect(vm.caps, vm.params),
     mediaType,
   });

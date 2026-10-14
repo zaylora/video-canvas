@@ -50,7 +50,8 @@ export function buildOutpaintNode(input: {
   );
 
   const size = sizeOfNode(source);
-  const newSize = nodeFrameSize(parseAspect(ratio) ?? size.width / size.height);
+  const aspect = parseAspect(ratio) ?? size.width / size.height;
+  const newSize = nodeFrameSize(aspect);
   const { x, y } = placeBeside({ source, nodes, size: newSize });
 
   const fullPrompt = buildOutpaintPrompt(input.prompt);
@@ -66,6 +67,7 @@ export function buildOutpaintNode(input: {
       prompt: fullPrompt,
       params: { prompt: fullPrompt, op: "i2i", ...(ratioKey ? { [ratioKey]: ratio } : {}) },
       status: "running",
+      mediaAspect: aspect,
       outpaintFrom: source.id,
     },
   };

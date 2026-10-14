@@ -24,6 +24,7 @@ const TASK_FIELDS = [
   "src",
   "assetId",
   "mediaType",
+  "mediaAspect",
   "uploaded",
   "fileName",
 ] as const satisfies readonly (keyof CanvasNodeData)[];
