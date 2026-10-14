@@ -11,6 +11,7 @@ const toneClasses = {
   info: "border-transparent bg-sky-500/10 text-sky-700 dark:text-sky-400",
   warning: "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-400",
   danger: "border-transparent bg-red-500/10 text-red-700 dark:text-red-400",
+  gold: "border-transparent bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
   violet: "border-transparent bg-violet-500/10 text-violet-700 dark:text-violet-400",
   rose: "border-transparent bg-rose-500/10 text-rose-700 dark:text-rose-400",
   orange: "border-transparent bg-orange-500/10 text-orange-700 dark:text-orange-400",

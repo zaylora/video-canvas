@@ -11,6 +11,7 @@ const NOTICE_TONE = {
   danger: { icon: CircleAlert, tone: "danger" },
   success: { icon: CheckCircle2, tone: "success" },
   neutral: { icon: Info, tone: "neutral" },
+  gold: { icon: Info, tone: "gold" },
 } as const satisfies Record<string, { icon: typeof Info; tone: TagTone }>;
 
 /** 提示条的语气 */
