@@ -345,7 +345,7 @@ function CheckState({ check }: { check: UpdateCheck | null }) {
   }
   return (
     <>
-      <Tag tone="info" mono>
+      <Tag tone="gold" mono>
         v{check.latest} 可升级
       </Tag>
       {check.published_at && (
@@ -458,7 +458,7 @@ function ManualStepsCard({
             ：无法确认版本，失败也无法回退。按上面第 2 步改成具体版本号后即可使用一键升级。
           </Notice>
         ) : (
-          <Notice tone="info" title="想在这里一键升级？">
+          <Notice tone="gold" title="想在这里一键升级？">
             在部署目录的 .env 加一行 <span className="font-mono">UPDATER_TOKEN=随机字符串</span>
             ，执行 <span className="font-mono">docker compose up -d</span> 后再执行{" "}
             <span className="font-mono">docker compose --profile updater up -d</span>

@@ -136,7 +136,7 @@ function VersionMarker({ onNavigate }: { onNavigate: () => void }) {
           <ArrowUpCircle />
           {/* 折叠时圆点叠在图标右上角；展开时用右侧那个 */}
           {hasUpdate && !upgrading && (
-            <span className="bg-status-running ring-sidebar absolute -top-0.5 -right-0.5 hidden size-1.5 rounded-full ring-2 group-data-[collapsible=icon]:block" />
+            <span className="ring-sidebar absolute bg-yellow-500 -top-0.5 -right-0.5 hidden size-1.5 rounded-full ring-2 group-data-[collapsible=icon]:block" />
           )}
         </span>
         <span className="font-mono tabular-nums">{label}</span>
@@ -153,7 +153,7 @@ function VersionMarker({ onNavigate }: { onNavigate: () => void }) {
                 <motion.span
                   key="dot"
                   aria-label="有新版本"
-                  className="bg-status-running size-1.5 rounded-full"
+                  className="size-1.5 rounded-full bg-yellow-500"
                   initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.5 }}
                   animate={{
                     opacity: 1,

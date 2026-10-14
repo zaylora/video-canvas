@@ -161,3 +161,25 @@ describe("上传流程：取消", () => {
     expect(calls.map((call) => call.options.signal?.aborted)).toEqual([true, true]);
   });
 });
+
+describe("上传流程：占位", () => {
+  test("hold 之后节点算有上传在跑，cancel 能清掉占位", () => {
+    const runner = createUploadRunner(controlled().upload);
+    runner.hold("n1");
+    expect(runner.isActive("n1")).toBe(true);
+    runner.cancel("n1");
+    expect(runner.isActive("n1")).toBe(false);
+  });
+
+  test("占位之后再 start 正常上传，成功后占位消失", async () => {
+    const { upload, calls } = controlled();
+    const runner = createUploadRunner(upload);
+    const { log, update } = patches();
+    runner.hold("n1");
+    const done = runner.start("n1", file(), update);
+    calls[0].ok(asset());
+    expect(await done).toBe("done");
+    expect(runner.isActive("n1")).toBe(false);
+    expect(log.at(-1)?.patch).toMatchObject({ status: "done", src: "/assets/7.png" });
+  });
+});
