@@ -33,7 +33,8 @@ export function TrimStage({
   const duration = useTrimStore((state) => state.duration);
   const current = useTrimStore((state) => state.current);
   const seek = useTrimStore((state) => state.seek);
-  const discardAudio = useTrimStore((state) => state.discardAudio);
+  // 预览自己的静音：只管现在听不听，和下面「去音轨」（决定导出有没有声音）互不联动
+  const [muted, setMuted] = useState(false);
   const locked = useTrimStore((state) => state.phase === "encoding");
 
   // 选区边界放进 ref，播放过程中的事件回调读最新值，不用因为拖手柄反复重挂监听
@@ -81,8 +82,8 @@ export function TrimStage({
 
   useEffect(() => {
     const el = videoRef.current;
-    if (el) el.muted = discardAudio;
-  }, [discardAudio]);
+    if (el) el.muted = muted;
+  }, [muted]);
 
   const toggle = useCallback(() => {
     const el = videoRef.current;
@@ -111,7 +112,7 @@ export function TrimStage({
           ref={videoRef}
           crossOrigin="anonymous"
           poster={poster}
-          muted={discardAudio}
+          muted={muted}
           preload="auto"
           playsInline
           disablePictureInPicture
@@ -154,13 +155,15 @@ export function TrimStage({
           <span className="shrink-0 font-mono text-[12px] tabular-nums text-white/90">
             {clock(duration)}
           </span>
-          <span className="grid size-6 shrink-0 place-items-center" aria-hidden>
-            {discardAudio ? (
-              <VolumeX className="size-[18px]" />
-            ) : (
-              <Volume2 className="size-[18px]" />
-            )}
-          </span>
+          <button
+            type="button"
+            aria-label={muted ? "预览开声音" : "预览静音"}
+            aria-pressed={muted}
+            onClick={() => setMuted((value) => !value)}
+            className="grid size-6 shrink-0 place-items-center"
+          >
+            {muted ? <VolumeX className="size-[18px]" /> : <Volume2 className="size-[18px]" />}
+          </button>
         </div>
       </div>
     </BaseNodeContent>

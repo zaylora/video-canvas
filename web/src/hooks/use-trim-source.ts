@@ -54,7 +54,7 @@ export function useTrimSource(
             THUMB_HEIGHT,
             controller.signal,
           )
-          .catch(() => [] as (string | null)[]);
+          .catch(() => Array.from({ length: THUMB_COUNT }, () => null) as (string | null)[]);
         if (controller.signal.aborted) {
           for (const url of thumbs) if (url) URL.revokeObjectURL(url);
           return;

@@ -23,16 +23,33 @@ import {
 const KEY_STEP = 0.1;
 const KEY_STEP_BIG = 1;
 
-/** 胶片条的缩略图：失败的格子用灰底占位 */
+/**
+ * 胶片条的缩略图：还在读时整条铺一层扫光占位，读好后每格淡入；失败的格子用灰底占位。
+ * thumbs 为空表示还在读（读失败时上游给的是一排 null）。
+ */
 function Filmstrip({ thumbs }: { thumbs: (string | null)[] }) {
-  const cells = thumbs.length ? thumbs : Array.from({ length: 16 }, () => null);
+  const loading = thumbs.length === 0;
+  const cells = loading ? Array.from({ length: 16 }, () => null) : thumbs;
   return (
     <div className="absolute inset-0 flex overflow-hidden rounded-md" aria-hidden>
       {cells.map((url, index) => (
         <div key={index} className="bg-muted/60 relative h-full min-w-0 flex-1">
-          {url && <img src={url} alt="" draggable={false} className="size-full object-cover" />}
+          {url && (
+            <img
+              src={url}
+              alt=""
+              draggable={false}
+              className="size-full animate-[canvas-fade-in_0.3s_ease-out_both] object-cover"
+              style={{ animationDelay: `${index * 20}ms` }}
+            />
+          )}
         </div>
       ))}
+      {loading && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden motion-reduce:hidden">
+          <div className="absolute inset-0 animate-[node-sheen_1.4s_ease-in-out_infinite] bg-[linear-gradient(120deg,transparent_30%,var(--sheen)_50%,transparent_70%)]" />
+        </div>
+      )}
     </div>
   );
 }
@@ -123,6 +140,8 @@ export function TrimPanel({
   const encoding = phase === "encoding";
   const gate = { start, end, duration, phase };
   const canConfirm = canConfirmTrim(gate) && !loadError;
+  // 读源视频信息或缩略图还没好：时长胶囊先显示「加载中」
+  const loading = !loadError && (phase === "loading" || thumbs.length === 0);
   const total = duration || 1;
   const pct = (time: number) => (time / total) * 100;
 
@@ -222,7 +241,7 @@ export function TrimPanel({
           {/* 居中的时长胶囊 */}
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <span className="rounded-full bg-black/70 px-3 py-1 font-mono text-[13px] font-semibold tabular-nums text-white">
-              {formatTrimSeconds(end - start)}
+              {loading ? "加载中…" : formatTrimSeconds(end - start)}
             </span>
           </div>
           <Handle
