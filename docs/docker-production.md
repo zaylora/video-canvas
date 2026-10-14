@@ -46,13 +46,20 @@ docker compose up -d
 
 数据库结构由后端镜像里内嵌的迁移文件决定。新版本的 backend 启动时会先执行还没执行过的迁移，成功后才开始提供服务；迁移失败时进程直接退出，日志里有具体的 SQL 错误，不会带着没迁移完的库运行。从接入迁移之前的老版本（v0.3.2 及更早）升级时，第一次启动会先把旧库补齐到基线结构，不需要手工处理。
 
-升级前先备份数据库（迁移只向前，没有自动回滚）：
+推荐用部署目录里的 `update.sh` 升级（`deploy.sh` 部署时已下载；也可以 `curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh -o update.sh`）：
+
+```bash
+./update.sh               # 升级到 GitHub 上最新的正式版本
+./update.sh --tag 0.4.0   # 升级或回退到指定版本
+```
+
+它依次执行：改 `IMAGE_TAG` → 取目标版本的 compose 文件 → 拉镜像 → **备份数据库**到 `backups/`（保留最近 3 份）→ 重建 → 等 `/health` 报告目标版本。任何一步失败都会自动退回原来的版本；`./update.sh --help` 查看全部选项。`IMAGE_TAG=latest` 的部署无法确认版本、也无法自动回退，建议改成具体版本号。
+
+不用脚本时，先手动备份（迁移只向前，没有自动回滚），再把 `.env` 里的 `IMAGE_TAG` 改成目标版本，执行 `docker compose pull && docker compose up -d`：
 
 ```bash
 docker compose exec -T postgres pg_dump -U postgres -Fc video_canvas > backup-$(date +%Y%m%d%H%M).dump
 ```
-
-然后把 `.env` 里的 `IMAGE_TAG` 改成目标版本，执行 `docker compose pull && docker compose up -d`。
 
 查看迁移状态（只读）：
 

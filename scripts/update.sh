@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# 生产环境更新脚本（Linux / macOS）：拉取新镜像并滚动重建，失败时可回滚
-set -euo pipefail
-
 # 生产环境更新脚本（Linux / macOS），无需克隆仓库，可直接通过管道运行：
 #   curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
+#
+# 流程：改 IMAGE_TAG → 取目标版本的 compose 文件 → 拉镜像 → 备份数据库 → 重建 → 等新版本健康
+# 任何一步失败都会退回更新前的 IMAGE_TAG 和 compose 文件。后台「一键升级」（updater 容器）调用的也是这个脚本。
+set -euo pipefail
+
+REPO="zaylora/video-canvas"
+RAW="https://raw.githubusercontent.com/$REPO"
 ROOT=""
 TAG=""
-PRUNE=true
+BACKUP=true
+KEEP_BACKUPS=3
+PRUNE=false
+TIMEOUT=600
+STATUS_FILE=""
 
 usage() {
   cat <<'EOF'
@@ -15,27 +23,78 @@ usage() {
 部署目录按以下顺序确定：--dir 指定 > 当前目录（含 .env）> 脚本所在目录（含 .env）> ./video-canvas
 
 拉取镜像并重建 backend / plugin-runner / web，数据卷（数据库、素材）保持不变。
-更新失败会自动回滚到更新前的 IMAGE_TAG。
+新版本 backend 启动时会自动执行数据库迁移；迁移只向前，所以重建前默认先备份数据库。
+任何一步失败都会自动退回更新前的版本。
 
 选项：
-  --dir PATH     部署目录（deploy.sh 生成 .env 的目录）
-  --tag TAG      更新到指定版本并写入 .env 的 IMAGE_TAG（也可用于回退，如 --tag 0.1.5）
-  --no-prune     不清理悬空镜像
-  -h, --help     显示帮助
+  --dir PATH           部署目录（deploy.sh 生成 .env 的目录）
+  --tag VERSION        目标版本，如 0.4.0（也可用于回退，如 --tag 0.3.2）；
+                       不带时取 GitHub 上最新的正式版本。latest 也可以，但失败时无法回退
+  --no-backup          不备份数据库（不推荐）
+  --keep-backups N     保留最近 N 份备份，默认 3
+  --timeout SECONDS    等新版本健康的最长时间，默认 600（老库首次迁移可能较慢）
+  --status-file PATH   每一步把进度写成 JSON（给后台一键升级读取）
+  --prune              完成后清理悬空镜像（会清掉本机所有项目的悬空镜像，默认不清）
+  -h, --help           显示帮助
 
-不带 --tag 时默认更新到 latest（并把 .env 的 IMAGE_TAG 改为 latest）。
+备份位置：部署目录下的 backups/，恢复方法见 docs/docker-production.md「升级与数据库迁移」。
 EOF
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dir)      ROOT="${2:?--dir 需要参数}"; shift 2 ;;
-    --tag)      TAG="${2:?--tag 需要参数}"; shift 2 ;;
-    --no-prune) PRUNE=false; shift ;;
-    -h|--help)  usage; exit 0 ;;
+    --dir)          ROOT="${2:?--dir 需要参数}"; shift 2 ;;
+    --tag)          TAG="${2:?--tag 需要参数}"; shift 2 ;;
+    --no-backup)    BACKUP=false; shift ;;
+    --keep-backups) KEEP_BACKUPS="${2:?--keep-backups 需要参数}"; shift 2 ;;
+    --timeout)      TIMEOUT="${2:?--timeout 需要参数}"; shift 2 ;;
+    --status-file)  STATUS_FILE="${2:?--status-file 需要参数}"; shift 2 ;;
+    --prune)        PRUNE=true; shift ;;
+    --no-prune)     PRUNE=false; shift ;; # 兼容旧参数，现在默认就不清理
+    -h|--help)      usage; exit 0 ;;
     *) echo "[错误] 不支持的参数：$1" >&2; usage >&2; exit 2 ;;
   esac
 done
+TAG="${TAG#v}"
+[ -z "$STATUS_FILE" ] || mkdir -p "$(dirname "$STATUS_FILE")"
+case "$KEEP_BACKUPS" in ''|*[!0-9]*) echo "[错误] --keep-backups 应为正整数" >&2; exit 2 ;; esac
+case "$TIMEOUT" in ''|*[!0-9]*) echo "[错误] --timeout 应为秒数" >&2; exit 2 ;; esac
+[ "$KEEP_BACKUPS" -ge 1 ] || KEEP_BACKUPS=1
+
+# ---------- 进度输出 ----------
+
+OLD_TAG=""
+NEW_TAG=""
+BACKUP_FILE=""
+PHASE="prepare"
+
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\r'/}"; s="${s//$'\t'/ }"
+  printf '%s' "$s"
+}
+
+# status <phase> <state> <message>：打印进度；指定了 --status-file 时同时写 JSON（先写临时文件再改名，读的一方不会读到半截）
+# state：running / succeeded / failed / failed_rolled_back / failed_needs_attention
+status() {
+  PHASE="$1"
+  local state="$2" msg="$3"
+  echo "==> $msg"
+  [ -n "$STATUS_FILE" ] || return 0
+  local tmp="$STATUS_FILE.tmp"
+  printf '{"target":"%s","previous":"%s","phase":"%s","state":"%s","message":"%s","backup":"%s","updated_at":"%s"}\n' \
+    "$(json_escape "$NEW_TAG")" "$(json_escape "$OLD_TAG")" "$PHASE" "$state" "$(json_escape "$msg")" \
+    "$(json_escape "$BACKUP_FILE")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  mv -f "$tmp" "$STATUS_FILE"
+}
+
+fail() {
+  echo "[错误] $2" >&2
+  status "$PHASE" "$1" "$2"
+  exit 1
+}
+
+# ---------- 部署目录与前置检查 ----------
 
 if [ -z "$ROOT" ]; then
   script_dir=""
@@ -51,15 +110,30 @@ fi
 [ -d "$ROOT" ] || { echo "[错误] 部署目录不存在：$ROOT，请用 --dir 指定。" >&2; exit 1; }
 ROOT="$(cd "$ROOT" && pwd)"
 ENV_FILE="$ROOT/.env"
+COMPOSE_FILE="$ROOT/docker-compose.yml"
 
-command -v docker >/dev/null 2>&1 || { echo "[错误] 未找到 Docker。" >&2; exit 1; }
-docker info >/dev/null 2>&1 || { echo "[错误] Docker daemon 未运行。" >&2; exit 1; }
-[ -f "$ENV_FILE" ] || { echo "[错误] 未找到 .env，请先运行 deploy.sh 或用 --dir 指定部署目录" >&2; exit 1; }
-
+command -v docker >/dev/null 2>&1 || fail failed "未找到 Docker。"
+docker info >/dev/null 2>&1 || fail failed "Docker daemon 未运行。"
+docker compose version >/dev/null 2>&1 || fail failed "需要 Docker Compose v2。"
+[ -f "$ENV_FILE" ] || fail failed "未找到 $ENV_FILE，请先运行 deploy.sh 或用 --dir 指定部署目录"
 cd "$ROOT"
 
-current_tag() {
-  grep -E '^IMAGE_TAG=' "$ENV_FILE" | tail -n1 | cut -d= -f2 || true
+# 同一时间只允许一个更新：mkdir 是原子的；进程被杀留下的锁，按里面记的 pid 判断是否失效
+LOCK_DIR="$ROOT/.update.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+    # 不写状态文件：那是正在进行的那次更新的进度
+    echo "[错误] 已有更新在进行中（pid $holder），请等它结束" >&2
+    exit 3
+  fi
+  rm -rf "$LOCK_DIR" && mkdir "$LOCK_DIR"
+fi
+echo $$ > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR" "$COMPOSE_FILE.next"' EXIT
+
+env_value() {
+  grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true
 }
 
 set_tag() {
@@ -70,71 +144,147 @@ set_tag() {
   fi
 }
 
-wait_healthy() {
-  for _ in $(seq 1 60); do
+# latest_release 读 GitHub 上最新正式版本的版本号（不含 v）
+latest_release() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsSL --max-time 15 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/latest" \
+    | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v?([^"]+)".*/\1/'
+}
+
+OLD_TAG="$(env_value IMAGE_TAG)"
+OLD_TAG="${OLD_TAG:-latest}"
+if [ -z "$TAG" ]; then
+  TAG="$(latest_release || true)"
+  [ -n "$TAG" ] || fail failed "无法从 GitHub 获取最新版本号，请用 --tag 指定，如 --tag 0.4.0"
+fi
+NEW_TAG="$TAG"
+PG_USER="$(env_value POSTGRES_USER)"; PG_USER="${PG_USER:-postgres}"
+PG_DB="$(env_value POSTGRES_DB)"; PG_DB="${PG_DB:-video_canvas}"
+
+echo "==> 部署目录：$ROOT"
+status prepare running "当前版本 $OLD_TAG，目标版本 $NEW_TAG"
+if [ "$NEW_TAG" = "latest" ] || [ "$OLD_TAG" = "latest" ]; then
+  echo "[提示] 使用 latest 时无法确认版本、也无法在失败时自动回退；建议改用具体版本号（--tag x.y.z）。" >&2
+fi
+
+# ---------- 回退 ----------
+
+COMPOSE_REPLACED=false
+
+restore_files() {
+  [ "$NEW_TAG" != "$OLD_TAG" ] && set_tag "$OLD_TAG"
+  if [ "$COMPOSE_REPLACED" = true ] && [ -f "$COMPOSE_FILE.bak" ]; then
+    mv -f "$COMPOSE_FILE.bak" "$COMPOSE_FILE"
+  fi
+}
+
+# health_version 输出 backend /health 里的版本号；backend 还没起来时输出空
+health_version() {
+  docker compose exec -T backend wget -qO- http://127.0.0.1:8080/health 2>/dev/null \
+    | grep -o '"version":"[^"]*"' | head -n1 | cut -d'"' -f4 || true
+}
+
+# wait_ready <版本>：等全部带健康检查的容器 healthy、web 在运行，且 backend 报告的版本就是目标版本
+wait_ready() {
+  local want="$1" deadline=$(( $(date +%s) + TIMEOUT ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    local unhealthy running_web ver
     unhealthy="$(docker compose ps --format '{{.Service}} {{.Health}}' | awk '$2 != "" && $2 != "healthy" {print $1}')"
     running_web="$(docker compose ps --status running --services | grep -x web || true)"
     if [ -z "$unhealthy" ] && [ -n "$running_web" ]; then
-      return 0
+      ver="$(health_version)"
+      if [ "$want" = "latest" ] || [ "${ver#v}" = "$want" ]; then
+        return 0
+      fi
     fi
     sleep 3
   done
   return 1
 }
 
-OLD_TAG="$(current_tag)"
-OLD_TAG="${OLD_TAG:-latest}"
-NEW_TAG="${TAG:-latest}"
-
-echo "==> 部署目录：$ROOT"
-echo "==> 当前版本：$OLD_TAG，目标版本：$NEW_TAG"
-[ "$NEW_TAG" != "$OLD_TAG" ] && set_tag "$NEW_TAG"
-
-refresh_compose() {
-  local ref="master" tmp
-  command -v curl >/dev/null 2>&1 || return 0
-  tmp="$(mktemp)"
-  if curl -fsSL "https://raw.githubusercontent.com/zaylora/video-canvas/$ref/docker-compose.yml" -o "$tmp"; then
-    if ! cmp -s "$tmp" docker-compose.yml; then
-      cp docker-compose.yml docker-compose.yml.bak
-      mv "$tmp" docker-compose.yml
-      echo "==> 已同步 docker-compose.yml（来自 $ref，旧文件备份为 docker-compose.yml.bak）"
-    else
-      rm -f "$tmp"
-    fi
-  else
-    rm -f "$tmp"
-    echo "[提示] 无法从 GitHub 获取 $ref 的 compose 文件，沿用本地版本。" >&2
+# rollback <原因>：退回旧 tag 和旧 compose 文件并重建。旧版本因为「数据库已被新版本迁移」起不来时，需要人工处理
+rollback() {
+  local reason="$1" logs
+  logs="$(docker compose logs --tail=100 backend 2>&1 || true)"
+  echo "[错误] $reason" >&2
+  echo "----- 新版本 backend 最后 100 行日志 -----" >&2
+  echo "$logs" >&2
+  echo "-------------------------------------------" >&2
+  if [ "$NEW_TAG" = "$OLD_TAG" ]; then
+    fail failed "$reason；目标版本与当前版本相同（$OLD_TAG），无法自动回退，可用 --tag <旧版本> 回退"
   fi
+  status rollback running "$reason，正在退回 $OLD_TAG"
+  restore_files
+  docker compose up -d --remove-orphans || true
+  if wait_ready "$OLD_TAG"; then
+    fail failed_rolled_back "$reason；已退回 $OLD_TAG，服务正常"
+  fi
+  if docker compose logs --tail=50 backend 2>&1 | grep -q "数据库已执行过本程序没有的迁移"; then
+    fail failed_needs_attention "$reason；退回 $OLD_TAG 后它拒绝启动：数据库已被 $NEW_TAG 迁移过。确认那些迁移只新增表或列后，在 .env 加 APP_DATABASE_ALLOW_NEWER_SCHEMA=true 再 docker compose up -d；否则用备份 ${BACKUP_FILE:-（无）} 恢复"
+  fi
+  fail failed_needs_attention "$reason；退回 $OLD_TAG 后服务仍未就绪，请查看 docker compose logs backend 手动排查"
 }
 
-refresh_compose
+# ---------- 1. 改 tag、取目标版本的 compose 文件 ----------
 
-echo "==> 拉取镜像"
-if ! docker compose pull; then
-  echo "[错误] 拉取失败，未改动运行中的服务。" >&2
-  [ "$NEW_TAG" != "$OLD_TAG" ] && set_tag "$OLD_TAG"
-  exit 1
-fi
+[ "$NEW_TAG" != "$OLD_TAG" ] && set_tag "$NEW_TAG"
 
-echo "==> 重建服务"
-docker compose up -d --remove-orphans
-
-echo "==> 等待服务健康"
-if ! wait_healthy; then
-  echo "[错误] 更新后服务未就绪，查看日志：docker compose logs --tail=100 backend plugin-runner" >&2
-  if [ "$NEW_TAG" != "$OLD_TAG" ]; then
-    echo "==> 回滚到 $OLD_TAG"
-    set_tag "$OLD_TAG"
-    [ -f docker-compose.yml.bak ] && mv docker-compose.yml.bak docker-compose.yml
-    docker compose up -d --remove-orphans
-    wait_healthy && echo "已回滚到 $OLD_TAG" || echo "[警告] 回滚后仍未就绪，请手动排查。" >&2
-  else
-    echo "[提示] 使用的是同名 tag（$OLD_TAG），无法自动回滚；可用 ./update.sh --tag <旧版本> 回退。" >&2
+status compose running "获取 $NEW_TAG 的 docker-compose.yml"
+ref="v$NEW_TAG"
+[ "$NEW_TAG" = "latest" ] && ref="master"
+if command -v curl >/dev/null 2>&1 && curl -fsSL --max-time 30 "$RAW/$ref/docker-compose.yml" -o "$COMPOSE_FILE.next"; then
+  if ! cmp -s "$COMPOSE_FILE.next" "$COMPOSE_FILE"; then
+    cp "$COMPOSE_FILE" "$COMPOSE_FILE.bak"
+    mv "$COMPOSE_FILE.next" "$COMPOSE_FILE"
+    COMPOSE_REPLACED=true
+    echo "    已更新 docker-compose.yml（旧文件备份为 docker-compose.yml.bak）"
   fi
-  exit 1
+else
+  echo "[提示] 无法获取 $ref 的 compose 文件，沿用本地版本。" >&2
 fi
 
+# ---------- 2. 拉镜像（失败时服务一直没动） ----------
+
+status pull running "拉取镜像"
+if ! docker compose pull; then
+  restore_files
+  fail failed "拉取镜像失败，未改动运行中的服务"
+fi
+
+# ---------- 3. 备份数据库（拉取成功后才备份，镜像拉不下来就不白做） ----------
+
+if [ "$BACKUP" = true ]; then
+  mkdir -p "$ROOT/backups"
+  BACKUP_FILE="$ROOT/backups/pre-$NEW_TAG-$(date +%Y%m%d%H%M%S).dump"
+  status backup running "备份数据库到 $BACKUP_FILE"
+  if ! docker compose exec -T postgres pg_dump -U "$PG_USER" -Fc "$PG_DB" > "$BACKUP_FILE" || [ ! -s "$BACKUP_FILE" ]; then
+    rm -f "$BACKUP_FILE"
+    BACKUP_FILE=""
+    restore_files
+    fail failed "备份数据库失败，已中止更新（服务未改动）；确认 postgres 容器在运行，或用 --no-backup 跳过备份"
+  fi
+  # 只保留最近 KEEP_BACKUPS 份（文件名带时间，按名字排序即按时间）
+  ls -1 "$ROOT"/backups/pre-*.dump 2>/dev/null | sort -r | tail -n +"$((KEEP_BACKUPS + 1))" | while IFS= read -r old; do
+    rm -f "$old"
+  done
+else
+  echo "[提示] 已跳过数据库备份（--no-backup）。" >&2
+fi
+
+# ---------- 4. 重建并等新版本就绪 ----------
+
+status recreate running "重建服务（新版本启动时会自动执行数据库迁移）"
+# 新版本起不来时 up -d 本身就会失败，不能让 set -e 直接退出，要走回退
+if ! docker compose up -d --remove-orphans; then
+  rollback "新版本启动失败"
+fi
+
+status health running "等待 $NEW_TAG 就绪（最多 $TIMEOUT 秒）"
+if ! wait_ready "$NEW_TAG"; then
+  rollback "新版本在 $TIMEOUT 秒内没有就绪"
+fi
+
+rm -f "$COMPOSE_FILE.bak"
 if [ "$PRUNE" = true ]; then
   echo "==> 清理悬空镜像"
   docker image prune --force >/dev/null
@@ -143,4 +293,4 @@ fi
 echo
 docker compose ps
 echo
-echo "更新完成：$NEW_TAG"
+status finish succeeded "更新完成：$NEW_TAG"

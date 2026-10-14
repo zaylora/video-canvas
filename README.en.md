@@ -74,7 +74,8 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 
 - If a `.env` already exists, the deploy script reuses it and does not regenerate secrets.
 - Back up your `.env`: if `APP_AI_SECRET_KEY` is lost, the encrypted model and storage secrets can no longer be decrypted.
-- If the service does not become healthy after updating to a specific version, the script automatically rolls back to the previous version.
+- By default the scripts deploy and update to the latest GitHub release and write that exact version into `.env`.
+- Before updating, the database is backed up to `backups/` in the install directory (the last 3 are kept). If the new version does not start healthy, or does not report the target version, the script rolls back to the previous version.
 - If the images are private, run `docker login ghcr.io` first.
 - More production settings are in [Production Docker deployment](docs/docker-production.md) (Chinese).
 
