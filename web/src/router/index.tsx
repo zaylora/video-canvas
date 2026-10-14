@@ -15,6 +15,7 @@ import UsersPage from "@/pages/admin/users";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
+import VersionSettingsPage from "@/pages/admin/settings/version-settings";
 import Assets from "@/pages/assets";
 import Canvas from "@/pages/canvas";
 import CanvasList from "@/pages/canvas-list";
@@ -123,6 +124,7 @@ export const router = createBrowserRouter([
               { path: "settings/register", element: <RegisterSettingsPage /> },
               { path: "settings/email", element: <EmailSettingsPage /> },
               { path: "settings/showcase", element: <ShowcaseSettingsPage /> },
+              { path: "settings/version", element: <VersionSettingsPage /> },
             ],
           },
         ],
