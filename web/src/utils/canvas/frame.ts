@@ -113,6 +113,7 @@ export function buildFrameNodes(input: {
         status: "running",
         uploadProgress: 0,
         mediaType: "image",
+        mediaAspect: aspect,
         uploaded: true,
         fileName: file.name,
       },

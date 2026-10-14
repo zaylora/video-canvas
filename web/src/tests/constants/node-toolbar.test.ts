@@ -27,10 +27,9 @@ describe("节点功能区配置（设计稿 6.16）", () => {
     }
   });
 
-  test("只有产出素材版本的节点带历史按钮，文本节点没有", () => {
-    expect(NODE_TOOLBAR.script.tail).not.toContain("history");
-    for (const kind of ["image", "video", "audio"] as const) {
-      expect(NODE_TOOLBAR[kind].tail).toContain("history");
+  test("历史入口改到节点右上角的徽标：功能区任何节点都不再有历史按钮", () => {
+    for (const { kind } of NODE_LIBRARY) {
+      expect(NODE_TOOLBAR[kind].tail as string[]).not.toContain("history");
     }
   });
 

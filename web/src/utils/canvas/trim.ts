@@ -185,6 +185,7 @@ export function buildTrimNode(input: {
       status: "running",
       uploadProgress: 0,
       mediaType: "video",
+      mediaAspect: aspect,
       uploaded: true,
       fileName,
     },

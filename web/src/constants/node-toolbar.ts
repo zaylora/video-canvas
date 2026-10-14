@@ -49,9 +49,10 @@ export type ToolbarAction = {
 
 /**
  * 分隔线右边的「查看类」按钮，都是通用能力，不在配置里单独写名字：
- * history 是节点生成历史，zoom 是放大预览，download 是下载素材，copy 是复制文本。
+ * zoom 是放大预览，download 是下载素材，copy 是复制文本。
+ * 生成历史不在功能区：入口是节点右上角的多版本徽标（docs/design/多结果归并）。
  */
-export type ToolbarTail = "history" | "zoom" | "download" | "copy";
+export type ToolbarTail = "zoom" | "download" | "copy";
 
 export type NodeToolbarConfig = {
   /** 分隔线左边的「加工类」按钮，从左到右 */
@@ -61,7 +62,7 @@ export type NodeToolbarConfig = {
 };
 
 /** 图片、视频这类产出素材版本的节点共用的右半边 */
-const MEDIA_TAIL: ToolbarTail[] = ["history", "zoom", "download"];
+const MEDIA_TAIL: ToolbarTail[] = ["zoom", "download"];
 
 /**
  * 选中节点时，标题行上方功能区的按钮清单（设计稿 6.16）。
@@ -133,7 +134,7 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
       { id: "trim", label: "音频修剪", icon: Scissors },
       { id: "split", label: "人声分离", icon: AudioLines, paid: true },
     ],
-    tail: ["history", "download"],
+    tail: ["download"],
   },
   script: {
     actions: [

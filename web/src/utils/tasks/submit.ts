@@ -1,3 +1,4 @@
+import type { CreateTaskItem } from "@/api/generation-task/type";
 import type { CanvasNodeData, NodeKind } from "@/types";
 import { readOutputs } from "@/utils/canvas/outputs";
 
@@ -86,20 +87,25 @@ export async function submitWithRetry<T>(
  * 任务提交成功（202）后写进节点的补丁：记下 taskId、进入 running，并清掉上一次的结果。
  * 文本节点清正文；媒体节点清素材相关字段。此后节点完全由任务 store 与回填驱动。
  * @param kind 节点种类
- * @param taskId 后端返回的任务 id（字符串）
+ * @param taskIds 后端返回的任务 id（字符串）；一次提交了多个任务（生成数量 N）时传全部成功创建的：
+ *   taskId 取第一个，≥2 个时 pendingTaskIds 记全部，只有 1 个时和单任务完全一致
  * @returns 节点数据补丁
  */
 export function buildSubmittedPatch(
   kind: NodeKind,
-  taskId: string,
+  taskIds: string | string[],
   data?: CanvasNodeData,
 ): Partial<CanvasNodeData> {
+  const ids = Array.isArray(taskIds) ? taskIds : [taskIds];
+  const taskId = ids[0];
   if (kind === "script") return { taskId, status: "running", text: null, error: null };
   // 旧画布的结果只存在 src 上，清掉之前先落进历史，重新生成后还能切回去
   const outputs = data ? readOutputs(data) : [];
   return {
     ...(outputs.length ? { outputs } : {}),
     taskId,
+    // 清掉上一批的残留；多个任务时记全部
+    pendingTaskIds: ids.length >= 2 ? ids : undefined,
     status: "running",
     src: null,
     assetId: undefined,
@@ -108,4 +114,21 @@ export function buildSubmittedPatch(
     fileName: undefined,
     error: null,
   };
+}
+
+/**
+ * 把一次提交的逐项结果整理成「成功创建的任务 id」和「失败的原因」。
+ * 一次提交的多个任务可以都绑同一个节点（node_id 相同），所以只能按下标逐项处理，不能按 node_id 查找。
+ */
+export function settleSubmission(items: CreateTaskItem[]): {
+  taskIds: string[];
+  failures: SubmitErrorInfo[];
+} {
+  const taskIds: string[] = [];
+  const failures: SubmitErrorInfo[] = [];
+  for (const item of items) {
+    if (item.task) taskIds.push(String(item.task.id));
+    else failures.push(describeSubmitError(item.error ?? null));
+  }
+  return { taskIds, failures };
 }

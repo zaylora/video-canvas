@@ -67,7 +67,7 @@ func TestCatalogMarksGroupMembershipAndOutputs(t *testing.T) {
 
 func TestDetailSanitizesMediaAndPages(t *testing.T) {
 	g := mustParse(t, `{"nodes":[{"id":"a","type":"canvas","position":{"x":0,"y":0},
-	  "data":{"kind":"image","label":"A","src":"https://cdn/x.png","assetId":"9","outputs":[{"id":"o1","src":"https://cdn/x.png"}],"prompt":"p"}}],
+	  "data":{"kind":"image","label":"A","src":"https://cdn/x.png","assetId":"9","outputs":[{"id":"o1","src":"https://cdn/x.png"}],"pendingTaskIds":["11","12"],"prompt":"p"}}],
 	  "edges":[{"id":"e1","source":"a","target":"b"}]}`)
 	d, err := canvasgraph.Detail(g, []string{"a"})
 	if err != nil {
@@ -79,6 +79,9 @@ func TestDetailSanitizesMediaAndPages(t *testing.T) {
 	}
 	if _, has := data["outputs"]; has {
 		t.Error("详情不应包含 outputs 列表")
+	}
+	if _, has := data["pendingTaskIds"]; has {
+		t.Error("详情不应包含进行中的任务 id 集合 pendingTaskIds")
 	}
 	if data["outputCount"] != 1 || data["hasOutput"] != true {
 		t.Errorf("应改为产物数量和标记: %v", data)

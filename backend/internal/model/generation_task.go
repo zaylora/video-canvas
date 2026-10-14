@@ -119,7 +119,7 @@ type CreateGenerationTaskReq struct {
 	ModelID  string         `json:"model_id" binding:"required,max=128" label:"模型"`                    // 模型 key
 	CanvasID idcodec.ID     `json:"canvas_id" label:"画布"`                                              // 所属画布（十六进制串），可不传
 	NodeID   string         `json:"node_id" binding:"max=64" label:"节点"`                               // 前端节点 id（只生成 1 个时可以只传它）
-	NodeIDs  []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点
+	NodeIDs  []string       `json:"node_ids" binding:"omitempty,max=8,dive,max=64" label:"节点"`         // 每个任务绑定的节点，长度等于生成数量；第 i 个任务绑定第 i 个节点，允许重复（多个任务绑同一个节点）
 	Input    map[string]any `json:"input" binding:"required" label:"生成参数"`                             // 生成参数，按模型的 capabilities 校验
 }
 

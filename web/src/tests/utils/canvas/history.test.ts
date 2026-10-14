@@ -74,6 +74,19 @@ describe("restoreNodes", () => {
     expect(restored.map((item) => item.id)).toEqual(["n1", "n2"]);
   });
 
+  test("进行中的任务集合属于任务字段：撤销不倒回它", () => {
+    const [kept] = restoreNodes(
+      [node("n1")],
+      [node("n1", { status: "done", pendingTaskIds: ["2", "3"] })],
+    );
+    expect(kept.data.pendingTaskIds).toEqual(["2", "3"]);
+    const [dropped] = restoreNodes(
+      [node("n1", { pendingTaskIds: ["2"] })],
+      [node("n1", { status: "done" })],
+    );
+    expect(dropped.data.pendingTaskIds).toBeUndefined();
+  });
+
   test("快照里没有、眼下才有的任务字段会被带上", () => {
     const [restored] = restoreNodes([node("n1")], [node("n1", { status: "running", taskId: "7" })]);
     expect(restored.data).toMatchObject({ status: "running", taskId: "7" });

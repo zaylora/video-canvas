@@ -175,6 +175,11 @@ describe("buildTrimNode 造剪辑节点和连线", () => {
     edgeId: () => "edge1",
   };
 
+  test("节点记下源视频的画幅", () => {
+    const { node } = buildTrimNode({ ...args, aspect: 1 });
+    expect(node.data.mediaAspect).toBe(1);
+  });
+
   test("是上传中的视频节点，标题「剪辑」，带上传标记，没有任何生成字段", () => {
     const { node } = buildTrimNode(args);
     expect(node.id).toBe("new1");

@@ -32,6 +32,7 @@ import type {
 import { isGroupNode } from "@/utils/canvas/group";
 import { canLinkFrom, opForLink, partitionLinkable } from "@/utils/canvas/link-rule";
 import { takeUploadFile } from "@/utils/canvas/media";
+import { probeFileAspect } from "@/utils/canvas/media-aspect";
 import { topLeftFromAnchor } from "@/utils/canvas/placement";
 import { uploadRunner, type UploadOutcome } from "@/utils/canvas/upload-runner";
 
@@ -323,10 +324,13 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
       placement: CanvasMenuState,
     ): Promise<{ outcome: UploadOutcome; detached: boolean }> => {
       const kind = UPLOAD_TARGET_KIND[item.mediaType];
+      // 先读出本地文件的画幅再建节点，占位一开始就是对的比例；读不出来就和以前一样用默认画幅
+      const mediaAspect = await probeFileAspect(item.file, item.mediaType);
       const { id, connected } = placeNode(kind, placement, {
         status: "running",
         uploadProgress: 0,
         mediaType: item.mediaType,
+        ...(mediaAspect !== null ? { mediaAspect } : {}),
         uploaded: true,
         fileName: item.file.name,
       });

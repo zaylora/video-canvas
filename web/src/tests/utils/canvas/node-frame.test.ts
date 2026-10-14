@@ -99,7 +99,21 @@ describe("paramAspect：从模型参数里读用户选的比例", () => {
   });
 });
 
-describe("resolveNodeAspect：成片 > 所选比例 > 16:9", () => {
+describe("resolveNodeAspect：成片 > 节点记下的画幅 > 所选比例 > 16:9", () => {
+  test("成片还没量到，用节点记下的画幅，优先于所选比例", () => {
+    expect(resolveNodeAspect({ measured: null, declared: 1, selected: 16 / 9 })).toBe(1);
+  });
+
+  test("成片量到了，仍以成片为准", () => {
+    expect(resolveNodeAspect({ measured: 3 / 4, declared: 1, selected: null })).toBeCloseTo(3 / 4);
+  });
+
+  test("音频不跟记下的画幅走", () => {
+    expect(
+      resolveNodeAspect({ measured: null, declared: 9 / 16, selected: null, mediaType: "audio" }),
+    ).toBe(1);
+  });
+
   test("成片量到了比例，以成片为准，不管选的是什么", () => {
     expect(resolveNodeAspect({ measured: 3 / 4, selected: 16 / 9 })).toBeCloseTo(3 / 4);
   });

@@ -1,6 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { NodeToolbar, Position, useReactFlow, useStore } from "@xyflow/react";
+import { NodeToolbar, Position, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
@@ -15,17 +15,15 @@ import {
   usePanelPlacement,
 } from "@/components/canvas/hooks/use-panel-placement";
 import { NODE_TOOLBAR } from "@/constants/node-toolbar";
-import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useFramePickStore } from "@/store/frame-pick";
 import { useOutpaintStore } from "@/store/outpaint";
 import { useTrimStore } from "@/store/trim";
-import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
+import type { CanvasNodeData } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
-import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
 import { outpaintModels } from "@/utils/canvas/outpaint-node";
 import { supportsTrim, UNSUPPORTED_TRIM_MESSAGE } from "@/utils/canvas/trim-engine";
 
@@ -76,8 +74,6 @@ export function NodeOverlays({
   /** 生成面板，拿到算好的宽度 */
   children: (width: number) => ReactNode;
 }) {
-  const { updateNodeData } = useReactFlow<CanvasNode, CanvasEdge>();
-  const history = useCanvasHistoryContext();
   const previewNode = useNodePreview();
   const { width, shift } = usePanelPlacement(id);
   const paneBusy = usePaneBusy();
@@ -94,26 +90,6 @@ export function NodeOverlays({
 
   const config = NODE_TOOLBAR[data.kind];
   const gate = toolbarGate(data);
-  const outputs = readOutputs(data);
-
-  const selectVersion = useCallback(
-    (outputId: string) => {
-      // 生成中不切：正文显示的是任务进度，切了也看不到，还会把状态改乱
-      if (data.status === "running") {
-        toast("生成中不能切换版本");
-        return;
-      }
-      // 失败后点当前那一版，等于把它找回来，照样放行
-      if (outputId === activeOutputIdOf(data) && data.status === "done") return;
-      history?.record();
-      updateNodeData(id, (node) => {
-        const patch = selectOutput(node.data, outputId);
-        return patch ? { ...patch, status: "done", error: null } : {};
-      });
-    },
-    [data, history, id, updateNodeData],
-  );
-
   /** 点「扩图」：只进入扩图模式、摆出框和面板，不生成任何图片；没有能做扩图的模型就不进 */
   const startOutpaint = useCallback(() => {
     if (imageModels.status !== "ready") {
@@ -210,16 +186,6 @@ export function NodeOverlays({
               config={config}
               label={label}
               gate={gate}
-              history={
-                config.tail.includes("history")
-                  ? {
-                      nodeId: id,
-                      outputs,
-                      activeId: activeOutputIdOf(data),
-                      onSelect: selectVersion,
-                    }
-                  : undefined
-              }
               onAction={onAction}
               onTail={onTail}
             />

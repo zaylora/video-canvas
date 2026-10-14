@@ -4,8 +4,10 @@ import {
   buildSubmittedPatch,
   describeSubmitError,
   isRetryableSubmitError,
+  settleSubmission,
   submitWithRetry,
 } from "@/utils/tasks/submit";
+import { makeTask } from "./fixtures";
 
 describe("describeSubmitError：提交处就地提示", () => {
   test("按后端业务码翻译", () => {
@@ -112,5 +114,53 @@ describe("buildSubmittedPatch：提交成功后写进节点的补丁", () => {
       error: null,
     });
     expect("text" in buildSubmittedPatch("video", "9")).toBe(false);
+  });
+});
+
+describe("buildSubmittedPatch：一次提交了多个任务", () => {
+  test("多个任务：taskId 是第一个，pendingTaskIds 是全部", () => {
+    const patch = buildSubmittedPatch("image", ["5", "6", "7"]);
+    expect(patch).toMatchObject({
+      taskId: "5",
+      pendingTaskIds: ["5", "6", "7"],
+      status: "running",
+      src: null,
+    });
+  });
+
+  test("只成功了一个任务：和单任务完全一致，不写 pendingTaskIds（并清掉上一批的残留）", () => {
+    const patch = buildSubmittedPatch("image", ["5"]);
+    expect(patch).toMatchObject({ taskId: "5", status: "running" });
+    expect(patch.pendingTaskIds).toBeUndefined();
+  });
+
+  test("仍然接受单个任务 id", () => {
+    expect(buildSubmittedPatch("image", "9")).toMatchObject({ taskId: "9", status: "running" });
+  });
+});
+
+describe("settleSubmission：把一次提交的逐项结果整理成「成功的任务」和「失败的原因」", () => {
+  const ok = (id: number) => ({ node_id: "n1", task: makeTask({ id }) });
+  const err = (code: number, status: number, message = "") => ({
+    node_id: "n1",
+    error: { status, code, message },
+  });
+
+  test("按下标逐项处理：同一个节点的多个任务各取各的（不能按 node_id 查找）", () => {
+    const result = settleSubmission([ok(11), ok(12), ok(13)]);
+    expect(result.taskIds).toEqual(["11", "12", "13"]);
+    expect(result.failures).toEqual([]);
+  });
+
+  test("部分失败：成功的留着，失败的翻译成给用户看的话", () => {
+    const result = settleSubmission([ok(11), ok(12), err(40001, 402), err(40002, 429)]);
+    expect(result.taskIds).toEqual(["11", "12"]);
+    expect(result.failures.map((item) => item.kind)).toEqual(["credits", "limit"]);
+  });
+
+  test("一个都没成功：taskIds 为空，失败原因都在", () => {
+    const result = settleSubmission([err(40001, 402), err(40001, 402)]);
+    expect(result.taskIds).toEqual([]);
+    expect(result.failures).toHaveLength(2);
   });
 });

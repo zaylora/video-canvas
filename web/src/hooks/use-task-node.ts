@@ -14,6 +14,7 @@ import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
 import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
+import { isGenerating } from "@/utils/canvas/outputs";
 import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-rule";
 import { withoutOutpaintSource } from "@/utils/canvas/outpaint-node";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
@@ -273,6 +274,8 @@ export function useTaskNode(
 
   // ---- 展示状态 ----
   const running = data.status === "running";
+  /** 还有任务在跑：占位中，或第一张已出、同一批的其余任务还没结清（此时不能再次生成） */
+  const generating = isGenerating(data);
   const task = useTask(data.taskId);
   const now = useNow(running);
   const view = deriveVideoNodeView(data, task, now);
@@ -280,7 +283,7 @@ export function useTaskNode(
   // ---- 能不能生成，不能的话为什么 ----
   const promptBinding = bindings.prompt;
   const firstError = Object.values(built.errors)[0];
-  const blockedReason: string | null = running
+  const blockedReason: string | null = generating
     ? "生成中"
     : generation.submitting
       ? "正在提交"
@@ -310,9 +313,15 @@ export function useTaskNode(
     setSubmitError(outcome.error.message);
   }, [blockedReason, built.input, data.src, generation, model, price]);
 
+  /** 取消本节点全部进行中的任务（一批任务时是 pendingTaskIds，否则是 taskId）；已出的图保留 */
   const cancel = useCallback(() => {
-    if (data.taskId) void generation.cancel(data.taskId);
-  }, [data.taskId, generation]);
+    const ids = data.pendingTaskIds?.length
+      ? data.pendingTaskIds
+      : data.taskId
+        ? [data.taskId]
+        : [];
+    if (ids.length) void generation.cancel(ids);
+  }, [data.pendingTaskIds, data.taskId, generation]);
 
   // ---- 编辑 ----
   const setPrompt = useCallback(
@@ -508,6 +517,7 @@ export function useTaskNode(
     submitError,
     // 展示与取消
     running,
+    generating,
     view,
     cancel,
     cancelling: generation.cancelling,

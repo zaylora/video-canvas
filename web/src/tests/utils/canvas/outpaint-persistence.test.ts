@@ -76,3 +76,16 @@ describe("扩图中途刷新：节点不能悄悄变成空壳", () => {
     expect(graph.nodes[0].data).toMatchObject({ status: "error", error: OUTPAINT_INTERRUPTED });
   });
 });
+
+describe("mediaAspect 存档：刷新后占位仍是对的画幅", () => {
+  test("存档带上、读档还在", () => {
+    const graph = serializeGraph([node("a", { mediaAspect: 1 })], [], viewport);
+    expect(graph.nodes[0].data).toMatchObject({ mediaAspect: 1 });
+    expect(deserializeGraph(graph).nodes[0].data).toMatchObject({ mediaAspect: 1 });
+  });
+
+  test("没记过的节点不多出这个字段", () => {
+    const graph = serializeGraph([node("a", {})], [], viewport);
+    expect("mediaAspect" in graph.nodes[0].data).toBe(false);
+  });
+});

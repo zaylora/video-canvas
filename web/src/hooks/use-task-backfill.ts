@@ -4,8 +4,8 @@ import { reconcileTaskIds } from "@/utils/ws/task-events";
 import { toast } from "sonner";
 import { useTasksStore } from "@/store/tasks";
 import type { CanvasNode } from "@/types";
-import { applyBackfill } from "@/utils/tasks/backfill";
-import { collectRunningTaskIds } from "@/utils/tasks/reconcile";
+import { applyBackfill, failedBatchMembers } from "@/utils/tasks/backfill";
+import { collectRunningTaskIds, markTasksGone } from "@/utils/tasks/reconcile";
 
 /**
  * 任务结果回填画布：
@@ -30,6 +30,12 @@ export function useTaskBackfill(
         toast.info("已取消生成，积分已退回", { id: `canceled:${event.view.id}` });
       }
     }
+    // 一批任务里有失败的、节点却已经有结果：节点不会变成失败态，用一条提示说清楚
+    for (const [nodeId, messages] of Object.entries(failedBatchMembers(events))) {
+      toast.warning(`有 ${messages.length} 张生成失败，积分已退回：${messages[0]}`, {
+        id: `batch-failed:${nodeId}:${events.find((e) => e.nodeId === nodeId)?.view.id}`,
+      });
+    }
   }, [nodes, tasks, setNodes]);
 
   // 打开画布只对账一次
@@ -43,22 +49,12 @@ export function useTaskBackfill(
       // 服务端确认没有这些任务（被清理或不属于当前用户）：别让节点永远转圈
       const gone = new Set(missing);
       setNodes((prev) =>
-        prev.map((node) =>
-          node.data.status === "running" &&
-          node.data.taskId &&
-          gone.has(node.data.taskId) &&
-          !useTasksStore.getState().tasks[node.data.taskId]
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  status: "error",
-                  taskId: undefined,
-                  error: "任务状态已失效，请重新生成",
-                },
-              }
-            : node,
-        ),
+        prev.map((node) => {
+          // 本地已经有快照的任务由回填处理，不算「没了」
+          const stillGone = new Set([...gone].filter((id) => !useTasksStore.getState().tasks[id]));
+          const patch = markTasksGone(node.data, stillGone);
+          return patch ? { ...node, data: { ...node.data, ...patch } } : node;
+        }),
       );
     });
     return () => {

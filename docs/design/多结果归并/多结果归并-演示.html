@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>多结果归并 演示</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 本页专用：原型里的画布是深色的，不随页面主题变 ---- */
+      .cv {
+        --c-bg: #0c0c0d; --c-card: #171718; --c-panel: #1c1c1e; --c-line: rgba(255,255,255,.12); --c-mute: #9a9aa2; --c-fg: #f4f4f5;
+        position: relative; min-height: 680px; overflow: hidden; color: var(--c-fg); background-color: var(--c-bg);
+        background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px); background-size: 22px 22px;
+        font-size: 13px;
+      }
+      .cv button { color: inherit; }
+      .cv [data-lucide] { width: 1em; height: 1em; }
+      .cv-stage { position: absolute; inset: 0; }
+      .cv-row { position: absolute; left: 50%; top: 56px; transform: translateX(-150px); display: flex; gap: 28px; align-items: flex-start; }
+      .cv-extra { display: grid; grid-template-columns: repeat(2, 132px); gap: 22px 20px; align-content: start; max-width: 300px; }
+      .cv-extra:empty { display: none; }
+      .nd-title { display: flex; align-items: center; gap: 6px; color: var(--c-mute); font-size: 14px; height: 28px; }
+      .nd-title .sp { margin-left: auto; }
+      .nd { position: relative; width: 300px; }
+      .nd-card { position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; background: var(--c-card); box-shadow: 0 0 0 1px var(--c-line), 0 12px 32px rgb(0 0 0 / .4); overflow: hidden; }
+      .nd.sm { width: 132px; } .nd.sm .nd-card { border-radius: 12px; } .nd.sm .nd-title { font-size: 12px; height: 22px; }
+      .nd-handle { position: absolute; top: 50%; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--c-mute); display: grid; place-items: center; color: var(--c-mute); transform: translateY(-50%); }
+      .nd-handle.l { left: -40px; } .nd-handle.r { right: -40px; }
+      .art { position: absolute; inset: 0; background:
+        radial-gradient(circle at 25% 20%, hsl(var(--h) 80% 70% / .55), transparent 55%),
+        linear-gradient(135deg, hsl(var(--h) 65% 42%), hsl(calc(var(--h) + 50) 60% 20%)); display: grid; place-items: center; }
+      .art::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.28) 1px, transparent 1.4px); background-size: 20px 20px; opacity: .5; }
+      .art b { position: relative; z-index: 1; font-size: 64px; font-weight: 700; color: rgba(255,255,255,.85); letter-spacing: -.04em; text-shadow: 0 2px 12px rgb(0 0 0 / .3); }
+      .sm .art b, .tile.s .art b { font-size: 34px; } .dlg-b .art b { font-size: 36px; }
+      .ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--c-mute); text-align: center; padding: 16px; }
+      .ph [data-lucide] { width: 26px; height: 26px; }
+      .ph b { color: var(--c-fg); font-weight: 500; font-size: 14px; }
+      .ph small { font-size: 12px; }
+      .ph.err [data-lucide] { color: rgb(var(--bad)); }
+      .spin { animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .shimmer { background: linear-gradient(100deg, #1d1d1f 30%, #2a2a2d 50%, #1d1d1f 70%); background-size: 220% 100%; animation: sh 1.4s linear infinite; }
+      @keyframes sh { to { background-position: -220% 0; } }
+      .pbtn { margin-top: 6px; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--c-line); font-size: 12px; }
+      .pbtn:hover { background: rgba(255,255,255,.08); }
+      .vb { position: absolute; top: 10px; right: 10px; z-index: 3; height: 30px; padding: 0 10px; border-radius: 10px; background: rgba(8,8,9,.78); color: #fff; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+      .vb:hover { background: rgba(8,8,9,.92); }
+      .vb [data-lucide] { width: 14px; height: 14px; }
+      .vb .spin { width: 12px; height: 12px; opacity: .8; }
+      .cv-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--muted) / .5); font-size: 12.5px; }
+      .cv-bar select { height: 30px; border-radius: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: inherit; font: inherit; padding: 0 8px; }
+      .cv-bar label { display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); }
+      .cv-bar .btn { height: 30px; }
+      /* 弹窗 */
+      .scrim { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,.62); backdrop-filter: blur(2px); display: grid; place-items: center; padding: 16px; animation: fadeIn .24s cubic-bezier(.2,0,0,1); }
+      @keyframes fadeIn { from { opacity: 0; transform: scale(.985); } }
+      .dlg { width: min(720px, 100%); max-height: 100%; background: var(--c-panel); border-radius: 24px; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgb(0 0 0 / .5); }
+      .dlg-h { display: flex; align-items: center; gap: 8px; padding: 18px 22px 12px; position: relative; }
+      .dlg-h h3 { font-size: 15px; font-weight: 600; margin: 0; } .dlg-h h3 span { color: var(--c-mute); font-weight: 400; margin-left: 4px; }
+      .dlg-h .sp { margin-left: auto; }
+      .hbtn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+      .hbtn:hover { background: rgba(255,255,255,.08); }
+      .vr { width: 1px; height: 18px; background: var(--c-line); margin: 0 4px; }
+      .menu { position: absolute; right: 56px; top: 54px; z-index: 5; min-width: 190px; background: #262629; border-radius: 12px; padding: 6px; box-shadow: 0 0 0 1px var(--c-line), 0 12px 32px rgb(0 0 0 / .5); }
+      .menu button { display: flex; width: 100%; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 8px; text-align: left; font-size: 13px; }
+      .menu button:hover:not(:disabled) { background: rgba(255,255,255,.08); } .menu button:disabled { opacity: .4; cursor: not-allowed; }
+      .dlg-b { padding: 6px 22px 22px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-content: start; max-height: 520px; }
+      .tile { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; cursor: pointer; background: #111; box-shadow: 0 0 0 1px var(--c-line); outline: none; transition: box-shadow .15s; }
+      .tile:hover { box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+      .tile:focus-visible { box-shadow: 0 0 0 2px #fff; }
+      .tile.cur { box-shadow: 0 0 0 2.5px #fff; }
+      .tile.dis { cursor: not-allowed; } .tile.dis .art { filter: saturate(.7); }
+      .tile .lab { position: absolute; left: 0; right: 0; top: 0; padding: 7px 10px 16px; background: linear-gradient(rgba(0,0,0,.5), transparent); display: flex; align-items: center; gap: 6px; font-size: 12px; z-index: 2; }
+      .tile .tools { position: absolute; right: 6px; bottom: 6px; z-index: 3; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: rgba(40,40,44,.82); opacity: 0; transition: opacity .15s; }
+      .tile:hover .tools, .tile:focus-within .tools { opacity: 1; }
+      .tools button { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; }
+      .tools button:hover { background: rgba(255,255,255,.14); }
+      .tile.fail { cursor: default; background: #1a1313; box-shadow: 0 0 0 1px rgb(var(--bad) / .4); }
+      .tile.fail .ph [data-lucide] { color: rgb(var(--bad)); }
+      .tile.pend { cursor: default; }
+      /* 全屏层 / 灯箱 */
+      .full { position: absolute; inset: 0; z-index: 30; background: #000; display: flex; flex-direction: column; animation: fadeIn .24s cubic-bezier(.2,0,0,1); }
+      .full.zoom { background: rgba(0,0,0,.9); z-index: 40; }
+      .f-top { display: flex; align-items: center; gap: 10px; padding: 16px 20px; flex-wrap: wrap; }
+      .f-top .sp { margin-left: auto; }
+      .pill { height: 38px; padding: 0 14px; border-radius: 12px; background: #1c1c1e; display: inline-flex; align-items: center; gap: 7px; font-size: 14px; box-shadow: 0 0 0 1px var(--c-line); }
+      .pill:hover:not(:disabled) { background: #29292c; } .pill:disabled { opacity: .4; }
+      .f-grid { padding: 4px 20px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; overflow: auto; align-content: start; }
+      .f-grid .tile { border-radius: 8px; }
+      .f-list { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 0 20px 18px; }
+      .f-stage { position: relative; flex: 1; min-height: 0; width: 100%; display: grid; place-items: center; }
+      .f-big { position: relative; height: min(100%, 440px); aspect-ratio: 1; border-radius: 16px; overflow: hidden; box-shadow: 0 16px 48px rgb(0 0 0 / .6); }
+      .f-big .art b { font-size: 96px; }
+      .nav { position: absolute; top: 50%; width: 40px; height: 40px; border-radius: 50%; background: #1c1c1e; box-shadow: 0 0 0 1px var(--c-line); display: grid; place-items: center; transform: translateY(-50%); }
+      .nav:disabled { opacity: .3; } .nav.l { left: 4px; } .nav.r { right: 4px; }
+      .f-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 12px; color: var(--c-mute); }
+      .f-info .pill { height: 30px; font-size: 12px; border-radius: 999px; }
+      .strip { display: flex; gap: 8px; max-width: 100%; overflow-x: auto; padding: 4px; }
+      .strip button { position: relative; width: 74px; height: 56px; border-radius: 9px; overflow: hidden; flex: none; opacity: .7; outline: none; }
+      .strip button[aria-current="true"] { opacity: 1; box-shadow: 0 0 0 2px #fff; } .strip .art b { font-size: 22px; }
+      .badge-main { position: absolute; left: 8px; top: 8px; z-index: 3; height: 22px; padding: 0 8px; border-radius: 6px; background: rgba(255,255,255,.92); color: #111; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; }
+      .cfm { position: absolute; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; }
+      .cfm > div { width: min(360px, 90%); background: var(--c-panel); border-radius: 16px; padding: 18px; box-shadow: 0 16px 48px rgb(0 0 0 / .6); }
+      .cfm p { margin: 0 0 14px; font-size: 14px; }
+      .cfm .row { justify-content: flex-end; }
+      .cfm .btn-primary { background: #fff; color: #111; }
+      .dbg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+      @media (max-width: 820px) { .dbg { grid-template-columns: 1fr; } .cv-row { flex-direction: column; align-items: center; top: 40px; transform: translateX(-150px); } .cv-extra { display: none; } }
+      .dbg pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-family: "Geist Mono", monospace; font-size: 12px; min-height: 150px; }
+      .states { display: flex; gap: 6px; flex-wrap: wrap; }
+    </style>
+  </head>
+
+    <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="images"></i></span>多结果归并 演示
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">生成多张图，都落在同一个节点里</h1>
+        <p class="lead">
+          现在「生成数量 4」会在画布上凭空多出 3 个一模一样的节点。新方案：<b>N 张结果都归在发起生成的那个节点里</b>，节点右上角出现「3 ▾」徽标，点开是「历史记录」大弹窗，<b>单击哪张，哪张就是主图</b>，下游节点读到的也是它。同一个节点重新生成多次，也是同样的做法。
+          <b>后端基本不用改</b>：仍然是 N 个独立任务（各自冻结、各自退款），只是它们都绑在同一个节点上。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>这是<b>设计稿，尚未实现</b>。「现状」来自读 2026-10-15 的仓库代码；原型里的生成、失败、耗时都是<b>浏览器里模拟</b>，没有调用任何真实服务；主图的缩略图用渐变色块代替。对应 Markdown：<code>docs/design/多结果归并/多结果归并.md</code>（§6 方案、§7 异常、§8 工程影响）。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对（读过代码 / 官方页面）</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案 / 示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一次「生成数量 4」怎么走</h2>
+          <p class="sub">这张图回答：4 个任务、1 个节点，每一步谁负责什么。</p>
+          <div class="flow note">
+            <div class="node"><b>点发送</b>前端发一次请求，<code>node_ids</code> = 同一个节点 id 写 4 遍。画布上不再多出节点</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>后端拆 4 个任务</b>各自冻结积分，都带 <code>node_id</code> = 这个节点；某个失败只退自己</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>节点进入生成中</b>记下 <code>pendingTaskIds</code>（4 个）</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>先到先显示</b>第一张成为主图；后到的只追加进历史，不抢主图</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>用户挑主图</b>徽标 → 弹窗 → 单击一张。下游读主图</div>
+          </div>
+          <div class="note-txt">设计：把「几个任务」和「几个节点」解开。任务是计费和审计单位，节点是创作意图单位；N 个任务对应 1 个节点，回填时一个任务追加一版，复用现有的 <code>outputs[]</code>。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>出问题时（回退，永远可用）：</b>提交整体失败 → 节点<b>不动</b>，错误就地显示在提示词面板里；只提交成功了一部分（积分只够 2 个）→ 成功的照常生成，toast 说明另外几张没提交；某个任务生成失败 → 只退它自己的积分，其他照常；<b>全部失败</b>才把节点标成失败态。老画布、单个任务的路径<b>完全不变</b>。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>节点会处在哪几种形态</h2>
+          <p class="sub">形态由「有几版结果」和「有没有任务还在跑」决定，徽标和弹窗里的格子跟着变。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="image"></i><b>只有 1 版</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">无徽标</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>没有历史入口。</b>功能区的「历史」按钮已删除，所以单版本节点看不到入口——再生成一次就有了。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="images"></i><b>有 2 版及以上</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">徽标「3 ▾」</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>数字 = 历史版本总数</b>，不是本次数量。点开是弹窗，单击设主图。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="loader-circle"></i><b>批次还在生成</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">徽标带转圈</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>第一张出来后就能挑。</b>还没出第一张时节点是占位，弹窗里的格子可看、不可设主图。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>四种做法对比</h2>
+          <p class="sub">为什么选「归并 + 弹窗」，以及放弃了什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>复制 N 个节点（现状）</th><th>归并 + 弹窗（推荐）</th><th>节点内展开</th><th>1 个任务出 N 张</th></tr></thead>
+              <tbody>
+                <tr><th>画布整洁度</th><td><span class="m">差：多 N−1 个节点</span></td><td class="y">好</td><td><span class="m">节点被撑大，挤邻居</span></td><td class="y">好</td></tr>
+                <tr><th>并排比较</th><td class="y">直接在画布上</td><td class="y">弹窗网格，够大</td><td><span class="m">受节点宽度限制</span></td><td class="y">同归并</td></tr>
+                <tr><th>后端改动</th><td>无</td><td class="y">近 0：补测试和注释</td><td class="y">同归并</td><td><span class="m">大：每个插件要支持一次出 N 张；计价退款变成全有或全无</span></td></tr>
+                <tr><th>部分失败</th><td class="y">只退失败那份</td><td class="y">只退失败那份</td><td class="y">同归并</td><td><span class="m">整体失败</span></td></tr>
+                <tr><th>前端复杂度</th><td>已有</td><td><span class="m">中：批次回填 + 弹窗</span></td><td><span class="m">高：布局联动</span></td><td class="y">小</td></tr>
+                <tr><th>用户的选择</th><td>推翻</td><td class="y">已确认</td><td>放弃</td><td>用户未选</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-mute">提案</span></td><td><span class="tag t-info">Weave 式，调研检索</span></td><td><span class="tag t-ok">已核对代码</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">外部做法：Figma Weave（原 Weavy）把同一节点的多次结果存在节点里、可「Unpack」拆成独立节点；FLORA 的批量变体可以叠在一个节点里；ComfyUI 一批图默认整批传下游，社区另做了「预览后选一张」的节点。<span class="tag t-info">调研检索，未逐条复核</span> 来源见 Markdown §4、§12。</p>
+        </div>
+
+        <div class="sec">
+          <h2>用户把生成数量设成 4 并点发送，会发生什么</h2>
+          <p class="sub">五步，以及几个需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>点发送，画布节点数不变</b><small>节点进入「生成中」占位，底栏积分按 4 个任务合计冻结</small></li>
+                <li><b>第一张完成：占位换成这张图，自动成为主图</b><small>右上角出现「1 ⟳」</small></li>
+                <li><b>后三张陆续到达：只追加进历史</b><small>数字依次变 2、3、4，主图不动，转圈消失</small></li>
+                <li><b>点徽标，在弹窗里点中一张</b><small>它立刻成为主图，节点上的图跟着换，⌘Z 可撤销</small></li>
+                <li><b>需要的话「全部添加到画布」</b><small>每一版拆成一个独立节点，摆在原节点右侧</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：和旧做法不一样的地方</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li><b>不再多出节点</b>；以前能在画布上直接并排比的，现在要点开弹窗比。</li>
+                    <li>取消 = 取消<b>本节点全部进行中的任务</b>，已出的图保留。</li>
+                    <li>已经被旧方案复制出来的兄弟节点<b>保持原样，不提供合并</b>（已确认）。</li>
+                    <li>画布 Agent 助手生成媒体仍固定一次 1 张、各建节点，本期不动。</li>
+                    <li>每个节点最多留 <b>50</b> 版（原来 20），超出丢最旧的引用，素材本身不删。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">上线时要告诉用户：旧缩略图条没有了，历史入口是节点右上角的徽标；拖缩略图到画布建节点改成「添加到画布」按钮。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型：生成、挑主图、全屏、添加到画布</h1>
+        <p class="lead">
+          画布上有一个「图片 7」，已预置 3 版历史，当前主图是版本 2。<b>直接点节点右上角的「3 ▾」</b>走一遍；或者选「生成数量」点「生成」，看 4 张陆续出来（模拟，约每 1.1 秒一张）。
+          想看失败：把「失败情形」改成「最后一个任务失败」「全部失败」或「积分只够 2 个」。想看「一个任务返回多张」：把「每个任务返回」改成 2 张。想看「超过 8 个先确认」：连续生成两次 4 张，再点「全部添加到画布」。数据都在内存里，刷新复原。
+        </p>
+
+        <div class="frame" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">video-canvas.app / 画布 / 未命名画布</span>
+          </div>
+          <div class="cv-bar">
+            <label>生成数量
+              <select id="cnt"><option>1</option><option>2</option><option selected>4</option></select>
+            </label>
+            <label>每个任务返回
+              <select id="per"><option value="1" selected>1 张</option><option value="2">2 张（如 Seedream 组图）</option></select>
+            </label>
+            <label>失败情形
+              <select id="mode">
+                <option value="none">无（全部成功）</option>
+                <option value="last">最后一个任务失败</option>
+                <option value="all">全部失败</option>
+                <option value="credit">积分只够 2 个</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="goBtn"><i data-lucide="sparkles"></i>生成</button>
+            <button class="btn btn-outline" id="undoBtn"><i data-lucide="undo-2"></i>撤销 ⌘Z</button>
+            <button class="btn btn-outline" id="resetBtn"><i data-lucide="rotate-ccw"></i>复原</button>
+            <span class="muted" id="goWhy"></span>
+            <span class="tag t-mute spacer">模拟，非真实调用</span>
+          </div>
+          <div class="cv note" id="cv"><div class="cv-stage" id="stage"></div></div>
+        </div>
+        <div class="note-txt">
+          标注：① <b>徽标常驻、不随选中显隐</b>——参考图就是这样；放弃了「选中才出现」，因为多版本是节点的固有属性，不是临时工具。② <b>单击即设主图</b>，换来一步到位，代价是误点会改主图，所以每次设主图都进撤销栈。③ <b>放大只看不改</b>：翻页、看大图不会动主图，要改点「设为主图」。④ 失败格只在弹窗打开期间存在，不进历史。
+        </div>
+
+        <div class="dbg">
+          <div class="card">
+            <div class="row" style="margin-bottom: 6px"><i data-lucide="braces"></i><b>节点数据（实时）</b><span class="tag t-mute">示意</span></div>
+            <pre id="dataView"></pre>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom: 6px"><i data-lucide="scroll-text"></i><b>请求与回填日志</b><span class="tag t-mute">示意</span></div>
+            <pre id="logView"></pre>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>原型覆盖的状态</h2>
+          <p class="sub">不可用的操作都是禁用并写原因，不是隐藏。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>状态</th><th>怎么触发</th><th>看什么</th></tr></thead>
+              <tbody>
+                <tr><th>单版本（无徽标）</th><td>原型起点已是 3 版，无法触发</td><td>规则见总览「形态」：只有 1 版的节点不出徽标，也没有历史入口</td></tr>
+                <tr><th>生成中，还没出第一张</th><td>点「生成」后的 1 秒内</td><td>节点是占位；弹窗里骨架格 + 其他格「设主图」禁用，悬停有原因</td></tr>
+                <tr><th>已出第一张，其余在跑</th><td>点「生成」1 秒后</td><td>主图已换；徽标带转圈；弹窗里剩余骨架格；此时可以设主图，后到的不抢</td></tr>
+                <tr><th>部分失败</th><td>失败情形 = 最后一个任务失败</td><td>toast「有 1 张生成失败，积分已退回」；弹窗里有一个失败格，关掉弹窗后消失</td></tr>
+                <tr><th>全部失败</th><td>失败情形 = 全部失败</td><td>节点变失败态（原因 + 积分已退回 + 任务编号）；徽标仍在，可以在弹窗里把旧版本找回来</td></tr>
+                <tr><th>提交部分失败</th><td>失败情形 = 积分只够 2 个</td><td>只创建 2 个任务；toast「有 2 张没能提交：积分不足」</td></tr>
+                <tr><th>一个任务返回多张</th><td>「每个任务返回」选 2 张</td><td>4 个任务出 8 张：每个任务的第一张先成主图，其余全部进历史，徽标数字一次 +2</td></tr>
+                <tr><th>取消</th><td>节点占位上的「取消」，或弹窗「···」→ 取消剩余</td><td>取消本节点全部进行中任务；已出的图保留</td></tr>
+                <tr><th>生成按钮禁用</th><td>生成中再点「生成」</td><td>按钮旁写明原因「生成中」</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档 §8（数据与工程影响）和 §7（状态与异常）。<b>后端不新增表、字段、接口</b>，只放开并测试「多个任务绑同一节点」；主要改动在前端节点数据和回填。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁绑谁、为什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>节点 ↔ 任务</th><td><code>1 : N</code>（一次提交最多 8 个；多次提交累积）</td><td>任务是计费、审计单位，节点是创作意图单位。<code>generation_tasks.node_id</code> 无唯一约束（已核对）</td></tr>
+                <tr><th>任务 ↔ 产物</th><td><code>1 : k</code>（<code>view.outputs</code> 里每个有 <code>url</code> 和 <code>asset_id</code> 的成员各一版）</td><td><b>全部进历史</b>（已确认）。今天豆包 Seedream 组图一个任务就返回多张，但现状回填只取第一张（<code>firstOutput</code>），其余被丢</td></tr>
+                <tr><th>节点 ↔ 历史版本</th><td><code>1 : ≤50</code>（<code>outputs[]</code>，旧在前）</td><td>生成数量最多 8，连点几次就超过 20，所以从 20 提到 50</td></tr>
+                <tr><th>节点 ↔ 主图</th><td><code>1 : 1</code>（<code>activeOutputId</code> → <code>src / assetId</code> 镜像）</td><td>下游、预览、下载都读镜像，不读 <code>outputs[]</code></td></tr>
+                <tr><th>节点 ↔ 进行中任务</th><td><code>pendingTaskIds</code> 是 <code>outputs</code> 之外的另一个集合</td><td>任务终态后移出集合；集合空了才算这一批结束</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">全部是前端节点数据（随画布整块 JSONB <code>payload_json</code> 保存，后端不校验节点内字段），沿用现有 <code>revision</code> 乐观锁和自动保存。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>CanvasNodeData</code>（<code>web/src/types/canvas.ts</code>）</th></tr></thead>
+              <tbody>
+                <tr><th><code>pendingTaskIds?: string[]</code></th><td><b>新增。</b>本节点进行中的任务 id 集合；一次提交成功创建 ≥2 个任务才写；任务终态后回填把它移出；空了删掉字段。不含密钥。需加入 <code>history.ts</code> 的 <code>TASK_FIELDS</code>（撤销不倒回）和 <code>canvas-persistence.ts</code>（序列化）</td></tr>
+                <tr><th><code>taskId?: string</code></th><td>不变。一次提交里<b>第一个成功创建</b>的任务 id；进度、追溯、对账兼容、Agent 绑定都用它</td></tr>
+                <tr><th><code>outputs?: NodeOutput[]</code></th><td>不变。每版 <code>{ id = 素材 id, src, mediaType, assetId, taskId, model, createdAt }</code>，同一素材不重复</td></tr>
+                <tr><th><code>activeOutputId?: string</code></th><td>不变。当前主图的 <code>outputs[].id</code>；设主图改它，同时刷新 <code>src / mediaType / assetId</code> 镜像</td></tr>
+                <tr><th><code>MAX_NODE_OUTPUTS</code></th><td>常量 20 → <b>50</b>；超出丢最旧引用，主图被丢时改为最新一版</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th>节点 <code>status</code></th><th>条件</th><th>迁移规则</th></tr></thead>
+              <tbody>
+                <tr><th><code>running</code></th><td>本次还没有任何一张落下来</td><td>提交成功后进入；第一张成功 → <code>done</code>；<code>pendingTaskIds</code> 空了仍无产物 → <code>error</code>；取消且空了 → 回到当前版本（<code>done</code>）或 <code>idle</code></td></tr>
+                <tr><th><code>done</code> + 非空 <code>pendingTaskIds</code></th><td>第一张已到，其余在跑</td><td>后到的成功只追加（不动主图）；失败只移出集合；集合空了 → 纯 <code>done</code></td></tr>
+                <tr><th><code>error</code></th><td>全部任务失败</td><td>在弹窗里设主图 → <code>done</code>（和今天「失败后点当前版本找回」一致）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">没有新接口。<code>POST /api/v1/generation-tasks</code> 的 <code>node_ids</code> 从「每个任务一个不同节点」放宽为「可以重复」。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /api/v1/generation-tasks</code></th><td>请求：<code>{ kind, model_id, canvas_id, node_id, node_ids, input }</code>，头 <code>Idempotency-Key</code>。<b><code>node_ids</code> 长度必须等于生成数量（1–8），元素可以相同</b>。返回 <code>202 { items: [{ node_id, task? , error? }] }</code>，<b>按 <code>node_ids</code> 的下标逐项对应</b>（前端必须按下标取，不能按 <code>node_id</code> 查找）。<br />整体错误（一个任务都不建）：<code>10001</code> 参数不合法（含 <code>node_ids</code> 数量不等于生成数量、超过 8 个）、模型不可用、素材无效。<br />单项错误（写在这个下标的 <code>error</code> 里，其余照常创建）：积分不足 <code>40001</code>（HTTP 402）、并发已满 <code>40002</code>（429）。<br />幂等：第 i 个任务的键 = <code>key</code>（i=0）或 <code>key#i</code>，重复提交返回已创建的任务，失败的下标会重试</td></tr>
+                <tr><th><code>GET /api/v1/generation-tasks?ids=…</code></th><td>对账：最多 100 个 id。重开画布时除了 <code>status: running</code> 的节点，<b>还要带上所有节点的 <code>pendingTaskIds</code></b></td></tr>
+                <tr><th><code>POST /generation-tasks/:id/cancel</code></th><td>不变；取消本节点全部进行中任务 = 对 <code>pendingTaskIds</code>（无则 <code>taskId</code>）逐个调用，某个失败不影响其他</td></tr>
+                <tr><th>WebSocket 任务推送</th><td>不变。快照里本来就有 <code>node_id</code>；前端按任务 id 回填</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout c-info" style="margin-top: 10px">
+            <i data-lucide="flask-conical"></i>
+            <div><b>后端要补的测试</b>（<code>backend/internal/tests/handler/generation_task_test.go</code>）：<code>node_ids: ["a","a","a"]</code> + 生成数量 3 → 202，3 个任务 <code>node_id</code> 都是 <code>a</code>，<code>items</code> 按下标对应；余额只够 2 个 → 前 2 项有任务、第 3 项积分不足；同一 <code>Idempotency-Key</code> 重发 → 同样 3 个任务。<span class="tag t-warn">实现时先写这组失败测试</span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// utils/tasks/backfill.ts：planBackfill(data, view)（提案）
+key = String(view.id)
+if !(data.taskId == key || data.pendingTaskIds?.includes(key)) return null
+if !isTerminal(view.status) return null
+
+case succeeded:
+  outs  = view.outputs 里 url 和 asset_id 都有的成员，按原顺序      // 个别成员失败（只带 error）跳过
+  if outs 为空：按失败处理（文案不变：「生成结果为空，请重试」）
+  patch = { pendingTaskIds: without(data.pendingTaskIds, key) }   // 空则删字段
+  fresh = outs 里还不在 outputs 中的                              // 幂等：重复推送、重复对账
+  if fresh 为空:  return patch
+  if data.status == "running":                  // 本次还没有任何一张落下来
+      // 这个任务的第一张设为主图，其余只追加
+      return { ...patch, status: "done", ...appendOutputs(data, fresh, { activeIsFirst: true }) }
+  else:                                         // 已经有本次的第一张：只追加
+      return { ...patch, ...appendOutputs(data, fresh, { activeIsFirst: false }) }   // 不动 activeOutputId / src 镜像
+
+case failed | expired:
+  patch = { pendingTaskIds: without(...) }
+  if data.status == "running" and 集合已空:  return { ...patch, status: "error", error, errorTaskRef }
+  else:                                       return patch                // 事件 → toast「有 k 张生成失败」
+
+case canceled:
+  patch = { pendingTaskIds: without(...) }
+  if data.status == "running" and 集合已空:  走现有 canceled 分支（回到当前版本或 idle）
+  else:                                       return patch
+
+// hooks/use-task-generation.ts submit（提案）：删除 fanOut
+nodeIds = Array(N).fill(nodeId)
+items   = await submitCanvasTasks({ ..., node_id: nodeId, node_ids: nodeIds })
+created = items.filter(i => i.task).map(i => String(i.task.id))     // 按下标，不按 node_id
+if created.length == 0:  return { ok: false, error: 第一项的 error }   // 节点不动
+updateNodeData(nodeId, buildSubmittedPatch(kind, created, data))
+// → taskId = created[0]；created.length >= 2 时 pendingTaskIds = created；status = running；src 清空
+if items 里有失败项: toast「有 k 张没能提交：原因」
+
+// 设主图（弹窗 / 全屏网格 / 灯箱的按钮共用，沿用 node-overlays.tsx 的 selectVersion）
+if status == "running": toast("生成中，出第一张后可切换"); return
+if outputId == activeOutputId and status == "done": return
+history.record()
+updateNodeData(id, n => ({ ...selectOutput(n.data, outputId), status: "done", error: null }))</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>后端仍拆 N 个任务，都绑同一节点</b>：改动最小，各自冻结 / 退款，失败互不影响；代价是节点要记 <code>pendingTaskIds</code>。（放弃：1 个任务出 N 张、新增批次表）</li>
+              <li><b>先到先显示，本次第一张自动成主图</b>；后到的只追加进历史，不抢主图。（放弃：全部完成后再换、主图跟着最新到的走）</li>
+              <li><b>历史记录弹窗里单击一张直接设为主图；另有放大按钮，放大只看不改</b>。用户说的「放大之后选中什么就设为主图」，这里的「放大」指把节点放大成弹窗。</li>
+              <li><b>本期覆盖图片 + 视频节点</b>：视频也有「生成数量」，只改图片会让两边行为不一致。</li>
+              <li><b>附加功能做：全屏网格视图、下载全部、全部添加到画布</b>；不做「删除某一版」。</li>
+              <li><b>去掉功能区里的「历史」按钮</b>，只保留节点右上角徽标；单版本节点因此没有历史入口。（放弃：保留按钮、两个入口并存）</li>
+              <li><b>插件一个任务返回多张图时，全部进历史</b>：第一张（本次最先到的）设为主图，其余只追加。回填从「取第一份」改成「取全部」。</li>
+              <li><b>全屏查看只做网格，不做列表（单图）模式</b>：要看大图点「放大」，走灯箱。</li>
+              <li><b>老画布里旧方案已复制出来的兄弟节点不做合并迁移</b>：老画布数据不动，用户需要的话自己删。</li>
+              <li><b>已搁置</b>：按批次分组显示、删除某一版、两图对比滑块、Agent 助手生成多张时归并；<b>「生成数量」改成一次调用原生出 N 张</b>（调研见 Markdown §12：OpenAI、阿里万相能，Seedream 靠组图，Gemini 图片和所有视频插件不能），一期仍拆 N 个任务。</li>
+              <li><b>默认值（不需要决定）</b>：最新在前；每节点最多 50 版；取消 = 取消本节点全部进行中任务；「全部添加到画布」含主图、超过 8 个先确认。</li>
+              <li><b>主文档已回写</b>：以上全部在 Markdown §11（调研结论在 §12）；原型里的「失败格只在弹窗打开期间存在」「设为主图按钮」在 §6.3、§6.4。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "proto") render();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型：全部状态在内存里，刷新复原 ================= */
+      const HUES = [205, 150, 32, 280, 340, 95, 12, 230, 180, 60];
+      const NODE = "n7";
+      let S;
+      const mk = (n, hue) => ({ id: "a" + n, n, hue });
+
+      function init() {
+        (S?.timers || []).forEach(clearTimeout);
+        S = {
+          outputs: [mk(1, 205), mk(2, 150), mk(3, 32)], // 旧在前
+          activeId: "a2",
+          status: "done", error: null,
+          taskId: null, pending: [], total: 0, failed: 0, okInBatch: 0,
+          tasks: {}, timers: [], failTiles: [],
+          extra: [], xid: 1, undo: [], nextN: 4, nextTask: 101,
+          log: ["（原型起点）节点已有 3 版历史，主图是版本 2"],
+          ui: { dialog: false, menu: false, full: false, zoom: false, listId: null, confirm: null },
+        };
+      }
+
+      const generating = () => S.status === "running" || S.pending.length > 0;
+      const idxOf = (id) => S.outputs.findIndex((o) => o.id === id);
+      const newestFirst = () => [...S.outputs].reverse();
+      const log = (line) => { S.log.push(line); if (S.log.length > 14) S.log.shift(); };
+
+      /* ---- 提交（模拟 POST /generation-tasks，node_ids 全是同一个节点） ---- */
+      function submit() {
+        if (generating()) return toast("生成中，等当前这批完成后再试", "warn");
+        const N = +$("#cnt").value, mode = $("#mode").value;
+        const created = [];
+        let rejected = 0;
+        for (let i = 0; i < N; i++) {
+          if (mode === "credit" && i >= 2) { rejected++; continue; }
+          const willFail = mode === "all" || (mode === "last" && i === N - 1);
+          const t = { id: "t" + S.nextTask++, state: "running", willFail, per: +$("#per").value };
+          created.push(t);
+        }
+        log(`POST /generation-tasks  node_ids:[${Array(N).fill(NODE).join(",")}]  → ${created.length} 个任务` + (rejected ? `，${rejected} 项积分不足` : ""));
+        if (!created.length) return toast("积分不足，无法生成", "bad");
+        S.failTiles = [];
+        S.taskId = created[0].id;
+        S.pending = created.length >= 2 ? created.map((t) => t.id) : [];
+        S.total = created.length; S.failed = 0; S.okInBatch = 0;
+        S.status = "running"; S.error = null;
+        log(`节点写入 taskId=${S.taskId}` + (S.pending.length ? `，pendingTaskIds=[${S.pending.join(",")}]` : "（单任务，不写 pendingTaskIds）"));
+        created.forEach((t, i) => {
+          S.tasks[t.id] = t;
+          const h = setTimeout(() => finish(t), (i + 1) * 1100);
+          t.timer = h; S.timers.push(h);
+        });
+        if (rejected) toast(`有 ${rejected} 张没能提交：积分不足`, "warn");
+        render();
+      }
+
+      function finish(t) {
+        if (t.state !== "running") return;
+        if (t.willFail) t.state = "fail";
+        else {
+          t.state = "ok";
+          t.outs = Array.from({ length: t.per }, () => { const o = mk(S.nextN, HUES[S.nextN % HUES.length]); S.nextN++; return o; });
+        }
+        backfill(t);
+        render();
+      }
+
+      /* ---- 回填：与 Markdown §8.2 的伪代码一一对应 ---- */
+      function backfill(t) {
+        const inPending = S.pending.includes(t.id);
+        if (!inPending && S.taskId !== t.id) return;
+        const settle = () => { S.pending = S.pending.filter((x) => x !== t.id); };
+        if (t.state === "ok") {
+          const fresh = t.outs.filter((o) => !S.outputs.some((x) => x.id === o.id)); // 幂等
+          if (fresh.length) {
+            S.outputs.push(...fresh);
+            while (S.outputs.length > 50) S.outputs.shift();
+            const ids = fresh.map((o) => o.id).join("、");
+            if (S.status === "running") {
+              S.activeId = fresh[0].id; S.status = "done"; S.error = null;
+              log(`${t.id} 成功（${fresh.length} 张）→ 本次第一张 ${fresh[0].id} 设为主图` + (fresh.length > 1 ? `，其余 ${fresh.length - 1} 张只追加` : ""));
+            } else log(`${t.id} 成功（${fresh.length} 张：${ids}）→ 只追加进历史，不动主图`);
+          }
+          S.okInBatch++; settle();
+        } else {
+          S.failed++; settle();
+          log(`${t.id} 失败 → 退回自己的积分，移出 pendingTaskIds`);
+          S.failTiles.push({ id: t.id });
+          if (S.status === "running" && S.pending.length === 0) {
+            S.status = "error"; S.error = "模型服务繁忙，请稍后重试";
+            log("全部任务都失败 → 节点 status=error");
+          }
+        }
+        if (inPending && S.pending.length === 0 && S.failed > 0 && S.okInBatch > 0) toast(`有 ${S.failed} 张生成失败，积分已退回`, "warn");
+      }
+
+      function cancelAll() {
+        let ids = [...S.pending];
+        if (!ids.length && S.status === "running" && S.taskId) ids = [S.taskId];
+        if (!ids.length) return;
+        ids.forEach((id) => { const t = S.tasks[id]; clearTimeout(t.timer); t.state = "canceled"; });
+        S.pending = [];
+        log(`取消 ${ids.length} 个任务（已出的图保留）`);
+        if (S.status === "running") S.status = S.outputs.length ? "done" : "idle";
+        toast("已取消生成，积分已退回");
+        render();
+      }
+
+      /* ---- 设主图 / 撤销 / 添加到画布 ---- */
+      function setMain(id) {
+        if (S.status === "running") return toast("生成中，出第一张后可切换", "warn");
+        if (id === S.activeId && S.status === "done") return;
+        S.undo.push({ t: "main", activeId: S.activeId, status: S.status, error: S.error });
+        S.activeId = id; S.status = "done"; S.error = null;
+        log(`设主图 → ${id}（进撤销栈）`);
+        render();
+      }
+      function undo() {
+        const u = S.undo.pop();
+        if (!u) return toast("没有可撤销的操作", "warn");
+        if (u.t === "main") { S.activeId = u.activeId; S.status = u.status; S.error = u.error; }
+        else S.extra.splice(-u.n, u.n);
+        log("撤销一步"); render();
+      }
+      function addToCanvas(list, confirmed) {
+        if (!list.length) return;
+        if (list.length > 8 && !confirmed) {
+          S.ui.confirm = { msg: `将在画布上新建 ${list.length} 个节点，确定吗？`, ok: () => { S.ui.confirm = null; addToCanvas(list, true); } };
+          return render();
+        }
+        S.undo.push({ t: "add", n: list.length });
+        list.forEach((o) => S.extra.push({ id: "x" + S.xid++, o, label: `图片 7 · 版本${idxOf(o.id) + 1}` }));
+        log(`添加到画布：新建 ${list.length} 个节点（一步撤销）`);
+        toast(`已添加 ${list.length} 个节点到画布`);
+        render();
+      }
+      const downloadAll = () => toast(`（模拟）已开始下载 ${S.outputs.length} 个文件`);
+
+      /* ---- 渲染 ---- */
+      const art = (o) => `<div class="art" style="--h:${o.hue}"><b>${o.n}</b></div>`;
+      const showBadge = () => S.outputs.length >= 2 || (S.outputs.length >= 1 && S.pending.length > 0);
+      const pendCount = () => (S.pending.length ? S.pending.length : S.status === "running" ? 1 : 0);
+
+      function nodeBody(o) {
+        if (S.status === "running")
+          return `<div class="ph"><i data-lucide="loader-circle" class="spin"></i><b>生成中</b><small>已完成 ${S.okInBatch + S.failed}/${S.total}</small><button class="pbtn" data-act="cancel">取消</button></div>`;
+        if (S.status === "error")
+          return `<div class="ph err"><i data-lucide="triangle-alert"></i><b>生成失败</b><small>${esc(S.error)} · 积分已退回</small><small>任务编号 ${esc(S.taskId)}</small></div>`;
+        if (!o) return `<div class="ph"><i data-lucide="image"></i><small>还没有内容</small></div>`;
+        return art(o);
+      }
+
+      function tileHtml(o, opts = {}) {
+        const cur = o.id === S.activeId && S.status === "done";
+        const dis = S.status === "running";
+        const tip = dis ? "生成中，出第一张后可切换" : cur ? "当前主图" : "设为主图";
+        const tools = `<div class="tools">
+            <button data-act="zoom" data-id="${o.id}" title="放大" aria-label="放大"><i data-lucide="zoom-in"></i></button>
+            <button data-act="copy" data-id="${o.id}" title="复制图片" aria-label="复制图片"><i data-lucide="copy"></i></button>
+            <button data-act="dl" data-id="${o.id}" title="下载" aria-label="下载"><i data-lucide="download"></i></button>
+            <button data-act="add1" data-id="${o.id}" title="添加到画布" aria-label="添加到画布"><i data-lucide="image-plus"></i></button>
+          </div>`;
+        return `<div class="tile ${cur ? "cur" : ""} ${dis ? "dis" : ""} ${opts.s ? "s" : ""}" role="button" tabindex="0" aria-pressed="${cur}" aria-label="版本 ${o.n}${cur ? "（当前主图）" : ""}" title="${tip}" data-act="${opts.full ? "fgrid" : "pick"}" data-id="${o.id}">
+          ${art(o)}
+          ${cur ? (opts.full ? `<span class="badge-main">主图</span>` : `<div class="lab"><i data-lucide="image"></i>当前图片</div>`) : ""}
+          ${tools}
+        </div>`;
+      }
+
+      function dialogHtml() {
+        const pend = Array.from({ length: pendCount() }, () => `<div class="tile pend"><div class="shimmer" style="position:absolute;inset:0"></div><div class="ph"><i data-lucide="loader-circle" class="spin"></i><small>生成中</small></div></div>`).join("");
+        const fails = S.failTiles.map((f) => `<div class="tile fail"><div class="ph"><i data-lucide="circle-x"></i><b>生成失败</b><small>积分已退回</small></div></div>`).join("");
+        const menu = S.ui.menu
+          ? `<div class="menu" role="menu">
+              <button data-act="dlall"><i data-lucide="download"></i>下载全部</button>
+              <button data-act="addall"><i data-lucide="image-plus"></i>全部添加到画布</button>
+              <button data-act="cancel" ${generating() ? "" : "disabled title=\"没有进行中的任务\""}><i data-lucide="ban"></i>取消剩余${generating() ? `（${pendCount()} 个）` : ""}</button>
+            </div>` : "";
+        return `<div class="scrim" data-act="closeDlg"><div class="dlg note" role="dialog" aria-label="历史记录" data-stop>
+            <div class="dlg-h">
+              <h3>历史记录<span>${S.outputs.length}</span></h3>
+              <span class="sp"></span>
+              <button class="hbtn" data-act="full"><i data-lucide="maximize-2"></i>全屏查看</button>
+              <button class="hbtn" data-act="menu" aria-label="更多" aria-expanded="${S.ui.menu}"><i data-lucide="ellipsis"></i></button>
+              <span class="vr"></span>
+              <button class="hbtn" data-act="closeDlg" aria-label="关闭"><i data-lucide="x"></i></button>
+              ${menu}
+            </div>
+            <div class="dlg-b" id="dlgBody">${pend}${fails}${newestFirst().map((o) => tileHtml(o)).join("")}</div>
+          </div></div>`;
+      }
+
+      function listHtml() {
+        const list = newestFirst();
+        const id = S.ui.listId && idxOf(S.ui.listId) >= 0 ? S.ui.listId : S.activeId;
+        const i = list.findIndex((o) => o.id === id);
+        const o = list[i];
+        const isMain = o.id === S.activeId && S.status === "done";
+        return `<div class="f-list">
+          <div class="f-stage">
+            <button class="nav l" data-act="prev" aria-label="上一个" ${i <= 0 ? "disabled" : ""}><i data-lucide="chevron-left"></i></button>
+            <div class="f-big">${art(o)}</div>
+            <button class="nav r" data-act="next" aria-label="下一个" ${i >= list.length - 1 ? "disabled" : ""}><i data-lucide="chevron-right"></i></button>
+          </div>
+          <div class="f-info">
+            <span class="pill">历史版本 ${i + 1} / ${list.length}</span>
+            ${isMain
+              ? `<span class="pill"><i data-lucide="check"></i>主图</span>`
+              : `<button class="pill" data-act="setlist" data-id="${o.id}" ${S.status === "running" ? "disabled title=\"生成中，出第一张后可切换\"" : ""}><i data-lucide="image"></i>设为主图</button>`}
+            <span class="pill">只看不改：翻页不会动主图</span>
+          </div>
+          <div class="strip">${list.map((x) => `<button data-act="thumb" data-id="${x.id}" aria-current="${x.id === o.id}" aria-label="版本 ${x.n}">${art(x)}</button>`).join("")}</div>
+        </div>`;
+      }
+
+      function layerHtml() {
+        const full = S.ui.full ? `<div class="full" role="dialog" aria-label="全屏查看">
+          <div class="f-top">
+            <span class="pill">全屏查看 · ${S.outputs.length}</span>
+            <button class="pill" data-act="dlall"><i data-lucide="download"></i>下载全部</button>
+            <button class="pill" data-act="addall"><i data-lucide="image-plus"></i>全部添加到画布</button>
+            <span class="sp"></span>
+            <button class="pill" data-act="closeFull" aria-label="关闭"><i data-lucide="x"></i></button>
+          </div>
+          <div class="f-grid">${newestFirst().map((o) => tileHtml(o, { full: true, s: true })).join("")}</div>
+        </div>` : "";
+        const zoom = S.ui.zoom ? `<div class="full zoom" role="dialog" aria-label="媒体预览"><div class="f-top"><span class="pill">放大查看</span><span class="sp"></span><button class="pill" data-act="closeZoom" aria-label="关闭"><i data-lucide="x"></i>关闭（Esc）</button></div>${listHtml()}</div>` : "";
+        return full + zoom;
+      }
+
+      function render() {
+        if ($("#tab-proto").hidden) return;
+        const o = S.outputs.find((x) => x.id === S.activeId);
+        const prevScroll = $("#dlgBody")?.scrollTop || 0;
+        const badge = showBadge()
+          ? `<button class="vb note" data-act="open" aria-label="历史记录，共 ${S.outputs.length} 版">${generating() ? `<i data-lucide="loader-circle" class="spin"></i>` : ""}${S.outputs.length}<i data-lucide="chevron-down"></i></button>` : "";
+        const extra = S.extra.map((x) => `<div class="nd sm"><div class="nd-title"><i data-lucide="image"></i>${esc(x.label)}</div><div class="nd-card">${art(x.o)}</div></div>`).join("");
+        $("#stage").innerHTML = `
+          <div class="cv-row">
+            <div class="nd">
+              <div class="nd-title"><i data-lucide="image"></i>图片 7<span class="sp"></span><i data-lucide="tag"></i></div>
+              <div class="nd-card">${nodeBody(o)}${badge}</div>
+              <div class="nd-handle l"><i data-lucide="plus"></i></div><div class="nd-handle r"><i data-lucide="plus"></i></div>
+            </div>
+            <div class="cv-extra">${extra}</div>
+          </div>
+          ${S.ui.dialog ? dialogHtml() : ""}${layerHtml()}
+          ${S.ui.confirm ? `<div class="cfm"><div><p>${esc(S.ui.confirm.msg)}</p><div class="row"><button class="btn btn-outline" data-act="cfmNo">取消</button><button class="btn btn-primary" data-act="cfmOk">确定</button></div></div></div>` : ""}`;
+        const body = $("#dlgBody"); if (body) body.scrollTop = prevScroll;
+        // 控制栏
+        const gen = generating();
+        $("#goBtn").disabled = gen;
+        $("#goWhy").textContent = gen ? "生成中，当前这批完成后才能再生成" : "";
+        $("#undoBtn").disabled = !S.undo.length;
+        $("#dataView").textContent = JSON.stringify({
+          status: S.status, taskId: S.taskId, pendingTaskIds: S.pending.length ? S.pending : undefined,
+          activeOutputId: S.activeId, "src(镜像)": "→ " + S.activeId,
+          outputs: S.outputs.map((x) => x.id), 画布上新增节点: S.extra.length,
+        }, null, 2);
+        $("#logView").textContent = S.log.map((l, i) => `${String(i + 1).padStart(2, "0")} ${l}`).join("\n");
+        icons();
+      }
+
+      /* ---- 事件：全部委托在舞台上 ---- */
+      $("#stage").addEventListener("click", (e) => {
+        const el = e.target.closest("[data-act]");
+        if (!el) return;
+        // 点弹窗空白处才关闭：scrim 自己带 data-act，面板内部的点击不冒泡成关闭
+        if (el.classList.contains("scrim") && e.target !== el) return;
+        const id = el.dataset.id, act = el.dataset.act;
+        e.stopPropagation();
+        const U = S.ui;
+        switch (act) {
+          case "open": U.dialog = true; U.menu = false; break;
+          case "closeDlg": U.dialog = false; U.menu = false; S.failTiles = []; break;
+          case "menu": U.menu = !U.menu; break;
+          case "pick": setMain(id); return;
+          case "fgrid": setMain(id); return;
+          case "zoom": U.zoom = true; U.listId = id; break;
+          case "closeZoom": U.zoom = false; break;
+          case "full": U.full = true; U.menu = false; break;
+          case "closeFull": U.full = false; break;
+          case "thumb": U.listId = id; break;
+          case "prev": case "next": {
+            const list = newestFirst(); const cur = list.findIndex((o) => o.id === (U.listId || S.activeId));
+            U.listId = list[Math.max(0, Math.min(list.length - 1, cur + (act === "next" ? 1 : -1)))].id; break;
+          }
+          case "setlist": setMain(id); return;
+          case "dl": toast("（模拟）已开始下载 1 个文件"); return;
+          case "copy": toast("（模拟）已复制图片"); return;
+          case "dlall": downloadAll(); U.menu = false; return;
+          case "add1": addToCanvas([S.outputs.find((o) => o.id === id)]); return;
+          case "addall": U.menu = false; addToCanvas(newestFirst().reverse()); return;
+          case "cancel": U.menu = false; cancelAll(); return;
+          case "cfmOk": U.confirm.ok(); return;
+          case "cfmNo": U.confirm = null; break;
+        }
+        render();
+      });
+      // 双击全屏网格里的格子 → 放大（灯箱叠在全屏层上面）
+      $("#stage").addEventListener("dblclick", (e) => {
+        const el = e.target.closest("[data-act='fgrid']");
+        if (!el) return;
+        S.ui.zoom = true; S.ui.listId = el.dataset.id; render();
+      });
+      document.addEventListener("keydown", (e) => {
+        if ($("#tab-proto").hidden) return;
+        const U = S.ui;
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); return undo(); }
+        if (e.key === "Escape") {
+          if (U.confirm) U.confirm = null;
+          else if (U.zoom) U.zoom = false;
+          else if (U.full) U.full = false;
+          else if (U.menu) U.menu = false;
+          else if (U.dialog) { U.dialog = false; S.failTiles = []; }
+          else return;
+          render(); return;
+        }
+        const t = e.target.closest?.(".tile");
+        if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); t.click(); return; }
+        if (t && e.key.startsWith("Arrow")) {
+          const tiles = [...t.parentElement.querySelectorAll(".tile[role=button]")];
+          const i = tiles.indexOf(t);
+          const cols = tiles.filter((x) => x.offsetTop === tiles[0].offsetTop).length || 1;
+          const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+          if (d && tiles[i + d]) { e.preventDefault(); tiles[i + d].focus(); }
+          return;
+        }
+        if (U.zoom && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          $(`[data-act="${e.key === "ArrowLeft" ? "prev" : "next"}"]`)?.click();
+        }
+      });
+      $("#goBtn").addEventListener("click", submit);
+      $("#undoBtn").addEventListener("click", undo);
+      $("#resetBtn").addEventListener("click", () => { init(); render(); });
+
+      init();
+      icons();
+    </script>
+  </body>
+</html>

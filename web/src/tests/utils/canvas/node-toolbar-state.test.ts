@@ -18,7 +18,7 @@ const video = (over: Partial<CanvasNodeData> = {}): CanvasNodeData => ({
 });
 
 describe("功能区按钮的可用性", () => {
-  test("已有成片：加工类和放大、下载可用，历史带出版本数", () => {
+  test("已有成片：加工类和放大、下载可用", () => {
     const gate = toolbarGate(
       video({
         src: "/files/a.mp4",
@@ -28,35 +28,24 @@ describe("功能区按钮的可用性", () => {
         outputs: [output("a"), output("b")],
       }),
     );
-    expect(gate).toEqual({
-      visible: true,
-      actionsDisabled: false,
-      historyDisabled: false,
-      historyCount: 2,
-    });
+    expect(gate).toEqual({ visible: true, actionsDisabled: false });
   });
 
   test("空节点（还没素材也没有历史）：不显示功能区", () => {
     const gate = toolbarGate(video());
-    expect(gate).toEqual({
-      visible: false,
-      actionsDisabled: true,
-      historyDisabled: true,
-      historyCount: 0,
-    });
+    expect(gate).toEqual({ visible: false, actionsDisabled: true });
   });
 
   test("第一次生成中、还没出过结果：同样不显示", () => {
     expect(toolbarGate(video({ status: "running" })).visible).toBe(false);
   });
 
-  test("生成中：加工类禁用，但已有的历史版本仍可展开查看", () => {
+  test("生成中：加工类禁用，已有历史版本的节点仍显示功能区", () => {
     const gate = toolbarGate(
       video({ src: "/files/a.mp4", assetId: "a", status: "running", outputs: [output("a")] }),
     );
     expect(gate.visible).toBe(true);
     expect(gate.actionsDisabled).toBe(true);
-    expect(gate.historyDisabled).toBe(false);
   });
 
   test("素材还是本地 blob（没传完）：不算有素材", () => {
@@ -65,13 +54,12 @@ describe("功能区按钮的可用性", () => {
     expect(gate.visible).toBe(false);
   });
 
-  test("文本节点：有正文才算有素材，且没有历史", () => {
+  test("文本节点：有正文才算有素材", () => {
     const empty = toolbarGate({ kind: "script", label: "文本 1" });
     expect(empty.actionsDisabled).toBe(true);
     expect(empty.visible).toBe(false);
     const filled = toolbarGate({ kind: "script", label: "文本 1", text: "一段脚本" });
     expect(filled.visible).toBe(true);
     expect(filled.actionsDisabled).toBe(false);
-    expect(filled.historyDisabled).toBe(true);
   });
 });

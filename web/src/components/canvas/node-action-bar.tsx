@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ChevronDown, Copy, Download, History, Maximize2, Sparkle } from "lucide-react";
+import { ChevronDown, Copy, Download, Maximize2, Sparkle } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -16,14 +16,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { NodeToolbarConfig, ToolbarAction, ToolbarTail } from "@/constants/node-toolbar";
 import { DURATION, EASE_OUT_CSS, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { NodeOutput } from "@/types";
 import type { ToolbarGate } from "@/utils/canvas/node-toolbar-state";
-
-import { HistoryThumbs } from "./node-history-strip";
 
 /**
  * 弹层往上渐显：只做透明度和向上浮 6px，不缩放（设计稿 6.16 动效表）。
@@ -46,9 +42,6 @@ const POPUP_MOTION_STYLE = {
 /** 文字按钮：悬停变底色，菜单展开时保持高亮、箭头翻转 */
 const TEXT_BUTTON_CLASS =
   "group/bar text-foreground px-2.5 max-md:px-2 data-popup-open:bg-chrome-hover";
-
-/** 图标按钮：默认灰，悬停变亮 */
-const ICON_BUTTON_CLASS = "data-popup-open:bg-chrome-hover data-popup-open:text-foreground";
 
 /** 占位功能点了之后的提示：不报错，不改节点数据 */
 const comingSoon = (label: string) => toast(`「${label}」敬请期待`);
@@ -131,58 +124,6 @@ function MenuAction({
   );
 }
 
-/** 节点生成历史按钮：点开向下展开缩略图条，和其它菜单一个出场方式 */
-function HistoryAction({
-  nodeId,
-  outputs,
-  activeId,
-  count,
-  disabled,
-  onSelect,
-}: {
-  nodeId: string;
-  outputs: NodeOutput[];
-  activeId?: string;
-  count: number;
-  disabled: boolean;
-  onSelect: (outputId: string) => void;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        disabled={disabled}
-        render={
-          <ChromeButton
-            aria-label="节点生成历史"
-            title={count === 0 ? "生成后，每一版结果都会留在这里" : "节点生成历史"}
-            className={ICON_BUTTON_CLASS}
-            style={POPUP_MOTION_STYLE}
-          />
-        }
-      >
-        <History />
-        {count > 1 && (
-          <span className="bg-foreground text-background rounded-full px-1.5 font-mono text-[11px] leading-4 tabular-nums">
-            {count}
-          </span>
-        )}
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="end"
-        sideOffset={8}
-        className={cn("nodrag nowheel nopan w-auto gap-1.5 rounded-xl p-2", POPUP_MOTION_CLASS)}
-        style={POPUP_MOTION_STYLE}
-      >
-        <HistoryThumbs nodeId={nodeId} outputs={outputs} activeId={activeId} onSelect={onSelect} />
-        <p className="text-muted-foreground px-0.5 text-xs">
-          点缩略图切换版本 · 拖到画布上新建节点
-        </p>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 /** 查看类按钮的图标、名字和提示 */
 const TAIL_META = {
   zoom: { icon: Maximize2, label: "放大预览" },
@@ -193,14 +134,13 @@ const TAIL_META = {
 /**
  * 节点功能区（设计稿 6.16）：选中节点时浮在标题行上方的一条胶囊，所有生成节点共用。
  * 按钮有哪些由 NODE_TOOLBAR 配置决定；左边是加工类功能（带下拉的展开菜单），
- * 分隔线右边是历史、放大、下载、复制这类查看类按钮。
+ * 分隔线右边是放大、下载、复制这类查看类按钮。
  * 加工类功能这一版大多还是占位：没有给处理函数的功能点了只提示「敬请期待」。
  */
 export function NodeActionBar({
   config,
   label,
   gate,
-  history,
   onAction,
   onTail,
 }: {
@@ -208,17 +148,10 @@ export function NodeActionBar({
   /** 节点标题，给读屏用 */
   label: string;
   gate: ToolbarGate;
-  /** 历史按钮要用的版本数据；节点没有历史（文本）时不传 */
-  history?: {
-    nodeId: string;
-    outputs: NodeOutput[];
-    activeId?: string;
-    onSelect: (outputId: string) => void;
-  };
   /** 加工类功能和菜单项的处理函数，key 是配置里的 id；没有就当占位 */
   onAction?: Partial<Record<string, () => void>>;
   /** 放大、下载、复制的处理函数；没有就当占位 */
-  onTail?: Partial<Record<Exclude<ToolbarTail, "history">, () => void>>;
+  onTail?: Partial<Record<ToolbarTail, () => void>>;
 }) {
   const run = (id: string, name: string) => {
     const handler = onAction?.[id];
@@ -227,20 +160,6 @@ export function NodeActionBar({
   };
 
   const tail = config.tail.map((item) => {
-    if (item === "history") {
-      if (!history) return null;
-      return (
-        <HistoryAction
-          key={item}
-          nodeId={history.nodeId}
-          outputs={history.outputs}
-          activeId={history.activeId}
-          count={gate.historyCount}
-          disabled={gate.historyDisabled}
-          onSelect={history.onSelect}
-        />
-      );
-    }
     const meta = TAIL_META[item];
     return (
       <ChromeTooltip key={item} label={meta.label}>

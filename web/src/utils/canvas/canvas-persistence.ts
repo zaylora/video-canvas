@@ -85,10 +85,12 @@ export function serializeGraph(
               }
             : {}),
           ...(rest.taskId !== undefined ? { taskId: rest.taskId } : {}),
+          ...(rest.pendingTaskIds?.length ? { pendingTaskIds: rest.pendingTaskIds } : {}),
           ...(rest.params !== undefined ? { params: rest.params } : {}),
           ...(rest.paramAssets !== undefined ? { paramAssets: rest.paramAssets } : {}),
           ...(rest.src !== undefined ? { src: rest.src } : {}),
           ...(rest.mediaType !== undefined ? { mediaType: rest.mediaType } : {}),
+          ...(rest.mediaAspect !== undefined ? { mediaAspect: rest.mediaAspect } : {}),
           ...(rest.assetId !== undefined ? { assetId: rest.assetId } : {}),
           ...(rest.uploaded !== undefined ? { uploaded: rest.uploaded } : {}),
           ...(rest.fileName !== undefined ? { fileName: rest.fileName } : {}),

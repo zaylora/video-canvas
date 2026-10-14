@@ -8,10 +8,6 @@ export type ToolbarGate = {
   visible: boolean;
   /** 加工类按钮、放大、下载、复制：生成中，或者还没有素材时不能点 */
   actionsDisabled: boolean;
-  /** 历史按钮：一版结果都没有时不能展开；生成中仍可展开查看（切换版本由调用方拦） */
-  historyDisabled: boolean;
-  /** 历史里有几版 */
-  historyCount: number;
 };
 
 /**
@@ -26,7 +22,5 @@ export function toolbarGate(data: CanvasNodeData): ToolbarGate {
   return {
     visible: hasOutput || historyCount > 0,
     actionsDisabled: running || !hasOutput,
-    historyDisabled: historyCount === 0,
-    historyCount,
   };
 }

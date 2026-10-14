@@ -25,6 +25,8 @@ export type CanvasNodeData = {
   src?: string | null;
   /** src 那份素材是图、视频还是音频 */
   mediaType?: NodeMediaType;
+  /** 素材的宽 / 高：上传前读本地文件、截帧裁切扩图时就记下，让节点框在素材出来之前就按它占位 */
+  mediaAspect?: number;
   /** 服务端素材记录 id；有它的 URL 才能安全持久化 */
   assetId?: string;
   /** 素材是从本机传进来的，不是模型生成的 */
@@ -39,6 +41,11 @@ export type CanvasNodeData = {
   errorTaskRef?: string | null;
   /** 视频生成任务 id（后端 id 是数字，这里统一存字符串）；status 为 running 时靠它对账回填 */
   taskId?: string;
+  /**
+   * 本节点进行中的任务 id 集合：一次提交了 ≥2 个任务（生成数量 N）才有，都绑在这个节点上。
+   * 任务到达终态时回填把它移出，空了就删掉这个字段；taskId 是其中第一个，保持原语义。
+   */
+  pendingTaskIds?: string[];
   /** 按所选模型 capabilities 存的参数值：提示词 params.prompt（兼容旧的 prompt 字段）、生成方式 params.op、生成参数按参数名、手动添加的参考素材 params.images / videos / audios（素材 id 数组） */
   params?: Record<string, unknown>;
   /** params 里媒体字段所选素材的展示信息，字段名 -> 素材 */
