@@ -151,6 +151,31 @@
       .sk { background: var(--muted); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
       @keyframes pulse { 50% { opacity: .5; } }
 
+      .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+      .btn.primary:hover { background: color-mix(in oklab, var(--primary) 88%, var(--background)); }
+      .btn.danger { color: var(--destructive); }
+      .notice.danger { background: color-mix(in oklab, var(--destructive) 8%, transparent); border: 1px solid color-mix(in oklab, var(--destructive) 30%, transparent); }
+      .notice.success { background: color-mix(in oklab, var(--status-success) 10%, transparent); border: 1px solid color-mix(in oklab, var(--status-success) 30%, transparent); }
+      .notice.info { background: color-mix(in oklab, var(--status-running) 8%, transparent); border: 1px solid color-mix(in oklab, var(--status-running) 25%, transparent); }
+      .prog { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+      .prog .p { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; font-size: 13px; }
+      .prog .ic { width: 18px; height: 18px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; color: #fff; }
+      .ic.done { background: var(--status-success); }
+      .ic.todo { border: 1.5px solid var(--border); }
+      .ic.bad { background: var(--destructive); }
+      .ic.run { border: 2px solid var(--status-running); border-top-color: transparent; animation: spin .8s linear infinite; }
+      .prog .p.todo { color: var(--muted-foreground); }
+      .bar { height: 3px; border-radius: 999px; background: var(--muted); overflow: hidden; margin: 12px 0 4px; }
+      .bar i { display: block; height: 100%; background: var(--status-running); transition: width 240ms var(--ease-out); }
+      .scrim { position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / .4); display: none; place-items: center; padding: 16px; }
+      .scrim.show { display: grid; animation: fade var(--d-base) var(--ease-out); }
+      @keyframes fade { from { opacity: 0; } }
+      .dialog { width: 100%; max-width: 440px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; animation: pop 240ms var(--ease-out); }
+      @keyframes pop { from { opacity: 0; transform: scale(.96); } }
+      .dialog h2 { font-size: 16px; margin: 0 0 12px; }
+      .dialog ul { margin: 0 0 12px; padding-left: 18px; line-height: 1.8; font-size: 13px; }
+      .dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+      .side-spin { width: 12px; height: 12px; margin-left: auto; border-radius: 999px; border: 2px solid var(--status-running); border-top-color: transparent; animation: spin .8s linear infinite; }
       @media (max-width: 768px) {
         .sidebar { display: none; }
         .ver { flex-direction: column; }
@@ -193,6 +218,7 @@
       </main>
     </div>
     <div class="tip" id="tip"></div>
+    <div class="scrim" id="scrim"><div class="dialog" role="dialog" aria-modal="true" id="dialog"></div></div>
 
     <div class="proto">
       <b>原型控制（不属于设计）· 状态</b>
@@ -203,6 +229,16 @@
       <button data-s="failStale">检查失败（有旧结果）</button>
       <button data-s="fail">检查失败（无结果）</button>
       <button data-s="loading">加载中</button>
+      <b>三期 · 一键升级（先选「有新版本」）</b>
+      <button data-u="off">updater 未启用</button>
+      <button data-u="on" class="on">updater 已启用</button>
+      <button data-u="latest">部署用 latest</button>
+      <button id="tAdmin">以 admin 身份看</button>
+      <b>三期 · 点「升级」后的结局</b>
+      <button data-o="ok" class="on">成功</button>
+      <button data-o="pull">拉取失败（未改动）</button>
+      <button data-o="rolled">启动失败已退回</button>
+      <button data-o="attention">需要人工处理</button>
       <b>其他</b>
       <button id="tMig">迁移异常</button>
       <button id="tDark">深色</button>
@@ -214,8 +250,10 @@
       const $ = (id) => document.getElementById(id);
       const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>';
-      const ui = { s: "update", mig: false, checking: false };
-      const CURRENT = "0.3.2", LATEST = "0.4.0";
+      const ui = { s: "update", mig: false, checking: false, u: "on", admin: false, o: "ok", run: null };
+      let CURRENT = "0.3.2", LATEST = "0.4.0";
+      const PREVIOUS = "0.3.1";
+      const STEPS = ["准备", "拉取镜像", "备份数据库", "重建服务（新版本启动时自动迁移数据库）", "等待新版本就绪"];
 
       function tag(tone, text) { return `<span class="tag ${tone}">${text}</span>`; }
       function copy(cmd) {
@@ -227,7 +265,7 @@
         const s = ui.s;
         let right;
         if (s === "loading") right = `<div class="sk" style="width:110px;height:24px"></div><div class="sk" style="width:150px;height:14px"></div>`;
-        else if (s === "update" || s === "failStale") right = `${tag("info", "v" + LATEST + " 可升级")}<span class="muted">发布于 2026-10-20</span><span class="muted">上次检查 ${s === "failStale" ? "2 小时前" : "3 分钟前"}</span>`;
+        else if (s === "update" || s === "failStale") right = `${tag("info", "v" + LATEST + " 可升级")}<span class="muted">发布于 2026-10-20</span><span class="muted">上次检查 ${s === "failStale" ? "2 小时前" : "3 分钟前"}</span>${upgradeButton()}`;
         else if (s === "latest") right = `${tag("success", "已是最新版本")}<span class="muted">上次检查 3 分钟前</span>`;
         else if (s === "dev") right = `${tag("neutral", "开发构建，不检查更新")}`;
         else if (s === "disabled") right = `${tag("neutral", "检查更新已关闭")}<span class="muted">配置项 <span class="mono">update.check_enabled</span></span>`;
@@ -254,7 +292,111 @@
             <div class="step"><div class="n">2</div><div><div class="t">把部署目录 .env 里的版本改为 ${LATEST}</div>${copy("IMAGE_TAG=" + LATEST)}</div></div>
             <div class="step"><div class="n">3</div><div><div class="t">拉取镜像并重建</div>${copy("docker compose pull && docker compose up -d")}</div></div>
           </div>
-          <p class="muted" style="font-size:12px;margin:12px 0 0">一键升级会在后续版本提供。</p></section>`;
+          ${ui.u === "latest"
+            ? `<div class="notice warning" style="margin:12px 0 0"><b>无法一键升级</b><span>部署目录 .env 里是 <span class="mono">IMAGE_TAG=latest</span>：无法确认版本，失败也无法回退。按上面第 2 步改成具体版本号后即可使用一键升级。</span></div>`
+            : `<div class="notice info" style="margin:12px 0 0"><b>想在这里一键升级？</b><span>在部署目录的 .env 加一行 <span class="mono">UPDATER_TOKEN=随机字符串</span>，再执行 <span class="mono">docker compose --profile updater up -d</span>。updater 会挂载 Docker，等同服务器 root 权限，按需启用。</span></div>`}
+          <p class="muted" style="font-size:12px;margin:12px 0 0">也可以在部署目录执行 <span class="mono">./update.sh --tag ${LATEST}</span>，它会自动完成以上三步并在失败时回退。</p></section>`;
+      }
+
+      /** 版本卡右侧的升级按钮：updater 未启用时不出现；admin 看得到但不能点 */
+      function upgradeButton() {
+        if (ui.u === "off" || ui.run) return "";
+        if (ui.u === "latest") return `<button class="btn primary" disabled title="部署用的是 latest，见下方说明">升级到 v${LATEST}</button>`;
+        if (ui.admin) return `<button class="btn primary" disabled title="仅超级管理员可升级">升级到 v${LATEST}</button><span class="muted">仅超级管理员可升级</span>`;
+        return `<button class="btn primary" id="upBtn">升级到 v${LATEST}</button>`;
+      }
+
+      /** 升级进度：步骤列表 + 进度条；backend 重启那几步显示重连提示；结束后显示结局 */
+      function progressCard() {
+        const r = ui.run;
+        const rows = STEPS.map((name, i) => {
+          let cls = "todo", ic = "";
+          if (i < r.step) { cls = "done"; ic = "✓"; }
+          if (i === r.step) { cls = r.failed ? "bad" : r.done ? "done" : "run"; ic = r.failed ? "✕" : r.done ? "✓" : ""; }
+          const note = i === 2 && i < r.step ? `<span class="muted mono">backups/pre-${r.target}-20261020.dump</span>` : "";
+          return `<div class="p ${cls === "todo" ? "todo" : ""}"><span class="ic ${cls}">${ic}</span><span>${name}</span>${note}</div>`;
+        }).join("");
+        const pct = r.done ? 100 : Math.round((r.step / STEPS.length) * 100);
+        let foot = "";
+        if (!r.result && r.step >= 3) foot = `<div class="notice info" style="margin:12px 0 0"><b>服务重启中</b><span>后台会短暂无法访问，页面正在自动重连，不要关闭。</span></div>`;
+        if (r.rollingBack) foot = `<div class="notice warning" style="margin:12px 0 0"><b>新版本启动失败</b><span>正在退回 v${CURRENT}…</span></div>`;
+        if (r.result === "ok") foot = `<div class="notice success" style="margin:12px 0 0"><b>升级完成</b><span>已运行 v${r.target}，<span id="cd">2</span> 秒后自动刷新页面。</span></div>`;
+        if (r.result === "pull") foot = `<div class="notice warning" style="margin:12px 0 0"><b>升级失败，服务未改动</b><span>拉取镜像失败：failed to resolve reference ghcr.io/…:${r.target}。检查服务器能否访问 ghcr.io 后重试。</span></div>`;
+        if (r.result === "rolled") foot = `<div class="notice warning" style="margin:12px 0 0"><b>升级失败，已退回 v${CURRENT}</b><span>新版本启动失败，服务已恢复正常。新版本日志的最后 100 行在服务器上：docker compose logs backend。</span></div>`;
+        if (r.result === "attention") foot = `<div class="notice danger" style="margin:12px 0 0"><b>需要人工处理</b><span>退回 v${CURRENT} 后它拒绝启动：数据库已被 v${r.target} 迁移过。确认那些迁移只新增表或列后，在 .env 加 <span class="mono">APP_DATABASE_ALLOW_NEWER_SCHEMA=true</span> 再 <span class="mono">docker compose up -d</span>；否则用备份 <span class="mono">backups/pre-${r.target}-20261020.dump</span> 恢复（步骤见部署文档）。</span></div>`;
+        const close = r.result && r.result !== "ok" ? `<button class="more right" id="runClose" style="margin:0">关闭</button>` : "";
+        return `<section class="card"><div class="card-title">${r.kind === "rollback" ? "回退" : "升级"}到 <span class="mono">v${r.target}</span>${close}</div><div class="bar"><i style="width:${pct}%"></i></div><div class="prog">${rows}</div>${foot}</section>`;
+      }
+
+      /** 升级记录与备份：只在 updater 启用时出现 */
+      function historyCard() {
+        const rollbackBtn = ui.admin ? "" : `<button class="btn danger right" id="rbBtn" style="font-weight:400">回退到 v${PREVIOUS}</button>`;
+        return `<section class="card"><div class="card-title">升级记录与备份${ui.run ? "" : rollbackBtn}</div>
+          <div class="muted" style="font-size:13px">上次升级：v${PREVIOUS} → v${CURRENT}，2026-10-14 12:27 成功</div>
+          <table><thead><tr><th>数据库备份（保留最近 3 份）</th><th>大小</th><th>时间</th></tr></thead><tbody>
+            <tr><td class="mono">backups/pre-${CURRENT}-20261014122704.dump</td><td class="mono">162 KB</td><td class="mono">2026-10-14 12:27</td></tr>
+            <tr><td class="mono">backups/pre-${PREVIOUS}-20261013155743.dump</td><td class="mono">160 KB</td><td class="mono">2026-10-13 15:57</td></tr>
+          </tbody></table>
+          <p class="muted" style="font-size:12px;margin:10px 0 0">备份在服务器的部署目录里；恢复会丢掉备份之后写入的数据，请按部署文档在服务器上手动执行。</p></section>`;
+      }
+
+      function openDialog(html, onOk) {
+        $("dialog").innerHTML = html;
+        $("scrim").classList.add("show");
+        const close = () => $("scrim").classList.remove("show");
+        $("dlgCancel").onclick = close;
+        $("dlgOk").onclick = () => { close(); onOk(); };
+        $("dlgOk").focus();
+      }
+
+      function confirmUpgrade() {
+        openDialog(`<h2>升级到 v${LATEST}</h2><ul><li>先备份数据库，再拉取镜像并重建服务</li><li>服务会中断约 1 分钟，期间后台和画布都无法访问</li><li>失败会自动退回 v${CURRENT}</li></ul>
+          <div class="notice warning" style="margin:0"><b>3 个生成任务进行中</b><span>会被中断，服务恢复后自动对账，不会重复扣积分。</span></div>
+          <div class="actions"><button class="btn" id="dlgCancel">取消</button><button class="btn primary" id="dlgOk">开始升级</button></div>`, () => startRun("upgrade", LATEST));
+      }
+
+      function confirmRollback() {
+        openDialog(`<h2>回退到 v${PREVIOUS}</h2><ul><li>先备份数据库，再换回 v${PREVIOUS} 的镜像并重建服务</li><li>服务会中断约 1 分钟</li></ul>
+          <div class="notice warning" style="margin:0"><b>数据库变更不会撤销</b><span>v${CURRENT} 执行过 1 个迁移：<span class="mono">0001_baseline.sql</span>。如果其中有删除或改名，v${PREVIOUS} 可能无法启动，届时需要用备份恢复。</span></div>
+          <div class="actions"><button class="btn" id="dlgCancel">取消</button><button class="btn primary" id="dlgOk">开始回退</button></div>`, () => startRun("rollback", PREVIOUS));
+      }
+
+      /** 模拟一次升级：每 0.9 秒前进一步，按原型控制条选的结局结束 */
+      function startRun(kind, target) {
+        const outcome = ui.o;
+        ui.run = { kind, target, step: 0 };
+        render();
+        const failAt = { ok: 99, pull: 1, rolled: 3, attention: 4 }[outcome];
+        const tick = () => {
+          const r = ui.run;
+          if (!r) return;
+          if (r.step === failAt) {
+            if (outcome === "pull") { r.failed = true; r.result = "pull"; render(); return; }
+            r.failed = true; r.rollingBack = true; render();
+            setTimeout(() => { r.rollingBack = false; r.result = outcome; render(); }, 1400);
+            return;
+          }
+          if (r.step === STEPS.length - 1) { r.done = true; r.result = "ok"; render(); countdown(); return; }
+          r.step += 1;
+          render();
+          setTimeout(tick, 900);
+        };
+        setTimeout(tick, 900);
+      }
+
+      function countdown() {
+        let n = 2;
+        const t = setInterval(() => {
+          n -= 1;
+          if ($("cd")) $("cd").textContent = n;
+          if (n <= 0) {
+            clearInterval(t);
+            CURRENT = ui.run.target;
+            ui.run = null;
+            ui.s = CURRENT === LATEST ? "latest" : "update";
+            render();
+          }
+        }, 1000);
       }
 
       function migrationCard() {
@@ -271,11 +413,19 @@
         const s = ui.s;
         const has = s === "update" || s === "failStale";
         let html = versionCard();
+        if (ui.run) html += progressCard();
         if (s === "loading") html += `<section class="card"><div class="sk" style="height:14px;width:40%"></div><div class="sk" style="height:60px;margin-top:12px"></div></section>`;
-        if (has) html += changelogCard() + stepsCard();
+        if (has) html += changelogCard() + (ui.u === "on" ? "" : stepsCard());
         if (s !== "loading") html += migrationCard();
+        if (s !== "loading" && ui.u === "on") html += historyCard();
         $("content").innerHTML = html;
-        $("dot").classList.toggle("show", has);
+        $("dot").classList.toggle("show", has && !ui.run);
+        const spin = document.querySelector("#verItem .side-spin");
+        if (ui.run && !ui.run.result && !spin) $("verItem").insertAdjacentHTML("beforeend", '<span class="side-spin" aria-label="升级中"></span>');
+        if ((!ui.run || ui.run.result) && spin) spin.remove();
+        if ($("upBtn")) $("upBtn").onclick = confirmUpgrade;
+        if ($("rbBtn")) $("rbBtn").onclick = confirmRollback;
+        if ($("runClose")) $("runClose").onclick = () => { ui.run = null; render(); };
         $("navBadge").textContent = has ? "新" : "";
         $("verLabel").textContent = s === "dev" ? "dev" : "v" + CURRENT;
         $("verItem").dataset.tip = has ? `当前 v${CURRENT} · 有新版本 v${LATEST}` : s === "dev" ? "开发构建" : `当前 v${CURRENT}`;
@@ -308,6 +458,16 @@
       }));
       const toggle = (id, fn) => ($(id).onclick = () => { $(id).classList.toggle("on"); fn($(id).classList.contains("on")); });
       toggle("tMig", (on) => { ui.mig = on; render(); });
+      toggle("tAdmin", (on) => { ui.admin = on; render(); });
+      const group = (attr, key) => document.querySelectorAll(`[data-${attr}]`).forEach((b) => (b.onclick = () => {
+        ui[key] = b.dataset[attr];
+        document.querySelectorAll(`[data-${attr}]`).forEach((x) => x.classList.toggle("on", x === b));
+        render();
+      }));
+      group("u", "u");
+      group("o", "o");
+      $("scrim").onclick = (e) => { if (e.target === $("scrim")) $("scrim").classList.remove("show"); };
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("scrim").classList.remove("show"); });
       toggle("tDark", (on) => document.documentElement.classList.toggle("dark", on));
       toggle("tCollapse", (on) => $("app").classList.toggle("collapsed", on));
       toggle("tNarrow", (on) => { document.body.style.maxWidth = on ? "390px" : ""; document.body.style.margin = on ? "0 auto" : ""; document.body.style.borderInline = on ? "1px dashed #999" : ""; $("app").querySelector(".sidebar").style.display = on ? "none" : ""; });

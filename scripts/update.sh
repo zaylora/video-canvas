@@ -15,6 +15,7 @@ KEEP_BACKUPS=3
 PRUNE=false
 TIMEOUT=600
 STATUS_FILE=""
+ORPHANS="--remove-orphans"
 
 usage() {
   cat <<'EOF'
@@ -34,6 +35,8 @@ usage() {
   --keep-backups N     保留最近 N 份备份，默认 3
   --timeout SECONDS    等新版本健康的最长时间，默认 600（老库首次迁移可能较慢）
   --status-file PATH   每一步把进度写成 JSON（给后台一键升级读取）
+  --keep-orphans       重建时不删除 compose 文件里已经没有的容器（后台一键升级用：回退到没有 updater 的旧版本时，
+                       正在执行本脚本的 updater 容器不能被当成孤儿删掉）
   --prune              完成后清理悬空镜像（会清掉本机所有项目的悬空镜像，默认不清）
   -h, --help           显示帮助
 
@@ -50,6 +53,7 @@ while [ $# -gt 0 ]; do
     --timeout)      TIMEOUT="${2:?--timeout 需要参数}"; shift 2 ;;
     --status-file)  STATUS_FILE="${2:?--status-file 需要参数}"; shift 2 ;;
     --prune)        PRUNE=true; shift ;;
+    --keep-orphans) ORPHANS=""; shift ;;
     --no-prune)     PRUNE=false; shift ;; # 兼容旧参数，现在默认就不清理
     -h|--help)      usage; exit 0 ;;
     *) echo "[错误] 不支持的参数：$1" >&2; usage >&2; exit 2 ;;
@@ -215,7 +219,7 @@ rollback() {
   fi
   status rollback running "$reason，正在退回 $OLD_TAG"
   restore_files
-  docker compose up -d --remove-orphans || true
+  docker compose up -d $ORPHANS || true
   if wait_ready "$OLD_TAG"; then
     fail failed_rolled_back "$reason；已退回 $OLD_TAG，服务正常"
   fi
@@ -275,7 +279,7 @@ fi
 
 status recreate running "重建服务（新版本启动时会自动执行数据库迁移）"
 # 新版本起不来时 up -d 本身就会失败，不能让 set -e 直接退出，要走回退
-if ! docker compose up -d --remove-orphans; then
+if ! docker compose up -d $ORPHANS; then
   rollback "新版本启动失败"
 fi
 

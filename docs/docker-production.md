@@ -1,10 +1,11 @@
 # 生产 Docker 部署
 
-GitHub Actions 只在推送 `v*` tag 或发布 GitHub Release 时运行。流水线先执行后端和前端的格式、类型、lint、单元测试检查，全部通过后再构建并推送两个 GHCR 镜像：
+GitHub Actions 只在推送 `v*` tag 或发布 GitHub Release 时运行。流水线先执行后端和前端的格式、类型、lint、单元测试检查，全部通过后再构建并推送三个 GHCR 镜像（updater 只在启用一键升级时用到）：
 
 ```text
 ghcr.io/<GitHub 用户或组织>/video-canvas-backend:<tag>
 ghcr.io/<GitHub 用户或组织>/video-canvas-web:<tag>
+ghcr.io/<GitHub 用户或组织>/video-canvas-updater:<tag>
 ```
 
 ## 发布
@@ -60,6 +61,22 @@ docker compose up -d
 ```bash
 docker compose exec -T postgres pg_dump -U postgres -Fc video_canvas > backup-$(date +%Y%m%d%H%M).dump
 ```
+
+### 后台一键升级（可选）
+
+启用后，超级管理员可以在后台「系统设置 → 版本与升级」里点按钮升级或回退，流程和 `update.sh` 完全相同（它就是在 updater 容器里执行 `update.sh`）。updater 挂载 docker.sock，**等同服务器 root 权限**，所以默认不启动：
+
+```bash
+# 在部署目录执行；deploy.sh 新部署的 .env 里已经有 UPDATER_TOKEN，老部署先补一行
+grep -q '^UPDATER_TOKEN=' .env || echo "UPDATER_TOKEN=$(openssl rand -hex 32)" >> .env
+docker compose up -d                      # 让 backend 读到 token
+docker compose --profile updater up -d    # 启动 updater
+```
+
+- updater 必须在宿主机的部署目录里启动：它把当前目录挂载为 `/deploy`。
+- 一键升级只能升到后台检查到的最新正式版本；回退只能退到最近一次一键升级之前的版本。部署用 `IMAGE_TAG=latest` 时不能一键升级。
+- 升级时 updater 自己不会被重建；要升级 updater 本身，在部署目录再执行一次 `docker compose --profile updater up -d`。
+- 停用：`docker compose --profile updater rm -sf updater`。
 
 查看迁移状态（只读）：
 

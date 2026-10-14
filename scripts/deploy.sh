@@ -61,6 +61,8 @@ APP_AI_SECRET_KEY=$(rand)
 APP_SERVER_ALLOWED_ORIGINS=$ORIGIN
 IMAGE_TAG=$TAG
 WEB_PORT=$PORT
+# 后台一键升级用的共享密钥；一键升级默认不启用，启用方法见 docker-compose.yml 里 updater 的注释
+UPDATER_TOKEN=$(rand)
 EOF
 )
   echo "    请备份 $DIR/.env：APP_AI_SECRET_KEY 丢失后，已加密保存的密钥无法解密。"
