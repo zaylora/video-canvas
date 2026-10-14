@@ -9,6 +9,7 @@ import {
   type NodeChange,
   type EdgeChange,
   type OnBeforeDelete,
+  type OnNodeDrag,
   type EdgeTypes,
   type NodeTypes,
 } from "@xyflow/react";
@@ -23,6 +24,7 @@ import {
   useCanvasTool,
   type AddNodeMenuItem,
 } from "@/components/canvas";
+import { AlignGuidesLayer } from "@/components/canvas/align-guides-layer";
 import { CanvasBackgroundLayer } from "@/components/canvas/canvas-background";
 import { ChromeZone } from "@/components/canvas/chrome/chrome";
 import { MediaLightbox, type LightboxTarget } from "@/components/canvas/media-lightbox";
@@ -42,7 +44,7 @@ import { useContentNodes } from "@/hooks/use-content-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
-import { GRID_SIZE, useSettingsStore } from "@/store";
+import { useSettingsStore } from "@/store";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
@@ -85,6 +87,7 @@ import { CanvasNodeView } from "./canvas-node";
 import { GroupDeleteDialog } from "./group-delete-dialog";
 import { GroupNodeView } from "./group-node";
 import { GroupUiProvider, useGroupUiState } from "./group-ui";
+import { useAlignGuides } from "./use-align-guides";
 import { useGroupDrag } from "./use-group-drag";
 import { useGroupOps } from "./use-group-ops";
 import { useFocusNode } from "./chrome/use-focus-node";
@@ -208,9 +211,16 @@ export const Flow = memo(function Flow({
     onSaved: (graph, version) => agentSyncRef.current?.saved(graph, version),
   });
   const overlayGate = useOverlayGate(getNodes);
+  const {
+    adjustChanges,
+    onNodeDragStart: alignDragStart,
+    onNodeDragStop: alignDragStop,
+  } = useAlignGuides();
   const { pruneOnChange, onNodeClick: onGateNodeClick } = overlayGate;
   const onNodesChange = useCallback(
-    (changes: NodeChange<FlowNode>[]) => {
+    (incoming: NodeChange<FlowNode>[]) => {
+      // 拖动单个节点时先做对齐吸附，改写完的变更再往下走（保存判定、applyNodesChange）
+      const changes = adjustChanges(incoming);
       pruneOnChange(changes);
       for (const change of changes) {
         if (change.type === "remove") {
@@ -231,7 +241,7 @@ export const Flow = memo(function Flow({
         !persistent.every((change) => change.type === "position" && change.dragging);
       applyNodesChange(changes);
     },
-    [applyNodesChange, pruneOnChange],
+    [adjustChanges, applyNodesChange, pruneOnChange],
   );
   useEffect(() => {
     nodesRef.current = nodes;
@@ -362,6 +372,15 @@ export const Flow = memo(function Flow({
   );
   const groupOps = useGroupOps(groupUi);
   const groupDrag = useGroupDrag(groupUi);
+  const { onNodeDragStop: groupDragStop } = groupDrag;
+  /** 松手：组归属判定 + 收掉对齐辅助线；用 useCallback 保持引用稳定，免得 ReactFlow 每次渲染都换处理函数 */
+  const onNodeDragStop = useCallback<OnNodeDrag<FlowNode>>(
+    (event, node, dragged) => {
+      groupDragStop(event, node, dragged);
+      alignDragStop();
+    },
+    [alignDragStop, groupDragStop],
+  );
   const { setMenuId, setRenamingId } = groupUi;
   /** 会一路传到每个 NodeWrapper，要保持引用稳定，否则每次重渲染 200 个节点外壳的 memo 都失效 */
   const onNodeClick = useCallback(
@@ -743,9 +762,10 @@ export const Flow = memo(function Flow({
                       onNodeDragStart={(event, node, dragged) => {
                         overlayGate.onNodeDragStart(event, node, dragged);
                         groupDrag.onNodeDragStart(event, node, dragged);
+                        alignDragStart(event, node, dragged);
                       }}
                       onNodeDrag={groupDrag.onNodeDrag}
-                      onNodeDragStop={groupDrag.onNodeDragStop}
+                      onNodeDragStop={onNodeDragStop}
                       onNodeClick={onNodeClick}
                       onBeforeDelete={onBeforeDelete}
                       onConnect={onConnect}
@@ -762,8 +782,6 @@ export const Flow = memo(function Flow({
                       panOnScroll={!isWheelZoom}
                       zoomOnScroll={isWheelZoom}
                       zoomActivationKeyCode={isWheelZoom ? null : ["Control", "Meta"]}
-                      snapToGrid={settings.snapToGrid}
-                      snapGrid={[GRID_SIZE, GRID_SIZE]}
                       // 箭头：左键框选，画布只让中键拖；抓手：左键即拖画布，节点不可拖
                       panOnDrag={isPanning ? true : [1]}
                       selectionOnDrag={!isPanning}
@@ -775,6 +793,7 @@ export const Flow = memo(function Flow({
                       elementsSelectable={!isPanning}
                     >
                       <CanvasBackgroundLayer background={settings.background} />
+                      <AlignGuidesLayer />
                       <SelectionToolbar onFanOut={openGroupMenu} onGroup={groupSelected} />
                       {minimap && (
                         <MiniMap

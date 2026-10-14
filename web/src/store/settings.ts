@@ -31,8 +31,6 @@ export type CustomModel = {
 export type Settings = {
   // 画布
   background: CanvasBackground;
-  /** 拖动节点时吸附到 GRID_SIZE 的整数倍 */
-  snapToGrid: boolean;
   wheelMode: CanvasWheelMode;
   // 通用
   theme: ThemeSetting;
@@ -56,12 +54,11 @@ type SettingsActions = {
 
 export type SettingsStore = Settings & SettingsActions;
 
-/** 吸附网格的步长，跟背景点阵的默认间距对齐 */
+/** 背景点阵 / 线条的间距 */
 export const GRID_SIZE = 20;
 
 const DEFAULT_SETTINGS: Settings = {
   background: "dots",
-  snapToGrid: false,
   wheelMode: "pan",
   theme: "dark",
   showHints: true,
@@ -119,7 +116,6 @@ export const useSettingsStore = create<SettingsStore>()(
       // 只存数据，操作函数不进存档
       partialize: ({
         background,
-        snapToGrid,
         wheelMode,
         theme,
         showHints,
@@ -127,7 +123,6 @@ export const useSettingsStore = create<SettingsStore>()(
         customModels,
       }): Settings => ({
         background,
-        snapToGrid,
         wheelMode,
         theme,
         showHints,
