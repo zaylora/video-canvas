@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>视频修剪 演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --handle: 59 130 246;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --handle: 96 165 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ================= 原型：模拟画布 ================= */
+      .simbar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 10px 14px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; background: hsl(var(--background)); }
+      .simbar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+      .proto { position: relative; overflow-x: auto; background: hsl(var(--muted)); }
+      .canvas {
+        position: relative; width: 920px; height: 600px; margin: 0 auto;
+        background-image: radial-gradient(hsl(var(--muted-foreground) / 0.28) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+      .vnode { position: absolute; width: 300px; }
+      .vtitle { display: flex; align-items: center; gap: 6px; height: 22px; margin-bottom: 6px; font-size: 12px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+      .vtitle .st { margin-left: auto; font-size: 11px; color: rgb(var(--handle)); font-variant-numeric: tabular-nums; }
+      .vcard { position: relative; width: 300px; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; border: 1px solid hsl(var(--border)); background: #111; }
+      .vnode.sel .vcard { border-color: hsl(var(--foreground) / 0.7); box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.25); }
+      .fr { position: absolute; inset: 0; overflow: hidden; }
+      .fr .fig { position: absolute; bottom: -18%; width: 34%; height: 80%; border-radius: 50% 50% 8px 8px; background: rgb(255 255 255 / 0.82); }
+      .fr .fig::before { content: ""; position: absolute; left: 28%; top: -34%; width: 44%; aspect-ratio: 1; border-radius: 50%; background: rgb(255 226 200 / 0.95); }
+      .fr .ts { position: absolute; left: 8px; top: 6px; font: 500 11px "Geist Mono", monospace; color: rgb(255 255 255 / 0.75); }
+      .playbtn { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; display: grid; place-items: center; }
+      .vctl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 18px 10px 7px; color: #fff; font-size: 10.5px; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); font-variant-numeric: tabular-nums; }
+      .vctl button { color: #fff; display: grid; place-items: center; }
+      .vbar { position: relative; flex: 1; height: 3px; border-radius: 3px; background: rgb(255 255 255 / 0.3); }
+      .vbar .rng { position: absolute; top: 0; bottom: 0; background: rgb(255 255 255 / 0.5); border-radius: 3px; }
+      .vbar .pos { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #fff; }
+      .upl { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; background: rgb(20 20 24 / 0.78); backdrop-filter: blur(6px); color: #fff; font-size: 12px; }
+      .upl .pb { width: 140px; height: 3px; border-radius: 3px; background: rgb(255 255 255 / 0.25); overflow: hidden; margin: 0 auto; }
+      .upl .pb i { display: block; height: 100%; background: #fff; }
+
+      .tbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 34px); display: flex; gap: 2px; padding: 4px; border-radius: 999px; border: 1px solid hsl(var(--border)); background: hsl(var(--card) / 0.92); backdrop-filter: blur(8px); white-space: nowrap; box-shadow: 0 6px 20px rgb(0 0 0 / 0.1); }
+      .tbar button { height: 30px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; }
+      .tbar button:hover { background: hsl(var(--accent)); }
+      .tbar svg { width: 14px; height: 14px; }
+      .tbar .star { color: rgb(var(--warn)); }
+
+      .panel { position: absolute; left: -110px; top: calc(100% + 16px); width: 520px; }
+      .pill { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 16px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); box-shadow: 0 8px 28px rgb(0 0 0 / 0.14); }
+      .ib { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); flex: none; }
+      .ib:hover:not(:disabled) { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .ib:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ib.on { color: rgb(var(--handle)); background: rgb(var(--handle) / 0.14); }
+      .sep { width: 1px; align-self: stretch; margin: 6px 0; background: hsl(var(--border)); }
+      .ok { width: 38px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); flex: none; }
+      .ok:disabled { opacity: 0.35; cursor: not-allowed; }
+      .strip { position: relative; flex: 1; height: 44px; border-radius: 8px; user-select: none; touch-action: none; }
+      .tiles { position: absolute; inset: 0; display: flex; border-radius: 6px; overflow: hidden; }
+      .tiles > div { position: relative; flex: 1; }
+      .tiles.skel > div { background: hsl(var(--muted)); animation: pulse 1.1s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.45; } }
+      .dim { position: absolute; top: 0; bottom: 0; background: hsl(var(--background) / 0.62); pointer-events: none; }
+      .selbox { position: absolute; top: 0; bottom: 0; border-top: 2px solid rgb(var(--handle)); border-bottom: 2px solid rgb(var(--handle)); pointer-events: none; }
+      .h { position: absolute; top: -2px; bottom: -2px; width: 12px; margin-left: -6px; border-radius: 4px; background: rgb(var(--handle)); cursor: ew-resize; display: grid; place-items: center; outline: none; touch-action: none; }
+      .h::before { content: ""; width: 2px; height: 14px; border-radius: 2px; background: rgb(255 255 255 / 0.9); }
+      .h::after { content: ""; position: absolute; inset: 0 -6px; } /* 热区加宽到 24px */
+      .h:focus-visible { box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px rgb(var(--handle)); }
+      .strip.locked .h { cursor: default; opacity: 0.7; }
+      .ph { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); pointer-events: none; }
+      .dur { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 2px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.72); color: #fff; font: 500 12px "Geist Mono", monospace; pointer-events: none; font-variant-numeric: tabular-nums; }
+      .prog { margin: 10px 8px 0; }
+      .prog .bar { height: 2px; border-radius: 2px; background: hsl(var(--foreground) / 0.2); overflow: hidden; }
+      .prog .bar i { display: block; height: 100%; background: hsl(var(--foreground)); }
+      .prog small { display: block; text-align: center; margin-top: 6px; font-size: 11px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+      .perr { margin-bottom: 8px; display: flex; gap: 8px; padding: 9px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid rgb(var(--bad) / 0.35); background: rgb(var(--bad) / 0.08); color: rgb(var(--bad)); }
+      .confirmbar { margin-top: 8px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+      .spin { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .edge { position: absolute; height: 0; border-top: 2px dashed rgb(var(--handle)); }
+      .edge.run { animation: dash 0.8s linear infinite; }
+      @keyframes dash { to { background-position: 16px 0; } }
+      .canvas-actions { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 6px; }
+      .canvas-actions .btn { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+      .pbox { padding: 10px 12px; border-radius: 16px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); box-shadow: 0 8px 28px rgb(0 0 0 / 0.14); }
+      .ptxt { min-height: 38px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+      .prow { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+      .chip { height: 24px; padding: 0 9px; border-radius: 8px; display: inline-flex; align-items: center; font-size: 11.5px; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .chip.go { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .legend { position: absolute; right: 12px; bottom: 12px; font-size: 11.5px; color: hsl(var(--muted-foreground)); text-align: right; max-width: 300px; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="scissors"></i></span>视频修剪 演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="blocks"></i>状态与模块</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">视频节点「视频修剪」：拖两端、点 ✓，右边长出一个剪好的新节点</h1>
+        <p class="lead">
+          选中视频节点，点功能区「视频修剪」，在节点下方拖两端手柄选出要保留的片段，点 ✓ 后在<b>浏览器里</b>编码，产出一个新的「剪辑」视频节点。
+          <b>原节点原样保留；不扣积分；后端不改。</b>第一版只做去音轨，不做循环预览和快捷键面板。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页对应 Markdown 设计文档 <code>视频修剪.md</code> 的 §1、§4、§6、§9。<b>设计尚未实现</b>；原型里的缩略图、编码耗时、体积都是<b>示意</b>，编码是模拟的。参考图来自用户给的 5 张截图。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对官方页面 / 代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：一次修剪怎么走</h2>
+          <p class="sub">从点按钮到长出新节点，哪些在浏览器里、哪些走现成流程。</p>
+          <div class="flow note">
+            <div class="node"><b>点「视频修剪」</b>功能区占位按钮已存在<br /><span class="tag t-ok">已核对代码</span></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>拖手柄选片段</b>预览只在选区内播放，时长实时显示</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>点 ✓：浏览器编码</b>Mediabunny + WebCodecs，面板显示「编码中 x%」</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>新节点「上传中」</b>沿用 <code>uploadRunner</code>，失败可重试</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>新「剪辑」节点可播放</b>右侧 80px、带一条来源连线</div>
+          </div>
+          <div class="note-txt">设计：整条链路都在前端——和用户参考图里"先编码、再上传"的顺序一致。修剪模式照<b>扩图模式</b>做（独立状态 + 取代功能区和生成面板），新节点摆放和上传都复用现成代码，不新造。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>出问题时（回退）：</b>浏览器不支持、读不到视频、编码失败，都<b>不会改动原节点</b>；编码失败会回到可编辑状态并保留手柄位置，可直接重试。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三种做法</h2>
+          <p class="sub">差别在"谁来剪"，它决定了要不要动后端、产出的是什么。</p>
+          <div class="grid g3">
+            <div class="card" style="border-color: hsl(var(--primary))">
+              <div class="row"><i data-lucide="monitor-play"></i><b>浏览器里剪</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">采用</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>Mediabunny（WebCodecs）重新编码。</b>产出一个新 MP4 文件，走现有上传。后端零改动。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="server"></i><b>后端 ffmpeg 剪</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">放弃</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>要装 ffmpeg、新增接口和任务队列。</b>违背"后端只做存储"，还多一次上传 + 等待。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="split"></i><b>只记入点 / 出点</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">放弃</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>不产出新文件。</b>下游生成、下载都要理解裁切元数据，改动面最大。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>浏览器里剪，用哪个依赖</h2>
+          <p class="sub">用户已确认选 Mediabunny；下表是当时的比较。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>Mediabunny（采用）</th><th>ffmpeg.wasm</th><th>MediaRecorder 自研</th></tr></thead>
+              <tbody>
+                <tr><th>编码方式</th><td class="y">WebCodecs 硬件编码，自带 <code>trim</code> 与进度回调</td><td>wasm 软编码</td><td class="m">实时录制，时长 = 选区时长</td></tr>
+                <tr><th>体积与许可</th><td class="y">纯 TS，无 wasm；MPL-2.0（不改它的源码就无义务）</td><td class="m">core 约 31MB；继承 FFmpeg 的 LGPL/GPL</td><td class="y">零依赖</td></tr>
+                <tr><th>额外要求</th><td class="m">依赖浏览器 WebCodecs，需特性检测并给不支持的浏览器兜底提示</td><td class="m">多线程要整站 COOP/COEP，影响现有跨域素材</td><td class="m">输出 webm，音画同步不稳</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">官方文档检索，API 名未验证</span></td><td><span class="tag t-info">检索</span></td><td><span class="tag t-warn">未验证</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户点 ✓ 之后，会发生什么</h2>
+          <p class="sub">编码要跑一段时间；用户已确认：这段时间面板锁定，不能随手退出。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>手柄锁定，✓ 变成转圈</b><small>面板下方出现细进度条和「编码中 12%」</small></li>
+                <li><b>编码完成（100%）</b><small>右侧立刻长出「剪辑」节点和连线，面板退出</small></li>
+                <li><b>新节点显示「上传中 x%」</b><small>传完变成可播放的视频；失败显示「上传失败，请重试」</small></li>
+                <li><b>撤销一次</b><small>新节点和连线一起消失，原节点不变</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：编码中取消选中、按 Esc 都不会退出</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>只有 × 能中止，并且要二次确认。</li>
+                    <li>取消选中后面板收起、编码继续，源节点标题行显示「编码中 x%」，再选中面板回来。</li>
+                    <li><b>刷新页面会丢掉编码中的任务</b>（与现在上传中刷新一致）。</li>
+                    <li>同一时刻只允许一个修剪会话。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">对象存储已配置 CORS（用户确认），不用再告知；<code>Range</code> 相关响应头是否放行，实现时用真实桶实测一次（<span class="tag t-warn">未验证</span>）。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          数据在内存里，刷新复原。已放好一个 29 秒的视频节点，<b>点它 → 点功能区「视频修剪」</b>，拖两端手柄，点 ✓ 走完整流程。选中「剪辑」节点可以看到它下方没有提示词框。想看失败：勾上方「存储没开跨域」再点 ✓（编码到 60% 时失败）。编码、上传都是<b>模拟</b>，耗时为示意。
+        </p>
+        <div class="frame" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">video-canvas / 画布 / 视频修剪原型</span>
+          </div>
+          <div class="simbar">
+            <label><input type="checkbox" id="simCors" /> 模拟：存储没开跨域（编码会失败）</label>
+            <label><input type="checkbox" id="simNoWc" /> 模拟：浏览器不支持 WebCodecs</label>
+            <label><input type="checkbox" id="simNoAudio" /> 模拟：源视频没有音轨</label>
+            <button class="btn btn-outline" onclick="resetProto()"><i data-lucide="rotate-ccw"></i>重置原型</button>
+          </div>
+          <div class="proto" id="protoWrap"><div class="canvas" id="canvas"></div></div>
+        </div>
+        <div class="note-txt" style="margin-top: 10px">
+          设计：面板取代了平时的功能区和生成面板（和扩图一致）；<b>去掉了参考图里的键盘图标和循环图标</b>（用户确认第一版只保留去音轨）；✓ 在"没修剪"或"选区太短"时禁用而不是隐藏，并写明原因。
+        </div>
+        <div class="card" style="margin-top: 14px">
+          <b style="font-size: 13.5px">原型里能试的东西</b>
+          <ul class="list" style="margin-top: 6px">
+            <li>拖两端手柄（或聚焦后按 ← / →，Shift 加速）；最小间隔 0.5s，拖到极限会停住。</li>
+            <li>点播放：从入点播到出点自动停。条上点空白处：在选区内定位。</li>
+            <li>点 × 退出；编码中点 ×，会先问「中止编码？」。Esc 在编辑态退出，编码中无效。</li>
+            <li>编码中点画布空白处：面板收起、编码继续，点回源节点面板回来。</li>
+            <li>画布左下「撤销」：删掉最近建的「剪辑」节点和连线。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 3. 状态与模块（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">状态与模块（提案）</h1>
+        <p class="lead">
+          下面都是设计提案，尚未实现，对应 Markdown 设计文档的 §6–§8。这个功能是<b>纯前端</b>：不新增后端接口、不改数据库、不加 payload 字段，所以本页讲前端状态、模块和失败处理，而不是接口。
+        </p>
+
+        <div class="sec">
+          <h2>哪些不用动</h2>
+          <p class="sub">复用点比新增点多。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>变化</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>后端接口 / 数据库</th><td>无</td><td>结果当作"上传素材"走现有 <code>/assets</code> 上传，上限 200MB（前后端各校验一次）</td></tr>
+                <tr><th>画布 payload</th><td>无新字段</td><td>新节点是 <code>uploaded: true</code> 的普通视频节点；连线是普通连线</td></tr>
+                <tr><th>来源连线</th><td>不加 <code>outpaintFrom</code> 那样的字段</td><td>扩图的新节点是<b>生成节点</b>，会读入边当参考图，才需要标记；剪辑节点永远不生成，不读入边</td></tr>
+                <tr><th>功能区配置</th><td>无</td><td><code>node-toolbar.ts</code> 里已有 <code>trim</code> 按钮，只需在 <code>onAction</code> 接处理函数</td></tr>
+                <tr><th>保存与冲突</th><td>无</td><td>新节点和连线走常规保存，<code>revision</code> 乐观锁照旧</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>新增的前端状态</h2>
+          <p class="sub">模式状态照 <code>store/outpaint.ts</code>；编码任务放模块级 runner，不跟组件挂载走（所以取消选中后编码不中断）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>useTrimStore</code>（内存，不存档）</th></tr></thead>
+              <tbody>
+                <tr><th>nodeId</th><td>正在修剪的节点 id，没有则不在修剪模式；同一时刻只有一个</td></tr>
+                <tr><th>enter / leave(id?)</th><td>进入 / 退出；<code>leave</code> 传 id 时只在正是这个节点才退</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th colspan="2"><code>trimRunner</code> 会话（按节点 id 存，模块级）</th></tr></thead>
+              <tbody>
+                <tr><th>start / end</th><td>秒，取整到 0.01；<code>0 ≤ start</code>，<code>end ≤ 总时长</code>，<code>end − start ≥ 0.5</code></td></tr>
+                <tr><th>muted</th><td>布尔，去音轨；源视频没有音轨时强制 false 且禁用</td></tr>
+                <tr><th>phase</th><td><code>loading | editing | encoding</code></td></tr>
+                <tr><th>progress</th><td>0–100 的整数，整数百分点才写一次</td></tr>
+                <tr><th>error</th><td>编码失败的那句话；回到 <code>editing</code> 时展示，下次点 ✓ 清掉</td></tr>
+                <tr><th>cancel()</th><td>中止当前编码（<code>conversion.cancel()</code>），不产生节点</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>状态迁移</h2>
+          <p class="sub">什么条件下从哪到哪。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>从</th><th>条件</th><th>到</th></tr></thead>
+              <tbody>
+                <tr><th>（无）</th><td>点「视频修剪」，浏览器支持</td><td><code>loading</code>（取元数据、画缩略图）</td></tr>
+                <tr><th>（无）</th><td>点「视频修剪」，不支持 WebCodecs / 另一段正在编码</td><td>不进入，toast 说明</td></tr>
+                <tr><th>loading</th><td>元数据到达</td><td><code>editing</code>（缩略图读不出也进入，用无缩略图的时间轴）</td></tr>
+                <tr><th>editing</th><td>×、Esc、取消选中、变成多选、源节点被删</td><td>退出，无节点</td></tr>
+                <tr><th>editing</th><td>点 ✓（已修剪、选区 ≥ 0.5s、预估 ≤ 200MB）</td><td><code>encoding</code></td></tr>
+                <tr><th>encoding</th><td>编码成功</td><td>建节点 + 连线 + 开始上传，<b>退出</b></td></tr>
+                <tr><th>encoding</th><td>编码失败</td><td><code>editing</code>，保留手柄，展示 error</td></tr>
+                <tr><th>encoding</th><td>点 ×并确认 / 源节点被删 / 画布关闭</td><td>中止，退出，无节点</td></tr>
+                <tr><th>encoding</th><td>Esc、取消选中、多选</td><td><b>不变</b>（面板可能卸载，runner 继续）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>失败处理</h2>
+          <p class="sub">所有失败都不改动原节点。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>原因</th><th>提示文案（提案）</th><th>下一步</th></tr></thead>
+              <tbody>
+                <tr><th>浏览器不支持</th><td>当前浏览器不支持视频修剪，请使用最新版 Chrome / Edge</td><td>不进入模式</td></tr>
+                <tr><th>读取失败</th><td>读不出视频：存储没有开启跨域读取，或网络中断，请联系管理员在存储桶配置 CORS</td><td>回编辑态，可重试</td></tr>
+                <tr><th>格式解不了</th><td>这个视频的编码格式当前浏览器无法处理</td><td>回编辑态</td></tr>
+                <tr><th>没有可用输出编码</th><td>当前浏览器无法编码 MP4 视频</td><td>回编辑态</td></tr>
+                <tr><th>预估超 200MB</th><td>剪出来的视频预计超过 200MB，缩短选区试试</td><td>留在编辑态（未开始编码）</td></tr>
+                <tr><th>内存不足 / 崩溃</th><td>编码失败，请缩短选区后重试</td><td>回编辑态</td></tr>
+                <tr><th>上传失败</th><td>上传失败，请重试（节点上，已有能力）</td><td>点节点上的重试</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// utils/canvas/trim-run.ts（提案；Mediabunny API 名以安装版本为准，未验证）
+async function runTrim(id, { src, start, end, muted, fileName }, hooks) {
+  const { Input, Output, UrlSource, Mp4OutputFormat, BufferTarget, Conversion, ALL_FORMATS } =
+    await import("mediabunny"); // 动态加载，进入修剪模式时才下载
+  const input = new Input({ source: new UrlSource(trimUrl(src)), formats: ALL_FORMATS });
+  const output = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() });
+  const conversion = await Conversion.init({
+    input, output, trim: { start, end },
+    audio: muted ? { discard: true } : undefined,
+  });
+  if (!conversion.isValid) throw new TrimError(reasonOf(conversion.discardedTracks));
+  sessions.set(id, { cancel: () => conversion.cancel() });
+  conversion.onProgress = (p) => hooks.progress(Math.floor(p * 100));
+  await conversion.execute();
+  return new File([output.target.buffer], fileName, { type: "video/mp4" });
+}
+
+// 点 ✓：先拦、再编码、成功后建节点并交给 uploadRunner
+if (estimatedSize(source, start, end) > UPLOAD_SIZE_LIMIT.video) return showError("预计超过 200MB…");
+const file = await runTrim(id, params, hooks);          // 失败 → 回 editing
+const { node, edge } = buildTrimNode({ source, nodes, fileName: file.name });
+history.record();                                       // 节点 + 连线记一次撤销
+setNodes([...nodes, node]); setEdges([...edges, edge]);
+leaveTrimMode(id);
+void uploadRunner.start(node.id, file, patchNode);      // 上传中 → 完成 / 失败可重试</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>引用 Mediabunny</b>：浏览器内剪辑；放弃 ffmpeg.wasm（core 约 31MB、COOP/COEP 副作用）和 MediaRecorder 自研。</li>
+              <li><b>面板第一版只做「去音轨」</b>：循环预览、键盘快捷键说明面板都留到后续；两端手柄、时长标签、×、✓ 默认都做。</li>
+              <li><b>编码期间面板锁定到编码完</b>：取消选中和 Esc 不退出，只有 × 能中止。「点确认立刻建节点、后台编码」和「可收起面板」两个方案已搁置，将来要支持连续剪多段时可启用。</li>
+              <li><b>对象存储已配置 CORS</b>：对象存储里的素材可直接读取来修剪；<code>Range</code> 头仍在实现时实测。</li>
+              <li><b>新节点标题用「剪辑」</b>，重名「剪辑 2」。</li>
+              <li><b>剪辑节点下方没有提示词框</b>，和扩图出来的节点一样：它是上传素材（<code>uploaded: true</code>），选中后只出功能区。现有代码已满足，不用为此改动。</li>
+              <li><b>主文档已回写</b>：以上全部在 Markdown §6.5、§11；截取帧分支合并后取流地址函数怎么合并，写在 §11 默认值里，不影响本次实现。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型：内存状态，刷新复原。编码、上传都是 setTimeout 模拟。 ================= */
+      const TOTAL = 29; // 源视频总时长（秒）
+      const MIN_GAP = 0.5; // 最小选区（秒）
+      const THUMBS = 10;
+      const SRC_TITLE = "智能剪辑 3成片";
+
+      const ICONS = {
+        play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
+        pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
+        x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+        check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+        vol: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>',
+        mute: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6"/></svg>',
+        loader: '<svg class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>',
+        scissors: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>',
+        star: '<svg class="star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg>',
+      };
+
+      const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+      const r2 = (n) => Math.round(n * 100) / 100;
+      const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+      let S;
+      let playTimer = null;
+      let encTimer = null;
+      let seq = 0;
+
+      function fresh() {
+        clearInterval(playTimer);
+        clearInterval(encTimer);
+        S = {
+          selected: false,
+          selRes: null, // 选中的「剪辑」节点 id
+          mode: false, // 是否在修剪模式
+          phase: "editing", // loading | editing | encoding
+          start: 0,
+          end: TOTAL,
+          cur: 0,
+          playing: false,
+          muted: false,
+          progress: 0,
+          error: null,
+          confirmAbort: false,
+          nodes: [], // 已产出的剪辑节点
+        };
+      }
+
+      /* 假视频一帧：颜色和人形位置随时间变化，示意 */
+      function frame(t, withTs) {
+        const hue = (200 + (t / TOTAL) * 260) % 360;
+        const fx = 12 + ((t * 9) % 56);
+        return `<div class="fr" style="background: linear-gradient(135deg, hsl(${hue} 45% 30%), hsl(${(hue + 40) % 360} 40% 16%))"><div class="fig" style="left:${fx}%"></div>${withTs ? `<span class="ts">${r2(t).toFixed(2)}s</span>` : ""}</div>`;
+      }
+
+      function canConfirm() {
+        const full = S.start <= 0.005 && S.end >= TOTAL - 0.005;
+        return S.phase === "editing" && S.end - S.start >= MIN_GAP - 1e-6 && !full;
+      }
+      function confirmHint() {
+        if (S.end - S.start < MIN_GAP - 1e-6) return "选区至少 0.5 秒";
+        if (S.start <= 0.005 && S.end >= TOTAL - 0.005) return "拖动两端选择要保留的片段";
+        return "确认修剪";
+      }
+
+      /* ---------- 结构渲染：模式、阶段、节点列表、选中状态变化时整体重绘 ---------- */
+      function render() {
+        const cv = $("#canvas");
+        const trimming = S.mode;
+        const showToolbar = S.selected && !trimming;
+        const showPanel = trimming && S.selected;
+
+        let srcStatus = "";
+        if (trimming && S.phase === "encoding" && !S.selected) srcStatus = `<span class="st" id="srcSt">编码中 ${S.progress}%</span>`;
+
+        const body = trimming
+          ? `<div class="vcard" id="stage">${frame(S.cur, true)}
+              <div class="vctl">
+                <button id="stPlay" aria-label="播放 / 暂停" ${S.phase === "encoding" ? "disabled" : ""}>${S.playing ? ICONS.pause : ICONS.play}</button>
+                <span id="stCur">${clock(S.cur)}</span>
+                <div class="vbar" id="stBar"><i class="rng" id="stRng"></i><i class="pos" id="stPos"></i></div>
+                <span>${clock(TOTAL)}</span>
+              </div>
+            </div>`
+          : `<div class="vcard">${frame(0, false)}<div class="playbtn">${ICONS.play}</div></div>`;
+
+        const toolbar = showToolbar
+          ? `<div class="tbar" role="toolbar" aria-label="功能区">
+              <button data-act="soon">局部重拍${ICONS.star}</button>
+              <button data-act="soon">智能超清${ICONS.star}</button>
+              <button data-act="soon">视频编辑${ICONS.star}</button>
+              <button data-act="soon">截取帧 ▾</button>
+              <button data-act="trim" style="background: hsl(var(--accent))">${ICONS.scissors}视频修剪</button>
+              <button data-act="soon">工具 ▾</button>
+            </div>`
+          : "";
+
+        const resToolbar = `<div class="tbar" role="toolbar" aria-label="功能区">
+              <button data-act="soon">局部重拍${ICONS.star}</button>
+              <button data-act="soon">智能超清${ICONS.star}</button>
+              <button data-act="soon">视频编辑${ICONS.star}</button>
+              <button data-act="soon">截取帧 ▾</button>
+              <button data-act="trimres">${ICONS.scissors}视频修剪</button>
+              <button data-act="soon">工具 ▾</button>
+            </div>`;
+        /* 生成节点选中（非修剪模式）才有提示词框；修剪模式里面板取代它 */
+        const promptBox =
+          S.selected && !trimming
+            ? `<div class="panel"><div class="pbox"><div class="ptxt">描述你想生成的画面…</div><div class="prow"><span class="chip">视频模型</span><span class="chip">5s · 16:9</span><span class="spacer"></span><span class="chip go">生成 ✦ 4</span></div></div></div>
+               <div class="note-txt" style="position:absolute; left:-110px; top: calc(100% + 120px); width: 520px">原节点是生成节点，所以选中后下方有提示词框。</div>`
+            : "";
+
+        let panel = "";
+        if (showPanel) {
+          const loading = S.phase === "loading";
+          const locked = S.phase === "encoding";
+          const noAudio = $("#simNoAudio").checked;
+          const tiles = Array.from({ length: THUMBS }, (_, i) =>
+            loading ? "<div></div>" : `<div>${frame(((i + 0.5) / THUMBS) * TOTAL, false)}</div>`,
+          ).join("");
+          panel = `<div class="panel note" id="panel">
+            ${S.error ? `<div class="perr"><span>⚠</span><span>${esc(S.error)}</span></div>` : ""}
+            <div class="pill">
+              <button class="ib" id="btnX" aria-label="关闭">${ICONS.x}</button>
+              <span class="sep"></span>
+              <div class="strip ${locked ? "locked" : ""}" id="strip">
+                <div class="tiles ${loading ? "skel" : ""}">${tiles}</div>
+                <i class="dim" id="dimL"></i><i class="dim" id="dimR"></i>
+                <i class="selbox" id="selbox"></i>
+                <i class="ph" id="ph"></i>
+                <div class="h" id="hS" data-h="start" role="slider" tabindex="${locked ? -1 : 0}" aria-label="入点"></div>
+                <div class="h" id="hE" data-h="end" role="slider" tabindex="${locked ? -1 : 0}" aria-label="出点"></div>
+                <span class="dur" id="dur"></span>
+              </div>
+              <span class="sep"></span>
+              <button class="ib ${S.muted ? "on" : ""}" id="btnMute" ${noAudio || locked ? "disabled" : ""} aria-pressed="${S.muted}" title="${noAudio ? "该视频没有声音" : S.muted ? "已去音轨：导出不带声音" : "去音轨"}">${S.muted ? ICONS.mute : ICONS.vol}</button>
+              <button class="ok" id="btnOk"></button>
+            </div>
+            ${locked ? `<div class="prog"><div class="bar"><i id="progBar"></i></div><small id="progTxt"></small></div>` : ""}
+            ${S.confirmAbort ? `<div class="confirmbar"><span>中止编码？已编码的进度会丢失。</span><span class="spacer row"><button class="btn btn-outline" id="abKeep">继续编码</button><button class="btn btn-outline" id="abStop" style="color: rgb(var(--bad))">中止</button></span></div>` : ""}
+          </div>`;
+        }
+
+        const srcNode = `<div class="vnode ${S.selected ? "sel" : ""}" id="srcNode" style="left:140px; top:130px">
+            <div class="vtitle"><span>▶ ${esc(SRC_TITLE)}</span>${srcStatus}</div>
+            ${body}${toolbar}${panel}${promptBox}
+          </div>`;
+
+        const resNodes = S.nodes
+          .map((n, i) => {
+            const x = 520;
+            const y = 130 + i * 0; // 同一水平线；重名时标题自动加编号
+            const up = n.state === "uploading";
+            const sel = S.selRes === n.id;
+            return `<div class="vnode ${sel ? "sel" : ""}" id="n_${n.id}" style="left:${x}px; top:${y}px">
+              <div class="vtitle"><span>▶ ${esc(n.label)}</span><span class="st" style="color: hsl(var(--muted-foreground))">${n.dur}</span></div>
+              <div class="vcard">${frame(n.from, false)}
+                ${up ? `<div class="upl"><span>上传中 <b id="up_${n.id}">${n.up}</b>%</span><div class="pb"><i id="upb_${n.id}" style="width:${n.up}%"></i></div></div>` : `<div class="playbtn">${ICONS.play}</div><div class="vctl"><span>0:00</span><div class="vbar"></div><span>${n.dur}</span></div>`}
+              </div>
+              ${n.failed ? `<div class="perr" style="margin-top:8px"><span>⚠</span><span>上传失败，请重试</span></div>` : ""}
+              ${sel && !up ? resToolbar : ""}
+              ${sel && !up ? `<div class="note-txt" style="position:absolute; left:0; top: calc(100% + 12px); width: 300px">这里没有提示词框：「剪辑」节点是上传素材（<b>uploaded: true</b>），和扩图出来的节点一样，选中后只出上方功能区。</div>` : ""}
+            </div>`;
+          })
+          .join("");
+
+        const edges = S.nodes
+          .map((n) => `<i class="edge ${n.state === "uploading" ? "run" : ""}" style="left:440px; top:${130 + 22 + 6 + 84}px; width:80px; ${n.state === "uploading" ? "border-top-style:dashed" : "border-top-style:solid; border-top-color: hsl(var(--muted-foreground) / 0.6)"}"></i>`)
+          .join("");
+
+        cv.innerHTML = `${edges}${srcNode}${resNodes}
+          <div class="canvas-actions"><button class="btn" id="btnUndo" ${S.nodes.length ? "" : "disabled"}><i data-lucide="undo-2"></i>撤销</button></div>
+          <div class="legend">${S.nodes.length ? `「剪辑」节点是普通上传素材，连线只表示来源。` : `点击视频节点选中它。`}</div>`;
+        icons();
+        paint();
+      }
+
+      /* ---------- 动态绘制：拖动、播放、进度只更新这些，不重绘结构，避免打断拖拽 ---------- */
+      function pct(t) { return (t / TOTAL) * 100; }
+      function paint() {
+        const strip = $("#strip");
+        if (strip) {
+          const a = pct(S.start), b = pct(S.end);
+          $("#hS").style.left = a + "%";
+          $("#hE").style.left = b + "%";
+          $("#dimL").style.cssText = `left:0; width:${a}%`;
+          $("#dimR").style.cssText = `left:${b}%; right:0`;
+          $("#selbox").style.cssText = `left:${a}%; width:${b - a}%`;
+          $("#ph").style.left = pct(clamp(S.cur, 0, TOTAL)) + "%";
+          $("#dur").textContent = r2(S.end - S.start).toFixed(2) + " s";
+          $("#hS").setAttribute("aria-valuetext", r2(S.start).toFixed(2) + " 秒");
+          $("#hE").setAttribute("aria-valuetext", r2(S.end).toFixed(2) + " 秒");
+          const ok = $("#btnOk");
+          if (ok) {
+            ok.disabled = !canConfirm();
+            ok.title = confirmHint();
+            ok.setAttribute("aria-label", confirmHint());
+            ok.innerHTML = S.phase === "encoding" ? ICONS.loader : ICONS.check;
+          }
+          const pb = $("#progBar");
+          if (pb) { pb.style.width = S.progress + "%"; $("#progTxt").textContent = `编码中 ${S.progress}%`; }
+        }
+        const stage = $("#stage");
+        if (stage) {
+          stage.firstElementChild.outerHTML = frame(S.cur, true);
+          $("#stCur").textContent = clock(S.cur);
+          $("#stRng").style.cssText = `left:${pct(S.start)}%; width:${pct(S.end) - pct(S.start)}%`;
+          $("#stPos").style.left = pct(clamp(S.cur, 0, TOTAL)) + "%";
+          const pl = $("#stPlay");
+          if (pl) pl.innerHTML = S.playing ? ICONS.pause : ICONS.play;
+        }
+        const st = $("#srcSt");
+        if (st) st.textContent = `编码中 ${S.progress}%`;
+      }
+
+      /* ---------- 播放：从入点播到出点自动停 ---------- */
+      function stopPlay() { S.playing = false; clearInterval(playTimer); }
+      function togglePlay() {
+        if (S.phase !== "editing") return;
+        if (S.playing) { stopPlay(); paint(); return; }
+        if (S.cur < S.start || S.cur >= S.end - 0.02) S.cur = S.start;
+        S.playing = true;
+        clearInterval(playTimer);
+        playTimer = setInterval(() => {
+          S.cur = r2(S.cur + 0.1);
+          if (S.cur >= S.end) { S.cur = S.start; stopPlay(); }
+          paint();
+        }, 100);
+        paint();
+      }
+
+      /* ---------- 进入 / 退出 ---------- */
+      function enterTrim() {
+        if ($("#simNoWc").checked) { toast("当前浏览器不支持视频修剪，请使用最新版 Chrome / Edge", "bad"); return; }
+        Object.assign(S, { mode: true, phase: "loading", start: 0, end: TOTAL, cur: 0, playing: false, muted: false, progress: 0, error: null, confirmAbort: false });
+        render();
+        setTimeout(() => { if (S.mode && S.phase === "loading") { S.phase = "editing"; render(); } }, 700); // 模拟加载元数据与缩略图
+      }
+      function leaveTrim() {
+        stopPlay();
+        clearInterval(encTimer);
+        Object.assign(S, { mode: false, phase: "editing", error: null, confirmAbort: false, progress: 0 });
+        render();
+      }
+
+      /* ---------- 编码（模拟）与产出 ---------- */
+      function startEncode() {
+        if (!canConfirm()) return;
+        stopPlay();
+        S.error = null;
+        S.phase = "encoding";
+        S.progress = 0;
+        render();
+        encTimer = setInterval(() => {
+          S.progress = Math.min(100, S.progress + 2 + Math.floor(Math.random() * 4));
+          if ($("#simCors").checked && S.progress >= 60) {
+            clearInterval(encTimer);
+            S.phase = "editing";
+            S.error = "读不出视频：存储没有开启跨域读取，或网络中断，请联系管理员在存储桶配置 CORS";
+            S.selected = true;
+            render();
+            toast("编码失败，手柄位置已保留，可以重试", "bad");
+            return;
+          }
+          paint();
+          if (S.progress >= 100) { clearInterval(encTimer); setTimeout(produce, 350); }
+        }, 90);
+      }
+      function produce() {
+        const label = S.nodes.length ? `剪辑 ${S.nodes.length + 1}` : "剪辑"; // newNodeLabel 的去重规则
+        const node = { id: ++seq, label, state: "uploading", up: 0, from: S.start, dur: clock(Math.round(S.end - S.start)) };
+        S.nodes.push(node);
+        Object.assign(S, { mode: false, phase: "editing", progress: 0, error: null });
+        render();
+        const timer = setInterval(() => {
+          if (!S.nodes.includes(node)) { clearInterval(timer); return; } // 被撤销就停
+          node.up = Math.min(100, node.up + 8 + Math.floor(Math.random() * 10));
+          const el = $("#up_" + node.id), bar = $("#upb_" + node.id);
+          if (el) el.textContent = node.up;
+          if (bar) bar.style.width = node.up + "%";
+          if (node.up >= 100) { clearInterval(timer); node.state = "done"; render(); toast("「" + node.label + "」已生成"); }
+        }, 120);
+      }
+
+      /* ---------- 事件 ---------- */
+      const canvas = $("#canvas");
+      canvas.addEventListener("click", (e) => {
+        const t = e.target;
+        const btn = t.closest("button");
+        if (btn && btn.dataset.act === "soon") { toast("「" + btn.textContent.trim().replace(/[▾]/g, "").trim() + "」敬请期待", "warn"); return; }
+        if (btn && btn.dataset.act === "trim") { enterTrim(); return; }
+        if (btn && btn.id === "btnX") {
+          if (S.phase === "encoding") { S.confirmAbort = true; render(); } else leaveTrim();
+          return;
+        }
+        if (btn && btn.id === "abKeep") { S.confirmAbort = false; render(); return; }
+        if (btn && btn.id === "abStop") { leaveTrim(); toast("已中止编码，没有产生节点", "warn"); return; }
+        if (btn && btn.id === "btnOk") { startEncode(); return; }
+        if (btn && btn.id === "btnMute") { S.muted = !S.muted; render(); return; }
+        if (btn && btn.id === "stPlay") { togglePlay(); return; }
+        if (btn && btn.id === "btnUndo") {
+          if (S.nodes.length) { const n = S.nodes.pop(); if (S.selRes === n.id) S.selRes = null; render(); toast("已撤销：「" + n.label + "」和连线一起消失，原节点不变"); }
+          return;
+        }
+        if (t.closest("#stBar") && S.mode && S.phase === "editing") {
+          const r = $("#stBar").getBoundingClientRect();
+          S.cur = r2(clamp(((e.clientX - r.left) / r.width) * TOTAL, S.start, S.end));
+          paint();
+          return;
+        }
+        if (t.closest("#strip") && !t.closest(".h") && S.phase === "editing" && S.mode) {
+          const r = $("#strip").getBoundingClientRect();
+          S.cur = r2(clamp(((e.clientX - r.left) / r.width) * TOTAL, S.start, S.end));
+          paint();
+          return;
+        }
+        if (btn && btn.dataset.act === "trimres") { toast("原型里只有原视频节点能演示修剪；真实产品里「剪辑」节点也能再修剪", "warn"); return; }
+        if (t.closest("#srcNode")) {
+          if (!S.selected || S.selRes) { S.selected = true; S.selRes = null; render(); }
+          return;
+        }
+        /* 点「剪辑」节点：选中它，只出功能区，没有提示词框 */
+        const rn = t.closest('[id^="n_"]');
+        if (rn) {
+          const id = Number(rn.id.slice(2));
+          deselectSource();
+          S.selRes = id;
+          render();
+          return;
+        }
+        if (t.closest(".vnode")) return;
+        /* 点画布空白：取消选中 */
+        if (S.selRes) { S.selRes = null; render(); return; }
+        if (S.selected) {
+          deselectSource();
+          render();
+        }
+      });
+
+      /* 取消选中源节点：编码中面板收起、编码继续；编辑态直接退出修剪模式 */
+      function deselectSource() {
+        if (!S.selected) return;
+        if (S.mode && S.phase === "encoding") {
+          S.selected = false;
+          toast("编码继续进行，点回视频节点可看到进度", "warn");
+        } else {
+          stopPlay();
+          S.selected = false;
+          if (S.mode) S.mode = false;
+        }
+      }
+
+      /* 手柄拖动：Pointer Events + pointer capture */
+      canvas.addEventListener("pointerdown", (e) => {
+        const h = e.target.closest(".h");
+        if (!h || S.phase !== "editing") return;
+        e.preventDefault();
+        stopPlay();
+        h.setPointerCapture(e.pointerId);
+        h.focus();
+        const which = h.dataset.h;
+        const strip = $("#strip");
+        const move = (ev) => {
+          const r = strip.getBoundingClientRect();
+          const t = r2(clamp(((ev.clientX - r.left) / r.width) * TOTAL, 0, TOTAL));
+          if (which === "start") S.start = clamp(t, 0, S.end - MIN_GAP);
+          else S.end = clamp(t, S.start + MIN_GAP, TOTAL);
+          S.cur = which === "start" ? S.start : S.end; // 预览跳到被拖的那一端
+          paint();
+        };
+        const up = () => { h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up); };
+        h.addEventListener("pointermove", move);
+        h.addEventListener("pointerup", up);
+        h.addEventListener("pointercancel", up);
+      });
+
+      /* 键盘：手柄上 ←/→ 微调；Space 播放；Enter 确认；Esc 退出（编码中无效） */
+      document.addEventListener("keydown", (e) => {
+        if (!S.mode || $("#tab-proto").hidden) return;
+        if (e.key === "Escape") {
+          if (S.phase === "encoding") toast("编码中，点 × 才能中止", "warn");
+          else leaveTrim();
+          return;
+        }
+        if (S.phase !== "editing") return;
+        const h = document.activeElement && document.activeElement.classList.contains("h") ? document.activeElement.dataset.h : null;
+        if (h && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          e.preventDefault();
+          const d = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 1 : 0.1);
+          if (h === "start") S.start = r2(clamp(S.start + d, 0, S.end - MIN_GAP));
+          else S.end = r2(clamp(S.end + d, S.start + MIN_GAP, TOTAL));
+          S.cur = h === "start" ? S.start : S.end;
+          paint();
+        } else if (e.key === " " && !(document.activeElement && document.activeElement.tagName === "BUTTON")) {
+          e.preventDefault();
+          togglePlay();
+        } else if (e.key === "Enter" && canConfirm()) {
+          e.preventDefault();
+          startEncode();
+        }
+      });
+
+      $("#simNoAudio").addEventListener("change", () => { if (S.mode) { if ($("#simNoAudio").checked) S.muted = false; render(); } });
+
+      function resetProto() { fresh(); render(); }
+
+      fresh();
+      render();
+      icons();
+    </script>
+  </body>
+</html>

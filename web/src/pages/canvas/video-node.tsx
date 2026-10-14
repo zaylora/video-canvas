@@ -16,6 +16,7 @@ import { OpTabs } from "@/components/canvas/op-tabs";
 import { PresetPicker } from "@/components/canvas/preset-picker";
 import { cn } from "@/lib/utils";
 import { RefStrip } from "@/components/canvas/ref-strip";
+import { TrimStage } from "@/components/canvas/trim-stage";
 import type { GenerationOp } from "@/api/model/type";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import { NODE_META } from "@/constants/canvas";
 import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useOutpaintStore } from "@/store/outpaint";
+import { useTrimStore } from "@/store/trim";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
 import { useTaskNode } from "@/hooks/use-task-node";
@@ -356,36 +358,57 @@ function MediaTaskNode({
     if (!selected || multiSelected) leaveOutpaint(id);
   }, [id, leaveOutpaint, multiSelected, selected]);
 
+  // 取消选中或变成多选时退出修剪模式；编码中不退（leave 会拒绝），编码继续，选回来能接上进度
+  const leaveTrim = useTrimStore((state) => state.leave);
+  const trimming = useTrimStore((state) => state.nodeId === id);
+  const trimEncoding = useTrimStore((state) => state.nodeId === id && state.phase === "encoding");
+  const trimProgress = useTrimStore((state) => state.progress);
+  useEffect(() => {
+    if (!selected || multiSelected) leaveTrim(id);
+  }, [id, leaveTrim, multiSelected, selected]);
+
   return (
     <>
       <NodeCard
         title={data.label}
         onRename={(label) => updateNodeData(id, { label })}
         icon={KindIcon ? <KindIcon /> : undefined}
-        status={<NodeStatusLabel view={view} uploadFailed={uploadFailed} />}
+        status={
+          trimEncoding ? (
+            <span className="text-status-running font-mono tabular-nums">
+              编码中 {trimProgress}%
+            </span>
+          ) : (
+            <NodeStatusLabel view={view} uploadFailed={uploadFailed} />
+          )
+        }
         handles={vm.handles}
         canAcceptConnection={canAcceptConnection}
         width={nodeFrameSize(aspect).width}
       >
-        <NodeVideoBody
-          view={view}
-          aspect={aspect}
-          placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
-          mediaType={mediaType}
-          placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
-          // 扩图在合成 / 上传的阶段还没有任务，没有可取消的东西（设计稿 6.17：本期不做）
-          onCancel={
-            (vm.view.phase === "queued" || vm.view.phase === "running") &&
-            !outpaintRunner.isActive(id)
-              ? vm.cancel
-              : undefined
-          }
-          cancelling={vm.cancelling}
-          onRetry={retryable ? retry : undefined}
-          retryDisabled={!uploadFailed && !outpaintBeforeUpload && !!vm.blockedReason}
-          retryHint={(!uploadFailed && !outpaintBeforeUpload && vm.blockedReason) || undefined}
-          active={!!selected}
-        />
+        {trimming && view.phase === "done" ? (
+          <TrimStage src={view.src} aspect={aspect} />
+        ) : (
+          <NodeVideoBody
+            view={view}
+            aspect={aspect}
+            placeholder={`选中后输入提示词生成${meta?.label ?? ""}`}
+            mediaType={mediaType}
+            placeholderIcon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : undefined}
+            // 扩图在合成 / 上传的阶段还没有任务，没有可取消的东西（设计稿 6.17：本期不做）
+            onCancel={
+              (vm.view.phase === "queued" || vm.view.phase === "running") &&
+              !outpaintRunner.isActive(id)
+                ? vm.cancel
+                : undefined
+            }
+            cancelling={vm.cancelling}
+            onRetry={retryable ? retry : undefined}
+            retryDisabled={!uploadFailed && !outpaintBeforeUpload && !!vm.blockedReason}
+            retryHint={(!uploadFailed && !outpaintBeforeUpload && vm.blockedReason) || undefined}
+            active={!!selected}
+          />
+        )}
       </NodeCard>
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && !uploading && !uploadFailed && (

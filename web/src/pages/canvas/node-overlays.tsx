@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
+import { TrimOverlay } from "@/components/canvas/trim-overlay";
 import {
   PANEL_OFFSET,
   useMarqueeSelecting,
@@ -17,11 +18,13 @@ import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useOutpaintStore } from "@/store/outpaint";
+import { useTrimStore } from "@/store/trim";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
 import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outputs";
 import { outpaintModels } from "@/utils/canvas/outpaint-node";
+import { supportsTrim, UNSUPPORTED_TRIM_MESSAGE } from "@/utils/canvas/trim-engine";
 
 import { useNodePreview } from "./preview-context";
 
@@ -79,6 +82,8 @@ export function NodeOverlays({
   const zoom = useStore((state) => state.transform[2]);
   const outpainting = useOutpaintStore((state) => state.nodeId === id);
   const enterOutpaint = useOutpaintStore((state) => state.enter);
+  const trimming = useTrimStore((state) => state.nodeId === id);
+  const enterTrim = useTrimStore((state) => state.enter);
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -115,7 +120,20 @@ export function NodeOverlays({
     }
     enterOutpaint(id);
   }, [enterOutpaint, id, imageModels.models, imageModels.status]);
-  const onAction = data.kind === "image" ? { outpaint: startOutpaint } : undefined;
+  /** 点「视频修剪」：浏览器不支持 WebCodecs、别的视频正在编码时都不进，说明原因 */
+  const startTrim = useCallback(() => {
+    if (!supportsTrim()) {
+      toast(UNSUPPORTED_TRIM_MESSAGE);
+      return;
+    }
+    if (!enterTrim(id)) toast("另一段视频正在编码，请先等它完成");
+  }, [enterTrim, id]);
+  const onAction =
+    data.kind === "image"
+      ? { outpaint: startOutpaint }
+      : data.kind === "video"
+        ? { trim: startTrim }
+        : undefined;
 
   const { src, text, label, fileName } = data;
   const onTail = {
@@ -145,6 +163,9 @@ export function NodeOverlays({
 
   // 扩图模式：框 + 面板取代平时的功能区和生成面板
   if (outpainting) return <OutpaintOverlay id={id} data={data} />;
+
+  // 修剪模式：修剪面板取代平时的功能区和生成面板
+  if (trimming) return <TrimOverlay id={id} data={data} />;
 
   return (
     <>

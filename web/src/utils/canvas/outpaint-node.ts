@@ -2,21 +2,13 @@ import type { Capabilities, ModelInfo } from "@/api/model/type";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, CanvasNode, FlowNode } from "@/types";
 
-import { absolutePosition } from "./group";
 import { NODE_LABEL_MAX, newNodeLabel } from "./node-label";
 import { nodeFrameSize, parseAspect, ratioParam } from "./node-frame";
 import { snapRatio } from "./outpaint-frame";
-import { DEFAULT_NODE_SIZE } from "./placement";
+import { placeBeside, sizeOfNode } from "./place-beside";
 
 /** 拼在用户提示词前面的固定指令：告诉模型只补透明区域、别动原图（设计稿 6.17） */
 export const OUTPAINT_INSTRUCTION = "保持原图内容不变，自然补全图片中的透明区域。";
-
-/** 新节点离原图的水平间距（画布坐标） */
-const NODE_GAP_X = 80;
-/** 新节点之间、与已有节点之间至少留的空隙 */
-const AVOID_GAP = 40;
-/** 找空位最多往下试几次，极端拥挤时不再找，叠放也比卡死好 */
-const MAX_SHIFTS = 60;
 
 /**
  * 扩图提示词 = 固定指令 + 用户写的内容（可以为空）。
@@ -25,19 +17,6 @@ const MAX_SHIFTS = 60;
 export function buildOutpaintPrompt(userPrompt: string): string {
   return OUTPAINT_INSTRUCTION + userPrompt.trim();
 }
-
-const sizeOf = (node: FlowNode) => ({
-  width: node.measured?.width ?? node.width ?? DEFAULT_NODE_SIZE.width,
-  height: node.measured?.height ?? node.height ?? DEFAULT_NODE_SIZE.height,
-});
-
-type Rect = { x: number; y: number; width: number; height: number };
-
-const overlaps = (a: Rect, b: Rect) =>
-  a.x < b.x + b.width + AVOID_GAP &&
-  b.x < a.x + a.width + AVOID_GAP &&
-  a.y < b.y + b.height + AVOID_GAP &&
-  b.y < a.y + a.height + AVOID_GAP;
 
 /**
  * 扩图要建的新节点和它到原图的连线。
@@ -70,22 +49,9 @@ export function buildOutpaintNode(input: {
     nodes.map((node) => node.data.label),
   );
 
-  const size = sizeOf(source);
-  const origin = absolutePosition(source, nodes);
+  const size = sizeOfNode(source);
   const newSize = nodeFrameSize(parseAspect(ratio) ?? size.width / size.height);
-  const newHeight = newSize.height;
-  const taken: Rect[] = nodes.map((node) => ({
-    ...absolutePosition(node, nodes),
-    ...sizeOf(node),
-  }));
-
-  const x = origin.x + size.width + NODE_GAP_X;
-  const centeredY = origin.y + size.height / 2 - newHeight / 2;
-  let y = centeredY;
-  for (let step = 0; step < MAX_SHIFTS; step++) {
-    if (!taken.some((rect) => overlaps({ x, y, ...newSize }, rect))) break;
-    y += newHeight + AVOID_GAP;
-  }
+  const { x, y } = placeBeside({ source, nodes, size: newSize });
 
   const fullPrompt = buildOutpaintPrompt(input.prompt);
   const id = newId();
