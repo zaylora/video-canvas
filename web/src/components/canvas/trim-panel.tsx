@@ -27,7 +27,7 @@ const KEY_STEP_BIG = 1;
  * 胶片条的缩略图：还在读时整条铺一层扫光占位，读好后每格淡入；失败的格子用灰底占位。
  * thumbs 为空表示还在读（读失败时上游给的是一排 null）。
  */
-function Filmstrip({ thumbs }: { thumbs: (string | null)[] }) {
+export function Filmstrip({ thumbs }: { thumbs: (string | null)[] }) {
   const loading = thumbs.length === 0;
   const cells = loading ? Array.from({ length: 16 }, () => null) : thumbs;
   return (

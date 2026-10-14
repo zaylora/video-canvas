@@ -16,6 +16,7 @@ import { OpTabs } from "@/components/canvas/op-tabs";
 import { PresetPicker } from "@/components/canvas/preset-picker";
 import { cn } from "@/lib/utils";
 import { RefStrip } from "@/components/canvas/ref-strip";
+import { FrameStage } from "@/components/canvas/frame-stage";
 import { TrimStage } from "@/components/canvas/trim-stage";
 import type { GenerationOp } from "@/api/model/type";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import { NODE_META } from "@/constants/canvas";
 import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
 import { useOutpaintStore } from "@/store/outpaint";
+import { useFramePickStore } from "@/store/frame-pick";
 import { useTrimStore } from "@/store/trim";
 import { useTaskGeneration } from "@/hooks/use-task-generation";
 import { useMediaAspect } from "@/hooks/use-media-aspect";
@@ -367,6 +369,13 @@ function MediaTaskNode({
     if (!selected || multiSelected) leaveTrim(id);
   }, [id, leaveTrim, multiSelected, selected]);
 
+  // 取消选中或变成多选时退出选帧模式，暂存的帧一并丢弃
+  const leaveFramePick = useFramePickStore((state) => state.leave);
+  const framePicking = useFramePickStore((state) => state.nodeId === id);
+  useEffect(() => {
+    if (!selected || multiSelected) leaveFramePick(id);
+  }, [id, leaveFramePick, multiSelected, selected]);
+
   return (
     <>
       <NodeCard
@@ -388,6 +397,8 @@ function MediaTaskNode({
       >
         {trimming && view.phase === "done" ? (
           <TrimStage src={view.src} aspect={aspect} />
+        ) : framePicking && view.phase === "done" ? (
+          <FrameStage src={view.src} aspect={aspect} />
         ) : (
           <NodeVideoBody
             view={view}

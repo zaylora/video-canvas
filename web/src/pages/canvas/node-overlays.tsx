@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
+import { FrameOverlay } from "@/components/canvas/frame-overlay";
 import { TrimOverlay } from "@/components/canvas/trim-overlay";
 import {
   PANEL_OFFSET,
@@ -15,8 +16,10 @@ import {
 } from "@/components/canvas/hooks/use-panel-placement";
 import { NODE_TOOLBAR } from "@/constants/node-toolbar";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
+import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
+import { useFramePickStore } from "@/store/frame-pick";
 import { useOutpaintStore } from "@/store/outpaint";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
@@ -84,6 +87,9 @@ export function NodeOverlays({
   const enterOutpaint = useOutpaintStore((state) => state.enter);
   const trimming = useTrimStore((state) => state.nodeId === id);
   const enterTrim = useTrimStore((state) => state.enter);
+  const framePicking = useFramePickStore((state) => state.nodeId === id);
+  const enterFramePick = useFramePickStore((state) => state.enter);
+  const { captureQuick } = useFrameNodes();
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -126,13 +132,28 @@ export function NodeOverlays({
       toast(UNSUPPORTED_TRIM_MESSAGE);
       return;
     }
+    // 和选帧互斥：进修剪先退出选帧（暂存的帧丢弃）
+    useFramePickStore.getState().leave();
     if (!enterTrim(id)) toast("另一段视频正在编码，请先等它完成");
   }, [enterTrim, id]);
+  /** 点「截取帧 → 自定义」：不支持 WebCodecs、别的视频正在修剪编码时都不进，说明原因 */
+  const startFramePick = useCallback(() => {
+    if (!supportsTrim()) {
+      toast(UNSUPPORTED_TRIM_MESSAGE);
+      return;
+    }
+    if (!enterFramePick(id)) toast("另一段视频正在编码，请先等它完成");
+  }, [enterFramePick, id]);
   const onAction =
     data.kind === "image"
       ? { outpaint: startOutpaint }
       : data.kind === "video"
-        ? { trim: startTrim }
+        ? {
+            trim: startTrim,
+            "frame-first": () => void captureQuick(id, "first"),
+            "frame-last": () => void captureQuick(id, "last"),
+            "frame-custom": startFramePick,
+          }
         : undefined;
 
   const { src, text, label, fileName } = data;
@@ -166,6 +187,9 @@ export function NodeOverlays({
 
   // 修剪模式：修剪面板取代平时的功能区和生成面板
   if (trimming) return <TrimOverlay id={id} data={data} />;
+
+  // 选帧模式：选帧面板取代平时的功能区和生成面板
+  if (framePicking) return <FrameOverlay id={id} data={data} />;
 
   return (
     <>

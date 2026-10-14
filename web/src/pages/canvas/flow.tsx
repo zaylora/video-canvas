@@ -45,6 +45,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
 import { useSettingsStore } from "@/store";
+import { useFramePickStore } from "@/store/frame-pick";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, NodeOutput, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
@@ -233,6 +234,8 @@ export const Flow = memo(function Flow({
             trimRunner.abort(change.id);
             useTrimStore.getState().reset();
           }
+          // 删掉正在选帧的视频：暂存的帧没处挂，清掉会话
+          useFramePickStore.getState().leave(change.id);
           const removed = nodesRef.current.find((node) => node.id === change.id);
           if (removed && !isGroupNode(removed)) releaseObjectUrl(removed.data.src);
         }
@@ -281,6 +284,8 @@ export const Flow = memo(function Flow({
       // 离开画布：还在编码的修剪一并中止并清掉会话，编码结果没有节点可挂
       trimRunner.abortAll();
       useTrimStore.getState().reset();
+      // 选帧会话只在内存里，离开画布就丢，暂存帧的本地地址一并释放
+      useFramePickStore.getState().reset();
       for (const node of nodesRef.current) if (!isGroupNode(node)) releaseObjectUrl(node.data.src);
     },
     [],

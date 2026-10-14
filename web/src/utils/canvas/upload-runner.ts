@@ -93,6 +93,14 @@ export function createUploadRunner(
       running.clear();
       files.clear();
     },
+    /**
+     * 先占个位：节点已经建出来（显示上传中），文件还在别处生成（比如从视频截帧）。
+     * 占位期间 isActive 为真，不会被当成被中断的上传；之后 start 接着传，cancel 清掉占位。
+     * @param id 节点 id
+     */
+    hold: (id: string) => {
+      running.set(id, new AbortController());
+    },
     /** 这个节点是不是真有一个上传在跑（撤销恢复出来的上传中节点没有，只是个空壳） */
     isActive: (id: string) => running.has(id),
     /** 这个节点失败后还留着文件，可以重试 */
