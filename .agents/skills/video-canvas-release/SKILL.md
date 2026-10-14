@@ -47,14 +47,14 @@ metadata:
 5. 用户确认后，将草稿写入 `CHANGELOG.md`：顶部保留空的 `## [Unreleased]`；将本次内容写为 `## [<version>] - YYYY-MM-DD`；不复制 Git 提交标题，不写 `Update changelog` 等维护记录；保留已有历史版本，不改写历史事实；更新底部版本比较链接（如果文件使用比较链接）。
 6. 运行项目已有的定向检查，并检查 `CHANGELOG.md` 中目标版本存在且至少有一条用户可见变更。同时把 `VERSION` 改为目标版本，与 `CHANGELOG.md` 一起提交：`docs: update changelog for v<version>`。CI 不再回写 `VERSION`，只会校验它与标签一致，所以必须在打标签前提交。
 7. 创建带说明的标签：`git tag -a v<version> -m "Release v<version>"`，然后推送：`git push origin v<version>`。
-8. 通过 `gh run list` 等待并核对 `Release on tag` 和 `Release Docker images`：发布说明应来自已确认的 `CHANGELOG.md`，`VERSION` 校验、质量检查和镜像发布都成功后才算完成。若任务只要求创建标签，可在标签推送成功后返回标签地址，并说明工作流状态。
+8. 通过 `gh run list` 等待并核对 `Release Docker images`（其中 `validate` 作业先校验标签、`VERSION` 与 CHANGELOG，`release` 作业在镜像推送成功后才创建 Release）：发布说明应来自已确认的 `CHANGELOG.md`，`VERSION` 校验、质量检查和镜像发布都成功后才算完成。若任务只要求创建标签，可在标签推送成功后返回标签地址，并说明工作流状态。
 9. 最终报告目标版本、标签、Release 地址、工作流地址和每项验证结果。不要把密钥、令牌或运行时数据写入仓库。
 
 ## 本仓库发布约定
 
 推送 `v*` 标签会触发：
 
-- `.github/workflows/release-on-tag.yml`：校验 `VERSION` 与标签一致，并生成 GitHub Release；不会再向 `master` 推送提交，因此本地不会因发版而分叉。
+- `.github/workflows/release-docker.yml` 的 `release` 作业：镜像推送成功后，校验 `VERSION` 与标签一致，并生成 GitHub Release；不会再向 `master` 推送提交，因此本地不会因发版而分叉。
 - `.github/workflows/release-docker.yml`：执行质量检查并构建、推送 backend/web 镜像。
 
 标签格式必须是 `vMAJOR.MINOR.PATCH`，例如 `v0.1.7`。
