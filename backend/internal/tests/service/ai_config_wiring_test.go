@@ -76,7 +76,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		e.gotAuths = append(e.gotAuths, r.Header.Get("Authorization"))
 		e.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/models" {
+		if r.URL.Path == "/v1/models" {
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"},{"id":"kling-v2-master"},{"id":"text-embedding-3-small"}]}`))
 			return
 		}
@@ -144,7 +144,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. 拉取上游模型：宿主内置的通用请求（GET /models + Bearer），不经过插件；列出全部，不做类型过滤
+	// 3. 拉取上游模型：宿主内置的通用请求（GET /v1/models + Bearer），不经过插件；列出全部，不做类型过滤
 	pulled, err := e.channels.PullModels(ctx, "openai-main")
 	if err != nil || pulled.Total != 3 {
 		t.Fatalf("拉取应成功并列出 3 个模型：%+v %v", pulled, err)

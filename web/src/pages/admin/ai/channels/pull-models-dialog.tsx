@@ -52,7 +52,7 @@ type PullState =
   | { kind: "ready"; models: PulledModel[] };
 
 /**
- * 拉取模型弹窗：打开即向上游请求模型清单（宿主内置的通用请求 GET {base_url}/models，不落库）。
+ * 拉取模型弹窗：打开即向上游请求模型清单（宿主内置的通用请求 GET {base_url}/v1/models，不落库）。
  * - 成功：默认全选，可搜索、批量全选 / 取消全选（只作用于搜索命中的项）；已存在的模型会标出，勾选了也不会重复导入；
  * - 失败：显示后端原因与建议，可重试或手动新增模型；Key 未设置时按角色提示（super_admin 去设置 Key，admin 联系 super_admin）；
  * - 上游返回空列表：提示手动新增；
@@ -167,7 +167,7 @@ export function PullModelsDialog({
                   <>
                     <li>检查 Base URL 和 API Key 是否正确。</li>
                     <li>
-                      该上游可能不提供 <code>/models</code>（视频类上游常见），请手动新增模型。
+                      该上游可能不提供 <code>/v1/models</code>（视频类上游常见），请手动新增模型。
                     </li>
                   </>
                 )}

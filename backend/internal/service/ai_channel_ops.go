@@ -80,7 +80,7 @@ type PullResult struct {
 	Total  int           `json:"total"`
 }
 
-// PullModels 向上游拉取模型清单：宿主内置的通用请求（GET {base_url}/models，渠道 API Key 作 Bearer），不经过协议插件。
+// PullModels 向上游拉取模型清单：宿主内置的通用请求（GET {base_url}/v1/models，渠道 API Key 作 Bearer），不经过协议插件。
 // 只读：不落库，也不改渠道。渠道不存在返回 ErrChannelNotFound；API Key 没设置返回 ErrChannelSecretUnset；
 // 上游不通、401/403、返回格式不符、超时、过大都返回 ErrChannelPullFailed（原因写进 msg，已脱敏）。
 func (s *AIChannelService) PullModels(ctx context.Context, key string) (*PullResult, error) {

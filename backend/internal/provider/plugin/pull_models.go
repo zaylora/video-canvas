@@ -21,11 +21,11 @@ const pullModelsTimeout = 30 * time.Second
 // pullErrSnippetLen 是错误信息里引用的上游响应片段的最大字符数。
 const pullErrSnippetLen = 200
 
-// ListUpstreamModels 实现 provider.ModelLister：GET {base_url}/models，渠道 API Key 作 Bearer，读 OpenAI 形状的 data[].id。
+// ListUpstreamModels 实现 provider.ModelLister：GET {base_url}/v1/models，渠道 API Key 作 Bearer，读 OpenAI 形状的 data[].id。
 // 与其他出站请求一样走 SSRF 防护的客户端和渠道限流；渠道自定义请求头照常带上（目标就是 base_url 本身）。
 // 失败都返回 *provider.PullError，信息里不含 Key 明文。
 func (e *Executor) ListUpstreamModels(ctx context.Context, ch provider.ChannelSnapshot, apiKey string) ([]string, error) {
-	// 1. 目标地址：base_url + /models
+	// 1. 目标地址：base_url 已以 /v1 结尾时不重复拼接
 	target, err := pullModelsURL(ch.BaseURL)
 	if err != nil {
 		return nil, &provider.PullError{Reason: provider.PullUnreachable, Message: "渠道的 Base URL 不合法"}
@@ -67,13 +67,19 @@ func (e *Executor) ListUpstreamModels(ctx context.Context, ch provider.ChannelSn
 			Message: fmt.Sprintf("上游拒绝了请求（HTTP %d），请检查 API Key 是否有效、有无权限", resp.StatusCode)}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return nil, &provider.PullError{Reason: provider.PullStatus, Status: resp.StatusCode,
-			Message: fmt.Sprintf("上游返回 HTTP %d，它可能不提供 /models：%s", resp.StatusCode, redact(snippet(body)))}
+			Message: fmt.Sprintf("上游返回 HTTP %d，它可能不提供 /v1/models：%s", resp.StatusCode, redact(snippet(body)))}
 	case len(body) > provider.MaxPullBodyBytes:
 		return nil, &provider.PullError{Reason: provider.PullTooLarge, Message: "上游返回的模型清单过大"}
 	}
 
 	// 4. 解析 OpenAI 形状：{"data":[{"id":"..."}]}；去重保序，没有 id 的项忽略
-	return parsePulledModels(body)
+	ids, err := parsePulledModels(body)
+	var pe *provider.PullError
+	if errors.As(err, &pe) && pe.Reason == provider.PullFormat {
+		// 格式不符时带上 Content-Type 和响应开头，方便判断上游返回的是 HTML 页面还是别的 JSON
+		pe.Message += fmt.Sprintf("（Content-Type：%s，响应开头：%s）", resp.Header.Get("Content-Type"), redact(snippet(body)))
+	}
+	return ids, err
 }
 
 // parsePulledModels 解析 OpenAI 形状的模型列表，去重保序；不是该形状返回 PullFormat，超过上限返回 PullTooLarge。
@@ -102,13 +108,18 @@ func parsePulledModels(body []byte) ([]string, error) {
 	return out, nil
 }
 
-// pullModelsURL 由 base_url 拼出模型清单地址：只在末尾补 /models，不自动补 /v1（上游需要 /v1 就写进 base_url）。
+// pullModelsURL 由 base_url 拼出模型清单地址：路径已以 /v1 结尾就只补 /models，否则补 /v1/models。
 func pullModelsURL(base string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" {
 		return "", errors.New("base_url 不合法")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/models"
+	p := strings.TrimRight(u.Path, "/")
+	if strings.HasSuffix(p, "/v1") {
+		u.Path = p + "/models"
+	} else {
+		u.Path = p + "/v1/models"
+	}
 	u.RawQuery, u.Fragment = "", ""
 	return u.String(), nil
 }

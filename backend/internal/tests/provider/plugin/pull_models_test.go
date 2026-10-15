@@ -23,7 +23,7 @@ func pullExecutor(ipAllowed func() bool) *plugin.Executor {
 	return plugin.New(opts)
 }
 
-// 拉取上游模型：GET {base_url}/models，渠道 API Key 作 Bearer，读 OpenAI 形状 data[].id，去重保序。
+// 拉取上游模型：GET {base_url}/v1/models，渠道 API Key 作 Bearer，读 OpenAI 形状 data[].id，去重保序。
 func TestListUpstreamModels_成功(t *testing.T) {
 	var mu sync.Mutex
 	var gotPath, gotAuth, gotBiz, gotUA string
@@ -45,13 +45,12 @@ func TestListUpstreamModels_成功(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if gotPath != "/models" || gotAuth != "Bearer sk-test" || gotBiz != "canvas" || gotUA == "" {
+	if gotPath != "/v1/models" || gotAuth != "Bearer sk-test" || gotBiz != "canvas" || gotUA == "" {
 		t.Fatalf("上游请求不对：path=%q auth=%q biz=%q ua=%q", gotPath, gotAuth, gotBiz, gotUA)
 	}
 }
 
-// 只在 base_url 后拼 /models，不自动补 /v1：base_url 带 /v1 与结尾斜杠时照常拼接。
-func TestListUpstreamModels_只拼接models(t *testing.T) {
+func TestListUpstreamModels_baseURL已带v1不重复拼接(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -63,7 +62,7 @@ func TestListUpstreamModels_只拼接models(t *testing.T) {
 		t.Fatalf("空列表不是错误：%v %v", got, err)
 	}
 	if gotPath != "/v1/models" {
-		t.Fatalf("路径 = %q，期望 /v1/models（base_url 自带 /v1）", gotPath)
+		t.Fatalf("路径 = %q，期望 /v1/models", gotPath)
 	}
 }
 
@@ -133,5 +132,25 @@ func TestListUpstreamModels_拦截内网地址(t *testing.T) {
 	var pe *provider.PullError
 	if !errors.As(err, &pe) || pe.Reason != provider.PullUnreachable {
 		t.Fatalf("内网地址应被拦截并报不可达：%v", err)
+	}
+}
+
+// 格式不符时，错误信息要带上响应开头（脱敏），方便判断上游返回的是 HTML 还是别的 JSON。
+func TestListUpstreamModels_格式不符带响应片段(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><title>console sk-secret</title></html>"))
+	}))
+	defer srv.Close()
+	_, err := pullExecutor(func() bool { return true }).ListUpstreamModels(context.Background(), provider.ChannelSnapshot{Key: "c1", BaseURL: srv.URL}, "sk-secret")
+	var pe *provider.PullError
+	if !errors.As(err, &pe) || pe.Reason != provider.PullFormat {
+		t.Fatalf("错误 = %v，期望格式错误", err)
+	}
+	if !strings.Contains(err.Error(), "<html><title>console") || !strings.Contains(err.Error(), "text/html") {
+		t.Fatalf("错误信息缺少响应片段 / Content-Type：%v", err)
+	}
+	if strings.Contains(err.Error(), "sk-secret") {
+		t.Fatalf("错误信息里不能出现 Key 明文：%v", err)
 	}
 }

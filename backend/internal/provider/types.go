@@ -327,7 +327,7 @@ type PullReason string
 const (
 	PullUnreachable  PullReason = "unreachable"  // 连不上：地址不可达、超时、被 SSRF 防护拦截
 	PullUnauthorized PullReason = "unauthorized" // 401 / 403：Key 无效或无权限
-	PullStatus       PullReason = "status"       // 其他非 2xx，常见于上游没有 /models
+	PullStatus       PullReason = "status"       // 其他非 2xx，常见于上游没有 /v1/models
 	PullFormat       PullReason = "format"       // 响应不是 OpenAI 形状的模型列表
 	PullTooLarge     PullReason = "too_large"    // 响应体或模型数超过上限
 )
@@ -342,7 +342,7 @@ type PullError struct {
 // Error 实现 error。
 func (e *PullError) Error() string { return e.Message }
 
-// ModelLister 向渠道的上游请求模型清单（通用的 GET {base_url}/models，渠道 API Key 作 Bearer），
+// ModelLister 向渠道的上游请求模型清单（通用的 GET {base_url}/v1/models，渠道 API Key 作 Bearer），
 // 不经过协议插件：渠道不绑协议，所以拉取是宿主内置的能力。由插件宿主（provider/plugin）实现。
 type ModelLister interface {
 	// ListUpstreamModels 返回上游模型 id（去重、保持上游顺序）；失败返回 *PullError。

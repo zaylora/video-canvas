@@ -165,7 +165,7 @@ make run
 | PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；`headers` 传了就整体替换） |
 | PUT      | /api/v1/admin/ai/channels/:key/secret           | super_admin | 设置渠道 API Key（只写） |
 | PUT      | /api/v1/admin/ai/channels/:key/secret-key       | super_admin | 设置 / 清除渠道 Secret Key（可选的第二凭证，空串清除，只写） |
-| POST     | /api/v1/admin/ai/channels/:key/pull-models      | admin       | 向上游拉取模型清单（`GET {base_url}/models`，不落库）→ `{models:[{id,exists}],total}` |
+| POST     | /api/v1/admin/ai/channels/:key/pull-models      | admin       | 向上游拉取模型清单（`GET {base_url}/v1/models`，不落库）→ `{models:[{id,exists}],total}` |
 | POST     | /api/v1/admin/ai/channels/:key/models/import    | admin       | 把所选上游模型导入成“待配置”模型（未启用、没选协议），已有的跳过 |
 | PUT      | /api/v1/admin/ai/channels/:key/models/sort      | admin       | 调整渠道内模型顺序：`{keys}` 必须是该渠道全部模型 |
 | PUT      | /api/v1/admin/ai/channels/sort                  | super_admin | 调整渠道顺序：`{keys}` 必须是全部渠道；用户看到的模型顺序 = 渠道顺序 + 渠道内顺序 |

@@ -265,7 +265,7 @@
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
             <div class="node"><b>2 新增渠道</b>名称、地址、Key、请求头、限流。<b>不选协议</b></div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="node hl"><b>3 拉取模型</b>宿主发 <code>GET /models</code>；得到“待配置”模型</div>
+            <div class="node hl"><b>3 拉取模型</b>宿主发 <code>GET /v1/models</code>；得到“待配置”模型</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
             <div class="node hl"><b>4 模型里选协议</b>先选能力，再从协议列表选；填协议设置</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
@@ -276,7 +276,7 @@
           <div class="note-txt">设计：渠道回答“连到哪里、用什么凭证、一次最多发多少”；模型回答“用哪种协议、什么参数、卖多少积分”。放弃了“渠道级连通性检查”：视频类上游没有通用探测接口，检查挪到第 5 步。</div>
           <div class="callout c-warn" style="margin-top: 10px">
             <i data-lucide="corner-down-right"></i>
-            <div><b>拉不到模型时（回退，永远可用）：</b>上游没有 <code>/models</code>、Key 无效、格式不符，弹窗里给出原因，并可以<b>手动新增模型</b>。没选协议的模型保持“待配置”，<b>不会出现在画布里</b>，也不能启用。</div>
+            <div><b>拉不到模型时（回退，永远可用）：</b>上游没有 <code>/v1/models</code>、Key 无效、格式不符，弹窗里给出原因，并可以<b>手动新增模型</b>。没选协议的模型保持“待配置”，<b>不会出现在画布里</b>，也不能启用。</div>
           </div>
         </div>
 
@@ -327,7 +327,7 @@
             <div class="card">
               <ol class="steps" style="margin: 0; padding: 0">
                 <li><b>super_admin 新增渠道</b><small>填名称、地址、API Key；保存只做字段校验，不发请求。</small></li>
-                <li><b>点“拉取模型”</b><small>宿主向 <code>{base_url}/models</code> 发请求，弹窗列出 8 个，默认全选。</small></li>
+                <li><b>点“拉取模型”</b><small>宿主向 <code>{base_url}/v1/models</code> 发请求，弹窗列出 8 个，默认全选。</small></li>
                 <li><b>确认导入</b><small>创建 8 个“待配置”模型，已存在的不重复导入。</small></li>
                 <li><b>逐个或批量选能力和协议</b><small>文本模型选 OpenAI，图片模型选图片协议；选完填协议设置。</small></li>
                 <li><b>测试模型 → 启用</b><small>测试通过、检查链通过后，用户在画布里看到它。</small></li>
@@ -481,7 +481,7 @@ checkEnableable(model):
 // 拉取（提案）
 pullModels(channel):
   key  = secret("channel:" + channel.key)             // 空 → ErrChannelSecretUnset
-  req  = GET channel.base_url + "/models"           // 只补 /models，不自动补 /v1
+  req  = GET channel.base_url + "/v1/models"           // base_url 以 /v1 结尾不重复拼接
   req.headers = defaultUA + channel.headers
   req.Authorization = "Bearer " + key
   resp = guardedClient.Do(req)                         // 复用 SSRF 守卫与渠道限流；Key 只发往 base_url
@@ -501,7 +501,7 @@ for model in models:
           <h2>已确认的决定</h2>
           <div class="card">
             <ol class="list" style="padding-left: 18px">
-              <li><b>拉取走宿主内置的通用请求</b>（<code>GET /models</code> + Bearer），失败可手动新增，拉到的是“待配置”。</li>
+              <li><b>拉取走宿主内置的通用请求</b>（<code>GET /v1/models</code> + Bearer），失败可手动新增，拉到的是“待配置”。</li>
               <li><b>模型固定插件版本</b>，插件页一键批量升级。</li>
               <li><b>协议设置项跟着模型走</b>，在模型的“协议设置”里填。</li>
               <li><b>取消 <code>allow_credentials</code>，不区分插件来源，所有插件都可读 Key</b>。用户的理由：插件一般都是管理员自己写的。<b>这一条是用户没有采纳推荐项的决定</b>，风险写在 Markdown §11.2。</li>
@@ -960,7 +960,7 @@ for model in models:
         if (d.state === "loading") body = `<div class="row muted" style="padding:30px 0;justify-content:center"><i data-lucide="loader-circle" class="spin"></i>正在向上游请求模型列表…（模拟，非真实调用）</div>`;
         else if (d.state === "err") {
           body = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>拉取失败：</b>${esc(d.msg)} <span class="mono muted">${esc(d.code)}</span>
-            <ul class="list" style="margin-top:6px">${d.code.startsWith("ErrChannelSecretUnset") ? `<li>${isSuper() ? "先点“设置 Key”填写 API Key。" : "请联系 super_admin 设置这个渠道的 API Key。"}</li>` : `<li>检查 Base URL 和 API Key 是否正确。</li><li>该上游可能不提供 <code>/models</code>（视频类上游常见），请手动新增模型。</li>`}</ul></div></div>`;
+            <ul class="list" style="margin-top:6px">${d.code.startsWith("ErrChannelSecretUnset") ? `<li>${isSuper() ? "先点“设置 Key”填写 API Key。" : "请联系 super_admin 设置这个渠道的 API Key。"}</li>` : `<li>检查 Base URL 和 API Key 是否正确。</li><li>该上游可能不提供 <code>/v1/models</code>（视频类上游常见），请手动新增模型。</li>`}</ul></div></div>`;
           foot = `<span class="spacer"></span><button class="pb" data-act="closeDlg">关闭</button><button class="pb" data-act="pull">重试</button><button class="pb pri" data-act="pullManual">手动新增模型</button>`;
         } else if (d.state === "empty") {
           body = `<div class="callout c-warn"><i data-lucide="triangle-alert"></i><div>上游返回了空列表。该上游可能不开放模型清单，请手动新增模型。</div></div>`;

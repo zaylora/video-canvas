@@ -86,7 +86,7 @@ meta: {
 
 - `ctx.channel.settings` 的名字沿用（旧插件零改动），但值现在是**模型的协议设置项**（按所选版本的 `channelSettings` 校验并补默认值），不再是渠道上的设置。`ctx.channel.baseUrl` 仍是渠道地址。
 - 渠道的**自定义请求头**由宿主自动加到发往 `base_url` 同源的请求上（优先级：宿主默认 UA < 渠道自定义头 < 插件请求描述里的头 < 宿主注入的鉴权），插件不用处理，也读不到。
-- `buildCheckRequest` / `buildImportRequest` / `parseImportResponse` 已弃用：渠道不再绑协议，连通性在模型的“测试模型”里验证，拉取模型是宿主内置的 `GET {base_url}/models`。预检仍然接受它们，已上传的插件不受影响，但宿主不再调用。
+- `buildCheckRequest` / `buildImportRequest` / `parseImportResponse` 已弃用：渠道不再绑协议，连通性在模型的“测试模型”里验证，拉取模型是宿主内置的 `GET {base_url}/v1/models`。预检仍然接受它们，已上传的插件不受影响，但宿主不再调用。
 - `input` 里可选的媒体字段没填就没有该键。
 
 ## 4. 请求描述（`build*` 的返回值）

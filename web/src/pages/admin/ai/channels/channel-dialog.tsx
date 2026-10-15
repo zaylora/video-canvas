@@ -238,7 +238,7 @@ function ChannelForm({
           htmlFor="channel-base-url"
           required
           error={errors.baseUrl}
-          hint="填写上游 Base URL，例如 https://api.example.com；不要带查询参数。拉取模型会请求 {Base URL}/models，上游需要 /v1 就写进来。"
+          hint="填写上游 Base URL，例如 https://api.example.com；不要带查询参数。"
         >
           <Input
             id="channel-base-url"
