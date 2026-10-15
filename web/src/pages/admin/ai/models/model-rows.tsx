@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, FlaskConical, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Reorder, useDragControls } from "motion/react";
+import { FlaskConical, GripVertical, Trash2 } from "lucide-react";
 
 import type { ModelHealth, ModelListItem } from "@/api/admin/ai/type.d";
 import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
@@ -103,7 +104,8 @@ function testDeny(item: ModelListItem): string | null {
 /**
  * 模型表格（设计稿 renderTable）：☐ / 模型（名称 + key）/ 能力 / 请求协议 / 状态（启用开关）/ 操作，点整行打开编辑弹窗。
  * 行内常驻“测试 / 删除”（编辑靠点整行）。传 selected 时第一列是勾选框（批量操作用）。
- * sortMode 为 true 是“自定义排序”：去掉勾选框，操作列换成上移 / 下移，点行不再打开编辑；保存由使用方负责。
+ * 传 onReorder 时每行左侧有拖动手柄，拖动时只改本地顺序，松手顺序变了才回调（新顺序是当前行的 key 列表）；
+ * 只有手柄能拖，免得点开关、点行时误触发排序。服务端的列表变了就以服务端为准。
  */
 export function ModelRows({
   models,
@@ -113,8 +115,7 @@ export function ModelRows({
   onSelectedChange,
   empty = "没有匹配的模型",
   busyKey,
-  sortMode = false,
-  onMove,
+  onReorder,
   onEdit,
   onTest,
   onToggleEnabled,
@@ -131,10 +132,8 @@ export function ModelRows({
   empty?: ReactNode;
   /** 正在切换上线的模型 */
   busyKey?: string | null;
-  /** 自定义排序模式：显示上移 / 下移，隐藏勾选与测试 / 删除 */
-  sortMode?: boolean;
-  /** 排序模式下上移（-1）/ 下移（1）一行 */
-  onMove?: (key: string, direction: -1 | 1) => void;
+  /** 拖动排序松手后顺序变了的回调；不传则不能拖 */
+  onReorder?: (keys: string[]) => void;
   onEdit: (key: string) => void;
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
@@ -142,19 +141,104 @@ export function ModelRows({
   onDelete?: (item: ModelListItem) => void;
   onRetry?: () => void;
 }) {
-  const selectable = !!selected && !!onSelectedChange && !sortMode;
+  const selectable = !!selected && !!onSelectedChange;
   const keys = models.map((item) => item.key);
+  const [local, setLocal] = useState(models);
+  const [prevModels, setPrevModels] = useState(models);
+  /** 服务端的列表变了就重置本地顺序（在渲染里同步，免得闪一帧旧顺序） */
+  if (models !== prevModels) {
+    setPrevModels(models);
+    setLocal(models);
+  }
+  const draggable = !!onReorder && status === "ready" && models.length > 1;
+  /** 松手：顺序真的变了才回调 */
+  const commit = () => {
+    if (local.some((item, index) => item.key !== models[index]?.key)) {
+      onReorder?.(local.map((item) => item.key));
+    }
+  };
   const all = selectable && keys.length > 0 && keys.every((key) => selected.includes(key));
   const some = selectable && keys.some((key) => selected.includes(key));
-  const columns = 5 + (selectable ? 1 : 0);
+  const columns = 5 + (selectable ? 1 : 0) + (onReorder ? 1 : 0);
   const toggle = (key: string, on: boolean) =>
     onSelectedChange?.(on ? [...(selected ?? []), key] : (selected ?? []).filter((k) => k !== key));
+
+  /** 一行的所有单元格；startDrag 有值表示这一行可拖，最左边多一个手柄 */
+  const renderCells = (item: ModelListItem, startDrag?: (event: React.PointerEvent) => void) => {
+    const label = item.label || item.name || item.key;
+    const deny = testDeny(item);
+    return (
+      <>
+        {onReorder && (
+          <TableCell className="w-8 pr-0 pl-3" onClick={(event) => event.stopPropagation()}>
+            {startDrag && (
+              <button
+                type="button"
+                aria-label={`拖动排序 ${label}`}
+                title="拖动排序"
+                onPointerDown={startDrag}
+                className="text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-ring/50 grid h-8 w-5 cursor-grab touch-none place-items-center rounded-md outline-none focus-visible:ring-2 active:cursor-grabbing"
+              >
+                <GripVertical className="size-4" />
+              </button>
+            )}
+          </TableCell>
+        )}
+        {selectable && (
+          <TableCell className="pl-3" onClick={(event) => event.stopPropagation()}>
+            <Checkbox
+              aria-label={`选择 ${label}`}
+              checked={selected.includes(item.key)}
+              onCheckedChange={(value) => toggle(item.key, !!value)}
+            />
+          </TableCell>
+        )}
+        <TableCell className="px-3 py-3">
+          <div className="flex items-center gap-3">
+            <VendorAvatar vendor={item.vendor} name={label} seed={item.key} />
+            <div className="min-w-0">
+              <div className="truncate font-medium">{label}</div>
+              <div className="text-muted-foreground truncate font-mono text-xs">{item.key}</div>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="px-3 py-3">
+          {item.kind ? <KindTag kind={item.kind} /> : <Tag tone="warning">待配置</Tag>}
+        </TableCell>
+        <TableCell className="px-3 py-3">
+          <ProtocolCell item={item} />
+        </TableCell>
+        <TableCell className="px-3 py-3">
+          <StatusCell
+            item={item}
+            health={item.health}
+            busy={busyKey === item.key}
+            label={label}
+            onToggle={(checked) => onToggleEnabled(item.key, checked)}
+          />
+        </TableCell>
+        <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-center justify-end gap-0.5">
+            <RowIconAction label="测试" deny={deny} target={label} onClick={() => onTest(item.key)}>
+              <FlaskConical />
+            </RowIconAction>
+            {onDelete && (
+              <RowIconAction label="删除" destructive target={label} onClick={() => onDelete(item)}>
+                <Trash2 />
+              </RowIconAction>
+            )}
+          </div>
+        </TableCell>
+      </>
+    );
+  };
 
   return (
     <div className={cn("overflow-hidden rounded-md border", className)}>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            {onReorder && <TableHead className="w-8 pr-0 pl-3" />}
             {selectable && (
               <TableHead className="w-10 pl-3">
                 <Checkbox
@@ -178,134 +262,107 @@ export function ModelRows({
             <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {status === "loading" &&
-            Array.from({ length: 4 }, (_, index) => (
-              <TableRow key={index}>
-                <TableCell colSpan={columns} className="px-3 py-3">
-                  <Skeleton className="h-9" />
+        {draggable ? (
+          <Reorder.Group
+            as="tbody"
+            axis="y"
+            values={local}
+            onReorder={setLocal}
+            data-slot="table-body"
+            className="[&_tr:last-child]:border-0"
+          >
+            {local.map((item) => (
+              <SortableRow
+                key={item.key}
+                item={item}
+                selected={!!selected?.includes(item.key)}
+                onDragEnd={commit}
+                onEdit={() => onEdit(item.key)}
+              >
+                {(startDrag) => renderCells(item, startDrag)}
+              </SortableRow>
+            ))}
+          </Reorder.Group>
+        ) : (
+          <TableBody>
+            {status === "loading" &&
+              Array.from({ length: 4 }, (_, index) => (
+                <TableRow key={index}>
+                  <TableCell colSpan={columns} className="px-3 py-3">
+                    <Skeleton className="h-9" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            {status === "error" && (
+              <TableRow>
+                <TableCell colSpan={columns} className="text-destructive h-32 text-center">
+                  加载失败
+                  {onRetry && (
+                    <button type="button" className="ml-1 underline" onClick={onRetry}>
+                      重试
+                    </button>
+                  )}
                 </TableCell>
               </TableRow>
-            ))}
-          {status === "error" && (
-            <TableRow>
-              <TableCell colSpan={columns} className="text-destructive h-32 text-center">
-                加载失败
-                {onRetry && (
-                  <button type="button" className="ml-1 underline" onClick={onRetry}>
-                    重试
-                  </button>
-                )}
-              </TableCell>
-            </TableRow>
-          )}
-          {status === "ready" && models.length === 0 && (
-            <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={columns}
-                className="text-muted-foreground h-32 text-center text-sm"
-              >
-                {empty}
-              </TableCell>
-            </TableRow>
-          )}
-          {status === "ready" &&
-            models.map((item, index) => {
-              const label = item.label || item.name || item.key;
-              const deny = testDeny(item);
-              return (
+            )}
+            {status === "ready" && models.length === 0 && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={columns}
+                  className="text-muted-foreground h-32 text-center text-sm"
+                >
+                  {empty}
+                </TableCell>
+              </TableRow>
+            )}
+            {status === "ready" &&
+              models.map((item) => (
                 <TableRow
                   key={item.key}
                   data-model={item.key}
                   data-state={selected?.includes(item.key) ? "selected" : undefined}
-                  className={sortMode ? undefined : "cursor-pointer"}
-                  onClick={sortMode ? undefined : () => onEdit(item.key)}
+                  className="cursor-pointer"
+                  onClick={() => onEdit(item.key)}
                 >
-                  {selectable && (
-                    <TableCell className="pl-3" onClick={(event) => event.stopPropagation()}>
-                      <Checkbox
-                        aria-label={`选择 ${label}`}
-                        checked={selected.includes(item.key)}
-                        onCheckedChange={(value) => toggle(item.key, !!value)}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell className="px-3 py-3">
-                    <div className="flex items-center gap-3">
-                      <VendorAvatar vendor={item.vendor} name={label} seed={item.key} />
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{label}</div>
-                        <div className="text-muted-foreground truncate font-mono text-xs">
-                          {item.key}
-                        </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="px-3 py-3">
-                    {item.kind ? <KindTag kind={item.kind} /> : <Tag tone="warning">待配置</Tag>}
-                  </TableCell>
-                  <TableCell className="px-3 py-3">
-                    <ProtocolCell item={item} />
-                  </TableCell>
-                  <TableCell className="px-3 py-3">
-                    <StatusCell
-                      item={item}
-                      health={item.health}
-                      busy={busyKey === item.key || sortMode}
-                      label={label}
-                      onToggle={(checked) => onToggleEnabled(item.key, checked)}
-                    />
-                  </TableCell>
-                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-0.5">
-                      {sortMode ? (
-                        <>
-                          <RowIconAction
-                            label="上移"
-                            target={label}
-                            deny={index === 0 ? "已经是第一个" : null}
-                            onClick={() => onMove?.(item.key, -1)}
-                          >
-                            <ArrowUp />
-                          </RowIconAction>
-                          <RowIconAction
-                            label="下移"
-                            target={label}
-                            deny={index === models.length - 1 ? "已经是最后一个" : null}
-                            onClick={() => onMove?.(item.key, 1)}
-                          >
-                            <ArrowDown />
-                          </RowIconAction>
-                        </>
-                      ) : (
-                        <>
-                          <RowIconAction
-                            label="测试"
-                            deny={deny}
-                            target={label}
-                            onClick={() => onTest(item.key)}
-                          >
-                            <FlaskConical />
-                          </RowIconAction>
-                          {onDelete && (
-                            <RowIconAction
-                              label="删除"
-                              destructive
-                              target={label}
-                              onClick={() => onDelete(item)}
-                            >
-                              <Trash2 />
-                            </RowIconAction>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
+                  {renderCells(item)}
                 </TableRow>
-              );
-            })}
-        </TableBody>
+              ))}
+          </TableBody>
+        )}
       </Table>
     </div>
+  );
+}
+
+/** 可拖动的一行：只有手柄（startDrag）能触发拖动，点整行仍是打开编辑 */
+function SortableRow({
+  item,
+  selected,
+  onDragEnd,
+  onEdit,
+  children,
+}: {
+  item: ModelListItem;
+  selected: boolean;
+  onDragEnd: () => void;
+  onEdit: () => void;
+  children: (startDrag: (event: React.PointerEvent) => void) => ReactNode;
+}) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      as="tr"
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      data-slot="table-row"
+      data-model={item.key}
+      data-state={selected ? "selected" : undefined}
+      className="hover:bg-muted/50 data-[state=selected]:bg-muted cursor-pointer border-b transition-colors"
+      onClick={onEdit}
+    >
+      {children((event) => controls.start(event))}
+    </Reorder.Item>
   );
 }

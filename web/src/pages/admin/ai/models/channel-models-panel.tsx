@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Check, ListOrdered, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Box, Plus, RefreshCw } from "lucide-react";
 import { useSearchParams } from "react-router";
-import { toast } from "sonner";
 
 import { listModels, setChannelModelOrder } from "@/api/admin/ai";
 import type { ChannelOption, ModelListItem, PluginView } from "@/api/admin/ai/type.d";
@@ -12,7 +11,6 @@ import {
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/admin-ui/empty-state";
-import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { clearListParams } from "@/utils/admin/list-params";
@@ -150,19 +148,10 @@ function PanelBody({
   }, [list.state, list.filtering, list.total]);
   const count = allCount ?? list.total;
 
-  // ---- 自定义排序：一次拉取渠道下全部模型，上移 / 下移后一次性保存
-  const [sortMode, setSortMode] = useState(false);
-  const [sortModels, setSortModels] = useState<ModelListItem[] | null>(null);
-  const [sortOriginal, setSortOriginal] = useState<string[]>([]);
-  const [sortSaving, setSortSaving] = useState(false);
-  const sortToken = useRef(0);
-
-  const enterSort = async () => {
-    const token = ++sortToken.current;
-    setSelected([]);
-    setSortMode(true);
-    setSortModels(null);
-    const all: ModelListItem[] = [];
+  // ---- 拖动排序：松手后一次性保存。表格只有当页（可能还筛选过），而保存要提交渠道下全部模型的顺序：
+  // 拉全渠道的模型，把当页这些模型在全集里占的位置按新顺序换一遍
+  const reorderPage = async (pageKeys: string[]) => {
+    const all: string[] = [];
     try {
       for (let pageNo = 1; ; pageNo += 1) {
         const result = await listModels({
@@ -170,59 +159,20 @@ function PanelBody({
           page: pageNo,
           page_size: SORT_PAGE_SIZE,
         });
-        all.push(...result.list);
+        all.push(...result.list.map((item) => item.key));
         if (result.list.length < SORT_PAGE_SIZE || all.length >= result.total) break;
       }
-    } catch {
-      // 全局 toast 已弹；拉不全就不能排序（排序要提交渠道下全部模型）
-      if (aliveRef.current && sortToken.current === token) setSortMode(false);
-      return;
-    }
-    if (!aliveRef.current || sortToken.current !== token) return;
-    setSortModels(all);
-    setSortOriginal(all.map((item) => item.key));
-  };
-
-  const leaveSort = () => {
-    sortToken.current += 1;
-    setSortMode(false);
-    setSortModels(null);
-  };
-
-  const moveModel = (key: string, direction: -1 | 1) =>
-    setSortModels((prev) => {
-      if (!prev) return prev;
-      const from = prev.findIndex((item) => item.key === key);
-      const to = from + direction;
-      if (from < 0 || to < 0 || to >= prev.length) return prev;
-      const next = [...prev];
-      [next[from], next[to]] = [next[to], next[from]];
-      return next;
-    });
-
-  const finishSort = async () => {
-    if (!sortModels) return;
-    const keys = sortModels.map((item) => item.key);
-    if (keys.join("\n") === sortOriginal.join("\n")) {
-      leaveSort();
-      return;
-    }
-    setSortSaving(true);
-    try {
+      const inPage = new Set(pageKeys);
+      const queue = [...pageKeys];
+      const keys = all.map((key) => (inPage.has(key) ? (queue.shift() ?? key) : key));
       await setChannelModelOrder(channel.key, keys);
-      if (!aliveRef.current) return;
-      toast.success("渠道内顺序已保存", {
-        description: "画布里用户看到的模型顺序按“渠道顺序 + 渠道内顺序”排列。",
-      });
-      leaveSort();
-      reloadAll();
-    } finally {
-      if (aliveRef.current) setSortSaving(false);
+    } catch {
+      // 全局 toast 已弹；失败也刷新，让列表回到服务端的顺序
     }
+    if (aliveRef.current) reloadAll();
   };
 
-  const empty = !sortMode && list.state === "ready" && !list.filtering && list.total === 0;
-  const sortDeny = count < 2 ? "渠道下至少有 2 个模型才需要排序" : null;
+  const empty = list.state === "ready" && !list.filtering && list.total === 0;
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3" aria-label="模型管理">
@@ -230,34 +180,14 @@ function PanelBody({
         <h2 className="text-base font-semibold">模型管理</h2>
         <Tag className="tabular-nums">{count}</Tag>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {sortMode ? (
-            <>
-              <Button variant="outline" disabled={sortSaving} onClick={leaveSort}>
-                取消
-              </Button>
-              <Button disabled={!sortModels || sortSaving} onClick={() => void finishSort()}>
-                {sortSaving ? <Loader2 className="animate-spin" /> : <Check />}
-                完成排序
-              </Button>
-            </>
-          ) : (
-            <>
-              <ReasonTooltip reason={sortDeny}>
-                <Button variant="outline" disabled={!!sortDeny} onClick={() => void enterSort()}>
-                  <ListOrdered />
-                  自定义排序
-                </Button>
-              </ReasonTooltip>
-              <Button variant="outline" onClick={onPull}>
-                <RefreshCw />
-                拉取模型
-              </Button>
-              <Button onClick={ws.startNew}>
-                <Plus />
-                新增模型
-              </Button>
-            </>
-          )}
+          <Button variant="outline" onClick={onPull}>
+            <RefreshCw />
+            拉取模型
+          </Button>
+          <Button onClick={ws.startNew}>
+            <Plus />
+            新增模型
+          </Button>
         </div>
       </div>
 
@@ -288,9 +218,7 @@ function PanelBody({
       ) : (
         <ModelTable
           list={list}
-          sortMode={sortMode}
-          sortModels={sortModels}
-          onMove={moveModel}
+          onReorder={(keys) => void reorderPage(keys)}
           selected={checked}
           onSelectedChange={setSelected}
           busyKey={row.busyKey}

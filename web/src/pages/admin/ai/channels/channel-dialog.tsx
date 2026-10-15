@@ -254,11 +254,7 @@ function ChannelForm({
 
         {isNew ? (
           <>
-            <FormField
-              label="API Key"
-              htmlFor="channel-new-api-key"
-              hint="只写不读，可稍后在“设置 Key”里填。"
-            >
+            <FormField label="API Key" htmlFor="channel-new-api-key">
               <Input
                 id="channel-new-api-key"
                 type="password"
@@ -359,10 +355,6 @@ function ChannelForm({
             停用后它的模型在画布里不可见，进行中的任务按快照继续
           </span>
         </div>
-
-        <Notice tone="info">
-          保存时只做字段校验，不发请求；想验证地址和 Key：到模型里点“测试模型”，或直接“拉取模型”。
-        </Notice>
       </div>
 
       <DialogFooter className="m-0 rounded-none">

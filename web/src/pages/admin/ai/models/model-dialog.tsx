@@ -280,17 +280,11 @@ export function ModelDialog({
                 body={body}
                 isNew={ws.isNew}
                 catalog={catalog}
-                info={ws.info}
                 issues={ws.issues}
                 onChange={ws.editBody}
               />
             ) : (
               <>
-                {!kind && (
-                  <Notice tone="warning" title="还没有选择模型能力" className="mb-5">
-                    先到「基本信息」里选能力，这里会按能力预填默认值。
-                  </Notice>
-                )}
                 {tab === "params" ? (
                   <ModelParamsForm
                     body={body}

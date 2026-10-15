@@ -35,11 +35,6 @@ export function HeaderEditor({
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="text-sm font-medium">自定义请求头</div>
-      <p className="text-muted-foreground text-xs leading-relaxed">
-        默认发送宿主默认 User-Agent；添加 User-Agent 后覆盖默认值。仅发往本渠道 Base URL
-        的请求会带上；<b className="text-foreground">值明文存储，不要放密钥</b>
-        ；Authorization、Host、 Cookie 等不能设置。
-      </p>
 
       {rows.length > 0 && (
         <ul className="flex flex-col gap-2">

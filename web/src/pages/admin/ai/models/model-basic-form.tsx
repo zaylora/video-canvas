@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import type { ChannelOption, ConfigIssue } from "@/api/admin/ai/type.d";
+import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
@@ -10,8 +10,6 @@ import {
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
-import { Notice } from "@/components/admin-ui/notice";
-import { OptionSelect } from "@/components/admin-ui/option-select";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
@@ -30,11 +28,9 @@ import {
   readModelString,
   readModelStrings,
   suggestModelKey,
-  withModelChannel,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
-import { publishBlockReason, type ModelChannelInfo } from "@/utils/admin/model-channel";
 import {
   readModelProtocol,
   switchModelKind,
@@ -49,36 +45,27 @@ import type { ModelCatalog } from "./use-model-workspace";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
 
-/** 渠道下拉里的一项：名称，已停用 / 没设 Key 的在后面注明 */
-function channelLabel(channel: ChannelOption): string {
-  if (!channel.enabled) return `${channel.name}（已停用）`;
-  if (!channel.secret_set) return `${channel.name}（未设 Key）`;
-  return channel.name;
-}
-
 /**
- * 基本信息页签：模型身份（含所属渠道）、能力与协议、展示信息。
+ * 基本信息页签：模型身份、能力与协议、展示信息。
  * 协议挂在模型上，与渠道无关：换渠道不影响协议。所有修改都回写 JSON 正文并保持键顺序。
  */
 export function ModelBasicForm({
   body,
   isNew,
   catalog,
-  info,
   issues,
   onChange,
 }: {
   body: Record<string, unknown>;
   isNew: boolean;
   catalog: ModelCatalog;
-  info: ModelChannelInfo;
   issues: ConfigIssue[];
   onChange: (mutate: BodyMutator) => void;
 }) {
-  const { channels, plugins, pluginsStatus } = catalog;
+  const { plugins, pluginsStatus } = catalog;
   const kind = readModelKind(body);
   const protocol = readModelProtocol(body);
-  const { channel: channelKey, upstreamModel } = readModelChannel(body);
+  const { upstreamModel } = readModelChannel(body);
   // 换能力会把能力与参数、定价重置成新种类的默认值；已有能力的模型先确认，免得误点清掉配置
   const [pendingKind, setPendingKind] = useState<string | null>(null);
   // 关闭时 pendingKind 置空，确认框文案留到退出动画播完
@@ -100,11 +87,6 @@ export function ModelBasicForm({
     onChange((current) => withModelField(current, field, value));
   const hint = readModelString(body, "hint");
   const tags = readModelStrings(body, "tags");
-  const channelOptions = channels.map((item) => ({ value: item.key, label: channelLabel(item) }));
-  // 正文里的渠道清单里没有（被删了）时仍要显示出来，免得下拉是空白
-  if (channelKey && !channels.some((item) => item.key === channelKey))
-    channelOptions.unshift({ value: channelKey, label: `${channelKey}（不存在）` });
-  const blocked = publishBlockReason(info, pluginsStatus === "ready");
 
   return (
     <>
@@ -177,23 +159,6 @@ export function ModelBasicForm({
           </FormField>
           <FormField
             size="default"
-            label="所属渠道"
-            htmlFor="model-channel"
-            required
-            error={issueFor(issues, "channels[0].channel") ?? issueFor(issues, "channels")}
-            tip="渠道只管连接（地址与 Key）；协议在下面选，与渠道无关，换渠道不影响协议。"
-          >
-            <OptionSelect
-              id="model-channel"
-              value={channelKey}
-              placeholder="选择渠道"
-              invalid={!!issueFor(issues, "channels[0].channel")}
-              onValueChange={(next) => onChange((current) => withModelChannel(current, next))}
-              options={channelOptions}
-            />
-          </FormField>
-          <FormField
-            size="default"
             label="模型 Logo"
             htmlFor="model-vendor"
             error={issueFor(issues, "vendor")}
@@ -228,11 +193,6 @@ export function ModelBasicForm({
             onKindChange={requestKind}
             onProtocolChange={setProtocol}
           />
-          {blocked && (
-            <Notice tone="warning" title="启用前还需处理">
-              {blocked}
-            </Notice>
-          )}
         </div>
       </FormSection>
 

@@ -115,9 +115,7 @@ export function ProtocolPicker({
       </FormField>
 
       <div id={`${idPrefix}-protocol`} tabIndex={-1} className="space-y-2 outline-none">
-        {!kind ? (
-          <Notice tone="info">先选择模型能力，再从协议列表里选调用协议。</Notice>
-        ) : kind === "agent" ? (
+        {!kind ? null : kind === "agent" ? (
           <Notice tone="info" title="Agent 模型不需要选择协议">
             由宿主的 LLM 网关直接用渠道 API Key 作 Bearer，请求渠道的 OpenAI
             兼容接口，渠道的自定义请求头也会带上。

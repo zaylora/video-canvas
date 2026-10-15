@@ -224,7 +224,6 @@ export default function ChannelsPage() {
   /** 拖动排序松手：提交完整的新顺序；失败时也重拉清单，让列表回到服务端的顺序 */
   const reorderChannels = (keys: string[]) => {
     void setChannelOrder(keys)
-      .then(() => toast.success("渠道顺序已保存。画布里的模型会按新的渠道顺序排列"))
       .catch(() => undefined)
       .finally(() => void reloadChannels());
   };
