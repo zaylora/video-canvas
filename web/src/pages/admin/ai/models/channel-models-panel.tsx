@@ -225,7 +225,7 @@ function PanelBody({
   const sortDeny = count < 2 ? "渠道下至少有 2 个模型才需要排序" : null;
 
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-label="模型管理">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3" aria-label="模型管理">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-semibold">模型管理</h2>
         <Tag className="tabular-nums">{count}</Tag>

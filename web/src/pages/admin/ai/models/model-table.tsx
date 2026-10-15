@@ -1,5 +1,5 @@
 import type { ModelListItem } from "@/api/admin/ai/type.d";
-import { DataPanelPagination } from "@/components/admin-ui/data-panel";
+import { DataPanelBody, DataPanelPagination } from "@/components/admin-ui/data-panel";
 import { ListSearch } from "@/components/admin-ui/list-search";
 import { OptionSelect } from "@/components/admin-ui/option-select";
 import { MODEL_STATUS_LABEL } from "@/utils/admin/health";
@@ -59,7 +59,7 @@ export function ModelTable({
   onDelete: (item: ModelListItem) => void;
 }) {
   return (
-    <div className="bg-card overflow-hidden rounded-xl border">
+    <div className="bg-card flex min-h-64 flex-1 flex-col overflow-hidden rounded-xl border">
       {sortMode ? (
         <p className="text-muted-foreground border-b px-4 py-3 text-xs">
           正在调整这个渠道内的模型顺序：用每行的上移 /
@@ -95,22 +95,24 @@ export function ModelTable({
         </div>
       )}
 
-      <ModelRows
-        className="rounded-none border-0 border-t"
-        models={sortMode ? (sortModels ?? []) : list.items}
-        status={sortMode ? (sortModels ? "ready" : "loading") : list.state}
-        selected={selected}
-        onSelectedChange={onSelectedChange}
-        busyKey={busyKey}
-        sortMode={sortMode}
-        onMove={onMove}
-        empty={list.filtering ? "没有匹配的模型" : "这个渠道下还没有模型"}
-        onEdit={onEdit}
-        onTest={onTest}
-        onToggleEnabled={onToggleEnabled}
-        onDelete={onDelete}
-        onRetry={list.reload}
-      />
+      <DataPanelBody>
+        <ModelRows
+          className="overflow-visible rounded-none border-0"
+          models={sortMode ? (sortModels ?? []) : list.items}
+          status={sortMode ? (sortModels ? "ready" : "loading") : list.state}
+          selected={selected}
+          onSelectedChange={onSelectedChange}
+          busyKey={busyKey}
+          sortMode={sortMode}
+          onMove={onMove}
+          empty={list.filtering ? "没有匹配的模型" : "这个渠道下还没有模型"}
+          onEdit={onEdit}
+          onTest={onTest}
+          onToggleEnabled={onToggleEnabled}
+          onDelete={onDelete}
+          onRetry={list.reload}
+        />
+      </DataPanelBody>
       {!sortMode && list.state === "ready" && (
         <DataPanelPagination
           page={list.page}

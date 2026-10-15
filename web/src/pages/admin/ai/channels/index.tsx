@@ -71,9 +71,6 @@ export default function ChannelsPage() {
   /** 模型表的刷新信号：拉取导入后加一 */
   const [reloadToken, setReloadToken] = useState(0);
   const [newModelToken, setNewModelToken] = useState(0);
-  const [sorting, setSorting] = useState(false);
-  const [sortOrder, setSortOrder] = useState<string[]>([]);
-  const [savingOrder, setSavingOrder] = useState(false);
   const [toggling, setToggling] = useState(false);
 
   /** 同一次导航只读一次深链 */
@@ -129,7 +126,6 @@ export default function ChannelsPage() {
 
   const selectedKey = pickSelectedChannel(channels, wanted);
   const channel = channels.find((item) => item.key === selectedKey) ?? null;
-  const existingKeys = channels.map((item) => item.key);
 
   /** 选中渠道：换渠道后深链的模型不再适用，地址里的 channel 同步更新，刷新还在原处 */
   const selectChannel = useCallback(
@@ -225,45 +221,20 @@ export default function ChannelsPage() {
       onManualAdd: () => setNewModelToken((n) => n + 1),
     });
 
-  const toggleSorting = async () => {
-    if (!sorting) {
-      setSortOrder(channels.map((item) => item.key));
-      setSorting(true);
-      return;
-    }
-    if (sortOrder.join("\n") === existingKeys.join("\n")) {
-      setSorting(false);
-      return;
-    }
-    setSavingOrder(true);
-    try {
-      await setChannelOrder(sortOrder);
-      toast.success("渠道顺序已保存。画布里的模型会按新的渠道顺序排列");
-      await reloadChannels();
-      setSorting(false);
-    } catch {
-      // 全局 toast 已弹；留在排序模式，用户可以再试
-    } finally {
-      setSavingOrder(false);
-    }
+  /** 拖动排序松手：提交完整的新顺序；失败时也重拉清单，让列表回到服务端的顺序 */
+  const reorderChannels = (keys: string[]) => {
+    void setChannelOrder(keys)
+      .then(() => toast.success("渠道顺序已保存。画布里的模型会按新的渠道顺序排列"))
+      .catch(() => undefined)
+      .finally(() => void reloadChannels());
   };
-
-  const moveChannel = (key: string, delta: -1 | 1) =>
-    setSortOrder((prev) => {
-      const from = prev.indexOf(key);
-      const to = from + delta;
-      if (from < 0 || to < 0 || to >= prev.length) return prev;
-      const next = [...prev];
-      [next[from], next[to]] = [next[to], next[from]];
-      return next;
-    });
 
   const modelDeepLink = deepLink && !deepLink.resolving ? deepLink : null;
 
   return (
     <DataPage>
       <h1 className="sr-only">渠道与模型</h1>
-      <div className="grid min-h-0 gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[250px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <ChannelList
           channels={channels}
           status={channelsStatus}
@@ -272,19 +243,15 @@ export default function ChannelsPage() {
           query={query}
           statusFilter={statusFilter}
           canWrite={canWrite}
-          sorting={sorting}
-          sortOrder={sortOrder}
-          savingOrder={savingOrder}
           onSelect={selectChannel}
           onNew={newChannel}
           onQueryChange={setQuery}
           onStatusChange={setStatusFilter}
-          onToggleSorting={() => void toggleSorting()}
-          onMove={moveChannel}
+          onReorder={reorderChannels}
           onRetry={() => void reloadChannels()}
         />
 
-        <section data-slot="channel-detail" className="flex min-w-0 flex-col gap-5">
+        <section data-slot="channel-detail" className="flex min-h-0 min-w-0 flex-col gap-5">
           {channelsStatus === "loading" ? (
             <>
               <Skeleton className="h-24" />
