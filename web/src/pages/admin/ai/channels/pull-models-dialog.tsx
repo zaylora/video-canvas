@@ -139,10 +139,6 @@ export function PullModelsDialog({
       <DialogContent className="flex max-h-[min(88svh,760px)] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>选择要导入的模型</DialogTitle>
-          <DialogDescription>
-            渠道「{channel.name}」· 向上游 <span className="font-mono">{channel.base_url}</span>{" "}
-            请求模型清单
-          </DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -181,10 +177,6 @@ export function PullModelsDialog({
 
           {state.kind === "ready" && models.length > 0 && (
             <>
-              <p className="text-muted-foreground text-sm">
-                上游共返回 {models.length}{" "}
-                个模型。默认已全选，可批量全选或取消全选；已存在的模型不会重复导入。
-              </p>
               <SearchInput
                 aria-label="搜索模型标识"
                 placeholder="搜索模型标识，例如 gpt、sd2.5"
