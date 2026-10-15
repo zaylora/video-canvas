@@ -1,15 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence } from "motion/react";
-import {
-  CheckSquare,
-  FolderPlus,
-  Grid2x2,
-  Grid3x3,
-  Link2,
-  ListFilter,
-  Search,
-  Square,
-} from "lucide-react";
+import { Search } from "lucide-react";
 
 import {
   CanvasCard,
@@ -18,7 +9,6 @@ import {
   NewCanvasCard,
 } from "@/components/home/canvas-card";
 import { Segmented } from "@/components/home/segmented";
-import { SoonTip } from "@/components/home/soon";
 import { Button } from "@/components/ui/button";
 import { RECENT_CANVAS_LIMIT } from "@/constants/creation";
 import { useCanvasList } from "@/hooks/use-canvas-list";
@@ -27,58 +17,18 @@ import { cn } from "@/lib/utils";
 /** 还没有分页控件，先一次拉够 */
 const PAGE_SIZE = 60;
 
-/** 网格疏密：小 / 中 / 大，选择记在本机 */
-type Density = "sm" | "md" | "lg";
-
-const DENSITY_KEY = "canvas-list-density";
-
-/** 各档的列数；窄屏一律最多 2 列 */
-const DENSITY_GRID: Record<Density, string> = {
-  sm: "grid-cols-2 md:grid-cols-5 xl:grid-cols-7",
-  md: "grid-cols-2 md:grid-cols-4 xl:grid-cols-5",
-  lg: "grid-cols-2 lg:grid-cols-3",
-};
-
-function readDensity(): Density {
-  try {
-    const value = localStorage.getItem(DENSITY_KEY);
-    return value === "sm" || value === "lg" ? value : "md";
-  } catch {
-    return "md";
-  }
-}
+/** 网格列数；窄屏最多 2 列 */
+const GRID = "grid-cols-2 md:grid-cols-4 xl:grid-cols-5";
 
 type Scope = "all" | "mine" | "shared";
 
-/** 工具条上还没有功能的按钮：窄屏只留图标 */
-function SoonAction({ icon: Icon, label }: { icon: typeof Search; label: string }) {
-  return (
-    <SoonTip>
-      <Button disabled variant="ghost" aria-label={label} className="text-muted-foreground">
-        <Icon />
-        <span className="max-lg:hidden">{label}</span>
-      </Button>
-    </SoonTip>
-  );
-}
-
 /**
  * 所有画布（设计稿 docs/design/首页 4.2）：tabs + 工具条 + 画布网格。
- * 搜索和疏密切换是真功能；文件夹、多选、分享链接、排序、协作画布先占位。
+ * 搜索是真功能；协作画布先占位。文件夹、多选、分享链接、疏密切换和排序都去掉了（没有对应功能）。
  */
 export default function CanvasList() {
   const [scope, setScope] = useState<Scope>("mine");
-  const [density, setDensity] = useState<Density>(readDensity);
   const list = useCanvasList(PAGE_SIZE);
-
-  const changeDensity = (next: Density) => {
-    setDensity(next);
-    try {
-      localStorage.setItem(DENSITY_KEY, next);
-    } catch {
-      /** 存不进去只是下次不记得 */
-    }
-  };
 
   let body;
   if (list.loading) {
@@ -134,11 +84,6 @@ export default function CanvasList() {
           ]}
         />
         <div className="flex-1" />
-        <div className="flex items-center gap-1">
-          <SoonAction icon={FolderPlus} label="新建文件夹" />
-          <SoonAction icon={CheckSquare} label="多选" />
-          <SoonAction icon={Link2} label="打开分享链接" />
-        </div>
         <label className="bg-muted/60 text-muted-foreground focus-within:ring-ring flex h-9 w-36 items-center gap-2 rounded-[10px] px-3 transition-shadow focus-within:ring-1 md:w-56">
           <Search className="size-4 shrink-0" />
           <input
@@ -150,30 +95,9 @@ export default function CanvasList() {
             className="text-foreground min-w-0 flex-1 bg-transparent outline-none"
           />
         </label>
-        <Segmented<Density>
-          className="max-md:hidden"
-          value={density}
-          onChange={changeDensity}
-          options={[
-            { value: "sm", label: <Grid3x3 />, ariaLabel: "小图" },
-            { value: "md", label: <Grid2x2 />, ariaLabel: "中图" },
-            { value: "lg", label: <Square />, ariaLabel: "大图" },
-          ]}
-        />
-        <SoonTip>
-          <Button
-            disabled
-            variant="ghost"
-            size="icon"
-            aria-label="排序"
-            className="text-muted-foreground"
-          >
-            <ListFilter />
-          </Button>
-        </SoonTip>
       </div>
 
-      <div className={cn("grid gap-2.5 md:gap-4", DENSITY_GRID[density])}>
+      <div className={cn("grid gap-2.5 md:gap-4", GRID)}>
         <NewCanvasCard
           variant="panel"
           creating={list.creating}

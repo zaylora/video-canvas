@@ -237,9 +237,6 @@ export function Composer({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
-            <p className="text-muted-foreground border-border mt-1 border-t px-2.5 pt-2 pb-1 text-xs">
-              想让 Agent 帮你拆分镜，请在画布里使用
-            </p>
           </DropdownMenuContent>
         </DropdownMenu>
 
