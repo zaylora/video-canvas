@@ -213,9 +213,6 @@ function ChannelForm({
     >
       <DialogHeader className="border-b p-4">
         <DialogTitle>{isNew ? "新增渠道" : "编辑渠道"}</DialogTitle>
-        <DialogDescription>
-          渠道只管连接信息：地址、Key、请求头、限流。请求协议在模型里选。
-        </DialogDescription>
       </DialogHeader>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
@@ -351,9 +348,6 @@ function ChannelForm({
             onCheckedChange={(checked) => patch({ enabled: checked })}
           />
           <Label htmlFor="channel-enabled">启用</Label>
-          <span className="text-muted-foreground text-xs">
-            停用后它的模型在画布里不可见，进行中的任务按快照继续
-          </span>
         </div>
       </div>
 
