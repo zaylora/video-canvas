@@ -21,8 +21,8 @@
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、op、size（如 2K 或 2048x2048）、resolution（没有 size 时当 size 用）、aspect_ratio（与 resolution 档位一起换算成 WxH；
  *   方舟没有单独的比例字段）、seed；images 作参考图（文件引用换成签名 URL，1 张传字符串，多张传数组）。n 被忽略：方舟没有单次张数，多张靠组图。
- *   watermark（boolean，没填按 false）；型号特有的标量字段 output_format、sequential_image_generation、guidance_scale
- *   （可选，没填不发，运营在面板的生成参数里加同名参数）。tools、optimize_prompt_options、layer_decomposition 这类对象字段面板表达不了，不支持
+ *   水印固定为 false（方舟默认加水印）；output_format、sequential_image_generation、guidance_scale 这类型号特有字段、
+ *   以及 tools、optimize_prompt_options、layer_decomposition 这类对象字段都不支持
  *
  * 未验证（上游代码里没有，凭方舟文档印象写的）：连通检查借用任务列表接口 GET /api/v3/contents/generations/tasks?page_size=1
  * 只验证 Key 是否有效；错误码关键字（余额 / 审核 / 限流）；aspect_ratio 换算 WxH 的取整规则。
@@ -96,12 +96,7 @@ function buildImageRequest(ctx) {
   if (typeof input.seed === "number") {
     body.seed = input.seed;
   }
-  body.watermark = typeof input.watermark === "boolean" ? input.watermark : false;
-  setIf(body, "output_format", input.output_format);
-  setIf(body, "sequential_image_generation", input.sequential_image_generation);
-  if (typeof input.guidance_scale === "number") {
-    body.guidance_scale = input.guidance_scale;
-  }
+  body.watermark = false; // 默认不加水印（方舟默认加）
   return { method: "POST", path: "/api/v3/images/generations", json: body, timeout: 180 };
 }
 
@@ -231,13 +226,6 @@ function errorCodeOf(body) {
   return e && typeof e === "object" && typeof e.code === "string" ? e.code : "";
 }
 
-
-// 非空字符串才写进请求体。
-function setIf(body, key, value) {
-  if (typeof value === "string" && value !== "") {
-    body[key] = value;
-  }
-}
 
 function firstString() {
   for (var i = 0; i < arguments.length; i++) {

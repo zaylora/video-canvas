@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Star, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Star, Trash2, X } from "lucide-react";
 
 import type {
   Capabilities,
@@ -7,13 +7,11 @@ import type {
   ParamField,
   ParamOption,
   ParamSet,
-  ParamType,
   RefKind,
   RefSpec,
 } from "@/api/model/type.d";
 import { Tag } from "@/components/admin-ui/tag";
 import { ToggleChip } from "@/components/admin-ui/toggle-chip";
-import { OptionSelect } from "@/components/admin-ui/option-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -511,72 +509,7 @@ export function ParamRowEditor({
   );
 }
 
-const NEW_NAME_RE = /^[a-z][a-z0-9_]{0,31}$/;
-
-/** 新增一个生成参数：参数名（英文，要和插件约定的键对应）+ 展示名 + 类型 */
-export function AddParamRow({
-  existing,
-  onAdd,
-}: {
-  existing: string[];
-  onAdd: (name: string, field: ParamField) => void;
-}) {
-  const [name, setName] = useState("");
-  const [label, setLabel] = useState("");
-  const [type, setType] = useState<ParamType>("enum");
-  const nameOk = NEW_NAME_RE.test(name) && !existing.includes(name);
-  const add = () => {
-    if (!nameOk) return;
-    const base = { label: label.trim() || name, open: true };
-    const field: ParamField =
-      type === "enum"
-        ? { type, ...base, options: [], default: undefined }
-        : type === "number"
-          ? { type, ...base, min: 1, max: 10, step: 1, default: 1 }
-          : { type, ...base, default: false };
-    onAdd(name, field);
-    setName("");
-    setLabel("");
-  };
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-2.5">
-      <Input
-        aria-label="新参数名"
-        placeholder="参数名，如 seed"
-        className="h-8 w-36 font-mono text-xs"
-        aria-invalid={!!name && !nameOk}
-        title="小写字母、数字、下划线，字母开头；它会作为任务输入的键传给插件"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-      />
-      <Input
-        aria-label="新参数展示名"
-        placeholder="展示名"
-        className="h-8 w-32 text-xs"
-        value={label}
-        onChange={(event) => setLabel(event.target.value)}
-      />
-      <OptionSelect
-        aria-label="新参数类型"
-        size="sm"
-        className="w-24 text-xs"
-        value={type}
-        onValueChange={(next) => setType(next as ParamType)}
-        options={[
-          { value: "enum", label: "枚举" },
-          { value: "number", label: "数字" },
-          { value: "boolean", label: "开关" },
-        ]}
-      />
-      <Button size="sm" variant="outline" disabled={!nameOk} onClick={add}>
-        <Plus />
-        添加参数
-      </Button>
-    </div>
-  );
-}
-
-/** 在有序参数集里改 / 移 / 删 / 加一项，返回新的 ParamSet（保持书写顺序） */
+/** 在有序参数集里改 / 移 / 删一项，返回新的 ParamSet（保持书写顺序） */
 export const paramSetOps = {
   patch(set: ParamSet, name: string, field: ParamField): ParamSet {
     return Object.fromEntries(Object.entries(set).map(([k, v]) => [k, k === name ? field : v]));
@@ -591,9 +524,6 @@ export const paramSetOps = {
   },
   remove(set: ParamSet, name: string): ParamSet {
     return Object.fromEntries(Object.entries(set).filter(([k]) => k !== name));
-  },
-  add(set: ParamSet, name: string, field: ParamField): ParamSet {
-    return { ...set, [name]: field };
   },
 };
 

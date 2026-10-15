@@ -77,10 +77,6 @@ func doubaovideoCaps(_ string) modelcfg.Capabilities {
 		{Name: "resolution", ParamField: enum("720p", "1080p")},
 		{Name: "duration", ParamField: num(-1, 15)},
 		{Name: "generate_audio", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true, Default: true}},
-		{Name: "watermark", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
-		{Name: "camera_fixed", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
-		{Name: "return_last_frame", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
-		{Name: "service_tier", ParamField: enum("default", "flex")},
 	}
 	return caps
 }
@@ -112,7 +108,7 @@ func TestDoubaovideoPrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 视频提交：路径、Bearer、content 数组（文本 + 首帧图）、ratio / resolution / duration / generate_audio，以及用户输入的 camera_fixed / return_last_frame / service_tier。
+// 视频提交：路径、Bearer、content 数组（文本 + 首帧图）、ratio / resolution / duration / generate_audio；水印固定为 false，输入里的 watermark / camera_fixed / return_last_frame / service_tier 被忽略。
 func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 	srv, up := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"cgt-2025-abc"}`))
@@ -122,7 +118,7 @@ func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 		Task: provider.TaskRef{ID: 1, UserID: 9},
 		Input: map[string]any{"prompt": "猫在跳舞", "op": "i2v", "images": []uint64{1}, "aspect_ratio": "16:9",
 			"resolution": "720p", "duration": float64(5), "generate_audio": false,
-			"camera_fixed": true, "return_last_frame": true, "service_tier": "flex"},
+			"watermark": true, "camera_fixed": true, "return_last_frame": true, "service_tier": "flex"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -136,8 +132,13 @@ func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 	}
 	b := got.Body
 	if b["model"] != doubaovideoModel || b["ratio"] != "16:9" || b["resolution"] != "720p" || b["duration"] != float64(5) ||
-		b["generate_audio"] != false || b["watermark"] != false || b["camera_fixed"] != true || b["return_last_frame"] != true || b["service_tier"] != "flex" {
+		b["generate_audio"] != false || b["watermark"] != false {
 		t.Fatalf("请求体不符：%v", b)
+	}
+	for _, k := range []string{"camera_fixed", "return_last_frame", "service_tier"} {
+		if _, ok := b[k]; ok {
+			t.Fatalf("%s 不是插件输入，不应发送：%v", k, b)
+		}
 	}
 	content, _ := b["content"].([]any)
 	if len(content) != 2 {

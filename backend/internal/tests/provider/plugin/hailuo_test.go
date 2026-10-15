@@ -98,7 +98,7 @@ func TestHailuoPrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 老系列文生视频：POST /v1/video_generation，Bearer 由宿主注入；默认 6 秒 768P。
+// 老系列文生视频：POST /v1/video_generation，Bearer 由宿主注入；输入里的 prompt_optimizer / fast_pretreatment / aigc_watermark 被忽略。
 func TestHailuoV1TextToVideoSubmit(t *testing.T) {
 	up, srv := hailuoUpstream(func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 		_, _ = w.Write([]byte(`{"task_id":"106","base_resp":{"status_code":0,"status_msg":"success"}}`))
@@ -107,7 +107,8 @@ func TestHailuoV1TextToVideoSubmit(t *testing.T) {
 	env := newHailuoEnv(t, nil)
 	snap := env.snapshot(srv.URL, "MiniMax-Hailuo-2.3")
 	res, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "海边日落", "duration": float64(10), "resolution": "1080P", "prompt_optimizer": false},
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "海边日落", "duration": float64(10), "resolution": "1080P",
+			"prompt_optimizer": false, "fast_pretreatment": true, "aigc_watermark": true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -120,11 +121,13 @@ func TestHailuoV1TextToVideoSubmit(t *testing.T) {
 		t.Fatalf("上游请求不符：%+v", got)
 	}
 	b := got.Body
-	if b["model"] != "MiniMax-Hailuo-2.3" || b["prompt"] != "海边日落" || b["duration"] != float64(10) || b["resolution"] != "1080P" || b["prompt_optimizer"] != false {
+	if b["model"] != "MiniMax-Hailuo-2.3" || b["prompt"] != "海边日落" || b["duration"] != float64(10) || b["resolution"] != "1080P" {
 		t.Fatalf("请求体不符：%v", b)
 	}
-	if _, has := b["aigc_watermark"]; has {
-		t.Fatalf("用户没填的开关不应发送：%v", b)
+	for _, k := range []string{"prompt_optimizer", "fast_pretreatment", "aigc_watermark"} {
+		if _, has := b[k]; has {
+			t.Fatalf("%s 不是插件输入，不应发送：%v", k, b)
+		}
 	}
 	if _, has := b["first_frame_image"]; has {
 		t.Fatalf("没有参考图不应带首帧：%v", b)
@@ -209,7 +212,8 @@ func TestHailuoH3FrameSubmit(t *testing.T) {
 	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("A"), 6: []byte("B")}}
 	env := newHailuoEnv(t, func(o *plugin.Options) { o.Assets = assets })
 	res, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "MiniMax-H3"), provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "跑步", "op": "i2v", "images": []uint64{5, 6}, "duration": float64(8), "resolution": "2k"},
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "跑步", "op": "i2v", "images": []uint64{5, 6}, "duration": float64(8), "resolution": "2k",
+			"prompt_optimizer": true, "fast_pretreatment": true, "aigc_watermark": true},
 	})
 	if err != nil || res.ProviderTaskID != "h3-1" {
 		t.Fatalf("提交失败：%+v %v", res, err)
@@ -221,6 +225,11 @@ func TestHailuoH3FrameSubmit(t *testing.T) {
 	b := got.Body
 	if b["model"] != "MiniMax-H3" || b["resolution"] != "2K" || b["duration"] != float64(8) || b["ratio"] != "adaptive" {
 		t.Fatalf("请求体不符：%v", b)
+	}
+	for _, k := range []string{"prompt_optimizer", "fast_pretreatment", "aigc_watermark"} {
+		if _, has := b[k]; has {
+			t.Fatalf("H3 也不应发送 %s：%v", k, b)
+		}
 	}
 	content, _ := b["content"].([]any)
 	if len(content) != 3 {

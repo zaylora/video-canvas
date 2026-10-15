@@ -169,7 +169,7 @@ func TestGoogleApiVersionSetting(t *testing.T) {
 	}
 }
 
-// 图生视频：images[0] 以 base64 放进 instances[0].image.inlineData，MIME 取用户输入的 imageMimeType。
+// 图生视频：images[0] 以 base64 放进 instances[0].image.inlineData，MIME 固定 image/png；输入里的 imageMimeType 被忽略。
 func TestGoogleSubmitImage2Video(t *testing.T) {
 	up := &googleFake{handler: func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"models/m/operations/x"}`))
@@ -186,7 +186,7 @@ func TestGoogleSubmitImage2Video(t *testing.T) {
 	}
 	inst := up.last().Body["instances"].([]any)[0].(map[string]any)
 	inline := inst["image"].(map[string]any)["inlineData"].(map[string]any)
-	if inline["data"] != base64.StdEncoding.EncodeToString([]byte("PNGDATA")) || inline["mimeType"] != "image/jpeg" {
+	if inline["data"] != base64.StdEncoding.EncodeToString([]byte("PNGDATA")) || inline["mimeType"] != "image/png" {
 		t.Fatalf("参考图不符：%v", inst["image"])
 	}
 }

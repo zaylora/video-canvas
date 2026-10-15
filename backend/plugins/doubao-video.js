@@ -23,9 +23,8 @@
  *
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、op、images / videos / audios（参考素材，文件引用换成签名 URL）、
- *   aspect_ratio -> ratio（如 16:9、adaptive）、resolution、duration、seed、generate_audio、
- *   watermark（boolean，没填按 false，方舟默认加水印）、camera_fixed / return_last_frame（boolean）、service_tier（string），
- *   后三个可选，没填不发，运营在面板的生成参数里加同名参数
+ *   aspect_ratio -> ratio（如 16:9、adaptive）、resolution、duration、seed、generate_audio；
+ *   水印固定为 false（方舟默认加水印），camera_fixed / return_last_frame / service_tier 不支持
  *   素材：op=omni 时全部图片作 reference_image；否则 1 张图是首帧（不写 role），2 张是首帧 + 尾帧，多于 2 张按参考图；
  *   videos -> reference_video，audios -> reference_audio
  *
@@ -140,14 +139,7 @@ function buildVideoRequest(ctx) {
   if (typeof input.generate_audio === "boolean") {
     body.generate_audio = input.generate_audio;
   }
-  body.watermark = typeof input.watermark === "boolean" ? input.watermark : false;
-  if (typeof input.camera_fixed === "boolean") {
-    body.camera_fixed = input.camera_fixed;
-  }
-  if (typeof input.return_last_frame === "boolean") {
-    body.return_last_frame = input.return_last_frame;
-  }
-  setIf(body, "service_tier", input.service_tier);
+  body.watermark = false; // 默认不加水印（方舟默认加）
   return { method: "POST", path: TASKS_PATH, json: body, timeout: 60 };
 }
 

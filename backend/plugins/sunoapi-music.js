@@ -13,11 +13,11 @@
  *   - Base URL 填 Suno-API 服务地址（不带 /suno 后缀）；
  *   - 渠道 Key 直接填该服务的 Key，宿主按 Bearer 注入（Authorization: Bearer <Key>）。
  *
- * 上游模型（ctx.model.upstreamModel）：以 chirp- 开头时当作 mv（优先级低于输入里的 mv）；其它值（如上游旧名 suno_music）忽略。
+ * 上游模型（ctx.model.upstreamModel）：以 chirp- 开头时当作 mv，否则用默认 chirp-v3-0；其它值（如上游旧名 suno_music）忽略。
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt：歌曲描述（gpt_description_prompt，必填）；
- *   make_instrumental（布尔参数，可选）：是否纯音乐，默认 false；
- *   mv（字符串参数，可选）：Suno 模型版本，没填用 chirp- 开头的上游模型名，再没有就是默认 chirp-v3-0；运营可在生成参数里加这个同名参数。
+ *   make_instrumental（布尔参数，可选）：是否纯音乐，默认 false。
+ *   Suno 模型版本 mv 不是输入：取 chirp- 开头的上游模型名，再没有就是默认 chirp-v3-0。
  *
  * 产物：任务成功后每首歌的 audio_url（audio/mpeg）。
  * 刻意没移植：封面图 image_url（音频模型不出图）、视频 video_url、自定义歌词 / 风格 tags / 续写 / 拼接等进阶字段
@@ -49,7 +49,7 @@ module.exports = {
     var body = {};
     body.gpt_description_prompt = prompt;
     body.make_instrumental = input.make_instrumental === true;
-    body.mv = mvOf(ctx.model.upstreamModel, input.mv);
+    body.mv = mvOf(ctx.model.upstreamModel);
     return { method: "POST", path: "/suno/submit/MUSIC", json: body, timeout: 60 };
   },
 
@@ -161,11 +161,8 @@ function clipsOf(data) {
   return out;
 }
 
-// mv 优先级：用户输入 > chirp- 开头的上游模型名 > 默认 chirp-v3-0。
-function mvOf(upstreamModel, fromInput) {
-  if (typeof fromInput === "string" && fromInput !== "") {
-    return fromInput;
-  }
+// mv 优先级：chirp- 开头的上游模型名 > 默认 chirp-v3-0。
+function mvOf(upstreamModel) {
   if (typeof upstreamModel === "string" && upstreamModel.indexOf("chirp-") === 0) {
     return upstreamModel;
   }

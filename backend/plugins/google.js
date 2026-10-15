@@ -19,15 +19,14 @@
  *   apiVersion : 接口版本，v1beta（默认）或 v1。
  * 用户输入（ctx.input，按运营在后台配置的参数名传入）：
  *   prompt（必填）、images[0]（有就走图生视频）、duration（4 / 6 / 8 秒）、
- *   aspect_ratio（16:9 / 9:16）、resolution（720p / 1080p / 4k）、seed、negative_prompt、
- *   imageMimeType（参考图的 MIME，没填默认 image/png；宿主文件引用只给内容、不给类型，见下方“未验证”；运营可在生成参数里加这个同名参数）。
+ *   aspect_ratio（16:9 / 9:16）、resolution（720p / 1080p / 4k）、seed、negative_prompt。
  *
  * 未验证 / 已知限制：
  *   1. 结果地址 generatedVideos[0].video.uri 是 files/...:download?alt=media 形式，下载需要 Key。做法同 sora.js：
  *      看到 done 的那一轮先返回 running 并在 state 里记 { ready, url }，下一轮查询对该地址发 responseType=binary 的请求，
  *      该地址与渠道 base_url 同源，宿主会注入 x-goog-api-key，视频直接落库成素材（asset 产物），Key 不会进入任何地址。
  *      若 uri 不是渠道同源，宿主不注入 Key，下载会失败（未验证）。
- *   2. 图生视频的 image 用 inlineData { mimeType, data }（上游插件的写法）；参考图 MIME 取输入里的 imageMimeType，默认 png。
+ *   2. 图生视频的 image 用 inlineData { mimeType, data }（上游插件的写法）；宿主文件引用只给内容、不给类型，参考图 MIME 固定写 image/png。
  *   3. raiMediaFilteredCount / raiMediaFilteredReasons 当作内容审核拒绝处理，这是 Gemini API 文档里的字段，上游插件没处理。
  *   4. 没有实现取消（上游没有）。
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，用 var / function，不用可选链与空值合并。
@@ -73,7 +72,7 @@ module.exports = {
     if (images && images.length > 0) {
       instance.image = {
         inlineData: {
-          mimeType: input.imageMimeType || "image/png",
+          mimeType: "image/png",
           data: { __fileRef: images[0], as: "base64" },
         },
       };

@@ -21,8 +21,7 @@
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2v / i2v / omni）、images / videos / audios（文件引用，交给宿主换成签名 URL）、
  *   duration（秒）、resolution（480P / 720P / 1080P，大小写与是否带 P 都可）、aspect_ratio（16:9 / 9:16 / 1:1 / 4:3 / 3:4 / adaptive）、
- *   generate_audio（boolean，对应 parameters.audio）、seed、watermark、prompt_extend、negative_prompt、
- *   shot_type（single / multi，可选，没填不发；运营在面板的生成参数里加同名参数）
+ *   generate_audio（boolean，对应 parameters.audio）、seed、watermark、prompt_extend、negative_prompt
  *   wan3.0 / wan2.7-i2v：images[0] 首帧、images[1] 尾帧；op 为 omni 时 images / videos / audios 全部当参考素材（wan3.0）
  *
  * 与上游相比刻意没移植：OpenAI Responses / Video 网关协议、usageSchema 计费与重算。
@@ -208,7 +207,7 @@ function buildVideoRequest(ctx) {
   if (kind !== "speech") {
     par.prompt_extend = true;
   }
-  copyDefined(par, input, ["prompt_extend", "watermark", "seed", "shot_type"]);
+  copyDefined(par, input, ["prompt_extend", "watermark", "seed"]);
   if (typeof input.generate_audio === "boolean") {
     par.audio = input.generate_audio;
   }

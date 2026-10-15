@@ -22,8 +22,7 @@
  *
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2i / i2i）、images（文件引用，交给宿主换成签名 URL）、
- *   count（或 n，默认 1）、aspect_ratio、resolution（1K / 2K / 4K）、size（宽*高，优先于前两者）、seed、watermark、prompt_extend、negative_prompt、
- *   thinking_mode（boolean，可选，没填不发；运营在面板的生成参数里加同名参数）
+ *   count（或 n，默认 1）、aspect_ratio、resolution（1K / 2K / 4K）、size（宽*高，优先于前两者）、seed、watermark、prompt_extend、negative_prompt
  *
  * 与上游相比刻意没移植：OpenAI Responses / Images 网关协议、usageSchema 计费与重算、SSE 流式（wan2.6-image 图文混排 enable_interleave）、
  *   组图 enable_sequential、wanx2.1-imageedit 除指令编辑外的其它 function、遮罩图、Base64 直传。
@@ -207,7 +206,7 @@ function buildImageRequest(ctx) {
     throw new Error(model + " 一次出图张数必须是 1 到 " + maxN + " 的整数");
   }
   par.n = n;
-  copyDefined(par, input, ["seed", "watermark", "prompt_extend", "thinking_mode"]);
+  copyDefined(par, input, ["seed", "watermark", "prompt_extend"]);
 
   var maxInput = 0;
   if (cls === "image27") {

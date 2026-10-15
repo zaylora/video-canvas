@@ -234,7 +234,7 @@ func vertexaiVerifyJWT(t *testing.T, env *vertexaiEnv, jwt, aud string) {
 	}
 }
 
-// 图生视频：参考图 base64 + MIME 放进 instances[0].image。
+// 图生视频：参考图 base64 + MIME（固定 image/png，输入里的 imageMimeType 被忽略）放进 instances[0].image。
 func TestVertexaiSubmitImage2Video(t *testing.T) {
 	up := &vertexaiFake{handler: func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"` + vertexaiOpName + `"}`))
@@ -255,27 +255,18 @@ func TestVertexaiSubmitImage2Video(t *testing.T) {
 		t.Fatalf("参考图不符：%v", img)
 	}
 
-	// 用户输入里的 imageMimeType 决定参考图 MIME；不合法的 MIME 是插件级失败。
+	// 输入里的 imageMimeType 不是插件输入，被忽略：MIME 仍固定 image/png，也不会因为不合法的值失败。
 	snap := env.snapshot(srv.URL, vertexaiSettings(srv.URL))
-	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
-		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": "image/jpeg"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	reqs = up.all()
-	img = reqs[len(reqs)-1].Body["instances"].([]any)[0].(map[string]any)["image"].(map[string]any)
-	if img["mimeType"] != "image/jpeg" {
-		t.Fatalf("应取输入里的 imageMimeType：%v", img)
-	}
-	before := len(up.all())
-	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
-		Task: provider.TaskRef{ID: 3, UserID: 9}, Input: map[string]any{"prompt": "动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": "image/webp"},
-	}); err == nil {
-		t.Fatal("不支持的 MIME 应失败")
-	}
-	for _, r := range up.all()[before:] {
-		if strings.Contains(r.Path, "predictLongRunning") {
-			t.Fatalf("不合法 MIME 不应发出提交请求：%+v", r)
+	for i, mime := range []string{"image/jpeg", "image/webp"} {
+		if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
+			Task: provider.TaskRef{ID: uint64(2 + i), UserID: 9}, Input: map[string]any{"prompt": "动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": mime},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		reqs = up.all()
+		img = reqs[len(reqs)-1].Body["instances"].([]any)[0].(map[string]any)["image"].(map[string]any)
+		if img["mimeType"] != "image/png" {
+			t.Fatalf("输入 imageMimeType=%s 应被忽略，MIME 固定 png：%v", mime, img)
 		}
 	}
 }

@@ -18,7 +18,6 @@ import {
 } from "@/utils/admin/model-body";
 
 import {
-  AddParamRow,
   ContextEditor,
   LIMITS,
   OPS_OF_KIND,
@@ -263,10 +262,6 @@ export function ModelParamsForm({
                 onRemove={() => setParams(paramSetOps.remove(params, name))}
               />
             ))}
-            <AddParamRow
-              existing={Object.keys(params)}
-              onAdd={(name, field) => setParams(paramSetOps.add(params, name, field))}
-            />
             {issueFor(issues, "capabilities.params") && (
               <p className="text-destructive text-xs">{issueFor(issues, "capabilities.params")}</p>
             )}

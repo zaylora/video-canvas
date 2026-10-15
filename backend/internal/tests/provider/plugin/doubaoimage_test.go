@@ -76,9 +76,6 @@ func doubaoimageCaps(_ string) modelcfg.Capabilities {
 		{Name: "resolution", ParamField: enum("2K", "4K")},
 		{Name: "aspect_ratio", ParamField: enum("16:9", "adaptive")},
 		{Name: "n", ParamField: num(1, 4)},
-		{Name: "watermark", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
-		{Name: "output_format", ParamField: enum("png", "jpeg")},
-		{Name: "sequential_image_generation", ParamField: enum("auto", "disabled")},
 	}
 	return caps
 }
@@ -110,7 +107,7 @@ func TestDoubaoimagePrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 图片文生图：POST /api/v3/images/generations，size 优先于 resolution，watermark / sequential_image_generation 取用户输入；data[].url 变成 image 产物。
+// 图片文生图：POST /api/v3/images/generations，size 优先于 resolution，水印固定为 false；输入里的 watermark / output_format / sequential_image_generation / guidance_scale 被忽略；data[].url 变成 image 产物。
 func TestDoubaoimageImageGenerate(t *testing.T) {
 	var srv *httptest.Server
 	srv, up := doubaoimageServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +116,7 @@ func TestDoubaoimageImageGenerate(t *testing.T) {
 	env := newDoubaoimageEnv(t)
 	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "一只猫", "size": "2K", "n": float64(3),
-			"watermark": true, "sequential_image_generation": "auto", "output_format": "png"},
+			"watermark": true, "sequential_image_generation": "auto", "output_format": "png", "guidance_scale": float64(5)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -134,11 +131,16 @@ func TestDoubaoimageImageGenerate(t *testing.T) {
 	got := up.last()
 	b := got.Body
 	if got.Path != "/api/v3/images/generations" || got.Auth != "Bearer ark-key" || b["model"] != doubaoimageModel || b["prompt"] != "一只猫" ||
-		b["size"] != "2K" || b["response_format"] != "url" || b["watermark"] != true || b["sequential_image_generation"] != "auto" || b["output_format"] != "png" {
+		b["size"] != "2K" || b["response_format"] != "url" || b["watermark"] != false {
 		t.Fatalf("图片请求不符：%+v", got)
 	}
 	if _, ok := b["n"]; ok {
 		t.Fatalf("方舟没有 n，不应透传：%v", b)
+	}
+	for _, k := range []string{"output_format", "sequential_image_generation", "guidance_scale"} {
+		if _, ok := b[k]; ok {
+			t.Fatalf("%s 不是插件输入，不应发送：%v", k, b)
+		}
 	}
 	if _, ok := b["image"]; ok {
 		t.Fatalf("无参考图不应有 image：%v", b)

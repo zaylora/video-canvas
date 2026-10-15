@@ -26,7 +26,10 @@ describe("ModelParamsForm", () => {
     },
   );
 
-  test("视频模型仍然渲染生成参数面板", () => {
-    expect(render("video")).toContain("生成参数");
+  test("视频模型仍然渲染生成参数面板，但不能再手动添加新参数", () => {
+    const html = render("video");
+    expect(html).toContain("生成参数");
+    expect(html).not.toContain("添加参数");
+    expect(html).not.toContain("新参数名");
   });
 });

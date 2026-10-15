@@ -21,8 +21,7 @@
  *
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2v / i2v / omni）、duration（秒）、resolution（512P / 768P / 1080P / 2K，大小写不敏感）、aspect_ratio（只对 H3 生效）、
- *   images（参考图，每项是文件引用 "input:images.0"）、videos / audios（只对 H3 生效）、
- *   prompt_optimizer / fast_pretreatment / aigc_watermark（boolean，可选，没填不发；运营在面板的生成参数里加同名参数）
+ *   images（参考图，每项是文件引用 "input:images.0"）、videos / audios（只对 H3 生效）
  *   v1 老系列：images[0] -> first_frame_image，images[1] -> last_frame_image（URL）；S2V-01 的 images 作为 subject_reference 人物参考
  *   H3：op 为 omni，或带了 videos / audios 时，图片按 reference_image、视频按 reference_video、音频按 reference_audio 传；
  *       否则图片按首帧 / 尾帧（最多两张）传。ratio 取自 aspect_ratio（adaptive / 21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16），没填时有图或视频用 adaptive，否则 16:9
@@ -174,7 +173,6 @@ function buildV1Body(ctx) {
       body.last_frame_image = ref(images[1]);
     }
   }
-  copyFlags(body, input);
   return body;
 }
 
@@ -230,7 +228,6 @@ function buildH3Body(ctx) {
     duration: duration > 0 ? duration : 5,
     ratio: h3Ratio(input.aspect_ratio, images.length + videos.length > 0),
   };
-  copyFlags(body, input);
   return body;
 }
 
@@ -394,16 +391,6 @@ function refList(list) {
     out.push(ref(list[i]));
   }
   return out;
-}
-
-// 用户填了的布尔开关原样放进请求体顶层，没填不发。
-function copyFlags(body, input) {
-  var keys = ["prompt_optimizer", "fast_pretreatment", "aigc_watermark"];
-  for (var i = 0; i < keys.length; i++) {
-    if (typeof input[keys[i]] === "boolean") {
-      body[keys[i]] = input[keys[i]];
-    }
-  }
 }
 
 function isArray(v) {
