@@ -198,7 +198,18 @@ export function ModelRows({
             <VendorAvatar vendor={item.vendor} name={label} seed={item.key} />
             <div className="min-w-0">
               <div className="truncate font-medium">{label}</div>
-              <div className="text-muted-foreground truncate font-mono text-xs">{item.key}</div>
+              {item.tags && item.tags.length > 0 && (
+                <div className="mt-0.5 flex flex-wrap gap-1">
+                  {item.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="bg-muted text-muted-foreground rounded px-1.5 py-px text-xs"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </TableCell>
