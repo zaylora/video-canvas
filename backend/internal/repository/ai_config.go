@@ -203,6 +203,11 @@ func (r *AIConfigRepository) UpsertSecret(ctx context.Context, s *model.AISecret
 	}).Create(s).Error
 }
 
+// DeleteSecret 删除凭证；凭证不存在也算成功（幂等）。
+func (r *AIConfigRepository) DeleteSecret(ctx context.Context, name string) error {
+	return r.db.WithContext(ctx).Where("name = ?", name).Delete(&model.AISecret{}).Error
+}
+
 // GetSecret 读取凭证（含密文，仅供解密使用）；不存在返回 ErrNotFound。
 func (r *AIConfigRepository) GetSecret(ctx context.Context, name string) (*model.AISecret, error) {
 	var s model.AISecret

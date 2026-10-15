@@ -2,6 +2,7 @@ package aiconfigfake
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"sync"
 	"time"
@@ -90,20 +91,47 @@ func (m *MemRepo) SetPluginEnabled(_ context.Context, key string, enabled bool) 
 	return nil
 }
 
-// CountVersionRefs 统计版本被引用的情况：渠道数按当前渠道计算，进行中的任务数由测试通过 ActiveTaskRefs 设定。
+// protocolRefs 列出协议固定在 (pluginKey, version) 上的模型（调用方持有锁）；version 为空表示该插件的任意版本。
+func (m *MemRepo) protocolRefs(pluginKey, version string) []repository.ChannelModelRef {
+	var out []repository.ChannelModelRef
+	for _, row := range m.Models {
+		if row.PublishedRevisionID == nil {
+			continue
+		}
+		rev := m.find(*row.PublishedRevisionID)
+		if rev == nil {
+			continue
+		}
+		var body struct {
+			Label    string `json:"label"`
+			Channels []struct {
+				Protocol *struct {
+					Plugin  string `json:"plugin"`
+					Version string `json:"version"`
+				} `json:"protocol"`
+			} `json:"channels"`
+		}
+		if json.Unmarshal(rev.BodyJSON, &body) != nil || len(body.Channels) == 0 || body.Channels[0].Protocol == nil {
+			continue
+		}
+		p := body.Channels[0].Protocol
+		if p.Plugin == pluginKey && (version == "" || p.Version == version) {
+			out = append(out, repository.ChannelModelRef{Key: rev.TargetKey, Label: body.Label})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
+}
+
+// CountVersionRefs 统计版本被引用的情况：模型数按当前模型的协议计算，进行中的任务数由测试通过 ActiveTaskRefs 设定。
 func (m *MemRepo) CountVersionRefs(_ context.Context, id uint64) (repository.VersionRefs, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.Versions[id]; !ok {
 		return repository.VersionRefs{}, repository.ErrNotFound
 	}
-	refs := repository.VersionRefs{ActiveTasks: m.ActiveTaskRefs[id]}
-	for _, c := range m.Channels {
-		if c.PluginVersionID == id {
-			refs.Channels++
-		}
-	}
-	return refs, nil
+	v := m.Versions[id]
+	return repository.VersionRefs{Models: int64(len(m.protocolRefs(v.PluginKey, v.Version))), ActiveTasks: m.ActiveTaskRefs[id]}, nil
 }
 
 // DeleteVersion 删除版本（仍被引用返回 ErrInUse）；插件没有版本后连插件行一起删。
@@ -117,10 +145,8 @@ func (m *MemRepo) DeleteVersion(_ context.Context, id uint64) error {
 	if m.DeleteInUse {
 		return repository.ErrInUse
 	}
-	for _, c := range m.Channels {
-		if c.PluginVersionID == id {
-			return repository.ErrInUse
-		}
+	if len(m.protocolRefs(v.PluginKey, v.Version)) > 0 {
+		return repository.ErrInUse
 	}
 	if m.ActiveTaskRefs[id] > 0 {
 		return repository.ErrInUse
@@ -135,20 +161,17 @@ func (m *MemRepo) DeleteVersion(_ context.Context, id uint64) error {
 	return nil
 }
 
-// CreateChannel 新建渠道：key 重复返回 ErrDuplicate，插件版本不存在返回 ErrNotFound。
+// CreateChannel 新建渠道：key 重复返回 ErrDuplicate。
 func (m *MemRepo) CreateChannel(_ context.Context, c *model.AIChannel) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.Versions[c.PluginVersionID]; !ok {
-		return repository.ErrNotFound
-	}
 	if _, ok := m.Channels[c.Key]; ok {
 		return repository.ErrDuplicate
 	}
 	now := time.Now()
 	c.CreatedAt, c.UpdatedAt = now, now
-	if len(c.SettingsJSON) == 0 {
-		c.SettingsJSON = model.JSONText("{}")
+	if len(c.HeadersJSON) == 0 {
+		c.HeadersJSON = model.JSONText("{}")
 	}
 	if len(c.RateLimitJSON) == 0 {
 		c.RateLimitJSON = model.JSONText("{}")
@@ -158,7 +181,7 @@ func (m *MemRepo) CreateChannel(_ context.Context, c *model.AIChannel) error {
 	return nil
 }
 
-// UpdateChannel 更新渠道的可变字段：渠道或新的插件版本不存在返回 ErrNotFound。
+// UpdateChannel 更新渠道的可变字段（不含 sort）：渠道不存在返回 ErrNotFound。
 func (m *MemRepo) UpdateChannel(_ context.Context, c *model.AIChannel) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -166,12 +189,40 @@ func (m *MemRepo) UpdateChannel(_ context.Context, c *model.AIChannel) error {
 	if !ok {
 		return repository.ErrNotFound
 	}
-	if _, ok := m.Versions[c.PluginVersionID]; !ok {
-		return repository.ErrNotFound
-	}
-	c.CreatedAt, c.UpdatedAt = old.CreatedAt, time.Now()
+	c.CreatedAt, c.UpdatedAt, c.Sort = old.CreatedAt, time.Now(), old.Sort
 	stored := *c
 	m.Channels[c.Key] = &stored
+	return nil
+}
+
+// SetChannelOrder 按 keys 重写渠道 sort；不是现有渠道的全集返回 ErrNotFound / ErrOrderMismatch，与真实仓储一致。
+func (m *MemRepo) SetChannelOrder(_ context.Context, keys []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[string]bool{}
+	for _, k := range keys {
+		if _, ok := m.Channels[k]; !ok {
+			return repository.ErrNotFound
+		}
+		if seen[k] {
+			return repository.ErrOrderMismatch
+		}
+		seen[k] = true
+	}
+	if len(seen) != len(m.Channels) {
+		return repository.ErrOrderMismatch
+	}
+	for i, k := range keys {
+		m.Channels[k].Sort = (i + 1) * 10
+	}
+	return nil
+}
+
+// DeleteSecret 删除凭证（不存在也算成功）。
+func (m *MemRepo) DeleteSecret(_ context.Context, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.Secrets, name)
 	return nil
 }
 
@@ -219,40 +270,24 @@ func (p *Prechecker) Precheck(_ context.Context, code string) (*provider.Prechec
 	return p.Default, nil
 }
 
-// PluginOps 是 provider.PluginOps 的替身。
-type PluginOps struct {
-	CheckResult *provider.CheckResult
-	CheckErr    error
-	Drafts      []provider.ModelDraft
-	ImportErr   error
+// ModelLister 是 provider.ModelLister 的替身：返回预设的上游模型 id 或预设的错误，并记录最近一次调用收到的渠道与 Key。
+type ModelLister struct {
+	IDs []string
+	Err error
 
-	GotRuntime *provider.ChannelRuntime
-	GotArgs    map[string]any
-	GotSecret  string // 最近一次 CheckDraft 收到的草稿 Key
-	DraftCalls int    // CheckDraft 的调用次数
-	Calls      int
+	Calls   int
+	Channel provider.ChannelSnapshot // 最近一次调用收到的渠道（地址、请求头、限流）
+	APIKey  string                   // 最近一次调用收到的 API Key 明文
 }
 
-// Check 记录调用并返回预设结果。
-func (o *PluginOps) Check(_ context.Context, rt *provider.ChannelRuntime) (*provider.CheckResult, error) {
-	o.Calls++
-	o.GotRuntime = rt
-	return o.CheckResult, o.CheckErr
-}
-
-// CheckDraft 记录调用（含草稿 Key）并返回预设结果。
-func (o *PluginOps) CheckDraft(_ context.Context, rt *provider.ChannelRuntime, secret string) (*provider.CheckResult, error) {
-	o.Calls++
-	o.DraftCalls++
-	o.GotRuntime, o.GotSecret = rt, secret
-	return o.CheckResult, o.CheckErr
-}
-
-// Import 记录调用并返回预设结果。
-func (o *PluginOps) Import(_ context.Context, rt *provider.ChannelRuntime, args map[string]any) ([]provider.ModelDraft, error) {
-	o.Calls++
-	o.GotRuntime, o.GotArgs = rt, args
-	return o.Drafts, o.ImportErr
+// ListUpstreamModels 记录调用并返回预设结果。
+func (l *ModelLister) ListUpstreamModels(_ context.Context, ch provider.ChannelSnapshot, apiKey string) ([]string, error) {
+	l.Calls++
+	l.Channel, l.APIKey = ch, apiKey
+	if l.Err != nil {
+		return nil, l.Err
+	}
+	return append([]string(nil), l.IDs...), nil
 }
 
 // Notifier 记录 Registry 刷新通知。

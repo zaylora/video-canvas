@@ -25,22 +25,23 @@ import (
 
 // 编译期契约：各服务声明的依赖接口必须能被真实实现直接满足，接线时不需要写适配层。
 var (
-	_ AIConfigRepo     = (*repository.AIConfigRepository)(nil)
-	_ AIConfigRepo     = (*aiconfigfake.MemRepo)(nil)
-	_ AIChannelReader  = (*repository.AIChannelRepository)(nil)
-	_ AIPluginReader   = (*repository.AIPluginRepository)(nil)
-	_ AIPluginRepo     = (*repository.AIPluginRepository)(nil)
-	_ AIPluginRepo     = (*aiconfigfake.MemRepo)(nil)
-	_ AIChannelRepo    = (*repository.AIChannelRepository)(nil)
-	_ AIChannelRepo    = (*aiconfigfake.MemRepo)(nil)
-	_ AIChannelLister  = (*repository.AIChannelRepository)(nil)
-	_ AIChannelPlugins = (*repository.AIPluginRepository)(nil)
-	_ AIChannelSecrets = (*AIConfigService)(nil)
-	_ AIAuditWriter    = (*repository.AIChannelRepository)(nil)
-	_ AIAuditWriter    = (*aiconfigfake.MemRepo)(nil)
-	_ RegistryNotifier = (*AIConfigService)(nil)
-	_ DryRunner        = (*plugin.Executor)(nil)
-	_ TestTaskCreator  = (*GenerationTaskService)(nil)
+	_ AIConfigRepo         = (*repository.AIConfigRepository)(nil)
+	_ AIConfigRepo         = (*aiconfigfake.MemRepo)(nil)
+	_ AIChannelReader      = (*repository.AIChannelRepository)(nil)
+	_ AIPluginReader       = (*repository.AIPluginRepository)(nil)
+	_ AIPluginRepo         = (*repository.AIPluginRepository)(nil)
+	_ AIPluginRepo         = (*aiconfigfake.MemRepo)(nil)
+	_ AIChannelRepo        = (*repository.AIChannelRepository)(nil)
+	_ AIChannelRepo        = (*aiconfigfake.MemRepo)(nil)
+	_ AIPluginModels       = (*AIConfigService)(nil)
+	_ AIChannelModels      = (*AIConfigService)(nil)
+	_ AIChannelSecrets     = (*AIConfigService)(nil)
+	_ provider.ModelLister = (*plugin.Executor)(nil)
+	_ AIAuditWriter        = (*repository.AIChannelRepository)(nil)
+	_ AIAuditWriter        = (*aiconfigfake.MemRepo)(nil)
+	_ RegistryNotifier     = (*AIConfigService)(nil)
+	_ DryRunner            = (*plugin.Executor)(nil)
+	_ TestTaskCreator      = (*GenerationTaskService)(nil)
 )
 
 // e2eCodes 从 fake 仓储里取插件代码，给真实的插件宿主装载用。
@@ -75,7 +76,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		e.gotAuths = append(e.gotAuths, r.Header.Get("Authorization"))
 		e.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/v1/models" {
+		if r.URL.Path == "/models" {
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"},{"id":"kling-v2-master"},{"id":"text-embedding-3-small"}]}`))
 			return
 		}
@@ -90,13 +91,13 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		IPAllowed: func(net.IP) bool { return true }, // 上游是本机 httptest 服务
 	})
 	e.cfg.SetDryRunner(exec)
-	e.plugins = NewAIPluginService(e.repo, e.repo, e.repo, plugin.NewPrechecker(runner), e.cfg)
-	e.channels = NewAIChannelService(e.repo, e.repo, e.cfg, e.repo, exec, e.cfg)
+	e.plugins = NewAIPluginService(e.repo, e.cfg, e.repo, plugin.NewPrechecker(runner), e.cfg)
+	e.channels = NewAIChannelService(e.repo, e.cfg, e.cfg, exec, e.repo, e.cfg)
 	return e
 }
 
-// 端到端：启动登记内置 openai.js → 建渠道 → 设 Key → 连通性检查 → 导入模型 → 保存草稿 → 发布 → dry-run，
-// 验证管理层各服务与真实插件运行时首尾相接，且 Key 全程不出现在任何管理响应里。
+// 端到端：启动登记内置 openai.js → 建渠道（只有连接信息）→ 设 Key → 拉取上游模型 → 导入成“待配置”模型 →
+// 在模型里选协议并保存 → 启用 → dry-run，验证管理层各服务与真实插件运行时首尾相接，且 Key 全程不出现在任何管理响应里。
 func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	e := newE2EEnv(t)
@@ -132,10 +133,9 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	// 内置插件不能删
 	adminWantCode(t, e.plugins.DeleteVersion(ctx, 1, "openai", openai.Versions[0].Version), errcode.ErrPluginBuiltin.Code)
 
-	// 2. 建渠道（上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
+	// 2. 建渠道（只有连接信息，没有协议；上游是本机 httptest，回环地址由宿主选项 IPAllowed 放行），设 Key
 	view, err := e.channels.Create(ctx, ChannelCreateInput{
-		Key: "openai-main", Name: "OpenAI 渠道", PluginKey: "openai", PluginVersion: openai.Versions[0].Version,
-		BaseURL: e.upstream.URL, Enabled: true, ActorID: 1,
+		Key: "openai-main", Name: "OpenAI 渠道", BaseURL: e.upstream.URL, Enabled: true, ActorID: 1,
 	})
 	if err != nil || view.SecretSet {
 		t.Fatalf("建渠道失败：%+v %v", view, err)
@@ -144,70 +144,63 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 3. 连通性检查：真实执行 openai.js 的 buildCheckRequest，宿主注入 Bearer
-	res, err := e.channels.Check(ctx, "openai-main")
-	if err != nil || !res.OK {
-		t.Fatalf("连通性检查应成功：%+v %v", res, err)
+	// 3. 拉取上游模型：宿主内置的通用请求（GET /models + Bearer），不经过插件；列出全部，不做类型过滤
+	pulled, err := e.channels.PullModels(ctx, "openai-main")
+	if err != nil || pulled.Total != 3 {
+		t.Fatalf("拉取应成功并列出 3 个模型：%+v %v", pulled, err)
 	}
 	e.mu.Lock()
 	if len(e.gotAuths) == 0 || e.gotAuths[len(e.gotAuths)-1] != "Bearer "+secret {
 		e.mu.Unlock()
-		t.Fatalf("上游应收到宿主注入的 Bearer：%v", e.gotAuths)
+		t.Fatalf("上游应收到渠道 Key 作 Bearer：%v", e.gotAuths)
 	}
 	e.mu.Unlock()
 
-	// 4. 导入模型：openai.js 的导入钩子把 /v1/models 转成草稿（只有文本 / 视频模型）
-	imp, err := e.channels.Import(ctx, "openai-main", nil)
-	if err != nil {
-		t.Fatalf("导入失败：%v", err)
+	// 4. 导入成“待配置”模型：未启用、没有能力和协议，对用户不可见
+	imp, err := e.channels.ImportModels(ctx, 1, "openai-main", []string{"gpt-4o"})
+	if err != nil || len(imp.Created) != 1 || imp.Created[0].Key != "gpt-4o" {
+		t.Fatalf("导入失败：%+v %v", imp, err)
 	}
-	var textDraft *provider.ModelDraft
-	for i := range imp.Drafts {
-		if imp.Drafts[i].UpstreamModel == "gpt-4o" {
-			textDraft = &imp.Drafts[i]
-		}
+	if pending, _ := e.cfg.ListModels(ctx, ""); len(pending) != 0 {
+		t.Fatalf("待配置的模型不应对用户可见：%+v", pending)
 	}
-	if textDraft == nil || textDraft.Kind != "text" {
-		t.Fatalf("应导入出文本模型 gpt-4o：%+v", imp.Drafts)
-	}
-	for _, d := range imp.Drafts {
-		if d.UpstreamModel == "text-embedding-3-small" {
-			t.Fatalf("不支持的种类不应被导入：%+v", d)
-		}
+	if again, _ := e.channels.PullModels(ctx, "openai-main"); !again.Models[0].Exists || again.Models[0].ID != "gpt-4o" {
+		t.Fatalf("再次拉取应标出已存在的模型：%+v", again)
 	}
 
-	// 5. 保存模型 → 启用 → 出现在清单里
-	body := `{"key":"gpt","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
-		`"channels":[{"channel":"openai-main","upstream_model":"gpt-4o"}],` +
+	// 5. 在模型里选协议（openai@内置版本，Chat Completions）并保存 → 启用 → 出现在清单里
+	body := `{"key":"gpt-4o","kind":"text","label":"GPT","enabled":true,"pricing":{"billing":"token","token":{"in":2,"out":8}},` +
+		`"channels":[{"channel":"openai-main","upstream_model":"gpt-4o",` +
+		`"protocol":{"plugin":"openai","version":"` + openai.Versions[0].Version + `","settings":{"api":"chat_completions"}}}],` +
 		`"capabilities":{"prompt":{"max_length":8000},"context":{"window":128000,"output":4096},"system":"保密的系统提示"}}`
-	saved, err := e.cfg.SaveModel(ctx, ModelSaveInput{Create: true, Body: json.RawMessage(body), AdminID: 1})
+	saved, err := e.cfg.SaveModel(ctx, ModelSaveInput{Key: "gpt-4o", Body: json.RawMessage(body), AdminID: 1})
 	if err != nil || len(saved.Issues) != 0 {
 		t.Fatalf("保存失败：%+v %v", saved, err)
 	}
-	if err := e.cfg.SetModelEnabled(ctx, "gpt", true, 1); err != nil {
+	if err := e.cfg.SetModelEnabled(ctx, "gpt-4o", true, 1); err != nil {
 		t.Fatalf("启用失败：%v", err)
 	}
 	models, err := e.cfg.ListModels(ctx, "text")
-	if err != nil || len(models) != 1 || models[0].Key != "gpt" {
+	if err != nil || len(models) != 1 || models[0].Key != "gpt-4o" {
 		t.Fatalf("文本模型应出现在清单里：%+v %v", models, err)
 	}
 	items, _ := e.cfg.ListConfigs(ctx)
-	if len(items) != 1 || items[0].Label != "GPT" || items[0].Channel != "openai-main" {
+	if len(items) != 1 || items[0].Label != "GPT" || items[0].Channel != "openai-main" || items[0].Plugin != "openai" {
 		t.Fatalf("管理列表应带 label / channel：%+v", items)
 	}
 
 	// 6. dry-run：真实执行 buildSubmitRequest，返回的描述里不含 Key
-	out, err := e.cfg.DryRun(ctx, "gpt", map[string]any{"prompt": "你好"})
+	out, err := e.cfg.DryRun(ctx, "gpt-4o", map[string]any{"prompt": "你好"})
 	if err != nil {
 		t.Fatalf("dry-run 失败：%v", err)
 	}
 	text := aicJSON(out)
-	if strings.Contains(text, secret) || !strings.Contains(text, "/v1/responses") || !strings.Contains(text, "你好") {
+	if strings.Contains(text, secret) || !strings.Contains(text, "/v1/chat/completions") || !strings.Contains(text, "你好") {
 		t.Fatalf("dry-run 结果不符合预期：%s", text)
 	}
 
 	// 7. 全程管理响应都不含 Key
-	all, _ := json.Marshal([]any{view, res, imp, saved, items, out})
+	all, _ := json.Marshal([]any{view, pulled, imp, saved, items, out})
 	if v, _ := e.channels.Get(ctx, "openai-main"); v != nil {
 		b, _ := json.Marshal(v)
 		all = append(all, b...)

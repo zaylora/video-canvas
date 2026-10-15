@@ -1,6 +1,7 @@
 /**
  * AI 管理接口的类型，以 backend/docs/admin-ai-api.md 为准。
- * 三层对象：插件（JS 文件，版本不可变）→ 渠道（插件版本 + base_url + 加密 Key）→ 模型（渠道 + 上游模型 + capabilities）。
+ * 三层对象：插件（JS 文件，版本不可变）→ 渠道（只有连接信息：base_url、Key、请求头、限流）→ 模型（渠道 + 上游模型 + 协议 + capabilities）。
+ * 协议插件、版本与协议设置项在模型的 channels[0].protocol 里选，渠道不绑协议。
  */
 
 /** 管理端角色：admin 运营（只管模型），super_admin 运维（能管插件与渠道） */
@@ -30,10 +31,10 @@ export type PluginSource = "builtin" | "uploaded";
 /** 插件鉴权方式 */
 export type PluginAuthType = "none" | "bearer" | "header" | "query" | "custom";
 
-/** 渠道设置项 / 导入参数的类型 */
+/** 协议设置项（插件的 channelSettings）的类型 */
 export type SettingType = "string" | "number" | "boolean" | "enum";
 
-/** 插件声明的一个设置项（channelSettings / import.args 的值） */
+/** 插件声明的一个协议设置项（channelSettings 的值） */
 export interface SettingSpec {
   /** 取值类型 */
   type: SettingType | string;
@@ -66,11 +67,16 @@ export interface PluginMeta {
   description?: string;
   /** 鉴权声明；name 用于 header（头名）与 query（参数名） */
   auth?: { type?: PluginAuthType | string; name?: string } | null;
-  /** 支持的生成方式，键是模型 kind */
-  endpoints?: Record<string, { mode?: "sync" | "async" | string }> | null;
-  /** 渠道上的额外设置 */
+  /** 厂商 slug（可选），模型弹窗的协议列表里显示 */
+  vendor?: string;
+  /** 支持的生成方式，键是模型 kind；method 与 path 只用于协议列表的展示（“POST /v1/messages”） */
+  endpoints?: Record<
+    string,
+    { mode?: "sync" | "async" | string; method?: string; path?: string }
+  > | null;
+  /** 协议设置项：在模型的“协议设置”里填，值存在模型配置里 */
   channelSettings?: SettingSchema | null;
-  /** 「从渠道导入模型」的参数表单；没有该字段表示插件不支持导入 */
+  /** 已弃用：渠道不再绑协议，拉取模型由宿主内置的通用请求完成，宿主不再调用导入钩子 */
   import?: { args?: SettingSchema | null } | null;
   /** 异步轮询节奏（秒） */
   poll?: Record<string, number> | null;
@@ -78,7 +84,7 @@ export interface PluginMeta {
 
 /** 插件的一个不可变版本 */
 export interface PluginVersionView {
-  /** 版本 ID（渠道的 plugin_version_id） */
+  /** 版本 ID */
   id: number;
   /** 所属插件 */
   plugin_key: string;
@@ -90,8 +96,8 @@ export interface PluginVersionView {
   created_at: string;
   /** 上传人（内置插件为 0） */
   created_by: number;
-  /** 固定在这个版本上的渠道数 */
-  channel_count: number;
+  /** 协议固定在这个版本上的模型数 */
+  model_count: number;
   /** 预检时读出的 meta */
   meta: PluginMeta | null;
 }
@@ -104,7 +110,7 @@ export interface PluginView {
   name: string;
   /** 来源 */
   source: PluginSource | string;
-  /** 是否启用；停用后所有使用它的渠道不再接新任务 */
+  /** 是否启用；停用后所有协议用了它的模型不再接新任务 */
   enabled: boolean;
   /** 更新时间 */
   updated_at: string;
@@ -154,30 +160,26 @@ export interface ChannelLoad {
   waiting: number;
 }
 
-/** 渠道视图（不含 Key） */
+/** 渠道视图（不含 Key）：渠道只管连接信息，协议在模型里选 */
 export interface ChannelView {
   /** 渠道 key */
   key: string;
   /** 显示名 */
   name: string;
-  /** 使用的插件 */
-  plugin_key: string;
-  /** 固定的插件版本 ID */
-  plugin_version_id: number;
-  /** 固定的插件版本号 */
-  plugin_version: string;
-  /** 插件请求只能去这个地址 */
+  /** 请求只能去这个地址 */
   base_url: string;
-  /** 允许把 Key 交给 auth: custom 的插件 */
-  allow_credentials: boolean;
-  /** 插件 channelSettings 的取值 */
-  settings: Record<string, unknown> | null;
+  /** 自定义请求头（明文存储，不要放密钥），只加到发往 base_url 同源的请求 */
+  headers: Record<string, string>;
   /** 限流 */
   rate_limit: ChannelRateLimit | null;
+  /** 渠道顺序，越小越靠前；用户看到的模型顺序 = 渠道顺序 + 渠道内顺序 */
+  sort: number;
   /** 是否启用 */
   enabled: boolean;
-  /** Key 是否已设置（只写不读） */
+  /** API Key 是否已设置（只写不读） */
   secret_set: boolean;
+  /** Secret Key（可选的第二凭证，AK/SK 签名类协议用）是否已设置（只写不读） */
+  secret_key_set: boolean;
   /** 最后修改人 */
   updated_by: number;
   /** 更新时间 */
@@ -186,21 +188,18 @@ export interface ChannelView {
   created_at: string;
 }
 
-/** POST /admin/ai/channels 的请求体 */
+/** POST /admin/ai/channels 的请求体（Key 与 Secret Key 另走 secret 接口） */
 export interface ChannelCreateRequest {
-  key: string;
+  /** 不传由后端生成（16 位十六进制）；渠道 key 是内部标识，创建后不可改 */
+  key?: string;
   name: string;
-  plugin_key: string;
-  /** semver 字符串，固定到这个版本 */
-  plugin_version: string;
   base_url: string;
-  allow_credentials?: boolean;
-  settings?: Record<string, unknown>;
+  headers?: Record<string, string>;
   rate_limit?: ChannelRateLimit;
   enabled?: boolean;
 }
 
-/** PUT /admin/ai/channels/:key 的请求体：字段都可选，不传表示不改 */
+/** PUT /admin/ai/channels/:key 的请求体：字段都可选，不传表示不改；headers 传了就整体替换 */
 export type ChannelUpdateRequest = Partial<Omit<ChannelCreateRequest, "key">>;
 
 /** 可以删除的对象 */
@@ -210,14 +209,14 @@ export type DeleteTarget = "plugin" | "channel" | "model";
  * 删除阻断原因：
  * - model_enabled：模型还在上架
  * - channel_models：有模型（最新草稿或已发布版本）在用这个渠道，refs 是这些模型
- * - plugin_channels：有渠道固定在这个插件的某个版本上，refs 是这些渠道
+ * - plugin_models：有模型的协议固定在这个插件的某个版本上，refs 是这些模型
  * - builtin_plugin：内置插件只能停用
  * - active_tasks：还有进行中的任务在用
  */
 export type DeleteBlockerKind =
   | "model_enabled"
   | "channel_models"
-  | "plugin_channels"
+  | "plugin_models"
   | "builtin_plugin"
   | "active_tasks";
 
@@ -234,46 +233,36 @@ export interface DeleteCheckResult {
   blockers: DeleteBlocker[];
 }
 
-/** POST /admin/ai/channels/check-draft 的请求体：保存前检查，用表单里还没保存的配置，不落库 */
-export interface ChannelCheckDraftRequest {
-  /** 编辑已有渠道时传：secret 留空就用它已保存的 Key */
-  existing_key?: string;
-  plugin_key: string;
-  plugin_version: string;
-  base_url: string;
-  allow_credentials?: boolean;
-  settings?: Record<string, unknown>;
-  /** 草稿 Key 明文，只在这次请求里用，不落库 */
-  secret?: string;
+/** 拉取到的一个上游模型 */
+export interface PulledModel {
+  /** 上游模型 id */
+  id: string;
+  /** 这个渠道下已有同名上游模型（导入时会跳过） */
+  exists: boolean;
 }
 
-/** 连通性检查结果 */
-export interface ChannelCheckResult {
-  /** 是否连通 */
-  ok: boolean;
-  /** 说明，如 HTTP 200 */
-  message: string;
-  /** 耗时（毫秒） */
-  duration_ms: number;
+/** POST /admin/ai/channels/:key/pull-models 的结果：不落库 */
+export interface PullModelsResult {
+  models: PulledModel[];
+  total: number;
 }
 
-/** 从渠道导入得到的一份模型草稿（只预填编辑器，不落库） */
-export interface ModelDraft {
-  /** 上游模型名 */
-  upstream_model: string;
-  /** 模型 kind */
-  kind: string;
-  /** 展示名 */
-  label: string;
-  /** 固定参数 */
-  params?: Record<string, unknown> | null;
-  /** 插件给的生成参数预填建议（参数名 -> 建议），只在导入时预填编辑器 */
-  param_hints?: import("@/utils/admin/param-hints").ParamHints | null;
+/** POST /admin/ai/channels/:key/models/import 的结果 */
+export interface ImportModelsResult {
+  /** 新建的“待配置”模型 */
+  created: Array<{ key: string; upstream_model: string }>;
+  /** 因渠道下已有同名上游模型而跳过的上游模型名 */
+  skipped: string[];
 }
 
-/** POST /admin/ai/channels/:key/import 的结果 */
-export interface ChannelImportResult {
-  drafts: ModelDraft[];
+/** POST /admin/ai/plugins/:key/upgrade-models 的结果：逐个处理，失败不中断 */
+export interface UpgradeModelsResult {
+  /** 实际升到的版本 */
+  to_version: string;
+  /** 升级成功的模型 key */
+  upgraded: string[];
+  /** 失败的模型与原因（保持原样） */
+  failed: Array<{ key: string; reason: string }>;
 }
 
 // ---------------------------------------------------------------- 模型
@@ -294,6 +283,12 @@ export interface ConfigListItem {
   tags?: string[];
   /** 模型使用的渠道 key（channels[0].channel）；后端补齐前可能缺失，缺失时不显示渠道 */
   channel?: string;
+  /** 上游模型名（channels[0].upstream_model） */
+  upstream?: string;
+  /** 协议选的插件 key（channels[0].protocol.plugin）；没选（待配置 / Agent）为空串 */
+  plugin?: string;
+  /** 协议固定的插件版本号；没选为空串 */
+  plugin_version?: string;
   /** 是否已上架 */
   enabled?: boolean;
   /** 排序值 */
@@ -435,10 +430,10 @@ export interface AdminStats {
 
 // ---------------------------------------------------------------- 分页列表（渠道 / 插件 / 模型）
 
-/** 渠道健康色调：ok 可用、warn 缺 Key、bad 不可用、off 已停用 */
+/** 渠道健康色调：ok 可用、warn 缺 Key、off 已停用 */
 export type HealthTone = "ok" | "warn" | "bad" | "off";
 
-/** 渠道实际能不能用（后端算好）：插件停用 / 不存在 / 缺 Key 都会让渠道不可用，即使渠道本身是“启用” */
+/** 渠道实际能不能用（后端算好）：停用、没设 Key */
 export interface ChannelHealth {
   tone: HealthTone;
   /** 列表里的短标签 */
@@ -447,10 +442,10 @@ export interface ChannelHealth {
   reason: string;
 }
 
-/** 模型对运营露出的唯一状态：在线 / 不可用（已上架但渠道用不了）/ 未上线 */
-export type ModelStatus = "online" | "broken" | "offline";
+/** 模型对运营露出的唯一状态：在线 / 不可用（已上架但渠道或协议用不了）/ 未上线 / 待配置（还没选能力或协议） */
+export type ModelStatus = "online" | "broken" | "offline" | "pending";
 
-/** 模型状态（后端算好）；reason 是渠道层面的问题，未上线的模型也可能有 */
+/** 模型状态（后端算好）；reason 是渠道或协议层面的问题，未上线的模型也可能有 */
 export interface ModelHealth {
   status: ModelStatus;
   reason: string;
@@ -464,51 +459,44 @@ export interface AdminPage<T> {
   page_size: number;
 }
 
-/** 渠道列表的一行：渠道 + 健康状态、可升级版本、能力、模型数 */
+/** 渠道列表的一行：渠道 + 健康状态、模型数 */
 export interface ChannelListItem extends ChannelView {
   health: ChannelHealth;
-  /** 有更新版本时是最高版本号，否则为空串 */
-  upgrade_to: string;
-  /** 所用插件版本支持的生成方式（含 agent） */
-  kinds: string[];
   model_count: number;
   /** 其中已上架的 */
   online_model_count: number;
 }
 
-/** 渠道 options（弹窗下拉、概览用）：完整渠道视图 + 健康状态和能力，不分页 */
+/** 渠道 options（主从页左栏、弹窗下拉、概览用）：完整渠道视图 + 健康状态，不分页，顺序是渠道顺序 */
 export interface ChannelOption extends ChannelView {
   health: ChannelHealth;
-  kinds: string[];
 }
 
-/** 插件列表的一行：插件（带全部版本）+ 渠道数、旧版渠道数、在线模型数、最新版本 */
+/** 插件列表的一行：插件（带全部版本）+ 模型数、旧版模型数、在线模型数、最新版本 */
 export interface PluginListItem extends PluginView {
   /** 按 semver 最高的版本号；没有版本为空串 */
   latest_version: string;
-  /** 在用这个插件的渠道数 */
-  channel_count: number;
-  /** 其中固定在旧版本上的渠道数 */
-  outdated_channel_count: number;
-  /** 这些渠道下已上架的模型数 */
+  /** 协议用了这个插件的模型数 */
+  model_count: number;
+  /** 其中固定在旧版本上的模型数 */
+  outdated_model_count: number;
+  /** 其中已上架的模型数 */
   online_model_count: number;
 }
 
-/** 模型列表的一行：列表项 + 状态和渠道名 */
+/** 模型列表的一行：列表项 + 状态、渠道名和协议名 */
 export interface ModelListItem extends ConfigListItem {
   health: ModelHealth;
   /** 绑定渠道的显示名；没绑或渠道不存在为空串 */
   channel_name: string;
+  /** 协议插件的显示名；没选或插件不存在为空串 */
+  plugin_name: string;
 }
 
 /** 渠道列表的查询参数 */
 export interface ListChannelsParams {
   q?: string;
-  /** text / image / video / audio / agent */
-  kind?: string;
-  /** 插件 key */
-  plugin?: string;
-  /** ok / warn / bad / off / upgrade */
+  /** ok / warn / off */
   status?: string;
   page?: number;
   page_size?: number;
@@ -532,7 +520,7 @@ export interface ListModelsParams {
   kind?: string;
   /** 渠道 key */
   channel?: string;
-  /** online / broken / offline */
+  /** online / broken / offline / pending */
   status?: string;
   page?: number;
   page_size?: number;
@@ -572,7 +560,7 @@ export interface OverviewChannel {
 export interface AdminOverview {
   plugins: { total: number; usable: number };
   channels: { total: number; usable: number; no_key: number };
-  models: { total: number; online: number; broken: number };
+  models: { total: number; online: number; broken: number; pending: number };
   todos: OverviewTodo[];
   channel_briefs: OverviewChannel[];
 }

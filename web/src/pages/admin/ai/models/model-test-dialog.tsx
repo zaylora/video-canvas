@@ -105,8 +105,8 @@ export function ModelTestDialog({
               run={ws.run}
               trace={ws.trace}
               plugin={
-                ws.info.channel
-                  ? { key: ws.info.channel.plugin_key, version: ws.info.pluginVersion }
+                ws.info.protocol
+                  ? { key: ws.info.protocol.plugin, version: ws.info.pluginVersion }
                   : null
               }
               onRefreshTrace={ws.refreshTrace}

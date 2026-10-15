@@ -120,19 +120,24 @@ func TestAdminChannelHandler_Delete(t *testing.T) {
 
 func TestAdminPluginHandler_DeletePlugin(t *testing.T) {
 	env := aicNewEnv(t)
-	id := env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
+	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
 	env.seedPlugin(t, "kling", "1.1.0", model.PluginSourceUploaded)
 	env.seedPlugin(t, "newapi", "1.0.0", model.PluginSourceBuiltin)
-	env.repo.Channels["c1"] = &model.AIChannel{Key: "c1", Name: "渠道一", PluginKey: "kling", PluginVersionID: id}
+	// 协议用了 kling 的模型：删除插件的阻断原因按模型算（渠道不再绑协议）
+	env.seedProtocolModel(t, "m1", "c1", "kling", "1.0.0")
 
 	t.Run("权限：admin 调用预检与删除都是 403", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodGet, aicBase+"/plugins/kling/delete-check", nil), http.StatusForbidden, errcode.ErrForbidden.Code)
 		aicWant(t, env.admin(http.MethodDelete, aicBase+"/plugins/kling", nil), http.StatusForbidden, errcode.ErrForbidden.Code)
 	})
-	t.Run("预检：plugin_channels / builtin_plugin；参数校验失败 400；不存在 404", func(t *testing.T) {
+	t.Run("预检：plugin_models / builtin_plugin；参数校验失败 400；不存在 404", func(t *testing.T) {
 		bs := aicBlockers(t, env.super(http.MethodGet, aicBase+"/plugins/kling/delete-check", nil))
-		if len(bs) != 1 || bs[0].Kind != model.BlockerPluginChannels || bs[0].Refs[0] != (model.DeleteRef{Key: "c1", Name: "渠道一"}) {
+		if len(bs) != 1 || bs[0].Kind != model.BlockerPluginModels ||
+			len(bs[0].Refs) != 1 || bs[0].Refs[0] != (model.DeleteRef{Key: "m1", Name: "模型-m1"}) {
 			t.Fatalf("阻断原因不符合预期：%+v", bs)
+		}
+		if string(bs[0].Kind) != "plugin_models" {
+			t.Fatalf("kind 的字符串值应是 plugin_models：%q", bs[0].Kind)
 		}
 		bs = aicBlockers(t, env.super(http.MethodGet, aicBase+"/plugins/newapi/delete-check", nil))
 		if len(bs) != 1 || bs[0].Kind != model.BlockerBuiltinPlugin {
@@ -141,14 +146,14 @@ func TestAdminPluginHandler_DeletePlugin(t *testing.T) {
 		aicWant(t, env.super(http.MethodGet, aicBase+"/plugins/"+aicLongKey+"/delete-check", nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		aicWant(t, env.super(http.MethodGet, aicBase+"/plugins/ghost/delete-check", nil), http.StatusNotFound, errcode.ErrPluginNotFound.Code)
 	})
-	t.Run("删除：被渠道引用 409（50005）；内置 409（50008）；参数校验失败 400；不存在 404", func(t *testing.T) {
+	t.Run("删除：被模型的协议固定 409（50005）；内置 409（50008）；参数校验失败 400；不存在 404", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/kling", nil), http.StatusConflict, errcode.ErrPluginInUse.Code)
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/newapi", nil), http.StatusConflict, errcode.ErrPluginBuiltinDel.Code)
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/"+aicLongKey, nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/ghost", nil), http.StatusNotFound, errcode.ErrPluginNotFound.Code)
 	})
-	t.Run("渠道移走后删除成功，全部版本一起删", func(t *testing.T) {
-		delete(env.repo.Channels, "c1")
+	t.Run("模型移走后删除成功，全部版本一起删", func(t *testing.T) {
+		delete(env.repo.Models, "m1")
 		if bs := aicBlockers(t, env.super(http.MethodGet, aicBase+"/plugins/kling/delete-check", nil)); len(bs) != 0 {
 			t.Fatalf("不应再有阻断原因：%+v", bs)
 		}

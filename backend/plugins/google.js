@@ -39,10 +39,11 @@ module.exports = {
     apiVersion: 1,
     key: "google",
     name: "Google Veo (Gemini API)",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "google",
     description: "Google Veo 视频生成（文生视频、图生视频），Gemini API 版本",
     auth: { type: "header", name: "x-goog-api-key" },
-    endpoints: { video: { mode: "async" } },
+    endpoints: { video: { mode: "async", method: "POST", path: "/{apiVersion}/models/{model}:predictLongRunning" } },
     channelSettings: {
       apiVersion: { type: "enum", label: "接口版本", options: ["v1beta", "v1"], default: "v1beta" },
     },

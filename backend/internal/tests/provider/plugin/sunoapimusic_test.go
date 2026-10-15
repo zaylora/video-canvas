@@ -88,7 +88,7 @@ func (u *sunoapimusicUpstream) last() sunoapimusicReq {
 
 func TestSunoapimusicPrecheckAndMeta(t *testing.T) {
 	env := newSunoapimusicEnv(t)
-	if env.meta.Key != "sunoapi-music" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "sunoapi-music" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	for _, kind := range []string{"audio"} {

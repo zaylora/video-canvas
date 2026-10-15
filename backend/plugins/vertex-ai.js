@@ -17,7 +17,7 @@
  *
  * 渠道配置：
  *   - 渠道 Key 填服务账号 JSON 的完整文本（含 client_email、private_key、project_id）；
- *   - 渠道必须开启 allow_credentials（否则宿主不给 ctx.credentials，插件拿不到服务账号，会报明确错误）；
+ *   - 渠道 Key 里填服务账号 JSON（auth: custom，宿主直接提供 ctx.credentials；拿不到服务账号会报明确错误）；
  *   - base_url 填区域域名，如 https://us-central1-aiplatform.googleapis.com（全局端点 https://aiplatform.googleapis.com），不带 /v1。
  * 渠道设置：
  *   location   : 区域，默认 us-central1（要和 base_url 的区域一致）；
@@ -39,7 +39,7 @@
  *   1. 上游插件在没配 storageUri 时让 Veo 返回内联 base64（bytesBase64Encoded）再包成 data: 地址；契约不支持内联 base64 产物，
  *      所以本插件要求配 storageUri。看到 done 的那一轮把 gs://bucket/obj 转成 https://storage.googleapis.com/bucket/obj 记进 state
  *      （running），下一轮查询带 Authorization: Bearer <access_token> 发 responseType=binary 请求取视频，宿主直接落库成素材。
- *      自写 Authorization 发往非渠道域名，宿主允许（request.go 只在 auth 为 custom 且开了 allow_credentials 时放行，不校验目标主机），
+ *      自写 Authorization 发往非渠道域名，宿主允许（request.go 只在 auth 为 custom 时放行，不校验目标主机），
  *      所以由插件自己保证 token 只发往固定的 GCS 主机；Go 的 http.Client 跨域重定向会剥掉 Authorization。
  *      服务账号需要对该桶有 storage.objects.get 权限（未对真实 GCS 验证）。
  *   2. 参考图 MIME 无法从文件引用得到，取 params.imageMimeType；
@@ -54,10 +54,11 @@ module.exports = {
     apiVersion: 1,
     key: "vertex-ai",
     name: "Google Veo (Vertex AI)",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "google",
     description: "Google Veo 视频生成（文生视频、图生视频），Vertex AI 版本，服务账号鉴权",
     auth: { type: "custom" },
-    endpoints: { video: { mode: "async" } },
+    endpoints: { video: { mode: "async", method: "POST", path: "/v1/projects/{project}/locations/{location}/…:predictLongRunning" } },
     channelSettings: {
       location: { type: "string", label: "区域（location）", default: "us-central1" },
       storageUri: { type: "string", label: "输出目录（gs://bucket/prefix/）" },
@@ -234,11 +235,11 @@ module.exports = {
   },
 };
 
-// 解析渠道 Key（服务账号 JSON）。宿主只在渠道开启 allow_credentials 时才给 ctx.credentials。
+// 解析渠道 Key（服务账号 JSON）。auth: custom 时宿主直接提供 ctx.credentials。
 function serviceAccount(ctx) {
   var raw = ctx.credentials && ctx.credentials.apiKey;
   if (!raw) {
-    throw new Error("拿不到服务账号：请在渠道上开启 allow_credentials，并把服务账号 JSON 填进渠道 Key");
+    throw new Error("拿不到服务账号：请把服务账号 JSON 填进渠道 Key");
   }
   var sa;
   try {

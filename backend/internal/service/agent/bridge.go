@@ -176,7 +176,7 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	if err != nil {
 		return err
 	}
-	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, UpstreamModel: snap.Model.UpstreamModel,
+	tg := llmgateway.Target{ChannelKey: snap.Channel.Key, BaseURL: snap.Channel.BaseURL, APIKey: key, Headers: snap.Channel.Headers, UpstreamModel: snap.Model.UpstreamModel,
 		RPS: snap.Channel.RateLimit.RPS, MaxConcurrency: snap.Channel.RateLimit.MaxConcurrency}
 	lim := llmgateway.RawLimits{}
 	if c := snap.Model.Capabilities.Context; c != nil {

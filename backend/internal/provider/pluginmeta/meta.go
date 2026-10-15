@@ -13,7 +13,7 @@ import (
 const APIVersion = 1
 
 // 鉴权类型：bearer / header / query 由宿主在请求描述返回后注入（插件拿不到 Key）；
-// custom 由插件自己签名，需要渠道显式开启 allow_credentials 才会把 Key 放进 ctx.credentials；none 表示不需要鉴权。
+// custom 由插件自己签名，宿主直接把渠道 Key（和 Secret Key）放进 ctx.credentials；none 表示不需要鉴权。
 const (
 	AuthNone   = "none"
 	AuthBearer = "bearer"
@@ -44,6 +44,7 @@ type Meta struct {
 	Name            string              `json:"name"`    // 显示名
 	Version         string              `json:"version"` // semver，同一 key 下唯一
 	Description     string              `json:"description,omitempty"`
+	Vendor          string              `json:"vendor,omitempty"` // 厂商 slug（小写字母、数字、连字符），模型弹窗的协议列表显示用；缺省不显示
 	Auth            Auth                `json:"auth"`
 	Endpoints       map[string]Endpoint `json:"endpoints"` // 键是模型 kind：text / video / image / audio；agent 不需要声明
 	ChannelSettings SettingSchema       `json:"channelSettings,omitempty"`
@@ -57,9 +58,11 @@ type Auth struct {
 	Name string `json:"name,omitempty"`
 }
 
-// Endpoint 是一种生成方式的声明。
+// Endpoint 是一种生成方式的声明。Method 与 Path 只用于管理端协议列表的展示（“POST /v1/messages”），宿主不据此发请求。
 type Endpoint struct {
-	Mode string `json:"mode"` // sync / async
+	Mode   string `json:"mode"`             // sync / async
+	Method string `json:"method,omitempty"` // 展示用，缺省按 POST
+	Path   string `json:"path,omitempty"`   // 展示用，以 / 开头，≤200 字符
 }
 
 // PollMeta 是轮询节奏，单位秒。缺省（0）时宿主用 首次 10 秒、间隔 5 秒、封顶 15 秒、抖动 20%。
@@ -179,12 +182,12 @@ func (m *Meta) Endpoint(kind string) (Endpoint, bool) {
 	return e, ok
 }
 
-// SupportsKind 判断插件所在的渠道能不能承接某种模型。普通种类要插件声明对应的 endpoint；
-// agent 不走插件钩子（钩子是同步的、不能联网，没法流式），由 LLM 网关直接用 Bearer 请求渠道的 OpenAI 兼容接口，
-// 所以只要求渠道用 Bearer 鉴权，不要求声明端点。
+// SupportsKind 判断插件能不能承接某种模型：要插件声明对应的 endpoint。
+// agent 不走插件钩子（钩子是同步的、不能联网，没法流式），由 LLM 网关直接用渠道 Key 作 Bearer 请求渠道的 OpenAI 兼容接口，
+// 模型不选协议，所以任何插件都不承接 agent。
 func (m *Meta) SupportsKind(kind string) bool {
 	if kind == "agent" {
-		return m.Auth.Type == AuthBearer
+		return false
 	}
 	_, ok := m.Endpoint(kind)
 	return ok

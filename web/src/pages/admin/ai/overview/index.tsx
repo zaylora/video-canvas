@@ -18,11 +18,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin";
-import type { ChannelDialogOpen } from "@/utils/admin/channel-route";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
+import { channelsPagePath } from "@/utils/admin/channel-route";
 import { canManageInfra } from "@/utils/admin/role";
 
-import type { ModelDialogOpen } from "../models/model-route";
 import { ChannelLoad } from "./channel-load";
 import { KpiRow } from "./kpi-row";
 import { OnboardingSteps, type OnboardingStep } from "./onboarding-steps";
@@ -43,7 +41,8 @@ const RANGES: { days: AdminStatsDays; label: string }[] = [
  * - 关键指标：今日任务、成功率（统计接口）与在线模型、可用渠道（配置清单）；
  * - 图表：近 7 / 30 天任务量（堆叠柱形图）、调用占比（环形图）、渠道实时负载；
  * - 待处理：有事时页头出现“N 项待处理”，点击滚到清单并闪一下描边；
- * 配置类数据来自现有清单接口、在前端计算（utils/admin/health.ts），运行类数据来自 GET /admin/ai/stats。
+ * 配置类数据（含待处理清单的文案）由后端汇总好（GET /admin/ai/overview），前端只按待处理项的 action.kind 处理；
+ * 运行类数据来自 GET /admin/ai/stats。点卡片、去渠道页都进渠道与模型主从页（channelsPagePath）。
  */
 export default function OverviewPage() {
   const { overview, status: overviewStatus, reload: reloadOverview } = useOverview();
@@ -66,6 +65,7 @@ export default function OverviewPage() {
   const modelTotal = overview?.models.total ?? 0;
   const online = overview?.models.online ?? 0;
   const brokenModels = overview?.models.broken ?? 0;
+  const pendingModels = overview?.models.pending ?? 0;
   const todos = overview?.todos ?? [];
 
   const steps: OnboardingStep[] = [
@@ -83,13 +83,7 @@ export default function OverviewPage() {
       ok: usableChannels > 0,
       stat: `${usableChannels} / ${channelTotal} 个可用`,
       short: `${usableChannels} / ${channelTotal} 可用`,
-      action: canWrite
-        ? {
-            label: "新建渠道",
-            to: "/admin/ai/channels",
-            state: dialogEntry<ChannelDialogOpen>({ kind: "new" }),
-          }
-        : null,
+      action: canWrite ? { label: "新建渠道", to: channelsPagePath() } : null,
     },
     {
       title: "上线模型",
@@ -97,11 +91,7 @@ export default function OverviewPage() {
       ok: online > 0,
       stat: `${online} 个在线`,
       short: `${online} 个在线`,
-      action: {
-        label: "新建模型",
-        to: "/admin/ai/models",
-        state: dialogEntry<ModelDialogOpen>({ isNew: true }),
-      },
+      action: { label: "添加模型", to: channelsPagePath() },
     },
   ];
 
@@ -206,11 +196,12 @@ export default function OverviewPage() {
               online={online}
               modelTotal={modelTotal}
               brokenModels={brokenModels}
+              pendingModels={pendingModels}
               usableChannels={usableChannels}
               channelTotal={channelTotal}
               noKeyChannels={noKeyChannels}
-              onOpenModels={() => navigate("/admin/ai/models")}
-              onOpenChannels={() => navigate("/admin/ai/channels")}
+              onOpenModels={() => navigate(channelsPagePath())}
+              onOpenChannels={() => navigate(channelsPagePath())}
             />
 
             <section
@@ -245,15 +236,8 @@ export default function OverviewPage() {
                   status={loads.status}
                   stale={loads.stale}
                   onRetry={() => void loads.reload()}
-                  onOpenChannels={() => navigate("/admin/ai/channels")}
-                  onCreateChannel={
-                    canWrite
-                      ? () =>
-                          navigate("/admin/ai/channels", {
-                            state: dialogEntry<ChannelDialogOpen>({ kind: "new" }),
-                          })
-                      : null
-                  }
+                  onOpenChannels={() => navigate(channelsPagePath())}
+                  onCreateChannel={canWrite ? () => navigate(channelsPagePath()) : null}
                 />
               </Reveal>
               <Reveal index={8} className="min-w-0">

@@ -40,6 +40,8 @@ type AIConfigRepo interface {
 	UpsertSecret(ctx context.Context, s *model.AISecret) error
 	// GetSecret 读取凭证（含密文），不存在返回 repository.ErrNotFound。
 	GetSecret(ctx context.Context, name string) (*model.AISecret, error)
+	// DeleteSecret 删除凭证，不存在也算成功。
+	DeleteSecret(ctx context.Context, name string) error
 }
 
 // AIChannelReader 是本服务对渠道表的只读依赖（签名与 repository.AIChannelRepository 一致，接线时直接传真实仓储）。
@@ -186,10 +188,13 @@ type ValidateResult struct {
 type ConfigListItem struct {
 	Key       string    `json:"key"`
 	Kind      string    `json:"kind"`
-	Vendor    string    `json:"vendor"`  // 厂商 slug，取自配置正文；没有为空串
-	Tags      []string  `json:"tags"`    // 展示标签，取自配置正文；没有为 []
-	Label     string    `json:"label"`   // 展示名，取自配置正文
-	Channel   string    `json:"channel"` // 绑定的渠道 key（channels[0].channel）；正文里没写为空串
+	Vendor    string    `json:"vendor"`         // 厂商 slug，取自配置正文；没有为空串
+	Tags      []string  `json:"tags"`           // 展示标签，取自配置正文；没有为 []
+	Label     string    `json:"label"`          // 展示名，取自配置正文
+	Channel   string    `json:"channel"`        // 绑定的渠道 key（channels[0].channel）；正文里没写为空串
+	Upstream  string    `json:"upstream"`       // 上游模型名（channels[0].upstream_model）；没写为空串
+	Plugin    string    `json:"plugin"`         // 选的协议插件 key（channels[0].protocol.plugin）；没选（待配置 / Agent）为空串
+	PluginVer string    `json:"plugin_version"` // 固定的插件版本号；没选为空串
 	Enabled   bool      `json:"enabled"`
 	Sort      int       `json:"sort"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -222,7 +227,12 @@ type aiConfigMeta struct {
 	Enabled  bool   `json:"enabled"`
 	Sort     int    `json:"sort"`
 	Channels []struct {
-		Channel string `json:"channel"`
+		Channel       string `json:"channel"`
+		UpstreamModel string `json:"upstream_model"`
+		Protocol      *struct {
+			Plugin  string `json:"plugin"`
+			Version string `json:"version"`
+		} `json:"protocol"`
 	} `json:"channels"`
 }
 

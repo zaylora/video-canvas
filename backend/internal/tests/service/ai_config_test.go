@@ -38,12 +38,26 @@ func aicWithKind(body, kind string) string {
 }
 
 func aicModelBody(key, channel string, extra string) json.RawMessage {
+	return aicModelBodyV(key, channel, "1.0.0", extra)
+}
+
+// aicModelBodyV 同 aicModelBody，协议固定在 kling 的指定版本上（协议设置带上 kling 要求的必填项 tenant）。
+func aicModelBodyV(key, channel, version, extra string) json.RawMessage {
 	if extra != "" {
 		extra = "," + extra
 	}
 	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"video","label":"模型-%s","hint":"提示","enabled":true,"sort":10,`+
-		`"channels":[{"channel":%q,"upstream_model":"kling-v2"}],"params":{"instanceType":"default"},`+
-		`"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}},"pricing":{"billing":"per_call","unit":5,"cost":{"on":true,"unit":2}}%s}`, key, key, channel, extra))
+		`"channels":[{"channel":%q,"upstream_model":"kling-v2","protocol":{"plugin":"kling","version":%q,"settings":{"tenant":"t"}}}],`+
+		`"params":{"instanceType":"default"},`+
+		`"capabilities":{"ops":["t2v"],"prompt":{"max_length":2000}},"pricing":{"billing":"per_call","unit":5,"cost":{"on":true,"unit":2}}%s}`, key, key, channel, version, extra))
+}
+
+// aicAgentBody 生成 Agent 模型的正文：不走插件，没有协议，按 Token 计费。
+func aicAgentBody(key, channel string) json.RawMessage {
+	return json.RawMessage(fmt.Sprintf(`{"key":%q,"kind":"agent","label":"Agent-%s","enabled":true,"sort":10,`+
+		`"channels":[{"channel":%q,"upstream_model":"gpt-x"}],`+
+		`"capabilities":{"prompt":{"max_length":20000},"context":{"window":128000,"output":4096}},`+
+		`"pricing":{"billing":"token","token":{"in":3,"out":15}}}`, key, key, channel))
 }
 
 // aicWantCode 断言错误是指定业务错误码；wantCode=0 表示期望成功。
@@ -52,20 +66,17 @@ func aicWantCode(t *testing.T, err error, wantCode int) {
 	adminWantCode(t, err, wantCode)
 }
 
-// aicSeedChannel 往仓储里放一个渠道（固定 kling@1.0.0，鉴权 bearer，支持 video / text），withSecret 时同时设置渠道 Key。
+// aicSeedChannel 往仓储里放一个渠道（只有连接信息），并确保协议插件 kling@1.0.0（鉴权 bearer，支持 video / text，
+// 渠道设置项 tenant 必填）存在；withSecret 时同时设置渠道 Key。
 func aicSeedChannel(t *testing.T, svc *AIConfigService, repo *aiconfigfake.MemRepo, key string, withSecret bool) {
 	t.Helper()
 	ctx := context.Background()
 	if _, ok := repo.Plugins["kling"]; !ok {
 		adminSeedVersion(t, repo, adminMetaJSON("kling", "1.0.0"), model.PluginSourceUploaded, true)
 	}
-	ver, err := repo.FindVersion(ctx, "kling", "1.0.0")
-	if err != nil {
-		t.Fatal(err)
-	}
 	repo.Channels[key] = &model.AIChannel{
-		Key: key, Name: key, PluginKey: "kling", PluginVersionID: ver.ID, BaseURL: "https://gw.example.com",
-		SettingsJSON: model.JSONText(`{"tenant":"t"}`), RateLimitJSON: model.JSONText(`{}`), Enabled: true,
+		Key: key, Name: key, BaseURL: "https://gw.example.com",
+		HeadersJSON: model.JSONText(`{}`), RateLimitJSON: model.JSONText(`{}`), Sort: 100, Enabled: true,
 	}
 	if withSecret {
 		if err := svc.SetSecret(ctx, model.ChannelSecretName(key), "sk-"+key, 1); err != nil {
@@ -143,19 +154,21 @@ func TestAIConfigService_SaveModel(t *testing.T) {
 }
 
 func TestAIConfigService_SaveModel_CrossObjectIssues(t *testing.T) {
-	// 渠道停用、插件停用、插件不支持这个 kind：都是跨对象问题，保存时以 Issue 报出而不是拒绝
+	// 渠道停用、协议插件停用、协议插件不支持这个 kind：都是跨对象问题，保存时以 Issue 报出而不是拒绝；
+	// 渠道的问题挂在 channels[0].channel，协议的问题挂在 channels[0].protocol
 	tests := []struct {
-		name    string
-		mutate  func(repo *aiconfigfake.MemRepo)
-		wantMsg string
+		name     string
+		mutate   func(repo *aiconfigfake.MemRepo)
+		wantPath string
+		wantMsg  string
 	}{
-		{"渠道已停用", func(r *aiconfigfake.MemRepo) { r.Channels["c1"].Enabled = false }, "已停用"},
-		{"插件已停用", func(r *aiconfigfake.MemRepo) { r.Plugins["kling"].Enabled = false }, "已停用"},
-		{"插件不支持该种类", func(r *aiconfigfake.MemRepo) {
+		{"渠道已停用", func(r *aiconfigfake.MemRepo) { r.Channels["c1"].Enabled = false }, "channels[0].channel", "已停用"},
+		{"协议插件已停用", func(r *aiconfigfake.MemRepo) { r.Plugins["kling"].Enabled = false }, "channels[0].protocol", "已停用"},
+		{"协议插件不支持该种类", func(r *aiconfigfake.MemRepo) {
 			for _, v := range r.Versions {
 				v.MetaJSON = model.JSONText(adminMetaLoose("kling", "1.0.0")) // 只支持 video
 			}
-		}, ""},
+		}, "channels[0].protocol", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,12 +176,12 @@ func TestAIConfigService_SaveModel_CrossObjectIssues(t *testing.T) {
 			aicSeedChannel(t, svc, repo, "c1", true)
 			tt.mutate(repo)
 			body := aicModelBody("m1", "c1", "")
-			if tt.wantMsg == "" { // 用 text 种类去撞只支持 video 的插件
+			if tt.name == "协议插件不支持该种类" { // 用 text 种类去撞只支持 video 的插件
 				body = json.RawMessage(aicWithKind(string(body), "text"))
 			}
 			res, err := aicSave(svc, "", true, body)
 			aicWantCode(t, err, 0)
-			if len(res.Issues) != 1 || res.Issues[0].Path != "channels[0].channel" || !strings.Contains(res.Issues[0].Message, tt.wantMsg) {
+			if len(res.Issues) != 1 || res.Issues[0].Path != tt.wantPath || !strings.Contains(res.Issues[0].Message, tt.wantMsg) {
 				t.Fatalf("Issue 不符合预期：%+v", res.Issues)
 			}
 		})
@@ -325,19 +338,39 @@ func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 			r.Channels["c1"].Enabled = false
 		}, "m1", errcode.ErrChannelDisabled.Code},
-		{"渠道用的插件已停用（50004）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"模型选的协议插件已停用（50004）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 			r.Plugins["kling"].Enabled = false
 		}, "m1", errcode.ErrPluginDisabled.Code},
-		{"渠道固定的插件版本已不存在（50013）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		{"模型固定的插件版本已不存在（50007 配置无效）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 			for id := range r.Versions {
 				delete(r.Versions, id)
 			}
-		}, "m1", errcode.ErrChannelInvalid.Code},
-		{"渠道的插件不支持模型的种类", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+		}, "m1", errcode.ErrConfigInvalid.Code},
+		{"模型选的协议插件不存在", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
+			delete(r.Plugins, "kling")
+		}, "m1", errcode.ErrConfigInvalid.Code},
+		{"没选协议（待配置）不能启用", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			_, _ = aicSave(s, "", true, json.RawMessage(strings.Replace(string(aicModelBody("m1", "c1", "")),
+				`,"protocol":{"plugin":"kling","version":"1.0.0","settings":{"tenant":"t"}}`, "", 1)))
+		}, "m1", errcode.ErrConfigInvalid.Code},
+		{"协议设置漏填必填项（tenant）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			_, _ = aicSave(s, "", true, json.RawMessage(strings.Replace(string(aicModelBody("m1", "c1", "")),
+				`"settings":{"tenant":"t"}`, `"settings":{}`, 1)))
+		}, "m1", errcode.ErrConfigInvalid.Code},
+		{"协议设置里有插件没声明的项", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			_, _ = aicSave(s, "", true, json.RawMessage(strings.Replace(string(aicModelBody("m1", "c1", "")),
+				`"settings":{"tenant":"t"}`, `"settings":{"tenant":"t","nope":1}`, 1)))
+		}, "m1", errcode.ErrConfigInvalid.Code},
+		{"协议插件不支持模型的种类", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
 			aicSeedChannel(t, s, r, "c1", true)
 			body := aicWithKind(string(aicModelBody("m1", "c1", "")), "image")
 			_, _ = aicSave(s, "", true, json.RawMessage(body))
@@ -350,11 +383,21 @@ func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 			aicSeedChannel(t, s, r, "c1", true)
 			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
 		}, "m1", 0},
-		{"auth.type=none 的插件不需要 Key", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
-			id := adminSeedVersion(t, r, adminMetaLoose("loose", "1.0.0"), model.PluginSourceUploaded, true)
-			r.Channels["c1"] = &model.AIChannel{Key: "c1", PluginKey: "loose", PluginVersionID: id, BaseURL: "https://x.com", Enabled: true}
-			_, _ = aicSave(s, "", true, aicModelBody("m1", "c1", ""))
+		{"auth.type=none 的协议不需要渠道 Key", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			adminSeedVersion(t, r, adminMetaLoose("loose", "1.0.0"), model.PluginSourceUploaded, true)
+			aicSeedChannel(t, s, r, "c1", false)
+			body := strings.Replace(string(aicModelBody("m1", "c1", "")),
+				`"protocol":{"plugin":"kling","version":"1.0.0","settings":{"tenant":"t"}}`, `"protocol":{"plugin":"loose","version":"1.0.0"}`, 1)
+			_, _ = aicSave(s, "", true, json.RawMessage(body))
 		}, "m1", 0},
+		{"Agent 模型不选协议，只需要渠道 Key", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", true)
+			_, _ = aicSave(s, "", true, aicAgentBody("m1", "c1"))
+		}, "m1", 0},
+		{"Agent 模型：渠道 Key 未设置（50015）", func(t *testing.T, s *AIConfigService, r *aiconfigfake.MemRepo) {
+			aicSeedChannel(t, s, r, "c1", false)
+			_, _ = aicSave(s, "", true, aicAgentBody("m1", "c1"))
+		}, "m1", errcode.ErrChannelSecretUnset.Code},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

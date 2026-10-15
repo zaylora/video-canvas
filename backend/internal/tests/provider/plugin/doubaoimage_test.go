@@ -96,7 +96,7 @@ const (
 
 func TestDoubaoimagePrecheckAndMeta(t *testing.T) {
 	env := newDoubaoimageEnv(t)
-	if env.meta.Key != "doubao-image" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "doubao-image" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("image"); !ok || ep.Mode != pluginmeta.ModeSync {

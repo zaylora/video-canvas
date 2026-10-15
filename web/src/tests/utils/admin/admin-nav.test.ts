@@ -29,8 +29,20 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("原有 AI 配置页不受影响", () => {
-    expect(findNav("/admin/ai/channels")?.item.label).toBe("渠道");
+  test("AI 配置分组：总览、渠道与模型、插件；独立的“模型”页已并入渠道页", () => {
+    const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
+    expect(group?.items.map((item) => [item.to, item.label])).toEqual([
+      ["ai/overview", "总览"],
+      ["ai/channels", "渠道与模型"],
+      ["ai/plugins", "插件"],
+    ]);
+  });
+
+  test("渠道与模型页的面包屑", () => {
+    const found = findNav("/admin/ai/channels");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("渠道与模型");
+    expect(findNav("/admin/ai/models")).toBeNull();
     expect(findNav("/admin/unknown")).toBeNull();
   });
 });

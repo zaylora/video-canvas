@@ -19,8 +19,11 @@ import (
 // aiIssuesShown 是把校验问题拼进错误文案时最多列出的条数，超出的只报总数，避免错误文案过长。
 const aiIssuesShown = 10
 
-// aiIssuePathChannel 是跨对象检查（渠道 / 插件）问题的 JSON 路径：首期只有一个渠道。
-const aiIssuePathChannel = "channels[0].channel"
+// 跨对象检查（渠道 / 协议）问题的 JSON 路径：首期只有一个渠道。
+const (
+	aiIssuePathChannel  = "channels[0].channel"
+	aiIssuePathProtocol = "channels[0].protocol"
+)
 
 // SaveModel 保存模型配置并返回校验发现的问题。in.Create=true 是新建（key 取自正文，已存在则报错），
 // false 是更新（key 来自路径，必须已存在，且与正文里的 key 一致）。
@@ -127,14 +130,18 @@ func (s *AIConfigService) collectIssues(ctx context.Context, key string, body []
 	if cfg == nil {
 		return issues, nil
 	}
-	// 2. 跨对象检查：渠道存在且启用、插件启用、插件版本支持该 kind。
+	// 2. 跨对象检查：渠道存在且启用、协议插件启用、固定的版本存在且支持该 kind、协议设置合法。
 	//    这些问题的原因来自 errcode 文案，转成 Issue 挂在 channels[0].channel 上
 	if _, err := s.resolveChannel(ctx, cfg); err != nil {
 		var e *errcode.Error
 		if !errors.As(err, &e) {
 			return nil, err
 		}
-		issues = append(issues, modelcfg.Issue{Path: aiIssuePathChannel, Message: e.Msg})
+		path := aiIssuePathChannel
+		if e.Code == errcode.ErrConfigInvalid.Code || e.Code == errcode.ErrPluginDisabled.Code {
+			path = aiIssuePathProtocol // 插件 / 版本 / 协议设置的问题，不是渠道的
+		}
+		issues = append(issues, modelcfg.Issue{Path: path, Message: e.Msg})
 	}
 	return issues, nil
 }

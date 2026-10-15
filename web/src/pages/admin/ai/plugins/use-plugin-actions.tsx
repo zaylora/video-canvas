@@ -9,7 +9,7 @@ import { useAliveRef } from "../../use-admin";
 
 /**
  * 插件的启停：表格行里的开关和弹窗头部的开关共用同一份逻辑。
- * 启用直接生效；停用影响面大（所有用它的渠道、渠道下的在线模型），先拿后端算好的数量确认。
+ * 启用直接生效；停用影响面大（所有协议用了它的模型、其中已上线的），先拿后端算好的数量确认。
  * @param onChanged 启停成功后刷新插件清单
  * @returns toggling 正在切换的插件 key（切换中开关禁用）；toggle 开关的 onCheckedChange
  */
@@ -30,7 +30,7 @@ export function usePluginActions({ onChanged }: { onChanged: () => Promise<void>
 
   const toggle = (plugin: PluginListItem, enabled: boolean) => {
     if (enabled) return void setEnabled(plugin, true);
-    const pinned = plugin.channel_count;
+    const pinned = plugin.model_count;
     const online = plugin.online_model_count;
     void confirm({
       title: `停用插件「${plugin.name}」？`,
@@ -38,11 +38,10 @@ export function usePluginActions({ onChanged }: { onChanged: () => Promise<void>
       confirmLabel: "停用",
       description: (
         <>
-          停用后{" "}
           <b>
-            {pinned} 个渠道{online > 0 && `、${online} 个在线模型`}
+            {pinned} 个模型{online > 0 && `（其中 ${online} 个在线）`}
           </b>{" "}
-          会不可用，进行中的任务不受影响。
+          的协议用了这个插件，停用后它们会不可用，进行中的任务不受影响。
         </>
       ),
       onConfirm: () => setEnabled(plugin, false),

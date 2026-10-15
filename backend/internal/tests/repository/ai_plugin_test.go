@@ -19,7 +19,7 @@ import (
 func pluginTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return isolatedDB(t, &model.AIPlugin{}, &model.AIPluginVersion{}, &model.AIChannel{},
-		&model.AIAuditLog{}, &model.GenerationTask{})
+		&model.AIAuditLog{}, &model.GenerationTask{}, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
 }
 
 // plPlugin 构造一个待登记的插件。
@@ -45,9 +45,16 @@ func plSave(t *testing.T, r *AIPluginRepository, key, version string) uint64 {
 	return v.ID
 }
 
-// plChannel 构造一个指向某版本的渠道。
-func plChannel(key, pluginKey string, versionID uint64) *model.AIChannel {
-	return &model.AIChannel{Key: key, Name: key, PluginKey: pluginKey, PluginVersionID: versionID, BaseURL: "https://up.example.com"}
+// plChannel 构造一个渠道（渠道只有连接信息，不绑协议）。
+func plChannel(key string) *model.AIChannel {
+	return &model.AIChannel{Key: key, Name: key, BaseURL: "https://up.example.com"}
+}
+
+// plModel 保存一个协议固定在 pluginKey@version 上的模型（正文里 channels[0].protocol）。
+func plModel(t *testing.T, db *gorm.DB, key, pluginKey, version string) {
+	t.Helper()
+	body := `{"key":"` + key + `","label":"模型-` + key + `","channels":[{"channel":"c","upstream_model":"u","protocol":{"plugin":"` + pluginKey + `","version":"` + version + `"}}]}`
+	aicRepoSaveModel(t, NewAIConfigRepository(db), key, body)
 }
 
 // plTask 插入一个快照冻结了 versionID 的任务。
@@ -220,36 +227,32 @@ func TestAIPluginRepository_CountVersionRefs(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
 	r := NewAIPluginRepository(db)
-	ch := NewAIChannelRepository(db)
 	v1 := plSave(t, r, "rf", "1.0.0")
 	v2 := plSave(t, r, "rf", "2.0.0")
 
 	t.Run("没有引用时全为 0", func(t *testing.T) {
 		refs, err := r.CountVersionRefs(ctx, v1)
-		if err != nil || refs.Channels != 0 || refs.ActiveTasks != 0 {
+		if err != nil || refs.Models != 0 || refs.ActiveTasks != 0 {
 			t.Fatalf("%+v %v", refs, err)
 		}
 	})
 
-	if err := ch.CreateChannel(ctx, plChannel("rf-c1", "rf", v1)); err != nil {
-		t.Fatal(err)
-	}
-	if err := ch.CreateChannel(ctx, plChannel("rf-c2", "rf", v1)); err != nil {
-		t.Fatal(err)
-	}
+	plModel(t, db, "rf-m1", "rf", "1.0.0")
+	plModel(t, db, "rf-m2", "rf", "1.0.0")
+	plModel(t, db, "rf-m3", "rf", "2.0.0") // 其它版本的模型不计入 v1
 	plTask(t, db, model.TaskPending, v1)
 	plTask(t, db, model.TaskRunning, v1)
 	plTask(t, db, model.TaskSucceeded, v1) // 终态任务不计入
 	plTask(t, db, model.TaskFailed, v1)
 	plTask(t, db, model.TaskRunning, v2) // 其它版本的任务不计入
 
-	t.Run("统计渠道与非终态任务，终态任务与其它版本不计入", func(t *testing.T) {
+	t.Run("统计模型与非终态任务，终态任务与其它版本不计入", func(t *testing.T) {
 		refs, err := r.CountVersionRefs(ctx, v1)
-		if err != nil || refs.Channels != 2 || refs.ActiveTasks != 2 {
+		if err != nil || refs.Models != 2 || refs.ActiveTasks != 2 {
 			t.Fatalf("%+v %v", refs, err)
 		}
 		refs, err = r.CountVersionRefs(ctx, v2)
-		if err != nil || refs.Channels != 0 || refs.ActiveTasks != 1 {
+		if err != nil || refs.Models != 1 || refs.ActiveTasks != 1 {
 			t.Fatalf("%+v %v", refs, err)
 		}
 	})
@@ -276,13 +279,10 @@ func TestAIPluginRepository_DeleteVersion(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
 	r := NewAIPluginRepository(db)
-	ch := NewAIChannelRepository(db)
 
-	t.Run("被渠道引用返回 ErrInUse，版本仍在", func(t *testing.T) {
+	t.Run("被模型的协议引用返回 ErrInUse，版本仍在", func(t *testing.T) {
 		id := plSave(t, r, "d1", "1.0.0")
-		if err := ch.CreateChannel(ctx, plChannel("d1-c", "d1", id)); err != nil {
-			t.Fatal(err)
-		}
+		plModel(t, db, "d1-m", "d1", "1.0.0")
 		if err := r.DeleteVersion(ctx, id); !errors.Is(err, ErrInUse) {
 			t.Fatalf("期望 ErrInUse，实际 %v", err)
 		}
@@ -364,31 +364,5 @@ func TestAIPluginRepository_DeleteVersion_ConcurrentLastTwo(t *testing.T) {
 	}
 	if _, err := r.GetPlugin(ctx, "cc"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("插件行应被删除，实际 %v", err)
-	}
-}
-
-// 删除版本与渠道指向该版本并发：要么删除成功且渠道创建失败，要么渠道创建成功且删除返回 ErrInUse，不能出现悬空引用。
-func TestAIPluginRepository_DeleteVersion_RaceWithChannel(t *testing.T) {
-	ctx := context.Background()
-	db := pluginTestDB(t)
-	r := NewAIPluginRepository(db)
-	ch := NewAIChannelRepository(db)
-
-	for i := range 10 {
-		key := "race" + strconv.Itoa(i)
-		id := plSave(t, r, key, "1.0.0")
-		var delErr, chErr error
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() { defer wg.Done(); delErr = r.DeleteVersion(ctx, id) }()
-		go func() { defer wg.Done(); chErr = ch.CreateChannel(ctx, plChannel(key+"-c", key, id)) }()
-		wg.Wait()
-
-		switch {
-		case delErr == nil && errors.Is(chErr, ErrNotFound):
-		case errors.Is(delErr, ErrInUse) && chErr == nil:
-		default:
-			t.Fatalf("第 %d 轮出现悬空引用或意外错误：delete=%v create=%v", i, delErr, chErr)
-		}
 	}
 }

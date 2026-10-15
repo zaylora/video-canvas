@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "reac
 import {
   Braces,
   Coins,
+  FlaskConical,
   Info,
   Loader2,
   Save,
@@ -12,11 +13,13 @@ import {
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Notice } from "@/components/admin-ui/notice";
+import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { UnderlineTab, UnderlineTabs } from "@/components/admin-ui/underline-tabs";
 import { cn } from "@/lib/utils";
 import { findPathInJson } from "@/utils/admin/json";
@@ -29,7 +32,7 @@ import {
 } from "@/utils/admin/model-body";
 
 import type { ModelListItem } from "@/api/admin/ai/type.d";
-import type { AdminCatalog } from "../../use-admin";
+import { publishBlockReason } from "@/utils/admin/model-channel";
 import { priceLabel } from "@/utils/pricing/quote";
 
 import { ModelBasicForm } from "./model-basic-form";
@@ -38,7 +41,7 @@ import { ModelParamsForm } from "./model-params-form";
 import { PickerPreview, PreviewFrame, PricePreview } from "./model-previews";
 import { ModelPriceForm } from "./model-price-form";
 import { TestNode } from "./test-node";
-import type { ModelWorkspace } from "./use-model-workspace";
+import type { ModelCatalog, ModelWorkspace } from "./use-model-workspace";
 
 /** 弹窗对外暴露的动作：按校验问题的路径定位到字段 / JSON 行 */
 export type ModelDialogHandle = { locate: (path: string) => void };
@@ -63,7 +66,7 @@ export function ModelDialog({
   seed,
 }: {
   ws: ModelWorkspace;
-  catalog: AdminCatalog;
+  catalog: ModelCatalog;
   /** 列表行里已有的信息：详情还在加载时先用它渲染头部 */
   seed?: ModelListItem;
   ref?: Ref<ModelDialogHandle>;
@@ -105,12 +108,26 @@ export function ModelDialog({
   const kind = body ? readModelKind(body) : "";
   const pricing = body ? readModelPricing(body) : null;
   const upstream = body ? readModelChannel(body).upstreamModel : "";
-  const checks = modelChecks(body, ws.info, ws.issues);
+  const channelsReady = catalog.pluginsStatus === "ready";
+  const checks = modelChecks(body, ws.info, ws.issues, channelsReady);
   const disabled = ws.working || ws.loadingDetail;
   const online = ws.detail ? !!ws.detail.enabled : !!seed?.enabled;
   const spinner = (name: string, icon: React.ReactNode) =>
     ws.busy === name ? <Loader2 className="animate-spin" /> : icon;
-  const channelsReady = catalog.channelsStatus === "ready" && catalog.pluginsStatus === "ready";
+  // 启用与测试都基于服务端已保存的配置：新建的、有未保存修改的先保存
+  const saveFirst = ws.isNew ? "先保存模型" : ws.dirty ? "有未保存的修改，先保存" : null;
+  const enableDeny = online
+    ? null
+    : (saveFirst ?? publishBlockReason(ws.info, catalog.pluginsStatus === "ready"));
+  const testDeny =
+    saveFirst ??
+    (!kind
+      ? "还没有选择模型能力，先选择能力和协议并保存"
+      : kind === "agent"
+        ? "Agent 模型暂不支持试跑"
+        : !ws.info.protocol
+          ? "还没有选择调用协议，先选择协议并保存"
+          : null);
 
   const preview = !body ? null : tab === "basic" ? (
     <PickerPreview
@@ -205,31 +222,11 @@ export function ModelDialog({
         </div>
       )}
 
-      {(ws.modeError || (ws.queue.length > 0 && ws.isNew)) && (
-        <div className="space-y-2 border-b px-6 py-3">
-          {ws.modeError && (
-            <Notice tone="danger" title="无法切回表单">
-              {ws.modeError}
-            </Notice>
-          )}
-          {ws.queue.length > 0 && ws.isNew && (
-            <Notice
-              title={`待处理草稿 ${ws.queue.length} 个`}
-              action={
-                <div className="flex shrink-0 gap-1.5">
-                  <Button size="xs" variant="outline" onClick={ws.skipDraft}>
-                    跳过当前
-                  </Button>
-                  <Button size="xs" variant="ghost" onClick={ws.discardDrafts}>
-                    放弃全部
-                  </Button>
-                </div>
-              }
-            >
-              这是从渠道导入的草稿，保存后<b>默认不上线</b>
-              。逐个确认、保存、测试，再在列表里打开「上线」开关。
-            </Notice>
-          )}
+      {ws.modeError && (
+        <div className="border-b px-6 py-3">
+          <Notice tone="danger" title="无法切回表单">
+            {ws.modeError}
+          </Notice>
         </div>
       )}
 
@@ -282,28 +279,35 @@ export function ModelDialog({
               <ModelBasicForm
                 body={body}
                 isNew={ws.isNew}
-                channels={catalog.channels}
-                plugins={catalog.plugins}
-                channelsReady={channelsReady}
+                catalog={catalog}
                 info={ws.info}
                 issues={ws.issues}
                 onChange={ws.editBody}
               />
-            ) : tab === "params" ? (
-              <ModelParamsForm
-                body={body}
-                issues={ws.issues}
-                epoch={ws.epoch}
-                onChange={ws.editBody}
-              />
             ) : (
-              <ModelPriceForm
-                body={body}
-                kind={kind}
-                caps={ws.capabilities}
-                issues={ws.issues}
-                onChange={ws.editBody}
-              />
+              <>
+                {!kind && (
+                  <Notice tone="warning" title="还没有选择模型能力" className="mb-5">
+                    先到「基本信息」里选能力，这里会按能力预填默认值。
+                  </Notice>
+                )}
+                {tab === "params" ? (
+                  <ModelParamsForm
+                    body={body}
+                    issues={ws.issues}
+                    epoch={ws.epoch}
+                    onChange={ws.editBody}
+                  />
+                ) : (
+                  <ModelPriceForm
+                    body={body}
+                    kind={kind}
+                    caps={ws.capabilities}
+                    issues={ws.issues}
+                    onChange={ws.editBody}
+                  />
+                )}
+              </>
             )}
           </div>
           <aside className="bg-muted/20 hidden min-h-0 overflow-y-auto border-l p-5 lg:block">
@@ -312,9 +316,35 @@ export function ModelDialog({
         </div>
       )}
 
-      {/* 底栏：取消 / 保存（已上线的模型保存即生效） */}
+      {/* 底栏：启用开关与测试（都基于已保存的配置）、取消 / 保存（已上线的模型保存即生效） */}
       <div className="flex flex-wrap items-center gap-3 border-t px-6 py-3.5">
+        <div className="flex items-center gap-2.5 text-sm">
+          <ReasonTooltip reason={enableDeny}>
+            <Switch
+              checked={online}
+              disabled={disabled || !!enableDeny}
+              aria-label="模型上线"
+              onCheckedChange={(checked) => void ws.toggleEnabled(checked)}
+            />
+          </ReasonTooltip>
+          <span>
+            <b className="font-medium">{online ? "已上线" : "未上线"}</b>
+            <span className="text-muted-foreground block text-xs">
+              开关立即生效；上线前要过启用检查
+            </span>
+          </span>
+        </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ReasonTooltip reason={testDeny}>
+            <Button
+              variant="outline"
+              disabled={disabled || !!testDeny}
+              onClick={() => ws.selectModel(ws.modelKey, { test: true })}
+            >
+              <FlaskConical />
+              测试模型
+            </Button>
+          </ReasonTooltip>
           <Button variant="outline" onClick={ws.closeEditor}>
             取消
           </Button>

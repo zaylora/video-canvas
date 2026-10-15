@@ -111,6 +111,29 @@ func (h *AdminPluginHandler) DeleteCheck(c *gin.Context) {
 	response.OK(c, res)
 }
 
+// upgradeModelsReq 批量升级模型：version 为空表示升到该插件的最新版本。
+type upgradeModelsReq struct {
+	Version string `json:"version" binding:"omitempty,max=32" label:"version"`
+}
+
+// UpgradeModels 把协议固定在该插件旧版本上的模型批量升到指定版本（缺省最新版本），逐个处理，失败不中断。
+func (h *AdminPluginHandler) UpgradeModels(c *gin.Context) {
+	key, ok := pathKey(c)
+	if !ok {
+		return
+	}
+	var req upgradeModelsReq
+	if !bindOptionalJSON(c, &req) {
+		return
+	}
+	res, err := h.svc.UpgradeModels(c.Request.Context(), currentUserID(c), key, req.Version)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
 // Delete 删除整个插件（全部版本），只能删未被引用的上传插件。
 func (h *AdminPluginHandler) Delete(c *gin.Context) {
 	key, ok := pathKey(c)

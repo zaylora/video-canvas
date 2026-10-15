@@ -94,10 +94,11 @@ func (m *MemRepo) DeleteChannel(_ context.Context, key string) (repository.Chann
 	}
 	delete(m.Channels, key)
 	delete(m.Secrets, model.ChannelSecretName(key))
+	delete(m.Secrets, model.ChannelSecretKeyName(key))
 	return refs, nil
 }
 
-// CountPluginRefs 统计插件全部版本的引用：渠道按当前渠道计算，任务数为各版本 ActiveTaskRefs 之和。
+// CountPluginRefs 统计插件全部版本的引用：模型按当前模型的协议计算，任务数为各版本 ActiveTaskRefs 之和。
 func (m *MemRepo) CountPluginRefs(_ context.Context, key string) (repository.PluginRefs, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -109,20 +110,13 @@ func (m *MemRepo) CountPluginRefs(_ context.Context, key string) (repository.Plu
 
 // pluginRefs 计算插件引用（调用方持有锁）。
 func (m *MemRepo) pluginRefs(key string) repository.PluginRefs {
-	refs := repository.PluginRefs{Channels: []model.AIChannel{}}
-	ids := map[uint64]bool{}
+	refs := repository.PluginRefs{Models: []repository.ChannelModelRef{}}
 	for id, v := range m.Versions {
 		if v.PluginKey == key {
-			ids[id] = true
 			refs.ActiveTasks += m.ActiveTaskRefs[id]
 		}
 	}
-	for _, c := range m.Channels {
-		if ids[c.PluginVersionID] {
-			refs.Channels = append(refs.Channels, model.AIChannel{Key: c.Key, Name: c.Name})
-		}
-	}
-	sort.Slice(refs.Channels, func(i, j int) bool { return refs.Channels[i].Key < refs.Channels[j].Key })
+	refs.Models = append(refs.Models, m.protocolRefs(key, "")...)
 	return refs
 }
 

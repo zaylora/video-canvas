@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
-import { listChannelOptions, listPluginOptions } from "@/api/admin/ai";
+import { getPlugin } from "@/api/admin/ai";
 import type { OverviewTodo } from "@/api/admin/ai/type";
 import { Tag, toneClasses } from "@/components/admin-ui/tag";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,11 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { ChannelDialogOpen } from "@/utils/admin/channel-route";
+import { channelsPagePath } from "@/utils/admin/channel-route";
 import { dialogEntry } from "@/utils/admin/dialog-entry";
 
 import { openSecretDialog } from "../channels/secret-dialog";
-import { confirmUpgradeChannels } from "../plugins/upgrade-channels";
+import { confirmUpgradeModels } from "../plugins/upgrade-models";
 
 const TODO_TONE = { bad: "danger", warn: "warning", info: "info" } as const;
 const TODO_ICON: Record<OverviewTodo["action"]["kind"], LucideIcon> = {
@@ -32,7 +32,9 @@ const TODO_ICON: Record<OverviewTodo["action"]["kind"], LucideIcon> = {
 };
 
 /**
- * 待处理清单：数据来自后端汇总（GET /admin/ai/overview 的 todos），每条一个修复按钮，能就地修的就地修（设置 Key、一键升级），其余深链到对应位置。
+ * 待处理清单：数据来自后端汇总（GET /admin/ai/overview 的 todos），文案由后端生成，前端只按 action.kind 处理：
+ * set-key 就地设置 Key、upgrade-plugin 一键升级旧版模型（共用插件页的升级模型流程），
+ * open-plugin 去插件页并打开该插件、open-channel 去渠道与模型主从页并选中该渠道。
  * - 修好之后清单重新计算，这一条向右淡出（DURATION.exit），其余行用 layout 补位；
  * - flash 变化时描边闪一下（总览顶部的“N 项待处理”点击后触发）；
  * - 没有写权限（非 super_admin）时按钮降级为“查看 / 去插件页”。
@@ -60,10 +62,7 @@ export function TodoList({
   const run = async ({ action }: OverviewTodo) => {
     const channelKey = action.channel_key ?? "";
     const pluginKey = action.plugin_key ?? "";
-    const openChannel = () =>
-      navigate("/admin/ai/channels", {
-        state: dialogEntry<ChannelDialogOpen>({ kind: "edit", key: channelKey }),
-      });
+    const openChannel = () => navigate(channelsPagePath({ channel: channelKey || undefined }));
     const openPlugin = () =>
       navigate("/admin/ai/plugins", { state: dialogEntry({ key: pluginKey }) });
     if (action.kind === "set-key") {
@@ -81,18 +80,12 @@ export function TodoList({
     } else if (action.kind === "open-plugin") {
       openPlugin();
     } else if (action.kind === "upgrade-plugin") {
-      if (canWrite) {
-        // 升级要对照全量插件版本和渠道，点了才取（按需，不预加载）
+      if (canWrite && pluginKey) {
+        // 升级要对照插件的全部版本，点了才取（按需，不预加载）；模型清单由升级流程自己取
         try {
-          const [plugins, channels] = await Promise.all([
-            listPluginOptions(),
-            listChannelOptions(),
-          ]);
-          const plugin = plugins.find((item) => item.key === action.plugin_key);
-          if (plugin) {
-            void confirmUpgradeChannels({ plugin, channels, plugins, onDone: onChanged });
-            return;
-          }
+          const plugin = await getPlugin(pluginKey);
+          void confirmUpgradeModels({ plugin, onDone: onChanged });
+          return;
         } catch {
           // 请求失败的全局 toast 已弹，退回到去插件页
         }

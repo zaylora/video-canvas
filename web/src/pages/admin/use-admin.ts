@@ -17,11 +17,11 @@ export function useAliveRef() {
   return aliveRef;
 }
 
-/** 插件与渠道清单：三个标签页共用一份（模型页的渠道下拉、渠道页的插件版本下拉都要用） */
+/** 插件与渠道清单：渠道与模型主从页、插件页共用（渠道下拉、模型弹窗的协议列表都要用） */
 export type AdminCatalog = {
   plugins: PluginView[];
   pluginsStatus: LoadStatus;
-  /** 全部渠道（options：带健康状态和能力），弹窗下拉和概览用 */
+  /** 全部渠道（options：带健康状态，渠道顺序），主从页左栏、弹窗下拉和概览用 */
   channels: ChannelOption[];
   channelsStatus: LoadStatus;
   reloadPlugins: () => Promise<void>;
@@ -79,7 +79,7 @@ export function useAdminCatalog(enabled: boolean): AdminCatalog {
 
 /**
  * 页面自己取全量插件与渠道（options）：只有用到的页面才请求，进后台不再预加载。
- * 渠道页、插件页、模型页的弹窗下拉要用；概览页暂时也靠它。
+ * 渠道与模型主从页、插件页要用。
  */
 export function useAdminCatalogOptions(): { catalog: AdminCatalog } {
   return { catalog: useAdminCatalog(true) };

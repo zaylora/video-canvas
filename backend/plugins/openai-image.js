@@ -51,11 +51,12 @@ module.exports = {
     apiVersion: 1,
     key: "openai-image",
     name: "OpenAI · 图片",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "openai",
     description: "对接 OpenAI Images API：文生图与图片编辑（同步，只支持返回图片 URL 的模型 / 中转站）",
     auth: { type: "bearer" },
     endpoints: {
-      image: { mode: "sync" },
+      image: { mode: "sync", method: "POST", path: "/v1/images/generations" },
     },
   },
 

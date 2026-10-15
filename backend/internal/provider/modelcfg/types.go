@@ -53,10 +53,20 @@ var Kinds = []string{KindVideo, KindImage, KindAudio, KindText, KindAgent}
 // DefaultModelDeadline 是模型没配置 deadline 时的默认任务超时。
 const DefaultModelDeadline = 30 * time.Minute
 
-// ChannelRef 是模型绑定的一个渠道：渠道 key + 这个渠道上的上游模型名。首期 channels 只允许一个元素，数据结构预留多渠道。
+// ChannelRef 是模型绑定的一个渠道：渠道 key + 这个渠道上的上游模型名 + 调用这个上游模型用的协议。
+// 首期 channels 只允许一个元素，数据结构预留多渠道（多渠道时每条路由可以有自己的协议）。
 type ChannelRef struct {
-	Channel       string `json:"channel"`        // 渠道 key（ai_channels.key）
-	UpstreamModel string `json:"upstream_model"` // 上游模型名 / 工作流 id，由插件解释
+	Channel       string    `json:"channel"`            // 渠道 key（ai_channels.key）
+	UpstreamModel string    `json:"upstream_model"`     // 上游模型名 / 工作流 id，由插件解释
+	Protocol      *Protocol `json:"protocol,omitempty"` // 调用协议；非 Agent 模型必填，Agent 模型不能有（Agent 由宿主 LLM 网关直接请求渠道）
+}
+
+// Protocol 是模型选的调用协议：协议插件 + 固定的插件版本 + 插件声明的“协议设置项”取值。
+// 协议设置项原来是渠道设置项（meta.channelSettings），现在跟着模型走；插件钩子里仍通过 ctx.channel.settings 读取。
+type Protocol struct {
+	Plugin   string         `json:"plugin"`             // 插件 key
+	Version  string         `json:"version"`            // 固定的 semver；保存时由服务端把缺省补成所选的最新版本
+	Settings map[string]any `json:"settings,omitempty"` // 按所选版本的 channelSettings 校验并补默认值
 }
 
 // ModelConfig 是模型配置（ai_config_revisions 里 target=model 的正文）：画布用户选的那一项。

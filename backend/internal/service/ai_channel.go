@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,20 +13,20 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
-	"video-canvas/internal/provider/pluginmeta"
 	"video-canvas/internal/repository"
 )
 
 // AIChannelRepo 是渠道服务的数据访问接口，由 repository.AIChannelRepository 实现，测试里用内存 fake 替换。
 type AIChannelRepo interface {
-	// CreateChannel 新建渠道；key 已存在返回 repository.ErrDuplicate，插件版本不存在返回 repository.ErrNotFound。
+	// CreateChannel 新建渠道；key 已存在返回 repository.ErrDuplicate。
 	CreateChannel(ctx context.Context, c *model.AIChannel) error
-	// UpdateChannel 更新渠道的可变字段；渠道或它指向的插件版本不存在返回 repository.ErrNotFound。
+	// UpdateChannel 更新渠道的可变字段（不含 sort）；渠道不存在返回 repository.ErrNotFound。
 	UpdateChannel(ctx context.Context, c *model.AIChannel) error
+	// SetChannelOrder 按 keys 的先后重写渠道 sort；keys 不是现有渠道的全集返回 repository.ErrNotFound / repository.ErrOrderMismatch。
+	SetChannelOrder(ctx context.Context, keys []string) error
 	// GetChannel 按 key 查询渠道，不存在返回 repository.ErrNotFound。
 	GetChannel(ctx context.Context, key string) (*model.AIChannel, error)
-	// ListChannels 返回所有渠道，按 key 升序。
+	// ListChannels 返回所有渠道，按 sort、key 升序。
 	ListChannels(ctx context.Context) ([]model.AIChannel, error)
 	// ChannelLoads 返回每个有未完成任务的渠道的负载（生成中 / 排队数），没有任务的渠道不在结果里。
 	ChannelLoads(ctx context.Context, now time.Time) ([]model.ChannelLoad, error)
@@ -35,45 +37,44 @@ type AIChannelRepo interface {
 	DeleteChannel(ctx context.Context, key string) (repository.ChannelRefs, error)
 }
 
-// AIChannelPlugins 是渠道服务对插件表的只读依赖，由 repository.AIPluginRepository 实现。
-type AIChannelPlugins interface {
-	// GetPlugin 按 key 查询插件，不存在返回 repository.ErrNotFound。
-	GetPlugin(ctx context.Context, key string) (*model.AIPlugin, error)
-	// FindVersion 按 (plugin_key, version) 查询版本头信息，不存在返回 repository.ErrNotFound。
-	FindVersion(ctx context.Context, pluginKey, version string) (*model.AIPluginVersion, error)
-	// GetVersionHead 按 id 查询版本头信息，不存在返回 repository.ErrNotFound。
-	GetVersionHead(ctx context.Context, id uint64) (*model.AIPluginVersion, error)
-	// ListVersions 返回版本头信息；pluginKey 为空表示所有插件。
-	ListVersions(ctx context.Context, pluginKey string) ([]model.AIPluginVersion, error)
-}
-
 // AIChannelSecrets 是渠道 Key 的存取依赖，由 AIConfigService 实现（凭证加解密都在那里）。
 type AIChannelSecrets interface {
 	// SetSecret 设置（覆盖）凭证，只写。
 	SetSecret(ctx context.Context, name, value string, adminID uint64) error
+	// DeleteSecret 删除凭证（不存在也算成功），并清掉本实例的明文缓存。
+	DeleteSecret(ctx context.Context, name string) error
 	// SecretIsSet 判断凭证是否已设置，不解密。
 	SecretIsSet(ctx context.Context, name string) (bool, error)
-	// Get 解密并返回凭证明文，只用来对错误信息做防御性脱敏，绝不进响应。
+	// Get 解密并返回凭证明文，只用来请求上游，绝不进响应。
 	Get(ctx context.Context, name string) (string, error)
 	// ForgetSecret 清掉本实例对该凭证的明文缓存（凭证行已被删除后调用）。
 	ForgetSecret(name string)
 }
 
-// AIChannelService 管理渠道：创建 / 更新 / 详情 / 列表 / 删除、设置 Key、连通性检查、导入模型。
-// 写操作只有 super_admin 能调（由路由的中间件保证），导入模型 admin 也能调。
+// AIChannelModels 是渠道服务对模型配置的依赖，由 AIConfigService 实现：拉取时标记已存在的模型，导入时创建“待配置”模型。
+type AIChannelModels interface {
+	// ChannelUpstreamModels 返回渠道下已有模型的上游模型名集合（channels[0].upstream_model）。
+	ChannelUpstreamModels(ctx context.Context, channelKey string) (map[string]bool, error)
+	// ImportChannelModels 为渠道创建一批未启用、未选协议的“待配置”模型；渠道下已有的上游模型名跳过。
+	ImportChannelModels(ctx context.Context, actorID uint64, channelKey string, ids []string) (*ImportModelsResult, error)
+}
+
+// AIChannelService 管理渠道：创建 / 更新 / 详情 / 列表 / 删除、设置 Key 与 Secret Key、渠道顺序、拉取并导入模型。
+// 渠道只管连接信息（地址、请求头、限流）；协议在模型里选。写操作只有 super_admin 能调（由路由的中间件保证），拉取与导入模型 admin 也能调。
 type AIChannelService struct {
 	repo     AIChannelRepo
-	plugins  AIChannelPlugins
 	secrets  AIChannelSecrets
+	models   AIChannelModels
+	lister   provider.ModelLister
 	audit    AIAuditWriter
-	ops      provider.PluginOps
 	notifier RegistryNotifier
+	genKey   func() string // 生成渠道 key，测试里可替换
 }
 
 // NewAIChannelService 创建渠道服务。notifier 为 nil 时不刷新 Registry（只有测试会这样）。
-func NewAIChannelService(repo AIChannelRepo, plugins AIChannelPlugins, secrets AIChannelSecrets, audit AIAuditWriter,
-	ops provider.PluginOps, notifier RegistryNotifier) *AIChannelService {
-	return &AIChannelService{repo: repo, plugins: plugins, secrets: secrets, audit: audit, ops: ops, notifier: notifier}
+func NewAIChannelService(repo AIChannelRepo, secrets AIChannelSecrets, models AIChannelModels, lister provider.ModelLister,
+	audit AIAuditWriter, notifier RegistryNotifier) *AIChannelService {
+	return &AIChannelService{repo: repo, secrets: secrets, models: models, lister: lister, audit: audit, notifier: notifier, genKey: randomChannelKey}
 }
 
 // 渠道字段的长度限制，与 ai_channels 的列宽一致。
@@ -82,90 +83,70 @@ const (
 	channelBaseURLMaxLen = 512
 )
 
+// channelKeyGenAttempts 是自动生成的 key 撞上已有渠道时的最大重试次数（16 位随机十六进制，撞上几乎不可能，这里只是兜底）。
+const channelKeyGenAttempts = 5
+
+// randomChannelKey 生成渠道 key：16 位随机十六进制（64 位随机数），符合 channelKeyRe，不含冒号，不会与凭证名冲突。
+func randomChannelKey() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand 失败说明系统随机源不可用，继续运行没有意义
+		panic(fmt.Sprintf("读取系统随机数失败：%v", err))
+	}
+	return hex.EncodeToString(b[:])
+}
+
 // channelKeyRe 限制渠道 key：它会出现在 URL 路径、凭证名（channel:<key>）和日志里。
 var channelKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
-// ChannelView 是管理端的渠道视图。Key 只写不读：只告诉调用方有没有设置（secret_set）。
+// ChannelView 是管理端的渠道视图。Key 与 Secret Key 只写不读：只告诉调用方有没有设置。
 type ChannelView struct {
-	Key              string             `json:"key"`
-	Name             string             `json:"name"`
-	PluginKey        string             `json:"plugin_key"`
-	PluginVersionID  uint64             `json:"plugin_version_id"`
-	PluginVersion    string             `json:"plugin_version"` // 固定的插件版本号（semver）；版本行缺失时为空串
-	BaseURL          string             `json:"base_url"`
-	AllowCredentials bool               `json:"allow_credentials"`
-	Settings         map[string]any     `json:"settings"`
-	RateLimit        provider.RateLimit `json:"rate_limit"`
-	Enabled          bool               `json:"enabled"`
-	SecretSet        bool               `json:"secret_set"`
-	UpdatedBy        uint64             `json:"updated_by"`
-	UpdatedAt        time.Time          `json:"updated_at"`
-	CreatedAt        time.Time          `json:"created_at"`
+	Key          string             `json:"key"`
+	Name         string             `json:"name"`
+	BaseURL      string             `json:"base_url"`
+	Headers      map[string]string  `json:"headers"`
+	RateLimit    provider.RateLimit `json:"rate_limit"`
+	Sort         int                `json:"sort"`
+	Enabled      bool               `json:"enabled"`
+	SecretSet    bool               `json:"secret_set"`
+	SecretKeySet bool               `json:"secret_key_set"`
+	UpdatedBy    uint64             `json:"updated_by"`
+	UpdatedAt    time.Time          `json:"updated_at"`
+	CreatedAt    time.Time          `json:"created_at"`
 }
 
 // ChannelCreateInput 是新建渠道的参数。
 type ChannelCreateInput struct {
-	Key              string
-	Name             string
-	PluginKey        string
-	PluginVersion    string // semver 字符串，固定到这个版本
-	BaseURL          string
-	AllowCredentials bool
-	Settings         map[string]any
-	RateLimit        provider.RateLimit
-	Enabled          bool // 调用方在请求没传时按 true 传入
-	ActorID          uint64
+	Key       string
+	Name      string
+	BaseURL   string
+	Headers   map[string]string
+	RateLimit provider.RateLimit
+	Enabled   bool // 调用方在请求没传时按 true 传入
+	ActorID   uint64
 }
 
-// ChannelUpdateInput 是更新渠道的参数：指针 / nil 的字段表示“不改”。插件本身不能换（要换插件请新建渠道），只能切版本。
+// ChannelUpdateInput 是更新渠道的参数：指针 / nil 的字段表示“不改”。
 type ChannelUpdateInput struct {
-	Key              string
-	Name             *string
-	PluginVersion    *string
-	BaseURL          *string
-	AllowCredentials *bool
-	Settings         map[string]any      // nil 表示不改；非 nil（含空对象）表示整体替换
-	RateLimit        *provider.RateLimit // nil 表示不改
-	Enabled          *bool
-	ActorID          uint64
+	Key       string
+	Name      *string
+	BaseURL   *string
+	Headers   map[string]string   // nil 表示不改；非 nil（含空对象）表示整体替换
+	RateLimit *provider.RateLimit // nil 表示不改
+	Enabled   *bool
+	ActorID   uint64
 }
 
-// ChannelCheckDraftInput 是保存前连通性检查的参数：表单里还没保存的渠道草稿，字段含义同 ChannelCreateInput。
-// ExistingKey 非空表示正在编辑这个已有渠道：Secret 留空时用它已保存的 Key；新建渠道留空。Secret 明文只在这次请求里用。
-type ChannelCheckDraftInput struct {
-	ExistingKey      string
-	PluginKey        string
-	PluginVersion    string
-	BaseURL          string
-	AllowCredentials bool
-	Settings         map[string]any
-	Secret           string
-}
-
-// ChannelImportResult 是从渠道导入模型的结果：草稿只用来预填模型编辑器，不落库。
-type ChannelImportResult struct {
-	Drafts []provider.ModelDraft `json:"drafts"`
-}
-
-// List 返回所有渠道（按 key 升序），带 secret_set 与固定的插件版本号。返回的切片永远不是 nil。
+// List 返回所有渠道（按 sort、key 升序），带 secret_set 与 secret_key_set。返回的切片永远不是 nil。
 func (s *AIChannelService) List(ctx context.Context) ([]ChannelView, error) {
-	// 1. 渠道与全部版本（只取版本号用）
+	// 1. 渠道；渠道数量很少，逐个查 Key 是否已设置足够
 	chans, err := s.repo.ListChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	vers, err := s.plugins.ListVersions(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	names := make(map[uint64]string, len(vers))
-	for _, v := range vers {
-		names[v.ID] = v.Version
-	}
-	// 2. 逐个组装视图；渠道数量很少，逐个查 Key 是否已设置足够
 	out := make([]ChannelView, 0, len(chans))
 	for i := range chans {
-		view, err := s.view(ctx, &chans[i], names[chans[i].PluginVersionID])
+		view, err := s.view(ctx, &chans[i])
 		if err != nil {
 			return nil, err
 		}
@@ -193,20 +174,19 @@ func (s *AIChannelService) Get(ctx context.Context, key string) (*ChannelView, e
 	if err != nil {
 		return nil, err
 	}
-	version := ""
-	if v, err := s.plugins.GetVersionHead(ctx, ch.PluginVersionID); err == nil {
-		version = v.Version
-	} else if !errors.Is(err, repository.ErrNotFound) {
-		return nil, err
-	}
-	return s.view(ctx, ch, version)
+	return s.view(ctx, ch)
 }
 
 // Create 新建渠道。所有校验不通过都返回 ErrChannelInvalid（原因写进 msg），key 重复返回 ErrChannelExists。
-// allow_credentials 一开始就是 true 的，补一条审计（这个开关是安全边界，创建时打开同样要留痕）。
+// 保存只做字段校验，不发任何请求：连通性在模型的“测试模型”里验证。新渠道排在现有渠道最后。
 func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*ChannelView, error) {
-	// 1. 基础字段
+	// 1. 字段校验
 	var problems []string
+	// key 是内部标识：不传由后端生成（16 位随机十六进制），运营不需要起名；显式传了就照常校验
+	generated := in.Key == ""
+	if generated {
+		in.Key = s.genKey()
+	}
 	if !channelKeyRe.MatchString(in.Key) {
 		problems = append(problems, "key 只能包含小写字母、数字和短横线，以字母或数字开头，长度不超过 64")
 	}
@@ -214,53 +194,49 @@ func (s *AIChannelService) Create(ctx context.Context, in ChannelCreateInput) (*
 	problems = appendIf(problems, msg)
 	baseURL, msg := checkBaseURL(in.BaseURL)
 	problems = appendIf(problems, msg)
-	problems = appendIf(problems, checkRateLimit(in.RateLimit))
-	// 2. 插件版本存在且插件启用；之后 settings 才能按它的声明校验
-	target, msg, err := s.resolveVersion(ctx, in.PluginKey, in.PluginVersion, true)
-	if err != nil {
-		return nil, err
-	}
+	headers, msg := checkChannelHeaders(in.Headers)
 	problems = appendIf(problems, msg)
-	var settings map[string]any
-	if target != nil {
-		var issues []modelcfg.Issue
-		settings, issues = pluginmeta.ValidateSettingValues(target.meta.ChannelSettings, in.Settings)
-		problems = append(problems, formatSettingIssues("settings", issues)...)
-	}
+	problems = appendIf(problems, checkRateLimit(in.RateLimit))
 	if len(problems) > 0 {
 		return nil, invalidChannel(problems)
 	}
-	// 3. 写库；key 重复由唯一索引兜底
-	settingsJSON, err := json.Marshal(settings)
+	// 2. 顺序：排在现有渠道之后（间隔 10，方便以后手动插队）
+	existing, err := s.repo.ListChannels(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("编码渠道 settings 失败：%w", err)
+		return nil, err
+	}
+	sortNo := 10
+	for _, c := range existing {
+		sortNo = max(sortNo, c.Sort+10)
+	}
+	// 3. 写库；key 重复由唯一索引兜底
+	headersJSON, err := json.Marshal(headers)
+	if err != nil {
+		return nil, fmt.Errorf("编码渠道 headers 失败：%w", err)
 	}
 	rateJSON, err := json.Marshal(in.RateLimit)
 	if err != nil {
 		return nil, fmt.Errorf("编码渠道 rate_limit 失败：%w", err)
 	}
 	ch := &model.AIChannel{
-		Key: in.Key, Name: name, PluginKey: in.PluginKey, PluginVersionID: target.version.ID, BaseURL: baseURL,
-		AllowCredentials: in.AllowCredentials,
-		SettingsJSON:     model.JSONText(settingsJSON), RateLimitJSON: model.JSONText(rateJSON),
-		Enabled: in.Enabled, UpdatedBy: in.ActorID,
+		Key: in.Key, Name: name, BaseURL: baseURL, HeadersJSON: model.JSONText(headersJSON), RateLimitJSON: model.JSONText(rateJSON),
+		Sort: sortNo, Enabled: in.Enabled, UpdatedBy: in.ActorID,
 	}
-	if err := s.repo.CreateChannel(ctx, ch); errors.Is(err, repository.ErrDuplicate) {
+	err = s.repo.CreateChannel(ctx, ch)
+	// 自动生成的 key 撞上已有渠道：换一个重试；显式传的 key 重复就是 409
+	for attempt := 1; generated && errors.Is(err, repository.ErrDuplicate) && attempt < channelKeyGenAttempts; attempt++ {
+		ch.Key = s.genKey()
+		err = s.repo.CreateChannel(ctx, ch)
+	}
+	if errors.Is(err, repository.ErrDuplicate) {
 		return nil, errcode.ErrChannelExists
-	} else if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrChannelInvalid.WithMsg("插件版本已被删除，请刷新后重试")
 	} else if err != nil {
 		return nil, err
 	}
 	// 4. 审计与热生效
-	aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelCreate, model.AuditTargetChannel, ch.Key, map[string]any{
-		"plugin_key": ch.PluginKey, "plugin_version": target.version.Version, "enabled": ch.Enabled,
-	})
-	if ch.AllowCredentials {
-		aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelCred, model.AuditTargetChannel, ch.Key, map[string]any{"from": false, "to": true})
-	}
+	aiAudit(ctx, s.audit, in.ActorID, model.AuditChannelCreate, model.AuditTargetChannel, ch.Key, map[string]any{"enabled": ch.Enabled})
 	s.notifyChanged(ctx, "channel create "+ch.Key)
-	return s.view(ctx, ch, target.version.Version)
+	return s.view(ctx, ch)
 }
 
 // load 按 key 取渠道，不存在翻译成 ErrChannelNotFound。
@@ -272,16 +248,19 @@ func (s *AIChannelService) load(ctx context.Context, key string) (*model.AIChann
 	return ch, err
 }
 
-// view 由渠道行组装视图；version 是它固定的插件版本号。settings / rate_limit 正文损坏时按空值输出，不让一行坏数据拖垮列表。
-func (s *AIChannelService) view(ctx context.Context, ch *model.AIChannel, version string) (*ChannelView, error) {
+// view 由渠道行组装视图。headers / rate_limit 正文损坏时按空值输出，不让一行坏数据拖垮列表。
+func (s *AIChannelService) view(ctx context.Context, ch *model.AIChannel) (*ChannelView, error) {
 	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(ch.Key))
 	if err != nil {
 		return nil, err
 	}
+	keySet, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretKeyName(ch.Key))
+	if err != nil {
+		return nil, err
+	}
 	v := &ChannelView{
-		Key: ch.Key, Name: ch.Name, PluginKey: ch.PluginKey, PluginVersionID: ch.PluginVersionID, PluginVersion: version,
-		BaseURL: ch.BaseURL, AllowCredentials: ch.AllowCredentials,
-		Settings: decodeObject(ch.SettingsJSON), Enabled: ch.Enabled, SecretSet: set,
+		Key: ch.Key, Name: ch.Name, BaseURL: ch.BaseURL, Headers: decodeStringMap(ch.HeadersJSON), Sort: ch.Sort,
+		Enabled: ch.Enabled, SecretSet: set, SecretKeySet: keySet,
 		UpdatedBy: ch.UpdatedBy, UpdatedAt: ch.UpdatedAt, CreatedAt: ch.CreatedAt,
 	}
 	if len(ch.RateLimitJSON) > 0 {

@@ -1,217 +1,354 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Plus, RadioTower } from "lucide-react";
+import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
-import { listChannels, updateChannel } from "@/api/admin/ai";
-import type { ChannelListItem } from "@/api/admin/ai/type.d";
+import { setChannelOrder, updateChannel } from "@/api/admin/ai";
+import type { ChannelOption } from "@/api/admin/ai/type.d";
 import { confirm } from "@/components/admin-ui/confirm-dialog";
 import { DataPage } from "@/components/admin-ui/data-panel";
 import {
-  PageHeader,
-  PageHeaderActions,
-  PageHeaderHeading,
-  PageHeaderTitle,
-} from "@/components/admin-ui/page-header";
+  EmptyState,
+  EmptyStateActions,
+  EmptyStateDescription,
+  EmptyStateIcon,
+  EmptyStateTitle,
+} from "@/components/admin-ui/empty-state";
+import { Notice } from "@/components/admin-ui/notice";
+import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
-import { openDialog } from "@/store/dialog";
 import {
-  resolveChannelDialog,
-  type ChannelDialogOpen,
-  type ChannelTab,
+  parseChannelsQuery,
+  pickSelectedChannel,
+  type ChannelStatusFilter,
 } from "@/utils/admin/channel-route";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
-import { useModelRowActions } from "../models/use-model-row-actions";
+import { ChannelModelsPanel } from "../models/channel-models-panel";
+import { useChannelLoads } from "../overview/use-overview-stats";
 import { useAdminCatalogOptions } from "../../use-admin";
-import { useAdminList } from "../../use-admin-list";
-import { useDialogTarget } from "../../use-dialog-target";
-import type { ChannelModelActions } from "./channel-models";
-import { ChannelDialog, type ChannelDialogTarget } from "./channel-dialog";
-import { ChannelModelEditor, type ChannelModelEditing } from "./channel-model-editor";
-import { ChannelTable } from "./channel-table";
-import { ImportDialog } from "./import-dialog";
+import { ChannelHeader } from "./channel-header";
+import { SUPER_ONLY, ChannelList } from "./channel-list";
+import { openChannelDialog } from "./channel-dialog";
+import { openPullModelsDialog } from "./pull-models-dialog";
 import { openSecretDialog } from "./secret-dialog";
+import { useModelCounts } from "./use-model-counts";
 
-/** 列表认的筛选参数：能力、插件、状态 */
-const CHANNEL_FILTERS = ["kind", "plugin", "status"] as const;
+/** 深链带来的“要打开的模型”：resolving 表示链接里只有模型 key，还在反查它属于哪个渠道 */
+type DeepLink = { model: string; test: boolean; resolving: boolean };
 
 /**
- * 渠道页：表格 + 详情弹窗。弹窗开着什么放在页面自己的 state 里，不进 URL
- * （进了 URL 会把类型、搜索、页码筛选冲掉）；别的页面要直达，用 dialogEntry 经路由 state 带过来
- * （见 ChannelDialogOpen：打开某个渠道的某个页签，或新建并预选插件）。
- * 页面级弹窗（设置 Key、导入、停用确认、删除）都走全局弹窗 store；
- * 从渠道弹窗里导入模型、删除渠道时先关掉渠道弹窗再开对应弹窗（两个弹窗不叠着）；设置 Key 留在原地，设完概览立刻刷新。
- * 新建、检查、设 Key、停用、删除只对运维渲染；导入 admin 也能用；admin 打开弹窗为只读。
+ * 渠道与模型主从页（/admin/ai/channels）：左栏渠道列表，右栏当前渠道的详情与模型管理。
+ * - 选中渠道放在页面 state；深链 `?channel=&model=&test=1&status=` 进来后选中渠道、
+ *   把 model / test 交给模型面板打开，读完用 replace 把 model / test / status 从地址里清掉，channel 留着，刷新还在原处；
+ *   只给了 model 没给 channel 时，用模型清单反查所属渠道；
+ * - 写渠道（新增、编辑、设置 Key、启停、删除、排序）只对 super_admin 开放，admin 看到置灰按钮并写明原因；
+ *   拉取与导入模型 admin 也可以；
+ * - 弹窗（新增 / 编辑、设置 Key、拉取模型、删除确认）都走全局弹窗 store；
+ * - 渠道或模型有改动：重新拉渠道清单与模型数；拉取导入后再递增 reloadToken 让模型表刷新。
  */
 export default function ChannelsPage() {
   const { catalog } = useAdminCatalogOptions();
+  const { channels, channelsStatus, plugins, pluginsStatus, reloadChannels } = catalog;
   const role = useAdminStore((state) => state.role);
   const canWrite = canManageInfra(role);
-  const navigate = useNavigate();
-  const [open, setOpen] = useDialogTarget<ChannelDialogOpen>();
-  // 渠道分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量渠道和插件在 catalog 里（options）
-  const list = useAdminList<ChannelListItem>(CHANNEL_FILTERS, (query) => listChannels(query));
-  /** 渠道有改动之后：重新拉当前页，并刷新弹窗用的全量渠道（健康状态、固定版本） */
-  const { reload: reloadList } = list;
-  const { reloadChannels } = catalog;
-  const refreshChannels = useCallback(() => {
-    reloadList();
-    void reloadChannels();
-  }, [reloadList, reloadChannels]);
-  /** “模型”页签的刷新信号：模型有改动就加一，页签据此重新拉取 */
-  const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
-  const reloadModels = useCallback(async () => {
-    setModelsRefreshKey((n) => n + 1);
-    reloadList(); // 渠道行上的模型数也要跟着变
-  }, [reloadList]);
-  const row = useModelRowActions(reloadModels);
+  const location = useLocation();
+  const [, setSearchParams] = useSearchParams();
+  const modelCounts = useModelCounts();
+  const { reload: reloadModelCounts } = modelCounts;
+  const loads = useChannelLoads();
 
-  const route = resolveChannelDialog(open, catalog.channels, {
-    canWrite,
-    ready: catalog.channelsStatus === "ready",
-  });
-  const routeTarget = route.target;
-  const routeKey = routeTarget?.kind === "edit" ? routeTarget.key : null;
-  const routePlugin = routeTarget?.kind === "new" ? routeTarget.pluginKey : undefined;
-  const isNew = routeTarget?.kind === "new";
-  // 弹窗靠 useRetained 在关闭时保留内容，target 要是稳定引用，所以用 useMemo
-  const target = useMemo<ChannelDialogTarget | null>(() => {
-    if (isNew) return { kind: "new", pluginKey: routePlugin };
-    const channel = routeKey ? catalog.channels.find((item) => item.key === routeKey) : undefined;
-    return channel ? { kind: "edit", channel } : null;
-  }, [isNew, routePlugin, routeKey, catalog.channels]);
-  const tab: ChannelTab = routeTarget?.kind === "edit" ? routeTarget.tab : "config";
+  /** 想选中的渠道（可能还没加载出来、也可能已被删）；实际选中项用 pickSelectedChannel 推出 */
+  const [wanted, setWanted] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ChannelStatusFilter>("all");
+  const [deepLink, setDeepLink] = useState<DeepLink | null>(null);
+  /** 深链里指定的渠道：渠道清单到位后核对它存不存在，不存在提示一次 */
+  const [linkedChannel, setLinkedChannel] = useState<string | null>(null);
+  /** 模型表的刷新信号：拉取导入后加一 */
+  const [reloadToken, setReloadToken] = useState(0);
+  const [newModelToken, setNewModelToken] = useState(0);
+  const [sorting, setSorting] = useState(false);
+  const [sortOrder, setSortOrder] = useState<string[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  const closeDialog = () => setOpen(null);
+  /** 同一次导航只读一次深链 */
+  const [handledKey, setHandledKey] = useState<string | null>(null);
+  const link = parseChannelsQuery(location.search);
+  if (handledKey !== location.key) {
+    setHandledKey(location.key);
+    if (link.channel && link.channel !== wanted) {
+      setWanted(link.channel);
+      setLinkedChannel(link.channel);
+    }
+    if (new URLSearchParams(location.search).has("status")) setStatusFilter(link.status);
+    if (link.model) setDeepLink({ model: link.model, test: link.test, resolving: !link.channel });
+  }
 
-  // 渠道弹窗“模型”页签里新建 / 编辑模型：叠在渠道弹窗上，关掉后渠道弹窗保持原样
-  const [editing, setEditing] = useState<ChannelModelEditing | null>(null);
-  const closeModelEditor = useCallback(() => setEditing(null), []);
-  const refreshModels = useCallback(() => void reloadModels(), [reloadModels]);
-  /** 弹窗用的全量插件和渠道要先到位，才能判断深链里的渠道存不存在 */
-
-  // 要打开的渠道已经不存在（被删了）：提示一次并清掉
+  // 读完就清：model / test / status 只用一次，channel 留在地址里
+  const hasTransient = link.model !== null || link.test || /[?&]status=/.test(location.search);
   useEffect(() => {
-    if (!route.missing) return;
-    toast.error(`渠道 ${route.missing} 不存在`);
-    setOpen(null);
-  }, [route.missing, setOpen]);
-
-  const openImport = (channel: ChannelListItem) =>
-    openDialog(ImportDialog, {
-      channel,
-      plugins: catalog.plugins,
-      onSaved: () => void reloadModels(),
-      onImported: (draftId: string | null) =>
-        navigate("/admin/ai/models", {
-          state: dialogEntry(
-            draftId
-              ? { isNew: true, fromImport: true, draftId }
-              : { isNew: true, presetChannel: channel.key },
-          ),
-        }),
-    });
-
-  const openSetKey = (channel: ChannelListItem) =>
-    openSecretDialog({
-      channelKey: channel.key,
-      channelName: channel.name,
-      secretSet: channel.secret_set,
-      onSaved: refreshChannels,
-    });
-
-  const requestToggle = (channel: ChannelListItem) => {
-    const used = channel.online_model_count;
-    void confirm({
-      title: channel.enabled ? "停用渠道？" : "启用渠道？",
-      destructive: channel.enabled,
-      confirmLabel: channel.enabled ? "停用" : "启用",
-      description: channel.enabled
-        ? `停用「${channel.name}」后，使用它的${used ? ` ${used} 个上架模型` : "模型"}不再接新任务，进行中的任务不受影响。`
-        : `启用「${channel.name}」后，使用它的模型可以接新任务。`,
-      onConfirm: async () => {
-        await updateChannel(channel.key, { enabled: !channel.enabled });
-        toast.success(`渠道「${channel.name}」已${channel.enabled ? "停用" : "启用"}`);
-        refreshChannels();
+    if (!hasTransient) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("model");
+        next.delete("test");
+        next.delete("status");
+        return next;
       },
+      { replace: true },
+    );
+  }, [hasTransient, location.key, setSearchParams]);
+
+  // 深链里的渠道已经不存在（被删了）：提示一次
+  useEffect(() => {
+    if (!linkedChannel || channelsStatus !== "ready") return;
+    if (!channels.some((channel) => channel.key === linkedChannel)) {
+      toast.error(`渠道 ${linkedChannel} 不存在`);
+    }
+    setLinkedChannel(null);
+  }, [linkedChannel, channels, channelsStatus]);
+
+  // 深链里只有模型 key：用模型清单反查它的渠道
+  useEffect(() => {
+    if (!deepLink?.resolving || modelCounts.status === "loading") return;
+    const hit = modelCounts.models.find((model) => model.key === deepLink.model);
+    if (hit?.channel) {
+      setWanted(hit.channel);
+      setDeepLink({ ...deepLink, resolving: false });
+    } else {
+      toast.error(`模型 ${deepLink.model} 不存在`);
+      setDeepLink(null);
+    }
+  }, [deepLink, modelCounts.models, modelCounts.status]);
+
+  const selectedKey = pickSelectedChannel(channels, wanted);
+  const channel = channels.find((item) => item.key === selectedKey) ?? null;
+  const existingKeys = channels.map((item) => item.key);
+
+  /** 选中渠道：换渠道后深链的模型不再适用，地址里的 channel 同步更新，刷新还在原处 */
+  const selectChannel = useCallback(
+    (key: string) => {
+      setWanted(key);
+      setDeepLink(null);
+      setSearchParams({ channel: key }, { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  const refreshAll = useCallback(() => {
+    void reloadChannels();
+    void reloadModelCounts();
+  }, [reloadChannels, reloadModelCounts]);
+
+  const newChannel = () =>
+    openChannelDialog({
+      onSaved: (key, created) => {
+        if (created) selectChannel(key);
+        void reloadChannels();
+      },
+    });
+
+  const editChannel = (target: ChannelOption) =>
+    openChannelDialog({
+      channel: target,
+      onSaved: () => void reloadChannels(),
+    });
+
+  const setKey = (target: ChannelOption) =>
+    openSecretDialog({
+      channelKey: target.key,
+      channelName: target.name,
+      secretSet: target.secret_set,
+      secretKeySet: target.secret_key_set,
+      onSaved: () => void reloadChannels(),
+    });
+
+  const setEnabled = async (target: ChannelOption, enabled: boolean) => {
+    await updateChannel(target.key, { enabled });
+    toast.success(
+      enabled
+        ? `渠道「${target.name}」已启用`
+        : `渠道「${target.name}」已停用，画布里它的模型已不可见`,
+    );
+    await reloadChannels();
+  };
+
+  const toggleChannel = (target: ChannelOption) => {
+    if (!target.enabled) {
+      setToggling(true);
+      void setEnabled(target, true)
+        .catch(() => undefined)
+        .finally(() => setToggling(false));
+      return;
+    }
+    void confirm({
+      title: "停用渠道？",
+      destructive: true,
+      confirmLabel: "停用",
+      description: `停用「${target.name}」后，它的所有模型在画布里不可见；进行中的任务按快照继续。`,
+      onConfirm: () => setEnabled(target, false),
     });
   };
 
-  const requestDelete = (channel: ChannelListItem) =>
+  const deleteChannel = (target: ChannelOption) =>
     openDeleteDialog({
       target: "channel",
-      objectKey: channel.key,
-      name: channel.name,
-      channels: catalog.channels,
+      objectKey: target.key,
+      name: target.name,
+      channels,
       onDeleted: () => {
-        setOpen(null);
-        refreshChannels();
-        void reloadModels();
+        setWanted(null);
+        setDeepLink(null);
+        setSearchParams({}, { replace: true });
+        refreshAll();
       },
-      onChanged: () => void reloadModels(),
+      onChanged: () => {
+        void reloadModelCounts();
+        setReloadToken((n) => n + 1);
+      },
     });
 
-  const modelActions: ChannelModelActions = {
-    busyKey: row.busyKey,
-    onEdit: (key, channel) => setEditing({ channel, key }),
-    onTest: (key) => navigate("/admin/ai/models", { state: dialogEntry({ key, test: true }) }),
-    onNew: (channel) => setEditing({ channel, key: null }),
-    onToggleEnabled: (key, enabled) => void row.toggleEnabled(key, enabled),
-    onDelete: row.requestDelete,
+  const pullModels = (target: ChannelOption) =>
+    openPullModelsDialog({
+      channel: target,
+      canWriteChannel: canWrite,
+      onImported: () => {
+        setReloadToken((n) => n + 1);
+        refreshAll();
+      },
+      onManualAdd: () => setNewModelToken((n) => n + 1),
+    });
+
+  const toggleSorting = async () => {
+    if (!sorting) {
+      setSortOrder(channels.map((item) => item.key));
+      setSorting(true);
+      return;
+    }
+    if (sortOrder.join("\n") === existingKeys.join("\n")) {
+      setSorting(false);
+      return;
+    }
+    setSavingOrder(true);
+    try {
+      await setChannelOrder(sortOrder);
+      toast.success("渠道顺序已保存。画布里的模型会按新的渠道顺序排列");
+      await reloadChannels();
+      setSorting(false);
+    } catch {
+      // 全局 toast 已弹；留在排序模式，用户可以再试
+    } finally {
+      setSavingOrder(false);
+    }
   };
+
+  const moveChannel = (key: string, delta: -1 | 1) =>
+    setSortOrder((prev) => {
+      const from = prev.indexOf(key);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
+    });
+
+  const modelDeepLink = deepLink && !deepLink.resolving ? deepLink : null;
 
   return (
     <DataPage>
-      <PageHeader>
-        <PageHeaderHeading>
-          <PageHeaderTitle>渠道</PageHeaderTitle>
-        </PageHeaderHeading>
-        <PageHeaderActions>
-          {canWrite && (
-            <Button onClick={() => setOpen({ kind: "new" })}>
-              <Plus />
-              新建渠道
-            </Button>
-          )}
-        </PageHeaderActions>
-      </PageHeader>
-
-      <ChannelTable
-        list={list}
-        plugins={catalog.plugins}
-        canWrite={canWrite}
-        onOpen={(key) => setOpen({ kind: "edit", key })}
-        onNew={() => setOpen({ kind: "new" })}
-        onImport={openImport}
-        onSetKey={openSetKey}
-        onToggle={requestToggle}
-        onDelete={requestDelete}
-      />
-
-      <ChannelDialog
-        target={target}
-        initialTab={tab}
-        plugins={catalog.plugins}
-        pluginsReady={catalog.pluginsStatus === "ready"}
-        canWrite={canWrite}
-        channels={catalog.channels}
-        modelsRefreshKey={modelsRefreshKey}
-        modelActions={modelActions}
-        onSaved={refreshChannels}
-        onClose={closeDialog}
-      >
-        <ChannelModelEditor
-          catalog={catalog}
-          editing={editing}
-          onChange={setEditing}
-          onClose={closeModelEditor}
-          onListChanged={refreshModels}
+      <h1 className="sr-only">渠道与模型</h1>
+      <div className="grid min-h-0 gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+        <ChannelList
+          channels={channels}
+          status={channelsStatus}
+          selectedKey={selectedKey}
+          modelCounts={modelCounts.counts}
+          query={query}
+          statusFilter={statusFilter}
+          canWrite={canWrite}
+          sorting={sorting}
+          sortOrder={sortOrder}
+          savingOrder={savingOrder}
+          onSelect={selectChannel}
+          onNew={newChannel}
+          onQueryChange={setQuery}
+          onStatusChange={setStatusFilter}
+          onToggleSorting={() => void toggleSorting()}
+          onMove={moveChannel}
+          onRetry={() => void reloadChannels()}
         />
-      </ChannelDialog>
+
+        <section data-slot="channel-detail" className="flex min-w-0 flex-col gap-5">
+          {channelsStatus === "loading" ? (
+            <>
+              <Skeleton className="h-24" />
+              <Skeleton className="h-64" />
+            </>
+          ) : channelsStatus === "error" && channels.length === 0 ? (
+            <Notice
+              tone="danger"
+              action={
+                <Button size="xs" variant="outline" onClick={() => void reloadChannels()}>
+                  重试
+                </Button>
+              }
+            >
+              渠道清单加载失败
+            </Notice>
+          ) : !channel ? (
+            <EmptyState className="py-16">
+              <EmptyStateIcon>
+                <RadioTower />
+              </EmptyStateIcon>
+              <EmptyStateTitle>还没有渠道</EmptyStateTitle>
+              <EmptyStateDescription>先新增渠道，再拉取模型。</EmptyStateDescription>
+              <EmptyStateActions>
+                <ReasonTooltip reason={canWrite ? null : SUPER_ONLY}>
+                  <Button disabled={!canWrite} onClick={newChannel}>
+                    <Plus />
+                    新增渠道
+                  </Button>
+                </ReasonTooltip>
+              </EmptyStateActions>
+            </EmptyState>
+          ) : (
+            <>
+              <ChannelHeader
+                channel={channel}
+                load={loads.loads.find((item) => item.channel === channel.key)}
+                loadStale={loads.stale}
+                canWrite={canWrite}
+                toggling={toggling}
+                onEdit={() => editChannel(channel)}
+                onSetKey={() => setKey(channel)}
+                onToggle={() => toggleChannel(channel)}
+                onDelete={() => deleteChannel(channel)}
+              />
+              <ChannelModelsPanel
+                key={channel.key}
+                channel={channel}
+                channels={channels}
+                plugins={plugins}
+                pluginsStatus={pluginsStatus}
+                newModelToken={newModelToken}
+                onOpenHandled={() => setDeepLink(null)}
+                canWriteChannel={canWrite}
+                reloadToken={reloadToken}
+                onChanged={refreshAll}
+                onPull={() => pullModels(channel)}
+                openModelKey={modelDeepLink?.model ?? null}
+                openTest={modelDeepLink?.test ?? false}
+              />
+            </>
+          )}
+        </section>
+      </div>
     </DataPage>
   );
 }

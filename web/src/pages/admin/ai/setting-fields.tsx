@@ -10,7 +10,7 @@ import { FormField } from "@/components/admin-ui/form-field";
 import { OptionSelect } from "@/components/admin-ui/option-select";
 
 /**
- * 按插件声明（channelSettings / import.args）渲染的表单字段，顺序即声明顺序。
+ * 按插件声明（channelSettings，即模型的协议设置项）渲染的表单字段，顺序即声明顺序。
  * 只管展示，取值与校验由调用方用 utils/admin/settings-form 处理。
  */
 export function SettingFields({

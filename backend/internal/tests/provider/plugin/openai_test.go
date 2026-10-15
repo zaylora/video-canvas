@@ -91,7 +91,7 @@ func openaiSubmit(t *testing.T, env *openaiEnv, snap *provider.Snapshot, input m
 
 func TestOpenAIPrecheckAndMeta(t *testing.T) {
 	env := newOpenAIEnv(t, nil)
-	if env.meta.Key != "openai" || env.meta.Name != "OpenAI" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "openai" || env.meta.Name != "OpenAI" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("text"); !ok || ep.Mode != pluginmeta.ModeSync || len(env.meta.Endpoints) != 1 {

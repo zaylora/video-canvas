@@ -5,8 +5,7 @@ import { DialogHost } from "@/components/dialog-host";
 import { WsRuntime } from "@/components/ws-runtime";
 import AdminLayout from "@/pages/admin/layout";
 import ChannelsPage from "@/pages/admin/ai/channels";
-import ModelsPage from "@/pages/admin/ai/models";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
+import { channelsPagePath, legacyModelsRedirect } from "@/utils/admin/channel-route";
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
@@ -26,6 +25,15 @@ import Login from "@/pages/login";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
 import { getToken } from "@/utils/storage/token";
+
+/**
+ * 旧的模型页地址：模型管理已并入渠道与模型主从页，保留 ?channel= / ?model= / ?test= 查询串，
+ * 旧代码经路由 state 带来的模型也转成查询参数。
+ */
+function LegacyModelsRedirect() {
+  const location = useLocation();
+  return <Navigate to={legacyModelsRedirect(location.search, location.state)} replace />;
+}
 
 function RequireAuth() {
   const location = useLocation();
@@ -105,14 +113,9 @@ export const router = createBrowserRouter([
                   Component: (await import("@/pages/admin/ai/overview")).default,
                 }),
               },
-              { path: "ai/models", element: <ModelsPage /> },
-              {
-                // 旧链接：新建模型现在是模型页里的弹窗，不再占用 URL
-                path: "ai/models/new",
-                element: (
-                  <Navigate to="/admin/ai/models" replace state={dialogEntry({ isNew: true })} />
-                ),
-              },
+              { path: "ai/models", element: <LegacyModelsRedirect /> },
+              // 旧链接：新建模型曾占用这个地址，现在模型在渠道与模型主从页里管理
+              { path: "ai/models/new", element: <Navigate to={channelsPagePath()} replace /> },
               { path: "ai/channels", element: <ChannelsPage /> },
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -14,56 +15,48 @@ import (
 	"video-canvas/internal/service/aiconfigfake"
 )
 
-// achEnv 是渠道服务测试的环境：真实的凭证服务（AES-GCM）+ 内存仓储 + 替身的插件宿主。
+// achEnv 是渠道服务测试的环境：真实的凭证与模型配置服务（AES-GCM）+ 内存仓储 + 替身的上游拉取。
+// 渠道不绑协议：这里的渠道只有地址、请求头、限流，协议在模型里选。
 type achEnv struct {
 	svc      *AIChannelService
 	cfg      *AIConfigService
 	repo     *aiconfigfake.MemRepo
-	ops      *aiconfigfake.PluginOps
+	lister   *aiconfigfake.ModelLister
 	notifier *aiconfigfake.Notifier
-	v1       uint64 // kling@1.0.0（bearer，要求 tenant）
-	v2       uint64 // kling@1.1.0
-	loose    uint64 // loose@1.0.0（鉴权 none，没有渠道设置项）
 }
 
 func newAchEnv(t *testing.T) *achEnv {
 	t.Helper()
 	repo := aiconfigfake.NewMemRepo()
 	cfg := NewAIConfigService(repo, repo, repo, "test-master-key")
-	ops := &aiconfigfake.PluginOps{}
+	lister := &aiconfigfake.ModelLister{}
 	notifier := &aiconfigfake.Notifier{}
-	e := &achEnv{svc: NewAIChannelService(repo, repo, cfg, repo, ops, notifier), cfg: cfg, repo: repo, ops: ops, notifier: notifier}
-	e.v1 = adminSeedVersion(t, repo, adminMetaJSON("kling", "1.0.0"), model.PluginSourceUploaded, true)
-	e.v2 = adminSeedVersion(t, repo, adminMetaJSON("kling", "1.1.0"), model.PluginSourceUploaded, true)
-	e.loose = adminSeedVersion(t, repo, adminMetaLoose("loose", "1.0.0"), model.PluginSourceUploaded, true)
-	return e
+	return &achEnv{svc: NewAIChannelService(repo, cfg, cfg, lister, repo, notifier), cfg: cfg, repo: repo, lister: lister, notifier: notifier}
 }
 
 // createInput 是一份合法的新建参数，用例在它的基础上改。
 func createInput() ChannelCreateInput {
-	return ChannelCreateInput{
-		Key: "kling-main", Name: "可灵主渠道", PluginKey: "kling", PluginVersion: "1.0.0",
-		BaseURL: "https://gw.example.com", Settings: map[string]any{"tenant": "t1"}, Enabled: true, ActorID: 5,
-	}
+	return ChannelCreateInput{Key: "main", Name: "主渠道", BaseURL: "https://gw.example.com", Enabled: true, ActorID: 5}
 }
 
 func TestAIChannelService_Create(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("成功：固定到版本、补全默认设置、写审计并刷新 Registry", func(t *testing.T) {
+	t.Run("成功：只有连接信息，写审计并刷新 Registry", func(t *testing.T) {
 		e := newAchEnv(t)
 		in := createInput()
 		in.RateLimit = provider.RateLimit{RPS: 5, MaxConcurrency: 20}
+		in.Headers = map[string]string{"X-Biz": "canvas", "User-Agent": "Canvas/1.0"}
 		view, err := e.svc.Create(ctx, in)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if view.Key != "kling-main" || view.PluginKey != "kling" || view.PluginVersionID != e.v1 || view.PluginVersion != "1.0.0" ||
-			view.BaseURL != "https://gw.example.com" || !view.Enabled || view.SecretSet || view.UpdatedBy != 5 {
+		if view.Key != "main" || view.Name != "主渠道" || view.BaseURL != "https://gw.example.com" || !view.Enabled ||
+			view.SecretSet || view.SecretKeySet || view.UpdatedBy != 5 {
 			t.Fatalf("视图不符合预期：%+v", view)
 		}
-		if view.Settings["tenant"] != "t1" || view.Settings["region"] != "cn" {
-			t.Fatalf("settings 应带上默认值 region=cn：%v", view.Settings)
+		if view.Headers["X-Biz"] != "canvas" || view.Headers["User-Agent"] != "Canvas/1.0" {
+			t.Fatalf("自定义请求头应原样保存：%v", view.Headers)
 		}
 		if view.RateLimit.RPS != 5 || view.RateLimit.MaxConcurrency != 20 {
 			t.Fatalf("限流不符合预期：%+v", view.RateLimit)
@@ -72,79 +65,131 @@ func TestAIChannelService_Create(t *testing.T) {
 			t.Fatalf("审计不符合预期：%v", got)
 		}
 		if len(e.notifier.Reasons) != 1 {
-			t.Fatalf("应刷新 Registry：%v", e.notifier.Reasons)
+			t.Fatalf("应刷新一次 Registry：%v", e.notifier.Reasons)
+		}
+		if e.lister.Calls != 0 {
+			t.Fatal("保存只做字段校验，不能向上游发请求")
 		}
 	})
 
-	t.Run("enabled=false 与“允许插件读取 Key”：创建时同样留痕", func(t *testing.T) {
+	t.Run("请求头缺省时视图里是空对象，不是 null", func(t *testing.T) {
 		e := newAchEnv(t)
+		view, err := e.svc.Create(ctx, createInput())
+		if err != nil || view.Headers == nil || len(view.Headers) != 0 {
+			t.Fatalf("headers 应是空 map：%#v %v", view.Headers, err)
+		}
+	})
+
+	t.Run("新渠道排在现有渠道之后，间隔 10", func(t *testing.T) {
+		e := newAchEnv(t)
+		a, _ := e.svc.Create(ctx, createInput())
 		in := createInput()
-		in.Enabled, in.AllowCredentials = false, true
-		view, err := e.svc.Create(ctx, in)
-		if err != nil || view.Enabled || !view.AllowCredentials {
-			t.Fatalf("结果不符合预期：%+v %v", view, err)
-		}
-		got := strings.Join(e.repo.AuditActions(), ",")
-		want := strings.Join([]string{model.AuditChannelCreate, model.AuditChannelCred}, ",")
-		if got != want {
-			t.Fatalf("审计应为 %s，实际 %s", want, got)
-		}
-	})
-
-	t.Run("key 重复 409（50012）", func(t *testing.T) {
-		e := newAchEnv(t)
-		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+		in.Key = "second"
+		b, err := e.svc.Create(ctx, in)
+		if err != nil {
 			t.Fatal(err)
 		}
-		_, err := e.svc.Create(ctx, createInput())
-		adminWantCode(t, err, errcode.ErrChannelExists.Code)
-		if len(e.repo.Channels) != 1 {
-			t.Fatal("不该新增渠道")
+		if a.Sort != 10 || b.Sort != 20 {
+			t.Fatalf("sort 不符合预期：a=%d b=%d", a.Sort, b.Sort)
 		}
 	})
 
-	invalid := []struct {
+	t.Run("不传 key：后端生成 16 位十六进制标识，格式合法、互不重复，Key 凭证按它命名", func(t *testing.T) {
+		e := newAchEnv(t)
+		seen := map[string]bool{}
+		for i := 0; i < 20; i++ {
+			in := createInput()
+			in.Key = ""
+			view, err := e.svc.Create(ctx, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(view.Key) != 16 || !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(view.Key) || seen[view.Key] {
+				t.Fatalf("生成的 key 不合法或重复：%q", view.Key)
+			}
+			seen[view.Key] = true
+		}
+		in := createInput()
+		in.Key = ""
+		view, _ := e.svc.Create(ctx, in)
+		if err := e.svc.SetSecret(ctx, 1, view.Key, "sk-1"); err != nil {
+			t.Fatalf("生成的 key 应能用来设置 Key：%v", err)
+		}
+	})
+
+	t.Run("生成的 key 与已有渠道撞上时自动重试", func(t *testing.T) {
+		e := newAchEnv(t)
+		in := createInput()
+		in.Key = ""
+		e.svc.SetKeyGenForTest(func() string {
+			if e.repo.Channels["aaaaaaaaaaaaaaaa"] == nil {
+				return "aaaaaaaaaaaaaaaa"
+			}
+			return "bbbbbbbbbbbbbbbb"
+		})
+		e.repo.Channels["aaaaaaaaaaaaaaaa"] = &model.AIChannel{Key: "aaaaaaaaaaaaaaaa", Name: "x", BaseURL: "https://x.example.com", Enabled: true}
+		view, err := e.svc.Create(ctx, in)
+		if err != nil || view.Key != "bbbbbbbbbbbbbbbb" {
+			t.Fatalf("撞 key 应重新生成：%+v %v", view, err)
+		}
+	})
+
+	t.Run("显式传了 key 仍按它创建，格式不对仍报错", func(t *testing.T) {
+		e := newAchEnv(t)
+		in := createInput()
+		in.Key = "my-gw"
+		if v, err := e.svc.Create(ctx, in); err != nil || v.Key != "my-gw" {
+			t.Fatalf("%+v %v", v, err)
+		}
+	})
+
+	t.Run("key 已存在 409", func(t *testing.T) {
+		e := newAchEnv(t)
+		_, _ = e.svc.Create(ctx, createInput())
+		_, err := e.svc.Create(ctx, createInput())
+		adminWantCode(t, err, errcode.ErrChannelExists.Code)
+	})
+
+	tooMany := map[string]string{}
+	for i := 0; i < 33; i++ {
+		tooMany["X-H"+strings.Repeat("a", i+1)] = "v"
+	}
+	tests := []struct {
 		name    string
-		mutate  func(e *achEnv, in *ChannelCreateInput)
+		mutate  func(in *ChannelCreateInput)
 		wantMsg string
 	}{
-		{"key 含大写", func(_ *achEnv, in *ChannelCreateInput) { in.Key = "Kling" }, "key"},
-		{"key 以短横线开头", func(_ *achEnv, in *ChannelCreateInput) { in.Key = "-a" }, "key"},
-		{"key 超长", func(_ *achEnv, in *ChannelCreateInput) { in.Key = strings.Repeat("a", 65) }, "key"},
-		{"key 含下划线", func(_ *achEnv, in *ChannelCreateInput) { in.Key = "a_b" }, "key"},
-		{"name 为空白", func(_ *achEnv, in *ChannelCreateInput) { in.Name = "   " }, "name"},
-		{"base_url 不是 http(s)", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "ftp://x.com" }, "http"},
-		{"base_url 没有协议", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "gw.example.com" }, "base_url"},
-		{"base_url 没有主机", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "https://" }, "base_url"},
-		{"base_url 带用户名密码", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "https://u:p@x.com" }, "用户名"},
-		{"base_url 只带用户名", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "https://u@x.com" }, "用户名"},
-		{"base_url 带查询参数", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "https://x.com/?k=v" }, "查询"},
-		{"base_url 带片段", func(_ *achEnv, in *ChannelCreateInput) { in.BaseURL = "https://x.com/#a" }, "片段"},
-		{"插件版本不存在", func(_ *achEnv, in *ChannelCreateInput) { in.PluginVersion = "9.9.9" }, "不存在"},
-		{"插件不存在", func(_ *achEnv, in *ChannelCreateInput) { in.PluginKey = "nope" }, "不存在"},
-		{"没填插件版本", func(_ *achEnv, in *ChannelCreateInput) { in.PluginVersion = "" }, "plugin_version"},
-		{"插件已停用", func(e *achEnv, _ *ChannelCreateInput) { _ = e.repo.SetPluginEnabled(ctx, "kling", false) }, "停用"},
-		{"缺少必填设置项", func(_ *achEnv, in *ChannelCreateInput) { in.Settings = nil }, "settings.tenant"},
-		{"未声明的设置项", func(_ *achEnv, in *ChannelCreateInput) { in.Settings["zzz"] = 1 }, "settings.zzz"},
-		{"enum 取值不在 options", func(_ *achEnv, in *ChannelCreateInput) { in.Settings["region"] = "mars" }, "settings.region"},
-		{"类型不对（string 填了数字）", func(_ *achEnv, in *ChannelCreateInput) { in.Settings["tenant"] = 3.0 }, "settings.tenant"},
-		{"类型不对（number 填了字符串）", func(_ *achEnv, in *ChannelCreateInput) { in.Settings["burst"] = "x" }, "settings.burst"},
-		{"类型不对（boolean 填了字符串）", func(_ *achEnv, in *ChannelCreateInput) { in.Settings["debug"] = "yes" }, "settings.debug"},
-		{"rps 为负", func(_ *achEnv, in *ChannelCreateInput) { in.RateLimit.RPS = -1 }, "rate_limit"},
-		{"max_concurrency 为负", func(_ *achEnv, in *ChannelCreateInput) { in.RateLimit.MaxConcurrency = -1 }, "rate_limit"},
+		{"key 含大写", func(in *ChannelCreateInput) { in.Key = "Main" }, "key"},
+		{"key 以连字符开头", func(in *ChannelCreateInput) { in.Key = "-main" }, "key"},
+		{"key 超过 64 字符", func(in *ChannelCreateInput) { in.Key = strings.Repeat("a", 65) }, "key"},
+		{"名称为空白", func(in *ChannelCreateInput) { in.Name = "  " }, "name"},
+		{"地址为空", func(in *ChannelCreateInput) { in.BaseURL = "" }, "base_url"},
+		{"地址不是 http", func(in *ChannelCreateInput) { in.BaseURL = "ftp://x.example.com" }, "base_url"},
+		{"地址带用户名密码", func(in *ChannelCreateInput) { in.BaseURL = "https://u:p@x.example.com" }, "base_url"},
+		{"地址带查询参数", func(in *ChannelCreateInput) { in.BaseURL = "https://x.example.com/?a=1" }, "base_url"},
+		{"限流为负", func(in *ChannelCreateInput) { in.RateLimit = provider.RateLimit{RPS: -1} }, "rate_limit"},
+		{"请求头：Authorization 不能自定义", func(in *ChannelCreateInput) { in.Headers = map[string]string{"Authorization": "x"} }, "Authorization"},
+		{"请求头：Host 不能自定义", func(in *ChannelCreateInput) { in.Headers = map[string]string{"host": "x"} }, "host"},
+		{"请求头：Cookie 不能自定义", func(in *ChannelCreateInput) { in.Headers = map[string]string{"Cookie": "x"} }, "Cookie"},
+		{"请求头：名称含空格", func(in *ChannelCreateInput) { in.Headers = map[string]string{"X Bad": "x"} }, "不合法"},
+		{"请求头：名称为空", func(in *ChannelCreateInput) { in.Headers = map[string]string{"": "x"} }, "不合法"},
+		{"请求头：同名（不区分大小写）重复", func(in *ChannelCreateInput) { in.Headers = map[string]string{"X-A": "1", "x-a": "2"} }, "重复"},
+		{"请求头：值含换行（防注入）", func(in *ChannelCreateInput) { in.Headers = map[string]string{"X-A": "a\r\nX-Evil: 1"} }, "换行"},
+		{"请求头：值过长", func(in *ChannelCreateInput) { in.Headers = map[string]string{"X-A": strings.Repeat("a", 1025)} }, "1024"},
+		{"请求头：超过 32 条", func(in *ChannelCreateInput) { in.Headers = tooMany }, "32"},
 	}
-	for _, tt := range invalid {
-		t.Run("校验失败 400（50013）："+tt.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			e := newAchEnv(t)
 			in := createInput()
-			tt.mutate(e, &in)
+			tt.mutate(&in)
 			_, err := e.svc.Create(ctx, in)
-			ec := adminWantCodeErr(t, err, errcode.ErrChannelInvalid.Code)
-			if !strings.Contains(ec.Msg, tt.wantMsg) {
-				t.Fatalf("msg 应包含 %q：%s", tt.wantMsg, ec.Msg)
+			ce := adminWantCodeErr(t, err, errcode.ErrChannelInvalid.Code)
+			if !strings.Contains(ce.Msg, tt.wantMsg) {
+				t.Fatalf("错误信息应包含 %q：%s", tt.wantMsg, ce.Msg)
 			}
-			if len(e.repo.Channels) != 0 || len(e.repo.Audits) != 0 || len(e.notifier.Reasons) != 0 {
-				t.Fatal("校验失败不该落库、写审计或刷新 Registry")
+			if len(e.repo.Channels) != 0 || len(e.repo.Audits) != 0 {
+				t.Fatal("校验失败不能落库也不能写审计")
 			}
 		})
 	}
@@ -152,89 +197,84 @@ func TestAIChannelService_Create(t *testing.T) {
 	t.Run("多个问题一次报出", func(t *testing.T) {
 		e := newAchEnv(t)
 		in := createInput()
-		in.Key, in.BaseURL, in.Settings = "BAD", "ftp://x", nil
+		in.Name, in.BaseURL = "", ""
 		_, err := e.svc.Create(ctx, in)
-		ec := adminWantCodeErr(t, err, errcode.ErrChannelInvalid.Code)
-		for _, want := range []string{"key", "http", "settings.tenant"} {
-			if !strings.Contains(ec.Msg, want) {
-				t.Fatalf("msg 应包含 %q：%s", want, ec.Msg)
-			}
+		ce := adminWantCodeErr(t, err, errcode.ErrChannelInvalid.Code)
+		if !strings.Contains(ce.Msg, "name") || !strings.Contains(ce.Msg, "base_url") {
+			t.Fatalf("应同时报 name 与 base_url：%s", ce.Msg)
 		}
 	})
-
-	t.Run("没有渠道设置项的插件：空 settings 通过，任何取值都被拒绝", func(t *testing.T) {
-		e := newAchEnv(t)
-		in := createInput()
-		in.Key, in.PluginKey, in.Settings = "loose-1", "loose", nil
-		if _, err := e.svc.Create(ctx, in); err != nil {
-			t.Fatalf("空 settings 应通过：%v", err)
-		}
-		in.Key, in.Settings = "loose-2", map[string]any{"a": 1}
-		_, err := e.svc.Create(ctx, in)
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-	})
-
-	t.Run("插件版本在写库时已被删除：按不合法返回而不是 500", func(t *testing.T) {
-		e := newAchEnv(t)
-		in := createInput()
-		// 让 FindVersion 能找到、CreateChannel 时却找不到：直接删掉 fake 里的版本行不经过 FindVersion 是不可能的，
-		// 这里用“版本行在校验后消失”的替身仓储模拟
-		svc := NewAIChannelService(vanishingRepo{e.repo, e.v1}, e.repo, e.cfg, e.repo, e.ops, e.notifier)
-		_, err := svc.Create(ctx, in)
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-	})
-}
-
-// vanishingRepo 让 CreateChannel 总是报“插件版本不存在”，模拟校验之后版本被并发删除。
-type vanishingRepo struct {
-	*aiconfigfake.MemRepo
-	id uint64
-}
-
-func (v vanishingRepo) CreateChannel(ctx context.Context, c *model.AIChannel) error {
-	delete(v.Versions, v.id)
-	return v.MemRepo.CreateChannel(ctx, c)
 }
 
 func TestAIChannelService_Update(t *testing.T) {
 	ctx := context.Background()
-	seed := func(t *testing.T, e *achEnv) {
+	str := func(s string) *string { return &s }
+	flag := func(b bool) *bool { return &b }
+	seed := func(t *testing.T) *achEnv {
 		t.Helper()
-		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+		e := newAchEnv(t)
+		in := createInput()
+		in.Headers = map[string]string{"X-Biz": "canvas"}
+		if _, err := e.svc.Create(ctx, in); err != nil {
 			t.Fatal(err)
 		}
-		e.repo.Audits = nil
-		e.notifier.Reasons = nil
+		e.repo.Audits, e.notifier.Reasons = nil, nil
+		return e
 	}
-	str := func(s string) *string { return &s }
-	yes, no := true, false
 
-	t.Run("只改名字：其余字段不动，只写一条 update 审计", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", Name: str("新名字"), ActorID: 8})
+	t.Run("只改传了的字段，其余保持；写一条 channel.update 审计并刷新 Registry", func(t *testing.T) {
+		e := seed(t)
+		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Name: str("新名称"), ActorID: 8})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if view.Name != "新名字" || view.BaseURL != "https://gw.example.com" || view.PluginVersion != "1.0.0" || view.UpdatedBy != 8 ||
-			view.Settings["tenant"] != "t1" || !view.Enabled {
+		if view.Name != "新名称" || view.BaseURL != "https://gw.example.com" || view.Headers["X-Biz"] != "canvas" || view.UpdatedBy != 8 {
 			t.Fatalf("视图不符合预期：%+v", view)
 		}
 		if got := e.repo.AuditActions(); len(got) != 1 || got[0] != model.AuditChannelUpdate {
 			t.Fatalf("审计不符合预期：%v", got)
 		}
-		if !strings.Contains(string(e.repo.Audits[0].DetailJSON), `"name"`) {
-			t.Fatalf("审计应记被改的字段名：%s", e.repo.Audits[0].DetailJSON)
+		var d struct {
+			Fields []string `json:"fields"`
+		}
+		_ = json.Unmarshal(e.repo.Audits[0].DetailJSON, &d)
+		if len(d.Fields) != 1 || d.Fields[0] != "name" {
+			t.Fatalf("审计应只记被改的字段名：%s", e.repo.Audits[0].DetailJSON)
 		}
 		if len(e.notifier.Reasons) != 1 {
-			t.Fatalf("应刷新 Registry：%v", e.notifier.Reasons)
+			t.Fatalf("应刷新一次 Registry：%v", e.notifier.Reasons)
 		}
 	})
 
-	t.Run("什么都没改：不写审计", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", ActorID: 8}); err != nil {
+	t.Run("headers 传了就整体替换（含空对象），不传保持原样；审计不记请求头的值", func(t *testing.T) {
+		e := seed(t)
+		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Headers: map[string]string{"X-New": "secret-ish-value"}})
+		if err != nil || len(view.Headers) != 1 || view.Headers["X-New"] != "secret-ish-value" {
+			t.Fatalf("应整体替换：%+v %v", view, err)
+		}
+		if strings.Contains(string(e.repo.Audits[len(e.repo.Audits)-1].DetailJSON), "secret-ish-value") {
+			t.Fatal("审计不能记请求头的值")
+		}
+		view, err = e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Headers: map[string]string{}})
+		if err != nil || len(view.Headers) != 0 {
+			t.Fatalf("空对象应清空请求头：%+v %v", view, err)
+		}
+	})
+
+	t.Run("启停另记一条带前后值的审计", func(t *testing.T) {
+		e := seed(t)
+		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Enabled: flag(false)}); err != nil {
+			t.Fatal(err)
+		}
+		got := e.repo.AuditActions()
+		if len(got) != 1 || got[0] != model.AuditChannelEnable {
+			t.Fatalf("只改启停应只有一条 channel.enable：%v", got)
+		}
+	})
+
+	t.Run("没有变化不写审计", func(t *testing.T) {
+		e := seed(t)
+		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Name: str("主渠道")}); err != nil {
 			t.Fatal(err)
 		}
 		if len(e.repo.Audits) != 0 {
@@ -242,153 +282,38 @@ func TestAIChannelService_Update(t *testing.T) {
 		}
 	})
 
-	t.Run("切换插件版本：settings 按新版本重新校验，审计记前后版本", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.1.0"), ActorID: 8})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if view.PluginVersionID != e.v2 || view.PluginVersion != "1.1.0" {
-			t.Fatalf("应切到 1.1.0：%+v", view)
-		}
-		detail := string(e.repo.Audits[0].DetailJSON)
-		if !strings.Contains(detail, `"from_version":"1.0.0"`) || !strings.Contains(detail, `"to_version":"1.1.0"`) {
-			t.Fatalf("审计应记前后版本：%s", detail)
+	t.Run("sort 不能通过更新修改", func(t *testing.T) {
+		e := seed(t)
+		before, _ := e.svc.Get(ctx, "main")
+		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "main", Name: str("x")})
+		if err != nil || view.Sort != before.Sort {
+			t.Fatalf("sort 不应变化：%+v %v", view, err)
 		}
 	})
 
-	t.Run("切换到 settings 不兼容的版本被拒绝，渠道保持原样", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		// 1.2.0 新增了必填项 must
-		meta := json.RawMessage(`{"apiVersion":1,"key":"kling","name":"k","version":"1.2.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}},` +
-			`"channelSettings":{"must":{"type":"string","label":"必填","required":true}}}`)
-		adminSeedVersion(t, e.repo, meta, model.PluginSourceUploaded, true)
-		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.2.0")})
-		ec := adminWantCodeErr(t, err, errcode.ErrChannelInvalid.Code)
-		if !strings.Contains(ec.Msg, "settings.must") || !strings.Contains(ec.Msg, "settings.tenant") {
-			t.Fatalf("应报出必填项与未声明项：%s", ec.Msg)
-		}
-		if e.repo.Channels["kling-main"].PluginVersionID != e.v1 {
-			t.Fatal("渠道不该被改动")
-		}
-	})
-
-	t.Run("同时切版本并给出新的 settings", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		meta := json.RawMessage(`{"apiVersion":1,"key":"kling","name":"k","version":"1.2.0","auth":{"type":"bearer"},"endpoints":{"video":{"mode":"async"}},` +
-			`"channelSettings":{"must":{"type":"string","label":"必填","required":true}}}`)
-		adminSeedVersion(t, e.repo, meta, model.PluginSourceUploaded, true)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.2.0"), Settings: map[string]any{"must": "x"}})
-		if err != nil || view.Settings["must"] != "x" || len(view.Settings) != 1 {
-			t.Fatalf("结果不符合预期：%+v %v", view, err)
-		}
-	})
-
-	t.Run("只改 settings 也要校验", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", Settings: map[string]any{"tenant": "t", "region": "mars"}})
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", Settings: map[string]any{"tenant": "t2", "region": "global"}})
-		if err != nil || view.Settings["region"] != "global" || view.Settings["tenant"] != "t2" {
-			t.Fatalf("结果不符合预期：%+v %v", view, err)
-		}
-	})
-
-	t.Run("切到已停用插件的版本被拒绝；不切版本时停用的插件不挡其他修改", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		_ = e.repo.SetPluginEnabled(ctx, "kling", false)
-		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.1.0")})
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-		// 重复指定当前版本不算切换
-		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.0.0"), Enabled: &no}); err != nil {
-			t.Fatalf("停用渠道不该被停用的插件挡住：%v", err)
-		}
-	})
-
-	t.Run("安全开关与启停：各写一条带前后值的审计", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", AllowCredentials: &yes, Enabled: &no, ActorID: 9})
-		if err != nil || !view.AllowCredentials || view.Enabled {
-			t.Fatalf("结果不符合预期：%+v %v", view, err)
-		}
-		got := strings.Join(e.repo.AuditActions(), ",")
-		want := strings.Join([]string{model.AuditChannelCred, model.AuditChannelEnable}, ",")
-		if got != want {
-			t.Fatalf("审计应为 %s，实际 %s", want, got)
-		}
-		if d := string(e.repo.Audits[0].DetailJSON); !strings.Contains(d, `"from":false`) || !strings.Contains(d, `"to":true`) {
-			t.Fatalf("审计应带前后值：%s", d)
-		}
-		// 再次设成同样的值：没有变化，不再写审计
-		e.repo.Audits = nil
-		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", AllowCredentials: &yes}); err != nil {
-			t.Fatal(err)
-		}
-		if len(e.repo.Audits) != 0 {
-			t.Fatalf("值没变不该写审计：%v", e.repo.AuditActions())
-		}
-	})
-
-	t.Run("限流可以改、也可以清零", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		view, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", RateLimit: &provider.RateLimit{RPS: 2, MaxConcurrency: 3}})
-		if err != nil || view.RateLimit.RPS != 2 || view.RateLimit.MaxConcurrency != 3 {
-			t.Fatalf("结果不符合预期：%+v %v", view, err)
-		}
-		view, err = e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", RateLimit: &provider.RateLimit{}})
-		if err != nil || view.RateLimit.RPS != 0 {
-			t.Fatalf("应可清零：%+v %v", view, err)
-		}
-	})
-
-	invalid := []struct {
-		name string
-		in   ChannelUpdateInput
-	}{
-		{"name 为空", ChannelUpdateInput{Name: str(" ")}},
-		{"base_url 非法", ChannelUpdateInput{BaseURL: str("file:///etc/passwd")}},
-		{"base_url 带凭证", ChannelUpdateInput{BaseURL: str("https://a:b@x.com")}},
-		{"版本不存在", ChannelUpdateInput{PluginVersion: str("0.0.1")}},
-		{"rate_limit 为负", ChannelUpdateInput{RateLimit: &provider.RateLimit{RPS: -0.5}}},
-	}
-	for _, tt := range invalid {
-		t.Run("校验失败 400（50013）："+tt.name, func(t *testing.T) {
-			e := newAchEnv(t)
-			seed(t, e)
-			tt.in.Key = "kling-main"
-			_, err := e.svc.Update(ctx, tt.in)
+	t.Run("校验失败 400，不落库不写审计", func(t *testing.T) {
+		for name, in := range map[string]ChannelUpdateInput{
+			"名称为空":               {Key: "main", Name: str(" ")},
+			"地址不合法":              {Key: "main", BaseURL: str("not-a-url")},
+			"限流为负":               {Key: "main", RateLimit: &provider.RateLimit{MaxRunning: -1}},
+			"请求头含 Authorization": {Key: "main", Headers: map[string]string{"Authorization": "x"}},
+		} {
+			e := seed(t)
+			_, err := e.svc.Update(ctx, in)
 			adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
 			if len(e.repo.Audits) != 0 {
-				t.Fatal("失败不该写审计")
+				t.Fatalf("%s：失败不该写审计", name)
 			}
-		})
-	}
+			if got, _ := e.svc.Get(ctx, "main"); got.Name != "主渠道" || got.BaseURL != "https://gw.example.com" {
+				t.Fatalf("%s：渠道不应被改动：%+v", name, got)
+			}
+		}
+	})
 
-	t.Run("渠道不存在 404（50011）", func(t *testing.T) {
+	t.Run("渠道不存在 404", func(t *testing.T) {
 		e := newAchEnv(t)
 		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "nope", Name: str("x")})
 		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
-	})
-
-	t.Run("当前版本已丢失：不指定版本的修改被拒绝，指定可用版本后能修复", func(t *testing.T) {
-		e := newAchEnv(t)
-		seed(t, e)
-		delete(e.repo.Versions, e.v1)
-		// 仓储写库时要锁住渠道指向的版本行，版本没了就写不进去
-		_, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", Name: str("改名")})
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-		_, err = e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", Settings: map[string]any{"tenant": "x"}})
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-		if _, err := e.svc.Update(ctx, ChannelUpdateInput{Key: "kling-main", PluginVersion: str("1.1.0"), Settings: map[string]any{"tenant": "x"}}); err != nil {
-			t.Fatalf("指定可用版本后应能修复：%v", err)
-		}
 	})
 }
 
@@ -403,44 +328,41 @@ func TestAIChannelService_GetAndList(t *testing.T) {
 		}
 	})
 
-	t.Run("列表按 key 升序，secret_set 与版本号正确；详情一致", func(t *testing.T) {
+	t.Run("列表按渠道顺序（sort）排，secret_set 与 secret_key_set 正确；详情一致；响应不含任何 Key", func(t *testing.T) {
 		e := newAchEnv(t)
 		in := createInput()
 		in.Key = "b-chan"
 		_, _ = e.svc.Create(ctx, in)
-		in.Key, in.PluginVersion = "a-chan", "1.1.0"
+		in.Key = "a-chan"
 		_, _ = e.svc.Create(ctx, in)
 		if err := e.svc.SetSecret(ctx, 1, "b-chan", "sk-secret"); err != nil {
 			t.Fatal(err)
 		}
+		if err := e.svc.SetSecretKey(ctx, 1, "b-chan", "sk-second"); err != nil {
+			t.Fatal(err)
+		}
 		list, err := e.svc.List(ctx)
-		if err != nil || len(list) != 2 || list[0].Key != "a-chan" || list[1].Key != "b-chan" {
+		// b-chan 先创建，sort 更小，排在前面（不是按 key 排）
+		if err != nil || len(list) != 2 || list[0].Key != "b-chan" || list[1].Key != "a-chan" {
 			t.Fatalf("列表不符合预期：%+v %v", list, err)
 		}
-		if list[0].SecretSet || !list[1].SecretSet || list[0].PluginVersion != "1.1.0" || list[1].PluginVersion != "1.0.0" {
-			t.Fatalf("secret_set / plugin_version 不符合预期：%+v", list)
+		if !list[0].SecretSet || !list[0].SecretKeySet || list[1].SecretSet || list[1].SecretKeySet {
+			t.Fatalf("secret_set / secret_key_set 不符合预期：%+v", list)
 		}
 		one, err := e.svc.Get(ctx, "b-chan")
-		if err != nil || !one.SecretSet || one.PluginVersion != "1.0.0" {
+		if err != nil || !one.SecretSet || !one.SecretKeySet {
 			t.Fatalf("详情不符合预期：%+v %v", one, err)
 		}
 		b, _ := json.Marshal(list)
-		if strings.Contains(string(b), "sk-secret") {
+		if strings.Contains(string(b), "sk-secret") || strings.Contains(string(b), "sk-second") {
 			t.Fatalf("响应里不能出现 Key：%s", b)
 		}
 	})
 
-	t.Run("详情：渠道不存在 404；版本行缺失时 plugin_version 为空串", func(t *testing.T) {
+	t.Run("详情：渠道不存在 404", func(t *testing.T) {
 		e := newAchEnv(t)
 		_, err := e.svc.Get(ctx, "nope")
 		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
-
-		_, _ = e.svc.Create(ctx, createInput())
-		delete(e.repo.Versions, e.v1)
-		one, err := e.svc.Get(ctx, "kling-main")
-		if err != nil || one.PluginVersion != "" {
-			t.Fatalf("结果不符合预期：%+v %v", one, err)
-		}
 	})
 }
 
@@ -451,15 +373,15 @@ func TestAIChannelService_SetSecret(t *testing.T) {
 		e := newAchEnv(t)
 		_, _ = e.svc.Create(ctx, createInput())
 		e.repo.Audits = nil
-		if err := e.svc.SetSecret(ctx, 6, "kling-main", "  sk-abc-123  "); err != nil {
+		if err := e.svc.SetSecret(ctx, 6, "main", "  sk-abc-123  "); err != nil {
 			t.Fatal(err)
 		}
-		row := e.repo.Secrets["channel:kling-main"]
+		row := e.repo.Secrets["channel:main"]
 		if row == nil || strings.Contains(string(row.Ciphertext), "sk-abc-123") || row.UpdatedBy != 6 {
 			t.Fatalf("凭证行不符合预期：%+v", row)
 		}
 		// 能读回去（首尾空白被去掉）
-		if v, err := e.cfg.Get(ctx, "channel:kling-main"); err != nil || v != "sk-abc-123" {
+		if v, err := e.cfg.Get(ctx, "channel:main"); err != nil || v != "sk-abc-123" {
 			t.Fatalf("解密结果不符合预期：%q %v", v, err)
 		}
 		if got := e.repo.AuditActions(); len(got) != 1 || got[0] != model.AuditChannelSecret {
@@ -467,19 +389,17 @@ func TestAIChannelService_SetSecret(t *testing.T) {
 		}
 		a := e.repo.Audits[0]
 		b, _ := json.Marshal(a)
-		if a.ActorID != 6 || a.TargetKey != "kling-main" || strings.Contains(string(b), "sk-abc") || len(a.DetailJSON) != 0 {
+		if a.ActorID != 6 || a.TargetKey != "main" || strings.Contains(string(b), "sk-abc") || len(a.DetailJSON) != 0 {
 			t.Fatalf("审计不应带任何凭证内容：%s", b)
 		}
-		view, _ := e.svc.Get(ctx, "kling-main")
-		if !view.SecretSet {
+		if view, _ := e.svc.Get(ctx, "main"); !view.SecretSet {
 			t.Fatal("secret_set 应为 true")
 		}
 	})
 
 	t.Run("渠道不存在 404，且不会写出无主凭证", func(t *testing.T) {
 		e := newAchEnv(t)
-		err := e.svc.SetSecret(ctx, 1, "nope", "sk-1")
-		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
+		adminWantCode(t, e.svc.SetSecret(ctx, 1, "nope", "sk-1"), errcode.ErrChannelNotFound.Code)
 		if len(e.repo.Secrets) != 0 {
 			t.Fatal("不该写入凭证")
 		}
@@ -489,346 +409,375 @@ func TestAIChannelService_SetSecret(t *testing.T) {
 		e := newAchEnv(t)
 		_, _ = e.svc.Create(ctx, createInput())
 		e.repo.Audits = nil
-		err := e.svc.SetSecret(ctx, 1, "kling-main", "   ")
-		adminWantCode(t, err, errcode.ErrInvalidParams.Code)
+		adminWantCode(t, e.svc.SetSecret(ctx, 1, "main", "   "), errcode.ErrInvalidParams.Code)
 
 		noKey := NewAIConfigService(e.repo, e.repo, e.repo, "")
-		svc := NewAIChannelService(e.repo, e.repo, noKey, e.repo, e.ops, e.notifier)
-		err = svc.SetSecret(ctx, 1, "kling-main", "sk-1")
-		adminWantCode(t, err, errcode.ErrInternal.Code)
+		svc := NewAIChannelService(e.repo, noKey, noKey, e.lister, e.repo, e.notifier)
+		adminWantCode(t, svc.SetSecret(ctx, 1, "main", "sk-1"), errcode.ErrInternal.Code)
 		if len(e.repo.Audits) != 0 {
 			t.Fatalf("失败不该写审计：%v", e.repo.AuditActions())
 		}
 	})
 }
 
-func TestAIChannelService_Check(t *testing.T) {
+func TestAIChannelService_SetSecretKey(t *testing.T) {
 	ctx := context.Background()
-	setup := func(t *testing.T, withSecret bool) *achEnv {
+
+	t.Run("设置：存入 channel:<key>:secret，与 API Key 互不影响，审计不含值", func(t *testing.T) {
 		e := newAchEnv(t)
-		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+		_, _ = e.svc.Create(ctx, createInput())
+		_ = e.svc.SetSecret(ctx, 1, "main", "api-key-1")
+		e.repo.Audits = nil
+		if err := e.svc.SetSecretKey(ctx, 6, "main", "  secret-key-2 "); err != nil {
 			t.Fatal(err)
 		}
-		if withSecret {
-			if err := e.svc.SetSecret(ctx, 1, "kling-main", "sk-secret-value"); err != nil {
-				t.Fatal(err)
-			}
+		if v, _ := e.cfg.Get(ctx, "channel:main:secret"); v != "secret-key-2" {
+			t.Fatalf("Secret Key 应能读回：%q", v)
 		}
-		return e
-	}
-
-	t.Run("成功：透传宿主的检查结果，运行时里是渠道 + 固定版本", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 120}
-		res, err := e.svc.Check(ctx, "kling-main")
-		if err != nil || !res.OK || res.Message != "HTTP 200" || res.DurationMs != 120 {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		if v, _ := e.cfg.Get(ctx, "channel:main"); v != "api-key-1" {
+			t.Fatalf("API Key 不应被覆盖：%q", v)
 		}
-		rt := e.ops.GotRuntime
-		if rt == nil || rt.Channel.Key != "kling-main" || rt.Plugin.Version != "1.0.0" || rt.Channel.Settings["tenant"] != "t1" {
-			t.Fatalf("传给宿主的运行时不符合预期：%+v", rt)
+		if got := e.repo.AuditActions(); len(got) != 1 || got[0] != model.AuditChannelSecKey || len(e.repo.Audits[0].DetailJSON) != 0 {
+			t.Fatalf("审计不符合预期：%v %s", got, e.repo.Audits[0].DetailJSON)
+		}
+		if view, _ := e.svc.Get(ctx, "main"); !view.SecretKeySet || !view.SecretSet {
+			t.Fatalf("视图不符合预期：%+v", view)
 		}
 	})
 
-	t.Run("插件没实现检查钩子：ok=false 与说明，不是 HTTP 错误", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckErr = provider.ErrCheckUnsupported
-		res, err := e.svc.Check(ctx, "kling-main")
-		if err != nil || res.OK || res.Message != "插件不支持连通性检查" {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-	})
-
-	t.Run("上游不通：宿主同时返回结果与错误，按 ok=false 返回", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckResult = &provider.CheckResult{Message: "上游返回 HTTP 401", DurationMs: 30}
-		e.ops.CheckErr = errors.New("http 401")
-		res, err := e.svc.Check(ctx, "kling-main")
-		if err != nil || res.OK || res.Message != "上游返回 HTTP 401" {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-	})
-
-	t.Run("Key 未设置 409（50015），不调用宿主", func(t *testing.T) {
-		e := setup(t, false)
-		_, err := e.svc.Check(ctx, "kling-main")
-		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
-		if e.ops.Calls != 0 {
-			t.Fatal("不该调用宿主")
-		}
-	})
-
-	t.Run("鉴权 none 的插件不要求 Key", func(t *testing.T) {
+	t.Run("空串清除：删除凭证行，视图 secret_key_set=false，API Key 保持", func(t *testing.T) {
 		e := newAchEnv(t)
-		in := createInput()
-		in.Key, in.PluginKey, in.Settings = "loose-1", "loose", nil
-		_, _ = e.svc.Create(ctx, in)
-		e.ops.CheckResult = &provider.CheckResult{OK: true}
-		if res, err := e.svc.Check(ctx, "loose-1"); err != nil || !res.OK {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		_, _ = e.svc.Create(ctx, createInput())
+		_ = e.svc.SetSecret(ctx, 1, "main", "api-key-1")
+		_ = e.svc.SetSecretKey(ctx, 1, "main", "secret-key-2")
+		if err := e.svc.SetSecretKey(ctx, 1, "main", "  "); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := e.repo.Secrets["channel:main:secret"]; ok {
+			t.Fatal("Secret Key 应已删除")
+		}
+		view, _ := e.svc.Get(ctx, "main")
+		if view.SecretKeySet || !view.SecretSet {
+			t.Fatalf("视图不符合预期：%+v", view)
+		}
+		// 清除时本实例的明文缓存也要一并清掉
+		if _, err := e.cfg.Get(ctx, "channel:main:secret"); err == nil {
+			t.Fatal("清除后不应还能读到明文")
 		}
 	})
 
-	t.Run("runner 不可用 503（50021）", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckErr = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
-		_, err := e.svc.Check(ctx, "kling-main")
-		adminWantCode(t, err, errcode.ErrRunnerUnavailable.Code)
-	})
-
-	t.Run("插件本身出错 502（50022），原因里的 Key 被脱敏", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckErr = errors.New("钩子异常：token=sk-secret-value 无效")
-		_, err := e.svc.Check(ctx, "kling-main")
-		ec := adminWantCodeErr(t, err, errcode.ErrPluginOpFailed.Code)
-		if strings.Contains(ec.Msg, "sk-secret-value") || !strings.Contains(ec.Msg, "***") {
-			t.Fatalf("Key 应被脱敏：%s", ec.Msg)
-		}
-	})
-
-	t.Run("检查结果里的 Key 同样脱敏", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.CheckResult = &provider.CheckResult{OK: false, Message: "echo sk-secret-value"}
-		e.ops.CheckErr = errors.New("x")
-		res, err := e.svc.Check(ctx, "kling-main")
-		if err != nil || strings.Contains(res.Message, "sk-secret-value") {
-			t.Fatalf("Key 应被脱敏：%+v %v", res, err)
+	t.Run("清除一个没设置过的 Secret Key 也算成功（幂等）", func(t *testing.T) {
+		e := newAchEnv(t)
+		_, _ = e.svc.Create(ctx, createInput())
+		if err := e.svc.SetSecretKey(ctx, 1, "main", ""); err != nil {
+			t.Fatal(err)
 		}
 	})
 
 	t.Run("渠道不存在 404", func(t *testing.T) {
-		e := setup(t, true)
-		_, err := e.svc.Check(ctx, "nope")
-		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
-	})
-
-	t.Run("渠道固定的版本丢失：按渠道数据不合法返回", func(t *testing.T) {
-		e := setup(t, true)
-		delete(e.repo.Versions, e.v1)
-		_, err := e.svc.Check(ctx, "kling-main")
-		adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
+		e := newAchEnv(t)
+		adminWantCode(t, e.svc.SetSecretKey(ctx, 1, "nope", "x"), errcode.ErrChannelNotFound.Code)
 	})
 }
 
-func TestAIChannelService_CheckDraft(t *testing.T) {
+func TestAIChannelService_SetOrder(t *testing.T) {
 	ctx := context.Background()
-	draft := func() ChannelCheckDraftInput {
-		return ChannelCheckDraftInput{
-			PluginKey: "kling", PluginVersion: "1.0.0", BaseURL: "https://gw.example.com",
-			Settings: map[string]any{"tenant": "t1"}, Secret: "sk-draft-value",
+	seed := func(t *testing.T) *achEnv {
+		t.Helper()
+		e := newAchEnv(t)
+		for _, k := range []string{"a", "b", "c"} {
+			in := createInput()
+			in.Key = k
+			if _, err := e.svc.Create(ctx, in); err != nil {
+				t.Fatal(err)
+			}
 		}
+		e.repo.Audits, e.notifier.Reasons = nil, nil
+		return e
+	}
+	order := func(e *achEnv) []string {
+		list, _ := e.svc.List(ctx)
+		out := make([]string, 0, len(list))
+		for _, c := range list {
+			out = append(out, c.Key)
+		}
+		return out
 	}
 
-	t.Run("成功：用草稿里的地址、设置和 Key 检查，不落库", func(t *testing.T) {
-		e := newAchEnv(t)
-		e.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 80}
-		res, err := e.svc.CheckDraft(ctx, draft())
-		if err != nil || !res.OK || res.Message != "HTTP 200" {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-		rt := e.ops.GotRuntime
-		if e.ops.DraftCalls != 1 || e.ops.GotSecret != "sk-draft-value" {
-			t.Fatalf("应带着草稿 Key 调宿主：calls=%d secret=%q", e.ops.DraftCalls, e.ops.GotSecret)
-		}
-		if rt == nil || rt.Channel.BaseURL != "https://gw.example.com" || rt.Plugin.Version != "1.0.0" ||
-			rt.Channel.Settings["tenant"] != "t1" || rt.Channel.Settings["region"] != "cn" {
-			t.Fatalf("运行时不符合预期（settings 应补默认值）：%+v", rt)
-		}
-		if chs, _ := e.repo.ListChannels(ctx); len(chs) != 0 {
-			t.Fatalf("检查草稿不该写库：%v", chs)
-		}
-	})
-
-	t.Run("编辑已有渠道、Key 留空：用已保存的 Key，按渠道 key 检查", func(t *testing.T) {
-		e := newAchEnv(t)
-		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+	t.Run("成功：按新顺序重写 sort，写审计并刷新 Registry", func(t *testing.T) {
+		e := seed(t)
+		if err := e.svc.SetOrder(ctx, 7, []string{"c", "a", "b"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.svc.SetSecret(ctx, 1, "kling-main", "sk-stored"); err != nil {
-			t.Fatal(err)
+		if got := order(e); strings.Join(got, ",") != "c,a,b" {
+			t.Fatalf("顺序不对：%v", got)
 		}
-		e.ops.CheckResult = &provider.CheckResult{OK: true}
-		in := draft()
-		in.Secret, in.ExistingKey = "", "kling-main"
-		in.BaseURL = "https://other.example.com"
-		res, err := e.svc.CheckDraft(ctx, in)
-		if err != nil || !res.OK {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		if got := e.repo.AuditActions(); len(got) != 1 || got[0] != model.AuditChannelSort {
+			t.Fatalf("审计不符合预期：%v", got)
 		}
-		if e.ops.DraftCalls != 0 || e.ops.GotRuntime.Channel.Key != "kling-main" || e.ops.GotRuntime.Channel.BaseURL != "https://other.example.com" {
-			t.Fatalf("应走已保存 Key 的检查，并使用草稿里的新地址：%+v", e.ops.GotRuntime)
+		if len(e.notifier.Reasons) != 1 {
+			t.Fatalf("渠道顺序决定用户看到的模型顺序，应刷新 Registry：%v", e.notifier.Reasons)
 		}
 	})
 
-	t.Run("需要 Key 而没填、也没有已保存的 Key：409（50015），不调用宿主", func(t *testing.T) {
-		e := newAchEnv(t)
-		in := draft()
-		in.Secret = ""
-		_, err := e.svc.CheckDraft(ctx, in)
-		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
-		if e.ops.Calls != 0 {
-			t.Fatal("不该调用宿主")
+	t.Run("不是全集（漏、重复、不存在）400，顺序不变", func(t *testing.T) {
+		for name, keys := range map[string][]string{
+			"漏掉渠道": {"a", "b"},
+			"重复":   {"a", "a", "b"},
+			"不存在的": {"a", "b", "ghost"},
+			"空列表":  {},
+			"多出一个": {"a", "b", "c", "a"},
+		} {
+			e := seed(t)
+			adminWantCode(t, e.svc.SetOrder(ctx, 1, keys), errcode.ErrInvalidParams.Code)
+			if got := order(e); strings.Join(got, ",") != "a,b,c" {
+				t.Fatalf("%s：顺序不应改变：%v", name, got)
+			}
+			if len(e.repo.Audits) != 0 {
+				t.Fatalf("%s：失败不该写审计", name)
+			}
 		}
-	})
-
-	t.Run("鉴权 none 的插件不要 Key", func(t *testing.T) {
-		e := newAchEnv(t)
-		e.ops.CheckResult = &provider.CheckResult{OK: true}
-		in := draft()
-		in.PluginKey, in.Settings, in.Secret = "loose", nil, ""
-		if res, err := e.svc.CheckDraft(ctx, in); err != nil || !res.OK {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-	})
-
-	t.Run("参数不合法：400 类（50010），不调用宿主", func(t *testing.T) {
-		cases := map[string]func(*ChannelCheckDraftInput){
-			"地址不是 http(s)": func(in *ChannelCheckDraftInput) { in.BaseURL = "ftp://x" },
-			"地址带用户名密码":     func(in *ChannelCheckDraftInput) { in.BaseURL = "https://u:p@x.com" },
-			"插件版本不存在":      func(in *ChannelCheckDraftInput) { in.PluginVersion = "9.9.9" },
-			"设置项缺必填":       func(in *ChannelCheckDraftInput) { in.Settings = map[string]any{} },
-		}
-		for name, mutate := range cases {
-			t.Run(name, func(t *testing.T) {
-				e := newAchEnv(t)
-				in := draft()
-				mutate(&in)
-				_, err := e.svc.CheckDraft(ctx, in)
-				adminWantCode(t, err, errcode.ErrChannelInvalid.Code)
-				if e.ops.Calls != 0 {
-					t.Fatal("不该调用宿主")
-				}
-			})
-		}
-	})
-
-	t.Run("上游不通：宿主同时返回结果与错误，按 ok=false 返回，草稿 Key 被脱敏", func(t *testing.T) {
-		e := newAchEnv(t)
-		e.ops.CheckResult = &provider.CheckResult{Message: "echo sk-draft-value", DurationMs: 30}
-		e.ops.CheckErr = errors.New("http 401")
-		res, err := e.svc.CheckDraft(ctx, draft())
-		if err != nil || res.OK || strings.Contains(res.Message, "sk-draft-value") {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-	})
-
-	t.Run("插件本身出错 502（50022），原因里的草稿 Key 被脱敏", func(t *testing.T) {
-		e := newAchEnv(t)
-		e.ops.CheckErr = errors.New("钩子异常：token=sk-draft-value 无效")
-		_, err := e.svc.CheckDraft(ctx, draft())
-		ec := adminWantCodeErr(t, err, errcode.ErrPluginOpFailed.Code)
-		if strings.Contains(ec.Msg, "sk-draft-value") {
-			t.Fatalf("Key 应被脱敏：%s", ec.Msg)
-		}
-	})
-
-	t.Run("插件没实现检查钩子 / runner 不可用", func(t *testing.T) {
-		e := newAchEnv(t)
-		e.ops.CheckErr = provider.ErrCheckUnsupported
-		res, err := e.svc.CheckDraft(ctx, draft())
-		if err != nil || res.OK || res.Message != "插件不支持连通性检查" {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
-		}
-		e.ops.CheckErr = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
-		_, err = e.svc.CheckDraft(ctx, draft())
-		adminWantCode(t, err, errcode.ErrRunnerUnavailable.Code)
 	})
 }
 
-func TestAIChannelService_Import(t *testing.T) {
+func TestAIChannelService_PullModels(t *testing.T) {
 	ctx := context.Background()
-	setup := func(t *testing.T, withSecret bool) *achEnv {
+	seed := func(t *testing.T, withKey bool) *achEnv {
+		t.Helper()
 		e := newAchEnv(t)
-		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+		in := createInput()
+		in.Headers = map[string]string{"X-Biz": "canvas"}
+		if _, err := e.svc.Create(ctx, in); err != nil {
 			t.Fatal(err)
 		}
-		if withSecret {
-			_ = e.svc.SetSecret(ctx, 1, "kling-main", "sk-secret-value")
+		if withKey {
+			if err := e.svc.SetSecret(ctx, 1, "main", "sk-live-123"); err != nil {
+				t.Fatal(err)
+			}
 		}
+		e.lister.IDs = []string{"gpt-image-2", "sd2.0-c1", "nano-banana2"}
 		return e
 	}
 
-	t.Run("成功：参数按声明校验并补默认值，草稿原样返回", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.Drafts = []provider.ModelDraft{{UpstreamModel: "kling-v2", Kind: "video", Label: "可灵 v2"}}
-		auditsBefore := len(e.repo.Audits)
-		res, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 10.0})
-		if err != nil || len(res.Drafts) != 1 || res.Drafts[0].UpstreamModel != "kling-v2" {
-			t.Fatalf("结果不符合预期：%+v %v", res, err)
+	t.Run("成功：用渠道的地址、请求头与 API Key 请求上游，标记已存在的模型，不落库", func(t *testing.T) {
+		e := seed(t, true)
+		// 渠道下已有 sd2.0-c1；别的渠道下的 gpt-image-2 不算
+		e.repo.Channels["other"] = &model.AIChannel{Key: "other", Name: "other", BaseURL: "https://o.example.com", Enabled: true}
+		if _, err := e.cfg.ImportChannelModels(ctx, 1, "main", []string{"sd2.0-c1"}); err != nil {
+			t.Fatal(err)
 		}
-		if e.ops.GotArgs["limit"] != 10.0 || e.ops.GotArgs["prefix"] != "" {
-			t.Fatalf("传给宿主的参数应带默认值：%v", e.ops.GotArgs)
+		if _, err := e.cfg.ImportChannelModels(ctx, 1, "other", []string{"gpt-image-2"}); err != nil {
+			t.Fatal(err)
 		}
-		if len(e.repo.Audits) != auditsBefore {
-			t.Fatalf("导入只读，不该写审计：%v", e.repo.AuditActions())
+		before := len(e.repo.Models)
+
+		res, err := e.svc.PullModels(ctx, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Total != 3 || len(res.Models) != 3 {
+			t.Fatalf("结果不符合预期：%+v", res)
+		}
+		exists := map[string]bool{}
+		for _, m := range res.Models {
+			exists[m.ID] = m.Exists
+		}
+		if exists["sd2.0-c1"] != true || exists["gpt-image-2"] != false || exists["nano-banana2"] != false {
+			t.Fatalf("exists 标记不对：%v", exists)
+		}
+		if e.lister.APIKey != "sk-live-123" || e.lister.Channel.BaseURL != "https://gw.example.com" || e.lister.Channel.Headers["X-Biz"] != "canvas" {
+			t.Fatalf("请求上游用的渠道信息不对：%+v key=%q", e.lister.Channel, e.lister.APIKey)
+		}
+		if len(e.repo.Models) != before {
+			t.Fatal("拉取不落库")
 		}
 	})
 
-	t.Run("宿主返回 nil 草稿时输出空数组", func(t *testing.T) {
-		e := setup(t, true)
-		res, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 1.0})
-		if err != nil || res.Drafts == nil || len(res.Drafts) != 0 {
-			t.Fatalf("结果不符合预期：%#v %v", res, err)
+	t.Run("API Key 没设置 409，不发请求", func(t *testing.T) {
+		e := seed(t, false)
+		_, err := e.svc.PullModels(ctx, "main")
+		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
+		if e.lister.Calls != 0 {
+			t.Fatal("没有 Key 时不该向上游发请求")
 		}
 	})
 
-	t.Run("参数不合法 400（10001）：缺必填、未声明、类型不对", func(t *testing.T) {
-		for name, args := range map[string]map[string]any{
-			"缺必填 limit":   nil,
-			"未声明的参数":      {"limit": 1.0, "zzz": true},
-			"limit 类型不对":  {"limit": "ten"},
-			"prefix 类型不对": {"limit": 1.0, "prefix": 3.0},
+	t.Run("渠道不存在 404", func(t *testing.T) {
+		e := seed(t, true)
+		_, err := e.svc.PullModels(ctx, "nope")
+		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
+	})
+
+	t.Run("上游失败：翻译成拉取失败 502，消息来自宿主，Key 明文被抹掉", func(t *testing.T) {
+		for name, perr := range map[string]error{
+			"401":  &provider.PullError{Reason: provider.PullUnauthorized, Status: 401, Message: "上游拒绝了请求（HTTP 401），key=sk-live-123"},
+			"不可达":  &provider.PullError{Reason: provider.PullUnreachable, Message: "连接 gw.example.com 超时"},
+			"格式":   &provider.PullError{Reason: provider.PullFormat, Message: "不是 OpenAI 形状"},
+			"其他错误": errors.New("意外：sk-live-123"),
 		} {
-			e := setup(t, true)
-			_, err := e.svc.Import(ctx, "kling-main", args)
-			adminWantCode(t, err, errcode.ErrInvalidParams.Code)
-			if e.ops.Calls != 0 {
-				t.Fatalf("%s：参数不合法不该调用宿主", name)
+			e := seed(t, true)
+			e.lister.Err = perr
+			_, err := e.svc.PullModels(ctx, "main")
+			ce := adminWantCodeErr(t, err, errcode.ErrChannelPullFailed.Code)
+			if strings.Contains(ce.Msg, "sk-live-123") || ce.Msg == "" {
+				t.Fatalf("%s：消息不能为空，也不能含 Key 明文：%q", name, ce.Msg)
 			}
 		}
 	})
 
-	t.Run("插件没实现导入 502（50022）", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.ImportErr = provider.ErrImportUnsupported
-		_, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 1.0})
-		ec := adminWantCodeErr(t, err, errcode.ErrPluginOpFailed.Code)
-		if !strings.Contains(ec.Msg, "不支持导入") {
-			t.Fatalf("msg 不符合预期：%s", ec.Msg)
+	t.Run("没有注入拉取器时返回内部错误，而不是 panic", func(t *testing.T) {
+		e := seed(t, true)
+		svc := NewAIChannelService(e.repo, e.cfg, e.cfg, nil, e.repo, e.notifier)
+		_, err := svc.PullModels(ctx, "main")
+		adminWantCode(t, err, errcode.ErrInternal.Code)
+	})
+}
+
+func TestAIChannelService_ImportModels(t *testing.T) {
+	ctx := context.Background()
+	seed := func(t *testing.T) *achEnv {
+		t.Helper()
+		e := newAchEnv(t)
+		if _, err := e.svc.Create(ctx, createInput()); err != nil {
+			t.Fatal(err)
+		}
+		e.repo.Audits = nil
+		return e
+	}
+	bodyOf := func(t *testing.T, e *achEnv, key string) map[string]any {
+		t.Helper()
+		rev, err := e.repo.GetModelConfig(ctx, key)
+		if err != nil {
+			t.Fatalf("模型 %s 应已创建：%v", key, err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(rev.BodyJSON, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	t.Run("创建“待配置”模型：未启用、kind 为空、没有协议，label 取上游 id，排在渠道内现有模型之后", func(t *testing.T) {
+		e := seed(t)
+		res, err := e.svc.ImportModels(ctx, 9, "main", []string{"gpt-image-2", "sd2.0-c1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Created) != 2 || len(res.Skipped) != 0 || res.Created[0].Key != "gpt-image-2" || res.Created[1].Key != "sd2.0-c1" {
+			t.Fatalf("结果不符合预期：%+v", res)
+		}
+		body := bodyOf(t, e, "gpt-image-2")
+		ch := body["channels"].([]any)[0].(map[string]any)
+		if body["kind"] != "" || body["label"] != "gpt-image-2" || body["enabled"] != false ||
+			ch["channel"] != "main" || ch["upstream_model"] != "gpt-image-2" || ch["protocol"] != nil {
+			t.Fatalf("正文不符合预期：%v", body)
+		}
+		p1, p2 := e.repo.Models["gpt-image-2"], e.repo.Models["sd2.0-c1"]
+		if p1.Enabled || p1.Kind != "" || p1.Sort != 10 || p2.Sort != 20 {
+			t.Fatalf("指针行不符合预期：%+v %+v", p1, p2)
+		}
+		// 待配置的模型绝不能出现在用户可见的清单里
+		list, _ := e.cfg.ListModels(ctx, "")
+		if len(list) != 0 {
+			t.Fatalf("待配置的模型不应对用户可见：%+v", list)
+		}
+		if got := e.repo.AuditActions(); len(got) != 1 || got[0] != model.AuditModelImport {
+			t.Fatalf("审计不符合预期：%v", got)
 		}
 	})
 
-	t.Run("runner 不可用 503；其他错误 502 且脱敏", func(t *testing.T) {
-		e := setup(t, true)
-		e.ops.ImportErr = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
-		_, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 1.0})
-		adminWantCode(t, err, errcode.ErrRunnerUnavailable.Code)
-
-		e.ops.ImportErr = errors.New("boom sk-secret-value")
-		_, err = e.svc.Import(ctx, "kling-main", map[string]any{"limit": 1.0})
-		ec := adminWantCodeErr(t, err, errcode.ErrPluginOpFailed.Code)
-		if strings.Contains(ec.Msg, "sk-secret-value") {
-			t.Fatalf("Key 应被脱敏：%s", ec.Msg)
+	t.Run("渠道下已有的同名上游模型跳过，不重复创建", func(t *testing.T) {
+		e := seed(t)
+		_, _ = e.svc.ImportModels(ctx, 9, "main", []string{"a"})
+		res, err := e.svc.ImportModels(ctx, 9, "main", []string{"a", "b"})
+		if err != nil || len(res.Created) != 1 || res.Created[0].UpstreamModel != "b" || len(res.Skipped) != 1 || res.Skipped[0] != "a" {
+			t.Fatalf("结果不符合预期：%+v %v", res, err)
+		}
+		if len(e.repo.Models) != 2 {
+			t.Fatalf("应只有 2 个模型：%d", len(e.repo.Models))
+		}
+		// 新导入的排在已有模型之后
+		if e.repo.Models["b"].Sort <= e.repo.Models["a"].Sort {
+			t.Fatalf("新模型应排在已有模型之后：a=%d b=%d", e.repo.Models["a"].Sort, e.repo.Models["b"].Sort)
 		}
 	})
 
-	t.Run("Key 未设置 409（50015）；渠道不存在 404", func(t *testing.T) {
-		e := setup(t, false)
-		_, err := e.svc.Import(ctx, "kling-main", map[string]any{"limit": 1.0})
-		adminWantCode(t, err, errcode.ErrChannelSecretUnset.Code)
-		_, err = e.svc.Import(ctx, "nope", nil)
+	t.Run("key 规则：不合法字符换成 -；与其他渠道的模型 key 冲突时加渠道前缀，仍冲突再加序号", func(t *testing.T) {
+		e := seed(t)
+		e.repo.Channels["other"] = &model.AIChannel{Key: "other", Name: "other", BaseURL: "https://o.example.com", Enabled: true}
+		if _, err := e.svc.ImportModels(ctx, 1, "other", []string{"sd2.0-c1"}); err != nil {
+			t.Fatal(err)
+		}
+		res, err := e.svc.ImportModels(ctx, 1, "main", []string{"sd2.0-c1", "deepseek-ai/DeepSeek-V3", "中文", "模型 B"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, c := range res.Created {
+			got[c.UpstreamModel] = c.Key
+		}
+		if got["sd2.0-c1"] != "main-sd2.0-c1" {
+			t.Fatalf("冲突时应加渠道前缀：%v", got)
+		}
+		if got["deepseek-ai/DeepSeek-V3"] != "deepseek-ai-DeepSeek-V3" {
+			t.Fatalf("斜杠应换成 -：%v", got)
+		}
+		for up, key := range got {
+			if key == "" || !aiKeyOK(key) {
+				t.Fatalf("%q 生成的 key %q 不合法", up, key)
+			}
+		}
+		// 两个全是非法字符的 id 不能生成同一个 key
+		if got["中文"] == got["模型 B"] {
+			t.Fatalf("不同的上游模型不能生成同一个 key：%v", got)
+		}
+	})
+
+	t.Run("参数：空列表、全是空白 400；超过 500 个提示分批", func(t *testing.T) {
+		e := seed(t)
+		_, err := e.svc.ImportModels(ctx, 1, "main", nil)
+		adminWantCode(t, err, errcode.ErrInvalidParams.Code)
+		_, err = e.svc.ImportModels(ctx, 1, "main", []string{"  ", ""})
+		adminWantCode(t, err, errcode.ErrInvalidParams.Code)
+		many := make([]string, 501)
+		for i := range many {
+			many[i] = "m" + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + strings.Repeat("y", i/26)
+		}
+		_, err = e.svc.ImportModels(ctx, 1, "main", many)
+		ce := adminWantCodeErr(t, err, errcode.ErrInvalidParams.Code)
+		if !strings.Contains(ce.Msg, "500") {
+			t.Fatalf("应提示单次上限：%s", ce.Msg)
+		}
+		if len(e.repo.Models) != 0 {
+			t.Fatal("参数不合法时不能创建任何模型")
+		}
+	})
+
+	t.Run("ids 里的重复与首尾空白被规整", func(t *testing.T) {
+		e := seed(t)
+		res, err := e.svc.ImportModels(ctx, 1, "main", []string{" a ", "a", "b"})
+		if err != nil || len(res.Created) != 2 {
+			t.Fatalf("应只创建 a、b 两个：%+v %v", res, err)
+		}
+	})
+
+	t.Run("渠道不存在 404", func(t *testing.T) {
+		e := seed(t)
+		_, err := e.svc.ImportModels(ctx, 1, "nope", []string{"a"})
 		adminWantCode(t, err, errcode.ErrChannelNotFound.Code)
 	})
+}
 
-	t.Run("没有声明导入参数的插件只接受空参数", func(t *testing.T) {
-		e := newAchEnv(t)
-		in := createInput()
-		in.Key, in.PluginKey, in.Settings = "loose-1", "loose", nil
-		_, _ = e.svc.Create(ctx, in)
-		if _, err := e.svc.Import(ctx, "loose-1", nil); err != nil {
-			t.Fatalf("空参数应通过：%v", err)
+// aiKeyOK 判断模型 key 是否符合 aiConfigKeyRe 的字符集与长度。
+func aiKeyOK(key string) bool {
+	if key == "" || len(key) > 128 {
+		return false
+	}
+	for i, r := range key {
+		alnum := r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+		if i == 0 && !alnum || !alnum && r != '_' && r != '.' && r != '-' {
+			return false
 		}
-		_, err := e.svc.Import(ctx, "loose-1", map[string]any{"a": 1.0})
-		adminWantCode(t, err, errcode.ErrInvalidParams.Code)
-	})
+	}
+	return true
 }

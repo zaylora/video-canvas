@@ -1,39 +1,28 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin/ai/type";
+import type { ChannelView } from "@/api/admin/ai/type";
 import {
   buildChannelRequest,
-  buildCheckDraftRequest,
-  canSaveChannel,
-  connectionFingerprint,
   channelFormFromView,
   checkBaseUrl,
-  CHANNEL_KEY_PATTERN,
+  checkHeaders,
   emptyChannelForm,
-  rebaseSettings,
-  suggestChannelKey,
-  upgradeChannelRequest,
+  formatLoad,
+  formatRateLimit,
+  MAX_CHANNEL_HEADERS,
   type ChannelFormState,
 } from "@/utils/admin/channel-form";
-import { settingFields } from "@/utils/admin/settings-form";
-
-const fields = settingFields({
-  region: { type: "enum", label: "区域", options: ["cn", "global"], default: "cn", required: true },
-  ttl: { type: "number", label: "有效期" },
-});
 
 const view = (extra: Partial<ChannelView> = {}): ChannelView => ({
-  key: "kling-direct",
-  name: "可灵",
-  plugin_key: "kling",
-  plugin_version_id: 2,
-  plugin_version: "0.2.0",
-  base_url: "https://api.klingai.com",
-  allow_credentials: true,
-  settings: { region: "cn" },
+  key: "openai-main",
+  name: "OpenAI 主渠道",
+  base_url: "https://api.openai.com",
+  headers: { "User-Agent": "video-canvas-test" },
   rate_limit: { rps: 5, max_concurrency: 0 },
+  sort: 10,
   enabled: true,
   secret_set: true,
+  secret_key_set: false,
   updated_by: 1,
   updated_at: "",
   created_at: "",
@@ -41,397 +30,245 @@ const view = (extra: Partial<ChannelView> = {}): ChannelView => ({
 });
 
 const newForm = (extra: Partial<ChannelFormState> = {}): ChannelFormState => ({
-  ...emptyChannelForm([]),
-  key: "my-channel",
+  ...emptyChannelForm(),
   name: "我的渠道",
-  pluginKey: "kling",
-  pluginVersion: "0.2.0",
   baseUrl: "https://api.example.com",
-  settings: { region: "cn", ttl: "" },
   ...extra,
 });
 
 describe("emptyChannelForm", () => {
-  test("默认选第一个启用且有版本的插件的第一个版本", () => {
-    const plugins = [
-      { key: "off", enabled: false, versions: [{ version: "1.0.0" }] },
-      { key: "empty", enabled: true, versions: [] },
-      { key: "ok", enabled: true, versions: [{ version: "2.0.0" }, { version: "1.0.0" }] },
-    ] as unknown as PluginView[];
-    const form = emptyChannelForm(plugins);
-    expect(form.pluginKey).toBe("ok");
-    expect(form.pluginVersion).toBe("2.0.0");
-    expect(form.enabled).toBe(true);
-    expect(form).not.toHaveProperty("trustedInternal");
-  });
-
-  test("没有可用插件时插件为空", () => {
-    expect(emptyChannelForm([]).pluginKey).toBe("");
+  test("默认启用、没有请求头、限流留空", () => {
+    expect(emptyChannelForm()).toEqual({
+      name: "",
+      baseUrl: "",
+      headers: [],
+      enabled: true,
+      rps: "",
+      maxConcurrency: "",
+      maxRunning: "",
+    });
   });
 });
 
 describe("channelFormFromView", () => {
-  test("渠道视图 → 表单：限流为 0 时输入框留空，设置项按声明填充", () => {
-    const form = channelFormFromView(view(), fields);
-    expect(form.key).toBe("kling-direct");
-    expect(form.rps).toBe("5");
-    expect(form.maxConcurrency).toBe("");
-    expect(form.settings.region).toBe("cn");
-    expect(form.allowCredentials).toBe(true);
+  test("渠道视图转表单：请求头展开成逐行，0 限流留空", () => {
+    expect(channelFormFromView(view())).toEqual({
+      name: "OpenAI 主渠道",
+      baseUrl: "https://api.openai.com",
+      headers: [{ name: "User-Agent", value: "video-canvas-test" }],
+      enabled: true,
+      rps: "5",
+      maxConcurrency: "",
+      maxRunning: "",
+    });
   });
 
-  test("不再有“允许访问内网”：后端旧响应里残留的 trusted_internal 不会进表单", () => {
-    const legacy = { ...view(), trusted_internal: true } as ChannelView;
-    expect(channelFormFromView(legacy, fields)).not.toHaveProperty("trustedInternal");
+  test("headers 为空或缺失时没有行", () => {
+    expect(channelFormFromView(view({ headers: {} })).headers).toEqual([]);
+    expect(channelFormFromView(view({ headers: null as never })).headers).toEqual([]);
   });
 });
 
-describe("rebaseSettings", () => {
-  test("换版本后同名字段的取值带过去，新字段用默认值，消失的字段丢弃", () => {
-    const oldFields = settingFields({
-      region: { type: "enum", label: "区域", options: ["cn", "global"], required: true },
-      old: { type: "string", label: "旧项" },
-    });
-    const newFields = settingFields({
-      region: { type: "enum", label: "区域", options: ["cn", "global"], required: true },
-      ttl: { type: "number", label: "有效期", default: 1800 },
-    });
-    const next = rebaseSettings(oldFields, { region: "global", old: "x" }, newFields);
-    expect(next).toEqual({ region: "global", ttl: "1800" });
+describe("checkBaseUrl", () => {
+  test("合法的 http / https 地址通过", () => {
+    expect(checkBaseUrl("https://api.example.com")).toBeNull();
+    expect(checkBaseUrl("http://10.0.0.1:8080/v1")).toBeNull();
   });
 
-  test("带过去的取值在新声明里不合法时退回默认值", () => {
-    const oldFields = settingFields({
-      region: { type: "enum", label: "r", options: ["cn", "eu"] },
-    });
-    const newFields = settingFields({
-      region: { type: "enum", label: "r", options: ["cn"], default: "cn" },
-    });
-    expect(rebaseSettings(oldFields, { region: "eu" }, newFields).region).toBe("cn");
+  test("空值、非法、非 http、带账号密码、带查询参数或片段都拒绝", () => {
+    expect(checkBaseUrl("  ")).toContain("Base URL");
+    expect(checkBaseUrl("not a url")).toBeTruthy();
+    expect(checkBaseUrl("ftp://example.com")).toBeTruthy();
+    expect(checkBaseUrl("https://user:pw@example.com")).toBeTruthy();
+    expect(checkBaseUrl("https://example.com/v1?key=1")).toBeTruthy();
+    expect(checkBaseUrl("https://example.com/v1#top")).toBeTruthy();
   });
 });
 
-describe("checkBaseUrl / CHANNEL_KEY_PATTERN", () => {
-  test("合法地址通过", () => {
-    expect(checkBaseUrl("https://gw.example.com")).toBeNull();
-    expect(checkBaseUrl("http://10.0.3.12:3000/v1")).toBeNull();
+describe("checkHeaders", () => {
+  test("合法请求头无错误，完全空白的行被忽略", () => {
+    expect(
+      checkHeaders([
+        { name: "User-Agent", value: "x" },
+        { name: "", value: "" },
+        { name: "X-Org", value: "acme" },
+      ]),
+    ).toEqual({});
   });
 
-  test("空值、非 http、带用户名密码、不合法都被拒绝", () => {
-    expect(checkBaseUrl("  ")).toContain("请填写");
-    expect(checkBaseUrl("ftp://a.com")).toContain("http");
-    expect(checkBaseUrl("https://user:pw@a.com")).toContain("用户名");
-    expect(checkBaseUrl("not a url")).toContain("合法");
+  test("名称为空但有值、名称不是合法 token", () => {
+    const errors = checkHeaders([
+      { name: "", value: "v" },
+      { name: "bad name", value: "v" },
+      { name: "中文", value: "v" },
+    ]);
+    expect(errors["headers.0"]).toContain("名称");
+    expect(errors["headers.1"]).toContain("不合法");
+    expect(errors["headers.2"]).toContain("不合法");
   });
 
-  test("渠道 key 只能是小写字母数字连字符且以字母数字开头", () => {
-    expect(CHANNEL_KEY_PATTERN.test("newapi-main")).toBe(true);
-    expect(CHANNEL_KEY_PATTERN.test("-bad")).toBe(false);
-    expect(CHANNEL_KEY_PATTERN.test("Bad")).toBe(false);
-    expect(CHANNEL_KEY_PATTERN.test("a".repeat(65))).toBe(false);
+  test("禁用头不区分大小写", () => {
+    for (const name of [
+      "Host",
+      "content-length",
+      "Transfer-Encoding",
+      "CONNECTION",
+      "Upgrade",
+      "Authorization",
+      "Proxy-Authorization",
+      "Cookie",
+    ]) {
+      expect(checkHeaders([{ name, value: "v" }])["headers.0"]).toContain("不能设置");
+    }
+  });
+
+  test("名称不区分大小写不得重复，错误挂在后出现的那行", () => {
+    const errors = checkHeaders([
+      { name: "X-Org", value: "a" },
+      { name: "x-org", value: "b" },
+    ]);
+    expect(errors["headers.0"]).toBeUndefined();
+    expect(errors["headers.1"]).toContain("重复");
+  });
+
+  test("值超过 1024 字符或含换行 / 控制字符", () => {
+    expect(checkHeaders([{ name: "X-A", value: "a".repeat(1025) }])["headers.0"]).toContain("1024");
+    expect(checkHeaders([{ name: "X-A", value: "a".repeat(1024) }])).toEqual({});
+    expect(checkHeaders([{ name: "X-A", value: "a\nb" }])["headers.0"]).toContain("换行");
+    expect(checkHeaders([{ name: "X-A", value: "a\u0007b" }])["headers.0"]).toContain("换行");
+  });
+
+  test("最多 32 条", () => {
+    const rows = Array.from({ length: MAX_CHANNEL_HEADERS + 1 }, (_, i) => ({
+      name: `X-H${i}`,
+      value: "v",
+    }));
+    expect(checkHeaders(rows).headers).toContain("32");
+    expect(checkHeaders(rows.slice(0, MAX_CHANNEL_HEADERS))).toEqual({});
   });
 });
 
 describe("buildChannelRequest（新建）", () => {
-  test("合法表单生成 create 请求，限流空值为 0，设置项转成对应类型", () => {
+  test("合法表单：生成 create 请求体，限流 0 表示不限", () => {
     const result = buildChannelRequest(
-      newForm({ rps: "3", settings: { region: "global", ttl: "60" } }),
-      fields,
+      newForm({ rps: "3", headers: [{ name: " User-Agent ", value: " ua " }] }),
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.create).toMatchObject({
-      key: "my-channel",
-      plugin_key: "kling",
-      plugin_version: "0.2.0",
+    expect(result.changed).toBe(true);
+    // 不带 key：渠道 key 由后端生成
+    expect(result.create).toEqual({
+      name: "我的渠道",
       base_url: "https://api.example.com",
+      headers: { "User-Agent": "ua" },
       rate_limit: { rps: 3, max_concurrency: 0, max_running: 0 },
-      settings: { region: "global", ttl: 60 },
+      enabled: true,
     });
   });
 
-  test("create 请求不再带 trusted_internal", () => {
-    const result = buildChannelRequest(newForm(), fields);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.create).not.toHaveProperty("trusted_internal");
-  });
-
-  test("字段错误按键返回：key、名称、地址、限流、设置项", () => {
+  test("名称、地址、请求头、限流错误一次报出", () => {
     const result = buildChannelRequest(
       newForm({
-        key: "Bad Key",
-        name: " ",
-        baseUrl: "x",
+        name: "  ",
+        baseUrl: "",
         rps: "-1",
         maxConcurrency: "1.5",
-        maxRunning: "-2",
-        settings: { region: "", ttl: "" },
+        maxRunning: "x",
+        headers: [{ name: "Cookie", value: "v" }],
       }),
-      fields,
     );
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.errors).sort()).toEqual(
-      ["baseUrl", "key", "maxConcurrency", "maxRunning", "name", "rps", "settings.region"].sort(),
+      ["baseUrl", "headers.0", "maxConcurrency", "maxRunning", "name", "rps"].sort(),
     );
-  });
-
-  test("没选插件版本时报 plugin 错误", () => {
-    const result = buildChannelRequest(newForm({ pluginKey: "", pluginVersion: "" }), fields);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.plugin).toBeDefined();
   });
 });
 
 describe("buildChannelRequest（编辑）", () => {
-  const original = view();
-
-  test("没改动时 changed 为 false，update 为空", () => {
-    const form = channelFormFromView(original, fields);
-    const result = buildChannelRequest(form, fields, original);
+  test("没改动：changed=false，update 为空", () => {
+    const original = view();
+    const result = buildChannelRequest(channelFormFromView(original), original);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.changed).toBe(false);
     expect(result.update).toEqual({});
   });
 
-  test("已有渠道不能换协议：plugin_key 变了就报错，不会静默发出请求", () => {
-    const form = { ...channelFormFromView(original, fields), pluginKey: "sora" };
-    const result = buildChannelRequest(form, fields, original);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors.plugin).toContain("新建渠道");
-  });
-
-  test("只带改过的字段；改版本时同时带 plugin_key 与 plugin_version；key 不可改", () => {
-    const form = {
-      ...channelFormFromView(original, fields),
-      key: "ignored",
-      name: "改名",
-      pluginVersion: "0.3.0",
-      rps: "10",
-    };
-    const result = buildChannelRequest(form, fields, original);
+  test("只带改过的字段", () => {
+    const original = view();
+    const form = { ...channelFormFromView(original), name: "新名字", enabled: false };
+    const result = buildChannelRequest(form, original);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.update).toEqual({
-      name: "改名",
-      plugin_key: "kling",
-      plugin_version: "0.3.0",
-      rate_limit: { rps: 10, max_concurrency: 0, max_running: 0 },
-    });
-    expect(result.create.key).toBe("kling-direct");
+    expect(result.update).toEqual({ name: "新名字", enabled: false });
   });
 
-  test("最大同时生成数：回填、修改后进 rate_limit，留空等于不限", () => {
-    const withRunning = view({ rate_limit: { rps: 5, max_concurrency: 0, max_running: 2 } });
-    const form = channelFormFromView(withRunning, fields);
-    expect(form.maxRunning).toBe("2");
-    const changed = buildChannelRequest({ ...form, maxRunning: "4" }, fields, withRunning);
-    expect(changed.ok && changed.update.rate_limit).toEqual({
-      rps: 5,
-      max_concurrency: 0,
-      max_running: 4,
-    });
-    const cleared = buildChannelRequest({ ...form, maxRunning: "" }, fields, withRunning);
-    expect(cleared.ok && cleared.update.rate_limit?.max_running).toBe(0);
-    const same = buildChannelRequest(form, fields, withRunning);
-    expect(same.ok && "rate_limit" in same.update).toBe(false);
-  });
-
-  test("设置项变化会带上 settings，没变化不带", () => {
-    const form = channelFormFromView(original, fields);
-    const changed = buildChannelRequest(
-      { ...form, settings: { ...form.settings, region: "global" } },
-      fields,
+  test("请求头整体替换：改值、增删、清空都算变化；顺序不同不算", () => {
+    const original = view({ headers: { A: "1", B: "2" } });
+    const reordered = buildChannelRequest(
+      {
+        ...channelFormFromView(original),
+        headers: [
+          { name: "B", value: "2" },
+          { name: "A", value: "1" },
+        ],
+      },
       original,
     );
-    expect(changed.ok && changed.update.settings).toEqual({ region: "global" });
-    const same = buildChannelRequest(form, fields, original);
-    expect(same.ok && "settings" in same.update).toBe(false);
-  });
-});
+    expect(reordered.ok && reordered.changed).toBe(false);
 
-describe("suggestChannelKey", () => {
-  test("名称有英文就用名称，纯中文名用插件 key + 主机名", () => {
-    expect(suggestChannelKey("NewAPI Main", "newapi", "https://gw.x.com", [])).toBe("newapi-main");
-    expect(suggestChannelKey("主线", "newapi", "https://www.gw.example.com", [])).toBe("newapi-gw");
-    expect(suggestChannelKey("主线", "", "坏地址", [])).toBe("channel");
-  });
-
-  test("重名时加序号，结果符合 key 格式", () => {
-    const key = suggestChannelKey("主线", "kling", "https://api.klingai.com", [
-      "kling-api",
-      "kling-api-2",
-    ]);
-    expect(key).toBe("kling-api-3");
-    expect(CHANNEL_KEY_PATTERN.test(key)).toBe(true);
-    expect(CHANNEL_KEY_PATTERN.test(suggestChannelKey("x".repeat(80), "", "", []))).toBe(true);
-  });
-});
-
-describe("upgradeChannelRequest", () => {
-  const version = (id: number, ver: string, meta: PluginMeta): PluginVersionView => ({
-    id,
-    plugin_key: "kling",
-    version: ver,
-    sha256: "",
-    created_at: "",
-    created_by: 0,
-    channel_count: 0,
-    meta,
-  });
-  const plugins: PluginView[] = [
-    {
-      key: "kling",
-      name: "可灵",
-      source: "uploaded",
-      enabled: true,
-      updated_at: "",
-      versions: [
-        version(3, "0.3.0", {
-          auth: { type: "bearer" },
-          channelSettings: { region: { type: "enum", label: "区域", options: ["cn", "global"] } },
-        }),
-        version(2, "0.2.0", {
-          auth: { type: "custom" },
-          channelSettings: {
-            region: { type: "enum", label: "区域", options: ["cn", "global"] },
-            ttl: { type: "number", label: "有效期" },
-          },
-        }),
-      ],
-    },
-  ];
-
-  test("带过同名设置、丢弃新版本没有的设置、不再需要读 Key 时关掉 allow_credentials", () => {
-    const result = upgradeChannelRequest(
-      view({ settings: { region: "global", ttl: 30 } }),
-      plugins,
-      "0.3.0",
+    const cleared = buildChannelRequest(
+      { ...channelFormFromView(original), headers: [] },
+      original,
     );
-    expect(result).toEqual({
-      update: {
-        plugin_key: "kling",
-        plugin_version: "0.3.0",
-        settings: { region: "global" },
-        allow_credentials: false,
-      },
-      dropped: ["有效期"],
-      credsReset: true,
+    expect(cleared.ok && cleared.update).toEqual({ headers: {} });
+
+    const changed = buildChannelRequest(
+      { ...channelFormFromView(original), headers: [{ name: "A", value: "9" }] },
+      original,
+    );
+    expect(changed.ok && changed.update).toEqual({ headers: { A: "9" } });
+  });
+
+  test("限流整体替换：任一维度变了就带全部三个", () => {
+    const original = view();
+    const result = buildChannelRequest(
+      { ...channelFormFromView(original), maxRunning: "4" },
+      original,
+    );
+    expect(result.ok && result.update).toEqual({
+      rate_limit: { rps: 5, max_concurrency: 0, max_running: 4 },
     });
   });
 
-  test("目标版本不存在返回 null", () => {
-    expect(upgradeChannelRequest(view(), plugins, "9.9.9")).toBeNull();
+  test("编辑的 update 不含 key（渠道 key 创建后不可改）", () => {
+    const original = view();
+    const result = buildChannelRequest({ ...channelFormFromView(original), name: "x" }, original);
+    expect(result.ok && "key" in result.update).toBe(false);
   });
 });
 
-describe("buildCheckDraftRequest", () => {
-  const form = (extra: Partial<ChannelFormState> = {}): ChannelFormState => ({
-    ...channelFormFromView(view(), fields),
-    ...extra,
+describe("formatRateLimit", () => {
+  test("没有任何限流写“不限”", () => {
+    expect(formatRateLimit(null)).toBe("不限");
+    expect(formatRateLimit({})).toBe("不限");
+    expect(formatRateLimit({ rps: 0, max_concurrency: 0, max_running: 0 })).toBe("不限");
   });
 
-  test("只校验连接相关的字段：名称为空也能检查", () => {
-    const result = buildCheckDraftRequest(form({ name: "" }), fields, " sk-1 ", undefined);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.request).toMatchObject({
-      plugin_key: "kling",
-      plugin_version: "0.2.0",
-      base_url: "https://api.klingai.com",
-      allow_credentials: true,
-      secret: "sk-1",
-    });
-    expect(result.request).not.toHaveProperty("trusted_internal");
-    expect(result.request.existing_key).toBeUndefined();
-  });
-
-  test("编辑已有渠道带 existing_key；Key 为空不传 secret", () => {
-    const result = buildCheckDraftRequest(form(), fields, "  ", "kling-direct");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.request.existing_key).toBe("kling-direct");
-    expect(result.request.secret).toBeUndefined();
-  });
-
-  test("地址、插件、设置项不合法：返回对应字段的错误", () => {
-    const bad = buildCheckDraftRequest(
-      form({ baseUrl: "ftp://x", pluginKey: "", settings: { region: "" } }),
-      fields,
-      "",
-      undefined,
-    );
-    expect(bad.ok).toBe(false);
-    if (bad.ok) return;
-    expect(Object.keys(bad.errors)).toEqual(
-      expect.arrayContaining(["baseUrl", "plugin", "settings.region"]),
-    );
-    expect(bad.errors.name).toBeUndefined();
+  test("有任一限流就三项都写，没设的显示不限", () => {
+    expect(formatRateLimit({ rps: 5, max_running: 3 })).toBe("rps 5 · 并发 不限 · 同时生成 3");
   });
 });
 
-describe("connectionFingerprint / canSaveChannel", () => {
-  const base = channelFormFromView(view(), fields);
-
-  test("名称、限流、启用不影响指纹；地址、插件版本、设置、开关、Key 会", () => {
-    const fp = connectionFingerprint(base, "");
-    expect(connectionFingerprint({ ...base, name: "改名", rps: "5", enabled: false }, "")).toBe(fp);
-    expect(connectionFingerprint({ ...base, baseUrl: "https://x.com" }, "")).not.toBe(fp);
-    expect(connectionFingerprint({ ...base, pluginVersion: "0.3.0" }, "")).not.toBe(fp);
-    expect(
-      connectionFingerprint({ ...base, allowCredentials: !base.allowCredentials }, ""),
-    ).not.toBe(fp);
-    expect(connectionFingerprint({ ...base, settings: { region: "global" } }, "")).not.toBe(fp);
-    expect(connectionFingerprint(base, "sk-new")).not.toBe(fp);
-    expect(connectionFingerprint(base, "  ")).toBe(fp);
+describe("formatLoad", () => {
+  test("生成中 / 上限 + 排队", () => {
+    expect(formatLoad({ channel: "a", running: 2, waiting: 5 }, 4)).toBe("生成中 2/4 · 排队 5");
   });
 
-  const fp = connectionFingerprint(base, "");
-  const passed = (fingerprint: string, kind: "ok" | "unsupported" | "failed" = "ok") =>
-    ({ busy: false, fingerprint, outcome: { kind } }) as const;
-
-  test("新建：必须有针对当前配置的通过结果", () => {
-    expect(canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: undefined })).toBe(
-      false,
-    );
-    expect(canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed(fp) })).toBe(
-      true,
-    );
-    expect(
-      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed("旧的") }),
-    ).toBe(false);
-    expect(
-      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: passed(fp, "failed") }),
-    ).toBe(false);
-    expect(
-      canSaveChannel({ isNew: true, fingerprint: fp, baseline: "", check: { busy: true } }),
-    ).toBe(false);
-  });
-
-  test("插件不支持检查（unsupported）不算失败，允许保存", () => {
-    expect(
-      canSaveChannel({
-        isNew: true,
-        fingerprint: fp,
-        baseline: "",
-        check: passed(fp, "unsupported"),
-      }),
-    ).toBe(true);
-  });
-
-  test("编辑：连接信息没动不用检查；动了就要检查", () => {
-    expect(canSaveChannel({ isNew: false, fingerprint: fp, baseline: fp, check: undefined })).toBe(
-      true,
-    );
-    const changed = connectionFingerprint({ ...base, baseUrl: "https://x.com" }, "");
-    expect(
-      canSaveChannel({ isNew: false, fingerprint: changed, baseline: fp, check: undefined }),
-    ).toBe(false);
-    expect(
-      canSaveChannel({ isNew: false, fingerprint: changed, baseline: fp, check: passed(changed) }),
-    ).toBe(true);
+  test("没有负载记录算空闲 0；上限为 0 或缺省写不限", () => {
+    expect(formatLoad(undefined, 4)).toBe("生成中 0/4 · 排队 0");
+    expect(formatLoad({ channel: "a", running: 1, waiting: 0 }, 0)).toBe("生成中 1/不限 · 排队 0");
+    expect(formatLoad(undefined, undefined)).toBe("生成中 0/不限 · 排队 0");
   });
 });

@@ -1,8 +1,4 @@
-import type { ModelDraft } from "@/api/admin/ai/type";
 import type { Pricing } from "@/api/model/type";
-
-import { defaultCapabilities, defaultPricing } from "./model-template";
-import { applyParamHints, type ParamHints } from "./param-hints";
 
 /**
  * 模型配置正文（admin-ai-api.md「模型配置正文」）的小工具。
@@ -64,54 +60,6 @@ export function suggestModelKey(upstreamModel: string): string {
     .replace(/-{2,}/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
-}
-
-/** 后端草稿可能是 snake_case（契约）也可能透传插件的 camelCase，两种都认 */
-function pick<T>(draft: Record<string, unknown>, snake: string, camel: string): T | undefined {
-  return (draft[snake] ?? draft[camel]) as T | undefined;
-}
-
-/** 规整一份导入草稿；缺上游模型名的丢掉 */
-export function normalizeDraft(raw: unknown): ModelDraft | null {
-  if (!isRecord(raw)) return null;
-  const upstream = pick<unknown>(raw, "upstream_model", "upstreamModel");
-  if (typeof upstream !== "string" || !upstream) return null;
-  const params = pick<unknown>(raw, "params", "params");
-  const hints = pick<unknown>(raw, "param_hints", "paramHints");
-  return {
-    upstream_model: upstream,
-    kind: typeof raw.kind === "string" ? raw.kind : "",
-    label: typeof raw.label === "string" ? raw.label : "",
-    params: isRecord(params) ? params : null,
-    param_hints: isRecord(hints) ? (hints as ParamHints) : null,
-  };
-}
-
-/**
- * 导入草稿 → 新建模型编辑器的预填正文。
- * 渠道、上游模型名、kind、label、params 取自草稿；能力与定价按种类预填默认值，
- * 再用插件给的参数预填建议（param_hints）覆盖同名参数，运营再改。
- */
-export function draftToModelBody(draft: ModelDraft, channelKey: string): Record<string, unknown> {
-  const kind = draft.kind || "video";
-  const hinted = applyParamHints(
-    defaultCapabilities(kind),
-    defaultPricing(kind),
-    draft.param_hints,
-  );
-  return {
-    key: suggestModelKey(draft.upstream_model),
-    kind,
-    label: draft.label || draft.upstream_model,
-    hint: "",
-    deadline: kind === "text" || kind === "agent" ? "5m" : "30m",
-    enabled: false,
-    sort: 100,
-    channels: [{ channel: channelKey, upstream_model: draft.upstream_model }],
-    params: draft.params ?? {},
-    capabilities: hinted.capabilities,
-    pricing: hinted.pricing,
-  };
 }
 
 /** kind 的中文名 */

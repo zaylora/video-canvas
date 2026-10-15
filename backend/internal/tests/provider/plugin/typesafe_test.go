@@ -102,7 +102,7 @@ const typesafeOKBody = `{"model":"jev-1.13.0","answers":{
 
 func TestTypesafePrecheckAndMeta(t *testing.T) {
 	env := newTypesafeEnv(t)
-	if env.meta.Key != "typesafe" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "typesafe" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("text"); !ok || ep.Mode != pluginmeta.ModeSync {

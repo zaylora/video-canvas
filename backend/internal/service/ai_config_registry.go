@@ -18,12 +18,13 @@ import (
 
 // aiRegModel 是 Registry 里的一个已发布模型：指针行的运行时开关 + 已解析的发布版本 + 它的渠道运行时。
 type aiRegModel struct {
-	key        string
-	enabled    bool
-	sort       int
-	revisionID uint64
-	cfg        *modelcfg.ModelConfig
-	rt         *provider.ChannelRuntime // 渠道 + 固定的插件版本；nil 表示渠道 / 插件当前不可用
+	key         string
+	enabled     bool
+	sort        int
+	channelSort int // 所属渠道的顺序，决定用户看到的模型清单里渠道的先后
+	revisionID  uint64
+	cfg         *modelcfg.ModelConfig
+	rt          *provider.ChannelRuntime // 渠道 + 模型固定的插件版本 + 协议设置；nil 表示渠道 / 插件当前不可用
 }
 
 // available 判断模型当前能否接新任务：已上架，且渠道、插件都可用。
@@ -59,7 +60,7 @@ func (s *AIConfigService) ListModels(ctx context.Context, kind string) ([]provid
 	return out, nil
 }
 
-// Snapshot 实现 provider.Registry：冻结模型当前发布版本 + 渠道当前配置 + 渠道固定的插件版本。
+// Snapshot 实现 provider.Registry：冻结模型当前配置 + 渠道当前配置 + 模型固定的插件版本与协议设置。
 // 模型不存在、未发布、已下架，或渠道 / 插件停用、渠道行或插件版本缺失都返回 provider.ErrModelUnavailable。
 // 返回的快照与缓存共享内部的 map / slice（params、settings、input_schema），调用方（宿主、任务服务）只能读、不能改。
 func (s *AIConfigService) Snapshot(ctx context.Context, modelKey string) (*provider.Snapshot, error) {
@@ -122,11 +123,11 @@ func (s *AIConfigService) reload(ctx context.Context, force bool) (*aiRegistrySt
 	if err != nil {
 		return nil, fmt.Errorf("加载模型失败：%w", err)
 	}
-	runtimes, err := s.loadRuntimes(ctx)
+	deps, err := s.loadRegDeps(ctx)
 	if err != nil {
 		return nil, err
 	}
-	st := s.buildState(rows, runtimes)
+	st := s.buildState(rows, deps)
 
 	s.regMu.Lock()
 	s.regState = st
@@ -134,9 +135,17 @@ func (s *AIConfigService) reload(ctx context.Context, force bool) (*aiRegistrySt
 	return st, nil
 }
 
-// buildState 由模型配置与渠道运行时组装内存状态（调用方持有 regLoadMu）。
-// 配置正文解析不过的模型不进内存：已启用的记一条错误日志（线上有模型用不了，需要处理），没启用的是还没填完的半成品，静默跳过。
-func (s *AIConfigService) buildState(rows []repository.PublishedModel, runtimes map[string]*provider.ChannelRuntime) *aiRegistryState {
+// aiRegDeps 是组装模型运行时要用的渠道与插件数据：只含“当前可用”的渠道，插件的启停，以及所有插件版本（按 key@version 查）。
+type aiRegDeps struct {
+	channels map[string]*model.AIChannel
+	pluginOn map[string]bool
+	versions map[string]*model.AIPluginVersion
+}
+
+// buildState 由模型配置与渠道 / 插件数据组装内存状态（调用方持有 regLoadMu）。
+// 配置正文解析不过的模型不进内存：已启用的记一条错误日志（线上有模型用不了，需要处理），没启用的是还没填完的半成品（含“待配置”），静默跳过。
+// 排序：先按渠道顺序（ai_channels.sort），再按渠道内顺序（模型 sort），最后按 key，用户看到的模型清单就是这个顺序。
+func (s *AIConfigService) buildState(rows []repository.PublishedModel, deps *aiRegDeps) *aiRegistryState {
 	st := &aiRegistryState{loadedAt: s.now(), models: map[string]*aiRegModel{}}
 	for _, row := range rows {
 		cfg, issues := modelcfg.ParseModel(row.Body)
@@ -148,40 +157,82 @@ func (s *AIConfigService) buildState(rows []repository.PublishedModel, runtimes 
 			continue
 		}
 		m := &aiRegModel{key: row.Key, enabled: row.Enabled, sort: row.Sort, revisionID: row.RevisionID, cfg: cfg,
-			rt: modelRuntime(cfg, runtimes)}
+			rt: modelRuntime(cfg, deps)}
+		if ch := deps.channelOf(cfg); ch != nil {
+			m.channelSort = ch.Sort
+		}
 		st.models[row.Key] = m
 		st.ordered = append(st.ordered, m)
 	}
 	sort.SliceStable(st.ordered, func(i, j int) bool {
-		if st.ordered[i].sort != st.ordered[j].sort {
-			return st.ordered[i].sort < st.ordered[j].sort
+		a, b := st.ordered[i], st.ordered[j]
+		if a.channelSort != b.channelSort {
+			return a.channelSort < b.channelSort
 		}
-		return st.ordered[i].key < st.ordered[j].key
+		if a.sort != b.sort {
+			return a.sort < b.sort
+		}
+		return a.key < b.key
 	})
 	return st
 }
 
-// modelRuntime 取模型 channels[0] 对应的渠道运行时；渠道不可用，或它的插件版本不支持模型的 kind 时返回 nil（模型不可用）。
-// 发布时检查过 kind，但之后渠道可能被切到一个不支持该 kind 的插件版本，这里再兜一次底，避免任务提交后才失败。
-func modelRuntime(cfg *modelcfg.ModelConfig, runtimes map[string]*provider.ChannelRuntime) *provider.ChannelRuntime {
+// channelOf 取模型 channels[0] 的渠道行（只含启用的渠道）；没有返回 nil。
+func (d *aiRegDeps) channelOf(cfg *modelcfg.ModelConfig) *model.AIChannel {
 	if len(cfg.Channels) == 0 {
 		return nil
 	}
-	rt := runtimes[cfg.Channels[0].Channel]
-	if rt == nil {
+	return d.channels[cfg.Channels[0].Channel]
+}
+
+// modelRuntime 由模型的渠道、协议组装运行时：渠道启用；Agent 模型只要渠道；其他模型还要插件启用、固定的版本存在、
+// 版本声明了模型的 kind、协议设置合法（会补上默认值）。任何一项不满足返回 nil（模型不可用）。
+// 保存与启用时检查过这些，但之后渠道、插件可能被停用，版本可能被删，这里再兜一次底，避免任务提交后才失败。
+func modelRuntime(cfg *modelcfg.ModelConfig, deps *aiRegDeps) *provider.ChannelRuntime {
+	ch := deps.channelOf(cfg)
+	if ch == nil {
+		return nil
+	}
+	if cfg.Kind == modelcfg.KindAgent {
+		rt, err := provider.AgentRuntimeOf(ch)
+		if err != nil {
+			logger.Error("渠道配置无法解析，渠道暂不可用", zap.String("channel", ch.Key), zap.Error(err))
+			return nil
+		}
+		return rt
+	}
+	proto := cfg.Channels[0].Protocol
+	if proto == nil || !deps.pluginOn[proto.Plugin] {
+		return nil
+	}
+	ver := deps.versions[proto.Plugin+"@"+proto.Version]
+	if ver == nil {
+		logger.Warn("模型固定的插件版本不存在，模型暂不可用", zap.String("model", cfg.Key),
+			zap.String("plugin", proto.Plugin), zap.String("version", proto.Version))
+		return nil
+	}
+	rt, err := provider.RuntimeOf(ch, ver, nil)
+	if err != nil {
+		logger.Error("渠道配置或插件 meta 无法解析，模型暂不可用", zap.String("model", cfg.Key), zap.Error(err))
 		return nil
 	}
 	if !rt.Plugin.Meta.SupportsKind(cfg.Kind) {
-		logger.Warn("渠道当前的插件版本不支持模型的种类，模型暂不可用", zap.String("model", cfg.Key),
-			zap.String("channel", rt.Channel.Key), zap.String("kind", cfg.Kind))
+		logger.Warn("模型选的协议不支持模型的种类，模型暂不可用", zap.String("model", cfg.Key),
+			zap.String("plugin", proto.Plugin), zap.String("kind", cfg.Kind))
 		return nil
 	}
+	settings, issues := rt.ValidateSettings(proto.Settings)
+	if len(issues) > 0 {
+		logger.Warn("模型的协议设置不合法，模型暂不可用", zap.String("model", cfg.Key), zap.String("issues", aiFormatIssues(issues)))
+		return nil
+	}
+	rt.Channel.Settings = settings
 	return rt
 }
 
-// loadRuntimes 加载所有“当前可用”的渠道运行时（渠道 key → 渠道 + 固定的插件版本）：渠道启用、插件启用、版本行存在且 meta 能解析。
-// 停用是正常状态，直接跳过；数据不一致（版本缺失、meta 损坏）跳过并告警。只有仓储故障才返回错误。
-func (s *AIConfigService) loadRuntimes(ctx context.Context) (map[string]*provider.ChannelRuntime, error) {
+// loadRegDeps 加载组装模型运行时要用的数据：启用的渠道、插件启停、所有插件版本。只有仓储故障才返回错误；
+// 渠道停用、插件停用是正常状态，数据不一致（版本缺失）由 modelRuntime 逐模型告警。
+func (s *AIConfigService) loadRegDeps(ctx context.Context) (*aiRegDeps, error) {
 	chans, err := s.channels.ListChannels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("加载渠道失败：%w", err)
@@ -190,60 +241,33 @@ func (s *AIConfigService) loadRuntimes(ctx context.Context) (map[string]*provide
 	if err != nil {
 		return nil, fmt.Errorf("加载插件版本失败：%w", err)
 	}
-	enabledPlugins, err := s.enabledPlugins(ctx, chans)
-	if err != nil {
-		return nil, err
+	deps := &aiRegDeps{
+		channels: make(map[string]*model.AIChannel, len(chans)),
+		pluginOn: map[string]bool{},
+		versions: make(map[string]*model.AIPluginVersion, len(vers)),
 	}
-	byID := make(map[uint64]*model.AIPluginVersion, len(vers))
-	for i := range vers {
-		byID[vers[i].ID] = &vers[i]
-	}
-	out := make(map[string]*provider.ChannelRuntime, len(chans))
 	for i := range chans {
-		ch := &chans[i]
-		if !ch.Enabled || !enabledPlugins[ch.PluginKey] {
-			continue
-		}
-		if rt := channelRuntime(ch, byID[ch.PluginVersionID]); rt != nil {
-			out[ch.Key] = rt
+		if chans[i].Enabled {
+			deps.channels[chans[i].Key] = &chans[i]
 		}
 	}
-	return out, nil
-}
-
-// enabledPlugins 查询启用渠道所用插件的启停状态；插件行不存在按停用处理（渠道引用了已删除的插件）。
-func (s *AIConfigService) enabledPlugins(ctx context.Context, chans []model.AIChannel) (map[string]bool, error) {
-	out := map[string]bool{}
-	for _, ch := range chans {
-		if _, seen := out[ch.PluginKey]; seen || !ch.Enabled {
+	for i := range vers {
+		v := &vers[i]
+		deps.versions[v.PluginKey+"@"+v.Version] = v
+		if _, seen := deps.pluginOn[v.PluginKey]; seen {
 			continue
 		}
-		p, err := s.plugins.GetPlugin(ctx, ch.PluginKey)
+		p, err := s.plugins.GetPlugin(ctx, v.PluginKey)
 		if errors.Is(err, repository.ErrNotFound) {
-			out[ch.PluginKey] = false
+			deps.pluginOn[v.PluginKey] = false // 版本行还在但插件行不存在：按停用处理
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("加载插件 %s 失败：%w", ch.PluginKey, err)
+			return nil, fmt.Errorf("加载插件 %s 失败：%w", v.PluginKey, err)
 		}
-		out[ch.PluginKey] = p.Enabled
+		deps.pluginOn[v.PluginKey] = p.Enabled
 	}
-	return out, nil
-}
-
-// channelRuntime 由渠道行与它固定的插件版本组装运行时；版本缺失、不属于该插件、渠道 JSON 或 meta 损坏时告警并返回 nil。
-func channelRuntime(ch *model.AIChannel, ver *model.AIPluginVersion) *provider.ChannelRuntime {
-	if ver == nil || ver.PluginKey != ch.PluginKey {
-		logger.Warn("渠道固定的插件版本不存在，渠道暂不可用", zap.String("channel", ch.Key),
-			zap.String("plugin", ch.PluginKey), zap.Uint64("plugin_version_id", ch.PluginVersionID))
-		return nil
-	}
-	rt, err := provider.RuntimeOf(ch, ver)
-	if err != nil {
-		logger.Error("渠道配置或插件 meta 无法解析，渠道暂不可用", zap.String("channel", ch.Key), zap.Error(err))
-		return nil
-	}
-	return rt
+	return deps, nil
 }
 
 // nonNilTags 让没有标签的模型在 JSON 里输出 [] 而不是 null，前端不用判空。

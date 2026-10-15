@@ -4,14 +4,13 @@ import type { ModelListItem } from "@/api/admin/ai/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
-import type { AdminCatalog } from "../../use-admin";
 import { ModelDialog, type ModelDialogHandle } from "./model-dialog";
 import { ModelTestDialog } from "./model-test-dialog";
-import type { ModelWorkspace } from "./use-model-workspace";
+import type { ModelCatalog, ModelWorkspace } from "./use-model-workspace";
 
 /**
- * 模型编辑弹窗 + 测试弹窗 + 放弃修改的确认框。模型页和渠道页共用，
- * 区别只在 ws 绑定的路由不同（见 model-route）。testOnly 为 true 时只显示测试弹窗。
+ * 模型编辑弹窗 + 测试弹窗 + 放弃修改的确认框，由模型管理面板（channel-models-panel）挂载，
+ * 选中状态来自 ws 绑定的路由（见 model-route）。testOnly 为 true 时只显示测试弹窗。
  */
 export function ModelEditorDialogs({
   ws,
@@ -21,7 +20,7 @@ export function ModelEditorDialogs({
 }: {
   seed?: ModelListItem;
   ws: ModelWorkspace;
-  catalog: AdminCatalog;
+  catalog: ModelCatalog;
   testOnly?: boolean;
 }) {
   const editorRef = useRef<ModelDialogHandle>(null);

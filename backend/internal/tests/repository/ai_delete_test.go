@@ -100,12 +100,10 @@ func TestAIConfigRepository_DeleteModel(t *testing.T) {
 func TestAIChannelRepository_DeleteChannel(t *testing.T) {
 	ctx := context.Background()
 	db := delTestDB(t)
-	pr := NewAIPluginRepository(db)
 	cr := NewAIChannelRepository(db)
 	mr := NewAIConfigRepository(db)
-	vid := plSave(t, pr, "p", "1.0.0")
 	for _, k := range []string{"c-used", "c-free", "c-task", "c-empty"} {
-		if err := cr.CreateChannel(ctx, plChannel(k, "p", vid)); err != nil {
+		if err := cr.CreateChannel(ctx, plChannel(k)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -181,17 +179,13 @@ func TestAIPluginRepository_DeletePlugin(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
 	r := NewAIPluginRepository(db)
-	cr := NewAIChannelRepository(db)
 
-	t.Run("统计全部版本的渠道与任务引用", func(t *testing.T) {
+	t.Run("统计全部版本的模型与任务引用", func(t *testing.T) {
 		v1 := plSave(t, r, "p-ref", "1.0.0")
 		v2 := plSave(t, r, "p-ref", "1.1.0")
-		if err := cr.CreateChannel(ctx, plChannel("ch-b", "p-ref", v2)); err != nil {
-			t.Fatal(err)
-		}
-		if err := cr.CreateChannel(ctx, plChannel("ch-a", "p-ref", v1)); err != nil {
-			t.Fatal(err)
-		}
+		plModel(t, db, "m-b", "p-ref", "1.1.0")
+		plModel(t, db, "m-a", "p-ref", "1.0.0")
+		plModel(t, db, "m-other", "p-other-x", "1.0.0") // 别的插件的模型不算
 		plTask(t, db, model.TaskQueued, v1)
 		plTask(t, db, model.TaskRunning, v2)
 		plTask(t, db, model.TaskFailed, v2) // 终态不算
@@ -199,11 +193,11 @@ func TestAIPluginRepository_DeletePlugin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(refs.Channels) != 2 || refs.Channels[0].Key != "ch-a" || refs.Channels[1].Key != "ch-b" || refs.ActiveTasks != 2 {
+		if len(refs.Models) != 2 || refs.Models[0].Key != "m-a" || refs.Models[1].Key != "m-b" || refs.ActiveTasks != 2 {
 			t.Fatalf("引用不符合预期：%+v", refs)
 		}
 		got, err := r.DeletePlugin(ctx, "p-ref")
-		if !errors.Is(err, ErrInUse) || len(got.Channels) != 2 || got.ActiveTasks != 2 {
+		if !errors.Is(err, ErrInUse) || len(got.Models) != 2 || got.ActiveTasks != 2 {
 			t.Fatalf("被引用应返回 ErrInUse 与引用：%+v %v", got, err)
 		}
 	})

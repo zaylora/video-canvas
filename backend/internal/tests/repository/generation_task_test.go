@@ -168,8 +168,8 @@ func gtChannel(t *testing.T, db *gorm.DB, key string, maxRunning int) {
 		rl = fmt.Sprintf(`{"max_running":%d}`, maxRunning)
 	}
 	ch := &model.AIChannel{
-		Key: key, Name: key, PluginKey: "p", PluginVersionID: 1, BaseURL: "http://x",
-		SettingsJSON: model.JSONText(`{}`), RateLimitJSON: model.JSONText(rl),
+		Key: key, Name: key, BaseURL: "http://x",
+		HeadersJSON: model.JSONText(`{}`), RateLimitJSON: model.JSONText(rl),
 	}
 	if err := db.Create(ch).Error; err != nil {
 		t.Fatalf("创建渠道失败：%v", err)

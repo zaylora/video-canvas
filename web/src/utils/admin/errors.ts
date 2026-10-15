@@ -10,7 +10,7 @@ const asErrorLike = (error: unknown): ErrorLike =>
 
 /** 后端业务错误码（管理端用到的） */
 export const ADMIN_ERROR_CODE = {
-  /** 插件版本被渠道 / 非终态任务引用，不能删除 */
+  /** 插件版本被模型（协议固定）/ 非终态任务引用，不能删除 */
   PLUGIN_VERSION_IN_USE: 50005,
   /** 内置插件的版本不能删除 */
   PLUGIN_BUILTIN: 50006,
@@ -24,8 +24,10 @@ export const ADMIN_ERROR_CODE = {
   CHANNEL_SECRET_MISSING: 50015,
   /** 插件运行器不可用 */
   RUNNER_UNAVAILABLE: 50021,
-  /** 插件调用失败：连通性检查 / 导入时插件抛异常、返回不合规，原因在 msg（已脱敏） */
+  /** 插件调用失败（历史：连通性检查 / 导入钩子；这两项已取消，保留以认得旧记录），原因在 msg（已脱敏） */
   PLUGIN_OP_FAILED: 50022,
+  /** 拉取上游模型失败：上游不通 / 401 / 返回格式不符 / 超时，原因在 msg（已脱敏） */
+  CHANNEL_PULL_FAILED: 50023,
   /** 存储：已有素材引用，定位字段不能修改（被锁字段写在 msg 里） */
   STORAGE_FIELD_LOCKED: 51005,
   /** 存储：配置已被其他人修改（version 过期） */
@@ -43,6 +45,10 @@ export const isRunnerDown = (error: unknown) => {
 /** 插件本身出错：业务码 50022（502）；原因在错误的 message 里 */
 export const isPluginOpFailed = (error: unknown) =>
   asErrorLike(error).code === ADMIN_ERROR_CODE.PLUGIN_OP_FAILED;
+
+/** 拉取上游模型失败：业务码 50023（502）；原因在错误的 message 里 */
+export const isChannelPullFailed = (error: unknown) =>
+  asErrorLike(error).code === ADMIN_ERROR_CODE.CHANNEL_PULL_FAILED;
 
 /** 渠道 Key 未设置：409 且业务码 50015（只看 409 会把其他冲突也算进来） */
 export const isSecretMissing = (error: unknown) => {

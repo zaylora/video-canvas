@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,12 +9,13 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
-	"video-canvas/internal/provider/pluginmeta"
 	"video-canvas/internal/repository"
 )
 
-// SetSecret 设置渠道 Key（存 ai_secrets，名字固定为 channel:<key>），只写。审计只记“谁在什么时候改了哪个渠道的 Key”，不含值。
+// 拉取与导入的限制。
+const maxImportModels = 500 // 单次导入的模型数上限；一般用不到，超出时提示分两次导入
+
+// SetSecret 设置渠道 API Key（存 ai_secrets，名字固定为 channel:<key>），只写。审计只记“谁在什么时候改了哪个渠道的 Key”，不含值。
 func (s *AIChannelService) SetSecret(ctx context.Context, actorID uint64, key, value string) error {
 	// 1. 渠道必须存在：否则会往 ai_secrets 里写出没有主人的凭证
 	if _, err := s.load(ctx, key); err != nil {
@@ -30,166 +30,137 @@ func (s *AIChannelService) SetSecret(ctx context.Context, actorID uint64, key, v
 	return nil
 }
 
-// Check 连通性检查：调插件的 buildCheckRequest 发一次请求，确认地址与 Key 可用。
-// 上游不通、插件没实现该钩子都是正常的检查结果（ok=false + 原因），不是 HTTP 错误；
-// 需要 Key 而没设置（409）、runner 不可用（503）、插件本身出错（502）才是错误。
-func (s *AIChannelService) Check(ctx context.Context, key string) (*provider.CheckResult, error) {
-	// 1. 渠道运行时，与 Key 是否就绪
-	rt, err := s.runtime(ctx, key)
-	if err != nil {
-		return nil, err
+// SetSecretKey 设置或清除渠道 Secret Key（可选的第二凭证，供 AK/SK 签名类协议用；存 ai_secrets，名字 channel:<key>:secret），只写。
+// value 为空串表示清除。审计不含值。
+func (s *AIChannelService) SetSecretKey(ctx context.Context, actorID uint64, key, value string) error {
+	// 1. 渠道必须存在
+	if _, err := s.load(ctx, key); err != nil {
+		return err
 	}
-	// 2. 执行检查并翻译结果
-	res, err := s.ops.Check(ctx, rt)
-	return checkOutcome(res, err, func(text string) string { return s.redactMsg(ctx, key, text) })
-}
-
-// CheckDraft 保存前的连通性检查：用表单里还没保存的地址、插件版本、设置与 Key 发一次检查请求，不写库、不写审计。
-// 目的是让“检查通过才能保存”成立——已保存的渠道才能走 Check，而新建渠道和改过地址 / Key 的渠道都还没落库。
-// Key 的来源：填了草稿 Key 就用它（明文只在这次请求里，不落库、不进日志，结果文本里也会脱敏）；
-// 没填则只有编辑已有渠道（ExistingKey）且已保存过 Key 时才用已保存的，否则 409（50015）。
-func (s *AIChannelService) CheckDraft(ctx context.Context, in ChannelCheckDraftInput) (*provider.CheckResult, error) {
-	// 1. 与新建渠道同一套校验：地址、插件版本（必须启用）、按插件声明校验并补全 settings
-	var problems []string
-	baseURL, msg := checkBaseURL(in.BaseURL)
-	problems = appendIf(problems, msg)
-	target, msg, err := s.resolveVersion(ctx, in.PluginKey, in.PluginVersion, true)
-	if err != nil {
-		return nil, err
-	}
-	problems = appendIf(problems, msg)
-	var settings map[string]any
-	if target != nil {
-		var issues []modelcfg.Issue
-		settings, issues = pluginmeta.ValidateSettingValues(target.meta.ChannelSettings, in.Settings)
-		problems = append(problems, formatSettingIssues("settings", issues)...)
-	}
-	if len(problems) > 0 {
-		return nil, invalidChannel(problems)
-	}
-	// 2. 确定 Key 的来源：插件不要宿主注入鉴权就不需要 Key；否则草稿 Key 优先，其次已保存的 Key
-	secret := strings.TrimSpace(in.Secret)
-	needsKey := target.meta.Auth.Type != pluginmeta.AuthNone
-	if needsKey && secret == "" {
-		set := false
-		if in.ExistingKey != "" {
-			if set, err = s.secrets.SecretIsSet(ctx, model.ChannelSecretName(in.ExistingKey)); err != nil {
-				return nil, err
-			}
+	// 2. 空串清除，否则加密入库
+	name := model.ChannelSecretKeyName(key)
+	if strings.TrimSpace(value) == "" {
+		if err := s.secrets.DeleteSecret(ctx, name); err != nil {
+			return err
 		}
-		if !set {
-			return nil, errcode.ErrChannelSecretUnset.WithMsg("请先填写 API Key 再检查")
-		}
+	} else if err := s.secrets.SetSecret(ctx, name, value, actorID); err != nil {
+		return err
 	}
-	// 3. 用草稿拼一个只存在于内存里的渠道运行时；key 取已有渠道的（用于解析已保存的 Key），新建时用占位名
-	settingsJSON, err := json.Marshal(settings)
-	if err != nil {
-		return nil, fmt.Errorf("编码渠道 settings 失败：%w", err)
-	}
-	key := in.ExistingKey
-	if key == "" {
-		key = "draft"
-	}
-	rt, err := provider.RuntimeOf(&model.AIChannel{
-		Key: key, PluginKey: in.PluginKey, PluginVersionID: target.version.ID, BaseURL: baseURL,
-		AllowCredentials: in.AllowCredentials,
-		SettingsJSON:     model.JSONText(settingsJSON),
-	}, target.version)
-	if err != nil {
-		return nil, errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())
-	}
-	// 4. 执行检查：有草稿 Key 走 CheckDraft，否则让宿主按渠道 key 取已保存的 Key
-	if needsKey && secret != "" {
-		res, err := s.ops.CheckDraft(ctx, rt, secret)
-		return checkOutcome(res, err, func(text string) string { return aiRedactString(text, []string{secret}) })
-	}
-	res, err := s.ops.Check(ctx, rt)
-	return checkOutcome(res, err, func(text string) string { return s.redactMsg(ctx, in.ExistingKey, text) })
+	// 3. 审计：detail 故意为空；是设置还是清除，从后续的 secret_key_set 就能看出
+	aiAudit(ctx, s.audit, actorID, model.AuditChannelSecKey, model.AuditTargetChannel, key, nil)
+	return nil
 }
 
-// checkOutcome 把宿主的检查返回翻译成接口结果：Executor 在“请求发出去但失败”时同时返回结果（带原因）与错误，
-// 这种情况和插件没实现钩子一样都是正常的检查结果（ok=false）；runner 不可用、插件本身出错才是错误。redact 用来抹掉 Key 明文。
-func checkOutcome(res *provider.CheckResult, err error, redact func(string) string) (*provider.CheckResult, error) {
-	switch {
-	case errors.Is(err, provider.ErrCheckUnsupported):
-		return &provider.CheckResult{OK: false, Message: "插件不支持连通性检查"}, nil
-	case provider.CodeOf(err) == provider.CodeRunnerUnavailable:
-		return nil, errcode.ErrRunnerUnavailable
-	case err != nil && res != nil:
-		return &provider.CheckResult{OK: false, Message: redact(res.Message), DurationMs: res.DurationMs}, nil
-	case err != nil:
-		return nil, errcode.ErrPluginOpFailed.WithMsg(redact(err.Error()))
+// SetOrder 调整渠道顺序：keys 是全部渠道的完整新顺序，服务端按 10、20、30… 重写 sort。
+// keys 不是现有渠道的全集（有不存在的、重复的、漏掉的）返回 ErrInvalidParams，不改任何数据。
+func (s *AIChannelService) SetOrder(ctx context.Context, actorID uint64, keys []string) error {
+	// 1. 写库：仓储在事务里校验全集
+	err := s.repo.SetChannelOrder(ctx, keys)
+	if errors.Is(err, repository.ErrNotFound) || errors.Is(err, repository.ErrOrderMismatch) {
+		return errcode.ErrInvalidParams.WithMsg("keys 必须恰好是现有全部渠道的 key（不能重复、不能遗漏）")
 	}
-	res.Message = redact(res.Message)
-	return res, nil
-}
-
-// Import 从渠道导入模型草稿：args 按插件 meta.import.args 校验后交给插件的导入钩子。结果只用来预填编辑器，不落库。
-func (s *AIChannelService) Import(ctx context.Context, key string, args map[string]any) (*ChannelImportResult, error) {
-	// 1. 渠道运行时，与 Key 是否就绪
-	rt, err := s.runtime(ctx, key)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// 2. 参数按声明校验（没有声明参数的插件只接受空对象）
-	var schema pluginmeta.SettingSchema
-	if rt.Plugin.Meta.Import != nil {
-		schema = rt.Plugin.Meta.Import.Args
-	}
-	normalized, issues := pluginmeta.ValidateSettingValues(schema, args)
-	if len(issues) > 0 {
-		return nil, errcode.ErrInvalidParams.WithMsg("导入参数不合法：" + strings.Join(formatSettingIssues("args", issues), "；"))
-	}
-	// 3. 调插件
-	drafts, err := s.ops.Import(ctx, rt, normalized)
-	switch {
-	case errors.Is(err, provider.ErrImportUnsupported):
-		return nil, errcode.ErrPluginOpFailed.WithMsg("插件不支持导入模型")
-	case provider.CodeOf(err) == provider.CodeRunnerUnavailable:
-		return nil, errcode.ErrRunnerUnavailable
-	case err != nil:
-		return nil, errcode.ErrPluginOpFailed.WithMsg(s.redactMsg(ctx, key, err.Error()))
-	}
-	if drafts == nil {
-		drafts = []provider.ModelDraft{}
-	}
-	return &ChannelImportResult{Drafts: drafts}, nil
+	// 2. 审计与热生效：渠道顺序决定用户看到的模型顺序
+	aiAudit(ctx, s.audit, actorID, model.AuditChannelSort, model.AuditTargetChannel, "", map[string]any{"keys": keys})
+	s.notifyChanged(ctx, "channel sort")
+	return nil
 }
 
-// runtime 组装渠道运行时（渠道 + 它固定的插件版本），并在插件需要宿主注入鉴权时确认 Key 已设置（ErrChannelSecretUnset）。
-func (s *AIChannelService) runtime(ctx context.Context, key string) (*provider.ChannelRuntime, error) {
+// PulledModel 是从上游拉到的一个模型；Exists 表示这个渠道下已经有同名上游模型（导入时不会重复创建）。
+type PulledModel struct {
+	ID     string `json:"id"`
+	Exists bool   `json:"exists"`
+}
+
+// PullResult 是拉取上游模型的结果，不落库。
+type PullResult struct {
+	Models []PulledModel `json:"models"`
+	Total  int           `json:"total"`
+}
+
+// PullModels 向上游拉取模型清单：宿主内置的通用请求（GET {base_url}/models，渠道 API Key 作 Bearer），不经过协议插件。
+// 只读：不落库，也不改渠道。渠道不存在返回 ErrChannelNotFound；API Key 没设置返回 ErrChannelSecretUnset；
+// 上游不通、401/403、返回格式不符、超时、过大都返回 ErrChannelPullFailed（原因写进 msg，已脱敏）。
+func (s *AIChannelService) PullModels(ctx context.Context, key string) (*PullResult, error) {
+	// 1. 渠道与 Key：Key 没设置时直接给出明确的下一步，而不是发一个必然 401 的请求
 	ch, err := s.load(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	ver, err := s.plugins.GetVersionHead(ctx, ch.PluginVersionID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrChannelInvalid.WithMsg(fmt.Sprintf("渠道 %q 固定的插件版本不存在", key))
+	if s.lister == nil {
+		return nil, errcode.ErrInternal.WithMsg("拉取模型功能未启用")
 	}
+	set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
 	if err != nil {
 		return nil, err
 	}
-	rt, err := provider.RuntimeOf(ch, ver)
+	if !set {
+		return nil, errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 API Key 尚未设置，请先设置 Key", key))
+	}
+	apiKey, err := s.secrets.Get(ctx, model.ChannelSecretName(key))
+	if err != nil {
+		return nil, err
+	}
+	// 2. 请求上游；失败翻译成业务错误，消息里不含 Key 明文（宿主已脱敏，这里再兜一次）
+	rt, err := provider.AgentRuntimeOf(ch) // 只要渠道部分：地址、请求头、限流
 	if err != nil {
 		return nil, errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())
 	}
-	if rt.Plugin.Meta.Auth.Type != pluginmeta.AuthNone {
-		set, err := s.secrets.SecretIsSet(ctx, model.ChannelSecretName(key))
-		if err != nil {
-			return nil, err
-		}
-		if !set {
-			return nil, errcode.ErrChannelSecretUnset.WithMsg(fmt.Sprintf("渠道 %q 的 Key 尚未设置", key))
-		}
+	ids, err := s.lister.ListUpstreamModels(ctx, rt.Channel, apiKey)
+	var pe *provider.PullError
+	if errors.As(err, &pe) {
+		return nil, errcode.ErrChannelPullFailed.WithMsg(aiRedactString(pe.Message, []string{apiKey}))
 	}
-	return rt, nil
+	if err != nil {
+		return nil, errcode.ErrChannelPullFailed.WithMsg(aiRedactString(err.Error(), []string{apiKey}))
+	}
+	// 3. 标记已存在的模型（同渠道、同上游模型名）
+	have, err := s.models.ChannelUpstreamModels(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PulledModel, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, PulledModel{ID: id, Exists: have[id]})
+	}
+	return &PullResult{Models: out, Total: len(out)}, nil
 }
 
-// redactMsg 把渠道 Key 明文从要返回给管理员的文本里抹掉。宿主已经脱敏，这里是防御：取不到 Key（没设置、没主密钥）就没有可泄露的明文。
-func (s *AIChannelService) redactMsg(ctx context.Context, key, text string) string {
-	secret, err := s.secrets.Get(ctx, model.ChannelSecretName(key))
-	if err != nil || secret == "" {
-		return text
+// ImportModels 把所选的上游模型导入成“待配置”模型：未启用、没有选协议，能力和协议由运营之后在模型里选。
+// 渠道下已有的同名上游模型跳过（不重复导入）。ids 为空或超过上限返回 ErrInvalidParams；渠道不存在返回 ErrChannelNotFound。
+func (s *AIChannelService) ImportModels(ctx context.Context, actorID uint64, key string, ids []string) (*ImportModelsResult, error) {
+	// 1. 参数：去空白与重复，数量限制
+	clean := make([]string, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			clean = append(clean, id)
+		}
 	}
-	return aiRedactString(text, []string{secret})
+	if len(clean) == 0 {
+		return nil, errcode.ErrInvalidParams.WithMsg("请选择要导入的模型")
+	}
+	if len(clean) > maxImportModels {
+		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("单次最多导入 %d 个模型，请分批导入", maxImportModels))
+	}
+	// 2. 渠道必须存在
+	if _, err := s.load(ctx, key); err != nil {
+		return nil, err
+	}
+	// 3. 创建模型
+	res, err := s.models.ImportChannelModels(ctx, actorID, key, clean)
+	if err != nil {
+		return nil, err
+	}
+	// 4. 审计：记新建的模型 key
+	created := make([]string, 0, len(res.Created))
+	for _, c := range res.Created {
+		created = append(created, c.Key)
+	}
+	aiAudit(ctx, s.audit, actorID, model.AuditModelImport, model.AuditTargetChannel, key, map[string]any{"created": created, "skipped": len(res.Skipped)})
+	return res, nil
 }

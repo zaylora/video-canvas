@@ -35,10 +35,11 @@ import { PLUGIN_AUTHORING_PROMPT } from "./plugin-prompt";
  * - 选文件后先做本地检查（扩展名、大小），不通过不发请求；
  * - 预检不通过也是 HTTP 200：问题精确到字段路径、内联显示，对话框不关闭，用户换文件可再传；
  *   问题旁有“复制修复信息”，把问题整理成一段文本，发给 AI 修好再传；
- * - 通过后切成功态，给“下一步：新建渠道”；版本号被自动调整时在成功态里内联提示，并提醒渠道不会自动切换；
+ * - 通过后切成功态，给“下一步：去渠道与模型”（在模型里选这个协议才会用上它）；
+ *   版本号被自动调整时在成功态里内联提示，并提醒模型不会自动切换；
  * - 503 / 50021：提示 runner 不可用，保留已选文件可重试。
  * @param onUploaded 预检通过并登记后（刷新插件清单）
- * @param onNextStep 点“下一步：新建渠道”，带上插件 key
+ * @param onNextStep 点“下一步：去渠道与模型”
  */
 export function UploadDialog({
   open,
@@ -49,7 +50,7 @@ export function UploadDialog({
   open: boolean;
   onClose: () => void;
   onUploaded: () => void;
-  onNextStep: (pluginKey: string) => void;
+  onNextStep: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -69,7 +70,7 @@ function UploadBody({
 }: {
   onClose: () => void;
   onUploaded: () => void;
-  onNextStep: (pluginKey: string) => void;
+  onNextStep: () => void;
 }) {
   const aliveRef = useAliveRef();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -260,7 +261,7 @@ function UploadBody({
           {accepted ? "完成" : "取消"}
         </Button>
         {accepted && result?.version ? (
-          <Button onClick={() => onNextStep(result.version!.plugin_key)}>下一步：新建渠道</Button>
+          <Button onClick={onNextStep}>下一步：去渠道与模型</Button>
         ) : (
           <Button disabled={!file || !!localError || busy} onClick={() => void submit()}>
             {busy && <Loader2 className="animate-spin" />}

@@ -131,7 +131,7 @@ func soraJSON(body string) func(w http.ResponseWriter, r *http.Request) {
 
 func TestSoraPrecheckAndMeta(t *testing.T) {
 	env := newSoraEnv(t, nil)
-	if env.meta.Key != "sora" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "sora" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {

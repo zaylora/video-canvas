@@ -1,6 +1,7 @@
 /**
  * “让 AI 帮忙写插件”的提示词。管理员复制后，连同目标平台的 API 文档一起发给 AI，即可得到符合契约的插件 .js。
  * 内容是 backend/docs/plugin-contract.md（契约 v1）的浓缩版 + 一个可对照的最小示例；契约变了这里要同步改。
+ * 渠道不再绑协议（协议插件、版本、协议设置项都在模型里选），连通性检查与模型导入钩子已弃用、宿主不再调用，提示词里只告诉 AI 不要写。
  * 结构：核心（常用写法，AI 绝大多数插件只需要这一部分）→ 附录“进阶写法”（遇到再看）→ 文末粘贴 API 文档的位置。
  * 核心部分的长度有上限（见测试），新增内容优先放附录；设计依据见 docs/design/插件简化/插件简化.md §6.4。
  * 注意：文本里不要出现反引号与 ${，它们会破坏模板字符串。
@@ -9,18 +10,16 @@ export const PLUGIN_AUTHORING_PROMPT = `你是一名资深后端工程师。请�
 插件的职责只有两件：把任务翻译成 HTTP 请求描述、把上游响应翻译成统一结果。发请求、鉴权、轮询、重试、转存、计费、并发控制都由宿主完成。
 
 # 零、先检查信息是否完整（必须执行）
-开始写插件代码前，先按本次需求检查必要信息是否齐全：目标 API 的 base_url 与鉴权方式、提交接口和请求字段、同步/异步模式、成功与失败响应、查询接口与状态字段、文件上传方式（如果输入含素材）、输出结果字段，以及一个不产生生成任务和费用的连通性检查请求（方法、路径、鉴权和成功响应）。工作流类 API 还要有节点 ID、fieldName、可选 fieldData 和字段可接受值，或有可调用的只读接口来取得这些信息。
-- 本提示词生成的模型/工作流插件默认必须支持连通性检查和模型导入：必须确认一个廉价、只读的检查请求，以及模型列表、工作流详情、节点查询或固定模型导入方案。导入方案要能确定 upstreamModel、kind、label 和 buildSubmitRequest 所需的 params；不能只返回展示名。
-- 导入是固定模型或固定工作流时，仍需设计完整的导入闭环：声明 meta.import，成对实现 buildImportRequest / parseImportResponse，并返回写死但可提交的模型草稿。buildImportRequest 可以复用同一个只读检查请求，但绝不能提交生成任务来“探测”模型。
-- 如果文档没有给出安全的只读检查或导入请求，先向用户询问所需信息；不得用生成接口代替检查/导入，也不得静默省略这两个能力。只有用户明确排除模型导入，或确认目标 API 确实不存在任何可行的只读请求并接受不支持检查，才可以不实现对应能力，并在配置说明中明确限制。
-- 关键信息缺失、文档互相矛盾，或无法从已提供文档和只读查询结果确认时，信息不完整时先向用户提问，不要猜接口路径、节点 ID、字段名、字段值或返回格式。每轮优先只问一个最关键的问题；收到回答后重新检查剩余条件，再继续提问。
+开始写插件代码前，先按本次需求检查必要信息是否齐全：目标 API 的 base_url 与鉴权方式、提交接口和请求字段、同步/异步模式、成功与失败响应、查询接口与状态字段、文件上传方式（如果输入含素材）、输出结果字段。工作流类 API 还要有节点 ID、fieldName、可选 fieldData 和字段可接受值，或有可调用的只读接口来取得这些信息。
+- buildCheckRequest / buildImportRequest / parseImportResponse 与 meta.import 已弃用，宿主不再调用，不要写，也不要为它们向用户索要信息：连通性在模型的“测试模型”里验证，拉取模型由宿主内置的通用请求完成。
+- 关键信息缺失、文档互相矛盾，或无法从已提供文档确认时，信息不完整时先向用户提问，不要猜接口路径、节点 ID、字段名、字段值或返回格式。每轮优先只问一个最关键的问题；收到回答后重新检查剩余条件，再继续提问。
 - 在必要信息不完整时，不得输出插件代码、伪代码或声称插件已经可用。只有本次范围内的必要条件都已确认，或用户明确决定排除某项能力后，才生成完整插件；推断但未验证的内容仍须标成“待确认”，不能冒充已验证事实。检查通过前不得输出插件代码。
 
 # 一、运行环境
 - 插件是一个 CommonJS 文件，以 module.exports = { meta: {...}, 钩子函数... } 导出。
 - 运行在 goja，ES2020 的常见语法都能用：const / let、箭头函数、模板字符串、?.、??、解构、展开、class。钩子不能是 async 函数，也不能返回 Promise；没有 import / export、require、网络、文件、定时器；不能调用 eval / Function。全局只有 module、exports、utils 和标准内置对象（JSON、Math、Date、Object、Array）。
 - 钩子必须是纯函数：同样输入同样输出，不依赖全局可变状态和 this（互相调用直接调文件里的普通函数）；返回值要能 JSON.stringify；单次限时 200ms，文件 ≤512KB。
-- 不要写死密钥：鉴权由宿主按渠道 Key 注入（meta.auth）。
+- 不要写死密钥：鉴权由宿主按渠道 Key 注入（meta.auth）。渠道的自定义请求头由宿主自动加，插件不用处理。
 
 # 二、meta
 module.exports.meta 示例：
@@ -29,29 +28,28 @@ module.exports.meta 示例：
   key: "my-platform",               // 小写字母/数字/连字符，以字母或数字开头，≤30 字符
   name: "我的平台",
   version: "1.0.0",                 // 可以不写或不改：上传时服务端自动决定最终版本号
+  vendor: "my-platform",            // 建议写：厂商 slug（小写字母/数字/连字符），模型里选协议时的列表显示用
   auth: { type: "bearer" },         // none / bearer / header(需 name) / query(需 name)；自己签名的见附录
   endpoints: {                      // 键是模型种类 text / image / video / audio；一个插件只能写一种，平台有多种类型就分开写多个插件
-    image: { mode: "async" }        // sync：一次请求直接出结果；async：先提交拿到任务 id，再轮询
-  },
-  import: { args: {} }              // 必填：声明“从渠道导入模型”；args 为空对象表示不需要参数
+    image: { mode: "async", method: "POST", path: "/v1/images/generations" }  // sync：一次请求直接出结果；async：先提交拿到任务 id，再轮询
+  }
 }
-- 每个 endpoint 都要实现 buildSubmitRequest 与 parseSubmitResponse；async 的还要实现 buildQueryRequest 与 parseQueryResponse。轮询节奏 poll、渠道设置项 channelSettings 可选，一般不写，见附录。
+- endpoints 的 method / path 建议写，只用于管理端展示（协议列表里显示“POST /v1/images/generations”），宿主不据此发请求。
+- 每个 endpoint 都要实现 buildSubmitRequest 与 parseSubmitResponse；async 的还要实现 buildQueryRequest 与 parseQueryResponse。轮询节奏 poll、协议设置项 channelSettings（在模型里填）可选，一般不写，见附录。
 
 # 三、钩子
 buildSubmitRequest(ctx)              必须。返回请求描述
 parseSubmitResponse(ctx, resp)       必须。sync 返回 { immediate: 统一结果 }（status 只能是 succeeded 或 failed）；async 返回 { providerTaskId: "上游任务id" }
 buildQueryRequest(ctx)               async 必须。用 ctx.task.providerTaskId 组装轮询请求
 parseQueryResponse(ctx, resp)        async 必须。返回统一结果
-buildCheckRequest(ctx)               模型/工作流插件必须实现。连通性检查，任意 2xx 算通：返回一个廉价、只读、不产生费用的请求（如列模型），不要提交生成任务；只能用 ctx.channel、ctx.credentials、ctx.now
-buildImportRequest(ctx, args) / parseImportResponse(ctx, resp, args)   必须成对实现并配合 meta.import；parse 返回 [{ upstreamModel, kind, label, params? }]
-- 可选钩子（准备请求、取消、错误分类）见附录。
+- 可选钩子（准备请求、取消、错误分类）见附录。buildCheckRequest / buildImportRequest / parseImportResponse 与 meta.import 已弃用，宿主不再调用，不要写。
 
 # 四、ctx 与用户输入
 ctx = {
   task:    { id, providerTaskId, state },
   model:   { key, kind, upstreamModel, params },   // params：运营在模型上填的固定参数，结构由你自己约定并读取，请在文件顶部注释里写清
   input:   { prompt, op, images, videos, audios, ...生成参数 },
-  channel: { baseUrl, settings },
+  channel: { baseUrl, settings },                  // settings：运营在模型的协议设置里填的值（meta.channelSettings 声明）
   now      // Unix 秒
 }
 - ctx.input 由宿主按运营配置的模型能力校验后传入：prompt（提示词）、op（生成方式 t2v / i2v / omni / t2i / i2i，仅视频和图片）、运营起了名字的生成参数（如 duration、aspect_ratio、resolution，已按类型规范化）、参考素材数组 images / videos / audios（每项是文件引用字符串 "input:images.0"）；文本模型另有 system 与 max_tokens。没开放、没填的可选键没有。请在文件顶部注释里列出读取了哪些键、对应上游的哪个字段。
@@ -86,10 +84,9 @@ ctx = {
 - async：未知的中间状态当 queued 或 running 继续等待，不要当失败；上游明确返回“失败/取消/过期”才返回 failed，并带上上游给的原因。
 - 写了就要写对：status 只能是 queued / running / succeeded / failed（不要写 SUCCESS、completed），class 只能是上面四个之一。
 
-# 八、导入模型
-parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名", kind: "text|image|video|audio", label: "给人看的名字", params: {} }。生成方式、参考素材、生成参数等能力由运营在后台配置，插件不声明。
-- 上游有模型列表接口就从响应生成草稿；只有单一固定模型时写死在插件里，也要返回完整的固定草稿：buildImportRequest 返回一个廉价只读请求（可复用 buildCheckRequest 的），parseImportResponse 忽略响应、直接返回写死的草稿。导入阶段绝不能调用生成接口。
-- 上游模型名是分组 id / 工作流 id 时，放进 upstreamModel，在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取。工作流类、不同档位是不同模型 id 等复杂情况见附录。
+# 八、上游模型名与固定参数
+- 运营在模型里填“上游模型名”，插件在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取；它可以是模型名、分组 id 或工作流 id。模型列表由宿主内置的通用请求拉取，插件不用实现任何列模型的钩子。
+- 生成方式、参考素材、生成参数等能力由运营在后台配置，插件不声明；模型自己的固定参数放 ctx.model.params，结构由你约定，请在文件顶部注释里写清并给出示例（运营按它填）。工作流类、不同档位是不同模型 id 等复杂情况见附录。
 
 # 九、输出要求
 1. 只输出一个完整的 .js 文件（放在一个代码块里），不要拆分，不要省略代码。
@@ -100,12 +97,7 @@ parseImportResponse 返回的每个草稿：{ upstreamModel: "上游模型名", 
 
 # 十、最小示例（异步图片，仅供对照格式，不要照抄接口；同步接口把提交响应直接写成 { immediate: 统一结果 }）
 module.exports = {
-  meta: { apiVersion: 1, key: "demo", name: "Demo 平台", auth: { type: "bearer" }, endpoints: { image: { mode: "async" } }, import: { args: {} } },
-
-  // 连通性检查与导入：都只能是只读请求；这里模型写死，导入只是复用检查请求
-  buildCheckRequest: (ctx) => ({ method: "GET", path: "/v1/models" }),
-  buildImportRequest: (ctx, args) => ({ method: "GET", path: "/v1/models" }),
-  parseImportResponse: (ctx, resp, args) => [{ upstreamModel: "demo-image", kind: "image", label: "Demo 图片", params: {} }],
+  meta: { apiVersion: 1, key: "demo", name: "Demo 平台", vendor: "demo", auth: { type: "bearer" }, endpoints: { image: { mode: "async", method: "POST", path: "/v1/images/generations" } } },
 
   buildSubmitRequest: (ctx) => {
     const input = ctx.input || {};
@@ -132,7 +124,7 @@ module.exports = {
 - meta.apiVersion 为 1，endpoints 只声明一种 kind（一个插件只管一种类型），提交/解析都按这一种写；async 实现了 query 两个钩子；sync 的 parseSubmitResponse 返回了 immediate。
 - 没有 async / Promise / require / 网络 / 定时器；请求里没有手写 Authorization；文件用 __fileRef / fileRef 引用，没有内联文件内容。
 - 读取的是 ctx.input.images / videos / audios 数组；没有让上游一次出多个结果；文本产物带了 usage；没有处理积分或生成数量。
-- 连通性检查与模型导入是默认交付内容：已实现只读的 buildCheckRequest；meta.import 已声明，buildImportRequest / parseImportResponse 成对实现；检查和导入都没有提交生成任务。
+- 没有写 buildCheckRequest / buildImportRequest / parseImportResponse 和 meta.import（已弃用）；meta 里写了 vendor 与 endpoints 的 method / path（只用于展示）。
 - 失败路径都有明确的失败原因（中文）；上游限流、繁忙用 retryable。
 - 版本号可以不改，上传时自动处理。
 - 生成前的信息检查已完成；若有必要信息缺失，先逐项向用户提问并等待回答，不能提前生成代码。
@@ -149,21 +141,20 @@ module.exports = {
 - 请求描述可以用 url 代替 path，写任意公网 http/https 地址（如上游返回的预签名上传地址），但只有和渠道 baseUrl 的协议、域名、端口都一致时，宿主才会注入 Key，其他地址不会带 Key；需要平台 Key 的接口请用 path。
 ## A4 鉴权的其他写法
 - 请求级 auth: { type: "query", name: "apiKey" } 只为这一次请求换注入方式（bearer / header / query / none），Key 仍由宿主注入。
-- meta.auth.type 为 custom（插件自己签名）时，Key 只在渠道开启“允许插件读取 Key”后才出现在 ctx.credentials；可用 utils.hmacSHA256(key, msg)、utils.sha256(s)、utils.jwtSignHS256(claims, secret)、utils.base64(s)、utils.base64URL(s)、utils.base64Decode(s)、utils.uuid()、utils.unixNow()、utils.log(msg)（只进试跑追踪，单次最多 50 条）。
+- meta.auth.type 为 custom（插件自己签名）时，宿主直接提供 ctx.credentials = { apiKey, secretKey }（没有渠道级的开关）：apiKey 是渠道的 API Key，secretKey 是渠道可选的 Secret Key（只在运营设置了才有，AK/SK 签名类协议读它；把两段拼进 apiKey 的旧写法仍然有效）；其余鉴权类型没有 ctx.credentials。可用 utils.hmacSHA256(key, msg)、utils.sha256(s)、utils.jwtSignHS256(claims, secret)、utils.base64(s)、utils.base64URL(s)、utils.base64Decode(s)、utils.uuid()、utils.unixNow()、utils.log(msg)（只进试跑追踪，单次最多 50 条）。
 ## A5 其他可选钩子与字段
 - buildCancelRequest(ctx)：取消任务，没有就走软取消。
 - classifyError(ctx, resp)：上游非 2xx 时先调它，返回 { class, code?, message? } 或 null（null 走宿主默认规则）。
 - state：parseSubmitResponse / parseQueryResponse 可返回 state（≤64KB，私有状态），后续每个钩子的 ctx.task.state 会带回；省略表示不变。
 - providerCost：统一结果里可带 providerCost（数字，仅写对账日志，不影响扣费）。
 - poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }：异步轮询节奏（秒），不写用默认值。
-- channelSettings: { region: { type: "enum", label: "区域", options: ["cn", "global"], default: "cn" } }：渠道上的非敏感设置，渲染成表单，值在 ctx.channel.settings 里；type 为 string / number / boolean / enum，label 必填，enum 必须有 options 且 default 在其中；import.args 的写法相同。
-## A6 导入的进阶写法
-- 一个模型的不同清晰度/档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要拆成多个草稿：按系列导出一个草稿，把“档位 → 上游 id”对照表放进 params（字段名自己定，如 { groups: { "1K": "…", "4K": "…" } }），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。
-- paramHints（可选，在草稿里和 params 并列）：告诉平台这个模型的生成参数建议配成什么，平台在导入那一刻覆盖默认模板里的同名参数，之后运营可以随意改。键必须是模板里的参数名（视频：aspect_ratio / resolution / duration / generate_audio / count；图片：aspect_ratio / resolution / count），对不上的会被忽略；不能新增参数。每个参数可以给：enum 的 options（最多 20 个）与 default；number 的 min、max、step、default（0–3600 的整数）；boolean 的 default；任意类型的 open（是否开放给用户）、remove: true（模型没有这一项，去掉）。例：{ resolution: { options: ["2K", "4K"], default: "2K" }, generate_audio: { remove: true } }。可选值要和 params 里的对照表一致（从同一张表生成）。
+- channelSettings: { region: { type: "enum", label: "区域", options: ["cn", "global"], default: "cn" } }：协议设置项（非敏感），在模型的“协议设置”里填、值存在模型配置里，渲染成表单，插件里仍通过 ctx.channel.settings 读取；type 为 string / number / boolean / enum，label 必填，enum 必须有 options 且 default 在其中。升级模型时，新版本不再声明的设置项会被丢弃，所以不要随意改名或删除已有设置项。
+## A6 档位与固定参数的进阶写法
+- 一个模型的不同清晰度/档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要要求运营为每个档位建一个模型：把“档位 → 上游 id”对照表放进 params（字段名自己定，如 { groups: { "1K": "…", "4K": "…" } }），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。对照表的结构和示例要写进文件顶部注释，运营在模型的固定参数里照填。
 ## A7 工作流 / 节点式 API
 - 对任何节点式或工作流式 API，params 应保存输入键到节点的映射，例如 params.nodes.prompt = { nodeId: "节点标识", fieldName: "文本字段" }；固定工作流值放 params.fixedNodes，并在上游要求时一并保留 fieldData。buildSubmitRequest 必须按文档要求生成节点列表字段（字段名可能是 nodeInfoList 或其它名称）；提示词输入必须绑定到工作流节点。映射缺失或节点列表为空时，在本地以清楚的中文错误终止，不得提交空节点列表。
-- 工作流导入时，parseImportResponse 必须把识别出的节点映射写入返回草稿的 params.nodes（如 prompt、duration 等实际输入映射），并补上必要的 params.fixedNodes；若节点信息不足以可靠识别必需映射，应先询问用户，不得返回空 params 假装配置完成。能读取到 fieldData 且上游需要它时，应保留在映射中。
-- 自动生成的映射要与 buildSubmitRequest 实际读取的 params 结构完全一致，并在返回前检查必需节点存在；找不到必需节点时返回明确错误，不生成无法提交的模型草稿。提交请求里工作流节点字段接受媒体 URL 时，可在 fieldValue 等嵌套值中直接放 __fileRef 对象，不能假定导入阶段或准备阶段会把文件结果自动带入。
+- 工作流的节点映射由运营在模型的固定参数 params 里填：请在文件顶部注释里写清 params.nodes / params.fixedNodes 的结构并给出完整示例（含 nodeId、fieldName，上游需要时含 fieldData），运营照抄修改；不要假定有导入步骤替他们生成映射。
+- 映射结构要与 buildSubmitRequest 实际读取的 params 完全一致，并在提交前检查必需节点存在；找不到必需节点时返回明确的中文错误，不提交无法执行的请求。提交请求里工作流节点字段接受媒体 URL 时，可在 fieldValue 等嵌套值中直接放 __fileRef 对象，不能假定准备阶段会把文件结果自动带入。
 ## A8 并发与生成数量的细节
 - 宿主已经在渠道层面限制了“同时在上游生成的任务数”（运营在渠道里配“最大同时生成数”），超出的任务会在平台排队，不会打到上游。
 - 用户选生成 N 个时，宿主拆成 N 个独立任务，每个任务各调一次插件；拆成多个任务时宿主会给每个任务放一个随机的 input.seed（模型自己配了 seed 参数时用用户的取值），上游支持随机种子就把它传过去，避免 N 个结果一模一样。

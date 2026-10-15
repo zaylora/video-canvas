@@ -39,11 +39,12 @@ module.exports = {
     apiVersion: 1,
     key: "openai",
     name: "OpenAI",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "openai",
     description: "对接 OpenAI 官方接口：文本（Responses / Chat Completions 可选，同步）",
     auth: { type: "bearer" },
     endpoints: {
-      text: { mode: "sync" },
+      text: { mode: "sync", method: "POST", path: "/v1/responses" },
     },
     channelSettings: {
       api: {

@@ -3,8 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   checkDeadline,
   describeDefaultPrice,
-  draftToModelBody,
-  normalizeDraft,
   readModelBool,
   readModelChannel,
   readModelKind,
@@ -106,60 +104,6 @@ describe("suggestModelKey", () => {
   });
 });
 
-describe("normalizeDraft / draftToModelBody", () => {
-  test("同时认 snake_case 与 camelCase；缺上游模型名的丢掉", () => {
-    expect(
-      normalizeDraft({
-        upstreamModel: "m1",
-        kind: "image",
-        paramHints: { resolution: { options: ["2K"] } },
-      }),
-    ).toEqual({
-      upstream_model: "m1",
-      kind: "image",
-      label: "",
-      params: null,
-      param_hints: { resolution: { options: ["2K"] } },
-    });
-    expect(normalizeDraft({ upstream_model: "m2", param_hints: "坏数据" })?.param_hints).toBeNull();
-    expect(normalizeDraft({ kind: "text" })).toBeNull();
-    expect(normalizeDraft(null)).toBeNull();
-  });
-
-  test("草稿 → 新建正文：渠道预填、不上架、文本与其他 kind 的默认时限不同", () => {
-    const video = draftToModelBody(
-      { upstream_model: "Kling V2", kind: "video", label: "", params: null },
-      "ch",
-    );
-    expect(video).toMatchObject({
-      key: "kling-v2",
-      kind: "video",
-      label: "Kling V2",
-      enabled: false,
-      deadline: "30m",
-      channels: [{ channel: "ch", upstream_model: "Kling V2" }],
-      params: {},
-    });
-    // 能力按种类预填（草稿不带）
-    expect(Object.keys((video.capabilities as { params: object }).params)).toEqual([
-      "aspect_ratio",
-      "resolution",
-      "duration",
-      "generate_audio",
-      "count",
-    ]);
-    expect((video.pricing as { billing: string }).billing).toBe("per_second");
-    expect("credits" in video).toBe(false);
-    const text = draftToModelBody(
-      { upstream_model: "gpt", kind: "text", label: "GPT", params: { a: 1 } },
-      "ch",
-    );
-    expect(text.deadline).toBe("5m");
-    expect(text.params).toEqual({ a: 1 });
-    expect(draftToModelBody({ upstream_model: "x", kind: "", label: "" }, "ch").kind).toBe("video");
-  });
-});
-
 describe("checkDeadline", () => {
   test("Go 时长写法通过", () => {
     for (const ok of ["30m", "1h", "90s", "1h30m", "1.5h", "500ms"])
@@ -199,5 +143,16 @@ describe("默认价格读写", () => {
       "输入 2",
     );
     expect(describeDefaultPrice(null)).toBe("-");
+  });
+});
+
+describe("换渠道不动协议", () => {
+  test("协议与渠道无关：withModelChannel 保留 channels[0].protocol", () => {
+    const protocol = { plugin: "openai", version: "1.0.0", settings: { api: "responses" } };
+    const next = withModelChannel(
+      { key: "m", channels: [{ channel: "old", upstream_model: "v1", protocol }] },
+      "new",
+    );
+    expect(next?.channels).toEqual([{ channel: "new", upstream_model: "v1", protocol }]);
   });
 });

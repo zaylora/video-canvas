@@ -3,9 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { PLUGIN_AUTHORING_PROMPT } from "@/pages/admin/ai/plugins/plugin-prompt";
 
 describe("协议插件编写提示词", () => {
-  test("要求工作流导入草稿自动携带识别出的节点映射", () => {
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("返回草稿的 params.nodes");
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("meta.import");
+  test("工作流的节点映射由运营填在模型 params 里：要求插件注释写清结构，不再靠导入草稿生成", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("params.nodes");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("运营在模型的固定参数 params 里填");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("返回草稿的 params.nodes");
   });
 
   test("要求提交前拦截空节点映射", () => {
@@ -19,12 +20,44 @@ describe("协议插件编写提示词", () => {
     expect(PLUGIN_AUTHORING_PROMPT).toContain("不得输出插件代码");
   });
 
-  test("默认要求连通性检查和完整的模型导入闭环", () => {
-    expect(PLUGIN_AUTHORING_PROMPT).toMatch(/buildCheckRequest\(ctx\)\s+模型\/工作流插件必须实现/);
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("buildImportRequest / parseImportResponse 成对实现");
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("meta.import 已声明");
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("不要提交生成任务");
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("导入阶段绝不能调用生成接口");
+  test("连通性检查与模型导入已弃用：不再要求实现，并明确告诉 AI 不要写", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain(
+      "buildCheckRequest / buildImportRequest / parseImportResponse 与 meta.import 已弃用",
+    );
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("宿主不再调用，不要写");
+    // 旧的“必须实现检查与导入”的要求都不能残留
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("模型/工作流插件必须实现");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("成对实现并配合 meta.import");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("meta.import 已声明");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("导入阶段绝不能调用生成接口");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("import: { args: {} }");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("buildCheckRequest: (ctx)");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("parseImportResponse: (ctx");
+  });
+
+  test("meta 建议声明 vendor 与 endpoints 的 method / path，只用于展示", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain('vendor: "my-platform"');
+    expect(PLUGIN_AUTHORING_PROMPT).toContain('method: "POST", path: "/v1/images/generations"');
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("只用于管理端展示");
+  });
+
+  test("channelSettings 改称协议设置项：在模型里填，插件仍读 ctx.channel.settings", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("协议设置项");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("在模型的“协议设置”里填");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("ctx.channel.settings");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("渠道上的非敏感设置");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("渠道设置项");
+  });
+
+  test("auth 为 custom 时宿主直接提供 ctx.credentials（含 secretKey），不再有“允许读取 Key”开关", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("ctx.credentials");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("secretKey");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("允许插件读取 Key");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("allow_credentials");
+  });
+
+  test("渠道自定义请求头由宿主自动加，插件不用处理", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("渠道的自定义请求头由宿主自动加");
   });
 
   test("文件输入优先使用直接引用且不假定 prepared 一定存在", () => {
@@ -98,13 +131,13 @@ describe("协议插件编写提示词：核心 + 进阶附录", () => {
     expect(core.length).toBeLessThanOrEqual(BASELINE_LENGTH * 0.55);
   });
 
-  test("“先提问再出码”和“检查与导入必须实现”留在核心里，不会被挪进附录", () => {
+  test("“先提问再出码”和“检查与导入已弃用”的说明留在核心里，不会被挪进附录", () => {
     for (const phrase of [
       "先检查信息是否完整",
       "信息不完整时先向用户提问",
       "检查通过前不得输出插件代码",
       "buildCheckRequest",
-      "meta.import",
+      "meta.import 已弃用",
     ]) {
       expect(core).toContain(phrase);
     }
@@ -117,7 +150,6 @@ describe("协议插件编写提示词：核心 + 进阶附录", () => {
     for (const phrase of [
       "buildPrepareRequests",
       "ctx.prepared",
-      "paramHints",
       "params.nodes",
       "responseType 为 binary",
       "classifyError",

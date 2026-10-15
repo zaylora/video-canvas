@@ -21,19 +21,14 @@ func NewAIChannelRepository(db *gorm.DB) *AIChannelRepository {
 	return &AIChannelRepository{db: db}
 }
 
-// emptyJSONObject 是渠道 settings_json / rate_limit_json 的缺省值（两列都是 NOT NULL）。
+// emptyJSONObject 是渠道 headers_json / rate_limit_json 的缺省值（两列都是 NOT NULL）。
 const emptyJSONObject = "{}"
 
 // CreateChannel 新建渠道；key 已存在返回 ErrDuplicate。成功后 CreatedAt / UpdatedAt 已回填。
-// settings_json / rate_limit_json 为空时按 {} 写入。
-// 事务内对 plugin_version_id 指向的版本行加共享锁并确认它存在（不存在返回 ErrNotFound），
-// 与 DeleteVersion 的排他锁互斥，避免“渠道刚指向某版本、版本同时被删”的竞态。
+// headers_json / rate_limit_json 为空时按 {} 写入。
 func (r *AIChannelRepository) CreateChannel(ctx context.Context, c *model.AIChannel) error {
 	fillChannelJSONDefaults(c)
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lockVersionShared(tx, c.PluginVersionID); err != nil {
-			return err
-		}
 		// enabled 列带 default:true，GORM 会把 Go 零值 false 换成默认值 true（Select 也拦不住），
 		// 所以调用方要求停用时，插入后在同一事务里补写 false
 		wantEnabled := c.Enabled
@@ -54,51 +49,69 @@ func (r *AIChannelRepository) CreateChannel(ctx context.Context, c *model.AIChan
 
 // fillChannelJSONDefaults 把空的 JSON 列补成 {}。
 func fillChannelJSONDefaults(c *model.AIChannel) {
-	if len(c.SettingsJSON) == 0 {
-		c.SettingsJSON = model.JSONText(emptyJSONObject)
+	if len(c.HeadersJSON) == 0 {
+		c.HeadersJSON = model.JSONText(emptyJSONObject)
 	}
 	if len(c.RateLimitJSON) == 0 {
 		c.RateLimitJSON = model.JSONText(emptyJSONObject)
 	}
 }
 
-// lockVersionShared 对版本行加 FOR SHARE 锁；版本不存在返回 ErrNotFound。
-func lockVersionShared(tx *gorm.DB, id uint64) error {
-	var v model.AIPluginVersion
-	err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").Where("id = ?", id).First(&v).Error
-	return translate(err)
-}
-
-// UpdateChannel 更新渠道的可变字段（name、plugin_key、plugin_version_id、base_url、allow_credentials、
-// settings_json、rate_limit_json、enabled、updated_by、updated_at）；key 与 created_at 不变。渠道不存在返回 ErrNotFound。
-// settings_json / rate_limit_json 为空时按 {} 写入；事务内对新的 plugin_version_id 加共享锁，
-// 版本不存在同样返回 ErrNotFound（语义见 CreateChannel）。成功后 c.UpdatedAt 已回填。
+// UpdateChannel 更新渠道的可变字段（name、base_url、headers_json、rate_limit_json、enabled、updated_by、updated_at）；
+// key、sort 与 created_at 不变（顺序由 SetChannelOrder 独占）。渠道不存在返回 ErrNotFound。
+// headers_json / rate_limit_json 为空时按 {} 写入。成功后 c.UpdatedAt 已回填。
 func (r *AIChannelRepository) UpdateChannel(ctx context.Context, c *model.AIChannel) error {
 	fillChannelJSONDefaults(c)
 	now := time.Now()
+	res := r.db.WithContext(ctx).Model(&model.AIChannel{}).Where("key = ?", c.Key).Updates(map[string]any{
+		"name":            c.Name,
+		"base_url":        c.BaseURL,
+		"headers_json":    c.HeadersJSON,
+		"rate_limit_json": c.RateLimitJSON,
+		"enabled":         c.Enabled,
+		"updated_by":      c.UpdatedBy,
+		"updated_at":      now,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	c.UpdatedAt = now
+	return nil
+}
+
+// SetChannelOrder 按 keys 的先后把渠道 sort 重写成 10、20、30…；keys 必须恰好是现有渠道的全集，
+// 否则返回 ErrNotFound（有不存在的 key）或 ErrOrderMismatch（重复或漏了渠道），不写任何数据。
+func (r *AIChannelRepository) SetChannelOrder(ctx context.Context, keys []string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lockVersionShared(tx, c.PluginVersionID); err != nil {
+		var all []model.AIChannel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("key").Find(&all).Error; err != nil {
 			return err
 		}
-		res := tx.Model(&model.AIChannel{}).Where("key = ?", c.Key).Updates(map[string]any{
-			"name":              c.Name,
-			"plugin_key":        c.PluginKey,
-			"plugin_version_id": c.PluginVersionID,
-			"base_url":          c.BaseURL,
-			"allow_credentials": c.AllowCredentials,
-			"settings_json":     c.SettingsJSON,
-			"rate_limit_json":   c.RateLimitJSON,
-			"enabled":           c.Enabled,
-			"updated_by":        c.UpdatedBy,
-			"updated_at":        now,
-		})
-		if res.Error != nil {
-			return res.Error
+		have := make(map[string]bool, len(all))
+		for _, c := range all {
+			have[c.Key] = true
 		}
-		if res.RowsAffected == 0 {
-			return ErrNotFound
+		seen := make(map[string]bool, len(keys))
+		for _, k := range keys {
+			if !have[k] {
+				return ErrNotFound
+			}
+			if seen[k] {
+				return ErrOrderMismatch
+			}
+			seen[k] = true
 		}
-		c.UpdatedAt = now
+		if len(seen) != len(have) {
+			return ErrOrderMismatch
+		}
+		for i, k := range keys {
+			if err := tx.Model(&model.AIChannel{}).Where("key = ?", k).UpdateColumn("sort", (i+1)*10).Error; err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
@@ -112,10 +125,10 @@ func (r *AIChannelRepository) GetChannel(ctx context.Context, key string) (*mode
 	return &c, nil
 }
 
-// ListChannels 返回所有渠道，按 key 升序。
+// ListChannels 返回所有渠道，按 sort、key 升序。
 func (r *AIChannelRepository) ListChannels(ctx context.Context) ([]model.AIChannel, error) {
 	var list []model.AIChannel
-	err := r.db.WithContext(ctx).Order("key ASC").Find(&list).Error
+	err := r.db.WithContext(ctx).Order("sort ASC, key ASC").Find(&list).Error
 	return list, err
 }
 
@@ -241,7 +254,7 @@ func channelModelRefs(rows []channelModelRefRow) []ChannelModelRef {
 }
 
 // DeleteChannel 在一个事务里删除渠道：锁住渠道行（FOR UPDATE）后重新统计引用，仍被模型或非终态任务引用时返回当时的引用与 ErrInUse；
-// 渠道不存在返回 ErrNotFound。删除时连同 ai_secrets 里它的 Key（channel:<key>）一起删掉，避免留下没有主人的凭证。
+// 渠道不存在返回 ErrNotFound。删除时连同 ai_secrets 里它的 Key 与 Secret Key（channel:<key>、channel:<key>:secret）一起删掉，避免留下没有主人的凭证。
 func (r *AIChannelRepository) DeleteChannel(ctx context.Context, key string) (ChannelRefs, error) {
 	var refs ChannelRefs
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -259,11 +272,11 @@ func (r *AIChannelRepository) DeleteChannel(ctx context.Context, key string) (Ch
 		if refs.InUse() {
 			return ErrInUse
 		}
-		// 3. 删渠道行与它的 Key
+		// 3. 删渠道行与它的 Key、Secret Key
 		if err := tx.Where("key = ?", key).Delete(&model.AIChannel{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("name = ?", model.ChannelSecretName(key)).Delete(&model.AISecret{}).Error
+		return tx.Where("name IN ?", []string{model.ChannelSecretName(key), model.ChannelSecretKeyName(key)}).Delete(&model.AISecret{}).Error
 	})
 	return refs, err
 }

@@ -119,6 +119,32 @@ export function formatTooltipDate(date: string) {
   return `${m} 月 ${d} 日 · 周${"日一二三四五六"[new Date(y, m - 1, d).getDay()]}`;
 }
 
+/** 卡片说明文字的语气 */
+export type HintTone = "neutral" | "warning" | "danger";
+
+/**
+ * 模型卡片的说明文字：不可用（danger）、待配置（warning）优先，其次是未上线的数量。
+ * 数量来自后端汇总（GET /admin/ai/overview 的 models）；待配置是没启用且还没选能力或协议的模型。
+ * @param counts 模型总数与各状态数
+ */
+export function modelHint(counts: {
+  total: number;
+  online: number;
+  broken: number;
+  pending: number;
+}): { tone: HintTone; text: string } {
+  const { total, online, broken, pending } = counts;
+  if (total === 0) return { tone: "neutral", text: "还没有模型" };
+  const parts: string[] = [];
+  if (broken > 0) parts.push(`${broken} 个不可用`);
+  if (pending > 0) parts.push(`待配置 ${pending}`);
+  if (parts.length > 0) return { tone: broken > 0 ? "danger" : "warning", text: parts.join(" · ") };
+  const offline = total - online;
+  return offline > 0
+    ? { tone: "neutral", text: `${offline} 个未上线` }
+    : { tone: "neutral", text: "全部在线" };
+}
+
 /** 渠道负载条的一行 */
 export type LoadRow = {
   /** 渠道 key */
@@ -131,9 +157,9 @@ export type LoadRow = {
   waiting: number;
   /** 同时生成上限；0 表示不限 */
   max: number;
-  /** 渠道此刻能不能接任务（启用、插件启用、Key 已设置） */
+  /** 渠道此刻能不能接任务（后端算好的健康状态为 ok：已启用且设了 Key） */
   usable: boolean;
-  /** 不可用时的短标签（已停用 / 不可用 / 未设 Key）；可用时为“可用” */
+  /** 不可用时的短标签（已停用 / 未设 Key）；可用时为“可用” */
   label: string;
   /** 健康色调 */
   tone: HealthTone;
@@ -152,8 +178,7 @@ export type LoadRow = {
  * - 分母：有上限时取 max(上限, 生成中 + 排队)，条不会溢出；不限时取所有可用渠道里最大的占用，让几条之间可比；
  * - 不可用的渠道不画负载（它接不了任务），带原因标签；
  * - 排序：可用的按“生成中 + 排队”降序，不可用的排最后，同样大按 key 升序。
- * @param channels 渠道清单
- * @param plugins 插件清单（判断渠道是否可用要用）
+ * @param channels 精简渠道（后端汇总里的 channel_briefs，健康状态已算好）
  * @param loads 各渠道负载，没有未完成任务的渠道不在其中
  * @returns 排好序的行
  */

@@ -5,6 +5,7 @@ import {
   isStorageFieldLocked,
   isStorageVersionConflict,
   isChannelKeyExists,
+  isChannelPullFailed,
   isRunnerDown,
   isSecretMissing,
   isTooLarge,
@@ -28,6 +29,12 @@ describe("后端错误识别", () => {
     expect(isTooLarge({ code: 50007 })).toBe(true);
     expect(isChannelKeyExists({ code: 50012 })).toBe(true);
     expect(isChannelKeyExists({ code: 50013 })).toBe(false);
+  });
+
+  test("拉取上游模型失败：业务码 50023（原因在 message 里），旧的插件调用失败 50022 不算", () => {
+    expect(isChannelPullFailed({ status: 502, code: 50023 })).toBe(true);
+    expect(isChannelPullFailed({ status: 502, code: 50022 })).toBe(false);
+    expect(isChannelPullFailed(undefined)).toBe(false);
   });
 
   test("errorMessage 取 message，没有就用兜底", () => {

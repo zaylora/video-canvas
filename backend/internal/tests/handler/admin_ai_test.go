@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -22,6 +23,7 @@ import (
 	"video-canvas/internal/pkg/utils"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/modelcfg"
+	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
 	"video-canvas/internal/service"
 	"video-canvas/internal/service/aiconfigfake"
@@ -46,7 +48,7 @@ type aicEnv struct {
 	repo     *aiconfigfake.MemRepo
 	dry      *aiconfigfake.DryRunner
 	tasks    *aiconfigfake.TestTasks
-	ops      *aiconfigfake.PluginOps
+	lister   *aiconfigfake.ModelLister // 拉取上游模型清单的替身
 	stats    *aiconfigfake.StatsRepo
 	checker  *aiconfigfake.Prechecker
 	roles    map[uint64]string
@@ -65,7 +67,7 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		tasks: &aiconfigfake.TestTasks{
 			Views: map[uint64]aiconfigfake.TestView{},
 		},
-		ops:      &aiconfigfake.PluginOps{},
+		lister:   &aiconfigfake.ModelLister{},
 		stats:    &aiconfigfake.StatsRepo{},
 		checker:  &aiconfigfake.Prechecker{ByCode: map[string]*provider.PrecheckResult{}},
 		roles:    map[uint64]string{aicAdminUser: model.RoleAdmin, aicNormalUser: model.RoleUser, aicSuperUser: model.RoleSuperAdmin},
@@ -83,14 +85,14 @@ func aicNewEnv(t *testing.T) *aicEnv {
 		env.tokens[int(id)] = tok
 	}
 	lookup := func(_ context.Context, id uint64) (string, error) { return env.roles[id], nil }
-	pluginSvc := service.NewAIPluginService(repo, repo, repo, env.checker, cfg)
-	channelSvc := service.NewAIChannelService(repo, repo, cfg, repo, env.ops, cfg)
+	pluginSvc := service.NewAIPluginService(repo, cfg, repo, env.checker, cfg)
+	channelSvc := service.NewAIChannelService(repo, cfg, cfg, env.lister, repo, cfg)
 	env.engine = router.New(gin.TestMode, aicJWTSecret, router.Handlers{
 		AIModel:      NewAIModelHandler(cfg),
 		AdminAI:      NewAdminAIHandler(cfg),
 		AdminCatalog: NewAdminCatalogHandler(service.NewAICatalogService(channelSvc, pluginSvc, cfg)),
 		AdminPlugin:  NewAdminPluginHandler(pluginSvc),
-		AdminChannel: NewAdminChannelHandler(channelSvc),
+		AdminChannel: NewAdminChannelHandler(channelSvc, cfg),
 		AdminStats:   NewAdminStatsHandler(service.NewAIStatsService(env.stats, cfg)),
 		AdminMe:      NewAdminMeHandler(lookup),
 		AdminRole:    lookup,
@@ -176,19 +178,25 @@ func aicWant(t *testing.T, r aicResp, status, code int) {
 	}
 }
 
-// aicMeta 生成插件 meta：bearer 鉴权，支持 video / text，渠道设置项 region（有默认）与 tenant（必填），导入参数 limit（必填）。
+// aicMeta 生成插件 meta：bearer 鉴权，支持 video / text，协议设置项 region（有默认）与 tenant（必填）。
+// 协议设置项现在填在模型正文的 channels[0].protocol.settings 里，不再属于渠道。
 func aicMeta(key, version string) string {
 	return `{"apiVersion":1,"key":"` + key + `","name":"插件-` + key + `","version":"` + version + `","auth":{"type":"bearer"},` +
 		`"endpoints":{"video":{"mode":"async"},"text":{"mode":"sync"}},` +
-		`"channelSettings":{"region":{"type":"enum","label":"区域","options":["cn","global"],"default":"cn"},"tenant":{"type":"string","label":"租户","required":true}},` +
-		`"import":{"args":{"limit":{"type":"number","label":"数量","required":true}}}}`
+		`"channelSettings":{"region":{"type":"enum","label":"区域","options":["cn","global"],"default":"cn"},"tenant":{"type":"string","label":"租户","required":true}}}`
 }
 
 // seedPlugin 直接往仓储里放一个插件版本（不经过接口）。
 func (e *aicEnv) seedPlugin(t *testing.T, key, version, source string) uint64 {
 	t.Helper()
+	return e.seedPluginMeta(t, key, version, source, aicMeta(key, version))
+}
+
+// seedPluginMeta 同 seedPlugin，meta 由调用方给（升级失败等用例需要特殊的 meta）。
+func (e *aicEnv) seedPluginMeta(t *testing.T, key, version, source, meta string) uint64 {
+	t.Helper()
 	p := &model.AIPlugin{Key: key, Name: "插件-" + key, Source: source, Enabled: true}
-	v := &model.AIPluginVersion{PluginKey: key, Version: version, SHA256: "seed", Code: "code", MetaJSON: model.JSONText(aicMeta(key, version))}
+	v := &model.AIPluginVersion{PluginKey: key, Version: version, SHA256: "seed", Code: "code", MetaJSON: model.JSONText(meta)}
 	if err := e.repo.SaveVersion(context.Background(), p, v); err != nil {
 		t.Fatal(err)
 	}
@@ -196,10 +204,22 @@ func (e *aicEnv) seedPlugin(t *testing.T, key, version, source string) uint64 {
 	return v.ID
 }
 
-func aicChannelJSON(key, pluginVersion string) map[string]any {
+// seedProtocolModel 直接往仓储里放一个协议固定在 plugin@version 上的模型（不经过接口，不校验渠道与插件是否存在）。
+func (e *aicEnv) seedProtocolModel(t *testing.T, key, channel, plugin, version string) {
+	t.Helper()
+	body := `{"key":"` + key + `","kind":"video","label":"模型-` + key + `","channels":[{"channel":"` + channel + `","upstream_model":"u",` +
+		`"protocol":{"plugin":"` + plugin + `","version":"` + version + `","settings":{"tenant":"t1"}}}]}`
+	if _, err := e.repo.SaveModel(context.Background(), repository.SaveModelInput{
+		Pointer: repository.ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video"}, Body: []byte(body),
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// aicChannelJSON 是一份合法的新建渠道请求体：渠道只管连接信息，协议在模型里选。
+func aicChannelJSON(key string) map[string]any {
 	return map[string]any{
-		"key": key, "name": "渠道-" + key, "plugin_key": "kling", "plugin_version": pluginVersion,
-		"base_url": "https://gw.example.com", "settings": map[string]any{"tenant": "t1"},
+		"key": key, "name": "渠道-" + key, "base_url": "https://gw.example.com",
 		"rate_limit": map[string]any{"rps": 5, "max_concurrency": 20},
 	}
 }
@@ -219,11 +239,21 @@ func aicCapabilities(kind string) map[string]any {
 	return caps
 }
 
+// aicProtocol 是模型正文里 channels[0].protocol：固定在 kling 的指定版本上，填上必填的协议设置项 tenant。
+func aicProtocol(version string) map[string]any {
+	return map[string]any{"plugin": "kling", "version": version, "settings": map[string]any{"tenant": "t1"}}
+}
+
 func aicModelJSON(key, kind, channel string) map[string]any {
+	return aicModelJSONV(key, kind, channel, "1.0.0")
+}
+
+// aicModelJSONV 同 aicModelJSON，协议固定在 kling 的指定版本上。
+func aicModelJSONV(key, kind, channel, version string) map[string]any {
 	return map[string]any{
 		"key": key, "kind": kind, "label": "模型-" + key, "hint": "小字", "enabled": true, "sort": 10,
 		"pricing":      map[string]any{"billing": "per_call", "unit": 5, "cost": map[string]any{"on": true, "unit": 2}},
-		"channels":     []any{map[string]any{"channel": channel, "upstream_model": "kling-v2"}},
+		"channels":     []any{map[string]any{"channel": channel, "upstream_model": "kling-v2", "protocol": aicProtocol(version)}},
 		"params":       map[string]any{"instanceType": "default"},
 		"capabilities": aicCapabilities(kind),
 	}
@@ -237,7 +267,7 @@ func (e *aicEnv) enableAll(t *testing.T) {
 		method, path string
 		body         any
 	}{
-		{http.MethodPost, aicBase + "/channels", aicChannelJSON("kling-main", "1.0.0")},
+		{http.MethodPost, aicBase + "/channels", aicChannelJSON("kling-main")},
 		{http.MethodPut, aicBase + "/channels/kling-main/secret", map[string]any{"value": "sk-super-secret"}},
 		{http.MethodPost, aicBase + "/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}},
 		{http.MethodPut, aicBase + "/models/m1/enabled", map[string]any{"enabled": true}},
@@ -335,9 +365,14 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		{http.MethodGet, "/channels/x", false},
 		{http.MethodPut, "/channels/x", true},
 		{http.MethodPut, "/channels/x/secret", true},
-		{http.MethodPost, "/channels/x/check", true},
-		{http.MethodPost, "/channels/check-draft", true},
-		{http.MethodPost, "/channels/x/import", false},
+		{http.MethodPut, "/channels/sort", true},
+		{http.MethodPut, "/channels/x/secret-key", true},
+		{http.MethodPost, "/channels/x/pull-models", false},
+		{http.MethodPost, "/channels/x/models/import", false},
+		{http.MethodPut, "/channels/x/models/sort", false},
+		{http.MethodGet, "/channels/x/delete-check", true},
+		{http.MethodDelete, "/channels/x", true},
+		{http.MethodPost, "/plugins/x/upgrade-models", true},
 		{http.MethodGet, "/models", false},
 		{http.MethodPost, "/models", false},
 		{http.MethodGet, "/models/m1", false},
@@ -375,8 +410,11 @@ func TestAdminAI_PermissionMatrix(t *testing.T) {
 		})
 	}
 
-	t.Run("旧的 /secrets 接口已删除（任何角色都是 404）", func(t *testing.T) {
-		for _, rt := range []struct{ method, path string }{{http.MethodGet, "/secrets"}, {http.MethodPut, "/secrets/x"}} {
+	t.Run("旧的 /secrets 接口，以及渠道的 check / check-draft / import 接口已删除（任何角色都是 404）", func(t *testing.T) {
+		for _, rt := range []struct{ method, path string }{
+			{http.MethodGet, "/secrets"}, {http.MethodPut, "/secrets/x"},
+			{http.MethodPost, "/channels/x/check"}, {http.MethodPost, "/channels/check-draft"}, {http.MethodPost, "/channels/x/import"},
+		} {
 			aicWant(t, env.super(rt.method, aicBase+rt.path, map[string]any{"value": "v"}), http.StatusNotFound, errcode.ErrNotFound.Code)
 		}
 	})
@@ -534,9 +572,9 @@ func TestAdminPluginHandler_ListEnabledDelete(t *testing.T) {
 			List []struct {
 				Key      string `json:"key"`
 				Versions []struct {
-					Version      string         `json:"version"`
-					ChannelCount int            `json:"channel_count"`
-					Meta         map[string]any `json:"meta"`
+					Version    string         `json:"version"`
+					ModelCount int            `json:"model_count"`
+					Meta       map[string]any `json:"meta"`
 				} `json:"versions"`
 			} `json:"list"`
 		}
@@ -560,10 +598,10 @@ func TestAdminPluginHandler_ListEnabledDelete(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, aicBase+"/plugins/kling/enabled", map[string]any{"enabled": "yes"}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		aicWant(t, env.super(http.MethodPut, aicBase+"/plugins/ghost/enabled", map[string]any{"enabled": true}), http.StatusNotFound, errcode.ErrPluginNotFound.Code)
 	})
-	t.Run("删除：被渠道引用 409（50005）", func(t *testing.T) {
-		env.repo.Channels["c1"] = &model.AIChannel{Key: "c1", PluginKey: "kling", PluginVersionID: id}
+	t.Run("删除：被模型的协议固定 409（50005）", func(t *testing.T) {
+		env.seedProtocolModel(t, "m-pin", "c1", "kling", "1.0.0")
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/kling/versions/1.0.0", nil), http.StatusConflict, errcode.ErrPluginInUse.Code)
-		delete(env.repo.Channels, "c1")
+		delete(env.repo.Models, "m-pin")
 	})
 	t.Run("删除：内置插件 409（50006）；不存在 404", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodDelete, aicBase+"/plugins/newapi/versions/1.0.0", nil), http.StatusConflict, errcode.ErrPluginBuiltin.Code)
@@ -578,53 +616,180 @@ func TestAdminPluginHandler_ListEnabledDelete(t *testing.T) {
 	})
 }
 
+func TestAdminPluginHandler_UpgradeModels(t *testing.T) {
+	// 新版本 1.1.0 新增了必填设置项 must：已有的 1.0.0 模型填不出，会升级失败
+	strictMeta := `{"apiVersion":1,"key":"kling","name":"插件-kling","version":"1.1.0","auth":{"type":"bearer"},` +
+		`"endpoints":{"video":{"mode":"async"},"text":{"mode":"sync"}},` +
+		`"channelSettings":{"tenant":{"type":"string","label":"租户","required":true},"must":{"type":"string","label":"必填新项","required":true}}}`
+	// newEnv 准备：渠道 kling-main 就绪（带 Key），kling 1.0.0 与 1.1.0 两个版本。
+	newEnv := func(t *testing.T, meta11 string) *aicEnv {
+		t.Helper()
+		env := aicNewEnv(t)
+		env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
+		if meta11 == "" {
+			meta11 = aicMeta("kling", "1.1.0")
+		}
+		env.seedPluginMeta(t, "kling", "1.1.0", model.PluginSourceUploaded, meta11)
+		aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
+		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-1"}), http.StatusOK, 0)
+		return env
+	}
+	protocolVersion := func(t *testing.T, env *aicEnv, key string) string {
+		t.Helper()
+		r := env.admin(http.MethodGet, aicBase+"/models/"+key, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var d struct {
+			Body struct {
+				Channels []struct {
+					Protocol struct {
+						Version string `json:"version"`
+					} `json:"protocol"`
+				} `json:"channels"`
+			} `json:"body"`
+		}
+		if err := json.Unmarshal(r.Data, &d); err != nil || len(d.Body.Channels) != 1 {
+			t.Fatalf("详情解析失败：%v %s", err, r.Raw)
+		}
+		return d.Body.Channels[0].Protocol.Version
+	}
+	url := aicBase + "/plugins/kling/upgrade-models"
+
+	t.Run("成功：不传 body 升到最新版本，旧版本模型被升级，已是新版本的不动，写审计", func(t *testing.T) {
+		env := newEnv(t, "")
+		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("old", "video", "kling-main")}), http.StatusOK, 0)
+		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSONV("fresh", "video", "kling-main", "1.1.0")}), http.StatusOK, 0)
+		r := env.super(http.MethodPost, url, nil)
+		aicWant(t, r, http.StatusOK, 0)
+		var res struct {
+			ToVersion string   `json:"to_version"`
+			Upgraded  []string `json:"upgraded"`
+			Failed    []any    `json:"failed"`
+		}
+		if err := json.Unmarshal(r.Data, &res); err != nil || res.ToVersion != "1.1.0" || len(res.Upgraded) != 1 || res.Upgraded[0] != "old" || res.Failed == nil || len(res.Failed) != 0 {
+			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+		if got := protocolVersion(t, env, "old"); got != "1.1.0" {
+			t.Fatalf("old 的协议应升到 1.1.0，实际 %s", got)
+		}
+		if got := env.repo.AuditActions(); got[len(got)-1] != model.AuditPluginUpgrade {
+			t.Fatalf("审计不符合预期：%v", got)
+		}
+	})
+	t.Run("成功：指定目标版本；没有要升级的模型返回空数组", func(t *testing.T) {
+		env := newEnv(t, "")
+		r := env.super(http.MethodPost, url, map[string]any{"version": "1.1.0"})
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"to_version":"1.1.0"`) || !strings.Contains(r.Raw, `"upgraded":[]`) || !strings.Contains(r.Raw, `"failed":[]`) {
+			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+	})
+	t.Run("新版本新增必填设置项：该模型进 failed 并说明原因，保持原版本，响应 200", func(t *testing.T) {
+		env := newEnv(t, strictMeta)
+		aicWant(t, env.super(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main")}), http.StatusOK, 0)
+		r := env.super(http.MethodPost, url, map[string]any{})
+		aicWant(t, r, http.StatusOK, 0)
+		var res struct {
+			Upgraded []string `json:"upgraded"`
+			Failed   []struct {
+				Key    string `json:"key"`
+				Reason string `json:"reason"`
+			} `json:"failed"`
+		}
+		if err := json.Unmarshal(r.Data, &res); err != nil || len(res.Upgraded) != 0 || len(res.Failed) != 1 || res.Failed[0].Key != "m1" || !strings.Contains(res.Failed[0].Reason, "must") {
+			t.Fatalf("应失败并说明缺哪个设置项：%v %s", err, r.Raw)
+		}
+		if got := protocolVersion(t, env, "m1"); got != "1.0.0" {
+			t.Fatalf("失败的模型应保持原版本，实际 %s", got)
+		}
+	})
+	t.Run("参数：version 超长、非法 JSON 400", func(t *testing.T) {
+		env := newEnv(t, "")
+		aicWant(t, env.super(http.MethodPost, url, map[string]any{"version": strings.Repeat("9", 33)}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.super(http.MethodPost, url, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+	t.Run("业务错误：插件不存在 404、目标版本不存在 404、插件已停用 409", func(t *testing.T) {
+		env := newEnv(t, "")
+		aicWant(t, env.super(http.MethodPost, aicBase+"/plugins/ghost/upgrade-models", nil), http.StatusNotFound, errcode.ErrPluginNotFound.Code)
+		aicWant(t, env.super(http.MethodPost, url, map[string]any{"version": "9.9.9"}), http.StatusNotFound, errcode.ErrPluginNotFound.Code)
+		aicWant(t, env.super(http.MethodPut, aicBase+"/plugins/kling/enabled", map[string]any{"enabled": false}), http.StatusOK, 0)
+		aicWant(t, env.super(http.MethodPost, url, nil), http.StatusConflict, errcode.ErrPluginDisabled.Code)
+	})
+	t.Run("权限：admin 403，普通用户 403，未登录 401", func(t *testing.T) {
+		env := newEnv(t, "")
+		aicWant(t, env.admin(http.MethodPost, url, nil), http.StatusForbidden, errcode.ErrForbidden.Code)
+		aicWant(t, env.do(http.MethodPost, url, nil, aicNormalUser), http.StatusForbidden, errcode.ErrForbidden.Code)
+		aicWant(t, env.do(http.MethodPost, url, nil, 0), http.StatusUnauthorized, errcode.ErrUnauthorized.Code)
+	})
+}
+
 // ---------------------------------------------------------------------------
 // 渠道
 // ---------------------------------------------------------------------------
 
 func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 	env := aicNewEnv(t)
-	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	env.seedPlugin(t, "kling", "1.1.0", model.PluginSourceUploaded)
 	path := aicBase + "/channels"
 
-	t.Run("新建成功：视图带 secret_set=false 与 plugin_version", func(t *testing.T) {
-		r := env.super(http.MethodPost, path, aicChannelJSON("kling-main", "1.0.0"))
+	t.Run("新建成功：视图只有连接信息，secret_set / secret_key_set 都是 false，新渠道排在后面", func(t *testing.T) {
+		body := aicChannelJSON("kling-main")
+		body["headers"] = map[string]any{"X-Biz": "canvas"}
+		r := env.super(http.MethodPost, path, body)
 		aicWant(t, r, http.StatusOK, 0)
 		var v map[string]any
 		if err := json.Unmarshal(r.Data, &v); err != nil {
 			t.Fatal(err)
 		}
-		if v["key"] != "kling-main" || v["plugin_version"] != "1.0.0" || v["secret_set"] != false || v["enabled"] != true ||
-			v["allow_credentials"] != false || v["base_url"] != "https://gw.example.com" {
+		if v["key"] != "kling-main" || v["name"] != "渠道-kling-main" || v["secret_set"] != false || v["secret_key_set"] != false ||
+			v["enabled"] != true || v["base_url"] != "https://gw.example.com" || v["sort"] != float64(10) || v["updated_by"] != float64(aicSuperUser) {
 			t.Fatalf("视图不符合预期：%v", v)
 		}
-		if _, has := v["trusted_internal"]; has {
-			t.Fatalf("渠道视图不应再有 trusted_internal（“允许访问内网”已取消）：%v", v)
-		}
-		if st := v["settings"].(map[string]any); st["tenant"] != "t1" || st["region"] != "cn" {
-			t.Fatalf("settings 应带默认值：%v", st)
+		if h := v["headers"].(map[string]any); h["X-Biz"] != "canvas" {
+			t.Fatalf("headers 应原样返回：%v", v["headers"])
 		}
 		if rl := v["rate_limit"].(map[string]any); rl["rps"] != float64(5) || rl["max_concurrency"] != float64(20) {
 			t.Fatalf("rate_limit 不符合预期：%v", rl)
 		}
-		if strings.Contains(r.Raw, "settings_json") || strings.Contains(r.Raw, "rate_limit_json") {
-			t.Fatalf("不应暴露存储列名：%s", r.Raw)
+		// 渠道不再绑协议：协议、设置项、允许读取 Key 这些字段都没有了；存储列名也不暴露
+		for _, gone := range []string{"plugin_key", "plugin_version", "allow_credentials", "trusted_internal", `"settings"`, "settings_json", "rate_limit_json", "headers_json"} {
+			if strings.Contains(r.Raw, gone) {
+				t.Fatalf("渠道视图不应再有 %s：%s", gone, r.Raw)
+			}
+		}
+	})
+	t.Run("headers 缺省时是空对象，不是 null", func(t *testing.T) {
+		r := env.super(http.MethodPost, path, aicChannelJSON("kling-plain"))
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"headers":{}`) || !strings.Contains(r.Raw, `"sort":20`) {
+			t.Fatalf("响应不符合预期：%s", r.Raw)
 		}
 	})
 	t.Run("key 重复 409（50012）", func(t *testing.T) {
-		aicWant(t, env.super(http.MethodPost, path, aicChannelJSON("kling-main", "1.0.0")), http.StatusConflict, errcode.ErrChannelExists.Code)
+		aicWant(t, env.super(http.MethodPost, path, aicChannelJSON("kling-main")), http.StatusConflict, errcode.ErrChannelExists.Code)
+	})
+	t.Run("不传 key：后端生成 16 位十六进制标识并返回", func(t *testing.T) {
+		body := aicChannelJSON("ignored")
+		delete(body, "key")
+		r := env.super(http.MethodPost, path, body)
+		aicWant(t, r, http.StatusOK, 0)
+		var v struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(r.Data, &v); err != nil || !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(v.Key) {
+			t.Fatalf("应返回生成的 key：%q %v", v.Key, err)
+		}
+		// 清掉这个渠道，免得影响后面按渠道列表断言的用例
+		aicWant(t, env.super(http.MethodDelete, path+"/"+v.Key, nil), http.StatusOK, 0)
 	})
 	t.Run("缺少必填字段 400（10001）", func(t *testing.T) {
-		for _, missing := range []string{"key", "name", "plugin_key", "plugin_version", "base_url"} {
-			body := aicChannelJSON("kling-x", "1.0.0")
+		for _, missing := range []string{"name", "base_url"} {
+			body := aicChannelJSON("kling-x")
 			delete(body, missing)
 			aicWant(t, env.super(http.MethodPost, path, body), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 		}
 		aicWant(t, env.super(http.MethodPost, path, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 	})
 	t.Run("业务校验失败 400（50013），原因在 msg", func(t *testing.T) {
-		bad := aicChannelJSON("Bad_Key", "1.0.0")
+		bad := aicChannelJSON("Bad_Key")
 		bad["base_url"] = "https://u:p@x.com"
 		bad["rate_limit"] = map[string]any{"rps": -1}
 		r := env.super(http.MethodPost, path, bad)
@@ -634,24 +799,31 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 				t.Fatalf("msg 应包含 %q：%s", want, r.Msg)
 			}
 		}
-		noTenant := aicChannelJSON("kling-y", "1.0.0")
-		noTenant["settings"] = map[string]any{}
-		r = env.super(http.MethodPost, path, noTenant)
-		aicWant(t, r, http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
-		if !strings.Contains(r.Msg, "settings.tenant") {
-			t.Fatalf("msg 应指出必填设置项：%s", r.Msg)
+	})
+	t.Run("请求头校验失败 400（50013）：Authorization、含换行的值都不行", func(t *testing.T) {
+		for name, headers := range map[string]map[string]any{
+			"Authorization": {"Authorization": "Bearer x"},
+			"值里夹带换行（防注入）":   {"X-A": "a\r\nX-Evil: 1"},
+		} {
+			body := aicChannelJSON("kling-hdr")
+			body["headers"] = headers
+			r := env.super(http.MethodPost, path, body)
+			aicWant(t, r, http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
+			if r.Msg == "" {
+				t.Fatalf("%s：msg 应说明原因", name)
+			}
+		}
+		if _, ok := env.repo.Channels["kling-hdr"]; ok {
+			t.Fatal("校验失败不能落库")
 		}
 	})
-	t.Run("enabled=false 与“允许插件读取 Key”可在创建时指定；旧客户端传 trusted_internal 被忽略", func(t *testing.T) {
-		body := aicChannelJSON("kling-off", "1.0.0")
-		body["enabled"], body["trusted_internal"], body["allow_credentials"] = false, true, true
+	t.Run("enabled=false 可在创建时指定", func(t *testing.T) {
+		body := aicChannelJSON("kling-off")
+		body["enabled"] = false
 		r := env.super(http.MethodPost, path, body)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"enabled":false`) || !strings.Contains(r.Raw, `"allow_credentials":true`) {
+		if !strings.Contains(r.Raw, `"enabled":false`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
-		}
-		if strings.Contains(r.Raw, "trusted_internal") {
-			t.Fatalf("响应不应再有 trusted_internal：%s", r.Raw)
 		}
 	})
 	t.Run("列表与详情：admin 可读", func(t *testing.T) {
@@ -661,23 +833,35 @@ func TestAdminChannelHandler_CreateGetUpdate(t *testing.T) {
 			List  []map[string]any `json:"list"`
 			Total int              `json:"total"`
 		}
-		if err := json.Unmarshal(r.Data, &page); err != nil || page.Total != 2 || len(page.List) != 2 || page.List[0]["key"] != "kling-main" {
+		if err := json.Unmarshal(r.Data, &page); err != nil || page.Total != 3 || len(page.List) != 3 || page.List[0]["key"] != "kling-main" {
 			t.Fatalf("列表不符合预期：%v %s", err, r.Raw)
 		}
 		aicWant(t, env.admin(http.MethodGet, path+"/kling-main", nil), http.StatusOK, 0)
 		aicWant(t, env.admin(http.MethodGet, path+"/ghost", nil), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
 	})
-	t.Run("更新：字段可选，改 plugin_version 即升级切换", func(t *testing.T) {
-		r := env.super(http.MethodPut, path+"/kling-main", map[string]any{"name": "改名", "plugin_version": "1.1.0", "enabled": false})
+	t.Run("更新：字段可选，不传不改", func(t *testing.T) {
+		r := env.super(http.MethodPut, path+"/kling-main", map[string]any{"name": "改名", "enabled": false})
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"name":"改名"`) || !strings.Contains(r.Raw, `"plugin_version":"1.1.0"`) || !strings.Contains(r.Raw, `"enabled":false`) ||
-			!strings.Contains(r.Raw, `"base_url":"https://gw.example.com"`) {
+		if !strings.Contains(r.Raw, `"name":"改名"`) || !strings.Contains(r.Raw, `"enabled":false`) ||
+			!strings.Contains(r.Raw, `"base_url":"https://gw.example.com"`) || !strings.Contains(r.Raw, `"X-Biz":"canvas"`) {
 			t.Fatalf("响应不符合预期：%s", r.Raw)
+		}
+	})
+	t.Run("更新：headers 传了就整体替换（含空对象），base_url 可改", func(t *testing.T) {
+		r := env.super(http.MethodPut, path+"/kling-main", map[string]any{"headers": map[string]any{"X-New": "1"}, "base_url": "https://gw2.example.com"})
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"headers":{"X-New":"1"}`) || strings.Contains(r.Raw, "X-Biz") || !strings.Contains(r.Raw, `"base_url":"https://gw2.example.com"`) {
+			t.Fatalf("应整体替换请求头：%s", r.Raw)
+		}
+		r = env.super(http.MethodPut, path+"/kling-main", map[string]any{"headers": map[string]any{}})
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"headers":{}`) {
+			t.Fatalf("空对象应清空请求头：%s", r.Raw)
 		}
 	})
 	t.Run("更新：校验失败 400、不存在 404、name 超长 400", func(t *testing.T) {
 		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"base_url": "ftp://x"}), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
-		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"plugin_version": "9.9.9"}), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
+		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"headers": map[string]any{"Cookie": "x"}}), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
 		aicWant(t, env.super(http.MethodPut, path+"/ghost", map[string]any{"name": "x"}), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
 		aicWant(t, env.super(http.MethodPut, path+"/kling-main", map[string]any{"name": strings.Repeat("长", 200)}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 	})
@@ -707,11 +891,10 @@ func TestAdminChannelHandler_Loads(t *testing.T) {
 
 func TestAdminChannelHandler_RateLimit(t *testing.T) {
 	env := aicNewEnv(t)
-	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
 	path := aicBase + "/channels"
 
 	t.Run("max_running 随渠道保存并原样返回", func(t *testing.T) {
-		body := aicChannelJSON("kling-rl", "1.0.0")
+		body := aicChannelJSON("kling-rl")
 		body["rate_limit"] = map[string]any{"rps": 5, "max_concurrency": 20, "max_running": 3}
 		r := env.super(http.MethodPost, path, body)
 		aicWant(t, r, http.StatusOK, 0)
@@ -720,7 +903,7 @@ func TestAdminChannelHandler_RateLimit(t *testing.T) {
 		}
 	})
 	t.Run("max_running 为负数返回 400", func(t *testing.T) {
-		body := aicChannelJSON("kling-bad", "1.0.0")
+		body := aicChannelJSON("kling-bad")
 		body["rate_limit"] = map[string]any{"max_running": -1}
 		aicWant(t, env.super(http.MethodPost, path, body), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
 	})
@@ -728,8 +911,7 @@ func TestAdminChannelHandler_RateLimit(t *testing.T) {
 
 func TestAdminChannelHandler_Secret(t *testing.T) {
 	env := aicNewEnv(t)
-	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main", "1.0.0")), http.StatusOK, 0)
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
 	path := aicBase + "/channels/kling-main/secret"
 
 	t.Run("只写：成功不回显，详情里 secret_set=true，Key 出现在任何响应里都不行", func(t *testing.T) {
@@ -738,7 +920,7 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 		if strings.Contains(r.Raw, "sk-plain") || strings.Contains(r.Raw, `"data"`) {
 			t.Fatalf("响应不得回显凭证，data 为空时应省略：%s", r.Raw)
 		}
-		for _, p := range []string{"/channels/kling-main", "/channels"} {
+		for _, p := range []string{"/channels/kling-main", "/channels", "/channels/options"} {
 			g := env.admin(http.MethodGet, aicBase+p, nil)
 			if strings.Contains(g.Raw, "sk-plain") || !strings.Contains(g.Raw, `"secret_set":true`) {
 				t.Fatalf("GET %s 不符合预期：%s", p, g.Raw)
@@ -761,11 +943,10 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 	})
 	t.Run("没有主密钥时返回明确的 500 提示", func(t *testing.T) {
 		env2 := aicNewEnv(t)
-		env2.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-		aicWant(t, env2.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("c", "1.0.0")), http.StatusOK, 0)
+		aicWant(t, env2.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("c")), http.StatusOK, 0)
 		noKey := service.NewAIConfigService(env2.repo, env2.repo, env2.repo, "")
 		eng := router.New(gin.TestMode, aicJWTSecret, router.Handlers{
-			AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(env2.repo, env2.repo, noKey, env2.repo, env2.ops, noKey)),
+			AdminChannel: NewAdminChannelHandler(service.NewAIChannelService(env2.repo, noKey, noKey, env2.lister, env2.repo, noKey), noKey),
 			AdminRole:    func(context.Context, uint64) (string, error) { return model.RoleSuperAdmin, nil },
 			UserState:    aicActiveState,
 		})
@@ -778,98 +959,312 @@ func TestAdminChannelHandler_Secret(t *testing.T) {
 	})
 }
 
-func TestAdminChannelHandler_CheckDraft(t *testing.T) {
+func TestAdminChannelHandler_SecretKey(t *testing.T) {
 	env := aicNewEnv(t)
-	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	url := aicBase + "/channels/check-draft"
-	body := func(mutate func(map[string]any)) map[string]any {
-		m := map[string]any{
-			"plugin_key": "kling", "plugin_version": "1.0.0", "base_url": "https://gw.example.com",
-			"settings": map[string]any{"tenant": "t1"}, "secret": "sk-draft-value",
-		}
-		if mutate != nil {
-			mutate(m)
-		}
-		return m
-	}
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
+	aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-api-key"}), http.StatusOK, 0)
+	path := aicBase + "/channels/kling-main/secret-key"
 
-	t.Run("成功：渠道还没保存也能检查，响应不含 Key", func(t *testing.T) {
-		env.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 90}
-		r := env.super(http.MethodPost, url, body(nil))
+	t.Run("设置：只写不回显，详情里 secret_key_set=true，与 API Key 互不影响", func(t *testing.T) {
+		r := env.super(http.MethodPut, path, map[string]any{"value": "sec-plain-456"})
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"ok":true`) || !strings.Contains(r.Raw, `"duration_ms":90`) || strings.Contains(r.Raw, "sk-draft-value") {
-			t.Fatalf("响应不符合预期：%s", r.Raw)
+		if strings.Contains(r.Raw, "sec-plain") || strings.Contains(r.Raw, `"data"`) {
+			t.Fatalf("响应不得回显凭证：%s", r.Raw)
 		}
-		if env.ops.GotSecret != "sk-draft-value" {
-			t.Fatalf("草稿 Key 应传给宿主：%q", env.ops.GotSecret)
+		g := env.admin(http.MethodGet, aicBase+"/channels/kling-main", nil)
+		if strings.Contains(g.Raw, "sec-plain") || !strings.Contains(g.Raw, `"secret_key_set":true`) || !strings.Contains(g.Raw, `"secret_set":true`) {
+			t.Fatalf("详情不符合预期：%s", g.Raw)
+		}
+		if row := env.repo.Secrets["channel:kling-main:secret"]; row == nil || bytes.Contains(row.Ciphertext, []byte("sec-plain")) {
+			t.Fatal("Secret Key 应以密文存入 channel:<key>:secret")
+		}
+		if env.repo.Secrets["channel:kling-main"] == nil {
+			t.Fatal("API Key 不应被覆盖")
+		}
+		b, _ := json.Marshal(env.repo.Audits)
+		if strings.Contains(string(b), "sec-plain") || !strings.Contains(string(b), model.AuditChannelSecKey) {
+			t.Fatalf("审计不符合预期：%s", b)
 		}
 	})
-	t.Run("缺必填字段：400（10001）", func(t *testing.T) {
-		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "base_url") })), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	t.Run("空串清除：secret_key_set=false，API Key 保持", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPut, path, map[string]any{"value": ""}), http.StatusOK, 0)
+		g := env.admin(http.MethodGet, aicBase+"/channels/kling-main", nil)
+		if !strings.Contains(g.Raw, `"secret_key_set":false`) || !strings.Contains(g.Raw, `"secret_set":true`) {
+			t.Fatalf("详情不符合预期：%s", g.Raw)
+		}
+		if _, ok := env.repo.Secrets["channel:kling-main:secret"]; ok {
+			t.Fatal("Secret Key 应已删除")
+		}
+		// 再清一次也成功（幂等）
+		aicWant(t, env.super(http.MethodPut, path, map[string]any{"value": ""}), http.StatusOK, 0)
 	})
-	t.Run("业务错误：地址不合法 400 类（50013）；没有 Key 409（50015）", func(t *testing.T) {
-		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { m["base_url"] = "ftp://x" })), http.StatusBadRequest, errcode.ErrChannelInvalid.Code)
-		aicWant(t, env.super(http.MethodPost, url, body(func(m map[string]any) { delete(m, "secret") })), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
+	t.Run("value 超长 400；渠道不存在 404", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPut, path, map[string]any{"value": strings.Repeat("k", 4097)}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.super(http.MethodPut, path, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/ghost/secret-key", map[string]any{"value": "x"}), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
 	})
 }
 
-func TestAdminChannelHandler_CheckAndImport(t *testing.T) {
+func TestAdminChannelHandler_Sort(t *testing.T) {
 	env := aicNewEnv(t)
-	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main", "1.0.0")), http.StatusOK, 0)
-	check := aicBase + "/channels/kling-main/check"
-	imp := aicBase + "/channels/kling-main/import"
-
-	t.Run("Key 未设置：检查与导入都是 409（50015）", func(t *testing.T) {
-		aicWant(t, env.super(http.MethodPost, check, nil), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
-		aicWant(t, env.admin(http.MethodPost, imp, map[string]any{"args": map[string]any{"limit": 1}}), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
-	})
-
-	aicWant(t, env.super(http.MethodPut, aicBase+"/channels/kling-main/secret", map[string]any{"value": "sk-secret-value"}), http.StatusOK, 0)
-
-	t.Run("检查成功", func(t *testing.T) {
-		env.ops.CheckResult = &provider.CheckResult{OK: true, Message: "HTTP 200", DurationMs: 120}
-		r := env.super(http.MethodPost, check, nil)
+	for _, k := range []string{"a", "b", "c"} {
+		aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON(k)), http.StatusOK, 0)
+	}
+	order := func() string {
+		r := env.admin(http.MethodGet, aicBase+"/channels/options", nil)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"ok":true`) || !strings.Contains(r.Raw, `"message":"HTTP 200"`) || !strings.Contains(r.Raw, `"duration_ms":120`) {
-			t.Fatalf("响应不符合预期：%s", r.Raw)
+		var list []map[string]any
+		if err := json.Unmarshal(r.Data, &list); err != nil {
+			t.Fatal(err)
 		}
-	})
-	t.Run("插件不支持检查：200 + ok=false", func(t *testing.T) {
-		env.ops.CheckErr = provider.ErrCheckUnsupported
-		r := env.super(http.MethodPost, check, nil)
+		keys := make([]string, 0, len(list))
+		for _, it := range list {
+			keys = append(keys, it["key"].(string))
+		}
+		return strings.Join(keys, ",")
+	}
+	path := aicBase + "/channels/sort"
+
+	t.Run("成功：按新顺序重排，路径不被 /:key 吞掉，写审计", func(t *testing.T) {
+		r := env.super(http.MethodPut, path, map[string]any{"keys": []string{"c", "a", "b"}})
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"ok":false`) || !strings.Contains(r.Raw, "插件不支持连通性检查") {
-			t.Fatalf("响应不符合预期：%s", r.Raw)
+		if got := order(); got != "c,a,b" {
+			t.Fatalf("顺序不对：%s", got)
 		}
-		env.ops.CheckErr = nil
+		if got := env.repo.AuditActions(); got[len(got)-1] != model.AuditChannelSort {
+			t.Fatalf("审计不符合预期：%v", got)
+		}
 	})
-	t.Run("runner 不可用 503；渠道不存在 404", func(t *testing.T) {
-		env.ops.CheckErr = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
-		aicWant(t, env.super(http.MethodPost, check, nil), http.StatusServiceUnavailable, errcode.ErrRunnerUnavailable.Code)
-		env.ops.CheckErr = nil
-		aicWant(t, env.super(http.MethodPost, aicBase+"/channels/ghost/check", nil), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
+	t.Run("keys 不是全集（漏、重复、不存在）400（10001），顺序不变", func(t *testing.T) {
+		for name, keys := range map[string][]string{
+			"漏掉":  {"a", "b"},
+			"重复":  {"a", "a", "b"},
+			"不存在": {"a", "b", "ghost"},
+			"空列表": {},
+		} {
+			aicWant(t, env.super(http.MethodPut, path, map[string]any{"keys": keys}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+			if got := order(); got != "c,a,b" {
+				t.Fatalf("%s：顺序不应改变：%s", name, got)
+			}
+		}
 	})
-	t.Run("导入成功：admin 可调，返回草稿", func(t *testing.T) {
-		env.ops.Drafts = []provider.ModelDraft{{UpstreamModel: "kling-v2", Kind: "video", Label: "可灵 v2"}}
-		r := env.admin(http.MethodPost, imp, map[string]any{"args": map[string]any{"limit": 10}})
+	t.Run("缺少 keys、非法 JSON 400", func(t *testing.T) {
+		aicWant(t, env.super(http.MethodPut, path, map[string]any{}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.super(http.MethodPut, path, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+}
+
+// aicPullEnv 准备一个已设置 API Key 的渠道 pull-ch，上游有三个模型。
+func aicPullEnv(t *testing.T, withKey bool) *aicEnv {
+	t.Helper()
+	env := aicNewEnv(t)
+	body := aicChannelJSON("pull-ch")
+	body["headers"] = map[string]any{"X-Biz": "canvas"}
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", body), http.StatusOK, 0)
+	if withKey {
+		aicWant(t, env.super(http.MethodPut, aicBase+"/channels/pull-ch/secret", map[string]any{"value": "sk-live-123"}), http.StatusOK, 0)
+	}
+	env.lister.IDs = []string{"gpt-image-2", "sd2.0-c1", "nano-banana2"}
+	return env
+}
+
+func TestAdminChannelHandler_PullModels(t *testing.T) {
+	url := aicBase + "/channels/pull-ch/pull-models"
+
+	t.Run("成功：admin 可调，标记渠道下已有的模型，用渠道的地址 / 请求头 / Key 请求上游，不落库", func(t *testing.T) {
+		env := aicPullEnv(t, true)
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/pull-ch/models/import", map[string]any{"ids": []string{"sd2.0-c1"}}), http.StatusOK, 0)
+		before := len(env.repo.Models)
+
+		r := env.admin(http.MethodPost, url, nil)
 		aicWant(t, r, http.StatusOK, 0)
-		if !strings.Contains(r.Raw, `"drafts":[`) || !strings.Contains(r.Raw, `"upstream_model":"kling-v2"`) {
-			t.Fatalf("响应不符合预期：%s", r.Raw)
+		var res struct {
+			Models []struct {
+				ID     string `json:"id"`
+				Exists bool   `json:"exists"`
+			} `json:"models"`
+			Total int `json:"total"`
 		}
-		if env.ops.GotArgs["limit"] != float64(10) {
-			t.Fatalf("参数应传给宿主：%v", env.ops.GotArgs)
+		if err := json.Unmarshal(r.Data, &res); err != nil || res.Total != 3 || len(res.Models) != 3 {
+			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+		exists := map[string]bool{}
+		for _, m := range res.Models {
+			exists[m.ID] = m.Exists
+		}
+		if !exists["sd2.0-c1"] || exists["gpt-image-2"] || exists["nano-banana2"] {
+			t.Fatalf("exists 标记不对：%v", exists)
+		}
+		if env.lister.APIKey != "sk-live-123" || env.lister.Channel.BaseURL != "https://gw.example.com" || env.lister.Channel.Headers["X-Biz"] != "canvas" {
+			t.Fatalf("请求上游用的渠道信息不对：%+v key=%q", env.lister.Channel, env.lister.APIKey)
+		}
+		if strings.Contains(r.Raw, "sk-live-123") {
+			t.Fatalf("响应不得含 Key：%s", r.Raw)
+		}
+		if len(env.repo.Models) != before {
+			t.Fatal("拉取不落库")
 		}
 	})
-	t.Run("导入：缺少必填参数 400；没有请求体等同空参数（同样 400）", func(t *testing.T) {
-		aicWant(t, env.admin(http.MethodPost, imp, map[string]any{"args": map[string]any{}}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
-		aicWant(t, env.admin(http.MethodPost, imp, nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
-		aicWant(t, env.admin(http.MethodPost, imp, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	t.Run("super_admin 也可调", func(t *testing.T) {
+		env := aicPullEnv(t, true)
+		aicWant(t, env.super(http.MethodPost, url, nil), http.StatusOK, 0)
 	})
-	t.Run("导入：插件不支持 502（50022）", func(t *testing.T) {
-		env.ops.ImportErr = provider.ErrImportUnsupported
-		aicWant(t, env.admin(http.MethodPost, imp, map[string]any{"args": map[string]any{"limit": 1}}), http.StatusBadGateway, errcode.ErrPluginOpFailed.Code)
-		env.ops.ImportErr = nil
+	t.Run("API Key 没设置 409（50015），不向上游发请求", func(t *testing.T) {
+		env := aicPullEnv(t, false)
+		aicWant(t, env.admin(http.MethodPost, url, nil), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)
+		if env.lister.Calls != 0 {
+			t.Fatal("没有 Key 时不该向上游发请求")
+		}
+	})
+	t.Run("渠道不存在 404；路径 key 超长 400", func(t *testing.T) {
+		env := aicPullEnv(t, true)
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/ghost/pull-models", nil), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/"+aicLongKey+"/pull-models", nil), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+	})
+	t.Run("上游失败 502（50023），消息脱敏，响应里没有 Key 明文", func(t *testing.T) {
+		for name, perr := range map[string]error{
+			"401":  &provider.PullError{Reason: provider.PullUnauthorized, Status: 401, Message: "上游拒绝了请求（HTTP 401），key=sk-live-123"},
+			"不可达":  &provider.PullError{Reason: provider.PullUnreachable, Message: "连接 gw.example.com 超时"},
+			"格式":   &provider.PullError{Reason: provider.PullFormat, Message: "不是 OpenAI 形状"},
+			"其他错误": errors.New("意外：sk-live-123"),
+		} {
+			env := aicPullEnv(t, true)
+			env.lister.Err = perr
+			r := env.admin(http.MethodPost, url, nil)
+			aicWant(t, r, http.StatusBadGateway, errcode.ErrChannelPullFailed.Code)
+			if strings.Contains(r.Raw, "sk-live-123") || r.Msg == "" {
+				t.Fatalf("%s：消息不能为空，也不能含 Key 明文：%s", name, r.Raw)
+			}
+		}
+	})
+	t.Run("普通用户 403，未登录 401", func(t *testing.T) {
+		env := aicPullEnv(t, true)
+		aicWant(t, env.do(http.MethodPost, url, nil, aicNormalUser), http.StatusForbidden, errcode.ErrForbidden.Code)
+		aicWant(t, env.do(http.MethodPost, url, nil, 0), http.StatusUnauthorized, errcode.ErrUnauthorized.Code)
+	})
+}
+
+func TestAdminChannelHandler_ImportModels(t *testing.T) {
+	env := aicPullEnv(t, true)
+	url := aicBase + "/channels/pull-ch/models/import"
+
+	t.Run("成功：admin 可调，创建“待配置”模型（未启用、没选协议），用户看不到", func(t *testing.T) {
+		r := env.admin(http.MethodPost, url, map[string]any{"ids": []string{"gpt-image-2", "sd2.0-c1"}})
+		aicWant(t, r, http.StatusOK, 0)
+		var res struct {
+			Created []struct {
+				Key           string `json:"key"`
+				UpstreamModel string `json:"upstream_model"`
+			} `json:"created"`
+			Skipped []string `json:"skipped"`
+		}
+		if err := json.Unmarshal(r.Data, &res); err != nil || len(res.Created) != 2 || res.Skipped == nil || len(res.Skipped) != 0 ||
+			res.Created[0].Key != "gpt-image-2" || res.Created[0].UpstreamModel != "gpt-image-2" || res.Created[1].Key != "sd2.0-c1" {
+			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+		d := env.admin(http.MethodGet, aicBase+"/models/gpt-image-2", nil)
+		aicWant(t, d, http.StatusOK, 0)
+		if !strings.Contains(d.Raw, `"enabled":false`) || !strings.Contains(d.Raw, `"upstream_model":"gpt-image-2"`) || strings.Contains(d.Raw, `"protocol"`) {
+			t.Fatalf("应是未启用、没有协议的待配置模型：%s", d.Raw)
+		}
+		list, err := aicPageList(env.admin(http.MethodGet, aicBase+"/models", nil))
+		if err != nil || len(list) != 2 {
+			t.Fatalf("后台列表应有 2 个模型：%v", err)
+		}
+		health, _ := list[0]["health"].(map[string]any)
+		if list[0]["channel"] != "pull-ch" || list[0]["upstream"] != "gpt-image-2" || list[0]["plugin"] != "" || health["status"] != "pending" {
+			t.Fatalf("待配置模型的列表行不符合预期：%v", list[0])
+		}
+		if u := env.do(http.MethodGet, "/api/v1/models", nil, aicNormalUser); strings.Contains(u.Raw, "gpt-image-2") {
+			t.Fatalf("待配置的模型不应对用户可见：%s", u.Raw)
+		}
+	})
+	t.Run("待配置的模型不能直接启用：400（40010）", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/gpt-image-2/enabled", map[string]any{"enabled": true}), http.StatusBadRequest, errcode.ErrConfigInvalid.Code)
+	})
+	t.Run("渠道下已有的同名上游模型跳过，不重复创建", func(t *testing.T) {
+		r := env.admin(http.MethodPost, url, map[string]any{"ids": []string{"sd2.0-c1", "nano-banana2"}})
+		aicWant(t, r, http.StatusOK, 0)
+		var res struct {
+			Created []map[string]any `json:"created"`
+			Skipped []string         `json:"skipped"`
+		}
+		if err := json.Unmarshal(r.Data, &res); err != nil || len(res.Created) != 1 || res.Created[0]["upstream_model"] != "nano-banana2" ||
+			len(res.Skipped) != 1 || res.Skipped[0] != "sd2.0-c1" {
+			t.Fatalf("响应不符合预期：%v %s", err, r.Raw)
+		}
+		if len(env.repo.Models) != 3 {
+			t.Fatalf("应只有 3 个模型：%d", len(env.repo.Models))
+		}
+	})
+	t.Run("参数：空 ids、全是空白、缺 ids、非法 JSON 都是 400（10001）", func(t *testing.T) {
+		for name, body := range map[string]any{
+			"空数组":      map[string]any{"ids": []string{}},
+			"全是空白":     map[string]any{"ids": []string{"  ", ""}},
+			"缺 ids":    map[string]any{},
+			"单个 id 超长": map[string]any{"ids": []string{strings.Repeat("m", 257)}},
+			"非法 JSON":  "{not json",
+		} {
+			r := env.admin(http.MethodPost, url, body)
+			if r.Status != http.StatusBadRequest || r.Code != errcode.ErrInvalidParams.Code {
+				t.Fatalf("%s：期望 400 / 10001，实际 HTTP %d / code %d：%s", name, r.Status, r.Code, r.Raw)
+			}
+		}
+		many := make([]string, 501)
+		for i := range many {
+			many[i] = fmt.Sprintf("bulk-%d", i)
+		}
+		r := env.admin(http.MethodPost, url, map[string]any{"ids": many})
+		aicWant(t, r, http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		if !strings.Contains(r.Msg, "500") {
+			t.Fatalf("应提示单次上限：%s", r.Msg)
+		}
+		if len(env.repo.Models) != 3 {
+			t.Fatalf("参数不合法时不能创建任何模型：%d", len(env.repo.Models))
+		}
+	})
+	t.Run("渠道不存在 404", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/ghost/models/import", map[string]any{"ids": []string{"a"}}), http.StatusNotFound, errcode.ErrChannelNotFound.Code)
+	})
+}
+
+func TestAdminChannelHandler_ModelSort(t *testing.T) {
+	env := aicPullEnv(t, true)
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("other")), http.StatusOK, 0)
+	aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/pull-ch/models/import", map[string]any{"ids": []string{"a", "b", "c"}}), http.StatusOK, 0)
+	aicWant(t, env.admin(http.MethodPost, aicBase+"/channels/other/models/import", map[string]any{"ids": []string{"x"}}), http.StatusOK, 0)
+	path := aicBase + "/channels/pull-ch/models/sort"
+	sorts := func() string {
+		return fmt.Sprintf("%d,%d,%d", env.repo.Models["a"].Sort, env.repo.Models["b"].Sort, env.repo.Models["c"].Sort)
+	}
+
+	t.Run("成功：admin 可调，按新顺序重写该渠道内模型的 sort，不影响其他渠道", func(t *testing.T) {
+		xBefore := env.repo.Models["x"].Sort
+		aicWant(t, env.admin(http.MethodPut, path, map[string]any{"keys": []string{"c", "a", "b"}}), http.StatusOK, 0)
+		if got := sorts(); got != "20,30,10" {
+			t.Fatalf("sort 不对（a,b,c）：%s", got)
+		}
+		if env.repo.Models["x"].Sort != xBefore {
+			t.Fatal("其他渠道的模型不应受影响")
+		}
+	})
+	t.Run("keys 不是该渠道模型的全集（漏、重复、别的渠道的、不存在的）400（10001），顺序不变", func(t *testing.T) {
+		for name, keys := range map[string][]string{
+			"漏掉":    {"a", "b"},
+			"重复":    {"a", "a", "b", "c"},
+			"别的渠道的": {"a", "b", "c", "x"},
+			"不存在的":  {"a", "b", "ghost"},
+		} {
+			aicWant(t, env.admin(http.MethodPut, path, map[string]any{"keys": keys}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+			if got := sorts(); got != "20,30,10" {
+				t.Fatalf("%s：顺序不应改变：%s", name, got)
+			}
+		}
+	})
+	t.Run("缺少 keys、非法 JSON 400；渠道里没有这些模型也是 400", func(t *testing.T) {
+		aicWant(t, env.admin(http.MethodPut, path, map[string]any{}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.admin(http.MethodPut, path, "{not json"), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
+		aicWant(t, env.admin(http.MethodPut, aicBase+"/channels/ghost/models/sort", map[string]any{"keys": []string{"a"}}), http.StatusBadRequest, errcode.ErrInvalidParams.Code)
 	})
 }
 
@@ -880,7 +1275,7 @@ func TestAdminChannelHandler_CheckAndImport(t *testing.T) {
 func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 	env := aicNewEnv(t)
 	env.seedPlugin(t, "kling", "1.0.0", model.PluginSourceUploaded)
-	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main", "1.0.0")), http.StatusOK, 0)
+	aicWant(t, env.super(http.MethodPost, aicBase+"/channels", aicChannelJSON("kling-main")), http.StatusOK, 0)
 
 	t.Run("新建模型：成功并返回 issues 列表，没有版本信息", func(t *testing.T) {
 		r := env.admin(http.MethodPost, aicBase+"/models", map[string]any{"body": aicModelJSON("m1", "video", "kling-main"), "note": "初版"})
@@ -937,6 +1332,35 @@ func TestAdminAIHandler_ConfigLifecycle(t *testing.T) {
 			t.Fatalf("应返回带路径的问题：%s", r.Raw)
 		}
 		aicWant(t, env.admin(http.MethodPost, aicBase+"/models/none/validate", nil), http.StatusNotFound, errcode.ErrConfigNotFound.Code)
+	})
+	t.Run("校验：协议问题（插件不存在、版本不存在、必填设置项缺失）报在 channels[0].protocol 上，渠道问题仍在 channels[0].channel", func(t *testing.T) {
+		ghostPlugin := aicModelJSON("m1", "video", "kling-main")
+		ghostPlugin["channels"].([]any)[0].(map[string]any)["protocol"] = map[string]any{"plugin": "ghost", "version": "1.0.0"}
+		noTenant := aicModelJSON("m1", "video", "kling-main")
+		noTenant["channels"].([]any)[0].(map[string]any)["protocol"] = map[string]any{"plugin": "kling", "version": "1.0.0", "settings": map[string]any{}}
+		for name, body := range map[string]map[string]any{
+			"插件不存在":   ghostPlugin,
+			"版本不存在":   aicModelJSONV("m1", "video", "kling-main", "9.9.9"),
+			"必填设置项缺失": noTenant,
+		} {
+			r := env.admin(http.MethodPost, aicBase+"/models/m1/validate", map[string]any{"body": body})
+			aicWant(t, r, http.StatusOK, 0)
+			if !strings.Contains(r.Raw, `"valid":false`) || !strings.Contains(r.Raw, `"path":"channels[0].protocol`) {
+				t.Fatalf("%s：应返回 channels[0].protocol 上的问题：%s", name, r.Raw)
+			}
+			if strings.Contains(r.Raw, `"path":"channels[0].channel"`) {
+				t.Fatalf("%s：渠道是好的，不该报渠道问题：%s", name, r.Raw)
+			}
+		}
+	})
+	t.Run("非 Agent 模型必须选协议：没有 protocol 的正文校验不过", func(t *testing.T) {
+		body := aicModelJSON("m1", "video", "kling-main")
+		delete(body["channels"].([]any)[0].(map[string]any), "protocol")
+		r := env.admin(http.MethodPost, aicBase+"/models/m1/validate", map[string]any{"body": body})
+		aicWant(t, r, http.StatusOK, 0)
+		if !strings.Contains(r.Raw, `"valid":false`) || !strings.Contains(r.Raw, "protocol") {
+			t.Fatalf("应报缺少协议：%s", r.Raw)
+		}
 	})
 	t.Run("渠道 Key 未设置时启用返回 409（50015）", func(t *testing.T) {
 		aicWant(t, env.admin(http.MethodPut, aicBase+"/models/m1/enabled", map[string]any{"enabled": true}), http.StatusConflict, errcode.ErrChannelSecretUnset.Code)

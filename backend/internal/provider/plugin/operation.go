@@ -60,9 +60,10 @@ func (o *operation) setInput(input map[string]any) {
 	}
 }
 
-// wantsCredentials 判断 ctx 里是否放 credentials：只有插件声明 auth: custom 且渠道显式开启 allow_credentials。
+// wantsCredentials 判断 ctx 里是否放 credentials：插件声明 auth: custom（自己签名）就直接提供。
+// 不再有渠道级的“允许插件读取 Key”开关：插件都由管理员自己上传（设计决定，见 docs/design/渠道模型重构）。
 func (o *operation) wantsCredentials() bool {
-	return o.rt.Plugin.Meta.Auth.Type == pluginmeta.AuthCustom && o.rt.Channel.AllowCredentials
+	return o.rt.Plugin.Meta.Auth.Type == pluginmeta.AuthCustom
 }
 
 // needsSecretUpfront 判断是否在调任何钩子之前就取 Key：meta 层面的注入方式需要 Key，或要放进 ctx.credentials。
@@ -97,6 +98,22 @@ func (o *operation) loadSecret(ctx context.Context) (string, error) {
 	return s, nil
 }
 
+// loadSecretKey 取渠道的 Secret Key（可选的第二凭证）并登记脱敏；没设置或取不到返回空串，不算错误。
+func (o *operation) loadSecretKey(ctx context.Context) string {
+	if o.dryRun {
+		return redactedSecret
+	}
+	if o.e.opts.Secrets == nil {
+		return ""
+	}
+	s, err := o.e.opts.Secrets.Get(ctx, model.ChannelSecretKeyName(o.rt.Channel.Key))
+	if err != nil || s == "" {
+		return ""
+	}
+	o.red.add(s)
+	return s
+}
+
 // hookCtx 是传给钩子的 ctx（契约 §3），字段驼峰。
 type hookCtx struct {
 	Task        *hookTask        `json:"task,omitempty"`
@@ -127,7 +144,8 @@ type hookChannel struct {
 }
 
 type hookCredentials struct {
-	APIKey string `json:"apiKey"`
+	APIKey    string `json:"apiKey"`
+	SecretKey string `json:"secretKey,omitempty"` // 渠道设置了 Secret Key 才有
 }
 
 // buildCtx 组装钩子 ctx。任务类操作带 task / model / input；Check / Import 只有 channel、credentials、now。
@@ -144,7 +162,7 @@ func (o *operation) buildCtx(ctx context.Context) (*hookCtx, error) {
 		if err != nil {
 			return nil, err
 		}
-		hc.Credentials = &hookCredentials{APIKey: key}
+		hc.Credentials = &hookCredentials{APIKey: key, SecretKey: o.loadSecretKey(ctx)}
 	}
 	if o.model == nil {
 		return hc, nil

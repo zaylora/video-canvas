@@ -37,6 +37,9 @@ func WeakPasswordCount() int { return len(weakPasswords) }
 
 func (s *AIConfigService) Repo() AIConfigRepo { return s.repo }
 
+// SetKeyGenForTest 替换渠道 key 的生成函数，测试撞 key 重试用。
+func (s *AIChannelService) SetKeyGenForTest(fn func() string) { s.genKey = fn }
+
 func (s *AIConfigService) SetNow(fn func() time.Time) { s.now = fn }
 
 func (s *AssetService) SetRepo(r AssetRepo) { s.repo = r }

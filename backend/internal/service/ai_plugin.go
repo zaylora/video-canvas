@@ -35,32 +35,35 @@ type AIPluginRepo interface {
 	CountVersionRefs(ctx context.Context, id uint64) (repository.VersionRefs, error)
 	// DeleteVersion 事务内重新统计引用后删除版本：仍被引用返回 repository.ErrInUse，不存在返回 repository.ErrNotFound。
 	DeleteVersion(ctx context.Context, id uint64) error
-	// CountPluginRefs 统计插件全部版本被渠道与非终态任务引用的情况，插件不存在返回 repository.ErrNotFound。
+	// CountPluginRefs 统计插件全部版本被模型与非终态任务引用的情况，插件不存在返回 repository.ErrNotFound。
 	CountPluginRefs(ctx context.Context, key string) (repository.PluginRefs, error)
 	// DeletePlugin 事务内按“插件行 → 版本行”加锁、重新统计引用后删除全部版本与插件行：
 	// 仍被引用时返回当时的引用与 repository.ErrInUse，不存在返回 repository.ErrNotFound。
 	DeletePlugin(ctx context.Context, key string) (repository.PluginRefs, error)
 }
 
-// AIChannelLister 只用来统计每个插件版本被多少个渠道固定（PluginView.versions[].channel_count），由 AIChannelRepository 实现。
-type AIChannelLister interface {
-	// ListChannels 返回所有渠道。
-	ListChannels(ctx context.Context) ([]model.AIChannel, error)
+// AIPluginModels 是插件服务对模型配置的依赖，由 AIConfigService 实现：统计每个插件版本被多少个模型固定
+// （PluginView.versions[].model_count），并在插件出新版本后批量升级模型。
+type AIPluginModels interface {
+	// ListConfigs 返回全部模型的列表项（含协议的插件与版本）。
+	ListConfigs(ctx context.Context) ([]ConfigListItem, error)
+	// UpgradePluginModels 把协议固定在 pluginKey 旧版本上的模型批量升到 toVersion（空串表示最新版本），逐个处理，失败不中断。
+	UpgradePluginModels(ctx context.Context, actorID uint64, pluginKey, toVersion string) (*UpgradeModelsResult, error)
 }
 
-// AIPluginService 管理协议插件：上传（预检 + 登记不可变版本）、启停、删除版本 / 整个插件、启动时登记内置插件。
+// AIPluginService 管理协议插件：上传（预检 + 登记不可变版本）、启停、删除版本 / 整个插件、批量升级模型、启动时登记内置插件。
 // 写操作只有 super_admin 能调（由路由的中间件保证），并写审计日志。
 type AIPluginService struct {
 	repo     AIPluginRepo
-	channels AIChannelLister
+	models   AIPluginModels
 	audit    AIAuditWriter
 	checker  provider.Prechecker
 	notifier RegistryNotifier
 }
 
 // NewAIPluginService 创建插件服务。notifier 为 nil 时不刷新 Registry（只有测试会这样）。
-func NewAIPluginService(repo AIPluginRepo, channels AIChannelLister, audit AIAuditWriter, checker provider.Prechecker, notifier RegistryNotifier) *AIPluginService {
-	return &AIPluginService{repo: repo, channels: channels, audit: audit, checker: checker, notifier: notifier}
+func NewAIPluginService(repo AIPluginRepo, models AIPluginModels, audit AIAuditWriter, checker provider.Prechecker, notifier RegistryNotifier) *AIPluginService {
+	return &AIPluginService{repo: repo, models: models, audit: audit, checker: checker, notifier: notifier}
 }
 
 // PluginView 是管理端的插件视图：插件行 + 全部版本（新到旧）。
@@ -75,14 +78,14 @@ type PluginView struct {
 
 // PluginVersionView 是一个插件版本（不含代码）。
 type PluginVersionView struct {
-	ID           uint64           `json:"id"`
-	PluginKey    string           `json:"plugin_key"`
-	Version      string           `json:"version"`
-	SHA256       string           `json:"sha256"`
-	CreatedAt    time.Time        `json:"created_at"`
-	CreatedBy    uint64           `json:"created_by"`
-	ChannelCount int              `json:"channel_count"` // 固定在这个版本上的渠道数
-	Meta         *pluginmeta.Meta `json:"meta"`          // 预检时读出的 meta；库里的 meta_json 损坏时为 null
+	ID         uint64           `json:"id"`
+	PluginKey  string           `json:"plugin_key"`
+	Version    string           `json:"version"`
+	SHA256     string           `json:"sha256"`
+	CreatedAt  time.Time        `json:"created_at"`
+	CreatedBy  uint64           `json:"created_by"`
+	ModelCount int              `json:"model_count"` // 协议固定在这个版本上的模型数
+	Meta       *pluginmeta.Meta `json:"meta"`        // 预检时读出的 meta；库里的 meta_json 损坏时为 null
 }
 
 // UploadResult 是上传插件的结果：预检不通过也是正常结果（HTTP 200），问题列表精确到字段。
@@ -104,9 +107,9 @@ type BuiltinRegistration struct {
 // aiIssuePathVersion 是“版本号已存在”这类问题的 JSON 路径。
 const aiIssuePathVersion = "meta.version"
 
-// List 返回所有插件与它们的版本（新到旧），带每个版本被渠道固定的数量。返回的切片永远不是 nil。
+// List 返回所有插件与它们的版本（新到旧），带每个版本被模型固定的数量。返回的切片永远不是 nil。
 func (s *AIPluginService) List(ctx context.Context) ([]PluginView, error) {
-	// 1. 插件行、全部版本头信息（不含代码）、渠道（只用来数每个版本被几个渠道固定）
+	// 1. 插件行、全部版本头信息（不含代码）、模型（只用来数每个版本被几个模型固定）
 	plugins, err := s.repo.ListPlugins(ctx)
 	if err != nil {
 		return nil, err
@@ -115,19 +118,21 @@ func (s *AIPluginService) List(ctx context.Context) ([]PluginView, error) {
 	if err != nil {
 		return nil, err
 	}
-	chans, err := s.channels.ListChannels(ctx)
+	cfgs, err := s.models.ListConfigs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	perVersion := make(map[uint64]int, len(chans))
-	for _, ch := range chans {
-		perVersion[ch.PluginVersionID]++
+	perVersion := make(map[string]int, len(cfgs)) // "插件 key@版本号" → 模型数
+	for _, m := range cfgs {
+		if m.Plugin != "" {
+			perVersion[m.Plugin+"@"+m.PluginVer]++
+		}
 	}
 	// 2. 版本按插件归并；ListVersions 已经是新到旧，归并时保持顺序
 	byPlugin := make(map[string][]PluginVersionView, len(plugins))
 	for i := range versions {
 		v := &versions[i]
-		byPlugin[v.PluginKey] = append(byPlugin[v.PluginKey], pluginVersionView(v, perVersion[v.ID]))
+		byPlugin[v.PluginKey] = append(byPlugin[v.PluginKey], pluginVersionView(v, perVersion[v.PluginKey+"@"+v.Version]))
 	}
 	out := make([]PluginView, 0, len(plugins))
 	for _, p := range plugins {
@@ -239,7 +244,23 @@ func rejected(issues []modelcfg.Issue) *UploadResult {
 	return &UploadResult{Accepted: false, Issues: issues}
 }
 
-// SetEnabled 启用 / 停用插件：停用后所有使用它的渠道不再接新任务（进行中的任务按快照继续）。
+// UpgradeModels 把协议固定在插件旧版本上的模型批量升到 toVersion（空串表示最新版本），逐个处理，失败不中断，结果里列出成功与失败。
+// 审计记插件、目标版本与成功 / 失败数量。
+func (s *AIPluginService) UpgradeModels(ctx context.Context, actorID uint64, key, toVersion string) (*UpgradeModelsResult, error) {
+	// 1. 交给模型服务逐个处理（它负责校验插件与版本、按声明处理协议设置、走保存时的启用检查）
+	res, err := s.models.UpgradePluginModels(ctx, actorID, key, toVersion)
+	if err != nil {
+		return nil, err
+	}
+	// 2. 审计：有模型被升级或失败才记，没有要升级的模型不产生噪音
+	if len(res.Upgraded)+len(res.Failed) > 0 {
+		aiAudit(ctx, s.audit, actorID, model.AuditPluginUpgrade, model.AuditTargetPlugin, key,
+			map[string]any{"to_version": res.ToVersion, "upgraded": res.Upgraded, "failed": len(res.Failed)})
+	}
+	return res, nil
+}
+
+// SetEnabled 启用 / 停用插件：停用后所有使用它的模型不再接新任务（进行中的任务按快照继续）。
 func (s *AIPluginService) SetEnabled(ctx context.Context, actorID uint64, key string, enabled bool) error {
 	// 1. 写库；插件不存在返回 404
 	if err := s.repo.SetPluginEnabled(ctx, key, enabled); errors.Is(err, repository.ErrNotFound) {
@@ -282,11 +303,11 @@ func (s *AIPluginService) DeleteVersion(ctx context.Context, actorID uint64, key
 	if err != nil {
 		return err
 	}
-	if refs.Channels > 0 || refs.ActiveTasks > 0 {
-		return errcode.ErrPluginInUse.WithMsg(fmt.Sprintf("版本 %s@%s 被 %d 个渠道、%d 个进行中的任务使用，无法删除",
-			key, version, refs.Channels, refs.ActiveTasks))
+	if refs.Models > 0 || refs.ActiveTasks > 0 {
+		return errcode.ErrPluginInUse.WithMsg(fmt.Sprintf("版本 %s@%s 被 %d 个模型、%d 个进行中的任务使用，无法删除",
+			key, version, refs.Models, refs.ActiveTasks))
 	}
-	// 3. 删除；并发情况下被新渠道 / 新任务引用时仓储返回 ErrInUse
+	// 3. 删除；并发情况下被新模型 / 新任务引用时仓储返回 ErrInUse
 	if err := s.repo.DeleteVersion(ctx, ver.ID); errors.Is(err, repository.ErrInUse) {
 		return errcode.ErrPluginInUse
 	} else if errors.Is(err, repository.ErrNotFound) {
@@ -457,10 +478,10 @@ func (s *AIPluginService) notifyChanged(ctx context.Context, reason string) {
 }
 
 // pluginVersionView 由版本行（含 meta_json）组装视图；meta 解析失败输出 null，不让一个损坏的版本拖垮整个列表。
-func pluginVersionView(v *model.AIPluginVersion, channelCount int) PluginVersionView {
+func pluginVersionView(v *model.AIPluginVersion, modelCount int) PluginVersionView {
 	view := PluginVersionView{
 		ID: v.ID, PluginKey: v.PluginKey, Version: v.Version, SHA256: v.SHA256,
-		CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy, ChannelCount: channelCount,
+		CreatedAt: v.CreatedAt, CreatedBy: v.CreatedBy, ModelCount: modelCount,
 	}
 	if meta, err := pluginmeta.Parse(v.MetaJSON); err == nil {
 		view.Meta = meta

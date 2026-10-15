@@ -29,21 +29,22 @@ func TestOverviewTodos_OrderAndText(t *testing.T) {
 	}
 	channels := []CatalogChannel{
 		catChannel(func(c *CatalogChannel) { c.SecretSet = false }),
-		catChannel(func(c *CatalogChannel) { c.Key, c.Name, c.PluginKey = "c2", "Q线", "q" }),
+		catChannel(func(c *CatalogChannel) { c.Key, c.Name = "c2", "Q线" }),
 	}
-	models := []CatalogModel{catModel(nil), catModel(func(m *CatalogModel) { m.Key, m.Channel = "m2", "c2" })}
+	// m1 用 p@1.0.0（p 有 1.1.0，是旧版本）；m2 用已停用的插件 q
+	models := []CatalogModel{catModel(nil), catModel(func(m *CatalogModel) { m.Key, m.Channel, m.Plugin = "m2", "c2", "q" })}
 
 	todos := OverviewTodos(models, channels, plugins)
 	if got := todoIDs(todos); len(got) != 3 || got[0] != "plugin-off:q" || got[1] != "key:c1" || got[2] != "upgrade:p" {
 		t.Fatalf("应按严重度排：插件停用 > 缺 Key > 可升级，实际 %v", got)
 	}
-	if todos[0].Text != "插件「插件Q」已停用，1 个渠道、1 个上架模型实际不可用" || todos[0].Tone != "bad" || todos[0].Action.Kind != "open-plugin" || todos[0].Action.PluginKey != "q" {
+	if todos[0].Text != "插件「插件Q」已停用，1 个模型（其中 1 个已上架）实际不可用" || todos[0].Tone != "bad" || todos[0].Action.Kind != "open-plugin" || todos[0].Action.PluginKey != "q" {
 		t.Errorf("plugin-off：%+v", todos[0])
 	}
 	if todos[1].Text != "渠道「主线」还没设置 Key，1 个模型因此无法上线" || todos[1].Tone != "warn" || todos[1].Action.Kind != "set-key" || todos[1].Action.ChannelKey != "c1" || todos[1].Action.ChannelName != "主线" {
 		t.Errorf("key：%+v", todos[1])
 	}
-	if todos[2].Text != "插件P v1.1.0 可用，1 个渠道还在旧版本" || todos[2].Tone != "info" || todos[2].Action.Kind != "upgrade-plugin" || todos[2].Action.PluginKey != "p" {
+	if todos[2].Text != "插件P v1.1.0 可用，1 个模型还在旧版本" || todos[2].Tone != "info" || todos[2].Action.Kind != "upgrade-plugin" || todos[2].Action.PluginKey != "p" {
 		t.Errorf("upgrade：%+v", todos[2])
 	}
 }
@@ -68,22 +69,32 @@ func TestOverviewTodos_ChannelOffAndNothing(t *testing.T) {
 	}
 }
 
-func TestOverviewTodos_NoPinnedChannelsNoTodo(t *testing.T) {
+func TestOverviewTodos_PluginOffWithoutOnlineModels(t *testing.T) {
+	off := []CatalogPlugin{catPlugin(func(p *CatalogPlugin) { p.Enabled = false })}
+	down := catModel(func(m *CatalogModel) { m.Enabled = false })
+	todos := OverviewTodos([]CatalogModel{down}, []CatalogChannel{catChannel(nil)}, off)
+	if len(todos) != 1 || todos[0].Text != "插件「插件P」已停用，1 个模型实际不可用" {
+		t.Errorf("没有上架的模型时不带“其中 N 个已上架”：%+v", todos)
+	}
+}
+
+func TestOverviewTodos_NoModelsNoTodo(t *testing.T) {
 	off := catPlugin(func(p *CatalogPlugin) { p.Enabled = false })
 	if got := OverviewTodos(nil, nil, []CatalogPlugin{off}); len(got) != 0 {
-		t.Errorf("停用的插件没有渠道在用就不提示：%v", got)
+		t.Errorf("停用的插件没有模型在用就不提示：%v", got)
 	}
 }
 
 func TestCatalog_Overview(t *testing.T) {
 	ctx := context.Background()
 	e := newCatEnv(t)
-	e.channel(t, "a-main", "主线", "1.0.0", true, true)      // 正常，kling 可升级
-	e.channel(t, "b-nokey", "没设Key", "1.1.0", true, false) // 缺 Key
-	e.channel(t, "c-off", "已停用", "1.1.0", false, true)     // 停用
-	e.model(t, "m1", "a-main", true)                       // 在线
-	e.model(t, "m2", "b-nokey", true)                      // 不可用（缺 Key）
-	e.model(t, "m3", "a-main", false)                      // 未上线
+	e.channel(t, "a-main", "主线", true, true)      // 正常
+	e.channel(t, "b-nokey", "没设Key", true, false) // 缺 Key
+	e.channel(t, "c-off", "已停用", false, true)     // 停用
+	e.model(t, "m1", "a-main", true)              // 在线，用 kling@1.0.0（1.1.0 可升级）
+	e.model(t, "m2", "b-nokey", true)             // 不可用（缺 Key）
+	e.model(t, "m3", "a-main", false)             // 未上线
+	e.pending(t, "m4", "a-main")                  // 待配置
 
 	ov, err := e.cat.Overview(ctx)
 	if err != nil {
@@ -95,8 +106,8 @@ func TestCatalog_Overview(t *testing.T) {
 	if ov.Channels.Total != 3 || ov.Channels.Usable != 1 || ov.Channels.NoKey != 1 {
 		t.Errorf("渠道：总数 3、可用 1、未设 Key 1，实际 %+v", ov.Channels)
 	}
-	if ov.Models.Total != 3 || ov.Models.Online != 1 || ov.Models.Broken != 1 {
-		t.Errorf("模型：总数 3、在线 1、不可用 1，实际 %+v", ov.Models)
+	if ov.Models.Total != 4 || ov.Models.Online != 1 || ov.Models.Broken != 1 || ov.Models.Pending != 1 {
+		t.Errorf("模型：总数 4、在线 1、不可用 1、待配置 1，实际 %+v", ov.Models)
 	}
 	if got := todoIDs(ov.Todos); len(got) != 2 || got[0] != "key:b-nokey" || got[1] != "upgrade:kling" {
 		t.Errorf("没有插件停用，最严重的是缺 Key，其次是可升级：%v", got)

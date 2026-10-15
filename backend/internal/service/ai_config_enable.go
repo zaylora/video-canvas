@@ -15,11 +15,13 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// aiResolvedChannel 是模型 channels[0] 解析出来的渠道行、它固定的插件版本头信息与插件 meta。
+// aiResolvedChannel 是模型 channels[0] 解析出来的渠道行，以及（非 Agent 模型）它选的协议：固定的插件版本、meta 与规范化后的协议设置。
+// Agent 模型不走插件，version / meta / settings 为空。
 type aiResolvedChannel struct {
-	channel *model.AIChannel
-	version *model.AIPluginVersion
-	meta    *pluginmeta.Meta
+	channel  *model.AIChannel
+	version  *model.AIPluginVersion
+	meta     *pluginmeta.Meta
+	settings map[string]any
 }
 
 // SetModelEnabled 启用 / 停用模型，启用后用户才能使用。启用前按 checkEnableable 检查已保存的配置，不通过不能启用；停用立即生效，进行中的任务不受影响。
@@ -61,10 +63,11 @@ func (s *AIConfigService) SetModelSort(ctx context.Context, key string, sort int
 }
 
 // checkEnableable 是启用模型、保存已启用模型共用的前置检查，通过后返回要同步到指针行的冗余字段：
-// 正文无校验问题 → 渠道存在且启用、插件启用、插件版本支持该 kind → 插件需要鉴权时渠道 Key 已设置。
+// 正文无校验问题 → 渠道存在且启用 → （非 Agent）协议已选、插件存在且启用、固定的版本存在且支持该 kind、协议设置合法 →
+// 鉴权不是 none 时渠道 Key 已设置。
 // 每一项不满足都返回对应的业务错误，而不是笼统的“配置无效”，运营据此知道该找谁（渠道 / Key 由 super_admin 管）。
 func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body []byte) (repository.ConfigPointer, error) {
-	// 1. 正文校验：有任何问题都不允许启用
+	// 1. 正文校验：有任何问题都不允许启用（“待配置”的模型缺 kind / 协议，会在这里被拦下）
 	meta, cfg, issues := aiBodyIssues(key, body)
 	if meta == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置正文不是合法的 JSON 对象")
@@ -72,7 +75,7 @@ func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body 
 	if len(issues) > 0 || cfg == nil {
 		return repository.ConfigPointer{}, errcode.ErrConfigInvalid.WithMsg("配置校验未通过：" + aiFormatIssues(issues))
 	}
-	// 2. 渠道与插件可用：否则启用后模型也不会出现在清单里
+	// 2. 渠道与协议可用：否则启用后模型也不会出现在清单里
 	rc, err := s.resolveChannel(ctx, cfg)
 	if err != nil {
 		return repository.ConfigPointer{}, err
@@ -84,76 +87,91 @@ func (s *AIConfigService) checkEnableable(ctx context.Context, key string, body 
 	return aiPointer(meta), nil
 }
 
-// resolveChannel 按模型的 channels[0] 找到渠道、它固定的插件版本与 meta，并做可用性检查：
-// 渠道存在（ErrChannelNotFound）且启用（ErrChannelDisabled）；插件存在且启用（ErrChannelInvalid / ErrPluginDisabled）；
-// 版本行存在、属于该插件、meta 能解析（ErrChannelInvalid）；插件 endpoints 里有模型的 kind（ErrConfigInvalid：是模型选错了渠道）。
-// 仓储的其他错误原样返回。启用检查、保存时的跨对象检查、试跑都用它，保证三处的标准一致。
+// resolveChannel 按模型的 channels[0] 找到渠道与它选的协议，并做可用性检查：
+// 渠道存在（ErrChannelNotFound）且启用（ErrChannelDisabled）；
+// 非 Agent 模型：协议已选（ErrConfigInvalid）、插件存在（ErrConfigInvalid）且启用（ErrPluginDisabled）、固定的版本存在且 meta 能解析、
+// 版本声明了模型的 kind、协议设置项按版本的 channelSettings 校验通过（都是 ErrConfigInvalid：是模型的配置问题，不是渠道的）。
+// Agent 模型不走插件，只检查渠道。仓储的其他错误原样返回。启用检查、保存时的跨对象检查、试跑都用它，保证三处的标准一致。
 func (s *AIConfigService) resolveChannel(ctx context.Context, cfg *modelcfg.ModelConfig) (*aiResolvedChannel, error) {
 	// 1. 渠道：已校验过的配置 channels 恰好一个，这里的判空只是防御
 	if len(cfg.Channels) == 0 {
 		return nil, errcode.ErrConfigInvalid.WithMsg("模型没有绑定渠道")
 	}
-	chKey := cfg.Channels[0].Channel
-	ch, err := s.channels.GetChannel(ctx, chKey)
+	ref := cfg.Channels[0]
+	ch, err := s.channels.GetChannel(ctx, ref.Channel)
 	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrChannelNotFound.WithMsg(fmt.Sprintf("渠道 %q 不存在", chKey))
+		return nil, errcode.ErrChannelNotFound.WithMsg(fmt.Sprintf("渠道 %q 不存在", ref.Channel))
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !ch.Enabled {
-		return nil, errcode.ErrChannelDisabled.WithMsg(fmt.Sprintf("渠道 %q 已停用", chKey))
+		return nil, errcode.ErrChannelDisabled.WithMsg(fmt.Sprintf("渠道 %q 已停用", ref.Channel))
 	}
-	// 2. 插件：插件停用等于所有用它的渠道不再接新任务
-	p, err := s.plugins.GetPlugin(ctx, ch.PluginKey)
+	// 2. Agent 模型由宿主的 LLM 网关直接请求渠道，不需要协议
+	if cfg.Kind == modelcfg.KindAgent {
+		return &aiResolvedChannel{channel: ch}, nil
+	}
+	// 3. 协议：插件存在且启用（插件停用等于所有用它的模型不再接新任务）
+	if ref.Protocol == nil {
+		return nil, errcode.ErrConfigInvalid.WithMsg("该模型还没有选择调用协议")
+	}
+	p, err := s.plugins.GetPlugin(ctx, ref.Protocol.Plugin)
 	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrChannelInvalid.WithMsg(fmt.Sprintf("渠道 %q 引用的插件 %q 不存在", chKey, ch.PluginKey))
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("模型选择的协议插件 %q 不存在", ref.Protocol.Plugin))
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !p.Enabled {
-		return nil, errcode.ErrPluginDisabled.WithMsg(fmt.Sprintf("渠道 %q 使用的插件 %q 已停用", chKey, ch.PluginKey))
+		return nil, errcode.ErrPluginDisabled.WithMsg(fmt.Sprintf("模型选择的协议插件 %q 已停用", ref.Protocol.Plugin))
 	}
-	// 3. 渠道固定的插件版本与 meta
-	rc, err := s.loadChannelVersion(ctx, ch)
+	// 4. 模型固定的插件版本与 meta
+	rc, err := s.loadProtocolVersion(ctx, ch, ref.Protocol)
 	if err != nil {
 		return nil, err
 	}
-	// 4. 插件必须支持这种生成方式，否则宿主拿到任务也不知道该调哪个 endpoint
+	// 5. 版本必须支持这种生成方式，否则宿主拿到任务也不知道该调哪个 endpoint
 	if !rc.meta.SupportsKind(cfg.Kind) {
-		why := "不支持"
-		if cfg.Kind == modelcfg.KindAgent {
-			why = "不支持（Agent 模型要求渠道用 Bearer 鉴权）"
-		}
-		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("渠道 %q 使用的插件 %s@%s %s %s 类型的模型",
-			chKey, rc.version.PluginKey, rc.version.Version, why, cfg.Kind))
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("协议 %s@%s 不支持 %s 类型的模型",
+			rc.version.PluginKey, rc.version.Version, cfg.Kind))
 	}
+	// 6. 协议设置项按版本的声明校验并补默认值（必填项漏填在这里报出来）
+	settings, issues := pluginmeta.ValidateSettingValues(rc.meta.ChannelSettings, ref.Protocol.Settings)
+	if len(issues) > 0 {
+		return nil, errcode.ErrConfigInvalid.WithMsg("协议设置不合法：" + aiFormatIssues(issues))
+	}
+	rc.settings = settings
 	return rc, nil
 }
 
-// loadChannelVersion 读出渠道固定的插件版本头信息并解析 meta；版本不存在、不属于渠道的插件、meta 损坏都是渠道数据问题（ErrChannelInvalid）。
-func (s *AIConfigService) loadChannelVersion(ctx context.Context, ch *model.AIChannel) (*aiResolvedChannel, error) {
-	ver, err := s.plugins.GetVersionHead(ctx, ch.PluginVersionID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, errcode.ErrChannelInvalid.WithMsg(fmt.Sprintf("渠道 %q 固定的插件版本不存在", ch.Key))
-	}
+// loadProtocolVersion 读出模型固定的插件版本头信息并解析 meta；版本不存在、meta 损坏都是模型配置问题（ErrConfigInvalid）。
+func (s *AIConfigService) loadProtocolVersion(ctx context.Context, ch *model.AIChannel, proto *modelcfg.Protocol) (*aiResolvedChannel, error) {
+	vers, err := s.plugins.ListVersions(ctx, proto.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	if ver.PluginKey != ch.PluginKey {
-		return nil, errcode.ErrChannelInvalid.WithMsg(fmt.Sprintf("渠道 %q 固定的插件版本不属于插件 %q", ch.Key, ch.PluginKey))
+	var ver *model.AIPluginVersion
+	for i := range vers {
+		if vers[i].Version == proto.Version {
+			ver = &vers[i]
+			break
+		}
+	}
+	if ver == nil {
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("模型固定的插件版本 %s@%s 不存在", proto.Plugin, proto.Version))
 	}
 	meta, err := pluginmeta.Parse(ver.MetaJSON)
 	if err != nil {
-		return nil, errcode.ErrChannelInvalid.WithMsg(fmt.Sprintf("插件 %s@%s 的 meta 无法解析", ver.PluginKey, ver.Version))
+		return nil, errcode.ErrConfigInvalid.WithMsg(fmt.Sprintf("插件 %s@%s 的 meta 无法解析", ver.PluginKey, ver.Version))
 	}
 	return &aiResolvedChannel{channel: ch, version: ver, meta: meta}, nil
 }
 
-// checkChannelSecret 插件需要宿主注入鉴权（auth.type 不是 none）时，要求渠道 Key 已设置，否则返回 ErrChannelSecretUnset。
+// checkChannelSecret 需要渠道 Key 时要求它已设置，否则返回 ErrChannelSecretUnset：
+// Agent 模型（网关用它做 Bearer）一定需要；其他模型在插件需要宿主注入鉴权（auth.type 不是 none）时需要。
 func (s *AIConfigService) checkChannelSecret(ctx context.Context, rc *aiResolvedChannel) error {
-	if rc.meta.Auth.Type == pluginmeta.AuthNone {
+	if rc.meta != nil && rc.meta.Auth.Type == pluginmeta.AuthNone {
 		return nil
 	}
 	set, err := s.SecretIsSet(ctx, model.ChannelSecretName(rc.channel.Key))

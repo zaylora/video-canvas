@@ -76,7 +76,7 @@ var (
 	ErrPluginPrecheck     = New(50002, "插件预检未通过", http.StatusBadRequest) // 问题列表写进上传响应的 issues
 	ErrPluginVersionDup   = New(50003, "该插件版本号已存在，请修改 meta.version", http.StatusConflict)
 	ErrPluginDisabled     = New(50004, "插件已停用", http.StatusConflict)
-	ErrPluginInUse        = New(50005, "插件版本仍被渠道或进行中的任务使用，无法删除", http.StatusConflict)
+	ErrPluginInUse        = New(50005, "插件版本仍被模型或进行中的任务使用，无法删除", http.StatusConflict)
 	ErrPluginBuiltin      = New(50006, "内置插件不能被删除或覆盖", http.StatusConflict)
 	ErrPluginTooLarge     = New(50007, "插件文件超过大小限制", http.StatusRequestEntityTooLarge)
 	ErrPluginBuiltinDel   = New(50008, "内置插件不能删除，只能停用", http.StatusConflict)
@@ -87,7 +87,8 @@ var (
 	ErrChannelSecretUnset = New(50015, "渠道 Key 尚未设置", http.StatusConflict)
 	ErrChannelInUse       = New(50016, "渠道仍被模型或进行中的任务使用，无法删除", http.StatusConflict) // 带数量的原因写进 Msg
 	ErrRunnerUnavailable  = New(50021, "插件运行时暂不可用，请稍后重试", http.StatusServiceUnavailable)
-	ErrPluginOpFailed     = New(50022, "插件调用失败", http.StatusBadGateway) // 连通性检查 / 导入失败，原因写进 Msg（已脱敏）
+	ErrPluginOpFailed     = New(50022, "插件调用失败", http.StatusBadGateway)   // 历史：连通性检查 / 导入失败，原因写进 Msg（已脱敏）
+	ErrChannelPullFailed  = New(50023, "拉取上游模型失败", http.StatusBadGateway) // 上游不通 / 401 / 返回格式不符 / 超时，原因写进 Msg（已脱敏）
 	ErrModelEnabled       = New(50031, "模型还在上线，先下线再删除", http.StatusConflict)
 )
 

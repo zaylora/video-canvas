@@ -9,6 +9,7 @@ import (
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
+	"video-canvas/internal/repository"
 	"video-canvas/internal/service/aiconfigfake"
 )
 
@@ -56,6 +57,21 @@ func adminSeedVersion(t *testing.T, repo *aiconfigfake.MemRepo, meta json.RawMes
 		_ = repo.SetPluginEnabled(context.Background(), m.Key, false)
 	}
 	return v.ID
+}
+
+// adminSeedModel 直接往仓储里放一个协议固定在 plugin@version 上的模型（不经过服务），settings 是协议设置项取值（JSON 对象文本，可空）。
+func adminSeedModel(t *testing.T, repo *aiconfigfake.MemRepo, key, plugin, version, settings string) {
+	t.Helper()
+	if settings == "" {
+		settings = "{}"
+	}
+	body := `{"key":"` + key + `","kind":"video","label":"模型-` + key + `","channels":[{"channel":"c1","upstream_model":"u",` +
+		`"protocol":{"plugin":"` + plugin + `","version":"` + version + `","settings":` + settings + `}}]}`
+	if _, err := repo.SaveModel(context.Background(), repository.SaveModelInput{
+		Pointer: repository.ConfigPointer{Target: model.ConfigTargetModel, Key: key, Kind: "video"}, Body: []byte(body),
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // adminWantCode 断言错误是指定业务错误码；wantCode=0 表示期望成功。

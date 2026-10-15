@@ -121,7 +121,7 @@ func anthropicSubmit(t *testing.T, status int, resp string, params map[string]an
 func TestAnthropicPrecheckAndMeta(t *testing.T) {
 	env := newAnthropicEnv(t, nil)
 	m := env.meta
-	if m.Key != "anthropic" || m.Name != "Anthropic" || m.Version != "1.0.0" {
+	if m.Key != "anthropic" || m.Name != "Anthropic" || m.Version != "1.1.0" {
 		t.Fatalf("meta 不符合预期：%+v", m)
 	}
 	if m.Auth.Type != pluginmeta.AuthHeader || m.Auth.Name != "x-api-key" {

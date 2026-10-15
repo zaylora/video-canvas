@@ -260,7 +260,12 @@ func (m *MemRepo) ListChannels(_ context.Context) ([]model.AIChannel, error) {
 	for _, channel := range m.Channels {
 		out = append(out, *channel)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Sort != out[j].Sort {
+			return out[i].Sort < out[j].Sort
+		}
+		return out[i].Key < out[j].Key
+	})
 	return out, nil
 }
 

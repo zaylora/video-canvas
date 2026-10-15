@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { FlaskConical, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, FlaskConical, Trash2 } from "lucide-react";
 
-import type { ChannelOption, ModelHealth, ModelListItem } from "@/api/admin/ai/type.d";
-import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
+import type { ModelHealth, ModelListItem } from "@/api/admin/ai/type.d";
+import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
+import { RowIconAction } from "@/components/admin-ui/row-icon-action";
 import { StatusDot } from "@/components/admin-ui/status-dot";
 import { Tag } from "@/components/admin-ui/tag";
-import { RowIconAction } from "@/components/admin-ui/row-icon-action";
+import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -17,53 +18,103 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
 import { cn } from "@/lib/utils";
 import { HEALTH_UI_TONE, MODEL_STATUS_LABEL, MODEL_STATUS_TONE } from "@/utils/admin/health";
 
 import { KindTag } from "../kind";
 
+/** 待配置的模型不能启用：先把能力和协议配好 */
+const PENDING_DENY = "还没有选择能力或协议，先编辑模型";
+
 /**
- * 状态列：对运营只露一个状态（在线 / 不可用 / 未上线），渠道层面的问题写在下面一行。
- * 插件停用、渠道缺 Key 等会传到这里，不会再显示“已上线”却用不了。
+ * 状态列：一个启用开关 + 状态标签。状态由后端算好（在线 / 不可用 / 未上线 / 待配置），
+ * 渠道或协议层面的问题（插件停用、渠道缺 Key 等）写在下面一行，不会再显示“在线”却用不了。
+ * 待配置的模型开关置灰并写明原因。
  */
-function StatusCell({ health }: { health: ModelHealth }) {
+function StatusCell({
+  item,
+  health,
+  busy,
+  label,
+  onToggle,
+}: {
+  item: ModelListItem;
+  health: ModelHealth;
+  busy: boolean;
+  label: string;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const pending = health.status === "pending";
+  const tone = HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]];
   return (
-    <div className="flex flex-col items-start gap-1">
-      <Tag tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]}>
-        <StatusDot tone={HEALTH_UI_TONE[MODEL_STATUS_TONE[health.status]]} />
-        {MODEL_STATUS_LABEL[health.status]}
-      </Tag>
-      {health.reason && (
-        <span
-          className={cn(
-            "text-xs",
-            health.status === "broken" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
-          )}
-        >
-          {health.status === "offline" ? `上线前要处理：${health.reason}` : health.reason}
-        </span>
-      )}
+    <div className="flex items-start gap-2.5" onClick={(event) => event.stopPropagation()}>
+      <ReasonTooltip reason={pending ? PENDING_DENY : null}>
+        <Switch
+          checked={!!item.enabled}
+          disabled={busy || pending}
+          aria-label={`上线 ${label}`}
+          onCheckedChange={onToggle}
+        />
+      </ReasonTooltip>
+      <div className="flex min-w-0 flex-col items-start gap-1">
+        <Tag tone={tone}>
+          <StatusDot tone={tone} />
+          {MODEL_STATUS_LABEL[health.status]}
+        </Tag>
+        {health.reason && (
+          <span
+            className={cn(
+              "text-xs",
+              health.status === "broken"
+                ? "text-red-600 dark:text-red-400"
+                : "text-muted-foreground",
+            )}
+          >
+            {health.status === "offline" ? `上线前要处理：${health.reason}` : health.reason}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
+/** 请求协议列：“插件名 @版本”；Agent 走宿主网关；没选协议是黄色“待配置” */
+function ProtocolCell({ item }: { item: ModelListItem }) {
+  if (item.kind === "agent") return <span className="text-muted-foreground text-sm">宿主网关</span>;
+  if (!item.plugin) return <Tag tone="warning">待配置</Tag>;
+  return (
+    <span className="text-sm">
+      {item.plugin_name || item.plugin}
+      {item.plugin_version && (
+        <span className="text-muted-foreground ml-1 font-mono text-xs">@{item.plugin_version}</span>
+      )}
+    </span>
+  );
+}
+
+/** 测试按钮被禁用的原因；可以测试返回 null */
+function testDeny(item: ModelListItem): string | null {
+  if (!item.kind) return "还没有选择能力，先编辑模型";
+  if (item.kind === "agent") return "Agent 模型暂不支持试跑";
+  if (!item.plugin) return "还没有选择协议，先编辑模型";
+  return null;
+}
+
 /**
- * 模型表格（设计稿 modelTable）：模型 / 能力 / 渠道 / 状态 / 上线 / 操作，点整行打开编辑弹窗。
- * 行内常驻“测试 / 删除”（编辑靠点整行），样式同渠道页与插件页。
- * 模型页和渠道页“使用这个渠道的模型”共用；渠道页传 hideChannel 去掉渠道列。
- * 传 selected 时第一列是勾选框（批量操作用）。
+ * 模型表格（设计稿 renderTable）：☐ / 模型（名称 + key）/ 能力 / 请求协议 / 状态（启用开关）/ 操作，点整行打开编辑弹窗。
+ * 行内常驻“测试 / 删除”（编辑靠点整行）。传 selected 时第一列是勾选框（批量操作用）。
+ * sortMode 为 true 是“自定义排序”：去掉勾选框，操作列换成上移 / 下移，点行不再打开编辑；保存由使用方负责。
  */
 export function ModelRows({
   models,
   status = "ready",
-  channels,
-  hideChannel,
   className,
   selected,
   onSelectedChange,
   empty = "没有匹配的模型",
   busyKey,
+  sortMode = false,
+  onMove,
   onEdit,
   onTest,
   onToggleEnabled,
@@ -73,9 +124,6 @@ export function ModelRows({
   /** 当页的模型（状态和渠道名由后端算好） */
   models: ModelListItem[];
   status?: "loading" | "ready" | "error";
-  /** 全部渠道（options）：第二行显示渠道所属插件名；没传或没加载好就只显示渠道名 */
-  channels?: ChannelOption[];
-  hideChannel?: boolean;
   /** 外层容器的额外类名（嵌进别的卡片时去掉自带的边框） */
   className?: string;
   selected?: string[];
@@ -83,6 +131,10 @@ export function ModelRows({
   empty?: ReactNode;
   /** 正在切换上线的模型 */
   busyKey?: string | null;
+  /** 自定义排序模式：显示上移 / 下移，隐藏勾选与测试 / 删除 */
+  sortMode?: boolean;
+  /** 排序模式下上移（-1）/ 下移（1）一行 */
+  onMove?: (key: string, direction: -1 | 1) => void;
   onEdit: (key: string) => void;
   onTest: (key: string) => void;
   onToggleEnabled: (key: string, enabled: boolean) => void;
@@ -90,11 +142,11 @@ export function ModelRows({
   onDelete?: (item: ModelListItem) => void;
   onRetry?: () => void;
 }) {
-  const selectable = !!selected && !!onSelectedChange;
+  const selectable = !!selected && !!onSelectedChange && !sortMode;
   const keys = models.map((item) => item.key);
   const all = selectable && keys.length > 0 && keys.every((key) => selected.includes(key));
   const some = selectable && keys.some((key) => selected.includes(key));
-  const columns = 5 + (hideChannel ? 0 : 1) + (selectable ? 1 : 0);
+  const columns = 5 + (selectable ? 1 : 0);
   const toggle = (key: string, on: boolean) =>
     onSelectedChange?.(on ? [...(selected ?? []), key] : (selected ?? []).filter((k) => k !== key));
 
@@ -121,11 +173,8 @@ export function ModelRows({
             )}
             <TableHead className="text-muted-foreground px-3 text-xs">模型</TableHead>
             <TableHead className="text-muted-foreground px-3 text-xs">能力</TableHead>
-            {!hideChannel && (
-              <TableHead className="text-muted-foreground px-3 text-xs">渠道</TableHead>
-            )}
+            <TableHead className="text-muted-foreground px-3 text-xs">请求协议</TableHead>
             <TableHead className="text-muted-foreground px-3 text-xs">状态</TableHead>
-            <TableHead className="text-muted-foreground px-3 text-xs">上线</TableHead>
             <TableHead className="text-muted-foreground px-3 text-right text-xs">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -161,19 +210,16 @@ export function ModelRows({
             </TableRow>
           )}
           {status === "ready" &&
-            models.map((item) => {
+            models.map((item, index) => {
               const label = item.label || item.name || item.key;
-              const pluginKey = item.channel
-                ? channels?.find((c) => c.key === item.channel)?.plugin_key
-                : undefined;
-              const health = item.health;
+              const deny = testDeny(item);
               return (
                 <TableRow
                   key={item.key}
                   data-model={item.key}
                   data-state={selected?.includes(item.key) ? "selected" : undefined}
-                  className="cursor-pointer"
-                  onClick={() => onEdit(item.key)}
+                  className={sortMode ? undefined : "cursor-pointer"}
+                  onClick={sortMode ? undefined : () => onEdit(item.key)}
                 >
                   {selectable && (
                     <TableCell className="pl-3" onClick={(event) => event.stopPropagation()}>
@@ -196,46 +242,62 @@ export function ModelRows({
                     </div>
                   </TableCell>
                   <TableCell className="px-3 py-3">
-                    <KindTag kind={item.kind ?? ""} />
+                    {item.kind ? <KindTag kind={item.kind} /> : <Tag tone="warning">待配置</Tag>}
                   </TableCell>
-                  {!hideChannel && (
-                    <TableCell className="px-3 py-3">
-                      <div className="text-sm">{item.channel_name || item.channel || "—"}</div>
-                      {pluginKey && (
-                        <div className="text-muted-foreground text-xs">{pluginKey}</div>
-                      )}
-                    </TableCell>
-                  )}
                   <TableCell className="px-3 py-3">
-                    <StatusCell health={health} />
+                    <ProtocolCell item={item} />
                   </TableCell>
-                  <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
-                    <Switch
-                      checked={!!item.enabled}
-                      disabled={busyKey === item.key}
-                      aria-label={`上线 ${label}`}
-                      onCheckedChange={(checked) => onToggleEnabled(item.key, checked)}
+                  <TableCell className="px-3 py-3">
+                    <StatusCell
+                      item={item}
+                      health={item.health}
+                      busy={busyKey === item.key || sortMode}
+                      label={label}
+                      onToggle={(checked) => onToggleEnabled(item.key, checked)}
                     />
                   </TableCell>
                   <TableCell className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                     <div className="flex items-center justify-end gap-0.5">
-                      <RowIconAction
-                        label="测试"
-                        deny={item.kind === "agent" ? "Agent 模型暂不支持试跑" : null}
-                        target={label}
-                        onClick={() => onTest(item.key)}
-                      >
-                        <FlaskConical />
-                      </RowIconAction>
-                      {onDelete && (
-                        <RowIconAction
-                          label="删除"
-                          destructive
-                          target={label}
-                          onClick={() => onDelete(item)}
-                        >
-                          <Trash2 />
-                        </RowIconAction>
+                      {sortMode ? (
+                        <>
+                          <RowIconAction
+                            label="上移"
+                            target={label}
+                            deny={index === 0 ? "已经是第一个" : null}
+                            onClick={() => onMove?.(item.key, -1)}
+                          >
+                            <ArrowUp />
+                          </RowIconAction>
+                          <RowIconAction
+                            label="下移"
+                            target={label}
+                            deny={index === models.length - 1 ? "已经是最后一个" : null}
+                            onClick={() => onMove?.(item.key, 1)}
+                          >
+                            <ArrowDown />
+                          </RowIconAction>
+                        </>
+                      ) : (
+                        <>
+                          <RowIconAction
+                            label="测试"
+                            deny={deny}
+                            target={label}
+                            onClick={() => onTest(item.key)}
+                          >
+                            <FlaskConical />
+                          </RowIconAction>
+                          {onDelete && (
+                            <RowIconAction
+                              label="删除"
+                              destructive
+                              target={label}
+                              onClick={() => onDelete(item)}
+                            >
+                              <Trash2 />
+                            </RowIconAction>
+                          )}
+                        </>
                       )}
                     </div>
                   </TableCell>

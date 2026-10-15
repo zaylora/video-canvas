@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { IMPORT_DRAFT_PREFIX } from "@/utils/admin/import-draft";
 import { clearSession } from "@/utils/storage/session";
 import { getRole, getToken, setToken } from "@/utils/storage/token";
 
-/** 内存版 Storage，带 key()/length 以便按前缀遍历 */
+/** 内存版 Storage */
 function memoryStorage(): Storage {
   const data = new Map<string, string>();
   return {
@@ -34,13 +33,9 @@ describe("clearSession（退出登录要清掉的浏览器数据）", () => {
     expect(localStorage.length).toBe(0);
   });
 
-  test("清掉后台导入草稿，但不动其他会话数据", () => {
-    sessionStorage.setItem(IMPORT_DRAFT_PREFIX + "1", "{}");
-    sessionStorage.setItem(IMPORT_DRAFT_PREFIX + "2", "{}");
+  test("不动其他会话数据", () => {
     sessionStorage.setItem("other", "keep");
     clearSession();
-    expect(sessionStorage.getItem(IMPORT_DRAFT_PREFIX + "1")).toBeNull();
-    expect(sessionStorage.getItem(IMPORT_DRAFT_PREFIX + "2")).toBeNull();
     expect(sessionStorage.getItem("other")).toBe("keep");
   });
 

@@ -156,7 +156,7 @@ func TestParseModel_deadline边界(t *testing.T) {
 }
 
 func TestParseModel_大整数参数不丢精度(t *testing.T) {
-	m := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u"}],
+	m := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u","protocol":{"plugin":"p","version":"1.0.0"}}],
 	"params":{"webappId":2093984571330498561,"n":5,"nested":{"big":2093984571330498562},"list":[1,2.5]},
 	"capabilities":{"ops":["t2i"],"prompt":{"max_length":100}},"pricing":{"billing":"per_call","unit":1}}`
 	got, issues := modelcfg.ParseModel([]byte(m))
@@ -427,7 +427,7 @@ func TestParseModel_多个问题一次报出(t *testing.T) {
 }
 
 func TestParseModel_重复参数名(t *testing.T) {
-	body := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u"}],"capabilities":{
+	body := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u","protocol":{"plugin":"p","version":"1.0.0"}}],"capabilities":{
 		"ops":["t2i"],"prompt":{"max_length":100},"params":{
 		"a":{"type":"boolean","label":"A","open":true},"a":{"type":"boolean","label":"B","open":true}}},
 		"pricing":{"billing":"per_call","unit":1}}`

@@ -34,11 +34,12 @@ module.exports = {
     apiVersion: 1,
     key: "typesafe",
     name: "TypeSafe",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "typesafe",
     description: "TypeSafe Jev 结构化判断：按预设问题（选择 / 打分 / 是否）对输入内容作答，同步返回",
     auth: { type: "bearer" },
     endpoints: {
-      text: { mode: "sync" },
+      text: { mode: "sync", method: "POST", path: "/v1/systemone" },
     },
   },
 

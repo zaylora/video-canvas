@@ -53,11 +53,11 @@ func newViduEnv(t *testing.T) *viduEnv {
 	return &viduEnv{exec: exec, meta: meta, sha: pre.SHA256}
 }
 
-func (e *viduEnv) snapshot(baseURL, upstream string, allowCredentials bool) *provider.Snapshot {
+func (e *viduEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstream, Capabilities: promptCaps},
 		Channel: provider.ChannelSnapshot{
-			Key: "vidu-main", PluginKey: "vidu", PluginVersionID: 1, BaseURL: baseURL, AllowCredentials: allowCredentials,
+			Key: "vidu-main", PluginKey: "vidu", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "vidu", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 		ModelRevisionID: 1,
@@ -98,14 +98,14 @@ func (u *viduUpstream) last() viduReq {
 }
 
 func viduSubmit(env *viduEnv, srvURL, model string, input map[string]any) (*provider.SubmitResult, error) {
-	return env.exec.Submit(context.Background(), env.snapshot(srvURL, model, true), provider.SubmitInput{
+	return env.exec.Submit(context.Background(), env.snapshot(srvURL, model), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: input,
 	})
 }
 
 func TestViduPrecheckAndMeta(t *testing.T) {
 	env := newViduEnv(t)
-	if env.meta.Key != "vidu" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
+	if env.meta.Key != "vidu" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if len(env.meta.Endpoints) != 1 {
@@ -175,7 +175,7 @@ func TestViduReferenceModelAndExtra(t *testing.T) {
 		_, _ = w.Write([]byte(`{"task_id":"v-2"}`))
 	})
 	env := newViduEnv(t)
-	snap := env.snapshot(srv.URL, "viduq2-pro", true)
+	snap := env.snapshot(srv.URL, "viduq2-pro")
 	snap.Model.Params = map[string]any{"extra": map[string]any{"bgm": true, "resolution": "360p"}}
 	_, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "images": []uint64{1, 2, 3}, "resolution": "1080p"},
@@ -259,7 +259,7 @@ func TestViduQueryLifecycle(t *testing.T) {
 		}
 	})
 	env := newViduEnv(t)
-	snap := env.snapshot(srv.URL, "viduq1", true)
+	snap := env.snapshot(srv.URL, "viduq1")
 	ref := provider.TaskRef{ID: 1, UserID: 9, ProviderTaskID: "v-9"}
 	for i, want := range []string{provider.StatusQueued, provider.StatusRunning} {
 		q, err := env.exec.Query(context.Background(), snap, ref)
@@ -300,7 +300,7 @@ func TestViduFailures(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := newViduServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(tc.body)) })
-			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "viduq1", true), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
+			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "viduq1"), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
 			if err != nil || q.Status != provider.StatusFailed || q.ErrorClass != tc.class || q.ErrorMessage == "" {
 				t.Fatalf("失败结果不符：%+v %v", q, err)
 			}
@@ -326,19 +326,6 @@ func TestViduSubmitBadResponses(t *testing.T) {
 		if !errors.As(err, &pe) || !pe.PluginFault {
 			t.Fatalf("响应 %q 应是插件级失败：%v", body, err)
 		}
-	}
-}
-
-// 渠道没开 allow_credentials：插件拿不到 Key，是插件级失败，不发请求。
-func TestViduRequiresCredentials(t *testing.T) {
-	srv, up := newViduServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) })
-	env := newViduEnv(t)
-	_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "viduq1", false), provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
-	})
-	var pe *provider.Error
-	if !errors.As(err, &pe) || !pe.PluginFault || len(up.requests) != 0 {
-		t.Fatalf("应是插件级失败且不发请求：%v", err)
 	}
 }
 

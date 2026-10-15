@@ -149,19 +149,19 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		{"模型已下线", func(r *aiconfigfake.MemRepo) { r.Models["m1"].Enabled = false }},
 		{"渠道已停用", func(r *aiconfigfake.MemRepo) { r.Channels["c1"].Enabled = false }},
 		{"渠道已被删除", func(r *aiconfigfake.MemRepo) { delete(r.Channels, "c1") }},
-		{"渠道用的插件已停用", func(r *aiconfigfake.MemRepo) { r.Plugins["kling"].Enabled = false }},
-		{"渠道用的插件行已被删除", func(r *aiconfigfake.MemRepo) { delete(r.Plugins, "kling") }},
-		{"渠道固定的插件版本已不存在", func(r *aiconfigfake.MemRepo) {
+		{"模型选的协议插件已停用", func(r *aiconfigfake.MemRepo) { r.Plugins["kling"].Enabled = false }},
+		{"模型选的协议插件行已被删除", func(r *aiconfigfake.MemRepo) { delete(r.Plugins, "kling") }},
+		{"模型固定的插件版本已不存在", func(r *aiconfigfake.MemRepo) {
 			for id := range r.Versions {
 				delete(r.Versions, id)
 			}
 		}},
-		{"渠道固定的插件版本 meta 损坏", func(r *aiconfigfake.MemRepo) {
+		{"模型固定的插件版本 meta 损坏", func(r *aiconfigfake.MemRepo) {
 			for _, v := range r.Versions {
 				v.MetaJSON = model.JSONText(`{oops`)
 			}
 		}},
-		{"渠道后来切到了不支持该种类的插件版本", func(r *aiconfigfake.MemRepo) {
+		{"模型固定的插件版本不支持该种类（版本的声明变了）", func(r *aiconfigfake.MemRepo) {
 			for _, v := range r.Versions {
 				v.MetaJSON = model.JSONText(`{"apiVersion":1,"key":"kling","name":"k","version":"1.0.0","auth":{"type":"none"},"endpoints":{"text":{"mode":"sync"}}}`)
 			}
@@ -190,11 +190,10 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 			t.Fatalf("期望 ErrModelUnavailable，实际 %v", err)
 		}
 	})
-	t.Run("渠道升级到新插件版本后，新快照用新版本，旧快照不受影响", func(t *testing.T) {
+	t.Run("模型改到新插件版本后，新快照用新版本，旧快照不受影响", func(t *testing.T) {
 		old, _ := svc.Snapshot(ctx, "m1")
 		v2 := adminSeedVersion(t, repo, adminMetaJSON("kling", "1.1.0"), model.PluginSourceUploaded, true)
-		repo.Channels["c1"].PluginVersionID = v2
-		if err := svc.RefreshRegistry(ctx); err != nil {
+		if _, err := aicSave(svc, "m1", false, aicModelBodyV("m1", "c1", "1.1.0", "")); err != nil {
 			t.Fatal(err)
 		}
 		fresh, err := svc.Snapshot(ctx, "m1")
