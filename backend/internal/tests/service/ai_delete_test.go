@@ -161,7 +161,7 @@ func TestAIConfigService_DeletedModelGone(t *testing.T) {
 		if _, err := svc.Snapshot(ctx, "m1"); err == nil {
 			t.Fatal("已删除的模型不应能生成快照")
 		}
-		_, err = svc.DryRun(ctx, "m1", map[string]any{"prompt": "x"})
+		_, err = svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, errcode.ErrConfigNotFound.Code)
 		aicWantCode(t, svc.DeleteModel(ctx, "m1", 1), errcode.ErrConfigNotFound.Code)
 	})

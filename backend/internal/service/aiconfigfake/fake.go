@@ -316,12 +316,13 @@ func (m *MemRepo) GetVersionHead(_ context.Context, id uint64) (*model.AIPluginV
 type DryRunner struct {
 	Result any
 	Err    error
+	UserID uint64
 	Snap   *provider.Snapshot
 	Input  map[string]any
 }
 
-func (d *DryRunner) DryRun(_ context.Context, snap *provider.Snapshot, input map[string]any) (any, error) {
-	d.Snap, d.Input = snap, input
+func (d *DryRunner) DryRun(_ context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (any, error) {
+	d.UserID, d.Snap, d.Input = userID, snap, input
 	return d.Result, d.Err
 }
 

@@ -190,7 +190,7 @@ func TestAdminLayer_BuiltinPluginEndToEnd(t *testing.T) {
 	}
 
 	// 6. dry-run：真实执行 buildSubmitRequest，返回的描述里不含 Key
-	out, err := e.cfg.DryRun(ctx, "gpt-4o", map[string]any{"prompt": "你好"})
+	out, err := e.cfg.DryRun(ctx, 9, "gpt-4o", map[string]any{"prompt": "你好"})
 	if err != nil {
 		t.Fatalf("dry-run 失败：%v", err)
 	}

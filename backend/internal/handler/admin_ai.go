@@ -166,7 +166,7 @@ func (h *AdminAIHandler) DryRun(c *gin.Context) {
 	if !BindJSON(c, &req) {
 		return
 	}
-	res, err := h.svc.DryRun(c.Request.Context(), key, req.Input)
+	res, err := h.svc.DryRun(c.Request.Context(), currentUserID(c), key, req.Input)
 	if err != nil {
 		response.Fail(c, err)
 		return

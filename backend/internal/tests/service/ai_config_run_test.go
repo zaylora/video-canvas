@@ -35,7 +35,7 @@ func TestAIConfigService_DryRun(t *testing.T) {
 
 	t.Run("用已保存的配置组装快照（渠道 + 固定的插件版本），输入规范化后交给宿主，结果脱敏", func(t *testing.T) {
 		svc, repo, dry, _ := aicRunSetup(t)
-		res, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "hi"})
+		res, err := svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "hi"})
 		aicWantCode(t, err, 0)
 		if dry.Snap == nil || dry.Snap.Model.Key != "m1" || dry.Snap.Channel.Key != "c1" || dry.Snap.Plugin.Version != "1.0.0" {
 			t.Fatalf("快照不符合预期：%+v", dry.Snap)
@@ -46,6 +46,9 @@ func TestAIConfigService_DryRun(t *testing.T) {
 		}
 		if dry.Input["prompt"] != "hi" {
 			t.Fatalf("宿主应收到规范化后的输入：%v", dry.Input)
+		}
+		if dry.UserID != 9 {
+			t.Fatalf("宿主应收到发起 dry-run 的管理员 ID（素材按它校验归属）：%d", dry.UserID)
 		}
 		m, ok := res.(map[string]any)
 		if !ok {
@@ -61,7 +64,7 @@ func TestAIConfigService_DryRun(t *testing.T) {
 		if repo.Models["m1"].Enabled {
 			t.Fatal("前置：新保存的模型应未启用")
 		}
-		_, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "x"})
+		_, err := svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, 0)
 		if dry.Snap == nil {
 			t.Fatal("宿主应被调用")
@@ -94,7 +97,7 @@ func TestAIConfigService_DryRun(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(svc, repo)
 			}
-			_, err := svc.DryRun(ctx, tt.model, tt.input)
+			_, err := svc.DryRun(ctx, 9, tt.model, tt.input)
 			aicWantCode(t, err, tt.wantCode)
 		})
 	}
@@ -102,14 +105,14 @@ func TestAIConfigService_DryRun(t *testing.T) {
 	t.Run("runner 不可用返回 503（50021）", func(t *testing.T) {
 		svc, _, dry, _ := aicRunSetup(t)
 		dry.Err = &provider.Error{Class: provider.ClassRetryable, Code: provider.CodeRunnerUnavailable, Message: "down"}
-		_, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "x"})
+		_, err := svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, errcode.ErrRunnerUnavailable.Code)
 	})
 
 	t.Run("宿主渲染失败返回配置错误且错误信息脱敏", func(t *testing.T) {
 		svc, _, dry, _ := aicRunSetup(t)
 		dry.Err = errors.New("render failed near sk-c1")
-		_, err := svc.DryRun(ctx, "m1", map[string]any{"prompt": "x"})
+		_, err := svc.DryRun(ctx, 9, "m1", map[string]any{"prompt": "x"})
 		aicWantCode(t, err, errcode.ErrConfigInvalid.Code)
 		if strings.Contains(err.Error(), "sk-c1") {
 			t.Fatalf("错误信息不得泄露凭证：%v", err)
@@ -118,7 +121,7 @@ func TestAIConfigService_DryRun(t *testing.T) {
 
 	t.Run("未注入宿主", func(t *testing.T) {
 		svc, _, _ := aicNewSvc()
-		_, err := svc.DryRun(ctx, "m1", map[string]any{})
+		_, err := svc.DryRun(ctx, 9, "m1", map[string]any{})
 		aicWantCode(t, err, errcode.ErrInternal.Code)
 	})
 }

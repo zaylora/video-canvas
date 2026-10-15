@@ -427,11 +427,12 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 }
 
 // DryRun 执行请求构造钩子但不发送网络请求，返回脱敏后的请求描述。
-func (e *Executor) DryRun(ctx context.Context, snap *provider.Snapshot, input map[string]any) (any, error) {
+// userID 是发起 dry-run 的用户，参考素材按它校验归属（与真实提交一致，别人的素材照样不可用）。
+func (e *Executor) DryRun(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (any, error) {
 	if snap == nil {
 		return nil, terminalErr(codeInvalidSnapshot, "缺少任务配置快照", nil)
 	}
-	o, err := e.newOperation(ctx, snap.Runtime(), &snap.Model, provider.TaskRef{})
+	o, err := e.newOperation(ctx, snap.Runtime(), &snap.Model, provider.TaskRef{UserID: userID})
 	if err != nil {
 		return nil, err
 	}
@@ -844,15 +845,61 @@ func (e *Executor) describeRequest(b *builtRequest) any {
 	out := map[string]any{"method": b.method, "url": b.url.String(), "headers": b.headers, "responseType": b.responseType}
 	switch b.bodyKind {
 	case bodyJSON:
-		out["json"] = b.jsonBody
+		out["json"] = describeTree(b.jsonBody)
 	case bodyForm:
-		fields := map[string]string{}
-		for _, f := range b.formBody {
-			fields[f.name] = f.value
-		}
-		out["form"] = fields
+		out["form"] = describeFields(b.formBody)
 	case bodyMultipart:
-		out["multipart"] = map[string]any{"fields": b.formBody, "parts": b.parts}
+		out["multipart"] = map[string]any{"fields": describeFields(b.formBody), "parts": describeParts(b.parts)}
+	}
+	return out
+}
+
+// describeRef 把文件引用写回它在请求描述里的样子（{__fileRef: "input:images.0", as: "url"}）。
+// 引用的字段都是小写的，直接序列化会得到空对象，运营就看不出请求里带了哪几个素材。
+func describeRef(r *fileRef) map[string]any {
+	return map[string]any{"__fileRef": fileRefPrefix + r.field, "as": r.as}
+}
+
+// describeTree 复制 JSON 请求体树，把里面的文件引用换成可读的描述。
+func describeTree(v any) any {
+	switch t := v.(type) {
+	case *fileRef:
+		return describeRef(t)
+	case []any:
+		out := make([]any, len(t))
+		for i := range t {
+			out[i] = describeTree(t[i])
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, v := range t {
+			out[k] = describeTree(v)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+// describeFields 把表单字段整理成 名称 -> 值（标量文本或文件引用）。
+func describeFields(fields []formField) map[string]any {
+	out := make(map[string]any, len(fields))
+	for _, f := range fields {
+		if f.ref != nil {
+			out[f.name] = describeRef(f.ref)
+		} else {
+			out[f.name] = f.value
+		}
+	}
+	return out
+}
+
+// describeParts 把 multipart 的文件部分整理成与插件请求描述一致的 {name, fileRef, filename}。
+func describeParts(parts []partSpec) []map[string]any {
+	out := make([]map[string]any, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, map[string]any{"name": p.name, "fileRef": fileRefPrefix + p.field, "filename": p.filename})
 	}
 	return out
 }

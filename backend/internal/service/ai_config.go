@@ -65,16 +65,16 @@ type AIPluginReader interface {
 // DryRunner 渲染但不发送请求（dry-run）：由插件宿主实现，返回插件给出的请求描述与宿主注入鉴权后的最终请求，
 // 结果已由宿主脱敏且可以序列化成 JSON。用接口隔离宿主的具体类型，接线时用 DryRunnerFunc 包一层。
 type DryRunner interface {
-	// DryRun 按快照与已规范化的输入渲染请求，不发出任何网络请求。
-	DryRun(ctx context.Context, snap *provider.Snapshot, input map[string]any) (any, error)
+	// DryRun 按快照与已规范化的输入渲染请求，不发出任何网络请求。userID 是发起人，参考素材按它校验归属。
+	DryRun(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (any, error)
 }
 
 // DryRunnerFunc 让普通函数满足 DryRunner。
-type DryRunnerFunc func(ctx context.Context, snap *provider.Snapshot, input map[string]any) (any, error)
+type DryRunnerFunc func(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (any, error)
 
 // DryRun 调用函数本身。
-func (f DryRunnerFunc) DryRun(ctx context.Context, snap *provider.Snapshot, input map[string]any) (any, error) {
-	return f(ctx, snap, input)
+func (f DryRunnerFunc) DryRun(ctx context.Context, userID uint64, snap *provider.Snapshot, input map[string]any) (any, error) {
+	return f(ctx, userID, snap, input)
 }
 
 // TestTaskCreator 用试跑快照创建试跑任务（is_test，不扣积分），并查询试跑任务与它的执行追踪。

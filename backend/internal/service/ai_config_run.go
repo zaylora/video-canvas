@@ -22,7 +22,8 @@ const aiRedactMask = "***"
 
 // DryRun 用模型已保存的配置 + 渠道当前配置 + 渠道固定的插件版本组装快照，按模型能力校验示例输入，
 // 交给宿主渲染请求但不发送，返回脱敏后的渲染结果（插件返回的请求描述与宿主注入鉴权后的最终请求）。
-func (s *AIConfigService) DryRun(ctx context.Context, modelKey string, input map[string]any) (any, error) {
+// adminID 是发起的管理员：输入里的参考素材要属于他，与 TestRun 一致。
+func (s *AIConfigService) DryRun(ctx context.Context, adminID uint64, modelKey string, input map[string]any) (any, error) {
 	// 1. 依赖检查：宿主适配器在接线时注入
 	if s.dryRunner == nil {
 		return nil, errcode.ErrInternal.WithMsg("dry-run 功能未启用")
@@ -40,7 +41,7 @@ func (s *AIConfigService) DryRun(ctx context.Context, modelKey string, input map
 	// 4. 渲染。runner 连不上是临时故障，返回 503 让运营稍后重试；
 	//    其余失败几乎都是插件或配置问题（钩子抛异常、请求描述非法），把脱敏后的原因带给运营
 	secrets := s.trialSecrets(ctx, snap)
-	res, err := s.dryRunner.DryRun(ctx, snap, normalized)
+	res, err := s.dryRunner.DryRun(ctx, adminID, snap, normalized)
 	if provider.CodeOf(err) == provider.CodeRunnerUnavailable {
 		return nil, errcode.ErrRunnerUnavailable
 	}
