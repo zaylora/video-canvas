@@ -9,6 +9,7 @@ import (
 // mcAsAgent 把夹具改成合法的 Agent 模型：对话用的大语言模型，有上下文窗口，按 Token 计费，可以声明能看图。
 func mcAsAgent(m map[string]any) {
 	m["kind"] = "agent"
+	delete(mcChannel0(m), "protocol") // Agent 不走插件，不选协议
 	m["capabilities"] = map[string]any{
 		"prompt":  map[string]any{"max_length": 20000}, // Agent 模型里是「用户单条消息的字数上限」
 		"context": map[string]any{"window": 200000, "output": 8192},

@@ -1,61 +1,18 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
-	"video-canvas/internal/provider/modelcfg"
-	"video-canvas/internal/provider/pluginmeta"
-	"video-canvas/internal/repository"
 )
-
-// resolvedVersion 是解析出来的插件版本头信息与 meta。
-type resolvedVersion struct {
-	version *model.AIPluginVersion
-	meta    *pluginmeta.Meta
-}
-
-// resolveVersion 解析 (pluginKey, version)：版本必须存在、meta 能解析；requireEnabled 时插件还必须启用。
-// 用户填错造成的问题（不存在、已停用）作为 msg 返回，与其他字段的问题一起报；基础设施故障才返回 error。
-// 有 msg 时返回的 *resolvedVersion 为 nil（调用方据此跳过 settings 校验）。
-func (s *AIChannelService) resolveVersion(ctx context.Context, pluginKey, version string, requireEnabled bool) (*resolvedVersion, string, error) {
-	if pluginKey == "" || version == "" {
-		return nil, "plugin_key 与 plugin_version 都必须填写", nil
-	}
-	ver, err := s.plugins.FindVersion(ctx, pluginKey, version)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, fmt.Sprintf("插件版本 %s@%s 不存在", pluginKey, version), nil
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	if requireEnabled {
-		p, err := s.plugins.GetPlugin(ctx, pluginKey)
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, fmt.Sprintf("插件 %s 不存在", pluginKey), nil
-		}
-		if err != nil {
-			return nil, "", err
-		}
-		if !p.Enabled {
-			return nil, fmt.Sprintf("插件 %s 已停用，不能选用", pluginKey), nil
-		}
-	}
-	meta, err := pluginmeta.Parse(ver.MetaJSON)
-	if err != nil {
-		return nil, fmt.Sprintf("插件 %s@%s 的 meta 无法解析", pluginKey, version), nil
-	}
-	return &resolvedVersion{version: ver, meta: meta}, "", nil
-}
 
 // checkChannelName 校验并规整渠道显示名。
 func checkChannelName(raw string) (string, string) {
@@ -94,13 +51,79 @@ func checkRateLimit(r provider.RateLimit) string {
 	return ""
 }
 
-// formatSettingIssues 把设置项问题拼成“前缀.名字：原因”的文案列表。
-func formatSettingIssues(prefix string, issues []modelcfg.Issue) []string {
-	out := make([]string, 0, len(issues))
-	for _, is := range issues {
-		out = append(out, prefix+"."+is.Path+"："+is.Message)
+// 自定义请求头的限制。
+const (
+	channelHeadersMax     = 32   // 最多条数
+	channelHeaderValueMax = 1024 // 单个值的最大字符数
+)
+
+// forbiddenChannelHeaders 是渠道不能自定义的请求头（小写）：由宿主独占（传输层 / 鉴权）或属于敏感头，
+// 允许设置会让请求走私或把凭证带去不该去的地方。与插件请求描述里的禁用头（plugin 包 forbiddenHeaders）同一口径。
+var forbiddenChannelHeaders = map[string]bool{
+	"host": true, "content-length": true, "transfer-encoding": true, "connection": true, "upgrade": true,
+	"authorization": true, "proxy-authorization": true, "cookie": true,
+}
+
+// checkChannelHeaders 校验并规整渠道自定义请求头：最多 32 条；名称是合法的 HTTP token，大小写不同的同名视为重复；
+// 禁用头被拒绝；值不超过 1024 字符、不含换行或控制字符（防请求头注入）。返回规整后的 map（永不为 nil）和问题说明。
+// 值明文存储，不要放密钥：密钥走渠道 Key。
+func checkChannelHeaders(in map[string]string) (map[string]string, string) {
+	if len(in) > channelHeadersMax {
+		return map[string]string{}, fmt.Sprintf("headers 最多 %d 条（当前 %d 条）", channelHeadersMax, len(in))
 	}
-	return out
+	names := make([]string, 0, len(in))
+	for k := range in {
+		names = append(names, k)
+	}
+	sort.Strings(names) // 报错顺序稳定
+	out := make(map[string]string, len(in))
+	seen := map[string]bool{}
+	var problems []string
+	for _, name := range names {
+		v := in[name]
+		lower := strings.ToLower(name)
+		switch {
+		case !isHeaderToken(name):
+			problems = append(problems, fmt.Sprintf("请求头名称 %q 不合法", name))
+			continue
+		case forbiddenChannelHeaders[lower]:
+			problems = append(problems, fmt.Sprintf("请求头 %s 由宿主独占或属于敏感头，不允许设置", name))
+			continue
+		case seen[lower]:
+			problems = append(problems, fmt.Sprintf("请求头 %s 重复（名称不区分大小写）", name))
+			continue
+		case utf8.RuneCountInString(v) > channelHeaderValueMax:
+			problems = append(problems, fmt.Sprintf("请求头 %s 的值不能超过 %d 个字符", name, channelHeaderValueMax))
+			continue
+		case hasControlChar(v):
+			problems = append(problems, fmt.Sprintf("请求头 %s 的值不能含换行或控制字符", name))
+			continue
+		}
+		seen[lower] = true
+		out[name] = v
+	}
+	return out, strings.Join(problems, "；")
+}
+
+// hasControlChar 判断是否含换行或其他控制字符（制表符除外）。
+func hasControlChar(s string) bool {
+	for _, r := range s {
+		if r < 0x20 && r != '\t' || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// isHeaderToken 判断名字是不是合法的 HTTP 请求头名称（RFC 7230 token）。
+func isHeaderToken(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || strings.ContainsRune("!#$%&'*+-.^_|~", r) || r == '`' {
+			continue
+		}
+		return false
+	}
+	return s != ""
 }
 
 // appendIf 非空才追加。
@@ -116,11 +139,11 @@ func invalidChannel(problems []string) error {
 	return errcode.ErrChannelInvalid.WithMsg(strings.Join(problems, "；"))
 }
 
-// decodeObject 把 JSON 对象文本解成 map；空文本、损坏、null 都得到空 map（永远不是 nil）。
-func decodeObject(raw model.JSONText) map[string]any {
-	out := map[string]any{}
+// decodeStringMap 把 JSON 对象文本解成 map[string]string；空文本、损坏、null 都得到空 map（永远不是 nil）。
+func decodeStringMap(raw model.JSONText) map[string]string {
+	out := map[string]string{}
 	if len(raw) > 0 {
-		var m map[string]any
+		var m map[string]string
 		if err := json.Unmarshal(raw, &m); err == nil && m != nil {
 			out = m
 		}

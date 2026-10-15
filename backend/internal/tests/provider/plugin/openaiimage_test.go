@@ -160,7 +160,7 @@ func (e *openaiimageEnv) submit(t *testing.T, baseURL, model string, params, inp
 
 func TestOpenAIImagePrecheckAndMeta(t *testing.T) {
 	env := newOpenAIImageEnv(t)
-	if env.meta.Key != "openai-image" || env.meta.Name != "OpenAI · 图片" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "openai-image" || env.meta.Name != "OpenAI · 图片" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if len(env.meta.Endpoints) != 1 {

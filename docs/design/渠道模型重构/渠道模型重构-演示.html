@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>渠道模型重构演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 130px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 660px; position: relative; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); max-width: 92vw; }
+
+      /* ---- 原型：后台主从页 ---- */
+      .pbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; }
+      .seg { display: inline-flex; background: hsl(var(--muted)); border-radius: 8px; padding: 2px; gap: 2px; flex-wrap: wrap; }
+      .seg button { height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+      .seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pl { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 560px; }
+      .pl > aside { border-right: 1px solid hsl(var(--border)); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+      .pl > section { padding: 14px 16px; min-width: 0; }
+      @media (max-width: 820px) { .pl { grid-template-columns: 1fr; } .pl > aside { border-right: 0; border-bottom: 1px solid hsl(var(--border)); } }
+      .inp { height: 34px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 13px; color: inherit; width: 100%; min-width: 0; }
+      .inp:focus { outline: 2px solid hsl(var(--primary) / 0.25); }
+      .inp:disabled { opacity: 0.6; }
+      .pb { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid hsl(var(--border)); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; background: hsl(var(--card)); white-space: nowrap; }
+      .pb:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .pb.pri { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+      .pb.pri:hover:not(:disabled) { background: hsl(var(--primary) / 0.9); }
+      .pb.sm { height: 28px; padding: 0 9px; font-size: 12.5px; }
+      .pb.danger { color: rgb(var(--bad)); }
+      .pb:disabled { opacity: 0.45; cursor: not-allowed; }
+      .chi { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: hsl(var(--card)); display: flex; gap: 8px; align-items: center; }
+      .chi[aria-current="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .chi .grow { flex: 1; min-width: 0; }
+      .dotc { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+      .pt th, .pt td { padding: 9px 10px; font-size: 13px; border-bottom: 1px solid hsl(var(--border)); vertical-align: middle; }
+      .pt thead th { color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .lbl { font-size: 12.5px; font-weight: 500; margin-bottom: 4px; display: block; }
+      .hint { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 3px; }
+      .mask { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 20px; overflow: auto; z-index: 20; }
+      .modal { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; width: 580px; max-width: 100%; box-shadow: 0 20px 50px rgb(0 0 0 / 0.3); }
+      .modal.wide { width: 900px; }
+      .mh { padding: 14px 18px; border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 8px; }
+      .mh h3 { font-size: 15px; font-weight: 600; }
+      .mb { padding: 16px 18px; max-height: 62vh; overflow: auto; display: grid; gap: 12px; }
+      .mf { padding: 12px 18px; border-top: 1px solid hsl(var(--border)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .utabs { display: flex; gap: 18px; border-bottom: 1px solid hsl(var(--border)); padding: 0 18px; }
+      .utabs button { padding: 10px 0; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .utabs button[aria-selected="true"] { color: hsl(var(--foreground)); border-color: hsl(var(--primary)); }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 5px 9px; font-size: 12.5px; cursor: pointer; }
+      .chip small { color: hsl(var(--muted-foreground)); }
+      .pkg { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; }
+      @media (max-width: 820px) { .pkg { grid-template-columns: 1fr; } }
+      .pkl { border: 1px solid hsl(var(--border)); border-radius: 10px; max-height: 270px; overflow: auto; margin-top: 8px; }
+      .pkr { display: flex; gap: 10px; padding: 9px 11px; border-bottom: 1px solid hsl(var(--border)); cursor: pointer; align-items: center; }
+      .pkr:last-child { border-bottom: 0; }
+      .pkr[aria-selected="true"] { background: hsl(var(--accent)); }
+      .pkr[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+      .pkr .grow { flex: 1; min-width: 0; }
+      .pkr .path { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+      .rad { width: 14px; height: 14px; border-radius: 50%; border: 1px solid hsl(var(--muted-foreground)); flex: none; }
+      .pkr[aria-selected="true"] .rad { border: 4px solid hsl(var(--primary)); }
+      .pkd { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 12px; margin-top: 8px; font-size: 13px; display: grid; gap: 8px; align-content: start; }
+      .sw { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .sw[aria-checked="true"] { background: rgb(var(--ok)); }
+      .sw[aria-checked="true"]::after { transform: translateX(14px); }
+      .sw:disabled { opacity: 0.5; cursor: not-allowed; }
+      .spin { animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .hrow { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; }
+      .tl { display: grid; gap: 8px; font-size: 12.5px; }
+      .tl > div { display: flex; gap: 8px; align-items: flex-start; }
+      .orderstrip { border-top: 1px solid hsl(var(--border)); padding: 10px 16px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .orderstrip b { color: hsl(var(--foreground)); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="split"></i></span>渠道模型重构演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">渠道只管连接，协议在模型里选</h1>
+        <p class="lead">
+          今天要先选协议才能建渠道，渠道建好协议就换不了，同一个上游里不同协议的模型只能拆成多个渠道、重复填 Key。新方案把它拆开：<b>渠道只有地址、Key、请求头、限流；模型从渠道拉取，再逐个选能力和协议。</b>后台的渠道页和模型页合并成“左渠道、右模型”的主从页。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页是设计提案，<b>尚未实现</b>。对应 Markdown 设计文档 <code>渠道模型重构.md</code>（§1–§11）。项目现状来自代码核对；外部产品来自检索。原型里的数据、协议路径、耗时、上游返回都是<b>示意</b>，没有真实调用任何服务。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案 / 示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：从协议插件到画布里能用的模型</h2>
+          <p class="sub">运营按这个顺序一屏完成。高亮的两步是和现在不同的地方：渠道里不再选协议，协议挪到了模型里。</p>
+          <div class="flow note">
+            <div class="node"><b>1 上传协议插件</b>super_admin；同现状</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>2 新增渠道</b>名称、地址、Key、请求头、限流。<b>不选协议</b></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>3 拉取模型</b>宿主发 <code>GET /v1/models</code>；得到“待配置”模型</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>4 模型里选协议</b>先选能力，再从协议列表选；填协议设置</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>5 测试模型</b>用该协议真实跑一遍</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>6 启用</b>过检查链后画布可见</div>
+          </div>
+          <div class="note-txt">设计：渠道回答“连到哪里、用什么凭证、一次最多发多少”；模型回答“用哪种协议、什么参数、卖多少积分”。放弃了“渠道级连通性检查”：视频类上游没有通用探测接口，检查挪到第 5 步。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>拉不到模型时（回退，永远可用）：</b>上游没有 <code>/v1/models</code>、Key 无效、格式不符，弹窗里给出原因，并可以<b>手动新增模型</b>。没选协议的模型保持“待配置”，<b>不会出现在画布里</b>，也不能启用。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三个对象各管什么</h2>
+          <p class="sub">协议、版本、协议设置项从渠道挪到模型；渠道多出请求头和 Secret Key；插件页的“升级渠道”变成“升级模型”。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="plug-zap"></i><b>渠道</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">super_admin 管</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>连接信息。</b>名称、Base URL、API Key、Secret Key（可选）、自定义请求头、限流、启停、顺序。<b>没有</b>协议、版本、“允许插件读取 Key”开关。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="box"></i><b>模型</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">admin 也能管</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>能力 + 协议。</b>能力（文本 / 图片 / 视频 / 音频 / Agent）、固定的<b>插件 + 版本</b>、协议设置项、参数、定价、启停。拉取得到的是“待配置”。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="file-code-2"></i><b>协议插件</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">super_admin 上传</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>翻译上游协议。</b>版本不可变；声明能力、鉴权、协议设置项；新增可选的<b>厂商</b>和<b>请求路径</b>（只用于展示）。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>对比：现状、本方案、只加拉取</h2>
+          <p class="sub">本方案改动最大，但它是唯一让“同一个上游多种协议”不用建多个渠道的做法。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>现状（渠道绑协议）</th><th>本方案（模型选协议）</th><th>只加拉取，仍绑协议</th></tr></thead>
+              <tbody>
+                <tr><th>同一上游多协议</th><td class="m">要建多个渠道，Key 重复填</td><td class="y">一个渠道，模型各选各的</td><td class="m">同现状</td></tr>
+                <tr><th>渠道表单</th><td>含协议、版本、设置项、Key 开关</td><td class="y">只有连接信息</td><td>同现状</td></tr>
+                <tr><th>拉取模型</th><td class="m">仅 3 个内置插件有导入钩子</td><td class="y">内置通用请求；其余手动加</td><td class="m">仍靠插件钩子</td></tr>
+                <tr><th>协议升级</th><td>升级渠道</td><td>升级模型（批量）</td><td>升级渠道</td></tr>
+                <tr><th>实现改动</th><td>—</td><td class="m">大：数据、接口、运行时装配、两个页面</td><td class="y">小</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-mute">提案</span></td><td><span class="tag t-mute">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接入一个新上游，会发生什么</h2>
+          <p class="sub">以“一个带 8 个模型的 OpenAI 兼容网关”为例；第二张卡是升级到新结构时必须提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>super_admin 新增渠道</b><small>填名称、地址、API Key；保存只做字段校验，不发请求。</small></li>
+                <li><b>点“拉取模型”</b><small>宿主向 <code>{base_url}/v1/models</code> 发请求，弹窗列出 8 个，默认全选。</small></li>
+                <li><b>确认导入</b><small>创建 8 个“待配置”模型，已存在的不重复导入。</small></li>
+                <li><b>逐个或批量选能力和协议</b><small>文本模型选 OpenAI，图片模型选图片协议；选完填协议设置。</small></li>
+                <li><b>测试模型 → 启用</b><small>测试通过、检查链通过后，用户在画布里看到它。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-bad">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：升级到新结构时，渠道、模型和渠道 Key 一起清空。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>线上模型全部不可用，直到运营重建；渠道 Key 需要重新填。</li>
+                    <li>进行中的任务会因找不到渠道 Key 而失败。</li>
+                    <li><b>保留</b>：协议插件与版本、历史任务、审计、用户数据。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时提前告知：升级选在没有进行中任务的时间，或先停用渠道等任务跑完。这是用户确认的决定（Markdown §11.1、§11.2）。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">渠道与模型主从页（原型）</h1>
+        <p class="lead">
+          数据都在内存里，刷新复原，全部是<b>示意</b>。已预置 3 个渠道。想看失败怎么提示：① 点“<b>无 Key 渠道</b>”→ 拉取模型（Key 未设置）；② 编辑任一渠道，把 Base URL 改成含 <code>bad</code> → 拉取模型（上游不通）；③ 在“亚生”里对任一“待配置”模型直接点启用开关（被检查链拦下）；④ 在“亚生”里给某个模型选“可灵”→ 保存 → 测试（亚生没有 Secret Key；火山方舟有，会通过）；⑤ 选“Vertex AI”不填输出目录 → 启用（协议设置必填）。顶部可以切换 <b>super_admin / admin</b> 看权限差别。
+        </p>
+        <div class="frame" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">admin.example.com / AI 配置 / <span id="crumb">渠道与模型</span></span>
+          </div>
+          <div class="proto" id="proto">
+            <div class="pbar">
+              <span class="muted">页面</span>
+              <div class="seg" id="segView"></div>
+              <span class="muted">角色</span>
+              <div class="seg" id="segRole"></div>
+              <span class="muted" id="roleHint" style="font-size: 12px"></span>
+            </div>
+            <div id="pv"></div>
+            <div class="orderstrip" id="orderStrip"></div>
+            <div id="dlg"></div>
+          </div>
+        </div>
+        <div class="note-txt">设计：左栏渠道、右栏该渠道的模型，“拉取 → 选协议 → 测试 → 启用”不用离开这一页。底部的“画布里的顺序”条用来检验顺序规则：渠道顺序 + 渠道内顺序。</div>
+      </section>
+
+      <!-- ============ 3. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现。对应 Markdown 设计文档的 §8（数据与工程影响）与 §7.3（启用检查链）。<b>快照结构不变</b>，只改“快照由谁拼出来”。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">谁绑谁、为什么。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>渠道 → 插件</th><td><b>没有关系</b>（删除 <code>plugin_key</code> / <code>plugin_version_id</code>）</td><td>协议是模型的属性；同一渠道下不同模型可以走不同协议</td></tr>
+                <tr><th>模型 → 渠道</th><td>一个模型一个渠道（<code>channels[0]</code>，结构仍是数组）</td><td>沿用现状，多渠道路由本期不做</td></tr>
+                <tr><th>模型 → 插件版本</th><td>固定 <code>plugin + version</code>，保存时服务端补成所选版本</td><td>行为可复现；插件页批量升级</td></tr>
+                <tr><th>模型 → 协议设置</th><td><code>protocol.settings</code>，按所选版本的 <code>channelSettings</code> 校验</td><td>OpenAI 的 Responses / Chat 是协议参数，应当随模型走</td></tr>
+                <tr><th>Agent 模型 → 插件</th><td><b>没有</b>，由宿主 LLM 网关直接用渠道 Bearer 请求</td><td>Agent 本来就不走插件钩子；推断自现有代码，<span class="tag t-mute">默认值</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用 <code>repository/migrate.go</code> 的“AutoMigrate 前执行、可重复执行”的收敛步骤（和“插件简化”删 <code>trusted_internal</code> 同一模式）。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>ai_channels</code> 表（变更）</th></tr></thead>
+                <tbody>
+                  <tr><th>删除</th><td><code>plugin_key</code>、<code>plugin_version_id</code>、<code>allow_credentials</code>、<code>settings_json</code></td></tr>
+                  <tr><th><code>sort</code> 新增</th><td>int，默认 100；渠道顺序，越小越靠前</td></tr>
+                  <tr><th><code>headers_json</code> 新增</th><td>json，默认 <code>{}</code>；自定义请求头 <code>{名称: 值}</code>，≤32 条；<b>明文存储，不含密钥</b></td></tr>
+                  <tr><th>保留</th><td><code>key</code>（主键）、<code>name</code>、<code>base_url</code>、<code>rate_limit_json</code>、<code>enabled</code>、<code>updated_by</code>、时间戳</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>ai_secrets</code> 表（含密钥）</th></tr></thead>
+                <tbody>
+                  <tr><th><code>channel:&lt;key&gt;</code></th><td>API Key，AES-256-GCM 密文，只写不读（同现状）</td></tr>
+                  <tr><th><code>channel:&lt;key&gt;:secret</code></th><td><b>新增</b>：Secret Key，同样只写不读；渠道 key 正则不含 <code>:</code>，不会冲突</td></tr>
+                  <tr><th>读取</th><td>插件拿 <code>ctx.credentials.apiKey</code> / <code>ctx.credentials.secretKey</code>；<code>auth.type = custom</code> 时宿主直接提供</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="codeblock" style="margin-top: 12px"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 模型正文 channels[0]（ai_config_revisions.body_json，提案）。agent 模型没有 protocol。
+{
+  "channel": "yingce",
+  "upstream_model": "gpt-image-2",
+  "protocol": {
+    "plugin": "openai-image",       // 插件 key
+    "version": "1.0.0",             // 固定 semver
+    "settings": { }                 // 插件 channelSettings 的取值；保存时校验并补默认值
+  }
+}
+// ai_models.kind 允许为空串（"待配置"）；ai_models.sort 改为“渠道内顺序”。</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">权限沿用现有划分：渠道增改与 Key 是 super_admin；拉取、模型增改是 admin 也可以。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>权限</th><th>说明与业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /admin/ai/channels</code></th><td>super</td><td>创建：<code>{key,name,base_url,headers?,rate_limit?,enabled?}</code>；无 <code>plugin_*</code>。<code>ErrChannelExists</code> / <code>ErrChannelInvalid</code></td></tr>
+                <tr><th><code>PUT /admin/ai/channels/:key</code></th><td>super</td><td>更新；<code>headers</code> 整体替换</td></tr>
+                <tr><th><code>PUT …/:key/secret</code>、<code>…/secret-key</code></th><td>super</td><td>设置 API Key / Secret Key；Secret Key 空串 = 清除</td></tr>
+                <tr><th><code>PUT /admin/ai/channels/sort</code></th><td>super</td><td><code>{keys:[全集]}</code>，服务端按 10、20、30… 重写；不是全集 → <code>ErrInvalidParams</code></td></tr>
+                <tr><th><code>POST …/:key/pull-models</code></th><td>admin</td><td><b>拉取</b>，不落库：<code>{models:[{id,exists}],total}</code>。<code>ErrChannelSecretUnset</code>、上游不通 / 401 / 格式不符 / 超时（<code>ErrPluginOpFailed</code> 502，文案区分）。限制：响应 ≤4MB、≤2000 个、30s</td></tr>
+                <tr><th><code>POST …/:key/models/import</code></th><td>admin</td><td><code>{ids:[…]}</code>，事务内创建未启用的“待配置”模型，已存在的跳过；单次 ≤500；返回 <code>{created,skipped}</code></td></tr>
+                <tr><th><code>PUT …/:key/models/sort</code></th><td>admin</td><td>该渠道内模型的完整新顺序，只改这些模型的 <code>sort</code></td></tr>
+                <tr><th><code>GET /admin/ai/plugins/options</code></th><td>admin</td><td>协议列表数据：<code>vendor</code>、各 endpoint 的 <code>mode/method/path</code>、<code>channelSettings</code>、鉴权类型</td></tr>
+                <tr><th><code>POST/PUT /admin/ai/models</code></th><td>admin</td><td>正文含 <code>channels[0].protocol</code>；<code>version</code> 缺省补最新；<code>settings</code> 校验并补默认值；半成品照存；已启用的模型保存前过检查链</td></tr>
+                <tr><th><code>POST /admin/ai/plugins/:key/upgrade-models</code></th><td>super</td><td><b>新增</b>：批量升级固定在旧版本的模型；逐个处理，返回 <code>{upgraded,failed}</code>，失败不中断</td></tr>
+                <tr><th><code>GET …/plugins/:key/delete-check</code></th><td>super</td><td>阻断原因 <code>plugin_channels</code> 改为 <code>plugin_models</code></td></tr>
+                <tr><th>删除</th><td>—</td><td><code>check-draft</code>、<code>:key/check</code>、旧 <code>:key/import</code>、渠道的 <code>plugin_version</code> 修改</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>启用检查链、拉取与运行时装配（伪代码，提案）</h2>
+          <p class="sub">检查链替换现有 <code>checkEnableable</code>；运行时装配让 <code>Snapshot</code> 的形状保持不变，worker 与执行器基本不用改。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 启用检查链（提案）——前一步不过就不往下
+checkEnableable(model):
+  1 校验正文                     → ErrConfigInvalid（kind 为空 / label 为空 / 定价不全）
+  2 渠道存在且启用               → ErrChannelNotFound / ErrChannelDisabled
+  3 kind == agent → 渠道 API Key 已设置 → 通过（不看协议）
+  4 protocol 已选                → ErrConfigInvalid "该模型还没有选择调用协议"
+  5 插件存在且启用               → ErrPluginDisabled
+  6 固定版本存在，meta 可解析     → ErrConfigInvalid
+  7 版本 endpoints[kind] 存在    → ErrConfigInvalid
+  8 settings 按 channelSettings 校验并补默认值
+  9 版本 auth != none → 渠道 API Key 已设置 → ErrChannelSecretUnset
+
+// 拉取（提案）
+pullModels(channel):
+  key  = secret("channel:" + channel.key)             // 空 → ErrChannelSecretUnset
+  req  = GET channel.base_url + "/v1/models"           // base_url 以 /v1 结尾不重复拼接
+  req.headers = defaultUA + channel.headers
+  req.Authorization = "Bearer " + key
+  resp = guardedClient.Do(req)                         // 复用 SSRF 守卫与渠道限流；Key 只发往 base_url
+  list = resp.json.data[].id   // 不是 OpenAI 形状 → "返回格式不符"
+  return dedupe(list) + exists 标记（同渠道、同 upstream_model）
+
+// Registry 装配（提案）：快照形状不变，只改拼装来源
+for model in models:
+  ch  = channels[model.channels[0].channel]
+  ver = versions[model.protocol.plugin @ model.protocol.version]
+  rt  = ChannelRuntime{ Channel: ch + settings: model.protocol.settings, Plugin: ver }   // 缺任何一项 → rt = nil（不可用）
+// 请求头优先级（低 → 高）：宿主默认 UA &lt; 渠道自定义头 &lt; 插件请求描述里的头 &lt; 宿主注入的鉴权头
+// 渠道自定义头只加到发往 base_url 同源的请求，与 Key 注入同一条规则</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>拉取走宿主内置的通用请求</b>（<code>GET /v1/models</code> + Bearer），失败可手动新增，拉到的是“待配置”。</li>
+              <li><b>模型固定插件版本</b>，插件页一键批量升级。</li>
+              <li><b>协议设置项跟着模型走</b>，在模型的“协议设置”里填。</li>
+              <li><b>取消 <code>allow_credentials</code>，不区分插件来源，所有插件都可读 Key</b>。用户的理由：插件一般都是管理员自己写的。<b>这一条是用户没有采纳推荐项的决定</b>，风险写在 Markdown §11.2。</li>
+              <li><b>渠道新增“自定义请求头”和“独立 Secret Key（可选）”</b>。</li>
+              <li><b>渠道不强制连通性检查</b>，检查挪到模型的“测试模型”。</li>
+              <li><b>渠道与模型合并成主从页</b>（左渠道、右模型），<b>去掉独立的模型页</b>。</li>
+              <li><b>用户看到的模型顺序 = 渠道顺序 + 渠道内顺序</b>。</li>
+              <li><b>升级时不迁移，渠道、模型和渠道 Key 一起清空</b>；插件与历史任务保留。<b>这一条同样是用户没有采纳推荐项的决定</b>。</li>
+              <li><b>第二期只放“渠道内批量调价与批量上下线”</b>，其余第一期做完。</li>
+              <li><b>已搁置</b>：渠道级连通性检查；插件 <code>import</code> 钩子对渠道的作用；“可信插件”标记；自动迁移；一个模型绑多个渠道。</li>
+              <li><b>主文档已回写</b>：本页新增的细节（禁用的协议行写原因、admin 的渠道按钮置灰而不隐藏）已同步到 Markdown §6.5、§7.2。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 3400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 原型：数据（示意，内存） ================= */
+      const KIND = { text: "文本", image: "图片", video: "视频", audio: "音频", agent: "Agent" };
+      const KINDS = ["text", "image", "video", "audio", "agent"];
+      const AUTHL = { none: "无需鉴权", bearer: "Bearer", header: "请求头", query: "Query", custom: "自定义签名" };
+      const MODEL_KEY_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+      const FORBID_HEADERS = ["host", "content-length", "transfer-encoding", "connection", "authorization", "proxy-authorization", "cookie"];
+
+      const plugins = [
+        { key: "openai", name: "OpenAI", vendor: "OpenAI", enabled: true, auth: "bearer", versions: ["1.0.0"],
+          eps: { text: { mode: "sync", method: "POST", path: "/v1/responses" } },
+          settings: { api: { type: "enum", label: "接口", options: ["responses", "chat_completions"], def: "responses" } },
+          desc: "对接 OpenAI 官方接口：文本（Responses / Chat Completions 可选）" },
+        { key: "anthropic", name: "Anthropic Messages", vendor: "Anthropic", enabled: true, auth: "header", versions: ["1.0.0"],
+          eps: { text: { mode: "sync", method: "POST", path: "/v1/messages" } }, settings: {}, desc: "Claude 系列，x-api-key 鉴权" },
+        { key: "openai-image", name: "OpenAI 图片", vendor: "OpenAI", enabled: true, auth: "bearer", versions: ["1.0.0"],
+          eps: { image: { mode: "sync", method: "POST", path: "/v1/images/generations" } }, settings: {}, desc: "gpt-image 系列文生图 / 图生图" },
+        { key: "doubao-video", name: "豆包（火山方舟）视频", vendor: "火山方舟", enabled: true, auth: "bearer", versions: ["1.0.0", "1.1.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/api/v3/contents/generations/tasks" } }, settings: {}, desc: "Seedance 视频生成，异步轮询" },
+        { key: "jimeng", name: "即梦（火山引擎）", vendor: "火山引擎", enabled: true, auth: "custom", versions: ["1.0.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/?Action=CVSync2AsyncSubmitTask" } }, settings: {}, desc: "AK/SK 签名，插件自己签名；Key 写 AccessKeyId|SecretAccessKey" },
+        { key: "kling", name: "可灵 Kling", vendor: "快手", enabled: true, auth: "custom", versions: ["1.0.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/v1/videos/text2video" } }, settings: {}, desc: "JWT 签名，需要 AccessKey 与 SecretKey（本演示要求渠道设置 Secret Key）" },
+        { key: "google", name: "Google Veo (Gemini API)", vendor: "Google", enabled: true, auth: "header", versions: ["1.0.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/{version}/models/{model}:predictLongRunning" } },
+          settings: { apiVersion: { type: "enum", label: "接口版本", options: ["v1beta", "v1"], def: "v1beta" } }, desc: "Veo 视频，x-goog-api-key 鉴权" },
+        { key: "vertex-ai", name: "Google Veo (Vertex AI)", vendor: "Google", enabled: true, auth: "custom", versions: ["1.0.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/v1/projects/{project}/…:predictLongRunning" } },
+          settings: { location: { type: "string", label: "区域（location）", def: "us-central1" }, storageUri: { type: "string", label: "输出目录（gs://bucket/prefix/）", required: true } },
+          desc: "服务账号鉴权，输出到 GCS" },
+        { key: "sunoapi-music", name: "SunoAPI 音乐", vendor: "SunoAPI", enabled: true, auth: "bearer", versions: ["1.0.0"],
+          eps: { audio: { mode: "async", method: "POST", path: "/api/v1/generate" } }, settings: {}, desc: "Suno 音乐生成" },
+        { key: "vidu", name: "生数 Vidu", vendor: "生数", enabled: false, auth: "custom", versions: ["1.0.0"],
+          eps: { video: { mode: "async", method: "POST", path: "/ent/v2/text2video" } }, settings: {}, desc: "Vidu 视频（已被 super_admin 停用）" },
+      ];
+      const latest = (p) => p.versions[p.versions.length - 1];
+      const pOf = (k) => plugins.find((p) => p.key === k);
+
+      const channels = [
+        { key: "yingce", name: "亚生", base: "https://api.yingce.tv", keySet: true, secretSet: false, enabled: true, headers: [], rps: 0, conc: 0, run: 0,
+          upstream: ["gpt-image-2", "gpt-image-2.5", "nano-banana-pro", "nano-banana2", "sd2.0-c1", "sd2.0-c2", "sd2.5-c1", "yingce-image-2.5"] },
+        { key: "volc", name: "火山方舟", base: "https://ark.example.com", keySet: true, secretSet: true, enabled: true, headers: [{ k: "X-Biz-Tag", v: "canvas" }], rps: 5, conc: 20, run: 2,
+          upstream: ["doubao-seedance-1", "jimeng-3", "sd2.0-c1", "doubao-seedream-4"] },
+        { key: "trial", name: "无 Key 渠道", base: "https://api.trial.example", keySet: false, secretSet: false, enabled: true, headers: [], rps: 0, conc: 0, run: 0, upstream: [] },
+      ];
+      const chOf = (k) => channels.find((c) => c.key === k);
+
+      let models = [
+        { key: "sd2.0-c1", label: "sd2.0-c1", up: "sd2.0-c1", ch: "yingce", kind: "", proto: null, price: null, enabled: false, sort: 10 },
+        { key: "sd2.0-c2", label: "sd2.0-c2", up: "sd2.0-c2", ch: "yingce", kind: "", proto: null, price: null, enabled: false, sort: 20 },
+        { key: "sd2.5-c1", label: "sd2.5-c1", up: "sd2.5-c1", ch: "yingce", kind: "", proto: null, price: null, enabled: false, sort: 30 },
+        { key: "doubao-seedance-1", label: "Seedance 1.0", up: "doubao-seedance-1", ch: "volc", kind: "video", proto: { plugin: "doubao-video", version: "1.0.0", settings: {} }, price: 30, enabled: true, sort: 10 },
+        { key: "jimeng-3", label: "即梦 3.0", up: "jimeng-3", ch: "volc", kind: "video", proto: { plugin: "jimeng", version: "1.0.0", settings: {} }, price: 20, enabled: false, sort: 20 },
+      ];
+      const mOf = (k) => models.find((m) => m.key === k);
+      const modelsOf = (ck) => models.filter((m) => m.ch === ck).sort((a, b) => a.sort - b.sort);
+
+      /* ================= 原型：状态 ================= */
+      let role = "super", view = "cm", selCh = "yingce", chQ = "", chStatus = "all", sortCh = false, sortMd = false;
+      let mQ = "", mKind = "all", mStatus = "all";
+      const picked = new Set();
+      let dlg = null, PK = null, pkQ = "";
+      const isSuper = () => role === "super";
+      const SUPER_ONLY = "仅 super_admin 可用";
+
+      const A = {}, I = {};
+      document.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-act]");
+        if (!el || el.disabled || el.getAttribute("aria-disabled") === "true") return;
+        const f = A[el.dataset.act];
+        if (f) f(el.dataset.arg, el, e);
+      });
+      document.addEventListener("input", (e) => {
+        const el = e.target.closest("[data-in]");
+        if (el && I[el.dataset.in]) I[el.dataset.in](el.value, el);
+      });
+      document.addEventListener("change", (e) => {
+        const el = e.target.closest("[data-ch]");
+        if (el && I[el.dataset.ch]) I[el.dataset.ch](el.type === "checkbox" ? el.checked : el.value, el);
+      });
+
+      const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+      const hostOf = (u) => { try { return new URL(u).host; } catch (_) { return u; } };
+
+      /* ---------- 启用检查链（与 Markdown §7.3 一致） ---------- */
+      function enableCheck(m) {
+        const c = chOf(m.ch);
+        if (!m.kind) return "配置校验未通过：kind 还没有选择能力";
+        if (!(m.price > 0)) return "配置校验未通过：pricing 还没有填写积分";
+        if (!c) return "渠道不存在";
+        if (!c.enabled) return `渠道「${c.name}」已停用`;
+        if (m.kind === "agent") return c.keySet ? null : `渠道「${c.name}」的 API Key 尚未设置`;
+        if (!m.proto) return "该模型还没有选择调用协议";
+        const p = pOf(m.proto.plugin);
+        if (!p) return `插件 ${m.proto.plugin} 不存在`;
+        if (!p.enabled) return `插件「${p.name}」已停用`;
+        if (!p.versions.includes(m.proto.version)) return `模型固定的插件版本 ${p.key}@${m.proto.version} 不存在`;
+        if (!p.eps[m.kind]) return `插件「${p.name}」不支持${KIND[m.kind]}类型的模型`;
+        for (const [n, s] of Object.entries(p.settings || {})) {
+          if (s.required && !String((m.proto.settings || {})[n] ?? "").trim()) return `协议设置 ${n}（${s.label}）必填`;
+        }
+        if (p.auth !== "none" && !c.keySet) return `渠道「${c.name}」的 API Key 尚未设置`;
+        return null;
+      }
+      const statusOf = (m) => (!m.kind || (m.kind !== "agent" && !m.proto) ? "pending" : m.enabled ? "on" : "off");
+
+      /* ================= 渲染：骨架 ================= */
+      function initProto() {
+        $("#segView").innerHTML = [["cm", "渠道与模型"], ["pl", "插件"]].map(([v, t]) => `<button data-act="view" data-arg="${v}" aria-pressed="${view === v}">${t}</button>`).join("");
+        $("#segRole").innerHTML = [["super", "super_admin"], ["admin", "admin"]].map(([v, t]) => `<button data-act="role" data-arg="${v}" aria-pressed="${role === v}">${t}</button>`).join("");
+        $("#roleHint").textContent = isSuper() ? "" : "admin：渠道的新增 / 编辑 / Key / 排序、插件的启停与升级置灰（悬停可见原因）";
+        $("#crumb").textContent = view === "cm" ? "渠道与模型" : "插件";
+        if (view === "cm") renderCM(); else renderPlugins();
+        renderOrder();
+        icons();
+      }
+      A.view = (v) => { view = v; dlg = null; initProto(); renderDlg(); };
+      A.role = (v) => { role = v; initProto(); };
+
+      function renderCM() {
+        if (!chOf(selCh)) selCh = channels[0] ? channels[0].key : "";
+        $("#pv").innerHTML = `
+          <div class="pl">
+            <aside>
+              <div class="row"><b style="font-size:14px">渠道</b><span class="tag t-mute" id="chCount"></span></div>
+              <button class="pb pri" data-act="newCh" ${isSuper() ? "" : `disabled title="${SUPER_ONLY}"`} style="justify-content:center"><i data-lucide="plus"></i>新增渠道</button>
+              <input class="inp" placeholder="搜索渠道名称或地址" value="${esc(chQ)}" data-in="chQ" />
+              <div class="seg" style="align-self:stretch">${[["all", "全部"], ["on", "已启用"], ["off", "已停用"]].map(([v, t]) => `<button data-act="chStatus" data-arg="${v}" aria-pressed="${chStatus === v}" style="flex:1">${t}</button>`).join("")}</div>
+              <div id="chList" style="display:grid;gap:8px"></div>
+              <div style="margin-top:auto">
+                <button class="pb" style="width:100%;justify-content:center" data-act="sortCh" ${isSuper() ? "" : `disabled title="${SUPER_ONLY}"`}><i data-lucide="list-ordered"></i><span id="sortChTxt">设置排序</span></button>
+              </div>
+            </aside>
+            <section id="pane"></section>
+          </div>`;
+        renderChList();
+        renderPane();
+      }
+      I.chQ = (v) => { chQ = v; renderChList(); };
+      A.chStatus = (v) => { chStatus = v; renderCM(); icons(); };
+      A.sortCh = () => {
+        sortCh = !sortCh;
+        if (!sortCh) toast("渠道顺序已保存（示意）。画布里的模型会按新的渠道顺序排列", "ok");
+        $("#sortChTxt").textContent = sortCh ? "完成排序" : "设置排序";
+        renderChList(); renderOrder();
+      };
+      A.mvCh = (arg) => {
+        const [k, d] = arg.split("|");
+        const i = channels.findIndex((c) => c.key === k), j = i + Number(d);
+        if (j < 0 || j >= channels.length) return;
+        [channels[i], channels[j]] = [channels[j], channels[i]];
+        renderChList(); renderOrder(); icons();
+      };
+
+      function renderChList() {
+        const q = chQ.trim().toLowerCase();
+        const list = channels.filter((c) => (chStatus === "all" || (chStatus === "on") === c.enabled) && (!q || (c.name + c.base + c.key).toLowerCase().includes(q)));
+        $("#chCount").textContent = String(channels.length);
+        $("#chList").innerHTML = list.length
+          ? list.map((c) => `
+            <div class="chi" data-act="selCh" data-arg="${esc(c.key)}" aria-current="${c.key === selCh}">
+              <div class="grow"><b style="font-size:13.5px">${esc(c.name)}</b>
+                <div class="muted" style="font-size:12px">${modelsOf(c.key).length} 个模型 · <span class="dotc" style="background:rgb(var(--${c.enabled ? "ok" : "bad"}))"></span>${c.enabled ? "已启用" : "已停用"}</div></div>
+              ${sortCh ? `<button class="pb sm" data-act="mvCh" data-arg="${esc(c.key)}|-1" aria-label="上移"><i data-lucide="arrow-up"></i></button><button class="pb sm" data-act="mvCh" data-arg="${esc(c.key)}|1" aria-label="下移"><i data-lucide="arrow-down"></i></button>` : `<i data-lucide="chevron-right" class="muted"></i>`}
+            </div>`).join("")
+          : `<div class="muted" style="font-size:12.5px;padding:8px">${channels.length ? "没有匹配的渠道" : "还没有渠道"}</div>`;
+        icons();
+      }
+      A.selCh = (k) => { if (sortCh) return; selCh = k; picked.clear(); mQ = ""; mKind = "all"; mStatus = "all"; sortMd = false; renderChList(); renderPane(); };
+
+      /* ---------- 右栏 ---------- */
+      function renderPane() {
+        const c = chOf(selCh);
+        if (!c) {
+          $("#pane").innerHTML = `<div style="padding:60px 20px;text-align:center" class="muted"><i data-lucide="plug-zap" style="font-size:28px"></i><p style="margin-top:8px"><b>还没有渠道</b></p><p style="font-size:13px">先新增渠道，再拉取模型。</p></div>`;
+          icons(); return;
+        }
+        $("#pane").innerHTML = `
+          <div id="hd"></div>
+          <div class="row wrapflex" style="margin:16px 0 10px;gap:8px"><b style="font-size:15px">模型管理</b><span class="tag t-mute" id="mCount"></span><span class="spacer row" id="acts"></span></div>
+          <div class="row wrapflex" style="gap:8px;margin-bottom:10px">
+            <input class="inp" style="max-width:260px" placeholder="搜索模型标识或显示名称" value="${esc(mQ)}" data-in="mQ" />
+            <select class="inp" style="width:auto" data-ch="mKind"><option value="all">全部能力</option>${KINDS.map((k) => `<option value="${k}" ${mKind === k ? "selected" : ""}>${KIND[k]}</option>`).join("")}<option value="pending" ${mKind === "pending" ? "selected" : ""}>待配置</option></select>
+            <select class="inp" style="width:auto" data-ch="mStatus">${[["all", "全部状态"], ["on", "已启用"], ["off", "已停用"]].map(([v, t]) => `<option value="${v}" ${mStatus === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+          </div>
+          <div id="tbl" class="cmp-wrap"></div>
+          <div id="batch"></div>`;
+        refresh();
+      }
+      I.mQ = (v) => { mQ = v; renderTable(); };
+      I.mKind = (v) => { mKind = v; renderTable(); };
+      I.mStatus = (v) => { mStatus = v; renderTable(); };
+
+      function refresh() {
+        renderChList(); renderHead(); renderActs(); renderTable(); renderBatch(); renderOrder(); icons();
+      }
+      function renderHead() {
+        const c = chOf(selCh); if (!c) return;
+        const ro = isSuper() ? "" : `disabled title="${SUPER_ONLY}"`;
+        $("#hd").innerHTML = `
+          <div class="row wrapflex" style="gap:10px">
+            <b style="font-size:20px">${esc(c.name)}</b>
+            <span class="tag ${c.enabled ? "t-ok" : "t-bad"}">${c.enabled ? "已启用" : "已停用"}</span>
+            <span class="spacer row" style="gap:6px;flex-wrap:wrap">
+              <button class="pb" data-act="editCh" ${ro}><i data-lucide="pencil"></i>编辑渠道</button>
+              <button class="pb" data-act="setKey" ${ro}><i data-lucide="key-round"></i>设置 Key</button>
+              <button class="pb" data-act="toggleCh" ${ro}><i data-lucide="power"></i>${c.enabled ? "停用" : "启用"}</button>
+              <button class="pb danger" data-act="delCh" ${ro}><i data-lucide="trash-2"></i>删除</button>
+            </span>
+          </div>
+          <div class="mono muted" style="font-size:12.5px;margin-top:6px">${esc(c.base)}</div>
+          <div class="row wrapflex" style="margin-top:8px;gap:6px">
+            <span class="tag ${c.keySet ? "t-ok" : "t-warn"}">API Key ${c.keySet ? "已配置" : "未设置"}</span>
+            <span class="tag ${c.secretSet ? "t-ok" : "t-mute"}">Secret Key ${c.secretSet ? "已设置" : "未设置（可选）"}</span>
+            <span class="tag t-mute">请求头 ${c.headers.length} 条</span>
+            <span class="tag t-mute">限流 ${c.rps || c.conc || c.run ? `rps ${c.rps || "不限"} · 并发 ${c.conc || "不限"} · 同时生成 ${c.run || "不限"}` : "不限"}</span>
+            <span class="tag t-mute">生成中 0 · 排队 0（示意）</span>
+          </div>
+          ${c.enabled ? "" : `<div class="callout c-warn" style="margin-top:10px"><i data-lucide="triangle-alert"></i><div>渠道已停用：它的所有模型在画布里不可见；进行中的任务按快照继续。</div></div>`}`;
+      }
+      function renderActs() {
+        $("#acts").innerHTML = `
+          <button class="pb" data-act="sortMd">${sortMd ? '<i data-lucide="check"></i>完成排序' : '<i data-lucide="list-ordered"></i>自定义排序'}</button>
+          <button class="pb" data-act="pull"><i data-lucide="refresh-cw"></i>拉取模型</button>
+          <button class="pb pri" data-act="newModel"><i data-lucide="plus"></i>新增模型</button>`;
+      }
+      A.sortMd = () => { sortMd = !sortMd; if (!sortMd) toast("渠道内顺序已保存（示意）", "ok"); refresh(); };
+      A.mvMd = (arg) => {
+        const [k, d] = arg.split("|");
+        const list = modelsOf(selCh), i = list.findIndex((m) => m.key === k), j = i + Number(d);
+        if (j < 0 || j >= list.length) return;
+        const t = list[i].sort; list[i].sort = list[j].sort; list[j].sort = t;
+        refresh();
+      };
+
+      function visibleModels() {
+        const q = mQ.trim().toLowerCase();
+        return modelsOf(selCh).filter((m) => {
+          const st = statusOf(m);
+          if (q && !(m.label + m.key + m.up).toLowerCase().includes(q)) return false;
+          if (mKind === "pending") { if (st !== "pending") return false; } else if (mKind !== "all" && m.kind !== mKind) return false;
+          if (mStatus !== "all" && (mStatus === "on") !== m.enabled) return false;
+          return true;
+        });
+      }
+      function renderTable() {
+        const all = modelsOf(selCh), list = visibleModels();
+        $("#mCount").textContent = String(all.length);
+        if (!all.length) {
+          $("#tbl").innerHTML = `<div style="padding:40px 20px;text-align:center"><i data-lucide="box" class="muted" style="font-size:26px"></i><p style="margin-top:6px"><b>这个渠道下还没有模型</b></p><p class="muted" style="font-size:13px;margin:4px 0 12px">从上游拉取，或手动新增。</p><button class="pb pri" data-act="pull"><i data-lucide="refresh-cw"></i>拉取模型</button> <button class="pb" data-act="newModel"><i data-lucide="plus"></i>新增模型</button></div>`;
+          icons(); return;
+        }
+        const allChecked = list.length && list.every((m) => picked.has(m.key));
+        $("#tbl").innerHTML = `<table class="pt"><thead><tr>
+          <th style="width:34px"><input type="checkbox" data-act="pickAll" ${allChecked ? "checked" : ""} aria-label="全选" /></th>
+          <th>模型</th><th>能力</th><th>请求协议</th><th>积分</th><th>状态</th><th style="text-align:right">操作</th></tr></thead><tbody>
+          ${list.length ? list.map((m, idx) => {
+            const st = statusOf(m), p = m.proto && pOf(m.proto.plugin);
+            return `<tr>
+              <td><input type="checkbox" data-act="pick" data-arg="${esc(m.key)}" ${picked.has(m.key) ? "checked" : ""} /></td>
+              <td><b>${esc(m.label)}</b><div class="mono muted" style="font-size:11.5px">${esc(m.key)}</div></td>
+              <td>${m.kind ? esc(KIND[m.kind]) : '<span class="tag t-warn">待配置</span>'}</td>
+              <td>${m.kind === "agent" ? '<span class="muted">宿主网关</span>' : p ? `${esc(p.name)} <span class="mono muted" style="font-size:11.5px">@${esc(m.proto.version)}</span>` : '<span class="tag t-warn">待配置</span>'}</td>
+              <td>${m.price ? esc(m.price) : '<span class="muted">—</span>'}</td>
+              <td><button class="sw" role="switch" aria-checked="${m.enabled}" data-act="toggleModel" data-arg="${esc(m.key)}" aria-label="启用"></button></td>
+              <td style="text-align:right;white-space:nowrap">${sortMd
+                ? `<button class="pb sm" data-act="mvMd" data-arg="${esc(m.key)}|-1" ${idx === 0 ? "disabled" : ""} aria-label="上移"><i data-lucide="arrow-up"></i></button> <button class="pb sm" data-act="mvMd" data-arg="${esc(m.key)}|1" ${idx === list.length - 1 ? "disabled" : ""} aria-label="下移"><i data-lucide="arrow-down"></i></button>`
+                : `<button class="pb sm" data-act="editModel" data-arg="${esc(m.key)}"><i data-lucide="pencil"></i>编辑</button> <button class="pb sm danger" data-act="delModel" data-arg="${esc(m.key)}" aria-label="删除"><i data-lucide="trash-2"></i></button>`}</td>
+            </tr>`;
+          }).join("") : `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">没有匹配的模型</td></tr>`}
+          </tbody></table>`;
+        icons();
+      }
+      A.pick = (k, el) => { el.checked ? picked.add(k) : picked.delete(k); renderBatch(); renderTable(); };
+      A.pickAll = (_, el) => { visibleModels().forEach((m) => (el.checked ? picked.add(m.key) : picked.delete(m.key))); renderTable(); renderBatch(); };
+      function renderBatch() {
+        const n = [...picked].filter((k) => mOf(k) && mOf(k).ch === selCh).length;
+        $("#batch").innerHTML = n ? `<div class="row wrapflex" style="margin-top:10px;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:10px;background:hsl(var(--muted))">
+          <b style="font-size:13px">已选 ${n} 项</b>
+          <button class="pb sm" data-act="batchProto"><i data-lucide="blocks"></i>批量设置能力与协议</button>
+          <button class="pb sm danger" data-act="batchDel"><i data-lucide="trash-2"></i>批量删除</button>
+          <button class="pb sm" disabled title="第二期：渠道内批量调价与批量上下线"><i data-lucide="coins"></i>批量调价</button>
+          <button class="pb sm" disabled title="第二期：渠道内批量调价与批量上下线"><i data-lucide="power"></i>批量上下线</button>
+          <span class="muted" style="font-size:12px">批量调价与批量上下线放第二期</span>
+          <button class="pb sm spacer" data-act="pickClear">取消选择</button></div>` : "";
+        icons();
+      }
+      A.pickClear = () => { picked.clear(); renderTable(); renderBatch(); };
+
+      function renderOrder() {
+        const parts = channels.map((c) => ({ c, ms: modelsOf(c.key).filter((m) => m.enabled && !enableCheck(m)) })).filter((x) => x.ms.length && x.c.enabled);
+        $("#orderStrip").innerHTML = `<i data-lucide="eye" style="vertical-align:-2px"></i> 画布里用户看到的模型顺序（只含已启用且可用的）：${parts.length ? parts.map((x) => `<b>${esc(x.c.name)}</b>：${x.ms.map((m) => esc(m.label)).join("、")}`).join(" → ") : "（暂无）"}`;
+      }
+
+      /* ---------- 渠道操作 ---------- */
+      A.toggleCh = () => { const c = chOf(selCh); c.enabled = !c.enabled; toast(c.enabled ? "渠道已启用" : "渠道已停用，画布里它的模型已不可见", c.enabled ? "ok" : "warn"); refresh(); };
+      A.delCh = () => {
+        const c = chOf(selCh), n = modelsOf(c.key).length;
+        if (n) { toast(`渠道仍被 ${n} 个模型使用，无法删除：请先在表里批量删除模型`, "bad"); return; }
+        showDlg(`<div class="mh"><h3>删除渠道「${esc(c.name)}」？</h3></div><div class="mb"><p style="font-size:13.5px">渠道下没有模型，也没有进行中的任务。删除会同时清掉它的 API Key 与 Secret Key，<b>不可恢复</b>。</p></div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="doDelCh">删除</button></div>`);
+      };
+      A.doDelCh = () => { const i = channels.findIndex((c) => c.key === selCh); channels.splice(i, 1); selCh = channels[0] ? channels[0].key : ""; closeDlg(); toast("渠道已删除", "ok"); renderCM(); renderOrder(); icons(); };
+
+      /* ---------- 弹窗基础 ---------- */
+      function showDlg(html, wide) {
+        dlg = { html, wide: !!wide };
+        renderDlg();
+      }
+      function renderDlg() {
+        $("#dlg").innerHTML = dlg ? `<div class="mask"><div class="modal ${dlg.wide ? "wide" : ""}">${dlg.html}</div></div>` : "";
+        icons();
+      }
+      function closeDlg() { dlg = null; PK = null; renderDlg(); }
+      A.closeDlg = closeDlg;
+      const X = `<button class="pb sm spacer" data-act="closeDlg" aria-label="关闭"><i data-lucide="x"></i></button>`;
+
+      /* ---------- 渠道表单（新增 / 编辑） ---------- */
+      let CD = null;
+      A.newCh = () => { CD = { isNew: true, name: "", key: "", keyTouched: false, base: "", api: "", secret: "", headers: [], rps: "", conc: "", run: "", enabled: true, err: "" }; renderChDlg(); };
+      A.editCh = () => { const c = chOf(selCh); CD = { isNew: false, orig: c.key, name: c.name, key: c.key, keyTouched: true, base: c.base, headers: c.headers.map((h) => ({ ...h })), rps: c.rps || "", conc: c.conc || "", run: c.run || "", enabled: c.enabled, err: "" }; renderChDlg(); };
+      function renderChDlg() {
+        const d = CD;
+        const hs = d.headers.map((h, i) => `<div class="hrow"><input class="inp" placeholder="名称" value="${esc(h.k)}" data-in="hk" data-i="${i}" /><input class="inp" placeholder="值" value="${esc(h.v)}" data-in="hv" data-i="${i}" /><button class="pb sm" data-act="hDel" data-arg="${i}" aria-label="删除"><i data-lucide="trash-2"></i></button></div>`).join("");
+        showDlg(`
+          <div class="mh"><h3>${d.isNew ? "新增系统渠道" : "编辑渠道"}</h3>${X}</div>
+          <div class="mb">
+            ${d.err ? `<div class="callout c-bad"><i data-lucide="circle-x"></i><div>${esc(d.err)}</div></div>` : ""}
+            <div><label class="lbl">渠道名称</label><input class="inp" placeholder="例如：OpenAI 官方渠道" value="${esc(d.name)}" data-in="cdName" /></div>
+            <div><label class="lbl">渠道 key</label><input class="inp mono" placeholder="小写字母、数字、连字符" value="${esc(d.key)}" data-in="cdKey" ${d.isNew ? "" : "disabled"} /><div class="hint">${d.isNew ? "从名称自动生成建议值，可手改；创建后不可改。" : "创建后不可修改。"}</div></div>
+            <div><label class="lbl">Base URL</label><input class="inp" placeholder="填写上游 Base URL，例如 https://api.example.com" value="${esc(d.base)}" data-in="cdBase" /></div>
+            ${d.isNew ? `<div><label class="lbl">API Key</label><input class="inp" type="password" placeholder="API Key（只写不读，可稍后在“设置 Key”里填）" value="${esc(d.api)}" data-in="cdApi" /></div>
+            <div><label class="lbl">Secret Key（可选）</label><input class="inp" type="password" placeholder="IAM Secret Key" value="${esc(d.secret)}" data-in="cdSecret" /><div class="hint">仅 AK/SK 签名类协议需要（如可灵）；其他渠道留空。</div></div>` : `<div class="hint">API Key 与 Secret Key 只写不读，请用“设置 Key”修改。</div>`}
+            <div class="card" style="padding:12px">
+              <b style="font-size:13px">自定义请求头</b>
+              <div class="hint">默认发送 <code>video-canvas/x.y</code>（示意）；添加 User-Agent 后会覆盖默认值。仅发往本渠道 Base URL 的请求会带上；<b>值明文存储，不要放密钥</b>；Authorization、Host、Cookie 等不能设置。</div>
+              <div style="display:grid;gap:6px;margin-top:8px">${hs}</div>
+              <div class="row" style="margin-top:8px"><button class="pb sm" data-act="hUA">添加 User-Agent</button><button class="pb sm" data-act="hAdd"><i data-lucide="plus"></i>添加请求头</button><span class="muted spacer" style="font-size:12px">${d.headers.length}/32</span></div>
+            </div>
+            <div><label class="lbl">限流（可选，留空不限）</label><div class="grid" style="grid-template-columns:repeat(3,1fr)">
+              <input class="inp" type="number" min="0" placeholder="rps" value="${esc(d.rps)}" data-in="cdRps" /><input class="inp" type="number" min="0" placeholder="同时请求" value="${esc(d.conc)}" data-in="cdConc" /><input class="inp" type="number" min="0" placeholder="同时生成" value="${esc(d.run)}" data-in="cdRun" /></div></div>
+            <div class="callout c-info"><i data-lucide="info"></i><div>保存时<b>只做字段校验</b>，不发请求。想验证地址和 Key：保存后到模型里点“测试模型”，或直接“拉取模型”。</div></div>
+          </div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="saveCh">保存</button></div>`);
+      }
+      I.cdName = (v) => { CD.name = v; if (CD.isNew && !CD.keyTouched) { CD.key = slug(v) || "channel-" + Math.random().toString(36).slice(2, 6); const el = $('[data-in="cdKey"]'); if (el) el.value = CD.key; } };
+      I.cdKey = (v) => { CD.key = v; CD.keyTouched = true; };
+      I.cdBase = (v) => (CD.base = v); I.cdApi = (v) => (CD.api = v); I.cdSecret = (v) => (CD.secret = v);
+      I.cdRps = (v) => (CD.rps = v); I.cdConc = (v) => (CD.conc = v); I.cdRun = (v) => (CD.run = v);
+      I.hk = (v, el) => (CD.headers[+el.dataset.i].k = v); I.hv = (v, el) => (CD.headers[+el.dataset.i].v = v);
+      A.hAdd = () => { if (CD.headers.length >= 32) return; CD.headers.push({ k: "", v: "" }); renderChDlg(); };
+      A.hUA = () => { if (!CD.headers.some((h) => h.k.toLowerCase() === "user-agent")) CD.headers.push({ k: "User-Agent", v: "MyApp/1.0" }); renderChDlg(); };
+      A.hDel = (i) => { CD.headers.splice(+i, 1); renderChDlg(); };
+      A.saveCh = () => {
+        const d = CD, errs = [];
+        if (!d.name.trim()) errs.push("渠道名称不能为空");
+        if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(d.key)) errs.push("渠道 key 只能包含小写字母、数字和短横线，以字母或数字开头，长度不超过 64");
+        else if (d.isNew && chOf(d.key)) errs.push(`渠道 key「${d.key}」已存在（ErrChannelExists）`);
+        if (!/^https?:\/\/[^\s/@]+/.test(d.base.trim())) errs.push("Base URL 必须是 http / https 地址，且不能带用户名密码");
+        d.headers.forEach((h) => {
+          if (!h.k.trim()) errs.push("请求头名称不能为空");
+          else if (!/^[A-Za-z0-9-]+$/.test(h.k.trim())) errs.push(`请求头名称「${h.k}」不合法`);
+          else if (FORBID_HEADERS.includes(h.k.trim().toLowerCase())) errs.push(`请求头 ${h.k.trim()} 由宿主独占或属于敏感头，不允许设置`);
+        });
+        if (errs.length) { d.err = errs.join("；"); renderChDlg(); return; }
+        const body = { name: d.name.trim(), base: d.base.trim(), headers: d.headers.map((h) => ({ k: h.k.trim(), v: h.v })), rps: +d.rps || 0, conc: +d.conc || 0, run: +d.run || 0 };
+        if (d.isNew) {
+          channels.push({ key: d.key, enabled: true, keySet: !!d.api.trim(), secretSet: !!d.secret.trim(), upstream: ["gpt-4o", "gpt-4o-mini", "text-embedding-3-small"], ...body });
+          selCh = d.key; picked.clear(); toast("渠道已创建。下一步：拉取模型", "ok");
+        } else { Object.assign(chOf(d.orig), body); toast("渠道已更新", "ok"); }
+        closeDlg(); renderCM(); renderOrder(); icons();
+      };
+      A.setKey = () => {
+        const c = chOf(selCh);
+        showDlg(`<div class="mh"><h3>设置「${esc(c.name)}」的 Key</h3>${X}</div><div class="mb">
+          <div><label class="lbl">API Key</label><input class="inp" type="password" placeholder="${c.keySet ? "已设置，留空表示不修改" : "API Key"}" data-in="skApi" /></div>
+          <div><label class="lbl">Secret Key（可选）</label><input class="inp" type="password" placeholder="${c.secretSet ? "已设置，留空表示不修改" : "IAM Secret Key"}" data-in="skSec" />
+            ${c.secretSet ? `<label class="row" style="margin-top:6px;font-size:12.5px"><input type="checkbox" data-ch="skClr" /> 清除已设置的 Secret Key</label>` : ""}</div>
+          <div class="hint">Key 只写不读，保存后不会再显示明文；设置会写审计（不含值）。</div></div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="saveKey">保存</button></div>`);
+        SK = { api: "", sec: "", clr: false };
+      };
+      let SK = null;
+      I.skApi = (v) => (SK.api = v); I.skSec = (v) => (SK.sec = v); I.skClr = (v) => (SK.clr = v);
+      A.saveKey = () => {
+        const c = chOf(selCh);
+        if (SK.api.trim()) c.keySet = true;
+        if (SK.sec.trim()) c.secretSet = true; else if (SK.clr) c.secretSet = false;
+        closeDlg(); toast("Key 已更新", "ok"); refresh();
+      };
+
+      /* ---------- 拉取模型 ---------- */
+      let PD = null;
+      A.pull = () => {
+        const c = chOf(selCh);
+        PD = { state: "loading", sel: new Set(), q: "", items: [], msg: "", code: "" };
+        renderPullDlg();
+        setTimeout(() => {
+          if (!dlg || !PD) return;
+          if (!c.keySet) { PD.state = "err"; PD.code = "ErrChannelSecretUnset（50015）"; PD.msg = `渠道「${c.name}」的 API Key 尚未设置。`; }
+          else if (/bad/i.test(c.base)) { PD.state = "err"; PD.code = "ErrPluginOpFailed（502）"; PD.msg = `无法连接上游 ${hostOf(c.base)}：30 秒内没有响应（示意）。`; }
+          else {
+            const have = new Set(modelsOf(c.key).map((m) => m.up));
+            PD.items = c.upstream.map((id) => ({ id, exists: have.has(id) }));
+            PD.items.forEach((x) => PD.sel.add(x.id));
+            PD.state = PD.items.length ? "ok" : "empty";
+          }
+          renderPullDlg();
+        }, 900);
+      };
+      function renderPullDlg() {
+        const c = chOf(selCh), d = PD;
+        let body = "", foot = "";
+        if (d.state === "loading") body = `<div class="row muted" style="padding:30px 0;justify-content:center"><i data-lucide="loader-circle" class="spin"></i>正在向上游请求模型列表…（模拟，非真实调用）</div>`;
+        else if (d.state === "err") {
+          body = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>拉取失败：</b>${esc(d.msg)} <span class="mono muted">${esc(d.code)}</span>
+            <ul class="list" style="margin-top:6px">${d.code.startsWith("ErrChannelSecretUnset") ? `<li>${isSuper() ? "先点“设置 Key”填写 API Key。" : "请联系 super_admin 设置这个渠道的 API Key。"}</li>` : `<li>检查 Base URL 和 API Key 是否正确。</li><li>该上游可能不提供 <code>/v1/models</code>（视频类上游常见），请手动新增模型。</li>`}</ul></div></div>`;
+          foot = `<span class="spacer"></span><button class="pb" data-act="closeDlg">关闭</button><button class="pb" data-act="pull">重试</button><button class="pb pri" data-act="pullManual">手动新增模型</button>`;
+        } else if (d.state === "empty") {
+          body = `<div class="callout c-warn"><i data-lucide="triangle-alert"></i><div>上游返回了空列表。该上游可能不开放模型清单，请手动新增模型。</div></div>`;
+          foot = `<span class="spacer"></span><button class="pb" data-act="closeDlg">关闭</button><button class="pb pri" data-act="pullManual">手动新增模型</button>`;
+        } else {
+          const n = d.items.length, selN = d.items.filter((x) => d.sel.has(x.id)).length, newSel = d.items.filter((x) => d.sel.has(x.id) && !x.exists).length, oldSel = selN - newSel;
+          body = `<p class="muted" style="font-size:13px">上游共返回 ${n} 个模型。默认已全选，可批量全选或取消全选；已存在的模型不会重复导入。</p>
+            <input class="inp" placeholder="搜索模型标识，例如 gpt、sd2.5" value="${esc(d.q)}" data-in="pullQ" />
+            <div class="row" style="padding:8px 10px;border:1px solid hsl(var(--border));border-radius:10px"><b style="font-size:13px" id="pullCnt">已选择 ${selN} / ${n} 个模型</b><span class="spacer row"><button class="pb sm" data-act="pullAll">全选</button><button class="pb sm" data-act="pullNone">取消全选</button></span></div>
+            <div class="chips" id="pullChips"></div>
+            <div class="hint" id="pullSum">将导入 ${newSel} 个新模型，另有 ${oldSel} 个已存在模型已勾选</div>`;
+          foot = `<span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" id="pullOk" data-act="pullImport" ${newSel ? "" : "disabled"}>确认导入</button>`;
+        }
+        showDlg(`<div class="mh"><h3>选择要导入的模型</h3><span class="muted" style="font-size:12.5px">· ${esc(c.name)}</span>${X}</div><div class="mb">${body}</div><div class="mf">${foot}</div>`);
+        if (d.state === "ok") renderPullChips();
+      }
+      function renderPullChips() {
+        const d = PD, q = d.q.trim().toLowerCase();
+        $("#pullChips").innerHTML = d.items.filter((x) => !q || x.id.toLowerCase().includes(q)).map((x) =>
+          `<label class="chip"><input type="checkbox" data-act="pullTog" data-arg="${esc(x.id)}" ${d.sel.has(x.id) ? "checked" : ""} />${esc(x.id)}${x.exists ? " <small>已存在</small>" : ""}</label>`).join("") || `<span class="muted" style="font-size:12.5px">没有匹配的模型</span>`;
+        const n = d.items.length, selN = d.items.filter((x) => d.sel.has(x.id)).length, newSel = d.items.filter((x) => d.sel.has(x.id) && !x.exists).length;
+        $("#pullCnt").textContent = `已选择 ${selN} / ${n} 个模型`;
+        $("#pullSum").textContent = `将导入 ${newSel} 个新模型，另有 ${selN - newSel} 个已存在模型已勾选`;
+        $("#pullOk").disabled = !newSel;
+      }
+      I.pullQ = (v) => { PD.q = v; renderPullChips(); };
+      A.pullTog = (id, el) => { el.checked ? PD.sel.add(id) : PD.sel.delete(id); renderPullChips(); };
+      A.pullAll = () => { PD.items.forEach((x) => PD.sel.add(x.id)); renderPullChips(); };
+      A.pullNone = () => { PD.sel.clear(); renderPullChips(); };
+      A.pullManual = () => { closeDlg(); A.newModel(); };
+      A.pullImport = () => {
+        const c = chOf(selCh), made = []; let clash = 0;
+        PD.items.filter((x) => PD.sel.has(x.id) && !x.exists).forEach((x) => {
+          let key = x.id.replace(/[^a-zA-Z0-9_.-]/g, "-").replace(/^[^a-zA-Z0-9]+/, "") || "model";
+          if (mOf(key)) { key = `${c.key}-${key}`; clash++; }
+          let k = key, n = 2; while (mOf(k)) k = `${key}-${n++}`;
+          const max = Math.max(0, ...modelsOf(c.key).map((m) => m.sort));
+          models.push({ key: k, label: x.id, up: x.id, ch: c.key, kind: "", proto: null, price: null, enabled: false, sort: max + 10 });
+          made.push(k);
+        });
+        closeDlg();
+        toast(`已导入 ${made.length} 个“待配置”模型${clash ? `（${clash} 个 key 与其他渠道冲突，已加渠道前缀）` : ""}`, "ok");
+        refresh();
+      };
+
+      /* ---------- 协议选择器（模型弹窗与批量设置共用） ---------- */
+      function pickerHtml() {
+        const d = PK;
+        return `<div><span class="lbl"><span style="color:rgb(var(--bad))">*</span> 模型能力</span>
+            <div class="seg">${KINDS.map((k) => `<button data-act="pkKind" data-arg="${k}" aria-pressed="${d.kind === k}">${KIND[k]}</button>`).join("")}</div></div>
+          <div id="pkBody">${pickerBody()}</div>`;
+      }
+      function pickerBody() {
+        const d = PK;
+        if (!d.kind) return `<div class="callout c-info"><i data-lucide="info"></i><div>先选择模型能力，再从协议列表里选调用协议。</div></div>`;
+        if (d.kind === "agent") return `<div class="callout c-info"><i data-lucide="info"></i><div><b>Agent 模型不需要选协议。</b>由宿主的 LLM 网关直接用渠道 API Key 作 Bearer，请求渠道的 OpenAI 兼容接口。</div></div>`;
+        return `<div><span class="lbl">调用协议</span><input class="inp" placeholder="搜索协议名称、厂商或请求路径" value="${esc(pkQ)}" data-in="pkQ" />
+          <div class="pkg"><div class="pkl" id="pkList">${pickerRows()}</div><div class="pkd" id="pkDet">${pickerDetail()}</div></div></div>`;
+      }
+      function pickerRows() {
+        const d = PK, q = pkQ.trim().toLowerCase();
+        const rows = plugins.filter((p) => p.eps[d.kind] && (!q || (p.name + p.vendor + p.eps[d.kind].path).toLowerCase().includes(q)));
+        return rows.length ? rows.map((p) => {
+          const e = p.eps[d.kind], sel = d.proto && d.proto.plugin === p.key;
+          return `<div class="pkr" role="option" data-act="pkSel" data-arg="${esc(p.key)}" aria-selected="${!!sel}" aria-disabled="${!p.enabled}">
+            <div class="grow"><b style="font-size:13px">${esc(p.name)}</b><div class="path mono">${esc(e.method)} ${esc(e.path)}</div>${p.enabled ? "" : `<div class="path" style="color:rgb(var(--warn))">插件已停用，不可选</div>`}</div>
+            <span class="muted" style="font-size:12px">${esc(p.vendor)}</span><span class="tag t-mute">${e.mode === "sync" ? "同步" : "异步"}</span><span class="rad"></span></div>`;
+        }).join("") : `<div class="muted" style="padding:16px;font-size:12.5px">没有支持“${KIND[d.kind]}”的协议${q ? "（换个关键词试试）" : "。请先让 super_admin 上传相应的协议插件"}</div>`;
+      }
+      function pickerDetail() {
+        const d = PK;
+        if (!d.proto) return `<span class="muted">当前选择：选择左侧选项查看详情</span>`;
+        const p = pOf(d.proto.plugin), e = p.eps[d.kind];
+        const sets = Object.entries(p.settings || {}).map(([n, s]) => {
+          const v = d.proto.settings[n] ?? "";
+          return `<div><label class="lbl">${esc(s.label)} ${s.required ? '<span style="color:rgb(var(--bad))">*</span>' : ""} <span class="mono muted" style="font-weight:400">${esc(n)}</span></label>${s.type === "enum"
+            ? `<select class="inp" data-ch="pkSet" data-n="${esc(n)}">${s.options.map((o) => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`
+            : `<input class="inp" value="${esc(v)}" data-in="pkSet" data-n="${esc(n)}" placeholder="${s.required ? "必填" : ""}" />`}</div>`;
+        }).join("");
+        return `<div><b>${esc(p.name)}</b> <span class="tag t-mute">${esc(p.key)}</span></div>
+          <div class="muted" style="font-size:12.5px">${esc(p.desc)}</div>
+          <div class="row wrapflex" style="gap:6px"><span class="tag t-info">${AUTHL[p.auth]}</span><span class="tag t-mute">${e.mode === "sync" ? "同步" : "异步"}</span><span class="tag t-mute mono">${esc(e.method)} ${esc(e.path)}</span></div>
+          ${p.auth === "custom" ? `<div class="callout c-warn" style="font-size:12.5px"><i data-lucide="key-round"></i><div>该协议会读取<b>渠道的 API Key（和 Secret Key）</b>自行签名；不需要在渠道里再开任何开关。</div></div>` : ""}
+          <div><label class="lbl">版本</label><select class="inp" data-ch="pkVer">${p.versions.slice().reverse().map((v) => `<option ${v === d.proto.version ? "selected" : ""}>${v}</option>`).join("")}</select><div class="hint">默认最新版本，保存后固定；升级在“插件”页批量进行。</div></div>
+          ${sets ? `<div class="hint" style="margin:0"><b>协议设置</b>（原“渠道设置项”，现在跟着模型走）</div>${sets}` : ""}`;
+      }
+      I.pkQ = (v) => { pkQ = v; $("#pkList").innerHTML = pickerRows(); };
+      A.pkKind = (k) => {
+        if (PK.kind === k) return;
+        PK.kind = k;
+        if (PK.proto && !(pOf(PK.proto.plugin).eps[k] || k === "agent")) toast("已选协议不支持新的能力，请重新选择协议", "warn");
+        if (k === "agent" || (PK.proto && !pOf(PK.proto.plugin).eps[k])) PK.proto = null;
+        pkQ = "";
+        $("#pk").innerHTML = pickerHtml(); icons();
+      };
+      A.pkSel = (key) => {
+        const p = pOf(key); if (!p.enabled) return;
+        const settings = {};
+        Object.entries(p.settings || {}).forEach(([n, s]) => { if (s.def !== undefined) settings[n] = s.def; });
+        PK.proto = { plugin: key, version: latest(p), settings };
+        $("#pkList").innerHTML = pickerRows(); $("#pkDet").innerHTML = pickerDetail(); icons();
+      };
+      I.pkVer = (v) => { PK.proto.version = v; };
+      I.pkSet = (v, el) => { PK.proto.settings[el.dataset.n] = v; };
+
+      /* ---------- 模型弹窗 ---------- */
+      let MD = null, MTAB = "basic";
+      A.newModel = () => { MD = { isNew: true, key: "", keyTouched: false, label: "", up: "", ch: selCh, enabled: false, price: "", err: "" }; PK = { kind: "", proto: null }; MTAB = "basic"; pkQ = ""; renderModelDlg(); };
+      A.editModel = (k) => { const m = mOf(k); MD = { isNew: false, key: m.key, label: m.label, up: m.up, ch: m.ch, enabled: m.enabled, price: m.price ?? "", err: "" }; PK = { kind: m.kind, proto: m.proto ? JSON.parse(JSON.stringify(m.proto)) : null }; MTAB = "basic"; pkQ = ""; renderModelDlg(); };
+      function renderModelDlg() {
+        const d = MD, c = chOf(d.ch);
+        let body;
+        if (MTAB === "basic") {
+          body = `${d.err ? `<div class="callout c-bad"><i data-lucide="circle-x"></i><div>${esc(d.err)}</div></div>` : ""}
+            <div class="grid g2" style="gap:10px"><div><label class="lbl">显示名称</label><input class="inp" value="${esc(d.label)}" data-in="mdLabel" /></div>
+              <div><label class="lbl">模型 key</label><input class="inp mono" value="${esc(d.key)}" data-in="mdKey" ${d.isNew ? "" : "disabled"} /></div>
+              <div><label class="lbl">上游模型标识</label><input class="inp mono" value="${esc(d.up)}" data-in="mdUp" /></div>
+              <div><label class="lbl">所属渠道</label><select class="inp" data-ch="mdCh">${channels.map((x) => `<option value="${esc(x.key)}" ${x.key === d.ch ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div></div>
+            <div style="border-top:1px solid hsl(var(--border));padding-top:12px"><b style="font-size:14px">能力与协议</b> <span class="muted" style="font-size:12.5px">先选任务类型，再选对应的调用协议；更换后请核对参数与价格。</span></div>
+            <div id="pk" class="note">${pickerHtml()}</div>
+            <div class="note-txt">设计：协议挂在模型上，所以同一个渠道里文本模型选 OpenAI、图片模型选图片协议。放弃了“渠道里先选协议”。</div>`;
+        } else if (MTAB === "params") {
+          body = `<div class="callout c-info"><i data-lucide="info"></i><div><b>能力与参数（示意）。</b>这里沿用现有的“能力与参数”编辑器：按所选能力渲染输入素材、参数项和固定参数。本次改动不涉及这一页，原型不展开。</div></div>`;
+        } else {
+          body = `<div><label class="lbl">每次生成消耗的积分（示意：定价只保留最简一项）</label><input class="inp" type="number" min="0" style="max-width:200px" value="${esc(d.price)}" data-in="mdPrice" /><div class="hint">启用前必须填写；留空的模型可以保存，但不能启用。</div></div>`;
+        }
+        const saved = !d.isNew && mOf(d.key), canTest = saved && (saved.kind === "agent" || (saved.kind && saved.proto));
+        showDlg(`
+          <div class="mh"><div><h3>${d.isNew ? "新增模型" : "编辑模型"}</h3><div class="muted" style="font-size:12px">${esc(c.name)}${d.isNew ? "" : " · " + esc(d.key)}</div></div>${X}</div>
+          <div class="utabs">${[["basic", "基本信息"], ["params", "能力与参数"], ["price", "积分定价"]].map(([v, t]) => `<button data-act="mdTab" data-arg="${v}" aria-selected="${MTAB === v}">${t}</button>`).join("")}</div>
+          <div class="mb">${body}</div>
+          <div class="mf"><div class="row" style="font-size:13px"><button class="sw" role="switch" aria-checked="${d.enabled}" data-act="mdEnable" aria-label="启用"></button><span><b>${d.enabled ? "模型启用" : "模型停用"}</b><br><span class="muted" style="font-size:11.5px">保存后生效；启用要过检查</span></span></div>
+            <span class="spacer"></span>
+            <button class="pb" data-act="mdTest" ${canTest ? "" : `disabled title="${d.isNew ? "先保存模型" : "先选择能力和协议并保存"}"`}><i data-lucide="flask-conical"></i>测试模型</button>
+            <button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="mdSave">保存</button></div>`, true);
+      }
+      A.mdTab = (v) => { MTAB = v; renderModelDlg(); };
+      A.mdEnable = () => { MD.enabled = !MD.enabled; renderModelDlg(); };
+      I.mdLabel = (v) => (MD.label = v); I.mdUp = (v) => { MD.up = v; if (MD.isNew && !MD.keyTouched) { MD.key = v.replace(/[^a-zA-Z0-9_.-]/g, "-"); const el = $('[data-in="mdKey"]'); if (el) el.value = MD.key; } };
+      I.mdKey = (v) => { MD.key = v; MD.keyTouched = true; }; I.mdPrice = (v) => (MD.price = v); I.mdCh = (v) => (MD.ch = v);
+      A.mdSave = () => {
+        const d = MD, errs = [];
+        if (!d.label.trim()) errs.push("显示名称不能为空");
+        if (!d.up.trim()) errs.push("上游模型标识不能为空");
+        if (d.isNew) { if (!MODEL_KEY_RE.test(d.key)) errs.push("模型 key 只能包含字母、数字、下划线、点和连字符，且以字母或数字开头"); else if (mOf(d.key)) errs.push(`模型 key「${d.key}」已存在`); }
+        if (errs.length) { d.err = errs.join("；"); MTAB = "basic"; renderModelDlg(); return; }
+        const next = { key: d.key, label: d.label.trim(), up: d.up.trim(), ch: d.ch, kind: PK.kind, proto: PK.kind === "agent" ? null : PK.proto ? JSON.parse(JSON.stringify(PK.proto)) : null, price: +d.price > 0 ? +d.price : null, enabled: d.enabled };
+        const cur = d.isNew ? null : mOf(d.key);
+        if (d.enabled) {
+          const why = enableCheck(next);
+          if (why) { d.err = (cur && cur.enabled ? "已启用的模型保存前必须通过启用检查：" : "启用未通过：") + why; MTAB = "basic"; renderModelDlg(); return; }
+        }
+        if (d.isNew) { next.sort = Math.max(0, ...modelsOf(d.ch).map((m) => m.sort)) + 10; models.push(next); }
+        else { if (cur.ch !== next.ch) next.sort = Math.max(0, ...modelsOf(next.ch).map((m) => m.sort)) + 10; else next.sort = cur.sort; Object.assign(cur, next); }
+        closeDlg(); toast(!next.kind || (next.kind !== "agent" && !next.proto) ? "已保存（半成品：还没选协议，保持“待配置”）" : "模型已保存", "ok");
+        selCh = next.ch; renderCM(); renderOrder(); icons();
+      };
+      A.toggleModel = (k) => {
+        const m = mOf(k);
+        if (!m.enabled) {
+          const why = enableCheck(m);
+          if (why) { toast("无法启用：" + why, "bad"); return; }
+        }
+        m.enabled = !m.enabled;
+        toast(m.enabled ? "模型已启用，画布里可见" : "模型已停用", m.enabled ? "ok" : "warn"); refresh();
+      };
+      A.delModel = (k) => {
+        const m = mOf(k);
+        showDlg(`<div class="mh"><h3>删除模型「${esc(m.label)}」？</h3></div><div class="mb"><p style="font-size:13.5px">${m.enabled ? "<b>该模型正在启用</b>，删除后画布里立刻不可见；进行中的任务按快照继续。" : "删除后不可恢复。"}</p></div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="doDelModel" data-arg="${esc(k)}">删除</button></div>`);
+      };
+      A.doDelModel = (k) => { models = models.filter((m) => m.key !== k); picked.delete(k); closeDlg(); toast("模型已删除", "ok"); refresh(); };
+      A.batchDel = () => {
+        const ks = [...picked].filter((k) => mOf(k) && mOf(k).ch === selCh);
+        showDlg(`<div class="mh"><h3>删除 ${ks.length} 个模型？</h3></div><div class="mb"><p style="font-size:13.5px">删除后不可恢复。${ks.some((k) => mOf(k).enabled) ? "<b>其中有已启用的模型</b>，画布里会立刻不可见。" : ""}</p></div><div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="doBatchDel">删除</button></div>`);
+      };
+      A.doBatchDel = () => { const s = new Set(picked); models = models.filter((m) => !(s.has(m.key) && m.ch === selCh)); picked.clear(); closeDlg(); toast("已批量删除", "ok"); refresh(); };
+
+      /* ---------- 批量设置能力与协议 ---------- */
+      A.batchProto = () => {
+        PK = { kind: "", proto: null }; pkQ = "";
+        const ks = [...picked].filter((k) => mOf(k) && mOf(k).ch === selCh);
+        showDlg(`<div class="mh"><h3>批量设置能力与协议</h3><span class="muted" style="font-size:12.5px">· 已选 ${ks.length} 个模型</span>${X}</div>
+          <div class="mb"><div class="callout c-info"><i data-lucide="info"></i><div>会覆盖所选模型的能力、协议和协议设置，不改价格。<b>已启用</b>的模型如果新配置没有通过启用检查，会被跳过并列出原因。</div></div><div id="pk">${pickerHtml()}</div></div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="doBatchProto">应用到 ${ks.length} 个模型</button></div>`, true);
+      };
+      A.doBatchProto = () => {
+        if (!PK.kind) { toast("请先选择模型能力", "warn"); return; }
+        if (PK.kind !== "agent" && !PK.proto) { toast("请选择调用协议", "warn"); return; }
+        const skipped = []; let n = 0;
+        [...picked].filter((k) => mOf(k) && mOf(k).ch === selCh).forEach((k) => {
+          const m = mOf(k), next = { ...m, kind: PK.kind, proto: PK.kind === "agent" ? null : JSON.parse(JSON.stringify(PK.proto)) };
+          if (m.enabled) { const why = enableCheck(next); if (why) { skipped.push(`${m.label}：${why}`); return; } }
+          Object.assign(m, next); n++;
+        });
+        closeDlg();
+        toast(`已设置 ${n} 个模型${skipped.length ? `；${skipped.length} 个已启用的模型被跳过（${skipped[0]}）` : ""}`, skipped.length ? "warn" : "ok");
+        picked.clear(); refresh();
+      };
+
+      /* ---------- 测试模型（模拟） ---------- */
+      A.mdTest = () => {
+        const m = mOf(MD.key), c = chOf(m.ch), p = m.proto && pOf(m.proto.plugin);
+        showDlg(`<div class="mh"><h3>测试模型</h3><span class="muted" style="font-size:12.5px">· ${esc(m.label)}</span>${X}</div><div class="mb"><div class="row muted"><i data-lucide="loader-circle" class="spin"></i>正在用已保存的配置跑一次（模拟，非真实调用）…</div></div>`);
+        setTimeout(() => {
+          const steps = []; let fail = "";
+          steps.push(["ok", `读取模型配置：${m.kind === "agent" ? "Agent（宿主 LLM 网关）" : `${p.key}@${m.proto.version}`}`]);
+          if (m.kind !== "agent") steps.push(["ok", `组装请求：${p.eps[m.kind].method} ${c.base}${p.eps[m.kind].path}`]);
+          steps.push(["ok", `请求头：默认 UA + 渠道自定义头 ${c.headers.length} 条（仅发往 ${hostOf(c.base)}）`]);
+          if (m.kind === "agent") steps.push(["ok", "鉴权：Bearer（渠道 API Key）"]);
+          else steps.push([p.auth === "custom" && p.key === "kling" && !c.secretSet ? "bad" : "ok", p.auth === "custom" ? `鉴权：插件自行签名（读取渠道 API Key${c.secretSet ? " + Secret Key" : ""}）` : `鉴权：${AUTHL[p.auth]}（宿主注入渠道 API Key）`]);
+          if (!c.keySet) fail = `渠道的 API Key 尚未设置（ErrChannelSecretUnset）`;
+          else if (p && p.key === "kling" && !c.secretSet) fail = "可灵需要 Secret Key：渠道里还没有设置，插件拿不到 SecretKey（去“设置 Key”补上）";
+          else if (/bad/i.test(c.base)) fail = `无法连接 ${hostOf(c.base)}：超时（示意）`;
+          else if (p) for (const [n, s] of Object.entries(p.settings || {})) if (s.required && !String((m.proto.settings || {})[n] ?? "").trim()) fail = `协议设置 ${n}（${s.label}）必填`;
+          steps.push([fail ? "bad" : "ok", fail ? `失败：${fail}` : "上游返回成功，任务在约 3 秒内完成（耗时示意）"]);
+          $("#dlg .mb").innerHTML = `<div class="callout ${fail ? "c-bad" : "c-ok"}"><i data-lucide="${fail ? "circle-x" : "circle-check"}"></i><div><b>${fail ? "测试失败" : "测试通过"}</b>${fail ? `：${esc(fail)}` : "：可以启用了。"}</div></div>
+            <div class="tl">${steps.map(([k, t]) => `<div><i data-lucide="${k === "ok" ? "check" : "x"}" style="color:rgb(var(--${k}));margin-top:3px"></i><span>${esc(t)}</span></div>`).join("")}</div>`;
+          $("#dlg .mf") && ($("#dlg .mf").innerHTML = "");
+          $("#dlg .modal").insertAdjacentHTML("beforeend", `<div class="mf"><span class="spacer"></span><button class="pb pri" data-act="closeDlg">关闭</button></div>`);
+          icons();
+        }, 1100);
+      };
+
+      /* ================= 插件页 ================= */
+      function renderPlugins() {
+        $("#pv").innerHTML = `<div style="padding:14px 16px">
+          <div class="row wrapflex"><b style="font-size:18px">插件</b><span class="spacer"></span><button class="pb pri" disabled title="${isSuper() ? "原型里不演示上传" : SUPER_ONLY}"><i data-lucide="upload"></i>上传插件</button></div>
+          <p class="muted" style="font-size:13px;margin:4px 0 12px">插件把一种上游协议翻译成统一的请求与结果。模型在“能力与协议”里选它并固定版本。</p>
+          <div class="cmp-wrap"><table class="pt"><thead><tr><th>插件</th><th>能力</th><th>最新版本</th><th>模型</th><th>启用</th><th style="text-align:right">操作</th></tr></thead><tbody>
+          ${plugins.map((p) => {
+            const used = models.filter((m) => m.proto && m.proto.plugin === p.key), old = used.filter((m) => m.proto.version !== latest(p));
+            return `<tr><td><b>${esc(p.name)}</b><div class="muted" style="font-size:11.5px">${esc(p.vendor)} · <span class="mono">${esc(p.key)}</span></div></td>
+              <td>${Object.keys(p.eps).map((k) => `<span class="tag t-mute">${KIND[k]}</span>`).join(" ")}</td>
+              <td class="mono">v${esc(latest(p))}</td>
+              <td>${used.length ? `${used.length} 个在用${old.length ? ` · <span class="tag t-warn">${old.length} 个旧版</span>` : ""}` : '<span class="muted">未使用</span>'}</td>
+              <td><button class="sw" role="switch" aria-checked="${p.enabled}" data-act="togglePlugin" data-arg="${esc(p.key)}" ${isSuper() ? "" : `disabled title="${SUPER_ONLY}"`} aria-label="启用"></button></td>
+              <td style="text-align:right"><button class="pb sm" data-act="upgrade" data-arg="${esc(p.key)}" ${old.length && isSuper() ? "" : `disabled title="${isSuper() ? "没有固定在旧版本上的模型" : SUPER_ONLY}"`}><i data-lucide="arrow-up-circle"></i>升级模型${old.length ? `（${old.length}）` : ""}</button></td></tr>`;
+          }).join("")}</tbody></table></div>
+          <div class="hint" style="margin-top:8px">插件的“厂商”和各能力的“请求路径”是新增的展示字段（示意值，内置插件补上后才有真实值）。</div></div>`;
+        icons();
+      }
+      A.togglePlugin = (k) => {
+        const p = pOf(k); p.enabled = !p.enabled;
+        const n = models.filter((m) => m.proto && m.proto.plugin === k && m.enabled).length;
+        toast(p.enabled ? "插件已启用" : `插件已停用：${n} 个使用它的已启用模型暂不可用`, p.enabled ? "ok" : "warn");
+        renderPlugins(); renderOrder();
+      };
+      A.upgrade = (k) => {
+        const p = pOf(k), old = models.filter((m) => m.proto && m.proto.plugin === k && m.proto.version !== latest(p));
+        showDlg(`<div class="mh"><h3>把 ${old.length} 个模型升级到 v${esc(latest(p))}？</h3>${X}</div>
+          <div class="mb"><div class="cmp-wrap"><table class="pt"><thead><tr><th>模型</th><th>渠道</th><th>版本</th><th>协议设置</th></tr></thead><tbody>
+          ${old.map((m) => `<tr><td><b>${esc(m.label)}</b></td><td>${esc(chOf(m.ch).name)}</td><td class="mono">v${esc(m.proto.version)} → v${esc(latest(p))}</td><td class="muted">无变化（示意）</td></tr>`).join("")}</tbody></table></div>
+          <div class="hint">升级后新任务用新版本，进行中的任务按旧版本跑完。建议升级后对相关模型“测试模型”一次。逐个处理，失败不中断，失败原因留在这里。</div></div>
+          <div class="mf"><span class="spacer"></span><button class="pb" data-act="closeDlg">取消</button><button class="pb pri" data-act="doUpgrade" data-arg="${esc(k)}">全部升级</button></div>`, true);
+      };
+      A.doUpgrade = (k) => {
+        const p = pOf(k); let n = 0;
+        models.filter((m) => m.proto && m.proto.plugin === k && m.proto.version !== latest(p)).forEach((m) => { m.proto.version = latest(p); n++; });
+        closeDlg(); toast(`已升级 ${n} 个模型到 v${latest(p)}`, "ok"); renderPlugins();
+      };
+
+      initProto();
+      icons();
+    </script>
+  </body>
+</html>

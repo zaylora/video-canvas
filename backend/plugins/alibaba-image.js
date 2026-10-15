@@ -40,12 +40,13 @@ module.exports = {
     apiVersion: 1,
     key: "alibaba-image",
     name: "阿里云百炼 · 图片",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "alibaba",
     description: "对接阿里云百炼 DashScope 图片：万相图片、千问图像、Z-Image",
     auth: { type: "bearer" },
     endpoints: {
       // 图片多数是异步任务，千问图像系列是同步接口：同步的在提交响应里直接返回 immediate
-      image: { mode: "async" },
+      image: { mode: "async", method: "POST", path: "/api/v1/services/aigc/…" },
     },
     poll: { firstDelay: 10, interval: 8, maxInterval: 20, jitter: 0.2 },
   },

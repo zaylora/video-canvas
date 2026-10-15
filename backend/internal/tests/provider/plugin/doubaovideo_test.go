@@ -97,7 +97,7 @@ const (
 
 func TestDoubaovideoPrecheckAndMeta(t *testing.T) {
 	env := newDoubaovideoEnv(t)
-	if env.meta.Key != "doubao-video" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "doubao-video" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {

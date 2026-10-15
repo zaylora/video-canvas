@@ -4,6 +4,7 @@ import { deleteTarget, getModelDetail, setModelEnabled, updateModel } from "@/ap
 import type { ConfigListItem } from "@/api/admin/ai/type.d";
 import { errorMessage } from "@/utils/admin/errors";
 import { withDefaultPrice, withModelChannel, withModelField } from "@/utils/admin/model-body";
+import { withBatchProtocol, type ModelProtocol } from "@/utils/admin/model-protocol";
 
 /** 批量修改要改的字段：值为 undefined 表示不改 */
 export type BatchPatch = {
@@ -13,7 +14,7 @@ export type BatchPatch = {
   channel?: string;
 };
 
-export type BatchAction = "enable" | "disable" | "edit" | "delete";
+export type BatchAction = "enable" | "disable" | "edit" | "protocol" | "delete";
 
 export type BatchResult = {
   action: BatchAction;
@@ -29,6 +30,7 @@ const LABEL: Record<BatchAction, string> = {
   enable: "批量上线",
   disable: "批量下线",
   edit: "批量修改",
+  protocol: "批量设置能力与协议",
   delete: "批量删除",
 };
 export const batchLabel = (action: BatchAction) => LABEL[action];
@@ -37,6 +39,7 @@ export const batchLabel = (action: BatchAction) => LABEL[action];
  * 模型批量操作：后端没有批量接口，这里对选中的模型逐个调用现有接口（串行，避免把后端打满），
  * 每个的成功 / 跳过 / 失败都记下来，最后给一份结果，不因为某一个失败而中断。
  * 批量修改直接保存：已上线的模型保存即生效，没上线的只改配置。
+ * 面板里的列表是当前渠道的当前页，所以批量操作的范围就是当前渠道的当前页。
  */
 export function useModelBatch(models: ConfigListItem[], reload: () => Promise<void> | void) {
   const [running, setRunning] = useState<BatchAction | null>(null);
@@ -99,6 +102,20 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
         return `已保存，但有 ${saved.issues.length} 个问题，上线前要处理`;
     });
 
+  /**
+   * 批量设置能力与协议：只改 kind 与 channels[0].protocol，不改价格（见 withBatchProtocol）。
+   * 已启用的模型保存前后端会过启用检查，新配置不通过的会被拒绝，记为失败并带原因；没启用的照常保存。
+   */
+  const setProtocol = (keys: string[], kind: string, protocol: ModelProtocol | null) =>
+    run("protocol", keys, async (item) => {
+      const detail = await getModelDetail(item.key);
+      const body = withBatchProtocol(detail.body, kind, protocol);
+      if (!body) return "读不到配置正文";
+      const saved = await updateModel(item.key, body, "批量设置能力与协议");
+      if (saved.issues.length > 0)
+        return `已保存，但有 ${saved.issues.length} 个问题，上线前要处理`;
+    });
+
   /** 批量删除：还在上线的跳过（要先下线），其余逐个彻底删除 */
   const remove = (keys: string[]) =>
     run("delete", keys, async (item) => {
@@ -113,6 +130,7 @@ export function useModelBatch(models: ConfigListItem[], reload: () => Promise<vo
     clearResult: () => setResult(null),
     setEnabled,
     edit,
+    setProtocol,
     remove,
   };
 }

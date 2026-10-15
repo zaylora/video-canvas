@@ -189,8 +189,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	// 插件与渠道管理：aiChannelRepo 同时负责审计日志；变更后经 aiCfgSvc 刷新 Registry
-	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiChannelRepo, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
-	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiPluginRepo, aiCfgSvc, aiChannelRepo, executor, aiCfgSvc)
+	aiPluginSvc := service.NewAIPluginService(aiPluginRepo, aiCfgSvc, aiChannelRepo, plugin.NewPrechecker(runnerClient), aiCfgSvc)
+	aiChannelSvc := service.NewAIChannelService(aiChannelRepo, aiCfgSvc, aiCfgSvc, executor, aiChannelRepo, aiCfgSvc)
 	// 内置插件按 key + version 登记（在 runner 就绪之后）；失败只记日志，不阻止启动
 	regCtx, regCancel := context.WithTimeout(context.Background(), time.Minute)
 	registerBuiltinPlugins(regCtx, aiPluginSvc)
@@ -249,7 +249,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),
 		AdminCatalog:   handler.NewAdminCatalogHandler(service.NewAICatalogService(aiChannelSvc, aiPluginSvc, aiCfgSvc)),
 		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
-		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc),
+		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc, aiCfgSvc),
 		AdminStats:     handler.NewAdminStatsHandler(service.NewAIStatsService(repository.NewAIStatsRepository(db), aiCfgSvc)),
 		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
 		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),

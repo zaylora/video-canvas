@@ -1,23 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ChannelView, PluginMeta, PluginVersionView, PluginView } from "@/api/admin/ai/type";
+import type {
+  ConfigListItem,
+  PluginMeta,
+  PluginVersionView,
+  PluginView,
+} from "@/api/admin/ai/type";
 import {
   availableUpgrade,
-  channelSupportsKind,
-  metaSupportsKind,
-  channelsForKind,
   checkPluginFile,
   compareSemver,
   describeAuth,
   describeVersionAdjusted,
+  endpointLabel,
   findPluginVersion,
+  isSameCodeRejection,
   latestVersion,
   metaSummary,
+  metaSupportsKind,
   normalizeIssues,
-  pluginChannelCount,
+  outdatedModelCount,
+  outdatedModels,
+  pluginModelCount,
+  settingRows,
   shortSha,
-  isSameCodeRejection,
+  summarizeUpgrade,
   summarizeUpload,
+  vendorOf,
   versionDeleteBlock,
 } from "@/utils/admin/plugin";
 
@@ -25,7 +34,7 @@ const version = (
   id: number,
   ver: string,
   meta: PluginMeta | null,
-  channelCount = 0,
+  modelCount = 0,
 ): PluginVersionView => ({
   id,
   plugin_key: "p",
@@ -33,7 +42,7 @@ const version = (
   sha256: "abcdef1234567890",
   created_at: "",
   created_by: 0,
-  channel_count: channelCount,
+  model_count: modelCount,
   meta,
 });
 
@@ -48,24 +57,6 @@ const plugin = (
   enabled: true,
   updated_at: "",
   versions,
-  ...extra,
-});
-
-const channel = (extra: Partial<ChannelView> = {}): ChannelView => ({
-  key: "c1",
-  name: "c1",
-  plugin_key: "p",
-  plugin_version_id: 1,
-  plugin_version: "1.0.0",
-  base_url: "https://x.test",
-  allow_credentials: false,
-  settings: null,
-  rate_limit: null,
-  enabled: true,
-  secret_set: true,
-  updated_by: 0,
-  updated_at: "",
-  created_at: "",
   ...extra,
 });
 
@@ -134,39 +125,151 @@ describe("shortSha / describeAuth / metaSummary", () => {
     expect(shortSha(null)).toBe("");
   });
 
-  test("鉴权说明覆盖各种方式", () => {
+  test("鉴权说明覆盖各种方式；custom 说明读取渠道的 API Key 与 Secret Key 自行签名", () => {
     expect(describeAuth(null)).toBe("无需鉴权");
     expect(describeAuth({ type: "bearer" })).toContain("Bearer");
     expect(describeAuth({ type: "header", name: "X-Key" })).toContain("X-Key");
-    expect(describeAuth({ type: "custom" })).toContain("自行签名");
+    const custom = describeAuth({ type: "custom" });
+    expect(custom).toContain("自行签名");
+    expect(custom).toContain("Secret Key");
+    expect(custom).not.toContain("允许插件读取");
     expect(describeAuth({ type: "weird" })).toBe("weird");
   });
 
   test("meta 缺失或字段为 null 时摘要不崩", () => {
     expect(metaSummary(null).endpoints).toEqual([]);
+    expect(metaSummary(null).vendor).toBe("");
     const summary = metaSummary({
+      vendor: "kling",
       auth: { type: "custom" },
-      endpoints: { video: { mode: "async" }, text: {} },
+      endpoints: {
+        video: { mode: "async", method: "POST", path: "/v1/videos" },
+        text: {},
+      },
       channelSettings: { region: { type: "enum", label: "区域" } },
-      import: {},
     });
     expect(summary.authType).toBe("custom");
+    expect(summary.vendor).toBe("kling");
     expect(summary.endpoints).toEqual([
-      { kind: "video", mode: "async" },
-      { kind: "text", mode: "?" },
+      { kind: "video", mode: "async", request: "POST /v1/videos" },
+      { kind: "text", mode: "?", request: "—" },
     ]);
     expect(summary.settingNames).toEqual(["region"]);
-    expect(summary.importable).toBe(true);
   });
 
-  test("摘要里不再有结果下载域名白名单：旧版本 meta 里残留的 allowedHosts 也不会带出来", () => {
-    const legacyMeta = { auth: { type: "bearer" }, allowedHosts: ["cdn.example.com"] };
+  test("摘要不再暴露已弃用的导入能力，也没有下载域名白名单", () => {
+    const legacyMeta = {
+      auth: { type: "bearer" },
+      allowedHosts: ["cdn.example.com"],
+      import: { args: {} },
+    };
     expect(Object.keys(metaSummary(legacyMeta))).not.toContain("allowedHosts");
-    expect(Object.keys(metaSummary(null))).not.toContain("allowedHosts");
+    expect(Object.keys(metaSummary(legacyMeta))).not.toContain("importable");
   });
 });
 
-describe("findPluginVersion / channelSupportsKind", () => {
+describe("endpointLabel / vendorOf：协议列表里的展示字段", () => {
+  test("有路径：方法加路径，方法缺省按 POST", () => {
+    const meta: PluginMeta = {
+      endpoints: {
+        text: { mode: "sync", method: "GET", path: "/v1/models" },
+        video: { mode: "async", path: "/v1/videos" },
+      },
+    };
+    expect(endpointLabel(meta, "text")).toBe("GET /v1/models");
+    expect(endpointLabel(meta, "video")).toBe("POST /v1/videos");
+  });
+
+  test("没有声明路径、没有这个能力或 meta 缺失：显示 —", () => {
+    expect(endpointLabel({ endpoints: { text: { mode: "sync" } } }, "text")).toBe("—");
+    expect(endpointLabel({ endpoints: {} }, "image")).toBe("—");
+    expect(endpointLabel(null, "text")).toBe("—");
+    expect(endpointLabel(undefined, "text")).toBe("—");
+  });
+
+  test("厂商：没有声明返回空串", () => {
+    expect(vendorOf({ vendor: "openai" })).toBe("openai");
+    expect(vendorOf({})).toBe("");
+    expect(vendorOf(null)).toBe("");
+  });
+});
+
+describe("settingRows：协议设置项声明的展示行", () => {
+  test("按声明顺序给出名字、标题、类型、必填、默认值与可选值", () => {
+    const rows = settingRows({
+      channelSettings: {
+        region: {
+          type: "enum",
+          label: "区域",
+          required: true,
+          options: ["cn", "us"],
+          default: "cn",
+        },
+        retries: { type: "number", label: "重试次数", default: 3, description: "失败后重试" },
+        sandbox: { type: "boolean", label: "沙箱", default: false },
+        tag: { type: "string", label: "标签" },
+        odd: { type: "weird", label: "怪" },
+      },
+    });
+    expect(rows).toEqual([
+      {
+        name: "region",
+        label: "区域",
+        typeLabel: "选项",
+        required: true,
+        defaultText: "cn",
+        options: ["cn", "us"],
+        description: "",
+      },
+      {
+        name: "retries",
+        label: "重试次数",
+        typeLabel: "数字",
+        required: false,
+        defaultText: "3",
+        options: [],
+        description: "失败后重试",
+      },
+      {
+        name: "sandbox",
+        label: "沙箱",
+        typeLabel: "开关",
+        required: false,
+        defaultText: "false",
+        options: [],
+        description: "",
+      },
+      {
+        name: "tag",
+        label: "标签",
+        typeLabel: "文本",
+        required: false,
+        defaultText: "",
+        options: [],
+        description: "",
+      },
+      {
+        name: "odd",
+        label: "怪",
+        typeLabel: "weird",
+        required: false,
+        defaultText: "",
+        options: [],
+        description: "",
+      },
+    ]);
+  });
+
+  test("没有声明或 meta 缺失：空数组；缺标题时退回名字", () => {
+    expect(settingRows(null)).toEqual([]);
+    expect(settingRows({ channelSettings: null })).toEqual([]);
+    expect(settingRows({ channelSettings: { k: { type: "string" } } } as PluginMeta)[0].label).toBe(
+      "k",
+    );
+  });
+});
+
+describe("findPluginVersion", () => {
   const plugins = [plugin("p", [version(2, "2.0.0", textMeta), version(1, "1.0.0", videoMeta)])];
 
   test("先按版本 ID 找，找不到再按版本号", () => {
@@ -174,57 +277,21 @@ describe("findPluginVersion / channelSupportsKind", () => {
     expect(findPluginVersion(plugins, "p", { id: 99, version: "2.0.0" })?.id).toBe(2);
     expect(findPluginVersion(plugins, "nope", { id: 1 })).toBeUndefined();
   });
-
-  test("渠道是否支持 kind：找不到插件版本时返回 null 而不是 false", () => {
-    expect(channelSupportsKind(plugins, channel(), "video")).toBe(true);
-    expect(channelSupportsKind(plugins, channel(), "text")).toBe(false);
-    expect(channelSupportsKind([], channel(), "video")).toBeNull();
-  });
 });
 
-describe("agent 模型对渠道插件的要求：Bearer 鉴权，而不是 endpoints", () => {
+describe("metaSupportsKind：Agent 不走插件，其余看 endpoints", () => {
   const bearer: PluginMeta = { auth: { type: "bearer" }, endpoints: { text: { mode: "sync" } } };
-  const none: PluginMeta = { auth: { type: "none" }, endpoints: { text: { mode: "sync" } } };
 
-  test("metaSupportsKind：agent 看 auth.type，其它看 endpoints", () => {
-    expect(metaSupportsKind(bearer, "agent")).toBe(true);
-    expect(metaSupportsKind(none, "agent")).toBe(false);
-    expect(metaSupportsKind({ endpoints: {} }, "agent")).toBe(false);
+  test("agent 恒为 false，哪怕插件是 Bearer 鉴权", () => {
+    expect(metaSupportsKind(bearer, "agent")).toBe(false);
+    expect(metaSupportsKind({ endpoints: { agent: { mode: "sync" } } }, "agent")).toBe(false);
+  });
+
+  test("其它种类看 endpoints 里有没有声明", () => {
     expect(metaSupportsKind(bearer, "text")).toBe(true);
     expect(metaSupportsKind(bearer, "video")).toBe(false);
-  });
-
-  test("渠道是否支持 agent：不需要声明 endpoints.agent；插件信息未知时返回 null", () => {
-    const plugins = [plugin("p", [version(1, "1.0.0", bearer)])];
-    expect(channelSupportsKind(plugins, channel(), "agent")).toBe(true);
-    expect(
-      channelSupportsKind([plugin("p", [version(1, "1.0.0", none)])], channel(), "agent"),
-    ).toBe(false);
-    expect(channelSupportsKind([], channel(), "agent")).toBeNull();
-  });
-});
-
-describe("channelsForKind", () => {
-  const plugins = [
-    plugin("p", [version(1, "1.0.0", videoMeta)]),
-    plugin("off", [version(5, "1.0.0", videoMeta)], { enabled: false }),
-    plugin("t", [version(7, "1.0.0", textMeta)]),
-  ];
-
-  test("只列启用、插件未停用、且支持该 kind 的渠道", () => {
-    const list = [
-      channel({ key: "ok" }),
-      channel({ key: "disabled", enabled: false }),
-      channel({ key: "plugin-off", plugin_key: "off", plugin_version_id: 5 }),
-      channel({ key: "wrong-kind", plugin_key: "t", plugin_version_id: 7 }),
-    ];
-    expect(channelsForKind(list, plugins, "video").map((item) => item.key)).toEqual(["ok"]);
-    expect(channelsForKind(list, plugins, "text").map((item) => item.key)).toEqual(["wrong-kind"]);
-  });
-
-  test("插件信息还没加载好时保留渠道，不把它误判成不支持", () => {
-    const list = [channel({ key: "unknown", plugin_key: "ghost", plugin_version_id: 404 })];
-    expect(channelsForKind(list, plugins, "video")).toHaveLength(1);
+    expect(metaSupportsKind({ endpoints: null }, "text")).toBe(false);
+    expect(metaSupportsKind({}, "text")).toBe(false);
   });
 });
 
@@ -263,34 +330,105 @@ describe("版本比较与升级", () => {
   });
 });
 
-describe("versionDeleteBlock / pluginChannelCount", () => {
-  test("内置版本与有渠道引用的版本不能删，并写明原因", () => {
-    expect(versionDeleteBlock({ source: "builtin" }, { channel_count: 0 })).toContain("内置");
-    expect(versionDeleteBlock({ source: "uploaded" }, { channel_count: 2 })).toContain("2 个渠道");
-    expect(versionDeleteBlock({ source: "uploaded" }, { channel_count: 0 })).toBeNull();
+describe("versionDeleteBlock", () => {
+  test("内置版本与有模型固定的版本不能删，并写明原因", () => {
+    expect(versionDeleteBlock({ source: "builtin" }, { model_count: 0 })).toContain("内置");
+    const block = versionDeleteBlock({ source: "uploaded" }, { model_count: 2 });
+    expect(block).toContain("2 个模型");
+    expect(block).not.toContain("渠道");
+    expect(versionDeleteBlock({ source: "uploaded" }, { model_count: 0 })).toBeNull();
+  });
+});
+
+describe("pluginModelCount / outdatedModelCount", () => {
+  test("在用模型数是各版本之和，没有版本是 0", () => {
+    const versions = [version(1, "1.0.0", null, 2), version(2, "2.0.0", null, 1)];
+    expect(pluginModelCount({ versions })).toBe(3);
+    expect(pluginModelCount({ versions: [] })).toBe(0);
   });
 
-  test("插件在用渠道数是各版本之和", () => {
-    expect(
-      pluginChannelCount({
-        versions: [version(1, "1.0.0", null, 2), version(2, "2.0.0", null, 1)],
-      }),
-    ).toBe(3);
-    expect(pluginChannelCount({ versions: [] })).toBe(0);
+  test("旧版模型数：固定在比最新版本低的版本上的模型", () => {
+    const versions = [
+      version(1, "1.0.0", null, 2),
+      version(3, "1.10.0", null, 4),
+      version(2, "1.9.0", null, 1),
+    ];
+    expect(outdatedModelCount({ versions })).toBe(3);
+    expect(outdatedModelCount({ versions: [version(1, "1.0.0", null, 5)] })).toBe(0);
+    expect(outdatedModelCount({ versions: [] })).toBe(0);
+  });
+});
+
+describe("outdatedModels：升级模型的清单", () => {
+  const target = plugin("p", [version(2, "1.1.0", videoMeta), version(1, "1.0.0", videoMeta)]);
+  const model = (key: string, extra: Partial<ConfigListItem> = {}): ConfigListItem => ({
+    key,
+    plugin: "p",
+    plugin_version: "1.0.0",
+    updated_at: "",
+    ...extra,
+  });
+
+  test("只取协议用了这个插件、且版本低于最新版本的模型", () => {
+    const list = [
+      model("old"),
+      model("latest", { plugin_version: "1.1.0" }),
+      model("other-plugin", { plugin: "q" }),
+      model("pending", { plugin: "", plugin_version: "" }),
+      model("agent", { plugin: undefined, plugin_version: undefined }),
+    ];
+    expect(outdatedModels(target, list).map((item) => item.key)).toEqual(["old"]);
+  });
+
+  test("插件没有版本或不存在：空清单", () => {
+    expect(outdatedModels(plugin("p", []), [model("a")])).toEqual([]);
+    expect(outdatedModels(undefined, [model("a")])).toEqual([]);
+  });
+});
+
+describe("summarizeUpgrade：升级结果区分成功数与失败原因", () => {
+  const names: Record<string, string> = { a: "模型 A", b: "模型 B" };
+  const nameOf = (key: string) => names[key] ?? key;
+
+  test("全部成功：没有失败项", () => {
+    const summary = summarizeUpgrade(
+      { to_version: "1.1.0", upgraded: ["a", "b"], failed: [] },
+      nameOf,
+    );
+    expect(summary).toEqual({ toVersion: "1.1.0", upgraded: 2, failed: [] });
+  });
+
+  test("部分失败：失败项带展示名与原因，找不到名字退回 key", () => {
+    const summary = summarizeUpgrade(
+      {
+        to_version: "1.1.0",
+        upgraded: ["a"],
+        failed: [
+          { key: "b", reason: "必填项 region 缺失" },
+          { key: "zzz", reason: "" },
+        ],
+      },
+      nameOf,
+    );
+    expect(summary.upgraded).toBe(1);
+    expect(summary.failed).toEqual([
+      { key: "b", name: "模型 B", reason: "必填项 region 缺失" },
+      { key: "zzz", name: "zzz", reason: "未知原因" },
+    ]);
   });
 });
 
 describe("describeVersionAdjusted：上传时版本号被自动调整的提示", () => {
-  test("代码里写了版本号：说明写的是哪个、登记成了哪个，并提醒渠道不会自动切换", () => {
+  test("代码里写了版本号：说明写的是哪个、登记成了哪个，并提醒模型不会自动切换", () => {
     const notice = describeVersionAdjusted({ from: "1.3.1", to: "1.3.2" });
     expect(notice?.title).toBe("代码里写的是 v1.3.1，已自动登记为 v1.3.2");
-    expect(notice?.hint).toBe("渠道不会自动切换版本，请到“升级渠道”里切过去。");
+    expect(notice?.hint).toBe("模型不会自动切换版本，请到插件页“升级模型”里切过去。");
   });
 
   test("代码里没写或写得不合法（from 为空串）：提示没有合法的版本号", () => {
     const notice = describeVersionAdjusted({ from: "", to: "1.0.0" });
     expect(notice?.title).toBe("代码里没有写合法的版本号，已自动登记为 v1.0.0");
-    expect(notice?.hint).toBe("渠道不会自动切换版本，请到“升级渠道”里切过去。");
+    expect(notice?.hint).toBe("模型不会自动切换版本，请到插件页“升级模型”里切过去。");
   });
 
   test("没有调整（字段缺失、null）或登记版本为空：不提示", () => {

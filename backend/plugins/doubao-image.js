@@ -34,11 +34,12 @@ module.exports = {
     apiVersion: 1,
     key: "doubao-image",
     name: "豆包（火山方舟） · 图片",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "volcengine",
     description: "火山引擎豆包 Seedream 图片生成（同步）",
     auth: { type: "bearer" },
     endpoints: {
-      image: { mode: "sync" },
+      image: { mode: "sync", method: "POST", path: "/api/v3/images/generations" },
     },
   },
 

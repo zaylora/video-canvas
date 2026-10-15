@@ -218,3 +218,30 @@ func TestStream_CanceledByCaller(t *testing.T) {
 		t.Errorf("取消时要保留已收到的部分，计费还要按它结算: %+v", res)
 	}
 }
+
+// 渠道自定义请求头（过 WAF 的 UA、业务头等）也要带到 Agent 的网关请求上；鉴权头由网关独占，渠道头覆盖不了。
+func TestStream_ChannelHeaders(t *testing.T) {
+	up := newUpstream(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		sse(w, chunk(`{"content":"ok"}`, ""), chunk(`{}`, "stop"), "[DONE]")
+	})
+	emit, _ := collect()
+	tg := target(up)
+	tg.Headers = map[string]string{"X-Biz": "canvas", "User-Agent": "Canvas/1.0", "Authorization": "Bearer evil", "Accept": "text/plain"}
+	if _, err := gateway().Stream(ctxTimeout(t, 5*time.Second), tg, llmgateway.Request{Messages: []llmgateway.Message{userMsg("hi")}}, emit); err != nil {
+		t.Fatal(err)
+	}
+	reqs := up.requests()
+	if len(reqs) != 1 {
+		t.Fatalf("应只发一次请求：%d", len(reqs))
+	}
+	h := reqs[0].Header
+	if h.Get("X-Biz") != "canvas" || h.Get("User-Agent") != "Canvas/1.0" {
+		t.Errorf("渠道自定义头应带上：%v", h)
+	}
+	if reqs[0].Auth != "Bearer "+tg.APIKey {
+		t.Errorf("鉴权头由网关独占，渠道头不能覆盖：%q", reqs[0].Auth)
+	}
+	if h.Get("Accept") != "text/event-stream" {
+		t.Errorf("网关自己的协议头（Accept）也不能被覆盖：%q", h.Get("Accept"))
+	}
+}

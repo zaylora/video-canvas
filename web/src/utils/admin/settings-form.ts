@@ -1,7 +1,7 @@
 import type { SettingSchema, SettingSpec, SettingType } from "@/api/admin/ai/type";
 
 /**
- * 插件声明的设置项（meta.channelSettings / meta.import.args）→ 表单。
+ * 插件声明的协议设置项（meta.channelSettings，在模型的“协议设置”里填）→ 表单。
  * 表单里 string / number / enum 都存成字符串（number 输入框的原始文本），boolean 存布尔；
  * 提交时再按类型转换、校验必填。键顺序沿用声明对象的书写顺序。
  */
@@ -70,7 +70,7 @@ function toFormValue(field: SettingField, value: unknown): SettingFormValue | un
 }
 
 /**
- * 表单初始值：已有取值（编辑渠道时）优先，其次声明的默认值，再次空值。
+ * 表单初始值：已有取值（编辑模型时）优先，其次声明的默认值，再次空值。
  * boolean 没有默认值时为 false；enum 没有默认值时为空串（等于没选）。
  */
 export function initialSettingValues(

@@ -17,6 +17,8 @@ var (
 	modelKeyRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 	vendorRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	channelKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+	pluginKeyRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}$`)
+	semverRe     = regexp.MustCompile(`^[0-9]+.[0-9]+.[0-9]+(-[0-9A-Za-z.-]+)?$`)
 )
 
 const (
@@ -123,7 +125,7 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 	if m.Deadline <= 0 || m.Deadline.D() > maxModelDeadline {
 		add("deadline", "必须大于 0 且不超过 24h（不填默认 30m）")
 	}
-	validateChannels(m.Channels, add)
+	validateChannels(m.Kind, m.Channels, add)
 	validateCapabilities(m.Kind, &m.Capabilities, issues)
 	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, issues)
 }
@@ -148,9 +150,9 @@ func validateTags(tags []string, add func(path, msg string)) {
 	}
 }
 
-// validateChannels 校验 channels：首期恰好一个元素，每个元素的渠道 key 与上游模型名合法。
-// 不检查渠道是否存在、插件是否支持该 kind：那是 service 层的跨对象检查。
-func validateChannels(list []ChannelRef, add func(path, msg string)) {
+// validateChannels 校验 channels：首期恰好一个元素，每个元素的渠道 key、上游模型名与协议合法。
+// 不检查渠道是否存在、插件是否存在或支持该 kind：那是 service 层的跨对象检查。
+func validateChannels(kind string, list []ChannelRef, add func(path, msg string)) {
 	switch {
 	case len(list) == 0:
 		add("channels", fmt.Sprintf("必须绑定 %d 个渠道（首期只支持一个渠道）", maxChannels))
@@ -168,5 +170,29 @@ func validateChannels(list []ChannelRef, add func(path, msg string)) {
 		case n > maxUpstreamModelLen:
 			add(base+".upstream_model", fmt.Sprintf("不能超过 %d 个字符（当前 %d 个）", maxUpstreamModelLen, n))
 		}
+		validateProtocol(kind, c.Protocol, base+".protocol", add)
+	}
+}
+
+// validateProtocol 校验模型选的调用协议：Agent 模型不走插件，不能有；其他种类必须有，插件 key 与版本号格式合法。
+// kind 不合法时（已由 kind 校验报告）不再重复报协议缺失。
+func validateProtocol(kind string, p *Protocol, path string, add func(path, msg string)) {
+	if kind == KindAgent {
+		if p != nil {
+			add(path, "Agent 模型由宿主的 LLM 网关直接请求渠道，不需要选择协议")
+		}
+		return
+	}
+	if p == nil {
+		if inStrings(Kinds, kind) {
+			add(path, "必须选择调用协议（插件、版本与协议设置）")
+		}
+		return
+	}
+	if !pluginKeyRe.MatchString(p.Plugin) {
+		add(path+".plugin", "必填，插件 key 只能包含小写字母、数字和连字符，且以字母或数字开头（最长 30 位）")
+	}
+	if !semverRe.MatchString(p.Version) {
+		add(path+".version", "必填，写成 semver，例如 1.0.0")
 	}
 }

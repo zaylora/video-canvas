@@ -32,7 +32,8 @@ func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, er
 	for _, r := range rows {
 		d := displays[r.Key]
 		item := ConfigListItem{Key: r.Key, Kind: r.Kind, Enabled: r.Enabled, Sort: r.Sort, UpdatedAt: r.UpdatedAt,
-			Label: d.label, Channel: d.channel, Vendor: d.vendor, Tags: d.tags}
+			Label: d.label, Channel: d.channel, Vendor: d.vendor, Tags: d.tags,
+			Upstream: d.upstream, Plugin: d.plugin, PluginVer: d.pluginVer}
 		if item.Tags == nil {
 			item.Tags = []string{}
 		}
@@ -44,6 +45,8 @@ func (s *AIConfigService) ListConfigs(ctx context.Context) ([]ConfigListItem, er
 // aiDisplay 是列表要展示的几个正文字段。
 type aiDisplay struct {
 	label, channel, vendor string
+	upstream, plugin       string // 上游模型名；协议插件 key
+	pluginVer              string // 协议固定的插件版本号
 	tags                   []string
 }
 
@@ -55,6 +58,12 @@ func aiDisplayOf(body model.JSONText) aiDisplay {
 		return aiDisplay{}
 	}
 	d := aiDisplay{label: m.Label, channel: m.channel(), vendor: m.Vendor}
+	if len(m.Channels) > 0 {
+		d.upstream = m.Channels[0].UpstreamModel
+		if p := m.Channels[0].Protocol; p != nil {
+			d.plugin, d.pluginVer = p.Plugin, p.Version
+		}
+	}
 	for _, t := range m.Tags {
 		if str, ok := t.(string); ok {
 			d.tags = append(d.tags, str)

@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { openDialog, type DialogControl } from "@/store/dialog";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
+import { channelsPagePath } from "@/utils/admin/channel-route";
 import { errorMessage } from "@/utils/admin/errors";
 
 import { migrateModelsToChannel } from "./models/migrate-channel";
@@ -43,7 +43,7 @@ const CASCADE: Record<DeleteTarget, { gone: string; kept: string }> = {
     gone: "草稿与全部历史版本（彻底删除，不能恢复；之后可以用同一个标识重新导入）",
     kept: "历史生成任务照常可以查看",
   },
-  channel: { gone: "渠道的 Key（加密存储）", kept: "历史生成任务照常可以查看" },
+  channel: { gone: "渠道的 API Key 与 Secret Key（加密存储）", kept: "历史生成任务照常可以查看" },
   plugin: { gone: "插件的全部版本代码", kept: "历史生成任务照常可以查看" },
 };
 
@@ -65,7 +65,7 @@ export type DeleteDialogProps = {
  * 删除对话框（插件 / 渠道 / 模型共用，走全局弹窗 store）：
  * 1. 打开先调预检，列出谁在引用它；
  * 2. 有阻断就不让删，但就地给出路：模型“下架并删除”，渠道“把这些模型迁到别的渠道”，
- *    插件跳到在用的渠道；处理完自动重新预检；
+ *    插件列出协议固定在它上面的模型（点开去渠道与模型页改协议或删除）；处理完自动重新预检；
  * 3. 没有阻断才显示确认区：模型直接确认；渠道、插件影响面大，要输入名称 / key 才能删。
  * 预检只给界面看，后端删除时在事务里会再判断一次，那时的 409 原因也留在框里。
  */
@@ -296,8 +296,7 @@ function BlockerItem({
             {blocker.refs.map((ref) => (
               <Link
                 key={ref.key}
-                to="/admin/ai/models"
-                state={dialogEntry({ key: ref.key })}
+                to={channelsPagePath({ channel: objectKey, model: ref.key })}
                 className="bg-background hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
               >
                 {ref.name || ref.key}
@@ -335,8 +334,8 @@ function BlockerItem({
                 </Button>
               </div>
               <p className="text-muted-foreground text-xs">
-                迁移后模型改用新渠道，已上线的立即生效；新渠道不满足条件（缺
-                Key、不支持该类型）的模型会迁移失败，保持原样。
+                迁移后模型改用新渠道，已上线的立即生效；新渠道不满足条件（已停用、缺
+                Key）的模型会迁移失败，保持原样。
               </p>
             </>
           ) : (
@@ -345,18 +344,22 @@ function BlockerItem({
         </div>
       )}
 
-      {blocker.kind === "plugin_channels" && blocker.refs.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1 border-t pt-2.5">
-          {blocker.refs.map((ref) => (
-            <Link
-              key={ref.key}
-              to="/admin/ai/channels"
-              state={dialogEntry({ kind: "edit", key: ref.key })}
-              className="bg-background hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
-            >
-              {ref.name || ref.key}
-            </Link>
-          ))}
+      {blocker.kind === "plugin_models" && blocker.refs.length > 0 && (
+        <div className="mt-2.5 flex flex-col gap-2 border-t pt-2.5">
+          <div className="flex flex-wrap gap-1">
+            {blocker.refs.map((ref) => (
+              <Link
+                key={ref.key}
+                to={channelsPagePath({ model: ref.key })}
+                className="bg-background hover:bg-accent rounded-md border px-2 py-0.5 text-xs"
+              >
+                {ref.name || ref.key}
+              </Link>
+            ))}
+          </div>
+          <p className="text-muted-foreground text-xs">
+            这些模型的协议固定在这个插件上：点开改用别的协议，或删除模型后再来。
+          </p>
         </div>
       )}
     </li>

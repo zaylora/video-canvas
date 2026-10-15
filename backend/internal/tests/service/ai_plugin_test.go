@@ -28,7 +28,8 @@ func newAplEnv() *aplEnv {
 	repo := aiconfigfake.NewMemRepo()
 	checker := &aiconfigfake.Prechecker{ByCode: map[string]*provider.PrecheckResult{}}
 	notifier := &aiconfigfake.Notifier{}
-	return &aplEnv{svc: NewAIPluginService(repo, repo, repo, checker, notifier), repo: repo, checker: checker, notifier: notifier}
+	cfg := NewAIConfigService(repo, repo, repo, "test-master-key")
+	return &aplEnv{svc: NewAIPluginService(repo, cfg, repo, checker, notifier), repo: repo, checker: checker, notifier: notifier}
 }
 
 // code 登记一份“代码 → 预检结果”，返回代码字节。
@@ -51,7 +52,7 @@ func TestAIPluginService_Upload(t *testing.T) {
 			t.Fatalf("issues 应为空数组而不是 nil：%#v", res.Issues)
 		}
 		v := res.Version
-		if v.PluginKey != "kling" || v.Version != "1.0.0" || v.CreatedBy != 7 || v.ChannelCount != 0 || v.Meta == nil || v.Meta.Key != "kling" {
+		if v.PluginKey != "kling" || v.Version != "1.0.0" || v.CreatedBy != 7 || v.ModelCount != 0 || v.Meta == nil || v.Meta.Key != "kling" {
 			t.Fatalf("版本视图不符合预期：%+v", v)
 		}
 		// sha256 是服务端对原文件计算的，不取 runner 回传值
@@ -235,8 +236,8 @@ func TestAIPluginService_DeleteVersion(t *testing.T) {
 		{"内置插件不能删 409（50006）", func(e *aplEnv, _ uint64) { e.repo.Plugins["kling"].Source = model.PluginSourceBuiltin }, "kling", "1.0.0", errcode.ErrPluginBuiltin.Code},
 		{"插件不存在 404", nil, "nope", "1.0.0", errcode.ErrPluginNotFound.Code},
 		{"版本不存在 404", nil, "kling", "9.9.9", errcode.ErrPluginNotFound.Code},
-		{"被渠道固定 409（50005）", func(e *aplEnv, id uint64) {
-			e.repo.Channels["c1"] = &model.AIChannel{Key: "c1", PluginKey: "kling", PluginVersionID: id}
+		{"被模型的协议固定 409（50005）", func(e *aplEnv, _ uint64) {
+			adminSeedModel(t, e.repo, "m1", "kling", "1.0.0", "")
 		}, "kling", "1.0.0", errcode.ErrPluginInUse.Code},
 		{"被非终态任务引用 409（50005）", func(e *aplEnv, id uint64) { e.repo.ActiveTaskRefs[id] = 2 }, "kling", "1.0.0", errcode.ErrPluginInUse.Code},
 		{"并发下被新引用（仓储事务内复查）409", func(e *aplEnv, _ uint64) { e.repo.DeleteInUse = true }, "kling", "1.0.0", errcode.ErrPluginInUse.Code},
@@ -270,14 +271,14 @@ func TestAIPluginService_List(t *testing.T) {
 		}
 	})
 
-	t.Run("版本新到旧，带渠道数与 meta", func(t *testing.T) {
+	t.Run("版本新到旧，带模型数与 meta", func(t *testing.T) {
 		e := newAplEnv()
-		v1 := adminSeedVersion(t, e.repo, adminMetaJSON("kling", "1.0.0"), model.PluginSourceUploaded, true)
-		v2 := adminSeedVersion(t, e.repo, adminMetaJSON("kling", "1.1.0"), model.PluginSourceUploaded, true)
+		adminSeedVersion(t, e.repo, adminMetaJSON("kling", "1.0.0"), model.PluginSourceUploaded, true)
+		adminSeedVersion(t, e.repo, adminMetaJSON("kling", "1.1.0"), model.PluginSourceUploaded, true)
 		adminSeedVersion(t, e.repo, adminMetaJSON("newapi", "1.0.0"), model.PluginSourceBuiltin, false)
-		e.repo.Channels["a"] = &model.AIChannel{Key: "a", PluginKey: "kling", PluginVersionID: v1}
-		e.repo.Channels["b"] = &model.AIChannel{Key: "b", PluginKey: "kling", PluginVersionID: v1}
-		e.repo.Channels["c"] = &model.AIChannel{Key: "c", PluginKey: "kling", PluginVersionID: v2}
+		adminSeedModel(t, e.repo, "a", "kling", "1.0.0", "")
+		adminSeedModel(t, e.repo, "b", "kling", "1.0.0", "")
+		adminSeedModel(t, e.repo, "c", "kling", "1.1.0", "")
 
 		list, err := e.svc.List(ctx)
 		if err != nil || len(list) != 2 {
@@ -293,8 +294,8 @@ func TestAIPluginService_List(t *testing.T) {
 		if len(kling.Versions) != 2 || kling.Versions[0].Version != "1.1.0" || kling.Versions[1].Version != "1.0.0" {
 			t.Fatalf("版本应新到旧：%+v", kling.Versions)
 		}
-		if kling.Versions[0].ChannelCount != 1 || kling.Versions[1].ChannelCount != 2 {
-			t.Fatalf("渠道数不符合预期：%d %d", kling.Versions[0].ChannelCount, kling.Versions[1].ChannelCount)
+		if kling.Versions[0].ModelCount != 1 || kling.Versions[1].ModelCount != 2 {
+			t.Fatalf("模型数不符合预期：%d %d", kling.Versions[0].ModelCount, kling.Versions[1].ModelCount)
 		}
 		if kling.Versions[0].Meta == nil || len(kling.Versions[0].Meta.ChannelSettings) != 4 {
 			t.Fatalf("meta 应带渠道设置声明：%+v", kling.Versions[0].Meta)

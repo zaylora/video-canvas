@@ -57,11 +57,11 @@ func newJimengEnv(t *testing.T, mod func(*plugin.Options)) *jimengEnv {
 
 const jimengKey = "AKLTtest|sk/Secret+Value=="
 
-func (e *jimengEnv) snapshot(baseURL, upstreamModel string, allowCredentials bool) *provider.Snapshot {
+func (e *jimengEnv) snapshot(baseURL, upstreamModel string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstreamModel, Capabilities: promptCaps},
 		Channel: provider.ChannelSnapshot{
-			Key: "jimeng-main", PluginKey: "jimeng", PluginVersionID: 1, BaseURL: baseURL, AllowCredentials: allowCredentials,
+			Key: "jimeng-main", PluginKey: "jimeng", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "jimeng", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 		ModelRevisionID: 1,
@@ -155,7 +155,7 @@ func jimengSubmit(t *testing.T, env *jimengEnv, snap *provider.Snapshot, input m
 
 func TestJimengPrecheckAndMeta(t *testing.T) {
 	env := newJimengEnv(t, nil)
-	if env.meta.Key != "jimeng" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
+	if env.meta.Key != "jimeng" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {
@@ -170,7 +170,7 @@ func TestJimengSubmitSignsLikeVolcV4(t *testing.T) {
 	srv := httptest.NewServer(up)
 	defer srv.Close()
 	env := newJimengEnv(t, nil)
-	snap := env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", true)
+	snap := env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20")
 
 	prompt := "一只猫 <b>&\"x\"</b>\n\t跳舞 "
 	res, err := jimengSubmit(t, env, snap, map[string]any{"prompt": prompt, "aspect_ratio": "9:16", "duration": float64(5)})
@@ -222,7 +222,7 @@ func TestJimengV3ReqKeyAndFrames(t *testing.T) {
 		if tc.duration != nil {
 			in["duration"] = tc.duration
 		}
-		if _, err := jimengSubmit(t, env, env.snapshot(srv.URL, tc.model, true), in); err != nil {
+		if _, err := jimengSubmit(t, env, env.snapshot(srv.URL, tc.model), in); err != nil {
 			t.Fatal(err)
 		}
 		got := up.last()
@@ -239,7 +239,7 @@ func TestJimengV3ReqKeyAndFrames(t *testing.T) {
 	srv := httptest.NewServer(up)
 	defer srv.Close()
 	env := newJimengEnv(t, nil)
-	snap := env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", true)
+	snap := env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20")
 	snap.Model.Params = map[string]any{"extra": map[string]any{"seed": 1, "custom": "<x>"}}
 	if _, err := jimengSubmit(t, env, snap, map[string]any{"prompt": "x", "seed": float64(42)}); err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestJimengV3ReqKeyAndFrames(t *testing.T) {
 	}
 }
 
-// 渠道没开 allow_credentials、Key 格式不对、带参考图：都是插件级失败，不发请求。
+// Key 格式不对、带参考图：都是插件级失败，不发请求。
 func TestJimengSubmitPluginFaults(t *testing.T) {
 	up := &jimengUpstream{submit: `{"code":10000,"data":{"task_id":"1"}}`}
 	srv := httptest.NewServer(up)
@@ -263,12 +263,10 @@ func TestJimengSubmitPluginFaults(t *testing.T) {
 	cases := []struct {
 		name   string
 		key    string
-		allow  bool
 		images []uint64
 	}{
-		{"没开 allow_credentials", jimengKey, false, nil},
-		{"Key 缺半竖线", "onlyone", true, nil},
-		{"带参考图", jimengKey, true, []uint64{5}},
+		{"Key 缺半竖线", "onlyone", nil},
+		{"带参考图", jimengKey, []uint64{5}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,7 +278,7 @@ func TestJimengSubmitPluginFaults(t *testing.T) {
 			if tc.images != nil {
 				in["images"] = tc.images
 			}
-			_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", tc.allow), in)
+			_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20"), in)
 			var pe *provider.Error
 			if !errors.As(err, &pe) || !pe.PluginFault {
 				t.Fatalf("应是插件级失败：%v", err)
@@ -311,7 +309,7 @@ func TestJimengSubmitBusinessErrors(t *testing.T) {
 			srv := httptest.NewServer(&jimengUpstream{submit: tc.body})
 			defer srv.Close()
 			env := newJimengEnv(t, nil)
-			res, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", true), map[string]any{"prompt": "x"})
+			res, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20"), map[string]any{"prompt": "x"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -324,7 +322,7 @@ func TestJimengSubmitBusinessErrors(t *testing.T) {
 	srv := httptest.NewServer(&jimengUpstream{submit: `{"code":10000,"data":{}}`})
 	defer srv.Close()
 	env := newJimengEnv(t, nil)
-	_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", true), map[string]any{"prompt": "x"})
+	_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20"), map[string]any{"prompt": "x"})
 	var pe *provider.Error
 	if !errors.As(err, &pe) || !pe.PluginFault {
 		t.Fatalf("缺 task_id 应是插件级失败：%v", err)
@@ -356,7 +354,7 @@ func TestJimengQuery(t *testing.T) {
 			srv := httptest.NewServer(up)
 			defer srv.Close()
 			env := newJimengEnv(t, nil)
-			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "jimeng_v30_720p", true), provider.TaskRef{
+			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "jimeng_v30_720p"), provider.TaskRef{
 				ID: 1, ProviderTaskID: "jm-7", State: []byte(`{"req_key":"jimeng_t2v_v30_720p"}`),
 			})
 			if err != nil {
@@ -387,7 +385,7 @@ func TestJimengQueryWithoutStateAndEmptyBody(t *testing.T) {
 	srv := httptest.NewServer(up)
 	defer srv.Close()
 	env := newJimengEnv(t, nil)
-	q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "jimeng_v30_pro", true), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
+	q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "jimeng_v30_pro"), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +416,7 @@ func TestJimengClassifyHTTPErrors(t *testing.T) {
 			srv := httptest.NewServer(&jimengUpstream{status: tc.status, submit: tc.body})
 			defer srv.Close()
 			env := newJimengEnv(t, nil)
-			_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20", true), map[string]any{"prompt": "x"})
+			_, err := jimengSubmit(t, env, env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20"), map[string]any{"prompt": "x"})
 			var pe *provider.Error
 			if !errors.As(err, &pe) || pe.Class != tc.class {
 				t.Fatalf("期望分类 %s，得到 %v", tc.class, err)

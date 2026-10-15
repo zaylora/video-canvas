@@ -2,11 +2,11 @@ package model
 
 // 删除预检的阻断原因（DeleteBlocker.Kind）。
 const (
-	BlockerModelEnabled   = "model_enabled"   // 模型还在上架
-	BlockerChannelModels  = "channel_models"  // 渠道被模型（最新草稿或已发布版本）引用
-	BlockerActiveTasks    = "active_tasks"    // 非终态任务的快照引用了它
-	BlockerBuiltinPlugin  = "builtin_plugin"  // 内置插件不能删除
-	BlockerPluginChannels = "plugin_channels" // 插件的某个版本被渠道固定
+	BlockerModelEnabled  = "model_enabled"  // 模型还在上架
+	BlockerChannelModels = "channel_models" // 渠道被模型（最新草稿或已发布版本）引用
+	BlockerActiveTasks   = "active_tasks"   // 非终态任务的快照引用了它
+	BlockerBuiltinPlugin = "builtin_plugin" // 内置插件不能删除
+	BlockerPluginModels  = "plugin_models"  // 插件的某个版本被模型的协议固定
 )
 
 // DeleteCheck 是删除预检的结果（模型 / 渠道 / 插件共用）：blockers 为空数组表示可以删除。

@@ -89,7 +89,7 @@ func (e *vertexaiEnv) snapshot(baseURL string, settings map[string]any) *provide
 		Model: provider.ModelSnapshot{Key: "veo", Kind: "video", UpstreamModel: "veo-3.0-generate-001", Capabilities: vertexaiCaps},
 		Channel: provider.ChannelSnapshot{
 			Key: "vertex-main", PluginKey: "vertex-ai", PluginVersionID: 1, BaseURL: baseURL,
-			AllowCredentials: true, Settings: settings,
+			Settings: settings,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "vertex-ai", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 		ModelRevisionID: 1,
@@ -147,7 +147,7 @@ func vertexaiSettings(srvURL string) map[string]any {
 
 func TestVertexaiPrecheckAndMeta(t *testing.T) {
 	env := newVertexaiEnv(t, nil)
-	if env.meta.Key != "vertex-ai" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
+	if env.meta.Key != "vertex-ai" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {
@@ -257,7 +257,7 @@ func TestVertexaiSubmitImage2Video(t *testing.T) {
 	}
 }
 
-// 配置缺失都是插件级失败，且不发提交请求：没开 allow_credentials、没配 storageUri、Key 不是服务账号 JSON、token 换取失败。
+// 配置缺失都是插件级失败，且不发提交请求：没配 storageUri、Key 不是服务账号 JSON、token 换取失败。
 func TestVertexaiSubmitConfigErrors(t *testing.T) {
 	up := &vertexaiFake{handler: func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"name":"x"}`)) }}
 	srv := httptest.NewServer(up)
@@ -270,8 +270,7 @@ func TestVertexaiSubmitConfigErrors(t *testing.T) {
 	}
 	env := newVertexaiEnv(t, nil)
 	cases := map[string]func(*provider.Snapshot){
-		"没开 allow_credentials": func(s *provider.Snapshot) { s.Channel.AllowCredentials = false },
-		"没配 storageUri":        func(s *provider.Snapshot) { s.Channel.Settings = map[string]any{"tokenUrl": srv.URL + "/token"} },
+		"没配 storageUri": func(s *provider.Snapshot) { s.Channel.Settings = map[string]any{"tokenUrl": srv.URL + "/token"} },
 	}
 	for name, mut := range cases {
 		err := submit(env, mut)

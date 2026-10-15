@@ -121,7 +121,7 @@ function RepairCopyButton({ text }: { text: string }) {
  * 追踪还在拉取、或不属于这次试跑时不给：这时复制会漏掉失败步骤；追踪拉取失败则只带错误码与文案。
  * @param run 这次试跑
  * @param trace 这次试跑的追踪
- * @param plugin 模型所用渠道的插件与版本，拿不到就不传
+ * @param plugin 模型协议所用的插件与版本，拿不到就不传
  * @returns 修复信息；不该显示按钮时为 null
  */
 function buildRepairText(
@@ -248,7 +248,7 @@ function LogView({ modelKey, taskId }: { modelKey: string; taskId?: number | str
  * 测试结果：结果 / 请求描述 / 追踪 / 日志。
  * dry-run 的标题写“请求描述”而不是“最终请求”：后端返回的是插件给出的请求描述，
  * 并不含宿主注入后的鉴权头。试跑结束后由工作区把标签切到“追踪”。
- * @param plugin 模型所用渠道的插件与版本；试跑失败时写进“复制修复信息”，拿不到就不传
+ * @param plugin 模型协议所用的插件与版本；试跑失败时写进“复制修复信息”，拿不到就不传
  */
 export function ResultPanel({
   tab,

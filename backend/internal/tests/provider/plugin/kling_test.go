@@ -59,11 +59,11 @@ func newKlingEnv(t *testing.T, secret string) *klingEnv {
 	return &klingEnv{exec: exec, meta: meta, sha: pre.SHA256}
 }
 
-func (e *klingEnv) snapshot(baseURL, upstream string, allowCredentials bool) *provider.Snapshot {
+func (e *klingEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
 		Model: provider.ModelSnapshot{Key: "m", Kind: "video", UpstreamModel: upstream, Capabilities: promptCaps},
 		Channel: provider.ChannelSnapshot{
-			Key: "kling-main", PluginKey: "kling", PluginVersionID: 1, BaseURL: baseURL, AllowCredentials: allowCredentials,
+			Key: "kling-main", PluginKey: "kling", PluginVersionID: 1, BaseURL: baseURL,
 		},
 		Plugin:          provider.PluginSnapshot{Key: "kling", Version: e.meta.Version, SHA256: e.sha, Meta: *e.meta},
 		ModelRevisionID: 1,
@@ -133,7 +133,7 @@ func klingVerifyJWT(t *testing.T, auth string) map[string]any {
 
 func TestKlingPrecheckAndMeta(t *testing.T) {
 	env := newKlingEnv(t, klingChannelKey)
-	if env.meta.Key != "kling" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
+	if env.meta.Key != "kling" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthCustom {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if len(env.meta.Endpoints) != 1 {
@@ -150,7 +150,7 @@ func TestKlingTextToVideoSubmit(t *testing.T) {
 		_, _ = w.Write([]byte(`{"code":0,"message":"SUCCEED","data":{"task_id":"k-1","task_status":"submitted"}}`))
 	})
 	env := newKlingEnv(t, klingChannelKey)
-	snap := env.snapshot(srv.URL, "kling-v2-master", true)
+	snap := env.snapshot(srv.URL, "kling-v2-master")
 	snap.Model.Params = map[string]any{"mode": "std", "negative_prompt": "模糊", "extra": map[string]any{"cfg_scale": 0.9, "callback_url": "https://x"}}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task:  provider.TaskRef{ID: 1, UserID: 9},
@@ -192,7 +192,7 @@ func TestKlingImageToVideoAndQueryPath(t *testing.T) {
 		_, _ = w.Write([]byte(`{"code":0,"data":{"task_id":"k-2","task_status":"processing"}}`))
 	})
 	env := newKlingEnv(t, klingChannelKey)
-	snap := env.snapshot(srv.URL, "kling-v1-6", true)
+	snap := env.snapshot(srv.URL, "kling-v1-6")
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task:  provider.TaskRef{ID: 2, UserID: 9},
 		Input: map[string]any{"prompt": "动起来", "images": []uint64{5, 6}, "aspect_ratio": "9:16", "mode": "pro"},
@@ -237,7 +237,7 @@ func TestKlingQueryLifecycle(t *testing.T) {
 		}
 	})
 	env := newKlingEnv(t, klingChannelKey)
-	snap := env.snapshot(srv.URL, "kling-v1", true)
+	snap := env.snapshot(srv.URL, "kling-v1")
 	ref := provider.TaskRef{ID: 3, UserID: 9, ProviderTaskID: "k-3"}
 	q1, err := env.exec.Query(context.Background(), snap, ref)
 	if err != nil || q1.Status != provider.StatusQueued {
@@ -281,7 +281,7 @@ func TestKlingQueryFailed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(tc.body)) })
 			env := newKlingEnv(t, klingChannelKey)
-			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "kling-v1", true), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
+			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "kling-v1"), provider.TaskRef{ID: 1, ProviderTaskID: "x"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -298,7 +298,7 @@ func TestKlingSubmitBadResponses(t *testing.T) {
 	srv, _ := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"code":1301,"message":"sensitive prompt"}`))
 	})
-	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1", true), provider.SubmitInput{
+	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1"), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 	})
 	if err != nil || sub.Immediate == nil || sub.Immediate.Status != provider.StatusFailed || sub.Immediate.ErrorClass != provider.ClassModeration {
@@ -306,7 +306,7 @@ func TestKlingSubmitBadResponses(t *testing.T) {
 	}
 
 	empty, _ := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"code":0,"data":{}}`)) })
-	_, err = env.exec.Submit(context.Background(), env.snapshot(empty.URL, "kling-v1", true), provider.SubmitInput{
+	_, err = env.exec.Submit(context.Background(), env.snapshot(empty.URL, "kling-v1"), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 	})
 	var pe *provider.Error
@@ -316,7 +316,7 @@ func TestKlingSubmitBadResponses(t *testing.T) {
 
 	// 响应体不是 JSON 也不崩：同样是插件级失败
 	junk, _ := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`not json`)) })
-	_, err = env.exec.Submit(context.Background(), env.snapshot(junk.URL, "kling-v1", true), provider.SubmitInput{
+	_, err = env.exec.Submit(context.Background(), env.snapshot(junk.URL, "kling-v1"), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 	})
 	if !errors.As(err, &pe) || !pe.PluginFault {
@@ -324,22 +324,20 @@ func TestKlingSubmitBadResponses(t *testing.T) {
 	}
 }
 
-// Key 格式不对、或渠道没开 allow_credentials：插件拿不到可用凭据，是插件级失败，且不会发请求。
+// Key 格式不对：插件拿不到可用凭据，是插件级失败，且不会发请求。
 func TestKlingBadCredentials(t *testing.T) {
 	cases := []struct {
 		name   string
 		secret string
-		allow  bool
 	}{
-		{"没有竖线", "just-one-part", true},
-		{"空 SecretKey", "ak|", true},
-		{"没开 allow_credentials", klingChannelKey, false},
+		{"没有竖线", "just-one-part"},
+		{"空 SecretKey", "ak|"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, up := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) })
 			env := newKlingEnv(t, tc.secret)
-			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1", tc.allow), provider.SubmitInput{
+			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1"), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			var pe *provider.Error
@@ -377,7 +375,7 @@ func TestKlingClassifyHTTPErrors(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			})
 			env := newKlingEnv(t, klingChannelKey)
-			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1", true), provider.SubmitInput{
+			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "kling-v1"), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			if err == nil || provider.ClassOf(err) != tc.class {
@@ -391,7 +389,7 @@ func TestKlingClassifyHTTPErrors(t *testing.T) {
 func TestKlingCheck(t *testing.T) {
 	env := newKlingEnv(t, klingChannelKey)
 	good, up := newKlingServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"code":0,"data":[]}`)) })
-	rt := env.snapshot(good.URL, "kling-v1", true).Runtime()
+	rt := env.snapshot(good.URL, "kling-v1").Runtime()
 	res, err := env.exec.Check(context.Background(), rt)
 	if err != nil || res == nil || !res.OK {
 		t.Fatalf("检查应成功：%+v %v", res, err)
@@ -406,7 +404,7 @@ func TestKlingCheck(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"code":1000,"message":"auth failed"}`))
 	})
-	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "kling-v1", true).Runtime())
+	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "kling-v1").Runtime())
 	if err == nil || (res != nil && res.OK) {
 		t.Fatalf("401 应检查失败：%+v %v", res, err)
 	}

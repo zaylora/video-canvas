@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
+import {
+  blankModelBody,
+  defaultCapabilities,
+  defaultDeadline,
+  defaultPricing,
+} from "@/utils/admin/model-template";
 import { staleCondition, tierDimensions } from "@/pages/admin/ai/models/price-editors";
 
 describe("按种类预填的能力与定价", () => {
@@ -47,5 +52,28 @@ describe("staleCondition", () => {
     expect(
       staleCondition({ on: true, when: { resolution: "4K", op: "omni" }, unit: 1 }, dims),
     ).toBeNull();
+  });
+});
+
+describe("defaultDeadline / blankModelBody", () => {
+  test("文本与 Agent 5 分钟，图片 10 分钟，视频与音频 30 分钟", () => {
+    expect(defaultDeadline("text")).toBe("5m");
+    expect(defaultDeadline("agent")).toBe("5m");
+    expect(defaultDeadline("image")).toBe("10m");
+    expect(defaultDeadline("video")).toBe("30m");
+    expect(defaultDeadline("audio")).toBe("30m");
+  });
+
+  test("手动新增的起始正文是“待配置”半成品：没有能力、协议与定价，带预选渠道", () => {
+    const body = blankModelBody("main", "gpt-x");
+    expect(body).toMatchObject({
+      key: "",
+      kind: "",
+      enabled: false,
+      channels: [{ channel: "main", upstream_model: "gpt-x" }],
+    });
+    expect("capabilities" in body).toBe(false);
+    expect("pricing" in body).toBe(false);
+    expect(blankModelBody().channels).toEqual([{ channel: "", upstream_model: "" }]);
   });
 });

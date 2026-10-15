@@ -53,6 +53,7 @@ func Validate(raw []byte, hooks []string) (*Meta, []modelcfg.Issue) {
 	v.identity(obj, m)
 	v.auth(obj, m)
 	v.endpoints(obj, m)
+	v.vendor(obj, m)
 	m.ChannelSettings = v.settings("meta.channelSettings", obj["channelSettings"])
 	v.importMeta(obj, m)
 	v.poll(obj, m)
@@ -213,6 +214,7 @@ func (v *validator) endpoints(obj jsonObject, m *Meta) {
 		if !v.field(e, path, "mode", &ep.Mode) && isPresent(e, "mode") {
 			continue // 类型不对，field 已记过问题
 		}
+		v.endpointDisplay(e, path, &ep)
 		m.Endpoints[kind] = ep
 		switch ep.Mode {
 		case ModeSync:
@@ -326,5 +328,36 @@ func typeName(dst any) string {
 		return "数组"
 	default:
 		return "对象"
+	}
+}
+
+// vendorRe 是厂商 slug 的格式，与模型配置的 vendor 一致。
+var vendorRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// 展示用的 endpoint 字段限制。
+const maxEndpointPathLen = 200
+
+// httpMethods 是 endpoint.method 允许的取值。
+var httpMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+// vendor 检查可选的 meta.vendor：小写字母、数字、连字符。
+func (v *validator) vendor(obj jsonObject, m *Meta) {
+	if !v.field(obj, "meta", "vendor", &m.Vendor) {
+		return
+	}
+	if !vendorRe.MatchString(m.Vendor) {
+		v.add("meta.vendor", "只能包含小写字母、数字和连字符，且以字母或数字开头（最长 64 位）")
+	}
+}
+
+// endpointDisplay 检查 endpoint 上两个只用于展示的可选字段：method（GET / POST / PUT / PATCH / DELETE）与 path（以 / 开头，≤200 字符）。
+func (v *validator) endpointDisplay(e jsonObject, path string, ep *Endpoint) {
+	if v.field(e, path, "method", &ep.Method) && !contains(httpMethods, ep.Method) {
+		v.add(path+".method", "必须是 %s", strings.Join(httpMethods, " / "))
+	}
+	if v.field(e, path, "path", &ep.Path) {
+		if !strings.HasPrefix(ep.Path, "/") || len(ep.Path) > maxEndpointPathLen {
+			v.add(path+".path", "必须以 / 开头，且不超过 %d 个字符（只用于展示）", maxEndpointPathLen)
+		}
 	}
 }

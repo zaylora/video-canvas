@@ -87,6 +87,21 @@ func TestValidate_Rules(t *testing.T) {
 			}
 		}, []string{pluginproto.HookBuildSubmitRequest, pluginproto.HookParseSubmitResponse,
 			pluginproto.HookBuildQueryRequest, pluginproto.HookParseQueryResponse}, nil},
+		{"vendor 与 endpoint 展示字段合法", func(m map[string]any) {
+			m["vendor"] = "openai"
+			m["endpoints"] = map[string]any{"video": map[string]any{"mode": "async", "method": "POST", "path": "/v1/video/generations"}}
+		}, nil, nil},
+		{"vendor 含大写", func(m map[string]any) { m["vendor"] = "OpenAI" }, nil, []string{"meta.vendor"}},
+		{"vendor 类型不对", func(m map[string]any) { m["vendor"] = 1 }, nil, []string{"meta.vendor"}},
+		{"endpoint.method 不合法", func(m map[string]any) {
+			m["endpoints"] = map[string]any{"video": map[string]any{"mode": "async", "method": "FETCH"}}
+		}, nil, []string{"meta.endpoints.video.method"}},
+		{"endpoint.path 不以斜杠开头", func(m map[string]any) {
+			m["endpoints"] = map[string]any{"video": map[string]any{"mode": "async", "path": "v1/x"}}
+		}, nil, []string{"meta.endpoints.video.path"}},
+		{"endpoint.path 过长", func(m map[string]any) {
+			m["endpoints"] = map[string]any{"video": map[string]any{"mode": "async", "path": "/" + strings.Repeat("a", 200)}}
+		}, nil, []string{"meta.endpoints.video.path"}},
 		{"预发布版本号合法", func(m map[string]any) { m["version"] = "2.0.0-rc.1" }, nil, nil},
 		{"多余的导出函数名不拒绝", nil, append(fullHooks(), "helper"), nil},
 

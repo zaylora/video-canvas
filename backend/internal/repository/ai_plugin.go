@@ -26,9 +26,16 @@ func NewAIPluginRepository(db *gorm.DB) *AIPluginRepository {
 
 // VersionRefs 是一个插件版本被引用的情况，删除前检查用。
 type VersionRefs struct {
-	Channels    int64 // 固定在这个版本上的渠道数
+	Models      int64 // 固定在这个版本上的模型数（channels[0].protocol 的 plugin + version）
 	ActiveTasks int64 // 快照引用了这个版本的非终态任务数（config_snapshot->'channel'->>'plugin_version_id'）
 }
+
+// modelRefsVersionSQL 匹配“协议固定在某个插件版本上”的模型配置；modelRefsPluginSQL 匹配“协议用了某个插件（任意版本）”的。
+// body_json 是 json 列（库里保证是合法 JSON），转 jsonb 后按路径取值；没有协议（Agent / 待配置）的模型取到 NULL，只是不匹配。
+const (
+	modelRefsVersionSQL = "(r.body_json::jsonb #>> '{channels,0,protocol,plugin}') = ? AND (r.body_json::jsonb #>> '{channels,0,protocol,version}') = ?"
+	modelRefsPluginSQL  = "(r.body_json::jsonb #>> '{channels,0,protocol,plugin}') = ?"
+)
 
 // versionHeadColumns 是版本表里不含 code 的列，列表类与“头信息”查询用它避免读出最大 512KB 的代码。
 const versionHeadColumns = "id, plugin_key, version, sha256, meta_json, created_by, created_at"
@@ -151,17 +158,23 @@ func (r *AIPluginRepository) CountVersionRefs(ctx context.Context, id uint64) (V
 // countVersionRefs 统计引用数，db 可以是普通连接也可以是事务。
 func countVersionRefs(db *gorm.DB, id uint64) (VersionRefs, error) {
 	var refs VersionRefs
-	if err := db.Model(&model.AIChannel{}).Where("plugin_version_id = ?", id).Count(&refs.Channels).Error; err != nil {
+	var v model.AIPluginVersion
+	if err := db.Select("plugin_key, version").Where("id = ?", id).First(&v).Error; err != nil {
+		return VersionRefs{}, translate(err)
+	}
+	err := db.Table("ai_config_revisions AS r").Joins("JOIN ai_models AS m ON m.key = r.target_key").
+		Where("r.target = ?", model.ConfigTargetModel).Where(modelRefsVersionSQL, v.PluginKey, v.Version).Count(&refs.Models).Error
+	if err != nil {
 		return VersionRefs{}, err
 	}
-	err := db.Model(&model.GenerationTask{}).Where(taskRefsVersionSQL, activeStatuses(), id).Count(&refs.ActiveTasks).Error
+	err = db.Model(&model.GenerationTask{}).Where(taskRefsVersionSQL, activeStatuses(), id).Count(&refs.ActiveTasks).Error
 	if err != nil {
 		return VersionRefs{}, err
 	}
 	return refs, nil
 }
 
-// DeleteVersion 在一个事务里删除版本：先锁住版本行并重新统计引用，仍被渠道或非终态任务引用返回 ErrInUse，不存在返回 ErrNotFound。
+// DeleteVersion 在一个事务里删除版本：先锁住版本行并重新统计引用，仍被模型或非终态任务引用返回 ErrInUse，不存在返回 ErrNotFound。
 // 删除后插件没有任何版本时顺带删掉插件行。内置插件的版本由 service 层拒绝，这里不判断来源。
 func (r *AIPluginRepository) DeleteVersion(ctx context.Context, id uint64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -184,7 +197,7 @@ func (r *AIPluginRepository) DeleteVersion(ctx context.Context, id uint64) error
 		if err != nil {
 			return err
 		}
-		if refs.Channels > 0 || refs.ActiveTasks > 0 {
+		if refs.Models > 0 || refs.ActiveTasks > 0 {
 			return ErrInUse
 		}
 		// 3. 删版本；插件没有任何版本后一并删掉插件行
@@ -209,17 +222,17 @@ func deletePluginIfEmpty(tx *gorm.DB, pluginKey string) error {
 
 // PluginRefs 是整个插件被引用的情况，删除插件前检查用。
 type PluginRefs struct {
-	Channels    []model.AIChannel // 固定在它任一版本上的渠道（只有 key、name），按 key 升序
+	Models      []ChannelModelRef // 协议用了它任一版本的模型（key 与展示名），按 key 升序
 	ActiveTasks int64             // 快照引用了它任一版本的非终态任务数
 }
 
 // InUse 判断插件是否仍被引用。
-func (r PluginRefs) InUse() bool { return len(r.Channels) > 0 || r.ActiveTasks > 0 }
+func (r PluginRefs) InUse() bool { return len(r.Models) > 0 || r.ActiveTasks > 0 }
 
 // taskRefsVersionsSQL 匹配“快照冻结了一组插件版本中任一个的非终态任务”，写法与 taskRefsVersionSQL 一致（jsonb 比较，不强转）。
 const taskRefsVersionsSQL = "status IN ? AND config_snapshot #> '{channel,plugin_version_id}' IN (SELECT to_jsonb(v) FROM unnest(?::bigint[]) AS v)"
 
-// CountPluginRefs 统计插件全部版本被渠道与非终态任务引用的情况；插件不存在返回 ErrNotFound。
+// CountPluginRefs 统计插件全部版本被模型与非终态任务引用的情况；插件不存在返回 ErrNotFound。
 func (r *AIPluginRepository) CountPluginRefs(ctx context.Context, key string) (PluginRefs, error) {
 	db := r.db.WithContext(ctx)
 	var exists int64
@@ -233,20 +246,27 @@ func (r *AIPluginRepository) CountPluginRefs(ctx context.Context, key string) (P
 	if err := db.Model(&model.AIPluginVersion{}).Where("plugin_key = ?", key).Pluck("id", &ids).Error; err != nil {
 		return PluginRefs{}, err
 	}
-	return countPluginRefs(db, ids)
+	return countPluginRefs(db, key, ids)
 }
 
-// countPluginRefs 统计一组版本的引用，db 可以是普通连接也可以是事务。ids 为空时没有任何引用。
-func countPluginRefs(db *gorm.DB, ids []uint64) (PluginRefs, error) {
-	refs := PluginRefs{Channels: []model.AIChannel{}}
+// countPluginRefs 统计插件（key）与它的一组版本（ids）的引用，db 可以是普通连接也可以是事务。ids 为空时没有任何引用。
+func countPluginRefs(db *gorm.DB, key string, ids []uint64) (PluginRefs, error) {
+	refs := PluginRefs{Models: []ChannelModelRef{}}
 	if len(ids) == 0 {
 		return refs, nil
 	}
-	if err := db.Select("key, name").Where("plugin_version_id IN ?", ids).
-		Order("key ASC").Find(&refs.Channels).Error; err != nil {
+	var rows []channelModelRefRow
+	err := db.Table("ai_config_revisions AS r").
+		Select("r.target_key AS key, COALESCE(r.body_json::jsonb ->> 'label', '') AS label").
+		Joins("JOIN ai_models AS m ON m.key = r.target_key").
+		Where("r.target = ?", model.ConfigTargetModel).
+		Where(modelRefsPluginSQL, key).
+		Order("r.target_key ASC").Scan(&rows).Error
+	if err != nil {
 		return PluginRefs{}, err
 	}
-	err := db.Model(&model.GenerationTask{}).Where(taskRefsVersionsSQL, activeStatuses(), pgBigintArray(ids)).
+	refs.Models = channelModelRefs(rows)
+	err = db.Model(&model.GenerationTask{}).Where(taskRefsVersionsSQL, activeStatuses(), pgBigintArray(ids)).
 		Count(&refs.ActiveTasks).Error
 	if err != nil {
 		return PluginRefs{}, err
@@ -264,7 +284,7 @@ func pgBigintArray(ids []uint64) string {
 }
 
 // DeletePlugin 在一个事务里删除整个插件（全部版本 + 插件行）：按“插件行 → 版本行”的顺序加锁（与 SaveVersion / DeleteVersion 一致，避免死锁），
-// 锁内重新统计引用，仍被渠道或非终态任务引用时返回当时的引用与 ErrInUse；插件不存在返回 ErrNotFound。
+// 锁内重新统计引用，仍被模型或非终态任务引用时返回当时的引用与 ErrInUse；插件不存在返回 ErrNotFound。
 // 内置插件由 service 层拒绝，这里不判断来源。
 func (r *AIPluginRepository) DeletePlugin(ctx context.Context, key string) (PluginRefs, error) {
 	var refs PluginRefs
@@ -274,7 +294,7 @@ func (r *AIPluginRepository) DeletePlugin(ctx context.Context, key string) (Plug
 			Where("key = ?", key).First(&model.AIPlugin{}).Error; err != nil {
 			return translate(err)
 		}
-		// 2. 锁全部版本行（按 id 升序加锁，顺序固定）：与新建 / 更新渠道时对版本行的 FOR SHARE 互斥
+		// 2. 锁全部版本行（按 id 升序加锁，顺序固定）：与其他对版本行的写操作串行
 		var ids []uint64
 		if err := tx.Model(&model.AIPluginVersion{}).Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("plugin_key = ?", key).Order("id ASC").Pluck("id", &ids).Error; err != nil {
@@ -282,7 +302,7 @@ func (r *AIPluginRepository) DeletePlugin(ctx context.Context, key string) (Plug
 		}
 		// 3. 锁内重新统计引用
 		var err error
-		refs, err = countPluginRefs(tx, ids)
+		refs, err = countPluginRefs(tx, key, ids)
 		if err != nil {
 			return err
 		}

@@ -13,12 +13,10 @@ import (
 func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
-	pr := NewAIPluginRepository(db)
 	r := NewAIChannelRepository(db)
-	vid := plSave(t, pr, "ch", "1.0.0")
 
 	t.Run("新建渠道回填时间，空 JSON 列补成 {}", func(t *testing.T) {
-		c := plChannel("c-a", "ch", vid)
+		c := plChannel("c-a")
 		c.Enabled = true
 		c.UpdatedBy = 3
 		if err := r.CreateChannel(ctx, c); err != nil {
@@ -31,16 +29,16 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !got.Enabled || got.PluginVersionID != vid || got.BaseURL != c.BaseURL || got.AllowCredentials || got.UpdatedBy != 3 {
+		if !got.Enabled || got.BaseURL != c.BaseURL || got.UpdatedBy != 3 || got.Sort != 100 {
 			t.Fatalf("渠道不符合预期：%+v", got)
 		}
-		if string(got.SettingsJSON) != "{}" || string(got.RateLimitJSON) != "{}" {
-			t.Fatalf("空 JSON 列应补成 {}：%s %s", got.SettingsJSON, got.RateLimitJSON)
+		if string(got.HeadersJSON) != "{}" || string(got.RateLimitJSON) != "{}" {
+			t.Fatalf("空 JSON 列应补成 {}：%s %s", got.HeadersJSON, got.RateLimitJSON)
 		}
 	})
 
 	t.Run("enabled=false 如实写入，不被列默认值顶掉", func(t *testing.T) {
-		c := plChannel("c-off", "ch", vid)
+		c := plChannel("c-off")
 		if err := r.CreateChannel(ctx, c); err != nil {
 			t.Fatal(err)
 		}
@@ -49,31 +47,23 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 		}
 	})
 
-	t.Run("JSON 列原样保存", func(t *testing.T) {
-		c := plChannel("c-json", "ch", vid)
-		c.SettingsJSON = model.JSONText(`{"b": 1, "a": 2}`)
+	t.Run("JSON 列原样保存，sort 如实写入", func(t *testing.T) {
+		c := plChannel("c-json")
+		c.HeadersJSON = model.JSONText(`{"b": 1, "a": 2}`)
 		c.RateLimitJSON = model.JSONText(`{"rps":5,"max_concurrency":20}`)
+		c.Sort = 30
 		if err := r.CreateChannel(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := r.GetChannel(ctx, "c-json")
-		if string(got.SettingsJSON) != `{"b": 1, "a": 2}` || string(got.RateLimitJSON) != `{"rps":5,"max_concurrency":20}` {
-			t.Fatalf("%s %s", got.SettingsJSON, got.RateLimitJSON)
+		if string(got.HeadersJSON) != `{"b": 1, "a": 2}` || string(got.RateLimitJSON) != `{"rps":5,"max_concurrency":20}` || got.Sort != 30 {
+			t.Fatalf("%s %s %d", got.HeadersJSON, got.RateLimitJSON, got.Sort)
 		}
 	})
 
 	t.Run("key 重复返回 ErrDuplicate", func(t *testing.T) {
-		if err := r.CreateChannel(ctx, plChannel("c-a", "ch", vid)); !errors.Is(err, ErrDuplicate) {
+		if err := r.CreateChannel(ctx, plChannel("c-a")); !errors.Is(err, ErrDuplicate) {
 			t.Fatalf("期望 ErrDuplicate，实际 %v", err)
-		}
-	})
-
-	t.Run("指向不存在的版本返回 ErrNotFound，渠道不会被创建", func(t *testing.T) {
-		if err := r.CreateChannel(ctx, plChannel("c-bad", "ch", 999999)); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("期望 ErrNotFound，实际 %v", err)
-		}
-		if _, err := r.GetChannel(ctx, "c-bad"); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("渠道不应存在：%v", err)
 		}
 	})
 
@@ -83,9 +73,10 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 		}
 	})
 
-	t.Run("ListChannels 按 key 升序", func(t *testing.T) {
+	t.Run("ListChannels 按 sort、key 升序", func(t *testing.T) {
 		list, err := r.ListChannels(ctx)
-		if err != nil || len(list) != 3 || list[0].Key != "c-a" || list[1].Key != "c-json" || list[2].Key != "c-off" {
+		// c-json 的 sort 是 30，排在两个默认 100 的前面；同为 100 的按 key
+		if err != nil || len(list) != 3 || list[0].Key != "c-json" || list[1].Key != "c-a" || list[2].Key != "c-off" {
 			t.Fatalf("%+v %v", list, err)
 		}
 	})
@@ -94,33 +85,32 @@ func TestAIChannelRepository_CreateAndGet(t *testing.T) {
 func TestAIChannelRepository_UpdateChannel(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
-	pr := NewAIPluginRepository(db)
 	r := NewAIChannelRepository(db)
-	v1 := plSave(t, pr, "up", "1.0.0")
-	v2 := plSave(t, pr, "up", "2.0.0")
-	orig := plChannel("u-a", "up", v1)
+	orig := plChannel("u-a")
+	orig.Sort = 70
 	if err := r.CreateChannel(ctx, orig); err != nil {
 		t.Fatal(err)
 	}
 	created, _ := r.GetChannel(ctx, "u-a")
 
-	t.Run("更新可变字段（含清零 bool），key 与 created_at 不变", func(t *testing.T) {
+	t.Run("更新可变字段（含清零 bool），key、sort 与 created_at 不变", func(t *testing.T) {
 		time.Sleep(5 * time.Millisecond) // 制造 updated_at 的先后差异
 		c := &model.AIChannel{
-			Key: "u-a", Name: "新名", PluginKey: "up", PluginVersionID: v2, BaseURL: "https://new.example.com",
-			AllowCredentials: true, Enabled: false, UpdatedBy: 8,
-			SettingsJSON: model.JSONText(`{"x":1}`),
+			Key: "u-a", Name: "新名", BaseURL: "https://new.example.com", Enabled: false, UpdatedBy: 8, Sort: 999,
+			HeadersJSON: model.JSONText(`{"X-Biz":"canvas"}`),
 		}
 		if err := r.UpdateChannel(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := r.GetChannel(ctx, "u-a")
-		if got.Name != "新名" || got.PluginVersionID != v2 || got.BaseURL != "https://new.example.com" ||
-			!got.AllowCredentials || got.Enabled || got.UpdatedBy != 8 {
+		if got.Name != "新名" || got.BaseURL != "https://new.example.com" || got.Enabled || got.UpdatedBy != 8 {
 			t.Fatalf("更新不符合预期：%+v", got)
 		}
-		if string(got.SettingsJSON) != `{"x":1}` || string(got.RateLimitJSON) != "{}" {
-			t.Fatalf("JSON 列不符合预期：%s %s", got.SettingsJSON, got.RateLimitJSON)
+		if got.Sort != 70 {
+			t.Fatalf("sort 只能由 SetChannelOrder 修改，实际 %d", got.Sort)
+		}
+		if string(got.HeadersJSON) != `{"X-Biz": "canvas"}` && string(got.HeadersJSON) != `{"X-Biz":"canvas"}` || string(got.RateLimitJSON) != "{}" {
+			t.Fatalf("JSON 列不符合预期：%s %s", got.HeadersJSON, got.RateLimitJSON)
 		}
 		if !got.CreatedAt.Equal(created.CreatedAt) || !got.UpdatedAt.After(created.UpdatedAt) || c.UpdatedAt.IsZero() {
 			t.Fatalf("时间字段不符合预期：created=%v updated=%v", got.CreatedAt, got.UpdatedAt)
@@ -128,27 +118,56 @@ func TestAIChannelRepository_UpdateChannel(t *testing.T) {
 	})
 
 	t.Run("渠道不存在返回 ErrNotFound", func(t *testing.T) {
-		if err := r.UpdateChannel(ctx, plChannel("none", "up", v1)); !errors.Is(err, ErrNotFound) {
+		if err := r.UpdateChannel(ctx, plChannel("none")); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("期望 ErrNotFound，实际 %v", err)
 		}
 	})
+}
 
-	t.Run("切到不存在的版本返回 ErrNotFound，原渠道不变", func(t *testing.T) {
-		if err := r.UpdateChannel(ctx, plChannel("u-a", "up", 999999)); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("期望 ErrNotFound，实际 %v", err)
+func TestAIChannelRepository_SetChannelOrder(t *testing.T) {
+	ctx := context.Background()
+	r := NewAIChannelRepository(pluginTestDB(t))
+	for _, k := range []string{"o-a", "o-b", "o-c"} {
+		if err := r.CreateChannel(ctx, plChannel(k)); err != nil {
+			t.Fatal(err)
 		}
-		got, _ := r.GetChannel(ctx, "u-a")
-		if got.PluginVersionID != v2 {
-			t.Fatalf("渠道不应被改动：%+v", got)
+	}
+	keys := func() []string {
+		list, _ := r.ListChannels(ctx)
+		out := make([]string, 0, len(list))
+		for _, c := range list {
+			out = append(out, c.Key)
+		}
+		return out
+	}
+
+	t.Run("按给定顺序重写 sort 为 10、20、30", func(t *testing.T) {
+		if err := r.SetChannelOrder(ctx, []string{"o-c", "o-a", "o-b"}); err != nil {
+			t.Fatal(err)
+		}
+		if got := keys(); len(got) != 3 || got[0] != "o-c" || got[1] != "o-a" || got[2] != "o-b" {
+			t.Fatalf("顺序不对：%v", got)
+		}
+		if c, _ := r.GetChannel(ctx, "o-c"); c.Sort != 10 {
+			t.Fatalf("sort 应为 10：%d", c.Sort)
 		}
 	})
-
-	t.Run("升级后旧版本不再被渠道引用，可以删除", func(t *testing.T) {
-		if err := pr.DeleteVersion(ctx, v1); err != nil {
-			t.Fatalf("旧版本应已无引用：%v", err)
+	t.Run("有不存在的 key 返回 ErrNotFound，顺序不变", func(t *testing.T) {
+		if err := r.SetChannelOrder(ctx, []string{"o-a", "o-b", "ghost"}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("期望 ErrNotFound，实际 %v", err)
 		}
-		if err := pr.DeleteVersion(ctx, v2); !errors.Is(err, ErrInUse) {
-			t.Fatalf("新版本被渠道引用应返回 ErrInUse，实际 %v", err)
+		if got := keys(); got[0] != "o-c" {
+			t.Fatalf("顺序不应改变：%v", got)
+		}
+	})
+	t.Run("漏掉渠道或有重复返回 ErrOrderMismatch，顺序不变", func(t *testing.T) {
+		for _, bad := range [][]string{{"o-a", "o-b"}, {"o-a", "o-a", "o-b"}} {
+			if err := r.SetChannelOrder(ctx, bad); !errors.Is(err, ErrOrderMismatch) {
+				t.Fatalf("%v 期望 ErrOrderMismatch，实际 %v", bad, err)
+			}
+		}
+		if got := keys(); got[0] != "o-c" {
+			t.Fatalf("顺序不应改变：%v", got)
 		}
 	})
 }
@@ -156,10 +175,8 @@ func TestAIChannelRepository_UpdateChannel(t *testing.T) {
 func TestAIChannelRepository_SetChannelEnabled(t *testing.T) {
 	ctx := context.Background()
 	db := pluginTestDB(t)
-	pr := NewAIPluginRepository(db)
 	r := NewAIChannelRepository(db)
-	vid := plSave(t, pr, "se", "1.0.0")
-	if err := r.CreateChannel(ctx, plChannel("s-a", "se", vid)); err != nil {
+	if err := r.CreateChannel(ctx, plChannel("s-a")); err != nil {
 		t.Fatal(err)
 	}
 

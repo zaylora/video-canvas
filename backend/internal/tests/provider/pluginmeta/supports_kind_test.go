@@ -7,7 +7,7 @@ import (
 )
 
 // 插件是否能承接某种模型：普通种类看它有没有声明对应端点；
-// agent 不走插件钩子（网关直接请求渠道），只要求渠道用 Bearer 鉴权。
+// agent 不走插件钩子（网关直接用渠道 Key 请求渠道），模型不选协议，所以任何插件都不承接 agent。
 func TestMeta_SupportsKind(t *testing.T) {
 	withEndpoints := func(auth string, kinds ...string) *pluginmeta.Meta {
 		m := &pluginmeta.Meta{Auth: pluginmeta.Auth{Type: auth}, Endpoints: map[string]pluginmeta.Endpoint{}}
@@ -24,11 +24,9 @@ func TestMeta_SupportsKind(t *testing.T) {
 	}{
 		{"声明了 text 端点", withEndpoints("bearer", "text"), "text", true},
 		{"没声明 video 端点", withEndpoints("bearer", "text"), "video", false},
-		{"agent：bearer 鉴权即可，不需要端点", withEndpoints("bearer"), "agent", true},
-		{"agent：声明了端点也一样", withEndpoints("bearer", "agent"), "agent", true},
-		{"agent：header 鉴权不行", withEndpoints("header", "text"), "agent", false},
-		{"agent：无鉴权不行", withEndpoints("none", "text"), "agent", false},
-		{"agent：自定义鉴权不行", withEndpoints("custom", "text"), "agent", false},
+		{"agent：bearer 鉴权的插件也不承接", withEndpoints("bearer", "text"), "agent", false},
+		{"agent：声明了 agent 端点也不承接", withEndpoints("bearer", "agent"), "agent", false},
+		{"agent：其他鉴权同样不承接", withEndpoints("header", "text"), "agent", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

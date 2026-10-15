@@ -130,6 +130,23 @@ func pricingSchema() obj {
 	}, "billing")
 }
 
+// protocolSchema 是 channels[].protocol 的 Schema：模型选的协议插件、固定版本与协议设置项取值。
+func protocolSchema() obj {
+	return object("调用协议：非 Agent 模型必填，Agent 模型不能有", obj{
+		"plugin": obj{
+			"type": "string", "pattern": pluginKeyRe.String(),
+			"description": "协议插件 key（在插件页上传），小写字母、数字、连字符",
+		},
+		"version": obj{
+			"type": "string", "pattern": semverRe.String(),
+			"description": "固定的插件版本（semver）；保存时缺省会补成所选的最新版本",
+		},
+		"settings": obj{
+			"type": "object", "description": "协议设置项取值：按所选版本的 channelSettings 校验，缺省补默认值",
+		},
+	}, "plugin", "version")
+}
+
 // channelRefSchema 是 channels 数组元素的 Schema。
 func channelRefSchema() obj {
 	return object("模型绑定的一个渠道", obj{
@@ -139,8 +156,9 @@ func channelRefSchema() obj {
 		},
 		"upstream_model": obj{
 			"type": "string", "minLength": 1, "maxLength": maxUpstreamModelLen,
-			"description": "这个渠道上的上游模型名（工作流型插件里是工作流 id），由渠道所用的插件解释",
+			"description": "这个渠道上的上游模型名（工作流型插件里是工作流 id），由模型选的协议插件解释",
 		},
+		"protocol": protocolSchema(),
 	}, "channel", "upstream_model")
 }
 

@@ -7,7 +7,13 @@
   "enabled": true,
   "sort": 100,
 
-  "channels": [{ "channel": "newapi-main", "upstream_model": "kling-v2-master" }],
+  "channels": [
+    {
+      "channel": "newapi-main",
+      "upstream_model": "kling-v2-master",
+      "protocol": { "plugin": "kling", "version": "1.0.0", "settings": {} }
+    }
+  ],
 
   "params": { "max_tokens": 2000, "instanceType": "default" },
 

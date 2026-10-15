@@ -88,7 +88,7 @@ func (u *sunoapilyricsUpstream) last() sunoapilyricsReq {
 
 func TestSunoapilyricsPrecheckAndMeta(t *testing.T) {
 	env := newSunoapilyricsEnv(t)
-	if env.meta.Key != "sunoapi-lyrics" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "sunoapi-lyrics" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	for _, kind := range []string{"text"} {

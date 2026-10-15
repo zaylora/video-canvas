@@ -121,7 +121,7 @@ func (s *AIConfigService) GetTestTrace(ctx context.Context, adminID, taskID uint
 	return &TestTraceView{Steps: steps}, nil
 }
 
-// buildTrialSnapshot 用模型已保存的配置 + 渠道当前配置 + 渠道固定的插件版本组装试跑快照。
+// buildTrialSnapshot 用模型已保存的配置 + 渠道当前配置 + 模型固定的插件版本与协议设置组装试跑快照。
 // 配置本身校验不通过、渠道 / 插件不可用时直接报错（与启用检查同一套标准），不拿有问题的配置去试跑。
 func (s *AIConfigService) buildTrialSnapshot(ctx context.Context, modelKey string) (*provider.Snapshot, error) {
 	// 1. 模型已保存的配置
@@ -139,17 +139,25 @@ func (s *AIConfigService) buildTrialSnapshot(ctx context.Context, modelKey strin
 	if err != nil {
 		return nil, err
 	}
-	rt, err := provider.RuntimeOf(rc.channel, rc.version)
+	var rt *provider.ChannelRuntime
+	if rc.version == nil {
+		rt, err = provider.AgentRuntimeOf(rc.channel)
+	} else {
+		rt, err = provider.RuntimeOf(rc.channel, rc.version, rc.settings)
+	}
 	if err != nil {
 		return nil, errcode.ErrChannelInvalid.WithMsg("渠道配置无法解析：" + err.Error())
 	}
 	return provider.NewSnapshot(cfg, rt, rev.ID), nil
 }
 
-// checkSnapshotSecret 快照里的插件需要宿主注入鉴权时，要求渠道 Key 已设置（ErrChannelSecretUnset）。
+// checkSnapshotSecret 需要渠道 Key 时要求它已设置（ErrChannelSecretUnset）：快照里的插件需要宿主注入鉴权，或这是 Agent 模型（没有插件）。
 func (s *AIConfigService) checkSnapshotSecret(ctx context.Context, snap *provider.Snapshot) error {
-	meta := snap.Plugin.Meta
 	ch := &model.AIChannel{Key: snap.Channel.Key}
+	if snap.Plugin.Key == "" {
+		return s.checkChannelSecret(ctx, &aiResolvedChannel{channel: ch})
+	}
+	meta := snap.Plugin.Meta
 	return s.checkChannelSecret(ctx, &aiResolvedChannel{channel: ch, meta: &meta})
 }
 

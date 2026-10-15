@@ -119,6 +119,19 @@ export function defaultCapabilities(kind: string): Capabilities {
   }
 }
 
+/** 按种类的默认任务时限：文本与 Agent 一次请求出结果，图片次之，视频与音频要轮询（Go 的 time.Duration 写法） */
+export function defaultDeadline(kind: string): string {
+  switch (kind) {
+    case "text":
+    case "agent":
+      return "5m";
+    case "image":
+      return "10m";
+    default:
+      return "30m";
+  }
+}
+
 /**
  * 新建模型时按种类预填的定价（运营可改）：视频按秒、按清晰度与音频分档；图片按次、按清晰度分档；
  * 文本按 Token；音频按次。数值只是起点，和能力模板里的参数名对应。
@@ -152,4 +165,22 @@ export function defaultPricing(kind: string): Pricing {
     default:
       return { billing: "per_call", unit: 2 };
   }
+}
+
+/**
+ * 手动新增模型时编辑器里的起始正文：“待配置”的半成品。
+ * 能力、协议、能力与参数、定价都留空，运营在弹窗里选了能力后才按种类预填（见 withModelKind）。
+ * @param channelKey 预选的所属渠道（当前渠道）；没有传空串
+ * @param upstreamModel 预填的上游模型标识
+ */
+export function blankModelBody(channelKey = "", upstreamModel = ""): Record<string, unknown> {
+  return {
+    key: "",
+    kind: "",
+    label: "",
+    hint: "",
+    enabled: false,
+    sort: 100,
+    channels: [{ channel: channelKey, upstream_model: upstreamModel }],
+  };
 }

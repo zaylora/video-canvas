@@ -87,7 +87,7 @@ func hailuoQuery(t *testing.T, env *hailuoEnv, snap *provider.Snapshot, state st
 
 func TestHailuoPrecheckAndMeta(t *testing.T) {
 	env := newHailuoEnv(t, nil)
-	if env.meta.Key != "hailuo" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "hailuo" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {

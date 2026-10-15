@@ -17,7 +17,7 @@
  * 组合不合法时钩子抛异常（宿主记为插件级失败），所以运营在后台配这些模型的参数范围时要与上面一致。
  *
  * 鉴权：meta.auth 是 custom。Vidu 的头是 Authorization: Token <key>（不是 Bearer），宿主的 bearer 注入凑不出来，
- * 所以插件自己写这个头。因此渠道必须开启 allow_credentials；渠道 Key 填 Vidu 控制台生成的 API Key 原文即可（不要带 "Token " 前缀）。
+ * 所以插件自己写这个头。因此用 auth: custom（宿主直接提供 ctx.credentials）；渠道 Key 填 Vidu 控制台生成的 API Key 原文即可（不要带 "Token " 前缀）。
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
@@ -35,11 +35,12 @@ module.exports = {
     apiVersion: 1,
     key: "vidu",
     name: "生数 Vidu",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "vidu",
     description: "生数 Vidu 视频生成：文生视频、图生视频、首尾帧、参考生视频，异步轮询出片",
     auth: { type: "custom" },
     endpoints: {
-      video: { mode: "async" },
+      video: { mode: "async", method: "POST", path: "/ent/v2/text2video" },
     },
     poll: { firstDelay: 15, interval: 10, maxInterval: 30, jitter: 0.2 },
   },
@@ -150,7 +151,7 @@ module.exports = {
 function authHeaders(ctx) {
   var key = ctx.credentials && ctx.credentials.apiKey;
   if (typeof key !== "string" || key === "") {
-    throw new Error("没有拿到渠道 Key：Vidu 插件需要渠道开启 allow_credentials，并填写 API Key");
+    throw new Error("没有拿到渠道 Key：Vidu 插件需要在渠道里填写 API Key");
   }
   return { Authorization: "Token " + key };
 }

@@ -1,6 +1,5 @@
 import {
   ArrowUpCircle,
-  Boxes,
   Film,
   HardDrive,
   ImageDown,
@@ -30,8 +29,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "AI 配置",
     items: [
       { to: "ai/overview", label: "总览", icon: LayoutDashboard },
-      { to: "ai/models", label: "模型", icon: Boxes },
-      { to: "ai/channels", label: "渠道", icon: RadioTower },
+      { to: "ai/channels", label: "渠道与模型", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
     ],
   },

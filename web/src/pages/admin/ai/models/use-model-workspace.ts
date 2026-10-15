@@ -11,12 +11,11 @@ import {
   updateModel,
   validateModel,
 } from "@/api/admin/ai";
-import type { ConfigDetail, ConfigIssue } from "@/api/admin/ai/type.d";
+import type { ChannelOption, ConfigDetail, ConfigIssue, PluginView } from "@/api/admin/ai/type.d";
 import { isRunnerDown } from "@/utils/admin/errors";
-import { readStashedDrafts, updateStashedDrafts } from "@/utils/admin/import-draft";
 import { formatJsonText, parseJsonText, readConfigKey, toJsonText } from "@/utils/admin/json";
-import { withModelChannel } from "@/utils/admin/model-body";
 import { resolveModelChannel } from "@/utils/admin/model-channel";
+import { blankModelBody } from "@/utils/admin/model-template";
 import { toast } from "sonner";
 
 import type { Capabilities } from "@/api/model/type.d";
@@ -25,10 +24,20 @@ import { buildTaskInput, manualRefs, type RefKey } from "@/utils/tasks/capabilit
 import { isTerminalStatus } from "@/utils/tasks/status";
 
 import type { DryRunState, ResultNotice, ResultTabId, RunState, TraceState } from "../result-panel";
-import { MODEL_TEMPLATES } from "../templates";
-import type { AdminCatalog } from "../../use-admin";
+import type { LoadStatus } from "../../use-admin";
 import { useAliveRef } from "../../use-admin";
+import { modelChecks, samePlace } from "./model-fields";
 import type { ModelRoute } from "./model-route";
+
+/** 模型编辑器要用的渠道与插件清单（AdminCatalog 的子集，面板由宿主传入） */
+export type ModelCatalog = {
+  /** 全部渠道：“所属渠道”下拉与启用前提示用 */
+  channels: ChannelOption[];
+  /** 全部插件（带全部版本和 meta）：协议列表与协议设置项表单用 */
+  plugins: PluginView[];
+  /** 插件清单的加载状态：没加载好时不让切能力 */
+  pluginsStatus: LoadStatus;
+};
 
 /** 编辑器的两种视图 */
 export type EditorMode = "form" | "json";
@@ -42,13 +51,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * 模型页的全部状态与动作：列表、选中、JSON 正文（事实来源）、表单 / JSON 视图切换、
- * 保存 / 校验 / dry-run / 试跑 / 上线下线、导入草稿队列、结果面板与追踪。
- * 选中的模型由 route 决定（模型页放在自己的 state 里，渠道页从弹窗里编辑时也是）。
+ * 模型编辑器的全部状态与动作：选中、JSON 正文（事实来源）、表单 / JSON 视图切换、
+ * 保存 / 校验 / dry-run / 试跑 / 上线下线、结果面板与追踪。
+ * 选中的模型由 route 决定（放在模型管理面板自己的 state 里）。
  * 请求失败的全局 toast 由拦截器统一弹；这里 catch 只做状态恢复或把原因翻译成就地提示。
  */
 export function useModelWorkspace(
-  catalog: AdminCatalog,
+  catalog: ModelCatalog,
   route: ModelRoute,
   /** 保存 / 上下线让模型列表变了之后回调（宿主页面有自己的模型列表时用来刷新） */
   onListChanged?: () => void,
@@ -57,7 +66,7 @@ export function useModelWorkspace(
   const onListChangedRef = useRef(onListChanged);
   onListChangedRef.current = onListChanged;
 
-  const { key, draftId, fromImport, presetChannel } = route;
+  const { key, presetChannel } = route;
   const selection: "none" | "new" | "model" = route.isNew ? "new" : key ? "model" : "none";
   const isNew = selection === "new";
 
@@ -90,10 +99,6 @@ export function useModelWorkspace(
   // ---- 对话框
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
-  // ---- 导入草稿队列（队首就是编辑器里当前的那个）
-  const [queue, setQueue] = useState<Record<string, unknown>[]>([]);
-  const importRef = useRef<{ id: string; channelKey: string } | null>(null);
-
   const runTokenRef = useRef(0);
   const latestKeyRef = useRef<string | null>(null);
   /** 刚由“新建保存”跳转到的 key：跳转后的加载不要清掉刚写进结果面板的记录 */
@@ -107,6 +112,30 @@ export function useModelWorkspace(
   const info = useMemo(
     () => resolveModelChannel(body, catalog.channels, catalog.plugins),
     [body, catalog.channels, catalog.plugins],
+  );
+  /** 页签与底栏的提示：error 级是红点（阻止保存），warning 级是黄点 */
+  const checks = useMemo(
+    () => modelChecks(body, info, issues, catalog.pluginsStatus === "ready"),
+    [body, info, issues, catalog.pluginsStatus],
+  );
+  const blockers = useMemo(() => checks.filter((check) => check.level === "error"), [checks]);
+  /** 表单字段下的红字：后端返回的问题 + 实时的红点问题（同一位置只留红点那条） */
+  const fieldIssues = useMemo<ConfigIssue[]>(() => {
+    const live = blockers.flatMap((check) =>
+      check.path ? [{ path: check.path, message: check.text }] : [],
+    );
+    const backend = issues.filter(
+      (issue) => !live.some((item) => samePlace(item.path, issue.path)),
+    );
+    return [...live, ...backend];
+  }, [blockers, issues]);
+  /** 表单字段下的琥珀色建议（后端问题已在 fieldIssues 里） */
+  const fieldWarnings = useMemo<ConfigIssue[]>(
+    () =>
+      modelChecks(body, info, [], catalog.pluginsStatus === "ready").flatMap((check) =>
+        check.level === "warning" && check.path ? [{ path: check.path, message: check.text }] : [],
+      ),
+    [body, info, catalog.pluginsStatus],
   );
   const capabilities = (body && isRecord(body.capabilities) ? body.capabilities : undefined) as
     | Capabilities
@@ -209,39 +238,14 @@ export function useModelWorkspace(
     [aliveRef, loadIntoEditor, resetResults],
   );
 
-  /** 进入“新建”：有导入草稿就取出队列并预填，否则用空白模板 */
+  /** 进入“新建”：用“待配置”的空白正文，预选渠道（当前渠道）；能力与协议在弹窗里选 */
   const enterNew = useCallback(() => {
     latestKeyRef.current = null;
     resetResults();
     setDetail(null);
     setLoadingDetail(false);
-    const stashed = readStashedDrafts(draftId);
-    if (stashed) {
-      importRef.current = { id: draftId as string, channelKey: stashed.channelKey };
-      setQueue(stashed.bodies);
-      loadIntoEditor(stashed.bodies[0]);
-      pushEntry({
-        title: `已带入 ${stashed.bodies.length} 个草稿`,
-        tone: "info",
-        text: "导入的只是草稿，保存后默认不上线。逐个确认、保存、试跑后，再在列表里打开「上线」开关。",
-      });
-      return;
-    }
-    importRef.current = null;
-    setQueue([]);
-    // 从渠道页“用这个渠道新建模型”进来时带 ?channel=<key>，预先选好渠道
-    loadIntoEditor(
-      (presetChannel && withModelChannel(MODEL_TEMPLATES[0].body, presetChannel)) ||
-        MODEL_TEMPLATES[0].body,
-    );
-    if (fromImport) {
-      pushEntry({
-        title: "没有读到导入的草稿",
-        tone: "info",
-        text: "浏览器没能暂存草稿（可能是隐私模式或页面已刷新），已用空白模板，请手动填写。",
-      });
-    }
-  }, [draftId, fromImport, presetChannel, loadIntoEditor, pushEntry, resetResults]);
+    loadIntoEditor(blankModelBody(presetChannel ?? ""));
+  }, [presetChannel, loadIntoEditor, resetResults]);
 
   useEffect(() => {
     if (selection === "model" && key) {
@@ -258,7 +262,7 @@ export function useModelWorkspace(
     }
     // 只在选中对象变化时执行；openDetail / enterNew 引用稳定性由各自依赖保证
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, key, draftId]);
+  }, [selection, key]);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -298,13 +302,11 @@ export function useModelWorkspace(
   /** 关闭编辑弹窗回到列表；有未保存修改时先确认 */
   const closeEditor = () => guard(() => route.close());
 
+  /** 新建模型；已经在新建时重置成空白正文 */
   const startNew = () =>
     guard(() => {
-      if (route.isNew && !draftId && !fromImport) {
-        // 已经在新建页：直接重置成空白模板
-        importRef.current = null;
-        setQueue([]);
-        loadIntoEditor(MODEL_TEMPLATES[0].body);
+      if (route.isNew) {
+        loadIntoEditor(blankModelBody(presetChannel ?? ""));
         resetResults();
         return;
       }
@@ -358,9 +360,8 @@ export function useModelWorkspace(
   /**
    * 保存配置；成功返回模型 key 与校验问题。新建的模型默认不上线，要在列表里打开「上线」开关用户才能用；
    * 已上线的模型保存即生效，校验不过会被后端拒绝。没上线的模型有校验问题也照常保存（允许存半成品），只是上线会被拦。
-   * 新建成功后：导入队列里还有草稿就接着处理下一个，否则跳到该模型的页面。
-   * closeAfter：点「保存」按钮时传 true，保存成功后直接回列表关掉弹窗（已保存，不再走放弃修改确认）；
-   * 导入队列里还有下一个草稿时仍留在弹窗里继续处理。
+   * 新建成功后跳到该模型的编辑弹窗。
+   * closeAfter：点「保存」按钮时传 true，保存成功后直接关掉弹窗回列表（已保存，不再走放弃修改确认）。
    */
   const save = async (
     silent = false,
@@ -371,12 +372,20 @@ export function useModelWorkspace(
       pushEntry({ title: "JSON 格式错误，无法保存", tone: "error", text: parsed.message });
       return null;
     }
-    const newKey = readConfigKey(parsed.value);
-    if (!newKey) {
+    // 新建时 key 由后端生成；更新时 key 就是正在编辑的模型
+    if (!isNew && !readConfigKey(parsed.value)) {
       pushEntry({
         title: "正文里缺少 key",
         tone: "error",
         text: "key 是配置的唯一标识，必须填写。",
+      });
+      return null;
+    }
+    // 红点问题（必填项没填、配置自相矛盾）不允许保存；原因已经实时显示在对应字段上
+    if (blockers.length > 0) {
+      pushEntry({
+        title: blockers[0].text,
+        tone: "error",
       });
       return null;
     }
@@ -402,42 +411,13 @@ export function useModelWorkspace(
         });
       }
       onListChangedRef.current?.();
-      const hasNextDraft = isNew && queue.length > 1;
-      if (closeAfter && !hasNextDraft) {
-        if (isNew && importRef.current)
-          updateStashedDrafts(importRef.current.id, {
-            channelKey: importRef.current.channelKey,
-            bodies: [],
-          });
-        setQueue([]);
+      if (closeAfter) {
         route.close({ replace: true });
       } else if (isNew) {
-        const rest = queue.slice(1);
-        if (queue.length > 0 && rest.length > 0) {
-          setQueue(rest);
-          if (importRef.current)
-            updateStashedDrafts(importRef.current.id, {
-              channelKey: importRef.current.channelKey,
-              bodies: rest,
-            });
-          loadIntoEditor(rest[0]);
-          pushEntry({
-            title: `已保存 ${newKey}，接着处理下一个草稿`,
-            tone: "success",
-            text: `还剩 ${rest.length} 个。`,
-          });
-        } else {
-          if (importRef.current)
-            updateStashedDrafts(importRef.current.id, {
-              channelKey: importRef.current.channelKey,
-              bodies: [],
-            });
-          setQueue([]);
-          keepResultsForRef.current = newKey;
-          route.openModel(newKey, { replace: true });
-        }
+        keepResultsForRef.current = result.key;
+        route.openModel(result.key, { replace: true });
       }
-      return { key: newKey, issues: result.issues };
+      return { key: result.key, issues: result.issues };
     } finally {
       if (aliveRef.current) setBusy(null);
     }
@@ -603,30 +583,6 @@ export function useModelWorkspace(
     }
   };
 
-  // ------------------------------------------------------------ 导入队列
-
-  /** 跳过队首草稿，处理下一个；没有下一个就回到空白模板 */
-  const skipDraft = () => {
-    const rest = queue.slice(1);
-    setQueue(rest);
-    if (importRef.current)
-      updateStashedDrafts(importRef.current.id, {
-        channelKey: importRef.current.channelKey,
-        bodies: rest,
-      });
-    loadIntoEditor(rest[0] ?? MODEL_TEMPLATES[0].body);
-  };
-
-  const discardDrafts = () => {
-    if (importRef.current)
-      updateStashedDrafts(importRef.current.id, {
-        channelKey: importRef.current.channelKey,
-        bodies: [],
-      });
-    setQueue([]);
-    loadIntoEditor(MODEL_TEMPLATES[0].body);
-  };
-
   return {
     // 选中
     selection,
@@ -656,6 +612,10 @@ export function useModelWorkspace(
     switchMode,
     epoch,
     issues,
+    checks,
+    blockers,
+    fieldIssues,
+    fieldWarnings,
     editBody,
     format,
     // 状态
@@ -684,10 +644,6 @@ export function useModelWorkspace(
     pendingNav,
     confirmNav,
     cancelNav: () => setPendingNav(null),
-    // 导入队列
-    queue,
-    skipDraft,
-    discardDrafts,
   };
 }
 

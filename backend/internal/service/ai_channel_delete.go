@@ -54,6 +54,7 @@ func (s *AIChannelService) Delete(ctx context.Context, actorID uint64, key strin
 	// 3. 审计（不含 Key）；Key 行已删，清掉本实例缓存里的明文；刷新 Registry 让渠道运行时立即消失
 	aiAudit(ctx, s.audit, actorID, model.AuditChannelDelete, model.AuditTargetChannel, key, nil)
 	s.secrets.ForgetSecret(model.ChannelSecretName(key))
+	s.secrets.ForgetSecret(model.ChannelSecretKeyName(key))
 	s.notifyChanged(ctx, "channel delete "+key)
 	return nil
 }

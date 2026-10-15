@@ -10,7 +10,7 @@
  * 渠道 base_url 填 https://visual.volcengineapi.com（不要带路径）。
  *
  * 鉴权：火山引擎 V4 签名（HMAC-SHA256，Region cn-north-1，Service cv），不是 Bearer，所以 auth 用 custom：
- *   插件读 ctx.credentials.apiKey 自己签名，渠道必须开启 allow_credentials，否则报错。
+ *   插件读 ctx.credentials.apiKey 自己签名（auth: custom 时宿主直接提供），没有拿到 Key 时报错。
  *   渠道 Key 的填写格式：AccessKeyId|SecretAccessKey（用半竖线隔开，如 AKLTxxxx|Secretxxxx）。
  *   签名的头：content-type;host;x-content-sha256;x-date；密钥逐级派生用 utils.hmacSHA256 / utils.hmacSHA256Hex。
  *   请求体的哈希要和宿主实际发出的字节一致：宿主对 json 请求体用 Go 的 json.Marshal（键按字典序、转义 < > & 等），
@@ -44,11 +44,12 @@ module.exports = {
     apiVersion: 1,
     key: "jimeng",
     name: "即梦（火山引擎）",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "volcengine",
     description: "对接火山引擎即梦视频：文生视频（V4 签名，Key 填 AccessKeyId|SecretAccessKey，异步）",
     auth: { type: "custom" },
     endpoints: {
-      video: { mode: "async" },
+      video: { mode: "async", method: "POST", path: "/?Action=CVSync2AsyncSubmitTask" },
     },
     poll: { firstDelay: 20, interval: 8, maxInterval: 20, jitter: 0.2 },
   },
@@ -179,7 +180,7 @@ function textToVideoKey(upstreamModel) {
 function signedRequest(ctx, action, body) {
   var apiKey = ctx.credentials && ctx.credentials.apiKey;
   if (!apiKey) {
-    throw new Error("即梦需要渠道开启 allow_credentials，才能拿到 AccessKeyId|SecretAccessKey 做签名");
+    throw new Error("没有拿到渠道 Key：即梦需要在渠道里填写 AccessKeyId|SecretAccessKey 做签名");
   }
   var parts = String(apiKey).split("|");
   if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {

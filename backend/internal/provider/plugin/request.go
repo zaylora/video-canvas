@@ -257,8 +257,7 @@ func (o *operation) buildAuth(d *requestDesc, b *builtRequest) error {
 }
 
 // buildHeaders 校验插件写的请求头：黑名单、与注入头同名、非法名字与换行都拒绝。
-// 例外：auth: custom 且渠道开启 allow_credentials 的插件本来就持有 Key（签名类鉴权要写 Authorization，如 JWT），
-// 允许它自己写 Authorization；这类插件本来就持有 Key（“允许插件读取 Key”由超级管理员显式开启）。
+// 例外：auth: custom 的插件本来就持有 Key（签名类鉴权要写 Authorization，如 JWT），允许它自己写 Authorization。
 func (o *operation) buildHeaders(d *requestDesc, b *builtRequest) error {
 	injected := map[string]bool{}
 	for _, a := range []pluginmeta.Auth{o.rt.Plugin.Meta.Auth, b.auth} {

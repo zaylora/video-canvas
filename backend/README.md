@@ -152,22 +152,25 @@ make run
 | -------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | GET      | /api/v1/admin/ai/me                             | admin       | 当前用户 `{user_id, role}`，前端据此隐藏写操作                                                                       |
 | GET      | /api/v1/admin/ai/stats                          | admin       | 总览页任务统计：`?days=7\|30`（默认 7），返回 `daily`（连续 `days` 天的成功 / 失败 / 其他）、`by_model`、`by_kind`；试跑不计 |
-| GET      | /api/v1/admin/ai/plugins                        | admin       | 插件与版本列表（含 meta、渠道数）                                                                                    |
+| GET      | /api/v1/admin/ai/plugins                        | admin       | 插件与版本列表（含 meta、每个版本被多少模型固定） |
 | POST     | /api/v1/admin/ai/plugins                        | super_admin | 上传插件（multipart，字段 `file`）；预检不通过也返回 200，`accepted=false` + `issues`                                |
 | PUT      | /api/v1/admin/ai/plugins/:key/enabled           | super_admin | 启停插件                                                                                                             |
 | DELETE   | /api/v1/admin/ai/plugins/:key/versions/:version | super_admin | 删除未被引用的版本（内置插件 / 仍被引用返回 409）                                                                    |
-| GET      | /api/v1/admin/ai/plugins/:key/delete-check      | super_admin | 删除预检：`{blockers:[{kind,message,refs}]}`，kind 为 `builtin_plugin` / `plugin_channels` / `active_tasks`          |
-| DELETE   | /api/v1/admin/ai/plugins/:key                   | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被渠道或进行中的任务引用 409（50005）                     |
+| GET      | /api/v1/admin/ai/plugins/:key/delete-check      | super_admin | 删除预检：`{blockers:[{kind,message,refs}]}`，kind 为 `builtin_plugin` / `plugin_models` / `active_tasks` |
+| POST     | /api/v1/admin/ai/plugins/:key/upgrade-models    | super_admin | 把协议固定在旧版本上的模型批量升到指定 / 最新版本，逐个处理、失败不中断 → `{to_version, upgraded, failed}` |
+| DELETE   | /api/v1/admin/ai/plugins/:key                   | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被模型或进行中的任务引用 409（50005） |
 | GET      | /api/v1/admin/ai/channels/loads                 | admin       | 各渠道当前的任务负载：`running`（同时生成数，对应 `max_running`）、`waiting`（排队数）；没有未完成任务的渠道不返回   |
-| GET      | /api/v1/admin/ai/channels[/:key]                | admin       | 渠道列表 / 详情（`secret_set` 只告诉有没有设置 Key）                                                                 |
-| POST     | /api/v1/admin/ai/channels                       | super_admin | 新建渠道                                                                                                             |
-| PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；改 `plugin_version` 即切换插件版本）                                                             |
-| PUT      | /api/v1/admin/ai/channels/:key/secret           | super_admin | 设置渠道 Key（只写）                                                                                                 |
-| POST     | /api/v1/admin/ai/channels/check-draft          | super_admin | 保存前检查：用表单草稿（含 Key，不落库）做连通性检查                                                                                                           |
-| POST     | /api/v1/admin/ai/channels/:key/check            | super_admin | 连通性检查                                                                                                           |
-| POST     | /api/v1/admin/ai/channels/:key/import           | admin       | 从渠道导入模型草稿（只预填，不落库）                                                                                 |
+| GET      | /api/v1/admin/ai/channels[/:key]                | admin       | 渠道列表（渠道顺序）/ 详情；`secret_set`、`secret_key_set` 只告诉有没有设置 Key |
+| POST     | /api/v1/admin/ai/channels                       | super_admin | 新建渠道：只有名称、地址、请求头、限流，**不绑协议**，保存只做字段校验 |
+| PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；`headers` 传了就整体替换） |
+| PUT      | /api/v1/admin/ai/channels/:key/secret           | super_admin | 设置渠道 API Key（只写） |
+| PUT      | /api/v1/admin/ai/channels/:key/secret-key       | super_admin | 设置 / 清除渠道 Secret Key（可选的第二凭证，空串清除，只写） |
+| POST     | /api/v1/admin/ai/channels/:key/pull-models      | admin       | 向上游拉取模型清单（`GET {base_url}/v1/models`，不落库）→ `{models:[{id,exists}],total}` |
+| POST     | /api/v1/admin/ai/channels/:key/models/import    | admin       | 把所选上游模型导入成“待配置”模型（未启用、没选协议），已有的跳过 |
+| PUT      | /api/v1/admin/ai/channels/:key/models/sort      | admin       | 调整渠道内模型顺序：`{keys}` 必须是该渠道全部模型 |
+| PUT      | /api/v1/admin/ai/channels/sort                  | super_admin | 调整渠道顺序：`{keys}` 必须是全部渠道；用户看到的模型顺序 = 渠道顺序 + 渠道内顺序 |
 | GET      | /api/v1/admin/ai/channels/:key/delete-check     | super_admin | 删除预检，kind 为 `channel_models`（refs 是模型）/ `active_tasks`                                                    |
-| DELETE   | /api/v1/admin/ai/channels/:key                  | super_admin | 删除渠道并删掉它的 Key；仍被模型（最新草稿或已发布版本）或进行中的任务引用 409（50016）                              |
+| DELETE   | /api/v1/admin/ai/channels/:key                  | super_admin | 删除渠道并删掉它的 Key 与 Secret Key；仍被模型（最新草稿或已发布版本）或进行中的任务引用 409（50016）                              |
 | GET      | /api/v1/admin/storages[/:id]                    | admin       | 存储列表 / 详情（`secret_set` 只告诉有没有设置密钥，`access_key_id` 已脱敏；带素材数、是否锁定、最近一次测试结果）   |
 | GET      | /api/v1/admin/storages/presets                  | admin       | 服务商预设：地域列表、直传方式、固定的寻址方式                                                                       |
 | POST     | /api/v1/admin/storages/test                     | super_admin | 测试一份未保存的配置（不落库），返回分步结果                                                                         |

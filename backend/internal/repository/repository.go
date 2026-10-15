@@ -25,6 +25,9 @@ var ErrDuplicate = errors.New("duplicate record")
 // ErrInUse 记录仍被引用，不能删除（如插件版本被渠道或进行中的任务使用）。
 var ErrInUse = errors.New("record in use")
 
+// ErrOrderMismatch 排序请求里的 key 列表不是现有记录的全集（重复、漏项），不写任何数据。
+var ErrOrderMismatch = errors.New("order keys mismatch")
+
 // sqlStateUniqueViolation 是 PostgreSQL 唯一约束冲突的 SQLSTATE。
 const sqlStateUniqueViolation = "23505"
 

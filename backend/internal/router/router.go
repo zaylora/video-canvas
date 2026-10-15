@@ -144,6 +144,7 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		plugins.PUT("/:key/enabled", superOnly, h.AdminPlugin.SetEnabled)
 		plugins.DELETE("/:key/versions/:version", superOnly, h.AdminPlugin.DeleteVersion)
 		plugins.GET("/:key/delete-check", superOnly, h.AdminPlugin.DeleteCheck)
+		plugins.POST("/:key/upgrade-models", superOnly, h.AdminPlugin.UpgradeModels)
 		plugins.DELETE("/:key", superOnly, h.AdminPlugin.Delete)
 
 		channels := adminAI.Group("/channels")
@@ -151,12 +152,14 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		channels.GET("/options", h.AdminCatalog.ChannelOptions)
 		channels.GET("/loads", h.AdminChannel.Loads)
 		channels.POST("", superOnly, h.AdminChannel.Create)
+		channels.PUT("/sort", superOnly, h.AdminChannel.SetOrder) // 必须在 /:key 之前：否则 "sort" 会被当成渠道 key
 		channels.GET("/:key", h.AdminChannel.Get)
 		channels.PUT("/:key", superOnly, h.AdminChannel.Update)
 		channels.PUT("/:key/secret", superOnly, h.AdminChannel.SetSecret)
-		channels.POST("/check-draft", superOnly, h.AdminChannel.CheckDraft)
-		channels.POST("/:key/check", superOnly, h.AdminChannel.Check)
-		channels.POST("/:key/import", h.AdminChannel.Import)
+		channels.PUT("/:key/secret-key", superOnly, h.AdminChannel.SetSecretKey)
+		channels.POST("/:key/pull-models", h.AdminChannel.PullModels)
+		channels.POST("/:key/models/import", h.AdminChannel.ImportModels)
+		channels.PUT("/:key/models/sort", h.AdminChannel.SetModelOrder)
 		channels.GET("/:key/delete-check", superOnly, h.AdminChannel.DeleteCheck)
 		channels.DELETE("/:key", superOnly, h.AdminChannel.Delete)
 

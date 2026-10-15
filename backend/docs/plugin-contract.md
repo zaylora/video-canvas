@@ -26,10 +26,11 @@ meta: {
   name: "Demo 视频",
   version: "1.0.0",           // semver，可以不写：上传时由服务端决定最终登记的版本号（见下）；同一 key 下唯一，登记后不可修改
   description: "...",
+  vendor: "demo",             // 可选：厂商 slug（小写字母、数字、连字符），模型弹窗的协议列表显示用
   auth: { type: "bearer" },   // none / bearer / header(需 name) / query(需 name) / custom
-  endpoints: { video: { mode: "async" } },  // 只能声明一个 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）；一个插件只管一种类型，同一平台有多种类型就拆成多个插件
-  channelSettings: { region: { type: "enum", label: "区域", options: ["cn","global"], default: "cn" } },  // 渠道上的非敏感设置，渲染成表单
-  import: { args: { } },      // 可选：“从渠道导入模型”的参数表单
+  endpoints: { video: { mode: "async", method: "POST", path: "/v1/video/generations" } },  // 只能声明一个 kind：text/video/image/audio（agent 不需要声明，见 admin-ai-api.md）；一个插件只管一种类型，同一平台有多种类型就拆成多个插件
+  channelSettings: { region: { type: "enum", label: "区域", options: ["cn","global"], default: "cn" } },  // 协议设置项：在模型的“协议设置”里填，值存在模型配置里（channels[0].protocol.settings），插件里通过 ctx.channel.settings 读取
+  import: { args: { } },      // 已弃用：渠道不再绑协议，“拉取模型”由宿主内置的通用请求完成，宿主不再调用导入钩子；旧插件里写了也不报错
   poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }   // 可选：异步轮询节奏（秒）
 }
 ```
@@ -44,7 +45,8 @@ meta: {
   - 任何 endpoint 都必须实现 `buildSubmitRequest` 与 `parseSubmitResponse`；
   - `sync` 的 `parseSubmitResponse` 必须返回 `immediate`（运行时检查，预检只检查钩子存在）。
 - 不再有 `allowedHosts`：结果文件可以放在任意公网域名，不需要声明。旧插件里写了这个字段也不报错，宿主直接忽略。
-- `channelSettings` / `import.args` 每项：`type` 是 string/number/boolean/enum；`label` 非空；`enum` 必须有非空 `options`；`default`（若有）类型匹配、enum 的 default 必须在 options 里；名字匹配 `^[A-Za-z_][A-Za-z0-9_]{0,31}$`。
+- `vendor`（可选）匹配 `^[a-z0-9][a-z0-9-]{0,63}$`；`endpoints.<kind>.method`（可选）是 GET / POST / PUT / PATCH / DELETE，`endpoints.<kind>.path`（可选）以 `/` 开头、≤200 字符。**这两项只用于管理端协议列表的展示**（“POST /v1/messages”），宿主不据此发请求；缺省时列表显示“—”。
+- `channelSettings`（协议设置项）/ `import.args`（已弃用）每项：`type` 是 string/number/boolean/enum；`label` 非空；`enum` 必须有非空 `options`；`default`（若有）类型匹配、enum 的 default 必须在 options 里；名字匹配 `^[A-Za-z_][A-Za-z0-9_]{0,31}$`。
 - `poll` 各值非负，`jitter` 在 0–1。
 - 成对钩子：实现了 `buildPrepareRequests` 必须同时实现 `parsePrepareResponses`；`buildImportRequest` 与 `parseImportResponse` 必须同时存在；导出的函数名必须是契约认识的钩子（多余的导出函数只警告不拒绝——**这里不拒绝**）。
 - 文件 ≤512KB；`meta` 编码后 ≤64KB。
@@ -77,12 +79,14 @@ meta: {
   }, // 已按模型 capabilities 校验规范化；键是 prompt、op、运营起的生成参数名，以及参考素材数组 images / videos / audios，数组每项是文件引用字符串 "input:<数组名>.<下标>"。文本模型另有 system（固定系统提示）与 max_tokens（最大输出）
   "channel": { "baseUrl": "https://...", "settings": { "region": "cn" } },
   "prepared": null, // 仅 buildSubmitRequest：准备阶段的结果
-  "credentials": { "apiKey": "..." }, // 仅当 meta.auth.type == "custom" 且渠道开启 allow_credentials；其余情况没有这个字段
+  "credentials": { "apiKey": "...", "secretKey": "..." }, // 仅当 meta.auth.type == "custom"（宿主直接提供，不再有渠道级开关）；其余情况没有这个字段。secretKey 只在渠道设置了 Secret Key 时才有
   "now": 1760000000, // Unix 秒
 }
 ```
 
-- 连通性检查 / 导入钩子的 ctx 只有 `channel`、`credentials`（同上条件）、`now`；`buildImportRequest(ctx, args)` / `parseImportResponse(ctx, resp, args)` 的 `args` 是管理端表单的取值。
+- `ctx.channel.settings` 的名字沿用（旧插件零改动），但值现在是**模型的协议设置项**（按所选版本的 `channelSettings` 校验并补默认值），不再是渠道上的设置。`ctx.channel.baseUrl` 仍是渠道地址。
+- 渠道的**自定义请求头**由宿主自动加到发往 `base_url` 同源的请求上（优先级：宿主默认 UA < 渠道自定义头 < 插件请求描述里的头 < 宿主注入的鉴权），插件不用处理，也读不到。
+- `buildCheckRequest` / `buildImportRequest` / `parseImportResponse` 已弃用：渠道不再绑协议，连通性在模型的“测试模型”里验证，拉取模型是宿主内置的 `GET {base_url}/v1/models`。预检仍然接受它们，已上传的插件不受影响，但宿主不再调用。
 - `input` 里可选的媒体字段没填就没有该键。
 
 ## 4. 请求描述（`build*` 的返回值）
@@ -151,9 +155,9 @@ meta: {
 | `parseQueryResponse(ctx, resp)`        | ctx，响应                                     | 统一结果                                                                                           |
 | `buildCancelRequest(ctx)`              | ctx                                           | 请求描述；可选，没有就走软取消                                                                     |
 | `classifyError(ctx, resp)`             | ctx，非 2xx 响应                              | `{ class, code?, message? }` 或 null；可选                                                         |
-| `buildCheckRequest(ctx)`               | ctx                                           | 请求描述（任意 2xx 算连通）；可选                                                                  |
-| `buildImportRequest(ctx, args)`        | ctx，导入参数                                 | 请求描述；可选                                                                                     |
-| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数                           | 模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
+| `buildCheckRequest(ctx)`               | ctx                                           | **已弃用**，宿主不再调用；可选                                                                  |
+| `buildImportRequest(ctx, args)`        | ctx，导入参数                                 | **已弃用**，宿主不再调用；可选                                                                                     |
+| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数                           | （已弃用）模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
 
 **提交流程**：`buildPrepareRequests`（若有且 `ctx.prepared` 还没有）→ 宿主依次执行 → `parsePrepareResponses` → 持久化 prepared → `buildSubmitRequest` → 执行 → `parseSubmitResponse`。准备请求与提交请求走同样的校验、鉴权注入、SSRF、限流。
 

@@ -966,6 +966,14 @@ func (o *operation) httpRequest(ctx context.Context, b *builtRequest) (*http.Req
 		cleanup()
 		return nil, func() {}, err
 	}
+	// 请求头优先级（低 → 高）：宿主默认 UA < 渠道自定义头 < 插件请求描述里的头 < 宿主注入的鉴权。
+	// 渠道自定义头只加到发往 base_url 同源的请求：与渠道 Key 同一条规则，第三方域名（预签名上传地址等）拿不到。
+	req.Header.Set("User-Agent", defaultUserAgent)
+	if sameOrigin(req.URL, o.base) {
+		for k, v := range o.rt.Channel.Headers {
+			req.Header.Set(k, v)
+		}
+	}
 	for k, v := range b.headers {
 		req.Header.Set(k, v)
 	}
@@ -976,7 +984,6 @@ func (o *operation) httpRequest(ctx context.Context, b *builtRequest) (*http.Req
 		cleanup()
 		return nil, func() {}, err
 	}
-	req.Header.Set("User-Agent", defaultUserAgent)
 	return req, cleanup, nil
 }
 

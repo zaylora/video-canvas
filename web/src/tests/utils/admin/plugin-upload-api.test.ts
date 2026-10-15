@@ -13,7 +13,7 @@ const version = {
   sha256: "abc",
   created_at: "",
   created_by: 1,
-  channel_count: 0,
+  model_count: 0,
   meta: null,
 };
 

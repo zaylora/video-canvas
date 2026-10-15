@@ -12,20 +12,20 @@ import {
   PageHeaderHeading,
   PageHeaderTitle,
 } from "@/components/admin-ui/page-header";
+import { ReasonTooltip } from "@/components/admin-ui/reason-tooltip";
 import { Button } from "@/components/ui/button";
 import { useAdminStore } from "@/store/admin";
-import type { PluginTab } from "@/utils/admin/channel-route";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
+import { channelsPagePath } from "@/utils/admin/channel-route";
 import { canManageInfra } from "@/utils/admin/role";
 
 import { openDeleteDialog } from "../delete-dialog";
 import { useAdminCatalogOptions } from "../../use-admin";
 import { useAdminList } from "../../use-admin-list";
 import { useDialogTarget } from "../../use-dialog-target";
-import { PluginDialog } from "./plugin-dialog";
-import { PluginTable } from "./plugin-table";
+import { PluginDialog, type PluginTab } from "./plugin-dialog";
+import { PluginTable, SUPER_ONLY } from "./plugin-table";
 import { UploadDialog } from "./upload-dialog";
-import { confirmUpgradeChannels } from "./upgrade-channels";
+import { confirmUpgradeModels } from "./upgrade-models";
 import { usePluginActions } from "./use-plugin-actions";
 
 /** 列表认的筛选参数：能力、来源、状态 */
@@ -38,7 +38,9 @@ type PluginDialogOpen = { key: string; tab?: PluginTab };
  * 插件页：表格 + 详情弹窗。弹窗开着哪个插件放在页面自己的 state 里，不进 URL
  * （进了 URL 会把类型、搜索、页码筛选冲掉）；别的页面要直达，用 dialogEntry 经路由 state 带过来。
  * 点了就先开弹窗，列表 / 目录里已有的内容先渲染，详情在后台请求，回来后换成最新的。
- * 上传、启停、升级渠道、删除版本、删除插件只对运维（canManageInfra）渲染；admin 只读。
+ * 上传、启停、升级模型、删除版本、删除插件只有运维（canManageInfra，super_admin）能做：
+ * admin 看到的是置灰的按钮并写明原因，不隐藏。
+ * 渠道不再绑协议插件，插件被哪些模型的协议用着、旧版模型有多少，都按“模型”统计。
  * 删除插件时先关详情弹窗再开删除对话框，两个弹窗不叠着。
  */
 export default function PluginsPage() {
@@ -47,19 +49,15 @@ export default function PluginsPage() {
   const canWrite = canManageInfra(role);
   const navigate = useNavigate();
   const [uploadOpen, setUploadOpen] = useState(false);
-  // 插件分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗要的全量插件和渠道在 catalog 里（options）
+  // 插件分页列表（搜索 / 筛选 / 翻页都在服务端）；弹窗头部先用的全量插件在 catalog 里（options）
   const list = useAdminList<PluginListItem>(PLUGIN_FILTERS, (query) => listPlugins(query));
-  /** 插件有改动之后：重新拉当前页，并刷新弹窗用的全量插件 */
+  /** 插件或模型协议有改动之后：重新拉当前页（行上的模型数、旧版数跟着变），并刷新全量插件 */
   const { reload: reloadList } = list;
-  const { reloadPlugins, reloadChannels } = catalog;
+  const { reloadPlugins } = catalog;
   const refresh = useCallback(async () => {
     reloadList();
     await reloadPlugins();
   }, [reloadList, reloadPlugins]);
-  const refreshChannels = useCallback(async () => {
-    reloadList(); // 行上的旧版渠道数要跟着变
-    await reloadChannels();
-  }, [reloadList, reloadChannels]);
   const { toggling, toggle } = usePluginActions({ onChanged: refresh });
 
   // 弹窗里的插件按 key 单独取，不依赖列表里有没有这一行（别页直达、翻页都不影响）
@@ -106,12 +104,12 @@ export default function PluginsPage() {
           <PageHeaderTitle>插件</PageHeaderTitle>
         </PageHeaderHeading>
         <PageHeaderActions>
-          {canWrite && (
-            <Button onClick={() => setUploadOpen(true)}>
+          <ReasonTooltip reason={canWrite ? null : SUPER_ONLY}>
+            <Button disabled={!canWrite} onClick={() => setUploadOpen(true)}>
               <Upload />
               上传插件
             </Button>
-          )}
+          </ReasonTooltip>
         </PageHeaderActions>
       </PageHeader>
 
@@ -122,14 +120,7 @@ export default function PluginsPage() {
         onOpen={(key) => setOpen({ key })}
         onUpload={() => setUploadOpen(true)}
         onToggle={toggle}
-        onUpgrade={(target) =>
-          void confirmUpgradeChannels({
-            plugin: target,
-            channels: catalog.channels,
-            plugins: catalog.plugins,
-            onDone: refreshChannels,
-          })
-        }
+        onUpgrade={(target) => void confirmUpgradeModels({ plugin: target, onDone: refresh })}
         onDelete={requestDelete}
       />
 
@@ -139,14 +130,11 @@ export default function PluginsPage() {
         summary={summary}
         detail={plugin}
         tab={open?.tab ?? "overview"}
-        plugins={catalog.plugins}
-        channels={catalog.channels}
         canWrite={canWrite}
         onChanged={async () => {
           setDetailVersion((n) => n + 1);
           await refresh();
         }}
-        onChannelsChanged={refreshChannels}
         onClose={closeDialog}
       />
 
@@ -155,9 +143,9 @@ export default function PluginsPage() {
           open={uploadOpen}
           onClose={() => setUploadOpen(false)}
           onUploaded={() => void refresh()}
-          onNextStep={(pluginKey) => {
+          onNextStep={() => {
             setUploadOpen(false);
-            navigate("/admin/ai/channels", { state: dialogEntry({ kind: "new", pluginKey }) });
+            navigate(channelsPagePath());
           }}
         />
       )}

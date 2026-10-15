@@ -15,12 +15,15 @@ import {
 } from "@/components/admin-ui/stat-card";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dayTotal, successRate, todayAndYesterday } from "@/utils/admin/overview-stats";
+import {
+  dayTotal,
+  modelHint,
+  successRate,
+  todayAndYesterday,
+  type HintTone,
+} from "@/utils/admin/overview-stats";
 
 import type { LoadStatus } from "../../use-admin";
-
-/** 说明文字的语气 */
-type HintTone = "neutral" | "warning" | "danger";
 
 const taskSparkConfig = { total: { color: "var(--chart-1)" } } satisfies ChartConfig;
 const rateSparkConfig = { rate: { color: "var(--status-success)" } } satisfies ChartConfig;
@@ -57,8 +60,8 @@ function KpiSkeleton() {
 /**
  * 总览顶部的四张关键指标卡。
  * - 今日任务、成功率来自统计接口，统计加载失败时只这两张显示“—”；在线模型、可用渠道来自配置清单，互不影响；
- * - 在线模型、可用渠道整卡可点，分别去模型页、渠道页；
- * - 状态色只出现在说明文字上：有不可用的模型显示 danger，有渠道没设 Key 显示 warning。
+ * - 在线模型、可用渠道整卡可点，都去渠道与模型主从页；
+ * - 状态色只出现在说明文字上：有不可用的模型显示 danger，有待配置的模型或没设 Key 的渠道显示 warning。
  * @param stats 当前范围的统计，加载中为 null
  * @param statsStatus 统计的加载状态
  * @param days 当前统计范围，成功率的标题要用
@@ -66,6 +69,7 @@ function KpiSkeleton() {
  * @param online 在线模型数
  * @param modelTotal 模型总数
  * @param brokenModels 已启用但实际不可用的模型数
+ * @param pendingModels 待配置的模型数（还没选能力或协议）
  * @param usableChannels 可用渠道数
  * @param channelTotal 渠道总数
  * @param noKeyChannels 还没设置 Key 的渠道数
@@ -80,6 +84,7 @@ export function KpiRow({
   online,
   modelTotal,
   brokenModels,
+  pendingModels,
   usableChannels,
   channelTotal,
   noKeyChannels,
@@ -93,6 +98,7 @@ export function KpiRow({
   online: number;
   modelTotal: number;
   brokenModels: number;
+  pendingModels: number;
   usableChannels: number;
   channelTotal: number;
   noKeyChannels: number;
@@ -112,13 +118,12 @@ export function KpiRow({
   const idle = !stats || daily.every((day) => dayTotal(day) === 0);
   const dash = <span className="text-muted-foreground">—</span>;
 
-  const modelHint: { tone: HintTone; text: string } = !modelTotal
-    ? { tone: "neutral", text: "还没有模型" }
-    : brokenModels
-      ? { tone: "danger", text: `${brokenModels} 个不可用` }
-      : modelTotal - online
-        ? { tone: "neutral", text: `${modelTotal - online} 个未上线` }
-        : { tone: "neutral", text: "全部在线" };
+  const modelCardHint = modelHint({
+    total: modelTotal,
+    online,
+    broken: brokenModels,
+    pending: pendingModels,
+  });
   const channelHint: { tone: HintTone; text: string } = !channelTotal
     ? { tone: "neutral", text: "还没有渠道" }
     : noKeyChannels
@@ -234,7 +239,7 @@ export function KpiRow({
                 <AnimatedNumber value={online} />
                 <StatCardUnit>/ {modelTotal}</StatCardUnit>
               </StatCardValue>
-              <StatCardHint tone={modelHint.tone}>{modelHint.text}</StatCardHint>
+              <StatCardHint tone={modelCardHint.tone}>{modelCardHint.text}</StatCardHint>
             </>
           )}
         </StatCard>

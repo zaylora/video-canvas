@@ -69,11 +69,13 @@ function readCaps(body: Record<string, unknown>): Capabilities {
 export function ModelParamsForm({
   body,
   issues,
+  warnings,
   epoch,
   onChange,
 }: {
   body: Record<string, unknown>;
   issues: ConfigIssue[];
+  warnings: ConfigIssue[];
   epoch: number;
   onChange: (mutate: BodyMutator) => void;
 }) {
@@ -116,6 +118,7 @@ export function ModelParamsForm({
             label="任务超时"
             htmlFor="model-deadline"
             error={deadlineError ?? issueFor(issues, "deadline")}
+            warning={issueFor(warnings, "deadline")}
           >
             <div className="flex flex-wrap items-center gap-2" id="model-deadline">
               {DEADLINES.map(([value, label]) => (

@@ -180,14 +180,14 @@ func TestAIConfigService_DeletedModelGone(t *testing.T) {
 // 渠道
 // ---------------------------------------------------------------------------
 
-// delChannelEnv 准备：渠道 kling-main 已创建（并设置了 Key）。
+// delChannelEnv 准备：渠道 main 已创建（并设置了 Key）。
 func delChannelEnv(t *testing.T) *achEnv {
 	t.Helper()
 	e := newAchEnv(t)
 	if _, err := e.svc.Create(context.Background(), createInput()); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.SetSecret(context.Background(), 5, "kling-main", "sk-main"); err != nil {
+	if err := e.svc.SetSecret(context.Background(), 5, "main", "sk-main"); err != nil {
 		t.Fatal(err)
 	}
 	return e
@@ -215,16 +215,16 @@ func TestAIChannelService_CheckDelete(t *testing.T) {
 		kinds    []string
 	}{
 		{"渠道不存在返回 50011", "ghost", nil, errcode.ErrChannelNotFound.Code, nil},
-		{"没有引用：空数组", "kling-main", nil, 0, []string{}},
-		{"被模型引用：channel_models", "kling-main", func(t *testing.T, e *achEnv) {
-			delSaveModel(t, e, "m1", "可灵 2", "kling-main")
+		{"没有引用：空数组", "main", nil, 0, []string{}},
+		{"被模型引用：channel_models", "main", func(t *testing.T, e *achEnv) {
+			delSaveModel(t, e, "m1", "可灵 2", "main")
 		}, 0, []string{model.BlockerChannelModels}},
-		{"被进行中的任务引用：active_tasks", "kling-main", func(_ *testing.T, e *achEnv) {
-			e.repo.ChannelTaskRefs["kling-main"] = 2
+		{"被进行中的任务引用：active_tasks", "main", func(_ *testing.T, e *achEnv) {
+			e.repo.ChannelTaskRefs["main"] = 2
 		}, 0, []string{model.BlockerActiveTasks}},
-		{"两者都有：模型在前，任务在后", "kling-main", func(t *testing.T, e *achEnv) {
-			delSaveModel(t, e, "m1", "", "kling-main")
-			e.repo.ChannelTaskRefs["kling-main"] = 1
+		{"两者都有：模型在前，任务在后", "main", func(t *testing.T, e *achEnv) {
+			delSaveModel(t, e, "m1", "", "main")
+			e.repo.ChannelTaskRefs["main"] = 1
 		}, 0, []string{model.BlockerChannelModels, model.BlockerActiveTasks}},
 	}
 	for _, tt := range tests {
@@ -243,11 +243,11 @@ func TestAIChannelService_CheckDelete(t *testing.T) {
 
 	t.Run("refs 列出模型 key 与展示名，没有 label 用 key；文案带数量", func(t *testing.T) {
 		e := delChannelEnv(t)
-		delSaveModel(t, e, "m1", "可灵 2", "kling-main")
-		delSaveModel(t, e, "m2", "", "kling-main")
+		delSaveModel(t, e, "m1", "可灵 2", "main")
+		delSaveModel(t, e, "m2", "", "main")
 		delSaveModel(t, e, "m3", "别的", "other")
-		e.repo.ChannelTaskRefs["kling-main"] = 3
-		res, err := e.svc.CheckDelete(ctx, "kling-main")
+		e.repo.ChannelTaskRefs["main"] = 3
+		res, err := e.svc.CheckDelete(ctx, "main")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,16 +271,16 @@ func TestAIChannelService_Delete(t *testing.T) {
 		wantMsg  string
 	}{
 		{"渠道不存在返回 50011", "ghost", nil, errcode.ErrChannelNotFound.Code, ""},
-		{"被模型引用返回 50016，文案带数量", "kling-main", func(t *testing.T, e *achEnv) {
-			delSaveModel(t, e, "m1", "", "kling-main")
+		{"被模型引用返回 50016，文案带数量", "main", func(t *testing.T, e *achEnv) {
+			delSaveModel(t, e, "m1", "", "main")
 		}, errcode.ErrChannelInUse.Code, "被 1 个模型、0 个进行中的任务使用"},
-		{"被进行中的任务引用返回 50016", "kling-main", func(_ *testing.T, e *achEnv) {
-			e.repo.ChannelTaskRefs["kling-main"] = 4
+		{"被进行中的任务引用返回 50016", "main", func(_ *testing.T, e *achEnv) {
+			e.repo.ChannelTaskRefs["main"] = 4
 		}, errcode.ErrChannelInUse.Code, "0 个模型、4 个进行中的任务"},
-		{"预检之后被并发引用：事务内复查返回 50016", "kling-main", func(_ *testing.T, e *achEnv) {
+		{"预检之后被并发引用：事务内复查返回 50016", "main", func(_ *testing.T, e *achEnv) {
 			e.repo.DeleteInUse = true
 		}, errcode.ErrChannelInUse.Code, ""},
-		{"没有引用：删除成功", "kling-main", nil, 0, ""},
+		{"没有引用：删除成功", "main", nil, 0, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -298,23 +298,23 @@ func TestAIChannelService_Delete(t *testing.T) {
 				if len(e.repo.Audits) != auditsBefore || len(e.notifier.Reasons) != notifyBefore {
 					t.Fatal("删除失败不应写审计或刷新 Registry")
 				}
-				if _, ok := e.repo.Channels["kling-main"]; !ok && tt.key == "kling-main" {
+				if _, ok := e.repo.Channels["main"]; !ok && tt.key == "main" {
 					t.Fatal("删除失败时渠道应保留")
 				}
 				return
 			}
-			if _, ok := e.repo.Channels["kling-main"]; ok {
+			if _, ok := e.repo.Channels["main"]; ok {
 				t.Fatal("渠道应已删除")
 			}
-			if _, ok := e.repo.Secrets[model.ChannelSecretName("kling-main")]; ok {
+			if _, ok := e.repo.Secrets[model.ChannelSecretName("main")]; ok {
 				t.Fatal("渠道 Key 应一并删除")
 			}
 			// 本实例缓存里的明文也要清掉
-			if _, err := e.cfg.Get(ctx, model.ChannelSecretName("kling-main")); !errors.Is(err, ErrAISecretNotSet) {
+			if _, err := e.cfg.Get(ctx, model.ChannelSecretName("main")); !errors.Is(err, ErrAISecretNotSet) {
 				t.Fatalf("删除后不应还能取到 Key：%v", err)
 			}
 			last := e.repo.Audits[len(e.repo.Audits)-1]
-			if last.Action != model.AuditChannelDelete || last.ActorID != 8 || last.TargetKey != "kling-main" || last.TargetType != model.AuditTargetChannel {
+			if last.Action != model.AuditChannelDelete || last.ActorID != 8 || last.TargetKey != "main" || last.TargetType != model.AuditTargetChannel {
 				t.Fatalf("审计不符合预期：%+v", last)
 			}
 			if len(e.notifier.Reasons) != notifyBefore+1 {
@@ -325,14 +325,14 @@ func TestAIChannelService_Delete(t *testing.T) {
 
 	t.Run("已删除模型的引用不算", func(t *testing.T) {
 		e := delChannelEnv(t)
-		delSaveModel(t, e, "m1", "", "kling-main")
+		delSaveModel(t, e, "m1", "", "main")
 		if err := e.cfg.SetModelEnabled(ctx, "m1", false, 1); err != nil {
 			t.Fatal(err)
 		}
 		if err := e.cfg.DeleteModel(ctx, "m1", 1); err != nil {
 			t.Fatal(err)
 		}
-		adminWantCode(t, e.svc.Delete(ctx, 8, "kling-main"), 0)
+		adminWantCode(t, e.svc.Delete(ctx, 8, "main"), 0)
 	})
 }
 
@@ -362,21 +362,20 @@ func TestAIPluginService_CheckDelete(t *testing.T) {
 		{"插件不存在返回 50001", "ghost", nil, errcode.ErrPluginNotFound.Code, nil},
 		{"没有引用：空数组", "kling", nil, 0, []string{}},
 		{"内置插件：builtin_plugin", "core", nil, 0, []string{model.BlockerBuiltinPlugin}},
-		{"任一版本被渠道固定：plugin_channels", "kling", func(e *aplEnv, _, v2 uint64) {
-			e.repo.Channels["c2"] = &model.AIChannel{Key: "c2", Name: "渠道二", PluginKey: "kling", PluginVersionID: v2}
-		}, 0, []string{model.BlockerPluginChannels}},
+		{"任一版本被模型的协议固定：plugin_models", "kling", func(e *aplEnv, _, _ uint64) {
+			adminSeedModel(t, e.repo, "m2", "kling", "1.1.0", "")
+		}, 0, []string{model.BlockerPluginModels}},
 		{"任一版本被进行中的任务引用：active_tasks", "kling", func(e *aplEnv, v1, _ uint64) {
 			e.repo.ActiveTaskRefs[v1] = 2
 		}, 0, []string{model.BlockerActiveTasks}},
-		{"全都有：内置 → 渠道 → 任务", "core", func(e *aplEnv, _, _ uint64) {
-			id := e.repo.Versions
-			for vid, v := range id {
+		{"全都有：内置 → 模型 → 任务", "core", func(e *aplEnv, _, _ uint64) {
+			adminSeedModel(t, e.repo, "mc", "core", "1.0.0", "")
+			for vid, v := range e.repo.Versions {
 				if v.PluginKey == "core" {
-					e.repo.Channels["cc"] = &model.AIChannel{Key: "cc", Name: "核心", PluginKey: "core", PluginVersionID: vid}
 					e.repo.ActiveTaskRefs[vid] = 1
 				}
 			}
-		}, 0, []string{model.BlockerBuiltinPlugin, model.BlockerPluginChannels, model.BlockerActiveTasks}},
+		}, 0, []string{model.BlockerBuiltinPlugin, model.BlockerPluginModels, model.BlockerActiveTasks}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -392,20 +391,20 @@ func TestAIPluginService_CheckDelete(t *testing.T) {
 		})
 	}
 
-	t.Run("refs 列出渠道 key 与名称，文案带数量", func(t *testing.T) {
+	t.Run("refs 列出模型 key 与展示名，文案带数量", func(t *testing.T) {
 		e, v1, v2 := delPluginEnv(t)
-		e.repo.Channels["c2"] = &model.AIChannel{Key: "c2", Name: "渠道二", PluginKey: "kling", PluginVersionID: v2}
-		e.repo.Channels["c1"] = &model.AIChannel{Key: "c1", Name: "渠道一", PluginKey: "kling", PluginVersionID: v1}
+		adminSeedModel(t, e.repo, "m2", "kling", "1.1.0", "")
+		adminSeedModel(t, e.repo, "m1", "kling", "1.0.0", "")
 		e.repo.ActiveTaskRefs[v1], e.repo.ActiveTaskRefs[v2] = 2, 3
 		res, err := e.svc.CheckDelete(ctx, "kling")
 		if err != nil {
 			t.Fatal(err)
 		}
 		refs := res.Blockers[0].Refs
-		if len(refs) != 2 || refs[0] != (model.DeleteRef{Key: "c1", Name: "渠道一"}) || refs[1] != (model.DeleteRef{Key: "c2", Name: "渠道二"}) {
+		if len(refs) != 2 || refs[0] != (model.DeleteRef{Key: "m1", Name: "模型-m1"}) || refs[1] != (model.DeleteRef{Key: "m2", Name: "模型-m2"}) {
 			t.Fatalf("refs 不符合预期：%+v", refs)
 		}
-		if res.Blockers[0].Message != "2 个渠道在用这个插件" || res.Blockers[1].Message != "5 个进行中的任务在用这个插件" {
+		if res.Blockers[0].Message != "2 个模型在用这个插件" || res.Blockers[1].Message != "5 个进行中的任务在用这个插件" {
 			t.Fatalf("文案不符合预期：%+v", res.Blockers)
 		}
 	})
@@ -422,12 +421,12 @@ func TestAIPluginService_Delete(t *testing.T) {
 	}{
 		{"插件不存在返回 50001", "ghost", nil, errcode.ErrPluginNotFound.Code, ""},
 		{"内置插件返回 50008", "core", nil, errcode.ErrPluginBuiltinDel.Code, "内置插件不能删除，只能停用"},
-		{"版本被渠道固定返回 50005，文案带数量", "kling", func(e *aplEnv, v1, _ uint64) {
-			e.repo.Channels["c1"] = &model.AIChannel{Key: "c1", Name: "渠道一", PluginKey: "kling", PluginVersionID: v1}
-		}, errcode.ErrPluginInUse.Code, "被 1 个渠道、0 个进行中的任务使用"},
+		{"版本被模型的协议固定返回 50005，文案带数量", "kling", func(e *aplEnv, _, _ uint64) {
+			adminSeedModel(t, e.repo, "m1", "kling", "1.0.0", "")
+		}, errcode.ErrPluginInUse.Code, "被 1 个模型、0 个进行中的任务使用"},
 		{"版本被进行中的任务引用返回 50005", "kling", func(e *aplEnv, _, v2 uint64) {
 			e.repo.ActiveTaskRefs[v2] = 6
-		}, errcode.ErrPluginInUse.Code, "0 个渠道、6 个进行中的任务"},
+		}, errcode.ErrPluginInUse.Code, "0 个模型、6 个进行中的任务"},
 		{"预检之后被并发引用：事务内复查返回 50005", "kling", func(e *aplEnv, _, _ uint64) {
 			e.repo.DeleteInUse = true
 		}, errcode.ErrPluginInUse.Code, ""},

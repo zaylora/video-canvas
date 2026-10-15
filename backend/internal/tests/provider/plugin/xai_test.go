@@ -148,7 +148,7 @@ func xaiURL(t *testing.T, v any) string {
 
 func TestXaiPrecheckAndMeta(t *testing.T) {
 	env := newXaiEnv(t)
-	if env.meta.Key != "xai" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
+	if env.meta.Key != "xai" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthBearer {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {

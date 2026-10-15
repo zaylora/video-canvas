@@ -7,10 +7,7 @@ import type {
   AdminPage,
   AdminStats,
   AdminStatsDays,
-  ChannelCheckDraftRequest,
-  ChannelCheckResult,
   ChannelCreateRequest,
-  ChannelImportResult,
   ChannelListItem,
   ChannelOption,
   ChannelUpdateRequest,
@@ -20,6 +17,7 @@ import type {
   ConfigListItem,
   DeleteCheckResult,
   DeleteTarget,
+  ImportModelsResult,
   ListChannelsParams,
   ListModelsParams,
   ListPluginsParams,
@@ -27,8 +25,10 @@ import type {
   PluginListItem,
   PluginUploadResult,
   PluginView,
+  PullModelsResult,
   SaveModelResult,
   TestRunTrace,
+  UpgradeModelsResult,
   ValidateResult,
 } from "./type";
 
@@ -88,7 +88,7 @@ const withVersions = <T extends PluginView>(item: T): T => ({
 });
 
 /**
- * 插件分页列表（后端分页）；每行带版本、渠道数、旧版渠道数、在线模型数
+ * 插件分页列表（后端分页）；每行带版本、模型数、旧版模型数、在线模型数
  * @param params 搜索词、能力、来源、状态与分页
  * @returns 当前页插件与命中总数
  */
@@ -103,7 +103,7 @@ export const listPlugins = async (
 };
 
 /**
- * 全部插件（带全部版本和 meta，不分页）：渠道弹窗选插件 / 版本、渲染设置项用
+ * 全部插件（带全部版本和 meta，不分页）：模型弹窗的协议列表、协议设置项表单用
  * @returns 插件列表；versions 缺失时补成空数组
  */
 export const listPluginOptions = async (): Promise<PluginView[]> =>
@@ -144,12 +144,33 @@ export const setPluginEnabled = (key: string, enabled: boolean) =>
   service.put<unknown>(ep.pluginEnabled(key), { enabled });
 
 /**
- * 删除插件版本（super_admin）；被渠道或进行中的任务引用时 409
+ * 删除插件版本（super_admin）；被模型或进行中的任务引用时 409
  * @param key 插件 key
  * @param version semver 版本号
  */
 export const deletePluginVersion = (key: string, version: string) =>
   service.delete<unknown>(ep.pluginVersion(key, version));
+
+/**
+ * 批量把协议固定在该插件旧版本上的模型升到指定版本（super_admin）；逐个处理，失败不中断
+ * @param key 插件 key
+ * @param version 目标版本；不传升到最新版本
+ * @returns 升级成功与失败的模型
+ */
+export const upgradePluginModels = async (
+  key: string,
+  version?: string,
+): Promise<UpgradeModelsResult> => {
+  const result = await service.post<UpgradeModelsResult | null>(
+    ep.pluginUpgradeModels(key),
+    version ? { version } : {},
+  );
+  return {
+    to_version: result?.to_version ?? version ?? "",
+    upgraded: result?.upgraded ?? [],
+    failed: result?.failed ?? [],
+  };
+};
 
 // ---------------------------------------------------------------- 删除
 
@@ -173,7 +194,7 @@ export const checkDelete = async (
 };
 
 /**
- * 删除插件（整个，含全部版本）/ 渠道（连同 Key）/ 模型（连同全部历史版本，彻底删除）；仍被引用时 409
+ * 删除插件（整个，含全部版本）/ 渠道（连同 Key 与 Secret Key）/ 模型（连同全部历史版本，彻底删除）；仍被引用时 409
  * @param target 插件 / 渠道 / 模型
  * @param key 对象 key
  */
@@ -183,8 +204,8 @@ export const deleteTarget = (target: DeleteTarget, key: string) =>
 // ---------------------------------------------------------------- 渠道
 
 /**
- * 渠道分页列表（后端分页）；每行带健康状态、可升级版本、能力和模型数
- * @param params 搜索词、能力、插件、状态与分页
+ * 渠道分页列表（后端分页，渠道顺序）；每行带健康状态和模型数
+ * @param params 搜索词、状态与分页
  * @returns 当前页渠道与命中总数
  */
 export const listChannels = async (
@@ -196,7 +217,7 @@ export const listChannels = async (
   );
 
 /**
- * 全部渠道（带健康状态，不分页）：模型弹窗选渠道、批量迁移、导入、升级、概览用
+ * 全部渠道（带健康状态，不分页，渠道顺序）：主从页左栏、模型弹窗选渠道、概览用
  * @returns 渠道列表
  */
 export const listChannelOptions = async (): Promise<ChannelOption[]> =>
@@ -239,7 +260,7 @@ export const updateChannel = (key: string, data: ChannelUpdateRequest) =>
   service.put<ChannelView>(ep.channel(key), data);
 
 /**
- * 设置渠道 Key（super_admin）；只写，设置后任何接口都读不回明文
+ * 设置渠道 API Key（super_admin）；只写，设置后任何接口都读不回明文
  * @param key 渠道 key
  * @param value Key 明文
  */
@@ -247,33 +268,52 @@ export const setChannelSecret = (key: string, value: string) =>
   service.put<unknown>(ep.channelSecret(key), { value });
 
 /**
- * 连通性检查（super_admin）
+ * 设置或清除渠道 Secret Key（super_admin）：可选的第二凭证，供 AK/SK 签名类协议用；只写
  * @param key 渠道 key
- * @returns 是否连通、说明与耗时
+ * @param value Secret Key 明文；空串表示清除
  */
-export const checkChannel = (key: string) =>
-  service.post<ChannelCheckResult>(ep.channelCheck(key), undefined);
+export const setChannelSecretKey = (key: string, value: string) =>
+  service.put<unknown>(ep.channelSecretKey(key), { value });
 
 /**
- * 保存前的连通性检查（super_admin）：用表单里还没保存的地址、插件版本、设置与 Key 检查，不落库
- * @param body 渠道草稿；编辑已有渠道时带 existing_key，Key 留空则用已保存的
- * @returns 是否连通、说明与耗时
+ * 调整渠道顺序（super_admin）：keys 必须恰好是全部渠道的 key
+ * @param keys 全部渠道的新顺序
  */
-export const checkChannelDraft = (body: ChannelCheckDraftRequest) =>
-  service.post<ChannelCheckResult>(ep.channelCheckDraft(), body);
+export const setChannelOrder = (keys: string[]) => service.put<unknown>(ep.channelSort(), { keys });
 
 /**
- * 从渠道导入模型草稿（admin 也能调）；只预填编辑器，不落库
+ * 调整渠道内模型的顺序（admin 也能调）：keys 必须恰好是该渠道下全部模型的 key
  * @param key 渠道 key
- * @param args 按插件 meta.import.args 填的参数
- * @returns 草稿列表
+ * @param keys 该渠道下全部模型的新顺序
  */
-export const importFromChannel = async (
+export const setChannelModelOrder = (key: string, keys: string[]) =>
+  service.put<unknown>(ep.channelModelSort(key), { keys });
+
+/**
+ * 向上游拉取模型清单（admin 也能调）：宿主内置的通用请求，不落库
+ * @param key 渠道 key
+ * @returns 上游返回的模型，exists 标出渠道下已有的
+ */
+export const pullChannelModels = async (key: string): Promise<PullModelsResult> => {
+  const result = await service.post<PullModelsResult | null>(ep.channelPullModels(key), undefined);
+  const models = result?.models ?? [];
+  return { models, total: result?.total ?? models.length };
+};
+
+/**
+ * 把所选的上游模型导入成“待配置”模型（admin 也能调）；渠道下已有的跳过
+ * @param key 渠道 key
+ * @param ids 要导入的上游模型 id
+ * @returns 新建与跳过的模型
+ */
+export const importChannelModels = async (
   key: string,
-  args: Record<string, unknown>,
-): Promise<ChannelImportResult> => {
-  const result = await service.post<ChannelImportResult | null>(ep.channelImport(key), { args });
-  return { drafts: result?.drafts ?? [] };
+  ids: string[],
+): Promise<ImportModelsResult> => {
+  const result = await service.post<ImportModelsResult | null>(ep.channelImportModels(key), {
+    ids,
+  });
+  return { created: result?.created ?? [], skipped: result?.skipped ?? [] };
 };
 
 // ---------------------------------------------------------------- 模型

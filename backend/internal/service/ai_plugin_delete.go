@@ -11,7 +11,7 @@ import (
 )
 
 // CheckDelete 删除预检：返回阻断删除整个插件的原因（blockers 为空数组表示可以删）。插件不存在返回 ErrPluginNotFound。
-// 阻断原因：内置插件（builtin_plugin）、任一版本被渠道固定（plugin_channels，列出渠道 key 与名称）、
+// 阻断原因：内置插件（builtin_plugin）、任一版本被模型固定（plugin_models，列出模型 key 与展示名）、
 // 任一版本被进行中的任务引用（active_tasks）。结果只给界面展示，真正能否删除以 Delete 在事务内的判断为准。
 func (s *AIPluginService) CheckDelete(ctx context.Context, key string) (*model.DeleteCheck, error) {
 	// 1. 插件必须存在
@@ -42,7 +42,7 @@ func (s *AIPluginService) CheckDelete(ctx context.Context, key string) (*model.D
 }
 
 // Delete 硬删除整个插件（全部版本 + 插件行）。内置插件不能删（ErrPluginBuiltinDel，409，只能停用）；
-// 任一版本仍被渠道固定或被非终态任务的快照引用返回 ErrPluginInUse（409，文案带数量）；插件不存在返回 ErrPluginNotFound。
+// 任一版本仍被模型固定或被非终态任务的快照引用返回 ErrPluginInUse（409，文案带数量）；插件不存在返回 ErrPluginNotFound。
 // 删除后写审计（记全部版本号与 sha256，出问题时能对上号）。
 func (s *AIPluginService) Delete(ctx context.Context, actorID uint64, key string) error {
 	// 1. 插件必须存在；内置插件一律拒绝：它们随发版登记，删了下次启动又会回来，只会造成困惑
@@ -72,7 +72,7 @@ func (s *AIPluginService) Delete(ctx context.Context, actorID uint64, key string
 	if err != nil {
 		return err
 	}
-	// 4. 删除；并发情况下被新渠道 / 新任务引用时仓储返回 ErrInUse 与当时的引用
+	// 4. 删除；并发情况下被新模型 / 新任务引用时仓储返回 ErrInUse 与当时的引用
 	refs, err = s.repo.DeletePlugin(ctx, key)
 	if errors.Is(err, repository.ErrInUse) {
 		return pluginInUse(key, refs)
@@ -83,8 +83,8 @@ func (s *AIPluginService) Delete(ctx context.Context, actorID uint64, key string
 	if err != nil {
 		return err
 	}
-	// 5. 审计。不刷新 Registry：没有渠道固定在它的版本上，Registry 里不会有依赖它的运行时；
-	//    runner 里按 sha256 装载过的代码也不用清理（与删除单个版本一致），没有渠道再引用它就不会再被调用
+	// 5. 审计。不刷新 Registry：没有模型固定在它的版本上，Registry 里不会有依赖它的运行时；
+	//    runner 里按 sha256 装载过的代码也不用清理（与删除单个版本一致），没有模型再引用它就不会再被调用
 	vers := make([]map[string]any, 0, len(versions))
 	for _, v := range versions {
 		vers = append(vers, map[string]any{"version": v.Version, "sha256": v.SHA256})
@@ -96,13 +96,17 @@ func (s *AIPluginService) Delete(ctx context.Context, actorID uint64, key string
 // pluginBlockers 把插件的引用情况转成阻断原因列表（永不为 nil）。
 func pluginBlockers(refs repository.PluginRefs) []model.DeleteBlocker {
 	out := []model.DeleteBlocker{}
-	if len(refs.Channels) > 0 {
-		list := make([]model.DeleteRef, 0, len(refs.Channels))
-		for _, ch := range refs.Channels {
-			list = append(list, model.DeleteRef{Key: ch.Key, Name: ch.Name})
+	if len(refs.Models) > 0 {
+		list := make([]model.DeleteRef, 0, len(refs.Models))
+		for _, m := range refs.Models {
+			name := m.Label
+			if name == "" {
+				name = m.Key
+			}
+			list = append(list, model.DeleteRef{Key: m.Key, Name: name})
 		}
 		out = append(out, model.DeleteBlocker{
-			Kind: model.BlockerPluginChannels, Message: fmt.Sprintf("%d 个渠道在用这个插件", len(refs.Channels)), Refs: list,
+			Kind: model.BlockerPluginModels, Message: fmt.Sprintf("%d 个模型在用这个插件", len(refs.Models)), Refs: list,
 		})
 	}
 	if refs.ActiveTasks > 0 {
@@ -113,8 +117,8 @@ func pluginBlockers(refs repository.PluginRefs) []model.DeleteBlocker {
 	return out
 }
 
-// pluginInUse 生成“插件仍被引用”的 409（复用 ErrPluginInUse 的错误码），文案带渠道数与任务数。
+// pluginInUse 生成“插件仍被引用”的 409（复用 ErrPluginInUse 的错误码），文案带模型数与任务数。
 func pluginInUse(key string, refs repository.PluginRefs) error {
-	return errcode.ErrPluginInUse.WithMsg(fmt.Sprintf("插件 %s 被 %d 个渠道、%d 个进行中的任务使用，无法删除",
-		key, len(refs.Channels), refs.ActiveTasks))
+	return errcode.ErrPluginInUse.WithMsg(fmt.Sprintf("插件 %s 被 %d 个模型、%d 个进行中的任务使用，无法删除",
+		key, len(refs.Models), refs.ActiveTasks))
 }

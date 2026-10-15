@@ -313,3 +313,38 @@ type SaveGeneratedInput struct {
 type AssetSaver interface {
 	SaveGenerated(ctx context.Context, in SaveGeneratedInput) (*model.Asset, string, error)
 }
+
+// 拉取上游模型的限制：响应体与模型数的上限，防止异常上游把内存撑爆；超时由宿主定。
+const (
+	MaxPullBodyBytes = 4 << 20 // 响应体 ≤4MB
+	MaxPullModels    = 2000    // 模型数 ≤2000
+)
+
+// PullReason 是拉取上游模型失败的原因分类，管理端据此给出下一步建议。
+type PullReason string
+
+// 拉取失败原因。
+const (
+	PullUnreachable  PullReason = "unreachable"  // 连不上：地址不可达、超时、被 SSRF 防护拦截
+	PullUnauthorized PullReason = "unauthorized" // 401 / 403：Key 无效或无权限
+	PullStatus       PullReason = "status"       // 其他非 2xx，常见于上游没有 /v1/models
+	PullFormat       PullReason = "format"       // 响应不是 OpenAI 形状的模型列表
+	PullTooLarge     PullReason = "too_large"    // 响应体或模型数超过上限
+)
+
+// PullError 是拉取上游模型失败；Message 已脱敏，不含 Key 明文。
+type PullError struct {
+	Reason  PullReason
+	Status  int // 上游的 HTTP 状态码，没有为 0
+	Message string
+}
+
+// Error 实现 error。
+func (e *PullError) Error() string { return e.Message }
+
+// ModelLister 向渠道的上游请求模型清单（通用的 GET {base_url}/v1/models，渠道 API Key 作 Bearer），
+// 不经过协议插件：渠道不绑协议，所以拉取是宿主内置的能力。由插件宿主（provider/plugin）实现。
+type ModelLister interface {
+	// ListUpstreamModels 返回上游模型 id（去重、保持上游顺序）；失败返回 *PullError。
+	ListUpstreamModels(ctx context.Context, ch ChannelSnapshot, apiKey string) ([]string, error)
+}

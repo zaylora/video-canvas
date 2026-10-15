@@ -1,173 +1,226 @@
 import type {
-  ChannelCheckDraftRequest,
   ChannelCreateRequest,
   ChannelRateLimit,
   ChannelUpdateRequest,
   ChannelView,
-  PluginView,
 } from "@/api/admin/ai/type";
-import { findPluginVersion } from "./plugin";
-import {
-  initialSettingValues,
-  settingFields,
-  validateSettingValues,
-  type SettingField,
-  type SettingFormValues,
-} from "./settings-form";
 
-/** 渠道 key 格式（与后端一致） */
-export const CHANNEL_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+/** 自定义请求头最多几条（与后端一致） */
+export const MAX_CHANNEL_HEADERS = 32;
+
+/** 请求头值最长字符数（与后端一致） */
+const MAX_HEADER_VALUE = 1024;
+
+/** 宿主独占或属于敏感头、不允许设置的请求头（小写，与后端一致） */
+const FORBIDDEN_HEADERS: ReadonlySet<string> = new Set([
+  "host",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "upgrade",
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+]);
+
+/** HTTP 头名称允许的字符（RFC 7230 token） */
+const HEADER_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+/** 文本里有没有控制字符（含换行、制表符、DEL） */
+const hasControlChar = (text: string) =>
+  [...text].some((char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  });
+
+/** 请求头编辑器里的一行 */
+export type HeaderRow = {
+  /** 请求头名称 */
+  name: string;
+  /** 请求头值（明文存储，不要放密钥） */
+  value: string;
+};
 
 /** 渠道编辑表单；数字输入框存原始文本 */
 export type ChannelFormState = {
-  key: string;
+  /** 显示名 */
   name: string;
-  pluginKey: string;
-  pluginVersion: string;
+  /** 上游 Base URL */
   baseUrl: string;
-  allowCredentials: boolean;
+  /** 自定义请求头，逐行 */
+  headers: HeaderRow[];
+  /** 是否启用 */
   enabled: boolean;
+  /** 每秒请求数，空表示不限 */
   rps: string;
+  /** 最大同时请求数，空表示不限 */
   maxConcurrency: string;
+  /** 最大同时生成数，空表示不限 */
   maxRunning: string;
-  settings: SettingFormValues;
 };
 
-/** 新建渠道的空表单：默认选第一个启用的插件的最新版本 */
-export function emptyChannelForm(plugins: readonly PluginView[]): ChannelFormState {
-  const plugin = plugins.find((item) => item.enabled && (item.versions ?? []).length > 0);
+/** 新建渠道的空表单 */
+export function emptyChannelForm(): ChannelFormState {
   return {
-    key: "",
     name: "",
-    pluginKey: plugin?.key ?? "",
-    pluginVersion: plugin?.versions?.[0]?.version ?? "",
-    baseUrl: "https://",
-    allowCredentials: false,
+    baseUrl: "",
+    headers: [],
     enabled: true,
     rps: "",
     maxConcurrency: "",
     maxRunning: "",
-    settings: {},
   };
 }
 
 const numText = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? String(value) : "";
 
-/** 渠道视图 → 编辑表单 */
-export function channelFormFromView(view: ChannelView, fields: SettingField[]): ChannelFormState {
+/**
+ * 渠道视图 → 编辑表单
+ * @param view 渠道视图
+ */
+export function channelFormFromView(view: ChannelView): ChannelFormState {
   return {
-    key: view.key,
     name: view.name ?? "",
-    pluginKey: view.plugin_key ?? "",
-    pluginVersion: view.plugin_version ?? "",
     baseUrl: view.base_url ?? "",
-    allowCredentials: !!view.allow_credentials,
+    headers: Object.entries(view.headers ?? {}).map(([name, value]) => ({ name, value })),
     enabled: !!view.enabled,
     rps: numText(view.rate_limit?.rps),
     maxConcurrency: numText(view.rate_limit?.max_concurrency),
     maxRunning: numText(view.rate_limit?.max_running),
-    settings: initialSettingValues(fields, view.settings),
   };
 }
 
-/** 换了插件版本、设置项声明变了：同名字段的取值尽量带过去，其余用新声明的默认值 */
-export function rebaseSettings(
-  oldFields: SettingField[],
-  oldValues: SettingFormValues,
-  newFields: SettingField[],
-): SettingFormValues {
-  return initialSettingValues(newFields, validateSettingValues(oldFields, oldValues).values);
-}
-
-/** base_url：http/https、有主机、不带用户名密码；通过返回 null */
+/**
+ * Base URL：http/https、有主机、不带用户名密码、不带查询参数与片段（与后端一致）；通过返回 null
+ * @param raw 输入框原文
+ */
 export function checkBaseUrl(raw: string): string | null {
   const text = raw.trim();
-  if (!text) return "请填写 base_url";
+  if (!text) return "请填写 Base URL";
   let url: URL;
   try {
     url = new URL(text);
   } catch {
-    return "base_url 不是合法的地址";
+    return "Base URL 不是合法的地址";
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return "base_url 只能是 http 或 https";
-  if (!url.hostname) return "base_url 缺少主机名";
-  if (url.username || url.password) return "base_url 不能包含用户名或密码";
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "Base URL 只能是 http 或 https";
+  if (!url.hostname) return "Base URL 缺少主机名";
+  if (url.username || url.password) return "Base URL 不能包含用户名或密码";
+  if (url.search || url.hash || text.includes("?") || text.includes("#"))
+    return "Base URL 不能带查询参数或片段";
   return null;
 }
 
-function parseLimit(text: string, label: string): { value: number } | { error: string } {
+/**
+ * 请求头预校验，规则与后端一致：≤32 条；名称是合法 token、不区分大小写不得重复、
+ * 禁用 Host / Authorization / Cookie 等；值 ≤1024 字符且无换行与控制字符。名称和值都为空的行忽略。
+ * @param rows 编辑器里的行
+ * @returns 错误表：`headers.<行号>` 是该行的问题，`headers` 是整体问题（条数）；没有问题为空对象
+ */
+export function checkHeaders(rows: readonly HeaderRow[]): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const seen = new Set<string>();
+  let count = 0;
+  rows.forEach((row, index) => {
+    const name = row.name.trim();
+    if (!name && !row.value.trim()) return;
+    count += 1;
+    const fail = (message: string) => {
+      errors[`headers.${index}`] ??= message;
+    };
+    if (!name) return fail("请填写请求头名称");
+    if (!HEADER_TOKEN.test(name)) return fail(`请求头名称「${name}」不合法`);
+    const lower = name.toLowerCase();
+    if (FORBIDDEN_HEADERS.has(lower)) return fail(`请求头 ${name} 不能设置`);
+    if (seen.has(lower)) return fail(`请求头 ${name} 重复（名称不区分大小写）`);
+    seen.add(lower);
+    if (row.value.length > MAX_HEADER_VALUE)
+      return fail(`请求头值不能超过 ${MAX_HEADER_VALUE} 个字符`);
+    if (hasControlChar(row.value)) return fail("请求头值不能包含换行或控制字符");
+  });
+  if (count > MAX_CHANNEL_HEADERS) errors.headers = `请求头最多 ${MAX_CHANNEL_HEADERS} 条`;
+  return errors;
+}
+
+function parseLimit(
+  text: string,
+  label: string,
+  integer: boolean,
+): { value: number } | { error: string } {
   const trimmed = text.trim();
   if (!trimmed) return { value: 0 };
   const value = Number(trimmed);
   if (!Number.isFinite(value) || value < 0) return { error: `${label}必须是非负数字` };
+  if (integer && !Number.isInteger(value)) return { error: `${label}必须是整数` };
   return { value };
 }
 
+/** 表单 → 请求体的结果 */
 export type ChannelRequestResult =
   | { ok: false; errors: Record<string, string> }
   | {
       ok: true;
+      /** 新建用的完整请求体（编辑时 key 取原渠道） */
       create: ChannelCreateRequest;
+      /** 编辑用的差异请求体，只含改过的字段 */
       update: ChannelUpdateRequest;
+      /** 编辑时是否有改动；新建恒为 true */
       changed: boolean;
     };
 
-const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+/** 请求头按名称升序的键值对，比较时不看顺序 */
+const headerEntries = (headers: Record<string, string> | null | undefined) =>
+  JSON.stringify(Object.entries(headers ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
 /**
  * 表单 → 请求体。新建用 create；编辑用 update（只含改过的字段，没改动时 changed=false）。
- * 错误键：key / name / plugin / baseUrl / rps / maxConcurrency / maxRunning / settings.<字段名>
+ * 错误键：name / baseUrl / headers / headers.<行号> / rps / maxConcurrency / maxRunning
+ * @param form 表单
+ * @param original 编辑时的原渠道；新建不传
  */
 export function buildChannelRequest(
   form: ChannelFormState,
-  fields: SettingField[],
   original?: ChannelView | null,
 ): ChannelRequestResult {
   const errors: Record<string, string> = {};
-  const key = form.key.trim();
-  if (!original && !CHANNEL_KEY_PATTERN.test(key)) {
-    errors.key = "key 只能是小写字母、数字、连字符，以字母或数字开头，最长 64 位";
-  }
   const name = form.name.trim();
-  if (!name) errors.name = "请填写名称";
-  if (!form.pluginKey || !form.pluginVersion) errors.plugin = "请选择插件与版本";
+  if (!name) errors.name = "请填写渠道名称";
+  else if ([...name].length > 128) errors.name = "渠道名称不能超过 128 个字";
   const baseUrlError = checkBaseUrl(form.baseUrl);
   if (baseUrlError) errors.baseUrl = baseUrlError;
-  const rps = parseLimit(form.rps, "rps");
+  Object.assign(errors, checkHeaders(form.headers));
+  const rps = parseLimit(form.rps, "rps", false);
   if ("error" in rps) errors.rps = rps.error;
-  const concurrency = parseLimit(form.maxConcurrency, "最大同时请求数");
+  const concurrency = parseLimit(form.maxConcurrency, "最大同时请求数", true);
   if ("error" in concurrency) errors.maxConcurrency = concurrency.error;
-  else if (!Number.isInteger(concurrency.value)) errors.maxConcurrency = "最大同时请求数必须是整数";
-  const running = parseLimit(form.maxRunning, "最大同时生成数");
+  const running = parseLimit(form.maxRunning, "最大同时生成数", true);
   if ("error" in running) errors.maxRunning = running.error;
-  else if (!Number.isInteger(running.value)) errors.maxRunning = "最大同时生成数必须是整数";
-  const settings = validateSettingValues(fields, form.settings);
-  for (const [field, message] of Object.entries(settings.errors))
-    errors[`settings.${field}`] = message;
 
   if (
-    Object.keys(errors).length > 0 ||
     "error" in rps ||
     "error" in concurrency ||
-    "error" in running
+    "error" in running ||
+    Object.keys(errors).length > 0
   ) {
     return { ok: false, errors };
   }
 
+  const headers: Record<string, string> = {};
+  for (const row of form.headers) {
+    const headerName = row.name.trim();
+    if (headerName) headers[headerName] = row.value.trim();
+  }
   const rateLimit: ChannelRateLimit = {
     rps: rps.value,
     max_concurrency: concurrency.value,
     max_running: running.value,
   };
+  // 新建不带 key，由后端生成
   const create: ChannelCreateRequest = {
-    key: original ? original.key : key,
     name,
-    plugin_key: form.pluginKey,
-    plugin_version: form.pluginVersion,
     base_url: form.baseUrl.trim(),
-    allow_credentials: form.allowCredentials,
-    settings: settings.values,
+    headers,
     rate_limit: rateLimit,
     enabled: form.enabled,
   };
@@ -175,187 +228,38 @@ export function buildChannelRequest(
 
   const update: ChannelUpdateRequest = {};
   if (create.name !== original.name) update.name = create.name;
-  if (
-    create.plugin_key !== original.plugin_key ||
-    create.plugin_version !== original.plugin_version
-  ) {
-    update.plugin_key = create.plugin_key;
-    update.plugin_version = create.plugin_version;
-  }
   if (create.base_url !== original.base_url) update.base_url = create.base_url;
-  if (create.allow_credentials !== !!original.allow_credentials)
-    update.allow_credentials = create.allow_credentials;
-  if (!sameJson(create.settings, original.settings)) update.settings = create.settings;
+  if (headerEntries(headers) !== headerEntries(original.headers)) update.headers = headers;
   const originalLimit = {
     rps: original.rate_limit?.rps ?? 0,
     max_concurrency: original.rate_limit?.max_concurrency ?? 0,
     max_running: original.rate_limit?.max_running ?? 0,
   };
-  if (!sameJson(rateLimit, originalLimit)) update.rate_limit = rateLimit;
+  if (JSON.stringify(rateLimit) !== JSON.stringify(originalLimit)) update.rate_limit = rateLimit;
   if (create.enabled !== !!original.enabled) update.enabled = create.enabled;
   return { ok: true, create, update, changed: Object.keys(update).length > 0 };
 }
 
-export type CheckDraftResult =
-  | { ok: false; errors: Record<string, string> }
-  | { ok: true; request: ChannelCheckDraftRequest };
-
 /**
- * 表单 → 保存前检查的请求体：只校验连接相关的字段（地址、插件版本、设置项），名称、标识、限流不影响检查，也不挡着检查。
- * secret 去掉首尾空白，为空时不传（编辑已有渠道由后端用已保存的 Key）。
- * 错误键：plugin / baseUrl / settings.<字段名>
+ * 限流的一句话摘要，渠道头部的标签用。
+ * @param limit 渠道限流；null 或全 0 表示不限
  */
-export function buildCheckDraftRequest(
-  form: ChannelFormState,
-  fields: SettingField[],
-  secret: string,
-  existingKey: string | undefined,
-): CheckDraftResult {
-  const errors: Record<string, string> = {};
-  if (!form.pluginKey || !form.pluginVersion) errors.plugin = "请选择插件与版本";
-  const baseUrlError = checkBaseUrl(form.baseUrl);
-  if (baseUrlError) errors.baseUrl = baseUrlError;
-  const settings = validateSettingValues(fields, form.settings);
-  for (const [field, message] of Object.entries(settings.errors))
-    errors[`settings.${field}`] = message;
-  if (Object.keys(errors).length > 0) return { ok: false, errors };
-
-  const request: ChannelCheckDraftRequest = {
-    plugin_key: form.pluginKey,
-    plugin_version: form.pluginVersion,
-    base_url: form.baseUrl.trim(),
-    allow_credentials: form.allowCredentials,
-    settings: settings.values,
-  };
-  if (existingKey) request.existing_key = existingKey;
-  if (secret.trim()) request.secret = secret.trim();
-  return { ok: true, request };
+export function formatRateLimit(limit: ChannelRateLimit | null | undefined): string {
+  const rps = limit?.rps ?? 0;
+  const concurrency = limit?.max_concurrency ?? 0;
+  const running = limit?.max_running ?? 0;
+  if (!rps && !concurrency && !running) return "不限";
+  return `rps ${rps || "不限"} · 并发 ${concurrency || "不限"} · 同时生成 ${running || "不限"}`;
 }
 
 /**
- * 影响连通性的配置指纹：地址、插件与版本、设置项、“允许插件读取 Key”开关，加上这次填的 Key。
- * 名称、限流、启用不在其中——改它们不需要重新检查。检查结果记着当时的指纹，指纹变了结果就作废。
+ * 渠道当前负载的一句话摘要：生成中 / 同时生成上限 + 排队数。
+ * @param load 负载记录；没有未完成任务的渠道没有记录，按空闲 0 处理
+ * @param maxRunning 渠道的最大同时生成数；0 或缺省表示不限
  */
-export function connectionFingerprint(form: ChannelFormState, secret: string): string {
-  return JSON.stringify([
-    form.pluginKey,
-    form.pluginVersion,
-    form.baseUrl.trim(),
-    form.allowCredentials,
-    form.settings,
-    secret.trim(),
-  ]);
-}
-
-/** 保存前检查的状态：进行中，或带着“针对哪份配置”的结果 */
-export type DraftCheckState =
-  | { busy: true }
-  | { busy: false; fingerprint: string; outcome: { kind: string } };
-
-/**
- * 能不能保存：新建必须有针对当前配置的通过结果；编辑时连接信息没动（指纹与已保存的一致）不用检查，动了就要。
- * “通过” = 连通，或插件不支持检查（unsupported 不是故障，没法验证也不该把渠道卡住）。
- */
-export function canSaveChannel({
-  isNew,
-  fingerprint,
-  baseline,
-  check,
-}: {
-  isNew: boolean;
-  fingerprint: string;
-  baseline: string;
-  check: DraftCheckState | undefined;
-}): boolean {
-  if (!isNew && fingerprint === baseline) return true;
-  if (!check || check.busy) return false;
-  return (
-    check.fingerprint === fingerprint &&
-    (check.outcome.kind === "ok" || check.outcome.kind === "unsupported")
-  );
-}
-
-/** 名称里的英文、数字转成 key 片段：小写、非字母数字变连字符、去掉首尾连字符 */
-const slugify = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-/**
- * 新建渠道时按名称自动生成 key（用户没手动改过 key 时用）：
- * 名称里有英文 / 数字就用它；没有（纯中文名）就用“插件 key + 地址主机名第一段”；
- * 和已有渠道重名时依次加 -2、-3……；结果满足 CHANNEL_KEY_PATTERN。
- * @param existing 已有渠道的 key
- */
-export function suggestChannelKey(
-  name: string,
-  pluginKey: string,
-  baseUrl: string,
-  existing: readonly string[],
+export function formatLoad(
+  load: { running: number; waiting: number } | undefined,
+  maxRunning: number | undefined,
 ): string {
-  let host = "";
-  try {
-    host = new URL(baseUrl.trim()).hostname.split(".").find((part) => part !== "www") ?? "";
-  } catch {
-    host = "";
-  }
-  const base = slugify(name) || slugify([pluginKey, host].filter(Boolean).join("-")) || "channel";
-  const trimmed = base.slice(0, 60).replace(/-+$/, "");
-  const taken = new Set(existing);
-  if (!taken.has(trimmed)) return trimmed;
-  for (let n = 2; ; n += 1) {
-    const candidate = `${trimmed}-${n}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-}
-
-export type ChannelUpgrade = {
-  /** 提交给 PUT /channels/:key 的请求体 */
-  update: ChannelUpdateRequest;
-  /** 新版本不再声明、已丢弃的设置项（显示名），有值的才算 */
-  dropped: string[];
-  /** 新版本不是 auth: custom，“允许插件读取 Key”被自动关闭 */
-  credsReset: boolean;
-};
-
-/**
- * 把渠道切到插件的另一个版本（批量升级用），与渠道抽屉里换版本的规则一致：
- * 同名设置项的取值带过去，其余用新声明的默认值；新版本不需要读 Key 时关闭 allow_credentials。
- * 找不到目标版本返回 null。
- */
-export function upgradeChannelRequest(
-  channel: ChannelView,
-  plugins: readonly PluginView[],
-  targetVersion: string,
-): ChannelUpgrade | null {
-  const next = findPluginVersion(plugins, channel.plugin_key, { version: targetVersion });
-  if (!next) return null;
-  const current = findPluginVersion(plugins, channel.plugin_key, {
-    id: channel.plugin_version_id,
-    version: channel.plugin_version,
-  });
-  const oldFields = settingFields(current?.meta?.channelSettings);
-  const newFields = settingFields(next.meta?.channelSettings);
-  const oldValues = initialSettingValues(oldFields, channel.settings);
-  const dropped = oldFields
-    .filter((field) => {
-      const value = oldValues[field.name];
-      const had =
-        typeof value === "boolean" ? value : typeof value === "string" && value.trim() !== "";
-      return had && !newFields.some((item) => item.name === field.name);
-    })
-    .map((field) => field.label);
-  const settings = validateSettingValues(
-    newFields,
-    rebaseSettings(oldFields, oldValues, newFields),
-  ).values;
-  const credsReset = !!channel.allow_credentials && next.meta?.auth?.type !== "custom";
-  const update: ChannelUpdateRequest = {
-    plugin_key: channel.plugin_key,
-    plugin_version: next.version,
-    settings,
-  };
-  if (credsReset) update.allow_credentials = false;
-  return { update, dropped, credsReset };
+  return `生成中 ${load?.running ?? 0}/${maxRunning || "不限"} · 排队 ${load?.waiting ?? 0}`;
 }

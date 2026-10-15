@@ -94,7 +94,7 @@ func (f *googleFake) last() googleRecorded {
 
 func TestGooglePrecheckAndMeta(t *testing.T) {
 	env := newGoogleEnv(t, nil)
-	if env.meta.Key != "google" || env.meta.Version != "1.0.0" || env.meta.Auth.Type != pluginmeta.AuthHeader || env.meta.Auth.Name != "x-goog-api-key" {
+	if env.meta.Key != "google" || env.meta.Version != "1.1.0" || env.meta.Auth.Type != pluginmeta.AuthHeader || env.meta.Auth.Name != "x-goog-api-key" {
 		t.Fatalf("meta 不符合预期：%+v", env.meta)
 	}
 	if ep, ok := env.meta.Endpoint("video"); !ok || ep.Mode != pluginmeta.ModeAsync {

@@ -13,7 +13,7 @@
  *
  * 鉴权：meta.auth 是 custom。可灵用 AccessKey / SecretKey 签 HS256 JWT（iss=AccessKey，exp=now+1800，nbf=now-5），
  * 以 Authorization: Bearer <jwt> 发出。因此：
- *   1. 渠道必须开启 allow_credentials，宿主才会把 Key 放进 ctx.credentials.apiKey；
+ *   1. auth: custom 时宿主直接把渠道 Key 放进 ctx.credentials.apiKey；
  *   2. 渠道 Key 的填写格式是 "AccessKey|SecretKey"（竖线分隔，两段首尾空白会被去掉）。
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
@@ -37,11 +37,12 @@ module.exports = {
     apiVersion: 1,
     key: "kling",
     name: "可灵 Kling",
-    version: "1.0.0",
+    version: "1.1.0",
+    vendor: "kling",
     description: "快手可灵视频生成：文生视频、图生视频（含首尾帧），异步轮询出片",
     auth: { type: "custom" },
     endpoints: {
-      video: { mode: "async" },
+      video: { mode: "async", method: "POST", path: "/v1/videos/text2video" },
     },
     poll: { firstDelay: 15, interval: 10, maxInterval: 30, jitter: 0.2 },
   },
@@ -175,7 +176,7 @@ module.exports = {
 function authHeaders(ctx) {
   var key = ctx.credentials && ctx.credentials.apiKey;
   if (typeof key !== "string" || key === "") {
-    throw new Error("没有拿到渠道 Key：可灵插件需要渠道开启 allow_credentials，并填写 AccessKey|SecretKey");
+    throw new Error("没有拿到渠道 Key：可灵插件需要在渠道里填写 AccessKey|SecretKey");
   }
   var parts = key.split("|");
   if (parts.length !== 2 || trim(parts[0]) === "" || trim(parts[1]) === "") {

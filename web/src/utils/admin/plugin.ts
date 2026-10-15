@@ -1,11 +1,11 @@
 import type {
-  ChannelView,
   ConfigIssue,
   PluginMeta,
   PluginUploadResult,
   PluginVersionAdjusted,
   PluginVersionView,
   PluginView,
+  UpgradeModelsResult,
 } from "@/api/admin/ai/type";
 
 /** 插件文件大小上限（与后端 pluginmeta.MaxPluginBytes 一致） */
@@ -88,14 +88,14 @@ export function isSameCodeRejection(issues: ConfigIssue[] | null | undefined): b
 export type VersionAdjustedNotice = {
   /** 代码里写的是什么、实际登记成了什么 */
   title: string;
-  /** 提醒渠道要自己切到新版本 */
+  /** 提醒模型要自己升级到新版本 */
   hint: string;
 };
 
 /**
  * 上传时版本号被自动调整（见 PluginUploadResult.version_adjusted）→ 提示文案。
  * from 为空串说明代码里没写或写得不合法。没有调整（字段缺失或为 null）、登记版本号为空时返回 null。
- * 渠道固定在旧版本上，登记新版本不会让渠道自动切换，所以总要带上“去升级渠道”的提醒。
+ * 模型的协议固定在旧版本上，登记新版本不会让模型自动切换，所以总要带上“去升级模型”的提醒。
  */
 export function describeVersionAdjusted(
   adjusted: PluginVersionAdjusted | null | undefined,
@@ -104,7 +104,7 @@ export function describeVersionAdjusted(
   const title = adjusted.from
     ? `代码里写的是 v${adjusted.from}，已自动登记为 v${adjusted.to}`
     : `代码里没有写合法的版本号，已自动登记为 v${adjusted.to}`;
-  return { title, hint: "渠道不会自动切换版本，请到“升级渠道”里切过去。" };
+  return { title, hint: "模型不会自动切换版本，请到插件页“升级模型”里切过去。" };
 }
 
 /** sha256 前 8 位 */
@@ -122,7 +122,7 @@ export function describeAuth(auth: PluginMeta["auth"]): string {
     case "query":
       return `查询参数${name}`;
     case "custom":
-      return "插件自行签名（需渠道开启“允许插件读取 Key”）";
+      return "插件自行签名（该协议会读取渠道的 API Key 与 Secret Key 自行签名）";
     case "none":
       return "无需鉴权";
     default:
@@ -133,9 +133,12 @@ export function describeAuth(auth: PluginMeta["auth"]): string {
 export type MetaSummary = {
   authType: string;
   auth: string;
-  endpoints: Array<{ kind: string; mode: string }>;
+  /** 厂商 slug；插件没声明为空串 */
+  vendor: string;
+  /** 每个能力：同步 / 异步，以及展示用的请求（“POST /v1/messages”，没声明为 —） */
+  endpoints: Array<{ kind: string; mode: string; request: string }>;
+  /** 协议设置项的名字（meta.channelSettings 的键，在模型里填） */
   settingNames: string[];
-  importable: boolean;
   description?: string;
 };
 
@@ -145,18 +148,82 @@ export function metaSummary(meta: PluginMeta | null | undefined): MetaSummary {
   return {
     authType: meta?.auth?.type ?? "none",
     auth: describeAuth(meta?.auth),
+    vendor: vendorOf(meta),
     endpoints: Object.entries(endpoints).map(([kind, value]) => ({
       kind,
       mode: value?.mode ?? "?",
+      request: endpointLabel(meta, kind),
     })),
     settingNames:
       meta?.channelSettings && typeof meta.channelSettings === "object"
         ? Object.keys(meta.channelSettings)
         : [],
-    importable: !!meta?.import,
     description: meta?.description || undefined,
   };
 }
+
+/** 协议设置项声明的一行展示数据 */
+export type SettingRow = {
+  /** 设置项的名字（meta.channelSettings 的键） */
+  name: string;
+  /** 表单标题，缺失时退回名字 */
+  label: string;
+  /** 取值类型的中文名；未知类型原样 */
+  typeLabel: string;
+  /** 是否必填 */
+  required: boolean;
+  /** 默认值的文本；没有默认值为空串 */
+  defaultText: string;
+  /** enum 的可选值，其它类型为空数组 */
+  options: string[];
+  /** 补充说明，没有为空串 */
+  description: string;
+};
+
+const SETTING_TYPE_LABEL: Record<string, string> = {
+  string: "文本",
+  number: "数字",
+  boolean: "开关",
+  enum: "选项",
+};
+
+/**
+ * 插件声明的协议设置项（meta.channelSettings，在模型的协议设置里填）→ 展示行，保持声明的书写顺序。
+ * meta 缺失或没声明时为空数组。
+ */
+export function settingRows(meta: PluginMeta | null | undefined): SettingRow[] {
+  const schema = meta?.channelSettings;
+  if (!schema || typeof schema !== "object") return [];
+  return Object.entries(schema).map(([name, spec]) => ({
+    name,
+    label: spec?.label || name,
+    typeLabel: SETTING_TYPE_LABEL[spec?.type] ?? String(spec?.type ?? ""),
+    required: !!spec?.required,
+    defaultText:
+      spec?.default === undefined || spec.default === null
+        ? ""
+        : typeof spec.default === "object"
+          ? JSON.stringify(spec.default)
+          : String(spec.default),
+    options: Array.isArray(spec?.options) ? spec.options : [],
+    description: spec?.description ?? "",
+  }));
+}
+
+/**
+ * 某个能力的请求，仅用于展示（宿主不据此发请求）：“POST /v1/messages”。
+ * 方法缺省按 POST；没有声明路径、没有这个能力、meta 缺失都显示 —。
+ */
+export function endpointLabel(meta: PluginMeta | null | undefined, kind: string): string {
+  const endpoint =
+    meta?.endpoints && typeof meta.endpoints === "object" ? meta.endpoints[kind] : undefined;
+  const path = endpoint?.path?.trim();
+  if (!path) return "—";
+  return `${endpoint?.method?.trim().toUpperCase() || "POST"} ${path}`;
+}
+
+/** 插件声明的厂商 slug；没声明为空串 */
+export const vendorOf = (meta: PluginMeta | null | undefined): string => meta?.vendor?.trim() ?? "";
 
 /** 按插件 key + 版本 ID（或版本号）找插件版本 */
 export function findPluginVersion(
@@ -172,54 +239,14 @@ export function findPluginVersion(
   );
 }
 
-/** 渠道所用插件版本的 meta；插件列表里找不到时为 undefined */
-export const channelMeta = (plugins: readonly PluginView[], channel: ChannelView) =>
-  findPluginVersion(plugins, channel.plugin_key, {
-    id: channel.plugin_version_id,
-    version: channel.plugin_version,
-  })?.meta ?? undefined;
-
 /**
- * 渠道能不能跑这种 kind 的模型：插件版本的 endpoints 里有这个 kind。
- * 找不到插件版本（列表没加载好）时返回 null，调用方别当成“不支持”。
+ * 插件版本能不能承接某种模型：普通种类要在 endpoints 里声明。
+ * Agent 不走插件（由宿主 LLM 网关直接用 Bearer 请求渠道的 OpenAI 兼容接口），恒为 false。
  */
-export function channelSupportsKind(
-  plugins: readonly PluginView[],
-  channel: ChannelView,
-  kind: string,
-): boolean | null {
-  const meta = channelMeta(plugins, channel);
-  if (!meta) return null;
-  return metaSupportsKind(meta, kind);
-}
-
-/**
- * 插件版本能不能承接某种模型。普通种类要在 endpoints 里声明；
- * agent 不走插件钩子（由后端网关直接请求渠道的 OpenAI 兼容接口），只要求 auth.type 是 bearer。
- */
-export function metaSupportsKind(
-  meta: { auth?: { type?: string } | null; endpoints?: unknown },
-  kind: string,
-): boolean {
-  if (kind === "agent") return meta.auth?.type === "bearer";
+export function metaSupportsKind(meta: { endpoints?: unknown }, kind: string): boolean {
+  if (kind === "agent") return false;
   return !!meta.endpoints && typeof meta.endpoints === "object" && kind in meta.endpoints;
 }
-
-/**
- * 模型编辑器“选择渠道”下拉：只列可用的渠道——渠道启用、所属插件未停用、插件版本支持该 kind。
- * 插件信息未知（列表没加载好）的渠道保留，交给后端在发布时兜底。
- */
-export const channelsForKind = (
-  channels: readonly ChannelView[],
-  plugins: readonly PluginView[],
-  kind: string,
-) =>
-  channels.filter(
-    (channel) =>
-      channel.enabled &&
-      plugins.find((plugin) => plugin.key === channel.plugin_key)?.enabled !== false &&
-      channelSupportsKind(plugins, channel, kind) !== false,
-  );
 
 /** 比较两个 semver 版本号（只比主.次.修订，预发布后缀忽略）；a 大返回正数 */
 export function compareSemver(a: string, b: string): number {
@@ -237,22 +264,24 @@ export function compareSemver(a: string, b: string): number {
   return 0;
 }
 
-/** 渠道所属插件里比当前固定版本更新的最高版本；没有更新（或找不到插件）返回 null */
+/** 插件里比当前固定版本更新的最高版本（模型协议的 plugin / version 传进来）；没有更新（或找不到插件）返回 null */
 export function availableUpgrade(
   plugins: readonly PluginView[],
-  channel: Pick<ChannelView, "plugin_key" | "plugin_version">,
+  pinned: { plugin_key: string; plugin_version: string },
 ): PluginVersionView | null {
-  const plugin = plugins.find((item) => item.key === channel.plugin_key);
+  const plugin = plugins.find((item) => item.key === pinned.plugin_key);
   let best: PluginVersionView | null = null;
   for (const version of plugin?.versions ?? []) {
-    if (compareSemver(version.version, channel.plugin_version) <= 0) continue;
+    if (compareSemver(version.version, pinned.plugin_version) <= 0) continue;
     if (!best || compareSemver(version.version, best.version) > 0) best = version;
   }
   return best;
 }
 
 /** 插件当前最新的版本（按 semver 最高）；没有版本返回 undefined */
-export function latestVersion(plugin: PluginView | undefined): PluginVersionView | undefined {
+export function latestVersion(
+  plugin: Pick<PluginView, "versions"> | undefined,
+): PluginVersionView | undefined {
   let best: PluginVersionView | undefined;
   for (const version of plugin?.versions ?? []) {
     if (!best || compareSemver(version.version, best.version) > 0) best = version;
@@ -262,21 +291,82 @@ export function latestVersion(plugin: PluginView | undefined): PluginVersionView
 
 /**
  * 版本不能删除的原因；可以删除返回 null。
- * 内置插件的版本、还有渠道固定在该版本的版本不能删（后端还会检查非终态任务，返回 409）。
+ * 内置插件的版本、还有模型的协议固定在该版本的版本不能删（后端还会检查非终态任务，返回 409）。
  */
 export function versionDeleteBlock(
   plugin: Pick<PluginView, "source">,
-  version: Pick<PluginVersionView, "channel_count">,
+  version: Pick<PluginVersionView, "model_count">,
 ): string | null {
   if (plugin.source === "builtin") return "内置版本不能删除";
-  if (version.channel_count > 0)
-    return `${version.channel_count} 个渠道固定在此版本，先把它们切到别的版本`;
+  if (version.model_count > 0)
+    return `${version.model_count} 个模型固定在此版本，先把它们升级或改用别的协议`;
   return null;
 }
 
-/** 插件当前有多少个渠道在用（各版本 channel_count 之和） */
-export const pluginChannelCount = (plugin: Pick<PluginView, "versions">) =>
-  (plugin.versions ?? []).reduce((sum, version) => sum + (version.channel_count ?? 0), 0);
+/** 插件当前有多少个模型在用（各版本 model_count 之和） */
+export const pluginModelCount = (plugin: Pick<PluginView, "versions">) =>
+  (plugin.versions ?? []).reduce((sum, version) => sum + (version.model_count ?? 0), 0);
+
+/** 其中固定在旧版本（低于最新版本）上的模型数，即“升级模型”会处理的数量 */
+export function outdatedModelCount(plugin: Pick<PluginView, "versions">): number {
+  const latest = latestVersion(plugin);
+  if (!latest) return 0;
+  return (plugin.versions ?? []).reduce(
+    (sum, version) =>
+      compareSemver(version.version, latest.version) < 0 ? sum + (version.model_count ?? 0) : sum,
+    0,
+  );
+}
+
+/**
+ * 协议固定在该插件旧版本上的模型（升级模型确认框的清单）。
+ * 协议选的插件和版本来自模型列表项的 plugin / plugin_version；没选协议（待配置、Agent）的不算。
+ * @param plugin 插件（要带全部版本）
+ * @param models 全部模型列表项（listModelOptions）
+ */
+export function outdatedModels<T extends { plugin?: string; plugin_version?: string }>(
+  plugin: PluginView | undefined,
+  models: readonly T[],
+): T[] {
+  const latest = latestVersion(plugin);
+  if (!plugin || !latest) return [];
+  return models.filter(
+    (model) =>
+      model.plugin === plugin.key &&
+      !!model.plugin_version &&
+      compareSemver(model.plugin_version, latest.version) < 0,
+  );
+}
+
+/** 升级结果：成功数与失败清单（失败的模型保持原样，原因留给人看） */
+export type UpgradeSummary = {
+  /** 实际升到的版本 */
+  toVersion: string;
+  /** 升级成功的模型数 */
+  upgraded: number;
+  /** 失败的模型：展示名与原因 */
+  failed: Array<{ key: string; name: string; reason: string }>;
+};
+
+/**
+ * 升级模型接口的结果 → 给人看的汇总。
+ * @param result upgradePluginModels 的返回
+ * @param nameOf 模型 key → 展示名；拿不到名字时退回 key
+ */
+export function summarizeUpgrade(
+  result: UpgradeModelsResult,
+  nameOf: (key: string) => string,
+): UpgradeSummary {
+  return {
+    toVersion: result.to_version,
+    upgraded: result.upgraded.length,
+    failed: result.failed.map((item) => ({
+      key: item.key,
+      name: nameOf(item.key) || item.key,
+      reason: item.reason?.trim() || "未知原因",
+    })),
+  };
+}
 
 /** 插件版本 meta 里声明的四种 kind，按固定顺序，用于“支持的生成方式”四格 */
 export const PLUGIN_KINDS = ["text", "video", "image", "audio"] as const;

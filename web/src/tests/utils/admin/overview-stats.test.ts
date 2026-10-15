@@ -10,6 +10,7 @@ import {
   dayTotal,
   formatMonthDay,
   formatTooltipDate,
+  modelHint,
   loadRows,
   niceTicks,
   successRate,
@@ -198,5 +199,36 @@ describe("loadRows", () => {
 
   test("没有渠道返回空数组", () => {
     expect(loadRows([], [])).toEqual([]);
+  });
+});
+
+describe("modelHint：模型卡片的说明文字", () => {
+  const counts = (total: number, online: number, broken = 0, pending = 0) => ({
+    total,
+    online,
+    broken,
+    pending,
+  });
+
+  test("没有模型 / 全部在线", () => {
+    expect(modelHint(counts(0, 0))).toEqual({ tone: "neutral", text: "还没有模型" });
+    expect(modelHint(counts(3, 3))).toEqual({ tone: "neutral", text: "全部在线" });
+  });
+
+  test("有待配置的模型：用 warning 语气写“待配置 N”", () => {
+    expect(modelHint(counts(5, 2, 0, 3))).toEqual({ tone: "warning", text: "待配置 3" });
+  });
+
+  test("有不可用的模型：danger 语气盖过待配置，两者都写出来", () => {
+    expect(modelHint(counts(6, 2, 1, 3))).toEqual({
+      tone: "danger",
+      text: "1 个不可用 · 待配置 3",
+    });
+    expect(modelHint(counts(3, 2, 1))).toEqual({ tone: "danger", text: "1 个不可用" });
+  });
+
+  test("只有未上线的：写“N 个未上线”，待配置的不重复算进去", () => {
+    expect(modelHint(counts(4, 1))).toEqual({ tone: "neutral", text: "3 个未上线" });
+    expect(modelHint(counts(4, 1, 0, 2))).toEqual({ tone: "warning", text: "待配置 2" });
   });
 });

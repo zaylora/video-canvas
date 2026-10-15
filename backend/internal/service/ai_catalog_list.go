@@ -25,7 +25,7 @@ type AICatalogModels interface {
 }
 
 // AICatalogService 提供后台“渠道 / 插件 / 模型”三个列表的分页、搜索、筛选和状态：
-// 状态要跨三类配置算（渠道健康要插件，模型状态要渠道），所以单独成一个只读服务。
+// 状态要跨三类配置算（模型状态要渠道和协议插件，插件的使用情况要模型），所以单独成一个只读服务。
 // 数据量小，每次读全量，在内存里算好状态再过滤、取当页。
 type AICatalogService struct {
 	channels AICatalogChannels
@@ -71,11 +71,11 @@ func (s *AICatalogService) load(ctx context.Context) (*catalog, error) {
 		c.cPlugins = append(c.cPlugins, cp)
 	}
 	for _, ch := range channels {
-		c.cChannels = append(c.cChannels, CatalogChannel{Key: ch.Key, Name: ch.Name, PluginKey: ch.PluginKey,
-			PluginVersionID: ch.PluginVersionID, PluginVersion: ch.PluginVersion, Enabled: ch.Enabled, SecretSet: ch.SecretSet})
+		c.cChannels = append(c.cChannels, CatalogChannel{Key: ch.Key, Name: ch.Name, Enabled: ch.Enabled, SecretSet: ch.SecretSet})
 	}
 	for _, m := range models {
-		c.cModels = append(c.cModels, CatalogModel{Key: m.Key, Kind: m.Kind, Channel: m.Channel, Enabled: m.Enabled})
+		c.cModels = append(c.cModels, CatalogModel{Key: m.Key, Kind: m.Kind, Channel: m.Channel, Enabled: m.Enabled,
+			Plugin: m.Plugin, PluginVersion: m.PluginVer})
 	}
 	return c, nil
 }
@@ -107,45 +107,12 @@ func (c *catalog) pluginOf(key string) int {
 	return -1
 }
 
-// channelVersion 返回渠道固定的插件版本；找不到为 nil。
-func (c *catalog) channelVersion(ch CatalogChannel) *CatalogVersion {
-	i := c.pluginOf(ch.PluginKey)
-	if i < 0 {
-		return nil
-	}
-	return versionOf(&c.cPlugins[i], ch.PluginVersionID, ch.PluginVersion)
-}
-
-// channelKinds 返回渠道所用插件版本声明支持的生成方式（含 agent）；版本读不到为空。
-func (c *catalog) channelKinds(ch CatalogChannel) []string {
-	v := c.channelVersion(ch)
-	if v == nil {
-		return []string{}
-	}
-	out := append([]string{}, v.Kinds...)
-	if MetaSupportsKind(*v, "agent") {
-		out = append(out, "agent")
-	}
-	return out
-}
-
-// upgradeTo 返回渠道所属插件里比它固定版本更新的最高版本号；没有为空串。
-func (c *catalog) upgradeTo(ch CatalogChannel) string {
-	i := c.pluginOf(ch.PluginKey)
-	if i < 0 {
-		return ""
-	}
-	return AvailableUpgrade(c.cPlugins[i], ch.PluginVersion)
-}
-
 // ---- 渠道 ----
 
-// CatalogChannelItem 是渠道列表的一行：渠道视图 + 健康状态、可升级版本、能力、模型数。
+// CatalogChannelItem 是渠道列表的一行：渠道视图 + 健康状态、模型数。
 type CatalogChannelItem struct {
 	ChannelView
 	Health           ChannelHealth `json:"health"`
-	UpgradeTo        string        `json:"upgrade_to"` // 有更新版本时是最高版本号，否则为空串
-	Kinds            []string      `json:"kinds"`      // 所用插件版本支持的生成方式
 	ModelCount       int           `json:"model_count"`
 	OnlineModelCount int           `json:"online_model_count"` // 已上架的模型数
 }
@@ -157,10 +124,7 @@ type CatalogChannelPage struct {
 
 func (c *catalog) channelItem(i int) CatalogChannelItem {
 	ch := c.cChannels[i]
-	item := CatalogChannelItem{
-		ChannelView: c.channels[i], Health: ChannelHealthOf(ch, c.cPlugins),
-		UpgradeTo: c.upgradeTo(ch), Kinds: c.channelKinds(ch),
-	}
+	item := CatalogChannelItem{ChannelView: c.channels[i], Health: ChannelHealthOf(ch)}
 	for _, m := range c.cModels {
 		if m.Channel == ch.Key {
 			item.ModelCount++
@@ -172,8 +136,7 @@ func (c *catalog) channelItem(i int) CatalogChannelItem {
 	return item
 }
 
-// ListChannels 按关键字（名称 / key / 接口地址）、能力、插件和状态筛选并分页返回渠道。
-// 能力按渠道所用插件版本的声明筛；读不到版本时不当成“不支持”，免得整张表被筛空。
+// ListChannels 按关键字（名称 / key / 接口地址）和状态筛选并分页返回渠道，顺序与渠道排序一致（sort、key 升序）。
 func (s *AICatalogService) ListChannels(ctx context.Context, req *model.ListChannelReq) (*CatalogChannelPage, error) {
 	c, err := s.load(ctx)
 	if err != nil {
@@ -187,41 +150,18 @@ func (s *AICatalogService) ListChannels(ctx context.Context, req *model.ListChan
 		if !pagination.MatchKeyword(req.Q, it.Name, it.Key, it.BaseURL) {
 			return false
 		}
-		if req.Plugin != "" && it.PluginKey != req.Plugin {
-			return false
-		}
-		if req.Kind != "" && len(it.Kinds) > 0 && !contains(it.Kinds, req.Kind) {
-			return false
-		}
-		switch req.Status {
-		case "":
-			return true
-		case "upgrade":
-			return it.UpgradeTo != ""
-		default:
-			return it.Health.Tone == req.Status
-		}
+		return req.Status == "" || it.Health.Tone == req.Status
 	})
 	return &CatalogChannelPage{Result: found}, nil
 }
 
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
-}
-
-// ChannelOption 是弹窗下拉和概览用的渠道视图（全部渠道，不分页）：完整渠道视图 + 健康状态和能力。
+// ChannelOption 是弹窗下拉和概览用的渠道视图（全部渠道，不分页）：完整渠道视图 + 健康状态。
 type ChannelOption struct {
 	ChannelView
 	Health ChannelHealth `json:"health"`
-	Kinds  []string      `json:"kinds"`
 }
 
-// ChannelOptions 返回全部渠道（不分页），给模型弹窗选渠道、批量迁移、导入、升级和概览页用。
+// ChannelOptions 返回全部渠道（不分页，按渠道顺序），给模型弹窗选渠道、主从页左栏和概览页用。
 func (s *AICatalogService) ChannelOptions(ctx context.Context) ([]ChannelOption, error) {
 	c, err := s.load(ctx)
 	if err != nil {
@@ -229,21 +169,20 @@ func (s *AICatalogService) ChannelOptions(ctx context.Context) ([]ChannelOption,
 	}
 	out := make([]ChannelOption, 0, len(c.channels))
 	for i, ch := range c.channels {
-		cc := c.cChannels[i]
-		out = append(out, ChannelOption{ChannelView: ch, Health: ChannelHealthOf(cc, c.cPlugins), Kinds: c.channelKinds(cc)})
+		out = append(out, ChannelOption{ChannelView: ch, Health: ChannelHealthOf(c.cChannels[i])})
 	}
 	return out, nil
 }
 
 // ---- 插件 ----
 
-// CatalogPluginItem 是插件列表的一行：插件视图（带全部版本）+ 渠道数、旧版渠道数、在线模型数、最新版本。
+// CatalogPluginItem 是插件列表的一行：插件视图（带全部版本）+ 模型数、旧版模型数、在线模型数、最新版本。
 type CatalogPluginItem struct {
 	PluginView
-	LatestVersion        string `json:"latest_version"`         // 按 semver 最高的版本号；没有版本为空串
-	ChannelCount         int    `json:"channel_count"`          // 在用这个插件的渠道数
-	OutdatedChannelCount int    `json:"outdated_channel_count"` // 其中固定在旧版本上的渠道数
-	OnlineModelCount     int    `json:"online_model_count"`     // 这些渠道下已上架的模型数
+	LatestVersion      string `json:"latest_version"`       // 按 semver 最高的版本号；没有版本为空串
+	ModelCount         int    `json:"model_count"`          // 协议用了这个插件的模型数
+	OutdatedModelCount int    `json:"outdated_model_count"` // 其中固定在旧版本上的模型数
+	OnlineModelCount   int    `json:"online_model_count"`   // 其中已上架的模型数
 }
 
 // CatalogPluginPage 是插件列表的一页。
@@ -269,18 +208,16 @@ func (c *catalog) pluginItem(i int) CatalogPluginItem {
 	if latest, ok := latestOf(p); ok {
 		item.LatestVersion = latest.Version
 	}
-	for _, ch := range c.cChannels {
-		if ch.PluginKey != p.Key {
+	for _, m := range c.cModels {
+		if m.Plugin != p.Key {
 			continue
 		}
-		item.ChannelCount++
-		if AvailableUpgrade(p, ch.PluginVersion) != "" {
-			item.OutdatedChannelCount++
+		item.ModelCount++
+		if AvailableUpgrade(p, m.PluginVersion) != "" {
+			item.OutdatedModelCount++
 		}
-		for _, m := range c.cModels {
-			if m.Channel == ch.Key && m.Enabled {
-				item.OnlineModelCount++
-			}
+		if m.Enabled {
+			item.OnlineModelCount++
 		}
 	}
 	return item
@@ -316,14 +253,14 @@ func (s *AICatalogService) ListPlugins(ctx context.Context, req *model.ListPlugi
 		case "off":
 			return !it.Enabled
 		case "outdated":
-			return it.OutdatedChannelCount > 0
+			return it.OutdatedModelCount > 0
 		}
 		return true
 	})
 	return &CatalogPluginPage{Result: found}, nil
 }
 
-// PluginOptions 返回全部插件（带全部版本和 meta），不分页，给渠道弹窗选插件 / 版本、渲染设置项用。
+// PluginOptions 返回全部插件（带全部版本和 meta），不分页，给模型弹窗的协议列表、协议设置项表单用。
 func (s *AICatalogService) PluginOptions(ctx context.Context) ([]PluginView, error) {
 	return s.plugins.List(ctx)
 }
@@ -349,6 +286,7 @@ type CatalogModelItem struct {
 	ConfigListItem
 	Health      ModelHealth `json:"health"`
 	ChannelName string      `json:"channel_name"` // 绑定渠道的显示名；没绑或渠道不存在为空串
+	PluginName  string      `json:"plugin_name"`  // 协议插件的显示名；没选或插件不存在为空串
 }
 
 // CatalogModelPage 是模型列表的一页。
@@ -356,25 +294,47 @@ type CatalogModelPage struct {
 	pagination.Result[CatalogModelItem]
 }
 
-// ListModels 按关键字（key / 展示名 / 厂商 / 标签 / 渠道名）、类型、渠道和状态筛选并分页返回模型。
-// 状态是跨渠道和插件算的：在线 / 不可用（已上架但渠道用不了）/ 未上线。
+// ListModels 按关键字（key / 展示名 / 上游模型名 / 厂商 / 标签 / 渠道名 / 协议名）、能力、渠道和状态筛选并分页返回模型。
+// 顺序是用户看到的顺序：渠道顺序，再渠道内顺序（sort、key 升序）。
+// 状态是跨渠道和插件算的：在线 / 不可用（已上架但渠道或协议用不了）/ 未上线 / 待配置（还没选能力或协议）。
 func (s *AICatalogService) ListModels(ctx context.Context, req *model.ListModelReq) (*CatalogModelPage, error) {
 	c, err := s.load(ctx)
 	if err != nil {
 		return nil, err
 	}
 	names := make(map[string]string, len(c.channels))
-	for _, ch := range c.channels {
-		names[ch.Key] = ch.Name
+	rank := make(map[string]int, len(c.channels))
+	for i, ch := range c.channels {
+		names[ch.Key], rank[ch.Key] = ch.Name, i
+	}
+	pluginNames := make(map[string]string, len(c.plugins))
+	for _, p := range c.plugins {
+		pluginNames[p.Key] = p.Name
 	}
 	items := make([]CatalogModelItem, 0, len(c.models))
 	for i, m := range c.models {
 		items = append(items, CatalogModelItem{
-			ConfigListItem: m, Health: ModelHealthOf(c.cModels[i], c.cChannels, c.cPlugins), ChannelName: names[m.Channel],
+			ConfigListItem: m, Health: ModelHealthOf(c.cModels[i], c.cChannels, c.cPlugins),
+			ChannelName: names[m.Channel], PluginName: pluginNames[m.Plugin],
 		})
 	}
+	// 渠道顺序在前（渠道已按 sort 排好），渠道不存在的排最后；渠道内按 sort、key
+	sort.SliceStable(items, func(i, j int) bool {
+		ri, okI := rank[items[i].Channel]
+		rj, okJ := rank[items[j].Channel]
+		if okI != okJ {
+			return okI
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		if items[i].Sort != items[j].Sort {
+			return items[i].Sort < items[j].Sort
+		}
+		return items[i].Key < items[j].Key
+	})
 	found := pagination.Paginate(items, pagination.AdminQuery(req.Page, req.PageSize), func(it CatalogModelItem) bool {
-		fields := append([]string{it.Key, it.Label, it.Vendor, it.ChannelName}, it.Tags...)
+		fields := append([]string{it.Key, it.Label, it.Upstream, it.Vendor, it.ChannelName, it.PluginName}, it.Tags...)
 		if !pagination.MatchKeyword(req.Q, fields...) {
 			return false
 		}

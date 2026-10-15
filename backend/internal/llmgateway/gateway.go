@@ -124,6 +124,10 @@ func (g *Gateway) do(ctx context.Context, tg Target, base *url.URL, body []byte,
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidTarget, err)
 	}
+	// 渠道自定义头（过 WAF 的 UA、业务头等）先写，网关自己的协议头与鉴权头后写，覆盖不了
+	for k, v := range tg.Headers {
+		req.Header.Set(k, v)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+tg.APIKey)

@@ -22,7 +22,7 @@ func TestAIPluginService_PruneBuiltin(t *testing.T) {
 			"busy":     adminSeedVersion(t, e.repo, adminMetaLoose("busy", "1.0.0"), model.PluginSourceBuiltin, true),
 			"mine":     adminSeedVersion(t, e.repo, adminMetaLoose("mine", "1.0.0"), model.PluginSourceUploaded, true),
 		}
-		e.repo.Channels["c1"] = &model.AIChannel{Key: "c1", Name: "渠道一", PluginKey: "pinned", PluginVersionID: ids["pinned"]}
+		adminSeedModel(t, e.repo, "m1", "pinned", "1.0.0", "")
 		e.repo.ActiveTaskRefs[ids["busy"]] = 2
 		return e, ids
 	}

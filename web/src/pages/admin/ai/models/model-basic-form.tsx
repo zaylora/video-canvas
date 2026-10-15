@@ -1,21 +1,18 @@
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
-import { Link } from "react-router";
+import { toast } from "sonner";
 
-import type { ChannelView, ConfigIssue, PluginView } from "@/api/admin/ai/type.d";
-import { ChoiceCard, ChoiceCardGroup } from "@/components/admin-ui/choice-card";
+import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import { ConfirmDialog } from "@/components/admin-ui/confirm-dialog";
 import { FormField } from "@/components/admin-ui/form-field";
 import {
   FormSection,
+  FormSectionDescription,
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { Notice } from "@/components/admin-ui/notice";
-import { Tag } from "@/components/admin-ui/tag";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useRetained } from "@/hooks/use-retained";
@@ -30,98 +27,72 @@ import {
   readModelNumber,
   readModelString,
   readModelStrings,
-  suggestModelKey,
-  withModelChannel,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
-import { dialogEntry } from "@/utils/admin/dialog-entry";
-import type { ModelChannelInfo } from "@/utils/admin/model-channel";
-import { defaultCapabilities, defaultPricing } from "@/utils/admin/model-template";
-import { channelMeta, channelSupportsKind } from "@/utils/admin/plugin";
+import {
+  readModelProtocol,
+  switchModelKind,
+  withModelKind,
+  withModelProtocol,
+  type ModelProtocol,
+} from "@/utils/admin/model-protocol";
 
-import { KIND_ORDER, KIND_STYLE } from "../kind";
 import { issueFor } from "./model-fields";
+import { ProtocolPicker } from "./protocol-picker";
+import type { ModelCatalog } from "./use-model-workspace";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
 
-/** 新建时换种类：能力与定价跟着种类重置成该种类的默认值（生成方式、素材、参数、计费方式都不通用） */
-function withKind(body: Record<string, unknown>, kind: string) {
-  const next = withModelField(body, "kind", kind);
-  const withCaps = next && withModelField(next, "capabilities", defaultCapabilities(kind));
-  return withCaps && withModelField(withCaps, "pricing", defaultPricing(kind));
-}
-
-const KIND_DESC: Record<string, string> = {
-  text: "对话、写作",
-  image: "文生图、图生图",
-  video: "文生、图生视频",
-  audio: "语音合成",
-  agent: "画布 Agent 的对话大模型",
-};
-
-/** 基本信息页签：模型身份、能力与渠道、展示信息。所有修改都回写 JSON 正文并保持键顺序 */
+/**
+ * 基本信息页签：模型身份、能力与协议、展示信息。
+ * 协议挂在模型上，与渠道无关：换渠道不影响协议。所有修改都回写 JSON 正文并保持键顺序。
+ */
 export function ModelBasicForm({
   body,
   isNew,
-  channels,
-  plugins,
-  channelsReady,
-  info,
+  catalog,
   issues,
+  warnings,
   onChange,
 }: {
   body: Record<string, unknown>;
   isNew: boolean;
-  channels: ChannelView[];
-  plugins: PluginView[];
-  channelsReady: boolean;
-  info: ModelChannelInfo;
+  catalog: ModelCatalog;
   issues: ConfigIssue[];
+  warnings: ConfigIssue[];
   onChange: (mutate: BodyMutator) => void;
 }) {
+  const { plugins, pluginsStatus } = catalog;
   const kind = readModelKind(body);
-  const { channel: channelKey, upstreamModel } = readModelChannel(body);
-  const current = channels.find((item) => item.key === channelKey);
-  // 渠道只按启用状态过滤；不支持的能力由能力卡片置灰，选了渠道后能力自动跟随
-  const listed = channels.filter(
-    (item) =>
-      item.key === channelKey ||
-      (item.enabled && plugins.find((p) => p.key === item.plugin_key)?.enabled !== false),
-  );
-  const kindUnsupported = (item: string) =>
-    !!current && item !== kind && channelSupportsKind(plugins, current, item) === false;
-  // 换能力会把能力与参数、定价重置成新种类的默认值；已保存的模型先确认，免得误点清掉配置
-  const [pendingKind, setPendingKind] = useState<{ kind: string; channel?: string } | null>(null);
+  const protocol = readModelProtocol(body);
+  const { upstreamModel } = readModelChannel(body);
+  // 换能力会把能力与参数、定价重置成新种类的默认值；已有能力的模型先确认，免得误点清掉配置
+  const [pendingKind, setPendingKind] = useState<string | null>(null);
   // 关闭时 pendingKind 置空，确认框文案留到退出动画播完
   const shownKind = useRetained(pendingKind);
-  const applyKind = (nextKind: string, nextChannel?: string) =>
-    onChange((body) => {
-      const next = nextChannel ? withModelChannel(body, nextChannel) : body;
-      return next && withKind(next, nextKind);
-    });
-  const requestKind = (nextKind: string, nextChannel?: string) => {
+  const applyKind = (nextKind: string) => {
+    const { notice } = switchModelKind(plugins, protocol, nextKind);
+    onChange((current) => withModelKind(current, nextKind, plugins)?.body ?? null);
+    if (notice) toast.info(notice);
+  };
+  const requestKind = (nextKind: string) => {
     if (nextKind === kind) return;
-    if (isNew) applyKind(nextKind, nextChannel);
-    else setPendingKind({ kind: nextKind, channel: nextChannel });
+    // 新建的、还没选过能力的（待配置）模型没有可丢的配置，直接换
+    if (isNew || !kind) applyKind(nextKind);
+    else setPendingKind(nextKind);
   };
-  const pickChannel = (item: ChannelView) => {
-    if (item.key === channelKey) return;
-    // 新渠道支持当前能力就只换渠道；不支持时能力跟着换成它支持的第一种
-    if (channelSupportsKind(plugins, item, kind) !== false) {
-      onChange((body) => withModelChannel(body, item.key));
-      return;
-    }
-    const fallback = KIND_ORDER.find((k) => channelSupportsKind(plugins, item, k) !== false);
-    if (fallback) requestKind(fallback, item.key);
-    else onChange((body) => withModelChannel(body, item.key));
-  };
+  const setProtocol = (next: ModelProtocol) =>
+    onChange((current) => withModelProtocol(current, next));
   const setField = (field: string, value: unknown) =>
-    onChange((body) => withModelField(body, field, value));
-  const keyMissing = (item: ChannelView) => {
-    const auth = channelMeta(plugins, item)?.auth?.type ?? "none";
-    return !item.secret_set && auth !== "none";
-  };
+    onChange((current) => withModelField(current, field, value));
+  const channelError = issueFor(issues, "channels[0].channel");
+  const channelWarning = issueFor(warnings, "channels[0].channel");
+  const channelNote = channelError
+    ? { tone: "danger" as const, text: channelError }
+    : channelWarning
+      ? { tone: "warning" as const, text: channelWarning }
+      : null;
   const hint = readModelString(body, "hint");
   const tags = readModelStrings(body, "tags");
 
@@ -131,52 +102,12 @@ export function ModelBasicForm({
         <FormSectionHeader>
           <FormSectionTitle>模型身份</FormSectionTitle>
         </FormSectionHeader>
+        {channelNote && (
+          <Notice tone={channelNote.tone} title="所属渠道" className="mb-4">
+            {channelNote.text}
+          </Notice>
+        )}
         <div className="grid gap-5 md:grid-cols-2">
-          <FormField
-            size="default"
-            label="产品模型标识"
-            htmlFor="model-key"
-            required
-            error={issueFor(issues, "key")}
-            tip="画布、任务与计费都用它引用这个模型，创建后不能修改。"
-          >
-            <div className="flex gap-2">
-              <Input
-                id="model-key"
-                className="font-mono"
-                placeholder="例如 veo-4"
-                value={readModelString(body, "key")}
-                disabled={!isNew}
-                aria-invalid={!!issueFor(issues, "key")}
-                onChange={(event) => setField("key", event.target.value)}
-              />
-              {isNew && upstreamModel && !readModelString(body, "key") && (
-                <Button
-                  variant="outline"
-                  onClick={() => setField("key", suggestModelKey(upstreamModel))}
-                >
-                  按上游 ID 生成
-                </Button>
-              )}
-            </div>
-          </FormField>
-          <FormField
-            size="default"
-            label="上游模型 ID"
-            htmlFor="model-upstream"
-            required
-            error={issueFor(issues, "channels[0].upstream_model")}
-            tip="插件把这个值作为 model 参数发给上游网关。"
-          >
-            <Input
-              id="model-upstream"
-              className="font-mono"
-              placeholder="实际发给上游的模型名"
-              value={upstreamModel}
-              aria-invalid={!!issueFor(issues, "channels[0].upstream_model")}
-              onChange={(event) => onChange((body) => withModelUpstream(body, event.target.value))}
-            />
-          </FormField>
           <FormField
             size="default"
             label="展示名称"
@@ -190,6 +121,25 @@ export function ModelBasicForm({
               value={readModelString(body, "label")}
               aria-invalid={!!issueFor(issues, "label")}
               onChange={(event) => setField("label", event.target.value)}
+            />
+          </FormField>
+          <FormField
+            size="default"
+            label="上游模型标识"
+            htmlFor="model-upstream"
+            required
+            error={issueFor(issues, "channels[0].upstream_model")}
+            tip="插件把这个值作为 model 参数发给上游网关。"
+          >
+            <Input
+              id="model-upstream"
+              className="font-mono"
+              placeholder="实际发给上游的模型名"
+              value={upstreamModel}
+              aria-invalid={!!issueFor(issues, "channels[0].upstream_model")}
+              onChange={(event) =>
+                onChange((current) => withModelUpstream(current, event.target.value))
+              }
             />
           </FormField>
           <FormField
@@ -211,117 +161,23 @@ export function ModelBasicForm({
 
       <FormSection>
         <FormSectionHeader>
-          <FormSectionTitle>能力与渠道</FormSectionTitle>
+          <FormSectionTitle>能力与协议</FormSectionTitle>
+          <FormSectionDescription>
+            先选任务类型，再选对应的调用协议；更换后请核对参数与价格。
+          </FormSectionDescription>
         </FormSectionHeader>
-        <div className="space-y-5">
-          <FormField size="default" label="模型能力" required error={issueFor(issues, "kind")}>
-            <ChoiceCardGroup
-              id="model-kind"
-              aria-label="模型能力"
-              className="grid-cols-2 sm:grid-cols-5"
-            >
-              {KIND_ORDER.map((item) => {
-                const Icon = KIND_STYLE[item].icon;
-                return (
-                  <ChoiceCard
-                    key={item}
-                    selected={item === kind}
-                    disabled={kindUnsupported(item)}
-                    title={
-                      kindUnsupported(item)
-                        ? item === "agent"
-                          ? "Agent 模型要求渠道的插件使用 Bearer 鉴权"
-                          : "所选渠道的插件不支持这个能力"
-                        : undefined
-                    }
-                    className="items-center gap-2.5"
-                    onClick={() => requestKind(item)}
-                  >
-                    <Icon className={cn("size-5 shrink-0", KIND_STYLE[item].text)} />
-                    <span>
-                      <span className="block text-sm font-medium">{MODEL_KIND_LABEL[item]}</span>
-                      <span className="block text-[11px] opacity-70">{KIND_DESC[item]}</span>
-                    </span>
-                  </ChoiceCard>
-                );
-              })}
-            </ChoiceCardGroup>
-          </FormField>
-
-          <FormField
-            size="default"
-            label="所属渠道"
-            required
-            error={issueFor(issues, "channels[0].channel") ?? issueFor(issues, "channels")}
-          >
-            {!channelsReady ? (
-              <p className="text-muted-foreground text-sm">渠道加载中…</p>
-            ) : listed.length === 0 ? (
-              <Notice tone="warning">
-                还没有可用的渠道，需要先到
-                <Link to="/admin/ai/channels" className="mx-1 underline">
-                  渠道页
-                </Link>
-                新建一个。
-              </Notice>
-            ) : (
-              <ChoiceCardGroup id="model-channel" aria-label="所属渠道" className="sm:grid-cols-2">
-                {listed.map((item) => {
-                  const plugin = plugins.find((p) => p.key === item.plugin_key);
-                  const mode = channelMeta(plugins, item)?.endpoints?.[kind]?.mode;
-                  return (
-                    <ChoiceCard
-                      key={item.key}
-                      indicator
-                      selected={item.key === channelKey}
-                      onClick={() => pickChannel(item)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{item.name}</span>
-                        <span className="text-muted-foreground mt-0.5 block truncate text-xs">
-                          {plugin?.name ?? item.plugin_key} v{item.plugin_version}
-                          {mode && ` · ${mode === "async" ? "异步" : "同步"}`}
-                        </span>
-                      </span>
-                      {!item.enabled ? (
-                        <Tag tone="danger">已停用</Tag>
-                      ) : keyMissing(item) ? (
-                        <Tag tone="warning">未设 Key</Tag>
-                      ) : (
-                        <Tag tone="success">
-                          <ShieldCheck />
-                          Key
-                        </Tag>
-                      )}
-                    </ChoiceCard>
-                  );
-                })}
-              </ChoiceCardGroup>
-            )}
-          </FormField>
-
-          {info.channel && info.keyMissing && (
-            <Notice
-              tone="warning"
-              title="这个渠道还没有设置 Key，模型无法上线"
-              action={
-                <Link
-                  className="text-xs font-medium underline underline-offset-4"
-                  to="/admin/ai/channels"
-                  state={dialogEntry({ kind: "edit", key: info.channel.key })}
-                >
-                  去渠道页
-                </Link>
-              }
-            />
-          )}
-          {info.supportsKind === false && (
-            <Notice tone="danger">
-              {kind === "agent"
-                ? "Agent 模型要求渠道的插件使用 Bearer 鉴权，这个渠道不满足，上线会被拒绝。"
-                : `这个渠道的插件版本不支持${MODEL_KIND_LABEL[kind] ?? kind}，上线会被拒绝。`}
-            </Notice>
-          )}
+        <div className="space-y-4">
+          <ProtocolPicker
+            idPrefix="model"
+            kind={kind}
+            protocol={protocol}
+            plugins={plugins}
+            pluginsStatus={pluginsStatus}
+            kindError={issueFor(issues, "kind")}
+            protocolError={issueFor(issues, "channels[0].protocol")}
+            onKindChange={requestKind}
+            onProtocolChange={setProtocol}
+          />
         </div>
       </FormSection>
 
@@ -362,11 +218,13 @@ export function ModelBasicForm({
             label="排序"
             htmlFor="model-sort"
             error={issueFor(issues, "sort")}
+            tip={isNew ? undefined : "创建后的顺序在渠道的“自定义排序”里调整。"}
           >
             <Input
               id="model-sort"
               type="number"
               className="tabular-nums"
+              disabled={!isNew}
               value={readModelNumber(body, "sort") ?? ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
@@ -397,18 +255,17 @@ export function ModelBasicForm({
 
       <ConfirmDialog
         open={!!pendingKind}
-        title={`改成${MODEL_KIND_LABEL[shownKind?.kind ?? ""] ?? shownKind?.kind ?? ""}模型？`}
+        title={`改成${MODEL_KIND_LABEL[shownKind ?? ""] ?? shownKind ?? ""}模型？`}
         description={
           <>
-            {shownKind?.channel && "新渠道不支持当前能力，需要一起换能力。"}
             「能力与参数」和「积分定价」会重置成
-            {MODEL_KIND_LABEL[shownKind?.kind ?? ""] ?? shownKind?.kind}
-            模型的默认值，当前的配置会被替换。保存后，已上线的模型立即生效。
+            {MODEL_KIND_LABEL[shownKind ?? ""] ?? shownKind}
+            模型的默认值，当前的配置会被替换；已选的协议不支持新能力时也会被清空。保存后，已上线的模型立即生效。
           </>
         }
         confirmLabel="确认修改"
         onConfirm={() => {
-          if (pendingKind) applyKind(pendingKind.kind, pendingKind.channel);
+          if (pendingKind) applyKind(pendingKind);
           setPendingKind(null);
         }}
         onCancel={() => setPendingKind(null)}

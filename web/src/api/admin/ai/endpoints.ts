@@ -11,17 +11,21 @@
  *   POST   /admin/ai/plugins                           上传插件（multipart，字段 file）
  *   PUT    /admin/ai/plugins/:key/enabled              启停，body = {enabled}
  *   DELETE /admin/ai/plugins/:key/versions/:version    删除未被引用的版本
+ *   POST   /admin/ai/plugins/:key/upgrade-models       批量把旧版本的模型升到指定 / 最新版本，body = {version?}
  *   GET    /admin/ai/{plugins|channels|models}/:key/delete-check   删除预检：谁在引用它
  *   DELETE /admin/ai/{plugins|channels|models}/:key    彻底删除（key 之后可以重新使用）
- *   GET    /admin/ai/channels                          渠道分页列表（?q=&kind=&plugin=&status=&page=&page_size=）
- *   GET    /admin/ai/channels/options                  全部渠道（带健康状态，不分页）
+ *   GET    /admin/ai/channels                          渠道分页列表（?q=&status=&page=&page_size=）
+ *   GET    /admin/ai/channels/options                  全部渠道（带健康状态，不分页，渠道顺序）
  *   GET    /admin/ai/channels/:key                     渠道详情
  *   GET    /admin/ai/channels/loads                    各渠道当前的生成中 / 排队任务数
  *   POST   /admin/ai/channels                          新建渠道
  *   PUT    /admin/ai/channels/:key                     更新渠道（字段都可选）
- *   PUT    /admin/ai/channels/:key/secret              设置 Key，body = {value}，只写
- *   POST   /admin/ai/channels/:key/check               连通性检查
- *   POST   /admin/ai/channels/:key/import              导入模型草稿，body = {args}
+ *   PUT    /admin/ai/channels/:key/secret              设置 API Key，body = {value}，只写
+ *   PUT    /admin/ai/channels/:key/secret-key          设置 / 清除 Secret Key（空串清除），body = {value}，只写
+ *   PUT    /admin/ai/channels/sort                     渠道顺序，body = {keys: 全部渠道的新顺序}
+ *   POST   /admin/ai/channels/:key/pull-models         向上游拉取模型清单（不落库）
+ *   POST   /admin/ai/channels/:key/models/import       导入所选模型为“待配置”，body = {ids}
+ *   PUT    /admin/ai/channels/:key/models/sort         渠道内模型顺序，body = {keys: 该渠道全部模型的新顺序}
  *   GET    /admin/ai/models                            模型分页列表（?q=&kind=&channel=&status=&page=&page_size=）
  *   GET    /admin/ai/models/options                    全部模型的列表项（不分页）
  *   POST   /admin/ai/models                            新建（保存，默认未启用）
@@ -49,15 +53,18 @@ export const adminAiEndpoints = {
   pluginEnabled: (key: string) => `${P}/plugins/${seg(key)}/enabled`,
   pluginVersion: (key: string, version: string) =>
     `${P}/plugins/${seg(key)}/versions/${seg(version)}`,
+  pluginUpgradeModels: (key: string) => `${P}/plugins/${seg(key)}/upgrade-models`,
 
   channels: () => `${P}/channels`,
   channelOptions: () => `${P}/channels/options`,
   channelLoads: () => `${P}/channels/loads`,
   channel,
   channelSecret: (key: string) => `${channel(key)}/secret`,
-  channelCheck: (key: string) => `${channel(key)}/check`,
-  channelCheckDraft: () => `${P}/channels/check-draft`,
-  channelImport: (key: string) => `${channel(key)}/import`,
+  channelSecretKey: (key: string) => `${channel(key)}/secret-key`,
+  channelSort: () => `${P}/channels/sort`,
+  channelPullModels: (key: string) => `${channel(key)}/pull-models`,
+  channelImportModels: (key: string) => `${channel(key)}/models/import`,
+  channelModelSort: (key: string) => `${channel(key)}/models/sort`,
 
   models: () => `${P}/models`,
   modelOptions: () => `${P}/models/options`,
