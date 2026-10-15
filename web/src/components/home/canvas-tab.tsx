@@ -28,6 +28,8 @@ function RecentCard({ canvas }: { canvas: CanvasListItemDto }) {
     <motion.div whileTap={TAP} style={transitionStyle} className="min-w-0">
       <Link
         to={`/canvas/${canvas.id}`}
+        target="_blank"
+        rel="noopener"
         aria-label={`打开画布 ${canvas.title}`}
         className={cn(
           CARD,

@@ -135,6 +135,7 @@ export function AppSidebar() {
               <ListItem
                 key={canvas.id}
                 to={`/canvas/${canvas.id}`}
+                newWindow
                 title={canvas.title}
                 active={false}
                 thumb={

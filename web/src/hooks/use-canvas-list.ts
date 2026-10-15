@@ -8,6 +8,7 @@ import { removeViewport } from "@/utils/canvas/viewport-store";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 import type { CanvasListItemDto } from "@/api/canvas/type";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
+import { openCanvasWindow } from "@/utils/home/canvas-window";
 import {
   readCanvasCache,
   removeFromCanvasCache,
@@ -18,7 +19,8 @@ import {
 const SEARCH_DEBOUNCE = 300;
 
 /**
- * 新建一张空画布并跳进去；创建中重复点击会被忽略。侧栏和列表页的新建卡共用。
+ * 新建一张空画布并在新窗口打开；创建中重复点击会被忽略。侧栏、首页和列表页的新建卡共用。
+ * 新窗口要在点击时同步开出来（见 openCanvasWindow），被浏览器拦截就退回当前页跳转。
  */
 export function useCreateCanvas() {
   const navigate = useNavigate();
@@ -27,9 +29,14 @@ export function useCreateCanvas() {
   const create = useCallback(async () => {
     if (creating) return;
     setCreating(true);
+    const win = openCanvasWindow();
     try {
       const canvas = await createCanvas();
-      navigate(`/canvas/${canvas.id}`);
+      const url = `/canvas/${canvas.id}`;
+      if (!win.go(url)) navigate(url);
+    } catch (error) {
+      win.cancel();
+      throw error;
     } finally {
       setCreating(false);
     }

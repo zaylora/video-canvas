@@ -36,18 +36,22 @@ export function ListItem({
   active,
   thumb,
   trailing,
+  newWindow,
 }: {
   to: string;
   title: string;
   active: boolean;
   thumb: ReactNode;
   trailing?: ReactNode;
+  /** 在新窗口打开（画布） */
+  newWindow?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
   return (
     <div className="group/item relative">
       <Link
         to={to}
+        {...(newWindow ? { target: "_blank", rel: "noopener" } : {})}
         title={title}
         aria-current={active ? "page" : undefined}
         onClick={() => setOpenMobile(false)}

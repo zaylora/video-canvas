@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { canvasLockName, watchCanvasLock, type LockLike } from "@/utils/canvas/canvas-lock";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const tick = async () => {
   for (let i = 0; i < 20; i += 1) await Promise.resolve();
 };
@@ -112,6 +114,58 @@ describe("watchCanvasLock", () => {
     watchCanvasLock({ name: "canvas:7:c1", locks, onChange: (s) => third.push(s) });
     await tick();
     expect(third).toEqual(["held"]);
+  });
+
+  test("占用方很快释放（刚离开画布、锁还没传过来）：不出现「已在另一个标签页打开」，直接进入", async () => {
+    const locks = fakeLocks();
+    const second: string[] = [];
+    const stopFirst = watchCanvasLock({ name: "canvas:7:c1", locks, onChange: () => {} });
+    await tick();
+    watchCanvasLock({
+      name: "canvas:7:c1",
+      locks,
+      waitingDelayMs: 40,
+      onChange: (s) => second.push(s),
+    });
+    await tick();
+    stopFirst();
+    await tick();
+    await sleep(80);
+    expect(second).toEqual(["held"]);
+  });
+
+  test("占用一直不释放：宽限时间过后才提示", async () => {
+    const locks = fakeLocks();
+    const second: string[] = [];
+    watchCanvasLock({ name: "canvas:7:c1", locks, onChange: () => {} });
+    await tick();
+    watchCanvasLock({
+      name: "canvas:7:c1",
+      locks,
+      waitingDelayMs: 40,
+      onChange: (s) => second.push(s),
+    });
+    await tick();
+    expect(second).toEqual([]);
+    await sleep(80);
+    expect(second).toEqual(["waiting"]);
+  });
+
+  test("宽限期内就离开：之后不再通知", async () => {
+    const locks = fakeLocks();
+    const second: string[] = [];
+    watchCanvasLock({ name: "canvas:7:c1", locks, onChange: () => {} });
+    await tick();
+    const stop = watchCanvasLock({
+      name: "canvas:7:c1",
+      locks,
+      waitingDelayMs: 40,
+      onChange: (s) => second.push(s),
+    });
+    await tick();
+    stop();
+    await sleep(80);
+    expect(second).toEqual([]);
   });
 
   test("不同画布互不影响", async () => {
