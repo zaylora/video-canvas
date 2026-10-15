@@ -19,8 +19,6 @@
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  * 鉴权：Bearer（渠道 Key 就是 MiniMax 的 API Key，原样填写），由宿主注入。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { extra?: object }   原样合并进请求体顶层（如 prompt_optimizer、fast_pretreatment、aigc_watermark、callback_url），用户输入与固定字段优先
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2v / i2v / omni）、duration（秒）、resolution（512P / 768P / 1080P / 2K，大小写不敏感）、aspect_ratio（只对 H3 生效）、
  *   images（参考图，每项是文件引用 "input:images.0"）、videos / audios（只对 H3 生效）
@@ -152,7 +150,6 @@ function isModern(model) {
 
 function buildV1Body(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var model = ctx.model.upstreamModel;
   var body = { model: model };
   if (input.prompt !== undefined && input.prompt !== "") {
@@ -176,7 +173,6 @@ function buildV1Body(ctx) {
       body.last_frame_image = ref(images[1]);
     }
   }
-  mergeExtra(body, params.extra);
   return body;
 }
 
@@ -204,7 +200,6 @@ function normalizeResolution(raw, model) {
 
 function buildH3Body(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var images = isArray(input.images) ? input.images : [];
   var videos = isArray(input.videos) ? input.videos : [];
   var audios = isArray(input.audios) ? input.audios : [];
@@ -233,7 +228,6 @@ function buildH3Body(ctx) {
     duration: duration > 0 ? duration : 5,
     ratio: h3Ratio(input.aspect_ratio, images.length + videos.length > 0),
   };
-  mergeExtra(body, params.extra);
   return body;
 }
 
@@ -397,17 +391,6 @@ function refList(list) {
     out.push(ref(list[i]));
   }
   return out;
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function isArray(v) {

@@ -167,7 +167,7 @@ func modelSchema() obj {
 		"$schema":              "http://json-schema.org/draft-07/schema#",
 		"title":                "Model（模型）",
 		"type":                 "object",
-		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型、固定参数、模型能力、定价",
+		"description":          "画布用户选择的一项模型：绑定哪个渠道与上游模型、模型能力、定价",
 		"additionalProperties": false,
 		"required":             []string{"key", "kind", "label", "channels", "pricing"},
 		"properties": obj{
@@ -191,7 +191,6 @@ func modelSchema() obj {
 				"type": "array", "minItems": maxChannels, "maxItems": maxChannels, "items": channelRefSchema(),
 				"description": "绑定的渠道。数据结构是数组，预留多渠道故障切换，首期只支持一个渠道",
 			},
-			"params":       obj{"type": "object", "description": "固定参数：宿主只存不解释，原样交给渠道所用的插件（例如工作流型插件的节点绑定）"},
 			"capabilities": capabilitiesSchema(),
 			"pricing":      pricingSchema(),
 		},

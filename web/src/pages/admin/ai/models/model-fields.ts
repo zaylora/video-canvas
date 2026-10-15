@@ -25,8 +25,7 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
   sort: { tab: "basic", id: "model-sort" },
   channels: { tab: "basic", id: "model-channel" },
   deadline: { tab: "params", id: "model-deadline" },
-  params: { tab: "params", id: "model-params" },
-  capabilities: { tab: "params", id: "model-capabilities" },
+  capabilities: { tab: "params", id: "model-capabilities-params" },
   pricing: { tab: "price", id: "model-pricing" },
 };
 
@@ -99,12 +98,8 @@ function blockingChecks(body: Record<string, unknown>, kind: string): ModelCheck
     const dims = tierDimensions(caps);
     (pricing.tiers ?? []).forEach((tier: PriceTier, index) => {
       const path = `pricing.tiers[${index}].when`;
-      if (Object.keys(tier.when ?? {}).length === 0)
-        error("price", path, `第 ${index + 1} 条规格价格没有条件，会盖掉默认价`);
-      else {
-        const stale = staleCondition(tier, dims);
-        if (stale) error("price", path, `第 ${index + 1} 条规格价格：${stale}，请调整或删除`);
-      }
+      const stale = staleCondition(tier, dims);
+      if (stale) error("price", path, `第 ${index + 1} 条规格价格：${stale}，请调整或删除`);
     });
   }
   return out;

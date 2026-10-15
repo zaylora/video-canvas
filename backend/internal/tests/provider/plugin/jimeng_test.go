@@ -240,16 +240,15 @@ func TestJimengV3ReqKeyAndFrames(t *testing.T) {
 	defer srv.Close()
 	env := newJimengEnv(t, nil)
 	snap := env.snapshot(srv.URL, "jimeng_vgfm_t2v_l20")
-	snap.Model.Params = map[string]any{"extra": map[string]any{"seed": 1, "custom": "<x>"}}
-	if _, err := jimengSubmit(t, env, snap, map[string]any{"prompt": "x", "seed": float64(42)}); err != nil {
+	if _, err := jimengSubmit(t, env, snap, map[string]any{"prompt": "<x>", "seed": float64(42)}); err != nil {
 		t.Fatal(err)
 	}
 	got := up.last()
-	if got.Raw != jimengGoEscaped(`{"custom":"{LT}x{GT}","prompt":"x","req_key":"jimeng_vgfm_t2v_l20","seed":42}`) {
-		t.Fatalf("seed / extra 请求体不符：%s", got.Raw)
+	if got.Raw != jimengGoEscaped(`{"prompt":"{LT}x{GT}","req_key":"jimeng_vgfm_t2v_l20","seed":42}`) {
+		t.Fatalf("seed / 转义字符请求体不符：%s", got.Raw)
 	}
 	if got.Header.Get("Authorization") != jimengExpectedAuthorization(got, "AKLTtest", "sk/Secret+Value==") {
-		t.Fatal("带 extra 的签名不一致")
+		t.Fatal("带转义字符的签名不一致")
 	}
 }
 

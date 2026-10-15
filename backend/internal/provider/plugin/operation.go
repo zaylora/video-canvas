@@ -132,10 +132,9 @@ type hookTask struct {
 }
 
 type hookModel struct {
-	Key           string         `json:"key"`
-	Kind          string         `json:"kind"`
-	UpstreamModel string         `json:"upstreamModel"`
-	Params        map[string]any `json:"params"`
+	Key           string `json:"key"`
+	Kind          string `json:"kind"`
+	UpstreamModel string `json:"upstreamModel"`
 }
 
 type hookChannel struct {
@@ -167,11 +166,7 @@ func (o *operation) buildCtx(ctx context.Context) (*hookCtx, error) {
 	if o.model == nil {
 		return hc, nil
 	}
-	params := o.model.Params
-	if params == nil {
-		params = map[string]any{}
-	}
-	hc.Model = &hookModel{Key: o.model.Key, Kind: o.model.Kind, UpstreamModel: o.model.UpstreamModel, Params: params}
+	hc.Model = &hookModel{Key: o.model.Key, Kind: o.model.Kind, UpstreamModel: o.model.UpstreamModel}
 	hc.Task = &hookTask{ID: o.task.ID, ProviderTaskID: o.task.ProviderTaskID, State: nonEmptyJSON(o.task.State)}
 	in := make(map[string]any, len(o.input))
 	for k, v := range o.input {

@@ -187,8 +187,7 @@ func TestAlibabaImageImageLegacy(t *testing.T) {
 	defer srv.Close()
 	env := newAlibabaImageEnv(t, nil)
 	snap := env.snapshot(srv.URL, "image", "wanx2.1-t2i-turbo", alibabaimageCaps())
-	snap.Model.Params = map[string]any{"parameters": map[string]any{"watermark": false}}
-	if _, err := alibabaimageSubmit(t, env, snap, map[string]any{"prompt": "山水", "size": "1024x1024", "negative_prompt": "模糊"}); err != nil {
+	if _, err := alibabaimageSubmit(t, env, snap, map[string]any{"prompt": "山水", "size": "1024x1024", "negative_prompt": "模糊", "watermark": false}); err != nil {
 		t.Fatal(err)
 	}
 	got := up.last()

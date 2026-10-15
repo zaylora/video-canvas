@@ -35,12 +35,12 @@ function tierMatches(tier: PriceTier, spec: PriceSpec) {
   });
 }
 
-/** 命中的规格价格：on 且条件全部满足；条件最多的一条胜出，条件数相同取靠前的；没有任何条件的不参与 */
+/** 命中的规格价格：on 且条件全部满足；条件最多的一条胜出，条件数相同取靠前的；没有任何条件的对所有请求适用，但别的规格命中时让位 */
 export function matchTier(pricing: Pricing, spec: PriceSpec): PriceTier | undefined {
   let best: PriceTier | undefined;
   for (const tier of pricing.tiers ?? []) {
     const size = Object.keys(tier.when ?? {}).length;
-    if (!tier.on || size === 0 || !tierMatches(tier, spec)) continue;
+    if (!tier.on || !tierMatches(tier, spec)) continue;
     if (!best || size > Object.keys(best.when).length) best = tier;
   }
   return best;
@@ -101,9 +101,7 @@ export function fanoutCount(caps: Capabilities | undefined, params: Record<strin
 /** 默认价格（不看规格），以及是否存在可能覆盖它的规格价格 */
 function basePrice(pricing: Pricing) {
   const base = pricing.billing === "per_second" ? (pricing.per_second ?? 0) : (pricing.unit ?? 0);
-  const units = (pricing.tiers ?? [])
-    .filter((tier) => tier.on && Object.keys(tier.when ?? {}).length > 0)
-    .map((tier) => tier.unit);
+  const units = (pricing.tiers ?? []).filter((tier) => tier.on).map((tier) => tier.unit);
   return { base, min: Math.min(base, ...units), varies: units.some((unit) => unit !== base) };
 }
 

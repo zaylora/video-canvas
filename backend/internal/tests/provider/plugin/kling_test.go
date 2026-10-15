@@ -151,10 +151,9 @@ func TestKlingTextToVideoSubmit(t *testing.T) {
 	})
 	env := newKlingEnv(t, klingChannelKey)
 	snap := env.snapshot(srv.URL, "kling-v2-master")
-	snap.Model.Params = map[string]any{"mode": "std", "negative_prompt": "模糊", "extra": map[string]any{"cfg_scale": 0.9, "callback_url": "https://x"}}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task:  provider.TaskRef{ID: 1, UserID: 9},
-		Input: map[string]any{"prompt": "猫在跳舞", "duration": float64(10), "aspect_ratio": "16:9"},
+		Input: map[string]any{"prompt": "猫在跳舞", "duration": float64(10), "aspect_ratio": "16:9", "mode": "std", "negative_prompt": "模糊", "cfg_scale": 0.9},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +173,7 @@ func TestKlingTextToVideoSubmit(t *testing.T) {
 	}
 	b := got.Body
 	if b["model_name"] != "kling-v2-master" || b["mode"] != "pro" || b["prompt"] != "猫在跳舞" || b["duration"] != "10" ||
-		b["aspect_ratio"] != "16:9" || b["negative_prompt"] != "模糊" || b["cfg_scale"] != 0.9 || b["callback_url"] != "https://x" {
+		b["aspect_ratio"] != "16:9" || b["negative_prompt"] != "模糊" || b["cfg_scale"] != 0.9 {
 		t.Fatalf("请求体不符：%v", b)
 	}
 	if _, has := b["image"]; has {

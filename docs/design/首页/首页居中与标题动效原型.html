@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>首页居中与标题动效原型</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --beam: oklch(0.62 0.16 55); --beam-bright: oklch(0.78 0.15 70);
+    --card: oklch(0.985 0 0);
+    --glow: 14%;
+  }
+  :root.dark {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --muted: oklch(0.25 0 0); --muted-foreground: oklch(0.708 0 0);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --beam: oklch(0.78 0.15 70); --beam-bright: oklch(0.78 0.15 70);
+    --card: oklch(0.18 0 0);
+    --glow: 18%;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--foreground); overflow-x: hidden;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
+
+  /* —— 原型控制条 —— */
+  .bar { position: fixed; top: 12px; right: 16px; left: 16px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; z-index: 5; }
+  .bar button { border: 1px solid var(--chrome-border); background: var(--muted); color: var(--foreground);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: transform 120ms cubic-bezier(0.2,0,0,1); }
+  .bar button:active { transform: scale(0.96); }
+  .bar button[aria-pressed="true"] { background: var(--foreground); color: var(--background); }
+
+  /* —— 布局：垂直居中偏上 —— */
+  .page { position: relative; min-height: 100dvh; display: flex; flex-direction: column; justify-content: center;
+    max-width: 1040px; margin: 0 auto; padding: 0 24px 8vh; }
+  .head { position: relative; display: flex; flex-direction: column; align-items: center; gap: 24px; text-align: center; }
+  h1 { position: relative; margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.01em; }
+  @media (max-width: 767px) { h1 { font-size: 24px; } .page { padding: 0 16px 8vh; } }
+
+  /* —— 入场：逐字上浮 —— */
+  .ch { display: inline-block; opacity: 0; transform: translateY(8px);
+    animation: in 240ms cubic-bezier(0.2, 0, 0, 1) forwards; animation-delay: calc(var(--i) * 30ms); }
+  @keyframes in { to { opacity: 1; transform: none; } }
+  .rise { opacity: 0; transform: translateY(6px); animation: in 180ms cubic-bezier(0.2, 0, 0, 1) forwards; }
+
+  /* —— 「创作」：两个字作为一个整体入场，渐变挂在自己身上。
+     background-clip:text 裁不进做了 transform 的子元素，所以不能再拆成单字 —— */
+  .hl { display: inline-block; opacity: 0; transform: translateY(8px);
+    background: linear-gradient(90deg, var(--foreground) 0%, var(--beam) 25%, var(--beam-bright) 50%, var(--beam) 75%, var(--foreground) 100%);
+    background-size: 200% 100%; background-position: 100% 0;
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+    animation: in 240ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i) * 30ms) forwards,
+               sweep 900ms cubic-bezier(0.2, 0, 0, 1) 500ms forwards; }
+  @keyframes sweep { from { background-position: 100% 0; } to { background-position: 50% 0; } }
+  .idle-a .hl { animation: in 240ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i) * 30ms) forwards,
+                           sweep 900ms cubic-bezier(0.2, 0, 0, 1) 500ms forwards,
+                           flow 6s ease-in-out 1.4s infinite alternate; }
+  @keyframes flow { from { background-position: 50% 0; } to { background-position: 0% 0; } }
+
+  /* —— B 背景光晕：两团 beam 色柔光在标题后方缓慢漂移，只动 transform / opacity —— */
+  .aura { position: absolute; left: 50%; top: 50%; width: min(760px, 120vw); height: 420px; translate: -50% -60%;
+    pointer-events: none; z-index: -1; opacity: 0; transition: opacity 600ms cubic-bezier(0.2,0,0,1); }
+  .idle-b .aura { opacity: 1; }
+  .blob { position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in oklch, var(--beam) var(--glow), transparent), transparent); }
+  .blob.one { animation: drift1 11s ease-in-out infinite alternate; }
+  .blob.two { inset: 10% 20%; background: radial-gradient(closest-side, color-mix(in oklch, var(--beam-bright) var(--glow), transparent), transparent);
+    animation: drift2 14s ease-in-out infinite alternate; }
+  @keyframes drift1 { from { transform: translate(-8%, 4%) scale(0.95); opacity: 0.7; } to { transform: translate(8%, -4%) scale(1.08); opacity: 1; } }
+  @keyframes drift2 { from { transform: translate(10%, -2%) scale(1.05); opacity: 1; } to { transform: translate(-10%, 6%) scale(0.9); opacity: 0.6; } }
+
+  /* —— C 输入卡片边缘流光：一段 conic 光沿边框慢慢转，聚焦输入时淡出 —— */
+  .composer-wrap { position: relative; margin-top: 28px; border-radius: 28px; padding: 1px; overflow: hidden; background: var(--chrome-border); isolation: isolate; }
+  .ring { position: absolute; left: 50%; top: 50%; width: 200vmax; aspect-ratio: 1; translate: -50% -50%; z-index: -1; opacity: 0;
+    background: conic-gradient(from 0deg, transparent 0 80%, color-mix(in oklch, var(--beam) 70%, transparent) 90%, transparent 100%);
+    transition: opacity 240ms cubic-bezier(0.2,0,0,1); }
+  .idle-c .ring { opacity: 1; animation: spin 8s linear infinite; }
+  .idle-c .composer-wrap:focus-within .ring { opacity: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .composer { display: block; width: 100%; height: 160px; resize: none; border: 0; outline: none; border-radius: 27px;
+    background: var(--card); color: var(--foreground); padding: 20px; font: inherit; font-size: 15px; }
+  .composer::placeholder { color: var(--muted-foreground); }
+
+  .pill { display: flex; width: min(320px, 100%); background: var(--muted); border-radius: 999px; padding: 4px; }
+  .pill span { flex: 1; text-align: center; height: 36px; line-height: 36px; font-size: 14px; border-radius: 999px; color: var(--muted-foreground); }
+  .pill .on { background: var(--foreground); color: var(--background); font-weight: 500;
+    background-image: radial-gradient(ellipse 60% 120% at 18% 50%, color-mix(in oklch, var(--beam-bright) 55%, transparent), transparent 70%); }
+
+  /* —— 减少动态效果：只淡入，所有常驻动画关闭 —— */
+  .reduce .ch, .reduce .rise { transform: none; animation-name: fade; animation-duration: 180ms; }
+  .reduce .hl { transform: none; background: none; color: var(--beam); -webkit-text-fill-color: var(--beam);
+    animation: fade 180ms cubic-bezier(0.2, 0, 0, 1) calc(var(--i) * 30ms) forwards !important; }
+  .reduce .blob, .reduce .ring { animation: none !important; }
+  @keyframes fade { to { opacity: 1; } }
+</style>
+</head>
+<body class="idle-a idle-b">
+<div class="bar">
+  <button data-idle="idle-a" aria-pressed="true">A「创作」流光</button>
+  <button data-idle="idle-b" aria-pressed="true">B 背景光晕</button>
+  <button data-idle="idle-c" aria-pressed="false">C 卡片边缘流光</button>
+  <button id="replay">重播入场</button>
+  <button id="theme">深/浅色</button>
+  <button id="reduce" aria-pressed="false">减少动态</button>
+</div>
+<main class="page" id="page"></main>
+<script>
+  const page = document.getElementById("page");
+  function render() {
+    let i = 0;
+    const chars = (s) => [...s].map((c) => `<span class="ch" style="--i:${i++}">${c}</span>`).join("");
+    page.innerHTML = `
+      <div class="head">
+        <div class="aura" aria-hidden="true"><div class="blob one"></div><div class="blob two"></div></div>
+        <h1 aria-label="晚上好，今天想要创作什么？"><span aria-hidden="true">${chars("晚上好，今天想要")}<span class="hl" style="--i:${(i += 2) - 2}">创作</span>${chars("什么？")}</span></h1>
+        <div class="pill rise" style="animation-delay:300ms"><span class="on">生成</span><span>画布</span></div>
+      </div>
+      <div class="composer-wrap rise" style="animation-delay:360ms">
+        <div class="ring" aria-hidden="true"></div>
+        <textarea class="composer" placeholder="描述你想生成的画面、镜头或声音，也可以上传、粘贴参考图"></textarea>
+      </div>`;
+  }
+  render();
+  document.querySelectorAll("[data-idle]").forEach((b) => b.onclick = () => {
+    const on = document.body.classList.toggle(b.dataset.idle);
+    b.setAttribute("aria-pressed", on);
+  });
+  document.getElementById("replay").onclick = render;
+  document.getElementById("theme").onclick = () => document.documentElement.classList.toggle("dark");
+  const rb = document.getElementById("reduce");
+  rb.onclick = () => { const on = document.body.classList.toggle("reduce"); rb.setAttribute("aria-pressed", on); render(); };
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) rb.click();
+</script>
+</body>
+</html>

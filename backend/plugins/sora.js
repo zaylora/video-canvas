@@ -12,8 +12,6 @@
  * 上游模型（meta.models）：sora-2、sora-2-pro。
  * 鉴权：bearer，渠道 Key 直接填 OpenAI API Key（sk-...），宿主注入 Authorization: Bearer。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { extra?: object }   extra 原样合并进请求体（用户输入与固定字段优先）
  * 用户输入（宿主按模型 capabilities 校验后传入）：
  *   prompt（必填）、op（t2v / i2v）；
  *   duration（秒，也接受 seconds；官方取值 4 / 8 / 12，原样转成字符串发送）；
@@ -44,7 +42,6 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var fields = { model: ctx.model.upstreamModel };
     if (input.prompt !== undefined) {
       fields.prompt = String(input.prompt);
@@ -57,7 +54,6 @@ module.exports = {
     if (size) {
       fields.size = size;
     }
-    mergeExtra(fields, params.extra);
 
     var images = isArray(input.images) ? input.images : [];
     if (images.length > 0) {
@@ -156,7 +152,7 @@ function sizeOf(input) {
   return "";
 }
 
-// multipart 的字段值都是字符串；对象（如 extra 里的嵌套）转成 JSON 文本。
+// multipart 的字段值都是字符串；对象转成 JSON 文本。
 function stringifyFields(fields) {
   var out = {};
   for (var k in fields) {
@@ -213,17 +209,6 @@ function parseProgress(v) {
     return isNaN(n) ? undefined : Math.max(0, n);
   }
   return undefined;
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function pick() {

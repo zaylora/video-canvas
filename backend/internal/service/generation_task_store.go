@@ -221,7 +221,25 @@ func (s *GenerationTaskService) Complete(ctx context.Context, t *model.Generatio
 		return false, err
 	}
 	s.publish(ctx, updated)
+	s.writeCanvasCover(ctx, updated, outputs)
 	return true, nil
+}
+
+// writeCanvasCover 任务成功后，把产出里第一张图写成所属画布的封面（画布已有封面则不动，所以封面是画布里第一张图）。
+// 封面只是列表页的装饰：试跑任务、不属于画布、没有图片产出都跳过；写失败只记日志，不能让已经结算的任务算失败。
+func (s *GenerationTaskService) writeCanvasCover(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput) {
+	if s.covers == nil || t.IsTest || t.CanvasProjectID == nil {
+		return
+	}
+	for _, o := range outputs {
+		if o.MediaType != "image" || o.AssetID == 0 {
+			continue
+		}
+		if err := s.covers.SetCoverIfEmpty(ctx, t.UserID, *t.CanvasProjectID, o.AssetID); err != nil {
+			logger.Warn("写入画布封面失败", logger.TaskID(t.ID), zap.Error(err))
+		}
+		return
+	}
 }
 
 // settleAmount 按任务快照里的定价算成功时实际扣的积分（不超过冻结额）。快照解析失败时按冻结额扣，不让用户少付也不多付。

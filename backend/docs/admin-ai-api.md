@@ -203,7 +203,6 @@
       "protocol": { "plugin": "newapi", "version": "1.0.0", "settings": { "region": "cn" } },
     },
   ], // 首期必须恰好一个
-  "params": { "max_tokens": 2000 }, // 可选，固定参数，原样交给插件
   "capabilities": {
     // 模型能力：由运营手填，画布渲染与下单校验的唯一来源（取代旧的 input_schema）
     "ops": ["t2v", "i2v", "omni"], // 生成方式：video 取 t2v / i2v / omni，image 取 t2i / i2i；text、audio 不填
@@ -244,7 +243,7 @@
 
 ## 面向画布的接口（变化）
 
-- `GET /api/v1/models?kind=video|image|audio|text|agent`（登录即可，不要求管理员）：`kind` 取值之外 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含 params / 渠道 / 插件信息。
+- `GET /api/v1/models?kind=video|image|audio|text|agent`（登录即可，不要求管理员）：`kind` 取值之外 400；返回字段为 `key / kind / label / hint / vendor / tags / capabilities / pricing`（`capabilities` 不含 `system`，`pricing` 不含 `cost`）（`vendor` 无则为空串，`tags` 无则为 `[]`），仍然不含渠道 / 插件信息。
 - `POST /generation-tasks`：请求新增 `node_ids`（长度等于生成数量，第 i 个任务绑定第 i 个节点；只生成 1 个时可以只传 `node_id`），积分按 `pricing` 计算；响应改为 `{ "items": [ { "node_id", "task" } | { "node_id", "error": { "status", "code", "message" } } ] }`，按节点逐项给出，某个节点失败（402 积分不足、429 并发已满……）不影响其它节点。幂等键覆盖全部任务：第 i 个任务用 `Idempotency-Key#i`（i=0 不加后缀）。任务视图新增 `charged_credits`（实际扣的积分，Token 计费可能小于冻结额）。
 - `POST /generation-tasks` 的 `kind` 新增 `text`；文本任务成功后 `outputs` 是 `[{ "media_type": "text", "text": "正文" }]`（没有 `asset_id` 与 `url`）。
 - `TaskOutput` 新增 `text` 字段，`asset_id` / `url` 在文本产物里不出现。

@@ -120,8 +120,7 @@ func TestAIConfigService_Registry_Snapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Pricing.Unit != 5 ||
-			snap.Model.Params["instanceType"] != "default" {
+		if snap.Model.Key != "m1" || snap.Model.Kind != "video" || snap.Model.UpstreamModel != "kling-v2" || snap.Model.Pricing.Unit != 5 {
 			t.Fatalf("模型部分不符合预期：%+v", snap.Model)
 		}
 		ver, _ := repo.FindVersion(ctx, "kling", "1.0.0")

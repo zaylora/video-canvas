@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { canvasLockName, watchCanvasLock, type LockLike } from "@/utils/canvas/canvas-lock";
 import { getCurrentUserId } from "@/utils/storage/user-id";
 
+/** 抢不到锁后多久才提示「已在另一个标签页打开」（毫秒）：给刚离开画布的标签页留出释放锁的时间 */
+const WAITING_GRACE_MS = 600;
+
 /** checking：还没问出结果；held：可以编辑；waiting：已在另一个标签页打开 */
 export type CanvasLockStatus = "checking" | "held" | "waiting";
 
@@ -21,6 +24,7 @@ export function useCanvasLock(canvasId: string | undefined): CanvasLockStatus {
     return watchCanvasLock({
       name,
       locks: locks as unknown as LockLike | undefined,
+      waitingDelayMs: WAITING_GRACE_MS,
       onChange: (state) => setResult({ name, state }),
     });
   }, [name]);

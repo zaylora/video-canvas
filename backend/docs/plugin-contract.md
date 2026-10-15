@@ -69,8 +69,7 @@ meta: {
     "key": "kling-i2v",
     "kind": "video",
     "upstreamModel": "kling-v2-master",
-    "params": {},
-  },
+  }, // 模型上没有别的配置：插件需要的输入都来自 input（面板里配置的生成参数），固定行为写在插件代码里
   "input": {
     "prompt": "...",
     "op": "i2v",
@@ -157,7 +156,7 @@ meta: {
 | `classifyError(ctx, resp)`             | ctx，非 2xx 响应                              | `{ class, code?, message? }` 或 null；可选                                                         |
 | `buildCheckRequest(ctx)`               | ctx                                           | **已弃用**，宿主不再调用；可选                                                                  |
 | `buildImportRequest(ctx, args)`        | ctx，导入参数                                 | **已弃用**，宿主不再调用；可选                                                                                     |
-| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数                           | （已弃用）模型草稿数组 `[{ upstreamModel, kind, label, params?, paramHints? }]`（`paramHints` 见下文）；可选 |
+| `parseImportResponse(ctx, resp, args)` | ctx，响应，导入参数                           | （已弃用）模型草稿数组 `[{ upstreamModel, kind, label, paramHints? }]`（`paramHints` 见下文）；可选 |
 
 **提交流程**：`buildPrepareRequests`（若有且 `ctx.prepared` 还没有）→ 宿主依次执行 → `parsePrepareResponses` → 持久化 prepared → `buildSubmitRequest` → 执行 → `parseSubmitResponse`。准备请求与提交请求走同样的校验、鉴权注入、SSRF、限流。
 

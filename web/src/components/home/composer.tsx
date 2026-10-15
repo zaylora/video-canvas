@@ -49,6 +49,7 @@ const BAR_BUTTON =
  * 模式、模型、参数、草稿和参考图都在 useComposerStore 里，两个页面各渲一份也不会丢。
  * 发送一次提交一条生成记录（见 hooks/use-conversation-submit.ts）：
  * 发送键旁显示预估积分，余额不足、参考图没传完、提示词不合法时禁用并写明原因。
+ * 创作页上的大卡片（page）静止时边框有一段光慢慢转圈，聚焦输入后淡出；对话页的 dock 不带。
  * 引用资产（@）要等素材列表接口，先禁用；Agent 只在画布里，这里没有。
  * @param placement page 是创作页里的大卡片；dock 是对话页贴在底部的那一份，菜单向上弹、输入框矮一点
  * @param target 记录提交到哪里：首页是 new（新建一段对话），对话页是当前对话
@@ -160,11 +161,17 @@ export function Composer({
       onDragOver={(event) => event.dataTransfer.types.includes("Files") && event.preventDefault()}
       onDrop={handleDrop}
       className={cn(
-        "bg-card border-border relative grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 rounded-3xl border p-3 pt-4 pl-4 shadow-[0_1px_2px_oklch(0_0_0/0.04),0_18px_40px_-28px_oklch(0_0_0/0.35)] transition-[border-color,box-shadow] duration-180 md:p-3 md:pt-4.5 md:pl-4.5",
+        "group/composer bg-card border-border relative grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 rounded-3xl border p-3 pt-4 pl-4 shadow-[0_1px_2px_oklch(0_0_0/0.04),0_18px_40px_-28px_oklch(0_0_0/0.35)] transition-[border-color,box-shadow] duration-180 md:p-3 md:pt-4.5 md:pl-4.5",
         "focus-within:border-foreground/25",
         flash && "ring-beam/30 ring-4",
       )}
     >
+      {placement === "page" && (
+        <div
+          aria-hidden
+          className="home-ring transition-opacity duration-240 group-focus-within/composer:opacity-0"
+        />
+      )}
       <ComposerRefs
         refs={refs}
         caps={model?.capabilities}
@@ -230,9 +237,6 @@ export function Composer({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
-            <p className="text-muted-foreground border-border mt-1 border-t px-2.5 pt-2 pb-1 text-xs">
-              想让 Agent 帮你拆分镜，请在画布里使用
-            </p>
           </DropdownMenuContent>
         </DropdownMenu>
 

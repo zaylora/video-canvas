@@ -47,13 +47,13 @@ parseQueryResponse(ctx, resp)        async 必须。返回统一结果
 # 四、ctx 与用户输入
 ctx = {
   task:    { id, providerTaskId, state },
-  model:   { key, kind, upstreamModel, params },   // params：运营在模型上填的固定参数，结构由你自己约定并读取，请在文件顶部注释里写清
+  model:   { key, kind, upstreamModel },
   input:   { prompt, op, images, videos, audios, ...生成参数 },
   channel: { baseUrl, settings },                  // settings：运营在模型的协议设置里填的值（meta.channelSettings 声明）
   now      // Unix 秒
 }
 - ctx.input 由宿主按运营配置的模型能力校验后传入：prompt（提示词）、op（生成方式 t2v / i2v / omni / t2i / i2i，仅视频和图片）、运营起了名字的生成参数（如 duration、aspect_ratio、resolution，已按类型规范化）、参考素材数组 images / videos / audios（每项是文件引用字符串 "input:images.0"）；文本模型另有 system 与 max_tokens。没开放、没填的可选键没有。请在文件顶部注释里列出读取了哪些键、对应上游的哪个字段。
-- 用户输入优先于 params 里的固定值。积分、并发、生成数量都由宿主处理：插件不要处理积分、不要自己限流排队，也不要让上游一次出多个结果（一个任务只对应一个结果）。按秒计费的视频模型有个 duration 参数（秒），传给上游的时长字段即可。
+- 模型上没有别的配置：插件需要的一切，要么来自 ctx.input（面板配置的输入），要么是写在插件代码里的固定行为。积分、并发、生成数量都由宿主处理：插件不要处理积分、不要自己限流排队，也不要让上游一次出多个结果（一个任务只对应一个结果）。按秒计费的视频模型有个 duration 参数（秒），传给上游的时长字段即可。
 
 # 五、请求描述（build* 的返回值）
 {
@@ -84,14 +84,14 @@ ctx = {
 - async：未知的中间状态当 queued 或 running 继续等待，不要当失败；上游明确返回“失败/取消/过期”才返回 failed，并带上上游给的原因。
 - 写了就要写对：status 只能是 queued / running / succeeded / failed（不要写 SUCCESS、completed），class 只能是上面四个之一。
 
-# 八、上游模型名与固定参数
+# 八、上游模型名与输入
 - 运营在模型里填“上游模型名”，插件在 buildSubmitRequest 里通过 ctx.model.upstreamModel 读取；它可以是模型名、分组 id 或工作流 id。模型列表由宿主内置的通用请求拉取，插件不用实现任何列模型的钩子。
-- 生成方式、参考素材、生成参数等能力由运营在后台配置，插件不声明；模型自己的固定参数放 ctx.model.params，结构由你约定，请在文件顶部注释里写清并给出示例（运营按它填）。工作流类、不同档位是不同模型 id 等复杂情况见附录。
+- 生成方式、参考素材、生成参数等能力由运营在后台的面板里配置，插件不声明；上游需要的开关（如 watermark、seed）按名字读 ctx.input，没有就不发或用插件里写死的默认，运营想开放时在面板里加同名参数即可。插件不要让运营去填 JSON 或额外配置。工作流类、不同档位是不同模型 id 等复杂情况见附录。
 
 # 九、输出要求
 1. 只输出一个完整的 .js 文件（放在一个代码块里），不要拆分，不要省略代码。
-2. 文件顶部用中文注释写明：对接的平台与接口、支持的 endpoint、params 结构、读取的输入字段、已知限制；注释和错误文案都用中文。
-3. 代码后另附一段“配置说明”：渠道 base_url 应该填什么；推荐的 auth 类型；每种 endpoint 建议的 capabilities 示例和固定参数 params 示例；哪些地方是根据文档推断的、需要人工试跑确认。
+2. 文件顶部用中文注释写明：对接的平台与接口、支持的 endpoint、读取的输入字段、已知限制；注释和错误文案都用中文。
+3. 代码后另附一段“配置说明”：渠道 base_url 应该填什么；推荐的 auth 类型；每种 endpoint 建议的 capabilities 示例（生成参数的名字与取值）；哪些地方是根据文档推断的、需要人工试跑确认。
 4. 文档里没写清楚的地方不要编造，用注释标出“待确认”，并在“配置说明”里列出。
 5. 规则必须从协议契约和本次目标 API 文档推导，保持平台无关；不要为某个供应商、某个工作流编号、某个节点编号增加特例。
 
@@ -149,12 +149,12 @@ module.exports = {
 - providerCost：统一结果里可带 providerCost（数字，仅写对账日志，不影响扣费）。
 - poll: { firstDelay: 10, interval: 5, maxInterval: 15, jitter: 0.2 }：异步轮询节奏（秒），不写用默认值。
 - channelSettings: { region: { type: "enum", label: "区域", options: ["cn", "global"], default: "cn" } }：协议设置项（非敏感），在模型的“协议设置”里填、值存在模型配置里，渲染成表单，插件里仍通过 ctx.channel.settings 读取；type 为 string / number / boolean / enum，label 必填，enum 必须有 options 且 default 在其中。升级模型时，新版本不再声明的设置项会被丢弃，所以不要随意改名或删除已有设置项。
-## A6 档位与固定参数的进阶写法
-- 一个模型的不同清晰度/档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要要求运营为每个档位建一个模型：把“档位 → 上游 id”对照表放进 params（字段名自己定，如 { groups: { "1K": "…", "4K": "…" } }），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。对照表的结构和示例要写进文件顶部注释，运营在模型的固定参数里照填。
+## A6 档位与上游模型 id 的对应
+- 一个模型的不同清晰度/档位在上游是不同的模型 id 时（如 1K、2K、4K 各一个 id），不要要求运营为每个档位建一个模型：把“档位 → 上游 id”对照表写在插件代码里（常量），在 buildSubmitRequest 里按 ctx.input.resolution 查表；用户选了表里没有的档位就抛错并列出可选档位。对照表的内容要在文件顶部注释里写清，运营在面板里把 resolution 参数的可选值配成同样的档位即可，不要要求运营另外填写。
 ## A7 工作流 / 节点式 API
-- 对任何节点式或工作流式 API，params 应保存输入键到节点的映射，例如 params.nodes.prompt = { nodeId: "节点标识", fieldName: "文本字段" }；固定工作流值放 params.fixedNodes，并在上游要求时一并保留 fieldData。buildSubmitRequest 必须按文档要求生成节点列表字段（字段名可能是 nodeInfoList 或其它名称）；提示词输入必须绑定到工作流节点。映射缺失或节点列表为空时，在本地以清楚的中文错误终止，不得提交空节点列表。
-- 工作流的节点映射由运营在模型的固定参数 params 里填：请在文件顶部注释里写清 params.nodes / params.fixedNodes 的结构并给出完整示例（含 nodeId、fieldName，上游需要时含 fieldData），运营照抄修改；不要假定有导入步骤替他们生成映射。
-- 映射结构要与 buildSubmitRequest 实际读取的 params 完全一致，并在提交前检查必需节点存在；找不到必需节点时返回明确的中文错误，不提交无法执行的请求。提交请求里工作流节点字段接受媒体 URL 时，可在 fieldValue 等嵌套值中直接放 __fileRef 对象，不能假定准备阶段会把文件结果自动带入。
+- 对任何节点式或工作流式 API，输入键到节点的映射写在插件代码里（常量），例如 NODES.prompt = { nodeId: "节点标识", fieldName: "文本字段" }；固定工作流值同样写成常量，并在上游要求时一并保留 fieldData。buildSubmitRequest 必须按文档要求生成节点列表字段（字段名可能是 nodeInfoList 或其它名称）；提示词输入必须绑定到工作流节点。映射缺失或节点列表为空时，在本地以清楚的中文错误终止，不得提交空节点列表。
+- 一个工作流对应一个插件或一个上游模型名（工作流 id）：映射常量必须按文档确定，写在插件代码里并在文件顶部注释里列出；不要假定有导入步骤或运营填写的配置来生成映射，文档给不全节点信息时回到第零步向用户提问。
+- 提交前检查必需节点存在；找不到必需节点时返回明确的中文错误，不提交无法执行的请求。提交请求里工作流节点字段接受媒体 URL 时，可在 fieldValue 等嵌套值中直接放 __fileRef 对象，不能假定准备阶段会把文件结果自动带入。
 ## A8 并发与生成数量的细节
 - 宿主已经在渠道层面限制了“同时在上游生成的任务数”（运营在渠道里配“最大同时生成数”），超出的任务会在平台排队，不会打到上游。
 - 用户选生成 N 个时，宿主拆成 N 个独立任务，每个任务各调一次插件；拆成多个任务时宿主会给每个任务放一个随机的 input.seed（模型自己配了 seed 参数时用用户的取值），上游支持随机种子就把它传过去，避免 N 个结果一模一样。

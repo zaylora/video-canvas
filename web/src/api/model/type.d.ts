@@ -78,6 +78,8 @@ export interface PriceTier {
   when: Record<string, string | number | boolean>;
   /** 价格，单位随计费方式（积分 / 次、积分 / 秒） */
   unit: number;
+  /** 这条规格自己的积分成本，仅管理端可见；画布接口不下发 */
+  cost?: PriceCost;
 }
 
 /** 积分成本，仅管理端可见 */

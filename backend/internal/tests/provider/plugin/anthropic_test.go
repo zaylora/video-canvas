@@ -97,7 +97,7 @@ func (f *fakeAnthropic) last() anthropicRecorded {
 }
 
 // anthropicSubmit 起一个返回固定响应的假上游并提交一次文本任务。
-func anthropicSubmit(t *testing.T, status int, resp string, params map[string]any, input map[string]any) (*provider.SubmitResult, *fakeAnthropic, error) {
+func anthropicSubmit(t *testing.T, status int, resp string, input map[string]any) (*provider.SubmitResult, *fakeAnthropic, error) {
 	t.Helper()
 	up := &fakeAnthropic{handler: func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
@@ -110,7 +110,6 @@ func anthropicSubmit(t *testing.T, status int, resp string, params map[string]an
 		Prompt: modelcfg.PromptSpec{MaxLength: 10000},
 		Refs:   modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: 1, MaxMB: 10}},
 	})
-	snap.Model.Params = params
 	if input["prompt"] == nil {
 		input["prompt"] = "你好"
 	}
@@ -138,8 +137,7 @@ func TestAnthropicPrecheckAndMeta(t *testing.T) {
 func TestAnthropicRequestShape(t *testing.T) {
 	res, up, err := anthropicSubmit(t, 200,
 		`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"你好，世界"}],"stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":34}}`,
-		map[string]any{"system": "你是助手", "max_tokens": float64(256), "extra": map[string]any{"top_p": 0.9, "model": "evil"}},
-		map[string]any{"prompt": "打个招呼", "temperature": 0.5})
+		map[string]any{"prompt": "打个招呼", "temperature": 0.5, "system": "你是助手", "max_tokens": float64(256)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +152,11 @@ func TestAnthropicRequestShape(t *testing.T) {
 		t.Fatalf("请求头/路径不符：%+v", got)
 	}
 	b := got.Body
-	if b["model"] != "claude-up" || b["max_tokens"] != float64(256) || b["stream"] != false || b["temperature"] != 0.5 || b["system"] != "你是助手" || b["top_p"] != 0.9 {
+	if b["model"] != "claude-up" || b["max_tokens"] != float64(256) || b["stream"] != false || b["temperature"] != 0.5 || b["system"] != "你是助手" {
 		t.Fatalf("请求体不符：%v", b)
+	}
+	if _, has := b["top_p"]; has {
+		t.Fatalf("不应带用户没给的字段：%v", b)
 	}
 	msgs, _ := b["messages"].([]any)
 	if len(msgs) != 1 {
@@ -169,20 +170,17 @@ func TestAnthropicRequestShape(t *testing.T) {
 func TestAnthropicMaxTokens(t *testing.T) {
 	ok := `{"content":[{"type":"text","text":"x"}],"stop_reason":"end_turn"}`
 	cases := []struct {
-		name   string
-		params map[string]any
-		input  map[string]any
-		want   float64
+		name  string
+		input map[string]any
+		want  float64
 	}{
-		{"都没给用默认", map[string]any{}, map[string]any{}, 4096},
-		{"只有上限", map[string]any{"max_tokens": float64(1000)}, map[string]any{}, 1000},
-		{"用户值不超过上限", map[string]any{"max_tokens": float64(1000)}, map[string]any{"max_tokens": float64(300)}, 300},
-		{"用户值超过上限被压低", map[string]any{"max_tokens": float64(1000)}, map[string]any{"max_tokens": float64(5000)}, 1000},
-		{"没有上限时用用户值", map[string]any{}, map[string]any{"max_tokens": float64(777)}, 777},
+		{"没给用默认", map[string]any{}, 4096},
+		{"用户值原样使用", map[string]any{"max_tokens": float64(777)}, 777},
+		{"用户值不封顶", map[string]any{"max_tokens": float64(50000)}, 50000},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, up, err := anthropicSubmit(t, 200, ok, tc.params, tc.input)
+			_, up, err := anthropicSubmit(t, 200, ok, tc.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -193,9 +191,9 @@ func TestAnthropicMaxTokens(t *testing.T) {
 	}
 }
 
-func TestAnthropicSystemFromInputWins(t *testing.T) {
+func TestAnthropicSystemFromInput(t *testing.T) {
 	_, up, err := anthropicSubmit(t, 200, `{"content":[{"type":"text","text":"x"}]}`,
-		map[string]any{"system": "固定"}, map[string]any{"system": "输入"})
+		map[string]any{"system": "输入"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +204,7 @@ func TestAnthropicSystemFromInputWins(t *testing.T) {
 
 func TestAnthropicImageURL(t *testing.T) {
 	_, up, err := anthropicSubmit(t, 200, `{"content":[{"type":"text","text":"一只猫"}]}`,
-		map[string]any{}, map[string]any{"prompt": "图里是什么", "images": []uint64{5}})
+		map[string]any{"prompt": "图里是什么", "images": []uint64{5}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +226,7 @@ func TestAnthropicImageURL(t *testing.T) {
 func TestAnthropicOnlyTextBlocks(t *testing.T) {
 	res, _, err := anthropicSubmit(t, 200,
 		`{"content":[{"type":"thinking","thinking":"想一想","signature":"s"},{"type":"text","text":"甲"},{"type":"tool_use","id":"t","name":"n","input":{}},{"type":"text","text":"乙"},{"type":"redacted_thinking","data":"x"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":2}}`,
-		map[string]any{}, map[string]any{})
+		map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +238,7 @@ func TestAnthropicOnlyTextBlocks(t *testing.T) {
 func TestAnthropicUsageCountsCache(t *testing.T) {
 	res, _, err := anthropicSubmit(t, 200,
 		`{"content":[{"type":"text","text":"x"}],"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":20,"cache_read_input_tokens":30}}`,
-		map[string]any{}, map[string]any{})
+		map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +248,7 @@ func TestAnthropicUsageCountsCache(t *testing.T) {
 }
 
 func TestAnthropicNoUsageWhenMissing(t *testing.T) {
-	res, _, err := anthropicSubmit(t, 200, `{"content":[{"type":"text","text":"x"}]}`, map[string]any{}, map[string]any{})
+	res, _, err := anthropicSubmit(t, 200, `{"content":[{"type":"text","text":"x"}]}`, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +273,7 @@ func TestAnthropicFailedResults(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, _, err := anthropicSubmit(t, 200, tc.body, map[string]any{}, map[string]any{})
+			res, _, err := anthropicSubmit(t, 200, tc.body, map[string]any{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -317,7 +315,7 @@ func TestAnthropicClassifyHTTPErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := anthropicSubmit(t, tc.status, tc.body, map[string]any{}, map[string]any{})
+			_, _, err := anthropicSubmit(t, tc.status, tc.body, map[string]any{})
 			if err == nil || provider.ClassOf(err) != tc.class {
 				t.Fatalf("分类应是 %s：%v", tc.class, err)
 			}

@@ -148,6 +148,8 @@ export interface BackendCanvasListItemDto {
   created_at: string;
   /** 最近更新时间 */
   updated_at: string;
+  /** 封面地址：画布里第一张生成成功的图；旧画布和没生成过图的画布为空串 */
+  cover_url?: string;
 }
 
 /** 后端 GET /canvas 的原始响应结构。 */

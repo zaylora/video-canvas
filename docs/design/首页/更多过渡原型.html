@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>更多过渡原型</title>
+<style>
+  :root {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0); --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 0.1); --canvas: oklch(0.13 0 0); --dot: oklch(1 0 0 / 0.12);
+    --beam: oklch(0.78 0.15 70);
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--background); color: var(--foreground); min-height: 100dvh;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
+  .tools { position: fixed; top: 12px; right: 16px; z-index: 10; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted-foreground); }
+  .tools label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .warn { display: none; position: fixed; bottom: 12px; left: 16px; right: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 13px; z-index: 10; }
+  .page { display: none; padding: 0 24px 96px; max-width: 1180px; margin: 0 auto; }
+  .page.on { display: block; }
+
+  /* —— 首页：画布 tab —— */
+  #home { padding-top: clamp(16px, 16svh, 144px); }
+  .head { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 24px; padding-top: 12px; }
+  h1 { margin: 0; font-size: 32px; letter-spacing: -0.01em; }
+  h1 b { color: var(--beam); }
+  .pill { display: flex; width: 320px; max-width: 100%; background: var(--muted); border-radius: 999px; padding: 4px; }
+  .pill span { flex: 1; text-align: center; height: 36px; line-height: 36px; font-size: 14px; color: var(--muted-foreground); border-radius: 999px; }
+  .pill .on { background: var(--foreground); color: var(--background); font-weight: 500; }
+  .more-row { height: 24px; margin: 16px 0 8px; display: flex; justify-content: flex-end; align-items: center; }
+  .more { background: none; border: 0; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer; padding: 0 4px; border-radius: 6px; }
+  .more:hover { color: var(--foreground); }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
+  #list .grid { grid-template-columns: repeat(5, 1fr); gap: 16px; }
+  @media (max-width: 767px) { .grid, #list .grid { grid-template-columns: repeat(2, 1fr); } h1 { font-size: 24px; } }
+
+  /* —— 画布卡（首页是叠字小卡，列表是带内边距的卡） —— */
+  .cover { background: var(--canvas); background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); background-size: 14px 14px; position: relative; overflow: hidden; }
+  .cover i { position: absolute; width: 30%; height: 24%; border-radius: 6px; background: var(--muted); border: 1px solid var(--border); }
+  .card-home { aspect-ratio: 16/10; border-radius: 16px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+  .card-home .cover { position: absolute; inset: 0; }
+  .card-home .cap { position: absolute; left: 12px; right: 12px; bottom: 10px; font-size: 13.5px; font-weight: 600; text-shadow: 0 1px 6px #000a; }
+  .card-home small { display: block; font-size: 11px; font-weight: 400; opacity: .75; }
+  .card-home.new, .card-list.new { background-color: var(--card); background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px); background-size: 14px 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 500; }
+  .plus { width: 32px; height: 32px; border-radius: 8px; background: var(--foreground); color: var(--background); display: grid; place-items: center; font-size: 18px; }
+  .card-list { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 6px; }
+  .card-list .cover { aspect-ratio: 4/3; border-radius: 12px; }
+  .card-list .info { padding: 10px 8px 6px; font-size: 14px; font-weight: 600; }
+  .card-list small { display: block; font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+  .card-list.new { aspect-ratio: auto; min-height: 100%; }
+
+  /* —— 列表页工具条 —— */
+  .bar { display: flex; gap: 8px; padding: 8px 0 20px; align-items: center; }
+  .bar .seg { background: var(--muted); border-radius: 10px; padding: 6px 14px; font-size: 14px; }
+  .bar .grow { flex: 1; }
+  .back { background: var(--muted); color: var(--foreground); border: 0; border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+
+  /* —— 转场：公共部分（时长 240ms、EASE_OUT，和 index.css 要写的一致） —— */
+  ::view-transition-group(*) { animation-duration: 240ms; animation-timing-function: var(--ease); }
+  ::view-transition-old(*), ::view-transition-new(*) { height: 100%; width: 100%; }
+  ::view-transition-old(root) { animation: 120ms var(--ease) both vt-out; }
+  ::view-transition-new(root) { animation: 180ms var(--ease) 60ms both vt-in; }
+  @keyframes vt-out { to { opacity: 0; } }
+  @keyframes vt-in { from { opacity: 0; } }
+  @keyframes vt-rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes vt-shrink { to { opacity: 0; transform: scale(0.97); } }
+  @keyframes vt-grow { from { opacity: 0; transform: scale(1.03); } }
+
+  /* 2 错峰飞行：每张卡依次出发，延迟由 JS 按序号写进下面的 <style id="stagger"> */
+
+  /* 3 弹性飞行：用 linear() 画一条轻微过冲的曲线，250ms 内停稳 */
+  html[data-v="3"]::view-transition-group(*) { animation-duration: 250ms;
+    animation-timing-function: linear(0, 0.45 12%, 0.9 28%, 1.035 44%, 1.01 58%, 1 72%, 1); }
+
+  /* 4 飞行 + 其余卡片依次上浮：没有配对的卡片各取一个名字，用自己的入场动画 */
+  html[data-v="4"]::view-transition-old(*.extra) { display: none; }
+  html[data-v="4"]::view-transition-new(*.extra) { animation: 200ms var(--ease) both vt-rise; animation-delay: calc(80ms + var(--i, 0) * 35ms); }
+  html[data-v="4"]::view-transition-group(*.extra) { animation: none; }
+
+  /* 5 飞行 + 纵深：旧页略微缩小淡出，新页从稍大处落下 */
+  html[data-v="5"]::view-transition-old(root) { animation: 140ms var(--ease) both vt-shrink; }
+  html[data-v="5"]::view-transition-new(root) { animation: 200ms var(--ease) 60ms both vt-grow; }
+
+  /* 0 对照：没有共享元素，整页交叉淡化 */
+  html[data-v="0"]::view-transition-group(*) { animation: none; }
+
+  /* 减少动态效果：共享卡不移动，只留淡入淡出 */
+  html.reduce::view-transition-group(*) { animation: none !important; }
+  html.reduce::view-transition-old(*.extra), html.reduce::view-transition-new(*.extra) { animation: none !important; }
+
+  /* —— 原型控制条 —— */
+  .variants { position: fixed; top: 12px; left: 16px; z-index: 10; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100vw - 260px); }
+  .variants button { border: 1px solid var(--border); background: var(--muted); color: var(--foreground); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
+  .variants button[aria-pressed="true"] { background: var(--foreground); color: var(--background); }
+  .desc { position: fixed; left: 16px; bottom: 16px; z-index: 9; font-size: 12.5px; color: var(--muted-foreground); max-width: 520px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="variants" id="variants"></div>
+<div class="desc" id="desc"></div>
+<div class="tools">
+  <label><input type="checkbox" id="reduce" /> 减少动态效果</label>
+  <button class="back" id="back" hidden>返回</button>
+</div>
+<div class="warn" id="warn">当前浏览器不支持 View Transitions：真实产品里会退化成普通跳转（没有动画）。请用 Chrome / Edge / Safari 18+ 打开。</div>
+
+<main id="home" class="page on">
+  <div class="head">
+    <h1>晚上好，今天想要<b>创作</b>什么？</h1>
+    <div class="pill"><span>生成</span><span class="on">画布</span></div>
+  </div>
+  <div class="more-row"><button class="more" id="more">更多 ›</button></div>
+  <div class="grid" id="homeGrid"></div>
+</main>
+
+<main id="list" class="page">
+  <div class="bar"><span class="seg">全部</span><span class="seg" style="background:var(--foreground);color:var(--background)">个人画布</span><span class="grow"></span><span class="seg">搜索</span></div>
+  <div class="grid" id="listGrid"></div>
+</main>
+
+<script>
+  const items = [
+    { id: "a1", title: "112", time: "今天 02:38", nodes: [[8,10],[34,38],[60,66]] },
+    { id: "b2", title: "扩图", time: "2026-10-14 22:25", nodes: [[14,38],[56,38]] },
+    { id: "c3", title: "时代峰峻老师看到", time: "2026-10-10 22:08", nodes: [[8,10],[34,38],[60,66]] },
+    { id: "d4", title: "未命名画布", time: "2026-10-08 22:23", nodes: [[8,10],[34,38],[60,66]] },
+    { id: "e5", title: "未命名画布", time: "2026-10-08 20:55", nodes: [[10,38],[56,16],[56,62]] },
+    { id: "f6", title: "未命名画布", time: "2026-10-07 19:43", nodes: [[14,38],[56,38]] },
+    { id: "g7", title: "分镜草稿", time: "2026-10-06 11:02", nodes: [[8,10],[34,38],[60,66]] },
+  ];
+  const cover = (it) => `<div class="cover">${it.nodes.map(([x,y]) => `<i style="left:${x}%;top:${y}%"></i>`).join("")}</div>`;
+  const newHome = `<div class="card-home new" data-vt="canvas-card-new"><span class="plus">+</span>新建画布</div>`;
+  const newList = `<div class="card-list new" data-vt="canvas-card-new"><span class="plus">+</span>新建画布</div>`;
+  homeGrid.innerHTML = newHome + items.slice(0, 3).map((it) => `<div class="card-home" data-vt="canvas-card-${it.id}">${cover(it)}<div class="cap">${it.title}<small>${it.time}</small></div></div>`).join("");
+  listGrid.innerHTML = newList + items.map((it, i) => `<div class="card-list" ${i < 3 ? `data-vt="canvas-card-${it.id}"` : `data-extra="extra-${i - 3}" data-i="${i - 3}" style="view-transition-class:extra"`}>${cover(it)}<div class="info">${it.title}<small>${it.time}</small></div></div>`).join("");
+
+  const VARIANTS = [
+    { v: "1", name: "1 经典飞行", desc: "共享卡 240ms 飞到位，其余内容整页淡入淡出（方案基线）。" },
+    { v: "2", name: "2 错峰飞行", desc: "共享卡每隔 50ms 依次出发，像一排牌依次翻过去；总时长不变，每张仍是 240ms。" },
+    { v: "3", name: "3 弹性飞行", desc: "共享卡落位时轻微过冲再回稳，250ms 内停住；更有「落下」的手感，但更显眼。" },
+    { v: "4", name: "4 飞行 + 依次上浮", desc: "共享卡飞行的同时，列表页其余卡片从下方 14px 依次上浮淡入（间隔 35ms）。" },
+    { v: "5", name: "5 飞行 + 纵深", desc: "共享卡飞行，旧页略缩小淡出、新页从稍大处落下，有一层纵深，页面像「推进去」。" },
+    { v: "0", name: "对照：无共享元素", desc: "只有整页交叉淡化，用来对比共享卡飞行带来的差别。" },
+  ];
+  let variant = "1";
+  const vbox = document.getElementById("variants");
+  const setVariant = (v) => {
+    variant = v;
+    document.documentElement.dataset.v = v;
+    vbox.innerHTML = VARIANTS.map((x) => `<button data-v="${x.v}" aria-pressed="${x.v === v}">${x.name}</button>`).join("");
+    document.getElementById("desc").textContent = VARIANTS.find((x) => x.v === v).desc;
+  };
+  vbox.onclick = (e) => { const b = e.target.closest("button"); if (b) setVariant(b.dataset.v); };
+  setVariant("1");
+
+  /* 错峰：给每个共享名按序号写 delay，只有变体 2 生效 */
+  const stagger = document.createElement("style");
+  stagger.id = "stagger";
+  stagger.textContent = ["new", ...items.slice(0, 3).map((it) => it.id)].map((k, i) =>
+    `html[data-v="2"]::view-transition-group(canvas-card-${k}) { animation-delay: ${i * 50}ms; }`).join("\n")
+    + items.slice(3).map((_, i) => `\nhtml[data-v="4"]::view-transition-new(extra-${i}) { --i: ${i}; }`).join("");
+  document.head.appendChild(stagger);
+
+  /* 名字只在转场期间挂：先挂旧页，回调里挂新页，结束后摘掉 */
+  const nameAll = (root, on) => {
+    root.querySelectorAll("[data-vt]").forEach((el) => { el.style.viewTransitionName = on && variant !== "0" ? el.dataset.vt : ""; });
+    root.querySelectorAll("[data-extra]").forEach((el) => { el.style.viewTransitionName = on && variant === "4" ? el.dataset.extra : ""; });
+  };
+  function go(from, to) {
+    const swap = () => { from.classList.remove("on"); to.classList.add("on"); back.hidden = to.id !== "list"; nameAll(to, true); };
+    if (!document.startViewTransition) { swap(); nameAll(to, false); warn.style.display = "block"; return; }
+    document.documentElement.classList.toggle("reduce", reduce.checked);
+    nameAll(from, true);
+    const t = document.startViewTransition(swap);
+    t.finished.finally(() => { nameAll(from, false); nameAll(to, false); });
+  }
+  more.onclick = () => go(home, list);
+  back.onclick = () => go(list, home);
+  if (!document.startViewTransition) warn.style.display = "block";
+</script>
+</body>
+</html>

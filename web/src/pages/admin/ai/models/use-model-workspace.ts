@@ -85,8 +85,6 @@ export function useModelWorkspace(
   const [showTestErrors, setShowTestErrors] = useState(false);
   const [mode, setMode] = useState<EditorMode>("form");
   const [modeError, setModeError] = useState<string | null>(null);
-  /** 正文被整体替换（切换模型、切回表单等）的计数，表单里的 JSON 编辑框据此重新挂载 */
-  const [epoch, setEpoch] = useState(0);
   const [issues, setIssues] = useState<ConfigIssue[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -205,13 +203,12 @@ export function useModelWorkspace(
 
   // ------------------------------------------------------------ 列表与详情
 
-  /** 把一份正文放进编辑器：JSON 文本、已保存基线、视图与 JSON 编辑框一并重置 */
+  /** 把一份正文放进编辑器：JSON 文本与已保存基线一并重置 */
   const loadIntoEditor = useCallback((next: unknown) => {
     const content = toJsonText(next);
     setText(content);
     setSavedText(content);
     setModeError(null);
-    setEpoch((value) => value + 1);
   }, []);
 
   const openDetail = useCallback(
@@ -343,7 +340,6 @@ export function useModelWorkspace(
         setModeError("正文必须是 JSON 对象，才能切回表单。");
         return;
       }
-      setEpoch((value) => value + 1);
     }
     setModeError(null);
     setMode(next);
@@ -610,7 +606,6 @@ export function useModelWorkspace(
     mode,
     modeError,
     switchMode,
-    epoch,
     issues,
     checks,
     blockers,

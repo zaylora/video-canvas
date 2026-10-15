@@ -167,6 +167,8 @@ export default function AssetsPage() {
             <motion.div key={canvas.id} whileTap={TAP} className="min-w-0">
               <Link
                 to={`/canvas/${canvas.id}`}
+                target="_blank"
+                rel="noopener"
                 aria-label={`打开画布 ${canvas.title}`}
                 className="text-cover-foreground focus-visible:ring-ring/60 relative block aspect-[16/10] overflow-hidden rounded-xl outline-none focus-visible:ring-3"
               >

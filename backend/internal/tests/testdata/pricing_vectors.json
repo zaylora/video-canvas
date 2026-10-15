@@ -115,11 +115,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -257,11 +252,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -399,11 +389,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -541,11 +526,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -683,11 +663,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -825,11 +800,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -967,11 +937,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {
@@ -996,7 +961,7 @@
       "total": 16
     },
     {
-      "name": "按秒：已停用的规格价与没有条件的规格价不参与匹配",
+      "name": "按秒：已停用的规格价不参与匹配，没有条件的规格价是兜底",
       "capabilities": {
         "ops": ["t2v", "i2v", "omni"],
         "refs": {
@@ -1133,9 +1098,9 @@
         },
         "prompt_chars": 0
       },
-      "one": 8,
+      "one": 4,
       "n": 1,
-      "total": 8
+      "total": 4
     },
     {
       "name": "按秒：生成数量用字符串也能识别",
@@ -1251,11 +1216,6 @@
               "aspect_ratio": "16:9"
             },
             "unit": 99
-          },
-          {
-            "on": true,
-            "when": {},
-            "unit": 1
           }
         ],
         "cost": {

@@ -15,8 +15,6 @@
     }
   ],
 
-  "params": { "max_tokens": 2000, "instanceType": "default" },
-
   "capabilities": {
     "ops": ["t2v", "i2v", "omni"],
     "refs": {

@@ -1,6 +1,3 @@
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
-
 import type { ConfigIssue } from "@/api/admin/ai/type.d";
 import type { Capabilities, GenerationOp, ParamField, RefKind, RefSpec } from "@/api/model/type.d";
 import { FormField } from "@/components/admin-ui/form-field";
@@ -11,7 +8,6 @@ import {
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
 import { ToggleChip } from "@/components/admin-ui/toggle-chip";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -20,10 +16,8 @@ import {
   readModelString,
   withModelField,
 } from "@/utils/admin/model-body";
-import { defaultCapabilities } from "@/utils/admin/model-template";
 
 import {
-  AddParamRow,
   ContextEditor,
   LIMITS,
   OPS_OF_KIND,
@@ -32,7 +26,6 @@ import {
   ParamRowEditor,
   RefCardEditor,
 } from "./capability-editors";
-import { JsonFieldEditor } from "./json-field-editor";
 import { issueFor } from "./model-fields";
 
 type BodyMutator = (body: Record<string, unknown>) => Record<string, unknown> | null;
@@ -62,24 +55,21 @@ function readCaps(body: Record<string, unknown>): Capabilities {
 
 /**
  * 能力与参数页签：任务超时，以及模型能力 capabilities 的结构化表单——生成方式、上下文（文本）、
- * 参考素材、提示词上限、生成参数（每个参数一行）、固定系统提示（文本）；另有固定参数（params）。
- * 所有控件都读写正文里的 capabilities，「用 JSON 编辑」折叠区和它是同一份数据。右侧的模拟节点随它实时变化。
- * @param epoch 正文被整体替换的计数，变化时 JSON 编辑框重新挂载
+ * 参考素材、提示词上限、生成参数（每个参数一行）、固定系统提示（文本）。
+ * 所有控件都读写正文里的 capabilities，右侧的模拟节点随它实时变化；模型没有别的配置入口，
+ * 插件只把这里配置的输入翻译成上游请求。
  */
 export function ModelParamsForm({
   body,
   issues,
   warnings,
-  epoch,
   onChange,
 }: {
   body: Record<string, unknown>;
   issues: ConfigIssue[];
   warnings: ConfigIssue[];
-  epoch: number;
   onChange: (mutate: BodyMutator) => void;
 }) {
-  const [capsNonce, setCapsNonce] = useState(0);
   const deadline = readModelString(body, "deadline");
   const custom = !!deadline && !DEADLINES.some(([value]) => value === deadline);
   const deadlineError = deadline ? checkDeadline(deadline) : null;
@@ -89,11 +79,7 @@ export function ModelParamsForm({
   const isMedia = kind === "video" || kind === "image";
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
-  /** 图形化改了 capabilities：写回正文，并让 JSON 编辑框重新挂载显示最新内容 */
-  const setCaps = (next: Capabilities) => {
-    setField("capabilities", next);
-    setCapsNonce((value) => value + 1);
-  };
+  const setCaps = (next: Capabilities) => setField("capabilities", next);
   const patch = (partial: Partial<Capabilities>) => setCaps({ ...caps, ...partial });
   const setRef = (refKind: RefKind, value: RefSpec) =>
     patch({ refs: { ...caps.refs, [refKind]: value } });
@@ -276,10 +262,6 @@ export function ModelParamsForm({
                 onRemove={() => setParams(paramSetOps.remove(params, name))}
               />
             ))}
-            <AddParamRow
-              existing={Object.keys(params)}
-              onAdd={(name, field) => setParams(paramSetOps.add(params, name, field))}
-            />
             {issueFor(issues, "capabilities.params") && (
               <p className="text-destructive text-xs">{issueFor(issues, "capabilities.params")}</p>
             )}
@@ -307,49 +289,6 @@ export function ModelParamsForm({
           )}
         </FormSection>
       )}
-
-      <FormSection>
-        <FormSectionHeader>
-          <FormSectionTitle>{isAgent ? "高级" : "固定参数"}</FormSectionTitle>
-        </FormSectionHeader>
-        {!isAgent && (
-          <JsonFieldEditor
-            key={`params-${epoch}`}
-            id="model-params"
-            label="params"
-            value={body.params}
-            issue={issueFor(issues, "params")}
-            rows={5}
-            onValid={(value) => setField("params", value)}
-          />
-        )}
-        <details className="group mt-4 rounded-lg border" open={!!issueFor(issues, "capabilities")}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
-            <ChevronRight className="size-4 transition group-open:rotate-90" />
-            用 JSON 编辑全部能力
-          </summary>
-          <div className="border-t p-3">
-            <JsonFieldEditor
-              key={`capabilities-${epoch}-${capsNonce}`}
-              id="model-capabilities"
-              label="capabilities"
-              value={body.capabilities}
-              issue={issueFor(issues, "capabilities")}
-              rows={16}
-              actions={
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => setCaps(defaultCapabilities(kind))}
-                >
-                  恢复{kind ? "该种类的" : ""}默认能力
-                </Button>
-              }
-              onValid={(value) => setField("capabilities", value)}
-            />
-          </div>
-        </details>
-      </FormSection>
     </>
   );
 }

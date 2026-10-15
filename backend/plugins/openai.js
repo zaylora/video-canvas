@@ -14,12 +14,9 @@
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  * 插件没有网络与文件能力，只把任务翻译成请求描述、把响应翻译成统一结果。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   text : { max_tokens?: number, system?: string, extra?: object }
- *          max_tokens 是输出上限（Responses 发成 max_output_tokens，Chat 发成 max_completion_tokens）；
- *          system 是固定系统提示；extra 原样合并进请求体顶层（如 reasoning、reasoning_effort、top_p），只补充、不覆盖已有字段
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
- *   prompt（必填）、system（固定系统提示，优先于 params.system）、max_tokens（最大输出，不能超过 params.max_tokens）、
+ *   prompt（必填）、system（系统提示，没填就不发）、
+ *   max_tokens（最大输出，没填就不发：Responses 发成 max_output_tokens，Chat 发成 max_completion_tokens）、
  *   temperature（没填就不发：推理模型不支持该参数）、images[0]（视觉模型，可选，发成签名 URL）
  * 产物：{type:"text", text, usage:{input_tokens, output_tokens}}，按 Token 计费的模型据此结算；上游没有可用数字就不带 usage。
  *
@@ -30,7 +27,7 @@
  *
  * 未验证：
  *   - Responses 的 max_output_tokens 有最小值限制（官方文档提过不能太小），本插件不做校验，交给上游报错；
- *   - 兼容网关对 Responses / store / max_completion_tokens 的支持程度各不相同，不通时请切换 api 或用 extra 调整；
+ *   - 兼容网关对 Responses / store / max_completion_tokens 的支持程度各不相同，不通时请切换 api；
  *   - 导入时按模型名前缀（gpt- / chatgpt- / o+数字）与排除词粗筛，个别新模型名可能被误放或误排，运营在导入后核对；
  *   - 内容审核类错误只按错误码 content_policy_violation 与“content policy / safety system”文案识别，其它措辞会按 terminal 处理。
  */
@@ -106,7 +103,7 @@ module.exports = {
     return { method: "GET", path: "/v1/models", timeout: 30 };
   },
 
-  // 只导入文本类模型（gpt-* / chatgpt-* / o 系列），草稿的 params 留空由运营补。
+  // 只导入文本类模型（gpt-* / chatgpt-* / o 系列）。
   parseImportResponse: function (ctx, resp, args) {
     var list = resp.body && isArray(resp.body.data) ? resp.body.data : [];
     var drafts = [];
@@ -115,7 +112,7 @@ module.exports = {
       if (typeof id !== "string" || id === "" || !isTextModel(id)) {
         continue;
       }
-      drafts.push({ upstreamModel: id, kind: "text", label: id, params: {} });
+      drafts.push({ upstreamModel: id, kind: "text", label: id });
     }
     return drafts;
   },
@@ -133,7 +130,6 @@ function useChat(ctx) {
 
 function buildResponsesRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var prompt = input.prompt === undefined ? "" : String(input.prompt);
 
   var body = { model: ctx.model.upstreamModel };
@@ -152,11 +148,11 @@ function buildResponsesRequest(ctx) {
   } else {
     body.input = prompt;
   }
-  var system = firstString(input.system, params.system);
+  var system = firstString(input.system);
   if (system) {
     body.instructions = system;
   }
-  var maxTokens = capMaxTokens(input.max_tokens, params.max_tokens);
+  var maxTokens = positiveNumber(input.max_tokens);
   if (maxTokens !== undefined) {
     body.max_output_tokens = maxTokens;
   }
@@ -165,16 +161,14 @@ function buildResponsesRequest(ctx) {
   }
   body.stream = false;
   body.store = false; // 刻意不在 OpenAI 侧保存对话
-  mergeExtra(body, params.extra);
   return { method: "POST", path: "/v1/responses", json: body, timeout: 120 };
 }
 
 function buildChatRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var messages = [];
 
-  var system = firstString(input.system, params.system);
+  var system = firstString(input.system);
   if (system) {
     messages.push({ role: "system", content: system });
   }
@@ -192,21 +186,16 @@ function buildChatRequest(ctx) {
   if (typeof input.temperature === "number") {
     body.temperature = input.temperature;
   }
-  var maxTokens = capMaxTokens(input.max_tokens, params.max_tokens);
+  var maxTokens = positiveNumber(input.max_tokens);
   if (maxTokens !== undefined) {
     body.max_completion_tokens = maxTokens; // max_tokens 已弃用，且与 o 系列不兼容
   }
-  mergeExtra(body, params.extra);
   return { method: "POST", path: "/v1/chat/completions", json: body, timeout: 120 };
 }
 
-// 用户传的 max_tokens 不能超过模型固定参数里的上限；只有上限没有用户值时用上限；都没有就不发，由上游按默认处理。
-function capMaxTokens(fromInput, limit) {
-  var hasLimit = typeof limit === "number" && limit > 0;
-  if (typeof fromInput === "number" && fromInput > 0) {
-    return hasLimit && fromInput > limit ? limit : fromInput;
-  }
-  return hasLimit ? limit : undefined;
+// 用户传的 max_tokens 是正数才发；没填就不发，由上游按默认处理。
+function positiveNumber(v) {
+  return typeof v === "number" && v > 0 ? v : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,17 +359,6 @@ function errorMessageOf(body) {
     return e;
   }
   return "";
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function firstString() {

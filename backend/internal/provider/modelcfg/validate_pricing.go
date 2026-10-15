@@ -50,9 +50,10 @@ func validatePricing(kind string, c *Capabilities, p *Pricing, issues *[]Issue) 
 	if p.Billing != BillingToken {
 		for i, t := range p.Tiers {
 			validateTier(fmt.Sprintf("tiers[%d]", i), kind, c, t, add)
+			validateCost(p.Billing, t.Cost, fmt.Sprintf("tiers[%d].cost", i), add)
 		}
 	}
-	validateCost(p, add)
+	validateCost(p.Billing, p.Cost, "cost", add)
 }
 
 // checkPrice 价格必须是 0 – maxPrice 的整数；positive 为 true 时必须大于 0（发布前当前计费方式下的默认价）。
@@ -67,10 +68,6 @@ func checkPrice(path string, v int, positive bool, add func(path, msg string)) {
 
 func validateTier(base, kind string, c *Capabilities, t Tier, add func(path, msg string)) {
 	checkPrice(base+".unit", t.Unit, false, add)
-	if len(t.When) == 0 {
-		add(base+".when", "至少要有一个条件，否则会盖掉默认价")
-		return
-	}
 	keys := make([]string, 0, len(t.When))
 	for k := range t.When {
 		keys = append(keys, k)
@@ -121,21 +118,22 @@ func tierCondIssue(kind string, c *Capabilities, key string, v any) string {
 	return ""
 }
 
-func validateCost(p *Pricing, add func(path, msg string)) {
-	if p.Cost == nil || !p.Cost.On {
+// validateCost 校验一份积分成本（默认价的 cost，或某条规格价格的 cost）；base 是它在 pricing 下的路径。
+func validateCost(billing string, c *Cost, base string, add func(path, msg string)) {
+	if c == nil || !c.On {
 		return
 	}
-	switch p.Billing {
+	switch billing {
 	case BillingPerCall:
-		checkPrice("cost.unit", p.Cost.Unit, false, add)
+		checkPrice(base+".unit", c.Unit, false, add)
 	case BillingPerSecond:
-		checkPrice("cost.per_second", p.Cost.PerSecond, false, add)
+		checkPrice(base+".per_second", c.PerSecond, false, add)
 	case BillingToken:
-		if p.Cost.Token == nil {
-			add("cost.token", "按 Token 计费的成本需要输入价与输出价")
+		if c.Token == nil {
+			add(base+".token", "按 Token 计费的成本需要输入价与输出价")
 			return
 		}
-		checkPrice("cost.token.in", p.Cost.Token.In, false, add)
-		checkPrice("cost.token.out", p.Cost.Token.Out, false, add)
+		checkPrice(base+".token.in", c.Token.In, false, add)
+		checkPrice(base+".token.out", c.Token.Out, false, add)
 	}
 }

@@ -14,14 +14,13 @@
  *   grok-imagine-video       分辨率 480p / 720p；唯一能接收视频输入的模型（编辑、延长只能用它）
  *   grok-imagine-video-1.5、grok-imagine-video-1.5-lite   分辨率 480p / 720p / 1080p
  *
- * 模型 params：{ video_action?: "edit" | "extend" }  有视频参考时的默认动作（默认 edit），用户输入的同名参数优先。
  * 用户输入（宿主按模型 capabilities 校验后传入）：
  *   prompt（编辑 / 延长 / 文生 / 参考生必填；纯图生可空）、op（t2v / i2v / omni）；
  *   duration（生成 1-15 秒，默认 8；延长 2-10 秒，默认 6；编辑不发）；
  *   resolution（默认 480p，大小写不敏感）、aspect_ratio（1:1 / 16:9 / 9:16 / 4:3 / 3:4 / 3:2 / 2:3）、generate_audio（布尔）；
  *   images：op 为 omni 或多于一张 -> reference_images（最多 7，不支持 1080p）；op 为 i2v 且只有一张 -> image；
  *   videos[0] -> 编辑 / 延长的输入视频 video；audios -> reference_audios（{url}，最多 3，且与参考图一起触发参考生视频）；
- *   video_action（edit / extend）：有 videos 时选编辑还是延长，运营需要把它配成一个开放的 enum 参数。
+ *   video_action（edit / extend）：有 videos 时选编辑还是延长，没填按 edit；运营需要把它配成一个开放的 enum 参数。
  *   编辑与延长沿用输入视频的分辨率和画幅，所以不发 resolution / aspect_ratio。
  *
  * 和上游相比刻意没移植：
@@ -63,12 +62,11 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var model = ctx.model.upstreamModel;
     var videos = isArray(input.videos) ? input.videos : [];
 
     if (videos.length > 0) {
-      var action = firstString(input.video_action, params.video_action) === "extend" ? "extend" : "edit";
+      var action = input.video_action === "extend" ? "extend" : "edit";
       return buildVideoInputRequest(action, input, model, videos[0]);
     }
     return buildGenerationRequest(input, model);
@@ -277,15 +275,6 @@ function classifyMessage(message) {
     return "provider_balance";
   }
   return "terminal";
-}
-
-function firstString() {
-  for (var i = 0; i < arguments.length; i++) {
-    if (typeof arguments[i] === "string" && arguments[i] !== "") {
-      return arguments[i];
-    }
-  }
-  return "";
 }
 
 function isArray(v) {

@@ -164,6 +164,9 @@ func (s *AssetService) ViewOf(ctx context.Context, a *model.Asset) (*model.Asset
 	return assetView(a, s.fileURL(a.StorageKey)), nil
 }
 
+// FileURL 返回素材的稳定访问地址（/files/<key>），给不持有素材记录、只拿到存储 key 的调用方用（如画布列表的封面）。
+func (s *AssetService) FileURL(key string) string { return s.fileURL(key) }
+
 // fileURL 返回素材的稳定访问地址。站点前缀沿用 storage.local.base_url（为空时是相对路径 /files）。
 func (s *AssetService) fileURL(key string) string {
 	return strings.TrimRight(s.cfg.Local.BaseURL, "/") + "/files/" + key

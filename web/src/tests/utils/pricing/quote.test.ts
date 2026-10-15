@@ -65,7 +65,7 @@ describe("priceLabel", () => {
     expect(
       priceLabel({ billing: "per_call", unit: 4, tiers: [{ on: true, when: { a: 1 }, unit: 16 }] }),
     ).toBe("4 积分起");
-    // 停用的、没有条件的规格价不算
+    // 停用的规格价不算；没有条件的（所有请求都适用）算
     expect(
       priceLabel({
         billing: "per_call",
@@ -75,6 +75,6 @@ describe("priceLabel", () => {
           { on: true, when: {}, unit: 1 },
         ],
       }),
-    ).toBe("4 积分");
+    ).toBe("1 积分起");
   });
 });

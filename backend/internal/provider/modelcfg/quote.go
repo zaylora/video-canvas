@@ -32,12 +32,12 @@ func SpecFromInput(input map[string]any, system string) Spec {
 }
 
 // MatchTier 返回命中的规格价格：on 且 when 的每一项都等于规格的取值；取条件最多的一条，条件数相同取靠前的。
-// 没有任何条件的规格价格不参与匹配。没有命中返回 nil。
+// 没有任何条件的规格价格对所有请求都适用，但条件数最少，别的规格命中时让位。没有命中返回 nil。
 func MatchTier(p Pricing, s Spec) *Tier {
 	var best *Tier
 	for i := range p.Tiers {
 		t := &p.Tiers[i]
-		if !t.On || len(t.When) == 0 || !tierMatches(t.When, s) {
+		if !t.On || !tierMatches(t.When, s) {
 			continue
 		}
 		if best == nil || len(t.When) > len(best.When) {

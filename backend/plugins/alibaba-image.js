@@ -20,9 +20,6 @@
  *   qwen      qwen-image / -plus / -max / -2.0 / -2.0-pro / -3.0 / -3.0-pro、qwen-image-edit / -plus / -max、z-image-turbo
  *                                                       同步 multimodal-generation/generation，响应直接带 output.choices[].message.content[].image
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   parameters: object   补充进请求体 parameters（如 prompt_extend、watermark、thinking_mode），用户输入与插件算出的字段优先
- *   input: object        补充进请求体 input（如 negative_prompt、template），同样只补充
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2i / i2i）、images（文件引用，交给宿主换成签名 URL）、
  *   count（或 n，默认 1）、aspect_ratio、resolution（1K / 2K / 4K）、size（宽*高，优先于前两者）、seed、watermark、prompt_extend、negative_prompt
@@ -191,7 +188,6 @@ function imageClass(model) {
 
 function buildImageRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var model = ctx.model.upstreamModel;
   var key = modelKey(model);
   var cls = imageClass(model);
@@ -273,9 +269,6 @@ function buildImageRequest(ctx) {
       par.size = size;
     }
   }
-
-  mergeMissing(inp, params.input);
-  mergeMissing(par, params.parameters);
 
   var service;
   if (cls === "legacy") {
@@ -462,18 +455,6 @@ function copyDefined(dst, src, keys) {
   for (var i = 0; i < keys.length; i++) {
     if (src[keys[i]] !== undefined && src[keys[i]] !== null) {
       dst[keys[i]] = src[keys[i]];
-    }
-  }
-}
-
-// 模型固定参数只补充、不覆盖。
-function mergeMissing(dst, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && dst[k] === undefined) {
-      dst[k] = extra[k];
     }
   }
 }

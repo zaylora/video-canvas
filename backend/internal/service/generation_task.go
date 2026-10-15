@@ -64,6 +64,12 @@ const (
 // 用于让事务回滚的内部哨兵：提交时命中了幂等唯一索引（并发的同 key 请求先提交了）。
 var errIdempotentConflict = errors.New("idempotent conflict")
 
+// CanvasCoverSetter 在画布还没有封面时把素材设成封面（由画布仓储实现）。
+type CanvasCoverSetter interface {
+	// SetCoverIfEmpty 画布不存在、不属于该用户或已经有封面都返回 nil，不改 revision 和更新时间。
+	SetCoverIfEmpty(ctx context.Context, userID, canvasID, assetID uint64) error
+}
+
 // GenerationTaskDeps 是任务服务的依赖，全部以接口注入。
 type GenerationTaskDeps struct {
 	Repo        GenerationTaskRepo
@@ -72,7 +78,8 @@ type GenerationTaskDeps struct {
 	Assets      provider.AssetStore
 	Broadcaster ws.Broadcaster // 为 nil 时不推送
 	Config      config.AI
-	Limits      TaskLimits // 初始积分与并发上限的运行时来源（系统设置 + 单用户覆盖）；为 nil 时只用 Config
+	Limits      TaskLimits        // 初始积分与并发上限的运行时来源（系统设置 + 单用户覆盖）；为 nil 时只用 Config
+	Covers      CanvasCoverSetter // 任务成功时把第一张生成的图写成画布封面；为 nil 时不写
 }
 
 // GenerationTaskOption 用于替换可注入的部分（主要给测试用）。
@@ -98,6 +105,7 @@ type GenerationTaskService struct {
 	broadcaster ws.Broadcaster
 	cfg         config.AI
 	limits      TaskLimits
+	covers      CanvasCoverSetter
 
 	kick chan struct{} // 进程内信号：有新任务 / 需要立即处理时唤醒 worker
 
@@ -122,6 +130,7 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		broadcaster:   deps.Broadcaster,
 		cfg:           deps.Config,
 		limits:        deps.Limits,
+		covers:        deps.Covers,
 		kick:          make(chan struct{}, 1),
 		validateInput: modelcfg.ValidateInput,
 		now:           time.Now,

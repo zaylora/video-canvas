@@ -21,12 +21,10 @@
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { watermark?: boolean, camera_fixed?: boolean, return_last_frame?: boolean, service_tier?: string, extra?: object }
- *   watermark 不填按 false（方舟默认加水印）；extra 原样合并进请求体顶层，用户输入与上面的固定字段优先
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、op、images / videos / audios（参考素材，文件引用换成签名 URL）、
- *   aspect_ratio -> ratio（如 16:9、adaptive）、resolution、duration、seed、generate_audio
+ *   aspect_ratio -> ratio（如 16:9、adaptive）、resolution、duration、seed、generate_audio；
+ *   水印固定为 false（方舟默认加水印），camera_fixed / return_last_frame / service_tier 不支持
  *   素材：op=omni 时全部图片作 reference_image；否则 1 张图是首帧（不写 role），2 张是首帧 + 尾帧，多于 2 张按参考图；
  *   videos -> reference_video，audios -> reference_audio
  *
@@ -128,7 +126,6 @@ var TASKS_PATH = "/api/v3/contents/generations/tasks";
 
 function buildVideoRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var body = { model: ctx.model.upstreamModel, content: videoContent(input) };
 
   setIf(body, "ratio", input.aspect_ratio);
@@ -142,15 +139,7 @@ function buildVideoRequest(ctx) {
   if (typeof input.generate_audio === "boolean") {
     body.generate_audio = input.generate_audio;
   }
-  body.watermark = typeof params.watermark === "boolean" ? params.watermark : false;
-  if (typeof params.camera_fixed === "boolean") {
-    body.camera_fixed = params.camera_fixed;
-  }
-  if (typeof params.return_last_frame === "boolean") {
-    body.return_last_frame = params.return_last_frame;
-  }
-  setIf(body, "service_tier", params.service_tier);
-  mergeExtra(body, params.extra);
+  body.watermark = false; // 默认不加水印（方舟默认加）
   return { method: "POST", path: TASKS_PATH, json: body, timeout: 60 };
 }
 
@@ -252,17 +241,6 @@ function errorCodeOf(body) {
 function setIf(body, key, value) {
   if (value !== undefined && value !== null && value !== "") {
     body[key] = value;
-  }
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
   }
 }
 

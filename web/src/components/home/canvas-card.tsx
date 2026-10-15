@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCanvasTransitionStyle } from "@/hooks/use-canvas-transition";
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatCanvasTime } from "@/utils/home/home";
@@ -107,15 +108,19 @@ export function CanvasCard({
   canvas,
   variant,
   deleting,
+  shared,
   onDelete,
 }: {
   canvas: CanvasListItemDto;
   variant: CanvasCardVariant;
   /** 删除请求进行中：半透明、不可点 */
   deleting?: boolean;
+  /** 首页最近画布里也有这张卡：从首页点「更多」进来时它是转场的共享元素 */
+  shared?: boolean;
   onDelete: () => void;
 }) {
   const time = formatCanvasTime(canvas.updatedAt);
+  const transitionStyle = useCanvasTransitionStyle(canvas.id, shared);
 
   return (
     <motion.div
@@ -123,6 +128,7 @@ export function CanvasCard({
       data-variant={variant}
       {...EXIT_MOTION}
       whileTap={TAP}
+      style={transitionStyle}
       className={cn(
         "group/card relative min-w-0",
         FRAME[variant],
@@ -132,6 +138,8 @@ export function CanvasCard({
     >
       <Link
         to={`/canvas/${canvas.id}`}
+        target="_blank"
+        rel="noopener"
         aria-label={`打开画布 ${canvas.title}`}
         className={cn(
           "block outline-none",
@@ -195,12 +203,15 @@ export function NewCanvasCard({
   creating: boolean;
   onCreate: () => void;
 }) {
+  /** 从首页点「更多」进来时，它和首页的「新建画布」卡是同一个共享元素 */
+  const transitionStyle = useCanvasTransitionStyle("new");
   return (
     <motion.button
       type="button"
       data-slot="new-canvas-card"
       disabled={creating}
       whileTap={creating ? undefined : TAP}
+      style={transitionStyle}
       onClick={onCreate}
       className={cn(
         "group/new text-muted-foreground relative min-w-0 text-left outline-none",

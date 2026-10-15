@@ -110,8 +110,7 @@ func TestOpenAIResponsesDefaultRequest(t *testing.T) {
 	defer srv.Close()
 	env := newOpenAIEnv(t, nil)
 	snap := env.snapshot(srv.URL, "", promptCaps)
-	snap.Model.Params = map[string]any{"system": "你是助手", "max_tokens": float64(256), "extra": map[string]any{"reasoning": map[string]any{"effort": "low"}, "store": true}}
-	res, err := openaiSubmit(t, env, snap, map[string]any{"prompt": "打个招呼", "temperature": 0.3, "max_tokens": float64(1000)})
+	res, err := openaiSubmit(t, env, snap, map[string]any{"prompt": "打个招呼", "system": "你是助手", "temperature": 0.3, "max_tokens": float64(256)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +132,9 @@ func TestOpenAIResponsesDefaultRequest(t *testing.T) {
 	if _, has := b["max_tokens"]; has {
 		t.Fatalf("Responses 不应带 max_tokens：%v", b)
 	}
-	if r, _ := b["reasoning"].(map[string]any); r["effort"] != "low" {
-		t.Fatalf("extra 应合并进顶层：%v", b)
-	}
 }
 
-// 用户输入的 system / max_tokens 优先；没给 temperature 就不发；没有任何上限就不发 max_output_tokens。
+// 用户输入的 system / max_tokens 照发；没给 temperature 就不发；没有用户值就不发 max_output_tokens（不再有 params 兜底或封顶）。
 func TestOpenAIResponsesInputOverrides(t *testing.T) {
 	up, srv := openaiUpstream(0, `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}`)
 	defer srv.Close()
@@ -163,14 +159,12 @@ func TestOpenAIResponsesInputOverrides(t *testing.T) {
 	if _, has := up.last().Body["max_output_tokens"]; has {
 		t.Fatalf("没有上限不应发送 max_output_tokens：%v", up.last().Body)
 	}
-	// 用户值超过 params 上限时封顶
-	snap := env.snapshot(srv.URL, "responses", promptCaps)
-	snap.Model.Params = map[string]any{"max_tokens": float64(100)}
-	if _, err := openaiSubmit(t, env, snap, map[string]any{"prompt": "x", "max_tokens": float64(999)}); err != nil {
+	// 用户值原样发，不封顶
+	if _, err := openaiSubmit(t, env, env.snapshot(srv.URL, "responses", promptCaps), map[string]any{"prompt": "x", "max_tokens": float64(999)}); err != nil {
 		t.Fatal(err)
 	}
-	if up.last().Body["max_output_tokens"] != float64(100) {
-		t.Fatalf("应按 params 上限封顶：%v", up.last().Body)
+	if up.last().Body["max_output_tokens"] != float64(999) {
+		t.Fatalf("用户的 max_tokens 应原样发送：%v", up.last().Body)
 	}
 }
 
@@ -248,8 +242,7 @@ func TestOpenAIChatCompletions(t *testing.T) {
 	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("PNG")}}
 	env := newOpenAIEnv(t, func(o *plugin.Options) { o.Assets = assets })
 	snap := env.snapshot(srv.URL, "chat_completions", openaiVisionCaps())
-	snap.Model.Params = map[string]any{"system": "你是助手", "max_tokens": float64(128), "extra": map[string]any{"reasoning_effort": "low"}}
-	res, err := openaiSubmit(t, env, snap, map[string]any{"prompt": "看图", "images": []uint64{5}, "temperature": 0.5})
+	res, err := openaiSubmit(t, env, snap, map[string]any{"prompt": "看图", "images": []uint64{5}, "temperature": 0.5, "system": "你是助手", "max_tokens": float64(128)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +257,7 @@ func TestOpenAIChatCompletions(t *testing.T) {
 		t.Fatalf("上游请求不符：%+v", got)
 	}
 	b := got.Body
-	if b["model"] != "gpt-test" || b["max_completion_tokens"] != float64(128) || b["stream"] != false || b["temperature"] != 0.5 || b["reasoning_effort"] != "low" {
+	if b["model"] != "gpt-test" || b["max_completion_tokens"] != float64(128) || b["stream"] != false || b["temperature"] != 0.5 {
 		t.Fatalf("请求体不符：%v", b)
 	}
 	if _, has := b["max_tokens"]; has {
