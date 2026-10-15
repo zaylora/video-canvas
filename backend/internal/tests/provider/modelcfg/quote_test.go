@@ -93,3 +93,16 @@ func TestPricing_Public不含成本(t *testing.T) {
 		t.Fatal("Public 不应修改原值")
 	}
 }
+
+func TestPricing_Public不含规格成本(t *testing.T) {
+	p := modelcfg.Pricing{Billing: modelcfg.BillingPerCall, Unit: 3, Tiers: []modelcfg.Tier{
+		{On: true, When: map[string]any{"resolution": "4K"}, Unit: 6, Cost: &modelcfg.Cost{On: true, Unit: 2}},
+	}}
+	got := p.Public()
+	if len(got.Tiers) != 1 || got.Tiers[0].Unit != 6 || got.Tiers[0].Cost != nil {
+		t.Fatalf("Public() 规格 = %+v", got.Tiers)
+	}
+	if p.Tiers[0].Cost == nil {
+		t.Fatal("Public 不应修改原值")
+	}
+}

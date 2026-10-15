@@ -124,12 +124,12 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
     expect(errors[0].text).toContain("2k");
   });
 
-  test("规格价格没有条件也是红点", () => {
+  test("规格价格没有条件是合法的（所有请求都适用）", () => {
     const body = {
       ...base,
       pricing: { ...base.pricing, tiers: [{ on: true, when: {}, unit: 5 }] },
     };
-    expect(run(body).find((item) => item.level === "error")?.path).toBe("pricing.tiers[0].when");
+    expect(run(body).find((item) => item.level === "error")).toBeUndefined();
   });
 
   test("按秒计费但没有 duration 参数是红点", () => {
@@ -167,10 +167,10 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
   test("后端返回的问题降为黄点；与本地红点同一位置的不重复", () => {
     const body = {
       ...base,
-      pricing: { ...base.pricing, tiers: [{ on: true, when: {}, unit: 5 }] },
+      pricing: { ...base.pricing, tiers: [{ on: true, when: { quality: "3k" }, unit: 5 }] },
     };
     const checks = run(body, [
-      { path: "pricing.tiers[0].when", message: "至少要有一个条件" },
+      { path: "pricing.tiers[0].when", message: "条件不对" },
       { path: "pricing.unit", message: "价格不对" },
     ]);
     expect(checks.map((item) => [item.path, item.level])).toEqual([

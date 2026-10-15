@@ -5,6 +5,7 @@ import type {
   Capabilities,
   GenerationOp,
   ParamField,
+  PriceCost,
   PriceTier,
   Pricing,
 } from "@/api/model/type.d";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { costValue, withCostValue } from "@/utils/admin/price-cost";
 import { OP_LABEL, paramEntries } from "@/utils/tasks/capabilities";
 
 /** 价格的固定范围（和后端 maxPrice 一致） */
@@ -124,13 +126,50 @@ export function staleCondition(tier: PriceTier, dims: TierDimension[]): string |
   return null;
 }
 
-/** 一条规格价格：每个维度一行条件 chip（含「任意」）、价格、可供用户使用开关、利润率、删除 */
+/** 一份积分成本（按次 / 按秒）：开关 + 输入框，关闭即不填成本；规格价格的每一条各有一份 */
+export function CostRow({
+  label,
+  billing,
+  cost,
+  onChange,
+}: {
+  label: string;
+  billing: Billing;
+  cost: PriceCost | undefined;
+  onChange: (next: PriceCost | undefined) => void;
+}) {
+  return (
+    <div className="bg-muted/30 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">积分成本</span>
+        <Tag>仅管理员可见</Tag>
+        <Switch
+          className="ml-auto"
+          checked={!!cost?.on}
+          aria-label={`${label}积分成本`}
+          onCheckedChange={(on) => onChange(on ? { ...cost, on } : undefined)}
+        />
+      </div>
+      {cost?.on && (
+        <div className="mt-3">
+          <PriceInput
+            label={`${label}积分成本`}
+            value={costValue(billing, cost)}
+            unit={UNIT_LABEL[billing]}
+            onChange={(value) => onChange(withCostValue(billing, cost, value))}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 一条规格价格：每个维度一行条件 chip（含「任意」）、价格、自己的积分成本、可供用户使用开关、利润率、删除 */
 export function TierCard({
   index,
   tier,
   dims,
   billing,
-  cost,
   error,
   onChange,
   onRemove,
@@ -139,21 +178,19 @@ export function TierCard({
   tier: PriceTier;
   dims: TierDimension[];
   billing: Billing;
-  /** 成本（同单位），没开成本为 undefined */
-  cost?: number;
   error?: string;
   onChange: (next: PriceTier) => void;
   onRemove: () => void;
 }) {
   const stale = staleCondition(tier, dims);
-  const empty = Object.keys(tier.when ?? {}).length === 0;
   const setCond = (key: string, value: string | number | boolean | undefined) => {
     const when = { ...tier.when };
     if (value === undefined) delete when[key];
     else when[key] = value;
     onChange({ ...tier, when });
   };
-  const problem = error ?? stale ?? (empty ? "至少选一个条件，否则会盖掉默认价" : null);
+  const tierCost = costValue(billing, tier.cost);
+  const problem = error ?? stale;
   return (
     <div
       className={cn(
@@ -164,10 +201,10 @@ export function TierCard({
     >
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
         <span className="bg-muted grid size-7 place-items-center rounded-md font-mono text-xs">
-          {String(index + 2).padStart(2, "0")}
+          {String(index + 1).padStart(2, "0")}
         </span>
-        <span className="text-sm font-semibold">规格价格</span>
-        {cost !== undefined && <MarginBadge price={tier.unit} cost={cost} />}
+        <span className="text-sm font-semibold">规格价格 {index + 1}</span>
+        {tierCost !== undefined && <MarginBadge price={tier.unit} cost={tierCost} />}
         <label className="ml-auto flex items-center gap-1.5 text-xs">
           可供用户使用
           <Switch
@@ -231,6 +268,12 @@ export function TierCard({
             onChange={(unit) => onChange({ ...tier, unit })}
           />
         </div>
+        <CostRow
+          label={`第 ${index + 1} 条规格价格`}
+          billing={billing}
+          cost={tier.cost}
+          onChange={(next) => onChange({ ...tier, cost: next })}
+        />
         {problem && <p className="text-destructive text-xs">{problem}</p>}
       </div>
     </div>

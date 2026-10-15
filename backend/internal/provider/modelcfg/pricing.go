@@ -39,10 +39,12 @@ type TokenPrice struct {
 }
 
 // Tier 是一条规格价格。When 的键是 spec 参数名、op 或 ref_video；Unit 的单位随计费方式（积分 / 次、积分 / 秒）。
+// Cost 是这条规格自己的积分成本（仅管理端可见），不设置表示没有填写成本。
 type Tier struct {
 	On   bool           `json:"on"`
 	When map[string]any `json:"when"`
 	Unit int            `json:"unit"`
+	Cost *Cost          `json:"cost,omitempty"`
 }
 
 // Cost 是积分成本，结构随计费方式：按次 Unit、按秒 PerSecond、Token 用 Token。
@@ -53,8 +55,16 @@ type Cost struct {
 	Token     *TokenPrice `json:"token,omitempty"`
 }
 
-// Public 返回面向画布的定价：去掉积分成本。
+// Public 返回面向画布的定价：去掉积分成本（含每条规格价格自己的成本）。
 func (p Pricing) Public() Pricing {
 	p.Cost = nil
+	if len(p.Tiers) > 0 {
+		tiers := make([]Tier, len(p.Tiers))
+		copy(tiers, p.Tiers)
+		for i := range tiers {
+			tiers[i].Cost = nil
+		}
+		p.Tiers = tiers
+	}
 	return p
 }

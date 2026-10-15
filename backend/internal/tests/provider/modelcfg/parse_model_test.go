@@ -452,6 +452,13 @@ func TestParseModel_合法变体(t *testing.T) {
 		}},
 		{"没有成本", func(m map[string]any) { delete(mcPricing(m), "cost") }},
 		{"没有规格价格", func(m map[string]any) { delete(mcPricing(m), "tiers") }},
+		{"规格价格没有条件（所有请求都适用）", func(m map[string]any) {
+			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{}, "unit": 3}}
+		}},
+		{"规格价格带独立成本", func(m map[string]any) {
+			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": 3,
+				"cost": map[string]any{"on": true, "per_second": 1}}}
+		}},
 		{"按次计费", func(m map[string]any) {
 			m["pricing"] = map[string]any{"billing": "per_call", "unit": 10,
 				"tiers": []any{map[string]any{"on": true, "when": map[string]any{"generate_audio": false}, "unit": 8}}}
@@ -529,7 +536,6 @@ func TestParseModel_定价规则(t *testing.T) {
 			mcAsText(m)
 			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "x"}, "unit": 1}}
 		}, "pricing.tiers", "不支持"},
-		{"规格价格没有条件", func(m map[string]any) { tier(m, map[string]any{}) }, "pricing.tiers[0].when", "至少"},
 		{"规格价格条件的参数不存在", func(m map[string]any) { tier(m, map[string]any{"fps": 30}) }, "pricing.tiers[0].when.fps", "不存在"},
 		{"规格价格条件的参数不是规格维度", func(m map[string]any) {
 			tier(m, map[string]any{"aspect_ratio": "16:9"})
@@ -551,6 +557,10 @@ func TestParseModel_定价规则(t *testing.T) {
 			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": -1}}
 		}, "pricing.tiers[0].unit", "0 –"},
 		{"成本为负", func(m map[string]any) { mcDig(m, "pricing.cost")["per_second"] = -1 }, "pricing.cost.per_second", "0 –"},
+		{"规格成本为负", func(m map[string]any) {
+			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": 1,
+				"cost": map[string]any{"on": true, "per_second": -1}}}
+		}, "pricing.tiers[0].cost.per_second", "0 –"},
 		{"规格价格里的未知字段", func(m map[string]any) {
 			mcPricing(m)["tiers"] = []any{map[string]any{"on": true, "when": map[string]any{"op": "t2v"}, "unit": 1, "x": 1}}
 		}, "pricing.tiers[0].x", "未知字段"},
