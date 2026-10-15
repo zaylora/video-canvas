@@ -87,7 +87,6 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// 画布
 	canvasProjectRepo := repository.NewCanvasProjectRepository(db)
-	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo)
 
 	// AI 配置（平台协议 / 模型 / 凭证）：service 同时是 provider.Registry 与 provider.SecretResolver
 	aiConfigRepo := repository.NewAIConfigRepository(db)
@@ -112,6 +111,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	assetRepo := repository.NewAssetRepository(db)
 	assetSvc := service.NewAssetService(assetRepo, storeRegistry, cfg.Storage) // 同时是 provider.AssetStore 和 provider.AssetSaver
 	assetSvc.SetUploadIntents(repository.NewUploadIntentRepository(db))        // 开启浏览器直传
+	// 画布列表的封面：素材 key 换成稳定的 /files 地址并带 v=thumb 取缩略图（没有处理服务时服务端回退到原图）
+	canvasProjectSvc := service.NewCanvasProjectService(canvasProjectRepo,
+		service.WithCoverURL(func(key string) string { return assetSvc.FileURL(key) + "?v=thumb" }))
 	// 图片处理服务：给素材所在存储配置的云厂商缩略图 / 视频封面；素材服务通过它解析 /files?v=thumb|poster
 	processorSvc := service.NewImageProcessorService(repository.NewImageProcessorRepository(db), storageRepo, storeRegistry, service.NewHTTPProcessorFetcher())
 	assetSvc.SetVariantResolver(processorSvc)
@@ -154,6 +156,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Broadcaster: hub,
 		Config:      cfg.AI,
 		Limits:      service.NewTaskLimitService(settingsSvc, userRepo), // 初始积分 / 并发上限：单用户覆盖 > 系统设置 > config
+		Covers:      canvasProjectRepo,                                  // 任务成功时把第一张图写成画布封面
 	})
 
 	// 配置服务反向依赖插件宿主与任务服务，所以组装完后再注入。

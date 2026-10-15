@@ -16,6 +16,9 @@ type CanvasProject struct {
 	Title       string         `gorm:"size:255;not null;default:''" json:"title"` //  画布标题
 	PayloadJSON datatypes.JSON `gorm:"type:jsonb;not null;" json:"payload_json"`  //  完整画布内容
 	Revision    uint64         `gorm:"not null;default:1;" json:"revision"`       //  乐观锁版本号
+	// CoverAssetID 是列表封面用的素材：画布里第一张生成成功的图，由任务完成时写回；0 表示还没有（旧画布都没有），
+	// 列表页据此回退到节点线框。素材被删掉时联查不到，同样回退。
+	CoverAssetID uint64 `gorm:"not null;default:0;" json:"-"`
 }
 
 func (CanvasProject) TableName() string { return "canvas_projects" }
@@ -78,6 +81,8 @@ type CanvasProjectItem struct {
 	Revision  uint64    `json:"revision"`   // 乐观锁版本号
 	CreatedAt time.Time `json:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at"` // 更新时间
+	CoverKey  string    `json:"-"`          // 封面素材的存储 key，仓储联查 assets 得到；没封面为空
+	CoverURL  string    `json:"cover_url"`  // 封面地址，由 service 按 CoverKey 生成；没封面为空串，前端回退到节点线框
 }
 
 // MarshalJSON 把 ID 输出成十六进制串。扫库仍用 uint64，避免依赖 gorm 对自定义类型的扫描。

@@ -24,6 +24,8 @@ import (
 type fakeCanvasRepo struct {
 	items map[uint64]*model.CanvasProject
 	next  uint64
+	// covers 是画布 id 对应的封面素材 key，没有表示没封面
+	covers map[uint64]string
 }
 
 func (r *fakeCanvasRepo) Create(_ context.Context, p *model.CanvasProject) error {
@@ -47,7 +49,7 @@ func (r *fakeCanvasRepo) List(_ context.Context, userID uint64, _ string, _, _ i
 	var out []model.CanvasProjectItem
 	for _, p := range r.items {
 		if p.UserID == userID {
-			out = append(out, model.CanvasProjectItem{ID: p.ID, Title: p.Title, Revision: p.Revision})
+			out = append(out, model.CanvasProjectItem{ID: p.ID, Title: p.Title, Revision: p.Revision, CoverKey: r.covers[p.ID]})
 		}
 	}
 	return out, int64(len(out)), nil
@@ -188,5 +190,35 @@ func TestCanvasProjectHandler_GroupNodesRoundTrip(t *testing.T) {
 	}
 	if member := nodes[1].(map[string]any); member["parentId"] != "g1" {
 		t.Errorf("成员的 parentId 丢失：%v", member)
+	}
+}
+
+// 列表里的每张画布带封面地址：没有封面的画布返回空串，前端据此回退到节点线框。
+func TestCanvasList_CoverURL(t *testing.T) {
+	repo := &fakeCanvasRepo{
+		items: map[uint64]*model.CanvasProject{
+			1: {BaseModel: model.BaseModel{ID: 1}, UserID: 1, Title: "有封面", Revision: 1},
+			2: {BaseModel: model.BaseModel{ID: 2}, UserID: 1, Title: "没封面", Revision: 1},
+		},
+		covers: map[uint64]string{1: "u/1/a.png"},
+	}
+	h := NewCanvasProjectHandler(service.NewCanvasProjectService(repo,
+		service.WithCoverURL(func(key string) string { return "/files/" + key + "?v=thumb" })))
+	r := gin.New()
+	r.Use(func(c *gin.Context) { c.Set(middleware.CtxUserIDKey, uint(1)); c.Next() })
+	r.GET("/api/v1/canvas", h.List)
+
+	_, resp := canvasCall(t, r, http.MethodGet, "/api/v1/canvas", "")
+	list := resp["data"].(map[string]any)["list"].([]any)
+	byTitle := map[string]string{}
+	for _, it := range list {
+		m := it.(map[string]any)
+		byTitle[m["title"].(string)], _ = m["cover_url"].(string)
+	}
+	if byTitle["有封面"] != "/files/u/1/a.png?v=thumb" {
+		t.Fatalf("封面地址不对：%+v", byTitle)
+	}
+	if v, ok := byTitle["没封面"]; !ok || v != "" {
+		t.Fatalf("没有封面应返回空串：%+v", byTitle)
 	}
 }

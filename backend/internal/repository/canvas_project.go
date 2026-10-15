@@ -33,25 +33,37 @@ func (r *CanvasProjectRepository) GetByID(ctx context.Context, userID, id uint64
 	return &p, nil
 }
 
-// List 分页查询用户的画布列表，不查 payload_json 大字段。
+// List 分页查询用户的画布列表，不查 payload_json 大字段；左联 assets 带出封面素材的存储 key（素材没了就是空）。
+// 计数不联表，联表后列名要带表名前缀（两张表都有 user_id）。
 func (r *CanvasProjectRepository) List(ctx context.Context, userID uint64, keyword string, offset, limit int) ([]model.CanvasProjectItem, int64, error) {
 	var (
 		items []model.CanvasProjectItem
 		total int64
 	)
-	db := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("user_id = ?", userID)
+	db := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("canvas_projects.user_id = ?", userID)
 	if keyword != "" {
-		db = db.Where("title ILIKE ?", "%"+escapeLike(keyword)+"%")
+		db = db.Where("canvas_projects.title ILIKE ?", "%"+escapeLike(keyword)+"%")
 	}
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := db.Select("id", "title", "revision", "created_at", "updated_at").
-		Order("updated_at DESC").Offset(offset).Limit(limit).Find(&items).Error
+	err := db.Joins("LEFT JOIN assets ON assets.id = canvas_projects.cover_asset_id AND canvas_projects.cover_asset_id <> 0").
+		Select("canvas_projects.id", "canvas_projects.title", "canvas_projects.revision",
+			"canvas_projects.created_at", "canvas_projects.updated_at", "COALESCE(assets.storage_key, '') AS cover_key").
+		Order("canvas_projects.updated_at DESC").Offset(offset).Limit(limit).Find(&items).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+// SetCoverIfEmpty 在画布还没有封面时把素材设成封面：UPDATE … WHERE id=? AND user_id=? AND cover_asset_id=0。
+// 画布不存在、不属于该用户或已经有封面都不算错，返回 nil。故意用 Exec 而不是 Model().Updates：
+// 不能动 revision（会让用户正在编辑的画布保存时冲突）也不能动 updated_at（会让列表顺序跳动）。
+func (r *CanvasProjectRepository) SetCoverIfEmpty(ctx context.Context, userID, id, assetID uint64) error {
+	return r.db.WithContext(ctx).Exec(
+		"UPDATE canvas_projects SET cover_asset_id = ? WHERE id = ? AND user_id = ? AND cover_asset_id = 0 AND deleted_at IS NULL",
+		assetID, id, userID).Error
 }
 
 // Update 带乐观锁更新：只有 revision 与数据库一致时才更新，并把 revision +1。

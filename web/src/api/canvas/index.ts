@@ -69,7 +69,7 @@ export const getCanvasList = async (
     items: (response.list ?? []).map((item) => ({
       id: String(item.id),
       title: item.title,
-      coverUrl: null,
+      coverUrl: item.cover_url || null,
       revision: item.revision,
       updatedAt: item.updated_at,
     })),

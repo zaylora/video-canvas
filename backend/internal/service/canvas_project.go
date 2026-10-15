@@ -24,11 +24,25 @@ type CanvasProjectRepo interface {
 }
 
 type CanvasProjectService struct {
-	repo CanvasProjectRepo
+	repo     CanvasProjectRepo
+	coverURL func(key string) string
 }
 
-func NewCanvasProjectService(repo CanvasProjectRepo) *CanvasProjectService {
-	return &CanvasProjectService{repo: repo}
+// CanvasProjectOption 是画布服务的可选依赖。
+type CanvasProjectOption func(*CanvasProjectService)
+
+// WithCoverURL 设置封面素材 key 到访问地址的转换；不设置时列表不返回封面地址。
+func WithCoverURL(fn func(key string) string) CanvasProjectOption {
+	return func(s *CanvasProjectService) { s.coverURL = fn }
+}
+
+// NewCanvasProjectService 创建画布服务；封面地址转换等可选依赖用 CanvasProjectOption 传入。
+func NewCanvasProjectService(repo CanvasProjectRepo, opts ...CanvasProjectOption) *CanvasProjectService {
+	s := &CanvasProjectService{repo: repo}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Create 创建画布，payload_json 不传时默认为空对象。
@@ -75,7 +89,18 @@ func (s *CanvasProjectService) List(ctx context.Context, userID uint64, req *mod
 	q.Normalize()
 	// 3. 按标题模糊搜索（转义 % 和 _），按更新时间倒序，只查列表字段不含 payload_json
 	items, total, err := s.repo.List(ctx, userID, req.Keyword, q.Offset(), q.Limit())
-	return items, total, q, err
+	if err != nil {
+		return nil, 0, q, err
+	}
+	// 4. 把封面素材 key 换成访问地址；没有封面（旧画布、素材已删）保持空串，前端回退到节点线框
+	if s.coverURL != nil {
+		for i := range items {
+			if items[i].CoverKey != "" {
+				items[i].CoverURL = s.coverURL(items[i].CoverKey)
+			}
+		}
+	}
+	return items, total, q, nil
 }
 
 // Update 带乐观锁更新，成功后返回最新的画布（revision 已 +1）。
