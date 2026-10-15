@@ -20,6 +20,7 @@ import {
 import { Segmented } from "@/components/home/segmented";
 import { SoonTip } from "@/components/home/soon";
 import { Button } from "@/components/ui/button";
+import { RECENT_CANVAS_LIMIT } from "@/constants/creation";
 import { useCanvasList } from "@/hooks/use-canvas-list";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +34,8 @@ const DENSITY_KEY = "canvas-list-density";
 
 /** 各档的列数；窄屏一律最多 2 列 */
 const DENSITY_GRID: Record<Density, string> = {
-  sm: "grid-cols-2 md:grid-cols-4 xl:grid-cols-6",
-  md: "grid-cols-2 md:grid-cols-3 xl:grid-cols-4",
+  sm: "grid-cols-2 md:grid-cols-5 xl:grid-cols-7",
+  md: "grid-cols-2 md:grid-cols-4 xl:grid-cols-5",
   lg: "grid-cols-2 lg:grid-cols-3",
 };
 
@@ -107,11 +108,12 @@ export default function CanvasList() {
       </CardListNote>
     );
   } else {
-    body = list.items.map((canvas) => (
+    body = list.items.map((canvas, index) => (
       <CanvasCard
         key={canvas.id}
         canvas={canvas}
         variant="panel"
+        shared={index < RECENT_CANVAS_LIMIT}
         deleting={list.deleting.has(canvas.id)}
         onDelete={() => void list.remove(canvas.id)}
       />

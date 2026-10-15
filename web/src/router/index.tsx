@@ -17,7 +17,7 @@ import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
 import VersionSettingsPage from "@/pages/admin/settings/version-settings";
 import Assets from "@/pages/assets";
 import Canvas from "@/pages/canvas";
-import CanvasList from "@/pages/canvas-list";
+import CanvasList from "@/pages/home/canvas-list";
 import Conversation from "@/pages/conversation";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";

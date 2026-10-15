@@ -33,27 +33,5 @@ export const MODE_NAME: Record<CreationMode, string> = {
   audio: "音频生成",
 };
 
-/** 「最近上新」卡片 */
-export type NewsItem = {
-  /** 分类小标 */
-  kind: string;
-  /** 标题 */
-  title: string;
-  /** 副标题 */
-  sub: string;
-  /** 占位封面的色相 */
-  hue: number;
-};
-
-/** 最近上新：运营位占位，还没有内容来源 */
-export const NEWS_ITEMS: NewsItem[] = [
-  { kind: "精选作品", title: "精选作品占位", sub: "运营位 · 即将上线", hue: 285 },
-  { kind: "新功能", title: "新功能占位", sub: "运营位 · 即将上线", hue: 205 },
-  { kind: "模型上新", title: "模型上新占位", sub: "运营位 · 即将上线", hue: 35 },
-];
-
-/** 画布 tab 里的模板卡：占位，模板能力还没有 */
-export const CANVAS_TEMPLATES: { title: string; hue: number }[] = [
-  { title: "视频创作", hue: 250 },
-  { title: "图像创作", hue: 160 },
-];
+/** 创作页最多摆几张最近画布；所有画布页里排在这个数以内的卡片是「更多」转场的共享元素 */
+export const RECENT_CANVAS_LIMIT = 3;

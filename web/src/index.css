@@ -683,6 +683,199 @@
   }
 }
 
+/* ========== 创作页首屏的常驻氛围（设计稿 docs/design/首页 第 11 节） ==========
+   三处都在「减少动态效果」下关掉：标题「创作」二字的流光、标题后方的光晕、输入卡片边缘的流光。
+   光晕与边缘流光只动 transform / opacity，不做 blur 动画；流光只作用于两个字，开销可以忽略。 */
+@keyframes home-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 50% 0;
+  }
+}
+@keyframes home-flow {
+  from {
+    background-position: 50% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@keyframes home-drift-a {
+  from {
+    transform: translate(-8%, 4%) scale(0.95);
+    opacity: 0.7;
+  }
+  to {
+    transform: translate(8%, -4%) scale(1.08);
+    opacity: 1;
+  }
+}
+@keyframes home-drift-b {
+  from {
+    transform: translate(10%, -2%) scale(1.05);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-10%, 6%) scale(0.9);
+    opacity: 0.6;
+  }
+}
+@keyframes home-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 标题里的「创作」：入场后扫一遍光（0.5s 起、0.9s），再在 foreground / beam 之间来回缓慢流动 */
+@utility home-glow-text {
+  background: linear-gradient(
+      90deg,
+      var(--foreground) 0%,
+      var(--beam) 25%,
+      var(--beam-bright) 50%,
+      var(--beam) 75%,
+      var(--foreground) 100%
+    )
+    100% 0 / 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation:
+    home-sweep 0.9s cubic-bezier(0.2, 0, 0, 1) 0.5s forwards,
+    home-flow 6s ease-in-out 1.4s infinite alternate;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    background: none;
+    color: var(--beam);
+    -webkit-text-fill-color: var(--beam);
+  }
+}
+
+/* 标题后方的两团柔光：浓度由 --glow 给（浅色淡一点），周期不同所以不会同步 */
+@utility home-aura-blob {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--beam) var(--glow, 14%), transparent),
+    transparent
+  );
+  animation: home-drift-a 11s ease-in-out infinite alternate;
+  &[data-tone="bright"] {
+    inset: 10% 20%;
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklch, var(--beam-bright) var(--glow, 14%), transparent),
+      transparent
+    );
+    animation: home-drift-b 14s ease-in-out infinite alternate;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* 输入卡片的 1px 边框上有一段光沿边缘慢慢转圈：遮罩只留下边框那一圈，里面的锥形渐变元素在转 */
+@utility home-ring {
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 150%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0 80%,
+      color-mix(in oklch, var(--beam) 70%, transparent) 90%,
+      transparent 100%
+    );
+    animation: home-ring-spin 8s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    display: none;
+  }
+}
+
+/* ========== 首页「更多」→ 所有画布的转场（设计稿 docs/design/首页 第 13 节，选定候选 5「飞行 + 纵深」） ==========
+   共享的画布卡（新建 + 最近 3 张）由浏览器对位置和大小补间，时长取 DURATION.slow、曲线取 EASE_OUT；
+   整页是旧页略缩小淡出、新页从稍大处落下。目前全站只有这一处用 view transition，所以直接写在全局伪元素上。 */
+@keyframes vt-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@keyframes vt-grow {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+::view-transition-group(*) {
+  animation-duration: 0.24s;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+/* 新旧快照拉伸到同一个框里：两页的卡片形状不同（16:10 叠字小卡 ↔ 4:3 带内边距的卡） */
+::view-transition-old(*),
+::view-transition-new(*) {
+  width: 100%;
+  height: 100%;
+}
+::view-transition-old(root) {
+  animation: vt-shrink 0.14s cubic-bezier(0.2, 0, 0, 1) both;
+}
+::view-transition-new(root) {
+  animation: vt-grow 0.2s cubic-bezier(0.2, 0, 0, 1) 0.06s both;
+}
+/* 侧栏和顶栏是不换的外壳：转场期间（HomeLayout 打标记）各给一个名字，从整页快照里摘出来，留在原地不缩放 */
+[data-view-transitioning] [data-slot="sidebar-container"] {
+  view-transition-name: app-sidebar;
+}
+[data-view-transitioning] [data-slot="site-header"] {
+  view-transition-name: app-header;
+}
+/* 减少动态效果：卡片不移动，整页只做淡入淡出 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) {
+    animation: none;
+  }
+  ::view-transition-old(root) {
+    animation: vt-fade-out 0.12s linear both;
+  }
+  ::view-transition-new(root) {
+    animation: vt-fade-in 0.18s linear 0.06s both;
+  }
+}
+
 /* ========== 画布 Agent 浮窗（设计稿 docs/design/画布Agent助手设计 6.8「视觉精修」） ==========
    不加颜色 token：层次靠 1px 顶部内高光（--sheen）、近 + 远两层投影（--elevation-*）、极淡的品牌渐变。
    这几样组合写成工具类，各组件复用，不在组件里拼长串 shadow-[…]。 */
