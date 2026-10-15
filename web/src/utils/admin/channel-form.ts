@@ -132,6 +132,8 @@ export function buildChannelRequest(
   const name = form.name.trim();
   if (!name) errors.name = "请填写名称";
   if (!form.pluginKey || !form.pluginVersion) errors.plugin = "请选择插件与版本";
+  else if (original && form.pluginKey !== original.plugin_key)
+    errors.plugin = "已有渠道不能更换协议，请新建渠道";
   const baseUrlError = checkBaseUrl(form.baseUrl);
   if (baseUrlError) errors.baseUrl = baseUrlError;
   const rps = parseLimit(form.rps, "rps");

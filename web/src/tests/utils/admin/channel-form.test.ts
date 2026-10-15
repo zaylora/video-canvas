@@ -196,6 +196,14 @@ describe("buildChannelRequest（编辑）", () => {
     expect(result.update).toEqual({});
   });
 
+  test("已有渠道不能换协议：plugin_key 变了就报错，不会静默发出请求", () => {
+    const form = { ...channelFormFromView(original, fields), pluginKey: "sora" };
+    const result = buildChannelRequest(form, fields, original);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.plugin).toContain("新建渠道");
+  });
+
   test("只带改过的字段；改版本时同时带 plugin_key 与 plugin_version；key 不可改", () => {
     const form = {
       ...channelFormFromView(original, fields),

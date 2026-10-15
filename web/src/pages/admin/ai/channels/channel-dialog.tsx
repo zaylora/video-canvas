@@ -649,7 +649,7 @@ function DialogForm({
               )}
 
               <Zone title="协议">
-                {!readOnly && (
+                {!readOnly && isNew && (
                   <KindFilter
                     value={pluginKind}
                     onChange={changePluginKind}
@@ -658,7 +658,7 @@ function DialogForm({
                 )}
                 <Select
                   value={form.pluginKey}
-                  disabled={readOnly}
+                  disabled={readOnly || !isNew}
                   onValueChange={(value) => value && onPluginChange(value)}
                 >
                   <SelectTrigger
@@ -701,6 +701,11 @@ function DialogForm({
                   </SelectContent>
                 </Select>
                 {errors.plugin && <p className="text-destructive text-xs">{errors.plugin}</p>}
+                {!isNew && !readOnly && (
+                  <p className="text-muted-foreground text-xs">
+                    已有渠道不能更换协议；要换请新建渠道。升级版本在“高级设置”里。
+                  </p>
+                )}
                 {plugins.length === 0 && (
                   <p className="text-muted-foreground text-xs">
                     还没有可用的插件，先到
