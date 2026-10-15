@@ -20,6 +20,7 @@ import {
   defaultUnit,
   PriceInput,
   priceField,
+  billingBlocked,
   TierCard,
   tierDimensions,
   UNIT_LABEL,
@@ -32,16 +33,6 @@ const BILLING_LABEL: Record<Billing, string> = {
   per_second: "按秒",
   token: "Token",
 };
-
-/** 计费方式在当前模型下能不能用；不能用返回原因 */
-function billingBlocked(billing: Billing, kind: string, caps: Capabilities | undefined) {
-  if (billing === "per_second" && caps?.params?.duration?.type !== "number")
-    return "按秒计费需要一个名为 duration 的数字参数（在「能力与参数」里添加视频时长）";
-  if (kind === "agent" && billing !== "token") return "Agent 模型只能按 Token 计费";
-  if (billing === "token" && kind !== "text" && kind !== "agent")
-    return "只有文本、Agent 模型按 Token 计费";
-  return null;
-}
 
 /** 成本里与默认价同单位的那个数 */
 const costUnit = (pricing: Pricing, cost: PriceCost | undefined) =>
@@ -60,12 +51,14 @@ export function ModelPriceForm({
   kind,
   caps,
   issues,
+  warnings,
   onChange,
 }: {
   body: Record<string, unknown>;
   kind: string;
   caps: Capabilities | undefined;
   issues: ConfigIssue[];
+  warnings: ConfigIssue[];
   onChange: (mutate: BodyMutator) => void;
 }) {
   const pricing: Pricing = readModelPricing(body) ?? defaultPricing(kind);
@@ -142,6 +135,7 @@ export function ModelPriceForm({
                     issueFor(issues, `pricing.token.${side}`) ??
                     (side === "in" ? issueFor(issues, "pricing.token") : undefined)
                   }
+                  warning={side === "in" ? issueFor(warnings, "pricing") : undefined}
                 >
                   <PriceInput
                     label={side === "in" ? "输入价" : "输出价"}
@@ -162,6 +156,7 @@ export function ModelPriceForm({
               htmlFor="model-price"
               required
               error={issueFor(issues, `pricing.${field}`)}
+              warning={issueFor(warnings, "pricing")}
             >
               <PriceInput
                 id="model-price"

@@ -26,6 +26,7 @@ import { isTerminalStatus } from "@/utils/tasks/status";
 import type { DryRunState, ResultNotice, ResultTabId, RunState, TraceState } from "../result-panel";
 import type { LoadStatus } from "../../use-admin";
 import { useAliveRef } from "../../use-admin";
+import { modelChecks, samePlace } from "./model-fields";
 import type { ModelRoute } from "./model-route";
 
 /** 模型编辑器要用的渠道与插件清单（AdminCatalog 的子集，面板由宿主传入） */
@@ -111,6 +112,30 @@ export function useModelWorkspace(
   const info = useMemo(
     () => resolveModelChannel(body, catalog.channels, catalog.plugins),
     [body, catalog.channels, catalog.plugins],
+  );
+  /** 页签与底栏的提示：error 级是红点（阻止保存），warning 级是黄点 */
+  const checks = useMemo(
+    () => modelChecks(body, info, issues, catalog.pluginsStatus === "ready"),
+    [body, info, issues, catalog.pluginsStatus],
+  );
+  const blockers = useMemo(() => checks.filter((check) => check.level === "error"), [checks]);
+  /** 表单字段下的红字：后端返回的问题 + 实时的红点问题（同一位置只留红点那条） */
+  const fieldIssues = useMemo<ConfigIssue[]>(() => {
+    const live = blockers.flatMap((check) =>
+      check.path ? [{ path: check.path, message: check.text }] : [],
+    );
+    const backend = issues.filter(
+      (issue) => !live.some((item) => samePlace(item.path, issue.path)),
+    );
+    return [...live, ...backend];
+  }, [blockers, issues]);
+  /** 表单字段下的琥珀色建议（后端问题已在 fieldIssues 里） */
+  const fieldWarnings = useMemo<ConfigIssue[]>(
+    () =>
+      modelChecks(body, info, [], catalog.pluginsStatus === "ready").flatMap((check) =>
+        check.level === "warning" && check.path ? [{ path: check.path, message: check.text }] : [],
+      ),
+    [body, info, catalog.pluginsStatus],
   );
   const capabilities = (body && isRecord(body.capabilities) ? body.capabilities : undefined) as
     | Capabilities
@@ -356,6 +381,14 @@ export function useModelWorkspace(
       });
       return null;
     }
+    // 红点问题（必填项没填、配置自相矛盾）不允许保存；原因已经实时显示在对应字段上
+    if (blockers.length > 0) {
+      pushEntry({
+        title: blockers[0].text,
+        tone: "error",
+      });
+      return null;
+    }
     const sentText = text;
     setBusy("save");
     setIssues([]);
@@ -579,6 +612,10 @@ export function useModelWorkspace(
     switchMode,
     epoch,
     issues,
+    checks,
+    blockers,
+    fieldIssues,
+    fieldWarnings,
     editBody,
     format,
     // 状态

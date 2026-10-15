@@ -14,6 +14,7 @@ function FormField({
   htmlFor,
   hint,
   error,
+  warning,
   required,
   tip,
   size = "sm",
@@ -24,6 +25,8 @@ function FormField({
   htmlFor?: string;
   hint?: ReactNode;
   error?: string;
+  /** 建议项（不阻止保存），用琥珀色；有 error 时不显示 */
+  warning?: string;
   required?: boolean;
   /** 标题旁的 ? 提示 */
   tip?: string;
@@ -59,6 +62,8 @@ function FormField({
         <p className="text-destructive text-xs" role="alert">
           {error}
         </p>
+      ) : warning ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
       ) : (
         hint && (
           <p

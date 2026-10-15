@@ -36,7 +36,7 @@ import { publishBlockReason } from "@/utils/admin/model-channel";
 import { priceLabel } from "@/utils/pricing/quote";
 
 import { ModelBasicForm } from "./model-basic-form";
-import { fieldOfPath, modelChecks, type ModelTabId } from "./model-fields";
+import { fieldOfPath, worstLevel, type ModelCheck, type ModelTabId } from "./model-fields";
 import { ModelParamsForm } from "./model-params-form";
 import { PickerPreview, PreviewFrame, PricePreview } from "./model-previews";
 import { ModelPriceForm } from "./model-price-form";
@@ -104,12 +104,18 @@ export function ModelDialog({
     textarea.scrollTop = Math.max(0, (hit.line - 3) * LINE_HEIGHT);
   }, [pendingLocate, mode, ws.text]);
 
+  /** 保存；被红点问题拦下时跳到第一个问题所在的位置 */
+  const saveAndLocate = () => {
+    const first = ws.blockers[0];
+    void ws.save(false, true);
+    if (first?.path) locate(first.path);
+  };
+
   const label = body ? readModelString(body, "label") : (seed?.label ?? "");
   const kind = body ? readModelKind(body) : "";
   const pricing = body ? readModelPricing(body) : null;
   const upstream = body ? readModelChannel(body).upstreamModel : "";
-  const channelsReady = catalog.pluginsStatus === "ready";
-  const checks = modelChecks(body, ws.info, ws.issues, channelsReady);
+  const { checks } = ws;
   const disabled = ws.working || ws.loadingDetail;
   const online = ws.detail ? !!ws.detail.enabled : !!seed?.enabled;
   const spinner = (name: string, icon: React.ReactNode) =>
@@ -204,7 +210,7 @@ export function ModelDialog({
             <UnderlineTab key={item.id} selected={tab === item.id} onClick={() => setTab(item.id)}>
               <item.icon />
               {item.label}
-              {checks.some((check) => check.tab === item.id) && <StatusDot tone="warning" />}
+              <TabDot checks={checks.filter((check) => check.tab === item.id)} />
             </UnderlineTab>
           ))}
         </UnderlineTabs>
@@ -280,7 +286,8 @@ export function ModelDialog({
                 body={body}
                 isNew={ws.isNew}
                 catalog={catalog}
-                issues={ws.issues}
+                issues={ws.fieldIssues}
+                warnings={ws.fieldWarnings}
                 onChange={ws.editBody}
               />
             ) : (
@@ -288,7 +295,8 @@ export function ModelDialog({
                 {tab === "params" ? (
                   <ModelParamsForm
                     body={body}
-                    issues={ws.issues}
+                    issues={ws.fieldIssues}
+                    warnings={ws.fieldWarnings}
                     epoch={ws.epoch}
                     onChange={ws.editBody}
                   />
@@ -297,7 +305,8 @@ export function ModelDialog({
                     body={body}
                     kind={kind}
                     caps={ws.capabilities}
-                    issues={ws.issues}
+                    issues={ws.fieldIssues}
+                    warnings={ws.fieldWarnings}
                     onChange={ws.editBody}
                   />
                 )}
@@ -342,13 +351,30 @@ export function ModelDialog({
           <Button variant="outline" onClick={ws.closeEditor}>
             取消
           </Button>
-          <Button disabled={disabled} onClick={() => void ws.save(false, true)}>
+          <Button disabled={disabled} onClick={saveAndLocate}>
             {spinner("save", <Save />)}
             保存
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+/** 页签上的提示点：有红点级问题显示红色，只有建议项显示黄色，没有问题不显示 */
+function TabDot({ checks }: { checks: ModelCheck[] }) {
+  const level = worstLevel(checks);
+  if (!level) return null;
+  const errors = checks.filter((check) => check.level === "error");
+  return (
+    <span
+      className="inline-flex"
+      role="img"
+      aria-label={level === "error" ? `${errors.length} 个问题需要修复` : "有建议项"}
+      title={(level === "error" ? errors : checks).map((check) => check.text).join("\n")}
+    >
+      <StatusDot tone={level === "error" ? "danger" : "warning"} />
+    </span>
   );
 }
 

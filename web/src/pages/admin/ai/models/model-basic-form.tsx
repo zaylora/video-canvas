@@ -10,6 +10,7 @@ import {
   FormSectionHeader,
   FormSectionTitle,
 } from "@/components/admin-ui/form-section";
+import { Notice } from "@/components/admin-ui/notice";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
 import { Button } from "@/components/ui/button";
@@ -54,12 +55,14 @@ export function ModelBasicForm({
   isNew,
   catalog,
   issues,
+  warnings,
   onChange,
 }: {
   body: Record<string, unknown>;
   isNew: boolean;
   catalog: ModelCatalog;
   issues: ConfigIssue[];
+  warnings: ConfigIssue[];
   onChange: (mutate: BodyMutator) => void;
 }) {
   const { plugins, pluginsStatus } = catalog;
@@ -85,6 +88,13 @@ export function ModelBasicForm({
     onChange((current) => withModelProtocol(current, next));
   const setField = (field: string, value: unknown) =>
     onChange((current) => withModelField(current, field, value));
+  const channelError = issueFor(issues, "channels[0].channel");
+  const channelWarning = issueFor(warnings, "channels[0].channel");
+  const channelNote = channelError
+    ? { tone: "danger" as const, text: channelError }
+    : channelWarning
+      ? { tone: "warning" as const, text: channelWarning }
+      : null;
   const hint = readModelString(body, "hint");
   const tags = readModelStrings(body, "tags");
 
@@ -94,6 +104,11 @@ export function ModelBasicForm({
         <FormSectionHeader>
           <FormSectionTitle>模型身份</FormSectionTitle>
         </FormSectionHeader>
+        {channelNote && (
+          <Notice tone={channelNote.tone} title="所属渠道" className="mb-4">
+            {channelNote.text}
+          </Notice>
+        )}
         <div className="grid gap-5 md:grid-cols-2">
           <FormField
             size="default"
