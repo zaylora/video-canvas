@@ -175,6 +175,7 @@ type ModelSaveInput struct {
 
 // SaveModelResult 是保存的结果：配置一定已保存，Issues 是当前校验发现的问题（有问题时不能启用）。
 type SaveModelResult struct {
+	Key    string           `json:"key"` // 保存的模型 key；新建时没填的由后端生成，从这里取
 	Issues []modelcfg.Issue `json:"issues"`
 }
 

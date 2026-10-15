@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestAIConfigService_SaveModel(t *testing.T) {
 		{"更新不存在的配置返回 404", "nope", false, aicModelBody("nope", "c1", ""), nil, errcode.ErrConfigNotFound.Code, 0},
 		{"路径 key 与正文不一致", "m2", false, aicModelBody("m1", "c1", ""), nil, errcode.ErrInvalidParams.Code, 0},
 		{"正文不是 JSON 对象", "", true, json.RawMessage(`[1,2]`), nil, errcode.ErrInvalidParams.Code, 0},
-		{"正文缺少 key", "", true, json.RawMessage(`{"label":"x"}`), nil, errcode.ErrInvalidParams.Code, 0},
+		{"更新时正文缺少 key", "m1", false, json.RawMessage(`{"label":"x"}`), nil, errcode.ErrInvalidParams.Code, 0},
 		{"key 含非法字符", "", true, json.RawMessage(`{"key":"a/b"}`), nil, errcode.ErrInvalidParams.Code, 0},
 		{"key 超过 128 字符", "", true, aicModelBody(strings.Repeat("a", 129), "c1", ""), nil, errcode.ErrInvalidParams.Code, 0},
 		{"正文里有未知字段：仍保存并返回 Issue", "", true, aicModelBody("m1", "c1", `"bad":true`), nil, 0, 1},
@@ -425,4 +426,83 @@ func TestAIConfigService_SetModelEnabled_Checks(t *testing.T) {
 			}
 		})
 	}
+}
+
+// aicNoKeyBody 把 aicModelBody 的 key 成员去掉（keyJSON 为空）或换成指定的 JSON 值，用来模拟新建时不填 key。
+func aicNoKeyBody(keyJSON string) json.RawMessage {
+	body := string(aicModelBody("tmp", "c1", ""))
+	body = strings.Replace(body, `"key":"tmp",`, "", 1)
+	if keyJSON != "" {
+		body = strings.Replace(body, "{", `{"key":`+keyJSON+",", 1)
+	}
+	return json.RawMessage(body)
+}
+
+func TestAIConfigService_SaveModel_GeneratesKey(t *testing.T) {
+	keyRe := regexp.MustCompile(`^m-[0-9a-f]{12}$`)
+	for _, tt := range []struct{ name, keyJSON string }{
+		{"正文没有 key", ""},
+		{"key 是空串", `""`},
+		{"key 只有空白", `"  "`},
+	} {
+		t.Run(tt.name+"：新建时生成唯一 key 并写进正文", func(t *testing.T) {
+			svc, repo, _ := aicNewSvc()
+			aicSeedChannel(t, svc, repo, "c1", true)
+			first, err := aicSave(svc, "", true, aicNoKeyBody(tt.keyJSON))
+			aicWantCode(t, err, 0)
+			if !keyRe.MatchString(first.Key) {
+				t.Fatalf("生成的 key = %q，期望 m-加 12 位十六进制", first.Key)
+			}
+			detail, err := svc.GetConfig(context.Background(), first.Key)
+			if err != nil {
+				t.Fatalf("按生成的 key 读不到配置：%v", err)
+			}
+			var stored struct{ Key, Label string }
+			if err := json.Unmarshal(detail.Body, &stored); err != nil {
+				t.Fatal(err)
+			}
+			if stored.Key != first.Key || stored.Label != "模型-tmp" {
+				t.Fatalf("存下的正文 = %+v，key 应等于 %q 且其他字段不变", stored, first.Key)
+			}
+			if len(first.Issues) != 0 {
+				t.Fatalf("生成 key 后不应有校验问题：%+v", first.Issues)
+			}
+			second, err := aicSave(svc, "", true, aicNoKeyBody(tt.keyJSON))
+			aicWantCode(t, err, 0)
+			if second.Key == first.Key {
+				t.Fatalf("两次新建得到了同一个 key %q", second.Key)
+			}
+		})
+	}
+
+	t.Run("填了 key 就用填的，结果里带回", func(t *testing.T) {
+		svc, repo, _ := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		res, err := aicSave(svc, "", true, aicModelBody("my-model", "c1", ""))
+		aicWantCode(t, err, 0)
+		if res.Key != "my-model" {
+			t.Fatalf("res.Key = %q", res.Key)
+		}
+	})
+
+	t.Run("生成 key 保持正文里字段的书写顺序", func(t *testing.T) {
+		svc, repo, _ := aicNewSvc()
+		aicSeedChannel(t, svc, repo, "c1", true)
+		res, err := aicSave(svc, "", true, aicNoKeyBody(`""`))
+		aicWantCode(t, err, 0)
+		detail, _ := svc.GetConfig(context.Background(), res.Key)
+		text := string(detail.Body)
+		if strings.Index(text, `"key"`) > strings.Index(text, `"kind"`) {
+			t.Fatalf("key 应仍排在 kind 之前：%s", text)
+		}
+	})
+
+	t.Run("正文是空对象也能补上 key", func(t *testing.T) {
+		svc, _, _ := aicNewSvc()
+		res, err := aicSave(svc, "", true, json.RawMessage(`{}`))
+		aicWantCode(t, err, 0)
+		if !keyRe.MatchString(res.Key) {
+			t.Fatalf("res.Key = %q", res.Key)
+		}
+	})
 }

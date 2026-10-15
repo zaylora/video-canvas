@@ -52,16 +52,6 @@ export function withModelChannel(
   return { ...body, channels };
 }
 
-/** 上游模型名 → 建议的模型 key：小写，只留字母数字与连字符 */
-export function suggestModelKey(upstreamModel: string): string {
-  return upstreamModel
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
-
 /** kind 的中文名 */
 export const MODEL_KIND_LABEL: Record<string, string> = {
   text: "文本",

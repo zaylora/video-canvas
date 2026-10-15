@@ -138,7 +138,6 @@ export function modelChecks(
   const fail = (tab: ModelTabId, text: string, path: string) =>
     out.push({ tab, text, path, level: "error" });
   const { channel, upstreamModel } = readModelChannel(body);
-  if (!readModelString(body, "key")) fail("basic", "填写产品模型标识", "key");
   if (!readModelString(body, "label")) fail("basic", "填写展示名称", "label");
   if (!info.kind) fail("basic", "选择模型能力", "kind");
   if (!channel) fail("basic", "选择所属渠道", "channels[0].channel");

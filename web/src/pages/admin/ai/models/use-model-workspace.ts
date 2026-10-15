@@ -372,8 +372,8 @@ export function useModelWorkspace(
       pushEntry({ title: "JSON 格式错误，无法保存", tone: "error", text: parsed.message });
       return null;
     }
-    const newKey = readConfigKey(parsed.value);
-    if (!newKey) {
+    // 新建时 key 由后端生成；更新时 key 就是正在编辑的模型
+    if (!isNew && !readConfigKey(parsed.value)) {
       pushEntry({
         title: "正文里缺少 key",
         tone: "error",
@@ -414,10 +414,10 @@ export function useModelWorkspace(
       if (closeAfter) {
         route.close({ replace: true });
       } else if (isNew) {
-        keepResultsForRef.current = newKey;
-        route.openModel(newKey, { replace: true });
+        keepResultsForRef.current = result.key;
+        route.openModel(result.key, { replace: true });
       }
-      return { key: newKey, issues: result.issues };
+      return { key: result.key, issues: result.issues };
     } finally {
       if (aliveRef.current) setBusy(null);
     }

@@ -13,7 +13,6 @@ import {
 import { Notice } from "@/components/admin-ui/notice";
 import { TagInput } from "@/components/admin-ui/tag-input";
 import { VendorPicker } from "@/components/admin-ui/vendor-picker";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useRetained } from "@/hooks/use-retained";
@@ -28,7 +27,6 @@ import {
   readModelNumber,
   readModelString,
   readModelStrings,
-  suggestModelKey,
   withModelField,
   withModelUpstream,
 } from "@/utils/admin/model-body";
@@ -124,34 +122,6 @@ export function ModelBasicForm({
               aria-invalid={!!issueFor(issues, "label")}
               onChange={(event) => setField("label", event.target.value)}
             />
-          </FormField>
-          <FormField
-            size="default"
-            label="产品模型标识"
-            htmlFor="model-key"
-            required
-            error={issueFor(issues, "key")}
-            tip="画布、任务与计费都用它引用这个模型，创建后不能修改。"
-          >
-            <div className="flex gap-2">
-              <Input
-                id="model-key"
-                className="font-mono"
-                placeholder="例如 veo-4"
-                value={readModelString(body, "key")}
-                disabled={!isNew}
-                aria-invalid={!!issueFor(issues, "key")}
-                onChange={(event) => setField("key", event.target.value)}
-              />
-              {isNew && upstreamModel && !readModelString(body, "key") && (
-                <Button
-                  variant="outline"
-                  onClick={() => setField("key", suggestModelKey(upstreamModel))}
-                >
-                  按上游 ID 生成
-                </Button>
-              )}
-            </div>
           </FormField>
           <FormField
             size="default"

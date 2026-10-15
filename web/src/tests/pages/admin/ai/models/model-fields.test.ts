@@ -179,3 +179,17 @@ describe("modelChecks：红点（阻止保存）与黄点（建议）", () => {
     ]);
   });
 });
+
+describe("modelChecks：产品模型标识由后端生成", () => {
+  test("新建时 key 为空不算问题", () => {
+    const body = {
+      key: "",
+      label: "L",
+      kind: "image",
+      channels: [{ channel: "main", upstream_model: "u" }],
+    };
+    const channel = { key: "main", name: "主渠道", enabled: true, secret_set: true } as ChannelView;
+    const checks = modelChecks(body, resolveModelChannel(body, [channel], []), [], false);
+    expect(checks.find((item) => item.path === "key")).toBeUndefined();
+  });
+});

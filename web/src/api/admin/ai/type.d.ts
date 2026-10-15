@@ -317,6 +317,8 @@ export interface ConfigDetail {
 
 /** 保存的结果 */
 export interface SaveModelResult {
+  /** 保存的模型 key；新建时没填的由后端生成，从这里取 */
+  key: string;
   /** 校验发现的问题（有问题也已保存，但启用会被拦） */
   issues: ConfigIssue[];
 }

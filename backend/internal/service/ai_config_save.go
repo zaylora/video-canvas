@@ -32,7 +32,15 @@ const (
 func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*SaveModelResult, error) {
 	// 1. 解析正文里的 key / kind：这些字段要同步到指针行，所以正文必须至少是个带 key 的 JSON 对象，
 	//    否则无法确定这份配置属于谁，无法保存
-	meta, err := aiParseMeta(in.Body)
+	//    新建时不用填 key：正文里没有就由后端生成并写回正文
+	body := in.Body
+	if in.Create {
+		var err error
+		if body, err = s.withModelKey(ctx, body); err != nil {
+			return nil, err
+		}
+	}
+	meta, err := aiParseMeta(body)
 	if err != nil {
 		return nil, err
 	}
@@ -61,13 +69,13 @@ func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*Sa
 
 	// 3. 已启用的模型保存即生效：先过启用检查，不通过就拒绝，不落库
 	if exists && ptr.Enabled {
-		if _, err := s.checkEnableable(ctx, key, in.Body); err != nil {
+		if _, err := s.checkEnableable(ctx, key, body); err != nil {
 			return nil, err
 		}
 	}
 
 	// 4. 校验正文（不阻塞保存）：正文本身的问题 + 渠道 / 插件的跨对象问题
-	issues, err := s.collectIssues(ctx, key, in.Body)
+	issues, err := s.collectIssues(ctx, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +85,7 @@ func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*Sa
 	//    sort 只在首次创建时取正文里的值，之后启停与排序由接口独占，避免改 JSON 时悄悄改变上架状态
 	if _, err := s.repo.SaveModel(ctx, repository.SaveModelInput{
 		Pointer:        aiPointer(meta),
-		Body:           in.Body,
+		Body:           body,
 		CreatedBy:      in.AdminID,
 		Note:           in.Note,
 		InitialEnabled: false,
@@ -89,7 +97,7 @@ func (s *AIConfigService) SaveModel(ctx context.Context, in ModelSaveInput) (*Sa
 		zap.Uint64("admin_id", in.AdminID), zap.Int("issues", len(issues)))
 	// 6. 热生效：已启用的模型马上用新配置，没启用的也刷新一次（Registry 里的半成品不影响用户）
 	s.notifyChanged(ctx, "save model/"+key)
-	return &SaveModelResult{Issues: issues}, nil
+	return &SaveModelResult{Key: key, Issues: issues}, nil
 }
 
 // Validate 校验模型配置。body 非空时校验传入的正文（编辑器实时校验，不落库）；

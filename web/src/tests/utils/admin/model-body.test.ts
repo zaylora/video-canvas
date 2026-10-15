@@ -8,7 +8,6 @@ import {
   readModelKind,
   readModelNumber,
   readModelString,
-  suggestModelKey,
   withDefaultPrice,
   withModelChannel,
   withModelField,
@@ -92,15 +91,6 @@ describe("withModelField / withModelUpstream", () => {
     const round = JSON.parse(JSON.stringify(step)) as typeof body;
     expect(Object.keys(round)).toEqual(Object.keys(body));
     expect(Object.keys(round.params)).toEqual(["b", "a"]);
-  });
-});
-
-describe("suggestModelKey", () => {
-  test("小写、非字母数字变连字符、去首尾连字符、最长 64", () => {
-    expect(suggestModelKey("GPT-4o mini")).toBe("gpt-4o-mini");
-    expect(suggestModelKey("  kling/v2.master__x ")).toBe("kling-v2-master-x");
-    expect(suggestModelKey("---")).toBe("");
-    expect(suggestModelKey("a".repeat(100))).toHaveLength(64);
   });
 });
 
