@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { toast } from "sonner";
 
 import { setModelEnabled } from "@/api/admin/ai";
 import type { ConfigListItem } from "@/api/admin/ai/type.d";
@@ -26,10 +25,6 @@ export function useModelRowActions<T extends ConfigListItem = ConfigListItem>(
     setLocal(key, enabled);
     try {
       await setModelEnabled(key, enabled);
-      toast.success(`${key} 已${enabled ? "上线" : "下线"}`, {
-        description: enabled ? "画布里立即可见。" : "画布里不再显示，已发起的任务不受影响。",
-        action: { label: "撤销", onClick: () => void toggleEnabled(key, !enabled) },
-      });
       await reload();
     } catch {
       // 失败才回退开关；错误提示由全局拦截器弹
