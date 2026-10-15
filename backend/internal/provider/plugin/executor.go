@@ -409,7 +409,6 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 		UpstreamModel string                        `json:"upstreamModel"`
 		Kind          string                        `json:"kind"`
 		Label         string                        `json:"label"`
-		Params        map[string]any                `json:"params"`
 		ParamHints    map[string]modelcfg.ParamHint `json:"paramHints"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
@@ -421,7 +420,7 @@ func (e *Executor) Import(ctx context.Context, rt *provider.ChannelRuntime, args
 			return nil, pluginFaultf("导入模型 %d 的 paramHints 不合规：%s", i+1, strings.Join(issues, "；"))
 		}
 		drafts = append(drafts, provider.ModelDraft{
-			UpstreamModel: w.UpstreamModel, Kind: w.Kind, Label: w.Label, Params: w.Params, ParamHints: w.ParamHints,
+			UpstreamModel: w.UpstreamModel, Kind: w.Kind, Label: w.Label, ParamHints: w.ParamHints,
 		})
 	}
 	return drafts, nil

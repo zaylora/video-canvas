@@ -52,6 +52,9 @@ func parseModel(body []byte) (*ModelConfig, []Issue) {
 	if iss != nil {
 		return nil, []Issue{*iss}
 	}
+	// 模型早先有顶层固定参数 params，现在完全由 capabilities 描述、不再有这个字段；
+	// 已保存的旧配置里还带着它，这里不当未知字段报错（解码时也会被忽略），否则这些模型会读不出来。
+	delete(tree, "params")
 	var issues []Issue
 	checkShape("", tree, reflect.TypeOf(ModelConfig{}), &issues)
 	if len(issues) > 0 {
@@ -83,11 +86,8 @@ func deadlineExplicit(tree map[string]any) bool {
 	return !isStr || s != ""
 }
 
-// normalize 规范化 any 字段里的数字（params、default、选项值）。
+// normalize 规范化 any 字段里的数字（default、选项值）。
 func (m *ModelConfig) normalize() {
-	if m.Params != nil {
-		m.Params = normalizeConfigNumber(m.Params).(map[string]any)
-	}
 	for i := range m.Capabilities.Params {
 		f := &m.Capabilities.Params[i].ParamField
 		f.Default = normalizeConfigNumber(f.Default)

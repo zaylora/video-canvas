@@ -169,14 +169,13 @@ func TestViduRoutesByImageCount(t *testing.T) {
 	}
 }
 
-// 参考生视频固定用 viduq2；params.extra 只补充不覆盖。
-func TestViduReferenceModelAndExtra(t *testing.T) {
+// 参考生视频固定用 viduq2。
+func TestViduReferenceModel(t *testing.T) {
 	srv, up := newViduServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"task_id":"v-2"}`))
 	})
 	env := newViduEnv(t)
 	snap := env.snapshot(srv.URL, "viduq2-pro")
-	snap.Model.Params = map[string]any{"extra": map[string]any{"bgm": true, "resolution": "360p"}}
 	_, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x", "images": []uint64{1, 2, 3}, "resolution": "1080p"},
 	})
@@ -184,7 +183,7 @@ func TestViduReferenceModelAndExtra(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := up.last().Body
-	if b["model"] != "viduq2" || b["bgm"] != true || b["resolution"] != "1080p" {
+	if b["model"] != "viduq2" || b["resolution"] != "1080p" {
 		t.Fatalf("请求体不符：%v", b)
 	}
 }

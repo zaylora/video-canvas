@@ -25,9 +25,6 @@
  *                            官方对这些模型发 response_format 会 400，所以不发；编辑可多张（字段 image[]）；不发 style
  *   其它名字                 按通用处理：不发 response_format，size / quality / style 原样透传
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { extra?: object }  extra 里放型号特有的顶层字段（如 background、output_format、moderation、user），
- *                       只补充、不覆盖插件已算出的字段；编辑请求里写成表单字段（非字符串值转成字符串）
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt（必填）、op（t2i / i2i）、images（参考图，有则走编辑）、n 或 count、size、quality、style、aspect_ratio、resolution
  *   size 优先用用户给的；没给时有 aspect_ratio 就换算成该系列允许的最接近的 size；都没有就不发，让上游用默认。
@@ -36,13 +33,13 @@
  *
  * 刻意没做：
  *   - base64 产物（见上）；
- *   - 遮罩图 mask、input_fidelity 等编辑专属参数的单独输入（需要时放 params.extra）；
+ *   - 遮罩图 mask、input_fidelity、background、output_format 等型号特有字段的输入；
  *   - 流式出图（stream / partial_images）。
  *
  * 未验证：
  *   - 全部按官方 OpenAPI 规范与记忆写成，没有对真实上游跑过；
  *   - dall-e-2 编辑要求 PNG（方形、小于 4MB），本插件不转格式也不校验，交给上游报错；
- *   - 中转站对 size / quality / response_format 的取舍各不相同，不通时用 params.extra 调整；
+ *   - 中转站对 size / quality / response_format 的取舍各不相同，不通时请改用面板里的 size / quality 取值；
  *   - 未知模型名的 aspect_ratio 换算借用 gpt-image 的三档 size，个别中转站可能不认；
  *   - 内容审核只按错误码 content_policy_violation / moderation_blocked 与“content policy / safety system”文案识别，其它措辞按 terminal 处理。
  */
@@ -92,7 +89,7 @@ module.exports = {
     return { method: "GET", path: "/v1/models", timeout: 30 };
   },
 
-  // 只导入图片类模型（dall-e- / gpt-image- / chatgpt-image-），草稿的 params 留空由运营补。
+  // 只导入图片类模型（dall-e- / gpt-image- / chatgpt-image-）。
   parseImportResponse: function (ctx, resp, args) {
     var list = resp.body && isArray(resp.body.data) ? resp.body.data : [];
     var drafts = [];
@@ -101,7 +98,7 @@ module.exports = {
       if (typeof id !== "string" || id === "" || seriesOf(id) === "other") {
         continue;
       }
-      drafts.push({ upstreamModel: id, kind: "image", label: id, params: {} });
+      drafts.push({ upstreamModel: id, kind: "image", label: id });
     }
     return drafts;
   },
@@ -136,7 +133,6 @@ function seriesOf(model) {
 
 function buildGenerateRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var model = ctx.model.upstreamModel;
   var series = seriesOf(model);
   var prompt = requirePrompt(input, model);
@@ -161,13 +157,11 @@ function buildGenerateRequest(ctx) {
   if (series === "dalle2" || series === "dalle3") {
     body.response_format = "url"; // gpt-image 系发这个字段官方会 400，所以只对 dall-e 发
   }
-  mergeExtra(body, params.extra, false);
   return { method: "POST", path: "/v1/images/generations", json: body, timeout: 120 };
 }
 
 function buildEditRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var model = ctx.model.upstreamModel;
   var series = seriesOf(model);
   var prompt = requirePrompt(input, model);
@@ -196,7 +190,6 @@ function buildEditRequest(ctx) {
   if (series === "dalle2") {
     fields.response_format = "url";
   }
-  mergeExtra(fields, params.extra, true);
 
   // gpt-image 系固定用 image[]（可多张）；其它系列一张用 image，多张用 image[]
   var partName = series === "gpt" || images.length > 1 ? "image[]" : "image";
@@ -364,22 +357,6 @@ function errorCodeOf(body) {
 function errorTypeOf(body) {
   var e = body && typeof body === "object" ? body.error : null;
   return e && typeof e === "object" && typeof e.type === "string" ? e.type : "";
-}
-
-// 模型固定参数只补充、不覆盖；asString 为 true（multipart 表单）时把非字符串值转成字符串。
-function mergeExtra(dst, extra, asString) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && dst[k] === undefined) {
-      var v = extra[k];
-      if (asString && typeof v !== "string") {
-        v = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
-      }
-      dst[k] = v;
-    }
-  }
 }
 
 function refList(v) {

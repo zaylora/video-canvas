@@ -120,7 +120,6 @@ func TestGoogleSubmitText2Video(t *testing.T) {
 	defer srv.Close()
 	env := newGoogleEnv(t, nil)
 	snap := env.snapshot(srv.URL, googleVideoCaps)
-	snap.Model.Params = map[string]any{"extra": map[string]any{"personGeneration": "allow_all"}}
 	res, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9},
 		Input: map[string]any{"prompt": "海边日落", "duration": float64(8), "aspect_ratio": "9:16", "resolution": "1080P",
@@ -142,8 +141,11 @@ func TestGoogleSubmitText2Video(t *testing.T) {
 	}
 	p := got.Body["parameters"].(map[string]any)
 	if p["durationSeconds"] != float64(8) || p["aspectRatio"] != "9:16" || p["resolution"] != "1080p" ||
-		p["numberOfVideos"] != float64(1) || p["negativePrompt"] != "模糊" || p["personGeneration"] != "allow_all" {
+		p["numberOfVideos"] != float64(1) || p["negativePrompt"] != "模糊" {
 		t.Fatalf("parameters 不符：%v", p)
+	}
+	if len(p) != 5 {
+		t.Fatalf("parameters 只应有用户输入映射出的字段：%v", p)
 	}
 }
 
@@ -167,7 +169,7 @@ func TestGoogleApiVersionSetting(t *testing.T) {
 	}
 }
 
-// 图生视频：images[0] 以 base64 放进 instances[0].image.inlineData，MIME 取 params.imageMimeType。
+// 图生视频：images[0] 以 base64 放进 instances[0].image.inlineData，MIME 取用户输入的 imageMimeType。
 func TestGoogleSubmitImage2Video(t *testing.T) {
 	up := &googleFake{handler: func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"models/m/operations/x"}`))
@@ -177,9 +179,8 @@ func TestGoogleSubmitImage2Video(t *testing.T) {
 	assets := &fakeAssets{userID: 9, files: map[uint64][]byte{5: []byte("PNGDATA")}}
 	env := newGoogleEnv(t, func(o *plugin.Options) { o.Assets = assets })
 	snap := env.snapshot(srv.URL, googleVideoCaps)
-	snap.Model.Params = map[string]any{"imageMimeType": "image/jpeg"}
 	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "让它动起来", "op": "i2v", "images": []uint64{5}},
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "让它动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": "image/jpeg"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -13,18 +13,17 @@
  *   - Base URL 填 Suno-API 服务地址（不带 /suno 后缀）；
  *   - 渠道 Key 直接填该服务的 Key，宿主按 Bearer 注入（Authorization: Bearer <Key>）。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { mv?: string, extra?: object }   mv：Suno 模型版本，默认 chirp-v3-0；extra 只补充，不覆盖插件已填的字段
- * 上游模型（ctx.model.upstreamModel）：以 chirp- 开头时当作 mv（优先级低于 params.mv）；其它值（如上游旧名 suno_music）忽略。
+ * 上游模型（ctx.model.upstreamModel）：以 chirp- 开头时当作 mv（优先级低于输入里的 mv）；其它值（如上游旧名 suno_music）忽略。
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt：歌曲描述（gpt_description_prompt，必填）；
- *   make_instrumental（布尔参数，可选）：是否纯音乐，默认 false。
+ *   make_instrumental（布尔参数，可选）：是否纯音乐，默认 false；
+ *   mv（字符串参数，可选）：Suno 模型版本，没填用 chirp- 开头的上游模型名，再没有就是默认 chirp-v3-0；运营可在生成参数里加这个同名参数。
  *
  * 产物：任务成功后每首歌的 audio_url（audio/mpeg）。
  * 刻意没移植：封面图 image_url（音频模型不出图）、视频 video_url、自定义歌词 / 风格 tags / 续写 / 拼接等进阶字段
  * （上游插件也只透传 gateway 请求体，字段表没有核实）；批量查询的多任务合并；网关协议适配与 usageSchema 计费。
  * 未验证：Suno-API 项目本身没有核对过接口文档，路径与字段全部按上游插件的写法；没有便宜的连通检查接口，不提供 buildCheckRequest；
- * 提交里除 gpt_description_prompt / make_instrumental / mv 之外的字段只能走 params.extra。
+ * 提交里除 gpt_description_prompt / make_instrumental / mv 之外的字段本插件不发。
  */
 module.exports = {
   meta: {
@@ -43,7 +42,6 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var prompt = typeof input.prompt === "string" ? input.prompt : "";
     if (prompt.trim() === "") {
       throw new Error("歌曲描述 prompt 不能为空");
@@ -51,8 +49,7 @@ module.exports = {
     var body = {};
     body.gpt_description_prompt = prompt;
     body.make_instrumental = input.make_instrumental === true;
-    body.mv = mvOf(ctx.model.upstreamModel, params.mv);
-    mergeExtra(body, params.extra);
+    body.mv = mvOf(ctx.model.upstreamModel, input.mv);
     return { method: "POST", path: "/suno/submit/MUSIC", json: body, timeout: 60 };
   },
 
@@ -164,10 +161,10 @@ function clipsOf(data) {
   return out;
 }
 
-// mv 优先级：模型固定参数 > chirp- 开头的上游模型名 > 默认 chirp-v3-0。
-function mvOf(upstreamModel, fromParams) {
-  if (typeof fromParams === "string" && fromParams !== "") {
-    return fromParams;
+// mv 优先级：用户输入 > chirp- 开头的上游模型名 > 默认 chirp-v3-0。
+function mvOf(upstreamModel, fromInput) {
+  if (typeof fromInput === "string" && fromInput !== "") {
+    return fromInput;
   }
   if (typeof upstreamModel === "string" && upstreamModel.indexOf("chirp-") === 0) {
     return upstreamModel;
@@ -195,17 +192,6 @@ function classifyMessage(message) {
 function parseProgress(v) {
   var n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
   return isNaN(n) ? undefined : n;
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function isArray(v) {

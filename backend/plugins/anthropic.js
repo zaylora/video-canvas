@@ -12,15 +12,11 @@
  *     插件自己不碰 Key；`anthropic-version: 2023-06-01` 由本插件写在请求头里。
  *   - base_url：官方填 https://api.anthropic.com（不带 /v1）；中转站填它的根地址，需支持 /v1/messages 与 x-api-key 鉴权。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   text : { max_tokens?: number, system?: string, extra?: object }
- *          max_tokens 是用户可选输出上限的天花板；extra 原样合并进请求体顶层（如 top_p、top_k、thinking、metadata），
- *          只补充、不覆盖插件已写的字段（model、messages、max_tokens 等）。
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
- *   prompt（必填）、system（固定系统提示，优先于 params.system；放进请求体顶层 system，不进 messages）、
- *   max_tokens（最大输出，不能超过 params.max_tokens）、temperature、
+ *   prompt（必填）、system（系统提示；放进请求体顶层 system，不进 messages）、
+ *   max_tokens（最大输出）、temperature、
  *   images[0]（视觉模型，可选；以图片 URL 块交给上游，宿主把文件引用换成自有存储的签名 URL）。
- *   Anthropic 要求 max_tokens 必填：用户与 params 都没给时用 DEFAULT_MAX_TOKENS（4096）。
+ *   Anthropic 要求 max_tokens 必填：用户没给时用 DEFAULT_MAX_TOKENS（4096）。
  * 产物：只拼接响应 content 里 type 为 text 的块（thinking / redacted_thinking / tool_use 等一律跳过）；
  *       usage（input_tokens / output_tokens）随文本产物回传，按 Token 计费的模型据此结算。
  *
@@ -98,14 +94,13 @@ module.exports = {
         upstreamModel: id,
         kind: "text", // Anthropic 的模型列表只有 Claude 文本模型
         label: firstString(item.display_name, id),
-        params: {},
       });
     }
     return drafts;
   },
 };
 
-// Anthropic 要求 max_tokens 必填；用户与模型 params 都没给时用这个值（足够一般对话，又不会把积分冻结额撑得过大）。
+// Anthropic 要求 max_tokens 必填；用户没给时用这个值（足够一般对话，又不会把积分冻结额撑得过大）。
 var DEFAULT_MAX_TOKENS = 4096;
 var BALANCE_RE = /credit balance|billing|spend|usage limit/;
 var MODERATION_RE = /content[ _-]?policy|usage polic/;
@@ -120,7 +115,6 @@ function versionHeaders() {
 
 function buildMessagesRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
 
   var content = input.prompt === undefined ? "" : String(input.prompt);
   var firstImage = first(input.images);
@@ -134,18 +128,17 @@ function buildMessagesRequest(ctx) {
 
   var body = {
     model: ctx.model.upstreamModel,
-    max_tokens: capMaxTokens(input.max_tokens, params.max_tokens),
+    max_tokens: resolveMaxTokens(input.max_tokens),
     messages: [{ role: "user", content: content }],
     stream: false,
   };
-  var system = firstString(input.system, params.system);
+  var system = firstString(input.system);
   if (system) {
     body.system = system; // Messages API 的 system 是顶层字段，不能放进 messages
   }
   if (typeof input.temperature === "number") {
     body.temperature = input.temperature;
   }
-  mergeExtra(body, params.extra);
   return {
     method: "POST",
     path: "/v1/messages",
@@ -155,13 +148,12 @@ function buildMessagesRequest(ctx) {
   };
 }
 
-// 用户传的 max_tokens 不能超过模型固定参数里的上限；只有上限没有用户值时用上限；都没有用默认值。
-function capMaxTokens(fromInput, limit) {
-  var hasLimit = typeof limit === "number" && limit > 0;
+// 用户传了 max_tokens 就用它，没传用默认值。
+function resolveMaxTokens(fromInput) {
   if (typeof fromInput === "number" && fromInput > 0) {
-    return hasLimit && fromInput > limit ? limit : Math.round(fromInput);
+    return Math.round(fromInput);
   }
-  return hasLimit ? Math.round(limit) : DEFAULT_MAX_TOKENS;
+  return DEFAULT_MAX_TOKENS;
 }
 
 function parseMessagesResponse(resp) {
@@ -257,17 +249,6 @@ function errorMessageOf(body) {
     return body.message;
   }
   return "";
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function firstString() {

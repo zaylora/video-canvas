@@ -23,8 +23,6 @@
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { extra?: object }   原样合并进请求体顶层（用户输入与固定字段优先）；注意要把新增字段按 JSON 键序参与签名，插件已统一处理
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt（文生视频必填）、duration（3.0 系列 5 / 10 秒，其余固定 5）、aspect_ratio（16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9）、seed（可选，不传由上游随机）
  *
@@ -56,7 +54,6 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     if (isArray(input.images) && input.images.length > 0) {
       throw new Error("即梦插件暂不支持参考图（图生视频 / 首尾帧）：参考图地址由宿主在发请求时才填入，无法参与 V4 签名");
     }
@@ -75,7 +72,6 @@ module.exports = {
     if (typeof input.seed === "number") {
       body.seed = input.seed;
     }
-    mergeExtra(body, params.extra);
     return signedRequest(ctx, "CVSync2AsyncSubmitTask", body);
   },
 
@@ -331,17 +327,6 @@ function failedWith(code, message) {
 // ---------------------------------------------------------------------------
 // 通用小工具
 // ---------------------------------------------------------------------------
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
-}
 
 function isArray(v) {
   return Object.prototype.toString.call(v) === "[object Array]";

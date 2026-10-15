@@ -26,10 +26,9 @@
  *   tokenUrl   : 换 token 的地址，默认 https://oauth2.googleapis.com/token，只在走代理或联调时改。
  * 支持的模型（上游 meta.models）：veo-3.0-generate-001、veo-3.0-fast-generate-001、
  *   veo-3.1-generate-preview、veo-3.1-fast-generate-preview。
- * 模型 params：imageMimeType（参考图 MIME，只能 image/png 或 image/jpeg，默认 image/png）；
- *   extra（原样合并进 parameters，如 negativePrompt、personGeneration）。
  * 用户输入：prompt（必填）、images[0]（有就走图生视频）、duration（4 / 6 / 8）、aspect_ratio（16:9 / 9:16）、
- *   resolution（720p / 1080p / 4k）、generate_audio（布尔）、seed、negative_prompt。
+ *   resolution（720p / 1080p / 4k）、generate_audio（布尔）、seed、negative_prompt、
+ *   imageMimeType（参考图 MIME，只能 image/png 或 image/jpeg，没填默认 image/png；运营可在生成参数里加这个同名参数）。
  *
  * token 的传递：宿主只在提交阶段把准备结果放进 ctx.prepared，查询阶段没有。所以提交成功时把 access_token、过期时间
  * 存进 state，查询阶段从 state 取。token 约 1 小时有效，Veo 任务一般几分钟；查询时 token 已过期会报插件级错误
@@ -42,7 +41,7 @@
  *      自写 Authorization 发往非渠道域名，宿主允许（request.go 只在 auth 为 custom 时放行，不校验目标主机），
  *      所以由插件自己保证 token 只发往固定的 GCS 主机；Go 的 http.Client 跨域重定向会剥掉 Authorization。
  *      服务账号需要对该桶有 storage.objects.get 权限（未对真实 GCS 验证）。
- *   2. 参考图 MIME 无法从文件引用得到，取 params.imageMimeType；
+ *   2. 参考图 MIME 无法从文件引用得到，取输入里的 imageMimeType；
  *   3. 上游默认区域是 global，这里默认 us-central1（Veo 文档里的区域）；
  *   4. 准备结果（含 access_token）会被宿主持久化，state 里也带着 token；没有做取消、渠道连通检查（没有不带 token 的便宜接口）。
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，用 var / function，不用可选链与空值合并。
@@ -107,16 +106,7 @@ module.exports = {
       throw new Error("渠道设置里没有填 storageUri（gs://bucket/prefix/）：没有它 Veo 只返回内联 base64，本插件无法交付");
     }
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var parameters = {};
-    var extra = params.extra;
-    if (extra && typeof extra === "object" && !Array.isArray(extra)) {
-      for (var k in extra) {
-        if (Object.prototype.hasOwnProperty.call(extra, k)) {
-          parameters[k] = extra[k];
-        }
-      }
-    }
     if (Number(input.duration) > 0) {
       parameters.durationSeconds = Number(input.duration);
     }
@@ -141,7 +131,7 @@ module.exports = {
     var instance = { prompt: input.prompt };
     var images = input.images;
     if (images && images.length > 0) {
-      var mime = params.imageMimeType || "image/png";
+      var mime = input.imageMimeType || "image/png";
       if (mime !== "image/png" && mime !== "image/jpeg") {
         throw new Error("Vertex Veo 的参考图只支持 image/png 或 image/jpeg");
       }

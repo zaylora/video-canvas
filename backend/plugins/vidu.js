@@ -21,7 +21,6 @@
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
- * 模型 params（运营在模型上填的固定参数）：{ extra?: object }  extra 合并进请求体顶层，只补充不覆盖（如 bgm、off_peak、style）
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、images（参考图，数量决定路径，见上）、duration（秒）、resolution（360p / 540p / 720p / 1080p，大小写不敏感）、
  *   aspect_ratio（文生与参考生视频才有意义）、seed、movement_amplitude（auto / small / medium / large，默认 auto）
@@ -47,7 +46,6 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var model = ctx.model.upstreamModel || "viduq1";
     var images = isArray(input.images) ? input.images : [];
     var path = pathFor(images.length);
@@ -77,7 +75,6 @@ module.exports = {
       body.aspect_ratio = String(input.aspect_ratio);
     }
     body.movement_amplitude = firstString(input.movement_amplitude) || "auto";
-    mergeExtra(body, params.extra);
 
     return {
       method: "POST",
@@ -281,17 +278,6 @@ function classifyMessage(message) {
     return "provider_balance";
   }
   return "terminal";
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function firstString() {

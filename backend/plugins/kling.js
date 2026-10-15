@@ -18,8 +18,6 @@
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { mode?: "std" | "pro", negative_prompt?: string, cfg_scale?: number, extra?: object }   extra 合并进请求体顶层，只补充不覆盖
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、images（0 张文生视频；1 张首帧；2 张首尾帧，多于 2 张忽略多出的）、duration（秒，可灵只认 "5" / "10"，发出时转字符串）、
  *   aspect_ratio（仅文生视频带；16:9 / 9:16 / 1:1）、mode、negative_prompt、cfg_scale
@@ -49,22 +47,20 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var model = ctx.model.upstreamModel || "kling-v1";
     var images = isArray(input.images) ? input.images : [];
     var action = images.length > 0 ? "image2video" : "text2video";
 
-    var body = { model_name: model, mode: resolveMode(model, firstString(input.mode, params.mode)) };
+    var body = { model_name: model, mode: resolveMode(model, firstString(input.mode)) };
     if (input.prompt !== undefined && input.prompt !== "") {
       body.prompt = String(input.prompt);
     }
-    var negative = firstString(input.negative_prompt, params.negative_prompt);
+    var negative = firstString(input.negative_prompt);
     if (negative) {
       body.negative_prompt = negative;
     }
-    var cfg = typeof input.cfg_scale === "number" ? input.cfg_scale : params.cfg_scale;
-    if (typeof cfg === "number") {
-      body.cfg_scale = cfg;
+    if (typeof input.cfg_scale === "number") {
+      body.cfg_scale = input.cfg_scale;
     }
     var duration = input.duration;
     if (duration !== undefined && duration !== null && duration !== "") {
@@ -80,7 +76,6 @@ module.exports = {
         body.image_tail = { __fileRef: images[1], as: "url" };
       }
     }
-    mergeExtra(body, params.extra);
 
     return {
       method: "POST",
@@ -251,17 +246,6 @@ function classifyCode(code, message) {
     return "provider_balance";
   }
   return "terminal";
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function firstString() {

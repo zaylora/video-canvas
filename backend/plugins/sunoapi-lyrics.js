@@ -13,8 +13,6 @@
  *   - Base URL 填 Suno-API 服务地址（不带 /suno 后缀）；
  *   - 渠道 Key 直接填该服务的 Key，宿主按 Bearer 注入（Authorization: Bearer <Key>）。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { extra?: object }   extra 只补充，不覆盖插件已填的字段
  * 上游模型（ctx.model.upstreamModel）：不使用（如上游旧名 suno_lyrics 直接忽略）。
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt：歌词主题（prompt，必填）。
@@ -42,13 +40,11 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var prompt = typeof input.prompt === "string" ? input.prompt : "";
     if (prompt.trim() === "") {
       throw new Error("歌词主题 prompt 不能为空");
     }
     var body = { prompt: prompt };
-    mergeExtra(body, params.extra);
     return { method: "POST", path: "/suno/submit/LYRICS", json: body, timeout: 60 };
   },
 
@@ -181,17 +177,6 @@ function classifyMessage(message) {
 function parseProgress(v) {
   var n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
   return isNaN(n) ? undefined : n;
-}
-
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
-  }
 }
 
 function isArray(v) {

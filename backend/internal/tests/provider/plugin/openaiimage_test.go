@@ -52,9 +52,9 @@ func newOpenAIImageEnv(t *testing.T) *openaiimageEnv {
 	return &openaiimageEnv{exec: exec, meta: meta, sha: pre.SHA256}
 }
 
-func (e *openaiimageEnv) snapshot(baseURL, upstream string, params map[string]any) *provider.Snapshot {
+func (e *openaiimageEnv) snapshot(baseURL, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
-		Model: provider.ModelSnapshot{Key: "m", Kind: "image", UpstreamModel: upstream, Params: params, Capabilities: openaiimageCaps()},
+		Model: provider.ModelSnapshot{Key: "m", Kind: "image", UpstreamModel: upstream, Capabilities: openaiimageCaps()},
 		Channel: provider.ChannelSnapshot{
 			Key: "openai-image-main", PluginKey: "openai-image", PluginVersionID: 1, BaseURL: baseURL,
 		},
@@ -151,9 +151,9 @@ func openaiimageServer(t *testing.T, status int, body string) (*httptest.Server,
 
 const openaiimageOK = `{"created":1,"data":[{"url":"https://cdn.example.com/a.png","revised_prompt":"r"}]}`
 
-func (e *openaiimageEnv) submit(t *testing.T, baseURL, model string, params, input map[string]any) (*provider.SubmitResult, error) {
+func (e *openaiimageEnv) submit(t *testing.T, baseURL, model string, input map[string]any) (*provider.SubmitResult, error) {
 	t.Helper()
-	return e.exec.Submit(context.Background(), e.snapshot(baseURL, model, params), provider.SubmitInput{
+	return e.exec.Submit(context.Background(), e.snapshot(baseURL, model), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: input,
 	})
 }
@@ -171,12 +171,11 @@ func TestOpenAIImagePrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// dall-e-3：JSON 文生图，带 response_format=url、quality、style；size 优先于 aspect_ratio；extra 只补充不覆盖。
+// dall-e-3：JSON 文生图，带 response_format=url、quality、style；size 优先于 aspect_ratio。
 func TestOpenAIImageDalle3Generate(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	params := map[string]any{"extra": map[string]any{"user": "u1", "quality": "standard", "response_format": "b64_json"}}
-	sub, err := env.submit(t, srv.URL, "dall-e-3", params, map[string]any{
+	sub, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{
 		"prompt": "一只猫", "size": "1792x1024", "aspect_ratio": "9:16", "quality": "hd", "style": "natural",
 	})
 	if err != nil {
@@ -195,7 +194,7 @@ func TestOpenAIImageDalle3Generate(t *testing.T) {
 		t.Fatalf("请求行不符：%+v", got)
 	}
 	if b["model"] != "dall-e-3" || b["prompt"] != "一只猫" || b["size"] != "1792x1024" || b["quality"] != "hd" || b["style"] != "natural" ||
-		b["response_format"] != "url" || b["user"] != "u1" {
+		b["response_format"] != "url" {
 		t.Fatalf("请求体不符：%v", b)
 	}
 	if _, ok := b["n"]; ok {
@@ -207,13 +206,13 @@ func TestOpenAIImageDalle3Generate(t *testing.T) {
 func TestOpenAIImageDalle3OnlyOne(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	if _, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "p", "n": float64(2)}); err == nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "p", "n": float64(2)}); err == nil {
 		t.Fatal("dall-e-3 n=2 应失败")
 	}
 	if up.count() != 0 {
 		t.Fatalf("不应发出请求：%d", up.count())
 	}
-	if _, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "p", "n": float64(1)}); err != nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "p", "n": float64(1)}); err != nil {
 		t.Fatal(err)
 	}
 	if n := up.last().JSON["n"]; n != float64(1) {
@@ -225,7 +224,7 @@ func TestOpenAIImageDalle3OnlyOne(t *testing.T) {
 func TestOpenAIImageDalle2Generate(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, `{"data":[{"url":"https://cdn.example.com/1.jpg"},{"url":"https://cdn.example.com/2.webp?x=1"}]}`)
 	env := newOpenAIImageEnv(t)
-	sub, err := env.submit(t, srv.URL, "dall-e-2", nil, map[string]any{"prompt": "p", "n": float64(3), "aspect_ratio": "16:9", "quality": "hd", "style": "vivid"})
+	sub, err := env.submit(t, srv.URL, "dall-e-2", map[string]any{"prompt": "p", "n": float64(3), "aspect_ratio": "16:9", "quality": "hd", "style": "vivid"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,23 +242,22 @@ func TestOpenAIImageDalle2Generate(t *testing.T) {
 	if _, ok := b["style"]; ok {
 		t.Fatalf("dall-e-2 不支持 style：%v", b)
 	}
-	if _, err := env.submit(t, srv.URL, "dall-e-2", nil, map[string]any{"prompt": "p", "n": float64(11)}); err == nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-2", map[string]any{"prompt": "p", "n": float64(11)}); err == nil {
 		t.Fatal("n=11 应失败")
 	}
 }
 
-// gpt-image 系：不发 response_format 和 style；size 由 aspect_ratio 换算到 1024x1024 / 1536x1024 / 1024x1536；extra 补充 output_format 等。
+// gpt-image 系：不发 response_format 和 style；size 由 aspect_ratio 换算到 1024x1024 / 1536x1024 / 1024x1536。
 func TestOpenAIImageGPTImageGenerate(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	params := map[string]any{"extra": map[string]any{"output_format": "webp", "background": "transparent"}}
 	ratios := map[string]string{"1:1": "1024x1024", "3:2": "1536x1024", "2:3": "1024x1536", "16:9": "1536x1024", "9:16": "1024x1536", "4:3": "1536x1024", "3:4": "1024x1536"}
 	for ratio, want := range ratios {
-		if _, err := env.submit(t, srv.URL, "gpt-image-1", params, map[string]any{"prompt": "p", "aspect_ratio": ratio, "quality": "high", "n": float64(2), "style": "vivid"}); err != nil {
+		if _, err := env.submit(t, srv.URL, "gpt-image-1", map[string]any{"prompt": "p", "aspect_ratio": ratio, "quality": "high", "n": float64(2), "style": "vivid"}); err != nil {
 			t.Fatal(err)
 		}
 		b := up.last().JSON
-		if b["size"] != want || b["quality"] != "high" || b["n"] != float64(2) || b["output_format"] != "webp" || b["background"] != "transparent" {
+		if b["size"] != want || b["quality"] != "high" || b["n"] != float64(2) {
 			t.Fatalf("%s 请求体不符：%v", ratio, b)
 		}
 		if _, ok := b["response_format"]; ok {
@@ -271,7 +269,7 @@ func TestOpenAIImageGPTImageGenerate(t *testing.T) {
 	}
 	// 其它 gpt-image / chatgpt-image 前缀同样按 gpt 系处理；size=auto 原样透传。
 	for _, m := range []string{"gpt-image-1-mini", "gpt-image-2", "chatgpt-image-latest"} {
-		if _, err := env.submit(t, srv.URL, m, nil, map[string]any{"prompt": "p", "size": "auto"}); err != nil {
+		if _, err := env.submit(t, srv.URL, m, map[string]any{"prompt": "p", "size": "auto"}); err != nil {
 			t.Fatal(err)
 		}
 		b := up.last().JSON
@@ -288,7 +286,7 @@ func TestOpenAIImageGPTImageGenerate(t *testing.T) {
 func TestOpenAIImageUnknownModelPassThrough(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	if _, err := env.submit(t, srv.URL, "flux-pro", nil, map[string]any{"prompt": "p"}); err != nil {
+	if _, err := env.submit(t, srv.URL, "flux-pro", map[string]any{"prompt": "p"}); err != nil {
 		t.Fatal(err)
 	}
 	b := up.last().JSON
@@ -298,7 +296,7 @@ func TestOpenAIImageUnknownModelPassThrough(t *testing.T) {
 	if _, ok := b["response_format"]; ok {
 		t.Fatalf("未知模型不发 response_format：%v", b)
 	}
-	if _, err := env.submit(t, srv.URL, "flux-pro", nil, map[string]any{"prompt": "p", "size": "512x512", "quality": "hd"}); err != nil {
+	if _, err := env.submit(t, srv.URL, "flux-pro", map[string]any{"prompt": "p", "size": "512x512", "quality": "hd"}); err != nil {
 		t.Fatal(err)
 	}
 	b = up.last().JSON
@@ -313,7 +311,7 @@ func TestOpenAIImageDalle3RatioSize(t *testing.T) {
 	env := newOpenAIImageEnv(t)
 	want := map[string]string{"1:1": "1024x1024", "16:9": "1792x1024", "9:16": "1024x1792", "3:2": "1792x1024", "2:3": "1024x1792"}
 	for ratio, size := range want {
-		if _, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "p", "aspect_ratio": ratio}); err != nil {
+		if _, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "p", "aspect_ratio": ratio}); err != nil {
 			t.Fatal(err)
 		}
 		if got := up.last().JSON["size"]; got != size {
@@ -326,8 +324,7 @@ func TestOpenAIImageDalle3RatioSize(t *testing.T) {
 func TestOpenAIImageEditsGPT(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	params := map[string]any{"extra": map[string]any{"output_format": "png", "input_fidelity": "high"}}
-	sub, err := env.submit(t, srv.URL, "gpt-image-1", params, map[string]any{
+	sub, err := env.submit(t, srv.URL, "gpt-image-1", map[string]any{
 		"prompt": "换成夜景", "op": "i2i", "images": []uint64{1, 2}, "n": float64(2), "size": "1536x1024", "quality": "medium",
 	})
 	if err != nil || sub.Immediate == nil || sub.Immediate.Status != provider.StatusSucceeded {
@@ -338,8 +335,7 @@ func TestOpenAIImageEditsGPT(t *testing.T) {
 		t.Fatalf("应是带鉴权的 multipart 编辑请求：%+v", got)
 	}
 	f := got.Fields
-	if f["model"] != "gpt-image-1" || f["prompt"] != "换成夜景" || f["n"] != "2" || f["size"] != "1536x1024" || f["quality"] != "medium" ||
-		f["output_format"] != "png" || f["input_fidelity"] != "high" {
+	if f["model"] != "gpt-image-1" || f["prompt"] != "换成夜景" || f["n"] != "2" || f["size"] != "1536x1024" || f["quality"] != "medium" {
 		t.Fatalf("表单字段不符：%v", f)
 	}
 	if _, ok := f["response_format"]; ok {
@@ -354,7 +350,7 @@ func TestOpenAIImageEditsGPT(t *testing.T) {
 func TestOpenAIImageEditsDalle2(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	if _, err := env.submit(t, srv.URL, "dall-e-2", nil, map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1}, "size": "512x512"}); err != nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-2", map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1}, "size": "512x512"}); err != nil {
 		t.Fatal(err)
 	}
 	got := up.last()
@@ -362,7 +358,7 @@ func TestOpenAIImageEditsDalle2(t *testing.T) {
 		t.Fatalf("dall-e-2 编辑请求不符：%+v", got)
 	}
 	before := up.count()
-	if _, err := env.submit(t, srv.URL, "dall-e-2", nil, map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1, 2}}); err == nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-2", map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1, 2}}); err == nil {
 		t.Fatal("dall-e-2 多张参考图应失败")
 	}
 	if up.count() != before {
@@ -374,7 +370,7 @@ func TestOpenAIImageEditsDalle2(t *testing.T) {
 func TestOpenAIImageDalle3RejectsEdit(t *testing.T) {
 	srv, up := openaiimageServer(t, 0, openaiimageOK)
 	env := newOpenAIImageEnv(t)
-	if _, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1}}); err == nil {
+	if _, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "p", "op": "i2i", "images": []uint64{1}}); err == nil {
 		t.Fatal("dall-e-3 带参考图应失败")
 	}
 	if up.count() != 0 {
@@ -402,7 +398,7 @@ func TestOpenAIImageBadResponses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := openaiimageServer(t, 0, tc.body)
-			sub, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "x"})
+			sub, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "x"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -418,7 +414,7 @@ func TestOpenAIImageBadResponses(t *testing.T) {
 func TestOpenAIImagePartialData(t *testing.T) {
 	srv, _ := openaiimageServer(t, 0, `{"data":[{"b64_json":"AAAA"},{"url":"https://cdn.example.com/ok.png"}]}`)
 	env := newOpenAIImageEnv(t)
-	sub, err := env.submit(t, srv.URL, "dall-e-2", nil, map[string]any{"prompt": "x", "n": float64(2)})
+	sub, err := env.submit(t, srv.URL, "dall-e-2", map[string]any{"prompt": "x", "n": float64(2)})
 	if err != nil || sub.Immediate == nil || sub.Immediate.Status != provider.StatusSucceeded || len(sub.Immediate.Outputs) != 1 {
 		t.Fatalf("应只收有 url 的成员：%+v %v", sub, err)
 	}
@@ -449,7 +445,7 @@ func TestOpenAIImageClassifyHTTPErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := openaiimageServer(t, tc.status, tc.body)
-			_, err := env.submit(t, srv.URL, "dall-e-3", nil, map[string]any{"prompt": "x"})
+			_, err := env.submit(t, srv.URL, "dall-e-3", map[string]any{"prompt": "x"})
 			if err == nil || provider.ClassOf(err) != tc.class {
 				t.Fatalf("分类应是 %s：%v", tc.class, err)
 			}
@@ -461,7 +457,7 @@ func TestOpenAIImageClassifyHTTPErrors(t *testing.T) {
 func TestOpenAIImageCheck(t *testing.T) {
 	env := newOpenAIImageEnv(t)
 	good, up := openaiimageServer(t, 0, `{"object":"list","data":[]}`)
-	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "dall-e-3", nil).Runtime())
+	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "dall-e-3").Runtime())
 	if err != nil || res == nil || !res.OK {
 		t.Fatalf("检查应成功：%+v %v", res, err)
 	}
@@ -469,7 +465,7 @@ func TestOpenAIImageCheck(t *testing.T) {
 		t.Fatalf("检查请求不符：%+v", got)
 	}
 	bad, _ := openaiimageServer(t, 401, `{"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}}`)
-	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "dall-e-3", nil).Runtime())
+	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "dall-e-3").Runtime())
 	if err == nil || (res != nil && res.OK) {
 		t.Fatalf("401 应检查失败：%+v %v", res, err)
 	}
@@ -482,7 +478,7 @@ func TestOpenAIImageImport(t *testing.T) {
 		{"id":"gpt-4o"},{"id":"o3"},{"id":"text-embedding-3-small"},{"id":"whisper-1"},{"id":"tts-1"},{"id":"sora-2"},{"id":""},{"object":"model"}
 	]}`)
 	env := newOpenAIImageEnv(t)
-	drafts, err := env.exec.Import(context.Background(), env.snapshot(srv.URL, "dall-e-3", nil).Runtime(), map[string]any{})
+	drafts, err := env.exec.Import(context.Background(), env.snapshot(srv.URL, "dall-e-3").Runtime(), map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}

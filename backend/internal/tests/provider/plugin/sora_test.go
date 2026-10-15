@@ -144,7 +144,7 @@ func TestSoraPrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 文生视频：无参考图发 JSON，seconds 是字符串，size 直传，params.extra 只补充。
+// 文生视频：无参考图发 JSON，seconds 是字符串，size 直传。
 func TestSoraSubmitTextToVideo(t *testing.T) {
 	up := &soraUpstream{handler: soraJSON(`{"id":"video_123","status":"queued","progress":0}`)}
 	srv := httptest.NewServer(up)
@@ -152,7 +152,6 @@ func TestSoraSubmitTextToVideo(t *testing.T) {
 
 	env := newSoraEnv(t, nil)
 	snap := env.snapshot(srv.URL, soraCaps())
-	snap.Model.Params = map[string]any{"extra": map[string]any{"size": "720x1280", "foo": "bar"}}
 	sub, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task:  provider.TaskRef{ID: 1, UserID: 9},
 		Input: map[string]any{"prompt": "海边日落", "op": "t2v", "duration": float64(8), "size": "1280x720"},
@@ -168,7 +167,7 @@ func TestSoraSubmitTextToVideo(t *testing.T) {
 		t.Fatalf("上游请求不符：%+v", got)
 	}
 	if got.JSON["model"] != "sora-2" || got.JSON["prompt"] != "海边日落" || got.JSON["seconds"] != "8" ||
-		got.JSON["size"] != "1280x720" || got.JSON["foo"] != "bar" {
+		got.JSON["size"] != "1280x720" {
 		t.Fatalf("请求体不符：%v", got.JSON)
 	}
 }

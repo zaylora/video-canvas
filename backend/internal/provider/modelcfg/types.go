@@ -1,5 +1,5 @@
 // 本文件：模型配置（ModelConfig）、Duration 等基础类型；模型能力（Capabilities，含保序的生成参数）在 capabilities.go。
-// 协议插件设计把“平台协议”挪进了 JS 插件，模型配置里不再有映射表达式：只选渠道、上游模型名、固定参数和模型能力。
+// 协议插件设计把“平台协议”挪进了 JS 插件，模型配置里不再有映射表达式：只选渠道、上游模型名和模型能力。
 
 // Package modelcfg 定义模型配置的结构、校验与输入规范化（纯函数，不访问数据库和网络）。
 package modelcfg
@@ -71,19 +71,18 @@ type Protocol struct {
 
 // ModelConfig 是模型配置（ai_config_revisions 里 target=model 的正文）：画布用户选的那一项。
 type ModelConfig struct {
-	Key          string         `json:"key"`
-	Kind         string         `json:"kind"` // video / image / audio / text / agent
-	Label        string         `json:"label"`
-	Hint         string         `json:"hint,omitempty"`   // 模型描述，最多 maxHintLen 个字符
-	Vendor       string         `json:"vendor,omitempty"` // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空
-	Tags         []string       `json:"tags,omitempty"`   // 展示标签，最多 maxTags 个，每个最多 maxTagLen 个字符
-	Deadline     Duration       `json:"deadline"`         // 默认 30m
-	Enabled      bool           `json:"enabled"`
-	Sort         int            `json:"sort"`
-	Channels     []ChannelRef   `json:"channels"`         // 首期长度必须为 1
-	Params       map[string]any `json:"params,omitempty"` // 固定参数，宿主只存不解释，原样交给插件
-	Capabilities Capabilities   `json:"capabilities"`     // 模型能力：前端渲染 + 后端校验的唯一来源
-	Pricing      Pricing        `json:"pricing"`          // 定价：计费方式、默认价、规格价格与成本
+	Key          string       `json:"key"`
+	Kind         string       `json:"kind"` // video / image / audio / text / agent
+	Label        string       `json:"label"`
+	Hint         string       `json:"hint,omitempty"`   // 模型描述，最多 maxHintLen 个字符
+	Vendor       string       `json:"vendor,omitempty"` // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空
+	Tags         []string     `json:"tags,omitempty"`   // 展示标签，最多 maxTags 个，每个最多 maxTagLen 个字符
+	Deadline     Duration     `json:"deadline"`         // 默认 30m
+	Enabled      bool         `json:"enabled"`
+	Sort         int          `json:"sort"`
+	Channels     []ChannelRef `json:"channels"`     // 首期长度必须为 1
+	Capabilities Capabilities `json:"capabilities"` // 模型能力：前端渲染 + 后端校验的唯一来源，插件只翻译它配置出来的输入
+	Pricing      Pricing      `json:"pricing"`      // 定价：计费方式、默认价、规格价格与成本
 }
 
 // Duration 是 JSON 里写成 "10s" / "30m" 的时长。

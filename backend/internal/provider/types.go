@@ -211,10 +211,9 @@ type CheckResult struct {
 
 // ModelDraft 是“从渠道导入模型”得到的一份模型草稿建议，只预填编辑器，运营确认、试跑后才发布。
 type ModelDraft struct {
-	UpstreamModel string         `json:"upstream_model"`
-	Kind          string         `json:"kind"`
-	Label         string         `json:"label"`
-	Params        map[string]any `json:"params,omitempty"`
+	UpstreamModel string `json:"upstream_model"`
+	Kind          string `json:"kind"`
+	Label         string `json:"label"`
 	// ParamHints 是插件对生成参数的预填建议（参数名 -> 建议），只在导入时预填编辑器，见 modelcfg.ParamHint
 	ParamHints map[string]modelcfg.ParamHint `json:"param_hints,omitempty"`
 }

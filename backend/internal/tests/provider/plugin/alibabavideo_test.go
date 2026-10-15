@@ -130,9 +130,9 @@ func TestAlibabaVideoVideoSubmitT2VSize(t *testing.T) {
 	defer srv.Close()
 	env := newAlibabaVideoEnv(t, nil)
 	snap := env.snapshot(srv.URL, "video", "wan2.6-t2v", alibabavideoCaps())
-	snap.Model.Params = map[string]any{"parameters": map[string]any{"shot_type": "multi", "prompt_extend": false}}
 	sub, err := alibabavideoSubmit(t, env, snap, map[string]any{
 		"prompt": "猫在跳舞", "duration": float64(10), "resolution": "720p", "aspect_ratio": "9:16", "generate_audio": true,
+		"shot_type": "multi", "prompt_extend": false,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestAlibabaVideoVideoSubmitT2VSize(t *testing.T) {
 	}
 	par := alibabavideoSub(got.Body, "parameters")
 	if got.Body["model"] != "wan2.6-t2v" || alibabavideoSub(got.Body, "input")["prompt"] != "猫在跳舞" ||
-		par["size"] != "720*1280" || par["duration"] != float64(10) || par["audio"] != true || par["prompt_extend"] != true || par["shot_type"] != "multi" {
+		par["size"] != "720*1280" || par["duration"] != float64(10) || par["audio"] != true || par["prompt_extend"] != false || par["shot_type"] != "multi" {
 		t.Fatalf("请求体不符：%v", got.Body)
 	}
 	if _, has := par["resolution"]; has {

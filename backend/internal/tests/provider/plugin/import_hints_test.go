@@ -17,7 +17,7 @@ func importCode(hints string) string {
 module.exports = {
   buildImportRequest: function() { return {method: "GET", path: "/models"}; },
   parseImportResponse: function() {
-    return [{upstreamModel: "m-1", kind: "image", label: "一号", params: {groups: {"2K": "4"}}, paramHints: ` + hints + `}];
+    return [{upstreamModel: "m-1", kind: "image", label: "一号", paramHints: ` + hints + `}];
   }
 };`
 }
@@ -42,9 +42,6 @@ func TestExecutorImportParamHints(t *testing.T) {
 		}
 		if !h["generate_audio"].Remove || h["aspect_ratio"].Open == nil || *h["aspect_ratio"].Open {
 			t.Fatalf("remove / open 不符：%+v", h)
-		}
-		if drafts[0].Params["groups"] == nil {
-			t.Fatal("params 应原样保留")
 		}
 	})
 

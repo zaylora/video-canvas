@@ -101,9 +101,6 @@ func TestParseModel_夹具通过校验(t *testing.T) {
 	if len(m.Capabilities.Ops) != 3 || !m.Capabilities.Refs.Image.On || m.Capabilities.Prompt.MaxLength != 2000 {
 		t.Fatalf("capabilities 解析不符：%+v", m.Capabilities)
 	}
-	if v := m.Params["max_tokens"]; v != 2000.0 {
-		t.Fatalf("params 错误：%v", m.Params)
-	}
 	if m.Hint == "" {
 		t.Fatal("hint 应被保留")
 	}
@@ -155,25 +152,29 @@ func TestParseModel_deadline边界(t *testing.T) {
 	}
 }
 
-func TestParseModel_大整数参数不丢精度(t *testing.T) {
-	m := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u","protocol":{"plugin":"p","version":"1.0.0"}}],
-	"params":{"webappId":2093984571330498561,"n":5,"nested":{"big":2093984571330498562},"list":[1,2.5]},
-	"capabilities":{"ops":["t2i"],"prompt":{"max_length":100}},"pricing":{"billing":"per_call","unit":1}}`
-	got, issues := modelcfg.ParseModel([]byte(m))
-	if len(issues) > 0 {
-		t.Fatalf("应通过：%v", mcIssueList(issues))
-	}
-	if got.Params["webappId"] != 2093984571330498561 {
-		t.Fatalf("大整数丢精度：%#v", got.Params["webappId"])
-	}
-	if got.Params["n"] != 5.0 {
-		t.Fatalf("小整数应为 float64：%#v", got.Params["n"])
-	}
-	if got.Params["nested"].(map[string]any)["big"] != 2093984571330498562 {
-		t.Fatalf("嵌套大整数丢精度：%#v", got.Params["nested"])
-	}
-	if l := got.Params["list"].([]any); l[0] != 1.0 || l[1] != 2.5 {
-		t.Fatalf("数组里的数字应为 float64：%#v", l)
+// 模型不再有顶层固定参数 params：运营早先保存的配置里带着它，加载时按旧数据静默忽略（不报未知字段），
+// 否则这些模型会因为读不出配置而从画布上消失。
+func TestParseModel_旧配置里的顶层params被忽略(t *testing.T) {
+	for name, legacy := range map[string]string{
+		"对象":   `{"webappId":2093984571330498561,"nested":{"big":1},"list":[1,2.5]}`,
+		"数字":   `5`,
+		"数组":   `[1]`,
+		"null": `null`,
+		"空对象":  `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := `{"key":"m","kind":"image","label":"x","channels":[{"channel":"c","upstream_model":"u","protocol":{"plugin":"p","version":"1.0.0"}}],
+			"params":` + legacy + `,
+			"capabilities":{"ops":["t2i"],"prompt":{"max_length":100}},"pricing":{"billing":"per_call","unit":1}}`
+			got, issues := modelcfg.ParseModel([]byte(m))
+			if len(issues) > 0 {
+				t.Fatalf("应通过：%v", mcIssueList(issues))
+			}
+			out, err := json.Marshal(got)
+			if err != nil || strings.Contains(string(out), "webappId") {
+				t.Fatalf("旧的顶层 params 不应保留在配置里：%s（%v）", out, err)
+			}
+		})
 	}
 }
 
@@ -243,10 +244,6 @@ func TestParseModel_基础字段与channels规则(t *testing.T) {
 		{"upstream_model 超过 128 个字符", func(m map[string]any) {
 			mcChannel0(m)["upstream_model"] = strings.Repeat("模", 129)
 		}, "channels[0].upstream_model", "128"},
-
-		// —— params ——
-		{"params 不是对象", func(m map[string]any) { m["params"] = 5 }, "params", "对象"},
-		{"params 是数组", func(m map[string]any) { m["params"] = []any{1} }, "params", "对象"},
 	})
 }
 
@@ -442,9 +439,6 @@ func TestParseModel_合法变体(t *testing.T) {
 		name   string
 		mutate func(m map[string]any)
 	}{
-		{"没有 params", func(m map[string]any) { delete(m, "params") }},
-		{"params 为空对象", func(m map[string]any) { m["params"] = map[string]any{} }},
-		{"params 为 null", func(m map[string]any) { m["params"] = nil }},
 		{"没有 hint", func(m map[string]any) { delete(m, "hint") }},
 		{"hint 为空", func(m map[string]any) { m["hint"] = "" }},
 		{"没有生成参数（按次计费）", func(m map[string]any) {

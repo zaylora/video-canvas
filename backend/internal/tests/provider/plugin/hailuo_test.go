@@ -106,9 +106,8 @@ func TestHailuoV1TextToVideoSubmit(t *testing.T) {
 	defer srv.Close()
 	env := newHailuoEnv(t, nil)
 	snap := env.snapshot(srv.URL, "MiniMax-Hailuo-2.3")
-	snap.Model.Params = map[string]any{"extra": map[string]any{"prompt_optimizer": false, "duration": 99}}
 	res, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
-		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "海边日落", "duration": float64(10), "resolution": "1080P"},
+		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "海边日落", "duration": float64(10), "resolution": "1080P", "prompt_optimizer": false},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +121,10 @@ func TestHailuoV1TextToVideoSubmit(t *testing.T) {
 	}
 	b := got.Body
 	if b["model"] != "MiniMax-Hailuo-2.3" || b["prompt"] != "海边日落" || b["duration"] != float64(10) || b["resolution"] != "1080P" || b["prompt_optimizer"] != false {
-		t.Fatalf("请求体不符（用户输入优先于 extra）：%v", b)
+		t.Fatalf("请求体不符：%v", b)
+	}
+	if _, has := b["aigc_watermark"]; has {
+		t.Fatalf("用户没填的开关不应发送：%v", b)
 	}
 	if _, has := b["first_frame_image"]; has {
 		t.Fatalf("没有参考图不应带首帧：%v", b)

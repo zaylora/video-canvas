@@ -18,13 +18,11 @@
  *
  * 写法说明：goja 只保证 ES5.1 + 部分 ES6，所以这里用 var / function，不用可选链与空值合并。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   { watermark?: boolean, extra?: object }
- *   extra 里放型号特有的字段，如 output_format、sequential_image_generation、sequential_image_generation_options、
- *   tools、optimize_prompt_options、layer_decomposition、guidance_scale；用户输入与固定字段优先
  * 用户输入（宿主按模型能力校验后传入）：
  *   prompt、op、size（如 2K 或 2048x2048）、resolution（没有 size 时当 size 用）、aspect_ratio（与 resolution 档位一起换算成 WxH；
- *   方舟没有单独的比例字段）、seed；images 作参考图（文件引用换成签名 URL，1 张传字符串，多张传数组）。n 被忽略：方舟没有单次张数，多张靠组图
+ *   方舟没有单独的比例字段）、seed；images 作参考图（文件引用换成签名 URL，1 张传字符串，多张传数组）。n 被忽略：方舟没有单次张数，多张靠组图。
+ *   watermark（boolean，没填按 false）；型号特有的标量字段 output_format、sequential_image_generation、guidance_scale
+ *   （可选，没填不发，运营在面板的生成参数里加同名参数）。tools、optimize_prompt_options、layer_decomposition 这类对象字段面板表达不了，不支持
  *
  * 未验证（上游代码里没有，凭方舟文档印象写的）：连通检查借用任务列表接口 GET /api/v3/contents/generations/tasks?page_size=1
  * 只验证 Key 是否有效；错误码关键字（余额 / 审核 / 限流）；aspect_ratio 换算 WxH 的取整规则。
@@ -78,7 +76,6 @@ var PRESET_PIXELS = { "1K": 1048576, "1.5K": 2359296, "2K": 4194304, "3K": 94371
 
 function buildImageRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var body = { model: ctx.model.upstreamModel, response_format: "url" };
   if (input.prompt !== undefined && String(input.prompt) !== "") {
     body.prompt = String(input.prompt);
@@ -99,8 +96,12 @@ function buildImageRequest(ctx) {
   if (typeof input.seed === "number") {
     body.seed = input.seed;
   }
-  body.watermark = typeof params.watermark === "boolean" ? params.watermark : false;
-  mergeExtra(body, params.extra);
+  body.watermark = typeof input.watermark === "boolean" ? input.watermark : false;
+  setIf(body, "output_format", input.output_format);
+  setIf(body, "sequential_image_generation", input.sequential_image_generation);
+  if (typeof input.guidance_scale === "number") {
+    body.guidance_scale = input.guidance_scale;
+  }
   return { method: "POST", path: "/api/v3/images/generations", json: body, timeout: 180 };
 }
 
@@ -231,14 +232,10 @@ function errorCodeOf(body) {
 }
 
 
-function mergeExtra(body, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && body[k] === undefined) {
-      body[k] = extra[k]; // 用户输入与固定字段优先，extra 只补充
-    }
+// 非空字符串才写进请求体。
+function setIf(body, key, value) {
+  if (typeof value === "string" && value !== "") {
+    body[key] = value;
   }
 }
 

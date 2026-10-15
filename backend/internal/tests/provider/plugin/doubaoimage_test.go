@@ -48,9 +48,9 @@ func newDoubaoimageEnv(t *testing.T) *doubaoimageEnv {
 	return &doubaoimageEnv{exec: exec, meta: meta, sha: pre.SHA256}
 }
 
-func (e *doubaoimageEnv) snapshot(baseURL, kind, upstream string, params map[string]any) *provider.Snapshot {
+func (e *doubaoimageEnv) snapshot(baseURL, kind, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
-		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Params: params, Capabilities: doubaoimageCaps(kind)},
+		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: doubaoimageCaps(kind)},
 		Channel: provider.ChannelSnapshot{
 			Key: "doubao-image-main", PluginKey: "doubao-image", PluginVersionID: 1, BaseURL: baseURL,
 		},
@@ -76,6 +76,9 @@ func doubaoimageCaps(_ string) modelcfg.Capabilities {
 		{Name: "resolution", ParamField: enum("2K", "4K")},
 		{Name: "aspect_ratio", ParamField: enum("16:9", "adaptive")},
 		{Name: "n", ParamField: num(1, 4)},
+		{Name: "watermark", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
+		{Name: "output_format", ParamField: enum("png", "jpeg")},
+		{Name: "sequential_image_generation", ParamField: enum("auto", "disabled")},
 	}
 	return caps
 }
@@ -107,16 +110,16 @@ func TestDoubaoimagePrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 图片文生图：POST /api/v3/images/generations，size 优先于 resolution，固定参数 extra 只补充；data[].url 变成 image 产物。
+// 图片文生图：POST /api/v3/images/generations，size 优先于 resolution，watermark / sequential_image_generation 取用户输入；data[].url 变成 image 产物。
 func TestDoubaoimageImageGenerate(t *testing.T) {
 	var srv *httptest.Server
 	srv, up := doubaoimageServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{"url":"` + srv.URL + `/a.jpeg?sig=1","size":"2048x2048"},{"url":"` + srv.URL + `/b.png"},{"error":{"code":"x","message":"y"}}]}`))
 	})
 	env := newDoubaoimageEnv(t)
-	params := map[string]any{"watermark": true, "extra": map[string]any{"size": "4K", "sequential_image_generation": "auto"}}
-	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel, params), provider.SubmitInput{
-		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "一只猫", "size": "2K", "n": float64(3)},
+	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel), provider.SubmitInput{
+		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "一只猫", "size": "2K", "n": float64(3),
+			"watermark": true, "sequential_image_generation": "auto", "output_format": "png"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +134,7 @@ func TestDoubaoimageImageGenerate(t *testing.T) {
 	got := up.last()
 	b := got.Body
 	if got.Path != "/api/v3/images/generations" || got.Auth != "Bearer ark-key" || b["model"] != doubaoimageModel || b["prompt"] != "一只猫" ||
-		b["size"] != "2K" || b["response_format"] != "url" || b["watermark"] != true || b["sequential_image_generation"] != "auto" {
+		b["size"] != "2K" || b["response_format"] != "url" || b["watermark"] != true || b["sequential_image_generation"] != "auto" || b["output_format"] != "png" {
 		t.Fatalf("图片请求不符：%+v", got)
 	}
 	if _, ok := b["n"]; ok {
@@ -150,7 +153,7 @@ func TestDoubaoimageImageRefsAndRatioSize(t *testing.T) {
 	env := newDoubaoimageEnv(t)
 	submit := func(input map[string]any) map[string]any {
 		t.Helper()
-		sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel, nil), provider.SubmitInput{
+		sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel), provider.SubmitInput{
 			Task: provider.TaskRef{ID: 2, UserID: 9}, Input: input,
 		})
 		if err != nil || sub.Immediate == nil || sub.Immediate.Status != provider.StatusSucceeded {
@@ -183,7 +186,7 @@ func TestDoubaoimageImageBadResponses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := doubaoimageServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(tc.body)) })
-			sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel, nil), provider.SubmitInput{
+			sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			if err != nil {
@@ -219,7 +222,7 @@ func TestDoubaoimageClassifyHTTPErrors(t *testing.T) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
 			})
-			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel, nil), provider.SubmitInput{
+			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "image", doubaoimageModel), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			if err == nil || provider.ClassOf(err) != tc.class {
@@ -233,7 +236,7 @@ func TestDoubaoimageClassifyHTTPErrors(t *testing.T) {
 func TestDoubaoimageCheck(t *testing.T) {
 	env := newDoubaoimageEnv(t)
 	good, up := doubaoimageServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"items":[],"total":0}`)) })
-	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "image", doubaoimageModel, nil).Runtime())
+	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "image", doubaoimageModel).Runtime())
 	if err != nil || res == nil || !res.OK {
 		t.Fatalf("检查应成功：%+v %v", res, err)
 	}
@@ -244,7 +247,7 @@ func TestDoubaoimageCheck(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"code":"AuthenticationError","message":"invalid api key"}}`))
 	})
-	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "image", doubaoimageModel, nil).Runtime())
+	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "image", doubaoimageModel).Runtime())
 	if err == nil || (res != nil && res.OK) {
 		t.Fatalf("401 应检查失败：%+v %v", res, err)
 	}

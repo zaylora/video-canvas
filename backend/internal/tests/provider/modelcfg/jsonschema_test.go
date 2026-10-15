@@ -20,13 +20,13 @@ func TestJSONSchema(t *testing.T) {
 		t.Fatalf("根节点不符：%v", m)
 	}
 	props, _ := m["properties"].(map[string]any)
-	for _, k := range []string{"key", "kind", "label", "hint", "pricing", "deadline", "enabled", "sort", "channels", "params", "capabilities", "vendor", "tags"} {
+	for _, k := range []string{"key", "kind", "label", "hint", "pricing", "deadline", "enabled", "sort", "channels", "capabilities", "vendor", "tags"} {
 		if _, ok := props[k]; !ok {
 			t.Errorf("properties 缺少 %s", k)
 		}
 	}
 	// 新结构里不应再有旧的 provider / mapping / output
-	for _, k := range []string{"provider", "mapping", "output"} {
+	for _, k := range []string{"provider", "mapping", "output", "params"} {
 		if _, ok := props[k]; ok {
 			t.Errorf("properties 不应再有 %s", k)
 		}

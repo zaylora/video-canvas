@@ -3,10 +3,18 @@ import { describe, expect, test } from "bun:test";
 import { PLUGIN_AUTHORING_PROMPT } from "@/pages/admin/ai/plugins/plugin-prompt";
 
 describe("协议插件编写提示词", () => {
-  test("工作流的节点映射由运营填在模型 params 里：要求插件注释写清结构，不再靠导入草稿生成", () => {
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("params.nodes");
-    expect(PLUGIN_AUTHORING_PROMPT).toContain("运营在模型的固定参数 params 里填");
-    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("返回草稿的 params.nodes");
+  test("模型没有固定参数：ctx.model 只有 key / kind / upstreamModel，输入全部来自面板配置的 ctx.input", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("model:   { key, kind, upstreamModel }");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("ctx.model.params");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("固定参数");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("params.nodes");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("params.fixedNodes");
+    expect(PLUGIN_AUTHORING_PROMPT).not.toContain("params 示例");
+  });
+
+  test("工作流的节点映射、档位对照表等固定内容写在插件代码里，不再靠运营填写", () => {
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("写在插件代码里");
+    expect(PLUGIN_AUTHORING_PROMPT).toContain("不要要求运营另外填写");
   });
 
   test("要求提交前拦截空节点映射", () => {
@@ -150,7 +158,7 @@ describe("协议插件编写提示词：核心 + 进阶附录", () => {
     for (const phrase of [
       "buildPrepareRequests",
       "ctx.prepared",
-      "params.nodes",
+      "nodeInfoList",
       "responseType 为 binary",
       "classifyError",
       "utils.hmacSHA256",

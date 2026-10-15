@@ -165,7 +165,6 @@ func TestVertexaiSubmitFlow(t *testing.T) {
 	defer srv.Close()
 	env := newVertexaiEnv(t, nil)
 	snap := env.snapshot(srv.URL, vertexaiSettings(srv.URL))
-	snap.Model.Params = map[string]any{"extra": map[string]any{"personGeneration": "allow_adult"}}
 	var saved json.RawMessage
 	res, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9},
@@ -201,7 +200,7 @@ func TestVertexaiSubmitFlow(t *testing.T) {
 	inst := sub.Body["instances"].([]any)[0].(map[string]any)
 	p := sub.Body["parameters"].(map[string]any)
 	if inst["prompt"] != "海边日落" || p["durationSeconds"] != float64(6) || p["aspectRatio"] != "16:9" || p["resolution"] != "720p" ||
-		p["generateAudio"] != false || p["sampleCount"] != float64(1) || p["storageUri"] != "gs://veo-out/videos/" || p["personGeneration"] != "allow_adult" {
+		p["generateAudio"] != false || p["sampleCount"] != float64(1) || p["storageUri"] != "gs://veo-out/videos/" {
 		t.Fatalf("请求体不符：%v", sub.Body)
 	}
 }
@@ -254,6 +253,30 @@ func TestVertexaiSubmitImage2Video(t *testing.T) {
 	img := inst["image"].(map[string]any)
 	if img["bytesBase64Encoded"] != base64.StdEncoding.EncodeToString([]byte("PNGDATA")) || img["mimeType"] != "image/png" {
 		t.Fatalf("参考图不符：%v", img)
+	}
+
+	// 用户输入里的 imageMimeType 决定参考图 MIME；不合法的 MIME 是插件级失败。
+	snap := env.snapshot(srv.URL, vertexaiSettings(srv.URL))
+	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
+		Task: provider.TaskRef{ID: 2, UserID: 9}, Input: map[string]any{"prompt": "动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": "image/jpeg"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reqs = up.all()
+	img = reqs[len(reqs)-1].Body["instances"].([]any)[0].(map[string]any)["image"].(map[string]any)
+	if img["mimeType"] != "image/jpeg" {
+		t.Fatalf("应取输入里的 imageMimeType：%v", img)
+	}
+	before := len(up.all())
+	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{
+		Task: provider.TaskRef{ID: 3, UserID: 9}, Input: map[string]any{"prompt": "动起来", "op": "i2v", "images": []uint64{5}, "imageMimeType": "image/webp"},
+	}); err == nil {
+		t.Fatal("不支持的 MIME 应失败")
+	}
+	for _, r := range up.all()[before:] {
+		if strings.Contains(r.Path, "predictLongRunning") {
+			t.Fatalf("不合法 MIME 不应发出提交请求：%+v", r)
+		}
 	}
 }
 

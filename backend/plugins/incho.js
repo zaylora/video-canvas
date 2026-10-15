@@ -13,11 +13,9 @@
  *
  * 上游模型（ctx.model.upstreamModel）：v4.0（默认）与 v3.5；填成 incho_music 或留空时按 v4.0。
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   audio: { n?: 1|2, lyric?: string }   n：一次生成几首（上游默认 2）；lyric：固定歌词（上游最长 3000 字，一般不用）
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt（歌曲描述，上游最长 1000 字；不写歌词时由模型自己作词）
- *   n（可选，生成首数 1 或 2，优先于 params.n；都没有时不发，用上游默认的 2 首）
+ *   n（可选，生成首数 1 或 2；没有时不发，用上游默认的 2 首）
  *   lyric（可选；能力参数只有 enum / number / boolean，通常拿不到，留给直接调用的场景）
  *
  * 任务结果：所有歌曲都进入终态后，只要有一首 done 就算成功（部分失败也成功，产物只含 done 的歌）；
@@ -45,9 +43,8 @@ module.exports = {
 
   buildSubmitRequest: function (ctx) {
     var input = ctx.input || {};
-    var params = ctx.model.params || {};
     var prompt = trimmed(input.prompt);
-    var lyric = trimmed(firstString(input.lyric, params.lyric));
+    var lyric = trimmed(input.lyric);
     if (!prompt && !lyric) {
       throw new Error("prompt 与 lyric 至少要有一个");
     }
@@ -69,7 +66,7 @@ module.exports = {
     if (lyric) {
       body.lyric = lyric;
     }
-    var n = pick(input.n, params.n);
+    var n = pick(input.n);
     if (n !== undefined) {
       n = Number(n);
       if (n !== 1 && n !== 2) {
@@ -231,15 +228,6 @@ function codePoints(s) {
 
 function trimmed(v) {
   return String(v === undefined || v === null ? "" : v).trim();
-}
-
-function firstString() {
-  for (var i = 0; i < arguments.length; i++) {
-    if (typeof arguments[i] === "string" && arguments[i] !== "") {
-      return arguments[i];
-    }
-  }
-  return "";
 }
 
 function pick() {

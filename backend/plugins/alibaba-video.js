@@ -18,13 +18,11 @@
  *   wan2.2-kf2v-flash   首尾帧：input.first_frame_url / last_frame_url
  *   wan2.2-s2v          图 + 音频生成数字人视频：input.image_url / audio_url，时长跟随音频
  *
- * 模型 params（运营在模型上填的固定参数）：
- *   parameters: object   补充进请求体 parameters（如 prompt_extend、watermark、shot_type），用户输入与插件算出的字段优先
- *   input: object        补充进请求体 input（如 negative_prompt、template），同样只补充
  * 用户输入（宿主按模型能力 capabilities 校验后传入）：
  *   prompt、op（t2v / i2v / omni）、images / videos / audios（文件引用，交给宿主换成签名 URL）、
  *   duration（秒）、resolution（480P / 720P / 1080P，大小写与是否带 P 都可）、aspect_ratio（16:9 / 9:16 / 1:1 / 4:3 / 3:4 / adaptive）、
- *   generate_audio（boolean，对应 parameters.audio）、seed、watermark、prompt_extend、negative_prompt
+ *   generate_audio（boolean，对应 parameters.audio）、seed、watermark、prompt_extend、negative_prompt、
+ *   shot_type（single / multi，可选，没填不发；运营在面板的生成参数里加同名参数）
  *   wan3.0 / wan2.7-i2v：images[0] 首帧、images[1] 尾帧；op 为 omni 时 images / videos / audios 全部当参考素材（wan3.0）
  *
  * 与上游相比刻意没移植：OpenAI Responses / Video 网关协议、usageSchema 计费与重算。
@@ -191,7 +189,6 @@ function videoProfile(model) {
 
 function buildVideoRequest(ctx) {
   var input = ctx.input || {};
-  var params = ctx.model.params || {};
   var model = ctx.model.upstreamModel;
   var profile = videoProfile(model);
   var kind = profile.kind;
@@ -207,11 +204,11 @@ function buildVideoRequest(ctx) {
     inp.negative_prompt = input.negative_prompt;
   }
 
-  // 通用参数：用户输入优先，其次模型固定参数，prompt_extend 默认开（数字人除外）
+  // 通用参数：用户输入优先，prompt_extend 默认开（数字人除外）
   if (kind !== "speech") {
     par.prompt_extend = true;
   }
-  copyDefined(par, input, ["prompt_extend", "watermark", "seed"]);
+  copyDefined(par, input, ["prompt_extend", "watermark", "seed", "shot_type"]);
   if (typeof input.generate_audio === "boolean") {
     par.audio = input.generate_audio;
   }
@@ -319,9 +316,6 @@ function buildVideoRequest(ctx) {
     }
   }
 
-  mergeMissing(inp, params.input);
-  mergeMissing(par, params.parameters);
-
   var service = kind === "frames" || kind === "speech" ? "image2video" : "video-generation";
   return {
     method: "POST",
@@ -404,18 +398,6 @@ function copyDefined(dst, src, keys) {
   for (var i = 0; i < keys.length; i++) {
     if (src[keys[i]] !== undefined && src[keys[i]] !== null) {
       dst[keys[i]] = src[keys[i]];
-    }
-  }
-}
-
-// 模型固定参数只补充、不覆盖。
-function mergeMissing(dst, extra) {
-  if (!extra || typeof extra !== "object") {
-    return;
-  }
-  for (var k in extra) {
-    if (Object.prototype.hasOwnProperty.call(extra, k) && dst[k] === undefined) {
-      dst[k] = extra[k];
     }
   }
 }

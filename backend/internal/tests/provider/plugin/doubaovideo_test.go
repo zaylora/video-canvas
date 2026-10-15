@@ -49,9 +49,9 @@ func newDoubaovideoEnv(t *testing.T) *doubaovideoEnv {
 	return &doubaovideoEnv{exec: exec, meta: meta, sha: pre.SHA256}
 }
 
-func (e *doubaovideoEnv) snapshot(baseURL, kind, upstream string, params map[string]any) *provider.Snapshot {
+func (e *doubaovideoEnv) snapshot(baseURL, kind, upstream string) *provider.Snapshot {
 	return &provider.Snapshot{
-		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Params: params, Capabilities: doubaovideoCaps(kind)},
+		Model: provider.ModelSnapshot{Key: "m", Kind: kind, UpstreamModel: upstream, Capabilities: doubaovideoCaps(kind)},
 		Channel: provider.ChannelSnapshot{
 			Key: "doubao-video-main", PluginKey: "doubao-video", PluginVersionID: 1, BaseURL: baseURL,
 		},
@@ -77,6 +77,10 @@ func doubaovideoCaps(_ string) modelcfg.Capabilities {
 		{Name: "resolution", ParamField: enum("720p", "1080p")},
 		{Name: "duration", ParamField: num(-1, 15)},
 		{Name: "generate_audio", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true, Default: true}},
+		{Name: "watermark", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
+		{Name: "camera_fixed", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
+		{Name: "return_last_frame", ParamField: modelcfg.ParamField{Type: modelcfg.ParamBoolean, Label: "x", Open: true}},
+		{Name: "service_tier", ParamField: enum("default", "flex")},
 	}
 	return caps
 }
@@ -108,17 +112,17 @@ func TestDoubaovideoPrecheckAndMeta(t *testing.T) {
 	}
 }
 
-// 视频提交：路径、Bearer、content 数组（文本 + 首帧图）、ratio / resolution / duration / generate_audio、固定参数与 extra。
+// 视频提交：路径、Bearer、content 数组（文本 + 首帧图）、ratio / resolution / duration / generate_audio，以及用户输入的 camera_fixed / return_last_frame / service_tier。
 func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 	srv, up := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"cgt-2025-abc"}`))
 	})
 	env := newDoubaovideoEnv(t)
-	params := map[string]any{"camera_fixed": true, "extra": map[string]any{"return_last_frame": true, "ratio": "1:1"}}
-	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel, params), provider.SubmitInput{
+	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9},
 		Input: map[string]any{"prompt": "猫在跳舞", "op": "i2v", "images": []uint64{1}, "aspect_ratio": "16:9",
-			"resolution": "720p", "duration": float64(5), "generate_audio": false},
+			"resolution": "720p", "duration": float64(5), "generate_audio": false,
+			"camera_fixed": true, "return_last_frame": true, "service_tier": "flex"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +136,7 @@ func TestDoubaovideoVideoSubmitI2V(t *testing.T) {
 	}
 	b := got.Body
 	if b["model"] != doubaovideoModel || b["ratio"] != "16:9" || b["resolution"] != "720p" || b["duration"] != float64(5) ||
-		b["generate_audio"] != false || b["watermark"] != false || b["camera_fixed"] != true || b["return_last_frame"] != true {
+		b["generate_audio"] != false || b["watermark"] != false || b["camera_fixed"] != true || b["return_last_frame"] != true || b["service_tier"] != "flex" {
 		t.Fatalf("请求体不符：%v", b)
 	}
 	content, _ := b["content"].([]any)
@@ -156,7 +160,7 @@ func TestDoubaovideoVideoRoles(t *testing.T) {
 	env := newDoubaovideoEnv(t)
 	roles := func(input map[string]any) []string {
 		t.Helper()
-		_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", "doubao-seedance-2-0-260128", nil), provider.SubmitInput{
+		_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", "doubao-seedance-2-0-260128"), provider.SubmitInput{
 			Task: provider.TaskRef{ID: 1, UserID: 9}, Input: input,
 		})
 		if err != nil {
@@ -204,7 +208,7 @@ func TestDoubaovideoVideoQuery(t *testing.T) {
 		}
 	})
 	env := newDoubaovideoEnv(t)
-	snap := env.snapshot(srv.URL, "video", doubaovideoModel, nil)
+	snap := env.snapshot(srv.URL, "video", doubaovideoModel)
 	ref := provider.TaskRef{ID: 1, UserID: 9, ProviderTaskID: "t1"}
 	want := []string{provider.StatusQueued, provider.StatusRunning, provider.StatusSucceeded}
 	var last *provider.QueryResult
@@ -240,7 +244,7 @@ func TestDoubaovideoVideoQueryFailed(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, _ := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(tc.body)) })
-			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel, nil), provider.TaskRef{ID: 1, ProviderTaskID: "t1"})
+			q, err := env.exec.Query(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel), provider.TaskRef{ID: 1, ProviderTaskID: "t1"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -257,7 +261,7 @@ func TestDoubaovideoVideoSubmitBadResponses(t *testing.T) {
 	srv, _ := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"error":{"code":"x","message":"insufficient balance"}}`))
 	})
-	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel, nil), provider.SubmitInput{
+	sub, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 	})
 	if err != nil || sub.Immediate == nil || sub.Immediate.Status != provider.StatusFailed || sub.Immediate.ErrorClass != provider.ClassProviderBalance {
@@ -265,7 +269,7 @@ func TestDoubaovideoVideoSubmitBadResponses(t *testing.T) {
 	}
 
 	srv2, _ := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) })
-	_, err = env.exec.Submit(context.Background(), env.snapshot(srv2.URL, "video", doubaovideoModel, nil), provider.SubmitInput{
+	_, err = env.exec.Submit(context.Background(), env.snapshot(srv2.URL, "video", doubaovideoModel), provider.SubmitInput{
 		Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 	})
 	var pe *provider.Error
@@ -296,7 +300,7 @@ func TestDoubaovideoClassifyHTTPErrors(t *testing.T) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
 			})
-			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel, nil), provider.SubmitInput{
+			_, err := env.exec.Submit(context.Background(), env.snapshot(srv.URL, "video", doubaovideoModel), provider.SubmitInput{
 				Task: provider.TaskRef{ID: 1, UserID: 9}, Input: map[string]any{"prompt": "x"},
 			})
 			if err == nil || provider.ClassOf(err) != tc.class {
@@ -310,7 +314,7 @@ func TestDoubaovideoClassifyHTTPErrors(t *testing.T) {
 func TestDoubaovideoCheck(t *testing.T) {
 	env := newDoubaovideoEnv(t)
 	good, up := doubaovideoServer(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"items":[],"total":0}`)) })
-	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "video", doubaovideoModel, nil).Runtime())
+	res, err := env.exec.Check(context.Background(), env.snapshot(good.URL, "video", doubaovideoModel).Runtime())
 	if err != nil || res == nil || !res.OK {
 		t.Fatalf("检查应成功：%+v %v", res, err)
 	}
@@ -321,7 +325,7 @@ func TestDoubaovideoCheck(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"code":"AuthenticationError","message":"invalid api key"}}`))
 	})
-	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "video", doubaovideoModel, nil).Runtime())
+	res, err = env.exec.Check(context.Background(), env.snapshot(bad.URL, "video", doubaovideoModel).Runtime())
 	if err == nil || (res != nil && res.OK) {
 		t.Fatalf("401 应检查失败：%+v %v", res, err)
 	}

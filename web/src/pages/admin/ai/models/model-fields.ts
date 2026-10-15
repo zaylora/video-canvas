@@ -25,8 +25,7 @@ const FIELD_OF: Record<string, { tab: ModelTabId; id: string }> = {
   sort: { tab: "basic", id: "model-sort" },
   channels: { tab: "basic", id: "model-channel" },
   deadline: { tab: "params", id: "model-deadline" },
-  params: { tab: "params", id: "model-params" },
-  capabilities: { tab: "params", id: "model-capabilities" },
+  capabilities: { tab: "params", id: "model-capabilities-params" },
   pricing: { tab: "price", id: "model-pricing" },
 };
 

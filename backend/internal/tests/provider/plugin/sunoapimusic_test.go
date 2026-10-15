@@ -164,7 +164,7 @@ func TestSunoapimusicMusicFlow(t *testing.T) {
 	}
 }
 
-// 音乐提交默认 mv 是 chirp-v3-0，params.mv 优先；extra 只补充不覆盖。
+// 音乐提交默认 mv 是 chirp-v3-0；输入里的 mv 优先于 chirp- 开头的上游模型名。
 func TestSunoapimusicMusicDefaults(t *testing.T) {
 	up := &sunoapimusicUpstream{handler: func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"code":"success","data":"t"}`))
@@ -179,12 +179,19 @@ func TestSunoapimusicMusicDefaults(t *testing.T) {
 	if b := up.last().Body; b["mv"] != "chirp-v3-0" || b["make_instrumental"] != false {
 		t.Fatalf("默认值不符：%v", b)
 	}
-	snap.Model.Params = map[string]any{"mv": "chirp-v3-5", "extra": map[string]any{"mv": "ignored", "tags": "pop"}}
-	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 2}, Input: map[string]any{"prompt": "x"}}); err != nil {
+	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 3}, Input: map[string]any{"prompt": "x", "mv": "chirp-v3-5"}}); err != nil {
 		t.Fatal(err)
 	}
-	if b := up.last().Body; b["mv"] != "chirp-v3-5" || b["tags"] != "pop" {
-		t.Fatalf("params 合并不符：%v", b)
+	if b := up.last().Body; b["mv"] != "chirp-v3-5" {
+		t.Fatalf("输入里的 mv 应优先：%v", b)
+	}
+	// 输入 mv 优先于 chirp- 开头的上游模型名
+	snap = env.snapshot(srv.URL, "audio", "chirp-v4")
+	if _, err := env.exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 4}, Input: map[string]any{"prompt": "x", "mv": "chirp-v3-5"}}); err != nil {
+		t.Fatal(err)
+	}
+	if b := up.last().Body; b["mv"] != "chirp-v3-5" {
+		t.Fatalf("输入 mv 应优先于上游模型名：%v", b)
 	}
 }
 
