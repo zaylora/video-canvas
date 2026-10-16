@@ -146,8 +146,8 @@ export interface GeneratedQueryDto {
 export interface LibraryQueryDto {
   /** 文件夹：root 根目录、具体文件夹 ID、all 跨文件夹（搜索时用） */
   folderId: string;
-  /** 素材类型 */
-  kind: AssetKind;
+  /** 素材类型，不传则不过滤 */
+  kind?: AssetKind;
   /** 文件名关键字 */
   q?: string;
   /** 下一页游标 */

@@ -5,8 +5,7 @@ import { ChevronRight, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { addToLibrary, moveLibraryItem, removeLibraryItem } from "@/api/asset-library";
-import type { AssetKind, FolderDto, LibraryItemDto } from "@/api/asset-library/type";
-import { ASSET_KINDS, AssetKindTabs } from "@/components/assets/asset-kind-tabs";
+import type { FolderDto, LibraryItemDto } from "@/api/asset-library/type";
 import { LibraryAssetCard } from "@/components/assets/asset-card";
 import { AssetGrid, AssetGridSkeleton, LoadMoreFooter } from "@/components/assets/asset-grid";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
@@ -59,13 +58,12 @@ export function LibraryView({
   folder: string | null;
   onFolderChange: (folder: string | null, options?: { replace?: boolean }) => void;
 }) {
-  const [kind, setKind] = useState<AssetKind>("image");
   const [input, setInput] = useState("");
   const q = useDebouncedValue(input);
   const searching = q.trim() !== "";
 
   const folders = useAssetFolders(true);
-  const { list, state } = useAssetLibrary(folder, kind, q);
+  const { list, state } = useAssetLibrary(folder, q);
   const { items } = state;
   const currentFolder: FolderDto | null =
     (folder && folders.folders?.find((entry) => entry.id === folder)) || null;
@@ -84,16 +82,11 @@ export function LibraryView({
     }
   }, [folder, folders.folders, currentFolder, onFolderChange]);
 
-  /** 一个文件上传并登记完成：当前列表在看同一位置同一类型时直接插到最前，其余只刷新计数 */
+  /** 一个文件上传并登记完成：当前列表在看同一位置时直接插到最前，其余只刷新计数 */
   const uploads = useAssetUploads((item, task) => {
     folders.adjust(task.folderId, 1);
     folders.reload();
-    if (task.folderId === folder && !searching && item.asset.kind === kind) {
-      list.update((prev) => [item, ...prev]);
-    } else if (item.asset.kind !== kind) {
-      const label = ASSET_KINDS.find((entry) => entry.value === item.asset.kind)?.label;
-      toast.success(`「${item.asset.fileName ?? "素材"}」已上传，在「${label}」里查看`);
-    }
+    if (task.folderId === folder && !searching) list.update((prev) => [item, ...prev]);
   });
 
   const onDrop = (accepted: File[], rejected: FileRejection[]) => {
@@ -129,7 +122,6 @@ export function LibraryView({
   const foldersPending = folder === null && !searching && folders.loading;
   const showFolders = folder === null && !searching && folders.folders !== null;
   const folderList = showFolders ? (folders.folders ?? []) : [];
-  const kindLabel = ASSET_KINDS.find((entry) => entry.value === kind)?.label ?? "";
 
   const remove = async (item: LibraryItemDto) => {
     const ok = await removeFromLibrary(list, item.id, LIBRARY_API);
@@ -189,7 +181,7 @@ export function LibraryView({
           searchSlot,
         )}
 
-      <nav aria-label="当前位置" className="mt-4 flex h-8 items-center gap-1 text-base">
+      <nav aria-label="当前位置" className="mt-4 mb-4.5 flex h-8 items-center gap-1 text-base">
         {folder || searching ? (
           <>
             <button
@@ -211,10 +203,6 @@ export function LibraryView({
           <h2 className="font-semibold">个人资产库</h2>
         )}
       </nav>
-
-      <div className="mt-1 mb-4.5 flex flex-wrap items-center gap-1">
-        <AssetKindTabs value={kind} onChange={setKind} />
-      </div>
 
       {state.status === "loading" || foldersPending ? (
         <AssetGridSkeleton />
@@ -267,7 +255,7 @@ export function LibraryView({
           </AssetGrid>
           {items.length === 0 && (
             <p className="text-muted-foreground mt-6 text-center text-[13px]">
-              {searching ? "没有符合的素材" : `这里还没有${kindLabel}素材`}
+              {searching ? "没有符合的素材" : "这里还没有素材"}
             </p>
           )}
           <LoadMoreFooter
