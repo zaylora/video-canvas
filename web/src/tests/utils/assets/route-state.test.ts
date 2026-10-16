@@ -7,8 +7,8 @@ describe("parseAssetsParams：地址栏参数", () => {
     expect(parseAssetsParams(new URLSearchParams(""))).toEqual({ tab: "history", folder: null });
   });
 
-  test("认得三个范围，未知范围回到生成历史", () => {
-    expect(parseAssetsParams(new URLSearchParams("tab=canvas")).tab).toBe("canvas");
+  test("认得两个范围，已下线的画布和未知范围都回到生成历史", () => {
+    expect(parseAssetsParams(new URLSearchParams("tab=canvas")).tab).toBe("history");
     expect(parseAssetsParams(new URLSearchParams("tab=library")).tab).toBe("library");
     expect(parseAssetsParams(new URLSearchParams("tab=docs")).tab).toBe("history");
   });
@@ -29,14 +29,13 @@ describe("buildAssetsSearch：写回地址栏", () => {
     expect(buildAssetsSearch({ tab: "history", folder: null })).toBe("");
   });
 
-  test("画布与个人资产库带 tab，文件夹带 folder", () => {
-    expect(buildAssetsSearch({ tab: "canvas", folder: null })).toBe("tab=canvas");
+  test("个人资产库带 tab，文件夹带 folder", () => {
     expect(buildAssetsSearch({ tab: "library", folder: null })).toBe("tab=library");
     expect(buildAssetsSearch({ tab: "library", folder: "1f" })).toBe("tab=library&folder=1f");
   });
 
   test("非资产库范围丢掉 folder，解析再构建能还原", () => {
-    expect(buildAssetsSearch({ tab: "canvas", folder: "1f" })).toBe("tab=canvas");
+    expect(buildAssetsSearch({ tab: "history", folder: "1f" })).toBe("");
     const state = { tab: "library", folder: "a3" } as const;
     expect(parseAssetsParams(new URLSearchParams(buildAssetsSearch(state)))).toEqual(state);
   });

@@ -10,15 +10,14 @@ import {
   type AssetsTab,
 } from "@/utils/assets/route-state";
 
-import { CanvasView } from "./canvas-view";
 import { HistoryView } from "./history-view";
 import { LibraryView } from "./library-view";
 
-/** 三个范围从左到右的顺序，决定切换时内容滑入的方向 */
-const TAB_ORDER: readonly AssetsTab[] = ["history", "canvas", "library"];
+/** 两个范围从左到右的顺序，决定切换时内容滑入的方向 */
+const TAB_ORDER: readonly AssetsTab[] = ["history", "library"];
 
 /**
- * 资产页（设计稿 docs/design/资产库）：「生成历史 / 画布 / 个人资产库」三个范围。
+ * 资产页（设计稿 docs/design/资产库）：「生成历史 / 个人资产库」两个范围。
  * 范围和个人资产库里的文件夹都写在地址栏（/assets?tab=library&folder=1f），刷新、后退能还原。
  * 各范围自己管内容和工具条；头部右侧留一个容器，各范围把自己的搜索框（和「新建」）用 portal 放进来，
  * 这样切换范围时顶部的分段控件不会重新挂载，滑块动画是连续的。
@@ -55,7 +54,6 @@ export default function AssetsPage() {
           onChange={(tab) => go({ tab, folder: null })}
           options={[
             { value: "history", label: "生成历史" },
-            { value: "canvas", label: "画布" },
             { value: "library", label: "个人资产库" },
           ]}
         />
@@ -70,7 +68,6 @@ export default function AssetsPage() {
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
         >
           {route.tab === "history" && <HistoryView searchSlot={searchSlot} />}
-          {route.tab === "canvas" && <CanvasView searchSlot={searchSlot} />}
           {route.tab === "library" && (
             <LibraryView
               searchSlot={searchSlot}
