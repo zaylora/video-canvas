@@ -149,33 +149,44 @@ func (s *ShowcaseService) libraryAdded(ctx context.Context, assets []model.Asset
 // libraryTaskPrompt 取任务输入里的提示词文本，去首尾空白后按字符数截到 80（展示作品的文案上限）。
 // 输入不是合法 JSON、没有 prompt 或 prompt 不是字符串都返回空串：这是辅助信息，脏数据不应让整个素材库列表失败。
 func libraryTaskPrompt(t *model.GenerationTask) string {
-	var in struct {
-		Prompt any `json:"prompt"`
-	}
-	if err := json.Unmarshal(t.InputJSON, &in); err != nil {
-		return ""
-	}
-	text, _ := in.Prompt.(string)
-	return truncateRunes(strings.TrimSpace(text), maxShowcasePromptRunes)
+	return truncateRunes(taskPromptText(t.InputJSON), maxShowcasePromptRunes)
 }
 
 // libraryTaskModelLabel 取任务创建时快照里的模型展示名（config_snapshot.model.label）；
 // 快照缺失或没有展示名时退回模型 key，再没有就是空串。结果截到 40 个字符（展示条目的模型标注上限），前端可以直接带去新增条目。
 func libraryTaskModelLabel(t *model.GenerationTask) string {
+	return truncateRunes(taskModelLabel(t.ConfigSnapshot, t.ModelKey), maxShowcaseLabelRunes)
+}
+
+// taskPromptText 取任务输入（input_json）里的完整提示词，去首尾空白，不截断。
+// 输入不是合法 JSON、没有 prompt 或 prompt 不是字符串都返回空串。
+func taskPromptText(input []byte) string {
+	var in struct {
+		Prompt any `json:"prompt"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return ""
+	}
+	text, _ := in.Prompt.(string)
+	return strings.TrimSpace(text)
+}
+
+// taskModelLabel 取配置快照里的模型展示名（config_snapshot.model.label），不截断；
+// 快照损坏或没有展示名时退回模型 key（同样是辅助信息，忽略解析错误），再没有就是空串。
+func taskModelLabel(snapshot []byte, modelKey string) string {
 	var snap struct {
 		Model struct {
 			Label string `json:"label"`
 		} `json:"model"`
 	}
 	label := ""
-	// 快照损坏时忽略解析错误，直接退回模型 key：同样是辅助信息
-	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err == nil {
+	if err := json.Unmarshal(snapshot, &snap); err == nil {
 		label = strings.TrimSpace(snap.Model.Label)
 	}
 	if label == "" {
-		label = strings.TrimSpace(t.ModelKey)
+		label = strings.TrimSpace(modelKey)
 	}
-	return truncateRunes(label, maxShowcaseLabelRunes)
+	return label
 }
 
 // truncateRunes 把 s 按字符数（而不是字节数）截到最多 n 个字符。

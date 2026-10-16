@@ -9,7 +9,9 @@ import {
   type OnConnectEnd,
 } from "@xyflow/react";
 
+import type { AssetDto } from "@/api/asset/type";
 import { getNodeHit } from "@/components/canvas";
+import { planAssetNodes } from "@/utils/canvas/asset-nodes";
 import { newNodeLabel, uploadLabel } from "@/utils/canvas/node-label";
 import {
   ANIMATED_EDGE_OPTIONS,
@@ -417,6 +419,33 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     [placeUploadedNode],
   );
 
+  /**
+   * 从资产库弹框引入素材：每个素材一个节点（素材已在服务端，直接写地址和素材 ID，不上传），
+   * 从落点起按网格排开（排布见 planAssetNodes）。整批在一次 setNodes 里写入，撤销是一条记录；
+   * 新节点保持选中，和「上传素材」一致。不连线：弹框不按拉线上下文限制类型，引入的只是素材节点。
+   * @param assets 选中的素材，按选择顺序
+   * @param origin 落点：第一个节点的左上角（画布坐标）
+   */
+  const addAssetNodes = useCallback(
+    (assets: AssetDto[], origin: { x: number; y: number }) => {
+      if (assets.length === 0) return;
+      const created = planAssetNodes(
+        assets,
+        origin,
+        getNodes().map((node) => node.data.label),
+        undefined,
+        defaultModels,
+      );
+      setNodes((nds) =>
+        nds
+          .map((item) => (item.selected ? { ...item, selected: false } : item))
+          .concat(created.map((node) => ({ ...node, selected: true }))),
+      );
+      toast.success(`已引入 ${created.length} 个素材`);
+    },
+    [defaultModels, getNodes, setNodes],
+  );
+
   return {
     menu,
     pending,
@@ -428,6 +457,7 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     beginUpload,
     beginUploadAt,
     addUploadedNodes,
+    addAssetNodes,
     onConnect,
     onConnectEnd,
     onDoubleClick,

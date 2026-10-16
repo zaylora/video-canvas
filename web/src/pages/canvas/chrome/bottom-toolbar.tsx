@@ -15,20 +15,20 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { UPLOAD_ACTION } from "@/constants/canvas";
+import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import type { NodeKind } from "@/types";
 
 import { buildAddNodeItems } from "./add-node-items";
-import { AssetsSheet } from "./assets-sheet";
 import { MOD } from "./keys";
 import { TasksSheet } from "./tasks-sheet";
 
-/** 左侧居中的主工具条（竖排）：添加节点、选择 / 抓手、撤销重做、素材库、任务历史 */
+/** 左侧居中的主工具条（竖排）：添加节点、选择 / 抓手、撤销重做、资产库、任务历史 */
 export function BottomToolbar({
   tool,
   onToolChange,
   onAdd,
   onUpload,
+  onOpenAssets,
   canUndo,
   canRedo,
   onUndo,
@@ -38,12 +38,14 @@ export function BottomToolbar({
   onToolChange: (tool: CanvasTool) => void;
   onAdd: (kind: NodeKind) => void;
   onUpload: () => void;
+  /** 打开资产库弹框：底栏按钮和「添加节点」菜单里的「从资产库添加」共用 */
+  onOpenAssets: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
 }) {
-  const [sheet, setSheet] = useState<"assets" | "tasks" | null>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const addItems = useMemo(() => buildAddNodeItems(), []);
 
   return (
@@ -67,6 +69,7 @@ export function BottomToolbar({
               items={addItems}
               onSelect={(value) => {
                 if (value === UPLOAD_ACTION) onUpload();
+                else if (value === ASSET_LIBRARY_ACTION) onOpenAssets();
                 else onAdd(value as NodeKind);
               }}
             />
@@ -103,13 +106,12 @@ export function BottomToolbar({
 
         <ChromeSeparator orientation="horizontal" className="max-sm:hidden" />
 
-        <ChromeTooltip label="画布素材" side="right">
+        <ChromeTooltip label="资产库" side="right">
           <ChromeButton
             size="lg"
-            aria-label="画布素材"
+            aria-label="资产库"
             className="max-sm:hidden"
-            active={sheet === "assets"}
-            onClick={() => setSheet("assets")}
+            onClick={onOpenAssets}
           >
             <FolderOpen />
           </ChromeButton>
@@ -119,22 +121,15 @@ export function BottomToolbar({
             size="lg"
             aria-label="任务历史"
             className="max-sm:hidden"
-            active={sheet === "tasks"}
-            onClick={() => setSheet("tasks")}
+            active={tasksOpen}
+            onClick={() => setTasksOpen(true)}
           >
             <History />
           </ChromeButton>
         </ChromeTooltip>
       </ChromePill>
 
-      <AssetsSheet
-        open={sheet === "assets"}
-        onOpenChange={(open) => setSheet(open ? "assets" : null)}
-      />
-      <TasksSheet
-        open={sheet === "tasks"}
-        onOpenChange={(open) => setSheet(open ? "tasks" : null)}
-      />
+      <TasksSheet open={tasksOpen} onOpenChange={setTasksOpen} />
     </>
   );
 }

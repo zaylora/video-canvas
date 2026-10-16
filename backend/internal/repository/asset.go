@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -74,4 +75,54 @@ func (r *AssetRepository) ListByKindSource(ctx context.Context, kind, source str
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// GeneratedAssetFilter 是生成历史的过滤条件。
+type GeneratedAssetFilter struct {
+	Kind        string      // 素材类型（image / video / audio）
+	Source      string      // all（空等同）/ conversation（任务没有画布）/ canvas（任务有画布）
+	CanvasID    uint64      // 非 0 时只看这张画布的产物（隐含 canvas 来源）
+	CreatedFrom *time.Time  // 只看不早于这个时间生成的素材，nil 不限
+	Asc         bool        // true 最早优先，默认最新优先
+	Q           string      // 提示词包含匹配（忽略大小写），空不过滤
+	After       *TimeCursor // 上一页最后一条的位置，nil 从头开始
+	Limit       int         // 最多返回多少条
+}
+
+// ListGeneratedByUser 返回该用户的生成历史：source=generated 的素材，左联所属任务取出提示词、模型和画布来源，
+// 排除运营试跑任务（is_test）的产物。按 (created_at, id) 排序并游标翻页，最多 f.Limit 条。
+// 用左联而不是内联：个别没有任务记录的生成产物（历史数据）仍然保留在历史里，只是没有提示词与来源。
+func (r *AssetRepository) ListGeneratedByUser(ctx context.Context, userID uint64, f GeneratedAssetFilter) ([]model.GeneratedAssetRow, error) {
+	db := r.db.WithContext(ctx).Table("assets").
+		Joins("LEFT JOIN generation_tasks t ON t.id = assets.task_id").
+		Select("assets.*, t.canvas_project_id AS task_canvas_project_id, t.input_json AS task_input_json, "+
+			"t.config_snapshot AS task_config_snapshot, COALESCE(t.model_id, '') AS task_model_key").
+		Where("assets.user_id = ? AND assets.source = ? AND assets.kind = ?", userID, model.AssetSourceGenerated, f.Kind).
+		Where("COALESCE(t.is_test, false) = false")
+	switch {
+	case f.CanvasID != 0:
+		db = db.Where("t.canvas_project_id = ?", f.CanvasID)
+	case f.Source == "conversation":
+		db = db.Where("t.canvas_project_id IS NULL")
+	case f.Source == "canvas":
+		db = db.Where("t.canvas_project_id IS NOT NULL")
+	}
+	if f.CreatedFrom != nil {
+		db = db.Where("assets.created_at >= ?", *f.CreatedFrom)
+	}
+	if f.Q != "" {
+		db = db.Where("t.input_json->>'prompt' ILIKE ?", "%"+escapeLike(f.Q)+"%")
+	}
+	order, cmp := "assets.created_at DESC, assets.id DESC", "<"
+	if f.Asc {
+		order, cmp = "assets.created_at ASC, assets.id ASC", ">"
+	}
+	if f.After != nil {
+		db = db.Where("(assets.created_at, assets.id) "+cmp+" (?, ?)", f.After.At, f.After.ID)
+	}
+	var rows []model.GeneratedAssetRow
+	if err := db.Order(order).Limit(f.Limit).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }

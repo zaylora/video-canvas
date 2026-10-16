@@ -1,10 +1,11 @@
-import { useState, type CSSProperties } from "react";
-import { Outlet, useViewTransitionState } from "react-router";
-import { MotionConfig } from "motion/react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Outlet, useLocation, useViewTransitionState } from "react-router";
+import { motion, MotionConfig } from "motion/react";
 
 import { AppSidebar } from "@/components/home/app-sidebar";
 import { SiteHeader } from "@/components/home/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 
 /** 侧栏展开状态存在本机；和后台的侧栏分开记，互不影响 */
 const SIDEBAR_KEY = "home-sidebar-open";
@@ -18,6 +19,28 @@ function readSidebarOpen() {
 }
 
 /**
+ * 内容区的页面入场：切到另一个一级页面（创作 / 资产 / 画布列表 / 个人资料…）时，
+ * 新内容淡入并从下方 8px 上浮到位，侧栏和顶栏不动。
+ * 以第一段路径作 key：资产页换范围、对话之间切换只改查询参数或 id，不会重播。
+ * 画布列表自己有 view transition（画布卡缩放进出），不再叠这层，免得两套转场打架。
+ * 系统开「减少动态效果」时 MotionConfig 会去掉位移，只剩淡入。
+ */
+function PageTransition() {
+  const section = useLocation().pathname.split("/")[1] ?? "";
+  return (
+    <motion.div
+      key={section}
+      initial={section === "canvases" ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <Outlet />
+    </motion.div>
+  );
+}
+
+/**
  * 首页与所有画布页的外壳（设计稿 docs/design/首页）：左侧侧栏 + 吸顶顶栏 + 页面内容。
  * MotionConfig 的 reducedMotion="user" 让系统开了「减少动态效果」时只保留淡入淡出。
  * 首页点「更多」进所有画布页有 view transition：这个外壳不换，转场期间给侧栏和顶栏打上标记
@@ -26,6 +49,16 @@ function readSidebarOpen() {
 export default function HomeLayout() {
   const [open, setOpen] = useState(readSidebarOpen);
   const transitioning = useViewTransitionState("/canvases");
+
+  /** 页面靠文档滚动：骨架屏撑高出现滚动条、数据回来内容变短又消失，会让整页左右抖。常驻预留滚动条的位置 */
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.scrollbarGutter;
+    root.style.scrollbarGutter = "stable";
+    return () => {
+      root.style.scrollbarGutter = previous;
+    };
+  }, []);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -46,7 +79,7 @@ export default function HomeLayout() {
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <SiteHeader />
-          <Outlet />
+          <PageTransition />
         </SidebarInset>
       </SidebarProvider>
     </MotionConfig>

@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>资产库设计演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      button:disabled { cursor: not-allowed; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover:not(:disabled) { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.45; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 150px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 520px; position: relative; }
+      #cvProto { min-height: 480px; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 原型：产品界面 ---- */
+      .seg { display: inline-flex; background: hsl(var(--muted)); border-radius: 10px; padding: 3px; }
+      .seg-b { height: 28px; padding: 0 14px; border-radius: 8px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+      .seg-b[aria-pressed="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / 0.15); }
+      .search { display: flex; align-items: center; gap: 6px; height: 32px; width: 200px; padding: 0 10px; background: hsl(var(--muted)); border-radius: 10px; color: hsl(var(--muted-foreground)); }
+      .search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: hsl(var(--foreground)); font: inherit; font-size: 13px; }
+      .search:focus-within { box-shadow: 0 0 0 1px hsl(var(--foreground) / 0.4); }
+      .tts { display: flex; gap: 2px; }
+      .tt { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; gap: 4px; }
+      .tt:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tt[aria-pressed="true"] { color: hsl(var(--foreground)); font-weight: 600; }
+      .tt.on { color: hsl(var(--foreground)); }
+      .vsep { width: 1px; height: 16px; background: hsl(var(--border)); margin: 0 6px; }
+      .ddw { position: relative; display: inline-block; }
+      .menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 150px; padding: 4px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.25); }
+      .menu.right { left: auto; right: 0; }
+      .mi { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; padding: 7px 10px; border-radius: 7px; font-size: 13px; white-space: nowrap; }
+      .mi:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .mi:disabled { opacity: 0.5; }
+      .mi small { color: hsl(var(--muted-foreground)); font-size: 11.5px; margin-left: auto; padding-left: 12px; }
+      .mi.danger { color: rgb(var(--bad)); }
+      .mi i:last-child:not(:first-child) { margin-left: auto; }
+      .msep { height: 1px; background: hsl(var(--border)); margin: 4px 2px; }
+
+      .grid-a { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+      .ca { position: relative; display: block; text-align: left; border-radius: 12px; outline: none; }
+      .ca:focus-visible { box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.5); }
+      .thumb { position: relative; aspect-ratio: 1; border-radius: 12px; display: grid; place-items: center; overflow: hidden; }
+      .kicon { width: 26px; height: 26px; color: rgb(255 255 255 / 0.85); }
+      .dur { position: absolute; top: 6px; right: 6px; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / 0.45); color: #fff; }
+      .hov { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 9px 7px; font-size: 11.5px; color: #fff; background: linear-gradient(to top, rgb(0 0 0 / 0.65), transparent); opacity: 0; transition: opacity 0.12s; border-radius: 0 0 12px 12px; pointer-events: none; }
+      .ca:hover .hov, .ca:focus-visible .hov { opacity: 1; }
+      .hov .l2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
+      .hov small { opacity: 0.75; font-size: 10.5px; }
+      .bdg { position: absolute; left: 6px; top: 6px; font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: rgb(var(--ok) / 0.9); color: #04281c; font-weight: 600; }
+      .dots { position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: rgb(0 0 0 / 0.5); color: #fff; opacity: 0; }
+      .ca:hover .dots, .ca:focus-within .dots, .dots.open { opacity: 1; }
+      .cap { display: block; margin-top: 6px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .capd { display: block; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+      .fold .fthumb { aspect-ratio: 1; border-radius: 12px; background: hsl(var(--muted)); display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+      .fold .fthumb i { width: 48px; height: 48px; stroke-width: 1.2; }
+      .fold:hover .fthumb { background: hsl(var(--accent)); }
+      .fold .dots { position: static; opacity: 1; background: none; color: hsl(var(--muted-foreground)); flex: none; }
+      .fmeta { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; margin-top: 6px; position: relative; }
+      .fmeta b { font-weight: 500; font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .crumb { font-size: 15px; display: flex; align-items: center; gap: 6px; }
+      .crumb button { color: hsl(var(--muted-foreground)); }
+      .crumb button:hover { color: hsl(var(--foreground)); }
+      .empty { display: grid; place-items: center; gap: 8px; text-align: center; padding: 56px 16px; color: hsl(var(--muted-foreground)); font-size: 13.5px; }
+      .empty b { color: hsl(var(--foreground)); font-weight: 500; font-size: 14px; }
+      .empty i { width: 30px; height: 30px; opacity: 0.45; }
+      .skel { aspect-ratio: 1; border-radius: 12px; background: hsl(var(--muted)); animation: pulse 1s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.45; } }
+      .upl { position: relative; }
+      .upl .thumb { opacity: 0.7; }
+      .upl .bar { position: absolute; left: 10px; right: 10px; bottom: 12px; height: 4px; border-radius: 4px; background: rgb(255 255 255 / 0.3); overflow: hidden; }
+      .upl .bar i { display: block; height: 100%; background: #fff; }
+      .upl .errb { position: absolute; inset: 0; display: grid; place-content: center; gap: 4px; text-align: center; padding: 8px; font-size: 11px; background: rgb(0 0 0 / 0.6); color: #fff; border-radius: 12px; }
+      .upl .errb button { text-decoration: underline; }
+      .mini { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; border: 1px solid hsl(var(--border)); }
+      .mini:hover { background: hsl(var(--accent)); }
+
+      .ov { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; background: rgb(0 0 0 / 0.5); padding: 12px; }
+      .dlg { width: min(380px, 100%); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 18px; box-shadow: 0 20px 50px rgb(0 0 0 / 0.4); }
+      .dlg h4 { font-size: 15px; font-weight: 600; }
+      .dlg p { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 6px; }
+      .dlg .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+      .field { width: 100%; height: 36px; margin-top: 12px; padding: 0 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: inherit; font: inherit; font-size: 14px; outline: none; }
+      .field:focus { border-color: hsl(var(--foreground) / 0.5); }
+      .ferr { min-height: 18px; margin-top: 4px; font-size: 12px; color: rgb(var(--bad)); }
+      .big { aspect-ratio: 16 / 10; border-radius: 10px; display: grid; place-items: center; margin-top: 12px; }
+      .big .kicon { width: 44px; height: 44px; }
+
+      /* 画布 */
+      .cv { position: relative; height: 480px; overflow: hidden; background: hsl(var(--background)); background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px); background-size: 20px 20px; }
+      .cvn { position: absolute; width: 108px; border-radius: 10px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); padding: 5px; font-size: 11px; transition: left 0.2s, top 0.2s; }
+      .cvn .thumb { aspect-ratio: 4 / 3; border-radius: 7px; }
+      .cvn .kicon { width: 18px; height: 18px; }
+      .cvn span.l { display: block; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cvn.new { border-color: rgb(var(--violet)); }
+      .tb { position: absolute; left: 12px; bottom: 12px; z-index: 10; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); }
+      .tbb { height: 34px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; text-align: left; white-space: nowrap; }
+      .tbb:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .tbb:disabled { opacity: 0.4; }
+      .tbb.on { background: hsl(var(--accent)); }
+      .bar2 { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); font-size: 13px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); }
+      .lockmsg { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10; padding: 6px 12px; border-radius: 8px; font-size: 12.5px; background: rgb(var(--warn) / 0.15); color: rgb(var(--warn)); }
+      .tbmenu { position: absolute; left: 62px; bottom: 12px; top: auto; }
+      .mdl { width: min(780px, 100%); height: min(440px, 100%); display: flex; flex-direction: column; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 18px; padding: 16px 18px 14px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.5); }
+      .pill { display: inline-flex; gap: 4px; }
+      .pill button { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 14px; color: hsl(var(--muted-foreground)); }
+      .pill button[aria-pressed="true"] { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .ul { display: flex; gap: 4px; }
+      .ul button { height: 32px; padding: 0 12px; font-size: 14px; color: hsl(var(--muted-foreground)); border-bottom: 2px solid transparent; }
+      .ul button[aria-pressed="true"] { color: hsl(var(--foreground)); border-bottom-color: hsl(var(--foreground)); }
+      .mdbody { flex: 1; min-height: 0; overflow-y: auto; margin-top: 10px; padding: 2px; }
+      .mdbody .grid-a { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+      .pick[aria-pressed="true"] .thumb { box-shadow: 0 0 0 2px hsl(var(--foreground)); }
+      .pick:disabled { opacity: 0.4; }
+      .chk { position: absolute; left: 6px; top: 6px; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.25); display: grid; place-items: center; color: #000; }
+      .pick[aria-pressed="true"] .chk { background: #fff; }
+      .chk i { width: 13px; height: 13px; }
+      .mdft { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .ibtn { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+      .ibtn:hover, .ibtn.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .cvcard { position: relative; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="folder-open"></i></span>资产库设计演示
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="page" aria-selected="false"><i data-lucide="layout-grid"></i>资产页原型</button>
+          <button class="tab" role="tab" data-tab="canvas" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>画布弹框原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">把「生成历史」放进资产页，再加一个个人资产库，画布里用弹框引入</h1>
+        <p class="lead">
+          现在资产页的生成历史是样例数据，画布里的「画布素材」只是当前画布的侧边栏。这次改成：<b>资产页一处看到所有生成结果（首页对话 + 全部画布）</b>，旁边多一个可以建文件夹、上传素材的<b>个人资产库</b>，画布里点开一个弹框就能从两处挑素材放上画布。<b>历史是自动的流水，资产库是你自己整理的；删除只是把素材移出资产库，不动文件，画布里已经用上的不受影响。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页对应 Markdown 设计文档《资产库.md》；设计<b>尚未实现</b>，原型的数据全在内存里，刷新复原，不调用任何真实服务。原型里的模型名、提示词、耗时、文件大小上限都是<span class="tag t-mute">示意</span>。界面的现状描述来自读代码，没有在浏览器里实测。<br />
+            <span class="muted">状态标签：</span>
+            <span class="tag t-ok">已核对</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">示意</span>
+            <span class="tag t-warn">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一件素材的一生</h2>
+          <p class="sub">这张图回答：生成的东西怎么到资产页，怎么进个人资产库，又怎么到画布上。</p>
+          <div class="flow note">
+            <div class="node"><b>生成</b>在首页对话或某张画布里生成成功</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>素材入库（现有）</b><code>assets</code> 行，<code>source=generated</code>，带 <code>task_id</code></div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>生成历史（新接口）</b>按用户列出，自动出现，只读</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>加入资产库（用户动作）</b>多一条归属记录，不复制文件</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>画布弹框引入</b>每个素材建一个节点，可一次撤销</div>
+          </div>
+          <div class="note-txt">设计：历史和库分开——历史是流水、不要用户管；库是整理，只收用户挑的。放弃了「生成物自动进库」（Runway 式），因为库会被生成物淹没，也和你定的「上传为主」冲突。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>还没有资产库内容时（兜底，永远可用）：</b>弹框里仍可切到「生成历史」直接引入；资产库为空时显示「暂无图片素材」并提示可以上传，不会是一块空白。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三个地方分别做什么</h2>
+          <p class="sub">它们读的是同一批素材，区别在于谁来整理、能不能改。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="history"></i><b>生成历史</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">只读 · 自动</span><span class="tag t-mute">不提供删除</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>首页对话 + 所有画布</b>的生成结果合并，按时间倒序；可按来源、时间、排序筛选，按提示词搜索。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="folder-open"></i><b>个人资产库</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">用户整理</span><span class="tag t-mute">只有一层文件夹</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>上传的素材 + 你加入的生成结果</b>。可新建文件夹、上传、移动、移出；删文件夹会把里面的素材一并移出。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="square-stack"></i><b>画布里的资产库弹框</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">两个来源</span><span class="tag t-mute">一次最多 20 个</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>替换原来的侧边栏。</b>多选后确认，每个素材建一个节点；入口是底栏按钮和「添加节点」菜单里的「从资产库添加」。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和常见做法比</h2>
+          <p class="sub">只比和本次取舍有关的几点；外部产品的信息来自 2026-10-15 的检索摘要，未逐条打开原文。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>Runway</th><th>Krea</th><th>本方案 <span class="tag t-warn">提案</span></th></tr></thead>
+              <tbody>
+                <tr><th>生成物去向</th><td>自动进「All Generations」文件夹</td><td>平铺在 Assets 总网格</td><td class="y">自动进「生成历史」，用户挑选才进资产库</td></tr>
+                <tr><th>文件夹</th><td>可新建，拖拽归档</td><td><span class="m">文件夹只在 Agent 的上下文库里</span></td><td>只有一层；用「移动到…」整理，拖拽已搁置</td></tr>
+                <tr><th>上传</th><td>上传进 Private 文件夹</td><td>有素材上传接口（API）</td><td>资产页和画布弹框里都能直接上传</td></tr>
+                <tr><th>引入画布</th><td>未查到</td><td>未查到</td><td class="y">弹框多选 → 每个素材一个节点</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">检索摘要</span></td><td><span class="tag t-info">检索摘要</span></td><td><span class="tag t-warn">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">即梦、Firefly、Figma / Miro 的对照见 Markdown §4.1。即梦的文件夹与上传流程<span class="tag t-warn">未验证</span>，只依据你给的截图。</p>
+        </div>
+
+        <div class="sec">
+          <h2>想复用上周另一张画布里生成的图时，会发生什么</h2>
+          <p class="sub">四步，没有离开当前画布；注意被引入的是素材本身，不是复制。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>点底栏「资产库」</b><small>弹框打开；画布只读时按钮禁用并写明原因</small></li>
+                <li><b>切到「生成历史」→ 图片 → 时间选「近 7 天」→ 筛选选那张画布</b><small>也可以直接搜提示词</small></li>
+                <li><b>勾选 1 到 20 个，点「确认」</b><small>0 个时「确认」禁用</small></li>
+                <li><b>节点出现在落点附近</b><small>横向最多 4 列，一次撤销全部移除；画布照常自动保存</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：删除不等于清理存储。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>从资产库删除素材或文件夹，只是去掉归属，<b>文件仍在存储里</b>，画布节点继续正常显示。</li>
+                    <li>所以没有被任何画布引用、又被移出库的上传素材会一直占着空间；存储回收放在后续阶段。</li>
+                    <li>生成历史本期不提供删除。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">这条「逻辑删除」是我对你「画布中的素材不受影响」的解读，已列入 Markdown §11.3 默认值；如果你要物理删除，需要先加引用检查，工程量明显变大。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 资产页原型 ============ -->
+      <section id="tab-page" hidden>
+        <h1 class="h1">资产页：生成历史 · 画布 · 个人资产库</h1>
+        <p class="lead">
+          可点击原型，数据在内存里，刷新复原。已预置 13 条生成历史和两个文件夹。<b>可以走一遍：</b>在生成历史里点卡片右下角的「⋯」→「加入资产库…」，再切到「个人资产库」看它。<b>想看失败和边界：</b>搜索框输入 <code>err</code> 看加载失败（第一次失败，点重试成功，模拟）；新建文件夹时输入「林川」看重名；上传时选「分镜脚本.pdf」（类型不支持）、「超大素材.mov」（超上限）、「网络不稳定.png」（第一次中断，重试成功）；进入文件夹后「新建文件夹」会禁用。
+        </p>
+        <div class="frame note" style="margin-top: 18px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">app.example.com / 资产</span>
+          </div>
+          <div class="proto" id="pgProto">
+            <div id="pgRoot"></div>
+            <div id="pgOv"></div>
+          </div>
+        </div>
+        <div class="note-txt">
+          设计：三个范围的顺序按你截图红框的位置——生成历史、画布、个人资产库。放弃了「把资产库放最前」，因为生成历史仍是最常看的。<br />
+          设计：「筛选 / 时间 / 排序」三个下拉从禁用变成启用，筛选 = 来源（全部 / 首页对话 / 某张画布）。「文档」标签已删除。<br />
+          设计：库里的文件夹永远显示在根目录，不随图片 / 视频 / 音频标签变化；搜索时文件夹隐藏、结果跨文件夹平铺。<br />
+          设计：删除文件夹的确认框写明「N 个素材一并移出」，且说明画布里已用的不受影响。
+        </div>
+      </section>
+
+      <!-- ============ 画布弹框原型 ============ -->
+      <section id="tab-canvas" hidden>
+        <h1 class="h1">画布里的资产库弹框</h1>
+        <p class="lead">
+          左下角是画布底栏的简化版（真实的是图标按钮）。<b>可以走一遍：</b>点「资产库」（落点在视口中心附近），或点「添加节点」→「从资产库添加」（落点在菜单附近），勾选几个素材，点「确认」，看节点排成一行；再点「撤销」一次全部移除。<b>想看边界：</b>演示里为了好触发，把一次最多引入数量调成了 <b>6</b>（真实设计是 20）；勾选「模拟只读」后两个入口都会禁用；在个人资产库里点进某个文件夹、再切到「音频」会看到空状态（根目录下文件夹始终显示，所以不会空）；弹框内「上传」会把文件放进当前文件夹并自动勾选。
+        </p>
+        <label class="row" style="margin-top: 14px; font-size: 13px">
+          <input type="checkbox" id="lockSw" />
+          模拟：这张画布已在另一个标签页打开（只读）
+        </label>
+        <div class="frame note" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px">app.example.com / 画布 / 雨夜霓虹分镜</span>
+          </div>
+          <div class="proto" id="cvProto">
+            <div class="cv" id="cvStage"></div>
+            <div id="cvUi"></div>
+            <div id="mdOv"></div>
+          </div>
+        </div>
+        <div class="note-txt">
+          设计：替换原来的左侧「画布素材」侧栏（点一张定位到节点）。放弃了「再加一个本画布标签」：画布里已有的节点本来就看得见。<br />
+          设计：弹框内「上传」只出现在个人资产库来源；生成历史是只读流水，不能上传。<br />
+          设计：不按拉线上下文限制可选类型（已搁置）；拉线落空进入弹框时可选任何类型，只建节点，不自动连线（推断，实现时再确认）。
+        </div>
+      </section>
+
+      <!-- ============ 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 设计文档 §6.3、§8。新增迁移沿用 <code>backend/migrations/</code> 的版本化 SQL 机制（现有 0001–0003），后端分层沿用 <code>router → handler → service → repository</code>。</p>
+
+        <div class="sec">
+          <h2>谁归属谁</h2>
+          <p class="sub">归属关系决定了「删除」的语义。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>素材 → 资产库</th><td>同一用户最多一条归属，要么在根目录，要么在某一个文件夹</td><td>只有一层文件夹；换位置用「移动到…」，不需要「多处出现」</td></tr>
+                <tr><th>文件夹 → 素材</th><td>一对多，文件夹删除时归属行一起删</td><td>你的决定：里面的素材一并移出，不退回根目录</td></tr>
+                <tr><th>资产库归属 → <code>assets</code> 行</th><td>只引用，不复制；移出库不动 <code>assets</code> 与存储文件</td><td>画布节点存的是 <code>assetId</code>，必须一直有效</td></tr>
+                <tr><th>生成历史 → 任务</th><td>一个任务可对应多个素材（每个素材一张卡）</td><td>提示词与模型取自任务；<code>canvas_project_id</code> 为空视为首页对话（推断）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">新增两张表和一个索引；<code>assets</code> 本身不改字段。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>asset_folders</code> 表</th></tr></thead>
+                <tbody>
+                  <tr><th>id</th><td>bigint 主键；对外用十六进制串（<code>idcodec.ID</code>）</td></tr>
+                  <tr><th>user_id</th><td>bigint not null</td></tr>
+                  <tr><th>name</th><td>varchar(30) not null，1–30 字；唯一索引 <code>(user_id, lower(name))</code></td></tr>
+                  <tr><th>created_at / updated_at</th><td>timestamptz</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>asset_library_items</code> 表</th></tr></thead>
+                <tbody>
+                  <tr><th>id</th><td>bigint 主键</td></tr>
+                  <tr><th>user_id</th><td>bigint not null</td></tr>
+                  <tr><th>asset_id</th><td>bigint not null；唯一索引 <code>(user_id, asset_id)</code></td></tr>
+                  <tr><th>folder_id</th><td>bigint null；<code>null</code> = 根目录；索引 <code>(user_id, folder_id, created_at desc, id desc)</code></td></tr>
+                  <tr><th>created_at</th><td>加入时间，库内默认倒序</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="muted" style="font-size: 13px; margin-top: 10px"><code>assets</code> 新增索引 <code>(user_id, source, kind, created_at desc, id desc)</code>，给生成历史分页用。是否用外键级联：<span class="tag t-warn">待实现时核对</span>（默认在事务里先删归属行再删文件夹）。</p>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub">都在已登录分组下，按当前用户隔离；别人的 id 一律 404。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明与业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /assets/generated</code></th><td>生成历史。参数 <code>kind</code>（必填）、<code>source</code>（all / conversation / canvas）、<code>canvas_id</code>、<code>created_from</code>（RFC3339，客户端按本地时区算「今天 / 近 7 天」）、<code>order</code>、<code>q</code>、<code>cursor</code>、<code>limit</code>（默认 40，最大 100）。排除试跑任务。错误：参数非法 400</td></tr>
+                <tr><th><code>GET /asset-folders</code></th><td>全部文件夹（≤100，不分页），含 <code>item_count</code></td></tr>
+                <tr><th><code>POST /asset-folders</code></th><td><code>{name}</code>，201。错误：名称不合法 400、重名 409、数量达上限（100）409</td></tr>
+                <tr><th><code>PATCH /asset-folders/:id</code></th><td><code>{name}</code>。错误同上，不存在 404</td></tr>
+                <tr><th><code>DELETE /asset-folders/:id</code></th><td>删文件夹及其归属行，返回 <code>{removed}</code>；不动 <code>assets</code>。不存在 404</td></tr>
+                <tr><th><code>GET /asset-library/items</code></th><td><code>folder_id</code>（root 默认 / id / all）、<code>kind</code>、<code>q</code>（文件名）、<code>cursor</code>、<code>limit</code>。有搜索词时前端传 <code>all</code>。文件夹不存在 404</td></tr>
+                <tr><th><code>POST /asset-library/items</code></th><td><code>{asset_id, folder_id?}</code>，加入资产库；已存在则 200 返回现有归属（幂等）。素材不属于该用户或不存在 404；文件夹不存在 404</td></tr>
+                <tr><th><code>PATCH /asset-library/items/:id</code></th><td><code>{folder_id: id | null}</code>，移动。不存在 404</td></tr>
+                <tr><th><code>DELETE /asset-library/items/:id</code></th><td>移出资产库，不动 <code>assets</code> 与文件。不存在 404</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>生成历史单项（示意）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// GET /assets/generated?kind=image&amp;source=all  （提案）
+{
+  "items": [{
+    "asset": { "id": 12, "kind": "image", "url": "/files/g/…", "mime_type": "image/png",
+               "width": 1024, "height": 1024, "duration_ms": 0, "file_name": "…" },
+    "prompt": "雪地里的旧楼，黄昏",
+    "model_label": "Seedream 4",              // config_snapshot.model.label，退回 model_id
+    "canvas": { "id": "1f", "title": "扩图" },  // null = 首页对话；画布已删：{ id, title: "", deleted: true }
+    "created_at": "2026-10-14T10:20:00Z",
+    "library_item_id": null                    // 非空 = 已在资产库
+  }],
+  "next_cursor": "opaque"                      // (created_at, id) 的不透明编码
+}</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// 后端：生成历史查询（提案）
+SELECT a.*, t.input_json, t.config_snapshot, t.model_id, t.canvas_project_id
+FROM assets a JOIN generation_tasks t ON t.id = a.task_id
+WHERE a.user_id = :uid AND a.source = 'generated' AND a.kind = :kind
+  AND t.is_test = false
+  AND (:source = 'all' OR (:source = 'conversation' AND t.canvas_project_id IS NULL)
+                       OR (:source = 'canvas' AND t.canvas_project_id IS NOT NULL
+                           AND (:canvas_id IS NULL OR t.canvas_project_id = :canvas_id)))
+  AND (:created_from IS NULL OR a.created_at &gt;= :created_from)
+  AND (:q = '' OR t.input_json-&gt;&gt;'prompt' ILIKE '%' || :q || '%')
+  AND (a.created_at, a.id) &lt; (:cursor_at, :cursor_id)      -- order=desc；asc 反向
+ORDER BY a.created_at DESC, a.id DESC LIMIT :limit + 1;
+-- 之后一次 IN 查询补 library_item_id；画布标题批量查，已删除的标 deleted
+
+// 后端：删除文件夹（提案）
+BEGIN;
+  n = DELETE FROM asset_library_items WHERE user_id = :uid AND folder_id = :id;
+  DELETE FROM asset_folders WHERE id = :id AND user_id = :uid;   -- 影响行数 0 → 404，回滚
+COMMIT;  -- assets 行与存储文件一概不动
+
+// 前端：引入画布（提案，放在 use-canvas-menu.ts 里 addUploadedNodes 旁）
+addAssetNodes(assets, origin):
+  for (i, a) in assets:
+    node = makeNode(kind = a.kind, src = a.url, assetId = a.id, status = 'done', 尺寸/时长取自素材)
+    node.position = origin + (i % 4 * (W + 40), floor(i / 4) * (H + 40))
+  history.push(一条记录)         // 一次撤销全部移除
+  // 保存走现有 revision 乐观锁与冲突弹窗，不新增接口</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>生成历史合并首页对话和所有画布的生成结果</b>：满足「画布里的生成历史也要在资产页」；原先「只读对话记录」的规划作废。</li>
+              <li><b>资产库以上传为主，生成结果可「加入资产库」</b>：不复制文件，同一条素材多一个归属。</li>
+              <li><b>文件夹只有一层。</b></li>
+              <li><b>画布弹框有两个来源（个人资产库、生成历史），删除旧侧边栏。</b></li>
+              <li><b>确认后每个素材建一个节点。</b></li>
+              <li><b>去掉「文档」标签。</b>资产页和弹框都不放。</li>
+              <li><b>删除规则：</b>画布里已用的素材不受影响；删文件夹时里面的素材一并移出；生成历史不提供删除。</li>
+              <li><b>只有资产页和弹框里上传的才算进资产库</b>；画布节点上传和首页参考图上传不自动进库。</li>
+              <li><b>「筛选 / 时间 / 排序」启用</b>，给出明确选项。</li>
+              <li><b>弹框附加：</b>「添加节点」菜单加「从资产库添加」；弹框内可直接上传。「按拉线上下文限制类型」和「拖拽归档」未选，已搁置。</li>
+              <li><b>主文档已回写：</b>弹框内上传后自动勾选；「删除」按逻辑删除理解、需要回写《首页生成与对话》§6.5 与 §10.2，见 Markdown §11.3。</li>
+            </ol>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="circle-help"></i>
+            <div><b>仍待确认（Markdown §11.4）：</b>视频封面是否也有 <code>assets</code> 行（有的话生成历史要排除）；<code>AssetView.url</code> 是否带过期签名；预览灯箱能否在画布外复用；迁移是否用外键。<span class="tag t-warn">未验证</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 内存数据（示意）：刷新复原 ================= */
+      const KL = { image: "图片", video: "视频", audio: "音频" };
+      const EXT = { image: "png", video: "mp4", audio: "mp3" };
+      const DEMO_LIMIT = 6; /* 真实设计是 20；演示里调小，方便触发上限 */
+      const CANVASES = ["雨夜霓虹分镜", "人物设定", "扩图"];
+      const dayStr = (d) => new Date(Date.UTC(2026, 9, 15 - d)).toISOString().slice(0, 10);
+      const grad = (h) => `linear-gradient(135deg, hsl(${h} 62% 58%), hsl(${(h + 40) % 360} 55% 32%))`;
+      const KICON = { video: "play", audio: "music", doc: "file-text" };
+
+      /* d = 距今天数；from = 来源画布，null 表示首页对话 */
+      const HIST = [
+        { id: "h1", kind: "image", prompt: "雪地里的旧楼，黄昏逆光，电影感", model: "Seedream 4", from: null, d: 0, hue: 200 },
+        { id: "h2", kind: "image", prompt: "雨夜霓虹街道，行人撑伞", model: "Seedream 4", from: "雨夜霓虹分镜", d: 0, hue: 280 },
+        { id: "h3", kind: "image", prompt: "林川的正面半身像，冷色调", model: "Nano Banana", from: "人物设定", d: 2, hue: 20 },
+        { id: "h4", kind: "image", prompt: "老式列车驶入雪原", model: "Seedream 4", from: null, d: 3, hue: 170 },
+        { id: "h5", kind: "image", prompt: "扩图：把海报向右延展", model: "Nano Banana", from: "扩图", d: 6, hue: 320 },
+        { id: "h6", kind: "image", prompt: "清晨港口，薄雾", model: "Seedream 4", from: "雨夜霓虹分镜", d: 9, hue: 230 },
+        { id: "h7", kind: "image", prompt: "角色表情九宫格", model: "Nano Banana", from: "人物设定", d: 25, hue: 50 },
+        { id: "h8", kind: "image", prompt: "废弃游乐场，黄昏", model: "Seedream 4", from: null, d: 40, hue: 120 },
+        { id: "h9", kind: "video", prompt: "镜头缓缓推进雪地旧楼", model: "Seedance 2.0", from: null, d: 1, hue: 210, dur: "0:05" },
+        { id: "h10", kind: "video", prompt: "雨夜街道，行人走过", model: "Seedance 2.0", from: "雨夜霓虹分镜", d: 4, hue: 290, dur: "0:08" },
+        { id: "h11", kind: "video", prompt: "列车驶入雪原，侧面跟拍", model: "Seedance 2.0", from: null, d: 12, hue: 180, dur: "0:10" },
+        { id: "h12", kind: "audio", prompt: "轻柔钢琴，雪夜氛围", model: "音乐模型", from: "人物设定", d: 5, hue: 260, dur: "0:30" },
+        { id: "h13", kind: "audio", prompt: "列车汽笛与风声", model: "音效模型", from: null, d: 15, hue: 140, dur: "0:12" },
+      ];
+      const S = {
+        seq: 100,
+        folders: [
+          { id: "f1", name: "林川", created: dayStr(58) },
+          { id: "f2", name: "待分类资产", created: dayStr(58) },
+        ],
+        lib: [
+          { id: "l1", kind: "image", name: "林川-正面.png", folder: "f1", hue: 15, hist: null },
+          { id: "l2", kind: "image", name: "林川-侧面.png", folder: "f1", hue: 35, hist: null },
+          { id: "l3", kind: "video", name: "参考-雨夜.mp4", folder: "f1", hue: 270, dur: "0:06", hist: null },
+          { id: "l4", kind: "image", name: "待整理-001.jpg", folder: "f2", hue: 90, hist: null },
+          { id: "l5", kind: "image", name: "品牌色板.png", folder: null, hue: 330, hist: null },
+          { id: "l6", kind: "video", name: "开场参考.mp4", folder: null, hue: 200, dur: "0:12", hist: null },
+        ],
+        nodes: [
+          { id: "n1", kind: "text", label: "脚本：雪地旧楼", x: 28, y: 30 },
+          { id: "n2", kind: "image", label: "图片生成", hue: 200, x: 170, y: 36 },
+        ],
+        undo: [],
+        locked: false,
+      };
+      const nid = (p) => p + ++S.seq;
+      const inLib = (h) => S.lib.find((l) => l.hist === h.id);
+      const folderName = (id) => (id ? (S.folders.find((f) => f.id === id) || {}).name || "?" : "根目录");
+      const folderCount = (id) => S.lib.filter((l) => l.folder === id).length;
+
+      const FILES = [
+        { name: "角色-林川-02.png", kind: "image", hue: 12, mode: "ok", note: "正常" },
+        { name: "雨夜街景.mp4", kind: "video", hue: 265, dur: "0:09", mode: "ok", note: "正常" },
+        { name: "配乐-轻柔.mp3", kind: "audio", hue: 150, dur: "0:42", mode: "ok", note: "正常" },
+        { name: "网络不稳定.png", kind: "image", hue: 60, mode: "flaky", note: "第一次中断，重试成功" },
+        { name: "分镜脚本.pdf", kind: "doc", hue: 0, mode: "type", note: "类型不支持" },
+        { name: "超大素材.mov", kind: "video", hue: 300, mode: "size", note: "超过上限" },
+      ];
+
+      /* ---- 通用渲染片段 ---- */
+      function thumb(it) {
+        const ic = KICON[it.kind];
+        return `<span class="thumb" style="background:${it.kind === "doc" ? "hsl(var(--muted))" : grad(it.hue)}">${ic ? `<i data-lucide="${ic}" class="kicon"></i>` : ""}${it.dur ? `<span class="dur">${esc(it.dur)}</span>` : ""}</span>`;
+      }
+      const skel = () => `<div class="grid-a">${Array.from({ length: 8 }, () => `<div class="skel"></div>`).join("")}</div>`;
+      const errBox = (ctx) =>
+        `<div class="empty"><i data-lucide="circle-alert"></i><b>加载失败</b><span>模拟：搜索词为 err 时第一次请求失败</span><button class="mini" data-a="${ctx}-retry">重试</button></div>`;
+      const emptyBox = (icon, title, hint, btn) =>
+        `<div class="empty"><i data-lucide="${icon}"></i><b>${esc(title)}</b><span>${esc(hint || "")}</span>${btn || ""}</div>`;
+      const typeTabs = (cur, act) =>
+        ["image", "video", "audio"].map((k) => `<button class="tt" data-a="${act}" data-v="${k}" aria-pressed="${cur === k}">${KL[k]}</button>`).join("");
+
+      function histList(f) {
+        let r = HIST.filter((h) => h.kind === f.type);
+        if (f.src === "conv") r = r.filter((h) => !h.from);
+        if (f.src === "canvas") r = r.filter((h) => h.from && (!f.canvas || h.from === f.canvas));
+        if (f.range !== "all") r = r.filter((h) => h.d <= { today: 0, w7: 6, d30: 29 }[f.range]);
+        const q = f.q.trim();
+        if (q) r = r.filter((h) => h.prompt.includes(q));
+        return [...r].sort((a, b) => (f.order === "desc" ? a.d - b.d : b.d - a.d));
+      }
+      function libView(f) {
+        const q = f.q.trim();
+        if (q) return { folders: [], items: S.lib.filter((l) => l.kind === f.type && l.name.includes(q)) };
+        return {
+          folders: f.folder ? [] : S.folders,
+          items: S.lib.filter((l) => l.kind === f.type && (l.folder || null) === (f.folder || null)),
+        };
+      }
+      const SRC_ITEMS = [["all", "全部来源"], ["conv", "首页对话"], ["canvas", "所有画布"], ...CANVASES.map((c) => ["c:" + c, "画布：" + c])];
+      const RANGE_ITEMS = [["all", "全部时间"], ["today", "今天"], ["w7", "近 7 天"], ["d30", "近 30 天"]];
+      const ORDER_ITEMS = [["desc", "最新优先"], ["asc", "最早优先"]];
+      const srcValue = (f) => (f.src === "canvas" && f.canvas ? "c:" + f.canvas : f.src);
+      function setSrc(f, v) {
+        if (v.startsWith("c:")) { f.src = "canvas"; f.canvas = v.slice(2); }
+        else { f.src = v; f.canvas = null; }
+      }
+      function ddHtml(menuKey, openKey, label, items, cur, act, right) {
+        const open = openKey === menuKey;
+        const active = cur !== items[0][0];
+        const curLabel = (items.find((i) => i[0] === cur) || items[0])[1];
+        return `<span class="ddw"><button class="tt ${active ? "on" : ""}" data-a="${act}-menu" data-v="${menuKey}">${label}${active ? "：" + esc(curLabel) : ""}<i data-lucide="chevron-down"></i></button>${
+          open
+            ? `<div class="menu ${right ? "right" : ""}">${items
+                .map((i) => `<button class="mi" data-a="${act}" data-v="${i[0]}">${esc(i[1])}${cur === i[0] ? '<i data-lucide="check"></i>' : ""}</button>`)
+                .join("")}</div>`
+            : ""
+        }</span>`;
+      }
+
+      /* ---- 上传引擎（模拟，非真实调用） ---- */
+      const UP = { pg: [], md: [] };
+      function startUpload(ctx, file, folder) {
+        const u = { id: nid("u"), file, folder, pct: 0, err: null, tries: 0 };
+        UP[ctx].push(u);
+        runUpload(ctx, u);
+      }
+      function runUpload(ctx, u) {
+        u.err = null; u.pct = 0; u.tries++;
+        const t = setInterval(() => {
+          u.pct = Math.min(100, u.pct + 20);
+          if (u.pct >= 100) {
+            clearInterval(t);
+            const f = u.file;
+            let err = null;
+            if (f.mode === "type") err = "仅支持图片、视频、音频（后端按文件内容判断）";
+            else if (f.mode === "size") err = "超过单个文件上限（示意：200 MB）";
+            else if (f.mode === "flaky" && u.tries === 1) err = "网络中断，请重试";
+            if (err) u.err = err;
+            else {
+              UP[ctx] = UP[ctx].filter((x) => x !== u);
+              const item = { id: nid("l"), kind: f.kind, name: f.name, folder: u.folder, hue: f.hue, dur: f.dur, hist: null };
+              S.lib.unshift(item);
+              toast(`已上传「${f.name}」到${folderName(u.folder)}`);
+              if (ctx === "md") mdAfterUpload(item);
+            }
+          }
+          refresh(ctx);
+        }, 160);
+      }
+      function uplCards(ctx, folder) {
+        return UP[ctx]
+          .filter((u) => (u.folder || null) === (folder || null))
+          .map(
+            (u) =>
+              `<div class="ca upl">${thumb(u.file)}${
+                u.err
+                  ? `<span class="errb"><span>${esc(u.err)}</span><span><button data-a="up-retry" data-ctx="${ctx}" data-id="${u.id}">重试</button> · <button data-a="up-cancel" data-ctx="${ctx}" data-id="${u.id}">取消</button></span></span>`
+                  : `<span class="bar"><i style="width:${u.pct}%"></i></span>`
+              }<span class="cap">${esc(u.file.name)}</span></div>`,
+          )
+          .join("");
+      }
+      const refresh = (ctx) => (ctx === "pg" ? renderPgBody() : renderMd());
+      function upAct(a, d) {
+        const u = UP[d.ctx].find((x) => x.id === d.id);
+        if (!u) return;
+        if (a === "up-retry") { runUpload(d.ctx, u); refresh(d.ctx); }
+        else { UP[d.ctx] = UP[d.ctx].filter((x) => x !== u); refresh(d.ctx); }
+      }
+      const fileMenu = (act) =>
+        `<div class="menu right" style="min-width:250px">${FILES.map((f, i) => `<button class="mi" data-a="${act}" data-i="${i}">${esc(f.name)}<small>${esc(f.note)}</small></button>`).join("")}<div class="msep"></div><div style="padding:4px 10px 6px;font-size:11.5px" class="muted">模拟系统文件选择器；真实环境用 react-dropzone 选择多个文件</div></div>`;
+
+      /* ================= 资产页 ================= */
+      const PG = { tab: "history", type: "image", src: "all", canvas: null, range: "all", order: "desc", q: "", folder: null, menu: null, loading: false, errServed: false, dlg: null };
+
+      function pgHeader() {
+        const seg = [["history", "生成历史"], ["canvas", "画布"], ["library", "个人资产库"]]
+          .map(([v, l]) => `<button class="seg-b" data-a="pg-tab" data-v="${v}" aria-pressed="${PG.tab === v}">${l}</button>`)
+          .join("");
+        const ph = PG.tab === "history" ? "搜索提示词" : PG.tab === "library" ? "搜索文件名" : "搜索画布";
+        return `<div class="row" style="padding:14px 16px 0"><div class="seg">${seg}</div><span class="spacer"></span><label class="search"><i data-lucide="search"></i><input id="pgQ" value="${esc(PG.q)}" placeholder="${ph}" aria-label="搜索资产" ${PG.tab === "canvas" ? "disabled" : ""}></label></div>`;
+      }
+      function pgLoad() {
+        PG.loading = true;
+        renderPgBody();
+        setTimeout(() => { PG.loading = false; renderPgBody(); }, 350);
+      }
+      function renderPg() {
+        $("#pgRoot").innerHTML = pgHeader() + `<div id="pgBody"></div>`;
+        renderPgBody();
+        renderPgOv();
+      }
+      function renderPgBody() {
+        const el = $("#pgBody");
+        if (!el) return;
+        el.innerHTML = PG.tab === "history" ? histPage() : PG.tab === "library" ? libPage() : canvasPage();
+        icons();
+      }
+
+      function histCard(h) {
+        const lib = inLib(h);
+        const menu = PG.menu === "h:" + h.id;
+        return `<div class="ca" tabindex="0" role="button" data-a="pg-prev" data-s="h" data-id="${h.id}" aria-label="${esc(h.prompt)}">${thumb(h)}${lib ? '<span class="bdg">已在资产库</span>' : ""}<span class="hov"><span class="l2">${esc(h.prompt)}</span><small>${esc(h.model)} · ${dayStr(h.d)}${h.from ? " · " + esc(h.from) : " · 首页对话"}</small></span><button class="dots ${menu ? "open" : ""}" data-a="pg-cmenu" data-v="h:${h.id}" aria-label="更多操作"><i data-lucide="ellipsis"></i></button>${
+          menu
+            ? `<div class="menu right" style="top:auto;bottom:34px"><button class="mi" data-a="pg-add" data-id="${h.id}" ${lib ? "disabled" : ""}>加入资产库…${lib ? "<small>已在资产库</small>" : ""}</button><button class="mi" data-a="pg-opencv" data-id="${h.id}" ${h.from ? "" : "disabled"}>在画布中打开${h.from ? "" : "<small>来自首页对话</small>"}</button></div>`
+            : ""
+        }</div>`;
+      }
+      function histPage() {
+        const tb = `<div class="row wrapflex" style="padding:12px 16px 0;gap:2px"><div class="tts">${typeTabs(PG.type, "pg-type")}</div><span class="vsep"></span>${ddHtml("src", PG.menu, "筛选", SRC_ITEMS, srcValue(PG), "pg-src")}${ddHtml("range", PG.menu, "时间", RANGE_ITEMS, PG.range, "pg-range")}${ddHtml("order", PG.menu, "排序", ORDER_ITEMS, PG.order, "pg-order")}</div>`;
+        let body;
+        if (PG.loading) body = skel();
+        else if (PG.q === "err" && !PG.errServed) body = errBox("pg");
+        else {
+          const r = histList(PG);
+          if (r.length) body = `<div class="grid-a">${r.map(histCard).join("")}</div>`;
+          else if (PG.src !== "all" || PG.range !== "all" || PG.q.trim())
+            body = emptyBox("search-x", "没有符合条件的素材", "", `<button class="mini" data-a="pg-clear">清除筛选</button>`);
+          else body = emptyBox("images", "还没有生成过内容", "在「创作」或画布里生成的内容会出现在这里");
+        }
+        return tb + `<div style="padding:14px 16px 24px">${body}</div>`;
+      }
+
+      function libAssetCard(l) {
+        const menu = PG.menu === "l:" + l.id;
+        return `<div class="ca" tabindex="0" role="button" data-a="pg-prev" data-s="l" data-id="${l.id}" aria-label="${esc(l.name)}">${thumb(l)}<button class="dots ${menu ? "open" : ""}" data-a="pg-cmenu" data-v="l:${l.id}" aria-label="更多操作" style="bottom:auto;top:6px"><i data-lucide="ellipsis"></i></button>${
+          menu
+            ? `<div class="menu right" style="top:32px"><button class="mi" data-a="pg-move" data-id="${l.id}">移动到…</button><button class="mi danger" data-a="pg-rm" data-id="${l.id}">移出资产库</button></div>`
+            : ""
+        }<span class="cap">${esc(l.name)}</span></div>`;
+      }
+      function folderCard(f) {
+        const menu = PG.menu === "f:" + f.id;
+        return `<div class="ca fold" tabindex="0" role="button" data-a="pg-folder" data-id="${f.id}" aria-label="文件夹 ${esc(f.name)}"><span class="fthumb"><i data-lucide="folder"></i></span><span class="fmeta"><span style="min-width:0"><b>${esc(f.name)}</b><span class="capd">${folderCount(f.id)} 个素材 · ${f.created}</span></span><button class="dots" data-a="pg-cmenu" data-v="f:${f.id}" aria-label="文件夹操作"><i data-lucide="ellipsis"></i></button>${
+          menu ? `<div class="menu right" style="top:28px"><button class="mi" data-a="pg-rename" data-id="${f.id}">重命名</button><button class="mi danger" data-a="pg-fdel" data-id="${f.id}">删除</button></div>` : ""
+        }</span></div>`;
+      }
+      function libPage() {
+        const cur = PG.folder ? S.folders.find((f) => f.id === PG.folder) : null;
+        const crumb = cur
+          ? `<div class="crumb"><button data-a="pg-root">个人资产库</button><i data-lucide="chevron-right"></i><b>${esc(cur.name)}</b></div>`
+          : `<div class="crumb"><b>个人资产库</b></div>`;
+        const newMenu =
+          PG.menu === "new"
+            ? `<div class="menu right"><button class="mi" data-a="pg-newf" ${cur ? "disabled" : ""}>新建文件夹${cur ? "<small>文件夹只有一层</small>" : ""}</button><button class="mi" data-a="pg-upload">上传资产</button></div>`
+            : PG.menu === "file"
+              ? fileMenu("pg-file")
+              : "";
+        const head = `<div class="row" style="padding:14px 16px 0">${crumb}<span class="spacer"></span><span class="ddw"><button class="btn btn-primary" data-a="pg-new-menu" data-v="new"><i data-lucide="plus"></i>新建</button>${newMenu}</span></div>`;
+        const tabs = `<div class="row" style="padding:8px 16px 0"><div class="tts">${typeTabs(PG.type, "pg-type")}</div></div>`;
+        let body;
+        if (PG.loading) body = skel();
+        else if (PG.q === "err" && !PG.errServed) body = errBox("pg");
+        else {
+          const v = libView(PG);
+          const cells = uplCards("pg", PG.folder) + v.folders.map(folderCard).join("") + v.items.map(libAssetCard).join("");
+          if (cells) body = `<div class="grid-a">${cells}</div>`;
+          else if (PG.q.trim()) body = emptyBox("search-x", `没有找到“${PG.q.trim()}”`, "", `<button class="mini" data-a="pg-clear">清除搜索</button>`);
+          else if (cur) body = emptyBox("folder-open", "这个文件夹是空的", `没有${KL[PG.type]}素材；右上角「新建」可以上传`);
+          else body = emptyBox("folder-open", `还没有${KL[PG.type]}素材`, "点右上角「新建」上传，或在生成历史里把满意的结果加入资产库");
+        }
+        return head + tabs + `<div style="padding:14px 16px 24px">${body}</div>`;
+      }
+      function canvasPage() {
+        return `<div style="padding:14px 16px 24px"><div class="grid-a" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">${CANVASES.map(
+          (c, i) => `<div class="ca"><span class="thumb" style="aspect-ratio:16/10;background:${grad(i * 70 + 190)}"></span><span class="cap">${esc(c)}</span></div>`,
+        ).join("")}</div><p class="muted" style="font-size:12.5px;margin-top:12px">画布列表保持现状，本次不改（示意）。</p></div>`;
+      }
+
+      /* 弹层：新建 / 重命名、选文件夹、删除确认、选文件、预览 */
+      function nameErr(v, exId) {
+        const n = v.trim();
+        if (!n) return "请输入名称";
+        if ([...n].length > 30) return "最多 30 个字";
+        if (S.folders.some((f) => f.id !== exId && f.name.toLowerCase() === n.toLowerCase())) return "已有同名文件夹";
+        return "";
+      }
+      function renderPgOv() {
+        const d = PG.dlg;
+        const el = $("#pgOv");
+        if (!el) return;
+        if (!d) { el.innerHTML = ""; return; }
+        let inner = "";
+        if (d.t === "name") {
+          inner = `<h4>${esc(d.title)}</h4><p>名称 1–30 字，不能和已有文件夹重名。试试输入「林川」看重名提示。</p><input class="field" id="dlgInput" value="${esc(d.value || "")}" maxlength="40" aria-label="文件夹名称" /><div class="ferr" id="dlgErr"></div><div class="acts"><button class="btn btn-outline" data-a="dlg-close">取消</button><button class="btn btn-primary" data-a="dlg-name-ok">确定</button></div>`;
+        } else if (d.t === "pick") {
+          const opts = [["", "根目录"], ...S.folders.map((f) => [f.id, f.name])]
+            .map(([v, l]) => {
+              const here = d.cur !== undefined && (d.cur || "") === v;
+              return `<button class="mi" data-a="dlg-pick" data-v="${v}" ${here ? "disabled" : ""}><i data-lucide="${v ? "folder" : "folder-open"}"></i>${esc(l)}${here ? "<small>当前位置</small>" : ""}</button>`;
+            })
+            .join("");
+          inner = `<h4>${esc(d.title)}</h4><div style="margin-top:10px;max-height:240px;overflow:auto">${opts}</div><div class="msep"></div><button class="mi" data-a="dlg-pick-new"><i data-lucide="folder-plus"></i>新建文件夹…</button><div class="acts"><button class="btn btn-outline" data-a="dlg-close">取消</button></div>`;
+        } else if (d.t === "del") {
+          const f = S.folders.find((x) => x.id === d.id);
+          const n = folderCount(d.id);
+          inner = `<h4>删除文件夹「${esc(f ? f.name : "")}」？</h4><p>将移除这个文件夹及其中 <b>${n}</b> 个素材。画布里已经用到的素材不受影响，文件本身仍保留。</p><div class="acts"><button class="btn btn-outline" data-a="dlg-close">取消</button><button class="btn btn-primary" data-a="dlg-del-ok" style="background:rgb(var(--bad));color:#fff">删除</button></div>`;
+        } else if (d.t === "prev") {
+          const it = d.s === "h" ? HIST.find((x) => x.id === d.id) : S.lib.find((x) => x.id === d.id);
+          if (!it) { PG.dlg = null; el.innerHTML = ""; return; }
+          const title = d.s === "h" ? it.prompt : it.name;
+          const sub = d.s === "h" ? `${it.model} · ${dayStr(it.d)} · ${it.from ? "来自画布《" + it.from + "》" : "首页对话"}` : `${folderName(it.folder)} · ${KL[it.kind]}`;
+          inner = `<h4>${esc(title)}</h4><p>${esc(sub)}</p><div class="big" style="background:${grad(it.hue)}">${KICON[it.kind] ? `<i data-lucide="${KICON[it.kind]}" class="kicon"></i>` : ""}</div><p>预览示意：真实环境显示原图 / 播放器（灯箱能否复用待核对）。</p><div class="acts"><button class="btn btn-outline" data-a="dlg-close">关闭</button></div>`;
+        }
+        el.innerHTML = `<div class="ov" data-a="dlg-bg"><div class="dlg" role="dialog">${inner}</div></div>`;
+        icons();
+        const inp = $("#dlgInput");
+        if (inp) { inp.focus(); inp.select(); }
+      }
+      function addToLib(h, folder) {
+        S.lib.unshift({ id: nid("l"), kind: h.kind, name: `生成-${[...h.prompt].slice(0, 8).join("")}.${EXT[h.kind]}`, folder: folder || null, hue: h.hue, dur: h.dur, hist: h.id });
+        toast(`已加入「${folderName(folder)}」`);
+      }
+
+      function pgAct(a, d, e) {
+        switch (a) {
+          case "pg-tab": PG.tab = d.v; PG.q = ""; PG.errServed = false; PG.menu = null; PG.folder = null; renderPg(); pgLoad(); break;
+          case "pg-type": PG.type = d.v; PG.menu = null; pgLoad(); break;
+          case "pg-menu": case "pg-src-menu": case "pg-range-menu": case "pg-order-menu": case "pg-new-menu":
+            PG.menu = PG.menu === d.v ? null : d.v; renderPgBody(); break;
+          case "pg-cmenu": PG.menu = PG.menu === d.v ? null : d.v; renderPgBody(); break;
+          case "pg-src": setSrc(PG, d.v); PG.menu = null; pgLoad(); break;
+          case "pg-range": PG.range = d.v; PG.menu = null; pgLoad(); break;
+          case "pg-order": PG.order = d.v; PG.menu = null; pgLoad(); break;
+          case "pg-clear": PG.src = "all"; PG.canvas = null; PG.range = "all"; PG.q = ""; PG.errServed = false; renderPg(); break;
+          case "pg-retry": PG.errServed = true; pgLoad(); break;
+          case "pg-prev": PG.menu = null; PG.dlg = { t: "prev", s: d.s, id: d.id }; renderPgBody(); renderPgOv(); break;
+          case "pg-add": {
+            const h = HIST.find((x) => x.id === d.id);
+            PG.menu = null; renderPgBody();
+            PG.dlg = { t: "pick", title: "加入资产库", cb: (folder) => addToLib(h, folder) }; renderPgOv();
+            break;
+          }
+          case "pg-opencv": {
+            const h = HIST.find((x) => x.id === d.id);
+            PG.menu = null; renderPgBody(); toast(`在新窗口打开《${h.from}》（示意）`, "info");
+            break;
+          }
+          case "pg-folder": PG.folder = d.id; PG.menu = null; PG.q = ""; renderPg(); pgLoad(); break;
+          case "pg-root": PG.folder = null; renderPg(); pgLoad(); break;
+          case "pg-newf":
+            PG.menu = null; renderPgBody();
+            PG.dlg = { t: "name", title: "新建文件夹", cb: (n) => { S.folders.push({ id: nid("f"), name: n, created: dayStr(0) }); toast(`已新建文件夹「${n}」`); } };
+            renderPgOv(); break;
+          case "pg-upload": PG.menu = "file"; renderPgBody(); break;
+          case "pg-file": startUpload("pg", FILES[+d.i], PG.folder); PG.menu = null; renderPgBody(); break;
+          case "pg-rename": {
+            const f = S.folders.find((x) => x.id === d.id);
+            PG.menu = null; renderPgBody();
+            PG.dlg = { t: "name", title: "重命名文件夹", value: f.name, exId: f.id, cb: (n) => { f.name = n; toast("已重命名"); } };
+            renderPgOv(); break;
+          }
+          case "pg-fdel": PG.menu = null; renderPgBody(); PG.dlg = { t: "del", id: d.id }; renderPgOv(); break;
+          case "pg-move": {
+            const l = S.lib.find((x) => x.id === d.id);
+            PG.menu = null; renderPgBody();
+            PG.dlg = { t: "pick", title: "移动到…", cur: l.folder, cb: (folder) => { l.folder = folder || null; toast(`已移动到「${folderName(folder)}」`); } };
+            renderPgOv(); break;
+          }
+          case "pg-rm": {
+            S.lib = S.lib.filter((x) => x.id !== d.id);
+            PG.menu = null; renderPgBody(); toast("已移出资产库（文件仍保留，画布里的引用不受影响）");
+            break;
+          }
+          case "dlg-bg": if (e && e.target && e.target.classList && e.target.classList.contains("ov")) { PG.dlg = null; renderPgOv(); } break;
+          case "dlg-close": PG.dlg = null; renderPgOv(); break;
+          case "dlg-name-ok": {
+            const dl = PG.dlg;
+            const err = nameErr($("#dlgInput").value, dl.exId);
+            if (err) { $("#dlgErr").textContent = err; break; }
+            dl.cb($("#dlgInput").value.trim()); PG.dlg = null; renderPgOv(); renderPgBody(); break;
+          }
+          case "dlg-pick": { const dl = PG.dlg; PG.dlg = null; dl.cb(d.v); renderPgOv(); renderPgBody(); break; }
+          case "dlg-pick-new": {
+            const dl = PG.dlg;
+            PG.dlg = { t: "name", title: "新建文件夹", cb: (n) => { const id = nid("f"); S.folders.push({ id, name: n, created: dayStr(0) }); dl.cb(id); } };
+            renderPgOv(); break;
+          }
+          case "dlg-del-ok": {
+            const id = PG.dlg.id; const n = folderCount(id);
+            S.lib = S.lib.filter((l) => l.folder !== id);
+            S.folders = S.folders.filter((f) => f.id !== id);
+            PG.dlg = null; if (PG.folder === id) PG.folder = null;
+            renderPgOv(); renderPg(); toast(`已删除文件夹，并移出 ${n} 个素材`); break;
+          }
+          case "up-retry": case "up-cancel": upAct(a, d); break;
+        }
+      }
+      const pgRoot = $("#pgProto");
+      pgRoot.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-a]");
+        /* 点在菜单的空白处（分隔线、说明文字）：不算点到菜单外，也不触发菜单下面那张卡片 */
+        if (e.target.closest(".menu") && !(el && el.closest(".menu"))) return;
+        if (!el) { if (PG.menu) { PG.menu = null; renderPgBody(); } return; }
+        const a = el.dataset.a;
+        if (PG.menu && !e.target.closest(".menu") && !a.endsWith("menu")) { PG.menu = null; }
+        pgAct(a, el.dataset, e);
+      });
+      pgRoot.addEventListener("input", (e) => {
+        if (e.target.id === "pgQ") {
+          PG.q = e.target.value;
+          if (PG.q !== "err") PG.errServed = false;
+          renderPgBody();
+        } else if (e.target.id === "dlgInput") $("#dlgErr").textContent = "";
+      });
+      pgRoot.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.target.id === "dlgInput") pgAct("dlg-name-ok", {}, e);
+        else if (e.key === "Escape" && PG.dlg) { PG.dlg = null; renderPgOv(); }
+        else if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".ca[data-a]")) { e.preventDefault(); e.target.click(); }
+      });
+
+      /* ================= 画布与弹框 ================= */
+      const MD = { open: false, origin: "toolbar", source: "lib", type: "image", q: "", folder: null, range: "all", src: "all", canvas: null, order: "desc", menu: null, sel: [], loading: false, errServed: false, tbMenu: false, bar: "" };
+      const STEP_X = 122, STEP_Y = 100;
+
+      function nodeHtml(n) {
+        const kindL = { text: "文本", image: "图片", video: "视频", audio: "音频" }[n.kind];
+        const body = n.kind === "text" ? `<span class="thumb" style="background:hsl(var(--muted))"><i data-lucide="type" class="kicon" style="color:hsl(var(--muted-foreground))"></i></span>` : thumb(n);
+        return `<div class="cvn ${n.imported ? "new" : ""}" style="left:${n.x}px;top:${n.y}px">${body}<span class="l">${esc(n.label)}</span><span class="l muted">${kindL}${n.imported ? " · 已引入" : ""}</span></div>`;
+      }
+      function renderCv() {
+        $("#cvStage").innerHTML = S.nodes.map(nodeHtml).join("");
+        const lock = S.locked;
+        const reason = "画布已在另一个标签页打开，当前只读";
+        const items = [["图片生成", "image"], ["视频生成", "video"], ["文本", "type"], ["音频", "music"]]
+          .map(([l, ic]) => `<button class="mi" disabled><i data-lucide="${ic}"></i>${l}<small>演示不展开</small></button>`)
+          .join("");
+        const menu = MD.tbMenu
+          ? `<div class="menu tbmenu"><div style="padding:4px 10px 6px;font-size:11.5px" class="muted">添加节点</div>${items}<div class="msep"></div><button class="mi" disabled><i data-lucide="upload"></i>上传素材<small>现有功能，演示不展开</small></button><button class="mi" data-a="cv-open-menu" ${lock ? "disabled" : ""}><i data-lucide="folder-open"></i>从资产库添加${lock ? "<small>画布只读</small>" : ""}</button></div>`
+          : "";
+        $("#cvUi").innerHTML = `${lock ? `<div class="lockmsg">${reason}</div>` : ""}<div class="tb"><button class="tbb ${MD.tbMenu ? "on" : ""}" data-a="cv-addmenu" ${lock ? "disabled" : ""} title="${lock ? reason : ""}"><i data-lucide="plus"></i>添加节点</button><button class="tbb ${MD.open ? "on" : ""}" data-a="cv-open" ${lock ? "disabled" : ""} title="${lock ? reason : "资产库"}"><i data-lucide="folder-open"></i>资产库</button><button class="tbb" data-a="cv-undo" ${S.undo.length ? "" : "disabled"} title="${S.undo.length ? "" : "没有可撤销的操作"}"><i data-lucide="undo-2"></i>撤销</button></div>${menu}${MD.bar ? `<div class="bar2"><i data-lucide="circle-check" style="color:rgb(var(--ok))"></i>${esc(MD.bar)}${S.undo.length ? `<button class="mini" data-a="cv-undo">撤销</button>` : ""}</div>` : ""}`;
+        icons();
+      }
+      function selItem(k) {
+        const [s, id] = k.split(":");
+        return s === "lib" ? S.lib.find((x) => x.id === id) : HIST.find((x) => x.id === id);
+      }
+      function mdAfterUpload(item) {
+        MD.source = "lib"; MD.folder = item.folder; if (KL[item.kind]) MD.type = item.kind;
+        if (MD.sel.length < DEMO_LIMIT) MD.sel.push("lib:" + item.id);
+      }
+      function mdCardPick(key, it, title) {
+        const on = MD.sel.includes(key);
+        const full = !on && MD.sel.length >= DEMO_LIMIT;
+        return `<button class="ca pick" data-a="md-pick" data-k="${key}" aria-pressed="${on}" ${full ? "disabled" : ""} title="${full ? "一次最多引入 " + DEMO_LIMIT + " 个（演示上限，真实为 20）" : ""}">${thumb(it)}<span class="chk">${on ? '<i data-lucide="check"></i>' : ""}</span><span class="cap">${esc(title)}</span></button>`;
+      }
+      function mdBodyHtml() {
+        if (MD.loading) return skel();
+        if (MD.q === "err" && !MD.errServed) return errBox("md");
+        if (MD.source === "lib") {
+          const v = libView(MD);
+          const cells =
+            uplCards("md", MD.folder) +
+            v.folders.map((f) => `<button class="ca fold" data-a="md-folder" data-id="${f.id}"><span class="fthumb"><i data-lucide="folder"></i></span><span class="cap">${esc(f.name)}</span><span class="capd">${folderCount(f.id)} 个素材</span></button>`).join("") +
+            v.items.map((l) => mdCardPick("lib:" + l.id, l, l.name)).join("");
+          if (cells) return `<div class="grid-a">${cells}</div>`;
+          if (MD.q.trim()) return emptyBox("search-x", `没有找到“${MD.q.trim()}”`, "");
+          return emptyBox("folder-open", `暂无${KL[MD.type]}素材`, "点右上角「上传」，或切到「生成历史」直接引入");
+        }
+        const r = histList(MD);
+        if (r.length) return `<div class="grid-a">${r.map((h) => mdCardPick("hist:" + h.id, h, h.prompt)).join("")}</div>`;
+        return emptyBox("images", `暂无${KL[MD.type]}生成记录`, "换个时间或来源试试");
+      }
+      function mdFootHtml() {
+        const n = MD.sel.length;
+        return `<span>已选择 ${n} 个素材</span>${n >= DEMO_LIMIT ? `<span class="tag t-warn">已达上限 ${DEMO_LIMIT}（演示）</span>` : ""}<span class="spacer"></span>${n === 0 ? `<span style="font-size:12px">请先选择素材</span>` : ""}<button class="btn btn-primary" data-a="md-confirm" ${n === 0 ? "disabled" : ""} style="height:36px;padding:0 20px">确认</button>`;
+      }
+      function renderMd() {
+        const ov = $("#mdOv");
+        if (!MD.open) { ov.innerHTML = ""; renderCv(); return; }
+        const isH = MD.source === "hist";
+        const right = isH
+          ? `${ddHtml("range", MD.menu, "时间", RANGE_ITEMS, MD.range, "md-range", true)}${ddHtml("src", MD.menu, "筛选", SRC_ITEMS, srcValue(MD), "md-srcf", true)}`
+          : `<span class="ddw"><button class="btn btn-outline" data-a="md-upload-menu" data-v="file" style="height:34px"><i data-lucide="upload"></i>上传</button>${MD.menu === "file" ? fileMenu("md-file") : ""}</span>`;
+        const cur = MD.folder ? S.folders.find((f) => f.id === MD.folder) : null;
+        const crumb = !isH && cur ? `<div class="crumb" style="margin-top:8px"><button data-a="md-root">个人资产库</button><i data-lucide="chevron-right"></i><b>${esc(cur.name)}</b></div>` : "";
+        ov.innerHTML = `<div class="ov" data-a="md-bg"><div class="mdl" role="dialog" aria-label="资产库"><div class="row"><div class="pill"><button data-a="md-src" data-v="lib" aria-pressed="${!isH}">个人资产库</button><button data-a="md-src" data-v="hist" aria-pressed="${isH}">生成历史</button></div><button class="ibtn spacer" data-a="md-close" aria-label="关闭" style="border:0"><i data-lucide="x"></i></button></div><div class="row" style="margin-top:8px"><div class="ul">${typeTabs(MD.type, "md-type")}</div><span class="spacer"></span><label class="search" style="width:190px"><i data-lucide="search"></i><input id="mdQ" value="${esc(MD.q)}" placeholder="${isH ? "搜索提示词" : "搜索文件名"}" aria-label="搜索"></label>${right}</div>${crumb}<div class="mdbody" id="mdBody">${mdBodyHtml()}</div><div class="mdft" id="mdFoot">${mdFootHtml()}</div></div></div>`;
+        icons();
+        renderCv();
+      }
+      function mdLoad() {
+        MD.loading = true; renderMd();
+        setTimeout(() => { MD.loading = false; if (MD.open) renderMd(); }, 300);
+      }
+      function openMd(origin) {
+        if (S.locked) return;
+        MD.open = true; MD.origin = origin; MD.tbMenu = false; MD.menu = null; MD.bar = "";
+        Object.assign(MD, { source: "lib", type: "image", q: "", folder: null, range: "all", src: "all", canvas: null, sel: [], errServed: false });
+        mdLoad();
+      }
+      function mdConfirm() {
+        if (S.locked || !MD.sel.length) return;
+        const items = MD.sel.map(selItem).filter(Boolean);
+        const W = $("#cvStage").clientWidth || 800, H = $("#cvStage").clientHeight || 480;
+        const cols = Math.min(4, items.length), rows = Math.ceil(items.length / 4);
+        let ox, oy;
+        if (MD.origin === "menu") { ox = 76; oy = 110; } else { ox = W / 2 - 54; oy = H * 0.4 - 40; }
+        ox = Math.max(12, Math.min(ox, W - cols * STEP_X - 12));
+        oy = Math.max(12, Math.min(oy, H - rows * STEP_Y - 12));
+        const ids = [];
+        items.forEach((it, i) => {
+          const n = { id: nid("n"), kind: it.kind, label: it.name || [...it.prompt].slice(0, 10).join(""), hue: it.hue, dur: it.dur, x: ox + (i % 4) * STEP_X, y: oy + Math.floor(i / 4) * STEP_Y, imported: true };
+          S.nodes.push(n); ids.push(n.id);
+        });
+        S.undo.push(ids);
+        MD.bar = `已引入 ${items.length} 个素材，一次撤销可全部移除`;
+        MD.open = false; MD.sel = [];
+        renderMd();
+      }
+      function mdAct(a, d, e) {
+        switch (a) {
+          case "cv-open": MD.tbMenu = false; openMd("toolbar"); break;
+          case "cv-addmenu": MD.tbMenu = !MD.tbMenu; renderCv(); break;
+          case "cv-open-menu": openMd("menu"); break;
+          case "cv-undo": {
+            const ids = S.undo.pop(); if (!ids) break;
+            S.nodes = S.nodes.filter((n) => !ids.includes(n.id));
+            MD.bar = ""; renderCv(); toast(`已撤销，移除 ${ids.length} 个节点`, "info"); break;
+          }
+          case "md-close": MD.open = false; renderMd(); break;
+          case "md-bg": if (e && e.target && e.target.classList && e.target.classList.contains("ov")) { MD.open = false; renderMd(); } break;
+          case "md-src": MD.source = d.v; MD.folder = null; MD.q = ""; MD.menu = null; MD.errServed = false; mdLoad(); break;
+          case "md-type": MD.type = d.v; MD.menu = null; mdLoad(); break;
+          case "md-folder": MD.folder = d.id; MD.q = ""; mdLoad(); break;
+          case "md-root": MD.folder = null; mdLoad(); break;
+          case "md-pick": {
+            const i = MD.sel.indexOf(d.k);
+            if (i >= 0) MD.sel.splice(i, 1); else if (MD.sel.length < DEMO_LIMIT) MD.sel.push(d.k);
+            renderMdKeepScroll(); break;
+          }
+          case "md-range-menu": case "md-srcf-menu": case "md-upload-menu": MD.menu = MD.menu === d.v ? null : d.v; renderMd(); break;
+          case "md-range": MD.range = d.v; MD.menu = null; mdLoad(); break;
+          case "md-srcf": setSrc(MD, d.v); MD.menu = null; mdLoad(); break;
+          case "md-file": startUpload("md", FILES[+d.i], MD.folder); MD.menu = null; renderMd(); break;
+          case "md-retry": MD.errServed = true; mdLoad(); break;
+          case "md-confirm": mdConfirm(); break;
+          case "up-retry": case "up-cancel": upAct(a, d); break;
+        }
+      }
+      function renderMdKeepScroll() {
+        const b = $("#mdBody"); const top = b ? b.scrollTop : 0;
+        renderMd();
+        const nb = $("#mdBody"); if (nb) nb.scrollTop = top;
+      }
+      const cvRoot = $("#cvProto");
+      cvRoot.addEventListener("click", (e) => {
+        const el = e.target.closest("[data-a]");
+        if (e.target.closest(".menu") && !(el && el.closest(".menu"))) return;
+        if (!el) { if (MD.tbMenu || MD.menu) { MD.tbMenu = false; MD.menu = null; renderMd(); } return; }
+        const a = el.dataset.a;
+        const hadMenu = MD.menu || MD.tbMenu;
+        if (hadMenu && !e.target.closest(".menu") && !a.endsWith("menu") && a !== "cv-addmenu") { MD.menu = null; MD.tbMenu = false; }
+        mdAct(a, el.dataset, e);
+        /* 点弹框背景只是关菜单，动作本身不重绘，这里补一次 */
+        if (hadMenu && a === "md-bg") renderMd();
+      });
+      cvRoot.addEventListener("input", (e) => {
+        if (e.target.id !== "mdQ") return;
+        MD.q = e.target.value;
+        if (MD.q !== "err") MD.errServed = false;
+        $("#mdBody").innerHTML = mdBodyHtml(); $("#mdFoot").innerHTML = mdFootHtml(); icons();
+      });
+      cvRoot.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && MD.open) { MD.open = false; renderMd(); }
+      });
+      $("#lockSw").addEventListener("change", (e) => {
+        S.locked = e.target.checked;
+        if (S.locked) { MD.open = false; MD.tbMenu = false; }
+        renderMd();
+      });
+
+      /* "重试"按钮在两个原型里共用 data-a 前缀 pg / md */
+      renderPg();
+      pgLoad();
+      renderMd();
+      icons();
+    </script>
+  </body>
+</html>

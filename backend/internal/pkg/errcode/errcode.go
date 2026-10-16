@@ -199,3 +199,12 @@ var (
 	ErrUpgradeTarget      = New(63003, "不能升级或回退到这个版本", http.StatusBadRequest) // 原因写进 Msg
 	ErrUpgradeLatestTag   = New(63004, "部署使用 latest 镜像，不能一键升级", http.StatusConflict)
 )
+
+// 资产库 64xxx
+var (
+	ErrAssetFolderInvalid  = New(64001, "文件夹名称不合法", http.StatusBadRequest) // 具体原因写进 Msg
+	ErrAssetFolderDup      = New(64002, "已有同名文件夹", http.StatusConflict)
+	ErrAssetFolderLimit    = New(64003, "文件夹数量已达上限", http.StatusConflict)
+	ErrAssetFolderNotFound = New(64004, "文件夹不存在", http.StatusNotFound)
+	ErrLibraryItemNotFound = New(64005, "资产库条目不存在", http.StatusNotFound)
+)

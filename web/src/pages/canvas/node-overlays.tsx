@@ -1,8 +1,10 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { NodeToolbar, Position, useStore } from "@xyflow/react";
 import { toast } from "sonner";
 
+import { addToLibrary } from "@/api/asset-library";
+import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
 import { FrameOverlay } from "@/components/canvas/frame-overlay";
@@ -14,7 +16,7 @@ import {
   usePaneBusy,
   usePanelPlacement,
 } from "@/components/canvas/hooks/use-panel-placement";
-import { NODE_TOOLBAR } from "@/constants/node-toolbar";
+import { NODE_TOOLBAR, type ToolbarTail } from "@/constants/node-toolbar";
 import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
@@ -23,6 +25,7 @@ import { useOutpaintStore } from "@/store/outpaint";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasNodeData } from "@/types";
 import { downloadMedia, downloadName } from "@/utils/canvas/download";
+import { addNodeToLibrary, canAddToLibrary } from "@/utils/canvas/library-entry";
 import { toolbarGate } from "@/utils/canvas/node-toolbar-state";
 import { outpaintModels } from "@/utils/canvas/outpaint-node";
 import { supportsTrim, UNSUPPORTED_TRIM_MESSAGE } from "@/utils/canvas/trim-engine";
@@ -86,6 +89,8 @@ export function NodeOverlays({
   const framePicking = useFramePickStore((state) => state.nodeId === id);
   const enterFramePick = useFramePickStore((state) => state.enter);
   const { captureQuick } = useFrameNodes();
+  /** 「加入资产库」的文件夹选择器是否打开 */
+  const [pickingFolder, setPickingFolder] = useState(false);
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -133,7 +138,7 @@ export function NodeOverlays({
         : undefined;
 
   const { src, text, label, fileName } = data;
-  const onTail = {
+  const onTail: Partial<Record<ToolbarTail, () => void>> = {
     // 灯箱只认图片和视频，文本、音频的放大先当占位
     zoom:
       previewNode && (data.kind === "image" || data.kind === "video")
@@ -147,6 +152,13 @@ export function NodeOverlays({
             () => toast.error("复制失败，请手动选中复制"),
           )
       : undefined,
+    // 只有素材已存到服务端的图片、视频、音频节点才有这个按钮，不限来源
+    addToLibrary: canAddToLibrary(data) ? () => setPickingFolder(true) : undefined,
+  };
+  /** 选好文件夹后加入资产库；失败（请求层已弹提示）抛出，让选择器保持打开 */
+  const confirmAddToLibrary = async (folderId: string | null) => {
+    await addNodeToLibrary(data, folderId, { addToLibrary });
+    toast.success("已加入资产库");
   };
 
   const fade = {
@@ -192,6 +204,14 @@ export function NodeOverlays({
           </motion.div>
         </NodeToolbar>
       )}
+      {/* 选择器自己用 Portal 渲染，放在功能区外面，功能区淡出、卸载时不会带走它 */}
+      <FolderPickerDialog
+        open={pickingFolder}
+        onOpenChange={setPickingFolder}
+        title="加入资产库"
+        confirmLabel="加入"
+        onConfirm={confirmAddToLibrary}
+      />
       {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
       {!data.uploaded && !data.outpaintFrom && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>

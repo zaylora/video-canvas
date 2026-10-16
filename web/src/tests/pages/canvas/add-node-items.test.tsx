@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { UPLOAD_ACTION } from "@/constants/canvas";
+import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
 
 describe("buildAddNodeItems：添加节点菜单的条目", () => {
@@ -12,8 +12,17 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       "script",
       "audio",
       UPLOAD_ACTION,
+      ASSET_LIBRARY_ACTION,
     ]);
-    expect(items.map((item) => !!item.separated)).toEqual([false, false, false, false, true]);
+    // 「从资产库添加」紧挨着上传素材，同属一组，不另起分隔线
+    expect(items.map((item) => !!item.separated)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+    ]);
   });
 
   test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 上传素材」", () => {
@@ -23,6 +32,7 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       "文本",
       "音频",
       "上传素材",
+      "从资产库添加",
     ]);
   });
 
@@ -35,9 +45,22 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
 
   test("接不上的种类被禁用；三种素材都接不上，上传素材才禁用", () => {
     const onlyVideo = buildAddNodeItems((kind) => kind !== "video");
-    expect(onlyVideo.map((item) => !!item.disabled)).toEqual([true, false, true, true, false]);
+    expect(onlyVideo.map((item) => !!item.disabled)).toEqual([
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+    ]);
 
     const none = buildAddNodeItems(() => true);
-    expect(none.at(-1)?.disabled).toBe(true);
+    expect(none.find((item) => item.value === UPLOAD_ACTION)?.disabled).toBe(true);
+  });
+
+  test("从资产库添加不受拉线类型限制：只建节点不连线，始终可点", () => {
+    const none = buildAddNodeItems(() => true);
+    expect(none.at(-1)?.value).toBe(ASSET_LIBRARY_ACTION);
+    expect(none.at(-1)?.disabled).toBeFalsy();
   });
 });

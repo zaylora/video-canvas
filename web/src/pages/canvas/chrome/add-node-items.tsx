@@ -1,11 +1,12 @@
-import { Upload } from "lucide-react";
+import { Library, Upload } from "lucide-react";
 
 import type { AddNodeMenuItem } from "@/components/canvas";
-import { ADD_NODE_MENU, NODE_META, UPLOAD_ACTION } from "@/constants/canvas";
+import { ADD_NODE_MENU, ASSET_LIBRARY_ACTION, NODE_META, UPLOAD_ACTION } from "@/constants/canvas";
 import type { NodeKind } from "@/types";
 
 /**
- * 「添加节点」菜单的条目（设计稿原型）：四种生成节点在前，上传素材隔一条线放最后。
+ * 「添加节点」菜单的条目（设计稿原型）：四种生成节点在前，上传素材隔一条线放后面，
+ * 紧接着是「从资产库添加」（和上传同属「引入素材」一组）。
  * disabled 判断某种节点能不能点（拉线落空时只放行接得上的）。
  */
 export function buildAddNodeItems(disabled: (kind: NodeKind) => boolean = () => false) {
@@ -26,5 +27,7 @@ export function buildAddNodeItems(disabled: (kind: NodeKind) => boolean = () => 
     disabled: disabled("image") && disabled("video") && disabled("audio"),
     separated: true,
   });
+  // 弹框不按拉线上下文限制类型，引入的素材只建节点不连线，所以不受 disabled 影响
+  items.push({ value: ASSET_LIBRARY_ACTION, label: "从资产库添加", icon: <Library /> });
   return items;
 }
