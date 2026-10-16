@@ -1,3 +1,4 @@
+import { MotionConfig, motion } from "motion/react";
 import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -13,6 +14,9 @@ import { CanvasView } from "./canvas-view";
 import { HistoryView } from "./history-view";
 import { LibraryView } from "./library-view";
 
+/** 三个范围从左到右的顺序，决定切换时内容滑入的方向 */
+const TAB_ORDER: readonly AssetsTab[] = ["history", "canvas", "library"];
+
 /**
  * 资产页（设计稿 docs/design/资产库）：「生成历史 / 画布 / 个人资产库」三个范围。
  * 范围和个人资产库里的文件夹都写在地址栏（/assets?tab=library&folder=1f），刷新、后退能还原。
@@ -23,6 +27,12 @@ export default function AssetsPage() {
   const [params, setParams] = useSearchParams();
   const route = parseAssetsParams(params);
   const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
+  // 范围变了就记下切换方向：往右边的范围切，内容从右往左滑入，反之亦然（文件夹切换不算）
+  const [prev, setPrev] = useState({ tab: route.tab, from: 16 });
+  if (prev.tab !== route.tab) {
+    const forward = TAB_ORDER.indexOf(route.tab) > TAB_ORDER.indexOf(prev.tab);
+    setPrev({ tab: route.tab, from: forward ? 16 : -16 });
+  }
 
   const go = useCallback(
     (next: AssetsRoute, options?: { replace?: boolean }) =>
@@ -52,11 +62,24 @@ export default function AssetsPage() {
         <div ref={setSearchSlot} className="ml-auto flex items-center gap-2" />
       </div>
 
-      {route.tab === "history" && <HistoryView searchSlot={searchSlot} />}
-      {route.tab === "canvas" && <CanvasView searchSlot={searchSlot} />}
-      {route.tab === "library" && (
-        <LibraryView searchSlot={searchSlot} folder={route.folder} onFolderChange={changeFolder} />
-      )}
+      <MotionConfig reducedMotion="user">
+        <motion.div
+          key={route.tab}
+          initial={{ opacity: 0, x: prev.from }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {route.tab === "history" && <HistoryView searchSlot={searchSlot} />}
+          {route.tab === "canvas" && <CanvasView searchSlot={searchSlot} />}
+          {route.tab === "library" && (
+            <LibraryView
+              searchSlot={searchSlot}
+              folder={route.folder}
+              onFolderChange={changeFolder}
+            />
+          )}
+        </motion.div>
+      </MotionConfig>
     </div>
   );
 }
