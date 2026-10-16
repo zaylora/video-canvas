@@ -17,7 +17,6 @@ import type { UploadTask } from "@/utils/assets/upload-queue";
 
 import { HistoryAssetCard, LibraryAssetCard, type CardSelect } from "./asset-card";
 import { AssetGrid, LoadMoreFooter } from "./asset-grid";
-import { ASSET_KINDS } from "./asset-kind-tabs";
 import { FolderCard } from "./folder-card";
 import { UploadCard } from "./upload-card";
 
@@ -133,7 +132,7 @@ export function HistoryPane({
 /**
  * 弹框里「个人资产库」来源的内容：根目录显示文件夹卡片，点进去出现面包屑；
  * 搜索跨文件夹平铺并隐藏文件夹卡片。素材卡可勾选；弹框内上传中的文件显示成上传卡。
- * @param view 当前位置（类型标签与文件夹）
+ * @param view 当前位置（所在文件夹）
  * @param q 文件名关键字（已防抖）
  * @param folders 文件夹列表状态，由弹框持有（上传完成要调整它的计数）
  * @param tasks 弹框内上传中的任务
@@ -170,9 +169,9 @@ export function LibraryPane({
   onCancelUpload: (id: string) => void;
   onRetryUpload: (id: string) => void;
 }) {
-  const { folder, kind } = view;
+  const { folder } = view;
   const searching = q.trim() !== "";
-  const { list, state } = useAssetLibrary(folder, kind, q);
+  const { list, state } = useAssetLibrary(folder, q);
   const { items } = state;
   const currentFolder = (folder && folders.folders?.find((entry) => entry.id === folder)) || null;
 
@@ -197,7 +196,6 @@ export function LibraryPane({
   /** 根目录要等文件夹卡片一起到，不然会先闪一下「还没有资产」 */
   const foldersPending = folder === null && !searching && folders.loading;
   const folderList = folder === null && !searching ? (folders.folders ?? []) : [];
-  const kindLabel = ASSET_KINDS.find((entry) => entry.value === kind)?.label ?? "";
 
   const crumb =
     folder || searching ? (
@@ -289,7 +287,7 @@ export function LibraryPane({
           </AssetGrid>
           {items.length === 0 && (
             <p className="text-muted-foreground mt-6 text-center text-[13px]">
-              {searching ? "没有符合的素材" : `这里还没有${kindLabel}素材`}
+              {searching ? "没有符合的素材" : "这里还没有素材"}
             </p>
           )}
           <LoadMoreFooter

@@ -65,7 +65,7 @@ type PickerState = { view: PickerView; selected: AssetDto[] };
 
 /**
  * 画布里的资产库弹框（设计文档 §6.2）：从「个人资产库」或「生成历史」多选素材，确认后交给画布建节点。
- * 顶部来源切换，第二行类型标签（下划线选中态）与搜索；生成历史来源有「时间」「筛选」图标按钮，
+ * 顶部来源切换，第二行搜索，生成历史来源还有类型标签（下划线选中态）；生成历史来源有「时间」「筛选」图标按钮，
  * 个人资产库来源有「上传」（文件归入当前所在文件夹，传完自动勾选并切到该类型标签）。
  * 一次最多选 20 个，满了其余卡片禁用并提示。每次打开都从初始状态开始。手机宽度全屏。
  * @param open 是否打开
@@ -126,19 +126,16 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
 
   const uploads = useAssetUploads((item, task) => {
     const current = stateRef.current;
-    const done = applyUploadDone(current.view, current.selected, item.asset);
-    commit({ view: done.view, selected: done.selected });
+    const done = applyUploadDone(current.selected, item.asset);
+    commit({ view: current.view, selected: done.selected });
     if (done.dropped > 0) {
       toast.info(`已选满，「${item.asset.fileName ?? "素材"}」已上传但没有勾选`);
     }
     folders.adjust(task.folderId, 1);
     folders.reload();
-    // 还在看同一个位置、同一种类型：新素材直接插到最前；类型标签换了，列表会按新标签重新加载
+    // 还在看同一个位置：新素材直接插到最前
     const sameList =
-      current.view.source === "library" &&
-      task.folderId === current.view.folder &&
-      item.asset.kind === current.view.kind &&
-      q.trim() === "";
+      current.view.source === "library" && task.folderId === current.view.folder && q.trim() === "";
     if (sameList) libraryList.current?.update((prev) => [item, ...prev]);
   });
 
@@ -179,8 +176,11 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
           onChange={changeSource}
         />
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b">
-          <AssetKindTabs variant="underline" value={view.kind} onChange={changeKind} />
-          <div className="flex items-center gap-1 pb-1.5">
+          {/* 个人资产库不分类型；生成历史的接口按类型取，所以只有它有标签 */}
+          {!library && (
+            <AssetKindTabs variant="underline" value={view.kind} onChange={changeKind} />
+          )}
+          <div className="ml-auto flex items-center gap-1 pb-1.5">
             <AssetSearch
               value={input}
               onChange={setInput}

@@ -59,20 +59,17 @@ describe("uploadFolder：弹框内上传归入哪个文件夹", () => {
   });
 });
 
-describe("applyUploadDone：上传完成后自动勾选并切到该类型标签", () => {
-  test("勾上新素材，类型标签切到素材的类型，文件夹不变", () => {
-    const view: PickerView = { source: "library", kind: "image", folder: "f1" };
-    const result = applyUploadDone(view, [asset(1)], asset(2, "video"));
-    expect(result.view).toEqual({ source: "library", kind: "video", folder: "f1" });
+describe("applyUploadDone：上传完成后自动勾选", () => {
+  test("勾上新素材，不论什么类型", () => {
+    const result = applyUploadDone([asset(1)], asset(2, "video"));
     expect(result.selected.map((a) => a.id)).toEqual(["1", "2"]);
     expect(result.dropped).toBe(0);
   });
 
-  test("已选满 20 个：不勾选，报丢弃数，类型标签仍然切过去", () => {
+  test("已选满 20 个：不勾选，报丢弃数", () => {
     const full = Array.from({ length: 20 }, (_, i) => asset(i + 1));
-    const result = applyUploadDone(INITIAL_PICKER_VIEW, full, asset(99, "audio"));
+    const result = applyUploadDone(full, asset(99, "audio"));
     expect(result.selected).toHaveLength(20);
     expect(result.dropped).toBe(1);
-    expect(result.view.kind).toBe("audio");
   });
 });

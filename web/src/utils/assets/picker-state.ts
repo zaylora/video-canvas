@@ -43,10 +43,8 @@ export const leaveFolder = (view: PickerView): PickerView => ({ ...view, folder:
 export const uploadFolder = (view: PickerView): string | null =>
   view.source === "library" ? view.folder : null;
 
-/** 一个文件上传完成后弹框的新状态 */
+/** 一个文件上传完成后弹框的新选择 */
 export type UploadDoneResult = {
-  /** 新的位置：类型标签切到刚上传的素材类型，让它立刻出现在眼前 */
-  view: PickerView;
   /** 新的选择：上传的素材自动勾上 */
   selected: AssetDto[];
   /** 因为已选满上限没勾上的个数 */
@@ -54,18 +52,15 @@ export type UploadDoneResult = {
 };
 
 /**
- * 弹框内一个文件上传完成：自动勾选（受上限约束），并把类型标签切到该素材的类型。
- * @param view 当前位置
+ * 弹框内一个文件上传完成：自动勾选（受上限约束）。个人资产库不分类型，所以不动类型标签。
  * @param selected 当前选择
  * @param asset 刚上传并登记好的素材
  * @param limit 上限
  */
 export function applyUploadDone(
-  view: PickerView,
   selected: AssetDto[],
   asset: AssetDto,
   limit = ASSET_PICK_LIMIT,
 ): UploadDoneResult {
-  const picked = addPicked(selected, [asset], limit);
-  return { view: switchKind(view, asset.kind), ...picked };
+  return addPicked(selected, [asset], limit);
 }
