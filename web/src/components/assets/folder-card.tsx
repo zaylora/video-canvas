@@ -13,7 +13,7 @@ import { CardMenu } from "./card-menu";
  * 尺寸和素材卡（正方形）一致，网格里排得整齐。
  * @param folder 文件夹
  * @param onOpen 进入文件夹
- * @param onRename 菜单里的「重命名」
+ * @param onRename 菜单里的「重命名」；和 onDelete 都不给就没有 ⋯ 菜单（画布资产库弹框里只能进入）
  * @param onDelete 菜单里的「删除」，由调用方弹确认框
  */
 export function FolderCard({
@@ -24,8 +24,8 @@ export function FolderCard({
 }: {
   folder: FolderDto;
   onOpen: () => void;
-  onRename: () => void;
-  onDelete: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <motion.div
@@ -47,16 +47,18 @@ export function FolderCard({
           </span>
         </span>
       </button>
-      <CardMenu>
-        <DropdownMenuItem onClick={onRename}>
-          <Pencil />
-          重命名
-        </DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onClick={onDelete}>
-          <Trash2 />
-          删除
-        </DropdownMenuItem>
-      </CardMenu>
+      {onRename && onDelete && (
+        <CardMenu>
+          <DropdownMenuItem onClick={onRename}>
+            <Pencil />
+            重命名
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <Trash2 />
+            删除
+          </DropdownMenuItem>
+        </CardMenu>
+      )}
     </motion.div>
   );
 }

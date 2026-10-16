@@ -1,5 +1,13 @@
 import { motion } from "motion/react";
-import { ExternalLink, FolderInput, FolderPlus, Library, Music2, Unlink } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  FolderInput,
+  FolderPlus,
+  Library,
+  Music2,
+  Unlink,
+} from "lucide-react";
 
 import type { AssetDto } from "@/api/asset/type";
 import type { GeneratedItemDto, LibraryItemDto } from "@/api/asset-library/type";
@@ -50,6 +58,58 @@ const CARD_FRAME = "group/card bg-muted relative min-w-0 overflow-hidden rounded
 const COVER_BUTTON =
   "focus-visible:ring-ring/60 absolute inset-0 z-0 rounded-[inherit] outline-none focus-visible:ring-3 focus-visible:ring-inset";
 
+/**
+ * 卡片的选择模式（画布资产库弹框）：点卡片是勾选 / 取消，不再预览，⋯ 菜单也收起。
+ * disabled 是已选满上限时其余卡片的状态；已选的卡片永远可点（用来取消）。
+ */
+export type CardSelect = {
+  /** 是否已勾选 */
+  selected: boolean;
+  /** 不能再勾选（已选满），已选中的卡片不会是 true */
+  disabled: boolean;
+  /** 点击卡片：勾选或取消 */
+  onToggle: () => void;
+};
+
+/** 选择模式下卡片外框的状态：选中描边、禁用变淡 */
+const selectFrame = (select?: CardSelect) =>
+  select &&
+  cn(
+    "transition-opacity duration-150 motion-reduce:transition-none",
+    select.selected && "ring-foreground ring-2",
+    select.disabled && "opacity-45",
+  );
+
+/** 选择模式下卡片外框的数据属性，样式和测试都靠它认 */
+const selectAttrs = (select?: CardSelect) =>
+  select && {
+    "data-selected": select.selected || undefined,
+    "data-disabled": select.disabled || undefined,
+  };
+
+/** 选择模式下左上角的勾选框：只是状态指示，点击落在整张卡片的点击区上；始终可见，触屏也一眼看得出 */
+function SelectBox({ selected }: { selected: boolean }) {
+  return (
+    <span
+      data-slot="select-box"
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute top-2 left-2 z-10 grid size-5 place-items-center rounded-full transition-colors duration-120 motion-reduce:transition-none",
+        selected
+          ? "bg-foreground text-background"
+          : "bg-cover-scrim ring-cover-foreground/70 ring-1",
+      )}
+    >
+      <Check
+        className={cn(
+          "size-3.5 transition-opacity duration-120 motion-reduce:transition-none",
+          selected ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </span>
+  );
+}
+
 /** 左上角的小角标（时长、已在资产库）：压在封面上，用遮罩底保证深浅封面都看得清 */
 const CHIP =
   "bg-cover-scrim text-cover-foreground inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] tabular-nums";
@@ -61,17 +121,20 @@ const CHIP =
  * @param onPreview 点击卡片：打开只读预览
  * @param onAddToLibrary 菜单里的「加入资产库…」，已在库里时不出现
  * @param onOpenCanvas 菜单里的「在画布中打开」，来源画布存在时才可点
+ * @param select 选择模式：给了就变成可勾选的卡片，预览与 ⋯ 菜单都收起（此时上面三个回调可省略）
  */
 export function HistoryAssetCard({
   item,
   onPreview,
   onAddToLibrary,
   onOpenCanvas,
+  select,
 }: {
   item: GeneratedItemDto;
-  onPreview: () => void;
-  onAddToLibrary: () => void;
-  onOpenCanvas: (canvasId: string) => void;
+  onPreview?: () => void;
+  onAddToLibrary?: () => void;
+  onOpenCanvas?: (canvasId: string) => void;
+  select?: CardSelect;
 }) {
   const { asset, canvas } = item;
   const inLibrary = item.libraryItemId !== null;
@@ -82,13 +145,27 @@ export function HistoryAssetCard({
     <motion.div
       data-slot="history-card"
       data-in-library={inLibrary || undefined}
-      whileTap={TAP_CARD}
-      className={cn(CARD_FRAME, aspectOf(asset.kind))}
+      {...selectAttrs(select)}
+      whileTap={select?.disabled ? undefined : TAP_CARD}
+      className={cn(CARD_FRAME, aspectOf(asset.kind), selectFrame(select))}
     >
       <AssetCover asset={asset} />
-      <button type="button" aria-label={label} onClick={onPreview} className={COVER_BUTTON} />
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={select ? select.selected : undefined}
+        disabled={select?.disabled}
+        onClick={select ? select.onToggle : onPreview}
+        className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
+      />
+      {select && <SelectBox selected={select.selected} />}
       {(duration || inLibrary) && (
-        <span className="pointer-events-none absolute top-2 left-2 flex flex-col items-start gap-1">
+        <span
+          className={cn(
+            "pointer-events-none absolute top-2 flex flex-col gap-1",
+            select ? "right-2 items-end" : "left-2 items-start",
+          )}
+        >
           {duration && <span className={CHIP}>{duration}</span>}
           {inLibrary && (
             <span data-slot="in-library-badge" className={CHIP}>
@@ -104,7 +181,7 @@ export function HistoryAssetCard({
           {[item.modelLabel, formatAssetDay(item.createdAt)].filter(Boolean).join(" · ")}
         </span>
       </span>
-      {(!inLibrary || canvas) && (
+      {!select && onAddToLibrary && onOpenCanvas && (!inLibrary || canvas) && (
         <CardMenu>
           {!inLibrary && (
             <DropdownMenuItem onClick={onAddToLibrary}>
@@ -136,17 +213,20 @@ export function HistoryAssetCard({
  * @param onPreview 点击卡片：打开预览
  * @param onMove 菜单里的「移动到…」
  * @param onRemove 菜单里的「移出资产库」
+ * @param select 选择模式：给了就变成可勾选的卡片，预览与 ⋯ 菜单都收起（此时上面三个回调可省略）
  */
 export function LibraryAssetCard({
   item,
   onPreview,
   onMove,
   onRemove,
+  select,
 }: {
   item: LibraryItemDto;
-  onPreview: () => void;
-  onMove: () => void;
-  onRemove: () => void;
+  onPreview?: () => void;
+  onMove?: () => void;
+  onRemove?: () => void;
+  select?: CardSelect;
 }) {
   const { asset } = item;
   const name = asset.fileName ?? "未命名";
@@ -155,27 +235,42 @@ export function LibraryAssetCard({
   return (
     <motion.div
       data-slot="library-card"
-      whileTap={TAP_CARD}
-      className={cn(CARD_FRAME, aspectOf(asset.kind))}
+      {...selectAttrs(select)}
+      whileTap={select?.disabled ? undefined : TAP_CARD}
+      className={cn(CARD_FRAME, aspectOf(asset.kind), selectFrame(select))}
     >
       <AssetCover asset={asset} />
-      <button type="button" aria-label={name} onClick={onPreview} className={COVER_BUTTON} />
+      <button
+        type="button"
+        aria-label={name}
+        aria-pressed={select ? select.selected : undefined}
+        disabled={select?.disabled}
+        onClick={select ? select.onToggle : onPreview}
+        className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
+      />
+      {select && <SelectBox selected={select.selected} />}
       {duration && (
-        <span className={cn(CHIP, "pointer-events-none absolute top-2 left-2")}>{duration}</span>
+        <span
+          className={cn(CHIP, "pointer-events-none absolute top-2", select ? "right-2" : "left-2")}
+        >
+          {duration}
+        </span>
       )}
       <span className="from-cover-scrim text-cover-foreground pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t to-transparent px-2.5 pt-7 pb-2 text-xs">
         <span className="block truncate font-medium">{name}</span>
       </span>
-      <CardMenu>
-        <DropdownMenuItem onClick={onMove}>
-          <FolderInput />
-          移动到…
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onRemove}>
-          <Unlink />
-          移出资产库
-        </DropdownMenuItem>
-      </CardMenu>
+      {!select && onMove && onRemove && (
+        <CardMenu>
+          <DropdownMenuItem onClick={onMove}>
+            <FolderInput />
+            移动到…
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onRemove}>
+            <Unlink />
+            移出资产库
+          </DropdownMenuItem>
+        </CardMenu>
+      )}
     </motion.div>
   );
 }

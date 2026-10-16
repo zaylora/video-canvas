@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ChevronDown, Copy, Download, Maximize2, Sparkle } from "lucide-react";
+import { ChevronDown, Copy, Download, FolderPlus, Maximize2, Sparkle } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -19,7 +19,7 @@ import {
 import type { NodeToolbarConfig, ToolbarAction, ToolbarTail } from "@/constants/node-toolbar";
 import { DURATION, EASE_OUT_CSS, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { ToolbarGate } from "@/utils/canvas/node-toolbar-state";
+import { visibleTail, type ToolbarGate } from "@/utils/canvas/node-toolbar-state";
 
 /**
  * 弹层往上渐显：只做透明度和向上浮 6px，不缩放（设计稿 6.16 动效表）。
@@ -129,12 +129,13 @@ const TAIL_META = {
   zoom: { icon: Maximize2, label: "放大预览" },
   download: { icon: Download, label: "下载" },
   copy: { icon: Copy, label: "复制文本" },
+  addToLibrary: { icon: FolderPlus, label: "加入资产库" },
 } as const;
 
 /**
  * 节点功能区（设计稿 6.16）：选中节点时浮在标题行上方的一条胶囊，所有生成节点共用。
  * 按钮有哪些由 NODE_TOOLBAR 配置决定；左边是加工类功能（带下拉的展开菜单），
- * 分隔线右边是放大、下载、复制这类查看类按钮。
+ * 分隔线右边是放大、下载、复制、加入资产库这类查看类按钮。
  * 加工类功能这一版大多还是占位：没有给处理函数的功能点了只提示「敬请期待」。
  */
 export function NodeActionBar({
@@ -150,7 +151,7 @@ export function NodeActionBar({
   gate: ToolbarGate;
   /** 加工类功能和菜单项的处理函数，key 是配置里的 id；没有就当占位 */
   onAction?: Partial<Record<string, () => void>>;
-  /** 放大、下载、复制的处理函数；没有就当占位 */
+  /** 放大、下载、复制的处理函数，没有就当占位；加入资产库没有处理函数就不显示 */
   onTail?: Partial<Record<ToolbarTail, () => void>>;
 }) {
   const run = (id: string, name: string) => {
@@ -159,7 +160,7 @@ export function NodeActionBar({
     else comingSoon(name);
   };
 
-  const tail = config.tail.map((item) => {
+  const tail = visibleTail(config.tail, onTail).map((item) => {
     const meta = TAIL_META[item];
     return (
       <ChromeTooltip key={item} label={meta.label}>

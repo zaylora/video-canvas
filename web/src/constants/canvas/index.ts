@@ -60,6 +60,9 @@ export const IMAGE_ESTIMATED_DURATION = 3200;
 /** 菜单里「上传」那项的标识，和节点种类共用一份清单，所以取个不会撞车的值 */
 export const UPLOAD_ACTION = "action:upload";
 
+/** 菜单里「从资产库添加」那项的标识，取值规则同 UPLOAD_ACTION */
+export const ASSET_LIBRARY_ACTION = "action:asset-library";
+
 /** 文件选择框收的类型 */
 export const UPLOAD_ACCEPT = "image/*,video/*,audio/*";
 
@@ -76,6 +79,13 @@ export const UPLOAD_SIZE_LIMIT: Record<MediaType, number> = {
  */
 export const UPLOAD_STACK_GAP = { x: 440, y: 380 };
 export const UPLOAD_STACK_COLUMNS = 3;
+
+/**
+ * 从资产库一次引入多个素材时的排布：横向最多 4 列，节点框之间留 40px（横纵都是），
+ * 超过 4 个换行。和上传不同，这里按各节点框的真实尺寸排，所以只需要一个间距
+ */
+export const ASSET_STACK_COLUMNS = 4;
+export const ASSET_STACK_GAP = 40;
 
 /** 传进来的素材落到哪种节点上 */
 export const UPLOAD_TARGET_KIND: Record<MediaType, NodeKind> = {

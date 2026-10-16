@@ -98,6 +98,48 @@ describe("LibraryAssetCard：个人资产库卡片", () => {
   });
 });
 
+describe("选择模式（画布资产库弹框）", () => {
+  const select = (over: Partial<{ selected: boolean; disabled: boolean }> = {}) => ({
+    selected: false,
+    disabled: false,
+    onToggle: noop,
+    ...over,
+  });
+  const libraryItem: LibraryItemDto = {
+    id: "i1",
+    asset: asset({ fileName: "角色正面.png" }),
+    folderId: null,
+    createdAt: "2026-10-14T10:20:00Z",
+  };
+
+  test("生成历史卡片：左上角有勾选框，没有 ⋯ 菜单，选中时标记 data-selected", () => {
+    const off = renderToStaticMarkup(<HistoryAssetCard item={generated()} select={select()} />);
+    expect(off).toContain('data-slot="select-box"');
+    expect(off).not.toContain("更多操作");
+    expect(off).not.toContain("data-selected");
+    const on = renderToStaticMarkup(
+      <HistoryAssetCard item={generated()} select={select({ selected: true })} />,
+    );
+    expect(on).toContain('data-selected="true"');
+    expect(on).toContain('aria-pressed="true"');
+  });
+
+  test("个人资产库卡片：同样有勾选框，没有 ⋯ 菜单", () => {
+    const out = renderToStaticMarkup(<LibraryAssetCard item={libraryItem} select={select()} />);
+    expect(out).toContain('data-slot="select-box"');
+    expect(out).not.toContain("更多操作");
+    expect(out).toContain("角色正面.png");
+  });
+
+  test("达到上限时其余卡片禁用", () => {
+    const out = renderToStaticMarkup(
+      <LibraryAssetCard item={libraryItem} select={select({ disabled: true })} />,
+    );
+    expect(out).toContain("disabled");
+    expect(out).toContain('data-disabled="true"');
+  });
+});
+
 describe("UploadCard：上传中的卡片", () => {
   const task = {
     id: "u1",

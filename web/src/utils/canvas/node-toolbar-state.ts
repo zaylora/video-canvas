@@ -1,3 +1,4 @@
+import type { ToolbarTail } from "@/constants/node-toolbar";
 import type { CanvasNodeData } from "@/types";
 
 import { readOutputs } from "./outputs";
@@ -23,4 +24,17 @@ export function toolbarGate(data: CanvasNodeData): ToolbarGate {
     visible: hasOutput || historyCount > 0,
     actionsDisabled: running || !hasOutput,
   };
+}
+
+/**
+ * 功能区右半边实际要显示的查看类按钮。放大、下载、复制没有处理函数时仍显示（点了提示「敬请期待」）；
+ * 「加入资产库」是有条件的功能，调用方没给处理函数（节点没有可入库的素材）就不出现。
+ * @param tail 配置里这种节点的查看类按钮
+ * @param handlers 调用方给了处理函数的按钮
+ */
+export function visibleTail(
+  tail: ToolbarTail[],
+  handlers: Partial<Record<ToolbarTail, () => void>> | undefined,
+): ToolbarTail[] {
+  return tail.filter((item) => item !== "addToLibrary" || !!handlers?.addToLibrary);
 }

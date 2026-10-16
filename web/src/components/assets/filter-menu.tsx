@@ -39,6 +39,7 @@ export type FilterGroup = {
  * @param onChange 选择
  * @param onOpenChange 打开或收起（来源下拉在第一次打开时才去拉画布列表）
  * @param footer 选项后面的说明（加载中、没有画布）
+ * @param icon 给了就是纯图标按钮（画布资产库弹框里地方小）：偏离默认值时图标加深并带一个小圆点，名字走 title 与读屏
  */
 export function FilterMenu({
   label,
@@ -48,6 +49,7 @@ export function FilterMenu({
   onChange,
   onOpenChange,
   footer,
+  icon,
 }: {
   label: string;
   value: string;
@@ -56,6 +58,7 @@ export function FilterMenu({
   onChange: (value: string) => void;
   onOpenChange?: (open: boolean) => void;
   footer?: ReactNode;
+  icon?: ReactNode;
 }) {
   const active = value !== defaultValue;
   const current = groups.flatMap((group) => group.options).find((option) => option.value === value);
@@ -64,14 +67,31 @@ export function FilterMenu({
     <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         aria-label={label}
+        title={icon ? (active && current ? `${label}：${current.label}` : label) : undefined}
         className={cn(
-          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 inline-flex h-8 max-w-40 items-center gap-1 rounded-lg px-3 transition-colors outline-none focus-visible:ring-3",
+          "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:ring-ring/50 inline-flex h-8 items-center gap-1 rounded-lg transition-colors outline-none focus-visible:ring-3",
           "data-popup-open:bg-chrome-hover",
+          icon ? "relative w-8 justify-center [&_svg]:size-4" : "max-w-40 px-3",
           active && "text-foreground font-medium",
         )}
       >
-        <span className="truncate">{active && current ? current.label : label}</span>
-        <ChevronDown className="size-3.5 shrink-0" />
+        {icon ? (
+          <>
+            {icon}
+            {active && (
+              <span
+                aria-hidden
+                data-slot="filter-active-dot"
+                className="bg-foreground absolute top-1.5 right-1.5 size-1.5 rounded-full"
+              />
+            )}
+          </>
+        ) : (
+          <>
+            <span className="truncate">{active && current ? current.label : label}</span>
+            <ChevronDown className="size-3.5 shrink-0" />
+          </>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="max-h-80 w-44 overflow-y-auto">
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(String(next))}>

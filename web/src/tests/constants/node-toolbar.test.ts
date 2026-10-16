@@ -42,6 +42,13 @@ describe("节点功能区配置（设计稿 6.16）", () => {
     expect(labels("tools")).toEqual(["补帧", "深度动作捕捉"]);
   });
 
+  test("图片、视频、音频的查看类按钮最后一项是「加入资产库」，文本没有", () => {
+    for (const kind of ["image", "video", "audio"] as const) {
+      expect(NODE_TOOLBAR[kind].tail.at(-1)).toBe("addToLibrary");
+    }
+    expect(NODE_TOOLBAR.script.tail as string[]).not.toContain("addToLibrary");
+  });
+
   test("音频没有放大，视频和图片有放大和下载", () => {
     expect(NODE_TOOLBAR.audio.tail).not.toContain("zoom");
     for (const kind of ["image", "video"] as const) {

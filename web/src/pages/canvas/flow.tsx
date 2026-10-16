@@ -37,6 +37,7 @@ import {
   REMOTE_KIND_OF_NODE,
   UPLOAD_ACCEPT,
   UPLOAD_ACTION,
+  ASSET_LIBRARY_ACTION,
 } from "@/constants/canvas";
 import { CanvasHistoryProvider, useCanvasHistory } from "@/hooks/use-canvas-history";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
@@ -78,6 +79,7 @@ import { uploadRunner } from "@/utils/canvas/upload-runner";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
 
+import { AssetPickerDialog } from "@/components/assets/asset-picker-dialog";
 import { BottomToolbar } from "./chrome/bottom-toolbar";
 import { EmptyState } from "./chrome/empty-state";
 import { ShortcutsDialog } from "./chrome/shortcuts-dialog";
@@ -569,6 +571,7 @@ export const Flow = memo(function Flow({
     beginUpload,
     beginUploadAt,
     addUploadedNodes,
+    addAssetNodes,
     onConnect,
     onConnectEnd,
     onDoubleClick,
@@ -592,6 +595,12 @@ export const Flow = memo(function Flow({
   const addAtCenter = useCallback(
     (kind: NodeKind) => addNodeAt(kind, viewportCenter()),
     [addNodeAt, viewportCenter],
+  );
+  /** 资产库弹框：null 是关着，打开时记下引入的素材落在哪（底栏按钮是视口中心，菜单是菜单位置） */
+  const [assetPicker, setAssetPicker] = useState<{ origin: { x: number; y: number } } | null>(null);
+  const openAssetPickerAtCenter = useCallback(
+    () => setAssetPicker({ origin: viewportCenter() }),
+    [viewportCenter],
   );
   const uploadAtCenter = useCallback(() => {
     beginUploadAt(viewportCenter());
@@ -841,6 +850,7 @@ export const Flow = memo(function Flow({
                         onToolChange={setTool}
                         onAdd={addAtCenter}
                         onUpload={uploadAtCenter}
+                        onOpenAssets={openAssetPickerAtCenter}
                         canUndo={history.canUndo}
                         canRedo={history.canRedo}
                         onUndo={history.undo}
@@ -943,7 +953,21 @@ export const Flow = memo(function Flow({
                           return;
                         }
 
+                        // 从资产库添加：落点是菜单位置；不连线，只建节点
+                        if (value === ASSET_LIBRARY_ACTION) {
+                          if (menu) setAssetPicker({ origin: menu.flow });
+                          closeMenu();
+                          return;
+                        }
+
                         addNode(value as NodeKind);
+                      }}
+                    />
+                    <AssetPickerDialog
+                      open={assetPicker !== null}
+                      onOpenChange={(open) => !open && setAssetPicker(null)}
+                      onConfirm={(assets) => {
+                        if (assetPicker) addAssetNodes(assets, assetPicker.origin);
                       }}
                     />
                   </div>

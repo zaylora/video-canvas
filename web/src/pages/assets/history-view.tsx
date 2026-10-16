@@ -1,9 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
-import { getCanvasList } from "@/api/canvas";
-import type { CanvasListItemDto } from "@/api/canvas/type";
 import { addToLibrary, moveLibraryItem, removeLibraryItem } from "@/api/asset-library";
 import type { AssetKind, GeneratedItemDto } from "@/api/asset-library/type";
 import { AddToLibraryAction } from "@/components/assets/add-to-library-action";
@@ -12,17 +10,17 @@ import { HistoryAssetCard } from "@/components/assets/asset-card";
 import { AssetGrid, AssetGridSkeleton, LoadMoreFooter } from "@/components/assets/asset-grid";
 import { AssetPreview, type AssetPreviewEntry } from "@/components/assets/asset-preview";
 import { AssetSearch } from "@/components/assets/asset-search";
-import { FilterMenu, type FilterGroup } from "@/components/assets/filter-menu";
+import { FilterMenu } from "@/components/assets/filter-menu";
 import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
 import { EmptyMark } from "@/components/home/empty-mark";
 import { Button } from "@/components/ui/button";
+import { useCanvasSourceMenu } from "@/hooks/use-canvas-source-menu";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useGeneratedAssets } from "@/hooks/use-generated-assets";
 import {
   DEFAULT_GENERATED_FILTER,
   hasActiveFilter,
   sourceFromValue,
-  sourceToValue,
   type GeneratedFilter,
 } from "@/utils/assets/generated-filter";
 import { addGeneratedToLibrary, type LibraryApi } from "@/utils/assets/library-actions";
@@ -44,12 +42,6 @@ const ORDER_OPTIONS = [
   { value: "desc", label: "最新优先" },
   { value: "asc", label: "最早优先" },
 ];
-
-/** 来源下拉里画布列表的加载状态 */
-type CanvasOptions = { status: "idle" | "loading" | "ready" | "error"; items: CanvasListItemDto[] };
-
-/** 来源下拉里最多列出多少张画布 */
-const CANVAS_OPTION_LIMIT = 60;
 
 /**
  * 资产页「生成历史」：首页对话与所有画布生成的素材，按图片 / 视频 / 音频分标签，
@@ -74,21 +66,7 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
   const { items } = state;
   const filtered = hasActiveFilter(filter);
 
-  const [canvases, setCanvases] = useState<CanvasOptions>({ status: "idle", items: [] });
-  /** 画布列表是否已发起请求：加载中或已成功就不重复拉，失败后重新打开下拉会再试 */
-  const canvasesRequested = useRef(false);
-  /** 第一次打开来源下拉时才去拉画布列表 */
-  const loadCanvases = useCallback((open: boolean) => {
-    if (!open || canvasesRequested.current) return;
-    canvasesRequested.current = true;
-    setCanvases((prev) => ({ status: "loading", items: prev.items }));
-    getCanvasList({ page: 1, page_size: CANVAS_OPTION_LIMIT })
-      .then((result) => setCanvases({ status: "ready", items: result.items }))
-      .catch(() => {
-        canvasesRequested.current = false;
-        setCanvases({ status: "error", items: [] });
-      });
-  }, []);
+  const sourceMenu = useCanvasSourceMenu(source);
 
   /** 「加入资产库…」目标条目；null 表示选择器关着 */
   const [adding, setAdding] = useState<GeneratedItemDto | null>(null);
@@ -117,34 +95,6 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
     setInput("");
   };
 
-  const sourceGroups: FilterGroup[] = [
-    {
-      options: [
-        { value: "all", label: "全部来源" },
-        { value: "conversation", label: "首页对话" },
-      ],
-    },
-    ...(canvases.items.length > 0
-      ? [
-          {
-            heading: "画布",
-            options: canvases.items.map((canvas) => ({
-              value: `canvas:${canvas.id}`,
-              label: canvas.title,
-            })),
-          },
-        ]
-      : []),
-  ];
-  /** 选中的画布不在已加载的列表里（还没打开过下拉）时，补一个选项让按钮文案能显示它 */
-  const sourceValue = sourceToValue(source);
-  if (source.type === "canvas" && !canvases.items.some((canvas) => canvas.id === source.canvasId)) {
-    sourceGroups.push({
-      heading: "画布",
-      options: [{ value: sourceValue, label: "指定画布" }],
-    });
-  }
-
   return (
     <>
       {searchSlot &&
@@ -158,18 +108,12 @@ export function HistoryView({ searchSlot }: { searchSlot: HTMLElement | null }) 
         <span aria-hidden className="bg-border mx-1.5 h-4 w-px" />
         <FilterMenu
           label="来源"
-          value={sourceValue}
+          value={sourceMenu.value}
           defaultValue="all"
-          groups={sourceGroups}
+          groups={sourceMenu.groups}
           onChange={(value) => setSource(sourceFromValue(value))}
-          onOpenChange={loadCanvases}
-          footer={
-            canvases.status === "loading" ? (
-              <div className="text-muted-foreground px-2 py-1.5 text-xs">正在加载画布…</div>
-            ) : canvases.status === "error" ? (
-              <div className="text-muted-foreground px-2 py-1.5 text-xs">画布列表加载失败</div>
-            ) : undefined
-          }
+          onOpenChange={sourceMenu.onOpenChange}
+          footer={sourceMenu.footer}
         />
         <FilterMenu
           label="时间"
