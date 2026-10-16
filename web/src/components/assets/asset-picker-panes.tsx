@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
@@ -16,13 +16,26 @@ import type { PickerView } from "@/utils/assets/picker-state";
 import type { UploadTask } from "@/utils/assets/upload-queue";
 
 import { HistoryAssetCard, LibraryAssetCard, type CardSelect } from "./asset-card";
-import { AssetGrid, AssetGridSkeleton, LoadMoreFooter } from "./asset-grid";
+import { AssetGrid, LoadMoreFooter } from "./asset-grid";
 import { ASSET_KINDS } from "./asset-kind-tabs";
 import { FolderCard } from "./folder-card";
 import { UploadCard } from "./upload-card";
 
 /** 弹框里空状态的占位：高度比资产页矮，免得撑出滚动 */
 const EMPTY_CLASS = "min-h-56 flex-1";
+
+/** 弹框内容区的加载态：居中转圈，不用骨架屏 */
+function PaneLoading() {
+  return (
+    <div
+      role="status"
+      aria-label="加载中"
+      className={`${EMPTY_CLASS} flex items-center justify-center`}
+    >
+      <Loader2 className="text-muted-foreground size-6 animate-spin motion-reduce:animate-none" />
+    </div>
+  );
+}
 
 /** 一张卡片的选择状态：已选的可取消，没选的在已选满后禁用 */
 function selectOf(
@@ -40,7 +53,7 @@ function selectOf(
 
 /**
  * 弹框里「生成历史」来源的内容：按类型与筛选条件分页，卡片可勾选。
- * 状态沿用资产页：加载骨架、失败重试、筛选无结果可清除、滚动到底加载下一页。
+ * 状态沿用资产页：加载转圈、失败重试、筛选无结果可清除、滚动到底加载下一页。
  * @param kind 类型标签
  * @param filter 筛选状态（关键字已防抖）
  * @param selected 当前选择
@@ -63,7 +76,7 @@ export function HistoryPane({
   const { list, state } = useGeneratedAssets(kind, filter);
   const { items } = state;
 
-  if (state.status === "loading") return <AssetGridSkeleton count={10} />;
+  if (state.status === "loading") return <PaneLoading />;
   if (state.status === "error") {
     return (
       <EmptyMark
@@ -207,7 +220,7 @@ export function LibraryPane({
     return (
       <>
         {crumb}
-        <AssetGridSkeleton count={10} />
+        <PaneLoading />
       </>
     );
   }

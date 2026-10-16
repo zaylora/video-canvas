@@ -172,6 +172,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
       <div className="flex flex-col gap-3 px-4 pt-4">
         <Segmented
           variant="track"
+          className="self-start"
           label="资产来源"
           options={SOURCE_OPTIONS}
           value={view.source}
