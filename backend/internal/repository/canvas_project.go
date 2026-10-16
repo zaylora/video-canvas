@@ -114,3 +114,19 @@ func (r *CanvasProjectRepository) CountByUser(ctx context.Context, userID uint64
 	err := r.db.WithContext(ctx).Model(&model.CanvasProject{}).Where("user_id = ?", userID).Count(&n).Error
 	return n, err
 }
+
+// BriefsByIDs 批量返回该用户这些画布的标题与是否已删除（含软删除的，生成历史要区分“已删除的画布”）；
+// 查不到的 id（含不属于该用户的）直接缺席，ids 为空返回 nil。
+func (r *CanvasProjectRepository) BriefsByIDs(ctx context.Context, userID uint64, ids []uint64) ([]model.CanvasBrief, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []model.CanvasBrief
+	err := r.db.WithContext(ctx).Unscoped().Model(&model.CanvasProject{}).
+		Select("id, title, (deleted_at IS NOT NULL) AS deleted").
+		Where("user_id = ? AND id IN ?", userID, ids).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

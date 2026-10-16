@@ -247,6 +247,10 @@ func NewApp(cfg *config.Config) (*App, error) {
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
+		AssetLibrary: handler.NewAssetLibraryHandler(service.NewAssetLibraryService(service.AssetLibraryDeps{
+			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
+			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
+		})),
 		Files:          handler.NewFilesHandler(assetSvc),
 		AIModel:        handler.NewAIModelHandler(aiCfgSvc),
 		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),

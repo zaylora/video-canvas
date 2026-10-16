@@ -24,6 +24,7 @@ type Handlers struct {
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
 	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
 	Asset          *handler.AssetHandler               // 素材上传与查询
+	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
@@ -126,7 +127,18 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/assets", h.Asset.Upload)
 		auth.POST("/assets/upload-intents", h.Asset.CreateUploadIntent)          // 申请上传：直传凭证，或告知走后端中转
 		auth.POST("/assets/upload-intents/:id/complete", h.Asset.CompleteUpload) // 直传完成后登记素材
+		auth.GET("/assets/generated", h.AssetLibrary.ListGenerated)              // 生成历史；静态段优先于 /assets/:id
 		auth.GET("/assets/:id", h.Asset.Get)
+
+		// 资产库：文件夹与库条目的 id 是十六进制串；POST /asset-folders、新增归属返回 201，已在库里返回 200
+		auth.GET("/asset-folders", h.AssetLibrary.ListFolders)
+		auth.POST("/asset-folders", h.AssetLibrary.CreateFolder)
+		auth.PATCH("/asset-folders/:id", h.AssetLibrary.RenameFolder)
+		auth.DELETE("/asset-folders/:id", h.AssetLibrary.DeleteFolder)
+		auth.GET("/asset-library/items", h.AssetLibrary.ListItems) // ?folder_id=root|<id>|all&kind=&q=&cursor=&limit=
+		auth.POST("/asset-library/items", h.AssetLibrary.AddItem)
+		auth.PATCH("/asset-library/items/:id", h.AssetLibrary.MoveItem)
+		auth.DELETE("/asset-library/items/:id", h.AssetLibrary.RemoveItem)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
 		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。

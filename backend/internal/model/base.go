@@ -50,5 +50,7 @@ func All() []any {
 		&AgentSkillImport{},
 		&Conversation{},
 		&ConversationRecord{},
+		&AssetFolder{},
+		&AssetLibraryItem{},
 	}
 }
