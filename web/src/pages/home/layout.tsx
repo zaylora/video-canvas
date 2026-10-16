@@ -1,10 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { Outlet, useViewTransitionState } from "react-router";
-import { MotionConfig } from "motion/react";
+import { Outlet, useLocation, useViewTransitionState } from "react-router";
+import { motion, MotionConfig } from "motion/react";
 
 import { AppSidebar } from "@/components/home/app-sidebar";
 import { SiteHeader } from "@/components/home/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { DURATION, EASE_OUT } from "@/lib/motion";
 
 /** 侧栏展开状态存在本机；和后台的侧栏分开记，互不影响 */
 const SIDEBAR_KEY = "home-sidebar-open";
@@ -15,6 +16,28 @@ function readSidebarOpen() {
   } catch {
     return true;
   }
+}
+
+/**
+ * 内容区的页面入场：切到另一个一级页面（创作 / 资产 / 画布列表 / 个人资料…）时，
+ * 新内容淡入并从下方 8px 上浮到位，侧栏和顶栏不动。
+ * 以第一段路径作 key：资产页换范围、对话之间切换只改查询参数或 id，不会重播。
+ * 画布列表自己有 view transition（画布卡缩放进出），不再叠这层，免得两套转场打架。
+ * 系统开「减少动态效果」时 MotionConfig 会去掉位移，只剩淡入。
+ */
+function PageTransition() {
+  const section = useLocation().pathname.split("/")[1] ?? "";
+  return (
+    <motion.div
+      key={section}
+      initial={section === "canvases" ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: DURATION.slow, ease: EASE_OUT }}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <Outlet />
+    </motion.div>
+  );
 }
 
 /**
@@ -56,7 +79,7 @@ export default function HomeLayout() {
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <SiteHeader />
-          <Outlet />
+          <PageTransition />
         </SidebarInset>
       </SidebarProvider>
     </MotionConfig>
