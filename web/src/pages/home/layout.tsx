@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Outlet, useViewTransitionState } from "react-router";
 import { MotionConfig } from "motion/react";
 
@@ -26,6 +26,16 @@ function readSidebarOpen() {
 export default function HomeLayout() {
   const [open, setOpen] = useState(readSidebarOpen);
   const transitioning = useViewTransitionState("/canvases");
+
+  /** 页面靠文档滚动：骨架屏撑高出现滚动条、数据回来内容变短又消失，会让整页左右抖。常驻预留滚动条的位置 */
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.scrollbarGutter;
+    root.style.scrollbarGutter = "stable";
+    return () => {
+      root.style.scrollbarGutter = previous;
+    };
+  }, []);
 
   return (
     <MotionConfig reducedMotion="user">
