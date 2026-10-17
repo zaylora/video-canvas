@@ -383,6 +383,33 @@ func TestAgentBridge_Tools(t *testing.T) {
 		}
 	})
 
+	t.Run("canvas_delete：只删节点或只删连线时，审批内容里的列表不能是 null（前端直接读 length）", func(t *testing.T) {
+		for name, args := range map[string]map[string]any{
+			"只删节点": {"nodeIds": []string{"n_script"}},
+			"只删连线": {"edgeIds": []string{"e1"}},
+		} {
+			b := newBridgeEnv(t)
+			tok, _ := b.token(t, "all")
+			if res := b.tool(t, tok, "canvas_delete", args); res.IsError {
+				t.Fatalf("%s: res=%+v", name, res)
+			}
+			st := b.repo.st()
+			st.mu.Lock()
+			for _, a := range st.approvals {
+				var p map[string]any
+				if err := json.Unmarshal(a.PayloadJSON, &p); err != nil {
+					t.Fatal(err)
+				}
+				for _, k := range []string{"node_ids", "labels", "outputs", "edge_ids"} {
+					if _, ok := p[k].([]any); !ok {
+						t.Errorf("%s: %s 应是数组，实际 %v", name, k, p[k])
+					}
+				}
+			}
+			st.mu.Unlock()
+		}
+	})
+
 	t.Run("ask_user：校验选项，建提问，运行进入 waiting_input", func(t *testing.T) {
 		b := newBridgeEnv(t)
 		tok, run := b.token(t, "all")

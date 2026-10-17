@@ -5,7 +5,6 @@ import { ChevronRight, MessageCircleQuestion, Sparkles, Trash2 } from "lucide-re
 import type {
   AgentApprovalDto,
   AgentAskPayload,
-  AgentDeletePayload,
   AgentGeneratePayload,
   DecideAgentApprovalReq,
 } from "@/api/agent/type";
@@ -16,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import { useCreditsStore } from "@/store/credits";
 
-import { approvalTitle } from "./approval-row";
+import { approvalTitle, deletePayload } from "./approval-row";
 
 /** 决定框里的一个编号选项 */
 type Option = {
@@ -64,7 +63,7 @@ export function DecisionDock({
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const gen = approval.kind === "generate" ? (approval.payload as AgentGeneratePayload) : null;
-  const del = approval.kind === "delete" ? (approval.payload as AgentDeletePayload) : null;
+  const del = approval.kind === "delete" ? deletePayload(approval.payload) : null;
   const ask = approval.kind === "ask" ? (approval.payload as AgentAskPayload) : null;
   const items = gen?.items.length ?? del?.node_ids.length ?? 0;
   /** 每一项勾没勾 */

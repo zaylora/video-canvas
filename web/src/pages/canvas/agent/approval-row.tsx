@@ -10,13 +10,25 @@ import type { AgentController } from "@/hooks/use-agent-controller";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
 
+/** 删除审批的内容；服务端的空列表可能是 null（旧数据），统一补成空数组 */
+export function deletePayload(raw: unknown): AgentDeletePayload {
+  const p = (raw ?? {}) as Partial<AgentDeletePayload>;
+  return {
+    reason: p.reason ?? "",
+    node_ids: p.node_ids ?? [],
+    labels: p.labels ?? [],
+    outputs: p.outputs ?? [],
+    edge_ids: p.edge_ids ?? [],
+  };
+}
+
 /** 审批的一句话标题：卡片和记录行共用 */
 export function approvalTitle(approval: AgentApprovalDto) {
   switch (approval.kind) {
     case "generate":
       return `申请生成 ${(approval.payload as AgentGeneratePayload).items.length} 个节点`;
     case "delete": {
-      const p = approval.payload as AgentDeletePayload;
+      const p = deletePayload(approval.payload);
       return `申请删除 ${p.node_ids.length} 个节点${p.edge_ids.length ? `、${p.edge_ids.length} 条连线` : ""}`;
     }
     case "ask":
@@ -84,7 +96,7 @@ export function ApprovalRow({ approvalId, ctl }: { approvalId: string; ctl: Agen
       onMouseEnter={() =>
         pending &&
         approval.kind === "delete" &&
-        useAgentHighlight.getState().setDanger((approval.payload as AgentDeletePayload).node_ids)
+        useAgentHighlight.getState().setDanger(deletePayload(approval.payload).node_ids)
       }
       onMouseLeave={() => approval.kind === "delete" && useAgentHighlight.getState().setDanger([])}
     >
