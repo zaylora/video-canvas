@@ -16,6 +16,7 @@ export const LEDGER_TYPE_LABEL: Record<LedgerType, string> = {
   settle: "生成结算",
   refund: "解冻退回",
   admin_adjust: "管理员调整",
+  recharge: "充值",
 };
 
 /** 页码条里的一项：页码或省略号 */
@@ -92,6 +93,7 @@ export function ledgerAmount(item: Pick<LedgerItemDto, "type" | "amount">): {
     case "settle":
       return { text: `−${abs}`, tone: "default" };
     case "initial":
+    case "recharge":
       return { text: `+${abs}`, tone: "positive" };
     default:
       if (item.amount > 0) return { text: `+${abs}`, tone: "positive" };
@@ -102,14 +104,16 @@ export function ledgerAmount(item: Pick<LedgerItemDto, "type" | "amount">): {
 
 /**
  * 流水行的副标题：关联任务显示「任务 #id」，Agent 调用显示「Agent 对话」，
- * 管理员调整显示备注原文（note 为 true，界面按纯文本一行截断、悬停看全文；不显示操作人），初始积分显示「注册赠送」
+ * 管理员调整和充值显示备注原文（note 为 true，界面按纯文本一行截断、悬停看全文；不显示操作人），初始积分显示「注册赠送」
  * @param item 一条流水
  * @returns 副标题文案，以及它是不是管理员备注
  */
 export function ledgerSubtitle(item: LedgerItemDto): { text: string; note: boolean } {
   if (item.taskId) return { text: `任务 #${item.taskId}`, note: false };
   if (item.agentCallId) return { text: "Agent 对话", note: false };
-  if (item.type === "admin_adjust") return { text: item.note, note: true };
+  // 管理员调整和充值的备注都是后端写好的整句（充值写着金额和订单号），按纯文本一行截断、悬停看全文
+  if (item.type === "admin_adjust" || item.type === "recharge")
+    return { text: item.note, note: true };
   if (item.type === "initial") return { text: "注册赠送", note: false };
   return { text: "", note: false };
 }

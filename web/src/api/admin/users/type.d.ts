@@ -132,8 +132,8 @@ export interface UserTaskItem {
 /** 积分流水的类型筛选 */
 export type LedgerFilter = "all" | "admin" | "task";
 
-/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整 */
-export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust";
+/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整、recharge 充值 */
+export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust" | "recharge";
 
 /** 一条积分流水 */
 export interface UserLedgerItem {

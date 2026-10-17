@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import { clearSession } from "../storage/session";
 import { getToken } from "../storage/token";
+import { getErrorAction } from "./error-actions";
 import { recordRequest, redactRequestBody, shouldLogRequest } from "./request-log";
 
 declare module "axios" {
@@ -63,7 +64,14 @@ const isApiResponse = (value: unknown): value is ApiResponse => {
  */
 const reject = (error: ApiError, silent = false) => {
   console.error(`[api] ${error.code}: ${error.message}`);
-  if (!silent) toast.error(error.message, { id: `api:${error.code}` });
+  if (!silent) {
+    // 有的错误能给用户一个出路（积分不足 → 去充值）：动作由业务模块注册，这里只查表
+    const action = getErrorAction(error.code);
+    toast.error(error.message, {
+      id: `api:${error.code}`,
+      action: action ? { label: action.label, onClick: action.onClick } : undefined,
+    });
+  }
   return Promise.reject(error);
 };
 

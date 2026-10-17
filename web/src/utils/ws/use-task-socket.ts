@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { getWsTicket } from "@/api/ws";
 import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
+import { usePaymentStore } from "@/store/payment";
 import { publishCanvasPatch } from "@/utils/agent/patch-bus";
 import { useWsStore } from "@/store/ws";
 import { getToken } from "@/utils/storage/token";
@@ -29,6 +30,7 @@ export function useTaskSocket() {
       onTask: (view) => handleTaskView(view, "live"),
       onCanvasPatch: publishCanvasPatch,
       onAgentEvent: (event) => useAgentStore.getState().handleEvent(event),
+      onPayment: (update) => usePaymentStore.getState().handleWsUpdate(update),
       onOpen: () => {
         void reconcileActiveTasks();
         void useCreditsStore.getState().refresh();

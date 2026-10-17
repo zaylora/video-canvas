@@ -208,3 +208,22 @@ var (
 	ErrAssetFolderNotFound = New(64004, "文件夹不存在", http.StatusNotFound)
 	ErrLibraryItemNotFound = New(64005, "资产库条目不存在", http.StatusNotFound)
 )
+
+// 支付（积分充值）65xxx
+var (
+	ErrPaymentDisabled     = New(65001, "支付功能未开启", http.StatusForbidden)
+	ErrPayMethodUnavail    = New(65002, "该支付方式暂不可用", http.StatusConflict) // 原因写进 Msg
+	ErrProductUnavailable  = New(65003, "商品不存在或已下架", http.StatusNotFound)
+	ErrTooManyPendingOrder = New(65004, "未完成的订单过多，请先完成或取消", http.StatusTooManyRequests)
+	ErrPayCreateFailed     = New(65005, "渠道下单失败，请稍后重试或换一种支付方式", http.StatusBadGateway)
+	ErrPayOrderNotFound    = New(65006, "订单不存在", http.StatusNotFound)
+	ErrPayOrderState       = New(65007, "订单当前状态不允许该操作", http.StatusConflict)
+	ErrPayQueryUnsupported = New(65008, "该渠道不支持查单", http.StatusConflict)
+	ErrPayChannelConfig    = New(65009, "渠道配置校验失败", http.StatusBadRequest) // 具体原因写进 Msg（已脱敏）
+	ErrPayChannelLocked    = New(65010, "渠道有未完成订单，暂不能修改商户身份或密钥", http.StatusConflict)
+	ErrPayVersionConflict  = New(65011, "配置已被他人修改，请刷新后重试", http.StatusConflict)
+	ErrProductHasOrders    = New(65012, "商品已有订单，只能下架不能删除", http.StatusConflict)
+	ErrPayBaseURLMissing   = New(65013, "请先配置站点公网地址", http.StatusBadRequest)
+	ErrPayTooFrequent      = New(65014, "操作过于频繁，请稍后再试", http.StatusTooManyRequests)
+	ErrPayUpstream         = New(65015, "渠道请求失败，请稍后重试", http.StatusBadGateway)
+)

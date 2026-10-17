@@ -40,6 +40,7 @@ export const LEDGER_TYPE_LABEL: Record<LedgerType, string> = {
   settle: "结算",
   refund: "退款",
   admin_adjust: "管理员调整",
+  recharge: "充值",
 };
 
 /** 管理员动作显示名（审计日志的 action） */

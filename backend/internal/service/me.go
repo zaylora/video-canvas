@@ -180,7 +180,7 @@ const defaultLedgerPageSize = 20
 var allowedLedgerPageSizes = map[int]bool{10: true, 20: true, 50: true}
 
 // ledgerTypes 把流水类型筛选值映射成库里的类型集合，用户侧与后台 ListLedger 共用同一口径：
-// admin 只看管理员调整；task 看 freeze / settle / refund（不含 initial）；all / 空不筛。
+// admin 只看管理员调整；task 看 freeze / settle / refund（不含 initial）；recharge 只看充值；all / 空不筛。
 func ledgerTypes(filter string) ([]string, error) {
 	switch filter {
 	case "", "all":
@@ -189,6 +189,8 @@ func ledgerTypes(filter string) ([]string, error) {
 		return []string{model.LedgerAdminAdjust}, nil
 	case "task":
 		return []string{model.LedgerFreeze, model.LedgerSettle, model.LedgerRefund}, nil
+	case "recharge":
+		return []string{model.LedgerRecharge}, nil
 	}
 	return nil, errcode.ErrInvalidParams.WithMsg("类型筛选值不合法")
 }

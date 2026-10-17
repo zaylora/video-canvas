@@ -40,7 +40,9 @@ import { UserAvatar } from "@/components/user-avatar";
 import type { ThemeSetting } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store";
+import { openPaymentStore } from "@/components/payment/payment-dialog";
 import { useCreditsStore } from "@/store/credits";
+import { useHasPendingOrder, usePaymentEnabled } from "@/store/payment";
 import { useMeStore } from "@/store/me";
 import { useWsStore, type ConnectionState } from "@/store/ws";
 import { canEnterAdmin } from "@/utils/admin/role";
@@ -85,13 +87,68 @@ export function useCanEnterAdmin() {
   return useMemo(() => canEnterAdmin(getRole()), []);
 }
 
-/** 积分菜单（不带胶囊）：左边是实时连接状态点，点开看余额明细；放进任意 ChromePill 里用 */
+/** 积分按钮里的内容：实时连接状态点 + 积分图标 + 可用积分；有待支付订单时右上角挂一个小圆点 */
+function CreditsFace({ showPendingDot }: { showPendingDot: boolean }) {
+  const credits = useCreditsStore((state) => state.credits);
+  const connection = useWsStore((state) => state.connection);
+  const down = connection === "reconnecting" || connection === "closed";
+  const pending = connection === "connecting" || connection === "idle";
+  return (
+    <>
+      <span
+        title={WS_TEXT[connection]}
+        className={cn(
+          "size-1.5 rounded-full",
+          down
+            ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
+            : pending
+              ? "bg-muted-foreground/50"
+              : "bg-status-success ring-status-success/15 ring-3",
+        )}
+      />
+      <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
+      {credits ? (
+        <NumberFlow value={credits.available} className="tabular-nums" />
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+      {showPendingDot ? (
+        <span
+          title="有一笔待支付的充值订单"
+          className="bg-status-warning border-background absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** 积分按钮的公共样式 */
+const CREDITS_BUTTON_CLASS =
+  "text-foreground relative h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold";
+
+/**
+ * 积分菜单（不带胶囊）：放进任意 ChromePill 里用。
+ * 支付功能开启时，点它直接打开积分商城（余额、冻结信息在商城顶部）；没开启时保持原来的余额小卡片。
+ */
 export function CreditsMenu() {
+  const payEnabled = usePaymentEnabled();
+  const hasPending = useHasPendingOrder();
   const credits = useCreditsStore((state) => state.credits);
   const refresh = useCreditsStore((state) => state.refresh);
   const connection = useWsStore((state) => state.connection);
   const down = connection === "reconnecting" || connection === "closed";
-  const pending = connection === "connecting" || connection === "idle";
+
+  if (payEnabled) {
+    return (
+      <ChromeButton
+        aria-label={`积分，点击进入积分商城，${WS_TEXT[connection]}`}
+        className={CREDITS_BUTTON_CLASS}
+        onClick={() => openPaymentStore()}
+      >
+        <CreditsFace showPendingDot={hasPending} />
+      </ChromeButton>
+    );
+  }
 
   return (
     <Popover onOpenChange={(open) => open && void refresh()}>
@@ -99,25 +156,9 @@ export function CreditsMenu() {
         render={
           <ChromeButton
             aria-label={`积分，${WS_TEXT[connection]}`}
-            className="text-foreground h-9 gap-2 pr-3 pl-2.5 font-mono text-sm font-semibold"
+            className={CREDITS_BUTTON_CLASS}
           >
-            <span
-              title={WS_TEXT[connection]}
-              className={cn(
-                "size-1.5 rounded-full",
-                down
-                  ? "bg-status-warning ring-status-warning/20 animate-pulse ring-3"
-                  : pending
-                    ? "bg-muted-foreground/50"
-                    : "bg-status-success ring-status-success/15 ring-3",
-              )}
-            />
-            <Sparkle className="fill-credit text-credit size-4.5!" strokeWidth={0} />
-            {credits ? (
-              <NumberFlow value={credits.available} className="tabular-nums" />
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
+            <CreditsFace showPendingDot={false} />
           </ChromeButton>
         }
       />

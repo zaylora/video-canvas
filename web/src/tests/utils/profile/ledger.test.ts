@@ -124,6 +124,20 @@ describe("流水副标题", () => {
     expect(LEDGER_TYPE_LABEL.admin_adjust).toBe("管理员调整");
     expect(LEDGER_TYPE_LABEL.settle).toBe("生成结算");
   });
+
+  test("充值流水：类型名「充值」，金额是绿色的 +N，副标题显示订单备注（不是管理员调整）", () => {
+    expect(LEDGER_TYPE_LABEL.recharge).toBe("充值");
+    expect(ledgerAmount({ type: "recharge", amount: 10500 })).toEqual({
+      text: "+10500",
+      tone: "positive",
+    });
+    expect(
+      ledgerSubtitle(item({ type: "recharge", amount: 10500, note: "充值 ¥100.00（VC1）" })),
+    ).toEqual({
+      text: "充值 ¥100.00（VC1）",
+      note: true,
+    });
+  });
 });
 
 describe("流水接口映射", () => {

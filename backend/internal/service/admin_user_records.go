@@ -145,7 +145,7 @@ func signedLedgerAmount(typ string, amount int) int {
 	switch typ {
 	case model.LedgerFreeze, model.LedgerSettle:
 		return -abs(amount)
-	case model.LedgerRefund, model.LedgerInitial:
+	case model.LedgerRefund, model.LedgerInitial, model.LedgerRecharge:
 		return abs(amount)
 	}
 	return amount

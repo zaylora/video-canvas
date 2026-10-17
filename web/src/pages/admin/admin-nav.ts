@@ -10,6 +10,7 @@ import {
   RadioTower,
   UserPlus,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -39,7 +40,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
   },
   {
     label: "用户",
-    items: [{ to: "users", label: "用户管理", icon: Users }],
+    items: [
+      { to: "users", label: "用户管理", icon: Users },
+      { to: "payment", label: "支付管理", icon: Wallet, badge: "新" },
+    ],
   },
   {
     label: "系统设置",

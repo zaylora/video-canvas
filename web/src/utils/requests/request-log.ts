@@ -34,8 +34,11 @@ const emit = () => listeners.forEach((listener) => listener());
 export const shouldLogRequest = (url: string | undefined) =>
   !!url && LOGGED_PREFIXES.some((prefix) => url.startsWith(prefix));
 
-/** 请求体里值要隐藏的字段：存储配置的新建与测试请求带着 Secret 明文 */
-const SECRET_FIELDS = ["secret_key"];
+/**
+ * 请求体里值要隐藏的字段：存储配置的新建与测试请求带着 secret_key 明文；
+ * 支付渠道配置的 secrets 是一个对象，里面是商户私钥、APIv3 密钥等，整段隐藏。
+ */
+const SECRET_FIELDS = ["secret_key", "secrets"];
 
 /** 把对象里的敏感字段换成说明文字，其余字段原样保留；不是对象时原样返回 */
 function maskSecretFields(value: unknown): unknown {

@@ -23,10 +23,22 @@ const (
 	AdminAuditSystemUpgrade    = "system.upgrade"
 	AdminAuditSystemRollback   = "system.rollback"
 
+	AdminAuditPaySettings       = "payment.settings_update"
+	AdminAuditPayChannelUpdate  = "payment.channel_update"
+	AdminAuditPayChannelEnable  = "payment.channel_enable"
+	AdminAuditPayChannelDisable = "payment.channel_disable"
+	AdminAuditPayProductCreate  = "payment.product_create"
+	AdminAuditPayProductUpdate  = "payment.product_update"
+	AdminAuditPayProductDelete  = "payment.product_delete"
+	AdminAuditPayProductSort    = "payment.product_sort"
+	AdminAuditPayOrderQuery     = "payment.order_query"
+	AdminAuditPayOrderClose     = "payment.order_close"
+
 	AdminAuditTargetUser     = "user"
 	AdminAuditTargetSettings = "settings"
 	AdminAuditTargetShowcase = "showcase"
 	AdminAuditTargetSystem   = "system"
+	AdminAuditTargetPayment  = "payment"
 )
 
 // AdminAuditLog 后台运营审计日志（用户管理与系统设置）：只增不改不删。detail 不含任何密码、密钥。

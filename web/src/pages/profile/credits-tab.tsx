@@ -12,11 +12,13 @@ import {
   Shield,
   Snowflake,
   Undo2,
+  Wallet,
 } from "lucide-react";
 
 import { getMeLedger } from "@/api/me";
 import type { LedgerFilter, LedgerPageDto, LedgerPageSize, LedgerType } from "@/api/me/type";
 import { Segmented } from "@/components/home/segmented";
+import { openPaymentStore } from "@/components/payment/payment-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -29,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DURATION, EASE_OUT_CSS, ms } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useCreditsStore } from "@/store/credits";
+import { usePaymentEnabled } from "@/store/payment";
 import {
   DEFAULT_LEDGER_PAGE_SIZE,
   formatLedgerTime,
@@ -43,11 +46,12 @@ import {
   type AmountTone,
 } from "@/utils/profile/ledger";
 
-/** 筛选项：对应后端 type=all|task|admin */
+/** 筛选项：对应后端 type=all|task|admin|recharge */
 const FILTERS: { value: LedgerFilter; label: string }[] = [
   { value: "all", label: "全部" },
   { value: "task", label: "生成任务" },
   { value: "admin", label: "管理员调整" },
+  { value: "recharge", label: "充值" },
 ];
 
 /** 流水类型的图标 */
@@ -57,6 +61,7 @@ const TYPE_ICON: Record<LedgerType, ComponentType<{ className?: string }>> = {
   refund: Undo2,
   admin_adjust: Shield,
   initial: Gift,
+  recharge: Wallet,
 };
 
 /** 金额颜色 */
@@ -241,6 +246,7 @@ function LedgerRows({ data }: { data: LedgerPageDto }) {
 export function CreditsTab() {
   const credits = useCreditsStore((state) => state.credits);
   const refreshCredits = useCreditsStore((state) => state.refresh);
+  const payEnabled = usePaymentEnabled();
   const [params, setParams] = useSearchParams();
   const page = parsePageParam(params.get("page"));
   const [filter, setFilter] = useState<LedgerFilter>("all");
@@ -375,6 +381,11 @@ export function CreditsTab() {
         <BalanceCard label="余额" value={credits?.balance} hint="含冻结部分" />
         <BalanceCard label="冻结" value={credits?.frozen} hint="进行中任务占用" />
       </div>
+      {payEnabled ? (
+        <Button className="justify-self-start" onClick={() => openPaymentStore()}>
+          <Wallet /> 充值积分
+        </Button>
+      ) : null}
       <section
         ref={cardRef}
         className="bg-card ring-foreground/10 scroll-mt-16 rounded-xl px-4 pt-4 pb-3 ring-1"
