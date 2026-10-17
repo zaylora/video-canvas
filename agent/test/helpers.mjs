@@ -24,6 +24,7 @@ export async function fakeBridge({ models = [], summaries = [], tool = async () 
         (isSummary ? rec.summaries : rec.chats).push(json);
         const t = isSummary ? (summaries[summaryTurn++] ?? { text: "【测试摘要】目标：拆分镜" }) : (models[turn++] ?? { text: "（脚本用完）" });
         req.on("close", () => rec.closed++);
+        if (t.delay) await sleep(t.delay); // 模拟慢模型：连响应头都要等这么久才回来（pi 要等响应头到了才开始算「正在输出」）
         if (t.status) { res.writeHead(t.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: t.msg ?? "boom", type: "agent_error" } })); }
         res.writeHead(200, { "content-type": "text/event-stream" });
         const send = (o) => res.write("data: " + JSON.stringify(o) + "\n\n");

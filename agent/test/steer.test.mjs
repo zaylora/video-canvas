@@ -153,3 +153,76 @@ test("窗口内回答自己结束了：不中止，已完成的回答留在历�
     assert.match(users(second).at(-1), /补充一句/);
   });
 });
+
+// ---- 慢模型：请求已经发出、响应头还没回来的这段时间也要能合并插话 ----
+// pi 要等响应头到了才发 message_start，慢模型（排队、首字很慢）这段可能要等十几秒；
+// 只看「正在输出」的话插话会排队，等第一个回答写完才处理，用户就看到两段分开的回答。
+
+test("慢模型：响应头还没回来时插话，也中止这次请求并合并重答，不等它写完", async () => {
+  await withBridge({
+    models: [{ text: "第一个回答", delay: 3000 }, { text: "合并后的回答" }],
+  }, async (b) => {
+    const control = new EventEmitter();
+    const start = Date.now();
+    const run = runAgent(baseInput(b.url), { control });
+    await sleep(300);
+    control.emit("steer", "你是谁");
+    const r = await run;
+    assert.equal(r.status, "done");
+    assert.ok(Date.now() - start < 2500, `不该等慢请求回来：用了 ${Date.now() - start}ms`);
+    assert.equal(b.rec.chats.length, 2);
+    const second = b.rec.chats[1].messages;
+    assert.deepEqual(users(second).slice(0, 1), ["拆分镜"]);
+    assert.match(users(second).at(-1), /你是谁/);
+    assert.ok(!second.some((m) => m.role === "assistant"), "被中止的请求没有任何内容进历史");
+    assert.match(JSON.stringify(b.rec.states.at(-1).at(-1)), /合并后的回答/);
+  });
+});
+
+test("慢模型：连着两句插话（都在响应头回来之前），合并成一次中止", async () => {
+  await withBridge({
+    models: [{ text: "第一个回答", delay: 3000 }, { text: "好" }],
+  }, async (b) => {
+    const control = new EventEmitter();
+    const start = Date.now();
+    const run = runAgent(baseInput(b.url), { control });
+    await sleep(200);
+    control.emit("steer", "你是谁");
+    await sleep(250);
+    control.emit("steer", "再加一个角色");
+    await run;
+    assert.ok(Date.now() - start < 2500, `不该等慢请求回来：用了 ${Date.now() - start}ms`);
+    assert.equal(b.rec.chats.length, 2);
+    const second = b.rec.chats[1].messages;
+    assert.ok(!second.some((m) => m.role === "assistant"), "第一次请求被中止，没有内容进历史");
+    const sent = users(second).join("\n");
+    assert.match(sent, /你是谁/);
+    assert.match(sent, /再加一个角色/);
+  });
+});
+
+test("压缩（摘要）期间收到插话：摘要不被打断，请求一发出就按窗口中止并合并重答", async () => {
+  const history = Array.from({ length: 10 }, (_, i) => ({
+    role: i % 2 ? "assistant" : "user",
+    content: [{ type: "text", text: (i % 2 ? "A" : "U") + i + "字".repeat(358) }],
+    ...(i % 2 ? { api: "openai-completions", provider: "bridge", model: "agent", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop" } : {}),
+    timestamp: 1,
+  }));
+  await withBridge({
+    models: [{ text: "第一个回答", delay: 3000 }, { text: "合并后的回答" }],
+    summaries: [{ text: "目标：拆分镜", delay: 600 }],
+  }, async (b) => {
+    const control = new EventEmitter();
+    const start = Date.now();
+    const run = runAgent(baseInput(b.url, { messages: history, model: { name: "C", context_window: 4000, max_tokens: 512, vision: false } }), { control });
+    await sleep(200); // 摘要还在生成
+    control.emit("steer", "你是谁");
+    const r = await run;
+    assert.equal(r.status, "done");
+    assert.ok(Date.now() - start < 3000, `用了 ${Date.now() - start}ms`);
+    assert.equal(b.rec.summaries.length, 1, "摘要照常生成完，没有被插话打断");
+    assert.equal(b.rec.chats.length, 2);
+    assert.match(users(b.rec.chats[1].messages).at(-1), /你是谁/);
+    assert.match(JSON.stringify(b.rec.chats[1].messages), /目标：拆分镜/, "重答用的是压缩后的历史");
+  });
+});

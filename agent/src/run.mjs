@@ -29,11 +29,10 @@ export async function runAgent(input, io = {}) {
   // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
   // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
   let paused = false;
-  const agent = buildAgent(input, bridge, () => (paused = true), () => paused, log);
+  const { agent, steering } = buildAgent(input, bridge, () => (paused = true), () => paused, log);
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
-  const steering = createSteering(agent);
   io.control?.on("steer", (text) => steering.push(text));
   // 用户中止是正常结束：运行的状态由 Go 在处理「停止」时设好，这里不能把它报成出错
   let aborted = false;
@@ -88,7 +87,7 @@ async function settle(agent, steering, { isPaused, isAborted }) {
   }
 }
 
-/** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
+/** 构造 Agent 和它的插话控制器：模型走桥，工具走桥，上下文发给模型前裁剪 */
 function buildAgent(input, bridge, onTerminate, isPaused, log) {
   const m = input.model;
   const baseUrl = input.bridge_url.replace(/\/+$/, "") + "/internal/agent/bridge/v1";
@@ -131,6 +130,8 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
     prepareRequest: async ({ context }, signal) => {
       const lead = Math.max(0, context.messages.findIndex((x) => x.role !== "system")); // 开头的 system 消息原样留着，不参与压缩
       const next = await compactor.compact(context.messages.slice(lead), signal);
+      // 压缩做完了，模型请求马上发出：从这一刻起插话可以中止它（慢模型要等响应头才开始输出，这段等待也算）
+      steering.requestStarted();
       if (!next) return undefined;
       const messages = [...context.messages.slice(0, lead), ...next];
       agent.state.messages = messages.slice();
@@ -146,7 +147,8 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
     beforeToolCall: async () => (isPaused() ? { block: true, reason: SKIPPED_TEXT, terminate: true } : undefined),
     finishTurn: async () => (isPaused() ? { action: "end" } : undefined),
   });
-  return agent;
+  const steering = createSteering(agent);
+  return { agent, steering };
 }
 
 /** 让模型把一段对话写成摘要：走桥，请求头标明是内部调用；出错或被中止都抛出，由压缩器退回不压缩 */
