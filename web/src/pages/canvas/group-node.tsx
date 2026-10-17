@@ -15,7 +15,8 @@ import { GROUP_MIN, canResizeGroup, groupTitleScale, membersBounds } from "@/uti
 import { NODE_LABEL_MAX, normalizeNodeLabel } from "@/utils/canvas/node-label";
 
 import { GroupToolbar } from "./group-toolbar";
-import { useGroupUi } from "./group-ui";
+import { useGroupFanOut, useGroupUi } from "./group-ui";
+import { SelectionFanHandle } from "./selection-fan-handle";
 
 /** 画布上恰好只选中了一个节点 */
 const onlyOneSelected = (state: ReactFlowState) => {
@@ -104,6 +105,19 @@ export const GroupNodeView = memo(function GroupNodeView({
   const single = useStore(onlyOneSelected);
   const menuOpen = selected && single && ui.menuId === id && ui.draggingId !== id;
   const { menuId, setMenuId } = ui;
+  const fanOut = useGroupFanOut();
+  const members = useStore(
+    // 成员（不含嵌套的组）id 拼成字符串，选择器只在成员变了时触发重渲染
+    useCallback(
+      (state: ReactFlowState) =>
+        state.nodes
+          .filter((node) => node.parentId === id && node.type !== "group")
+          .map((node) => node.id)
+          .join(","),
+      [id],
+    ),
+  );
+  const memberIds = members ? members.split(",") : [];
 
   // 取消选中就把菜单标记清掉，免得之后只是拖动顺带选中时菜单又冒出来
   useEffect(() => {
@@ -167,6 +181,12 @@ export const GroupNodeView = memo(function GroupNodeView({
       />
       <GroupTitle id={id} label={data.label} />
       {menuOpen && <GroupToolbar id={id} data={data} />}
+      {/* 选中组时右侧的「+」：拖出去或点一下，引用组里所有节点生成，同多选 */}
+      {selected && single && ui.draggingId !== id && memberIds.length > 0 && (
+        <div className="absolute top-1/2 right-0 size-0">
+          <SelectionFanHandle ids={memberIds} x={0} y={0} onFanOut={fanOut} />
+        </div>
+      )}
     </div>
   );
 });

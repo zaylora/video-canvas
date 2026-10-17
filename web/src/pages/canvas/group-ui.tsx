@@ -7,6 +7,16 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import type { XYPosition } from "@xyflow/react";
+
+import type { PendingGroup } from "@/types";
+
+/** 组右侧「+」把手的出口：交给画布弹种类菜单，引用组里的所有节点 */
+export type GroupFanOut = (screen: XYPosition, group: PendingGroup) => void;
+
+const GroupFanOutContext = createContext<GroupFanOut>(() => undefined);
+export const GroupFanOutProvider = GroupFanOutContext.Provider;
+export const useGroupFanOut = () => useContext(GroupFanOutContext);
 
 /** 组的界面状态：菜单开着的是哪个组、哪个组正在拖、哪个组正在改名 */
 export type GroupUi = {
