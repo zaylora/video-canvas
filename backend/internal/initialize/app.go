@@ -50,6 +50,7 @@ type App struct {
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
 	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
+	payment    *service.PaymentService  // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
 // NewApp 初始化基础设施并手动组装依赖：repository -> service -> handler -> router。
@@ -219,6 +220,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 		FileBaseURL: cfg.Storage.Local.BaseURL,
 	})
 
+	// 积分充值与支付：渠道密钥复用 AI 配置的加密存储，入账走积分账户的同一套行锁与流水；回调、补单、后台管理都在这里装配
+	pay := wirePayment(db, hub, aiCfgSvc, settingsSvc, auditRepo, outboundIPPolicy(cfg))
+
 	// 鉴权用的用户状态查询：RequireActive 与 RequireAdmin / RequireSuperAdmin 共用同一套（Redis 缓存，无 Redis 直接查库）。
 	// 封禁、改角色、重置密码时由 UserService.InvalidateUser 主动删缓存，所以不再需要进程内的角色缓存
 	stateLookup := func(ctx context.Context, id uint64) (*middleware.UserState, error) {
@@ -270,6 +274,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
 		AdminSystem:   newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:      handler.NewShowcaseHandler(showcaseSvc),
+		Payment:       pay.user,
+		AdminPayment:  pay.admin,
 		AdminRole:     roleLookup,
 		UserState:     stateLookup,
 	})
@@ -285,6 +291,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		runnerStop: runnerStop,
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
+		payment:    pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
 			Handler:      engineHTTP,
@@ -449,6 +456,18 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		skillCancel()
 		<-skillDone
+	}()
+
+	// 支付补单：先于关库停止，和其它后台任务一样
+	payCtx, payCancel := context.WithCancel(context.Background())
+	payDone := make(chan struct{})
+	go func() {
+		defer close(payDone)
+		a.runPayment(payCtx)
+	}()
+	defer func() {
+		payCancel()
+		<-payDone
 	}()
 
 	if a.agent != nil {

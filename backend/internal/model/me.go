@@ -65,9 +65,9 @@ type MeActivityView struct {
 
 // MeLedgerReq 是 GET /me/credits/ledger 的查询参数。Page / PageSize 用指针区分“没传”（取默认）和“传了非法值”（10001）。
 type MeLedgerReq struct {
-	Type     string `form:"type" binding:"omitempty,oneof=all task admin" label:"类型"` // all / task / admin
-	Page     *int   `form:"page" label:"页码"`                                          // 从 1 开始，默认 1
-	PageSize *int   `form:"page_size" label:"每页条数"`                                   // 只允许 10 / 20 / 50，默认 20
+	Type     string `form:"type" binding:"omitempty,oneof=all task admin recharge" label:"类型"` // all / task / admin / recharge
+	Page     *int   `form:"page" label:"页码"`                                                   // 从 1 开始，默认 1
+	PageSize *int   `form:"page_size" label:"每页条数"`                                            // 只允许 10 / 20 / 50，默认 20
 }
 
 // MeLedgerItem 是用户侧积分流水的一行：不含操作人。Amount 与后台流水同口径（带符号的“对可用积分的影响”）。

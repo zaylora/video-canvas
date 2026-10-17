@@ -39,6 +39,8 @@ type Handlers struct {
 	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
 	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
+	Payment        *handler.PaymentHandler             // 积分商城：商品、下单、订单状态；渠道回调（无需登录）
+	AdminPayment   *handler.PaymentAdminHandler        // 后台支付管理：全局设置、渠道、商品、订单
 	AdminRole      middleware.RoleLookup               // 管理接口的角色查询（与 UserState 同一套：Redis 缓存 + 变更时主动失效）
 	UserState      middleware.UserStateLookup          // 登录后分组的用户状态查询（停用 / token_version）
 }
@@ -64,6 +66,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		v1.POST("/auth/register", h.User.Register)
 		v1.POST("/auth/login", h.User.Login)
 		v1.GET("/showcase", h.Showcase.Public) // 登录页背景轮播：未登录即可读取，只暴露播放所需字段
+
+		// 支付渠道的异步通知：渠道服务器调用，不带 JWT，身份由渠道的签名保证；GET（易支付）和 POST（其余）都要接
+		v1.Any("/payment/notify/:provider", h.Payment.Notify)
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
@@ -114,6 +119,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		agent.POST("/runs/:rid/resume", h.Agent.Resume)
 		agent.POST("/runs/:rid/undo", h.Agent.Undo)
 		agent.POST("/approvals/:aid/decision", h.Agent.Decide)
+
+		// 积分商城：只操作当前用户自己的订单；pending 是静态段，优先于 /orders/:no
+		pay := auth.Group("/payment")
+		pay.GET("/store", h.Payment.Store)
+		pay.POST("/orders", h.Payment.CreateOrder) // 201
+		pay.GET("/orders/pending", h.Payment.PendingOrder)
+		pay.GET("/orders/:no", h.Payment.GetOrder)
+		pay.POST("/orders/:no/check", h.Payment.CheckOrder)
+		pay.POST("/orders/:no/close", h.Payment.CancelOrder)
 
 		// 长任务生成
 		auth.POST("/ws/ticket", h.WS.IssueTicket)
@@ -275,6 +289,26 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		settings.PUT("/smtp", superOnly, h.AdminSettings.UpdateSMTP)
 		settings.PUT("/smtp/password", superOnly, h.AdminSettings.SetSMTPPassword)
 		settings.POST("/smtp/test", superOnly, h.AdminSettings.TestSMTP)
+
+		// 支付管理：读与商品、订单操作 = admin 或 super_admin；全局设置与渠道配置的写（含校验、启用、停用）= 仅 super_admin。
+		// 渠道密钥只写不读，响应里只有「是否已设置」。sort 是静态段，与 /:id 同层，Gin 优先匹配静态段。
+		adminPay := auth.Group("/admin/payment", middleware.RequireAdmin(h.AdminRole))
+		adminPay.GET("/settings", h.AdminPayment.GetSettings)
+		adminPay.PUT("/settings", superOnly, h.AdminPayment.UpdateSettings)
+		adminPay.GET("/channels", h.AdminPayment.ListChannels)
+		adminPay.PUT("/channels/:provider", superOnly, h.AdminPayment.UpdateChannel)
+		adminPay.POST("/channels/:provider/validate", superOnly, h.AdminPayment.ValidateChannel)
+		adminPay.POST("/channels/:provider/enable", superOnly, h.AdminPayment.EnableChannel)
+		adminPay.POST("/channels/:provider/disable", superOnly, h.AdminPayment.DisableChannel)
+		adminPay.GET("/products", h.AdminPayment.ListProducts)
+		adminPay.POST("/products", h.AdminPayment.CreateProduct)
+		adminPay.PUT("/products/sort", h.AdminPayment.SortProducts)
+		adminPay.PUT("/products/:id", h.AdminPayment.UpdateProduct)
+		adminPay.DELETE("/products/:id", h.AdminPayment.DeleteProduct)
+		adminPay.GET("/orders", h.AdminPayment.ListOrders)
+		adminPay.GET("/orders/:no", h.AdminPayment.GetOrder)
+		adminPay.POST("/orders/:no/query", h.AdminPayment.QueryOrder)
+		adminPay.POST("/orders/:no/close", h.AdminPayment.CloseOrder)
 
 		// 登录页展示（背景轮播视频）：读 = admin 或 super_admin；写 = 仅 super_admin，全部写操作进审计。
 		// order 是静态段，与 items/:id 不在同一层，不冲突。

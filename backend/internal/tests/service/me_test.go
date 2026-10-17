@@ -548,6 +548,18 @@ func TestMeService_Ledger(t *testing.T) {
 			t.Fatalf("%+v", e.repo.lastLedger)
 		}
 	})
+	t.Run("充值流水：type=recharge 只看充值，金额是正数（加积分）", func(t *testing.T) {
+		e := newMeEnv(t)
+		e.repo.total = 1
+		e.repo.ledger = []model.MeLedgerItem{{ID: 9, Type: model.LedgerRecharge, Amount: 10500, Note: "充值 ¥100.00（VC2610160930124821330）"}}
+		v, err := e.svc.Ledger(ctx, meUID, &model.MeLedgerReq{Type: "recharge"})
+		if err != nil || len(v.Items) != 1 || v.Items[0].Amount != 10500 {
+			t.Fatalf("%+v %v", v, err)
+		}
+		if strings.Join(e.repo.lastLedger.Types, ",") != "recharge" || strings.Join(e.repo.lastCountType, ",") != "recharge" {
+			t.Fatalf("筛选条件不对：%+v %v", e.repo.lastLedger.Types, e.repo.lastCountType)
+		}
+	})
 	t.Run("page 超范围：空 items + 真实 total", func(t *testing.T) {
 		e := newMeEnv(t)
 		e.repo.total = 3
