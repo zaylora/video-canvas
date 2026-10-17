@@ -17,6 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminStore } from "@/store/admin";
 
 import { AdminSidebar } from "./admin-sidebar";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { adminPageTitle } from "@/utils/page-title";
+
 import { findNav } from "./admin-nav";
 import { ForbiddenView } from "./shared";
 
@@ -76,6 +79,7 @@ function AdminBody() {
   const status = useAdminStore((state) => state.status);
   const load = useAdminStore((state) => state.load);
   const { pathname } = useLocation();
+  usePageTitle(adminPageTitle(pathname));
 
   useEffect(() => {
     void load();

@@ -10,6 +10,7 @@ import { TypewriterTitle } from "@/components/brand/typewriter-title";
 import { ShowcaseCaption } from "@/components/showcase/showcase-caption";
 import { ShowcaseLayers } from "@/components/showcase/showcase-layers";
 import { ShowcaseProgress } from "@/components/showcase/showcase-progress";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useShowcase } from "@/hooks/use-showcase";
 import { useShowcasePlayer } from "@/hooks/use-showcase-player";
 import type { ShowcaseItemDto } from "@/api/showcase/type";
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { mapAuthError } from "@/utils/auth/register-rules";
 import { saveCarry } from "@/utils/home/carry";
 import { ApiError } from "@/utils/requests/request";
+import { formatPageTitle } from "@/utils/page-title";
 import { getToken, setToken } from "@/utils/storage/token";
 
 import { AuthDrawer, type AuthMode } from "./auth-drawer";
@@ -48,6 +50,7 @@ function getDestination(search: string) {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+  usePageTitle(formatPageTitle("登录"));
   const params = new URLSearchParams(location.search);
   const destination = getDestination(location.search);
   const wantsRegister = params.get("tab") === "register";

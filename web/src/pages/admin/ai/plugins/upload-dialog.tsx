@@ -261,7 +261,7 @@ function UploadBody({
           {accepted ? "完成" : "取消"}
         </Button>
         {accepted && result?.version ? (
-          <Button onClick={onNextStep}>下一步：去渠道与模型</Button>
+          <Button onClick={onNextStep}>下一步：去模型渠道</Button>
         ) : (
           <Button disabled={!file || !!localError || busy} onClick={() => void submit()}>
             {busy && <Loader2 className="animate-spin" />}

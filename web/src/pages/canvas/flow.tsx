@@ -45,6 +45,8 @@ import { useContentNodes } from "@/hooks/use-content-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { useTaskBackfill } from "@/hooks/use-task-backfill";
 import { rememberCanvasTitle } from "@/utils/canvas/title-cache";
+import { usePageTitle } from "@/hooks/use-page-title";
+import { canvasPageTitle } from "@/utils/page-title";
 import { useSettingsStore } from "@/store";
 import { useFramePickStore } from "@/store/frame-pick";
 import { useTrimStore } from "@/store/trim";
@@ -268,6 +270,7 @@ export const Flow = memo(function Flow({
     rememberCanvasTitle(canvas.id, canvas.title);
   }, [canvas.id, canvas.title]);
   const [title, setTitle] = useState(canvas.title);
+  usePageTitle(canvasPageTitle(title));
   const onRename = useCallback(
     (next: string) => {
       const previous = title;
