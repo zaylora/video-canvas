@@ -226,9 +226,11 @@ Go 侧每个工具一条登记，取代现在分散的 `handlers()`、`toolOrder
 - Go 执行时的校验保持现状：未知工具、模式不允许都会被拒绝，作为工具错误返回给模型。
 - 有一处细微差别：`validateToolArguments` 对 typebox 的 schema 用 `Value.Convert`，对普通 JSON Schema 走 `coerceWithJsonSchema`，两条路径的宽松程度（数字字符串、可选字段传 null 等）可能不完全一样。迁移后要确认 12 个工具对同一批典型错误参数的接受与拒绝结果一致（见 7.4）。
 
-### 7.3 界面名称
+### 7.3 界面名称和状态文字
 
 前端的工具中文名现在硬编码在 `constants/agent.ts`，不认识的新工具会直接显示英文名。为了「加后端工具时前端不用改」，让 Go 在 `tool.start` / `tool.end` 事件里新增 `label`、`verb` 字段（只新增，不改已有字段），前端优先用事件里的名称，没有时退回本地常量。这是本版唯一的前端改动，改动很小。
+
+运行状态给用户看的文字（「运行失败」「已停止」「达到本轮步数上限」等的标题和提示语）同样由 Go 下发：需要提示用户的状态，`run.status` 事件带 `title` 和 `hint`（`service/agent/run_status.go` 里一张表，所有发 `run.status` 的地方统一走 `statusEvent`）。前端优先用事件里的，旧事件没有时退回 `constants/agent.ts` 里的那份；改文案、加状态只改 Go。
 
 ### 7.4 迁移等价
 

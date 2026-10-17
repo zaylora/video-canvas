@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
 import { Button } from "@/components/ui/button";
-import { RUN_STATUS_TEXT } from "@/constants/agent";
+import { runStatusText } from "@/constants/agent";
 import type { AgentController } from "@/hooks/use-agent-controller";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -320,7 +320,7 @@ function StatusCard({
   item: Extract<TimelineItem, { type: "status" }>;
   ctl: AgentController;
 }) {
-  const text = RUN_STATUS_TEXT[item.status];
+  const text = runStatusText(item.status, item.title, item.hint);
   const canResume = ["interrupted", "budget_exhausted", "step_limit", "timeout"].includes(
     item.status,
   );

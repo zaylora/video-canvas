@@ -80,6 +80,9 @@ export type TimelineItem =
       status: AgentRunStatus;
       /** 给用户看的原因，没有为空串 */
       error: string;
+      /** 后端随事件下发的标题和「可以做什么」；旧事件没有，为空串，显示时退回本地文字 */
+      title: string;
+      hint: string;
     }
   | {
       /** 一轮运行改过画布并已收尾：改动摘要（新建、修改、删除了哪些节点）和撤销本轮 */
@@ -234,7 +237,15 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
         const dedupe = `${runId}:${status}`;
         if (NOTABLE_STATUSES.includes(status) && !seenStatus.has(dedupe)) {
           seenStatus.add(dedupe);
-          items.push({ type: "status", key: `s${ev.seq}`, runId, status, error: str(d.error) });
+          items.push({
+            type: "status",
+            key: `s${ev.seq}`,
+            runId,
+            status,
+            error: str(d.error),
+            title: str(d.title),
+            hint: str(d.hint),
+          });
         }
         break;
       }

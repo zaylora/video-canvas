@@ -166,7 +166,7 @@ func (b *AgentBridge) activeRun(ctx context.Context, s *bridgeSession) (*model.A
 // pauseRun 把运行置为可继续的暂停状态（预算用尽、步数用尽）：CAS 迁移，已经变了就不动。
 func (b *AgentBridge) pauseRun(ctx context.Context, run *model.AgentRun, status string) {
 	if _, err := b.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": status}); err == nil {
-		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": status})
+		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(status))
 	}
 }
 
@@ -348,7 +348,7 @@ func (b *AgentBridge) MarkRunning(ctx context.Context, run *model.AgentRun) erro
 	if _, err := b.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunQueued}, map[string]any{"status": model.RunRunning}); err != nil {
 		return errcode.ErrAgentState
 	}
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunRunning})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunRunning))
 	return nil
 }
 
@@ -402,6 +402,6 @@ func (b *AgentBridge) Finish(ctx context.Context, token, status, message string)
 	if err != nil {
 		return nil // 不在 running 了：保持别的流程设定的状态
 	}
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": updated.Status, "error": updated.ErrorMessage})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(updated.Status, "error", updated.ErrorMessage))
 	return nil
 }

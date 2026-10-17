@@ -101,7 +101,7 @@ func (s *AgentService) CreateApproval(ctx context.Context, run *model.AgentRun, 
 		return nil, err
 	}
 	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.created", approvalView(a))
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": next})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(next))
 	return approvalView(a), nil
 }
 
@@ -147,7 +147,7 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 		return nil, errcode.ErrAgentApprovalGone
 	}
 	// 只靠 run.status 事件驱动的客户端，回答之后要靠它才知道运行不再等待了
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunRunning})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunRunning))
 	if out.quote > 0 {
 		if err := s.repo.AddRunUsage(ctx, run.ID, 0, out.quote); err != nil {
 			return nil, err
@@ -160,7 +160,7 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	// 6. 让运行接着往下走；runtime 不在了就标为中断，用户可以稍后点「继续」
 	if err := s.runtime.Resume(ctx, run, ResumeInfo{Reason: "approval", ToolCallID: a.ToolCallID, Content: approvalOutcomeText(final, out)}); err != nil {
 		_, _ = s.repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunInterrupted}) // 已经不在 running 说明别处处理过了，无需再改
-		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted})
+		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted))
 	}
 	return approvalView(final), nil
 }

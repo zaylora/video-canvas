@@ -144,6 +144,28 @@ describe("消息流", () => {
     ]);
   });
 
+  test("运行状态卡片带上后端下发的标题和提示；旧事件没有就是空串", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }),
+        ev("run.status", {
+          status: "step_limit",
+          title: "达到本轮步数上限",
+          hint: "继续的话会再给一轮步数",
+        }),
+      ]),
+    );
+    expect(items.find((i) => i.type === "status")).toMatchObject({
+      status: "step_limit",
+      title: "达到本轮步数上限",
+      hint: "继续的话会再给一轮步数",
+    });
+    reset();
+    const old = buildTimeline(fold([ev("run.status", { status: "canceled" })]));
+    expect(old.find((i) => i.type === "status")).toMatchObject({ title: "", hint: "" });
+  });
+
   test("连续的工具调用合成一个活动块，中间隔了消息就分开；耗时从第一次开始到最后一次结束", () => {
     reset();
     const items = buildTimeline(

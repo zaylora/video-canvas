@@ -265,7 +265,7 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 		return
 	}
 	logger.Error("Agent 进程异常退出，运行已标为中断", zap.Uint64("run_id", run.ID), zap.Int("code", exit.Code), zap.String("stderr", exit.StderrTail))
-	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted, "error": "运行进程异常退出"})
+	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted, "error", "运行进程异常退出"))
 }
 
 // segment 取运行当前的进程。
