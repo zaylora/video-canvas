@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>积分充值与支付管理</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --credit: 38 92% 50%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+      .num { font-variant-numeric: tabular-nums; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn-sm { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 6px; }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; flex: none; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+      .switch.sw-ok[aria-checked="true"] { background: rgb(var(--ok)); }
+
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 840px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 840px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .brand span.t { display: none; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+      .cmp .n { color: rgb(var(--bad)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 620px; position: relative; overflow: hidden; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; max-width: 92vw; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 原型：应用外壳 ---- */
+      .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: hsl(var(--muted)); gap: 2px; }
+      .seg button { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; gap: 6px; }
+      .seg button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+      .app-top { height: 52px; display: flex; align-items: center; padding: 0 16px; gap: 10px; border-bottom: 1px solid hsl(var(--border)); }
+      .pill { height: 34px; padding: 0 12px 0 10px; border-radius: 999px; border: 1px solid hsl(var(--border)); display: inline-flex; align-items: center; gap: 8px; font-family: "Geist Mono", monospace; font-weight: 600; font-size: 13px; position: relative; }
+      .pill:hover { background: hsl(var(--accent)); }
+      .pill .live { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--ok)); box-shadow: 0 0 0 3px rgb(var(--ok) / 0.15); }
+      .pill .badge-dot { position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: rgb(var(--warn)); border: 2px solid hsl(var(--background)); }
+      .spark { color: hsl(var(--credit)); }
+      .home-hero { display: grid; place-items: center; text-align: center; padding: 90px 20px; }
+      .overlay { position: absolute; inset: 0; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; padding: 14px; z-index: 5; }
+      .dialog { width: min(1040px, 100%); max-height: 100%; overflow: auto; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 16px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.3); }
+      .dlg-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid hsl(var(--border)); flex-wrap: wrap; }
+      .stat { display: flex; flex-direction: column; line-height: 1.2; }
+      .stat small { font-size: 11px; color: hsl(var(--muted-foreground)); }
+      .stat b { font-family: "Geist Mono", monospace; font-size: 14px; }
+      .store-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 18px; }
+      @media (max-width: 860px) { .store-body { grid-template-columns: 1fr; } }
+      .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-content: start; }
+      .pcard { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); transition: border-color 0.15s, box-shadow 0.15s; }
+      .pcard:hover { border-color: hsl(var(--foreground) / 0.35); }
+      .pcard[aria-pressed="true"] { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground)); }
+      .pcard .face { padding: 12px; background: linear-gradient(135deg, hsl(240 6% 12%), hsl(240 5% 22%)); color: #fff; position: relative; min-height: 74px; }
+      .pcard .face small { font-size: 10px; letter-spacing: 0.12em; opacity: 0.7; }
+      .pcard .face .big { font-family: "Geist Mono", monospace; font-size: 20px; font-weight: 600; text-align: right; margin-top: 8px; }
+      .pcard .face .big span { font-size: 10px; opacity: 0.7; margin-left: 3px; }
+      .pcard .meta { padding: 8px 12px 10px; font-size: 12px; }
+      .pcard .meta b { font-size: 15px; }
+      .ribbon { position: absolute; top: 8px; right: 8px; font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: hsl(var(--credit)); color: #1a1205; font-weight: 600; }
+      .side { border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 14px; background: hsl(var(--background)); display: flex; flex-direction: column; gap: 10px; align-self: start; }
+      .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; }
+      .kv dt { color: hsl(var(--muted-foreground)); }
+      .kv dd { margin: 0; text-align: right; font-family: "Geist Mono", monospace; }
+      .mopt { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 13px; text-align: left; width: 100%; }
+      .mopt[aria-pressed="true"] { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground)); }
+      .mopt:disabled { opacity: 0.55; cursor: not-allowed; }
+      .mopt .ic { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 12px; flex: none; }
+      .ic-wx { background: #07c160; }
+      .ic-ali { background: #1677ff; }
+      .ic-g { background: hsl(240 5% 34%); }
+      .qr { width: 188px; height: 188px; margin: 0 auto; display: grid; grid-template-columns: repeat(25, 1fr); background: #fff; padding: 8px; border-radius: 8px; position: relative; }
+      .qr i { display: block; }
+      .qr .on { background: #111; }
+      .qr-mask { position: absolute; inset: 0; background: rgb(255 255 255 / 0.92); display: grid; place-items: center; color: #111; font-size: 13px; border-radius: 8px; text-align: center; }
+      .spin { animation: sp 0.8s linear infinite; }
+      @keyframes sp { to { transform: rotate(360deg); } }
+      .simbar { margin-top: 12px; border: 1.5px dashed rgb(var(--violet) / 0.6); border-radius: 12px; padding: 12px; background: rgb(var(--violet) / 0.04); }
+      .simbar .btn { border: 1px solid rgb(var(--violet) / 0.35); }
+
+      /* ---- 原型：后台 ---- */
+      .admin { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 620px; }
+      @media (max-width: 760px) { .admin { grid-template-columns: 1fr; } .aside { display: none; } }
+      .aside { border-right: 1px solid hsl(var(--border)); padding: 12px 10px; font-size: 13px; }
+      .aside .grp { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin: 12px 8px 4px; }
+      .aside .it { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; color: hsl(var(--muted-foreground)); }
+      .aside .it.on { background: hsl(var(--accent)); color: hsl(var(--foreground)); font-weight: 500; }
+      .amain { padding: 16px 18px; min-width: 0; }
+      .subtabs { display: flex; gap: 18px; border-bottom: 1px solid hsl(var(--border)); margin: 12px 0 14px; }
+      .subtabs button { padding: 8px 0; font-size: 13.5px; color: hsl(var(--muted-foreground)); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .subtabs button[aria-selected="true"] { color: hsl(var(--foreground)); border-color: hsl(var(--foreground)); font-weight: 500; }
+      .tbl th, .tbl td { padding: 9px 10px; font-size: 12.5px; border-bottom: 1px solid hsl(var(--border)); vertical-align: middle; white-space: nowrap; }
+      .tbl thead th { color: hsl(var(--muted-foreground)); font-weight: 500; background: hsl(var(--muted) / 0.6); }
+      .tbl tbody tr:hover { background: hsl(var(--accent) / 0.5); }
+      .tbl tr:last-child td { border-bottom: 0; }
+      .chico { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 700; flex: none; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field > span { color: hsl(var(--muted-foreground)); }
+      .inp { height: 32px; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 0 10px; background: hsl(var(--background)); font-size: 13px; width: 100%; min-width: 0; }
+      .inp:focus { outline: 2px solid hsl(var(--foreground) / 0.2); }
+      .drawer-ov { position: absolute; inset: 0; background: rgb(0 0 0 / 0.35); z-index: 6; }
+      .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100%); background: hsl(var(--card)); border-left: 1px solid hsl(var(--border)); z-index: 7; display: flex; flex-direction: column; }
+      .drawer-h { padding: 14px 16px; border-bottom: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 8px; }
+      .drawer-b { padding: 14px 16px; overflow: auto; flex: 1; display: grid; gap: 12px; align-content: start; }
+      .drawer-f { padding: 12px 16px; border-top: 1px solid hsl(var(--border)); display: flex; gap: 8px; justify-content: flex-end; }
+      .stepper { display: flex; gap: 6px; font-size: 12px; }
+      .stepper span { flex: 1; text-align: center; padding: 5px 0; border-radius: 6px; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .stepper span.on { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .stepper span.done { background: rgb(var(--ok) / 0.15); color: rgb(var(--ok)); }
+      .tl { display: grid; gap: 8px; font-size: 12.5px; }
+      .tl div { display: grid; grid-template-columns: 62px 1fr; gap: 8px; }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 12px; }
+      .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+
+      /* ---- 状态机演示 ---- */
+      .sm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .sm .st { padding: 6px 10px; border-radius: 8px; border: 1px solid hsl(var(--border)); font-size: 12.5px; font-family: "Geist Mono", monospace; color: hsl(var(--muted-foreground)); }
+      .sm .st.on { border-color: hsl(var(--foreground)); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground)); font-weight: 600; }
+      .sm .st.on.good { border-color: rgb(var(--ok)); box-shadow: 0 0 0 1px rgb(var(--ok)); color: rgb(var(--ok)); }
+      .sm .st.on.badst { border-color: rgb(var(--bad)); box-shadow: 0 0 0 1px rgb(var(--bad)); color: rgb(var(--bad)); }
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--foreground)); }
+      .evbtn { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 13px; font-weight: 500; }
+      .evbtn small { font-size: 11.5px; font-weight: 400; color: hsl(var(--muted-foreground)); }
+      .evbtn:hover:not(:disabled) { background: hsl(var(--accent)); }
+      .evbtn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .log { font-size: 12.5px; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+      .log div { padding: 6px 8px; border-radius: 8px; background: hsl(var(--muted) / 0.6); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="wallet"></i></span><span class="t">积分充值与支付管理</span>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="git-branch"></i>订单会怎么走</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">用户用微信或支付宝买积分，后台管渠道、档位和订单</h1>
+        <p class="lead">
+          现在积分只能靠注册赠送和管理员手动调整获得。这次加两样东西：一个<b>积分商城</b>，用户选固定档位，用<b>微信或支付宝</b>付款；后台一个<b>支付管理</b>，下面是支付渠道、充值商品、支付订单三页。底线只有一条：<b>付了钱一定到账，不会多到账</b>。本期<b>不做退款、会员、礼品卡和对账页，也不做手机端</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页是设计提案，<b>尚未实现</b>。依据有三份：飞书需求文档、两个开源项目的源码（sub2api、影策 open-ai-canvas，2026-10-16 读过），以及仓库现有的积分代码。完整证据和来源见同目录的 <code>支付功能.md</code>。原型里的二维码、商户号、耗时都是示意，没有调用任何真实服务。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对源码 / 仓库</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>一笔充值怎么走</h2>
+          <p class="sub">从用户点「立即支付」，到右上角积分数字变化。</p>
+          <div class="flow note">
+            <div class="node"><b>选档位和方式</b>例如 ¥100 → 10,000 积分，选微信</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>下单并锁定快照</b>价格、积分、承接渠道都写进订单，之后改商品不影响这笔</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>扫码或跳转付款</b>微信显示二维码；支付宝新开标签页</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>回调验签 + 核对金额</b>签名、商户号、实付金额都对上才算数</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>一个事务里入账</b>写一条「充值」流水 + 加余额，唯一索引防重复</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>推送到账</b>WebSocket 推送，弹框显示「已到账」，同时每 3 秒轮询兜底</div>
+          </div>
+          <div class="note-txt">
+            设计：渠道适配器只做四件事：签名、拼请求、解析响应、验签。「是否已付、付了多少、给谁加多少积分」全部由 Go 宿主判断。积分记账直接复用现有的 <code>user_credits</code> 和 <code>credit_ledger</code>，只新增一种流水类型 <code>recharge</code>。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>回调没到时（兜底）：</b>还有三条路能发现「其实已经付了」：用户点「我已完成支付」时主动查单；后台任务每 30 秒补查一次；管理员在订单页点「查单」。订单超时前也<b>一定先查单再关单</b>。首批四个渠道都支持查单。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>两种收银形态</h2>
+          <p class="sub">用户只看到「微信」和「支付宝」两个按钮。每种方式由哪个渠道承接，在后台指定；渠道决定了用户看到的是二维码还是跳转。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="qr-code"></i><b>扫码</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">弹框内完成</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>微信 Native、虎皮椒。</b>弹框里显示二维码和倒计时，用户用手机扫码。前端用 <code>qrcode.react</code> 画码；虎皮椒直接返回二维码图片。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="external-link"></i><b>跳转</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">新开标签页</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>支付宝电脑网站支付、易支付。</b>点「前往付款」新开标签页，原来的弹框留着等结果。用户切回本页时会自动查一次单。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="ban"></i><b>支付未开启</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>总开关关闭时，</b>点积分胶囊仍是今天的余额小卡片，下单接口返回 65001；已有订单的回调和补单照常处理。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>四个首批渠道的能力差异</h2>
+          <p class="sub">能不能查单、能不能在渠道那边关单，决定了订单丢了回调、超时、取消之后会怎样。后台渠道卡片上也会标出这些能力。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead>
+                <tr><th></th><th>支付宝电脑网站</th><th>微信 Native</th><th>易支付（V1）</th><th>虎皮椒</th></tr>
+              </thead>
+              <tbody>
+                <tr><th>支付方式</th><td>支付宝</td><td>微信</td><td>微信、支付宝</td><td>微信、支付宝（各一组凭证）</td></tr>
+                <tr><th>收银形态</th><td>跳转</td><td>扫码</td><td>跳转或扫码</td><td>扫码（图片）</td></tr>
+                <tr><th>签名</th><td>RSA2（SDK）</td><td>APIv3 RSA + AES-GCM（SDK）</td><td>MD5</td><td>MD5</td></tr>
+                <tr><th>主动查单</th><td class="y">支持</td><td class="y">支持</td><td class="y">支持</td><td class="y">支持</td></tr>
+                <tr><th>渠道侧关单</th><td class="y">支持</td><td class="y">支持</td><td class="m">只能本地关单，之后仍可能付款</td><td class="m">只能本地关单</td></tr>
+                <tr><th>回调后二次确认</th><td>不需要，RSA2 已足够</td><td>不需要，签名 + 解密已足够</td><td class="y">验签后再查一次单</td><td class="y">验签后再查一次单</td></tr>
+                <tr><th>后台「校验」</th><td>查一个不存在的订单</td><td>查一个不存在的订单</td><td class="m">未验证：<code>act=query</code> 是否各站点都支持</td><td class="m">未验证：返回码需实测</td></tr>
+                <tr><th>实现方式</th><td>smartwalle/alipay/v3</td><td>wechatpay-go（官方）</td><td>标准库手写</td><td>标准库手写</td></tr>
+                <tr>
+                  <th>核实度</th>
+                  <td><span class="tag t-info">调研未复核</span></td>
+                  <td><span class="tag t-info">调研未复核</span></td>
+                  <td><span class="tag t-ok">读过影策和 sub2api 源码</span></td>
+                  <td><span class="tag t-ok">读过影策源码</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>用户说「付了钱没到账」时，会发生什么</h2>
+          <p class="sub">这是支付最常见的投诉。系统先自己找，找不到再由人工处理。全程没有「不经渠道直接加积分」的按钮。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>用户在弹框点「我已完成支付」</b><small>后端立刻向渠道查单，已付就当场入账。同一笔订单每 5 秒最多查一次。</small></li>
+                <li><b>后台任务每 30 秒补查</b><small>创建超过 2 分钟还没结果的订单，每 2 分钟查一次；到期的订单先查单再关单。</small></li>
+                <li><b>运营在「支付订单」搜订单号，点「查单」</b><small>和上面走同一个入账入口，已付就入账，写审计。</small></li>
+                <li><b>还是不行：人工核实</b><small>运营在商户后台核对流水后，用现有的「调整积分」补发并写备注。</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：系统不做退款，也不能强制入账</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li><b>易支付、虎皮椒关单后用户仍可能付款</b>：迟到的回调照样入账，订单会标「迟到入账」。</li>
+                    <li><b>回调金额与订单不符</b>：订单标为「异常」，不入账，由运营人工处理。</li>
+                    <li>用户要退款：运营在商户后台退钱，再用「调整积分」扣回。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前告知运营：第 4 步只在渠道查单也查不到时才会用到，例如用户付错了商户。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 状态机演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">选一个渠道，把一笔订单推着走</h1>
+        <p class="lead">
+          左边选承接渠道，右边点事件，看订单状态、用户积分和充值流水怎么变化。<b>同样的事件，换个渠道结果可能不同</b>，主要差在能不能查单、能不能在渠道侧关单。这里只演示规则，不涉及界面。
+        </p>
+        <div class="grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)" id="smGrid">
+          <div id="smList" class="grid" style="align-content: start"></div>
+          <div id="smPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">积分商城和支付管理原型</h1>
+        <p class="lead">
+          数据在内存里，刷新复原。用顶部的切换按钮在<b>用户侧</b>和<b>后台</b>之间来回。用户侧已预置 1,200 积分，微信和支付宝都已有渠道承接，可以直接买一档。下单后，框外紫色的<b>模拟器</b>可以触发「付款成功」「回调丢失」「金额被篡改」「过期」等情况。想看失败提示：在后台把渠道的任意字段改成包含 <code>bad</code> 再校验；或者勾选模拟器里的「下一次下单失败」。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px">
+          <div class="seg" id="viewSeg">
+            <button data-view="user" aria-pressed="true"><i data-lucide="user"></i>用户侧 · 积分商城</button>
+            <button data-view="admin" aria-pressed="false"><i data-lucide="shield"></i>后台 · 支付管理</button>
+          </div>
+          <span class="spacer muted" style="font-size: 12px">模拟，非真实调用</span>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="addr">canvas.example.com / 首页</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="simbar" id="simbar"></div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">
+          下面都是提案，尚未实现，对应 <code>支付功能.md</code> 第 6.3、7、8 节。<b>积分账户、流水、加密存密钥、审计、迁移机制全部复用现有的</b>，新增的只有四张表、一列、几个设置键和一组接口。
+        </p>
+
+        <div class="sec">
+          <h2>谁绑谁</h2>
+          <p class="sub">支付方式、渠道、订单、积分之间的关系。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>支付方式</th><td><code>wechat</code> / <code>alipay</code> 各指定 0 或 1 个已启用渠道（<code>system_settings</code>）</td><td>用户不需要懂渠道；换渠道对用户无感</td></tr>
+                <tr><th>渠道</th><td>四个内置 provider 各占一行；每个密钥字段单独一条密文存 <code>ai_secrets</code>，名为 <code>payment:&lt;provider&gt;:&lt;字段&gt;</code></td><td>复用现有的 AES-GCM 加密和只写不读；每种渠道一份配置，不做多实例</td></tr>
+                <tr><th>订单</th><td>锁定商品快照、provider 和 channel_version</td><td>改价、换渠道都不影响已下的订单；回调必须来自下单时的那个渠道</td></tr>
+                <tr><th>流水</th><td>每笔订单最多一条 <code>recharge</code>：<code>UNIQUE(payment_order_id, type)</code></td><td>和现有 <code>uk_ledger_task_type</code> 同样的思路，作为防重复入账的最后一道防线</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>订单状态迁移</h2>
+          <p class="sub">共六个状态。<code>credited</code>、<code>abnormal</code> 是终态；<code>closed</code> 和 <code>create_failed</code> 在收到已付通知后还能转为 <code>credited</code>（<code>abnormal</code> 不会被后续通知自动入账）。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>从</th><th>到</th><th>条件</th></tr></thead>
+              <tbody>
+                <tr><th><code>creating</code></th><td><code>pending</code> / <code>create_failed</code></td><td>渠道下单成功或失败；进程中途崩溃的订单，2 分钟后由补单任务处理</td></tr>
+                <tr><th><code>pending</code></th><td><code>credited</code></td><td>验签通过的回调，或查单结果为已付，且金额、商户身份、交易号都校验通过</td></tr>
+                <tr><th><code>pending</code></th><td><code>closed</code></td><td>超时、用户取消、管理员关单；都要<b>先查单</b>，已付就转 credited</td></tr>
+                <tr><th><code>pending</code></th><td><code>abnormal</code></td><td>实付 ≠ 应付，或渠道交易号已被别的订单占用</td></tr>
+                <tr><th><code>closed</code></th><td><code>credited</code></td><td>关单后收到已付通知，同时 <code>late_paid=true</code></td></tr>
+                <tr><th><code>create_failed</code></th><td><code>credited</code></td><td>下单请求超时但渠道其实建了单、用户随后付了款：照常入账，不入账等于吞钱</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型（新迁移 <code>0005_payment.sql</code>）</h2>
+          <p class="sub">按项目惯例写版本化 SQL 迁移，同时把新 model 加进 <code>model.All()</code>。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>payment_orders</code></th></tr></thead>
+                <tbody>
+                  <tr><th>order_no</th><td>varchar(32) <b>唯一</b>；<code>VC</code> + yyMMddHHmmss + 8 位随机数字</td></tr>
+                  <tr><th>user_id</th><td>索引 (user_id, created_at desc)；所有用户侧查询都带上</td></tr>
+                  <tr><th>idempotency_key</th><td><b>唯一</b> (user_id, idempotency_key)；重复提交返回同一笔订单</td></tr>
+                  <tr><th>product_snapshot</th><td>jsonb {name, price_fen, base_credits, bonus_credits}</td></tr>
+                  <tr><th>amount_fen / credits</th><td>应付金额（分）/ 到账积分（基础 + 赠送）</td></tr>
+                  <tr><th>method / provider</th><td>wechat、alipay / 下单时承接的渠道</td></tr>
+                  <tr><th>channel_version</th><td>下单时的渠道配置版本</td></tr>
+                  <tr><th>status</th><td>见上表；索引 (status, expires_at) 供补单任务扫描</td></tr>
+                  <tr><th>checkout_mode / value</th><td>qrcode / qrcode_image / redirect；二维码内容或跳转 URL</td></tr>
+                  <tr><th>provider_trade_no</th><td>varchar(64)；<b>唯一</b> (provider, provider_trade_no)，非空时生效</td></tr>
+                  <tr><th>paid_amount_fen</th><td>渠道报告的实付金额</td></tr>
+                  <tr><th>expires_at 等时间</th><td>expires / paid / credited / closed _at；last_queried_at 用于补查限频</td></tr>
+                  <tr><th>close_reason</th><td>timeout / user / admin</td></tr>
+                  <tr><th>late_paid</th><td>bool，关单后才收到已付</td></tr>
+                  <tr><th>abnormal_reason</th><td>amount_mismatch / trade_no_conflict / identity_mismatch</td></tr>
+                  <tr><th>fail_reason / client_ip</th><td>下单失败原因（已脱敏）/ 记录用，不做风控</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="grid" style="align-content: start">
+              <div class="cmp-wrap">
+                <table class="cmp">
+                  <thead><tr><th colspan="2"><code>payment_channels</code></th></tr></thead>
+                  <tbody>
+                    <tr><th>provider</th><td>varchar(32) <b>唯一</b>，取值是四个之一</td></tr>
+                    <tr><th>enabled</th><td>启用前必须先通过校验</td></tr>
+                    <tr><th>config_json</th><td>非敏感字段</td></tr>
+                    <tr><th>secret_set</th><td>每个敏感字段是否已设置，不含密文；<b>密文在 ai_secrets</b></td></tr>
+                    <tr><th>order_timeout_minutes</th><td>默认 15，范围 5–120</td></tr>
+                    <tr><th>validated_at</th><td>修改配置后清空</td></tr>
+                    <tr><th>version</th><td><b>乐观锁</b>，保存时必须带上</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="cmp-wrap">
+                <table class="cmp">
+                  <thead><tr><th colspan="2"><code>recharge_products</code></th></tr></thead>
+                  <tbody>
+                    <tr><th>name / badge</th><td>名称 / 角标，如「热门」，可以为空</td></tr>
+                    <tr><th>price_fen</th><td>&gt; 0，单位分</td></tr>
+                    <tr><th>base / bonus_credits</th><td>基础积分 &gt; 0；赠送积分 ≥ 0</td></tr>
+                    <tr><th>sort / on_sale</th><td>排序，越小越靠前 / 是否上架</td></tr>
+                    <tr><th>sold_count / version</th><td>入账时 +1 / 乐观锁</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="cmp-wrap">
+                <table class="cmp">
+                  <thead><tr><th colspan="2"><code>payment_notifications</code> 与改动</th></tr></thead>
+                  <tbody>
+                    <tr><th>notifications</th><td>只存验签通过的通知：provider、order_no、event_key（<b>唯一</b>(provider, event_key)）、result、去掉敏感字段的 payload（≤ 8KB）</td></tr>
+                    <tr><th>credit_ledger</th><td>新增列 <code>payment_order_id</code> 和部分唯一索引；新增类型 <code>recharge</code></td></tr>
+                    <tr><th>对账公式</th><td>余额 = Σinitial + Σadmin_adjust + <b>Σrecharge</b> − Σsettle</td></tr>
+                    <tr><th>system_settings</th><td><code>payment.enabled</code>、<code>payment.public_base_url</code>、<code>payment.method.wechat</code>、<code>payment.method.alipay</code>、<code>payment.max_pending_per_user</code>（默认 3）</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口（挂在 <code>/api/v1</code> 下）</h2>
+          <p class="sub">用户接口要求 JWTAuth + RequireActive；后台接口要求 RequireAdmin，标 ★ 的要求 RequireSuperAdmin。错误码新开 65xxx 号段。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>GET /payment/store</code></th><td>商城数据：enabled、上架商品、两个方式各自是否可用及原因</td><td>—</td></tr>
+                <tr><th><code>POST /payment/orders</code></th><td>请求 <code>{product_id, method, idempotency_key}</code>，返回订单视图和收银信息</td><td>65001 未开启 · 65002 方式不可用 · 65003 商品下架 · 65004 未完成订单过多 · 65005 渠道下单失败</td></tr>
+                <tr><th><code>GET /payment/orders/pending</code></th><td>最近一笔未支付订单，用于刷新后恢复</td><td>—</td></tr>
+                <tr><th><code>GET /payment/orders/:no</code></th><td>只读库，前端每 3 秒轮询</td><td>65006 不存在（含别人的订单）</td></tr>
+                <tr><th><code>POST /payment/orders/:no/check</code></th><td>向渠道查单，已付就入账</td><td>65006 · 65014 太频繁（每 5 秒 1 次）</td></tr>
+                <tr><th><code>POST /payment/orders/:no/close</code></th><td>用户取消：先查单再关单</td><td>65006 · 65007 状态不允许</td></tr>
+                <tr><th><code>POST|GET /payment/notify/:provider</code></th><td><b>无鉴权</b>；请求体 ≤ 64KB；验签失败不落库；订单不存在也返回成功</td><td>按渠道格式应答</td></tr>
+                <tr><th><code>GET / ★PUT /admin/payment/settings</code></th><td>总开关、公网地址、方式→渠道映射、未支付订单上限</td><td>65009 映射的渠道未启用</td></tr>
+                <tr><th><code>GET /admin/payment/channels</code></th><td>四个渠道：字段定义、非敏感值、secret_set、能力、状态、未完成订单数、回调地址</td><td>—</td></tr>
+                <tr><th><code>★PUT /admin/payment/channels/:provider</code></th><td><code>{version, config, secrets}</code>，密钥留空表示不改；保存后需要重新校验，已启用的会自动停用（只改超时时间或显示名除外）</td><td>65009 · 65010 有未完成订单不能改身份或密钥 · 65011 版本冲突</td></tr>
+                <tr><th><code>★POST …/:provider/validate|enable|disable</code></th><td>校验（格式 + 在线探测）/ 启用（需已校验 + 已配公网地址，微信要求 https）/ 停用</td><td>65009 · 65013 未配公网地址</td></tr>
+                <tr><th><code>/admin/payment/products</code></th><td>GET 列表、POST 新建、PUT 编辑（带 version）、PUT /sort 排序、DELETE 删除</td><td>65011 · 65012 有订单不能删</td></tr>
+                <tr><th><code>GET /admin/payment/orders[/:no]</code></th><td>分页筛选（订单号、用户、状态、方式、渠道、时间段）/ 详情 + 通知记录</td><td>65006</td></tr>
+                <tr><th><code>POST /admin/payment/orders/:no/query|close</code></th><td>查单（已付就入账）/ 关单；都写审计</td><td>65008 渠道不能查单 · 65007</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心：唯一的入账入口 <code>CreditOrder</code></h2>
+          <p class="sub">回调、主动查单、补单任务、管理员查单，最后都调用它。按项目规范，事务内不做任何网络请求。</p>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// service.CreditOrder（提案）—— 调用前，渠道结果已在事务外拿到：{order_no, trade_no, paid_fen, identity}
+WithTx(func(tx) {
+  order := tx.LockOrder(order_no)                 // SELECT … FOR UPDATE
+  if order.status == credited  { return Duplicate }               // 幂等成功
+  if order.status ∉ {pending, closed, creating} { return ErrOrderState }   // 65007
+  if identity != channel.identity   { markAbnormal("identity_mismatch"); audit; return }
+  if paid_fen != order.amount_fen   { markAbnormal("amount_mismatch");   audit; return }
+  EnsureCredit(order.user_id); LockCredit(order.user_id)
+  inserted := InsertLedger({type: recharge, payment_order_id: order.id, amount: order.credits})   // ON CONFLICT DO NOTHING
+  if !inserted { setCredited(order); return Duplicate }
+  AddCredit(order.user_id, +order.credits)
+  n := UPDATE payment_orders SET status=credited, trade_no, paid_*, late_paid=(old==closed)
+       WHERE id=? AND status&lt;&gt;'credited'            // 交易号唯一冲突 → abnormal("trade_no_conflict")
+  assert n == 1; products.sold_count += 1
+})
+afterCommit: ws.Publish(user:{id}, "payment.updated", {order_no, status, credits})
+
+// PaymentProvider（提案），实现放在 internal/payment/&lt;provider&gt;/，只依赖 SDK 和标准库
+Capabilities() → {Methods, CanQuery, CanCloseUpstream, CheckoutMode}
+ValidateConfig / Probe / CreateOrder / QueryOrder / CloseOrder / VerifyNotify / NotifyAck</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>只做积分充值</b>：会员（黑卡）、礼品卡、支付对账页放后续。</li>
+              <li><b>系统不做退款</b>：需要时运营在商户后台退钱，再用「调整积分」扣回。</li>
+              <li><b>固定档位，每档可配赠送积分</b>：不支持自定义金额。</li>
+              <li><b>渠道用 Go 内置适配器</b>：资金链路要稳、好测，新增渠道走发版。复用 JS 插件运行时的方案已搁置，以后可以在同一个接口下补一个插件适配器。</li>
+              <li><b>首批四个渠道全接</b>：支付宝电脑网站、微信 Native、易支付、虎皮椒。支付FM 已去掉（不能查单和关单）。</li>
+              <li><b>引用 smartwalle/alipay/v3 和 wechatpay-go</b>：三个第三方渠道用标准库手写。</li>
+              <li><b>前台只显示「微信 / 支付宝」</b>：后台为每种方式指定一个承接渠道。</li>
+              <li><b>只做桌面端</b>：扫码类在弹框里完成，跳转类新开标签页。</li>
+              <li><b>订单页只提供「查单 + 关单」</b>：不提供强制入账。</li>
+              <li><b>二维码用前端 qrcode.react</b>：只在积分商城弹框里懒加载。</li>
+              <li><b>点积分胶囊直接打开积分商城</b>：余额和冻结信息移到商城顶部；支付未开启时保持现有的小卡片。</li>
+              <li class="muted"><b>搁置</b>：JS 插件化、渠道配置版本化、多实例负载均衡、通知收件箱加异步重试（主文档 9.2、9.3）。</li>
+            </ol>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="circle-help"></i>
+            <div>
+              <b>仍待实测：</b>易支付站点是否支持 <code>act=query</code>；虎皮椒查询不存在的订单时返回什么码。这两项只影响后台「校验」的实现方式，不影响整体结构。
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      const yuan = (fen) => "¥" + (fen % 100 === 0 ? (fen / 100).toLocaleString("en-US") : (fen / 100).toFixed(2));
+      const num = (n) => Number(n).toLocaleString("en-US");
+      const hhmm = () => new Date().toTimeString().slice(0, 8);
+
+      /* ================= 渠道定义（两处共用） ================= */
+      const CH = {
+        alipay_page: {
+          name: "支付宝电脑网站支付", short: "支", color: "#1677ff", methods: ["alipay"], mode: "跳转", canQuery: true, canClose: true,
+          fields: [
+            { k: "app_id", l: "应用 AppID", id: true },
+            { k: "seller_id", l: "卖家 ID（可选）", opt: true },
+            { k: "gateway", l: "网关", def: "https://openapi.alipay.com/gateway.do" },
+            { k: "app_private_key", l: "应用私钥（RSA2）", secret: true },
+            { k: "alipay_public_key", l: "支付宝公钥", secret: true },
+          ],
+        },
+        wechat_native: {
+          name: "微信支付 Native", short: "微", color: "#07c160", methods: ["wechat"], mode: "扫码", canQuery: true, canClose: true,
+          fields: [
+            { k: "app_id", l: "AppID", id: true },
+            { k: "mch_id", l: "商户号", id: true },
+            { k: "merchant_serial_no", l: "商户证书序列号" },
+            { k: "wechatpay_public_key_id", l: "微信支付公钥 ID" },
+            { k: "merchant_private_key", l: "商户私钥", secret: true },
+            { k: "api_v3_key", l: "APIv3 密钥", secret: true },
+            { k: "wechatpay_public_key", l: "微信支付公钥", secret: true },
+          ],
+        },
+        epay: {
+          name: "易支付（V1）", short: "易", color: "#52525b", methods: ["wechat", "alipay"], mode: "跳转/扫码", canQuery: true, canClose: false,
+          fields: [
+            { k: "api_base", l: "接口地址" },
+            { k: "pid", l: "商户 ID（pid）", id: true },
+            { k: "key", l: "商户密钥", secret: true },
+          ],
+        },
+        xunhupay: {
+          name: "虎皮椒", short: "虎", color: "#ea580c", methods: ["wechat", "alipay"], mode: "扫码", canQuery: true, canClose: false,
+          fields: [
+            { k: "gateway", l: "网关", def: "https://api.xunhupay.com" },
+            { k: "wechat_app_id", l: "微信 AppID", id: true, opt: true },
+            { k: "wechat_app_secret", l: "微信 AppSecret", secret: true, opt: true },
+            { k: "alipay_app_id", l: "支付宝 AppID", id: true, opt: true },
+            { k: "alipay_app_secret", l: "支付宝 AppSecret", secret: true, opt: true },
+          ],
+        },
+      };
+      const METHOD = { wechat: { name: "微信支付", cls: "ic-wx", t: "微" }, alipay: { name: "支付宝", cls: "ic-ali", t: "支" } };
+      const capTags = (c) =>
+        `<span class="tag ${c.canQuery ? "t-ok" : "t-bad"}">${c.canQuery ? "可查单" : "不能查单"}</span>` +
+        `<span class="tag ${c.canClose ? "t-ok" : "t-warn"}">${c.canClose ? "渠道侧关单" : "仅本地关单"}</span>`;
+
+      /* ================= 2. 状态机演示 ================= */
+      const SM = { ch: "wechat_native", st: "idle", credits: 1200, ledger: 0, upPaid: false, upClosed: false, late: false, log: [] };
+      const ORDER = { fen: 10000, credits: 10000 };
+      function smReset() {
+        Object.assign(SM, { st: "idle", credits: 1200, ledger: 0, upPaid: false, upClosed: false, late: false, log: [] });
+      }
+      function smLog(t, kind = "") {
+        SM.log.unshift({ t, kind, at: hhmm() });
+      }
+      function smCredit(src) {
+        const late = SM.st === "closed";
+        SM.st = "credited";
+        SM.late = late;
+        SM.credits += ORDER.credits;
+        SM.ledger += 1;
+        smLog(`${src} → 入账事务：写 recharge 流水 +${num(ORDER.credits)}，订单 credited${late ? "，并标 late_paid（迟到入账）" : ""}`, "ok");
+      }
+      const SM_EVENTS = [
+        { id: "create", t: "下单成功", d: "订单锁定快照，状态变为 pending", en: () => SM.st === "idle",
+          run: () => { SM.st = "pending"; smLog("下单：creating → pending，返回收银信息"); } },
+        { id: "createFail", t: "渠道下单失败", d: "渠道接口报错或超时", en: () => SM.st === "idle",
+          run: () => { SM.st = "create_failed"; smLog("渠道返回错误 → create_failed，前端提示 65005，可以换一种方式", "bad"); } },
+        { id: "notify", t: "用户付款，回调到达", d: "验签 + 核对金额", en: () => SM.st === "pending" && !SM.upPaid,
+          run: () => {
+            const c = CH[SM.ch];
+            SM.upPaid = true;
+            smLog(!c.canQuery ? "回调验签通过（MD5，不能查单，只能以签名为准）" : c.canClose ? "回调验签通过（SDK）" : "回调验签通过（MD5）→ 再向渠道查一次单确认已付");
+            smCredit("回调");
+          } },
+        { id: "dup", t: "同一回调又来一次", d: "渠道重试是常态", en: () => SM.st === "credited",
+          run: () => smLog("订单已经是 credited → 返回 duplicate，积分不变，照样回复渠道 success", "ok") },
+        { id: "tamper", t: "回调金额不符", d: "实付 ¥99.99 ≠ 应付 ¥100", en: () => SM.st === "pending",
+          run: () => { SM.st = "abnormal"; smLog("验签通过，但实付 ≠ 应付 → 订单 abnormal(amount_mismatch)，不入账，写审计", "bad"); } },
+        { id: "lost", t: "用户付款，回调丢失", d: "渠道那边已付，我们没收到", en: () => SM.st === "pending" && !SM.upPaid,
+          run: () => { SM.upPaid = true; smLog("渠道侧已付款，但回调没到。订单仍是 pending", "warn"); } },
+        { id: "check", t: "用户点「我已完成支付」", d: "主动查单（每 5 秒最多一次）", en: () => SM.st === "pending",
+          run: () => {
+            const c = CH[SM.ch];
+            if (!c.canQuery) return smLog("该渠道不能查单 → 提示「正在等待渠道通知」，订单仍是 pending", "warn");
+            if (SM.upPaid) return smCredit("查单返回已付");
+            smLog("查单：渠道显示尚未付款，订单仍是 pending");
+          } },
+        { id: "expire", t: "订单到期（补单任务）", d: "每 30 秒扫描一次", en: () => SM.st === "pending",
+          run: () => {
+            const c = CH[SM.ch];
+            if (c.canQuery && SM.upPaid) return smCredit("到期前先查单，返回已付");
+            if (c.canQuery) smLog("到期：先查单 → 未付");
+            else smLog(SM.upPaid ? "到期：不能查单，<b>不知道用户其实已经付了</b>" : "到期：不能查单，跳过", SM.upPaid ? "bad" : "warn");
+            if (c.canClose) { SM.upClosed = true; smLog("调用渠道关单接口 → 关闭成功"); }
+            else smLog("渠道没有关单接口 → 只在本地标 closed，用户仍可能付款", "warn");
+            SM.st = "closed";
+            smLog("订单 closed(timeout)");
+          } },
+        { id: "cancel", t: "用户取消订单", d: "同样先查单再关单", en: () => SM.st === "pending",
+          run: () => {
+            const c = CH[SM.ch];
+            if (c.canQuery && SM.upPaid) return smCredit("取消前先查单，返回已付");
+            if (c.canClose) { SM.upClosed = true; smLog("调用渠道关单接口 → 关闭成功"); }
+            else smLog("本地关单（渠道没有关单接口）", "warn");
+            SM.st = "closed";
+            smLog("订单 closed(user)");
+          } },
+        { id: "latePay", t: "关单后用户仍付款", d: "迟到的已付回调", en: () => SM.st === "closed" && !SM.upClosed,
+          off: () => (SM.st === "closed" && SM.upClosed ? "渠道侧已关单，用户无法再付款" : ""),
+          run: () => { smLog("收到已付回调，验签通过；订单是 closed 也照样入账"); smCredit("迟到回调"); } },
+        { id: "createTimeoutPaid", t: "下单超时，但渠道其实建了单且用户付了款", d: "下单失败后的已付通知", en: () => SM.st === "create_failed",
+          run: () => { smLog("收到已付回调，验签通过；订单是 create_failed 也照样入账（不入账等于吞钱）"); SM.upPaid = true; smCredit("回调"); } },
+      ];
+      function renderSM() {
+        $("#smList").innerHTML = Object.entries(CH)
+          .map(([k, c]) => `<button class="opt" aria-pressed="${SM.ch === k}" data-ch="${k}">
+              <div class="row"><span class="chico" style="background:${c.color}">${esc(c.short)}</span><b>${esc(c.name)}</b></div>
+              <div class="row wrapflex" style="margin-top:6px">${capTags(c)}</div></button>`)
+          .join("");
+        const states = ["idle", "pending", "credited", "closed", "abnormal", "create_failed"];
+        const label = { idle: "未下单", pending: "pending", credited: "credited", closed: "closed", abnormal: "abnormal", create_failed: "create_failed" };
+        const good = { credited: "good", abnormal: "badst", create_failed: "badst" };
+        const c = CH[SM.ch];
+        $("#smPanel").innerHTML = `
+          <div class="row wrapflex"><b>${esc(c.name)}</b> ${capTags(c)}<span class="spacer"></span>
+            <button class="btn btn-outline btn-sm" id="smReset"><i data-lucide="rotate-ccw"></i>重置</button></div>
+          <div class="sm" style="margin-top:12px">${states.map((s) => `<span class="st ${SM.st === s ? "on " + (good[s] || "") : ""}">${label[s]}</span>`).join("")}</div>
+          <div class="grid g3" style="margin-top:12px">
+            <div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12px">用户积分</div><b class="mono num" style="font-size:18px">${num(SM.credits)}</b></div>
+            <div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12px">recharge 流水条数</div><b class="mono num" style="font-size:18px">${SM.ledger}</b> <span class="muted" style="font-size:12px">最多 1</span></div>
+            <div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12px">渠道侧</div><b style="font-size:14px">${SM.upPaid ? "用户已付款" : "未付款"}${SM.upClosed ? " · 已关单" : ""}</b></div>
+          </div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));margin-top:12px">
+            ${SM_EVENTS.map((e) => {
+              const off = e.off ? e.off() : "";
+              return `<button class="evbtn" data-ev="${e.id}" ${e.en() ? "" : "disabled"} title="${esc(off)}">${esc(e.t)}<small>${esc(off || e.d)}</small></button>`;
+            }).join("")}
+          </div>
+          <div style="margin-top:14px;font-size:12.5px" class="muted">事件记录（最新在上）</div>
+          <div class="log" style="margin-top:6px">${SM.log.length ? SM.log.map((l) => `<div style="${l.kind ? `background:rgb(var(--${l.kind}) / .08)` : ""}"><span class="mono muted">${l.at}</span> ${l.t}</div>`).join("") : '<div class="muted">先点「下单成功」。</div>'}</div>
+          <p class="muted" style="font-size:12px;margin-top:10px">示意：订单固定为 ¥100 → 10,000 积分，初始积分 1,200。<b>事件记录里的规则就是实现规则</b>，对应主文档 6.2 和 7.4。</p>`;
+        icons();
+      }
+      $("#smList").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-ch]");
+        if (!b) return;
+        SM.ch = b.dataset.ch;
+        smReset();
+        renderSM();
+      });
+      $("#smPanel").addEventListener("click", (e) => {
+        if (e.target.closest("#smReset")) { smReset(); return renderSM(); }
+        const b = e.target.closest("[data-ev]");
+        if (!b || b.disabled) return;
+        SM_EVENTS.find((x) => x.id === b.dataset.ev).run();
+        renderSM();
+      });
+      if (matchMedia("(max-width: 820px)").matches) $("#smGrid").style.gridTemplateColumns = "1fr";
+
+      /* ================= 3. 可点击原型 ================= */
+      const now = () => Date.now();
+      const S = {
+        view: "user",
+        role: "super_admin",
+        adminTab: "channels",
+        settings: { enabled: true, baseUrl: "https://canvas.example.com", map: { wechat: "wechat_native", alipay: "alipay_page" }, maxPending: 3 },
+        ch: {
+          alipay_page: { enabled: true, validated: true, version: 3, timeout: 15, values: { app_id: "2021004123456789", gateway: "https://openapi.alipay.com/gateway.do" }, secretSet: { app_private_key: true, alipay_public_key: true } },
+          wechat_native: { enabled: true, validated: true, version: 2, timeout: 15, values: { app_id: "wx8a1b2c3d4e5f6789", mch_id: "1690012345", merchant_serial_no: "5A1E…C93F", wechatpay_public_key_id: "PUB_KEY_ID_0116…" }, secretSet: { merchant_private_key: true, api_v3_key: true, wechatpay_public_key: true } },
+          epay: { enabled: false, validated: false, version: 1, timeout: 10, values: { api_base: "https://pay.example-epay.com", pid: "1024" }, secretSet: { key: true } },
+          xunhupay: { enabled: false, validated: false, version: 0, timeout: 15, values: { gateway: "https://api.xunhupay.com" }, secretSet: {} },
+        },
+        products: [
+          { id: 1, name: "5,000 积分", price: 5000, base: 5000, bonus: 0, badge: "", onSale: true, sold: 42, sort: 1 },
+          { id: 2, name: "10,000 积分", price: 10000, base: 10000, bonus: 0, badge: "热门", onSale: true, sold: 118, sort: 2 },
+          { id: 3, name: "20,000 积分", price: 20000, base: 20000, bonus: 1000, badge: "", onSale: true, sold: 37, sort: 3 },
+          { id: 4, name: "50,000 积分", price: 50000, base: 50000, bonus: 5000, badge: "超值", onSale: true, sold: 12, sort: 4 },
+          { id: 5, name: "100,000 积分", price: 100000, base: 100000, bonus: 15000, badge: "", onSale: true, sold: 4, sort: 5 },
+          { id: 6, name: "200,000 积分", price: 200000, base: 200000, bonus: 40000, badge: "", onSale: false, sold: 0, sort: 6 },
+        ],
+        orders: [],
+        credits: { balance: 1500, frozen: 300 },
+        store: { open: false, popover: false, sel: 2, method: "wechat", phase: "confirm", orderNo: null, err: "", lastCheck: 0 },
+        sim: { createFail: false },
+        drawer: null,
+        filter: "all",
+        lastClosed: null,
+      };
+      let seq = 3307;
+      const mkNo = () => "VC" + new Date().toISOString().replace(/\D/g, "").slice(2, 14) + String(48210000 + seq++).slice(-8);
+      function seedOrders() {
+        const base = now();
+        const o = (x) => S.orders.push({ log: [], late: false, abnormal: "", upPaid: false, ...x });
+        o({ no: "VC261016093012" + "48213301", user: "lin", pid: 2, name: "10,000 积分", fen: 10000, credits: 10000, method: "wechat", provider: "wechat_native", status: "credited", created: base - 7200e3, expires: base - 6300e3, log: [{ at: "09:30:12", t: "下单，pending" }, { at: "09:30:41", t: "回调验签通过 → 入账 +10,000" }] });
+        o({ no: "VC261016101544" + "48213302", user: "zhou", pid: 3, name: "20,000 积分", fen: 20000, credits: 21000, method: "alipay", provider: "alipay_page", status: "pending", created: base - 120e3, expires: base + 780e3, log: [{ at: "10:15:44", t: "下单，pending（跳转）" }] });
+        o({ no: "VC261016084005" + "48213303", user: "wang", pid: 1, name: "5,000 积分", fen: 5000, credits: 5000, method: "wechat", provider: "wechat_native", status: "closed", closeReason: "timeout", created: base - 9000e3, expires: base - 8100e3, log: [{ at: "08:40:05", t: "下单，pending" }, { at: "08:55:30", t: "到期：查单未付 → 渠道关单 → closed(timeout)" }] });
+        o({ no: "VC261015221810" + "48213304", user: "chen", pid: 2, name: "10,000 积分", fen: 10000, credits: 10000, method: "wechat", provider: "epay", status: "abnormal", abnormal: "amount_mismatch", created: base - 50000e3, expires: base - 49400e3, log: [{ at: "22:18:10", t: "下单，pending" }, { at: "22:19:02", t: "回调验签通过，但实付 ¥1.00 ≠ 应付 ¥100 → abnormal" }] });
+        o({ no: "VC261015200133" + "48213305", user: "lin", pid: 1, name: "5,000 积分", fen: 5000, credits: 5000, method: "alipay", provider: "epay", status: "credited", late: true, created: base - 58000e3, expires: base - 57400e3, log: [{ at: "20:01:33", t: "下单，pending" }, { at: "20:11:33", t: "到期：查单未付 → 本地关单（渠道无关单接口）" }, { at: "20:13:07", t: "收到已付回调 → 迟到入账 +5,000（late_paid）" }] });
+      }
+      seedOrders();
+
+      const pendingOf = (prov) => S.orders.filter((o) => o.provider === prov && (o.status === "pending" || o.status === "creating")).length;
+      const myPending = () => S.orders.filter((o) => o.user === "me" && o.status === "pending");
+      const curOrder = () => S.orders.find((o) => o.no === S.store.orderNo);
+      function methodState(m) {
+        const k = S.settings.map[m];
+        if (!k) return { ok: false, reason: "未配置承接渠道" };
+        if (!S.ch[k].enabled) return { ok: false, reason: "承接渠道已停用" };
+        return { ok: true, prov: k };
+      }
+      const statusTag = (o) => {
+        const m = {
+          creating: ["t-mute", "下单中"], pending: ["t-info", "待支付"], credited: ["t-ok", o.late ? "已入账·迟到" : "已入账"],
+          closed: ["t-mute", "已关闭"], create_failed: ["t-bad", "下单失败"], abnormal: ["t-bad", "异常"],
+        }[o.status];
+        return `<span class="tag ${m[0]}">${m[1]}</span>`;
+      };
+      function addLog(o, t) {
+        o.log.push({ at: hhmm(), t });
+      }
+      function credit(o, src) {
+        if (o.status === "credited") { addLog(o, `${src}：已入账，忽略（duplicate）`); return false; }
+        const late = o.status === "closed";
+        o.status = "credited";
+        o.late = late;
+        o.credited = now();
+        if (o.user === "me") S.credits.balance += o.credits;
+        const p = S.products.find((x) => x.id === o.pid);
+        if (p) p.sold += 1;
+        addLog(o, `${src} → 入账 +${num(o.credits)}${late ? "（迟到入账）" : ""}`);
+        if (o.user === "me" && S.store.orderNo === o.no) S.store.phase = "success";
+        return true;
+      }
+      function closeOrder(o, reason, who) {
+        const c = CH[o.provider];
+        if (c.canQuery && o.upPaid) { credit(o, `${who}：先查单，返回已付`); return "credited"; }
+        if (c.canQuery) addLog(o, `${who}：先查单 → 未付`);
+        if (c.canClose) addLog(o, "调用渠道关单接口 → 成功");
+        else addLog(o, "渠道没有关单接口 → 本地关单");
+        o.status = "closed";
+        o.closeReason = reason;
+        addLog(o, `closed(${reason})`);
+        if (o.user === "me") S.lastClosed = o.no;
+        return "closed";
+      }
+
+      /* ---------- 用户侧 ---------- */
+      function fakeQR(seed) {
+        let h = 0;
+        for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        const cells = [];
+        const finder = (r, c) => {
+          for (const [R, C] of [[0, 0], [0, 18], [18, 0]]) {
+            if (r >= R && r < R + 7 && c >= C && c < C + 7) {
+              const rr = r - R, cc = c - C;
+              return rr === 0 || rr === 6 || cc === 0 || cc === 6 || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
+            }
+          }
+          return null;
+        };
+        for (let r = 0; r < 25; r++)
+          for (let c = 0; c < 25; c++) {
+            const f = finder(r, c);
+            h = (h * 1103515245 + 12345) >>> 0;
+            cells.push(`<i class="${(f === null ? (h >> 16) & 1 : f) ? "on" : ""}"></i>`);
+          }
+        return cells.join("");
+      }
+      function renderUser() {
+        const st = S.store;
+        const hasPending = myPending().length > 0;
+        let html = `
+          <div class="app-top">
+            <span class="logo" style="width:26px;height:26px"><i data-lucide="clapperboard"></i></span><b style="font-size:14px">video-canvas</b>
+            <span class="spacer"></span>
+            <div class="note" style="border-radius:999px">
+              <button class="pill" id="pill"><span class="live"></span><span class="spark">✦</span><span class="num">${num(S.credits.balance - S.credits.frozen)}</span>${hasPending && !st.open ? '<span class="badge-dot" title="有待支付订单"></span>' : ""}</button>
+            </div>
+          </div>
+          <div class="note-txt" style="text-align:right;padding:0 16px">设计：支付开启时，点积分胶囊直接打开积分商城（用户决定）；有待支付订单时右上角显示小圆点。支付关闭时仍是原来的余额小卡片。</div>
+          <div class="home-hero">
+            <div>
+              <div style="font-size:24px;font-weight:700">下午好，今天想要创作什么？</div>
+              <p class="muted" style="margin-top:8px;font-size:13px">（首页示意）点右上角的积分打开积分商城</p>
+            </div>
+          </div>`;
+        if (st.popover) {
+          html += `<div style="position:absolute;top:52px;right:16px;width:240px;z-index:4" class="card">
+              <div class="row"><b class="mono" style="font-size:20px">${num(S.credits.balance - S.credits.frozen)}</b><span class="muted" style="font-size:12px">可用积分</span></div>
+              <dl class="kv" style="margin-top:10px"><dt>总余额</dt><dd>${num(S.credits.balance)}</dd><dt>生成中冻结</dt><dd>${num(S.credits.frozen)}</dd></dl>
+              <p class="muted" style="font-size:12px;margin-top:10px">支付未开启：保持现有的小卡片。</p></div>`;
+        }
+        if (st.open) html += renderStore();
+        return html;
+      }
+      function renderStore() {
+        const st = S.store;
+        const list = S.products.filter((p) => p.onSale).sort((a, b) => a.sort - b.sort);
+        const grid = list.length
+          ? list.map((p) => `
+              <button class="pcard" data-pid="${p.id}" aria-pressed="${st.sel === p.id}" ${st.phase !== "confirm" && st.phase !== "error" ? "disabled" : ""}>
+                <div class="face"><small>✦ POWER CARD</small>${p.badge ? `<span class="ribbon">${esc(p.badge)}</span>` : ""}
+                  <div class="big">${num(p.base + p.bonus)}<span>PTS</span></div></div>
+                <div class="meta"><b>${yuan(p.price)}</b>${p.bonus ? ` <span class="tag t-warn" style="height:18px">+赠 ${num(p.bonus)}</span>` : ""}
+                  <div class="muted">到账 ${num(p.base + p.bonus)} 积分</div></div>
+              </button>`).join("")
+          : `<div class="card muted" style="grid-column:1/-1;text-align:center;padding:40px">暂无可购买的积分商品</div>`;
+        return `
+          <div class="overlay" id="ov">
+            <div class="dialog" role="dialog" aria-label="积分商城">
+              <div class="dlg-head">
+                <span class="logo" style="width:30px;height:30px;background:hsl(var(--credit));color:#1a1205"><i data-lucide="shopping-bag"></i></span>
+                <div><b>积分商城</b><div class="muted" style="font-size:11.5px">积分即时到账、长期有效</div></div>
+                <span class="spacer"></span>
+                <div class="row note" style="gap:18px">
+                  <div class="stat"><small>可用积分</small><b>${num(S.credits.balance - S.credits.frozen)}</b></div>
+                  <div class="stat"><small>总余额</small><b>${num(S.credits.balance)}</b></div>
+                  <div class="stat"><small>生成中冻结</small><b>${num(S.credits.frozen)}</b></div>
+                </div>
+                <button class="btn" id="closeStore" aria-label="关闭"><i data-lucide="x"></i></button>
+              </div>
+              <div class="note-txt" style="padding:0 18px">设计：原来小卡片里的三个数字搬到商城顶部，用户点开积分后仍然能看到余额和冻结。</div>
+              <div class="store-body">
+                <div><div class="pgrid">${grid}</div>
+                  <p class="muted" style="font-size:11.5px;margin-top:10px">档位、赠送、角标都由后台「充值商品」配置；下单时价格和积分写进订单快照。</p></div>
+                <div>${renderSide()}</div>
+              </div>
+            </div>
+          </div>`;
+      }
+      function renderSide() {
+        const st = S.store;
+        const p = S.products.find((x) => x.id === st.sel) || S.products.find((x) => x.onSale);
+        const o = curOrder();
+        if (st.phase === "loading")
+          return `<div class="side" style="align-items:center;padding:40px 14px"><i data-lucide="loader-circle" class="spin" style="font-size:26px"></i><div class="muted" style="font-size:13px">正在向渠道下单…（模拟 0.9 秒）</div></div>`;
+        if (st.phase === "success" && o)
+          return `<div class="side" style="text-align:center;padding:28px 14px">
+              <div style="font-size:34px;color:rgb(var(--ok))"><i data-lucide="circle-check-big"></i></div>
+              <b style="font-size:18px">已到账 +${num(o.credits)} 积分</b>
+              <div class="muted" style="font-size:12.5px">${o.late ? "这笔是关单后才收到的付款通知，已照常入账。" : "支付成功，积分已入账。"}</div>
+              <div class="muted mono" style="font-size:11.5px">订单号 ${esc(o.no)}</div>
+              <button class="btn btn-primary" id="again">继续充值</button></div>`;
+        if (st.phase === "checkout" && o) {
+          const c = CH[o.provider];
+          const m = METHOD[o.method];
+          const expired = o.status === "pending" && o.expires <= now();
+          if (o.status === "abnormal")
+            return `<div class="side"><div class="callout c-bad"><i data-lucide="octagon-alert"></i><div><b>支付金额异常</b><br/>已通知管理员处理，请保留付款凭证。订单号 <span class="mono">${esc(o.no)}</span></div></div><button class="btn btn-outline" id="back">返回</button></div>`;
+          if (o.status === "closed")
+            return `<div class="side"><div class="callout c-warn"><i data-lucide="circle-slash"></i><div><b>订单已关闭</b><br/>${o.closeReason === "admin" ? "管理员关闭了这笔订单。" : o.closeReason === "timeout" ? "订单已过期。" : "订单已取消。"}</div></div><button class="btn btn-outline" id="back">重新选择</button></div>`;
+          const isQR = c.mode === "扫码" || (o.provider === "epay" && o.method === "wechat");
+          return `<div class="side">
+              <div class="row"><span class="mopt" style="padding:0;border:0;width:auto"><span class="ic ${m.cls}">${m.t}</span></span><b>${esc(m.name)}</b><span class="spacer"></span><b class="mono">${yuan(o.fen)}</b></div>
+              ${isQR
+                ? `<div class="note" style="border-radius:8px"><div class="qr">${fakeQR(o.no)}${expired ? `<div class="qr-mask"><div><b>二维码已过期</b><br/><span style="font-size:12px">请重新下单</span></div></div>` : ""}</div></div>
+                   <div class="note-txt">示意，不是真实二维码。实际由 qrcode.react 把渠道返回的 code_url 画成 SVG；虎皮椒直接显示它返回的二维码图片。</div>
+                   <div class="muted" style="text-align:center;font-size:12.5px">请使用${esc(m.name.replace("支付", ""))}扫码支付 ${yuan(o.fen)}</div>`
+                : `<div class="card" style="text-align:center;padding:18px 12px"><i data-lucide="external-link" style="font-size:22px"></i>
+                     <div style="font-size:13px;margin-top:6px">在新标签页完成付款</div>
+                     <button class="btn btn-primary" style="margin-top:10px;width:100%" id="goPay" ${expired ? "disabled" : ""}>前往${esc(m.name)}付款</button>
+                     <div class="muted" style="font-size:11.5px;margin-top:8px">付款完成后回到这里，系统会自动确认。不自动弹出新窗口，避免被浏览器拦截。</div></div>`}
+              <div class="row" style="justify-content:center;font-size:12.5px"><i data-lucide="timer"></i><span id="cd" class="mono">${cdText(o)}</span></div>
+              <dl class="kv"><dt>到账积分</dt><dd>${num(o.credits)}</dd><dt>承接渠道</dt><dd style="font-family:inherit">${esc(c.name)}</dd><dt>订单号</dt><dd style="font-size:11px">${esc(o.no)}</dd></dl>
+              ${expired
+                ? `<button class="btn btn-primary" id="reorder">重新下单</button>`
+                : `<button class="btn btn-primary" id="check"><i data-lucide="refresh-cw"></i>我已完成支付</button>
+                   <button class="btn btn-outline" id="cancel">取消订单</button>`}
+              <div class="muted" style="font-size:11.5px">关闭弹框不影响订单：结果会通过 WebSocket 推送，同时每 3 秒轮询兜底；再次打开商城会回到这里。</div>
+            </div>`;
+        }
+        if (!p) return `<div class="side muted">暂无商品</div>`;
+        const ms = ["wechat", "alipay"].map((k) => ({ k, ...methodState(k) }));
+        if (!ms.find((x) => x.k === st.method)?.ok) {
+          const ok = ms.find((x) => x.ok);
+          if (ok) st.method = ok.k;
+        }
+        const any = ms.some((x) => x.ok);
+        return `<div class="side">
+            <div class="muted" style="font-size:12px">当前选择</div>
+            <div class="pcard" style="pointer-events:none"><div class="face"><small>✦ POWER CARD</small><div class="big">${num(p.base + p.bonus)}<span>PTS</span></div></div></div>
+            <dl class="kv"><dt>基础积分</dt><dd>${num(p.base)}</dd><dt>赠送积分</dt><dd>${p.bonus ? "+" + num(p.bonus) : "—"}</dd><dt>到账合计</dt><dd><b>${num(p.base + p.bonus)}</b></dd></dl>
+            <div class="row"><span class="muted" style="font-size:13px">实付金额</span><span class="spacer"></span><b style="font-size:22px">${yuan(p.price)}</b></div>
+            <div class="grid note" style="gap:6px;border-radius:10px">
+              ${ms.map((x) => `<button class="mopt" data-m="${x.k}" aria-pressed="${st.method === x.k && x.ok}" ${x.ok ? "" : "disabled"}>
+                  <span class="ic ${METHOD[x.k].cls}">${METHOD[x.k].t}</span><span>${METHOD[x.k].name}</span>
+                  <span class="spacer muted" style="font-size:11.5px">${x.ok ? "" : esc(x.reason)}</span></button>`).join("")}
+            </div>
+            <div class="note-txt">设计：只出现「微信 / 支付宝」，用户看不到渠道名。不可用的方式置灰并写原因，不隐藏。可以去后台停用一个渠道看看效果。</div>
+            ${st.err ? `<div class="callout c-bad" style="font-size:12.5px"><i data-lucide="circle-x"></i><div>${st.err}</div></div>` : ""}
+            <button class="btn btn-primary" style="height:40px" id="pay" ${any ? "" : "disabled"}>${any ? "立即支付" : "暂未开放支付"}</button>
+            <div class="muted" style="font-size:11px;text-align:center">${any ? "积分长期有效 · 支付成功即时到账 · 不支持退款" : "两种支付方式都不可用，请联系管理员"}</div>
+          </div>`;
+      }
+      function cdText(o) {
+        const s = Math.max(0, Math.round((o.expires - now()) / 1000));
+        return s ? `剩余 ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : "已过期";
+      }
+      function openStore() {
+        const st = S.store;
+        if (!S.settings.enabled) { st.popover = !st.popover; return render(); }
+        st.open = true;
+        st.err = "";
+        const p = myPending()[0];
+        if (p) { st.orderNo = p.no; st.phase = "checkout"; }
+        else if (st.phase !== "success") st.phase = "confirm";
+        if (!S.products.find((x) => x.id === st.sel && x.onSale)) st.sel = (S.products.find((x) => x.onSale && x.badge) || S.products.find((x) => x.onSale) || {}).id;
+        render();
+      }
+      function pay() {
+        const st = S.store;
+        st.err = "";
+        if (!S.settings.enabled) { st.err = "65001 支付功能未开启"; return render(); }
+        const ms = methodState(st.method);
+        if (!ms.ok) { st.err = "65002 该支付方式暂不可用"; return render(); }
+        if (myPending().length >= S.settings.maxPending) { st.err = `65004 你有 ${S.settings.maxPending} 笔未完成的订单，请先完成或取消`; return render(); }
+        const p = S.products.find((x) => x.id === st.sel);
+        st.phase = "loading";
+        render();
+        setTimeout(() => {
+          const o = { no: mkNo(), user: "me", pid: p.id, name: p.name, fen: p.price, credits: p.base + p.bonus, method: st.method, provider: ms.prov, status: "creating", created: now(), expires: now() + S.ch[ms.prov].timeout * 60e3, log: [], upPaid: false, late: false, abnormal: "" };
+          S.orders.unshift(o);
+          addLog(o, "下单：creating，锁定商品快照");
+          if (S.sim.createFail) {
+            S.sim.createFail = false;
+            o.status = "create_failed";
+            addLog(o, "渠道返回错误 → create_failed");
+            st.phase = "error";
+            st.err = `65005 ${METHOD[o.method].name}下单失败，请稍后重试或换一种支付方式`;
+          } else {
+            o.status = "pending";
+            addLog(o, `渠道下单成功 → pending（${CH[o.provider].mode}）`);
+            st.orderNo = o.no;
+            st.phase = "checkout";
+          }
+          render();
+        }, 900);
+      }
+      function check() {
+        const o = curOrder();
+        if (!o) return;
+        if (now() - S.store.lastCheck < 5000) return toast("65014 操作过于频繁，请 5 秒后再试", "warn");
+        S.store.lastCheck = now();
+        const c = CH[o.provider];
+        if (!c.canQuery) { toast("该渠道不支持查单，正在等待渠道通知", "warn"); addLog(o, "用户点「我已完成支付」：渠道不能查单"); return render(); }
+        if (o.upPaid) { credit(o, "用户点「我已完成支付」→ 查单返回已付"); toast("支付成功，积分已到账"); }
+        else { addLog(o, "用户点「我已完成支付」→ 查单：尚未付款"); toast("渠道显示尚未付款，付款后会自动到账", "info"); }
+        render();
+      }
+      function bindUser() {
+        const P = $("#proto");
+        P.onclick = (e) => {
+          const t = e.target;
+          if (t.closest("#pill")) return openStore();
+          if (t.closest("#closeStore") || t.id === "ov") { S.store.open = false; if (S.store.phase === "success") S.store.phase = "confirm"; return render(); }
+          const pc = t.closest("[data-pid]");
+          if (pc && !pc.disabled) { S.store.sel = +pc.dataset.pid; S.store.err = ""; if (S.store.phase === "error") S.store.phase = "confirm"; return render(); }
+          const mb = t.closest("[data-m]");
+          if (mb && !mb.disabled) { S.store.method = mb.dataset.m; S.store.err = ""; return render(); }
+          if (t.closest("#pay")) return pay();
+          if (t.closest("#check")) return check();
+          if (t.closest("#goPay")) { toast("（模拟）已在新标签页打开支付页；回到本页时会自动查一次单", "info"); return; }
+          if (t.closest("#cancel")) {
+            const o = curOrder();
+            const r = closeOrder(o, "user", "用户取消");
+            if (r === "credited") toast("查单发现你已经付过款，积分已到账");
+            else { S.store.phase = "confirm"; toast("订单已取消", "info"); }
+            return render();
+          }
+          if (t.closest("#reorder")) {
+            const o = curOrder();
+            if (o && o.status === "pending") closeOrder(o, "timeout", "重新下单前关闭旧单");
+            S.store.phase = "confirm";
+            return pay();
+          }
+          if (t.closest("#again") || t.closest("#back")) { S.store.phase = "confirm"; S.store.orderNo = null; return render(); }
+        };
+      }
+      function renderSim() {
+        const sb = $("#simbar");
+        if (S.view !== "user") {
+          sb.innerHTML = `<div class="row wrapflex" style="font-size:12.5px"><b style="color:rgb(var(--violet))"><i data-lucide="flask-conical"></i> 模拟器</b><span class="muted">后台视图：当前角色</span>
+            <div class="seg" id="roleSeg"><button data-role="super_admin" aria-pressed="${S.role === "super_admin"}">super_admin</button><button data-role="admin" aria-pressed="${S.role === "admin"}">admin（运营）</button></div>
+            <span class="muted">切到 admin 看权限：渠道和全局设置只读，商品和订单可以操作。</span></div>`;
+          return;
+        }
+        const o = curOrder();
+        const live = o && o.status === "pending" && S.store.phase === "checkout";
+        const lc = S.orders.find((x) => x.no === S.lastClosed && x.status === "closed");
+        const lateOk = lc && !CH[lc.provider].canClose;
+        sb.innerHTML = `
+          <div class="row wrapflex" style="font-size:12.5px;gap:10px">
+            <b style="color:rgb(var(--violet))"><i data-lucide="flask-conical"></i> 模拟器（框外，不属于产品界面）</b>
+            <label class="row"><input type="checkbox" id="simFail" ${S.sim.createFail ? "checked" : ""}/> 下一次下单失败</label>
+            <label class="row"><input type="checkbox" id="simOff" ${S.settings.enabled ? "" : "checked"}/> 支付总开关关闭</label>
+          </div>
+          <div class="row wrapflex" style="margin-top:10px">
+            <button class="btn btn-sm" data-sim="paid" ${live && !o.upPaid ? "" : "disabled"}>用户付款，回调到达</button>
+            <button class="btn btn-sm" data-sim="lost" ${live && !o.upPaid ? "" : "disabled"}>用户付款，但回调丢失</button>
+            <button class="btn btn-sm" data-sim="tamper" ${live && !o.upPaid ? "" : "disabled"}>回调金额被篡改（少 1 分）</button>
+            <button class="btn btn-sm" data-sim="worker" ${live ? "" : "disabled"}>补单任务跑一轮</button>
+            <button class="btn btn-sm" data-sim="expire" ${live ? "" : "disabled"}>倒计时快进到过期</button>
+            <button class="btn btn-sm" data-sim="late" ${lateOk ? "" : "disabled"} title="${lc && !lateOk ? "渠道侧已关单，用户无法再付款" : ""}">关单后用户仍付款（迟到回调）</button>
+          </div>
+          <div class="muted" style="font-size:11.5px;margin-top:8px">${live ? `当前订单：${esc(o.no)} · 承接渠道 ${esc(CH[o.provider].name)}${o.upPaid ? " · <b>渠道侧已付，回调没到</b>" : ""}` : lc ? `最近关闭的订单 ${esc(lc.no)}（${esc(CH[lc.provider].name)}）${lateOk ? "：渠道没有关单接口，用户仍可能付款" : "：渠道侧已关单"}` : "下单后这里的按钮才会亮。想试「只能本地关单」的渠道：去后台配置并启用易支付，再把支付宝改由它承接。"}</div>`;
+      }
+      $("#simbar").addEventListener("change", (e) => {
+        if (e.target.id === "simFail") S.sim.createFail = e.target.checked;
+        if (e.target.id === "simOff") { S.settings.enabled = !e.target.checked; S.store.open = false; S.store.popover = false; render(); }
+      });
+      $("#simbar").addEventListener("click", (e) => {
+        const r = e.target.closest("[data-role]");
+        if (r) { S.role = r.dataset.role; S.drawer = null; return render(); }
+        const b = e.target.closest("[data-sim]");
+        if (!b || b.disabled) return;
+        const o = curOrder();
+        const k = b.dataset.sim;
+        if (k === "paid") {
+          o.upPaid = true;
+          const c = CH[o.provider];
+          addLog(o, c.canQuery && !c.canClose ? "回调验签通过（MD5）→ 二次查单确认已付" : "回调验签通过");
+          credit(o, "回调");
+          toast("WebSocket 推送：已到账");
+        } else if (k === "lost") {
+          o.upPaid = true;
+          addLog(o, "渠道侧已付，回调丢失");
+          toast(CH[o.provider].canQuery ? "回调丢了。试试「我已完成支付」或「补单任务跑一轮」" : "回调丢了，而且这个渠道不能查单，只能等到期", "warn");
+        } else if (k === "tamper") {
+          o.upPaid = true;
+          o.status = "abnormal";
+          o.abnormal = "amount_mismatch";
+          addLog(o, `回调验签通过，但实付 ${yuan(o.fen - 1)} ≠ 应付 ${yuan(o.fen)} → abnormal，写审计`);
+          toast("金额不符，不入账，订单标异常", "bad");
+        } else if (k === "worker") {
+          const c = CH[o.provider];
+          if (c.canQuery && o.upPaid) { credit(o, "补单任务查单返回已付"); toast("补单任务发现已付，已入账"); }
+          else { addLog(o, c.canQuery ? "补单任务查单 → 未付" : "补单任务：渠道不能查单，跳过"); toast(c.canQuery ? "补单任务：渠道显示未付" : "补单任务：该渠道不能查单", "info"); }
+        } else if (k === "expire") {
+          o.expires = now();
+          const r = closeOrder(o, "timeout", "到期（补单任务）");
+          toast(r === "credited" ? "到期前查单发现已付，已入账" : o.upPaid ? "订单已关闭，但用户其实付过款：只能人工处理" : "订单已过期关闭", r === "credited" ? "ok" : o.upPaid ? "bad" : "info");
+        } else if (k === "late") {
+          const lc = S.orders.find((x) => x.no === S.lastClosed);
+          lc.upPaid = true;
+          addLog(lc, "收到已付回调（订单已 closed）");
+          credit(lc, "迟到回调");
+          S.store.orderNo = lc.no;
+          S.store.phase = "success";
+          S.store.open = true;
+          S.lastClosed = null;
+          toast("迟到入账：订单标 late_paid");
+        }
+        render();
+      });
+
+      /* ---------- 后台 ---------- */
+      const isSuper = () => S.role === "super_admin";
+      function renderAdmin() {
+        const tabs = [["channels", "支付渠道"], ["products", "充值商品"], ["orders", "支付订单"]];
+        let body = { channels: renderChannels, products: renderProducts, orders: renderOrders }[S.adminTab]();
+        return `<div class="admin">
+            <aside class="aside">
+              <div class="grp">AI 配置</div><div class="it"><i data-lucide="layout-dashboard"></i>总览</div><div class="it"><i data-lucide="radio-tower"></i>渠道与模型</div>
+              <div class="grp">用户</div><div class="it"><i data-lucide="users"></i>用户管理</div>
+              <div class="note" style="border-radius:8px"><div class="it on"><i data-lucide="wallet"></i>支付管理<span class="tag t-vio" style="margin-left:auto;height:18px">新</span></div></div>
+              <div class="note-txt" style="padding:0 8px">需求：加在「用户」分组的用户管理下面。</div>
+              <div class="grp">系统设置</div><div class="it"><i data-lucide="hard-drive"></i>存储配置</div><div class="it"><i data-lucide="mail"></i>邮件服务</div>
+            </aside>
+            <div class="amain">
+              <div class="row"><b style="font-size:17px">支付管理</b><span class="tag t-mute">${esc(S.role)}</span></div>
+              <div class="callout c-info" style="margin-top:10px;font-size:12.5px"><i data-lucide="info"></i><div><b>平台不提供退款。</b>订单页只提供查单和关单，关单前一定先向渠道查单；所有入账都以渠道结果为准。</div></div>
+              <div class="subtabs">${tabs.map(([k, l]) => `<button data-at="${k}" aria-selected="${S.adminTab === k}">${l}</button>`).join("")}</div>
+              ${body}
+            </div>
+          </div>${renderDrawer()}`;
+      }
+      function renderChannels() {
+        const s = S.settings;
+        const ro = !isSuper();
+        const opt = (m) => {
+          const cands = Object.entries(CH).filter(([, c]) => c.methods.includes(m));
+          return `<select class="inp" data-map="${m}" ${ro ? "disabled" : ""}><option value="">不开放</option>${cands.map(([k, c]) => `<option value="${k}" ${s.map[m] === k ? "selected" : ""} ${S.ch[k].enabled ? "" : "disabled"}>${esc(c.name)}${S.ch[k].enabled ? "" : "（未启用）"}</option>`).join("")}</select>`;
+        };
+        const rows = Object.entries(CH).map(([k, c]) => {
+          const v = S.ch[k];
+          const configured = v.version > 0;
+          const stTag = v.enabled ? `<span class="tag t-ok">已启用</span>` : v.validated ? `<span class="tag t-info">已校验未启用</span>` : configured ? `<span class="tag t-warn">待校验</span>` : `<span class="tag t-mute">未配置</span>`;
+          const serving = ["wechat", "alipay"].filter((m) => s.map[m] === k).map((m) => METHOD[m].name).join("、");
+          const pc = pendingOf(k);
+          return `<tr>
+              <td><div class="row"><span class="chico" style="background:${c.color}">${esc(c.short)}</span><div><b>${esc(c.name)}</b><div class="muted mono" style="font-size:11px">${k}</div></div></div></td>
+              <td>${c.methods.map((m) => METHOD[m].name).join(" / ")}</td>
+              <td>${c.mode}</td>
+              <td><div class="row" style="gap:4px">${capTags(c)}</div></td>
+              <td>${stTag}${serving ? `<div class="muted" style="font-size:11px;margin-top:2px">承接：${serving}</div>` : ""}</td>
+              <td class="num">${v.timeout} 分钟</td>
+              <td class="num">${pc ? `<span class="tag t-info">${pc}</span>` : "0"}</td>
+              <td><div class="row">
+                <button class="btn btn-outline btn-sm" data-cfg="${k}" ${ro ? 'disabled title="仅 super_admin 可修改"' : ""}><i data-lucide="settings-2"></i>配置</button>
+                ${v.enabled ? `<button class="btn btn-sm" data-dis="${k}" ${ro ? "disabled" : ""}>停用</button>` : ""}
+              </div></td></tr>`;
+        });
+        return `
+          <div class="card note" style="padding:14px">
+            <div class="row"><b>全局设置</b>${ro ? '<span class="tag t-mute">只读 · 仅 super_admin 可修改</span>' : ""}<span class="spacer"></span>
+              <label class="row" style="font-size:13px">启用支付<button class="switch sw-ok" id="swPay" role="switch" aria-checked="${s.enabled}" ${ro ? "disabled" : ""}></button></label></div>
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-top:10px">
+              <label class="field" style="grid-column:span 2;min-width:0"><span>站点公网地址（拼回调地址用）</span><input class="inp" id="baseUrl" value="${esc(s.baseUrl)}" placeholder="https://your-domain.com" ${ro ? "disabled" : ""}/></label>
+              <label class="field"><span>微信支付由谁承接</span>${opt("wechat")}</label>
+              <label class="field"><span>支付宝由谁承接</span>${opt("alipay")}</label>
+              <label class="field"><span>每人最多未支付订单</span><input class="inp" id="maxPending" type="number" min="1" max="10" value="${s.maxPending}" ${ro ? "disabled" : ""}/></label>
+            </div>
+            <div class="row wrapflex" style="margin-top:10px"><span class="muted mono" style="font-size:11.5px">回调地址：${esc(s.baseUrl || "{未配置}")}/api/v1/payment/notify/{provider}</span><span class="spacer"></span>
+              <button class="btn btn-primary btn-sm" id="saveSettings" ${ro ? "disabled" : ""}>保存设置</button></div>
+          </div>
+          <div class="note-txt">设计：「支付方式 → 渠道」的映射放在全局设置里，下拉框只列出支持该方式的渠道，未启用的置灰。这样换渠道对用户无感（借鉴 sub2api）。</div>
+          <div class="cmp-wrap" style="margin-top:14px"><table class="tbl"><thead><tr><th>支付渠道</th><th>支付方式</th><th>收银</th><th>能力</th><th>状态</th><th>未付自动关闭</th><th>未完成订单</th><th>操作</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+          <div class="note-txt">设计：能力标签直接写在列表上，运营选承接渠道时就能看到「只能本地关单」意味着什么。渠道固定是四个内置的，不能新建（Go 内置适配器，新增渠道要发版）。</div>`;
+      }
+      function renderProducts() {
+        const list = [...S.products].sort((a, b) => a.sort - b.sort);
+        return `
+          <div class="row"><span class="muted" style="font-size:12.5px">商城按这里的顺序展示上架商品；改价不影响已下的订单。</span><span class="spacer"></span><button class="btn btn-primary btn-sm" id="newProd"><i data-lucide="plus"></i>新建商品</button></div>
+          <div class="cmp-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>排序</th><th>名称</th><th>售价</th><th>基础积分</th><th>赠送</th><th>到账</th><th>角标</th><th>状态</th><th>已售</th><th>操作</th></tr></thead><tbody>
+          ${list.map((p, i) => `<tr>
+              <td><div class="row" style="gap:2px"><button class="btn btn-sm" data-up="${p.id}" ${i === 0 ? "disabled" : ""} aria-label="上移"><i data-lucide="arrow-up"></i></button><button class="btn btn-sm" data-down="${p.id}" ${i === list.length - 1 ? "disabled" : ""} aria-label="下移"><i data-lucide="arrow-down"></i></button></div></td>
+              <td><b>${esc(p.name)}</b></td><td class="num">${yuan(p.price)}</td><td class="num">${num(p.base)}</td><td class="num">${p.bonus ? "+" + num(p.bonus) : "—"}</td><td class="num"><b>${num(p.base + p.bonus)}</b></td>
+              <td>${p.badge ? `<span class="tag t-warn">${esc(p.badge)}</span>` : "—"}</td>
+              <td><button class="switch sw-ok" data-sale="${p.id}" role="switch" aria-checked="${p.onSale}" aria-label="上架"></button></td>
+              <td class="num">${p.sold}</td>
+              <td><div class="row"><button class="btn btn-outline btn-sm" data-edit="${p.id}">编辑</button><button class="btn btn-sm" data-del="${p.id}" style="color:rgb(var(--bad))">删除</button></div></td></tr>`).join("")}
+          </tbody></table></div>
+          <div class="note-txt">设计：固定档位加可选赠送（用户决定），前台显示「基础 + 赠送」。有订单的商品只能下架、不能删，避免订单页出现孤儿商品（65012）。admin 角色也能管商品。</div>`;
+      }
+      function renderOrders() {
+        const fs = [["all", "全部"], ["pending", "待支付"], ["credited", "已入账"], ["closed", "已关闭"], ["abnormal", "异常"], ["create_failed", "下单失败"]];
+        const list = S.orders.filter((o) => S.filter === "all" || o.status === S.filter);
+        return `
+          <div class="row wrapflex"><div class="chips">${fs.map(([k, l]) => `<button class="chip" data-f="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join("")}</div>
+            <span class="spacer"></span><input class="inp" style="width:200px" placeholder="订单号 / 用户（示意，不生效）"/></div>
+          <div class="cmp-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>订单号</th><th>用户</th><th>商品</th><th>金额</th><th>积分</th><th>方式 / 渠道</th><th>状态</th><th>创建</th></tr></thead><tbody>
+          ${list.length ? list.map((o) => `<tr style="cursor:pointer" data-ord="${o.no}">
+              <td class="mono" style="font-size:11.5px">${esc(o.no)}</td><td>${o.user === "me" ? "你（演示用户）" : esc(o.user)}</td><td>${esc(o.name)}</td><td class="num">${yuan(o.fen)}</td><td class="num">${num(o.credits)}</td>
+              <td>${METHOD[o.method].name}<div class="muted" style="font-size:11px">${esc(CH[o.provider].name)}</div></td><td>${statusTag(o)}</td>
+              <td class="muted">${new Date(o.created).toTimeString().slice(0, 5)}</td></tr>`).join("") : `<tr><td colspan="8" class="muted" style="text-align:center;padding:30px">没有符合条件的订单</td></tr>`}
+          </tbody></table></div>
+          <div class="note-txt">设计：点一行打开详情。订单页只提供「查单」「关单」，没有「强制入账」（用户决定）；渠道查不到的情况由运营核实后，在用户管理里调整积分。</div>`;
+      }
+      function renderDrawer() {
+        const d = S.drawer;
+        if (!d) return "";
+        let h = "", b = "", f = "";
+        if (d.type === "channel") {
+          const c = CH[d.key], v = S.ch[d.key];
+          const steps = ["填写", "校验", "启用"];
+          h = `<span class="chico" style="background:${c.color}">${esc(c.short)}</span><b>${esc(c.name)}</b><span class="tag t-mute">v${v.version}</span>`;
+          const pc = pendingOf(d.key);
+          b = `<div class="stepper">${steps.map((s, i) => `<span class="${i === d.step ? "on" : i < d.step ? "done" : ""}">${i + 1}. ${s}</span>`).join("")}</div>`;
+          if (d.step === 0) {
+            b += `<div class="row wrapflex" style="gap:4px">${capTags(c)}<span class="tag t-mute">${c.mode}</span></div>
+              ${pc ? `<div class="callout c-warn" style="font-size:12.5px"><i data-lucide="lock"></i><div>该渠道有 <b>${pc}</b> 笔未完成订单：现在<b>不能修改商户身份字段（带 🔒）和密钥</b>，只能改其他字段。</div></div>` : ""}
+              ${c.fields.map((fd) => {
+                const isSec = fd.secret;
+                const val = isSec ? d.draft[fd.k] ?? "" : d.draft[fd.k] ?? v.values[fd.k] ?? fd.def ?? "";
+                const ph = isSec ? (v.secretSet[fd.k] ? "已设置 · 留空不修改" : "未设置") : fd.def || "";
+                return `<label class="field"><span>${esc(fd.l)} ${fd.id ? "🔒" : ""} ${isSec ? '<span class="tag t-vio" style="height:17px">密钥</span>' : ""}</span>
+                  <input class="inp mono" data-fk="${fd.k}" ${isSec ? 'type="password" autocomplete="new-password"' : ""} value="${esc(val)}" placeholder="${esc(ph)}"/></label>`;
+              }).join("")}
+              <label class="field"><span>未支付自动关闭（分钟，5–120）</span><input class="inp" data-fk="__timeout" type="number" min="5" max="120" value="${esc(d.draft.__timeout ?? v.timeout)}"/></label>
+              <div class="note-txt">设计：密钥只写不读，接口只返回「是否已设置」（复用 ai_secrets 加密）。保存后需要重新校验，已启用的渠道会自动停用。任意字段写 <code>bad</code> 可以看校验失败的样子。</div>
+              ${d.err ? `<div class="callout c-bad" style="font-size:12.5px"><i data-lucide="circle-x"></i><div>${d.err}</div></div>` : ""}`;
+            f = `<button class="btn" data-dclose>取消</button><button class="btn btn-primary" id="chSave">保存并下一步</button>`;
+          } else if (d.step === 1) {
+            b += `<div class="card" style="font-size:13px"><b>校验做两件事</b><ul class="list" style="margin-top:6px"><li>本地格式校验：私钥能不能解析、URL 是否合法、必填项是否齐全</li><li>在线探测：用一个随机订单号查单，渠道返回「订单不存在」就说明凭证可用</li></ul></div>
+              ${d.loading ? `<div class="row muted"><i data-lucide="loader-circle" class="spin"></i>校验中…（模拟）</div>` : ""}
+              ${d.ok ? `<div class="callout c-ok" style="font-size:12.5px"><i data-lucide="circle-check"></i><div>校验通过：签名和凭证可用。</div></div>` : ""}
+              ${d.err ? `<div class="callout c-bad" style="font-size:12.5px"><i data-lucide="circle-x"></i><div>${d.err}</div></div>` : ""}`;
+            f = `<button class="btn" data-dback>上一步</button>${d.ok ? `<button class="btn btn-primary" id="chNext">下一步</button>` : `<button class="btn btn-primary" id="chValidate" ${d.loading ? "disabled" : ""}>开始校验</button>`}`;
+          } else {
+            const https = S.settings.baseUrl.startsWith("https://");
+            const needHttps = d.key === "wechat_native";
+            const blocked = !S.settings.baseUrl ? "65013 请先在全局设置里配置站点公网地址" : needHttps && !https ? "微信支付要求回调地址是 https" : "";
+            b += `<div class="card" style="font-size:13px"><div class="muted" style="font-size:12px">回调地址（需在渠道商户后台登记的，填这个）</div><div class="mono" style="font-size:12px;word-break:break-all;margin-top:4px">${esc(S.settings.baseUrl || "{未配置}")}/api/v1/payment/notify/${d.key}</div></div>
+              ${blocked ? `<div class="callout c-bad" style="font-size:12.5px"><i data-lucide="circle-x"></i><div>${blocked}</div></div>` : `<div class="callout c-info" style="font-size:12.5px"><i data-lucide="info"></i><div>启用后，还要在全局设置里把「微信 / 支付宝」指给它，前台才会用到。</div></div>`}`;
+            f = `<button class="btn" data-dclose>稍后启用</button><button class="btn btn-primary" id="chEnable" ${blocked ? "disabled" : ""}>启用渠道</button>`;
+          }
+        } else if (d.type === "product") {
+          const p = d.draft;
+          h = `<b>${d.id ? "编辑商品" : "新建商品"}</b>`;
+          b = `<label class="field"><span>名称</span><input class="inp" data-pk="name" value="${esc(p.name)}"/></label>
+            <div class="grid g2"><label class="field"><span>售价（元）</span><input class="inp" data-pk="yuan" type="number" min="0.01" step="0.01" value="${esc(p.yuan)}"/></label>
+            <label class="field"><span>角标（可选）</span><input class="inp" data-pk="badge" maxlength="8" value="${esc(p.badge)}" placeholder="如：热门"/></label></div>
+            <div class="grid g2"><label class="field"><span>基础积分</span><input class="inp" data-pk="base" type="number" min="1" value="${esc(p.base)}"/></label>
+            <label class="field"><span>赠送积分</span><input class="inp" data-pk="bonus" type="number" min="0" value="${esc(p.bonus)}"/></label></div>
+            ${d.id && S.products.find((x) => x.id === d.id).sold ? `<div class="callout c-info" style="font-size:12.5px"><i data-lucide="info"></i><div>这个商品已有订单。改价只影响以后的新订单，已下的订单按快照执行。</div></div>` : ""}
+            ${d.err ? `<div class="callout c-bad" style="font-size:12.5px"><i data-lucide="circle-x"></i><div>${d.err}</div></div>` : ""}`;
+          f = `<button class="btn" data-dclose>取消</button><button class="btn btn-primary" id="prodSave">保存</button>`;
+        } else if (d.type === "order") {
+          const o = S.orders.find((x) => x.no === d.no);
+          const c = CH[o.provider];
+          h = `<b>订单详情</b>${statusTag(o)}`;
+          b = `<dl class="kv"><dt>订单号</dt><dd style="font-size:11.5px">${esc(o.no)}</dd><dt>用户</dt><dd style="font-family:inherit">${o.user === "me" ? "你（演示用户）" : esc(o.user)}</dd>
+              <dt>商品快照</dt><dd style="font-family:inherit">${esc(o.name)}</dd><dt>应付</dt><dd>${yuan(o.fen)}</dd><dt>到账积分</dt><dd>${num(o.credits)}</dd>
+              <dt>方式 / 渠道</dt><dd style="font-family:inherit">${METHOD[o.method].name} / ${esc(c.name)}</dd>
+              ${o.abnormal ? `<dt>异常原因</dt><dd style="color:rgb(var(--bad))">${esc(o.abnormal)}</dd>` : ""}${o.late ? `<dt>迟到入账</dt><dd>是</dd>` : ""}</dl>
+            <div><div class="muted" style="font-size:12px;margin-bottom:6px">状态时间线</div><div class="tl">${o.log.map((l) => `<div><span class="mono muted">${esc(l.at)}</span><span>${esc(l.t)}</span></div>`).join("")}</div></div>
+            ${o.status === "abnormal" ? `<div class="callout c-warn" style="font-size:12.5px"><i data-lucide="triangle-alert"></i><div>异常订单不会自动入账。请在商户后台核实后，退款或在「用户管理」调整积分并写备注。</div></div>` : ""}`;
+          const canQ = c.canQuery && (o.status === "pending" || o.status === "closed");
+          f = `<button class="btn btn-outline" id="oQuery" ${canQ ? "" : "disabled"} title="${c.canQuery ? "" : "65008 该渠道不支持查单"}"><i data-lucide="search"></i>查单${c.canQuery ? "" : "（渠道不支持）"}</button>
+               <button class="btn btn-outline" id="oClose" ${o.status === "pending" ? "" : "disabled"}><i data-lucide="circle-slash"></i>关单</button>`;
+        }
+        return `<div class="drawer-ov" data-dclose></div><div class="drawer"><div class="drawer-h">${h}<span class="spacer"></span><button class="btn btn-sm" data-dclose aria-label="关闭"><i data-lucide="x"></i></button></div><div class="drawer-b">${b}</div><div class="drawer-f">${f}</div></div>`;
+      }
+      function chSave() {
+        const d = S.drawer, c = CH[d.key], v = S.ch[d.key];
+        d.err = "";
+        const pc = pendingOf(d.key);
+        const changedIdentity = c.fields.some((fd) => fd.id && d.draft[fd.k] !== undefined && d.draft[fd.k] !== (v.values[fd.k] ?? ""));
+        const changedSecret = c.fields.some((fd) => fd.secret && d.draft[fd.k]);
+        if (pc && (changedIdentity || changedSecret)) { d.err = `65010 该渠道还有 ${pc} 笔未完成订单，请等待完成或关单后再修改商户身份和密钥`; return render(); }
+        const t = +(d.draft.__timeout ?? v.timeout);
+        if (!(t >= 5 && t <= 120)) { d.err = "65009 未支付自动关闭时间须在 5–120 分钟"; return render(); }
+        const onlyTimeout = !c.fields.some((fd) => (fd.secret ? !!d.draft[fd.k] : d.draft[fd.k] !== undefined && d.draft[fd.k] !== (v.values[fd.k] ?? fd.def ?? "")));
+        c.fields.forEach((fd) => {
+          if (fd.secret) { if (d.draft[fd.k]) { v.secretSet[fd.k] = true; v._bad = v._bad || d.draft[fd.k].includes("bad"); } }
+          else if (d.draft[fd.k] !== undefined) v.values[fd.k] = d.draft[fd.k];
+        });
+        v.timeout = t;
+        v.version += 1;
+        if (onlyTimeout && v.validated) { toast("已保存（只改了超时时间，保持原状态）"); S.drawer = null; return render(); }
+        v.validated = false;
+        if (v.enabled) {
+          v.enabled = false;
+          ["wechat", "alipay"].forEach((m) => { if (S.settings.map[m] === d.key) toast(`渠道已自动停用，${METHOD[m].name}暂不可用，校验通过后重新启用即可`, "warn"); });
+        }
+        d.step = 1; d.ok = false; d.err = "";
+        render();
+      }
+      function chValidate() {
+        const d = S.drawer, c = CH[d.key], v = S.ch[d.key];
+        d.loading = true; d.err = ""; render();
+        setTimeout(() => {
+          d.loading = false;
+          const missing = c.fields.filter((fd) => !fd.opt && !(fd.secret ? v.secretSet[fd.k] : v.values[fd.k] || fd.def));
+          const bad = v._bad || Object.values(v.values).some((x) => String(x).includes("bad"));
+          if (d.key === "xunhupay" && !(v.values.wechat_app_id && v.secretSet.wechat_app_secret) && !(v.values.alipay_app_id && v.secretSet.alipay_app_secret)) d.err = "65009 微信和支付宝两组凭证至少填一组（AppID + AppSecret）";
+          else if (missing.length) d.err = "65009 缺少字段：" + missing.map((x) => x.l).join("、");
+          else if (bad) d.err = "65009 渠道返回签名错误（invalid-signature，示意）。请检查私钥 / 密钥是否与商户号匹配。";
+          else { d.ok = true; v.validated = true; }
+          render();
+        }, 800);
+      }
+      function bindAdmin() {
+        const P = $("#proto");
+        P.onclick = (e) => {
+          const t = e.target;
+          const at = t.closest("[data-at]");
+          if (at) { S.adminTab = at.dataset.at; S.drawer = null; return render(); }
+          if (t.closest("[data-dclose]")) { S.drawer = null; return render(); }
+          if (t.closest("[data-dback]")) { S.drawer.step = 0; S.drawer.err = ""; return render(); }
+          const cfg = t.closest("[data-cfg]");
+          if (cfg && !cfg.disabled) { S.drawer = { type: "channel", key: cfg.dataset.cfg, step: 0, draft: {}, err: "" }; return render(); }
+          const dis = t.closest("[data-dis]");
+          if (dis && !dis.disabled) {
+            const k = dis.dataset.dis;
+            S.ch[k].enabled = false;
+            const affected = ["wechat", "alipay"].filter((m) => S.settings.map[m] === k);
+            toast(affected.length ? `已停用。前台「${affected.map((m) => METHOD[m].name).join("、")}」立即不可用；已有订单仍会正常入账` : "已停用；已有订单仍会正常入账", affected.length ? "warn" : "ok");
+            return render();
+          }
+          if (t.closest("#swPay") && isSuper()) { S.settings.enabled = !S.settings.enabled; toast(S.settings.enabled ? "支付已开启" : "支付已关闭：前台恢复余额小卡片，回调和补单照常运行", "info"); return render(); }
+          if (t.closest("#saveSettings")) {
+            for (const m of ["wechat", "alipay"]) {
+              const k = S.settings.map[m];
+              if (k && !S.ch[k].enabled) return toast(`65009 ${METHOD[m].name}映射的渠道未启用`, "bad");
+            }
+            if (S.settings.baseUrl && !/^https?:\/\/[^/]+$/.test(S.settings.baseUrl)) return toast("65009 公网地址须以 http(s):// 开头且不带路径", "bad");
+            return toast("全局设置已保存，写入审计 payment.settings_update");
+          }
+          if (t.closest("#chSave")) return chSave();
+          if (t.closest("#chValidate")) return chValidate();
+          if (t.closest("#chNext")) { S.drawer.step = 2; return render(); }
+          if (t.closest("#chEnable")) { S.ch[S.drawer.key].enabled = true; toast(`${CH[S.drawer.key].name} 已启用`); S.drawer = null; return render(); }
+          // 商品
+          if (t.closest("#newProd")) { S.drawer = { type: "product", id: null, draft: { name: "", yuan: "", base: "", bonus: 0, badge: "" }, err: "" }; return render(); }
+          const ed = t.closest("[data-edit]");
+          if (ed) { const p = S.products.find((x) => x.id === +ed.dataset.edit); S.drawer = { type: "product", id: p.id, draft: { name: p.name, yuan: p.price / 100, base: p.base, bonus: p.bonus, badge: p.badge }, err: "" }; return render(); }
+          const sale = t.closest("[data-sale]");
+          if (sale) { const p = S.products.find((x) => x.id === +sale.dataset.sale); p.onSale = !p.onSale; toast(p.onSale ? "已上架" : "已下架", "info"); return render(); }
+          const del = t.closest("[data-del]");
+          if (del) {
+            const p = S.products.find((x) => x.id === +del.dataset.del);
+            if (p.sold > 0 || S.orders.some((o) => o.pid === p.id)) return toast("65012 商品已有订单，只能下架不能删除", "bad");
+            S.products = S.products.filter((x) => x !== p);
+            toast("已删除");
+            return render();
+          }
+          const up = t.closest("[data-up]"), down = t.closest("[data-down]");
+          if (up || down) {
+            const list = [...S.products].sort((a, b) => a.sort - b.sort);
+            const i = list.findIndex((x) => x.id === +(up || down).dataset[up ? "up" : "down"]);
+            const j = up ? i - 1 : i + 1;
+            const a = list[i], b2 = list[j];
+            [a.sort, b2.sort] = [b2.sort, a.sort];
+            return render();
+          }
+          if (t.closest("#prodSave")) {
+            const d = S.drawer, p = d.draft;
+            const fen = Math.round(+p.yuan * 100);
+            if (!String(p.name).trim()) d.err = "10001 名称不能为空";
+            else if (!(fen > 0)) d.err = "10001 售价须大于 0";
+            else if (!(+p.base > 0)) d.err = "10001 基础积分须大于 0";
+            else if (!(+p.bonus >= 0)) d.err = "10001 赠送积分不能为负";
+            if (d.err) return render();
+            if (d.id) Object.assign(S.products.find((x) => x.id === d.id), { name: p.name, price: fen, base: +p.base, bonus: +p.bonus, badge: p.badge });
+            else S.products.push({ id: Math.max(...S.products.map((x) => x.id)) + 1, name: p.name, price: fen, base: +p.base, bonus: +p.bonus, badge: p.badge, onSale: true, sold: 0, sort: Math.max(...S.products.map((x) => x.sort)) + 1 });
+            S.drawer = null;
+            toast("商品已保存");
+            return render();
+          }
+          // 订单
+          const f = t.closest("[data-f]");
+          if (f) { S.filter = f.dataset.f; return render(); }
+          const or = t.closest("[data-ord]");
+          if (or) { S.drawer = { type: "order", no: or.dataset.ord }; return render(); }
+          if (t.closest("#oQuery")) {
+            const o = S.orders.find((x) => x.no === S.drawer.no);
+            if (o.upPaid) { credit(o, "管理员查单返回已付"); toast("查单：已付，已入账；写审计 payment.order_query"); }
+            else { addLog(o, "管理员查单 → 未付"); toast("查单：渠道显示未付", "info"); }
+            return render();
+          }
+          if (t.closest("#oClose")) {
+            const o = S.orders.find((x) => x.no === S.drawer.no);
+            const r = closeOrder(o, "admin", "管理员关单");
+            if (o.user === "me" && r === "closed" && S.store.orderNo === o.no) S.store.phase = "checkout";
+            toast(r === "credited" ? "关单前查单发现已付，已入账" : "已关单；写审计 payment.order_close", r === "credited" ? "ok" : "info");
+            return render();
+          }
+        };
+        P.oninput = (e) => {
+          const t = e.target;
+          if (t.dataset.fk) S.drawer.draft[t.dataset.fk] = t.value;
+          if (t.dataset.pk) S.drawer.draft[t.dataset.pk] = t.value;
+          if (t.id === "baseUrl") { S.settings.baseUrl = t.value.trim().replace(/\/$/, ""); }
+          if (t.id === "maxPending") S.settings.maxPending = Math.min(10, Math.max(1, +t.value || 1));
+        };
+        P.onchange = (e) => {
+          const t = e.target;
+          if (t.dataset.map) { S.settings.map[t.dataset.map] = t.value; toast(`${METHOD[t.dataset.map].name}改由「${t.value ? CH[t.value].name : "不开放"}」承接（点保存设置生效，原型里立即生效）`, "info"); render(); }
+        };
+      }
+
+      function render() {
+        $("#viewSeg").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === S.view)));
+        if (S.view === "user") {
+          $("#addr").textContent = S.store.open ? "canvas.example.com / 首页 / 积分商城" : "canvas.example.com / 首页";
+          $("#proto").innerHTML = renderUser();
+          bindUser();
+        } else {
+          const n = { channels: "支付渠道", products: "充值商品", orders: "支付订单" }[S.adminTab];
+          $("#addr").textContent = `canvas.example.com / 管理后台 / 支付管理 / ${n}`;
+          $("#proto").innerHTML = renderAdmin();
+          bindAdmin();
+        }
+        renderSim();
+        icons();
+      }
+      $("#viewSeg").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-view]");
+        if (!b) return;
+        S.view = b.dataset.view;
+        S.drawer = null;
+        render();
+      });
+      // 倒计时：只改文字，不整体重绘；到期时按规则关单
+      setInterval(() => {
+        const o = curOrder();
+        if (!o || o.status !== "pending" || S.view !== "user" || !S.store.open || S.store.phase !== "checkout") return;
+        const el = $("#cd");
+        if (el) el.textContent = cdText(o);
+        if (o.expires <= now() && !o._expiredOnce) { o._expiredOnce = true; closeOrder(o, "timeout", "到期（补单任务）"); render(); }
+      }, 1000);
+
+      renderSM();
+      render();
+    </script>
+  </body>
+</html>
