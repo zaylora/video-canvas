@@ -12,10 +12,18 @@ import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useSystemUpdateStore } from "@/store/system-update";
 import { formatDateTime } from "@/utils/admin/agent-skill";
-import { UPGRADE_STEPS, formatBytes, isRunFinished, runProgress } from "@/utils/admin/upgrade";
+import {
+  UPGRADE_STEPS,
+  formatBytes,
+  isOurRun,
+  isRunFinished,
+  runProgress,
+} from "@/utils/admin/upgrade";
 
 /** 升级中轮询升级状态的间隔（毫秒） */
 const POLL_MS = 2000;
+/** 轮询单次请求的超时（毫秒）：重启期间请求可能挂住，不能让它卡住后面的轮询 */
+const POLL_TIMEOUT_MS = 5000;
 /** 升级成功后多久自动刷新页面（秒）：新版本的前端要重新加载 */
 const RELOAD_AFTER_S = 2;
 
@@ -25,8 +33,8 @@ export interface UpgradeRun {
   kind: "upgrade" | "rollback";
   /** 目标版本 */
   target: string;
-  /** 发起时间（毫秒时间戳），用来区分上一次运行留下的终态 */
-  startedAt: number;
+  /** 发起前最近一次记录的 updated_at（服务器时间），用来区分上一次运行留下的终态；当时没有记录为 null */
+  baseline: string | null;
 }
 
 /**
@@ -48,7 +56,7 @@ export function useUpgradeRun(info: UpgradeInfo | null, setInfo: (next: UpgradeI
   useEffect(() => {
     if (resumed.current || !info?.running || !info.last) return;
     resumed.current = true;
-    setRun({ kind: "upgrade", target: info.last.target, startedAt: 0 });
+    setRun({ kind: "upgrade", target: info.last.target, baseline: null });
   }, [info]);
 
   useEffect(() => {
@@ -59,28 +67,32 @@ export function useUpgradeRun(info: UpgradeInfo | null, setInfo: (next: UpgradeI
   useEffect(() => {
     if (!run || finished) return;
     let stopped = false;
+    let timer: number | undefined;
+    /** 串行轮询：上一次返回（或超时）后才排下一次，旧响应不会晚于新响应到达而覆盖进度 */
     const tick = async () => {
       try {
-        const next = await getUpgradeInfo(true);
+        const next = await getUpgradeInfo(true, POLL_TIMEOUT_MS);
         if (stopped) return;
         setReconnecting(false);
         setInfo(next);
-        if (isRunFinished(next, run.target, run.startedAt)) {
+        if (isRunFinished(next, run.target, run.baseline)) {
           setFinished(true);
           if (next.last?.state === "succeeded") {
             toast.success(`已${run.kind === "rollback" ? "回退" : "升级"}到 v${run.target}`);
             window.setTimeout(() => window.location.reload(), RELOAD_AFTER_S * 1000);
           }
+          return;
         }
       } catch {
-        if (!stopped) setReconnecting(true);
+        if (stopped) return;
+        setReconnecting(true);
       }
+      timer = window.setTimeout(() => void tick(), POLL_MS);
     };
-    const timer = window.setInterval(() => void tick(), POLL_MS);
     void tick();
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
     };
   }, [run, finished, setInfo]);
 
@@ -126,9 +138,7 @@ export function UpgradeProgressCard({
   const reduceMotion = useReducedMotion();
   const last = info?.last;
   /** 还没轮询到这次运行的记录时，停在第一步 */
-  const ours =
-    last && last.target === run.target && Date.parse(last.updated_at) >= run.startedAt - 2000;
-  const progress = ours ? runProgress(last) : null;
+  const progress = isOurRun(last, run.target, run.baseline) ? runProgress(last) : null;
   const step = progress?.step ?? 0;
   const outcome = finished ? progress?.outcome : "running";
   const percent = outcome === "succeeded" ? 100 : Math.round((step / UPGRADE_STEPS.length) * 100);

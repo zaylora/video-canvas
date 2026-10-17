@@ -115,7 +115,7 @@ export default function VersionSettingsPage() {
       blockReason: upgradeBlockReason(fresh, isSuper),
       onConfirm: async () => {
         await startUpgrade(target);
-        start({ kind: "upgrade", target, startedAt: Date.now() });
+        start({ kind: "upgrade", target, baseline: (fresh ?? info)?.last?.updated_at ?? null });
       },
     });
   };
@@ -146,7 +146,7 @@ export default function VersionSettingsPage() {
       blockReason: upgradeBlockReason(info, isSuper),
       onConfirm: async () => {
         await startRollback(target);
-        start({ kind: "rollback", target, startedAt: Date.now() });
+        start({ kind: "rollback", target, baseline: info.last?.updated_at ?? null });
       },
     });
   };

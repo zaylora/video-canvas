@@ -4,6 +4,7 @@ import type { UpgradeInfo, UpgradeRunStatus } from "@/api/admin/system/type.d";
 import {
   UPGRADE_STEPS,
   formatBytes,
+  isOurRun,
   isRunFinished,
   manualUpgradeCommands,
   runProgress,
@@ -91,22 +92,45 @@ describe("升级进度", () => {
   });
 });
 
+describe("这次运行的记录", () => {
+  /** 发起前最近一次记录的时间：只和服务器写的时间比，不用浏览器时钟 */
+  const baseline = "2026-10-20T08:00:00Z";
+
+  test("没有记录、目标不同：不是这次的", () => {
+    expect(isOurRun(null, "0.4.0", null)).toBe(false);
+    expect(isOurRun(run({ target: "0.3.9" }), "0.4.0", null)).toBe(false);
+  });
+
+  test("发起前没有任何记录：目标对上就是这次的", () => {
+    expect(isOurRun(run(), "0.4.0", null)).toBe(true);
+  });
+
+  test("记录还是发起前那条（同一目标的旧失败）：不是这次的", () => {
+    const old = run({ state: "failed", updated_at: baseline });
+    expect(isOurRun(old, "0.4.0", baseline)).toBe(false);
+  });
+
+  test("updater 写了新记录：是这次的，与浏览器时钟快慢无关", () => {
+    expect(isOurRun(run({ updated_at: "2026-10-20T08:00:03Z" }), "0.4.0", baseline)).toBe(true);
+  });
+});
+
 describe("这次运行是否已经结束", () => {
-  const startedAt = Date.parse("2026-10-20T08:00:00Z");
+  const baseline = "2026-10-20T08:00:00Z";
 
   test("updater 还在跑：没结束", () => {
     expect(
       isRunFinished(
         info({ running: true, last: run({ state: "succeeded", phase: "finish" }) }),
         "0.4.0",
-        startedAt,
+        baseline,
       ),
     ).toBe(false);
   });
 
-  test("最近一次记录是之前的旧运行（时间早于本次开始）：没结束", () => {
-    const old = run({ state: "failed", updated_at: "2026-10-19T08:00:00Z" });
-    expect(isRunFinished(info({ last: old }), "0.4.0", startedAt)).toBe(false);
+  test("最近一次记录是发起前的旧运行：没结束", () => {
+    const old = run({ state: "failed", updated_at: baseline });
+    expect(isRunFinished(info({ last: old }), "0.4.0", baseline)).toBe(false);
   });
 
   test("目标版本不同：没结束", () => {
@@ -114,15 +138,19 @@ describe("这次运行是否已经结束", () => {
       isRunFinished(
         info({ last: run({ target: "0.3.9", state: "succeeded" }) }),
         "0.4.0",
-        startedAt,
+        baseline,
       ),
     ).toBe(false);
   });
 
   test("本次运行到了终态：结束", () => {
-    expect(
-      isRunFinished(info({ last: run({ state: "failed_rolled_back" }) }), "0.4.0", startedAt),
-    ).toBe(true);
+    const last = run({ state: "failed_rolled_back", updated_at: "2026-10-20T08:01:00Z" });
+    expect(isRunFinished(info({ last }), "0.4.0", baseline)).toBe(true);
+  });
+
+  test("本次运行还是 running：没结束", () => {
+    const last = run({ updated_at: "2026-10-20T08:01:00Z" });
+    expect(isRunFinished(info({ last }), "0.4.0", baseline)).toBe(false);
   });
 });
 
