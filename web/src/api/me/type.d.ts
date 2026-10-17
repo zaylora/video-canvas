@@ -105,11 +105,11 @@ export interface ActivityDto {
   days: ActivityDay[];
 }
 
-/** 流水筛选：全部 / 生成任务 / 管理员调整 */
-export type LedgerFilter = "all" | "task" | "admin";
+/** 流水筛选：全部 / 生成任务 / 管理员调整 / 充值 */
+export type LedgerFilter = "all" | "task" | "admin" | "recharge";
 
-/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整 */
-export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust";
+/** 流水类型：initial 赠送、freeze 冻结、settle 结算、refund 退款、admin_adjust 管理员调整、recharge 充值 */
+export type LedgerType = "initial" | "freeze" | "settle" | "refund" | "admin_adjust" | "recharge";
 
 /** 每页条数：后端只接受这三档 */
 export type LedgerPageSize = 10 | 20 | 50;

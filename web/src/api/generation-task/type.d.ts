@@ -1,3 +1,4 @@
+import type { PaymentWsUpdate } from "@/store/payment";
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 /** 生成任务状态 */
 export type TaskStatus =
@@ -121,6 +122,8 @@ export type ServerMessage =
   | { type: "canvas.patch"; channel?: string; data: CanvasPatchDto }
   /** 画布 Agent 会话里的一条事件（文本增量、工具调用、审批……） */
   | { type: "agent.event"; channel?: string; data: AgentEventDto }
+  /** 支付订单状态变化（入账、关单……）：前端据此刷新商城面板和余额 */
+  | { type: "payment.updated"; channel?: string; data: PaymentWsUpdate }
   /** 心跳应答 */
   | { type: "pong" }
   /** 服务端错误 */

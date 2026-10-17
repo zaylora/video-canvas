@@ -11,6 +11,7 @@ import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
+import PaymentAdminPage from "@/pages/admin/payment";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
@@ -22,6 +23,7 @@ import Conversation from "@/pages/conversation";
 import Home from "@/pages/home";
 import HomeLayout from "@/pages/home/layout";
 import Login from "@/pages/login";
+import PayReturn from "@/pages/pay/return";
 import Profile from "@/pages/profile";
 import { useMeStore } from "@/store/me";
 import { getToken } from "@/utils/storage/token";
@@ -76,6 +78,11 @@ export const router = createBrowserRouter([
         path: "/login",
         element: <Login />,
       },
+      /** 付款完成后渠道把浏览器跳回这里：不要求登录态已就绪，页面自己处理未登录 */
+      {
+        path: "/pay/return",
+        element: <PayReturn />,
+      },
       {
         element: <RequireAuth />,
         children: [
@@ -121,6 +128,7 @@ export const router = createBrowserRouter([
               { path: "agent", element: <Navigate to="skills" replace /> },
               { path: "agent/skills", element: <AgentSkillsPage /> },
               { path: "users", element: <UsersPage /> },
+              { path: "payment", element: <PaymentAdminPage /> },
               { path: "settings", element: <Navigate to="storage" replace /> },
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },

@@ -1,5 +1,6 @@
 import type { AgentEventDto, CanvasPatchDto } from "@/api/agent/type";
 import type { ServerMessage, TaskView } from "@/api/generation-task/type";
+import type { PaymentWsUpdate } from "@/store/payment";
 import type { ConnectionState } from "@/store/ws";
 
 /** 客户端每隔多久发一次 ping */
@@ -100,6 +101,18 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       }
       return msg as ServerMessage;
     }
+    case "payment.updated": {
+      if (typeof data !== "object" || data === null) return null;
+      const update = data as Partial<PaymentWsUpdate>;
+      if (
+        typeof update.order_no !== "string" ||
+        typeof update.status !== "string" ||
+        typeof update.credits !== "number"
+      ) {
+        return null;
+      }
+      return msg as ServerMessage;
+    }
     default:
       return null;
   }
@@ -133,6 +146,8 @@ export type SocketClientDeps = {
   onCanvasPatch?: (patch: CanvasPatchDto) => void;
   /** 收到画布 Agent 会话里的一条事件 */
   onAgentEvent?: (event: AgentEventDto) => void;
+  /** 收到支付订单状态变化 */
+  onPayment?: (update: PaymentWsUpdate) => void;
   /** 每次连接成功（包括重连）后调用，用来对账 */
   onOpen: () => void;
   onState: (state: ConnectionState) => void;
@@ -285,6 +300,7 @@ export class TaskSocketClient {
       if (msg.type === "task.updated") this.deps.onTask(msg.data);
       else if (msg.type === "canvas.patch") this.deps.onCanvasPatch?.(msg.data);
       else if (msg.type === "agent.event") this.deps.onAgentEvent?.(msg.data);
+      else if (msg.type === "payment.updated") this.deps.onPayment?.(msg.data);
     };
     socket.onclose = () => {
       if (generation !== this.generation) return;
