@@ -45,7 +45,7 @@ async function run(options: {
 }
 
 describe("loadTrimSource 读源视频（带缓存）", () => {
-  test("第一次读：先给时长，再补缩略图；读的是修剪专用地址", async () => {
+  test("第一次读：先给时长，再补缩略图；读的是原地址（和播放共用缓存）", async () => {
     const seen: string[] = [];
     const { engine } = fakeEngine({
       probe: async (src) => {
@@ -54,7 +54,7 @@ describe("loadTrimSource 读源视频（带缓存）", () => {
       },
     });
     const states = await run({ engine, cache: createTrimSourceCache() });
-    expect(seen).toEqual(["/files/a.mp4?trim=1"]);
+    expect(seen).toEqual(["/files/a.mp4"]);
     expect(states).toHaveLength(2);
     expect(states[0]).toEqual({ status: "ready", probe, thumbs: [] });
     expect(states[1].status === "ready" && states[1].thumbs.length).toBe(16);
@@ -114,7 +114,7 @@ describe("loadTrimSource 读源视频（带缓存）", () => {
     });
     const states = await run({ engine, cache });
     expect(states).toEqual([{ status: "error", message: new TrimError("no-video").message }]);
-    expect(cache.get("/files/a.mp4?trim=1")).toBeUndefined();
+    expect(cache.get("/files/a.mp4")).toBeUndefined();
   });
 
   test("中途中止：读完的缩略图释放掉，不交给界面", async () => {

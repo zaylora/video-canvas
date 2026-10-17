@@ -3,7 +3,6 @@ import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 
 import { useTrimStore } from "@/store/trim";
 import { formatMediaDuration } from "@/utils/canvas/media-lod";
-import { trimUrl } from "@/utils/canvas/trim";
 
 import { BaseNodeContent } from "./base-node";
 
@@ -47,7 +46,7 @@ export function TrimStage({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    el.src = trimUrl(src);
+    el.src = src;
     return () => {
       el.pause();
       el.removeAttribute("src");

@@ -1,6 +1,5 @@
 import { describeTrimError, TrimError } from "./trim-run";
 import type { FrameSpec } from "./frame";
-import { trimUrl } from "./trim";
 
 /** 导出一帧的选项 */
 export type FrameOptions = {
@@ -34,7 +33,7 @@ export type FrameJob = {
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === "AbortError";
 
 /**
- * 取一帧，包成 PNG 文件。读视频走修剪专用的取流地址（和播放的请求区分开，避免缓存混用）。
+ * 取一帧，包成 PNG 文件。读视频的地址和画布播放一样，两边带同样的跨域头，共用浏览器缓存。
  * 失败时抛 Error，message 已经是写给用户的话；中止时原样抛 AbortError，调用方不该提示。
  * @param engine 实际取帧的引擎，默认走 Mediabunny；测试时注入假的
  */
@@ -45,7 +44,7 @@ export async function grabFrame(
 ): Promise<File> {
   try {
     const blob = await engine.frameAt(
-      trimUrl(job.src),
+      job.src,
       job.spec,
       { maxEdge: FULL_FRAME_MAX_EDGE, type: "image/png" },
       signal,

@@ -1,7 +1,7 @@
 import { UPLOAD_SIZE_LIMIT } from "@/constants/canvas";
 import { useTrimStore } from "@/store/trim";
 
-import { estimatedTrimBytes, trimUrl } from "./trim";
+import { estimatedTrimBytes } from "./trim";
 
 /** 一次修剪要做的事：点 ✓ 那一刻就定下来 */
 export type TrimJob = {
@@ -127,7 +127,7 @@ export function createTrimRunner(engine: TrimEngine, options: { maxBytes?: numbe
       store.setPhase("encoding");
       try {
         const blob = await engine.encode({
-          src: trimUrl(job.src),
+          src: job.src,
           start: job.start,
           end: job.end,
           discardAudio: job.discardAudio,

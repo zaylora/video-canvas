@@ -13,7 +13,6 @@ import {
   thumbTimes,
   trimFileName,
   trimRange,
-  trimUrl,
 } from "@/utils/canvas/trim";
 
 import { makeData } from "../tasks/fixtures";
@@ -132,29 +131,6 @@ describe("编码前预估体积", () => {
 
   test("总时长为 0 时按原大小算，宁可拦下也不放过", () => {
     expect(estimatedTrimBytes(90 * 1024 * 1024, 0, 1, 0)).toBe(90 * 1024 * 1024);
-  });
-});
-
-describe("修剪专用的取流地址", () => {
-  test("/files/ 地址追加 trim=1，和播放、截帧的请求分开", () => {
-    expect(trimUrl("/files/a/b.mp4")).toBe("/files/a/b.mp4?trim=1");
-    expect(trimUrl("https://cdn.example.com/files/a.mp4?v=poster")).toBe(
-      "https://cdn.example.com/files/a.mp4?v=poster&trim=1",
-    );
-  });
-
-  test("hash 保持在最后", () => {
-    expect(trimUrl("/files/a.mp4#t=3")).toBe("/files/a.mp4?trim=1#t=3");
-  });
-
-  test("外链和 blob 地址不动（可能带签名，不能加参数）", () => {
-    expect(trimUrl("https://cdn.example.com/a.mp4")).toBe("https://cdn.example.com/a.mp4");
-    expect(trimUrl("blob:http://localhost/abc")).toBe("blob:http://localhost/abc");
-    expect(trimUrl("")).toBe("");
-  });
-
-  test("已经带过 trim=1 的地址不重复加", () => {
-    expect(trimUrl("/files/a.mp4?trim=1")).toBe("/files/a.mp4?trim=1");
   });
 });
 

@@ -14,7 +14,7 @@ import { useTrimSource } from "@/hooks/use-trim-source";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasEdge, CanvasNode, CanvasNodeData } from "@/types";
-import { buildTrimNode, trimFileName, trimUrl } from "@/utils/canvas/trim";
+import { buildTrimNode, trimFileName } from "@/utils/canvas/trim";
 import { trimRunner } from "@/utils/canvas/trim-runner";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 
@@ -24,7 +24,7 @@ import { uploadRunner } from "@/utils/canvas/upload-runner";
  */
 async function sourceSize(src: string): Promise<number> {
   try {
-    const response = await fetch(trimUrl(src), { method: "HEAD", mode: "cors" });
+    const response = await fetch(src, { method: "HEAD", mode: "cors" });
     return Number(response.headers.get("content-length")) || 0;
   } catch {
     return 0;

@@ -7,7 +7,7 @@ import { placeBeside } from "./place-beside";
 
 /**
  * 视频修剪（设计稿 docs/design/视频修剪）里所有能单独讲的算法：
- * 手柄时间、选区边界、确认条件、胶片条时间点、产出文件名、编码前的体积预估、修剪专用取流地址。
+ * 手柄时间、选区边界、确认条件、胶片条时间点、产出文件名、编码前的体积预估。
  * 都不碰 DOM 和视频元素，所以能直接测；真正读视频、编码在 trim-run.ts 里。
  */
 
@@ -124,25 +124,6 @@ export function estimatedTrimBytes(
   if (!(duration > 0)) return sourceBytes;
   const ratio = Math.min(Math.max((end - start) / duration, 0), 1);
   return Math.round(sourceBytes * ratio);
-}
-
-/** 匹配「可选的 http(s) 域名 + /files/ 路径」，和 media-lod、截帧里的写法一致 */
-const FILES_URL = /^(?:https?:\/\/[^/?#]+)?\/files\//i;
-
-/**
- * 修剪专用的取流地址：后端 /files/ 地址追加 trim=1，和画布播放、截帧的请求区分开。
- * 为什么：同一个地址若先被普通播放器加载过，浏览器可能把不带跨域头的缓存拿来复用，
- * 而修剪要在 WebCodecs 里读这段媒体、必须带跨域头，缓存一混就失败。
- * 对象存储会 302 到签名或公开地址，后端看到 trim=1 会跳到另一个地址，第二跳的缓存也分开。
- * 外链、blob 地址可能带签名，不能乱加参数；已经带过 trim=1 的地址不重复加。
- */
-export function trimUrl(src: string): string {
-  if (!FILES_URL.test(src)) return src;
-  const hashAt = src.indexOf("#");
-  const base = hashAt >= 0 ? src.slice(0, hashAt) : src;
-  const hash = hashAt >= 0 ? src.slice(hashAt) : "";
-  if (/(?:[?&])trim=1(?:&|$)/.test(base)) return src;
-  return `${base}${base.includes("?") ? "&" : "?"}trim=1${hash}`;
 }
 
 /** 剪辑节点的默认标题 */

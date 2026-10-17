@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/
 import { toast } from "sonner";
 
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
+import { useCorsFallback } from "@/hooks/use-cors-fallback";
 import { createVideoSlotPool, formatMediaDuration } from "@/utils/canvas/media-lod";
 import {
   LOAD_TIMEOUT_MS,
@@ -143,6 +144,8 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
   const id = useId();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const isPresent = useIsPresent();
+  // 和截帧、修剪读同一个文件时共用缓存，见 useCorsFallback
+  const { crossOrigin, onError: onLoadError } = useCorsFallback(src, onError);
   const onRevokeRef = useRef(onRevoke);
   useEffect(() => {
     onRevokeRef.current = onRevoke;
@@ -156,6 +159,7 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
      * StrictMode 下副作用「执行→清理→再执行」，属性写法的 src 被摘掉后 React 不会补回来，
      * 视频就永远出不了首帧、加载环转个不停
      */
+    el.crossOrigin = crossOrigin;
     el.src = src;
     videoSlots.acquire(id, {
       // 首帧还没出来的视频也算占用中，不能被名额池顺手收走
@@ -170,7 +174,7 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
       el.removeAttribute("src");
       el.load();
     };
-  }, [id, src]);
+  }, [id, src, crossOrigin]);
 
   // 开始退出：立刻停声音、让出名额
   useEffect(() => {
@@ -197,7 +201,7 @@ function FacadeVideo({ src, phase, onFrame, onError, onRevoke }: FacadeVideoProp
         playsInline
         preload="auto"
         onLoadedData={onFrame}
-        onError={onError}
+        onError={onLoadError}
         className="size-full object-contain"
       />
       <VideoControls videoRef={videoRef} />

@@ -17,8 +17,11 @@ function probeImage(url: string): Promise<number | null> {
   });
 }
 
-/** 只读视频元数据量宽 / 高，不下载整段视频；加载失败或没有画面为 null */
-function probeVideo(url: string): Promise<number | null> {
+/**
+ * 只读视频元数据量宽 / 高，不下载整段视频；加载失败或没有画面为 null。
+ * 和画布播放、截帧一样先带跨域头（共用浏览器缓存），失败了去掉再试一次，见 useCorsFallback。
+ */
+function probeVideo(url: string, cors = true): Promise<number | null> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
     const done = (aspect: number | null) => {
@@ -27,11 +30,16 @@ function probeVideo(url: string): Promise<number | null> {
       resolve(aspect);
     };
     video.preload = "metadata";
+    if (cors) video.crossOrigin = "anonymous";
     video.onloadedmetadata = () =>
       done(
         video.videoWidth > 0 && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : null,
       );
-    video.onerror = () => done(null);
+    video.onerror = () => {
+      video.removeAttribute("src");
+      video.load();
+      resolve(cors ? probeVideo(url, false) : null);
+    };
     video.src = url;
   });
 }

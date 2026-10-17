@@ -45,14 +45,14 @@ function controlled() {
 beforeEach(() => useTrimStore.getState().reset());
 
 describe("修剪运行器：编码", () => {
-  test("开始时进入编码中；参数交给引擎，地址换成修剪专用的", () => {
+  test("开始时进入编码中；参数交给引擎，地址不改", () => {
     useTrimStore.getState().enter("n1");
     const { engine, calls } = controlled();
     const runner = createTrimRunner(engine);
     void runner.start(job({ discardAudio: true }));
     expect(useTrimStore.getState().phase).toBe("encoding");
     expect(calls[0].args).toMatchObject({
-      src: "/files/a.mp4?trim=1",
+      src: "/files/a.mp4",
       start: 3,
       end: 12.5,
       discardAudio: true,

@@ -1,4 +1,4 @@
-import { thumbTimes, trimUrl } from "./trim";
+import { thumbTimes } from "./trim";
 import { describeTrimError, type TrimEngine, type TrimProbe } from "./trim-run";
 
 /** 胶片条的缩略图格数：宽度大约 640px，每格约 40px 宽 */
@@ -64,7 +64,7 @@ export const trimSourceCache = createTrimSourceCache();
 
 /** 缓存里已有完整结果时直接给出状态：面板初次渲染就用它，再打开时不闪一下「加载中」 */
 export function cachedTrimSource(src: string, cache: TrimSourceCache): TrimSourceState | undefined {
-  const entry = cache.get(trimUrl(src));
+  const entry = cache.get(src);
   return entry?.thumbs ? { status: "ready", probe: entry.probe, thumbs: entry.thumbs } : undefined;
 }
 
@@ -82,7 +82,7 @@ export async function loadTrimSource(input: {
   onState: (state: TrimSourceState) => void;
 }): Promise<void> {
   const { engine, cache, signal, onState } = input;
-  const read = trimUrl(input.src);
+  const read = input.src;
   const cached = cache.get(read);
   if (cached?.thumbs) {
     onState({ status: "ready", probe: cached.probe, thumbs: cached.thumbs });

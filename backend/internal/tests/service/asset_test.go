@@ -82,7 +82,6 @@ type fakeAssetStore struct {
 	openErr   error
 	urlErr    error
 	urlCalls  int // URL() 被调用的次数，用来验证签名结果被缓存
-	corsCalls int // CORSURL() 被调用的次数
 	delErr    error
 	closers   []*fakeAssetBody
 }
@@ -129,15 +128,6 @@ func (f *fakeAssetStore) URL(ctx context.Context, key string, ttl time.Duration)
 		return "", f.urlErr
 	}
 	return "https://cdn.test/" + key + "?ttl=" + ttl.String(), nil
-}
-
-// CORSURL 让假存储也实现 storage.CORSURLer：跨域读取的地址带 cors 标记，和 URL 区分开
-func (f *fakeAssetStore) CORSURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	f.corsCalls++
-	if f.urlErr != nil {
-		return "", f.urlErr
-	}
-	return "https://cdn.test/" + key + "?cors&ttl=" + ttl.String(), nil
 }
 
 func (f *fakeAssetStore) Delete(ctx context.Context, key string) error {

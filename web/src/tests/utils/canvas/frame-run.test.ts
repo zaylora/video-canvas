@@ -6,7 +6,7 @@ import { grabFrame, type FrameEngine } from "@/utils/canvas/frame-run";
 const png = () => new Blob(["x"], { type: "image/png" });
 
 describe("grabFrame 取一帧", () => {
-  test("参数交给引擎：地址换成修剪专用的，包成 PNG 文件", async () => {
+  test("参数交给引擎：地址不改，包成 PNG 文件", async () => {
     const calls: Parameters<FrameEngine["frameAt"]>[] = [];
     const engine: FrameEngine = {
       frameAt: async (...args) => {
@@ -19,7 +19,7 @@ describe("grabFrame 取一帧", () => {
       spec: "last",
       fileName: "x-尾帧.png",
     });
-    expect(calls[0][0]).toBe("/files/a.mp4?trim=1");
+    expect(calls[0][0]).toBe("/files/a.mp4");
     expect(calls[0][1]).toBe("last");
     expect(file.name).toBe("x-尾帧.png");
     expect(file.type).toBe("image/png");

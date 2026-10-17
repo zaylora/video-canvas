@@ -139,45 +139,6 @@ func TestS3Storage_URL(t *testing.T) {
 	})
 }
 
-func TestS3Storage_CORSURL(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("公开地址：追加区分参数，和普通地址不同", func(t *testing.T) {
-		cfg := testS3Config()
-		cfg.PublicBaseURL = "https://cdn.example.com/"
-		cfg.PathPrefix = "prod"
-		s, _ := NewFromSpec(cfg)
-		got, err := s.CORSURL(ctx, "u1/a.mp4", time.Hour)
-		if err != nil || got != "https://cdn.example.com/prod/u1/a.mp4?vc_read=cors" {
-			t.Fatalf("实际 %q，err=%v", got, err)
-		}
-	})
-
-	t.Run("签名地址：仍是有效签名，但和同 ttl 的普通地址一定不同", func(t *testing.T) {
-		s, _ := NewFromSpec(testS3Config())
-		plain, _ := s.URL(ctx, "u1/a.mp4", time.Hour)
-		got, err := s.CORSURL(ctx, "u1/a.mp4", time.Hour)
-		if err != nil {
-			t.Fatal(err)
-		}
-		u, _ := url.Parse(got)
-		if u.Query().Get("X-Amz-Signature") == "" || !strings.HasSuffix(u.Path, "/u1/a.mp4") {
-			t.Fatalf("应是指向同一对象的签名地址：%s", got)
-		}
-		p, _ := url.Parse(plain)
-		if u.Query().Get("X-Amz-Expires") == p.Query().Get("X-Amz-Expires") {
-			t.Errorf("跨域读取的地址应和普通地址不同（有效期差 1 秒），实际都是 %q", u.Query().Get("X-Amz-Expires"))
-		}
-	})
-
-	t.Run("非法 key 报错", func(t *testing.T) {
-		s, _ := NewFromSpec(testS3Config())
-		if _, err := s.CORSURL(ctx, "../x", time.Hour); !errors.Is(err, ErrInvalidKey) {
-			t.Fatalf("期望 ErrInvalidKey，实际：%v", err)
-		}
-	})
-}
-
 func TestEscapePath(t *testing.T) {
 	if got := EscapePath("a b/c#d/e.png"); got != "a%20b/c%23d/e.png" {
 		t.Fatalf("实际 %q", got)

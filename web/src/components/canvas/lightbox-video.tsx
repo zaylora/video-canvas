@@ -8,6 +8,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useCorsFallback } from "@/hooks/use-cors-fallback";
 import { DURATION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatMediaDuration } from "@/utils/canvas/media-lod";
@@ -49,6 +50,8 @@ export function LightboxVideo({ src, onSize, onError, className }: LightboxVideo
   const [total, setTotal] = useState(0);
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | undefined>(undefined);
+  // 和截帧、修剪读同一个文件时共用缓存，见 useCorsFallback
+  const { crossOrigin, onError: onLoadError } = useCorsFallback(src, onError);
 
   /** 动一下就亮起来，停一会再淡出 */
   const wake = () => {
@@ -70,6 +73,7 @@ export function LightboxVideo({ src, onSize, onError, className }: LightboxVideo
      * src 在这里手动设置而不是走 JSX 属性：下面的清理会摘掉 src 来释放媒体资源，
      * StrictMode 下副作用「执行→清理→再执行」，属性写法的 src 被摘掉后 React 不会补回来
      */
+    video.crossOrigin = crossOrigin;
     video.src = src;
     void video.play().catch(() => {});
     const events = ["play", "pause", "ended", "timeupdate", "durationchange", "volumechange"];
@@ -84,7 +88,7 @@ export function LightboxVideo({ src, onSize, onError, className }: LightboxVideo
       video.removeAttribute("src");
       video.load();
     };
-  }, [src]);
+  }, [src, crossOrigin]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -141,7 +145,7 @@ export function LightboxVideo({ src, onSize, onError, className }: LightboxVideo
           const { videoWidth, videoHeight } = event.currentTarget;
           if (videoWidth && videoHeight) onSize?.(videoWidth, videoHeight);
         }}
-        onError={onError}
+        onError={onLoadError}
         className="size-full cursor-pointer object-contain"
       />
       <div

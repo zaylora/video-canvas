@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 
 import { useFramePickStore } from "@/store/frame-pick";
-import { trimUrl } from "@/utils/canvas/trim";
 
 import { BaseNodeContent } from "./base-node";
 
@@ -32,7 +31,7 @@ export function FrameStage({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    el.src = trimUrl(src);
+    el.src = src;
     return () => {
       el.pause();
       el.removeAttribute("src");
