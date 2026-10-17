@@ -27,6 +27,16 @@ type Storage interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// CORSURLer 是能给“跨域读取”单独出地址的存储，截帧、修剪用它。
+//
+// 浏览器按完整地址缓存响应：画布的 <video> 播放发的是不带 Origin 的请求，存储回的响应里没有跨域头；
+// 截帧、修剪要跨域读同一个文件，若跳到同一个地址，浏览器会复用那份缓存，被 CORS 拦下。
+// 两种读取用不同的地址，缓存就分开了。
+type CORSURLer interface {
+	// CORSURL 和 URL 指向同一个对象，但返回的地址一定和 URL 不同。
+	CORSURL(ctx context.Context, key string, ttl time.Duration) (string, error)
+}
+
 // ObjectInfo 是对象的元信息。
 type ObjectInfo struct {
 	Size        int64

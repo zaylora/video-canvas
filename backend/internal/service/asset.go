@@ -534,7 +534,18 @@ func (s *AssetService) ResolveFile(ctx context.Context, key string) (*FileTarget
 	if err != nil {
 		return nil, err
 	}
-	return s.targetOf(ctx, h, key, a)
+	return s.targetOf(ctx, h, key, a, false)
+}
+
+// ResolveCORSFile 和 ResolveFile 一样，给截帧、修剪的跨域读取用（/files/<key>?trim=1）。
+// 对象存储跳到一个和普通播放不同的地址：播放留下的缓存没有跨域头，同一个地址被跨域请求复用就会被 CORS 拦下。
+// 本地存储照常由后端提供，trim=1 本身已经让两种请求的地址不同。
+func (s *AssetService) ResolveCORSFile(ctx context.Context, key string) (*FileTarget, error) {
+	a, h, err := s.lookupFile(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return s.targetOf(ctx, h, key, a, true)
 }
 
 // lookupFile 校验 key、反查素材并取得它所在的存储，ResolveFile 与 ResolveVariant 共用。
@@ -583,7 +594,8 @@ func (s *AssetService) lookupAvatar(ctx context.Context, key string) (*model.Ass
 }
 
 // targetOf 决定原文件怎么提供：本地磁盘由后端直接提供，对象存储跳转到签名（或公开）地址。
-func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key string, a *model.Asset) (*FileTarget, error) {
+// cors 为 true 时是跨域读取：存储支持就用它单独出的地址，跳转缓存也和普通读取分开存。
+func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key string, a *model.Asset, cors bool) (*FileTarget, error) {
 	// 1. 本地磁盘：后端直接提供（支持 Range，视频可拖动）
 	if ls, ok := h.Storage.(*storage.LocalStorage); ok {
 		return &FileTarget{Local: ls}, nil
@@ -596,11 +608,18 @@ func (s *AssetService) targetOf(ctx context.Context, h *storage.Handle, key stri
 		ttl = time.Hour
 	}
 	cacheKey := fmt.Sprintf("%d/%s", h.ID, key)
+	sign := h.Storage.URL
+	if cors {
+		cacheKey += "#cors"
+		if c, ok := h.Storage.(storage.CORSURLer); ok {
+			sign = c.CORSURL
+		}
+	}
 	now := s.now()
 	if url, ok := s.redirects.get(cacheKey, now); ok {
 		return &FileTarget{RedirectURL: url, MaxAge: ttl / 4}, nil
 	}
-	url, err := h.Storage.URL(ctx, key, ttl)
+	url, err := sign(ctx, key, ttl)
 	if err != nil {
 		logger.Error("生成素材跳转地址失败", zap.Uint64("storage_id", h.ID), zap.Error(err))
 		return nil, errcode.ErrStorageUnavailable

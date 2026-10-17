@@ -28,6 +28,7 @@ type fakeFileResolver struct {
 	gotKey     string
 	gotVariant string
 	fileCalls  int
+	corsCalls  int
 }
 
 func (f *fakeFileResolver) ResolveVariant(ctx context.Context, key, variant string) (*service.FileTarget, error) {
@@ -36,6 +37,19 @@ func (f *fakeFileResolver) ResolveVariant(ctx context.Context, key, variant stri
 		return nil, f.err
 	}
 	t, ok := f.variants[key+"?v="+variant]
+	if !ok {
+		return nil, errcode.ErrAssetNotFound
+	}
+	return t, nil
+}
+
+func (f *fakeFileResolver) ResolveCORSFile(ctx context.Context, key string) (*service.FileTarget, error) {
+	f.gotKey = key
+	f.corsCalls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	t, ok := f.targets[key+"?trim=1"]
 	if !ok {
 		return nil, errcode.ErrAssetNotFound
 	}
@@ -148,6 +162,21 @@ func TestFilesHandler_Variant(t *testing.T) {
 		}
 		if res.gotKey != "u1/a.png" || res.gotVariant != "thumb" || res.fileCalls != 0 {
 			t.Errorf("应只走 ResolveVariant：key=%q variant=%q 原图调用 %d 次", res.gotKey, res.gotVariant, res.fileCalls)
+		}
+	})
+
+	t.Run("带 trim=1：截帧、修剪的跨域读取交给 ResolveCORSFile", func(t *testing.T) {
+		res2 := &fakeFileResolver{targets: map[string]*service.FileTarget{
+			"u1/a.mp4":        {RedirectURL: "https://o/u1/a.mp4", MaxAge: time.Minute},
+			"u1/a.mp4?trim=1": {RedirectURL: "https://o/u1/a.mp4?vc_read=cors", MaxAge: time.Minute},
+		}}
+		w := httptest.NewRecorder()
+		newFilesRouter(res2).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/files/u1/a.mp4?trim=1", nil))
+		if w.Code != http.StatusFound || w.Header().Get("Location") != "https://o/u1/a.mp4?vc_read=cors" {
+			t.Fatalf("实际 %d %q", w.Code, w.Header().Get("Location"))
+		}
+		if res2.corsCalls != 1 || res2.fileCalls != 0 || res2.gotKey != "u1/a.mp4" {
+			t.Errorf("应只走 ResolveCORSFile：cors=%d file=%d key=%q", res2.corsCalls, res2.fileCalls, res2.gotKey)
 		}
 	})
 

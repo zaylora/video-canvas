@@ -36,6 +36,7 @@ var (
 	_ RangeOpener    = (*S3Storage)(nil)
 	_ DirectUploader = (*S3Storage)(nil)
 	_ BucketChecker  = (*S3Storage)(nil)
+	_ CORSURLer      = (*S3Storage)(nil)
 )
 
 // NewFromSpec 按服务商预设创建 S3 兼容存储：先校验并规范化配置，再按寻址方式创建客户端。
@@ -147,6 +148,25 @@ func (s *S3Storage) URL(ctx context.Context, key string, ttl time.Duration) (str
 		return "", fmt.Errorf("storage: 生成签名 URL 失败: %w", err)
 	}
 	return u.String(), nil
+}
+
+// corsReadQuery 追加在公开地址后，只用来让跨域读取和普通播放的浏览器缓存分开，存储和 CDN 都会忽略它。
+const corsReadQuery = "vc_read=cors"
+
+// CORSURL 返回给跨域读取（截帧、修剪）用的地址，见 CORSURLer。
+// 公开地址追加一个区分参数；签名地址不能追加未签名的参数，改成有效期少 1 秒，X-Amz-Expires 不同，地址就一定不同。
+func (s *S3Storage) CORSURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if s.publicBase != "" {
+		u, err := s.URL(ctx, key, ttl)
+		if err != nil {
+			return "", err
+		}
+		return u + "?" + corsReadQuery, nil
+	}
+	if ttl <= 0 {
+		ttl = defaultSignedTTL
+	}
+	return s.URL(ctx, key, ttl-time.Second)
 }
 
 // Delete 删除对象，不存在不算错误。

@@ -67,7 +67,7 @@ func (s *AssetService) ResolveVariant(ctx context.Context, key, variant string) 
 	if variant == imageproc.VariantPoster {
 		return nil, errcode.ErrAssetNotFound
 	}
-	t, err := s.targetOf(ctx, h, key, a)
+	t, err := s.targetOf(ctx, h, key, a, false)
 	if err != nil {
 		return nil, err
 	}
