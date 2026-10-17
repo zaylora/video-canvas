@@ -144,6 +144,24 @@ describe("消息流", () => {
     ]);
   });
 
+  test("用户消息带上发送时选中的节点；没选、旧事件、插话都是空数组", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "这个是什么内容？", selection: ["n1", "n2"] }),
+        ev("message.user", { text: "没选节点", selection: null }),
+        ev("message.user", { text: "旧事件没有这个字段" }),
+        ev("message.user", { text: "插话", steer: true }),
+        ev("message.user", { text: "脏数据", selection: ["n3", 7, null, ""] }),
+      ]),
+    );
+    const users = items.filter((i) => i.type === "user") as Extract<
+      TimelineItem,
+      { type: "user" }
+    >[];
+    expect(users.map((u) => u.selection)).toEqual([["n1", "n2"], [], [], [], ["n3"]]);
+  });
+
   test("运行状态卡片带上后端下发的标题和提示；旧事件没有就是空串", () => {
     reset();
     const items = buildTimeline(

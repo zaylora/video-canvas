@@ -22,6 +22,7 @@ import type { TimelineItem } from "@/utils/agent/timeline";
 
 import { ActivityGroup } from "./activity-group";
 import type { NodeOption } from "./agent-editor";
+import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
 import { RunSummary } from "./run-summary";
@@ -187,6 +188,7 @@ function Item({
       return (
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
+          <SelectionRefs ids={item.selection} nodes={nodes} />
           <div className="agent-inset bg-foreground/7 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
             <MessageText text={item.text} />
           </div>

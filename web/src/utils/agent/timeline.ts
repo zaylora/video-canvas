@@ -39,6 +39,8 @@ export type TimelineItem =
       text: string;
       /** 是不是运行中的插话 */
       steer: boolean;
+      /** 发送这条消息时画布上选中的节点 id（后端校验过、确实在画布上）；没选、插话、旧事件都是空数组 */
+      selection: string[];
     }
   | {
       /** 助手的回复 */
@@ -172,7 +174,13 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
     const before = items.length;
     switch (ev.type) {
       case "message.user":
-        items.push({ type: "user", key: `e${ev.seq}`, text: str(d.text), steer: d.steer === true });
+        items.push({
+          type: "user",
+          key: `e${ev.seq}`,
+          text: str(d.text),
+          steer: d.steer === true,
+          selection: strs(d.selection).filter(Boolean),
+        });
         break;
       case "message.done":
         if (str(d.text) || str(d.thinking)) {
