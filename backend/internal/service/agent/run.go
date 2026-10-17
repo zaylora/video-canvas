@@ -113,7 +113,12 @@ func (s *AgentService) Cancel(ctx context.Context, userID, runID uint64) (*Agent
 	if _, err := s.repo.ExpirePendingApprovals(ctx, runID); err != nil {
 		return nil, err
 	}
-	_ = s.runtime.Cancel(ctx, runID) // 画布状态已经以数据库为准，runtime 没收到只会让它多跑一会儿，之后写画布会被状态校验挡住
+	// runtime 会等进行中的模型调用结算完才返回：半截回答、用量事件都在 canceled 之前落库，返回的已花积分也是结算后的。
+	// 画布状态已经以数据库为准，runtime 没收到只会让它多跑一会儿，之后写画布会被状态校验挡住
+	_ = s.runtime.Cancel(ctx, runID)
+	if cur, err := s.repo.GetRun(ctx, userID, runID); err == nil {
+		updated = cur
+	}
 	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunCanceled})
 	return runView(updated), nil
 }

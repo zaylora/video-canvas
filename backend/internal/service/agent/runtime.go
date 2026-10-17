@@ -158,7 +158,7 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"bridge_url":    r.d.Config.BridgeURL,
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
 		"system_prompt": prompts.SystemWithSkills(mode, catalog),
-		"allowed_tools": AgentToolsFor(mode, caps.Vision),
+		"tools":         AgentToolDecls(mode, caps.Vision),
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {
@@ -284,7 +284,8 @@ func (r *ProcessRuntime) Interject(_ context.Context, runID uint64, message stri
 
 // Cancel 中止运行：先发 abort 让 pi 自己中止（连接断开，桥据此结算已产生的用量），
 // 宽限期内进程没退出就强杀。没有进程不是错误。
-func (r *ProcessRuntime) Cancel(_ context.Context, runID uint64) error {
+// 返回前等进行中的模型调用收尾（最多一个宽限期）：调用方随后发「已取消」，半截回答和用量要排在它前面。
+func (r *ProcessRuntime) Cancel(ctx context.Context, runID uint64) error {
 	seg := r.segment(runID)
 	if seg == nil {
 		return nil
@@ -297,6 +298,7 @@ func (r *ProcessRuntime) Cancel(_ context.Context, runID uint64) error {
 			seg.proc.Kill()
 		}
 	}()
+	r.d.Bridge.WaitModelCallsIdle(ctx, runID, r.d.Config.CancelGrace)
 	return nil
 }
 

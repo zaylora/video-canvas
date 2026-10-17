@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import http from "node:http";
 
 /**
@@ -53,12 +54,17 @@ export async function fakeBridge({ models = [], tool = async () => ({ content: "
   return { rec, url: `http://127.0.0.1:${srv.address().port}`, close: () => new Promise((r) => { srv.closeAllConnections?.(); srv.close(r); }) };
 }
 
+/** Go 下发的工具声明：取自迁移前导出的基准（12 个业务工具，全部由 Go 执行） */
+export const TOOL_DECLS = JSON.parse(fs.readFileSync(new URL("./fixtures/tool-defs.baseline.json", import.meta.url), "utf8")).map((d) => ({
+  ...d, label: d.name, executor: "server", scriptable: true,
+}));
+
 /** 启动参数的默认值 */
 export function baseInput(bridgeUrl, over = {}) {
   return {
     bridge_url: bridgeUrl, token: "tok-123", system_prompt: "你是画布助手",
     model: { name: "Claude", context_window: 200000, max_tokens: 8192, vision: true },
-    mode: "start", prompt: { text: "拆分镜" }, ...over,
+    mode: "start", prompt: { text: "拆分镜" }, tools: TOOL_DECLS, ...over,
   };
 }
 

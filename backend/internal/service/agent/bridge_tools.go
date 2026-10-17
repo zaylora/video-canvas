@@ -81,21 +81,21 @@ func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name s
 		return &ToolResult{Content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", IsError: true, Terminate: true}, nil
 	}
 	// 2. 当前任务模式不允许的工具，直接告诉模型；工具名认不得的也一样
-	h, known := b.handlers()[name]
-	if !known {
+	spec := findTool(name)
+	if spec == nil {
 		return b.toolError(ctx, run, toolCallID, name, "未知的工具："+name), nil
 	}
-	if !modeAllowsTool(sess.mode, name) {
+	if !spec.allowsMode(sess.mode) {
 		return b.toolError(ctx, run, toolCallID, name, fmt.Sprintf("当前是「%s」模式，不能使用 %s。", modeLabel(sess.mode), name)), nil
 	}
 	// 3. 执行：先记 tool.start，结束后记 tool.end，并把这次调用计入步数
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", map[string]any{"id": toolCallID, "name": name})
-	out, herr := h(ctx, &toolCall{run: run, sess: sess, id: toolCallID, args: args})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", withToolLabel(map[string]any{"id": toolCallID, "name": name}, name))
+	out, herr := spec.run(b, ctx, &toolCall{run: run, sess: sess, id: toolCallID, args: args})
 	if err := b.d.Repo.AddRunUsage(ctx, run.ID, 1, 0); err != nil {
 		logger.Warn("记录 Agent 步数失败", zap.Error(err), zap.Uint64("run_id", run.ID))
 	}
 	res := b.finishTool(out, herr)
-	end := map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}
+	end := withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}, name)
 	if out != nil {
 		for k, v := range out.extra {
 			end[k] = v
@@ -107,7 +107,7 @@ func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name s
 
 // toolError 为被拒绝的调用（未知工具、模式不允许）记一对事件并返回工具错误。
 func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, name, msg string) *ToolResult {
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", map[string]any{"id": id, "name": name, "is_error": true, "summary": msg})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", withToolLabel(map[string]any{"id": id, "name": name, "is_error": true, "summary": msg}, name))
 	return &ToolResult{Content: msg, IsError: true}
 }
 
@@ -149,41 +149,6 @@ func summarizeError(r *ToolResult) string {
 	return ""
 }
 
-type toolHandler func(ctx context.Context, tc *toolCall) (*toolOut, error)
-
-// handlers 是工具名到处理函数的映射。
-func (b *AgentBridge) handlers() map[string]toolHandler {
-	return map[string]toolHandler{
-		"canvas_get_state":     b.toolGetState,
-		"canvas_apply_ops":     b.toolApplyOps,
-		"canvas_arrange":       b.toolArrange,
-		"canvas_delete":        b.toolDelete,
-		"plan_update":          b.toolPlan,
-		"ask_user":             b.toolAsk,
-		"model_list":           b.toolModelList,
-		"generate_media":       b.toolGenerate,
-		"task_get":             b.toolTaskGet,
-		"skill_search":         b.toolSkillSearch,
-		"canvas_inspect_image": b.toolInspectImage,
-		"skill_read":           b.toolSkillRead,
-	}
-}
-
-// toolOrder 是全部工具名，给模型的工具顺序固定下来，提示词缓存才稳定。
-var toolOrder = []string{"canvas_get_state", "canvas_apply_ops", "canvas_arrange", "canvas_delete", "plan_update", "ask_user", "model_list", "generate_media", "task_get", "skill_search", "skill_read", "canvas_inspect_image"}
-
-// AgentToolsForMode 返回某个任务模式能用的工具名，运行时只把这些声明给模型：
-// 不能用的工具连看都看不到，比调用后被拒绝更省事，也更不容易被诱导。Go 端在执行时仍会再校验一次。
-func AgentToolsForMode(mode string) []string {
-	var out []string
-	for _, t := range toolOrder {
-		if modeAllowsTool(mode, t) {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
 // modeLabel 是任务模式的中文名。
 func modeLabel(mode string) string {
 	switch mode {
@@ -195,17 +160,6 @@ func modeLabel(mode string) string {
 		return "提示词优化"
 	}
 	return "全能创作"
-}
-
-// modeAllowsTool 判断任务模式能不能用某个工具：读画布、选模型、计划、提问所有模式都能用；
-// 排列、删除和生成只有全能创作和分镜搭建能用；改画布的工具所有模式都能用，但能做哪些操作由 modeAllowsOps 再限制。
-// 这是 Go 端强制的，不依赖提示词约束。
-func modeAllowsTool(mode, tool string) bool {
-	switch tool {
-	case "canvas_arrange", "canvas_delete", "generate_media":
-		return mode == "" || mode == model.AgentModeAll || mode == model.AgentModeStoryboard
-	}
-	return true
 }
 
 // modeAllowsOps 判断任务模式能不能做这批画布操作。剧本创编只能新建和修改文本节点，提示词优化只能改已有节点的提示词。

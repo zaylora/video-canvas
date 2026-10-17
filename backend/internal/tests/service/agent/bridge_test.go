@@ -296,6 +296,16 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		if len(b.bill.settled) != 1 || b.bill.settled[0].Credits == 0 || !b.bill.settled[0].UsageEstimated {
 			t.Errorf("取消后仍要结算已产生的部分: %+v", b.bill.settled)
 		}
+		// 插话会让 Agent 中止正在输出的回答并接着重答：半截回答的 message.done 必须落库，前端才能清掉流式残留
+		done := 0
+		for _, ty := range b.persistedTypes() {
+			if ty == "message.done" {
+				done++
+			}
+		}
+		if done != 1 {
+			t.Errorf("取消后半截回答也要记 message.done（partial=true），实际 %d 条: %v", done, b.persistedTypes())
+		}
 	})
 }
 

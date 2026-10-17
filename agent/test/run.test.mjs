@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { runAgent } from "../src/run.mjs";
-import { baseInput, fakeBridge, sleep } from "./helpers.mjs";
+import { TOOL_DECLS, baseInput, fakeBridge, sleep } from "./helpers.mjs";
 
 const withBridge = async (opts, fn) => { const b = await fakeBridge(opts); try { await fn(b); } finally { await b.close(); } };
 
@@ -107,14 +107,19 @@ test("桥回调失败（500）：模型看到错误，运行不中断", async ()
   });
 });
 
-test("allowed_tools：只把当前模式允许的工具声明给模型", async () => {
+test("tools：只把 Go 下发的工具声明给模型", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
-    await runAgent(baseInput(b.url, { allowed_tools: ["canvas_get_state", "plan_update"] }));
-    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name).sort(), ["canvas_get_state", "plan_update"]);
+    const two = TOOL_DECLS.filter((d) => ["canvas_get_state", "plan_update"].includes(d.name));
+    await runAgent(baseInput(b.url, { tools: two }));
+    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name), ["canvas_get_state", "plan_update"]);
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    assert.equal(b.rec.chats[0].tools.length, 12, "不限制时声明全部工具");
+    assert.equal(b.rec.chats[0].tools.length, 12, "Go 下发多少就声明多少，顺序不变");
+  });
+  await withBridge({ models: [{ text: "好" }] }, async (b) => {
+    await runAgent(baseInput(b.url, { tools: undefined }));
+    assert.ok(!b.rec.chats[0].tools?.length, "Go 没下发工具时，Node 里没有任何内置的业务工具");
   });
 });
 

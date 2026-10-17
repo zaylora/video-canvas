@@ -472,3 +472,56 @@ func TestAgentDecide_ResumeInfoTellsTheModelWhatHappened(t *testing.T) {
 		}
 	})
 }
+
+func TestAgentDecide_EmitsRunningStatus(t *testing.T) {
+	// 运行从等待回到 running 时要发 run.status：只靠这个事件驱动的客户端，否则会一直显示「等待中」
+	e := newAgentEnv(t)
+	_, id := pendingGenerate(t, e, 24)
+	before := len(e.repo.eventTypes())
+	if _, err := e.svc.Decide(context.Background(), 1, id, &model.DecideAgentApprovalReq{Decision: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	types := e.repo.eventTypes()[before:]
+	running, decided := -1, -1
+	for i, ty := range types {
+		switch ty {
+		case "run.status":
+			running = i
+		case "approval.decided":
+			decided = i
+		}
+	}
+	if running < 0 {
+		t.Fatalf("决定后应发 run.status: %v", types)
+	}
+	if got := e.repo.lastEvent("run.status")["status"]; got != model.RunRunning {
+		t.Errorf("最后一条 run.status 应是 running，实际 %v", got)
+	}
+	if running > decided {
+		t.Errorf("run.status 应排在 approval.decided 之前: %v", types)
+	}
+}
+
+func TestAgentCancel_ReturnsSettledUsageAndOrdersEvents(t *testing.T) {
+	// 取消时进行中的模型调用会在 runtime 收尾时结算：返回值和事件顺序都要反映结算之后的状态
+	e := newAgentEnv(t)
+	run := e.runningRun(t)
+	e.rt.onCancel = func(id uint64) {
+		_ = e.repo.AddRunUsage(context.Background(), id, 0, 3)
+		e.repo.record(run.SessionID, id, "message.done", []byte(`{"text":"说到一半","partial":true}`))
+	}
+	v, err := e.svc.Cancel(context.Background(), 1, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.SpentCredits != 3 {
+		t.Errorf("返回的已花积分应是取消收尾之后的 3，实际 %d", v.SpentCredits)
+	}
+	types := e.repo.eventTypes()
+	if n := len(types); n < 2 || types[n-1] != "run.status" || types[n-2] != "message.done" {
+		t.Errorf("run.status(canceled) 应排在收尾事件之后: %v", types)
+	}
+	if got := e.repo.lastEvent("run.status")["status"]; got != model.RunCanceled {
+		t.Errorf("最后一条 run.status 应是 canceled: %v", got)
+	}
+}

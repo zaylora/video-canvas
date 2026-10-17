@@ -3,6 +3,7 @@ import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
 import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
+import { createSteering } from "./steer.mjs";
 import { buildTools } from "./tools.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
@@ -31,18 +32,20 @@ export async function runAgent(input, io = {}) {
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
-  io.control?.on("steer", (text) => agent.steer({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() }));
+  const steering = createSteering(agent);
+  io.control?.on("steer", (text) => steering.push(text));
   // 用户中止是正常结束：运行的状态由 Go 在处理「停止」时设好，这里不能把它报成出错
   let aborted = false;
   io.control?.on("abort", () => {
     aborted = true;
+    steering.dispose();
     agent.abort();
   });
 
   let result;
   try {
     await start(agent, input);
-    await agent.waitForIdle();
+    await settle(agent, steering, { isPaused: () => paused, isAborted: () => aborted });
     const err = agent.state.errorMessage;
     if (err && !aborted) result = { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) };
     else result = { status: paused && !aborted ? "paused" : "done", message: "" };
@@ -50,9 +53,38 @@ export async function runAgent(input, io = {}) {
     log("运行异常", { error: String(e?.message ?? e) });
     result = { status: "error", message: String(e?.message ?? e).slice(0, MAX_ERROR_CHARS) };
   }
+  steering.dispose();
   await saveState(agent, bridge, log);
   await bridge.finish(result.status, result.message);
   return result;
+}
+
+/**
+ * 等运行停下，并处理停下时还没处理的插话：
+ * - 被插话中止的：去掉半截回答，接着跑，循环一开始就会把队列里的插话和原请求一起交给模型；
+ * - 正常停下但队列里还有插话：没暂停就接着跑，免得插话随进程退出而丢；
+ * - 暂停等审批或回答时队列里还有插话：追加进历史（工具结果之后），续跑时模型看得到；
+ * - 用户点了停止：队列作废。
+ */
+async function settle(agent, steering, { isPaused, isAborted }) {
+  for (;;) {
+    await agent.waitForIdle();
+    if (isAborted()) return agent.clearAllQueues();
+    if (steering.consumeInterrupt() && agent.state.messages.at(-1)?.stopReason === "aborted") {
+      agent.state.messages = stripFailedTail(agent.state.messages);
+      await agent.continue();
+      continue;
+    }
+    if (!agent.hasQueuedMessages()) return;
+    if (!isPaused()) {
+      await agent.continue();
+      continue;
+    }
+    const left = agent.peekQueuedMessages();
+    agent.clearAllQueues();
+    agent.state.messages = [...agent.state.messages, ...left];
+    return;
+  }
 }
 
 /** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
@@ -79,12 +111,14 @@ function buildAgent(input, bridge, onTerminate, isPaused) {
     // 历史通过 initialState 交给 pi：它会用这次的系统提示和工具声明重新生成开头的 system 消息；
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
-      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.allowed_tools, onTerminate),
+      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.tools, onTerminate),
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),
     transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
     toolExecution: "sequential",
+    // 多条插话一次取出，在同一次回复里一起回应，而不是每条各答一遍
+    steeringMode: "all",
     onPayload: async (payload) => restoreImageUrls(payload),
     // pi 只在整批调用都要求终止时才停。模型把提问或审批和别的工具放在同一条消息里时，
     // 必须在暂停那一刻停下：后面的调用不执行（告诉模型稍后重调），这一轮结束后不再请求模型，

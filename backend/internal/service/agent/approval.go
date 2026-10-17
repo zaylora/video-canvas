@@ -146,6 +146,8 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	if _, err := s.repo.UpdateRunIf(ctx, run.ID, waitingStatuses, fields); err != nil {
 		return nil, errcode.ErrAgentApprovalGone
 	}
+	// 只靠 run.status 事件驱动的客户端，回答之后要靠它才知道运行不再等待了
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunRunning})
 	if out.quote > 0 {
 		if err := s.repo.AddRunUsage(ctx, run.ID, 0, out.quote); err != nil {
 			return nil, err

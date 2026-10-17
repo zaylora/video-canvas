@@ -66,6 +66,7 @@ type AgentBridge struct {
 	d      BridgeDeps
 	mu     sync.Mutex
 	tokens map[string]*bridgeSession
+	calls  map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
 }
 
 // NewAgentBridge 创建桥。
@@ -76,7 +77,7 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	if d.TokenTTL <= 0 {
 		d.TokenTTL = 2 * time.Hour
 	}
-	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}}
+	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, calls: map[uint64]int{}}
 }
 
 // IssueToken 为一个运行片段签发一次性令牌：Node 进程只拿到它，没有任何渠道密钥。
@@ -160,6 +161,7 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	if err != nil {
 		return err
 	}
+	defer b.trackCall(run.ID)()
 	snap, key, err := b.resolveModel(ctx, sess.modelKey)
 	if err != nil {
 		return err
@@ -201,8 +203,47 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	} else if settled.Charged > 0 {
 		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
 	}
-	b.recordMessage(ctx, run, res, settled, serr != nil)
+	// 插话会让 Agent 中止正在输出的回答再重答：此时 ctx 已取消，半截回答的 message.done 也要落库，前端才能清掉流式残留
+	b.recordMessage(context.WithoutCancel(ctx), run, res, settled, serr != nil)
 	return serr
+}
+
+// trackCall 记一次进行中的模型调用，返回的函数在调用收尾（结算、写事件都做完）后调用。
+func (b *AgentBridge) trackCall(runID uint64) func() {
+	b.mu.Lock()
+	b.calls[runID]++
+	b.mu.Unlock()
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.calls[runID]--; b.calls[runID] <= 0 {
+			delete(b.calls, runID)
+		}
+	}
+}
+
+// WaitModelCallsIdle 等这个运行进行中的模型调用都收尾，最多等 limit；没有进行中的调用立刻返回。
+// 取消运行时用它：被中止的调用要结算已产生的用量、记半截回答，等它们落库之后才好发「已取消」。
+func (b *AgentBridge) WaitModelCallsIdle(ctx context.Context, runID uint64, limit time.Duration) {
+	deadline := time.NewTimer(limit)
+	defer deadline.Stop()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		b.mu.Lock()
+		n := b.calls[runID]
+		b.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // resolveModel 取模型当前发布版本的快照和渠道 Key。不可用、不是 agent 种类、Key 没设置，都按「Agent 模型不可用」处理。

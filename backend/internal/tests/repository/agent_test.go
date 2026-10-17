@@ -5,8 +5,10 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
 	. "video-canvas/internal/repository"
@@ -397,4 +399,43 @@ func TestInterruptActiveRuns(t *testing.T) {
 	// 中断之后画布空出来了，可以开新的运行
 	s := newSession(t, r, 1, 1)
 	newRun(t, r, s, model.RunQueued)
+}
+
+// errTraceLogger 记录 GORM 当作错误打出来的语句，用来确认预期内的冲突没有被记成 ERROR。
+type errTraceLogger struct {
+	level gormlogger.LogLevel
+	mu    *sync.Mutex
+	errs  *[]error
+}
+
+func (l errTraceLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
+	l.level = level
+	return l
+}
+func (l errTraceLogger) Info(context.Context, string, ...any)  {}
+func (l errTraceLogger) Warn(context.Context, string, ...any)  {}
+func (l errTraceLogger) Error(context.Context, string, ...any) {}
+func (l errTraceLogger) Trace(_ context.Context, _ time.Time, _ func() (string, int64), err error) {
+	if err != nil && l.level >= gormlogger.Error {
+		l.mu.Lock()
+		*l.errs = append(*l.errs, err)
+		l.mu.Unlock()
+	}
+}
+
+func TestAgentRuns_DuplicateIsNotLoggedAsError(t *testing.T) {
+	// 用户双击或多标签页重复发起运行：业务上返回 409，不该在日志里留一条 ERROR 和整条 INSERT
+	db := agentDB(t)
+	var errs []error
+	rec := errTraceLogger{level: gormlogger.Error, mu: &sync.Mutex{}, errs: &errs}
+	r := NewAgentRepository(db.Session(&gorm.Session{Logger: rec}))
+	s := newSession(t, r, 1, 10)
+	newRun(t, r, s, model.RunRunning)
+	dup := &model.AgentRun{SessionID: s.ID, CanvasID: 10, UserID: 1, Status: model.RunQueued, MaxSteps: 40}
+	if err := r.CreateRun(context.Background(), dup); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("应 ErrDuplicate: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Errorf("预期内的冲突不该被记成错误日志: %v", errs)
+	}
 }

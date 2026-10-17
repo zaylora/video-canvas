@@ -23,16 +23,6 @@ const (
 // inspectMimes 是可以交给模型看的图片格式。
 var inspectMimes = []string{"image/png", "image/jpeg", "image/webp", "image/gif"}
 
-// AgentToolsFor 返回某个任务模式、某个模型能用的工具：在 AgentToolsForMode 的基础上，
-// 不能看图的模型拿不到 canvas_inspect_image（它连这个工具都看不到，比调用后被拒绝更稳）。
-func AgentToolsFor(mode string, vision bool) []string {
-	tools := AgentToolsForMode(mode)
-	if vision {
-		return tools
-	}
-	return slices.DeleteFunc(tools, func(t string) bool { return t == "canvas_inspect_image" })
-}
-
 // toolInspectImage 看图：读出图片节点当前的图片，随工具结果交给模型。看图只读，所有任务模式都能用，但模型必须支持看图。
 // 图片内容是用户的素材，只在这一轮的上下文里出现，不写进历史（运行时保存历史前会把图片去掉）。
 func (b *AgentBridge) toolInspectImage(ctx context.Context, tc *toolCall) (*toolOut, error) {

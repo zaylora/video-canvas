@@ -115,6 +115,35 @@ describe("消息流", () => {
     expect(finished.find((i) => i.type === "activity")).toMatchObject({ status: "done" });
   });
 
+  test("工具调用带上事件里的界面名称和动词；end 里有就以 end 为准，缺了前半也能显示", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }),
+        ev("tool.start", { id: "a", name: "web_search", label: "搜索网页", verb: "搜索" }),
+        ev("tool.end", {
+          id: "a",
+          name: "web_search",
+          label: "搜索网页",
+          verb: "搜索",
+          summary: "5 条结果",
+        }),
+        ev("tool.end", {
+          id: "b",
+          name: "web_fetch",
+          label: "读取网页",
+          verb: "读网页",
+          summary: "ok",
+        }),
+      ]),
+    );
+    const tools = activity(items.find((i) => i.type === "activity")).tools;
+    expect(tools.map((t) => [t.label, t.verb])).toEqual([
+      ["搜索网页", "搜索"],
+      ["读取网页", "读网页"],
+    ]);
+  });
+
   test("连续的工具调用合成一个活动块，中间隔了消息就分开；耗时从第一次开始到最后一次结束", () => {
     reset();
     const items = buildTimeline(
@@ -412,6 +441,15 @@ describe("状态行", () => {
     expect(buildStatusLine(working)?.text).toBe("正在整理布局…");
     const doneTool = fold([...working.events, ev("tool.end", { id: "a", name: "canvas_arrange" })]);
     expect(buildStatusLine(doneTool)?.text).toBe("思考中…");
+  });
+
+  test("工具名称由后端随事件下发：新工具不用改前端；状态行也用它", () => {
+    reset();
+    const working = fold([
+      ev("run.status", { status: "running" }),
+      ev("tool.start", { id: "w", name: "web_search", label: "搜索网页", verb: "搜索" }),
+    ]);
+    expect(buildStatusLine(working)?.text).toBe("正在搜索网页…");
   });
 
   test("正文流式输出时不显示，避免和闪烁光标重复", () => {
