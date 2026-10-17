@@ -30,7 +30,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "AI 配置",
     items: [
       { to: "ai/overview", label: "总览", icon: LayoutDashboard },
-      { to: "ai/channels", label: "渠道与模型", icon: RadioTower },
+      { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
     ],
   },
@@ -42,7 +42,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "用户",
     items: [
       { to: "users", label: "用户管理", icon: Users },
-      { to: "payment", label: "支付管理", icon: Wallet, badge: "新" },
+      { to: "payment", label: "支付管理", icon: Wallet },
     ],
   },
   {

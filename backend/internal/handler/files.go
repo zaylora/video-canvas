@@ -19,6 +19,8 @@ import (
 // FileResolver 决定一个对象 key 怎么提供给浏览器，由 service.AssetService 实现。
 type FileResolver interface {
 	ResolveFile(ctx context.Context, key string) (*service.FileTarget, error)
+	// ResolveCORSFile 解析截帧、修剪的跨域读取（?trim=1）：对象存储跳到和普通播放不同的地址，浏览器缓存才不会混用。
+	ResolveCORSFile(ctx context.Context, key string) (*service.FileTarget, error)
 	// ResolveVariant 解析素材变体（?v=thumb|poster）：有处理服务时跳转到处理地址，否则缩略图回退原图、封面 404。
 	ResolveVariant(ctx context.Context, key, variant string) (*service.FileTarget, error)
 }
@@ -38,6 +40,8 @@ func NewFilesHandler(res FileResolver) gin.HandlerFunc {
 		)
 		if variant := c.Query("v"); variant != "" {
 			target, err = res.ResolveVariant(c.Request.Context(), key, variant)
+		} else if c.Query("trim") == "1" {
+			target, err = res.ResolveCORSFile(c.Request.Context(), key)
 		} else {
 			target, err = res.ResolveFile(c.Request.Context(), key)
 		}

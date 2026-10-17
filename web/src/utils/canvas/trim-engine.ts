@@ -2,6 +2,7 @@ import type { Input } from "mediabunny";
 
 import type { FrameEngine, FrameOptions } from "./frame-run";
 import type { FrameSpec } from "./frame";
+import { createInputPool } from "./input-pool";
 import { TrimError, type TrimEncodeArgs, type TrimEngine, type TrimProbe } from "./trim-run";
 
 /** 当前浏览器能不能做视频修剪：要有 WebCodecs 的视频编解码 */
@@ -24,6 +25,12 @@ export async function openInput(src: string): Promise<Input> {
   });
 }
 
+/**
+ * 读时长、取缩略图、截帧共用打开的视频：先后几次读同一个地址只下载、解析一次。
+ * 编码不走这里，它的读取量大、时间长，单独开一个用完就释放。
+ */
+const inputs = createInputPool(openInput);
+
 /** 中止信号触发时抛 AbortError，和运行器的判断对上 */
 function throwIfAborted(signal: AbortSignal) {
   if (signal.aborted) throw new DOMException("已中止", "AbortError");
@@ -35,8 +42,7 @@ function throwIfAborted(signal: AbortSignal) {
  */
 async function probe(src: string, signal: AbortSignal): Promise<TrimProbe> {
   if (!supportsTrim()) throw new TrimError("unsupported");
-  const input = await openInput(src);
-  try {
+  return inputs.use(src, async (input) => {
     const video = await input.getPrimaryVideoTrack();
     throwIfAborted(signal);
     if (!video) throw new TrimError("no-video");
@@ -52,9 +58,7 @@ async function probe(src: string, signal: AbortSignal): Promise<TrimProbe> {
       width: video.displayWidth,
       height: video.displayHeight,
     };
-  } finally {
-    input.dispose();
-  }
+  });
 }
 
 /**
@@ -68,8 +72,7 @@ async function thumbnails(
   signal: AbortSignal,
 ): Promise<(string | null)[]> {
   const { CanvasSink } = await loadMediabunny();
-  const input = await openInput(src);
-  try {
+  return inputs.use(src, async (input) => {
     const video = await input.getPrimaryVideoTrack();
     if (!video || !(await video.canDecode())) return times.map(() => null);
     const sink = new CanvasSink(video, { height, fit: "contain" });
@@ -79,9 +82,7 @@ async function thumbnails(
       out.push(wrapped ? await canvasToUrl(wrapped.canvas) : null);
     }
     return out;
-  } finally {
-    input.dispose();
-  }
+  });
 }
 
 /** 画布转成 JPEG 的 object URL；OffscreenCanvas 和普通 canvas 的写法不同 */
@@ -174,8 +175,7 @@ async function frameAt(
 ): Promise<Blob> {
   if (!supportsTrim()) throw new TrimError("unsupported");
   const { CanvasSink } = await loadMediabunny();
-  const input = await openInput(src);
-  try {
+  return inputs.use(src, async (input) => {
     const video = await input.getPrimaryVideoTrack();
     throwIfAborted(signal);
     if (!video) throw new TrimError("no-video");
@@ -197,9 +197,7 @@ async function frameAt(
     throwIfAborted(signal);
     if (!wrapped) throw new TrimError("undecodable");
     return await canvasToBlob(wrapped.canvas, options.type);
-  } finally {
-    input.dispose();
-  }
+  });
 }
 
 /** 默认取帧引擎：Mediabunny + WebCodecs，和修剪共用同一份读取和跨域处理 */

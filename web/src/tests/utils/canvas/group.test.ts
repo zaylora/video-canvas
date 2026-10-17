@@ -282,6 +282,24 @@ describe("mergeContentNodes", () => {
   });
 });
 
+describe("mergeContentNodes：新选中的节点独占选中", () => {
+  test("新建并选中一个节点时，原本选中的组取消选中（否则拖新节点会把组一起拖走）", () => {
+    const g = { ...group("g", 0, 0, 400, 300), selected: true };
+    const out = mergeContentNodes(
+      [g, node("a", 1, 1)],
+      [node("a", 1, 1), { ...node("n", 9, 9), selected: true }],
+    );
+    expect(byId(out, "g").selected).toBe(false);
+  });
+
+  test("选中状态没变（比如任务回填）时，选中的组保持不动", () => {
+    const g = { ...group("g", 0, 0, 400, 300), selected: true };
+    const a = node("a", 1, 1);
+    const out = mergeContentNodes([g, a], [{ ...a, data: { ...a.data, label: "新名字" } }]);
+    expect(out[0]).toBe(g);
+  });
+});
+
 describe("层级", () => {
   test("新建的组和读档的组都垫在所有节点下面（选中时 xyflow 会再加 1000，仍要低于 0）", () => {
     const { group: g } = createGroup([node("a", 0, 0), node("b", 200, 0)], ["a", "b"], "组");

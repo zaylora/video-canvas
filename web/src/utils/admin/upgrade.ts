@@ -80,18 +80,33 @@ export function runProgress(last: UpgradeRunStatus): RunProgress {
 }
 
 /**
- * 判断「这一次」发起的升级是否已经结束：updater 空闲、记录的目标就是这次的目标、
- * 并且记录是本次发起之后写的（避免把上一次运行的终态当成这次的结果）
+ * updater 报告的最近一次记录是不是「这一次」发起的。
+ * 只比较服务器自己写的 updated_at 与发起前那条记录是否相同，不拿浏览器时钟比，
+ * 避免浏览器和服务器时间有偏差时永远认不出本次运行。
+ * @param last updater 报告的最近一次运行
+ * @param target 这次的目标版本
+ * @param baseline 发起前最近一次记录的 updated_at；当时没有记录为 null
+ * @returns 是这次的为 true
+ */
+export function isOurRun(
+  last: UpgradeRunStatus | null | undefined,
+  target: string,
+  baseline: string | null,
+): last is UpgradeRunStatus {
+  return !!last && last.target === target && last.updated_at !== baseline;
+}
+
+/**
+ * 判断「这一次」发起的升级是否已经结束：updater 空闲，且最近一次记录是本次的并已到终态
  * @param info 升级面板数据
  * @param target 这次的目标版本
- * @param startedAt 这次发起的时间（毫秒时间戳）
+ * @param baseline 发起前最近一次记录的 updated_at；当时没有记录为 null
  * @returns 已结束为 true
  */
-export function isRunFinished(info: UpgradeInfo, target: string, startedAt: number): boolean {
+export function isRunFinished(info: UpgradeInfo, target: string, baseline: string | null): boolean {
   const last = info.last;
-  if (info.running || !last || last.target !== target || last.state === "running") return false;
-  /** 进度文件的时间精确到秒，留 2 秒余量 */
-  return Date.parse(last.updated_at) >= startedAt - 2000;
+  if (info.running || !isOurRun(last, target, baseline)) return false;
+  return last.state !== "running";
 }
 
 /**

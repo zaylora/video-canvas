@@ -29,8 +29,11 @@ export const getMigrations = async () =>
  * @param silent 为 true 时失败不弹全局提示：升级中 backend 重启，轮询失败是正常的
  * @returns updater 是否可用、最近一次运行状态、备份、进行中的任务数
  */
-export const getUpgradeInfo = async (silent = false) => {
-  const info = await service.get<UpgradeInfo>("/admin/system/upgrade", undefined, { silent });
+export const getUpgradeInfo = async (silent = false, timeout?: number) => {
+  const info = await service.get<UpgradeInfo>("/admin/system/upgrade", undefined, {
+    silent,
+    timeout,
+  });
   return {
     ...info,
     backups: info.backups ?? [],

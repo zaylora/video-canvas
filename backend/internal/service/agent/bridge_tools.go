@@ -333,7 +333,11 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 	if len(a.NodeIDs)+len(a.EdgeIDs) == 0 {
 		return nil, fail("没有指定要删除的节点或连线")
 	}
-	p := DeletePayload{Reason: truncateRunes(a.Reason, 200), NodeIDs: a.NodeIDs, EdgeIDs: a.EdgeIDs}
+	// 列表一律给空数组而不是 nil：nil 会序列化成 null，前端直接读 length 会崩
+	p := DeletePayload{
+		Reason: truncateRunes(a.Reason, 200), NodeIDs: nonNil(a.NodeIDs), EdgeIDs: nonNil(a.EdgeIDs),
+		Labels: []string{}, Outputs: []bool{},
+	}
 	if len(a.NodeIDs) > 0 {
 		d, err := b.d.Canvas.Detail(ctx, tc.run, a.NodeIDs) // 顺便确认节点都存在，卡片上要显示标题和是否含产物
 		if err != nil {
@@ -469,4 +473,12 @@ func modelSummary(m provider.ModelInfo) map[string]any {
 	}
 	out["params"] = params
 	return out
+}
+
+// nonNil 把 nil 切片换成空切片，序列化成 [] 而不是 null。
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

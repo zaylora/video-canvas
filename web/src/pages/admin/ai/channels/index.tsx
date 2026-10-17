@@ -232,7 +232,7 @@ export default function ChannelsPage() {
 
   return (
     <DataPage>
-      <h1 className="sr-only">渠道与模型</h1>
+      <h1 className="sr-only">模型渠道</h1>
       <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[250px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <ChannelList
           channels={channels}

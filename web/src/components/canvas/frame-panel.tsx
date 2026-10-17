@@ -122,7 +122,8 @@ export function FramePanel({
   const [busy, setBusy] = useState(false);
 
   const ready = duration > 0 && !loadError;
-  const loading = !loadError && (duration === 0 || thumbs.length === 0);
+  // 只等时长：缩略图没好时胶片条自己有扫光占位，不挡着用户播放和截取
+  const loading = !loadError && duration === 0;
   const total = duration || 1;
 
   /** 指针横坐标换成视频时刻 */
@@ -219,7 +220,7 @@ export function FramePanel({
           className="pointer-events-none absolute inset-y-[-2px] w-0.5 -translate-x-1/2 rounded-full bg-white shadow"
           style={{ left: `${(Math.min(current, duration) / total) * 100}%` }}
         />
-        {/* 读时长和缩略图期间：胶片条正中的胶囊，和修剪面板的时长胶囊同一个位置、同一个样式 */}
+        {/* 读时长期间：胶片条正中的胶囊，和修剪面板的时长胶囊同一个位置、同一个样式 */}
         {loading && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <span className="rounded-full bg-black/70 px-3 py-1 font-mono text-[13px] font-semibold tabular-nums text-white">
