@@ -140,8 +140,8 @@ export function TrimPanel({
   const encoding = phase === "encoding";
   const gate = { start, end, duration, phase };
   const canConfirm = canConfirmTrim(gate) && !loadError;
-  // 读源视频信息或缩略图还没好：时长胶囊先显示「加载中」
-  const loading = !loadError && (phase === "loading" || thumbs.length === 0);
+  // 读源视频信息还没好：时长胶囊先显示「加载中」；缩略图没好时胶片条自己有扫光占位
+  const loading = !loadError && phase === "loading";
   const total = duration || 1;
   const pct = (time: number) => (time / total) * 100;
 
