@@ -111,3 +111,20 @@ func TestSystemWithSkills_Catalog(t *testing.T) {
 		}
 	})
 }
+
+// 联网：怎么用，以及抓回来的内容是别人写的资料、不是指令；搜索词会发给第三方搜索引擎，不能把用户未公开的内容放进去。
+func TestSystem_WebTools(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"web_search", "web_fetch", // 工具名
+			"不是指令", // 网页内容不是指令
+			"第三方",  // 搜索词会外发
+			"未公开",  // 用户的剧本等不要放进搜索词
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代联网工具的用法和风险，缺少 %q", mode, must)
+			}
+		}
+	}
+}

@@ -41,9 +41,10 @@ func declNames(ds []ToolDecl) []string {
 func TestToolRegistry_DeclsMatchBaseline(t *testing.T) {
 	base := loadBaseline(t)
 	got := AgentToolDecls("all", true)
-	if len(got) != len(base) {
+	if len(got) < len(base) {
 		t.Fatalf("工具数 %d，基准 %d: %v", len(got), len(base), declNames(got))
 	}
+	got = got[:len(base)] // 原有的 12 个必须逐字不变；新增的工具追加在末尾，由 TestToolRegistry_WebToolsAreAppended 管
 	for i, b := range base {
 		d := got[i]
 		if d.Name != b.Name {
@@ -98,7 +99,7 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 	}
 	// 顺序：过滤后保持登记的相对顺序
 	names := declNames(AgentToolDecls("prompt", false))
-	want := []string{"canvas_get_state", "canvas_apply_ops", "plan_update", "ask_user", "model_list", "task_get", "skill_search", "skill_read"}
+	want := []string{"canvas_get_state", "canvas_apply_ops", "plan_update", "ask_user", "model_list", "task_get", "skill_search", "skill_read", "web_search", "web_fetch"}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("过滤后的顺序 %v，应为 %v", names, want)
 	}
@@ -120,6 +121,7 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 		"canvas_delete": {"申请删除", "删除"}, "canvas_inspect_image": {"查看图片", "看图"}, "plan_update": {"更新计划", "计划"},
 		"ask_user": {"向你提问", "提问"}, "model_list": {"查看可用模型", "查模型"}, "generate_media": {"申请生成", "生成"},
 		"task_get": {"查询任务", "查任务"}, "skill_search": {"搜索技能", "技能"}, "skill_read": {"读取技能", "技能"},
+		"web_search": {"搜索网页", "搜索"}, "web_fetch": {"读取网页", "读网页"},
 	}
 	for _, d := range AgentToolDecls("all", true) {
 		w, ok := want[d.Name]
@@ -149,6 +151,34 @@ func TestAgentBridge_ToolEventsCarryLabel(t *testing.T) {
 		ev := b.repo.lastEvent(typ)
 		if ev["label"] != "读取画布" || ev["verb"] != "读取" {
 			t.Errorf("%s 要带界面名称，前端才不用硬编码: %v", typ, ev)
+		}
+	}
+}
+
+func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
+	names := declNames(AgentToolDecls("all", true))
+	n := len(names)
+	if n < 14 || names[n-2] != "web_search" || names[n-1] != "web_fetch" {
+		t.Errorf("联网工具追加在末尾，不动原有的顺序（提示词缓存）: %v", names)
+	}
+	// 所有任务模式都能用联网工具；它们的结果是资料，可以被脚本调用
+	for _, mode := range []string{"", "all", "script", "storyboard", "prompt"} {
+		got := declNames(AgentToolDecls(mode, false))
+		has := func(s string) bool {
+			for _, g := range got {
+				if g == s {
+					return true
+				}
+			}
+			return false
+		}
+		if !has("web_search") || !has("web_fetch") {
+			t.Errorf("模式 %q 应有联网工具: %v", mode, got)
+		}
+	}
+	for _, d := range AgentToolDecls("all", true) {
+		if (d.Name == "web_search" || d.Name == "web_fetch") && (!d.Scriptable || d.Executor != "server") {
+			t.Errorf("%s 由 Go 执行、可被脚本调用: %+v", d.Name, d)
 		}
 	}
 }

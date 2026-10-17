@@ -75,17 +75,24 @@ func okStream(text string, usage llmgateway.Usage) func(context.Context, func(ll
 
 type bridgeEnv struct {
 	*agentEnv
-	bill *fakeBillingRepo
-	reg  *fakeBridgeRegistry
-	str  *fakeStreamer
-	br   *AgentBridge
-	now  *time.Time
+	webAccess provider.WebAccess
+	bill      *fakeBillingRepo
+	reg       *fakeBridgeRegistry
+	str       *fakeStreamer
+	br        *AgentBridge
+	now       *time.Time
 }
 
-func newBridgeEnv(t *testing.T) *bridgeEnv { return newBridgeEnvWithSkills(t, nil) }
+func newBridgeEnv(t *testing.T) *bridgeEnv { return newBridgeEnvWith(t, nil, &fakeWeb{}) }
 
 // newBridgeEnvWithSkills 同 newBridgeEnv，并给桥配一个技能库（nil 表示只有内置技能）。
 func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
+	t.Helper()
+	return newBridgeEnvWith(t, lib, &fakeWeb{})
+}
+
+// newBridgeEnvWith 同 newBridgeEnv，可以指定技能库和联网能力（web 传 nil 表示没有联网能力）。
+func newBridgeEnvWith(t *testing.T, lib SkillLibrary, web provider.WebAccess) *bridgeEnv {
 	t.Helper()
 	e := newAgentEnv(t)
 	bill := &fakeBillingRepo{available: 100}
@@ -102,11 +109,14 @@ func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
 	now := e.now
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
-		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib,
+		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
 		Now: func() time.Time { return now }, TokenTTL: time.Hour,
 	})
-	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now}
+	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web}
 }
+
+// web 取注入的假联网能力。
+func (b *bridgeEnv) web() *fakeWeb { return b.webAccess.(*fakeWeb) }
 
 func (b *bridgeEnv) token(t *testing.T, mode string, selection ...string) (string, *model.AgentRun) {
 	t.Helper()

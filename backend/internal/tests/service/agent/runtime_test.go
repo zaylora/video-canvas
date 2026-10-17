@@ -90,14 +90,18 @@ type runtimeEnv struct {
 	work string
 }
 
-func newRuntimeEnv(t *testing.T) *runtimeEnv {
+func newRuntimeEnv(t *testing.T, opts ...func(*RuntimeConfig)) *runtimeEnv {
 	t.Helper()
 	b := newBridgeEnv(t)
 	l := &fakeLauncher{}
 	work := t.TempDir()
+	cfg := RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/src/main.mjs", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond}
+	for _, o := range opts {
+		o(&cfg)
+	}
 	rt := NewProcessRuntime(RuntimeDeps{
 		Repo: b.repo, Bridge: b.br, Canvas: NewAgentCanvasService(b.repo, b.bc), Agent: b.svc, Registry: b.reg, Launcher: l,
-		Config: RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/src/main.mjs", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond},
+		Config: cfg,
 	})
 	return &runtimeEnv{bridgeEnv: b, l: l, rt: rt, work: work}
 }
@@ -550,5 +554,35 @@ func TestProcessRuntime_ShutdownKillsEverything(t *testing.T) {
 	e.rt.Shutdown()
 	if !p.wasKilled() {
 		t.Error("服务退出时要杀掉所有运行进程，不能留下孤儿进程")
+	}
+}
+
+func TestProcessRuntime_DisabledToolsAreNotDeclared(t *testing.T) {
+	names := func(in map[string]any) []string {
+		var out []string
+		for _, v := range in["tools"].([]any) {
+			out = append(out, v.(map[string]any)["name"].(string))
+		}
+		return out
+	}
+	has := func(ns []string, n string) bool {
+		for _, x := range ns {
+			if x == n {
+				return true
+			}
+		}
+		return false
+	}
+	_, in := newRuntimeEnv(t).startRun(t, "all")
+	if got := names(in); !has(got, "web_search") || !has(got, "web_fetch") {
+		t.Errorf("默认应下发联网工具: %v", got)
+	}
+	_, in = newRuntimeEnv(t, func(c *RuntimeConfig) { c.DisabledTools = []string{"web_search", "web_fetch"} }).startRun(t, "all")
+	got := names(in)
+	if has(got, "web_search") || has(got, "web_fetch") {
+		t.Errorf("停用的工具不下发，模型连看都看不到: %v", got)
+	}
+	if !has(got, "canvas_get_state") {
+		t.Errorf("其他工具不受影响: %v", got)
 	}
 }

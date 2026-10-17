@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,6 +30,8 @@ type RuntimeConfig struct {
 	BridgeURL   string        // 桥的地址，如 http://127.0.0.1:47001，Node 用它回调 Go
 	WorkRoot    string        // 每个片段的临时目录建在这里，空表示系统临时目录
 	CancelGrace time.Duration // 发 abort 之后等进程自己退出多久，超时强杀；0 取 5 秒
+	// DisabledTools 是运行时停用的工具名（比如关掉联网就停用 web_search、web_fetch）：不下发给 Agent，模型看不到它们
+	DisabledTools []string
 }
 
 // RuntimeDeps 是创建 ProcessRuntime 需要的依赖。
@@ -158,7 +161,7 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"bridge_url":    r.d.Config.BridgeURL,
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
 		"system_prompt": prompts.SystemWithSkills(mode, catalog),
-		"tools":         AgentToolDecls(mode, caps.Vision),
+		"tools":         r.declaredTools(mode, caps.Vision),
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {
@@ -321,4 +324,13 @@ func (r *ProcessRuntime) Shutdown() {
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// declaredTools 是这次运行下发给 Agent 的工具：按模式和模型能力过滤后，去掉运行时停用的（比如关掉了联网）。
+func (r *ProcessRuntime) declaredTools(mode string, vision bool) []ToolDecl {
+	decls := AgentToolDecls(mode, vision)
+	if len(r.d.Config.DisabledTools) == 0 {
+		return decls
+	}
+	return slices.DeleteFunc(decls, func(d ToolDecl) bool { return slices.Contains(r.d.Config.DisabledTools, d.Name) })
 }

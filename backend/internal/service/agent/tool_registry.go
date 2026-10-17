@@ -56,6 +56,9 @@ var toolSpecs = []toolSpec{
 	{name: "skill_search", label: "搜索技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillSearch},
 	{name: "skill_read", label: "读取技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillRead},
 	{name: "canvas_inspect_image", label: "查看图片", verb: "看图", needsVision: true, run: (*AgentBridge).toolInspectImage},
+	// 联网：所有模式都能用；结果只是资料，可以被脚本调用。是否真的下发由运行时的停用清单决定（RuntimeConfig.DisabledTools）
+	{name: "web_search", label: "搜索网页", verb: "搜索", scriptable: true, run: (*AgentBridge).toolWebSearch},
+	{name: "web_fetch", label: "读取网页", verb: "读网页", scriptable: true, run: (*AgentBridge).toolWebFetch},
 }
 
 // layoutModes 是能排列、删除和生成的任务模式：全能创作和分镜搭建。

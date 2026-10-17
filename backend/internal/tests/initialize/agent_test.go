@@ -9,6 +9,7 @@ import (
 
 	"video-canvas/internal/config"
 	. "video-canvas/internal/initialize"
+	"video-canvas/internal/provider/webaccess"
 )
 
 func TestParseNodeVersion(t *testing.T) {
@@ -102,5 +103,24 @@ func TestListenLoopback(t *testing.T) {
 			l.Close()
 			t.Errorf("%q 不是回环地址，应拒绝", bad)
 		}
+	}
+}
+
+func TestAgentWebAccess(t *testing.T) {
+	web, disabled := AgentWebAccess(config.Agent{WebEnabled: false}, nil)
+	if web != nil || len(disabled) != 2 || disabled[0] != "web_search" || disabled[1] != "web_fetch" {
+		t.Errorf("关闭联网：没有联网能力，两个联网工具列入停用清单: %v %v", web, disabled)
+	}
+	web, disabled = AgentWebAccess(config.Agent{WebEnabled: true}, nil)
+	c, ok := web.(*webaccess.Client)
+	if !ok || len(disabled) != 0 {
+		t.Fatalf("开启联网：有联网能力，没有停用的工具: %T %v", web, disabled)
+	}
+	if got := c.SearchSources(); len(got) != 3 || got[0] != "exa" {
+		t.Errorf("没配 SearXNG 就只用免配置的源: %v", got)
+	}
+	web, _ = AgentWebAccess(config.Agent{WebEnabled: true, SearXNGURL: "http://searxng:8080"}, nil)
+	if got := web.(*webaccess.Client).SearchSources(); len(got) != 4 || got[0] != "searxng" {
+		t.Errorf("配了 SearXNG 排第一: %v", got)
 	}
 }

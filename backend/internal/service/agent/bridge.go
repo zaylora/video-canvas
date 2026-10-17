@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -64,6 +65,7 @@ type BridgeDeps struct {
 	Secrets  provider.SecretResolver // 渠道 Key
 	Streamer ModelStreamer           // 大模型网关
 	Skills   SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
+	Web      provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
 	Now      func() time.Time        // 为 nil 取系统时间
 	TokenTTL time.Duration           // 令牌有效期，0 取 2 小时
 }
@@ -74,6 +76,7 @@ type bridgeSession struct {
 	modelKey, mode                     string
 	selection                          []string
 	skillPins                          map[string]uint64 // 技能名 → 这次运行已固定的版本 id；只在内存里，随令牌失效
+	webCalls                           atomic.Int32      // 这个运行片段里联网工具已调用的次数（搜索和抓取共用上限）
 	expires                            time.Time
 }
 
