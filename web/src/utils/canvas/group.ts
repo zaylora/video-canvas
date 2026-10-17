@@ -238,9 +238,16 @@ export function nextGroupLabel(nodes: FlowNode[]): string {
 /**
  * 只关心普通节点的代码（任务回填、建节点、上传）改完之后，并回完整节点表：
  * 组原样保留，普通节点换成 next。这样那些代码不用认识组。
+ * 例外：next 里有节点是这次新选中的（建节点会先取消其他选中再选中新的），
+ * 那些代码看不到组，取消不到，这里替它们把组也取消选中，否则拖新节点会带着组一起走。
  */
 export function mergeContentNodes(prev: FlowNode[], next: CanvasNode[]): FlowNode[] {
-  return [...prev.filter(isGroupNode), ...next];
+  const wasSelected = new Set(prev.filter((node) => node.selected).map((node) => node.id));
+  const newlySelected = next.some((node) => node.selected && !wasSelected.has(node.id));
+  const groups = prev
+    .filter(isGroupNode)
+    .map((node) => (newlySelected && node.selected ? { ...node, selected: false } : node));
+  return [...groups, ...next];
 }
 
 /**

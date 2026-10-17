@@ -35,7 +35,7 @@ export function SelectionFanHandle({
 }) {
   const { getInternalNode, flowToScreenPosition } = useReactFlow<CanvasNode, CanvasEdge>();
   const zoom = useStore((state) => state.transform[2]);
-  const [drag, setDrag] = useState<{ froms: Point[]; to: Point } | null>(null);
+  const [drag, setDrag] = useState<{ froms: Point[]; origin: Point; to: Point } | null>(null);
   const session = useRef<{ froms: Point[]; origin: Point; moved: boolean } | null>(null);
 
   /** 被选节点右侧出口的屏幕坐标 */
@@ -64,7 +64,7 @@ export function SelectionFanHandle({
     if (!current.moved) {
       current.moved = Math.hypot(to.x - current.origin.x, to.y - current.origin.y) > DRAG_THRESHOLD;
     }
-    if (current.moved) setDrag({ froms: current.froms, to });
+    if (current.moved) setDrag({ froms: current.froms, origin: current.origin, to });
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -101,9 +101,19 @@ export function SelectionFanHandle({
           title="拖出去或点击，引用选中的节点生成"
           initial={{ opacity: 0, scale: 0.6 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: DURATION.base, ease: EASE_OUT }}
+          transition={{
+            duration: DURATION.base,
+            ease: EASE_OUT,
+            x: { duration: 0 },
+            y: { duration: 0 },
+          }}
           className="bg-canvas text-muted-foreground ring-foreground/30 hover:text-foreground hover:ring-foreground/60 nodrag nopan pointer-events-auto absolute flex size-7 -translate-y-1/2 cursor-crosshair touch-none items-center justify-center rounded-full ring-[1.5px] transition-colors"
-          style={{ left: GAP - 14 }}
+          // 拖动时「+」跟着指针走；屏幕像素偏移，外层已按 1/zoom 抵消缩放
+          style={{
+            left: GAP - 14,
+            x: drag ? drag.to.x - drag.origin.x : 0,
+            y: drag ? drag.to.y - drag.origin.y : 0,
+          }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
