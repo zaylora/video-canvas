@@ -5,8 +5,8 @@ import http from "node:http";
  * 假的 Go 桥：一个 OpenAI 兼容的流式端点，加 /tool、/state、/finish。
  * models 是模型回合的脚本；tool 是工具回调的处理函数；记录收到的所有请求。
  */
-export async function fakeBridge({ models = [], summaries = [], tool = async () => ({ content: "ok" }), stateStatus = 200 } = {}) {
-  const rec = { chats: [], summaries: [], headers: [], tools: [], states: [], finishes: [], auths: [], closed: 0 };
+export async function fakeBridge({ models = [], summaries = [], tool = async () => ({ content: "ok" }), toolEvent = async () => ({ allowed: true }), stateStatus = 200 } = {}) {
+  const rec = { chats: [], summaries: [], headers: [], tools: [], toolEvents: [], states: [], finishes: [], auths: [], closed: 0 };
   let turn = 0;
   let summaryTurn = 0;
   const srv = http.createServer((req, res) => {
@@ -44,6 +44,10 @@ export async function fakeBridge({ models = [], summaries = [], tool = async () 
       if (req.url === "/internal/agent/bridge/tool") {
         rec.tools.push(json);
         try { return ok(await tool(json)); } catch (e) { res.writeHead(500, { "content-type": "application/json" }); return res.end(JSON.stringify({ code: 10000, msg: String(e.message) })); }
+      }
+      if (req.url === "/internal/agent/bridge/tool-event") {
+        rec.toolEvents.push(json);
+        return ok(await toolEvent(json));
       }
       if (req.url === "/internal/agent/bridge/state") {
         rec.states.push(json.messages);

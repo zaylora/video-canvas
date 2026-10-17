@@ -77,6 +77,7 @@ type bridgeSession struct {
 	selection                          []string
 	skillPins                          map[string]uint64 // 技能名 → 这次运行已固定的版本 id；只在内存里，随令牌失效
 	webCalls                           atomic.Int32      // 这个运行片段里联网工具已调用的次数（搜索和抓取共用上限）
+	nestedCalls                        atomic.Int32      // 这个运行片段里 codemode 脚本发起的嵌套调用次数
 	expires                            time.Time
 }
 

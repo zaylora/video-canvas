@@ -5,7 +5,7 @@ import { createBridge } from "./bridge-client.mjs";
 import { SUMMARY_SYSTEM_PROMPT, createCompactor, summaryMaxTokens } from "./compaction.mjs";
 import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
 import { createSteering } from "./steer.mjs";
-import { buildTools } from "./tools.mjs";
+import { buildAllTools } from "./agent-tools/index.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
 const MAX_ERROR_CHARS = 300;
@@ -122,7 +122,7 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
     // 历史通过 initialState 交给 pi：它会用这次的系统提示和工具声明重新生成开头的 system 消息；
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
-      systemPrompt: input.system_prompt, model: piModel, tools: buildTools(bridge, input.tools, onTerminate),
+      systemPrompt: input.system_prompt, model: piModel, tools: buildAllTools({ bridge, input, onTerminate, log }),
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),

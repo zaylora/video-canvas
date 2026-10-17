@@ -128,3 +128,19 @@ func TestSystem_WebTools(t *testing.T) {
 		}
 	}
 }
+
+// codemode：什么时候该用（批量时），什么时候不值得，脚本中途出错后别重复执行。
+func TestSystem_Codemode(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"codemode", // 工具名
+			"批量",       // 什么时候用
+			"不要重复",     // 脚本中途出错后别重复执行已生效的修改
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代 codemode 的用法，缺少 %q", mode, must)
+			}
+		}
+	}
+}

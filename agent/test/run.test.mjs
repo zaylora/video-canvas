@@ -107,19 +107,21 @@ test("桥回调失败（500）：模型看到错误，运行不中断", async ()
   });
 });
 
-test("tools：只把 Go 下发的工具声明给模型", async () => {
+test("tools：Go 下发的工具原样声明给模型，Agent 自己的 codemode 追加在后面", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     const two = TOOL_DECLS.filter((d) => ["canvas_get_state", "plan_update"].includes(d.name));
     await runAgent(baseInput(b.url, { tools: two }));
-    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name), ["canvas_get_state", "plan_update"]);
+    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name), ["canvas_get_state", "plan_update", "codemode"]);
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    assert.equal(b.rec.chats[0].tools.length, 12, "Go 下发多少就声明多少，顺序不变");
+    const names = b.rec.chats[0].tools.map((t) => t.function.name);
+    assert.deepEqual(names.slice(0, 12), TOOL_DECLS.map((d) => d.name), "Go 下发多少就声明多少，顺序不变");
+    assert.deepEqual(names.slice(12), ["codemode"]);
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url, { tools: undefined }));
-    assert.ok(!b.rec.chats[0].tools?.length, "Go 没下发工具时，Node 里没有任何内置的业务工具");
+    assert.ok(!b.rec.chats[0].tools?.length, "Go 没下发工具时，Node 里没有任何内置的业务工具，codemode 也没有可调用的东西所以不启用");
   });
 });
 

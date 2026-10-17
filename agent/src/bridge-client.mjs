@@ -32,8 +32,17 @@ export function createBridge({ baseUrl, token, fetchImpl = fetch }) {
   }
 
   return {
-    /** 执行一次工具调用，返回 {content, is_error, terminate} */
-    tool: (toolCallId, name, args, signal) => post("/tool", { tool_call_id: toolCallId, name, args }, signal),
+    /**
+     * 执行一次工具调用，返回 {content, is_error, terminate}。
+     * 在 codemode 脚本里发起的嵌套调用带 parentToolCallId：Go 据此不把它计入步数。
+     */
+    tool: (toolCallId, name, args, signal, { parentToolCallId } = {}) =>
+      post("/tool", { tool_call_id: toolCallId, name, args, ...(parentToolCallId && { parent_tool_call_id: parentToolCallId }) }, signal),
+    /**
+     * Agent 自己的工具（不经 /tool）开始和结束时向 Go 报备，Go 据此在时间线里记这一步、计步数。
+     * 开始时返回 {allowed, content, terminate}：步数用尽等情况 allowed 为 false。
+     */
+    toolEvent: (payload, signal) => post("/tool-event", payload, signal),
     /** 回合结束时交回对话历史 */
     state: (messages) => post("/state", { messages }),
     /** 报告片段结束：done 跑完了；paused 因工具要求停下（等审批、等回答）；error 出错 */

@@ -192,3 +192,22 @@ func TestAgentConfig_SearXNGURLMustBeHTTP(t *testing.T) {
 		t.Errorf("联网关闭时不校验 SearXNG 地址: %v", err)
 	}
 }
+
+// agent.disabled_tools：运维想关掉某个工具（比如 codemode）时在配置里加一项；Node 靠它决定启用哪些 Agent 工具。
+func TestLoad_AgentDisabledTools(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Agent.DisabledTools) != 0 {
+		t.Errorf("默认不停用任何工具: %v", cfg.Agent.DisabledTools)
+	}
+	t.Setenv("APP_AGENT_DISABLED_TOOLS", "codemode,web_fetch")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Agent.DisabledTools; len(got) != 2 || got[0] != "codemode" || got[1] != "web_fetch" {
+		t.Errorf("环境变量应能覆盖（逗号分隔）: %v", got)
+	}
+}

@@ -124,3 +124,19 @@ func TestAgentWebAccess(t *testing.T) {
 		t.Errorf("配了 SearXNG 排第一: %v", got)
 	}
 }
+
+func TestAgentDisabledTools(t *testing.T) {
+	if got := AgentDisabledTools(config.Agent{WebEnabled: true}); len(got) != 0 {
+		t.Errorf("联网开着、没配停用: %v", got)
+	}
+	got := AgentDisabledTools(config.Agent{WebEnabled: false, DisabledTools: []string{"codemode", "web_search"}})
+	want := map[string]bool{"codemode": true, "web_search": true, "web_fetch": true}
+	if len(got) != 3 {
+		t.Fatalf("配置的停用清单加上关联网时的联网工具，去重: %v", got)
+	}
+	for _, n := range got {
+		if !want[n] {
+			t.Errorf("不该出现 %q: %v", n, got)
+		}
+	}
+}

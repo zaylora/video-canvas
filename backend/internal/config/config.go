@@ -99,6 +99,9 @@ type Agent struct {
 	// SearXNGURL 是自己部署的 SearXNG 地址（如 http://searxng:8080），可选：配了它排在搜索源的第一位，
 	// 没配就依次用免配置的 Exa、Bing、DuckDuckGo（后两个抓网页，数据中心的出口常给降级结果或要求人机验证，生产环境建议部署 SearXNG）。
 	SearXNGURL string `mapstructure:"searxng_url"`
+	// DisabledTools 是停用的工具名（逗号分隔的环境变量 APP_AGENT_DISABLED_TOOLS 也行）：不下发给模型。
+	// Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，运维想关掉某个能力时加一项。
+	DisabledTools []string `mapstructure:"disabled_tools"`
 }
 
 // WithDefaults 补上没配置的项。
@@ -223,7 +226,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
-		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url",
+		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

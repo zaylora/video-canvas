@@ -586,3 +586,16 @@ func TestProcessRuntime_DisabledToolsAreNotDeclared(t *testing.T) {
 		t.Errorf("其他工具不受影响: %v", got)
 	}
 }
+
+func TestProcessRuntime_PassesDisabledToolsToNode(t *testing.T) {
+	// 停用清单同时交给 Node：Agent 自己的工具（比如 codemode）靠它决定启用与否
+	_, in := newRuntimeEnv(t).startRun(t, "all")
+	if _, has := in["disabled_tools"]; has {
+		t.Errorf("没有停用的工具时不传 disabled_tools: %v", in["disabled_tools"])
+	}
+	_, in = newRuntimeEnv(t, func(c *RuntimeConfig) { c.DisabledTools = []string{"codemode", "web_search"} }).startRun(t, "all")
+	got, _ := in["disabled_tools"].([]any)
+	if len(got) != 2 || got[0] != "codemode" || got[1] != "web_search" {
+		t.Errorf("disabled_tools=%v", in["disabled_tools"])
+	}
+}

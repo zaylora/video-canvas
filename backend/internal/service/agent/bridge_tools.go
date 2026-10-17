@@ -64,9 +64,25 @@ type toolCall struct {
 	args json.RawMessage
 }
 
+// maxNestedCalls 是一个运行片段里 codemode 脚本最多发起多少次嵌套调用。嵌套调用不计入步数，所以另设一个上限，
+// 免得一个脚本无限循环地改画布；Node 对单个脚本另有更小的上限。
+const maxNestedCalls = 300
+
 // ExecuteTool 执行 Node 回调的一次工具调用。工具层的失败（参数不对、校验不过、模式不允许）作为 IsError 的结果返回，
 // 让模型看到并自己改正；只有令牌无效、运行不在 running 这类「这次回调本身就不该发生」的情况才返回 error。
 func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
+	return b.executeTool(ctx, token, "", toolCallID, name, args)
+}
+
+// ExecuteNestedTool 执行 codemode 脚本里发起的一次嵌套调用。和普通调用的区别：
+// 不单独计步数、不受步数上限约束（整个脚本在开始时由 ReportAgentTool 计 1 步）；只有标为「可被脚本调用」的工具能在这里执行
+// （会创建审批并终止本轮的、返回图片的工具不行，脚本没法在「等审批」处停下）；一个运行片段里最多 maxNestedCalls 次。
+// 模式权限、参数校验、tool.start / tool.end 事件都和普通调用一样，事件带上 parent_id。
+func (b *AgentBridge) ExecuteNestedTool(ctx context.Context, token, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
+	return b.executeTool(ctx, token, parentID, toolCallID, name, args)
+}
+
+func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
 	sess, err := b.session(token)
 	if err != nil {
 		return nil, err
@@ -75,27 +91,41 @@ func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name s
 	if err != nil {
 		return nil, err
 	}
-	// 1. 步数上限：用到头就暂停运行并让循环停下，用户可以追加后继续
-	if run.Steps >= run.MaxSteps {
+	nested := parentID != ""
+	reject := func(msg string) (*ToolResult, error) {
+		return b.toolError(ctx, run, toolCallID, parentID, name, msg), nil
+	}
+	// 1. 步数上限：用到头就暂停运行并让循环停下，用户可以追加后继续。嵌套调用不受它管：脚本整体在开始时已经算过步数
+	if !nested && run.Steps >= run.MaxSteps {
 		b.pauseRun(ctx, run, model.RunStepLimit)
 		return &ToolResult{Content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", IsError: true, Terminate: true}, nil
 	}
-	// 2. 当前任务模式不允许的工具，直接告诉模型；工具名认不得的也一样
+	// 2. 当前任务模式不允许的工具，直接告诉模型；工具名认不得的也一样；脚本里还要求工具能被脚本调用，且次数没超上限
 	spec := findTool(name)
 	if spec == nil {
-		return b.toolError(ctx, run, toolCallID, name, "未知的工具："+name), nil
+		return reject("未知的工具：" + name)
 	}
 	if !spec.allowsMode(sess.mode) {
-		return b.toolError(ctx, run, toolCallID, name, fmt.Sprintf("当前是「%s」模式，不能使用 %s。", modeLabel(sess.mode), name)), nil
+		return reject(fmt.Sprintf("当前是「%s」模式，不能使用 %s。", modeLabel(sess.mode), name))
 	}
-	// 3. 执行：先记 tool.start，结束后记 tool.end，并把这次调用计入步数
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", withToolLabel(map[string]any{"id": toolCallID, "name": name}, name))
+	if nested {
+		if !spec.scriptable {
+			return reject(fmt.Sprintf("%s 不能在脚本里调用，请在脚本之外单独调用这个工具。", name))
+		}
+		if sess.nestedCalls.Add(1) > maxNestedCalls {
+			return reject(fmt.Sprintf("本轮脚本里调用工具的次数已达上限（%d 次）。", maxNestedCalls))
+		}
+	}
+	// 3. 执行：先记 tool.start，结束后记 tool.end；普通调用计入步数
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", withParent(withToolLabel(map[string]any{"id": toolCallID, "name": name}, name), parentID))
 	out, herr := spec.run(b, ctx, &toolCall{run: run, sess: sess, id: toolCallID, args: args})
-	if err := b.d.Repo.AddRunUsage(ctx, run.ID, 1, 0); err != nil {
-		logger.Warn("记录 Agent 步数失败", zap.Error(err), zap.Uint64("run_id", run.ID))
+	if !nested {
+		if err := b.d.Repo.AddRunUsage(ctx, run.ID, 1, 0); err != nil {
+			logger.Warn("记录 Agent 步数失败", zap.Error(err), zap.Uint64("run_id", run.ID))
+		}
 	}
 	res := b.finishTool(out, herr)
-	end := withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}, name)
+	end := withParent(withToolLabel(map[string]any{"id": toolCallID, "name": name, "is_error": res.IsError, "summary": firstNonEmpty(outSummary(out), summarizeError(res))}, name), parentID)
 	if out != nil {
 		for k, v := range out.extra {
 			end[k] = v
@@ -105,9 +135,17 @@ func (b *AgentBridge) ExecuteTool(ctx context.Context, token, toolCallID, name s
 	return res, nil
 }
 
+// withParent 给脚本里发起的调用的事件带上父调用 id。
+func withParent(ev map[string]any, parentID string) map[string]any {
+	if parentID != "" {
+		ev["parent_id"] = parentID
+	}
+	return ev
+}
+
 // toolError 为被拒绝的调用（未知工具、模式不允许）记一对事件并返回工具错误。
-func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, name, msg string) *ToolResult {
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", withToolLabel(map[string]any{"id": id, "name": name, "is_error": true, "summary": msg}, name))
+func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, parentID, name, msg string) *ToolResult {
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", withParent(withToolLabel(map[string]any{"id": id, "name": name, "is_error": true, "summary": msg}, name), parentID))
 	return &ToolResult{Content: msg, IsError: true}
 }
 

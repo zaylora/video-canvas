@@ -163,6 +163,9 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"system_prompt": prompts.SystemWithSkills(mode, catalog),
 		"tools":         r.declaredTools(mode, caps.Vision),
 	}
+	if len(r.d.Config.DisabledTools) > 0 {
+		input["disabled_tools"] = r.d.Config.DisabledTools // Agent 自己的工具（如 codemode）靠它决定启用与否
+	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {
 		return nil, err

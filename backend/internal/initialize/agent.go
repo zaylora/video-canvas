@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -134,6 +135,16 @@ func AgentWebAccess(ac config.Agent, ipAllowed func(net.IP) bool) (provider.WebA
 	return webaccess.New(webaccess.Config{SearXNGURL: ac.SearXNGURL, IPAllowed: ipAllowed}), nil
 }
 
+// AgentDisabledTools 是这次启动停用的工具：配置里点名停用的，加上关掉联网时的联网工具，去重。
+func AgentDisabledTools(ac config.Agent) []string {
+	out := slices.Clone(ac.DisabledTools)
+	if !ac.WebEnabled {
+		out = append(out, webToolNames...)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // newAgentRuntime 按配置装配运行时：自检 → 监听回环地址 → 创建桥和进程运行时 → 绑定到 AgentService。
 // 没启用时返回 nil。
 func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
@@ -149,14 +160,14 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("监听桥地址失败：%w", err)
 	}
-	web, disabledTools := AgentWebAccess(ac, d.ipAllowed)
+	web, _ := AgentWebAccess(ac, d.ipAllowed)
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
 		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web,
 	})
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
-		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir, DisabledTools: disabledTools},
+		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
 	})
 	d.agent.SetRuntime(rt)
 	return &agentRuntime{
