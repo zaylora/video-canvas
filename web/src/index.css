@@ -475,6 +475,29 @@
   background-color: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
 }
 
+/* 滚动条出现或消失会让内容宽度变 8px，整块左右抖一下：骨架屏撑高后出现滚动条、
+   数据回来内容变短又没了。统一在这里处理，各页面不用再各自补。
+   - 文档：首页外壳（HomeLayout，靠文档滚动的页面）里 html 常驻 overflow-y: scroll，
+     没溢出时是一条透明的空轨道，位置一直占着。后台、登录、画布是整屏页面不走文档滚动，不加，免得右边多一条空白。
+     不能只靠 scrollbar-gutter：页面用了上面的 ::-webkit-scrollbar 自定义滚动条，
+     Chrome 在这种情况下不给 html 预留位置（实测没有滚动条的页面右边一点都没留）。
+   - 容器：写了 overflow-auto / overflow-y-auto 的容器加 scrollbar-gutter，能预留就预留。
+     不能写成 * ：overflow: hidden 的元素也会被预留，右边会多出一条空白；
+     弹出菜单、下拉、命令面板是一次性浮层，内容定了就不变，不预留。 */
+html:has([data-shell="home"]) {
+  overflow-y: scroll;
+}
+
+:is(.overflow-auto, .overflow-y-auto):not(
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="select-content"],
+  [data-slot="popover-content"],
+  [data-slot="command-list"]
+) {
+  scrollbar-gutter: stable;
+}
+
 /* Chrome 同时拿到 scrollbar-color 和 ::-webkit-scrollbar 时只认前者，
    会让上面这套圆角样式失效，所以标准属性只留给没有伪元素的浏览器（Firefox）。 */
 @supports not selector(::-webkit-scrollbar) {

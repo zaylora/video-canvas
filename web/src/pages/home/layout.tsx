@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Outlet, useLocation, useViewTransitionState } from "react-router";
 import { motion, MotionConfig } from "motion/react";
 
@@ -53,19 +53,10 @@ export default function HomeLayout() {
   const transitioning = useViewTransitionState("/canvases");
   usePageTitle(homePageTitle(useLocation().pathname));
 
-  /** 页面靠文档滚动：骨架屏撑高出现滚动条、数据回来内容变短又消失，会让整页左右抖。常驻预留滚动条的位置 */
-  useEffect(() => {
-    const root = document.documentElement;
-    const previous = root.style.scrollbarGutter;
-    root.style.scrollbarGutter = "stable";
-    return () => {
-      root.style.scrollbarGutter = previous;
-    };
-  }, []);
-
   return (
     <MotionConfig reducedMotion="user">
       <SidebarProvider
+        data-shell="home"
         data-view-transitioning={transitioning || undefined}
         /** 设计稿 4.0：展开 240px，收起 56px（40px 图标按钮 + 两侧各 8px），shadcn 默认的 48px 放不下 */
         style={{ "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem" } as CSSProperties}
