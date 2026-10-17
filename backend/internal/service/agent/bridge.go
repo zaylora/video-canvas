@@ -26,6 +26,23 @@ const (
 	deltaFlushEvery  = 50 * time.Millisecond // 文本增量最多每 50ms 推一次
 )
 
+// ModelPurposeSummary 是 Agent 为压缩上下文发起的摘要调用：照常预检预算、计费，
+// 但它不是助手对用户说的话，不推文本增量、不记 message.done。
+const ModelPurposeSummary = "summary"
+
+type modelPurposeKey struct{}
+
+// WithModelPurpose 标明这次模型调用的用途；没标明就是普通的对话调用。
+func WithModelPurpose(ctx context.Context, purpose string) context.Context {
+	return context.WithValue(ctx, modelPurposeKey{}, purpose)
+}
+
+// ModelPurposeFrom 取模型调用的用途，没有返回空串。
+func ModelPurposeFrom(ctx context.Context) string {
+	p, _ := ctx.Value(modelPurposeKey{}).(string)
+	return p
+}
+
 // ErrBridgeToken 表示桥令牌无效、已过期或已被撤销。
 var ErrBridgeToken = errors.New("桥令牌无效或已过期")
 
@@ -185,7 +202,11 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 		lim.MaxTokens = c.Output
 	}
 
+	internal := ModelPurposeFrom(ctx) == ModelPurposeSummary
 	deltas := &deltaBuffer{flush: func(text, thinking string) {
+		if internal {
+			return // 摘要的文字不是对用户说的话，不推给前端
+		}
 		if text != "" {
 			b.d.Agent.push(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "message.delta", map[string]any{"text": text})
 		}
@@ -204,7 +225,9 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
 	}
 	// 插话会让 Agent 中止正在输出的回答再重答：此时 ctx 已取消，半截回答的 message.done 也要落库，前端才能清掉流式残留
-	b.recordMessage(context.WithoutCancel(ctx), run, res, settled, serr != nil)
+	if !internal {
+		b.recordMessage(context.WithoutCancel(ctx), run, res, settled, serr != nil)
+	}
 	return serr
 }
 

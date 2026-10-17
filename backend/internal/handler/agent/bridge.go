@@ -83,7 +83,11 @@ func (h *AgentBridgeHandler) ChatCompletions(c *gin.Context) {
 		_, _ = c.Writer.Write(line) // 调用方已断开时写失败，下面的上下文取消会让代理结束
 		c.Writer.Flush()
 	}
-	err = h.svc.ProxyModel(c.Request.Context(), tok, body, write)
+	ctx := c.Request.Context()
+	if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话，免得被用来藏起助手的回复
+		ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
+	}
+	err = h.svc.ProxyModel(ctx, tok, body, write)
 	if err != nil && !started {
 		status, msg, typ := openAIError(err)
 		writeOpenAIError(c, status, msg, typ)

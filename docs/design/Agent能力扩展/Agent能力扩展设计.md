@@ -159,7 +159,7 @@ Go 与 Node 之间的接口边界，作为约定写进 `agent/` 和 `backend/` �
 
 保留上面两层（它们便宜，且不调用模型），在它们之后加摘要：
 
-1. **触发**：裁剪后估算的 token 数仍超过 `contextWindow - reserve` 时触发。token 用 `@earendil-works/pi-ai/utils/estimate` 里的 `estimateContextTokens` 估算（已在 1.0.4 里有，不用再按字数粗估）。默认 `reserve = 16384`，窗口很小的模型按比例收紧（具体数值留给实现，参考 pi-coding-agent 的 `reserveTokens: 16384`、`keepRecentTokens: 20000`）。
+1. **触发**：裁剪后估算的大小仍超过 `contextWindow - reserve` 时触发。**估算取两者较大的**：pi 的 `estimateContextTokens`（会用上游报告的真实用量）和「1 字 1 个 Token」的字数。pi 自己的估算按 3.5 个字符一个 Token，对中文会严重偏低，所以不能只用它；系统提示和工具声明占的字数也算进去。`reserve = min(16384, 窗口 × 15%)`，`keepRecent = min(20000, 窗口 × 25%)`（同样按字数算）。
 2. **切点**：从最新的消息往回累计，保留约 `keepRecentTokens` 的最近内容；切点只能落在用户消息或 assistant 消息前面，**永远不落在工具结果处**，保证工具调用和它的结果成对留下；如果切点会落在一轮对话中间（一条超长的用户消息之后），按 pi-coding-agent 的做法处理，细节留给实现。
 3. **生成摘要**：把切点之前的消息交给模型，生成结构化摘要。已有旧摘要时，作为「之前的摘要」传入，做增量更新，而不是从头重写。
 4. **替换并保存**：历史变成「一条摘要消息 + 保留的最近消息」。摘要要**写进保存的历史**（经现有的 `/state`），这样下一次不用重新生成；它不是每次发请求前现算的临时视图。
@@ -184,10 +184,15 @@ Go 与 Node 之间的接口边界，作为约定写进 `agent/` 和 `backend/` �
 - 摘要期间用户插话：不中止摘要（它已经付费、通常几秒内完成），插话入队；pi 在 `prepareNextTurn` 之后会再取一次队列里的插话，摘要完成后随下一轮一起注入。
 - 摘要期间用户点「停止」：摘要调用中止，结果丢弃，不写进历史。
 
-### 6.5 要在实现里验证的点
+### 6.5 实现时确定的做法（已验证）
 
-- 压缩是在每轮开始前由 pi 的 `prepareNextTurn` 钩子里做，还是在运行片段开始前做一次；以及怎样把压缩后的消息同步回 `agent.state.messages`，让保存的历史是压缩后的。实现前先做一个小验证：`prepareNextTurn` 返回的上下文会不会同步到 `agent.state.messages`。不同步的话，就在 `turn_end` 里自己改。
-- 切点逻辑照抄 pi-coding-agent 时，它依赖 coding-agent 的会话条目结构，要改写成直接处理 `AgentMessage[]`；摘要生成函数 `generateSummary` 本身只依赖消息和 pi-ai，可参考。**不引入 pi-coding-agent 这个包**（依赖很重，含终端界面、MCP、WASM 等）。
+- **挂在 `prepareRequest` 上**，不是 `prepareNextTurn`：它在每次模型请求前都会执行，包括一个运行片段的第一次请求；`prepareNextTurn` 只在「还要再来一轮」时执行，覆盖不到第一次。压缩后既返回新的上下文给循环，也把消息同步写回 `agent.state.messages`（pi 的循环用的是启动时复制的一份，`state.messages` 只在 `message_end` 时追加，两边不会自动同步），保存的历史就是压缩后的。开头的 system 消息原样留着，不参与压缩。
+- 切点逻辑改写成直接处理消息数组，摘要提示词按画布场景改写并保留 pi-coding-agent 的 MIT 版权说明；**不引入 pi-coding-agent 这个包**（依赖很重，含终端界面、MCP、WASM 等）。
+- 摘要请求走桥，请求头 `X-Agent-Purpose: summary` 标明是内部调用；Go 在 handler 里认这个头（只认 `summary`，别的值一律当普通对话），把用途放进上下文（`WithModelPurpose`），`ProxyModel` 据此不推文本增量、不记 `message.done`，预检、计费、预算暂停照常。
+- 摘要请求的输入最多取窗口的 70%（超出的较早内容丢弃并标注），输出上限 `min(4096, 窗口 × 25%)`。
+- 摘要失败（模型出错、预算不足、返回为空）：只做裁剪，并且这个运行片段里不再重试，免得每个回合都白付一次钱。
+- 一次切不动（没有合法切点，比如只有一条超长消息）就不压缩。
+- 增量更新：已有摘要时（历史第一条是带 `【对话摘要】` 前缀的用户消息）把它作为「之前的摘要」传入，只留一条摘要。
 
 ## 7. ④ 工具注册表
 

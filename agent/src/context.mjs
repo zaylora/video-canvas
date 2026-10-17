@@ -3,7 +3,8 @@ export const ELIDED = "[较早的工具结果已省略；需要时请重新读�
 
 const IMAGE_CHARS = 1000; // 一张图按这么多字估
 
-function charsOf(m) {
+/** 一条消息按「1 字 1 个 Token」估的字数（偏保守，中文接近实际）；摘要压缩的触发和切点也用它 */
+export function charsOf(m) {
   const c = m.content;
   if (typeof c === "string") return c.length;
   if (!Array.isArray(c)) return 0;

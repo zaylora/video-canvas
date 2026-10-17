@@ -2,6 +2,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
+import { SUMMARY_SYSTEM_PROMPT, createCompactor, summaryMaxTokens } from "./compaction.mjs";
 import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
 import { createSteering } from "./steer.mjs";
 import { buildTools } from "./tools.mjs";
@@ -28,7 +29,7 @@ export async function runAgent(input, io = {}) {
   // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
   // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
   let paused = false;
-  const agent = buildAgent(input, bridge, () => (paused = true), () => paused);
+  const agent = buildAgent(input, bridge, () => (paused = true), () => paused, log);
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
@@ -88,7 +89,7 @@ async function settle(agent, steering, { isPaused, isAborted }) {
 }
 
 /** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
-function buildAgent(input, bridge, onTerminate, isPaused) {
+function buildAgent(input, bridge, onTerminate, isPaused, log) {
   const m = input.model;
   const baseUrl = input.bridge_url.replace(/\/+$/, "") + "/internal/agent/bridge/v1";
   const model = {
@@ -106,16 +107,35 @@ function buildAgent(input, bridge, onTerminate, isPaused) {
   });
   const models = createModels();
   models.setProvider(provider);
+  const piModel = models.getModel("bridge", "agent");
+
+  // 摘要压缩：历史超过触发线时把较早的消息写成摘要。摘要请求也走桥（Go 计费），请求头标明是内部调用，Go 不把它当助手的话推给前端
+  const compactor = createCompactor({
+    window: m.context_window,
+    overhead: (input.system_prompt?.length ?? 0) + (input.tools ?? []).reduce((n, d) => n + d.description.length + JSON.stringify(d.parameters).length, 0),
+    view: (msgs) => trimContext(dropOldImages(msgs, KEEP_IMAGES), { window: m.context_window }),
+    summarize: (prompt, signal) => summarize(models, piModel, prompt, signal, m.context_window),
+    onError: (e) => log("摘要压缩失败，只做裁剪", { error: String(e?.message ?? e) }),
+  });
 
   const agent = new Agent({
     // 历史通过 initialState 交给 pi：它会用这次的系统提示和工具声明重新生成开头的 system 消息；
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
-      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.tools, onTerminate),
+      systemPrompt: input.system_prompt, model: piModel, tools: buildTools(bridge, input.tools, onTerminate),
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),
     transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
+    // 每次请求模型前看一眼历史：超过触发线就压缩，并把压缩后的消息同步回 agent.state，保存的历史就是压缩后的、下次不用重做
+    prepareRequest: async ({ context }, signal) => {
+      const lead = Math.max(0, context.messages.findIndex((x) => x.role !== "system")); // 开头的 system 消息原样留着，不参与压缩
+      const next = await compactor.compact(context.messages.slice(lead), signal);
+      if (!next) return undefined;
+      const messages = [...context.messages.slice(0, lead), ...next];
+      agent.state.messages = messages.slice();
+      return { context: { ...context, messages } };
+    },
     toolExecution: "sequential",
     // 多条插话一次取出，在同一次回复里一起回应，而不是每条各答一遍
     steeringMode: "all",
@@ -127,6 +147,17 @@ function buildAgent(input, bridge, onTerminate, isPaused) {
     finishTurn: async () => (isPaused() ? { action: "end" } : undefined),
   });
   return agent;
+}
+
+/** 让模型把一段对话写成摘要：走桥，请求头标明是内部调用；出错或被中止都抛出，由压缩器退回不压缩 */
+async function summarize(models, model, prompt, signal, window) {
+  const msg = await models.completeSimple(
+    model,
+    { systemPrompt: SUMMARY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
+    { signal, maxTokens: summaryMaxTokens(window), headers: { "X-Agent-Purpose": "summary" } },
+  );
+  if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || "摘要请求失败");
+  return msg.content.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
 /** 按启动方式驱动 Agent：start 发新消息；continue 把审批后的真实结果放回工具结果再继续；resume 接着中断的地方 */

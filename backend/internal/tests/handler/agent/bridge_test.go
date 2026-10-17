@@ -31,10 +31,12 @@ type fakeBridge struct {
 	finStatus string
 	finMsg    string
 	toolRes   *agentsvc.ToolResult
+	purpose   string // ProxyModel 收到的调用用途
 }
 
-func (f *fakeBridge) ProxyModel(_ context.Context, token string, body []byte, write func([]byte)) error {
+func (f *fakeBridge) ProxyModel(ctx context.Context, token string, body []byte, write func([]byte)) error {
 	f.token, f.body = token, string(body)
+	f.purpose = agentsvc.ModelPurposeFrom(ctx)
 	if f.err != nil && !f.failAfter {
 		return f.err
 	}
@@ -271,4 +273,28 @@ func TestBridgeHandler_StateAndFinish(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestBridgeHandler_ChatCompletions_PurposeHeader(t *testing.T) {
+	call := func(api *fakeBridge, purpose string) {
+		req := httptest.NewRequest(http.MethodPost, "/internal/agent/bridge/v1/chat/completions", strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer tok-1")
+		if purpose != "" {
+			req.Header.Set("X-Agent-Purpose", purpose)
+		}
+		newBridgeRouter(api).ServeHTTP(httptest.NewRecorder(), req)
+	}
+	api := &fakeBridge{}
+	call(api, "summary")
+	if api.purpose != agentsvc.ModelPurposeSummary {
+		t.Errorf("X-Agent-Purpose: summary 应传给业务层，实际 %q", api.purpose)
+	}
+	call(api, "")
+	if api.purpose != "" {
+		t.Errorf("没带请求头就是普通对话调用，实际 %q", api.purpose)
+	}
+	call(api, "something-else")
+	if api.purpose != "" {
+		t.Errorf("不认识的用途一律按普通调用处理，免得被用来藏起助手的回复，实际 %q", api.purpose)
+	}
 }

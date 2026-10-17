@@ -5,9 +5,10 @@ import http from "node:http";
  * 假的 Go 桥：一个 OpenAI 兼容的流式端点，加 /tool、/state、/finish。
  * models 是模型回合的脚本；tool 是工具回调的处理函数；记录收到的所有请求。
  */
-export async function fakeBridge({ models = [], tool = async () => ({ content: "ok" }), stateStatus = 200 } = {}) {
-  const rec = { chats: [], tools: [], states: [], finishes: [], auths: [], closed: 0 };
+export async function fakeBridge({ models = [], summaries = [], tool = async () => ({ content: "ok" }), stateStatus = 200 } = {}) {
+  const rec = { chats: [], summaries: [], headers: [], tools: [], states: [], finishes: [], auths: [], closed: 0 };
   let turn = 0;
+  let summaryTurn = 0;
   const srv = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -17,8 +18,11 @@ export async function fakeBridge({ models = [], tool = async () => ({ content: "
       const ok = (data) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ code: 0, msg: "success", data })); };
 
       if (req.url === "/internal/agent/bridge/v1/chat/completions") {
-        rec.chats.push(json);
-        const t = models[turn++] ?? { text: "（脚本用完）" };
+        rec.headers.push(req.headers);
+        // 摘要请求（请求头 X-Agent-Purpose: summary）单独记，用 summaries 的脚本回复，不占用 models 的回合
+        const isSummary = req.headers["x-agent-purpose"] === "summary";
+        (isSummary ? rec.summaries : rec.chats).push(json);
+        const t = isSummary ? (summaries[summaryTurn++] ?? { text: "【测试摘要】目标：拆分镜" }) : (models[turn++] ?? { text: "（脚本用完）" });
         req.on("close", () => rec.closed++);
         if (t.status) { res.writeHead(t.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: t.msg ?? "boom", type: "agent_error" } })); }
         res.writeHead(200, { "content-type": "text/event-stream" });

@@ -235,7 +235,7 @@ test("历史保存失败（令牌无效）：只记日志，运行照常报告",
 });
 
 test("上下文裁剪：超过窗口的 70% 时较早的工具结果被换成占位文字", async () => {
-  const big = "长".repeat(6000);
+  const big = "长".repeat(8000);
   await withBridge({
     models: [
       { tools: [{ id: "a", name: "canvas_get_state", args: {} }] },
@@ -246,8 +246,9 @@ test("上下文裁剪：超过窗口的 70% 时较早的工具结果被换成占
     ],
     tool: async () => ({ content: big }),
   }, async (b) => {
-    // 窗口很小，让 4 个大结果必然超出
-    await runAgent(baseInput(b.url, { model: { name: "m", context_window: 12000, max_tokens: 1000, vision: false } }));
+    // 4 个大结果超过窗口的 70%，必然要裁剪；裁剪之后够用，不该触发摘要压缩
+    await runAgent(baseInput(b.url, { model: { name: "m", context_window: 40000, max_tokens: 1000, vision: false } }));
+    assert.equal(b.rec.summaries.length, 0, "裁剪够用时不做摘要");
     const last = b.rec.chats.at(-1).messages.filter((m) => m.role === "tool");
     assert.ok(last.some((m) => String(m.content).includes("已省略")), "较早的工具结果应被省略");
     assert.ok(!String(last.at(-1).content).includes("已省略"), "最近的工具结果不能被省略");

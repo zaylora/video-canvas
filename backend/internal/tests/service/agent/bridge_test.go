@@ -210,6 +210,46 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		}
 	})
 
+	t.Run("内部摘要调用：照常预检和计费，但不推文本增量、不记 message.done（不是助手对用户说的话）", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		sctx := WithModelPurpose(ctx, ModelPurposeSummary)
+		if err := b.br.ProxyModel(sctx, tok, body, func([]byte) {}); err != nil {
+			t.Fatal(err)
+		}
+		if len(b.bill.settled) != 1 || b.bill.settled[0].Credits != 5 || b.bill.usageRunID != run.ID {
+			t.Errorf("摘要调用同样要按用量结算并记入本轮已花: %+v", b.bill.settled)
+		}
+		for _, ty := range b.persistedTypes() {
+			if ty == "message.done" {
+				t.Error("摘要不能冒充助手的回复记成 message.done")
+			}
+		}
+		for _, m := range b.bc.msgs {
+			if m.Type != ws.TypeAgentEvent {
+				continue
+			}
+			if v, ok := m.Data.(*AgentEventView); ok && (v.Type == "message.delta" || v.Type == "thinking.delta") {
+				t.Errorf("摘要的文字不能推给前端: %+v", v)
+			}
+		}
+	})
+
+	t.Run("内部摘要调用：预算用尽照样挡住并暂停运行", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		b.repo.mu.Lock()
+		b.repo.runs[run.ID].SpentCredits = 50
+		b.repo.mu.Unlock()
+		wantAgentCode(t, b.br.ProxyModel(WithModelPurpose(ctx, ModelPurposeSummary), tok, body, func([]byte) {}), errcode.ErrAgentOverBudget)
+		if b.str.calls != 0 {
+			t.Error("预算不够不能发摘要请求")
+		}
+		if b.run(run.ID).Status != model.RunBudgetExhausted {
+			t.Errorf("运行应转为预算用尽: %s", b.run(run.ID).Status)
+		}
+	})
+
 	t.Run("运行不在 running：60003，不发请求", func(t *testing.T) {
 		b := newBridgeEnv(t)
 		tok, run := b.token(t, "all")
