@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowUpCircle,
   Film,
   HardDrive,
@@ -8,6 +9,7 @@ import {
   LayoutDashboard,
   Puzzle,
   RadioTower,
+  ScrollText,
   UserPlus,
   Users,
   Wallet,
@@ -43,7 +45,12 @@ export const ADMIN_NAV: AdminNavSection[] = [
     items: [
       { to: "users", label: "用户管理", icon: Users },
       { to: "payment", label: "支付管理", icon: Wallet },
+      { to: "usage", label: "使用记录", icon: Activity },
     ],
+  },
+  {
+    label: "日志管理",
+    items: [{ to: "logs/audits", label: "操作审计", icon: ScrollText }],
   },
   {
     label: "系统设置",

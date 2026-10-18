@@ -1,9 +1,17 @@
-import { BadgeCheck, Clapperboard, Image as ImageIcon, Loader2, Music, Type } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Activity,
+  BadgeCheck,
+  Clapperboard,
+  Image as ImageIcon,
+  Loader2,
+  Music,
+  Type,
+} from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 
 import { listUserLedger, listUserLogins, listUserTasks } from "@/api/admin/users";
 import type {
-  CursorPage,
   LedgerFilter,
   LoginFilter,
   TaskFilter,
@@ -37,72 +45,10 @@ import {
   taskStatusView,
 } from "@/utils/admin/user-rules";
 
+import { useCursorList } from "../use-cursor-list";
+
 /** 每次加载的条数（游标分页） */
 const PAGE_LIMIT = 20;
-
-type ListLoad = "loading" | "ready" | "error";
-
-/**
- * 游标分页列表：首屏加载、「加载更多」追加、失败可重试。
- * key 变化（换用户、换筛选、外部刷新）就从头加载，旧请求的结果会被丢弃。
- * @param key 请求身份，变化时重新加载
- * @param load 取一页；cursor 为 null 表示第一页
- */
-function useCursorList<T>(key: string, load: (cursor: string | null) => Promise<CursorPage<T>>) {
-  const [items, setItems] = useState<T[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [state, setState] = useState<ListLoad>("loading");
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const seq = useRef(0);
-  const loadRef = useRef(load);
-  useEffect(() => {
-    loadRef.current = load;
-  });
-
-  useEffect(() => {
-    const mine = ++seq.current;
-    setState("loading");
-    setItems([]);
-    setCursor(null);
-    loadRef
-      .current(null)
-      .then((page) => {
-        if (mine !== seq.current) return;
-        setItems(page.items);
-        setCursor(page.next_cursor);
-        setState("ready");
-      })
-      .catch(() => {
-        // 全局 toast 已弹；页签里给「加载失败 · 重试」
-        if (mine === seq.current) setState("error");
-      });
-  }, [key, attempt]);
-
-  const more = useCallback(() => {
-    if (!cursor || loadingMore) return;
-    const mine = seq.current;
-    setLoadingMore(true);
-    loadRef
-      .current(cursor)
-      .then((page) => {
-        if (mine !== seq.current) return;
-        setItems((prev) => [...prev, ...page.items]);
-        setCursor(page.next_cursor);
-      })
-      .catch(() => undefined)
-      .finally(() => setLoadingMore(false));
-  }, [cursor, loadingMore]);
-
-  return {
-    items,
-    state,
-    hasMore: cursor !== null,
-    loadingMore,
-    more,
-    retry: () => setAttempt((n) => n + 1),
-  };
-}
 
 /** 页签内的筛选条：分段 + 右侧计数，吸顶 */
 function FilterBar<V extends string>({
@@ -203,23 +149,35 @@ const TASK_FILTERS: { value: TaskFilter; label: string }[] = [
   { value: "running", label: "进行中" },
 ];
 
-/** 生成页签：时间 · 类型图标 + 模型 · 状态 · 扣费 · 耗时；失败行可展开看错误，任务 ID 可复制 */
+/** 使用记录页签：顶部「查看全部使用记录」跳到全站使用记录页并带上用户筛选；时间 · 类型图标 + 模型 · 状态 · 扣费 · 耗时；失败行可展开看错误，任务 ID 可复制 */
 function TasksTab({ userId, refreshKey }: { userId: number; refreshKey: number }) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const list = useCursorList<UserTaskItem>(`${userId}:${filter}:${refreshKey}`, (cursor) =>
     listUserTasks(userId, { status: filter, cursor, limit: PAGE_LIMIT }),
   );
+  const navigate = useNavigate();
   return (
     <>
+      <div className="flex justify-end pt-3">
+        {/* 用户筛选走路由 state，不写进 URL；使用记录页读完就清空 */}
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => navigate("/admin/usage", { state: { userId } })}
+        >
+          <Activity />
+          查看全部使用记录
+        </Button>
+      </div>
       <FilterBar
         slideId="user-tasks-filter"
-        label="生成记录筛选"
+        label="使用记录筛选"
         value={filter}
         options={TASK_FILTERS}
         onChange={setFilter}
         count={list.state === "ready" ? `已加载 ${list.items.length} 条` : ""}
       />
-      <ListBody list={list} empty={filter === "all" ? "还没有生成记录" : "没有符合条件的记录"}>
+      <ListBody list={list} empty={filter === "all" ? "还没有使用记录" : "没有符合条件的记录"}>
         {list.items.map((task) => (
           <TaskRow key={task.id} task={task} />
         ))}

@@ -47,7 +47,7 @@ import { UserRowMenu } from "./user-row-menu";
 
 const TAB_LABEL: Record<UserTab, string> = {
   overview: "概览",
-  tasks: "生成",
+  tasks: "使用记录",
   credits: "积分",
   logins: "登录",
 };
@@ -59,7 +59,7 @@ const DIALOG_CLASS =
   "flex h-[min(90svh,880px)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl";
 
 /**
- * 用户详情弹窗：顶部摘要常驻 + 概览 / 生成 / 积分 / 登录四个页签（页签内容独立滚动）。
+ * 用户详情弹窗：顶部摘要常驻 + 概览 / 使用记录 / 积分 / 登录四个页签（页签内容独立滚动）。
  * 弹窗外框只在打开 / 关闭时缩放淡入，切换用户时只有内容按方向淡入位移 8px。
  * Esc 由页面按层级统一处理（浮层 → 勾选 → 弹窗），所以这里不响应 Base UI 自己的关闭请求。
  */

@@ -12,6 +12,8 @@ import AgentSkillsPage from "@/pages/admin/agent-skills";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
 import PaymentAdminPage from "@/pages/admin/payment";
+import UsagePage from "@/pages/admin/usage";
+import AuditsPage from "@/pages/admin/logs";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
@@ -129,6 +131,9 @@ export const router = createBrowserRouter([
               { path: "agent/skills", element: <AgentSkillsPage /> },
               { path: "users", element: <UsersPage /> },
               { path: "payment", element: <PaymentAdminPage /> },
+              { path: "usage", element: <UsagePage /> },
+              { path: "logs", element: <Navigate to="audits" replace /> },
+              { path: "logs/audits", element: <AuditsPage /> },
               { path: "settings", element: <Navigate to="storage" replace /> },
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },
