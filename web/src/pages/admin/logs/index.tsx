@@ -34,7 +34,7 @@ import {
 } from "@/utils/admin/log-rules";
 
 import { useAdminList } from "../use-admin-list";
-import { AuditDrawer } from "./audit-drawer";
+import { AuditDialog } from "./audit-dialog";
 import { AuditTable } from "./audit-table";
 
 /**
@@ -162,7 +162,7 @@ export default function AuditsPage() {
         )}
       </DataPanel>
 
-      <AuditDrawer open={drawerOpen} item={selected} onOpenChange={setDrawerOpen} />
+      <AuditDialog open={drawerOpen} item={selected} onClose={() => setDrawerOpen(false)} />
     </DataPage>
   );
 }

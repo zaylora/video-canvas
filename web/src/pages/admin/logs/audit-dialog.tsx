@@ -3,12 +3,10 @@ import { Clock } from "lucide-react";
 import type { AuditItem } from "@/api/admin/logs/type";
 import { CopyButton } from "@/components/admin-ui/copy-button";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/admin-ui/sheet";
+  DetailDialog,
+  DetailDialogBody,
+  DetailDialogHeader,
+} from "@/components/admin-ui/detail-dialog";
 import { Tag } from "@/components/admin-ui/tag";
 import {
   actionView,
@@ -44,36 +42,36 @@ function InfoCard({
 }
 
 /**
- * 审计详情抽屉（右侧，不写进 URL）：结论卡（自动 / 手动 + 动作名 + 动作代码 + 时间与来源）、
+ * 审计详情弹窗（居中，不写进 URL）：结论卡（自动 / 手动 + 动作名 + 动作代码 + 时间与来源）、
  * 操作者 / 对象 / 变化三张信息卡、详情数据（detail_json 的 JSON 代码块）。全部直接展示，没有折叠块。
  * 数据来自列表行，不再请求。
- * @param item 要看的审计；关闭后保留，等关闭动画播完
+ * @param item 要看的审计；弹窗关闭后保留，等关闭动画播完
  */
-function AuditDrawer({
+function AuditDialog({
   open,
   item,
-  onOpenChange,
+  onClose,
 }: {
   open: boolean;
   item: AuditItem | null;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
 }) {
   const action = item ? actionView(item.action) : null;
   const actor = item ? auditActorView(item.actor_id, item.actor_name) : null;
   const target = item ? auditTargetView(item) : null;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader className="border-b pr-12">
-          <SheetTitle>操作详情</SheetTitle>
-          <SheetDescription className="sr-only">
-            这条后台操作的时间、操作者、对象和变化
-          </SheetDescription>
-        </SheetHeader>
+    <DetailDialog open={open} onClose={onClose} className="h-auto max-h-[min(88svh,760px)]">
+      <DetailDialogHeader
+        fallbackTitle="操作详情"
+        title="操作详情"
+        description="这条后台操作的时间、操作者、对象和变化"
+        onClose={onClose}
+      />
 
+      <DetailDialogBody loading={false} className="flex flex-col gap-6">
         {item && action && actor && target && (
-          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6">
+          <>
             <div data-slot="audit-verdict" className="bg-muted flex flex-col gap-3 rounded-xl p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Tag tone={actor.auto ? "info" : "neutral"}>{auditModeLabel(item.actor_id)}</Tag>
@@ -129,18 +127,18 @@ function AuditDrawer({
             <section className="flex flex-col gap-2">
               <h3 className="text-sm font-semibold">详情数据</h3>
               {item.detail_json && Object.keys(item.detail_json).length > 0 ? (
-                <pre className="bg-foreground/90 text-background max-h-96 overflow-auto rounded-xl p-4 font-mono text-xs leading-5 break-all whitespace-pre-wrap">
+                <pre className="bg-muted/50 text-foreground max-h-96 overflow-auto rounded-xl p-4 font-mono text-xs leading-5 break-all whitespace-pre-wrap">
                   {JSON.stringify(item.detail_json, null, 2)}
                 </pre>
               ) : (
                 <p className="text-muted-foreground text-sm">没有详情数据</p>
               )}
             </section>
-          </div>
+          </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DetailDialogBody>
+    </DetailDialog>
   );
 }
 
-export { AuditDrawer };
+export { AuditDialog };

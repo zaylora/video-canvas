@@ -37,7 +37,7 @@ import {
 import { withListParam } from "@/utils/admin/list-params";
 
 import { useAdminList } from "../use-admin-list";
-import { TaskDrawer } from "./task-drawer";
+import { TaskDialog } from "./task-dialog";
 import { UsageFilterBar } from "./usage-filters";
 import { UsageOverview } from "./usage-summary";
 import { UsageTable } from "./usage-table";
@@ -221,10 +221,10 @@ export default function UsagePage() {
         )}
       </DataPanel>
 
-      <TaskDrawer
+      <TaskDialog
         open={drawerOpen}
         taskRef={drawerRef}
-        onOpenChange={setDrawerOpen}
+        onClose={() => setDrawerOpen(false)}
         onFilterUser={filterUser}
       />
     </DataPage>
