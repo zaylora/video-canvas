@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   agoText,
+  creditCell,
+  durationCell,
+  kindTagView,
+  statusDetail,
   auditActorRole,
   auditModeLabel,
   auditSourceTable,
@@ -327,5 +331,61 @@ describe("审计表格与抽屉的展示逻辑", () => {
     );
     expect(formatFullTime(null)).toBe("—");
     expect(formatFullTime("bad")).toBe("bad");
+  });
+});
+
+describe("使用记录表格单元格", () => {
+  test("类型标签：每种类型一种 tone 和图标", () => {
+    expect(kindTagView("video")).toEqual({ label: "视频", tone: "info", icon: "video" });
+    expect(kindTagView("image")).toEqual({ label: "图片", tone: "violet", icon: "image" });
+    expect(kindTagView("audio")).toEqual({ label: "音频", tone: "orange", icon: "audio" });
+    expect(kindTagView("text")).toEqual({ label: "文本", tone: "neutral", icon: "text" });
+    expect(kindTagView("weird")).toEqual({ label: "weird", tone: "neutral", icon: "other" });
+  });
+
+  test("状态第二行：失败写用户文案，超时写原因，其余留空", () => {
+    expect(statusDetail({ status: "failed", error_message: "平台繁忙" })).toBe("平台繁忙");
+    expect(statusDetail({ status: "failed", error_message: "" })).toBe("");
+    expect(statusDetail({ status: "expired", error_message: "" })).toBe("等太久没出结果");
+    expect(statusDetail({ status: "canceled", error_message: "" })).toBe("");
+    expect(statusDetail({ status: "succeeded", error_message: "" })).toBe("");
+    expect(statusDetail({ status: "running", error_message: "" })).toBe("");
+  });
+
+  const credit = {
+    status: "succeeded",
+    credits: 8,
+    charged_credits: 6 as number | null,
+    is_test: false,
+  };
+  test("积分格：成功是绿色数字，失败类已退回，进行中已冻结，试跑不扣积分", () => {
+    expect(creditCell(credit)).toEqual({ text: "6", tone: "success" });
+    expect(creditCell({ ...credit, charged_credits: null })).toEqual({
+      text: "8",
+      tone: "success",
+    });
+    expect(creditCell({ ...credit, status: "failed", charged_credits: 0 })).toEqual({
+      text: "已退回",
+      tone: "muted",
+    });
+    expect(creditCell({ ...credit, status: "expired" }).text).toBe("已退回");
+    expect(creditCell({ ...credit, status: "canceled" }).text).toBe("已退回");
+    expect(creditCell({ ...credit, status: "running", charged_credits: null })).toEqual({
+      text: "已冻结 8",
+      tone: "plain",
+    });
+    expect(creditCell({ ...credit, is_test: true })).toEqual({ text: "不扣积分", tone: "muted" });
+  });
+
+  test("耗时格：完成的写时长，进行中写已多久，没有写破折号", () => {
+    const now = Date.parse("2026-10-18T06:30:00.000Z");
+    const base = {
+      status: "succeeded",
+      duration_ms: 42_000 as number | null,
+      created_at: "2026-10-18T06:29:00.000Z",
+    };
+    expect(durationCell(base, now)).toBe("42 秒");
+    expect(durationCell({ ...base, status: "running", duration_ms: null }, now)).toBe("已 1 分钟");
+    expect(durationCell({ ...base, duration_ms: null }, now)).toBe("—");
   });
 });

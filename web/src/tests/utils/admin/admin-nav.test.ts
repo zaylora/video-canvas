@@ -29,13 +29,21 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、模型渠道、插件；独立的“模型”页已并入渠道页", () => {
+  test("AI 配置分组：总览、模型渠道、插件、技能；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
       ["ai/channels", "模型渠道"],
       ["ai/plugins", "插件"],
+      ["agent/skills", "技能"],
     ]);
+    expect(ADMIN_NAV.some((item) => item.label === "Agent")).toBe(false);
+  });
+
+  test("技能页的面包屑落在 AI 配置分组下，路径不变", () => {
+    const found = findNav("/admin/agent/skills");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("技能");
   });
 
   test("模型渠道页的面包屑", () => {

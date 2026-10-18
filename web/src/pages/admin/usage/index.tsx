@@ -39,11 +39,11 @@ import { withListParam } from "@/utils/admin/list-params";
 import { useAdminList } from "../use-admin-list";
 import { TaskDrawer } from "./task-drawer";
 import { UsageFilterBar } from "./usage-filters";
-import { UsageList, UsageListSkeleton } from "./usage-list";
 import { UsageOverview } from "./usage-summary";
+import { UsageTable } from "./usage-table";
 
 /**
- * 使用记录页（用户 › 使用记录）：概览卡 + 筛选条 + 任务卡片列表 + 页码分页，点一张卡从右侧抽屉看详情。
+ * 使用记录页（用户 › 使用记录）：概览卡 + 筛选条 + 任务表格 + 页码分页，点一行从右侧抽屉看详情。
  * 搜索词、筛选、页码都在 URL 里（刷新不丢）；翻页和筛选时保留旧数据并半透明，改筛选回到第 1 页。
  * 详情抽屉只是页面状态，不写进 URL；从用户管理进入时通过路由 state 带 `{ userId }`，读完写进 URL 并清空 state。
  * 请求失败的全局 toast 由拦截器弹，这里只给「加载失败 · 重试」。
@@ -165,13 +165,11 @@ export default function UsagePage() {
           <UsageFilterBar filters={filters} userName={userName} onChange={patchFilters} />
         </div>
 
-        <DataPanelBody className="p-4">
+        <DataPanelBody>
           {list.state === "error" ? (
             <LoadFailed onRetry={list.reload} />
-          ) : loading ? (
-            <UsageListSkeleton />
           ) : list.state === "ready" && list.items.length === 0 ? (
-            <EmptyState>
+            <EmptyState className="m-4">
               <EmptyStateIcon>
                 <SearchX />
               </EmptyStateIcon>
@@ -200,9 +198,10 @@ export default function UsagePage() {
               </EmptyStateActions>
             </EmptyState>
           ) : (
-            <div className={cn(list.refreshing && "opacity-60 transition-opacity")}>
-              <UsageList
+            <div className={cn(list.refreshing && !loading && "opacity-60 transition-opacity")}>
+              <UsageTable
                 items={list.items}
+                loading={loading}
                 activeRef={drawerOpen ? drawerRef : null}
                 onOpen={openTask}
                 onFilterUser={filterUser}

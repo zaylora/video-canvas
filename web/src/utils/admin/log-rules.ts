@@ -1070,3 +1070,56 @@ export function formatFullTime(value: string | null | undefined): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
+
+// ---------------------------------------------------------------- 使用记录表格单元格
+
+/** 类型小标签：文字、Tag 语气、图标键（组件按键选 lucide 图标） */
+export function kindTagView(kind: string): {
+  label: string;
+  tone: "info" | "violet" | "orange" | "neutral";
+  icon: "video" | "image" | "audio" | "text" | "other";
+} {
+  switch (kind) {
+    case "video":
+      return { label: "视频", tone: "info", icon: "video" };
+    case "image":
+      return { label: "图片", tone: "violet", icon: "image" };
+    case "audio":
+      return { label: "音频", tone: "orange", icon: "audio" };
+    case "text":
+      return { label: "文本", tone: "neutral", icon: "text" };
+    default:
+      return { label: kind, tone: "neutral", icon: "other" };
+  }
+}
+
+/** 状态格第二行：失败写用户文案，超时写原因，其余留空 */
+export function statusDetail(item: Pick<TaskLike, "status" | "error_message">): string {
+  if (item.status === "failed") return item.error_message;
+  if (item.status === "expired") return "等太久没出结果";
+  return "";
+}
+
+/** 积分格：成功是绿色数字（实扣），失败类「已退回」，进行中「已冻结 N」，试跑「不扣积分」 */
+export function creditCell(
+  item: Pick<TaskLike, "status" | "credits" | "charged_credits" | "is_test">,
+): { text: string; tone: "success" | "muted" | "plain" } {
+  if (item.is_test) return { text: "不扣积分", tone: "muted" };
+  if (isActiveStatus(item.status)) return { text: `已冻结 ${item.credits}`, tone: "plain" };
+  if (item.status === "succeeded") {
+    return { text: String(item.charged_credits ?? item.credits), tone: "success" };
+  }
+  return { text: "已退回", tone: "muted" };
+}
+
+/**
+ * 耗时格：完成的写时长，进行中写「已 N」（随传入的当前时间增长），没有为「—」
+ * @param now 当前时间戳（毫秒）
+ */
+export function durationCell(
+  item: Pick<TaskLike, "status" | "duration_ms" | "created_at">,
+  now: number,
+): string {
+  if (isActiveStatus(item.status)) return `已 ${humanDuration(elapsed(item, now))}`;
+  return item.duration_ms === null ? "—" : humanDuration(item.duration_ms);
+}

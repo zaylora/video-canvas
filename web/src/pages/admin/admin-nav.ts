@@ -34,11 +34,8 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/overview", label: "总览", icon: LayoutDashboard },
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
+      { to: "agent/skills", label: "技能", icon: Lightbulb },
     ],
-  },
-  {
-    label: "Agent",
-    items: [{ to: "agent/skills", label: "技能", icon: Lightbulb }],
   },
   {
     label: "用户",
