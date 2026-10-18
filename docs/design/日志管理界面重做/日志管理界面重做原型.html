@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>使用记录与操作审计：界面重做原型</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+/* 颜色抄自 web/src/index.css（:root 与 .dark）；时长与曲线抄自 web/src/lib/motion.ts */
+:root{--background:oklch(1 0 0);--foreground:oklch(0.145 0 0);--card:oklch(1 0 0);--primary:oklch(0.205 0 0);--primary-foreground:oklch(0.985 0 0);
+--muted:oklch(0.97 0 0);--muted-foreground:oklch(0.556 0 0);--border:oklch(0.922 0 0);--destructive:oklch(0.577 0.245 27.325);--ring:oklch(0.708 0 0);
+--status-running:oklch(0.58 0.15 250);--status-success:oklch(0.6 0.15 155);--status-warning:oklch(0.7 0.16 70);--credit:oklch(0.72 0.15 75);--preset:oklch(0.55 0.2 295);
+--radius:0.625rem;--d-fast:120ms;--d-base:180ms;--d-exit:126ms;--d-slow:240ms;--d-slow-exit:168ms;--ease:cubic-bezier(.2,0,0,1);color-scheme:light}
+.dark{--background:oklch(0.145 0 0);--foreground:oklch(0.985 0 0);--card:oklch(0.205 0 0);--primary:oklch(0.922 0 0);--primary-foreground:oklch(0.205 0 0);
+--muted:oklch(0.269 0 0);--muted-foreground:oklch(0.708 0 0);--border:oklch(1 0 0 / 10%);--destructive:oklch(0.704 0.191 22.216);--ring:oklch(0.556 0 0);
+--status-running:oklch(0.75 0.12 240);--status-success:oklch(0.75 0.15 155);--status-warning:oklch(0.8 0.15 75);--credit:oklch(0.82 0.15 85);color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--background);color:var(--foreground);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,select{font:inherit;color:inherit}
+[data-lucide]{width:1em;height:1em;flex:none}
+h1,h2,h3,p{margin:0}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted-foreground)}.row{display:flex;align-items:center;gap:8px}.wrap{flex-wrap:wrap}.sp{margin-left:auto}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+/* 原型工具条（不属于产品界面） */
+.tools{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 14px;background:color-mix(in oklch,var(--background) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);font-size:12.5px}
+.tools b{font-weight:600}.tools select,.tools button.t{height:28px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.note{border:1.5px dashed var(--preset);border-radius:10px;padding:8px 10px;margin:8px 0}.note-t{color:var(--preset);font-size:12px;margin:4px 0 8px}
+body:not(.show-notes) .note{border-color:transparent;padding:0;margin:0}body:not(.show-notes) .note-t{display:none}
+/* 后台外壳（示意） */
+.shell{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:calc(100vh - 45px)}
+.side{border-right:1px solid var(--border);padding:12px 8px;background:color-mix(in oklch,var(--muted) 40%,transparent)}
+.grp{font-size:11.5px;font-weight:600;color:var(--muted-foreground);padding:12px 8px 4px}.grp:first-child{padding-top:4px}
+.nav{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border-radius:8px;font-size:13px;text-align:left;transition:background var(--d-fast)}
+.nav:hover:not(:disabled){background:var(--muted)}.nav[aria-current=page]{background:var(--muted);font-weight:600}.nav:disabled{opacity:.45;cursor:not-allowed}
+.nav .new{margin-left:auto;font-size:10.5px;padding:0 5px;border-radius:999px;background:color-mix(in oklch,var(--preset) 14%,transparent);color:var(--preset)}
+.main{padding:20px 24px 40px;min-width:0}
+.ph{margin-bottom:14px}.ph h1{font-size:20px;font-weight:600}.ph p{color:var(--muted-foreground);margin-top:2px}
+@media(max-width:820px){.shell{grid-template-columns:1fr}.side{display:none}.main{padding:16px 14px 40px}}
+/* 通用部件：Tag / StatusLabel / Segmented / 按钮，尺寸与渠道页一致 */
+.tag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;background:var(--muted);color:var(--muted-foreground)}
+.tag.ok{background:color-mix(in oklch,var(--status-success) 12%,transparent);color:var(--status-success)}
+.tag.bad{background:color-mix(in oklch,var(--destructive) 12%,transparent);color:var(--destructive)}
+.tag.warn{background:color-mix(in oklch,var(--status-warning) 14%,transparent);color:var(--status-warning)}
+.tag.info{background:color-mix(in oklch,var(--status-running) 12%,transparent);color:var(--status-running)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted-foreground);flex:none}
+.dot.ok{background:var(--status-success)}.dot.bad{background:var(--destructive)}.dot.warn{background:var(--status-warning)}.dot.info{background:var(--status-running)}
+.dot.pulse{animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);font-size:13px;font-weight:500;transition:background var(--d-fast),transform var(--d-fast)}
+.btn:hover{background:var(--muted)}.btn:active{transform:scale(.96)}.btn.sm{height:28px;padding:0 10px;font-size:12.5px}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--muted);gap:2px}
+.seg button{position:relative;height:28px;padding:0 12px;border-radius:7px;font-size:13px;color:var(--muted-foreground);transition:color var(--d-fast)}
+.seg button[aria-pressed=true]{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px oklch(0 0 0/.08);font-weight:500}
+.seg button:not([aria-pressed=true]):hover{color:var(--foreground)}
+.in{height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);min-width:0}
+.in:focus{outline:2px solid color-mix(in oklch,var(--ring) 50%,transparent);outline-offset:0}
+/* 概览卡 */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media(max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{position:relative;text-align:left;border-radius:12px;padding:14px;background:var(--card);box-shadow:0 0 0 1px color-mix(in oklch,var(--foreground) 10%,transparent);transition:background var(--d-fast),transform var(--d-fast);display:flex;flex-direction:column;gap:2px}
+.stat:hover:not(:disabled){background:color-mix(in oklch,var(--muted) 40%,var(--card))}.stat:active:not(:disabled){transform:scale(.985)}
+.stat[aria-pressed=true]{box-shadow:0 0 0 2px color-mix(in oklch,var(--primary) 60%,transparent)}.stat:disabled{opacity:.5;cursor:default}
+.stat .l{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-foreground)}
+.stat .v{font-size:28px;line-height:1.15;font-weight:600}.stat .h{font-size:12px;color:var(--muted-foreground)}.stat .h.warn{color:var(--status-warning)}
+/* 筛选条 */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.search{position:relative;flex:1 1 280px;max-width:420px}.search input{width:100%;padding-left:32px}.search i{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted-foreground)}
+.badge{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--primary);color:var(--primary-foreground);font-size:11px}
+.pop{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:260px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);box-shadow:0 8px 24px oklch(0 0 0/.14);transform-origin:top left;animation:popin var(--d-base) var(--ease)}
+@keyframes popin{from{opacity:0;transform:scale(.96)}}
+.pop label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted-foreground);margin-bottom:10px}.pop select{width:100%}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px 0 10px;border-radius:999px;background:var(--muted);font-size:12px}
+.chip button{display:grid;place-items:center;width:16px;height:16px;border-radius:50%}.chip button:hover{background:var(--border)}
+/* 卡片列表 */
+.list{display:flex;flex-direction:column;gap:8px;transition:opacity var(--d-base)}.list.busy{opacity:.55;pointer-events:none}
+.card{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);transition:background var(--d-fast),border-color var(--d-fast),transform var(--d-fast)}
+.card:hover{background:color-mix(in oklch,var(--muted) 60%,var(--card))}.card:active{transform:scale(.985)}
+.card[aria-current=true]{border-color:color-mix(in oklch,var(--primary) 60%,transparent);background:color-mix(in oklch,var(--primary) 5%,var(--card))}
+.card .main1{min-width:0;flex:1}.card .t1{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}.card .t1 b{font-weight:600}
+.card .t2{font-size:12.5px;color:var(--muted-foreground);margin-top:1px}.card .time{font-size:12px;color:var(--muted-foreground);white-space:nowrap}
+.card .who{border-bottom:1px dashed transparent}.card .who:hover{border-color:var(--muted-foreground)}
+.ico{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--muted);color:var(--muted-foreground);flex:none}
+.card.enter{animation:cardin var(--d-base) var(--ease) both}@keyframes cardin{from{opacity:0;transform:translateY(6px)}}
+.skel{height:56px;border-radius:10px;background:linear-gradient(90deg,var(--muted),color-mix(in oklch,var(--muted) 50%,var(--card)),var(--muted));background-size:200% 100%;animation:sk 1.2s linear infinite}@keyframes sk{to{background-position:-200% 0}}
+.empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:40px 16px;border:1px dashed var(--border);border-radius:12px;text-align:center}
+.empty i{font-size:22px;color:var(--muted-foreground)}.empty b{font-size:14px}
+.pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;font-size:13px;color:var(--muted-foreground)}
+.pager .pg{display:flex;gap:4px}.pager .pg button{min-width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--foreground)}
+.pager .pg button[aria-current=page]{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.pager .pg button:disabled{opacity:.4}
+/* 抽屉 */
+.scrim{position:fixed;inset:0;z-index:60;background:oklch(0 0 0/.3);animation:fade var(--d-slow) var(--ease)}@keyframes fade{from{opacity:0}}
+.drawer{position:fixed;z-index:61;top:0;right:0;bottom:0;width:min(560px,100%);display:flex;flex-direction:column;background:var(--card);border-left:1px solid var(--border);box-shadow:-8px 0 32px oklch(0 0 0/.14);animation:slidein var(--d-slow) var(--ease)}
+@keyframes slidein{from{transform:translateX(24px);opacity:0}}
+.drawer.out{animation:slideout var(--d-slow-exit) var(--ease) forwards}.scrim.out{animation:fadeout var(--d-slow-exit) forwards}
+@keyframes slideout{to{transform:translateX(24px);opacity:0}}@keyframes fadeout{to{opacity:0}}
+.dh{display:flex;align-items:flex-start;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border)}.dh h2{font-size:16px;font-weight:600}
+.db{flex:1;overflow-y:auto;padding:16px 18px 28px;display:flex;flex-direction:column;gap:16px}
+.verdict{display:flex;gap:12px;padding:14px;border-radius:12px;border:1px solid var(--border)}
+.verdict.ok{background:color-mix(in oklch,var(--status-success) 7%,var(--card))}.verdict.bad{background:color-mix(in oklch,var(--destructive) 7%,var(--card))}
+.verdict.warn{background:color-mix(in oklch,var(--status-warning) 9%,var(--card))}.verdict.info{background:color-mix(in oklch,var(--status-running) 7%,var(--card))}
+.verdict .vt{font-weight:600;font-size:15px}.verdict .vs{color:var(--muted-foreground);font-size:13px;margin-top:2px}
+.sec h3{font-size:12px;font-weight:600;color:var(--muted-foreground);margin-bottom:6px;letter-spacing:.02em}
+.kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 12px;font-size:13px}.kv dt{color:var(--muted-foreground)}.kv dd{margin:0;word-break:break-word}
+.help{display:flex;gap:10px;padding:12px;border-radius:10px;background:var(--muted);font-size:13px}.help b{display:block;margin-bottom:2px}
+.media{width:100%;max-height:260px;border-radius:10px;border:1px solid var(--border);background:var(--muted);display:grid;place-items:center;aspect-ratio:16/9;color:var(--muted-foreground);position:relative;overflow:hidden}
+.media .pl{position:absolute;inset:auto auto 8px 8px;font-size:11px;background:oklch(0 0 0/.55);color:#fff;border-radius:6px;padding:2px 6px}
+.detail-only{animation:cardin var(--d-base) var(--ease) both}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}.tl li{position:relative;display:flex;gap:10px;padding:0 0 12px 0;font-size:13px}
+.tl li::before{content:"";position:absolute;left:3.5px;top:14px;bottom:-2px;width:1px;background:var(--border)}.tl li:last-child::before{display:none}
+.tl .time{margin-left:auto;color:var(--muted-foreground);font-size:12px;white-space:nowrap}
+.code{margin:6px 0 0;padding:10px;border-radius:8px;background:var(--muted);font-size:12px;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+details.fold{border:1px solid var(--border);border-radius:10px;padding:8px 12px}details.fold summary{cursor:pointer;font-size:13px;font-weight:500}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;background:var(--foreground);color:var(--background);padding:8px 14px;border-radius:10px;font-size:13px}
+@media(prefers-reduced-motion:reduce){*{animation-duration:1ms!important;transition-duration:1ms!important}.dot.pulse{animation:none}}
+</style>
+</head>
+<body class="show-notes">
+
+
+<div class="tools" role="toolbar" aria-label="原型工具（不属于产品界面）">
+  <b>原型工具</b>
+  <label class="row">模拟状态
+    <select id="sim"><option value="ok">正常</option><option value="slow">加载慢（2 秒）</option><option value="error">请求失败</option><option value="empty">没有数据</option></select>
+  </label>
+  <button class="t" id="themeBtn" type="button">切换深浅主题</button>
+  <button class="t" id="noteBtn" type="button">隐藏设计标注</button>
+  <span class="muted">数据是示意数据，当前时间固定为 2026-10-18 14:30；刷新复原。紫色虚线框是设计标注。</span>
+</div>
+
+<div class="shell">
+  <nav class="side" id="side" aria-label="侧栏（示意）"></nav>
+  <main class="main" id="page"></main>
+</div>
+
+<div id="layer"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const icons = () => window.lucide && lucide.createIcons();
+
+/* ============ 示意数据（当前时间固定，数字刷新复原） ============ */
+const NOW = new Date(2026, 9, 18, 14, 30, 0);
+const ago = (min) => new Date(NOW.getTime() - min * 60000);
+const pad = (n) => String(n).padStart(2, "0");
+const hms = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const absT = (d) => `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hms(d)}`;
+
+const USERS = { 12: "张三", 27: "李四", 31: "王五", 45: "赵六", 1: "运营小王", 2: "运维老陈" };
+const MODEL = { kling: "可灵 v2", seed: "Seedance 1 Pro", gimg: "GPT Image 1", nano: "Nano Banana", ds: "DeepSeek Chat", tts: "MiniMax 语音" };
+const KIND = { video: ["视频", "clapperboard"], image: ["图片", "image"], audio: ["音频", "music"], text: ["文本", "type"] };
+const TASKS = [
+  { n: 1, u: 12, kind: "video", m: "kling", st: "running", cr: 120, charged: null, created: 3, sec: null, prompt: "海边日落，镜头缓慢推进，一个小女孩牵着气球走过沙滩，电影感，暖色调", ratio: "16:9", dur: "5 秒" },
+  { n: 2, u: 27, kind: "video", m: "seed", st: "succeeded", cr: 120, charged: 120, created: 40, sec: 258, prompt: "赛博朋克城市夜景，雨天，霓虹灯倒影，一辆摩托从镜头前驶过", ratio: "16:9", dur: "5 秒" },
+  { n: 3, u: 12, kind: "video", m: "kling", st: "failed", cr: 120, charged: 0, created: 55, sec: 36, code: "provider_error", msg: "平台繁忙，请稍后重试", prompt: "雪山上的日出，航拍视角，云海翻涌", ratio: "16:9", dur: "10 秒", upstream: 'HTTP 503 Service Unavailable\n{"error":{"message":"upstream overloaded, retry later"}}' },
+  { n: 4, u: 12, kind: "image", m: "gimg", st: "succeeded", cr: 8, charged: 8, created: 70, sec: 31, prompt: "水彩风格的猫咪坐在窗台上看雨", ratio: "1:1", dur: "" },
+  { n: 5, u: 31, kind: "video", m: "seed", st: "expired", cr: 120, charged: 0, created: 130, sec: 3600, code: "timeout", msg: "排队超时，积分已退回", prompt: "古风少女在竹林里舞剑，慢动作", ratio: "9:16", dur: "5 秒" },
+  { n: 6, u: 27, kind: "video", m: "kling", st: "canceled", cr: 120, charged: 0, created: 190, sec: 210, code: "canceled", msg: "已取消，积分已退回", prompt: "产品展示，旋转的手表，黑色背景", ratio: "1:1", dur: "5 秒" },
+  { n: 7, u: 45, kind: "image", m: "nano", st: "failed", cr: 6, charged: 0, created: 230, sec: 12, code: "moderation", msg: "内容未通过审核", prompt: "（提示词涉及违规内容，此处省略）", ratio: "1:1", dur: "", upstream: '{"code":"moderation_blocked","detail":"prompt rejected by safety policy"}' },
+  { n: 8, u: 12, kind: "text", m: "ds", st: "succeeded", cr: 2, charged: 1, created: 300, sec: 14, prompt: "为这个视频写 3 条短标题", ratio: "", dur: "" },
+  { n: 9, u: 27, kind: "audio", m: "tts", st: "succeeded", cr: 10, charged: 10, created: 420, sec: 36, prompt: "欢迎来到我们的新品发布会。", ratio: "", dur: "6 秒" },
+  { n: 10, u: 31, kind: "video", m: "seed", st: "queued", cr: 120, charged: null, created: 8, sec: null, prompt: "海底世界，鲸鱼游过，光线透过海面", ratio: "16:9", dur: "5 秒" },
+  { n: 11, u: 31, kind: "text", m: "ds", st: "failed", cr: 2, charged: 0, created: 95, sec: 28, code: "plugin_error", msg: "生成过程出现内部错误，积分已退回", prompt: "把下面脚本改写得更口语化……", ratio: "", dur: "", upstream: "plugin newapi@1.3.0 hook query threw: TypeError: Cannot read properties of undefined (reading 'choices')" },
+  { n: 12, u: 2, kind: "video", m: "kling", st: "succeeded", cr: 0, charged: 0, created: 60, sec: 236, test: true, prompt: "[试跑] 一只猫在奔跑", ratio: "16:9", dur: "5 秒" },
+  { n: 13, u: 45, kind: "image", m: "gimg", st: "succeeded", cr: 8, charged: 8, created: 1500, sec: 33, prompt: "极简风格的咖啡店海报", ratio: "2:3", dur: "" },
+  { n: 14, u: 12, kind: "video", m: "kling", st: "failed", cr: 120, charged: 0, created: 7200, sec: 40, code: "provider_error", msg: "平台繁忙，请稍后重试", old: true, prompt: "一只鹰在峡谷上空盘旋", ratio: "16:9", dur: "5 秒" },
+  { n: 15, u: 27, kind: "image", m: "gimg", st: "succeeded", cr: 8, charged: 8, created: 3000, sec: 30, prompt: "像素风的城堡", ratio: "1:1", dur: "" },
+  { n: 16, u: 31, kind: "video", m: "kling", st: "failed", cr: 120, charged: 0, created: 4400, sec: 22, code: "provider_balance", msg: "服务繁忙，请稍后再试", prompt: "雨中的老街，慢镜头", ratio: "16:9", dur: "5 秒", upstream: '{"error":"insufficient balance 0.00"}' },
+];
+
+/* ============ 人话文案（正式实现里是 utils/admin/log-rules.ts 的纯函数，带单测） ============ */
+const isActive = (s) => ["pending", "queued", "running", "finalizing"].includes(s);
+const kindName = (k) => KIND[k][0];
+function humanSpan(sec) {
+  if (sec == null) return "";
+  if (sec < 60) return `${Math.max(1, Math.round(sec))} 秒`;
+  if (sec < 3600) { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return s ? `${m} 分 ${s} 秒` : `${m} 分钟`; }
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60); return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
+}
+function relTime(min) {
+  if (min < 1) return "刚刚"; if (min < 60) return `${Math.floor(min)} 分钟前`;
+  if (min < 1440) return `${Math.floor(min / 60)} 小时前`; return `${Math.floor(min / 1440)} 天前`;
+}
+function statusView(t) {
+  const k = kindName(t.kind);
+  switch (t.st) {
+    case "succeeded": return { tone: "ok", title: `生成了一个${k}`, verdict: "生成成功", pulse: false };
+    case "failed": return { tone: "bad", title: `生成${k}失败了`, verdict: "生成失败", pulse: false };
+    case "expired": return { tone: "warn", title: `生成${k}超时了`, verdict: "等太久，已超时", pulse: false };
+    case "canceled": return { tone: "", title: `取消了${k}生成`, verdict: "已取消", pulse: false };
+    case "pending": case "queued": return { tone: "info", title: `正在排队生成${k}`, verdict: "排队中", pulse: true };
+    default: return { tone: "info", title: `正在生成${k}`, verdict: "正在生成", pulse: true };
+  }
+}
+function creditText(t) {
+  if (t.test) return "不扣积分";
+  if (isActive(t.st)) return `已冻结 ${t.cr} 积分`;
+  if (t.st === "succeeded") return `用了 ${t.charged} 积分`;
+  return "积分已退回";
+}
+function secondLine(t) {
+  const parts = [MODEL[t.m]];
+  if (t.st === "succeeded") parts.push(creditText(t), `用时 ${humanSpan(t.sec)}`);
+  else if (t.st === "failed" || t.st === "expired" || t.st === "canceled") parts.push(t.msg ? `${t.msg}` : "积分已退回");
+  else parts.push(`${t.st === "running" ? "生成中" : "排队中"} · 已 ${humanSpan((NOW - ago(t.created)) / 1000)}`);
+  if ((t.st === "failed" || t.st === "expired" || t.st === "canceled") && !/积分已退回/.test(t.msg || "")) parts.push("积分已退回");
+  return parts.join(" · ");
+}
+/* 失败时给运营的「怎么办」（按错误码映射，未知码给通用文案） */
+function advice(t) {
+  if (t.st === "canceled") return ["已取消", "用户或管理员取消了这个任务，积分已退回，无需处理。"];
+  if (t.st === "expired") return ["等太久，已超时", "任务在规定时间内没出结果，积分已自动退回，可以让用户重试。"];
+  if (t.st !== "failed") return null;
+  switch (t.code) {
+    case "moderation": return ["不是系统问题", "内容没通过审核，让用户改改提示词再试即可。"];
+    case "invalid_param": return ["不是系统问题", "用户填的参数不合适，让用户调整后重试。"];
+    case "provider_balance": return ["需要运维处理", "上游账户余额不足，请联系运维充值；用户的积分已退回。"];
+    case "submit_unknown": return ["建议核对", "提交结果不确定，上游可能已经扣费，建议让运维核对一下。"];
+    default: return ["可以先让用户重试", "平台暂时出了问题，积分已退回；如果反复出现，请找运维（切到「详细」看原因）。"];
+  }
+}
+const EVENT_TEXT = { created: "提交了任务", submitted: "平台开始处理", finalizing: "生成完成，正在保存结果", succeeded: "完成", failed: "失败了", canceled: "被取消", expired: "等太久，已超时" };
+function timeline(t) {
+  if (t.old) return null;
+  const c = ago(t.created); const ev = [["created", c]];
+  if (t.st !== "expired") ev.push(["submitted", new Date(c.getTime() + 1200)]);
+  if (t.st === "succeeded") { ev.push(["finalizing", new Date(c.getTime() + (t.sec - 4) * 1000)]); ev.push(["succeeded", new Date(c.getTime() + t.sec * 1000)]); }
+  else if (!isActive(t.st)) ev.push([t.st, new Date(c.getTime() + t.sec * 1000)]);
+  else if (t.st === "running") ev.push(["_now", NOW]);
+  return ev;
+}
+</script>
+
+<script>
+/* ============ 审计示意数据 ============ */
+const AUDITS = [
+  { id: 10, who: 1, cat: "user", icon: "user", verb: "调整了积分", obj: "张三", note: "增加 50 积分 · 备注：活动补偿", ago: 12, tech: { action: "user.credit_adjust", source: "admin_audit_logs", detail: { delta: 50, reason: "活动补偿", balance_after: 460 } } },
+  { id: 9, who: 1, cat: "channel", icon: "radio-tower", verb: "停用了渠道", obj: "可灵官方", note: "启用状态：已启用 → 已停用", ago: 33, tech: { action: "channel.enable", source: "ai_audit_logs", detail: { enabled: { from: true, to: false } } } },
+  { id: 8, who: 0, cat: "channel", icon: "radio-tower", verb: "自动停用了渠道", obj: "newapi", note: "连续 5 次调用失败", ago: 150, auto: true, tech: { action: "channel.auto_off", source: "ai_audit_logs", detail: { reason: "连续 5 次插件级失败", failures: 5 } } },
+  { id: 7, who: 1, cat: "user", icon: "user", verb: "封禁了账号", obj: "赵六", note: "原因：违规内容", ago: 400, tech: { action: "user.ban", source: "admin_audit_logs", detail: { reason: "违规内容" } } },
+  { id: 6, who: 2, cat: "plugin", icon: "puzzle", verb: "上传了插件版本", obj: "newapi", note: "版本 1.3.0", ago: 1300, tech: { action: "plugin.upload", source: "ai_audit_logs", detail: { version: "1.3.0", sha256: "c1e9…a07f" } } },
+  { id: 5, who: 1, cat: "channel", icon: "radio-tower", verb: "设置了渠道 Key", obj: "火山引擎", note: "已设置（不显示 Key）", ago: 2000, tech: { action: "channel.secret", source: "ai_audit_logs", detail: { note: "已设置（不记值）" } } },
+  { id: 4, who: 1, cat: "payment", icon: "wallet", verb: "启用了支付渠道", obj: "微信支付", note: "启用状态：已停用 → 已启用", ago: 2900, tech: { action: "payment.channel_enable", source: "admin_audit_logs", detail: { enabled: true } } },
+  { id: 3, who: 1, cat: "system", icon: "arrow-up-circle", verb: "升级了系统", obj: "", note: "v0.4.2 → v0.4.3", ago: 5800, tech: { action: "system.upgrade", source: "admin_audit_logs", detail: { from: "v0.4.2", to: "v0.4.3" } } },
+  { id: 2, who: 2, cat: "user", icon: "user", verb: "调整了并发上限", obj: "李四", note: "同时生成数 3 → 5", ago: 9000, tech: { action: "user.limit", source: "admin_audit_logs", detail: { max_active_tasks: { from: 3, to: 5 } } } },
+  { id: 1, who: 1, cat: "channel", icon: "radio-tower", verb: "修改了内网访问开关", obj: "newapi", note: "已关闭 → 已开启", ago: 20000, legacy: true, tech: { action: "channel.trusted", source: "ai_audit_logs", detail: { trusted_internal: { from: false, to: true } } } },
+];
+const CATS = { all: "全部分类", user: "用户", channel: "渠道", plugin: "插件", payment: "支付", system: "系统" };
+
+/* ============ 状态 ============ */
+const S = {
+  route: "usage", sim: "ok", phase: "ready", seq: 0,
+  u: { q: "", status: "all", kind: "", model: "", range: "7d", test: false, userId: null, page: 1, size: 20, pop: false },
+  a: { q: "", cat: "all", range: "30d", page: 1, size: 20 },
+  drawer: null, mode: "simple", audit: null,
+};
+try { S.mode = localStorage.getItem("admin.usage.drawerMode") === "detail" ? "detail" : "simple"; } catch (e) {}
+const RANGE_MIN = { today: 870, "24h": 1440, "7d": 10080, "30d": 43200 };
+
+function load() {
+  const my = ++S.seq; S.phase = "loading"; render();
+  setTimeout(() => { if (my !== S.seq) return; S.phase = S.sim === "error" ? "error" : "ready"; render(); }, S.sim === "slow" ? 2000 : 380);
+}
+function toast(msg) { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 1800); }
+
+/* ============ 过滤 ============ */
+function uFiltered(ignoreStatus) {
+  const f = S.u, q = f.q.trim().toLowerCase();
+  return S.sim === "empty" ? [] : TASKS.filter((t) => {
+    if (t.created > RANGE_MIN[f.range]) return false;
+    if (t.test && !f.test) return false;
+    if (f.userId && t.u !== f.userId) return false;
+    if (f.kind && t.kind !== f.kind) return false;
+    if (f.model && t.m !== f.model) return false;
+    if (q && !USERS[t.u].toLowerCase().includes(q)) return false;
+    if (!ignoreStatus) {
+      if (f.status === "active" && !isActive(t.st)) return false;
+      if (["succeeded", "failed", "canceled", "expired"].includes(f.status) && t.st !== f.status) return false;
+    }
+    return true;
+  }).sort((a, b) => a.created - b.created);
+}
+function aFiltered() {
+  const f = S.a, q = f.q.trim();
+  return S.sim === "empty" ? [] : AUDITS.filter((x) => (x.ago <= RANGE_MIN[f.range] || (f.range === "90d" && x.ago <= 129600))
+    && (f.cat === "all" || x.cat === f.cat) && (!q || (x.who === 0 ? "系统" : USERS[x.who]).includes(q)));
+}
+</script>
+
+<script>
+/* ============ 侧栏 ============ */
+function renderSide() {
+  const items = [
+    ["用户", [["users", "用户管理", "users", true], ["payment", "支付管理", "wallet", true], ["usage", "使用记录", "activity", false, true]]],
+    ["日志管理", [["audits", "操作审计", "scroll-text", false, true]]],
+  ];
+  $("#side").innerHTML = items.map(([g, list]) => `<div class="grp">${g}</div>` + list.map(([k, n, ic, off, isNew]) =>
+    `<button class="nav" ${off ? 'disabled title="本稿不涉及：已有页面"' : `data-route="${k}"`} ${S.route === k ? 'aria-current="page"' : ""}><i data-lucide="${ic}"></i><span>${n}</span>${isNew ? '<span class="new">新</span>' : ""}</button>`).join("")).join("");
+}
+
+/* ============ 通用：骨架 / 空 / 失败 / 分页 ============ */
+const skeleton = (n = 6) => `<div class="list">${Array.from({ length: n }, () => '<div class="skel"></div>').join("")}</div>`;
+const errorBox = () => `<div class="empty"><i data-lucide="circle-alert" style="color:var(--destructive)"></i><b>加载失败</b><span class="muted">请检查网络后重试</span><button class="btn sm" data-act="retry"><i data-lucide="rotate-cw"></i>重试</button></div>`;
+function pager(total, f, key) {
+  const pages = Math.max(1, Math.ceil(total / f.size));
+  const nums = pages <= 5 ? Array.from({ length: pages }, (_, i) => i + 1) : (f.page <= 3 ? [1, 2, 3, 4, "…", pages] : f.page >= pages - 2 ? [1, "…", pages - 3, pages - 2, pages - 1, pages] : [1, "…", f.page - 1, f.page, f.page + 1, "…", pages]);
+  return `<div class="pager"><span>共 <b class="tnum" style="color:var(--foreground)">${total}</b> 条 · 每页 <select class="in" style="height:28px" data-size="${key}">${[10, 20, 30].map((n) => `<option ${n === f.size ? "selected" : ""}>${n}</option>`).join("")}</select></span>
+  <span class="pg"><button data-pg="${key}:${f.page - 1}" ${f.page <= 1 ? "disabled" : ""} aria-label="上一页">‹</button>${nums.map((n) => n === "…" ? '<span style="align-self:center">…</span>' : `<button data-pg="${key}:${n}" ${n === f.page ? 'aria-current="page"' : ""}>${n}</button>`).join("")}<button data-pg="${key}:${f.page + 1}" ${f.page >= pages ? "disabled" : ""} aria-label="下一页">›</button></span></div>`;
+}
+
+/* ============ 使用记录页 ============ */
+function renderUsage() {
+  const f = S.u, all = uFiltered(true), rows = uFiltered(false);
+  const c = (st) => all.filter((t) => t.st === st).length, act = all.filter((t) => isActive(t.st)).length;
+  const bad = c("failed"), ok = c("succeeded"), total = all.length, attn = bad + c("expired") + c("canceled");
+  const rate = total - act ? Math.round((ok / Math.max(1, total - act)) * 1000) / 10 : 0;
+  const stat = (key, icon, label, val, hint, warn) => `<button class="stat" data-stat="${key}" aria-pressed="${f.status === key}" ${val === 0 && S.phase === "ready" ? "disabled" : ""}><span class="l"><i data-lucide="${icon}"></i>${label}</span><span class="v tnum">${S.phase === "ready" ? val : "–"}</span><span class="h ${warn ? "warn" : ""}">${hint}</span></button>`;
+  const stats = S.phase === "loading" ? `<div class="stats">${Array.from({ length: 4 }, () => '<div class="skel" style="height:92px;border-radius:12px"></div>').join("")}</div>`
+    : `<div class="note"><div class="stats" style="margin:0">
+      ${stat("all", "layout-list", "全部", total, RANGE_LABEL[f.range])}
+      ${stat("succeeded", "circle-check", "成功", ok, `成功率 ${rate}%`)}
+      ${stat("failed", "triangle-alert", "需要关注", attn, `失败 ${bad} · 超时 ${c("expired")} · 取消 ${c("canceled")}`, attn > 0)}
+      ${stat("active", "loader", "进行中", act, "现在正在生成")}
+    </div></div><div class="note-t">设计：用 4 张概览卡替换原来一行小字；点卡片就是一键筛选。「需要关注」大于 0 时副标题用琥珀色，其余保持中性，不到处刷绿。</div>`;
+  const moreCount = (f.kind ? 1 : 0) + (f.model ? 1 : 0) + (f.test ? 1 : 0);
+  const sel = (k, v, opts) => `<select class="in" data-more="${k}">${opts.map(([val, name]) => `<option value="${val}" ${v === val ? "selected" : ""}>${name}</option>`).join("")}</select>`;
+  const bar = `<div class="note"><div class="bar">
+    <div class="search"><i data-lucide="search"></i><input class="in" id="uq" placeholder="找人：输入用户名或邮箱，也可以粘贴任务编号" value="${esc(f.q)}" aria-label="搜索"></div>
+    <div class="seg" role="group" aria-label="状态">${[["all", "全部"], ["succeeded", "成功"], ["failed", "失败"], ["active", "进行中"]].map(([k, n]) => `<button data-status="${k}" aria-pressed="${f.status === k}">${n}</button>`).join("")}</div>
+    <select class="in" data-range="u" aria-label="时间范围">${Object.entries(RANGE_LABEL).map(([k, n]) => `<option value="${k}" ${f.range === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+    <span style="position:relative"><button class="btn" data-act="more" aria-expanded="${f.pop}"><i data-lucide="sliders-horizontal"></i>更多筛选${moreCount ? `<span class="badge">${moreCount}</span>` : ""}</button>
+      ${f.pop ? `<div class="pop" role="dialog" aria-label="更多筛选"><label>类型${sel("kind", f.kind, [["", "全部类型"], ["video", "视频"], ["image", "图片"], ["audio", "音频"], ["text", "文本"]])}</label>
+        <label>模型${sel("model", f.model, [["", "全部模型"], ...Object.entries(MODEL)])}</label>
+        <label class="row" style="flex-direction:row;color:var(--foreground)"><input type="checkbox" data-more="test" ${f.test ? "checked" : ""}> 同时显示运营试跑的任务</label></div>` : ""}</span>
+    ${f.userId ? `<span class="chip">用户：${USERS[f.userId]}<button data-act="clearUser" aria-label="清除用户筛选"><i data-lucide="x"></i></button></span>` : ""}
+  </div></div><div class="note-t">设计：最常用的「状态」从下拉改成分段控件（与渠道页同款）；类型、模型、含试跑收进「更多筛选」，有已选项时按钮上显示数字。</div>`;
+  let body;
+  if (S.phase === "loading") body = skeleton(6);
+  else if (S.phase === "error") body = errorBox();
+  else if (!rows.length) {
+    const filtered = f.q || f.status !== "all" || f.kind || f.model || f.userId;
+    body = `<div class="empty"><i data-lucide="search-x"></i><b>${filtered ? "没有符合条件的记录" : "这个时间范围内还没有人生成过内容"}</b><span class="muted">${filtered ? "换个条件试试，或清除筛选。" : "可以放宽到近 30 天再看看。"}</span><button class="btn sm" data-act="${filtered ? "clearAll" : "widen"}">${filtered ? "清除筛选" : "放宽到近 30 天"}</button></div>`;
+  } else {
+    const start = (f.page - 1) * f.size, page = rows.slice(start, start + f.size);
+    body = `<div class="note"><div class="list">${page.map((t, i) => taskCard(t, i)).join("")}</div></div><div class="note-t">设计：用卡片替换 7 列表格——第一行是一句人话，第二行是模型 / 积分 / 用时；状态用圆点颜色表达，进行中的圆点会脉动、用时每秒增长。</div>${pager(rows.length, f, "u")}`;
+  }
+  $("#page").innerHTML = `<div class="ph"><h1>使用记录</h1><p>查看谁生成了什么、结果怎么样；点一条看详情。</p></div>${stats}${bar}${body}`;
+}
+const RANGE_LABEL = { today: "今天", "24h": "近 24 小时", "7d": "近 7 天", "30d": "近 30 天" };
+function taskCard(t, i) {
+  const v = statusView(t), [, ic] = KIND[t.kind];
+  return `<button class="card enter" style="animation-delay:${Math.min(i, 6) * 30}ms" data-task="${t.n}" aria-current="${S.drawer === t.n}">
+    <span class="dot ${v.tone} ${v.pulse ? "pulse" : ""}"></span>
+    <span class="main1"><span class="t1"><b class="who" data-who="${t.u}" title="只看这个用户">${USERS[t.u]}</b><span>${v.title}</span>${t.test ? '<span class="tag">试跑</span>' : ""}</span>
+    <span class="t2" style="display:block">${secondLine(t)}</span></span>
+    <span class="time" title="${absT(ago(t.created))}">${relTime(t.created)}</span><i data-lucide="chevron-right" class="muted"></i></button>`;
+}
+
+/* ============ 操作审计页 ============ */
+function renderAudits() {
+  const f = S.a, rows = aFiltered();
+  const bar = `<div class="note"><div class="bar">
+    <div class="search"><i data-lucide="search"></i><input class="in" id="aq" placeholder="输入操作人的用户名" value="${esc(f.q)}" aria-label="搜索操作人"></div>
+    <select class="in" data-cat aria-label="分类">${Object.entries(CATS).map(([k, n]) => `<option value="${k}" ${f.cat === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+    <select class="in" data-range="a" aria-label="时间范围">${[...Object.entries(RANGE_LABEL), ["90d", "近 90 天"]].map(([k, n]) => `<option value="${k}" ${f.range === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+  </div></div><div class="note-t">设计：筛选只剩 3 个；「模块」改名「分类」，占位符写明要输入什么。</div>`;
+  let body;
+  if (S.phase === "loading") body = skeleton(6);
+  else if (S.phase === "error") body = errorBox();
+  else if (!rows.length) body = `<div class="empty"><i data-lucide="search-x"></i><b>${f.q || f.cat !== "all" ? "没有符合条件的记录" : "这个时间范围内没有操作记录"}</b><span class="muted">换个条件，或放宽时间范围。</span></div>`;
+  else {
+    const start = (f.page - 1) * f.size, page = rows.slice(start, start + f.size);
+    body = `<div class="note"><div class="list">${page.map((x, i) => auditCard(x, i)).join("")}</div></div><div class="note-t">设计：同样是卡片 + 一句话——「谁 做了什么 · 对象」，第二行是变化。动作代码、原始 JSON 收进抽屉里的「技术详情」。</div>${pager(rows.length, f, "a")}`;
+  }
+  $("#page").innerHTML = `<div class="ph"><h1>操作审计</h1><p>看看最近后台有谁做了什么调整。</p></div>${bar}${body}`;
+}
+function auditCard(x, i) {
+  const who = x.who === 0 ? "系统" : USERS[x.who];
+  return `<button class="card enter" style="animation-delay:${Math.min(i, 6) * 30}ms" data-audit="${x.id}" aria-current="${S.audit === x.id}">
+    <span class="ico"><i data-lucide="${x.icon}"></i></span>
+    <span class="main1"><span class="t1"><b>${who}</b><span>${x.verb}${x.obj ? ` · <b style="font-weight:500">${x.obj}</b>` : ""}</span>${x.auto ? '<span class="tag">自动</span>' : ""}${x.legacy ? '<span class="tag">历史</span>' : ""}</span>
+    <span class="t2" style="display:block">${x.note}</span></span><span class="time" title="${absT(ago(x.ago))}">${relTime(x.ago)}</span><i data-lucide="chevron-right" class="muted"></i></button>`;
+}
+
+function render() { renderSide(); S.route === "usage" ? renderUsage() : renderAudits(); icons(); }
+</script>
+
+<script>
+/* ============ 抽屉：任务详情（简单 / 详细） ============ */
+function closeLayer() {
+  const d = $(".drawer"), sc = $(".scrim");
+  if (!d) return;
+  d.classList.add("out"); sc && sc.classList.add("out");
+  setTimeout(() => { $("#layer").innerHTML = ""; S.drawer = null; S.audit = null; render(); }, 168);
+}
+function openLayer(html) { $("#layer").innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-modal="true">${html}</aside>`; icons(); }
+
+function taskDrawerHtml(t) {
+  const v = statusView(t), detail = S.mode === "detail", adv = advice(t);
+  const [, ic] = KIND[t.kind];
+  const head = `<div class="dh"><div style="min-width:0;flex:1"><h2>${USERS[t.u]} · 生成${kindName(t.kind)}</h2><p class="muted" style="font-size:12.5px">${relTime(t.created)} · ${MODEL[t.m]}${t.test ? " · 试跑" : ""}</p></div>
+    <div class="seg" role="group" aria-label="显示方式"><button data-mode="simple" aria-pressed="${!detail}">简单</button><button data-mode="detail" aria-pressed="${detail}">详细</button></div>
+    <button class="btn sm" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>`;
+  const sub = t.st === "succeeded" ? `用时 ${humanSpan(t.sec)} · ${creditText(t)}` : isActive(t.st) ? `已 ${humanSpan((NOW - ago(t.created)) / 1000)} · ${creditText(t)}` : `${t.msg || "积分已退回"}`;
+  const verdict = `<div class="note"><div class="verdict ${v.tone}"><span class="dot ${v.tone} ${v.pulse ? "pulse" : ""}" style="margin-top:7px"></span><div><div class="vt">${v.verdict}</div><div class="vs">${sub}</div></div></div></div>
+    <div class="note-t">设计：结论卡是抽屉里的第一屏——先给结论，再给细节；简单和详细模式都有它。</div>`;
+  const help = adv ? `<div class="help"><i data-lucide="lightbulb" style="margin-top:2px"></i><div><b>${adv[0]}</b>${adv[1]}</div></div>` : "";
+  const prompt = `<div class="sec"><h3>提示词</h3><p style="font-size:14px">${esc(t.prompt)}</p></div>`;
+  const out = t.st === "succeeded" ? `<div class="sec"><h3>生成结果</h3>${t.kind === "text" ? '<pre class="code" style="font-family:inherit;max-height:none">1. 一只猫的奔跑日记\n2. 草地上的小飞毛腿\n3. 今天也要元气满满</pre>' : t.kind === "audio" ? '<div class="media" style="aspect-ratio:auto;height:56px"><i data-lucide="music"></i><span class="pl">示意 · 音频播放器 0:06</span></div>' : `<div class="media" style="aspect-ratio:${t.kind === "image" ? "1/1" : "16/9"}"><i data-lucide="${ic}" style="font-size:34px"></i><span class="pl">示意 · ${t.kind === "image" ? "图片缩略图（点击开原图）" : "视频播放器"}</span></div>`}</div>` : "";
+  const credit = t.test ? "" : `<div class="sec"><h3>积分</h3><p style="font-size:13px">${isActive(t.st) ? `已冻结 ${t.cr} 积分，完成后按实际扣。` : t.st === "succeeded" ? `冻结了 ${t.cr}，最后扣了 ${t.charged}${t.cr - t.charged > 0 ? `，多的 ${t.cr - t.charged} 已退回` : ""}。` : `冻结了 ${t.cr}，已全部退回，没有扣费。`}</p></div>`;
+  let more = "";
+  if (detail) {
+    const tl = timeline(t);
+    const tlHtml = tl ? `<ol class="tl">${tl.map(([e, d], i) => {
+      const gap = i ? ` · +${humanSpan((d - tl[i - 1][1]) / 1000)}` : "";
+      return e === "_now" ? `<li><span class="dot info pulse" style="margin-top:6px"></span><span>正在生成</span><span class="time">现在${gap}</span></li>` : `<li><span class="dot ${e === "failed" ? "bad" : e === "succeeded" ? "ok" : e === "expired" ? "warn" : ""}" style="margin-top:6px"></span><span>${EVENT_TEXT[e]}</span><span class="time">${hms(d)}${gap}</span></li>`;
+    }).join("")}</ol>` : '<div class="help"><i data-lucide="info"></i><div>无记录：此任务创建于日志功能上线前，没有状态变化记录。</div></div>';
+    more = `<div class="detail-only" style="display:flex;flex-direction:column;gap:16px"><div class="note"><div class="sec"><h3>经过</h3>${tlHtml}</div></div>
+      <div class="sec"><h3>参数</h3><dl class="kv"><dt>画面比例</dt><dd class="mono">${t.ratio || "—"}</dd><dt>时长</dt><dd class="mono">${t.dur || "—"}</dd><dt>其它</dt><dd class="mono">resolution 1K · seed 1386169686</dd></dl></div>
+      ${t.upstream ? `<div class="sec"><h3>失败原因</h3><dl class="kv"><dt>错误码</dt><dd class="mono">${t.code}</dd></dl><h3 style="margin-top:8px">上游返回的原文（仅渠道 Key 被遮）</h3><pre class="code mono">${esc(t.upstream)}</pre></div>` : t.code ? `<div class="sec"><h3>失败原因</h3><dl class="kv"><dt>错误码</dt><dd class="mono">${t.code}</dd><dt>上游原文</dt><dd class="muted">没有（${t.old ? "创建于日志功能上线前" : t.st === "expired" ? "排队超时没有请求上游" : "用户取消"}）</dd></dl></div>` : ""}
+      <div class="sec"><h3>任务信息</h3><dl class="kv"><dt>任务编号</dt><dd class="mono" style="font-size:12px">9f3ac1d7e2b84a60${pad(t.n)}0e1c05d93a2 <button class="btn sm" data-copy>复制</button></dd><dt>渠道 / 插件</dt><dd class="mono">kling-official · kling@1.2.0</dd><dt>画布 / 节点</dt><dd class="mono">c-8f21 / node-${t.n}</dd></dl></div></div>`;
+  }
+  return head + `<div class="db">${verdict}${help}${prompt}${out}${credit}${more}<div class="note-t" style="margin-top:-4px">设计：「简单」只保留运营回复用户需要的；「详细」多出时间线、参数、错误码、上游原文和任务编号。切换只影响抽屉（已确认），选择记在本机浏览器。</div></div>`;
+}
+function openTask(n) {
+  S.drawer = n; const t = TASKS.find((x) => x.n === n);
+  if (S.sim === "error") { openLayer(`<div class="dh"><h2>任务详情</h2><button class="btn sm sp" data-close><i data-lucide="x"></i></button></div><div class="db">${errorBox()}</div>`); return; }
+  openLayer(`<div class="dh"><div class="skel" style="width:200px;height:20px"></div></div><div class="db"><div class="skel"></div><div class="skel"></div><div class="skel" style="height:90px"></div></div>`);
+  setTimeout(() => { if (S.drawer === n) { $(".drawer").innerHTML = taskDrawerHtml(t); icons(); } }, 320);
+  render();
+}
+function openAudit(id) {
+  S.audit = id; const x = AUDITS.find((a) => a.id === id), who = x.who === 0 ? "系统" : USERS[x.who];
+  openLayer(`<div class="dh"><div style="flex:1"><h2>${who} ${x.verb}${x.obj ? " · " + x.obj : ""}</h2><p class="muted" style="font-size:12.5px">${absT(ago(x.ago))}${x.auto ? " · 自动" : ""}${x.legacy ? " · 历史动作" : ""}</p></div><button class="btn sm" data-close><i data-lucide="x"></i></button></div>
+  <div class="db"><div class="verdict"><i data-lucide="${x.icon}" style="margin-top:3px"></i><div><div class="vt">${x.verb}</div><div class="vs">${x.note}</div></div></div>
+  <details class="fold"><summary>技术详情（给运维看）</summary><dl class="kv" style="margin-top:8px"><dt>动作代码</dt><dd class="mono">${x.tech.action}</dd><dt>来源表</dt><dd class="mono">${x.tech.source}</dd></dl><pre class="code mono">${esc(JSON.stringify(x.tech.detail, null, 2))}</pre></details>
+  <div class="note-t">设计：审计内容很少，不加「简单 / 详细」切换，用折叠块收起动作代码和原始 JSON。</div></div>`);
+  render();
+}
+
+/* ============ 事件 ============ */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-route],[data-status],[data-stat],[data-act],[data-task],[data-audit],[data-who],[data-pg],[data-mode],[data-close],[data-copy]");
+  if (!t) { if (S.u.pop && !e.target.closest(".pop")) { S.u.pop = false; render(); } return; }
+  const d = t.dataset;
+  if (d.route) { S.route = d.route; S.u.page = S.a.page = 1; closeSilently(); load(); }
+  else if (d.who) { e.stopPropagation(); S.u.userId = +d.who; S.u.page = 1; toast(`已只看「${USERS[d.who]}」`); load(); }
+  else if (d.task) openTask(+d.task);
+  else if (d.audit) openAudit(+d.audit);
+  else if (d.status !== undefined || d.stat !== undefined) { S.u.status = d.status ?? d.stat; S.u.page = 1; load(); }
+  else if (d.pg) { const [k, n] = d.pg.split(":"); S[k].page = +n; load(); }
+  else if (d.mode) { S.mode = d.mode; try { localStorage.setItem("admin.usage.drawerMode", d.mode); } catch (er) {} const x = TASKS.find((a) => a.n === S.drawer); if (x) { $(".drawer").innerHTML = taskDrawerHtml(x); icons(); } }
+  else if (d.close !== undefined) closeLayer();
+  else if (d.copy !== undefined) toast("已复制任务编号");
+  else if (d.act === "retry") { S.sim = "ok"; $("#sim").value = "ok"; load(); }
+  else if (d.act === "more") { S.u.pop = !S.u.pop; render(); }
+  else if (d.act === "clearUser") { S.u.userId = null; load(); }
+  else if (d.act === "clearAll") { S.u = { ...S.u, q: "", status: "all", kind: "", model: "", userId: null, page: 1, test: false }; load(); }
+  else if (d.act === "widen") { S.u.range = "30d"; load(); }
+});
+function closeSilently() { $("#layer").innerHTML = ""; S.drawer = null; S.audit = null; }
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.range) { S[t.dataset.range].range = t.value; S[t.dataset.range].page = 1; load(); }
+  else if (t.dataset.more) { S.u[t.dataset.more] = t.type === "checkbox" ? t.checked : t.value; S.u.page = 1; load(); }
+  else if (t.dataset.cat !== undefined) { S.a.cat = t.value; S.a.page = 1; load(); }
+  else if (t.dataset.size) { S[t.dataset.size].size = +t.value; S[t.dataset.size].page = 1; load(); }
+  else if (t.id === "sim") { S.sim = t.value; load(); }
+});
+let debounce;
+document.addEventListener("input", (e) => {
+  const t = e.target; if (t.id !== "uq" && t.id !== "aq") return;
+  clearTimeout(debounce); debounce = setTimeout(() => { const f = t.id === "uq" ? S.u : S.a; f.q = t.value; f.page = 1; const pos = t.selectionStart; load(); const el = $("#" + t.id); if (el) { el.focus(); el.setSelectionRange(pos, pos); } }, 300);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (S.u.pop) { S.u.pop = false; render(); } else closeLayer(); } });
+$("#themeBtn").onclick = () => document.documentElement.classList.toggle("dark");
+$("#noteBtn").onclick = () => { const on = document.body.classList.toggle("show-notes"); $("#noteBtn").textContent = on ? "隐藏设计标注" : "显示设计标注"; };
+load();
+</script>
+</body>
+</html>

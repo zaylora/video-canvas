@@ -20,6 +20,7 @@ func All() []any {
 		&User{},
 		&CanvasProject{},
 		&GenerationTask{},
+		&GenerationTaskEvent{},
 		&UserCredit{},
 		&CreditLedger{},
 		&Asset{},

@@ -222,6 +222,8 @@ type uaEnv struct {
 	smtp   *uaSMTPRepo
 	mailer *uaMailer
 	tokens map[int]string
+	usage  *uaUsageRepo     // 使用记录接口用的内存仓储
+	audits *uaAuditListRepo // 操作审计接口用的内存仓储
 }
 
 type uaResp struct {
@@ -273,7 +275,7 @@ func newUAEnv(t *testing.T) *uaEnv {
 		}
 		return st.Role, nil
 	}
-	env := &uaEnv{users: users, smtp: smtpRepo, mailer: mailer, tokens: map[int]string{}, credit: newUACreditStore(), cancel: &uaCanceler{}, conns: &uaConns{}}
+	env := &uaEnv{users: users, smtp: smtpRepo, mailer: mailer, tokens: map[int]string{}, credit: newUACreditStore(), cancel: &uaCanceler{}, conns: &uaConns{}, usage: &uaUsageRepo{}, audits: &uaAuditListRepo{}}
 	env.credit.accounts[uaNormal] = &model.UserCredit{UserID: uaNormal, Balance: 100, Frozen: 30}
 	for id := range users.users {
 		tok, _, err := utils.GenerateToken(uint(id), users.users[id].Username, 0, uaJWTSecret, "test", 1)
@@ -288,6 +290,8 @@ func newUAEnv(t *testing.T) *uaEnv {
 			Credits: env.credit, Users: userSvc, Tasks: env.cancel, Conns: env.conns,
 		}))),
 		AdminSettings: NewAdminSettingsHandler(settings, smtpSvc),
+		AdminUsage:    NewAdminUsageHandler(service.NewAdminUsageService(env.usage)),
+		AdminLogs:     NewAdminLogHandler(service.NewAuditLogService(env.audits)),
 		AdminMe:       NewAdminMeHandler(roleLookup),
 		AdminRole:     roleLookup,
 		UserState:     stateLookup,

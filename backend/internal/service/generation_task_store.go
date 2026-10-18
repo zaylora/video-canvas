@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
@@ -257,15 +258,38 @@ func (s *GenerationTaskService) settleAmount(t *model.GenerationTask, usage *mod
 
 // Fail 把非终态任务置为失败并退回积分。
 func (s *GenerationTaskService) Fail(ctx context.Context, t *model.GenerationTask, errorCode, message string) (bool, error) {
-	updated, applied, err := s.finish(ctx, t.ID, model.ActiveTaskStatuses, model.TaskFailed, map[string]any{
+	return s.FailWithUpstream(ctx, t, errorCode, message, "")
+}
+
+// FailWithUpstream 与 Fail 相同，并把上游错误原文写进这次迁移产生的 failed 事件，供后台「使用记录」排查。
+// 原文由调用方（worker）从插件宿主拿到，宿主构造时已经遮掉渠道 Key；这里只按 upstreamLimit 截断（保护存储，不是脱敏）。
+// 它只进事件详情，绝不写进任务的 error_message：用户看到的永远是统一文案。
+func (s *GenerationTaskService) FailWithUpstream(ctx context.Context, t *model.GenerationTask, errorCode, message, upstream string) (bool, error) {
+	extra := map[string]any{
 		"error_code":    errorCode,
 		"error_message": message,
-	})
+	}
+	if upstream != "" {
+		extra[repository.EventDetailKey] = map[string]any{"upstream": clipUTF8(upstream, upstreamLimit)}
+	}
+	updated, applied, err := s.finish(ctx, t.ID, model.ActiveTaskStatuses, model.TaskFailed, extra)
 	if err != nil || !applied {
 		return false, err
 	}
 	s.publish(ctx, updated)
 	return true, nil
+}
+
+// clipUTF8 把 s 按字节截到不超过 n，且不切断 UTF-8 字符；没超过原样返回。
+func clipUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // Expire 把超时任务置为 expired 并退回积分。
@@ -276,8 +300,9 @@ func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationT
 		msg = taskMsgQueueTimeout
 	}
 	updated, applied, err := s.finish(ctx, t.ID, model.ActiveTaskStatuses, model.TaskExpired, map[string]any{
-		"error_code":    TaskErrTimeout,
-		"error_message": msg,
+		"error_code":              TaskErrTimeout,
+		"error_message":           msg,
+		repository.EventDetailKey: map[string]any{"reason": "deadline"},
 	})
 	if err != nil || !applied {
 		return false, err
@@ -316,15 +341,20 @@ func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, f
 	// 用户取消：只放行还没提交给平台的；状态迁移的前置条件也只留 pending，
 	// 读到之后任务刚好被 worker 提交了（变成 queued / running）时，这次取消不会生效
 	from := model.ActiveTaskStatuses
+	reason := "user_cancel"
 	if !force {
 		if t.Status != model.TaskPending || t.SubmittedAt != nil {
 			return nil, errcode.ErrTaskNotCancelable.WithMsg(taskMsgCancelSubmitted)
 		}
 		from = []string{model.TaskPending}
+	} else {
+		// 后台封禁并取消：不是用户自己点的，事件里写明，运营排查时不会误以为是用户取消
+		reason = "admin_cancel"
 	}
 	updated, applied, err := s.finish(ctx, id, from, model.TaskCanceled, map[string]any{
-		"error_code":    TaskErrCanceled,
-		"error_message": taskMsgCanceled,
+		"error_code":              TaskErrCanceled,
+		"error_message":           taskMsgCanceled,
+		repository.EventDetailKey: map[string]any{"reason": reason},
 	})
 	if err != nil {
 		return nil, err
