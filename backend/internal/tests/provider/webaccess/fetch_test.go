@@ -150,6 +150,8 @@ func TestFetch_BlocksLocalAndPrivateAddresses(t *testing.T) {
 		s.URL, "http://localhost:" + itoa(port) + "/", "http://127.1:" + itoa(port) + "/",
 		"http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/", "http://192.168.1.1/", "http://172.16.0.1/", "http://[::1]/", "http://0.0.0.0/",
 		"http://[::ffff:127.0.0.1]/",
+		// 非标准写法的 IPv4：纯 Go 解析器不认，系统解析器认，必须由守卫自己还原后拦下，不能指望解析失败
+		"http://2130706433/", "http://0x7f.0.0.1/", "http://0177.0.0.1/", "http://0x7f000001/", "http://10.1/", "http://169.254.43518/",
 	} {
 		_, err := c.Fetch(context.Background(), u, 1000)
 		if err == nil {

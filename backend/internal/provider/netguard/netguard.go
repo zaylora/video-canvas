@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +84,41 @@ func mustCIDRs(list ...string) []*net.IPNet {
 		out = append(out, n)
 	}
 	return out
+}
+
+// parseHostIP 把主机名按字面量 IP 解析：标准写法，以及 inet_aton 风格的非标准 IPv4
+// （127.1、2130706433、0x7f.0.0.1、0177.0.0.1）。后者纯 Go 解析器当域名查、查不到，
+// 系统解析器却会还原成真实地址，所以守卫要自己还原再判断，不能依赖解析器的行为。不是字面量返回 nil。
+func parseHostIP(host string) net.IP {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) > 4 {
+		return nil
+	}
+	nums := make([]uint64, len(parts))
+	for i, p := range parts {
+		n, err := strconv.ParseUint(p, 0, 32) // base 0：0x 开头十六进制，0 开头八进制，否则十进制
+		if err != nil {
+			return nil
+		}
+		nums[i] = n
+	}
+	// 最后一段占满剩余的字节，前面每段只能是一个字节
+	last := len(nums) - 1
+	var v uint64
+	for i := 0; i < last; i++ {
+		if nums[i] > 0xff {
+			return nil
+		}
+		v |= nums[i] << (8 * uint(3-i))
+	}
+	if nums[last] >= 1<<(8*uint(4-last)) {
+		return nil
+	}
+	v |= nums[last]
+	return net.IPv4(byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
 }
 
 // IsBlockedIP 判断 IP 是否属于默认禁止访问的范围：回环、未指定（0.0.0.0 / ::）、私有网段
@@ -180,7 +216,7 @@ func (c *Config) dialContext(ctx context.Context, network, addr string) (net.Con
 		return nil, err
 	}
 	var ips []net.IP
-	if ip := net.ParseIP(strings.TrimSuffix(host, ".")); ip != nil {
+	if ip := parseHostIP(strings.TrimSuffix(host, ".")); ip != nil {
 		ips = []net.IP{ip}
 	} else {
 		ips, err = c.Resolver.LookupIP(ctx, host)
@@ -285,7 +321,7 @@ func IsGuardError(err error) bool {
 func (c *Config) CheckHost(ctx context.Context, host string) error {
 	host = strings.TrimSuffix(strings.TrimSpace(host), ".")
 	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
+	if ip := parseHostIP(host); ip != nil {
 		ips = []net.IP{ip}
 	} else {
 		var err error
