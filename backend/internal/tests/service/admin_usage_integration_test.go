@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/repository"
@@ -42,7 +41,8 @@ func TestAdminUsage_Integration_TimelineAndUpstream(t *testing.T) {
 	}
 
 	// 2. 后台读详情
-	svc := NewAdminUsageService(repository.NewAdminUsageRepository(env.db), WithUsageClock(func() time.Time { return usageNow }))
+	// 用真实时钟：任务是用真实当前时间写进真实数据库的，固定时钟会让默认的「近 7 天」范围随日期推移而漏掉它
+	svc := NewAdminUsageService(repository.NewAdminUsageRepository(env.db))
 	d, err := svc.Get(ctx, task.TaskRef)
 	if err != nil {
 		t.Fatal(err)

@@ -380,6 +380,13 @@ describe("状态时间线", () => {
     ).toBe("class=terminal · code=a · 用户取消");
     expect(eventNote({ foo: 1, bar: { x: 1 } })).toBe('foo=1 · bar={"x":1}');
   });
+
+  test("取消原因：用户取消、管理员取消（后台封禁时强制取消）、超时，未知原因原样显示", () => {
+    expect(eventNote({ reason: "user_cancel" })).toBe("用户取消");
+    expect(eventNote({ reason: "admin_cancel" })).toBe("管理员取消");
+    expect(eventNote({ reason: "deadline" })).toBe("超过截止时间");
+    expect(eventNote({ reason: "something_new" })).toBe("reason=something_new");
+  });
 });
 
 describe("积分流水", () => {

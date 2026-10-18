@@ -388,6 +388,7 @@ const EVENT_VIEW: Record<string, { label: string; tone: UsageStatusView["tone"] 
 
 const REASON_LABEL: Record<string, string> = {
   user_cancel: "用户取消",
+  admin_cancel: "管理员取消",
   deadline: "超过截止时间",
 };
 
