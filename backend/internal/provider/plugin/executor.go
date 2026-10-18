@@ -176,6 +176,13 @@ func (e *Executor) Submit(ctx context.Context, snap *provider.Snapshot, in provi
 	if err != nil {
 		return nil, err
 	}
+	// 同步接口的生成就发生在这一个请求里，时限跟着模型的任务超时走，
+	// 不被插件写死的 timeout 和宿主的上限（MaxTimeout）卡住；异步接口只是交单，仍按插件声明的快速失败
+	if ep.Mode == pluginmeta.ModeSync {
+		if d := snap.Model.Deadline.D(); d > 0 {
+			req.timeout = d
+		}
+	}
 	resp, err := o.execute(ctx, req, "submit")
 	if err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -37,7 +38,7 @@ func (w *Worker) submit(ctx context.Context, t *model.GenerationTask, snap *prov
 
 	// 3. 提交。带上已有的 provider_state：上次准备阶段成功、提交失败重试时，宿主看到 Prepared 非空就跳过准备，不会重复上传
 	st := w.providerState(t)
-	cctx, cancel := context.WithTimeout(ctx, w.opts.OperationTimeout)
+	cctx, cancel := context.WithTimeout(ctx, submitTimeout(snap, w.opts.OperationTimeout))
 	defer cancel()
 	res, err := w.exec.Submit(cctx, snap, provider.SubmitInput{
 		Task:       taskRef(t, st),
@@ -184,4 +185,15 @@ func (w *Worker) onSubmitError(ctx context.Context, t *model.GenerationTask, sna
 	delay := w.jitter(submitBackoff(attempts), defaultJitter)
 	w.taskLog(t).Warn("提交失败，稍后重试", zap.Int("attempts", attempts), zap.Duration("delay", delay), zap.Error(err))
 	w.retry(ctx, t, attempts, w.opts.Now().Add(delay))
+}
+
+// submitTimeout 是单次提交请求的时限：优先用模型配置的任务超时。
+// 同步接口（如生图）要等上游把结果生成完才返回，固定的短时限会在上游还没出结果时就把请求掐断；
+// 任务整体的截止时间在开始提交时已按同一个时长重新计算（见 MarkSubmitting），两者一致。
+// 模型没有配置任务超时才退回默认的单次操作保护。
+func submitTimeout(snap *provider.Snapshot, fallback time.Duration) time.Duration {
+	if d := snap.Model.Deadline.D(); d > 0 {
+		return d
+	}
+	return fallback
 }

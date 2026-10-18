@@ -609,3 +609,43 @@ func TestWorker_Submit_CorruptProviderStateTreatedAsEmpty(t *testing.T) {
 		t.Fatal("应记警告")
 	}
 }
+
+// withModelDeadline 把任务快照里的模型任务超时改成 d。
+func withModelDeadline(t *testing.T, task *model.GenerationTask, d time.Duration) {
+	t.Helper()
+	var snap provider.Snapshot
+	if err := json.Unmarshal(task.ConfigSnapshot, &snap); err != nil {
+		t.Fatal(err)
+	}
+	snap.Model.Deadline = modelcfg.Duration(d)
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.ConfigSnapshot = raw
+}
+
+// 同步接口要等上游把图出完才返回，单次提交请求的时限跟着模型配置的“任务超时”走，不能被固定的 2 分钟掐断
+func TestWorker_Submit_TimeoutFollowsModelDeadline(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, func(task *model.GenerationTask) { withModelDeadline(t, task, 10*time.Minute) })
+	env.runOnce(t)
+
+	if len(env.exec.submitLimits) != 1 {
+		t.Fatalf("应提交一次：%v", env.exec.submitLimits)
+	}
+	if got := env.exec.submitLimits[0]; got < 9*time.Minute || got > 10*time.Minute {
+		t.Fatalf("提交请求的时限应是模型的任务超时 10 分钟，实际还剩 %v", got)
+	}
+}
+
+// 模型没有配置任务超时（快照里为 0）时，保持默认的单次请求保护
+func TestWorker_Submit_TimeoutFallsBackToOperationTimeout(t *testing.T) {
+	env := newWkEnv(nil)
+	env.task(1, model.TaskPending, nil)
+	env.runOnce(t)
+
+	if got := env.exec.submitLimits[0]; got < time.Minute || got > 2*time.Minute {
+		t.Fatalf("没配任务超时应沿用默认的 2 分钟，实际还剩 %v", got)
+	}
+}
