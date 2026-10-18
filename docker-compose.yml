@@ -46,6 +46,10 @@ services:
       APP_SERVER_ALLOWED_ORIGINS: ${APP_SERVER_ALLOWED_ORIGINS:-http://localhost}
       # 画布 Agent：镜像里带了 Node 和运行时，compose 默认开启（覆盖 config.yaml 里的默认关闭），设为 false 关闭；还要在后台 AI 配置里发布 agent 类型的模型
       APP_AGENT_ENABLED: ${APP_AGENT_ENABLED:-true}
+      # 联网工具（搜索、读网页）：默认开启，设为 false 关闭。请求由 backend 发出，内网和本机地址一律拒绝。
+      # 搜索源默认依次试 Exa（免 Key 的公开接口）、Bing、DuckDuckGo 网页搜索，后两个对数据中心的出口常给降级结果或要求人机验证；生产环境建议启用下方的 searxng，并设置它的地址
+      APP_AGENT_WEB_ENABLED: ${APP_AGENT_WEB_ENABLED:-true}
+      APP_AGENT_SEARXNG_URL: ${APP_AGENT_SEARXNG_URL:-}
       # 一键升级（可选，见下方 updater）：与 updater 共用的 token，为空表示没启用
       APP_UPDATE_UPDATER_TOKEN: ${UPDATER_TOKEN:-}
     volumes:
@@ -110,6 +114,20 @@ services:
       backend:
         condition: service_healthy
 
+  # 联网搜索（可选，默认不启动）：自己部署的元搜索，聚合多个搜索引擎，免费、不需要 API Key。
+  #   1. 在 .env 里加一行 APP_AGENT_SEARXNG_URL=http://searxng:8080
+  #   2. 在本目录执行 docker compose --profile search up -d
+  # 只在 compose 内部网络提供服务，不对外开放端口；它需要访问外网。
+  searxng:
+    image: searxng/searxng:latest
+    profiles: ["search"]
+    restart: unless-stopped
+    configs:
+      - source: searxng_settings
+        target: /etc/searxng/settings.yml
+    expose:
+      - "8080"
+
   # 后台「一键升级」的执行端，默认不启动。它挂载 docker.sock，等同服务器 root 权限，按需启用：
   #   1. 在 .env 里加一行 UPDATER_TOKEN=<随机字符串>（如 openssl rand -hex 32）
   #   2. 在本目录执行 docker compose --profile updater up -d
@@ -125,6 +143,20 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/deploy
       - updater_sock:/run/updater
+
+configs:
+  # SearXNG 的配置：json 格式必须打开，backend 靠它拿搜索结果；不限流（只在内部网络里被 backend 调用）
+  searxng_settings:
+    content: |
+      use_default_settings: true
+      server:
+        secret_key: "${SEARXNG_SECRET:-video-canvas-searxng}"
+        limiter: false
+        image_proxy: false
+      search:
+        formats:
+          - html
+          - json
 
 volumes:
   postgres_data:

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -25,6 +26,23 @@ const (
 	maxStateBytes    = 8 << 20               // 一份会话历史最多 8MB
 	deltaFlushEvery  = 50 * time.Millisecond // 文本增量最多每 50ms 推一次
 )
+
+// ModelPurposeSummary 是 Agent 为压缩上下文发起的摘要调用：照常预检预算、计费，
+// 但它不是助手对用户说的话，不推文本增量、不记 message.done。
+const ModelPurposeSummary = "summary"
+
+type modelPurposeKey struct{}
+
+// WithModelPurpose 标明这次模型调用的用途；没标明就是普通的对话调用。
+func WithModelPurpose(ctx context.Context, purpose string) context.Context {
+	return context.WithValue(ctx, modelPurposeKey{}, purpose)
+}
+
+// ModelPurposeFrom 取模型调用的用途，没有返回空串。
+func ModelPurposeFrom(ctx context.Context) string {
+	p, _ := ctx.Value(modelPurposeKey{}).(string)
+	return p
+}
 
 // ErrBridgeToken 表示桥令牌无效、已过期或已被撤销。
 var ErrBridgeToken = errors.New("桥令牌无效或已过期")
@@ -47,6 +65,7 @@ type BridgeDeps struct {
 	Secrets  provider.SecretResolver // 渠道 Key
 	Streamer ModelStreamer           // 大模型网关
 	Skills   SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
+	Web      provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
 	Now      func() time.Time        // 为 nil 取系统时间
 	TokenTTL time.Duration           // 令牌有效期，0 取 2 小时
 }
@@ -57,6 +76,8 @@ type bridgeSession struct {
 	modelKey, mode                     string
 	selection                          []string
 	skillPins                          map[string]uint64 // 技能名 → 这次运行已固定的版本 id；只在内存里，随令牌失效
+	webCalls                           atomic.Int32      // 这个运行片段里联网工具已调用的次数（搜索和抓取共用上限）
+	nestedCalls                        atomic.Int32      // 这个运行片段里 codemode 脚本发起的嵌套调用次数
 	expires                            time.Time
 }
 
@@ -66,6 +87,7 @@ type AgentBridge struct {
 	d      BridgeDeps
 	mu     sync.Mutex
 	tokens map[string]*bridgeSession
+	calls  map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
 }
 
 // NewAgentBridge 创建桥。
@@ -76,7 +98,7 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	if d.TokenTTL <= 0 {
 		d.TokenTTL = 2 * time.Hour
 	}
-	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}}
+	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, calls: map[uint64]int{}}
 }
 
 // IssueToken 为一个运行片段签发一次性令牌：Node 进程只拿到它，没有任何渠道密钥。
@@ -144,7 +166,7 @@ func (b *AgentBridge) activeRun(ctx context.Context, s *bridgeSession) (*model.A
 // pauseRun 把运行置为可继续的暂停状态（预算用尽、步数用尽）：CAS 迁移，已经变了就不动。
 func (b *AgentBridge) pauseRun(ctx context.Context, run *model.AgentRun, status string) {
 	if _, err := b.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": status}); err == nil {
-		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": status})
+		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(status))
 	}
 }
 
@@ -160,6 +182,7 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	if err != nil {
 		return err
 	}
+	defer b.trackCall(run.ID)()
 	snap, key, err := b.resolveModel(ctx, sess.modelKey)
 	if err != nil {
 		return err
@@ -183,7 +206,11 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 		lim.MaxTokens = c.Output
 	}
 
+	internal := ModelPurposeFrom(ctx) == ModelPurposeSummary
 	deltas := &deltaBuffer{flush: func(text, thinking string) {
+		if internal {
+			return // 摘要的文字不是对用户说的话，不推给前端
+		}
 		if text != "" {
 			b.d.Agent.push(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "message.delta", map[string]any{"text": text})
 		}
@@ -201,8 +228,49 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	} else if settled.Charged > 0 {
 		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
 	}
-	b.recordMessage(ctx, run, res, settled, serr != nil)
+	// 插话会让 Agent 中止正在输出的回答再重答：此时 ctx 已取消，半截回答的 message.done 也要落库，前端才能清掉流式残留
+	if !internal {
+		b.recordMessage(context.WithoutCancel(ctx), run, res, settled, serr != nil)
+	}
 	return serr
+}
+
+// trackCall 记一次进行中的模型调用，返回的函数在调用收尾（结算、写事件都做完）后调用。
+func (b *AgentBridge) trackCall(runID uint64) func() {
+	b.mu.Lock()
+	b.calls[runID]++
+	b.mu.Unlock()
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.calls[runID]--; b.calls[runID] <= 0 {
+			delete(b.calls, runID)
+		}
+	}
+}
+
+// WaitModelCallsIdle 等这个运行进行中的模型调用都收尾，最多等 limit；没有进行中的调用立刻返回。
+// 取消运行时用它：被中止的调用要结算已产生的用量、记半截回答，等它们落库之后才好发「已取消」。
+func (b *AgentBridge) WaitModelCallsIdle(ctx context.Context, runID uint64, limit time.Duration) {
+	deadline := time.NewTimer(limit)
+	defer deadline.Stop()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		b.mu.Lock()
+		n := b.calls[runID]
+		b.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // resolveModel 取模型当前发布版本的快照和渠道 Key。不可用、不是 agent 种类、Key 没设置，都按「Agent 模型不可用」处理。
@@ -280,7 +348,7 @@ func (b *AgentBridge) MarkRunning(ctx context.Context, run *model.AgentRun) erro
 	if _, err := b.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunQueued}, map[string]any{"status": model.RunRunning}); err != nil {
 		return errcode.ErrAgentState
 	}
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunRunning})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunRunning))
 	return nil
 }
 
@@ -334,6 +402,6 @@ func (b *AgentBridge) Finish(ctx context.Context, token, status, message string)
 	if err != nil {
 		return nil // 不在 running 了：保持别的流程设定的状态
 	}
-	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": updated.Status, "error": updated.ErrorMessage})
+	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(updated.Status, "error", updated.ErrorMessage))
 	return nil
 }

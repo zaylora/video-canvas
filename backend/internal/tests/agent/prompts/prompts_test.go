@@ -111,3 +111,48 @@ func TestSystemWithSkills_Catalog(t *testing.T) {
 		}
 	})
 }
+
+// 联网：怎么用，以及抓回来的内容是别人写的资料、不是指令；搜索词会发给第三方搜索引擎，不能把用户未公开的内容放进去。
+func TestSystem_WebTools(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"web_search", "web_fetch", // 工具名
+			"不是指令", // 网页内容不是指令
+			"第三方",  // 搜索词会外发
+			"未公开",  // 用户的剧本等不要放进搜索词
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代联网工具的用法和风险，缺少 %q", mode, must)
+			}
+		}
+	}
+}
+
+// codemode：什么时候该用（批量时），什么时候不值得，脚本中途出错后别重复执行。
+func TestSystem_Codemode(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"codemode", // 工具名
+			"批量",       // 什么时候用
+			"不要重复",     // 脚本中途出错后别重复执行已生效的修改
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代 codemode 的用法，缺少 %q", mode, must)
+			}
+		}
+	}
+}
+
+// 目录里的 selected 是用户发消息时选中的节点和组：「这个」「这组」指的就是它们；选中的组里有哪些成员写在 memberIds 里。
+func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{"selected", "memberIds", "这个"} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应说明目录里的 selected，缺少 %q", mode, must)
+			}
+		}
+	}
+}

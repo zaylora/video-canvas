@@ -40,7 +40,17 @@ export const TOOL_VERBS: Record<string, string> = {
   skill_read: "技能",
 };
 
-/** 运行状态给用户看的话（只列需要在消息流里提示的） */
+/** 工具的显示名：后端随事件下发的优先（新工具不用改前端），其次本地常量，都没有就显示原名 */
+export const toolLabel = (name: string, label?: string) => label || TOOL_LABELS[name] || name;
+
+/** 工具的短动词：下发的动词 > 本地动词 > 下发的名称 > 本地名称 > 原名 */
+export const toolVerb = (name: string, verb?: string, label?: string) =>
+  verb || TOOL_VERBS[name] || label || TOOL_LABELS[name] || name;
+
+/**
+ * 运行状态给用户看的话（只列需要在消息流里提示的）。
+ * 现在由后端随 run.status 事件下发 title 和 hint，这份只给没带文字的旧事件兜底；新增状态不用加在这里。
+ */
 export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = {
   failed: { title: "运行失败", hint: "可以换个说法重试" },
   timeout: { title: "运行超时", hint: "可以继续，或换个说法重试" },
@@ -49,4 +59,10 @@ export const RUN_STATUS_TEXT: Record<string, { title: string; hint: string }> = 
   step_limit: { title: "达到本轮步数上限", hint: "继续的话会再给一轮步数" },
   canceled: { title: "已停止", hint: "没做完的计划还留着，可以接着让它做" },
   expired: { title: "等待超时", hint: "你太久没有回应，这一轮已经结束" },
+};
+
+/** 运行状态的标题和提示：后端下发的优先；只下发了标题时提示退回本地的；都没有返回 undefined */
+export const runStatusText = (status: string, title?: string, hint?: string) => {
+  const local = RUN_STATUS_TEXT[status];
+  return title ? { title, hint: hint || local?.hint || "" } : local;
 };

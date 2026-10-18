@@ -2,8 +2,10 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
+import { SUMMARY_SYSTEM_PROMPT, createCompactor, summaryMaxTokens } from "./compaction.mjs";
 import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
-import { buildTools } from "./tools.mjs";
+import { createSteering } from "./steer.mjs";
+import { buildAllTools } from "./agent-tools/index.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
 const MAX_ERROR_CHARS = 300;
@@ -27,22 +29,23 @@ export async function runAgent(input, io = {}) {
   // 因工具要求终止（等审批、等回答、步数用尽）而停下，要和「真的跑完了」区分开：
   // 前者报 paused，Go 只收回令牌、不改运行状态，否则用户批准得快时，旧进程的收尾会误伤已经续跑的新片段
   let paused = false;
-  const agent = buildAgent(input, bridge, () => (paused = true), () => paused);
+  const { agent, steering } = buildAgent(input, bridge, () => (paused = true), () => paused, log);
   agent.subscribe(async (e) => {
     if (e.type === "turn_end") await saveState(agent, bridge, log);
   });
-  io.control?.on("steer", (text) => agent.steer({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() }));
+  io.control?.on("steer", (text) => steering.push(text));
   // 用户中止是正常结束：运行的状态由 Go 在处理「停止」时设好，这里不能把它报成出错
   let aborted = false;
   io.control?.on("abort", () => {
     aborted = true;
+    steering.dispose();
     agent.abort();
   });
 
   let result;
   try {
     await start(agent, input);
-    await agent.waitForIdle();
+    await settle(agent, steering, { isPaused: () => paused, isAborted: () => aborted });
     const err = agent.state.errorMessage;
     if (err && !aborted) result = { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) };
     else result = { status: paused && !aborted ? "paused" : "done", message: "" };
@@ -50,13 +53,42 @@ export async function runAgent(input, io = {}) {
     log("运行异常", { error: String(e?.message ?? e) });
     result = { status: "error", message: String(e?.message ?? e).slice(0, MAX_ERROR_CHARS) };
   }
+  steering.dispose();
   await saveState(agent, bridge, log);
   await bridge.finish(result.status, result.message);
   return result;
 }
 
-/** 构造 Agent：模型走桥，工具走桥，上下文发给模型前裁剪 */
-function buildAgent(input, bridge, onTerminate, isPaused) {
+/**
+ * 等运行停下，并处理停下时还没处理的插话：
+ * - 被插话中止的：去掉半截回答，接着跑，循环一开始就会把队列里的插话和原请求一起交给模型；
+ * - 正常停下但队列里还有插话：没暂停就接着跑，免得插话随进程退出而丢；
+ * - 暂停等审批或回答时队列里还有插话：追加进历史（工具结果之后），续跑时模型看得到；
+ * - 用户点了停止：队列作废。
+ */
+async function settle(agent, steering, { isPaused, isAborted }) {
+  for (;;) {
+    await agent.waitForIdle();
+    if (isAborted()) return agent.clearAllQueues();
+    if (steering.consumeInterrupt() && agent.state.messages.at(-1)?.stopReason === "aborted") {
+      agent.state.messages = stripFailedTail(agent.state.messages);
+      await agent.continue();
+      continue;
+    }
+    if (!agent.hasQueuedMessages()) return;
+    if (!isPaused()) {
+      await agent.continue();
+      continue;
+    }
+    const left = agent.peekQueuedMessages();
+    agent.clearAllQueues();
+    agent.state.messages = [...agent.state.messages, ...left];
+    return;
+  }
+}
+
+/** 构造 Agent 和它的插话控制器：模型走桥，工具走桥，上下文发给模型前裁剪 */
+function buildAgent(input, bridge, onTerminate, isPaused, log) {
   const m = input.model;
   const baseUrl = input.bridge_url.replace(/\/+$/, "") + "/internal/agent/bridge/v1";
   const model = {
@@ -74,17 +106,40 @@ function buildAgent(input, bridge, onTerminate, isPaused) {
   });
   const models = createModels();
   models.setProvider(provider);
+  const piModel = models.getModel("bridge", "agent");
+
+  // 摘要压缩：历史超过触发线时把较早的消息写成摘要。摘要请求也走桥（Go 计费），请求头标明是内部调用，Go 不把它当助手的话推给前端
+  const compactor = createCompactor({
+    window: m.context_window,
+    overhead: (input.system_prompt?.length ?? 0) + (input.tools ?? []).reduce((n, d) => n + d.description.length + JSON.stringify(d.parameters).length, 0),
+    view: (msgs) => trimContext(dropOldImages(msgs, KEEP_IMAGES), { window: m.context_window }),
+    summarize: (prompt, signal) => summarize(models, piModel, prompt, signal, m.context_window),
+    onError: (e) => log("摘要压缩失败，只做裁剪", { error: String(e?.message ?? e) }),
+  });
 
   const agent = new Agent({
     // 历史通过 initialState 交给 pi：它会用这次的系统提示和工具声明重新生成开头的 system 消息；
     // 直接给 state.messages 赋值会丢掉或沿用旧的系统提示
     initialState: {
-      systemPrompt: input.system_prompt, model: models.getModel("bridge", "agent"), tools: buildTools(bridge, input.allowed_tools, onTerminate),
+      systemPrompt: input.system_prompt, model: piModel, tools: buildAllTools({ bridge, input, onTerminate, log }),
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),
     transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
+    // 每次请求模型前看一眼历史：超过触发线就压缩，并把压缩后的消息同步回 agent.state，保存的历史就是压缩后的、下次不用重做
+    prepareRequest: async ({ context }, signal) => {
+      const lead = Math.max(0, context.messages.findIndex((x) => x.role !== "system")); // 开头的 system 消息原样留着，不参与压缩
+      const next = await compactor.compact(context.messages.slice(lead), signal);
+      // 压缩做完了，模型请求马上发出：从这一刻起插话可以中止它（慢模型要等响应头才开始输出，这段等待也算）
+      steering.requestStarted();
+      if (!next) return undefined;
+      const messages = [...context.messages.slice(0, lead), ...next];
+      agent.state.messages = messages.slice();
+      return { context: { ...context, messages } };
+    },
     toolExecution: "sequential",
+    // 多条插话一次取出，在同一次回复里一起回应，而不是每条各答一遍
+    steeringMode: "all",
     onPayload: async (payload) => restoreImageUrls(payload),
     // pi 只在整批调用都要求终止时才停。模型把提问或审批和别的工具放在同一条消息里时，
     // 必须在暂停那一刻停下：后面的调用不执行（告诉模型稍后重调），这一轮结束后不再请求模型，
@@ -92,7 +147,19 @@ function buildAgent(input, bridge, onTerminate, isPaused) {
     beforeToolCall: async () => (isPaused() ? { block: true, reason: SKIPPED_TEXT, terminate: true } : undefined),
     finishTurn: async () => (isPaused() ? { action: "end" } : undefined),
   });
-  return agent;
+  const steering = createSteering(agent);
+  return { agent, steering };
+}
+
+/** 让模型把一段对话写成摘要：走桥，请求头标明是内部调用；出错或被中止都抛出，由压缩器退回不压缩 */
+async function summarize(models, model, prompt, signal, window) {
+  const msg = await models.completeSimple(
+    model,
+    { systemPrompt: SUMMARY_SYSTEM_PROMPT, messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
+    { signal, maxTokens: summaryMaxTokens(window), headers: { "X-Agent-Purpose": "summary" } },
+  );
+  if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || "摘要请求失败");
+  return msg.content.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
 /** 按启动方式驱动 Agent：start 发新消息；continue 把审批后的真实结果放回工具结果再继续；resume 接着中断的地方 */

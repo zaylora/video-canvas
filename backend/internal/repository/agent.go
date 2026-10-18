@@ -8,6 +8,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 
 	"video-canvas/internal/model"
 )
@@ -91,7 +92,10 @@ func (r *AgentRepository) DeleteSession(ctx context.Context, userID, id uint64) 
 
 // CreateRun 创建运行。同一画布上已有活跃运行时返回 ErrDuplicate（由部分唯一索引保证，不会因并发漏判）。
 func (r *AgentRepository) CreateRun(ctx context.Context, run *model.AgentRun) error {
-	if err := r.db.WithContext(ctx).Create(run).Error; err != nil {
+	// 冲突是预期内的结果（用户双击、多标签页重复发起），调用方返回 409；不让 GORM 先打一条 ERROR 和整条 INSERT。
+	// 其他错误照样返回给调用方记录。
+	quiet := r.db.Session(&gorm.Session{Logger: r.db.Logger.LogMode(gormlogger.Silent)})
+	if err := quiet.WithContext(ctx).Create(run).Error; err != nil {
 		if isUniqueViolation(err) {
 			return ErrDuplicate
 		}

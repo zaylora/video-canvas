@@ -25,6 +25,8 @@ import { DOCK_WIDTH, useAgentSettings } from "@/store/agent-settings";
 import type { Chip } from "@/utils/agent/chips";
 
 import { AgentComposer } from "./agent-composer";
+import type { RefNode } from "@/utils/agent/selection-refs";
+
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
 import { AgentEmpty } from "./agent-empty";
 import { AgentHeader } from "./agent-header";
@@ -64,6 +66,7 @@ export function AgentPanel({
   models,
   selectionCount,
   nodes,
+  refNodes,
   onAttachImages,
   onClose,
 }: {
@@ -73,6 +76,8 @@ export function AgentPanel({
   selectionCount: number;
   /** 画布上能用 @ 引用的节点 */
   nodes: NodeOption[];
+  /** 消息里「引用了哪些节点」解析标题用：含组（nodes 是输入框 @ 的候选，不含组） */
+  refNodes: RefNode[];
   /** 把图片传到画布，返回新建节点的 chip */
   onAttachImages: (files: File[]) => Promise<Chip[]>;
   onClose: () => void;
@@ -183,6 +188,7 @@ export function AgentPanel({
           ctl={ctl}
           showThinking={showThinking}
           nodes={nodes}
+          refNodes={refNodes}
           onScrolled={setScrolled}
         />
       )}

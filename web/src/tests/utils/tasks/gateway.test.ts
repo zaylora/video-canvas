@@ -164,6 +164,20 @@ describe("cancelTasks：取消", () => {
     expect(useTasksStore.getState().tasks["2"]).toBeUndefined();
   });
 
+  test("已经提交给上游的任务不发取消请求（上游照常生成，取消退款会白拿一次生成）", async () => {
+    useTasksStore.setState({
+      tasks: {
+        "1": makeTask({ id: 1, status: "pending", submitted_at: null }),
+        "2": makeTask({ id: 2, status: "running", submitted_at: "2026-09-29T10:00:05Z" }),
+        "3": makeTask({ id: 3, status: "pending", submitted_at: "2026-09-29T10:00:05Z" }),
+      },
+    });
+    cancelImpl = async () => null;
+    const failed = await cancelTasks([1, 2, 3, 4]);
+    expect(calls.cancel).toEqual([1, 4]);
+    expect(failed).toEqual([]);
+  });
+
   test("某个失败不影响其他，返回失败的 id；仍然刷新余额", async () => {
     cancelImpl = async (id) => {
       if (String(id) === "2") throw new Error("已结束");

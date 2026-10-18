@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, ChevronRight, CircleStop, Loader2, TriangleAlert } from "lucide-react";
 
-import { TOOL_LABELS, TOOL_VERBS } from "@/constants/agent";
+import { toolLabel, toolVerb } from "@/constants/agent";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
@@ -16,7 +16,7 @@ type Activity = Extract<TimelineItem, { type: "activity" }>;
 function summarize(item: Activity) {
   const counts = new Map<string, number>();
   for (const t of item.tools) {
-    const verb = TOOL_VERBS[t.name] ?? TOOL_LABELS[t.name] ?? t.name;
+    const verb = toolVerb(t.name, t.verb, t.label);
     counts.set(verb, (counts.get(verb) ?? 0) + 1);
   }
   const parts = [...counts].map(([verb, n]) => `${verb} ${n}`);
@@ -107,7 +107,7 @@ function ToolRow({ tool }: { tool: ToolCall }) {
         )}
       />
       <span className="text-foreground shrink-0 font-medium">
-        {TOOL_LABELS[tool.name] ?? tool.name}
+        {toolLabel(tool.name, tool.label)}
       </span>
       {tool.summary && <span className="truncate opacity-85">{tool.summary}</span>}
       {tool.status === "aborted" && <span className="shrink-0 opacity-70">已中止</span>}

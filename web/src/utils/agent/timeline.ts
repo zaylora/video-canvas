@@ -4,7 +4,7 @@ import type {
   AgentEventDto,
   AgentRunStatus,
 } from "@/api/agent/type";
-import { TOOL_LABELS } from "@/constants/agent";
+import { toolLabel } from "@/constants/agent";
 import {
   ACTIVE_RUN_STATUSES,
   activeRunId,
@@ -18,6 +18,9 @@ export type ToolCall = {
   key: string;
   /** 工具名 */
   name: string;
+  /** 后端随事件下发的界面名称和短动词；旧事件没有，显示时退回本地常量 */
+  label?: string;
+  verb?: string;
   /** 进行中 / 完成 / 失败 / 已中止（运行结束时它还没有结果） */
   status: "running" | "done" | "error" | "aborted";
   /** 一行摘要 */
@@ -36,6 +39,8 @@ export type TimelineItem =
       text: string;
       /** 是不是运行中的插话 */
       steer: boolean;
+      /** 发送这条消息时画布上选中的节点 id（后端校验过、确实在画布上）；没选、插话、旧事件都是空数组 */
+      selection: string[];
     }
   | {
       /** 助手的回复 */
@@ -77,6 +82,9 @@ export type TimelineItem =
       status: AgentRunStatus;
       /** 给用户看的原因，没有为空串 */
       error: string;
+      /** 后端随事件下发的标题和「可以做什么」；旧事件没有，为空串，显示时退回本地文字 */
+      title: string;
+      hint: string;
     }
   | {
       /** 一轮运行改过画布并已收尾：改动摘要（新建、修改、删除了哪些节点）和撤销本轮 */
@@ -135,6 +143,13 @@ type RawTool = ToolCall & {
   endedAt: number | null;
 };
 
+/** 事件里下发的界面名称和动词；没下发的字段不写进去，免得盖掉 tool.start 里已有的 */
+function toolNames(d: Record<string, unknown>): { label?: string; verb?: string } {
+  const label = str(d.label);
+  const verb = str(d.verb);
+  return { ...(label && { label }), ...(verb && { verb }) };
+}
+
 /** 一轮运行的画布改动，按节点去重 */
 type RunChanges = { created: Set<string>; updated: Set<string> };
 
@@ -159,7 +174,13 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
     const before = items.length;
     switch (ev.type) {
       case "message.user":
-        items.push({ type: "user", key: `e${ev.seq}`, text: str(d.text), steer: d.steer === true });
+        items.push({
+          type: "user",
+          key: `e${ev.seq}`,
+          text: str(d.text),
+          steer: d.steer === true,
+          selection: strs(d.selection).filter(Boolean),
+        });
         break;
       case "message.done":
         if (str(d.text) || str(d.thinking)) {
@@ -180,6 +201,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
           key: `t${id}`,
           runId,
           name: str(d.name),
+          ...toolNames(d),
           status: "running",
           summary: "",
           nodeIds: [],
@@ -193,6 +215,7 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
         const status = d.is_error === true ? "error" : "done";
         const patch = {
           name: str(d.name),
+          ...toolNames(d),
           status,
           summary: str(d.summary),
           nodeIds: strs(d.node_ids),
@@ -222,7 +245,15 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
         const dedupe = `${runId}:${status}`;
         if (NOTABLE_STATUSES.includes(status) && !seenStatus.has(dedupe)) {
           seenStatus.add(dedupe);
-          items.push({ type: "status", key: `s${ev.seq}`, runId, status, error: str(d.error) });
+          items.push({
+            type: "status",
+            key: `s${ev.seq}`,
+            runId,
+            status,
+            error: str(d.error),
+            title: str(d.title),
+            hint: str(d.hint),
+          });
         }
         break;
       }
@@ -463,7 +494,8 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
   for (const ev of state.events) {
     if (ev.run_id !== runId) continue;
     const d = ev.data ?? {};
-    if (ev.type === "tool.start") open.set(str(d.id) || `e${ev.seq}`, str(d.name));
+    if (ev.type === "tool.start")
+      open.set(str(d.id) || `e${ev.seq}`, toolLabel(str(d.name), str(d.label)));
     if (ev.type === "tool.end") open.delete(str(d.id) || `e${ev.seq}`);
     if (ev.type === "run.status") {
       first ??= time(ev);
@@ -472,7 +504,7 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
     }
   }
   const running = [...open.values()].at(-1);
-  const text = running ? `正在${TOOL_LABELS[running] ?? running}…` : "思考中…";
+  const text = running ? `正在${running}…` : "思考中…";
   return { runId, text, waiting: false, since: since ?? first };
 }
 

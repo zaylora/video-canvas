@@ -358,6 +358,16 @@ export const Flow = memo(function Flow({
         .map((node) => ({ id: node.id, label: node.data.label, kind: node.data.kind })),
     [nodes],
   );
+  /** 消息里「引用了哪些节点」解析标题用：组也要能解析（输入框里 @ 的候选不含组） */
+  const agentRefOptions = useMemo(
+    () =>
+      nodes.map((node) =>
+        node.type === "group"
+          ? { id: node.id, label: node.data.label, kind: "group" as const }
+          : { id: node.id, label: node.data.label, kind: node.data.kind },
+      ),
+    [nodes],
+  );
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
@@ -983,6 +993,7 @@ export const Flow = memo(function Flow({
                           models={agentModels}
                           selectionCount={nodes.filter((node) => node.selected).length}
                           nodes={agentNodeOptions}
+                          refNodes={agentRefOptions}
                           onAttachImages={attachImagesForAgent}
                           onClose={toggleAgent}
                         />

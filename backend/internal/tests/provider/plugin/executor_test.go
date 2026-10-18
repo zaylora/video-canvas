@@ -198,4 +198,49 @@ module.exports = {
 	}
 }
 
+// 同步接口的生成发生在这一个请求里：请求时限跟着模型的任务超时走，不被插件写死的 timeout 和宿主的上限卡住
+func TestExecutorSyncSubmitTimeoutFollowsModelDeadline(t *testing.T) {
+	const code = `
+module.exports = {
+  buildSubmitRequest: function(ctx) { return {method: "GET", path: "/slow", timeout: 0.01}; },
+  parseSubmitResponse: function() { return {immediate: {status: "succeeded", outputs: [{type: "text", text: "x"}]}}; }
+};`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	exec := testExecutor(t, code, "")
+	snap := testSnapshot(upstream.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthNone})
+	snap.Model.Deadline = modelcfg.Duration(10 * time.Second)
+	res, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
+	if err != nil || res == nil || res.Immediate == nil {
+		t.Fatalf("模型任务超时 10 秒，慢 100ms 的同步请求不该被插件的 0.01 秒打断：res=%+v err=%v", res, err)
+	}
+}
+
+// 异步接口只是把任务交给上游，提交请求应当很快返回，仍按插件声明的 timeout 快速失败
+func TestExecutorAsyncSubmitKeepsPluginTimeout(t *testing.T) {
+	const code = `
+module.exports = {
+  buildSubmitRequest: function(ctx) { return {method: "GET", path: "/slow", timeout: 0.01}; },
+  parseSubmitResponse: function() { return {taskId: "t1"}; }
+};`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	exec := testExecutor(t, code, "")
+	snap := testSnapshot(upstream.URL, code, modelcfg.KindText, pluginmeta.Auth{Type: pluginmeta.AuthNone})
+	snap.Plugin.Meta.Endpoints = map[string]pluginmeta.Endpoint{modelcfg.KindText: {Mode: pluginmeta.ModeAsync}}
+	snap.Model.Deadline = modelcfg.Duration(10 * time.Second)
+	_, err := exec.Submit(context.Background(), snap, provider.SubmitInput{Task: provider.TaskRef{ID: 1}, Input: map[string]any{"prompt": "hi"}})
+	if err == nil || provider.ClassOf(err) != provider.ClassSubmitUnknown {
+		t.Fatalf("异步提交仍按插件的 timeout 超时：%v", err)
+	}
+}
+
 var _ = model.Asset{}

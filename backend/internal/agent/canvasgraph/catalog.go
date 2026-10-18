@@ -10,6 +10,20 @@ type CatalogOptions struct {
 	Max         int      // 最多列多少个节点，0 表示 200
 	PromptRunes int      // 提示词摘要的字数，0 表示 60
 	Priority    []string // 优先列出的节点 id（选中的、被 @ 的），按给定顺序排在最前
+	Selected    []string // 用户发消息时选中的节点和组：明确列进目录的 selected，画布上没有的丢掉，重复的只留一个
+}
+
+// maxSelectedMembers 是选中的组最多列出多少个成员 id；更多的只说还有多少个，模型要看再用 canvas_get_state 读。
+const maxSelectedMembers = 50
+
+// CatalogSelected 是用户选中的一项：节点或组。选中的组带成员，让模型知道「这一组」里有什么。
+type CatalogSelected struct {
+	ID          string   `json:"id"`                    // 节点或组的 id
+	Type        string   `json:"type"`                  // canvas 或 group
+	Kind        string   `json:"kind,omitempty"`        // script / image / video / audio，组没有
+	Label       string   `json:"label"`                 // 标题（组是组名）
+	MemberIDs   []string `json:"memberIds,omitempty"`   // 组的成员 id，最多 maxSelectedMembers 个
+	MoreMembers int      `json:"moreMembers,omitempty"` // 没有列出来的成员数
 }
 
 // CatalogNode 是目录里的一行：只够模型认出「是哪个」，不含大段内容和媒体地址。
@@ -31,6 +45,8 @@ type Catalog struct {
 	Total     int           `json:"total"`     // 画布上的节点总数
 	Omitted   int           `json:"omitted"`   // 因为数量上限没有列出的节点数
 	EdgeCount int           `json:"edgeCount"` // 连线总数
+	// Selected 是用户发消息时在画布上选中的节点和组；没选就没有这个字段。用户说「这个」「这组」「选中的」指的就是它们
+	Selected []CatalogSelected `json:"selected,omitempty"`
 }
 
 // BuildCatalog 生成画布目录，作为每轮对话的上下文：模型靠它认识画布，需要细节时再调 Detail。
@@ -61,7 +77,36 @@ func BuildCatalog(g *Graph, opt CatalogOptions) Catalog {
 		c.Nodes = append(c.Nodes, catalogRow(g, n, opt.PromptRunes))
 	}
 	c.Omitted = c.Total - len(c.Nodes)
+	c.Selected = selectedRows(g, opt.Selected)
 	return c
+}
+
+// selectedRows 把选中的 id 变成目录里的 selected：按给定顺序，去重，画布上没有的丢掉；选中的组带上成员。
+func selectedRows(g *Graph, ids []string) []CatalogSelected {
+	var out []CatalogSelected
+	seen := map[string]bool{}
+	for _, id := range ids {
+		n := g.Node(id)
+		if n == nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		row := CatalogSelected{ID: id, Type: str(n["type"]), Label: n.Label()}
+		if n.IsGroup() {
+			members := g.members(id)
+			for i, m := range members {
+				if i >= maxSelectedMembers {
+					row.MoreMembers = len(members) - maxSelectedMembers
+					break
+				}
+				row.MemberIDs = append(row.MemberIDs, m.ID())
+			}
+		} else {
+			row.Kind = n.Kind()
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // catalogRow 生成目录的一行。

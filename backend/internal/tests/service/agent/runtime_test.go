@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"video-canvas/internal/llmgateway"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/provider"
@@ -89,14 +90,18 @@ type runtimeEnv struct {
 	work string
 }
 
-func newRuntimeEnv(t *testing.T) *runtimeEnv {
+func newRuntimeEnv(t *testing.T, opts ...func(*RuntimeConfig)) *runtimeEnv {
 	t.Helper()
 	b := newBridgeEnv(t)
 	l := &fakeLauncher{}
 	work := t.TempDir()
+	cfg := RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/src/main.mjs", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond}
+	for _, o := range opts {
+		o(&cfg)
+	}
 	rt := NewProcessRuntime(RuntimeDeps{
 		Repo: b.repo, Bridge: b.br, Canvas: NewAgentCanvasService(b.repo, b.bc), Agent: b.svc, Registry: b.reg, Launcher: l,
-		Config: RuntimeConfig{NodePath: "/usr/bin/node", ScriptPath: "/opt/agent-runtime/src/main.mjs", BridgeURL: "http://127.0.0.1:47001", WorkRoot: work, CancelGrace: 80 * time.Millisecond},
+		Config: cfg,
 	})
 	return &runtimeEnv{bridgeEnv: b, l: l, rt: rt, work: work}
 }
@@ -178,10 +183,10 @@ func TestProcessRuntime_StartBuildsInputAndLaunches(t *testing.T) {
 	}
 }
 
-func TestProcessRuntime_AllowedToolsFollowMode(t *testing.T) {
+func TestProcessRuntime_ToolsFollowMode(t *testing.T) {
 	has := func(in map[string]any, tool string) bool {
-		for _, v := range in["allowed_tools"].([]any) {
-			if v == tool {
+		for _, v := range in["tools"].([]any) {
+			if v.(map[string]any)["name"] == tool {
 				return true
 			}
 		}
@@ -190,12 +195,12 @@ func TestProcessRuntime_AllowedToolsFollowMode(t *testing.T) {
 	e := newRuntimeEnv(t)
 	_, all := e.startRun(t, "all")
 	if !has(all, "canvas_delete") || !has(all, "canvas_arrange") || !has(all, "canvas_get_state") {
-		t.Errorf("全能创作应有全部工具: %v", all["allowed_tools"])
+		t.Errorf("全能创作应有全部工具: %v", all["tools"])
 	}
 	e2 := newRuntimeEnv(t)
 	_, prompt := e2.startRun(t, "prompt")
 	if has(prompt, "canvas_delete") || has(prompt, "canvas_arrange") || !has(prompt, "canvas_get_state") {
-		t.Errorf("提示词优化不能用删除和排列，但要能读画布: %v", prompt["allowed_tools"])
+		t.Errorf("提示词优化不能用删除和排列，但要能读画布: %v", prompt["tools"])
 	}
 }
 
@@ -313,12 +318,50 @@ func TestProcessRuntime_InterjectAndCancel(t *testing.T) {
 	t.Run("取消：进程在宽限期内自己退出了，不强杀", func(t *testing.T) {
 		e := newRuntimeEnv(t)
 		run, _ := e.startRun(t, "all")
-		_ = e.rt.Cancel(ctx, run.ID)
+		go func() { _ = e.rt.Cancel(ctx, run.ID) }()
 		_, p := e.l.last()
 		p.done <- ExitInfo{Code: 0}
 		time.Sleep(250 * time.Millisecond)
 		if p.wasKilled() {
 			t.Error("已经退出的进程不该再杀")
+		}
+	})
+
+	t.Run("取消：等进行中的模型调用结算完再返回，收尾事件都已落库", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		run, in := e.startRun(t, "all")
+		started, release := make(chan struct{}), make(chan struct{})
+		e.str.script = func(_ context.Context, emit func(llmgateway.Event), _ func([]byte)) (*llmgateway.Result, error) {
+			emit(llmgateway.Event{Type: llmgateway.EventText, Text: "说到一半"})
+			close(started)
+			<-release
+			return &llmgateway.Result{Text: "说到一半", UsageMissing: true}, context.Canceled
+		}
+		proxied := make(chan error, 1)
+		go func() {
+			proxied <- e.br.ProxyModel(ctx, in["token"].(string), []byte(`{"model":"x","messages":[{"role":"user","content":"拆分镜"}]}`), func([]byte) {})
+		}()
+		<-started
+		canceled := make(chan struct{})
+		go func() { _ = e.rt.Cancel(ctx, run.ID); close(canceled) }()
+		select {
+		case <-canceled:
+			t.Fatal("模型调用还在收尾，Cancel 不该这就返回")
+		case <-time.After(30 * time.Millisecond):
+		}
+		close(release)
+		<-proxied
+		select {
+		case <-canceled:
+		case <-time.After(2 * time.Second):
+			t.Fatal("模型调用收尾后 Cancel 应返回")
+		}
+		done := false
+		for _, ty := range e.persistedTypes() {
+			done = done || ty == "message.done"
+		}
+		if !done {
+			t.Errorf("Cancel 返回时半截回答的 message.done 应已落库: %v", e.persistedTypes())
 		}
 	})
 
@@ -511,5 +554,63 @@ func TestProcessRuntime_ShutdownKillsEverything(t *testing.T) {
 	e.rt.Shutdown()
 	if !p.wasKilled() {
 		t.Error("服务退出时要杀掉所有运行进程，不能留下孤儿进程")
+	}
+}
+
+func TestProcessRuntime_DisabledToolsAreNotDeclared(t *testing.T) {
+	names := func(in map[string]any) []string {
+		var out []string
+		for _, v := range in["tools"].([]any) {
+			out = append(out, v.(map[string]any)["name"].(string))
+		}
+		return out
+	}
+	has := func(ns []string, n string) bool {
+		for _, x := range ns {
+			if x == n {
+				return true
+			}
+		}
+		return false
+	}
+	_, in := newRuntimeEnv(t).startRun(t, "all")
+	if got := names(in); !has(got, "web_search") || !has(got, "web_fetch") {
+		t.Errorf("默认应下发联网工具: %v", got)
+	}
+	_, in = newRuntimeEnv(t, func(c *RuntimeConfig) { c.DisabledTools = []string{"web_search", "web_fetch"} }).startRun(t, "all")
+	got := names(in)
+	if has(got, "web_search") || has(got, "web_fetch") {
+		t.Errorf("停用的工具不下发，模型连看都看不到: %v", got)
+	}
+	if !has(got, "canvas_get_state") {
+		t.Errorf("其他工具不受影响: %v", got)
+	}
+}
+
+func TestProcessRuntime_PassesDisabledToolsToNode(t *testing.T) {
+	// 停用清单同时交给 Node：Agent 自己的工具（比如 codemode）靠它决定启用与否
+	_, in := newRuntimeEnv(t).startRun(t, "all")
+	if _, has := in["disabled_tools"]; has {
+		t.Errorf("没有停用的工具时不传 disabled_tools: %v", in["disabled_tools"])
+	}
+	_, in = newRuntimeEnv(t, func(c *RuntimeConfig) { c.DisabledTools = []string{"codemode", "web_search"} }).startRun(t, "all")
+	got, _ := in["disabled_tools"].([]any)
+	if len(got) != 2 || got[0] != "codemode" || got[1] != "web_search" {
+		t.Errorf("disabled_tools=%v", in["disabled_tools"])
+	}
+}
+
+func TestProcessRuntime_PromptStatesTheSelection(t *testing.T) {
+	// 给模型的消息里要明确写出用户选中了什么，不能只靠目录里的排序
+	e := newRuntimeEnv(t)
+	_, in := e.startRun(t, "all", "n_script")
+	prompt := in["prompt"].(map[string]any)["text"].(string)
+	if !strings.Contains(prompt, `"selected":[{"id":"n_script"`) {
+		t.Errorf("目录里要有 selected，写明选中了哪个节点:\n%s", prompt)
+	}
+	e2 := newRuntimeEnv(t)
+	_, in2 := e2.startRun(t, "all")
+	if prompt2 := in2["prompt"].(map[string]any)["text"].(string); strings.Contains(prompt2, `"selected"`) {
+		t.Errorf("没选中任何东西时不带 selected:\n%s", prompt2)
 	}
 }

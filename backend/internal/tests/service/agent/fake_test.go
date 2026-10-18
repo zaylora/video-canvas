@@ -196,7 +196,10 @@ func (f *fakeAgentCanvasRepo) AddRunUsage(_ context.Context, id uint64, steps, c
 	return nil
 }
 
-func (f *fakeAgentCanvasRepo) AppendEvent(_ context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error) {
+func (f *fakeAgentCanvasRepo) AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error) {
+	if err := ctx.Err(); err != nil { // 和真实数据库一样：上下文取消后写不进去
+		return nil, err
+	}
 	st := f.st()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -319,6 +322,7 @@ type fakeAgentRuntime struct {
 	resumeInfos                             []ResumeInfo
 	inputs                                  []model.AgentRunInput
 	startErr, interjectErr, resumeErr       error
+	onCancel                                func(runID uint64) // 模拟取消期间进行中的模型调用结算
 }
 
 func (r *fakeAgentRuntime) Start(_ context.Context, run *model.AgentRun, in model.AgentRunInput) error {
@@ -336,8 +340,12 @@ func (r *fakeAgentRuntime) Interject(_ context.Context, id uint64, _ string) err
 }
 func (r *fakeAgentRuntime) Cancel(_ context.Context, id uint64) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.canceled = append(r.canceled, id)
+	hook := r.onCancel
+	r.mu.Unlock()
+	if hook != nil {
+		hook(id)
+	}
 	return nil
 }
 func (r *fakeAgentRuntime) Resume(_ context.Context, run *model.AgentRun, info ResumeInfo) error {
@@ -408,4 +416,9 @@ func (f *fakeAgentCanvasRepo) lastToolEndSummary() string {
 		}
 	}
 	return ""
+}
+
+// record 直接追加一条事件，模拟别的流程（如桥收尾）在这期间写入。
+func (f *fakeAgentCanvasRepo) record(sessionID, runID uint64, typ string, payload []byte) {
+	_, _ = f.AppendEvent(context.Background(), sessionID, runID, typ, payload)
 }

@@ -31,10 +31,16 @@ type fakeBridge struct {
 	finStatus string
 	finMsg    string
 	toolRes   *agentsvc.ToolResult
+	purpose   string // ProxyModel 收到的调用用途
+	parent    string // ExecuteNestedTool 收到的父调用 id
+	nestedHit bool
+	event     agentsvc.AgentToolEvent
+	eventRes  *agentsvc.AgentToolEventResult
 }
 
-func (f *fakeBridge) ProxyModel(_ context.Context, token string, body []byte, write func([]byte)) error {
+func (f *fakeBridge) ProxyModel(ctx context.Context, token string, body []byte, write func([]byte)) error {
 	f.token, f.body = token, string(body)
+	f.purpose = agentsvc.ModelPurposeFrom(ctx)
 	if f.err != nil && !f.failAfter {
 		return f.err
 	}
@@ -55,6 +61,22 @@ func (f *fakeBridge) ExecuteTool(_ context.Context, token, id, name string, args
 	return &agentsvc.ToolResult{Content: "ok"}, nil
 }
 
+func (f *fakeBridge) ExecuteNestedTool(_ context.Context, token, parent, id, name string, args json.RawMessage) (*agentsvc.ToolResult, error) {
+	f.nestedHit, f.parent = true, parent
+	return f.ExecuteTool(context.Background(), token, id, name, args)
+}
+
+func (f *fakeBridge) ReportAgentTool(_ context.Context, token string, ev agentsvc.AgentToolEvent) (*agentsvc.AgentToolEventResult, error) {
+	f.token, f.event = token, ev
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.eventRes != nil {
+		return f.eventRes, nil
+	}
+	return &agentsvc.AgentToolEventResult{Allowed: true}, nil
+}
+
 func (f *fakeBridge) SaveState(_ context.Context, token string, messages json.RawMessage) error {
 	f.token, f.state = token, string(messages)
 	return f.err
@@ -71,6 +93,7 @@ func newBridgeRouter(api AgentBridgeAPI) *gin.Engine {
 	g := r.Group("/internal/agent/bridge")
 	g.POST("/v1/chat/completions", h.ChatCompletions)
 	g.POST("/tool", h.Tool)
+	g.POST("/tool-event", h.ToolEvent)
 	g.POST("/state", h.State)
 	g.POST("/finish", h.Finish)
 	return r
@@ -271,4 +294,81 @@ func TestBridgeHandler_StateAndFinish(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestBridgeHandler_ChatCompletions_PurposeHeader(t *testing.T) {
+	call := func(api *fakeBridge, purpose string) {
+		req := httptest.NewRequest(http.MethodPost, "/internal/agent/bridge/v1/chat/completions", strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer tok-1")
+		if purpose != "" {
+			req.Header.Set("X-Agent-Purpose", purpose)
+		}
+		newBridgeRouter(api).ServeHTTP(httptest.NewRecorder(), req)
+	}
+	api := &fakeBridge{}
+	call(api, "summary")
+	if api.purpose != agentsvc.ModelPurposeSummary {
+		t.Errorf("X-Agent-Purpose: summary 应传给业务层，实际 %q", api.purpose)
+	}
+	call(api, "")
+	if api.purpose != "" {
+		t.Errorf("没带请求头就是普通对话调用，实际 %q", api.purpose)
+	}
+	call(api, "something-else")
+	if api.purpose != "" {
+		t.Errorf("不认识的用途一律按普通调用处理，免得被用来藏起助手的回复，实际 %q", api.purpose)
+	}
+}
+
+func TestBridgeHandler_Tool_NestedCallUsesParentID(t *testing.T) {
+	api := &fakeBridge{toolRes: &agentsvc.ToolResult{Content: "ok"}}
+	w := bridgeCall(newBridgeRouter(api), "/tool", "tok-1", `{"tool_call_id":"cm1.1","name":"canvas_get_state","args":{},"parent_tool_call_id":"cm1"}`)
+	if w.Code != 200 || !api.nestedHit || api.parent != "cm1" || api.toolID != "cm1.1" {
+		t.Errorf("带 parent_tool_call_id 的调用走嵌套: code=%d nested=%v parent=%q id=%q", w.Code, api.nestedHit, api.parent, api.toolID)
+	}
+	api2 := &fakeBridge{toolRes: &agentsvc.ToolResult{Content: "ok"}}
+	bridgeCall(newBridgeRouter(api2), "/tool", "tok-1", `{"tool_call_id":"c1","name":"canvas_get_state","args":{}}`)
+	if api2.nestedHit {
+		t.Error("没带 parent_tool_call_id 是普通调用")
+	}
+}
+
+func TestBridgeHandler_ToolEvent(t *testing.T) {
+	api := &fakeBridge{}
+	w := bridgeCall(newBridgeRouter(api), "/tool-event", "tok-1", `{"phase":"end","tool_call_id":"cm1","name":"codemode","label":"运行脚本","verb":"脚本","is_error":true,"summary":"脚本失败"}`)
+	if w.Code != 200 {
+		t.Fatalf("status=%d %s", w.Code, w.Body)
+	}
+	ev := api.event
+	if api.token != "tok-1" || ev.Phase != "end" || ev.ToolCallID != "cm1" || ev.Name != "codemode" || ev.Label != "运行脚本" || ev.Verb != "脚本" || !ev.IsError || ev.Summary != "脚本失败" {
+		t.Errorf("token=%q ev=%+v", api.token, ev)
+	}
+	var out struct {
+		Data struct {
+			Allowed   bool `json:"allowed"`
+			Terminate bool `json:"terminate"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if !out.Data.Allowed {
+		t.Errorf("响应里应有 allowed: %s", w.Body)
+	}
+	api.eventRes = &agentsvc.AgentToolEventResult{Allowed: false, Terminate: true, Content: "步数用尽"}
+	w = bridgeCall(newBridgeRouter(api), "/tool-event", "tok-1", `{"phase":"start","tool_call_id":"cm1","name":"codemode"}`)
+	if !strings.Contains(w.Body.String(), `"terminate":true`) || !strings.Contains(w.Body.String(), "步数用尽") {
+		t.Errorf("不允许时要带上原因和 terminate: %s", w.Body)
+	}
+}
+
+func TestBridgeHandler_ToolEvent_RejectsBadInput(t *testing.T) {
+	r := newBridgeRouter(&fakeBridge{})
+	if w := bridgeCall(r, "/tool-event", "", `{"phase":"start","tool_call_id":"c","name":"codemode"}`); w.Code != 401 && !strings.Contains(w.Body.String(), "令牌") {
+		t.Errorf("没有令牌: %d %s", w.Code, w.Body)
+	}
+	for _, body := range []string{`{"phase":"pause","tool_call_id":"c","name":"x"}`, `{"phase":"start","name":"x"}`, `{"phase":"start","tool_call_id":"c"}`, `{}`} {
+		w := bridgeCall(r, "/tool-event", "tok-1", body)
+		if strings.Contains(w.Body.String(), `"code":0`) {
+			t.Errorf("%s 应被拒绝: %s", body, w.Body)
+		}
+	}
 }

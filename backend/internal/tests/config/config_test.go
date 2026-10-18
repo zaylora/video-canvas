@@ -151,3 +151,63 @@ func TestLoad_UpdateDefaultsAndEnvOverride(t *testing.T) {
 		t.Fatal("APP_UPDATE_UPDATER_TOKEN 应能设置 token（YAML 里没有这一项）")
 	}
 }
+
+// 联网工具（搜索、读网页）默认开启，用 APP_AGENT_WEB_ENABLED 关闭；SearXNG 地址可选，用 APP_AGENT_SEARXNG_URL 配。
+func TestLoad_AgentWebSettings(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Agent.WebEnabled {
+		t.Error("联网默认应开启")
+	}
+	if cfg.Agent.SearXNGURL != "" {
+		t.Errorf("SearXNG 默认不配: %q", cfg.Agent.SearXNGURL)
+	}
+	t.Setenv("APP_AGENT_WEB_ENABLED", "false")
+	t.Setenv("APP_AGENT_SEARXNG_URL", "http://searxng:8080")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.WebEnabled || cfg.Agent.SearXNGURL != "http://searxng:8080" {
+		t.Errorf("环境变量应能覆盖: %+v", cfg.Agent)
+	}
+}
+
+func TestAgentConfig_SearXNGURLMustBeHTTP(t *testing.T) {
+	for _, tc := range []struct {
+		url     string
+		wantErr bool
+	}{
+		{"", false}, {"http://searxng:8080", false}, {"https://search.example.com", false},
+		{"searxng:8080", true}, {"ftp://searxng", true}, {"file:///etc/passwd", true}, {"http://", true},
+	} {
+		err := Agent{Enabled: true, WebEnabled: true, SearXNGURL: tc.url}.Validate()
+		if (err != nil) != tc.wantErr {
+			t.Errorf("searxng_url=%q: err=%v, wantErr=%v", tc.url, err, tc.wantErr)
+		}
+	}
+	if err := (Agent{Enabled: true, WebEnabled: false, SearXNGURL: "bad"}).Validate(); err != nil {
+		t.Errorf("联网关闭时不校验 SearXNG 地址: %v", err)
+	}
+}
+
+// agent.disabled_tools：运维想关掉某个工具（比如 codemode）时在配置里加一项；Node 靠它决定启用哪些 Agent 工具。
+func TestLoad_AgentDisabledTools(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Agent.DisabledTools) != 0 {
+		t.Errorf("默认不停用任何工具: %v", cfg.Agent.DisabledTools)
+	}
+	t.Setenv("APP_AGENT_DISABLED_TOOLS", "codemode,web_fetch")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Agent.DisabledTools; len(got) != 2 || got[0] != "codemode" || got[1] != "web_fetch" {
+		t.Errorf("环境变量应能覆盖（逗号分隔）: %v", got)
+	}
+}

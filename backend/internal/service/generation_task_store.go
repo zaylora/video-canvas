@@ -286,8 +286,23 @@ func (s *GenerationTaskService) Expire(ctx context.Context, t *model.GenerationT
 	return true, nil
 }
 
-// Cancel 软取消任务；取消成功后尽力通知插件执行器取消上游任务。
+// taskMsgCancelSubmitted 是任务已经提交给平台、用户再取消时的文案。
+const taskMsgCancelSubmitted = "任务已提交给平台生成，无法取消"
+
+// Cancel 用户取消任务：只有还没提交给平台的（pending 且没有提交时间，界面上的「排队中」）才能取消，
+// 取消后退回积分。一旦已经调用平台（同步请求已发出、平台已受理或正在生成、转存中），平台会照常生成并产生费用，
+// 这时再取消并退回积分就等于白拿一次生成，所以一律拒绝，等任务自己出结果。
 func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error) {
+	return s.cancel(ctx, userID, id, false)
+}
+
+// CancelForced 不受「已提交给平台」的限制：后台封禁用户要取消他全部进行中的任务并退回冻结，走这里。
+// 取消成功后尽力通知插件执行器取消上游任务。
+func (s *GenerationTaskService) CancelForced(ctx context.Context, userID, id uint64) (*model.GenerationTaskView, error) {
+	return s.cancel(ctx, userID, id, true)
+}
+
+func (s *GenerationTaskService) cancel(ctx context.Context, userID, id uint64, force bool) (*model.GenerationTaskView, error) {
 	t, err := s.repo.GetByID(ctx, userID, id)
 	if errors.Is(err, repository.ErrNotFound) || (err == nil && t.IsTest) {
 		return nil, errcode.ErrTaskNotFound
@@ -298,7 +313,16 @@ func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (
 	if model.IsTerminalStatus(t.Status) {
 		return nil, errcode.ErrTaskNotCancelable
 	}
-	updated, applied, err := s.finish(ctx, id, model.ActiveTaskStatuses, model.TaskCanceled, map[string]any{
+	// 用户取消：只放行还没提交给平台的；状态迁移的前置条件也只留 pending，
+	// 读到之后任务刚好被 worker 提交了（变成 queued / running）时，这次取消不会生效
+	from := model.ActiveTaskStatuses
+	if !force {
+		if t.Status != model.TaskPending || t.SubmittedAt != nil {
+			return nil, errcode.ErrTaskNotCancelable.WithMsg(taskMsgCancelSubmitted)
+		}
+		from = []string{model.TaskPending}
+	}
+	updated, applied, err := s.finish(ctx, id, from, model.TaskCanceled, map[string]any{
 		"error_code":    TaskErrCanceled,
 		"error_message": taskMsgCanceled,
 	})
@@ -314,7 +338,7 @@ func (s *GenerationTaskService) Cancel(ctx context.Context, userID, id uint64) (
 }
 
 // CancelActiveByUser 取消用户全部进行中的正式任务并退还冻结（后台封禁并取消任务用）。
-// 每个任务复用 Cancel 的完整流程（状态迁移 + 结算 / 退款流水 + 退还冻结在同一事务里、通知上游取消、推送），不另写积分逻辑。
+// 每个任务复用强制取消的完整流程（状态迁移 + 结算 / 退款流水 + 退还冻结在同一事务里、通知上游取消、推送），不另写积分逻辑。
 // 单个任务失败不影响其他任务：失败的 id 放进结果，已成功的不回滚；只有查询进行中任务失败才返回 error。
 func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID uint64) (*CancelActiveResult, error) {
 	// 1. 取该用户全部非终态的正式任务（试跑任务不占积分，不在其中）
@@ -325,7 +349,7 @@ func (s *GenerationTaskService) CancelActiveByUser(ctx context.Context, userID u
 	// 2. 逐个取消。任务在查询之后被别的流程结束（返回“不可取消”）说明目标已达成，既不算取消也不算失败
 	res := &CancelActiveResult{}
 	for i := range tasks {
-		_, err := s.Cancel(ctx, userID, tasks[i].ID)
+		_, err := s.CancelForced(ctx, userID, tasks[i].ID)
 		var ec *errcode.Error
 		switch {
 		case err == nil:

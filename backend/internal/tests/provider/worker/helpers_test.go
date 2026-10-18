@@ -403,6 +403,7 @@ type wkExec struct {
 	cancelFn func(ref provider.TaskRef) error
 
 	submits, queries, downloads int
+	submitLimits                []time.Duration // 每次 Submit 收到的 ctx 还剩多久到期，没有时限记 0
 	submitIns                   []provider.SubmitInput
 	queryRefs                   []provider.TaskRef
 	cancels                     []provider.TaskRef
@@ -413,6 +414,11 @@ func (e *wkExec) Submit(ctx context.Context, snap *provider.Snapshot, in provide
 	e.submits++
 	n := e.submits
 	e.submitIns = append(e.submitIns, in)
+	var limit time.Duration
+	if dl, ok := ctx.Deadline(); ok {
+		limit = time.Until(dl)
+	}
+	e.submitLimits = append(e.submitLimits, limit)
 	fn := e.submitFn
 	e.mu.Unlock()
 	provider.TraceFrom(ctx).Add(provider.TraceStep{Name: fmt.Sprintf("submit:%d", n), Kind: "hook"})

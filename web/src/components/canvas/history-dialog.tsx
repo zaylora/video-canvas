@@ -35,6 +35,7 @@ import { activeOutputIdOf, readOutputs, selectOutput } from "@/utils/canvas/outp
 import type { PreviewItem } from "@/utils/canvas/preview-items";
 import { buildVersionNodes, canSetMain, recentFailedTasks } from "@/utils/canvas/versions";
 import { cancelTasks } from "@/utils/tasks/gateway";
+import { cancelableTaskIds } from "@/utils/tasks/status";
 
 import { MediaLightbox, type LightboxTarget } from "./media-lightbox";
 import { MediaPreview, VideoPoster } from "./media-preview";
@@ -301,13 +302,16 @@ export function NodeHistoryDialog() {
     });
   };
 
+  /** 剩余任务里还能取消的：已经提交给上游的取消不了 */
+  const restIds = data?.pendingTaskIds?.length
+    ? data.pendingTaskIds
+    : data?.taskId
+      ? [data.taskId]
+      : [];
+  const cancelableIds = cancelableTaskIds(restIds, tasks);
+
   const cancelRest = () => {
-    const ids = data?.pendingTaskIds?.length
-      ? data.pendingTaskIds
-      : data?.taskId
-        ? [data.taskId]
-        : [];
-    if (ids.length) void cancelTasks(ids);
+    if (cancelableIds.length) void cancelTasks(cancelableIds);
   };
 
   const zoomItems = useMemo<PreviewItem[]>(
@@ -400,8 +404,9 @@ export function NodeHistoryDialog() {
                   <DropdownMenuItem onClick={() => addToCanvas([...outputs])}>
                     <ImagePlus /> 全部添加到画布
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled={pending === 0} onClick={cancelRest}>
-                    <Ban /> 取消剩余{pending > 0 ? `（${pending} 个）` : ""}
+                  <DropdownMenuItem disabled={cancelableIds.length === 0} onClick={cancelRest}>
+                    <Ban /> 取消剩余
+                    {cancelableIds.length > 0 ? `（${cancelableIds.length} 个）` : ""}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

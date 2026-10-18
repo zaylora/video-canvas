@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { runAgent } from "../src/run.mjs";
-import { baseInput, fakeBridge, sleep } from "./helpers.mjs";
+import { TOOL_DECLS, baseInput, fakeBridge, sleep } from "./helpers.mjs";
 
 const withBridge = async (opts, fn) => { const b = await fakeBridge(opts); try { await fn(b); } finally { await b.close(); } };
 
@@ -107,14 +107,21 @@ test("桥回调失败（500）：模型看到错误，运行不中断", async ()
   });
 });
 
-test("allowed_tools：只把当前模式允许的工具声明给模型", async () => {
+test("tools：Go 下发的工具原样声明给模型，Agent 自己的 codemode 追加在后面", async () => {
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
-    await runAgent(baseInput(b.url, { allowed_tools: ["canvas_get_state", "plan_update"] }));
-    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name).sort(), ["canvas_get_state", "plan_update"]);
+    const two = TOOL_DECLS.filter((d) => ["canvas_get_state", "plan_update"].includes(d.name));
+    await runAgent(baseInput(b.url, { tools: two }));
+    assert.deepEqual(b.rec.chats[0].tools.map((t) => t.function.name), ["canvas_get_state", "plan_update", "codemode"]);
   });
   await withBridge({ models: [{ text: "好" }] }, async (b) => {
     await runAgent(baseInput(b.url));
-    assert.equal(b.rec.chats[0].tools.length, 12, "不限制时声明全部工具");
+    const names = b.rec.chats[0].tools.map((t) => t.function.name);
+    assert.deepEqual(names.slice(0, 12), TOOL_DECLS.map((d) => d.name), "Go 下发多少就声明多少，顺序不变");
+    assert.deepEqual(names.slice(12), ["codemode"]);
+  });
+  await withBridge({ models: [{ text: "好" }] }, async (b) => {
+    await runAgent(baseInput(b.url, { tools: undefined }));
+    assert.ok(!b.rec.chats[0].tools?.length, "Go 没下发工具时，Node 里没有任何内置的业务工具，codemode 也没有可调用的东西所以不启用");
   });
 });
 
@@ -230,7 +237,7 @@ test("历史保存失败（令牌无效）：只记日志，运行照常报告",
 });
 
 test("上下文裁剪：超过窗口的 70% 时较早的工具结果被换成占位文字", async () => {
-  const big = "长".repeat(6000);
+  const big = "长".repeat(8000);
   await withBridge({
     models: [
       { tools: [{ id: "a", name: "canvas_get_state", args: {} }] },
@@ -241,8 +248,9 @@ test("上下文裁剪：超过窗口的 70% 时较早的工具结果被换成占
     ],
     tool: async () => ({ content: big }),
   }, async (b) => {
-    // 窗口很小，让 4 个大结果必然超出
-    await runAgent(baseInput(b.url, { model: { name: "m", context_window: 12000, max_tokens: 1000, vision: false } }));
+    // 4 个大结果超过窗口的 70%，必然要裁剪；裁剪之后够用，不该触发摘要压缩
+    await runAgent(baseInput(b.url, { model: { name: "m", context_window: 40000, max_tokens: 1000, vision: false } }));
+    assert.equal(b.rec.summaries.length, 0, "裁剪够用时不做摘要");
     const last = b.rec.chats.at(-1).messages.filter((m) => m.role === "tool");
     assert.ok(last.some((m) => String(m.content).includes("已省略")), "较早的工具结果应被省略");
     assert.ok(!String(last.at(-1).content).includes("已省略"), "最近的工具结果不能被省略");

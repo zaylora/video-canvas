@@ -78,6 +78,21 @@ docker compose --profile updater up -d    # 启动 updater
 - 升级时 updater 自己不会被重建；要升级 updater 本身，在部署目录再执行一次 `docker compose --profile updater up -d`。
 - 停用：`docker compose --profile updater rm -sf updater`。
 
+### 联网工具与搜索（可选）
+
+画布 Agent 可以联网查资料、读网页（`web_search`、`web_fetch`）。请求都由 backend 发出，Agent 进程自己不联网；目标是本机或内网地址时一律拒绝，每个运行片段最多联网 20 次。
+
+- **开关**：默认开启；`.env` 里设 `APP_AGENT_WEB_ENABLED=false` 可以关闭，关闭后模型看不到这两个工具。
+- **搜索源**：默认依次试 Exa（公开的免 Key 接口）、Bing 网页、DuckDuckGo 网页，都不需要 API Key。后两个是抓搜索引擎网页：实测 DuckDuckGo 对数据中心的出口会直接返回人机验证页，Bing 对自动化请求返回的结果相关性很差，所以实际靠 Exa；它是 Exa 托管的免费额度，会限流。**生产环境建议部署 SearXNG**（聚合多个引擎，自己掌控）：
+
+```bash
+echo 'APP_AGENT_SEARXNG_URL=http://searxng:8080' >> .env
+docker compose --profile search up -d      # 启动 searxng；backend 需要读到新的环境变量，再执行一次 docker compose up -d
+```
+
+- 配了 `APP_AGENT_SEARXNG_URL` 后，它排在搜索源的第一位，失败或没结果再依次试 Exa、Bing、DuckDuckGo。
+- 搜索词会发给第三方（Exa、Bing 等搜索服务）。系统提示词已要求 Agent 不要把用户未公开的剧本、台词放进搜索词，但这不是技术上的保证；有保密要求的部署请关闭联网。
+
 查看迁移状态（只读）：
 
 ```bash

@@ -624,7 +624,8 @@ func TestGenerationTaskHandler_Cancel(t *testing.T) {
 		wantStatus int
 		wantCode   int
 	}{
-		{"取消进行中的任务", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Credits: 10}, "", http.StatusOK, 0},
+		{"取消还没提交给上游的任务", model.GenerationTask{UserID: 1, Status: model.TaskPending, Credits: 10}, "", http.StatusOK, 0},
+		{"已提交给上游的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskRunning, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code},
 		{"已结束的任务返回 409 + 40005", model.GenerationTask{UserID: 1, Status: model.TaskSucceeded, Credits: 10}, "", http.StatusConflict, errcode.ErrTaskNotCancelable.Code},
 		{"别人的任务返回 404 + 40004", model.GenerationTask{UserID: 2, Status: model.TaskRunning}, "", http.StatusNotFound, errcode.ErrTaskNotFound.Code},
 		{"id 非法返回 400", model.GenerationTask{}, "/abc", http.StatusBadRequest, errcode.ErrInvalidParams.Code},

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,6 +30,8 @@ type RuntimeConfig struct {
 	BridgeURL   string        // 桥的地址，如 http://127.0.0.1:47001，Node 用它回调 Go
 	WorkRoot    string        // 每个片段的临时目录建在这里，空表示系统临时目录
 	CancelGrace time.Duration // 发 abort 之后等进程自己退出多久，超时强杀；0 取 5 秒
+	// DisabledTools 是运行时停用的工具名（比如关掉联网就停用 web_search、web_fetch）：不下发给 Agent，模型看不到它们
+	DisabledTools []string
 }
 
 // RuntimeDeps 是创建 ProcessRuntime 需要的依赖。
@@ -74,7 +77,7 @@ func (r *ProcessRuntime) Start(ctx context.Context, run *model.AgentRun, in mode
 		return err
 	}
 	// 用户消息后面附上画布目录和运行参数，明确标成数据，不是指令
-	cat, err := r.d.Canvas.Catalog(ctx, run, canvasgraph.CatalogOptions{Priority: in.Selection})
+	cat, err := r.d.Canvas.Catalog(ctx, run, canvasgraph.CatalogOptions{Priority: in.Selection, Selected: in.Selection})
 	if err != nil {
 		return err
 	}
@@ -158,7 +161,10 @@ func (r *ProcessRuntime) baseInput(ctx context.Context, run *model.AgentRun, in 
 		"bridge_url":    r.d.Config.BridgeURL,
 		"model":         map[string]any{"name": snap.Model.Label, "context_window": caps.Context.Window, "max_tokens": caps.Context.Output, "vision": caps.Vision},
 		"system_prompt": prompts.SystemWithSkills(mode, catalog),
-		"allowed_tools": AgentToolsFor(mode, caps.Vision),
+		"tools":         r.declaredTools(mode, caps.Vision),
+	}
+	if len(r.d.Config.DisabledTools) > 0 {
+		input["disabled_tools"] = r.d.Config.DisabledTools // Agent 自己的工具（如 codemode）靠它决定启用与否
 	}
 	state, err := r.d.Bridge.LoadState(ctx, run.UserID, run.SessionID)
 	if err != nil {
@@ -259,7 +265,7 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 		return
 	}
 	logger.Error("Agent 进程异常退出，运行已标为中断", zap.Uint64("run_id", run.ID), zap.Int("code", exit.Code), zap.String("stderr", exit.StderrTail))
-	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", map[string]any{"status": model.RunInterrupted, "error": "运行进程异常退出"})
+	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted, "error", "运行进程异常退出"))
 }
 
 // segment 取运行当前的进程。
@@ -284,7 +290,8 @@ func (r *ProcessRuntime) Interject(_ context.Context, runID uint64, message stri
 
 // Cancel 中止运行：先发 abort 让 pi 自己中止（连接断开，桥据此结算已产生的用量），
 // 宽限期内进程没退出就强杀。没有进程不是错误。
-func (r *ProcessRuntime) Cancel(_ context.Context, runID uint64) error {
+// 返回前等进行中的模型调用收尾（最多一个宽限期）：调用方随后发「已取消」，半截回答和用量要排在它前面。
+func (r *ProcessRuntime) Cancel(ctx context.Context, runID uint64) error {
 	seg := r.segment(runID)
 	if seg == nil {
 		return nil
@@ -297,6 +304,7 @@ func (r *ProcessRuntime) Cancel(_ context.Context, runID uint64) error {
 			seg.proc.Kill()
 		}
 	}()
+	r.d.Bridge.WaitModelCallsIdle(ctx, runID, r.d.Config.CancelGrace)
 	return nil
 }
 
@@ -319,4 +327,13 @@ func (r *ProcessRuntime) Shutdown() {
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// declaredTools 是这次运行下发给 Agent 的工具：按模式和模型能力过滤后，去掉运行时停用的（比如关掉了联网）。
+func (r *ProcessRuntime) declaredTools(mode string, vision bool) []ToolDecl {
+	decls := AgentToolDecls(mode, vision)
+	if len(r.d.Config.DisabledTools) == 0 {
+		return decls
+	}
+	return slices.DeleteFunc(decls, func(d ToolDecl) bool { return slices.Contains(r.d.Config.DisabledTools, d.Name) })
 }

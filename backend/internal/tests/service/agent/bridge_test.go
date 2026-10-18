@@ -75,17 +75,24 @@ func okStream(text string, usage llmgateway.Usage) func(context.Context, func(ll
 
 type bridgeEnv struct {
 	*agentEnv
-	bill *fakeBillingRepo
-	reg  *fakeBridgeRegistry
-	str  *fakeStreamer
-	br   *AgentBridge
-	now  *time.Time
+	webAccess provider.WebAccess
+	bill      *fakeBillingRepo
+	reg       *fakeBridgeRegistry
+	str       *fakeStreamer
+	br        *AgentBridge
+	now       *time.Time
 }
 
-func newBridgeEnv(t *testing.T) *bridgeEnv { return newBridgeEnvWithSkills(t, nil) }
+func newBridgeEnv(t *testing.T) *bridgeEnv { return newBridgeEnvWith(t, nil, &fakeWeb{}) }
 
 // newBridgeEnvWithSkills 同 newBridgeEnv，并给桥配一个技能库（nil 表示只有内置技能）。
 func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
+	t.Helper()
+	return newBridgeEnvWith(t, lib, &fakeWeb{})
+}
+
+// newBridgeEnvWith 同 newBridgeEnv，可以指定技能库和联网能力（web 传 nil 表示没有联网能力）。
+func newBridgeEnvWith(t *testing.T, lib SkillLibrary, web provider.WebAccess) *bridgeEnv {
 	t.Helper()
 	e := newAgentEnv(t)
 	bill := &fakeBillingRepo{available: 100}
@@ -102,11 +109,14 @@ func newBridgeEnvWithSkills(t *testing.T, lib SkillLibrary) *bridgeEnv {
 	now := e.now
 	br := NewAgentBridge(BridgeDeps{
 		Repo: e.repo, Canvas: NewAgentCanvasService(e.repo, e.bc), Agent: e.svc, Billing: NewAgentBilling(bill),
-		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib,
+		Registry: reg, Secrets: fakeSecrets{"channel:ch1": "sk-test"}, Streamer: str, Skills: lib, Web: web,
 		Now: func() time.Time { return now }, TokenTTL: time.Hour,
 	})
-	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now}
+	return &bridgeEnv{agentEnv: e, bill: bill, reg: reg, str: str, br: br, now: &now, webAccess: web}
 }
+
+// web 取注入的假联网能力。
+func (b *bridgeEnv) web() *fakeWeb { return b.webAccess.(*fakeWeb) }
 
 func (b *bridgeEnv) token(t *testing.T, mode string, selection ...string) (string, *model.AgentRun) {
 	t.Helper()
@@ -210,6 +220,46 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		}
 	})
 
+	t.Run("内部摘要调用：照常预检和计费，但不推文本增量、不记 message.done（不是助手对用户说的话）", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		sctx := WithModelPurpose(ctx, ModelPurposeSummary)
+		if err := b.br.ProxyModel(sctx, tok, body, func([]byte) {}); err != nil {
+			t.Fatal(err)
+		}
+		if len(b.bill.settled) != 1 || b.bill.settled[0].Credits != 5 || b.bill.usageRunID != run.ID {
+			t.Errorf("摘要调用同样要按用量结算并记入本轮已花: %+v", b.bill.settled)
+		}
+		for _, ty := range b.persistedTypes() {
+			if ty == "message.done" {
+				t.Error("摘要不能冒充助手的回复记成 message.done")
+			}
+		}
+		for _, m := range b.bc.msgs {
+			if m.Type != ws.TypeAgentEvent {
+				continue
+			}
+			if v, ok := m.Data.(*AgentEventView); ok && (v.Type == "message.delta" || v.Type == "thinking.delta") {
+				t.Errorf("摘要的文字不能推给前端: %+v", v)
+			}
+		}
+	})
+
+	t.Run("内部摘要调用：预算用尽照样挡住并暂停运行", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		b.repo.mu.Lock()
+		b.repo.runs[run.ID].SpentCredits = 50
+		b.repo.mu.Unlock()
+		wantAgentCode(t, b.br.ProxyModel(WithModelPurpose(ctx, ModelPurposeSummary), tok, body, func([]byte) {}), errcode.ErrAgentOverBudget)
+		if b.str.calls != 0 {
+			t.Error("预算不够不能发摘要请求")
+		}
+		if b.run(run.ID).Status != model.RunBudgetExhausted {
+			t.Errorf("运行应转为预算用尽: %s", b.run(run.ID).Status)
+		}
+	})
+
 	t.Run("运行不在 running：60003，不发请求", func(t *testing.T) {
 		b := newBridgeEnv(t)
 		tok, run := b.token(t, "all")
@@ -295,6 +345,16 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		}
 		if len(b.bill.settled) != 1 || b.bill.settled[0].Credits == 0 || !b.bill.settled[0].UsageEstimated {
 			t.Errorf("取消后仍要结算已产生的部分: %+v", b.bill.settled)
+		}
+		// 插话会让 Agent 中止正在输出的回答并接着重答：半截回答的 message.done 必须落库，前端才能清掉流式残留
+		done := 0
+		for _, ty := range b.persistedTypes() {
+			if ty == "message.done" {
+				done++
+			}
+		}
+		if done != 1 {
+			t.Errorf("取消后半截回答也要记 message.done（partial=true），实际 %d 条: %v", done, b.persistedTypes())
 		}
 	})
 }

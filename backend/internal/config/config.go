@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -92,6 +93,15 @@ type Agent struct {
 	RuntimeDir string `mapstructure:"runtime_dir"` // 仓库根目录 agent/ 目录（含 src/main.mjs 和已安装的 node_modules），默认 ../agent
 	BridgeAddr string `mapstructure:"bridge_addr"` // 桥的监听地址，必须是回环地址，默认 127.0.0.1:0（随机端口）
 	WorkDir    string `mapstructure:"work_dir"`    // 每个运行片段的临时目录建在这里，默认系统临时目录
+	// WebEnabled 是否开放联网工具（搜索、读网页），默认开启。联网请求由 Go 发出（Agent 进程不联网），
+	// 内网和本机地址一律拒绝；关闭后模型看不到这两个工具。
+	WebEnabled bool `mapstructure:"web_enabled"`
+	// SearXNGURL 是自己部署的 SearXNG 地址（如 http://searxng:8080），可选：配了它排在搜索源的第一位，
+	// 没配就依次用免配置的 Exa、Bing、DuckDuckGo（后两个抓网页，数据中心的出口常给降级结果或要求人机验证，生产环境建议部署 SearXNG）。
+	SearXNGURL string `mapstructure:"searxng_url"`
+	// DisabledTools 是停用的工具名（逗号分隔的环境变量 APP_AGENT_DISABLED_TOOLS 也行）：不下发给模型。
+	// Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，运维想关掉某个能力时加一项。
+	DisabledTools []string `mapstructure:"disabled_tools"`
 }
 
 // WithDefaults 补上没配置的项。
@@ -113,6 +123,11 @@ func (a Agent) WithDefaults() Agent {
 func (a Agent) Validate() error {
 	if !a.Enabled {
 		return nil
+	}
+	if a.WebEnabled && a.SearXNGURL != "" {
+		if u, err := url.Parse(a.SearXNGURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("agent.searxng_url 必须是 http(s)://host[:port] 形式，当前是 %q", a.SearXNGURL)
+		}
 	}
 	host, _, err := net.SplitHostPort(a.WithDefaults().BridgeAddr)
 	if err != nil {
@@ -197,6 +212,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
 	v.SetDefault("update.updater_socket", "/run/updater/updater.sock")
@@ -210,7 +226,7 @@ func Load(path string) (*Config, error) {
 	// 否则升级时无法把它们导入为后台存储
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
-		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir",
+		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

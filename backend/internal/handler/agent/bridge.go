@@ -26,6 +26,10 @@ type AgentBridgeAPI interface {
 	ProxyModel(ctx context.Context, token string, body []byte, write func([]byte)) error
 	// ExecuteTool 执行 Node 回调的一次工具调用。
 	ExecuteTool(ctx context.Context, token, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
+	// ExecuteNestedTool 执行 codemode 脚本里发起的嵌套调用：不计步数，只有可被脚本调用的工具能执行。
+	ExecuteNestedTool(ctx context.Context, token, parentID, toolCallID, name string, args json.RawMessage) (*agentsvc.ToolResult, error)
+	// ReportAgentTool 记录 Agent 自己的工具（不经 /tool）的开始和结束。
+	ReportAgentTool(ctx context.Context, token string, ev agentsvc.AgentToolEvent) (*agentsvc.AgentToolEventResult, error)
 	// SaveState 保存 Node 回合结束时交回的对话历史。
 	SaveState(ctx context.Context, token string, messages json.RawMessage) error
 	// Finish 处理 Node 进程报告的片段结束。
@@ -83,7 +87,11 @@ func (h *AgentBridgeHandler) ChatCompletions(c *gin.Context) {
 		_, _ = c.Writer.Write(line) // 调用方已断开时写失败，下面的上下文取消会让代理结束
 		c.Writer.Flush()
 	}
-	err = h.svc.ProxyModel(c.Request.Context(), tok, body, write)
+	ctx := c.Request.Context()
+	if c.GetHeader("X-Agent-Purpose") == agentsvc.ModelPurposeSummary { // 只认已知的用途：别的值一律当普通对话，免得被用来藏起助手的回复
+		ctx = agentsvc.WithModelPurpose(ctx, agentsvc.ModelPurposeSummary)
+	}
+	err = h.svc.ProxyModel(ctx, tok, body, write)
 	if err != nil && !started {
 		status, msg, typ := openAIError(err)
 		writeOpenAIError(c, status, msg, typ)
@@ -124,6 +132,8 @@ type toolReq struct {
 	ToolCallID string          `json:"tool_call_id" binding:"required,max=128" label:"tool_call_id"` // pi 给这次工具调用的 id
 	Name       string          `json:"name" binding:"required,max=64" label:"name"`                  // 工具名
 	Args       json.RawMessage `json:"args"`                                                         // 工具参数，不传按空对象
+	// ParentToolCallID 非空表示这是 codemode 脚本里发起的嵌套调用，值是脚本那次调用的 id
+	ParentToolCallID string `json:"parent_tool_call_id" binding:"max=128" label:"parent_tool_call_id"`
 }
 
 // Tool 执行一次工具调用：Node 里每个工具的 execute 都只是回调这里。
@@ -141,7 +151,45 @@ func (h *AgentBridgeHandler) Tool(c *gin.Context) {
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
-	res, err := h.svc.ExecuteTool(c.Request.Context(), tok, req.ToolCallID, req.Name, args)
+	var res *agentsvc.ToolResult
+	var err error
+	if req.ParentToolCallID != "" {
+		res, err = h.svc.ExecuteNestedTool(c.Request.Context(), tok, req.ParentToolCallID, req.ToolCallID, req.Name, args)
+	} else {
+		res, err = h.svc.ExecuteTool(c.Request.Context(), tok, req.ToolCallID, req.Name, args)
+	}
+	if err != nil {
+		bridgeFail(c, err)
+		return
+	}
+	response.OK(c, res)
+}
+
+// toolEventReq 是 Agent 工具开始或结束的报备。
+type toolEventReq struct {
+	Phase      string `json:"phase" binding:"required,oneof=start end" label:"phase"`
+	ToolCallID string `json:"tool_call_id" binding:"required,max=128" label:"tool_call_id"`
+	Name       string `json:"name" binding:"required,max=64" label:"name"`
+	Label      string `json:"label" binding:"max=200" label:"label"`
+	Verb       string `json:"verb" binding:"max=200" label:"verb"`
+	IsError    bool   `json:"is_error"`
+	Summary    string `json:"summary" binding:"max=2000" label:"summary"`
+}
+
+// ToolEvent 记录 Agent 自己的工具（如 codemode）的开始和结束：它们不经 /tool，Go 靠这个才知道时间线上多了一步。
+func (h *AgentBridgeHandler) ToolEvent(c *gin.Context) {
+	tok, ok := bearerToken(c)
+	if !ok {
+		response.Fail(c, errcode.ErrUnauthorized.WithMsg("缺少桥令牌"))
+		return
+	}
+	var req toolEventReq
+	if !handler.BindJSON(c, &req) {
+		return
+	}
+	res, err := h.svc.ReportAgentTool(c.Request.Context(), tok, agentsvc.AgentToolEvent{
+		Phase: req.Phase, ToolCallID: req.ToolCallID, Name: req.Name, Label: req.Label, Verb: req.Verb, IsError: req.IsError, Summary: req.Summary,
+	})
 	if err != nil {
 		bridgeFail(c, err)
 		return

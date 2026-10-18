@@ -101,7 +101,7 @@ meta: {
   "form": { "k": "v" },                  // application/x-www-form-urlencoded
   "multipart": { "fields": { "k": "v" }, "parts": [ { "name": "file", "fileRef": "input:images.0", "filename": "a.png" } ] },
   "responseType": "json",                // json（默认）/ text / binary
-  "timeout": 30,                         // 秒，默认 30，上限 120
+  "timeout": 30,                         // 秒，默认 30，上限 120；同步接口（mode: "sync"）的提交请求例外，时限取模型配置的任务超时
   "auth": { "type": "query", "name": "apiKey" }   // 可选：只为这一次请求换一种注入方式（bearer / header(需 name) / query(需 name) / none），Key 仍由宿主注入
 }
 ```

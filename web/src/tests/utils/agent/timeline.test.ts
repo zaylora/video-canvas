@@ -115,6 +115,75 @@ describe("消息流", () => {
     expect(finished.find((i) => i.type === "activity")).toMatchObject({ status: "done" });
   });
 
+  test("工具调用带上事件里的界面名称和动词；end 里有就以 end 为准，缺了前半也能显示", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }),
+        ev("tool.start", { id: "a", name: "web_search", label: "搜索网页", verb: "搜索" }),
+        ev("tool.end", {
+          id: "a",
+          name: "web_search",
+          label: "搜索网页",
+          verb: "搜索",
+          summary: "5 条结果",
+        }),
+        ev("tool.end", {
+          id: "b",
+          name: "web_fetch",
+          label: "读取网页",
+          verb: "读网页",
+          summary: "ok",
+        }),
+      ]),
+    );
+    const tools = activity(items.find((i) => i.type === "activity")).tools;
+    expect(tools.map((t) => [t.label, t.verb])).toEqual([
+      ["搜索网页", "搜索"],
+      ["读取网页", "读网页"],
+    ]);
+  });
+
+  test("用户消息带上发送时选中的节点；没选、旧事件、插话都是空数组", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("message.user", { text: "这个是什么内容？", selection: ["n1", "n2"] }),
+        ev("message.user", { text: "没选节点", selection: null }),
+        ev("message.user", { text: "旧事件没有这个字段" }),
+        ev("message.user", { text: "插话", steer: true }),
+        ev("message.user", { text: "脏数据", selection: ["n3", 7, null, ""] }),
+      ]),
+    );
+    const users = items.filter((i) => i.type === "user") as Extract<
+      TimelineItem,
+      { type: "user" }
+    >[];
+    expect(users.map((u) => u.selection)).toEqual([["n1", "n2"], [], [], [], ["n3"]]);
+  });
+
+  test("运行状态卡片带上后端下发的标题和提示；旧事件没有就是空串", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }),
+        ev("run.status", {
+          status: "step_limit",
+          title: "达到本轮步数上限",
+          hint: "继续的话会再给一轮步数",
+        }),
+      ]),
+    );
+    expect(items.find((i) => i.type === "status")).toMatchObject({
+      status: "step_limit",
+      title: "达到本轮步数上限",
+      hint: "继续的话会再给一轮步数",
+    });
+    reset();
+    const old = buildTimeline(fold([ev("run.status", { status: "canceled" })]));
+    expect(old.find((i) => i.type === "status")).toMatchObject({ title: "", hint: "" });
+  });
+
   test("连续的工具调用合成一个活动块，中间隔了消息就分开；耗时从第一次开始到最后一次结束", () => {
     reset();
     const items = buildTimeline(
@@ -412,6 +481,15 @@ describe("状态行", () => {
     expect(buildStatusLine(working)?.text).toBe("正在整理布局…");
     const doneTool = fold([...working.events, ev("tool.end", { id: "a", name: "canvas_arrange" })]);
     expect(buildStatusLine(doneTool)?.text).toBe("思考中…");
+  });
+
+  test("工具名称由后端随事件下发：新工具不用改前端；状态行也用它", () => {
+    reset();
+    const working = fold([
+      ev("run.status", { status: "running" }),
+      ev("tool.start", { id: "w", name: "web_search", label: "搜索网页", verb: "搜索" }),
+    ]);
+    expect(buildStatusLine(working)?.text).toBe("正在搜索网页…");
   });
 
   test("正文流式输出时不显示，避免和闪烁光标重复", () => {
