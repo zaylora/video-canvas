@@ -77,7 +77,7 @@ func (r *ProcessRuntime) Start(ctx context.Context, run *model.AgentRun, in mode
 		return err
 	}
 	// 用户消息后面附上画布目录和运行参数，明确标成数据，不是指令
-	cat, err := r.d.Canvas.Catalog(ctx, run, canvasgraph.CatalogOptions{Priority: in.Selection})
+	cat, err := r.d.Canvas.Catalog(ctx, run, canvasgraph.CatalogOptions{Priority: in.Selection, Selected: in.Selection})
 	if err != nil {
 		return err
 	}

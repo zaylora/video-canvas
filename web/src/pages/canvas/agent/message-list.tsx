@@ -21,6 +21,8 @@ import { parseMessage } from "@/utils/agent/chips";
 import type { TimelineItem } from "@/utils/agent/timeline";
 
 import { ActivityGroup } from "./activity-group";
+import type { RefNode } from "@/utils/agent/selection-refs";
+
 import type { NodeOption } from "./agent-editor";
 import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
@@ -71,12 +73,15 @@ export function MessageList({
   ctl,
   showThinking,
   nodes,
+  refNodes,
   onScrolled,
 }: {
   ctl: AgentController;
   showThinking: boolean;
   /** 画布上现有的节点：改动摘要取名字 */
   nodes: NodeOption[];
+  /** 消息里「引用了哪些节点」解析标题用：含组（输入框里 @ 的候选不含组） */
+  refNodes: RefNode[];
   /** 滚离顶部与否：顶栏据此显示分隔线 */
   onScrolled: (scrolled: boolean) => void;
 }) {
@@ -139,7 +144,13 @@ export function MessageList({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: DURATION.base, ease: EASE_OUT }}
               >
-                <Item item={item} ctl={ctl} showThinking={showThinking} nodes={nodes} />
+                <Item
+                  item={item}
+                  ctl={ctl}
+                  showThinking={showThinking}
+                  nodes={nodes}
+                  refNodes={refNodes}
+                />
               </motion.div>
             ),
           )}
@@ -177,18 +188,20 @@ function Item({
   ctl,
   showThinking,
   nodes,
+  refNodes,
 }: {
   item: TimelineItem;
   ctl: AgentController;
   showThinking: boolean;
   nodes: NodeOption[];
+  refNodes: RefNode[];
 }) {
   switch (item.type) {
     case "user":
       return (
         <div className="flex flex-col items-end gap-1">
           {item.steer && <span className="text-muted-foreground text-[11px]">插话</span>}
-          <SelectionRefs ids={item.selection} nodes={nodes} />
+          <SelectionRefs ids={item.selection} nodes={refNodes} />
           <div className="agent-inset bg-foreground/7 max-w-[88%] rounded-2xl rounded-br-sm px-3 py-2 text-[13.5px] leading-[1.7] break-words whitespace-pre-wrap">
             <MessageText text={item.text} />
           </div>

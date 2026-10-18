@@ -144,3 +144,15 @@ func TestSystem_Codemode(t *testing.T) {
 		}
 	}
 }
+
+// 目录里的 selected 是用户发消息时选中的节点和组：「这个」「这组」指的就是它们；选中的组里有哪些成员写在 memberIds 里。
+func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{"selected", "memberIds", "这个"} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应说明目录里的 selected，缺少 %q", mode, must)
+			}
+		}
+	}
+}

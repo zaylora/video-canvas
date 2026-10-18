@@ -1,10 +1,14 @@
 import type { NodeOption } from "@/pages/canvas/agent/agent-editor";
 
+/** 画布上能被消息引用的东西：普通节点，或者组（输入框里 @ 的候选不含组，这里要含） */
+export type RefNode = { id: string; label: string; kind: NodeOption["kind"] | "group" };
+
 /** 一条消息最多直接显示几个引用的节点，超过的折成「+N」 */
 export const SELECTION_SHOWN = 3;
 
 /** 节点种类的中文名：节点没有标题时拿它兜底 */
-const KIND_NAME: Record<NodeOption["kind"], string> = {
+const KIND_NAME: Record<RefNode["kind"], string> = {
+  group: "节点组",
   script: "文本节点",
   image: "图片节点",
   video: "视频节点",
@@ -15,7 +19,7 @@ const KIND_NAME: Record<NodeOption["kind"], string> = {
 export type SelectionRef = {
   id: string;
   label: string;
-  kind: NodeOption["kind"] | undefined;
+  kind: RefNode["kind"] | undefined;
   missing: boolean;
 };
 
@@ -25,7 +29,7 @@ export type SelectionRef = {
  */
 export function resolveSelection(
   ids: readonly string[],
-  nodes: readonly NodeOption[],
+  nodes: readonly RefNode[],
 ): SelectionRef[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   return [...new Set(ids)].map((id) => {

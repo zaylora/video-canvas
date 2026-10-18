@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import type { NodeOption } from "@/pages/canvas/agent/agent-editor";
-import { resolveSelection, splitSelection } from "@/utils/agent/selection-refs";
+import { type RefNode, resolveSelection, splitSelection } from "@/utils/agent/selection-refs";
 
-const nodes: NodeOption[] = [
+const nodes: RefNode[] = [
   { id: "a", label: "图片 7", kind: "image" },
   { id: "b", label: "视频 2", kind: "video" },
   { id: "c", label: "", kind: "script" },
+  { id: "g1", label: "镜头 3", kind: "group" },
+  { id: "g2", label: "  ", kind: "group" },
 ];
 
 describe("引用的节点", () => {
@@ -19,6 +20,13 @@ describe("引用的节点", () => {
 
   test("没有标题的节点用「种类 + 节点」兜底", () => {
     expect(resolveSelection(["c"], nodes)[0]).toMatchObject({ label: "文本节点", missing: false });
+  });
+
+  test("选中的组：显示组名；没有组名用「节点组」兜底", () => {
+    expect(resolveSelection(["g1", "g2"], nodes)).toEqual([
+      { id: "g1", label: "镜头 3", kind: "group", missing: false },
+      { id: "g2", label: "节点组", kind: "group", missing: false },
+    ]);
   });
 
   test("画布上已经没有的节点：标成已删除，不能点", () => {

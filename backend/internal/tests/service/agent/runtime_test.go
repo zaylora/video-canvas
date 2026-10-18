@@ -599,3 +599,18 @@ func TestProcessRuntime_PassesDisabledToolsToNode(t *testing.T) {
 		t.Errorf("disabled_tools=%v", in["disabled_tools"])
 	}
 }
+
+func TestProcessRuntime_PromptStatesTheSelection(t *testing.T) {
+	// 给模型的消息里要明确写出用户选中了什么，不能只靠目录里的排序
+	e := newRuntimeEnv(t)
+	_, in := e.startRun(t, "all", "n_script")
+	prompt := in["prompt"].(map[string]any)["text"].(string)
+	if !strings.Contains(prompt, `"selected":[{"id":"n_script"`) {
+		t.Errorf("目录里要有 selected，写明选中了哪个节点:\n%s", prompt)
+	}
+	e2 := newRuntimeEnv(t)
+	_, in2 := e2.startRun(t, "all")
+	if prompt2 := in2["prompt"].(map[string]any)["text"].(string); strings.Contains(prompt2, `"selected"`) {
+		t.Errorf("没选中任何东西时不带 selected:\n%s", prompt2)
+	}
+}

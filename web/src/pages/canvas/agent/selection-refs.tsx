@@ -1,24 +1,29 @@
 import { useState } from "react";
+import { Group } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentHighlight } from "@/store/agent-highlight";
-import { SELECTION_SHOWN, resolveSelection, splitSelection } from "@/utils/agent/selection-refs";
+import {
+  type RefNode,
+  SELECTION_SHOWN,
+  resolveSelection,
+  splitSelection,
+} from "@/utils/agent/selection-refs";
 
 import { useFocusNode } from "../chrome/use-focus-node";
-import type { NodeOption } from "./agent-editor";
 
 /** 标签的外观：和输入框里「已选中 N 个节点」同款的底色和内高光 */
 const CHIP =
   "agent-inset bg-foreground/6 inline-flex h-6 max-w-40 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-120 focus-visible:ring-2 focus-visible:ring-node-ring/60";
 
 /**
- * 用户消息上方的「引用了哪些节点」：发送这条消息时画布上选中的节点，一个节点一个标签。
+ * 用户消息上方的「引用了哪些节点」：发送这条消息时画布上选中的节点，一个节点（或组）一个标签，组前面是组的图标、节点前面是小圆点。
  * 最多直接显示 3 个，其余折成「+N」，点它原地展开（展开出来的标签淡入上浮 2px，只动 transform 和 opacity）；
  * 点标签飞到画布上并让节点闪一下描边，节点已经被删除的置灰、不能点。没有引用时什么都不渲染。
  */
-export function SelectionRefs({ ids, nodes }: { ids: readonly string[]; nodes: NodeOption[] }) {
+export function SelectionRefs({ ids, nodes }: { ids: readonly string[]; nodes: RefNode[] }) {
   const [expanded, setExpanded] = useState(false);
   const focus = useFocusNode();
   const reduce = useReducedMotion();
@@ -53,13 +58,23 @@ export function SelectionRefs({ ids, nodes }: { ids: readonly string[]; nodes: N
               : "hover:bg-foreground/10 cursor-pointer",
           )}
         >
-          <span
-            aria-hidden
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              ref.missing ? "bg-muted-foreground/40" : "bg-preset",
-            )}
-          />
+          {ref.kind === "group" ? (
+            <Group
+              aria-hidden
+              className={cn(
+                "size-3 shrink-0",
+                ref.missing ? "text-muted-foreground/60" : "text-preset",
+              )}
+            />
+          ) : (
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                ref.missing ? "bg-muted-foreground/40" : "bg-preset",
+              )}
+            />
+          )}
           <span className="truncate">{ref.label}</span>
         </motion.button>
       ))}

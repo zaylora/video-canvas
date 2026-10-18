@@ -1,6 +1,7 @@
 package canvasgraph_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -101,5 +102,58 @@ func TestDetailSanitizesMediaAndPages(t *testing.T) {
 	}
 	if _, err := canvasgraph.Detail(g, ids); err == nil {
 		t.Errorf("超过 %d 个应报错", canvasgraph.MaxDetailNodes)
+	}
+}
+
+// 目录里要明确写出用户选中了什么：光把选中的排在最前，模型不知道排到哪一个为止；选中的组还要说清楚里面有哪些成员。
+func TestCatalogSelectedListsWhatTheUserPicked(t *testing.T) {
+	g := mustParse(t, basePayload)
+	built := mustApply(t, g, shotOps)
+	cur := built.Graph.Clone()
+	group, shot := built.IDMap["g1"], built.IDMap["b"]
+	c := canvasgraph.BuildCatalog(cur, canvasgraph.CatalogOptions{Max: 50, Selected: []string{group, shot, "no-such-node", group}})
+	if len(c.Selected) != 2 {
+		t.Fatalf("按选中的顺序、去重、画布上没有的丢掉: %+v", c.Selected)
+	}
+	g0, n1 := c.Selected[0], c.Selected[1]
+	if g0.ID != group || g0.Type != "group" || g0.Label != "镜头 01" || len(g0.MemberIDs) != 3 {
+		t.Errorf("选中的组要带类型、名字和成员 id: %+v", g0)
+	}
+	for _, id := range []string{built.IDMap["a"], built.IDMap["b"], built.IDMap["c"]} {
+		found := false
+		for _, m := range g0.MemberIDs {
+			found = found || m == id
+		}
+		if !found {
+			t.Errorf("成员 %s 应在选中的组里: %v", id, g0.MemberIDs)
+		}
+	}
+	if n1.ID != shot || n1.Type != "canvas" || n1.Kind != "image" || n1.Label != "镜头01 关键帧" || len(n1.MemberIDs) != 0 {
+		t.Errorf("选中的节点带种类和名字，没有成员: %+v", n1)
+	}
+}
+
+func TestCatalogSelectedOmittedWhenNothingSelected(t *testing.T) {
+	g := bigGraph(t, 3)
+	c := canvasgraph.BuildCatalog(g, canvasgraph.CatalogOptions{Max: 50})
+	if len(c.Selected) != 0 {
+		t.Errorf("没选就没有: %+v", c.Selected)
+	}
+	b, _ := json.Marshal(c)
+	if strings.Contains(string(b), "selected") {
+		t.Errorf("没选时 JSON 里不该有 selected 字段，免得白占上下文: %s", b)
+	}
+}
+
+func TestCatalogSelectedGroupMembersAreCapped(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString(`{"nodes":[{"id":"g","type":"group","position":{"x":0,"y":0},"data":{"label":"大组"}}`)
+	for i := 0; i < 80; i++ {
+		fmt.Fprintf(&sb, `,{"id":"m%d","type":"canvas","parentId":"g","position":{"x":0,"y":0},"data":{"kind":"image","label":"图%d"}}`, i, i)
+	}
+	sb.WriteString(`],"edges":[]}`)
+	c := canvasgraph.BuildCatalog(mustParse(t, sb.String()), canvasgraph.CatalogOptions{Max: 200, Selected: []string{"g"}})
+	if len(c.Selected) != 1 || len(c.Selected[0].MemberIDs) != 50 || c.Selected[0].MoreMembers != 30 {
+		t.Errorf("成员太多只列前 50 个，并说明还有多少: %+v", c.Selected)
 	}
 }
