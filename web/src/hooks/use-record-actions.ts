@@ -13,7 +13,7 @@ import { useTasksStore } from "@/store/tasks";
 import { restoreComposer } from "@/utils/conversation/restore";
 import { fanoutParam } from "@/utils/pricing/quote";
 import { cancelTasks } from "@/utils/tasks/gateway";
-import { isCancelableStatus } from "@/utils/tasks/status";
+import { isCancelableTask } from "@/utils/tasks/status";
 
 /**
  * 记录里各格任务的最新快照（只含已创建的任务）：任务库里的版本优先，没有就用记录里带的那份。
@@ -130,7 +130,7 @@ export function useRecordActions(conversationId: string) {
     const tasks = useTasksStore.getState().tasks;
     const ids = record.tasks
       .map((task) => (task ? (tasks[String(task.id)] ?? task) : null))
-      .filter((task): task is TaskView => task !== null && isCancelableStatus(task.status))
+      .filter((task): task is TaskView => task !== null && isCancelableTask(task))
       .map((task) => task.id);
     if (ids.length === 0) return;
     setBusy(true);

@@ -344,7 +344,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 					ok, err = env.svc.Expire(ctx, task)
 				case 3:
 					var v *model.GenerationTaskView
-					v, err = env.svc.Cancel(ctx, env.user, task.ID)
+					v, err = env.svc.CancelForced(ctx, env.user, task.ID) // 用户取消不再放行已提交给平台的任务，这里要测的是取消和别的终态抢同一个任务
 					ok = v != nil
 					var e *errcode.Error
 					if errors.As(err, &e) && e.Code == errcode.ErrTaskNotCancelable.Code {
@@ -385,7 +385,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 		_, _ = env.svc.Complete(ctx, succeeded, nil, nil)
 		_, _ = env.svc.Fail(ctx, failed, "moderation", "内容未通过审核")
 		_, _ = env.svc.Expire(ctx, expired)
-		if _, err := env.svc.Cancel(ctx, env.user, canceled.ID); err != nil {
+		if _, err := env.svc.CancelForced(ctx, env.user, canceled.ID); err != nil { // 后台强制取消：平台已受理的任务照样取消并通知平台
 			t.Fatal(err)
 		}
 
@@ -394,7 +394,7 @@ func TestGenerationTaskService_Integration_Transitions(t *testing.T) {
 			t.Fatalf("汇总不对：%+v", rec)
 		}
 		if len(env.exec.cancelCalls) != 1 {
-			t.Fatalf("只有用户取消应通知平台：%d", len(env.exec.cancelCalls))
+			t.Fatalf("只有被取消的那个应通知平台：%d", len(env.exec.cancelCalls))
 		}
 	})
 

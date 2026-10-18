@@ -41,7 +41,7 @@ import { downloadMedia } from "@/utils/canvas/download";
 import { recordActive, recordCredits } from "@/utils/conversation/cell";
 import { recordPreviewItems } from "@/utils/conversation/preview-items";
 import { restoreComposer } from "@/utils/conversation/restore";
-import { isCancelableStatus } from "@/utils/tasks/status";
+import { isCancelableTask } from "@/utils/tasks/status";
 import { useAssetUrls } from "@/hooks/use-asset-urls";
 import { paramSummary } from "@/utils/tasks/capabilities";
 
@@ -143,8 +143,8 @@ export function RecordView({
   const [deleting, setDeleting] = useState(false);
 
   const active = recordActive(tasks);
-  /** 转存中的任务不能取消，只有排队 / 生成中的才给「取消」 */
-  const cancelable = tasks.some((task) => isCancelableStatus(task.status));
+  /** 只有还没提交给上游的（排队中）才给「取消」，已经在生成、转存的取消不了 */
+  const cancelable = tasks.some(isCancelableTask);
   const credits = recordCredits(tasks);
   const model = models.find((item) => item.key === record.modelId);
   const offline = isModelOffline(
