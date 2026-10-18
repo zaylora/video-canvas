@@ -77,7 +77,7 @@ func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provid
 		log.Warn("任务失败", fields...)
 	}
 
-	if _, err := w.store.Fail(ctx, t, code, msg); err != nil {
+	if _, err := w.store.FailWithUpstream(ctx, t, code, msg, f.raw); err != nil {
 		log.Error("标记任务失败时出错，租约过期后重试", zap.Error(err))
 	}
 }

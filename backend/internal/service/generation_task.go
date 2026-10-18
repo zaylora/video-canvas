@@ -54,6 +54,7 @@ const (
 	maxReconcileIDs          = 100              // 批量对账一次最多查多少个任务
 	maxIdempotencyKeyLen     = 128              // 与 generation_tasks.idempotency_key 列宽一致
 	executorCancelTimeout    = 5 * time.Second  // 取消时“尽力通知上游”的超时
+	upstreamLimit            = 16 * 1024        // 写进任务事件的上游错误原文上限（字节），只为保护存储
 	taskUserVisibleErrPrefix = "生成参数不合法："
 	taskProgressDone         = 100     // 进入 finalizing 时的进度：上游已出结果，只剩转存
 	syncTaskIDPrefix         = "sync-" // 同步接口没有上游任务 id 时的占位前缀（sync-<任务 id>）

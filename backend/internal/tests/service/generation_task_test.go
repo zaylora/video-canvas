@@ -38,15 +38,17 @@ type fakeTaskRepo struct {
 	hideKeyLookups int              // 前 N 次 FindByIdempotencyKey 假装找不到，模拟并发竞争
 	errs           map[string]error // 方法名 -> 注入的错误
 	txCount        int
-	failUpdateIDs  map[uint64]error // 指定任务 id 的 UpdateIf 返回错误（模拟某一个任务处理失败）
+	failUpdateIDs  map[uint64]error          // 指定任务 id 的 UpdateIf 返回错误（模拟某一个任务处理失败）
+	eventDetails   map[uint64]map[string]any // 任务 id -> 最近一次状态迁移带给事件的详情（repository.EventDetailKey）
 }
 
 func newFakeTaskRepo() *fakeTaskRepo {
 	return &fakeTaskRepo{
-		tasks:   map[uint64]*model.GenerationTask{},
-		credits: map[uint64]*model.UserCredit{},
-		errs:    map[string]error{},
-		nextID:  100,
+		tasks:        map[uint64]*model.GenerationTask{},
+		credits:      map[uint64]*model.UserCredit{},
+		errs:         map[string]error{},
+		nextID:       100,
+		eventDetails: map[uint64]map[string]any{},
 	}
 }
 
@@ -306,6 +308,8 @@ func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, f
 		case "provider_result":
 			raw, _ := v.(json.Marshaler).MarshalJSON()
 			t.ProviderResult = raw
+		case repository.EventDetailKey:
+			f.eventDetails[id], _ = v.(map[string]any)
 		default:
 			panic("fakeTaskRepo.UpdateIf 不认识的字段：" + k)
 		}

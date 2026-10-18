@@ -68,6 +68,7 @@ type wkStore struct {
 
 	calls        []string // 调用流水，如 "MarkSubmitted:1"
 	fails        []wkFailCall
+	upstreams    []string // 每次 Fail / FailWithUpstream 收到的上游错误原文（与 fails 一一对应）
 	completed    map[uint64][]model.TaskOutput
 	usage        map[uint64]*modelcfg.Usage
 	traces       map[uint64][][]provider.TraceStep // 每次 SaveTrace 的入参
@@ -351,6 +352,11 @@ func (s *wkStore) Complete(ctx context.Context, t *model.GenerationTask, outs []
 }
 
 func (s *wkStore) Fail(ctx context.Context, t *model.GenerationTask, code, msg string) (bool, error) {
+	return s.FailWithUpstream(ctx, t, code, msg, "")
+}
+
+// FailWithUpstream 与 Fail 记录相同的调用，并额外记下传来的上游错误原文。
+func (s *wkStore) FailWithUpstream(ctx context.Context, t *model.GenerationTask, code, msg, upstream string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cur := s.cas(t.ID, model.ActiveTaskStatuses...)
@@ -359,6 +365,7 @@ func (s *wkStore) Fail(ctx context.Context, t *model.GenerationTask, code, msg s
 	}
 	cur.Status, cur.ErrorCode, cur.ErrorMessage, cur.LeaseUntil = model.TaskFailed, code, msg, nil
 	s.fails = append(s.fails, wkFailCall{t.ID, code, msg})
+	s.upstreams = append(s.upstreams, upstream)
 	s.rec("Fail:%d:%s", t.ID, code)
 	return true, nil
 }

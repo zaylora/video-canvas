@@ -19,7 +19,7 @@ import (
 func delTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return isolatedDB(t, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{},
-		&model.AIPlugin{}, &model.AIPluginVersion{}, &model.AIChannel{}, &model.AIAuditLog{}, &model.GenerationTask{})
+		&model.AIPlugin{}, &model.AIPluginVersion{}, &model.AIChannel{}, &model.AIAuditLog{}, &model.GenerationTask{}, &model.GenerationTaskEvent{})
 }
 
 // delModelBody 生成一份引用渠道 channel 的模型正文。

@@ -271,6 +271,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Tasks:   taskSvc,  // 封禁并取消任务：复用任务服务的取消与退款流程
 			Conns:   hub,      // 封禁后断开该用户全部 WebSocket
 		}))),
+		AdminUsage:    handler.NewAdminUsageHandler(service.NewAdminUsageService(repository.NewAdminUsageRepository(db))),
+		AdminLogs:     handler.NewAdminLogHandler(service.NewAuditLogService(auditRepo)),
 		AdminSettings: handler.NewAdminSettingsHandler(settingsSvc, smtpSvc),
 		AdminSystem:   newAdminSystemHandler(cfg, db, taskRepo, auditRepo),
 		Showcase:      handler.NewShowcaseHandler(showcaseSvc),

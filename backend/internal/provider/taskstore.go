@@ -41,6 +41,8 @@ type TaskStore interface {
 	Complete(ctx context.Context, t *model.GenerationTask, outputs []model.TaskOutput, usage *modelcfg.Usage) (bool, error)
 	// Fail 非终态 → failed 并退回积分。errorCode 是统一错误码，message 是给用户看的文案。
 	Fail(ctx context.Context, t *model.GenerationTask, errorCode, message string) (bool, error)
+	// FailWithUpstream 与 Fail 相同，并把上游错误原文（宿主已遮掉渠道 Key）记进任务事件，只给后台排查用，不返回给用户。
+	FailWithUpstream(ctx context.Context, t *model.GenerationTask, errorCode, message, upstream string) (bool, error)
 	// Expire 非终态 → expired 并退回积分。
 	Expire(ctx context.Context, t *model.GenerationTask) (bool, error)
 	// SaveTrace 写入试跑任务（is_test）的执行追踪；非试跑任务忽略。追踪已由宿主脱敏。

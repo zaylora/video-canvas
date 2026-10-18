@@ -19,7 +19,7 @@ import (
 func pluginTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return isolatedDB(t, &model.AIPlugin{}, &model.AIPluginVersion{}, &model.AIChannel{},
-		&model.AIAuditLog{}, &model.GenerationTask{}, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
+		&model.AIAuditLog{}, &model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.AIModel{}, &model.AIConfigRevision{}, &model.AISecret{})
 }
 
 // plPlugin 构造一个待登记的插件。

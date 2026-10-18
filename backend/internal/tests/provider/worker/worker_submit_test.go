@@ -151,6 +151,10 @@ func TestWorker_Submit_Failures(t *testing.T) {
 			if strings.Contains(got.ErrorMessage, tt.wantNotInMsg) {
 				t.Fatalf("不能把上游原始信息透给用户：%s", got.ErrorMessage)
 			}
+			// 上游原文不给用户，但要交给任务服务记进失败事件，供后台排查
+			if len(env.store.upstreams) != 1 || env.store.upstreams[0] != tt.err.Error() {
+				t.Fatalf("失败时应把上游原文 %q 交给 store，实际 %q", tt.err.Error(), env.store.upstreams)
+			}
 			if tt.wantAlert != "" && len(env.logs.entries("error", tt.wantAlert)) != 1 {
 				t.Fatalf("应记一条 Error 告警：%s", tt.wantAlert)
 			}

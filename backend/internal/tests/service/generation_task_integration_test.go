@@ -60,7 +60,7 @@ func gtiTestDB(t *testing.T) *gorm.DB {
 			_ = a.Close()
 		}
 	})
-	if err := db.AutoMigrate(&model.GenerationTask{}, &model.UserCredit{}, &model.CreditLedger{}); err != nil {
+	if err := db.AutoMigrate(&model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.UserCredit{}, &model.CreditLedger{}); err != nil {
 		t.Fatalf("迁移失败：%v", err)
 	}
 	return db

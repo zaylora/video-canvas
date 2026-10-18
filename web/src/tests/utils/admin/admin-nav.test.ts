@@ -29,13 +29,21 @@ describe("后台导航", () => {
     expect(findNav("/admin/settings/version")?.item.label).toBe("版本与升级");
   });
 
-  test("AI 配置分组：总览、模型渠道、插件；独立的“模型”页已并入渠道页", () => {
+  test("AI 配置分组：总览、模型渠道、插件、技能；独立的“模型”页已并入渠道页，不再有单独的 Agent 分组", () => {
     const group = ADMIN_NAV.find((item) => item.label === "AI 配置");
     expect(group?.items.map((item) => [item.to, item.label])).toEqual([
       ["ai/overview", "总览"],
       ["ai/channels", "模型渠道"],
       ["ai/plugins", "插件"],
+      ["agent/skills", "技能"],
     ]);
+    expect(ADMIN_NAV.some((item) => item.label === "Agent")).toBe(false);
+  });
+
+  test("技能页的面包屑落在 AI 配置分组下，路径不变", () => {
+    const found = findNav("/admin/agent/skills");
+    expect(found?.group.label).toBe("AI 配置");
+    expect(found?.item.label).toBe("技能");
   });
 
   test("模型渠道页的面包屑", () => {
@@ -44,5 +52,26 @@ describe("后台导航", () => {
     expect(found?.item.label).toBe("模型渠道");
     expect(findNav("/admin/ai/models")).toBeNull();
     expect(findNav("/admin/unknown")).toBeNull();
+  });
+
+  test("“用户”分组末尾是使用记录，“日志管理”分组只有操作审计", () => {
+    const users = ADMIN_NAV.find((item) => item.label === "用户");
+    expect(users?.items.map((item) => [item.to, item.label])).toEqual([
+      ["users", "用户管理"],
+      ["payment", "支付管理"],
+      ["usage", "使用记录"],
+    ]);
+    const logs = ADMIN_NAV.find((item) => item.label === "日志管理");
+    expect(logs?.items.map((item) => [item.to, item.label])).toEqual([["logs/audits", "操作审计"]]);
+  });
+
+  test("访问使用记录不会高亮用户管理，面包屑落在对应分组", () => {
+    const usage = findNav("/admin/usage");
+    expect(usage?.group.label).toBe("用户");
+    expect(usage?.item.label).toBe("使用记录");
+    expect(findNav("/admin/users")?.item.label).toBe("用户管理");
+    const audits = findNav("/admin/logs/audits");
+    expect(audits?.group.label).toBe("日志管理");
+    expect(audits?.item.label).toBe("操作审计");
   });
 });

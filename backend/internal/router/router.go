@@ -36,6 +36,8 @@ type Handlers struct {
 	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
 	AdminUser      *handler.AdminUserHandler           // 后台用户管理
+	AdminUsage     *handler.AdminUsageHandler          // 后台使用记录（用户 › 使用记录）：全站生成任务的流水、摘要与详情，只读
+	AdminLogs      *handler.AdminLogHandler            // 后台日志管理（日志管理 › 操作审计），只读
 	AdminSettings  *handler.AdminSettingsHandler       // 注册与邮件设置
 	AdminSystem    *handler.AdminSystemHandler         // 版本面板：当前版本、检查更新、迁移状态
 	Showcase       *handler.ShowcaseHandler            // 登录页展示：公开读取 + 后台配置
@@ -271,6 +273,17 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminUsers.PUT("/:id/status", h.AdminUser.SetStatus)
 		adminUsers.PUT("/:id/role", superOnly, h.AdminUser.SetRole)                  // 仅 super_admin
 		adminUsers.POST("/:id/reset-password", superOnly, h.AdminUser.ResetPassword) // 仅 super_admin
+
+		// 使用记录：全站生成任务的流水、摘要与详情，全部只读，admin 与 super_admin 同权。
+		// summary 是静态段，与 /:ref 同层，Gin 优先匹配静态段，不冲突（router 测试覆盖）
+		adminUsage := auth.Group("/admin/usage", middleware.RequireAdmin(h.AdminRole))
+		adminUsage.GET("", h.AdminUsage.List)
+		adminUsage.GET("/summary", h.AdminUsage.Summary)
+		adminUsage.GET("/:ref", h.AdminUsage.Get)
+
+		// 日志管理 › 操作审计：两张审计表合并后的只读列表，admin 与 super_admin 同权
+		adminLogs := auth.Group("/admin/logs", middleware.RequireAdmin(h.AdminRole))
+		adminLogs.GET("/audits", h.AdminLogs.ListAudits)
 
 		// 版本面板：admin 与 super_admin 可读；一键升级与回退仅 super_admin
 		system := auth.Group("/admin/system", middleware.RequireAdmin(h.AdminRole))

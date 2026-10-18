@@ -20,7 +20,7 @@ import (
 // gtTestDB 为本用例创建独立 schema 并迁移任务与积分表；ClaimDue 这类“全表扫描”的 SQL 需要隔离。
 func gtTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	return isolatedDB(t, &model.GenerationTask{}, &model.UserCredit{}, &model.CreditLedger{}, &model.AIChannel{})
+	return isolatedDB(t, &model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.UserCredit{}, &model.CreditLedger{}, &model.AIChannel{})
 }
 
 var gtUserSeq atomic.Uint64

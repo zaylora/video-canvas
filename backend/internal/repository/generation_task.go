@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"time"
 
 	"gorm.io/datatypes"
@@ -205,33 +208,144 @@ func (r *GenerationTaskRepository) InsertTask(ctx context.Context, t *model.Gene
 		t.ID = id
 	}
 	t.TaskRef = idcodec.Encode(t.ID)
-	res := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(t)
-	if res.Error != nil {
-		return false, res.Error
+	// 任务与 created 事件同事务写入：命中幂等唯一索引（没写入任务）时不产生事件
+	var inserted bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(t)
+		if res.Error != nil {
+			return res.Error
+		}
+		inserted = res.RowsAffected > 0
+		if !inserted {
+			return nil
+		}
+		return insertTaskEvent(tx, &model.GenerationTaskEvent{
+			TaskID: t.ID, Event: model.TaskEventCreated, ToStatus: t.Status,
+		})
+	})
+	if err != nil {
+		return false, err
 	}
-	return res.RowsAffected > 0, nil
+	return inserted, nil
 }
+
+// EventDetailKey 是 UpdateIf 的 fields 里的保留键：值是 map[string]any，会被取出来写进本次状态迁移产生的事件的 detail_json，
+// 不会被当成列更新。没有状态变化（不产生事件）时忽略它。
+const EventDetailKey = "$event_detail"
 
 // UpdateIf 状态迁移的 CAS：只有任务当前状态在 from 里才更新，并通过 RETURNING 拿回更新后的整行。
 // 没有命中（不存在或状态已变）返回 ErrStateConflict。fields 不会被修改。
+// fields 里带 status 且状态真正变化时，在同一事务里写一条任务事件（见 taskEventFor）：
+// from 只有一个状态时它就是迁移前状态；有多个且需要判断时，先 SELECT … FOR UPDATE 读出真实的迁移前状态，
+// 这样 from_status 不会因为并发而写错，也不会为每次轮询多一次查询。
 func (r *GenerationTaskRepository) UpdateIf(ctx context.Context, id uint64, from []string, fields map[string]any, bumpVersion bool) (*model.GenerationTask, error) {
 	set := make(map[string]any, len(fields)+1)
+	var detail map[string]any
 	for k, v := range fields {
+		if k == EventDetailKey {
+			detail, _ = v.(map[string]any)
+			continue
+		}
 		set[k] = v
 	}
 	if bumpVersion {
 		set["version"] = gorm.Expr("version + 1")
 	}
+	to, hasStatus := set["status"].(string)
+
 	var t model.GenerationTask
-	res := r.db.WithContext(ctx).Model(&t).Clauses(clause.Returning{}).
-		Where("id = ? AND status IN ?", id, from).Updates(set)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrStateConflict
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		prev := ""
+		if len(from) == 1 {
+			prev = from[0]
+		}
+		if hasStatus && len(from) > 1 && needPrevStatus(from, to) {
+			if err := tx.Raw("SELECT status FROM generation_tasks WHERE id = ? FOR UPDATE", id).Scan(&prev).Error; err != nil {
+				return err
+			}
+		}
+		res := tx.Model(&t).Clauses(clause.Returning{}).
+			Where("id = ? AND status IN ?", id, from).Updates(set)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrStateConflict
+		}
+		if !hasStatus {
+			return nil
+		}
+		event, ok := taskEventFor(prev, t.Status)
+		if !ok {
+			return nil
+		}
+		ev := &model.GenerationTaskEvent{TaskID: id, Event: event, FromStatus: prev, ToStatus: t.Status}
+		if event == model.TaskEventSubmitted && t.ProviderTaskID != "" && detail == nil {
+			detail = map[string]any{"provider_task_id_set": true}
+		}
+		if len(detail) > 0 {
+			raw, err := json.Marshal(detail)
+			if err != nil {
+				return fmt.Errorf("编码任务事件详情失败：%w", err)
+			}
+			ev.DetailJSON = datatypes.JSON(raw)
+		}
+		return insertTaskEvent(tx, ev)
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &t, nil
+}
+
+// needPrevStatus 判断多个 from 的情况下是否需要读出真实的迁移前状态：
+// 只有可能产生事件（进入 finalizing / 终态，或 from 里含 pending 而目标是 queued / running）时才需要。
+func needPrevStatus(from []string, to string) bool {
+	switch to {
+	case model.TaskFinalizing, model.TaskSucceeded, model.TaskFailed, model.TaskCanceled, model.TaskExpired:
+		return true
+	case model.TaskQueued, model.TaskRunning:
+		return slices.Contains(from, model.TaskPending)
+	}
+	return false
+}
+
+// taskEventFor 决定一次状态迁移要记哪个事件：
+// pending → queued / running 记 submitted；进入 finalizing 与四个终态各记同名事件；
+// queued ↔ running（轮询得来）、状态没变、回到 pending 都不记，避免噪声。
+func taskEventFor(prev, to string) (string, bool) {
+	if prev == to {
+		return "", false
+	}
+	switch to {
+	case model.TaskQueued, model.TaskRunning:
+		if prev == model.TaskPending {
+			return model.TaskEventSubmitted, true
+		}
+	case model.TaskFinalizing:
+		return model.TaskEventFinalizing, true
+	case model.TaskSucceeded:
+		return model.TaskEventSucceeded, true
+	case model.TaskFailed:
+		return model.TaskEventFailed, true
+	case model.TaskCanceled:
+		return model.TaskEventCanceled, true
+	case model.TaskExpired:
+		return model.TaskEventExpired, true
+	}
+	return "", false
+}
+
+// insertTaskEvent 写一条任务事件，必须在调用方的事务里调用（和状态迁移一起提交或回滚）。
+func insertTaskEvent(tx *gorm.DB, ev *model.GenerationTaskEvent) error {
+	return tx.Create(ev).Error
+}
+
+// ListEvents 返回任务的状态时间线（id 升序即发生顺序）；上线前的老任务没有事件，返回空切片。
+func (r *GenerationTaskRepository) ListEvents(ctx context.Context, taskID uint64) ([]model.GenerationTaskEvent, error) {
+	evs := []model.GenerationTaskEvent{}
+	err := r.db.WithContext(ctx).Where("task_id = ?", taskID).Order("id ASC").Find(&evs).Error
+	return evs, err
 }
 
 // claimLockKey 是领取任务时的 PostgreSQL 事务级建议锁的键：让所有实例的“数占用名额 + 写租约”串行执行，
