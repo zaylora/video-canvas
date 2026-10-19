@@ -1,3 +1,5 @@
+import type { DirectorScene } from "@/types";
+
 /** 持久化到后端的画布节点 */
 export interface PersistedCanvasNodeDto {
   /** 节点 ID */
@@ -13,7 +15,7 @@ export interface PersistedCanvasNodeDto {
   /** 节点携带的业务数据 */
   data: {
     /** 节点种类 */
-    kind: "script" | "image" | "video" | "audio";
+    kind: "script" | "image" | "video" | "audio" | "director";
     /** 节点标题 */
     label: string;
     /** 提示词 */
@@ -49,6 +51,8 @@ export interface PersistedCanvasNodeDto {
       string,
       { url: string; fileName?: string; mediaType?: "image" | "video" | "audio" }
     >;
+    /** 导演台节点的 3D 场景（结构见 types/director.ts） */
+    scene?: DirectorScene;
   };
 }
 

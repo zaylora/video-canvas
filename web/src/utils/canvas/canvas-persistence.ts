@@ -3,6 +3,8 @@ import type { CanvasGraphDto } from "@/api/canvas/type";
 import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import type { CanvasEdge, FlowNode } from "@/types";
 
+import { createDefaultScene, normalizeScene } from "@/utils/director/scene";
+
 import { isGroupNode, normalizeFlowNodes } from "./group";
 import { isUploading } from "./upload-state";
 import { dropNodeOrigin } from "./placement";
@@ -103,6 +105,7 @@ export function serializeGraph(
           ...(rest.outputs?.length ? { outputs: rest.outputs } : {}),
           ...(rest.activeOutputId !== undefined ? { activeOutputId: rest.activeOutputId } : {}),
           ...(rest.outpaintFrom !== undefined ? { outpaintFrom: rest.outpaintFrom } : {}),
+          ...(rest.scene !== undefined ? { scene: rest.scene } : {}),
         };
         if (data.src?.startsWith("blob:") && !data.assetId) delete data.src;
         return {
@@ -123,6 +126,16 @@ export function serializeGraph(
     })),
     viewport,
   };
+}
+
+/**
+ * 导演台节点读档时校验场景：结构不对或缺失就换成默认场景，节点照常能打开；
+ * 别的种类的节点原样返回。
+ */
+function withDirectorScene<T extends { data: unknown }>(node: T): T {
+  const data = node.data as { kind?: string; scene?: unknown };
+  if (data.kind !== "director") return node;
+  return { ...node, data: { ...data, scene: normalizeScene(data.scene) ?? createDefaultScene() } };
 }
 
 export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
@@ -154,7 +167,7 @@ export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
             ? { ...node, data: { ...node.data, status: "idle" as const } }
             : node;
         // 老存档里带 origin 的节点，position 统一换算成左上角
-        return dropNodeOrigin(fixed as FlowNode);
+        return dropNodeOrigin(withDirectorScene(fixed) as FlowNode);
       }) as FlowNode[],
     ),
     edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],

@@ -63,3 +63,10 @@ describe("功能区按钮的可用性", () => {
     expect(filled.actionsDisabled).toBe(false);
   });
 });
+
+describe("导演台的功能区", () => {
+  test("没有素材也始终显示，按钮可点", () => {
+    const gate = toolbarGate({ kind: "director", label: "导演台1" });
+    expect(gate).toEqual({ visible: true, actionsDisabled: false });
+  });
+});

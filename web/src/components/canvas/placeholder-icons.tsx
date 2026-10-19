@@ -29,6 +29,16 @@ export function VideoPlaceholderIcon({ className }: PlaceholderIconProps) {
   );
 }
 
+/** 场记板，导演台还没有缩略图时的占位 */
+export function DirectorPlaceholderIcon({ className }: PlaceholderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <path d="M3.4 8.6 19.9 4.2a1 1 0 0 1 1.2.7l.6 2.2-17.6 4.7-.6-2.2a1 1 0 0 1 .7-1.2Z" />
+      <path d="M3 11.8h18v7A2.2 2.2 0 0 1 18.8 21H5.2A2.2 2.2 0 0 1 3 18.8v-7Z" />
+    </svg>
+  );
+}
+
 /** 三条文字行，文本还没写时的占位 */
 export function TextPlaceholderIcon({ className }: PlaceholderIconProps) {
   return (

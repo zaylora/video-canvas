@@ -95,12 +95,13 @@ export function refKindsOf(
   return REF_KINDS_OF_OP[op].filter((kind) => caps.refs?.[kind]?.on);
 }
 
-/** 上游节点种类能提供哪种东西：文本节点给文字，其余给对应种类的素材 */
-export const PORT_OF_KIND: Record<NodeKind, "text" | RefKind> = {
+/** 上游节点种类能提供哪种东西：文本节点给文字，其余给对应种类的素材；导演台什么都不提供 */
+export const PORT_OF_KIND: Record<NodeKind, "text" | RefKind | null> = {
   script: "text",
   image: "image",
   video: "video",
   audio: "audio",
+  director: null,
 };
 
 /** 节点上的一个输入口：提示词口 + 每种可接收的素材一个口 */
@@ -192,7 +193,9 @@ export function acceptsSourceKind(
 ): boolean {
   if (!caps) return true;
   const port = PORT_OF_KIND[sourceKind];
-  return port === "text" || refKindsOf(caps, refPanelOp(caps, op)).includes(port);
+  return (
+    port === "text" || (port !== null && refKindsOf(caps, refPanelOp(caps, op)).includes(port))
+  );
 }
 
 /**
@@ -374,6 +377,7 @@ function expandRefs(prompt: string, links: IncomingLink[], input: Record<string,
       if (!link) return label;
       const port = PORT_OF_KIND[link.sourceKind];
       if (port === "text") return link.text?.trim() || label;
+      if (!port) return label;
       const ref = REF_KEYS.find((item) => item.kind === port);
       const list = ref ? input[ref.key] : undefined;
       const asset = toAssetNumber(link.assetId);

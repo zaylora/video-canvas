@@ -144,7 +144,7 @@ export function useTaskNode(
       return [
         {
           ...toRefSource(node),
-          used: !caps || port === "text" || refKindsOf(caps, op).includes(port),
+          used: !caps || port === "text" || (port !== null && refKindsOf(caps, op).includes(port)),
           running: node.data.status === "running",
         },
       ];

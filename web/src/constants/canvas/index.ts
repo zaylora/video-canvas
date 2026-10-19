@@ -16,6 +16,8 @@ export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   image: ["image", "video"],
   video: ["video"],
   audio: ["video"],
+  // 导演台不接上游、也不能直接当参考：要先导出成视频 / 图片节点
+  director: [],
 };
 
 /** 画布一开始是空的，节点都由用户双击或拉线建出来 */

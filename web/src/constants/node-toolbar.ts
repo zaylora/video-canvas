@@ -1,10 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
+  Box,
   Camera,
   Clapperboard,
   Columns3,
   Crop,
+  Download,
   Eraser,
   Expand,
   ImageUpscale,
@@ -144,6 +146,14 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
       { id: "shorten", label: "缩写", icon: Shrink, paid: true },
     ],
     tail: ["copy", "zoom"],
+  },
+  // 导演台（设计稿 docs/design/3D导演台）：没有素材可看可下，右半边留空
+  director: {
+    actions: [
+      { id: "director-open", label: "打开导演台", icon: Box },
+      { id: "director-export", label: "导出视频", icon: Download },
+    ],
+    tail: [],
   },
 };
 

@@ -3,6 +3,8 @@ import type { HandleType, Node, Position, XYPosition } from "@xyflow/react";
 import type { AnimatedSvgEdge, MediaType, NodeMediaType, NodeStatus } from "@/components/canvas";
 import type { NodeKind } from "@/constants/canvas/node-library";
 
+import type { DirectorScene } from "./director";
+
 export type { NodeKind, NodeKindMeta } from "@/constants/canvas/node-library";
 export type { ModelOption } from "@/constants/canvas/model-library";
 export type { MediaType, NodeMediaType, NodeStatus };
@@ -56,6 +58,8 @@ export type CanvasNodeData = {
   activeOutputId?: string;
   /** 这个节点是从哪个节点扩图出来的（原图节点 id）。两者之间的连线只表示来源，不当参考图，参考图只有合成图 */
   outpaintFrom?: string;
+  /** 导演台节点的 3D 场景，只有 kind 为 director 时才有；编辑器里改动后自动写回 */
+  scene?: DirectorScene;
 };
 
 /** 节点的一版生成产物 */
