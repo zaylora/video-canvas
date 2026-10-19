@@ -1,13 +1,13 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-dark.svg" />
-    <img src="docs/assets/brand/logo-light.svg" alt="连镜 Logo：两个镜头之间透出一道光" width="88" />
+    <img src="docs/assets/brand/logo-light.svg" alt="连镜 Logo" width="88" />
   </picture>
 </p>
 
 <h1 align="center">连镜</h1>
 
-<p align="center"><strong>意义，在镜头之间。</strong></p>
+<p align="center">面向 AI 视频创作的无限画布：在节点之间组织文本、图片、视频和音频的生成，自部署，模型供应商可插拔。</p>
 
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
@@ -19,159 +19,94 @@
   <img src="https://img.shields.io/badge/React-19-61DAFB" alt="React" />
 </p>
 
-> [!NOTE]
-> 「连镜」是产品名，Logo 叫「镜间光」：两个镜头之间透出一道光，就像画布上的节点连起来之后才有了故事。
-
-> [!WARNING]
-> 项目处于早期开发阶段，API、画布数据结构和配置项都可能有不兼容的变动，暂不建议用于生产。
-
-![连镜画布](docs/assets/readme/canvas-hero.png)
-
-[功能](#功能) · [快速开始](#快速开始) · [架构](#架构) · [文档](#文档) · [路线图](#路线图) · [参与贡献](#参与贡献)
-
 ## 功能
 
-- **无限画布** — 基于 React Flow 的节点编辑。文本、图片、视频、音频节点之间可以连线，上游的结果可以作为下游生成的参考。
-- **异步生成** — 提交后立即返回，进度通过 WebSocket 实时推送；任务可以取消，积分先冻结，失败或取消时退回。
-- **插件化接入模型** — 供应商协议用 JS 插件实现，插件运行在隔离的 plugin-runner 进程中；内置 OpenAI、Anthropic、豆包、阿里百炼、可灵等插件（一个插件只管一种类型），也可以上传自己写的插件。
-- **模型配置后台** — 模型没有版本管理：保存即写入唯一一份配置，校验、试跑通过后点「启用」，用户才能使用；渠道 Key 加密存储，只能写入，不能读出。
-- **素材存储** — 开发时用内置的本地磁盘；生产环境在后台「存储配置」里添加阿里云 OSS / 腾讯云 COS / AWS S3 / Cloudflare R2，可建多套并指定默认，切换默认只影响新素材，旧素材始终从原存储读取。
-- **安全保存** — 画布按 `revision` 乐观锁保存，多个标签页或设备同时修改时不会互相覆盖。
+**创作**
 
-![从节点生成视频](docs/assets/readme/generate.gif)
+- **无限画布**：文本、图片、视频、音频节点可以互相连线，上游节点的结果直接作为下游生成的参考。
+- **首页对话**：在首页选择模型和参数直接发起生成，结果按对话记录保存，可重试、再编辑，或作为下一次生成的参考素材。
+- **素材处理**：图片扩图；视频修剪、截取帧；生成结果保留历史版本，可随时切换。
+- **3D 导演台**：用人台、道具和多机位摆出构图，把机位画面导出为视频和首帧图片，再放回画布。
+- **画布 Agent**：在画布中对话，Agent 可以创建、编辑和排列节点，联网搜索资料，改动支持撤销；可导入技能包。
+- **个人资产库**：上传素材、按文件夹整理，生成结果可一键入库，也可以从资产库添加到画布。
+
+**生成**
+
+- **异步任务**：提交后立即返回，进度通过 WebSocket 推送，断线重连后自动对账；任务可取消。
+- **积分结算**：提交时冻结积分，成功后扣除，失败或取消时退回；支持在线充值。
+- **插件化接入模型**：每种供应商协议是一个 JS 插件，运行在隔离的 plugin-runner 进程中。内置 OpenAI、Anthropic、Google、豆包、阿里百炼、可灵、即梦、Vidu、海螺、Sora 等插件，也可以上传自定义插件。
+
+**管理与运维**
+
+- **管理后台**：渠道与模型配置（保存前做连通性检查，校验通过后才能启用）、积分定价、用户、支付、使用记录、操作审计和运行总览。
+- **密钥安全**：渠道 Key 和存储密钥加密保存，只能写入，不能读出。
+- **素材存储**：内置本地磁盘；生产环境可在后台添加阿里云 OSS、腾讯云 COS、AWS S3、Cloudflare R2，并指定默认存储。切换默认存储只影响新素材，已有素材仍从原存储读取。
+- **保存不冲突**：画布按 `revision` 乐观锁保存，多个标签页或设备同时编辑时不会互相覆盖。
+- **在线升级**：启用 updater 后，超级管理员可以在后台一键升级到最新正式版本，或回退到升级前的版本。
 
 ## 快速开始
 
-### 一键部署（Docker）
+### 部署
+
+服务器需要 [Docker](https://docs.docker.com/get-docker/)（含 Compose v2）和 curl，无需克隆仓库：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash
 ```
 
-脚本会在当前目录的 `video-canvas/` 下载 `docker-compose.yml`，生成带随机密钥的 `.env`，拉取 GHCR 镜像并启动，就绪后打开 <http://localhost> 即可。
+脚本会在当前目录下创建 `video-canvas/`，下载 `docker-compose.yml`，生成带随机密钥的 `.env`，拉取 GHCR 镜像并启动。启动完成后访问 <http://localhost>。
 
-更新到最新版：
+更新到最新版本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 ```
 
 <details>
-<summary>自定义端口、域名、版本，回退与注意事项</summary>
+<summary>自定义端口、域名和版本，回退及注意事项</summary>
 
 ```bash
 # 自定义端口 / 访问地址 / 固定版本 / 部署目录
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash -s -- \
   --port 8080 --origin https://canvas.example.com --tag 0.1.6 --dir /opt/video-canvas
 
-# 更新时指定目录，或回退到某个版本
+# 更新时指定目录，或回退到指定版本
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash -s -- --dir /opt/video-canvas --tag 0.1.5
 ```
 
-- 已有 `.env` 时部署脚本直接沿用，不会重新生成密钥。
-- 请备份 `.env`：`APP_AI_SECRET_KEY` 丢失后，已加密保存的模型和存储密钥无法解密。
-- 默认部署和更新到 GitHub 上最新的正式版本，并把具体版本号写进 `.env`。
-- 更新前会先备份数据库到部署目录的 `backups/`（保留最近 3 份）；新版本没有正常启动、或启动的不是目标版本，会自动回滚到更新前的版本。
+- 部署目录已有 `.env` 时，脚本直接沿用，不会重新生成密钥。
+- 请备份 `.env`。`APP_AI_SECRET_KEY` 丢失后，已加密保存的模型密钥和存储密钥将无法解密。
+- 默认部署和更新到 GitHub 上最新的正式版本，并把具体版本号写入 `.env`。
+- 更新前会把数据库备份到部署目录的 `backups/`（保留最近 3 份）。新版本未能正常启动，或启动的不是目标版本时，自动回滚到更新前的版本。
 - 镜像为私有时，先执行 `docker login ghcr.io`。
-- 更多生产配置见 [生产 Docker 部署](docs/docker-production.md)。
+- 完整的生产配置见 [生产 Docker 部署](docs/docker-production.md)。
 
 </details>
 
-### Docker 开发环境
+### 首次使用
 
-```bash
-git clone https://github.com/zaylora/video-canvas.git
-cd video-canvas
-./scripts/start-docker.sh  # Windows 运行 scripts/start-docker.bat；加 -d 后台启动
-```
+刚部署完没有可用模型，需要先完成以下配置：
 
-首次构建需要几分钟。完成后：
-
-| 服务         | 地址                                                    |
-| ------------ | ------------------------------------------------------- |
-| 前端         | <http://localhost:5173>                                 |
-| 后端健康检查 | <http://localhost:8080/health>                          |
-| PostgreSQL   | `localhost:15432`（postgres / root，库 `video_canvas`） |
-| Redis        | `localhost:16379`                                       |
-
-## 本地开发
-
-不用 Docker 时需要：Go 1.27、[Bun](https://bun.sh)、PostgreSQL 16、Redis 7。
-
-```bash
-cp backend/configs/config.yaml backend/configs/config.local.yaml
-
-./scripts/start.sh         # Windows 运行 scripts/start.bat；
-```
-
-## 架构
-
-```mermaid
-flowchart LR
-  B[浏览器] -->|HTTP / WebSocket| W[web<br/>React + Vite / Nginx]
-  W -->|/api /files| S[backend<br/>Gin]
-  S --> P[(PostgreSQL)]
-  S --> R[(Redis)]
-  S --> O[(本地磁盘 / 对象存储)]
-  S -->|生成任务| K[worker]
-  K --> PR[plugin-runner<br/>JS 协议插件]
-  PR --> M[模型供应商]
-  K -. 任务状态 .-> S
-  S -. WebSocket 推送 .-> B
-```
-
-| 层   | 技术                                                                             |
-| ---- | -------------------------------------------------------------------------------- |
-| 前端 | React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui · React Flow · zustand |
-| 后端 | Go 1.27 · Gin · GORM · go-redis · Viper · Zap · goja                             |
-| 存储 | PostgreSQL 16（必需）· Redis 7 · 本地磁盘 / 对象存储（OSS · COS · S3 · R2）      |
-| 工程 | golangci-lint · oxlint / oxfmt · pre-commit · GitHub Actions · git-cliff         |
-
-## 目录结构
-
-```text
-video-canvas/
-├── backend/        # Go 后端：API、生成任务 worker、plugin-runner、内置插件
-├── web/            # React 前端：画布、画布列表、AI 管理后台
-├── docs/           # 部署文档、设计文档、开发计划
-├── docker-compose.dev.yml / docker-compose.yml   # 开发 / 生产（GHCR 镜像）
-└── scripts/                                      # 部署、启动和资源导出脚本
-```
-
-## 生产部署
-
-推送 `v*` tag 后，CI 会构建 `video-canvas-backend` 和 `video-canvas-web` 两个镜像并发布到 GHCR。部署和更新见[快速开始](#一键部署docker)，完整配置见 [生产 Docker 部署](docs/docker-production.md)。
+1. 打开页面注册账号。系统中的第一个账号自动成为超级管理员。
+2. 进入 **管理后台 → 渠道**，新建渠道：选择对应的内置插件，填写 Base URL 和 API Key，通过连通性检查后保存。
+3. 在渠道下拉取或新建模型，校验通过后启用。启用后，普通用户才能看到并使用该模型。
+4. 回到首页发起生成，或新建画布、添加节点后生成。新用户默认有 50 积分，可在 **管理后台 → 系统设置 → 注册设置** 中修改。
 
 ## 文档
 
-| 想了解                     | 看这里                                                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 后端结构、配置、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
-| AI 管理接口、插件契约      | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
-| Docker 开发 / 生产         | [docker-development.md](docs/docker-development.md) · [docker-production.md](docs/docker-production.md) |
-| 设计文档                   | [docs/design/](docs/design/)                                                                            |
-| 变更记录                   | [CHANGELOG.md](CHANGELOG.md)                                                                            |
-
-## 路线图
-
-- [x] 画布项目管理与乐观锁保存
-- [x] 文本 / 图片 / 视频 / 音频节点与异步生成任务
-- [x] JS 协议插件与 AI 管理后台
-- [x] 本地磁盘与对象存储（阿里云 OSS · 腾讯云 COS · S3 · Cloudflare R2），后台可配
-- [ ] 画布版本控制
-- [ ] 导演台、分镜表等新节点类型
-- [ ] 资产管理
-- [ ] 画布 Agent 与 skills 管理
+| 内容                         | 文档                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 开发环境、架构、测试与发布   | [开发指南](docs/development.md)                                                                         |
+| 生产部署                     | [生产 Docker 部署](docs/docker-production.md)                                                           |
+| 后端结构、配置项、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
+| AI 管理接口、插件契约        | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
+| 产品与交互设计               | [docs/design/](docs/design/)                                                                            |
+| 版本变更                     | [CHANGELOG.md](CHANGELOG.md)                                                                            |
 
 ## 参与贡献
 
-欢迎提 Issue 和 PR。提交前请先阅读：
+欢迎提交 Issue 和 Pull Request。开发环境搭建、代码规范、提交前检查和提交信息格式见 [开发指南](docs/development.md)。
 
-- 后端：[backend/AGENTS.md](backend/AGENTS.md)（硬性规则）和 [代码规范](backend/docs/standards/README.md)；提交前 `make fmt && make lint && make test` 都要通过。
-- 前端：[web/docs/coding-standards.md](web/docs/coding-standards.md)；提交前运行 `bun run typecheck && bun run lint && bun run format:check`。
-- 提交信息使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)，例如 `feat(canvas): 支持节点分组`。
-- 推荐安装钩子：`pre-commit install`。
-
-## License
+## 许可证
 
 [MIT](LICENSE)

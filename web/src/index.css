@@ -530,6 +530,109 @@ html:has([data-shell="home"]) {
 .canvas-loader[data-leaving] .canvas-loader-focus {
   animation: canvas-focus-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
 }
+/* 连镜 Logo 的加载动画「开镜 · 对焦 · 光铺开」（docs/design/品牌Logo）：
+   Logo 拆成光晕、左弧、右弧、光束四层（<Logo animated />），每层是独立的盒子，只动 transform / opacity。
+   进场放完（0.9s，和 FocusLoader 的 MIN_SHOW_MS 对齐）接着循环「对焦」，两段写在同一条 animation 里，不靠 JS 切状态。 */
+.logo-anim [data-part="glow"] {
+  opacity: 0;
+}
+.canvas-loader .logo-anim [data-part="left"] {
+  animation:
+    logo-anim-left-in 0.9s cubic-bezier(0.2, 0, 0, 1) both,
+    logo-anim-left-focus 1.6s ease-in-out 0.9s infinite;
+}
+.canvas-loader .logo-anim [data-part="right"] {
+  animation:
+    logo-anim-right-in 0.9s cubic-bezier(0.2, 0, 0, 1) both,
+    logo-anim-right-focus 1.6s ease-in-out 0.9s infinite;
+}
+.canvas-loader .logo-anim [data-part="beam"] {
+  animation:
+    logo-anim-beam-in 0.75s cubic-bezier(0.2, 0, 0, 1) 0.15s both,
+    logo-anim-beam-focus 1.6s ease-in-out 0.9s infinite;
+}
+.canvas-loader .logo-anim [data-part="glow"] {
+  animation: logo-anim-glow 1.6s ease-in-out 0.9s infinite;
+}
+/* 退场「光铺开」：两弧向外散开，光横向铺开，整层随后按 canvas-loader-out 淡出 */
+.canvas-loader[data-leaving] .logo-anim [data-part="left"] {
+  animation: logo-anim-left-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
+}
+.canvas-loader[data-leaving] .logo-anim [data-part="right"] {
+  animation: logo-anim-right-out 0.32s cubic-bezier(0.4, 0, 1, 1) both;
+}
+.canvas-loader[data-leaving] .logo-anim :is([data-part="beam"], [data-part="glow"]) {
+  animation: logo-anim-beam-out 0.36s cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes logo-anim-left-in {
+  from {
+    opacity: 0;
+    transform: translateX(14%);
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes logo-anim-right-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14%);
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes logo-anim-beam-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6, 0.05);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1, 1.1);
+  }
+}
+@keyframes logo-anim-left-focus {
+  50% {
+    transform: translateX(4%);
+  }
+}
+@keyframes logo-anim-right-focus {
+  50% {
+    transform: translateX(-4%);
+  }
+}
+@keyframes logo-anim-beam-focus {
+  50% {
+    transform: scaleY(1.06);
+  }
+}
+@keyframes logo-anim-glow {
+  50% {
+    opacity: 0.7;
+  }
+}
+@keyframes logo-anim-left-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24%);
+  }
+}
+@keyframes logo-anim-right-out {
+  to {
+    opacity: 0;
+    transform: translateX(24%);
+  }
+}
+@keyframes logo-anim-beam-out {
+  40% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(4, 1.4);
+  }
+}
 /* 节点内容加载占位的扫光：只动 transform，合成线程跑 */
 @keyframes node-sheen {
   from {
@@ -671,7 +774,8 @@ html:has([data-shell="home"]) {
 
 @media (prefers-reduced-motion: reduce) {
   [data-entering] *,
-  .canvas-loader-focus {
+  .canvas-loader-focus,
+  .canvas-loader .logo-anim [data-part] {
     animation: none !important;
   }
   .canvas-loader[data-leaving] {

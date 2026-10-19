@@ -44,6 +44,7 @@ function LoadBar({ progress }: { progress: number }) {
  */
 export function FocusLoader({
   icon,
+  plainIcon = false,
   title,
   subtitle,
   label,
@@ -54,6 +55,8 @@ export function FocusLoader({
 }: {
   /** 图标块里的图形，约 40px */
   icon: ReactNode;
+  /** 图标自带进退场动画（连镜 Logo 的「开镜 · 对焦 · 光铺开」）：不套深色圆角块，也不做聚焦显影 */
+  plainIcon?: boolean;
   /** 图标下方的主标题 */
   title: string;
   /** 主标题下方的灰色说明 */
@@ -102,9 +105,13 @@ export function FocusLoader({
       }}
       className="canvas-loader fixed inset-0 z-50 grid place-content-center justify-items-center gap-5"
     >
-      <div className="canvas-loader-focus bg-foreground text-background grid size-18 place-items-center rounded-[22px]">
-        {icon}
-      </div>
+      {plainIcon ? (
+        <div className="grid size-18 place-items-center">{icon}</div>
+      ) : (
+        <div className="canvas-loader-focus bg-foreground text-background grid size-18 place-items-center rounded-[22px]">
+          {icon}
+        </div>
+      )}
       <div data-later className="canvas-loader-focus grid justify-items-center gap-1.5 text-center">
         <span className="text-[15px] font-semibold tracking-wide">{title}</span>
         <span className="text-muted-foreground max-w-[28ch] truncate text-xs">{subtitle}</span>

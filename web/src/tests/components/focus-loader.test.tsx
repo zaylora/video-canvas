@@ -43,3 +43,32 @@ describe("FocusLoader 进度条", () => {
     expect(out).toContain("正在加载 3D 引擎…");
   });
 });
+
+describe("FocusLoader 图标", () => {
+  const renderIcon = (plainIcon?: boolean) =>
+    renderToStaticMarkup(
+      <FocusLoader
+        icon={<i data-icon />}
+        plainIcon={plainIcon}
+        title="连镜"
+        subtitle="正在打开画布"
+        label="正在打开画布"
+        ready={false}
+        onOpen={() => {}}
+        onDone={() => {}}
+      />,
+    );
+
+  test("默认把图标装进深色圆角块，并做聚焦显影", () => {
+    const out = renderIcon();
+    expect(out).toContain("rounded-[22px]");
+    expect(out).toMatch(/canvas-loader-focus[^"]*bg-foreground/);
+  });
+
+  test("plainIcon：图标自带动画，不套色块也不做聚焦显影", () => {
+    const out = renderIcon(true);
+    expect(out).toContain("data-icon");
+    expect(out).not.toContain("rounded-[22px]");
+    expect(out).not.toMatch(/canvas-loader-focus[^"]*bg-foreground/);
+  });
+});
