@@ -95,6 +95,28 @@ describe("添加与上限", () => {
     });
   });
 
+  test("新人物可以选男女；不选是男性；默认人物是男性", () => {
+    const base = createDefaultScene(ids());
+    expect(base.characters[0].model).toBe("male");
+    const female = addCharacter(base, () => "f", "female").scene.characters[1];
+    expect(female.model).toBe("female");
+    expect(addCharacter(base, () => "m").scene.characters[1].model).toBe("male");
+  });
+
+  test("新加的道具错开摆放，不叠在同一个位置", () => {
+    let scene = createDefaultScene(ids());
+    for (let i = 0; i < 6; i++) scene = addProp(scene, () => `p${i}`).scene;
+    const spots = scene.props.map((p) => `${p.x},${p.z}`);
+    expect(new Set(spots).size).toBe(6);
+  });
+
+  test("物体用自己的默认尺寸和中文名编号", () => {
+    let scene = addProp(createDefaultScene(ids()), () => "t1", "table").scene;
+    scene = addProp(scene, () => "t2", "table").scene;
+    expect(scene.props.map((p) => p.name)).toEqual(["桌子1", "桌子2"]);
+    expect(scene.props[0]).toMatchObject({ shape: "table", w: 1.4, h: 0.75, d: 0.8 });
+  });
+
   test("道具默认是 1 米立方体，平面默认是薄板", () => {
     const box = addProp(createDefaultScene(ids()), () => "p1").scene.props[0];
     expect(box).toMatchObject({ shape: "box", w: 1, h: 1, d: 1, name: "立方体1" });
@@ -183,6 +205,18 @@ describe("读档校验", () => {
   test("合法场景原样返回", () => {
     const scene = createDefaultScene(ids());
     expect(normalizeScene(JSON.parse(JSON.stringify(scene)))).toEqual(scene);
+  });
+
+  test("读旧场景：没有 model 的人物补成男性", () => {
+    const raw = JSON.parse(JSON.stringify(createDefaultScene(ids())));
+    delete raw.characters[0].model;
+    expect(normalizeScene(raw)?.characters[0].model).toBe("male");
+  });
+
+  test("读到不认识的人物模型（比如以后新增又回退版本）当男性", () => {
+    const raw = JSON.parse(JSON.stringify(createDefaultScene(ids())));
+    raw.characters[0].model = "robot";
+    expect(normalizeScene(raw)?.characters[0].model).toBe("male");
   });
 
   test("不是场景的值返回 undefined", () => {

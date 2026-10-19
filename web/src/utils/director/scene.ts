@@ -4,10 +4,12 @@ import type {
   DirectorCharacter,
   DirectorProp,
   DirectorScene,
+  FigureModel,
   PoseId,
   PropShape,
 } from "@/types";
 
+import { propLabel, propSize } from "./prop-presets";
 import { lookAngles } from "./sample";
 
 /** 播放和导出的帧率 */
@@ -52,22 +54,6 @@ export const CHARACTER_COLORS = [
   "#f9a8d4",
   "#67e8f9",
 ] as const;
-
-/** 道具形状的中文名，也是默认命名的前缀 */
-export const PROP_LABELS: Record<PropShape, string> = {
-  box: "立方体",
-  cylinder: "圆柱",
-  sphere: "球体",
-  plane: "平面",
-};
-
-/** 每种形状刚加进来时的尺寸（宽、高、深） */
-const PROP_SIZES: Record<PropShape, [number, number, number]> = {
-  box: [1, 1, 1],
-  cylinder: [0.6, 1, 0.6],
-  sphere: [0.8, 0.8, 0.8],
-  plane: [4, 2.5, 0.05],
-};
 
 type NewId = () => string;
 type AddKind = "character" | "prop" | "camera";
@@ -120,6 +106,7 @@ export function createDefaultScene(newId: NewId = () => crypto.randomUUID()): Di
         id: characterId,
         name: "角色A",
         color: CHARACTER_COLORS[0],
+        model: "male",
         pose: "stand",
         scale: 1,
         x: 0,
@@ -146,10 +133,14 @@ const assertCanAdd = (scene: DirectorScene, kind: AddKind) => {
   if (!canAdd(scene, kind)) throw new Error(limitMessage(kind));
 };
 
+/** 人物灰模的中文名 */
+export const FIGURE_LABELS: Record<FigureModel, string> = { male: "男性", female: "女性" };
+
 /** 加一个人物：名字取第一个没用过的字母，左右交替排开 */
 export function addCharacter(
   scene: DirectorScene,
   newId: NewId,
+  model: FigureModel = "male",
 ): { scene: DirectorScene; id: string } {
   assertCanAdd(scene, "character");
   const names = scene.characters.map((c) => c.name);
@@ -161,6 +152,7 @@ export function addCharacter(
     id,
     name: `角色${letter ?? n + 1}`,
     color: CHARACTER_COLORS.find((c) => !used.includes(c)) ?? CHARACTER_COLORS[0],
+    model,
     pose: "stand",
     scale: 1,
     x: (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 1.2,
@@ -171,24 +163,29 @@ export function addCharacter(
   return { scene: { ...scene, characters: [...scene.characters, character] }, id };
 }
 
-/** 加一个几何体道具 */
+/** 新道具的落点：一行放 4 个，一行一行往后排，免得叠在同一个位置 */
+const propSpot = (count: number) => ({
+  x: 2 + (count % 4) * 1.5,
+  z: -1.5 - Math.floor(count / 4) * 1.5,
+});
+
+/** 加一个道具（几何体或物体） */
 export function addProp(
   scene: DirectorScene,
   newId: NewId,
   shape: PropShape = "box",
 ): { scene: DirectorScene; id: string } {
   assertCanAdd(scene, "prop");
-  const [w, h, d] = PROP_SIZES[shape];
+  const [w, h, d] = propSize(shape);
   const id = newId();
   const prop: DirectorProp = {
     id,
     name: nextNumbered(
-      PROP_LABELS[shape],
+      propLabel(shape),
       scene.props.map((p) => p.name),
     ),
     shape,
-    x: 2,
-    z: -1.5,
+    ...propSpot(scene.props.length),
     yaw: 0,
     w,
     h,
@@ -305,7 +302,11 @@ export function normalizeScene(raw: unknown): DirectorScene | undefined {
   const sorted = <K extends { t: number }>(keys: unknown) =>
     (Array.isArray(keys) ? (keys as K[]) : []).slice().sort((a, b) => a.t - b.t);
   scene.duration = clampDuration(scene.duration);
-  scene.characters.forEach((c) => (c.keys = sorted(c.keys)));
+  scene.characters.forEach((c) => {
+    c.keys = sorted(c.keys);
+    // 旧场景没有 model，或读到不认识的值：按男性
+    if (c.model !== "male" && c.model !== "female") c.model = "male";
+  });
   scene.cameras.forEach((c) => (c.keys = sorted(c.keys)));
   if (typeof scene.activeCameraId !== "string") scene.activeCameraId = scene.cameras[0]?.id ?? "";
   return scene;

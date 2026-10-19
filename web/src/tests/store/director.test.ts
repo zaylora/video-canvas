@@ -96,7 +96,53 @@ describe("撤销栈（编辑器独立）", () => {
   });
 });
 
-describe("添加对象", () => {
+describe("资产面板", () => {
+  test("折叠状态可以切换，默认展开", () => {
+    expect(store().assetsOpen).toBe(true);
+    store().toggleAssets();
+    expect(store().assetsOpen).toBe(false);
+    store().toggleAssets();
+    expect(store().assetsOpen).toBe(true);
+  });
+
+  test("开关编辑器会话不影响折叠状态（它是偏好，不是会话）", () => {
+    store().toggleAssets();
+    store().close();
+    store().open("node2", scene());
+    expect(store().assetsOpen).toBe(false);
+    store().toggleAssets();
+  });
+
+  test("当前标签页记在 store 里，切换后保持", () => {
+    expect(store().assetTab).toBe("character");
+    store().setAssetTab("prop");
+    expect(store().assetTab).toBe("prop");
+    store().setAssetTab("character");
+  });
+});
+
+describe("添加对象（选项）", () => {
+  test("添加人物可以选男女", () => {
+    store().addObject("character", { model: "female" });
+    store().addObject("character");
+    const models = store().scene!.characters.map((c) => c.model);
+    expect(models).toEqual(["male", "female", "male"]);
+  });
+
+  test("添加道具可以选形状，名字用中文名编号", () => {
+    store().addObject("prop", { shape: "sofa" });
+    store().addObject("prop", { shape: "sofa" });
+    expect(store().scene!.props.map((p) => [p.shape, p.name])).toEqual([
+      ["sofa", "沙发1"],
+      ["sofa", "沙发2"],
+    ]);
+  });
+
+  test("添加机位可以指定位置", () => {
+    store().addObject("camera", { cameraPose: { x: 1, y: 2, z: 3, yaw: 10, pitch: -5, fov: 35 } });
+    expect(store().scene!.cameras[1]).toMatchObject({ x: 1, y: 2, z: 3, fov: 35 });
+  });
+
   test("新对象被选中；新机位成为当前机位", () => {
     store().addObject("camera");
     const cameras = store().scene!.cameras;

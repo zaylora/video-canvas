@@ -1,6 +1,6 @@
 import type { CameraRender, DirectorExportEngine } from "./export";
 import { DIRECTOR_FPS } from "./scene";
-import { loadFigureModel } from "./figure";
+import { loadFigureModels } from "./figure";
 import { createShotRenderer } from "./render";
 
 /** Mediabunny 只在导出时才加载，不进画布首屏的包 */
@@ -26,8 +26,8 @@ export function createExportEngine(): DirectorExportEngine {
     async open(scene, cameraId, size): Promise<CameraRender> {
       const { BufferTarget, CanvasSource, Mp4OutputFormat, Output, QUALITY_HIGH } =
         await loadMediabunny();
-      // 先把人台模型读好：之后每一帧都是同一个人物，导出中途不会换形体；读失败就用简化形体
-      await loadFigureModel();
+      // 先把场景里用到的人台模型读好：之后每一帧都是同一个人物，导出中途不会换形体；读失败就用简化形体
+      await loadFigureModels(scene.characters.map((c) => c.model ?? "male"));
       const shot = createShotRenderer();
       shot.setSize(size.width, size.height);
       const target = new BufferTarget();

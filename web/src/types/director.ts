@@ -25,6 +25,9 @@ export type PoseId =
   | "lookBack"
   | "lying";
 
+/** 人物灰模：男性或女性（骨骼相同，姿势共用） */
+export type FigureModel = "male" | "female";
+
 /** 人物在某一时刻的站位 */
 export type CharacterPose = { x: number; z: number; yaw: number };
 
@@ -37,6 +40,8 @@ export type DirectorCharacter = CharacterPose & {
   name: string;
   /** 灰模着色，用来区分角色，形如 #d4d4d8 */
   color: string;
+  /** 灰模的男女；缺省（旧场景）按男性 */
+  model?: FigureModel;
   pose: PoseId;
   /** 体型缩放，0.8–1.2 */
   scale: number;
@@ -46,10 +51,26 @@ export type DirectorCharacter = CharacterPose & {
   locked?: boolean;
 };
 
-/** 几何体道具的形状 */
-export type PropShape = "box" | "cylinder" | "sphere" | "plane";
+/** 几何体：立方体、圆柱、球、平面 */
+export type GeometryShape = "box" | "cylinder" | "sphere" | "plane";
 
-/** 几何体道具：放在地面上，不打关键帧 */
+/** 物体：用几何体拼出的日常物品 */
+export type ObjectShape =
+  | "table"
+  | "chair"
+  | "sofa"
+  | "bed"
+  | "cabinet"
+  | "door"
+  | "wall"
+  | "stairs"
+  | "car"
+  | "tree";
+
+/** 道具的形状：几何体或物体 */
+export type PropShape = GeometryShape | ObjectShape;
+
+/** 道具：放在地面上，不打关键帧 */
 export type DirectorProp = {
   id: string;
   name: string;

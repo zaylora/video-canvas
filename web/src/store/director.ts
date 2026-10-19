@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
-import type { CameraPose, CharacterPose, DirectorProp, DirectorScene } from "@/types";
+import type {
+  CameraPose,
+  CharacterPose,
+  DirectorProp,
+  DirectorScene,
+  FigureModel,
+  PropShape,
+} from "@/types";
 import {
   moveKey as moveKeyIn,
   removeKey,
@@ -8,6 +15,7 @@ import {
   setKeyEase,
   upsertKey,
 } from "@/utils/director/keys";
+import { readFlag, writeFlag } from "@/utils/director/prefs";
 import { applyPreset as applyPresetTo, type CameraPresetId } from "@/utils/director/preset";
 import { sampleCamera, sampleCharacter } from "@/utils/director/sample";
 import {
@@ -28,6 +36,16 @@ export type DirectorTool = "move" | "rotate";
 
 /** 能添加的对象种类 */
 export type DirectorAddKind = "character" | "prop" | "camera";
+
+/** 资产面板的标签页：人物、物体、机位 */
+export type AssetTab = "character" | "prop" | "camera";
+
+/** 添加对象时的选项：人物选男女，道具选形状，机位可以指定位置（从当前视角建机位） */
+export type AddOptions = {
+  model?: FigureModel;
+  shape?: PropShape;
+  cameraPose?: CameraPose;
+};
 
 /** 变换控件、属性面板改对象时传的字段；按对象种类取用 */
 export type ObjectPatch = Partial<CameraPose & CharacterPose & Pick<DirectorProp, "w" | "h" | "d">>;
@@ -59,6 +77,10 @@ type DirectorState = {
   tool: DirectorTool;
   snap: boolean;
   labels: boolean;
+  /** 资产面板展开还是折叠；是偏好，打开关闭编辑器不重置，会记在浏览器里 */
+  assetsOpen: boolean;
+  /** 资产面板当前的标签页 */
+  assetTab: AssetTab;
 
   open: (nodeId: string, scene: DirectorScene, opts?: { exportOnOpen?: boolean }) => void;
   /** 关闭编辑器；导出中拒绝，返回 false */
@@ -71,8 +93,10 @@ type DirectorState = {
   setTool: (tool: DirectorTool) => void;
   toggleSnap: () => void;
   toggleLabels: () => void;
+  toggleAssets: () => void;
+  setAssetTab: (tab: AssetTab) => void;
   /** 加一个对象并选中；到上限时不改场景，返回提示 */
-  addObject: (kind: DirectorAddKind, cameraPose?: CameraPose) => string | undefined;
+  addObject: (kind: DirectorAddKind, options?: AddOptions) => string | undefined;
   removeObject: (id: string) => void;
   /** 改一个对象的名字、姿势、颜色、画幅等非站位字段，算一步 */
   updateObject: (id: string, patch: Record<string, unknown>) => void;
@@ -178,6 +202,8 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
     tool: "move",
     snap: true,
     labels: true,
+    assetsOpen: readFlag("assets-open", true),
+    assetTab: "character",
 
     open: (nodeId, scene, opts) =>
       set({ ...IDLE, nodeId, scene, exportOnOpen: !!opts?.exportOnOpen }),
@@ -215,18 +241,24 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
     setTool: (tool) => set({ tool }),
     toggleSnap: () => set((state) => ({ snap: !state.snap })),
     toggleLabels: () => set((state) => ({ labels: !state.labels })),
+    toggleAssets: () =>
+      set((state) => {
+        writeFlag("assets-open", !state.assetsOpen);
+        return { assetsOpen: !state.assetsOpen };
+      }),
+    setAssetTab: (assetTab) => set({ assetTab }),
 
-    addObject: (kind, cameraPose) => {
+    addObject: (kind, options) => {
       const { scene } = get();
       if (!scene) return;
       if (!canAdd(scene, kind)) return limitMessage(kind);
       const newId = () => crypto.randomUUID();
       const added =
         kind === "character"
-          ? addCharacter(scene, newId)
+          ? addCharacter(scene, newId, options?.model)
           : kind === "prop"
-            ? addProp(scene, newId)
-            : addCamera(scene, newId, cameraPose);
+            ? addProp(scene, newId, options?.shape)
+            : addCamera(scene, newId, options?.cameraPose);
       commit(added.scene, { selectedId: added.id, selectedKey: null });
       return undefined;
     },

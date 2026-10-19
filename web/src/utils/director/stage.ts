@@ -17,14 +17,14 @@ import {
   type Object3D,
   type PerspectiveCamera,
   PlaneGeometry,
-  SphereGeometry,
   Vector3,
 } from "three";
 
-import type { CameraPose, CharacterPose, DirectorScene, PropShape } from "@/types";
+import type { CameraPose, CharacterPose, DirectorScene } from "@/types";
 
 import { ASPECT_RATIO } from "./export";
 import { createFigure, figureModelStatus } from "./figure";
+import { buildPropObject } from "./prop-object";
 import { DEG, sampleCamera, sampleCharacter } from "./sample";
 
 /** 舞台的底色，主视口、小窗、导出画面共用 */
@@ -43,7 +43,8 @@ type Entry = {
   group: Group;
   materials: MeshStandardMaterial[];
   frustum?: LineSegments;
-  body?: Mesh;
+  /** 道具的零件组：宽、高、深就是缩放它 */
+  body?: Object3D;
 };
 
 /** 舞台：按场景数据搭灰模、道具、机位和轨迹，主视口、小窗和离屏导出共用，保证所见即所导 */
@@ -78,13 +79,6 @@ function disposeTree(object: Object3D) {
     if (material) for (const item of [material].flat()) item.dispose();
   });
 }
-
-const PROP_GEOMETRY: Record<PropShape, () => BufferGeometry> = {
-  box: () => new BoxGeometry(1, 1, 1),
-  plane: () => new BoxGeometry(1, 1, 1),
-  cylinder: () => new CylinderGeometry(0.5, 0.5, 1, 32),
-  sphere: () => new SphereGeometry(0.5, 32, 20),
-};
 
 /** 机位模型：机身 + 镜头 + 视锥线框，前方是本地 -z */
 function createCameraModel() {
@@ -261,10 +255,14 @@ export function createStage(options: { helpers: boolean }): DirectorStage {
       // 人台模型加载好之前画的是简化形体，状态进 key，加载完下一帧就换成人台
       const entry = put(
         character.id,
-        `${character.pose}|${character.color}|${figureModelStatus()}`,
+        `${character.pose}|${character.color}|${character.model ?? "male"}|${figureModelStatus(character.model)}`,
         content,
         () => {
-          const figure = createFigure({ pose: character.pose, color: character.color });
+          const figure = createFigure({
+            pose: character.pose,
+            color: character.color,
+            model: character.model,
+          });
           figure.group.rotation.order = "YXZ";
           return { group: figure.group, materials: [figure.material] };
         },
@@ -279,18 +277,16 @@ export function createStage(options: { helpers: boolean }): DirectorStage {
       seen.add(prop.id);
       const entry = put(prop.id, prop.shape, content, () => {
         const material = new MeshStandardMaterial({ color: 0x8796a8, roughness: 0.85 });
-        const mesh = new Mesh(PROP_GEOMETRY[prop.shape](), material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        const body = buildPropObject(prop.shape, material);
         const group = new Group();
         group.rotation.order = "YXZ";
-        group.add(mesh);
-        return { group, materials: [material], body: mesh };
+        group.add(body);
+        return { group, materials: [material], body };
       });
       entry.group.position.set(prop.x, 0, prop.z);
       entry.group.rotation.set(0, -prop.yaw * DEG, 0);
+      // 零件组占满单位立方体（y 从地面起），按宽、高、深拉伸即可，不用再抬高
       entry.body!.scale.set(prop.w, prop.h, prop.d);
-      entry.body!.position.y = prop.h / 2;
       entry.group.visible = !prop.hidden;
     }
     if (options.helpers) {

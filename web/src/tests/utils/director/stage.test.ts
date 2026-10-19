@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { PerspectiveCamera, Vector3 } from "three";
+import { Box3, type Mesh, PerspectiveCamera, Vector3 } from "three";
 
 import type { DirectorScene } from "@/types";
 import { loadFigureModel, resetFigureModel } from "@/utils/director/figure";
@@ -76,6 +76,52 @@ describe("舞台同步", () => {
     expect(box.y).toBeCloseTo(2, 6);
   });
 
+  test("物体由多个零件拼成，尺寸跟着场景变", () => {
+    const stage = createStage({ helpers: true });
+    const s = addProp(scene(), () => "t1", "table").scene;
+    s.props[0] = { ...s.props[0], w: 2, h: 1, d: 1 };
+    stage.sync(s, poseAt(s));
+    const table = stage.objectOf("t1")!;
+    const box = new Box3().setFromObject(table);
+    expect(box.min.y).toBeCloseTo(0, 6);
+    expect(box.max.y).toBeCloseTo(1, 6);
+    expect(box.max.x - box.min.x).toBeCloseTo(2, 6);
+    expect(box.max.z - box.min.z).toBeCloseTo(1, 6);
+    let parts = 0;
+    table.traverse((n) => (n as Mesh).isMesh && parts++);
+    expect(parts).toBeGreaterThanOrEqual(5);
+  });
+
+  test("几何体立方体：底面在地上，顶面在高度处", () => {
+    const stage = createStage({ helpers: true });
+    const s = addProp(scene(), () => "b1").scene;
+    s.props[0] = { ...s.props[0], w: 1, h: 2, d: 1 };
+    stage.sync(s, poseAt(s));
+    const box = new Box3().setFromObject(stage.objectOf("b1")!);
+    expect(box.min.y).toBeCloseTo(0, 6);
+    expect(box.max.y).toBeCloseTo(2, 6);
+  });
+
+  test("改形状会重建道具（立方体换成桌子）", () => {
+    const stage = createStage({ helpers: true });
+    const s = addProp(scene(), () => "p1").scene;
+    stage.sync(s, poseAt(s));
+    const before = stage.objectOf("p1");
+    s.props[0] = { ...s.props[0], shape: "table" };
+    stage.sync(s, poseAt(s));
+    expect(stage.objectOf("p1")).not.toBe(before);
+  });
+
+  test("女性人物用女性模型：换模型会重建", async () => {
+    const stage = createStage({ helpers: true });
+    const s = scene();
+    stage.sync(s, poseAt(s));
+    const before = stage.objectOf("id1");
+    s.characters[0] = { ...s.characters[0], model: "female" };
+    stage.sync(s, poseAt(s));
+    expect(stage.objectOf("id1")).not.toBe(before);
+  });
+
   test("姿势变了才重建人物", () => {
     const stage = createStage({ helpers: true });
     const s = scene();
@@ -94,9 +140,7 @@ describe("舞台同步", () => {
     stage.sync(s, poseAt(s));
     const before = stage.objectOf("id1")!;
     expect(before.getObjectByName("hand_l")).toBeUndefined();
-    const bytes = readFileSync(
-      new URL("../../../../public/director/mannequin.glb", import.meta.url),
-    );
+    const bytes = readFileSync(new URL("../../../../public/director/male.glb", import.meta.url));
     await loadFigureModel(
       async () =>
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,

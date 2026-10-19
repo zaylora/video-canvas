@@ -3,7 +3,7 @@ import { Color, Fog, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import type { CameraPose, DirectorScene } from "@/types";
 
 import { ASPECT_RATIO } from "./export";
-import { loadFigureModel } from "./figure";
+import { loadFigureModels } from "./figure";
 import { sampleCamera, sampleCharacter } from "./sample";
 import { STAGE_BACKGROUND, type PoseLookup, applyCameraPose, createStage } from "./stage";
 
@@ -82,8 +82,8 @@ export async function renderThumbnail(scene: DirectorScene): Promise<Blob | null
   const camera = scene.cameras.find((c) => c.id === scene.activeCameraId) ?? scene.cameras[0];
   if (!camera) return null;
   const ratio = ASPECT_RATIO[camera.aspect];
-  // 缩略图里的人物要是人台，不是简化形体
-  await loadFigureModel();
+  // 缩略图里的人物要是人台，不是简化形体：把场景里用到的男、女模型都读好
+  await loadFigureModels(scene.characters.map((c) => c.model ?? "male"));
   const shot = createShotRenderer();
   try {
     shot.setSize(

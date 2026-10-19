@@ -21,11 +21,13 @@ import type {
   DirectorCamera,
   DirectorCharacter,
   DirectorProp,
+  FigureModel,
   PoseId,
   PropShape,
 } from "@/types";
 import { ASPECT_RATIO } from "@/utils/director/export";
-import { POSE_LABELS, PROP_LABELS, canAdd, limitMessage } from "@/utils/director/scene";
+import { PROP_CATEGORIES, propLabel, shapesOf } from "@/utils/director/prop-presets";
+import { FIGURE_LABELS, POSE_LABELS, canAdd, limitMessage } from "@/utils/director/scene";
 
 /** 焦距档位（毫米）和对应的垂直视场角（全画幅 24mm 高） */
 const LENSES = [24, 35, 50, 85, 135].map((mm) => ({
@@ -283,6 +285,19 @@ function Properties() {
       </Row>
       {character && (
         <>
+          <Row label="模型">
+            <select
+              className={FIELD_CLASS}
+              value={character.model ?? "male"}
+              onChange={(event) => update({ model: event.target.value as FigureModel })}
+            >
+              {(Object.keys(FIGURE_LABELS) as FigureModel[]).map((model) => (
+                <option key={model} value={model}>
+                  {FIGURE_LABELS[model]}
+                </option>
+              ))}
+            </select>
+          </Row>
           <Row label="姿势">
             <select
               className={FIELD_CLASS}
@@ -345,10 +360,14 @@ function Properties() {
               value={prop.shape}
               onChange={(event) => update({ shape: event.target.value as PropShape })}
             >
-              {(Object.keys(PROP_LABELS) as PropShape[]).map((shape) => (
-                <option key={shape} value={shape}>
-                  {PROP_LABELS[shape]}
-                </option>
+              {PROP_CATEGORIES.map((category) => (
+                <optgroup key={category.id} label={category.label}>
+                  {shapesOf(category.id).map((shape) => (
+                    <option key={shape} value={shape}>
+                      {propLabel(shape)}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </Row>
@@ -400,7 +419,9 @@ function Properties() {
             value={prop.d}
             onCommit={(d) => commitTransform(prop.id, { d })}
           />
-          <p className="text-muted-foreground mt-3 text-[11px]">道具不打关键帧。</p>
+          <p className="text-muted-foreground mt-3 text-[11px]">
+            道具不打关键帧。物体的正面朝 -z，旋转可以调整朝向。
+          </p>
         </>
       )}
       {camera && (

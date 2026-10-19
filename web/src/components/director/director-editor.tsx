@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { motion } from "motion/react";
 import { useStore } from "@xyflow/react";
 import {
-  Aperture,
-  Box,
   CloudCheck,
   Download,
   Grid2x2,
   LoaderCircle,
   Move,
+  PanelLeftClose,
+  PanelLeftOpen,
   Redo2,
   RotateCw,
   Scan,
@@ -16,20 +16,19 @@ import {
   TriangleAlert,
   Type,
   Undo2,
-  UserRoundPlus,
-  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { useDirectorStore, type DirectorAddKind } from "@/store/director";
-import type { CanvasNodeData } from "@/types";
+import { useDirectorStore } from "@/store/director";
+import type { CanvasNodeData, FigureModel } from "@/types";
 import { UNSUPPORTED_EXPORT_MESSAGE, canExportVideo } from "@/utils/director/export-engine";
-import { figureModelStatus, loadFigureModel } from "@/utils/director/figure";
-import { canAdd, limitMessage } from "@/utils/director/scene";
+import { disposeThumbRenderer } from "@/utils/director/asset-thumbs";
+import { figureModelStatus, loadFigureModels } from "@/utils/director/figure";
 
+import { DirectorAssets } from "./director-assets";
 import { DirectorExportDialog } from "./director-export-dialog";
 import { DirectorPreview } from "./director-preview";
 import { DirectorSidebar } from "./director-sidebar";
@@ -63,18 +62,25 @@ export default function DirectorEditor() {
     useDirectorStore.getState().takeExportOnOpen(),
   );
   const [exportSupported, setExportSupported] = useState<boolean | null>(null);
+  /** 场景里用到的人物模型（男、女），形如 "female,male"；变化时才去加载新出现的那个 */
+  const modelsKey = useDirectorStore((state) =>
+    [...new Set((state.scene?.characters ?? []).map((c) => c.model ?? "male"))].sort().join(","),
+  );
   /** 人台模型有没有加载失败：失败时人物是简化形体，给个提示条和重试 */
   const [modelFailed, setModelFailed] = useState(false);
   const retryModel = useCallback(() => {
     setModelFailed(false);
-    void loadFigureModel().then((ok) => setModelFailed(!ok));
-  }, []);
+    void loadFigureModels(modelsKey.split(",").filter(Boolean) as FigureModel[]).then((ok) =>
+      setModelFailed(!ok),
+    );
+  }, [modelsKey]);
   const scene = useDirectorStore((state) => state.scene);
   const playing = useDirectorStore((state) => state.playing);
   const selectedId = useDirectorStore((state) => state.selectedId);
   const tool = useDirectorStore((state) => state.tool);
   const snap = useDirectorStore((state) => state.snap);
   const labels = useDirectorStore((state) => state.labels);
+  const assetsOpen = useDirectorStore((state) => state.assetsOpen);
   const canUndo = useDirectorStore((state) => state.past.length > 0);
   const canRedo = useDirectorStore((state) => state.future.length > 0);
 
@@ -82,14 +88,24 @@ export default function DirectorEditor() {
     let alive = true;
     void canExportVideo().then((ok) => alive && setExportSupported(ok));
     rootRef.current?.focus({ preventScroll: true });
-    // 模型加载好之前先用简化形体，加载好舞台自己会换成人台；已经加载过就什么也不做
-    if (figureModelStatus() !== "ready") {
-      void loadFigureModel().then((ok) => alive && setModelFailed(!ok));
-    }
+    return () => {
+      alive = false;
+      // 编辑器关了，拍资产缩略图用的渲染器一并释放；拍好的图留在缓存里
+      disposeThumbRenderer();
+    };
+  }, []);
+
+  // 场景里用到哪些人物模型就加载哪些：加载好之前先用简化形体，加载好舞台自己换成人台；
+  // 新加一个女性人物时这里会去读女性模型
+  useEffect(() => {
+    let alive = true;
+    const models = modelsKey.split(",").filter(Boolean) as FigureModel[];
+    if (models.every((model) => figureModelStatus(model) === "ready")) return;
+    void loadFigureModels(models).then((ok) => alive && setModelFailed(!ok));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [modelsKey]);
 
   const close = useCallback(() => {
     const state = useDirectorStore.getState();
@@ -119,14 +135,10 @@ export default function DirectorEditor() {
     return () => cancelAnimationFrame(frame);
   }, [playing]);
 
-  const addObject = useCallback((kind: DirectorAddKind) => {
-    const message = useDirectorStore.getState().addObject(kind);
-    if (message) toast(message);
-  }, []);
   const cameraFromView = useCallback(() => {
     const pose = viewport.current?.viewPose();
     if (!pose) return;
-    const message = useDirectorStore.getState().addObject("camera", pose);
+    const message = useDirectorStore.getState().addObject("camera", { cameraPose: pose });
     if (message) toast(message);
     else toast.success("已从当前视角新建机位");
   }, []);
@@ -185,7 +197,6 @@ export default function DirectorEditor() {
     : exportSupported === false
       ? UNSUPPORTED_EXPORT_MESSAGE
       : null;
-  const addBlocked = (kind: DirectorAddKind) => (canAdd(scene, kind) ? null : limitMessage(kind));
 
   return (
     <motion.div
@@ -252,11 +263,26 @@ export default function DirectorEditor() {
         </ToolButton>
       </header>
 
-      <div className="grid min-h-0 grid-cols-[52px_minmax(0,1fr)_minmax(240px,280px)]">
+      <div
+        className={cn(
+          "grid min-h-0",
+          assetsOpen
+            ? "grid-cols-[52px_272px_minmax(0,1fr)_minmax(240px,280px)]"
+            : "grid-cols-[52px_minmax(0,1fr)_minmax(240px,280px)]",
+        )}
+      >
         <nav
           className="border-border flex flex-col items-center gap-1 border-r py-2"
           aria-label="工具"
         >
+          <ToolButton
+            title={assetsOpen ? "折叠资产面板" : "展开资产面板（添加人物、物体、机位）"}
+            active={assetsOpen}
+            onClick={() => useDirectorStore.getState().toggleAssets()}
+          >
+            {assetsOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+          </ToolButton>
+          <span className="bg-border my-1 h-px w-6" />
           <ToolButton
             title="移动（1）"
             active={tool === "move"}
@@ -270,35 +296,6 @@ export default function DirectorEditor() {
             onClick={() => useDirectorStore.getState().setTool("rotate")}
           >
             <RotateCw />
-          </ToolButton>
-          <span className="bg-border my-1 h-px w-6" />
-          <ToolButton
-            title={addBlocked("character") ?? "添加人物"}
-            disabled={!!addBlocked("character")}
-            onClick={() => addObject("character")}
-          >
-            <UserRoundPlus />
-          </ToolButton>
-          <ToolButton
-            title={addBlocked("prop") ?? "添加道具（几何体）"}
-            disabled={!!addBlocked("prop")}
-            onClick={() => addObject("prop")}
-          >
-            <Box />
-          </ToolButton>
-          <ToolButton
-            title={addBlocked("camera") ?? "添加机位"}
-            disabled={!!addBlocked("camera")}
-            onClick={() => addObject("camera")}
-          >
-            <Video />
-          </ToolButton>
-          <ToolButton
-            title={addBlocked("camera") ?? "从当前视角新建机位"}
-            disabled={!!addBlocked("camera")}
-            onClick={cameraFromView}
-          >
-            <Aperture />
           </ToolButton>
           <span className="bg-border my-1 h-px w-6" />
           <ToolButton
@@ -316,6 +313,8 @@ export default function DirectorEditor() {
             <Trash2 />
           </ToolButton>
         </nav>
+
+        {assetsOpen && <DirectorAssets onCameraFromView={cameraFromView} />}
 
         <main className="relative min-h-0 min-w-0 overflow-hidden">
           <DirectorViewport ref={viewport} />
