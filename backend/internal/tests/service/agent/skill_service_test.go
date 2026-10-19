@@ -80,17 +80,24 @@ func TestSkillService_ImportPrecheck(t *testing.T) {
 			t.Errorf("确认应 61003: %v", err)
 		}
 	})
-	t.Run("含脚本的包不能导入：预检阻断，确认 61002", func(t *testing.T) {
+	t.Run("含脚本的包可以导入：预检只提示，脚本保存下来但不会执行", func(t *testing.T) {
 		withScript := zipOf(t, map[string]string{"SKILL.md": skillMD("scripty", "d", "x"), "scripts/run.py": "print(1)\n"})
 		v := mustImport(t, e, 1, withScript)
-		if v.CanConfirm || v.Plan.Action != "blocked" || !hasCode(v.Issues, "HAS_SCRIPTS", "error") {
-			t.Fatalf("应以 error 级 HAS_SCRIPTS 阻断: %+v", v)
+		if !v.CanConfirm || v.Plan.Action != "create" || !v.HasScripts {
+			t.Fatalf("含脚本的包应能导入并标记含脚本: %+v", v)
 		}
-		if _, err := e.svc.ConfirmImport(context.Background(), 1, v.ID); codeOf(err) != 61002 {
-			t.Errorf("确认应 61002: %v", err)
+		if !hasCode(v.Issues, "HAS_SCRIPTS", "warn") || hasCode(v.Issues, "HAS_SCRIPTS", "error") {
+			t.Fatalf("HAS_SCRIPTS 应只是 warn 级提示: %+v", v.Issues)
 		}
-		if _, err := e.repo.GetSkill(context.Background(), "scripty"); err == nil {
-			t.Error("不应创建技能")
+		it, err := e.svc.ConfirmImport(context.Background(), 1, v.ID)
+		if err != nil {
+			t.Fatalf("确认导入失败: %v", err)
+		}
+		if !it.HasScripts || it.Enabled {
+			t.Errorf("应标记含脚本且默认停用: %+v", it)
+		}
+		if _, err := e.repo.GetSkill(context.Background(), "scripty"); err != nil {
+			t.Errorf("应创建技能: %v", err)
 		}
 	})
 	t.Run("既不是 zip 也没有文件", func(t *testing.T) {

@@ -128,12 +128,7 @@ func (s *SkillService) Import(ctx context.Context, actorID uint64, in SkillImpor
 func (s *SkillService) crossChecks(ctx context.Context, res *skillpkg.Result) ([]SkillIssue, SkillImportPlan, error) {
 	issues := make([]SkillIssue, 0, len(res.Issues)+2)
 	for _, is := range res.Issues {
-		si := SkillIssue{Level: is.Level, Code: is.Code, Path: is.Path, Message: is.Message}
-		// 脚本执行暂不支持（第 2 期已搁置）：含脚本的技能导入后只能当文档读，用起来是残缺的，所以直接拦下
-		if is.Code == skillpkg.CodeHasScripts {
-			si.Level, si.Message = skillpkg.LevelError, "暂不支持含脚本的技能（当前不能执行脚本），请移除脚本文件后再导入"
-		}
-		issues = append(issues, si)
+		issues = append(issues, SkillIssue{Level: is.Level, Code: is.Code, Path: is.Path, Message: is.Message})
 	}
 	plan := SkillImportPlan{Action: "blocked"}
 	if res.Name == "" || hasIssue(issues, skillpkg.CodeBadName) {

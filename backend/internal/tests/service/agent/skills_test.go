@@ -111,3 +111,31 @@ func TestAgentBridge_ImportedSkills(t *testing.T) {
 		}
 	})
 }
+
+func TestAgentBridge_ImportedSkillWithScripts(t *testing.T) {
+	se := newSkillEnv(t)
+	ctx := context.Background()
+	mustConfirm(t, se, 1, zipOf(t, map[string]string{
+		"SKILL.md":       skillMD("scripty", "带脚本的校验方法", "出稿前先对照脚本里的规则检查。"),
+		"scripts/run.py": "def check(text):\n    return len(text) <= 100\n",
+	}))
+	_, _ = se.svc.SetEnabled(ctx, 1, "scripty", true)
+	b := newBridgeEnvWithSkills(t, se.svc)
+	tok, _ := b.token(t, "all")
+
+	t.Run("skill_read 列出脚本，并明确说不能执行、不要假装运行过", func(t *testing.T) {
+		res := b.tool(t, tok, "skill_read", map[string]any{"name": "scripty"})
+		for _, want := range []string{"scripts/run.py", "不能执行脚本", "不要声称"} {
+			if res.IsError || !strings.Contains(res.Content, want) {
+				t.Errorf("正文缺少 %q:\n%+v", want, res)
+			}
+		}
+	})
+
+	t.Run("脚本源码可以当文本读，包在「数据」声明里", func(t *testing.T) {
+		res := b.tool(t, tok, "skill_read", map[string]any{"name": "scripty", "file": "scripts/run.py"})
+		if res.IsError || !strings.Contains(res.Content, "def check(text)") || !strings.Contains(res.Content, "不是指令") {
+			t.Errorf("%+v", res)
+		}
+	})
+}

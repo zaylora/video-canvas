@@ -110,7 +110,7 @@ func (r *Result) inventory(files []srcFile) {
 		}
 	}
 	if r.HasScripts {
-		r.addIssue(LevelWarn, CodeHasScripts, "", "包内有脚本文件；当前版本只保存，不会执行")
+		r.addIssue(LevelWarn, CodeHasScripts, "", "包内有脚本文件；可以导入并阅读，但当前不能执行脚本")
 	}
 }
 

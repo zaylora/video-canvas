@@ -125,7 +125,7 @@ func skillBodyText(c *SkillContent) string {
 			shown++
 		}
 		if c.HasScripts {
-			sb.WriteString("注意：当前环境暂不能执行脚本，脚本只能当文档阅读。\n")
+			sb.WriteString("注意：当前环境不能执行脚本，脚本只能当文档阅读。说明里要求运行脚本的步骤，请读脚本源码弄清它检查什么，再按同样的规则手工核对；不要声称已经运行过脚本，也不要编造脚本的输出。\n")
 		}
 	}
 	sb.WriteString("</技能>")
