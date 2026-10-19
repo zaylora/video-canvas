@@ -38,6 +38,14 @@ import { DirectorViewport, type DirectorViewportApi } from "./director-viewport"
 import { MENU_ATTR, ViewModeSwitch } from "./view-mode-switch";
 import { useDirectorSync } from "./use-director-sync";
 
+/** 视口左上角的操作提示：两个视角共用一套相机操作，机位视角改的是当前机位 */
+const HINT = {
+  director:
+    "导演视角 · 左键按住拖动 · 右键按住平移 · 滚轮上下摇 · Ctrl / Alt + 滚轮变焦 · WASD / 方向键平移 · 点选对象后拖动彩色轴",
+  camera:
+    "机位视角 · 左键按住拖动调整朝向 · 滚轮上下摇 · Ctrl / Alt + 滚轮变焦 · WASD / 方向键平移机位 · 要摆人物请切回导演视角",
+} as const;
+
 /** 键盘事件落在这些元素上时交给它们自己（打字、选下拉） */
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -86,6 +94,7 @@ export default function DirectorEditor() {
   const labels = useDirectorStore((state) => state.labels);
   const split = useDirectorStore((state) => state.previewSplit);
   const camView = useDirectorStore((state) => activeCameraOf(state.scene, state.viewMode) !== null);
+  const hint = camView ? HINT.camera : HINT.director;
   const assetsOpen = useDirectorStore((state) => state.assetsOpen);
   const canUndo = useDirectorStore((state) => state.past.length > 0);
   const canRedo = useDirectorStore((state) => state.future.length > 0);
@@ -326,10 +335,11 @@ export default function DirectorEditor() {
           {/* 导演视角：分栏时收成左半边；视口自己始终挂着，只是这个容器变窄，WebGL 上下文不重建 */}
           <div className={cn("absolute inset-y-0 left-0", split ? "right-1/2" : "right-0")}>
             <DirectorViewport ref={viewport} />
-            <span className="bg-card/80 text-muted-foreground border-border pointer-events-none absolute top-2.5 left-2.5 max-w-[calc(100%-1.25rem)] truncate rounded-md border px-2 py-1 text-[11px]">
-              {camView
-                ? "机位视角 · 按住左键拖动调整机位朝向 · 要走位或换机位位置，切回导演视角"
-                : "导演视角 · 左键拖空白处旋转 · 右键平移 · 滚轮缩放 · 点选对象后拖动彩色轴"}
+            <span
+              title={hint}
+              className="bg-card/80 text-muted-foreground border-border pointer-events-none absolute top-2.5 left-2.5 max-w-[calc(100%-1.25rem)] truncate rounded-md border px-2 py-1 text-[11px]"
+            >
+              {hint}
             </span>
             {modelFailed && (
               <div className="bg-status-running/15 text-foreground border-status-running/40 absolute top-12 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-1.5 text-xs">

@@ -8,12 +8,12 @@ import {
   type Ref,
 } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { OrbitControls, TransformControls } from "@react-three/drei";
+import { TransformControls } from "@react-three/drei";
 import { Vector3, type Group, type PerspectiveCamera, type Quaternion } from "three";
 
 import { useDirectorStore } from "@/store/director";
 import type { CameraPose } from "@/types";
-import { activeCameraOf, lookBy, viewFov } from "@/utils/director/camera-view";
+import { activeCameraOf, viewFov } from "@/utils/director/camera-view";
 import { ASPECT_RATIO } from "@/utils/director/export";
 import { FIGURE_TOP } from "@/utils/director/figure";
 import { createThreeScene } from "@/utils/director/render";
@@ -21,6 +21,7 @@ import { DEG } from "@/utils/director/sample";
 import { applyCameraPose, createStage, type DirectorStage } from "@/utils/director/stage";
 
 import { CameraFrame } from "./camera-frame";
+import { attachFreeCamera, directorDriver, sceneCameraDriver } from "./free-camera";
 
 /** 视口对外的操作：工具栏、快捷键调用 */
 export type DirectorViewportApi = {
@@ -30,8 +31,11 @@ export type DirectorViewportApi = {
   viewPose: () => CameraPose;
 };
 
-/** 导演视角控制器里用到的部分（drei 的 OrbitControls 实例） */
-type OrbitHandle = { target: Vector3; update: () => void };
+/** 导演视角刚打开时相机的位置，和看向的点 */
+const INITIAL_POSITION: [number, number, number] = [6.5, 5, 8.5];
+const INITIAL_TARGET: [number, number, number] = [0, 1, 0];
+/** 「聚焦选中」时相机退到离对象多远（米），朝向不变 */
+const FOCUS_DISTANCE = 4.5;
 
 /** 点击时指针移动超过这么多像素就算拖动视角，不当点选 */
 const CLICK_SLOP = 4;
@@ -40,35 +44,24 @@ const SNAP_MOVE = 0.25;
 const SNAP_TURN = 15 * DEG;
 
 /** 导演视角的相机状态：进机位视角前存下，退出时放回去 */
-type SavedView = {
-  position: Vector3;
-  quaternion: Quaternion;
-  fov: number;
-  target: Vector3 | undefined;
-};
+type SavedView = { position: Vector3; quaternion: Quaternion; fov: number };
 
-const saveView = (camera: PerspectiveCamera, orbit: OrbitHandle | null): SavedView => ({
+const saveView = (camera: PerspectiveCamera): SavedView => ({
   position: camera.position.clone(),
   quaternion: camera.quaternion.clone(),
   fov: camera.fov,
-  target: orbit?.target.clone(),
 });
 
 function restoreView(
   camera: PerspectiveCamera,
   saved: SavedView,
   size: { width: number; height: number },
-  orbit: OrbitHandle | null,
 ) {
   camera.position.copy(saved.position);
   camera.quaternion.copy(saved.quaternion);
   camera.fov = saved.fov;
   camera.aspect = size.width / size.height;
   camera.updateProjectionMatrix();
-  if (saved.target && orbit) {
-    orbit.target.copy(saved.target);
-    orbit.update();
-  }
 }
 
 /**
@@ -85,61 +78,11 @@ function viewThrough(camera: PerspectiveCamera, pose: CameraPose, ratio: number,
 }
 
 /**
- * 在视口画布上绑定「按住左键拖动调整机位朝向」：每次拖动是撤销栈里的一步，拖动时暂停播放。
- * @returns 解绑函数；拖到一半被解绑时把这一步收尾
- */
-function attachLook(
-  element: HTMLElement,
-  camId: string,
-  camera: PerspectiveCamera,
-  size: { current: { height: number } },
-): () => void {
-  let last: { x: number; y: number } | null = null;
-  const down = (event: PointerEvent) => {
-    if (event.button !== 0) return;
-    element.setPointerCapture(event.pointerId);
-    last = { x: event.clientX, y: event.clientY };
-    const state = useDirectorStore.getState();
-    if (state.playing) state.setPlaying(false);
-    state.startGesture();
-    element.style.cursor = "grabbing";
-  };
-  const move = (event: PointerEvent) => {
-    if (!last) return;
-    const dx = event.clientX - last.x;
-    const dy = event.clientY - last.y;
-    last = { x: event.clientX, y: event.clientY };
-    const state = useDirectorStore.getState();
-    const pose = state.poseOf(camId) as CameraPose | undefined;
-    if (!pose) return;
-    state.transformObject(camId, lookBy(pose, dx, dy, camera.fov, size.current.height));
-  };
-  const up = (event: PointerEvent) => {
-    if (!last) return;
-    last = null;
-    if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
-    useDirectorStore.getState().endGesture();
-    element.style.cursor = "grab";
-  };
-  element.style.cursor = "grab";
-  element.addEventListener("pointerdown", down);
-  element.addEventListener("pointermove", move);
-  element.addEventListener("pointerup", up);
-  element.addEventListener("pointercancel", up);
-  return () => {
-    element.removeEventListener("pointerdown", down);
-    element.removeEventListener("pointermove", move);
-    element.removeEventListener("pointerup", up);
-    element.removeEventListener("pointercancel", up);
-    element.style.cursor = "";
-    if (last) useDirectorStore.getState().endGesture();
-  };
-}
-
-/**
  * 导演台的 3D 主视口。
- * 导演视角：左键拖空白处旋转、右键平移、滚轮缩放；点选对象后出现变换控件，1 / 2 切换移动 / 旋转。
- * 机位视角：站在当前机位里看，画面按机位的画幅取景（画幅外压暗），按住左键拖动调整机位朝向。
+ * 两个视角共用一套自由相机操作（见 free-camera）：左键抓手拖动、滚轮上下摇、Ctrl / Alt + 滚轮变焦、
+ * WASD / 方向键水平平移；导演视角另有右键 / 中键按住平移。点选对象后出现变换控件，1 / 2 切换移动 / 旋转。
+ * 导演视角：自由飞的相机，不再是绕着一个点环绕。
+ * 机位视角：站在当前机位里看，画面按机位的画幅取景（画幅外压暗），操作改的是这台机位。
  * 舞台每帧按编辑器状态同步，不走 React 重渲染。
  */
 export function DirectorViewport({ ref }: { ref?: Ref<DirectorViewportApi> }) {
@@ -153,7 +96,7 @@ export function DirectorViewport({ ref }: { ref?: Ref<DirectorViewportApi> }) {
       <Canvas
         shadows
         scene={threeScene}
-        camera={{ position: [6.5, 5, 8.5], fov: 50, near: 0.05, far: 200 }}
+        camera={{ position: INITIAL_POSITION, fov: 50, near: 0.05, far: 200 }}
         dpr={[1, 2]}
       >
         <StageContent stage={stage} labelsRef={labelsRef} apiRef={ref} />
@@ -175,8 +118,6 @@ function StageContent({
 }) {
   const camera = useThree((state) => state.camera) as PerspectiveCamera;
   const size = useThree((state) => state.size);
-  /** makeDefault 的 OrbitControls 会登记在这里 */
-  const controls = useThree((state) => state.controls) as unknown as OrbitHandle | null;
   const selectedId = useDirectorStore((state) => state.selectedId);
   const tool = useDirectorStore((state) => state.tool);
   const snap = useDirectorStore((state) => state.snap);
@@ -184,18 +125,28 @@ function StageContent({
   const camViewId = useDirectorStore((state) => activeCameraOf(state.scene, state.viewMode));
   const camView = camViewId !== null;
   const gl = useThree((state) => state.gl);
-  /** 事件处理里要读最新的视口大小和控制器，用 ref 免得因为它们变化重新绑定事件 */
+  /** 事件处理里要读最新的视口大小、当前视角，用 ref 免得因为它们变化重新绑定事件 */
   const sizeRef = useRef(size);
-  const controlsRef = useRef(controls);
+  const camViewRef = useRef(camView);
   useEffect(() => {
     sizeRef.current = size;
-    controlsRef.current = controls;
+    camViewRef.current = camView;
   });
+  /** 变换控件正在被拖：这时左键拖动归控件，不当抓手 */
+  const gizmoBusy = useRef(false);
+  /** 当前视角的自由相机控制器，每帧推进键盘平移 */
+  const freeCamera = useRef<ReturnType<typeof attachFreeCamera> | null>(null);
   /** 变换控件挂的对象：人物换姿势会重建模型，所以每帧核对一次 */
   const [attached, setAttached] = useState<Group | undefined>();
   const labelHtml = useRef("");
 
-  useFrame(() => {
+  // 刚打开时看向舞台中心；之后相机是自由飞的，朝向由操作决定
+  useLayoutEffect(() => {
+    camera.lookAt(...INITIAL_TARGET);
+  }, [camera]);
+
+  useFrame((_, delta) => {
+    freeCamera.current?.tick(delta);
     const state = useDirectorStore.getState();
     const { scene } = state;
     if (!scene) return;
@@ -260,14 +211,13 @@ function StageContent({
       focusSelected: () => {
         const id = useDirectorStore.getState().selectedId;
         const object = id ? stage.objectOf(id) : undefined;
-        const orbit = controls;
-        if (!object || !orbit) return;
+        // 机位视角里相机是机位自己，没有「聚焦」
+        if (!object || camViewRef.current) return;
         const point = object.position.clone();
         if (point.y < 0.5) point.y = 1;
-        const offset = camera.position.clone().sub(orbit.target).setLength(4.5);
-        orbit.target.copy(point);
-        camera.position.copy(point).add(offset);
-        orbit.update();
+        // 朝向不变，退到对象正前方（沿视线反方向）FOCUS_DISTANCE 米，让它落在画面正中
+        const forward = camera.getWorldDirection(new Vector3());
+        camera.position.copy(point).addScaledVector(forward, -FOCUS_DISTANCE);
       },
       viewPose: () => {
         const direction = new Vector3();
@@ -282,21 +232,31 @@ function StageContent({
         };
       },
     }),
-    [camera, controls, stage],
+    [camera, stage],
   );
 
   // 进机位视角前先记住导演视角的位置，退出时放回去
   useLayoutEffect(() => {
     if (!camView) return;
-    const saved = saveView(camera, controlsRef.current);
-    return () => restoreView(camera, saved, sizeRef.current, controlsRef.current);
+    const saved = saveView(camera);
+    return () => restoreView(camera, saved, sizeRef.current);
   }, [camView, camera]);
 
-  // 机位视角：按住左键拖动调整机位朝向，手感和导演视角的拖动一致（画面跟着手走）。
-  // 一次拖动算撤销栈里的一步；已有关键帧的机位，改动先是「未记录」，按 K 才写进轨道
+  // 自由相机操作：导演视角操作主视口的相机，机位视角操作当前机位（一次连续操作算撤销栈一步）。
+  // 已有关键帧的机位，改动先是「未记录」，按 K 才写进轨道
   useEffect(() => {
-    if (!camViewId) return;
-    return attachLook(gl.domElement, camViewId, camera, sizeRef);
+    const controller = attachFreeCamera({
+      element: gl.domElement,
+      camera,
+      driver: camViewId ? sceneCameraDriver(camViewId) : directorDriver(camera),
+      allowPan: !camViewId,
+      gizmoBusy,
+    });
+    freeCamera.current = controller;
+    return () => {
+      controller.dispose();
+      freeCamera.current = null;
+    };
   }, [camViewId, camera, gl]);
 
   /** 点选：点中对象就选它，点地面或空白就取消选中；拖过视角的不算点击；机位视角里左键是调朝向，不点选 */
@@ -329,13 +289,6 @@ function StageContent({
   return (
     <>
       <primitive object={stage.root} onClick={onClick} />
-      <OrbitControls
-        makeDefault
-        enabled={!camView}
-        enableDamping
-        target={[0, 1, 0]}
-        maxPolarAngle={Math.PI * 0.495}
-      />
       {attached && kind && !camView && (
         <TransformControls
           object={attached}
@@ -347,8 +300,14 @@ function StageContent({
           showZ={!rotating}
           translationSnap={snap ? SNAP_MOVE : null}
           rotationSnap={snap ? SNAP_TURN : null}
-          onMouseDown={() => useDirectorStore.getState().startGesture()}
-          onMouseUp={() => useDirectorStore.getState().endGesture()}
+          onMouseDown={() => {
+            gizmoBusy.current = true;
+            useDirectorStore.getState().startGesture();
+          }}
+          onMouseUp={() => {
+            gizmoBusy.current = false;
+            useDirectorStore.getState().endGesture();
+          }}
           onObjectChange={onObjectChange}
         />
       )}
