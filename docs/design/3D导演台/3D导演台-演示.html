@@ -1,0 +1,1838 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3D 导演台演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <!-- 3D 视口用 three.js（与设计选型一致）。CDN 加载失败时原型退回俯视示意 -->
+    <script type="importmap">
+      { "imports": { "three": "https://unpkg.com/three@0.170.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
+    </script>
+    <script type="module">
+      try {
+        const THREE = await import("three");
+        const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+        const { TransformControls } = await import("three/addons/controls/TransformControls.js");
+        Object.assign(window, { THREE, OrbitControls, TransformControls });
+        window.dispatchEvent(new Event("three-ready"));
+      } catch (e) {
+        console.warn("three.js 加载失败，原型退回俯视示意", e);
+        window.dispatchEvent(new Event("three-failed"));
+      }
+    </script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        /* 导演台编辑器在两种主题下都是深色（与参考截图一致） */
+        --ed-bg: 240 6% 7%;
+        --ed-panel: 240 5% 11%;
+        --ed-raise: 240 4% 16%;
+        --ed-line: 240 4% 20%;
+        --ed-fg: 0 0% 92%;
+        --ed-dim: 240 4% 60%;
+        --canvas-bg: 240 5% 96%;
+        --canvas-dot: 240 5% 82%;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --canvas-bg: 240 6% 8%;
+        --canvas-dot: 240 4% 22%;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } .lab { grid-template-columns: 1fr !important; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto-scroll { overflow-x: auto; }
+      .proto { min-width: 980px; height: 660px; position: relative; overflow: hidden; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+      /* 原型内的浮动标注 */
+      .pin { position: absolute; z-index: 40; max-width: 230px; font-size: 11px; line-height: 1.45; color: rgb(var(--violet)); background: hsl(var(--background) / 0.94); border: 1.5px dashed rgb(var(--violet)); border-radius: 8px; padding: 6px 8px; pointer-events: none; }
+      body:not(.show-notes) .pin { display: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 模拟条件 ---- */
+      .sims { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; padding: 10px 12px; border: 1px dashed hsl(var(--border)); border-radius: var(--radius); margin-top: 14px; }
+      .sims label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
+      /* ---- 画布视图 ---- */
+      .cv { position: absolute; inset: 0; background-color: hsl(var(--canvas-bg)); background-image: radial-gradient(hsl(var(--canvas-dot)) 1px, transparent 1px); background-size: 18px 18px; }
+      .cnode { position: absolute; width: 268px; border-radius: 14px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); box-shadow: 0 4px 18px rgb(0 0 0 / 0.06); }
+      .cnode.sel { border-color: rgb(var(--info)); box-shadow: 0 0 0 2px rgb(var(--info) / 0.35); }
+      .cnode .hd { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; font-weight: 500; }
+      .cnode .bd { margin: 0 10px 10px; border-radius: 10px; overflow: hidden; background: #111; position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; }
+      .cnode .bd canvas { width: 100%; height: 100%; display: block; }
+      .cnode .ft { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 10px; }
+      .chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+      .ntool { position: absolute; display: flex; gap: 2px; padding: 4px; border-radius: 10px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); box-shadow: 0 6px 20px rgb(0 0 0 / 0.1); }
+      .ntool .btn { height: 28px; font-size: 12px; }
+      .ov { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 12px; background: rgb(0 0 0 / 0.55); }
+      svg.links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+      /* ---- 导演台编辑器（深色） ---- */
+      .ed { position: absolute; inset: 0; z-index: 20; background: hsl(var(--ed-bg)); color: hsl(var(--ed-fg)); display: grid; grid-template-rows: 46px minmax(0, 1fr) 168px; font-size: 12.5px; }
+      .ed button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ed-top { display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid hsl(var(--ed-line)); }
+      .ed-top .title { font-weight: 600; font-size: 14px; margin-right: 6px; }
+      .eb { height: 30px; padding: 0 9px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--ed-fg)); font-size: 12.5px; }
+      .eb:hover:not(:disabled) { background: hsl(var(--ed-raise)); }
+      .eb.on { background: hsl(var(--ed-raise)); box-shadow: inset 0 0 0 1px hsl(var(--ed-line)); }
+      .eb.pri { background: #fafafa; color: #111; font-weight: 600; }
+      .eb.pri:hover:not(:disabled) { background: #e5e5e5; }
+      .sepv { width: 1px; height: 20px; background: hsl(var(--ed-line)); margin: 0 4px; }
+      .ed-mid { display: grid; grid-template-columns: 50px minmax(0, 1fr) 250px; min-height: 0; }
+      .ed-left { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-right: 1px solid hsl(var(--ed-line)); }
+      .ed-left .eb { width: 34px; height: 34px; padding: 0; justify-content: center; position: relative; }
+      .ed-left .kbd { position: absolute; right: -2px; top: -3px; font-size: 9px; background: hsl(var(--ed-line)); border-radius: 4px; padding: 0 3px; color: hsl(var(--ed-dim)); }
+      .vp { position: relative; min-width: 0; min-height: 0; }
+      .vp canvas.top { position: absolute; inset: 0; width: 100%; height: 100%; cursor: default; }
+      #glHost { position: absolute; inset: 0; }
+      #glHost canvas { display: block; width: 100%; height: 100%; }
+      .lbl-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .lbl { position: absolute; transform: translate(-50%, -100%); font-size: 11px; color: #f4f4f5; background: rgb(0 0 0 / 0.55); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+      .lbl.pend { color: rgb(251 191 36); transform: translate(-50%, 4px); }
+      #pvHost canvas { display: block; }
+      .vp-badge { position: absolute; left: 10px; top: 10px; font-size: 11px; color: hsl(var(--ed-dim)); background: hsl(var(--ed-panel) / 0.85); border: 1px solid hsl(var(--ed-line)); border-radius: 6px; padding: 3px 7px; }
+      .banner { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font-size: 12px; padding: 5px 10px; border-radius: 8px; background: rgb(var(--warn) / 0.18); color: rgb(251 191 36); border: 1px solid rgb(251 191 36 / 0.4); white-space: nowrap; }
+      .pv { position: absolute; right: 12px; bottom: 12px; width: 300px; background: hsl(var(--ed-panel)); border: 1px solid hsl(var(--ed-line)); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgb(0 0 0 / 0.4); }
+      .pv-tabs { display: flex; align-items: center; gap: 4px; padding: 6px; border-bottom: 1px solid hsl(var(--ed-line)); overflow-x: auto; }
+      .pv-tab { height: 24px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; color: hsl(var(--ed-dim)); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+      .pv-tab.on { background: hsl(var(--ed-raise)); color: hsl(var(--ed-fg)); }
+      .pv-meta { display: flex; gap: 6px; padding: 6px 8px; font-size: 11px; color: hsl(var(--ed-dim)); }
+      .pv-meta span { background: hsl(var(--ed-raise)); border-radius: 5px; padding: 1px 6px; }
+      .pv-stage { background: #000; display: grid; place-items: center; }
+      .pv-stage canvas { display: block; }
+      .ed-right { border-left: 1px solid hsl(var(--ed-line)); display: flex; flex-direction: column; min-height: 0; background: hsl(var(--ed-panel)); }
+      .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px; }
+      .seg button { height: 30px; border-radius: 8px; color: hsl(var(--ed-dim)); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+      .seg button.on { background: hsl(var(--ed-raise)); color: hsl(var(--ed-fg)); }
+      .rp-body { overflow-y: auto; padding: 0 8px 8px; flex: 1; }
+      .lg { margin-top: 6px; }
+      .lg-h { display: flex; align-items: center; gap: 6px; height: 28px; color: hsl(var(--ed-dim)); font-size: 12px; }
+      .li { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 22px; border-radius: 7px; cursor: pointer; }
+      .li:hover { background: hsl(var(--ed-raise) / 0.6); }
+      .li.on { background: hsl(var(--ed-raise)); }
+      .li .sw { width: 8px; height: 8px; border-radius: 50%; }
+      .li .x { margin-left: auto; opacity: 0; color: hsl(var(--ed-dim)); }
+      .li:hover .x { opacity: 1; }
+      .fld { display: grid; grid-template-columns: 64px minmax(0, 1fr) 44px; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+      .fld label { color: hsl(var(--ed-dim)); }
+      .fld input[type="range"] { width: 100%; accent-color: #e5e5e5; }
+      .fld .v { text-align: right; font-family: "Geist Mono", monospace; font-size: 11px; color: hsl(var(--ed-dim)); }
+      .ein, .esel { width: 100%; height: 28px; border-radius: 7px; border: 1px solid hsl(var(--ed-line)); background: hsl(var(--ed-bg)); color: hsl(var(--ed-fg)); padding: 0 8px; font: inherit; font-size: 12px; }
+      .fld.wide { grid-template-columns: 64px minmax(0, 1fr); }
+      .rp-foot { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 8px; border-top: 1px solid hsl(var(--ed-line)); }
+      .rp-foot .eb { justify-content: center; background: hsl(var(--ed-raise)); padding: 0 4px; font-size: 12px; }
+      .hint { color: hsl(var(--ed-dim)); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
+      .pending { color: rgb(251 191 36); }
+
+      .tl { border-top: 1px solid hsl(var(--ed-line)); display: grid; grid-template-rows: 40px minmax(0, 1fr); min-height: 0; background: hsl(var(--ed-panel)); }
+      .tl-bar { display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid hsl(var(--ed-line)); }
+      .tl-bar .time { font-family: "Geist Mono", monospace; font-size: 12px; min-width: 96px; }
+      .tl-bar .esel { width: auto; height: 28px; }
+      .tl-bar input.num { width: 52px; }
+      .tl-body { display: grid; grid-template-columns: 150px minmax(0, 1fr); min-height: 0; overflow-y: auto; }
+      .tl-names div, .tl-lanes .lane { height: 26px; display: flex; align-items: center; }
+      .tl-names { border-right: 1px solid hsl(var(--ed-line)); }
+      .tl-names div { padding: 0 10px; font-size: 12px; color: hsl(var(--ed-dim)); gap: 6px; white-space: nowrap; overflow: hidden; }
+      .tl-names div.on { color: hsl(var(--ed-fg)); }
+      .tl-names .ruler-n, .tl-lanes .ruler { height: 22px; }
+      .tl-lanes { position: relative; cursor: pointer; }
+      .tl-lanes .ruler { position: relative; border-bottom: 1px solid hsl(var(--ed-line)); font-size: 10px; color: hsl(var(--ed-dim)); }
+      .tl-lanes .ruler span { position: absolute; top: 4px; transform: translateX(-50%); }
+      .tl-lanes .lane { position: relative; border-bottom: 1px solid hsl(var(--ed-line) / 0.5); }
+      .tl-lanes .lane.on { background: hsl(var(--ed-raise) / 0.5); }
+      .kf { position: absolute; top: 8px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: #e5e5e5; border-radius: 2px; }
+      .kf.sel { background: rgb(251 191 36); }
+      .kf.pend { background: transparent; border: 1.5px dashed rgb(251 191 36); }
+      .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fafafa; pointer-events: none; }
+      .ph::before { content: ""; position: absolute; top: 0; left: -5px; width: 12px; height: 12px; border-radius: 50%; background: #fafafa; }
+      .tl-empty { position: absolute; left: 16px; top: 40px; color: hsl(var(--ed-dim)); font-size: 12px; pointer-events: none; }
+
+      .modal-bg { position: absolute; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.55); display: grid; place-items: center; }
+      .modal { width: 520px; max-width: calc(100% - 32px); background: hsl(var(--ed-panel)); color: hsl(var(--ed-fg)); border: 1px solid hsl(var(--ed-line)); border-radius: 14px; padding: 18px; font-size: 13px; }
+      .modal h3 { font-size: 16px; font-weight: 600; }
+      .opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid hsl(var(--ed-line)); border-radius: 9px; margin-top: 6px; cursor: pointer; }
+      .opt.on { border-color: #e5e5e5; }
+      .bar { height: 6px; border-radius: 99px; background: hsl(var(--ed-raise)); overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: #e5e5e5; width: 0; }
+      .loading { position: absolute; inset: 0; z-index: 60; background: hsl(var(--ed-bg)); color: hsl(var(--ed-dim)); display: grid; place-items: center; font-size: 13px; }
+      .spin { width: 22px; height: 22px; border: 2px solid hsl(var(--ed-line)); border-top-color: #e5e5e5; border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto 10px; }
+      @keyframes sp { to { transform: rotate(360deg); } }
+
+      /* 交互演示 */
+      .lab { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; margin-top: 20px; }
+      .opt-btn { text-align: left; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 13px; background: hsl(var(--card)); }
+      .opt-btn[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt-btn small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .lab-canvas { width: 100%; border-radius: 10px; background: #111; display: block; }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="clapperboard"></i></span>3D 导演台演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>运镜预设演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注<button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button></label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark'); redrawAll()" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">在画布里先把镜头排出来，再交给 AI 生成</h1>
+        <p class="lead">
+          新增一种画布节点「导演台」：双击进入全屏 3D 场景，摆灰模人物、几何体道具和机位，用<b>预设运镜</b>一键做出推拉摇移，再用<b>关键帧</b>微调，最后<b>导出灰模运镜预览视频</b>（附首帧图）回到画布，连到视频生成节点当参考。<b>导演台只产出素材，不在里面提交 AI 生成</b>；场景自动保存在节点里，<b>只有「导出视频」会在画布上新建节点</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>本页对应 Markdown 设计文档 <code>3D导演台.md</code>（准绳）。尚未实现；原型的 3D 视口、机位小窗和缩略图用 <b>three.js r170（CDN）</b>真实渲染，灰模人物用胶囊体拼成（真实产品用内置的带骨骼人体模型文件），离线时退回俯视示意；编码、上传都是模拟。竞品信息来自 2026-10-19 的检索。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一个镜头从摆位到成片怎么走</h2>
+          <p class="sub">导演台负责前三步，第 4 步回到画布已有的能力，导演台不重复造生成面板。</p>
+          <div class="flow note">
+            <div class="node"><b>① 建导演台节点</b>自带默认场景：1 个人物 + 1 台机位、5 秒</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>② 摆位</b>拖人物、选姿势、加几何体道具、加机位</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>③ 运镜</b>选机位 → 套「推近 / 环绕 / 跟拍…」→ 按 K 微调关键帧</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>④ 导出</b>逐帧离线渲染 → MP4 + 首帧图 → 画布上新建节点并上传</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>⑤ AI 成片</b>用户把预览视频连到视频生成节点做参考视频</div>
+          </div>
+          <div class="note-txt">设计：主产物是运镜视频（访谈 Q1），所以时间轴和导出是骨架；导出物就是普通的视频 / 图片节点，复用现有连线规则和模型能力判断（Q6），不在导演台里重建模型选择。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div><b>回退 / 兜底：</b>模型不支持参考视频 → 用首帧机位图做图生视频；人物模型加载失败 → 用胶囊体代替，导出照常；浏览器不支持 WebGL2 → 打不开导演台，但节点和已导出的视频照常可用；不支持 H.264 编码 → 「导出视频」禁用并写明原因。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>导出能得到什么</h2>
+          <p class="sub">下游模型能吃什么，决定了导出什么。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="film"></i><b>灰模运镜预览视频</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">MVP 主产物</span><span class="tag t-vio">提案</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>每个机位一段 H.264 MP4</b>，24fps，720p / 1080p，画面不带标签和网格。给支持参考视频的模型（Seedance 2.x、Luma Modify、Kling Motion Control）当参考。<span class="tag t-info">调研检索</span></p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="image"></i><b>首帧机位图</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">默认勾选</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>t=0 那一帧的 PNG</b>。所有图像 / 视频模型都能当参考图或做图生视频，是不支持参考视频时的退路。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="layers"></i><b>深度 / 姿态控制视频</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">P3，本期不做</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>只有 Wan VACE 这类模型需要</b>，技术上可以逐帧渲染深度 / 骨架图，放到后续阶段。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>和主流方案对比</h2>
+          <p class="sub">截图形态最接近 LibTV「导演台」；本设计把重心从"截机位图"挪到"运镜视频"。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>LibTV 导演台</th><th>TapNow 3D 片场</th><th>Krea 相机关键帧</th><th>本设计</th></tr></thead>
+              <tbody>
+                <tr><th>形态</th><td class="y">画布节点 + 全屏 3D</td><td>画布内 3D 片场</td><td>独立 Stage 页面</td><td class="y">画布节点 + 全屏编辑器</td></tr>
+                <tr><th>新手上手</th><td class="y">默认一人一机位</td><td class="m">关键帧要手动记起止</td><td class="m">参数多</td><td class="y">默认场景 + 预设运镜一键出</td></tr>
+                <tr><th>运镜</th><td class="m">早期无时间轴，靠多机位截图做首尾帧</td><td class="y">角色 / 镜头关键帧</td><td class="y">位置、朝向、焦距、缓动</td><td class="y">预设 + 关键帧（不做轨迹绘制）</td></tr>
+                <tr><th>人物</th><td class="y">可调到每个关节</td><td>未验证：姿势控制粒度</td><td class="m">弱</td><td class="m">12 个姿势预设，不做关节</td></tr>
+                <tr><th>主产物</th><td>机位截图</td><td>白模预演视频</td><td>相机路径视频</td><td class="y">每机位 MP4 + 首帧图</td></tr>
+                <tr><th>群众 / 背景</th><td class="y">3×3 群众阵列、720° 全景</td><td>Agent 生成白模场景</td><td>单图转 3D</td><td class="m">P2 再做</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-info">测评文章</span></td><td><span class="tag t-info">教程视频</span></td><td><span class="tag t-info">changelog</span></td><td><span class="tag t-vio">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>创作者要做"人物从左走到右、镜头跟拍"时，会发生什么</h2>
+          <p class="sub">这是人物走位 + 跟拍预设的组合，也是 MVP 里最复杂的一条路径。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>播放头放在 0s，把角色A拖到左边，按 K</b><small>人物轨道出现第 1 个关键帧</small></li>
+                <li><b>播放头拖到 5s，把角色A拖到右边，按 K</b><small>第 2 个关键帧；播放可见人物平移（不带走路循环动画，姿势选「行走」）</small></li>
+                <li><b>选中机位1，看向目标设为角色A，套「跟拍」</b><small>按人物轨道每 0.5 秒烘焙一个机位关键帧，保持起点的相对位置</small></li>
+                <li><b>导出视频</b><small>画布上出现「导演台1·机位1」视频节点和首帧图节点，开始上传</small></li>
+                <li><b>把视频节点连到视频生成节点，写提示词，生成</b><small>模型需支持参考视频（看后台模型能力 <code>refs.video</code>）</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：一段镜头里人物姿势固定，只能平移和转向。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>没有走路循环动画，预览视频里人物是"滑"过去的；AI 模型会按提示词补出走路动作（<span class="tag t-warn">未验证</span>效果）。</li>
+                    <li>人物没有关键帧时套「跟拍」= 固定机位，并提示"先给人物打走位关键帧"。</li>
+                    <li>改了跟拍之后再改人物走位，机位<b>不会</b>自动重算，需要再套一次预设。</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要告知：预览视频是"运镜与站位参考"，不是动作参考；动作细节靠提示词描述。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 运镜预设演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">运镜预设：一键生成关键帧</h1>
+        <p class="lead">选一个预设，改强度，左边俯视图看机位轨迹，右边看机位画面（three.js 渲染）循环播放，下面是生成的关键帧。<b>这是给无 3D 经验用户的主路径</b>：不用理解关键帧也能出运镜。</p>
+        <div class="lab">
+          <div id="presetList" class="grid" style="align-content: start"></div>
+          <div class="card">
+            <div class="row wrapflex" style="gap: 14px; font-size: 13px">
+              <b id="labTitle"></b>
+              <label class="row">强度 <input id="labStrength" type="range" style="width: 140px" /> <span id="labStrengthV" class="mono muted"></span></label>
+              <label class="row">时长
+                <select id="labDur" class="btn btn-outline" style="height: 28px"><option>3</option><option selected>5</option><option>8</option></select> 秒</label>
+            </div>
+            <p id="labDesc" class="muted" style="font-size: 13px; margin-top: 6px"></p>
+            <div class="grid g2" style="margin-top: 12px">
+              <div><div class="muted" style="font-size: 12px; margin-bottom: 4px">俯视 · 虚线为机位轨迹 <span class="tag t-mute">示意</span></div><canvas id="labTop" class="lab-canvas" width="480" height="300"></canvas></div>
+              <div><div class="muted" style="font-size: 12px; margin-bottom: 4px">机位1 画面 16:9 · <span id="labT" class="mono"></span></div><canvas id="labCam" class="lab-canvas" width="480" height="270"></canvas></div>
+            </div>
+            <div class="cmp-wrap" style="margin-top: 12px; max-height: 210px; overflow-y: auto">
+              <table class="cmp"><thead><tr><th>t (s)</th><th>位置 x / 高 y / z (m)</th><th>偏航 / 俯仰 (°)</th><th>FOV</th><th>插值</th></tr></thead><tbody id="labKeys"></tbody></table>
+            </div>
+            <p class="muted" style="font-size: 12px; margin-top: 8px">环绕、跟拍每 0.5 秒烘焙一帧（线性），其他预设只生成首尾两帧（缓入缓出）。<span class="tag t-vio">提案</span></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型：画布 → 导演台 → 导出</h1>
+        <p class="lead">
+          数据在内存里，刷新复原。已预置一个导演台节点（默认场景）。<b>双击节点</b>或点「打开导演台」进入 <b>three.js 3D 视口</b>：左键拖空白处旋转视角、右键平移、滚轮缩放；点选人物 / 道具 / 机位后拖彩色轴移动，按 <b>2</b> 切到旋转；左栏光圈按钮可「从当前视角新建机位」；时间轴下拉选运镜预设后点「套用」；<b>K</b> 记录关键帧、<b>空格</b>播放、<b>Ctrl+Z</b> 撤销。想看失败：勾选下方"模拟条件"，例如加一台机位后勾"机位2 编码失败"再导出两个机位。需要联网加载 three.js，离线时退回俯视示意。
+        </p>
+        <div class="sims" id="sims">
+          <span class="muted">模拟条件：</span>
+          <label><input type="checkbox" data-sim="noWebgl" />浏览器不支持 WebGL2</label>
+          <label><input type="checkbox" data-sim="modelFail" />人物模型加载失败</label>
+          <label><input type="checkbox" data-sim="noH264" />不支持 H.264 编码</label>
+          <label><input type="checkbox" data-sim="encFail" />机位2 编码失败</label>
+          <label><input type="checkbox" data-sim="upFail" />上传失败</label>
+        </div>
+        <div class="frame" style="margin-top: 12px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="crumb">video-canvas / 我的画布 / 短剧第 3 集</span>
+          </div>
+          <div class="proto-scroll"><div class="proto" id="proto"></div></div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，尚未实现，对应 Markdown 的 §6–§8。<b>后端几乎不改</b>：场景存在节点 <code>data.scene</code> 里，随画布现有的 <code>PUT /canvas/:id</code> + <code>revision</code> 乐观锁保存；导出物走现有素材上传。</p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">导演台节点和其他节点之间允许什么连线。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>允许的关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>导演台 → 生成节点</th><td><code>DOWNSTREAM_KINDS.director = []</code></td><td>导演台本身不是素材，不能直接当参考；要先导出成视频 / 图片</td></tr>
+                <tr><th>任意节点 → 导演台</th><td>不允许（其他种类的下游不含 <code>director</code>）</td><td>MVP 不接收上游；P2 的"参考图背景"再放开 image → director</td></tr>
+                <tr><th>导演台 → 导出节点</th><td>导出时自动画的来源线</td><td>只表示出处；导出节点是 <code>uploaded: true</code>，不出生成面板</td></tr>
+                <tr><th>导出视频 / 首帧图 → 生成节点</th><td>沿用现有 video→video、image→image/video 规则</td><td>零改动复用参考素材和模型能力判断</td></tr>
+                <tr><th>导演台 ↔ 画布撤销栈</th><td><code>scene</code> 不进画布撤销；导出建节点算一步</td><td>编辑器有独立撤销栈（访谈 Q10）；<code>restoreNodes</code> 要对 <code>scene</code> 取当前值，否则撤销挪节点会把场景倒回去 <span class="tag t-ok">已核对代码</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型：<code>CanvasNodeData.scene</code></h2>
+          <p class="sub">只在 <code>kind === "director"</code> 的节点上有。随 <code>serializeGraph</code> 白名单写入 payload，<code>PersistedCanvasNodeDto.kind</code> 联合类型加 <code>director</code>。不新增表、不改后端模型。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2"><code>DirectorScene</code></th></tr></thead>
+                <tbody>
+                  <tr><th><code>version</code></th><td><code>1</code>，结构版本，P2 加字段时升级</td></tr>
+                  <tr><th><code>duration</code></th><td>秒，1–15，0.5 步进，默认 5</td></tr>
+                  <tr><th><code>activeCameraId</code></th><td>小窗和缩略图用的机位</td></tr>
+                  <tr><th><code>characters[]</code></th><td>≤ 8 个人物</td></tr>
+                  <tr><th><code>props[]</code></th><td>≤ 30 个几何体</td></tr>
+                  <tr><th><code>cameras[]</code></th><td>0–6 台；导出要求 ≥ 1</td></tr>
+                  <tr><th><code>thumb?</code></th><td><code>{ assetId, url }</code>，关闭编辑器时渲染上传</td></tr>
+                  <tr><th>整体限制</th><td>JSON ≤ 256KB，超出拒绝写入并提示</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cmp-wrap">
+              <table class="cmp">
+                <thead><tr><th colspan="2">对象字段</th></tr></thead>
+                <tbody>
+                  <tr><th>人物</th><td><code>id name color pose scale position yaw keys[] hidden? locked?</code>；<code>pose</code> 为 12 个预设之一；<code>keys: {t, position, yaw, ease}</code></td></tr>
+                  <tr><th>道具</th><td><code>id name shape(box|cylinder|sphere|plane) position rotation size hidden? locked?</code>；不打关键帧</td></tr>
+                  <tr><th>机位</th><td><code>id name aspect(16:9|9:16|1:1|4:3|21:9) x y z yaw pitch(±85) fov(10–120) lookAt? keys[]</code>；<code>keys: {t, x, y, z, yaw, pitch, fov, ease}</code></td></tr>
+                  <tr><th>关键帧规则</th><td>按 <code>t</code> 升序，精确到 0.01s，同 <code>t</code> 唯一；<code>ease</code> 为 <code>smooth</code>（默认）或 <code>linear</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">朝向存偏航 / 俯仰角（度），不做滚转：实现时由四元数调整而来，数值直观、插值简单（主文档 §8.1 已回写）。</p>
+        </div>
+
+        <div class="sec">
+          <h2>改动清单与接口</h2>
+          <p class="sub">不新增后端接口；新增依赖都只出现在懒加载 chunk 里。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>位置</th><th>改动</th></tr></thead>
+              <tbody>
+                <tr><th><code>node-library.ts</code></th><td>新增 <code>director</code>「导演台」，图标 Clapperboard；<code>ADD_NODE_MENU</code> 加入口</td></tr>
+                <tr><th><code>canvas-node.tsx</code></th><td>分派到 <code>DirectorCanvasNode</code>，只渲染缩略图 + 机位 chip，<b>不 import three</b></td></tr>
+                <tr><th><code>canvas-persistence.ts</code>、<code>api/canvas/type.d.ts</code></th><td>白名单加 <code>scene</code>，<code>kind</code> 加 <code>director</code></td></tr>
+                <tr><th><code>utils/canvas/history.ts</code></th><td><code>restoreNodes</code> 对 <code>scene</code> 取当前值</td></tr>
+                <tr><th><code>store/director.ts</code>（新）</th><td><code>nodeId / enter / leave / reset</code>，与截帧、修剪、扩图互斥</td></tr>
+                <tr><th><code>components/director/*</code>（新）</th><td>编辑器外壳、视口、小窗、图层 / 属性、时间轴、导出对话框；<code>React.lazy</code></td></tr>
+                <tr><th><code>utils/director/*</code>（新）</th><td>纯函数：<code>defaultScene</code>、<code>sampleScene(scene, t)</code>、<code>applyPreset</code>、<code>validateScene</code>、<code>exportCameras</code>（引擎注入）</td></tr>
+                <tr><th><code>web/public/director/</code></th><td>CC0 人物 GLB + 12 个姿势 JSON + 许可证说明</td></tr>
+                <tr><th><code>package.json</code></th><td>锁定版本引入 <code>three</code>、<code>@react-three/fiber</code>、<code>@react-three/drei</code>、<code>@types/three</code></td></tr>
+                <tr><th><code>canvasgraph/ops.go</code>（后端）</th><td><code>KindDirector</code>，下游为空，标签「导演台」；Agent 不创建 / 修改导演台</td></tr>
+                <tr><th>复用接口</th><td><code>POST /assets/upload-intents</code>（导出视频、首帧图、缩略图上传）· <code>PUT /canvas/:id</code>（场景随画布保存，409 走现有冲突处理）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>导出流程伪代码</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// utils/director/export.ts（提案）—— 引擎注入，便于用假实现单测
+async function exportCameras(scene, cameraIds, opts, engine) {
+  const results = [];
+  for (const camId of cameraIds) {
+    const { width, height } = sizeFor(camera(scene, camId).aspect, opts.resolution); // 长边 1280 / 1920
+    const frames = Math.round(scene.duration * 24);
+    const enc = await engine.createEncoder({ width, height, fps: 24 });   // mediabunny CanvasSource → H.264 MP4
+    let firstFrame;
+    for (let i = 0; i &lt; frames; i++) {
+      if (opts.signal.aborted) { await enc.cancel(); throw new AbortError(); }
+      const state = sampleScene(scene, i / 24);                            // 纯函数
+      const canvas = engine.render(state, camId, { width, height, overlays: false }); // 不带标签 / 网格 / 控件
+      if (i === 0 &amp;&amp; opts.withFirstFrame) firstFrame = await engine.toPng(canvas);
+      await enc.add(canvas, i / 24);                                        // 不依赖 rAF，帧时间精确
+      opts.onProgress(camId, i + 1, frames);
+    }
+    results.push({ camId, video: await enc.finish(), firstFrame });
+  }
+  return results;
+}
+// 调用方：history.record() → buildDirectorExportNodes（place-beside 摆放 + 来源线）
+//        → setNodes / setEdges → 每个节点 uploadRunner.start(node.id, file, updateNodeData)</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 6px">
+              <li><b>主线是运镜预览视频喂给 AI 生视频</b>：机位图降为附带的首帧图。</li>
+              <li><b>用户是无 3D 经验的 AI 视频创作者</b>：默认场景 + 预设优先，精确参数放属性面板。</li>
+              <li><b>人物只做位置 + 朝向 + 姿势预设</b>：不做关节摆姿。</li>
+              <li><b>运镜 = 预设运镜 + 录制关键帧</b>：轨迹绘制不进 MVP。</li>
+              <li><b>新节点「导演台」+ 全屏编辑器</b>：场景存在节点里，一个画布可以有多个导演台。</li>
+              <li><b>导出生成视频节点 + 首帧图节点，用户自己连</b>：不自动建生成节点，不在导演台里提交 AI 生成。</li>
+              <li><b>引用 three + R3F + drei</b>：懒加载；时间轴自写（theatre studio 是 AGPL 且停更）。</li>
+              <li><b>人物是预设灰模，不是资产</b>：内置一个带骨骼的灰色人体模型文件 + 预烘姿势，随前端静态资源发布，后端不扩白名单；不用代码拼几何体（像火柴人，AI 不好认）。</li>
+              <li><b>保存冲突（409）沿用画布现有处理</b>：Agent 改动自动合并；否则弹「画布已在别处修改」前先关闭导演台编辑器，场景作为本地改动跟着「另存为新画布」或「加载最新」走（用户确认）。</li>
+              <li><b>MVP 追加几何体道具和人物位置关键帧走位</b>；群众阵列、全景背景放 P2。</li>
+              <li><b>场景只在编辑器内保存，编辑器独立撤销栈；只有「导出视频」才写回画布</b>（新建节点）。</li>
+              <li><b>场景自动保存到导演台节点</b>：随画布自动保存落库，关页不丢。</li>
+              <li><b>已搁置</b>：截图里的「AI 生成」按钮（不做）；轨迹绘制、群众阵列、全景背景（P2）。</li>
+              <li><b>主文档已回写</b>：带关键帧的对象在非关键帧时刻拖动只是临时姿态，显示「未记录 · 按 K 记录」（§6.5，做原型时补充）。</li>
+            </ol>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="list-checks"></i>
+            <div><b>设计上已无待定问题。第一期已实现（未在浏览器实际验证，见主文档 §13）。待办：</b>人物换成用户选定的 Quaternius Universal Base Characters（CC0）模型文件，目前是代码拼的临时灰模。<b>实现时补一条测试：</b>Agent 自动合并后本地导演台节点的场景被保留（<span class="tag t-warn">未验证</span>）。</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const round = (v, n = 2) => Math.round(v * 10 ** n) / 10 ** n;
+      const clone = (o) => JSON.parse(JSON.stringify(o));
+      let uid = 100;
+      const nid = (p) => p + ++uid;
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert", info: "info" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2600);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+        if (id === "demo") labStart(); else labStop();
+        if (id === "proto") renderProto();
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 场景数学：插值、投影（原型里机位朝向用偏航 / 俯仰示意） ================= */
+      const D2R = Math.PI / 180;
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const lerpAng = (a, b, u) => { let d = ((b - a + 540) % 360) - 180; return a + d * u; };
+      const smooth = (u) => u * u * (3 - 2 * u);
+      const ASPECTS = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "4:3": 4 / 3, "21:9": 21 / 9 };
+      const POSES = ["站立", "行走", "奔跑", "坐", "蹲", "单手指向", "双手抱胸", "挥手", "对话", "举手", "回头", "倒地"];
+      const CAM_F = ["x", "y", "z", "yaw", "pitch", "fov"];
+      const CHR_F = ["x", "z", "yaw"];
+
+      function sampleKeys(keys, t, fields, base) {
+        if (!keys.length) return pick(base, fields);
+        if (t <= keys[0].t) return pick(keys[0], fields);
+        const last = keys[keys.length - 1];
+        if (t >= last.t) return pick(last, fields);
+        let i = 0;
+        while (keys[i + 1].t < t) i++;
+        const a = keys[i], b = keys[i + 1];
+        const u0 = (t - a.t) / (b.t - a.t);
+        const u = b.ease === "linear" ? u0 : smooth(u0);
+        const o = {};
+        for (const f of fields) o[f] = f === "yaw" ? lerpAng(a[f], b[f], u) : lerp(a[f], b[f], u);
+        return o;
+      }
+      const pick = (o, fs) => Object.fromEntries(fs.map((f) => [f, o[f]]));
+
+      function basis(c) {
+        const y = c.yaw * D2R, p = c.pitch * D2R;
+        const f = [Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p)];
+        const r = [Math.cos(y), 0, Math.sin(y)];
+        const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+        return { f, r, u };
+      }
+      const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+      /* 线框透视渲染：网格、几何体、火柴人。真实产品为 three.js 灰模渲染 */
+      function renderPersp(ctx, W, H, scene, t, cam, opt = {}) {
+        const B = basis(cam);
+        const C = [cam.x, cam.y, cam.z];
+        const k = H / 2 / Math.tan((cam.fov / 2) * D2R);
+        const toCam = (P) => { const d = [P[0] - C[0], P[1] - C[1], P[2] - C[2]]; return [dot(d, B.r), dot(d, B.u), dot(d, B.f)]; };
+        const proj = (v) => [W / 2 + (v[0] / v[2]) * k, H / 2 - (v[1] / v[2]) * k];
+        const NEAR = 0.1;
+        const line = (a, b) => {
+          let ca = toCam(a), cb = toCam(b);
+          if (ca[2] < NEAR && cb[2] < NEAR) return;
+          if (ca[2] < NEAR) { const u = (NEAR - ca[2]) / (cb[2] - ca[2]); ca = ca.map((v, i) => lerp(v, cb[i], u)); }
+          if (cb[2] < NEAR) { const u = (NEAR - cb[2]) / (ca[2] - cb[2]); cb = cb.map((v, i) => lerp(v, ca[i], u)); }
+          const p = proj(ca), q = proj(cb);
+          ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+        };
+        ctx.fillStyle = "#121214"; ctx.fillRect(0, 0, W, H);
+        // 天空渐变
+        const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#1c1c22"); g.addColorStop(1, "#0d0d10");
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        ctx.lineWidth = 1;
+        for (let i = -12; i <= 12; i++) {
+          ctx.strokeStyle = i === 0 ? "#b33" : "#2b2b33"; line([-12, 0, i], [12, 0, i]);
+          ctx.strokeStyle = i === 0 ? "#35c" : "#2b2b33"; line([i, 0, -12], [i, 0, 12]);
+        }
+        // 道具
+        ctx.strokeStyle = "#9fb3c8"; ctx.lineWidth = 1.5;
+        for (const p of scene.props) {
+          if (p.hidden) continue;
+          const c = Math.cos(p.yaw * D2R), s = Math.sin(p.yaw * D2R);
+          const pt = (dx, dy, dz) => [p.x + dx * c - dz * s, dy, p.z + dx * s + dz * c];
+          const w = p.w / 2, d = p.d / 2, h = p.h;
+          const bl = [pt(-w, 0, -d), pt(w, 0, -d), pt(w, 0, d), pt(-w, 0, d)];
+          const tl = [pt(-w, h, -d), pt(w, h, -d), pt(w, h, d), pt(-w, h, d)];
+          for (let i = 0; i < 4; i++) { line(bl[i], bl[(i + 1) % 4]); line(tl[i], tl[(i + 1) % 4]); line(bl[i], tl[i]); }
+        }
+        // 人物（按与机位的距离从远到近画）
+        const chars = scene.characters.filter((c) => !c.hidden).map((ch) => ({ ch, st: opt.charState ? opt.charState(ch) : sampleKeys(ch.keys, t, CHR_F, ch) }));
+        chars.sort((a, b) => toCam([b.st.x, 1, b.st.z])[2] - toCam([a.st.x, 1, a.st.z])[2]);
+        for (const { ch, st } of chars) drawFigure(ctx, ch, st, toCam, proj, line, k, opt);
+        return { toCam, proj };
+      }
+
+      // 姿势：局部坐标（右, 上, 前），单位 m。只画出大致轮廓（示意）
+      function poseJoints(pose) {
+        const J = { hip: [0, 0.95, 0], neck: [0, 1.45, 0], head: [0, 1.62, 0], lk: [-0.11, 0.5, 0], rk: [0.11, 0.5, 0], lf: [-0.12, 0, 0], rf: [0.12, 0, 0], lh: [-0.24, 0.85, 0], rh: [0.24, 0.85, 0] };
+        const set = (o) => Object.assign(J, o);
+        switch (pose) {
+          case "行走": set({ lk: [-0.1, 0.5, 0.12], lf: [-0.1, 0, 0.25], rk: [0.1, 0.5, -0.08], rf: [0.1, 0.02, -0.25], lh: [-0.24, 0.9, -0.18], rh: [0.24, 0.9, 0.18] }); break;
+          case "奔跑": set({ lk: [-0.1, 0.6, 0.3], lf: [-0.1, 0.2, 0.2], rk: [0.1, 0.45, -0.15], rf: [0.1, 0.1, -0.4], lh: [-0.24, 1.1, -0.3], rh: [0.24, 1.0, 0.35] }); break;
+          case "坐": set({ hip: [0, 0.5, 0], neck: [0, 1.0, 0], head: [0, 1.17, 0], lk: [-0.12, 0.5, 0.45], rk: [0.12, 0.5, 0.45], lf: [-0.12, 0, 0.45], rf: [0.12, 0, 0.45], lh: [-0.22, 0.55, 0.25], rh: [0.22, 0.55, 0.25] }); break;
+          case "蹲": set({ hip: [0, 0.55, -0.1], neck: [0, 1.0, 0.05], head: [0, 1.17, 0.08], lk: [-0.14, 0.5, 0.3], rk: [0.14, 0.5, 0.3], lh: [-0.2, 0.6, 0.3], rh: [0.2, 0.6, 0.3] }); break;
+          case "单手指向": set({ rh: [0.25, 1.4, 0.6] }); break;
+          case "双手抱胸": set({ lh: [0.06, 1.2, 0.15], rh: [-0.06, 1.2, 0.15] }); break;
+          case "挥手": set({ rh: [0.45, 1.75, 0.05] }); break;
+          case "对话": set({ rh: [0.2, 1.1, 0.3] }); break;
+          case "举手": set({ rh: [0.22, 1.95, 0] }); break;
+          case "回头": set({ head: [0.04, 1.62, -0.03] }); break;
+          case "倒地": set({ hip: [0, 0.15, 0], neck: [0, 0.15, -0.55], head: [0, 0.12, -0.75], lk: [-0.12, 0.12, 0.45], rk: [0.12, 0.12, 0.45], lf: [-0.12, 0.1, 0.9], rf: [0.12, 0.1, 0.9], lh: [-0.4, 0.1, -0.45], rh: [0.4, 0.1, -0.45] }); break;
+        }
+        return J;
+      }
+      function drawFigure(ctx, ch, st, toCam, proj, line, k, opt) {
+        const y = st.yaw * D2R, sc = ch.scale || 1;
+        const fw = [Math.sin(y), 0, -Math.cos(y)], rt = [Math.cos(y), 0, Math.sin(y)];
+        const W = (l) => [st.x + (rt[0] * l[0] + fw[0] * l[2]) * sc, l[1] * sc, st.z + (rt[2] * l[0] + fw[2] * l[2]) * sc];
+        const depth = toCam([st.x, 1, st.z])[2];
+        if (depth < 0.15) return;
+        ctx.strokeStyle = ch.color; ctx.lineCap = "round";
+        ctx.lineWidth = clamp((0.09 * k) / depth, 1.5, 22);
+        if (opt.capsule) {
+          line(W([0, 0.15, 0]), W([0, 1.45, 0]));
+        } else {
+          const J = poseJoints(ch.pose);
+          const ls = [-0.2, J.neck[1] - 0.04, J.neck[2]], rs = [0.2, J.neck[1] - 0.04, J.neck[2]];
+          line(W(J.hip), W(J.neck)); line(W(ls), W(rs));
+          line(W(ls), W(J.lh)); line(W(rs), W(J.rh));
+          line(W(J.hip), W(J.lk)); line(W(J.lk), W(J.lf));
+          line(W(J.hip), W(J.rk)); line(W(J.rk), W(J.rf));
+        }
+        const hc = toCam(W(opt.capsule ? [0, 1.62, 0] : poseJoints(ch.pose).head));
+        if (hc[2] > 0.1) {
+          const p = proj(hc); const r = clamp((0.12 * sc * k) / hc[2], 2, 60);
+          ctx.fillStyle = ch.color; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill();
+          if (opt.labels) { ctx.fillStyle = "#fff"; ctx.font = "11px Geist, sans-serif"; ctx.textAlign = "center"; ctx.fillText(ch.name, p[0], p[1] - r - 6); }
+        }
+      }
+
+      /* 俯视图：x 向右，z 向下（屏幕上方为 -z）。返回坐标换算以便命中检测 */
+      function renderTop(ctx, W, H, scene, t, o) {
+        const S = o.scale || Math.min(W, H) / 13;
+        const ox = W / 2 + (o.panX || 0), oy = H / 2 + (o.panY || 0);
+        const sx = (x) => ox + x * S, sy = (z) => oy + z * S;
+        ctx.fillStyle = "#121214"; ctx.fillRect(0, 0, W, H);
+        ctx.lineWidth = 1;
+        for (let i = -15; i <= 15; i++) {
+          ctx.strokeStyle = i === 0 ? "#7a2a2a" : "#24242b"; ctx.beginPath(); ctx.moveTo(0, sy(i)); ctx.lineTo(W, sy(i)); ctx.stroke();
+          ctx.strokeStyle = i === 0 ? "#2a3f7a" : "#24242b"; ctx.beginPath(); ctx.moveTo(sx(i), 0); ctx.lineTo(sx(i), H); ctx.stroke();
+        }
+        const sel = o.sel;
+        for (const p of scene.props) {
+          if (p.hidden) continue;
+          ctx.save(); ctx.translate(sx(p.x), sy(p.z)); ctx.rotate(p.yaw * D2R);
+          ctx.fillStyle = "rgba(159,179,200,.25)"; ctx.strokeStyle = sel === p.id ? "#fbbf24" : "#9fb3c8"; ctx.lineWidth = sel === p.id ? 2 : 1.2;
+          ctx.fillRect((-p.w / 2) * S, (-p.d / 2) * S, p.w * S, p.d * S); ctx.strokeRect((-p.w / 2) * S, (-p.d / 2) * S, p.w * S, p.d * S);
+          ctx.restore();
+          if (o.labels) { ctx.fillStyle = "#8a8a94"; ctx.font = "10px Geist, sans-serif"; ctx.textAlign = "center"; ctx.fillText(p.name, sx(p.x), sy(p.z) + 3); }
+        }
+        // 机位轨迹
+        for (const c of scene.cameras) {
+          if (c.keys.length < 2) continue;
+          ctx.strokeStyle = c.id === scene.activeCameraId ? "rgba(250,250,250,.55)" : "rgba(250,250,250,.2)";
+          ctx.setLineDash([4, 4]); ctx.beginPath();
+          for (let i = 0; i <= 60; i++) { const s = sampleKeys(c.keys, (scene.duration * i) / 60, CAM_F, c); i ? ctx.lineTo(sx(s.x), sy(s.z)) : ctx.moveTo(sx(s.x), sy(s.z)); }
+          ctx.stroke(); ctx.setLineDash([]);
+          for (const k of c.keys) { ctx.fillStyle = "#e5e5e5"; ctx.fillRect(sx(k.x) - 2, sy(k.z) - 2, 4, 4); }
+        }
+        for (const ch of scene.characters) {
+          if (ch.keys.length < 2) continue;
+          ctx.strokeStyle = ch.color + "88"; ctx.setLineDash([2, 4]); ctx.beginPath();
+          ch.keys.forEach((k, i) => (i ? ctx.lineTo(sx(k.x), sy(k.z)) : ctx.moveTo(sx(k.x), sy(k.z))));
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+        const handles = [];
+        for (const ch of scene.characters) {
+          if (ch.hidden) continue;
+          const st = o.stateOf(ch);
+          const x = sx(st.x), y = sy(st.z), r = 0.32 * S;
+          ctx.fillStyle = ch.color; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+          const fx = Math.sin(st.yaw * D2R), fz = -Math.cos(st.yaw * D2R);
+          ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + fx * r, y + fz * r); ctx.stroke();
+          if (sel === ch.id) { ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); handles.push({ id: ch.id, x: x + fx * 1.1 * S, y: y + fz * 1.1 * S, cx: x, cy: y }); }
+          if (o.labels) { ctx.fillStyle = "#e5e5e5"; ctx.font = "11px Geist, sans-serif"; ctx.textAlign = "center"; ctx.fillText(ch.name, x, y - r - 6); }
+          if (o.pending && o.pending[ch.id]) { ctx.fillStyle = "#fbbf24"; ctx.font = "10px Geist, sans-serif"; ctx.fillText("未记录 · 按 K", x, y + r + 14); }
+        }
+        for (const c of scene.cameras) {
+          const st = o.stateOf(c);
+          const x = sx(st.x), y = sy(st.z);
+          const hf = Math.atan(Math.tan((st.fov / 2) * D2R) * ASPECTS[c.aspect]);
+          const len = 1.6 * S, a = st.yaw * D2R;
+          const p1 = [x + Math.sin(a - hf) * len, y - Math.cos(a - hf) * len], p2 = [x + Math.sin(a + hf) * len, y - Math.cos(a + hf) * len];
+          const active = c.id === scene.activeCameraId;
+          ctx.fillStyle = active ? "rgba(250,250,250,.10)" : "rgba(250,250,250,.04)";
+          ctx.strokeStyle = sel === c.id ? "#fbbf24" : active ? "#fafafa" : "#8a8a94"; ctx.lineWidth = sel === c.id ? 2 : 1.2;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(x - 6, y - 5, 12, 10);
+          ctx.fillStyle = "#e5e5e5"; ctx.font = "11px Geist, sans-serif"; ctx.textAlign = "center"; ctx.fillText(c.name, x, y + 20);
+          if (sel === c.id) handles.push({ id: c.id, x: x + Math.sin(a) * 1.1 * S, y: y - Math.cos(a) * 1.1 * S, cx: x, cy: y });
+          if (o.pending && o.pending[c.id]) { ctx.fillStyle = "#fbbf24"; ctx.font = "10px Geist, sans-serif"; ctx.fillText("未记录 · 按 K", x, y + 33); }
+        }
+        for (const h of handles) { ctx.strokeStyle = "#fafafa"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(h.cx, h.cy); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.fillStyle = "#fafafa"; ctx.beginPath(); ctx.arc(h.x, h.y, 6, 0, Math.PI * 2); ctx.fill(); }
+        return { S, ox, oy, handles };
+      }
+
+      /* ================= three.js 3D 场景（原型用；真实产品用 R3F + drei 组织同样的对象） ================= */
+      const G3 = { ok: false, failed: false };
+      window.addEventListener("three-ready", () => { G3.ok = true; if (!$("#tab-demo").hidden) labStart(); });
+      window.addEventListener("three-failed", () => { G3.failed = true; });
+      setTimeout(() => { if (!G3.ok) G3.failed = true; }, 12000);
+
+      // 场景约定：机位 / 人物的前方是本地 -z；偏航 yaw 为正时向 +x 转，所以 rotation.y = -yaw
+      function makeStage(withHelpers) {
+        const T = window.THREE;
+        const scene = new T.Scene();
+        scene.background = new T.Color(0x141417);
+        scene.fog = new T.Fog(0x141417, 20, 45);
+        scene.add(new T.HemisphereLight(0xe4e8ff, 0x1c1c20, 1.15));
+        const sun = new T.DirectionalLight(0xffffff, 1.7);
+        sun.position.set(5, 10, 6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+        Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 35 });
+        scene.add(sun);
+        const ground = new T.Mesh(new T.PlaneGeometry(80, 80), new T.MeshStandardMaterial({ color: 0x1b1b20, roughness: 1 }));
+        ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+        const guides = new T.Group(); scene.add(guides);
+        const grid = new T.GridHelper(24, 24, 0x3b3b46, 0x2a2a31); grid.position.y = 0.003; guides.add(grid);
+        const axis = (a, b, c) => { const l = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(...a), new T.Vector3(...b)]), new T.LineBasicMaterial({ color: c })); l.position.y = 0.006; guides.add(l); };
+        axis([-12, 0, 0], [12, 0, 0], 0xc0392b); axis([0, 0, -12], [0, 0, 12], 0x3557d6);
+        const content = new T.Group(), helpers = new T.Group();
+        scene.add(content, helpers);
+        return { T, scene, guides, content, helpers, objs: new Map(), trails: new Map(), withHelpers };
+      }
+      function disposeTree(o) {
+        o.parent && o.parent.remove(o);
+        o.traverse((n) => { n.geometry && n.geometry.dispose(); if (n.material) [].concat(n.material).forEach((m) => m.dispose()); });
+      }
+      function buildFigure(T, ch, capsule) {
+        const g = new T.Group(); g.rotation.order = "YXZ";
+        const mat = new T.MeshStandardMaterial({ color: ch.color, roughness: 0.7, metalness: 0.05 });
+        const V = (p) => new T.Vector3(p[0], p[1], -p[2]);
+        const limb = (a, b, r) => {
+          const A = V(a), B = V(b), len = Math.max(0.01, A.distanceTo(B));
+          const m = new T.Mesh(new T.CapsuleGeometry(r, len, 4, 10), mat);
+          m.position.copy(A).add(B).multiplyScalar(0.5);
+          m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+          m.castShadow = true; g.add(m);
+        };
+        let head = [0, 1.66, 0];
+        if (capsule) limb([0, 0.28, 0], [0, 1.38, 0], 0.24);
+        else {
+          const J = poseJoints(ch.pose);
+          const ls = [-0.19, J.neck[1] - 0.05, J.neck[2]], rs = [0.19, J.neck[1] - 0.05, J.neck[2]];
+          const lhp = [-0.1, J.hip[1], J.hip[2]], rhp = [0.1, J.hip[1], J.hip[2]];
+          limb(J.hip, J.neck, 0.15); limb(ls, rs, 0.07); limb(lhp, rhp, 0.09);
+          limb(ls, J.lh, 0.05); limb(rs, J.rh, 0.05);
+          limb(lhp, J.lk, 0.07); limb(J.lk, J.lf, 0.06); limb(rhp, J.rk, 0.07); limb(J.rk, J.rf, 0.06);
+          head = [J.head[0], J.head[1] + 0.04, J.head[2]];
+        }
+        const h = new T.Mesh(new T.SphereGeometry(0.115, 20, 14), mat);
+        h.position.copy(V(head)); h.castShadow = true; g.add(h);
+        g.userData.headY = head[1];
+        return { group: g, mats: [mat] };
+      }
+      function buildCamObj(T) {
+        const g = new T.Group(); g.rotation.order = "YXZ";
+        const mat = new T.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.5 });
+        const body = new T.Mesh(new T.BoxGeometry(0.24, 0.17, 0.32), mat); body.position.z = 0.14; g.add(body);
+        const lens = new T.Mesh(new T.CylinderGeometry(0.06, 0.075, 0.12, 18), mat); lens.rotation.x = Math.PI / 2; lens.position.z = -0.06; g.add(lens);
+        const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.BufferAttribute(new Float32Array(16 * 3), 3));
+        const fr = new T.LineSegments(geo, new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }));
+        g.add(fr);
+        return { group: g, mats: [mat], fr };
+      }
+      function setFrustum(fr, fov, aspect, L = 1.5) {
+        const h = Math.tan((fov / 2) * D2R) * L, w = h * aspect;
+        const c = [[-w, h, -L], [w, h, -L], [w, -h, -L], [-w, -h, -L]];
+        const a = fr.geometry.attributes.position.array; let i = 0;
+        const put = (p) => { a[i++] = p[0]; a[i++] = p[1]; a[i++] = p[2]; };
+        for (let k = 0; k < 4; k++) { put([0, 0, 0]); put(c[k]); }
+        for (let k = 0; k < 4; k++) { put(c[k]); put(c[(k + 1) % 4]); }
+        fr.geometry.attributes.position.needsUpdate = true; fr.geometry.computeBoundingSphere();
+      }
+      // 每帧调用：按 id 增删对象，只在姿势 / 颜色变化时重建人物，其余只改变换
+      function syncStage(S, sc, stateFn, o = {}) {
+        const T = S.T, seen = new Set();
+        const put = (id, type, key, build, parent) => {
+          let e = S.objs.get(id);
+          if (!e || e.key !== key) { if (e) disposeTree(e.group); e = { type, key, ...build() }; e.group.userData.id = id; parent.add(e.group); S.objs.set(id, e); }
+          seen.add(id); return e;
+        };
+        for (const ch of sc.characters) {
+          const e = put(ch.id, "char", ch.pose + "|" + ch.color + "|" + !!o.capsule, () => buildFigure(T, ch, o.capsule), S.content);
+          const st = stateFn(ch);
+          e.group.position.set(st.x, 0, st.z); e.group.rotation.set(0, -st.yaw * D2R, 0); e.group.scale.setScalar(ch.scale || 1); e.group.visible = !ch.hidden;
+          e.st = st; e.scale = ch.scale || 1;
+        }
+        for (const p of sc.props) {
+          const e = put(p.id, "prop", "box", () => { const m = new T.MeshStandardMaterial({ color: 0x8796a8, roughness: 0.85 }); const g = new T.Group(); g.rotation.order = "YXZ"; const b = new T.Mesh(new T.BoxGeometry(1, 1, 1), m); b.castShadow = b.receiveShadow = true; g.add(b); return { group: g, mats: [m], box: b }; }, S.content);
+          e.group.position.set(p.x, 0, p.z); e.group.rotation.set(0, -p.yaw * D2R, 0); e.box.scale.set(p.w, p.h, p.d); e.box.position.y = p.h / 2; e.group.visible = !p.hidden;
+        }
+        if (S.withHelpers) {
+          for (const c of sc.cameras) {
+            const e = put(c.id, "cam", "cam", () => buildCamObj(T), S.helpers);
+            const st = stateFn(c);
+            e.group.position.set(st.x, st.y, st.z); e.group.rotation.set(st.pitch * D2R, -st.yaw * D2R, 0);
+            setFrustum(e.fr, st.fov, ASPECTS[c.aspect]);
+            const col = o.sel === c.id ? 0xfbbf24 : c.id === sc.activeCameraId ? 0xffffff : 0x7c7c88;
+            e.fr.material.color.setHex(col); e.mats[0].color.setHex(c.id === sc.activeCameraId ? 0xe4e4e7 : 0x8a8a94);
+          }
+          // 轨迹：关键帧变化时才重建
+          const want = new Set();
+          for (const ob of [...sc.cameras, ...sc.characters]) {
+            if (ob.keys.length < 2) continue;
+            want.add(ob.id);
+            const key = JSON.stringify(ob.keys) + sc.duration;
+            let tr = S.trails.get(ob.id);
+            if (tr && tr.key === key) continue;
+            if (tr) disposeTree(tr.line);
+            const isCam = ob.fov !== undefined, pts = [];
+            for (let i = 0; i <= 60; i++) { const s = sampleKeys(ob.keys, (sc.duration * i) / 60, isCam ? CAM_F : CHR_F, ob); pts.push(new T.Vector3(s.x, isCam ? s.y : 0.03, s.z)); }
+            const line = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineDashedMaterial({ color: isCam ? 0xffffff : new T.Color(ob.color), dashSize: 0.18, gapSize: 0.1, transparent: true, opacity: 0.8 }));
+            line.computeLineDistances(); S.helpers.add(line);
+            S.trails.set(ob.id, { key, line });
+          }
+          for (const [id, tr] of S.trails) if (!want.has(id)) { disposeTree(tr.line); S.trails.delete(id); }
+        }
+        for (const [id, e] of S.objs) if (!seen.has(id)) { disposeTree(e.group); S.objs.delete(id); }
+        for (const [id, e] of S.objs) e.mats.forEach((m) => m.emissive && m.emissive.setHex(o.sel === id ? 0x5a3a00 : 0x000000));
+      }
+      const applyCam = (cam3, st, aspect) => { cam3.position.set(st.x, st.y, st.z); cam3.rotation.set(st.pitch * D2R, -st.yaw * D2R, 0, "YXZ"); cam3.fov = st.fov; cam3.aspect = aspect; cam3.updateProjectionMatrix(); };
+
+      // 干净渲染（不带网格、机位、标签）：缩略图、导出帧、运镜演示都走这里；three 不可用时退回线框示意
+      let SHOT = null;
+      function renderShot(ctx, W, H, sc, t, cam, opt = {}) {
+        if (!G3.ok) return renderPersp(ctx, W, H, sc, t, cam, opt);
+        const T = window.THREE;
+        if (!SHOT) {
+          SHOT = { stage: makeStage(false), r: new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }), cam: new T.PerspectiveCamera(50, 1, 0.05, 200) };
+          SHOT.r.shadowMap.enabled = true; SHOT.stage.guides.visible = false;
+        }
+        SHOT.r.setPixelRatio(1); SHOT.r.setSize(W, H, false);
+        syncStage(SHOT.stage, sc, opt.charState || ((o) => (o.keys ? sampleKeys(o.keys, t, CHR_F, o) : o)), { capsule: opt.capsule });
+        applyCam(SHOT.cam, cam, W / H);
+        SHOT.r.render(SHOT.stage.scene, SHOT.cam);
+        ctx.drawImage(SHOT.r.domElement, 0, 0, W, H);
+      }
+
+      /* ================= 运镜预设（提案：applyPreset 的示意实现） ================= */
+      const PRESETS = [
+        { id: "fixed", name: "固定", desc: "清空关键帧，只留起点 1 帧。", unit: "", def: 0, min: 0, max: 0 },
+        { id: "in", name: "推近", desc: "沿视线向目标前进，距离 = 到目标距离 × 强度。", unit: "%", def: 40, min: 10, max: 80 },
+        { id: "out", name: "拉远", desc: "沿视线后退，距离 = 到目标距离 × 强度。", unit: "%", def: 40, min: 10, max: 120 },
+        { id: "panL", name: "左摇", desc: "机位不动，原地向左转。", unit: "°", def: 30, min: 5, max: 90 },
+        { id: "panR", name: "右摇", desc: "机位不动，原地向右转。", unit: "°", def: 30, min: 5, max: 90 },
+        { id: "tiltU", name: "上摇", desc: "机位不动，原地抬头。", unit: "°", def: 15, min: 5, max: 45 },
+        { id: "tiltD", name: "下摇", desc: "机位不动，原地低头。", unit: "°", def: 15, min: 5, max: 45 },
+        { id: "truckL", name: "左移", desc: "机位沿自身右方向的反向平移，朝向不变。", unit: "m", def: 2, min: 0.5, max: 6 },
+        { id: "truckR", name: "右移", desc: "机位沿自身右方向平移，朝向不变。", unit: "m", def: 2, min: 0.5, max: 6 },
+        { id: "up", name: "升", desc: "竖直升高，同时保持看向目标。", unit: "m", def: 1.5, min: 0.5, max: 5 },
+        { id: "down", name: "降", desc: "竖直降低（不低于 0.2m），保持看向目标。", unit: "m", def: 1.5, min: 0.5, max: 5 },
+        { id: "orbit", name: "环绕", desc: "绕目标水平旋转，每 0.5 秒烘焙 1 帧以走出圆弧。", unit: "°", def: 90, min: 15, max: 360 },
+        { id: "follow", name: "跟拍", desc: "保持起点时与目标人物的相对位置，按人物轨道每 0.5 秒烘焙 1 帧。", unit: "", def: 0, min: 0, max: 0 },
+      ];
+      const lookAngles = (from, to) => {
+        const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
+        return { yaw: Math.atan2(dx, -dz) / D2R, pitch: Math.atan2(dy, Math.hypot(dx, dz)) / D2R };
+      };
+      function presetTarget(scene, cam, s0, charAt) {
+        if (cam.lookAt) { const ch = scene.characters.find((c) => c.id === cam.lookAt); if (ch) { const p = charAt(ch, 0); return { pos: [p.x, 1.3, p.z], ch }; } }
+        const B = basis(s0); let best = null;
+        for (const ch of scene.characters) {
+          const p = charAt(ch, 0); const d = [p.x - s0.x, 1.3 - s0.y, p.z - s0.z];
+          const fz = dot(d, B.f); if (fz <= 0) continue;
+          const off = Math.hypot(dot(d, B.r), dot(d, B.u)) / fz;
+          if (off < 0.8 && (!best || fz < best.fz)) best = { fz, ch, pos: [p.x, 1.3, p.z] };
+        }
+        if (best) return best;
+        return { pos: [s0.x + B.f[0] * 4, s0.y + B.f[1] * 4, s0.z + B.f[2] * 4], ch: null };
+      }
+      function applyPreset(scene, cam, id, strength, s0, charAt) {
+        const T = scene.duration;
+        const K = (t, s, ease = "smooth") => ({ t: round(t), x: s.x, y: s.y, z: s.z, yaw: s.yaw, pitch: s.pitch, fov: s.fov, ease });
+        const tg = presetTarget(scene, cam, s0, charAt);
+        const B = basis(s0);
+        const e = { ...s0 };
+        let warn = "";
+        switch (id) {
+          case "fixed": return { keys: [K(0, s0)] };
+          case "in": case "out": {
+            const dist = Math.hypot(tg.pos[0] - s0.x, tg.pos[1] - s0.y, tg.pos[2] - s0.z);
+            const m = ((id === "in" ? 1 : -1) * dist * strength) / 100;
+            e.x += B.f[0] * m; e.y = Math.max(0.2, e.y + B.f[1] * m); e.z += B.f[2] * m; break;
+          }
+          case "panL": e.yaw -= strength; break;
+          case "panR": e.yaw += strength; break;
+          case "tiltU": e.pitch = clamp(e.pitch + strength, -80, 80); break;
+          case "tiltD": e.pitch = clamp(e.pitch - strength, -80, 80); break;
+          case "truckL": e.x -= B.r[0] * strength; e.z -= B.r[2] * strength; break;
+          case "truckR": e.x += B.r[0] * strength; e.z += B.r[2] * strength; break;
+          case "up": case "down": {
+            e.y = Math.max(0.2, e.y + (id === "up" ? strength : -strength));
+            Object.assign(e, lookAngles([e.x, e.y, e.z], tg.pos)); break;
+          }
+          case "orbit": {
+            const keys = []; const r0 = [s0.x - tg.pos[0], s0.z - tg.pos[2]];
+            const startLook = lookAngles([s0.x, s0.y, s0.z], tg.pos);
+            for (let t = 0; t <= T + 1e-6; t += 0.5) {
+              const a = (strength * t) / T * D2R;
+              const x = tg.pos[0] + r0[0] * Math.cos(a) - r0[1] * Math.sin(a), z = tg.pos[2] + r0[0] * Math.sin(a) + r0[1] * Math.cos(a);
+              const L = lookAngles([x, s0.y, z], tg.pos);
+              keys.push(K(t, { ...s0, x, z, yaw: L.yaw + (s0.yaw - startLook.yaw), pitch: s0.pitch }, "linear"));
+            }
+            return { keys };
+          }
+          case "follow": {
+            if (!tg.ch) return { keys: [K(0, s0)], warn: "没有可跟随的人物：请在机位属性里设置「看向」" };
+            if (tg.ch.keys.length < 2) warn = "「" + tg.ch.name + "」还没有走位关键帧，效果等同固定机位；先给人物打走位关键帧";
+            const p0 = charAt(tg.ch, 0); const off = [s0.x - p0.x, s0.z - p0.z]; const keys = [];
+            for (let t = 0; t <= T + 1e-6; t += 0.5) { const p = charAt(tg.ch, t); keys.push(K(t, { ...s0, x: p.x + off[0], z: p.z + off[1] }, "linear")); }
+            return { keys, warn };
+          }
+        }
+        return { keys: [K(0, s0), K(T, e)] };
+      }
+
+      /* ================= 交互演示：运镜预设实验室 ================= */
+      const lab = { preset: "in", strength: 40, dur: 5, raf: 0, t0: 0 };
+      function labScene() {
+        const walking = lab.preset === "follow";
+        const ch = { id: "c1", name: "角色A", color: "#d4d4d8", pose: walking ? "行走" : "站立", scale: 1, x: walking ? -2.5 : 0, z: 0, yaw: walking ? 90 : 180,
+          keys: walking ? [{ t: 0, x: -2.5, z: 0, yaw: 90, ease: "smooth" }, { t: lab.dur, x: 2.5, z: 0, yaw: 90, ease: "smooth" }] : [] };
+        const cam = { id: "k1", name: "机位1", aspect: "16:9", x: walking ? -2.5 : 0, y: 1.6, z: 4, yaw: 0, pitch: -3, fov: 50, lookAt: "c1", keys: [] };
+        const scene = { duration: lab.dur, activeCameraId: "k1", characters: [ch], props: [{ id: "p1", name: "桌子", shape: "box", x: 1.6, z: -1.5, w: 1.2, h: 0.75, d: 0.7, yaw: 0 }, { id: "p2", name: "墙", shape: "box", x: 0, z: -4, w: 8, h: 2.6, d: 0.2, yaw: 0 }], cameras: [cam] };
+        const charAt = (c, t) => sampleKeys(c.keys, t, CHR_F, c);
+        const r = applyPreset(scene, cam, lab.preset, lab.strength, pick(cam, CAM_F), charAt);
+        cam.keys = r.keys;
+        return scene;
+      }
+      function labBuild() {
+        const P = PRESETS.find((p) => p.id === lab.preset);
+        $("#presetList").innerHTML = PRESETS.map((p) => `<button class="opt-btn" aria-pressed="${p.id === lab.preset}" data-p="${p.id}"><b>${esc(p.name)}</b><small>${p.unit ? "默认 " + p.def + p.unit : "无强度参数"}</small></button>`).join("");
+        $("#presetList").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { lab.preset = b.dataset.p; lab.strength = PRESETS.find((p) => p.id === lab.preset).def; labBuild(); }));
+        $("#labTitle").textContent = "预设：" + P.name;
+        $("#labDesc").textContent = P.desc + (lab.preset === "follow" ? "（演示里角色A 已有从左到右的走位关键帧）" : "");
+        const sr = $("#labStrength");
+        sr.min = P.min; sr.max = P.max; sr.step = P.unit === "m" ? 0.5 : 5; sr.value = lab.strength; sr.disabled = !P.unit;
+        $("#labStrengthV").textContent = P.unit ? lab.strength + P.unit : "—";
+        lab.scene = labScene();
+        $("#labKeys").innerHTML = lab.scene.cameras[0].keys.map((k) => `<tr><td class="mono">${k.t.toFixed(2)}</td><td class="mono">${round(k.x, 2)} / ${round(k.y, 2)} / ${round(k.z, 2)}</td><td class="mono">${round(k.yaw, 1)} / ${round(k.pitch, 1)}</td><td class="mono">${round(k.fov, 0)}°</td><td>${k.ease === "linear" ? "线性" : "缓入缓出"}</td></tr>`).join("");
+        lab.t0 = performance.now();
+      }
+      $("#labStrength").addEventListener("input", (e) => { lab.strength = +e.target.value; labBuild(); });
+      $("#labDur").addEventListener("change", (e) => { lab.dur = +e.target.value; labBuild(); });
+      function labFrame() {
+        const sc = lab.scene; if (!sc) return;
+        const t = (((performance.now() - lab.t0) / 1000) % (sc.duration + 0.8));
+        const tt = Math.min(t, sc.duration);
+        const cam = sc.cameras[0];
+        const st = sampleKeys(cam.keys, tt, CAM_F, cam);
+        const c1 = $("#labCam"), c2 = $("#labTop");
+        renderShot(c1.getContext("2d"), c1.width, c1.height, sc, tt, { ...cam, ...st });
+        renderTop(c2.getContext("2d"), c2.width, c2.height, sc, tt, { stateOf: (o) => (o.keys ? (o.fov ? sampleKeys(o.keys, tt, CAM_F, o) : sampleKeys(o.keys, tt, CHR_F, o)) : o), labels: true, scale: 30 });
+        $("#labT").textContent = tt.toFixed(2) + "s / " + sc.duration.toFixed(1) + "s";
+        lab.raf = requestAnimationFrame(labFrame);
+      }
+      function labStart() { labBuild(); cancelAnimationFrame(lab.raf); lab.raf = requestAnimationFrame(labFrame); }
+      function labStop() { cancelAnimationFrame(lab.raf); }
+
+      /* ================= 可点击原型 ================= */
+      const sims = {};
+      document.querySelectorAll("#sims input").forEach((i) => i.addEventListener("change", () => { sims[i.dataset.sim] = i.checked; if (P.view === "editor") renderEditor(); }));
+
+      function defaultScene() {
+        return {
+          version: 1, duration: 5, activeCameraId: "cam1",
+          characters: [{ id: "ch1", name: "角色A", color: "#d4d4d8", pose: "站立", scale: 1, x: 0, z: 0, yaw: 180, keys: [] }],
+          props: [],
+          cameras: [{ id: "cam1", name: "机位1", aspect: "16:9", x: 0, y: 1.6, z: 4, yaw: 0, pitch: -4, fov: 50, lookAt: "", keys: [] }],
+        };
+      }
+      const P = {
+        view: "canvas",
+        node: { id: "dir1", label: "导演台1", scene: defaultScene(), thumb: false, x: 60, y: 150, sel: true },
+        exported: [], // {id, label, kind:'video'|'image', camId, progress, failed, x, y, snap}
+        genLinked: [],
+        // 编辑器
+        scene: null, sel: null, selKey: null, t: 0, playing: false, pending: {}, past: [], future: [], lastSnap: "",
+        tab: "layers", snap: true, labels: true, tool: "move", saving: "saved", loadedOnce: false, presetId: "in", strength: 40, exp: null, dirty: false,
+      };
+      const proto = $("#proto");
+
+      function renderProto() { if (P.view === "canvas") renderCanvas(); else renderEditor(); }
+
+      /* ---------- 画布视图 ---------- */
+      function renderCanvas() {
+        $("#crumb").textContent = "video-canvas / 我的画布 / 短剧第 3 集";
+        proto.style.minWidth = (P.exported.length ? Math.max(980, genX() + 250) : 980) + "px";
+        const n = P.node, sc = n.scene;
+        const chips = sc.cameras.map((c) => `<span class="chip"><i data-lucide="video"></i>${esc(c.name)} · ${sc.duration.toFixed(1)}s</span>`).join("") || `<span class="chip">无机位</span>`;
+        let html = `<div class="cv" id="cv">`;
+        html += `<svg class="links" id="links"></svg>`;
+        html += `<div class="ntool" style="left:${n.x}px; top:${n.y - 46}px">
+            <button class="btn" id="btnOpen"><i data-lucide="box"></i>打开导演台</button>
+            <button class="btn" id="btnExp2"><i data-lucide="download"></i>导出视频</button></div>`;
+        html += `<div class="cnode ${n.sel ? "sel" : ""}" id="dirNode" style="left:${n.x}px; top:${n.y}px">
+            <div class="hd"><i data-lucide="clapperboard"></i>${esc(n.label)}<span class="spacer tag t-mute">导演台</span></div>
+            <div class="bd">${n.thumb ? `<canvas id="thumb" width="496" height="279"></canvas>` : `<div style="color:#aaa; font-size:12px; text-align:center"><i data-lucide="box" style="width:22px;height:22px"></i><br/>双击打开导演台</div>`}</div>
+            <div class="ft">${chips}</div></div>`;
+        html += `<div class="pin" style="left:${n.x + 280}px; top:${n.y + 150}px">节点只显示缩略图和机位，不加载 three.js；缩略图在关闭编辑器时用当前机位渲染并上传。导演台不接收上游、不能直接当生成参考。</div>`;
+        P.exported.forEach((e) => {
+          const st = e.failed ? `<div class="ov" style="background:rgb(220 38 38 / .6)">上传失败，请重试</div>` : e.progress < 100 ? `<div class="ov">上传中 ${Math.floor(e.progress)}%</div>` : "";
+          html += `<div class="cnode" style="left:${e.x}px; top:${e.y}px; width:220px">
+              <div class="hd"><i data-lucide="${e.kind === "video" ? "film" : "image"}"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.label)}</span></div>
+              <div class="bd" style="aspect-ratio:${e.ar}"><canvas data-exp="${e.id}" width="440" height="${Math.round(440 / e.arNum)}"></canvas>${st}
+                ${e.kind === "video" && !st ? `<div class="ov" style="background:transparent"><i data-lucide="play" style="width:22px;height:22px"></i></div>` : ""}</div>
+              <div class="ft"><span class="chip">${e.kind === "video" ? e.meta : "首帧 PNG"}</span>
+                ${e.failed ? `<button class="chip" data-retry="${e.id}" style="cursor:pointer">重试</button>` : ""}
+                ${e.kind === "video" && e.progress >= 100 && !e.failed && !P.genLinked.includes(e.id) ? `<button class="chip" data-link="${e.id}" style="cursor:pointer; color:rgb(var(--info))">连到视频生成</button>` : ""}</div></div>`;
+        });
+        if (P.exported.length) {
+          const gx = genX(), gy = 190;
+          html += `<div class="cnode" id="genNode" style="left:${gx}px; top:${gy}px; width:230px">
+              <div class="hd"><i data-lucide="video"></i>视频生成<span class="spacer tag t-mute">已有节点</span></div>
+              <div style="padding: 0 10px 10px; font-size: 12px" class="muted">${P.genLinked.length ? `参考视频：${P.genLinked.map((id) => esc(P.exported.find((e) => e.id === id)?.label)).join("、")}<br/>提示词：两个人在咖啡馆对话，电影感光线…` : "把预览视频连到这里作为参考视频（沿用现有 video → video 连线规则）"}</div></div>`;
+        }
+        html += `</div>`;
+        proto.innerHTML = html;
+        icons();
+        if (n.thumb) { const c = $("#thumb"); drawThumb(c, sc, sc.cameras.find((c) => c.id === sc.activeCameraId)); }
+        proto.querySelectorAll("canvas[data-exp]").forEach((c) => { const e = P.exported.find((x) => x.id === c.dataset.exp); renderShot(c.getContext("2d"), c.width, c.height, e.snap, 0, e.cam); });
+        drawLinks();
+        $("#dirNode").addEventListener("dblclick", openEditor);
+        $("#dirNode").addEventListener("click", () => { n.sel = true; });
+        $("#btnOpen").addEventListener("click", openEditor);
+        $("#btnExp2").addEventListener("click", () => openEditor(true));
+        proto.querySelectorAll("[data-retry]").forEach((b) => b.addEventListener("click", () => { const e = P.exported.find((x) => x.id === b.dataset.retry); e.failed = false; e.progress = 0; startUpload(e, true); renderCanvas(); }));
+        proto.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => { P.genLinked.push(b.dataset.link); renderCanvas(); toast("已连到视频生成节点，作为参考视频"); }));
+      }
+      // 视频生成节点摆在所有导出节点右边
+      const genX = () => Math.max(900, ...P.exported.map((e) => e.x + 260));
+      function drawLinks() {
+        const svg = $("#links"); if (!svg) return;
+        const n = P.node; let s = "";
+        P.exported.forEach((e) => {
+          const x1 = n.x + 268, y1 = n.y + 90, x2 = e.x, y2 = e.y + 70;
+          s += `<path d="M${x1},${y1} C${x1 + 60},${y1} ${x2 - 60},${y2} ${x2},${y2}" fill="none" stroke="hsl(var(--muted-foreground))" stroke-dasharray="4 4" stroke-width="1.3"/>`;
+          if (P.genLinked.includes(e.id)) { const gx = genX(), gy = 260; s += `<path d="M${e.x + 220},${y2} C${e.x + 280},${y2} ${gx - 60},${gy} ${gx},${gy}" fill="none" stroke="rgb(var(--info))" stroke-width="1.6"/>`; }
+        });
+        svg.innerHTML = s;
+      }
+      function drawThumb(c, sc, cam) {
+        if (!cam) { const x = c.getContext("2d"); x.fillStyle = "#111"; x.fillRect(0, 0, c.width, c.height); return; }
+        const st = sampleKeys(cam.keys, 0, CAM_F, cam);
+        renderShot(c.getContext("2d"), c.width, c.height, sc, 0, { ...cam, ...st });
+      }
+
+      /* ---------- 编辑器 ---------- */
+      function openEditor(withExport) {
+        if (sims.noWebgl) { toast("当前浏览器不支持 3D（WebGL2），请用新版 Chrome / Edge", "bad"); return; }
+        P.view = "editor";
+        P.scene = clone(P.node.scene); P.sel = null; P.selKey = null; P.t = 0; P.pending = {}; P.past = []; P.future = []; P.lastSnap = JSON.stringify(P.scene); P.dirty = false;
+        const start = () => {
+          E3.on = G3.ok;
+          if (E3.on && !E3.inited) init3D();
+          renderEditor();
+          if (E3.on && !E3.running) { E3.running = true; requestAnimationFrame(loop3D); }
+          if (withExport === true) openExport();
+        };
+        if (P.loadedOnce) return start();
+        // 首次打开：等 three.js 就绪（对应真实产品懒加载编辑器 chunk）
+        proto.innerHTML = `<div class="loading"><div style="text-align:center"><div class="spin"></div>正在加载 3D 引擎…<div style="font-size:11px; margin-top:4px">对应真实产品里懒加载编辑器 chunk</div></div></div>`;
+        const t0 = Date.now();
+        const wait = () => {
+          if (P.view !== "editor") return;
+          if ((G3.ok || G3.failed) && Date.now() - t0 > 600) { P.loadedOnce = true; start(); }
+          else setTimeout(wait, 100);
+        };
+        wait();
+      }
+      function closeEditor() {
+        if (P.exp && P.exp.running) { toast("导出中，先取消导出再关闭", "warn"); return; }
+        P.playing = false;
+        E3.running = false;
+        if (E3.inited) E3.tc.detach();
+        P.node.scene = clone(P.scene);
+        if (P.dirty || !P.node.thumb) P.node.thumb = true;
+        P.view = "canvas";
+        renderCanvas();
+        toast("已关闭导演台 · 场景已自动保存到节点，缩略图已更新");
+      }
+
+      /* ---------- 3D 编辑器视口（three.js 单例，跨多次打开复用，避免反复建 WebGL 上下文） ---------- */
+      const E3 = { on: false, inited: false, running: false };
+      function init3D() {
+        const T = window.THREE;
+        E3.stage = makeStage(true);
+        E3.renderer = new T.WebGLRenderer({ antialias: true });
+        E3.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        E3.renderer.shadowMap.enabled = true;
+        E3.cam = new T.PerspectiveCamera(50, 1, 0.05, 200);
+        E3.cam.position.set(6.5, 5, 8.5);
+        E3.orbit = new window.OrbitControls(E3.cam, E3.renderer.domElement);
+        E3.orbit.target.set(0, 1, 0); E3.orbit.enableDamping = true; E3.orbit.maxPolarAngle = Math.PI * 0.495; E3.orbit.update();
+        E3.tc = new window.TransformControls(E3.cam, E3.renderer.domElement);
+        E3.tcHelper = E3.tc.getHelper ? E3.tc.getHelper() : E3.tc; // r169+ 用 getHelper()
+        E3.stage.scene.add(E3.tcHelper);
+        E3.tc.setSize(0.85);
+        E3.tc.addEventListener("dragging-changed", (e) => { E3.orbit.enabled = !e.value; if (e.value) E3.moved = false; else onTcEnd(); });
+        E3.tc.addEventListener("objectChange", onTcChange);
+        E3.pv = new T.WebGLRenderer({ antialias: true });
+        E3.pv.shadowMap.enabled = true;
+        E3.pvCam = new T.PerspectiveCamera(50, 16 / 9, 0.05, 200);
+        E3.ray = new T.Raycaster();
+        E3.ray.params.Line.threshold = 0.04; // 视锥线框不要抢点击
+        // 点击（不拖动）选中对象；点空白取消选中
+        const el = E3.renderer.domElement;
+        el.addEventListener("pointerdown", (e) => { E3.down = [e.clientX, e.clientY]; });
+        el.addEventListener("pointerup", (e) => {
+          if (!E3.down || e.button !== 0 || Math.hypot(e.clientX - E3.down[0], e.clientY - E3.down[1]) > 4) return;
+          if (E3.tc.dragging || E3.tc.axis) return;
+          const r = el.getBoundingClientRect();
+          E3.ray.setFromCamera(new T.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), E3.cam);
+          const targets = [...E3.stage.objs.values()].map((x) => x.group).filter((g) => g.visible);
+          const hit = E3.ray.intersectObjects(targets, true)[0];
+          let n = hit && hit.object;
+          while (n && !n.userData.id) n = n.parent;
+          const id = n ? n.userData.id : null;
+          if (id) { if (id !== P.sel) select(id); }
+          else if (P.sel) { P.sel = null; P.selKey = null; renderEditor(); }
+        });
+        el.addEventListener("dblclick", () => focusSel());
+        E3.inited = true;
+      }
+      function attachTC() {
+        const e = P.sel && E3.stage.objs.get(P.sel);
+        const ty = typeOf(P.sel);
+        if (!e || ty === null) { E3.tc.detach(); return; }
+        E3.tc.attach(e.group);
+        E3.tc.setMode(P.tool === "rotate" ? "rotate" : "translate");
+        E3.tc.setTranslationSnap(P.snap ? 0.25 : null);
+        E3.tc.setRotationSnap(P.snap ? 15 * D2R : null);
+        if (P.tool === "rotate") Object.assign(E3.tc, { showX: ty === "cam", showY: true, showZ: false });
+        else Object.assign(E3.tc, { showX: true, showY: ty === "cam", showZ: true });
+      }
+      function onTcChange() {
+        const g = E3.tc.object; if (!g) return;
+        const o = findObj(g.userData.id); if (!o) return;
+        const ty = typeOf(o.id);
+        E3.moved = true;
+        if (ty === "prop") { o.x = round(g.position.x, 3); o.z = round(g.position.z, 3); o.yaw = round(-g.rotation.y / D2R, 2); return; }
+        // 有关键帧的对象：改动只是临时姿态，按 K 才写入轨道
+        const T = o.keys.length ? (P.pending[o.id] ||= { ...stateOf(o) }) : o;
+        T.x = round(g.position.x, 3); T.z = round(g.position.z, 3); T.yaw = round(-g.rotation.y / D2R, 2);
+        if (ty === "cam") { T.y = round(Math.max(0.1, g.position.y), 3); T.pitch = round(clamp(g.rotation.x / D2R, -85, 85), 2); }
+      }
+      function onTcEnd() {
+        if (!E3.moved) return;
+        E3.moved = false;
+        commit(); refreshHint();
+      }
+      function setTool(t) {
+        P.tool = t;
+        document.querySelectorAll("#tMove, #tRot").forEach((b) => b.classList.toggle("on", b.id === (t === "move" ? "tMove" : "tRot")));
+        if (E3.on) attachTC();
+      }
+      function focusSel() {
+        const e = P.sel && E3.stage.objs.get(P.sel); if (!e) return;
+        const p = e.group.position.clone(); if (e.type === "char") p.y = 1;
+        const off = E3.cam.position.clone().sub(E3.orbit.target).setLength(4.5);
+        E3.orbit.target.copy(p); E3.cam.position.copy(p).add(off); E3.orbit.update();
+      }
+      function camFromView() {
+        if (P.scene.cameras.length >= 6) return;
+        const d = new window.THREE.Vector3(); E3.cam.getWorldDirection(d);
+        const n = P.scene.cameras.length + 1;
+        const o = { id: nid("cam"), name: "机位" + n, aspect: "16:9", x: round(E3.cam.position.x, 2), y: round(Math.max(0.2, E3.cam.position.y), 2), z: round(E3.cam.position.z, 2),
+          yaw: round(Math.atan2(d.x, -d.z) / D2R, 1), pitch: round(Math.asin(clamp(d.y, -1, 1)) / D2R, 1), fov: round(E3.cam.fov, 0), lookAt: "", keys: [] };
+        P.scene.cameras.push(o); P.sel = o.id; P.scene.activeCameraId = o.id; P.tab = "props";
+        commit(); renderEditor(); toast("已从当前导演视角新建「" + o.name + "」");
+      }
+      function loop3D() {
+        if (!E3.running || P.view !== "editor") { E3.running = false; return; }
+        requestAnimationFrame(loop3D);
+        const host = $("#glHost"); if (!host) return;
+        const R = E3.renderer;
+        if (R.domElement.parentNode !== host) host.appendChild(R.domElement);
+        const W = host.clientWidth, H = host.clientHeight; if (!W || !H) return;
+        const sz = R.getSize(new window.THREE.Vector2());
+        if (sz.x !== W || sz.y !== H) { R.setSize(W, H); E3.cam.aspect = W / H; E3.cam.updateProjectionMatrix(); }
+        const live = (o) => (o.keys ? stateOf(o) : o);
+        syncStage(E3.stage, P.scene, live, { sel: P.sel, capsule: sims.modelFail });
+        if (P.sel && E3.tc.object !== (E3.stage.objs.get(P.sel) || {}).group) attachTC();
+        E3.orbit.update();
+        E3.stage.guides.visible = E3.stage.helpers.visible = true; E3.tcHelper.visible = !!E3.tc.object;
+        R.render(E3.stage.scene, E3.cam);
+        // 人物名称标签与"未记录"提示（HTML 叠加层，导出画面里没有）
+        const lay = $("#lblLayer");
+        if (lay) {
+          let html = "";
+          const proj = (x, y, z) => { const v = new window.THREE.Vector3(x, y, z).project(E3.cam); return v.z < 1 ? [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H] : null; };
+          for (const ch of P.scene.characters) {
+            if (ch.hidden) continue;
+            const st = live(ch), p = proj(st.x, 2.0 * (ch.scale || 1), st.z), q = proj(st.x, 0, st.z);
+            if (p && P.labels) html += `<span class="lbl" style="left:${p[0]}px; top:${p[1]}px">${esc(ch.name)}</span>`;
+            if (q && P.pending[ch.id]) html += `<span class="lbl pend" style="left:${q[0]}px; top:${q[1]}px">未记录 · 按 K</span>`;
+          }
+          for (const c of P.scene.cameras) {
+            const st = live(c), p = proj(st.x, st.y + 0.32, st.z);
+            if (p && P.labels) html += `<span class="lbl" style="left:${p[0]}px; top:${p[1]}px">${esc(c.name)}</span>`;
+            if (p && P.pending[c.id]) html += `<span class="lbl pend" style="left:${p[0]}px; top:${p[1] + 6}px">未记录 · 按 K</span>`;
+          }
+          if (lay._h !== html) { lay.innerHTML = html; lay._h = html; }
+        }
+        // 机位小窗：同一个场景，隐藏网格、机位、轨迹和控件，就是导出画面
+        const pvHost = $("#pvHost"), cam = activeCam();
+        if (pvHost && cam) {
+          const ar = ASPECTS[cam.aspect]; let w = 298, h = Math.round(298 / ar); if (h > 230) { h = 230; w = Math.round(230 * ar); }
+          if (E3.pv.domElement.parentNode !== pvHost) pvHost.appendChild(E3.pv.domElement);
+          const ps = E3.pv.getSize(new window.THREE.Vector2());
+          if (ps.x !== w || ps.y !== h) E3.pv.setSize(w, h);
+          applyCam(E3.pvCam, live(cam), ar);
+          E3.stage.guides.visible = E3.stage.helpers.visible = E3.tcHelper.visible = false;
+          E3.pv.render(E3.stage.scene, E3.pvCam);
+          E3.stage.guides.visible = E3.stage.helpers.visible = true; E3.tcHelper.visible = !!E3.tc.object;
+          const meta = pvHost.closest(".pv").querySelector(".pv-meta");
+          if (meta) { const txt = `FOV ${round(live(cam).fov, 0)}°|${cam.aspect}|${P.t.toFixed(2)}s`; if (meta._t !== txt) { meta._t = txt; meta.innerHTML = txt.split("|").map((s) => `<span>${s}</span>`).join(""); } }
+        }
+      }
+
+      const stateOf = (o, t = P.t) => {
+        if (P.pending[o.id]) return P.pending[o.id];
+        return o.fov !== undefined ? sampleKeys(o.keys, t, CAM_F, o) : sampleKeys(o.keys, t, CHR_F, o);
+      };
+      const findObj = (id) => P.scene.characters.find((o) => o.id === id) || P.scene.props.find((o) => o.id === id) || P.scene.cameras.find((o) => o.id === id);
+      const typeOf = (id) => (P.scene.characters.some((o) => o.id === id) ? "char" : P.scene.props.some((o) => o.id === id) ? "prop" : P.scene.cameras.some((o) => o.id === id) ? "cam" : null);
+      const activeCam = () => P.scene.cameras.find((c) => c.id === P.scene.activeCameraId);
+
+      function commit() {
+        const s = JSON.stringify(P.scene);
+        if (s === P.lastSnap) return;
+        P.past.push(P.lastSnap); if (P.past.length > 100) P.past.shift();
+        P.future = []; P.lastSnap = s; P.dirty = true;
+        P.node.scene = clone(P.scene);
+        P.saving = "saving"; updSave();
+        clearTimeout(P.saveT); P.saveT = setTimeout(() => { P.saving = "saved"; updSave(); }, 700);
+      }
+      function updSave() { const el = $("#saveSt"); if (el) el.innerHTML = P.saving === "saving" ? `<i data-lucide="loader"></i>保存中…` : `<i data-lucide="cloud-check"></i>已保存`, icons(); }
+      function undo() { if (!P.past.length) return; P.future.push(P.lastSnap); P.lastSnap = P.past.pop(); P.scene = JSON.parse(P.lastSnap); P.pending = {}; P.node.scene = clone(P.scene); renderEditor(); }
+      function redo() { if (!P.future.length) return; P.past.push(P.lastSnap); P.lastSnap = P.future.pop(); P.scene = JSON.parse(P.lastSnap); P.pending = {}; P.node.scene = clone(P.scene); renderEditor(); }
+
+      function renderEditor() {
+        $("#crumb").textContent = "video-canvas / 短剧第 3 集 / 导演台1（全屏编辑器）";
+        proto.style.minWidth = "980px";
+        const sc = P.scene, cam = activeCam();
+        const canExport = sc.cameras.length > 0 && !sims.noH264;
+        const expWhy = !sc.cameras.length ? "没有机位，先添加一台机位" : sims.noH264 ? "当前浏览器不支持 H.264 编码（mediabunny canEncode 检测失败）" : "";
+        const lim = { char: sc.characters.length >= 8, prop: sc.props.length >= 30, cam: sc.cameras.length >= 6 };
+        proto.innerHTML = `<div class="ed" id="ed" tabindex="0">
+          <div class="ed-top">
+            <span class="title">${esc(P.node.label)}</span>
+            <button class="eb" id="bUndo" title="撤销 Ctrl+Z" ${P.past.length ? "" : "disabled"}><i data-lucide="undo-2"></i></button>
+            <button class="eb" id="bRedo" title="重做 Ctrl+Shift+Z" ${P.future.length ? "" : "disabled"}><i data-lucide="redo-2"></i></button>
+            <span class="sepv"></span>
+            <button class="eb ${P.snap ? "on" : ""}" id="bSnap"><i data-lucide="grid-2x2"></i>吸附 0.25m / 15°</button>
+            <button class="eb ${P.labels ? "on" : ""}" id="bLabels"><i data-lucide="type"></i>标签</button>
+            <span class="eb" style="cursor:default; color:hsl(var(--ed-dim))"><i data-lucide="gauge"></i>移动速度 1.0×</span>
+            <span class="spacer"></span>
+            <span class="eb" id="saveSt" style="cursor:default; color:hsl(var(--ed-dim))"></span>
+            <button class="eb pri" id="bExport" ${canExport ? "" : "disabled"} title="${esc(expWhy)}"><i data-lucide="download"></i>导出视频</button>
+            <button class="eb" id="bClose" title="关闭（自动保存，不弹确认）"><i data-lucide="x"></i></button>
+          </div>
+          <div class="ed-mid">
+            <div class="ed-left">
+              <button class="eb ${P.tool === "move" ? "on" : ""}" id="tMove" title="移动（1）"><i data-lucide="move"></i><span class="kbd">1</span></button>
+              <button class="eb ${P.tool === "rotate" ? "on" : ""}" id="tRot" title="${E3.on ? "旋转（2）" : "旋转：拖选中对象的白色小圆点"}"><i data-lucide="rotate-cw"></i><span class="kbd">2</span></button>
+              <span style="height:6px"></span>
+              <button class="eb" id="tChar" title="${lim.char ? "最多 8 个人物" : "添加人物"}" ${lim.char ? "disabled" : ""}><i data-lucide="user-round-plus"></i></button>
+              <button class="eb" id="tProp" title="${lim.prop ? "最多 30 个道具" : "添加道具（立方体）"}" ${lim.prop ? "disabled" : ""}><i data-lucide="box"></i></button>
+              <button class="eb" id="tCam" title="${lim.cam ? "最多 6 台机位" : "添加机位"}" ${lim.cam ? "disabled" : ""}><i data-lucide="video"></i></button>
+              <button class="eb" id="tFromView" title="${lim.cam ? "最多 6 台机位" : E3.on ? "从当前视角新建机位" : "3D 视口不可用"}" ${lim.cam || !E3.on ? "disabled" : ""}><i data-lucide="aperture"></i></button>
+              <span style="height:6px"></span>
+              <button class="eb" id="tFocus" title="聚焦选中"><i data-lucide="scan"></i><span class="kbd">F</span></button>
+              <button class="eb" id="tDel" title="删除选中 Delete" ${P.sel ? "" : "disabled"}><i data-lucide="trash-2"></i></button>
+            </div>
+            <div class="vp" id="vp">
+              ${E3.on
+                ? `<div id="glHost"></div><div class="lbl-layer" id="lblLayer"></div>
+                   <span class="vp-badge">导演视角 · 左键拖空白处旋转 · 右键平移 · 滚轮缩放 · 点选对象后拖彩色轴</span>`
+                : `<canvas class="top" id="topCv"></canvas>
+                   <span class="vp-badge">导演视角 · 俯视示意</span>
+                   <div class="banner" style="top:40px">three.js 加载失败（离线？），已退回俯视示意</div>`}
+              ${sims.modelFail ? `<div class="banner">人物模型加载失败，已用简化形体代替（导出仍可用）</div>` : ""}
+              ${!sc.characters.length && !sc.props.length && !sc.cameras.length ? `<div style="position:absolute; inset:0; display:grid; place-items:center; color:hsl(var(--ed-dim)); pointer-events:none">添加人物或机位开始摆位</div>` : ""}
+              <div class="pv note" id="pv">
+                <div class="pv-tabs">${sc.cameras.map((c) => `<button class="pv-tab ${c.id === sc.activeCameraId ? "on" : ""}" data-cam="${c.id}"><i data-lucide="video"></i>${esc(c.name)}</button>`).join("")}
+                  <button class="pv-tab" id="pvAdd" ${lim.cam ? "disabled" : ""} title="新建机位"><i data-lucide="plus"></i></button></div>
+                ${cam ? `<div class="pv-meta"><span>FOV ${round(stateOf(cam).fov, 0)}°</span><span>${cam.aspect}</span><span>${P.t.toFixed(2)}s</span></div>
+                  <div class="pv-stage">${E3.on ? `<div id="pvHost"></div>` : `<canvas id="pvCv"></canvas>`}</div>`
+                  : `<div style="padding: 30px 12px; text-align:center; color:hsl(var(--ed-dim))">还没有机位<br/><button class="eb" id="pvAdd2" style="margin-top:8px; background:hsl(var(--ed-raise))"><i data-lucide="plus"></i>添加一台机位</button></div>`}
+              </div>
+              <div class="pin" style="right:322px; bottom:16px">小窗 = 导出画面：同画幅、同 FOV、不带标签和网格（原则"所见即所导"）。</div>
+            </div>
+            <div class="ed-right">
+              <div class="seg"><button class="${P.tab === "layers" ? "on" : ""}" data-tab2="layers"><i data-lucide="layers"></i>图层</button><button class="${P.tab === "props" ? "on" : ""}" data-tab2="props"><i data-lucide="sliders-horizontal"></i>属性</button></div>
+              <div class="rp-body" id="rpBody"></div>
+              <div class="rp-foot"><button class="eb" id="fChar" ${lim.char ? "disabled" : ""}>+ 人物</button><button class="eb" id="fProp" ${lim.prop ? "disabled" : ""}>+ 道具</button><button class="eb" id="fCam" ${lim.cam ? "disabled" : ""}>+ 机位</button></div>
+            </div>
+          </div>
+          <div class="tl">
+            <div class="tl-bar">
+              <button class="eb" id="bPlay" title="空格"><i data-lucide="${P.playing ? "pause" : "play"}"></i></button>
+              <button class="eb" id="bStart" title="回到开头"><i data-lucide="skip-back"></i></button>
+              <span class="time" id="tTime"></span>
+              <label class="row" style="gap:4px; color:hsl(var(--ed-dim))">时长 <select class="esel" id="dur">${[1, 2, 3, 4, 5, 6, 8, 10, 12, 15].map((d) => `<option ${d === sc.duration ? "selected" : ""}>${d}</option>`).join("")}</select>s</label>
+              <span class="sepv"></span>
+              <button class="eb" id="bKey" title="记录关键帧 K" ${P.sel && typeOf(P.sel) !== "prop" ? "" : "disabled"}><i data-lucide="diamond"></i>记录关键帧</button>
+              <span class="sepv"></span>
+              <span class="note row" style="gap:6px; padding: 2px 4px; border-radius: 8px">
+                <select class="esel" id="preset" ${typeOf(P.sel) === "cam" ? "" : "disabled"} title="${typeOf(P.sel) === "cam" ? "" : "先选中一台机位"}">${PRESETS.map((p) => `<option value="${p.id}" ${p.id === P.presetId ? "selected" : ""}>运镜：${p.name}</option>`).join("")}</select>
+                <input class="ein num" id="strength" type="number" value="${P.strength}" ${typeOf(P.sel) === "cam" && PRESETS.find((p) => p.id === P.presetId).unit ? "" : "disabled"} />
+                <span style="color:hsl(var(--ed-dim))">${esc(PRESETS.find((p) => p.id === P.presetId).unit)}</span>
+                <button class="eb" id="bPreset" ${typeOf(P.sel) === "cam" ? "" : "disabled"} style="background:hsl(var(--ed-raise))">套用</button>
+              </span>
+              <span class="spacer"></span>
+              ${P.selKey ? `<button class="eb" id="bDelKey"><i data-lucide="trash"></i>删除关键帧</button>` : ""}
+            </div>
+            <div class="tl-body" id="tlBody"></div>
+          </div>
+        </div>`;
+        icons();
+        updSave();
+        renderPanel(); renderTimeline(); drawEditor(); bindEditor();
+        if (E3.on) attachTC();
+        $("#ed").focus({ preventScroll: true });
+      }
+
+      function drawEditor() {
+        if (E3.on) {
+          // 3D 视口由 loop3D 每帧绘制，这里只同步时间显示
+          const tt = $("#tTime"); if (tt) tt.textContent = `F${Math.round(P.t * 24)} · ${P.t.toFixed(2)}s / ${P.scene.duration.toFixed(1)}s`;
+          const ph = $("#ph"); if (ph) ph.style.left = (P.t / P.scene.duration) * 100 + "%";
+          return;
+        }
+        const vp = $("#vp"), cv = $("#topCv"); if (!vp || !cv) return;
+        const W = vp.clientWidth, H = vp.clientHeight;
+        if (cv.width !== W) cv.width = W; if (cv.height !== H) cv.height = H;
+        P.topGeo = renderTop(cv.getContext("2d"), W, H, P.scene, P.t, { stateOf: (o) => (o.keys ? stateOf(o) : o), sel: P.sel, labels: P.labels, pending: P.pending, scale: Math.min(W, H) / 11, panX: -90, panY: -40 });
+        const cam = activeCam(), pv = $("#pvCv");
+        if (cam && pv) {
+          const ar = ASPECTS[cam.aspect]; let w = 298, h = Math.round(298 / ar); if (h > 230) { h = 230; w = Math.round(230 * ar); }
+          if (pv.width !== w) { pv.width = w; pv.height = h; }
+          renderPersp(pv.getContext("2d"), w, h, P.scene, P.t, { ...cam, ...stateOf(cam) }, { labels: false, capsule: sims.modelFail, charState: (ch) => stateOf(ch) });
+        }
+        const tt = $("#tTime"); if (tt) tt.textContent = `F${Math.round(P.t * 24)} · ${P.t.toFixed(2)}s / ${P.scene.duration.toFixed(1)}s`;
+        const ph = $("#ph"); if (ph) ph.style.left = (P.t / P.scene.duration) * 100 + "%";
+      }
+
+      function renderPanel() {
+        const b = $("#rpBody"); if (!b) return;
+        const sc = P.scene;
+        if (P.tab === "layers") {
+          const grp = (title, icon, list, type) => `<div class="lg"><div class="lg-h"><i data-lucide="chevron-down"></i><i data-lucide="${icon}"></i>${title} (${list.length})</div>
+            ${list.map((o) => `<div class="li ${P.sel === o.id ? "on" : ""}" data-pick="${o.id}"><span class="sw" style="background:${type === "char" ? o.color : type === "cam" ? "#fafafa" : "#9fb3c8"}"></span>${esc(o.name)}${o.keys && o.keys.length ? `<span class="tag" style="background:hsl(var(--ed-raise)); color:hsl(var(--ed-dim)); height:16px">${o.keys.length} 帧</span>` : ""}<button class="x" data-del="${o.id}" title="删除"><i data-lucide="x"></i></button></div>`).join("")}</div>`;
+          b.innerHTML = grp("人物", "users", sc.characters, "char") + grp("道具", "box", sc.props, "prop") + grp("机位", "video", sc.cameras, "cam");
+        } else {
+          const o = P.sel && findObj(P.sel);
+          if (!o) { b.innerHTML = `<p class="hint">在视口或图层里选中一个对象，这里显示它的参数。</p>`; icons(); return; }
+          const ty = typeOf(o.id), st = o.keys ? stateOf(o) : o;
+          const slider = (k, label, min, max, step, val, unit = "") => `<div class="fld"><label>${label}</label><input type="range" data-f="${k}" min="${min}" max="${max}" step="${step}" value="${val}"/><span class="v" data-v="${k}">${round(val, 2)}${unit}</span></div>`;
+          let h = `<div class="fld wide"><label>名称</label><input class="ein" id="fName" value="${esc(o.name)}"/></div>`;
+          if (ty === "char") {
+            h += `<div class="fld wide"><label>姿势</label><select class="esel" id="fPose">${POSES.map((p) => `<option ${p === o.pose ? "selected" : ""}>${p}</option>`).join("")}</select></div>`;
+            h += `<div class="fld wide"><label>颜色</label><input type="color" id="fColor" value="${o.color}" style="height:28px; width:60px; background:none; border:0"/></div>`;
+            h += slider("x", "位置 X", -8, 8, 0.05, st.x, "m") + slider("z", "位置 Z", -8, 8, 0.05, st.z, "m") + slider("yaw", "朝向", -180, 180, 1, ((st.yaw + 540) % 360) - 180, "°") + slider("scale", "体型", 0.8, 1.2, 0.05, o.scale);
+            h += `<p class="hint">姿势一段镜头内固定，不进时间轴；只做 12 个预设，不做关节摆姿（访谈 Q3）。</p>`;
+          } else if (ty === "prop") {
+            h += slider("x", "位置 X", -8, 8, 0.05, o.x, "m") + slider("z", "位置 Z", -8, 8, 0.05, o.z, "m") + slider("yaw", "旋转", -180, 180, 1, o.yaw, "°") + slider("w", "宽", 0.1, 8, 0.1, o.w, "m") + slider("h", "高", 0.1, 4, 0.1, o.h, "m") + slider("d", "深", 0.1, 8, 0.1, o.d, "m");
+            h += `<p class="hint">道具不打关键帧；形状可选立方体 / 圆柱 / 球体 / 平面（原型只示意立方体）。</p>`;
+          } else {
+            h += `<div class="fld wide"><label>画幅</label><select class="esel" id="fAspect">${Object.keys(ASPECTS).map((a) => `<option ${a === o.aspect ? "selected" : ""}>${a}</option>`).join("")}</select></div>`;
+            h += `<div class="fld wide"><label>焦距</label><select class="esel" id="fLens"><option value="">自定义</option>${[[24, 73.7], [35, 54.4], [50, 39.6], [85, 23.9], [135, 15.2]].map(([mm, f]) => `<option value="${f}">${mm}mm（FOV ${f}°）</option>`).join("")}</select></div>`;
+            h += `<div class="fld wide"><label>看向</label><select class="esel" id="fLook"><option value="">无</option>${sc.characters.map((c) => `<option value="${c.id}" ${o.lookAt === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>`;
+            h += slider("fov", "FOV", 10, 120, 1, st.fov, "°") + slider("x", "位置 X", -10, 10, 0.05, st.x, "m") + slider("z", "位置 Z", -10, 10, 0.05, st.z, "m") + slider("y", "高度", 0.2, 6, 0.05, st.y, "m") + slider("yaw", "偏航", -180, 180, 1, ((st.yaw + 540) % 360) - 180, "°") + slider("pitch", "俯仰", -80, 80, 1, st.pitch, "°");
+            h += `<p class="hint">${o.keys.length ? `已有 ${o.keys.length} 个关键帧：这里的改动是临时姿态，按 K 写到 ${P.t.toFixed(2)}s。` : "没有关键帧：这里改的是机位的静态状态。"}</p>`;
+          }
+          b.innerHTML = h;
+        }
+        icons();
+        bindPanel();
+      }
+
+      function bindPanel() {
+        const b = $("#rpBody");
+        b.querySelectorAll("[data-pick]").forEach((el) => el.addEventListener("click", (e) => { if (e.target.closest("[data-del]")) return; select(el.dataset.pick); }));
+        b.querySelectorAll("[data-del]").forEach((el) => el.addEventListener("click", () => delObj(el.dataset.del)));
+        const o = P.sel && findObj(P.sel); if (!o || P.tab !== "props") return;
+        const editTarget = () => {
+          // 有关键帧的人物 / 机位：改动进入"临时姿态"，否则直接改静态状态
+          if (o.keys && o.keys.length) { if (!P.pending[o.id]) P.pending[o.id] = { ...stateOf(o) }; return P.pending[o.id]; }
+          return o;
+        };
+        b.querySelectorAll("input[type=range]").forEach((r) => {
+          r.addEventListener("input", () => {
+            const f = r.dataset.f, v = +r.value;
+            if (f === "scale" || typeOf(o.id) === "prop") o[f] = v; else editTarget()[f] = v;
+            b.querySelector(`[data-v="${f}"]`).textContent = round(v, 2) + (r.nextElementSibling.textContent.replace(/[-\d.]/g, ""));
+            drawEditor(); renderTimeline();
+          });
+          r.addEventListener("change", () => { commit(); refreshHint(); });
+        });
+        const on = (id, ev, fn) => { const el = $("#" + id); if (el) el.addEventListener(ev, fn); };
+        on("fName", "input", (e) => { o.name = e.target.value.slice(0, 20) || "未命名"; drawEditor(); });
+        on("fName", "change", () => { commit(); renderTimeline(); });
+        on("fPose", "change", (e) => { o.pose = e.target.value; commit(); drawEditor(); });
+        on("fColor", "change", (e) => { o.color = e.target.value; commit(); drawEditor(); });
+        on("fAspect", "change", (e) => { o.aspect = e.target.value; commit(); renderEditor(); });
+        on("fLook", "change", (e) => { o.lookAt = e.target.value; commit(); });
+        on("fLens", "change", (e) => { if (!e.target.value) return; editTarget().fov = +e.target.value; commit(); renderPanel(); drawEditor(); });
+      }
+      function refreshHint() { if (P.tab === "props") { const sv = $("#rpBody").scrollTop; renderPanel(); $("#rpBody").scrollTop = sv; } renderTimeline(); }
+
+      function renderTimeline() {
+        const b = $("#tlBody"); if (!b) return;
+        const sc = P.scene; const rows = [...sc.cameras.map((c) => ({ o: c, icon: "video" })), ...sc.characters.map((c) => ({ o: c, icon: "user-round" }))];
+        let names = `<div class="ruler-n"></div>`, lanes = `<div class="ruler" id="ruler">`;
+        for (let s = 0; s <= sc.duration; s++) lanes += `<span style="left:${(s / sc.duration) * 100}%">${s}s</span>`;
+        lanes += `</div>`;
+        rows.forEach(({ o, icon }) => {
+          names += `<div class="${P.sel === o.id ? "on" : ""}"><i data-lucide="${icon}"></i>${esc(o.name)}</div>`;
+          lanes += `<div class="lane ${P.sel === o.id ? "on" : ""}" data-lane="${o.id}">${o.keys.map((k) => `<span class="kf ${P.selKey && P.selKey.id === o.id && Math.abs(P.selKey.t - k.t) < 1e-6 ? "sel" : ""}" data-kf="${o.id}" data-t="${k.t}" style="left:${(k.t / sc.duration) * 100}%" title="${k.t.toFixed(2)}s · ${k.ease === "linear" ? "线性" : "缓入缓出"}"></span>`).join("")}${P.pending[o.id] ? `<span class="kf pend" style="left:${(P.t / sc.duration) * 100}%" title="未记录"></span>` : ""}</div>`;
+        });
+        lanes += `<div class="ph" id="ph" style="left:${(P.t / sc.duration) * 100}%"></div>`;
+        if (rows.every((r) => !r.o.keys.length)) lanes += `<div class="tl-empty">选中机位，从上方选一个运镜预设点「套用」；或拖动对象后按 K 记录关键帧</div>`;
+        b.innerHTML = `<div class="tl-names">${names}</div><div class="tl-lanes" id="lanes">${lanes}</div>`;
+        icons();
+        const lanesEl = $("#lanes");
+        const seek = (ev) => { const r = lanesEl.getBoundingClientRect(); setT(clamp((ev.clientX - r.left) / r.width, 0, 1) * sc.duration); };
+        lanesEl.addEventListener("pointerdown", (ev) => {
+          const kf = ev.target.closest("[data-kf]");
+          if (kf) { P.selKey = { id: kf.dataset.kf, t: +kf.dataset.t }; P.sel = kf.dataset.kf; setT(+kf.dataset.t, true); renderEditor(); return; }
+          P.selKey = null; seek(ev);
+          const mv = (e) => seek(e); const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); renderTimeline(); const kb = $("#bDelKey"); if (kb) renderEditor(); };
+          window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+        });
+      }
+      function setT(t, keepPending) {
+        P.t = round(clamp(t, 0, P.scene.duration), 3);
+        if (!keepPending && Object.keys(P.pending).length) { P.pending = {}; }
+        drawEditor();
+        if (P.tab === "props" && !P.playing) { const sv = $("#rpBody")?.scrollTop; renderPanel(); if ($("#rpBody")) $("#rpBody").scrollTop = sv; }
+        const ph = $("#ph"); if (ph) ph.style.left = (P.t / P.scene.duration) * 100 + "%";
+        document.querySelectorAll(".kf.pend").forEach((e) => e.remove());
+      }
+
+      function select(id) { P.sel = id; P.selKey = null; if (typeOf(id) === "cam") P.scene.activeCameraId = id; if (id) P.tab = "props"; renderEditor(); }
+      function delObj(id) {
+        const sc = P.scene;
+        sc.characters = sc.characters.filter((o) => o.id !== id); sc.props = sc.props.filter((o) => o.id !== id); sc.cameras = sc.cameras.filter((o) => o.id !== id);
+        sc.cameras.forEach((c) => { if (c.lookAt === id) c.lookAt = ""; });
+        if (sc.activeCameraId === id) sc.activeCameraId = sc.cameras[0]?.id || "";
+        if (P.sel === id) P.sel = null; delete P.pending[id];
+        commit(); renderEditor();
+      }
+      function addObj(kind) {
+        const sc = P.scene;
+        if (kind === "char") {
+          const n = sc.characters.length; const name = "角色" + String.fromCharCode(65 + n);
+          const colors = ["#d4d4d8", "#fca5a5", "#93c5fd", "#86efac", "#fcd34d", "#c4b5fd", "#f9a8d4", "#67e8f9"];
+          const o = { id: nid("ch"), name, color: colors[n % 8], pose: "站立", scale: 1, x: -1.5 + n * 1.2, z: 0.5, yaw: 180, keys: [] };
+          sc.characters.push(o); P.sel = o.id;
+        } else if (kind === "prop") {
+          const o = { id: nid("pr"), name: "立方体" + (sc.props.length + 1), shape: "box", x: 2, z: -1.5, w: 1, h: 1, d: 1, yaw: 0 };
+          sc.props.push(o); P.sel = o.id;
+        } else {
+          const n = sc.cameras.length + 1;
+          const o = { id: nid("cam"), name: "机位" + n, aspect: "16:9", x: 3, y: 1.6, z: 3, yaw: -45, pitch: -4, fov: 50, lookAt: "", keys: [] };
+          sc.cameras.push(o); P.sel = o.id; sc.activeCameraId = o.id;
+        }
+        P.tab = "props"; commit(); renderEditor();
+      }
+      function recordKey() {
+        const o = P.sel && findObj(P.sel); if (!o || !o.keys) return;
+        const st = { ...stateOf(o) };
+        const k = { t: round(P.t, 2), ...pick(st, o.fov !== undefined ? CAM_F : CHR_F), ease: "smooth" };
+        o.keys = o.keys.filter((x) => Math.abs(x.t - k.t) > 1e-6).concat(k).sort((a, b) => a.t - b.t);
+        delete P.pending[o.id];
+        P.selKey = { id: o.id, t: k.t };
+        commit(); renderEditor(); toast(`已记录「${o.name}」在 ${k.t.toFixed(2)}s 的关键帧`);
+      }
+      function doPreset() {
+        const cam = P.sel && findObj(P.sel); if (!cam || typeOf(cam.id) !== "cam") return;
+        const s0 = { ...(P.pending[cam.id] || sampleKeys(cam.keys, 0, CAM_F, cam)) };
+        const r = applyPreset(P.scene, cam, P.presetId, P.strength, s0, (ch, t) => sampleKeys(ch.keys, t, CHR_F, ch));
+        cam.keys = r.keys; delete P.pending[cam.id];
+        commit(); renderEditor();
+        if (r.warn) toast(r.warn, "warn"); else toast(`已套用「${PRESETS.find((p) => p.id === P.presetId).name}」，生成 ${r.keys.length} 个关键帧 · 按空格播放`);
+      }
+      function togglePlay() {
+        P.playing = !P.playing; P.pending = {};
+        if (P.playing) {
+          if (P.t >= P.scene.duration) P.t = 0;
+          let last = performance.now();
+          const step = (now) => {
+            if (!P.playing || P.view !== "editor") return;
+            P.t = Math.min(P.scene.duration, P.t + (now - last) / 1000); last = now; drawEditor();
+            if (P.t >= P.scene.duration) { P.playing = false; renderEditor(); return; }
+            requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        }
+        const b = $("#bPlay"); if (b) { b.innerHTML = `<i data-lucide="${P.playing ? "pause" : "play"}"></i>`; icons(); }
+      }
+
+      function bindEditor() {
+        const on = (id, fn) => { const el = $("#" + id); if (el) el.addEventListener("click", fn); };
+        on("bUndo", undo); on("bRedo", redo); on("bClose", closeEditor); on("bExport", openExport);
+        on("bSnap", () => { P.snap = !P.snap; renderEditor(); });
+        on("bLabels", () => { P.labels = !P.labels; renderEditor(); });
+        on("tChar", () => addObj("char")); on("fChar", () => addObj("char"));
+        on("tProp", () => addObj("prop")); on("fProp", () => addObj("prop"));
+        on("tCam", () => addObj("cam")); on("fCam", () => addObj("cam")); on("pvAdd", () => addObj("cam")); on("pvAdd2", () => addObj("cam"));
+        on("tDel", () => P.sel && delObj(P.sel));
+        on("tMove", () => setTool("move"));
+        on("tRot", () => (E3.on ? setTool("rotate") : toast("俯视示意里拖选中对象旁的白色小圆点即可旋转", "info")));
+        on("tFocus", () => (E3.on ? focusSel() : toast("聚焦选中只在 3D 视口可用", "info")));
+        on("tFromView", camFromView);
+        on("bPlay", togglePlay); on("bStart", () => setT(0));
+        on("bKey", recordKey); on("bPreset", doPreset);
+        on("bDelKey", () => { const o = findObj(P.selKey.id); o.keys = o.keys.filter((k) => Math.abs(k.t - P.selKey.t) > 1e-6); P.selKey = null; commit(); renderEditor(); });
+        proto.querySelectorAll("[data-cam]").forEach((b) => b.addEventListener("click", () => { P.scene.activeCameraId = b.dataset.cam; select(b.dataset.cam); }));
+        proto.querySelectorAll("[data-tab2]").forEach((b) => b.addEventListener("click", () => { P.tab = b.dataset.tab2; renderEditor(); }));
+        $("#dur").addEventListener("change", (e) => {
+          const d = +e.target.value; const sc = P.scene; const k = d / sc.duration;
+          [...sc.cameras, ...sc.characters].forEach((o) => o.keys.forEach((x) => (x.t = round(x.t * k, 2))));
+          sc.duration = d; P.t = Math.min(P.t, d); commit(); renderEditor(); toast("时长已改为 " + d + "s，已有关键帧按比例缩放");
+        });
+        $("#preset").addEventListener("change", (e) => { P.presetId = e.target.value; P.strength = PRESETS.find((p) => p.id === P.presetId).def; renderEditor(); });
+        $("#strength").addEventListener("change", (e) => { const p = PRESETS.find((x) => x.id === P.presetId); P.strength = clamp(+e.target.value || p.def, p.min, p.max); e.target.value = P.strength; });
+
+        if (E3.on) return; // 3D 视口的交互由 OrbitControls / TransformControls 负责
+
+        // 俯视示意（three.js 不可用时的退路）的拖拽
+        const cv = $("#topCv");
+        cv.addEventListener("pointerdown", (ev) => {
+          const r = cv.getBoundingClientRect(); const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+          const G = P.topGeo; const toW = (x, y) => [(x - G.ox) / G.S, (y - G.oy) / G.S];
+          const hd = G.handles.find((h) => Math.hypot(h.x - mx, h.y - my) < 10);
+          let hit = null, mode = "move";
+          if (hd) { hit = findObj(hd.id); mode = "rot"; }
+          else {
+            const objs = [...P.scene.cameras, ...P.scene.characters, ...P.scene.props].filter((o) => !o.hidden);
+            for (const o of objs) {
+              const st = o.keys ? stateOf(o) : o; const [wx, wz] = toW(mx, my);
+              const rad = o.w ? Math.max(o.w, o.d) / 2 + 0.1 : 0.45;
+              if (Math.hypot(st.x - wx, st.z - wz) < rad) { hit = o; break; }
+            }
+          }
+          if (!hit) { if (P.sel) { P.sel = null; P.selKey = null; renderEditor(); } return; }
+          if (P.sel !== hit.id) { P.sel = hit.id; if (typeOf(hit.id) === "cam") P.scene.activeCameraId = hit.id; P.tab = "props"; renderEditor(); }
+          const cv2 = $("#topCv"); cv2.setPointerCapture?.(ev.pointerId);
+          const tgt = () => (hit.keys && hit.keys.length ? (P.pending[hit.id] ||= { ...stateOf(hit) }) : hit);
+          let moved = false;
+          const mv = (e) => {
+            const rr = cv2.getBoundingClientRect(); const [wx, wz] = toW(e.clientX - rr.left, e.clientY - rr.top); const T = tgt();
+            if (mode === "rot") { let a = Math.atan2(wx - T.x, -(wz - T.z)) / D2R; if (P.snap) a = Math.round(a / 15) * 15; T.yaw = a; }
+            else { let x = wx, z = wz; if (P.snap) { x = Math.round(x * 4) / 4; z = Math.round(z * 4) / 4; } T.x = clamp(x, -10, 10); T.z = clamp(z, -10, 10); }
+            moved = true; drawEditor();
+          };
+          const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); if (moved) { commit(); refreshHint(); } };
+          window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+        });
+        if (!P._ro) { P._ro = new ResizeObserver(() => P.view === "editor" && drawEditor()); }
+        P._ro.disconnect(); P._ro.observe($("#vp"));
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (P.view !== "editor" || $("#tab-proto").hidden) return;
+        if (e.target.matches("input:not([type=range]):not([type=checkbox]):not([type=radio]), select, textarea")) return;
+        if (P.exp) { if (e.key === "Escape" && !P.exp.running) closeExport(); return; }
+        const k = e.key.toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+        else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+        else if (k === "k") recordKey();
+        else if (k === "1") setTool("move");
+        else if (k === "2" && E3.on) setTool("rotate");
+        else if (k === "f" && E3.on) focusSel();
+        else if (k === " ") { e.preventDefault(); togglePlay(); }
+        else if (k === "delete" || k === "backspace") { if (P.selKey) $("#bDelKey")?.click(); else if (P.sel) delObj(P.sel); }
+        else if (k === "escape") { if (P.sel) { P.sel = null; P.selKey = null; renderEditor(); } else closeEditor(); }
+      });
+
+      /* ---------- 导出 ---------- */
+      function openExport() {
+        if (!P.scene.cameras.length || sims.noH264) return;
+        P.exp = { cams: [P.scene.activeCameraId || P.scene.cameras[0].id], res: "720p", first: true, running: false, prog: {}, err: {}, done: false };
+        renderExport();
+      }
+      function closeExport() { P.exp = null; $("#mb")?.remove(); }
+      const sizeFor = (aspect, res) => { const L = res === "720p" ? 1280 : 1920; const a = ASPECTS[aspect]; return a >= 1 ? [L, Math.round(L / a / 2) * 2] : [Math.round((L * a) / 2) * 2, L]; };
+      function renderExport() {
+        $("#mb")?.remove();
+        const X = P.exp, sc = P.scene, frames = Math.round(sc.duration * 24);
+        const m = document.createElement("div"); m.className = "modal-bg"; m.id = "mb";
+        const camRows = sc.cameras.map((c) => {
+          const on = X.cams.includes(c.id); const [w, h] = sizeFor(c.aspect, X.res); const p = X.prog[c.id];
+          const err = X.err[c.id];
+          return `<div class="opt ${on ? "on" : ""}" data-ec="${c.id}"><input type="checkbox" ${on ? "checked" : ""} ${X.running || X.done ? "disabled" : ""}/>
+            <div style="flex:1"><b>${esc(c.name)}</b> <span style="color:hsl(var(--ed-dim))">${c.aspect} · ${w}×${h} · ${c.keys.length ? c.keys.length + " 个关键帧" : "固定机位"}</span>
+            ${p !== undefined ? `<div class="bar" style="margin-top:6px"><i style="width:${(p / frames) * 100}%"></i></div><div style="font-size:11px; color:${err ? "rgb(248 113 113)" : "hsl(var(--ed-dim))"}; margin-top:3px">${err ? esc(err) : p >= frames ? "完成" : `渲染 ${p}/${frames} 帧`}</div>` : ""}</div>
+            ${err && !X.running ? `<button class="eb" data-retry-cam="${c.id}" style="background:hsl(var(--ed-raise))">重试该机位</button>` : ""}</div>`;
+        }).join("");
+        const sel = sc.cameras.filter((c) => X.cams.includes(c.id));
+        const mb = sel.reduce((s, c) => s + sizeFor(c.aspect, X.res)[0] * sizeFor(c.aspect, X.res)[1] * 0.0000045 * sc.duration, 0);
+        m.innerHTML = `<div class="modal">
+          <div class="row"><h3>导出运镜预览视频</h3><span class="spacer"></span>${X.running ? "" : `<button class="eb" id="xClose"><i data-lucide="x"></i></button>`}</div>
+          <p style="color:hsl(var(--ed-dim)); margin-top:4px">每个机位导出一段 MP4（H.264，24fps，${sc.duration.toFixed(1)}s，${frames} 帧），画面不带标签、网格和控件。完成后在画布上导演台右侧新建节点并上传。</p>
+          <div style="margin-top:12px; font-weight:500">机位</div>${camRows}
+          <div class="row" style="margin-top:12px; gap:16px">
+            <span style="font-weight:500">分辨率</span>
+            ${["720p", "1080p"].map((r) => `<label class="row" style="gap:4px"><input type="radio" name="res" value="${r}" ${X.res === r ? "checked" : ""} ${X.running || X.done ? "disabled" : ""}/>${r}</label>`).join("")}
+            <label class="row" style="gap:4px"><input type="checkbox" id="xFirst" ${X.first ? "checked" : ""} ${X.running || X.done ? "disabled" : ""}/>同时导出首帧图</label>
+          </div>
+          <div class="pv-stage" style="margin-top:12px; border-radius:8px; overflow:hidden; ${X.running ? "" : "display:none"}"><canvas id="xPrev" width="480" height="270"></canvas></div>
+          <p style="color:hsl(var(--ed-dim)); font-size:12px; margin-top:10px">预计大小约 ${mb.toFixed(1)}MB（示意）· ${X.running ? "导出中请保持页面在前台" : "逐帧离线渲染，不依赖实时播放"}</p>
+          <div class="row" style="margin-top:12px; justify-content:flex-end">
+            ${X.running ? `<button class="eb" id="xCancel" style="background:hsl(var(--ed-raise))">取消导出</button>` : X.done ? `<button class="eb" id="xBack" style="background:hsl(var(--ed-raise))">回到画布查看</button><button class="eb pri" id="xOk">继续编辑</button>` : `<button class="eb" id="xClose2">取消</button><button class="eb pri" id="xGo" ${sel.length ? "" : "disabled"} title="${sel.length ? "" : "至少选一台机位"}">开始导出（${sel.length}）</button>`}
+          </div>
+          <div class="pin" style="position:static; margin-top:10px; max-width:none">导出只追加新节点、不覆盖旧导出（非破坏，与视频修剪一致）；导出期间对话框锁定，Esc 不会关闭编辑器，只能取消。</div>
+        </div>`;
+        proto.appendChild(m); icons();
+        m.querySelectorAll("[data-ec]").forEach((el) => el.addEventListener("click", (e) => {
+          if (X.running || X.done || e.target.closest("[data-retry-cam]")) return;
+          const id = el.dataset.ec; X.cams = X.cams.includes(id) ? X.cams.filter((x) => x !== id) : [...X.cams, id]; renderExport();
+        }));
+        m.querySelectorAll("input[name=res]").forEach((r) => r.addEventListener("change", () => { X.res = r.value; renderExport(); }));
+        const f = $("#xFirst"); if (f) f.addEventListener("change", () => (X.first = f.checked));
+        const on = (id, fn) => { const el = $("#" + id); if (el) el.addEventListener("click", fn); };
+        on("xClose", closeExport); on("xClose2", closeExport); on("xOk", closeExport);
+        on("xBack", () => { closeExport(); closeEditor(); });
+        on("xGo", () => runExport(X.cams));
+        on("xCancel", () => { X.cancel = true; });
+        m.querySelectorAll("[data-retry-cam]").forEach((b) => b.addEventListener("click", () => { delete X.err[b.dataset.retryCam]; runExport([b.dataset.retryCam], true); }));
+      }
+      function runExport(camIds, retry) {
+        const X = P.exp, sc = P.scene, frames = Math.round(sc.duration * 24);
+        X.running = true; X.done = false; X.cancel = false;
+        camIds.forEach((id) => { X.prog[id] = 0; delete X.err[id]; });
+        const okCams = [];
+        let qi = 0;
+        renderExport();
+        const tick = () => {
+          if (!P.exp) return;
+          if (X.cancel) { X.running = false; X.prog = {}; renderExport(); toast("已取消导出，已编码的内容已丢弃", "warn"); return; }
+          const id = camIds[qi]; if (!id) return finish();
+          const cam = sc.cameras.find((c) => c.id === id);
+          X.prog[id] = Math.min(frames, X.prog[id] + 4);
+          const c = $("#xPrev");
+          if (c) { const [w, h] = sizeFor(cam.aspect, "720p"); c.height = Math.round((480 * h) / w); renderShot(c.getContext("2d"), c.width, c.height, sc, X.prog[id] / 24, { ...cam, ...sampleKeys(cam.keys, X.prog[id] / 24, CAM_F, cam) }, { capsule: sims.modelFail }); }
+          if (sims.encFail && sc.cameras.indexOf(cam) === 1 && X.prog[id] >= frames * 0.4) { X.err[id] = "编码失败：VideoEncoder 配置错误（模拟）"; qi++; }
+          else if (X.prog[id] >= frames) { okCams.push(id); qi++; }
+          // 局部更新进度
+          const row = document.querySelector(`[data-ec="${id}"]`);
+          if (row) { const bar = row.querySelector(".bar > i"); if (bar) bar.style.width = (X.prog[id] / frames) * 100 + "%"; const lab = row.querySelector(".bar + div"); if (lab) { lab.textContent = X.err[id] || (X.prog[id] >= frames ? "完成" : `渲染 ${X.prog[id]}/${frames} 帧`); if (X.err[id]) lab.style.color = "rgb(248 113 113)"; } }
+          if (qi !== camIds.indexOf(id)) renderExport();
+          setTimeout(tick, 16);
+        };
+        const finish = () => {
+          X.running = false;
+          if (okCams.length) { addExportNodes(okCams, X); X.done = !Object.keys(X.err).length; }
+          renderExport();
+          const nErr = Object.keys(X.err).length;
+          if (okCams.length) toast(`已导出 ${okCams.length} 段视频到画布${nErr ? `，${nErr} 个机位失败` : ""}`, nErr ? "warn" : "ok");
+          else if (nErr) toast("导出失败，可重试该机位", "bad");
+        };
+        setTimeout(tick, 16);
+      }
+      function addExportNodes(camIds, X) {
+        // 画布撤销栈记一步（history.record），这里只示意
+        const sc = clone(P.scene);
+        let y = P.node.y - 100 + P.exported.length * 0;
+        const baseX = P.node.x + 330 + (P.exported.length ? 250 * Math.floor(P.exported.length / 4) : 0);
+        let row = P.exported.length % 4;
+        for (const id of camIds) {
+          const cam = sc.cameras.find((c) => c.id === id); const [w, h] = sizeFor(cam.aspect, X.res);
+          const ar = `${w} / ${h}`, arNum = w / h; const st = sampleKeys(cam.keys, 0, CAM_F, cam);
+          const mk = (kind) => ({ id: nid("ex"), kind, label: `${P.node.label}·${cam.name}${kind === "image" ? "·首帧" : ""}`, camId: id, progress: 0, failed: false, x: baseX + (kind === "image" ? 0 : 0), y: 0, ar, arNum, snap: sc, cam: { ...cam, ...st }, meta: `${sc.duration.toFixed(1)}s · ${X.res} · 24fps` });
+          const list = [mk("video")]; if (X.first) list.push(mk("image"));
+          for (const e of list) { e.x = baseX + (row >= 2 ? 250 : 0); e.y = 20 + (row % 2) * 300; if (row >= 4) { e.y += 20; } row++; P.exported.push(e); startUpload(e); }
+        }
+        P.node.thumb = true; P.node.scene = clone(P.scene);
+      }
+      function startUpload(e, retry) {
+        const t = setInterval(() => {
+          e.progress = Math.min(100, e.progress + 7 + Math.random() * 8);
+          if (sims.upFail && !retry && e.progress > 55) { e.failed = true; clearInterval(t); }
+          if (e.progress >= 100) clearInterval(t);
+          if (P.view === "canvas" && !$("#tab-proto").hidden) renderCanvas();
+        }, 160);
+      }
+
+      function redrawAll() { if (P.view === "canvas" && !$("#tab-proto").hidden) renderCanvas(); }
+      icons();
+    </script>
+  </body>
+</html>
