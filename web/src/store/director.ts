@@ -16,7 +16,13 @@ import {
   upsertKey,
 } from "@/utils/director/keys";
 import { MAX_PITCH, type ViewMode } from "@/utils/director/camera-view";
-import { readFlag, writeFlag } from "@/utils/director/prefs";
+import {
+  DEFAULT_PANELS,
+  clampPanel,
+  type PanelKind,
+  type PanelSizes,
+} from "@/utils/director/layout";
+import { readFlag, readNumber, writeFlag, writeNumber } from "@/utils/director/prefs";
 import { applyPreset as applyPresetTo, type CameraPresetId } from "@/utils/director/preset";
 import { sampleCamera, sampleCharacter } from "@/utils/director/sample";
 import {
@@ -84,6 +90,8 @@ type DirectorState = {
   assetsOpen: boolean;
   /** 资产面板当前的标签页 */
   assetTab: AssetTab;
+  /** 可拖动调节的面板尺寸（资产面板宽、属性栏宽、时间轴高、分栏比例）；是偏好，会记在浏览器里 */
+  panels: PanelSizes;
   /** 机位画面：false 是视口右下角的浮窗，true 是和导演视角左右分栏；偏好，会记在浏览器里 */
   previewSplit: boolean;
 
@@ -101,6 +109,14 @@ type DirectorState = {
   toggleAssets: () => void;
   setAssetTab: (tab: AssetTab) => void;
   toggleSplit: () => void;
+  /** 改一个面板的尺寸（夹在它自己的范围里）；拖动过程中连续调用，不写浏览器存储 */
+  setPanel: (kind: PanelKind, value: number) => void;
+  /** 拖完、键盘调完后把面板尺寸记进浏览器 */
+  savePanels: () => void;
+  /** 一个面板还原成默认尺寸（双击分界线），并记住 */
+  resetPanel: (kind: PanelKind) => void;
+  /** 所有面板还原成默认尺寸 */
+  resetPanels: () => void;
   /** 切换视角；切到机位视角要求场景里有机位，没有就不切 */
   setViewMode: (mode: ViewMode) => void;
   /** 进指定机位的机位视角：它成为当前机位并被选中（只是视图状态，不进撤销栈）；机位不存在就不动 */
@@ -168,6 +184,28 @@ const IDLE: Session = {
   gestureBase: null,
 };
 
+/** 浏览器里存面板尺寸用的名字 */
+const PANEL_KEYS: Record<PanelKind, string> = {
+  assets: "panel-assets",
+  sidebar: "panel-sidebar",
+  timeline: "panel-timeline",
+  split: "panel-split",
+};
+
+const readPanels = (): PanelSizes =>
+  Object.fromEntries(
+    (Object.keys(PANEL_KEYS) as PanelKind[]).map((kind) => [
+      kind,
+      clampPanel(kind, readNumber(PANEL_KEYS[kind], DEFAULT_PANELS[kind])),
+    ]),
+  ) as PanelSizes;
+
+const writePanels = (panels: PanelSizes) => {
+  for (const kind of Object.keys(PANEL_KEYS) as PanelKind[]) {
+    writeNumber(PANEL_KEYS[kind], panels[kind]);
+  }
+};
+
 const MIN_CAMERA_HEIGHT = 0.1;
 
 /** 把改动里的机位高度、俯仰夹到合法范围 */
@@ -216,6 +254,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
     assetsOpen: readFlag("assets-open", true),
     assetTab: "character",
     previewSplit: readFlag("preview-split", false),
+    panels: readPanels(),
 
     open: (nodeId, scene, opts) =>
       set({ ...IDLE, nodeId, scene, exportOnOpen: !!opts?.exportOnOpen }),
@@ -269,6 +308,17 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
       if (!scene?.cameras.some((c) => c.id === cameraId)) return;
       select(cameraId);
       set({ viewMode: "camera" });
+    },
+    setPanel: (kind, value) =>
+      set((state) => ({ panels: { ...state.panels, [kind]: clampPanel(kind, value) } })),
+    savePanels: () => writePanels(get().panels),
+    resetPanel: (kind) => {
+      set((state) => ({ panels: { ...state.panels, [kind]: DEFAULT_PANELS[kind] } }));
+      writePanels(get().panels);
+    },
+    resetPanels: () => {
+      set({ panels: { ...DEFAULT_PANELS } });
+      writePanels(get().panels);
     },
     toggleSplit: () =>
       set((state) => {

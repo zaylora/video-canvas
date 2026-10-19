@@ -26,6 +26,7 @@ export function DirectorPreview() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const shotRef = useRef<ReturnType<typeof createShotRenderer> | null>(null);
   const split = useDirectorStore((state) => state.previewSplit);
+  const splitShare = useDirectorStore((state) => state.panels.split);
   /** 分栏时画面区的大小（含留白） */
   const [box, setBox] = useState({ width: 0, height: 0 });
   const cameras = useDirectorStore((state) => state.scene?.cameras ?? NO_CAMERAS);
@@ -96,10 +97,12 @@ export function DirectorPreview() {
 
   return (
     <div
+      // 分栏时宽度是视口区的一个比例（可以拖分界线调）；浮窗是固定大小
+      style={split ? { width: `${splitShare * 100}%` } : undefined}
       className={cn(
         "bg-card border-border overflow-hidden",
         split
-          ? "absolute inset-y-0 right-0 flex w-1/2 flex-col border-l"
+          ? "absolute inset-y-0 right-0 flex flex-col border-l"
           : "absolute right-3 bottom-3 rounded-xl border shadow-lg",
       )}
     >

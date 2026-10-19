@@ -41,3 +41,35 @@ export function writeFlag(
     /* 存不进去就算了：下次打开用默认值 */
   }
 }
+
+/**
+ * 读一个数值偏好（面板宽高、分栏比例）。
+ * 存储不可用、没存过或存的不是数字时给默认值，不抛错。
+ */
+export function readNumber(
+  name: string,
+  fallback: number,
+  storage: FlagStorage | undefined = defaultStorage(),
+): number {
+  try {
+    const raw = storage?.getItem(PREFIX + name);
+    if (raw === null || raw === undefined || raw.trim() === "") return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** 写一个数值偏好；存储不可用时什么也不做 */
+export function writeNumber(
+  name: string,
+  value: number,
+  storage: FlagStorage | undefined = defaultStorage(),
+) {
+  try {
+    storage?.setItem(PREFIX + name, String(value));
+  } catch {
+    /* 存不进去就算了：下次打开用默认值 */
+  }
+}

@@ -162,7 +162,7 @@ export function DirectorAssets({ onCameraFromView }: { onCameraFromView: () => v
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: DURATION.base, ease: EASE_OUT }}
-      className="border-border bg-card/60 flex min-h-0 w-[272px] flex-col border-r"
+      className="border-border bg-card/60 flex min-h-0 w-full min-w-0 flex-col border-r"
     >
       <div className="flex h-11 shrink-0 items-center gap-2 px-3">
         <Box className="text-muted-foreground size-4" />

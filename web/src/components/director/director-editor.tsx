@@ -25,6 +25,13 @@ import { cn } from "@/lib/utils";
 import { useDirectorStore } from "@/store/director";
 import type { CanvasNodeData, FigureModel } from "@/types";
 import { activeCameraOf } from "@/utils/director/camera-view";
+import {
+  HEADER_HEIGHT,
+  NAV_WIDTH,
+  type PanelKind,
+  fitPanels,
+  panelMax,
+} from "@/utils/director/layout";
 import { UNSUPPORTED_EXPORT_MESSAGE, canExportVideo } from "@/utils/director/export-engine";
 import { disposeThumbRenderer } from "@/utils/director/asset-thumbs";
 import { figureModelStatus, loadFigureModels } from "@/utils/director/figure";
@@ -35,8 +42,13 @@ import { DirectorPreview } from "./director-preview";
 import { DirectorSidebar } from "./director-sidebar";
 import { DirectorTimeline } from "./director-timeline";
 import { DirectorViewport, type DirectorViewportApi } from "./director-viewport";
+import { NUDGE_STEP, ResizeHandle } from "./resize-handle";
 import { MENU_ATTR, ViewModeSwitch } from "./view-mode-switch";
 import { useDirectorSync } from "./use-director-sync";
+
+/** 分界线的可点击宽度（像素），压在两个面板的交界上 */
+const HANDLE_SIZE = 8;
+const HANDLE = { width: HANDLE_SIZE, marginLeft: -HANDLE_SIZE / 2 } as const;
 
 /** 视口左上角的操作提示：两个视角共用一套相机操作，机位视角改的是当前机位 */
 const HINT = {
@@ -50,7 +62,7 @@ const HINT = {
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   !!target.closest(
-    `input:not([type=checkbox]):not([type=radio]), textarea, select, [${MENU_ATTR}]`,
+    `input:not([type=checkbox]):not([type=radio]), textarea, select, [role=separator], [${MENU_ATTR}]`,
   );
 
 /**
@@ -96,6 +108,26 @@ export default function DirectorEditor() {
   const camView = useDirectorStore((state) => activeCameraOf(state.scene, state.viewMode) !== null);
   const hint = camView ? HINT.camera : HINT.director;
   const assetsOpen = useDirectorStore((state) => state.assetsOpen);
+  const panels = useDirectorStore((state) => state.panels);
+  const mainRef = useRef<HTMLElement>(null);
+  /** 窗口大小：编辑器是全屏的，面板尺寸要按它收一收，保证 3D 视口区留够 */
+  const [area, setArea] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  useEffect(() => {
+    const onResize = () => setArea({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const sizes = fitPanels(panels, area, assetsOpen);
+  /** 改面板尺寸：夹在它自己的范围里，也不挤掉 3D 视口区的最小尺寸 */
+  const setPanel = (kind: PanelKind, value: number) =>
+    useDirectorStore
+      .getState()
+      .setPanel(kind, Math.min(value, panelMax(kind, sizes, area, assetsOpen)));
+  const savePanels = () => useDirectorStore.getState().savePanels();
+  const resetPanel = (kind: PanelKind) => useDirectorStore.getState().resetPanel(kind);
   const canUndo = useDirectorStore((state) => state.past.length > 0);
   const canRedo = useDirectorStore((state) => state.future.length > 0);
 
@@ -223,7 +255,8 @@ export default function DirectorEditor() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: DURATION.slow, ease: EASE_OUT }}
-      className="dark bg-background text-foreground fixed inset-0 z-50 grid grid-rows-[48px_minmax(0,1fr)_minmax(168px,28vh)] outline-none"
+      style={{ gridTemplateRows: `${HEADER_HEIGHT}px minmax(0,1fr) ${sizes.timeline}px` }}
+      className="dark bg-background text-foreground fixed inset-0 z-50 grid outline-none"
     >
       <header className="border-border flex items-center gap-1 border-b px-3">
         <span className="mr-2 max-w-60 truncate text-sm font-semibold">{label}</span>
@@ -279,12 +312,15 @@ export default function DirectorEditor() {
       </header>
 
       <div
-        className={cn(
-          "grid min-h-0",
-          assetsOpen
-            ? "grid-cols-[52px_272px_minmax(0,1fr)_minmax(240px,280px)]"
-            : "grid-cols-[52px_minmax(0,1fr)_minmax(240px,280px)]",
-        )}
+        style={{
+          gridTemplateColumns: [
+            `${NAV_WIDTH}px`,
+            ...(assetsOpen ? [`${sizes.assets}px`] : []),
+            "minmax(0,1fr)",
+            `${sizes.sidebar}px`,
+          ].join(" "),
+        }}
+        className="relative grid min-h-0"
       >
         <nav
           className="border-border flex flex-col items-center gap-1 border-r py-2"
@@ -331,9 +367,12 @@ export default function DirectorEditor() {
 
         {assetsOpen && <DirectorAssets onCameraFromView={cameraFromView} />}
 
-        <main className="relative min-h-0 min-w-0 overflow-hidden">
-          {/* 导演视角：分栏时收成左半边；视口自己始终挂着，只是这个容器变窄，WebGL 上下文不重建 */}
-          <div className={cn("absolute inset-y-0 left-0", split ? "right-1/2" : "right-0")}>
+        <main ref={mainRef} className="relative min-h-0 min-w-0 overflow-hidden">
+          {/* 导演视角：分栏时收成左边一块（右边是机位画面）；视口自己始终挂着，只是这个容器变窄，WebGL 上下文不重建 */}
+          <div
+            style={{ right: split ? `${sizes.split * 100}%` : 0 }}
+            className="absolute inset-y-0 left-0"
+          >
             <DirectorViewport ref={viewport} />
             <span
               title={hint}
@@ -362,12 +401,68 @@ export default function DirectorEditor() {
             <ViewModeSwitch />
           </div>
           <DirectorPreview />
+          {split && (
+            <ResizeHandle
+              orientation="vertical"
+              label="机位画面宽度"
+              style={{ left: `${(1 - sizes.split) * 100}%`, top: 0, bottom: 0, ...HANDLE }}
+              onStart={() => sizes.split * (mainRef.current?.clientWidth ?? 0)}
+              onMove={(start, delta) => {
+                const width = mainRef.current?.clientWidth ?? 0;
+                if (width > 0) setPanel("split", (start - delta) / width);
+              }}
+              onEnd={savePanels}
+              onReset={() => resetPanel("split")}
+              onNudge={(direction) => {
+                const width = mainRef.current?.clientWidth ?? 0;
+                if (width > 0) setPanel("split", sizes.split - (direction * NUDGE_STEP) / width);
+              }}
+            />
+          )}
         </main>
 
         <DirectorSidebar />
+
+        {assetsOpen && (
+          <ResizeHandle
+            orientation="vertical"
+            label="资产面板宽度"
+            style={{
+              left: NAV_WIDTH + sizes.assets - HANDLE_SIZE / 2,
+              top: 0,
+              bottom: 0,
+              width: HANDLE_SIZE,
+            }}
+            onStart={() => sizes.assets}
+            onMove={(start, delta) => setPanel("assets", start + delta)}
+            onEnd={savePanels}
+            onReset={() => resetPanel("assets")}
+            onNudge={(direction) => setPanel("assets", sizes.assets + direction * NUDGE_STEP)}
+          />
+        )}
+        <ResizeHandle
+          orientation="vertical"
+          label="属性栏宽度"
+          style={{ right: sizes.sidebar - HANDLE_SIZE / 2, top: 0, bottom: 0, width: HANDLE_SIZE }}
+          onStart={() => sizes.sidebar}
+          onMove={(start, delta) => setPanel("sidebar", start - delta)}
+          onEnd={savePanels}
+          onReset={() => resetPanel("sidebar")}
+          onNudge={(direction) => setPanel("sidebar", sizes.sidebar - direction * NUDGE_STEP)}
+        />
       </div>
 
       <DirectorTimeline />
+      <ResizeHandle
+        orientation="horizontal"
+        label="时间轴高度"
+        style={{ left: 0, right: 0, bottom: sizes.timeline - HANDLE_SIZE / 2, height: HANDLE_SIZE }}
+        onStart={() => sizes.timeline}
+        onMove={(start, delta) => setPanel("timeline", start - delta)}
+        onEnd={savePanels}
+        onReset={() => resetPanel("timeline")}
+        onNudge={(direction) => setPanel("timeline", sizes.timeline - direction * NUDGE_STEP)}
+      />
 
       {exportOpen && (
         <DirectorExportDialog

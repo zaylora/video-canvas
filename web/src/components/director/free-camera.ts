@@ -101,7 +101,7 @@ const MOVE_KEYS: Record<string, string> = {
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   !!target.closest(
-    "input:not([type=checkbox]):not([type=radio]), textarea, select, [contenteditable=true], [data-director-menu]",
+    "input:not([type=checkbox]):not([type=radio]), textarea, select, [contenteditable=true], [role=separator], [data-director-menu]",
   );
 
 type Drag =

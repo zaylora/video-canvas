@@ -30,3 +30,86 @@ export function floatingFrame(ratio: number): Frame {
     height: FLOATING_FRAME.maxHeight,
   };
 }
+
+/** 可以拖动调节的面板：资产面板宽、属性栏宽、时间轴高、机位画面在分栏里占的比例 */
+export type PanelKind = "assets" | "sidebar" | "timeline" | "split";
+
+/** 各面板的尺寸；assets / sidebar 是宽（像素），timeline 是高（像素），split 是机位画面占视口区的比例 */
+export type PanelSizes = Record<PanelKind, number>;
+
+/** 各面板的范围和默认值 */
+export const PANEL_LIMITS: Record<PanelKind, { min: number; max: number; default: number }> = {
+  assets: { min: 200, max: 480, default: 272 },
+  sidebar: { min: 240, max: 480, default: 280 },
+  timeline: { min: 140, max: 480, default: 200 },
+  split: { min: 0.25, max: 0.75, default: 0.5 },
+};
+
+export const DEFAULT_PANELS: PanelSizes = {
+  assets: PANEL_LIMITS.assets.default,
+  sidebar: PANEL_LIMITS.sidebar.default,
+  timeline: PANEL_LIMITS.timeline.default,
+  split: PANEL_LIMITS.split.default,
+};
+
+/** 左侧工具竖条的宽、顶栏的高（固定，不可调） */
+export const NAV_WIDTH = 52;
+export const HEADER_HEIGHT = 48;
+
+/** 无论面板怎么拖，3D 视口区至少留这么大 */
+export const MIN_VIEWPORT = { width: 360, height: 220 } as const;
+
+/** 夹在这个面板自己的范围里；不是有限的数字就回默认值 */
+export function clampPanel(kind: PanelKind, value: number): number {
+  const { min, max, default: fallback } = PANEL_LIMITS[kind];
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 按窗口大小把一组面板尺寸收到放得下：视口区至少留 MIN_VIEWPORT。
+ * 窗口变小（或还原了很大的偏好）时用；宽不够先收资产面板、再收属性栏，高不够收时间轴，
+ * 都不会收到比各自的最小值还小。
+ * @param assetsOpen 资产面板展开着才占宽度
+ */
+export function fitPanels(
+  sizes: PanelSizes,
+  area: { width: number; height: number },
+  assetsOpen: boolean,
+): PanelSizes {
+  let assets = clampPanel("assets", sizes.assets);
+  let sidebar = clampPanel("sidebar", sizes.sidebar);
+  let timeline = clampPanel("timeline", sizes.timeline);
+  let overflow = NAV_WIDTH + (assetsOpen ? assets : 0) + sidebar + MIN_VIEWPORT.width - area.width;
+  if (overflow > 0 && assetsOpen) {
+    const cut = Math.min(overflow, assets - PANEL_LIMITS.assets.min);
+    assets -= cut;
+    overflow -= cut;
+  }
+  if (overflow > 0) {
+    sidebar -= Math.min(overflow, sidebar - PANEL_LIMITS.sidebar.min);
+  }
+  const maxTimeline = area.height - HEADER_HEIGHT - MIN_VIEWPORT.height;
+  timeline = Math.max(PANEL_LIMITS.timeline.min, Math.min(timeline, maxTimeline));
+  return { assets, sidebar, timeline, split: clampPanel("split", sizes.split) };
+}
+
+/**
+ * 拖某个面板时它能拉到多大：不超过自己的最大值，也要给视口区留够 MIN_VIEWPORT（拉到别的面板的尺寸不动）。
+ * 比最小值还小时就取最小值。分栏比例没有这种限制，用它自己的范围。
+ */
+export function panelMax(
+  kind: PanelKind,
+  sizes: PanelSizes,
+  area: { width: number; height: number },
+  assetsOpen: boolean,
+): number {
+  const { min, max } = PANEL_LIMITS[kind];
+  let room = max;
+  if (kind === "assets") room = area.width - NAV_WIDTH - sizes.sidebar - MIN_VIEWPORT.width;
+  if (kind === "sidebar") {
+    room = area.width - NAV_WIDTH - (assetsOpen ? sizes.assets : 0) - MIN_VIEWPORT.width;
+  }
+  if (kind === "timeline") room = area.height - HEADER_HEIGHT - MIN_VIEWPORT.height;
+  return Math.max(min, Math.min(max, room));
+}

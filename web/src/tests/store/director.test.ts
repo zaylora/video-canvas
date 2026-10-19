@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import { useDirectorStore } from "@/store/director";
 import type { DirectorScene } from "@/types";
+import { DEFAULT_PANELS, PANEL_LIMITS } from "@/utils/director/layout";
 import { createDefaultScene } from "@/utils/director/scene";
 
 const scene = (): DirectorScene => {
@@ -188,6 +189,45 @@ describe("视角切换（导演视角 / 机位视角）", () => {
     expect(store().scene?.cameras[0].yaw).toBe(30);
     store().undo();
     expect(store().scene?.cameras[0].yaw).not.toBe(30);
+  });
+});
+
+describe("面板尺寸（偏好）", () => {
+  test("默认值", () => {
+    expect(store().panels).toEqual(DEFAULT_PANELS);
+  });
+
+  test("可以设置，超出范围会被夹住", () => {
+    store().setPanel("assets", 320);
+    expect(store().panels.assets).toBe(320);
+    store().setPanel("assets", 99999);
+    expect(store().panels.assets).toBe(PANEL_LIMITS.assets.max);
+    store().setPanel("timeline", 1);
+    expect(store().panels.timeline).toBe(PANEL_LIMITS.timeline.min);
+    store().resetPanels();
+  });
+
+  test("分栏比例也在这里，夹在 0.25 ~ 0.75", () => {
+    store().setPanel("split", 0.9);
+    expect(store().panels.split).toBe(PANEL_LIMITS.split.max);
+    store().resetPanels();
+  });
+
+  test("单个面板可以还原成默认值，不动别的", () => {
+    store().setPanel("assets", 320);
+    store().setPanel("sidebar", 400);
+    store().resetPanel("assets");
+    expect(store().panels.assets).toBe(DEFAULT_PANELS.assets);
+    expect(store().panels.sidebar).toBe(400);
+    store().resetPanels();
+  });
+
+  test("开关编辑器会话不影响面板尺寸（它是偏好）", () => {
+    store().setPanel("sidebar", 400);
+    store().close();
+    store().open("node2", scene());
+    expect(store().panels.sidebar).toBe(400);
+    store().resetPanels();
   });
 });
 
