@@ -24,7 +24,7 @@ import {
 import type { CameraPose, CharacterPose, DirectorScene, PropShape } from "@/types";
 
 import { ASPECT_RATIO } from "./export";
-import { createFigure } from "./figure";
+import { createFigure, figureModelStatus } from "./figure";
 import { DEG, sampleCamera, sampleCharacter } from "./sample";
 
 /** 舞台的底色，主视口、小窗、导出画面共用 */
@@ -58,7 +58,7 @@ export type DirectorStage = {
   sync: (
     scene: DirectorScene,
     poseOf: PoseLookup,
-    options?: { selectedId?: string | null; capsule?: boolean },
+    options?: { selectedId?: string | null },
   ) => void;
   objectOf: (id: string) => Group | undefined;
   /** 从点中的网格往上找对象 id */
@@ -258,16 +258,13 @@ export function createStage(options: { helpers: boolean }): DirectorStage {
     const seen = new Set<string>();
     for (const character of scene.characters) {
       seen.add(character.id);
+      // 人台模型加载好之前画的是简化形体，状态进 key，加载完下一帧就换成人台
       const entry = put(
         character.id,
-        `${character.pose}|${character.color}|${!!opts.capsule}`,
+        `${character.pose}|${character.color}|${figureModelStatus()}`,
         content,
         () => {
-          const figure = createFigure({
-            pose: character.pose,
-            color: character.color,
-            capsule: opts.capsule,
-          });
+          const figure = createFigure({ pose: character.pose, color: character.color });
           figure.group.rotation.order = "YXZ";
           return { group: figure.group, materials: [figure.material] };
         },

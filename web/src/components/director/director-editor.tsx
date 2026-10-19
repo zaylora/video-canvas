@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useDirectorStore, type DirectorAddKind } from "@/store/director";
 import type { CanvasNodeData } from "@/types";
 import { UNSUPPORTED_EXPORT_MESSAGE, canExportVideo } from "@/utils/director/export-engine";
+import { figureModelStatus, loadFigureModel } from "@/utils/director/figure";
 import { canAdd, limitMessage } from "@/utils/director/scene";
 
 import { DirectorExportDialog } from "./director-export-dialog";
@@ -62,6 +63,12 @@ export default function DirectorEditor() {
     useDirectorStore.getState().takeExportOnOpen(),
   );
   const [exportSupported, setExportSupported] = useState<boolean | null>(null);
+  /** 人台模型有没有加载失败：失败时人物是简化形体，给个提示条和重试 */
+  const [modelFailed, setModelFailed] = useState(false);
+  const retryModel = useCallback(() => {
+    setModelFailed(false);
+    void loadFigureModel().then((ok) => setModelFailed(!ok));
+  }, []);
   const scene = useDirectorStore((state) => state.scene);
   const playing = useDirectorStore((state) => state.playing);
   const selectedId = useDirectorStore((state) => state.selectedId);
@@ -75,6 +82,10 @@ export default function DirectorEditor() {
     let alive = true;
     void canExportVideo().then((ok) => alive && setExportSupported(ok));
     rootRef.current?.focus({ preventScroll: true });
+    // 模型加载好之前先用简化形体，加载好舞台自己会换成人台；已经加载过就什么也不做
+    if (figureModelStatus() !== "ready") {
+      void loadFigureModel().then((ok) => alive && setModelFailed(!ok));
+    }
     return () => {
       alive = false;
     };
@@ -311,6 +322,19 @@ export default function DirectorEditor() {
           <span className="bg-card/80 text-muted-foreground border-border pointer-events-none absolute top-2.5 left-2.5 rounded-md border px-2 py-1 text-[11px]">
             导演视角 · 左键拖空白处旋转 · 右键平移 · 滚轮缩放 · 点选对象后拖动彩色轴
           </span>
+          {modelFailed && (
+            <div className="bg-status-running/15 text-foreground border-status-running/40 absolute top-2.5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
+              <TriangleAlert className="text-status-running size-3.5" />
+              人物模型加载失败，已用简化形体代替（导出仍可用）
+              <button
+                type="button"
+                onClick={retryModel}
+                className="hover:bg-muted focus-visible:ring-ring rounded px-1.5 py-0.5 font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2"
+              >
+                重试
+              </button>
+            </div>
+          )}
           {empty && (
             <p className="text-muted-foreground pointer-events-none absolute inset-0 grid place-items-center text-sm">
               添加人物或机位开始摆位

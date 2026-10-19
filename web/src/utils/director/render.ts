@@ -3,6 +3,7 @@ import { Color, Fog, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import type { CameraPose, DirectorScene } from "@/types";
 
 import { ASPECT_RATIO } from "./export";
+import { loadFigureModel } from "./figure";
 import { sampleCamera, sampleCharacter } from "./sample";
 import { STAGE_BACKGROUND, type PoseLookup, applyCameraPose, createStage } from "./stage";
 
@@ -28,13 +29,8 @@ export function createShotRenderer() {
   const camera = new PerspectiveCamera(50, 16 / 9, 0.05, 200);
 
   /** 按给定的站位和机位状态拍一帧（机位小窗用：带着临时姿态和拖动中的机位） */
-  const renderPose = (
-    scene: DirectorScene,
-    poseOf: PoseLookup,
-    cameraPose: CameraPose,
-    options?: { capsule?: boolean },
-  ) => {
-    stage.sync(scene, poseOf, { capsule: options?.capsule });
+  const renderPose = (scene: DirectorScene, poseOf: PoseLookup, cameraPose: CameraPose) => {
+    stage.sync(scene, poseOf);
     const { width, height } = renderer.domElement;
     applyCameraPose(camera, cameraPose, width / height || 16 / 9);
     renderer.render(threeScene, camera);
@@ -48,12 +44,7 @@ export function createShotRenderer() {
      * 拍一帧：人物取 t 秒时的站位，机位取 t 秒时的状态。
      * @returns 机位不存在时 false
      */
-    render: (
-      scene: DirectorScene,
-      cameraId: string,
-      t: number,
-      options?: { capsule?: boolean },
-    ) => {
+    render: (scene: DirectorScene, cameraId: string, t: number) => {
       const target = scene.cameras.find((c) => c.id === cameraId);
       if (!target) return false;
       renderPose(
@@ -63,7 +54,6 @@ export function createShotRenderer() {
           return character ? sampleCharacter(character, t) : undefined;
         },
         sampleCamera(target, t),
-        options,
       );
       return true;
     },
@@ -92,6 +82,8 @@ export async function renderThumbnail(scene: DirectorScene): Promise<Blob | null
   const camera = scene.cameras.find((c) => c.id === scene.activeCameraId) ?? scene.cameras[0];
   if (!camera) return null;
   const ratio = ASPECT_RATIO[camera.aspect];
+  // 缩略图里的人物要是人台，不是简化形体
+  await loadFigureModel();
   const shot = createShotRenderer();
   try {
     shot.setSize(

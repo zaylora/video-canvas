@@ -356,7 +356,7 @@
           <div class="note-txt">设计：主产物是运镜视频（访谈 Q1），所以时间轴和导出是骨架；导出物就是普通的视频 / 图片节点，复用现有连线规则和模型能力判断（Q6），不在导演台里重建模型选择。</div>
           <div class="callout c-warn" style="margin-top: 10px">
             <i data-lucide="corner-down-right"></i>
-            <div><b>回退 / 兜底：</b>模型不支持参考视频 → 用首帧机位图做图生视频；人物模型加载失败 → 用胶囊体代替，导出照常；浏览器不支持 WebGL2 → 打不开导演台，但节点和已导出的视频照常可用；不支持 H.264 编码 → 「导出视频」禁用并写明原因。</div>
+            <div><b>回退 / 兜底：</b>模型不支持参考视频 → 用首帧机位图做图生视频；人物模型加载失败 → 用简化形体（胶囊）代替，导出照常；浏览器不支持 WebGL2 → 打不开导演台，但节点和已导出的视频照常可用；不支持 H.264 编码 → 「导出视频」禁用并写明原因。</div>
           </div>
         </div>
 
@@ -608,7 +608,7 @@ async function exportCameras(scene, cameraIds, opts, engine) {
           </div>
           <div class="callout c-warn" style="margin-top: 12px">
             <i data-lucide="list-checks"></i>
-            <div><b>设计上已无待定问题。第一期已实现（未在浏览器实际验证，见主文档 §13）。待办：</b>人物换成用户选定的 Quaternius Universal Base Characters（CC0）模型文件，目前是代码拼的临时灰模。<b>实现时补一条测试：</b>Agent 自动合并后本地导演台节点的场景被保留（<span class="tag t-warn">未验证</span>）。</div>
+            <div><b>设计上已无待定问题。第一期已实现（未在浏览器实际验证，见主文档 §13）。人物已换成 Quaternius Universal Base Characters（CC0）的人台模型。<b>实现时补一条测试：</b>Agent 自动合并后本地导演台节点的场景被保留（<span class="tag t-warn">未验证</span>）。</div>
           </div>
         </div>
       </section>

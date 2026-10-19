@@ -1,155 +1,182 @@
-import { CapsuleGeometry, Group, Mesh, MeshStandardMaterial, SphereGeometry, Vector3 } from "three";
+import {
+  Box3,
+  CapsuleGeometry,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  type Object3D,
+  type SkinnedMesh,
+  SphereGeometry,
+  Vector3,
+} from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 import type { PoseId } from "@/types";
 
-/**
- * 人物灰模（临时版）：用胶囊体按关节坐标拼出人形。
- * 设计上要换成内置的带骨骼人体模型（Quaternius Universal Base Characters），
- * 换的时候只改这个文件：对外仍是 createFigure 返回一个面朝本地 -z、脚踩 y=0 的 Group。
- */
+import { applyBoneRotations, captureRest, type RestPose } from "./pose";
+import { POSE_ROTATIONS } from "./poses";
 
-type Joint = [number, number, number];
+/** 人物站直时的身高（米） */
+export const FIGURE_STAND_HEIGHT = 1.78;
 
-/** 一个姿势的关节坐标：本地（右, 上, 前），单位米，身高约 1.75 */
-type PoseJoints = {
-  hip: Joint;
-  neck: Joint;
-  head: Joint;
-  leftKnee: Joint;
-  rightKnee: Joint;
-  leftFoot: Joint;
-  rightFoot: Joint;
-  leftHand: Joint;
-  rightHand: Joint;
+/** 人物头顶往上的高度（米，未缩放）：名字标签摆在这上面，留出举手的余地 */
+export const FIGURE_TOP = 1.95;
+
+/** 人台模型的地址：Quaternius Universal Base Characters 的 Superhero 男性，处理成灰色无贴图，见 public/director/LICENSE.txt */
+const MODEL_URL = `${import.meta.env?.BASE_URL ?? "/"}director/mannequin.glb`;
+
+/** 人台模型的加载状态 */
+export type FigureModelStatus = "idle" | "loading" | "ready" | "failed";
+
+/** 模板：加载好的人台，每个人物从它克隆 */
+type Template = {
+  /** 外壳：把脸朝 +z 的模型转成脸朝 -z（我们的约定） */
+  holder: Group;
+  /** 静止姿势（T 字形）下的骨骼旋转 */
+  rest: RestPose;
+  /** 缩放到 FIGURE_STAND_HEIGHT 的系数 */
+  scale: number;
 };
 
-const STAND: PoseJoints = {
-  hip: [0, 0.95, 0],
-  neck: [0, 1.45, 0],
-  head: [0, 1.66, 0],
-  leftKnee: [-0.11, 0.5, 0],
-  rightKnee: [0.11, 0.5, 0],
-  leftFoot: [-0.12, 0.06, 0],
-  rightFoot: [0.12, 0.06, 0],
-  leftHand: [-0.24, 0.85, 0],
-  rightHand: [0.24, 0.85, 0],
+let template: Template | null = null;
+let status: FigureModelStatus = "idle";
+let pending: Promise<boolean> | null = null;
+
+/** 当前模型加载到哪一步了；非 ready 时人物用简化形体顶着 */
+export const figureModelStatus = () => status;
+
+/** 清掉已加载的模型，回到没加载过的状态（测试用） */
+export function resetFigureModel() {
+  template = null;
+  status = "idle";
+  pending = null;
+}
+
+const fetchModel = async (): Promise<ArrayBuffer> => {
+  const response = await fetch(MODEL_URL);
+  if (!response.ok) throw new Error(`人物模型请求失败：${response.status}`);
+  return response.arrayBuffer();
 };
 
-/** 12 个姿势预设相对站立的差异 */
-const POSES: Record<PoseId, Partial<PoseJoints>> = {
-  stand: {},
-  walk: {
-    leftKnee: [-0.1, 0.5, 0.12],
-    leftFoot: [-0.1, 0.06, 0.25],
-    rightKnee: [0.1, 0.5, -0.08],
-    rightFoot: [0.1, 0.08, -0.25],
-    leftHand: [-0.24, 0.9, -0.18],
-    rightHand: [0.24, 0.9, 0.18],
-  },
-  run: {
-    leftKnee: [-0.1, 0.6, 0.3],
-    leftFoot: [-0.1, 0.25, 0.2],
-    rightKnee: [0.1, 0.45, -0.15],
-    rightFoot: [0.1, 0.12, -0.4],
-    leftHand: [-0.24, 1.1, -0.3],
-    rightHand: [0.24, 1.0, 0.35],
-  },
-  sit: {
-    hip: [0, 0.5, 0],
-    neck: [0, 1.0, 0],
-    head: [0, 1.21, 0],
-    leftKnee: [-0.12, 0.5, 0.45],
-    rightKnee: [0.12, 0.5, 0.45],
-    leftFoot: [-0.12, 0.06, 0.45],
-    rightFoot: [0.12, 0.06, 0.45],
-    leftHand: [-0.22, 0.55, 0.25],
-    rightHand: [0.22, 0.55, 0.25],
-  },
-  crouch: {
-    hip: [0, 0.55, -0.1],
-    neck: [0, 1.0, 0.05],
-    head: [0, 1.21, 0.08],
-    leftKnee: [-0.14, 0.5, 0.3],
-    rightKnee: [0.14, 0.5, 0.3],
-    leftHand: [-0.2, 0.6, 0.3],
-    rightHand: [0.2, 0.6, 0.3],
-  },
-  point: { rightHand: [0.25, 1.4, 0.6] },
-  armsCrossed: { leftHand: [0.06, 1.2, 0.15], rightHand: [-0.06, 1.2, 0.15] },
-  wave: { rightHand: [0.45, 1.75, 0.05] },
-  talk: { rightHand: [0.2, 1.1, 0.3] },
-  raiseHand: { rightHand: [0.22, 1.95, 0] },
-  lookBack: { head: [0.05, 1.66, -0.04] },
-  lying: {
-    hip: [0, 0.15, 0],
-    neck: [0, 0.15, -0.55],
-    head: [0, 0.14, -0.78],
-    leftKnee: [-0.12, 0.12, 0.45],
-    rightKnee: [0.12, 0.12, 0.45],
-    leftFoot: [-0.12, 0.1, 0.9],
-    rightFoot: [0.12, 0.1, 0.9],
-    leftHand: [-0.4, 0.1, -0.45],
-    rightHand: [0.4, 0.1, -0.45],
-  },
+const findSkinned = (root: Object3D): SkinnedMesh | undefined => {
+  let found: SkinnedMesh | undefined;
+  root.traverse((node) => {
+    if (!found && (node as SkinnedMesh).isSkinnedMesh) found = node as SkinnedMesh;
+  });
+  return found;
 };
-
-/** 本地坐标（右, 上, 前）换成 three 的坐标：前方是 -z */
-const toVector = ([right, up, front]: Joint) => new Vector3(right, up, -front);
-
-const UP = new Vector3(0, 1, 0);
 
 /**
- * 建一个人物灰模。返回的 Group 面朝本地 -z、脚踩 y = 0，材质着色用人物颜色。
- * @param options.capsule 人物模型加载失败时的退路：只画一根胶囊和头
+ * 量人物在局部坐标里的包围盒：蒙皮网格要按当前骨骼姿势逐顶点算，
+ * 不能用几何体自带的包围盒（那是静止姿势下的）。
  */
-export function createFigure(options: { pose: PoseId; color: string; capsule?: boolean }): {
+export function measureFigure(group: Object3D): Box3 {
+  group.updateMatrixWorld(true);
+  const skinned = findSkinned(group);
+  if (!skinned) return new Box3().setFromObject(group);
+  const inverse = group.matrixWorld.clone().invert();
+  const toGroup = skinned.matrixWorld.clone().premultiply(inverse);
+  const box = new Box3();
+  const point = new Vector3();
+  const count = skinned.geometry.attributes.position.count;
+  for (let i = 0; i < count; i++) {
+    skinned.getVertexPosition(i, point);
+    box.expandByPoint(point.applyMatrix4(toGroup));
+  }
+  return box;
+}
+
+/** 把加载好的 glTF 整理成模板：套转向外壳、记下静止姿势、算出缩放 */
+function prepareTemplate(scene: Object3D): Template {
+  const skinned = findSkinned(scene);
+  if (!skinned) throw new Error("人物模型里没有带骨骼的网格");
+  const holder = new Group();
+  holder.rotation.y = Math.PI;
+  holder.add(scene);
+  const rest = captureRest(skinned.skeleton);
+  const height = measureFigure(holder).getSize(new Vector3()).y;
+  if (!(height > 0)) throw new Error("人物模型的尺寸不对");
+  return { holder, rest, scale: FIGURE_STAND_HEIGHT / height };
+}
+
+/**
+ * 加载人台模型，整个页面只读一次文件；加载过程中重复调用共用同一个请求，失败后再调用会重试。
+ * 加载失败不抛错：人物退回简化形体，导出照常可用。
+ * @param load 读模型文件的函数，默认从站点静态资源里取；测试里注入
+ * @returns 是否加载成功
+ */
+export function loadFigureModel(load: () => Promise<ArrayBuffer> = fetchModel): Promise<boolean> {
+  if (status === "ready") return Promise.resolve(true);
+  if (pending) return pending;
+  status = "loading";
+  pending = (async () => {
+    try {
+      const gltf = await new GLTFLoader().parseAsync(await load(), "");
+      template = prepareTemplate(gltf.scene);
+      status = "ready";
+      return true;
+    } catch (error) {
+      console.warn("人物模型加载失败，改用简化形体", error);
+      template = null;
+      status = "failed";
+      return false;
+    } finally {
+      pending = null;
+    }
+  })();
+  return pending;
+}
+
+/** 模型没加载好时的简化形体：一根胶囊加一个头，站在地面上 */
+function createCapsuleFigure(material: MeshStandardMaterial): Group {
+  const group = new Group();
+  const body = new Mesh(new CapsuleGeometry(0.24, 1.1, 4, 12), material);
+  body.position.y = 0.83;
+  const head = new Mesh(new SphereGeometry(0.115, 20, 14), material);
+  head.position.y = 1.66;
+  for (const mesh of [body, head]) {
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+  return group;
+}
+
+/**
+ * 建一个人物灰模：面朝本地 -z、脚（或身体）刚好踩在 y = 0。
+ * 模型已加载就克隆人台、套姿势预设再按姿势落地；否则是简化形体。
+ * 每个人物有自己的材质，着色用人物的颜色。
+ */
+export function createFigure(options: { pose: PoseId; color: string }): {
   group: Group;
   material: MeshStandardMaterial;
 } {
-  const group = new Group();
   const material = new MeshStandardMaterial({
     color: options.color,
     roughness: 0.7,
     metalness: 0.05,
   });
-  const limb = (from: Joint, to: Joint, radius: number) => {
-    const a = toVector(from);
-    const b = toVector(to);
-    const mesh = new Mesh(
-      new CapsuleGeometry(radius, Math.max(0.01, a.distanceTo(b)), 4, 10),
-      material,
-    );
-    mesh.position.copy(a).add(b).multiplyScalar(0.5);
-    mesh.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize());
-    mesh.castShadow = true;
-    group.add(mesh);
-  };
-  let head: Joint = [0, 1.66, 0];
-  if (options.capsule) {
-    limb([0, 0.28, 0], [0, 1.38, 0], 0.24);
-  } else {
-    const j = { ...STAND, ...POSES[options.pose] };
-    const leftShoulder: Joint = [-0.19, j.neck[1] - 0.05, j.neck[2]];
-    const rightShoulder: Joint = [0.19, j.neck[1] - 0.05, j.neck[2]];
-    const leftHip: Joint = [-0.1, j.hip[1], j.hip[2]];
-    const rightHip: Joint = [0.1, j.hip[1], j.hip[2]];
-    limb(j.hip, j.neck, 0.15);
-    limb(leftShoulder, rightShoulder, 0.07);
-    limb(leftHip, rightHip, 0.09);
-    limb(leftShoulder, j.leftHand, 0.05);
-    limb(rightShoulder, j.rightHand, 0.05);
-    limb(leftHip, j.leftKnee, 0.07);
-    limb(j.leftKnee, j.leftFoot, 0.06);
-    limb(rightHip, j.rightKnee, 0.07);
-    limb(j.rightKnee, j.rightFoot, 0.06);
-    head = j.head;
+  if (!template || status !== "ready") {
+    return { group: createCapsuleFigure(material), material };
   }
-  const headMesh = new Mesh(new SphereGeometry(0.115, 20, 14), material);
-  headMesh.position.copy(toVector(head));
-  headMesh.castShadow = true;
-  group.add(headMesh);
+  const model = cloneSkinned(template.holder) as Group;
+  const skinned = findSkinned(model)!;
+  model.traverse((node) => {
+    const mesh = node as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.material = material;
+    mesh.castShadow = true;
+    // 包围球是静止姿势下算的，躺下、举手后会被误裁掉
+    mesh.frustumCulled = false;
+  });
+  applyBoneRotations(skinned.skeleton, template.rest, POSE_ROTATIONS[options.pose]);
+
+  const body = new Group();
+  body.scale.setScalar(template.scale);
+  body.add(model);
+  const group = new Group();
+  group.add(body);
+  // 按这个姿势落地：站着是脚踩地，坐着是脚踩地、屁股悬空，躺着是后背贴地
+  body.position.y = -measureFigure(group).min.y;
   return { group, material };
 }
-
-/** 人物头顶的高度（米，未缩放），标签摆在这上面 */
-export const FIGURE_TOP = 1.85;

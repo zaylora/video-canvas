@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { PerspectiveCamera, Vector3 } from "three";
 
 import type { DirectorScene } from "@/types";
+import { loadFigureModel, resetFigureModel } from "@/utils/director/figure";
 import { sampleCamera, sampleCharacter } from "@/utils/director/sample";
 import { addCamera, addProp, createDefaultScene, removeObject } from "@/utils/director/scene";
 import { applyCameraPose, createStage } from "@/utils/director/stage";
@@ -19,6 +21,8 @@ const poseAt =
     const camera = s.cameras.find((c) => c.id === id);
     return camera ? sampleCamera(camera, t) : undefined;
   };
+
+afterEach(() => resetFigureModel());
 
 describe("舞台同步", () => {
   test("按场景建出人物、道具和机位", () => {
@@ -82,6 +86,26 @@ describe("舞台同步", () => {
     s.characters[0] = { ...s.characters[0], pose: "sit" };
     stage.sync(s, poseAt(s));
     expect(stage.objectOf("id1")).not.toBe(before);
+  });
+
+  test("人台模型加载完，已经画出来的简化形体自动换成人台", async () => {
+    const stage = createStage({ helpers: true });
+    const s = scene();
+    stage.sync(s, poseAt(s));
+    const before = stage.objectOf("id1")!;
+    expect(before.getObjectByName("hand_l")).toBeUndefined();
+    const bytes = readFileSync(
+      new URL("../../../../public/director/mannequin.glb", import.meta.url),
+    );
+    await loadFigureModel(
+      async () =>
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    );
+    stage.sync(s, poseAt(s));
+    const after = stage.objectOf("id1")!;
+    expect(after).not.toBe(before);
+    expect(after.getObjectByName("hand_l")).toBeDefined();
+    expect(after.position.x).toBe(0);
   });
 
   test("点中人物的任一部件都能反查到人物 id", () => {

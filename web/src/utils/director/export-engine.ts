@@ -1,5 +1,6 @@
 import type { CameraRender, DirectorExportEngine } from "./export";
 import { DIRECTOR_FPS } from "./scene";
+import { loadFigureModel } from "./figure";
 import { createShotRenderer } from "./render";
 
 /** Mediabunny 只在导出时才加载，不进画布首屏的包 */
@@ -20,11 +21,13 @@ export async function canExportVideo(): Promise<boolean> {
  * 真实导出引擎：three.js 离屏渲染每一帧，Mediabunny 的 CanvasSource 逐帧编码成 H.264 MP4。
  * 每个机位开一个渲染器和一个输出，结束或取消时释放。
  */
-export function createExportEngine(options: { capsule?: boolean } = {}): DirectorExportEngine {
+export function createExportEngine(): DirectorExportEngine {
   return {
     async open(scene, cameraId, size): Promise<CameraRender> {
       const { BufferTarget, CanvasSource, Mp4OutputFormat, Output, QUALITY_HIGH } =
         await loadMediabunny();
+      // 先把人台模型读好：之后每一帧都是同一个人物，导出中途不会换形体；读失败就用简化形体
+      await loadFigureModel();
       const shot = createShotRenderer();
       shot.setSize(size.width, size.height);
       const target = new BufferTarget();
@@ -47,7 +50,7 @@ export function createExportEngine(options: { capsule?: boolean } = {}): Directo
       };
       return {
         renderFrame: async (t) => {
-          if (!shot.render(scene, cameraId, t, options)) throw new Error("机位不存在");
+          if (!shot.render(scene, cameraId, t)) throw new Error("机位不存在");
         },
         encodeFrame: (t, duration) => source.add(t, duration),
         snapshot: () => shot.toBlob("image/png"),
