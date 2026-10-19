@@ -8,6 +8,32 @@ const MIN_SHOW_MS = 900;
 /** 退场（logo 失焦 + 整层淡出）的总时长，到点兜底收尾 */
 const EXIT_FALLBACK_MS = 700;
 
+/** 加载进度条：细条加百分比；条用 transform 缩放，不触发布局，主线程忙的时候也顺 */
+function LoadBar({ progress }: { progress: number }) {
+  const value = Math.min(1, Math.max(0, progress));
+  const percent = Math.round(value * 100);
+  return (
+    <div className="mt-2.5 flex items-center gap-2">
+      <div
+        role="progressbar"
+        aria-label="加载进度"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="bg-foreground/15 h-0.5 w-32 overflow-hidden rounded-full"
+      >
+        <div
+          className="bg-foreground h-full origin-left rounded-full transition-transform duration-300 ease-out"
+          style={{ transform: `scaleX(${value})` }}
+        />
+      </div>
+      <span className="text-muted-foreground w-8 text-left text-[11px] tabular-nums">
+        {percent}%
+      </span>
+    </div>
+  );
+}
+
 /**
  * 进入一个“空间”前的全屏加载层（设计稿原型 A「聚焦显影」）：进画布、进后台共用。
  * 点阵底上，白色图标块和标题由虚到实聚焦出来；
@@ -21,6 +47,7 @@ export function FocusLoader({
   title,
   subtitle,
   label,
+  progress,
   ready,
   onOpen,
   onDone,
@@ -33,6 +60,8 @@ export function FocusLoader({
   subtitle: string;
   /** 读屏播报的文字 */
   label: string;
+  /** 加载进度（0 ~ 1）：给了才在说明下面画进度条和百分比；进画布、进后台不给 */
+  progress?: number;
   ready: boolean;
   onOpen: () => void;
   onDone: () => void;
@@ -79,6 +108,7 @@ export function FocusLoader({
       <div data-later className="canvas-loader-focus grid justify-items-center gap-1.5 text-center">
         <span className="text-[15px] font-semibold tracking-wide">{title}</span>
         <span className="text-muted-foreground max-w-[28ch] truncate text-xs">{subtitle}</span>
+        {progress !== undefined && <LoadBar progress={progress} />}
       </div>
     </div>
   );

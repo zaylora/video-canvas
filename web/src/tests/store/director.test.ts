@@ -121,6 +121,94 @@ describe("资产面板", () => {
   });
 });
 
+describe("视角切换（导演视角 / 机位视角）", () => {
+  test("默认是导演视角，有机位时可以切到机位视角再切回来", () => {
+    expect(store().viewMode).toBe("director");
+    store().setViewMode("camera");
+    expect(store().viewMode).toBe("camera");
+    store().setViewMode("director");
+    expect(store().viewMode).toBe("director");
+  });
+
+  test("可以直接进指定机位的机位视角：当前机位和选中都跟着换，不进撤销栈", () => {
+    store().addObject("camera");
+    const second = store().scene!.cameras[1].id;
+    store().enterCameraView(CAM);
+    const before = store().past.length;
+    store().enterCameraView(second);
+    expect(store().viewMode).toBe("camera");
+    expect(store().scene?.activeCameraId).toBe(second);
+    expect(store().selectedId).toBe(second);
+    expect(store().past).toHaveLength(before);
+  });
+
+  test("在机位视角里换另一台机位，视角留在机位视角", () => {
+    store().addObject("camera");
+    const second = store().scene!.cameras[1].id;
+    store().enterCameraView(CAM);
+    store().enterCameraView(second);
+    expect(store().viewMode).toBe("camera");
+    store().enterCameraView(CAM);
+    expect(store().scene?.activeCameraId).toBe(CAM);
+  });
+
+  test("指定的机位不存在时不动", () => {
+    store().enterCameraView("没有这台");
+    expect(store().viewMode).toBe("director");
+    expect(store().scene?.activeCameraId).toBe(CAM);
+  });
+
+  test("场景里没有机位时不能切到机位视角", () => {
+    store().removeObject(CAM);
+    store().setViewMode("camera");
+    expect(store().viewMode).toBe("director");
+  });
+
+  test("在机位视角里删掉最后一台机位，回到导演视角；之后再加机位不会自己跳进去", () => {
+    store().setViewMode("camera");
+    store().removeObject(CAM);
+    expect(store().viewMode).toBe("director");
+    store().addObject("camera");
+    expect(store().viewMode).toBe("director");
+  });
+
+  test("视角是会话状态：关闭再打开回到导演视角", () => {
+    store().setViewMode("camera");
+    store().close();
+    store().open("node2", scene());
+    expect(store().viewMode).toBe("director");
+  });
+
+  test("机位视角里拖动调整朝向走临时姿态 / 静态状态，和变换控件一样：松手算一步，可撤销", () => {
+    store().setViewMode("camera");
+    store().startGesture();
+    store().transformObject(CAM, { yaw: 30, pitch: -10 });
+    store().endGesture();
+    expect(store().past).toHaveLength(1);
+    expect(store().scene?.cameras[0].yaw).toBe(30);
+    store().undo();
+    expect(store().scene?.cameras[0].yaw).not.toBe(30);
+  });
+});
+
+describe("机位画面分栏", () => {
+  test("默认是浮窗，可以切成左右分栏再切回来", () => {
+    expect(store().previewSplit).toBe(false);
+    store().toggleSplit();
+    expect(store().previewSplit).toBe(true);
+    store().toggleSplit();
+    expect(store().previewSplit).toBe(false);
+  });
+
+  test("开关编辑器会话不影响分栏状态（它是偏好）", () => {
+    store().toggleSplit();
+    store().close();
+    store().open("node2", scene());
+    expect(store().previewSplit).toBe(true);
+    store().toggleSplit();
+  });
+});
+
 describe("添加对象（选项）", () => {
   test("添加人物可以选男女", () => {
     store().addObject("character", { model: "female" });

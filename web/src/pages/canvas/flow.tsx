@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MiniMap,
   ReactFlow,
@@ -51,6 +51,7 @@ import { useSettingsStore } from "@/store";
 import { useFramePickStore } from "@/store/frame-pick";
 import { useDirectorStore } from "@/store/director";
 import { useTrimStore } from "@/store/trim";
+import { DirectorHost } from "@/components/director/director-host";
 import { openDirector } from "@/components/director/open-director";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
@@ -108,9 +109,6 @@ import { OverlayGateProvider, useOverlayGate } from "./overlay-gate";
 import { NodePreviewProvider } from "./preview-context";
 import { MultiSelectProvider, SelectionToolbar } from "./selection-toolbar";
 import { useCanvasShortcuts } from "./use-canvas-shortcuts";
-
-/** 导演台编辑器带着 three.js，只在打开时才加载，不进画布首屏的包 */
-const DirectorEditor = lazy(() => import("@/components/director/director-editor"));
 
 /** 画布最小缩放 */
 const MIN_ZOOM = 0.14;
@@ -276,7 +274,6 @@ export const Flow = memo(function Flow({
   useTaskBackfill(contentNodes, setContentNodes);
   // 保存撞上冲突要弹「画布已在别处修改」：先关掉导演台，弹窗显示在画布上（设计稿 3D导演台 §7）。
   // 场景早已写进节点，跟着弹窗里「另存为新画布 / 加载最新」走，和画布上其他本地改动一样
-  const directorOpen = useDirectorStore((state) => state.nodeId !== null);
   useEffect(() => {
     if (conflict !== null || draftConflict !== null) useDirectorStore.getState().reset();
   }, [conflict, draftConflict]);
@@ -921,7 +918,7 @@ export const Flow = memo(function Flow({
                       />
                       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
                       <NodeHistoryDialog />
-                      <Suspense fallback={null}>{directorOpen && <DirectorEditor />}</Suspense>
+                      <DirectorHost />
                       <MediaLightbox
                         items={liveItems ?? lastItems}
                         target={preview}

@@ -1,12 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
-  Box,
   Camera,
   Clapperboard,
   Columns3,
   Crop,
-  Download,
   Eraser,
   Expand,
   ImageUpscale,
@@ -147,14 +145,8 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
     ],
     tail: ["copy", "zoom"],
   },
-  // 导演台（设计稿 docs/design/3D导演台）：没有素材可看可下，右半边留空
-  director: {
-    actions: [
-      { id: "director-open", label: "打开导演台", icon: Box },
-      { id: "director-export", label: "导出视频", icon: Download },
-    ],
-    tail: [],
-  },
+  // 导演台（设计稿 docs/design/3D导演台）：不出功能区（toolbarGate 里不显示），这里留空
+  director: { actions: [], tail: [] },
 };
 
 /** 一种节点配置里所有按钮和菜单项的 id，用来检查不重复 */

@@ -26,7 +26,7 @@ export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) => {
     case "script":
       return <TextCanvasNode id={id} data={data} selected={selected} />;
     case "director":
-      return <DirectorCanvasNode id={id} data={data} selected={selected} />;
+      return <DirectorCanvasNode id={id} data={data} />;
   }
 }, sameNodeProps);
 CanvasNodeView.displayName = "CanvasNodeView";

@@ -45,34 +45,82 @@ type Template = {
   scale: number;
 };
 
+/** 加载进度回调，参数是 0 ~ 1 的比例 */
+export type ProgressListener = (fraction: number) => void;
+
 type Slot = {
   template: Template | null;
   status: FigureModelStatus;
   pending: Promise<boolean> | null;
+  /** 加载到哪了（0 ~ 1），只增不减 */
+  fraction: number;
+  /** 加载中途又来要同一个模型的调用方，也要能收到进度 */
+  listeners: Set<ProgressListener>;
 };
 
-const slots: Record<FigureModel, Slot> = {
-  male: { template: null, status: "idle", pending: null },
-  female: { template: null, status: "idle", pending: null },
-};
+const emptySlot = (): Slot => ({
+  template: null,
+  status: "idle",
+  pending: null,
+  fraction: 0,
+  listeners: new Set(),
+});
 
-/** 读模型文件的函数：默认从站点静态资源里取，测试里注入 */
-export type ModelLoader = (model: FigureModel) => Promise<ArrayBuffer>;
+const slots: Record<FigureModel, Slot> = { male: emptySlot(), female: emptySlot() };
+
+/** 读模型文件的函数：默认从站点静态资源里取，测试里注入；读的过程中可以上报下载比例 */
+export type ModelLoader = (
+  model: FigureModel,
+  onProgress?: ProgressListener,
+) => Promise<ArrayBuffer>;
 
 /** 某个人台模型加载到哪一步了；非 ready 时这类人物用简化形体顶着 */
 export const figureModelStatus = (model: FigureModel = "male") => slots[model].status;
 
 /** 清掉已加载的模型，回到没加载过的状态（测试用） */
 export function resetFigureModel() {
-  for (const model of FIGURE_MODELS) {
-    slots[model] = { template: null, status: "idle", pending: null };
-  }
+  for (const model of FIGURE_MODELS) slots[model] = emptySlot();
 }
 
-const fetchModel: ModelLoader = async (model) => {
+/**
+ * 读完响应体并按已下载的比例上报进度。
+ * 要用 Content-Length 当总量；没有它就读完再报 1。
+ * 服务器压缩传输时 Content-Length 是压缩后的大小，读到的字节会比它多，所以读的过程中最多报 0.99。
+ */
+export async function readWithProgress(
+  response: Response,
+  onProgress?: ProgressListener,
+): Promise<ArrayBuffer> {
+  const total = Number(response.headers.get("Content-Length"));
+  if (!onProgress || !response.body || !(total > 0)) {
+    const buffer = await response.arrayBuffer();
+    onProgress?.(1);
+    return buffer;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    onProgress(Math.min(loaded / total, 0.99));
+  }
+  const bytes = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  onProgress(1);
+  return bytes.buffer;
+}
+
+const fetchModel: ModelLoader = async (model, onProgress) => {
   const response = await fetch(modelUrl(model));
   if (!response.ok) throw new Error(`人物模型请求失败：${response.status}`);
-  return response.arrayBuffer();
+  return readWithProgress(response, onProgress);
 };
 
 const findSkinned = (root: Object3D): SkinnedMesh | undefined => {
@@ -121,21 +169,37 @@ function prepareTemplate(scene: Object3D, model: FigureModel): Template {
  * 加载失败不抛错：这类人物退回简化形体，导出照常可用。
  * @param load 读模型文件的函数，默认从站点静态资源里取；测试里注入
  * @param model 要加载的模型，缺省男性
+ * @param onProgress 上报加载进度（0 ~ 1，只增不减）：下载占前 90%，解析完成时是 1；已加载好的立刻报 1
  * @returns 是否加载成功
  */
 export function loadFigureModel(
   load: ModelLoader = fetchModel,
   model: FigureModel = "male",
+  onProgress?: ProgressListener,
 ): Promise<boolean> {
   const slot = slots[model];
-  if (slot.status === "ready") return Promise.resolve(true);
-  if (slot.pending) return slot.pending;
+  if (slot.status === "ready") {
+    onProgress?.(1);
+    return Promise.resolve(true);
+  }
+  if (onProgress) slot.listeners.add(onProgress);
+  if (slot.pending) {
+    onProgress?.(slot.fraction);
+    return slot.pending;
+  }
   slot.status = "loading";
+  slot.fraction = 0;
+  const report = (fraction: number) => {
+    slot.fraction = Math.max(slot.fraction, fraction);
+    for (const listener of slot.listeners) listener(slot.fraction);
+  };
   slot.pending = (async () => {
     try {
-      const gltf = await new GLTFLoader().parseAsync(await load(model), "");
+      const buffer = await load(model, (fraction) => report(fraction * DOWNLOAD_SHARE));
+      const gltf = await new GLTFLoader().parseAsync(buffer, "");
       slot.template = prepareTemplate(gltf.scene, model);
       slot.status = "ready";
+      report(1);
       return true;
     } catch (error) {
       console.warn(`人物模型（${model}）加载失败，改用简化形体`, error);
@@ -144,20 +208,40 @@ export function loadFigureModel(
       return false;
     } finally {
       slot.pending = null;
+      slot.listeners.clear();
     }
   })();
   return slot.pending;
 }
 
+/** 下载在单个模型加载进度里占的比例，剩下的是解析 */
+const DOWNLOAD_SHARE = 0.9;
+
 /**
  * 加载一批人台模型（去重），只读用到的。
+ * @param onProgress 上报总进度（0 ~ 1），是各个模型进度的平均
  * @returns 全部成功才是 true；有失败的，成功的那些照常可用
  */
 export async function loadFigureModels(
   models: readonly FigureModel[],
   load: ModelLoader = fetchModel,
+  onProgress?: ProgressListener,
 ): Promise<boolean> {
-  const results = await Promise.all([...new Set(models)].map((m) => loadFigureModel(load, m)));
+  const unique = [...new Set(models)];
+  const fractions = unique.map(() => 0);
+  const results = await Promise.all(
+    unique.map((model, index) =>
+      loadFigureModel(
+        load,
+        model,
+        onProgress &&
+          ((fraction) => {
+            fractions[index] = fraction;
+            onProgress(fractions.reduce((sum, f) => sum + f, 0) / unique.length);
+          }),
+      ),
+    ),
+  );
   return results.every(Boolean);
 }
 

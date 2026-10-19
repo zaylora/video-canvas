@@ -15,6 +15,7 @@ import {
   setKeyEase,
   upsertKey,
 } from "@/utils/director/keys";
+import { MAX_PITCH, type ViewMode } from "@/utils/director/camera-view";
 import { readFlag, writeFlag } from "@/utils/director/prefs";
 import { applyPreset as applyPresetTo, type CameraPresetId } from "@/utils/director/preset";
 import { sampleCamera, sampleCharacter } from "@/utils/director/sample";
@@ -61,6 +62,8 @@ type DirectorState = {
   exporting: boolean;
   selectedId: string | null;
   selectedKey: { id: string; t: number } | null;
+  /** 主视口看哪里：导演视角，或站在当前机位里看（机位视角）；会话状态，每次打开都从导演视角开始 */
+  viewMode: ViewMode;
   /** 播放头（秒） */
   t: number;
   playing: boolean;
@@ -81,6 +84,8 @@ type DirectorState = {
   assetsOpen: boolean;
   /** 资产面板当前的标签页 */
   assetTab: AssetTab;
+  /** 机位画面：false 是视口右下角的浮窗，true 是和导演视角左右分栏；偏好，会记在浏览器里 */
+  previewSplit: boolean;
 
   open: (nodeId: string, scene: DirectorScene, opts?: { exportOnOpen?: boolean }) => void;
   /** 关闭编辑器；导出中拒绝，返回 false */
@@ -95,6 +100,11 @@ type DirectorState = {
   toggleLabels: () => void;
   toggleAssets: () => void;
   setAssetTab: (tab: AssetTab) => void;
+  toggleSplit: () => void;
+  /** 切换视角；切到机位视角要求场景里有机位，没有就不切 */
+  setViewMode: (mode: ViewMode) => void;
+  /** 进指定机位的机位视角：它成为当前机位并被选中（只是视图状态，不进撤销栈）；机位不存在就不动 */
+  enterCameraView: (cameraId: string) => void;
   /** 加一个对象并选中；到上限时不改场景，返回提示 */
   addObject: (kind: DirectorAddKind, options?: AddOptions) => string | undefined;
   removeObject: (id: string) => void;
@@ -133,6 +143,7 @@ type Session = Pick<
   | "exporting"
   | "selectedId"
   | "selectedKey"
+  | "viewMode"
   | "t"
   | "playing"
   | "pending"
@@ -148,6 +159,7 @@ const IDLE: Session = {
   exporting: false,
   selectedId: null,
   selectedKey: null,
+  viewMode: "director",
   t: 0,
   playing: false,
   pending: {},
@@ -157,7 +169,6 @@ const IDLE: Session = {
 };
 
 const MIN_CAMERA_HEIGHT = 0.1;
-const MAX_PITCH = 85;
 
 /** 把改动里的机位高度、俯仰夹到合法范围 */
 const clampCamera = <P extends ObjectPatch>(patch: P): P => ({
@@ -204,6 +215,7 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
     labels: true,
     assetsOpen: readFlag("assets-open", true),
     assetTab: "character",
+    previewSplit: readFlag("preview-split", false),
 
     open: (nodeId, scene, opts) =>
       set({ ...IDLE, nodeId, scene, exportOnOpen: !!opts?.exportOnOpen }),
@@ -247,6 +259,22 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
         return { assetsOpen: !state.assetsOpen };
       }),
     setAssetTab: (assetTab) => set({ assetTab }),
+    setViewMode: (mode) => {
+      const { scene } = get();
+      if (mode === "camera" && !scene?.cameras.length) return;
+      set({ viewMode: mode });
+    },
+    enterCameraView: (cameraId) => {
+      const { scene, select } = get();
+      if (!scene?.cameras.some((c) => c.id === cameraId)) return;
+      select(cameraId);
+      set({ viewMode: "camera" });
+    },
+    toggleSplit: () =>
+      set((state) => {
+        writeFlag("preview-split", !state.previewSplit);
+        return { previewSplit: !state.previewSplit };
+      }),
 
     addObject: (kind, options) => {
       const { scene } = get();
@@ -266,8 +294,11 @@ export const useDirectorStore = create<DirectorState>((set, get) => {
       const { scene, selectedId, selectedKey, pending } = get();
       if (!scene) return;
       const { [id]: _dropped, ...rest } = pending;
-      commit(removeFrom(scene, id), {
+      const next = removeFrom(scene, id);
+      commit(next, {
         pending: rest,
+        // 删光机位后没有机位可看，回到导演视角（再加机位也不会自己跳进机位视角）
+        ...(next.cameras.length === 0 ? { viewMode: "director" as const } : {}),
         selectedId: selectedId === id ? null : selectedId,
         selectedKey: selectedKey?.id === id ? null : selectedKey,
       });

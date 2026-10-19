@@ -65,8 +65,8 @@ describe("功能区按钮的可用性", () => {
 });
 
 describe("导演台的功能区", () => {
-  test("没有素材也始终显示，按钮可点", () => {
+  test("不显示功能区：进入编辑器的入口在节点正文的按钮上", () => {
     const gate = toolbarGate({ kind: "director", label: "导演台1" });
-    expect(gate).toEqual({ visible: true, actionsDisabled: false });
+    expect(gate.visible).toBe(false);
   });
 });

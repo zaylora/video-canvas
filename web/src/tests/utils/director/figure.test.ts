@@ -10,6 +10,7 @@ import {
   loadFigureModel,
   loadFigureModels,
   measureFigure,
+  readWithProgress,
   resetFigureModel,
 } from "@/utils/director/figure";
 import { POSE_LABELS } from "@/utils/director/scene";
@@ -100,6 +101,133 @@ describe("模型加载", () => {
     const garbage = async () => new TextEncoder().encode("not a glb").buffer as ArrayBuffer;
     expect(await loadFigureModel(garbage)).toBe(false);
     expect(figureModelStatus("male")).toBe("failed");
+  });
+});
+
+describe("模型加载进度", () => {
+  /** 一边下载一边报告已下载比例的假读取函数 */
+  const reporting = async (model: FigureModel, report?: (fraction: number) => void) => {
+    report?.(0.25);
+    report?.(0.5);
+    report?.(1);
+    return readModel(model);
+  };
+
+  test("下载中按比例上报，解析完成时是 1，且不会往回走", async () => {
+    const seen: number[] = [];
+    await loadFigureModel(reporting, "male", (f) => seen.push(f));
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    expect(seen.every((f) => f >= 0 && f <= 1)).toBe(true);
+    // 下载完还要解析，解析完才算 1
+    expect(seen.at(-2)).toBeLessThan(1);
+    expect(seen.at(-1)).toBe(1);
+  });
+
+  test("已经加载好的模型立刻报 1", async () => {
+    await loadFigureModel(readModel);
+    const seen: number[] = [];
+    await loadFigureModel(readModel, "male", (f) => seen.push(f));
+    expect(seen).toEqual([1]);
+  });
+
+  test("加载中途又有人来要同一个模型：共用请求，也能收到进度", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let reads = 0;
+    const slow = async (model: FigureModel, report?: (fraction: number) => void) => {
+      reads++;
+      report?.(0.5);
+      await gate;
+      return readModel(model);
+    };
+    const first: number[] = [];
+    const second: number[] = [];
+    const a = loadFigureModel(slow, "male", (f) => first.push(f));
+    const b = loadFigureModel(slow, "male", (f) => second.push(f));
+    release();
+    await Promise.all([a, b]);
+    expect(reads).toBe(1);
+    expect(second.length).toBeGreaterThan(0);
+    expect(second.at(-1)).toBe(1);
+    expect(first.at(-1)).toBe(1);
+  });
+
+  test("加载失败不会上报 1", async () => {
+    const seen: number[] = [];
+    await loadFigureModel(
+      () => Promise.reject(new Error("断网")),
+      "male",
+      (f) => seen.push(f),
+    );
+    expect(seen).not.toContain(1);
+  });
+
+  test("多个模型的总进度是各自进度的平均", async () => {
+    const seen: number[] = [];
+    await loadFigureModels(["male", "female"], reporting, (f) => seen.push(f));
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    expect(seen.at(-1)).toBe(1);
+  });
+});
+
+describe("读取模型文件并报告下载进度", () => {
+  const streamOf = (chunks: number[][], headers: Record<string, string>) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+          controller.close();
+        },
+      }),
+      { headers },
+    );
+
+  test("按 Content-Length 边读边报，读完是 1，内容完整", async () => {
+    const seen: number[] = [];
+    const buffer = await readWithProgress(
+      streamOf(
+        [
+          [1, 2],
+          [3, 4],
+          [5, 6],
+        ],
+        { "Content-Length": "6" },
+      ),
+      (f) => seen.push(f),
+    );
+    expect([...new Uint8Array(buffer)]).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(seen.at(-1)).toBe(1);
+    expect(seen.slice(0, -1).every((f) => f < 1)).toBe(true);
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+  });
+
+  test("没有 Content-Length 时读完再报 1", async () => {
+    const seen: number[] = [];
+    const buffer = await readWithProgress(streamOf([[7, 8, 9]], {}), (f) => seen.push(f));
+    expect([...new Uint8Array(buffer)]).toEqual([7, 8, 9]);
+    expect(seen).toEqual([1]);
+  });
+
+  test("压缩传输时实际字节比 Content-Length 多：进度不会超过 1", async () => {
+    const seen: number[] = [];
+    await readWithProgress(
+      streamOf(
+        [
+          [1, 2, 3, 4],
+          [5, 6, 7, 8],
+        ],
+        { "Content-Length": "4" },
+      ),
+      (f) => seen.push(f),
+    );
+    expect(seen.every((f) => f <= 1)).toBe(true);
+    expect(seen.slice(0, -1).every((f) => f < 1)).toBe(true);
+  });
+
+  test("不要进度时直接读完", async () => {
+    const buffer = await readWithProgress(streamOf([[1, 2, 3]], { "Content-Length": "3" }));
+    expect([...new Uint8Array(buffer)]).toEqual([1, 2, 3]);
   });
 });
 

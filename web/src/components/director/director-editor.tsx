@@ -24,6 +24,7 @@ import { DURATION, EASE_OUT, TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useDirectorStore } from "@/store/director";
 import type { CanvasNodeData, FigureModel } from "@/types";
+import { activeCameraOf } from "@/utils/director/camera-view";
 import { UNSUPPORTED_EXPORT_MESSAGE, canExportVideo } from "@/utils/director/export-engine";
 import { disposeThumbRenderer } from "@/utils/director/asset-thumbs";
 import { figureModelStatus, loadFigureModels } from "@/utils/director/figure";
@@ -34,12 +35,15 @@ import { DirectorPreview } from "./director-preview";
 import { DirectorSidebar } from "./director-sidebar";
 import { DirectorTimeline } from "./director-timeline";
 import { DirectorViewport, type DirectorViewportApi } from "./director-viewport";
+import { MENU_ATTR, ViewModeSwitch } from "./view-mode-switch";
 import { useDirectorSync } from "./use-director-sync";
 
 /** 键盘事件落在这些元素上时交给它们自己（打字、选下拉） */
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
-  !!target.closest("input:not([type=checkbox]):not([type=radio]), textarea, select");
+  !!target.closest(
+    `input:not([type=checkbox]):not([type=radio]), textarea, select, [${MENU_ATTR}]`,
+  );
 
 /**
  * 导演台全屏编辑器（设计稿 docs/design/3D导演台 §6.3）：懒加载，带着 three.js。
@@ -80,6 +84,8 @@ export default function DirectorEditor() {
   const tool = useDirectorStore((state) => state.tool);
   const snap = useDirectorStore((state) => state.snap);
   const labels = useDirectorStore((state) => state.labels);
+  const split = useDirectorStore((state) => state.previewSplit);
+  const camView = useDirectorStore((state) => activeCameraOf(state.scene, state.viewMode) !== null);
   const assetsOpen = useDirectorStore((state) => state.assetsOpen);
   const canUndo = useDirectorStore((state) => state.past.length > 0);
   const canRedo = useDirectorStore((state) => state.future.length > 0);
@@ -317,28 +323,34 @@ export default function DirectorEditor() {
         {assetsOpen && <DirectorAssets onCameraFromView={cameraFromView} />}
 
         <main className="relative min-h-0 min-w-0 overflow-hidden">
-          <DirectorViewport ref={viewport} />
-          <span className="bg-card/80 text-muted-foreground border-border pointer-events-none absolute top-2.5 left-2.5 rounded-md border px-2 py-1 text-[11px]">
-            导演视角 · 左键拖空白处旋转 · 右键平移 · 滚轮缩放 · 点选对象后拖动彩色轴
-          </span>
-          {modelFailed && (
-            <div className="bg-status-running/15 text-foreground border-status-running/40 absolute top-2.5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
-              <TriangleAlert className="text-status-running size-3.5" />
-              人物模型加载失败，已用简化形体代替（导出仍可用）
-              <button
-                type="button"
-                onClick={retryModel}
-                className="hover:bg-muted focus-visible:ring-ring rounded px-1.5 py-0.5 font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2"
-              >
-                重试
-              </button>
-            </div>
-          )}
-          {empty && (
-            <p className="text-muted-foreground pointer-events-none absolute inset-0 grid place-items-center text-sm">
-              添加人物或机位开始摆位
-            </p>
-          )}
+          {/* 导演视角：分栏时收成左半边；视口自己始终挂着，只是这个容器变窄，WebGL 上下文不重建 */}
+          <div className={cn("absolute inset-y-0 left-0", split ? "right-1/2" : "right-0")}>
+            <DirectorViewport ref={viewport} />
+            <span className="bg-card/80 text-muted-foreground border-border pointer-events-none absolute top-2.5 left-2.5 max-w-[calc(100%-1.25rem)] truncate rounded-md border px-2 py-1 text-[11px]">
+              {camView
+                ? "机位视角 · 按住左键拖动调整机位朝向 · 要走位或换机位位置，切回导演视角"
+                : "导演视角 · 左键拖空白处旋转 · 右键平移 · 滚轮缩放 · 点选对象后拖动彩色轴"}
+            </span>
+            {modelFailed && (
+              <div className="bg-status-running/15 text-foreground border-status-running/40 absolute top-12 left-1/2 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-1.5 text-xs">
+                <TriangleAlert className="text-status-running size-3.5" />
+                人物模型加载失败，已用简化形体代替（导出仍可用）
+                <button
+                  type="button"
+                  onClick={retryModel}
+                  className="hover:bg-muted focus-visible:ring-ring rounded px-1.5 py-0.5 font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2"
+                >
+                  重试
+                </button>
+              </div>
+            )}
+            {empty && (
+              <p className="text-muted-foreground pointer-events-none absolute inset-0 grid place-items-center text-sm">
+                添加人物或机位开始摆位
+              </p>
+            )}
+            <ViewModeSwitch />
+          </div>
           <DirectorPreview />
         </main>
 

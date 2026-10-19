@@ -9,7 +9,6 @@ import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
 import { FrameOverlay } from "@/components/canvas/frame-overlay";
 import { TrimOverlay } from "@/components/canvas/trim-overlay";
-import { openDirector } from "@/components/director/open-director";
 import {
   PANEL_OFFSET,
   useMarqueeSelecting,
@@ -136,12 +135,7 @@ export function NodeOverlays({
             "frame-last": () => void captureQuick(id, "last"),
             "frame-custom": startFramePick,
           }
-        : data.kind === "director"
-          ? {
-              "director-open": () => openDirector(id, data),
-              "director-export": () => openDirector(id, data, { exportOnOpen: true }),
-            }
-          : undefined;
+        : undefined;
 
   const { src, text, label, fileName } = data;
   const onTail: Partial<Record<ToolbarTail, () => void>> = {
