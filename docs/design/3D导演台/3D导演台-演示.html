@@ -214,6 +214,35 @@
       .eb.pri:hover:not(:disabled) { background: #e5e5e5; }
       .sepv { width: 1px; height: 20px; background: hsl(var(--ed-line)); margin: 0 4px; }
       .ed-mid { display: grid; grid-template-columns: 50px minmax(0, 1fr) 250px; min-height: 0; }
+      .ed-mid.with-assets { grid-template-columns: 50px 264px minmax(0, 1fr) 250px; }
+      .assets { border-right: 1px solid hsl(var(--ed-line)); background: hsl(var(--ed-panel) / 0.6); display: flex; flex-direction: column; min-height: 0; animation: fadein 0.18s ease-out; }
+      @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+      .as-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; font-weight: 600; font-size: 13px; }
+      .as-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid hsl(var(--ed-line)); }
+      .as-tab { height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: hsl(var(--ed-dim)); font-size: 12px; position: relative; }
+      .as-tab:hover { color: hsl(var(--ed-fg)); }
+      .as-tab.on { color: hsl(var(--ed-fg)); }
+      .as-tab.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; border-radius: 2px; background: hsl(var(--ed-fg)); }
+      .as-search { margin: 12px 12px 0; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid hsl(var(--ed-line)); border-radius: 9px; background: hsl(var(--ed-bg)); color: hsl(var(--ed-dim)); }
+      .as-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: hsl(var(--ed-fg)); font: inherit; font-size: 12px; }
+      .as-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 4px; }
+      .as-chip { height: 26px; padding: 0 10px; border-radius: 7px; font-size: 12px; color: hsl(var(--ed-dim)); }
+      .as-chip:hover { color: hsl(var(--ed-fg)); }
+      .as-chip.on { background: hsl(var(--ed-raise)); color: hsl(var(--ed-fg)); }
+      .as-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px 12px; }
+      .as-sec h4 { font-size: 12px; font-weight: 400; color: hsl(var(--ed-dim)); margin: 8px 0 6px; }
+      .as-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .as-card { text-align: left; border: 1px solid hsl(var(--ed-line)); border-radius: 12px; padding: 8px; background: hsl(var(--ed-panel)); display: flex; flex-direction: column; gap: 8px; transition: background 0.12s; }
+      .as-card:hover:not(:disabled) { background: hsl(var(--ed-raise)); }
+      .as-card:active:not(:disabled) { transform: scale(0.985); }
+      .as-card:disabled { opacity: 0.4; cursor: not-allowed; }
+      .as-thumb { aspect-ratio: 1; border-radius: 9px; background: hsl(var(--ed-bg)); display: grid; place-items: center; overflow: hidden; color: hsl(var(--ed-dim)); }
+      .as-thumb img { width: 100%; height: 100%; object-fit: contain; }
+      .as-thumb .pulse { width: 100%; height: 100%; background: hsl(var(--ed-raise)); animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.45; } }
+      .as-name { font-size: 12px; font-weight: 500; padding: 0 2px; }
+      .as-tag { font-size: 11px; color: hsl(var(--ed-dim)); padding: 0 2px; margin-top: -6px; }
+      .as-empty { text-align: center; color: hsl(var(--ed-dim)); font-size: 12px; padding: 32px 0; }
       .ed-left { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; border-right: 1px solid hsl(var(--ed-line)); }
       .ed-left .eb { width: 34px; height: 34px; padding: 0; justify-content: center; position: relative; }
       .ed-left .kbd { position: absolute; right: -2px; top: -3px; font-size: 9px; background: hsl(var(--ed-line)); border-radius: 4px; padding: 0 3px; color: hsl(var(--ed-dim)); }
@@ -863,6 +892,31 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         scene.add(content, helpers);
         return { T, scene, guides, content, helpers, objs: new Map(), trails: new Map(), withHelpers };
       }
+      /* 道具预设：和 web/src/utils/director/prop-presets.ts 同一份数据。零件坐标在单位立方体里（x、z 居中，y 从地面起） */
+      const PROP_PRESETS = {"box":{"label":"立方体","category":"geometry","size":[1,1,1]},"cylinder":{"label":"圆柱","category":"geometry","size":[0.6,1,0.6]},"sphere":{"label":"球体","category":"geometry","size":[0.8,0.8,0.8]},"plane":{"label":"平面","category":"geometry","size":[4,2.5,0.05]},"table":{"label":"桌子","category":"object","size":[1.4,0.75,0.8],"parts":[{"kind":"box","center":[0,0.96,0],"size":[1,0.08,1]},{"kind":"box","center":[-0.455,0.46,-0.4],"size":[0.05,0.92,0.09]},{"kind":"box","center":[-0.455,0.46,0.4],"size":[0.05,0.92,0.09]},{"kind":"box","center":[0.455,0.46,-0.4],"size":[0.05,0.92,0.09]},{"kind":"box","center":[0.455,0.46,0.4],"size":[0.05,0.92,0.09]}]},"chair":{"label":"椅子","category":"object","size":[0.45,0.9,0.45],"parts":[{"kind":"box","center":[0,0.5,0],"size":[1,0.06,1]},{"kind":"box","center":[-0.4,0.235,-0.4],"size":[0.1,0.47,0.1]},{"kind":"box","center":[-0.4,0.235,0.4],"size":[0.1,0.47,0.1]},{"kind":"box","center":[0.4,0.235,-0.4],"size":[0.1,0.47,0.1]},{"kind":"box","center":[0.4,0.235,0.4],"size":[0.1,0.47,0.1]},{"kind":"box","center":[0,0.76,0.45],"size":[1,0.48,0.1]}]},"sofa":{"label":"沙发","category":"object","size":[2,0.85,0.9],"parts":[{"kind":"box","center":[0,0.2,0],"size":[1,0.4,1]},{"kind":"box","center":[0,0.7,0.375],"size":[1,0.6,0.25]},{"kind":"box","center":[-0.44,0.55,-0.125],"size":[0.12,0.3,0.75]},{"kind":"box","center":[0.44,0.55,-0.125],"size":[0.12,0.3,0.75]}]},"bed":{"label":"床","category":"object","size":[1.6,0.6,2],"parts":[{"kind":"box","center":[0,0.175,0],"size":[1,0.35,1]},{"kind":"box","center":[0,0.45,0],"size":[0.96,0.2,0.96]},{"kind":"box","center":[0,0.675,0.47],"size":[1,0.65,0.06]},{"kind":"box","center":[-0.24,0.6,0.36],"size":[0.35,0.1,0.16]},{"kind":"box","center":[0.24,0.6,0.36],"size":[0.35,0.1,0.16]}]},"cabinet":{"label":"柜子","category":"object","size":[0.9,1.8,0.45],"parts":[{"kind":"box","center":[0,0.5,0.02],"size":[1,1,0.96]},{"kind":"box","center":[0,0.5,-0.48],"size":[0.02,0.94,0.04]},{"kind":"box","center":[-0.07,0.5,-0.48],"size":[0.04,0.2,0.04]},{"kind":"box","center":[0.07,0.5,-0.48],"size":[0.04,0.2,0.04]}]},"door":{"label":"门","category":"object","size":[0.95,2.1,0.12],"parts":[{"kind":"box","center":[-0.46,0.5,0],"size":[0.08,1,1]},{"kind":"box","center":[0.46,0.5,0],"size":[0.08,1,1]},{"kind":"box","center":[0,0.975,0],"size":[1,0.05,1]},{"kind":"box","center":[0,0.475,0],"size":[0.84,0.95,0.4]},{"kind":"box","center":[0.3,0.45,-0.3],"size":[0.06,0.05,0.2]}]},"wall":{"label":"墙","category":"object","size":[4,2.6,0.2],"parts":[{"kind":"box","center":[0,0.47,0],"size":[1,0.94,0.8]},{"kind":"box","center":[0,0.97,0],"size":[1,0.06,1]}]},"stairs":{"label":"楼梯","category":"object","size":[1.2,1.8,3],"parts":[{"kind":"box","center":[0,0.1,0.4],"size":[1,0.2,0.2]},{"kind":"box","center":[0,0.2,0.2],"size":[1,0.4,0.2]},{"kind":"box","center":[0,0.3,0],"size":[1,0.6,0.2]},{"kind":"box","center":[0,0.4,-0.20000000000000007],"size":[1,0.8,0.2]},{"kind":"box","center":[0,0.5,-0.4],"size":[1,1,0.2]}]},"car":{"label":"汽车","category":"object","size":[1.9,1.5,4.4],"parts":[{"kind":"box","center":[0,0.325,0],"size":[0.9,0.35,1]},{"kind":"box","center":[0,0.75,0.05],"size":[0.76,0.5,0.5]},{"kind":"cylinder","center":[-0.45,0.15,-0.32],"size":[0.1,0.3,0.3],"axis":"x"},{"kind":"cylinder","center":[-0.45,0.15,0.32],"size":[0.1,0.3,0.3],"axis":"x"},{"kind":"cylinder","center":[0.45,0.15,-0.32],"size":[0.1,0.3,0.3],"axis":"x"},{"kind":"cylinder","center":[0.45,0.15,0.32],"size":[0.1,0.3,0.3],"axis":"x"}]},"tree":{"label":"树","category":"object","size":[2,4,2],"parts":[{"kind":"cylinder","center":[0,0.2,0],"size":[0.12,0.4,0.12]},{"kind":"sphere","center":[0,0.65,0],"size":[1,0.7,1]}]}};
+      const PROP_CATS = [{ id: "geometry", label: "几何体" }, { id: "object", label: "物体" }];
+      const shapesOf = (cat) => Object.keys(PROP_PRESETS).filter((k) => PROP_PRESETS[k].category === cat);
+      const propParts = (shape) => {
+        const p = PROP_PRESETS[shape];
+        if (p.parts) return p.parts;
+        const kind = shape === "cylinder" ? "cylinder" : shape === "sphere" ? "sphere" : "box";
+        return [{ kind, center: [0, 0.5, 0], size: [1, 1, 1] }];
+      };
+      const FIGURE_LABELS = { male: "男性", female: "女性" };
+      const FIGURE_SCALE = { male: 1, female: 1.68 / 1.78 };
+      function buildProp(T, shape, mat) {
+        const g = new T.Group();
+        for (const part of propParts(shape)) {
+          let geo;
+          if (part.kind === "box") geo = new T.BoxGeometry(1, 1, 1);
+          else if (part.kind === "sphere") geo = new T.SphereGeometry(0.5, 32, 20);
+          else { geo = new T.CylinderGeometry(0.5, 0.5, 1, 32); if (part.axis === "x") geo.rotateZ(Math.PI / 2); if (part.axis === "z") geo.rotateX(Math.PI / 2); }
+          const m = new T.Mesh(geo, mat);
+          m.position.set(...part.center); m.scale.set(...part.size); m.castShadow = m.receiveShadow = true;
+          g.add(m);
+        }
+        return g;
+      }
       function disposeTree(o) {
         o.parent && o.parent.remove(o);
         o.traverse((n) => { n.geometry && n.geometry.dispose(); if (n.material) [].concat(n.material).forEach((m) => m.dispose()); });
@@ -882,11 +936,13 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         if (capsule) limb([0, 0.28, 0], [0, 1.38, 0], 0.24);
         else {
           const J = poseJoints(ch.pose);
-          const ls = [-0.19, J.neck[1] - 0.05, J.neck[2]], rs = [0.19, J.neck[1] - 0.05, J.neck[2]];
-          const lhp = [-0.1, J.hip[1], J.hip[2]], rhp = [0.1, J.hip[1], J.hip[2]];
-          limb(J.hip, J.neck, 0.15); limb(ls, rs, 0.07); limb(lhp, rhp, 0.09);
-          limb(ls, J.lh, 0.05); limb(rs, J.rh, 0.05);
-          limb(lhp, J.lk, 0.07); limb(J.lk, J.lf, 0.06); limb(rhp, J.rk, 0.07); limb(J.rk, J.rf, 0.06);
+          const fem = ch.model === "female", k = fem ? 0.9 : 1;
+          const sx = fem ? 0.16 : 0.19, hx = fem ? 0.115 : 0.1;
+          const ls = [-sx, J.neck[1] - 0.05, J.neck[2]], rs = [sx, J.neck[1] - 0.05, J.neck[2]];
+          const lhp = [-hx, J.hip[1], J.hip[2]], rhp = [hx, J.hip[1], J.hip[2]];
+          limb(J.hip, J.neck, 0.15 * k); limb(ls, rs, 0.07 * k); limb(lhp, rhp, (fem ? 0.11 : 0.09));
+          limb(ls, J.lh, 0.05 * k); limb(rs, J.rh, 0.05 * k);
+          limb(lhp, J.lk, 0.07 * (fem ? 1.05 : 1)); limb(J.lk, J.lf, 0.06 * k); limb(rhp, J.rk, 0.07 * (fem ? 1.05 : 1)); limb(J.rk, J.rf, 0.06 * k);
           head = [J.head[0], J.head[1] + 0.04, J.head[2]];
         }
         const h = new T.Mesh(new T.SphereGeometry(0.115, 20, 14), mat);
@@ -922,14 +978,14 @@ async function exportCameras(scene, cameraIds, opts, engine) {
           seen.add(id); return e;
         };
         for (const ch of sc.characters) {
-          const e = put(ch.id, "char", ch.pose + "|" + ch.color + "|" + !!o.capsule, () => buildFigure(T, ch, o.capsule), S.content);
+          const e = put(ch.id, "char", ch.pose + "|" + ch.color + "|" + (ch.model || "male") + "|" + !!o.capsule, () => buildFigure(T, ch, o.capsule), S.content);
           const st = stateFn(ch);
-          e.group.position.set(st.x, 0, st.z); e.group.rotation.set(0, -st.yaw * D2R, 0); e.group.scale.setScalar(ch.scale || 1); e.group.visible = !ch.hidden;
-          e.st = st; e.scale = ch.scale || 1;
+          e.group.position.set(st.x, 0, st.z); e.group.rotation.set(0, -st.yaw * D2R, 0); e.group.scale.setScalar((ch.scale || 1) * FIGURE_SCALE[ch.model || "male"]); e.group.visible = !ch.hidden;
+          e.st = st; e.scale = (ch.scale || 1) * FIGURE_SCALE[ch.model || "male"];
         }
         for (const p of sc.props) {
-          const e = put(p.id, "prop", "box", () => { const m = new T.MeshStandardMaterial({ color: 0x8796a8, roughness: 0.85 }); const g = new T.Group(); g.rotation.order = "YXZ"; const b = new T.Mesh(new T.BoxGeometry(1, 1, 1), m); b.castShadow = b.receiveShadow = true; g.add(b); return { group: g, mats: [m], box: b }; }, S.content);
-          e.group.position.set(p.x, 0, p.z); e.group.rotation.set(0, -p.yaw * D2R, 0); e.box.scale.set(p.w, p.h, p.d); e.box.position.y = p.h / 2; e.group.visible = !p.hidden;
+          const e = put(p.id, "prop", p.shape || "box", () => { const m = new T.MeshStandardMaterial({ color: 0x8796a8, roughness: 0.85 }); const g = new T.Group(); g.rotation.order = "YXZ"; const body = buildProp(T, p.shape || "box", m); g.add(body); return { group: g, mats: [m], box: body }; }, S.content);
+          e.group.position.set(p.x, 0, p.z); e.group.rotation.set(0, -p.yaw * D2R, 0); e.box.scale.set(p.w, p.h, p.d); e.group.visible = !p.hidden;
         }
         if (S.withHelpers) {
           for (const c of sc.cameras) {
@@ -1063,7 +1119,7 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         const ch = { id: "c1", name: "角色A", color: "#d4d4d8", pose: walking ? "行走" : "站立", scale: 1, x: walking ? -2.5 : 0, z: 0, yaw: walking ? 90 : 180,
           keys: walking ? [{ t: 0, x: -2.5, z: 0, yaw: 90, ease: "smooth" }, { t: lab.dur, x: 2.5, z: 0, yaw: 90, ease: "smooth" }] : [] };
         const cam = { id: "k1", name: "机位1", aspect: "16:9", x: walking ? -2.5 : 0, y: 1.6, z: 4, yaw: 0, pitch: -3, fov: 50, lookAt: "c1", keys: [] };
-        const scene = { duration: lab.dur, activeCameraId: "k1", characters: [ch], props: [{ id: "p1", name: "桌子", shape: "box", x: 1.6, z: -1.5, w: 1.2, h: 0.75, d: 0.7, yaw: 0 }, { id: "p2", name: "墙", shape: "box", x: 0, z: -4, w: 8, h: 2.6, d: 0.2, yaw: 0 }], cameras: [cam] };
+        const scene = { duration: lab.dur, activeCameraId: "k1", characters: [ch], props: [{ id: "p1", name: "桌子", shape: "table", x: 1.6, z: -1.5, w: 1.4, h: 0.75, d: 0.8, yaw: 0 }, { id: "p2", name: "墙", shape: "wall", x: 0, z: -4, w: 8, h: 2.6, d: 0.2, yaw: 0 }], cameras: [cam] };
         const charAt = (c, t) => sampleKeys(c.keys, t, CHR_F, c);
         const r = applyPreset(scene, cam, lab.preset, lab.strength, pick(cam, CAM_F), charAt);
         cam.keys = r.keys;
@@ -1106,7 +1162,7 @@ async function exportCameras(scene, cameraIds, opts, engine) {
       function defaultScene() {
         return {
           version: 1, duration: 5, activeCameraId: "cam1",
-          characters: [{ id: "ch1", name: "角色A", color: "#d4d4d8", pose: "站立", scale: 1, x: 0, z: 0, yaw: 180, keys: [] }],
+          characters: [{ id: "ch1", name: "角色A", color: "#d4d4d8", model: "male", pose: "站立", scale: 1, x: 0, z: 0, yaw: 180, keys: [] }],
           props: [],
           cameras: [{ id: "cam1", name: "机位1", aspect: "16:9", x: 0, y: 1.6, z: 4, yaw: 0, pitch: -4, fov: 50, lookAt: "", keys: [] }],
         };
@@ -1118,7 +1174,7 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         genLinked: [],
         // 编辑器
         scene: null, sel: null, selKey: null, t: 0, playing: false, pending: {}, past: [], future: [], lastSnap: "",
-        tab: "layers", snap: true, labels: true, tool: "move", saving: "saved", loadedOnce: false, presetId: "in", strength: 40, exp: null, dirty: false,
+        tab: "layers", snap: true, labels: true, tool: "move", assetsOpen: true, assetTab: "char", assetQuery: "", assetFilter: { char: "all", prop: "all", cam: "all" }, saving: "saved", loadedOnce: false, presetId: "in", strength: 40, exp: null, dirty: false,
       };
       const proto = $("#proto");
 
@@ -1381,6 +1437,108 @@ async function exportCameras(scene, cameraIds, opts, engine) {
       function undo() { if (!P.past.length) return; P.future.push(P.lastSnap); P.lastSnap = P.past.pop(); P.scene = JSON.parse(P.lastSnap); P.pending = {}; P.node.scene = clone(P.scene); renderEditor(); }
       function redo() { if (!P.future.length) return; P.past.push(P.lastSnap); P.lastSnap = P.future.pop(); P.scene = JSON.parse(P.lastSnap); P.pending = {}; P.node.scene = clone(P.scene); renderEditor(); }
 
+      /* ===== 资产面板（设计稿 §6.3 资产面板）：人物 / 物体 / 机位三个标签页，搜索 + 分类小标签 + 预览卡片，点卡片添加 ===== */
+      const ASSET_TABS = [{ id: "char", label: "人物", icon: "user-round" }, { id: "prop", label: "物体", icon: "box" }, { id: "cam", label: "机位", icon: "video" }];
+      function assetsHTML() {
+        return `<aside class="assets" id="assets" aria-label="资产">
+          <div class="as-head"><i data-lucide="box" style="color:hsl(var(--ed-dim))"></i>资产
+            <button class="eb" id="asCollapse" title="折叠资产面板" style="margin-left:auto; width:28px; padding:0; justify-content:center"><i data-lucide="panel-left-close"></i></button></div>
+          <div class="as-tabs" role="tablist">${ASSET_TABS.map((t) => `<button class="as-tab ${P.assetTab === t.id ? "on" : ""}" role="tab" data-astab="${t.id}"><i data-lucide="${t.icon}"></i>${t.label}</button>`).join("")}</div>
+          <label class="as-search"><i data-lucide="search"></i><input id="asQuery" placeholder="搜索素材" value="${esc(P.assetQuery)}"/></label>
+          <div class="as-chips" id="asChips"></div>
+          <div class="as-body" id="asBody"></div>
+        </aside>`;
+      }
+      /** 当前标签页下的卡片，按搜索和分类过滤 */
+      function assetSections() {
+        const q = P.assetQuery.trim().toLowerCase(), f = P.assetFilter[P.assetTab];
+        const hit = (c) => !q || c.name.toLowerCase().includes(q) || c.cat.toLowerCase().includes(q);
+        if (P.assetTab === "char") {
+          const cards = ["male", "female"].filter((m) => f === "all" || f === m).map((m) => ({ id: m, name: FIGURE_LABELS[m], cat: FIGURE_LABELS[m], kind: "char", opts: { model: m }, thumb: "char:" + m })).filter(hit);
+          return cards.length ? [{ title: null, cards }] : [];
+        }
+        if (P.assetTab === "prop") {
+          return PROP_CATS.filter((c) => f === "all" || f === c.id).map((c) => ({
+            title: f === "all" ? c.label : null,
+            cards: shapesOf(c.id).map((shape) => ({ id: shape, name: PROP_PRESETS[shape].label, cat: c.label, kind: "prop", opts: { shape }, thumb: "prop:" + shape })).filter(hit),
+          })).filter((x) => x.cards.length);
+        }
+        const cards = [{ id: "new", name: "新建机位", cat: "机位", kind: "cam", icon: "video" }, { id: "view", name: "当前视角机位", cat: "机位", kind: "cam", icon: "aperture", view: true }].filter(hit);
+        return cards.length ? [{ title: null, cards }] : [];
+      }
+      function fillAssets() {
+        const body = $("#asBody"), chips = $("#asChips"); if (!body) return;
+        const tab = P.assetTab, f = P.assetFilter[tab];
+        const chipList = tab === "char" ? [["all", "全部"], ["male", "男性"], ["female", "女性"]] : tab === "prop" ? [["all", "全部"], ...PROP_CATS.map((c) => [c.id, c.label])] : [];
+        chips.innerHTML = chipList.map(([id, label]) => `<button class="as-chip ${f === id ? "on" : ""}" data-aschip="${id}">${label}</button>`).join("");
+        const sc = P.scene, lim = { char: sc.characters.length >= 8, prop: sc.props.length >= 30, cam: sc.cameras.length >= 6 };
+        const secs = assetSections();
+        body.innerHTML = secs.length ? secs.map((sec) => `<section class="as-sec">${sec.title ? `<h4>${sec.title}</h4>` : ""}<div class="as-grid">${sec.cards.map((c) => {
+          const blocked = lim[c.kind] || (c.view && !E3.on);
+          const why = lim[c.kind] ? "最多 " + (c.kind === "char" ? "8 个人物" : c.kind === "prop" ? "30 个道具" : "6 台机位") : c.view && !E3.on ? "3D 视口不可用" : c.view ? "把当前导演视角变成一台机位" : "添加" + c.name;
+          return `<button class="as-card" data-ascard="${c.kind}:${c.id}" ${blocked ? "disabled" : ""} title="${esc(why)}">
+            <div class="as-thumb">${c.thumb ? thumbHTML(c.thumb) : `<i data-lucide="${c.icon}" style="width:30px;height:30px"></i>`}</div>
+            <div class="as-name">${esc(c.name)}</div><div class="as-tag">预设</div></button>`;
+        }).join("")}</div></section>`).join("") : `<p class="as-empty">没有匹配的素材</p>`;
+        icons();
+        body.querySelectorAll("[data-ascard]").forEach((el) => el.addEventListener("click", () => {
+          const [kind, id] = el.dataset.ascard.split(":");
+          if (kind === "char") addObj("char", { model: id });
+          else if (kind === "prop") addObj("prop", { shape: id });
+          else if (id === "view") camFromView(); else addObj("cam");
+        }));
+        chips.querySelectorAll("[data-aschip]").forEach((el) => el.addEventListener("click", () => { P.assetFilter[tab] = el.dataset.aschip; fillAssets(); }));
+        requestThumbs();
+      }
+      function bindAssets() {
+        const root = $("#assets"); if (!root) return;
+        fillAssets();
+        $("#asQuery").addEventListener("input", (e) => { P.assetQuery = e.target.value; fillAssets(); }); // 只刷新列表，输入框不重绘，不会失焦
+        root.querySelectorAll("[data-astab]").forEach((b) => b.addEventListener("click", () => { P.assetTab = b.dataset.astab; root.querySelectorAll("[data-astab]").forEach((x) => x.classList.toggle("on", x === b)); fillAssets(); }));
+        $("#asCollapse").addEventListener("click", () => { P.assetsOpen = false; renderEditor(); });
+      }
+
+      /* ----- 预览图：浏览器里用 three.js 现拍，拍一张记一张，排队一张一张来；three 不可用时退回图标 ----- */
+      const THUMBS = new Map(), THUMB_Q = [];
+      let thumbBusy = false, THS = null;
+      const thumbHTML = (key) => THUMBS.has(key) ? `<img data-thumb="${key}" src="${THUMBS.get(key)}" alt=""/>` : G3.ok ? `<span class="pulse" data-thumb="${key}"></span>` : `<i data-lucide="${key.startsWith("char") ? "user-round" : "box"}" style="width:30px;height:30px"></i>`;
+      function requestThumbs() {
+        if (!G3.ok) return;
+        document.querySelectorAll("#asBody [data-thumb]").forEach((el) => { const k = el.dataset.thumb; if (!THUMBS.has(k) && !THUMB_Q.includes(k)) THUMB_Q.push(k); });
+        pumpThumbs();
+      }
+      function pumpThumbs() {
+        if (thumbBusy || !THUMB_Q.length) return;
+        thumbBusy = true;
+        setTimeout(() => {
+          const key = THUMB_Q.shift();
+          try { THUMBS.set(key, makeThumb(key)); } catch (e) { console.warn("缩略图失败", key, e); }
+          document.querySelectorAll(`[data-thumb="${key}"]`).forEach((el) => { if (THUMBS.has(key)) el.outerHTML = `<img data-thumb="${key}" src="${THUMBS.get(key)}" alt=""/>`; });
+          thumbBusy = false; pumpThumbs();
+        }, 0);
+      }
+      function makeThumb(key) {
+        const T = window.THREE;
+        if (!THS) {
+          const r = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+          r.setSize(240, 240, false); r.setClearColor(0x000000, 0);
+          const sc = new T.Scene(); sc.add(new T.HemisphereLight(0xe4e8ff, 0x2a2a30, 1.35));
+          const sun = new T.DirectionalLight(0xffffff, 1.9); sun.position.set(3, 6, -4); sc.add(sun);
+          THS = { r, sc, cam: new T.PerspectiveCamera(28, 1, 0.05, 200) };
+        }
+        const [kind, id] = key.split(":"); let obj;
+        if (kind === "char") { const f = buildFigure(T, { pose: "站立", color: "#d4d4d8", model: id }, false).group; f.scale.setScalar(FIGURE_SCALE[id]); obj = f; }
+        else { const m = new T.MeshStandardMaterial({ color: 0xa9b6c6, roughness: 0.85 }); const b = buildProp(T, id, m); b.scale.set(...PROP_PRESETS[id].size); obj = new T.Group(); obj.add(b); }
+        THS.sc.add(obj); obj.updateMatrixWorld(true);
+        const box = new T.Box3().setFromObject(obj), c = box.getCenter(new T.Vector3()), sz = box.getSize(new T.Vector3());
+        const dist = (Math.max(sz.x, sz.y, sz.z) * 1.22) / (2 * Math.tan(14 * D2R));
+        THS.cam.position.copy(c).addScaledVector(new T.Vector3(0.55, 0.32, -1).normalize(), dist); THS.cam.lookAt(c);
+        THS.r.render(THS.sc, THS.cam);
+        const url = THS.r.domElement.toDataURL("image/png");
+        THS.sc.remove(obj); disposeTree(obj);
+        return url;
+      }
+
       function renderEditor() {
         $("#crumb").textContent = "video-canvas / 短剧第 3 集 / 导演台1（全屏编辑器）";
         proto.style.minWidth = "980px";
@@ -1402,19 +1560,17 @@ async function exportCameras(scene, cameraIds, opts, engine) {
             <button class="eb pri" id="bExport" ${canExport ? "" : "disabled"} title="${esc(expWhy)}"><i data-lucide="download"></i>导出视频</button>
             <button class="eb" id="bClose" title="关闭（自动保存，不弹确认）"><i data-lucide="x"></i></button>
           </div>
-          <div class="ed-mid">
+          <div class="ed-mid ${P.assetsOpen ? "with-assets" : ""}">
             <div class="ed-left">
+              <button class="eb ${P.assetsOpen ? "on" : ""}" id="tAssets" title="${P.assetsOpen ? "折叠资产面板" : "展开资产面板（添加人物、物体、机位）"}"><i data-lucide="${P.assetsOpen ? "panel-left-close" : "panel-left-open"}"></i></button>
+              <span style="height:6px"></span>
               <button class="eb ${P.tool === "move" ? "on" : ""}" id="tMove" title="移动（1）"><i data-lucide="move"></i><span class="kbd">1</span></button>
               <button class="eb ${P.tool === "rotate" ? "on" : ""}" id="tRot" title="${E3.on ? "旋转（2）" : "旋转：拖选中对象的白色小圆点"}"><i data-lucide="rotate-cw"></i><span class="kbd">2</span></button>
-              <span style="height:6px"></span>
-              <button class="eb" id="tChar" title="${lim.char ? "最多 8 个人物" : "添加人物"}" ${lim.char ? "disabled" : ""}><i data-lucide="user-round-plus"></i></button>
-              <button class="eb" id="tProp" title="${lim.prop ? "最多 30 个道具" : "添加道具（立方体）"}" ${lim.prop ? "disabled" : ""}><i data-lucide="box"></i></button>
-              <button class="eb" id="tCam" title="${lim.cam ? "最多 6 台机位" : "添加机位"}" ${lim.cam ? "disabled" : ""}><i data-lucide="video"></i></button>
-              <button class="eb" id="tFromView" title="${lim.cam ? "最多 6 台机位" : E3.on ? "从当前视角新建机位" : "3D 视口不可用"}" ${lim.cam || !E3.on ? "disabled" : ""}><i data-lucide="aperture"></i></button>
               <span style="height:6px"></span>
               <button class="eb" id="tFocus" title="聚焦选中"><i data-lucide="scan"></i><span class="kbd">F</span></button>
               <button class="eb" id="tDel" title="删除选中 Delete" ${P.sel ? "" : "disabled"}><i data-lucide="trash-2"></i></button>
             </div>
+            ${P.assetsOpen ? assetsHTML() : ""}
             <div class="vp" id="vp">
               ${E3.on
                 ? `<div id="glHost"></div><div class="lbl-layer" id="lblLayer"></div>
@@ -1462,7 +1618,7 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         </div>`;
         icons();
         updSave();
-        renderPanel(); renderTimeline(); drawEditor(); bindEditor();
+        renderPanel(); renderTimeline(); drawEditor(); bindEditor(); bindAssets();
         if (E3.on) attachTC();
         $("#ed").focus({ preventScroll: true });
       }
@@ -1502,13 +1658,15 @@ async function exportCameras(scene, cameraIds, opts, engine) {
           const slider = (k, label, min, max, step, val, unit = "") => `<div class="fld"><label>${label}</label><input type="range" data-f="${k}" min="${min}" max="${max}" step="${step}" value="${val}"/><span class="v" data-v="${k}">${round(val, 2)}${unit}</span></div>`;
           let h = `<div class="fld wide"><label>名称</label><input class="ein" id="fName" value="${esc(o.name)}"/></div>`;
           if (ty === "char") {
+            h += `<div class="fld wide"><label>模型</label><select class="esel" id="fModel">${["male", "female"].map((m) => `<option value="${m}" ${(o.model || "male") === m ? "selected" : ""}>${FIGURE_LABELS[m]}</option>`).join("")}</select></div>`;
             h += `<div class="fld wide"><label>姿势</label><select class="esel" id="fPose">${POSES.map((p) => `<option ${p === o.pose ? "selected" : ""}>${p}</option>`).join("")}</select></div>`;
             h += `<div class="fld wide"><label>颜色</label><input type="color" id="fColor" value="${o.color}" style="height:28px; width:60px; background:none; border:0"/></div>`;
             h += slider("x", "位置 X", -8, 8, 0.05, st.x, "m") + slider("z", "位置 Z", -8, 8, 0.05, st.z, "m") + slider("yaw", "朝向", -180, 180, 1, ((st.yaw + 540) % 360) - 180, "°") + slider("scale", "体型", 0.8, 1.2, 0.05, o.scale);
             h += `<p class="hint">姿势一段镜头内固定，不进时间轴；只做 12 个预设，不做关节摆姿（访谈 Q3）。</p>`;
           } else if (ty === "prop") {
             h += slider("x", "位置 X", -8, 8, 0.05, o.x, "m") + slider("z", "位置 Z", -8, 8, 0.05, o.z, "m") + slider("yaw", "旋转", -180, 180, 1, o.yaw, "°") + slider("w", "宽", 0.1, 8, 0.1, o.w, "m") + slider("h", "高", 0.1, 4, 0.1, o.h, "m") + slider("d", "深", 0.1, 8, 0.1, o.d, "m");
-            h += `<p class="hint">道具不打关键帧；形状可选立方体 / 圆柱 / 球体 / 平面（原型只示意立方体）。</p>`;
+            h = h.replace(`<div class="fld wide"><label>名称</label>`, `<div class="fld wide"><label>形状</label><select class="esel" id="fShape">${PROP_CATS.map((c) => `<optgroup label="${c.label}">${shapesOf(c.id).map((k) => `<option value="${k}" ${o.shape === k ? "selected" : ""}>${PROP_PRESETS[k].label}</option>`).join("")}</optgroup>`).join("")}</select></div><div class="fld wide"><label>名称</label>`);
+            h += `<p class="hint">道具不打关键帧。物体的正面朝 -z（椅子、沙发、床的靠背在 +z，车头在 -z），旋转可以调整朝向。</p>`;
           } else {
             h += `<div class="fld wide"><label>画幅</label><select class="esel" id="fAspect">${Object.keys(ASPECTS).map((a) => `<option ${a === o.aspect ? "selected" : ""}>${a}</option>`).join("")}</select></div>`;
             h += `<div class="fld wide"><label>焦距</label><select class="esel" id="fLens"><option value="">自定义</option>${[[24, 73.7], [35, 54.4], [50, 39.6], [85, 23.9], [135, 15.2]].map(([mm, f]) => `<option value="${f}">${mm}mm（FOV ${f}°）</option>`).join("")}</select></div>`;
@@ -1545,6 +1703,8 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         on("fName", "input", (e) => { o.name = e.target.value.slice(0, 20) || "未命名"; drawEditor(); });
         on("fName", "change", () => { commit(); renderTimeline(); });
         on("fPose", "change", (e) => { o.pose = e.target.value; commit(); drawEditor(); });
+        on("fModel", "change", (e) => { o.model = e.target.value; commit(); drawEditor(); renderTimeline(); toast("已改为" + FIGURE_LABELS[o.model]); });
+        on("fShape", "change", (e) => { o.shape = e.target.value; const [w, h2, d] = PROP_PRESETS[o.shape].size; Object.assign(o, { w, h: h2, d }); commit(); renderEditor(); });
         on("fColor", "change", (e) => { o.color = e.target.value; commit(); drawEditor(); });
         on("fAspect", "change", (e) => { o.aspect = e.target.value; commit(); renderEditor(); });
         on("fLook", "change", (e) => { o.lookAt = e.target.value; commit(); });
@@ -1594,15 +1754,18 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         if (P.sel === id) P.sel = null; delete P.pending[id];
         commit(); renderEditor();
       }
-      function addObj(kind) {
+      function addObj(kind, opts = {}) {
         const sc = P.scene;
         if (kind === "char") {
           const n = sc.characters.length; const name = "角色" + String.fromCharCode(65 + n);
           const colors = ["#d4d4d8", "#fca5a5", "#93c5fd", "#86efac", "#fcd34d", "#c4b5fd", "#f9a8d4", "#67e8f9"];
-          const o = { id: nid("ch"), name, color: colors[n % 8], pose: "站立", scale: 1, x: -1.5 + n * 1.2, z: 0.5, yaw: 180, keys: [] };
+          const o = { id: nid("ch"), name, color: colors[n % 8], model: opts.model || "male", pose: "站立", scale: 1, x: -1.5 + n * 1.2, z: 0.5, yaw: 180, keys: [] };
           sc.characters.push(o); P.sel = o.id;
         } else if (kind === "prop") {
-          const o = { id: nid("pr"), name: "立方体" + (sc.props.length + 1), shape: "box", x: 2, z: -1.5, w: 1, h: 1, d: 1, yaw: 0 };
+          const shape = opts.shape || "box", [w, h, d] = PROP_PRESETS[shape].size, n = sc.props.length;
+          const same = sc.props.filter((p) => p.name.startsWith(PROP_PRESETS[shape].label)).length;
+          // 新道具一行放 4 个，一行一行往后排，不叠在同一个位置
+          const o = { id: nid("pr"), name: PROP_PRESETS[shape].label + (same + 1), shape, x: 2 + (n % 4) * 1.5, z: -1.5 - Math.floor(n / 4) * 1.5, w, h, d, yaw: 0 };
           sc.props.push(o); P.sel = o.id;
         } else {
           const n = sc.cameras.length + 1;
@@ -1649,14 +1812,13 @@ async function exportCameras(scene, cameraIds, opts, engine) {
         on("bUndo", undo); on("bRedo", redo); on("bClose", closeEditor); on("bExport", openExport);
         on("bSnap", () => { P.snap = !P.snap; renderEditor(); });
         on("bLabels", () => { P.labels = !P.labels; renderEditor(); });
-        on("tChar", () => addObj("char")); on("fChar", () => addObj("char"));
-        on("tProp", () => addObj("prop")); on("fProp", () => addObj("prop"));
-        on("tCam", () => addObj("cam")); on("fCam", () => addObj("cam")); on("pvAdd", () => addObj("cam")); on("pvAdd2", () => addObj("cam"));
+        on("tAssets", () => { P.assetsOpen = !P.assetsOpen; renderEditor(); });
+        on("fChar", () => addObj("char")); on("fProp", () => addObj("prop"));
+        on("fCam", () => addObj("cam")); on("pvAdd", () => addObj("cam")); on("pvAdd2", () => addObj("cam"));
         on("tDel", () => P.sel && delObj(P.sel));
         on("tMove", () => setTool("move"));
         on("tRot", () => (E3.on ? setTool("rotate") : toast("俯视示意里拖选中对象旁的白色小圆点即可旋转", "info")));
         on("tFocus", () => (E3.on ? focusSel() : toast("聚焦选中只在 3D 视口可用", "info")));
-        on("tFromView", camFromView);
         on("bPlay", togglePlay); on("bStart", () => setT(0));
         on("bKey", recordKey); on("bPreset", doPreset);
         on("bDelKey", () => { const o = findObj(P.selKey.id); o.keys = o.keys.filter((k) => Math.abs(k.t - P.selKey.t) > 1e-6); P.selKey = null; commit(); renderEditor(); });
