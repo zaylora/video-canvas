@@ -251,7 +251,7 @@
 | `SYMLINK` | 条目是符号链接 |
 | `DUP_PATH` | 重复路径（含仅大小写不同） |
 | `BAD_FILENAME_ENCODING` | 文件名非 UTF-8 且按 GBK 也解不开 |
-| `HAS_SCRIPTS` | 包内有脚本文件（`scripts/**` 或 `.py .js .mjs .cjs .ts .sh .bash .rb .pl`）。**变更：原为提示，2026-10-07 起改为错误**——脚本执行已搁置，含脚本的技能不允许导入（`skillpkg` 仍产出 warn，由 `SkillService` 升级为 error，确认时返回 61002） |
+| `HAS_SCRIPTS` | 包内有脚本文件（`scripts/**` 或 `.py .js .mjs .cjs .ts .sh .bash .rb .pl`）。**级别为提示（warn），不阻断导入**——脚本会保存、可在文件预览里阅读，`skill_read` 读到时会说明当前不能执行脚本。（2026-10-07 曾改为错误并拦截导入，2026-10-19 恢复为提示。） |
 | `TOO_MANY_FILES` | > 500 个文件 |
 | `FILE_TOO_LARGE` | 单文件解压 > 25 MB |
 | `PACKAGE_TOO_LARGE` | zip > 50 MB，或解压后总计 > 100 MB（提案） |
