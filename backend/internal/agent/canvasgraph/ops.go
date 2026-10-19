@@ -27,18 +27,21 @@ const (
 	KindImage  = "image"  // 图片
 	KindVideo  = "video"  // 视频
 	KindAudio  = "audio"  // 音频
+	// KindDirector 是导演台（3D 摆位与运镜预演）：只在画布上手动建，Agent 能读到但不能建、不能改、不能连线。
+	KindDirector = "director"
 )
 
 // downstream 是每种节点能直接驱动生成的下游种类，与前端 constants/canvas 的 DOWNSTREAM_KINDS 一致。
 var downstream = map[string][]string{
-	KindScript: {KindScript, KindImage, KindVideo, KindAudio},
-	KindImage:  {KindImage, KindVideo},
-	KindVideo:  {KindVideo},
-	KindAudio:  {KindVideo},
+	KindScript:   {KindScript, KindImage, KindVideo, KindAudio},
+	KindImage:    {KindImage, KindVideo},
+	KindVideo:    {KindVideo},
+	KindAudio:    {KindVideo},
+	KindDirector: {},
 }
 
 // kindLabel 是节点的默认标题。
-var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频"}
+var kindLabel = map[string]string{KindScript: "文本", KindImage: "图片", KindVideo: "视频", KindAudio: "音频", KindDirector: "导演台"}
 
 // hues 是组可选的颜色，与前端 GroupHue 一致。
 var hues = map[string]bool{"red": true, "orange": true, "yellow": true, "green": true, "cyan": true, "blue": true, "purple": true, "pink": true}

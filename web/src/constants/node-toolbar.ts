@@ -145,6 +145,8 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
     ],
     tail: ["copy", "zoom"],
   },
+  // 导演台（设计稿 docs/design/3D导演台）：不出功能区（toolbarGate 里不显示），这里留空
+  director: { actions: [], tail: [] },
 };
 
 /** 一种节点配置里所有按钮和菜单项的 id，用来检查不重复 */

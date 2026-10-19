@@ -63,3 +63,10 @@ describe("功能区按钮的可用性", () => {
     expect(filled.actionsDisabled).toBe(false);
   });
 });
+
+describe("导演台的功能区", () => {
+  test("不显示功能区：进入编辑器的入口在节点正文的按钮上", () => {
+    const gate = toolbarGate({ kind: "director", label: "导演台1" });
+    expect(gate.visible).toBe(false);
+  });
+});

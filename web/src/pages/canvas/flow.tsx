@@ -49,7 +49,10 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { canvasPageTitle } from "@/utils/page-title";
 import { useSettingsStore } from "@/store";
 import { useFramePickStore } from "@/store/frame-pick";
+import { useDirectorStore } from "@/store/director";
 import { useTrimStore } from "@/store/trim";
+import { DirectorHost } from "@/components/director/director-host";
+import { openDirector } from "@/components/director/open-director";
 import type { CanvasEdge, CanvasNode, FlowNode, NodeKind, UploadNotice } from "@/types";
 import { getModelOptions, pruneRemoteDefaults } from "@/utils/canvas/canvas";
 import { createCanvas } from "@/api/canvas";
@@ -65,6 +68,7 @@ import {
 import { AnimatePresence } from "motion/react";
 import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
 import { useAgentController, useAgentModels } from "@/hooks/use-agent-controller";
+import type { RefNode } from "@/utils/agent/selection-refs";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import {
   createViewportWriter,
@@ -243,6 +247,8 @@ export const Flow = memo(function Flow({
           }
           // 删掉正在选帧的视频：暂存的帧没处挂，清掉会话
           useFramePickStore.getState().leave(change.id);
+          // 删掉正打开着的导演台：编辑器跟着关（还在导出的话，编辑器卸载时会中止导出）
+          if (useDirectorStore.getState().nodeId === change.id) useDirectorStore.getState().reset();
           const removed = nodesRef.current.find((node) => node.id === change.id);
           if (removed && !isGroupNode(removed)) releaseObjectUrl(removed.data.src);
         }
@@ -266,6 +272,11 @@ export const Flow = memo(function Flow({
   }, [nodes, edges]);
   // 任务结果回填节点；打开画布时对账还在 running 的节点
   useTaskBackfill(contentNodes, setContentNodes);
+  // 保存撞上冲突要弹「画布已在别处修改」：先关掉导演台，弹窗显示在画布上（设计稿 3D导演台 §7）。
+  // 场景早已写进节点，跟着弹窗里「另存为新画布 / 加载最新」走，和画布上其他本地改动一样
+  useEffect(() => {
+    if (conflict !== null || draftConflict !== null) useDirectorStore.getState().reset();
+  }, [conflict, draftConflict]);
   useEffect(() => {
     rememberCanvasTitle(canvas.id, canvas.title);
   }, [canvas.id, canvas.title]);
@@ -294,6 +305,8 @@ export const Flow = memo(function Flow({
       useTrimStore.getState().reset();
       // 选帧会话只在内存里，离开画布就丢，暂存帧的本地地址一并释放
       useFramePickStore.getState().reset();
+      // 导演台编辑器只属于这张画布
+      useDirectorStore.getState().reset();
       for (const node of nodesRef.current) if (!isGroupNode(node)) releaseObjectUrl(node.data.src);
     },
     [],
@@ -355,17 +368,21 @@ export const Flow = memo(function Flow({
     () =>
       nodes
         .filter((node): node is CanvasNode => node.type === "canvas")
-        .map((node) => ({ id: node.id, label: node.data.label, kind: node.data.kind })),
+        .flatMap((node) => {
+          const { kind } = node.data;
+          // 导演台 Agent 读不懂也改不了，不进 @ 候选
+          return kind === "director" ? [] : [{ id: node.id, label: node.data.label, kind }];
+        }),
     [nodes],
   );
   /** 消息里「引用了哪些节点」解析标题用：组也要能解析（输入框里 @ 的候选不含组） */
   const agentRefOptions = useMemo(
     () =>
-      nodes.map((node) =>
-        node.type === "group"
-          ? { id: node.id, label: node.data.label, kind: "group" as const }
-          : { id: node.id, label: node.data.label, kind: node.data.kind },
-      ),
+      nodes.flatMap((node): RefNode[] => {
+        if (node.type === "group") return [{ id: node.id, label: node.data.label, kind: "group" }];
+        const { kind } = node.data;
+        return kind === "director" ? [] : [{ id: node.id, label: node.data.label, kind }];
+      }),
     [nodes],
   );
   useEffect(() => {
@@ -558,6 +575,11 @@ export const Flow = memo(function Flow({
       if (isGroupNode(node)) return;
       // 视频控制条、按钮、输入框上的双击是它们自己的事
       if ((event.target as Element).closest("button, input, textarea, a, .nodrag")) return;
+      // 导演台双击打开编辑器，不进灯箱
+      if (node.data.kind === "director") {
+        openDirector(node.id, node.data);
+        return;
+      }
       if (collectPreviewItems([node]).length === 0) return;
       startPreview(node.id, event.currentTarget.getBoundingClientRect());
     },
@@ -896,6 +918,7 @@ export const Flow = memo(function Flow({
                       />
                       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
                       <NodeHistoryDialog />
+                      <DirectorHost />
                       <MediaLightbox
                         items={liveItems ?? lastItems}
                         target={preview}

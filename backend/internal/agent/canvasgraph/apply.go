@@ -161,6 +161,9 @@ func setPrompt(n Node, prompt string) {
 
 // createNode 新建一个普通节点，可以直接放进某个组。
 func (a *applier) createNode(op Op) error {
+	if op.Kind == KindDirector {
+		return errors.New("导演台节点只能由用户在画布上手动创建")
+	}
 	if !validKind(op.Kind) {
 		return fmt.Errorf("节点种类 %q 不认识，可选 script / image / video / audio", op.Kind)
 	}
@@ -219,6 +222,9 @@ func (a *applier) updateNode(op Op) error {
 	}
 	if n.IsGroup() {
 		return errors.New("组请用 set_group 修改")
+	}
+	if n.Kind() == KindDirector {
+		return errors.New("导演台节点只能由用户在导演台里修改")
 	}
 	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 {
 		return errors.New("没有要修改的内容")
@@ -280,6 +286,9 @@ func (a *applier) connect(op Op) error {
 	}
 	if src.ID() == dst.ID() {
 		return errors.New("节点不能连到自己")
+	}
+	if src.Kind() == KindDirector || dst.Kind() == KindDirector {
+		return errors.New("导演台不能连线：要先在导演台里导出成视频或图片节点")
 	}
 	if !canLink(src.Kind(), dst.Kind()) {
 		return fmt.Errorf("%s 节点不能连到 %s 节点（%s 的下游只能是 %s）",

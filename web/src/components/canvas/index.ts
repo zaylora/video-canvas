@@ -19,6 +19,7 @@ export { NodePromptInput, type NodeModelOption } from "./node-prompt-input";
 export { PendingConnectionLine, PendingFanLines } from "./pending-connection-line";
 export {
   AudioPlaceholderIcon,
+  DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
   TextPlaceholderIcon,
   VideoPlaceholderIcon,

@@ -35,7 +35,7 @@ func Generation(g *Graph, nodeID string) (*GenSource, error) {
 	}
 	d := n.Data()
 	src := &GenSource{NodeID: nodeID, Kind: n.Kind(), Label: n.Label(), Model: str(d["model"]), Status: str(d["status"]), HasOutput: hasMedia(d)}
-	if !validKind(src.Kind) {
+	if !validKind(src.Kind) || src.Kind == KindDirector {
 		return nil, fmt.Errorf("%w：节点 %q 的种类不能生成", ErrInvalid, nodeID)
 	}
 	params, _ := d["params"].(map[string]any)
@@ -57,8 +57,9 @@ func Generation(g *Graph, nodeID string) (*GenSource, error) {
 }
 
 // addUpstream 把一个上游节点收进来：文本节点收正文，素材节点收素材 id，还没产物的只计数。
+// 导演台连出来的线只表示导出物的出处，不是参考输入，跳过。
 func (s *GenSource) addUpstream(up Node) {
-	if up == nil || up.IsGroup() {
+	if up == nil || up.IsGroup() || up.Kind() == KindDirector {
 		return
 	}
 	d := up.Data()

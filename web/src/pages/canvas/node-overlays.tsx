@@ -62,7 +62,7 @@ export function NodeOverlaysPresence({
 
 /**
  * 选中节点时浮出的两块：上方的功能区（设计稿 6.16，历史也在里面）、下方的生成面板。
- * 空节点没有可加工的素材，不出功能区；上传的素材不是模型生成的，不出生成面板。
+ * 空节点没有可加工的素材，不出功能区；上传的素材不是模型生成的，不出生成面板；导演台不调模型，也不出生成面板。
  * 只在选中时挂载，所以摆法计算（订阅视口变化）只花在一个节点上。
  * 面板始终在节点下方、功能区始终在上方，位置不随视口里的空间变化；拖动画布或节点时两者淡下去。
  * 退出动画靠外层的 AnimatePresence：两块都带 exit，取消选中时一起淡出。
@@ -213,7 +213,7 @@ export function NodeOverlays({
         onConfirm={confirmAddToLibrary}
       />
       {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
-      {!data.uploaded && !data.outpaintFrom && (
+      {!data.uploaded && !data.outpaintFrom && data.kind !== "director" && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.985 }}

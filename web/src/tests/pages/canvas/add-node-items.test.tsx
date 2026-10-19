@@ -4,13 +4,14 @@ import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import { buildAddNodeItems } from "@/pages/canvas/chrome/add-node-items";
 
 describe("buildAddNodeItems：添加节点菜单的条目", () => {
-  test("顺序：图片、视频、文本、音频，上传素材隔一条线放最后", () => {
+  test("顺序：图片、视频、文本、音频、导演台，上传素材隔一条线放最后", () => {
     const items = buildAddNodeItems();
     expect(items.map((item) => item.value)).toEqual([
       "image",
       "video",
       "script",
       "audio",
+      "director",
       UPLOAD_ACTION,
       ASSET_LIBRARY_ACTION,
     ]);
@@ -20,17 +21,19 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
       false,
       false,
       false,
+      false,
       true,
       false,
     ]);
   });
 
-  test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 上传素材」", () => {
+  test("名字沿用「图片生成 / 视频生成 / 文本 / 音频 / 导演台 / 上传素材」", () => {
     expect(buildAddNodeItems().map((item) => item.label)).toEqual([
       "图片生成",
       "视频生成",
       "文本",
       "音频",
+      "导演台",
       "上传素材",
       "从资产库添加",
     ]);
@@ -48,6 +51,7 @@ describe("buildAddNodeItems：添加节点菜单的条目", () => {
     expect(onlyVideo.map((item) => !!item.disabled)).toEqual([
       true,
       false,
+      true,
       true,
       true,
       false,

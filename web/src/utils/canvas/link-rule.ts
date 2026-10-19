@@ -1,4 +1,4 @@
-import { REMOTE_KIND_OF_NODE } from "@/constants/canvas";
+import { remoteKindOf } from "@/constants/canvas";
 import { useModelsStore } from "@/store/models";
 import type { CanvasNodeData } from "@/types";
 import type { GenerationOp } from "@/api/model/type";
@@ -18,9 +18,10 @@ export type LinkEnd = Pick<
   "kind" | "model" | "params" | "prompt" | "status" | "uploadProgress"
 >;
 
-/** 下游节点当前模型的能力：节点没选模型就按清单第一条，清单还没到返回 undefined */
+/** 下游节点当前模型的能力：节点没选模型就按清单第一条，清单还没到或不接模型返回 undefined */
 function capabilitiesOf(node: LinkEnd) {
-  const models = useModelsStore.getState().byKind[REMOTE_KIND_OF_NODE[node.kind]]?.models ?? [];
+  const remote = remoteKindOf(node.kind);
+  const models = (remote && useModelsStore.getState().byKind[remote]?.models) || [];
   const model = models.find((item) => item.key === node.model) ?? models[0];
   return model?.capabilities;
 }

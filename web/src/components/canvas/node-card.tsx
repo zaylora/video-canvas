@@ -20,6 +20,8 @@ export type NodeCardHandle = Pick<HandleProps, "type" | "position" | "id"> & {
   label?: string;
   /** 同侧口多时缩小命中区，免得互相盖住 */
   compact?: boolean;
+  /** 只当连线的锚点：不显示、不能拉线（导演台的来源线从这里出发） */
+  hidden?: boolean;
 };
 
 /** 缺省的连接点：左进右出 */
@@ -91,7 +93,7 @@ function iconPosition(position: Position): { left: string; top: string } {
  * 图标平时不露面，鼠标移到节点上或节点选中时才浮出来，默认贴着节点的边；
  * 指针进了命中区就沿边跟着指针跑，指到哪就提示能从哪拉线（不会跑进节点里），离开再归位贴边。
  */
-function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCardHandle) {
+function NodeCardHandleDot({ type, position, id, top, label, compact, hidden }: NodeCardHandle) {
   // 指针一动就要挪图标，走 state 会把整个节点带着重渲染，这里直接改 CSS 变量。
   // 坐标相对 handle 盒子算，指针跑在伪元素铺开的那一圈里时值会超出盒子，正是要的效果
   const trackPointer = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -107,6 +109,18 @@ function NodeCardHandleDot({ type, position, id, top, label, compact }: NodeCard
     style.removeProperty("--handle-x");
     style.removeProperty("--handle-y");
   };
+
+  if (hidden) {
+    return (
+      <Handle
+        type={type}
+        position={position}
+        id={id}
+        isConnectable={false}
+        className="pointer-events-none opacity-0"
+      />
+    );
+  }
 
   return (
     <Handle
@@ -265,6 +279,7 @@ export function NodeCard({
             top={handle.top}
             label={handle.label}
             compact={handle.compact}
+            hidden={handle.hidden}
           />
         ))}
       </BaseNode>

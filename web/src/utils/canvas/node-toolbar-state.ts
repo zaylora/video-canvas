@@ -16,6 +16,8 @@ export type ToolbarGate = {
  * 「有素材」：文本看有没有正文，其余看有没有存下来的素材地址（本地 blob 还没传完，不算）。
  */
 export function toolbarGate(data: CanvasNodeData): ToolbarGate {
+  // 导演台没有素材可加工，不出功能区：进编辑器的入口在节点正文的按钮上，导出在编辑器里
+  if (data.kind === "director") return { visible: false, actionsDisabled: true };
   const hasOutput =
     data.kind === "script" ? !!data.text?.trim() : !!data.src && !data.src.startsWith("blob:");
   const running = data.status === "running";

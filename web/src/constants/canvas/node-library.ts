@@ -1,9 +1,10 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Image, Music, Type, Video } from "lucide-react";
+import { Clapperboard, Image, Music, Type, Video } from "lucide-react";
 
 import {
   AudioPlaceholderIcon,
+  DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
   TextPlaceholderIcon,
   VideoPlaceholderIcon,
@@ -62,6 +63,14 @@ export const NODE_LIBRARY = [
     icon: Music,
     placeholderIcon: AudioPlaceholderIcon,
   },
+  {
+    kind: "director",
+    label: "导演台",
+    description: "3D 摆位与运镜预演",
+    placeholder: "双击打开导演台，摆人物、放机位、套运镜，导出预览视频。",
+    icon: Clapperboard,
+    placeholderIcon: DirectorPlaceholderIcon,
+  },
 ] as const satisfies readonly NodeKindEntry[];
 
 /** 节点种类，从 NODE_LIBRARY 推导，不手写以免和清单漂移 */
@@ -81,4 +90,5 @@ export const ADD_NODE_MENU: { kind: NodeKind; title: string; description: string
   { kind: "video", title: "视频生成", description: "文生、参考、编辑、延长" },
   { kind: "script", title: "文本", description: "脚本、分镜描述" },
   { kind: "audio", title: "音频", description: "配乐、音效、配音" },
+  { kind: "director", title: "导演台", description: "3D 摆位与运镜预演" },
 ];

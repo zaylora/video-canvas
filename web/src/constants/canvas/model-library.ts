@@ -32,6 +32,8 @@ export const MODEL_LIBRARY = {
   video: [],
   // 音频清单由服务端下发（GET /models?kind=audio），见 store/models.ts，这里不放演示数据
   audio: [],
+  // 导演台不调模型，只在浏览器里渲染导出
+  director: [],
 } as const satisfies Record<NodeKind, readonly ModelOption[]>;
 
 /**

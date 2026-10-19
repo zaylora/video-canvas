@@ -29,6 +29,11 @@ const TASK_FIELDS = [
   "fileName",
 ] as const satisfies readonly (keyof CanvasNodeData)[];
 
+/**
+ * 导演台场景：编辑器有自己的撤销栈，画布撤销（比如撤销挪节点）不能把场景倒回快照时的样子。
+ */
+const LIVE_FIELDS = [...TASK_FIELDS, "scene"] as const satisfies readonly (keyof CanvasNodeData)[];
+
 /** 节点的结构：增删、位置、连线变了就是一步，立刻入栈 */
 export function structureKey({ nodes, edges }: HistorySnapshot) {
   return JSON.stringify([
@@ -75,7 +80,7 @@ export function restoreNodes(snapshot: FlowNode[], current: FlowNode[]): FlowNod
     // 组没有任务字段：位置、尺寸、名字、颜色全取快照，只保留眼下测得的尺寸
     if (isGroupNode(saved) || isGroupNode(now)) return { ...saved, measured: now.measured };
     const data: CanvasNodeData = { ...saved.data };
-    for (const key of TASK_FIELDS) {
+    for (const key of LIVE_FIELDS) {
       if (now.data[key] === undefined) delete data[key];
       else Object.assign(data, { [key]: now.data[key] });
     }
