@@ -300,6 +300,20 @@ func (f *fakeAgentCanvasRepo) UpdateApprovalIf(_ context.Context, id uint64, fro
 	return &c, nil
 }
 
+func (f *fakeAgentCanvasRepo) ListApprovals(_ context.Context, runID uint64) ([]model.AgentApproval, error) {
+	st := f.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	var out []model.AgentApproval
+	for _, a := range st.approvals {
+		if a.RunID == runID {
+			out = append(out, *a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
 func (f *fakeAgentCanvasRepo) ExpirePendingApprovals(_ context.Context, runID uint64) (int64, error) {
 	st := f.st()
 	st.mu.Lock()

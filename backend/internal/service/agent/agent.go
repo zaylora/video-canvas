@@ -59,6 +59,8 @@ type AgentRepo interface {
 	AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error)
 	// ListEvents 列出会话里序号大于 afterSeq 的事件。
 	ListEvents(ctx context.Context, sessionID uint64, afterSeq int64, limit int) ([]model.AgentEvent, error)
+	// ListApprovals 列出某运行的审批，按创建先后；「继续」被中断的运行时用它补回已有决定的审批结果。
+	ListApprovals(ctx context.Context, runID uint64) ([]model.AgentApproval, error)
 	// CreateApproval 创建审批。
 	CreateApproval(ctx context.Context, a *model.AgentApproval) error
 	// GetApproval 按 id + user_id 读审批，不存在或不属于该用户返回 repository.ErrNotFound。

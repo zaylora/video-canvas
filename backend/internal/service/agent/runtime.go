@@ -116,6 +116,8 @@ func (r *ProcessRuntime) Resume(ctx context.Context, run *model.AgentRun, info R
 		return r.launch(ctx, run, in, input, false)
 	case "resume":
 		input["mode"] = "resume"
+		// 审批其实已经决定并执行了、只是续跑没起来：把占位的「等待决定」换成真实结果，免得模型重复申请
+		r.fillDecidedApprovals(ctx, run, input)
 		return r.launch(ctx, run, in, input, true)
 	}
 	return fmt.Errorf("未知的续跑原因 %q", info.Reason)

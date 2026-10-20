@@ -76,6 +76,36 @@ func newGenEnv(t *testing.T, mode string) *genEnv {
 	return e
 }
 
+// videoSnap 是按秒计费的视频模型：每秒 2 积分，时长参数 duration 可调。
+var videoSnap = &provider.Snapshot{
+	Model: provider.ModelSnapshot{Key: "vid", Kind: "video", Label: "Vid",
+		Pricing: modelcfg.Pricing{Billing: modelcfg.BillingPerSecond, PerSecond: 2},
+		Capabilities: modelcfg.Capabilities{Ops: []string{"t2v"}, Prompt: modelcfg.PromptSpec{MaxLength: 500},
+			Params: modelcfg.ParamSet{{Name: "duration", ParamField: modelcfg.ParamField{Type: modelcfg.ParamNumber, Label: "时长", Open: true, Default: 5, Min: intp(1), Max: intp(15)}}}}},
+	Channel: provider.ChannelSnapshot{Key: "ch1"},
+}
+
+func intp(n int) *int { return &n }
+
+// newVideoGenEnv 起一个运行，画布上有一个按秒计费的视频节点，时长 duration 秒；返回环境和节点 id。
+func newVideoGenEnv(t *testing.T, duration int) (*genEnv, string) {
+	t.Helper()
+	e := newGenEnv(t, "all")
+	e.reg.snap = videoSnap
+	res := e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{
+		{"op": "create_node", "kind": "video", "label": "镜头", "prompt": "女孩走进便利店", "model": "vid", "params": map[string]any{"duration": duration}}}})
+	if res.IsError {
+		t.Fatalf("准备视频节点: %+v", res)
+	}
+	for _, n := range mustParseGraph(t, e.repo).Nodes {
+		if n.Kind() == "video" {
+			return e, n.ID()
+		}
+	}
+	t.Fatal("没有视频节点")
+	return nil, ""
+}
+
 func (e *genEnv) imgID(t *testing.T) string {
 	t.Helper()
 	for _, n := range mustParseGraph(t, e.repo).Nodes {
@@ -294,7 +324,7 @@ func TestAgentGenerator_Execute(t *testing.T) {
 			}
 		}
 		e.tasks.errAt = map[int]error{1: errcode.ErrInsufficientCredits}
-		its := []GenerateItem{{NodeID: ids[0], ModelKey: "seedream", Count: 1}, {NodeID: ids[1], ModelKey: "seedream", Count: 1}}
+		its := []GenerateItem{{NodeID: ids[0], ModelKey: "seedream", Count: 1, Price: 5}, {NodeID: ids[1], ModelKey: "seedream", Count: 1, Price: 5}}
 		res, err := newGenerator(e).Execute(ctx, e.run, 5, its)
 		if err != nil {
 			t.Fatal(err)
@@ -309,6 +339,67 @@ func TestAgentGenerator_Execute(t *testing.T) {
 		}
 		if node(t, e.repo, ids[1]).Data()["taskId"] != nil {
 			t.Error("失败的节点不绑定")
+		}
+	})
+
+	// 批准的是当时的报价；等批准期间用户改了时长，提交时按最新输入重新报价，贵了就不提交
+	t.Run("批准后节点参数改动导致价格变高：不提交，记入失败并写清原因", func(t *testing.T) {
+		e, id := newVideoGenEnv(t, 4)                                                                                                                           // 每秒 2 积分 × 4 秒 = 8
+		e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "update_node", "id": id, "params": map[string]any{"duration": 6}}}}) // 变成 12
+		g := newGenerator(e)
+		_, err := g.Execute(ctx, e.run, 9, []GenerateItem{{NodeID: id, Label: "镜头", ModelKey: "vid", Count: 1, Price: 8}})
+		if err == nil {
+			t.Fatal("唯一的条目没提交，应整体失败")
+		}
+		for _, want := range []string{"批准后改动", "从 8 变成 12", "重新申请"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("原因里应有 %q: %v", want, err)
+			}
+		}
+		if len(e.tasks.reqs) != 0 {
+			t.Errorf("涨价的条目不能提交: %d", len(e.tasks.reqs))
+		}
+	})
+
+	t.Run("批准后价格变低或不变：照常提交", func(t *testing.T) {
+		e, id := newVideoGenEnv(t, 4)
+		e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{{"op": "update_node", "id": id, "params": map[string]any{"duration": 3}}}}) // 变成 6
+		if _, err := newGenerator(e).Execute(ctx, e.run, 9, []GenerateItem{{NodeID: id, Label: "镜头", ModelKey: "vid", Count: 1, Price: 8}}); err != nil {
+			t.Fatalf("变便宜应照常提交: %v", err)
+		}
+		e2, id2 := newVideoGenEnv(t, 4)
+		if _, err := newGenerator(e2).Execute(ctx, e2.run, 9, []GenerateItem{{NodeID: id2, Label: "镜头", ModelKey: "vid", Count: 1, Price: 8}}); err != nil || len(e2.tasks.reqs) != 1 {
+			t.Fatalf("价格不变应照常提交: err=%v reqs=%d", err, len(e2.tasks.reqs))
+		}
+	})
+
+	t.Run("部分条目涨价：涨价的记入 failed，其余照常提交", func(t *testing.T) {
+		e, id := newVideoGenEnv(t, 4)
+		e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{
+			{"op": "update_node", "id": id, "params": map[string]any{"duration": 6}},
+			{"op": "create_node", "tempId": "v2", "kind": "video", "label": "镜头二", "prompt": "走进便利店", "model": "vid", "params": map[string]any{"duration": 4}}}})
+		var id2 string
+		for _, n := range mustParseGraph(t, e.repo).Nodes {
+			if n.Kind() == "video" && n.ID() != id {
+				id2 = n.ID()
+			}
+		}
+		res, err := newGenerator(e).Execute(ctx, e.run, 9, []GenerateItem{
+			{NodeID: id, Label: "镜头", ModelKey: "vid", Count: 1, Price: 8},
+			{NodeID: id2, Label: "镜头二", ModelKey: "vid", Count: 1, Price: 8}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r struct {
+			Tasks  []map[string]any `json:"tasks"`
+			Failed []struct {
+				NodeID string `json:"node_id"`
+				Error  string `json:"error"`
+			} `json:"failed"`
+		}
+		_ = json.Unmarshal(res, &r)
+		if len(r.Tasks) != 1 || r.Tasks[0]["node_id"] != id2 || len(r.Failed) != 1 || r.Failed[0].NodeID != id || !strings.Contains(r.Failed[0].Error, "从 8 变成 12") {
+			t.Fatalf("r=%s", res)
 		}
 	})
 

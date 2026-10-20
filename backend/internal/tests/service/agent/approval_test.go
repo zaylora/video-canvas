@@ -586,3 +586,94 @@ func TestAgentCancel_ReturnsSettledUsageAndOrdersEvents(t *testing.T) {
 		t.Errorf("最后一条 run.status 应是 canceled: %v", got)
 	}
 }
+
+// 审批超过 24 小时没人处理：运行不能一直停在等待状态占着画布（C13）。
+func TestAgentApprovalExpiry(t *testing.T) {
+	ctx := context.Background()
+	approve := &model.DecideAgentApprovalReq{Decision: "approve"}
+
+	t.Run("Decide 发现已过期：运行置为 expired、审批置为 expired，并推送 run.status", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		e.now = e.now.Add(25 * time.Hour)
+		_, err := e.svc.Decide(ctx, 1, id, approve)
+		wantAgentCode(t, err, errcode.ErrAgentApprovalGone)
+		if got := e.run(run.ID); got.Status != model.RunExpired {
+			t.Errorf("运行应置为 expired: %s", got.Status)
+		}
+		if a, _ := e.repo.GetApproval(ctx, 1, id); a.Status != model.ApprovalExpired {
+			t.Errorf("审批应置为 expired: %s", a.Status)
+		}
+		if ev := e.repo.lastEvent("run.status"); ev["status"] != "expired" || ev["title"] == nil {
+			t.Errorf("应推送 expired 的 run.status: %v", ev)
+		}
+		if len(e.gen.calls) != 0 || len(e.rt.resumed) != 0 {
+			t.Error("过期的审批不能执行也不能续跑")
+		}
+		if _, err := e.svc.StartRun(ctx, 1, e.sess, &model.StartAgentRunReq{Message: "再来一次"}); err != nil {
+			t.Errorf("画布应已空出来: %v", err)
+		}
+	})
+
+	t.Run("提问过期同理（waiting_input）", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run := e.runningRun(t)
+		v, err := e.svc.CreateApproval(ctx, run, "tc1", model.ApprovalAsk, AskPayload{Question: "画幅？", Kind: "choice", Options: []string{"16:9"}}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.now = e.now.Add(25 * time.Hour)
+		_, err = e.svc.Decide(ctx, 1, uint64(v.ID), &model.DecideAgentApprovalReq{Decision: "approve", Answer: "16:9"})
+		wantAgentCode(t, err, errcode.ErrAgentApprovalGone)
+		if got := e.run(run.ID); got.Status != model.RunExpired {
+			t.Errorf("status=%s", got.Status)
+		}
+	})
+
+	t.Run("运行已经不在等待状态（比如已被停止）：不动它", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		e.setStatus(run.ID, model.RunCanceled)
+		e.now = e.now.Add(25 * time.Hour)
+		_, err := e.svc.Decide(ctx, 1, id, approve)
+		wantAgentCode(t, err, errcode.ErrAgentApprovalGone)
+		if got := e.run(run.ID); got.Status != model.RunCanceled {
+			t.Errorf("已停止的运行不能被改成 expired: %s", got.Status)
+		}
+	})
+
+	t.Run("发起新运行时发现画布上有过期的等待运行：先置 expired 再放行", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		e.now = e.now.Add(25 * time.Hour)
+		v, err := e.svc.StartRun(ctx, 1, e.sess, &model.StartAgentRunReq{Message: "换个思路"})
+		if err != nil {
+			t.Fatalf("过期的等待运行不该拦住新运行: %v", err)
+		}
+		if uint64(v.ID) == run.ID {
+			t.Error("应是一个新运行")
+		}
+		if got := e.run(run.ID); got.Status != model.RunExpired {
+			t.Errorf("旧运行应置为 expired: %s", got.Status)
+		}
+		if a, _ := e.repo.GetApproval(ctx, 1, id); a.Status != model.ApprovalExpired {
+			t.Errorf("旧审批应置为 expired: %s", a.Status)
+		}
+	})
+
+	t.Run("等待中但没过期的运行仍然占着画布：60001", func(t *testing.T) {
+		e := newAgentEnv(t)
+		pendingGenerate(t, e, 24)
+		e.now = e.now.Add(time.Hour)
+		_, err := e.svc.StartRun(ctx, 1, e.sess, &model.StartAgentRunReq{Message: "x"})
+		wantAgentCode(t, err, errcode.ErrAgentRunActive)
+	})
+
+	t.Run("运行中（不是等待）的运行不会因为时间久被当成过期", func(t *testing.T) {
+		e := newAgentEnv(t)
+		e.start(t, "第一条")
+		e.now = e.now.Add(48 * time.Hour)
+		_, err := e.svc.StartRun(ctx, 1, e.sess, &model.StartAgentRunReq{Message: "x"})
+		wantAgentCode(t, err, errcode.ErrAgentRunActive)
+	})
+}

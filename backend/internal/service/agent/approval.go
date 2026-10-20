@@ -119,7 +119,12 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	if err != nil {
 		return nil, runErr(err)
 	}
-	if a.Status != model.ApprovalPending || !s.now().Before(a.ExpiresAt) || !contains(waitingStatuses, run.Status) {
+	// 审批过期了：除了拒绝这次决定，还要把运行迁出等待状态，否则它会一直占着这张画布
+	if a.Status == model.ApprovalPending && !s.now().Before(a.ExpiresAt) {
+		s.expireWaitingRun(ctx, run, a)
+		return nil, errcode.ErrAgentApprovalGone
+	}
+	if a.Status != model.ApprovalPending || !contains(waitingStatuses, run.Status) {
 		return nil, errcode.ErrAgentApprovalGone
 	}
 	// 2. 按种类算出决定：校验选项、预算，得出最终批准的条目
@@ -169,6 +174,41 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 		s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted))
 	}
 	return approvalView(final), nil
+}
+
+// expireWaitingRun 把等审批超时的运行置为 expired，审批一并置为 expired，并推送 run.status 让客户端知道这一轮结束了。
+// 运行已经不在等待状态（刚被停止、刚被决定）就不动它；这些都是尽力而为的收尾，失败只意味着下次再碰到时再处理。
+// approval 为 nil 时把这个运行所有待处理的审批都置为 expired。返回运行是不是这次被置为 expired 的。
+func (s *AgentService) expireWaitingRun(ctx context.Context, run *model.AgentRun, approval *model.AgentApproval) bool {
+	if approval != nil {
+		_, _ = s.repo.UpdateApprovalIf(ctx, approval.ID, []string{model.ApprovalPending}, map[string]any{"status": model.ApprovalExpired}) // 已不是 pending 说明别处处理过了
+	}
+	if _, err := s.repo.UpdateRunIf(ctx, run.ID, waitingStatuses, map[string]any{"status": model.RunExpired, "ended_at": s.now()}); err != nil {
+		return false
+	}
+	if approval == nil {
+		_, _ = s.repo.ExpirePendingApprovals(ctx, run.ID) // 同上，尽力而为
+	}
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunExpired))
+	return true
+}
+
+// expireStaleRun 在画布被占用时调用：占着画布的若是等审批超时的运行，就把它置为 expired，返回 true 表示画布空出来了。
+func (s *AgentService) expireStaleRun(ctx context.Context, canvasID uint64) bool {
+	run, err := s.repo.ActiveRun(ctx, canvasID)
+	if err != nil || !contains(waitingStatuses, run.Status) {
+		return false
+	}
+	approvals, err := s.repo.ListApprovals(ctx, run.ID)
+	if err != nil {
+		return false
+	}
+	for _, a := range approvals {
+		if a.Status == model.ApprovalPending && !s.now().Before(a.ExpiresAt) {
+			return s.expireWaitingRun(ctx, run, nil)
+		}
+	}
+	return false
 }
 
 // resolveDecision 把用户的决定按审批种类解析成 outcome。

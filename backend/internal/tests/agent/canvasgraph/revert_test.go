@@ -1,6 +1,7 @@
 package canvasgraph_test
 
 import (
+	"strings"
 	"testing"
 
 	"video-canvas/internal/agent/canvasgraph"
@@ -166,4 +167,81 @@ func TestRevertKeepsParentAndPositionTogetherWhenUserRegrouped(t *testing.T) {
 	if a.ParentID() != gid || a.Position().X != 70 || a.Position().Y != 90 {
 		t.Errorf("用户改过归属和位置，撤销应整体保留: parent=%q pos=%+v", a.ParentID(), a.Position())
 	}
+}
+
+// 前端规整过节点（补默认参数、补运行时字段、坐标取整）再保存回去：这些不是用户的修改，
+// 判断「有没有被改过」只看 Agent 自己写过的字段，否则新建的节点永远删不掉（C15）。
+func TestRevertCreatedNodeIgnoresFieldsFrontendAdded(t *testing.T) {
+	const ops = `[{"op":"create_node","tempId":"a","kind":"video","label":"镜头","prompt":"黄昏","model":"vid","params":{"duration":5}}]`
+	newCur := func(t *testing.T) (*canvasgraph.Graph, *canvasgraph.Result, string) {
+		built := mustApply(t, mustParse(t, `{}`), ops)
+		id := built.IDMap["a"]
+		cur := built.Graph.Clone()
+		n := node(t, cur, id)
+		n["selected"] = false                                           // 节点上多出来的运行时字段
+		n["measured"] = map[string]any{"width": 320.0, "height": 240.0} // 同上
+		n.Data()["params"].(map[string]any)["aspect_ratio"] = "16:9"    // 补的默认参数
+		n.Data()["layoutVersion"] = 2.0                                 // data 上补的字段
+		p := n.Position()
+		n.SetPosition(canvasgraph.Point{X: float64(int(p.X)) + 0.0, Y: float64(int(p.Y)) + 0.0}) // 坐标取整
+		return cur, built, id
+	}
+
+	t.Run("前端多补了字段：仍然能删", func(t *testing.T) {
+		cur, built, id := newCur(t)
+		rr := canvasgraph.Revert(cur, built.Changes)
+		if rr.Graph.Node(id) != nil {
+			t.Fatalf("前端补的字段不算用户修改，节点应被删除: %+v", rr.Skipped)
+		}
+		if len(rr.Skipped) != 0 || rr.Reverted != 1 {
+			t.Errorf("Skipped=%+v Reverted=%d", rr.Skipped, rr.Reverted)
+		}
+	})
+
+	t.Run("坐标被取整（差不到 1）也不算修改", func(t *testing.T) {
+		built := mustApply(t, mustParse(t, `{}`), ops)
+		id := built.IDMap["a"]
+		cur := built.Graph.Clone()
+		p := node(t, cur, id).Position()
+		node(t, cur, id).SetPosition(canvasgraph.Point{X: p.X + 0.4, Y: p.Y - 0.4})
+		if rr := canvasgraph.Revert(cur, built.Changes); rr.Graph.Node(id) != nil {
+			t.Errorf("取整造成的坐标偏差应能删: %+v", rr.Skipped)
+		}
+	})
+
+	t.Run("用户改了 Agent 写过的字段：保留", func(t *testing.T) {
+		edits := map[string]func(n canvasgraph.Node){
+			"提示词":       func(n canvasgraph.Node) { n.Data()["prompt"] = "清晨" },
+			"标题":        func(n canvasgraph.Node) { n.Data()["label"] = "我改的" },
+			"params 取值": func(n canvasgraph.Node) { n.Data()["params"].(map[string]any)["duration"] = 8.0 },
+			"删掉了某个字段":   func(n canvasgraph.Node) { delete(n.Data(), "model") },
+			"拖走了位置":     func(n canvasgraph.Node) { n.SetPosition(canvasgraph.Point{X: 5000, Y: 5000}) },
+		}
+		for name, edit := range edits {
+			t.Run(name, func(t *testing.T) {
+				cur, built, id := newCur(t) // 同时带着前端补的字段
+				edit(node(t, cur, id))
+				rr := canvasgraph.Revert(cur, built.Changes)
+				if rr.Graph.Node(id) == nil {
+					t.Fatal("用户改过 Agent 写的字段，节点必须保留")
+				}
+				if len(rr.Skipped) != 1 || !strings.Contains(rr.Skipped[0].Reason, "你已修改") {
+					t.Errorf("应说明是你已修改: %+v", rr.Skipped)
+				}
+			})
+		}
+	})
+
+	t.Run("taskId、产物这些已有的保留条件不变", func(t *testing.T) {
+		for name, patch := range map[string]func(d map[string]any){
+			"已有任务": func(d map[string]any) { d["taskId"] = "t1" },
+			"已有产物": func(d map[string]any) { d["outputs"] = []any{map[string]any{"assetId": "1"}} },
+		} {
+			cur, built, id := newCur(t)
+			patch(node(t, cur, id).Data())
+			if rr := canvasgraph.Revert(cur, built.Changes); rr.Graph.Node(id) == nil {
+				t.Errorf("%s: 必须保留", name)
+			}
+		}
+	})
 }

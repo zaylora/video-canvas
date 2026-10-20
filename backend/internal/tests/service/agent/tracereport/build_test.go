@@ -189,3 +189,108 @@ func TestBuild_Deterministic(t *testing.T) {
 		t.Fatal("同样的输入应得到同样的输出")
 	}
 }
+
+// ---- 进程崩溃时把 stderr 里的真正原因摘出来 ----
+
+const nodeCrashStderr = `node:internal/modules/esm/resolve:873
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@earendil-works/pi-codemode' imported from /app/agent/src/agent-tools/codemode.mjs
+    at packageResolve (node:internal/modules/esm/resolve:873:9)
+    at moduleResolve (node:internal/modules/esm/resolve:946:18) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v20.11.0
+`
+
+func segment(seq int, status, stderr string) tracereport.Span {
+	return tracereport.Span{Seq: seq, SpanID: "s" + string(rune('0'+seq)), Kind: tracereport.KindSegment, Name: "start", Status: status,
+		Summary: "start", DurationMS: 900, ExitCode: ptr(1), StderrTail: stderr}
+}
+
+func signalsOf(out string) string {
+	a := strings.Index(out, "## 可疑信号\n")
+	b := strings.Index(out, "## 时间线\n")
+	return out[a:b]
+}
+
+func TestBuild_SegmentCrashSurfacesStderrError(t *testing.T) {
+	const want = "Cannot find package '@earendil-works/pi-codemode'"
+
+	t.Run("缺 npm 包崩溃：可疑信号和时间线都直接写出原因", func(t *testing.T) {
+		r := baseRun()
+		r.Status = "interrupted"
+		out := tracereport.Build(tracereport.Input{Run: r, Spans: []tracereport.Span{segment(1, "aborted", nodeCrashStderr)}})
+		sig := signalsOf(out)
+		if !strings.Contains(sig, want) || !strings.Contains(sig, "退出码 1") || strings.Contains(sig, "- 无") {
+			t.Errorf("可疑信号里应有崩溃原因：\n%s", sig)
+		}
+		timeline := out[strings.Index(out, "## 时间线\n"):]
+		if !strings.Contains(timeline, want) {
+			t.Errorf("时间线摘要里也应带上这一句：\n%s", timeline)
+		}
+		if strings.Contains(sig, "Node.js v20") || strings.Contains(sig, "at packageResolve") {
+			t.Errorf("只摘错误那一行，不要带堆栈和版本号：\n%s", sig)
+		}
+	})
+
+	t.Run("状态是 error 也一样", func(t *testing.T) {
+		out := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{segment(1, "error", nodeCrashStderr)}})
+		if !strings.Contains(signalsOf(out), want) {
+			t.Errorf("error 状态的片段也要摘出原因：\n%s", out)
+		}
+	})
+
+	t.Run("正常结束的片段、stderr 为空或只有空白：不报", func(t *testing.T) {
+		for name, sp := range map[string]tracereport.Span{
+			"ok 带 stderr": segment(1, "ok", nodeCrashStderr),
+			"stderr 为空":   segment(1, "aborted", ""),
+			"stderr 空白":   segment(1, "aborted", " \n\t\n"),
+		} {
+			out := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{sp}})
+			if !strings.Contains(signalsOf(out), "- 无\n") {
+				t.Errorf("%s：不该有可疑信号：\n%s", name, signalsOf(out))
+			}
+		}
+	})
+
+	t.Run("摘取规则：优先最后一条 Error 开头的行，其次含 ERR_ 的最后一行，再不行取最后一个非空行", func(t *testing.T) {
+		cases := map[string]struct{ stderr, want string }{
+			"Error 开头":  {"warn: x\nError: boom one\n  at a\nError: boom two\n  at b\n", "Error: boom two"},
+			"TypeError": {"TypeError: x is not a function\n    at y\n", "TypeError: x is not a function"},
+			"只有 ERR_":   {"info\nfailed with ERR_OUT_OF_MEMORY here\nbye\n", "failed with ERR_OUT_OF_MEMORY here"},
+			"取最后一行":     {"starting\n\nkilled by signal\n\n", "killed by signal"},
+		}
+		for name, c := range cases {
+			out := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{segment(1, "aborted", c.stderr)}})
+			if !strings.Contains(signalsOf(out), c.want) {
+				t.Errorf("%s：应摘出 %q：\n%s", name, c.want, signalsOf(out))
+			}
+		}
+	})
+
+	t.Run("超长截到 200 字；含竖线不撑破时间线表格", func(t *testing.T) {
+		long := "Error: " + strings.Repeat("长", 300) + "|尾巴"
+		out := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{segment(1, "aborted", long)}})
+		if got := strings.Count(signalsOf(out), "长"); got != 200-len([]rune("Error: ")) {
+			t.Errorf("整句应截到 200 字（含 Error: 前缀），实际“长”有 %d 个", got)
+		}
+		if strings.Contains(out, "|尾巴") {
+			t.Error("超过 200 字的部分不应出现")
+		}
+		short := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{segment(1, "aborted", "Error: a|b")}})
+		if !strings.Contains(short, `Error: a\|b`) {
+			t.Errorf("时间线里的竖线要转义：\n%s", short)
+		}
+	})
+
+	t.Run("多个片段各出一条", func(t *testing.T) {
+		out := tracereport.Build(tracereport.Input{Run: baseRun(), Spans: []tracereport.Span{segment(1, "aborted", "Error: one\n"), segment(2, "aborted", "Error: two\n")}})
+		sig := signalsOf(out)
+		if !strings.Contains(sig, "Error: one") || !strings.Contains(sig, "Error: two") {
+			t.Errorf("两个片段都要有：\n%s", sig)
+		}
+	})
+}

@@ -15,6 +15,7 @@ const (
 	maxSummaryRunes  = 80  // 时间线里一行摘要
 	maxErrKeyRunes   = 60  // 判断「同一条报错」时只看前多少个字
 	repeatThreshold  = 3   // 同一条工具报错重复多少次算可疑
+	maxStderrRunes   = 200 // 从进程 stderr 里摘出的那一句错误
 )
 
 // Build 按契约 8.4 的结构生成 report.md：标题与概要、可疑信号、时间线、最终画布概要。
@@ -76,6 +77,8 @@ func writeSignals(b *strings.Builder, r Run, spans []Span) {
 			counts[k]++
 		case s.Kind == KindChat && s.Purpose == "summary":
 			summaries++
+		case crashReason(s) != "":
+			signals = append(signals, crashSignal(s))
 		}
 		if s.Truncated != nil && *s.Truncated {
 			truncated++
@@ -115,8 +118,11 @@ func writeSignals(b *strings.Builder, r Run, spans []Span) {
 func writeTimeline(b *strings.Builder, spans []Span) {
 	b.WriteString("## 时间线\n| # | span | 名称 | 耗时 | 状态 | 摘要 |\n| --- | --- | --- | --- | --- | --- |\n")
 	for _, s := range spans {
-		fmt.Fprintf(b, "| %d | %s | %s | %s | %s | %s |\n", s.Seq, s.Kind, cell(s.Name), formatDuration(s.DurationMS), s.Status,
-			cell(clip(oneLine(s.Summary), maxSummaryRunes, false)))
+		summary := clip(oneLine(s.Summary), maxSummaryRunes, false)
+		if reason := crashReason(s); reason != "" {
+			summary += " · stderr：" + reason // 崩溃原因不受摘要长度限制，省得读报告的人还要去翻原文
+		}
+		fmt.Fprintf(b, "| %d | %s | %s | %s | %s | %s |\n", s.Seq, s.Kind, cell(s.Name), formatDuration(s.DurationMS), s.Status, cell(summary))
 	}
 	b.WriteString("\n")
 }
@@ -281,4 +287,57 @@ func formatTokens(n int) string {
 		return strconv.Itoa(n)
 	}
 	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+// crashReason 取进程片段异常结束（aborted / error）时 stderr 里最有意义的一句错误；不是这种片段或没有 stderr 返回空串。
+func crashReason(s Span) string {
+	if s.Kind != KindSegment || (s.Status != StatusAborted && s.Status != StatusError) {
+		return ""
+	}
+	return clip(lastStderrError(s.StderrTail), maxStderrRunes, false)
+}
+
+// crashSignal 写一个异常结束的进程片段的可疑信号。
+func crashSignal(s Span) string {
+	exit := ""
+	if s.ExitCode != nil {
+		exit = fmt.Sprintf("，退出码 %d", *s.ExitCode)
+	}
+	return fmt.Sprintf("进程片段 #%d（%s）异常结束%s：%s", s.Seq, s.Name, exit, crashReason(s))
+}
+
+// lastStderrError 从 stderr 末尾里挑最有意义的一行：优先最后一条以 Error 开头的行（含 TypeError 等，Node 未捕获异常的首行，
+// 带着真正的原因，如 Cannot find package 'x'）；没有就取含 ERR_ 的最后一行；再没有取最后一个非空行。
+// 不单独取「最后一条含 ERR_ 的行」：Node 的堆栈末尾常有 code: 'ERR_...'，信息量不如首行。
+func lastStderrError(tail string) string {
+	var lines []string
+	for _, l := range strings.Split(tail, "\n") {
+		if l = oneLine(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isErrorLine(lines[i]) {
+			return lines[i]
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.Contains(lines[i], "ERR_") {
+			return lines[i]
+		}
+	}
+	if len(lines) > 0 {
+		return lines[len(lines)-1]
+	}
+	return ""
+}
+
+// isErrorLine 判断是不是「Error: …」「Error [CODE]: …」「TypeError: …」这样的错误首行。
+func isErrorLine(l string) bool {
+	name, _, ok := strings.Cut(l, " ")
+	if !ok {
+		name = l
+	}
+	name = strings.TrimSuffix(name, ":")
+	return strings.HasSuffix(name, "Error") && !strings.ContainsAny(name, "./()")
 }

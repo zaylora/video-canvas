@@ -1,6 +1,7 @@
 package canvasgraph
 
 import (
+	"math"
 	"reflect"
 	"sort"
 )
@@ -197,17 +198,64 @@ func (r *reverter) keepReason(n Node, c Change) string {
 	if outs, _ := d["outputs"].([]any); len(outs) > 0 {
 		return "已有产物，保留"
 	}
+	// 只比较 Agent 写入过的字段：前端规整节点时补的默认参数、运行时字段、坐标取整都不算用户的修改，
+	// 否则前端一保存，新建的节点就永远删不掉。data.status 随生成变化，不参与比较
 	cur := flatten(n)
-	delete(cur, "data.status")
-	want := make(map[string]any, len(c.After))
-	for k, v := range c.After {
-		want[k] = v
-	}
-	delete(want, "data.status")
-	if !reflect.DeepEqual(cur, want) {
-		return "你已修改，保留"
+	for path, want := range c.After {
+		if path == "data.status" {
+			continue
+		}
+		got, ok := cur[path]
+		if !ok || !sameWritten(path, got, want) {
+			return "你已修改，保留"
+		}
 	}
 	return ""
+}
+
+// sameWritten 判断节点上当前的值是否仍是 Agent 写入的值：对象只看 Agent 写过的键（前端往 params 里补的默认值忽略），
+// 位置容忍前端取整带来的不到 1 的偏差，其余必须完全相等。
+func sameWritten(path string, got, want any) bool {
+	if path == "position" {
+		return samePosition(got, want)
+	}
+	return containsValue(got, want)
+}
+
+// containsValue 判断 got 是否包含 want：对象递归地只比较 want 里有的键，其余类型要求完全相等。
+func containsValue(got, want any) bool {
+	wm, ok := want.(map[string]any)
+	if !ok {
+		return reflect.DeepEqual(got, want)
+	}
+	gm, ok := got.(map[string]any)
+	if !ok {
+		return false
+	}
+	for k, wv := range wm {
+		gv, has := gm[k]
+		if !has || !containsValue(gv, wv) {
+			return false
+		}
+	}
+	return true
+}
+
+// samePosition 判断两个位置是否相同，x、y 各自相差不到 1 就算相同（前端保存时会把坐标取整）。
+func samePosition(got, want any) bool {
+	gm, gok := got.(map[string]any)
+	wm, wok := want.(map[string]any)
+	if !gok || !wok {
+		return reflect.DeepEqual(got, want)
+	}
+	for _, axis := range []string{"x", "y"} {
+		gv, gnum := gm[axis].(float64)
+		wv, wnum := wm[axis].(float64)
+		if !gnum || !wnum || math.Abs(gv-wv) >= 1 {
+			return false
+		}
+	}
+	return true
 }
 
 // removeNode 删除节点和与它相连的所有连线。

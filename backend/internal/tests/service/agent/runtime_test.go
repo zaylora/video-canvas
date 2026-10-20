@@ -614,3 +614,143 @@ func TestProcessRuntime_PromptStatesTheSelection(t *testing.T) {
 		t.Errorf("没选中任何东西时不带 selected:\n%s", prompt2)
 	}
 }
+
+// ---- 点「继续」时，用审批表里的真实结果替换历史里占位的工具结果（C6）----
+
+// stateWithPlaceholder 是一份停在等待审批的历史：最后一条是占位的工具结果。
+func stateWithPlaceholder(toolCallID, placeholder string) string {
+	return `[{"role":"user","content":[{"type":"text","text":"处理一下"}],"timestamp":1},` +
+		`{"role":"assistant","content":[{"type":"toolCall","id":"` + toolCallID + `","name":"x","arguments":{}}],"stopReason":"toolUse","timestamp":2},` +
+		`{"role":"toolResult","toolCallId":"` + toolCallID + `","toolName":"x","isError":false,"content":[{"type":"text","text":"` + placeholder + `"}],"timestamp":3}]`
+}
+
+const (
+	placeholderConfirm = "已提交给用户确认，等待决定。用户决定后你会收到结果。"
+	placeholderApprove = "已提交给用户批准，等待决定。用户决定后你会收到结果；批准后任务才会创建并开始生成。"
+	placeholderAsk     = "已向用户提问，等待回答。用户回答后你会收到结果。"
+)
+
+// resumeMessages 让一个运行以「继续」启动，返回交给 Node 的历史里每条工具结果的文字（按 toolCallId）。
+func resumeToolResults(t *testing.T, e *runtimeEnv, state string, approvals ...*model.AgentApproval) map[string]string {
+	t.Helper()
+	v := e.start(t, "x")
+	run := e.run(uint64(v.ID))
+	e.repo.st().sessions[e.sess].SessionJSONL = state
+	for _, a := range approvals {
+		a.RunID, a.SessionID, a.CanvasID, a.UserID = run.ID, run.SessionID, run.CanvasID, run.UserID
+		if err := e.repo.CreateApproval(context.Background(), a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.rt.Resume(context.Background(), &run, ResumeInfo{Reason: "resume"}); err != nil {
+		t.Fatal(err)
+	}
+	var in struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"toolCallId"`
+			IsError    bool   `json:"isError"`
+			Content    []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	line := e.firstLine(t)
+	raw, _ := json.Marshal(line)
+	if err := json.Unmarshal(raw, &in); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, m := range in.Messages {
+		if m.Role == "toolResult" && len(m.Content) > 0 {
+			out[m.ToolCallID] = m.Content[0].Text
+			if m.IsError {
+				out[m.ToolCallID] += "[isError]"
+			}
+		}
+	}
+	if len(in.Messages) != 3 {
+		t.Fatalf("历史条数不该变: %d", len(in.Messages))
+	}
+	return out
+}
+
+func TestProcessRuntime_ResumeFillsDecidedApprovals(t *testing.T) {
+	t.Run("删除审批已执行：占位被换成真实结果，模型知道删除已经发生", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		got := resumeToolResults(t, e, stateWithPlaceholder("tc-del", placeholderConfirm), &model.AgentApproval{
+			Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalExecuted,
+			PayloadJSON:  []byte(`{"node_ids":["n1"],"labels":["旧图"]}`),
+			DecisionJSON: []byte(`{"decision":"approve","node_ids":["n1"]}`),
+			ResultJSON:   []byte(`{"revision":3}`),
+		})
+		if !strings.Contains(got["tc-del"], "已删除 1 个节点") || strings.Contains(got["tc-del"], "等待决定") {
+			t.Errorf("tc-del = %q", got["tc-del"])
+		}
+	})
+
+	t.Run("生成审批已执行：写出批准的条目和任务；执行失败写出失败原因", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		got := resumeToolResults(t, e, stateWithPlaceholder("tc-gen", placeholderApprove), &model.AgentApproval{
+			Kind: model.ApprovalGenerate, ToolCallID: "tc-gen", Status: model.ApprovalExecuted, QuoteCredits: 16,
+			PayloadJSON:  []byte(`{"items":[{"node_id":"n1","label":"林夏","price":8,"count":2}]}`),
+			DecisionJSON: []byte(`{"decision":"approve","items":[{"node_id":"n1","label":"林夏","price":8,"count":2}]}`),
+			ResultJSON:   []byte(`{"tasks":[{"node_id":"n1","task_id":"101","credits":8}]}`),
+		})
+		if !strings.Contains(got["tc-gen"], "林夏×2") || !strings.Contains(got["tc-gen"], "任务已提交") || !strings.Contains(got["tc-gen"], "101") {
+			t.Errorf("tc-gen = %q", got["tc-gen"])
+		}
+		e2 := newRuntimeEnv(t)
+		got = resumeToolResults(t, e2, stateWithPlaceholder("tc-gen", placeholderApprove), &model.AgentApproval{
+			Kind: model.ApprovalGenerate, ToolCallID: "tc-gen", Status: model.ApprovalFailed, QuoteCredits: 16,
+			PayloadJSON:  []byte(`{"items":[{"node_id":"n1","label":"林夏","price":8,"count":2}]}`),
+			DecisionJSON: []byte(`{"decision":"approve","items":[{"node_id":"n1","label":"林夏","price":8,"count":2}]}`),
+			ResultJSON:   []byte(`{"error":"模型已不可用"}`),
+		})
+		if !strings.Contains(got["tc-gen"], "任务提交失败：模型已不可用") {
+			t.Errorf("tc-gen = %q", got["tc-gen"])
+		}
+	})
+
+	t.Run("拒绝和回答提问也一样补上", func(t *testing.T) {
+		e := newRuntimeEnv(t)
+		got := resumeToolResults(t, e, stateWithPlaceholder("tc-del", placeholderConfirm), &model.AgentApproval{
+			Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalRejected,
+			PayloadJSON: []byte(`{"node_ids":["n1"]}`), DecisionJSON: []byte(`{"decision":"reject","answer":"留着"}`),
+		})
+		if !strings.Contains(got["tc-del"], "拒绝了删除") || !strings.Contains(got["tc-del"], "留着") {
+			t.Errorf("tc-del = %q", got["tc-del"])
+		}
+		e2 := newRuntimeEnv(t)
+		got = resumeToolResults(t, e2, stateWithPlaceholder("tc-ask", placeholderAsk), &model.AgentApproval{
+			Kind: model.ApprovalAsk, ToolCallID: "tc-ask", Status: model.ApprovalApproved,
+			PayloadJSON: []byte(`{"question":"画幅？"}`), DecisionJSON: []byte(`{"decision":"approve","answer":"16:9"}`),
+		})
+		if got["tc-ask"] != "用户回答：16:9" {
+			t.Errorf("tc-ask = %q", got["tc-ask"])
+		}
+	})
+
+	t.Run("还没决定、已过期、没有对应审批、历史里已经是真实结果：保持原样", func(t *testing.T) {
+		cases := map[string]struct {
+			state string
+			a     *model.AgentApproval
+		}{
+			"还没决定":   {stateWithPlaceholder("tc-del", placeholderConfirm), &model.AgentApproval{Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalPending}},
+			"已过期":    {stateWithPlaceholder("tc-del", placeholderConfirm), &model.AgentApproval{Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalExpired}},
+			"对不上":    {stateWithPlaceholder("tc-other", placeholderConfirm), &model.AgentApproval{Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalExecuted, PayloadJSON: []byte(`{"node_ids":["n1"]}`), DecisionJSON: []byte(`{"decision":"approve","node_ids":["n1"]}`)}},
+			"已是真实结果": {stateWithPlaceholder("tc-del", "已经删除了 1 个节点"), &model.AgentApproval{Kind: model.ApprovalDelete, ToolCallID: "tc-del", Status: model.ApprovalExecuted, PayloadJSON: []byte(`{"node_ids":["n1"]}`), DecisionJSON: []byte(`{"decision":"approve","node_ids":["n1"]}`)}},
+		}
+		for name, c := range cases {
+			t.Run(name, func(t *testing.T) {
+				e := newRuntimeEnv(t)
+				got := resumeToolResults(t, e, c.state, c.a)
+				for id, text := range got {
+					if strings.Contains(text, "用户批准") || strings.Contains(text, "用户回答") {
+						t.Errorf("%s 不该被替换: %q", id, text)
+					}
+				}
+			})
+		}
+	})
+}

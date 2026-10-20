@@ -60,7 +60,11 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	run := &model.AgentRun{SessionID: sess.ID, CanvasID: sess.CanvasID, UserID: userID, Status: model.RunQueued,
 		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps,
 		PromptVersion: prompts.Version, AgentModelKey: modelKey, InputJSON: runInputJSON(in, budget), HarnessCase: harness, TraceEnabled: s.trace.Enabled()}
-	if err := s.repo.CreateRun(ctx, run); err != nil {
+	err = s.repo.CreateRun(ctx, run)
+	if errors.Is(err, repository.ErrDuplicate) && s.expireStaleRun(ctx, sess.CanvasID) {
+		err = s.repo.CreateRun(ctx, run) // 占着画布的是等审批超时的运行，已经置为 expired，再试一次
+	}
+	if err != nil {
 		if errors.Is(err, repository.ErrDuplicate) {
 			return nil, errcode.ErrAgentRunActive
 		}

@@ -130,7 +130,7 @@ func (b *AgentBridge) toolGenerate(ctx context.Context, tc *toolCall) (*toolOut,
 	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalGenerate, p, total); err != nil {
 		return nil, err
 	}
-	return &toolOut{content: "已提交给用户批准，等待决定。用户决定后你会收到结果；批准后任务才会创建并开始生成。", terminate: true,
+	return &toolOut{content: placeholderApprove, terminate: true,
 		summary: fmt.Sprintf("申请生成 %d 个节点（预估 %d 积分）", len(p.Items), total)}, nil
 }
 
@@ -268,10 +268,15 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 	if err != nil {
 		return nil, errors.New("模型已不可用")
 	}
+	// 按最新的节点内容重新报价：批准期间用户改了时长、比例等参数，价格可能比批准时贵，超出批准的报价就不提交
+	input := buildGenInput(snap.Model.Capabilities, src)
+	if err := checkApprovedPrice(snap, input, it); err != nil {
+		return nil, err
+	}
 	key := fmt.Sprintf("agent-%d-%d", approvalID, idx)
 	resp, err := g.tasks.Create(ctx, run.UserID, key, &model.CreateGenerationTaskReq{
 		Kind: snap.Model.Kind, ModelID: it.ModelKey, CanvasID: idcodec.ID(run.CanvasID), NodeID: it.NodeID,
-		Input: buildGenInput(snap.Model.Capabilities, src),
+		Input: input,
 	})
 	if err != nil {
 		return nil, userFacing(err)
@@ -283,6 +288,21 @@ func (g *AgentGenerator) submit(ctx context.Context, run *model.AgentRun, approv
 		return nil, errors.New("任务没有创建成功")
 	}
 	return resp.Items[0].Task, nil
+}
+
+// checkApprovedPrice 用节点最新的输入重新报价，新单价高于批准时的单价就返回错误（原因写给模型看）。
+// 价格不高于批准价照常提交，多冻结不会发生：任务按提交时的报价冻结。
+func checkApprovedPrice(snap *provider.Snapshot, input map[string]any, it GenerateItem) error {
+	caps := snap.Model.Capabilities
+	valid, fieldErrs := modelcfg.ValidateInput(snap.Model.Kind, caps, input)
+	if len(fieldErrs) > 0 {
+		return fmt.Errorf("节点参数在批准后改动，现在不合法：%s。没有提交，请修正后重新申请", modelcfg.JoinFieldErrors(fieldErrs))
+	}
+	now := max(modelcfg.Quote(snap.Model.Pricing, caps, modelcfg.SpecFromInput(valid, caps.System)), 0)
+	if now > it.Price {
+		return fmt.Errorf("节点参数在批准后改动，价格从 %d 变成 %d，超出批准的报价，没有提交，请重新申请", it.Price, now)
+	}
+	return nil
 }
 
 // userFacing 把业务错误换成它的文案，其它错误只说内部错误（细节由任务服务记日志）。

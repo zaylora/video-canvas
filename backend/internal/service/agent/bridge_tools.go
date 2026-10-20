@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -251,9 +252,25 @@ func modeAllowsOps(mode string, ops []canvasgraph.Op) error {
 			if op.Op != canvasgraph.OpUpdateNode || op.Label != nil || op.Model != nil {
 				return fail("当前是「提示词优化」模式，只能修改已有节点的提示词，不能做 %s。", op.Op)
 			}
+			// params 里只放行 prompt：时长、比例等生成参数不在这个模式的承诺里
+			if extra := paramKeysExcept(op.Params, "prompt"); len(extra) > 0 {
+				return fail("当前是「提示词优化」模式，只能修改提示词（prompt 或 params.prompt），不能改参数 %s。", strings.Join(extra, "、"))
+			}
 		}
 	}
 	return nil
+}
+
+// paramKeysExcept 返回 params 里除 allowed 之外的键，按字典序。
+func paramKeysExcept(params map[string]any, allowed string) []string {
+	var keys []string
+	for k := range params {
+		if k != allowed {
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 // jsonOut 把结果序列化成给模型看的 JSON 文本。
@@ -382,7 +399,7 @@ func (b *AgentBridge) toolDelete(ctx context.Context, tc *toolCall) (*toolOut, e
 	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalDelete, p, 0); err != nil {
 		return nil, err
 	}
-	return &toolOut{content: "已提交给用户确认，等待决定。用户决定后你会收到结果。", terminate: true,
+	return &toolOut{content: placeholderConfirm, terminate: true,
 		summary: fmt.Sprintf("申请删除 %d 个节点", len(a.NodeIDs))}, nil
 }
 
@@ -450,7 +467,7 @@ func (b *AgentBridge) toolAsk(ctx context.Context, tc *toolCall) (*toolOut, erro
 	if _, err := b.d.Agent.CreateApproval(ctx, tc.run, tc.id, model.ApprovalAsk, p, 0); err != nil {
 		return nil, err
 	}
-	return &toolOut{content: "已向用户提问，等待回答。用户回答后你会收到结果。", terminate: true, summary: "向用户提问：" + truncateRunes(q, 40)}, nil
+	return &toolOut{content: placeholderAsk, terminate: true, summary: "向用户提问：" + truncateRunes(q, 40)}, nil
 }
 
 // askModels 列出某类已发布的生成模型，给「选模型」提问用。
