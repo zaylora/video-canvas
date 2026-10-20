@@ -4,9 +4,8 @@ import {
   Camera,
   Clapperboard,
   Columns3,
-  Crop,
-  Eraser,
   Expand,
+  Grid3x3,
   ImageUpscale,
   Layers,
   PanelLeft,
@@ -14,9 +13,7 @@ import {
   PenLine,
   PersonStanding,
   Scissors,
-  Shrink,
   SquareDashedMousePointer,
-  WandSparkles,
   Wrench,
 } from "lucide-react";
 
@@ -30,6 +27,11 @@ export type ToolbarMenuItem = {
   icon: LucideIcon;
   /** 会消耗积分的功能，名字后带一颗积分色的星 */
   paid?: boolean;
+  /**
+   * 带子面板的菜单项：鼠标移上去在右侧弹出一块面板，选定后再触发 onAction[id]。
+   * 目前只有 grid-picker（宫格切分的「自定义」，5×5 的格子选择器）一种。
+   */
+  submenu?: "grid-picker";
 };
 
 /** 下拉菜单里的一组：label 是暗灰小标题，没有就不显示 */
@@ -109,20 +111,21 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
   },
   image: {
     actions: [
-      { id: "repaint", label: "局部重绘", icon: SquareDashedMousePointer, paid: true },
-      { id: "upscale", label: "智能超清", icon: ImageUpscale, paid: true },
-      { id: "edit", label: "图片编辑", icon: PenLine, paid: true },
+      // 图片编辑是浏览器里的涂鸦，宫格切分是浏览器里切图：都不调模型、不扣积分
+      { id: "edit", label: "图片编辑", icon: PenLine },
       { id: "outpaint", label: "扩图", icon: Expand, paid: true },
       {
-        id: "tools",
-        label: "工具",
-        icon: Wrench,
+        id: "grid",
+        label: "宫格切分",
+        icon: Grid3x3,
         menu: [
           {
-            label: "编辑",
             items: [
-              { id: "cutout", label: "抠图", icon: Crop, paid: true },
-              { id: "unwatermark", label: "去水印", icon: Eraser, paid: true },
+              { id: "grid-2x2", label: "4 宫格 (2×2)", icon: Grid3x3 },
+              { id: "grid-3x3", label: "9 宫格 (3×3)", icon: Grid3x3 },
+              { id: "grid-4x4", label: "16 宫格 (4×4)", icon: Grid3x3 },
+              { id: "grid-5x5", label: "25 宫格 (5×5)", icon: Grid3x3 },
+              { id: "grid-custom", label: "自定义", icon: Grid3x3, submenu: "grid-picker" },
             ],
           },
         ],
@@ -137,14 +140,8 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
     ],
     tail: ["download", "addToLibrary"],
   },
-  script: {
-    actions: [
-      { id: "polish", label: "润色", icon: WandSparkles, paid: true },
-      { id: "extend", label: "扩写", icon: Expand, paid: true },
-      { id: "shorten", label: "缩写", icon: Shrink, paid: true },
-    ],
-    tail: ["copy", "zoom"],
-  },
+  // 文本节点只剩查看类按钮：润色、扩写、缩写这几个占位功能已删
+  script: { actions: [], tail: ["copy", "zoom"] },
   // 导演台（设计稿 docs/design/3D导演台）：不出功能区（toolbarGate 里不显示），这里留空
   director: { actions: [], tail: [] },
 };

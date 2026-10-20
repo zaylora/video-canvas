@@ -55,4 +55,57 @@ describe("节点功能区配置（设计稿 6.16）", () => {
       expect(NODE_TOOLBAR[kind].tail).toEqual(expect.arrayContaining(["zoom", "download"]));
     }
   });
+
+  test("图片节点只剩图片编辑、扩图、宫格切分，占位按钮都删了", () => {
+    expect(NODE_TOOLBAR.image.actions.map((action) => action.id)).toEqual([
+      "edit",
+      "outpaint",
+      "grid",
+    ]);
+  });
+
+  test("图片编辑是纯前端涂鸦，不带积分星；扩图仍收费", () => {
+    const paid = (id: string) =>
+      NODE_TOOLBAR.image.actions.find((action) => action.id === id)?.paid;
+    expect(paid("edit")).toBeFalsy();
+    expect(paid("grid")).toBeFalsy();
+    expect(paid("outpaint")).toBe(true);
+  });
+
+  test("宫格切分的菜单：4/9/16/25 宫格，再加带子面板的「自定义」", () => {
+    const grid = NODE_TOOLBAR.image.actions.find((action) => action.id === "grid");
+    const items = grid?.menu?.flatMap((group) => group.items) ?? [];
+    expect(items.map((item) => item.label)).toEqual([
+      "4 宫格 (2×2)",
+      "9 宫格 (3×3)",
+      "16 宫格 (4×4)",
+      "25 宫格 (5×5)",
+      "自定义",
+    ]);
+    expect(items.map((item) => item.id)).toEqual([
+      "grid-2x2",
+      "grid-3x3",
+      "grid-4x4",
+      "grid-5x5",
+      "grid-custom",
+    ]);
+    expect(items.at(-1)?.submenu).toBe("grid-picker");
+    expect(items.slice(0, -1).every((item) => !item.submenu)).toBe(true);
+  });
+
+  test("文本节点没有加工类按钮，只剩复制和放大预览", () => {
+    expect(NODE_TOOLBAR.script.actions).toEqual([]);
+    expect(NODE_TOOLBAR.script.tail).toEqual(["copy", "zoom"]);
+  });
+
+  test("视频节点的按钮不受影响", () => {
+    expect(NODE_TOOLBAR.video.actions.map((action) => action.id)).toEqual([
+      "retake",
+      "upscale",
+      "edit",
+      "frame",
+      "trim",
+      "tools",
+    ]);
+  });
 });

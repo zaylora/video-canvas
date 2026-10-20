@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { ChevronDown, Copy, Download, FolderPlus, Maximize2, Sparkle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,12 +8,16 @@ import {
   ChromeSeparator,
   ChromeTooltip,
 } from "@/components/canvas/chrome/chrome";
+import { GridPicker } from "@/components/canvas/grid-picker";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { NodeToolbarConfig, ToolbarAction, ToolbarTail } from "@/constants/node-toolbar";
@@ -71,18 +75,21 @@ function ActionBody({ action }: { action: ToolbarAction }) {
   );
 }
 
-/** 带下拉的功能按钮 */
+/** 带下拉的功能按钮；onGridPick 给「带格子选择器子面板」的菜单项用，选定后连同整个菜单一起收起 */
 function MenuAction({
   action,
   disabled,
   onSelect,
+  onGridPick,
 }: {
   action: ToolbarAction;
   disabled: boolean;
   onSelect: (id: string, label: string) => void;
+  onGridPick?: (rows: number, cols: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         disabled={disabled}
         render={
@@ -106,17 +113,34 @@ function MenuAction({
         {action.menu?.map((group, index) => (
           <DropdownMenuGroup key={group.label ?? index}>
             {group.label && <DropdownMenuLabel>{group.label}</DropdownMenuLabel>}
-            {group.items.map((item) => (
-              <DropdownMenuItem
-                key={item.id}
-                className="h-9 gap-2.5"
-                onClick={() => onSelect(item.id, item.label)}
-              >
-                <item.icon className="text-muted-foreground" />
-                {item.label}
-                {item.paid && <PaidMark />}
-              </DropdownMenuItem>
-            ))}
+            {group.items.map((item) =>
+              item.submenu === "grid-picker" ? (
+                <DropdownMenuSub key={item.id}>
+                  <DropdownMenuSubTrigger className="h-9 gap-2.5 rounded-lg px-2 py-1.5">
+                    <item.icon className="text-muted-foreground" />
+                    {item.label}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent sideOffset={6} alignOffset={-6} className="p-3">
+                    <GridPicker
+                      onPick={(rows, cols) => {
+                        setOpen(false);
+                        onGridPick?.(rows, cols);
+                      }}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ) : (
+                <DropdownMenuItem
+                  key={item.id}
+                  className="h-9 gap-2.5"
+                  onClick={() => onSelect(item.id, item.label)}
+                >
+                  <item.icon className="text-muted-foreground" />
+                  {item.label}
+                  {item.paid && <PaidMark />}
+                </DropdownMenuItem>
+              ),
+            )}
           </DropdownMenuGroup>
         ))}
       </DropdownMenuContent>
@@ -144,6 +168,7 @@ export function NodeActionBar({
   gate,
   onAction,
   onTail,
+  onGridPick,
 }: {
   config: NodeToolbarConfig;
   /** 节点标题，给读屏用 */
@@ -153,6 +178,8 @@ export function NodeActionBar({
   onAction?: Partial<Record<string, () => void>>;
   /** 放大、下载、复制的处理函数，没有就当占位；加入资产库没有处理函数就不显示 */
   onTail?: Partial<Record<ToolbarTail, () => void>>;
+  /** 宫格切分「自定义」选定了行列；没有就当占位（选了也只提示敬请期待） */
+  onGridPick?: (rows: number, cols: number) => void;
 }) {
   const run = (id: string, name: string) => {
     const handler = onAction?.[id];
@@ -189,6 +216,7 @@ export function NodeActionBar({
             action={action}
             disabled={gate.actionsDisabled}
             onSelect={run}
+            onGridPick={onGridPick ?? (() => comingSoon(action.label))}
           />
         ) : (
           <ChromeButton

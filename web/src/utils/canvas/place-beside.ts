@@ -6,11 +6,12 @@ import { DEFAULT_NODE_SIZE } from "./placement";
 /** 新节点离源节点的水平间距（画布坐标） */
 export const NODE_GAP_X = 80;
 /** 新节点之间、与已有节点之间至少留的空隙 */
-const AVOID_GAP = 40;
+export const AVOID_GAP = 40;
 /** 找空位最多往下试几次，极端拥挤时不再找，叠放也比卡死好 */
-const MAX_SHIFTS = 60;
+export const MAX_SHIFTS = 60;
 
-type Rect = { x: number; y: number; width: number; height: number };
+/** 画布坐标里的矩形：左上角加宽高 */
+export type Rect = { x: number; y: number; width: number; height: number };
 
 /** 节点此刻的大小：优先量到的，其次声明的，最后默认大小 */
 export const sizeOfNode = (node: FlowNode) => ({
@@ -18,7 +19,8 @@ export const sizeOfNode = (node: FlowNode) => ({
   height: node.measured?.height ?? node.height ?? DEFAULT_NODE_SIZE.height,
 });
 
-const overlaps = (a: Rect, b: Rect) =>
+/** 两个矩形是否撞上：含 AVOID_GAP 的空隙，间隔不够也算撞 */
+export const overlaps = (a: Rect, b: Rect) =>
   a.x < b.x + b.width + AVOID_GAP &&
   b.x < a.x + a.width + AVOID_GAP &&
   a.y < b.y + b.height + AVOID_GAP &&

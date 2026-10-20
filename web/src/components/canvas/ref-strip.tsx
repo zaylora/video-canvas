@@ -19,6 +19,7 @@ import type { ParamAsset } from "@/types";
 import type { RefKey } from "@/utils/tasks/capabilities";
 
 import { RefThumb, usePromptRefs, type RefSource } from "./prompt-mention";
+import { RefPeek } from "./use-ref-peek";
 
 /** 引用条上的一个上游：接进来的节点，以及当前生成方式用不用得上它 */
 export type RefItem = RefSource & {
@@ -182,74 +183,94 @@ export function RefStrip({
             const note =
               item.running || empty ? " · 还没生成" : item.used ? "" : " · 当前生成方式用不到";
             return (
-              <motion.span
-                key={item.id}
-                {...enter}
-                exit={exit}
-                transition={SPRING}
-                onMouseEnter={() => refs?.setHighlight(item.id)}
-                onMouseLeave={() => refs?.setHighlight(null)}
-                className={cn(
-                  TILE,
-                  "hover:ring-node-ring focus-within:ring-node-ring hover:ring-2",
-                  lit && "ring-node-ring ring-2",
-                  empty && "ring-foreground/12 bg-transparent ring-[1.5px] ring-inset",
+              // 悬停 / 聚焦时弹出大图（设计稿 10.1）；RefPeek 带着 key 站在 AnimatePresence 的直接子级上
+              <RefPeek key={item.id} target={item} alt={`${item.label} 的大图`}>
+                {(peek) => (
+                  <motion.span
+                    {...enter}
+                    {...peek}
+                    exit={exit}
+                    transition={SPRING}
+                    onMouseEnter={() => refs?.setHighlight(item.id)}
+                    onMouseLeave={() => refs?.setHighlight(null)}
+                    className={cn(
+                      TILE,
+                      "hover:ring-node-ring focus-within:ring-node-ring hover:ring-2",
+                      lit && "ring-node-ring ring-2",
+                      empty && "ring-foreground/12 bg-transparent ring-[1.5px] ring-inset",
+                    )}
+                  >
+                    <motion.button
+                      type="button"
+                      whileTap={TAP}
+                      title={`${item.label}${note}\n点击插入到提示词`}
+                      aria-label={`引用：${item.label}，点击插入到提示词`}
+                      onClick={() => refs?.insertRef(item)}
+                      className={cn("size-full outline-none", !item.used && "opacity-40")}
+                    >
+                      <RefThumb source={item} />
+                    </motion.button>
+                    <Badge className="pointer-events-none top-[3px] left-[3px]">
+                      <Link2 />
+                    </Badge>
+                    {item.kind === "video" && !empty && (
+                      <Badge className="pointer-events-none right-[3px] bottom-[3px]">
+                        <Play />
+                      </Badge>
+                    )}
+                    <RemoveButton
+                      label={`断开「${item.label}」的引用`}
+                      disabled={disabled}
+                      onClick={() => {
+                        refs?.setHighlight(null);
+                        onUnlink(item.id);
+                      }}
+                    />
+                  </motion.span>
                 )}
-              >
-                <motion.button
-                  type="button"
-                  whileTap={TAP}
-                  title={`${item.label}${note}\n点击插入到提示词`}
-                  aria-label={`引用：${item.label}，点击插入到提示词`}
-                  onClick={() => refs?.insertRef(item)}
-                  className={cn("size-full outline-none", !item.used && "opacity-40")}
-                >
-                  <RefThumb source={item} />
-                </motion.button>
-                <Badge className="pointer-events-none top-[3px] left-[3px]">
-                  <Link2 />
-                </Badge>
-                {item.kind === "video" && !empty && (
-                  <Badge className="pointer-events-none right-[3px] bottom-[3px]">
-                    <Play />
-                  </Badge>
-                )}
-                <RemoveButton
-                  label={`断开「${item.label}」的引用`}
-                  disabled={disabled}
-                  onClick={() => {
-                    refs?.setHighlight(null);
-                    onUnlink(item.id);
-                  }}
-                />
-              </motion.span>
+              </RefPeek>
             );
           })}
-          {manual.map((ref) => (
-            <motion.span
-              key={`${ref.key}:${ref.assetId}`}
-              {...enter}
-              exit={exit}
-              transition={SPRING}
-              title={`${ref.asset?.fileName ?? `素材 #${ref.assetId}`}（手动添加）`}
-              className={TILE}
-            >
-              <RefThumb
-                source={{
-                  id: ref.assetId,
+          {manual.map((ref) => {
+            const name = ref.asset?.fileName ?? `素材 #${ref.assetId}`;
+            return (
+              <RefPeek
+                key={`${ref.key}:${ref.assetId}`}
+                target={{
                   kind: ref.asset?.mediaType ?? "image",
-                  label: ref.asset?.fileName ?? "",
-                  src: ref.asset?.url,
                   mediaType: ref.asset?.mediaType,
+                  src: ref.asset?.url,
                 }}
-              />
-              <RemoveButton
-                label="移除这份素材"
-                disabled={disabled}
-                onClick={() => onRemoveManual(ref.key, ref.assetId)}
-              />
-            </motion.span>
-          ))}
+                alt={`${name} 的大图`}
+              >
+                {(peek) => (
+                  <motion.span
+                    {...enter}
+                    {...peek}
+                    exit={exit}
+                    transition={SPRING}
+                    title={`${name}（手动添加）`}
+                    className={TILE}
+                  >
+                    <RefThumb
+                      source={{
+                        id: ref.assetId,
+                        kind: ref.asset?.mediaType ?? "image",
+                        label: ref.asset?.fileName ?? "",
+                        src: ref.asset?.url,
+                        mediaType: ref.asset?.mediaType,
+                      }}
+                    />
+                    <RemoveButton
+                      label="移除这份素材"
+                      disabled={disabled}
+                      onClick={() => onRemoveManual(ref.key, ref.assetId)}
+                    />
+                  </motion.span>
+                )}
+              </RefPeek>
+            );
+          })}
         </AnimatePresence>
 
         <DropdownMenu

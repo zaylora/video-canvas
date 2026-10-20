@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Loader2, Music, Play, Plus, RotateCw, X } from "lucide-react";
 
 import type { Capabilities, RefKind } from "@/api/model/type";
+import { RefPeekCard } from "@/components/ref-peek";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import type { ComposerRef } from "@/utils/conversation/submission";
@@ -13,6 +14,7 @@ import {
   refSlot,
   type RefSize,
 } from "@/utils/conversation/ref-layout";
+import { canPeek } from "@/utils/canvas/ref-peek";
 import { acceptableRefKinds, refMax } from "@/utils/tasks/capabilities";
 
 /** 各种参考素材在提示里的叫法 */
@@ -24,9 +26,6 @@ const SIZE_MOBILE: RefSize = { w: 44, h: 56 };
 
 /** 摆放变化（叠放 ↔ 展开、加号块 ↔ 小圆钮）的过渡：阻尼偏大的弹簧，到位干脆，不来回晃 */
 const LAYOUT_SPRING = { type: "spring", stiffness: 380, damping: 32, mass: 0.9 } as const;
-
-/** 放大预览从下往上长出来的过渡 */
-const PEEK_TRANSITION = { duration: 0.24, ease: [0.22, 1, 0.36, 1] } as const;
 
 /** 上传块（没有参考图或展开时）悬停 / 聚焦：摆正并轻微放大 */
 const TILE_ACTIVE = { rotate: 0, scale: 1.06 } as const;
@@ -241,37 +240,15 @@ export function ComposerRefs({
       </motion.button>
 
       <AnimatePresence>
-        {peek?.url && peek.kind !== "audio" && (
-          <motion.div
+        {peek?.url && canPeek({ kind: peek.kind, src: peek.url }) && (
+          <RefPeekCard
             key={peek.id}
-            className="pointer-events-none absolute z-30"
-            style={{
-              left: refSlot(peekIndex, true, size).x,
-              bottom: size.h + 14,
-              transformOrigin: "50% 100%",
-            }}
-            initial={{ opacity: 0, scaleY: 0.4, scaleX: 0.85, y: 24 }}
-            animate={{ opacity: 1, scaleY: 1, scaleX: 1, y: 0 }}
-            exit={{ opacity: 0, scaleY: 0.6, scaleX: 0.9, y: 14 }}
-            transition={PEEK_TRANSITION}
-          >
-            {peek.kind === "video" ? (
-              <video
-                src={peek.url}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="bg-card border-border max-h-72 max-w-64 rounded-xl border object-contain shadow-2xl"
-              />
-            ) : (
-              <img
-                src={peek.url}
-                alt={`${peek.name} 的大图`}
-                className="bg-card border-border max-h-72 max-w-64 rounded-xl border object-contain shadow-2xl"
-              />
-            )}
-          </motion.div>
+            kind={peek.kind === "video" ? "video" : "image"}
+            src={peek.url}
+            alt={`${peek.name} 的大图`}
+            className="absolute z-30"
+            style={{ left: refSlot(peekIndex, true, size).x, bottom: size.h + 14 }}
+          />
         )}
       </AnimatePresence>
 

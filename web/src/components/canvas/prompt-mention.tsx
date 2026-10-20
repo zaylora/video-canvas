@@ -16,6 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Box, Camera, Link2, Music, Shapes } from "lucide-react";
 import { useNodesData } from "@xyflow/react";
 import { MediaPreview, VideoPoster } from "./media-preview";
+import { useRefPeek } from "./use-ref-peek";
 import { Node as TiptapNode } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
@@ -182,6 +183,11 @@ function MentionChip({ node }: NodeViewProps) {
   const gone = !live || !(refs?.linkedIds.has(id) ?? true);
   const lit = refs?.highlight === id;
   const label = live?.label ?? saved;
+  // 悬停放大（设计稿 10.1）：已断开、文本、音频、没产出的不弹
+  const { bind, peek } = useRefPeek(
+    { kind: live?.kind ?? "image", mediaType: live?.mediaType, src: live?.src, gone },
+    `${label} 的大图`,
+  );
 
   return (
     <NodeViewWrapper
@@ -190,6 +196,7 @@ function MentionChip({ node }: NodeViewProps) {
       title={gone ? "引用已断开：重新连线，或删掉这个引用" : `引用「${label}」`}
       onMouseEnter={() => refs?.setHighlight(id)}
       onMouseLeave={() => refs?.setHighlight(null)}
+      {...bind}
       className={cn(
         "mx-0.5 inline-flex h-6.5 max-w-42 cursor-default items-center gap-1.5 rounded-md py-0 pr-2 pl-[3px] align-middle text-[13px] font-semibold",
         "ring-chrome-border ring-1 ring-inset transition-[box-shadow,background-color] duration-120",
@@ -217,6 +224,7 @@ function MentionChip({ node }: NodeViewProps) {
         />
       </span>
       <span className={cn("truncate", gone && "line-through")}>{label}</span>
+      {peek}
     </NodeViewWrapper>
   );
 }
@@ -565,7 +573,8 @@ export function PromptEditor({
         // nowheel 把滚轮留给编辑器，别让画布跟着平移
         class: cn(
           "nowheel w-full overflow-y-auto px-1 text-[15px] leading-[1.75] break-words whitespace-pre-wrap outline-none",
-          large ? "max-h-[60vh] min-h-72" : "max-h-50 min-h-18",
+          // 大框所在的对话框还有标题、引用条、字数行和底栏（约 290px 加提示行），留 22rem 余量免得整体超出视口
+          large ? "max-h-[min(60vh,calc(100dvh_-_22rem))] min-h-72" : "max-h-50 min-h-18",
         ),
       },
       // 直接挂在 view 上的按键先于 suggestion 插件处理，菜单的上下、选中就在这里接
