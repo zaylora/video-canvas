@@ -156,3 +156,14 @@ func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
 		}
 	}
 }
+
+// 搭好多个镜头组之后，要让模型用 canvas_arrange 把组排开，而不是自己算坐标；
+// 模型也该知道新建的对象会自动避让，不必手写 position。
+func TestSystem_TellsModelToArrangeGroups(t *testing.T) {
+	all := prompts.System("all")
+	for _, must := range []string{"所有镜头组", "nodeIds", "column", "不要自己算 position"} {
+		if !strings.Contains(all, must) {
+			t.Errorf("基础提示词应指导模型整理镜头组的布局，缺少 %q", must)
+		}
+	}
+}

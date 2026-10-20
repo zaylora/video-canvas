@@ -15,6 +15,8 @@ const maxLabelRunes = 40
 type Options struct {
 	// NewID 生成新节点、组、连线的 id，prefix 是 "n_" / "g_" / "e_"；不传用随机值。测试里注入可预期的实现。
 	NewID func(prefix string) string
+	// Size 补充节点尺寸的信息（模型默认画幅）。不传就沿用画布上已设置的，都没有时没写比例的节点按 16:9 算。
+	Size SizeHint
 }
 
 // newID 生成带前缀的 id。
@@ -33,6 +35,7 @@ type applier struct {
 	opt     Options
 	idMap   map[string]string
 	refit   map[string]bool // 成员有变动、结束时要贴合的组
+	created []string        // 本批新建的顶层对象（组和不在组里的节点），结束时要让它们避开别的对象
 	issues  []Issue
 	current int
 }
@@ -41,6 +44,9 @@ type applier struct {
 // 其中列出全部问题，让模型一次改对。成功时返回新图、tempId 映射和改动差异，g 本身不变。
 func Apply(g *Graph, ops []Op, opt Options) (*Result, error) {
 	a := &applier{g: g.Clone(), opt: opt, idMap: map[string]string{}, refit: map[string]bool{}}
+	if opt.Size.DefaultAspect != nil {
+		a.g.SetSizeHint(opt.Size)
+	}
 	for i, op := range ops {
 		a.current = i
 		if err := a.run(op); err != nil {
@@ -53,6 +59,7 @@ func Apply(g *Graph, ops []Op, opt Options) (*Result, error) {
 	for gid := range a.refit {
 		a.g.fitGroup(gid)
 	}
+	a.g.settle(a.created)
 	return finish(g, a.g, a.idMap), nil
 }
 
@@ -209,6 +216,8 @@ func (a *applier) createNode(op Op) error {
 	if parent != nil {
 		n["parentId"] = parent.ID()
 		a.refit[parent.ID()] = true
+	} else {
+		a.created = append(a.created, id)
 	}
 	a.g.Nodes = append(a.g.Nodes, n)
 	return nil

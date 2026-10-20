@@ -277,10 +277,13 @@ export class SaveCoordinator {
     const batchStart = this.firstDirtyAt;
     this.dirty = false;
     this.refreshStatus();
+    // 请求发出时认的版本：请求在途期间 Agent 的补丁可能把本地推进到更新的版本（补丁已经合并进了本地内容）
+    let sentVersion = this.versionValue;
     try {
-      const saved = await this.exclusive(() =>
-        this.deps.saveCloud({ baseVersion: this.versionValue, graph, keepalive }),
-      );
+      const saved = await this.exclusive(() => {
+        sentVersion = this.versionValue;
+        return this.deps.saveCloud({ baseVersion: sentVersion, graph, keepalive });
+      });
       this.versionValue = Math.max(this.versionValue, saved.version);
       this.deps.onSaved?.(graph, saved.version);
       this.retry = 0;
@@ -301,6 +304,16 @@ export class SaveCoordinator {
       // 内容没存上：放回脏态，下次保存发的是最新的全量
       this.firstDirtyAt = this.dirty ? Math.min(this.firstDirtyAt, batchStart) : batchStart;
       this.dirty = true;
+      // 请求在途时本地版本被补丁推进了：这次 409 是我们自己造成的（请求带的是旧版本，服务端已是新版本），
+      // 本地早已是合并后的内容，不必去问 autoMerge、更不必弹冲突窗，直接用新版本重试
+      if (
+        this.deps.isConflict(error) &&
+        this.versionValue > sentVersion &&
+        this.autoMerges < MAX_AUTO_MERGES
+      ) {
+        this.autoMerges += 1;
+        return this.save(keepalive);
+      }
       if (this.deps.isConflict(error) && this.autoMerges < MAX_AUTO_MERGES && this.deps.autoMerge) {
         this.autoMerges += 1;
         const merged = await this.deps.autoMerge().catch(() => null);

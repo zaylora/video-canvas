@@ -28,7 +28,8 @@ const FALLBACK_NODE = DEFAULT_NODE_SIZE;
 /** 是不是组节点 */
 export const isGroupNode = (node: FlowNode): node is CanvasGroupNode => node.type === "group";
 
-const sizeOf = (node: FlowNode) =>
+/** 节点此刻的尺寸：量到的优先，没量到按默认尺寸；组取自己的宽高 */
+export const sizeOf = (node: FlowNode) =>
   isGroupNode(node)
     ? {
         width: node.width ?? node.measured?.width ?? GROUP_MIN.width,

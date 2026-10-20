@@ -86,7 +86,12 @@ func (r *reverter) revertUpdates(changes []Change) {
 			continue
 		}
 		restored := false
+		frameEdited := r.frameEdited(n, c)
 		for _, path := range fieldPaths(c) {
+			if frameEdited && isFramePath(path) {
+				r.res.Skipped = append(r.res.Skipped, Skip{Kind: "node", NodeID: c.ID, Field: path, Reason: "你已修改所在组或位置，两者要一起保留"})
+				continue
+			}
 			if r.revertField(n, c, path) {
 				restored = true
 			}
@@ -95,6 +100,30 @@ func (r *reverter) revertUpdates(changes []Change) {
 			r.res.Reverted++
 		}
 	}
+}
+
+// framePaths 是节点所在的组和位置：成员的 position 是相对组左上角的，两个字段是一对，
+// 只能一起恢复或者一起保留，否则节点会挂着新的组却带着旧的坐标（或脱离了组却带着相对坐标）而飞到别处。
+var framePaths = map[string]bool{"parentId": true, "position": true}
+
+// isFramePath 判断字段是不是「所在组或位置」这一对里的。
+func isFramePath(path string) bool { return framePaths[path] }
+
+// frameEdited 判断用户在 Agent 之后有没有改过这个节点的所在组或位置：这一对里任何一个字段
+// 与 Agent 写入的值不同，就算改过。这次改动没有涉及的字段不参与判断。
+func (r *reverter) frameEdited(n Node, c Change) bool {
+	for path := range framePaths {
+		_, inBefore := c.Before[path]
+		after, inAfter := c.After[path]
+		if !inBefore && !inAfter {
+			continue
+		}
+		cur, curHas := getField(n, path)
+		if curHas != inAfter || (curHas && !reflect.DeepEqual(cur, after)) {
+			return true
+		}
+	}
+	return false
 }
 
 // revertField 恢复一个字段，当前值不等于 Agent 写入的值时跳过。返回是否恢复了。

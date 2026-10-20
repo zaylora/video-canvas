@@ -256,6 +256,33 @@ func TestAgentGenerator_Execute(t *testing.T) {
 		}
 	})
 
+	// 任务已经创建、积分已经冻结，只是回写节点时撞上了版本冲突：不能把整个审批记成失败并告诉模型「没扣积分」，
+	// 否则模型会再申请一次，重复扣费。要照实返回已创建的任务，并说明节点还没显示为生成中。
+	t.Run("任务已创建但绑定节点一直冲突：照实返回已创建的任务和警告，不当成失败", func(t *testing.T) {
+		e := newGenEnv(t, "all")
+		n := 0
+		var hook func(r *fakeAgentCanvasRepo)
+		hook = func(r *fakeAgentCanvasRepo) {
+			n++
+			userSaves("n_u" + string(rune('0'+n)))(r)
+			r.beforeCommit = hook // 每次提交前都有人保存，绑定写不进去
+		}
+		e.repo.beforeCommit = hook
+		res, err := newGenerator(e).Execute(ctx, e.run, 77, items(e))
+		if err != nil {
+			t.Fatalf("任务已创建，不应返回错误（会被记成失败并说没扣积分）: %v", err)
+		}
+		if !strings.Contains(string(res), `"task_id":"101"`) {
+			t.Errorf("结果里必须有已创建的任务: %s", res)
+		}
+		if !strings.Contains(string(res), `"bind_warning"`) {
+			t.Errorf("结果里要有绑定失败的警告: %s", res)
+		}
+		if len(e.tasks.reqs) != 1 {
+			t.Errorf("只应创建一次任务: %d", len(e.tasks.reqs))
+		}
+	})
+
 	t.Run("部分失败：成功的绑定，失败的写在结果里", func(t *testing.T) {
 		e := newGenEnv(t, "all")
 		e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{

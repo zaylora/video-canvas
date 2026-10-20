@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { Capabilities } from "@/api/model/type";
 import { canConnectKinds } from "@/utils/canvas/canvas";
 import { arrangeNodes, type ArrangeMode } from "@/utils/canvas/arrange";
+import { nodeFrameSize, paramAspect, resolveNodeAspect } from "@/utils/canvas/node-frame";
 import { createGroup, fitGroupToMembers, ungroup } from "@/utils/canvas/group";
 import type { CanvasNode, FlowNode, NodeKind } from "@/types";
 
@@ -109,6 +111,52 @@ describe("与后端共用的打组 / 解组 / 贴合", () => {
       };
       if (c.op === "ungroup") delete got.group;
       expect(got).toEqual(c.expected as typeof got);
+    });
+  }
+});
+
+type SizeCase = {
+  name: string;
+  kind: NodeKind | "director";
+  params?: Record<string, unknown>;
+  mediaAspect?: number;
+  defaultAspect?: string;
+  want: { w: number; h: number };
+};
+
+/** 前端画节点框时用的尺寸：和后端 canvasgraph.NodeSize 对同一份向量必须给出同样的宽高 */
+function frontendSize(c: SizeCase): { width: number; height: number } {
+  // 文本和导演台：NodeCard 默认 w-xl（576px）+ 预览区 16:9（NODE_PREVIEW_ASPECT）→ 324 高
+  if (c.kind === "script" || c.kind === "director") return { width: 576, height: 324 };
+  const params = c.params ?? {};
+  // 模型的比例参数：节点里写了哪个就定义哪个；都没写才用「模型默认」
+  const names = ["aspect_ratio", "ratio"].filter((k) => k in params);
+  if (names.length === 0 && c.defaultAspect) names.push("aspect_ratio");
+  const caps: Capabilities = {
+    refs: { image: { max: 0 }, video: { max: 0 }, audio: { max: 0 } },
+    prompt: { max_length: 100 },
+    params: Object.fromEntries(
+      names.map((n) => [
+        n,
+        { type: "enum", label: "比例", open: true, options: [], default: c.defaultAspect },
+      ]),
+    ),
+  };
+  const aspect = resolveNodeAspect({
+    measured: null,
+    declared: c.mediaAspect ?? null,
+    selected: paramAspect(caps, params),
+    mediaType: c.kind === "audio" ? "audio" : undefined,
+  });
+  return nodeFrameSize(aspect);
+}
+
+describe("与后端共用的节点尺寸规则", () => {
+  const { cases } = load<{ cases: SizeCase[] }>("node-size-cases.json");
+  for (const c of cases) {
+    test(c.name, () => {
+      const got = frontendSize(c);
+      expect({ w: got.width, h: got.height }).toEqual(c.want);
     });
   }
 });

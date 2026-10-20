@@ -78,6 +78,10 @@ func (a *applier) createGroup(op Op) error {
 	for _, m := range members {
 		a.g.reparent(m, grp)
 	}
+	// 用已有节点打的组，位置由成员决定（成员的视觉位置不能变），不参与避让
+	if len(members) == 0 {
+		a.created = append(a.created, id)
+	}
 	return nil
 }
 

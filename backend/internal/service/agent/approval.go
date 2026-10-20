@@ -156,6 +156,12 @@ func (s *AgentService) Decide(ctx context.Context, userID, approvalID uint64, re
 	}
 	// 5. 执行批准的内容，把结果写回审批；执行失败不让这次请求失败（决定已生效），Agent 会从结果里知道
 	final := s.execute(ctx, run, updated, out)
+	// 报价是批准时先记的；没有真正创建出任务的那部分没有扣积分，退回，别让本轮预算被虚占
+	if refund := unusedQuote(final, out); refund > 0 {
+		if err := s.repo.AddRunUsage(ctx, run.ID, 0, -refund); err == nil {
+			s.emitUsage(ctx, run)
+		}
+	}
 	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "approval.decided", approvalView(final))
 	// 6. 让运行接着往下走；runtime 不在了就标为中断，用户可以稍后点「继续」
 	if err := s.runtime.Resume(ctx, run, ResumeInfo{Reason: "approval", ToolCallID: a.ToolCallID, Content: approvalOutcomeText(final, out)}); err != nil {
@@ -367,7 +373,53 @@ func generateOutcome(a *model.AgentApproval, out *outcome, rejected bool) string
 	if a.Status == model.ApprovalFailed {
 		return fmt.Sprintf("%s（%s），但任务提交失败：%s。没有扣积分。", scope, strings.Join(names, "、"), resultError(a))
 	}
-	return fmt.Sprintf("%s：%s，预估 %d 积分，任务已提交：%s", scope, strings.Join(names, "、"), out.quote, string(a.ResultJSON))
+	text := fmt.Sprintf("%s：%s，预估 %d 积分，任务已提交：%s", scope, strings.Join(names, "、"), out.quote, string(a.ResultJSON))
+	if warn := bindWarning(a); warn != "" {
+		text += "\n注意：" + warn + "。任务已经在生成、积分已冻结，不要重复申请；节点上可能暂时看不到生成中的状态，用 task_get 查进度，结果出来后用户会在画布上看到。"
+	}
+	return text
+}
+
+// unusedQuote 算出批准时先记入已花积分、但没有真正扣掉的那部分，要退回本轮预算：
+// 执行整体失败（一个任务都没创建）退全额报价；部分条目失败退这些条目的「价格×张数」。
+// 只对生成审批有意义；任务已经创建的部分积分已冻结，保持已花。
+func unusedQuote(a *model.AgentApproval, out *outcome) int {
+	if a.Kind != model.ApprovalGenerate || out.quote <= 0 {
+		return 0
+	}
+	if a.Status == model.ApprovalFailed {
+		return out.quote
+	}
+	var r struct {
+		Failed []struct {
+			NodeID string `json:"node_id"`
+		} `json:"failed"`
+	}
+	if json.Unmarshal(a.ResultJSON, &r) != nil || len(r.Failed) == 0 {
+		return 0
+	}
+	failed := make(map[string]bool, len(r.Failed))
+	for _, f := range r.Failed {
+		failed[f.NodeID] = true
+	}
+	refund := 0
+	for _, it := range out.gen {
+		if failed[it.NodeID] {
+			refund += it.Price * it.Count
+		}
+	}
+	return min(refund, out.quote)
+}
+
+// bindWarning 取审批结果里记录的「任务已创建但绑定节点失败」的警告。
+func bindWarning(a *model.AgentApproval) string {
+	var r struct {
+		BindWarning string `json:"bind_warning"`
+	}
+	if json.Unmarshal(a.ResultJSON, &r) == nil {
+		return r.BindWarning
+	}
+	return ""
 }
 
 // resultError 取审批结果里记录的失败原因。

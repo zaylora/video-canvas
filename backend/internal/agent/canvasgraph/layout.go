@@ -15,6 +15,9 @@ const (
 	groupMinH      = 140.0 // 组框最小高度
 	defaultGapX    = 120.0 // 排列时的横向间距
 	defaultGapY    = 80.0  // 排列时的纵向间距
+	groupRowMax    = 4     // 组内一行最多放几个成员，放满就换行
+	settleMargin   = 40.0  // 新建对象之间、新建对象与已有对象之间至少留的间距
+	maxSettleSteps = 500   // 避让时最多往下挪几次，防止异常数据下死循环
 )
 
 // Layout 是排列方式。
@@ -36,19 +39,14 @@ type Gap struct {
 // ArrangeTarget 指定要排列的对象：一个组的全部成员，或一组节点。
 type ArrangeTarget struct {
 	GroupID string   // 排列这个组的成员，排完后组框贴合成员
-	NodeIDs []string // 排列这些普通节点
+	NodeIDs []string // 排列这些普通节点，或这些顶层的组（组当作一个整体，成员跟着走；组不能和组内成员混排）
 }
 
 // rect 是画布绝对坐标下的矩形。
 type rect struct{ x, y, w, h float64 }
 
-// nodeSize 返回节点尺寸。前端不保存普通节点的尺寸，这里按默认尺寸算：所有种类都是 576×324。
-func nodeSize(n Node) (w, h float64) {
-	if n.IsGroup() {
-		return math.Max(groupMinW, n.Width()), math.Max(groupMinH, n.Height())
-	}
-	return 576, 324
-}
+// sizeOf 返回节点尺寸。前端不保存普通节点的尺寸，这里按前端同一套规则算（见 NodeSize）。
+func (g *Graph) sizeOf(n Node) (w, h float64) { return NodeSize(n, g.hint) }
 
 // absPos 返回节点的画布绝对坐标：成员的 position 是相对组左上角的。
 func (g *Graph) absPos(n Node) Point {
@@ -65,8 +63,29 @@ func (g *Graph) absPos(n Node) Point {
 // absRect 返回节点的绝对矩形。
 func (g *Graph) absRect(n Node) rect {
 	p := g.absPos(n)
-	w, h := nodeSize(n)
+	w, h := g.sizeOf(n)
 	return rect{p.X, p.Y, w, h}
+}
+
+// frameRect 返回对象在批末贴合之后的绝对矩形：有成员的组按成员的包围盒加留白算，其余同 absRect。
+// 一批操作里，后建的对象要躲开前面已经长大的组，不能按组建出来时的最小尺寸算。
+func (g *Graph) frameRect(n Node) rect {
+	if n.IsGroup() {
+		if members := g.members(n.ID()); len(members) > 0 {
+			rs := make([]rect, len(members))
+			for i, m := range members {
+				rs[i] = g.absRect(m)
+			}
+			pos, w, h := frameAround(rs)
+			return rect{pos.X, pos.Y, w, h}
+		}
+	}
+	return g.absRect(n)
+}
+
+// hits 判断两个矩形是否相交，margin 是要求保留的最小间距。
+func (r rect) hits(o rect, margin float64) bool {
+	return r.x < o.x+o.w+margin && o.x < r.x+r.w+margin && r.y < o.y+o.h+margin && o.y < r.y+r.h+margin
 }
 
 // frameAround 返回包住一组矩形（含留白）的组框位置和尺寸，不小于最小尺寸。
@@ -114,34 +133,86 @@ func (g *Graph) fitGroup(groupID string) {
 	grp["width"], grp["height"] = w, h
 }
 
-// placeInGroup 返回新成员在组内的相对位置：紧挨着最后一个成员的右侧、同一行；组是空的就放在左上角留白处。
+// placeInGroup 返回新成员在组内的相对位置：紧挨着最后一个成员的右侧、同一行；一行放满 groupRowMax 个
+// 就换到最下面一行的下方、回到最左一列；组是空的就放在左上角留白处。
 func (g *Graph) placeInGroup(groupID string) Point {
 	members := g.members(groupID)
 	if len(members) == 0 {
 		return Point{X: groupPadX, Y: groupPadTop}
 	}
-	last := members[len(members)-1]
-	w, _ := nodeSize(last)
-	p := last.Position()
-	return Point{X: p.X + w + defaultGapX, Y: p.Y}
+	if len(members)%groupRowMax != 0 {
+		last := members[len(members)-1]
+		w, _ := g.sizeOf(last)
+		p := last.Position()
+		return Point{X: p.X + w + defaultGapX, Y: p.Y}
+	}
+	left, bottom := math.Inf(1), math.Inf(-1)
+	for _, m := range members {
+		_, h := g.sizeOf(m)
+		p := m.Position()
+		left, bottom = math.Min(left, p.X), math.Max(bottom, p.Y+h)
+	}
+	return Point{X: left, Y: bottom + defaultGapY}
 }
 
-// placeFree 返回不属于任何组的新节点的位置：放在现有内容的右侧、与最上沿对齐；画布为空时放在原点。
+// placeFree 返回不属于任何组的新对象的位置：放在现有内容的左下方、与最左沿对齐，往下一行行排；画布为空时放在原点。
+// 分镜是一镜一组竖着往下排的，往下放比往右放更符合阅读顺序，也不会把画布越撑越宽。
+// 已经有成员的组按贴合后的范围算，免得后建的对象落在它马上要长成的范围里。
 func (g *Graph) placeFree() Point {
 	found := false
-	right, top := math.Inf(-1), math.Inf(1)
+	left, bottom := math.Inf(1), math.Inf(-1)
 	for _, n := range g.Nodes {
 		if n.ParentID() != "" {
 			continue
 		}
-		r := g.absRect(n)
-		right, top = math.Max(right, r.x+r.w), math.Min(top, r.y)
+		r := g.frameRect(n)
+		left, bottom = math.Min(left, r.x), math.Max(bottom, r.y+r.h)
 		found = true
 	}
 	if !found {
 		return Point{}
 	}
-	return Point{X: right + defaultGapX, Y: top}
+	return Point{X: left, Y: bottom + defaultGapY}
+}
+
+// settle 让本批新建的顶层对象（组和不在任何组里的节点）避开其他顶层对象：按创建顺序逐个检查，
+// 与已有对象或者前面已经落定的新对象相交（含 settleMargin 的间距），就整体往下挪到它们的下方。
+// 已有对象一律不动：用户没提到的东西，Agent 不该碰。必须在组框贴合之后调用。
+func (g *Graph) settle(created []string) {
+	isNew := make(map[string]bool, len(created))
+	for _, id := range created {
+		isNew[id] = true
+	}
+	var fixed []rect
+	for _, n := range g.Nodes {
+		if n.ParentID() == "" && !isNew[n.ID()] {
+			fixed = append(fixed, g.absRect(n))
+		}
+	}
+	for _, id := range created {
+		n := g.Node(id)
+		if n == nil || n.ParentID() != "" { // 后来被打进了别的组，位置由那个组管
+			continue
+		}
+		r := g.absRect(n)
+		moved := false
+		for i := 0; i < maxSettleSteps; i++ {
+			bottom, hit := 0.0, false
+			for _, f := range fixed {
+				if r.hits(f, settleMargin) {
+					bottom, hit = math.Max(bottom, f.y+f.h), true
+				}
+			}
+			if !hit {
+				break
+			}
+			r.y, moved = bottom+defaultGapY, true
+		}
+		if moved {
+			n.SetPosition(Point{X: r.x, Y: r.y})
+		}
+		fixed = append(fixed, r)
+	}
 }
 
 // Arrange 整理布局：以所选节点的左上角为起点排成一行、一列或网格，保留原来的大致先后。
@@ -196,12 +267,23 @@ func arrangeTargets(work *Graph, t ArrangeTarget) ([]Node, error) {
 		return nil, fmt.Errorf("%w: 要指定 groupId 或 nodeIds", ErrInvalid)
 	}
 	nodes := make([]Node, 0, len(t.NodeIDs))
+	hasGroup := false
 	for _, id := range t.NodeIDs {
 		n := work.Node(id)
-		if n == nil || n.IsGroup() {
-			return nil, fmt.Errorf("%w: 节点 %q 不存在或是组", ErrInvalid, id)
+		if n == nil {
+			return nil, fmt.Errorf("%w: 节点或组 %q 不存在", ErrInvalid, id)
 		}
+		hasGroup = hasGroup || n.IsGroup()
 		nodes = append(nodes, n)
+	}
+	// 组可以和别的顶层对象（组、散落的节点）一起排，组被当作一个整体；但不能和组内的成员混排：
+	// 成员的坐标是相对组的，两种坐标系混在一起排没有意义。
+	if hasGroup {
+		for _, n := range nodes {
+			if n.ParentID() != "" {
+				return nil, fmt.Errorf("%w: 组和组内成员不能一起排列，%q 在组 %q 里；要排成员请指定 groupId", ErrInvalid, n.ID(), n.ParentID())
+			}
+		}
 	}
 	return nodes, nil
 }

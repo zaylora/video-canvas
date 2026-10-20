@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
 
@@ -35,8 +37,44 @@ type AgentCanvasRepo interface {
 // 工具层的错误（*canvasgraph.ValidationError、canvasgraph.ErrInvalid）原样返回，由调用方转成给模型看的工具错误，
 // 不是 HTTP 错误；其余业务错误都是 errcode.*。
 type AgentCanvasService struct {
-	repo AgentCanvasRepo
-	bc   ws.Broadcaster
+	repo   AgentCanvasRepo
+	bc     ws.Broadcaster
+	models provider.Registry // 读模型默认画幅用；可以为 nil
+}
+
+// SetModelRegistry 注入模型注册表，排版时用它读模型比例参数的默认值（与前端画节点框的规则一致）。
+// 不注入时，没写比例参数的节点按 16:9 算。
+func (s *AgentCanvasService) SetModelRegistry(r provider.Registry) { s.models = r }
+
+// sizeHint 返回排版用的尺寸提示：节点没写比例参数时，按它选的模型的比例参数默认值算。
+// 同一次调用里同一个模型只查一次。读不到模型或模型没有比例参数时返回空串，按 16:9 算。
+func (s *AgentCanvasService) sizeHint(ctx context.Context) canvasgraph.SizeHint {
+	if s.models == nil {
+		return canvasgraph.SizeHint{}
+	}
+	cache := map[string]string{}
+	return canvasgraph.SizeHint{DefaultAspect: func(key string) string {
+		if key == "" {
+			return ""
+		}
+		if v, ok := cache[key]; ok {
+			return v
+		}
+		v := ""
+		if snap, err := s.models.Snapshot(ctx, key); err == nil {
+			// 与前端 ratioParam 一致：取参数里排在最前面的 aspect_ratio / ratio
+			for _, e := range snap.Model.Capabilities.Params {
+				if e.Name == "aspect_ratio" || e.Name == "ratio" {
+					if e.Default != nil {
+						v = fmt.Sprint(e.Default)
+					}
+					break
+				}
+			}
+		}
+		cache[key] = v
+		return v
+	}}
 }
 
 // NewAgentCanvasService 创建服务；bc 为 nil 时不推送。
@@ -91,8 +129,9 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 		return nil, err
 	}
 	// 2. 在最新画布上应用并写入；版本冲突时重读重试
+	hint := s.sizeHint(ctx)
 	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
-		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{})
+		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{Size: hint})
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +142,9 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 
 // Arrange 整理布局：排列一个组的成员或一组节点。
 func (s *AgentCanvasService) Arrange(ctx context.Context, run *model.AgentRun, toolCallID string, target canvasgraph.ArrangeTarget, layout canvasgraph.Layout) (*WriteResult, error) {
+	hint := s.sizeHint(ctx)
 	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationArrange, 0, func(g *canvasgraph.Graph) (*edit, error) {
+		g.SetSizeHint(hint)
 		r, err := canvasgraph.Arrange(g, target, layout, nil)
 		if err != nil {
 			return nil, err

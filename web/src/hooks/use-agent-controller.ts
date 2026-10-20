@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import {
   cancelAgentRun,
@@ -24,6 +25,7 @@ import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
+import { undoAfterSave } from "@/utils/agent/undo-after-save";
 
 /** 后端错误码：超出本轮积分预算 */
 const OVER_BUDGET_CODE = 60008;
@@ -59,6 +61,7 @@ export function useAgentController({
   models,
   getSelection,
   getViewport,
+  saveBeforeUndo,
 }: {
   canvasId: string;
   models: AgentModelDto[];
@@ -66,6 +69,8 @@ export function useAgentController({
   getSelection: () => string[];
   /** 当前视口 */
   getViewport: () => { x: number; y: number; zoom: number };
+  /** 撤销前先立即保存画布，返回保存后云端是否没有未保存内容（没保存的改动会被撤销连同节点删掉） */
+  saveBeforeUndo: () => Promise<boolean>;
 }) {
   const settings = useAgentSettings();
   const sessions = useAgentStore((s) => s.sessionsByCanvas[canvasId]) ?? NO_SESSIONS;
@@ -217,16 +222,29 @@ export function useAgentController({
     [],
   );
 
-  /** 撤销本轮；返回结果（成功）或 null */
-  const undo = useCallback(async (runId: string) => {
-    try {
-      const result = await undoAgentRun(runId);
+  /** 撤销本轮；返回结果（成功）或 null。先把本地没保存的改动存上，存不上就不撤销 */
+  const undo = useCallback(
+    async (runId: string) => {
+      const outcome = await undoAfterSave({
+        save: saveBeforeUndo,
+        undo: async () => {
+          try {
+            return await undoAgentRun(runId);
+          } catch {
+            return null; // 失败的提示全局拦截器已经弹了
+          }
+        },
+      });
+      if (!outcome.ok) {
+        if (outcome.reason === "save-failed")
+          toast.error("画布还有改动没保存上，先别撤销，等保存成功后再试");
+        return null;
+      }
       setUndone((prev) => new Set(prev).add(runId));
-      return result;
-    } catch {
-      return null;
-    }
-  }, []);
+      return outcome.value;
+    },
+    [saveBeforeUndo],
+  );
 
   const newSession = useCallback(() => openSession(null), [openSession]);
 

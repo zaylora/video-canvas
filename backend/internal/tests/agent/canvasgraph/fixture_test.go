@@ -86,6 +86,45 @@ func TestArrangeMatchesFrontend(t *testing.T) {
 	}
 }
 
+func TestNodeSizeMatchesFrontend(t *testing.T) {
+	var fx struct {
+		Cases []struct {
+			Name          string
+			Kind          string
+			Params        map[string]any
+			MediaAspect   *float64
+			DefaultAspect string
+			Want          struct{ W, H float64 }
+		} `json:"cases"`
+	}
+	loadFixture(t, "node-size-cases.json", &fx)
+	if len(fx.Cases) == 0 {
+		t.Fatal("fixture 不应为空")
+	}
+	for _, c := range fx.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			data := map[string]any{"kind": c.Kind, "label": "n", "model": "m"}
+			if c.Params != nil {
+				data["params"] = c.Params
+			}
+			if c.MediaAspect != nil {
+				data["mediaAspect"] = *c.MediaAspect
+			}
+			n := canvasgraph.Node{"id": "n", "type": "canvas", "position": map[string]any{"x": 0.0, "y": 0.0}, "data": data}
+			hint := canvasgraph.SizeHint{DefaultAspect: func(model string) string {
+				if model == "m" {
+					return c.DefaultAspect
+				}
+				return ""
+			}}
+			w, h := canvasgraph.NodeSize(n, hint)
+			if w != c.Want.W || h != c.Want.H {
+				t.Errorf("应为 %v×%v，实际 %v×%v", c.Want.W, c.Want.H, w, h)
+			}
+		})
+	}
+}
+
 type groupCase struct {
 	Name   string
 	Op     string

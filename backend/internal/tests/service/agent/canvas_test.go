@@ -15,6 +15,8 @@ import (
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
+	"video-canvas/internal/provider/modelcfg"
 	"video-canvas/internal/repository"
 	. "video-canvas/internal/service/agent"
 )
@@ -307,7 +309,8 @@ func TestAgentArrangeAndDeleteApproved(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := built.IDMap["a"]
-	if _, err := e.svc.Arrange(context.Background(), e.run, "tc2", canvasgraph.ArrangeTarget{NodeIDs: []string{"n_script", a}}, canvasgraph.LayoutColumn); err != nil {
+	// 新节点默认放在剧本正下方，竖排已经是这个样子、什么都不会变；用横排才有改动可记
+	if _, err := e.svc.Arrange(context.Background(), e.run, "tc2", canvasgraph.ArrangeTarget{NodeIDs: []string{"n_script", a}}, canvasgraph.LayoutRow); err != nil {
 		t.Fatal(err)
 	}
 	if e.repo.muts[len(e.repo.muts)-1].Kind != model.MutationArrange {
@@ -473,5 +476,24 @@ func TestAgentCatalogAndDetail(t *testing.T) {
 	}
 	if _, err := e.svc.Detail(context.Background(), e.run, []string{"nope"}); err == nil {
 		t.Error("不存在的节点应报错")
+	}
+}
+
+// 节点没写比例参数时，前端按模型比例参数的默认值画框；后端排版也得按同样的画幅算，组框才框得住竖图。
+func TestAgentApplyOps_UsesModelDefaultAspectForLayout(t *testing.T) {
+	e := newAgentCanvasEnv(t)
+	reg := &fakeBridgeRegistry{snap: &provider.Snapshot{Model: provider.ModelSnapshot{Key: "tall", Kind: "image",
+		Capabilities: modelcfg.Capabilities{Params: modelcfg.ParamSet{{Name: "aspect_ratio", ParamField: modelcfg.ParamField{Type: "enum", Options: []any{"16:9", "9:16"}, Default: "9:16"}}}}}}}
+	e.svc.SetModelRegistry(reg)
+	ops := `[{"op":"create_group","tempId":"g","label":"镜头"},
+	  {"op":"create_node","tempId":"a","kind":"image","model":"tall","parentGroup":"g"}]`
+	res, err := e.svc.ApplyOps(context.Background(), e.run, "tc1", []byte(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	grp := e.payload(t).Node(res.IDMap["g"])
+	// 默认 9:16 → 324×576：组框高至少 72 + 576 + 48。
+	if grp.Height() < 72+576+48 {
+		t.Errorf("组框高 %.0f 框不住 576 高的成员，说明没有按模型默认画幅算", grp.Height())
 	}
 }

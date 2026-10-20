@@ -116,3 +116,54 @@ func TestRevertArrangeSkipsMovedNode(t *testing.T) {
 		t.Errorf("Reverted=%d Skipped=%d", rr.Reverted, len(rr.Skipped))
 	}
 }
+
+// 成员的 position 是相对组左上角的：parentId 和 position 只能一起恢复或者一起保留，
+// 不然撤销之后节点挂着新的组却带着旧的坐标，或者脱离了组却带着相对坐标，会飞到别处。
+func TestRevertKeepsParentAndPositionTogetherWhenUserMovedMember(t *testing.T) {
+	g := mustParse(t, `{"nodes":[
+	  {"id":"a","type":"canvas","position":{"x":500,"y":300},"data":{"kind":"image","label":"A"}},
+	  {"id":"b","type":"canvas","position":{"x":950,"y":300},"data":{"kind":"image","label":"B"}}]}`)
+	res := mustApply(t, g, `[{"op":"create_group","tempId":"g","label":"组","memberIds":["a","b"]}]`)
+	gid := res.IDMap["g"]
+
+	// 用户之后拖了 a：只改了 position，parentId 还在。
+	cur := res.Graph.Clone()
+	node(t, cur, "a").SetPosition(canvasgraph.Point{X: 999, Y: 111})
+
+	rr := canvasgraph.Revert(cur, res.Changes)
+	a := node(t, rr.Graph, "a")
+	if a.ParentID() != gid {
+		t.Errorf("用户拖过 a，撤销不应只把它移出组（位置还是相对坐标，会飞走）: parent=%q pos=%+v", a.ParentID(), a.Position())
+	}
+	if p := a.Position(); p.X != 999 || p.Y != 111 {
+		t.Errorf("用户拖过的位置应保留: %+v", p)
+	}
+	// 没动过的 b 照常撤销：回到组外、绝对坐标。
+	b := node(t, rr.Graph, "b")
+	if b.ParentID() != "" || b.Position().X != 950 || b.Position().Y != 300 {
+		t.Errorf("没动过的 b 应整体恢复: parent=%q pos=%+v", b.ParentID(), b.Position())
+	}
+	if rr.Graph.Node(gid) == nil {
+		t.Error("组里还有 a，组应保留")
+	}
+}
+
+func TestRevertKeepsParentAndPositionTogetherWhenUserRegrouped(t *testing.T) {
+	// Agent 把 a 移出组；用户之后把 a 又拖进了另一个组（parentId 变了，position 也变了）。
+	g := mustParse(t, `{"nodes":[
+	  {"id":"a","type":"canvas","position":{"x":500,"y":300},"data":{"kind":"image","label":"A"}},
+	  {"id":"b","type":"canvas","position":{"x":950,"y":300},"data":{"kind":"image","label":"B"}}]}`)
+	grouped := mustApply(t, g, `[{"op":"create_group","tempId":"g","label":"组","memberIds":["a","b"]}]`)
+	gid := grouped.IDMap["g"]
+	out := mustApply(t, grouped.Graph, `[{"op":"set_group","id":"`+gid+`","removeMembers":["a"]}]`)
+
+	cur := out.Graph.Clone()
+	node(t, cur, "a")["parentId"] = gid // 用户把 a 拖回了组里，同时坐标也是相对的了
+	node(t, cur, "a").SetPosition(canvasgraph.Point{X: 70, Y: 90})
+
+	rr := canvasgraph.Revert(cur, out.Changes)
+	a := node(t, rr.Graph, "a")
+	if a.ParentID() != gid || a.Position().X != 70 || a.Position().Y != 90 {
+		t.Errorf("用户改过归属和位置，撤销应整体保留: parent=%q pos=%+v", a.ParentID(), a.Position())
+	}
+}

@@ -212,6 +212,9 @@ func NewAgentGenerator(tasks AgentGenTasks, canvas *AgentCanvasService, registry
 type generateResult struct {
 	Tasks  []generatedTask `json:"tasks"`
 	Failed []failedItem    `json:"failed,omitempty"`
+	// BindWarning 不为空表示任务都已创建、积分已冻结，但把任务写回节点时失败了：节点上暂时看不到生成中的状态。
+	// 这不是生成失败，不能让模型以为没扣积分而重复申请
+	BindWarning string `json:"bind_warning,omitempty"`
 }
 
 type generatedTask struct {
@@ -227,7 +230,8 @@ type failedItem struct {
 
 // Execute 为批准的条目逐个创建任务：以审批 id + 序号作幂等键，续跑或重试不会重复扣积分；
 // 每个条目都在最新的画布上重新读节点（批准期间用户可能改过），按当时的内容提交。
-// 全部失败返回 error（审批记为失败）；部分成功时失败的条目写在结果里。成功的任务统一绑定到节点。
+// 全部失败返回 error（审批记为失败）；部分成功时失败的条目写在结果里。成功的任务统一绑定到节点；
+// 任务已经创建（积分已冻结）之后绑定失败不算失败，只在结果里留一条警告，免得模型以为没扣积分而重复申请。
 func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, approvalID uint64, items []GenerateItem) (json.RawMessage, error) {
 	var res generateResult
 	bind := map[string]string{}
@@ -245,7 +249,7 @@ func (g *AgentGenerator) Execute(ctx context.Context, run *model.AgentRun, appro
 		return nil, errors.New(res.Failed[0].Error)
 	}
 	if _, err := g.canvas.BindTasks(ctx, run, "approval-"+strconv.FormatUint(approvalID, 10), bind); err != nil {
-		return nil, fmt.Errorf("任务已创建但绑定到节点失败：%w", err)
+		res.BindWarning = "任务已创建，但回写到节点时失败：" + userFacing(err).Error()
 	}
 	return json.Marshal(res)
 }

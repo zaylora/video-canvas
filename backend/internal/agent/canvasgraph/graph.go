@@ -33,7 +33,11 @@ type Graph struct {
 	Nodes []Node // 节点，组排在成员之前
 	Edges []Edge // 连线
 	rest  map[string]json.RawMessage
+	hint  SizeHint // 算节点尺寸时用的补充信息，Clone 时带上
 }
+
+// SetSizeHint 设置算节点尺寸时用的补充信息（模型默认画幅）；不设置时没写比例的节点按 16:9 算。
+func (g *Graph) SetSizeHint(h SizeHint) { g.hint = h }
 
 // Parse 解析 payload_json。空内容和 null 视为空画布；不是 JSON 对象或 nodes/edges 类型不对返回 ErrPayload。
 func Parse(payload []byte) (*Graph, error) {
@@ -89,7 +93,7 @@ func (g *Graph) Marshal() ([]byte, error) {
 
 // Clone 返回深拷贝，对副本的任何修改都不影响原图。
 func (g *Graph) Clone() *Graph {
-	c := &Graph{rest: g.rest, Nodes: make([]Node, len(g.Nodes)), Edges: make([]Edge, len(g.Edges))}
+	c := &Graph{rest: g.rest, hint: g.hint, Nodes: make([]Node, len(g.Nodes)), Edges: make([]Edge, len(g.Edges))}
 	for i, n := range g.Nodes {
 		c.Nodes[i] = deepCopy(map[string]any(n)).(map[string]any)
 	}

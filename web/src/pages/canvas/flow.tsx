@@ -84,6 +84,7 @@ import { trimRunner } from "@/utils/canvas/trim-runner";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-items";
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
+import { growGroupsToFitMembers } from "@/utils/canvas/group-grow";
 
 import { AssetPickerDialog } from "@/components/assets/asset-picker-dialog";
 import { BottomToolbar } from "./chrome/bottom-toolbar";
@@ -231,6 +232,8 @@ export const Flow = memo(function Flow({
     onNodeDragStop: alignDragStop,
   } = useAlignGuides();
   const { pruneOnChange, onNodeClick: onGateNodeClick } = overlayGate;
+  /** 检查组框是否要撑大的入口。要用 history，而 history 在 onNodesChange 之后才建好，所以走 ref */
+  const growRef = useRef<() => void>(() => {});
   const onNodesChange = useCallback(
     (incoming: NodeChange<FlowNode>[]) => {
       // 拖动单个节点时先做对齐吸附，改写完的变更再往下走（保存判定、applyNodesChange）
@@ -253,6 +256,8 @@ export const Flow = memo(function Flow({
           if (removed && !isGroupNode(removed)) releaseObjectUrl(removed.data.src);
         }
       }
+      // 有节点量出了实际尺寸：成员可能比组框留的大，下一帧检查一次（见 growRef）
+      if (changes.some((change) => change.type === "dimensions")) growRef.current();
       // 测量产生的尺寸变化不算内容改动；缩放组框（NodeResizer）发出的带 setAttributes，要存
       const persistent = changes.filter(
         (change) =>
@@ -333,6 +338,25 @@ export const Flow = memo(function Flow({
   }, [nodes, edges, changed, flush]);
   const { tool, activeTool, setTool } = useCanvasTool();
   const history = useCanvasHistory({ nodes, edges, setNodes, setEdges });
+  const growQueued = useRef(false);
+  // 成员实际画出来的尺寸比组框留的大（Agent 排版时按参数估的，成片画幅只有这里量得到）：
+  // 把组框撑大、推开被压住的相邻对象。这是系统的兜底不是用户的编辑，所以不进撤销栈；
+  // 用户正在拖动、缩放时不动手。同一帧里多次尺寸变化只检查一次
+  useEffect(() => {
+    growRef.current = () => {
+      if (growQueued.current) return;
+      growQueued.current = true;
+      requestAnimationFrame(() => {
+        growQueued.current = false;
+        const current = getNodes();
+        if (current.some((node) => node.dragging || node.resizing)) return;
+        const next = growGroupsToFitMembers(current);
+        if (next === current) return;
+        history.silent();
+        setNodes(next);
+      });
+    };
+  }, [getNodes, history, setNodes]);
   const agentSync = useAgentCanvasSync({
     canvas,
     getVersion,
@@ -361,6 +385,7 @@ export const Flow = memo(function Flow({
     models: agentModels ?? [],
     getSelection: () => nodesRef.current.filter((node) => node.selected).map((node) => node.id),
     getViewport,
+    saveBeforeUndo: flush,
   });
   const toggleAgent = useCallback(() => setAgentOpen((open) => !open), []);
   /** 输入框里 @ 能引用的节点（组不算） */

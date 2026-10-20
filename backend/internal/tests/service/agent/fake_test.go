@@ -361,14 +361,18 @@ type fakeAgentModels struct{ list []model.AgentModelView }
 func (m fakeAgentModels) List(context.Context) ([]model.AgentModelView, error) { return m.list, nil }
 
 type fakeGenerator struct {
-	calls [][]GenerateItem
-	err   error
+	calls  [][]GenerateItem
+	err    error
+	result string // 不为空时作为执行结果返回，默认是固定的 task_ids
 }
 
 func (g *fakeGenerator) Execute(_ context.Context, _ *model.AgentRun, id uint64, items []GenerateItem) (json.RawMessage, error) {
 	g.calls = append(g.calls, items)
 	if g.err != nil {
 		return nil, g.err
+	}
+	if g.result != "" {
+		return json.RawMessage(g.result), nil
 	}
 	return json.RawMessage(`{"task_ids":[1,2]}`), nil
 }

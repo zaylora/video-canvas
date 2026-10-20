@@ -74,6 +74,12 @@ export function sameValue(a: unknown, b: unknown): boolean {
 
 const DATA_PREFIX = "data.";
 
+/**
+ * 所在组和位置是一对：成员的 position 是相对组左上角的，所以 parentId 和 position 要么一起写、要么一起保留。
+ * 只写一半，节点会挂进组却带着绝对坐标（或脱离组却带着相对坐标），被甩到别处。
+ */
+const FRAME_PATHS = ["parentId", "position"];
+
 /** 读节点的拍平路径 */
 function readPath(node: MergeNode, path: string): unknown {
   if (path.startsWith(DATA_PREFIX))
@@ -232,7 +238,19 @@ export function applyChanges<N extends MergeNode, E extends MergeEdge>(
     } else if (index >= 0) {
       let node = nodes[index];
       let touched = false;
+      // 这次改动涉及的「所在组 / 位置」里，只要有一个字段被用户改过，这一对都保持用户的值
+      const frameLocked =
+        opt.guard &&
+        FRAME_PATHS.some(
+          (p) =>
+            (p in (c.after ?? {}) || p in (c.before ?? {})) &&
+            !sameValue(readPath(node, p), c.before?.[p]),
+        );
       const apply = (path: string, value: unknown) => {
+        if (frameLocked && FRAME_PATHS.includes(path)) {
+          keptLocal++;
+          return;
+        }
         if (opt.guard && !sameValue(readPath(node, path), c.before?.[path])) {
           keptLocal++;
           return;

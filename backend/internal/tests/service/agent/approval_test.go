@@ -240,6 +240,44 @@ func TestAgentDecideGenerate(t *testing.T) {
 			t.Error("运行应继续")
 		}
 	})
+
+	// 批准时先把报价记进已花积分（防止同一轮反复批准超预算）；任务没创建出来就没有扣积分，这部分要退回，
+	// 否则本轮预算被虚占，后面的调用会提前报预算用尽。
+	t.Run("执行整体失败：先记入的报价全额退回，已花积分回到 0", func(t *testing.T) {
+		e := newAgentEnv(t)
+		e.gen.err = errAgentBoom
+		run, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.run(run.ID).SpentCredits; got != 0 {
+			t.Errorf("任务一个都没创建，已花积分应退回 0，实际 %d", got)
+		}
+	})
+
+	t.Run("部分失败：只退失败条目的钱（价格×张数），成功的保持已花", func(t *testing.T) {
+		e := newAgentEnv(t)
+		// n1（8×2=16）失败，n2（8×1=8）成功
+		e.gen.result = `{"tasks":[{"node_id":"n2","task_id":"102","credits":8}],"failed":[{"node_id":"n1","error":"模型已不可用"}]}`
+		run, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.run(run.ID).SpentCredits; got != 8 {
+			t.Errorf("n1 的 16 积分应退回，只剩 n2 的 8，实际 %d", got)
+		}
+	})
+
+	t.Run("全部成功：不退", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.run(run.ID).SpentCredits; got != 24 {
+			t.Errorf("全部成功应保持 24，实际 %d", got)
+		}
+	})
 }
 
 func TestAgentDecideGuards(t *testing.T) {
@@ -393,6 +431,29 @@ func TestAgentDecide_ResumeInfoTellsTheModelWhatHappened(t *testing.T) {
 		info := e.rt.resumeInfos[0]
 		if info.ToolCallID != "tc-del" || !strings.Contains(info.Content, "批准") || !strings.Contains(info.Content, "删除") {
 			t.Errorf("info=%+v", info)
+		}
+	})
+
+	// 任务已创建、积分已冻结，只是回写节点失败：模型必须被告知任务已提交，不能重复申请
+	t.Run("生成：任务已创建但绑定节点失败，不说没扣积分，并叫模型别重复申请", func(t *testing.T) {
+		e := newAgentEnv(t)
+		e.gen.result = `{"tasks":[{"node_id":"n1","task_id":"101","credits":8}],"bind_warning":"任务已创建，但回写到节点时失败：画布写入冲突"}`
+		_, id := pendingGenerate(t, e, 24)
+		v, err := e.svc.Decide(ctx, 1, id, &model.DecideAgentApprovalReq{Decision: "approve"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.Status != model.ApprovalExecuted {
+			t.Errorf("任务已创建，审批应记为已执行而不是失败: %s", v.Status)
+		}
+		c := e.rt.resumeInfos[0].Content
+		if strings.Contains(c, "没有扣积分") {
+			t.Errorf("积分已经冻结，不能说没扣积分: %q", c)
+		}
+		for _, must := range []string{"任务已提交", "不要重复申请", "回写到节点时失败"} {
+			if !strings.Contains(c, must) {
+				t.Errorf("应告诉模型 %q: %q", must, c)
+			}
 		}
 	})
 

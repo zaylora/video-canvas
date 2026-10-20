@@ -107,6 +107,87 @@ describe("applyChanges：修改字段", () => {
     expect(r.nodes[0].parentId).toBe("grp");
   });
 
+  // 成员的 position 是相对组左上角的：所在组和位置是一对，只能一起写或者一起保留，
+  // 不然节点挂进了组、坐标却还是绝对坐标（或脱离了组却带着相对坐标），会被甩到别处。
+  describe("所在组和位置是一对", () => {
+    test("Agent 把节点放进组、用户在这期间拖过它：两个字段都保持用户的值", () => {
+      const r = applyChanges(
+        g([node("a", {}, { position: { x: 999, y: 111 } })]),
+        [
+          update(
+            "a",
+            { position: { x: 500, y: 300 } },
+            { parentId: "grp", position: { x: 48, y: 72 } },
+          ),
+        ],
+        guarded,
+      );
+      expect(r.nodes[0].parentId).toBeUndefined();
+      expect(r.nodes[0].position).toEqual({ x: 999, y: 111 });
+      expect(r.applied).toBe(0);
+      expect(r.keptLocal).toBe(2);
+    });
+
+    test("Agent 把节点移出组、用户在这期间拖过它：两个字段都保持用户的值", () => {
+      const r = applyChanges(
+        g([node("a", {}, { parentId: "grp", position: { x: 70, y: 90 } })]),
+        [
+          update(
+            "a",
+            { parentId: "grp", position: { x: 48, y: 72 } },
+            { position: { x: 500, y: 300 } },
+          ),
+        ],
+        guarded,
+      );
+      expect(r.nodes[0].parentId).toBe("grp");
+      expect(r.nodes[0].position).toEqual({ x: 70, y: 90 });
+      expect(r.keptLocal).toBe(2);
+    });
+
+    test("用户没动过：两个字段一起写入", () => {
+      const r = applyChanges(
+        g([node("a", {}, { position: { x: 500, y: 300 } })]),
+        [
+          update(
+            "a",
+            { position: { x: 500, y: 300 } },
+            { parentId: "grp", position: { x: 48, y: 72 } },
+          ),
+        ],
+        guarded,
+      );
+      expect(r.nodes[0].parentId).toBe("grp");
+      expect(r.nodes[0].position).toEqual({ x: 48, y: 72 });
+      expect(r.keptLocal).toBe(0);
+    });
+
+    test("成对只管这一对：同一次改动里的别的字段照常合并", () => {
+      const r = applyChanges(
+        g([node("a", { prompt: "旧" }, { position: { x: 999, y: 111 } })]),
+        [
+          update(
+            "a",
+            { position: { x: 500, y: 300 }, "data.prompt": "旧" },
+            { parentId: "grp", position: { x: 48, y: 72 }, "data.prompt": "新" },
+          ),
+        ],
+        guarded,
+      );
+      expect(r.nodes[0].data).toMatchObject({ prompt: "新" });
+      expect(r.nodes[0].parentId).toBeUndefined();
+    });
+
+    test("只改位置（比如排列）时不受影响：仍按字段各自判断", () => {
+      const r = applyChanges(
+        g([node("a", {}, { position: { x: 1, y: 1 } })]),
+        [update("a", { position: { x: 1, y: 1 } }, { position: { x: 9, y: 9 } })],
+        guarded,
+      );
+      expect(r.nodes[0].position).toEqual({ x: 9, y: 9 });
+    });
+  });
+
   test("节点已不存在：跳过；guard=false 时直接覆盖", () => {
     expect(applyChanges(g([]), [update("a", {}, { "data.x": 1 })], guarded).applied).toBe(0);
     const r = applyChanges(

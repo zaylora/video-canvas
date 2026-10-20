@@ -626,4 +626,58 @@ describe("冲突时自动合并（Agent 写了画布）", () => {
     t.coordinator.mergeVersion(5);
     expect(t.coordinator.version).toBe(9);
   });
+
+  // 保存以版本 v 发出的同时，Agent 的补丁到了：补丁把本地推进到 v+1 并已经合并好，保存随即 409。
+  // 这个冲突是我们自己造成的，本地早已是合并后的内容，不该弹「画布已在别处修改」，直接用新版本重试即可。
+  test("保存在途时本地版本被补丁推进：409 后直接以新版本重试，不弹冲突窗", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const calls: number[] = [];
+    let conflicts = 0;
+    let mergeAsked = 0;
+    const coordinator: SaveCoordinator = new SaveCoordinator({
+      initialVersion: 3,
+      getGraph: () => graphOf(1),
+      saveCloud: async (args) => {
+        calls.push(args.baseVersion);
+        if (calls.length === 1) {
+          await gate; // 保存请求在途
+          throw new Error("409");
+        }
+        return { version: args.baseVersion + 1 };
+      },
+      isConflict: (e) => e instanceof Error && e.message === "409",
+      onConflict: async () => {
+        conflicts += 1;
+        return true;
+      },
+      // 服务端不比本地新：真实的 agent-sync 在这里返回 null
+      autoMerge: async () => {
+        mergeAsked += 1;
+        return null;
+      },
+      draft: null,
+      onStatus: () => {},
+      now: () => 1_000_000,
+      setTimer: () => 0,
+      clearTimer: () => {},
+    });
+    coordinator.setActive(true);
+    coordinator.changed();
+    const flushing = coordinator.flush();
+    await settle();
+    coordinator.mergeVersion(4); // 补丁在保存在途时并进本地
+    release();
+    expect(await flushing).toBe(true);
+    expect(calls).toEqual([3, 4]);
+    expect(conflicts).toBe(0);
+    expect(mergeAsked).toBe(0); // 不必再去问 autoMerge
+  });
+
+  test("本地版本没变就 409：仍照旧交给 autoMerge / 冲突弹窗", async () => {
+    const t = make({ script: ["conflict"], autoMerge: async () => null });
+    t.coordinator.changed();
+    await t.coordinator.flush();
+    expect(t.conflicts()).toBe(1);
+  });
 });

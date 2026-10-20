@@ -173,6 +173,15 @@ export function useCanvasHistory({
     sync();
   }, [sync]);
 
+  /**
+   * 紧接着的那次改动不算用户的一步：系统自动调整（比如成员实际尺寸超出组框，自动撑大组框）之后，
+   * 用户按撤销应该撤的是自己上一步操作，不是系统的调整。栈里已有的步骤不动。
+   * 调用方只在确定会改节点时才调用，否则这个标记会吞掉用户的下一步。
+   */
+  const silent = useCallback(() => {
+    restoring.current = true;
+  }, []);
+
   /** 下一个改动不会被自动发现（比如只换了当前版本）时，先手动记一步 */
   const record = useCallback(() => {
     settleTyping();
@@ -189,8 +198,8 @@ export function useCanvasHistory({
   // 返回值经 CanvasHistoryProvider 下发给每个生成节点，而画布拖动时每帧都在重渲染：
   // 不固定引用的话 context 每帧都变，所有节点绕过 memo 跟着重渲染
   return useMemo(
-    () => ({ undo, redo, record, absorbTyping, reset, canUndo, canRedo }),
-    [absorbTyping, canRedo, canUndo, record, redo, reset, undo],
+    () => ({ undo, redo, record, absorbTyping, reset, silent, canUndo, canRedo }),
+    [absorbTyping, canRedo, canUndo, record, redo, reset, silent, undo],
   );
 }
 

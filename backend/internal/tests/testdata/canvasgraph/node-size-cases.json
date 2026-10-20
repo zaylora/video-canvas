@@ -1,0 +1,23 @@
+{
+  "说明": "节点画布尺寸规则的共享测试向量：后端 canvasgraph.NodeSize 与前端 nodeFrameSize / resolveNodeAspect 必须对同一输入给出同样的宽高。规则：音频固定 1:1；其余按 mediaAspect → params 里的 aspect_ratio（没有就看 ratio；写了但解析不了，如 Auto，直接回落 16:9）→ 参数完全没写时取模型默认比例（defaultAspect）→ 16:9 取宽高比；短边固定 324，横图定高、竖图定宽。文本节点宽 576、比例 16:9（高 324）。节点类型不是 canvas 的组不在这里。",
+  "cases": [
+    { "name": "文本节点固定 576×324", "kind": "script", "want": { "w": 576, "h": 324 } },
+    { "name": "文本节点不看比例参数", "kind": "script", "params": { "aspect_ratio": "9:16" }, "want": { "w": 576, "h": 324 } },
+    { "name": "导演台 576×324", "kind": "director", "want": { "w": 576, "h": 324 } },
+    { "name": "图片默认 16:9", "kind": "image", "want": { "w": 576, "h": 324 } },
+    { "name": "图片 9:16", "kind": "image", "params": { "aspect_ratio": "9:16" }, "want": { "w": 324, "h": 576 } },
+    { "name": "图片 1:1", "kind": "image", "params": { "aspect_ratio": "1:1" }, "want": { "w": 324, "h": 324 } },
+    { "name": "视频 21:9", "kind": "video", "params": { "aspect_ratio": "21:9" }, "want": { "w": 756, "h": 324 } },
+    { "name": "视频 4:3", "kind": "video", "params": { "ratio": "4:3" }, "want": { "w": 432, "h": 324 } },
+    { "name": "视频 3:4", "kind": "video", "params": { "ratio": "3:4" }, "want": { "w": 324, "h": 432 } },
+    { "name": "aspect_ratio 优先于 ratio", "kind": "image", "params": { "aspect_ratio": "9:16", "ratio": "1:1" }, "want": { "w": 324, "h": 576 } },
+    { "name": "Auto 不认识，回落 16:9", "kind": "image", "params": { "aspect_ratio": "Auto" }, "want": { "w": 576, "h": 324 } },
+    { "name": "显式写了 Auto 就不再用模型默认，回落 16:9", "kind": "image", "params": { "aspect_ratio": "Auto" }, "defaultAspect": "9:16", "want": { "w": 576, "h": 324 } },
+    { "name": "没填比例用模型默认", "kind": "video", "defaultAspect": "1:1", "want": { "w": 324, "h": 324 } },
+    { "name": "mediaAspect 优先于参数", "kind": "image", "mediaAspect": 0.75, "params": { "aspect_ratio": "16:9" }, "want": { "w": 324, "h": 432 } },
+    { "name": "mediaAspect 横图", "kind": "image", "mediaAspect": 2, "want": { "w": 648, "h": 324 } },
+    { "name": "音频固定 1:1，不看参数", "kind": "audio", "params": { "aspect_ratio": "16:9" }, "mediaAspect": 2, "want": { "w": 324, "h": 324 } },
+    { "name": "小数比例 1.91:1", "kind": "image", "params": { "aspect_ratio": "1.91:1" }, "want": { "w": 619, "h": 324 } },
+    { "name": "非法写法 9：16 回落 16:9", "kind": "image", "params": { "aspect_ratio": "9：16" }, "want": { "w": 576, "h": 324 } }
+  ]
+}

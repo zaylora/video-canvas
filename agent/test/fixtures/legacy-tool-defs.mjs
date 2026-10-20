@@ -51,10 +51,10 @@ export const TOOL_DEFS = [
   {
     name: "canvas_arrange",
     label: "整理布局",
-    description: "整理布局：把一个组的成员或一组节点排成一行、一列或网格。",
+    description: "整理布局：把一个组的成员、一组节点，或者一组镜头组排成一行、一列或网格。组会被当作一个整体，成员跟着走；顶层的组不能和组内的成员一起排。搭好多个镜头组之后，用它把所有组按 column 排开。",
     parameters: Type.Object({
       groupId: Type.Optional(Type.String({ description: "排列这个组的成员，排完后组框自动贴合" })),
-      nodeIds: Type.Optional(Type.Array(Type.String(), { description: "排列这些节点" })),
+      nodeIds: Type.Optional(Type.Array(Type.String(), { description: "排列这些节点；也可以写各个顶层组的 id，把组整体排开" })),
       layout: Type.Union(["row", "column", "grid"].map((v) => Type.Literal(v)), { description: "row 横排 / column 竖排 / grid 网格" }),
     }),
   },
