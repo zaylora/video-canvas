@@ -22,7 +22,7 @@ export function TextPreviewDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl" {...canvasDialogGuards}>
+      <DialogContent className="sm:max-w-4xl" {...canvasDialogGuards}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
