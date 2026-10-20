@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle } from "lucide-react";
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { canvasDialogGuards } from "@/utils/canvas/dialog-guards";
 import { promptPresets, promptTextLength } from "@/utils/canvas/prompt-tokens";
 
 import {
@@ -107,7 +108,7 @@ type NodePromptInputProps = {
   header?: ReactNode;
   /**
    * 提示词框上方的插槽，放引用条；没有 header 时它顶到第一行，和放大按钮并排。
-   * 「编辑提示词」弹窗里在标题下面再渲染一份同样的（同一个元素、同一个上下文），没有它弹窗里也没有
+   * 「编辑提示词」弹窗里在编辑区上面再渲染一份同样的（同一个元素、同一个上下文），没有它弹窗里也没有
    */
   children?: ReactNode;
   /** 提示词里 @ 素材要的数据；不给就不能 @ */
@@ -390,6 +391,8 @@ export function NodePromptInput({
         style={{ width }}
         className={cn(
           "nodrag nopan bg-panel text-popover-foreground ring-foreground/5 flex flex-col gap-3 rounded-2xl p-4 text-left shadow-2xl ring-1",
+          // 放大编辑时面板藏起来（弹窗是 Portal 渲染到 body 的，不受影响）；用 invisible 保留占位，布局不跳
+          expanded && "invisible",
           className,
         )}
       >
@@ -441,34 +444,27 @@ export function NodePromptInput({
         <PromptFooter {...footer} />
 
         <Dialog open={expanded} onOpenChange={setExpanded}>
-          <DialogContent
-            className="sm:max-w-2xl"
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <DialogHeader>
-              <DialogTitle>编辑提示词</DialogTitle>
-            </DialogHeader>
+          <DialogContent className="sm:max-w-4xl" {...canvasDialogGuards}>
+            {/* 不显示标题，但 Radix 要求弹窗有标题，留给读屏软件 */}
+            <DialogTitle className="sr-only">编辑提示词</DialogTitle>
             {/* 引用条和面板里是同一份：同一个元素、同一个上下文，点击插入落到下面这个编辑器 */}
             {children}
-            <div className="bg-muted/50 rounded-xl p-3">
-              <PromptEditor
-                ref={dialogEditorRef}
-                large
-                autoFocus
-                value={value}
-                onValueChange={onValueChange}
-                placeholder={promptPlaceholder}
-                disabled={promptDisabled}
-                mention={mention}
-                onSubmit={() => {
-                  setExpanded(false);
-                  submit();
-                }}
-              />
-            </div>
-            <div className="text-muted-foreground flex items-center justify-between text-xs">
-              <span>⌘↵ 发送，Esc 收起</span>
+            {/* 编辑区和弹窗同一个底色，不再单独垫一块 */}
+            <PromptEditor
+              ref={dialogEditorRef}
+              large
+              autoFocus
+              value={value}
+              onValueChange={onValueChange}
+              placeholder={promptPlaceholder}
+              disabled={promptDisabled}
+              mention={mention}
+              onSubmit={() => {
+                setExpanded(false);
+                submit();
+              }}
+            />
+            <div className="text-muted-foreground flex items-center justify-end text-xs">
               <span className={cn("font-mono tabular-nums", nearLimit && "text-status-warning")}>
                 {length}/{PROMPT_MAX_LENGTH}
               </span>

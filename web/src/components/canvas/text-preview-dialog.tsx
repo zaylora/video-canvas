@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { canvasDialogGuards } from "@/utils/canvas/dialog-guards";
 
 /**
  * 文本节点的放大预览：居中的只读弹窗，显示节点全文，可滚动、可选中复制，Esc 或点遮罩关闭。
@@ -21,11 +22,7 @@ export function TextPreviewDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-2xl"
-        onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
+      <DialogContent className="sm:max-w-2xl" {...canvasDialogGuards}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
