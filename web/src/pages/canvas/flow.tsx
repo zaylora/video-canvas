@@ -372,7 +372,7 @@ export const Flow = memo(function Flow({
     markTasksKnown: (ids) => {
       for (const id of ids) knownTaskIdsRef.current.add(id);
     },
-    resetHistory: history.reset,
+    rebaseHistory: history.rebase,
   });
   useEffect(() => {
     agentSyncRef.current = agentSync;

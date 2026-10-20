@@ -11,7 +11,8 @@ import { activeRunId } from "@/utils/agent/session-state";
 import { createAgentSync } from "@/utils/canvas/agent-sync";
 import { deserializeGraph } from "@/utils/canvas/canvas-persistence";
 import { normalizeFlowNodes } from "@/utils/canvas/group";
-import { unflatten, type MergeEdge } from "@/utils/canvas/graph-changes";
+import { unflatten, type GraphChange, type MergeEdge } from "@/utils/canvas/graph-changes";
+import type { RebaseOptions } from "@/utils/canvas/history";
 import { reconcileTaskIds } from "@/utils/ws/task-events";
 
 /** 画布页交给同步的东西：当前画布内容（要是最新的）、写回的方法、保存的版本 */
@@ -36,9 +37,27 @@ export type AgentCanvasSyncArgs = {
   skipNextSave: () => void;
   /** 把服务端已经有的任务 id 记为已知，免得当成「刚提交」立刻再存一遍 */
   markTasksKnown: (ids: string[]) => void;
-  /** 清空撤销栈 */
-  resetHistory: () => void;
+  /** 把这批改动并进撤销栈里的快照（用户的撤销步骤保留，撤销也不会倒回 Agent 的改动） */
+  rebaseHistory: (changes: GraphChange[], merge: RebaseOptions) => void;
 };
+
+/** 并进画布、并进撤销快照时造节点、造连线、整理顺序用的同一套 */
+const MERGE_OPTIONS: RebaseOptions = {
+  makeNode: (fields) =>
+    deserializeGraph({
+      nodes: [unflatten(fields) as unknown as CanvasGraphDto["nodes"][number]],
+    }).nodes[0],
+  makeEdge: (fields) => ({ ...fields, ...ANIMATED_EDGE_OPTIONS }) as unknown as CanvasEdge,
+  normalize: normalizeFlowNodes,
+};
+
+/** 这张画布上现在有没有进行中的 Agent 运行 */
+function isCanvasAgentActive(canvasId: number | string): boolean {
+  const { sessionsByCanvas, sessions } = useAgentStore.getState();
+  return (sessionsByCanvas[canvasId] ?? []).some(
+    (s) => sessions[s.id] && activeRunId(sessions[s.id]) !== null,
+  );
+}
 
 /**
  * 把 Agent 对这张画布的改动并进用户正在看的画布：订阅 canvas.patch，保存撞上 409 时自动合并。
@@ -57,32 +76,20 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
       mergeVersion: args.mergeVersion,
       hasUnsaved: args.hasUnsaved,
       getLocal: () => ({ nodes: args.nodesRef.current, edges: args.edgesRef.current }),
-      setLocal: (graph, { quiet, taskIds, touchedIds }) => {
+      setLocal: (graph, { quiet, taskIds, touchedIds, changes }) => {
         args.nodesRef.current = graph.nodes;
         args.edgesRef.current = graph.edges;
         if (quiet) args.skipNextSave();
         args.markTasksKnown(taskIds);
         args.setNodes(graph.nodes);
         args.setEdges(graph.edges);
-        args.resetHistory();
+        args.rebaseHistory(changes, MERGE_OPTIONS);
         useAgentHighlight.getState().touch(touchedIds);
         // 批准生成后绑定的任务可能在补丁到达前就完成了，主动对账一次
         if (taskIds.length > 0) void reconcileTaskIds(taskIds);
       },
-      isAgentActive: () => {
-        const { sessionsByCanvas, sessions } = useAgentStore.getState();
-        return (sessionsByCanvas[args.canvas.id] ?? []).some(
-          (s) => sessions[s.id] && activeRunId(sessions[s.id]) !== null,
-        );
-      },
-      merge: {
-        makeNode: (fields) =>
-          deserializeGraph({
-            nodes: [unflatten(fields) as unknown as CanvasGraphDto["nodes"][number]],
-          }).nodes[0],
-        makeEdge: (fields) => ({ ...fields, ...ANIMATED_EDGE_OPTIONS }) as unknown as CanvasEdge,
-        normalize: normalizeFlowNodes,
-      },
+      isAgentActive: () => isCanvasAgentActive(args.canvas.id),
+      merge: MERGE_OPTIONS,
     }),
   );
 
@@ -90,6 +97,16 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
     () => subscribeCanvasPatch(args.canvas.id, (patch) => void sync.handlePatch(patch)),
     [args.canvas.id, sync],
   );
+
+  // 这张画布上的 Agent 运行结束：对账一次并复位「被 Agent 动过」的标记（见 AgentSync.settle）
+  useEffect(() => {
+    let wasActive = isCanvasAgentActive(args.canvas.id);
+    return useAgentStore.subscribe(() => {
+      const active = isCanvasAgentActive(args.canvas.id);
+      if (wasActive && !active) void sync.settle();
+      wasActive = active;
+    });
+  }, [args.canvas.id, sync]);
 
   return sync;
 }

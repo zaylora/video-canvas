@@ -13,10 +13,13 @@ import { isGroupNode } from "@/utils/canvas/group";
 import {
   HISTORY_LIMIT,
   contentKey,
+  rebaseSnapshot,
   restoreNodes,
   structureKey,
   type HistorySnapshot,
+  type RebaseOptions,
 } from "@/utils/canvas/history";
+import type { GraphChange } from "@/utils/canvas/graph-changes";
 
 /** 节点当前选中的生成版本，组没有这个概念 */
 const activeOutput = (node?: FlowNode) =>
@@ -39,7 +42,7 @@ const keyed = (nodes: FlowNode[], edges: CanvasEdge[]): Keyed => {
  * - 任务回填（状态、产物）不算一步，撤销时也不倒回去，见 restoreNodes
  * - 切历史版本这类只改 activeOutputId 的操作，调用方先 record() 再改
  * - 提示词里 @ 素材顺手连的线，调用方先 absorbTyping()，和正在攒的打字算同一步
- * 409 冲突时画布整张重挂，撤销栈随之清空；Agent 的改动并进画布时也会清空（reset）。
+ * 409 冲突时画布整张重挂，撤销栈随之清空；Agent 的改动并进画布时不清栈，而是把同样的改动并进栈里每张快照（rebase）。
  */
 export function useCanvasHistory({
   nodes,
@@ -159,19 +162,17 @@ export function useCanvasHistory({
   const redo = useCallback(() => travel(future, past), [travel]);
 
   /**
-   * 清空撤销栈：别处的改动（Agent）并进画布之后，栈里更早的整张快照已经不是现在的样子，
-   * 撤销到它们会把别人刚改的内容一起抹掉，所以干脆清掉，从现在重新开始记。
+   * Agent 的改动并进画布之后调用：把同一批改动并进撤销栈、重做栈和攒着的打字那一步里的每张快照，
+   * 用户之前的撤销步骤仍然可用，撤销时也不会把 Agent 刚改的内容倒回去（规则见 rebaseSnapshot）。
+   * 这次画布变化不算用户的一步：紧接着的那次改动只刷新基准，不入栈。
    */
-  const reset = useCallback(() => {
-    if (typingTimer.current !== null) window.clearTimeout(typingTimer.current);
-    typingTimer.current = null;
-    typingBase.current = null;
-    absorbNext.current = false;
-    past.current = [];
-    future.current = [];
+  const rebase = useCallback((changes: GraphChange[], merge: RebaseOptions) => {
+    const apply = (snapshot: HistorySnapshot) => rebaseSnapshot(snapshot, changes, merge);
+    past.current = past.current.map(apply);
+    future.current = future.current.map(apply);
+    if (typingBase.current) typingBase.current = apply(typingBase.current);
     restoring.current = true;
-    sync();
-  }, [sync]);
+  }, []);
 
   /**
    * 紧接着的那次改动不算用户的一步：系统自动调整（比如成员实际尺寸超出组框，自动撑大组框）之后，
@@ -198,8 +199,8 @@ export function useCanvasHistory({
   // 返回值经 CanvasHistoryProvider 下发给每个生成节点，而画布拖动时每帧都在重渲染：
   // 不固定引用的话 context 每帧都变，所有节点绕过 memo 跟着重渲染
   return useMemo(
-    () => ({ undo, redo, record, absorbTyping, reset, silent, canUndo, canRedo }),
-    [absorbTyping, canRedo, canUndo, record, redo, reset, silent, undo],
+    () => ({ undo, redo, record, absorbTyping, rebase, silent, canUndo, canRedo }),
+    [absorbTyping, canRedo, canUndo, rebase, record, redo, silent, undo],
   );
 }
 

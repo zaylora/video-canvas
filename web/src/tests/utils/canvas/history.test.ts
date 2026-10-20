@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CanvasGroupNode, CanvasNode, CanvasNodeData } from "@/types";
-import { contentKey, restoreNodes, structureKey } from "@/utils/canvas/history";
+import type { CanvasEdge, CanvasGroupNode, CanvasNode, CanvasNodeData, FlowNode } from "@/types";
+import { unflatten, type GraphChange, type MergeEdge } from "@/utils/canvas/graph-changes";
+import { contentKey, rebaseSnapshot, restoreNodes, structureKey } from "@/utils/canvas/history";
 
 const node = (id: string, data: Partial<CanvasNodeData> = {}, x = 0): CanvasNode => ({
   id,
@@ -130,5 +131,101 @@ describe("组", () => {
   test("撤销时组取快照里的尺寸和位置，不被眼下的覆盖", () => {
     const [restored] = restoreNodes([group(300)], [group(500, 80)]);
     expect(restored).toMatchObject({ width: 300, position: { x: 0, y: 0 } });
+  });
+});
+
+describe("rebaseSnapshot：Agent 的改动并进撤销栈里的快照", () => {
+  const merge = {
+    makeNode: (fields: Record<string, unknown>) => unflatten(fields) as unknown as FlowNode,
+    makeEdge: (fields: Record<string, unknown>) => fields as unknown as CanvasEdge & MergeEdge,
+  };
+  const edge = (id: string, source: string, target: string) =>
+    ({ id, source, target }) as unknown as CanvasEdge;
+  const update = (id: string, before: object, after: object): GraphChange => ({
+    kind: "node",
+    op: "update",
+    id,
+    before: before as Record<string, unknown>,
+    after: after as Record<string, unknown>,
+  });
+
+  test("Agent 改的字段：快照里还是改动前的值就换成改动后的", () => {
+    const snap = { nodes: [node("a", { prompt: "旧" })], edges: [] };
+    const next = rebaseSnapshot(
+      snap,
+      [update("a", { "data.prompt": "旧" }, { "data.prompt": "新" })],
+      merge,
+    );
+    expect(next.nodes[0].data.prompt).toBe("新");
+  });
+
+  test("快照里是用户自己的值（和改动前不同）：保持不动", () => {
+    const snap = { nodes: [node("a", { prompt: "用户的" })], edges: [] };
+    const next = rebaseSnapshot(
+      snap,
+      [update("a", { "data.prompt": "旧" }, { "data.prompt": "新" })],
+      merge,
+    );
+    expect(next.nodes[0].data.prompt).toBe("用户的");
+  });
+
+  test("Agent 新建的节点和连线加进快照；两端不在快照里的连线跳过", () => {
+    const snap = { nodes: [node("a")], edges: [] };
+    const changes: GraphChange[] = [
+      {
+        kind: "node",
+        op: "create",
+        id: "n2",
+        after: { id: "n2", type: "canvas", "data.kind": "image" },
+      },
+      { kind: "edge", op: "create", id: "e1", after: { id: "e1", source: "a", target: "n2" } },
+      { kind: "edge", op: "create", id: "e2", after: { id: "e2", source: "a", target: "gone" } },
+    ];
+    const next = rebaseSnapshot(snap, changes, merge);
+    expect(next.nodes.map((n) => n.id)).toEqual(["a", "n2"]);
+    expect(next.edges.map((e) => e.id)).toEqual(["e1"]);
+  });
+
+  test("Agent 删掉的节点从快照里去掉，连着它的线一起走", () => {
+    const snap = { nodes: [node("a"), node("b")], edges: [edge("e", "a", "b")] };
+    const next = rebaseSnapshot(snap, [{ kind: "node", op: "delete", id: "b" }], merge);
+    expect(next.nodes.map((n) => n.id)).toEqual(["a"]);
+    expect(next.edges).toEqual([]);
+  });
+
+  test("这批改动和快照无关：原样返回同一个对象", () => {
+    const snap = { nodes: [node("a")], edges: [] };
+    const next = rebaseSnapshot(
+      snap,
+      [update("zzz", { "data.prompt": "a" }, { "data.prompt": "b" })],
+      merge,
+    );
+    expect(next).toBe(snap);
+  });
+
+  test("不改入参快照", () => {
+    const snap = { nodes: [node("a", { prompt: "旧" })], edges: [] };
+    rebaseSnapshot(snap, [update("a", { "data.prompt": "旧" }, { "data.prompt": "新" })], merge);
+    expect(snap.nodes[0].data.prompt).toBe("旧");
+  });
+
+  test("撤销到换过基准的快照，Agent 刚改的内容和新建的节点都还在", () => {
+    // 用户先改了 b 的位置（快照记下改之前的画布），随后 Agent 改了 a 的提示词并新建了 n2
+    const snapshot = { nodes: [node("a", { prompt: "旧" }), node("b", {}, 0)], edges: [] };
+    const present = [node("a", { prompt: "新" }), node("b", {}, 80), node("n2")];
+    const changes: GraphChange[] = [
+      update("a", { "data.prompt": "旧" }, { "data.prompt": "新" }),
+      {
+        kind: "node",
+        op: "create",
+        id: "n2",
+        after: { id: "n2", type: "canvas", "data.kind": "image" },
+      },
+    ];
+    const rebased = rebaseSnapshot(snapshot, changes, merge);
+    const restored = restoreNodes(rebased.nodes, present);
+    expect(restored.map((n) => n.id)).toEqual(["a", "b", "n2"]);
+    expect(restored[0].data.prompt).toBe("新");
+    expect(restored[1].position.x).toBe(0);
   });
 });

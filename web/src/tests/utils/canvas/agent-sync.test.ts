@@ -27,7 +27,7 @@ function setup(
     unsaved: false,
     active: over.active ?? false,
     latest: over.latest ?? { nodes: baseNodes, version: over.version ?? 3 },
-    writes: [] as { quiet: boolean; taskIds: string[]; touchedIds: string[] }[],
+    writes: [] as Parameters<AgentSyncDeps<N, MergeEdge>["setLocal"]>[1][],
     fetches: 0,
     failFetch: false,
   };
@@ -82,7 +82,9 @@ describe("canvas.patch：接得上本地版本", () => {
     await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
     expect(state.local.nodes[0].data.prompt).toBe("新");
     expect(state.version).toBe(4);
-    expect(state.writes).toEqual([{ quiet: true, taskIds: [], touchedIds: ["a"] }]);
+    expect(state.writes).toEqual([
+      { quiet: true, taskIds: [], touchedIds: ["a"], changes: [setPrompt("旧", "新")] },
+    ]);
     expect(state.fetches).toBe(0);
   });
 
@@ -212,5 +214,71 @@ describe("saved：用户自己保存成功后，基准跟着走", () => {
     state.latest = { nodes: [...mine, node("agent")], version: 5 };
     await sync.autoMerge();
     expect(state.local.nodes.map((n) => n.id)).toEqual(["a", "mine", "agent"]);
+  });
+});
+
+describe("settle：运行结束、对账完成后复位「动过」标记", () => {
+  test("复位之后别处引起的 409 照旧走冲突窗，不再静默合并", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    await sync.settle();
+    state.latest = { nodes: [node("a", { prompt: "别的标签页改的" })], version: 9 };
+    const fetchesBefore = state.fetches;
+    expect(await sync.autoMerge()).toBeNull();
+    expect(state.fetches).toBe(fetchesBefore);
+    expect(state.local.nodes[0].data.prompt).toBe("新");
+  });
+
+  test("对账会把漏掉的 Agent 改动补上，再复位", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    state.latest = { nodes: [node("a", { prompt: "新" }), node("lost")], version: 6 };
+    await sync.settle();
+    expect(state.local.nodes.map((n) => n.id)).toEqual(["a", "lost"]);
+    expect(state.version).toBe(6);
+    expect(await sync.autoMerge()).toBeNull();
+  });
+
+  test("Agent 还在运行：不复位，也不拉取", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    state.active = true;
+    await sync.settle();
+    expect(state.fetches).toBe(0);
+    state.latest = { nodes: [node("a", { prompt: "新" }), node("b")], version: 6 };
+    expect(await sync.autoMerge()).toBe(6);
+  });
+
+  test("对账拉取失败：保持「动过」，之后的 409 仍自动合并", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    state.failFetch = true;
+    await sync.settle();
+    state.failFetch = false;
+    state.latest = { nodes: [node("a", { prompt: "新" }), node("b")], version: 6 };
+    expect(await sync.autoMerge()).toBe(6);
+  });
+
+  test("没收到过补丁：什么都不做，不拉取", async () => {
+    const { state, sync } = setup();
+    await sync.settle();
+    expect(state.fetches).toBe(0);
+  });
+
+  test("复位之后又来了新的补丁：重新算动过", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    await sync.settle();
+    await sync.handlePatch(patch(4, 5, [setPrompt("新", "更新")]));
+    state.latest = { nodes: [node("a", { prompt: "更新" }), node("b")], version: 7 };
+    expect(await sync.autoMerge()).toBe(7);
+  });
+  test("对账后才到的旧补丁（已包含在本地版本里）不会重新标记动过", async () => {
+    const { state, sync } = setup();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    await sync.settle();
+    await sync.handlePatch(patch(3, 4, [setPrompt("旧", "新")]));
+    state.latest = { nodes: [node("a", { prompt: "别处改的" })], version: 9 };
+    expect(await sync.autoMerge()).toBeNull();
   });
 });

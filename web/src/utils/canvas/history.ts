@@ -1,5 +1,6 @@
 import type { CanvasEdge, CanvasNodeData, FlowNode } from "@/types";
 
+import { applyChanges, type GraphChange, type MergeEdge, type MergeOptions } from "./graph-changes";
 import { isGroupNode } from "./group";
 import { selectOutput } from "./outputs";
 
@@ -98,4 +99,32 @@ export function restoreNodes(snapshot: FlowNode[], current: FlowNode[]): FlowNod
         : { ...data, activeOutputId: now.data.activeOutputId },
     };
   });
+}
+
+/** 把 Agent 的改动并进快照时造节点、造连线、整理顺序的方式（和并进画布时用的同一套） */
+export type RebaseOptions = Pick<
+  MergeOptions<FlowNode, CanvasEdge & MergeEdge>,
+  "makeNode" | "makeEdge" | "normalize"
+>;
+
+/**
+ * 把一批 Agent 的改动并进撤销栈 / 重做栈里的一张快照：撤销用户自己的步骤时，不能把 Agent 刚改的内容倒回去。
+ * 规则和并进画布一致：节点字段只有快照里还等于「改动前」才换成「改动后」（用户自己的值保持）；
+ * 新建的节点、连线加进快照（连线两端不在快照里就跳过）；删除的节点连同连着它的线从快照里去掉。
+ * 改不到这张快照时原样返回同一个对象，不改入参。
+ * @param snapshot 栈里的一张快照
+ * @param changes 并进画布的那批改动
+ * @param merge 造节点、造连线、整理顺序
+ */
+export function rebaseSnapshot(
+  snapshot: HistorySnapshot,
+  changes: GraphChange[],
+  merge: RebaseOptions,
+): HistorySnapshot {
+  const result = applyChanges<FlowNode, CanvasEdge & MergeEdge>(snapshot, changes, {
+    guard: true,
+    ...merge,
+  });
+  if (result.applied === 0) return snapshot;
+  return { nodes: result.nodes, edges: result.edges };
 }

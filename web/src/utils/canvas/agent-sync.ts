@@ -30,11 +30,12 @@ export type AgentSyncDeps<N extends MergeNode, E extends MergeEdge> = {
   /**
    * 写回合并后的本地画布。quiet 为 true 表示本地原本没有未保存的改动，这次合并的内容服务端已经有了，
    * 不需要再保存一遍；taskIds 是这批改动里带来的生成任务，调用方要对账；
-   * touchedIds 是被新建或修改的节点，调用方可以短暂高亮
+   * touchedIds 是被新建或修改的节点，调用方可以短暂高亮；
+   * changes 是并进来的那批改动，调用方可以据此同步撤销栈里的快照
    */
   setLocal: (
     graph: MergeGraph<N, E>,
-    meta: { quiet: boolean; taskIds: string[]; touchedIds: string[] },
+    meta: { quiet: boolean; taskIds: string[]; touchedIds: string[]; changes: GraphChange[] },
   ) => void;
   /** 这张画布上现在有没有进行中的 Agent 运行 */
   isAgentActive: () => boolean;
@@ -48,6 +49,11 @@ export type AgentSync = {
   handlePatch: (patch: CanvasPatchDto) => Promise<void>;
   /** 保存撞上 409：别处的改动是 Agent 写的就自动合并，返回合并后的服务端版本；不能合并返回 null */
   autoMerge: () => Promise<number | null>;
+  /**
+   * Agent 运行结束后对账：拉一次最新画布补上漏掉的改动，成功后复位「这张画布被 Agent 动过」的标记，
+   * 之后别处（比如另一个标签页）引起的 409 照旧弹冲突窗。Agent 还在运行、或拉取失败时保持标记不变
+   */
+  settle: () => Promise<void>;
   /** 一次保存成功：这份图谱就是服务端在该版本的内容 */
   saved: (graph: Snapshot, version: number) => void;
 };
@@ -56,7 +62,8 @@ export type AgentSync = {
  * Agent 改画布时，前端怎么跟上：
  * - 收到 canvas.patch 且接得上本地版本（revision_before 等于本地版本）：把这批改动并进本地，版本接到 revision_after
  * - 接不上（漏了一条、顺序乱了）：拉最新画布，和「服务端上一次已知内容」比出差异，同样并进本地
- * - 保存撞上 409 且这张画布被 Agent 动过：同上自动合并后重试，不弹冲突窗
+ * - 保存撞上 409 且这张画布被 Agent 动过（Agent 还在运行，或收到过补丁但运行结束后的对账 settle 还没完成）：
+ *   同上自动合并后重试，不弹冲突窗；对账完成后标记复位，之后的 409 照旧弹冲突窗
  * 并进本地时用户改过的字段保持用户的值（见 applyChanges 的 guard），下一次保存会把它写回服务端，两边最终一致。
  * 所有合并排成一队，不会交错。
  */
@@ -91,7 +98,10 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
       const touchedIds = changes
         .filter((c) => c.kind === "node" && c.op !== "delete" && alive.has(c.id))
         .map((c) => c.id);
-      deps.setLocal({ nodes: r.nodes, edges: r.edges }, { quiet, taskIds: r.taskIds, touchedIds });
+      deps.setLocal(
+        { nodes: r.nodes, edges: r.edges },
+        { quiet, taskIds: r.taskIds, touchedIds, changes },
+      );
     }
   };
 
@@ -108,9 +118,9 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
   return {
     handlePatch: (patch) =>
       serial(async () => {
-        touched = true;
         const version = deps.getVersion();
-        if (patch.revision_after <= version) return; // 已经包含在本地版本里
+        if (patch.revision_after <= version) return; // 已经包含在本地版本里，也不算新的「动过」
+        touched = true;
         if (patch.revision_before === version) {
           applyRemote(patch.changes);
           advanceBase(patch.changes, patch.revision_after);
@@ -125,6 +135,17 @@ export function createAgentSync<N extends MergeNode, E extends MergeEdge>(
       serial(async () => {
         if (!touched && !deps.isAgentActive()) return null;
         return resync();
+      }),
+
+    settle: () =>
+      serial(async () => {
+        if (!touched || deps.isAgentActive()) return;
+        try {
+          await resync();
+          touched = false;
+        } catch {
+          // 拉取失败：保持标记，下一次运行结束或保存冲突时再来
+        }
       }),
 
     saved: (graph, version) => {
