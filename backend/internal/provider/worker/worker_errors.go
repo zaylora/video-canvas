@@ -78,7 +78,7 @@ func (w *Worker) fail(ctx context.Context, t *model.GenerationTask, snap *provid
 	}
 
 	if _, err := w.store.FailWithUpstream(ctx, t, code, msg, f.raw); err != nil {
-		log.Error("标记任务失败时出错，租约过期后重试", zap.Error(err))
+		log.Error("标记任务失败时出错，稍后重试", zap.Error(err))
 	}
 }
 
@@ -165,7 +165,7 @@ func (w *Worker) expire(ctx context.Context, t *model.GenerationTask, snap *prov
 		w.cancelProvider(ctx, t, snap, taskRef(t, w.providerState(t)))
 	}
 	if _, err := w.store.Expire(ctx, t); err != nil {
-		w.taskLog(t).Error("标记任务超时时出错，租约过期后重试", zap.Error(err))
+		w.taskLog(t).Error("标记任务超时时出错，稍后重试", zap.Error(err))
 	}
 }
 
@@ -182,7 +182,7 @@ func (w *Worker) cancelProvider(ctx context.Context, t *model.GenerationTask, sn
 // retry 记录一次可重试的失败并安排下次处理。
 func (w *Worker) retry(ctx context.Context, t *model.GenerationTask, attempts int, next time.Time) {
 	if _, err := w.store.Retry(ctx, t, attempts, next); err != nil {
-		w.taskLog(t).Error("安排任务重试失败，租约过期后重试", zap.Error(err))
+		w.taskLog(t).Error("安排任务重试失败，稍后重试", zap.Error(err))
 	}
 }
 

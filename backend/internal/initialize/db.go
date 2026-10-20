@@ -14,6 +14,7 @@ import (
 	"video-canvas/internal/config"
 	"video-canvas/internal/migration"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/provider/queue"
 	"video-canvas/pkg/version"
 )
 
@@ -32,6 +33,9 @@ func NewDB(cfg config.Database) (*gorm.DB, error) {
 		defer cancel()
 		if err := migration.Run(ctx, db, MigrationOptions(cfg)); err != nil {
 			return nil, fmt.Errorf("数据库迁移失败: %w", err)
+		}
+		if err := MigrateQueue(ctx, db); err != nil {
+			return nil, err
 		}
 	}
 	return db, nil
@@ -81,4 +85,14 @@ func parseGormLogLevel(level string) gormlogger.LogLevel {
 	default:
 		return gormlogger.Warn
 	}
+}
+
+// MigrateQueue 迁移任务队列（River）自己的表。必须在项目迁移之后执行；已经是最新版本时什么都不做。
+// River 的表结构由它的版本决定，所以不放进 migrations/ 里的 SQL 文件。
+func MigrateQueue(ctx context.Context, db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("取数据库连接池失败: %w", err)
+	}
+	return queue.Migrate(ctx, sqlDB, "")
 }

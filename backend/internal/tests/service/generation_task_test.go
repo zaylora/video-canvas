@@ -40,6 +40,9 @@ type fakeTaskRepo struct {
 	txCount        int
 	failUpdateIDs  map[uint64]error          // 指定任务 id 的 UpdateIf 返回错误（模拟某一个任务处理失败）
 	eventDetails   map[uint64]map[string]any // 任务 id -> 最近一次状态迁移带给事件的详情（repository.EventDetailKey）
+	enqueued       []uint64                  // 事务里入队的任务 id（事务回滚时一并撤销，和真实的“job 与任务同一个事务”一致）
+	slotReqs       []repository.SlotRequest  // AcquireSlot 收到的申请参数
+	slotResult     repository.SlotResult     // AcquireSlot 的返回值，空表示拿到
 }
 
 func newFakeTaskRepo() *fakeTaskRepo {
@@ -99,8 +102,10 @@ func (f *fakeTaskRepo) WithTx(ctx context.Context, fn func(tx repository.Generat
 		credits[id] = &cp
 	}
 	ledger := append([]model.CreditLedger(nil), f.ledger...)
+	enqueued := len(f.enqueued)
 	if err := fn(f); err != nil {
 		f.tasks, f.credits, f.ledger = tasks, credits, ledger
+		f.enqueued = f.enqueued[:enqueued]
 		return err
 	}
 	return nil
@@ -321,12 +326,38 @@ func (f *fakeTaskRepo) UpdateIf(ctx context.Context, id uint64, from []string, f
 	return &cp, nil
 }
 
-func (f *fakeTaskRepo) ClaimDue(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]model.GenerationTask, error) {
-	return nil, f.errs["ClaimDue"]
+// GetByIDAny 只按 id 读，不存在返回 ErrNotFound。
+func (f *fakeTaskRepo) GetByIDAny(ctx context.Context, id uint64) (*model.GenerationTask, error) {
+	if err := f.errs["GetByIDAny"]; err != nil {
+		return nil, err
+	}
+	t, ok := f.tasks[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	cp := *t
+	return &cp, nil
 }
 
-func (f *fakeTaskRepo) ExtendLease(ctx context.Context, id uint64, until time.Time) (bool, error) {
-	return true, f.errs["ExtendLease"]
+// AcquireSlot 记录申请参数，结果由测试通过 slotResult 指定（默认拿到）。
+func (f *fakeTaskRepo) AcquireSlot(ctx context.Context, req repository.SlotRequest) (repository.SlotResult, error) {
+	f.slotReqs = append(f.slotReqs, req)
+	if err := f.errs["AcquireSlot"]; err != nil {
+		return "", err
+	}
+	if f.slotResult != "" {
+		return f.slotResult, nil
+	}
+	return repository.SlotAcquired, nil
+}
+
+// EnqueueTask 记录入队的任务；errs["EnqueueTask"] 让它失败，用来验证“入队失败整个创建事务回滚”。
+func (f *fakeTaskRepo) EnqueueTask(ctx context.Context, t *model.GenerationTask) error {
+	if err := f.errs["EnqueueTask"]; err != nil {
+		return err
+	}
+	f.enqueued = append(f.enqueued, t.ID)
+	return nil
 }
 
 // SaveTrace 复刻真实仓储：只写 is_test 任务，任务不存在或不是试跑任务返回 ErrNotFound。
@@ -484,15 +515,6 @@ func assertPlainError(t *testing.T, err error) {
 	}
 }
 
-func kicked(svc *GenerationTaskService) bool {
-	select {
-	case <-svc.KickChan():
-		return true
-	default:
-		return false
-	}
-}
-
 // withImages 把请求改成图生，并附上参考图 id。
 func withImages(r *model.CreateGenerationTaskReq, ids ...any) {
 	r.Input["op"] = "i2v"
@@ -561,15 +583,17 @@ func TestGenerationTaskService_Create(t *testing.T) {
 				if task.NextPollAt != env.now || task.Provider != "p1" || task.Status != model.TaskPending {
 					t.Fatalf("任务字段不对：%+v", task)
 				}
-				if !task.DeadlineAt.Equal(env.now.Add(30 * time.Minute)) {
-					t.Fatalf("默认 deadline 应为 30 分钟：%v", task.DeadlineAt)
+				// pending 阶段的 deadline 就是排队的上限（系统设置里的排队超时，这里的假设置是 1 小时），
+				// 拿到名额之后才按模型超时重新计算
+				if !task.DeadlineAt.Equal(env.now.Add(time.Hour)) {
+					t.Fatalf("创建时 deadline 应为排队超时 1 小时：%v", task.DeadlineAt)
 				}
 				var snap provider.Snapshot
 				if err := json.Unmarshal(task.ConfigSnapshot, &snap); err != nil || snap.Model.Key != "m1" {
 					t.Fatalf("配置快照没有落库：%v %s", err, task.ConfigSnapshot)
 				}
-				if !kicked(env.svc) {
-					t.Fatal("提交后应唤醒 worker")
+				if len(env.repo.enqueued) != 1 {
+					t.Fatalf("创建任务时应在同一个事务里入队，实际入队 %v", env.repo.enqueued)
 				}
 				if len(env.bc.msgs) != 1 || env.bc.msgs[0].Type != ws.TypeTaskUpdated || env.bc.channels[0] != "user:1" {
 					t.Fatalf("应向 user:1 推送一次 task.updated：%+v", env.bc.msgs)
@@ -612,14 +636,14 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			},
 		},
 		{
-			name: "模型自带 deadline 时按模型配置",
+			name: "模型自带 deadline 不影响创建时的排队截止时间",
 			setup: func(env *taskSvcEnv) {
 				env.registry.snap.Model.Deadline = modelcfg.Duration(5 * time.Minute)
 			},
 			req: validCreateReq,
 			check: func(t *testing.T, env *taskSvcEnv, v *model.GenerationTaskView) {
-				if !v.DeadlineAt.Equal(env.now.Add(5 * time.Minute)) {
-					t.Fatalf("deadline 应为 5 分钟：%v", v.DeadlineAt)
+				if !v.DeadlineAt.Equal(env.now.Add(time.Hour)) {
+					t.Fatalf("创建时 deadline 应是排队超时 1 小时，模型的 5 分钟要等拿到名额后才生效：%v", v.DeadlineAt)
 				}
 			},
 		},
@@ -832,8 +856,8 @@ func TestGenerationTaskService_Create(t *testing.T) {
 			}
 			if tt.wantCode != 0 {
 				// 失败路径：不能留下任务、流水，冻结额不变，也不能有推送和唤醒
-				if len(env.repo.tasks) != baseTasks || len(env.repo.ledger) != 0 || len(env.bc.msgs) != 0 || kicked(env.svc) {
-					t.Fatalf("失败后不应有新任务 / 流水 / 推送 / 唤醒：tasks=%d ledger=%+v", len(env.repo.tasks), env.repo.ledger)
+				if len(env.repo.tasks) != baseTasks || len(env.repo.ledger) != 0 || len(env.bc.msgs) != 0 || len(env.repo.enqueued) != 0 {
+					t.Fatalf("失败后不应有新任务 / 流水 / 推送 / 入队：tasks=%d ledger=%+v", len(env.repo.tasks), env.repo.ledger)
 				}
 				frozen := 0
 				if acc := env.repo.credits[user]; acc != nil {
@@ -949,7 +973,7 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 		env := newTaskSvcEnv(defaultTaskLimits())
 		first, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
 		assertTaskCode(t, err, 0)
-		kicked(env.svc) // 清掉信号
+		env.repo.enqueued = nil
 		env.bc.msgs = nil
 
 		second, err := createSingle(context.Background(), env.svc, user, "key-1", validCreateReq())
@@ -960,8 +984,8 @@ func TestGenerationTaskService_Create_Idempotency(t *testing.T) {
 		if len(env.repo.tasks) != 1 || len(env.repo.ledger) != 1 || env.repo.credits[user].Frozen != 10 {
 			t.Fatalf("不应重复创建 / 冻结：tasks=%d ledger=%d acc=%+v", len(env.repo.tasks), len(env.repo.ledger), env.repo.credits[user])
 		}
-		if kicked(env.svc) || len(env.bc.msgs) != 0 {
-			t.Fatal("重复提交不应再唤醒 worker 或推送")
+		if len(env.repo.enqueued) != 0 || len(env.bc.msgs) != 0 {
+			t.Fatal("重复提交不应再入队或推送")
 		}
 	})
 
@@ -1080,8 +1104,8 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 			if len(env.bc.msgs) != 0 {
 				t.Fatal("试跑不应推送")
 			}
-			if !kicked(env.svc) {
-				t.Fatal("试跑创建后应唤醒 worker")
+			if len(env.repo.enqueued) != 1 {
+				t.Fatalf("试跑任务创建时也要在同一个事务里入队，实际入队 %v", env.repo.enqueued)
 			}
 		})
 	}
@@ -1102,8 +1126,8 @@ func TestGenerationTaskService_SubmitTest(t *testing.T) {
 		if task.Kind != model.KindImage || task.Provider != "draft-ch" || task.IdempotencyKey != "" {
 			t.Fatalf("任务字段应取自快照且没有幂等键：%+v", task)
 		}
-		if !task.DeadlineAt.Equal(env.now.Add(2 * time.Minute)) {
-			t.Fatalf("deadline 应取快照配置：%v", task.DeadlineAt)
+		if !task.DeadlineAt.Equal(env.now.Add(time.Hour)) {
+			t.Fatalf("试跑任务创建时同样以排队超时为 deadline：%v", task.DeadlineAt)
 		}
 		if v.Status != model.TaskPending || v.Credits != 0 {
 			t.Fatalf("视图不对：%+v", v)
@@ -1753,8 +1777,8 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if got.Status != model.TaskFinalizing || got.PollAttempts != 0 || !got.NextPollAt.Equal(env.now) || got.Version != 2 {
 			t.Fatalf("字段不对：%+v", got)
 		}
-		if !kicked(env.svc) || len(env.bc.msgs) != 1 {
-			t.Fatal("应唤醒 worker 并推送")
+		if len(env.bc.msgs) != 1 {
+			t.Fatal("应推送")
 		}
 	})
 
@@ -2013,8 +2037,8 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if st, _ := provider.DecodeProviderState(got.ProviderState); string(st.Plugin) != `{"s":1}` {
 			t.Fatalf("插件 state 没保存：%s", got.ProviderState)
 		}
-		if !kicked(env.svc) || len(env.bc.msgs) != 1 {
-			t.Fatal("应唤醒 worker 并推送")
+		if len(env.bc.msgs) != 1 {
+			t.Fatal("应推送")
 		}
 	})
 
@@ -2024,8 +2048,8 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		if err != nil || applied {
 			t.Fatalf("applied=%v err=%v，期望 false/nil", applied, err)
 		}
-		if kicked(env.svc) || len(env.bc.msgs) != 0 || env.repo.tasks[task.ID].ProviderResult != nil {
-			t.Fatal("未迁移不应写结果、唤醒或推送")
+		if len(env.bc.msgs) != 0 || env.repo.tasks[task.ID].ProviderResult != nil {
+			t.Fatal("未迁移不应写结果或推送")
 		}
 	})
 
@@ -2132,31 +2156,6 @@ func TestGenerationTaskService_Transitions(t *testing.T) {
 		env.repo.errs["SaveTrace"] = errors.New("db down")
 		assertPlainError(t, env.svc.SaveTrace(ctx, task, []provider.TraceStep{{Name: "submit", Kind: "hook"}}))
 	})
-
-	t.Run("ClaimDue / ExtendLease 透传仓储", func(t *testing.T) {
-		env, _ := newEnv(model.TaskPending, nil)
-		env.repo.errs["ClaimDue"] = errors.New("boom")
-		if _, err := env.svc.ClaimDue(ctx, 5, time.Minute); err == nil {
-			t.Fatal("期望返回错误")
-		}
-		if ok, err := env.svc.ExtendLease(ctx, 1, time.Minute); err != nil || !ok {
-			t.Fatalf("ok=%v err=%v", ok, err)
-		}
-	})
-}
-
-func TestGenerationTaskService_Kick(t *testing.T) {
-	env := newTaskSvcEnv(defaultTaskLimits())
-	// 连续多次 Kick 不阻塞，且只保留一个待消费信号
-	env.svc.Kick()
-	env.svc.Kick()
-	env.svc.Kick()
-	if !kicked(env.svc) {
-		t.Fatal("应收到一个信号")
-	}
-	if kicked(env.svc) {
-		t.Fatal("多次 Kick 应合并成一个信号")
-	}
 }
 
 func TestGenerationTaskService_CancelActiveByUser(t *testing.T) {

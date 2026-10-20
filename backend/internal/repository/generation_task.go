@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,19 +38,45 @@ type GenerationTaskTx interface {
 	InsertLedger(ctx context.Context, entry *model.CreditLedger) (inserted bool, err error)
 	// InsertTask 插入任务（ON CONFLICT DO NOTHING）。inserted=false 表示命中了幂等唯一索引，任务没有被写入。
 	InsertTask(ctx context.Context, t *model.GenerationTask) (inserted bool, err error)
+	// EnqueueTask 在当前事务里把任务放进调度队列，必须在 WithTx 的回调里调用；没有配置队列（单元测试）时什么都不做。
+	// 任务行、积分冻结和队列里的 job 因此在同一个事务里提交或回滚。
+	EnqueueTask(ctx context.Context, t *model.GenerationTask) error
 	// UpdateIf 是状态迁移的 CAS：UPDATE … WHERE id=? AND status IN (from) … RETURNING *。
 	// bumpVersion 为 true 时 version+1（状态或进度对用户可见地变化了）。没命中返回 ErrStateConflict。
 	UpdateIf(ctx context.Context, id uint64, from []string, fields map[string]any, bumpVersion bool) (*model.GenerationTask, error)
 }
 
+// TaskEnqueuer 在一个已经打开的数据库事务里，为任务放进调度队列（真实实现在 provider/queue，基于 River）。
+type TaskEnqueuer interface {
+	// EnqueueTx 用 sqlTx 所在的事务为任务入队：事务回滚时 job 也不存在。
+	// status 决定进哪个阶段的队列；runAt 为零表示立即执行。
+	EnqueueTx(ctx context.Context, sqlTx *sql.Tx, taskID uint64, status string, runAt time.Time) error
+}
+
 // GenerationTaskRepository 是生成任务与积分的数据访问层，只做 SQL，不含业务规则。
 type GenerationTaskRepository struct {
-	db *gorm.DB
+	db  *gorm.DB
+	enq TaskEnqueuer // 为 nil 时 EnqueueTask 什么都不做
 }
 
 // NewGenerationTaskRepository 创建生成任务与积分仓储。
 func NewGenerationTaskRepository(db *gorm.DB) *GenerationTaskRepository {
 	return &GenerationTaskRepository{db: db}
+}
+
+// SetEnqueuer 设置事务内入队的实现。在组装依赖时调用一次，之后只读。
+func (r *GenerationTaskRepository) SetEnqueuer(e TaskEnqueuer) { r.enq = e }
+
+// EnqueueTask 在当前事务里为任务入队。没有配置队列时直接返回；不在事务里调用是编程错误，返回错误而不是悄悄丢任务。
+func (r *GenerationTaskRepository) EnqueueTask(ctx context.Context, t *model.GenerationTask) error {
+	if r.enq == nil {
+		return nil
+	}
+	sqlTx, ok := r.db.Statement.ConnPool.(*sql.Tx)
+	if !ok {
+		return errors.New("EnqueueTask 必须在事务里调用")
+	}
+	return r.enq.EnqueueTx(ctx, sqlTx, t.ID, t.Status, t.NextPollAt)
 }
 
 var _ GenerationTaskTx = (*GenerationTaskRepository)(nil)
@@ -58,7 +85,7 @@ var _ GenerationTaskTx = (*GenerationTaskRepository)(nil)
 // 传给 fn 的是绑定到该事务的仓储，fn 里的所有读写都在同一个事务中。
 func (r *GenerationTaskRepository) WithTx(ctx context.Context, fn func(tx GenerationTaskTx) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return fn(&GenerationTaskRepository{db: tx})
+		return fn(&GenerationTaskRepository{db: tx, enq: r.enq})
 	})
 }
 
@@ -346,92 +373,6 @@ func (r *GenerationTaskRepository) ListEvents(ctx context.Context, taskID uint64
 	evs := []model.GenerationTaskEvent{}
 	err := r.db.WithContext(ctx).Where("task_id = ?", taskID).Order("id ASC").Find(&evs).Error
 	return evs, err
-}
-
-// claimLockKey 是领取任务时的 PostgreSQL 事务级建议锁的键：让所有实例的“数占用名额 + 写租约”串行执行，
-// 否则两个实例同时数到“还剩 1 个名额”，会各领一个，渠道的同时生成数就超了上限。
-const claimLockKey int64 = 0x76635f636c61696d // "vc_claim"
-
-// claimDueSQL 领取到期任务，分两类：
-//   - 已经在上游的（queued / running / finalizing）：不受渠道并发上限约束，到期就领，否则会拖慢已占着名额的任务；
-//   - 还没调用上游的（pending）：按渠道的 rate_limit_json.max_running 限制。占用数 = 该渠道正在上游生成的任务
-//     （queued / running）+ 正在提交的任务（pending 且租约有效）；剩余名额按 created_at 先到先得分给到期的 pending。
-//     max_running 缺省或为 0 表示不限；渠道记录不存在也按不限处理。上限取渠道当前配置，改了立即对排队中的任务生效。
-//     已经超过 deadline_at 的 pending 不占名额排名、也不受上限约束，直接领出去让 worker 把它置为超时并退款，
-//     否则排队超时的任务永远领不到，也就永远不会过期。
-//
-// 候选集合按 next_poll_at 取前 limit 个，再用 MATERIALIZED CTE FOR UPDATE SKIP LOCKED 锁住并统一写租约。
-// 用 CTE 而不是 IN (子查询)：后者在某些执行计划下会锁住超过 LIMIT 的行；SKIP LOCKED 保证并发领取者互不阻塞、不重复。
-const claimDueSQL = `
-WITH limits AS (
-	SELECT key, COALESCE(NULLIF(rate_limit_json->>'max_running', '')::int, 0) AS max_running
-	FROM ai_channels
-),
-occupied AS (
-	SELECT provider, COUNT(*) AS n FROM generation_tasks
-	WHERE status IN ('queued','running')
-	   OR (status = 'pending' AND lease_until >= @now)
-	GROUP BY provider
-),
-pending_due AS (
-	SELECT t.id, t.next_poll_at,
-	       ROW_NUMBER() OVER (PARTITION BY t.provider ORDER BY t.created_at, t.id) AS rn,
-	       COALESCE(l.max_running, 0) AS max_running,
-	       COALESCE(o.n, 0) AS occupied
-	FROM generation_tasks t
-	LEFT JOIN limits l ON l.key = t.provider
-	LEFT JOIN occupied o ON o.provider = t.provider
-	WHERE t.status = 'pending'
-	  AND t.deadline_at >= @now
-	  AND t.next_poll_at <= @now
-	  AND (t.lease_until IS NULL OR t.lease_until < @now)
-),
-candidates AS (
-	SELECT id, next_poll_at FROM pending_due
-	WHERE max_running = 0 OR rn <= max_running - occupied
-	UNION ALL
-	SELECT id, next_poll_at FROM generation_tasks
-	WHERE (status IN ('queued','running','finalizing') OR (status = 'pending' AND deadline_at < @now))
-	  AND next_poll_at <= @now
-	  AND (lease_until IS NULL OR lease_until < @now)
-),
-due AS MATERIALIZED (
-	SELECT g.id FROM generation_tasks g
-	WHERE g.id IN (SELECT id FROM candidates ORDER BY next_poll_at LIMIT @limit)
-	  AND g.status IN ('pending','queued','running','finalizing')
-	  AND g.next_poll_at <= @now
-	  AND (g.lease_until IS NULL OR g.lease_until < @now)
-	FOR UPDATE SKIP LOCKED
-)
-UPDATE generation_tasks t
-SET lease_until = @lease, updated_at = @now
-FROM due
-WHERE t.id = due.id
-RETURNING t.*`
-
-// ClaimDue 领取最多 limit 个到期（next_poll_at <= now）且租约已过期（或无租约）的非终态任务，
-// 并把租约写成 now+lease。返回的是写租约后的整行；两个并发调用不会领到同一个任务，
-// 也不会让某个渠道正在生成的任务数超过它的 max_running（规则见 claimDueSQL）。
-func (r *GenerationTaskRepository) ClaimDue(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]model.GenerationTask, error) {
-	var tasks []model.GenerationTask
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 先拿锁再数名额：两条语句分开执行，后一条才能看到前一个持锁者已提交的租约
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", claimLockKey).Error; err != nil {
-			return err
-		}
-		return tx.Raw(claimDueSQL,
-			map[string]any{"now": now, "limit": limit, "lease": now.Add(lease)},
-		).Scan(&tasks).Error
-	})
-	return tasks, err
-}
-
-// ExtendLease 续租：仅对非终态任务把 lease_until 推到 until，返回是否续上（任务已终态则为 false）。
-func (r *GenerationTaskRepository) ExtendLease(ctx context.Context, id uint64, until time.Time) (bool, error) {
-	res := r.db.WithContext(ctx).Model(&model.GenerationTask{}).
-		Where("id = ? AND status IN ?", id, activeStatuses()).
-		Update("lease_until", until)
-	return res.RowsAffected > 0, res.Error
 }
 
 // TouchByProviderTask 把某个平台任务对应的非终态任务的 next_poll_at 设为 now（webhook 用），返回命中行数。

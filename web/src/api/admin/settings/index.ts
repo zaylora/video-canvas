@@ -3,14 +3,14 @@ import type { RegisterSettings, SmtpSettings, SmtpUpdateRequest } from "./type";
 
 /**
  * 读取注册设置（admin 可读）
- * @returns 开放注册开关、新用户初始积分、默认并发上限
+ * @returns 开放注册开关、新用户初始积分、默认并发上限、排队倍数、排队超时
  */
 export const getRegisterSettings = () =>
   service.get<RegisterSettings>("/admin/settings/register", undefined);
 
 /**
  * 保存注册设置（super_admin）
- * @param body 开关、初始积分（>=0）、默认并发上限（1 到 64）
+ * @param body 开关、初始积分（>=0）、默认并发上限（1 到 64）、排队倍数（1 到 20）、排队超时分钟（5 到 1440）
  * @returns 保存后的设置
  */
 export const updateRegisterSettings = (body: RegisterSettings) =>

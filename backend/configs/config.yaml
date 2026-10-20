@@ -52,11 +52,11 @@ ai:
     memory_limit_mb: 512 # spawn 模式下子进程的 GOMEMLIMIT 软限制；生产环境由容器 mem_limit 兜底
     startup_wait: 15s # 启动时等 runner 就绪的最长时间
   worker:
-    enabled: true
-    concurrency: 8 # 每个 worker 并发数
-    tick: 1s # worker 每次轮询任务的间隔
-    batch_size: 50 # 每次轮询任务的批量大小
-    lease: 60s # worker 处理任务的租约时长，超过这个时间未完成的任务会被其他 worker 重新抢占
+    enabled: true # 本实例是否执行生成任务；任务由 River 队列调度，关闭后本实例只入队不执行
+  queue: # 任务队列各阶段并发的硬上限（每个实例）。实际并发在后台「任务队列」页调整（1..硬上限，几秒内生效），改这里要重启
+    max_submit: 64 # 提交上游（默认并发 8）
+    max_poll: 64 # 查询进度（默认并发 16）
+    max_finalize: 16 # 转存产物（默认并发 4）
 
 agent:
   # 画布 Agent。pi 的 agent 循环在独立的 Node 进程里跑（要求 Node >= 22.19，并在仓库根目录 agent/ 里 npm ci 装好依赖），

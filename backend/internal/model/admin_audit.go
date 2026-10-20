@@ -34,11 +34,16 @@ const (
 	AdminAuditPayOrderQuery     = "payment.order_query"
 	AdminAuditPayOrderClose     = "payment.order_close"
 
+	AdminAuditQueueConcurrency = "queue.concurrency" // 调整任务队列某阶段的并发
+	AdminAuditQueuePause       = "queue.pause"       // 暂停任务队列的某个阶段
+	AdminAuditQueueResume      = "queue.resume"      // 恢复任务队列的某个阶段
+
 	AdminAuditTargetUser     = "user"
 	AdminAuditTargetSettings = "settings"
 	AdminAuditTargetShowcase = "showcase"
 	AdminAuditTargetSystem   = "system"
 	AdminAuditTargetPayment  = "payment"
+	AdminAuditTargetQueue    = "queue"
 )
 
 // AdminAuditLog 后台运营审计日志（用户管理与系统设置）：只增不改不删。detail 不含任何密码、密钥。

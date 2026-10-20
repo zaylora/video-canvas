@@ -32,6 +32,8 @@ type Handlers struct {
 	AdminPlugin    *handler.AdminPluginHandler         // 协议插件管理
 	AdminChannel   *handler.AdminChannelHandler        // 渠道管理
 	AdminStats     *handler.AdminStatsHandler          // 总览页任务统计
+	AdminQueue     *handler.AdminQueueHandler          // 后台「任务队列」页：队列、渠道名额、吞吐、实例，调并发与暂停
+	RiverUI        *handler.RiverUIHandler             // 嵌入的 River UI（任务级监控）：一次性 ticket 换会话 cookie，仅 super_admin
 	AdminStorage   *handler.AdminStorageHandler        // 存储配置管理
 	AdminImageProc *handler.AdminImageProcessorHandler // 图片处理服务管理
 	AdminMe        *handler.AdminMeHandler             // 当前管理员身份
@@ -74,6 +76,10 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 
 		// 无需 JWT：身份由一次性 ticket 决定（浏览器 WebSocket 不能带请求头）
 		v1.GET("/ws", h.WS.Connect)
+
+		// River UI：浏览器在新标签页里直接打开，带不上 Authorization 头；身份由一次性 ticket 换来的会话 cookie 决定，仅 super_admin
+		v1.GET("/admin/river", h.RiverUI.Redirect)
+		v1.Any("/admin/river/*path", h.RiverUI.Serve)
 		// 需要登录：JWT 校验之后再查用户状态（停用 → 403，token_version 不符 → 401），封禁与重置密码立即生效
 		auth := v1.Group("", middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState))
 
@@ -163,6 +169,15 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		adminAI.GET("/me", h.AdminMe.Me)
 		adminAI.GET("/stats", h.AdminStats.Stats)
 		adminAI.GET("/overview", h.AdminCatalog.Overview)
+
+		// 任务队列：读 = admin 或 super_admin；调并发、暂停 / 恢复、打开 River UI = 仅 super_admin
+		queueAdmin := auth.Group("/admin/queue", middleware.RequireAdmin(h.AdminRole))
+		queueAdmin.GET("/overview", h.AdminQueue.Overview)
+		queueAdmin.GET("/throughput", h.AdminQueue.Throughput)
+		queueAdmin.PUT("/queues/:name", superOnly, h.AdminQueue.SetConcurrency)
+		queueAdmin.POST("/queues/:name/pause", superOnly, h.AdminQueue.Pause)
+		queueAdmin.POST("/queues/:name/resume", superOnly, h.AdminQueue.Resume)
+		queueAdmin.POST("/river-ticket", superOnly, h.RiverUI.IssueTicket)
 
 		plugins := adminAI.Group("/plugins")
 		plugins.GET("", h.AdminCatalog.ListPlugins)

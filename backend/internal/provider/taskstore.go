@@ -9,16 +9,28 @@ import (
 	"video-canvas/internal/provider/modelcfg"
 )
 
+// SlotOutcome 是一次名额申请的结果。
+type SlotOutcome string
+
+// 名额申请的各种结果。
+const (
+	SlotAcquired    SlotOutcome = "acquired"     // 已拿到（或本来就持有）两个名额
+	SlotWaitUser    SlotOutcome = "wait_user"    // 用户并发名额已满
+	SlotWaitChannel SlotOutcome = "wait_channel" // 渠道“最大同时生成数”已满，或前面还有更早的等待者
+	SlotGone        SlotOutcome = "gone"         // 任务已不是 pending，不用再申请
+)
+
 // TaskStore 是 worker 需要的任务存储与状态迁移能力，由 service.GenerationTaskService 实现（worker.Store 是它的别名）。
 // 接口放在 provider 包里，是为了让 service 与 worker 互不依赖：两边都只认这里的契约。
 //
-// 除 ClaimDue / ExtendLease / SaveProviderState / SaveTrace 外，迁移方法的第一个返回值 applied=false 表示任务已被其它流程
+// 除 GetTask / AcquireSlot / SaveProviderState / SaveTrace 外，迁移方法的第一个返回值 applied=false 表示任务已被其它流程
 // （用户取消、超时、别的实例）迁移走了，worker 应放弃后续处理，这不是错误。
 type TaskStore interface {
-	// ClaimDue 领取最多 limit 个到期且租约已过期的非终态任务，并写入 lease 时长的租约。
-	ClaimDue(ctx context.Context, limit int, lease time.Duration) ([]model.GenerationTask, error)
-	// ExtendLease 续租，任务已终态返回 false。
-	ExtendLease(ctx context.Context, id uint64, lease time.Duration) (bool, error)
+	// GetTask 按 id 读取任务（系统内部用，不按用户过滤）。任务不存在返回 (nil, nil)。
+	GetTask(ctx context.Context, id uint64) (*model.GenerationTask, error)
+	// AcquireSlot 为 pending 任务申请“用户名额 + 渠道名额”，拿到后写 slot_acquired_at 并把生成截止时间从此刻重新计算。
+	// 没拿到不改任何数据，调用方稍后重试；任务已被取消 / 超时返回 SlotGone。
+	AcquireSlot(ctx context.Context, t *model.GenerationTask) (SlotOutcome, error)
 	// SaveProviderState 只更新 provider_state，不改状态、不 bump version、不推送（准备阶段落库时用）。
 	// 任务已终态或不存在时静默忽略（返回 nil）。
 	SaveProviderState(ctx context.Context, t *model.GenerationTask, st ProviderState) error

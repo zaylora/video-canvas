@@ -78,7 +78,7 @@ func (w *Worker) onPollSucceeded(ctx context.Context, t *model.GenerationTask, s
 	// 上游侧成本只写日志用于对账
 	log.Info("上游生成成功，开始转存", zap.Int("outputs", len(res.Outputs)), zap.Any("provider_cost", res.ProviderCost))
 	if _, err := w.store.MarkFinalizing(ctx, t); err != nil {
-		log.Error("迁移到 finalizing 失败，租约过期后重试", zap.Error(err))
+		log.Error("迁移到 finalizing 失败，稍后重试", zap.Error(err))
 	}
 }
 
@@ -96,6 +96,6 @@ func (w *Worker) markPolled(ctx context.Context, t *model.GenerationTask, snap *
 		state = res.State
 	}
 	if _, err := w.store.MarkPolled(ctx, t, status, res.Progress, state, attempts, w.opts.Now().Add(delay)); err != nil {
-		w.taskLog(t).Error("更新任务进度失败，租约过期后重试", zap.Error(err))
+		w.taskLog(t).Error("更新任务进度失败，稍后重试", zap.Error(err))
 	}
 }

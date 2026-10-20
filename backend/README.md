@@ -17,7 +17,7 @@ backend/
 │   ├── handler/         # HTTP 处理层
 │   ├── router/          # 路由注册
 │   ├── middleware/      # 中间件
-│   ├── provider/        # 外部供应商调用与任务调度：dsl（声明式配置）/ engine（通用执行引擎）/ worker（调度）
+│   ├── provider/        # 外部供应商调用与任务调度：worker（任务“这一步”的执行逻辑）/ queue（基于 River 的任务队列：调度、并发、救回）/ plugin（协议插件宿主）
 │   ├── pkg/ws/          # 用户级 WebSocket：Hub / ticket
 │   ├── storage/         # 素材存储：内置本地磁盘 + S3 兼容对象存储（OSS / COS / S3 / R2），Registry 按 id 解析
 │   ├── cache/           # Redis 缓存
@@ -77,7 +77,7 @@ make run
 | GET                 | /api/v1/admin/system/upgrade                          | admin 一键升级面板 `{available, unavailable_reason, image_tag, uses_latest, running, last, backups, log_tail, active_tasks, rollback_target, current_migrations}`；updater 未启用或连不上不算错误                                                                                                                                                                        |
 | POST                | /api/v1/admin/system/upgrade                          | super_admin 一键升级 `{target}`：只能是检查到的最新版本；updater 执行 update.sh，立即返回 202；正在升级 409 / 63002，用 latest 409 / 63004，审计 `system.upgrade`                                                                                                                                                                                                                        |
 | POST                | /api/v1/admin/system/rollback                         | super_admin 回退 `{target}`：只能是最近一次一键升级之前的版本（`rollback_target`），数据库迁移不撤销；审计 `system.rollback`                                                                                                                                                                                                                                                            |
-| GET                 | /api/v1/admin/settings/register                       | admin 注册设置 `{register_enabled, initial_credits, default_max_active_tasks}`（库值优先，缺省为代码常量：初始积分 50、并发上限 4）                                                                                                                                                                                                                                                |
+| GET                 | /api/v1/admin/settings/register                       | admin 注册设置 `{register_enabled, initial_credits, default_max_active_tasks, queue_multiplier, queue_max_wait_minutes}`（库值优先，缺省为代码常量：初始积分 50、并发上限 4、排队倍数 5、排队超时 60 分钟）；排队上限 = 用户并发上限 × `queue_multiplier`，超过才拒绝新任务（429 / 40002） |
 | PUT                 | /api/v1/admin/settings/register                       | super_admin 保存注册设置，写审计                                                                                                                                                                                                                                                                                                                                                   |
 | GET                 | /api/v1/admin/settings/smtp                           | admin 邮件服务配置，**密码永不返回**，只给 `has_password`                                                                                                                                                                                                                                                                                                                          |
 | PUT                 | /api/v1/admin/settings/smtp                           | super_admin 保存邮件配置（不含密码）；主机不能指向内网 / 回环 / 链路本地（含 DNS 解析后的 IP），否则 400 / 53006                                                                                                                                                                                                                                                                   |
@@ -166,6 +166,13 @@ make run
 | POST     | /api/v1/admin/ai/plugins/:key/upgrade-models    | super_admin | 把协议固定在旧版本上的模型批量升到指定 / 最新版本，逐个处理、失败不中断 → `{to_version, upgraded, failed}` |
 | DELETE   | /api/v1/admin/ai/plugins/:key                   | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被模型或进行中的任务引用 409（50005） |
 | GET      | /api/v1/admin/ai/channels/loads                 | admin       | 各渠道当前的任务负载：`running`（同时生成数，对应 `max_running`）、`waiting`（排队数）；没有未完成任务的渠道不返回   |
+| GET      | /api/v1/admin/queue/overview                    | admin       | 后台「任务队列」页总览：`queues`（提交 / 查询 / 转存三个阶段，各含中文 `label`、`paused`、每实例并发 `concurrency`、硬上限 `hard_cap`、job 计数 `counts`）、`channels`（渠道名额占用、`max_running`、等待数、最早等待秒数）、`instances`（实例心跳、是否在线 / leader、各阶段在途与生效并发） |
+| GET      | /api/v1/admin/queue/throughput                  | admin       | 近 N 分钟（`?minutes=`，15–1440，默认 60）每分钟的完成数、失败数、平均排队时长；没有任务的分钟补 0；试跑不计 |
+| PUT      | /api/v1/admin/queue/queues/:name                | super_admin | 调整某个阶段（`submit` / `poll` / `finalize`）每实例的并发 `{concurrency}`，范围 1 到该阶段硬上限（配置 `ai.queue.max_*`），保存后各实例 5 秒内生效；返回 `{name, concurrency, applied_instances, total_instances}`，审计 `queue.concurrency`；阶段不存在 404 |
+| POST     | /api/v1/admin/queue/queues/:name/pause          | super_admin | 暂停某个阶段（对所有实例生效，幂等；已入队的任务保留，排队时间照常累计），审计 `queue.pause` |
+| POST     | /api/v1/admin/queue/queues/:name/resume         | super_admin | 恢复某个阶段（幂等），审计 `queue.resume` |
+| POST     | /api/v1/admin/queue/river-ticket                | super_admin | 换取打开 River UI（任务级监控：查看、重试、取消、删除 job）的一次性地址 `{url}`，ticket 30 秒内有效、只能用一次 |
+| ANY      | /api/v1/admin/river/*                           | ticket / cookie | 嵌入的 River UI，不走 Bearer：用 ticket 换 HttpOnly + SameSite=Strict 的会话 cookie（30 分钟，滑动续期），之后每个请求都实时校验账号仍是启用的 super_admin；没有会话 401，角色不够 403 |
 | GET      | /api/v1/admin/ai/channels[/:key]                | admin       | 渠道列表（渠道顺序）/ 详情；`secret_set`、`secret_key_set` 只告诉有没有设置 Key |
 | POST     | /api/v1/admin/ai/channels                       | super_admin | 新建渠道：只有名称、地址、请求头、限流，**不绑协议**，保存只做字段校验 |
 | PUT      | /api/v1/admin/ai/channels/:key                  | super_admin | 更新渠道（字段可选；`headers` 传了就整体替换） |

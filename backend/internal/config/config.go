@@ -148,6 +148,7 @@ type AI struct {
 	// 只给开发机用：本机开了 Fake-IP 的代理时，所有域名都解析到这个网段，不放行连不上任何外部接口。默认关，线上不要开。
 	AllowFakeIP  bool         `mapstructure:"allow_fake_ip"`
 	Worker       Worker       `mapstructure:"worker"`
+	Queue        Queue        `mapstructure:"queue"`
 	PluginRunner PluginRunner `mapstructure:"plugin_runner"`
 }
 
@@ -164,13 +165,17 @@ type PluginRunner struct {
 	StartupWait time.Duration `mapstructure:"startup_wait"`    // 启动时等 runner 就绪的最长时间，默认 15s
 }
 
-// Worker 是任务调度参数。
+// Worker 控制本实例是否执行生成任务。任务由 River 队列调度（见 provider/queue），关闭后本实例只能创建任务（入队），不执行。
 type Worker struct {
-	Enabled     bool          `mapstructure:"enabled"`
-	Concurrency int           `mapstructure:"concurrency"` // 执行池大小
-	Tick        time.Duration `mapstructure:"tick"`        // 调度循环间隔
-	BatchSize   int           `mapstructure:"batch_size"`  // 每个 tick 最多领取的任务数
-	Lease       time.Duration `mapstructure:"lease"`       // 租约时长
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// Queue 是任务队列各阶段并发的硬上限（每个实例）。后台「任务队列」页能调的范围是 1..硬上限，所以这里决定了后台最多能把并发调到多少；
+// 实际并发在后台设置（默认 提交 8 / 查询 16 / 转存 4）。改硬上限要重启。
+type Queue struct {
+	MaxSubmit   int `mapstructure:"max_submit"`   // 提交上游阶段的并发硬上限
+	MaxPoll     int `mapstructure:"max_poll"`     // 查询进度阶段的并发硬上限
+	MaxFinalize int `mapstructure:"max_finalize"` // 转存产物阶段的并发硬上限
 }
 
 // Storage 是素材存储的全局配置。对象存储（阿里云 OSS / 腾讯云 COS / S3 / R2）在后台“存储配置”里管理，
@@ -213,6 +218,9 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
+	v.SetDefault("ai.queue.max_submit", 64)
+	v.SetDefault("ai.queue.max_poll", 64)
+	v.SetDefault("ai.queue.max_finalize", 16)
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
 	v.SetDefault("update.updater_socket", "/run/updater/updater.sock")

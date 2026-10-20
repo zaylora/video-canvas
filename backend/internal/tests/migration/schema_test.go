@@ -23,6 +23,10 @@ import (
 var autoMigrateOnly = map[string]bool{
 	// worker 扫描非终态任务用的部分索引，GORM 的 where 标签写不了 IN 列表
 	"index idx_task_poll": true,
+	// 名额与排队相关的部分索引（条件带 IN 列表或 IS NULL），见 0007_task_queue.sql
+	"index idx_task_slot_user":     true,
+	"index idx_task_slot_provider": true,
+	"index idx_task_waiting":       true,
 }
 
 // TestMigrationFileNames 检查内嵌迁移文件的命名：符合规则、从 0001 开始连续编号、不重复。

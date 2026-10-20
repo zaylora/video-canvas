@@ -7,6 +7,7 @@ import {
   Lightbulb,
   Mail,
   LayoutDashboard,
+  ListOrdered,
   Puzzle,
   RadioTower,
   ScrollText,
@@ -32,6 +33,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "AI 配置",
     items: [
       { to: "ai/overview", label: "总览", icon: LayoutDashboard },
+      { to: "ai/queue", label: "任务队列", icon: ListOrdered },
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
       { to: "agent/skills", label: "技能", icon: Lightbulb },

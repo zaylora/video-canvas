@@ -73,35 +73,55 @@ describe("能否保存与测试", () => {
 });
 
 describe("注册设置校验", () => {
+  const ok = {
+    initial_credits: "100",
+    default_max_active_tasks: "3",
+    queue_multiplier: "5",
+    queue_max_wait_minutes: "60",
+  };
+
   test("初始积分为非负整数，默认并发 1 到 64", () => {
+    expect(hasSmtpErrors(validateRegisterSettings(ok))).toBe(false);
+    expect(validateRegisterSettings({ ...ok, initial_credits: "-1" }).initial_credits).toBeTruthy();
     expect(
-      hasSmtpErrors(
-        validateRegisterSettings({ initial_credits: "100", default_max_active_tasks: "3" }),
-      ),
-    ).toBe(false);
-    expect(
-      validateRegisterSettings({ initial_credits: "-1", default_max_active_tasks: "3" })
-        .initial_credits,
+      validateRegisterSettings({ ...ok, initial_credits: "1.5" }).initial_credits,
     ).toBeTruthy();
     expect(
-      validateRegisterSettings({ initial_credits: "1.5", default_max_active_tasks: "3" })
-        .initial_credits,
+      validateRegisterSettings({ ...ok, default_max_active_tasks: "0" }).default_max_active_tasks,
     ).toBeTruthy();
     expect(
-      validateRegisterSettings({ initial_credits: "0", default_max_active_tasks: "0" })
-        .default_max_active_tasks,
-    ).toBeTruthy();
-    expect(
-      validateRegisterSettings({ initial_credits: "0", default_max_active_tasks: "65" })
-        .default_max_active_tasks,
+      validateRegisterSettings({ ...ok, default_max_active_tasks: "65" }).default_max_active_tasks,
     ).toBeTruthy();
   });
+
+  test("排队倍数是 1 到 20 的整数", () => {
+    for (const queue_multiplier of ["", "0", "21", "2.5", "abc", "-1"]) {
+      expect(validateRegisterSettings({ ...ok, queue_multiplier }).queue_multiplier).toBe(
+        "范围 1 到 20",
+      );
+    }
+    for (const queue_multiplier of ["1", "5", "20", " 8 "]) {
+      expect(
+        validateRegisterSettings({ ...ok, queue_multiplier }).queue_multiplier,
+      ).toBeUndefined();
+    }
+  });
+
+  test("排队超时是 5 到 1440 分钟的整数", () => {
+    for (const queue_max_wait_minutes of ["", "4", "1441", "60.5", "x", "0"]) {
+      expect(
+        validateRegisterSettings({ ...ok, queue_max_wait_minutes }).queue_max_wait_minutes,
+      ).toBe("范围 5 到 1440");
+    }
+    for (const queue_max_wait_minutes of ["5", "60", "1440"]) {
+      expect(
+        validateRegisterSettings({ ...ok, queue_max_wait_minutes }).queue_max_wait_minutes,
+      ).toBeUndefined();
+    }
+  });
+
   test("能否保存：有改动、无错误、可写", () => {
-    const initial = {
-      register_enabled: true,
-      initial_credits: "100",
-      default_max_active_tasks: "3",
-    };
+    const initial = { register_enabled: true, ...ok };
     expect(canSaveRegisterSettings({ values: initial, initial, canWrite: true })).toBe(false);
     expect(
       canSaveRegisterSettings({
@@ -113,6 +133,38 @@ describe("注册设置校验", () => {
     expect(
       canSaveRegisterSettings({
         values: { ...initial, initial_credits: "x" },
+        initial,
+        canWrite: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("只改排队倍数或排队超时也算有改动；越界不能保存", () => {
+    const initial = { register_enabled: true, ...ok };
+    expect(
+      canSaveRegisterSettings({
+        values: { ...initial, queue_multiplier: "8" },
+        initial,
+        canWrite: true,
+      }),
+    ).toBe(true);
+    expect(
+      canSaveRegisterSettings({
+        values: { ...initial, queue_max_wait_minutes: "120" },
+        initial,
+        canWrite: true,
+      }),
+    ).toBe(true);
+    expect(
+      canSaveRegisterSettings({
+        values: { ...initial, queue_multiplier: "21" },
+        initial,
+        canWrite: true,
+      }),
+    ).toBe(false);
+    expect(
+      canSaveRegisterSettings({
+        values: { ...initial, queue_max_wait_minutes: "4" },
         initial,
         canWrite: true,
       }),

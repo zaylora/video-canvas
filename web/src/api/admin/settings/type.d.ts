@@ -6,6 +6,10 @@ export interface RegisterSettings {
   initial_credits: number;
   /** 默认并发上限，1 到 64 */
   default_max_active_tasks: number;
+  /** 排队倍数，1 到 20：用户的排队上限 = 并发上限 × 倍数，超过后新任务才会被拒绝 */
+  queue_multiplier: number;
+  /** 排队超时（分钟），5 到 1440：排队超过这个时间的任务会过期并退回积分 */
+  queue_max_wait_minutes: number;
 }
 
 /** SMTP 加密方式 */

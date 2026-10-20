@@ -270,7 +270,7 @@ func (m *MemRepo) ListChannels(_ context.Context) ([]model.AIChannel, error) {
 }
 
 // ChannelLoads 返回测试预设的渠道负载（Loads 字段）。
-func (m *MemRepo) ChannelLoads(_ context.Context, _ time.Time) ([]model.ChannelLoad, error) {
+func (m *MemRepo) ChannelLoads(_ context.Context) ([]model.ChannelLoad, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]model.ChannelLoad(nil), m.Loads...), nil

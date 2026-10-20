@@ -92,12 +92,18 @@ func (f *fakeGenTaskRepo) GetCredit(ctx context.Context, userID uint64) (*model.
 func (f *fakeGenTaskRepo) SaveTrace(ctx context.Context, id uint64, trace datatypes.JSON) error {
 	return nil
 }
-func (f *fakeGenTaskRepo) ClaimDue(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]model.GenerationTask, error) {
-	return nil, nil
+func (f *fakeGenTaskRepo) GetByIDAny(ctx context.Context, id uint64) (*model.GenerationTask, error) {
+	t, ok := f.tasks[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	cp := *t
+	return &cp, nil
 }
-func (f *fakeGenTaskRepo) ExtendLease(ctx context.Context, id uint64, until time.Time) (bool, error) {
-	return true, nil
+func (f *fakeGenTaskRepo) AcquireSlot(ctx context.Context, req repository.SlotRequest) (repository.SlotResult, error) {
+	return repository.SlotAcquired, nil
 }
+func (f *fakeGenTaskRepo) EnqueueTask(ctx context.Context, t *model.GenerationTask) error { return nil }
 func (f *fakeGenTaskRepo) FindByIdempotencyKey(ctx context.Context, userID uint64, key string) (*model.GenerationTask, error) {
 	for _, t := range f.tasks {
 		if t.UserID == userID && t.IdempotencyKey == key {
@@ -224,6 +230,13 @@ type genTaskLimits struct{ maxActive, initial int }
 func (l genTaskLimits) InitialCredits(context.Context) (int, error) { return l.initial, nil }
 func (l genTaskLimits) MaxActiveTasks(context.Context, uint64) (int, error) {
 	return l.maxActive, nil
+}
+func (l genTaskLimits) DefaultMaxActiveTasks(context.Context) (int, error) { return l.maxActive, nil }
+
+// QueueMultiplier 取 1：排队上限等于并发上限，已有的 429 用例保持原语义；倍数本身由 service 的用例覆盖。
+func (l genTaskLimits) QueueMultiplier(context.Context) (int, error) { return 1, nil }
+func (l genTaskLimits) QueueMaxWait(context.Context) (time.Duration, error) {
+	return time.Hour, nil
 }
 
 type genTaskEnv struct {

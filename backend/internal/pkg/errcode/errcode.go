@@ -56,7 +56,7 @@ var (
 // 生成任务 / 积分 / 素材 / AI 配置模块 4xxxx
 var (
 	ErrInsufficientCredits = New(40001, "积分不足", http.StatusPaymentRequired)
-	ErrTooManyTasks        = New(40002, "进行中的任务已达上限，请等待完成后再试", http.StatusTooManyRequests)
+	ErrTooManyTasks        = New(40002, "排队中的任务已达上限，请等前面的任务完成后再试", http.StatusTooManyRequests)
 	ErrModelUnavailable    = New(40003, "模型不可用或已下线", http.StatusBadRequest)
 	ErrTaskNotFound        = New(40004, "任务不存在", http.StatusNotFound)
 	ErrTaskNotCancelable   = New(40005, "任务已结束，无法取消", http.StatusConflict)
