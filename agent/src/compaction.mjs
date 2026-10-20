@@ -1,5 +1,5 @@
 import { estimateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
-import { charsOf } from "./context.mjs";
+import { charsOf, elideOldCatalogs } from "./context.mjs";
 
 /**
  * 摘要式压缩：历史超过窗口的触发线时，把较早的消息交给模型写成一份结构化摘要，换掉它们，最近的消息原样留下。
@@ -146,9 +146,12 @@ export function createCompactor({ summarize, window, overhead = 0, view = (m) =>
       if (disabled || measure(view(messages)) <= window - limits.reserve) return null;
       const hasPrevious = isSummaryMessage(messages[0]);
       const rest = hasPrevious ? messages.slice(1) : messages;
-      const cut = findCutPoint(rest, limits.keepRecent);
+      // 旧的画布目录每条都是数万字的过时快照，不交给摘要模型（最新一份保留：节点 id 可以写进「不能丢的数据」）。
+      // 切点按发给模型的视图量；消息条数不变，下标对得上，压缩后留下的仍是原消息
+      const shown = elideOldCatalogs(rest);
+      const cut = findCutPoint(shown, limits.keepRecent);
       if (cut <= 0) return null;
-      let conversation = serializeMessages(rest.slice(0, cut));
+      let conversation = serializeMessages(shown.slice(0, cut));
       const maxChars = Math.floor(window * 0.7); // 摘要请求本身也要装得进窗口：留出提示词和输出的位置
       if (conversation.length > maxChars) conversation = `…（更早的内容已省略）\n${conversation.slice(-maxChars)}`;
       try {

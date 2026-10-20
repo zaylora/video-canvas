@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAllTools, AGENT_TOOLS } from "../src/agent-tools/index.mjs";
+import { BridgeError } from "../src/bridge-client.mjs";
 import { runAgent } from "../src/run.mjs";
 import { TOOL_DECLS, baseInput, fakeBridge } from "./helpers.mjs";
 
@@ -150,6 +151,53 @@ test("脚本超时：中止并说明，已完成的调用要列出来", async ()
   const out = text(r);
   assert.match(out, /超时/);
   assert.match(out, /canvas_get_state/);
+});
+
+/** 一个挂起到被中止的工具：模拟请求已发给 Go、还在等回复时脚本被超时或中止 */
+const hangUntilAborted = (signal) => new Promise((_res, rej) => signal.addEventListener("abort", () => rej(new Error("被中止"))));
+
+test("脚本超时时正在进行的写入（C11）：列为「状态未知，可能已生效」，不混进「已生效」，并提示先读画布确认", async () => {
+  const bridge = fakeBridgeClient({ tool: async (_id, name, _a, signal) => (name === "canvas_apply_ops" ? hangUntilAborted(signal) : { content: "ok" }) });
+  const { codemode } = make(bridge, { limits: { timeoutMs: 400 } });
+  const r = await codemode.execute("cm1", { code: `await tools.canvas_arrange({ layout: "row" }); await tools.canvas_apply_ops({ ops: [{ op: "add_node", title: "镜头1" }] }); return 1` });
+  assert.equal(r.isError, true);
+  const out = text(r);
+  assert.match(out, /超时/);
+  assert.match(out, /状态未知/);
+  assert.match(out, /可能已生效/);
+  assert.match(out, /canvas_get_state/, "提示先读画布确认");
+  const [done, unknown] = out.split(/状态未知/);
+  assert.match(done, /canvas_arrange/, "已完成的写入照旧列出");
+  assert.ok(!done.includes("canvas_apply_ops"), "进行中的不能出现在「已生效」里");
+  assert.match(unknown, /canvas_apply_ops/);
+  assert.match(unknown, /镜头1/, "带上参数摘要，模型好认是哪一次");
+});
+
+test("用户停止时正在进行的写入（C11）：同样列为状态未知", async () => {
+  const bridge = fakeBridgeClient({ tool: async (_id, _n, _a, signal) => hangUntilAborted(signal) });
+  const { codemode } = make(bridge);
+  const ac = new AbortController();
+  setTimeout(() => ac.abort(), 150);
+  const r = await codemode.execute("cm1", { code: `await tools.canvas_apply_ops({ ops: [] }); return 1` }, ac.signal);
+  assert.equal(r.isError, true);
+  assert.match(text(r), /中止/);
+  assert.match(text(r), /状态未知[\s\S]*canvas_apply_ops/);
+});
+
+test("进行中的调用已经由 Go 明确回复失败（桥返回错误）：不算状态未知", async () => {
+  const bridge = fakeBridgeClient({ tool: async () => { throw new BridgeError("画布冲突", 409, 10000); } });
+  const { codemode } = make(bridge);
+  const r = await codemode.execute("cm1", { code: `await tools.canvas_apply_ops({ ops: [] }); return 1` });
+  assert.equal(r.isError, true);
+  assert.match(text(r), /画布冲突/);
+  assert.doesNotMatch(text(r), /状态未知/, "Go 已经明确说失败了，没有未知的写入");
+});
+
+test("没有进行中的调用（脚本自己抛错）：失败文案里不出现「状态未知」", async () => {
+  const bridge = fakeBridgeClient();
+  const { codemode } = make(bridge);
+  const r = await codemode.execute("cm1", { code: `await tools.canvas_get_state({}); throw new Error("我故意的")` });
+  assert.doesNotMatch(text(r), /状态未知/);
 });
 
 test("嵌套调用次数超过上限：脚本被中止，原因写清楚", async () => {

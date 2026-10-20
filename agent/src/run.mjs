@@ -3,12 +3,14 @@ import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createBridge } from "./bridge-client.mjs";
 import { SUMMARY_SYSTEM_PROMPT, createCompactor, summaryMaxTokens } from "./compaction.mjs";
-import { dropOldImages, restoreImageUrls, trimContext } from "./context.mjs";
+import { dropOldImages, elideOldCatalogs, restoreImageUrls, trimContext } from "./context.mjs";
 import { createSteering } from "./steer.mjs";
 import { buildAllTools } from "./agent-tools/index.mjs";
 
 const CONTINUE_TEXT = "请继续刚才的任务。";
 const MAX_ERROR_CHARS = 300;
+/** 收尾窗口里最多再跑几轮来处理迟到的插话 */
+const MAX_TAIL_ROUNDS = 3;
 const SKIPPED_TEXT = "本轮已暂停等待用户，这条调用没有执行；用户回应后如仍需要请重新调用。";
 
 /**
@@ -42,19 +44,42 @@ export async function runAgent(input, io = {}) {
     agent.abort();
   });
 
+  const resultOf = () => {
+    const err = agent.state.errorMessage;
+    if (err && !aborted) return { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) };
+    return { status: paused && !aborted ? "paused" : "done", message: "" };
+  };
+  const settleOpts = { isPaused: () => paused, isAborted: () => aborted };
+
   let result;
   try {
     await start(agent, input);
-    await settle(agent, steering, { isPaused: () => paused, isAborted: () => aborted });
-    const err = agent.state.errorMessage;
-    if (err && !aborted) result = { status: "error", message: String(err).slice(0, MAX_ERROR_CHARS) };
-    else result = { status: paused && !aborted ? "paused" : "done", message: "" };
+    await settle(agent, steering, settleOpts);
+    result = resultOf();
   } catch (e) {
     log("运行异常", { error: String(e?.message ?? e) });
     result = { status: "error", message: String(e?.message ?? e).slice(0, MAX_ERROR_CHARS) };
   }
+  // 收尾窗口：settle 返回后、报告结束前（保存历史要一次 HTTP 往返），Go 那边运行仍是 running，插话照样能进来，
+  // 但进了一个已经空闲的 Agent 队列就没人处理了，进程随即退出，用户看到自己的插话却没有回应。
+  // 所以报告结束前再看一眼队列：有就再跑一轮把它处理掉（暂停中的会追加进历史），直到队列为空；轮数有上限，防止死循环
+  for (let tail = 0; ; tail++) {
+    steering.dispose();
+    await saveState(agent, bridge, log);
+    if (aborted || result.status === "error" || !agent.hasQueuedMessages()) break;
+    if (tail >= MAX_TAIL_ROUNDS) {
+      log("收尾阶段的插话轮数已达上限，剩余插话不再处理", { rounds: tail });
+      break;
+    }
+    try {
+      await settle(agent, steering, settleOpts);
+      result = resultOf();
+    } catch (e) {
+      log("处理收尾插话时异常", { error: String(e?.message ?? e) });
+      result = { status: "error", message: String(e?.message ?? e).slice(0, MAX_ERROR_CHARS) };
+    }
+  }
   steering.dispose();
-  await saveState(agent, bridge, log);
   await bridge.finish(result.status, result.message);
   return result;
 }
@@ -108,11 +133,15 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
   models.setProvider(provider);
   const piModel = models.getModel("bridge", "agent");
 
+  // 发给模型的视图：先把旧的画布目录换成占位文字（目录只有最新一份有用，且是最大的一块），再去旧图片，最后按预算裁剪旧工具结果；
+  // 顺序保证裁剪是在瘦身之后量的，能不丢工具结果就不丢。压缩器量触发线也按这个视图
+  const forModel = (msgs) => trimContext(dropOldImages(elideOldCatalogs(msgs), KEEP_IMAGES), { window: m.context_window });
+
   // 摘要压缩：历史超过触发线时把较早的消息写成摘要。摘要请求也走桥（Go 计费），请求头标明是内部调用，Go 不把它当助手的话推给前端
   const compactor = createCompactor({
     window: m.context_window,
     overhead: (input.system_prompt?.length ?? 0) + (input.tools ?? []).reduce((n, d) => n + d.description.length + JSON.stringify(d.parameters).length, 0),
-    view: (msgs) => trimContext(dropOldImages(msgs, KEEP_IMAGES), { window: m.context_window }),
+    view: forModel,
     summarize: (prompt, signal) => summarize(models, piModel, prompt, signal, m.context_window),
     onError: (e) => log("摘要压缩失败，只做裁剪", { error: String(e?.message ?? e) }),
   });
@@ -125,7 +154,7 @@ function buildAgent(input, bridge, onTerminate, isPaused, log) {
       messages: stripSystem(input.messages ?? []),
     },
     streamFn: models.streamSimple.bind(models),
-    transformContext: async (messages) => trimContext(dropOldImages(messages, KEEP_IMAGES), { window: m.context_window }),
+    transformContext: async (messages) => forModel(messages),
     // 每次请求模型前看一眼历史：超过触发线就压缩，并把压缩后的消息同步回 agent.state，保存的历史就是压缩后的、下次不用重做
     prepareRequest: async ({ context }, signal) => {
       const lead = Math.max(0, context.messages.findIndex((x) => x.role !== "system")); // 开头的 system 消息原样留着，不参与压缩

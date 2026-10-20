@@ -40,6 +40,57 @@ export function trimContext(messages, { window, ratio = 0.7, keepLast = 6 }) {
   return out;
 }
 
+/** 旧的画布目录被省略后留下的占位文字（连同标签一起，模型一眼能看出这里原来有一块目录） */
+export const CATALOG_ELIDED = "<画布目录>（旧目录已省略，需要最新内容请调用 canvas_get_state）</画布目录>";
+
+// Go 每轮把画布目录（最多 200 个节点的 JSON）拼进用户消息：<画布目录>…</画布目录>，见 backend 的 prompts.User()
+const CATALOG_BLOCK = /<画布目录>[\s\S]*?<\/画布目录>/;
+const CATALOG_BLOCKS = new RegExp(CATALOG_BLOCK, "g");
+
+/**
+ * 发给模型前，只保留最新一条带目录的用户消息里的画布目录，更早的用户消息里的同名块换成占位文字。
+ * 目录是「当时的快照」，旧的早已过时，却会随历史一轮轮累积，白白抬高 token 成本和压缩频率。
+ * 用户原话和 <本轮参数> 块不动；只处理用户消息；不修改入参，没有变化时返回同一个数组（和 trimContext 一样）。
+ * 「最新」指最近一条带目录的用户消息，而不是最后一条用户消息：后者可能是没带目录的插话。
+ */
+export function elideOldCatalogs(messages) {
+  const hasBlock = (m) => m.role === "user" && userTexts(m).some((t) => CATALOG_BLOCK.test(t));
+  const latest = messages.findLastIndex(hasBlock);
+  if (latest <= 0) return messages;
+  let changed = false;
+  const out = messages.map((m, i) => {
+    if (i >= latest || m.role !== "user") return m;
+    const next = mapUserTexts(m, (t) => t.replaceAll(CATALOG_BLOCKS, () => CATALOG_ELIDED));
+    if (next !== m) changed = true;
+    return next;
+  });
+  return changed ? out : messages;
+}
+
+/** 用户消息里的所有文字（content 可能是字符串，也可能是分段数组） */
+function userTexts(m) {
+  if (typeof m.content === "string") return [m.content];
+  return Array.isArray(m.content) ? m.content.filter((p) => p.type === "text" && typeof p.text === "string").map((p) => p.text) : [];
+}
+
+/** 对用户消息里的每段文字做替换；一处都没变就返回原消息 */
+function mapUserTexts(m, fn) {
+  if (typeof m.content === "string") {
+    const t = fn(m.content);
+    return t === m.content ? m : { ...m, content: t };
+  }
+  if (!Array.isArray(m.content)) return m;
+  let changed = false;
+  const content = m.content.map((p) => {
+    if (p.type !== "text" || typeof p.text !== "string") return p;
+    const t = fn(p.text);
+    if (t === p.text) return p;
+    changed = true;
+    return { ...p, text: t };
+  });
+  return changed ? { ...m, content } : m;
+}
+
 /** 图片被去掉后留下的占位文字 */
 export const IMAGE_ELIDED = "[图片已省略；需要再看请重新调用 canvas_inspect_image]";
 

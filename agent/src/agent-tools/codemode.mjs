@@ -1,4 +1,5 @@
 import { CodemodeSandbox, renderDeclarations } from "@earendil-works/pi-codemode";
+import { BridgeError } from "../bridge-client.mjs";
 import { wrapScalarArrays } from "../tools.mjs";
 
 /**
@@ -49,7 +50,7 @@ function describe(declarations, limits) {
     "写一段 JavaScript 脚本，在一次调用里连续调用多个工具，中间结果不进你的上下文：批量读取、批量修改、对几十个节点循环处理时用它，比一个个调用工具省得多。",
     "脚本是异步函数的函数体：可以 await，可以 return。用 tools.工具名({参数}) 调用下面列出的工具，参数是 JSON；工具返回的是文字（需要时自己 JSON.parse）。用 text(...) 写进输出，return 的值也会返回给你：只返回你需要的结论，不要把工具的原始结果整个打印出来。",
     `限制：脚本里没有网络、文件、进程和定时器；一次最多运行 ${limits.timeoutMs / 1000} 秒、最多调用工具 ${limits.maxNestedCalls} 次。需要用户确认的操作（删除、生成、提问）和看图不能在脚本里做，要单独调用对应的工具。`,
-    "脚本里每次工具调用各自独立生效：脚本中途出错时，出错之前已完成的调用已经改了画布，我会列出来，不要重复执行。",
+    "脚本里每次工具调用各自独立生效：脚本中途出错时，出错之前已完成的调用已经改了画布，我会列出来，不要重复执行。超时或被中止时正在进行的调用状态未知（可能已生效），我也会列出来：先用 canvas_get_state 读画布确认，再决定要不要重做。",
     "脚本里可以调用的工具：",
     "```ts",
     declarations,
@@ -70,6 +71,9 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
   }
 
   const completed = []; // 已经成功的嵌套调用：失败时告诉模型哪些已经生效
+  // 请求已发给 Go、结果不确定的嵌套调用：超时或中止会掐断等待，此时 Go 可能已经提交了写入。
+  // 只有收到 Go 的明确答复（成功，或桥返回错误）才算有结论；被中止、断线则一直留着，失败时告诉模型「状态未知」
+  const inflight = new Map();
   let nested = 0;
   const sandboxTools = decls.map((d) => ({
     name: d.name,
@@ -78,7 +82,16 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
     execute: async (args, { signal: callSignal }) => {
       if (nested >= limits.maxNestedCalls) throw new Error(`脚本里调用工具的次数已达上限（${limits.maxNestedCalls} 次）`);
       nested++;
-      const r = await ctx.bridge.tool(`${toolCallId}.${nested}`, d.name, wrapScalarArrays(d.parameters, args), callSignal, { parentToolCallId: toolCallId });
+      const no = nested;
+      inflight.set(no, { name: d.name, note: clip(oneLine(JSON.stringify(args ?? {})), 80) });
+      let r;
+      try {
+        r = await ctx.bridge.tool(`${toolCallId}.${no}`, d.name, wrapScalarArrays(d.parameters, args), callSignal, { parentToolCallId: toolCallId });
+      } catch (e) {
+        if (e instanceof BridgeError) inflight.delete(no); // Go 明确答复了失败，不是未知
+        throw e;
+      }
+      inflight.delete(no);
       if (r.is_error) throw new Error(r.content);
       if (r.terminate) ctx.onTerminate?.();
       completed.push({ name: d.name, note: clip(oneLine(r.content), 60) });
@@ -94,7 +107,7 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
     await sandbox.close().catch(() => {});
   }
 
-  const { text, isError } = format(result, completed, nested, limits);
+  const { text, isError } = format(result, completed, [...inflight.values()], nested, limits);
   try {
     await ctx.bridge.toolEvent({ phase: "end", ...base, is_error: isError, summary: isError ? `脚本失败：${clip(oneLine(result.ok ? "" : result.error.message), 80)}` : `脚本调用了 ${nested} 次工具` });
   } catch (e) {
@@ -105,7 +118,7 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
 
 const toResult = (text, isError, terminate) => ({ content: [{ type: "text", text }], details: {}, isError, terminate });
 
-function format(result, completed, nested, limits) {
+function format(result, completed, unknown, nested, limits) {
   const output = result.output.filter((o) => o.type === "text").map((o) => o.text).join("\n");
   if (result.ok) {
     const parts = [];
@@ -124,6 +137,13 @@ function format(result, completed, nested, limits) {
   if (output) parts.push("出错前的输出：\n" + clip(output, limits.maxResultChars));
   if (completed.length) {
     parts.push("出错前已完成的调用（它们已经生效，不要重复执行）：\n" + completed.map((c, i) => `${i + 1}. ${c.name}${c.note ? "：" + c.note : ""}`).join("\n"));
+  }
+  if (unknown.length) {
+    // 超时或中止掐断了等待，但请求可能已经到 Go 并提交：模型照「出错了就重做」会重复建节点
+    parts.push(
+      "出错时正在进行的调用（状态未知，可能已生效）：\n" + unknown.map((c, i) => `${i + 1}. ${c.name}${c.note ? "：" + c.note : ""}`).join("\n") +
+        "\n请先用 canvas_get_state 读画布确认它们有没有生效，再决定要不要重做，不要直接重复执行。",
+    );
   }
   return { text: parts.join("\n"), isError: true };
 }
