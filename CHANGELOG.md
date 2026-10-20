@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 新增 openai-chat-image 内置插件，对接用 Chat Completions 出图的 OpenAI 兼容网关（如 nano-banana），支持文生图与参考图生图；仅支持返回图片地址的网关，返回 base64 的暂不支持。
+
 ## [0.4.5] - 2026-10-19
 
 ### 新增
