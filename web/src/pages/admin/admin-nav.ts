@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowUpCircle,
+  Bot,
   Film,
   HardDrive,
   ImageDown,
@@ -49,7 +50,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
   },
   {
     label: "日志管理",
-    items: [{ to: "logs/audits", label: "操作审计", icon: ScrollText }],
+    items: [
+      { to: "logs/audits", label: "操作审计", icon: ScrollText },
+      { to: "logs/agent-runs", label: "Agent 运行", icon: Bot },
+    ],
   },
   {
     label: "系统设置",

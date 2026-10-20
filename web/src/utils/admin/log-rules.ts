@@ -561,6 +561,7 @@ const ACTION_LABEL: Record<string, string> = {
   "showcase.settings": "修改了登录页展示设置",
   "system.upgrade": "升级了系统",
   "system.rollback": "回退了系统版本",
+  "agent.trace.export": "导出了 Agent 运行轨迹",
   "payment.settings_update": "修改了支付设置",
   "payment.channel_update": "修改了支付渠道",
   "payment.channel_enable": "启用了支付渠道",

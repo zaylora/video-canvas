@@ -116,9 +116,20 @@ type AgentRun struct {
 	ErrorCode     string     `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                            // 失败时的错误码
 	ErrorMessage  string     `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                        // 失败时给用户看的文案
 	LeaseUntil    time.Time  `json:"lease_until"`                                                                                                                              // runtime 租约到期时间，过期未续约视为中断
-	CreatedAt     time.Time  `json:"created_at"`                                                                                                                               // 创建时间
+	CreatedAt     time.Time  `gorm:"index" json:"created_at"`                                                                                                                  // 创建时间；后台运行列表按它筛选
 	UpdatedAt     time.Time  `json:"updated_at"`                                                                                                                               // 更新时间
 	EndedAt       *time.Time `json:"ended_at"`                                                                                                                                 // 结束时间
+
+	// 以下是轨迹相关的快照（设计见 docs/design/Agent调优Harness 第 8.1 节）：开跑时记下，之后改提示词或工具也能对上当时是哪一版。
+	PromptVersion int            `gorm:"not null;default:0" json:"-"`               // 开跑时的系统提示词版本（prompts.Version）
+	AgentModelKey string         `gorm:"size:128;not null;default:''" json:"-"`     // 本轮使用的 Agent 模型 key
+	ToolsHash     string         `gorm:"size:16;not null;default:''" json:"-"`      // 下发给模型的工具声明 JSON 的 sha256 前 16 位；第一个运行片段启动时写入
+	SkillPins     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"-"` // 技能名 → 本轮固定的版本 id；每个片段结束时合并写入
+	InputJSON     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'" json:"-"` // 运行输入：message、mode、selection、viewport、model_key、budget_credits
+	HarnessCase   string         `gorm:"size:128;not null;default:''" json:"-"`     // 来自请求头 X-Agent-Harness 的用例标签，空表示真实用户；只是标签，不影响权限
+	TraceEnabled  bool           `gorm:"not null;default:false" json:"-"`           // 开跑时轨迹记录是否开着：区分后台列表里的 disabled 与 available
+	TraceComplete bool           `gorm:"not null;default:true" json:"-"`            // 轨迹是否完整：片段进程崩溃或上传失败时置 false
+	TraceBytes    int64          `gorm:"not null;default:0" json:"-"`               // 已记录的原文总字节数（未压缩），与 agent.trace.max_run_bytes 比较
 }
 
 // TableName 表名。
@@ -204,7 +215,62 @@ type AgentModelCall struct {
 	Error          string     `gorm:"size:255;not null;default:''" json:"error"`     // 调用失败或中断的原因（已脱敏）
 	CreatedAt      time.Time  `json:"created_at"`                                    // 创建时间
 	SettledAt      *time.Time `json:"settled_at"`                                    // 结算时间
+
+	// 以下是轨迹里 chat span 的索引（原文在素材存储的轨迹对象里，见 Agent调优Harness 第 8.1 节）。
+	SpanID        string `gorm:"size:32;not null;default:'';index" json:"-"`        // 对应轨迹里的 span
+	Seq           int    `gorm:"not null;default:0" json:"-"`                       // 在运行内的顺序，与 agent_trace_spans.seq 同一个计数
+	Purpose       string `gorm:"size:16;not null;default:''" json:"-"`              // chat 或 summary，取自请求头 X-Agent-Purpose
+	SegmentSeq    int    `gorm:"not null;default:0" json:"-"`                       // 属于运行的第几个片段
+	FirstTokenMS  int    `gorm:"column:first_token_ms;not null;default:0" json:"-"` // 首字延迟（毫秒），没收到任何增量为 0
+	DurationMS    int    `gorm:"column:duration_ms;not null;default:0" json:"-"`    // 总耗时（毫秒）
+	FinishReason  string `gorm:"size:32;not null;default:''" json:"-"`              // 上游给的结束原因
+	UpstreamModel string `gorm:"size:128;not null;default:''" json:"-"`             // 实际走的上游模型名
+	ChannelID     string `gorm:"size:64;not null;default:''" json:"-"`              // 实际走的渠道 key（模型快照里只有 key，没有数字 id）
 }
 
 // TableName 表名。
 func (AgentModelCall) TableName() string { return "agent_model_calls" }
+
+// 轨迹 span 的种类与状态。chat span 的索引在 agent_model_calls，审批 span 导出时由 agent_events 拼出，不入表。
+const (
+	TraceSpanSegment     = "segment"      // 一个 Node 进程片段
+	TraceSpanExecuteTool = "execute_tool" // 一次工具调用
+
+	TraceStatusOK      = "ok"      // 成功
+	TraceStatusError   = "error"   // 失败
+	TraceStatusDenied  = "denied"  // 被拒绝（模式不允许、未知工具）
+	TraceStatusAborted = "aborted" // 被中止（进程崩溃、用户停止）
+)
+
+// AgentTraceSpan 是轨迹里工具调用和运行片段的索引行；原文在素材存储的轨迹对象里。
+// 片段行同时记录它的原文对象在哪（存储配置 id + key）：默认存储以后可能会换，所以不能只靠当前默认存储去找。
+type AgentTraceSpan struct {
+	ID           uint64     `gorm:"primaryKey" json:"id"`                                                                                               // 主键
+	RunID        uint64     `gorm:"not null;index:idx_agent_trace_spans_run,priority:1;uniqueIndex:uk_agent_trace_spans_span,priority:1" json:"run_id"` // 所属运行
+	Seq          int        `gorm:"not null;index:idx_agent_trace_spans_run,priority:2" json:"seq"`                                                     // 运行内的顺序
+	SpanID       string     `gorm:"size:32;not null;uniqueIndex:uk_agent_trace_spans_span,priority:2" json:"span_id"`                                   // span 标识，运行内唯一
+	ParentSpanID string     `gorm:"size:32;not null;default:''" json:"parent_span_id"`                                                                  // codemode 嵌套调用指向外层调用的 span
+	Kind         string     `gorm:"size:16;not null" json:"kind"`                                                                                       // 见 TraceSpan* 常量
+	Name         string     `gorm:"size:64;not null;default:''" json:"name"`                                                                            // 工具名；片段是启动方式
+	ToolCallID   string     `gorm:"size:64;not null;default:''" json:"tool_call_id"`                                                                    // 工具调用 id
+	Status       string     `gorm:"size:16;not null" json:"status"`                                                                                     // 见 TraceStatus* 常量
+	ErrorCode    string     `gorm:"size:32;not null;default:''" json:"error_code"`                                                                      // 错误分类
+	Summary      string     `gorm:"size:255;not null;default:''" json:"summary"`                                                                        // 一行摘要
+	DurationMS   int        `gorm:"column:duration_ms;not null;default:0" json:"duration_ms"`                                                           // 耗时（毫秒）
+	Bytes        int        `gorm:"not null;default:0" json:"bytes"`                                                                                    // 原文大小（未压缩）
+	MutationID   *uint64    `json:"mutation_id"`                                                                                                        // 关联的画布改动，没有改画布为空
+	SegmentSeq   int        `gorm:"not null;default:0" json:"segment_seq"`                                                                              // 属于运行的第几个片段（片段行的原文对象名里的序号）
+	StorageID    uint64     `gorm:"not null;default:0" json:"storage_id"`                                                                               // 仅片段行：原文对象所在的存储配置，0 表示没有对象
+	ObjectKey    string     `gorm:"size:255;not null;default:''" json:"object_key"`                                                                     // 仅片段行：原文对象的 key，空表示没有对象（上传失败或没有内容）
+	StartedAt    time.Time  `gorm:"not null;index" json:"started_at"`                                                                                   // 开始时间；清理任务按它判断是否过期
+	EndedAt      *time.Time `json:"ended_at"`                                                                                                           // 结束时间
+}
+
+// TableName 表名。
+func (AgentTraceSpan) TableName() string { return "agent_trace_spans" }
+
+// 后台审计：导出运行轨迹。
+const (
+	AdminAuditAgentTraceExport = "agent.trace.export" // 管理员导出一轮运行的轨迹包
+	AdminAuditTargetAgentRun   = "agent_run"          // 审计对象是 Agent 运行，target_id 是运行 id
+)

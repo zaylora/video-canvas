@@ -422,6 +422,7 @@ describe("动作中文名", () => {
     "showcase.settings",
     "system.upgrade",
     "system.rollback",
+    "agent.trace.export",
     "payment.settings_update",
     "payment.channel_update",
     "payment.channel_enable",

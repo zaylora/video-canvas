@@ -2,15 +2,23 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
 
+	"go.uber.org/zap"
+
+	"video-canvas/internal/agent/prompts"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
 )
+
+// maxHarnessCaseRunes 是用例标签（请求头 X-Agent-Harness）的最大字数，与 agent_runs.harness_case 的列宽一致。
+const maxHarnessCaseRunes = 128
 
 // StartRun 发起一轮运行：用户发了一条消息。运行创建后交给 runtime 异步执行，接口立刻返回。
 func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, req *model.StartAgentRunReq) (*AgentRunView, error) {
@@ -22,6 +30,11 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	msg := strings.TrimSpace(req.Message)
 	if msg == "" {
 		return nil, errcode.ErrInvalidParams.WithMsg("消息不能为空")
+	}
+	// 1.1 用例标签只是调优用的标签，不影响权限；太长直接拒绝，而不是悄悄截断（截断后两个不同的用例会撞成同一个标签）
+	harness := strings.TrimSpace(req.HarnessCase)
+	if utf8.RuneCountInString(harness) > maxHarnessCaseRunes {
+		return nil, errcode.ErrInvalidParams.WithMsg(fmt.Sprintf("X-Agent-Harness 不能超过 %d 个字符", maxHarnessCaseRunes))
 	}
 	// 2. 消息里的引用（节点、模型、技能）必须有效；选中的节点里已不存在的去掉
 	selection, err := s.checkRefs(ctx, userID, sess.CanvasID, msg, req.Selection)
@@ -40,9 +53,13 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	if err != nil {
 		return nil, err
 	}
-	// 5. 创建运行。同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证，并发点两次发送也只有一个成功
+	// 5. 创建运行。同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证，并发点两次发送也只有一个成功。
+	//    顺便把「当时是哪一版」记下来（提示词版本、模型、运行输入、用例标签），之后改了提示词或工具也能对上；
+	//    轨迹是否记录也在这里定下（trace_enabled），之后配置怎么改都不影响这一轮
+	in := model.AgentRunInput{Message: msg, Mode: mode, Selection: req.Selection, Viewport: req.Viewport, ModelKey: modelKey}
 	run := &model.AgentRun{SessionID: sess.ID, CanvasID: sess.CanvasID, UserID: userID, Status: model.RunQueued,
-		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps}
+		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps,
+		PromptVersion: prompts.Version, AgentModelKey: modelKey, InputJSON: runInputJSON(in, budget), HarnessCase: harness, TraceEnabled: s.trace.Enabled()}
 	if err := s.repo.CreateRun(ctx, run); err != nil {
 		if errors.Is(err, repository.ErrDuplicate) {
 			return nil, errcode.ErrAgentRunActive
@@ -60,12 +77,30 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "message.user", map[string]any{"text": msg, "mode": mode, "selection": req.Selection})
 	s.emit(ctx, userID, sess.ID, run.ID, sess.CanvasID, "run.status", statusEvent(run.Status))
 	// 7. 交给 runtime。启动失败说明运行时不可用：把运行标为失败，画布立刻空出来，返回 60005
-	in := model.AgentRunInput{Message: msg, Mode: mode, Selection: req.Selection, Viewport: req.Viewport, ModelKey: modelKey}
 	if err := s.runtime.Start(ctx, run, in); err != nil {
 		s.failRun(ctx, run, errcode.ErrAgentUnavailable.Code, err)
 		return nil, errcode.ErrAgentUnavailable
 	}
 	return runView(run), nil
+}
+
+// runInputJSON 把运行输入序列化成存进 agent_runs.input_json 的 JSON：消息、模式、选中的节点、视口、模型和预算。
+// 序列化失败（不可能，只含字符串和数字）时退回空对象，不能因为留底失败让用户的运行起不来。
+func runInputJSON(in model.AgentRunInput, budget int) []byte {
+	selection := in.Selection
+	if selection == nil {
+		selection = []string{}
+	}
+	m := map[string]any{"message": in.Message, "mode": in.Mode, "selection": selection, "model_key": in.ModelKey, "budget_credits": budget}
+	if len(in.Viewport) > 0 && json.Valid(in.Viewport) {
+		m["viewport"] = in.Viewport
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		logger.Warn("序列化运行输入失败，input_json 留空", zap.Error(err))
+		return []byte("{}")
+	}
+	return b
 }
 
 // Interject 在运行中插话：补充要求，不打断当前步骤。

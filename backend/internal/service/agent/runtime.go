@@ -43,6 +43,7 @@ type RuntimeDeps struct {
 	Registry provider.Registry   // 模型快照
 	Launcher Launcher            // 进程启动器
 	Config   RuntimeConfig       // 配置
+	Trace    *TraceRecorder      // 轨迹记录器；为 nil 或没开启时不记录
 }
 
 // segment 是一个运行中的进程（一个运行片段）。
@@ -50,6 +51,7 @@ type segment struct {
 	proc   Proc
 	token  string
 	dir    string
+	trace  *SegmentTrace // 这个片段的轨迹记录句柄，没开轨迹为 nil
 	exited chan struct{} // 进程退出并清理完后关闭（续跑要等它：它退出才意味着历史已保存）
 	done   chan struct{} // 退出后的状态修正（标为中断等）也做完后关闭（服务退出要等它，之后才能关库）
 }
@@ -206,7 +208,10 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 		return err
 	}
 	seg.dir = dir
-	cleanup := func() { r.d.Bridge.RevokeToken(seg.token); _ = os.RemoveAll(dir); release() } // 目录已经没了也不要紧
+	// 轨迹：开始记录这个片段并挂到令牌上。记录器的失败只会得到 nil，不会让运行启动失败
+	seg.trace = r.d.Trace.BeginSegment(ctx, run, launchKind(input), input)
+	r.d.Bridge.AttachTrace(seg.token, seg.trace)
+	cleanup := func() { seg.trace.Abandon(); r.d.Bridge.RevokeToken(seg.token); _ = os.RemoveAll(dir); release() } // 目录已经没了也不要紧
 	// 3. 启动并发送启动参数
 	proc, err := r.d.Launcher.Launch(ctx, LaunchSpec{
 		Name: r.d.Config.NodePath, Args: []string{r.d.Config.ScriptPath}, Dir: dir,
@@ -236,6 +241,12 @@ func (r *ProcessRuntime) launch(ctx context.Context, run *model.AgentRun, in mod
 func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 	defer close(seg.done)
 	exit := <-seg.proc.Done()
+	crashed := false // 进程没报告结束就没了，且运行还停在 running：下面会标为中断，轨迹也记为不完整
+	defer func() {
+		// 进行中的模型调用先收尾（结算、记原文），再结束片段记录；等不到也不要紧，最多晚几秒
+		r.d.Bridge.WaitModelCallsIdle(context.Background(), run.ID, 3*time.Second)
+		seg.trace.End(context.Background(), SegmentEnd{ExitCode: exit.Code, StderrTail: exit.StderrTail, Crashed: crashed})
+	}()
 	// 令牌已被 Finish 收回，说明进程正常报告过结束；还在说明它没报告就没了（崩溃、被杀）。
 	// 必须在收回令牌之前判断
 	reported := !r.d.Bridge.TokenActive(seg.token)
@@ -264,6 +275,7 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 	if _, err := r.d.Repo.UpdateRunIf(ctx, run.ID, []string{model.RunRunning}, map[string]any{"status": model.RunInterrupted}); err != nil {
 		return
 	}
+	crashed = true
 	logger.Error("Agent 进程异常退出，运行已标为中断", zap.Uint64("run_id", run.ID), zap.Int("code", exit.Code), zap.String("stderr", exit.StderrTail))
 	r.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.status", statusEvent(model.RunInterrupted, "error", "运行进程异常退出"))
 }
@@ -336,4 +348,15 @@ func (r *ProcessRuntime) declaredTools(mode string, vision bool) []ToolDecl {
 		return decls
 	}
 	return slices.DeleteFunc(decls, func(d ToolDecl) bool { return slices.Contains(r.d.Config.DisabledTools, d.Name) })
+}
+
+// launchKind 把交给 Node 的启动模式换成轨迹里的启动方式：start（新开始）、approval（审批后续跑）、resume（点「继续」）。
+func launchKind(input map[string]any) string {
+	switch input["mode"] {
+	case "continue":
+		return "approval"
+	case "resume":
+		return "resume"
+	}
+	return "start"
 }

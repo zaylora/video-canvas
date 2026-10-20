@@ -102,6 +102,25 @@ type Agent struct {
 	// DisabledTools 是停用的工具名（逗号分隔的环境变量 APP_AGENT_DISABLED_TOOLS 也行）：不下发给模型。
 	// Go 的工具和 Agent 自己的工具（如 codemode）都可以停用，运维想关掉某个能力时加一项。
 	DisabledTools []string `mapstructure:"disabled_tools"`
+	// Trace 是运行轨迹的记录与保留配置，设计见 docs/design/Agent调优Harness/Agent调优Harness.md 第 6.B.2 节。
+	Trace AgentTrace `mapstructure:"trace"`
+}
+
+// 轨迹记录的默认值与合法范围。
+const (
+	DefaultTraceRetentionDays = 14      // 轨迹保留天数
+	DefaultTraceMaxSpanBytes  = 262144  // 单个 span 的原文上限（256KB）
+	DefaultTraceMaxRunBytes   = 8388608 // 单个 run 的原文上限（8MB）
+	maxTraceRetentionDays     = 3650    // 保留期上限：再长就不是排查用的轨迹了，多半是配置写错
+	minTraceMaxSpanBytes      = 1024    // 单 span 上限的下限：再小连一行摘要都放不下
+)
+
+// AgentTrace 是画布 Agent 运行轨迹的配置：每轮运行记录模型请求 / 响应与工具调用的原文，供管理员排查和调优提示词。
+type AgentTrace struct {
+	Enabled       bool `mapstructure:"enabled"`        // 是否记录轨迹；关闭后所有记录动作都是空操作，已有轨迹仍可导出
+	RetentionDays int  `mapstructure:"retention_days"` // 保留天数，超过的索引行和原文对象由清理任务删除；agent_events 沿用同一个天数
+	MaxSpanBytes  int  `mapstructure:"max_span_bytes"` // 单个 span 原文的上限，超出截断并标记
+	MaxRunBytes   int  `mapstructure:"max_run_bytes"`  // 单个 run 原文的总上限，超出后只记索引
 }
 
 // WithDefaults 补上没配置的项。
@@ -115,6 +134,15 @@ func (a Agent) WithDefaults() Agent {
 	if a.BridgeAddr == "" {
 		a.BridgeAddr = "127.0.0.1:0"
 	}
+	if a.Trace.RetentionDays == 0 {
+		a.Trace.RetentionDays = DefaultTraceRetentionDays
+	}
+	if a.Trace.MaxSpanBytes == 0 {
+		a.Trace.MaxSpanBytes = DefaultTraceMaxSpanBytes
+	}
+	if a.Trace.MaxRunBytes == 0 {
+		a.Trace.MaxRunBytes = DefaultTraceMaxRunBytes
+	}
 	return a
 }
 
@@ -123,6 +151,9 @@ func (a Agent) WithDefaults() Agent {
 func (a Agent) Validate() error {
 	if !a.Enabled {
 		return nil
+	}
+	if err := a.WithDefaults().Trace.Validate(); err != nil { // 零值按默认值算，和 bridge_addr 一样
+		return err
 	}
 	if a.WebEnabled && a.SearXNGURL != "" {
 		if u, err := url.Parse(a.SearXNGURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -137,6 +168,20 @@ func (a Agent) Validate() error {
 		if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
 			return fmt.Errorf("agent.bridge_addr 必须是回环地址（127.0.0.1、::1 或 localhost），当前是 %q：桥只该被本机的 Node 进程访问", host)
 		}
+	}
+	return nil
+}
+
+// Validate 校验轨迹配置。数值已经过 WithDefaults，零值不会走到这里；这里只拦明显写错的值。
+func (t AgentTrace) Validate() error {
+	if t.RetentionDays < 1 || t.RetentionDays > maxTraceRetentionDays {
+		return fmt.Errorf("agent.trace.retention_days 必须在 1 到 %d 之间，当前是 %d", maxTraceRetentionDays, t.RetentionDays)
+	}
+	if t.MaxSpanBytes < minTraceMaxSpanBytes {
+		return fmt.Errorf("agent.trace.max_span_bytes 不能小于 %d，当前是 %d", minTraceMaxSpanBytes, t.MaxSpanBytes)
+	}
+	if t.MaxRunBytes < t.MaxSpanBytes {
+		return fmt.Errorf("agent.trace.max_run_bytes（%d）不能小于 max_span_bytes（%d）", t.MaxRunBytes, t.MaxSpanBytes)
 	}
 	return nil
 }
@@ -216,6 +261,10 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
+	v.SetDefault("agent.trace.enabled", true)
+	v.SetDefault("agent.trace.retention_days", DefaultTraceRetentionDays)
+	v.SetDefault("agent.trace.max_span_bytes", DefaultTraceMaxSpanBytes)
+	v.SetDefault("agent.trace.max_run_bytes", DefaultTraceMaxRunBytes)
 	v.SetDefault("ai.queue.max_concurrency", 64)
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
@@ -231,6 +280,7 @@ func Load(path string) (*Config, error) {
 	for _, key := range []string{
 		"server.id_key", "database.allow_newer_schema", "update.updater_token", "ai.secret_key", "ai.allow_fake_ip", "storage.driver",
 		"agent.enabled", "agent.node_path", "agent.runtime_dir", "agent.bridge_addr", "agent.work_dir", "agent.web_enabled", "agent.searxng_url", "agent.disabled_tools",
+		"agent.trace.enabled", "agent.trace.retention_days", "agent.trace.max_span_bytes", "agent.trace.max_run_bytes",
 		"storage.s3.endpoint", "storage.s3.region", "storage.s3.bucket", "storage.s3.access_key", "storage.s3.secret_key",
 		"storage.s3.use_ssl", "storage.s3.public_base_url", "storage.s3.path_prefix",
 	} {

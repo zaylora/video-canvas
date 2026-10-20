@@ -21,6 +21,13 @@ type SettleCallInput struct {
 	UsageEstimated bool   // Token 数是估的（上游没给用量）
 	Credits        int    // 按用量算出的应收积分，0 表示不收费
 	Error          string // 调用失败或中断的原因（已脱敏），成功为空
+
+	// 以下是轨迹里 chat span 的索引，调用结束时一并写回；没开轨迹时全是零值，不写这些列。
+	FirstTokenMS  int    // 首字延迟（毫秒）
+	DurationMS    int    // 总耗时（毫秒）
+	FinishReason  string // 上游给的结束原因
+	UpstreamModel string // 实际走的上游模型名
+	ChannelID     string // 实际走的渠道 key
 }
 
 // CreateModelCall 创建一条待结算的调用记录。
@@ -73,6 +80,10 @@ func (r *AgentRepository) SettleModelCall(ctx context.Context, in SettleCallInpu
 		fields := map[string]any{
 			"input_tokens": in.InputTokens, "output_tokens": in.OutputTokens, "cached_tokens": in.CachedTokens,
 			"usage_estimated": in.UsageEstimated, "credits": in.Credits, "charged": charged, "error": in.Error,
+		}
+		if in.UpstreamModel != "" || in.DurationMS > 0 {
+			fields["first_token_ms"], fields["duration_ms"], fields["finish_reason"] = in.FirstTokenMS, in.DurationMS, in.FinishReason
+			fields["upstream_model"], fields["channel_id"] = in.UpstreamModel, in.ChannelID
 		}
 		if err := tx.Model(&model.AgentModelCall{}).Where("id = ?", in.CallID).Updates(fields).Error; err != nil {
 			return err

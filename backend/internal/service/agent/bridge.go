@@ -79,6 +79,7 @@ type bridgeSession struct {
 	webCalls                           atomic.Int32      // 这个运行片段里联网工具已调用的次数（搜索和抓取共用上限）
 	nestedCalls                        atomic.Int32      // 这个运行片段里 codemode 脚本发起的嵌套调用次数
 	expires                            time.Time
+	trace                              *SegmentTrace // 这个片段的轨迹记录句柄；没开轨迹为 nil，所有方法都是空操作
 }
 
 // AgentBridge 是 Go 与 Node 里 pi 之间的桥：Node 把 Go 当作 OpenAI 兼容端点来调模型，
@@ -111,6 +112,30 @@ func (b *AgentBridge) IssueToken(run *model.AgentRun, in model.AgentRunInput) st
 	b.tokens[tok] = &bridgeSession{runID: run.ID, userID: run.UserID, sessionID: run.SessionID, canvasID: run.CanvasID,
 		modelKey: in.ModelKey, mode: firstNonEmpty(in.Mode, run.Mode, model.AgentModeAll), selection: in.Selection, expires: b.d.Now().Add(b.d.TokenTTL)}
 	return tok
+}
+
+// AttachTrace 把片段的轨迹记录句柄挂到令牌对应的会话上：之后这个片段里的模型调用和工具调用都记进去。
+// 同时把「读取本片段固定的技能版本」的函数交给它，片段结束时合并进运行行。令牌不存在或 seg 为 nil 时什么都不做。
+func (b *AgentBridge) AttachTrace(token string, seg *SegmentTrace) {
+	if seg == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	sess := b.tokens[token]
+	if sess == nil {
+		return
+	}
+	sess.trace = seg
+	seg.SetSkillPins(func() map[string]uint64 {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		out := make(map[string]uint64, len(sess.skillPins))
+		for k, v := range sess.skillPins {
+			out[k] = v
+		}
+		return out
+	})
 }
 
 // TokenActive 判断令牌是否还有效。进程退出时用它区分「报告过结束的正常退出」（令牌已被 Finish 收回）
@@ -195,7 +220,13 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 		}
 		return err
 	}
-	call, err := b.d.Billing.Begin(ctx, run, sess.modelKey)
+	// 轨迹：先开始记这次调用，让计费记录带上 span 标识；没开轨迹时 ct 为 nil，下面所有 ct 的调用都是空操作
+	purpose := ""
+	if ModelPurposeFrom(ctx) == ModelPurposeSummary {
+		purpose = ModelPurposeSummary
+	}
+	ct := sess.trace.BeginChat(purpose, sess.modelKey, body)
+	call, err := b.d.Billing.BeginTraced(ctx, run, sess.modelKey, ct.Meta())
 	if err != nil {
 		return err
 	}
@@ -207,7 +238,7 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	}
 
 	internal := ModelPurposeFrom(ctx) == ModelPurposeSummary
-	deltas := &deltaBuffer{flush: func(text, thinking string) {
+	deltas := &deltaBuffer{onFirst: ct.MarkFirstToken, flush: func(text, thinking string) {
 		if internal {
 			return // 摘要的文字不是对用户说的话，不推给前端
 		}
@@ -221,13 +252,14 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	res, serr := b.d.Streamer.StreamRaw(ctx, tg, body, lim, deltas.onEvent, write)
 	deltas.close()
 
-	settled, berr := b.d.Billing.Settle(context.WithoutCancel(ctx), run, call, snap.Model.Pricing, CallOutcome{Result: res, InputChars: inputChars, Err: serr})
+	settled, berr := b.d.Billing.Settle(context.WithoutCancel(ctx), run, call, snap.Model.Pricing, CallOutcome{Result: res, InputChars: inputChars, Err: serr, Trace: ct.Outcome(res, snap.Model.UpstreamModel, snap.Channel.Key)})
 	if berr != nil {
 		// 结算失败意味着这次调用没收到钱，只能留下线索供对账补扣；不能因此让用户的对话失败
 		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", run.ID))
 	} else if settled.Charged > 0 {
 		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
 	}
+	ct.Record(res, serr, settled)
 	// 插话会让 Agent 中止正在输出的回答再重答：此时 ctx 已取消，半截回答的 message.done 也要落库，前端才能清掉流式残留
 	if !internal {
 		b.recordMessage(context.WithoutCancel(ctx), run, res, settled, serr != nil)
@@ -315,12 +347,18 @@ func (b *AgentBridge) recordMessage(ctx context.Context, run *model.AgentRun, re
 // deltaBuffer 把文本和思考增量合并后再推送，最多每 50ms 一次：前端不需要每个 Token 一次渲染。
 type deltaBuffer struct {
 	flush    func(text, thinking string)
+	onFirst  func() // 第一个增量到达时调用一次（记首字延迟），可以为 nil
+	seen     bool
 	text     []byte
 	thinking []byte
 	last     time.Time
 }
 
 func (d *deltaBuffer) onEvent(e llmgateway.Event) {
+	if !d.seen && d.onFirst != nil && (e.Type == llmgateway.EventText || e.Type == llmgateway.EventThinking || e.Type == llmgateway.EventToolDelta) {
+		d.seen = true
+		d.onFirst()
+	}
 	switch e.Type {
 	case llmgateway.EventText:
 		d.text = append(d.text, e.Text...)

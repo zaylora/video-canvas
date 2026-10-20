@@ -14,6 +14,9 @@ import (
 	agentsvc "video-canvas/internal/service/agent"
 )
 
+// harnessHeader 是发起运行时标明「这是调优 Harness 的哪个用例」的请求头，记进 agent_runs.harness_case。
+const harnessHeader = "X-Agent-Harness"
+
 // AgentAPI 是 handler 依赖的 Agent 业务，由 *agentsvc.AgentService 实现；声明成接口是为了 handler 测试不必搭整套存储。
 type AgentAPI interface {
 	// Models 返回当前可用的 Agent 模型。
@@ -167,6 +170,7 @@ func (h *AgentHandler) StartRun(c *gin.Context) {
 	if !handler.BindJSON(c, &req) {
 		return
 	}
+	req.HarnessCase = c.GetHeader(harnessHeader) // 调优 Harness 用例的标签，只是标签；长度由 service 校验
 	v, err := h.svc.StartRun(c.Request.Context(), uint64(middleware.GetUserID(c)), id, &req)
 	if err != nil {
 		response.Fail(c, err)

@@ -211,3 +211,53 @@ func TestLoad_AgentDisabledTools(t *testing.T) {
 		t.Errorf("环境变量应能覆盖（逗号分隔）: %v", got)
 	}
 }
+
+// agent.trace：轨迹记录默认开启，保留 14 天，单 span 256KB、单 run 8MB；都能被环境变量覆盖。
+func TestLoad_AgentTraceDefaultsAndEnvOverride(t *testing.T) {
+	cfg, err := Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := cfg.Agent.Trace
+	if !tr.Enabled || tr.RetentionDays != 14 || tr.MaxSpanBytes != 262144 || tr.MaxRunBytes != 8388608 {
+		t.Fatalf("轨迹默认值不对: %+v", tr)
+	}
+	t.Setenv("APP_AGENT_TRACE_ENABLED", "false")
+	t.Setenv("APP_AGENT_TRACE_RETENTION_DAYS", "3")
+	t.Setenv("APP_AGENT_TRACE_MAX_SPAN_BYTES", "4096")
+	t.Setenv("APP_AGENT_TRACE_MAX_RUN_BYTES", "65536")
+	cfg, err = Load("../../../configs/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr = cfg.Agent.Trace
+	if tr.Enabled || tr.RetentionDays != 3 || tr.MaxSpanBytes != 4096 || tr.MaxRunBytes != 65536 {
+		t.Fatalf("环境变量应能覆盖: %+v", tr)
+	}
+}
+
+func TestAgentTraceConfig_WithDefaultsAndValidate(t *testing.T) {
+	a := Agent{Enabled: true}.WithDefaults()
+	if a.Trace.RetentionDays != 14 || a.Trace.MaxSpanBytes != 262144 || a.Trace.MaxRunBytes != 8388608 {
+		t.Errorf("零值应补上默认: %+v", a.Trace)
+	}
+	for _, tc := range []struct {
+		name    string
+		trace   AgentTrace
+		wantErr bool
+	}{
+		{"默认", AgentTrace{Enabled: true, RetentionDays: 14, MaxSpanBytes: 262144, MaxRunBytes: 8388608}, false},
+		{"保留天数为负", AgentTrace{Enabled: true, RetentionDays: -1, MaxSpanBytes: 262144, MaxRunBytes: 8388608}, true},
+		{"保留天数过大", AgentTrace{Enabled: true, RetentionDays: 4000, MaxSpanBytes: 262144, MaxRunBytes: 8388608}, true},
+		{"单 span 上限太小", AgentTrace{Enabled: true, RetentionDays: 14, MaxSpanBytes: 100, MaxRunBytes: 8388608}, true},
+		{"单 run 上限小于单 span", AgentTrace{Enabled: true, RetentionDays: 14, MaxSpanBytes: 262144, MaxRunBytes: 1024}, true},
+	} {
+		err := Agent{Enabled: true, Trace: tc.trace}.Validate()
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%s: err=%v, wantErr=%v", tc.name, err, tc.wantErr)
+		}
+	}
+	if err := (Agent{Enabled: false, Trace: AgentTrace{RetentionDays: -5}}).Validate(); err != nil {
+		t.Errorf("Agent 关闭时不校验轨迹配置: %v", err)
+	}
+}

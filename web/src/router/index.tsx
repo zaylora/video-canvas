@@ -14,6 +14,7 @@ import UsersPage from "@/pages/admin/users";
 import PaymentAdminPage from "@/pages/admin/payment";
 import UsagePage from "@/pages/admin/usage";
 import AuditsPage from "@/pages/admin/logs";
+import AgentRunsPage from "@/pages/admin/logs/agent-runs";
 import EmailSettingsPage from "@/pages/admin/settings/email-settings";
 import ShowcaseSettingsPage from "@/pages/admin/settings/showcase";
 import RegisterSettingsPage from "@/pages/admin/settings/register-settings";
@@ -141,6 +142,7 @@ export const router = createBrowserRouter([
               { path: "usage", element: <UsagePage /> },
               { path: "logs", element: <Navigate to="audits" replace /> },
               { path: "logs/audits", element: <AuditsPage /> },
+              { path: "logs/agent-runs", element: <AgentRunsPage /> },
               { path: "settings", element: <Navigate to="storage" replace /> },
               { path: "settings/storage", element: <StoragePage /> },
               { path: "settings/image-processor", element: <ImageProcessorPage /> },

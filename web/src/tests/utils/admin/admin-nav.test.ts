@@ -61,7 +61,7 @@ describe("后台导航", () => {
     expect(findNav("/admin/unknown")).toBeNull();
   });
 
-  test("“用户”分组末尾是使用记录，“日志管理”分组只有操作审计", () => {
+  test("“用户”分组末尾是使用记录，“日志管理”分组是操作审计、Agent 运行", () => {
     const users = ADMIN_NAV.find((item) => item.label === "用户");
     expect(users?.items.map((item) => [item.to, item.label])).toEqual([
       ["users", "用户管理"],
@@ -69,7 +69,10 @@ describe("后台导航", () => {
       ["usage", "使用记录"],
     ]);
     const logs = ADMIN_NAV.find((item) => item.label === "日志管理");
-    expect(logs?.items.map((item) => [item.to, item.label])).toEqual([["logs/audits", "操作审计"]]);
+    expect(logs?.items.map((item) => [item.to, item.label])).toEqual([
+      ["logs/audits", "操作审计"],
+      ["logs/agent-runs", "Agent 运行"],
+    ]);
   });
 
   test("访问使用记录不会高亮用户管理，面包屑落在对应分组", () => {
@@ -80,5 +83,11 @@ describe("后台导航", () => {
     const audits = findNav("/admin/logs/audits");
     expect(audits?.group.label).toBe("日志管理");
     expect(audits?.item.label).toBe("操作审计");
+  });
+
+  test("Agent 运行页的面包屑落在日志管理分组下", () => {
+    const found = findNav("/admin/logs/agent-runs");
+    expect(found?.group.label).toBe("日志管理");
+    expect(found?.item.label).toBe("Agent 运行");
   });
 });

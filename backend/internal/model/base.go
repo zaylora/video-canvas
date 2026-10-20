@@ -47,6 +47,7 @@ func All() []any {
 		&AgentMutation{},
 		&AgentApproval{},
 		&AgentModelCall{},
+		&AgentTraceSpan{},
 		&AgentSkill{},
 		&AgentSkillVersion{},
 		&AgentSkillImport{},

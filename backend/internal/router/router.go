@@ -16,9 +16,10 @@ type Handlers struct {
 	User          *handler.UserHandler
 	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
 	CanvasProject *handler.CanvasProjectHandler
-	Conversation  *handler.ConversationHandler // 首页生成：对话与生成记录
-	Agent         *agenthandler.AgentHandler   // 画布 Agent：会话、运行、审批
-	AgentSkill    *agenthandler.SkillHandler   // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	Conversation  *handler.ConversationHandler    // 首页生成：对话与生成记录
+	Agent         *agenthandler.AgentHandler      // 画布 Agent：会话、运行、审批
+	AgentSkill    *agenthandler.SkillHandler      // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	AgentTrace    *agenthandler.TraceAdminHandler // 后台「日志管理 › Agent 运行」：运行列表与轨迹包导出，仅管理员
 
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
@@ -242,6 +243,12 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		skillsAdmin.GET("/:name/versions/:v/download", h.AgentSkill.Download)
 		skillsAdmin.DELETE("/:name/versions/:v", h.AgentSkill.DeleteVersion)
 		skillsAdmin.DELETE("/:name", h.AgentSkill.Delete)
+
+		// Agent 运行轨迹：列表与轨迹包下载，admin 与 super_admin 同权；普通用户连自己的轨迹也看不到。每次下载写审计 agent.trace.export。
+		// runs 下 :rid/trace 是路径段，和 /runs 列表同一棵树，不与技能管理的 /admin/agent/skills 冲突
+		agentRuns := auth.Group("/admin/agent/runs", middleware.RequireAdmin(h.AdminRole))
+		agentRuns.GET("", h.AgentTrace.List)
+		agentRuns.GET("/:rid/trace", h.AgentTrace.Export)
 
 		// 存储配置（素材存到哪）：读 = admin 或 super_admin；测试 / 创建 / 修改 / 换密钥 / 设默认 / 删除 = 仅 super_admin。
 		// 密钥只写不读，和渠道 Key 同一套规则。

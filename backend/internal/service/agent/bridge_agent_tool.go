@@ -63,9 +63,11 @@ func (b *AgentBridge) ReportAgentTool(ctx context.Context, token string, ev Agen
 			return nil, err
 		}
 		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", data)
+		sess.trace.BeginAgentTool(ev.ToolCallID, ev.Name) // 轨迹：codemode 里的嵌套调用靠它找到外层 span
 	case "end":
 		data["is_error"], data["summary"] = ev.IsError, truncateRunes(ev.Summary, maxReportSummaryRunes)
 		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", data)
+		sess.trace.EndAgentTool(ctx, ev.ToolCallID, ev.IsError, truncateRunes(ev.Summary, maxReportSummaryRunes))
 	default:
 		return nil, errcode.ErrInvalidParams.WithMsg("phase 只能是 start 或 end")
 	}

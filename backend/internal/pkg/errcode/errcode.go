@@ -168,6 +168,8 @@ var (
 	ErrAgentSessionMissing = New(60011, "会话不存在", http.StatusNotFound)
 	ErrAgentRunMissing     = New(60012, "运行不存在", http.StatusNotFound)
 	ErrAgentApprovalMiss   = New(60013, "审批不存在", http.StatusNotFound)
+	ErrAgentTraceExpired   = New(60014, "轨迹已过期", http.StatusGone)
+	ErrAgentTraceDisabled  = New(60015, "这一轮运行没有记录轨迹（当时轨迹记录已关闭）", http.StatusNotFound)
 )
 
 // Agent 技能管理 61xxx

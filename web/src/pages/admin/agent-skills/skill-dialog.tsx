@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRetained } from "@/hooks/use-retained";
 import { DURATION, EASE_OUT, SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { saveBlob } from "@/utils/admin/save-blob";
 
 import { FileWorkbench } from "./file-workbench";
 import { SkillOverview } from "./skill-overview";
@@ -57,18 +58,6 @@ const TAB_MOTION = {
   initial: { opacity: 0, y: 4 },
   animate: { opacity: 1, y: 0, transition: { duration: DURATION.fast, ease: EASE_OUT } },
 };
-
-/** 把 blob 存成文件：下载接口要带登录凭证，不能直接用链接 */
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 /** 内置技能没有包：用详情里的正文拼成只有一个 SKILL.md 的清单，复用文件工作台 */
 function builtinFiles(body: string): SkillFile[] {

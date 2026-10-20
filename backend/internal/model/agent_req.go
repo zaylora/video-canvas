@@ -38,6 +38,7 @@ type StartAgentRunReq struct {
 	Viewport      json.RawMessage `json:"viewport" label:"视口"`                                                      // 视口
 	BudgetCredits *int            `json:"budget_credits" binding:"omitempty,min=0,max=100000" label:"本轮预算"`         // 本轮积分预算，不传默认 50
 	AgentModelKey string          `json:"agent_model_key" binding:"max=128" label:"Agent 模型"`                       // Agent 模型，不传沿用会话的
+	HarnessCase   string          `json:"-"`                                                                        // 请求头 X-Agent-Harness 的值（用例标签），由 handler 填入，不来自请求体；最长 128 字
 }
 
 // InterjectAgentReq 是运行中插话的请求。
@@ -63,4 +64,17 @@ type DecideAgentApprovalReq struct {
 	Items     []ApprovalItemDecision `json:"items" binding:"max=50,dive" label:"条目"`                      // 逐项决定，不传表示整体按 decision 处理
 	Answer    string                 `json:"answer" binding:"max=2000" label:"回答"`                        // 提问的回答
 	AddBudget int                    `json:"add_budget" binding:"min=0,max=100000" label:"追加预算"`          // 批准时追加的积分预算
+}
+
+// ListAgentRunsReq 是后台 GET /admin/agent/runs 的查询参数。id 都是编码后的串；用户可以是邮箱片段，也可以是编码后的用户 id。
+type ListAgentRunsReq struct {
+	User     string `form:"user" binding:"max=128" label:"用户"`                                                                                                                                           // 用户邮箱（包含匹配）或用户 id
+	CanvasID string `form:"canvas_id" binding:"max=64" label:"画布"`                                                                                                                                       // 画布 id，精确匹配
+	RunID    string `form:"run_id" binding:"max=64" label:"运行"`                                                                                                                                          // 运行 id，精确匹配
+	Status   string `form:"status" binding:"omitempty,oneof=queued running waiting_approval waiting_input succeeded failed canceled budget_exhausted step_limit timeout interrupted expired" label:"状态"` // 运行状态，取值见 model.Run* 常量
+	Source   string `form:"source" binding:"omitempty,oneof=user harness" label:"来源"`                                                                                                                    // user 是真实用户（harness_case 为空），harness 是调优用例
+	From     string `form:"from" binding:"max=40" label:"开始时间"`                                                                                                                                          // 创建时间下限，RFC3339；不传取（结束时间或现在）往前 7 天
+	To       string `form:"to" binding:"max=40" label:"结束时间"`                                                                                                                                            // 创建时间上限，RFC3339；不传不限
+	Page     int    `form:"page" label:"页码"`                                                                                                                                                             // 页码，从 1 开始
+	PageSize int    `form:"page_size" label:"每页条数"`                                                                                                                                                      // 每页条数，默认 20，最多 100
 }

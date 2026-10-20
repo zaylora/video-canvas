@@ -43,6 +43,7 @@ type CallOutcome struct {
 	Result     *llmgateway.Result // 网关返回的结果；一个字都没收到时为 nil
 	InputChars int                // 这次请求的输入总字数，上游没给用量时按它估输入 Token
 	Err        error              // 调用失败、被取消或中断的原因；成功为 nil
+	Trace      *CallTrace         // 轨迹里 chat span 的索引字段，结算时一并写回；没开轨迹为 nil
 }
 
 // SettleResult 是结算结果。
@@ -75,7 +76,13 @@ func (b *AgentBilling) Preflight(ctx context.Context, run *model.AgentRun, p mod
 
 // Begin 为即将发起的调用创建一条待结算记录，返回的记录用于后面的 Settle。
 func (b *AgentBilling) Begin(ctx context.Context, run *model.AgentRun, modelKey string) (*model.AgentModelCall, error) {
-	c := &model.AgentModelCall{RunID: run.ID, UserID: run.UserID, ModelKey: modelKey, Status: model.ModelCallPending}
+	return b.BeginTraced(ctx, run, modelKey, CallTraceMeta{})
+}
+
+// BeginTraced 同 Begin，并把轨迹里 chat span 的标识、序号、用途、片段序号一起记在调用记录上；meta 为零值时与 Begin 相同。
+func (b *AgentBilling) BeginTraced(ctx context.Context, run *model.AgentRun, modelKey string, meta CallTraceMeta) (*model.AgentModelCall, error) {
+	c := &model.AgentModelCall{RunID: run.ID, UserID: run.UserID, ModelKey: modelKey, Status: model.ModelCallPending,
+		SpanID: meta.SpanID, Seq: meta.Seq, Purpose: meta.Purpose, SegmentSeq: meta.SegmentSeq}
 	if err := b.repo.CreateModelCall(ctx, c); err != nil {
 		return nil, err
 	}
@@ -96,6 +103,9 @@ func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *mo
 			in.InputTokens, in.OutputTokens, in.CachedTokens = r.Usage.InputTokens, r.Usage.OutputTokens, r.Usage.CachedTokens
 		}
 		in.Credits = modelcfg.TokenCost(p, in.InputTokens, in.OutputTokens)
+	}
+	if t := out.Trace; t != nil {
+		in.FirstTokenMS, in.DurationMS, in.FinishReason, in.UpstreamModel, in.ChannelID = t.FirstTokenMS, t.DurationMS, t.FinishReason, t.UpstreamModel, t.ChannelID
 	}
 	settled, err := b.repo.SettleModelCall(ctx, in)
 	if err != nil {

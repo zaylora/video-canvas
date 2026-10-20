@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -54,6 +55,7 @@ type toolOut struct {
 	images    []ToolImage
 	terminate bool
 	extra     map[string]any // 一并记进 tool.end 的附加信息，如被改动的节点
+	mutation  uint64         // 这次调用写进画布产生的改动 id，没有改画布为 0；记进轨迹，方便把工具调用和 agent_mutations 对上
 }
 
 // toolCall 是一次工具调用的上下文。
@@ -92,13 +94,18 @@ func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCall
 		return nil, err
 	}
 	nested := parentID != ""
+	tt := sess.trace.BeginTool(toolCallID, parentID, name, args) // 轨迹：没开轨迹时 tt 为 nil，下面的 tt.End 是空操作
 	reject := func(msg string) (*ToolResult, error) {
-		return b.toolError(ctx, run, toolCallID, parentID, name, msg), nil
+		res := b.toolError(ctx, run, toolCallID, parentID, name, msg)
+		tt.End(ctx, ToolEnd{Status: model.TraceStatusDenied, ErrorCode: "rejected", IsError: true, Content: res.Content, Summary: msg})
+		return res, nil
 	}
 	// 1. 步数上限：用到头就暂停运行并让循环停下，用户可以追加后继续。嵌套调用不受它管：脚本整体在开始时已经算过步数
 	if !nested && run.Steps >= run.MaxSteps {
 		b.pauseRun(ctx, run, model.RunStepLimit)
-		return &ToolResult{Content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", IsError: true, Terminate: true}, nil
+		res := &ToolResult{Content: "已达到本轮的步数上限，运行已暂停，等待用户继续。", IsError: true, Terminate: true}
+		tt.End(ctx, ToolEnd{Status: model.TraceStatusDenied, ErrorCode: "step_limit", IsError: true, Content: res.Content, Summary: "已达到本轮的步数上限"})
+		return res, nil
 	}
 	// 2. 当前任务模式不允许的工具，直接告诉模型；工具名认不得的也一样；脚本里还要求工具能被脚本调用，且次数没超上限
 	spec := findTool(name)
@@ -132,7 +139,37 @@ func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCall
 		}
 	}
 	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", end)
+	var mutation uint64
+	if out != nil {
+		mutation = out.mutation
+	}
+	status, code := toolTraceStatus(res, herr)
+	tt.End(ctx, ToolEnd{Status: status, ErrorCode: code, IsError: res.IsError, Content: res.Content, Summary: firstNonEmpty(outSummary(out), summarizeError(res)), MutationID: mutation})
 	return res, nil
+}
+
+// toolTraceStatus 把工具调用的结果归成轨迹里的状态和错误分类：成功是 ok；失败按错误来源分类，
+// 好让报告里「同一类报错」一眼看得出是模型传错了参数（tool_failure / validation / invalid）还是服务自己出了问题（internal）。
+func toolTraceStatus(res *ToolResult, err error) (status, code string) {
+	if err == nil && !res.IsError {
+		return model.TraceStatusOK, ""
+	}
+	var tf *toolFailure
+	var ve *canvasgraph.ValidationError
+	var ec *errcode.Error
+	switch {
+	case err == nil:
+		return model.TraceStatusError, "tool_error"
+	case errors.As(err, &tf):
+		return model.TraceStatusError, "tool_failure"
+	case errors.As(err, &ve):
+		return model.TraceStatusError, "validation"
+	case errors.Is(err, canvasgraph.ErrInvalid):
+		return model.TraceStatusError, "invalid"
+	case errors.As(err, &ec):
+		return model.TraceStatusError, "errcode_" + strconv.Itoa(ec.Code)
+	}
+	return model.TraceStatusError, "internal"
 }
 
 // withParent 给脚本里发起的调用的事件带上父调用 id。
@@ -285,13 +322,14 @@ func (b *AgentBridge) toolApplyOps(ctx context.Context, tc *toolCall) (*toolOut,
 		return nil, err
 	}
 	content, err := jsonOut(map[string]any{"ok": true, "id_map": res.IDMap, "changes": res.Changes, "revision": res.Revision})
+	mutation := res.MutationID
 	ids := make([]string, 0, len(res.IDMap))
 	for _, id := range res.IDMap {
 		ids = append(ids, id)
 	}
 	// created / updated 给前端的「本轮改动」摘要分开计数
 	extra := map[string]any{"node_ids": ids, "created": res.Created, "updated": res.Updated}
-	return &toolOut{content: content, summary: fmt.Sprintf("应用 %d 项操作", len(ops)), extra: extra}, err
+	return &toolOut{content: content, summary: fmt.Sprintf("应用 %d 项操作", len(ops)), extra: extra, mutation: mutation}, err
 }
 
 // toolArrange 整理布局。
@@ -309,7 +347,7 @@ func (b *AgentBridge) toolArrange(ctx context.Context, tc *toolCall) (*toolOut, 
 		return nil, err
 	}
 	content, err := jsonOut(map[string]any{"ok": true, "changes": res.Changes})
-	return &toolOut{content: content, summary: "整理布局（" + a.Layout + "）", extra: map[string]any{"node_ids": a.NodeIDs}}, err
+	return &toolOut{content: content, summary: "整理布局（" + a.Layout + "）", extra: map[string]any{"node_ids": a.NodeIDs}, mutation: res.MutationID}, err
 }
 
 // toolDelete 申请删除：不直接删，创建审批并让本轮停下等用户决定。

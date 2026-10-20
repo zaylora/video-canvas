@@ -93,6 +93,23 @@ docker compose --profile search up -d      # 启动 searxng；backend 需要读�
 - 配了 `APP_AGENT_SEARXNG_URL` 后，它排在搜索源的第一位，失败或没结果再依次试 Exa、Bing、DuckDuckGo。
 - 搜索词会发给第三方（Exa、Bing 等搜索服务）。系统提示词已要求 Agent 不要把用户未公开的剧本、台词放进搜索词，但这不是技术上的保证；有保密要求的部署请关闭联网。
 
+### Agent 运行轨迹
+
+backend 默认记录每轮画布 Agent 运行的轨迹（模型请求与响应原文、工具调用的参数和返回、画布前后快照），用来排查和调优提示词。索引存数据库，原文压缩后存**素材所用的对象存储**（key 前缀 `agent-traces/`，不走公开的 `/files` 路由）。只有管理员能在后台「日志管理 › Agent 运行」下载，每次下载都写审计。
+
+- **请求头一律不记**（渠道 Key 在请求头里）；请求体里的图片换成引用，不留原图和签名地址。但轨迹里有用户的剧本和对话原文，有保密要求的部署请评估后再开，或把保留天数调短。
+- **配置**（`.env` 用环境变量，或改 `configs/config.yaml` 的 `agent.trace`）：
+
+| 环境变量 | 默认 | 含义 |
+| --- | --- | --- |
+| `APP_AGENT_TRACE_ENABLED` | `true` | 是否记录；关闭后新运行不再记，已有轨迹到期前仍可下载 |
+| `APP_AGENT_TRACE_RETENTION_DAYS` | `14` | 保留天数；每天清理一次过期的索引、原文对象和 `agent_events`（`agent_events` 沿用同一个天数） |
+| `APP_AGENT_TRACE_MAX_SPAN_BYTES` | `262144` | 单个 span（一次模型或工具调用）的原文上限，超出截断并标记 |
+| `APP_AGENT_TRACE_MAX_RUN_BYTES` | `8388608` | 单个运行的原文总上限，超出后只记索引 |
+
+- 片段运行期间原文先写 backend 本机的临时文件（在 `agent.work_dir` 下的 `agent-traces/`，没配就在系统临时目录），片段结束再上传。backend 被强杀时留下的文件会在下次启动后补传，并把该运行标为「轨迹不完整」。
+- 记录失败只打 warn 日志，不影响用户的运行。
+
 查看迁移状态（只读）：
 
 ```bash

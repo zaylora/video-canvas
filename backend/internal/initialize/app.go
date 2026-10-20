@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,6 +53,8 @@ type App struct {
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
 	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
+	traceClean *agentsvc.TraceCleaner   // Agent 轨迹与事件的保留期清理器；后台每天清理一次
+	traceRec   *agentsvc.TraceRecorder  // Agent 轨迹记录器；启动后补传上次没来得及上传的临时文件
 	payment    *service.PaymentService  // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
@@ -171,8 +174,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
 	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
+	agentCanvasSvc.SetModelRegistry(aiCfgSvc) // 排版时读模型默认画幅，与前端画节点框的规则一致
+	// Agent 运行轨迹：索引在数据库，原文压缩后放素材所用的对象存储（key 前缀 agent-traces/）；记录器的失败从不影响运行
+	traceRec := agentsvc.NewTraceRecorder(agentRepo, storeRegistry, traceOptions(cfg.Agent))
 	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
-		Repo: agentRepo, Canvas: agentCanvasSvc,
+		Trace: traceRec,
+		Repo:  agentRepo, Canvas: agentCanvasSvc,
 		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc, Skills: skillSvc,
 		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
@@ -186,7 +193,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, ipAllowed: outboundIPPolicy(cfg)})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, trace: traceRec, ipAllowed: outboundIPPolicy(cfg)})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -257,6 +264,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Conversation:   handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
 		Agent:          agenthandler.NewAgentHandler(agentSvc),
 		AgentSkill:     agenthandler.NewSkillHandler(skillSvc),
+		AgentTrace:     agenthandler.NewTraceAdminHandler(agentsvc.NewTraceAdminService(agentRepo, storeRegistry, auditRepo, agentsvc.TraceAdminOptions{RetentionDays: cfg.Agent.Trace.RetentionDays})),
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
@@ -313,6 +321,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 		runnerStop: runnerStop,
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
+		traceClean: agentsvc.NewTraceCleaner(agentRepo, storeRegistry, cfg.Agent.Trace.RetentionDays, nil),
+		traceRec:   traceRec,
 		payment:    pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
@@ -461,6 +471,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-loginDone
 	}()
 
+	// Agent 轨迹：启动后补传上次没来得及上传的临时文件，然后每天清理过期的轨迹和事件；先于关库停止
+	traceCtx, traceCancel := context.WithCancel(context.Background())
+	traceDone := make(chan struct{})
+	go func() {
+		defer close(traceDone)
+		a.maintainAgentTraces(traceCtx)
+	}()
+	defer func() {
+		traceCancel()
+		<-traceDone
+	}()
+
 	// 技能库清理：先于关库停止
 	skillCtx, skillCancel := context.WithCancel(context.Background())
 	skillDone := make(chan struct{})
@@ -576,6 +598,44 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 	}
 	if n > 0 {
 		logger.Info("已清理过期登录记录", zap.Int64("count", n))
+	}
+}
+
+// traceCleanupInterval 是清理过期轨迹的间隔：按天保留，每天一次足够。
+const traceCleanupInterval = 24 * time.Hour
+
+// traceOptions 把配置转成记录器的选项；临时文件放在 agent.work_dir 下（没配就用系统临时目录）。
+func traceOptions(ac config.Agent) agentsvc.TraceOptions {
+	t := ac.WithDefaults().Trace
+	opt := agentsvc.TraceOptions{Enabled: t.Enabled, MaxSpanBytes: t.MaxSpanBytes, MaxRunBytes: int64(t.MaxRunBytes)}
+	if ac.WorkDir != "" {
+		opt.Dir = filepath.Join(ac.WorkDir, "agent-traces")
+	}
+	return opt
+}
+
+// maintainAgentTraces 先补传上次没来得及上传的轨迹临时文件，再延迟随机一小段时间清理一次，之后每天一次，直到 ctx 取消。
+// 失败只记日志，下一轮继续；不影响服务。清理删的是过期数据（保留期见 agent.trace.retention_days），多实例同时跑也安全。
+func (a *App) maintainAgentTraces(ctx context.Context) {
+	if n := a.traceRec.RecoverOrphans(ctx); n > 0 {
+		logger.Warn("上次退出时有 Agent 轨迹没来得及上传，已补传并标为不完整", zap.Int("files", n))
+	}
+	delay := time.Minute + time.Duration(rand.Int64N(int64(loginLogCleanupMaxDelay-time.Minute))) //nolint:gosec // 只是错峰用的随机延迟，不需要密码学随机
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			res, err := a.traceClean.Cleanup(ctx)
+			if err != nil {
+				logger.Error("清理过期 Agent 轨迹失败", zap.Error(err), zap.Int64("objects", res.Objects), zap.Int64("spans", res.Spans), zap.Int64("events", res.Events))
+			} else if res.Objects+res.Spans+res.Events > 0 {
+				logger.Info("已清理过期 Agent 轨迹", zap.Int64("objects", res.Objects), zap.Int64("spans", res.Spans), zap.Int64("events", res.Events))
+			}
+			timer.Reset(traceCleanupInterval)
+		}
 	}
 }
 

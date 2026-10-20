@@ -107,6 +107,8 @@ type AgentService struct {
 	skills SkillLibrary
 	bc     ws.Broadcaster
 	now    func() time.Time
+	// trace 决定新运行要不要记轨迹（run.trace_enabled）；为 nil 或没开启时不记录
+	trace *TraceRecorder
 }
 
 // AgentDeps 是创建 AgentService 需要的依赖。
@@ -120,11 +122,12 @@ type AgentDeps struct {
 	Skills      SkillLibrary            // 校验消息里引用的技能，为 nil 时只认内置技能
 	Broadcaster ws.Broadcaster          // 为 nil 时不推送
 	Now         func() time.Time        // 为 nil 取系统时间，测试里注入
+	Trace       *TraceRecorder          // 轨迹记录器；为 nil 或没开启时新运行不记轨迹
 }
 
 // NewAgentService 创建服务。
 func NewAgentService(d AgentDeps) *AgentService {
-	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, skills: d.Skills, bc: d.Broadcaster, now: d.Now}
+	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, skills: d.Skills, bc: d.Broadcaster, now: d.Now, trace: d.Trace}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}
 	}

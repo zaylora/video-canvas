@@ -119,6 +119,7 @@ type agentDeps struct {
 	registry provider.Registry
 	secrets  provider.SecretResolver
 	skills   agentsvc.SkillLibrary
+	trace    *agentsvc.TraceRecorder // 轨迹记录器；为 nil 或没开启时不记录
 	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
 	ipAllowed func(net.IP) bool
 }
@@ -167,6 +168,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	})
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
+		Trace:  d.trace,
 		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},
 	})
 	d.agent.SetRuntime(rt)
