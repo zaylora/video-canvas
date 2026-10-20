@@ -23,3 +23,6 @@
 /backend/.vscode/
 /web/.idea/
 /web/.vscode/
+
+# Agent 调优 Harness 的运行输出与线上导出的轨迹包（含用户数据，不入库）
+/.harness/

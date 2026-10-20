@@ -1,0 +1,24 @@
+{
+  "id": "script-draft",
+  "title": "从一句话想法起草剧本",
+  "tags": ["script"],
+  "mode": "script",
+  "message": "写一个 30 秒的悬疑短剧剧本草稿：深夜加班的女白领发现电梯里多了一个人。放到画布上",
+  "budget": 0,
+  "timeout_sec": 300,
+  "wait_tasks": false,
+  "answers": [
+    { "match": { "kind": "ask", "contains": "画幅" }, "answer": { "answer": "9:16" } },
+    { "match": { "kind": "generate" }, "answer": { "decision": "reject" } },
+    { "match": { "kind": "delete" }, "answer": { "decision": "reject" } }
+  ],
+  "expect": [
+    { "type": "run_status", "in": ["succeeded"] },
+    { "type": "count", "of": "script", "min": 1 },
+    { "type": "no_overlap" },
+    { "type": "not_asked", "kind": "generate" },
+    { "type": "max_tool_errors", "max": 2 },
+    { "type": "max_steps", "max": 25 },
+    { "type": "max_credits", "max": 0 }
+  ]
+}

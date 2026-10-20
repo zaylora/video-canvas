@@ -1,0 +1,30 @@
+{
+  "id": "storyboard-9x16-3shots",
+  "title": "三镜头 9:16 分镜搭建",
+  "tags": ["storyboard", "layout"],
+  "fixture": "fixtures/script-only.canvas.json",
+  "mode": "storyboard",
+  "agent_model_key": "",
+  "message": "把剧本拆成 3 个镜头，竖屏 9:16，每个镜头一组：镜头文本→关键帧→视频",
+  "selection": ["n_script"],
+  "budget": 0,
+  "timeout_sec": 600,
+  "wait_tasks": false,
+  "answers": [
+    { "match": { "kind": "ask", "contains": "画幅" }, "answer": { "answer": "9:16" } },
+    { "match": { "kind": "ask", "ask_kind": "model" }, "answer": { "answer": "$first_model" } },
+    { "match": { "kind": "generate" }, "answer": { "decision": "reject" } },
+    { "match": { "kind": "delete" }, "answer": { "decision": "reject" } }
+  ],
+  "expect": [
+    { "type": "run_status", "in": ["succeeded"] },
+    { "type": "no_overlap" },
+    { "type": "members_inside_group" },
+    { "type": "count", "of": "group", "min": 3, "max": 4 },
+    { "type": "every_group_has", "kinds": ["script", "image", "video"] },
+    { "type": "edge_exists", "from": "image", "to": "video", "scope": "group" },
+    { "type": "nodes_have_prompt", "kinds": ["image", "video"] },
+    { "type": "max_tool_errors", "max": 2 },
+    { "type": "max_steps", "max": 40 }
+  ]
+}

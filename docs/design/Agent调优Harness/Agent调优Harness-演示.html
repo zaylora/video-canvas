@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>画布 Agent 调优演示</title>
+    <!-- 对应设计文档：Agent调优Harness.md（准绳）。本页所有运行、数字均为模拟，刷新复原。 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        --k-script: 100 116 139;
+        --k-image: 2 132 199;
+        --k-video: 124 58 237;
+        --k-audio: 5 150 105;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        --k-script: 148 163 184;
+        --k-image: 56 189 248;
+        --k-video: 167 139 250;
+        --k-audio: 52 211 153;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      input, select { font: inherit; color: inherit; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 860px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 860px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-violet { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 150px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      /* ---- 排版演示 ---- */
+      .ctl { display: grid; gap: 14px; align-content: start; }
+      .ctl label { font-size: 12.5px; color: hsl(var(--muted-foreground)); display: block; margin-bottom: 6px; }
+      .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+      .seg button { height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid hsl(var(--border)); font-size: 12.5px; }
+      .seg button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+      .board { border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--muted) / 0.5); overflow: hidden; }
+      .board-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--card)); font-size: 13px; }
+      .board svg { display: block; width: 100%; height: 340px; }
+      .checks { padding: 10px 12px; display: grid; gap: 4px; font-size: 12.5px; border-top: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+      .ops { font-size: 12px; max-height: 180px; overflow: auto; }
+
+      /* ---- 原型 ---- */
+      .term { background: #0b0b0f; color: #d4d4d8; font-family: "Geist Mono", Consolas, monospace; font-size: 12.5px; padding: 14px; height: 440px; overflow: auto; line-height: 1.6; }
+      .term .g { color: #4ade80; } .term .r { color: #f87171; } .term .y { color: #fbbf24; } .term .d { color: #71717a; } .term .c { color: #38bdf8; }
+      .ptabs { display: flex; gap: 2px; border-bottom: 1px solid hsl(var(--border)); padding: 6px 8px 0; background: hsl(var(--muted) / 0.5); overflow-x: auto; }
+      .ptab { padding: 6px 10px; font-size: 12.5px; border-radius: 6px 6px 0 0; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+      .ptab[aria-selected="true"] { background: hsl(var(--background)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-bottom-color: hsl(var(--background)); margin-bottom: -1px; }
+      .pbody { height: 400px; overflow: auto; padding: 14px; font-size: 13px; }
+      .pbody pre { margin: 0; font-family: "Geist Mono", Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+      .md h3 { font-size: 15px; margin: 14px 0 6px; } .md h3:first-child { margin-top: 0; }
+      .md table { font-size: 12px; } .md td, .md th { border-bottom: 1px solid hsl(var(--border)); padding: 4px 6px; text-align: left; }
+      .empty { height: 100%; display: grid; place-items: center; text-align: center; color: hsl(var(--muted-foreground)); font-size: 13px; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field input[type="number"] { height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; padding: 0 8px; background: hsl(var(--background)); width: 100%; }
+      .field select { height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; padding: 0 6px; background: hsl(var(--background)); width: 100%; }
+      .chk { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; }
+      .chk input { margin-top: 3px; }
+
+      /* ---- 隐患 ---- */
+      .hz tbody tr.main { cursor: pointer; }
+      .hz tbody tr.main:hover td, .hz tbody tr.main:hover th { background: hsl(var(--accent)); }
+      .hz .detail td { background: hsl(var(--muted) / 0.5); font-size: 12.5px; }
+
+      @media (max-width: 820px) {
+        .g2, .g3 { grid-template-columns: 1fr !important; }
+        .top-in { padding: 0 12px; }
+        .wrap { padding: 24px 16px 64px; }
+        .brand span.t { display: none; }
+      }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="bot"></i></span><span class="t">画布 Agent 调优</span></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="layout" aria-selected="false"><i data-lucide="layout-grid"></i>排版问题</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="terminal"></i>Harness 原型</button>
+          <button class="tab" role="tab" data-tab="hazard" aria-selected="false"><i data-lucide="bug"></i>隐患清单</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">修好 Agent 的排版，再给它装一个「行车记录仪」</h1>
+        <p class="lead">
+          这份设计做三件事。<b>A：</b>Agent 搭分镜时节点和组互相压住、组框框不住节点，根因已经找到，给出修法。<b>B：</b>做一套调优 Harness：线上每一轮 Agent 都记下完整轨迹，再用一个命令行工具跑预先写好的用例，<b>自动检查画布结构，把报告写给 AI 编码助手看</b>，让调提示词有凭据可依。<b>C：</b>顺带排查出 15 条你还没遇到的隐患。<b>本轮只出设计，代码还没改。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>事实来自 2026-10-20 <code>perf/agent</code> 分支的代码，完整证据和行号在
+            <code>Agent调优Harness.md</code>。原型和演示里的运行、耗时、token 都是<b>模拟示意</b>。不知道从哪看起，先看「排版问题」页，把参数调成 9:16，问题一眼可见。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对代码 / 官方页面</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-violet">提案</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一次调优是怎么走的</h2>
+          <p class="sub">编码助手改了提示词以后，怎样知道改得是好是坏。</p>
+          <div class="flow note">
+            <div class="node"><b>用例 JSON</b>初始画布、用户原话、预写的应答剧本、断言、预算</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>harness run</b>用测试账号调用真实后端，按剧本回答 Agent 的提问和审批</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>后端记轨迹</b>每次模型请求、每次工具调用都记原文和耗时；索引存 PG，原文存素材存储</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>轨迹包 + 断言</b>后端生成 report.md 和 trace.jsonl，CLI 补上断言：不重叠、成员在组内、该有的连线</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>编码助手读报告</b>定位到出错的那一步，改提示词或工具，再跑一遍</div>
+          </div>
+          <div class="note-txt">
+            设计：埋点全部放在 Go 侧（模型代理和工具执行这两个入口），Node 运行时不用改。Go 已经能拿到模型请求的原文和工具调用的参数、返回，在这里记录最省事，而且 Node 进程里没有存储凭据，本来也不该让它写。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>轨迹没记上时（兜底）：</b>上传失败只记一条 warn，并给这一轮打上 <code>trace_complete=false</code>，<b>用户的运行不受任何影响</b>。Harness 拿不到管理员凭据时照样跑用例和断言，报告里标「无轨迹」。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>三种用法</h2>
+          <p class="sub">都用同一种「轨迹包」：报告由后端生成，命令行跑用例时只在报告上补断言结果。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="play"></i><b>跑用例</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-violet">一期</span><span class="tag t-warn">花真实积分</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b><code>harness run cases/</code></b>：全部走真实 LLM 和真实生成。每个用例必须写预算，整批运行超过上限就拒绝开跑。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="download"></i><b>后台导出轨迹包</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-violet">一期</span><span class="tag t-bad">仅管理员 · 留审计</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>生产后台「日志管理 → Agent 运行」</b>：找到出问题的那一轮，下载 zip（里面有后端生成的 report.md）。<b>开发环境连不到生产环境</b>，所以靠人把文件拷到开发机分析。轨迹保留 14 天。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="git-compare"></i><b>对比 / 转用例</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">二期</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b><code>diff</code> / <code>to-case</code></b>：对比改提示词前后的两次运行；把导出的线上轨迹包变成回归用例。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么自研，不用现成的</h2>
+          <p class="sub">候选是业界最常见的观测平台和评测跑器。你已确认选自研，命名对齐 OpenTelemetry GenAI 约定。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>自研（采用）</th><th>Langfuse 自部署</th><th>promptfoo</th></tr></thead>
+              <tbody>
+                <tr><th>主要给谁看</th><td class="y">AI 编码助手：JSONL + Markdown</td><td class="m">给人看的网页界面</td><td>命令行 + 网页</td></tr>
+                <tr><th>私有化部署成本</th><td class="y">零新增服务，复用 PG 和素材存储</td><td class="m">要多部署 ClickHouse、Worker 等，共 5 个以上服务</td><td class="y">本地命令行</td></tr>
+                <tr><th>多轮对话、审批、提问应答</th><td class="y">原生支持，按剧本应答</td><td>只做观测，不负责跑</td><td class="m">要自己写 provider 包一层；多轮写法未核实</td></tr>
+                <tr><th>画布结构断言</th><td class="y">内置不重叠、组内、连线等断言</td><td class="m">没有，要自写评分器</td><td class="m">可以写 JS 断言，但要自己解析画布</td></tr>
+                <tr><th>用户数据边界</th><td class="y">不出系统</td><td class="m">进入另一套系统</td><td class="y">只在本地</td></tr>
+                <tr><th>代价</th><td class="m">要自己写，也没有现成界面</td><td>现成界面、数据集</td><td>现成断言库</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对代码</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>线上用户反馈「Agent 把画布搭乱了」时，会发生什么</h2>
+          <p class="sub">这是 Harness 的第二种用法，也是「线上也记轨迹」这个决定的来由。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>管理员打开生产后台「日志管理 → Agent 运行」</b><small>按用户邮箱和时间筛选，找到那一轮；报错数一列很显眼</small></li>
+                <li><b>点「下载轨迹包」</b><small>得到 <code>agent-trace-9137.zip</code>，同时写一条审计 <code>agent.trace.export</code></small></li>
+                <li><b>把 zip 拷到开发机，解压到 <code>.harness/imports/9137/</code></b><small>开发环境连不到生产环境，这一步靠人搬运</small></li>
+                <li><b>交给编码助手</b><small>它读 report.md，看到比如「第 14 步 canvas_arrange 报错 3 次」，再去 trace.jsonl 里查原文</small></li>
+                <li><b>修复后，把这一轮转成回归用例</b><small>二期 <code>to-case</code>；一期先手写用例</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：轨迹里有用户的剧本和提示词原文。</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>只有管理员能导出，每次导出都留审计；普通用户连自己的原文轨迹也看不到</li>
+                    <li>14 天后自动删除，过期的行下载按钮置灰</li>
+                    <li>下载下来的 zip 离开系统后就不受审计管控了，解压目录 <code>.harness/</code> 已加进 <code>.gitignore</code>，不会进仓库</li>
+                    <li>图片只记素材 id，请求头一律不记，渠道 Key 不会进轨迹</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">对外发布时，要在隐私说明里写明：「Agent 对话过程会保留 14 天，用于排查问题」。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 排版问题（交互演示） ============ -->
+      <section id="tab-layout" hidden>
+        <h1 class="h1">为什么节点会重叠、组会压组</h1>
+        <p class="lead">
+          模拟 Agent 一次批量操作：先建一个镜头组，往里放节点，再建下一个组……下面并排画出<b>现在的后端算法</b>和<b>修复后的算法</b>算出来的结果，节点按前端实际尺寸画。<b>把画幅调成 9:16，或者组数调到 2 个以上，就能看到问题。</b>红色表示有重叠或越出组框。两边的算法都用 JS 照着后端逻辑重写，结果是示意。
+        </p>
+
+        <div class="grid g2" style="margin-top: 20px; grid-template-columns: 260px minmax(0, 1fr)">
+          <div class="card ctl">
+            <div><label>画幅（图片、视频节点）</label><div class="seg" id="segAspect"></div></div>
+            <div><label>镜头组数</label><div class="seg" id="segGroups"></div></div>
+            <div><label>每组节点数</label><div class="seg" id="segPer"></div></div>
+            <div class="callout c-info" style="font-size: 12.5px">
+              <i data-lucide="info"></i>
+              <div>每组的节点按顺序为 文本 → 关键帧图片 → 视频 → 图片。画布上原有一个剧本节点，放在左上角。</div>
+            </div>
+            <div>
+              <label>现状算法：这一批的操作顺序</label>
+              <div class="ops mono muted" id="opsList"></div>
+            </div>
+          </div>
+          <div class="grid g2" style="align-content: start">
+            <div class="board note">
+              <div class="board-h"><i data-lucide="circle-x" style="color: rgb(var(--bad))"></i><b>现状</b><span class="muted" style="font-size: 12px">后端按 576×324 排版、组框批末才贴合</span></div>
+              <svg id="svgOld"></svg>
+              <div class="checks" id="chkOld"></div>
+            </div>
+            <div class="board">
+              <div class="board-h"><i data-lucide="circle-check" style="color: rgb(var(--ok))"></i><b>修复后</b><span class="tag t-violet">提案</span></div>
+              <svg id="svgNew"></svg>
+              <div class="checks" id="chkNew"></div>
+            </div>
+          </div>
+        </div>
+        <div class="note-txt">
+          左图标注：现状下的三个毛病可以同时看到。① 9:16 时节点从组框底部伸出去（R1，尺寸不一致）；② 第 2 个组按第 1 个组还没贴合时的宽度 200 来放，结果被盖在下面（R2，批末才贴合）；③ Agent 想用 canvas_arrange 把组排开，但这个工具排不了组（R3）。
+        </div>
+
+        <div class="sec">
+          <h2>四个根因</h2>
+          <p class="sub">R1 到 R3 在后端 <code>canvasgraph</code>，R4 在前端合并补丁的地方，与隐患清单里的 C1 是同一个问题。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>#</th><th>根因</th><th>证据</th><th>你看到的现象</th><th>核实度</th></tr></thead>
+              <tbody>
+                <tr><th>R1</th><td>后端把每个节点都当成 576×324，前端按画幅算尺寸（短边 324）</td><td><code>layout.go:46-52</code> 与 <code>node-frame.ts:36-41</code></td><td>9:16 节点（324×576）伸出组框 204px，看起来像「没进组」；竖排时上下压住；21:9 时左右压住</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>R2</th><td>组框到这一批操作结束时才贴合，中间放新组时用的是旧的 200×140</td><td><code>apply.go:49-54</code>、<code>createGroup</code>、<code>placeFree</code></td><td>第 2 个组落在第 1 个组的范围里，组压组</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>R3</th><td><code>canvas_arrange</code> 遇到组就报错</td><td><code>layout.go</code> 的 <code>arrangeTargets</code></td><td>提示词让 Agent 「搭好后整理布局」，它却排不了组</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+                <tr><th>R4</th><td>前端合并 Agent 改动时，<code>parentId</code> 和 <code>position</code> 分开判断</td><td><code>graph-changes.ts</code> 的 <code>applyChanges</code></td><td>你刚拖过某个节点时，它被挂进了组，坐标却没换算，被甩到组外</td><td><span class="tag t-ok">已核对代码</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>修法（已确认方向：后端照搬尺寸规则 + 前端兜底）</h2>
+          <p class="sub">共六项，按 TDD 实现：先写失败的测试，再改代码。</p>
+          <div class="grid g3">
+            <div class="card"><b>F1 后端算真实尺寸</b><p class="muted" style="font-size: 13px; margin-top: 6px">规则与前端逐条一致：音频 1:1 → <code>mediaAspect</code> → 参数里的 <code>aspect_ratio/ratio</code> → 模型默认比例（由 service 注入）→ 16:9。前后端共用一份测试向量 <code>node-size-cases.json</code>。</p></div>
+            <div class="card"><b>F2 组框立刻贴合</b><p class="muted" style="font-size: 13px; margin-top: 6px">每加一个成员就贴合一次，不再等这一批结束。组内一行最多 4 个，超过就换行。</p></div>
+            <div class="card"><b>F3 本批新建的东西主动避让</b><p class="muted" style="font-size: 13px; margin-top: 6px">新的组放到已有内容的左下方，如果还和别的东西重叠就继续往下挪。<b>用户原有的节点一律不动。</b></p></div>
+            <div class="card"><b>F4 canvas_arrange 能排组</b><p class="muted" style="font-size: 13px; margin-top: 6px">组当作一个整体参与排列。提示词改成「搭好后把镜头组按 column 排列」，版本升到 10。</p></div>
+            <div class="card"><b>F5 前端兜底</b><p class="muted" style="font-size: 13px; margin-top: 6px">成片的实际画幅和参数不一致时（比如选了 Auto），组框只往大撑，并把右边、下边的邻居推开，最多级联 3 层。这次调整不进撤销栈。</p></div>
+            <div class="card"><b>F6 parentId 和 position 一起改</b><p class="muted" style="font-size: 13px; margin-top: 6px">合并和撤销时把这两个字段当成一组：要么一起写，要么一起保留。与隐患 C1、C2 一起修。</p></div>
+          </div>
+          <div class="callout c-warn" style="margin-top: 12px">
+            <i data-lucide="triangle-alert"></i>
+            <div><b>待实测：</b>文本节点的高度按 324 推断，没在浏览器里量过。宽度 576 已核对（<code>node-card.tsx:263</code> 的 <code>w-xl</code>）。实现 F1 前要先量一次。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Harness 原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">Harness 命令行：跑一个用例</h1>
+        <p class="lead">
+          左边是终端，右边是生成的输出目录。数据都在内存里，运行是<b>模拟的，不会真的调用接口</b>。预置用例是「三镜头 9:16 分镜」，点「运行」就能走完一遍。想看失败的样子，可以：<b>① 勾选「删掉画幅那条应答」</b>（Agent 提了没预写的问题，用例判失败）；<b>② 代码版本切到「修复前」</b>（结构断言失败）；<b>③ 把预算上限改得比用例预算小</b>（拒绝开跑）。
+        </p>
+
+        <div class="grid g2" style="margin-top: 18px; grid-template-columns: 250px minmax(0, 1fr)">
+          <div class="card ctl">
+            <div class="field"><span class="muted">用例</span>
+              <select id="pCase">
+                <option value="sb">storyboard-9x16-3shots · 预算 0</option>
+                <option value="gen">keyframe-generate-2 · 预算 40 · 真实生成</option>
+              </select>
+            </div>
+            <div class="field"><span class="muted">后端代码版本（示意）</span>
+              <select id="pVer">
+                <option value="new">修复后（prompt v10）</option>
+                <option value="old">修复前（prompt v9）</option>
+              </select>
+            </div>
+            <div class="field"><span class="muted"><code>--repeat</code></span><input type="number" id="pRepeat" min="1" max="5" value="1" /></div>
+            <div class="field"><span class="muted"><code>--max-credits</code>（整批预算上限）</span><input type="number" id="pMax" min="0" value="200" /></div>
+            <label class="chk"><input type="checkbox" id="pDrop" />删掉画幅那条应答</label>
+            <label class="chk"><input type="checkbox" id="pNoAdmin" />不配管理员凭据</label>
+            <button class="btn btn-primary" id="pRun" style="justify-content: center"><i data-lucide="play"></i>运行</button>
+            <p class="muted" style="font-size: 12px">运行中不能改参数。耗时、token、积分都是示意。</p>
+          </div>
+          <div class="grid g2 note" style="align-content: start">
+            <div class="frame">
+              <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">终端 · video-canvas</span></div>
+              <div class="term" id="term"></div>
+            </div>
+            <div class="frame">
+              <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px" id="outPath">.harness/runs/</span></div>
+              <div class="ptabs" id="ptabs"></div>
+              <div class="pbody" id="pbody"></div>
+            </div>
+          </div>
+        </div>
+        <div class="note-txt">
+          设计：报告第一行就是结论，紧接着是失败的断言和证据，然后是自动标出的「可疑信号」，最后才是完整时间线。这是给 AI 读的顺序：先知道哪里错，再去 trace.jsonl 里按序号找原文。时间线这部分由后端生成，与后台下载的轨迹包是同一份，CLI 只在顶部补上断言。
+        </div>
+
+        <div class="sec">
+          <h2>生产后台：Agent 运行 → 下载轨迹包</h2>
+          <p class="sub">
+            开发环境连不到生产环境，线上问题从这里导出。<b>一期只做列表和下载</b>，不在浏览器里看时间线。预置了 6 条记录，可以试试：下载报错数为 3 的那条；看「已过期」「记录已关闭」两行的按钮（置灰并写明原因）；下载「运行中」那条（会提示轨迹不完整）；勾选「模拟下载失败」看失败的样子。下载是模拟的，不会真的生成文件。
+          </p>
+          <div class="frame note">
+            <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left: 8px">admin.example.com / 日志管理 / Agent 运行</span></div>
+            <div style="padding: 14px" id="adminProto"></div>
+          </div>
+          <div class="note-txt">
+            设计：位置放在「日志管理」下，与「操作审计」并列，因为下载本身就会产生一条审计。不可下载的行不隐藏，而是把按钮置灰并写明原因，管理员一眼就知道是轨迹过期了，而不是这一轮没被记录。「报错」一列标红，用来快速找出有问题的运行；在线时间线放到以后做（届时复用 TraceTimeline）。
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 隐患清单 ============ -->
+      <section id="tab-hazard" hidden>
+        <h1 class="h1">还没被你发现的 15 个问题</h1>
+        <p class="lead">
+          把整条 Agent 链路（Node 运行时、Go 桥和服务、前端同步）读了一遍。<b>最该先修的是 C1、C2</b>，它们和排版问题同属一类：<code>parentId</code> 与 <code>position</code> 被拆开处理。<b>C4、C5 跟钱有关</b>，排第二。点任意一行展开看触发场景和修法。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px" id="hzFilter"></div>
+        <div class="cmp-wrap" style="margin-top: 12px">
+          <table class="cmp hz"><thead><tr><th>#</th><th>级别</th><th>问题</th><th>位置</th><th>核实度</th></tr></thead><tbody id="hzBody"></tbody></table>
+        </div>
+        <div class="callout c-ok" style="margin-top: 14px">
+          <i data-lucide="shield-check"></i>
+          <div><b>安全方面没发现实质问题：</b>桥只监听本机回环地址，令牌通过 stdin 传入，子进程环境变量是白名单，<code>web_fetch</code> 防 SSRF。有一个小隐患：嵌套工具调用不校验父调用 id，任意非空值都能绕过步数计数（Node 是可信进程，风险低）。</div>
+        </div>
+        <p class="muted" style="font-size: 12.5px; margin-top: 10px">建议修复顺序：C1、C2 与排版一起修 → C3 → C4、C5（涉及钱）→ C6 到 C8 → 其余放二期。</p>
+      </section>
+
+      <!-- ============ 数据与接口 ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">以下都是设计提案，尚未实现，对应 Markdown 的第 6.B 节和第 8 节。<b>大部分是在现有表上加字段</b>，只新增一张索引表；原文存在现有的素材存储里。</p>
+
+        <div class="sec">
+          <h2>轨迹里有什么</h2>
+          <p class="sub">span 类型对齐 OpenTelemetry GenAI 的命名，将来要接 OTel 后端时不用改名。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>span</th><th>埋点位置</th><th>记录</th><th>索引放在</th></tr></thead>
+              <tbody>
+                <tr><th><code>invoke_agent</code></th><td><code>StartRun</code> 和终态</td><td>运行输入、prompt 版本、工具 hash、技能版本、合计</td><td><code>agent_runs</code>（加字段）</td></tr>
+                <tr><th><code>segment</code></th><td><code>runtime.launch / watch</code></td><td>启动方式、退出码、stderr 末尾</td><td><code>agent_trace_spans</code>（新表）</td></tr>
+                <tr><th><code>chat</code></th><td><code>bridge.ProxyModel</code></td><td>请求原文、响应、token、首字延迟、finish_reason、上游渠道</td><td><code>agent_model_calls</code>（加字段）</td></tr>
+                <tr><th><code>execute_tool</code></th><td><code>bridge_tools.executeTool</code></td><td>参数原文、返回原文、错误分类、耗时、父调用、关联的画布改动</td><td><code>agent_trace_spans</code></td></tr>
+                <tr><th><code>approval</code></th><td>审批创建和决定</td><td>种类、报价、决定、执行结果</td><td><code>agent_trace_spans</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">沿用现有的迁移机制，复用 <code>agent_mutations</code>（画布改动）和 <code>agent_events</code>（时间线），不重复存。表里不存任何密钥。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_runs</code> 新增字段</th></tr></thead>
+              <tbody>
+                <tr><th>prompt_version</th><td>int，开跑时的 <code>prompts.Version</code></td></tr>
+                <tr><th>agent_model_key</th><td>varchar(128)</td></tr>
+                <tr><th>tools_hash</th><td>char(16)，工具声明的 sha256 前 16 位</td></tr>
+                <tr><th>skill_pins</th><td>jsonb，技能名 → 版本</td></tr>
+                <tr><th>input_json</th><td>jsonb，message、mode、selection、budget</td></tr>
+                <tr><th>harness_case</th><td>varchar(128)，取自请求头 <code>X-Agent-Harness</code>；为空表示真实用户。只是标签，不影响权限</td></tr>
+                <tr><th>trace_complete</th><td>bool，默认 true</td></tr>
+                <tr><th>trace_bytes</th><td>bigint</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_model_calls</code> 新增字段</th></tr></thead>
+              <tbody>
+                <tr><th>span_id</th><td>varchar(32)</td></tr>
+                <tr><th>purpose</th><td><code>chat</code> 或 <code>summary</code>，取自请求头 <code>X-Agent-Purpose</code></td></tr>
+                <tr><th>segment_seq</th><td>int，属于第几个片段</td></tr>
+                <tr><th>first_token_ms / duration_ms</th><td>int</td></tr>
+                <tr><th>finish_reason</th><td>varchar(32)</td></tr>
+                <tr><th>upstream_model / channel_id</th><td>实际走的上游模型和渠道</td></tr>
+              </tbody></table></div>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px"><table class="cmp">
+            <thead><tr><th colspan="2"><code>agent_trace_spans</code> 新表（工具、片段、审批的索引）</th></tr></thead>
+            <tbody>
+              <tr><th>run_id, seq</th><td>bigint, int；索引 <code>(run_id, seq)</code></td></tr>
+              <tr><th>span_id / parent_span_id</th><td>varchar(32)；唯一 <code>(run_id, span_id)</code>；codemode 的嵌套调用用 parent 指向父调用</td></tr>
+              <tr><th>kind / name</th><td><code>segment | execute_tool | approval</code>；工具名或片段的启动方式</td></tr>
+              <tr><th>tool_call_id</th><td>varchar(64)，可为空</td></tr>
+              <tr><th>status / error_code</th><td><code>ok | error | denied | aborted</code>；错误分类</td></tr>
+              <tr><th>summary / duration_ms / bytes</th><td>一行摘要、耗时、原文大小</td></tr>
+              <tr><th>mutation_id</th><td>可为空，关联 <code>agent_mutations</code></td></tr>
+              <tr><th>started_at / ended_at</th><td>timestamptz；<code>started_at</code> 建索引，供 14 天清理用</td></tr>
+            </tbody></table></div>
+          <div class="callout c-info" style="margin-top: 12px">
+            <i data-lucide="hard-drive"></i>
+            <div>
+              <b>原文对象：</b><code>agent-traces/{yyyy}/{mm}/{dd}/{run_id}/{segment_seq}.jsonl.gz</code>，每个片段一个对象，片段结束时上传；进程崩溃时也会把已经写下的部分传上去。单个 span 最多 256KB，单个 run 最多 8MB，超出部分截断并打标记。图片只记 <code>asset_id</code>，请求头一律不记。每天由 River 任务清掉超过 14 天的轨迹，<code>agent_events</code> 一直没实现的清理也顺带补上。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <div class="cmp-wrap"><table class="cmp">
+            <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+            <tbody>
+              <tr><th><code>GET /api/v1/admin/agent/runs</code></th><td>筛选参数 <code>user_id、canvas_id、status、harness_case、from、to、page</code>；每行带步数、token、积分、耗时、工具报错数、prompt 版本</td><td>非管理员 403</td></tr>
+              <tr><th><code>GET /api/v1/admin/agent/runs/:rid/trace</code></th><td>返回轨迹包。默认是 zip（<code>agent-trace-&lt;rid&gt;.zip</code>），供后台下载；<code>?format=json</code> 返回 <code>{files:{文件名:内容}}</code>，供 CLI 使用。每次调用都写审计 <code>agent.trace.export</code></td><td>运行不存在；轨迹已过期（超过 14 天）；轨迹记录已关闭</td></tr>
+              <tr><th><code>POST /api/v1/agent/sessions/:sid/runs</code>（现有）</th><td>新增可选请求头 <code>X-Agent-Harness</code>（最长 128 字符），写入 <code>harness_case</code></td><td>无变化</td></tr>
+            </tbody></table></div>
+          <div class="cmp-wrap" style="margin-top: 12px"><table class="cmp">
+            <thead><tr><th>轨迹包里的文件</th><th>内容</th></tr></thead>
+            <tbody>
+              <tr><th>report.md</th><td>后端 <code>service/agent/tracereport</code> 生成：运行概要 → 可疑信号 → 时间线 → 最终画布概要。CLI 跑用例时在顶部插入断言结论和失败断言</td></tr>
+              <tr><th>trace.jsonl</th><td>规整后的 span，一行一个，带请求、响应、参数、返回原文</td></tr>
+              <tr><th>events.jsonl / mutations.jsonl</th><td>这一轮的 <code>agent_events</code> 和 <code>agent_mutations</code></td></tr>
+              <tr><th>canvas.before/after.json</th><td>开跑和结束时的画布快照，存在 <code>invoke_agent</code> span 里（系统不保存历史画布，只能这样留底）</td></tr>
+              <tr><th>meta.json</th><td>run、用户、画布、prompt 版本、模型、tools_hash、起止时间、trace_complete、导出时间、导出人</td></tr>
+            </tbody></table></div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">后台页面：<code>web/src/pages/admin/logs/agent-runs/</code>，在 <code>admin-nav.ts</code> 的「日志管理」下加一项。CLI 只调用现有接口：登录 <code>/auth/login</code>、建画布 <code>/canvas</code>、建会话、开跑、补拉事件 <code>/events?after=</code>、应答审批 <code>/approvals/:aid/decision</code>、取消运行。不新增 API Token 机制，凭据只从环境变量读取。</p>
+        </div>
+
+        <div class="sec">
+          <h2>用例格式与断言</h2>
+          <div class="grid g2">
+            <div class="codeblock"><pre>// cases/storyboard-9x16-3shots.case.json（提案）
+{
+  "id": "storyboard-9x16-3shots",
+  "fixture": "fixtures/script-only.canvas.json",
+  "mode": "storyboard",
+  "message": "把剧本拆成 3 个镜头，竖屏 9:16 …",
+  "selection": ["n_script"],
+  "budget": 0,
+  "timeout_sec": 600,
+  "wait_tasks": false,
+  "answers": [
+    {"match": {"kind": "ask", "contains": "画幅"},
+     "answer": {"answer": "9:16"}},
+    {"match": {"kind": "ask", "ask_kind": "model"},
+     "answer": {"answer": "&lt;图片模型 key&gt;"}},
+    {"match": {"kind": "generate"},
+     "answer": {"decision": "reject"}},
+    {"match": {"kind": "delete"},
+     "answer": {"decision": "reject"}}
+  ],
+  "expect": [
+    {"type": "run_status", "in": ["succeeded"]},
+    {"type": "no_overlap"},
+    {"type": "members_inside_group"},
+    {"type": "count", "of": "group", "min": 3, "max": 4},
+    {"type": "every_group_has",
+     "kinds": ["script", "image", "video"]},
+    {"type": "edge_exists", "from": "image",
+     "to": "video", "scope": "group"},
+    {"type": "max_tool_errors", "max": 2}
+  ]
+}</pre></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th>断言</th><th>判定</th></tr></thead>
+              <tbody>
+                <tr><th>run_status</th><td>终态在列表里</td></tr>
+                <tr><th>no_overlap</th><td>顶层对象之间、同组成员之间两两不相交；尺寸用 F1 的规则</td></tr>
+                <tr><th>members_inside_group</th><td>成员完全在组框内</td></tr>
+                <tr><th>count</th><td>某种节点或组的数量在范围内</td></tr>
+                <tr><th>every_group_has</th><td>每个组都包含所列种类</td></tr>
+                <tr><th>edge_exists</th><td>存在 from→to 的连线，可以要求每个组内都有</td></tr>
+                <tr><th>nodes_have_prompt / _output</th><td>提示词非空，或已有产物</td></tr>
+                <tr><th>asked / not_asked</th><td>是否出现过某类提问</td></tr>
+                <tr><th>max_tool_errors / steps / credits</th><td>过程指标的上限</td></tr>
+                <tr><th>（不做）LLM 裁判</th><td class="m">你已确认不要，主观质量由人看报告判断</td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>运行流程（伪代码）</h2>
+          <div class="codeblock"><pre>// agent/harness/runner.mjs（提案）
+for (const c of cases) total += c.budget * repeat
+if (total > maxCredits) exit("预算闸门：" + total + " &gt; " + maxCredits)
+
+jwt = login(HARNESS_EMAIL, HARNESS_PASSWORD)
+canvas = POST /canvas { title: "[harness] " + c.id, graph: fixture }
+sess   = POST /canvas/:id/agent/sessions { mode }
+run    = POST /agent/sessions/:sid/runs { message, selection, budget_credits }  // 头 X-Agent-Harness
+loop every 1s until terminal(run) or timeout:
+  for ev in GET /events?after=seq:
+    if ev.type == "approval.created":
+      a = firstMatch(c.answers, ev)
+      if !a: POST /runs/:rid/cancel; fail("未预写的提问：" + ev.question); break
+      POST /approvals/:aid/decision a.answer
+if c.wait_tasks: poll canvas every 5s until bound tasks done|error
+after  = GET /canvas/:id
+pack   = admin ? GET /admin/agent/runs/:rid/trace?format=json : null  // 同一环境的后端；没有管理员凭据时报告标「无轨迹」
+writeFiles(dir, pack.files)                                       // report.md、trace.jsonl … 由后端生成
+result = assertions(c.expect, before, after, trace, events)
+write assertions.json; prepend 断言结论 to report.md
+if !keep: DELETE /canvas/:id</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>问题 1 本轮只写进设计</b>：先出文档，你确认后再按 TDD 修。</li>
+              <li><b>主要给 AI 编码助手用</b>：形态是 CLI + JSONL + Markdown 报告，一期不做后台页面。</li>
+              <li><b>全部走真实服务</b>：LLM 和生成都是真的，所以要有预算闸门和专用测试账号。</li>
+              <li><b>画布结构断言 + 人工看报告</b>：不做 LLM 裁判。</li>
+              <li><b>用例里预写应答剧本</b>：没有预写的提问直接判失败，保证每次运行条件一致、可以复现。</li>
+              <li><b>线上运行也记轨迹</b>，并且可以导出成用例（转用例在二期）。</li>
+              <li><b>索引存 PG，原文存素材存储，保留 14 天。</b></li>
+              <li><b>只有管理员能导出，导出留审计。</b></li>
+              <li><b>一期范围</b>：轨迹 + CLI 跑用例 + 结构断言；二期做对比和转用例。</li>
+              <li><b>排版修法</b>：后端照搬尺寸规则，前端兜底撑开组框并推开邻居。</li>
+              <li><b>自研，字段名对齐 OTel GenAI</b>：不引入 Langfuse 和 promptfoo。</li>
+              <li><b>开发环境连不到生产环境</b>：线上轨迹由管理员在生产后台下载轨迹包，拿到开发环境解压后分析；报告由后端生成，删除 <code>harness pull</code>。</li>
+              <li><b>后台页一期只做列表和下载</b>：放在「日志管理 → Agent 运行」，不做在线查看时间线。</li>
+              <li><b>主文档已回写</b>：上面两条，以及这条——审批种类只有 <code>generate / delete / ask</code> 三种，选模型是 <code>ask</code> 的子类，用例里用 <code>ask_kind</code> 区分（6.B.4）。</li>
+            </ol>
+            <p class="muted" style="font-size: 12.5px; margin-top: 10px">已搁置：后台在线查看时间线（届时复用 <code>TraceTimeline</code>）、LLM 裁判、录制回放、用户主动上报。仍待确认：文本节点的实测高度、<code>ask</code> 提问里区分选模型的字段名、多实例部署时片段是否会落在不同实例上。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+      }
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 排版演示：照后端逻辑重写的两套算法（示意） ================= */
+      const PAD = { x: 48, top: 72, bottom: 48 }, GMIN = { w: 200, h: 140 }, GAPX = 120, GAPY = 80, SHORT = 324;
+      const KINDS = ["script", "image", "video", "image"];
+      const LB = { script: "文本", image: "图片", video: "视频" };
+      const L = { aspect: "9:16", groups: 2, per: 3 };
+
+      function realSize(kind, aspect) {
+        if (kind === "script") return { w: 576, h: 324 };
+        const [a, b] = aspect.split(":").map(Number), r = a / b;
+        return r >= 1 ? { w: Math.round(SHORT * r), h: SHORT } : { w: SHORT, h: Math.round(SHORT / r) };
+      }
+      const frameAround = (rs) => {
+        const x0 = Math.min(...rs.map((r) => r.x)), y0 = Math.min(...rs.map((r) => r.y));
+        const x1 = Math.max(...rs.map((r) => r.x + r.w)), y1 = Math.max(...rs.map((r) => r.y + r.h));
+        return { x: x0 - PAD.x, y: y0 - PAD.top, w: Math.max(GMIN.w, x1 - x0 + PAD.x * 2), h: Math.max(GMIN.h, y1 - y0 + PAD.top + PAD.bottom) };
+      };
+      const fixture = () => ({ id: "s", kind: "script", label: "剧本", x: 0, y: 0 });
+
+      // 现状：节点一律按 576×324；建组时组框 200×140 并用 placeFree；成员往右排；批末才贴合
+      function layoutOld() {
+        const fx = fixture(), groups = [], ops = [];
+        const top = () => [{ x: fx.x, y: fx.y, w: 576, h: 324 }, ...groups.map((g) => ({ x: g.x, y: g.y, w: Math.max(GMIN.w, g.w), h: Math.max(GMIN.h, g.h) }))];
+        for (let i = 0; i < L.groups; i++) {
+          const t = top(), right = Math.max(...t.map((r) => r.x + r.w)), topY = Math.min(...t.map((r) => r.y));
+          const g = { id: "g" + (i + 1), x: right + GAPX, y: topY, w: GMIN.w, h: GMIN.h, members: [] };
+          groups.push(g);
+          ops.push(`create_group g${i + 1} → (${g.x}, ${g.y}) 200×140`);
+          for (let j = 0; j < L.per; j++) {
+            const kind = KINDS[j];
+            const last = g.members[g.members.length - 1];
+            const rel = last ? { x: last.rx + 576 + GAPX, y: last.ry } : { x: PAD.x, y: PAD.top };
+            g.members.push({ id: `g${i + 1}n${j + 1}`, kind, rx: rel.x, ry: rel.y });
+          }
+          ops.push(`create_node ×${L.per} parentGroup=g${i + 1}`);
+        }
+        ops.push("— 批末 fitGroup（按 576×324）—");
+        for (const g of groups) {
+          const f = frameAround(g.members.map((m) => ({ x: g.x + m.rx, y: g.y + m.ry, w: 576, h: 324 })));
+          for (const m of g.members) { const ax = g.x + m.rx, ay = g.y + m.ry; m.rx = ax - f.x; m.ry = ay - f.y; }
+          Object.assign(g, f);
+          ops.push(`g${g.id.slice(1)} 贴合后 → (${g.x}, ${g.y}) ${g.w}×${g.h}`);
+        }
+        ops.push("canvas_arrange([g1…]) → 报错：节点不存在或是组");
+        return { fx, groups, ops };
+      }
+
+      // 修复后：真实尺寸；成员一行最多 4 个、立刻贴合；新组放到已有内容左下方，重叠就继续往下
+      function layoutNew() {
+        const fx = fixture(), groups = [];
+        const rects = () => [{ x: fx.x, y: fx.y, w: 576, h: 324 }, ...groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))];
+        for (let i = 0; i < L.groups; i++) {
+          const rs = rects();
+          const g = { id: "g" + (i + 1), x: Math.min(...rs.map((r) => r.x)), y: Math.max(...rs.map((r) => r.y + r.h)) + GAPY, w: GMIN.w, h: GMIN.h, members: [] };
+          let cx = PAD.x, cy = PAD.top, rowH = 0, col = 0;
+          for (let j = 0; j < L.per; j++) {
+            const kind = KINDS[j], s = realSize(kind, L.aspect);
+            if (col === 4) { cx = PAD.x; cy += rowH + GAPY; rowH = 0; col = 0; }
+            g.members.push({ id: `g${i + 1}n${j + 1}`, kind, rx: cx, ry: cy });
+            cx += s.w + GAPX; rowH = Math.max(rowH, s.h); col++;
+            const f = frameAround(g.members.map((m) => ({ x: g.x + m.rx, y: g.y + m.ry, ...wh(m) })));
+            for (const m of g.members) { const ax = g.x + m.rx, ay = g.y + m.ry; m.rx = ax - f.x; m.ry = ay - f.y; }
+            Object.assign(g, f);
+          }
+          // settle：与已有顶层对象相交就往下挪
+          let guard = 0;
+          while (guard++ < 20) {
+            const hit = rects().filter((r) => !(r.x === g.x && r.y === g.y)).filter((r) => inter({ x: g.x, y: g.y, w: g.w, h: g.h }, r, 40));
+            if (!hit.length) break;
+            g.y = Math.max(...hit.map((r) => r.y + r.h)) + GAPY;
+          }
+          groups.push(g);
+        }
+        return { fx, groups };
+      }
+      const wh = (m) => { const s = realSize(m.kind, L.aspect); return { w: s.w, h: s.h }; };
+      const inter = (a, b, m = 0) => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+
+      function check({ fx, groups }) {
+        const bad = new Set(); let overlapTop = 0, overlapIn = 0, outside = 0;
+        const tops = [{ id: "s", x: fx.x, y: fx.y, w: 576, h: 324 }, ...groups.map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h }))];
+        for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) if (inter(tops[i], tops[j])) { overlapTop++; bad.add(tops[i].id); bad.add(tops[j].id); }
+        for (const g of groups) {
+          const ms = g.members.map((m) => ({ id: m.id, x: g.x + m.rx, y: g.y + m.ry, ...wh(m) }));
+          for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) if (inter(ms[i], ms[j])) { overlapIn++; bad.add(ms[i].id); bad.add(ms[j].id); }
+          for (const m of ms) if (m.x < g.x || m.y < g.y || m.x + m.w > g.x + g.w || m.y + m.h > g.y + g.h) { outside++; bad.add(m.id); bad.add(g.id); }
+        }
+        return { bad, overlapTop, overlapIn, outside };
+      }
+
+      function drawBoard(svg, res, chk) {
+        const items = [{ x: res.fx.x, y: res.fx.y, w: 576, h: 324 }];
+        for (const g of res.groups) { items.push(g); for (const m of g.members) items.push({ x: g.x + m.rx, y: g.y + m.ry, ...wh(m) }); }
+        const x0 = Math.min(...items.map((r) => r.x)) - 60, y0 = Math.min(...items.map((r) => r.y)) - 80;
+        const x1 = Math.max(...items.map((r) => r.x + r.w)) + 60, y1 = Math.max(...items.map((r) => r.y + r.h)) + 60;
+        svg.setAttribute("viewBox", `${x0} ${y0} ${x1 - x0} ${y1 - y0}`);
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        const sw = (x1 - x0) / 300, fs = (x1 - x0) / 38;
+        let html = "";
+        const red = "rgb(var(--bad))";
+        for (const g of res.groups) {
+          const isBad = chk.bad.has(g.id);
+          html += `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="${sw * 6}" fill="${isBad ? "rgb(var(--bad) / .06)" : "hsl(var(--card) / .6)"}" stroke="${isBad ? red : "hsl(var(--muted-foreground))"}" stroke-width="${sw}" stroke-dasharray="${sw * 4} ${sw * 3}"/>`;
+          html += `<text x="${g.x}" y="${g.y - sw * 4}" font-size="${fs}" fill="${isBad ? red : "hsl(var(--muted-foreground))"}">镜头组 ${esc(g.id.slice(1))}</text>`;
+        }
+        const node = (id, kind, x, y, w, h, label) => {
+          const isBad = chk.bad.has(id);
+          return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${sw * 4}" fill="rgb(var(--k-${kind}) / .22)" stroke="${isBad ? red : `rgb(var(--k-${kind}))`}" stroke-width="${isBad ? sw * 2 : sw}"/><text x="${x + sw * 6}" y="${y + fs * 1.3}" font-size="${fs * 0.85}" fill="hsl(var(--foreground))">${esc(label)} ${w}×${h}</text>`;
+        };
+        html += node("s", "script", res.fx.x, res.fx.y, 576, 324, "剧本");
+        for (const g of res.groups) for (const m of g.members) { const s = wh(m); html += node(m.id, m.kind, g.x + m.rx, g.y + m.ry, s.w, s.h, LB[m.kind]); }
+        svg.innerHTML = html;
+      }
+      const chkLine = (ok, txt) => `<div class="row"><i data-lucide="${ok ? "circle-check" : "circle-x"}" style="color: rgb(var(--${ok ? "ok" : "bad"}))"></i>${txt}</div>`;
+      function renderChecks(el, c) {
+        el.innerHTML =
+          chkLine(c.overlapTop === 0, `组与组 / 组与剧本不重叠${c.overlapTop ? `（${c.overlapTop} 处重叠）` : ""}`) +
+          chkLine(c.overlapIn === 0, `组内节点不重叠${c.overlapIn ? `（${c.overlapIn} 处）` : ""}`) +
+          chkLine(c.outside === 0, `成员都在组框内${c.outside ? `（${c.outside} 个越界）` : ""}`);
+      }
+      function seg(el, key, vals, fmt = (v) => v) {
+        el.innerHTML = vals.map((v) => `<button aria-pressed="${L[key] === v}" data-v="${v}">${esc(fmt(v))}</button>`).join("");
+        el.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { L[key] = typeof vals[0] === "number" ? Number(b.dataset.v) : b.dataset.v; renderLayout(); }));
+      }
+      function renderLayout() {
+        seg($("#segAspect"), "aspect", ["16:9", "9:16", "1:1", "21:9"]);
+        seg($("#segGroups"), "groups", [1, 2, 3]);
+        seg($("#segPer"), "per", [1, 2, 3, 4]);
+        const o = layoutOld(), n = layoutNew(), co = check(o), cn = check(n);
+        drawBoard($("#svgOld"), o, co); drawBoard($("#svgNew"), n, cn);
+        renderChecks($("#chkOld"), co); renderChecks($("#chkNew"), cn);
+        $("#opsList").innerHTML = o.ops.map((s) => `<div>${esc(s)}</div>`).join("");
+        icons();
+      }
+
+      /* ================= Harness 原型（模拟，非真实调用） ================= */
+      const P = { running: false, result: null, tab: "report" };
+      const CASES = {
+        sb: { id: "storyboard-9x16-3shots", budget: 0, gen: false },
+        gen: { id: "keyframe-generate-2", budget: 40, gen: true },
+      };
+      const term = (cls, s) => { const t = $("#term"); t.insertAdjacentHTML("beforeend", `<div class="${cls}">${esc(s)}</div>`); t.scrollTop = t.scrollHeight; };
+
+      function buildScript(opt) {
+        const c = CASES[opt.case], v = opt.ver === "new" ? 10 : 9, L2 = [], spans = [];
+        let t = 0, step = 0, errors = 0;
+        const span = (kind, name, ms, status, summary) => { step++; t += ms; spans.push({ seq: step, kind, name, ms, status, summary }); return `[${String(Math.floor(t / 1000)).padStart(2, "0")}s] #${step} ${kind} ${name} ${ms}ms ${status}${summary ? " · " + summary : ""}`; };
+        L2.push(["d", "→ 登录 harness@example.com ✓"]);
+        L2.push(["d", `→ 新建画布「[harness] ${c.id}」 canvas=4821（fixture: script-only）`]);
+        L2.push(["d", `→ 开跑 run=9137  prompt v${v}  agent 模型 示意-model  预算 ${c.budget}`]);
+        L2.push(["", span("chat", "示意-model", 3100, "ok", "in 6.2k / out 0.4k → skill_read")]);
+        L2.push(["", span("execute_tool", "skill_read", 12, "ok", "script-breakdown")]);
+        L2.push(["", span("execute_tool", "canvas_get_state", 20, "ok", "1 个节点")]);
+        L2.push(["", span("chat", "示意-model", 2600, "ok", "→ ask_user")]);
+        L2.push(["c", span("approval", "ask", 0, "pending", "「画幅用哪个？16:9 / 9:16 / 1:1」")]);
+        if (opt.drop) {
+          L2.push(["r", "  ✗ 没有预写的提问：「画幅用哪个？16:9 / 9:16 / 1:1」 → 取消运行"]);
+          return { L2, spans, fail: "unanswered", v, c, errors, t };
+        }
+        L2.push(["g", "  ↳ 按剧本应答：9:16"]);
+        L2.push(["", span("chat", "示意-model", 8400, "ok", "in 9.8k / out 3.1k → canvas_apply_ops")]);
+        L2.push(["", span("execute_tool", "canvas_apply_ops", 48, "ok", "+10 节点 +3 组 +6 连线")]);
+        if (opt.ver === "old") {
+          L2.push(["", span("chat", "示意-model", 1900, "ok", "→ canvas_arrange")]);
+          for (let k = 0; k < 3; k++) { errors++; L2.push(["y", span("execute_tool", "canvas_arrange", 6, "error", "节点 g_… 不存在或是组")]); if (k < 2) L2.push(["", span("chat", "示意-model", 1500, "ok", "重试 canvas_arrange")]); }
+          L2.push(["", span("chat", "示意-model", 1200, "ok", "放弃整理，回复用户")]);
+        } else {
+          L2.push(["", span("chat", "示意-model", 1700, "ok", "→ canvas_arrange")]);
+          L2.push(["", span("execute_tool", "canvas_arrange", 9, "ok", "3 个组 column")]);
+          L2.push(["", span("chat", "示意-model", 1100, "ok", "回复用户")]);
+        }
+        if (c.gen) {
+          L2.push(["c", span("approval", "generate", 0, "pending", "2 张关键帧 · 报价 24 积分")]);
+          L2.push(["g", "  ↳ 按剧本应答：批准（不超过预算 40）"]);
+          L2.push(["d", "→ wait_tasks：等待 2 个生成任务……"]);
+          L2.push(["d", "  任务 2/2 done（示意耗时 48s）"]);
+        }
+        return { L2, spans, fail: opt.ver === "old" ? "assert" : null, v, c, errors, t };
+      }
+
+      function assertionsFor(s) {
+        const old = s.fail === "assert";
+        const list = [
+          { type: "run_status", ok: s.fail !== "unanswered", got: s.fail === "unanswered" ? "canceled" : "succeeded" },
+          { type: "no_overlap", ok: !old, got: old ? "g1 与 g2 相交：g1(696,0,2064×444) ∩ g2(1016,0,2064×444)" : "0 处相交" },
+          { type: "members_inside_group", ok: !old, got: old ? "g1n2(324×576) 底边超出组框 204px" : "全部在组框内" },
+          { type: "count group 3–4", ok: s.fail !== "unanswered", got: s.fail === "unanswered" ? "0" : "3" },
+          { type: "every_group_has script/image/video", ok: s.fail !== "unanswered", got: s.fail === "unanswered" ? "没有组" : "全部满足" },
+          { type: "edge_exists image→video (每组)", ok: s.fail !== "unanswered", got: s.fail === "unanswered" ? "缺 3 组" : "3/3" },
+          { type: "max_tool_errors ≤ 2", ok: s.errors <= 2, got: String(s.errors) },
+        ];
+        if (s.fail === "unanswered") list.forEach((a) => { if (a.type !== "run_status") a.ok = a.type === "max_tool_errors ≤ 2"; });
+        return list;
+      }
+
+      function renderOut() {
+        const tabs = [["report", "report.md"], ["trace", "trace.jsonl"], ["asserts", "assertions.json"], ["tree", "目录"]];
+        $("#ptabs").innerHTML = tabs.map(([k, n]) => `<button class="ptab" aria-selected="${P.tab === k}" data-k="${k}">${n}</button>`).join("");
+        $("#ptabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { P.tab = b.dataset.k; renderOut(); }));
+        const r = P.result, body = $("#pbody");
+        if (P.running) { body.innerHTML = `<div class="empty"><div><i data-lucide="loader-2"></i><br/>运行中，结束后生成输出（模拟）</div></div>`; icons(); return; }
+        if (!r) { body.innerHTML = `<div class="empty"><div><i data-lucide="folder-open"></i><br/>还没有运行。点左侧「运行」。</div></div>`; icons(); return; }
+        if (r.gated) { body.innerHTML = `<div class="empty"><div><i data-lucide="ban" style="color: rgb(var(--warn))"></i><br/>预算闸门拦下，没有开跑，所以没有输出目录。<br/><span style="font-size:12px">把 --max-credits 调大，或减少 --repeat。</span></div></div>`; icons(); return; }
+        if (P.tab === "report") body.innerHTML = reportHtml(r);
+        if (P.tab === "trace") body.innerHTML = `<pre>${esc(r.spans.map((s) => JSON.stringify({ seq: s.seq, kind: s.kind, name: s.name, duration_ms: s.ms, status: s.status, summary: s.summary })).join("\n"))}${r.noTrace ? "\n\n// 没有管理员凭据：这里只有从事件拼出的简版，没有请求和响应原文" : "\n…（每行另有 request / response / args / result 原文，此处省略）"}</pre>`;
+        if (P.tab === "asserts") body.innerHTML = `<pre>${esc(JSON.stringify(r.asserts, null, 2))}</pre>`;
+        if (P.tab === "tree") body.innerHTML = `<pre>${esc(`${r.dir}/
+├─ report.md
+├─ trace.jsonl        ${r.noTrace ? "（简版：无原文）" : "41 spans · 186KB（示意）"}
+├─ events.jsonl
+├─ mutations.jsonl
+├─ canvas.before.json
+├─ canvas.after.json
+├─ assertions.json
+└─ meta.json          prompt v${r.v} · 示意-model`)}</pre>`;
+        icons();
+      }
+      function reportHtml(r) {
+        const pass = r.asserts.filter((a) => a.ok).length, all = r.asserts.length, ok = pass === all;
+        const fails = r.asserts.filter((a) => !a.ok);
+        const signals = [];
+        if (r.fail === "unanswered") signals.push("未预写的提问：「画幅用哪个？16:9 / 9:16 / 1:1」→ 建议补一条 {match:{kind:'ask',contains:'画幅'}}");
+        if (r.errors >= 3) signals.push(`同一条工具报错重复 ${r.errors} 次：canvas_arrange「节点 g_… 不存在或是组」`);
+        if (r.noTrace) signals.push("无轨迹：缺少管理员凭据，没有原文");
+        return `<div class="md">
+          <h3>${ok ? "✅ 通过" : "❌ 失败"}（${pass}/${all} 条断言）</h3>
+          <div class="muted" style="font-size:12px">用例 ${esc(r.c.id)} · prompt v${r.v} · 示意-model · ${r.spans.length} 步 · token 入 31.4k / 出 4.9k · 积分 ${r.c.gen && !r.fail ? 24 : 0} · 耗时 ${Math.round(r.t / 1000)}s（示意）</div>
+          ${fails.length ? `<h3>失败断言</h3><table><tr><th>断言</th><th>实际</th></tr>${fails.map((a) => `<tr><td>${esc(a.type)}</td><td>${esc(a.got)}</td></tr>`).join("")}</table>` : ""}
+          <h3>可疑信号</h3>${signals.length ? `<ul class="list">${signals.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : `<div class="muted">无</div>`}
+          <h3>时间线</h3><table><tr><th>#</th><th>span</th><th>名称</th><th>耗时</th><th>状态</th><th>摘要</th></tr>${r.spans.map((s) => `<tr><td>${s.seq}</td><td>${esc(s.kind)}</td><td>${esc(s.name)}</td><td>${s.ms}ms</td><td style="color: rgb(var(--${s.status === "error" ? "bad" : s.status === "pending" ? "info" : "ok"}))">${esc(s.status)}</td><td>${esc(s.summary)}</td></tr>`).join("")}</table>
+          ${r.fail === "unanswered" ? "" : `<h3>最终画布</h3><pre>剧本(script 576×324)
+镜头组 1 ─ 文本 576×324 · 图片 324×576 · 视频 324×576
+镜头组 2 ─ 文本 · 图片 · 视频
+镜头组 3 ─ 文本 · 图片 · 视频</pre>`}
+        </div>`;
+      }
+
+      function runProto() {
+        if (P.running) return;
+        const opt = { case: $("#pCase").value, ver: $("#pVer").value, repeat: Math.max(1, Number($("#pRepeat").value) || 1), max: Math.max(0, Number($("#pMax").value) || 0), drop: $("#pDrop").checked, noAdmin: $("#pNoAdmin").checked };
+        const c = CASES[opt.case];
+        $("#term").innerHTML = "";
+        term("", `$ node agent/harness/cli.mjs run cases/${c.id}.case.json --repeat ${opt.repeat} --max-credits ${opt.max}`);
+        const total = c.budget * opt.repeat;
+        if (total > opt.max) {
+          term("r", `✗ 预算闸门：${c.id} ${c.budget} × ${opt.repeat} = ${total} 积分，超过上限 ${opt.max}，不开跑`);
+          P.result = { gated: true }; renderOut(); toast("被预算闸门拦下", "warn"); return;
+        }
+        term("g", `✓ 预算检查 ${total} / ${opt.max} 积分`);
+        const s = buildScript(opt);
+        P.running = true; P.result = null; setDisabled(true); renderOut();
+        let i = 0;
+        const tick = () => {
+          if (i < s.L2.length) { const [cls, line] = s.L2[i++]; term(cls, line); setTimeout(tick, 260); return; }
+          if (s.fail !== "unanswered") term("d", "→ run.status = succeeded");
+          term(opt.noAdmin ? "y" : "d", opt.noAdmin ? "! 没有 HARNESS_ADMIN_*，跳过拉轨迹（报告里标「无轨迹」）" : "→ 拉取轨迹（管理员，已记审计）41 spans · 186KB");
+          const asserts = assertionsFor(s);
+          const pass = asserts.filter((a) => a.ok).length;
+          const dir = `.harness/runs/20261020-153012-${c.id}`;
+          term(pass === asserts.length ? "g" : "r", `${pass === asserts.length ? "✓" : "✗"} 断言 ${pass}/${asserts.length}`);
+          term("d", `→ 输出 ${dir}/`);
+          term("d", "→ 已删除测试画布 4821（加 --keep 可保留）");
+          P.running = false; P.result = { ...s, asserts, dir, noTrace: opt.noAdmin }; P.tab = "report";
+          $("#outPath").textContent = dir + "/";
+          setDisabled(false); renderOut();
+          toast(pass === asserts.length ? "用例通过" : "用例失败，看 report.md", pass === asserts.length ? "ok" : "bad");
+        };
+        setTimeout(tick, 300);
+      }
+      function setDisabled(on) { ["#pCase", "#pVer", "#pRepeat", "#pMax", "#pDrop", "#pNoAdmin", "#pRun"].forEach((s) => ($(s).disabled = on)); }
+      $("#pRun").addEventListener("click", runProto);
+
+      /* ================= 隐患清单 ================= */
+      const HZ = [
+        ["C1", "高", "前端合并补丁时 parentId 与 position 被拆开判断（即排版的 R4）", "web/src/utils/canvas/graph-changes.ts applyChanges", "Agent 把 n1 放进组，你在补丁到达前拖过 n1 → parentId 写进去了，position 留着本地绝对坐标 → n1 被甩出组", "两个字段当成一组：任一个被本地改过就都保留本地值；或按本地 parentId 换算坐标", "ok"],
+        ["C2", "高", "撤销本轮时同样把这两个字段拆开", "canvasgraph/revert.go:100-114", "Agent 把节点放进组，之后你只移动过它 → 撤销时恢复了 parentId、跳过了 position → 坐标错乱", "revertField 成对判断，或恢复时用 reparent 换算", "ok"],
+        ["C3", "高", "撤销会删掉你本地改过但还没保存的 Agent 新建节点，连同你新连的线", "revert.go:157-181、graph-changes.ts、use-agent-controller.ts:221-230", "改了 Agent 新建节点的提示词、连了线，还在防抖窗口内就点「撤销本轮」", "撤销前先 flush 保存并等它完成；或前端对删除也做保护并提示", "sub"],
+        ["C4", "中", "任务已创建但绑定节点失败时，告诉模型「没有扣积分」，可能重复扣费", "service/agent/generate.go:247-248、approval.go:368", "BindTasks 连续冲突 → 审批记为失败 → 节点上没有 taskId → 模型再次申请生成", "绑定失败时仍返回已创建的任务并照实说明；绑定改为可重试", "ok"],
+        ["C5", "中", "批准时就把报价计入已花积分，执行失败不回滚；等批准期间参数改了也不重新报价", "approval.go:151-156、generate.go", "部分执行失败 → 预算被虚占 → 后续调用提前提示预算用尽", "按实际成功的任务记账；提交时重新报价并比较", "ok"],
+        ["C6", "中", "审批后续跑失败时，模型以后一直以为还在等批准", "approval.go:161-164、runtime.go、agent/src/run.mjs", "Resume 失败 → 运行被标为中断 → 点「继续」后历史里仍是占位文字「等待决定」", "resume 时用审批表的 result_json 替换占位的工具结果", "ok"],
+        ["C7", "中", "保存请求在途时收到补丁，会误弹冲突窗", "web/src/utils/canvas/agent-sync.ts:99-101、save-coordinator.ts:304-312", "base=v 的保存在途 → 补丁把本地推到 v+1 → 保存返回 409 → resync 返回 null → 弹冲突窗", "服务端不比本地新时返回本地版本，直接重试保存", "sub"],
+        ["C8", "中", "每收到一次 Agent 补丁就清空你的撤销栈", "web/src/hooks/use-agent-canvas-sync.ts:67", "Agent 运行期间你的 Ctrl+Z 基本不可用", "把远端合并记成一道屏障，或只对被改到的节点做 rebase", "sub"],
+        ["C9", "中", "画布目录每轮都追加进历史，越积越多", "service/agent/runtime.go:80-89、agent/src/context.mjs", "同一会话 10 条消息，历史里就有 10 份目录 → token 成本高、更早触发压缩", "历史里只保留最新一份目录，旧的换成占位文字", "ok"],
+        ["C10", "低", "片段收尾窗口里的插话被静默丢弃", "agent/src/run.mjs:48-58", "在 settle 之后、finish 之前插话", "finish 前检查队列，有插话就由 Go 自动续跑", "sub"],
+        ["C11", "低", "codemode 超时时，正在进行的写入可能已提交，却不在「已生效」列表里", "agent/src/agent-tools/codemode.mjs", "嵌套的 apply_ops 已提交、脚本恰好超时 → 模型重复执行 → 重复建节点", "调用前先记「进行中」，失败文案里提示模型先读画布确认", "sub"],
+        ["C12", "低", "本页收到过一次补丁后，所有 409 都会自动合并", "agent-sync.ts:111,126", "另一个标签页的保存冲突也被静默合并", "运行结束、对账完成后复位 touched", "sub"],
+        ["C13", "低", "审批过期后运行一直停在 waiting，占着这张画布", "service/agent/approval.go:122", "24 小时没处理 → 无法发起新运行，只能手动停止", "判定过期时顺手把运行置为 canceled，或加定时清理", "ok"],
+        ["C14", "低", "「提示词优化」模式能改任意参数", "service/agent/bridge_tools.go:213-215", "越出模式承诺，改了时长、比例", "这个模式下只允许 prompt", "sub"],
+        ["C15", "低", "前端规整过的节点，撤销时会被判为「你已修改」，删不掉", "revert.go:171-180", "前端补全默认参数后保存回去", "只比较 Agent 写过的字段", "guess"],
+      ];
+      const HZ_TAG = { ok: '<span class="tag t-ok">已二次核对</span>', sub: '<span class="tag t-info">子代理读码确认</span>', guess: '<span class="tag t-warn">推测 · 需实测</span>' };
+      const LV = { 高: "t-bad", 中: "t-warn", 低: "t-mute" };
+      const HS = { filter: "全部", open: null };
+      function renderHz() {
+        $("#hzFilter").innerHTML = ["全部", "高", "中", "低"].map((f) => `<button class="btn ${HS.filter === f ? "btn-primary" : "btn-outline"}" data-f="${f}">${f}${f === "全部" ? "" : "（" + HZ.filter((h) => h[1] === f).length + "）"}</button>`).join("");
+        $("#hzFilter").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { HS.filter = b.dataset.f; renderHz(); }));
+        const rows = HZ.filter((h) => HS.filter === "全部" || h[1] === HS.filter);
+        $("#hzBody").innerHTML = rows.map((h) => `<tr class="main" data-id="${h[0]}"><th>${h[0]}</th><td><span class="tag ${LV[h[1]]}">${h[1]}</span></td><td>${esc(h[2])}</td><td><code style="font-size:11.5px">${esc(h[3])}</code></td><td>${HZ_TAG[h[6]]}</td></tr>` +
+          (HS.open === h[0] ? `<tr class="detail"><td></td><td colspan="4"><b>触发：</b>${esc(h[4])}<br/><b>修法：</b>${esc(h[5])}</td></tr>` : "")).join("");
+        $("#hzBody").querySelectorAll("tr.main").forEach((tr) => tr.addEventListener("click", () => { HS.open = HS.open === tr.dataset.id ? null : tr.dataset.id; renderHz(); }));
+      }
+
+      /* ================= 后台「Agent 运行」原型（模拟，非真实调用） ================= */
+      const RUNS = [
+        { id: 9140, at: "10-20 15:02", user: "carol@studio.cn", canvas: "MV 草稿", mode: "全能", status: "running", steps: 4, errs: 0, credits: 0, dur: "—", pv: 10, src: "用户", state: "running" },
+        { id: 9137, at: "10-20 14:31", user: "alice@studio.cn", canvas: "雨夜追凶 第3集", mode: "分镜", status: "succeeded", steps: 18, errs: 3, credits: 0, dur: "41s", pv: 9, src: "用户", state: "ok" },
+        { id: 9136, at: "10-20 14:12", user: "bob@ad.cn", canvas: "新品广告", mode: "提示词", status: "succeeded", steps: 6, errs: 0, credits: 0, dur: "12s", pv: 9, src: "用户", state: "ok" },
+        { id: 9120, at: "10-20 11:40", user: "harness@example.com", canvas: "[harness] storyboard-9x16-3shots", mode: "分镜", status: "succeeded", steps: 14, errs: 0, credits: 0, dur: "33s", pv: 10, src: "harness", state: "ok" },
+        { id: 8990, at: "10-12 09:05", user: "bob@ad.cn", canvas: "新品广告", mode: "全能", status: "succeeded", steps: 7, errs: 0, credits: 24, dur: "1m50s", pv: 9, src: "用户", state: "off" },
+        { id: 8812, at: "10-05 20:18", user: "alice@studio.cn", canvas: "雨夜追凶 第2集", mode: "分镜", status: "interrupted", steps: 9, errs: 1, credits: 12, dur: "2m03s", pv: 8, src: "用户", state: "expired", incomplete: true },
+      ];
+      const A = { q: "", status: "", src: "", fail: false, busy: null, audits: [] };
+      const ST = { succeeded: ["t-ok", "完成"], running: ["t-info", "运行中"], interrupted: ["t-warn", "中断"] };
+      function renderAdminShell() {
+        $("#adminProto").innerHTML = `
+          <div class="row wrapflex" style="gap: 8px">
+            <input id="aQ" placeholder="用户邮箱 / run id" style="height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; padding: 0 8px; background: hsl(var(--background)); width: 200px" />
+            <select id="aSt" style="height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--background))"><option value="">全部状态</option><option value="succeeded">完成</option><option value="running">运行中</option><option value="interrupted">中断</option></select>
+            <select id="aSrc" style="height: 30px; border: 1px solid hsl(var(--border)); border-radius: 7px; background: hsl(var(--background))"><option value="">全部来源</option><option value="用户">真实用户</option><option value="harness">harness</option></select>
+            <span class="muted" style="font-size: 12px">时间：最近 30 天（示意）</span>
+            <label class="chk spacer" style="align-items: center"><input type="checkbox" id="aFail" style="margin: 0" />模拟下载失败</label>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px"><table class="cmp">
+            <thead><tr><th>run</th><th>时间</th><th>用户</th><th>画布</th><th>模式</th><th>状态</th><th>步数</th><th>报错</th><th>积分</th><th>耗时</th><th>prompt</th><th>来源</th><th></th></tr></thead>
+            <tbody id="aBody"></tbody></table></div>
+          <div id="aAudit" style="margin-top: 10px; font-size: 12.5px"></div>`;
+        $("#aQ").addEventListener("input", (e) => { A.q = e.target.value.trim(); renderAdminRows(); });
+        $("#aSt").addEventListener("change", (e) => { A.status = e.target.value; renderAdminRows(); });
+        $("#aSrc").addEventListener("change", (e) => { A.src = e.target.value; renderAdminRows(); });
+        $("#aFail").addEventListener("change", (e) => { A.fail = e.target.checked; });
+        renderAdminRows();
+      }
+      function dlCell(r) {
+        if (r.state === "expired") return `<button class="btn btn-outline" disabled title="轨迹已清理">下载</button><div class="muted" style="font-size: 11.5px">已过期（保留 14 天）</div>`;
+        if (r.state === "off") return `<button class="btn btn-outline" disabled>下载</button><div class="muted" style="font-size: 11.5px">当时轨迹记录已关闭</div>`;
+        if (A.busy === r.id) return `<button class="btn btn-outline" disabled><i data-lucide="loader-2"></i>打包中</button>`;
+        return `<button class="btn btn-outline" data-dl="${r.id}"><i data-lucide="download"></i>下载轨迹包</button>${r.state === "running" ? `<div style="font-size: 11.5px; color: rgb(var(--warn))">未完成</div>` : ""}`;
+      }
+      function renderAdminRows() {
+        const q = A.q.toLowerCase();
+        const rows = RUNS.filter((r) => (!q || r.user.includes(q) || String(r.id).includes(q)) && (!A.status || r.status === A.status) && (!A.src || r.src === A.src));
+        $("#aBody").innerHTML = rows.length
+          ? rows.map((r) => `<tr>
+              <th class="mono">${r.id}</th><td>${esc(r.at)}</td><td>${esc(r.user)}</td><td>${esc(r.canvas)}${r.incomplete ? ' <span class="tag t-warn">不完整</span>' : ""}</td>
+              <td>${esc(r.mode)}</td><td><span class="tag ${ST[r.status][0]}">${ST[r.status][1]}</span></td><td>${r.steps}</td>
+              <td style="${r.errs ? "color: rgb(var(--bad)); font-weight: 600" : ""}">${r.errs}</td><td>${r.credits}</td><td>${esc(r.dur)}</td><td>v${r.pv}</td>
+              <td>${r.src === "harness" ? '<span class="tag t-violet">harness</span>' : '<span class="tag t-mute">用户</span>'}</td><td>${dlCell(r)}</td></tr>`).join("")
+          : `<tr><td colspan="13"><div class="empty" style="height: 120px">没有符合条件的运行。换个筛选条件，或者看看是不是已超过 14 天。</div></td></tr>`;
+        $("#aBody").querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(Number(b.dataset.dl))));
+        $("#aAudit").innerHTML = A.audits.length
+          ? `<span class="muted">操作审计（本页模拟）：</span>` + A.audits.map((a) => `<div class="mono" style="font-size: 12px">${esc(a)}</div>`).join("")
+          : `<span class="muted">每次下载都会在「操作审计」里留一条 <code>agent.trace.export</code>。</span>`;
+        icons();
+      }
+      function download(id) {
+        const r = RUNS.find((x) => x.id === id);
+        A.busy = id; renderAdminRows();
+        setTimeout(() => {
+          A.busy = null;
+          if (A.fail) { renderAdminRows(); toast("下载失败：网络中断，可以重试（服务端在开始传输时已记审计）", "bad"); return; }
+          A.audits.unshift(`15:0${A.audits.length} admin@studio.cn agent.trace.export run=${id}`);
+          renderAdminRows();
+          toast(r.state === "running" ? `已下载 agent-trace-${id}.zip（运行未结束，轨迹不完整）` : `已下载 agent-trace-${id}.zip，此次导出已记入操作审计`, r.state === "running" ? "warn" : "ok");
+        }, 700);
+      }
+
+      renderLayout();
+      renderOut();
+      renderHz();
+      renderAdminShell();
+      icons();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "id": "prompt-optimize",
+  "title": "提示词优化：只改提示词，不加节点",
+  "tags": ["prompt"],
+  "fixture": "fixtures/prompt-only.canvas.json",
+  "mode": "prompt",
+  "message": "把选中的图片节点的提示词优化得更具体：人物外貌、神态、光线、构图都写清楚",
+  "selection": ["n_img"],
+  "budget": 0,
+  "timeout_sec": 300,
+  "wait_tasks": false,
+  "answers": [
+    { "match": { "kind": "generate" }, "answer": { "decision": "reject" } },
+    { "match": { "kind": "delete" }, "answer": { "decision": "reject" } }
+  ],
+  "expect": [
+    { "type": "run_status", "in": ["succeeded"] },
+    { "type": "nodes_have_prompt", "kinds": ["image"] },
+    { "type": "count", "of": "node", "min": 1, "max": 1 },
+    { "type": "not_asked", "kind": "generate" },
+    { "type": "not_asked", "kind": "delete" },
+    { "type": "max_tool_errors", "max": 1 },
+    { "type": "max_steps", "max": 15 }
+  ]
+}

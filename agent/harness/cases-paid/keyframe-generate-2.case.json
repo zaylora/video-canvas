@@ -1,0 +1,27 @@
+{
+  "id": "keyframe-generate-2",
+  "title": "真实生成两张关键帧（花积分）",
+  "tags": ["generate", "paid"],
+  "fixture": "fixtures/script-only.canvas.json",
+  "mode": "all",
+  "message": "为剧本的前两个场景各生成一张竖屏 9:16 的关键帧图片",
+  "selection": ["n_script"],
+  "budget": 40,
+  "timeout_sec": 900,
+  "wait_tasks": true,
+  "answers": [
+    { "match": { "kind": "ask", "contains": "画幅" }, "answer": { "answer": "9:16" } },
+    { "match": { "kind": "ask", "ask_kind": "model", "model_kind": "image" }, "answer": { "answer": "$first_model" } },
+    { "match": { "kind": "generate" }, "answer": { "decision": "approve" } },
+    { "match": { "kind": "delete" }, "answer": { "decision": "reject" } }
+  ],
+  "expect": [
+    { "type": "run_status", "in": ["succeeded"] },
+    { "type": "count", "of": "image", "min": 2, "max": 2 },
+    { "type": "nodes_have_prompt", "kinds": ["image"] },
+    { "type": "nodes_have_output", "kinds": ["image"] },
+    { "type": "no_overlap" },
+    { "type": "max_credits", "max": 40 },
+    { "type": "max_tool_errors", "max": 2 }
+  ]
+}

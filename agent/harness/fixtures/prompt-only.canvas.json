@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "id": "n_img",
+      "type": "canvas",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "kind": "image",
+        "label": "林夏 定妆照",
+        "prompt": "一个女人",
+        "params": { "prompt": "一个女人", "aspect_ratio": "9:16" }
+      }
+    }
+  ],
+  "edges": []
+}
