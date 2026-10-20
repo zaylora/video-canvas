@@ -214,6 +214,11 @@ func TestAdminLogs_Audits(t *testing.T) {
 			}
 		}
 	})
+	// 导出 Agent 轨迹写审计 agent.trace.export，审计页要能按「Agent」模块筛出来
+	t.Run("module=agent 是合法模块", func(t *testing.T) {
+		env := newEnv()
+		env.do(http.MethodGet, path+"?module=agent", nil, uaAdmin).want(t, 200, 0)
+	})
 	t.Run("参数校验失败：400 + 10001", func(t *testing.T) {
 		env := newEnv()
 		for name, query := range map[string]string{

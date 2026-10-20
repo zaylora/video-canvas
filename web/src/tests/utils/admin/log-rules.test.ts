@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   actionView,
+  auditCategory,
   AUDIT_MODULES,
   auditActorView,
   AUDIT_FILTER_KEYS,
@@ -236,7 +237,16 @@ describe("操作审计：URL 与请求参数", () => {
       "plugin",
       "model",
       "storage",
+      "agent",
     ]);
+  });
+
+  test("导出 Agent 轨迹的审计：动作有中文名，对象类型 agent_run 显示成「Agent 运行」，归到 agent 模块", () => {
+    expect(actionView("agent.trace.export").label).toBe("导出了 Agent 运行轨迹");
+    expect(auditCategory("agent.trace.export")).toBe("agent");
+    expect(
+      auditTargetView({ target_type: "agent_run", target_ref: "8297", target_name: "" }).type,
+    ).toBe("Agent 运行");
   });
 });
 

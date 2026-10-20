@@ -503,6 +503,7 @@ export const AUDIT_MODULES: ReadonlyArray<readonly [AuditModule | "", string]> =
   ["plugin", "插件"],
   ["model", "模型"],
   ["storage", "存储"],
+  ["agent", "Agent"],
 ];
 
 /** 操作审计页放进 URL 的筛选参数名（操作人用搜索词 q；action 暂无界面，保留给链接直达） */
@@ -630,6 +631,7 @@ const TARGET_TYPE_LABEL: Record<string, string> = {
   plugin_version: "插件版本",
   model: "模型",
   storage: "存储",
+  agent_run: "Agent 运行",
 };
 
 /**

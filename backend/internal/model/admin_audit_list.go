@@ -6,19 +6,19 @@ import "time"
 
 // 审计来源：对应两张表。
 const (
-	AuditSourceAdmin = "admin" // admin_audit_logs：用户管理、系统设置、登录页展示、系统升级、支付
+	AuditSourceAdmin = "admin" // admin_audit_logs：用户管理、系统设置、登录页展示、系统升级、支付、Agent 轨迹导出
 	AuditSourceAI    = "ai"    // ai_audit_logs：插件、渠道、模型、存储
 )
 
 // ListAuditReq 是 GET /admin/logs/audits 的查询参数。
 type ListAuditReq struct {
-	Actor    string `form:"actor" binding:"max=64" label:"操作人"`                                                                             // 用户名片段或数字 id；「系统」「system」表示系统自动动作
-	Module   string `form:"module" binding:"omitempty,oneof=user settings showcase system payment channel plugin model storage" label:"模块"` // 动作名点号前的前缀
-	Action   string `form:"action" binding:"max=64" label:"动作"`                                                                             // 完整动作名
-	From     string `form:"from" binding:"max=40" label:"开始时间"`                                                                             // RFC3339，默认 To 往前 30 天
-	To       string `form:"to" binding:"max=40" label:"结束时间"`                                                                               // RFC3339，默认现在
-	Page     int    `form:"page" label:"页码"`                                                                                                // 页码，从 1 开始
-	PageSize int    `form:"page_size" label:"每页条数"`                                                                                         // 每页条数，默认 20，最大 100
+	Actor    string `form:"actor" binding:"max=64" label:"操作人"`                                                                                   // 用户名片段或数字 id；「系统」「system」表示系统自动动作
+	Module   string `form:"module" binding:"omitempty,oneof=user settings showcase system payment channel plugin model storage agent" label:"模块"` // 动作名点号前的前缀
+	Action   string `form:"action" binding:"max=64" label:"动作"`                                                                                   // 完整动作名
+	From     string `form:"from" binding:"max=40" label:"开始时间"`                                                                                   // RFC3339，默认 To 往前 30 天
+	To       string `form:"to" binding:"max=40" label:"结束时间"`                                                                                     // RFC3339，默认现在
+	Page     int    `form:"page" label:"页码"`                                                                                                      // 页码，从 1 开始
+	PageSize int    `form:"page_size" label:"每页条数"`                                                                                               // 每页条数，默认 20，最大 100
 }
 
 // AuditRow 是合并查询的一行（仓储扫描用）。target_ref：admin 来源是 target_id 的十进制串，ai 来源是 target_key。

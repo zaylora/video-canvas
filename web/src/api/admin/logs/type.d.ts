@@ -16,7 +16,8 @@ export type AuditModule =
   | "channel"
   | "plugin"
   | "model"
-  | "storage";
+  | "storage"
+  | "agent";
 
 /** 操作审计列表请求参数 */
 export interface ListAuditParams {
