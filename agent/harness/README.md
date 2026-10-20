@@ -14,7 +14,7 @@
 2. **读报告**：先看 `<运行目录>/report.md` 开头的「断言结论」「失败断言」，证据里有节点 id、相交的两个矩形坐标、越界的量；再看「可疑信号」，最后到时间线里按序号去 `trace.jsonl` 找原文（模型请求 / 响应、工具参数 / 返回）。
 3. **改提示词或工具**：改 `backend/internal/agent/prompts/system.md` 或工具声明，**同时提升 `prompts.Version`**。
 4. **重跑**：`... run harness/cases/ --out ../.harness/after`。有随机性的用例加 `--repeat 3` 看通过率。
-5. **对比**：二期的 `diff` 上线之前，人工对比两份 `summary.md`（通过率、步数、积分、耗时）。
+5. **对比**：`node harness/cli.mjs diff ../.harness/base ../.harness/after`。两边都是整批目录（含 `summary.json`）时按用例 id 配对，给通过数变化的总览，再逐个用例对比；有退化（A 过 B 没过的断言、B 新增的失败断言、用例通过率下降）退出码为 `1`，改进不影响。输出是 Markdown，写到 stdout，加 `--out diff.md` 同时存文件。
 
 改了断言（或发现断言写得不对）不需要重新花钱跑：修改用例文件后执行
 `node harness/cli.mjs report <运行目录> --case <用例文件>`，会根据目录里保存的最终画布和事件重新执行断言并刷新 `report.md`。
@@ -25,17 +25,18 @@
 | --- | --- | --- |
 | `run <用例文件或目录> [--repeat N] [--max-credits N] [--keep] [--out DIR]` | 一期 | 跑用例；目录会递归找 `*.case.json` |
 | `report <运行目录> [--case 用例文件]` | 一期 | 重新执行断言并刷新报告的断言部分 |
-| `diff <运行目录A> <运行目录B>` | 二期，未实现 | 对比两次运行 |
-| `to-case <轨迹包目录>` | 二期，未实现 | 把线上轨迹包转成用例 |
+| `diff <目录A> <目录B> [--out 文件]` | 二期 | 对比两次运行或两个整批目录 |
+| `to-case <轨迹包目录> [--out 文件] [--id 用例id]` | 二期 | 把线上轨迹包转成用例 |
 
 选项：
 
 - `--repeat N`：每个用例跑 N 次（默认 1，每次都花钱），每次一个输出目录，摘要里给通过率。
 - `--max-credits N`：**预算闸门**。开跑前把所有用例的 `budget × repeat` 求和，超过 N（默认 200）就拒绝开跑并打印每个用例的明细。后端另按每个 run 的 `budget_credits` 强制执行。
 - `--keep`：保留测试画布（默认跑完删除）。
-- `--out DIR`：输出根目录。默认是**仓库根**的 `.harness/runs`（根 `.gitignore` 只忽略 `/.harness/`，不会跟着 cwd 落到 `agent/` 下）。
+- `--out DIR`：输出根目录。默认是**仓库根**的 `.harness/runs`（根 `.gitignore` 只忽略 `/.harness/`，不会跟着 cwd 落到 `agent/` 下）。`diff` 和 `to-case` 的 `--out` 含义不同，见下。
+- `--id`：仅 `to-case`，指定生成的用例 id。
 
-退出码：`0` 全部通过；`1` 有用例失败；`2` 用法 / 配置错误、环境变量缺失、被预算闸门拒绝。
+退出码：`0` 全部通过（`diff`：无退化）；`1` 有用例失败（`diff`：有退化）；`2` 用法 / 配置错误、环境变量缺失、被预算闸门拒绝、目录或文件有问题（不存在、缺关键文件、JSON 坏了；这类错误只打印一行说明，不带堆栈）。
 
 ## 环境变量
 
@@ -98,6 +99,7 @@
 | `wait_tasks` | 否 | 运行结束后等本轮绑定的生成任务结束（见下） |
 | `answers` | 否 | 应答剧本 |
 | `title` / `tags` | 否 | 给人看的 |
+| `source` | 否 | 来源记录 `{run_id, exported_at, prompt_version, status}`，`to-case` 写入，只给人看，不影响执行 |
 
 ### 应答剧本 `answers`
 
@@ -186,7 +188,49 @@ Agent 运行中遇到需要用户决定的事会暂停（`approval.created`）�
 └─ meta.json        prompt_version、模型、tools_hash、trace_complete ...
 ```
 
-`.harness/` 已加进根 `.gitignore`，轨迹包含用户数据，不会进仓库。二期的 `to-case` 会把这样的目录转成用例（初始画布用 `canvas.before.json`，应答剧本用实际的审批决定）。
+`.harness/` 已加进根 `.gitignore`，轨迹包含用户数据，不会进仓库。
+
+## diff：对比两次运行
+
+```bash
+node harness/cli.mjs diff <目录A> <目录B> [--out diff.md]
+```
+
+目录可以是 `run` 的输出目录，也可以是线上轨迹包目录（`.harness/imports/<runId>/`），所以既能比「改提示词前后各跑一遍」，也能拿线上的一次失败和本地修复后的回放比。至少要有 `meta.json`，以及 `events.jsonl`（或 `events.pulled.jsonl`）、`trace.jsonl` 之一。
+
+输出的 Markdown 依次是：
+
+1. **概要**：run id、`prompt_version`、模型、终态、步数、工具报错数、积分、token 入 / 出、耗时，各给 A、B 和变化量。口径与已有的一致：步数 / 报错 / 积分 / 终态来自事件（与 `report`、断言同一套，不数嵌套的脚本调用）；token 是 `trace.jsonl` 里所有 `chat` span 的 `usage` 之和（与后端 `report.md` 概要行一致）；耗时取 `meta.json` 的开始与结束时间。
+2. **断言对比**：按断言类型（同一类型出现多次按出现顺序配对）逐条列 A、B 的结果和结论——`退化`（A 过 B 没过）、`改进`（A 没过 B 过）、`持平`、`同样失败`、`仅 A` / `仅 B`（B 新增的失败断言，如 `harness.unscripted_question`，计入退化）。退化的断言附 B 的实际值和证据。**线上轨迹包没有 `assertions.json`**，任何一边没有就跳过这一节并注明，此时只比运行指标，不会有退化。
+3. **工具调用**：每个工具 A、B 各调用几次，顺序是否相同、第几步起分叉，以及折叠后的调用序列。
+
+**整批目录**：两边都含 `summary.json`（`run` 的 `--out` 根目录）时，按用例 id 配对，先给总览（每个用例 A、B 的通过数、变化、平均步数 / 积分 / 耗时，以及「通过用例数」变化），再逐个用例给上面三节。`--repeat N` 的用例按第几次逐次配对。`summary.json` 里记的是运行时的绝对路径，批次目录被挪走后会回退到批次目录下同名子目录。一边是整批目录、一边是单次目录属于用法错误（退出 `2`）。
+
+退化的定义：A 通过而 B 没过的断言、B 新增的失败断言、整批对比时用例通过率下降。**改进不影响退出码。**
+
+## to-case：线上问题转成回归用例
+
+线上出了问题：管理员在后台下载轨迹包，解压到 `.harness/imports/<runId>/`，先读 `report.md` 定位，然后：
+
+```bash
+node harness/cli.mjs to-case ../.harness/imports/<runId> [--id 用例id] [--out 用例文件]
+```
+
+会生成：
+
+| 产物 | 位置 | 内容 |
+| --- | --- | --- |
+| 用例 | `harness/cases-imported/<id>.case.json`（`--out` 可改） | `id` 默认 `imported-<run id 前 8 位>`；`message` / `mode` / `selection` 取第一条 `message.user` 事件；带 `source: {run_id, exported_at, prompt_version, status}` 记来源 |
+| 初始画布 | `harness/fixtures/imported/<id>.canvas.json` | 就是 `canvas.before.json`，用例的 `fixture` 引用它 |
+
+- **应答剧本 `answers`**：由 `approval.created` / `approval.decided` 还原，每个审批一条，回答的是**用户当时实际的决定**。选项题用 `ask_kind: choice` 加提问开头几个字作 `contains`；选模型题用 `ask_kind: model` 加 `model_kind`（回答是线上的模型 key，本地没有就改成 `$first_model`）；生成审批部分批准时还原成逐项 `items`（含减少的张数）；删除审批同理；拒绝带上用户写的理由。按顺序出现的同种审批如果回答不同，后面的会被前面的盖住（`answers` 第一条命中的生效），命令会提醒。没有等到用户决定的审批（运行被中断）不生成应答。
+- **`budget`**：运行里已批准生成的报价总和，没有则 `0`。**批准了生成的用例回放时会真实花积分**，命令会单独提醒；不想花钱就把 `generate` 的应答改成 `reject`、`budget` 改 `0`。
+- **`expect`（保守默认）**：`run_status in ["succeeded"]`、`no_overlap`、`members_inside_group`、`max_tool_errors`（取原运行的报错数，至少 2）。初始画布本身就违反 `no_overlap` / `members_inside_group` 时会警告，因为回放必然失败。线上问题具体是什么，要自己加断言（比如 `count`、`every_group_has`）。
+- 缺 `events.jsonl`、`canvas.before.json`，或没有 `message.user` 事件、文本为空，会报明确错误（退出 `2`），不留半截文件。同 id 重复执行会覆盖。
+
+**隐私**：生成物含线上用户的剧本和提示词。`harness/cases-imported/` 与 `harness/fixtures/imported/` 已加进根 `.gitignore`，命令每次都会提醒「这是线上用户内容，提交到仓库前请脱敏确认」。要把它变成长期回归用例，脱敏后把用例挪进 `cases/`、画布挪进 `fixtures/`（并改 `fixture` 路径和 `source`），再提交。`--out` 指到别处则不受这条 `.gitignore` 保护。
+
+典型流程：`to-case` → `run harness/cases-imported/<id>.case.json` 复现失败 → 改提示词或工具并提升 `prompts.Version` → 再 `run` → `diff` 两次的输出目录确认没有退化。
 
 ## 测试
 

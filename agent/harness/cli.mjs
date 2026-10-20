@@ -3,8 +3,10 @@
 //
 //   node harness/cli.mjs run <用例文件或目录> [--repeat N] [--max-credits N] [--keep] [--out DIR]
 //   node harness/cli.mjs report <运行目录> [--case 用例文件]
+//   node harness/cli.mjs diff <目录A> <目录B> [--out 文件]
+//   node harness/cli.mjs to-case <轨迹包目录> [--out 文件] [--id 用例id]
 //
-// 退出码：0 全部通过；1 有用例失败；2 用法 / 配置错误、环境变量缺失、被预算闸门拒绝。
+// 退出码：0 全部通过（diff：无退化）；1 有用例失败（diff：有退化）；2 用法 / 配置错误、环境变量缺失、被预算闸门拒绝、目录或文件有问题。
 
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +16,9 @@ import { loadCases, loadFixture, CaseError } from "./cases.mjs";
 import { planBudget, formatBudgetPlan, DEFAULT_MAX_CREDITS } from "./budget.mjs";
 import { openSession, runCase, HarnessError, defaultClock, stamp } from "./runner.mjs";
 import { refreshReport, formatDuration } from "./report.mjs";
+import { diffDirs } from "./diff.mjs";
+import { toCase } from "./tocase.mjs";
+import { BundleError } from "./bundle.mjs";
 
 const HARNESS_ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,8 +39,17 @@ const HELP = `Agent 调优 Harness：用 JSON 用例走真实服务跑 Agent，�
   report <运行目录> [--case 用例文件]
         改了断言之后，根据运行目录里的轨迹重新执行断言并刷新 report.md 的断言部分。
         --case 指定用新的用例文件里的 expect，不指定就用目录里 assertions.json 记下的。
-  diff <运行目录A> <运行目录B>      二期，未实现
-  to-case <轨迹包目录>              二期，未实现
+  diff <目录A> <目录B> [--out 文件]
+        对比两次运行：prompt_version / 模型 / 终态，断言逐条（A 过 B 没过 = 退化，反之 = 改进），
+        步数、工具报错、积分、token、耗时，工具调用序列。目录可以是 run 的输出目录，也可以是线上轨迹包
+        （.harness/imports/<runId>/，没有 assertions.json 时跳过断言一节）。两边都是整批目录（含 summary.json）时按用例 id 配对。
+        Markdown 写到 stdout，--out 同时写进文件。有退化退出 1。
+  to-case <轨迹包目录> [--out 文件] [--id 用例id]
+        把线上导出的轨迹包转成可回归的用例：初始画布取 canvas.before.json，用户原话 / 模式 / 选区取第一条 message.user，
+        应答剧本按实际的审批决定还原，budget 取已批准生成的报价总和，附一组保守的默认断言。
+          --id 用例id       默认 imported-<run id 前 8 位>
+          --out 文件        用例文件路径（默认 harness/cases-imported/<id>.case.json）；初始画布写到 harness/fixtures/imported/<id>.canvas.json
+        生成物含线上用户内容，两个默认目录已加入 .gitignore；提交到仓库前请脱敏确认。
 
 环境变量（只从环境变量读，不写进仓库或输出目录）：
   HARNESS_BASE_URL         后端地址，如 http://localhost:8080（必需）
@@ -45,7 +59,7 @@ const HELP = `Agent 调优 Harness：用 JSON 用例走真实服务跑 Agent，�
   HARNESS_ADMIN_PASSWORD   管理员密码
   HARNESS_USERNAME / HARNESS_ADMIN_USERNAME   可选：登录用户名与邮箱不同时单独指定
 
-退出码：0 全部通过；1 有用例失败；2 用法 / 配置错误、环境变量缺失、被预算闸门拒绝。`;
+退出码：0 全部通过（diff：无退化）；1 有用例失败（diff：有退化）；2 用法 / 配置错误、环境变量缺失、被预算闸门拒绝、目录或文件有问题。`;
 
 // ---------- 终端输出 ----------
 
@@ -228,9 +242,72 @@ function cmdReport(values, positionals, io, { log, errLog }) {
   return res.ok ? 0 : 1;
 }
 
+// ---------- diff ----------
+
+function cmdDiff(values, positionals, io, { errLog }) {
+  const [, a, b, ...rest] = positionals;
+  if (!a || !b || rest.length) {
+    errLog("diff 需要两个目录：node harness/cli.mjs diff <目录A> <目录B>");
+    return 2;
+  }
+  const cwd = io.cwd ?? process.cwd();
+  let res;
+  try {
+    res = diffDirs(path.resolve(cwd, a), path.resolve(cwd, b));
+  } catch (e) {
+    if (e instanceof BundleError) {
+      errLog(`✗ ${e.message}`);
+      return 2;
+    }
+    throw e;
+  }
+  const md = res.markdown.endsWith("\n") ? res.markdown : res.markdown + "\n";
+  if (values.out) {
+    const file = path.resolve(cwd, values.out);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, md);
+  }
+  io.stdout.write(md);
+  if (values.out) io.stderr.write(`已写入 ${path.resolve(cwd, values.out)}\n`);
+  return res.regressed ? 1 : 0;
+}
+
+// ---------- to-case ----------
+
+function cmdToCase(values, positionals, io, { log, errLog }) {
+  const dir = positionals[1];
+  if (!dir || positionals.length > 2) {
+    errLog("to-case 需要指定轨迹包目录：node harness/cli.mjs to-case <轨迹包目录> [--out 文件] [--id 用例id]");
+    return 2;
+  }
+  const cwd = io.cwd ?? process.cwd();
+  const harnessRoot = io.harnessRoot ?? HARNESS_ROOT;
+  let r;
+  try {
+    r = toCase(path.resolve(cwd, dir), { id: values.id, outFile: values.out ? path.resolve(cwd, values.out) : undefined, harnessRoot });
+  } catch (e) {
+    if (e instanceof BundleError) {
+      errLog(`✗ ${e.message}`);
+      return 2;
+    }
+    throw e;
+  }
+  log("ok", `✓ 已生成用例 ${r.def.id}`);
+  log("info", `  用例文件：${r.caseFile}`);
+  log("info", `  初始画布：${r.fixtureFile}（取自 canvas.before.json）`);
+  log("info", `  还原了 ${r.def.answers.length} 条应答（线上共 ${r.approvals} 个审批）· budget ${r.def.budget} 积分 · 默认断言 ${r.def.expect.length} 条（原运行工具报错 ${r.toolErrors} 次）`);
+  if (r.def.budget > 0) log("warn", `! 原运行批准了生成：回放会照样批准并真实花积分（budget ${r.def.budget}）。不想花钱就把 answers 里 generate 的 decision 改成 reject、budget 改成 0。`);
+  if (r.def.answers.some((a) => a.match.ask_kind === "model")) log("warn", "! 选模型题的回答是线上的模型 key，本地环境可能没有；可改成 $first_model。");
+  for (const w of r.warnings) log("warn", `! ${w}`);
+  if (!r.defaultOut) log("warn", "! --out 指定的用例文件不在已被 .gitignore 忽略的 cases-imported/ 里，别误提交。");
+  log("warn", "! 这是线上用户内容（用户的剧本和提示词）：cases-imported/ 与 fixtures/imported/ 已加入根 .gitignore，提交到仓库前请脱敏确认。");
+  log("dim", `→ 回放：node harness/cli.mjs run ${r.caseFile}`);
+  return 0;
+}
+
 // ---------- 入口 ----------
 
-/** 命令行主函数。io 可注入（测试用）：env、fetch、stdout / stderr（有 write 方法）、clock、cwd、color、pollMs、taskPollMs。 */
+/** 命令行主函数。io 可注入（测试用）：env、fetch、stdout / stderr（有 write 方法）、clock、cwd、color、pollMs、taskPollMs、harnessRoot（to-case 的写入根目录）。 */
 export async function main(argv, io = {}) {
   io = { env: process.env, fetch: globalThis.fetch, stdout: process.stdout, stderr: process.stderr, clock: defaultClock, cwd: process.cwd(), color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR, pollMs: 1000, taskPollMs: 5000, ...io };
   const out = makeLogger(io);
@@ -239,7 +316,7 @@ export async function main(argv, io = {}) {
     parsed = parseArgs({
       args: argv,
       allowPositionals: true,
-      options: { help: { type: "boolean", short: "h" }, repeat: { type: "string" }, "max-credits": { type: "string" }, keep: { type: "boolean" }, out: { type: "string" }, case: { type: "string" } },
+      options: { help: { type: "boolean", short: "h" }, repeat: { type: "string" }, "max-credits": { type: "string" }, keep: { type: "boolean" }, out: { type: "string" }, case: { type: "string" }, id: { type: "string" } },
     });
   } catch (e) {
     out.errLog(`参数错误：${e.message}\n\n${HELP}`);
@@ -261,9 +338,9 @@ export async function main(argv, io = {}) {
     case "report":
       return cmdReport(values, positionals, io, out);
     case "diff":
+      return cmdDiff(values, positionals, io, out);
     case "to-case":
-      out.errLog(`${cmd}：二期，未实现。一期请用 run / report；线上轨迹包解压到 .harness/imports/<runId>/ 后直接读 report.md（见 harness/README.md）。`);
-      return 2;
+      return cmdToCase(values, positionals, io, out);
     default:
       out.errLog(`未知命令：${cmd}\n\n${HELP}`);
       return 2;

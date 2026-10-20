@@ -50,14 +50,13 @@ const running = [{ type: "run.status", data: { status: "running" } }];
 const ask = [{ type: "approval.created", data: approval("a1", "ask", { question: "画幅用哪个？", kind: "choice", options: ["16:9", "9:16"] }) }];
 const finish = [{ type: "tool.end", data: { id: "t", name: "canvas_apply_ops", is_error: false, summary: "ok" } }, { type: "run.status", data: { status: "succeeded" } }];
 
-test("--help：列出命令，diff / to-case 标二期未实现，列出环境变量", async () => {
+test("--help：列出全部命令（diff / to-case 已实现，不再标二期未实现），列出环境变量", async () => {
   const c = io();
   const code = await main(["--help"], c);
   assert.equal(code, 0);
   const t = c.text();
   for (const w of ["run", "report", "diff", "to-case", "--repeat", "--max-credits", "--keep", "--out", "HARNESS_BASE_URL", "HARNESS_ADMIN_EMAIL"]) assert.ok(t.includes(w), `帮助里缺 ${w}`);
-  assert.match(t, /diff.*二期，未实现/);
-  assert.match(t, /to-case.*二期，未实现/);
+  assert.doesNotMatch(t, /二期，未实现/);
 });
 
 test("没有命令 / 未知命令：打印帮助并退出 2", async () => {
@@ -69,11 +68,11 @@ test("没有命令 / 未知命令：打印帮助并退出 2", async () => {
   assert.match(b.text(), /未知命令/);
 });
 
-test("diff / to-case 提示二期未实现，退出 2", async () => {
+test("diff / to-case 缺参数是用法错误，退出 2", async () => {
   for (const cmd of ["diff", "to-case"]) {
     const c = io();
-    assert.equal(await main([cmd, "x"], c), 2);
-    assert.match(c.text(), /二期，未实现/);
+    assert.equal(await main([cmd], c), 2);
+    assert.doesNotMatch(c.text(), /二期，未实现/);
   }
 });
 

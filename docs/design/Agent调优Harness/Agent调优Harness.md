@@ -706,7 +706,7 @@
 
 ## 13. 实现记录（2026-10-20）
 
-> 状态：一期-A、一期-B 已实现，一期-C 完成 C3、C4、C5 的主要部分。**都未提交、未在浏览器和真实服务上验证。**
+> 状态：一期（A、B、C3/C4/C5）与二期（`diff`、`to-case`、C5 后半、C6、C8–C15、报告摘 stderr、审计 Agent 模块）均已实现。一期已提交，二期见 13.5。**都没有在浏览器和真实服务上验证。**
 
 ### 13.1 已实现
 
@@ -735,14 +735,46 @@
 
 ### 13.3 没做
 
-- **C5 的后半部分**：用户等待批准期间改了参数，提交时没有重新报价并与原报价比较。
-- C6、C8 至 C15 全部未做（二期）。
-- F5 前端兜底只有纯函数测试，接到画布后的实际效果没在浏览器里看过。
-- 后台页面的视觉效果、下载文件真实落盘没验证。
+- 后台「在线看时间线」（已搁置，二期也没做）。
+- 前端撑开组框、后台页面的视觉效果、Ctrl+Z 在 Agent 连续写画布时的真实表现，都没在浏览器里看过。
+- C13 只处理了 `StartRun`：`DeleteSession` 和 service 层的 `Resume` 如果被一个过期的等待运行占着画布，仍会返回 60001。
+- C9 只瘦了发给模型的视图，`session_jsonl` 里仍保存每轮完整目录；要一并瘦身，在 `saveState` 加一行 `elideOldCatalogs` 即可。
+- C10 的收尾窗口仍有极小的竞态（`bridge.finish` 那次往返之间），彻底消除要 Go 配合在 finish 时返回「还有未处理插话」。
 
 ### 13.4 验证情况
 
 - 后端不依赖数据库的测试全部通过；**带 `TEST_DATABASE_DSN` 的仓储与迁移测试没有完整复跑**（子代理的命令被自动模式拦截），需要你自己在本机跑：`TEST_DATABASE_DSN=… go test -count=1 ./internal/tests/repository/... ./internal/tests/migration/...`。
 - `TestE2E_*` 4 个用例在改动前就因 Agent 暂不可用（60005，本机 Node 版本过低）而失败，与本次改动无关，但改动后没有再对照确认。
 - 没有在真实 Node 进程和真实 LLM 上跑过任何用例，命令行工具只用假后端验证过。
+
+### 13.5 二期（2026-10-20）
+
+| 范围 | 内容 | 位置 |
+| --- | --- | --- |
+| 命令行 | `diff <目录A> <目录B>`：概要表、断言退化/改进、工具调用序列差异，整批目录按用例配对，有退化退出码 1；`to-case <轨迹包目录>`：把线上轨迹包还原成用例（初始画布、应答剧本、预算、保守断言），产物目录已加入 `.gitignore`，输出提醒线上内容需脱敏 | `agent/harness/diff.mjs`、`tocase.mjs`、`bundle.mjs` |
+| C5 后半 | 提交时按最新节点输入重新报价，单价高于批准价就不提交该条目并记入 `failed`，由 `unusedQuote` 退款 | `service/agent/generate.go` |
+| C6 | 继续一个被中断的运行时，用审批的真实结果替换历史里的占位工具结果 | `service/agent/resume_state.go`、`runtime.go` |
+| C8 | Agent 改动同样并进撤销栈、重做栈里的每张快照（`rebaseSnapshot`），不再清栈 | `web/src/utils/canvas/history.ts`、`use-canvas-history.ts` |
+| C9 | 发给模型的上下文里只留最新一份画布目录 | `agent/src/context.mjs`、`run.mjs`、`compaction.mjs` |
+| C10 | finish 前检查未处理的插话，有就再跑一轮（上限 3 轮） | `agent/src/run.mjs` |
+| C11 | codemode 失败文案里列出「状态未知」的进行中调用 | `agent/src/agent-tools/codemode.mjs` |
+| C12 | 运行结束并对账后复位 `touched`，之后别处的 409 照旧弹冲突窗 | `web/src/utils/canvas/agent-sync.ts` |
+| C13 | 审批过期时把运行置为 `expired`，`StartRun` 遇到过期的等待运行自动放行 | `service/agent/approval.go`、`run.go` |
+| C14 | 「提示词优化」模式的 `update_node` 只允许改 `prompt` | `service/agent/bridge_tools.go` |
+| C15 | 撤销只比较 Agent 写过的字段，前端补的默认值不再让节点删不掉 | `canvasgraph/revert.go` |
+| 报告 | segment 异常结束时，可疑信号和时间线直接写出 stderr 里的错误（优先 `*Error` 行，其次含 `ERR_` 的行） | `tracereport/build.go` |
+| 审计 | 后端 `module` 白名单加入 `agent`；前端加「Agent」模块项，`agent_run` 显示为「Agent 运行」 | `model/admin_audit_list.go`、`web/src/utils/admin/log-rules.ts` |
+
+**与设计的出入**
+1. C10 在 Node 里 finish 前再跑一轮，没有让 Go 自动续跑（原设计）。
+2. stderr 摘取优先级与设计略有不同：Node 堆栈末尾常是 `code: 'ERR_…'`，按字面会摘不到包名，所以先取最后一条 `*Error` 行。
+3. `to-case` 的选项题用提问开头约 12 个字作 `contains`，不用整句，因为模型重新措辞后整句匹配不上；选模型题用 `ask_kind:model` 加 `model_kind`。
+4. C6 只对 `toolCallId` 与审批的 `tool_call_id` 完全相等时生效，codemode 嵌套调用的审批 id 形如 `父id.子id` 时保持原样。
+5. C5 比较的是单价而不是总价（一个条目一个任务）。
+6. C8 的 rebase 对「用户先改了 X、Agent 又改了 X」的情况，撤销后 X 会是 Agent 的值。
+7. C11 的「状态未知」列表不区分只读和写入（工具声明里没有只读标记），只读调用也会被列出，无害但略啰嗦。
+
+**验证**：后端不依赖数据库的测试全绿；前端 2743 个、`agent/harness` 191 个、Node 运行时 94 个（在临时副本里装依赖后跑，没动 `agent/node_modules`）全过。带 `TEST_DATABASE_DSN` 的仓储与迁移测试仍需自行运行。
+
+另外：本机 `agent/node_modules` 是 10 月 8 日装的，缺 `@earendil-works/pi-codemode` 和 `quickjs-wasi`，导致开发容器里 Agent 一启动就崩（轨迹包 `stderr_tail` 里就是这个错误）。需要在宿主机执行 `cd agent && npm ci`。
 

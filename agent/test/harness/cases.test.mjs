@@ -31,6 +31,16 @@ test("必填项：id、message、budget、expect", () => {
   }
 });
 
+test("source：线上导入用例的来源字段允许存在，必须是对象，字段类型要对", () => {
+  assert.deepEqual(validateCase({ ...good(), source: { run_id: "abc", exported_at: "2026-10-20T09:00:00Z", prompt_version: 9, status: "succeeded" } }), []);
+  assert.deepEqual(validateCase({ ...good(), source: { run_id: "abc", exported_at: null } }), []);
+  assert.ok(validateCase({ ...good(), source: "线上" }).some((e) => e.includes("source")));
+  assert.ok(validateCase({ ...good(), source: [] }).some((e) => e.includes("source")));
+  assert.ok(validateCase({ ...good(), source: { run_id: 5 } }).some((e) => e.includes("source.run_id")));
+  assert.ok(validateCase({ ...good(), source: { exported_at: 5 } }).some((e) => e.includes("source.exported_at")));
+  assert.ok(validateCase({ ...good(), source: { prompt_version: "9" } }).some((e) => e.includes("source.prompt_version")));
+});
+
 test("缺 budget 的报错要说清怎么改", () => {
   const c = good();
   delete c.budget;

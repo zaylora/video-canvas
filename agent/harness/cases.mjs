@@ -7,13 +7,24 @@ import { validateAssertion } from "./assertions.mjs";
 import { validateAnswers } from "./answers.mjs";
 
 const HARNESS_ROOT = path.dirname(fileURLToPath(import.meta.url));
-const MODES = ["all", "script", "storyboard", "prompt"]; // model.CreateAgentSessionReq 的 oneof
+export const MODES = ["all", "script", "storyboard", "prompt"]; // model.CreateAgentSessionReq 的 oneof
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/; // 要进目录名和 X-Agent-Harness 请求头
 const CASE_SUFFIX = ".case.json";
 export const DEFAULT_TIMEOUT_SEC = 900;
 
 /** 用例读取 / 校验失败。message 里一次说完所有问题。 */
 export class CaseError extends Error {}
+
+/** source 是 to-case 写的来源记录（哪次线上运行转来的），只给人看，不影响执行；有就要是对象、字段类型对。 */
+function validateSource(source) {
+  if (source === undefined) return [];
+  if (!source || typeof source !== "object" || Array.isArray(source)) return ["source 必须是对象（线上运行的来源，如 {run_id, exported_at}）"];
+  const errs = [];
+  for (const k of ["run_id", "status"]) if (source[k] !== undefined && typeof source[k] !== "string") errs.push(`source.${k} 必须是字符串`);
+  if (source.exported_at !== undefined && source.exported_at !== null && typeof source.exported_at !== "string") errs.push("source.exported_at 必须是字符串或 null");
+  if (source.prompt_version !== undefined && source.prompt_version !== null && !(typeof source.prompt_version === "number" && Number.isFinite(source.prompt_version))) errs.push("source.prompt_version 必须是数字或 null");
+  return errs;
+}
 
 /** 返回问题列表，空数组表示用例合法。 */
 export function validateCase(def) {
@@ -33,6 +44,7 @@ export function validateCase(def) {
   else if (typeof def.budget !== "number" || !Number.isFinite(def.budget) || def.budget < 0) errs.push("budget 必须是 ≥ 0 的数字");
   if (def.timeout_sec !== undefined && !(typeof def.timeout_sec === "number" && def.timeout_sec > 0)) errs.push("timeout_sec 必须是正数");
   if (def.wait_tasks !== undefined && typeof def.wait_tasks !== "boolean") errs.push("wait_tasks 必须是 true / false");
+  errs.push(...validateSource(def.source));
   errs.push(...validateAnswers(def.answers));
   if (!Array.isArray(def.expect) || def.expect.length === 0) errs.push("expect 必须是非空数组（没有断言的用例永远通过）");
   else def.expect.forEach((a, i) => validateAssertion(a).forEach((e) => errs.push(`expect[${i}]：${e}`)));

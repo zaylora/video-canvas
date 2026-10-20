@@ -53,7 +53,7 @@ export function buildDecision(entry, approval) {
 }
 
 /** 提问原文的前几个字，作为 contains 的建议值。 */
-function questionStem(question) {
+export function questionStem(question) {
   const first = question.split(/[？?，,。.！!、:：;；/\n]/)[0].trim();
   return first.slice(0, 12) || question.slice(0, 12);
 }

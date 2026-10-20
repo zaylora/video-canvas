@@ -26,3 +26,7 @@
 
 # Agent 调优 Harness 的运行输出与线上导出的轨迹包（含用户数据，不入库）
 /.harness/
+
+# Agent 调优 Harness：to-case 从线上轨迹包生成的用例与初始画布（含用户的剧本和提示词，不入库；要提交请先脱敏并改放到 cases/、fixtures/）
+/agent/harness/cases-imported/
+/agent/harness/fixtures/imported/
