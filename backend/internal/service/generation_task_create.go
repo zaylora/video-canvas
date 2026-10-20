@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strconv"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
@@ -115,21 +116,24 @@ func anyFound(tasks []*model.GenerationTask) bool {
 	return false
 }
 
-// createOne 创建一个任务：组装 → 单个事务冻结积分并插入 → 唤醒 worker 并推送。命中幂等键时返回已存在的任务。
+// createOne 创建一个任务：组装 → 单个事务冻结积分、插入并入队 → 推送。命中幂等键时返回已存在的任务。
 func (s *GenerationTaskService) createOne(ctx context.Context, task *model.GenerationTask, req *model.CreateGenerationTaskReq, snap *provider.Snapshot, input map[string]any) (*model.GenerationTask, error) {
 	if req.CanvasID > 0 {
 		canvasID := uint64(req.CanvasID)
 		task.CanvasProjectID = &canvasID
 	}
-	if err := s.fillTask(task, snap, input); err != nil {
+	queueWait, err := s.queueMaxWait(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillTask(task, snap, input, queueWait); err != nil {
 		return nil, err
 	}
 	existing, err := s.insertAndFreeze(ctx, task)
 	if err != nil || existing != nil {
 		return existing, err
 	}
-	// 事务提交之后才唤醒 worker 和推送，避免对方读到还没提交的数据
-	s.Kick()
+	// 任务与队列里的 job 已在同一个事务里提交；事务提交之后才推送，避免对方读到还没提交的数据
 	s.publish(ctx, task)
 	return task, nil
 }
@@ -213,17 +217,26 @@ func (s *GenerationTaskService) SubmitTest(ctx context.Context, userID uint64, s
 		return nil, err
 	}
 
-	// 3. 插入任务：credits 记 0（不参与积分与对账），没有幂等键
-	task := &model.GenerationTask{UserID: userID, IsTest: true}
-	if err := s.fillTask(task, snap, normalized); err != nil {
+	// 3. 插入任务并入队（同一个事务）：credits 记 0（不参与积分与对账），没有幂等键
+	queueWait, err := s.queueMaxWait(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.InsertTask(ctx, task); err != nil {
+	task := &model.GenerationTask{UserID: userID, IsTest: true}
+	if err := s.fillTask(task, snap, normalized, queueWait); err != nil {
+		return nil, err
+	}
+	err = s.repo.WithTx(ctx, func(tx repository.GenerationTaskTx) error {
+		if _, err := tx.InsertTask(ctx, task); err != nil {
+			return err
+		}
+		return tx.EnqueueTask(ctx, task)
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	// 4. 唤醒 worker；不推送（is_test 任务对普通用户不可见，管理端自己轮询 GetTestTask）
-	s.Kick()
+	// 4. 不推送（is_test 任务对普通用户不可见，管理端自己轮询 GetTestTask）
 	return taskView(task), nil
 }
 
@@ -259,8 +272,9 @@ func (s *GenerationTaskService) snapshotFor(ctx context.Context, req *model.Crea
 }
 
 // fillTask 把快照与规范化输入填进任务行：种类 / 模型 / 渠道取快照；状态 pending、version 1；
-// next_poll_at = 现在，让 worker 立即领取；deadline 取模型配置，缺省 30 分钟。
-func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provider.Snapshot, input map[string]any) error {
+// next_poll_at = 现在；pending 阶段的 deadline 就是排队的上限（queueWait，系统设置里的排队超时），
+// 任务拿到名额之后会按模型配置的超时（缺省 30 分钟）从那一刻重新计算（见 AcquireSlot）。
+func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provider.Snapshot, input map[string]any, queueWait time.Duration) error {
 	inputJSON, err := json.Marshal(s.storedInput(input))
 	if err != nil {
 		return err
@@ -278,11 +292,11 @@ func (s *GenerationTaskService) fillTask(task *model.GenerationTask, snap *provi
 	task.ConfigSnapshot = datatypes.JSON(snapJSON)
 	task.Version = 1
 	task.NextPollAt = now
-	task.DeadlineAt = now.Add(taskDeadline(snap))
+	task.DeadlineAt = now.Add(queueWait)
 	return nil
 }
 
-// insertAndFreeze 在单个事务里：锁账户 → 幂等复查 → 校验余额与并发上限 → 插入任务 → 冻结积分 → 写 freeze 流水。
+// insertAndFreeze 在单个事务里：锁账户 → 幂等复查 → 校验余额与排队上限 → 插入任务 → 冻结积分 → 写 freeze 流水 → 入队。
 // 任何一步失败整体回滚，不会出现“积分冻结了但任务没创建”。命中幂等键（事务内复查或唯一索引冲突）时返回已存在的任务。
 func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model.GenerationTask) (*model.GenerationTask, error) {
 	userID, key, credits := task.UserID, task.IdempotencyKey, task.Credits
@@ -292,6 +306,10 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		return nil, err
 	}
 	maxActive, err := s.maxActiveTasks(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	multiplier, err := s.queueMultiplier(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +328,8 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if existing, err = s.findIdempotent(ctx, tx, userID, key); err != nil || existing != nil {
 			return err
 		}
-		// 3. 可用余额 = 余额 - 冻结，不足返回 402；进行中的任务数不能超过上限，超过返回 429
+		// 3. 可用余额 = 余额 - 冻结，不足返回 402；未完成的任务数（含排队等名额的）不能超过“并发上限 × 排队倍数”，超过返回 429。
+		//    并发上限本身不在这里拦：超出并发的任务照常创建、排队，等前面的完成后才拿到用户名额（见 AcquireSlot）
 		if acc.Balance-acc.Frozen < credits {
 			return errcode.ErrInsufficientCredits
 		}
@@ -318,7 +337,7 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if err != nil {
 			return err
 		}
-		if active >= int64(maxActive) {
+		if active >= int64(maxActive)*int64(multiplier) {
 			return errcode.ErrTooManyTasks
 		}
 		// 4. 插入任务。即使前面的复查漏掉了（理论上不会），(user_id, idempotency_key) 唯一索引也会拦住：
@@ -334,10 +353,13 @@ func (s *GenerationTaskService) insertAndFreeze(ctx context.Context, task *model
 		if err := tx.AddCredit(ctx, userID, 0, credits); err != nil {
 			return err
 		}
-		_, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits})
-		return err
+		if _, err = tx.InsertLedger(ctx, &model.CreditLedger{UserID: userID, TaskID: model.TaskIDPtr(task.ID), Type: model.LedgerFreeze, Amount: credits}); err != nil {
+			return err
+		}
+		// 6. 在同一个事务里入队：任务、积分冻结、队列里的 job 要么一起成功，要么一起回滚，不会出现有任务没有 job
+		return tx.EnqueueTask(ctx, task)
 	})
-	// 6. 幂等冲突：事务已回滚，取赢家的任务返回；其它错误原样返回（errcode 直接透传给前端）
+	// 7. 幂等冲突：事务已回滚，取赢家的任务返回；其它错误原样返回（errcode 直接透传给前端）
 	if errors.Is(err, errIdempotentConflict) {
 		return s.repo.FindByIdempotencyKey(ctx, userID, key)
 	}

@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCanvasHistoryContext } from "@/hooks/use-canvas-history";
+import { useNow } from "@/hooks/use-now";
 import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useNodeHistoryStore } from "@/store/node-history";
@@ -36,6 +37,7 @@ import type { PreviewItem } from "@/utils/canvas/preview-items";
 import { buildVersionNodes, canSetMain, recentFailedTasks } from "@/utils/canvas/versions";
 import { cancelTasks } from "@/utils/tasks/gateway";
 import { cancelableTaskIds } from "@/utils/tasks/status";
+import { pendingTileTitles } from "@/utils/canvas/history-pending";
 
 import { MediaLightbox, type LightboxTarget } from "./media-lightbox";
 import { MediaPreview, VideoPoster } from "./media-preview";
@@ -176,16 +178,16 @@ function Tile({
   );
 }
 
-/** 生成中的占位格 */
-function PendingTile() {
+/** 还没出结果的占位格：标题是“排队中”“生成中”或“即将完成”，由任务状态决定 */
+function PendingTile({ title }: { title: string }) {
   return (
     <div
-      aria-label="生成中"
+      aria-label={title}
       className="bg-muted/30 relative grid aspect-square place-items-center overflow-hidden rounded-xl ring-1 ring-white/10"
     >
       <div className="text-muted-foreground flex flex-col items-center gap-1.5 text-xs">
         <Loader2 className="size-5 animate-spin" />
-        生成中
+        {title}
       </div>
     </div>
   );
@@ -253,6 +255,7 @@ export function NodeHistoryDialog() {
     : 0;
   const open = !!nodeId && !!data;
   const tasks = useTasksStore((state) => state.tasks);
+  const now = useNow(open && pending > 0);
   const failed = useMemo(() => (nodeId ? recentFailedTasks(tasks, nodeId) : []), [tasks, nodeId]);
 
   const handleClose = useCallback(() => {
@@ -309,6 +312,8 @@ export function NodeHistoryDialog() {
       ? [data.taskId]
       : [];
   const cancelableIds = cancelableTaskIds(restIds, tasks);
+  // 占位格的标题：还没提交给上游的显示“排队中”，和画布节点同一套说法
+  const pendingTitles = pendingTileTitles(restIds, tasks, now, pending);
 
   const cancelRest = () => {
     if (cancelableIds.length) void cancelTasks(cancelableIds);
@@ -344,7 +349,7 @@ export function NodeHistoryDialog() {
       )}
     >
       {Array.from({ length: pending }, (_, i) => (
-        <PendingTile key={`pending-${i}`} />
+        <PendingTile key={`pending-${i}`} title={pendingTitles[i] ?? "生成中"} />
       ))}
       {!full &&
         failed.map((item) => <FailedTile key={`failed-${item.id}`} message={item.message} />)}

@@ -530,16 +530,28 @@ func TestAdminSettings_Register(t *testing.T) {
 	if !strings.Contains(r.Raw, `"register_enabled":true`) || !strings.Contains(r.Raw, `"initial_credits":50`) || !strings.Contains(r.Raw, `"default_max_active_tasks":4`) {
 		t.Fatalf("%s", r.Raw)
 	}
-	body := map[string]any{"register_enabled": false, "initial_credits": 10, "default_max_active_tasks": 6}
+	if !strings.Contains(r.Raw, `"queue_multiplier":5`) || !strings.Contains(r.Raw, `"queue_max_wait_minutes":60`) {
+		t.Fatalf("缺省应带排队倍数 5 与排队超时 60：%s", r.Raw)
+	}
+	body := map[string]any{"register_enabled": false, "initial_credits": 10, "default_max_active_tasks": 6, "queue_multiplier": 3, "queue_max_wait_minutes": 90}
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaAdmin).want(t, 403, errcode.ErrForbidden.Code) // 写仅 SA
 	env.do(http.MethodPut, "/api/v1/admin/settings/register", body, uaSuper).want(t, 200, 0)
 	r = env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaAdmin)
-	if !strings.Contains(r.Raw, `"register_enabled":false`) || !strings.Contains(r.Raw, `"default_max_active_tasks":6`) {
+	if !strings.Contains(r.Raw, `"register_enabled":false`) || !strings.Contains(r.Raw, `"default_max_active_tasks":6`) ||
+		!strings.Contains(r.Raw, `"queue_multiplier":3`) || !strings.Contains(r.Raw, `"queue_max_wait_minutes":90`) {
 		t.Fatalf("保存后读到的不对：%s", r.Raw)
 	}
-	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": -1, "default_max_active_tasks": 4}, uaSuper).
+	// 排队倍数 / 排队超时越界，或者缺失（旧前端不带这两个字段），都是参数错误
+	for _, bad := range []map[string]any{
+		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4, "queue_multiplier": 21, "queue_max_wait_minutes": 60},
+		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4, "queue_multiplier": 5, "queue_max_wait_minutes": 4},
+		{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 4},
+	} {
+		env.do(http.MethodPut, "/api/v1/admin/settings/register", bad, uaSuper).want(t, 400, errcode.ErrInvalidParams.Code)
+	}
+	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": -1, "default_max_active_tasks": 4, "queue_multiplier": 5, "queue_max_wait_minutes": 60}, uaSuper).
 		want(t, 400, errcode.ErrInvalidParams.Code)
-	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 65}, uaSuper).
+	env.do(http.MethodPut, "/api/v1/admin/settings/register", map[string]any{"register_enabled": true, "initial_credits": 1, "default_max_active_tasks": 65, "queue_multiplier": 5, "queue_max_wait_minutes": 60}, uaSuper).
 		want(t, 400, errcode.ErrInvalidParams.Code)
 	env.do(http.MethodGet, "/api/v1/admin/settings/register", nil, uaNormal).want(t, 403, errcode.ErrForbidden.Code)
 }

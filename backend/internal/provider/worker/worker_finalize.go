@@ -44,8 +44,8 @@ func (w *Worker) finalize(ctx context.Context, t *model.GenerationTask, snap *pr
 	// 3. 全部完成：一个事务里写 output_json、置 succeeded、结算积分（在 store.Complete 内完成）
 	applied, err := w.store.Complete(ctx, t, outputs, totalUsage(outs))
 	if err != nil {
-		// 事务失败：产物已转存好并记在内存里，租约过期后重试时不会重复转存
-		log.Error("完成任务的事务失败，租约过期后重试", zap.Error(err))
+		// 事务失败：产物已转存好并记在内存里，稍后重试时不会重复转存
+		log.Error("完成任务的事务失败，稍后重试", zap.Error(err))
 		return
 	}
 	w.forgetTask(t.ID)
@@ -236,7 +236,7 @@ func (w *Worker) failTransfer(ctx context.Context, t *model.GenerationTask) {
 	w.forgetTask(t.ID)
 	code, msg := failureFor(failTransfer, "")
 	if _, err := w.store.Fail(ctx, t, code, msg); err != nil {
-		w.taskLog(t).Error("标记转存失败时出错，租约过期后重试", zap.Error(err))
+		w.taskLog(t).Error("标记转存失败时出错，稍后重试", zap.Error(err))
 	}
 }
 

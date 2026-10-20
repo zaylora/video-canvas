@@ -37,6 +37,6 @@ func ChannelSecretKeyName(channelKey string) string { return "channel:" + channe
 // ChannelLoad 是一个渠道当前的任务负载，供管理端判断渠道是不是满了。
 type ChannelLoad struct {
 	Channel string `json:"channel"` // 渠道 key
-	Running int    `json:"running"` // 同时生成数：已在上游（queued / running）+ 正在提交（pending 且租约有效），和 max_running 比较
-	Waiting int    `json:"waiting"` // 排队数：还没调用上游、在等名额（或等提交重试）的 pending
+	Running int    `json:"running"` // 同时生成数：已拿到名额的任务（提交中的 pending、queued、running），和 max_running 比较
+	Waiting int    `json:"waiting"` // 排队数：还没拿到名额、在排队的 pending
 }

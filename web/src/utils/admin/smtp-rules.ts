@@ -34,11 +34,18 @@ export type RegisterSettingsValues = {
   initial_credits: string;
   /** 默认并发上限输入 */
   default_max_active_tasks: string;
+  /** 排队倍数输入：排队上限 = 用户并发 × 倍数 */
+  queue_multiplier: string;
+  /** 排队超时（分钟）输入 */
+  queue_max_wait_minutes: string;
 };
 
 /** 注册设置字段级错误 */
 export type RegisterSettingsErrors = Partial<
-  Record<"initial_credits" | "default_max_active_tasks", string>
+  Record<
+    "initial_credits" | "default_max_active_tasks" | "queue_multiplier" | "queue_max_wait_minutes",
+    string
+  >
 >;
 
 /** 默认端口：加密方式切换时给出常用值 */
@@ -84,17 +91,26 @@ export function hasSmtpErrors(errors: object): boolean {
 
 /**
  * 校验注册设置表单
- * @param values 初始积分与默认并发输入
+ * @param values 初始积分、默认并发、排队倍数与排队超时输入
  * @returns 字段级错误
  */
 export function validateRegisterSettings(
-  values: Pick<RegisterSettingsValues, "initial_credits" | "default_max_active_tasks">,
+  values: Pick<
+    RegisterSettingsValues,
+    "initial_credits" | "default_max_active_tasks" | "queue_multiplier" | "queue_max_wait_minutes"
+  >,
 ): RegisterSettingsErrors {
   const errors: RegisterSettingsErrors = {};
   const credits = parseInteger(values.initial_credits);
   if (credits === null || credits < 0) errors.initial_credits = "请输入不小于 0 的整数";
   const limit = parseInteger(values.default_max_active_tasks);
   if (limit === null || limit < 1 || limit > 64) errors.default_max_active_tasks = "范围 1 到 64";
+  const multiplier = parseInteger(values.queue_multiplier);
+  if (multiplier === null || multiplier < 1 || multiplier > 20)
+    errors.queue_multiplier = "范围 1 到 20";
+  const maxWait = parseInteger(values.queue_max_wait_minutes);
+  if (maxWait === null || maxWait < 5 || maxWait > 1440)
+    errors.queue_max_wait_minutes = "范围 5 到 1440";
   return errors;
 }
 

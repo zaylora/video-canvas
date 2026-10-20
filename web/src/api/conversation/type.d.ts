@@ -23,7 +23,7 @@ export interface ConversationDto {
 export interface RecordSubmitErrorDto {
   /** 第几格，从 0 开始 */
   index: number;
-  /** HTTP 状态（402 积分不足、429 并发已满……） */
+  /** HTTP 状态（402 积分不足、429 排队任务已达上限……） */
   status: number;
   /** 业务错误码 */
   code: number;

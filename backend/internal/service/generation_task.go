@@ -30,10 +30,10 @@ type GenerationTaskRepo interface {
 	ListActive(ctx context.Context, userID uint64) ([]model.GenerationTask, error)
 	// GetCredit 读取积分账户，不存在返回 repository.ErrNotFound。
 	GetCredit(ctx context.Context, userID uint64) (*model.UserCredit, error)
-	// ClaimDue 领取到期且租约已过期的非终态任务并写租约（worker 用）。
-	ClaimDue(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]model.GenerationTask, error)
-	// ExtendLease 续租（worker 长操作期间的心跳），任务已终态时返回 false。
-	ExtendLease(ctx context.Context, id uint64, until time.Time) (bool, error)
+	// GetByIDAny 只按 id 查询，供系统内部（队列 worker）使用，不做归属过滤。不存在返回 repository.ErrNotFound。
+	GetByIDAny(ctx context.Context, id uint64) (*model.GenerationTask, error)
+	// AcquireSlot 为 pending 任务申请用户名额与渠道名额（见 repository.SlotRequest）。
+	AcquireSlot(ctx context.Context, req repository.SlotRequest) (repository.SlotResult, error)
 	// SaveTrace 写入试跑任务的执行追踪（只更新 is_test 任务），任务不存在或不是试跑任务返回 repository.ErrNotFound。
 	SaveTrace(ctx context.Context, id uint64, trace datatypes.JSON) error
 }
@@ -108,8 +108,6 @@ type GenerationTaskService struct {
 	limits      TaskLimits
 	covers      CanvasCoverSetter
 
-	kick chan struct{} // 进程内信号：有新任务 / 需要立即处理时唤醒 worker
-
 	validateInput func(kind string, caps modelcfg.Capabilities, input map[string]any) (map[string]any, []modelcfg.FieldError)
 	now           func() time.Time
 }
@@ -132,7 +130,6 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 		cfg:           deps.Config,
 		limits:        deps.Limits,
 		covers:        deps.Covers,
-		kick:          make(chan struct{}, 1),
 		validateInput: modelcfg.ValidateInput,
 		now:           time.Now,
 	}
@@ -145,22 +142,35 @@ func NewGenerationTaskService(deps GenerationTaskDeps, opts ...GenerationTaskOpt
 	return s
 }
 
-// KickChan 返回唤醒 worker 的 channel（容量 1，发送不阻塞），组装 worker 时传入。
-func (s *GenerationTaskService) KickChan() <-chan struct{} { return s.kick }
-
-// Kick 唤醒 worker 立即执行一次调度。channel 已有未消费的信号时直接丢弃：一次调度会处理所有到期任务。
-func (s *GenerationTaskService) Kick() {
-	select {
-	case s.kick <- struct{}{}:
-	default:
-	}
-}
-
 // maxActiveTasks 返回用户进行中任务的上限：单用户覆盖 > 系统设置默认 > DefaultMaxActiveTasks。
 // 没有注入 limits 时用 DefaultMaxActiveTasks。
 func (s *GenerationTaskService) maxActiveTasks(ctx context.Context, userID uint64) (int, error) {
 	if s.limits != nil {
 		return s.limits.MaxActiveTasks(ctx, userID)
+	}
+	return DefaultMaxActiveTasks, nil
+}
+
+// queueMultiplier 返回排队倍数：用户非终态任务数达到“并发上限 × 倍数”才拒绝新任务。没有注入 limits 时用 DefaultQueueMultiplier。
+func (s *GenerationTaskService) queueMultiplier(ctx context.Context) (int, error) {
+	if s.limits != nil {
+		return s.limits.QueueMultiplier(ctx)
+	}
+	return DefaultQueueMultiplier, nil
+}
+
+// queueMaxWait 返回任务排队等名额的最长时间：没有注入 limits 时用 DefaultQueueMaxWaitMinutes。
+func (s *GenerationTaskService) queueMaxWait(ctx context.Context) (time.Duration, error) {
+	if s.limits != nil {
+		return s.limits.QueueMaxWait(ctx)
+	}
+	return DefaultQueueMaxWaitMinutes * time.Minute, nil
+}
+
+// defaultMaxActiveTasks 返回全局默认并发上限：没有注入 limits 时用 DefaultMaxActiveTasks。
+func (s *GenerationTaskService) defaultMaxActiveTasks(ctx context.Context) (int, error) {
+	if s.limits != nil {
+		return s.limits.DefaultMaxActiveTasks(ctx)
 	}
 	return DefaultMaxActiveTasks, nil
 }

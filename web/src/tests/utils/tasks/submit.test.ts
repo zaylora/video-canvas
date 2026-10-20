@@ -28,6 +28,12 @@ describe("describeSubmitError：提交处就地提示", () => {
     expect(describeSubmitError({ code: "HTTP_429", status: 429 }).kind).toBe("limit");
   });
 
+  test("429 / 40002 的文案是“排队任务已达上限”，不再说“超过并发”", () => {
+    const text = "排队任务已达上限，请等前面的任务完成后再试";
+    expect(describeSubmitError({ code: 40002 }).message).toBe(text);
+    expect(describeSubmitError({ code: "HTTP_429", status: 429 }).message).toBe(text);
+  });
+
   test("网络问题与未知错误", () => {
     expect(describeSubmitError({ code: "NETWORK_ERROR", status: 0 }).kind).toBe("network");
     expect(describeSubmitError({ code: "TIMEOUT", status: 0 }).kind).toBe("network");

@@ -26,8 +26,8 @@ func TestSettingsService_RegisterSettings(t *testing.T) {
 		if err != nil || !v.RegisterEnabled || v.InitialCredits != DefaultInitialCredits || v.DefaultMaxActiveTasks != DefaultMaxActiveTasks {
 			t.Fatalf("%+v %v", v, err)
 		}
-		if v.InitialCredits != 50 || v.DefaultMaxActiveTasks != 4 {
-			t.Fatalf("常量应为初始积分 50、并发 4：%+v", v)
+		if v.InitialCredits != 50 || v.DefaultMaxActiveTasks != 4 || v.QueueMultiplier != 5 || v.QueueMaxWaitMinutes != 60 {
+			t.Fatalf("常量应为初始积分 50、并发 4、排队倍数 5、排队超时 60 分钟：%+v", v)
 		}
 	})
 	t.Run("库值优先；非法的库值被忽略", func(t *testing.T) {
@@ -54,11 +54,12 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	t.Run("成功：写库并写审计（含前后值）", func(t *testing.T) {
 		repo, audit := newFakeSettingsRepo(), &fakeAudit{}
 		svc := NewSettingsService(repo, audit)
-		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, InitialCredits: 0, DefaultMaxActiveTasks: 5})
-		if err != nil || v.RegisterEnabled || v.DefaultMaxActiveTasks != 5 {
+		v, err := svc.UpdateRegisterSettings(ctx, 7, &model.RegisterSettingsView{RegisterEnabled: false, InitialCredits: 0, DefaultMaxActiveTasks: 5, QueueMultiplier: 3, QueueMaxWaitMinutes: 90})
+		if err != nil || v.RegisterEnabled || v.DefaultMaxActiveTasks != 5 || v.QueueMultiplier != 3 || v.QueueMaxWaitMinutes != 90 {
 			t.Fatalf("%+v %v", v, err)
 		}
-		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingInitialCredits] != "0" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" || repo.by != 7 {
+		if repo.kv[model.SettingRegisterEnabled] != "false" || repo.kv[model.SettingInitialCredits] != "0" || repo.kv[model.SettingDefaultMaxActiveTasks] != "5" ||
+			repo.kv[model.SettingQueueMultiplier] != "3" || repo.kv[model.SettingQueueMaxWaitMinutes] != "90" || repo.by != 7 {
 			t.Fatalf("库值不对：%v by=%d", repo.kv, repo.by)
 		}
 		if got := audit.actions(); len(got) != 1 || got[0] != model.AdminAuditSettingsReg || audit.logs[0].ActorID != 7 {
@@ -67,9 +68,13 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	})
 	t.Run("参数越界返回 ErrInvalidParams，不写库不写审计", func(t *testing.T) {
 		for _, req := range []*model.RegisterSettingsView{
-			{InitialCredits: -1, DefaultMaxActiveTasks: 2},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 0},
-			{InitialCredits: 1, DefaultMaxActiveTasks: 65},
+			{InitialCredits: -1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 0, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 65, QueueMultiplier: 5, QueueMaxWaitMinutes: 60},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 0, QueueMaxWaitMinutes: 60},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 21, QueueMaxWaitMinutes: 60},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 4},
+			{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 1441},
 		} {
 			repo, audit := newFakeSettingsRepo(), &fakeAudit{}
 			if _, err := NewSettingsService(repo, audit).UpdateRegisterSettings(ctx, 1, req); codeOf(err) != errcode.ErrInvalidParams.Code {
@@ -83,7 +88,7 @@ func TestSettingsService_UpdateRegisterSettings(t *testing.T) {
 	t.Run("写库失败透传", func(t *testing.T) {
 		repo := newFakeSettingsRepo()
 		repo.setErr = errBoom
-		_, err := NewSettingsService(repo, &fakeAudit{}).UpdateRegisterSettings(ctx, 1, &model.RegisterSettingsView{InitialCredits: 1, DefaultMaxActiveTasks: 2})
+		_, err := NewSettingsService(repo, &fakeAudit{}).UpdateRegisterSettings(ctx, 1, &model.RegisterSettingsView{InitialCredits: 1, DefaultMaxActiveTasks: 2, QueueMultiplier: 5, QueueMaxWaitMinutes: 60})
 		if !errors.Is(err, errBoom) {
 			t.Fatalf("%v", err)
 		}
@@ -409,6 +414,75 @@ func TestSMTPService_RegisterMailAdapter(t *testing.T) {
 		svc := newSMTPSvc(repo, mailer, &fakeAudit{}, testSecretKey)
 		_, _ = svc.Update(ctx, 1, validSMTPReq())
 		if err := svc.SendVerifyCode(ctx, "a@x.com", "123456"); codeOf(err) != errcode.ErrSMTPSendFailed.Code {
+			t.Fatalf("%v", err)
+		}
+	})
+}
+
+// 排队参数与各阶段并发：库值优先，非法值回落默认；读取走系统设置、不需要额外缓存。
+func TestSettingsService_QueueSettings(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("排队倍数与排队超时：库值优先，越界或非数字被忽略", func(t *testing.T) {
+		repo := newFakeSettingsRepo()
+		svc := NewSettingsService(repo, &fakeAudit{})
+		if n, err := svc.QueueMultiplier(ctx); err != nil || n != DefaultQueueMultiplier {
+			t.Fatalf("缺省应取常量：%d %v", n, err)
+		}
+		if d, err := svc.QueueMaxWait(ctx); err != nil || d != time.Duration(DefaultQueueMaxWaitMinutes)*time.Minute {
+			t.Fatalf("缺省应取常量：%v %v", d, err)
+		}
+		repo.kv = map[string]string{model.SettingQueueMultiplier: "8", model.SettingQueueMaxWaitMinutes: "120"}
+		if n, _ := svc.QueueMultiplier(ctx); n != 8 {
+			t.Fatalf("库值应生效：%d", n)
+		}
+		if d, _ := svc.QueueMaxWait(ctx); d != 2*time.Hour {
+			t.Fatalf("库值应生效：%v", d)
+		}
+		repo.kv = map[string]string{model.SettingQueueMultiplier: "99", model.SettingQueueMaxWaitMinutes: "abc"}
+		if n, _ := svc.QueueMultiplier(ctx); n != DefaultQueueMultiplier {
+			t.Fatalf("越界应忽略：%d", n)
+		}
+		if d, _ := svc.QueueMaxWait(ctx); d != time.Duration(DefaultQueueMaxWaitMinutes)*time.Minute {
+			t.Fatalf("非数字应忽略：%v", d)
+		}
+	})
+
+	t.Run("并发：缺省 16，库值优先，非法值回落默认", func(t *testing.T) {
+		repo := newFakeSettingsRepo()
+		svc := NewSettingsService(repo, &fakeAudit{})
+		got, err := svc.QueueConcurrency(ctx)
+		if err != nil || got != 16 {
+			t.Fatalf("缺省不对：%v %v", got, err)
+		}
+		if err := svc.SetQueueConcurrency(ctx, 9, 12); err != nil {
+			t.Fatal(err)
+		}
+		if repo.kv[model.SettingQueueConcurrency] != "12" || repo.by != 9 {
+			t.Fatalf("库值不对：%v by=%d", repo.kv, repo.by)
+		}
+		if got, _ = svc.QueueConcurrency(ctx); got != 12 {
+			t.Fatalf("库值应生效：%v", got)
+		}
+		for _, bad := range []string{"0", "-2", "x", ""} {
+			repo.kv[model.SettingQueueConcurrency] = bad
+			if got, _ = svc.QueueConcurrency(ctx); got != 16 {
+				t.Fatalf("非法值 %q 应回落默认：%v", bad, got)
+			}
+		}
+	})
+
+	t.Run("读取失败透传", func(t *testing.T) {
+		repo := newFakeSettingsRepo()
+		repo.getErr = errBoom
+		svc := NewSettingsService(repo, &fakeAudit{})
+		if _, err := svc.QueueConcurrency(ctx); !errors.Is(err, errBoom) {
+			t.Fatalf("%v", err)
+		}
+		if _, err := svc.QueueMultiplier(ctx); !errors.Is(err, errBoom) {
+			t.Fatalf("%v", err)
+		}
+		if _, err := svc.QueueMaxWait(ctx); !errors.Is(err, errBoom) {
 			t.Fatalf("%v", err)
 		}
 	})

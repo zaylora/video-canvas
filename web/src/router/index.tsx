@@ -122,6 +122,13 @@ export const router = createBrowserRouter([
                   Component: (await import("@/pages/admin/ai/overview")).default,
                 }),
               },
+              {
+                path: "ai/queue",
+                /** 任务队列页按路由拆包：只有运维 / 管理员才会打开 */
+                lazy: async () => ({
+                  Component: (await import("@/pages/admin/ai/queue")).default,
+                }),
+              },
               { path: "ai/models", element: <LegacyModelsRedirect /> },
               // 旧链接：新建模型曾占用这个地址，现在模型在渠道与模型主从页里管理
               { path: "ai/models/new", element: <Navigate to={channelsPagePath()} replace /> },

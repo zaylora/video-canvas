@@ -19,14 +19,43 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// ClaimDue 领取到期任务并写入租约。
-func (s *GenerationTaskService) ClaimDue(ctx context.Context, limit int, lease time.Duration) ([]model.GenerationTask, error) {
-	return s.repo.ClaimDue(ctx, s.now(), lease, limit)
+// GetTask 按 id 读取任务（队列 worker 用，不按用户过滤）。任务不存在返回 (nil, nil)。
+func (s *GenerationTaskService) GetTask(ctx context.Context, id uint64) (*model.GenerationTask, error) {
+	t, err := s.repo.GetByIDAny(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, nil
+	}
+	return t, err
 }
 
-// ExtendLease 续租，防止长时间操作期间任务被其它 worker 重复领取。
-func (s *GenerationTaskService) ExtendLease(ctx context.Context, id uint64, lease time.Duration) (bool, error) {
-	return s.repo.ExtendLease(ctx, id, s.now().Add(lease))
+// AcquireSlot 为 pending 任务申请用户名额与渠道名额，拿到后生成截止时间从此刻起按模型超时重新计算。
+//
+//  1. 用户并发上限：单用户覆盖 > 系统默认（试跑任务不看用户上限，传 0 即可）；
+//  2. 全局默认并发上限也要带上：渠道排队时要推算排在前面的等待者里谁真能拿到名额；
+//  3. 新的截止时间 = 现在 + 模型配置的超时（缺省 30 分钟）；快照损坏时用默认值，任务照常处理（worker 稍后会因快照损坏直接失败退款）。
+func (s *GenerationTaskService) AcquireSlot(ctx context.Context, t *model.GenerationTask) (provider.SlotOutcome, error) {
+	userLimit := 0
+	if !t.IsTest {
+		n, err := s.maxActiveTasks(ctx, t.UserID)
+		if err != nil {
+			return "", err
+		}
+		userLimit = n
+	}
+	defLimit, err := s.defaultMaxActiveTasks(ctx)
+	if err != nil {
+		return "", err
+	}
+	now := s.now()
+	deadline := defaultTaskDeadline
+	var snap provider.Snapshot
+	if err := json.Unmarshal(t.ConfigSnapshot, &snap); err == nil {
+		deadline = taskDeadline(&snap)
+	}
+	res, err := s.repo.AcquireSlot(ctx, repository.SlotRequest{
+		TaskID: t.ID, UserLimit: userLimit, DefaultUserLimit: defLimit, Now: now, Deadline: now.Add(deadline),
+	})
+	return provider.SlotOutcome(res), err
 }
 
 // SaveProviderState 保存插件的准备结果与私有状态，不改变任务状态。
@@ -137,7 +166,6 @@ func (s *GenerationTaskService) MarkImmediate(ctx context.Context, t *model.Gene
 		return false, err
 	}
 	s.publish(ctx, updated)
-	s.Kick()
 	return true, nil
 }
 
@@ -187,7 +215,6 @@ func (s *GenerationTaskService) MarkFinalizing(ctx context.Context, t *model.Gen
 		return false, err
 	}
 	s.publish(ctx, updated)
-	s.Kick()
 	return true, nil
 }
 

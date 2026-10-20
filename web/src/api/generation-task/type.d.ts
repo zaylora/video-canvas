@@ -93,7 +93,7 @@ export interface CreateTaskRequest {
   input: Record<string, unknown>;
 }
 
-/** 提交结果里一个节点的错误，含义与整体请求的 HTTP 错误一致（402 积分不足、429 并发已满……） */
+/** 提交结果里一个节点的错误，含义与整体请求的 HTTP 错误一致（402 积分不足、429 排队任务已达上限……） */
 export interface CreateTaskItemError {
   status: number;
   code: number;

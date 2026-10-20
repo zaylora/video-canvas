@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -20,13 +21,13 @@ import (
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/mailer"
 	"video-canvas/internal/middleware"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/idcodec"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
-	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/plugin"
 	"video-canvas/internal/provider/pluginrunner"
-	"video-canvas/internal/provider/worker"
+	"video-canvas/internal/provider/queue"
 	"video-canvas/internal/release"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
@@ -44,7 +45,8 @@ type App struct {
 	server *http.Server
 
 	hub        *ws.Hub                  // WebSocket 连接管理，退出时需要显式关闭（Shutdown 不会等已劫持的连接）
-	taskWorker *worker.Worker           // 生成任务调度；配置里关闭时为 nil
+	taskQueue  *queue.Runtime           // 生成任务队列（River）：本实例是否执行任务由 ai.worker.enabled 决定，但入队和后台操作总是可用
+	queueConn  *pgxpool.Pool            // 队列用来 LISTEN 新任务通知的专用连接池，退出时关闭
 	skills     *agentsvc.SkillService   // Agent 技能库；后台周期清理过期暂存和待删除的版本
 	agent      *agentRuntime            // 画布 Agent 的桥和运行进程；agent.enabled=false 时为 nil
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
@@ -200,16 +202,23 @@ func NewApp(cfg *config.Config) (*App, error) {
 	registerBuiltinPlugins(regCtx, aiPluginSvc)
 	regCancel()
 
-	var taskWorker *worker.Worker
-	if cfg.AI.Worker.Enabled {
-		taskWorker = worker.New(taskSvc, executor, provider.AssetSaver(assetSvc), taskSvc.KickChan(), worker.Options{
-			Concurrency:      cfg.AI.Worker.Concurrency,
-			Tick:             cfg.AI.Worker.Tick,
-			BatchSize:        cfg.AI.Worker.BatchSize,
-			Lease:            cfg.AI.Worker.Lease,
-			MaxDownloadBytes: cfg.Storage.MaxResult,
-			ShutdownTimeout:  cfg.Server.ShutdownTimeout,
-		})
+	// 生成任务队列（River）：任务调度、并发、重试之外的实例心跳与救回都交给它；业务处理仍是 worker。
+	// 入队和后台操作总是可用，是否在本实例执行任务由 ai.worker.enabled 决定（API-only 实例关闭它）。
+	taskQueue, queueConn, err := newTaskQueue(cfg, db, taskSvc, executor, assetSvc, settingsSvc)
+	if err != nil {
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
+	}
+	taskRepo.SetEnqueuer(taskQueue) // 创建任务的事务里入队：任务、积分冻结、job 一起提交
+	riverUI, err := taskQueue.UIHandler(riverUIPrefix)
+	if err != nil {
+		queueConn.Close()
+		stopRunner(runnerStop)
+		closeRedis(rdb)
+		closeDB(db)
+		return nil, err
 	}
 
 	// 个人中心：头像写默认存储；改密码复用 token_version 失效机制，并断开全部 WS、给当前设备续签
@@ -255,13 +264,23 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
 		})),
-		Files:          handler.NewFilesHandler(assetSvc),
-		AIModel:        handler.NewAIModelHandler(aiCfgSvc),
-		AdminAI:        handler.NewAdminAIHandler(aiCfgSvc),
-		AdminCatalog:   handler.NewAdminCatalogHandler(service.NewAICatalogService(aiChannelSvc, aiPluginSvc, aiCfgSvc)),
-		AdminPlugin:    handler.NewAdminPluginHandler(aiPluginSvc),
-		AdminChannel:   handler.NewAdminChannelHandler(aiChannelSvc, aiCfgSvc),
-		AdminStats:     handler.NewAdminStatsHandler(service.NewAIStatsService(repository.NewAIStatsRepository(db), aiCfgSvc)),
+		Files:        handler.NewFilesHandler(assetSvc),
+		AIModel:      handler.NewAIModelHandler(aiCfgSvc),
+		AdminAI:      handler.NewAdminAIHandler(aiCfgSvc),
+		AdminCatalog: handler.NewAdminCatalogHandler(service.NewAICatalogService(aiChannelSvc, aiPluginSvc, aiCfgSvc)),
+		AdminPlugin:  handler.NewAdminPluginHandler(aiPluginSvc),
+		AdminChannel: handler.NewAdminChannelHandler(aiChannelSvc, aiCfgSvc),
+		AdminStats:   handler.NewAdminStatsHandler(service.NewAIStatsService(repository.NewAIStatsRepository(db), aiCfgSvc)),
+		AdminQueue: handler.NewAdminQueueHandler(service.NewQueueAdminService(
+			repository.NewQueueRepository(db), aiChannelRepo, settingsSvc, taskQueue, auditRepo)),
+		// River UI 能重试和删除 job，只许仍然启用的 super_admin 打开：停用的账号即使 cookie 还没过期也立即失效
+		RiverUI: handler.NewRiverUIHandler(riverUI, ticketStore, func(ctx context.Context, id uint64) (string, error) {
+			st, err := stateLookup(ctx, id)
+			if err != nil || st == nil || st.Status != model.UserStatusActive {
+				return "", err
+			}
+			return st.Role, nil
+		}, cfg.JWT.Secret, riverUIPrefix),
 		AdminStorage:   handler.NewAdminStorageHandler(storageSvc),
 		AdminImageProc: handler.NewAdminImageProcessorHandler(processorSvc),
 		AdminMe:        handler.NewAdminMeHandler(roleLookup),
@@ -289,7 +308,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 		hub:        hub,
 		agent:      agentRT,
 		skills:     skillSvc,
-		taskWorker: taskWorker,
+		taskQueue:  taskQueue,
+		queueConn:  queueConn,
 		runnerStop: runnerStop,
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
@@ -403,25 +423,18 @@ func (p cmdProcess) Kill() error {
 func (a *App) Run(ctx context.Context) error {
 	defer a.close()
 
-	// 生成任务的调度循环：状态全在 DB 里，重启后自然接着处理；退出时先停 HTTP 再等在途任务处理完，最后才关库
-	var workerDone chan struct{}
-	workerCancel := func() {}
-	if a.taskWorker != nil {
-		var wctx context.Context
-		wctx, workerCancel = context.WithCancel(context.Background())
-		workerDone = make(chan struct{})
-		go func() {
-			defer close(workerDone)
-			if err := a.taskWorker.Run(wctx); err != nil {
-				logger.Error("生成任务 worker 异常退出", zap.Error(err))
-			}
-		}()
-	}
-	defer func() {
-		workerCancel()
-		if workerDone != nil {
-			<-workerDone
+	// 生成任务队列：状态全在 DB 里，重启后自然接着处理（对账会把没有 job 的任务补上）；退出时先停 HTTP 再等在途任务处理完，最后才关库
+	queueCtx, queueCancel := context.WithCancel(context.Background())
+	queueDone := make(chan struct{})
+	go func() {
+		defer close(queueDone)
+		if err := a.taskQueue.Run(queueCtx); err != nil {
+			logger.Error("生成任务队列异常退出", zap.Error(err))
 		}
+	}()
+	defer func() {
+		queueCancel()
+		<-queueDone
 	}()
 
 	// 过期未登记的直传对象清理：和 worker 一样先于关库停止
@@ -575,6 +588,9 @@ func (a *App) close() {
 	}
 	if a.runnerStop != nil {
 		a.runnerStop()
+	}
+	if a.queueConn != nil {
+		a.queueConn.Close()
 	}
 	if a.rdb != nil {
 		if err := a.rdb.Close(); err != nil {

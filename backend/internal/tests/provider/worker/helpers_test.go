@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,9 +71,6 @@ type wkStore struct {
 	completed    map[uint64][]model.TaskOutput
 	usage        map[uint64]*modelcfg.Usage
 	traces       map[uint64][][]provider.TraceStep // 每次 SaveTrace 的入参
-	claimLimits  []int
-	extendCalls  atomic.Int32
-	claimErr     error
 	saveStateErr error
 	saveTraceErr error
 	// beforeMarkSubmitted 在 MarkSubmitted / MarkImmediate 内部触发（测试用来模拟“提交期间被取消”）
@@ -155,52 +151,21 @@ func (s *wkStore) rec(format string, args ...any) {
 	s.calls = append(s.calls, fmt.Sprintf(format, args...))
 }
 
-func (s *wkStore) ClaimDue(ctx context.Context, limit int, lease time.Duration) ([]model.GenerationTask, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.claimLimits = append(s.claimLimits, limit)
-	if s.claimErr != nil {
-		return nil, s.claimErr
-	}
-	now := s.clock.Now()
-	ids := make([]uint64, 0, len(s.tasks))
-	for id := range s.tasks {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	var out []model.GenerationTask
-	for _, id := range ids {
-		t := s.tasks[id]
-		if len(out) >= limit || model.IsTerminalStatus(t.Status) || t.NextPollAt.After(now) {
-			continue
-		}
-		if t.LeaseUntil != nil && !t.LeaseUntil.Before(now) {
-			continue
-		}
-		until := now.Add(lease)
-		t.LeaseUntil = &until
-		out = append(out, *t)
-	}
-	return out, nil
-}
-
-func (s *wkStore) claimLimitList() []int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]int(nil), s.claimLimits...)
-}
-
-func (s *wkStore) ExtendLease(ctx context.Context, id uint64, lease time.Duration) (bool, error) {
-	s.extendCalls.Add(1)
+// GetTask 与队列用的读取一致：任务不存在返回 (nil, nil)。worker 本身不调用它，只是满足 provider.TaskStore。
+func (s *wkStore) GetTask(ctx context.Context, id uint64) (*model.GenerationTask, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.tasks[id]
-	if t == nil || model.IsTerminalStatus(t.Status) {
-		return false, nil
+	if t == nil {
+		return nil, nil
 	}
-	until := s.clock.Now().Add(lease)
-	t.LeaseUntil = &until
-	return true, nil
+	cp := *t
+	return &cp, nil
+}
+
+// AcquireSlot 同上：worker 本身不调用，名额由队列在调用 Handle 之前申请，这里直接放行。
+func (s *wkStore) AcquireSlot(ctx context.Context, t *model.GenerationTask) (provider.SlotOutcome, error) {
+	return provider.SlotAcquired, nil
 }
 
 // cas 找到任务并检查状态在 from 里，否则返回 nil（applied=false）。
@@ -579,14 +544,12 @@ type wkEnv struct {
 	saver *wkSaver
 	logs  *wkLogs
 	w     *Worker
-	kick  chan struct{}
 }
 
 func newWkEnv(mut func(o *Options)) *wkEnv {
 	clock := newWkClock()
 	env := &wkEnv{
 		clock: clock, store: newWkStore(clock), exec: &wkExec{}, saver: &wkSaver{}, logs: &wkLogs{},
-		kick: make(chan struct{}, 1),
 	}
 	opts := Options{
 		Now:              clock.Now,
@@ -597,13 +560,13 @@ func newWkEnv(mut func(o *Options)) *wkEnv {
 	if mut != nil {
 		mut(&opts)
 	}
-	env.w = New(env.store, env.exec, env.saver, env.kick, opts)
+	env.w = New(env.store, env.exec, env.saver, opts)
 	return env
 }
 
 // newWorker 在同一个 store / exec / saver 上建一个全新的 worker，模拟进程重启（内存进度丢失）。
 func (e *wkEnv) newWorker() *Worker {
-	return New(e.store, e.exec, e.saver, nil, Options{Now: e.clock.Now, Rand: func() float64 { return 0.5 }, Logger: e.logs.logger()})
+	return New(e.store, e.exec, e.saver, Options{Now: e.clock.Now, Rand: func() float64 { return 0.5 }, Logger: e.logs.logger()})
 }
 
 // defaultPoll 是测试快照里插件声明的轮询节奏，与宿主默认值相同。
@@ -640,13 +603,30 @@ func (e *wkEnv) task(id uint64, status string, mut func(t *model.GenerationTask)
 	return e.store.add(t)
 }
 
+// runOnce 模拟队列取一轮任务：按 id 升序处理所有到期（next_poll_at <= 当前时钟）的非终态任务，每个任务调用一次 Handle，返回处理的数量。
+// 真实的队列在 provider/queue 里，并发、名额、睡到点都由它负责；这里只验证 Handle 这一步的行为。
 func (e *wkEnv) runOnce(t *testing.T) int {
 	t.Helper()
-	n, err := e.w.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("RunOnce 失败：%v", err)
+	return e.runWith(e.w)
+}
+
+// runWith 与 runOnce 相同，但用指定的 worker（模拟进程重启后换了一个新的 worker）。
+func (e *wkEnv) runWith(w *Worker) int {
+	now := e.clock.Now()
+	e.store.mu.Lock()
+	ids := make([]uint64, 0, len(e.store.tasks))
+	for id, tk := range e.store.tasks {
+		if !model.IsTerminalStatus(tk.Status) && !tk.NextPollAt.After(now) {
+			ids = append(ids, id)
+		}
 	}
-	return n
+	e.store.mu.Unlock()
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		tk, _ := e.store.GetTask(context.Background(), id)
+		w.Handle(context.Background(), *tk)
+	}
+	return len(ids)
 }
 
 // succeededResult 是带若干 url 产物的成功结果。

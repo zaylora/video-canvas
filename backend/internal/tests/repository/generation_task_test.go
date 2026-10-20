@@ -17,7 +17,7 @@ import (
 	. "video-canvas/internal/repository"
 )
 
-// gtTestDB 为本用例创建独立 schema 并迁移任务与积分表；ClaimDue 这类“全表扫描”的 SQL 需要隔离。
+// gtTestDB 为本用例创建独立 schema 并迁移任务与积分表；渠道负载这类“全表统计”的 SQL 需要隔离。
 func gtTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	return isolatedDB(t, &model.GenerationTask{}, &model.GenerationTaskEvent{}, &model.UserCredit{}, &model.CreditLedger{}, &model.AIChannel{})
@@ -84,82 +84,6 @@ func TestGenerationTaskRepo_InsertTaskStoresUniqueTaskRef(t *testing.T) {
 	}
 }
 
-func TestGenerationTaskRepo_ClaimDue(t *testing.T) {
-	ctx := context.Background()
-	db := gtTestDB(t)
-	repo := NewGenerationTaskRepository(db)
-	now := time.Now()
-	user := gtNewUserID()
-
-	t.Run("只领取到期、非终态、无有效租约的任务", func(t *testing.T) {
-		due := gtTask(user, model.TaskPending, 1, now.Add(-time.Second))
-		future := gtTask(user, model.TaskPending, 1, now.Add(time.Hour))
-		done := gtTask(user, model.TaskSucceeded, 1, now.Add(-time.Second))
-		leased := gtTask(user, model.TaskRunning, 1, now.Add(-time.Second))
-		lease := now.Add(time.Minute)
-		leased.LeaseUntil = &lease
-		expiredLease := gtTask(user, model.TaskRunning, 1, now.Add(-time.Second))
-		old := now.Add(-time.Minute)
-		expiredLease.LeaseUntil = &old
-		for _, tk := range []*model.GenerationTask{due, future, done, leased, expiredLease} {
-			if ok, err := repo.InsertTask(ctx, tk); err != nil || !ok {
-				t.Fatalf("插入任务失败：ok=%v err=%v", ok, err)
-			}
-		}
-
-		got, err := repo.ClaimDue(ctx, now, time.Minute, 50)
-		if err != nil {
-			t.Fatalf("ClaimDue 失败：%v", err)
-		}
-		ids := map[uint64]bool{}
-		for _, g := range got {
-			ids[g.ID] = true
-			if g.LeaseUntil == nil || g.LeaseUntil.Before(now.Add(50*time.Second)) {
-				t.Errorf("任务 %d 的租约没有写成 now+lease：%v", g.ID, g.LeaseUntil)
-			}
-		}
-		if len(got) != 2 || !ids[due.ID] || !ids[expiredLease.ID] {
-			t.Fatalf("应只领到 due 和 expiredLease，实际 %v", ids)
-		}
-
-		// 已被领取（租约有效）的任务不会被再次领取；租约过期后可被重新领取（服务重启恢复）
-		again, _ := repo.ClaimDue(ctx, now, time.Minute, 50)
-		if len(again) != 0 {
-			t.Fatalf("租约有效期内不应重复领取，实际 %d 个", len(again))
-		}
-		later, _ := repo.ClaimDue(ctx, now.Add(2*time.Minute), time.Minute, 50)
-		// 此时 leased（原租约 now+1m）的租约也已过期，共 3 个
-		if len(later) != 3 {
-			t.Fatalf("租约过期后应能重新领取 3 个，实际 %d 个", len(later))
-		}
-	})
-
-	t.Run("limit 限制领取数量并按 next_poll_at 排序", func(t *testing.T) {
-		u := gtNewUserID()
-		base := now.Add(-time.Hour)
-		var idsInOrder []uint64
-		for i := 0; i < 5; i++ {
-			tk := gtTask(u, model.TaskQueued, 1, base.Add(time.Duration(i)*time.Second))
-			if _, err := repo.InsertTask(ctx, tk); err != nil {
-				t.Fatal(err)
-			}
-			idsInOrder = append(idsInOrder, tk.ID)
-		}
-		// 前一个子用例遗留的任务租约已过期时也会被领到，这里把它们置为终态排除
-		_ = db.Model(&model.GenerationTask{}).Where("user_id = ?", user).Update("status", model.TaskFailed).Error
-		got, err := repo.ClaimDue(ctx, now, time.Minute, 3)
-		if err != nil || len(got) != 3 {
-			t.Fatalf("应领取 3 个：n=%d err=%v", len(got), err)
-		}
-		want := map[uint64]bool{idsInOrder[0]: true, idsInOrder[1]: true, idsInOrder[2]: true}
-		for _, g := range got {
-			if !want[g.ID] {
-				t.Errorf("领到了不该先领的任务 %d", g.ID)
-			}
-		}
-	})
-}
-
 // gtChannel 建一个渠道，maxRunning 写进 rate_limit_json；0 表示不写（不限）。
 func gtChannel(t *testing.T, db *gorm.DB, key string, maxRunning int) {
 	t.Helper()
@@ -191,227 +115,32 @@ func gtChannelTask(t *testing.T, repo *GenerationTaskRepository, channel, status
 	return tk
 }
 
-func claimedIDs(got []model.GenerationTask) map[uint64]bool {
-	ids := map[uint64]bool{}
-	for _, g := range got {
-		ids[g.ID] = true
-	}
-	return ids
-}
-
-// 渠道 max_running：pending 只能领到“上限 - 占用”那么多，先到先得；已在上游的任务不受限制。
-func TestGenerationTaskRepo_ClaimDue_ChannelMaxRunning(t *testing.T) {
-	ctx := context.Background()
-	now := time.Now()
-	t0 := now.Add(-time.Hour)
-
-	t.Run("名额不足时只放行最早创建的 pending，且运行中的任务照常领取", func(t *testing.T) {
-		db := gtTestDB(t)
-		repo := NewGenerationTaskRepository(db)
-		gtChannel(t, db, "ch", 2)
-		running := gtChannelTask(t, repo, "ch", model.TaskRunning, t0, nil) // 占 1 个名额
-		p1 := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(1*time.Second), nil)
-		p2 := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(2*time.Second), nil)
-		p3 := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(3*time.Second), nil)
-
-		got, err := repo.ClaimDue(ctx, now, time.Minute, 50)
-		if err != nil {
-			t.Fatalf("ClaimDue 失败：%v", err)
-		}
-		ids := claimedIDs(got)
-		if len(got) != 2 || !ids[running.ID] || !ids[p1.ID] || ids[p2.ID] || ids[p3.ID] {
-			t.Fatalf("应只领到 running 和最早的 p1，实际 %v（p1=%d p2=%d p3=%d）", ids, p1.ID, p2.ID, p3.ID)
-		}
-	})
-
-	t.Run("正在提交的 pending（租约有效）占名额，退避中的不占", func(t *testing.T) {
-		db := gtTestDB(t)
-		repo := NewGenerationTaskRepository(db)
-		gtChannel(t, db, "ch", 1)
-		lease := now.Add(time.Minute)
-		submitting := gtChannelTask(t, repo, "ch", model.TaskPending, t0, func(tk *model.GenerationTask) { tk.LeaseUntil = &lease })
-		waiting := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(time.Second), nil)
-
-		if got, _ := repo.ClaimDue(ctx, now, time.Minute, 50); len(got) != 0 {
-			t.Fatalf("名额被提交中的任务占满，不应领到任何 pending，实际 %v", claimedIDs(got))
-		}
-		// 租约过期（提交的 worker 挂了）后不再占用：名额空出来，按先到先得重新领出最早的那个
-		got, _ := repo.ClaimDue(ctx, now.Add(2*time.Minute), time.Minute, 50)
-		ids := claimedIDs(got)
-		if len(got) != 1 || !ids[submitting.ID] || ids[waiting.ID] {
-			t.Fatalf("租约过期后应只领到最早的 submitting，实际 %v", ids)
-		}
-	})
-
-	t.Run("finalizing 不占名额，渠道之间互不影响，0 或没有渠道记录表示不限", func(t *testing.T) {
-		db := gtTestDB(t)
-		repo := NewGenerationTaskRepository(db)
-		gtChannel(t, db, "limited", 1)
-		gtChannel(t, db, "free", 0)
-		gtChannelTask(t, repo, "limited", model.TaskFinalizing, t0, nil)
-		a := gtChannelTask(t, repo, "limited", model.TaskPending, t0.Add(time.Second), nil)
-		b := gtChannelTask(t, repo, "limited", model.TaskPending, t0.Add(2*time.Second), nil)
-		f1 := gtChannelTask(t, repo, "free", model.TaskPending, t0, nil)
-		f2 := gtChannelTask(t, repo, "free", model.TaskPending, t0, nil)
-		n1 := gtChannelTask(t, repo, "no-record", model.TaskPending, t0, nil)
-
-		got, _ := repo.ClaimDue(ctx, now, time.Minute, 50)
-		ids := claimedIDs(got)
-		if !ids[a.ID] || ids[b.ID] || !ids[f1.ID] || !ids[f2.ID] || !ids[n1.ID] {
-			t.Fatalf("limited 只放行 a；free 与无记录的渠道不限：%v", ids)
-		}
-	})
-
-	t.Run("已超过截止时间的 pending 绕过上限被领出（用来置为超时），且不占名额", func(t *testing.T) {
-		db := gtTestDB(t)
-		repo := NewGenerationTaskRepository(db)
-		gtChannel(t, db, "ch", 1)
-		gtChannelTask(t, repo, "ch", model.TaskRunning, t0, nil) // 名额已满
-		stale := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(time.Second), func(tk *model.GenerationTask) {
-			tk.DeadlineAt = now.Add(-time.Minute)
-		})
-		fresh := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(2*time.Second), nil)
-
-		got, _ := repo.ClaimDue(ctx, now, time.Minute, 50)
-		ids := claimedIDs(got)
-		if !ids[stale.ID] || ids[fresh.ID] {
-			t.Fatalf("应领到超时的 stale、不领 fresh：%v", ids)
-		}
-	})
-
-	t.Run("上限取渠道当前配置：调大后排队中的任务立即可领", func(t *testing.T) {
-		db := gtTestDB(t)
-		repo := NewGenerationTaskRepository(db)
-		gtChannel(t, db, "ch", 1)
-		gtChannelTask(t, repo, "ch", model.TaskRunning, t0, nil)
-		p := gtChannelTask(t, repo, "ch", model.TaskPending, t0.Add(time.Second), nil)
-		if got, _ := repo.ClaimDue(ctx, now, time.Minute, 50); claimedIDs(got)[p.ID] {
-			t.Fatal("名额已满，p 不应被领取")
-		}
-		if err := db.Model(&model.AIChannel{}).Where("key = ?", "ch").
-			Update("rate_limit_json", model.JSONText(`{"max_running":2}`)).Error; err != nil {
-			t.Fatal(err)
-		}
-		if got, _ := repo.ClaimDue(ctx, now, time.Minute, 50); !claimedIDs(got)[p.ID] {
-			t.Fatal("调大上限后 p 应能被领取")
-		}
-	})
-}
-
-// 并发领取时渠道的同时生成数不会超过上限（建议锁串行化了“数名额 + 写租约”）。
-func TestGenerationTaskRepo_ClaimDue_ChannelMaxRunning_Concurrent(t *testing.T) {
-	ctx := context.Background()
-	db := gtTestDB(t)
-	repo := NewGenerationTaskRepository(db)
-	gtChannel(t, db, "ch", 3)
-	now := time.Now()
-	for i := 0; i < 30; i++ {
-		gtChannelTask(t, repo, "ch", model.TaskPending, now.Add(-time.Hour+time.Duration(i)*time.Second), nil)
-	}
-
-	var (
-		mu      sync.Mutex
-		claimed int
-		wg      sync.WaitGroup
-	)
-	for w := 0; w < 8; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			got, err := repo.ClaimDue(ctx, now, time.Minute, 10)
-			if err != nil {
-				t.Errorf("ClaimDue 失败：%v", err)
-				return
-			}
-			mu.Lock()
-			claimed += len(got)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-	if claimed != 3 {
-		t.Fatalf("上限 3，8 个并发领取者一共应只领到 3 个，实际 %d", claimed)
-	}
-}
-
-// ChannelLoads 的口径与 ClaimDue 的占用数一致，管理端看到的“生成中 x/y”就是闸门实际数的那个 x。
+// ChannelLoads 的口径与名额（AcquireSlot）一致：拿到名额的 pending（提交中）、queued、running 算“生成中”，
+// 没拿到名额的 pending 算“排队”，管理端看到的“生成中 x/y”就是闸门实际数的那个 x。
 func TestAIChannelRepo_ChannelLoads(t *testing.T) {
 	ctx := context.Background()
 	db := gtTestDB(t)
 	tasks := NewGenerationTaskRepository(db)
 	channels := NewAIChannelRepository(db)
 	now := time.Now()
-	lease := now.Add(time.Minute)
+	held := func(tk *model.GenerationTask) { tk.SlotAcquiredAt = &now }
 
-	gtChannelTask(t, tasks, "a", model.TaskRunning, now, nil)
-	gtChannelTask(t, tasks, "a", model.TaskQueued, now, nil)
-	gtChannelTask(t, tasks, "a", model.TaskPending, now, func(tk *model.GenerationTask) { tk.LeaseUntil = &lease }) // 正在提交：算生成中
-	gtChannelTask(t, tasks, "a", model.TaskPending, now, nil)                                                       // 排队
-	gtChannelTask(t, tasks, "a", model.TaskPending, now, nil)                                                       // 排队
-	gtChannelTask(t, tasks, "a", model.TaskFinalizing, now, nil)                                                    // 只剩转存：不算
-	gtChannelTask(t, tasks, "a", model.TaskSucceeded, now, nil)                                                     // 终态：不算
+	gtChannelTask(t, tasks, "a", model.TaskRunning, now, held)
+	gtChannelTask(t, tasks, "a", model.TaskQueued, now, held)
+	gtChannelTask(t, tasks, "a", model.TaskPending, now, held)    // 拿到名额、正在提交：算生成中
+	gtChannelTask(t, tasks, "a", model.TaskPending, now, nil)     // 排队
+	gtChannelTask(t, tasks, "a", model.TaskPending, now, nil)     // 排队
+	gtChannelTask(t, tasks, "a", model.TaskFinalizing, now, held) // 只剩转存：不算
+	gtChannelTask(t, tasks, "a", model.TaskSucceeded, now, held)  // 终态：不算
 	gtChannelTask(t, tasks, "b", model.TaskPending, now, nil)
 
-	got, err := channels.ChannelLoads(ctx, now)
+	got, err := channels.ChannelLoads(ctx)
 	if err != nil {
 		t.Fatalf("ChannelLoads 失败：%v", err)
 	}
 	want := []model.ChannelLoad{{Channel: "a", Running: 3, Waiting: 2}, {Channel: "b", Running: 0, Waiting: 1}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("负载不对：got=%+v want=%+v", got, want)
-	}
-}
-
-// 多个并发领取者不会领到同一个任务（FOR UPDATE SKIP LOCKED）。
-func TestGenerationTaskRepo_ClaimDue_Concurrent(t *testing.T) {
-	ctx := context.Background()
-	db := gtTestDB(t)
-	repo := NewGenerationTaskRepository(db)
-	now := time.Now()
-	user := gtNewUserID()
-
-	const total = 60
-	for i := 0; i < total; i++ {
-		if _, err := repo.InsertTask(ctx, gtTask(user, model.TaskPending, 1, now.Add(-time.Second))); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	var (
-		mu      sync.Mutex
-		claimed = map[uint64]int{}
-		wg      sync.WaitGroup
-	)
-	for w := 0; w < 6; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				got, err := repo.ClaimDue(ctx, now, time.Minute, 7)
-				if err != nil {
-					t.Errorf("ClaimDue 失败：%v", err)
-					return
-				}
-				if len(got) == 0 {
-					return
-				}
-				mu.Lock()
-				for _, g := range got {
-					claimed[g.ID]++
-				}
-				mu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-
-	if len(claimed) != total {
-		t.Fatalf("应领取全部 %d 个任务，实际 %d 个", total, len(claimed))
-	}
-	for id, n := range claimed {
-		if n != 1 {
-			t.Fatalf("任务 %d 被领取了 %d 次", id, n)
-		}
 	}
 }
 
@@ -755,15 +484,6 @@ func TestGenerationTaskRepo_Queries(t *testing.T) {
 		}
 		if n, _ := repo.TouchByProviderTask(ctx, "p1", "no-such", now); n != 0 {
 			t.Fatalf("不存在的平台任务应命中 0 个，实际 %d", n)
-		}
-	})
-	t.Run("ExtendLease 只续非终态任务", func(t *testing.T) {
-		until := time.Now().Add(time.Hour)
-		if ok, err := repo.ExtendLease(ctx, mine.ID, until); err != nil || !ok {
-			t.Fatalf("ok=%v err=%v", ok, err)
-		}
-		if ok, _ := repo.ExtendLease(ctx, done.ID, until); ok {
-			t.Fatal("终态任务不应续租")
 		}
 	})
 }

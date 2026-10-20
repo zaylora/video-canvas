@@ -51,6 +51,9 @@ func runMigrate(args []string, configPath string, out io.Writer) error {
 		if err := migration.Run(ctx, db, initialize.MigrationOptions(cfg.Database)); err != nil {
 			return err
 		}
+		if err := initialize.MigrateQueue(ctx, db); err != nil {
+			return err
+		}
 	}
 	st, err := migration.Status(ctx, db, nil)
 	if err != nil {

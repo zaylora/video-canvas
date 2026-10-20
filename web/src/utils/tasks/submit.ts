@@ -10,7 +10,7 @@ export type SubmitErrorInfo = {
 
 type ErrorLike = { code?: unknown; status?: unknown; message?: unknown };
 
-/** 后端错误码：积分不足 / 并发已满 / 模型不可用 / 参数不合法 / 素材不存在 */
+/** 后端错误码：积分不足 / 排队任务已达上限（原“并发已满”，现在超出并发的任务会排队，只有排队也满了才拒绝）/ 模型不可用 / 参数不合法 / 素材不存在 */
 export const SUBMIT_ERROR_CODE = {
   insufficientCredits: 40001,
   tooManyTasks: 40002,
@@ -29,7 +29,7 @@ export function describeSubmitError(error: unknown): SubmitErrorInfo {
     case SUBMIT_ERROR_CODE.insufficientCredits:
       return { kind: "credits", message: "积分不足，无法生成" };
     case SUBMIT_ERROR_CODE.tooManyTasks:
-      return { kind: "limit", message: "同时生成的任务已达上限，等前面的完成后再试" };
+      return { kind: "limit", message: "排队任务已达上限，请等前面的任务完成后再试" };
     case SUBMIT_ERROR_CODE.modelUnavailable:
       return { kind: "unavailable", message: "该模型暂不可用，换一个模型试试" };
     case SUBMIT_ERROR_CODE.invalidParam:
@@ -39,7 +39,7 @@ export function describeSubmitError(error: unknown): SubmitErrorInfo {
   }
   if (status === 402) return { kind: "credits", message: "积分不足，无法生成" };
   if (status === 429)
-    return { kind: "limit", message: "同时生成的任务已达上限，等前面的完成后再试" };
+    return { kind: "limit", message: "排队任务已达上限，请等前面的任务完成后再试" };
   if (e.code === "NETWORK_ERROR" || e.code === "TIMEOUT") {
     return { kind: "network", message: "网络异常，提交没有成功，请重试" };
   }
