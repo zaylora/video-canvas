@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, ChevronDown, Loader2, Maximize2, Sparkle } from "lucide-react";
 
 import { VendorAvatar } from "@/components/admin-ui/vendor-avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { canvasDialogGuards } from "@/utils/canvas/dialog-guards";
 import { promptPresets, promptTextLength } from "@/utils/canvas/prompt-tokens";
 
 import {
@@ -105,7 +106,10 @@ type NodePromptInputProps = {
   promptMaxLength?: number;
   /** 面板最上面一行，放生成方式 Tabs */
   header?: ReactNode;
-  /** 提示词框上方的插槽，放引用条；没有 header 时它顶到第一行，和放大按钮并排 */
+  /**
+   * 提示词框上方的插槽，放引用条；没有 header 时它顶到第一行，和放大按钮并排。
+   * 「编辑提示词」弹窗里在编辑区上面再渲染一份同样的（同一个元素、同一个上下文），没有它弹窗里也没有
+   */
   children?: ReactNode;
   /** 提示词里 @ 素材要的数据；不给就不能 @ */
   mention?: PromptMentionSource;
@@ -118,10 +122,162 @@ type NodePromptInputProps = {
   className?: string;
 };
 
+/** 底栏（提交提示 + 模型 / 参数 / 积分 / 发送）要的数据：面板和放大编辑弹窗共用同一份 */
+type PromptFooterProps = {
+  /** 工具栏上方的一行提示，比如提交被拒的原因 */
+  notice?: { tone: "error" | "info"; text: string } | null;
+  /** 可选模型清单 */
+  models: readonly NodeModelOption[];
+  /** 当前选中的模型，清单为空时是 undefined */
+  model: NodeModelOption | undefined;
+  onModelChange: (id: string) => void;
+  /** 模型触发器上显示的字，覆盖清单里的名字 */
+  modelLabel?: string;
+  /** 当前模型有问题，触发器用警示色 */
+  modelInvalid?: boolean;
+  /** 模型选择后面的插槽，放参数摘要、批量 */
+  toolbarExtra?: ReactNode;
+  /** 本次提交要冻结的积分；没有价格时显示「—」 */
+  credits?: number;
+  /** credits 是预估上限 */
+  creditsIsMax?: boolean;
+  /** 积分与发送键的悬停说明 */
+  creditsTitle: string;
+  /** 发送键不可点：不能提交，或正在忙 */
+  blocked: boolean;
+  /** 提交在路上或正在生成：发送键转圈 */
+  busy?: boolean;
+  /** 点发送键 */
+  onSubmit: () => void;
+};
+
+/**
+ * 生成面板的底栏：提交被拒的提示行，其下是模型下拉、参数摘要 / 批量插槽、积分和圆形发送键。
+ * 面板和「编辑提示词」弹窗各渲染一次，吃同一份 props，所以在弹窗里改模型、参数，面板里同步变。
+ */
+function PromptFooter({
+  notice,
+  models,
+  model,
+  onModelChange,
+  modelLabel,
+  modelInvalid,
+  toolbarExtra,
+  credits,
+  creditsIsMax,
+  creditsTitle,
+  blocked,
+  busy,
+  onSubmit,
+}: PromptFooterProps) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {notice && (
+        <p
+          role={notice.tone === "error" ? "alert" : undefined}
+          className={cn(
+            "rounded-lg px-2.5 py-1.5 text-xs",
+            notice.tone === "error"
+              ? "bg-destructive/10 text-destructive"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {notice.text}
+        </p>
+      )}
+
+      <div className="flex min-w-0 items-center gap-2">
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger
+            className={cn(PANEL_CHIP_CLASS, modelInvalid && "text-destructive")}
+            aria-label="选择模型"
+          >
+            <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
+            <ChevronDown className="opacity-50" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-72" align="start" sideOffset={8}>
+            <DropdownMenuGroup>
+              {/* GroupLabel 必须待在 Group 里，否则 Base UI 会抛 MenuGroupContext 缺失 */}
+              <DropdownMenuLabel>选择模型</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={model?.id ?? ""}
+                onValueChange={(next) => onModelChange(next as string)}
+              >
+                {models.map((item) => (
+                  <DropdownMenuRadioItem key={item.id} value={item.id}>
+                    <VendorAvatar
+                      vendor={item.vendor}
+                      name={item.label}
+                      seed={item.id}
+                      className="size-7 rounded-md text-xs"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate">{item.label}</span>
+                        {item.tags?.map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-muted text-muted-foreground shrink-0 rounded px-1 py-px text-[10px] leading-4"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                      {item.hint && (
+                        <span className="text-muted-foreground truncate text-xs">{item.hint}</span>
+                      )}
+                    </span>
+                    <span className="text-muted-foreground ml-auto text-xs">
+                      {item.priceLabel ?? `${item.credits} 积分`}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {toolbarExtra}
+
+        {/* 积分是灰色小字，发送键是独立的实心圆：要花多少一眼看到，不用二次确认 */}
+        <span className="ml-auto flex shrink-0 items-center gap-3" title={creditsTitle}>
+          <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
+            <Sparkle
+              className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
+              strokeWidth={0}
+            />
+            {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
+          </span>
+          <motion.button
+            type="button"
+            whileTap={blocked ? undefined : { scale: 0.92 }}
+            whileHover={blocked ? undefined : { scale: 1.05 }}
+            aria-label={busy ? "生成中" : "开始生成"}
+            disabled={blocked}
+            onClick={onSubmit}
+            className={cn(
+              "bg-foreground text-background focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 disabled:pointer-events-none",
+              blocked && "bg-foreground/35",
+            )}
+          >
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ArrowUp className="size-4 stroke-[2.5]" />
+            )}
+          </motion.button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * 浮在节点下方的生成面板（设计稿 6.4）：
  * 生成方式 Tabs → 引用条 → 提示词（可 @ 素材）→ 字数 → 底栏（模型、参数、批量、积分 + 发送）。
- * 右上角可以把提示词放大到对话框里写。只管长相和交互，数据都由调用方决定。
+ * 右上角可以把提示词放大到对话框里写，对话框里带引用条和同一条底栏（设计稿 10.2）。
+ * 只管长相和交互，数据都由调用方决定。
  */
 export function NodePromptInput({
   value,
@@ -156,27 +312,34 @@ export function NodePromptInput({
 }: NodePromptInputProps) {
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<PromptEditorHandle>(null);
+  /** 放大编辑弹窗里的编辑器；弹窗关了就是 null */
+  const dialogEditorRef = useRef<PromptEditorHandle>(null);
   const [highlight, setHighlight] = useRefHighlight();
   const [presetChip, setPresetChip] = useState<PresetChipTarget | null>(null);
   const linkedIds = mention?.linkedIds;
+  const activeEditor = useCallback(
+    () => (expanded ? dialogEditorRef.current : null) ?? editorRef.current,
+    [expanded],
+  );
   const refsValue = useMemo(
     () => ({
       linkedIds: linkedIds ?? new Set<string>(),
       highlight,
       setHighlight,
+      // 弹窗打开时面板被盖住，引用、预设都落到弹窗里的编辑器；弹窗关了回到面板里的
       insertRef: (source: Parameters<PromptEditorHandle["insertRef"]>[0]) =>
-        editorRef.current?.insertRef(source),
+        activeEditor()?.insertRef(source),
       presets: {
         selected: promptPresets(value).map(({ kind, id }) => ({ kind, id })),
         maxLength: promptMaxLength,
         apply: (...args: Parameters<PromptEditorHandle["applyPreset"]>) =>
-          editorRef.current?.applyPreset(...args),
-        focusEditor: () => editorRef.current?.focus(),
+          activeEditor()?.applyPreset(...args),
+        focusEditor: () => activeEditor()?.focus(),
         chip: presetChip,
         setChip: setPresetChip,
       },
     }),
-    [highlight, linkedIds, presetChip, promptMaxLength, setHighlight, value],
+    [activeEditor, highlight, linkedIds, presetChip, promptMaxLength, setHighlight, value],
   );
   const model = models.find((item) => item.id === modelId) ?? models[0];
   const canSubmit = canSubmitOverride ?? (!!onSubmit && !running && value.trim().length > 0);
@@ -202,6 +365,21 @@ export function NodePromptInput({
   const promptPlaceholder = promptDisabled && promptNote ? promptNote : placeholder;
   const length = promptTextLength(value);
   const nearLimit = length > PROMPT_MAX_LENGTH * PROMPT_WARN_RATIO;
+  const footer: PromptFooterProps = {
+    notice,
+    models,
+    model,
+    onModelChange,
+    modelLabel,
+    modelInvalid,
+    toolbarExtra,
+    credits,
+    creditsIsMax,
+    creditsTitle,
+    blocked: !!blocked,
+    busy,
+    onSubmit: submit,
+  };
   // 没有生成方式 Tabs 时，引用条顶到第一行，和放大按钮并排（设计稿 6.7）
   const top = header ?? children;
   const below = header ? children : null;
@@ -213,6 +391,8 @@ export function NodePromptInput({
         style={{ width }}
         className={cn(
           "nodrag nopan bg-panel text-popover-foreground ring-foreground/5 flex flex-col gap-3 rounded-2xl p-4 text-left shadow-2xl ring-1",
+          // 放大编辑时面板藏起来（弹窗是 Portal 渲染到 body 的，不受影响）；用 invisible 保留占位，布局不跳
+          expanded && "invisible",
           className,
         )}
       >
@@ -261,136 +441,42 @@ export function NodePromptInput({
           </div>
         )}
 
-        {notice && (
-          <p
-            role={notice.tone === "error" ? "alert" : undefined}
-            className={cn(
-              "rounded-lg px-2.5 py-1.5 text-xs",
-              notice.tone === "error"
-                ? "bg-destructive/10 text-destructive"
-                : "bg-muted text-muted-foreground",
-            )}
-          >
-            {notice.text}
-          </p>
-        )}
-
-        <div className="flex min-w-0 items-center gap-2">
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger
-              className={cn(PANEL_CHIP_CLASS, modelInvalid && "text-destructive")}
-              aria-label="选择模型"
-            >
-              <span className="min-w-0 truncate">{modelLabel ?? model?.label ?? "加载模型…"}</span>
-              <ChevronDown className="opacity-50" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72" align="start" sideOffset={8}>
-              <DropdownMenuGroup>
-                {/* GroupLabel 必须待在 Group 里，否则 Base UI 会抛 MenuGroupContext 缺失 */}
-                <DropdownMenuLabel>选择模型</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={model?.id ?? ""}
-                  onValueChange={(next) => onModelChange(next as string)}
-                >
-                  {models.map((item) => (
-                    <DropdownMenuRadioItem key={item.id} value={item.id}>
-                      <VendorAvatar
-                        vendor={item.vendor}
-                        name={item.label}
-                        seed={item.id}
-                        className="size-7 rounded-md text-xs"
-                      />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate">{item.label}</span>
-                          {item.tags?.map((tag) => (
-                            <span
-                              key={tag}
-                              className="bg-muted text-muted-foreground shrink-0 rounded px-1 py-px text-[10px] leading-4"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </span>
-                        {item.hint && (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {item.hint}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-muted-foreground ml-auto text-xs">
-                        {item.priceLabel ?? `${item.credits} 积分`}
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {toolbarExtra}
-
-          {/* 积分是灰色小字，发送键是独立的实心圆：要花多少一眼看到，不用二次确认 */}
-          <span className="ml-auto flex shrink-0 items-center gap-3" title={creditsTitle}>
-            <span className="text-muted-foreground flex items-center gap-1 text-[13px] font-medium tabular-nums">
-              <Sparkle
-                className={cn("size-3.5", blocked ? "fill-muted-foreground" : "fill-credit")}
-                strokeWidth={0}
-              />
-              {credits === undefined ? "—" : `${creditsIsMax ? "≤" : ""}${credits}`}
-            </span>
-            <motion.button
-              type="button"
-              whileTap={blocked ? undefined : { scale: 0.92 }}
-              whileHover={blocked ? undefined : { scale: 1.05 }}
-              aria-label={busy ? "生成中" : "开始生成"}
-              disabled={blocked}
-              onClick={submit}
-              className={cn(
-                "bg-foreground text-background focus-visible:ring-node-ring/60 grid size-8 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 disabled:pointer-events-none",
-                blocked && "bg-foreground/35",
-              )}
-            >
-              {busy ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ArrowUp className="size-4 stroke-[2.5]" />
-              )}
-            </motion.button>
-          </span>
-        </div>
+        <PromptFooter {...footer} />
 
         <Dialog open={expanded} onOpenChange={setExpanded}>
-          <DialogContent
-            className="sm:max-w-2xl"
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <DialogHeader>
-              <DialogTitle>编辑提示词</DialogTitle>
-            </DialogHeader>
-            <div className="bg-muted/50 rounded-xl p-3">
-              <PromptEditor
-                large
-                autoFocus
-                value={value}
-                onValueChange={onValueChange}
-                placeholder={promptPlaceholder}
-                disabled={promptDisabled}
-                mention={mention}
-                onSubmit={() => {
-                  setExpanded(false);
-                  submit();
-                }}
-              />
-            </div>
-            <div className="text-muted-foreground flex items-center justify-between text-xs">
-              <span>⌘↵ 发送，Esc 收起</span>
+          <DialogContent className="sm:max-w-4xl" {...canvasDialogGuards}>
+            {/* 不显示标题，但 Radix 要求弹窗有标题，留给读屏软件 */}
+            <DialogTitle className="sr-only">编辑提示词</DialogTitle>
+            {/* 引用条和面板里是同一份：同一个元素、同一个上下文，点击插入落到下面这个编辑器 */}
+            {children}
+            {/* 编辑区和弹窗同一个底色，不再单独垫一块 */}
+            <PromptEditor
+              ref={dialogEditorRef}
+              large
+              autoFocus
+              value={value}
+              onValueChange={onValueChange}
+              placeholder={promptPlaceholder}
+              disabled={promptDisabled}
+              mention={mention}
+              onSubmit={() => {
+                setExpanded(false);
+                submit();
+              }}
+            />
+            <div className="text-muted-foreground flex items-center justify-end text-xs">
               <span className={cn("font-mono tabular-nums", nearLimit && "text-status-warning")}>
                 {length}/{PROMPT_MAX_LENGTH}
               </span>
             </div>
+            {/* 和面板同一条底栏：模型、参数、积分、发送都是同一份状态；点发送与 ⌘↵ 一致，先收起再提交 */}
+            <PromptFooter
+              {...footer}
+              onSubmit={() => {
+                setExpanded(false);
+                submit();
+              }}
+            />
           </DialogContent>
         </Dialog>
       </div>

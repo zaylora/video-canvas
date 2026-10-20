@@ -32,6 +32,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { NODE_META } from "@/constants/canvas";
 import type { PresetKind } from "@/constants/presets";
 import type { TaskNodeModel } from "@/hooks/use-task-node";
+import { useDoodleStore } from "@/store/doodle";
+import { useGridSplitStore } from "@/store/grid-split";
 import { useOutpaintStore } from "@/store/outpaint";
 import { useFramePickStore } from "@/store/frame-pick";
 import { useTrimStore } from "@/store/trim";
@@ -366,10 +368,17 @@ function MediaTaskNode({
   const dragSelected = useDragSelected(id);
 
   // 取消选中或变成多选时退出扩图模式（只在这里退，不靠卸载：开发环境的严格模式会让卸载清理多跑一次）
+  // 宫格切分、涂鸦也一样：取消选中、点画布别处、多选都退出，未保存的内容直接丢弃
   const leaveOutpaint = useOutpaintStore((state) => state.leave);
+  const leaveGridSplit = useGridSplitStore((state) => state.leave);
+  const leaveDoodle = useDoodleStore((state) => state.leave);
   useEffect(() => {
-    if (!selected || multiSelected) leaveOutpaint(id);
-  }, [id, leaveOutpaint, multiSelected, selected]);
+    if (!selected || multiSelected) {
+      leaveOutpaint(id);
+      leaveGridSplit(id);
+      leaveDoodle(id);
+    }
+  }, [id, leaveDoodle, leaveGridSplit, leaveOutpaint, multiSelected, selected]);
 
   // 取消选中或变成多选时退出修剪模式；编码中不退（leave 会拒绝），编码继续，选回来能接上进度
   const leaveTrim = useTrimStore((state) => state.leave);

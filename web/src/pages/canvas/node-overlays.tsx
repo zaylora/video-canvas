@@ -6,7 +6,10 @@ import { toast } from "sonner";
 import { addToLibrary } from "@/api/asset-library";
 import { FolderPickerDialog } from "@/components/assets/folder-picker-dialog";
 import { NodeActionBar } from "@/components/canvas/node-action-bar";
+import { DoodleOverlay } from "@/components/canvas/doodle-overlay";
+import { GridSplitOverlay } from "@/components/canvas/grid-split-overlay";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
+import { TextPreviewDialog } from "@/components/canvas/text-preview-dialog";
 import { FrameOverlay } from "@/components/canvas/frame-overlay";
 import { TrimOverlay } from "@/components/canvas/trim-overlay";
 import {
@@ -20,7 +23,10 @@ import { NODE_TOOLBAR, type ToolbarTail } from "@/constants/node-toolbar";
 import { useFrameNodes } from "@/hooks/use-frame-nodes";
 import { useRemoteModels } from "@/hooks/use-models";
 import { DURATION, EASE_OUT } from "@/lib/motion";
+import { useDoodleStore } from "@/store/doodle";
 import { useFramePickStore } from "@/store/frame-pick";
+import { useGridSplitStore } from "@/store/grid-split";
+import { leaveImageEditModes } from "@/store/image-edit-mode";
 import { useOutpaintStore } from "@/store/outpaint";
 import { useTrimStore } from "@/store/trim";
 import type { CanvasNodeData } from "@/types";
@@ -84,6 +90,10 @@ export function NodeOverlays({
   const zoom = useStore((state) => state.transform[2]);
   const outpainting = useOutpaintStore((state) => state.nodeId === id);
   const enterOutpaint = useOutpaintStore((state) => state.enter);
+  const gridSplitting = useGridSplitStore((state) => state.nodeId === id);
+  const enterGridSplit = useGridSplitStore((state) => state.enter);
+  const doodling = useDoodleStore((state) => state.nodeId === id);
+  const enterDoodle = useDoodleStore((state) => state.enter);
   const trimming = useTrimStore((state) => state.nodeId === id);
   const enterTrim = useTrimStore((state) => state.enter);
   const framePicking = useFramePickStore((state) => state.nodeId === id);
@@ -91,6 +101,8 @@ export function NodeOverlays({
   const { captureQuick } = useFrameNodes();
   /** 「加入资产库」的文件夹选择器是否打开 */
   const [pickingFolder, setPickingFolder] = useState(false);
+  /** 文本节点的放大预览弹窗是否打开 */
+  const [previewingText, setPreviewingText] = useState(false);
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -105,8 +117,23 @@ export function NodeOverlays({
       toast("暂无支持图生图的模型");
       return;
     }
+    // 扩图、宫格切分、涂鸦同一时刻只有一个：进来先退出别的
+    leaveImageEditModes();
     enterOutpaint(id);
   }, [enterOutpaint, id, imageModels.models, imageModels.status]);
+  /** 点「宫格切分」选好行列：进入切分模式，确认前不建任何节点 */
+  const startGridSplit = useCallback(
+    (rows: number, cols: number) => {
+      leaveImageEditModes();
+      enterGridSplit(id, rows, cols);
+    },
+    [enterGridSplit, id],
+  );
+  /** 点「图片编辑」：进入涂鸦模式 */
+  const startDoodle = useCallback(() => {
+    leaveImageEditModes();
+    enterDoodle(id);
+  }, [enterDoodle, id]);
   /** 点「视频修剪」：浏览器不支持 WebCodecs、别的视频正在编码时都不进，说明原因 */
   const startTrim = useCallback(() => {
     if (!supportsTrim()) {
@@ -127,7 +154,14 @@ export function NodeOverlays({
   }, [enterFramePick, id]);
   const onAction =
     data.kind === "image"
-      ? { outpaint: startOutpaint }
+      ? {
+          edit: startDoodle,
+          outpaint: startOutpaint,
+          "grid-2x2": () => startGridSplit(2, 2),
+          "grid-3x3": () => startGridSplit(3, 3),
+          "grid-4x4": () => startGridSplit(4, 4),
+          "grid-5x5": () => startGridSplit(5, 5),
+        }
       : data.kind === "video"
         ? {
             trim: startTrim,
@@ -139,11 +173,13 @@ export function NodeOverlays({
 
   const { src, text, label, fileName } = data;
   const onTail: Partial<Record<ToolbarTail, () => void>> = {
-    // 灯箱只认图片和视频，文本、音频的放大先当占位
+    // 灯箱只认图片和视频；文本用自己的只读弹窗，音频的放大先当占位
     zoom:
       previewNode && (data.kind === "image" || data.kind === "video")
         ? () => previewNode(id)
-        : undefined,
+        : data.kind === "script"
+          ? () => setPreviewingText(true)
+          : undefined,
     download: src ? () => void downloadMedia(src, downloadName(label, src, fileName)) : undefined,
     copy: text
       ? () =>
@@ -173,6 +209,10 @@ export function NodeOverlays({
   // 扩图模式：框 + 面板取代平时的功能区和生成面板
   if (outpainting) return <OutpaintOverlay id={id} data={data} />;
 
+  // 宫格切分、涂鸦模式：覆盖层取代平时的功能区和生成面板
+  if (gridSplitting) return <GridSplitOverlay id={id} data={data} />;
+  if (doodling) return <DoodleOverlay id={id} data={data} />;
+
   // 修剪模式：修剪面板取代平时的功能区和生成面板
   if (trimming) return <TrimOverlay id={id} data={data} />;
 
@@ -200,6 +240,7 @@ export function NodeOverlays({
               gate={gate}
               onAction={onAction}
               onTail={onTail}
+              onGridPick={startGridSplit}
             />
           </motion.div>
         </NodeToolbar>
@@ -211,6 +252,12 @@ export function NodeOverlays({
         title="加入资产库"
         confirmLabel="加入"
         onConfirm={confirmAddToLibrary}
+      />
+      <TextPreviewDialog
+        open={previewingText}
+        onOpenChange={setPreviewingText}
+        title={label}
+        text={text ?? ""}
       />
       {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
       {!data.uploaded && !data.outpaintFrom && data.kind !== "director" && (

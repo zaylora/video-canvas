@@ -1,0 +1,1761 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>图片宫格切分与涂鸦 演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top { position: sticky; top: 0; z-index: 30; background: hsl(var(--background) / 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid hsl(var(--border)); }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s, color 0.15s; }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .btn[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr !important; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+      ul.list li, ol.list li { margin: 3px 0; }
+      ol.list { margin: 0; font-size: 13.5px; }
+
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-vio { background: rgb(var(--violet) / 0.12); color: rgb(var(--violet)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 130px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); font-weight: 500; }
+
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+      .codeblock pre { margin: 0; font: inherit; white-space: pre; }
+
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+      .proto-bar { padding: 8px 12px; gap: 10px; border-bottom: 1px solid hsl(var(--border)); font-size: 12.5px; }
+      .proto-bar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+
+      .inp { height: 32px; padding: 0 8px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--background)); color: inherit; font: inherit; font-size: 13px; width: 100%; }
+      .fld { display: grid; gap: 4px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .opt { text-align: left; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 10px; font-size: 13.5px; background: hsl(var(--card)); }
+      .opt:hover { background: hsl(var(--accent)); }
+      .opt[aria-pressed="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+
+      /* ================= 原型：画布（固定深色，和真实产品一致，不跟随页面主题） ================= */
+      .cv-scroll {
+        --cv-bg: #0b0b0c; --cv-dot: #26262a; --cv-card: #151517; --cv-line: #3a3a40; --cv-text: #e6e6ea; --cv-mute: #9a9aa3;
+        --cv-chrome: #1c1c1f; --cv-chrome-line: #2e2e33; --cv-hover: #2a2a2e; --cv-star: #f5b942; --cv-edge: #6f86ff; --cv-bad: #f87171; --cv-ok: #34d399;
+        height: 540px; overflow: auto; background-color: var(--cv-bg); background-image: radial-gradient(var(--cv-dot) 1px, transparent 1px); background-size: 22px 22px; color: var(--cv-text);
+      }
+      .cv-world { position: relative; transform-origin: 0 0; }
+      .cv-edges { position: absolute; left: 0; top: 0; pointer-events: none; }
+      .cvn { position: absolute; }
+      .cvn-title { position: absolute; bottom: 100%; left: 0; padding-bottom: 4px; font-size: 12px; color: var(--cv-mute); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+      .cvn-title .st { color: var(--cv-star); }
+      .cvn-title .st.bad { color: var(--cv-bad); }
+      .cvn-body { position: absolute; inset: 0; border: 1px solid var(--cv-line); border-radius: 10px; overflow: hidden; background: var(--cv-card); }
+      .cvn.sel .cvn-body { border-color: #e5e5ea; }
+      .cvn-body > img { width: 100%; height: 100%; object-fit: cover; display: block; user-select: none; -webkit-user-drag: none; }
+      .cvn-body.dim > img { opacity: 0.45; }
+      .cvn-text { padding: 10px 12px; font-size: 11.5px; line-height: 1.7; white-space: pre-wrap; height: 100%; overflow: hidden; color: var(--cv-text); }
+      .cvn-empty { height: 100%; display: grid; place-items: center; font-size: 12px; color: var(--cv-mute); }
+      .cvn-ov { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; font-size: 12px; text-align: center; padding: 8px; }
+      .cvn-bar { width: 70%; height: 4px; border-radius: 4px; background: #3a3a40; overflow: hidden; }
+      .cvn-bar > i { display: block; height: 100%; background: var(--cv-edge); }
+      .cvn-ov .bad { color: var(--cv-bad); }
+      .mini { height: 26px; padding: 0 10px; border-radius: 8px; background: #2a2a2e; color: var(--cv-text); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+      .mini:hover { background: #38383d; }
+
+      .tb { position: absolute; display: flex; align-items: center; gap: 2px; padding: 6px; background: var(--cv-chrome); border: 1px solid var(--cv-chrome-line); border-radius: 14px; z-index: 20; white-space: nowrap; box-shadow: 0 8px 24px rgb(0 0 0 / 0.4); }
+      .tb button { height: 32px; padding: 0 10px; border-radius: 9px; color: var(--cv-text); display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+      .tb button:hover:not(:disabled) { background: var(--cv-hover); }
+      .tb button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .tb button[aria-pressed="true"] { background: #3a3a40; }
+      .tb .star { color: var(--cv-star); font-size: 12px; }
+      .tb .sep { width: 1px; height: 20px; background: #34343a; margin: 0 6px; }
+      .tb .save { background: #fff; color: #111; font-weight: 600; margin-left: 4px; }
+      .tb .save:hover:not(:disabled) { background: #e5e5ea; }
+      .tb-wrap { position: relative; display: inline-block; }
+      .tb-menu { position: absolute; top: calc(100% + 10px); left: 0; min-width: 190px; background: var(--cv-chrome); border: 1px solid var(--cv-chrome-line); border-radius: 12px; padding: 6px; z-index: 30; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+      .tb-menu .it { display: flex; justify-content: space-between; align-items: center; width: 100%; height: 36px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: var(--cv-text); }
+      .tb-menu .it:hover { background: var(--cv-hover); }
+      .tb-menu hr { border: 0; border-top: 1px solid var(--cv-chrome-line); margin: 5px 4px; }
+      .sub { position: relative; }
+      .picker { display: none; position: absolute; left: 100%; top: -6px; padding-left: 8px; }
+      .sub:hover .picker { display: block; }
+      .picker-in { background: var(--cv-chrome); border: 1px solid var(--cv-chrome-line); border-radius: 12px; padding: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+      .picker-h { display: flex; justify-content: space-between; gap: 18px; font-size: 12.5px; color: var(--cv-mute); margin-bottom: 8px; }
+      .picker-g { display: grid; grid-template-columns: repeat(5, 24px); gap: 5px; }
+      .tb .pk { width: 24px; height: 24px; padding: 0; border-radius: 5px; background: #3a3a40; }
+      .tb .pk:disabled { opacity: 0.35; }
+      /* 高亮要压过按钮的悬停样式和禁用样式：鼠标正下方那格、以及不可选的 1×1 格，只要在选区内都要亮 */
+      .tb button.pk.on,
+      .tb button.pk.on:hover:not(:disabled),
+      .tb button.pk.on:disabled { background: #8aa0ff; opacity: 1; }
+      .pal { position: absolute; top: calc(100% + 10px); left: 0; display: grid; grid-template-columns: repeat(4, 26px); gap: 8px; padding: 10px; background: var(--cv-chrome); border: 1px solid var(--cv-chrome-line); border-radius: 12px; z-index: 30; }
+      .tb .sw { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+      .tb .sw[aria-pressed="true"] { border-color: #fff; background: inherit; }
+      .tb input[type="range"] { width: 90px; accent-color: #8aa0ff; }
+
+      .ln { position: absolute; z-index: 3; }
+      .ln.v { top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: col-resize; }
+      .ln.h { left: 0; right: 0; height: 14px; margin-top: -7px; cursor: row-resize; }
+      .ln::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45); }
+      .ln.v::after { left: 50%; top: 0; bottom: 0; width: 1.5px; transform: translateX(-50%); }
+      .ln.h::after { top: 50%; left: 0; right: 0; height: 1.5px; transform: translateY(-50%); }
+      .ln:hover::after { background: #8aa0ff; }
+      .chip { position: absolute; z-index: 4; height: 28px; padding: 0 10px; border-radius: 9px; background: rgb(0 0 0 / 0.65); border: 1px solid #3a3a40; color: #fff; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+      .chip.tl { left: 8px; top: 8px; }
+      .chip.tr { right: 8px; top: 8px; pointer-events: none; }
+      .ed-bar { position: absolute; top: calc(100% + 10px); left: 0; display: flex; gap: 8px; z-index: 20; }
+      .ed-bar .ok { background: #fff; color: #111; font-weight: 600; }
+      .ed-bar .ok:hover { background: #e5e5ea; }
+      #ddCanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; cursor: crosshair; touch-action: none; }
+      .dd-text { position: absolute; z-index: 5; background: rgb(0 0 0 / 0.35); border: 1px dashed #fff; outline: none; padding: 0 2px; line-height: 1.2; min-width: 80px; font-family: sans-serif; }
+
+      .cv-modal { position: absolute; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.55); display: grid; place-items: center; padding: 24px; }
+      .cv-modal-card { width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; background: #151517; color: #e6e6ea; border: 1px solid #2e2e33; border-radius: 14px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.5); }
+      .cv-modal-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #2e2e33; font-size: 13px; }
+      .cv-modal-head button { margin-left: auto; color: #9a9aa3; height: 28px; width: 28px; border-radius: 8px; display: grid; place-items: center; }
+      .cv-modal-head button:hover { background: #2a2a2e; color: #fff; }
+      .cv-modal-body { padding: 16px 20px; overflow: auto; font-size: 14px; line-height: 1.9; white-space: pre-wrap; user-select: text; }
+
+      /* ================= 原型：生成面板（固定深色） ================= */
+      .pf { --pf-bg: #0b0b0c; --pf-card: #1c1c1d; --pf-line: #2e2e33; --pf-text: #e6e6ea; --pf-mute: #9a9aa3; --pf-chip: #2a2a2e;
+        position: relative; min-height: 560px; padding: 28px 16px; background: var(--pf-bg); color: var(--pf-text); display: grid; place-items: start center; overflow: hidden; }
+      .pf button { color: inherit; }
+      .pf-panel { width: min(640px, 100%); background: var(--pf-card); border: 1px solid var(--pf-line); border-radius: 24px; padding: 16px 18px; }
+      .pf-tabs { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--pf-mute); }
+      .pf-tabs span { padding: 6px 12px; border-radius: 10px; }
+      .pf-tabs span.on { background: #2b2b2f; color: var(--pf-text); }
+      .pf-ic { margin-left: auto; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--pf-mute); }
+      .pf-ic:hover { background: var(--pf-chip); color: #fff; }
+      .pf-refs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; position: relative; }
+      .pf-tile { position: relative; width: 48px; height: 48px; border-radius: 8px; border: 1px solid #3a3a40; background: #26262a; overflow: visible; cursor: pointer; display: block; }
+      .pf-tile > img { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; display: block; }
+      .pf-tile:hover, .pf-tile:focus-visible, .pf-chip:hover, .pf-chip:focus-visible { outline: 2px solid #8aa0ff; outline-offset: 1px; }
+      .pf-tile .pf-t { display: grid; place-items: center; width: 100%; height: 100%; font-size: 18px; color: var(--pf-mute); }
+      .pf-badge { position: absolute; width: 16px; height: 16px; border-radius: 5px; background: rgb(0 0 0 / 0.65); display: grid; place-items: center; font-size: 10px; color: #fff; }
+      .pf-badge.l { left: 3px; top: 3px; }
+      .pf-badge.b { right: 3px; bottom: 3px; }
+      .pf-x { position: absolute; right: -5px; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #3a3a40; display: none; place-items: center; font-size: 10px; color: #fff; }
+      .pf-tile:hover .pf-x, .pf-tile:focus-within .pf-x { display: grid; }
+      .pf-add { width: 48px; height: 48px; border-radius: 8px; border: 1px dashed #3a3a40; display: grid; place-items: center; color: var(--pf-mute); }
+      .pf-add:hover { background: var(--pf-chip); color: #fff; }
+      .pf-menu { position: absolute; top: 56px; left: 0; z-index: 20; min-width: 220px; background: #232326; border: 1px solid var(--pf-line); border-radius: 12px; padding: 6px; box-shadow: 0 12px 30px rgb(0 0 0 / 0.5); }
+      .pf-menu .h { padding: 4px 8px; font-size: 11.5px; color: var(--pf-mute); }
+      .pf-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; font-size: 13px; text-align: left; }
+      .pf-menu button:hover:not(:disabled) { background: var(--pf-chip); }
+      .pf-menu button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pf-menu img { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
+      .pf-prompt { white-space: pre-wrap; font-size: 14px; line-height: 2; max-height: 150px; overflow: auto; }
+      .pf-prompt.big { max-height: 280px; min-height: 180px; background: rgb(255 255 255 / 0.04); border-radius: 12px; padding: 10px 12px; }
+      .pf-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px 0 3px; border-radius: 8px; background: var(--pf-chip); border: 1px solid #44444b; vertical-align: middle; font-size: 13px; cursor: default; }
+      .pf-chip img { width: 20px; height: 20px; border-radius: 5px; object-fit: cover; }
+      .pf-chip.t img { display: none; }
+      .pf-count { text-align: right; font-size: 12px; color: var(--pf-mute); font-family: "Geist Mono", monospace; margin-top: 4px; }
+      .pf-foot { display: flex; align-items: center; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--pf-mute); }
+      .pf-go { width: 38px; height: 38px; border-radius: 50%; background: #5a5a5f; color: #fff; display: grid; place-items: center; }
+      .pf-mask { position: absolute; inset: 0; z-index: 30; background: rgb(0 0 0 / 0.6); display: grid; place-items: start center; padding: 22px 16px; }
+      .pf-dlg { width: min(720px, 100%); background: var(--pf-card); border: 1px solid var(--pf-line); border-radius: 22px; padding: 16px 20px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.6); }
+      .pf-dh { display: flex; align-items: center; font-size: 15px; }
+      .pf-df { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--pf-mute); }
+      .pf-peek { position: fixed; z-index: 200; pointer-events: none; opacity: 0; transform: scale(0.85, 0.4) translateY(24px); border-radius: 12px; border: 1px solid #3a3a40; box-shadow: 0 20px 50px rgb(0 0 0 / 0.6); overflow: hidden; background: #111;
+        transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+      .pf-peek[data-side="below"] { transform: scale(0.85, 0.4) translateY(-24px); }
+      .pf-peek.on { opacity: 1; transform: none; }
+      .pf-peek img { display: block; }
+      .pf-peek .tg { position: absolute; left: 6px; bottom: 6px; padding: 2px 7px; border-radius: 6px; background: rgb(0 0 0 / 0.65); color: #fff; font-size: 11px; }
+      .pf-peek .tg:empty { display: none; }
+      .pf-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; position: relative; }
+      .pf-wrap { position: relative; }
+      .pf-chipbtn { height: 32px; padding: 0 8px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; }
+      .pf-chipbtn:hover { background: var(--pf-chip); }
+      .pf-at { width: 32px; height: 32px; border-radius: 9px; font-size: 17px; font-weight: 600; }
+      .pf-at:hover { background: var(--pf-chip); }
+      .pf-cr { color: var(--pf-mute); display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+      .pf-menu.up { top: auto; bottom: calc(100% + 8px); }
+      .pf-menu .grp { display: flex; gap: 6px; padding: 4px 6px 8px; flex-wrap: wrap; }
+      .pf-menu .grp button { width: auto; padding: 5px 10px; border: 1px solid #3a3a40; border-radius: 8px; }
+      .pf-menu .grp button[aria-pressed="true"] { background: #3a3a40; border-color: #8aa0ff; }
+      .pf-menu .ck { margin-left: auto; color: #8aa0ff; }
+      .readout { font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: hsl(var(--muted-foreground)); }
+      .schem { width: 100%; max-width: 420px; border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--muted)); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo"><i data-lucide="grid-3x3"></i></span>宫格切分与涂鸦 演示</div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>切分怎么算</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="panel" aria-selected="false"><i data-lucide="image-play"></i>参考图与弹窗</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口（提案）</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">图片和文本节点的功能区：删占位、加切分、做涂鸦</h1>
+        <p class="lead">
+          选中节点后上方的功能区里，有一批点了只弹“敬请期待”的占位按钮，这次删掉。图片节点新增 <b>宫格切分</b>，并把 <b>图片编辑</b> 做成涂鸦；文本节点的 <b>放大预览</b> 补成真能用。切分和涂鸦的结果都是 <b>新建图片节点并连一条线</b>（和扩图一样），<b>源图不会被改</b>。全部在浏览器里完成，<b>不改后端、不扣积分</b>。
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>这是设计演示，<b>功能尚未实现</b>。事实来自本次对 <code>web/src</code> 和 <code>backend</code> 的读码；原型里的示例图是程序画的，格子大小、耗时、颜色值都是<b>示意</b>。对应 Markdown 设计文档
+            <code>图片宫格切分与涂鸦.md</code> 的 §3 到 §6。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对（读过源码）</span>
+            <span class="tag t-info">调研检索，未复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-vio">提案</span>
+            <span class="tag t-mute">示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线流程：一次切分或涂鸦怎么走</h2>
+          <p class="sub">两个功能共用同一条路：进入编辑态，确认后在浏览器里生成图片，上传成素材，再长出新节点。<span class="tag t-vio">提案</span></p>
+          <div class="flow note">
+            <div class="node"><b>选中图片节点</b>功能区出现；生成中或没素材时按钮禁用</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>点「宫格切分 ▾」或「图片编辑」</b>切分要先选几宫格</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>编辑态（盖在节点上）</b>拖切分线 / 画笔框选文字</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>确认 / 保存</b>浏览器用 Canvas 生成 PNG，原图分辨率</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>上传并建节点</b>新节点 + 一条连线；上传完成变成普通图片节点</div>
+          </div>
+          <div class="note-txt">设计：编辑态的“覆盖层”照扩图做（<code>OutpaintOverlay</code>），“上传型新节点”照截取帧做（<code>buildFrameNodes</code> + <code>uploadRunner</code>），不新造机制。放弃了：全屏弹层编辑、后端切图（要加接口、占服务器、还要排队）。</div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>中途退出、失败时（回退）：</b>取消选中、选了别的节点、点画布空白、点「取消」或「×」，都会退出编辑态，<b>未保存的切分线和涂鸦直接丢弃、不弹确认</b>，不建任何节点。某一格上传失败，只有那个节点停在“上传失败”，其余照常；是重试还是撤掉由实现者决定（原型两种都放了）。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>这次改哪几处</h2>
+          <p class="sub">四件独立的事，范围到此为止。</p>
+          <div class="grid g3">
+            <div class="card">
+              <div class="row"><i data-lucide="grid-3x3"></i><b>宫格切分</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">免费</span><span class="tag t-mute">纯前端</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">下拉里选 <b>4 / 9 / 16 / 25 宫格</b> 或 <b>自定义（最多 5×5）</b>，图上的 <b>切分线可拖动</b>，确认后每格建一个新节点。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="pen-line"></i><b>图片编辑（涂鸦）</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">免费</span><span class="tag t-mute">纯前端</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">工具有 <b>画笔、框选（空心矩形）、文字</b>，可选颜色和粗细，能撤销重做。保存后新建一个图片节点。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="file-text"></i><b>文本节点</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">只剩 2 个按钮</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">删掉 <b>润色、扩写、缩写</b>，保留 <b>复制</b> 和 <b>放大预览</b>。放大预览现在点了没反应，要补一个只读弹窗。</p>
+            </div>
+          </div>
+          <div class="callout c-info" style="margin-top: 12px">
+            <i data-lucide="scissors"></i>
+            <div>图片功能区同时<b>删掉「局部重绘」「智能超清」「工具」（抠图、去水印）</b>，这些目前都只是占位。最终图片功能区：<b>图片编辑 · 扩图 · 宫格切分 ▾ ｜ 放大 · 下载 · 加入资产库</b>。视频节点不动。<span class="tag t-ok">已核对 <code>constants/node-toolbar.ts</code></span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>追加两处：生成面板里的参考图</h2>
+          <p class="sub">在节点下方的生成面板上，和上面四件事相互独立。原型在「参考图与弹窗」页签。</p>
+          <div class="grid g2">
+            <div class="card">
+              <div class="row"><i data-lucide="image-play"></i><b>参考图悬停放大</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">你已确认</span><span class="tag t-mute">首页已有，画布没有</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">鼠标移到<b>参考缩略图</b>或提示词里的<b>「图片 7」小标签</b>上，弹出放大的大图，效果照首页。图片显示大图，视频静音循环，<b>文本和音频不弹</b>。首页的预览会改用同一个共用组件。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="maximize-2"></i><b>编辑提示词弹窗里显示参考图</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">你已确认</span><span class="tag t-info">和面板完全一样</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">弹窗标题下面多一排参考图：<b>能点（插入引用）、能删（断开连线）、能加、能悬停放大</b>；弹窗底部也有和面板一样的<b>底栏（选模型、参数、@、积分、发送）</b>。都和面板共用同一份数据，在弹窗里改了面板里同步变。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>涂鸦用什么实现：库的对比</h2>
+          <p class="sub">你让我查有没有轻量的库。你试过试验页后选了 <b>Fabric.js</b>（7.4.0，MIT），只给涂鸦用，<b>动态加载、单独分包</b>，不进主包。<span class="tag t-ok">你已确认</span></p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>自己写 Canvas 2D</th><th>react-sketch-canvas</th><th>Konva</th><th>Fabric.js（已选）</th></tr></thead>
+              <tbody>
+                <tr><th>画笔 / 框选 / 文字</th><td class="y">三样都自己画，范围可控</td><td class="m">只有自由画笔，框选和文字要自己补</td><td class="y">图形、文字都有</td><td class="y">图形、文字都有</td></tr>
+                <tr><th>文字输入</th><td class="m">自己叠一个输入框</td><td class="m">无</td><td class="m">官方文档：不支持画布内编辑，要叠 textarea</td><td class="y">自带画布内文字编辑（IText / Textbox）</td></tr>
+                <tr><th>新增依赖</th><td class="y">无</td><td>1 个（零依赖）</td><td>1 个（用 React 绑定则 2 个）</td><td>1 个</td></tr>
+                <tr><th>包体积（gzip）</th><td class="y">0</td><td class="m">未验证：检索没给数字</td><td>约 55KB（博客数字）</td><td class="m">gzip 约 92KB（<b>实测</b>，完整包 299KB）；按需打包能小多少未测</td></tr>
+                <tr><th>撤销重做</th><td class="m">自己写（操作列表加指针，几十行）</td><td class="y">自带</td><td class="m">官方有示例，仍要自己维护历史列表</td><td class="m">不自带，自己维护对象栈（试验页约 20 行）</td></tr>
+                <tr><th>按原图分辨率导出</th><td class="y">显示和导出共用一个绘制函数，坐标按原图存</td><td class="m">未验证：SVG 导出的分辨率是否可控</td><td class="m">未验证</td><td class="y">画布逻辑尺寸取原图像素，用 <code>toCanvasElement()</code> 导出；<b>屏幕缩小显示时笔迹是否偏移待实测</b></td></tr>
+                <tr><th>核实度</th><td><span class="tag t-vio">提案</span></td><td><span class="tag t-info">调研检索（npm 页面）</span></td><td><span class="tag t-info">调研检索（博客，2026-10 前后）</span></td><td><span class="tag t-ok">体积已实测</span> <span class="tag t-info">文字编辑：调研检索</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 8px">宫格切分没有值得引入的库：核心只是“一组边界 + <code>drawImage</code>”，拖拽交互项目里扩图已有先例（<code>outpaint-frame-layer.tsx</code>）。完整来源见 Markdown §5.3。</p>
+        </div>
+
+        <div class="sec">
+          <h2>把一张图切成 9 宫格时，会发生什么</h2>
+          <p class="sub">从点击到新节点出现，分五步，其中有一个需要提前说清的边界。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>选中图片，点「宫格切分 ▾ → 9 宫格 (3×3)」</b><small>进入编辑态，功能区和生成面板被覆盖层取代</small></li>
+                <li><b>图上出现 2 条竖线、2 条横线（均分）</b><small>每条线都能拖；相邻两线至少隔图片边长的 2%；左上角「重置均分」</small></li>
+                <li><b>点「确认」</b><small>确认前不建任何节点</small></li>
+                <li><b>浏览器按整数边界切出 9 张 PNG</b><small>原图分辨率，不缩放，格与格严格相接、没有缝</small></li>
+                <li><b>源节点右侧长出 9 个图片节点，排成 3×3，各连一条线到源节点</b><small>逐个上传，完成后就是普通图片节点；一次切分只记一条撤销</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：切出来的是 9 个互相独立的节点</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>源图之后再改，已切出的格子不会跟着变</li>
+                    <li>5×5 一次就是 25 个节点、25 次上传，并发上限由实现者定</li>
+                    <li>对同一张图再切一次，新标题会自动加后缀，不会重名</li>
+                    <li>上传没有额外限制：后端单文件默认上限 200MB，PNG 在允许类型里</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付时要提前说清：格子节点按各自宽高比取默认大小，不是缩小版；原型里为了装下 25 个，把格子画小了。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 切分怎么算 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">切分线怎么落到像素上</h1>
+        <p class="lead">选一个宫格，改原图大小，看每条边界和每格尺寸。重点是 <b>用“累积整数边界”切，而不是每格各自取整</b>，否则总宽会少几个像素。这里是真实算法的演示，数字由你输入，<b>耗时等不演示</b>。</p>
+        <div class="grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)" id="demoGrid">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">在画布上走一遍：切分、涂鸦、文本放大</h1>
+        <p class="lead">
+          可点击原型，数据在内存里，刷新复原。画布上有 <b>4 个节点</b>：「图片」可以切分和涂鸦；「图片 2」正在重新生成，<b>按钮全部禁用</b>；「文本」只有复制和放大；「文本 2」是空的，<b>没有功能区</b>。想看<b>失败</b>：先勾上方的“模拟下一次上传失败”，再做一次切分或保存涂鸦，其中一个节点会停在“上传失败”。想看<b>退出</b>：进入切分或涂鸦后点画布空白处。
+        </p>
+        <div class="note" style="margin-top: 18px">
+          <div class="frame">
+            <div class="frame-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span style="margin-left: 8px">canvas.example.com / 画布 / 未命名项目</span>
+              <span class="tag t-mute spacer">示意 · 非真实调用</span>
+            </div>
+            <div class="proto-bar row wrapflex">
+              <span class="muted">画布缩放</span>
+              <button class="btn btn-outline" data-zoom="1" aria-pressed="true">100%</button>
+              <button class="btn btn-outline" data-zoom="1.5" aria-pressed="false">150%</button>
+              <button class="btn btn-outline" data-zoom="2" aria-pressed="false">200%</button>
+              <span class="muted">｜</span>
+              <label><input type="checkbox" id="failNext" /> 模拟下一次上传失败</label>
+              <button class="btn btn-outline spacer" id="resetProto"><i data-lucide="rotate-ccw"></i>重置原型</button>
+            </div>
+            <div class="proto" id="proto">
+              <div class="cv-scroll" id="cvScroll"><div id="cvSize"><div class="cv-world" id="cvWorld"></div></div></div>
+              <div id="cvModal"></div>
+            </div>
+          </div>
+        </div>
+        <div class="note-txt">原地编辑：切分线和涂鸦都直接盖在节点上，照扩图的覆盖层做。节点小就先放大画布（上面的缩放按钮模拟这一点）。放弃了：全屏弹层，第一版不做。</div>
+        <div class="note-txt">退出规则和扩图一致，切分、涂鸦都一样：点别处就丢弃，不弹确认。放弃了“涂鸦有内容时二次确认”，代价是误点空白处会丢笔迹；你觉得可惜再改。</div>
+        <div class="note-txt">格子节点在原型里被缩小了；真实实现用 <code>nodeFrameSize(格子宽高比)</code>，和普通图片节点一样大。新节点摆在源节点右侧、间距 80px、撞到别的节点就往下错开。</div>
+<div class="note-txt">上传失败后“重试 / 撤掉”两种都放出来示意，具体做法留给实现者。未做：橡皮、已落笔内容再编辑、切分结果打 zip。</div>
+        <div class="note-txt">注意：这个原型里的涂鸦是用原生 Canvas 手写的示意，只为演示交互；<b>真实实现用 Fabric.js</b>，手感以 <code>fabric-涂鸦试验.html</code> 为准。</div>
+
+        <div class="sec">
+          <h2>此刻的状态（给实现者看，示意）</h2>
+          <p class="sub">拖切分线、画涂鸦时，这里实时显示编辑态里存的数据，坐标是原图像素。</p>
+          <div class="card"><div class="readout" id="readout"></div></div>
+        </div>
+      </section>
+
+      <!-- ============ 3b. 参考图与弹窗 ============ -->
+      <section id="tab-panel" hidden>
+        <h1 class="h1">生成面板：参考图悬停放大，和提示词弹窗里的参考图、底栏</h1>
+        <p class="lead">
+          可点击原型，数据在内存里，刷新复原。<b>把鼠标移到参考缩略图，或提示词里的「图片 7」小标签上</b>，会弹出放大的大图；<b>文本引用「T」不弹</b>。点右上角的展开图标打开「编辑提示词」：<b>弹窗顶部有同样一排参考图，底部有同样一条底栏</b>（选模型、参数、@、积分、发送），在弹窗里改模型，面板里同步变。想看<b>翻转</b>：弹窗里的参考图靠近窗口顶部，上方放不下时预览会弹到下面。想看<b>空状态</b>：把参考图都删掉，再点 +。
+        </p>
+        <div class="note" style="margin-top: 18px">
+          <div class="frame">
+            <div class="frame-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span style="margin-left: 8px">canvas.example.com / 画布 / 视频节点 / 生成面板</span>
+              <span class="tag t-mute spacer">示意 · 提示词不可编辑</span>
+            </div>
+            <div class="pf" id="pf">
+              <div class="pf-panel">
+                <div class="pf-tabs"><span>文生视频</span><span>图生视频</span><span class="on">全能参考</span>
+                  <button class="pf-ic" data-pf="expand" aria-label="放大编辑提示词" title="放大编辑提示词"><i data-lucide="maximize-2"></i></button></div>
+                <div class="pf-refs" id="pfRefsP"></div>
+                <div class="pf-prompt" id="pfPromptP"></div>
+                <div class="pf-count" id="pfCountP"></div>
+                <div id="pfBarP"></div>
+              </div>
+              <div class="pf-mask" id="pfDlg" hidden>
+                <div class="pf-dlg">
+                  <div class="pf-dh"><b>编辑提示词</b><button class="pf-ic" data-pf="close" aria-label="关闭"><i data-lucide="x"></i></button></div>
+                  <div class="pf-refs" id="pfRefsD"></div>
+                  <div class="pf-prompt big" id="pfPromptD"></div>
+                  <div class="pf-df"><span>⌘↵ 发送，Esc 收起</span><span id="pfCountD"></span></div>
+                  <div id="pfBarD"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note-txt">悬停预览用固定定位、挂在页面最外层，不被面板或弹窗的 overflow 剪裁；首页现在是绝对定位，会被剪裁，所以画布这边不能照搬。放弃了：给预览加延迟（首页就是即时显示，保持一致）。</div>
+        <div class="note-txt">弹窗里的参考图一排和底栏复用面板同一段、同一份数据，不复制状态；插入引用的目标是弹窗里的编辑器（弹窗打开时面板被遮住）。原型里“插入”简化成追加到末尾，真实是插到光标处。</div>
+        <div class="note-txt">底栏的内容跟着节点类型走：视频是「比例 · 清晰度 · 时长」，图片是「1:1 · 2K · 张数」。这里演示视频面板。弹窗里的下拉要能盖在弹窗之上，真实实现时验证层级（未验证）。</div>
+
+        <div class="sec">
+          <h2>此刻的状态（示意）</h2>
+          <div class="card"><div class="readout" id="pfInfo">还没有悬停。</div></div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">下面都是设计提案，<b>尚未实现</b>。对应 Markdown 设计文档的 §3 到 §6 和 §8。<b>没有新增后端接口，也没有新增节点字段</b>：只新增前端的编辑态和几个纯函数。</p>
+
+        <div class="sec">
+          <h2>谁连谁</h2>
+          <p class="sub">新节点和源节点之间只有一条普通连线，不是“来源线”。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>源图片节点 → 切分出的格子</th><td>1 对 N，每格一条普通连线</td><td>沿用扩图和截取帧的做法。格子是上传型节点（<code>uploaded: true</code>），不出生成面板，这条线不会被它自己当参考素材 <span class="tag t-info">引自《截取帧》设计</span></td></tr>
+                <tr><th>源图片节点 → 涂鸦新节点</th><td>1 对 1，一条普通连线</td><td>同上；源节点不改，涂鸦结果是新图</td></tr>
+                <tr><th>编辑态</th><td>全局同一时刻最多 1 个（切分、涂鸦、扩图互斥）</td><td>进入一个先退出另一个，做法照 <code>startTrim</code> 先退出选帧 <span class="tag t-vio">提案</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">新节点复用现有 <code>CanvasNodeData</code> 字段（照 <code>buildFrameNodes</code> 的写法），保存走画布已有的 <code>revision</code> 乐观锁和自动保存，不单独处理。<span class="tag t-ok">已核对 <code>types/canvas.ts</code>、<code>utils/canvas/frame.ts</code></span></p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th colspan="2">新建图片节点（<code>CanvasNodeData</code>，不新增字段）</th></tr></thead>
+              <tbody>
+                <tr><th>kind</th><td><code>"image"</code></td></tr>
+                <tr><th>label</th><td>切分：<code>&lt;源标题&gt; 行-列</code>；涂鸦：<code>&lt;源标题&gt; 标注</code>；都过 <code>newNodeLabel</code> 去重</td></tr>
+                <tr><th>uploaded</th><td><code>true</code>：上传型节点，不出生成面板</td></tr>
+                <tr><th>status / uploadProgress</th><td><code>"running"</code> + 0–100，上传完成改 <code>"done"</code>（<code>uploadRunner.start</code> 负责）</td></tr>
+                <tr><th>mediaType / mediaAspect</th><td><code>"image"</code> / 该格或整图的宽高比，用来定节点大小（<code>nodeFrameSize</code>）</td></tr>
+                <tr><th>fileName</th><td>如 <code>grid-1-1.png</code>、<code>doodle.png</code></td></tr>
+                <tr><th>src / assetId</th><td>上传完成后写入。<code>blob:</code> 地址在 <code>serializeGraph</code> 里会被丢掉，所以没有 <code>assetId</code> 的节点不会被持久化</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="cmp-wrap" style="margin-top: 12px">
+            <table class="cmp">
+              <thead><tr><th colspan="2">编辑态（新增，只活在内存，<b>不持久化</b>，仿 <code>store/outpaint.ts</code>）<span class="tag t-vio">提案</span></th></tr></thead>
+              <tbody>
+                <tr><th>切分 store</th><td><code>nodeId</code>；<code>rows</code>、<code>cols</code>（1–5，且 <code>rows×cols ≥ 2</code>）；<code>xs: number[]</code>（竖线位置，0–1 的小数，长度 <code>cols-1</code>，严格递增）；<code>ys</code> 同理长度 <code>rows-1</code></td></tr>
+                <tr><th>涂鸦 store</th><td><code>nodeId</code>；<code>tool: "pen"|"rect"|"text"</code>；<code>color</code>；<code>width</code>；<code>redo: FabricObject[]</code>（重做栈）。标注对象本身存在 Fabric 画布里，撤销就是移除画布最后一个对象并压入重做栈</td></tr>
+                <tr><th>Fabric 画布</th><td>逻辑尺寸 = 原图像素（长边超 4096 按比例缩）；屏幕用 CSS 缩小显示，所以<b>坐标、线宽、字号天然是原图像素</b>。画笔 <code>PencilBrush</code>、框选 <code>Rect</code>、文字 <code>IText</code>；对象一律 <code>selectable: false, evented: false</code>。退出时 <code>dispose()</code> <span class="tag t-vio">提案</span></td></tr>
+                <tr><th>常量</th><td><code>MIN_GAP = 0.02</code>（相邻线最小间隔，占该边长的比例）；自定义行列 1–5；导出长边上限沿用 <code>COMPOSE_MAX_EDGE = 4096</code> <span class="tag t-ok">已核对 <code>outpaint-compose.ts</code></span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>状态迁移</h2>
+          <p class="sub">编辑态和新节点上传各有一条小状态机。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>从</th><th>到</th><th>条件</th></tr></thead>
+              <tbody>
+                <tr><th>空闲</th><td>切分 / 涂鸦编辑中</td><td>点功能区按钮；节点未在生成且有素材（<code>toolbarGate.actionsDisabled</code> 为假）；先退出其它编辑态</td></tr>
+                <tr><th>编辑中</th><td>空闲（丢弃）</td><td>取消选中、选别的节点、多选、点画布空白、点「取消」或「×」</td></tr>
+                <tr><th>编辑中</th><td>空闲（产出节点）</td><td>点「确认」（切分）或「保存」（涂鸦，且至少有 1 个操作；没有就提示“还没有标注内容”，不退出）</td></tr>
+                <tr><th>节点 running</th><td>done</td><td>上传完成，写入 <code>src</code>、<code>assetId</code></td></tr>
+                <tr><th>节点 running</th><td>失败（停留）</td><td>上传报错（如超过单文件上限返回 413）；重试回到 running，撤掉则删节点和连线</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub"><b>没有新增后端接口。</b>只复用现有素材上传。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><th><code>POST /assets/upload-intents</code><br /><code>POST /assets/upload-intents/:id/complete</code></th><td>前端 <code>uploadAsset(file)</code> 的直传路径：先申请再登记。直传失败自动降级到下一行 <span class="tag t-ok">已核对 <code>api/asset/index.ts</code></span></td></tr>
+                <tr><th><code>POST /assets</code></th><td>中转上传（表单字段 <code>file</code>）。业务错误：超过单文件上限返回 413，默认 200MB，可配置 <span class="tag t-ok">已核对 <code>service/asset.go</code></span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码</h2>
+          <div class="codeblock"><pre>// 切分（提案）—— 累积整数边界，格与格严格相接
+evenLines(n)           = [1/n, 2/n, ... (n-1)/n]
+clampLine(lines, i, v) = clamp(v, (lines[i-1] ?? 0) + MIN_GAP, (lines[i+1] ?? 1) - MIN_GAP)
+toBounds(lines, total) = [0, ...lines.map(f =&gt; round(f * total)), total]
+planTiles(xs, ys, W, H):
+  xb = toBounds(xs, W); yb = toBounds(ys, H)
+  for r, c: { x: xb[c], y: yb[r], w: xb[c+1]-xb[c], h: yb[r+1]-yb[r] }   // 总宽总高恰好等于原图
+
+onConfirm():                          // 一次切分 = 一条撤销记录
+  img   = loadSourceImage(node.src)   // 复用 outpaint-compose：fetch 成 blob，避免跨域污染
+  tiles = planTiles(...).map(cropToPng(img))          // canvas 可注入，便于测试
+  history.record()
+  nodes = buildSplitNodes(source, tiles)              // 摆成网格，不压到已有节点
+  setNodes / setEdges                                 // 每格一条普通连线
+  tiles.forEach(t =&gt; uploadRunner.start(node.id, file(t), patch))   // 并发上限由实现者定
+  leave()
+
+// 涂鸦（提案）—— Fabric 画布逻辑尺寸 = 原图像素，屏幕 CSS 缩小
+enter():   fabric = await import("fabric")          // 动态加载，单独分包
+           canvas = new fabric.Canvas(el, {selection: false})   // 逻辑尺寸 = 原图（长边 ≤ 4096）
+           canvas.setDimensions(显示尺寸, {cssOnly: true})
+           canvas.freeDrawingBrush = new fabric.PencilBrush(canvas)
+onToolPen / Rect / Text:  PencilBrush | 鼠标拖出 Rect | 点击建 IText 并 enterEditing()
+每个新对象:  set({selectable: false, evented: false});  空文字在 editing:exited 时 remove
+undo():    obj = canvas.getObjects().pop(); canvas.remove(obj); redo.push(obj)
+redo():    canvas.add(redo.pop())                  // 新增对象时清空 redo
+onSave():
+  if canvas.getObjects().length == 0 -&gt; toast("还没有标注内容"); return
+  out = new Canvas(原图宽, 原图高); drawImage(img); drawImage(canvas.toCanvasElement(1))
+  同 onConfirm：建 1 个节点 + 1 条连线 + 上传 + leave()
+leave():   canvas.dispose()                         // 退出一定要释放</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>预计新增 / 改动的文件</h2>
+          <p class="sub">文件名只是建议，实现者可调整。<span class="tag t-vio">提案</span></p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>文件</th><th>做什么</th></tr></thead>
+              <tbody>
+                <tr><th><code>constants/node-toolbar.ts</code></th><td>改：图片只留图片编辑、扩图、宫格切分（带子面板菜单）；文本 <code>actions</code> 清空；图片编辑去掉积分星；清理不用的图标</td></tr>
+                <tr><th><code>components/canvas/node-action-bar.tsx</code></th><td>改：下拉菜单项支持“带子面板”（自定义格子选择器），不另起一套下拉</td></tr>
+                <tr><th><code>pages/canvas/node-overlays.tsx</code></th><td>改：<code>onAction</code> 接 <code>grid</code> / <code>edit</code>；文本节点的 <code>zoom</code> 接文本预览；覆盖层分支；<code>video-node.tsx</code> 里加退出 effect</td></tr>
+                <tr><th><code>utils/canvas/grid-split.ts</code></th><td>新：<code>evenLines</code>、<code>clampLine</code>、<code>planTiles</code>、切图（canvas 可注入）</td></tr>
+                <tr><th><code>utils/canvas/grid-split-node.ts</code>、<code>place-group.ts</code></th><td>新：构造格子节点与连线；摆一组节点（<code>placeBeside</code> 只能摆单个）</td></tr>
+                <tr><th><code>utils/canvas/doodle.ts</code></th><td>新：Fabric 动态加载、画笔 / 框选 / 文字、撤销重做栈、导出（<code>package.json</code> 新增 <code>fabric@7.4.0</code>）</td></tr>
+                <tr><th><code>store/grid-split.ts</code>、<code>store/doodle.ts</code></th><td>新：编辑态，仿 <code>store/outpaint.ts</code></td></tr>
+                <tr><th><code>components/canvas/grid-split-overlay.tsx</code>、<code>doodle-overlay.tsx</code>、<code>text-preview-dialog.tsx</code></th><td>新：覆盖层与文本放大弹窗（样式对齐 <code>media-lightbox.tsx</code>）</td></tr>
+                <tr><th><code>components/canvas/ref-strip.tsx</code>、<code>prompt-mention.tsx</code></th><td>改：参考缩略图和 <code>MentionChip</code> 加悬停预览（文本、音频、已断开的不弹）；<code>insertRef</code> 的目标在弹窗打开时指向弹窗里的编辑器 <span class="tag t-vio">提案</span></td></tr>
+                <tr><th><code>components/canvas/node-prompt-input.tsx</code>、<code>pages/canvas/video-node.tsx</code></th><td>改：弹窗里加参考图一排和<b>同一条底栏</b>（把底栏抽成组件两处复用，状态共用）；<code>video-node.tsx</code> 把同一份参考图传给弹窗；提交被拒的 <code>notice</code> 在弹窗里也显示 <span class="tag t-vio">提案</span></td></tr>
+                <tr><th>共用预览组件（如 <code>components/common/ref-peek.tsx</code>）、<code>utils/canvas/ref-peek.ts</code></th><td>新：大图/视频预览的展示与动画，首页 <code>composer-refs.tsx</code> 改用它且行为不变；纯函数：能不能弹、位置（上方放不下翻到下方、左右不出屏幕）。画布这边用 portal + 固定定位 <span class="tag t-vio">提案</span></td></tr>
+                <tr><th><code>web/src/tests/…</code></th><td>新：纯函数测试，镜像 <code>src</code> 目录；先写失败的测试</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定（你明确说过的）</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>图片功能区删掉「局部重绘」「智能超清」「工具」</b>：你在截图里用红框标了“不要”。</li>
+              <li><b>新增「宫格切分」</b>：下拉有 4 / 9 / 16 / 25 宫格和自定义，自定义是 5×5 的格子选择器；选定后切分线可手动拖动，有「重置均分」。来自你给的参考图 2 到 4。</li>
+              <li><b>图片编辑做成涂鸦</b>：参考你给的最后一张图（画笔、框选、文字、颜色、粗细、撤销重做、保存）。框选和文字你回答“可以做”。</li>
+              <li><b>结果落成新节点并连线，和扩图一样</b>：你的原话。</li>
+              <li><b>文本节点删掉润色、扩写、缩写，保留复制和放大预览</b>：你在截图里标了“不要”和“可以放大查看”。</li>
+              <li><b>切分和涂鸦都是：取消选中会退出</b>：你对我提的“涂鸦要不要锁住别处”回答“会退出”。</li>
+              <li><b>涂鸦用 Fabric.js</b>：你让我调研轻量库，先在 Fabric、Konva、react-sketch-canvas 和自写之间选过自写，看过试验页后改为 Fabric。宫格切分没有值得引入的库，自己写。</li>
+              <li><b>参考图悬停放大，效果参考首页</b>：生成面板顶部的参考缩略图和提示词里的「图片 7」小标签都要有；你在截图里用红框标了这两处。</li>
+              <li><b>编辑提示词弹窗顶部也要有参考图一排，并且和面板完全一样</b>：能点插入、能删、能加、能悬停放大（你在弹窗截图里标了头部，并在选项里选了“完全一样”）。</li>
+              <li><b>弹窗里也要有底栏（选模型等）</b>：你给了带红框底栏的图，说“下面这些选模型什么的也都需要有”。<b>它指弹窗是我的理解</b>，没有单独问过你，不对请告诉我。</li>
+              <li><b>主文档已回写</b>：本页没有引入 Markdown 里没有的新决定；退出规则在 Markdown §5.4，已按你的回答改过。</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>我替你定的（还没经你确认，请核对）</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px">
+              <li><b>原地编辑，不做全屏弹层</b>：参考图里就是盖在节点上；节点小就先放大画布。</li>
+              <li><b>退出时未保存内容直接丢弃，不弹确认</b>：和扩图一致。</li>
+              <li><b>Fabric 动态加载、单独分包</b>，只在进入涂鸦时才加载；不用 React 封装库，直接用原生 API。</li>
+              <li><b>同一时刻只有一个编辑态</b>；切分和涂鸦不检查模型清单。</li>
+              <li><b>切分每格一个节点</b>，命名“源标题 行-列”，右侧排成网格，按各自宽高比取默认大小。</li>
+              <li><b>涂鸦的框选画空心矩形</b>；文字落下后不能再改，只能撤销；颜色是 8 色左右预设，默认红。</li>
+              <li><b>“图片编辑”去掉积分星</b>：纯前端不扣积分；“扩图”仍收费。</li>
+              <li><b>文本放大预览做成居中的只读弹窗</b>，可滚动、可选中复制，Esc 或点遮罩关闭。</li>
+              <li><b>悬停预览：文本、音频、已断开、没有地址的引用不弹；上方放不下翻到下方；键盘聚焦也显示；首页和画布共用一个预览组件；画布这边用 portal + 固定定位</b>。</li>
+              <li><b>弹窗里：参考图在标题下、文本区上；底栏复用面板同一段、状态共用；发送键先收起弹窗再提交；「⌘↵ 发送，Esc 收起」和字数保留在底栏上方；面板里这排不显示时弹窗里也不显示</b>。</li>
+              <li><b>相邻切分线最小间隔 = 该边长的 2%</b>；自定义行列各 1 到 5，1×1 不可选。</li>
+              <li><b>没有任何标注就点保存：不建节点</b>，提示“还没有标注内容”。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 切分算法（和 Markdown §4.4 一致：累积整数边界） ================= */
+      const MIN_GAP = 0.02;
+      const evenLines = (n) => Array.from({ length: n - 1 }, (_, i) => (i + 1) / n);
+      const toBounds = (fr, total) => [0, ...fr.map((f) => Math.round(f * total)), total];
+      function clampLine(fr, i, v) {
+        const lo = (i > 0 ? fr[i - 1] : 0) + MIN_GAP;
+        const hi = (i < fr.length - 1 ? fr[i + 1] : 1) - MIN_GAP;
+        return Math.min(hi, Math.max(lo, v));
+      }
+      function planTiles(xs, ys, w, h) {
+        const xb = toBounds(xs, w);
+        const yb = toBounds(ys, h);
+        const out = [];
+        for (let r = 0; r < yb.length - 1; r++)
+          for (let c = 0; c < xb.length - 1; c++) out.push({ r, c, x: xb[c], y: yb[r], w: xb[c + 1] - xb[c], h: yb[r + 1] - yb[r] });
+        return out;
+      }
+
+      /* ================= 页签 2：切分怎么算 ================= */
+      const DEMO = { key: "3x3", w: 1000, h: 750, rows: 3, cols: 3, probe: 50 };
+      const PRESETS = [
+        ["2x2", "4 宫格 (2×2)", 2, 2],
+        ["3x3", "9 宫格 (3×3)", 3, 3],
+        ["4x4", "16 宫格 (4×4)", 4, 4],
+        ["5x5", "25 宫格 (5×5)", 5, 5],
+        ["custom", "自定义", null, null],
+      ];
+      function renderDemoList() {
+        $("#optList").innerHTML = PRESETS.map(
+          ([k, label]) => `<button class="opt" data-k="${k}" aria-pressed="${DEMO.key === k}">${esc(label)}${k === "custom" ? "<small>行列各 1–5，至少 2 格</small>" : ""}</button>`,
+        ).join("");
+      }
+      function renderDemoPanel() {
+        const custom = DEMO.key === "custom";
+        const opts = (v) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${n === v ? "selected" : ""}>${n}</option>`).join("");
+        $("#optPanel").innerHTML = `
+          <div class="grid g2" style="grid-template-columns: repeat(4, minmax(0, 1fr))">
+            <label class="fld">原图宽（px）<input class="inp" id="dW" type="number" min="50" max="8192" value="${DEMO.w}" /></label>
+            <label class="fld">原图高（px）<input class="inp" id="dH" type="number" min="50" max="8192" value="${DEMO.h}" /></label>
+            <label class="fld">行数<select class="inp" id="dR" ${custom ? "" : "disabled title=\"预设固定为 N×N，选「自定义」可改\""}>${opts(DEMO.rows)}</select></label>
+            <label class="fld">列数<select class="inp" id="dC" ${custom ? "" : "disabled title=\"预设固定为 N×N，选「自定义」可改\""}>${opts(DEMO.cols)}</select></label>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 6px">${custom ? "自定义：行列可改。" : "预设固定为 N×N，行列已禁用；选左侧「自定义」可改。"}原图大小的有效范围 50–8192 px（示意）。</p>
+          <div id="calcOut" style="margin-top: 14px"></div>
+          <div class="sec" style="margin-top: 22px">
+            <h2 style="font-size: 15px">拖线时的限制</h2>
+            <p class="sub">你想把第 1 条竖线拖到某个位置，其余线保持均分时，实际能落在哪里？</p>
+            <label class="fld">想拖到的位置：<b id="probeV"></b>
+              <input type="range" id="dP" min="0" max="100" step="1" value="${DEMO.probe}" />
+            </label>
+            <div id="probeOut" style="margin-top: 8px"></div>
+          </div>`;
+        calcOut();
+        probeOut();
+      }
+      function calcOut() {
+        const { w, h, rows, cols } = DEMO;
+        const el = $("#calcOut");
+        if (rows * cols < 2) {
+          el.innerHTML = `<div class="callout c-bad"><i data-lucide="circle-x"></i><div><b>1×1 不可选。</b>至少要 2 格才有切分的意义，请把行数或列数改成 2 以上。</div></div>`;
+          icons();
+          return;
+        }
+        const xs = evenLines(cols);
+        const ys = evenLines(rows);
+        const xb = toBounds(xs, w);
+        const yb = toBounds(ys, h);
+        const cw = xb.slice(1).map((v, i) => v - xb[i]);
+        const rh = yb.slice(1).map((v, i) => v - yb[i]);
+        const naiveW = Math.round(w / cols);
+        const naiveH = Math.round(h / rows);
+        const sum = (a) => a.reduce((p, q) => p + q, 0);
+        const sv = 360;
+        const sh = Math.max(60, Math.round((sv * h) / w));
+        let svg = `<svg class="schem" viewBox="0 0 ${w} ${h}" style="aspect-ratio: ${w} / ${h}">`;
+        planTiles(xs, ys, w, h).forEach((t) => {
+          svg += `<rect x="${t.x}" y="${t.y}" width="${t.w}" height="${t.h}" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="${Math.max(w, h) / 300}" />`;
+          svg += `<text x="${t.x + t.w / 2}" y="${t.y + t.h / 2}" text-anchor="middle" dominant-baseline="middle" fill="currentColor" fill-opacity=".6" font-size="${Math.min(t.w, t.h) / 3.2}">${t.r + 1}-${t.c + 1}</text>`;
+        });
+        svg += `</svg>`;
+        const okW = sum(cw) === w;
+        el.innerHTML = `
+          <div class="grid g2" style="grid-template-columns: minmax(0, 420px) minmax(0, 1fr)">
+            <div>${svg}<p class="muted" style="font-size: 12px; margin-top: 4px">示意：均分时的格子与编号（行-列）</p></div>
+            <div class="cmp-wrap"><table class="cmp"><tbody>
+              <tr><th>竖线边界 x</th><td class="mono">${xb.join(", ")}</td></tr>
+              <tr><th>每列宽度</th><td class="mono">${cw.join(" + ")} = ${sum(cw)} ${okW ? "✓ 等于原图宽" : "✗"}</td></tr>
+              <tr><th>横线边界 y</th><td class="mono">${yb.join(", ")}</td></tr>
+              <tr><th>每行高度</th><td class="mono">${rh.join(" + ")} = ${sum(rh)} ${sum(rh) === h ? "✓ 等于原图高" : "✗"}</td></tr>
+              <tr><th>共几格</th><td>${rows * cols} 格，每格输出 PNG，原图分辨率，不缩放</td></tr>
+              <tr><th>不采用：每格各自取整</th><td class="mono m">${cols} × ${naiveW} = ${naiveW * cols}（${naiveW * cols === w ? "这组数刚好相等" : naiveW * cols < w ? "少 " + (w - naiveW * cols) + " px，右侧出缝" : "多 " + (naiveW * cols - w) + " px，右侧越界"}）；高度 ${rows} × ${naiveH} = ${naiveH * rows}</td></tr>
+            </tbody></table></div>
+          </div>`;
+      }
+      function probeOut() {
+        const { cols, probe } = DEMO;
+        $("#probeV").textContent = probe + "%";
+        const el = $("#probeOut");
+        if (cols < 2) {
+          el.innerHTML = `<div class="muted" style="font-size: 13px">只有 1 列，没有竖线可拖。把列数改成 2 以上。</div>`;
+          return;
+        }
+        const fr = evenLines(cols);
+        const lo = ((0 + MIN_GAP) * 100).toFixed(0);
+        const hi = ((fr[1] !== undefined ? fr[1] : 1) - MIN_GAP) * 100;
+        const got = clampLine(fr, 0, probe / 100) * 100;
+        const clamped = Math.abs(got - probe) > 1e-9;
+        el.innerHTML = `<div class="callout ${clamped ? "c-warn" : "c-ok"}"><i data-lucide="${clamped ? "triangle-alert" : "circle-check"}"></i><div>
+          第 1 条竖线允许范围 <b>${lo}% – ${hi.toFixed(1)}%</b>（左边贴着图片边缘留 2%，右边离第 2 条线留 2%）。
+          你想放 ${probe}%，实际落在 <b>${got.toFixed(1)}%</b>${clamped ? "，被限制住了" : ""}。线不会交叉、不会拖出图片。</div></div>`;
+        icons();
+      }
+      $("#optList").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-k]");
+        if (!b) return;
+        DEMO.key = b.dataset.k;
+        const p = PRESETS.find((x) => x[0] === DEMO.key);
+        if (p[2]) {
+          DEMO.rows = p[2];
+          DEMO.cols = p[3];
+        }
+        renderDemoList();
+        renderDemoPanel();
+        icons();
+      });
+      $("#optPanel").addEventListener("input", (e) => {
+        const t = e.target;
+        const clamp = (v) => Math.min(8192, Math.max(50, Math.round(+v || 50)));
+        if (t.id === "dW") DEMO.w = clamp(t.value);
+        else if (t.id === "dH") DEMO.h = clamp(t.value);
+        else if (t.id === "dR") DEMO.rows = +t.value;
+        else if (t.id === "dC") DEMO.cols = +t.value;
+        else if (t.id === "dP") {
+          DEMO.probe = +t.value;
+          probeOut();
+          return;
+        }
+        calcOut();
+        probeOut();
+      });
+
+      /* ================= 页签 3：可点击原型 ================= */
+      const IMG_W = 1280;
+      const IMG_H = 720;
+      const SCRIPT = [
+        "凌晨一点。", "城市高架上，车辆稀少。", "夜色中，远处的城市灯光沿着道路延伸。", "一辆银灰色跑车从镜头远处驶来。",
+        "没有激烈的漂移，也没有夸张的追逐。", "只有轮胎碾过路面的声音，以及发动机低沉的轰鸣。", "跑车驶入隧道。", "引擎声在隧道墙壁之间不断回荡。",
+        "灯光一盏一盏从车身上掠过。", "镜头拉远，跑车尾灯消失在隧道尽头。", "隧道外，城市依旧安静。",
+      ].join("\n\n");
+
+      function rng(seed) {
+        return function () {
+          seed |= 0;
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+      function makeSample() {
+        const c = document.createElement("canvas");
+        c.width = IMG_W;
+        c.height = IMG_H;
+        const g = c.getContext("2d");
+        const r = rng(7);
+        const sky = g.createLinearGradient(0, 0, 0, IMG_H * 0.6);
+        sky.addColorStop(0, "#070b16");
+        sky.addColorStop(1, "#1d2438");
+        g.fillStyle = sky;
+        g.fillRect(0, 0, IMG_W, IMG_H);
+        for (let i = 0; i < 46; i++) {
+          const w = 20 + r() * 50, h = 40 + r() * 190, x = r() * IMG_W;
+          g.fillStyle = "rgba(18,24,40," + (0.7 + r() * 0.3) + ")";
+          g.fillRect(x, 380 - h, w, h + 60);
+          for (let k = 0; k < 14; k++) {
+            g.fillStyle = "rgba(255,214,140," + r() * 0.6 + ")";
+            g.fillRect(x + 4 + r() * (w - 8), 380 - h + r() * h, 2, 3);
+          }
+        }
+        g.fillStyle = "#0d0f14";
+        g.fillRect(0, 380, IMG_W, IMG_H - 380);
+        g.fillStyle = "#171a22";
+        g.beginPath();
+        g.moveTo(0, IMG_H); g.lineTo(IMG_W, IMG_H); g.lineTo(860, 380); g.lineTo(500, 380);
+        g.closePath();
+        g.fill();
+        g.strokeStyle = "rgba(255,255,255,.55)";
+        g.lineWidth = 4;
+        g.setLineDash([30, 26]);
+        g.beginPath(); g.moveTo(640, IMG_H); g.lineTo(680, 380); g.stroke();
+        g.setLineDash([]);
+        const tg = g.createRadialGradient(930, 470, 10, 930, 470, 190);
+        tg.addColorStop(0, "#2a1a05"); tg.addColorStop(0.6, "#b9791f"); tg.addColorStop(1, "#3a2508");
+        g.fillStyle = tg;
+        g.beginPath();
+        g.ellipse(930, 480, 200, 150, 0, Math.PI, 0);
+        g.lineTo(1130, 620); g.lineTo(730, 620);
+        g.closePath();
+        g.fill();
+        for (let i = 0; i < 9; i++) {
+          const x = 520 + i * 70, y = 370 - i * 6;
+          const gl = g.createRadialGradient(x, y, 0, x, y, 26);
+          gl.addColorStop(0, "rgba(255,200,110,.95)"); gl.addColorStop(1, "rgba(255,200,110,0)");
+          g.fillStyle = gl;
+          g.fillRect(x - 30, y - 30, 60, 60);
+        }
+        g.fillStyle = "rgba(255,255,255,.7)";
+        g.font = "28px sans-serif";
+        g.fillText("示意图 1280×720", 24, IMG_H - 24);
+        return c;
+      }
+      let SRC = null;
+      let SRC_URL = "";
+
+      const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#ffffff"];
+      const S = { seq: 10, epoch: 0 };
+      function resetState() {
+        S.epoch++;
+        Object.assign(S, {
+          zoom: 1, selected: "n1", mode: null, menuOpen: false, palette: false, busy: false, drag: null, textEl: null, preview: false, failNext: false,
+          nodes: [
+            { id: "n1", kind: "image", label: "图片", x: 40, y: 100, w: 420, h: 236, status: "done", src: SRC_URL, preview: SRC_URL },
+            { id: "n2", kind: "image", label: "图片 2", x: 40, y: 420, w: 220, h: 124, status: "running", src: SRC_URL, preview: SRC_URL },
+            { id: "n3", kind: "text", label: "文本", x: 300, y: 400, w: 230, h: 170, text: SCRIPT },
+            { id: "n4", kind: "text", label: "文本 2", x: 300, y: 640, w: 230, h: 80, text: "" },
+          ],
+          edges: [],
+        });
+        const f = $("#failNext");
+        if (f) f.checked = false;
+      }
+
+      const byId = (id) => S.nodes.find((n) => n.id === id);
+      const overlaps = (a, b, gap = 16) => a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+      function placeGroup(src, size) {
+        const x = src.x + src.w + 80;
+        let y = src.y;
+        while (S.nodes.some((n) => overlaps({ x, y, w: size.w, h: size.h }, n))) y += 24;
+        return { x, y };
+      }
+      function consumeFail() {
+        if (!S.failNext) return false;
+        S.failNext = false;
+        $("#failNext").checked = false;
+        return true;
+      }
+
+      /* ---- 渲染 ---- */
+      function statusText(n) {
+        if (n.status === "running") return `<span class="st">生成中</span>`;
+        if (n.status === "uploading") return `<span class="st">上传中 ${Math.round(n.progress || 0)}%</span>`;
+        if (n.status === "failed") return `<span class="st bad">上传失败</span>`;
+        return "";
+      }
+      function nodeHTML(n) {
+        const sel = S.selected === n.id;
+        const m = S.mode && S.mode.nodeId === n.id ? S.mode : null;
+        let body = "";
+        let dim = "";
+        if (n.kind === "text") {
+          body = n.text ? `<div class="cvn-text">${esc(n.text)}</div>` : `<div class="cvn-empty">空文本节点</div>`;
+        } else {
+          const shown = n.src || n.preview;
+          body = `<img src="${shown}" alt="" draggable="false" />`;
+          if (n.status === "running") body += `<div class="cvn-ov"><span class="mini" style="pointer-events:none">重新生成中…</span></div>`;
+          if (n.status === "uploading") {
+            dim = " dim";
+            body += `<div class="cvn-ov"><div>上传中</div><div class="cvn-bar"><i style="width:${Math.round(n.progress || 0)}%"></i></div></div>`;
+          }
+          if (n.status === "failed") {
+            dim = " dim";
+            body += `<div class="cvn-ov"><div class="bad">上传失败</div><div class="row" style="gap:6px"><button class="mini" data-act="up-retry" data-id="${n.id}">重试</button><button class="mini" data-act="up-discard" data-id="${n.id}">撤掉</button></div></div>`;
+          }
+          if (m && m.type === "split") {
+            body += m.xs.map((f, i) => `<div class="ln v" data-drag data-axis="x" data-i="${i}" style="left:${f * 100}%"></div>`).join("");
+            body += m.ys.map((f, i) => `<div class="ln h" data-drag data-axis="y" data-i="${i}" style="top:${f * 100}%"></div>`).join("");
+            body += `<button class="chip tl" data-act="split-reset"><i data-lucide="rotate-ccw"></i>重置均分</button><span class="chip tr">${m.rows}×${m.cols} · ${m.rows * m.cols} 格</span>`;
+          }
+          if (m && m.type === "doodle") body += `<canvas id="ddCanvas" width="${IMG_W}" height="${IMG_H}"></canvas>`;
+        }
+        const bar = m && m.type === "split"
+          ? `<div class="ed-bar"><button class="mini" data-act="split-cancel">取消</button><button class="mini ok" data-act="split-ok">确认切分 · ${m.rows * m.cols} 格</button></div>`
+          : "";
+        const icon = n.kind === "text" ? "type" : "image";
+        return `<div class="cvn${sel ? " sel" : ""}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px">
+          <div class="cvn-title"><i data-lucide="${icon}"></i>${esc(n.label)} ${statusText(n)}</div>
+          <div class="cvn-body${dim}">${body}</div>${bar}</div>`;
+      }
+      function edgesHTML(W, H) {
+        const ps = S.edges.map((e) => {
+          const a = byId(e.s), b = byId(e.t);
+          if (!a || !b) return "";
+          const sx = a.x + a.w, sy = a.y + a.h / 2, tx = b.x, ty = b.y + b.h / 2;
+          const dx = Math.max(40, (tx - sx) / 2);
+          return `<path d="M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}" fill="none" stroke="var(--cv-edge)" stroke-width="1.5" stroke-opacity=".8" />`;
+        });
+        return `<svg class="cv-edges" width="${W}" height="${H}">${ps.join("")}</svg>`;
+      }
+      function tbBtn(act, icon, label, opts = {}) {
+        const dis = opts.dis ? `disabled title="${esc(opts.dis)}"` : "";
+        return `<button data-act="${act}" ${dis}${opts.pressed !== undefined ? ` aria-pressed="${opts.pressed}"` : ""}><i data-lucide="${icon}"></i>${label ? esc(label) : ""}${opts.star ? '<span class="star">✦</span>' : ""}</button>`;
+      }
+      function gridMenuHTML() {
+        const it = ([r, c, label]) => `<button class="it" data-act="grid-preset" data-r="${r}" data-c="${c}">${label}</button>`;
+        let cells = "";
+        for (let r = 0; r < 5; r++)
+          for (let c = 0; c < 5; c++)
+            cells += `<button class="pk" data-act="pick" data-r="${r}" data-c="${c}" ${r === 0 && c === 0 ? 'disabled title="至少 2 格，1×1 不可选"' : ""} aria-label="${r + 1}×${c + 1}"></button>`;
+        return `<div class="tb-menu">
+          ${[[2, 2, "4 宫格 (2×2)"], [3, 3, "9 宫格 (3×3)"], [4, 4, "16 宫格 (4×4)"], [5, 5, "25 宫格 (5×5)"]].map(it).join("")}
+          <hr />
+          <div class="sub"><div class="it">自定义<i data-lucide="chevron-right"></i></div>
+            <div class="picker"><div class="picker-in"><div class="picker-h"><span>自定义宫格</span><b id="pkLbl"></b></div><div class="picker-g" id="pkG">${cells}</div></div></div>
+          </div></div>`;
+      }
+      function chromeHTML() {
+        const n = byId(S.selected);
+        if (!n) return "";
+        const top = n.y - 74;
+        if (S.mode && S.mode.type === "doodle" && S.mode.nodeId === n.id) {
+          const m = S.mode;
+          const pal = S.palette ? `<div class="pal">${COLORS.map((c) => `<button class="sw" data-act="dd-color" data-color="${c}" aria-pressed="${m.color === c}" style="background:${c}" aria-label="${c}"></button>`).join("")}</div>` : "";
+          return `<div class="tb ed-top" id="ddTb" style="left:${Math.max(8, n.x)}px;top:${top}px">
+            ${tbBtn("dd-close", "x", "标注")}<span class="sep"></span>
+            ${tbBtn("dd-tool", "pencil", "", { pressed: m.tool === "pen" }).replace("<button ", '<button data-tool="pen" title="画笔" ')}
+            ${tbBtn("dd-tool", "square-dashed", "", { pressed: m.tool === "rect" }).replace("<button ", '<button data-tool="rect" title="框选" ')}
+            ${tbBtn("dd-tool", "type", "", { pressed: m.tool === "text" }).replace("<button ", '<button data-tool="text" title="文字" ')}
+            <span class="sep"></span>
+            <span class="tb-wrap"><button data-act="dd-palette" title="颜色"><span style="width:18px;height:18px;border-radius:50%;background:${m.color};border:2px solid #fff;display:block"></span></button>${pal}</span>
+            <input type="range" id="ddWidth" min="2" max="20" value="${m.width}" title="粗细" />
+            <span class="sep"></span>
+            ${tbBtn("dd-undo", "undo-2", "", { dis: m.ops.length ? "" : "没有可撤销的操作" }).replace("<button ", '<button title="撤销" ')}
+            ${tbBtn("dd-redo", "redo-2", "", { dis: m.redo.length ? "" : "没有可重做的操作" }).replace("<button ", '<button title="重做" ')}
+            <button class="save" data-act="dd-save">保存</button></div>`;
+        }
+        if (S.mode && S.mode.nodeId === n.id) return ""; // 切分编辑态：功能区被覆盖层取代
+        if (n.kind === "text") {
+          if (!n.text.trim()) return "";
+          return `<div class="tb" style="left:${Math.max(8, n.x)}px;top:${top}px">${tbBtn("tb-copy", "copy", "复制")}${tbBtn("tb-textzoom", "maximize-2", "放大预览")}</div>`;
+        }
+        if (!n.src) return ""; // 没有素材（还在上传或失败）：整条不出现
+        const dis = n.status === "running" ? "生成中，暂不可用" : "";
+        const d = (extra = {}) => (dis ? { dis, ...extra } : extra);
+        return `<div class="tb" style="left:${Math.max(8, n.x)}px;top:${top}px">
+          ${tbBtn("tb-edit", "pen-line", "图片编辑", d())}
+          ${tbBtn("tb-outpaint", "expand", "扩图", d({ star: true }))}
+          <span class="tb-wrap"><button data-act="tb-grid" aria-expanded="${S.menuOpen}" ${dis ? `disabled title="${dis}"` : ""}><i data-lucide="grid-3x3"></i>宫格切分<i data-lucide="chevron-down"></i></button>${S.menuOpen && !dis ? gridMenuHTML() : ""}</span>
+          <span class="sep"></span>
+          ${tbBtn("tb-zoom", "maximize-2", "", d())}${tbBtn("tb-download", "download", "", d())}${tbBtn("tb-lib", "folder-plus", "", d())}</div>`;
+      }
+      function render() {
+        const W = Math.max(1240, ...S.nodes.map((n) => n.x + n.w + 140));
+        const H = Math.max(780, ...S.nodes.map((n) => n.y + n.h + 120));
+        const size = $("#cvSize");
+        size.style.width = W * S.zoom + "px";
+        size.style.height = H * S.zoom + "px";
+        const world = $("#cvWorld");
+        world.style.width = W + "px";
+        world.style.height = H + "px";
+        world.style.transform = `scale(${S.zoom})`;
+        world.innerHTML = edgesHTML(W, H) + S.nodes.map(nodeHTML).join("") + chromeHTML();
+        renderModal();
+        icons();
+        redrawDoodle();
+        readout();
+      }
+      function renderSoft(id) {
+        if (S.busy || S.textEl || S.selected === id) {
+          if (S.busy || S.textEl) {
+            const el = document.querySelector(`[data-node="${id}"]`);
+            const n = byId(id);
+            if (el && n) {
+              const t = document.createElement("div");
+              t.innerHTML = nodeHTML(n);
+              el.replaceWith(t.firstElementChild);
+              icons();
+            }
+            return;
+          }
+          render();
+          return;
+        }
+        const el = document.querySelector(`[data-node="${id}"]`);
+        const n = byId(id);
+        if (el && n) {
+          const t = document.createElement("div");
+          t.innerHTML = nodeHTML(n);
+          el.replaceWith(t.firstElementChild);
+          icons();
+        }
+      }
+      function renderModal() {
+        const n = byId("n3");
+        $("#cvModal").innerHTML = S.preview
+          ? `<div class="cv-modal" data-act="modal-bg"><div class="cv-modal-card"><div class="cv-modal-head"><i data-lucide="type"></i>${esc(n.label)}<button data-act="modal-close" aria-label="关闭"><i data-lucide="x"></i></button></div><div class="cv-modal-body">${esc(n.text)}</div></div></div>`
+          : "";
+      }
+      function readout() {
+        const m = S.mode;
+        const sel = byId(S.selected);
+        const lines = [`选中：${sel ? sel.label + "（" + sel.id + "）" : "无"}`, `编辑态：${m ? (m.type === "split" ? "宫格切分" : "涂鸦") : "无"}`];
+        if (m && m.type === "split") {
+          lines.push(`rows=${m.rows}  cols=${m.cols}  dirty=${m.dirty}`);
+          lines.push(`xs(0-1) = [${m.xs.map((v) => v.toFixed(3)).join(", ")}]`);
+          lines.push(`ys(0-1) = [${m.ys.map((v) => v.toFixed(3)).join(", ")}]`);
+          lines.push(`竖线边界 x(px) = [${toBounds(m.xs, IMG_W).join(", ")}]`);
+          lines.push(`横线边界 y(px) = [${toBounds(m.ys, IMG_H).join(", ")}]`);
+        }
+        if (m && m.type === "doodle") {
+          lines.push(`tool=${m.tool}  color=${m.color}  width=${m.width}`);
+          lines.push(`ops=${m.ops.length}  redo=${m.redo.length}`);
+          lines.push(`最后一步 = ${m.ops.length ? JSON.stringify(m.ops[m.ops.length - 1]).slice(0, 120) : "无"}`);
+        }
+        lines.push(`节点数 ${S.nodes.length}  连线数 ${S.edges.length}`);
+        $("#readout").textContent = lines.join("\n");
+      }
+
+      /* ---- 编辑态 ---- */
+      function exitMode() {
+        const m = S.mode;
+        if (!m) return;
+        const dirty = m.type === "doodle" ? m.ops.length > 0 : m.dirty;
+        removeTextEl();
+        S.mode = null;
+        S.busy = false;
+        S.palette = false;
+        if (dirty) toast("已退出，未保存的" + (m.type === "doodle" ? "涂鸦" : "切分线调整") + "已丢弃", "warn");
+      }
+      function selectNode(id) {
+        if (S.selected === id) return;
+        exitMode();
+        S.selected = id;
+        S.menuOpen = false;
+        render();
+      }
+      function deselect() {
+        if (!S.selected && !S.menuOpen && !S.mode) return;
+        exitMode();
+        S.selected = null;
+        S.menuOpen = false;
+        render();
+      }
+      function startSplit(rows, cols) {
+        S.menuOpen = false;
+        S.mode = { type: "split", nodeId: S.selected, rows, cols, xs: evenLines(cols), ys: evenLines(rows), dirty: false };
+        render();
+      }
+      function startDoodle() {
+        S.menuOpen = false;
+        S.palette = false;
+        S.mode = { type: "doodle", nodeId: S.selected, ops: [], redo: [], tool: "pen", color: COLORS[0], width: 6, cur: null };
+        render();
+      }
+
+      /* ---- 切分确认：切图、摆位、建节点 ---- */
+      function cropURL(t) {
+        const c = document.createElement("canvas");
+        c.width = t.w;
+        c.height = t.h;
+        c.getContext("2d").drawImage(SRC, t.x, t.y, t.w, t.h, 0, 0, t.w, t.h);
+        return c.toDataURL("image/png");
+      }
+      function doSplit() {
+        const m = S.mode;
+        const src = byId(m.nodeId);
+        const tiles = planTiles(m.xs, m.ys, IMG_W, IMG_H);
+        const TW = 120, GX = 16, GY = 36;
+        const th = tiles.map((t) => Math.min(150, Math.max(36, Math.round((TW * t.h) / t.w))));
+        const rowH = [];
+        tiles.forEach((t, i) => (rowH[t.r] = Math.max(rowH[t.r] || 0, th[i])));
+        const rowY = [];
+        rowH.reduce((acc, h, r) => ((rowY[r] = acc), acc + h + GY), 0);
+        const size = { w: m.cols * (TW + GX) - GX, h: rowH.reduce((a, b) => a + b, 0) + (m.rows - 1) * GY };
+        const pos = placeGroup(src, size);
+        const willFail = consumeFail();
+        const ids = [];
+        tiles.forEach((t, i) => {
+          const id = "n" + ++S.seq;
+          ids.push(id);
+          S.nodes.push({ id, kind: "image", label: `${src.label} ${t.r + 1}-${t.c + 1}`, x: pos.x + t.c * (TW + GX), y: pos.y + rowY[t.r], w: TW, h: th[i], status: "uploading", progress: 0, preview: cropURL(t), src: null });
+          S.edges.push({ s: src.id, t: id });
+        });
+        S.mode = null;
+        render();
+        ids.forEach((id, i) => startUpload(id, i * 160, willFail && i === (ids.length > 1 ? 1 : 0)));
+        toast(`已切成 ${tiles.length} 格，正在上传（示意）`);
+      }
+      function startUpload(id, delay, fail) {
+        const ep = S.epoch;
+        setTimeout(() => {
+          if (ep !== S.epoch) return;
+          const n0 = byId(id);
+          if (!n0) return;
+          n0.status = "uploading";
+          n0.progress = 0;
+          const iv = setInterval(() => {
+            const n = byId(id);
+            if (ep !== S.epoch || !n) return clearInterval(iv);
+            n.progress = Math.min(100, (n.progress || 0) + 8 + Math.random() * 14);
+            if (fail && n.progress >= 60) {
+              clearInterval(iv);
+              n.status = "failed";
+              n.progress = 60;
+            } else if (n.progress >= 100) {
+              clearInterval(iv);
+              n.status = "done";
+              n.src = n.preview;
+            }
+            renderSoft(id);
+          }, 140);
+        }, delay);
+      }
+
+      /* ---- 涂鸦：绘制、导出 ---- */
+      function renderOps(g, ops) {
+        ops.forEach((op) => {
+          g.strokeStyle = op.color;
+          g.fillStyle = op.color;
+          g.lineCap = "round";
+          g.lineJoin = "round";
+          if (op.t === "pen") {
+            g.lineWidth = op.w;
+            if (op.pts.length === 1) {
+              g.beginPath();
+              g.arc(op.pts[0][0], op.pts[0][1], op.w / 2, 0, Math.PI * 2);
+              g.fill();
+              return;
+            }
+            g.beginPath();
+            g.moveTo(op.pts[0][0], op.pts[0][1]);
+            for (let i = 1; i < op.pts.length - 1; i++) {
+              const mx = (op.pts[i][0] + op.pts[i + 1][0]) / 2, my = (op.pts[i][1] + op.pts[i + 1][1]) / 2;
+              g.quadraticCurveTo(op.pts[i][0], op.pts[i][1], mx, my);
+            }
+            const l = op.pts[op.pts.length - 1];
+            g.lineTo(l[0], l[1]);
+            g.stroke();
+          } else if (op.t === "rect") {
+            g.lineWidth = op.w;
+            g.strokeRect(Math.min(op.x0, op.x1), Math.min(op.y0, op.y1), Math.abs(op.x1 - op.x0), Math.abs(op.y1 - op.y0));
+          } else if (op.t === "text") {
+            g.font = `${op.size}px sans-serif`;
+            g.textBaseline = "top";
+            g.fillText(op.text, op.x, op.y);
+          }
+        });
+      }
+      function redrawDoodle() {
+        const m = S.mode;
+        if (!m || m.type !== "doodle") return;
+        const cv = $("#ddCanvas");
+        if (!cv) return;
+        const g = cv.getContext("2d");
+        g.clearRect(0, 0, IMG_W, IMG_H);
+        renderOps(g, m.cur ? m.ops.concat([m.cur]) : m.ops);
+      }
+      const factor = () => IMG_W / byId(S.mode.nodeId).w;
+      const imgPoint = (e, cv) => {
+        const r = cv.getBoundingClientRect();
+        return [((e.clientX - r.left) / r.width) * IMG_W, ((e.clientY - r.top) / r.height) * IMG_H];
+      };
+      function removeTextEl() {
+        if (S.textEl) {
+          const el = S.textEl;
+          S.textEl = null;
+          el.remove();
+        }
+      }
+      function openTextInput(e, p, cv) {
+        removeTextEl();
+        const m = S.mode;
+        const body = cv.parentElement;
+        const r = body.getBoundingClientRect();
+        const disp = 12 + m.width * 1.2;
+        const el = document.createElement("input");
+        el.className = "dd-text";
+        el.style.cssText = `left:${(e.clientX - r.left) / S.zoom}px;top:${(e.clientY - r.top) / S.zoom}px;font-size:${disp}px;color:${m.color}`;
+        el.placeholder = "输入文字，回车确认";
+        body.appendChild(el);
+        S.textEl = el;
+        let done = false;
+        const commit = (keep) => {
+          if (done) return;
+          done = true;
+          const v = el.value.trim();
+          if (S.textEl === el) S.textEl = null;
+          el.remove();
+          if (keep && v && S.mode === m) {
+            m.ops.push({ t: "text", color: m.color, size: disp * factor(), x: p[0], y: p[1], text: v });
+            m.redo = [];
+            render();
+          }
+        };
+        el.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") commit(true);
+          else if (ev.key === "Escape") commit(false);
+        });
+        el.addEventListener("blur", () => commit(true));
+        setTimeout(() => el.focus(), 0);
+      }
+      function doSave() {
+        const m = S.mode;
+        if (!m.ops.length) return toast("还没有标注内容，不会新建节点", "warn");
+        const src = byId(m.nodeId);
+        const c = document.createElement("canvas");
+        c.width = IMG_W;
+        c.height = IMG_H;
+        const g = c.getContext("2d");
+        g.drawImage(SRC, 0, 0);
+        renderOps(g, m.ops);
+        const url = c.toDataURL("image/png");
+        const size = { w: 240, h: 135 };
+        const pos = placeGroup(src, size);
+        const id = "n" + ++S.seq;
+        S.nodes.push({ id, kind: "image", label: `${src.label} 标注`, x: pos.x, y: pos.y, w: size.w, h: size.h, status: "uploading", progress: 0, preview: url, src: null });
+        S.edges.push({ s: src.id, t: id });
+        removeTextEl();
+        S.mode = null;
+        S.palette = false;
+        render();
+        startUpload(id, 0, consumeFail());
+        toast("已保存为新节点，正在上传（示意）");
+      }
+
+      /* ---- 事件 ---- */
+      function handleAct(el, e) {
+        const a = el.dataset.act;
+        const m = S.mode;
+        const closeMenuOnly = () => {
+          if (S.menuOpen) {
+            S.menuOpen = false;
+            render();
+          }
+        };
+        switch (a) {
+          case "tb-grid": S.menuOpen = !S.menuOpen; render(); return;
+          case "grid-preset": startSplit(+el.dataset.r, +el.dataset.c); return;
+          case "pick": startSplit(+el.dataset.r + 1, +el.dataset.c + 1); return;
+          case "tb-edit": startDoodle(); return;
+          case "tb-outpaint": closeMenuOnly(); toast("扩图是已有功能，原型不演示", "warn"); return;
+          case "tb-zoom": closeMenuOnly(); toast("图片的放大预览是已有功能，原型不演示", "warn"); return;
+          case "tb-download": closeMenuOnly(); toast("下载是已有功能，原型不演示", "warn"); return;
+          case "tb-lib": closeMenuOnly(); toast("加入资产库是已有功能，原型不演示", "warn"); return;
+          case "tb-copy": toast("已复制文本（示意）"); return;
+          case "tb-textzoom": S.preview = true; renderModal(); icons(); return;
+          case "modal-close": S.preview = false; renderModal(); return;
+          case "modal-bg": if (e.target === el) { S.preview = false; renderModal(); } return;
+          case "split-reset": m.xs = evenLines(m.cols); m.ys = evenLines(m.rows); m.dirty = false; render(); return;
+          case "split-ok": doSplit(); return;
+          case "split-cancel": exitMode(); render(); return;
+          case "dd-close": exitMode(); render(); return;
+          case "dd-tool": removeTextEl(); m.tool = el.dataset.tool; S.palette = false; render(); return;
+          case "dd-palette": S.palette = !S.palette; render(); return;
+          case "dd-color": m.color = el.dataset.color; S.palette = false; render(); return;
+          case "dd-undo": if (m.ops.length) m.redo.push(m.ops.pop()); render(); return;
+          case "dd-redo": if (m.redo.length) m.ops.push(m.redo.pop()); render(); return;
+          case "dd-save": doSave(); return;
+          case "up-retry": { const n = byId(el.dataset.id); if (n) { n.status = "uploading"; n.progress = 0; renderSoft(n.id); startUpload(n.id, 0, false); } return; }
+          case "up-discard": S.nodes = S.nodes.filter((n) => n.id !== el.dataset.id); S.edges = S.edges.filter((x) => x.t !== el.dataset.id); render(); toast("已撤掉该节点和它的连线"); return;
+        }
+      }
+      $("#proto").addEventListener("click", (e) => {
+        const act = e.target.closest("[data-act]");
+        if (act) return handleAct(act, e);
+        if (e.target.closest(".cv-modal")) return;
+        if (e.target.closest(".tb, .ed-top, .tb-menu")) return;
+        const node = e.target.closest("[data-node]");
+        if (node) {
+          if (S.menuOpen) {
+            S.menuOpen = false;
+            render();
+          }
+          return selectNode(node.dataset.node);
+        }
+        deselect();
+      });
+      $("#proto").addEventListener("pointerdown", (e) => {
+        const m = S.mode;
+        if (!m) return;
+        const ln = e.target.closest("[data-drag]");
+        if (m.type === "split" && ln) {
+          e.preventDefault();
+          S.drag = { kind: "line", axis: ln.dataset.axis, i: +ln.dataset.i, el: ln };
+          S.busy = true;
+          return;
+        }
+        const cv = e.target.closest("#ddCanvas");
+        if (m.type === "doodle" && cv) {
+          e.preventDefault();
+          const p = imgPoint(e, cv);
+          if (m.tool === "text") return openTextInput(e, p, cv);
+          const w = m.width * factor();
+          m.cur = m.tool === "pen" ? { t: "pen", color: m.color, w, pts: [p] } : { t: "rect", color: m.color, w, x0: p[0], y0: p[1], x1: p[0], y1: p[1] };
+          S.drag = { kind: "draw" };
+          S.busy = true;
+          redrawDoodle();
+        }
+      });
+      window.addEventListener("pointermove", (e) => {
+        const d = S.drag;
+        const m = S.mode;
+        if (!d || !m) return;
+        if (d.kind === "line") {
+          const body = document.querySelector(`[data-node="${m.nodeId}"] .cvn-body`);
+          const r = body.getBoundingClientRect();
+          const arr = d.axis === "x" ? m.xs : m.ys;
+          const v = d.axis === "x" ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height;
+          arr[d.i] = clampLine(arr, d.i, v);
+          m.dirty = true;
+          d.el.style[d.axis === "x" ? "left" : "top"] = arr[d.i] * 100 + "%";
+          readout();
+        } else if (d.kind === "draw" && m.cur) {
+          const cv = $("#ddCanvas");
+          if (!cv) return;
+          const p = imgPoint(e, cv);
+          if (m.cur.t === "pen") m.cur.pts.push(p);
+          else {
+            m.cur.x1 = p[0];
+            m.cur.y1 = p[1];
+          }
+          redrawDoodle();
+        }
+      });
+      window.addEventListener("pointerup", () => {
+        const d = S.drag;
+        if (!d) return;
+        S.drag = null;
+        S.busy = false;
+        if (d.kind === "draw") {
+          const m = S.mode;
+          if (m && m.cur) {
+            const c = m.cur;
+            m.cur = null;
+            const ok = c.t === "pen" ? c.pts.length >= 1 : Math.abs(c.x1 - c.x0) > 3 && Math.abs(c.y1 - c.y0) > 3;
+            if (ok) {
+              m.ops.push(c);
+              m.redo = [];
+            }
+          }
+          render();
+        }
+      });
+      $("#proto").addEventListener("input", (e) => {
+        if (e.target.id === "ddWidth" && S.mode) S.mode.width = +e.target.value;
+      });
+      /* 自定义宫格选择器：悬停高亮 */
+      $("#proto").addEventListener("mouseover", (e) => {
+        const cell = e.target.closest(".pk");
+        const g = $("#pkG");
+        if (!g) return;
+        if (!cell) return;
+        const hr = +cell.dataset.r, hc = +cell.dataset.c;
+        g.querySelectorAll(".pk").forEach((b) => b.classList.toggle("on", +b.dataset.r <= hr && +b.dataset.c <= hc));
+        $("#pkLbl").textContent = `${hr + 1}×${hc + 1}`;
+      });
+      $("#proto").addEventListener("mouseout", (e) => {
+        const g = $("#pkG");
+        if (g && !g.contains(e.relatedTarget)) {
+          g.querySelectorAll(".pk").forEach((b) => b.classList.remove("on"));
+          $("#pkLbl").textContent = "";
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && S.preview) {
+          S.preview = false;
+          renderModal();
+        }
+      });
+      document.querySelectorAll("[data-zoom]").forEach((b) =>
+        b.addEventListener("click", () => {
+          S.zoom = +b.dataset.zoom;
+          document.querySelectorAll("[data-zoom]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+          render();
+        }),
+      );
+      $("#failNext").addEventListener("change", (e) => (S.failNext = e.target.checked));
+      $("#resetProto").addEventListener("click", () => {
+        resetState();
+        document.querySelectorAll("[data-zoom]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.zoom === "1")));
+        render();
+        toast("原型已重置");
+      });
+
+      /* ================= 页签：参考图与弹窗（面板和弹窗共用同一份数据） ================= */
+      const PF = { refs: [], pool: [], prompt: [], menu: null, cur: null, model: 0, ratio: "16:9", res: "720P", dur: 15 };
+      const MODELS = [
+        { name: "seedance-2.0（官渠）", rate: 20 },
+        { name: "seedance-2.0-fast", rate: 12 },
+        { name: "kling-3.0", rate: 30 },
+      ];
+      function pfCanvas(w, h, draw) {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        draw(c.getContext("2d"), w, h);
+        return c.toDataURL("image/jpeg", 0.85);
+      }
+      const pfCrop = (sx, sy, sw, sh) => pfCanvas(sw, sh, (g) => g.drawImage(SRC, sx, sy, sw, sh, 0, 0, sw, sh));
+      function pfCar() {
+        return pfCanvas(960, 720, (g, w, h) => {
+          const bg = g.createLinearGradient(0, 0, 0, h);
+          bg.addColorStop(0, "#f4f4f6"); bg.addColorStop(1, "#d9dade");
+          g.fillStyle = bg; g.fillRect(0, 0, w, h);
+          g.fillStyle = "#9aa0a8";
+          g.beginPath(); g.moveTo(120, 480); g.quadraticCurveTo(200, 300, 380, 290); g.lineTo(600, 290); g.quadraticCurveTo(760, 300, 840, 480); g.closePath(); g.fill();
+          g.fillStyle = "#c8ccd2"; g.fillRect(100, 470, 760, 60);
+          g.fillStyle = "#2a2d33";
+          [[260, 540], [700, 540]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 56, 0, 7); g.fill(); });
+          g.fillStyle = "rgba(40,60,90,.55)"; g.fillRect(330, 310, 260, 90);
+        });
+      }
+      const pfCost = () => Math.round((MODELS[PF.model].rate * PF.dur) / 15 * (PF.res === "1080P" ? 1.5 : 1)) * 10;
+      const pfRef = (id) => PF.refs.find((r) => r.id === id) || PF.pool.find((r) => r.id === id);
+      const pfLen = () => PF.prompt.reduce((n, s) => n + (s.t === "text" ? s.v.length : (pfRef(s.id) || { label: "" }).label.length), 0);
+
+      function tileHTML(r) {
+        const inner = r.kind === "text" ? `<span class="pf-t">T</span>` : `<img src="${r.url}" alt="" draggable="false" />`;
+        return `<span class="pf-tile" data-ref="${r.id}" tabindex="0" title="${r.kind === "text" ? esc(r.label) + "（文本引用不弹预览）" : esc(r.label)}">
+          ${inner}<span class="pf-badge l"><i data-lucide="link-2"></i></span>${r.kind === "video" ? `<span class="pf-badge b"><i data-lucide="play"></i></span>` : ""}
+          <button class="pf-x" data-id="${r.id}" aria-label="断开 ${esc(r.label)}" tabindex="-1"><i data-lucide="x"></i></button></span>`;
+      }
+      function chipHTML(id) {
+        const r = pfRef(id);
+        if (!r) return "";
+        return `<span class="pf-chip${r.kind === "text" ? " t" : ""}" data-ref="${r.id}" tabindex="0"><img src="${r.url || ""}" alt="" /><b>${esc(r.label)}</b></span>`;
+      }
+      function addHTML(w) {
+        const open = PF.menu && PF.menu.where === w && PF.menu.which === "add";
+        const items = PF.pool.length
+          ? PF.pool.map((p) => `<button data-pf="add" data-id="${p.id}"><img src="${p.url}" alt="" />${esc(p.label)}</button>`).join("")
+          : `<div class="h">画布里没有可引用的素材了</div>`;
+        return `<button class="pf-add" data-pf="menu" data-w="${w}" data-m="add" aria-label="添加参考"><i data-lucide="plus"></i></button>` +
+          (open ? `<div class="pf-menu"><div class="h">画布里可引用的素材</div>${items}<button disabled title="原型不演示上传"><i data-lucide="upload"></i>上传参考素材</button></div>` : "");
+      }
+      function barHTML(w) {
+        const is = (m) => PF.menu && PF.menu.where === w && PF.menu.which === m;
+        const model = `<div class="pf-menu up"><div class="h">选择模型</div>${MODELS.map((m, i) => `<button data-pf="model" data-i="${i}">${esc(m.name)}${i === PF.model ? '<i class="ck" data-lucide="check"></i>' : ""}</button>`).join("")}</div>`;
+        const grp = (k, label, vals, unit = "") =>
+          `<div class="h">${label}</div><div class="grp">${vals.map((v) => `<button data-pf="opt" data-k="${k}" data-v="${v}" aria-pressed="${String(PF[k]) === String(v)}">${v}${unit}</button>`).join("")}</div>`;
+        const param = `<div class="pf-menu up">${grp("ratio", "比例", ["16:9", "9:16", "1:1"])}${grp("res", "清晰度", ["720P", "1080P"])}${grp("dur", "时长", [5, 10, 15], "秒")}</div>`;
+        return `<div class="pf-bar">
+          <span class="pf-wrap"><button class="pf-chipbtn" data-pf="menu" data-w="${w}" data-m="model">${esc(MODELS[PF.model].name)}<i data-lucide="chevron-down"></i></button>${is("model") ? model : ""}</span>
+          <span class="pf-wrap"><button class="pf-chipbtn" data-pf="menu" data-w="${w}" data-m="param">${PF.ratio} · ${PF.res} · ${PF.dur}秒<i data-lucide="chevron-down"></i></button>${is("param") ? param : ""}</span>
+          <button class="pf-at" data-pf="at" title="引用素材" aria-label="引用素材">@</button>
+          <span class="pf-cr"><i data-lucide="sparkles"></i>${pfCost()}</span>
+          <button class="pf-go" data-pf="send" data-w="${w}" aria-label="生成"><i data-lucide="arrow-up"></i></button></div>`;
+      }
+      function pfRender() {
+        for (const w of ["P", "D"]) {
+          $("#pfRefs" + w).innerHTML = PF.refs.map(tileHTML).join("") + addHTML(w);
+          $("#pfPrompt" + w).innerHTML = PF.prompt.map((s) => (s.t === "text" ? esc(s.v) : chipHTML(s.id))).join("");
+          $("#pfBar" + w).innerHTML = barHTML(w);
+        }
+        $("#pfCountP").textContent = $("#pfCountD").textContent = pfLen() + "/16000";
+        icons();
+      }
+
+      /* ---- 悬停放大：固定定位、挂在最外层 ---- */
+      let PEEK = null;
+      function hidePeek() {
+        PF.cur = null;
+        if (PEEK) PEEK.classList.remove("on");
+      }
+      function showPeek(el) {
+        const r = pfRef(el.dataset.ref);
+        if (!r || r.kind === "text") {
+          hidePeek();
+          $("#pfInfo").textContent = r ? `悬停「${r.label}」：文本引用不弹预览。` : "";
+          return;
+        }
+        const sc = Math.min(256 / r.w, 288 / r.h);
+        const pw = Math.round(r.w * sc), ph = Math.round(r.h * sc);
+        const img = PEEK.querySelector("img");
+        img.src = r.url; img.style.width = pw + "px"; img.style.height = ph + "px";
+        PEEK.querySelector(".tg").textContent = r.kind === "video" ? "视频 · 静音循环播放（示意）" : "";
+        const b = el.getBoundingClientRect();
+        const left = Math.max(8, Math.min(window.innerWidth - pw - 8, b.left + b.width / 2 - pw / 2));
+        let top = b.top - 14 - ph;
+        let below = false;
+        if (top < 8) { top = b.bottom + 14; below = true; }
+        PEEK.dataset.side = below ? "below" : "above";
+        PEEK.style.cssText = `left:${left}px;top:${top}px;transform-origin:50% ${below ? "0%" : "100%"}`;
+        PF.cur = el;
+        requestAnimationFrame(() => PEEK.classList.add("on"));
+        $("#pfInfo").textContent = `悬停「${r.label}」（${r.kind === "video" ? "视频" : "图片"}）\n预览 ${pw}×${ph}，位置：${below ? "目标下方（上方放不下，已翻转）" : "目标正上方 14px"}`;
+      }
+
+      function pfRemove(id) {
+        const r = PF.refs.find((x) => x.id === id);
+        if (!r) return;
+        PF.refs = PF.refs.filter((x) => x.id !== id);
+        PF.pool.push(r);
+        const had = PF.prompt.some((s) => s.t === "chip" && s.id === id);
+        PF.prompt = PF.prompt.filter((s) => !(s.t === "chip" && s.id === id));
+        hidePeek();
+        pfRender();
+        toast(`已断开「${r.label}」${had ? "，提示词里的引用标签同步删除（同一步可撤销）" : ""}`);
+      }
+      function pfOpenDlg() { PF.menu = null; hidePeek(); $("#pfDlg").hidden = false; pfRender(); }
+      function pfCloseDlg() { PF.menu = null; hidePeek(); $("#pfDlg").hidden = true; pfRender(); }
+
+      function initPanelProto() {
+        PEEK = document.createElement("div");
+        PEEK.className = "pf-peek";
+        PEEK.innerHTML = `<img alt="" /><span class="tg"></span>`;
+        document.body.appendChild(PEEK);
+        const road = pfCrop(0, 0, 1280, 720), tunnel = pfCrop(640, 260, 640, 360), left = pfCrop(0, 200, 640, 360);
+        PF.refs = [
+          { id: "r7", label: "图片 7", kind: "image", url: road, w: 1280, h: 720 },
+          { id: "r5", label: "图片 5", kind: "image", url: pfCar(), w: 960, h: 720 },
+          { id: "v1", label: "视频 1", kind: "video", url: tunnel, w: 640, h: 360 },
+          { id: "t1", label: "文本", kind: "text" },
+        ];
+        PF.pool = [
+          { id: "r9", label: "图片 9", kind: "image", url: left, w: 640, h: 360 },
+          { id: "r3", label: "图片 3", kind: "image", url: tunnel, w: 640, h: 360 },
+        ];
+        PF.prompt = [
+          { t: "text", v: "【资产】\n城市高架：" }, { t: "chip", id: "r7" },
+          { t: "text", v: "\n跑车：" }, { t: "chip", id: "r5" },
+          { t: "text", v: "\n\n镜头01｜城市高空大全景\n时间：00:00-00:04（4秒）\n景别：远景转中近景\n机位：车辆斜后上方下降至低空\n运镜：FPV加速下降、贴近跟拍\n声音：发动机低频轰鸣增强，轮胎与路面的摩擦声清晰可闻。" },
+        ];
+        pfRender();
+        const pf = $("#pf");
+        pf.addEventListener("click", (e) => {
+          const x = e.target.closest(".pf-x");
+          if (x) return pfRemove(x.dataset.id);
+          const t = e.target.closest(".pf-tile");
+          if (t) {
+            hidePeek();
+            PF.prompt.push({ t: "chip", id: t.dataset.ref }, { t: "text", v: " " });
+            pfRender();
+            toast("已把引用插入提示词（示意：真实是插到光标处）");
+            return;
+          }
+          const a = e.target.closest("[data-pf]");
+          if (!a) {
+            if (PF.menu && !e.target.closest(".pf-menu")) { PF.menu = null; pfRender(); }
+            return;
+          }
+          const k = a.dataset.pf;
+          if (k === "menu") {
+            const same = PF.menu && PF.menu.where === a.dataset.w && PF.menu.which === a.dataset.m;
+            PF.menu = same ? null : { where: a.dataset.w, which: a.dataset.m };
+            hidePeek(); pfRender();
+          } else if (k === "add") {
+            const r = PF.pool.find((p) => p.id === a.dataset.id);
+            PF.pool = PF.pool.filter((p) => p.id !== a.dataset.id);
+            if (r) PF.refs.push(r);
+            PF.menu = null; pfRender();
+            toast(`已添加「${r.label}」并自动连线`);
+          } else if (k === "model") { PF.model = +a.dataset.i; PF.menu = null; pfRender(); }
+          else if (k === "opt") { PF[a.dataset.k] = a.dataset.k === "dur" ? +a.dataset.v : a.dataset.v; pfRender(); }
+          else if (k === "at") toast("@ 菜单：选画布里的素材插入引用（原型不演示）", "warn");
+          else if (k === "send") { if (a.dataset.w === "D") pfCloseDlg(); toast("已提交生成（示意，不扣积分）"); }
+          else if (k === "expand") pfOpenDlg();
+          else if (k === "close") pfCloseDlg();
+        });
+        const target = (e) => e.target.closest && e.target.closest("[data-ref]");
+        pf.addEventListener("mouseover", (e) => { const el = target(e); if (el && el !== PF.cur) showPeek(el); });
+        pf.addEventListener("mouseout", (e) => { const el = target(e); if (el && !el.contains(e.relatedTarget)) hidePeek(); });
+        pf.addEventListener("focusin", (e) => { const el = target(e); if (el) showPeek(el); });
+        pf.addEventListener("focusout", (e) => { if (target(e)) hidePeek(); });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape" || $("#pfDlg").hidden) return;
+          if (PF.menu) { PF.menu = null; pfRender(); } else pfCloseDlg();
+        });
+      }
+
+      /* ---- 启动 ---- */
+      SRC = makeSample();
+      SRC_URL = SRC.toDataURL("image/png");
+      resetState();
+      render();
+      renderDemoList();
+      renderDemoPanel();
+      initPanelProto();
+      icons();
+    </script>
+  </body>
+</html>

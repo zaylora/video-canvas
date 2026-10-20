@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fabric.js 涂鸦试验（一次性，非设计稿）</title>
+    <!-- 注意：Fabric 7 的对象默认以中心点定位（originX/originY 是 center），所以创建 Rect / IText 时要显式写 originX: "left"、originY: "top"，否则会偏移半个尺寸。
+         一次性试验：只为感受 Fabric.js 做涂鸦的手感，不是设计文档，也不进产品代码。
+         Fabric 7.4.0（2026-05-18 发布，MIT）从 jsdelivr 加载，需要联网。 -->
+    <script src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
+    <style>
+      :root { color-scheme: dark; --bg: #0b0b0c; --chrome: #1c1c1f; --line: #2e2e33; --hover: #2a2a2e; --text: #e6e6ea; --mute: #9a9aa3; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 system-ui, "PingFang SC", sans-serif; }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; display: grid; gap: 20px; grid-template-columns: minmax(0, 760px) minmax(0, 1fr); align-items: start; }
+      @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+      h1 { grid-column: 1 / -1; margin: 0; font-size: 20px; }
+      .sub { grid-column: 1 / -1; margin: -12px 0 0; color: var(--mute); font-size: 13px; }
+      .tb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px; background: var(--chrome); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 12px; }
+      .tb button { height: 32px; padding: 0 10px; border-radius: 9px; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+      .tb button:hover:not(:disabled) { background: var(--hover); }
+      .tb button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .tb button[aria-pressed="true"] { background: #3a3a40; }
+      .tb .save { background: #fff; color: #111; font-weight: 600; margin-left: auto; }
+      .tb .save:hover:not(:disabled) { background: #e5e5ea; }
+      .sep { width: 1px; height: 20px; background: #34343a; margin: 0 6px; }
+      .sw { width: 24px !important; height: 24px !important; padding: 0 !important; border-radius: 50%; border: 2px solid transparent !important; }
+      .sw[aria-pressed="true"] { border-color: #fff !important; background: inherit !important; }
+      input[type="range"] { width: 100px; accent-color: #8aa0ff; }
+      #stage { position: relative; width: 720px; max-width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #151517; }
+      #stage > img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; }
+      #stage .canvas-container { position: absolute !important; left: 0; top: 0; }
+      .card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: #131315; }
+      .card h2 { margin: 0 0 8px; font-size: 14px; }
+      .kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 12.5px; }
+      .kv span:nth-child(odd) { color: var(--mute); }
+      .kv b { font-family: ui-monospace, "SF Mono", monospace; font-weight: 500; }
+      ul { margin: 0; padding-left: 18px; font-size: 13px; }
+      li { margin: 3px 0; }
+      #out img { max-width: 100%; border: 1px solid var(--line); border-radius: 8px; display: block; margin-top: 8px; }
+      .warn { color: #fbbf24; }
+      .ok { color: #34d399; }
+    </style>
+  </head>
+  <body>
+    <h1>Fabric.js 涂鸦试验</h1>
+    <p class="sub">一次性试验页，只为感受手感。功能和设计稿里的涂鸦一致：画笔、框选（空心矩形）、文字、颜色、粗细、撤销重做、保存。保存会按<b>原图分辨率（1280×720）</b>导出。</p>
+
+    <div>
+      <div class="tb" id="tb">
+        <button data-tool="pen" aria-pressed="true">画笔</button>
+        <button data-tool="rect" aria-pressed="false">框选</button>
+        <button data-tool="text" aria-pressed="false">文字</button>
+        <span class="sep"></span>
+        <span id="swatches" style="display: flex; gap: 6px"></span>
+        <input type="range" id="width" min="2" max="20" value="6" title="粗细" />
+        <span class="sep"></span>
+        <button id="undo">撤销</button>
+        <button id="redo">重做</button>
+        <button class="save" id="save">保存</button>
+      </div>
+      <div id="stage"><img id="base" alt="" /></div>
+      <p style="color: var(--mute); font-size: 12.5px; margin: 8px 0 0">文字：点一下图，输入，点别处或按 Esc 结束。结束后文字不能再改（和设计稿一致）。</p>
+    </div>
+
+    <div style="display: grid; gap: 14px">
+      <div class="card">
+        <h2>实时数据</h2>
+        <div class="kv">
+          <span>Fabric 版本</span><b id="vFabric">-</b>
+          <span>画布逻辑尺寸</span><b id="vLogic">-</b>
+          <span>画布显示尺寸</span><b id="vCss">-</b>
+          <span>当前工具</span><b id="vTool">-</b>
+          <span>对象数 / 可撤销</span><b id="vObjs">-</b>
+          <span>可重做</span><b id="vRedo">-</b>
+        </div>
+      </div>
+      <div class="card" id="out">
+        <h2>保存结果</h2>
+        <div class="muted" style="color: var(--mute); font-size: 12.5px" id="outInfo">还没保存。画点东西再点「保存」。</div>
+      </div>
+      <div class="card">
+        <h2>已测得 / 需要你上手确认</h2>
+        <ul>
+          <li><b class="ok">已测</b>：Fabric 7.4.0 压缩包 299KB，gzip 约 92KB（完整 UMD 构建）。按需打包（tree-shaking）能小多少，<span class="warn">未测</span>。</li>
+          <li><b class="warn">请你试</b>：画笔在屏幕缩小显示（逻辑 1280 宽、显示约 720 宽）时，笔迹是否贴着鼠标、没有偏移。</li>
+          <li><b class="warn">请你试</b>：框选拖出矩形时是否跟手；文字输入的光标、中文输入法（拼音候选）是否正常。</li>
+          <li><b class="warn">请你试</b>：撤销、重做（这里是自己写的对象栈，Fabric 不带），连续撤销到空再重做是否正常。</li>
+          <li><b class="warn">请你试</b>：保存结果的像素尺寸是否是 1280×720，笔迹粗细比例是否和屏幕上一致。</li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      const W = 1280, H = 720;
+      const $ = (s) => document.querySelector(s);
+      const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#ffffff"];
+
+      /* 示意图（和设计稿原型里的同一张） */
+      function rng(seed) { return function () { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+      function makeSample() {
+        const c = document.createElement("canvas"); c.width = W; c.height = H;
+        const g = c.getContext("2d"); const r = rng(7);
+        const sky = g.createLinearGradient(0, 0, 0, H * 0.6); sky.addColorStop(0, "#070b16"); sky.addColorStop(1, "#1d2438");
+        g.fillStyle = sky; g.fillRect(0, 0, W, H);
+        for (let i = 0; i < 46; i++) { const w = 20 + r() * 50, h = 40 + r() * 190, x = r() * W; g.fillStyle = "rgba(18,24,40," + (0.7 + r() * 0.3) + ")"; g.fillRect(x, 380 - h, w, h + 60); for (let k = 0; k < 14; k++) { g.fillStyle = "rgba(255,214,140," + r() * 0.6 + ")"; g.fillRect(x + 4 + r() * (w - 8), 380 - h + r() * h, 2, 3); } }
+        g.fillStyle = "#0d0f14"; g.fillRect(0, 380, W, H - 380);
+        g.fillStyle = "#171a22"; g.beginPath(); g.moveTo(0, H); g.lineTo(W, H); g.lineTo(860, 380); g.lineTo(500, 380); g.closePath(); g.fill();
+        g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 4; g.setLineDash([30, 26]); g.beginPath(); g.moveTo(640, H); g.lineTo(680, 380); g.stroke(); g.setLineDash([]);
+        const tg = g.createRadialGradient(930, 470, 10, 930, 470, 190); tg.addColorStop(0, "#2a1a05"); tg.addColorStop(0.6, "#b9791f"); tg.addColorStop(1, "#3a2508");
+        g.fillStyle = tg; g.beginPath(); g.ellipse(930, 480, 200, 150, 0, Math.PI, 0); g.lineTo(1130, 620); g.lineTo(730, 620); g.closePath(); g.fill();
+        for (let i = 0; i < 9; i++) { const x = 520 + i * 70, y = 370 - i * 6; const gl = g.createRadialGradient(x, y, 0, x, y, 26); gl.addColorStop(0, "rgba(255,200,110,.95)"); gl.addColorStop(1, "rgba(255,200,110,0)"); g.fillStyle = gl; g.fillRect(x - 30, y - 30, 60, 60); }
+        return c;
+      }
+      const SRC = makeSample();
+      $("#base").src = SRC.toDataURL("image/png");
+
+      /* ---- Fabric 画布：逻辑尺寸 = 原图像素，显示用 CSS 缩小 ---- */
+      const el = document.createElement("canvas");
+      el.width = W; el.height = H;
+      $("#stage").appendChild(el);
+      const canvas = new fabric.Canvas(el, { selection: false, skipTargetFind: false, preserveObjectStacking: true });
+      const stageW = () => $("#stage").clientWidth;
+      function fit() {
+        const w = stageW(), h = Math.round((w * H) / W);
+        canvas.setDimensions({ width: w + "px", height: h + "px" }, { cssOnly: true });
+        canvas.wrapperEl.style.width = w + "px";
+        canvas.wrapperEl.style.height = h + "px";
+        canvas.calcOffset();
+        stats();
+      }
+      window.addEventListener("resize", fit);
+
+      const st = { tool: "pen", color: COLORS[0], width: 6, redo: [], redoing: false, rect: null, start: null };
+      const factor = () => W / stageW(); // 屏幕 1px 对应原图多少 px
+      const strokeW = () => st.width * factor();
+
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      function applyBrush() {
+        canvas.freeDrawingBrush.color = st.color;
+        canvas.freeDrawingBrush.width = strokeW();
+      }
+      function setTool(t) {
+        st.tool = t;
+        canvas.discardActiveObject();
+        canvas.isDrawingMode = t === "pen";
+        canvas.defaultCursor = t === "text" ? "text" : "crosshair";
+        document.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === t)));
+        applyBrush();
+        stats();
+      }
+      const pt = (opt) => opt.scenePoint || canvas.getScenePoint(opt.e);
+      const lock = (o) => o.set({ selectable: false, evented: false });
+
+      canvas.on("path:created", (e) => lock(e.path));
+      canvas.on("object:added", () => { if (!st.redoing) st.redo = []; stats(); });
+      canvas.on("object:removed", stats);
+
+      canvas.on("mouse:down", (opt) => {
+        if (st.tool === "rect") {
+          const p = pt(opt);
+          st.start = p;
+          st.rect = new fabric.Rect({ originX: "left", originY: "top", left: p.x, top: p.y, width: 0, height: 0, fill: "transparent", stroke: st.color, strokeWidth: strokeW(), strokeUniform: true, selectable: false, evented: false });
+          canvas.add(st.rect);
+        } else if (st.tool === "text") {
+          if (opt.target && opt.target.isEditing) return; // 点在正在编辑的文字里：移动光标，不新建
+          const p = pt(opt);
+          const t = new fabric.IText("", { originX: "left", originY: "top", left: p.x, top: p.y, fill: st.color, fontSize: (12 + st.width * 1.2) * factor(), fontFamily: "sans-serif" });
+          canvas.add(t);
+          canvas.setActiveObject(t);
+          t.enterEditing();
+          t.on("editing:exited", () => {
+            if (!t.text.trim()) canvas.remove(t);
+            else lock(t);
+            canvas.requestRenderAll();
+          });
+        }
+      });
+      canvas.on("mouse:move", (opt) => {
+        if (st.tool !== "rect" || !st.rect) return;
+        const p = pt(opt), s = st.start;
+        st.rect.set({ left: Math.min(p.x, s.x), top: Math.min(p.y, s.y), width: Math.abs(p.x - s.x), height: Math.abs(p.y - s.y) });
+        canvas.requestRenderAll();
+      });
+      canvas.on("mouse:up", () => {
+        if (st.tool !== "rect" || !st.rect) return;
+        const r = st.rect; st.rect = null;
+        if (r.width < 3 || r.height < 3) canvas.remove(r); else r.setCoords();
+        canvas.requestRenderAll();
+      });
+
+      /* ---- 撤销 / 重做：Fabric 不自带，自己维护对象栈（这就是“自己写”的那部分工作量） ---- */
+      $("#undo").onclick = () => {
+        canvas.discardActiveObject();
+        const o = canvas.getObjects();
+        if (!o.length) return;
+        const last = o[o.length - 1];
+        canvas.remove(last);
+        st.redo.push(last);
+        canvas.requestRenderAll(); stats();
+      };
+      $("#redo").onclick = () => {
+        if (!st.redo.length) return;
+        st.redoing = true;
+        canvas.add(st.redo.pop());
+        st.redoing = false;
+        canvas.requestRenderAll(); stats();
+      };
+
+      /* ---- 保存：把 Fabric 画布（原图像素）叠到原图上导出 ---- */
+      $("#save").onclick = () => {
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        if (!canvas.getObjects().length) { $("#outInfo").innerHTML = '<span class="warn">还没有标注内容，不会新建节点。</span>'; return; }
+        const out = document.createElement("canvas");
+        out.width = W; out.height = H;
+        const g = out.getContext("2d");
+        g.drawImage(SRC, 0, 0);
+        const layer = canvas.toCanvasElement(1);
+        g.drawImage(layer, 0, 0, W, H);
+        const t0 = performance.now();
+        const url = out.toDataURL("image/png");
+        const ms = Math.round(performance.now() - t0);
+        $("#outInfo").innerHTML = `覆盖层像素 <b>${layer.width}×${layer.height}</b>；导出 PNG <b>${out.width}×${out.height}</b>，约 ${Math.round((url.length * 3) / 4 / 1024)} KB，编码 ${ms} ms。<img src="${url}" alt="保存结果" />`;
+      };
+
+      /* ---- 工具栏与读数 ---- */
+      document.querySelectorAll("[data-tool]").forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
+      $("#swatches").innerHTML = COLORS.map((c, i) => `<button class="sw" data-c="${c}" aria-pressed="${i === 0}" style="background:${c}" aria-label="${c}"></button>`).join("");
+      $("#swatches").onclick = (e) => {
+        const b = e.target.closest("[data-c]"); if (!b) return;
+        st.color = b.dataset.c;
+        document.querySelectorAll("[data-c]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        applyBrush();
+      };
+      $("#width").oninput = (e) => { st.width = +e.target.value; applyBrush(); };
+      function stats() {
+        $("#vFabric").textContent = (fabric.version || "7.4.0（未暴露版本号）");
+        $("#vLogic").textContent = `${canvas.getWidth()}×${canvas.getHeight()}`;
+        $("#vCss").textContent = `${stageW()}×${Math.round((stageW() * H) / W)}（缩放 ${(1 / factor()).toFixed(2)}x）`;
+        $("#vTool").textContent = st.tool;
+        const n = canvas.getObjects().length;
+        $("#vObjs").textContent = `${n} / ${n ? "可撤销" : "无"}`;
+        $("#vRedo").textContent = st.redo.length ? st.redo.length + " 步" : "无";
+        $("#undo").disabled = !n;
+        $("#redo").disabled = !st.redo.length;
+      }
+      fit();
+      setTool("pen");
+    </script>
+  </body>
+</html>
