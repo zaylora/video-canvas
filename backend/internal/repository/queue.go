@@ -19,11 +19,11 @@ type QueueRepository struct {
 // NewQueueRepository 创建任务队列仓储。
 func NewQueueRepository(db *gorm.DB) *QueueRepository { return &QueueRepository{db: db} }
 
-// 三个阶段 job 的 kind 与活着的 job 状态，对账的 SQL 用。要和 provider/queue 里的定义保持一致。
+// 生成任务 job 的 kind、队列名与活着的 job 状态，对账和统计的 SQL 用。要和 provider/queue 里的定义保持一致。
 const (
-	queueJobKinds      = `('gen.submit','gen.poll','gen.finalize')`
+	queueJobKind       = `'gen.task'`
+	queueName          = `'generation'`
 	queueLiveJobStates = `('available','pending','retryable','running','scheduled')`
-	queueNames         = `('gen_submit','gen_poll','gen_finalize')`
 )
 
 // UpsertInstance 写入或刷新实例的心跳记录：已存在时只更新主机名、版本、心跳时间、leader 标记与统计（启动时间不变）。
@@ -70,9 +70,9 @@ func (r *QueueRepository) IsLeader(ctx context.Context, clientID string) (bool, 
 const unscheduledSQL = `
 WITH live AS (
 	SELECT (args->>'task_id')::bigint AS task_id FROM river_job
-	WHERE kind IN ` + queueJobKinds + ` AND state IN ` + queueLiveJobStates + `
+	WHERE kind = ` + queueJobKind + ` AND state IN ` + queueLiveJobStates + `
 )
-SELECT t.id, t.status, t.next_poll_at
+SELECT t.id, t.next_poll_at
 FROM generation_tasks t
 LEFT JOIN live ON live.task_id = t.id
 WHERE t.status IN ('pending','queued','running','finalizing') AND live.task_id IS NULL
@@ -95,13 +95,12 @@ func (r *QueueRepository) RecoverOrphanedJobs(ctx context.Context, liveIDs []str
 	}
 	res := r.db.WithContext(ctx).Exec(`
 UPDATE river_job SET state = 'retryable', scheduled_at = now()
-WHERE kind IN `+queueJobKinds+` AND state = 'running'
+WHERE kind = `+queueJobKind+` AND state = 'running'
   AND attempted_by[array_length(attempted_by, 1)] NOT IN ?`, liveIDs)
 	return res.RowsAffected, res.Error
 }
 
 type queueCountRow struct {
-	Queue       string
 	Available   int
 	Scheduled   int
 	Running     int
@@ -109,44 +108,21 @@ type queueCountRow struct {
 	Discarded1h int `gorm:"column:discarded_1h"`
 }
 
-// QueueCounts 返回各阶段（短名）的 job 计数。
-//
-// 提交阶段的特殊处理：任务在等用户名额 / 渠道名额时，它的 job 是“睡着”（scheduled）的，但从用户角度这就是在排队，
-// 所以把这部分从“延迟中”挪到“排队”里，让“积压主要看排队这一列”成立。
-func (r *QueueRepository) QueueCounts(ctx context.Context, now time.Time) (map[string]model.QueueCounts, error) {
-	db := r.db.WithContext(ctx)
-	var rows []queueCountRow
-	err := db.Raw(`
-SELECT queue,
-       COUNT(*) FILTER (WHERE state = 'available') AS available,
+// QueueCounts 返回队列的 job 计数。一个任务一个 job：等名额、等并发、等到点而睡着的 job（scheduled）和随时可取的（available）
+// 都是“排队”，正在处理的（running）占着并发名额。
+func (r *QueueRepository) QueueCounts(ctx context.Context, now time.Time) (model.QueueCounts, error) {
+	var row queueCountRow
+	err := r.db.WithContext(ctx).Raw(`
+SELECT COUNT(*) FILTER (WHERE state = 'available') AS available,
        COUNT(*) FILTER (WHERE state = 'scheduled') AS scheduled,
        COUNT(*) FILTER (WHERE state = 'running') AS running,
        COUNT(*) FILTER (WHERE state = 'retryable') AS retryable,
        COUNT(*) FILTER (WHERE state = 'discarded' AND finalized_at > ?) AS discarded_1h
-FROM river_job WHERE queue IN `+queueNames+` GROUP BY queue`, now.Add(-time.Hour)).Scan(&rows).Error
+FROM river_job WHERE queue = `+queueName, now.Add(-time.Hour)).Scan(&row).Error
 	if err != nil {
-		return nil, err
+		return model.QueueCounts{}, err
 	}
-	out := map[string]model.QueueCounts{}
-	for _, row := range rows {
-		stage := row.Queue[len("gen_"):]
-		out[stage] = model.QueueCounts{Available: row.Available, Scheduled: row.Scheduled, Running: row.Running, Retryable: row.Retryable, Discarded1h: row.Discarded1h}
-	}
-
-	var waiting int
-	err = db.Raw(`
-SELECT COUNT(*) FROM river_job j JOIN generation_tasks t ON t.id = (j.args->>'task_id')::bigint
-WHERE j.queue = 'gen_submit' AND j.state = 'scheduled' AND t.status = 'pending' AND t.slot_acquired_at IS NULL`).Scan(&waiting).Error
-	if err != nil {
-		return nil, err
-	}
-	if c, ok := out[model.QueueStageSubmit]; ok && waiting > 0 {
-		waiting = min(waiting, c.Scheduled)
-		c.Available += waiting
-		c.Scheduled -= waiting
-		out[model.QueueStageSubmit] = c
-	}
-	return out, nil
+	return model.QueueCounts{Waiting: row.Available + row.Scheduled, Running: row.Running, Retryable: row.Retryable, Discarded1h: row.Discarded1h}, nil
 }
 
 // ThroughputPoint 是一分钟的吞吐：这一分钟内进入终态的任务。

@@ -38,8 +38,8 @@ const (
 
 type qaRepo struct{}
 
-func (qaRepo) QueueCounts(context.Context, time.Time) (map[string]model.QueueCounts, error) {
-	return map[string]model.QueueCounts{"submit": {Available: 3, Running: 2}}, nil
+func (qaRepo) QueueCounts(context.Context, time.Time) (model.QueueCounts, error) {
+	return model.QueueCounts{Waiting: 3, Running: 2}, nil
 }
 func (qaRepo) Throughput(context.Context, time.Time) ([]repository.ThroughputPoint, error) {
 	return nil, nil
@@ -55,42 +55,38 @@ func (qaChannels) ListChannels(context.Context) ([]model.AIChannel, error) {
 	return []model.AIChannel{{Key: "k", Name: "可灵", RateLimitJSON: model.JSONText(`{"max_running":4}`)}}, nil
 }
 
-type qaSettings struct{ saved map[string]int }
+type qaSettings struct{ saved int }
 
-func (s *qaSettings) SetQueueConcurrency(_ context.Context, _ uint64, stage string, n int) error {
-	s.saved[stage] = n
+func (s *qaSettings) SetQueueConcurrency(_ context.Context, _ uint64, n int) error {
+	s.saved = n
 	return nil
 }
 
 type qaCtrl struct {
 	mu     sync.Mutex
-	paused map[string]bool
+	paused bool
 }
 
-func (c *qaCtrl) States(context.Context) ([]model.QueueStageState, error) {
+func (c *qaCtrl) State(context.Context) (model.QueueState, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var out []model.QueueStageState
-	for _, st := range model.QueueStages {
-		out = append(out, model.QueueStageState{Stage: st, Paused: c.paused[st], Concurrency: 8, HardCap: 64})
-	}
-	return out, nil
+	return model.QueueState{Paused: c.paused, Concurrency: 8, HardCap: 64}, nil
 }
-func (c *qaCtrl) Pause(_ context.Context, s string) error {
+func (c *qaCtrl) Pause(context.Context) error {
 	c.mu.Lock()
-	c.paused[s] = true
+	c.paused = true
 	c.mu.Unlock()
 	return nil
 }
-func (c *qaCtrl) Resume(_ context.Context, s string) error {
+func (c *qaCtrl) Resume(context.Context) error {
 	c.mu.Lock()
-	c.paused[s] = false
+	c.paused = false
 	c.mu.Unlock()
 	return nil
 }
 func (*qaCtrl) RefreshSettings(context.Context) {}
 func (*qaCtrl) Heartbeat(context.Context)       {}
-func (*qaCtrl) HardCap(string) int              { return 64 }
+func (*qaCtrl) HardCap() int                    { return 64 }
 
 // qaEnv 用真实的路由、鉴权和 River UI 鉴权，后面接假的队列依赖与一个只回显路径的“River UI”。
 type qaEnv struct {
@@ -111,8 +107,8 @@ func newQAEnv(t *testing.T) *qaEnv {
 		roles:   map[uint64]string{qaSuper: model.RoleSuperAdmin, qaAdmin: model.RoleAdmin, qaNormal: model.RoleUser, qaOff: model.RoleSuperAdmin},
 		status:  map[uint64]string{qaSuper: model.UserStatusActive, qaAdmin: model.UserStatusActive, qaNormal: model.UserStatusActive, qaOff: model.UserStatusDisabled},
 		tokens:  map[uint64]string{},
-		ctrl:    &qaCtrl{paused: map[string]bool{}},
-		setting: &qaSettings{saved: map[string]int{}},
+		ctrl:    &qaCtrl{},
+		setting: &qaSettings{},
 		now:     time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC),
 	}
 	for id := range e.roles {
@@ -203,12 +199,12 @@ func TestAdminQueue_Overview(t *testing.T) {
 	e := newQAEnv(t)
 	r := e.do(http.MethodGet, "/api/v1/admin/queue/overview", nil, qaAdmin)
 	r.want(t, 200, 0)
-	for _, want := range []string{`"label":"提交上游"`, `"label":"查询进度"`, `"label":"转存产物"`, `"available":3`, `"max_running":4`, `"hard_cap":64`} {
+	for _, want := range []string{`"queue":{`, `"waiting":3`, `"running":2`, `"max_running":4`, `"hard_cap":64`} {
 		if !strings.Contains(r.Raw, want) {
 			t.Fatalf("响应缺少 %s：%s", want, r.Raw)
 		}
 	}
-	if strings.Contains(r.Raw, "gen_submit") {
+	if strings.Contains(r.Raw, "generation") || strings.Contains(r.Raw, "gen_") {
 		t.Fatalf("不应暴露 River 的队列名：%s", r.Raw)
 	}
 	e.do(http.MethodGet, "/api/v1/admin/queue/overview", nil, qaSuper).want(t, 200, 0)
@@ -235,41 +231,39 @@ func TestAdminQueue_Throughput(t *testing.T) {
 
 func TestAdminQueue_SetConcurrency(t *testing.T) {
 	e := newQAEnv(t)
-	path := "/api/v1/admin/queue/queues/submit"
+	path := "/api/v1/admin/queue/concurrency"
 	e.do(http.MethodPut, path, map[string]any{"concurrency": 20}, qaAdmin).want(t, 403, errcode.ErrForbidden.Code) // 写仅 super_admin
 	r := e.do(http.MethodPut, path, map[string]any{"concurrency": 20}, qaSuper)
 	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"name":"submit"`) || !strings.Contains(r.Raw, `"concurrency":20`) || e.setting.saved["submit"] != 20 {
+	if !strings.Contains(r.Raw, `"concurrency":20`) || e.setting.saved != 20 {
 		t.Fatalf("保存结果不对：%s %v", r.Raw, e.setting.saved)
 	}
 	for _, bad := range []any{map[string]any{}, map[string]any{"concurrency": 0}, map[string]any{"concurrency": -3}, map[string]any{"concurrency": 65}, map[string]any{"concurrency": "x"}} {
 		e.do(http.MethodPut, path, bad, qaSuper).want(t, 400, errcode.ErrInvalidParams.Code)
 	}
-	e.do(http.MethodPut, "/api/v1/admin/queue/queues/nope", map[string]any{"concurrency": 5}, qaSuper).want(t, 404, errcode.ErrNotFound.Code)
-	if e.setting.saved["submit"] != 20 || len(e.setting.saved) != 1 {
+	if e.setting.saved != 20 {
 		t.Fatalf("失败的请求不应写设置：%v", e.setting.saved)
 	}
 }
 
 func TestAdminQueue_PauseResume(t *testing.T) {
 	e := newQAEnv(t)
-	e.do(http.MethodPost, "/api/v1/admin/queue/queues/poll/pause", nil, qaAdmin).want(t, 403, errcode.ErrForbidden.Code)
-	r := e.do(http.MethodPost, "/api/v1/admin/queue/queues/poll/pause", nil, qaSuper)
+	e.do(http.MethodPost, "/api/v1/admin/queue/pause", nil, qaAdmin).want(t, 403, errcode.ErrForbidden.Code)
+	r := e.do(http.MethodPost, "/api/v1/admin/queue/pause", nil, qaSuper)
 	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"paused":true`) || !e.ctrl.paused["poll"] {
+	if !strings.Contains(r.Raw, `"paused":true`) || !e.ctrl.paused {
 		t.Fatalf("应已暂停：%s", r.Raw)
 	}
 	// 幂等：重复暂停仍然成功
-	e.do(http.MethodPost, "/api/v1/admin/queue/queues/poll/pause", nil, qaSuper).want(t, 200, 0)
+	e.do(http.MethodPost, "/api/v1/admin/queue/pause", nil, qaSuper).want(t, 200, 0)
 	if ov := e.do(http.MethodGet, "/api/v1/admin/queue/overview", nil, qaAdmin); !strings.Contains(ov.Raw, `"paused":true`) {
 		t.Fatalf("总览应反映暂停：%s", ov.Raw)
 	}
-	r = e.do(http.MethodPost, "/api/v1/admin/queue/queues/poll/resume", nil, qaSuper)
+	r = e.do(http.MethodPost, "/api/v1/admin/queue/resume", nil, qaSuper)
 	r.want(t, 200, 0)
-	if !strings.Contains(r.Raw, `"paused":false`) || e.ctrl.paused["poll"] {
+	if !strings.Contains(r.Raw, `"paused":false`) || e.ctrl.paused {
 		t.Fatalf("应已恢复：%s", r.Raw)
 	}
-	e.do(http.MethodPost, "/api/v1/admin/queue/queues/nope/pause", nil, qaSuper).want(t, 404, errcode.ErrNotFound.Code)
 }
 
 // ---------- River UI：一次性 ticket 换会话 cookie ----------

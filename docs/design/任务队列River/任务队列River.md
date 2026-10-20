@@ -1,6 +1,6 @@
 # 任务队列改用 River（可配置并发 + 后台监控）
 
-> - **范围**：把异步生成任务的调度从自研“任务表 + SKIP LOCKED + 租约 + next_poll_at 轮询”换成开源任务队列 River；后台可以调整三个队列的并发，并能看到队列、渠道、吞吐和实例的运行情况。
+> - **范围**：把异步生成任务的调度从自研“任务表 + SKIP LOCKED + 租约 + next_poll_at 轮询”换成开源任务队列 River；后台可以调整队列的并发，并能看到队列、渠道、吞吐和实例的运行情况。
 > - **日期 / 状态**：2026-10-20，**已实现**，待浏览器验证与多实例联调。实现与最初提案有出入的地方见 §13，正文里已按实际实现改写（标 ★ 的是改过的）。
 > - **证据约定**：**事实**附文件路径或来源链接；**推断**是基于事实的判断；**提案**是尚未实现的设计。
 > - **方案演进**：
@@ -8,6 +8,7 @@
 >   2. 比较过 RabbitMQ / RocketMQ / Kafka / Redis Streams，用户一度选择 RabbitMQ。后来改为 River，原因是 MQ 只负责送消息，任务状态、重试、延迟轮询、积分原子性和任务级监控仍要自研，见 §4.3。RabbitMQ 方案已搁置，复用条件见 §11。
 >   3. 访谈中途追加了“单用户并发也用队列控制”，结论是超限后改为排队，见 §6.4。
 > - **2026-10-20 修订**：用户评审原型后指出，默认单用户并发已经在「注册设置」里配置，单个用户的覆盖值在「用户管理」里配置，任务队列页不应重复。因此删掉了页面上的「限流参数」区块；排队上限从全局固定值 20 改为“用户生效并发 × 倍数”，倍数和排队超时放进「注册设置」。同时用户确认保持三个队列，不合并。
+> - **2026-10-20 再次修订（简化为单队列）★★**：用户觉得三个队列太复杂，要求“从提交到查询到转存产物，整个过程就是一个任务”。因此 **三个阶段队列合并成一个队列、一个 job、一个并发设置**：一个生成任务从提交、查询进度到转存产物，全程在同一个 job 里跑完，占一个并发名额；排队等名额的任务不占并发。后台页只剩一张「生成任务」卡片。正文里仍写着“三个队列 / 三个阶段”的地方以本条和 §13.1 为准；标 ★★ 的是按本次修订改过的章节。
 > - **配套演示**：[任务队列River-演示.html](任务队列River-演示.html)
 
 ## 1. 设计摘要
@@ -20,10 +21,10 @@
   4. 单用户超出并发时从“拒绝”改为“排队”。
 - **推荐结论**：
   - 引入 **River 开源版**（MPL-2.0，PostgreSQL 原生，不新增中间件）。
-  - 按阶段拆成 `gen_submit` / `gen_poll` / `gen_finalize` 三个队列。
-  - 渠道上限和用户上限统一放在 submit 入口的“名额”薄层里检查，拿不到名额就 `JobSnooze`。
-  - 队列的实际并发由进程内可调信号量控制，后台修改后几秒内生效。
-  - 后台新增「任务队列」页，内容包括队列卡片、渠道占用、近 1 小时曲线和实例列表。单个 job 的排查、重试、取消交给嵌入的 River UI。
+  - ★★ 一个队列（`generation`）、一个 job 类型：一个任务从提交、查询进度到转存产物全程是一个 job。
+  - 渠道上限和用户上限统一放在开始处理之前的“名额”薄层里检查，拿不到名额就 `JobSnooze`（排队中，不占并发）。
+  - 队列的实际并发由进程内可调闸门控制，后台修改后几秒内生效。
+  - 后台新增「任务队列」页，内容包括一张队列卡片、渠道占用、近 1 小时曲线和实例列表。单个 job 的排查、重试、取消交给嵌入的 River UI。
   - `generation_tasks` 继续作为业务事实来源，前端、WS、积分、使用记录的契约都不变。
 
 ## 2. 项目现状
@@ -65,7 +66,7 @@
 
 | 角色 | 场景 | 诉求 |
 | --- | --- | --- |
-| 运维 / super_admin | 上游扩容或限流、高峰期积压、转存变慢 | 不重启就能调整各阶段并发；临时暂停某阶段；第一时间看到积压和失败率 |
+| 运维 / super_admin | 上游扩容或限流、高峰期积压、转存变慢 | 不重启就能调整并发；临时暂停队列；第一时间看到积压和失败率 |
 | admin | 用户反馈“一直排队” | 看清卡在哪：用户名额、渠道名额，还是队列繁忙；能定位到具体 job |
 | 创作者 | 一次点出 8 个视频，自己的上限是 4 | 不被 429 拒绝，多出来的自动排队，节点上显示“排队中” |
 
@@ -119,51 +120,53 @@
 
 ## 6. 推荐方案（提案）
 
-### 6.1 整体链路 ★
+### 6.1 整体链路 ★★
 
-**一个任务对应一个 job，job 随任务所处的阶段在三个队列之间交接，直到任务进入终态。**任务行（`generation_tasks`）仍是唯一的业务事实来源：状态、积分、名额、“下一次什么时候处理”（`next_poll_at`）、重试次数（`poll_attempts`）都在它上面；River 只负责“什么时候执行、哪个实例执行、同时执行几个、实例挂了怎么救回、怎么监控”。业务逻辑（提交、轮询、转存、失败、退款）原样留在 `provider/worker`，队列只在合适的时候调用它的 `Handle`。
+**一个任务对应一个 job，从提交、查询进度到转存产物都在这个 job 里跑完，直到任务进入终态。**任务行（`generation_tasks`）仍是唯一的业务事实来源：状态、积分、名额、“下一次什么时候处理”（`next_poll_at`）、重试次数（`poll_attempts`）都在它上面；River 只负责“什么时候执行、哪个实例执行、同时执行几个、实例挂了怎么救回、怎么监控”。业务逻辑（提交、轮询、转存、失败、退款）原样留在 `provider/worker`，队列只在合适的时候调用它的 `Handle`。
 
 ```
 用户点生成
   └─ POST /generation-tasks
        事务：EnsureCredit → LockCredit → 排队上限检查(429) → InsertTask(pending)
-             → 冻结积分 → river.InsertTx(SubmitArgs{task_id})        ← 原子
-  一个 job 被取出后（三个阶段共用同一套流程）：
-    1. 读任务行：终态 / 不存在 → 结束；任务已进入别的阶段 → 把它交给那个阶段的队列，结束
-    2. next_poll_at 还没到 → JobSnooze 睡到点（不消耗重试次数）
-    3. 抢本阶段的并发闸门（后台可调，按实例计）：满了 → JobSnooze(1–3s)
-    4. 提交阶段且还没拿到名额：
+             → 冻结积分 → river.InsertTx(TaskArgs{task_id})          ← 原子
+  一个 job 被取出后：
+    1. 读任务行：终态 / 不存在 → 结束
+    2. next_poll_at 还没到（job 被救回后）→ JobSnooze 睡到点（不占并发）
+    3. 抢并发闸门（后台可调，按实例计）：满了 → JobSnooze(1–3s)
+    4. 还没拿到名额的 pending 任务（界面显示“排队中”）：
          排队超过截止时间 → 走超时流程（expired + 退款，不请求上游）
-         申请“用户名额 + 渠道名额”：拿不到 → JobSnooze(2–6s)；拿到 → 重读任务行（deadline 已重置）
-    5. 调用 worker.Handle 处理这一步（提交 / 查询一次 / 转存），结果写在任务行里
-    6. 再读任务行：终态 → 结束；进入下一阶段 → 入队下一阶段的 job（按 next_poll_at 排期），结束；
-       还在本阶段 → JobSnooze 到新的 next_poll_at（任务行没有任何变化则睡 5 秒，避免空转）
+         申请“用户名额 + 渠道名额”：拿不到 → 让出闸门，JobSnooze(2–6s)；拿到 → 重读任务行（deadline 已重置）
+    5. 拿到名额后在 job 里循环：worker.Handle 处理一步（提交 / 查询一次 / 转存）→ 读任务行 →
+         终态 → job 结束；否则按新的 next_poll_at 等到点（任务行没有任何变化则等 5 秒，避免空转）→ 下一步
 每次状态迁移后照旧 publish task.updated → WS → 前端（不变）
 ```
 
-- **阶段交接不在业务事务里**：任务状态迁移和“入队下一阶段 job”是两步。入队失败时当前 job 由 River 重试，不会丢；只有“状态已变、进程恰好在入队前崩溃”会留下没有 job 的任务，由 §6.7 的定时对账补上。这样做的原因：状态迁移分散在 8 个 store 方法里，每个都塞进入队事务会大面积改动已经测过的积分与状态逻辑，收益只是缩短一个极小的窗口。
-- 下一次查询的间隔（5s → 15s ±20%）、提交重试的退避（2s → 60s）、转存重试（10s → 10min）仍由 worker 的 `policy.go` 算好写进 `next_poll_at`，队列只负责睡到点。
+- **并发的含义**：每个实例同时“在处理”的任务数。从拿到名额开始，直到任务终态，一直占着一个并发名额（包括两次查询之间的等待）；**排队等名额的任务不占并发**。名额本身仍由用户并发上限和渠道“最大同时生成数”约束，实例并发只是实例自己的保护线，所以默认值给得比较宽（16）。
+- **画布上的“排队中”**：任务没拿到名额时状态是 pending 且没有提交时间（`submitted_at` 为空），前端按这个条件显示“排队中”，不需要新增字段（`web/src/utils/tasks/node-view.ts`）。
+- 下一次查询的间隔（5s → 15s ±20%）、提交重试的退避（2s → 60s）、转存重试（10s → 10min）仍由 worker 的 `policy.go` 算好写进 `next_poll_at`，队列只负责在 job 里等到点。
+- **崩溃与停机**：job 的执行时限是 6 小时（覆盖模型任务超时 + 转存宽限期），超时、停机被取消只会让 job 重试；重试时从任务行记录的状态接着走，不会重复提交（`submit_unknown` 等规则沿用 worker）。
 
-### 6.2 三个队列与 job 定义 ★
+### 6.2 一个队列与 job 定义 ★★
 
-| 阶段（界面显示） | River 队列 / job kind | args | 单个 job 的执行时限 | 默认并发 / 硬上限（每实例） |
-| --- | --- | --- | --- | --- |
-| 提交上游 | `gen_submit` / `gen.submit` | `{task_id}` | 45 分钟（同步接口要等上游生成完，取模型任务超时，缺省 30 分钟） | 8 / 64 |
-| 查询进度 | `gen_poll` / `gen.poll` | `{task_id}` | 5 分钟（只是一次短请求） | 16 / 64 |
-| 转存产物 | `gen_finalize` / `gen.finalize` | `{task_id}` | 45 分钟（单次转存最长 30 分钟） | 4 / 16 |
+| 项 | 值 |
+| --- | --- |
+| River 队列 / job kind | `generation` / `gen.task` |
+| args | `{task_id}` |
+| 单个 job 的执行时限 | 6 小时（`RescueStuckJobsAfter` 取 7 小时，只是兜底，实际靠对账救回） |
+| 默认并发 / 硬上限（每实例） | 16 / 64（`ai.queue.max_concurrency`） |
 
-- **业务上的重试不用 River 的重试**：提交最多 5 次、转存最多 10 次、`submit_unknown` 直接失败退款、runner 连不上 10 秒后再试且不计次数——这些全部沿用 worker 现有逻辑，次数记在任务行的 `poll_attempts` 里。River 的重试只在读写数据库这类基础设施故障时触发（`MaxAttempts=100`，避免偶发故障把 job 丢弃变成孤儿）。
-- 每个 kind 用 `UniqueOpts{ByArgs: true, ByState: 存活状态}`：同一任务同一阶段同时只存在一个活着的 job；已完成 / 取消 / 丢弃的 job 不挡后来的同任务 job。
-- 对外（接口、界面、设置键）只用短名 `submit` / `poll` / `finalize` 和中文名，**不暴露 River 的队列名**。
+- **业务上的重试不用 River 的重试**：提交最多 5 次、转存最多 10 次、`submit_unknown` 直接失败退款、runner 连不上 10 秒后再试且不计次数——这些全部沿用 worker 现有逻辑，次数记在任务行的 `poll_attempts` 里。River 的重试只在读写数据库这类基础设施故障、停机被取消时触发（`MaxAttempts=100`，避免偶发故障把 job 丢弃变成孤儿）。
+- job 用 `UniqueOpts{ByArgs: true, ByState: 存活状态}`：同一任务同时只存在一个活着的 job；已完成 / 取消 / 丢弃的 job 不挡后来的同任务 job。
+- 对外（接口、界面、设置键）**不暴露 River 的队列名**。
 
-### 6.3 后台可调并发（立即生效，按实例计）★
+### 6.3 后台可调并发（立即生效，按实例计）★★
 
-- River 开源版**没有运行时修改队列 `MaxWorkers` 的接口**（已核对 v0.49 源码：`QueueConfig.MaxWorkers` 只在启动时读取，`QueueUpdate` 只改 metadata），所以每个队列的 `MaxWorkers` = 配置文件里的**硬上限**（`ai.queue.max_submit` / `max_poll` / `max_finalize`），启动时固定。
-- 实际并发由进程内的**可调闸门**控制。值来自 `system_settings`：`queue_concurrency_submit` / `queue_concurrency_poll` / `queue_concurrency_finalize`，缺省 8 / 16 / 4。
+- River 开源版**没有运行时修改队列 `MaxWorkers` 的接口**（已核对 v0.49 源码：`QueueConfig.MaxWorkers` 只在启动时读取，`QueueUpdate` 只改 metadata），所以队列的 `MaxWorkers` = 配置文件里的**硬上限**（`ai.queue.max_concurrency`，缺省 64），启动时固定。
+- 实际并发由进程内的**可调闸门**控制。值来自 `system_settings` 的 `queue_concurrency`，缺省 16。
 - 刷新方式：保存后本进程立即刷新并写一次心跳；所有实例另外每 5 秒重读一次（多实例时 ≤5 秒内生效）。
 - job 取出后先抢闸门；满了就 `JobSnooze(1–3s)`。**取舍**：并发调低时，River 仍会领取到硬上限那么多个 job，多出来的反复睡眠，会产生少量数据库写入（几十次/秒量级，PG 可以承受）。
 - 调低并发**不会中断**正在运行的 job，只影响新的获取。
-- **暂停 / 恢复**使用 River 的 `QueuePause` / `QueueResume`（持久化，对所有实例生效）。暂停期间已入队的 job 保留，恢复后继续执行。生产环境用 pgx 连接池做 LISTEN，暂停立即传播；拿不到监听连接时退化成轮询，各取任务循环要几秒才会发现。
+- **暂停 / 恢复**使用 River 的 `QueuePause` / `QueueResume`（持久化，对所有实例生效）。暂停后不再开始新任务，**正在处理的任务继续**；已入队的 job 保留，恢复后继续执行。生产环境用 pgx 连接池做 LISTEN，暂停立即传播；拿不到监听连接时退化成轮询，各取任务循环要几秒才会发现。
 - 数字的含义是“**每个实例**”。目前是单实例部署，所以等于全局值。
 
 ### 6.4 名额：用户上限 + 渠道上限（超限排队）
@@ -198,14 +201,14 @@
 
 导航位置：AI 配置 → 总览、**任务队列**、模型渠道……。读权限给 admin，写权限（并发、暂停、排队参数）仅限 super_admin，沿用插件/渠道写操作的规则。页面在可见时每 5s 刷新一次，复用 `use-visible-interval`。
 
-1. **队列卡片 ×3**：
-   - 排队（available）、延迟中（scheduled，含 snooze）、运行中、重试中（retryable）、近 1h 丢弃（discarded）。
+1. **队列卡片 ×1（标题“生成任务”）** ★★：
+   - 排队（等名额、等并发、等到点的 job）、运行中（正在处理，占着并发名额）、重试中、近 1h 丢弃，四个计数格。
    - 当前并发 / 硬上限，可用滑杆或输入框调整，保存后会显示“已生效于 N 个实例”。
    - 暂停 / 恢复按钮。
 2. **不放限流参数**：默认单用户并发、排队倍数、排队超时都在「系统设置 → 注册设置」里配置，单个用户的覆盖值在「用户管理」里配置，这一页既不重复提供入口，也不放提示文字（用户确认）。
 3. **渠道占用**：每个渠道显示“占用 / 最大同时生成数”。上限就是渠道弹框里的“最大同时生成数”字段（`max_running`，见 `web/src/pages/admin/ai/channels/channel-dialog.tsx:325`），这里只读；“最大同时请求数”（`max_concurrency`）限制的是 HTTP 请求，不展示、等待名额数、最早等待时长。`/admin/ai/channels/loads` 扩展为基于 `slot_acquired_at` 统计。
 4. **近 1 小时曲线**：按分钟统计完成数、失败数、平均排队时长（`slot_acquired_at - created_at`）。数据来自 `generation_tasks`，业务口径，不依赖 River 的保留期。
-5. **实例列表**：实例 ID、主机名、版本、启动时间、最后心跳、是否 leader、各队列在途数 / 生效并发。心跳超过 30s 显示“失联”。
+5. **实例列表**：实例 ID、主机名、版本、启动时间、最后心跳、是否 leader、“处理中 / 并发”。心跳超过 30s 显示“失联”。
 6. **「打开 River UI」**：新标签页打开 `/admin/river/`，用于查单个 job、手动重试、取消、删除。
 
 ### 6.6 River UI 嵌入与鉴权
@@ -253,7 +256,7 @@
   - 三个部分索引：`idx_task_slot_user`、`idx_task_slot_provider`、`idx_task_waiting`（排队等名额的 pending）；
   - 新建 `worker_instances` 表；
   - `system_settings` 新增 key（不需要 DDL）。
-- **在途任务迁移** ★：不需要专门的迁移步骤——队列启动后立即对账一次，没有活着 job 的非终态任务会按当前状态补入对应阶段的队列（pending → 提交，queued / running → 查询并按 `next_poll_at` 排期，finalizing → 转存）。
+- **在途任务迁移** ★：不需要专门的迁移步骤——队列启动后立即对账一次，没有活着 job 的非终态任务会补一个 job（按 `next_poll_at` 排期），job 取出后从任务行记录的状态接着走。
 - `next_poll_at` 继续使用（就是“下一次什么时候处理”）；`lease_until` 列保留但不再读写，按“先加后删”的迁移规则留待后续版本删除。
 
 ### 8.2 代码改动 ★
@@ -263,7 +266,7 @@
 | `worker.go` 的调度循环（`Run` / `dispatch` / `claimAndRun`）、租约心跳；`ClaimDue`、`claimDueSQL`、`ExtendLease`；`Kick` 通道；配置 `ai.worker.{concurrency,tick,batch_size,lease}` | `worker` 包的业务逻辑原样保留，入口改成 `Handle(ctx, task)`；`TaskStore` 契约去掉 `ClaimDue/ExtendLease`，加 `GetTask`、`AcquireSlot`；`policy.go` 的退避函数复用；创建任务的事务里多一步 `EnqueueTask` | `provider/queue`（River 客户端、可调闸门、job 处理流程、对账救回、实例心跳）；`repository.AcquireSlot` / `QueueRepository`；`service.QueueAdminService`；`handler.AdminQueueHandler` / `RiverUIHandler`；前端「任务队列」页 |
 
 - GORM 事务转 `*sql.Tx`：`tx.Statement.ConnPool.(*sql.Tx)`。River client 用 `riverdatabasesql.NewWithPgxListener(sqlDB, pgxPool)`，pgxPool 使用同一个 DSN（最多 2 个连接），只用于 LISTEN；拿不到时退化成轮询。
-- 配置：`ai.worker.enabled` 保留，含义是“本实例是否执行任务”（API-only 实例关闭它，入队和后台操作照常可用）；新增 `ai.queue.max_submit` / `max_poll` / `max_finalize`（并发硬上限，缺省 64 / 64 / 16）。
+- 配置：`ai.worker.enabled` 保留，含义是“本实例是否执行任务”（API-only 实例关闭它，入队和后台操作照常可用）；新增 `ai.queue.max_concurrency`（并发硬上限，缺省 64）。
 
 ### 8.3 数据模型
 
@@ -281,15 +284,13 @@
 | `hostname` / `version` | varchar | 主机名 / 应用版本 |
 | `started_at` / `heartbeat_at` | timestamptz | 每 10s 更新心跳；超过 30s 视为失联；超过 1 天的行由清理循环删除 |
 | `is_leader` | bool | 从 River leader 状态同步 |
-| `stats_json` | jsonb | `{submit:{inflight,limit}, poll:{…}, finalize:{…}}` |
+| `stats_json` | jsonb | ★★ `{inflight, limit}`：本实例在处理的任务数与生效并发 |
 
 **`system_settings` 新增 key**（范围在 service 层校验）
 
 | key | 默认 | 范围 |
 | --- | --- | --- |
-| `queue_concurrency_submit` ★ | 8 | 1..`ai.queue.max_submit`（64） |
-| `queue_concurrency_poll` ★ | 16 | 1..`ai.queue.max_poll`（64） |
-| `queue_concurrency_finalize` ★ | 4 | 1..`ai.queue.max_finalize`（16） |
+| `queue_concurrency` ★★ | 16 | 1..`ai.queue.max_concurrency`（64） |
 | `queue_multiplier` | 5 | 1..20；排队上限 = 用户生效并发 × 倍数 |
 | `queue_max_wait_minutes` | 60 | 5..1440 |
 
@@ -302,16 +303,16 @@
 
 | 方法与路径 | 说明 | 业务错误 |
 | --- | --- | --- |
-| `GET /overview` | 返回 `{queues:[{name,paused,concurrency,hard_cap,counts:{available,scheduled,running,retryable,discarded_1h}}], channels:[{key,name,occupied,max_running,waiting,oldest_wait_sec}], instances:[{id,hostname,version,started_at,heartbeat_at,online,is_leader,stats}]}` | — |
+| `GET /overview` | ★★ 返回 `{queue:{paused,concurrency,hard_cap,counts:{waiting,running,retryable,discarded_1h}}, channels:[{key,name,occupied,max_running,waiting,oldest_wait_sec}], instances:[{id,hostname,version,started_at,heartbeat_at,online,is_leader,stats:{inflight,limit}}]}`（`limit` 为 0 表示实例没有上报） | — |
 | `GET /throughput?minutes=60` | 返回 `[{minute,succeeded,failed,avg_wait_ms}]`，minutes 取值 15..1440 | 400 参数越界 |
-| `PUT /queues/:name` | 请求 `{concurrency}`，返回更新后的队列 | 404 队列不存在；400 超出 1..hard_cap；403 |
-| `POST /queues/:name/pause` / `resume` | 暂停 / 恢复（幂等） | 404；403 |
+| `PUT /concurrency` | ★★ 请求 `{concurrency}`，返回 `{concurrency, applied_instances, total_instances}` | 400 超出 1..hard_cap；403 |
+| `POST /pause` / `POST /resume` | ★★ 暂停 / 恢复（幂等），返回 `{paused}` | 403 |
 | `PUT /admin/settings/register`（已有，扩展） | 新增 `queue_multiplier`、`queue_max_wait_minutes` 两个字段 | 400 越界；403 |
 | `POST /river-ticket` | 返回 `{url}`，ticket 有效期 30 秒、只能用一次 | 403 非 super_admin |
 | `GET /api/v1/admin/river/*` | River UI（cookie 会话） | 401 |
 
-- 计数来源：`SELECT queue, state, count(*) FROM river_job WHERE queue LIKE 'gen_%' GROUP BY 1,2`；`discarded_1h` 按 `finalized_at` 过滤。
-- 统计直接查 `river_job` / `river_leader`（只读、只用稳定的列）；提交阶段里“因等名额而睡着”的 job 会从“延迟中”挪到“排队”（`QueueCounts` 里 join 任务表）。River 没有现成的按状态计数 API。
+- 计数来源：`river_job` 里 `queue = 'generation'` 的各状态数；排队 = available + scheduled，运行中 = running；`discarded_1h` 按 `finalized_at` 过滤。
+- 统计直接查 `river_job` / `river_leader`（只读、只用稳定的列）。River 没有现成的按状态计数 API。
 - `/admin/ai/channels/loads` 改用 `slot_acquired_at` 口径，总览页的渠道负载组件继续可用。
 
 **崩溃快速救回** ★：已实现，见 §7“进程崩溃”。做法是对账里一条 SQL：把 `river_job.attempted_by` 最后一个元素（当前这次尝试的实例）不在“在线实例”集合里的 running job 置为 retryable、立即可取。在线实例列表为空时什么都不动，避免调用方出错时把所有 running 的 job 都放回去。
@@ -382,13 +383,13 @@
 1. 动机：用业界成熟方案替换自研调度，不想自己维护。
 2. 选型：**River 开源版**，渠道限流用薄层自研（中途选过 RabbitMQ，后改为 River）。
 3. 监控：自建概览页加嵌入 River UI。
-4. 队列按阶段拆分：submit / poll / finalize。
+4. 队列按阶段拆分：submit / poll / finalize。（★★ 已被 2026-10-20 的再次修订取代：合并成一个队列，见 §13.1。）
 5. 并发修改立即生效，数字按实例计。
 6. 监控 MVP 包含：队列卡片 + 并发调节、渠道占用、近 1h 吞吐与失败率、实例列表。
 7. 用户超出并发时改为排队，并保留排队上限（超过才 429）。
 8. 排队上限 = 用户生效并发 × 倍数；倍数和排队超时放在「注册设置」里，可配置。
 9. 任务队列页不放限流参数，避免和「注册设置」「用户管理」重复。
-10. 评审原型后再次确认：保持三个队列，不合并。
+10. 评审原型后再次确认：保持三个队列，不合并。（★★ 实现后用户觉得复杂，改为合并，见 §13.1。）
 
 ### 已搁置的决定
 
@@ -398,7 +399,7 @@
 
 ### 默认值（不需要用户决定）
 
-- poll / finalize 默认并发 16 / 4；硬上限 64 / 64 / 16；
+- ★★ 默认并发 16；硬上限 64（原来按阶段 8 / 16 / 4 与 64 / 64 / 16，已合并）；
 - 排队倍数默认 5、排队超时默认 60 min；
 - 用户名额包含转存阶段，渠道名额不包含；
 - 生成 deadline 从拿到名额时开始计算；
@@ -476,3 +477,32 @@
 - `generation_tasks.lease_until` 列已不再使用，按“先加后删”的规则留待后续版本删除；`TouchByProviderTask` 仍然没有调用方。
 - 阶段 2：名额释放时主动唤醒最早的等待者（现在靠 2–6 秒轮询）、节点上显示等待原因（用户名额 / 渠道名额）、失败率告警。
 - 阶段 3：多实例下 WebSocket 广播改用 Redis Pub/Sub，拆出独立的 worker 进程。
+
+### 13.1 再次修订：合并成单队列 ★★
+
+2026-10-20，用户看到后台页的三张队列卡片后觉得复杂，要求“从提交到查询到转存产物，整个过程就是一个任务”，并补充“排队中的任务要在画布中显示排队中”。
+
+**做了什么**
+
+| 项 | 之前 | 之后 |
+| --- | --- | --- |
+| River 队列 / job | `gen_submit` / `gen_poll` / `gen_finalize` 三个队列，job 随状态在阶段间交接 | 一个队列 `generation`、一种 job `gen.task`，一个任务一个 job，在 job 里循环处理到终态 |
+| 并发设置 | `queue_concurrency_submit/poll/finalize`，默认 8 / 16 / 4，硬上限 `ai.queue.max_submit/max_poll/max_finalize` | `queue_concurrency`，默认 16，硬上限 `ai.queue.max_concurrency`（64） |
+| 并发的含义 | 各阶段同一时刻在执行的数量（查询间隔的等待不占） | 同时在处理的任务数：拿到名额到终态一直占一个，**排队等名额的不占** |
+| 后台页 | 三张队列卡片，计数 5 项（排队、延迟中、运行中、重试中、近 1h 丢弃） | 一张「生成任务」卡片，计数 4 项（排队、运行中、重试中、近 1h 丢弃） |
+| 接口 | `PUT /queues/:name`、`POST /queues/:name/pause|resume`，overview 返回 `queues[]` | `PUT /concurrency`、`POST /pause|resume`，overview 返回 `queue` |
+| 实例统计 | `stats_json` 按阶段 | `{inflight, limit}` |
+| 阶段交接 | `handOff`、`QueueStageOfStatus`、阶段核对 | 全部删除 |
+| 代码 | 三个 worker、三个闸门、阶段交接 | 一个 worker、一个闸门、`work`（排队等名额）+ `drive`（拿到名额后的处理循环） |
+
+**取舍**
+
+- **得到**：概念少了一半（一个队列、一个并发数、一张卡片）；去掉阶段交接和“任务行与 job 不一致”的缝隙，对账只需要“没有 job 就补一个”。
+- **代价**：一个 job 在长任务（视频要等几分钟）的两次查询之间也占着一个并发名额和一个 goroutine。所以默认并发从“提交 8”提高到 16，硬上限仍是 64；真正约束同时生成数的仍是用户并发上限和渠道“最大同时生成数”。
+- **放弃**：不能再单独给“转存产物”限流（转存下载大文件、占带宽）。需要时可以在 worker 内部给转存加信号量，不用再拆队列。
+
+**画布上的“排队中”**：没有新增任何字段或前端逻辑。任务在等用户名额 / 渠道名额时状态是 pending、`submitted_at` 为空，`derivePendingPhase` 已经把它显示为“排队中”（说明“前面的任务处理完后会自动开始”），拿到名额并开始提交后变成“生成中”。用户超出并发上限而排队的任务同样走这条路径。
+
+**升级注意**：三阶段版本只在开发库里存在过（未发布）。开发库里遗留的 `gen_submit` / `gen_poll` / `gen_finalize` 旧 job 不会再被领取，对账会为这些任务补新 job；`worker_instances.stats_json` 里的旧格式被忽略（页面显示“–”，下一次心跳就会被新格式覆盖）。
+
+**验证**：`go vet ./...`、`golangci-lint run --new-from-merge-base=master` 0 issues；`model` / `service` / `handler` / `provider/queue`（真实 PostgreSQL + 真实 River，新增“并发 1 串行”“并行”“排队不占并发”三个用例）/ `provider/worker` 测试通过；前端 `tsc`、`oxfmt`、`oxlint`、队列相关 26 个单测通过。`repository` 包里 4 个 `TestE2E_*`（Agent，60005）仍是改动前就有的失败。未验证项同上（浏览器、多实例、River UI、生产 LISTEN）。

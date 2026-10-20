@@ -3,7 +3,6 @@ import type {
   QueueChannel,
   QueueCounts,
   QueueInstance,
-  QueueName,
   QueueOverview,
   ThroughputPoint,
 } from "@/api/admin/queue/type";
@@ -32,7 +31,7 @@ export const riverUiDenyReason = (canWrite: boolean) => (canWrite ? null : RIVER
 /**
  * 校验并发取值：必须是 1 到硬上限的整数（后端同样会校验，越界返回 400）
  * @param value 要保存的并发
- * @param hardCap 该队列的并发硬上限（每实例）
+ * @param hardCap 并发硬上限（每实例）
  * @returns 不合法时的原因；合法为 null
  */
 export function validateConcurrency(value: number, hardCap: number): string | null {
@@ -57,40 +56,13 @@ export const isDraftDirty = (draft: number | undefined, saved: number) =>
  */
 export const shownConcurrency = (draft: number | undefined, saved: number) => draft ?? saved;
 
-/** 各队列的草稿并发；没有草稿的队列不出现 */
-export type ConcurrencyDrafts = Partial<Record<QueueName, number>>;
-
 /**
- * 写入一个队列的草稿：拖回服务端值就等于没有草稿，这样“还原”按钮和保存按钮自然消失
- * @param drafts 现有草稿
- * @param name 队列名称
+ * 拖动滑杆后的草稿：拖回服务端值就等于没有草稿，这样“还原”按钮和保存按钮自然消失
  * @param value 新的草稿值
  * @param saved 服务端当前并发
- * @returns 新的草稿对象，不修改入参
+ * @returns 草稿值；和服务端值相同时为 undefined
  */
-export function setDraft(
-  drafts: ConcurrencyDrafts,
-  name: QueueName,
-  value: number,
-  saved: number,
-): ConcurrencyDrafts {
-  const next = { ...drafts };
-  if (value === saved) delete next[name];
-  else next[name] = value;
-  return next;
-}
-
-/**
- * 丢弃一个队列的草稿（还原、保存成功、保存失败后回到服务端值）
- * @param drafts 现有草稿
- * @param name 队列名称
- * @returns 新的草稿对象，不修改入参
- */
-export function dropDraft(drafts: ConcurrencyDrafts, name: QueueName): ConcurrencyDrafts {
-  const next = { ...drafts };
-  delete next[name];
-  return next;
-}
+export const nextDraft = (value: number, saved: number) => (value === saved ? undefined : value);
 
 /**
  * 保存成功后的“已生效”说明
@@ -114,20 +86,43 @@ export const PAUSE_CONFIRM_TEXT =
 export const saveFailedText = (reason: string, restored: number) =>
   `保存失败：${reason}，已还原为 ${restored}`;
 
+/** 计数格 */
+export type CountCell = {
+  /** 计数键 */
+  key: keyof QueueCounts;
+  /** 中文标题 */
+  label: string;
+  /** 当前数值 */
+  value: number;
+  /** 数值大于 0 时是否用警示色 */
+  warn: boolean;
+};
+
 /**
- * 一个队列里还没做完的任务数：排队 + 延迟 + 运行 + 重试（丢弃的不算）
+ * 队列的四个计数格：排队中、运行中、重试中、近 1 小时丢弃
+ * @param counts 各状态计数
+ */
+export const countCells = (counts: QueueCounts): CountCell[] => [
+  { key: "waiting", label: "排队中", value: counts.waiting, warn: false },
+  { key: "running", label: "运行中", value: counts.running, warn: false },
+  { key: "retryable", label: "重试中", value: counts.retryable, warn: true },
+  { key: "discarded_1h", label: "近 1 小时丢弃", value: counts.discarded_1h, warn: true },
+];
+
+/**
+ * 队列里还没做完的任务数：排队 + 运行 + 重试（丢弃的不算）
  * @param counts 各状态计数
  */
 export const pendingTotal = (counts: QueueCounts) =>
-  counts.available + counts.scheduled + counts.running + counts.retryable;
+  counts.waiting + counts.running + counts.retryable;
 
 /**
- * 整个总览是否“空闲”：三个队列都没有未完成任务，也没有渠道在占用或等待名额
+ * 整个总览是否“空闲”：队列里没有未完成任务，也没有渠道在占用或等待名额
  * @param overview 总览
  */
 export function isQueueIdle(overview: QueueOverview): boolean {
   return (
-    overview.queues.every((queue) => pendingTotal(queue.counts) === 0) &&
+    pendingTotal(overview.queue.counts) === 0 &&
     overview.channels.every((channel) => channel.occupied === 0 && channel.waiting === 0)
   );
 }
@@ -323,11 +318,11 @@ export function formatClock(iso: string): string {
 }
 
 /**
- * 实例在某个队列上的“在途 / 生效并发”；失联实例的在途数不可信，显示“–”
- * @param stat 后端给的该队列负载；没有时按 0
+ * 实例的“处理中 / 并发”；失联实例的处理中数不可信，显示“–”；实例还没上报（空对象）整格显示“–”
+ * @param stats 后端给的实例负载，可能是空对象
  * @param online 实例是否在线
  */
-export function instanceLoadText(stat: InstanceQueueStat | undefined, online: boolean): string {
-  if (!stat) return "–";
-  return `${online ? stat.inflight : "–"}/${stat.limit}`;
+export function instanceLoadText(stats: Partial<InstanceQueueStat>, online: boolean): string {
+  if (stats.inflight === undefined || stats.limit === undefined) return "–";
+  return `${online ? stats.inflight : "–"} / ${stats.limit}`;
 }

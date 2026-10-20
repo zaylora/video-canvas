@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 
 	"video-canvas/internal/config"
-	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/queue"
@@ -42,9 +41,7 @@ func newTaskQueue(cfg *config.Config, db *gorm.DB, taskSvc *service.GenerationTa
 	rt, err := queue.New(queue.Config{
 		DB: sqlDB, ListenerPool: listener, Store: taskSvc, Handler: handler, Settings: settingsSvc,
 		Repo: repository.NewQueueRepository(db), Enabled: cfg.AI.Worker.Enabled,
-		HardCaps: map[string]int{
-			model.QueueStageSubmit: cfg.AI.Queue.MaxSubmit, model.QueueStagePoll: cfg.AI.Queue.MaxPoll, model.QueueStageFinalize: cfg.AI.Queue.MaxFinalize,
-		},
+		HardCap: cfg.AI.Queue.MaxConcurrency,
 		Version: version.Version, Hostname: host, StopTimeout: cfg.Server.ShutdownTimeout,
 	})
 	if err != nil {

@@ -11,7 +11,7 @@ import (
 	"video-canvas/internal/repository"
 )
 
-// 一个任务从入队开始，自己走完 提交 → 查询 → 转存 → 成功，三个阶段各被调用，最后队列里不再有活着的 job。
+// 一个任务从入队开始，在同一个 job 里自己走完 提交 → 查询 → 转存 → 成功，每一步都被调用，最后队列里不再有活着的 job，也没有出现第二个 job。
 func TestRuntime_TaskRunsThroughAllStages(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 0)
@@ -26,6 +26,11 @@ func TestRuntime_TaskRunsThroughAllStages(t *testing.T) {
 		}
 	}
 	waitFor(t, 10*time.Second, "任务结束后队列里不应再有活着的 job", func() bool { return r.liveJobs(tk.ID) == 0 })
+	var jobs int64
+	db.Raw(`SELECT COUNT(*) FROM river_job WHERE (args->>'task_id')::bigint = ?`, tk.ID).Scan(&jobs)
+	if jobs != 1 {
+		t.Fatalf("一个任务从头到尾只应有一个 job，实际 %d", jobs)
+	}
 
 	var tt model.GenerationTask
 	r.db.First(&tt, tk.ID)
@@ -111,12 +116,12 @@ func TestRuntime_UserLimitQueuesTasks(t *testing.T) {
 	}
 }
 
-// 提交阶段并发 1：同时在执行的任务不超过 1 个；后台把并发调大后立即生效（不需要重启）。
+// 并发 1：同时在处理的任务不超过 1 个（一个任务从提交到转存完成都算占着名额）；后台把并发调大后立即生效（不需要重启）。
 func TestRuntime_ConcurrencyGateIsAdjustable(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 0)
-	r := newRig(t, db, rigOpts{submitDelay: 300 * time.Millisecond, conc: map[string]int{model.QueueStageSubmit: 1, model.QueueStagePoll: 1, model.QueueStageFinalize: 1}})
-	waitFor(t, 5*time.Second, "启动后应按设置生效并发 1", func() bool { return r.rt.Stats()[model.QueueStageSubmit].Limit == 1 })
+	r := newRig(t, db, rigOpts{submitDelay: 300 * time.Millisecond, conc: 1})
+	waitFor(t, 5*time.Second, "启动后应按设置生效并发 1", func() bool { return r.rt.Stats().Limit == 1 })
 	var ids []uint64
 	for range 3 {
 		ids = append(ids, r.addTask(t, newUserID(), "ch", nil).ID)
@@ -124,57 +129,98 @@ func TestRuntime_ConcurrencyGateIsAdjustable(t *testing.T) {
 	for _, id := range ids {
 		r.waitStatus(t, id, model.TaskSucceeded, 90*time.Second)
 	}
-	if got := r.handler.maxAct.Load(); got > 3 {
-		t.Fatalf("三个阶段并发各 1，同时处理的任务不会超过 3，实际 %d", got)
+	if got := r.handler.maxOpen.Load(); got != 1 {
+		t.Fatalf("并发 1，同时处理的任务应恰为 1，实际 %d", got)
 	}
 
-	r.settings.set(model.QueueStageSubmit, 6)
-	waitFor(t, 5*time.Second, "并发设置应在刷新周期内生效", func() bool { return r.rt.Stats()[model.QueueStageSubmit].Limit == 6 })
+	r.settings.set(6)
+	waitFor(t, 5*time.Second, "并发设置应在刷新周期内生效", func() bool { return r.rt.Stats().Limit == 6 })
 	// 超过硬上限的设置会被裁剪
-	r.settings.set(model.QueueStageSubmit, 1000)
-	waitFor(t, 5*time.Second, "超过硬上限应裁剪", func() bool { return r.rt.Stats()[model.QueueStageSubmit].Limit == 16 })
+	r.settings.set(1000)
+	waitFor(t, 5*time.Second, "超过硬上限应裁剪", func() bool { return r.rt.Stats().Limit == 16 })
 }
 
-// 暂停提交阶段后不再提交，恢复后继续；暂停状态存在数据库里，States 能读到。
+// 并发调大之后，多个任务确实能同时处理（一个任务在等下一次查询时仍占着名额，其它任务照常跑）。
+func TestRuntime_RunsTasksInParallel(t *testing.T) {
+	db := queueDB(t)
+	addChannel(t, db, "ch", 0)
+	r := newRig(t, db, rigOpts{submitDelay: 300 * time.Millisecond, conc: 8})
+	var ids []uint64
+	for range 4 {
+		ids = append(ids, r.addTask(t, newUserID(), "ch", nil).ID)
+	}
+	for _, id := range ids {
+		r.waitStatus(t, id, model.TaskSucceeded, 60*time.Second)
+	}
+	if got := r.handler.maxOpen.Load(); got < 2 {
+		t.Fatalf("并发 8，4 个任务应有重叠处理，实际最多同时 %d", got)
+	}
+}
+
+// 排队等名额的任务不占并发：用户并发上限 1，同一个用户的第二个任务在排队，
+// 这期间另一个用户的任务不受影响，照样能跑完（并发闸门没有被排队的任务占住）。
+func TestRuntime_WaitingTasksDoNotHoldConcurrency(t *testing.T) {
+	db := queueDB(t)
+	addChannel(t, db, "ch", 0)
+	r := newRig(t, db, rigOpts{userLimit: 1, conc: 2, noStart: true})
+
+	release := make(chan struct{})
+	user := newUserID()
+	first := r.addTask(t, user, "ch", nil)
+	r.handler.hold = func(tk model.GenerationTask) {
+		if tk.ID == first.ID {
+			<-release // 卡住第一个任务：它拿着用户名额和一个并发名额
+		}
+	}
+	r.start(t)
+	waitFor(t, 20*time.Second, "第一个任务拿到名额开始处理", func() bool { return r.handler.count(fmt.Sprintf("pending:%d", first.ID)) == 0 && r.slotHeld(first.ID) })
+
+	waiting := r.addTask(t, user, "ch", nil) // 同一用户，等名额
+	other := r.addTask(t, newUserID(), "ch", nil)
+	r.waitStatus(t, other.ID, model.TaskSucceeded, 40*time.Second)
+	if st := r.status(waiting.ID); st != model.TaskPending {
+		t.Fatalf("同一用户的第二个任务应还在排队，实际 %s", st)
+	}
+
+	close(release)
+	r.waitStatus(t, first.ID, model.TaskSucceeded, 40*time.Second)
+	r.waitStatus(t, waiting.ID, model.TaskSucceeded, 60*time.Second)
+}
+
+// 暂停后不再开始新任务，恢复后继续；暂停状态存在数据库里，State 能读到。
 func TestRuntime_PauseAndResume(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 0)
 	r := newRig(t, db, rigOpts{})
 	// 队列在 River 里首次启动时才会建出来，等它就绪再暂停
 	waitFor(t, 10*time.Second, "队列就绪", func() bool {
-		_, err := r.rt.States(context.Background())
+		_, err := r.rt.State(context.Background())
 		return err == nil
 	})
-	var paused bool
 	waitFor(t, 10*time.Second, "暂停成功", func() bool {
-		if err := r.rt.Pause(context.Background(), model.QueueStageSubmit); err != nil {
+		if err := r.rt.Pause(context.Background()); err != nil {
 			return false
 		}
-		st, _ := r.rt.States(context.Background())
-		for _, s := range st {
-			if s.Stage == model.QueueStageSubmit {
-				paused = s.Paused
-			}
-		}
-		return paused
+		st, _ := r.rt.State(context.Background())
+		return st.Paused
 	})
 
-	// 没有 LISTEN 通道（测试里是轮询模式）时，各个取任务的循环要过几秒才会发现队列被暂停
+	// 没有 LISTEN 通道（测试里是轮询模式）时，取任务的循环要过几秒才会发现队列被暂停
 	time.Sleep(4 * time.Second)
 	tk := r.addTask(t, newUserID(), "ch", nil)
 	time.Sleep(2 * time.Second)
 	if r.status(tk.ID) != model.TaskPending || r.handler.count("pending:") != 0 {
-		t.Fatalf("暂停期间不应提交，状态 %s 调用 %v", r.status(tk.ID), r.handler.calls)
+		t.Fatalf("暂停期间不应开始任务，状态 %s 调用 %v", r.status(tk.ID), r.handler.calls)
 	}
 
-	if err := r.rt.Resume(context.Background(), model.QueueStageSubmit); err != nil {
+	if err := r.rt.Resume(context.Background()); err != nil {
 		t.Fatalf("恢复失败：%v", err)
 	}
-	r.waitStatus(t, tk.ID, model.TaskSucceeded, 40*time.Second)
-
-	if err := r.rt.Pause(context.Background(), "nope"); err == nil {
-		t.Fatal("未知阶段应返回错误")
+	st, err := r.rt.State(context.Background())
+	if err != nil || st.Paused {
+		t.Fatalf("恢复后不应处于暂停：%+v %v", st, err)
 	}
+	r.waitStatus(t, tk.ID, model.TaskSucceeded, 40*time.Second)
 }
 
 // 排队超过截止时间的任务直接走超时流程，不会去提交上游。
@@ -205,7 +251,7 @@ func TestRuntime_CanceledTaskIsSkipped(t *testing.T) {
 	}
 }
 
-// 对账：任务没终态但队列里没有 job（升级前在途、或进程在状态迁移后入队前崩溃），定时对账会按任务当前阶段补一个 job，任务继续跑完。
+// 对账：任务没终态但队列里没有 job（升级前在途、job 被误删），定时对账会补一个 job，任务从当前状态继续跑完。
 func TestRuntime_SweepEnqueuesTasksWithoutJob(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 0)
@@ -228,11 +274,11 @@ func TestRuntime_SweepEnqueuesTasksWithoutJob(t *testing.T) {
 	r.waitStatus(t, pending.ID, model.TaskSucceeded, 60*time.Second)
 	r.waitStatus(t, running.ID, model.TaskSucceeded, 60*time.Second)
 	if r.handler.count(fmt.Sprintf("running:%d", running.ID)) == 0 || r.handler.count(fmt.Sprintf("pending:%d", running.ID)) != 0 {
-		t.Fatalf("running 任务应从查询阶段接着跑，不能被重新提交，调用 %v", r.handler.calls)
+		t.Fatalf("running 任务应从查询那一步接着跑，不能被重新提交，调用 %v", r.handler.calls)
 	}
 }
 
-// 实例心跳：运行中的实例写入记录并带上各阶段的并发；退出后记录被删除。
+// 实例心跳：运行中的实例写入记录并带上并发统计；退出后记录被删除。
 func TestRuntime_InstanceHeartbeat(t *testing.T) {
 	db := queueDB(t)
 	r := newRig(t, db, rigOpts{noStart: true})
@@ -267,7 +313,7 @@ func TestQueueRepo_RecoverOrphanedJobs(t *testing.T) {
 	repo := repository.NewQueueRepository(db)
 	insert := func(id, by string) {
 		err := db.Exec(`INSERT INTO river_job (state, queue, kind, args, attempt, max_attempts, attempted_by, attempted_at, scheduled_at, priority, metadata)
-			VALUES ('running', 'gen_poll', 'gen.poll', ?::jsonb, 1, 100, ARRAY[?]::text[], now(), now(), 1, '{}'::jsonb)`, fmt.Sprintf(`{"task_id":%s}`, id), by).Error
+			VALUES ('running', 'generation', 'gen.task', ?::jsonb, 1, 100, ARRAY[?]::text[], now(), now(), 1, '{}'::jsonb)`, fmt.Sprintf(`{"task_id":%s}`, id), by).Error
 		if err != nil {
 			t.Fatalf("插入 job 失败：%v", err)
 		}
@@ -276,7 +322,7 @@ func TestQueueRepo_RecoverOrphanedJobs(t *testing.T) {
 	insert("2", "alive_y")
 	// 同一个 job 先后被两个实例尝试过：以最后一个为准
 	if err := db.Exec(`INSERT INTO river_job (state, queue, kind, args, attempt, max_attempts, attempted_by, attempted_at, scheduled_at, priority, metadata)
-		VALUES ('running', 'gen_poll', 'gen.poll', '{"task_id":3}'::jsonb, 2, 100, ARRAY['dead_x','alive_y']::text[], now(), now(), 1, '{}'::jsonb)`).Error; err != nil {
+		VALUES ('running', 'generation', 'gen.task', '{"task_id":3}'::jsonb, 2, 100, ARRAY['dead_x','alive_y']::text[], now(), now(), 1, '{}'::jsonb)`).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,7 +343,7 @@ func TestQueueRepo_RecoverOrphanedJobs(t *testing.T) {
 	}
 }
 
-// 统计：队列计数把“在等名额而睡着”的提交 job 算作排队；吞吐按分钟汇总；渠道占用含最早等待时间。
+// 统计：队列计数把“在等名额而睡着”的 job 算作排队、正在处理的算运行中；吞吐按分钟汇总；渠道占用含最早等待时间。
 func TestQueueRepo_Stats(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 1)
@@ -313,15 +359,19 @@ func TestQueueRepo_Stats(t *testing.T) {
 	if err := db.Exec(`UPDATE river_job SET state = 'scheduled', scheduled_at = now() + interval '1 minute' WHERE (args->>'task_id')::bigint = ?`, waiting.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	_ = held
 
 	counts, err := r.queueRep.QueueCounts(ctx, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	submit := counts[model.QueueStageSubmit]
-	if submit.Scheduled != 0 || submit.Available < 1 {
-		t.Fatalf("等名额的睡着 job 应算在排队里：%+v", submit)
+	if counts.Waiting != 2 || counts.Running != 0 {
+		t.Fatalf("可取的 job 和等名额而睡着的 job 都是排队：%+v", counts)
+	}
+	if err := db.Exec(`UPDATE river_job SET state = 'running' WHERE (args->>'task_id')::bigint = ?`, held.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if counts, err = r.queueRep.QueueCounts(ctx, now); err != nil || counts.Waiting != 1 || counts.Running != 1 {
+		t.Fatalf("一个在处理、一个在排队：%+v %v", counts, err)
 	}
 
 	occ, err := r.queueRep.ChannelOccupancies(ctx)

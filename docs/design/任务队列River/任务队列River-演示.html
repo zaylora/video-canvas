@@ -255,20 +255,20 @@
 
         <div class="sec">
           <h2>一个生成任务怎么走</h2>
-          <p class="sub">任务从点击“生成”到产出，会依次经过三个队列，每个队列可以单独调整并发。</p>
+          <p class="sub">任务从点击“生成”到产出，<b>全程是同一个 job</b>：一个队列、一个并发设置。</p>
           <div class="flow note">
-            <div class="node"><b>创建（一个事务）</b>写任务 + 冻结积分 + 入队 submit，三件事要么都成功，要么都不发生</div>
+            <div class="node"><b>创建（一个事务）</b>写任务 + 冻结积分 + 入队，三件事要么都成功，要么都不发生</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="node hl"><b>提交上游</b>先拿<b>用户名额</b>和<b>渠道名额</b>，拿不到就稍后再试（snooze），拿到后提交上游</div>
+            <div class="node hl"><b>排队中</b>先拿<b>用户名额</b>和<b>渠道名额</b>，拿不到就稍后再试（snooze，不占并发，画布上显示“排队中”）</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="node"><b>查询进度</b>每 5–15 秒查一次上游进度；等待期间不占执行槽位</div>
+            <div class="node"><b>提交上游、查询进度</b>拿到名额后占一个并发名额，每 5–15 秒查一次上游进度，直到上游出结果</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
-            <div class="node"><b>转存产物</b>把产物转存到自己的存储，结算积分，释放名额</div>
+            <div class="node"><b>转存产物</b>仍在同一个 job 里：把产物转存到自己的存储，结算积分，释放名额和并发</div>
             <div class="arrow"><i data-lucide="arrow-right"></i></div>
             <div class="node"><b>推送前端</b>每次状态变化照旧通过 WebSocket 推送，并保留对账兜底（不变）</div>
           </div>
           <div class="note-txt">
-            设计：按阶段拆队列，是因为转存最长要 30 分钟。合在一个队列里，转存慢的时候会把提交和轮询一起堵住。名额检查只放在 submit 入口，这样“用户上限”和“渠道上限”是同一处逻辑、同一个事务。River 的 job 只管“什么时候执行下一步”，任务表仍是唯一的事实来源。
+            设计（2026-10-20 简化）：原来拆成提交 / 查询 / 转存三个队列，评审实现后用户觉得复杂，合并成一个。代价是长任务在两次查询之间也占着一个并发名额，所以默认并发提高到 16；真正限制同时生成数的仍是用户并发上限和渠道“最大同时生成数”。名额检查放在开始处理之前，“用户上限”和“渠道上限”是同一处逻辑、同一个事务。任务表仍是唯一的事实来源。
           </div>
           <div class="callout c-warn" style="margin-top: 10px">
             <i data-lucide="corner-down-right"></i>
@@ -289,7 +289,7 @@
             <div class="card">
               <div class="row"><i data-lucide="server"></i><b>队列并发</b></div>
               <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">新增 · 按实例计</span><span class="tag t-info">后台可调</span></div>
-              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>每个阶段在一台实例上最多同时执行几个。</b>默认 submit 8 / poll 16 / finalize 4，可调范围不超过配置文件里的硬上限。</p>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>每台实例最多同时处理几个任务（从拿到名额到完成）。</b>默认 16，可调范围不超过配置文件里的硬上限（64）；排队等名额的任务不占并发。</p>
             </div>
             <div class="card">
               <div class="row"><i data-lucide="user"></i><b>用户名额</b></div>
@@ -357,6 +357,7 @@
 
       <!-- ================= 排队演示 ================= -->
       <section id="tab-demo" hidden>
+        <div class="callout c-warn" style="margin-bottom: 12px"><i data-lucide="info"></i><div><b>这一页的原型还是三阶段版本。</b>2026-10-20 已简化成单队列（一个任务一个 job、一个并发设置、后台页只有一张「生成任务」卡片），原型里的 submit / poll / finalize 队列请按“合并成一个”理解；实际行为和界面以 Markdown 设计文档 §13.1 与已实现的页面为准。</div></div>
         <h1 class="h1">排队演示：用户名额 × 渠道名额 × 队列并发</h1>
         <p class="lead">
           改几个参数，点“开始”，看任务怎样在“排队 → 提交 → 生成 → 转存 → 完成”之间流转。用户 A 和 B 共用同一个渠道。
@@ -389,6 +390,7 @@
 
       <!-- ================= 后台原型 ================= -->
       <section id="tab-proto" hidden>
+        <div class="callout c-warn" style="margin-bottom: 12px"><i data-lucide="info"></i><div><b>这一页的原型还是三阶段版本。</b>2026-10-20 已简化成单队列（一个任务一个 job、一个并发设置、后台页只有一张「生成任务」卡片），原型里的 submit / poll / finalize 队列请按“合并成一个”理解；实际行为和界面以 Markdown 设计文档 §13.1 与已实现的页面为准。</div></div>
         <h1 class="h1">后台「任务队列」页</h1>
         <p class="lead">
           可点击原型，数据在内存里，刷新复原。预置了一个正在积压的现场：submit 队列有 23 个在排队。可以调整并发、暂停队列、打开 River UI。<b>单用户并发、排队倍数、排队超时不在这一页</b>，它们在「注册设置」和「用户管理」里，这里只放一个跳转提示。
@@ -425,7 +427,7 @@
                 <tr><th><code>generation_tasks</code></th><td>业务状态、积分、名额（<code>slot_acquired_at</code>）、WS 推送、对账</td><td>前端、使用记录、积分对账全部依赖它，契约不变</td></tr>
                 <tr><th><code>river_job</code></th><td>下一步什么时候执行、由谁执行、重试几次、是否卡住</td><td>替代自研的 <code>next_poll_at</code>、<code>lease_until</code> 和领取 SQL</td></tr>
                 <tr><th>一致性</th><td>状态迁移和“插入下一阶段 job”在同一个事务里（<code>InsertTx</code>）</td><td>不会出现状态变了但没有后续 job 的悬空任务</td></tr>
-                <tr><th><code>system_settings</code></th><td>三个队列的并发；排队倍数和排队超时（在「注册设置」里编辑）</td><td>本来就是每次读库，天然热更新；硬上限放在配置文件</td></tr>
+                <tr><th><code>system_settings</code></th><td>队列并发；排队倍数和排队超时（在「注册设置」里编辑）</td><td>本来就是每次读库，天然热更新；硬上限放在配置文件</td></tr>
               </tbody>
             </table>
           </div>
@@ -461,9 +463,7 @@
             <table class="cmp">
               <thead><tr><th><code>system_settings</code> key</th><th>默认</th><th>范围</th></tr></thead>
               <tbody>
-                <tr><th><code>queue_concurrency_submit</code></th><td>8</td><td>1..<code>ai.queue.max_submit</code>（64）</td></tr>
-                <tr><th><code>queue_concurrency_poll</code></th><td>16</td><td>1..<code>ai.queue.max_poll</code>（64）</td></tr>
-                <tr><th><code>queue_concurrency_finalize</code></th><td>4</td><td>1..<code>ai.queue.max_finalize</code>（16）</td></tr>
+                <tr><th><code>queue_concurrency</code></th><td>16</td><td>1..<code>ai.queue.max_concurrency</code>（64）</td></tr>
                 <tr><th><code>default_max_active_tasks</code>（已有）</th><td>4</td><td>1..64</td></tr>
                 <tr><th><code>queue_multiplier</code></th><td>5</td><td>1..20；排队上限 = 用户生效并发 × 倍数</td></tr>
                 <tr><th><code>queue_max_wait_minutes</code></th><td>60</td><td>5..1440</td></tr>
@@ -502,7 +502,7 @@ tx: EnsureCredit → LockCredit(user)
     freeze credits + ledger
     river.InsertTx(sqlTx(tx), SubmitArgs{task_id})        // 任务、积分冻结、job 要么一起成功要么一起回滚
 
-// 一个 job 被取出后（提交 / 查询 / 转存三个阶段共用）—— provider/queue
+// 一个 job 被取出后（提交 / 查询 / 转存全程在同一个 job 里，已简化为单队列；下面的伪代码是三阶段版本，实际流程见 Markdown §6.1）—— provider/queue
 work(stage, taskID):
   t := GetTask(taskID)
   if t == nil || t.terminal()        { return nil }                 // 用户取消、超时、别的实例处理完
@@ -538,13 +538,14 @@ sweep():
               <li><b>选用 River 开源版</b>：中途选过 RabbitMQ，后来改为 River；Pro 不用，按渠道/用户的限流自研一层薄逻辑。</li>
               <li><b>RabbitMQ 已搁置</b>：将来出现“多个独立消费方订阅任务事件”的需求时，再用它做事件分发，执行调度仍归 River。</li>
               <li><b>监控 = 自建概览页 + 嵌入 River UI</b>：概览讲业务语言，单个 job 的操作交给 River UI。</li>
-              <li><b>队列按阶段拆分</b>：submit / poll / finalize，各自调整并发。</li>
+              <li><b>队列按阶段拆分</b>：submit / poll / finalize，各自调整并发。<b>（已被取代）</b>后来用户觉得复杂，改为合并成一个队列，见下面最后一条。</li>
               <li><b>修改并发立即生效、按实例计</b>：River MaxWorkers 作为硬上限，实际值由进程内可调信号量控制。</li>
               <li><b>监控 MVP 四块内容</b>：队列卡片 + 并发调节、渠道占用、近 1h 吞吐与失败率、实例列表。</li>
               <li><b>用户超出并发改为排队，并保留排队上限</b>：超过排队上限才返回 429。</li>
               <li><b>排队上限 = 用户生效并发 × 倍数</b>：每个用户的并发不同，全局固定值会出现矛盾；倍数和排队超时放在「注册设置」里，可配置。</li>
               <li><b>任务队列页不放限流参数</b>：默认并发已在「注册设置」、单用户覆盖值已在「用户管理」，不重复提供入口。</li>
-              <li><b>评审原型后再次确认保持三个队列</b>，不合并。主文档已回写（头部修订说明、§6.4、§6.5、§8.3、§8.4、§11）。</li>
+              <li><b>评审原型后再次确认保持三个队列</b>，不合并。<b>（已被取代）</b>主文档已回写（头部修订说明、§6.4、§6.5、§8.3、§8.4、§11）。</li>
+              <li><b>简化为单队列（2026-10-20）</b>：“从提交到查询到转存产物，整个过程就是一个任务。”一个队列、一个 job、一个并发设置，后台页只剩一张「生成任务」卡片；排队等名额的任务不占并发，画布上显示“排队中”。详见 Markdown §13.1。</li>
               <li><b>崩溃救回已解决</b>：改用“实例心跳 + 定时对账”，约 30–60 秒内被接手，不再有约 35 分钟的退化；River 开源版也确认没有运行时改并发的接口，用进程内闸门实现。<b>主文档已回写</b>：与最初提案的出入、验证情况和未验证事项见 Markdown §13。</li>
             </ol>
           </div>

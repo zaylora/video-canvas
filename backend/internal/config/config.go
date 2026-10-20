@@ -170,12 +170,10 @@ type Worker struct {
 	Enabled bool `mapstructure:"enabled"`
 }
 
-// Queue 是任务队列各阶段并发的硬上限（每个实例）。后台「任务队列」页能调的范围是 1..硬上限，所以这里决定了后台最多能把并发调到多少；
-// 实际并发在后台设置（默认 提交 8 / 查询 16 / 转存 4）。改硬上限要重启。
+// Queue 是任务队列并发的硬上限（每个实例）。后台「任务队列」页能调的范围是 1..硬上限，所以这里决定了后台最多能把并发调到多少；
+// 实际并发在后台设置（默认 16）。改硬上限要重启。
 type Queue struct {
-	MaxSubmit   int `mapstructure:"max_submit"`   // 提交上游阶段的并发硬上限
-	MaxPoll     int `mapstructure:"max_poll"`     // 查询进度阶段的并发硬上限
-	MaxFinalize int `mapstructure:"max_finalize"` // 转存产物阶段的并发硬上限
+	MaxConcurrency int `mapstructure:"max_concurrency"` // 同时处理的任务数的硬上限
 }
 
 // Storage 是素材存储的全局配置。对象存储（阿里云 OSS / 腾讯云 COS / S3 / R2）在后台“存储配置”里管理，
@@ -218,9 +216,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("agent.web_enabled", true) // 联网工具默认开启
-	v.SetDefault("ai.queue.max_submit", 64)
-	v.SetDefault("ai.queue.max_poll", 64)
-	v.SetDefault("ai.queue.max_finalize", 16)
+	v.SetDefault("ai.queue.max_concurrency", 64)
 	v.SetDefault("update.check_enabled", true)
 	v.SetDefault("update.repo", DefaultUpdateRepo)
 	v.SetDefault("update.updater_socket", "/run/updater/updater.sock")

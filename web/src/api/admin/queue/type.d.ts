@@ -1,12 +1,7 @@
-/** 生成任务队列的内部名称：只用于请求路径和数据索引，界面一律显示 label */
-export type QueueName = "submit" | "poll" | "finalize";
-
-/** 一个队列里各状态的任务数 */
+/** 生成任务队列里各状态的任务数：一个任务从提交、查询到转存全程是同一个 job */
 export interface QueueCounts {
-  /** 排队中：已入队、等待被执行 */
-  available: number;
-  /** 延迟中：等待下一次执行（含等名额、等下一次轮询） */
-  scheduled: number;
+  /** 排队中：已入队、等待被执行（含等名额、等下一次轮询） */
+  waiting: number;
   /** 运行中 */
   running: number;
   /** 重试中：失败后等待重试 */
@@ -15,15 +10,11 @@ export interface QueueCounts {
   discarded_1h: number;
 }
 
-/** 队列概况 */
+/** 生成任务队列概况 */
 export interface QueueInfo {
-  /** 队列内部名称，仅用于请求路径 */
-  name: QueueName;
-  /** 中文标签：提交上游 / 查询进度 / 转存产物，界面只显示它 */
-  label: string;
   /** 是否已暂停（持久化，对所有实例生效） */
   paused: boolean;
-  /** 当前并发（每实例） */
+  /** 当前并发（每实例）：一个生成任务占一个名额 */
   concurrency: number;
   /** 并发硬上限（每实例，来自配置文件），并发不能超过它 */
   hard_cap: number;
@@ -47,9 +38,9 @@ export interface QueueChannel {
   oldest_wait_sec: number;
 }
 
-/** 一个实例在某个队列上的负载 */
+/** 一个实例的负载 */
 export interface InstanceQueueStat {
-  /** 在途任务数 */
+  /** 处理中的任务数 */
   inflight: number;
   /** 该实例当前生效的并发 */
   limit: number;
@@ -71,14 +62,14 @@ export interface QueueInstance {
   online: boolean;
   /** 是否是当前的 leader */
   is_leader: boolean;
-  /** 各队列的在途数与生效并发，按队列名索引 */
-  stats: Partial<Record<QueueName, InstanceQueueStat>>;
+  /** 处理中任务数与生效并发；实例还没上报时是空对象 */
+  stats: Partial<InstanceQueueStat>;
 }
 
 /** GET /admin/queue/overview */
 export interface QueueOverview {
-  /** 三个队列，顺序与界面一致 */
-  queues: QueueInfo[];
+  /** 生成任务队列 */
+  queue: QueueInfo;
   /** 渠道占用 */
   channels: QueueChannel[];
   /** 工作实例 */
@@ -97,10 +88,8 @@ export interface ThroughputPoint {
   avg_wait_ms: number;
 }
 
-/** PUT /admin/queue/queues/:name 的返回 */
+/** PUT /admin/queue/concurrency 的返回 */
 export interface SaveConcurrencyResult {
-  /** 队列内部名称 */
-  name: QueueName;
   /** 保存后的并发 */
   concurrency: number;
   /** 已生效的实例数 */
@@ -109,10 +98,8 @@ export interface SaveConcurrencyResult {
   total_instances: number;
 }
 
-/** POST /admin/queue/queues/:name/pause|resume 的返回 */
+/** POST /admin/queue/pause|resume 的返回 */
 export interface PauseResult {
-  /** 队列内部名称 */
-  name: QueueName;
   /** 操作后是否处于暂停 */
   paused: boolean;
 }

@@ -19,7 +19,7 @@ func NewAdminQueueHandler(svc *service.QueueAdminService) *AdminQueueHandler {
 	return &AdminQueueHandler{svc: svc}
 }
 
-// Overview 返回三张队列卡片、渠道名额占用与实例列表（GET /admin/queue/overview）。
+// Overview 返回队列卡片、渠道名额占用与实例列表（GET /admin/queue/overview）。
 func (h *AdminQueueHandler) Overview(c *gin.Context) {
 	v, err := h.svc.Overview(c.Request.Context())
 	if err != nil {
@@ -43,13 +43,13 @@ func (h *AdminQueueHandler) Throughput(c *gin.Context) {
 	response.OK(c, v)
 }
 
-// SetConcurrency 调整一个阶段的并发（PUT /admin/queue/queues/:name），立即生效。
+// SetConcurrency 调整并发（PUT /admin/queue/concurrency），立即生效。
 func (h *AdminQueueHandler) SetConcurrency(c *gin.Context) {
 	var req model.QueueConcurrencyReq
 	if !BindJSON(c, &req) {
 		return
 	}
-	v, err := h.svc.SetConcurrency(c.Request.Context(), currentUserID(c), c.Param("name"), req.Concurrency)
+	v, err := h.svc.SetConcurrency(c.Request.Context(), currentUserID(c), req.Concurrency)
 	if err != nil {
 		response.Fail(c, err)
 		return
@@ -57,14 +57,14 @@ func (h *AdminQueueHandler) SetConcurrency(c *gin.Context) {
 	response.OK(c, v)
 }
 
-// Pause 暂停一个阶段（POST /admin/queue/queues/:name/pause），幂等。
+// Pause 暂停队列（POST /admin/queue/pause），幂等。
 func (h *AdminQueueHandler) Pause(c *gin.Context) { h.setPaused(c, true) }
 
-// Resume 恢复一个阶段（POST /admin/queue/queues/:name/resume），幂等。
+// Resume 恢复队列（POST /admin/queue/resume），幂等。
 func (h *AdminQueueHandler) Resume(c *gin.Context) { h.setPaused(c, false) }
 
 func (h *AdminQueueHandler) setPaused(c *gin.Context, paused bool) {
-	v, err := h.svc.SetPaused(c.Request.Context(), currentUserID(c), c.Param("name"), paused)
+	v, err := h.svc.SetPaused(c.Request.Context(), currentUserID(c), paused)
 	if err != nil {
 		response.Fail(c, err)
 		return

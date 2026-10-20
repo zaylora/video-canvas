@@ -448,24 +448,27 @@ func TestSettingsService_QueueSettings(t *testing.T) {
 		}
 	})
 
-	t.Run("各阶段并发：缺省 提交 8 / 查询 16 / 转存 4，库值优先，非法值回落默认", func(t *testing.T) {
+	t.Run("并发：缺省 16，库值优先，非法值回落默认", func(t *testing.T) {
 		repo := newFakeSettingsRepo()
 		svc := NewSettingsService(repo, &fakeAudit{})
 		got, err := svc.QueueConcurrency(ctx)
-		if err != nil || got[model.QueueStageSubmit] != 8 || got[model.QueueStagePoll] != 16 || got[model.QueueStageFinalize] != 4 {
+		if err != nil || got != 16 {
 			t.Fatalf("缺省不对：%v %v", got, err)
 		}
-		if err := svc.SetQueueConcurrency(ctx, 9, model.QueueStageSubmit, 12); err != nil {
+		if err := svc.SetQueueConcurrency(ctx, 9, 12); err != nil {
 			t.Fatal(err)
 		}
-		if repo.kv[model.SettingQueueConcurrencyPrefix+"submit"] != "12" || repo.by != 9 {
+		if repo.kv[model.SettingQueueConcurrency] != "12" || repo.by != 9 {
 			t.Fatalf("库值不对：%v by=%d", repo.kv, repo.by)
 		}
-		repo.kv[model.SettingQueueConcurrencyPrefix+"poll"] = "0"
-		repo.kv[model.SettingQueueConcurrencyPrefix+"finalize"] = "x"
-		got, _ = svc.QueueConcurrency(ctx)
-		if got[model.QueueStageSubmit] != 12 || got[model.QueueStagePoll] != 16 || got[model.QueueStageFinalize] != 4 {
-			t.Fatalf("库值优先、非法回落：%v", got)
+		if got, _ = svc.QueueConcurrency(ctx); got != 12 {
+			t.Fatalf("库值应生效：%v", got)
+		}
+		for _, bad := range []string{"0", "-2", "x", ""} {
+			repo.kv[model.SettingQueueConcurrency] = bad
+			if got, _ = svc.QueueConcurrency(ctx); got != 16 {
+				t.Fatalf("非法值 %q 应回落默认：%v", bad, got)
+			}
 		}
 	})
 

@@ -174,9 +174,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		queueAdmin := auth.Group("/admin/queue", middleware.RequireAdmin(h.AdminRole))
 		queueAdmin.GET("/overview", h.AdminQueue.Overview)
 		queueAdmin.GET("/throughput", h.AdminQueue.Throughput)
-		queueAdmin.PUT("/queues/:name", superOnly, h.AdminQueue.SetConcurrency)
-		queueAdmin.POST("/queues/:name/pause", superOnly, h.AdminQueue.Pause)
-		queueAdmin.POST("/queues/:name/resume", superOnly, h.AdminQueue.Resume)
+		queueAdmin.PUT("/concurrency", superOnly, h.AdminQueue.SetConcurrency)
+		queueAdmin.POST("/pause", superOnly, h.AdminQueue.Pause)
+		queueAdmin.POST("/resume", superOnly, h.AdminQueue.Resume)
 		queueAdmin.POST("/river-ticket", superOnly, h.RiverUI.IssueTicket)
 
 		plugins := adminAI.Group("/plugins")

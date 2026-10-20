@@ -106,20 +106,20 @@ func (s *dbStore) AcquireSlot(ctx context.Context, t *model.GenerationTask) (pro
 // 并记录调用与并发情况，供测试断言。
 type scriptHandler struct {
 	db          *gorm.DB
-	submitDelay time.Duration // 提交这一步耗时，用来观察并发
+	submitDelay time.Duration                // 提交这一步耗时，用来观察并发
+	hold        func(t model.GenerationTask) // 非空时在每一步开头调用，测试用它把某个任务卡住
 
-	mu       sync.Mutex
-	calls    []string // "<状态>:<任务 id>"
-	expired  []uint64
-	active   atomic.Int32
-	maxAct   atomic.Int32
-	maxChan  atomic.Int32 // 观察到的“渠道占用”最大值（拿到名额且 pending / queued / running）
-	maxUser  atomic.Int32 // 观察到的单个用户“占用名额”最大值（拿到名额且非终态）
-	pollSeen map[uint64]int
+	mu      sync.Mutex
+	calls   []string // "<状态>:<任务 id>"
+	expired []uint64
+	open    map[uint64]bool // 已经开始处理、还没到终态的任务：它们都占着并发名额
+	maxOpen atomic.Int32    // 观察到的“同时在处理的任务数”最大值
+	maxChan atomic.Int32    // 观察到的“渠道占用”最大值（拿到名额且 pending / queued / running）
+	maxUser atomic.Int32    // 观察到的单个用户“占用名额”最大值（拿到名额且非终态）
 }
 
 func newHandler(db *gorm.DB) *scriptHandler {
-	return &scriptHandler{db: db, pollSeen: map[uint64]int{}}
+	return &scriptHandler{db: db, open: map[uint64]bool{}}
 }
 
 func bump(peak *atomic.Int32, v int32) {
@@ -138,11 +138,14 @@ func (h *scriptHandler) update(id uint64, fields map[string]any) {
 }
 
 func (h *scriptHandler) Handle(_ context.Context, t model.GenerationTask) {
+	if h.hold != nil {
+		h.hold(t)
+	}
 	h.mu.Lock()
 	h.calls = append(h.calls, fmt.Sprintf("%s:%d", t.Status, t.ID))
+	h.open[t.ID] = true
+	bump(&h.maxOpen, int32(len(h.open)))
 	h.mu.Unlock()
-	bump(&h.maxAct, h.active.Add(1))
-	defer h.active.Add(-1)
 
 	var chanHeld, userHeld int64
 	h.db.Model(&model.GenerationTask{}).Where("provider = ? AND slot_acquired_at IS NOT NULL AND status IN ?", t.Provider, []string{"pending", "queued", "running"}).Count(&chanHeld)
@@ -161,6 +164,9 @@ func (h *scriptHandler) Handle(_ context.Context, t model.GenerationTask) {
 		h.update(t.ID, map[string]any{"status": model.TaskFinalizing, "next_poll_at": now, "version": gorm.Expr("version + 1")})
 	case model.TaskFinalizing:
 		h.update(t.ID, map[string]any{"status": model.TaskSucceeded, "finished_at": now, "version": gorm.Expr("version + 1")})
+		h.mu.Lock()
+		delete(h.open, t.ID)
+		h.mu.Unlock()
 	}
 }
 
@@ -185,22 +191,18 @@ func (h *scriptHandler) count(prefix string) int {
 
 type fixedSettings struct {
 	mu  sync.Mutex
-	cur map[string]int
+	cur int
 }
 
-func (f *fixedSettings) QueueConcurrency(context.Context) (map[string]int, error) {
+func (f *fixedSettings) QueueConcurrency(context.Context) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := map[string]int{}
-	for k, v := range f.cur {
-		out[k] = v
-	}
-	return out, nil
+	return f.cur, nil
 }
 
-func (f *fixedSettings) set(stage string, n int) {
+func (f *fixedSettings) set(n int) {
 	f.mu.Lock()
-	f.cur[stage] = n
+	f.cur = n
 	f.mu.Unlock()
 }
 
@@ -217,8 +219,8 @@ type rig struct {
 type rigOpts struct {
 	userLimit   int
 	submitDelay time.Duration
-	conc        map[string]int // 阶段并发；缺省都是 8
-	noStart     bool           // 只建不跑（测试回滚、暂停前的准备）
+	conc        int  // 并发；缺省 8
+	noStart     bool // 只建不跑（测试回滚、暂停前的准备）
 }
 
 func newRig(t *testing.T, db *gorm.DB, o rigOpts) *rig {
@@ -229,15 +231,15 @@ func newRig(t *testing.T, db *gorm.DB, o rigOpts) *rig {
 	repo := repository.NewGenerationTaskRepository(db)
 	h := newHandler(db)
 	h.submitDelay = o.submitDelay
-	settings := &fixedSettings{cur: map[string]int{model.QueueStageSubmit: 8, model.QueueStagePoll: 8, model.QueueStageFinalize: 8}}
-	for k, v := range o.conc {
-		settings.cur[k] = v
+	settings := &fixedSettings{cur: 8}
+	if o.conc > 0 {
+		settings.cur = o.conc
 	}
 	sqlDB, _ := db.DB()
 	qrepo := repository.NewQueueRepository(db)
 	rt, err := queue.New(queue.Config{
 		DB: sqlDB, Store: &dbStore{repo: repo, userLimit: o.userLimit}, Handler: h, Settings: settings, Repo: qrepo,
-		Enabled: true, HardCaps: map[string]int{model.QueueStageSubmit: 16, model.QueueStagePoll: 16, model.QueueStageFinalize: 16},
+		Enabled: true, HardCap: 16,
 		Version: "test", Hostname: "testhost", StopTimeout: 5 * time.Second,
 		HeartbeatEvery: 200 * time.Millisecond, SweepEvery: 300 * time.Millisecond, SettingsEvery: 100 * time.Millisecond,
 		FetchPollInterval: 200 * time.Millisecond,
@@ -332,4 +334,13 @@ func (r *rig) liveJobs(taskID uint64) int64 {
 	var n int64
 	r.db.Raw(`SELECT COUNT(*) FROM river_job WHERE (args->>'task_id')::bigint = ? AND state IN ('available','pending','retryable','running','scheduled')`, taskID).Scan(&n)
 	return n
+}
+
+// slotHeld 报告任务是否已经拿到名额。
+func (r *rig) slotHeld(id uint64) bool {
+	var tk model.GenerationTask
+	if err := r.db.Select("slot_acquired_at").First(&tk, id).Error; err != nil {
+		return false
+	}
+	return tk.SlotAcquiredAt != nil
 }

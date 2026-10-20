@@ -1,4 +1,4 @@
-import type { QueueInfo, QueueInstance } from "@/api/admin/queue/type";
+import type { QueueInstance } from "@/api/admin/queue/type";
 import { Notice } from "@/components/admin-ui/notice";
 import { Tag } from "@/components/admin-ui/tag";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,21 +19,12 @@ import {
 } from "@/utils/admin/queue";
 
 /**
- * 实例列表：实例 ID、主机 · 版本、启动时间、心跳（在线 / 失联）、leader 标记、各队列“在途 / 生效并发”。
- * 有失联实例时在表上方显示告警条。队列只按中文标签展示。
+ * 实例列表：实例 ID、主机 · 版本、启动时间、心跳（在线 / 失联）、leader 标记、“处理中 / 并发”。
+ * 有失联实例时在表上方显示告警条。
  * @param instances 工作实例
- * @param queues 队列概况（取中文标签与顺序）
  * @param now 取到数据的时间（毫秒），相对时间据此计算
  */
-export function InstanceTable({
-  instances,
-  queues,
-  now,
-}: {
-  instances: QueueInstance[];
-  queues: QueueInfo[];
-  now: number;
-}) {
+export function InstanceTable({ instances, now }: { instances: QueueInstance[]; now: number }) {
   const lost = lostInstances(instances);
 
   return (
@@ -56,7 +47,7 @@ export function InstanceTable({
               <TableHead>启动</TableHead>
               <TableHead>心跳</TableHead>
               <TableHead />
-              <TableHead>在途 / 生效并发</TableHead>
+              <TableHead>处理中 / 并发</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -87,12 +78,7 @@ export function InstanceTable({
                     </TableCell>
                     <TableCell>{instance.is_leader && <Tag tone="info">leader</Tag>}</TableCell>
                     <TableCell className="text-xs tabular-nums">
-                      {queues
-                        .map(
-                          (queue) =>
-                            `${queue.label} ${instanceLoadText(instance.stats[queue.name], !gone)}`,
-                        )
-                        .join(" · ")}
+                      {instanceLoadText(instance.stats, !gone)}
                     </TableCell>
                   </TableRow>
                 );

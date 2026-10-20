@@ -30,17 +30,17 @@ const (
 	defaultHeartbeatEvery = model.WorkerHeartbeatEvery
 	defaultSweepEvery     = 30 * time.Second
 	defaultStopTimeout    = 30 * time.Second
-	// rescueStuckJobsAfter 是 River 自带的“救回卡住的 running job”的阈值，必须大于任何一个 job 的执行时限（最长 45 分钟）。
+	// rescueStuckJobsAfter 是 River 自带的“救回卡住的 running job”的阈值，必须大于 job 的执行时限（jobTimeout）。
 	// 实例崩溃时不会等到它：对账（sweep）会在实例心跳失联后立即把它的 job 放回队列，这个阈值只是兜底。
-	rescueStuckJobsAfter = time.Hour
+	rescueStuckJobsAfter = jobTimeout + time.Hour
 	// sweepBatch 是一次对账最多补入队多少个丢了 job 的任务
 	sweepBatch = 500
 )
 
 // SettingsSource 是后台可调并发的来源（真实实现是 service.SettingsService）。
 type SettingsSource interface {
-	// QueueConcurrency 返回各阶段当前设置的并发（阶段短名 → 每实例并发）。
-	QueueConcurrency(ctx context.Context) (map[string]int, error)
+	// QueueConcurrency 返回当前设置的并发（每实例同时处理的任务数）。
+	QueueConcurrency(ctx context.Context) (int, error)
 }
 
 // Repo 是运行时需要的数据访问（真实实现是 repository.QueueRepository）。
@@ -72,8 +72,8 @@ type Config struct {
 	Settings SettingsSource
 	Repo     Repo
 
-	Enabled  bool           // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
-	HardCaps map[string]int // 各阶段并发的硬上限（配置文件），后台调整不能超过
+	Enabled  bool // 本实例是否执行任务；为 false 时只能入队（API-only 实例）
+	HardCap  int  // 并发的硬上限（配置文件），后台调整不能超过
 	Version  string
 	Hostname string
 
@@ -89,7 +89,7 @@ type Config struct {
 	FetchPollInterval time.Duration
 }
 
-// Runtime 是任务队列运行时：River 客户端、各阶段并发闸门、设置刷新、实例心跳、对账救回，以及后台的暂停 / 恢复 / 查看。
+// Runtime 是任务队列运行时：River 客户端、并发闸门、设置刷新、实例心跳、对账救回，以及后台的暂停 / 恢复 / 查看。
 type Runtime struct {
 	cfg      Config
 	store    provider.TaskStore
@@ -99,7 +99,7 @@ type Runtime struct {
 	log      *zap.Logger
 
 	client *river.Client[*sql.Tx]
-	gates  map[string]*gate
+	gate   *gate
 	id     string
 	start  time.Time
 	ui     *riverui.Handler
@@ -115,7 +115,7 @@ func New(cfg Config) (*Runtime, error) {
 	}
 	rt := &Runtime{
 		cfg: cfg, store: cfg.Store, handler: cfg.Handler, settings: cfg.Settings, repo: cfg.Repo,
-		log: cfg.Logger, gates: map[string]*gate{}, start: time.Now(),
+		log: cfg.Logger, start: time.Now(),
 		now: cfg.Now, rand: cfg.Rand,
 	}
 	if rt.now == nil {
@@ -127,15 +127,11 @@ func New(cfg Config) (*Runtime, error) {
 	rt.id = newClientID(cfg.Hostname)
 
 	// 闸门初始值取默认并发（启动后立即会按后台设置刷新一次）；硬上限缺失按默认并发的 4 倍兜底
-	caps := map[string]int{}
-	for _, stage := range model.QueueStages {
-		c := cfg.HardCaps[stage]
-		if c < 1 {
-			c = model.DefaultQueueConcurrency[stage] * 4
-		}
-		caps[stage] = c
-		rt.gates[stage] = newGate(model.DefaultQueueConcurrency[stage], c)
+	hardCap := cfg.HardCap
+	if hardCap < 1 {
+		hardCap = model.DefaultQueueConcurrency * 4
 	}
+	rt.gate = newGate(model.DefaultQueueConcurrency, hardCap)
 
 	var driver *riverdatabasesql.Driver
 	if cfg.ListenerPool != nil {
@@ -153,15 +149,10 @@ func New(cfg Config) (*Runtime, error) {
 	}
 	if cfg.Enabled {
 		workers := river.NewWorkers()
-		river.AddWorker(workers, &submitWorker{rt: rt})
-		river.AddWorker(workers, &pollWorker{rt: rt})
-		river.AddWorker(workers, &finalizeWorker{rt: rt})
+		river.AddWorker(workers, &taskWorker{rt: rt})
 		rc.Workers = workers
 		// River 队列的 MaxWorkers 启动后改不了，所以取硬上限；实际并发由 gate 控制（后台调整立即生效）
-		rc.Queues = map[string]river.QueueConfig{}
-		for _, stage := range model.QueueStages {
-			rc.Queues[riverQueue(stage)] = river.QueueConfig{MaxWorkers: caps[stage]}
-		}
+		rc.Queues = map[string]river.QueueConfig{riverQueue: {MaxWorkers: hardCap}}
 	}
 	client, err := river.NewClient[*sql.Tx](driver, rc)
 	if err != nil {
@@ -189,28 +180,26 @@ func (rt *Runtime) ID() string { return rt.id }
 
 // insertOptsAt 返回带排期的入队选项：还没到点的按 runAt 排期，已经到点（或没有）的立即可取，
 // 立即可取的 job 入队时会通知，比定时扫描更快被取走。
-func (rt *Runtime) insertOptsAt(stage string, runAt time.Time) *river.InsertOpts {
-	opts := insertOpts(stage)
+func (rt *Runtime) insertOptsAt(runAt time.Time) *river.InsertOpts {
+	opts := TaskArgs{}.InsertOpts()
 	if runAt.After(rt.now().Add(dueSlack)) {
 		opts.ScheduledAt = runAt
 	}
 	return &opts
 }
 
-// insert 为任务入队（不在事务里）。同一任务同一阶段已有活着的 job 时什么都不做（唯一约束）。
-func (rt *Runtime) insert(ctx context.Context, stage string, taskID uint64, runAt time.Time) error {
-	_, err := rt.client.Insert(ctx, argsFor(stage, taskID), rt.insertOptsAt(stage, runAt))
+// insert 为任务入队（不在事务里）。同一任务已有活着的 job 时什么都不做（唯一约束）。
+func (rt *Runtime) insert(ctx context.Context, taskID uint64, runAt time.Time) error {
+	_, err := rt.client.Insert(ctx, TaskArgs{TaskID: taskID}, rt.insertOptsAt(runAt))
 	return err
 }
 
-// EnqueueTx 实现 repository.TaskEnqueuer：在 sqlTx 所在的事务里为任务入队，事务回滚时 job 也不存在。
-// status 决定进哪个阶段的队列；终态任务不入队。
+// EnqueueTx 实现 repository.TaskEnqueuer：在 sqlTx 所在的事务里为任务入队，事务回滚时 job 也不存在。终态任务不入队。
 func (rt *Runtime) EnqueueTx(ctx context.Context, sqlTx *sql.Tx, taskID uint64, status string, runAt time.Time) error {
-	stage, ok := model.QueueStageOfStatus(status)
-	if !ok {
+	if model.IsTerminalStatus(status) {
 		return nil
 	}
-	_, err := rt.client.InsertTx(ctx, sqlTx, argsFor(stage, taskID), rt.insertOptsAt(stage, runAt))
+	_, err := rt.client.InsertTx(ctx, sqlTx, TaskArgs{TaskID: taskID}, rt.insertOptsAt(runAt))
 	return err
 }
 
@@ -296,42 +285,29 @@ func orDur(d, def time.Duration) time.Duration {
 	return d
 }
 
-// RefreshSettings 按后台设置刷新各阶段的并发（裁剪到 [1, 硬上限]）。读取失败只记日志，保持当前值。
+// RefreshSettings 按后台设置刷新并发（裁剪到 [1, 硬上限]）。读取失败只记日志，保持当前值。
 // 后台修改并发后，本实例立即调用它，其它实例由定时循环在 QueueSettingsRefreshEvery 内跟上。
 func (rt *Runtime) RefreshSettings(ctx context.Context) {
 	if rt.settings == nil {
 		return
 	}
-	cur, err := rt.settings.QueueConcurrency(ctx)
+	n, err := rt.settings.QueueConcurrency(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
 			rt.log.Warn("读取队列并发设置失败，保持当前值", zap.Error(err))
 		}
 		return
 	}
-	for stage, g := range rt.gates {
-		if n, ok := cur[stage]; ok {
-			g.setLimit(n)
-		}
-	}
+	rt.gate.setLimit(n)
 }
 
-// Stats 返回本实例各阶段的在途数与生效并发。
+// Stats 返回本实例的在途任务数与生效并发。
 func (rt *Runtime) Stats() model.QueueInstanceStats {
-	out := make(model.QueueInstanceStats, len(rt.gates))
-	for stage, g := range rt.gates {
-		out[stage] = model.QueueStageStats{Inflight: int(g.inflight.Load()), Limit: int(g.limit.Load())}
-	}
-	return out
+	return model.QueueInstanceStats{Inflight: int(rt.gate.inflight.Load()), Limit: int(rt.gate.limit.Load())}
 }
 
-// HardCap 返回阶段并发的硬上限；未知阶段返回 0。
-func (rt *Runtime) HardCap(stage string) int {
-	if g, ok := rt.gates[stage]; ok {
-		return int(g.cap)
-	}
-	return 0
-}
+// HardCap 返回并发的硬上限。
+func (rt *Runtime) HardCap() int { return int(rt.gate.cap) }
 
 // Heartbeat 立即写一次本实例的心跳（后台改并发后调用，让“已生效于几个实例”马上包含本实例）。
 func (rt *Runtime) Heartbeat(ctx context.Context) { rt.heartbeat(ctx) }
@@ -359,7 +335,7 @@ func (rt *Runtime) heartbeat(ctx context.Context) {
 
 // sweep 是定时对账，做两件事，任何实例都可以跑（唯一约束和幂等的 SQL 保证并发安全）：
 //  1. 救回失联实例的 job：由心跳已过期的实例正在执行的 running job，立即放回队列，不用等 River 自带的 1 小时阈值；
-//  2. 补入队：任务还没终态、队列里却没有活着的 job（进程恰好在状态迁移之后、入队之前崩溃；升级前已在途的任务），按任务当前阶段补一个。
+//  2. 补入队：任务还没终态、队列里却没有活着的 job（升级前已在途的任务、job 被误删），补一个。
 func (rt *Runtime) sweep(ctx context.Context) {
 	live, err := rt.repo.LiveInstanceIDs(ctx, rt.now().Add(-model.WorkerInstanceOfflineAfter))
 	if err != nil {
@@ -383,53 +359,35 @@ func (rt *Runtime) sweep(ctx context.Context) {
 		return
 	}
 	for _, t := range tasks {
-		stage, ok := model.QueueStageOfStatus(t.Status)
-		if !ok {
-			continue
-		}
-		if err := rt.insert(ctx, stage, t.ID, t.NextPollAt); err != nil {
+		if err := rt.insert(ctx, t.ID, t.NextPollAt); err != nil {
 			rt.log.Warn("对账：补入队失败", logger.TaskID(t.ID), zap.Error(err))
 			continue
 		}
-		rt.log.Info("对账：已为没有 job 的任务补入队", logger.TaskID(t.ID), zap.String("status", t.Status))
+		rt.log.Info("对账：已为没有 job 的任务补入队", logger.TaskID(t.ID))
 	}
 }
 
-// States 返回各阶段的暂停状态与并发。队列在 River 里还不存在（从没启动过）时按未暂停处理。
-func (rt *Runtime) States(ctx context.Context) ([]model.QueueStageState, error) {
-	out := make([]model.QueueStageState, 0, len(model.QueueStages))
-	for _, stage := range model.QueueStages {
-		paused := false
-		q, err := rt.client.QueueGet(ctx, riverQueue(stage))
-		switch {
-		case err == nil:
-			paused = q.PausedAt != nil
-		case !errors.Is(err, rivertype.ErrNotFound):
-			return nil, err
-		}
-		g := rt.gates[stage]
-		out = append(out, model.QueueStageState{Stage: stage, Paused: paused, Concurrency: int(g.limit.Load()), HardCap: int(g.cap)})
+// State 返回队列的暂停状态与本实例的并发。队列在 River 里还不存在（从没启动过）时按未暂停处理。
+func (rt *Runtime) State(ctx context.Context) (model.QueueState, error) {
+	paused := false
+	q, err := rt.client.QueueGet(ctx, riverQueue)
+	switch {
+	case err == nil:
+		paused = q.PausedAt != nil
+	case !errors.Is(err, rivertype.ErrNotFound):
+		return model.QueueState{}, err
 	}
-	return out, nil
+	return model.QueueState{Paused: paused, Concurrency: int(rt.gate.limit.Load()), HardCap: int(rt.gate.cap)}, nil
 }
 
-// ErrUnknownStage 表示阶段短名不存在。
-var ErrUnknownStage = errors.New("未知的队列阶段")
-
-// Pause 暂停一个阶段：对所有实例生效（暂停状态存在数据库里），已入队的 job 保留，恢复后继续。幂等。
-func (rt *Runtime) Pause(ctx context.Context, stage string) error {
-	if _, ok := rt.gates[stage]; !ok {
-		return ErrUnknownStage
-	}
-	return rt.client.QueuePause(ctx, riverQueue(stage), nil)
+// Pause 暂停队列：对所有实例生效（暂停状态存在数据库里），不再开始新任务，已入队的 job 保留、正在处理的任务继续，恢复后继续。幂等。
+func (rt *Runtime) Pause(ctx context.Context) error {
+	return rt.client.QueuePause(ctx, riverQueue, nil)
 }
 
-// Resume 恢复一个阶段。幂等。
-func (rt *Runtime) Resume(ctx context.Context, stage string) error {
-	if _, ok := rt.gates[stage]; !ok {
-		return ErrUnknownStage
-	}
-	return rt.client.QueueResume(ctx, riverQueue(stage), nil)
+// Resume 恢复队列。幂等。
+func (rt *Runtime) Resume(ctx context.Context) error {
+	return rt.client.QueueResume(ctx, riverQueue, nil)
 }
 
 // UIHandler 返回 River UI 的 http.Handler（prefix 是它挂载的路径前缀，如 /api/v1/admin/river）。

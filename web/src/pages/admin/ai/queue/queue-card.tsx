@@ -7,19 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { isDraftDirty, shownConcurrency } from "@/utils/admin/queue";
-
-/** 五个计数：键、标题、数值大于 0 时是否用警示色 */
-const COUNT_CELLS = [
-  { key: "available", label: "排队", warn: false },
-  { key: "scheduled", label: "延迟中", warn: false },
-  { key: "running", label: "运行中", warn: false },
-  { key: "retryable", label: "重试中", warn: true },
-  { key: "discarded_1h", label: "近 1 小时丢弃", warn: true },
-] as const;
+import { countCells, isDraftDirty, shownConcurrency } from "@/utils/admin/queue";
 
 /**
- * 一个队列的卡片：名称（中文标签）、运行 / 暂停状态、五个计数、并发滑杆、保存 / 还原、暂停 / 恢复。
+ * 「生成任务」卡片：运行 / 暂停状态、四个计数、并发滑杆、保存 / 还原、暂停 / 恢复。
+ * 一个生成任务从提交、查询到转存全程占一个并发名额。
  * - 滑杆显示草稿值，草稿由页面保存，刷新带来的新服务端值不会覆盖正在拖动的草稿；
  * - 没有写权限时滑杆和按钮禁用，原因用 tooltip 说明（不隐藏）；
  * - 保存失败的原因就地显示在卡片里（全局 toast 之外的补充）；保存成功显示“已生效于 N/M 个实例”。
@@ -65,32 +57,29 @@ export function QueueCard({
   const locked = denyReason !== null;
 
   return (
-    <Card data-slot="queue-card" size="sm" aria-label={queue.label}>
+    <Card data-slot="queue-card" size="sm" aria-label="生成任务">
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">{queue.label}</h2>
+          <h2 className="text-sm font-semibold">生成任务</h2>
           <Tag tone={queue.paused ? "warning" : "success"}>
             {queue.paused ? "已暂停" : "运行中"}
           </Tag>
         </div>
 
-        <dl className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
-          {COUNT_CELLS.map(({ key, label, warn }) => {
-            const value = queue.counts[key];
-            return (
-              <div key={key} className="bg-muted flex flex-col-reverse rounded-lg px-2 py-1.5">
-                <dt className="text-muted-foreground text-[11px] leading-tight">{label}</dt>
-                <dd
-                  className={cn(
-                    "text-base font-semibold tabular-nums",
-                    warn && value > 0 && "text-amber-600 dark:text-amber-400",
-                  )}
-                >
-                  {value}
-                </dd>
-              </div>
-            );
-          })}
+        <dl className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          {countCells(queue.counts).map(({ key, label, value, warn }) => (
+            <div key={key} className="bg-muted flex flex-col-reverse rounded-lg px-2 py-1.5">
+              <dt className="text-muted-foreground text-[11px] leading-tight">{label}</dt>
+              <dd
+                className={cn(
+                  "text-base font-semibold tabular-nums",
+                  warn && value > 0 && "text-amber-600 dark:text-amber-400",
+                )}
+              >
+                {value}
+              </dd>
+            </div>
+          ))}
         </dl>
 
         <div className="flex flex-col gap-2">
@@ -103,7 +92,7 @@ export function QueueCard({
           </div>
           <ReasonTooltip reason={denyReason} className="flex w-full px-1 py-1">
             <Slider
-              aria-label={`${queue.label}并发`}
+              aria-label="生成任务并发"
               min={1}
               max={queue.hard_cap}
               step={1}

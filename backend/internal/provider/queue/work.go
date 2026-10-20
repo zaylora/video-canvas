@@ -12,9 +12,9 @@ import (
 	"video-canvas/internal/provider"
 )
 
-// 各种“睡一会再来”的时长。睡眠用 river.JobSnooze：不消耗重试次数，可以无限次。
+// 各种“睡一会再来”的时长。让出 job 用 river.JobSnooze：不消耗重试次数，可以无限次。
 const (
-	// gateWaitBase / gateWaitJitter：本实例这个阶段的并发满了，睡 1~3 秒再试
+	// gateWaitBase / gateWaitJitter：本实例的并发满了，睡 1~3 秒再试
 	gateWaitBase   = time.Second
 	gateWaitJitter = 2 * time.Second
 	// slotWaitBase / slotWaitJitter：没拿到用户名额或渠道名额，睡 2~6 秒再试。
@@ -23,8 +23,8 @@ const (
 	slotWaitJitter = 4 * time.Second
 	// noProgressWait：处理了一步但任务行没有任何变化（多半是写库失败，worker 已经记了日志），5 秒后再试，避免空转
 	noProgressWait = 5 * time.Second
-	// minSnooze：任务行里的下一次处理时间已经过了，最少睡 1 秒，给任务行的读写留出间隙
-	minSnooze = time.Second
+	// minStep：两步之间最少隔这么久，给任务行的读写留出间隙，也防止异常情况下的空转
+	minStep = 200 * time.Millisecond
 	// dueSlack：job 提前不到这么久醒来就直接处理，不再睡（调度本来就有秒级的误差）
 	dueSlack = time.Second
 )
@@ -37,39 +37,16 @@ type Handler interface {
 	Expire(ctx context.Context, t model.GenerationTask)
 }
 
-// submitWorker、pollWorker、finalizeWorker 是三个阶段的 River worker，只是把 job 里的任务 id 交给 Runtime.work，
-// 各自带自己的执行时限。
-type submitWorker struct {
-	river.WorkerDefaults[SubmitArgs]
+// taskWorker 是生成任务的 River worker，只是把 job 里的任务 id 交给 Runtime.work。
+type taskWorker struct {
+	river.WorkerDefaults[TaskArgs]
 	rt *Runtime
 }
 
-func (w *submitWorker) Timeout(*river.Job[SubmitArgs]) time.Duration { return submitJobTimeout }
+func (w *taskWorker) Timeout(*river.Job[TaskArgs]) time.Duration { return jobTimeout }
 
-func (w *submitWorker) Work(ctx context.Context, job *river.Job[SubmitArgs]) error {
-	return w.rt.work(ctx, model.QueueStageSubmit, job.Args.TaskID)
-}
-
-type pollWorker struct {
-	river.WorkerDefaults[PollArgs]
-	rt *Runtime
-}
-
-func (w *pollWorker) Timeout(*river.Job[PollArgs]) time.Duration { return pollJobTimeout }
-
-func (w *pollWorker) Work(ctx context.Context, job *river.Job[PollArgs]) error {
-	return w.rt.work(ctx, model.QueueStagePoll, job.Args.TaskID)
-}
-
-type finalizeWorker struct {
-	river.WorkerDefaults[FinalizeArgs]
-	rt *Runtime
-}
-
-func (w *finalizeWorker) Timeout(*river.Job[FinalizeArgs]) time.Duration { return finalizeJobTimeout }
-
-func (w *finalizeWorker) Work(ctx context.Context, job *river.Job[FinalizeArgs]) error {
-	return w.rt.work(ctx, model.QueueStageFinalize, job.Args.TaskID)
+func (w *taskWorker) Work(ctx context.Context, job *river.Job[TaskArgs]) error {
+	return w.rt.work(ctx, job.Args.TaskID)
 }
 
 // jitter 返回 base 加上 [0, spread) 的随机量，让大量同时睡下的 job 不会同时醒来。
@@ -77,10 +54,10 @@ func (rt *Runtime) jitter(base, spread time.Duration) time.Duration {
 	return base + time.Duration(rt.rand()*float64(spread))
 }
 
-// work 处理一个 job：读任务行 → 阶段核对 → 睡到处理时间 → 抢本阶段的并发闸门 → 提交阶段申请名额 → 调用业务处理一步 → 安排下一步。
-// 返回 nil 表示这个 job 结束（任务终态，或已把任务交给别的阶段）；返回 river.JobSnooze 表示睡一会再来；
-// 返回其它错误才会触发 River 的重试（只有读写数据库这类基础设施故障才会走到这里，业务失败都已经写进任务行）。
-func (rt *Runtime) work(ctx context.Context, stage string, taskID uint64) error {
+// work 处理一个 job：读任务行 → 睡到处理时间 → 抢并发闸门 → 还没名额的先排队等名额 → 在本 job 里一直处理到任务终态。
+// 返回 nil 表示这个 job 结束（任务终态）；返回 river.JobSnooze 表示睡一会再来（排队中，不占闸门）；
+// 返回其它错误才会触发 River 的重试（读写数据库这类基础设施故障、停机被取消，业务失败都已经写进任务行）。
+func (rt *Runtime) work(ctx context.Context, taskID uint64) error {
 	// 1. 读任务行。任务不存在或已是终态：什么都不用做，job 结束（用户取消、超时、别的实例处理完都会走到这里）
 	t, err := rt.store.GetTask(ctx, taskID)
 	if err != nil {
@@ -90,25 +67,18 @@ func (rt *Runtime) work(ctx context.Context, stage string, taskID uint64) error 
 		return nil
 	}
 
-	// 2. 阶段核对：任务已经进入别的阶段（例如救回后 job 比任务行慢了一步），把它交给对应阶段的队列，当前 job 结束
-	cur, _ := model.QueueStageOfStatus(t.Status)
-	if cur != stage {
-		return rt.handOff(ctx, t)
-	}
-
-	// 3. 还没到处理时间（上一次安排的下一次查询 / 重试时间，或 job 被救回后提前醒来）：回去睡到点
+	// 2. 还没到处理时间（job 被救回后任务行里记着下一次查询时间）：回去睡到点，睡着时不占闸门
 	if d := t.NextPollAt.Sub(rt.now()); d > dueSlack {
 		return river.JobSnooze(d)
 	}
 
-	// 4. 抢本阶段的并发闸门：本实例这个阶段同时执行的数量由后台设置控制，满了就睡一会再来
-	g := rt.gates[stage]
-	if !g.tryAcquire() {
+	// 3. 抢并发闸门：本实例同时处理的任务数由后台设置控制，满了就睡一会再来
+	if !rt.gate.tryAcquire() {
 		return river.JobSnooze(rt.jitter(gateWaitBase, gateWaitJitter))
 	}
-	defer g.release()
+	defer rt.gate.release()
 
-	// 5. 提交阶段：任务还没拿到名额时先排队等名额
+	// 4. 任务还没拿到名额：先排队等名额。拿不到时让出闸门、把 job 睡一会，所以排队的任务不占并发
 	if t.Status == model.TaskPending && t.SlotAcquiredAt == nil {
 		t, err = rt.waitForSlot(ctx, t)
 		if err != nil || t == nil {
@@ -116,12 +86,8 @@ func (rt *Runtime) work(ctx context.Context, stage string, taskID uint64) error 
 		}
 	}
 
-	// 6. 交给业务处理这一步。ctx 被取消（停机）时直接返回，任务行没变，下次启动会被救回
-	rt.handler.Handle(ctx, *t)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	return rt.afterStep(ctx, stage, t)
+	// 5. 拿到名额，一路处理到终态
+	return rt.drive(ctx, t)
 }
 
 // waitForSlot 为 pending 任务申请名额。返回的任务是拿到名额之后的最新行（deadline_at 已重置）；
@@ -155,33 +121,42 @@ func (rt *Runtime) waitForSlot(ctx context.Context, t *model.GenerationTask) (*m
 	}
 }
 
-// afterStep 在业务处理完一步之后读任务行，决定这个 job 的去向：
-//   - 终态：结束；
-//   - 进入了别的阶段：把任务交给对应阶段的队列，当前 job 结束；
-//   - 还在本阶段：按任务行里新的 next_poll_at 睡到点（没有任何变化时睡 noProgressWait 避免空转）。
-func (rt *Runtime) afterStep(ctx context.Context, stage string, before *model.GenerationTask) error {
-	t, err := rt.store.GetTask(ctx, before.ID)
-	if err != nil {
-		return err
+// drive 让一个已经拿到名额的任务在本 job 里一直走到终态：调用业务处理一步 → 读任务行 → 终态就结束，
+// 否则按任务行里新的 next_poll_at 等到点（没有任何变化时等 noProgressWait 避免空转）→ 再处理下一步。
+// 等待期间占着并发闸门（任务正在生成中，这就是“并发”的含义）。ctx 被取消（停机、job 超时）时返回 ctx 的错误：
+// 任务行没丢，job 会被重试或被对账救回，从任务行记录的状态接着走。
+func (rt *Runtime) drive(ctx context.Context, t *model.GenerationTask) error {
+	for {
+		rt.handler.Handle(ctx, *t)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		next, err := rt.store.GetTask(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+		if next == nil || model.IsTerminalStatus(next.Status) {
+			return nil
+		}
+		wait := max(next.NextPollAt.Sub(rt.now()), minStep)
+		if next.NextPollAt.Equal(t.NextPollAt) && next.Status == t.Status {
+			wait = max(wait, noProgressWait)
+		}
+		if err := sleepCtx(ctx, wait); err != nil {
+			return err
+		}
+		t = next
 	}
-	if t == nil || model.IsTerminalStatus(t.Status) {
-		return nil
-	}
-	if cur, _ := model.QueueStageOfStatus(t.Status); cur != stage {
-		return rt.handOff(ctx, t)
-	}
-	if t.NextPollAt.Equal(before.NextPollAt) {
-		return river.JobSnooze(noProgressWait)
-	}
-	return river.JobSnooze(max(t.NextPollAt.Sub(rt.now()), minSnooze))
 }
 
-// handOff 把任务交给它当前所处阶段的队列（按 next_poll_at 排期）。入队失败返回错误，当前 job 由 River 重试，
-// 所以交接不会丢任务；真正可能留下孤儿的只有“任务状态已变、进程恰好在入队前崩溃”，那种情况由定时对账补上。
-func (rt *Runtime) handOff(ctx context.Context, t *model.GenerationTask) error {
-	stage, ok := model.QueueStageOfStatus(t.Status)
-	if !ok {
+// sleepCtx 睡 d，ctx 取消时提前返回它的错误。
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
 		return nil
 	}
-	return rt.insert(ctx, stage, t.ID, t.NextPollAt)
 }

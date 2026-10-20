@@ -9,7 +9,7 @@ import type {
 import {
   appliedText,
   channelRow,
-  dropDraft,
+  countCells,
   failureRate,
   formatAgo,
   formatDuration,
@@ -25,14 +25,14 @@ import {
   queueWriteDenyReason,
   riverUiDenyReason,
   saveFailedText,
-  setDraft,
+  nextDraft,
   shownConcurrency,
   summarizeThroughput,
   throughputBars,
   validateConcurrency,
 } from "@/utils/admin/queue";
 
-const counts = { available: 0, scheduled: 0, running: 0, retryable: 0, discarded_1h: 0 };
+const counts = { waiting: 0, running: 0, retryable: 0, discarded_1h: 0 };
 
 const instance = (patch: Partial<QueueInstance> = {}): QueueInstance => ({
   id: "rc_1",
@@ -75,27 +75,18 @@ describe("保存草稿与服务端值分开保存", () => {
   });
 
   test("拖动中的草稿不会被刷新带来的新服务端值覆盖", () => {
-    const drafts = setDraft({}, "submit", 20, 8);
-    expect(shownConcurrency(drafts.submit, 8)).toBe(20);
+    const draft = nextDraft(20, 8);
+    expect(shownConcurrency(draft, 8)).toBe(20);
     /** 服务端值被别人改成 12：滑杆仍显示草稿 20，并且仍然是脏的 */
-    expect(shownConcurrency(drafts.submit, 12)).toBe(20);
-    expect(isDraftDirty(drafts.submit, 12)).toBe(true);
-    /** 没有草稿的队列跟着服务端走 */
-    expect(shownConcurrency(drafts.poll, 16)).toBe(16);
+    expect(shownConcurrency(draft, 12)).toBe(20);
+    expect(isDraftDirty(draft, 12)).toBe(true);
+    /** 没有草稿时跟着服务端走 */
+    expect(shownConcurrency(undefined, 16)).toBe(16);
   });
 
-  test("拖回服务端值等于没有草稿；其他队列的草稿不受影响", () => {
-    const first = setDraft({}, "submit", 20, 8);
-    const second = setDraft(first, "poll", 30, 16);
-    const back = setDraft(second, "submit", 8, 8);
-    expect(back).toEqual({ poll: 30 });
-    expect(second).toEqual({ submit: 20, poll: 30 });
-  });
-
-  test("丢弃草稿（还原 / 保存后）只影响指定队列，不修改入参", () => {
-    const drafts = { submit: 20, poll: 30 } as const;
-    expect(dropDraft(drafts, "submit")).toEqual({ poll: 30 });
-    expect(drafts).toEqual({ submit: 20, poll: 30 });
+  test("拖回服务端值等于没有草稿", () => {
+    expect(nextDraft(20, 8)).toBe(20);
+    expect(nextDraft(8, 8)).toBeUndefined();
   });
 });
 
@@ -123,16 +114,27 @@ describe("权限原因", () => {
 });
 
 describe("计数汇总与空闲判断", () => {
-  test("未完成任务数 = 排队 + 延迟 + 运行 + 重试，丢弃不算", () => {
+  test("未完成任务数 = 排队 + 运行 + 重试，丢弃不算", () => {
+    expect(pendingTotal({ waiting: 23, running: 8, retryable: 2, discarded_1h: 9 })).toBe(33);
+  });
+
+  test("计数格固定四项：排队中、运行中、重试中、近 1 小时丢弃", () => {
     expect(
-      pendingTotal({ available: 23, scheduled: 41, running: 8, retryable: 2, discarded_1h: 9 }),
-    ).toBe(74);
+      countCells({ waiting: 5, running: 3, retryable: 2, discarded_1h: 1 }).map((cell) => [
+        cell.label,
+        cell.value,
+        cell.warn,
+      ]),
+    ).toEqual([
+      ["排队中", 5, false],
+      ["运行中", 3, false],
+      ["重试中", 2, true],
+      ["近 1 小时丢弃", 1, true],
+    ]);
   });
 
   const overview = (patch: Partial<QueueOverview> = {}): QueueOverview => ({
-    queues: [
-      { name: "submit", label: "提交上游", paused: false, concurrency: 8, hard_cap: 64, counts },
-    ],
+    queue: { paused: false, concurrency: 8, hard_cap: 64, counts },
     channels: [],
     instances: [],
     ...patch,
@@ -143,16 +145,7 @@ describe("计数汇总与空闲判断", () => {
   });
   test("队列里有任务，或渠道有占用 / 等待，都不空闲", () => {
     const busyQueue = overview({
-      queues: [
-        {
-          name: "submit",
-          label: "提交上游",
-          paused: false,
-          concurrency: 8,
-          hard_cap: 64,
-          counts: { ...counts, scheduled: 1 },
-        },
-      ],
+      queue: { paused: false, concurrency: 8, hard_cap: 64, counts: { ...counts, waiting: 1 } },
     });
     expect(isQueueIdle(busyQueue)).toBe(false);
     const channel = {
@@ -178,10 +171,10 @@ describe("实例是否失联", () => {
     expect(lostInstances(list).map((item) => item.id)).toEqual(["b"]);
     expect(lostInstances([instance()])).toEqual([]);
   });
-  test("在途 / 生效并发：失联实例的在途数显示“–”，没有数据显示“–”", () => {
-    expect(instanceLoadText({ inflight: 3, limit: 8 }, true)).toBe("3/8");
-    expect(instanceLoadText({ inflight: 3, limit: 8 }, false)).toBe("–/8");
-    expect(instanceLoadText(undefined, true)).toBe("–");
+  test("处理中 / 并发：失联实例的处理中显示“–”，stats 为空对象显示“–”", () => {
+    expect(instanceLoadText({ inflight: 3, limit: 8 }, true)).toBe("3 / 8");
+    expect(instanceLoadText({ inflight: 3, limit: 8 }, false)).toBe("– / 8");
+    expect(instanceLoadText({}, true)).toBe("–");
   });
 });
 

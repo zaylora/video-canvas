@@ -2,63 +2,19 @@ package model
 
 import "time"
 
-// 任务队列的三个阶段。一个生成任务依次经过它们，每个阶段在 River 里是一个独立的队列（river 队列名见 queue 包），
-// 后台分别调整并发。对外（接口、界面、设置键）只用这里的短名，不暴露 river 的队列名。
-const (
-	QueueStageSubmit   = "submit"   // 提交上游：拿名额、调用上游提交
-	QueueStagePoll     = "poll"     // 查询进度：定时查询上游任务状态
-	QueueStageFinalize = "finalize" // 转存产物：把产物下载到自有存储并结算
-)
+// SettingQueueConcurrency 是任务队列并发的设置键。值是每个实例同时处理的任务数，范围 1..配置文件里的硬上限；
+// 库里没有或非法时用 DefaultQueueConcurrency。一个生成任务从提交、查询进度到转存产物，全程占一个并发名额。
+const SettingQueueConcurrency = "queue_concurrency"
 
-// QueueStages 是全部阶段，顺序即页面上的展示顺序。
-var QueueStages = []string{QueueStageSubmit, QueueStagePoll, QueueStageFinalize}
+// DefaultQueueConcurrency 是默认并发（每个实例）。名额主要由用户并发上限与渠道“最大同时生成数”约束，
+// 这个值是实例自己的保护线，所以给得比较宽。
+const DefaultQueueConcurrency = 16
 
-// QueueStageLabel 返回阶段的中文名，后台界面只显示它。未知阶段返回空串。
-func QueueStageLabel(stage string) string {
-	switch stage {
-	case QueueStageSubmit:
-		return "提交上游"
-	case QueueStagePoll:
-		return "查询进度"
-	case QueueStageFinalize:
-		return "转存产物"
-	}
-	return ""
-}
-
-// QueueStageOfStatus 把非终态任务状态映射到负责它的阶段；终态返回 false。
-func QueueStageOfStatus(status string) (string, bool) {
-	switch status {
-	case TaskPending:
-		return QueueStageSubmit, true
-	case TaskQueued, TaskRunning:
-		return QueueStagePoll, true
-	case TaskFinalizing:
-		return QueueStageFinalize, true
-	}
-	return "", false
-}
-
-// SettingQueueConcurrencyPrefix 是各阶段并发的设置键前缀：queue_concurrency_submit / _poll / _finalize。
-// 值是每个实例的并发数，范围 1..配置文件里的硬上限；库里没有或非法时用 DefaultQueueConcurrency。
-const SettingQueueConcurrencyPrefix = "queue_concurrency_"
-
-// DefaultQueueConcurrency 是各阶段的默认并发（每个实例）。提交与旧的全局并发 8 持平；
-// 查询只发一次很短的请求、占用时间短，所以更宽；转存要下载大文件，更窄。
-var DefaultQueueConcurrency = map[string]int{
-	QueueStageSubmit:   8,
-	QueueStagePoll:     16,
-	QueueStageFinalize: 4,
-}
-
-// QueueStageStats 是一个实例上某个阶段的在途数与生效并发。
-type QueueStageStats struct {
-	Inflight int `json:"inflight"` // 正在执行的任务数
+// QueueInstanceStats 是实例心跳里的 stats_json：本实例的在途任务数与生效并发。Limit 为 0 表示没有上报（旧版本或损坏）。
+type QueueInstanceStats struct {
+	Inflight int `json:"inflight"` // 正在处理的任务数
 	Limit    int `json:"limit"`    // 当前生效的并发上限
 }
-
-// QueueInstanceStats 是实例心跳里的 stats_json：阶段短名 → 在途与并发。
-type QueueInstanceStats map[string]QueueStageStats
 
 // 任务队列的时间参数。
 const (
@@ -66,34 +22,29 @@ const (
 	QueueSettingsRefreshEvery = 5 * time.Second
 )
 
-// UnscheduledTask 是对账找到的“任务还没终态、队列里却没有活着的 job”的任务，对账按它的状态补一个对应阶段的 job。
+// UnscheduledTask 是对账找到的“任务还没终态、队列里却没有活着的 job”的任务，对账为它补一个 job。
 type UnscheduledTask struct {
 	ID         uint64    // 任务 id
-	Status     string    // 任务状态，决定补进哪个阶段
 	NextPollAt time.Time // 下一次处理时间，补入队时据此排期
 }
 
-// QueueStageState 是一个阶段当前的运行状态：暂停状态存在数据库里（对所有实例生效），并发与硬上限是本实例的值。
-type QueueStageState struct {
-	Stage       string // 阶段短名，见 QueueStage*
-	Paused      bool   // 是否被暂停
-	Concurrency int    // 本实例当前生效的并发
-	HardCap     int    // 硬上限（配置文件）
+// QueueState 是队列当前的运行状态：暂停状态存在数据库里（对所有实例生效），并发与硬上限是本实例的值。
+type QueueState struct {
+	Paused      bool // 是否被暂停
+	Concurrency int  // 本实例当前生效的并发
+	HardCap     int  // 硬上限（配置文件）
 }
 
-// QueueCounts 是一个队列的 job 计数。
+// QueueCounts 是队列的 job 计数。一个任务一个 job，所以也是任务数。
 type QueueCounts struct {
-	Available   int `json:"available"`    // 排队：可以取、等执行的；提交阶段还在等名额的任务也算在内
-	Scheduled   int `json:"scheduled"`    // 延迟中：等到点再处理（下一次查询、重试退避）
-	Running     int `json:"running"`      // 运行中
+	Waiting     int `json:"waiting"`      // 排队：等名额、等并发、等到点的 job
+	Running     int `json:"running"`      // 正在处理（占着并发名额）
 	Retryable   int `json:"retryable"`    // 重试中
 	Discarded1h int `json:"discarded_1h"` // 近 1 小时被丢弃（重试用尽）
 }
 
-// QueueCard 是后台页上的一张队列卡片：GET /admin/queue/overview 的 queues 项。
+// QueueCard 是后台页上的队列卡片：GET /admin/queue/overview 的 queue。
 type QueueCard struct {
-	Name        string      `json:"name"`        // 阶段短名：submit / poll / finalize
-	Label       string      `json:"label"`       // 中文名：提交上游 / 查询进度 / 转存产物
 	Paused      bool        `json:"paused"`      // 是否被暂停
 	Concurrency int         `json:"concurrency"` // 每个实例当前生效的并发
 	HardCap     int         `json:"hard_cap"`    // 并发的硬上限（配置文件），后台只能在 1..硬上限 之间调
@@ -119,12 +70,12 @@ type QueueInstanceRow struct {
 	HeartbeatAt time.Time          `json:"heartbeat_at"`
 	Online      bool               `json:"online"`    // 心跳不超过 WorkerInstanceOfflineAfter
 	IsLeader    bool               `json:"is_leader"` // 是否是 River 的 leader
-	Stats       QueueInstanceStats `json:"stats"`     // 各阶段在途数与生效并发
+	Stats       QueueInstanceStats `json:"stats"`     // 在途任务数与生效并发
 }
 
 // QueueOverview 是 GET /admin/queue/overview 的响应。
 type QueueOverview struct {
-	Queues    []QueueCard        `json:"queues"`
+	Queue     QueueCard          `json:"queue"`
 	Channels  []QueueChannelRow  `json:"channels"`
 	Instances []QueueInstanceRow `json:"instances"`
 }
@@ -142,23 +93,21 @@ type QueueThroughputReq struct {
 	Minutes int `form:"minutes" binding:"omitempty,min=15,max=1440" label:"统计分钟数"` // 缺省 60
 }
 
-// QueueConcurrencyReq 是 PUT /admin/queue/queues/:name 的请求体。
+// QueueConcurrencyReq 是 PUT /admin/queue/concurrency 的请求体。
 type QueueConcurrencyReq struct {
-	Concurrency int `json:"concurrency" binding:"required,min=1" label:"并发"` // 范围 1..该阶段的硬上限，上限在 service 里校验
+	Concurrency int `json:"concurrency" binding:"required,min=1" label:"并发"` // 范围 1..硬上限，上限在 service 里校验
 }
 
-// QueueConcurrencyResult 是 PUT /admin/queue/queues/:name 的响应。
+// QueueConcurrencyResult 是 PUT /admin/queue/concurrency 的响应。
 type QueueConcurrencyResult struct {
-	Name             string `json:"name"`              // 阶段短名
-	Concurrency      int    `json:"concurrency"`       // 保存后的并发
-	AppliedInstances int    `json:"applied_instances"` // 已经按新并发运行的在线实例数
-	TotalInstances   int    `json:"total_instances"`   // 在线实例总数
+	Concurrency      int `json:"concurrency"`       // 保存后的并发
+	AppliedInstances int `json:"applied_instances"` // 已经按新并发运行的在线实例数
+	TotalInstances   int `json:"total_instances"`   // 在线实例总数
 }
 
 // QueuePauseResult 是暂停 / 恢复接口的响应。
 type QueuePauseResult struct {
-	Name   string `json:"name"`   // 阶段短名
-	Paused bool   `json:"paused"` // 操作后是否处于暂停
+	Paused bool `json:"paused"` // 操作后是否处于暂停
 }
 
 // RiverTicketResult 是 POST /admin/queue/river-ticket 的响应。

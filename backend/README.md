@@ -17,7 +17,7 @@ backend/
 │   ├── handler/         # HTTP 处理层
 │   ├── router/          # 路由注册
 │   ├── middleware/      # 中间件
-│   ├── provider/        # 外部供应商调用与任务调度：worker（任务“这一步”的执行逻辑）/ queue（基于 River 的任务队列：调度、并发、救回）/ plugin（协议插件宿主）
+│   ├── provider/        # 外部供应商调用与任务调度：worker（任务“这一步”的执行逻辑）/ queue（基于 River 的任务队列：一个任务一个 job，调度、并发、救回）/ plugin（协议插件宿主）
 │   ├── pkg/ws/          # 用户级 WebSocket：Hub / ticket
 │   ├── storage/         # 素材存储：内置本地磁盘 + S3 兼容对象存储（OSS / COS / S3 / R2），Registry 按 id 解析
 │   ├── cache/           # Redis 缓存
@@ -166,11 +166,11 @@ make run
 | POST     | /api/v1/admin/ai/plugins/:key/upgrade-models    | super_admin | 把协议固定在旧版本上的模型批量升到指定 / 最新版本，逐个处理、失败不中断 → `{to_version, upgraded, failed}` |
 | DELETE   | /api/v1/admin/ai/plugins/:key                   | super_admin | 删除整个插件（全部版本）；内置插件 409（50008），任一版本仍被模型或进行中的任务引用 409（50005） |
 | GET      | /api/v1/admin/ai/channels/loads                 | admin       | 各渠道当前的任务负载：`running`（同时生成数，对应 `max_running`）、`waiting`（排队数）；没有未完成任务的渠道不返回   |
-| GET      | /api/v1/admin/queue/overview                    | admin       | 后台「任务队列」页总览：`queues`（提交 / 查询 / 转存三个阶段，各含中文 `label`、`paused`、每实例并发 `concurrency`、硬上限 `hard_cap`、job 计数 `counts`）、`channels`（渠道名额占用、`max_running`、等待数、最早等待秒数）、`instances`（实例心跳、是否在线 / leader、各阶段在途与生效并发） |
+| GET      | /api/v1/admin/queue/overview                    | admin       | 后台「任务队列」页总览：`queue`（一个生成任务从提交、查询到转存全程是一个 job：`paused`、每实例并发 `concurrency`、硬上限 `hard_cap`、job 计数 `counts` = `waiting` 排队 / `running` 处理中 / `retryable` / `discarded_1h`）、`channels`（渠道名额占用、`max_running`、等待数、最早等待秒数）、`instances`（实例心跳、是否在线 / leader、`stats` = 在处理的任务数 `inflight` 与生效并发 `limit`） |
 | GET      | /api/v1/admin/queue/throughput                  | admin       | 近 N 分钟（`?minutes=`，15–1440，默认 60）每分钟的完成数、失败数、平均排队时长；没有任务的分钟补 0；试跑不计 |
-| PUT      | /api/v1/admin/queue/queues/:name                | super_admin | 调整某个阶段（`submit` / `poll` / `finalize`）每实例的并发 `{concurrency}`，范围 1 到该阶段硬上限（配置 `ai.queue.max_*`），保存后各实例 5 秒内生效；返回 `{name, concurrency, applied_instances, total_instances}`，审计 `queue.concurrency`；阶段不存在 404 |
-| POST     | /api/v1/admin/queue/queues/:name/pause          | super_admin | 暂停某个阶段（对所有实例生效，幂等；已入队的任务保留，排队时间照常累计），审计 `queue.pause` |
-| POST     | /api/v1/admin/queue/queues/:name/resume         | super_admin | 恢复某个阶段（幂等），审计 `queue.resume` |
+| PUT      | /api/v1/admin/queue/concurrency                 | super_admin | 调整每实例同时处理的任务数 `{concurrency}`，范围 1 到硬上限（配置 `ai.queue.max_concurrency`），保存后各实例 5 秒内生效；返回 `{concurrency, applied_instances, total_instances}`，审计 `queue.concurrency` |
+| POST     | /api/v1/admin/queue/pause                       | super_admin | 暂停队列（对所有实例生效，幂等；不再开始新任务，正在处理的继续，排队时间照常累计），审计 `queue.pause` |
+| POST     | /api/v1/admin/queue/resume                      | super_admin | 恢复队列（幂等），审计 `queue.resume` |
 | POST     | /api/v1/admin/queue/river-ticket                | super_admin | 换取打开 River UI（任务级监控：查看、重试、取消、删除 job）的一次性地址 `{url}`，ticket 30 秒内有效、只能用一次 |
 | ANY      | /api/v1/admin/river/*                           | ticket / cookie | 嵌入的 River UI，不走 Bearer：用 ticket 换 HttpOnly + SameSite=Strict 的会话 cookie（30 分钟，滑动续期），之后每个请求都实时校验账号仍是启用的 super_admin；没有会话 401，角色不够 403 |
 | GET      | /api/v1/admin/ai/channels[/:key]                | admin       | 渠道列表（渠道顺序）/ 详情；`secret_set`、`secret_key_set` 只告诉有没有设置 Key |

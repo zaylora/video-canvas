@@ -15,7 +15,7 @@ import (
 // ---------- 假依赖 ----------
 
 type fakeQueueRepo struct {
-	counts    map[string]model.QueueCounts
+	counts    model.QueueCounts
 	points    []repository.ThroughputPoint
 	occ       []repository.ChannelOccupancy
 	instances []model.WorkerInstance
@@ -23,7 +23,7 @@ type fakeQueueRepo struct {
 	since     time.Time // Throughput 收到的起点
 }
 
-func (f *fakeQueueRepo) QueueCounts(context.Context, time.Time) (map[string]model.QueueCounts, error) {
+func (f *fakeQueueRepo) QueueCounts(context.Context, time.Time) (model.QueueCounts, error) {
 	return f.counts, f.errs["QueueCounts"]
 }
 func (f *fakeQueueRepo) Throughput(_ context.Context, since time.Time) ([]repository.ThroughputPoint, error) {
@@ -47,52 +47,48 @@ func (f *fakeQueueChannels) ListChannels(context.Context) ([]model.AIChannel, er
 }
 
 type fakeConcStore struct {
-	saved map[string]int
+	saved int
 	by    uint64
 	err   error
 }
 
-func (f *fakeConcStore) SetQueueConcurrency(_ context.Context, actor uint64, stage string, n int) error {
+func (f *fakeConcStore) SetQueueConcurrency(_ context.Context, actor uint64, n int) error {
 	if f.err != nil {
 		return f.err
 	}
-	if f.saved == nil {
-		f.saved = map[string]int{}
-	}
-	f.saved[stage], f.by = n, actor
+	f.saved, f.by = n, actor
 	return nil
 }
 
 type fakeQueueCtrl struct {
-	states    []model.QueueStageState
-	caps      map[string]int
-	paused    []string
-	resumed   []string
+	state     model.QueueState
+	paused    int
+	resumed   int
 	refreshed int
 	beats     int
 	errs      map[string]error
 }
 
-func (f *fakeQueueCtrl) States(context.Context) ([]model.QueueStageState, error) {
-	return f.states, f.errs["States"]
+func (f *fakeQueueCtrl) State(context.Context) (model.QueueState, error) {
+	return f.state, f.errs["State"]
 }
-func (f *fakeQueueCtrl) Pause(_ context.Context, stage string) error {
+func (f *fakeQueueCtrl) Pause(context.Context) error {
 	if err := f.errs["Pause"]; err != nil {
 		return err
 	}
-	f.paused = append(f.paused, stage)
+	f.paused++
 	return nil
 }
-func (f *fakeQueueCtrl) Resume(_ context.Context, stage string) error {
+func (f *fakeQueueCtrl) Resume(context.Context) error {
 	if err := f.errs["Resume"]; err != nil {
 		return err
 	}
-	f.resumed = append(f.resumed, stage)
+	f.resumed++
 	return nil
 }
 func (f *fakeQueueCtrl) RefreshSettings(context.Context) { f.refreshed++ }
 func (f *fakeQueueCtrl) Heartbeat(context.Context)       { f.beats++ }
-func (f *fakeQueueCtrl) HardCap(stage string) int        { return f.caps[stage] }
+func (f *fakeQueueCtrl) HardCap() int                    { return f.state.HardCap }
 
 type queueEnv struct {
 	svc      *QueueAdminService
@@ -106,20 +102,12 @@ type queueEnv struct {
 
 func newQueueEnv() *queueEnv {
 	e := &queueEnv{
-		repo:     &fakeQueueRepo{counts: map[string]model.QueueCounts{}, errs: map[string]error{}},
+		repo:     &fakeQueueRepo{errs: map[string]error{}},
 		channels: &fakeQueueChannels{},
 		conc:     &fakeConcStore{},
-		ctrl: &fakeQueueCtrl{
-			states: []model.QueueStageState{
-				{Stage: model.QueueStageSubmit, Concurrency: 8, HardCap: 64},
-				{Stage: model.QueueStagePoll, Concurrency: 16, HardCap: 64},
-				{Stage: model.QueueStageFinalize, Concurrency: 4, HardCap: 16, Paused: true},
-			},
-			caps: map[string]int{model.QueueStageSubmit: 64, model.QueueStagePoll: 64, model.QueueStageFinalize: 16},
-			errs: map[string]error{},
-		},
-		audit: &fakeAudit{},
-		now:   time.Date(2026, 10, 20, 12, 30, 45, 0, time.UTC),
+		ctrl:     &fakeQueueCtrl{state: model.QueueState{Concurrency: 8, HardCap: 64}, errs: map[string]error{}},
+		audit:    &fakeAudit{},
+		now:      time.Date(2026, 10, 20, 12, 30, 45, 0, time.UTC),
 	}
 	e.svc = NewQueueAdminService(e.repo, e.channels, e.conc, e.ctrl, e.audit)
 	e.svc.SetClock(func() time.Time { return e.now })
@@ -135,22 +123,16 @@ func channel(key, name, rateLimit string) model.AIChannel {
 func TestQueueAdmin_Overview(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("队列卡片：中文名、暂停状态、并发、硬上限、计数", func(t *testing.T) {
+	t.Run("队列卡片：暂停状态、并发、硬上限、计数", func(t *testing.T) {
 		e := newQueueEnv()
-		e.repo.counts[model.QueueStageSubmit] = model.QueueCounts{Available: 23, Scheduled: 41, Running: 8, Retryable: 2, Discarded1h: 1}
+		e.repo.counts = model.QueueCounts{Waiting: 64, Running: 8, Retryable: 2, Discarded1h: 1}
+		e.ctrl.state = model.QueueState{Paused: true, Concurrency: 8, HardCap: 64}
 		ov, err := e.svc.Overview(ctx)
-		if err != nil || len(ov.Queues) != 3 {
-			t.Fatalf("%+v %v", ov, err)
+		if err != nil {
+			t.Fatal(err)
 		}
-		sub, fin := ov.Queues[0], ov.Queues[2]
-		if sub.Name != "submit" || sub.Label != "提交上游" || sub.Concurrency != 8 || sub.HardCap != 64 || sub.Paused || sub.Counts.Available != 23 || sub.Counts.Discarded1h != 1 {
-			t.Fatalf("提交卡片不对：%+v", sub)
-		}
-		if fin.Label != "转存产物" || !fin.Paused || fin.Counts != (model.QueueCounts{}) {
-			t.Fatalf("转存卡片不对（没有任何 job 时计数全 0）：%+v", fin)
-		}
-		if ov.Queues[1].Label != "查询进度" {
-			t.Fatalf("查询卡片的中文名不对：%+v", ov.Queues[1])
+		if q := ov.Queue; !q.Paused || q.Concurrency != 8 || q.HardCap != 64 || q.Counts != e.repo.counts {
+			t.Fatalf("队列卡片不对：%+v", q)
 		}
 	})
 
@@ -180,34 +162,38 @@ func TestQueueAdmin_Overview(t *testing.T) {
 		}
 	})
 
-	t.Run("实例：心跳不超过 30 秒算在线；stats 解码；损坏的 stats 变成空", func(t *testing.T) {
+	t.Run("实例：心跳不超过 30 秒算在线；stats 解码；损坏、旧格式或缺失的 stats 变成零值", func(t *testing.T) {
 		e := newQueueEnv()
 		e.repo.instances = []model.WorkerInstance{
 			{ID: "i1", Hostname: "vc-1", Version: "0.4.6", HeartbeatAt: e.now.Add(-2 * time.Second), IsLeader: true,
-				StatsJSON: []byte(`{"submit":{"inflight":3,"limit":8},"poll":{"inflight":1,"limit":16}}`)},
+				StatsJSON: []byte(`{"inflight":3,"limit":8}`)},
 			{ID: "i2", HeartbeatAt: e.now.Add(-model.WorkerInstanceOfflineAfter), StatsJSON: []byte("{")},
+			{ID: "i4", HeartbeatAt: e.now, StatsJSON: []byte(`{"submit":{"inflight":3,"limit":8}}`)},
 			{ID: "i3", HeartbeatAt: e.now.Add(-47 * time.Second)},
 		}
 		ov, err := e.svc.Overview(ctx)
-		if err != nil || len(ov.Instances) != 3 {
+		if err != nil || len(ov.Instances) != 4 {
 			t.Fatalf("%+v %v", ov, err)
 		}
-		i1, i2, i3 := ov.Instances[0], ov.Instances[1], ov.Instances[2]
-		if !i1.Online || !i1.IsLeader || i1.Stats["submit"] != (model.QueueStageStats{Inflight: 3, Limit: 8}) || i1.Hostname != "vc-1" {
+		i1, i2, i4, i3 := ov.Instances[0], ov.Instances[1], ov.Instances[2], ov.Instances[3]
+		if !i1.Online || !i1.IsLeader || i1.Stats != (model.QueueInstanceStats{Inflight: 3, Limit: 8}) || i1.Hostname != "vc-1" {
 			t.Fatalf("i1 不对：%+v", i1)
 		}
-		if !i2.Online || len(i2.Stats) != 0 {
-			t.Fatalf("刚好 30 秒仍算在线，损坏的 stats 为空：%+v", i2)
+		if !i2.Online || i2.Stats != (model.QueueInstanceStats{}) {
+			t.Fatalf("刚好 30 秒仍算在线，损坏的 stats 为零值：%+v", i2)
 		}
-		if i3.Online || i3.Stats == nil || len(i3.Stats) != 0 {
-			t.Fatalf("47 秒前失联；没有 stats 也应是空 map 而不是 nil（前端按对象读）：%+v", i3)
+		if i4.Stats != (model.QueueInstanceStats{}) {
+			t.Fatalf("旧版本按阶段上报的 stats 不认，按零值处理（页面显示“–”）：%+v", i4)
+		}
+		if i3.Online || i3.Stats != (model.QueueInstanceStats{}) {
+			t.Fatalf("47 秒前失联；没有 stats 是零值：%+v", i3)
 		}
 	})
 
 	t.Run("任何一个依赖出错都透传，不返回半截数据", func(t *testing.T) {
-		for _, name := range []string{"States", "QueueCounts", "ChannelOccupancies", "ListInstances"} {
+		for _, name := range []string{"State", "QueueCounts", "ChannelOccupancies", "ListInstances"} {
 			e := newQueueEnv()
-			if name == "States" {
+			if name == "State" {
 				e.ctrl.errs[name] = errBoom
 			} else {
 				e.repo.errs[name] = errBoom
@@ -289,18 +275,18 @@ func TestQueueAdmin_SetConcurrency(t *testing.T) {
 	t.Run("成功：写设置、本实例立即刷新并写心跳、写审计；已生效实例数按在线实例上报的并发统计", func(t *testing.T) {
 		e := newQueueEnv()
 		e.repo.instances = []model.WorkerInstance{
-			{ID: "me", HeartbeatAt: e.now, StatsJSON: []byte(`{"submit":{"inflight":0,"limit":20}}`)},
-			{ID: "other", HeartbeatAt: e.now.Add(-5 * time.Second), StatsJSON: []byte(`{"submit":{"inflight":0,"limit":8}}`)},
-			{ID: "dead", HeartbeatAt: e.now.Add(-time.Minute), StatsJSON: []byte(`{"submit":{"inflight":0,"limit":20}}`)},
+			{ID: "me", HeartbeatAt: e.now, StatsJSON: []byte(`{"inflight":0,"limit":20}`)},
+			{ID: "other", HeartbeatAt: e.now.Add(-5 * time.Second), StatsJSON: []byte(`{"inflight":0,"limit":8}`)},
+			{ID: "dead", HeartbeatAt: e.now.Add(-time.Minute), StatsJSON: []byte(`{"inflight":0,"limit":20}`)},
 		}
-		res, err := e.svc.SetConcurrency(ctx, actor, model.QueueStageSubmit, 20)
+		res, err := e.svc.SetConcurrency(ctx, actor, 20)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Name != "submit" || res.Concurrency != 20 || res.AppliedInstances != 1 || res.TotalInstances != 2 {
+		if res.Concurrency != 20 || res.AppliedInstances != 1 || res.TotalInstances != 2 {
 			t.Fatalf("结果不对（失联的不计入）：%+v", res)
 		}
-		if e.conc.saved["submit"] != 20 || e.conc.by != actor || e.ctrl.refreshed != 1 || e.ctrl.beats != 1 {
+		if e.conc.saved != 20 || e.conc.by != actor || e.ctrl.refreshed != 1 || e.ctrl.beats != 1 {
 			t.Fatalf("应保存、刷新、写心跳：%+v refreshed=%d beats=%d", e.conc, e.ctrl.refreshed, e.ctrl.beats)
 		}
 		if got := e.audit.actions(); len(got) != 1 || got[0] != model.AdminAuditQueueConcurrency || e.audit.logs[0].ActorID != actor {
@@ -308,40 +294,27 @@ func TestQueueAdmin_SetConcurrency(t *testing.T) {
 		}
 	})
 
-	t.Run("范围 1..该阶段的硬上限：越界是参数错误，什么都不改", func(t *testing.T) {
-		for stage, bad := range map[string][]int{
-			model.QueueStageSubmit:   {-1, 0, 65},
-			model.QueueStageFinalize: {0, 17}, // 转存的硬上限是 16
-		} {
-			for _, n := range bad {
-				e := newQueueEnv()
-				_, err := e.svc.SetConcurrency(ctx, actor, stage, n)
-				if codeOf(err) != errcode.ErrInvalidParams.Code || len(e.conc.saved) != 0 || e.ctrl.refreshed != 0 || len(e.audit.logs) != 0 {
-					t.Fatalf("%s=%d 应 10001 且不改任何东西：%v", stage, n, err)
-				}
+	t.Run("范围 1..硬上限：越界是参数错误，什么都不改", func(t *testing.T) {
+		for _, n := range []int{-1, 0, 65} {
+			e := newQueueEnv()
+			_, err := e.svc.SetConcurrency(ctx, actor, n)
+			if codeOf(err) != errcode.ErrInvalidParams.Code || e.conc.saved != 0 || e.ctrl.refreshed != 0 || len(e.audit.logs) != 0 {
+				t.Fatalf("%d 应 10001 且不改任何东西：%v", n, err)
 			}
 		}
 		e := newQueueEnv()
-		if _, err := e.svc.SetConcurrency(ctx, actor, model.QueueStageFinalize, 16); err != nil {
+		if _, err := e.svc.SetConcurrency(ctx, actor, 64); err != nil {
 			t.Fatalf("恰好等于硬上限应放行：%v", err)
 		}
-		if _, err := e.svc.SetConcurrency(ctx, actor, model.QueueStagePoll, 1); err != nil {
+		if _, err := e.svc.SetConcurrency(ctx, actor, 1); err != nil {
 			t.Fatalf("1 应放行：%v", err)
-		}
-	})
-
-	t.Run("阶段不存在返回 404，且不写设置", func(t *testing.T) {
-		e := newQueueEnv()
-		_, err := e.svc.SetConcurrency(ctx, actor, "nope", 5)
-		if codeOf(err) != errcode.ErrNotFound.Code || len(e.conc.saved) != 0 {
-			t.Fatalf("%v", err)
 		}
 	})
 
 	t.Run("保存失败透传，不刷新、不写审计", func(t *testing.T) {
 		e := newQueueEnv()
 		e.conc.err = errBoom
-		if _, err := e.svc.SetConcurrency(ctx, actor, model.QueueStageSubmit, 5); !errors.Is(err, errBoom) || e.ctrl.refreshed != 0 || len(e.audit.logs) != 0 {
+		if _, err := e.svc.SetConcurrency(ctx, actor, 5); !errors.Is(err, errBoom) || e.ctrl.refreshed != 0 || len(e.audit.logs) != 0 {
 			t.Fatalf("%v refreshed=%d audit=%d", err, e.ctrl.refreshed, len(e.audit.logs))
 		}
 	})
@@ -349,10 +322,10 @@ func TestQueueAdmin_SetConcurrency(t *testing.T) {
 	t.Run("读实例列表失败透传（设置已保存）", func(t *testing.T) {
 		e := newQueueEnv()
 		e.repo.errs["ListInstances"] = errBoom
-		if _, err := e.svc.SetConcurrency(ctx, actor, model.QueueStageSubmit, 5); !errors.Is(err, errBoom) {
+		if _, err := e.svc.SetConcurrency(ctx, actor, 5); !errors.Is(err, errBoom) {
 			t.Fatalf("%v", err)
 		}
-		if e.conc.saved["submit"] != 5 {
+		if e.conc.saved != 5 {
 			t.Fatal("设置应已保存，只是统计实例失败")
 		}
 	})
@@ -366,11 +339,11 @@ func TestQueueAdmin_SetPaused(t *testing.T) {
 
 	t.Run("暂停：调用运行时、写审计，返回暂停状态", func(t *testing.T) {
 		e := newQueueEnv()
-		res, err := e.svc.SetPaused(ctx, actor, model.QueueStagePoll, true)
-		if err != nil || res.Name != "poll" || !res.Paused {
+		res, err := e.svc.SetPaused(ctx, actor, true)
+		if err != nil || !res.Paused {
 			t.Fatalf("%+v %v", res, err)
 		}
-		if len(e.ctrl.paused) != 1 || e.ctrl.paused[0] != "poll" || len(e.ctrl.resumed) != 0 {
+		if e.ctrl.paused != 1 || e.ctrl.resumed != 0 {
 			t.Fatalf("应只调用 Pause：%+v", e.ctrl)
 		}
 		if got := e.audit.actions(); len(got) != 1 || got[0] != model.AdminAuditQueuePause {
@@ -380,11 +353,11 @@ func TestQueueAdmin_SetPaused(t *testing.T) {
 
 	t.Run("恢复：调用运行时、写审计", func(t *testing.T) {
 		e := newQueueEnv()
-		res, err := e.svc.SetPaused(ctx, actor, model.QueueStageFinalize, false)
+		res, err := e.svc.SetPaused(ctx, actor, false)
 		if err != nil || res.Paused {
 			t.Fatalf("%+v %v", res, err)
 		}
-		if len(e.ctrl.resumed) != 1 || len(e.ctrl.paused) != 0 {
+		if e.ctrl.resumed != 1 || e.ctrl.paused != 0 {
 			t.Fatalf("应只调用 Resume：%+v", e.ctrl)
 		}
 		if got := e.audit.actions(); len(got) != 1 || got[0] != model.AdminAuditQueueResume {
@@ -392,18 +365,11 @@ func TestQueueAdmin_SetPaused(t *testing.T) {
 		}
 	})
 
-	t.Run("阶段不存在返回 404", func(t *testing.T) {
-		e := newQueueEnv()
-		if _, err := e.svc.SetPaused(ctx, actor, "nope", true); codeOf(err) != errcode.ErrNotFound.Code || len(e.ctrl.paused) != 0 {
-			t.Fatalf("%v", err)
-		}
-	})
-
 	t.Run("运行时出错透传，不写审计", func(t *testing.T) {
 		for _, paused := range []bool{true, false} {
 			e := newQueueEnv()
 			e.ctrl.errs["Pause"], e.ctrl.errs["Resume"] = errBoom, errBoom
-			if _, err := e.svc.SetPaused(ctx, actor, model.QueueStageSubmit, paused); !errors.Is(err, errBoom) || len(e.audit.logs) != 0 {
+			if _, err := e.svc.SetPaused(ctx, actor, paused); !errors.Is(err, errBoom) || len(e.audit.logs) != 0 {
 				t.Fatalf("paused=%v %v audit=%d", paused, err, len(e.audit.logs))
 			}
 		}
@@ -414,10 +380,10 @@ func TestQueueAdmin_SetPaused(t *testing.T) {
 func TestQueueAdmin_NilAuditIsAllowed(t *testing.T) {
 	e := newQueueEnv()
 	svc := NewQueueAdminService(e.repo, e.channels, e.conc, e.ctrl, nil)
-	if _, err := svc.SetPaused(context.Background(), 1, model.QueueStageSubmit, true); err != nil {
+	if _, err := svc.SetPaused(context.Background(), 1, true); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if _, err := svc.SetConcurrency(context.Background(), 1, model.QueueStageSubmit, 3); err != nil {
+	if _, err := svc.SetConcurrency(context.Background(), 1, 3); err != nil {
 		t.Fatalf("%v", err)
 	}
 }

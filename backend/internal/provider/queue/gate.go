@@ -2,7 +2,7 @@ package queue
 
 import "sync/atomic"
 
-// gate 是一个阶段在本实例上的可调并发闸门。River 队列的 MaxWorkers 启动后改不了，所以让它等于配置文件里的硬上限，
+// gate 是本实例上的可调并发闸门。River 队列的 MaxWorkers 启动后改不了，所以让它等于配置文件里的硬上限，
 // 实际并发由 gate 控制：后台修改并发只是改 limit，立即生效；调低不会中断正在执行的任务，只影响新的获取。
 type gate struct {
 	limit    atomic.Int32 // 当前生效的并发上限

@@ -126,26 +126,22 @@ func (s *SettingsService) QueueMaxWait(ctx context.Context) (time.Duration, erro
 	return time.Duration(v.QueueMaxWaitMinutes) * time.Minute, nil
 }
 
-// QueueConcurrency 返回各阶段当前设置的并发（阶段短名 → 每实例并发）。库里没有或值非法的阶段用默认值；
+// QueueConcurrency 返回当前设置的并发（每实例同时处理的任务数）。库里没有或值非法时用默认值；
 // 不做硬上限裁剪（硬上限在配置文件里，由队列运行时在应用时裁剪）。读取在后台刷新循环里，脏数据按默认处理而不是报错。
-func (s *SettingsService) QueueConcurrency(ctx context.Context) (map[string]int, error) {
+func (s *SettingsService) QueueConcurrency(ctx context.Context) (int, error) {
 	kv, err := s.repo.GetAll(ctx)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	out := make(map[string]int, len(model.QueueStages))
-	for _, stage := range model.QueueStages {
-		out[stage] = model.DefaultQueueConcurrency[stage]
-		if n, err := strconv.Atoi(kv[model.SettingQueueConcurrencyPrefix+stage]); err == nil && n >= 1 {
-			out[stage] = n
-		}
+	if n, err := strconv.Atoi(kv[model.SettingQueueConcurrency]); err == nil && n >= 1 {
+		return n, nil
 	}
-	return out, nil
+	return model.DefaultQueueConcurrency, nil
 }
 
-// SetQueueConcurrency 保存一个阶段的并发设置（范围校验由调用方按硬上限做）。
-func (s *SettingsService) SetQueueConcurrency(ctx context.Context, actorID uint64, stage string, n int) error {
-	return s.repo.SetMany(ctx, map[string]string{model.SettingQueueConcurrencyPrefix + stage: strconv.Itoa(n)}, actorID)
+// SetQueueConcurrency 保存并发设置（范围校验由调用方按硬上限做）。
+func (s *SettingsService) SetQueueConcurrency(ctx context.Context, actorID uint64, n int) error {
+	return s.repo.SetMany(ctx, map[string]string{model.SettingQueueConcurrency: strconv.Itoa(n)}, actorID)
 }
 
 // UpdateRegisterSettings 保存注册设置（仅 super_admin 可调，由路由保证），写审计并返回最新值。
