@@ -35,10 +35,10 @@ type QueueState struct {
 	HardCap     int  // 硬上限（配置文件）
 }
 
-// QueueCounts 是队列的 job 计数。一个任务一个 job，所以也是任务数。
+// QueueCounts 是队列的计数。一个任务一个 job：排队和运行中按任务统计，重试和丢弃数 job。
 type QueueCounts struct {
-	Waiting     int `json:"waiting"`      // 排队：等名额、等并发、等到点的 job
-	Running     int `json:"running"`      // 正在处理（占着并发名额）
+	Waiting     int `json:"waiting"`      // 排队：还没拿到名额的任务（画布上的“排队中”）
+	Running     int `json:"running"`      // 运行中：拿到名额、还没结束的任务（占着并发名额）
 	Retryable   int `json:"retryable"`    // 重试中
 	Discarded1h int `json:"discarded_1h"` // 近 1 小时被丢弃（重试用尽）
 }

@@ -343,7 +343,7 @@ func TestQueueRepo_RecoverOrphanedJobs(t *testing.T) {
 	}
 }
 
-// 统计：队列计数把“在等名额而睡着”的 job 算作排队、正在处理的算运行中；吞吐按分钟汇总；渠道占用含最早等待时间。
+// 统计：排队 / 运行中按任务口径（没拿到名额的 pending 是排队，拿到名额还没结束的是运行中），不受 job 瞬时状态影响；吞吐按分钟汇总；渠道占用含最早等待时间。
 func TestQueueRepo_Stats(t *testing.T) {
 	db := queueDB(t)
 	addChannel(t, db, "ch", 1)
@@ -364,14 +364,25 @@ func TestQueueRepo_Stats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts.Waiting != 2 || counts.Running != 0 {
-		t.Fatalf("可取的 job 和等名额而睡着的 job 都是排队：%+v", counts)
+	if counts.Waiting != 1 || counts.Running != 1 {
+		t.Fatalf("没拿到名额的 pending 是排队，拿到名额还没结束的是运行中：%+v", counts)
 	}
-	if err := db.Exec(`UPDATE river_job SET state = 'running' WHERE (args->>'task_id')::bigint = ?`, held.ID).Error; err != nil {
+	// job 恰好被取出、还没来得及睡下（River 里是 running）时，不能被算成运行中：并发为 1 时页面上不应跳到 2、3
+	if err := db.Exec(`UPDATE river_job SET state = 'running' WHERE (args->>'task_id')::bigint = ?`, waiting.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	if counts, err = r.queueRep.QueueCounts(ctx, now); err != nil || counts.Waiting != 1 || counts.Running != 1 {
-		t.Fatalf("一个在处理、一个在排队：%+v %v", counts, err)
+		t.Fatalf("排队任务的 job 暂时处于 running 时，计数不应变化：%+v %v", counts, err)
+	}
+	// 终态的任务不计入
+	if err := db.Exec(`UPDATE generation_tasks SET status = 'succeeded' WHERE id = ?`, held.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if counts, err = r.queueRep.QueueCounts(ctx, now); err != nil || counts.Running != 0 || counts.Waiting != 1 {
+		t.Fatalf("终态任务不应计入：%+v %v", counts, err)
+	}
+	if err := db.Exec(`UPDATE generation_tasks SET status = 'running' WHERE id = ?`, held.ID).Error; err != nil {
+		t.Fatal(err)
 	}
 
 	occ, err := r.queueRep.ChannelOccupancies(ctx)

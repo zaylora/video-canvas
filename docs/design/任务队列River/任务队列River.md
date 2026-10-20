@@ -202,7 +202,7 @@
 导航位置：AI 配置 → 总览、**任务队列**、模型渠道……。读权限给 admin，写权限（并发、暂停、排队参数）仅限 super_admin，沿用插件/渠道写操作的规则。页面在可见时每 5s 刷新一次，复用 `use-visible-interval`。
 
 1. **队列卡片 ×1（标题“生成任务”）** ★★：
-   - 排队（等名额、等并发、等到点的 job）、运行中（正在处理，占着并发名额）、重试中、近 1h 丢弃，四个计数格。
+   - 排队（还没拿到名额的任务）、运行中（拿到名额还没结束，占着并发名额）、重试中、近 1h 丢弃，四个计数格。
    - 当前并发 / 硬上限，可用滑杆或输入框调整，保存后会显示“已生效于 N 个实例”。
    - 暂停 / 恢复按钮。
 2. **不放限流参数**：默认单用户并发、排队倍数、排队超时都在「系统设置 → 注册设置」里配置，单个用户的覆盖值在「用户管理」里配置，这一页既不重复提供入口，也不放提示文字（用户确认）。
@@ -311,7 +311,7 @@
 | `POST /river-ticket` | 返回 `{url}`，ticket 有效期 30 秒、只能用一次 | 403 非 super_admin |
 | `GET /api/v1/admin/river/*` | River UI（cookie 会话） | 401 |
 
-- 计数来源：`river_job` 里 `queue = 'generation'` 的各状态数；排队 = available + scheduled，运行中 = running；`discarded_1h` 按 `finalized_at` 过滤。
+- 计数来源 ★★：排队 = `generation_tasks` 里 pending 且没拿到名额（与画布“排队中”同口径），运行中 = 拿到名额、还没到终态的任务；重试中、近 1h 丢弃查 `river_job`（`discarded_1h` 按 `finalized_at` 过滤）。**不数 `river_job` 的 running**：job 被取出到发现并发闸门已满、睡下之前也是 running，并发设 1 时页面会偶尔跳到 2、3，实际并发并没有超。
 - 统计直接查 `river_job` / `river_leader`（只读、只用稳定的列）。River 没有现成的按状态计数 API。
 - `/admin/ai/channels/loads` 改用 `slot_acquired_at` 口径，总览页的渠道负载组件继续可用。
 

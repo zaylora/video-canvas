@@ -101,28 +101,28 @@ WHERE kind = `+queueJobKind+` AND state = 'running'
 }
 
 type queueCountRow struct {
-	Available   int
-	Scheduled   int
+	Waiting     int
 	Running     int
 	Retryable   int
 	Discarded1h int `gorm:"column:discarded_1h"`
 }
 
-// QueueCounts 返回队列的 job 计数。一个任务一个 job：等名额、等并发、等到点而睡着的 job（scheduled）和随时可取的（available）
-// 都是“排队”，正在处理的（running）占着并发名额。
+// QueueCounts 返回队列的计数。排队和运行中按任务口径统计，重试和丢弃数 job：
+//   - 排队：pending 且还没拿到名额的任务，与画布上的“排队中”一致；
+//   - 运行中：拿到名额、还没到终态的任务，它们在 job 里一直占着并发名额直到结束；
+//   - 不能直接数 river_job 的 running：job 被取出到发现并发闸门已满、睡下之前也是 running，
+//     所以并发调成 1 时页面会偶尔跳到 2、3，实际并发并没有超。
 func (r *QueueRepository) QueueCounts(ctx context.Context, now time.Time) (model.QueueCounts, error) {
 	var row queueCountRow
 	err := r.db.WithContext(ctx).Raw(`
-SELECT COUNT(*) FILTER (WHERE state = 'available') AS available,
-       COUNT(*) FILTER (WHERE state = 'scheduled') AS scheduled,
-       COUNT(*) FILTER (WHERE state = 'running') AS running,
-       COUNT(*) FILTER (WHERE state = 'retryable') AS retryable,
-       COUNT(*) FILTER (WHERE state = 'discarded' AND finalized_at > ?) AS discarded_1h
-FROM river_job WHERE queue = `+queueName, now.Add(-time.Hour)).Scan(&row).Error
+SELECT (SELECT COUNT(*) FROM generation_tasks WHERE status = 'pending' AND slot_acquired_at IS NULL) AS waiting,
+       (SELECT COUNT(*) FROM generation_tasks WHERE status IN ('pending','queued','running','finalizing') AND slot_acquired_at IS NOT NULL) AS running,
+       (SELECT COUNT(*) FROM river_job WHERE queue = `+queueName+` AND state = 'retryable') AS retryable,
+       (SELECT COUNT(*) FROM river_job WHERE queue = `+queueName+` AND state = 'discarded' AND finalized_at > ?) AS discarded_1h`, now.Add(-time.Hour)).Scan(&row).Error
 	if err != nil {
 		return model.QueueCounts{}, err
 	}
-	return model.QueueCounts{Waiting: row.Available + row.Scheduled, Running: row.Running, Retryable: row.Retryable, Discarded1h: row.Discarded1h}, nil
+	return model.QueueCounts{Waiting: row.Waiting, Running: row.Running, Retryable: row.Retryable, Discarded1h: row.Discarded1h}, nil
 }
 
 // ThroughputPoint 是一分钟的吞吐：这一分钟内进入终态的任务。
