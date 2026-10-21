@@ -136,12 +136,14 @@ function RunRow({
  * 运行列表：时间、用户、请求首句（旁边是工具报错 / 插话 / 审批被拒的小徽标）、状态、步数、积分、反馈、撤销、版本。
  * 加载中给骨架行（表头照常显示）；失败给 Notice 加重试；没有符合条件的运行给空状态，有筛选时带「重置筛选」。
  * @param state 加载状态
- * @param items 已加载的运行
+ * @param items 当前页的运行
+ * @param refreshing 正在换页或换筛选：保留旧数据，表格半透明
  * @param activeRid 抽屉里正在看的运行，对应行高亮
  * @param filtersActive 有没有筛选在生效
  */
 export function RunList({
   state,
+  refreshing = false,
   items,
   activeRid,
   filtersActive,
@@ -150,6 +152,7 @@ export function RunList({
   onReset,
 }: {
   state: RunListState;
+  refreshing?: boolean;
   items: AgentRunDigest[];
   activeRid: string | null;
   filtersActive: boolean;
@@ -192,7 +195,7 @@ export function RunList({
     );
   return (
     <DataPanelBody>
-      <Table data-slot="run-table">
+      <Table data-slot="run-table" className={cn("transition-opacity", refreshing && "opacity-60")}>
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="pl-4">时间</TableHead>
@@ -222,38 +225,5 @@ export function RunList({
         </TableBody>
       </Table>
     </DataPanelBody>
-  );
-}
-
-/**
- * 列表底部：有下一页给「加载更多」，加载下一页时按钮置灰；没有更多显示已加载条数
- * @param count 已加载条数
- */
-export function RunListFooter({
-  count,
-  hasMore,
-  loadingMore,
-  onMore,
-}: {
-  count: number;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onMore: () => void;
-}) {
-  if (count === 0) return null;
-  return (
-    <div
-      data-slot="run-list-footer"
-      className="text-muted-foreground flex shrink-0 items-center justify-center gap-3 border-t py-3 text-xs"
-    >
-      <span className="tabular-nums">已加载 {count} 条</span>
-      {hasMore ? (
-        <Button variant="outline" size="sm" disabled={loadingMore} onClick={onMore}>
-          {loadingMore ? "加载中…" : "加载更多"}
-        </Button>
-      ) : (
-        <span>没有更多了</span>
-      )}
-    </div>
   );
 }

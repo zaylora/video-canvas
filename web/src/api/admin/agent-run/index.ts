@@ -17,13 +17,19 @@ const clean = (params: object): Record<string, unknown> =>
   );
 
 /**
- * 运行摘要列表（创建时间倒序，游标分页）
- * @param query 筛选条件与 cursor / limit
- * @returns 当页记录和下一页游标；items 缺失时补成空数组，没有下一页时 next_cursor 是空串
+ * 运行摘要列表（创建时间倒序）；传 page 按页码翻页并返回 total，不传按游标分页
+ * @param query 筛选条件与 page / cursor / limit
+ * @returns 当页记录；items 缺失时补成空数组，没有下一页时 next_cursor 是空串
  */
 export const listAgentRuns = async (query: AgentRunListQuery = {}): Promise<AgentRunPage> => {
   const page = await service.get<Partial<AgentRunPage> | null>(ep.list(), clean(query));
-  return { items: page?.items ?? [], next_cursor: page?.next_cursor ?? "" };
+  return {
+    items: page?.items ?? [],
+    next_cursor: page?.next_cursor ?? "",
+    total: page?.total,
+    page: page?.page,
+    page_size: page?.page_size,
+  };
 };
 
 /**

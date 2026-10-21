@@ -19,7 +19,8 @@ import {
   runRowBadges,
   runStatusView,
   statsSince,
-  toCursorPage,
+  clampPage,
+  pageCount,
   toggleHarnessFilter,
   type RunFilters,
 } from "@/utils/admin/agent-run";
@@ -348,9 +349,24 @@ describe("列表行的小徽标", () => {
   });
 });
 
-describe("分页游标", () => {
-  test("后端用空串表示没有下一页，转成分页 hook 认的 null；有游标原样带上", () => {
-    expect(toCursorPage({ items: [], next_cursor: "" })).toEqual({ items: [], next_cursor: null });
-    expect(toCursorPage({ items: [digest()], next_cursor: "abc" }).next_cursor).toBe("abc");
+describe("页码分页", () => {
+  test("总页数：向上取整，没有数据也至少 1 页", () => {
+    expect(pageCount(0, 20)).toBe(1);
+    expect(pageCount(20, 20)).toBe(1);
+    expect(pageCount(21, 20)).toBe(2);
+    expect(pageCount(100, 30)).toBe(4);
+  });
+  test("页码修正：落在 1 到总页数之间（筛选或数据变少后当前页可能越界）", () => {
+    expect(clampPage(0, 50, 20)).toBe(1);
+    expect(clampPage(2, 50, 20)).toBe(2);
+    expect(clampPage(9, 50, 20)).toBe(3);
+    expect(clampPage(5, 0, 20)).toBe(1);
+  });
+  test("列表查询带上页码和每页条数", () => {
+    expect(runListQuery(DEFAULT_RUN_FILTERS, NOW, { page: 3, pageSize: 30 })).toMatchObject({
+      page: 3,
+      limit: 30,
+    });
+    expect(runListQuery(DEFAULT_RUN_FILTERS, NOW)).toEqual({});
   });
 });

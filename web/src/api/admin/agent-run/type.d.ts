@@ -94,7 +94,9 @@ export interface AgentRunListQuery {
   model_key?: string;
   /** 用户 ID */
   user_id?: number;
-  /** 上一页返回的 next_cursor；第一页不传 */
+  /** 页码，从 1 起；后台页面用页码翻页，传了就返回 total */
+  page?: number;
+  /** 上一页返回的 next_cursor（游标分页，本地 CLI 用）；和 page 不能同时传 */
   cursor?: string;
   /** 每页条数，最大 500 */
   limit?: number;
@@ -104,8 +106,14 @@ export interface AgentRunListQuery {
 export interface AgentRunPage {
   /** 本页记录，创建时间倒序 */
   items: AgentRunDigest[];
-  /** 下一页游标；空串表示没有下一页 */
+  /** 下一页游标；空串表示没有下一页（页码分页时恒为空） */
   next_cursor: string;
+  /** 命中总数；只有按页码请求时才有 */
+  total?: number;
+  /** 当前页码；只有按页码请求时才有 */
+  page?: number;
+  /** 每页条数；只有按页码请求时才有 */
+  page_size?: number;
 }
 
 /** 时间线步骤的种类，前端据此决定图标和颜色 */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { RunList, RunListFooter, type RunListState } from "@/pages/admin/agent-runs/run-list";
+import { RunList, type RunListState } from "@/pages/admin/agent-runs/run-list";
 
 import { digest } from "./fixtures";
 
@@ -120,31 +120,5 @@ describe("运行列表：有数据", () => {
 
   test("没有请求首句显示「—」", () => {
     expect(list("ready", [digest({ request_head: "" })])).toContain(">—<");
-  });
-});
-
-describe("列表底部", () => {
-  const footer = (count: number, hasMore: boolean, loadingMore = false) =>
-    renderToStaticMarkup(
-      <RunListFooter count={count} hasMore={hasMore} loadingMore={loadingMore} onMore={noop} />,
-    );
-  test("还有下一页：显示已加载条数和「加载更多」", () => {
-    const out = footer(20, true);
-    expect(out).toContain("已加载 20 条");
-    expect(out).toContain("加载更多");
-    expect(out).not.toContain(' disabled=""');
-  });
-  test("正在加载下一页：按钮置灰", () => {
-    const out = footer(20, true, true);
-    expect(out).toContain("加载中…");
-    expect(out).toContain(' disabled=""');
-  });
-  test("没有更多：不给按钮", () => {
-    const out = footer(7, false);
-    expect(out).toContain("没有更多了");
-    expect(out).not.toContain("加载更多");
-  });
-  test("一条都没有时整块不显示", () => {
-    expect(footer(0, false)).toBe("");
   });
 });

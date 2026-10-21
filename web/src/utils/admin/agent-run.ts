@@ -1,10 +1,8 @@
 import type {
   AgentRunDigest,
   AgentRunListQuery,
-  AgentRunPage,
   AgentStatsGroup,
 } from "@/api/admin/agent-run/type.d";
-import type { CursorPage } from "@/api/admin/users/type.d";
 import type { TagTone } from "@/components/admin-ui/tag";
 
 /**
@@ -124,8 +122,16 @@ export function normalizeUserIdInput(text: string): string {
  * @param now 当前时间（毫秒），用来算时间预设的起点
  * @returns 只含已生效条件的查询参数
  */
-export function runListQuery(filters: RunFilters, now: number): AgentRunListQuery {
+export function runListQuery(
+  filters: RunFilters,
+  now: number,
+  paging?: { page: number; pageSize: number },
+): AgentRunListQuery {
   const query: AgentRunListQuery = {};
+  if (paging) {
+    query.page = paging.page;
+    query.limit = paging.pageSize;
+  }
   const since = rangeSince(filters.range, now);
   if (since) query.since = since;
   if (filters.status !== "all") query.status = STATUS_GROUP_STATUSES[filters.status].join(",");
@@ -393,9 +399,20 @@ export function statsSince(now: number): string {
 }
 
 /**
- * 运行列表的一页 → 游标分页 hook 要的形状：后端用空串表示没有下一页，hook 用 null 表示
- * @param page 列表接口的返回
+ * 总页数：向上取整，没有数据也算 1 页
+ * @param total 命中总数
+ * @param pageSize 每页条数
  */
-export function toCursorPage(page: AgentRunPage): CursorPage<AgentRunDigest> {
-  return { items: page.items, next_cursor: page.next_cursor || null };
+export function pageCount(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+/**
+ * 把页码修正到 1 到总页数之间：改了每页条数或数据变少后，当前页可能已经越界
+ * @param page 想去的页码
+ * @param total 命中总数
+ * @param pageSize 每页条数
+ */
+export function clampPage(page: number, total: number, pageSize: number): number {
+  return Math.min(Math.max(1, page), pageCount(total, pageSize));
 }

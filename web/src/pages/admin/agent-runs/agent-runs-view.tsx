@@ -1,10 +1,10 @@
 import type { AgentRunDigest, AgentStatsGroup } from "@/api/admin/agent-run/type.d";
-import { DataPage, DataPanel } from "@/components/admin-ui/data-panel";
+import { DataPage, DataPanel, DataPanelPagination } from "@/components/admin-ui/data-panel";
 import { PageHeader, PageHeaderHeading, PageHeaderTitle } from "@/components/admin-ui/page-header";
 import type { RunFilters } from "@/utils/admin/agent-run";
 
 import { RunFilterBar } from "./run-filter-bar";
-import { RunList, RunListFooter, type RunListState } from "./run-list";
+import { RunList, type RunListState } from "./run-list";
 import type { StatsStatus } from "./use-agent-stats";
 import { VersionCards } from "./version-cards";
 
@@ -22,12 +22,16 @@ export type AgentRunsViewProps = {
   filtersActive: boolean;
   /** 列表加载状态 */
   listState: RunListState;
-  /** 已加载的运行 */
+  /** 当前页的运行 */
   items: AgentRunDigest[];
-  /** 还有下一页 */
-  hasMore: boolean;
-  /** 正在加载下一页 */
-  loadingMore: boolean;
+  /** 当前页码，从 1 起 */
+  page: number;
+  /** 每页条数 */
+  pageSize: number;
+  /** 命中总数 */
+  total: number;
+  /** 正在换页或换筛选（保留旧数据，半透明） */
+  refreshing: boolean;
   /** 抽屉里正在看的运行 */
   activeRid: string | null;
   /** 当前时间（毫秒） */
@@ -37,12 +41,13 @@ export type AgentRunsViewProps = {
   onFilterChange: (patch: Partial<RunFilters>) => void;
   onReset: () => void;
   onOpen: (rid: string) => void;
-  onMore: () => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
   onRetryList: () => void;
 };
 
 /**
- * Agent 运行记录页的画面：标题、版本对比卡片、筛选栏、运行列表（游标分页，底部「加载更多」）。
+ * Agent 运行记录页的画面：标题、版本对比卡片、筛选栏、运行列表（页码分页，底部显示总数和页码）。
  * 详情抽屉是页面状态，由上层单独挂载。
  */
 export function AgentRunsView(props: AgentRunsViewProps) {
@@ -74,6 +79,7 @@ export function AgentRunsView(props: AgentRunsViewProps) {
         />
         <RunList
           state={props.listState}
+          refreshing={props.refreshing}
           items={props.items}
           activeRid={props.activeRid}
           filtersActive={props.filtersActive}
@@ -81,12 +87,15 @@ export function AgentRunsView(props: AgentRunsViewProps) {
           onRetry={props.onRetryList}
           onReset={props.onReset}
         />
-        <RunListFooter
-          count={props.items.length}
-          hasMore={props.hasMore}
-          loadingMore={props.loadingMore}
-          onMore={props.onMore}
-        />
+        {props.listState === "ready" && props.total > 0 && (
+          <DataPanelPagination
+            page={props.page}
+            pageSize={props.pageSize}
+            total={props.total}
+            onPageChange={props.onPageChange}
+            onPageSizeChange={props.onPageSizeChange}
+          />
+        )}
       </DataPanel>
     </DataPage>
   );

@@ -33,8 +33,10 @@ export default function AgentRunsPage() {
         filtersActive={runs.active}
         listState={runs.list.state}
         items={runs.list.items}
-        hasMore={runs.list.hasMore}
-        loadingMore={runs.list.loadingMore}
+        page={runs.list.page}
+        pageSize={runs.list.pageSize}
+        total={runs.list.total}
+        refreshing={runs.list.refreshing}
         activeRid={drawer.open ? drawer.rid : null}
         now={now}
         onSelectHarness={runs.toggleHarness}
@@ -42,7 +44,8 @@ export default function AgentRunsPage() {
         onFilterChange={runs.patch}
         onReset={runs.reset}
         onOpen={(rid) => setDrawer({ rid, open: true })}
-        onMore={runs.list.more}
+        onPageChange={runs.list.setPage}
+        onPageSizeChange={runs.list.setPageSize}
         onRetryList={runs.list.retry}
       />
       <RunDrawer

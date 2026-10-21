@@ -17,8 +17,10 @@ const view = (props: Partial<AgentRunsViewProps> = {}) =>
       filtersActive={false}
       listState="ready"
       items={[digest()]}
-      hasMore={false}
-      loadingMore={false}
+      page={1}
+      pageSize={20}
+      total={1}
+      refreshing={false}
       activeRid={null}
       now={Date.parse("2026-10-22T10:00:00Z")}
       onSelectHarness={noop}
@@ -26,7 +28,8 @@ const view = (props: Partial<AgentRunsViewProps> = {}) =>
       onFilterChange={noop}
       onReset={noop}
       onOpen={noop}
-      onMore={noop}
+      onPageChange={noop}
+      onPageSizeChange={noop}
       onRetryList={noop}
       {...props}
     />,
@@ -61,7 +64,23 @@ describe("运行记录页", () => {
     expect(out).toContain(">v10 · a1b2c3</span>");
   });
 
-  test("有下一页：底部有「加载更多」", () => {
-    expect(view({ hasMore: true })).toContain("加载更多");
+  test("底部是页码分页：共 N 条、第 x / y 页，没有「加载更多」", () => {
+    const out = view({ total: 45, page: 2, items: [digest()] });
+    expect(out).toContain('data-slot="data-panel-footer"');
+    expect(out).toContain("共 45 条");
+    expect(out).toContain("第 2 / 3 页");
+    expect(out).not.toContain("加载更多");
+  });
+
+  test("没有数据或加载失败时不显示分页条", () => {
+    expect(view({ total: 0, items: [] })).not.toContain('data-slot="data-panel-footer"');
+    expect(view({ listState: "error", total: 0, items: [] })).not.toContain(
+      'data-slot="data-panel-footer"',
+    );
+  });
+
+  test("切页时保留旧数据并半透明（refreshing）", () => {
+    expect(view({ refreshing: true })).toContain("opacity-60");
+    expect(view({ refreshing: false })).not.toContain("opacity-60");
   });
 });
