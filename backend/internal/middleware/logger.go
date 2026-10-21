@@ -26,6 +26,10 @@ func Logger() gin.HandlerFunc {
 			zap.Duration("latency", time.Since(start)),
 			zap.String("ip", c.ClientIP()),
 		}
+		// 桥请求带上它属于哪次 Agent 运行：Go 的访问日志、Node 的 stderr 和运行记录靠 run_id 串起来
+		if runID := c.GetUint64(CtxAgentRunIDKey); runID != 0 {
+			fields = append(fields, zap.Uint64("run_id", runID))
+		}
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("errors", c.Errors.String()))
 		}

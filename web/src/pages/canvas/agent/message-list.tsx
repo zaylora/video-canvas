@@ -27,6 +27,7 @@ import type { NodeOption } from "./agent-editor";
 import { SelectionRefs } from "./selection-refs";
 import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
+import { RunFeedback } from "./run-feedback";
 import { RunSummary } from "./run-summary";
 import { StatusLine } from "./status-line";
 
@@ -224,6 +225,8 @@ function Item({
       );
     case "run-summary":
       return <RunSummary item={item} ctl={ctl} nodes={nodes} />;
+    case "run-feedback":
+      return <RunFeedback runId={item.runId} ctl={ctl} />;
   }
 }
 

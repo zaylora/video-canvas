@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -26,6 +27,9 @@ type AgentToolEvent struct {
 	Verb       string
 	IsError    bool   // 仅 end
 	Summary    string // 仅 end，时间线上显示的一行摘要
+
+	Args   json.RawMessage // 仅 start，工具的参数（如 codemode 的脚本），留存给事后分析；可为空
+	Result string          // 仅 end，工具返回给模型的文本，留存给事后分析；可为空
 }
 
 // AgentToolEventResult 是 start 的结果：不允许时 Agent 不能运行这个工具。
@@ -63,9 +67,12 @@ func (b *AgentBridge) ReportAgentTool(ctx context.Context, token string, ev Agen
 			return nil, err
 		}
 		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.start", data)
+		b.recordToolStart(ctx, run, ev.ToolCallID, "", ev.Name, ev.Args, b.d.Now())
 	case "end":
 		data["is_error"], data["summary"] = ev.IsError, truncateRunes(ev.Summary, maxReportSummaryRunes)
 		b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", data)
+		// 耗时留给存储按开始时间推算：这里不知道 Node 那边的开始时刻
+		b.recordToolEnd(ctx, run, ev.ToolCallID, &ToolResult{Content: ev.Result, IsError: ev.IsError, summary: data["summary"].(string)}, b.d.Now())
 	default:
 		return nil, errcode.ErrInvalidParams.WithMsg("phase 只能是 start 或 end")
 	}

@@ -107,6 +107,24 @@ type AgentService struct {
 	skills SkillLibrary
 	bc     ws.Broadcaster
 	now    func() time.Time
+	// harness 是当前代码的 Agent 版本，创建运行时记下，版本对比靠它
+	harness Harness
+	// observer 在运行状态变化时刷新运行摘要；为 nil 时不刷新。装配阶段用 SetObserver 绑定
+	observer RunObserver
+}
+
+// RunObserver 在运行的状态变化、被撤销或被评价后刷新运行摘要（*ObserveService 实现它）。
+type RunObserver interface {
+	// RefreshDigest 重新汇总一次运行并写入摘要。
+	RefreshDigest(ctx context.Context, runID uint64) error
+}
+
+// SetObserver 绑定运行摘要的观察者。装配阶段调用，运行开始前完成；不绑定就不生成摘要。
+func (s *AgentService) SetObserver(o RunObserver) { s.observer = o }
+
+// Emit 追加一条落库的事件并推送给用户，让观测服务也能给会话发事件（如 feedback.set）。
+func (s *AgentService) Emit(ctx context.Context, userID, sessionID, runID, canvasID uint64, typ string, data any) {
+	s.emit(ctx, userID, sessionID, runID, canvasID, typ, data)
 }
 
 // AgentDeps 是创建 AgentService 需要的依赖。
@@ -119,12 +137,13 @@ type AgentDeps struct {
 	Registry    provider.Registry       // 校验消息里引用的生成模型，为 nil 时不校验
 	Skills      SkillLibrary            // 校验消息里引用的技能，为 nil 时只认内置技能
 	Broadcaster ws.Broadcaster          // 为 nil 时不推送
+	Harness     Harness                 // 当前的 Agent 版本，创建运行时记下；零值表示不记版本
 	Now         func() time.Time        // 为 nil 取系统时间，测试里注入
 }
 
 // NewAgentService 创建服务。
 func NewAgentService(d AgentDeps) *AgentService {
-	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, skills: d.Skills, bc: d.Broadcaster, now: d.Now}
+	s := &AgentService{repo: d.Repo, canvas: d.Canvas, models: d.Models, runtime: d.Runtime, exec: d.Generator, registry: d.Registry, skills: d.Skills, bc: d.Broadcaster, now: d.Now, harness: d.Harness}
 	if s.bc == nil {
 		s.bc = ws.NopBroadcaster{}
 	}
@@ -276,6 +295,30 @@ func (s *AgentService) emit(ctx context.Context, userID, sessionID, runID, canva
 	v := eventView(ev)
 	v.CanvasID = idcodec.ID(canvasID)
 	s.bc.Publish(ctx, channel, ws.Message{Type: ws.TypeAgentEvent, Channel: channel, Data: v})
+	s.afterRunStatus(ctx, runID, typ, data)
+}
+
+// afterRunStatus 在运行离开排队和运行中（结束、暂停、等用户）时刷新运行摘要：每次状态变化都走 run.status 事件，
+// 挂在这里就不用在十几处状态迁移里各自调一遍。刷新失败只记日志：摘要是观测数据，不能让用户的操作失败。
+func (s *AgentService) afterRunStatus(ctx context.Context, runID uint64, typ string, data any) {
+	if s.observer == nil || runID == 0 || typ != "run.status" {
+		return
+	}
+	m, _ := data.(map[string]any)
+	if status, _ := m["status"].(string); status == "" || status == model.RunQueued || status == model.RunRunning {
+		return
+	}
+	s.refreshDigest(ctx, runID)
+}
+
+// refreshDigest 刷新运行摘要，失败只记日志。用不会被取消的上下文：用户停止运行时请求的上下文已取消，摘要照样要写。
+func (s *AgentService) refreshDigest(ctx context.Context, runID uint64) {
+	if s.observer == nil {
+		return
+	}
+	if err := s.observer.RefreshDigest(context.WithoutCancel(ctx), runID); err != nil {
+		logger.Warn("刷新 Agent 运行摘要失败", zap.Error(err), zap.Uint64("run_id", runID))
+	}
 }
 
 // emitUsage 在本轮已花积分变化后推送 run.usage（已花、预算），浮窗的预算环靠它实时更新；
@@ -336,7 +379,19 @@ func runErr(err error) error {
 
 // Undo 撤销某个运行对画布的全部改动，业务在 AgentCanvasService.Undo。
 func (s *AgentService) Undo(ctx context.Context, userID, runID uint64) (*UndoResult, error) {
-	return s.canvas.Undo(ctx, userID, runID)
+	res, err := s.canvas.Undo(ctx, userID, runID)
+	if err != nil {
+		return nil, err
+	}
+	// 真的写了撤销（Revision 非零）才算用户撤销：运行根本没改过画布时什么也没发生。
+	// 撤销是用户不满意的强信号，记成事件并更新摘要，事后分析才看得到
+	if res.Revision != 0 {
+		if run, gerr := s.repo.GetRun(ctx, userID, runID); gerr == nil {
+			s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.undone", map[string]any{"reverted": res.Reverted, "skipped": len(res.Skipped)})
+			s.refreshDigest(ctx, runID)
+		}
+	}
+	return res, nil
 }
 
 // skillLib 返回引用校验使用的技能库：没有配置时只含内置技能。

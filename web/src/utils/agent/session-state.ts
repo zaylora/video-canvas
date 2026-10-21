@@ -1,5 +1,7 @@
 import type { AgentApprovalDto, AgentEventDto, AgentRunStatus } from "@/api/agent/type";
 
+import { normalizeFeedback, type AgentFeedback } from "./feedback";
+
 /** 计划里的一步 */
 export type AgentPlanStep = {
   /** 这一步做什么 */
@@ -46,6 +48,8 @@ export type AgentSessionState = {
   approvals: Record<string, AgentApprovalDto>;
   /** 各轮运行最新的计划 */
   plans: Record<string, AgentPlanStep[]>;
+  /** 各轮运行的用户反馈（没评价的轮没有这一项），由 feedback.set / feedback.cleared 事件和本地乐观更新维护 */
+  feedback: Record<string, AgentFeedback>;
 };
 
 /** 运行还占着画布的状态：Agent 在跑或在等用户 */
@@ -65,6 +69,7 @@ export const emptySession = (): AgentSessionState => ({
   runs: {},
   approvals: {},
   plans: {},
+  feedback: {},
 });
 
 const asString = (v: unknown) => (typeof v === "string" ? v : "");
@@ -104,6 +109,18 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
     case "plan.updated": {
       if (!ev.run_id || !Array.isArray(data.steps)) return state;
       return { ...state, plans: { ...state.plans, [ev.run_id]: data.steps as AgentPlanStep[] } };
+    }
+    case "feedback.set": {
+      const runId = asString(data.run_id) || ev.run_id;
+      const feedback = normalizeFeedback(data);
+      if (!runId || !feedback) return state;
+      return { ...state, feedback: { ...state.feedback, [runId]: feedback } };
+    }
+    case "feedback.cleared": {
+      const runId = asString(data.run_id) || ev.run_id;
+      if (!runId || !(runId in state.feedback)) return state;
+      const { [runId]: _cleared, ...feedback } = state.feedback;
+      return { ...state, feedback };
     }
     case "message.done":
       return { ...state, stream: { runId: null, text: "", thinking: "" } };

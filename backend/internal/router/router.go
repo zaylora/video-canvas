@@ -20,6 +20,11 @@ type Handlers struct {
 	Agent         *agenthandler.AgentHandler   // 画布 Agent：会话、运行、审批
 	AgentSkill    *agenthandler.SkillHandler   // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
+	// Agent 运行观测：用户反馈、后台只读查看与导出、分析令牌
+	AgentFeedback *agenthandler.AgentFeedbackHandler // 用户对运行打 👍/👎
+	AgentObserve  *agenthandler.AgentObserveHandler  // 后台运行记录（只读）和分析令牌管理
+	AnalysisToken middleware.TokenAuthenticator      // 校验分析令牌，本地 agent-trace 用它只读拉取运行记录
+
 	// 长任务生成相关
 	GenerationTask *handler.GenerationTaskHandler      // 任务提交 / 对账 / 取消 / 积分 / webhook
 	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
@@ -126,6 +131,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		agent.POST("/runs/:rid/cancel", h.Agent.Cancel)
 		agent.POST("/runs/:rid/resume", h.Agent.Resume)
 		agent.POST("/runs/:rid/undo", h.Agent.Undo)
+		agent.PUT("/runs/:rid/feedback", h.AgentFeedback.Set)      // 👍/👎，再调用就是改选
+		agent.DELETE("/runs/:rid/feedback", h.AgentFeedback.Clear) // 取消评价
 		agent.POST("/approvals/:aid/decision", h.Agent.Decide)
 
 		// 积分商城：只操作当前用户自己的订单；pending 是静态段，优先于 /orders/:no
@@ -242,6 +249,19 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		skillsAdmin.GET("/:name/versions/:v/download", h.AgentSkill.Download)
 		skillsAdmin.DELETE("/:name/versions/:v", h.AgentSkill.DeleteVersion)
 		skillsAdmin.DELETE("/:name", h.AgentSkill.Delete)
+
+		// Agent 运行观测：运行记录是只读接口，管理员 JWT 和后台签发的分析令牌（本地 agent-trace 用）都能访问；
+		// 令牌只挂在这一组只读接口上。令牌管理本身只接受管理员 JWT，不能用令牌签发或吊销令牌
+		observe := v1.Group("/admin/agent", middleware.AdminOrAnalysisToken(h.AnalysisToken,
+			middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState), middleware.RequireAdmin(h.AdminRole)))
+		observe.GET("/runs", h.AgentObserve.ListRuns) // 摘要列表，游标分页
+		observe.GET("/runs/:rid", h.AgentObserve.Get)
+		observe.GET("/runs/:rid/export", h.AgentObserve.Export) // ?format=md|json|both
+		observe.GET("/stats", h.AgentObserve.Stats)             // ?group_by=harness_key|prompt_version|model_key
+		tokensAdmin := auth.Group("/admin/agent/tokens", middleware.RequireAdmin(h.AdminRole))
+		tokensAdmin.GET("", h.AgentObserve.ListTokens)
+		tokensAdmin.POST("", h.AgentObserve.IssueToken)
+		tokensAdmin.DELETE("/:id", h.AgentObserve.RevokeToken)
 
 		// 存储配置（素材存到哪）：读 = admin 或 super_admin；测试 / 创建 / 修改 / 换密钥 / 设默认 / 删除 = 仅 super_admin。
 		// 密钥只写不读，和渠道 Key 同一套规则。

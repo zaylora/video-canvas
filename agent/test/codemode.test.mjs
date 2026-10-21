@@ -95,12 +95,25 @@ test("脚本：报备开始和结束，Go 据此在时间线里记「运行脚�
   const { codemode } = make(bridge);
   await codemode.execute("cm1", { code: `await tools.canvas_get_state({}); return 1` });
   assert.equal(bridge.events.length, 2);
-  assert.deepEqual(bridge.events[0], { phase: "start", tool_call_id: "cm1", name: "codemode", label: "运行脚本", verb: "脚本" });
+  // 开始时带上脚本本身：事后分析 Agent 为什么这样写，要看到它写了什么
+  assert.deepEqual(bridge.events[0], { phase: "start", tool_call_id: "cm1", name: "codemode", label: "运行脚本", verb: "脚本", args: { code: `await tools.canvas_get_state({}); return 1` } });
   const end = bridge.events[1];
   assert.equal(end.phase, "end");
   assert.equal(end.tool_call_id, "cm1");
   assert.equal(end.is_error, false);
   assert.match(end.summary, /1 次/);
+  // 结束时带上返回给模型的文本，和落库的工具结果一致
+  assert.equal(typeof end.result, "string");
+  assert.ok(end.result.length > 0);
+});
+
+test("脚本：失败时结束报备也带上返回给模型的错误文本", async () => {
+  const bridge = fakeBridgeClient();
+  const { codemode } = make(bridge);
+  await codemode.execute("cm1", { code: `throw new Error("坏了")` });
+  const end = bridge.events[1];
+  assert.equal(end.is_error, true);
+  assert.match(end.result, /坏了/);
 });
 
 test("脚本：单个值传给数组参数照样自动包成数组（和直接调用工具一致）", async () => {

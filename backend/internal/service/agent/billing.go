@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"time"
 	"unicode/utf8"
 
 	"video-canvas/internal/llmgateway"
@@ -43,6 +44,16 @@ type CallOutcome struct {
 	Result     *llmgateway.Result // 网关返回的结果；一个字都没收到时为 nil
 	InputChars int                // 这次请求的输入总字数，上游没给用量时按它估输入 Token
 	Err        error              // 调用失败、被取消或中断的原因；成功为 nil
+	Meta       CallMeta           // 这次调用的用途、渠道和耗时，只用于事后分析，不参与计费
+}
+
+// CallMeta 是一次模型调用的观测信息。
+type CallMeta struct {
+	Purpose       string        // main 对话调用，summary 摘要调用；为空按 main
+	ChannelKey    string        // 实际走的渠道
+	UpstreamModel string        // 实际调用的上游模型
+	Latency       time.Duration // 从发出到收完
+	TTFT          time.Duration // 首字耗时，没收到内容为 0
 }
 
 // SettleResult 是结算结果。
@@ -86,9 +97,12 @@ func (b *AgentBilling) Begin(ctx context.Context, run *model.AgentRun, modelKey 
 // 上游给了用量就用它；没给就按字数估（1 字 = 1 Token，偏保守），并在记录上标出是估的。
 // 一个字都没收到时不收费，只记下原因。实扣额记入本轮已花。
 func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *model.AgentModelCall, p modelcfg.Pricing, out CallOutcome) (*SettleResult, error) {
-	in := repository.SettleCallInput{CallID: call.ID, UserID: call.UserID, Error: callError(out.Err)}
+	in := repository.SettleCallInput{CallID: call.ID, UserID: call.UserID, Error: callError(out.Err),
+		Purpose: firstNonEmpty(out.Meta.Purpose, "main"), ChannelKey: out.Meta.ChannelKey, UpstreamModel: out.Meta.UpstreamModel,
+		LatencyMs: int(out.Meta.Latency.Milliseconds()), TTFTMs: int(out.Meta.TTFT.Milliseconds())}
 	if out.Result != nil {
 		r := out.Result
+		in.StopReason = r.FinishReason
 		if r.UsageMissing {
 			in.UsageEstimated = true
 			in.InputTokens, in.OutputTokens = out.InputChars, outputChars(r)

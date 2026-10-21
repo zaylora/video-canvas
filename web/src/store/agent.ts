@@ -1,7 +1,24 @@
 import { create } from "zustand";
 
-import { getAgentEvents, listAgentSessions } from "@/api/agent";
-import type { AgentEventDto, AgentRunDto, AgentSessionDto } from "@/api/agent/type";
+import { toast } from "sonner";
+
+import {
+  deleteAgentFeedback,
+  getAgentEvents,
+  listAgentSessions,
+  setAgentFeedback,
+} from "@/api/agent";
+import type {
+  AgentEventDto,
+  AgentRunDto,
+  AgentSessionDto,
+  SetAgentFeedbackReq,
+} from "@/api/agent/type";
+import {
+  FEEDBACK_SAVE_FAILED,
+  normalizeFeedback,
+  type AgentFeedback,
+} from "@/utils/agent/feedback";
 import { applyAgentEvent, emptySession, type AgentSessionState } from "@/utils/agent/session-state";
 
 /** 一页回放最多拉多少页，防止服务端异常时死循环 */
@@ -24,6 +41,16 @@ type AgentStore = {
   replay: (sessionId: string) => Promise<void>;
   /** 把 HTTP 返回的运行快照并进会话（发起、停止、继续之后，不必等事件） */
   ingestRun: (run: AgentRunDto) => void;
+  /**
+   * 给一轮已结束的运行打分（再次提交即覆盖）：先乐观更新，保存失败回到提交前的评价并提示。
+   * @returns 是否保存成功
+   */
+  submitFeedback: (sessionId: string, runId: string, req: SetAgentFeedbackReq) => Promise<boolean>;
+  /**
+   * 取消一轮运行的评价：先乐观清掉，失败则恢复原评价并提示。
+   * @returns 是否取消成功
+   */
+  cancelFeedback: (sessionId: string, runId: string) => Promise<boolean>;
 };
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
@@ -97,4 +124,48 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       };
       return { sessions: { ...s.sessions, [run.session_id]: { ...current, runs } } };
     }),
+
+  submitFeedback: async (sessionId, runId, req) => {
+    const before = feedbackOf(sessionId, runId);
+    writeFeedback(sessionId, runId, {
+      rating: req.rating,
+      reasons: req.reasons ?? [],
+      comment: req.comment ?? "",
+    });
+    try {
+      writeFeedback(sessionId, runId, normalizeFeedback(await setAgentFeedback(runId, req)));
+      return true;
+    } catch {
+      writeFeedback(sessionId, runId, before);
+      toast.error(FEEDBACK_SAVE_FAILED);
+      return false;
+    }
+  },
+
+  cancelFeedback: async (sessionId, runId) => {
+    const before = feedbackOf(sessionId, runId);
+    writeFeedback(sessionId, runId, null);
+    try {
+      await deleteAgentFeedback(runId);
+      return true;
+    } catch {
+      writeFeedback(sessionId, runId, before);
+      toast.error(FEEDBACK_SAVE_FAILED);
+      return false;
+    }
+  },
 }));
+
+/** 某轮运行当前的反馈，没有为 null */
+const feedbackOf = (sessionId: string, runId: string): AgentFeedback | null =>
+  useAgentStore.getState().sessions[sessionId]?.feedback[runId] ?? null;
+
+/** 直接写某轮运行的反馈（乐观更新和失败回滚用）；null 表示没有评价 */
+function writeFeedback(sessionId: string, runId: string, value: AgentFeedback | null) {
+  useAgentStore.setState((s) => {
+    const current = s.sessions[sessionId] ?? emptySession();
+    const { [runId]: _old, ...rest } = current.feedback;
+    const feedback = value ? { ...rest, [runId]: value } : rest;
+    return { sessions: { ...s.sessions, [sessionId]: { ...current, feedback } } };
+  });
+}

@@ -3,7 +3,9 @@ import {
   ArrowUpCircle,
   Film,
   HardDrive,
+  History,
   ImageDown,
+  KeyRound,
   Lightbulb,
   Mail,
   LayoutDashboard,
@@ -37,6 +39,8 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { to: "ai/channels", label: "模型渠道", icon: RadioTower },
       { to: "ai/plugins", label: "插件", icon: Puzzle },
       { to: "agent/skills", label: "技能", icon: Lightbulb },
+      { to: "agent/runs", label: "运行记录", icon: History },
+      { to: "agent/tokens", label: "分析令牌", icon: KeyRound },
     ],
   },
   {

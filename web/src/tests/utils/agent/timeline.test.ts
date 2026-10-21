@@ -47,6 +47,7 @@ describe("消息流", () => {
         }),
       ]),
     );
+    // 运行还在跑：不放评价条
     expect(items.map((i) => i.type)).toEqual(["user", "assistant", "activity"]);
     expect(items[1]).toMatchObject({ text: "我先读剧本", thinking: "想想", streaming: false });
     // 运行还在跑，工具之间的空档仍算进行中
@@ -241,7 +242,7 @@ describe("消息流", () => {
         ev("run.status", { status: "succeeded" }),
       ]),
     );
-    expect(items.map((i) => i.type)).toEqual(["approval", "status"]);
+    expect(items.map((i) => i.type)).toEqual(["approval", "status", "run-feedback"]);
     expect(items[1]).toMatchObject({ status: "failed", error: "Agent 模型不可用" });
   });
 
@@ -297,7 +298,12 @@ describe("本轮改动摘要", () => {
         ev("run.status", { status: "succeeded" }, "r1"),
       ]),
     );
-    expect(items.map((i) => i.type)).toEqual(["activity", "assistant", "run-summary"]);
+    expect(items.map((i) => i.type)).toEqual([
+      "activity",
+      "assistant",
+      "run-summary",
+      "run-feedback",
+    ]);
     expect(items[2]).toMatchObject({ runId: "r1", created: ["n1"], updated: [], deleted: [] });
   });
 
@@ -364,9 +370,11 @@ describe("本轮改动摘要", () => {
     expect(items.map((i) => i.type)).toEqual([
       "activity",
       "run-summary",
+      "run-feedback",
       "user",
       "activity",
       "run-summary",
+      "run-feedback",
     ]);
     expect(
       items.filter((i) => i.type === "run-summary").map((i) => (i as { runId: string }).runId),

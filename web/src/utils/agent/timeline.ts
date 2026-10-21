@@ -99,6 +99,12 @@ export type TimelineItem =
       deleted: { id: string; label: string }[];
     }
   | {
+      /** 一轮运行末尾的 👍/👎 反馈位：运行结束（含暂停待继续的状态）后才出现，进行中不显示；评价本身在 state.feedback 里 */
+      type: "run-feedback";
+      key: string;
+      runId: string;
+    }
+  | {
       /** 计划全部完成 */
       type: "plan-done";
       key: string;
@@ -156,7 +162,7 @@ type RunChanges = { created: Set<string>; updated: Set<string> };
 /**
  * 从会话事件推出消息流。
  * 先按事件顺序排出用户消息、助手回复、工具调用、审批、状态卡片，
- * 再把同一轮里连续的工具调用合成活动块，最后在改过画布且已收尾的运行后面放改动摘要。
+ * 再把同一轮里连续的工具调用合成活动块，最后在每轮运行后面放收尾的卡片：改过画布且已收尾的先放改动摘要，再放反馈位。
  */
 export function buildTimeline(state: AgentSessionState): TimelineItem[] {
   const items: (TimelineItem | RawTool)[] = [];
@@ -282,15 +288,18 @@ export function buildTimeline(state: AgentSessionState): TimelineItem[] {
       items[at] = { ...item, status: "aborted" };
   }
 
-  // 改过画布且已经收尾的运行，在它最后一项后面放改动摘要；从后往前插，前面的位置不会错位
-  const summaries = [...wrote]
-    .filter(
-      (id) =>
-        state.runs[id] && !ACTIVE_RUN_STATUSES.includes(state.runs[id].status) && lastAt.has(id),
-    )
+  // 每轮运行的最后一项后面放收尾的卡片：改过画布且已收尾的放改动摘要，再放反馈位（运行结束后才放，进行中不显示）；
+  // 从后往前插，前面的位置不会错位
+  const tails = [...lastAt.keys()]
+    .filter((id) => state.runs[id])
     .sort((a, b) => (lastAt.get(b) ?? 0) - (lastAt.get(a) ?? 0));
-  for (const runId of summaries)
-    items.splice((lastAt.get(runId) ?? 0) + 1, 0, runSummary(state, runId, changes.get(runId)));
+  for (const runId of tails) {
+    const ended = !ACTIVE_RUN_STATUSES.includes(state.runs[runId].status);
+    const extra: TimelineItem[] = [];
+    if (ended && wrote.has(runId)) extra.push(runSummary(state, runId, changes.get(runId)));
+    if (ended) extra.push({ type: "run-feedback", key: `fb${runId}`, runId });
+    items.splice((lastAt.get(runId) ?? 0) + 1, 0, ...extra);
+  }
 
   const out = groupTools(items);
   keepLastActivityOpen(out, state);

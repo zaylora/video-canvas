@@ -52,6 +52,7 @@ type App struct {
 	runnerStop func()                   // 停止 plugin-runner 子进程的监督并结束进程；非 spawn 模式为 nil
 	assets     *service.AssetService    // 素材服务；后台定期用它清理过期未登记的直传对象
 	loginLogs  *service.LoginLogCleaner // 登录记录清理器；后台每天清理超过保留天数的记录
+	observe    *agentsvc.ObserveService // Agent 运行观测；后台每天清理超过 30 天的工具参数和结果
 	payment    *service.PaymentService  // 积分充值；后台每 30 秒补单、处理超时订单
 }
 
@@ -171,8 +172,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Agent 技能库：整包存在素材所用的对象存储里（key 前缀 agent-skills/，不会被 /files 公开路由读到：那里只认有素材记录的 key）
 	skillSvc := agentsvc.NewSkillService(repository.NewAgentSkillRepository(db), storeRegistry, auditRepo, agentsvc.SkillOptions{})
 	agentCanvasSvc := agentsvc.NewAgentCanvasService(agentRepo, hub)
+	// Agent 运行观测：工具调用逐条留存、运行摘要、用户反馈、后台只读导出。Harness 版本在创建运行时记下，改了提示词或工具后才能对比效果
+	observeRepo := repository.NewAgentObserveRepository(db)
+	buildSHA := version.GitCommit
+	if buildSHA == "none" {
+		buildSHA = "" // 没有注入构建号（本地 go run）：不记，免得把占位文字当成真实的 commit
+	}
 	agentSvc := agentsvc.NewAgentService(agentsvc.AgentDeps{
-		Repo: agentRepo, Canvas: agentCanvasSvc,
+		Harness: agentsvc.CurrentHarness(buildSHA),
+		Repo:    agentRepo, Canvas: agentCanvasSvc,
 		Models: agentsvc.NewRegistryAgentModels(aiCfgSvc), Runtime: agentsvc.NoAgentRuntime{}, Broadcaster: hub, Registry: aiCfgSvc, Skills: skillSvc,
 		Generator: agentsvc.NewAgentGenerator(taskSvc, agentCanvasSvc, aiCfgSvc), // 批准生成后创建任务并绑定到节点
 	})
@@ -186,7 +194,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, ipAllowed: outboundIPPolicy(cfg)})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, ipAllowed: outboundIPPolicy(cfg)})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -249,14 +257,32 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return st.Role, nil
 	}
 
+	// 观测服务依赖角色查询（分析令牌的签发人必须仍是管理员），所以在 roleLookup 之后装配，再绑定给 AgentService 做摘要刷新
+	observeSvc := agentsvc.NewObserveService(agentsvc.ObserveDeps{
+		Repo: observeRepo, Runs: agentRepo, Events: agentSvc, Audit: auditRepo, Roles: roleLookup,
+	})
+	agentSvc.SetObserver(observeSvc)
+	if agentRT != nil {
+		agentRT.rt.SetTailSink(observeSvc) // 运行进程退出时把 stderr 末尾留进运行摘要
+	}
+
 	engineHTTP := router.New(cfg.Server.Mode, cfg.JWT.Secret, router.Handlers{
-		Health:         handler.NewHealthHandler(db, rdb),
-		User:           handler.NewUserHandler(userSvc),
-		Me:             handler.NewMeHandler(meSvc),
-		CanvasProject:  handler.NewCanvasProjectHandler(canvasProjectSvc),
-		Conversation:   handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
-		Agent:          agenthandler.NewAgentHandler(agentSvc),
-		AgentSkill:     agenthandler.NewSkillHandler(skillSvc),
+		Health:        handler.NewHealthHandler(db, rdb),
+		User:          handler.NewUserHandler(userSvc),
+		Me:            handler.NewMeHandler(meSvc),
+		CanvasProject: handler.NewCanvasProjectHandler(canvasProjectSvc),
+		Conversation:  handler.NewConversationHandler(service.NewConversationService(repository.NewConversationRepository(db), taskSvc)),
+		Agent:         agenthandler.NewAgentHandler(agentSvc),
+		AgentSkill:    agenthandler.NewSkillHandler(skillSvc),
+		AgentFeedback: agenthandler.NewAgentFeedbackHandler(observeSvc),
+		AgentObserve:  agenthandler.NewAgentObserveHandler(observeSvc),
+		AnalysisToken: func(ctx context.Context, plain string) (uint64, uint64, error) {
+			who, err := observeSvc.AuthenticateToken(ctx, plain)
+			if err != nil {
+				return 0, 0, err
+			}
+			return who.TokenID, who.UserID, nil
+		},
 		GenerationTask: handler.NewGenerationTaskHandler(taskSvc),
 		WS:             handler.NewWSHandler(ticketStore, hub, cfg.Server.AllowedOrigins),
 		Asset:          handler.NewAssetHandler(assetSvc),
@@ -313,6 +339,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		runnerStop: runnerStop,
 		assets:     assetSvc,
 		loginLogs:  service.NewLoginLogCleaner(userRepo),
+		observe:    observeSvc,
 		payment:    pay.svc,
 		server: &http.Server{
 			Addr:         cfg.Server.Addr(),
@@ -461,6 +488,18 @@ func (a *App) Run(ctx context.Context) error {
 		<-loginDone
 	}()
 
+	// Agent 观测大字段清理：先于关库停止
+	observeCtx, observeCancel := context.WithCancel(context.Background())
+	observeDone := make(chan struct{})
+	go func() {
+		defer close(observeDone)
+		a.cleanupObserve(observeCtx)
+	}()
+	defer func() {
+		observeCancel()
+		<-observeDone
+	}()
+
 	// 技能库清理：先于关库停止
 	skillCtx, skillCancel := context.WithCancel(context.Background())
 	skillDone := make(chan struct{})
@@ -576,6 +615,31 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 	}
 	if n > 0 {
 		logger.Info("已清理过期登录记录", zap.Int64("count", n))
+	}
+}
+
+// observeCleanupInterval 是清理过期观测大字段的间隔：按天保留，每天扫一次足够。
+const observeCleanupInterval = 24 * time.Hour
+
+// cleanupObserve 启动后延迟随机一小段时间清理一次，之后每天一次，直到 ctx 取消。
+// 工具调用的参数和结果、运行摘要里的 runtime_tail 保留 30 天；失败只记日志，下一轮会继续，不影响服务。
+func (a *App) cleanupObserve(ctx context.Context) {
+	delay := time.Minute + time.Duration(rand.Int64N(int64(loginLogCleanupMaxDelay-time.Minute))) //nolint:gosec // 只是错峰用的随机延迟，不需要密码学随机
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			tools, digests, err := a.observe.PurgeExpired(ctx)
+			if err != nil {
+				logger.Error("清理过期的 Agent 观测数据失败", zap.Error(err))
+			} else if tools > 0 || digests > 0 {
+				logger.Info("已清理过期的 Agent 观测数据", zap.Int64("tool_calls", tools), zap.Int64("digests", digests))
+			}
+			timer.Reset(observeCleanupInterval)
+		}
 	}
 }
 

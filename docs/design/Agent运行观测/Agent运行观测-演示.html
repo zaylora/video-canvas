@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 运行观测</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+      /* ---- 本文档追加 ---- */
+      .opt { text-align: left; border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: hsl(var(--card)); }
+      .opt:hover { background: hsl(var(--accent)); }
+      .opt[aria-selected="true"] { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .opt small { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+      .field { display: grid; gap: 4px; font-size: 12.5px; }
+      .field select, .field input, .field textarea { font: inherit; font-size: 13px; color: inherit; background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 6px 8px; }
+      .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+      .md { white-space: pre-wrap; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12px; background: hsl(var(--muted)); border-radius: var(--radius); padding: 12px; max-height: 460px; overflow: auto; margin: 0; }
+      .mini th, .mini td { padding: 6px 10px; font-size: 12.5px; border-bottom: 1px solid hsl(var(--border)); text-align: left; vertical-align: top; }
+      .mini thead th { background: hsl(var(--muted)); }
+      .mini tr.sel td { background: rgb(var(--info) / 0.08); }
+      .mini tr.click { cursor: pointer; }
+      .mini tr.click:hover td { background: hsl(var(--accent)); }
+      .seg { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: 9px; padding: 2px; gap: 2px; flex-wrap: wrap; }
+      .seg button { height: 28px; padding: 0 10px; border-radius: 7px; font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+      .seg button[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .chat { max-width: 520px; margin: 0 auto; padding: 18px; display: grid; gap: 10px; }
+      .bubble { border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+      .b-user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); justify-self: end; max-width: 80%; }
+      .b-agent { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); }
+      .chip { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid hsl(var(--border)); font-size: 12px; }
+      .chip[aria-pressed="true"] { background: rgb(var(--bad) / 0.1); border-color: rgb(var(--bad) / 0.5); color: rgb(var(--bad)); }
+      .thumb { width: 30px; height: 30px; border-radius: 8px; border: 1px solid hsl(var(--border)); display: inline-grid; place-items: center; }
+      .thumb[aria-pressed="true"].up { background: rgb(var(--ok) / 0.12); border-color: rgb(var(--ok)); color: rgb(var(--ok)); }
+      .thumb[aria-pressed="true"].down { background: rgb(var(--bad) / 0.12); border-color: rgb(var(--bad)); color: rgb(var(--bad)); }
+      .thumb:disabled { opacity: 0.45; cursor: not-allowed; }
+      .side { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 420px; }
+      .side nav { border-right: 1px solid hsl(var(--border)); padding: 12px 8px; display: grid; align-content: start; gap: 2px; font-size: 13px; }
+      .side nav button { text-align: left; padding: 7px 10px; border-radius: 7px; display: flex; align-items: center; gap: 8px; }
+      .side nav button[aria-current="true"] { background: hsl(var(--accent)); font-weight: 500; }
+      .side nav .grp { font-size: 11.5px; color: hsl(var(--muted-foreground)); padding: 10px 10px 4px; }
+      .side main { padding: 16px; min-width: 0; }
+      .bar { height: 8px; border-radius: 99px; background: hsl(var(--muted)); overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: rgb(var(--bad) / 0.7); }
+      @media (max-width: 820px) { .side { grid-template-columns: 1fr; } .side nav { border-right: 0; border-bottom: 1px solid hsl(var(--border)); grid-auto-flow: column; overflow-x: auto; } .side nav .grp { display: none; } .demo-grid { grid-template-columns: 1fr !important; } }
+    </style>
+  </head>
+
+  <body class="show-notes">
+    <header class="top">
+      <div class="top-in">
+        <div class="brand">
+          <span class="logo"><i data-lucide="activity"></i></span>Agent 运行观测
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+          <button class="tab" role="tab" data-tab="demo" aria-selected="false"><i data-lucide="mouse-pointer-click"></i>分析闭环演示</button>
+          <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>可点击原型</button>
+          <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+        </div>
+        <div class="spacer row">
+          <label class="row muted" style="font-size: 12px">
+            设计标注
+            <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+          </label>
+          <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题">
+            <i data-lucide="sun-moon"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- ============ 1. 总览 ============ -->
+      <section id="tab-overview">
+        <h1 class="h1">让 AI 读懂线上每一次 Agent 运行，再反过来改 Harness</h1>
+        <p class="lead">
+          线上每次 Agent 运行都会被完整记下：用户要什么、Agent 想了什么、调了哪些工具（参数和结果）、改了画布哪里、用户有没有撤销或点踩。你在仓库里跑一条
+          <code>/agent-review</code>，Claude Code 或 Codex 就会拉取这些记录、逐条判断“需求有没有完成”，再按失败类别排序，指出该改提示词、工具还是技能。
+          <b>分析全在本地按需运行，线上只提供只读数据，不调用模型、不花额度；完整轨迹保留 30 天，摘要和反馈长期保留。</b>
+        </p>
+
+        <div class="callout c-info" style="margin-top: 16px">
+          <i data-lucide="info"></i>
+          <div>
+            <b>阅读说明。</b>
+            “项目现状”来自 2026-10-21 master 分支的代码；外部方案来自检索调研。本文所有新增表、接口、CLI、skill 都是<b>提案，尚未实现</b>。原型和演示里的运行数据都是示意。完整依据见
+            <code>Agent运行观测.md</code>。<br />
+            <span class="muted">核实度图例：</span>
+            <span class="tag t-ok">已核对项目代码</span>
+            <span class="tag t-info">调研检索，未逐条复核</span>
+            <span class="tag t-warn">未验证 · 需实测</span>
+            <span class="tag t-mute">提案 / 示意</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>今天已经有什么、缺什么</h2>
+          <p class="sub">先说清楚哪些数据现在就有、只是看不到，哪些是这次要补的。</p>
+          <div class="grid g2">
+            <div class="card">
+              <div class="row"><i data-lucide="check" style="color: rgb(var(--ok))"></i><b>已经落库</b><span class="tag t-ok">已核对项目代码</span></div>
+              <ul class="list" style="margin-top: 8px">
+                <li><code>agent_events</code>：用户消息、Agent 回复、工具开始和结束（只有摘要）、审批、计划、状态</li>
+                <li><code>agent_mutations</code>：每次画布改动，以及是否被撤销</li>
+                <li><code>agent_model_calls</code>：每次模型调用的 token 和错误</li>
+                <li><code>agent_approvals</code>：批准、拒绝，以及“拒绝并说明”</li>
+                <li>插话（steer）、停止、步数或预算耗尽都有记录</li>
+              </ul>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="x" style="color: rgb(var(--bad))"></i><b>缺口</b><span class="tag t-ok">已核对项目代码</span></div>
+              <ul class="list" style="margin-top: 8px">
+                <li><b>后台没有任何地方能看 Agent 运行</b>，AI 也拿不到数据</li>
+                <li>工具的<b>参数和完整结果</b>只在会被压缩覆盖的 <code>session_jsonl</code> 里</li>
+                <li>运行没记录<b>Harness 版本</b>（提示词 v9 只在代码里），无法按版本对比</li>
+                <li>没有点赞或点踩；撤销本轮不产生事件</li>
+                <li>模型调用没有耗时和 stop_reason；Node 的诊断信息会丢失</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>主线：一次线上运行怎么变成一条改进</h2>
+          <p class="sub">从用户在画布上用 Agent，到你改完 Harness 再验证，一共五步，形成一个闭环。</p>
+          <div class="flow note">
+            <div class="node"><b>① 线上采集</b>补齐工具参数和结果、Harness 版本、运行摘要、👍/👎</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>② 只读导出</b><code>/admin/agent/runs*</code>，分析令牌只读、会过期、每次拉取都审计</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>③ 本地拉取</b><code>agent-trace pull</code>：每次运行一份 Markdown，AI 按顺序读</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node hl"><b>④ AI 判定与归类</b><code>/agent-review</code>：逐条判定 → 失败分类 → 定位到代码 → 报告</div>
+            <div class="arrow"><i data-lucide="arrow-right"></i></div>
+            <div class="node"><b>⑤ 改完再对比</b>发版后用 <code>agent-trace compare</code> 按 Harness 版本看指标</div>
+          </div>
+          <div class="note-txt">
+            设计：线上只负责“记全、给读”，判断交给本地 AI。这样线上不新增服务，不花模型额度，分析方法也能随 skill 迭代而不必发版。放弃了 Langfuse 这类现成 UI 和标注队列，换来零运维和贴合 AI 的导出格式。
+          </div>
+          <div class="callout c-warn" style="margin-top: 10px">
+            <i data-lucide="corner-down-right"></i>
+            <div>
+              <b>回退和兜底：</b>采集任何一步写库失败，都只打一条 Warn 日志，<b>不影响用户的运行</b>，导出里该步显示“未记录参数”。超过 30 天的运行，工具参数和结果显示“已过保留期”，但摘要、反馈和 Harness 版本仍在，版本对比不受影响。令牌失效时 CLI 明确提示去后台重新签发。
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>四个组成部分</h2>
+          <p class="sub">分别落在后端、用户端、本地仓库三处，一期全部要做，后台浏览页放到二期。</p>
+          <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
+            <div class="card">
+              <div class="row"><i data-lucide="database"></i><b>采集补齐</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">一期 · 后端</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>agent_tool_calls、agent_run_digests</b>两张新表，<code>agent_runs</code> 和 <code>agent_model_calls</code> 补字段。不碰画布 payload 和 revision。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="thumbs-up"></i><b>用户反馈</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">一期 · 用户端</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px">每轮运行结束后显示 <b>👍/👎</b>，点踩可选原因标签和一句话。可以改选或取消。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="key-round"></i><b>导出与令牌</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">一期 · 后端 + 最简后台页</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><b>原样导出</b>（Key 和图片签名 URL 仍不出现）。令牌 <code>vca_</code> 只读，默认 30 天有效。</p>
+            </div>
+            <div class="card">
+              <div class="row"><i data-lucide="terminal"></i><b>CLI + 分析 skill</b></div>
+              <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-mute">一期 · 本地仓库</span></div>
+              <p class="muted" style="font-size: 13px; margin-top: 8px"><code>agent-trace</code> 不依赖第三方包；<code>/agent-review</code> 在 Claude Code 和 Codex 下都能用；失败分类纳入版本管理。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>为什么自研，而不是接 Langfuse 或 Phoenix</h2>
+          <p class="sub">三条路线都能做到“看到轨迹”。差别在运维成本、能否复用现有数据，以及 AI 读起来顺不顺。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th></th><th>自研：PG + 导出 + skill（已选）</th><th>Langfuse 自托管</th><th>OTel + Phoenix</th></tr></thead>
+              <tbody>
+                <tr><th>新增运维</th><td class="y">无，复用现有 PostgreSQL</td><td class="m">ClickHouse、Redis、S3，外加 2 个容器</td><td><span class="m">多 1 个服务，可用 PG</span></td></tr>
+                <tr><th>复用现有数据</th><td class="y">直接读 <code>agent_*</code> 表</td><td class="m">要另外上报一份</td><td class="m">要另外上报一份</td></tr>
+                <tr><th>AI 读取</th><td class="y">导出格式按 AI 阅读顺序设计</td><td class="y">官方 MCP 和 CLI</td><td class="y">MCP</td></tr>
+                <tr><th>人工浏览 UI</th><td class="m">要自研，放在二期</td><td class="y">现成，有标注队列</td><td class="y">现成</td></tr>
+                <tr><th>自动失败挖掘</th><td>由本地 skill 判定和归类</td><td class="m">没有自动聚类，judge 要自己配</td><td class="m">没有自动聚类</td></tr>
+                <tr><th>许可证</th><td>—</td><td>核心 MIT</td><td class="m">ELv2（自用不受影响）</td></tr>
+                <tr><th>将来迁移</th><td>字段按 OTel <code>gen_ai.*</code> 命名，可加 exporter</td><td>—</td><td>—</td></tr>
+                <tr><th>核实度</th><td><span class="tag t-ok">已核对项目代码</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-info">调研检索</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>发版后想知道“新提示词有没有变好”时，会发生什么</h2>
+          <p class="sub">这是最典型的一次闭环，你在本地仓库里完成。</p>
+          <div class="grid g2">
+            <div class="card">
+              <ol class="steps" style="margin: 0; padding: 0">
+                <li><b>改 <code>system.md</code>，把 <code>prompts.Version</code> 改成 10，然后发版</b><small>新运行自动带上 prompt_version=10，harness_key 也随之变化</small></li>
+                <li><b>等线上积累一周数据</b><small>用户照常使用，有人点 👎，有人撤销</small></li>
+                <li><b>跑 <code>/agent-review --since 7d</code></b><small>拉取 60 条（点踩、撤销、失败的优先），AI 逐条判定，写入 verdicts.jsonl</small></li>
+                <li><b>跑 <code>agent-trace compare --by prompt_version</code></b><small>v9 和 v10 的点踩率、撤销率、失败结束率、AI 判定失败率并排列出</small></li>
+                <li><b>看报告里排名靠前的失败类别</b><small>每类附 2–3 个样本运行和建议改动的文件，再进入下一轮</small></li>
+              </ol>
+            </div>
+            <div class="card">
+              <div class="callout c-warn">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <b>边界：样本少于 30 的版本，不下“变好或变坏”的结论</b>
+                  <ul class="list" style="margin-top: 6px">
+                    <li>CLI 只显示数值并标注“样本不足”</li>
+                    <li>点踩率的分母是“有反馈的运行”，反馈率低时波动大，要和撤销率、AI 判定一起看</li>
+                    <li>AI 判定失败率只来自你本地已判定的运行，换一台机器需要重新判定</li>
+                    <li>同一次发版里如果同时改了工具声明，<code>tools_hash</code> 也会变，按 harness_key 分组看更准确</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="muted" style="font-size: 12.5px; margin-top: 10px">
+                需要提前说清：导出的是<b>用户原文</b>，会落到你本机的 <code>.traces/</code>（已加入 gitignore），并发送给 Claude 或 Codex。用户协议里是否补一句“对话用于改进服务”，由你决定（待确认）。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 分析闭环演示 ============ -->
+      <section id="tab-demo" hidden>
+        <h1 class="h1">分析闭环演示</h1>
+        <p class="lead">
+          用 8 条示意运行，走一遍 <b>拉取 → 单次运行文档 → AI 判定与报告 → 版本对比</b>。左边选步骤，右边改参数，看 CLI 会拉到什么、AI 会读到什么。
+          <b>数据全是示意，判定结果是预置的，不会真的调用模型。</b>
+        </p>
+        <div class="grid demo-grid" style="margin-top: 20px; grid-template-columns: 240px minmax(0, 1fr)">
+          <div id="optList" class="grid" style="align-content: start"></div>
+          <div id="optPanel" class="card" style="min-width: 0"></div>
+        </div>
+      </section>
+
+      <!-- ============ 3. 可点击原型 ============ -->
+      <section id="tab-proto" hidden>
+        <h1 class="h1">可点击原型</h1>
+        <p class="lead">
+          三块界面：<b>用户端的 👍/👎</b>、<b>后台的分析令牌</b>（一期）、<b>后台的运行记录</b>（二期）。数据在内存里，刷新复原。
+          想看失败怎么提示：在点踩说明里写 <code>fail</code>，提交会失败；签发令牌时把有效期填成大于 90 天，会被拒绝；把正在运行的那轮切到“运行中”，按钮会禁用。
+        </p>
+        <div class="row wrapflex" style="margin-top: 16px">
+          <div class="seg" id="protoSeg">
+            <button data-p="fb" aria-pressed="true">用户端 · 反馈</button>
+            <button data-p="tok" aria-pressed="false">后台 · 分析令牌（一期）</button>
+            <button data-p="runs" aria-pressed="false">后台 · 运行记录（二期）</button>
+          </div>
+        </div>
+        <div class="frame note" style="margin-top: 14px">
+          <div class="frame-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span style="margin-left: 8px" id="protoAddr">canvas.example.com / 我的画布 / 短片《雨夜》 / Agent</span>
+          </div>
+          <div class="proto" id="proto"></div>
+        </div>
+        <div class="note-txt" id="protoNote"></div>
+      </section>
+
+      <!-- ============ 4. 数据与接口（提案） ============ -->
+      <section id="tab-impl" hidden>
+        <h1 class="h1">数据与接口（提案）</h1>
+        <p class="lead">
+          以下都是设计提案，尚未实现，对应 Markdown 设计文档第 6、8 节。迁移沿用编号 SQL，新增 <code>backend/migrations/0008_agent_observability.sql</code>。分层沿用
+          router → handler → service → repository。<b>不改画布 payload_json，不碰 revision 乐观锁。</b>
+        </p>
+
+        <div class="sec">
+          <h2>关系</h2>
+          <p class="sub">所有新数据都挂在已有的运行（run）上，运行本身就是一条 trace。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>对象</th><th>挂在哪</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><th>工具调用</th><td><code>agent_tool_calls.run_id</code>，唯一键 <code>(run_id, tool_call_id)</code></td><td>和 tool.start / tool.end 事件一一对应；脚本子调用用 <code>parent_id</code> 关联</td></tr>
+                <tr><th>运行摘要</th><td><code>agent_run_digests.run_id</code>（主键）</td><td>一次运行对应一行，长期保留，版本对比和列表只查这张表</td></tr>
+                <tr><th>用户反馈</th><td><code>agent_feedback</code>，唯一键 <code>(run_id, user_id)</code></td><td>每个运行每人只有一条，改选就是覆盖</td></tr>
+                <tr><th>Harness 版本</th><td><code>agent_runs</code> 新字段，摘要里冗余一份</td><td>运行创建时就确定，续跑也不变</td></tr>
+                <tr><th>trace_id</th><td>直接使用 <code>run_id</code></td><td>不另造 ID；桥的访问日志带 <code>run_id</code>，由 Go 从桥令牌解析（不靠 Node 自报）</td></tr>
+                <tr><th>分析令牌</th><td><code>admin_api_tokens.created_by</code> 指向签发人</td><td>签发人降权后令牌立即失效</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>数据模型</h2>
+          <p class="sub">大字段 30 天后由每日清理任务置为 NULL（参照 <code>login_log_cleanup.go</code>），摘要和反馈不清理。</p>
+          <div class="grid g2">
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_tool_calls</code>（新）</th></tr></thead>
+              <tbody>
+                <tr><th>run_id / session_id</th><td>bigint；索引 <code>(run_id, started_at)</code></td></tr>
+                <tr><th>tool_call_id</th><td>varchar(64)；与 run_id 组成唯一键</td></tr>
+                <tr><th>parent_id</th><td>varchar(64)，脚本子调用</td></tr>
+                <tr><th>name</th><td>varchar(64)，即 gen_ai.tool.name</td></tr>
+                <tr><th>args_json</th><td>jsonb，可为 NULL；<b>30 天后清空</b></td></tr>
+                <tr><th>result_text</th><td>text ≤ 32KB，存返回给模型的文本；<b>30 天后清空</b></td></tr>
+                <tr><th>result_truncated / is_error</th><td>bool</td></tr>
+                <tr><th>summary</th><td>varchar(255)，与 tool.end 一致</td></tr>
+                <tr><th>started_at / ended_at / duration_ms</th><td>耗时</td></tr>
+                <tr><th>purged_at</th><td>大字段被清理的时间</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_run_digests</code>（新，长期保留）</th></tr></thead>
+              <tbody>
+                <tr><th>run_id</th><td>bigint 主键</td></tr>
+                <tr><th>session / user / canvas</th><td>bigint；对 user_id 建索引</td></tr>
+                <tr><th>mode / model_key</th><td>varchar</td></tr>
+                <tr><th>prompt_version / tools_hash / build_sha / harness_key</th><td>索引 <code>(harness_key, ended_at)</code></td></tr>
+                <tr><th>skills</th><td>jsonb，如 <code>{"script-breakdown":"v3"}</code></td></tr>
+                <tr><th>status / error_code</th><td>终态</td></tr>
+                <tr><th>request_head</th><td>varchar(200)，用户请求的前 200 字</td></tr>
+                <tr><th>steps / tool_calls / tool_errors / model_calls</th><td>int</td></tr>
+                <tr><th>input / output_tokens / spent_credits / duration_ms</th><td>int</td></tr>
+                <tr><th>approvals_total / approvals_rejected / steer_count / mutation_count</th><td>int</td></tr>
+                <tr><th>undone / feedback</th><td>bool / smallint（1、-1、0）</td></tr>
+                <tr><th>runtime_tail</th><td>text，stderr 末尾 4KB，<b>30 天后清空</b></td></tr>
+                <tr><th>ended_at / updated_at</th><td>对 ended_at 建索引；CLI 按 updated_at 做增量拉取</td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_feedback</code>（新）</th></tr></thead>
+              <tbody>
+                <tr><th>run_id / user_id</th><td>唯一键</td></tr>
+                <tr><th>rating</th><td>smallint，1 或 -1</td></tr>
+                <tr><th>reasons</th><td>jsonb 数组：misread / wrong_edit / slow / bad_output / other</td></tr>
+                <tr><th>comment</th><td>varchar(500)</td></tr>
+                <tr><th>created_at / updated_at</th><td></td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>admin_api_tokens</code>（新）</th></tr></thead>
+              <tbody>
+                <tr><th>name / prefix</th><td>用途备注 / 明文前 8 位，用于辨认</td></tr>
+                <tr><th>token_hash</th><td>char(64) 唯一，sha256，<b>不存明文</b></td></tr>
+                <tr><th>scope</th><td>本期只有 <code>agent:read</code></td></tr>
+                <tr><th>created_by</th><td>签发人；鉴权时校验其仍是管理员</td></tr>
+                <tr><th>expires_at</th><td>必填，最长签发后 90 天</td></tr>
+                <tr><th>last_used_at / revoked_at</th><td></td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_runs</code>（补字段）</th></tr></thead>
+              <tbody>
+                <tr><th>prompt_version</th><td>int，取 <code>prompts.Version</code></td></tr>
+                <tr><th>tools_hash</th><td>varchar(12)，tool_decls.json 和 codemode 声明的 sha256 前缀</td></tr>
+                <tr><th>build_sha</th><td>varchar(40)，构建时注入的 commit（Makefile 和 Dockerfile 都已注入：<span class="tag t-ok">已核对项目代码</span>；本地 <code>go run</code> 没有注入，记空串）</td></tr>
+                <tr><th>harness_key</th><td>varchar(12)，前三项再哈希；索引 <code>(harness_key, created_at)</code></td></tr>
+              </tbody></table></div>
+            <div class="cmp-wrap"><table class="cmp">
+              <thead><tr><th colspan="2"><code>agent_model_calls</code>（补字段）</th></tr></thead>
+              <tbody>
+                <tr><th>purpose</th><td>main / summary，取自 <code>X-Agent-Purpose</code></td></tr>
+                <tr><th>channel_key / upstream_model</th><td>实际使用的渠道和上游模型</td></tr>
+                <tr><th>latency_ms / ttft_ms</th><td>总耗时 / 首字耗时</td></tr>
+                <tr><th>stop_reason</th><td>varchar(32)</td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>接口</h2>
+          <p class="sub"><code>/admin/agent/runs*</code> 和 <code>/admin/agent/stats</code> 用新中间件 <code>AdminOrAnalysisToken</code>：先认 <code>vca_</code> 令牌，认不出就退回 JWT + RequireAdmin。令牌管理接口只接受 JWT。</p>
+          <div class="cmp-wrap">
+            <table class="cmp">
+              <thead><tr><th>方法与路径</th><th>说明</th><th>业务错误</th></tr></thead>
+              <tbody>
+                <tr><th><code>PUT /agent/runs/:rid/feedback</code></th><td>用户端。body 为 <code>{rating, reasons?, comment?}</code>；写事件 <code>feedback.set</code>，并更新摘要</td><td>ErrAgentRunMissing（60012，别人的运行也返回它）· ErrAgentRunNotEnded（60014）· 参数错误</td></tr>
+                <tr><th><code>DELETE /agent/runs/:rid/feedback</code></th><td>取消反馈，幂等</td><td>ErrAgentRunMissing（60012）</td></tr>
+                <tr><th><code>GET /admin/agent/runs</code></th><td>摘要列表。参数：since、until、status、feedback、undone、harness_key、prompt_version、model_key、user_id、cursor、limit（≤ 500）</td><td>参数错误</td></tr>
+                <tr><th><code>GET /admin/agent/runs/:rid</code></th><td>详情：digest、events、tool_calls、model_calls、mutations、approvals、feedback，以及前 2 轮上下文</td><td>ErrAgentRunMissing（60012）</td></tr>
+                <tr><th><code>GET /admin/agent/runs/:rid/export?format=md|json|both</code></th><td>AI 可读导出；<code>md</code> 返回 <code>{format, content}</code>，<code>json</code> 直接返回结构化对象，<code>both</code> 返回 <code>{format, content, data}</code>（本地 CLI 一次请求拿全）；Markdown 每段截到 2KB，JSON 里工具结果最长 32KB</td><td>ErrAgentRunMissing（60012）</td></tr>
+                <tr><th><code>GET /admin/agent/stats</code></th><td>按 harness_key、prompt_version 或 model_key 分组聚合</td><td>参数错误</td></tr>
+                <tr><th><code>GET/POST /admin/agent/tokens</code><br /><code>DELETE /admin/agent/tokens/:id</code></th><td>令牌列表、签发（明文只返回一次）、注销；均写审计</td><td>有效期超过 90 天</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout c-info" style="margin-top: 10px">
+            <i data-lucide="shield"></i>
+            <div>导出边界：<b>原样导出用户原文</b>，但渠道 Key 仍是 <code>***</code>，不含图片签名 URL（与 <code>session_jsonl</code> 的规则一致），用户只给出 id 和用户名。用令牌访问时每次列表、导出都写一条 <code>admin_audit_logs</code>（管理员自己看不写）；每个令牌限流每分钟 120 次。</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>核心流程伪代码（提案）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// bridge_tools.go：工具执行前后（写库失败只 Warn，不影响运行）
+call := Repo.InsertToolCall(run, toolCallID, parentID, name, args, now)
+out, herr := spec.run(...)
+Repo.FinishToolCall(call.ID, truncate(res.Content, 32&lt;&lt;10), res.IsError, summary, since(start))
+
+// run 进入终态（finish / fail / cancel / 中断恢复；续跑后再次进入终态会覆盖）
+digest := observe.BuildDigest(run)   // 汇总 tool_calls、model_calls、approvals、mutations、steer 事件
+Repo.UpsertDigest(digest)            // 以 run_id 为主键，幂等
+
+// 撤销本轮
+Repo.UndoRun(...); emit("run.undone", {run_id, mutations}); Repo.MarkDigestUndone(run.ID)
+
+// 中间件 AdminOrAnalysisToken
+if strings.HasPrefix(bearer, "vca_") {
+  t := Repo.TokenByHash(sha256(bearer))
+  if t == nil || t.Revoked() || t.Expired() || t.Scope != "agent:read" || !IsAdmin(t.CreatedBy) { 401 }
+  rateLimit(t.ID, 60/min); audit(t, c.Request.URL.Query()); touch(t.LastUsedAt)
+} else { JWTAuth → RequireAdmin }
+
+// 每日清理
+UPDATE agent_tool_calls  SET args_json=NULL, result_text=NULL, purged_at=now() WHERE started_at &lt; now()-30d AND purged_at IS NULL
+UPDATE agent_run_digests SET runtime_tail=NULL WHERE ended_at &lt; now()-30d</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>本地文件与 skill（提案）</h2>
+          <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">scripts/agent-trace/agent-trace.mjs   # Node 18+，无第三方依赖；VC_API_BASE / VC_TRACE_TOKEN
+.claude/skills/agent-review/SKILL.md  # AGENTS.md 里写一行引用，供 Codex 使用
+docs/agent-eval/failure-taxonomy.md   # 失败分类，纳入版本管理，人确认后才修改
+
+.traces/                    # 整个目录加入 gitignore，内容是用户原文
+  index.jsonl               # 运行摘要
+  runs/&lt;日期&gt;_r&lt;id&gt;.md     # AI 读的单次运行文档
+  runs/&lt;日期&gt;_r&lt;id&gt;.json   # 完整结构化数据
+  verdicts.jsonl            # 逐条判定：run_id, harness_key, goal, outcome, failure_codes[], evidence, component, suggestion, confidence
+  reports/&lt;日期&gt;.md         # 分析报告</pre></div>
+        </div>
+
+        <div class="sec">
+          <h2>已确认的决定</h2>
+          <div class="card">
+            <ol class="list" style="padding-left: 18px; display: grid; gap: 4px">
+              <li><b>第一读者是 AI，人为辅</b>：一期先做导出、CLI 和 skill，后台只做最简的令牌页，运行列表和详情放二期。</li>
+              <li><b>自研，复用现有 PostgreSQL</b>：不引入 Langfuse、Phoenix 或 OTel SDK，字段按 <code>gen_ai.*</code> 命名，为以后迁移留出口。</li>
+              <li><b>AI 读数据的方式：本地 CLI 拉成文件，再配分析 skill</b>：Claude Code 和 Codex 通用，可以离线反复读。</li>
+              <li><b>失败信号：点赞点踩 + AI 全量判定</b>：撤销、拒绝、插话只作为导出字段供 AI 参考，不另建打标系统。</li>
+              <li><b>隐私：原样导出</b>：Key 和图片签名 URL 仍按现有规则不出现。</li>
+              <li><b>按需手动分析</b>：线上不调用模型做判定（每日自动 judge 已搁置）。</li>
+              <li><b>按 Harness 版本对比指标</b>：不建离线回归评测（已搁置，需要回放环境）。</li>
+              <li><b>保留期：完整轨迹 30 天，摘要和反馈长期保留。</b></li>
+              <li><b>主文档已同步</b>：本页的数字和决定与 <code>Agent运行观测.md</code> 第 6、8、11 节一致，本页没有新增决定。</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (s, r = document) => r.querySelector(s);
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const icons = () => {
+        if (window.lucide) lucide.createIcons();
+      };
+
+      function toggleNotes() {
+        const on = document.body.classList.toggle("show-notes");
+        $("#notesSw").setAttribute("aria-checked", String(on));
+      }
+
+      let toastTimer;
+      function toast(msg, kind = "ok") {
+        const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+        $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+        icons();
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2400);
+      }
+
+      function showTab(id) {
+        document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+        document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+        window.scrollTo(0, 0);
+      }
+      document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+      /* ================= 示意数据（内存，刷新复原） ================= */
+      const H9 = { key: "a1f3c9e20b77", pv: 9 };
+      const H10 = { key: "7c02d4be91a5", pv: 10 };
+      const REASONS = { misread: "没理解我的需求", wrong_edit: "画布改错了", slow: "步骤太多或太慢", bad_output: "生成结果不好", other: "其他" };
+      const RUNS = [
+        { id: 1234, day: 20, user: "u87 · 小林", mode: "storyboard", h: H9, status: "completed", steps: 18, credits: 42, dur: "3m12s",
+          fb: -1, reasons: ["misread"], comment: "我要 6 个镜头，它给了 12 个", undone: true, rejected: 0, steer: 1, toolErr: 0,
+          req: "把这段剧本拆成 6 个镜头的分镜，角色先建好",
+          tl: [
+            ["模型回复", "思考：剧本里有 12 个动作节拍，按节拍拆最细致……"],
+            ["工具调用", "skill_read {name:\"script-breakdown\"} → script-breakdown@v3（1.8KB） · 120ms"],
+            ["工具调用", "canvas_get_state {} → 1 个文本节点「雨夜」 · 40ms"],
+            ["工具调用", "canvas_apply_ops {ops:[create_group 角色组, create_node ×3 …]} → 新建 3 个角色节点 · 310ms"],
+            ["用户插话", "镜头别太多"],
+            ["工具调用", "canvas_apply_ops {ops:[create_node 镜头 ×12 …]} → 新建 12 个镜头节点 · 520ms"],
+            ["模型回复", "已按剧本节拍拆成 12 个镜头，角色组已建好。"],
+          ],
+          verdict: { outcome: "failed", codes: ["misread_intent"], evidence: "#1 按节拍拆而不是按用户给的 6 个；#5 用户插话后 #6 仍然建了 12 个", component: "prompt", sug: "system.md「影视链路的搭法」补一条：用户给了镜头数时必须遵守；插话里的约束优先于技能默认值" } },
+        { id: 1236, day: 20, user: "u12 · 阿柚", mode: "all", h: H9, status: "completed", steps: 9, credits: 15, dur: "1m05s",
+          fb: 1, reasons: [], comment: "", undone: false, rejected: 0, steer: 0, toolErr: 0,
+          req: "给这三张角色图各写一个更有电影感的提示词",
+          tl: [["工具调用", "canvas_get_state {} → 3 个图片节点 · 38ms"], ["工具调用", "skill_read {name:\"keyframe-prompt\"} → v2 · 90ms"], ["工具调用", "canvas_apply_ops {ops:[update_node ×3 prompt]} · 140ms"], ["模型回复", "已更新 3 个提示词，加入了光线、镜头焦段和氛围描述。"]],
+          verdict: { outcome: "achieved", codes: [], evidence: "#3 三个节点都已更新，用户点了赞", component: "-", sug: "" } },
+        { id: 1241, day: 21, user: "u33 · Momo", mode: "all", h: H9, status: "failed", steps: 6, credits: 8, dur: "0m48s",
+          fb: 0, reasons: [], comment: "", undone: false, rejected: 0, steer: 0, toolErr: 2,
+          req: "参考这个网址的风格做一张海报 https://example.com/ref",
+          tl: [["工具调用", "web_fetch {url:\"https://example.com/ref\"} → 错误：页面需要登录 · 2.1s"], ["工具调用", "web_fetch {url:\"https://example.com/ref?share=1\"} → 错误：页面需要登录 · 2.0s"], ["运行结束", "failed · error_code=tool_failed · 「参考页面打不开」"]],
+          verdict: { outcome: "failed", codes: ["tool_failure", "under_ask"], evidence: "#1 #2 抓取失败后直接结束，没有请用户上传截图", component: "prompt", sug: "工具失败后先 ask_user 请用户提供截图或描述，而不是结束运行" } },
+        { id: 1250, day: 22, user: "u87 · 小林", mode: "storyboard", h: H10, status: "completed", steps: 14, credits: 35, dur: "2m40s",
+          fb: 1, reasons: [], comment: "", undone: false, rejected: 0, steer: 0, toolErr: 0,
+          req: "这段剧本拆 6 个镜头",
+          tl: [["工具调用", "skill_read {name:\"script-breakdown\"} → v3 · 110ms"], ["工具调用", "canvas_apply_ops {ops:[create_node 镜头 ×6 …]} · 300ms"], ["模型回复", "已拆成 6 个镜头。"]],
+          verdict: { outcome: "achieved", codes: [], evidence: "#2 正好 6 个镜头", component: "-", sug: "" } },
+        { id: 1253, day: 22, user: "u40 · 青禾", mode: "all", h: H10, status: "completed", steps: 22, credits: 120, dur: "6m10s",
+          fb: -1, reasons: ["bad_output", "slow"], comment: "生成的视频人物脸变了", undone: false, rejected: 1, steer: 0, toolErr: 0,
+          req: "把分镜 1-4 都生成视频",
+          tl: [["审批", "generate_media 4 条视频 · 预估 96 积分 → 用户批准"], ["工具调用", "task_get ×9（轮询） · 共 4m"], ["审批", "再生成 2 条补镜 → 用户拒绝"], ["模型回复", "4 条视频已生成并绑定到节点。"]],
+          verdict: { outcome: "partial", codes: ["gen_quality", "loop_waste"], evidence: "#2 轮询 9 次；用户反馈人物脸不一致；#3 主动追加补镜被拒绝", component: "product_gap", sug: "视频生成时缺少角色参考图绑定（产品能力）；task_get 的轮询间隔改由运行时托管" } },
+        { id: 1255, day: 23, user: "u12 · 阿柚", mode: "script", h: H10, status: "completed", steps: 5, credits: 6, dur: "0m30s",
+          fb: 0, reasons: [], comment: "", undone: true, rejected: 0, steer: 0, toolErr: 0,
+          req: "帮我把台词改得更口语一点",
+          tl: [["工具调用", "canvas_apply_ops {ops:[update_node 文本 ×1]} · 90ms"], ["模型回复", "已改写台词。"], ["撤销本轮", "run.undone · 1 条改动"]],
+          verdict: { outcome: "unclear", codes: [], evidence: "#3 用户撤销了，但没有反馈，也没有后续消息", component: "-", sug: "需人工看" } },
+        { id: 1260, day: 24, user: "u33 · Momo", mode: "all", h: H10, status: "step_limit", steps: 40, credits: 58, dur: "5m02s",
+          fb: -1, reasons: ["slow"], comment: "", undone: false, rejected: 0, steer: 2, toolErr: 1,
+          req: "把画布整理整齐，按场景分组",
+          tl: [["工具调用", "canvas_get_state {} · 60ms"], ["工具调用", "canvas_arrange ×17 · 平均 200ms"], ["用户插话", "别一直挪了"], ["运行结束", "已达到本轮步数上限，运行暂停"]],
+          verdict: { outcome: "failed", codes: ["loop_waste", "wrong_tool"], evidence: "#2 canvas_arrange 反复调用 17 次；插话后没有停", component: "tool_desc", sug: "canvas_arrange 的声明说明一次可传多个分组；运行时检测同一工具连续重复调用" } },
+        { id: 1262, day: 24, user: "u51 · 陈陈", mode: "storyboard", h: H10, status: "completed", steps: 12, credits: 28, dur: "2m05s",
+          fb: 1, reasons: [], comment: "", undone: false, rejected: 0, steer: 0, toolErr: 0,
+          req: "按这份剧本搭分镜，画幅 9:16",
+          tl: [["工具调用", "skill_read ×2 · 200ms"], ["工具调用", "canvas_apply_ops {ops:[create_group, create_node ×8]} · 410ms"], ["模型回复", "已搭好 2 个角色、8 个镜头，画幅 9:16。"]],
+          verdict: { outcome: "achieved", codes: [], evidence: "#2 画幅和结构符合要求", component: "-", sug: "" } },
+      ];
+      const signal = (r) => r.fb === -1 || r.undone || r.rejected > 0 || ["failed", "step_limit", "budget_limit", "canceled"].includes(r.status);
+
+      /* ================= 2. 分析闭环演示 ================= */
+      const demo = { opt: "pull", since: "7d", feedback: "any", undone: false, sample: 6, runId: 1234, judged: false, big: false };
+      const OPTS = [
+        { id: "pull", t: "① 拉取", d: "agent-trace pull 会拉到哪些运行" },
+        { id: "doc", t: "② 单次运行文档", d: "AI 实际读到的 Markdown" },
+        { id: "review", t: "③ AI 判定与报告", d: "/agent-review 的产出" },
+        { id: "compare", t: "④ 版本对比", d: "v9 vs v10，样本不足时不下结论" },
+      ];
+      function renderOpts() {
+        $("#optList").innerHTML = OPTS.map((o) => `<button class="opt" aria-selected="${o.id === demo.opt}" data-o="${o.id}"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></button>`).join("");
+        $("#optList").querySelectorAll(".opt").forEach((b) => b.addEventListener("click", () => { demo.opt = b.dataset.o; renderOpts(); renderPanel(); }));
+      }
+      function pulled() {
+        const maxDay = 24, days = { "1d": 1, "3d": 3, "7d": 7 }[demo.since];
+        let list = RUNS.filter((r) => r.day > maxDay - days);
+        if (demo.feedback === "down") list = list.filter((r) => r.fb === -1);
+        if (demo.feedback === "up") list = list.filter((r) => r.fb === 1);
+        if (demo.feedback === "none") list = list.filter((r) => r.fb === 0);
+        if (demo.undone) list = list.filter((r) => r.undone);
+        const sig = list.filter(signal), rest = list.filter((r) => !signal(r));
+        const sigPick = sig.slice(0, Math.min(sig.length, Math.ceil(demo.sample * 2 / 3)));
+        const picked = sigPick.concat(rest.slice(0, Math.max(0, demo.sample - sigPick.length)));
+        return { list, picked };
+      }
+      const fbTag = (r) => (r.fb === 1 ? '<span class="tag t-ok">👍</span>' : r.fb === -1 ? '<span class="tag t-bad">👎</span>' : '<span class="tag t-mute">无</span>');
+      function renderPanel() {
+        const p = $("#optPanel");
+        if (demo.opt === "pull") {
+          const { list, picked } = pulled();
+          const cmd = `agent-trace pull --since ${demo.since}` + (demo.feedback !== "any" ? ` --feedback ${demo.feedback}` : "") + (demo.undone ? " --undone" : "") + ` --sample ${demo.sample}`;
+          p.innerHTML = `
+            <h3 style="font-size:15px">拉取参数</h3>
+            <div class="row wrapflex" style="gap:12px;margin-top:10px">
+              <label class="field">时间范围<select id="dSince">${["1d", "3d", "7d"].map((v) => `<option ${v === demo.since ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+              <label class="field">反馈<select id="dFb">${[["any", "不限"], ["down", "仅点踩"], ["up", "仅点赞"], ["none", "未反馈"]].map(([v, l]) => `<option value="${v}" ${v === demo.feedback ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+              <label class="field">抽样条数<input id="dSample" type="number" min="1" max="8" value="${demo.sample}" style="width:80px" /></label>
+              <label class="chk" style="margin-top:18px"><input id="dUndone" type="checkbox" ${demo.undone ? "checked" : ""}/>只要被撤销的</label>
+            </div>
+            <pre class="md" style="margin-top:12px">$ ${esc(cmd)}
+命中 ${list.length} 条，抽样 ${picked.length} 条（信号样本优先）→ 写入 .traces/runs/</pre>
+            <div class="cmp-wrap note" style="margin-top:12px"><table class="mini" style="width:100%">
+              <thead><tr><th>run</th><th>请求首句</th><th>状态</th><th>反馈</th><th>撤销</th><th>harness</th><th>入选</th></tr></thead>
+              <tbody>${list.map((r) => `<tr><td class="mono">r${r.id}</td><td>${esc(r.req.slice(0, 22))}…</td><td>${esc(r.status)}</td><td>${fbTag(r)}</td><td>${r.undone ? "是" : "—"}</td><td class="mono">v${r.h.pv}</td><td>${picked.includes(r) ? (signal(r) ? '<span class="tag t-warn">信号</span>' : '<span class="tag t-info">随机</span>') : '<span class="muted">—</span>'}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">没有命中的运行，请放宽条件</td></tr>'}</tbody>
+            </table></div>
+            <div class="note-txt">设计：分层抽样。点踩、撤销、失败、拒绝审批的“信号样本”优先入选（真实默认值：最多 40 条，总共 60 条），剩下的随机抽满，以免只看坏样本、误判整体水平。随机样本也能暴露用户没吭声的失败。</div>
+            <p class="muted" style="font-size:12px;margin-top:8px">示意：抽样上限按比例缩小到 8 条数据上。</p>`;
+          $("#dSince").onchange = (e) => { demo.since = e.target.value; renderPanel(); };
+          $("#dFb").onchange = (e) => { demo.feedback = e.target.value; renderPanel(); };
+          $("#dUndone").onchange = (e) => { demo.undone = e.target.checked; renderPanel(); };
+          $("#dSample").onchange = (e) => { demo.sample = Math.max(1, Math.min(8, +e.target.value || 1)); renderPanel(); };
+        } else if (demo.opt === "doc") {
+          const r = RUNS.find((x) => x.id === demo.runId);
+          p.innerHTML = `
+            <div class="row wrapflex"><h3 style="font-size:15px">runs/2026-10-${r.day}_r${r.id}.md</h3><span class="tag t-mute">示意</span>
+              <label class="field spacer" style="grid-auto-flow:column;align-items:center">选择运行 <select id="dRun">${RUNS.map((x) => `<option value="${x.id}" ${x.id === r.id ? "selected" : ""}>r${x.id} · ${esc(x.req.slice(0, 12))}</option>`).join("")}</select></label></div>
+            <div class="note" style="margin-top:10px"><pre class="md">${esc(runMd(r))}</pre></div>
+            <div class="note-txt">设计：按“用户要什么 → Agent 怎么做 → 结果 → 用户满不满意”的顺序写，步骤编号 #n 让 AI 判定时能引用证据。信号字段（undone、steer_count、approvals_rejected）放在头部，AI 一眼就能看到；工具参数和结果在 Markdown 里截到 2KB，完整内容在同名 .json 里。</div>`;
+          $("#dRun").onchange = (e) => { demo.runId = +e.target.value; renderPanel(); };
+        } else if (demo.opt === "review") {
+          p.innerHTML = demo.judged ? reviewHtml() : `
+            <h3 style="font-size:15px">/agent-review --since 7d</h3>
+            <p class="muted" style="font-size:13px;margin-top:6px">AI 会逐条读 8 份运行文档，每条写一行判定到 verdicts.jsonl，再按失败分类统计频次、读相关代码，最后给出建议。</p>
+            <button class="btn btn-primary" id="dJudge" style="margin-top:12px"><i data-lucide="play"></i>运行（模拟，非真实调用）</button>`;
+          if (!demo.judged) $("#dJudge").onclick = () => {
+            $("#dJudge").disabled = true; $("#dJudge").innerHTML = "判定中… 3/8";
+            setTimeout(() => { demo.judged = true; renderPanel(); toast("已写入 verdicts.jsonl 和 reports/2026-10-25.md（示意）"); }, 900);
+          };
+        } else {
+          p.innerHTML = compareHtml();
+          $("#dBig").onchange = (e) => { demo.big = e.target.checked; renderPanel(); };
+        }
+        icons();
+      }
+      function runMd(r) {
+        const lines = [
+          "---", `run_id: ${r.id}`, `time: 2026-10-${r.day}`, `user: ${r.user}`, `mode: ${r.mode}`,
+          `harness: { prompt_version: ${r.h.pv}, harness_key: ${r.h.key}, tools_hash: 3be9…, build_sha: 7baa1a3…, skills: { script-breakdown: v3 } }`,
+          `status: ${r.status}   steps: ${r.steps}   credits: ${r.credits}   duration: ${r.dur}`,
+          `signals: { feedback: ${r.fb}, reasons: [${r.reasons.join(", ")}], undone: ${r.undone}, approvals_rejected: ${r.rejected}, steer_count: ${r.steer}, tool_errors: ${r.toolErr} }`,
+          "---", "", "## 用户请求", r.req, "", "## 时间线",
+          ...r.tl.map((t, i) => `#${i + 1} [${t[0]}] ${t[1]}`), "", "## 画布改动",
+          r.undone ? "- 本轮改动已被用户撤销" : "- 见时间线中的 canvas_apply_ops", "", "## 结束",
+          `状态 ${r.status}；用户反馈：${r.fb === 1 ? "👍" : r.fb === -1 ? "👎 " + r.reasons.map((x) => REASONS[x]).join("、") + (r.comment ? "；「" + r.comment + "」" : "") : "无"}`,
+        ];
+        return lines.join("\n");
+      }
+      function reviewHtml() {
+        const judged = RUNS;
+        const counts = {};
+        judged.forEach((r) => r.verdict.codes.forEach((c) => (counts[c] = (counts[c] || 0) + 1)));
+        const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const fail = judged.filter((r) => ["failed", "partial"].includes(r.verdict.outcome)).length;
+        return `
+          <div class="row wrapflex"><h3 style="font-size:15px">reports/2026-10-25.md</h3><span class="tag t-mute">示意</span><button class="btn btn-outline spacer" id="dReset">重新运行</button></div>
+          <p style="font-size:13px;margin-top:8px">样本 8 条（信号 5，随机 3）。<b>${fail} 条失败或部分完成</b>，1 条 unclear 需人工看。</p>
+          <div class="cmp-wrap" style="margin-top:10px"><table class="mini" style="width:100%">
+            <thead><tr><th>失败类别</th><th>次数</th><th>样本</th><th>组件</th></tr></thead>
+            <tbody>${rows.map(([c, n]) => { const ex = judged.filter((r) => r.verdict.codes.includes(c)); return `<tr><td class="mono">${esc(c)}</td><td>${n}</td><td class="mono">${ex.map((r) => "r" + r.id).join(" ")}</td><td>${esc(ex[0].verdict.component)}</td></tr>`; }).join("")}</tbody>
+          </table></div>
+          <h4 style="font-size:13.5px;margin-top:14px">逐条判定（verdicts.jsonl）</h4>
+          <div class="cmp-wrap note" style="margin-top:6px"><table class="mini" style="width:100%">
+            <thead><tr><th>run</th><th>outcome</th><th>证据</th><th>建议</th></tr></thead>
+            <tbody>${judged.map((r) => `<tr><td class="mono">r${r.id}</td><td><span class="tag ${{ achieved: "t-ok", partial: "t-warn", failed: "t-bad", unclear: "t-mute" }[r.verdict.outcome]}">${r.verdict.outcome}</span></td><td>${esc(r.verdict.evidence)}</td><td>${esc(r.verdict.sug || "—")}</td></tr>`).join("")}</tbody>
+          </table></div>
+          <div class="note-txt">设计：每条判定必须引用步骤号 #n，拿不准就判 unclear，不硬判。失败类别要落到组件上（prompt / tool_desc / tool_impl / skill / runtime / model / product_gap），报告才能直接转成改动。product_gap 单独列出，避免把产品缺能力误当成提示词问题去改。</div>`;
+      }
+      function compareHtml() {
+        const grp = (h) => RUNS.filter((r) => r.h === h);
+        const m = (rs) => {
+          const rated = rs.filter((r) => r.fb !== 0), withMut = rs;
+          return { n: rs.length, fbRate: rated.length / rs.length, down: rated.length ? rated.filter((r) => r.fb === -1).length / rated.length : 0,
+            undo: rs.filter((r) => r.undone).length / withMut.length, failEnd: rs.filter((r) => r.status !== "completed").length / rs.length,
+            ai: rs.filter((r) => ["failed", "partial"].includes(r.verdict.outcome)).length / rs.length };
+        };
+        const a = demo.big ? { n: 212, fbRate: 0.21, down: 0.38, undo: 0.17, failEnd: 0.09, ai: 0.34 } : m(grp(H9));
+        const b = demo.big ? { n: 187, fbRate: 0.24, down: 0.24, undo: 0.1, failEnd: 0.08, ai: 0.22 } : m(grp(H10));
+        const enough = a.n >= 30 && b.n >= 30;
+        const pct = (x) => (x * 100).toFixed(0) + "%";
+        const row = (label, k) => {
+          const d = b[k] - a[k];
+          const verdict = !enough ? '<span class="tag t-mute">样本不足</span>' : Math.abs(d) < 0.02 ? '<span class="tag t-mute">持平</span>' : d < 0 ? '<span class="tag t-ok">改善</span>' : '<span class="tag t-bad">变差</span>';
+          return `<tr><td>${label}</td><td>${pct(a[k])}</td><td>${pct(b[k])}</td><td>${k === "fbRate" ? "—" : verdict}</td></tr>`;
+        };
+        return `
+          <div class="row wrapflex"><h3 style="font-size:15px">agent-trace compare --by prompt_version</h3>
+            <label class="chk spacer"><input id="dBig" type="checkbox" ${demo.big ? "checked" : ""}/>换成示意的大样本</label></div>
+          <div class="cmp-wrap note" style="margin-top:10px"><table class="mini" style="width:100%">
+            <thead><tr><th>指标</th><th>v9（n=${a.n}）</th><th>v10（n=${b.n}）</th><th>结论</th></tr></thead>
+            <tbody>${row("反馈率", "fbRate")}${row("点踩率（÷ 有反馈）", "down")}${row("撤销率", "undo")}${row("失败结束率", "failEnd")}${row("AI 判定失败率（本地）", "ai")}</tbody>
+          </table></div>
+          <div class="note-txt">设计：前四项来自服务端 <code>/admin/agent/stats</code>，AI 判定失败率来自本地 verdicts.jsonl 的合并。任一组少于 30 条就不给结论，避免几条运行就宣布“变好了”。</div>
+          ${enough ? "" : '<div class="callout c-warn" style="margin-top:10px"><i data-lucide="triangle-alert"></i><div>v9 和 v10 都少于 30 条，只显示数值，不下结论。勾选右上角可以看示意的大样本是什么样子。</div></div>'}
+          <p class="muted" style="font-size:12px;margin-top:8px">示意：所有数字都是演示用的，不是真实数据。</p>`;
+      }
+      $("#optPanel").addEventListener("click", (e) => { if (e.target.closest("#dReset")) { demo.judged = false; renderPanel(); } });
+
+      /* ================= 3. 可点击原型 ================= */
+      const proto = { view: "fb", runState: "ended", rating: 0, draft: { reasons: [], comment: "" }, openForm: false, saving: false,
+        tokens: [{ id: 1, name: "本机 Claude Code", prefix: "vca_9f2c", exp: "2026-11-15", last: "2026-10-20 22:10", revoked: false }],
+        newTok: null, form: { name: "", days: 30 }, runsFilter: "all", runSel: null };
+      const NOTES = {
+        fb: "设计：按钮放在每轮的运行摘要末尾，不打断用户。👍 一键提交，👎 才展开原因，原因可以不选，以免反馈门槛太高。运行中禁用而不是隐藏，并说明原因。放弃了“每轮结束弹窗请求评价”，因为太打扰。",
+        tok: "设计：明文只显示一次，库里只存 sha256；有效期必填且不超过 90 天；签发人被降权，令牌立即失效。放弃了“永久令牌”，因为令牌放在本机的 .env 里，泄露的风险要靠过期来兜底。",
+        runs: "设计（二期）：列表只查 agent_run_digests，详情与导出的 Markdown 同源，避免人看到的和 AI 读到的不一致。“复制为 Markdown”方便临时把单条运行贴给 AI。",
+      };
+      const ADDR = { fb: "canvas.example.com / 我的画布 / 短片《雨夜》 / Agent", tok: "admin.example.com / Agent / 分析令牌", runs: "admin.example.com / Agent / 运行记录" };
+      $("#protoSeg").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+        proto.view = b.dataset.p;
+        $("#protoSeg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        renderProto();
+      }));
+      function renderProto() {
+        $("#protoAddr").textContent = ADDR[proto.view];
+        $("#protoNote").textContent = NOTES[proto.view];
+        $("#proto").innerHTML = proto.view === "fb" ? fbHtml() : adminShell(proto.view === "tok" ? tokHtml() : runsHtml());
+        bindProto();
+        icons();
+      }
+      function fbHtml() {
+        const ended = proto.runState === "ended";
+        return `<div class="chat">
+          <div class="row" style="justify-content:flex-end;font-size:12px" ><span class="muted">示意切换：</span><div class="seg"><button data-rs="running" aria-pressed="${!ended}">运行中</button><button data-rs="ended" aria-pressed="${ended}">已结束</button></div></div>
+          <div class="bubble b-user">把这段剧本拆成 6 个镜头的分镜，角色先建好</div>
+          <div class="bubble b-agent">
+            ${ended ? "已按剧本节拍拆成 12 个镜头，角色组已建好。" : '<span class="muted">正在搭建镜头组… 第 6 步</span>'}
+            <div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid hsl(var(--border));font-size:12px">
+              <span class="muted">本轮 18 步 · 42 积分 · 改了 15 个节点</span>
+              <span class="spacer row" style="gap:6px">
+                <button class="thumb up" data-th="1" aria-pressed="${proto.rating === 1}" ${ended && !proto.saving ? "" : "disabled"} title="${ended ? "有帮助" : "运行结束后可评价"}"><i data-lucide="thumbs-up"></i></button>
+                <button class="thumb down" data-th="-1" aria-pressed="${proto.rating === -1}" ${ended && !proto.saving ? "" : "disabled"} title="${ended ? "没帮上忙" : "运行结束后可评价"}"><i data-lucide="thumbs-down"></i></button>
+              </span>
+            </div>
+            ${!ended ? '<p class="muted" style="font-size:12px;margin-top:6px">运行结束后可评价</p>' : ""}
+            ${proto.openForm ? `<div style="margin-top:10px;display:grid;gap:8px">
+              <div class="row wrapflex" style="gap:6px">${Object.entries(REASONS).map(([k, v]) => `<button class="chip" data-rs-k="${k}" aria-pressed="${proto.draft.reasons.includes(k)}">${v}</button>`).join("")}</div>
+              <textarea id="fbComment" rows="2" maxlength="500" placeholder="哪里不对？（可选，≤500 字）" style="font:inherit;font-size:13px;color:inherit;background:hsl(var(--background));border:1px solid hsl(var(--border));border-radius:8px;padding:6px 8px">${esc(proto.draft.comment)}</textarea>
+              <div class="row"><span class="muted" style="font-size:11.5px">原因可以不选</span><button class="btn btn-outline spacer" data-act="cancelForm">取消</button><button class="btn btn-primary" data-act="submitDown" ${proto.saving ? "disabled" : ""}>${proto.saving ? "提交中…" : "提交"}</button></div>
+            </div>` : ""}
+            ${proto.rating === -1 && !proto.openForm ? `<p class="muted" style="font-size:12px;margin-top:6px">已记录：${esc(proto.draft.reasons.map((x) => REASONS[x]).join("、") || "未选原因")}。再点 👎 可以取消</p>` : ""}
+            ${proto.rating === 1 ? '<p class="muted" style="font-size:12px;margin-top:6px">感谢反馈。再点 👍 可以取消</p>' : ""}
+          </div></div>`;
+      }
+      function adminShell(inner) {
+        return `<div class="side"><nav>
+          <div class="grp">Agent</div>
+          <button data-nav="skills"><i data-lucide="puzzle"></i>技能</button>
+          <button data-nav="runs" aria-current="${proto.view === "runs"}"><i data-lucide="list"></i>运行记录 <span class="tag t-mute">二期</span></button>
+          <button data-nav="tok" aria-current="${proto.view === "tok"}"><i data-lucide="key-round"></i>分析令牌</button>
+        </nav><main>${inner}</main></div>`;
+      }
+      function tokHtml() {
+        const live = proto.tokens;
+        return `<div class="row wrapflex"><h3 style="font-size:15px">分析令牌</h3></div>
+          ${proto.newTok ? `<div class="callout c-ok" style="margin-top:12px"><i data-lucide="key-round"></i><div><b>令牌已签发，明文只显示这一次：</b><div class="row" style="margin-top:6px"><code style="word-break:break-all">${esc(proto.newTok)}</code><button class="btn btn-outline" data-act="copyTok"><i data-lucide="copy"></i>复制</button></div><p class="muted" style="font-size:12px;margin-top:4px">写到本机的 <code>.traces/.env</code>：VC_TRACE_TOKEN=…（该文件已加入 gitignore）</p><button class="btn" data-act="closeTok" style="margin-top:4px">我已保存</button></div></div>` : ""}
+          <div class="card" style="margin-top:12px;display:grid;gap:10px">
+            <b style="font-size:13.5px">签发新令牌</b>
+            <div class="row wrapflex" style="gap:12px">
+              <label class="field">用途<input id="tName" value="${esc(proto.form.name)}" placeholder="如：本机 Codex" /></label>
+              <label class="field">有效期（天，1–90）<input id="tDays" type="number" value="${esc(proto.form.days)}" style="width:110px" /></label>
+              <button class="btn btn-primary" data-act="issue" style="margin-top:18px"><i data-lucide="plus"></i>签发</button>
+            </div>
+            <p id="tErr" style="font-size:12.5px;color:rgb(var(--bad))"></p>
+          </div>
+          <div class="cmp-wrap" style="margin-top:12px"><table class="mini" style="width:100%">
+            <thead><tr><th>用途</th><th>前缀</th><th>到期</th><th>最近使用</th><th>状态</th><th></th></tr></thead>
+            <tbody>${live.length ? live.map((t) => `<tr><td>${esc(t.name)}</td><td class="mono">${esc(t.prefix)}…</td><td>${esc(t.exp)}</td><td>${esc(t.last || "从未")}</td><td><span class="tag t-ok">有效</span></td><td><button class="btn btn-outline" data-revoke="${t.id}">注销</button></td></tr>`).join("") : '<tr><td colspan="6" class="muted">还没有令牌。签发一个，供本地 agent-trace 使用。</td></tr>'}</tbody>
+          </table></div>
+          `;
+      }
+      function runsHtml() {
+        const f = proto.runsFilter;
+        const list = RUNS.filter((r) => f === "all" || (f === "down" && r.fb === -1) || (f === "undone" && r.undone) || (f === "v10" && r.h === H10));
+        const sel = RUNS.find((r) => r.id === proto.runSel);
+        return `<div class="row wrapflex"><h3 style="font-size:15px">运行记录</h3><span class="tag t-mute">二期</span>
+            <div class="seg spacer">${[["all", "全部"], ["down", "点踩"], ["undone", "被撤销"], ["v10", "harness v10"]].map(([k, l]) => `<button data-rf="${k}" aria-pressed="${k === f}">${l}</button>`).join("")}</div></div>
+          <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px">
+            ${[["v9 点踩率", "38%"], ["v10 点踩率", "24%"], ["v10 撤销率", "10%"]].map(([k, v]) => `<div class="card" style="padding:10px"><div class="muted" style="font-size:12px">${k} <span class="tag t-mute">示意</span></div><b style="font-size:18px">${v}</b></div>`).join("")}
+          </div>
+          <div class="cmp-wrap" style="margin-top:12px"><table class="mini" style="width:100%">
+            <thead><tr><th>时间</th><th>用户</th><th>请求</th><th>状态</th><th>步数</th><th>反馈</th><th>撤销</th></tr></thead>
+            <tbody>${list.length ? list.map((r) => `<tr class="click ${r.id === proto.runSel ? "sel" : ""}" data-run="${r.id}"><td>10-${r.day}</td><td>${esc(r.user)}</td><td>${esc(r.req.slice(0, 18))}…</td><td>${esc(r.status)}</td><td>${r.steps}</td><td>${fbTag(r)}</td><td>${r.undone ? "是" : "—"}</td></tr>`).join("") : '<tr><td colspan="7" class="muted">没有符合筛选条件的运行</td></tr>'}</tbody>
+          </table></div>
+          ${sel ? `<div class="card" style="margin-top:12px"><div class="row wrapflex"><b>r${sel.id} 详情</b><button class="btn btn-outline spacer" data-act="copyMd"><i data-lucide="copy"></i>复制为 Markdown</button><button class="btn btn-outline" data-act="dlJson"><i data-lucide="download"></i>下载 JSON</button></div>
+            <ol class="steps" style="margin:10px 0 0;padding:0">${sel.tl.map((t) => `<li><b>${esc(t[0])}</b><small>${esc(t[1])}</small></li>`).join("")}</ol></div>` : '<p class="muted" style="font-size:12.5px;margin-top:10px">点击一行，查看时间线。</p>'}`;
+      }
+      function bindProto() {
+        const root = $("#proto");
+        root.querySelectorAll("[data-rs]").forEach((b) => (b.onclick = () => { proto.runState = b.dataset.rs; renderProto(); }));
+        root.querySelectorAll("[data-th]").forEach((b) => (b.onclick = () => {
+          const v = +b.dataset.th;
+          if (proto.rating === v) { proto.rating = 0; proto.openForm = false; proto.draft = { reasons: [], comment: "" }; toast("已取消评价（DELETE /agent/runs/1234/feedback，模拟）"); return renderProto(); }
+          if (v === 1) { proto.rating = 1; proto.openForm = false; toast("已记录 👍（模拟）"); return renderProto(); }
+          proto.openForm = true; renderProto();
+        }));
+        root.querySelectorAll("[data-rs-k]").forEach((b) => (b.onclick = () => {
+          const k = b.dataset.rsK, rs = proto.draft.reasons;
+          proto.draft.reasons = rs.includes(k) ? rs.filter((x) => x !== k) : rs.concat(k);
+          b.setAttribute("aria-pressed", String(proto.draft.reasons.includes(k)));
+        }));
+        const ta = $("#fbComment"); if (ta) ta.oninput = (e) => (proto.draft.comment = e.target.value);
+        root.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => act(b.dataset.act)));
+        root.querySelectorAll("[data-nav]").forEach((b) => (b.onclick = () => {
+          if (b.dataset.nav === "skills") return toast("技能页已存在，不在本设计范围内", "warn");
+          $("#protoSeg").querySelector(`[data-p="${b.dataset.nav}"]`).click();
+        }));
+        const tn = $("#tName"), td = $("#tDays");
+        if (tn) tn.oninput = (e) => (proto.form.name = e.target.value);
+        if (td) td.oninput = (e) => (proto.form.days = e.target.value);
+        root.querySelectorAll("[data-revoke]").forEach((b) => (b.onclick = () => {
+          proto.tokens = proto.tokens.filter((t) => t.id !== +b.dataset.revoke); toast("已注销，写入操作审计（模拟）"); renderProto();
+        }));
+        root.querySelectorAll("[data-rf]").forEach((b) => (b.onclick = () => { proto.runsFilter = b.dataset.rf; renderProto(); }));
+        root.querySelectorAll("[data-run]").forEach((tr) => (tr.onclick = () => { proto.runSel = +tr.dataset.run; renderProto(); }));
+      }
+      function act(a) {
+        if (a === "cancelForm") { proto.openForm = false; return renderProto(); }
+        if (a === "submitDown") {
+          proto.saving = true; renderProto();
+          return setTimeout(() => {
+            proto.saving = false;
+            if (/fail/i.test(proto.draft.comment)) { toast("评价没保存，稍后再试", "bad"); return renderProto(); }
+            proto.rating = -1; proto.openForm = false; toast("已记录 👎（PUT /agent/runs/1234/feedback，模拟）"); renderProto();
+          }, 700);
+        }
+        if (a === "issue") {
+          const days = Number(proto.form.days), name = proto.form.name.trim();
+          const err = !name ? "请填写用途" : !Number.isInteger(days) || days < 1 || days > 90 ? "有效期必须是 1–90 天" : "";
+          if (err) { $("#tErr").textContent = err; return; }
+          const plain = "vca_" + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 18);
+          const exp = new Date(Date.UTC(2026, 9, 21 + days)).toISOString().slice(0, 10);
+          proto.tokens.unshift({ id: Date.now(), name, prefix: plain.slice(0, 8), exp, last: "", revoked: false });
+          proto.newTok = plain; proto.form = { name: "", days: 30 }; toast("已签发，写入操作审计（模拟）"); return renderProto();
+        }
+        if (a === "copyTok") return toast("已复制（示意）");
+        if (a === "closeTok") { proto.newTok = null; return renderProto(); }
+        if (a === "copyMd") return toast("已复制 Markdown，与导出接口内容一致（示意）");
+        if (a === "dlJson") return toast("下载 r" + proto.runSel + ".json（示意）");
+      }
+
+      renderOpts();
+      renderPanel();
+      renderProto();
+      icons();
+    </script>
+  </body>
+</html>

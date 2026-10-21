@@ -12,6 +12,7 @@ import (
 
 	"video-canvas/internal/handler"
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/middleware"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/response"
 	agentsvc "video-canvas/internal/service/agent"
@@ -44,6 +45,28 @@ type AgentBridgeHandler struct {
 // NewAgentBridgeHandler 创建桥 handler。
 func NewAgentBridgeHandler(svc AgentBridgeAPI) *AgentBridgeHandler {
 	return &AgentBridgeHandler{svc: svc}
+}
+
+// runTagger 是能把桥令牌解析成运行 id 的业务层（*agentsvc.AgentBridge 实现）。
+type runTagger interface {
+	// RunIDForToken 返回令牌对应的运行 id，无效返回 0。
+	RunIDForToken(token string) uint64
+}
+
+// TagRun 是桥路由的中间件：把令牌对应的运行 id 写进上下文，访问日志据此带上 run_id。
+// 令牌无效、没有令牌或业务层不支持解析时什么都不做，鉴权仍由各接口自己负责。
+func (h *AgentBridgeHandler) TagRun() gin.HandlerFunc {
+	tagger, _ := h.svc.(runTagger)
+	return func(c *gin.Context) {
+		if tagger != nil {
+			if tok, ok := bearerToken(c); ok {
+				if id := tagger.RunIDForToken(tok); id != 0 {
+					c.Set(middleware.CtxAgentRunIDKey, id)
+				}
+			}
+		}
+		c.Next()
+	}
 }
 
 // bearerToken 取 Authorization: Bearer 里的令牌，没有或格式不对返回 false。
@@ -174,6 +197,9 @@ type toolEventReq struct {
 	Verb       string `json:"verb" binding:"max=200" label:"verb"`
 	IsError    bool   `json:"is_error"`
 	Summary    string `json:"summary" binding:"max=2000" label:"summary"`
+
+	Args   json.RawMessage `json:"args"`                                      // start：工具参数（如 codemode 的脚本），留存给事后分析；可省略
+	Result string          `json:"result" binding:"max=65536" label:"result"` // end：返回给模型的文本，留存给事后分析；可省略
 }
 
 // ToolEvent 记录 Agent 自己的工具（如 codemode）的开始和结束：它们不经 /tool，Go 靠这个才知道时间线上多了一步。
@@ -188,7 +214,7 @@ func (h *AgentBridgeHandler) ToolEvent(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.ReportAgentTool(c.Request.Context(), tok, agentsvc.AgentToolEvent{
-		Phase: req.Phase, ToolCallID: req.ToolCallID, Name: req.Name, Label: req.Label, Verb: req.Verb, IsError: req.IsError, Summary: req.Summary,
+		Phase: req.Phase, ToolCallID: req.ToolCallID, Name: req.Name, Label: req.Label, Verb: req.Verb, IsError: req.IsError, Summary: req.Summary, Args: req.Args, Result: req.Result,
 	})
 	if err != nil {
 		bridgeFail(c, err)
