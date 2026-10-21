@@ -22,6 +22,7 @@
 
 </div>
 
+
 ## 核心功能
 
 ### 01 / 无限画布：让创作过程连起来
@@ -46,6 +47,28 @@
 - 模型供应商通过 JS 插件接入，并在隔离的 plugin-runner 进程中运行。
 - 内置覆盖 OpenAI、Anthropic、Google、豆包、阿里百炼、可灵、即梦、Vidu、海螺、Sora 等供应商的插件，支持上传自定义插件。
 - 支持自托管、用户与模型管理、积分结算、素材存储配置及运行维护。
+
+## 项目截图
+
+<table>
+  <tr>
+    <th width="50%">首页</th>
+    <th width="50%">无限画布</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="首页" /></a></td>
+    <td><a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="无限画布" /></a></td>
+  </tr>
+  <tr>
+    <th>3D 导演台</th>
+    <th>后台管理</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D 导演台" /></a></td>
+    <td><a href="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png"><img src="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png" alt="后台管理" /></a></td>
+  </tr>
+</table>
+
 
 ## 快速开始
 
