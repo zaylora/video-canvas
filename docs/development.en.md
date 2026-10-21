@@ -99,6 +99,23 @@ video-canvas/
 | Frontend    | [web/docs/coding-standards.md](../web/docs/coding-standards.md)                                              |
 | UI design   | [.agents/skills/ui-design/SKILL.md](../.agents/skills/ui-design/SKILL.md)                                    |
 
+## Common development tasks
+
+Read [AGENTS.md](../AGENTS.md) and the rules of the directory you are touching first, and write a failing test before the implementation.
+
+| Task                              | How                                                                                                                                                                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a backend API / module        | Follow the "checklist for adding an API / module" in [backend/AGENTS.md](../backend/AGENTS.md): model → errcode → repository → service → handler → router → wiring in `initialize/app.go` → tests → API table |
+| Change the database schema        | Change `internal/model` and add `NNNN_description.sql` under `backend/migrations/`. Released migrations are immutable; dropping or renaming columns takes two releases. Check state with `go run ./cmd/server migrate status` |
+| Add / change a protocol plugin    | Built-in plugins live in `backend/plugins/*.js`. A plugin only translates "task → request" and "response → unified result" and must be pure. [plugin-contract.md](../backend/docs/plugin-contract.md) is the source of truth; change it first |
+| Frontend pages / components       | Follow the [frontend coding standards](../web/docs/coding-standards.md); read [ui-design](../.agents/skills/ui-design/SKILL.md) before UI or interaction changes; API calls live in `web/src/api/`, tests in `web/src/tests/` |
+| Change the Canvas Agent           | The runtime is in `agent/` (run `npm test` there); the Go side is in `backend/internal/agent/`, `internal/service/agent/` and `internal/handler/agent/`                                                       |
+| Build a larger feature            | Write a design record in `docs/design/` first (background, decisions, trade-offs), then implement, and keep it updated when the design changes                                                                  |
+
+### Line endings and encoding
+
+The repository uses LF line endings (see `.gitattributes`; `.bat` files are the CRLF exception). On Windows with `core.autocrlf=true`, `make lint` may report false formatting issues; see the [backend standards](../backend/docs/standards/README.md).
+
 ## Tests and checks
 
 Write a failing test that reproduces the requirement or bug before implementing a feature, fix or refactor. Backend tests live in `backend/internal/tests/`, frontend tests in `web/src/tests/`.
@@ -124,16 +141,18 @@ Installing the Git hooks is recommended so these checks run on commit:
 pre-commit install
 ```
 
-## Commit messages
+## Commit messages and pull requests
 
-Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with the module as the scope, for example:
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) with the module as the scope and an ASCII colon after the type. Descriptions are written in Chinese in this project, for example:
 
 ```text
-feat(canvas): support node grouping
-docs: update deployment notes
+feat(canvas): 支持节点分组
+docs: 更新部署说明
 ```
 
 The changelog is generated from commit messages with git-cliff, so they appear in release notes as written.
+
+Branch naming, commit granularity, PR descriptions, how to file issues, and the review and merge process are in the [contributing guide](../CONTRIBUTING.en.md).
 
 ## CI and releases
 

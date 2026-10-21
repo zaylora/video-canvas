@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 
 | 内容                         | 文档                                                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 开发环境、架构、测试与发布   | [开发指南](docs/development.md)                                                                         |
+| 开发环境、架构、测试与发布   | [开发指南](docs/development.md) · [贡献指南](CONTRIBUTING.md)                                            |
 | 生产部署                     | [生产 Docker 部署](docs/docker-production.md)                                                           |
 | 后端结构、配置项、完整接口表 | [backend/README.md](backend/README.md)                                                                  |
 | AI 管理接口、插件契约        | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
@@ -116,7 +116,7 @@ curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts
 
 欢迎提交 Issue、功能建议和 Pull Request。如果你正在使用连镜，也欢迎分享你的工作流、使用体验或遇到的问题。
 
-开始贡献前，请先阅读 [开发指南](docs/development.md)。
+开始贡献前，请先阅读 [贡献指南](CONTRIBUTING.md)（如何提 Issue 和 PR）和 [开发指南](docs/development.md)（环境、规范、提交前检查）。
 
 如果连镜对你有帮助，欢迎给项目一个 ⭐ Star，让更多创作者发现它。
 ## 许可证

@@ -99,6 +99,23 @@ video-canvas/
 | 前端      | [web/docs/coding-standards.md](../web/docs/coding-standards.md)                                                            |
 | 界面设计  | [.agents/skills/ui-design/SKILL.md](../.agents/skills/ui-design/SKILL.md)                                                  |
 
+## 常见开发任务
+
+动手前先读 [AGENTS.md](../AGENTS.md) 和目标目录的规则，并按 TDD 先写失败测试。
+
+| 任务                 | 怎么做                                                                                                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 新增后端接口 / 模块  | 按 [backend/AGENTS.md](../backend/AGENTS.md) 的「新增一个接口 / 模块的步骤清单」逐步完成：model → errcode → repository → service → handler → router → `initialize/app.go` 组装 → 测试 → 更新接口表 |
+| 改数据库表结构       | 改 `internal/model` 的同时在 `backend/migrations/` 新增 `NNNN_描述.sql`；已发布的迁移不能改，删列、改名分两个版本做。`go run ./cmd/server migrate status` 查看迁移状态                           |
+| 新增 / 修改协议插件  | 内置插件在 `backend/plugins/*.js`，插件只做“任务 → 请求”和“响应 → 统一结果”的翻译，必须是纯函数。字段以 [plugin-contract.md](../backend/docs/plugin-contract.md) 为准，改契约先改文档            |
+| 前端页面 / 组件      | 遵循 [前端代码规范](../web/docs/coding-standards.md)；界面和交互改动先读 [ui-design](../.agents/skills/ui-design/SKILL.md)；接口调用统一放 `web/src/api/`，测试放 `web/src/tests/`            |
+| 改画布 Agent         | 运行时在 `agent/`，改动后在该目录跑 `npm test`；Go 侧在 `backend/internal/agent/`、`internal/service/agent/`、`internal/handler/agent/`                                                       |
+| 做较大的功能         | 先在 `docs/design/` 写设计记录（背景、决定、取舍），再实现；设计变化时同步更新                                                                                                                  |
+
+### 换行与文件编码
+
+仓库统一使用 LF 换行（见 `.gitattributes`，`.bat` 例外为 CRLF）。Windows 上若 `core.autocrlf=true`，`make lint` 可能误报格式问题，详见 [后端工程化规范](../backend/docs/standards/README.md)。
+
 ## 测试与检查
 
 功能、修复和重构都先写能复现需求或问题的失败测试，再实现。后端测试放在 `backend/internal/tests/`，前端测试放在 `web/src/tests/`。
@@ -124,9 +141,9 @@ npm test
 pre-commit install
 ```
 
-## 提交信息
+## 提交信息与 Pull Request
 
-使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)，范围写模块名，描述用中文，例如：
+使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)，范围写模块名，描述用中文，type 后用半角冒号，例如：
 
 ```text
 feat(canvas): 支持节点分组
@@ -134,6 +151,8 @@ docs: 更新部署说明
 ```
 
 CHANGELOG 由 git-cliff 根据提交信息生成，提交信息会直接出现在版本日志里。
+
+分支命名、提交粒度、PR 描述、Issue 填写和评审合并流程见 [贡献指南](../CONTRIBUTING.md)。
 
 ## 持续集成与发布
 

@@ -1,23 +1,26 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-dark.svg" />
-    <img src="docs/assets/brand/logo-light.svg" alt="连镜 logo" width="88" />
+    <img src="docs/assets/brand/logo-light.svg" alt="连镜 Logo" width="88" />
   </picture>
 </p>
 
-<h1 align="center">连镜</h1>
+<div align="center">
 
-<p align="center">A self-hosted infinite canvas for AI video creation: orchestrate text, image, video and audio generation across connected nodes, with pluggable model providers.</p>
+# 连镜
 
-<p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
+**Open-source AI visual creation workbench**
 
-<p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/github/v/tag/zaylora/video-canvas?label=version" alt="Version" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
-  <a href="https://github.com/zaylora/video-canvas/actions/workflows/ci.yml"><img src="https://github.com/zaylora/video-canvas/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/Go-1.27-00ADD8" alt="Go" />
-  <img src="https://img.shields.io/badge/React-19-61DAFB" alt="React" />
-</p>
+Connect inspiration, shots and generation flows on an infinite canvas.
+From text and images to video and audio, keep your creative process organized, reusable and easy to iterate on.
+
+[Live demo](https://canvas.vbing.site) · [Quick start](#quick-start) · [Features](#features) · [简体中文](README.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/tag/zaylora/video-canvas?label=version)](https://github.com/zaylora/video-canvas/tags)
+[![CI](https://github.com/zaylora/video-canvas/actions/workflows/ci.yml/badge.svg)](https://github.com/zaylora/video-canvas/actions/workflows/ci.yml)
+
+</div>
 
 ## Features
 
@@ -44,53 +47,57 @@
 - **Conflict-free saving**: Canvases are saved with `revision`-based optimistic locking, so edits from several tabs or devices never overwrite each other.
 - **In-app upgrades**: With the updater enabled, a super admin can upgrade to the latest release, or roll back to the version before the last upgrade, from the admin console.
 
+## Screenshots
+
+<table>
+  <tr>
+    <th width="50%">Home</th>
+    <th width="50%">Infinite canvas</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png"><img src="docs/assets/screenshots/%E9%A6%96%E9%A1%B5.png" alt="Home" /></a></td>
+    <td><a href="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png"><img src="docs/assets/screenshots/%E7%94%BB%E5%B8%83.png" alt="Infinite canvas" /></a></td>
+  </tr>
+  <tr>
+    <th>3D director's desk</th>
+    <th>Admin console</th>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png"><img src="docs/assets/screenshots/%E5%AF%BC%E6%BC%94%E5%8F%B0.png" alt="3D director's desk" /></a></td>
+    <td><a href="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png"><img src="docs/assets/screenshots/%E5%90%8E%E5%8F%B0%E7%AE%A1%E7%90%86.png" alt="Admin console" /></a></td>
+  </tr>
+</table>
+
 ## Quick start
 
-### Deploy
+### Deploy with Docker
 
-The server needs [Docker](https://docs.docker.com/get-docker/) (with Compose v2) and curl. There is no need to clone the repository:
+The server needs [Docker](https://docs.docker.com/get-docker/) (with Compose v2) and `curl`. There is no need to clone the repository:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash
 ```
 
-The script creates `video-canvas/` in the current directory, downloads `docker-compose.yml`, generates a `.env` with random secrets, pulls the images from GHCR and starts the stack. Once it is ready, open <http://localhost>.
+When it finishes, open `http://{your-ip}:38080`. When accessing through an IP or a domain, pass the matching address with `--origin`, e.g. `bash -s -- --origin http://{your-ip}:38080`; otherwise the cross-origin check rejects requests.
 
-To update to the latest version:
+> Before running a remote script, read [`scripts/deploy.sh`](scripts/deploy.sh) and make sure you are comfortable with what it does.
+
+### First run
+
+1. Open the app and register. The first account in the system becomes the super admin.
+2. Go to **Admin console → Channels**, choose a provider plugin, enter the Base URL and API key, and save once the connectivity check passes.
+3. Fetch or create models under the channel, validate them and enable them.
+4. Go back to the home page to generate, or create a canvas and organize the generation flow with nodes.
+
+### Updates and production configuration
+
+To update to the latest release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash
 ```
 
-<details>
-<summary>Custom port, domain and version; rollback; notes</summary>
-
-```bash
-# Custom port / public origin / pinned version / install directory
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/deploy.sh | bash -s -- \
-  --port 8080 --origin https://canvas.example.com --tag 0.1.6 --dir /opt/video-canvas
-
-# Update a specific directory, or roll back to a given version
-curl -fsSL https://raw.githubusercontent.com/zaylora/video-canvas/master/scripts/update.sh | bash -s -- --dir /opt/video-canvas --tag 0.1.5
-```
-
-- If the install directory already has a `.env`, the script reuses it and does not regenerate secrets.
-- Back up your `.env`. If `APP_AI_SECRET_KEY` is lost, the encrypted model and storage secrets can no longer be decrypted.
-- By default the scripts deploy and update to the latest GitHub release and write that exact version into `.env`.
-- Before updating, the database is backed up to `backups/` in the install directory (the last 3 backups are kept). If the new version fails to start, or does not report the target version, the script rolls back automatically.
-- If the images are private, run `docker login ghcr.io` first.
-- For the full production configuration, see [Production Docker deployment](docs/docker-production.md) (Chinese).
-
-</details>
-
-### First run
-
-A fresh deployment has no models available. Complete these steps first:
-
-1. Open the app and register. The first account in the system becomes the super admin automatically.
-2. Go to **Admin console → Channels** and create a channel: choose a built-in plugin, enter the Base URL and API key, and save once the connectivity check passes.
-3. Fetch or create models under the channel and enable them after validation. Regular users can only see and use enabled models.
-4. Go back to the home page and generate, or create a canvas, add a node and generate there. New users get 50 credits by default; change this under **Admin console → System settings → Registration**.
+For custom ports, domains, pinned versions, rollback and the full production configuration, see [Production Docker deployment](docs/docker-production.md) (Chinese).
 
 ## Documentation
 
@@ -98,7 +105,7 @@ Most documents are currently in Chinese.
 
 | Topic                                     | Document                                                                                                |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Development setup, architecture, releases | [Development guide](docs/development.en.md)                                                             |
+| Development setup, architecture, releases | [Development guide](docs/development.en.md) · [Contributing](CONTRIBUTING.en.md)                         |
 | Production deployment                     | [Production Docker deployment](docs/docker-production.md)                                               |
 | Backend structure, configuration, API     | [backend/README.md](backend/README.md)                                                                  |
 | AI admin API, plugin contract             | [admin-ai-api.md](backend/docs/admin-ai-api.md) · [plugin-contract.md](backend/docs/plugin-contract.md) |
@@ -107,7 +114,11 @@ Most documents are currently in Chinese.
 
 ## Contributing
 
-Issues and pull requests are welcome. See the [development guide](docs/development.en.md) for environment setup, coding standards, pre-submit checks and commit message format.
+Issues, feature requests and pull requests are welcome. If you use 连镜, we would also love to hear about your workflow, your experience and any problems you run into.
+
+Before contributing, read the [contributing guide](CONTRIBUTING.en.md) (how to file issues and open pull requests) and the [development guide](docs/development.en.md) (environment setup, coding standards, pre-submit checks).
+
+If 连镜 is useful to you, a ⭐ Star helps more creators find it.
 
 ## License
 
