@@ -175,6 +175,7 @@ type DigestQuery struct {
 	ModelKey      string    // Agent 模型
 	UserID        uint64    // 所属用户
 	Cursor        string    // 上一页返回的游标
+	Page          int       // 页码（从 1 起）；大于 0 走偏移分页（后台页码翻页用），为 0 走游标分页（本地 CLI 用）
 	Limit         int       // 每页条数，默认 100，最大 500
 }
 

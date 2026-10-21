@@ -506,6 +506,30 @@ func TestObserve_AdminReads(t *testing.T) {
 		}
 	})
 
+	t.Run("页码分页：带 page 返回总数、页码和每页条数，不给游标", func(t *testing.T) {
+		e := newObserveEnv(t)
+		_ = e.svc.RefreshDigest(ctx, 5)
+		e.repo.total = 42
+		page, err := e.svc.ListRuns(ctx, jwtActor, &RunListFilter{Page: 3, Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total == nil || *page.Total != 42 || page.Page != 3 || page.PageSize != 20 || page.NextCursor != "" {
+			t.Errorf("page=%+v", page)
+		}
+		if e.repo.listQuery.Page != 3 || e.repo.listQuery.Limit != 20 {
+			t.Errorf("query=%+v", e.repo.listQuery)
+		}
+		// 游标模式不带总数（CLI 不需要，省一次 count）
+		cur, _ := e.svc.ListRuns(ctx, jwtActor, &RunListFilter{})
+		if cur.Total != nil || cur.Page != 0 {
+			t.Errorf("游标模式不带总数：%+v", cur)
+		}
+		// page 和 cursor 不能同时给
+		_, err = e.svc.ListRuns(ctx, jwtActor, &RunListFilter{Page: 2, Cursor: "x"})
+		wantAgentCode(t, err, errcode.ErrInvalidParams)
+	})
+
 	t.Run("非法筛选值：10001", func(t *testing.T) {
 		e := newObserveEnv(t)
 		_, err := e.svc.ListRuns(ctx, jwtActor, &RunListFilter{Feedback: "maybe"})

@@ -45,8 +45,10 @@ type ObserveRepo interface {
 	UpsertDigest(ctx context.Context, d *model.AgentRunDigest) error
 	// GetDigest 读一条运行摘要，没有返回 repository.ErrNotFound。
 	GetDigest(ctx context.Context, runID uint64) (*model.AgentRunDigest, error)
-	// ListDigests 按创建时间倒序游标分页；游标无效返回 repository.ErrInvalidCursor。
+	// ListDigests 按创建时间倒序列出摘要：Page 大于 0 按页码，否则游标分页；游标无效返回 repository.ErrInvalidCursor。
 	ListDigests(ctx context.Context, q model.DigestQuery) ([]model.AgentRunDigest, string, error)
+	// CountDigests 统计命中筛选条件的摘要总数，页码分页用。
+	CountDigests(ctx context.Context, q model.DigestQuery) (int64, error)
 	// ExportFacts 读导出一次运行的全部事实，运行不存在返回 repository.ErrNotFound。
 	ExportFacts(ctx context.Context, runID uint64) (*model.AgentExportFacts, error)
 	// Stats 按版本或模型分组聚合指标；分组字段不在白名单返回 repository.ErrInvalidGroupBy。

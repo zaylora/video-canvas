@@ -23,6 +23,7 @@ type fakeObserveRepo struct {
 	tokens    []*model.AdminAPIToken
 	touched   map[uint64]int
 	listQuery model.DigestQuery
+	total     int64
 	statsQ    model.StatsQuery
 	listErr   error
 	factsErr  error
@@ -90,6 +91,13 @@ func (f *fakeObserveRepo) ListDigests(_ context.Context, q model.DigestQuery) ([
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].RunID > out[j].RunID })
 	return out, "next-cursor", nil
+}
+
+func (f *fakeObserveRepo) CountDigests(_ context.Context, q model.DigestQuery) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listQuery = q
+	return f.total, f.listErr
 }
 
 func (f *fakeObserveRepo) ExportFacts(_ context.Context, runID uint64) (*model.AgentExportFacts, error) {

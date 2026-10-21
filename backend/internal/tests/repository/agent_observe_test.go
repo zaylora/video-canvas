@@ -279,6 +279,39 @@ func TestObserve_DigestUpsertAndList(t *testing.T) {
 		}
 	})
 
+	t.Run("页码分页：按页取、带总数，页码越界返回空页", func(t *testing.T) {
+		var got []string
+		for page := 1; page <= 3; page++ {
+			items, next, err := r.ListDigests(ctx, model.DigestQuery{Page: page, Limit: 2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if next != "" {
+				t.Errorf("页码模式不返回游标：%q", next)
+			}
+			got = append(got, ids(items))
+		}
+		if strings.Join(got, "|") != "5,4|3,2|1" {
+			t.Errorf("got %v", got)
+		}
+		if items, _, _ := r.ListDigests(ctx, model.DigestQuery{Page: 9, Limit: 2}); len(items) != 0 {
+			t.Errorf("越界页应为空：%d", len(items))
+		}
+		total, err := r.CountDigests(ctx, model.DigestQuery{})
+		if err != nil || total != 5 {
+			t.Errorf("总数：%d %v", total, err)
+		}
+		total, _ = r.CountDigests(ctx, model.DigestQuery{Feedback: "down"})
+		if total != 2 {
+			t.Errorf("总数要带筛选条件：%d", total)
+		}
+		// 翻页时筛选条件照样生效
+		items, _, _ := r.ListDigests(ctx, model.DigestQuery{Page: 1, Limit: 1, Feedback: "down"})
+		if ids(items) != "5" {
+			t.Errorf("筛选 + 分页：%s", ids(items))
+		}
+	})
+
 	t.Run("同一创建时间的多条：靠 run_id 保证游标稳定", func(t *testing.T) {
 		same := t0.Add(100 * time.Hour)
 		for i := 10; i < 13; i++ {

@@ -29,7 +29,8 @@ type RunListFilter struct {
 	PromptVersion *int      // 系统提示词版本
 	ModelKey      string    // Agent 模型
 	UserID        uint64    // 所属用户
-	Cursor        string    // 上一页返回的游标
+	Cursor        string    // 上一页返回的游标（游标分页，本地 CLI 用）
+	Page          int       // 页码，从 1 起（页码分页，后台页面用）；和 Cursor 不能同时给
 	Limit         int       // 每页条数
 }
 
@@ -84,8 +85,11 @@ func digestView(d *model.AgentRunDigest) *AgentRunDigestView {
 
 // RunListPage 是摘要列表的一页。
 type RunListPage struct {
-	Items      []*AgentRunDigestView `json:"items"`       // 本页的摘要，创建时间倒序
-	NextCursor string                `json:"next_cursor"` // 下一页的游标，空表示没有了
+	Items      []*AgentRunDigestView `json:"items"`               // 本页的摘要，创建时间倒序
+	NextCursor string                `json:"next_cursor"`         // 下一页的游标，空表示没有了；页码分页时恒为空
+	Total      *int64                `json:"total,omitempty"`     // 命中总数，只有页码分页才有（游标分页不额外 count）
+	Page       int                   `json:"page,omitempty"`      // 当前页码，只有页码分页才有
+	PageSize   int                   `json:"page_size,omitempty"` // 每页条数，只有页码分页才有
 }
 
 // ListRuns 按条件列出运行摘要。管理员 JWT 访问不写审计；用分析令牌访问写一条（含条件和条数）。
@@ -97,11 +101,15 @@ func (s *ObserveService) ListRuns(ctx context.Context, who ObserveActor, f *RunL
 	if len(f.Statuses) > maxStatusFilter {
 		return nil, errcode.ErrInvalidParams.WithMsg("status 筛选太多")
 	}
+	if f.Page < 0 || (f.Page > 0 && f.Cursor != "") {
+		return nil, errcode.ErrInvalidParams.WithMsg("page 和 cursor 不能同时使用")
+	}
 	// 2. 查询；游标损坏是调用方的错，不是服务端的
-	rows, next, err := s.d.Repo.ListDigests(ctx, model.DigestQuery{
+	q := model.DigestQuery{
 		Since: f.Since, Until: f.Until, Statuses: f.Statuses, Feedback: f.Feedback, Undone: f.Undone, HarnessKey: f.HarnessKey,
-		PromptVersion: f.PromptVersion, ModelKey: f.ModelKey, UserID: f.UserID, Cursor: f.Cursor, Limit: f.Limit,
-	})
+		PromptVersion: f.PromptVersion, ModelKey: f.ModelKey, UserID: f.UserID, Cursor: f.Cursor, Page: f.Page, Limit: f.Limit,
+	}
+	rows, next, err := s.d.Repo.ListDigests(ctx, q)
 	if errors.Is(err, repository.ErrInvalidCursor) {
 		return nil, errcode.ErrInvalidParams.WithMsg("游标无效")
 	}
@@ -111,6 +119,14 @@ func (s *ObserveService) ListRuns(ctx context.Context, who ObserveActor, f *RunL
 	page := &RunListPage{Items: make([]*AgentRunDigestView, len(rows)), NextCursor: next}
 	for i := range rows {
 		page.Items[i] = digestView(&rows[i])
+	}
+	// 页码分页要给总数，前端才画得出总页数；总数用同一组筛选条件计，和列表命中的是同一批
+	if f.Page > 0 {
+		total, err := s.d.Repo.CountDigests(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		page.Total, page.Page, page.PageSize, page.NextCursor = &total, f.Page, effectivePageSize(f.Limit), "" // 页码模式没有游标
 	}
 	// 3. 令牌访问留痕：谁（哪个令牌）按什么条件拉了多少条
 	if who.TokenID != 0 {
@@ -175,4 +191,12 @@ func (s *ObserveService) ExportRun(ctx context.Context, who ObserveActor, runID 
 		s.audit(ctx, who.UserID, model.AdminAuditAgentRunsRead, who.TokenID, map[string]any{"token_id": who.TokenID, "op": "export", "run_id": idcodec.Encode(runID), "format": format})
 	}
 	return out, nil
+}
+
+// effectivePageSize 是页码分页实际用的每页条数：与仓储里的默认值和上限一致，回给前端算总页数。
+func effectivePageSize(limit int) int {
+	if limit <= 0 {
+		limit = 100
+	}
+	return min(limit, 500)
 }

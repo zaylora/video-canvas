@@ -59,7 +59,8 @@ type runListQuery struct {
 	PromptVersion *int   `form:"prompt_version" binding:"omitempty,min=0" label:"prompt_version"` // 系统提示词版本
 	ModelKey      string `form:"model_key" binding:"max=128" label:"model_key"`                   // Agent 模型
 	UserID        uint64 `form:"user_id" label:"user_id"`                                         // 用户
-	Cursor        string `form:"cursor" binding:"max=128" label:"cursor"`                         // 游标
+	Cursor        string `form:"cursor" binding:"max=128" label:"cursor"`                         // 游标（本地 CLI 用）
+	Page          int    `form:"page" binding:"omitempty,min=1" label:"page"`                     // 页码，从 1 起（后台页面用）；和 cursor 不能同时给
 	Limit         int    `form:"limit" binding:"omitempty,min=1,max=500" label:"limit"`           // 每页条数
 }
 
@@ -101,7 +102,7 @@ func (h *AgentObserveHandler) ListRuns(c *gin.Context) {
 	}
 	page, err := h.svc.ListRuns(c.Request.Context(), actor(c), &agentsvc.RunListFilter{
 		Since: since, Until: until, Statuses: statuses, Feedback: q.Feedback, Undone: q.Undone, HarnessKey: q.HarnessKey,
-		PromptVersion: q.PromptVersion, ModelKey: q.ModelKey, UserID: q.UserID, Cursor: q.Cursor, Limit: q.Limit,
+		PromptVersion: q.PromptVersion, ModelKey: q.ModelKey, UserID: q.UserID, Cursor: q.Cursor, Page: q.Page, Limit: q.Limit,
 	})
 	if err != nil {
 		response.Fail(c, err)

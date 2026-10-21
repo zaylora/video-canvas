@@ -149,14 +149,8 @@ func (r *AgentObserveRepository) GetDigest(ctx context.Context, runID uint64) (*
 	return &d, nil
 }
 
-// ListDigests 按创建时间倒序列出运行摘要，游标分页（创建时间 + run_id，同一时刻的多条也不会重漏）。
-// 返回的 next 为空表示没有下一页；游标不是本接口发出的返回 ErrInvalidCursor。
-func (r *AgentObserveRepository) ListDigests(ctx context.Context, q model.DigestQuery) ([]model.AgentRunDigest, string, error) {
-	limit := q.Limit
-	if limit <= 0 {
-		limit = defaultDigestPage
-	}
-	limit = min(limit, maxDigestPage)
+// digestFilter 把筛选条件（不含分页）拼到查询上，列表和计数共用，保证总数和列表命中的是同一批。
+func (r *AgentObserveRepository) digestFilter(ctx context.Context, q model.DigestQuery) *gorm.DB {
 	tx := r.db.WithContext(ctx).Model(&model.AgentRunDigest{})
 	if !q.Since.IsZero() {
 		tx = tx.Where("created_at >= ?", q.Since)
@@ -189,6 +183,31 @@ func (r *AgentObserveRepository) ListDigests(ctx context.Context, q model.Digest
 	}
 	if q.UserID != 0 {
 		tx = tx.Where("user_id = ?", q.UserID)
+	}
+	return tx
+}
+
+// CountDigests 统计命中筛选条件的摘要总数（页码分页的总页数用，忽略分页参数）。
+func (r *AgentObserveRepository) CountDigests(ctx context.Context, q model.DigestQuery) (int64, error) {
+	var n int64
+	err := r.digestFilter(ctx, q).Count(&n).Error
+	return n, err
+}
+
+// ListDigests 按创建时间倒序列出运行摘要。
+// Page 大于 0 时按页码取（偏移分页，next 恒为空）；否则游标分页（创建时间 + run_id，同一时刻的多条也不会重漏），
+// next 为空表示没有下一页，游标不是本接口发出的返回 ErrInvalidCursor。
+func (r *AgentObserveRepository) ListDigests(ctx context.Context, q model.DigestQuery) ([]model.AgentRunDigest, string, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = defaultDigestPage
+	}
+	limit = min(limit, maxDigestPage)
+	tx := r.digestFilter(ctx, q)
+	if q.Page > 0 {
+		var items []model.AgentRunDigest
+		err := tx.Order("created_at DESC, run_id DESC").Offset((q.Page - 1) * limit).Limit(limit).Find(&items).Error
+		return items, "", err
 	}
 	if q.Cursor != "" {
 		at, id, err := decodeDigestCursor(q.Cursor)
