@@ -26,6 +26,11 @@
 - 不需要使用 playright 进行端到端测试
 - 前端格式化和 lint 只用仓库自带的 oxfmt / oxlint（`web/` 下 `bun run format`、`bun run format:check`、`bun run lint`），不要用 prettier 或编辑器的默认格式化，否则会把无关代码改成另一种风格。本机默认 node 是 v16，直接跑会报 `ERR_UNKNOWN_FILE_EXTENSION`，改用 `bun node_modules/oxfmt/bin/oxfmt <文件>` 和 `bun node_modules/oxlint/bin/oxlint src`。
 
+## 线上 Agent 观测
+
+- 线上画布 Agent 的运行记录用 `scripts/agent-trace` 拉到本地（`node scripts/agent-trace/agent-trace.mjs pull|show|compare`，用法见该目录 README），再用 `/agent-review` skill（`.claude/skills/agent-review/SKILL.md`，Codex 直接读该文件按流程执行）分析；失败分类见 `docs/agent-eval/failure-taxonomy.md`。
+- `.traces/` 里是用户原文，已在 `.gitignore` 中，**不得提交**，也不要贴到 PR、issue 或外部服务；令牌只放环境变量或 `.traces/.env`。
+
 ## 关键架构记忆
 
 - 仓库根目录 `agent/` 是画布 Agent 的 Node 运行时（pi agent 循环，零密钥，经桥回调 Go）；Go 侧的 Agent 逻辑在 `backend/internal/agent/`、`backend/internal/service/agent/` 和 `backend/internal/handler/agent/`。运行时改动在 `agent/` 下跑 `npm test`。
