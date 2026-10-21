@@ -7,9 +7,9 @@ set -euo pipefail
 REPO="zaylora/video-canvas"
 RAW="https://raw.githubusercontent.com/$REPO"
 DIR="$PWD/video-canvas"
-ORIGIN="http://localhost"
+ORIGIN=""
 TAG=""
-PORT="80"
+PORT="38080"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -19,11 +19,13 @@ while [ $# -gt 0 ]; do
     --port)   PORT="${2:?--port 需要参数}"; shift 2 ;;
     -h|--help)
       echo "用法：deploy.sh [--dir 部署目录] [--port Web端口] [--origin 访问地址] [--tag 镜像版本]"
-      echo "默认：目录 ./video-canvas，端口 80，版本为 GitHub 上最新的正式版本（写成固定版本号，升级失败时才能回退）。镜像为私有时先 docker login ghcr.io"
+      echo "默认：目录 ./video-canvas，端口 38080，访问地址 http://localhost:<端口>，版本为 GitHub 上最新的正式版本（写成固定版本号，升级失败时才能回退）。镜像为私有时先 docker login ghcr.io"
       exit 0 ;;
     *) echo "[错误] 不支持的参数：$1" >&2; exit 2 ;;
   esac
 done
+
+[ -n "$ORIGIN" ] || ORIGIN="http://localhost:$PORT"
 
 command -v curl >/dev/null 2>&1 || { echo "[错误] 需要 curl。" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || { echo "[错误] 未找到 Docker，请先安装。" >&2; exit 1; }

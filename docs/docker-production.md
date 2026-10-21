@@ -28,7 +28,7 @@ POSTGRES_PASSWORD=change-this
 APP_JWT_SECRET=change-this
 APP_AI_SECRET_KEY=change-this
 APP_SERVER_ALLOWED_ORIGINS=https://canvas.example.com
-WEB_PORT=80
+WEB_PORT=38080
 ```
 
 登录 GHCR 后启动：
