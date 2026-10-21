@@ -17,6 +17,7 @@ import type {
   AgentModelDto,
   AgentSessionDto,
   DecideAgentApprovalReq,
+  SetAgentFeedbackReq,
 } from "@/api/agent/type";
 import { ApiError } from "@/utils/requests/request";
 import { useAgentSettings } from "@/store/agent-settings";
@@ -228,6 +229,24 @@ export function useAgentController({
     }
   }, []);
 
+  /** 给一轮已结束的运行打分；返回是否保存成功（失败的回滚和提示在 store 里） */
+  const rateRun = useCallback(
+    (runId: string, req: SetAgentFeedbackReq) =>
+      sessionId
+        ? useAgentStore.getState().submitFeedback(sessionId, runId, req)
+        : Promise.resolve(false),
+    [sessionId],
+  );
+
+  /** 取消一轮运行的评价；返回是否成功 */
+  const clearRunRating = useCallback(
+    (runId: string) =>
+      sessionId
+        ? useAgentStore.getState().cancelFeedback(sessionId, runId)
+        : Promise.resolve(false),
+    [sessionId],
+  );
+
   const newSession = useCallback(() => openSession(null), [openSession]);
 
   const rename = useCallback(
@@ -288,6 +307,8 @@ export function useAgentController({
     resume,
     decide,
     undo,
+    rateRun,
+    clearRunRating,
     openSession,
     newSession,
     rename,

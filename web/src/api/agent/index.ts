@@ -2,12 +2,14 @@ import service from "@/utils/requests/service";
 import type {
   AgentApprovalDto,
   AgentEventDto,
+  AgentFeedbackDto,
   AgentModelDto,
   AgentRunDto,
   AgentSessionDto,
   AgentUndoResult,
   CreateAgentSessionReq,
   DecideAgentApprovalReq,
+  SetAgentFeedbackReq,
   StartAgentRunReq,
 } from "./type";
 
@@ -111,3 +113,26 @@ export const undoAgentRun = (runId: string) =>
  */
 export const decideAgentApproval = (approvalId: string, data: DecideAgentApprovalReq) =>
   service.post<AgentApprovalDto>(`/agent/approvals/${approvalId}/decision`, data);
+
+/**
+ * 对一轮已结束的运行打分：再次提交覆盖上一次的评价。失败由调用方就地提示，不弹全局错误
+ * @param runId 运行 ID
+ * @param data 评价、原因标签、补充说明
+ * @returns 服务端记下的反馈
+ */
+export const setAgentFeedback = async (
+  runId: string,
+  data: SetAgentFeedbackReq,
+): Promise<AgentFeedbackDto> => {
+  const saved = await service.put<AgentFeedbackDto>(`/agent/runs/${runId}/feedback`, data, {
+    silent: true,
+  });
+  return { ...saved, reasons: saved.reasons ?? [], comment: saved.comment ?? "" };
+};
+
+/**
+ * 取消一轮运行的反馈。失败由调用方就地提示，不弹全局错误
+ * @param runId 运行 ID
+ */
+export const deleteAgentFeedback = (runId: string) =>
+  service.delete<void>(`/agent/runs/${runId}/feedback`, { silent: true });

@@ -9,6 +9,7 @@ import { channelsPagePath, legacyModelsRedirect } from "@/utils/admin/channel-ro
 import PluginsPage from "@/pages/admin/ai/plugins";
 import ImageProcessorPage from "@/pages/admin/image-processor";
 import AgentSkillsPage from "@/pages/admin/agent-skills";
+import AgentTokensPage from "@/pages/admin/agent-tokens";
 import StoragePage from "@/pages/admin/storage";
 import UsersPage from "@/pages/admin/users";
 import PaymentAdminPage from "@/pages/admin/payment";
@@ -136,6 +137,7 @@ export const router = createBrowserRouter([
               { path: "ai/plugins", element: <PluginsPage /> },
               { path: "agent", element: <Navigate to="skills" replace /> },
               { path: "agent/skills", element: <AgentSkillsPage /> },
+              { path: "agent/tokens", element: <AgentTokensPage /> },
               { path: "users", element: <UsersPage /> },
               { path: "payment", element: <PaymentAdminPage /> },
               { path: "usage", element: <UsagePage /> },

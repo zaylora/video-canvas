@@ -282,3 +282,39 @@ export interface AgentSkillDto {
   /** 来源：builtin 内置 / imported 导入 */
   source: "builtin" | "imported";
 }
+
+/** 对一轮运行的评价：1 点赞，-1 点踩 */
+export type AgentFeedbackRating = 1 | -1;
+
+/** 点踩的原因标签 */
+export type AgentFeedbackReason =
+  /** 没理解我的需求 */
+  | "misread"
+  /** 画布改错了 */
+  | "wrong_edit"
+  /** 步骤太多或太慢 */
+  | "slow"
+  /** 生成结果不好 */
+  | "bad_output"
+  /** 其他 */
+  | "other";
+
+/** 一轮运行的反馈（接口返回与事件内容共用的形状） */
+export interface AgentFeedbackDto {
+  /** 评价：1 点赞，-1 点踩 */
+  rating: AgentFeedbackRating;
+  /** 原因标签，点赞或没选为空数组 */
+  reasons: AgentFeedbackReason[];
+  /** 补充说明，没有为空串，最多 500 字 */
+  comment: string;
+}
+
+/** 提交一轮运行的反馈（再次提交即覆盖） */
+export interface SetAgentFeedbackReq {
+  /** 评价：1 点赞，-1 点踩 */
+  rating: AgentFeedbackRating;
+  /** 原因标签，可不传 */
+  reasons?: AgentFeedbackReason[];
+  /** 补充说明，可不传，最多 500 字 */
+  comment?: string;
+}
