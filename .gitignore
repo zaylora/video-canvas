@@ -26,3 +26,5 @@
 
 # Agent 运行观测的本地数据（含用户原文，禁止提交）
 .traces/
+
+.claude/worktrees/
