@@ -28,6 +28,8 @@ mock.module("@/api/agent", () => ({
     for (let seq = after + 1; seq <= total && out.length < pageSize; seq++) out.push(ev(seq));
     return out;
   },
+  setAgentFeedback: async () => ({ rating: 1, reasons: [], comment: "" }),
+  deleteAgentFeedback: async () => {},
 }));
 
 const { useAgentStore } = await import("@/store/agent");
