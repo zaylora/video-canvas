@@ -28,15 +28,30 @@ var defaultAgentModels = []model.AgentModelView{{Key: "claude", Name: "Claude", 
 
 func newAgentEnv(t *testing.T, models ...model.AgentModelView) *agentEnv {
 	t.Helper()
+	return newAgentEnvOpts(t, nil, models)
+}
+
+// newAgentEnvWith 在默认环境上让 mutate 调整 AgentDeps，用来注入测试要的可选依赖。
+func newAgentEnvWith(t *testing.T, mutate func(*AgentDeps)) *agentEnv {
+	t.Helper()
+	return newAgentEnvOpts(t, mutate, nil)
+}
+
+func newAgentEnvOpts(t *testing.T, mutate func(*AgentDeps), models []model.AgentModelView) *agentEnv {
+	t.Helper()
 	if models == nil {
 		models = defaultAgentModels
 	}
 	repo := newFakeAgentCanvasRepo(agentBase)
 	e := &agentEnv{repo: repo, bc: &fakeTaskBroadcaster{}, rt: &fakeAgentRuntime{}, gen: &fakeGenerator{}, now: time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)}
-	e.svc = NewAgentService(AgentDeps{
+	deps := AgentDeps{
 		Repo: repo, Canvas: NewAgentCanvasService(repo, e.bc), Models: fakeAgentModels{list: models},
 		Runtime: e.rt, Generator: e.gen, Broadcaster: e.bc, Now: func() time.Time { return e.now },
-	})
+	}
+	if mutate != nil {
+		mutate(&deps)
+	}
+	e.svc = NewAgentService(deps)
 	v, err := e.svc.CreateSession(context.Background(), 1, 7, &model.CreateAgentSessionReq{})
 	if err != nil {
 		t.Fatal(err)

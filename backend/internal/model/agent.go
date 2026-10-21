@@ -115,8 +115,12 @@ type AgentRun struct {
 	MaxSteps      int        `gorm:"not null;default:40" json:"max_steps"`                                                                                                     // 步数上限
 	ErrorCode     string     `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                            // 失败时的错误码
 	ErrorMessage  string     `gorm:"size:512;not null;default:''" json:"error_message"`                                                                                        // 失败时给用户看的文案
+	PromptVersion int        `gorm:"not null;default:0" json:"prompt_version"`                                                                                                 // 系统提示词版本，运行创建时确定
+	ToolsHash     string     `gorm:"size:12;not null;default:''" json:"tools_hash"`                                                                                            // 工具声明哈希
+	BuildSHA      string     `gorm:"column:build_sha;size:40;not null;default:''" json:"build_sha"`                                                                            // 构建的 git commit
+	HarnessKey    string     `gorm:"size:12;not null;default:'';index:idx_agent_runs_harness,priority:1" json:"harness_key"`                                                   // 以上三项合并的短哈希
 	LeaseUntil    time.Time  `json:"lease_until"`                                                                                                                              // runtime 租约到期时间，过期未续约视为中断
-	CreatedAt     time.Time  `json:"created_at"`                                                                                                                               // 创建时间
+	CreatedAt     time.Time  `gorm:"index:idx_agent_runs_harness,priority:2" json:"created_at"`                                                                                // 创建时间
 	UpdatedAt     time.Time  `json:"updated_at"`                                                                                                                               // 更新时间
 	EndedAt       *time.Time `json:"ended_at"`                                                                                                                                 // 结束时间
 }
@@ -190,20 +194,26 @@ const (
 // AgentModelCall 是一次大模型对话调用的计费记录：Agent 每向模型发一次请求就有一条。
 // 调用结束后按实际用量扣费并写积分流水；流水里的 agent_call_id 指向它，保证同一次调用只扣一次。
 type AgentModelCall struct {
-	ID             uint64     `gorm:"primaryKey" json:"id"`                          // 调用 ID
-	RunID          uint64     `gorm:"not null;index" json:"run_id"`                  // 所属运行
-	UserID         uint64     `gorm:"not null;index" json:"user_id"`                 // 所属用户
-	ModelKey       string     `gorm:"size:128;not null" json:"model_key"`            // Agent 模型 key
-	Status         string     `gorm:"size:16;not null" json:"status"`                // 状态，取值见 ModelCall* 常量
-	InputTokens    int        `gorm:"not null;default:0" json:"input_tokens"`        // 输入 Token
-	OutputTokens   int        `gorm:"not null;default:0" json:"output_tokens"`       // 输出 Token
-	CachedTokens   int        `gorm:"not null;default:0" json:"cached_tokens"`       // 输入里命中缓存的 Token
-	UsageEstimated bool       `gorm:"not null;default:false" json:"usage_estimated"` // 上游没给用量，Token 数是按字数估的
-	Credits        int        `gorm:"not null;default:0" json:"credits"`             // 按用量算出的应收积分
-	Charged        int        `gorm:"not null;default:0" json:"charged"`             // 实际扣的积分，用户余额不够时小于 Credits
-	Error          string     `gorm:"size:255;not null;default:''" json:"error"`     // 调用失败或中断的原因（已脱敏）
-	CreatedAt      time.Time  `json:"created_at"`                                    // 创建时间
-	SettledAt      *time.Time `json:"settled_at"`                                    // 结算时间
+	ID             uint64     `gorm:"primaryKey" json:"id"`                               // 调用 ID
+	RunID          uint64     `gorm:"not null;index" json:"run_id"`                       // 所属运行
+	UserID         uint64     `gorm:"not null;index" json:"user_id"`                      // 所属用户
+	ModelKey       string     `gorm:"size:128;not null" json:"model_key"`                 // Agent 模型 key
+	Status         string     `gorm:"size:16;not null" json:"status"`                     // 状态，取值见 ModelCall* 常量
+	InputTokens    int        `gorm:"not null;default:0" json:"input_tokens"`             // 输入 Token
+	OutputTokens   int        `gorm:"not null;default:0" json:"output_tokens"`            // 输出 Token
+	CachedTokens   int        `gorm:"not null;default:0" json:"cached_tokens"`            // 输入里命中缓存的 Token
+	UsageEstimated bool       `gorm:"not null;default:false" json:"usage_estimated"`      // 上游没给用量，Token 数是按字数估的
+	Credits        int        `gorm:"not null;default:0" json:"credits"`                  // 按用量算出的应收积分
+	Charged        int        `gorm:"not null;default:0" json:"charged"`                  // 实际扣的积分，用户余额不够时小于 Credits
+	Error          string     `gorm:"size:255;not null;default:''" json:"error"`          // 调用失败或中断的原因（已脱敏）
+	Purpose        string     `gorm:"size:16;not null;default:'main'" json:"purpose"`     // main 是对话调用，summary 是压缩上下文的摘要调用
+	ChannelKey     string     `gorm:"size:64;not null;default:''" json:"channel_key"`     // 实际走的渠道
+	UpstreamModel  string     `gorm:"size:128;not null;default:''" json:"upstream_model"` // 实际调用的上游模型
+	LatencyMs      int        `gorm:"not null;default:0" json:"latency_ms"`               // 从发出到收完的耗时（毫秒）
+	TTFTMs         int        `gorm:"column:ttft_ms;not null;default:0" json:"ttft_ms"`   // 首字耗时（毫秒），没收到内容为 0
+	StopReason     string     `gorm:"size:32;not null;default:''" json:"stop_reason"`     // 上游的结束原因：stop / tool_calls / length 等
+	CreatedAt      time.Time  `json:"created_at"`                                         // 创建时间
+	SettledAt      *time.Time `json:"settled_at"`                                         // 结算时间
 }
 
 // TableName 表名。

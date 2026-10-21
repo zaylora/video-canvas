@@ -64,3 +64,16 @@ type DecideAgentApprovalReq struct {
 	Answer    string                 `json:"answer" binding:"max=2000" label:"回答"`                        // 提问的回答
 	AddBudget int                    `json:"add_budget" binding:"min=0,max=100000" label:"追加预算"`          // 批准时追加的积分预算
 }
+
+// SetAgentFeedbackReq 是对一次运行打 👍/👎 的请求。
+type SetAgentFeedbackReq struct {
+	Rating  int      `json:"rating" binding:"required,oneof=1 -1" label:"评价"` // 1 有帮助，-1 没帮上忙
+	Reasons []string `json:"reasons" binding:"max=5,dive,max=32" label:"原因"`  // 点踩原因标签，可不选；点赞时忽略
+	Comment string   `json:"comment" binding:"max=2000" label:"说明"`           // 补充说明，最多 500 字（按字数在 service 里校验）
+}
+
+// IssueAnalysisTokenReq 是签发分析令牌的请求。
+type IssueAnalysisTokenReq struct {
+	Name string `json:"name" binding:"required,max=200" label:"用途"`         // 用途备注，1–64 字（按字数在 service 里校验）
+	Days int    `json:"days" binding:"required,min=1,max=3650" label:"有效期"` // 有效天数，1–90（范围在 service 里校验并给出明确提示）
+}

@@ -17,7 +17,7 @@ func NewBridge(mode string, h *agenthandler.AgentBridgeHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Logger(), middleware.Recovery())
 
-	g := r.Group("/internal/agent/bridge")
+	g := r.Group("/internal/agent/bridge", h.TagRun())
 	g.POST("/v1/chat/completions", h.ChatCompletions) // OpenAI 兼容：pi 把它当作模型提供方
 	g.POST("/tool", h.Tool)
 	g.POST("/tool-event", h.ToolEvent)

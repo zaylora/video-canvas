@@ -63,7 +63,8 @@ const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 async function run(ctx, decls, limits, toolCallId, params, signal) {
   const base = { tool_call_id: toolCallId, name: NAME, label: LABEL, verb: VERB };
   // 开始前向 Go 报备：Go 计 1 步、在时间线里记「运行脚本」；步数用尽时不运行，停下等用户继续
-  const started = await ctx.bridge.toolEvent({ phase: "start", ...base }, signal);
+  // 脚本本身随开始报备一起交给 Go 留存：事后分析 Agent 为什么这样写，要看到它写了什么
+  const started = await ctx.bridge.toolEvent({ phase: "start", ...base, args: params }, signal);
   if (started?.allowed === false) {
     ctx.onTerminate?.();
     return toResult(started.content || "已达到本轮的步数上限，运行已暂停，等待用户继续。", true, true);
@@ -96,7 +97,7 @@ async function run(ctx, decls, limits, toolCallId, params, signal) {
 
   const { text, isError } = format(result, completed, nested, limits);
   try {
-    await ctx.bridge.toolEvent({ phase: "end", ...base, is_error: isError, summary: isError ? `脚本失败：${clip(oneLine(result.ok ? "" : result.error.message), 80)}` : `脚本调用了 ${nested} 次工具` });
+    await ctx.bridge.toolEvent({ phase: "end", ...base, is_error: isError, summary: isError ? `脚本失败：${clip(oneLine(result.ok ? "" : result.error.message), 80)}` : `脚本调用了 ${nested} 次工具`, result: text });
   } catch (e) {
     ctx.log?.("报备脚本结束失败", { error: String(e?.message ?? e) }); // 只是时间线上少一条结束事件，不影响脚本的结果
   }

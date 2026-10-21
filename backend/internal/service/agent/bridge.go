@@ -88,6 +88,8 @@ type AgentBridge struct {
 	mu     sync.Mutex
 	tokens map[string]*bridgeSession
 	calls  map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
+	// toolRec 逐条留存工具调用；为 nil 时不记。装配阶段用 SetToolRecorder 绑定
+	toolRec ToolCallRecorder
 }
 
 // NewAgentBridge 创建桥。
@@ -111,6 +113,16 @@ func (b *AgentBridge) IssueToken(run *model.AgentRun, in model.AgentRunInput) st
 	b.tokens[tok] = &bridgeSession{runID: run.ID, userID: run.UserID, sessionID: run.SessionID, canvasID: run.CanvasID,
 		modelKey: in.ModelKey, mode: firstNonEmpty(in.Mode, run.Mode, model.AgentModeAll), selection: in.Selection, expires: b.d.Now().Add(b.d.TokenTTL)}
 	return tok
+}
+
+// RunIDForToken 返回令牌对应的运行 id，令牌无效或已收回返回 0。桥的访问日志靠它给每个请求标上 run_id，
+// 不依赖 Node 进程自报：令牌就是运行的身份，Node 没法写错。
+func (b *AgentBridge) RunIDForToken(token string) uint64 {
+	sess, err := b.session(token)
+	if err != nil {
+		return 0
+	}
+	return sess.runID
 }
 
 // TokenActive 判断令牌是否还有效。进程退出时用它区分「报告过结束的正常退出」（令牌已被 Finish 收回）
@@ -218,10 +230,22 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 			b.d.Agent.push(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "thinking.delta", map[string]any{"text": thinking})
 		}
 	}}
-	res, serr := b.d.Streamer.StreamRaw(ctx, tg, body, lim, deltas.onEvent, write)
+	// 记下发出时刻和收到第一行的时刻：事后分析要知道慢在等首字，还是慢在后面的流
+	began := b.d.Now()
+	var firstByte time.Time
+	res, serr := b.d.Streamer.StreamRaw(ctx, tg, body, lim, deltas.onEvent, func(line []byte) {
+		if firstByte.IsZero() {
+			firstByte = b.d.Now()
+		}
+		write(line)
+	})
 	deltas.close()
+	meta := CallMeta{Purpose: firstNonEmpty(ModelPurposeFrom(ctx), "main"), ChannelKey: snap.Channel.Key, UpstreamModel: snap.Model.UpstreamModel, Latency: b.d.Now().Sub(began)}
+	if !firstByte.IsZero() {
+		meta.TTFT = firstByte.Sub(began)
+	}
 
-	settled, berr := b.d.Billing.Settle(context.WithoutCancel(ctx), run, call, snap.Model.Pricing, CallOutcome{Result: res, InputChars: inputChars, Err: serr})
+	settled, berr := b.d.Billing.Settle(context.WithoutCancel(ctx), run, call, snap.Model.Pricing, CallOutcome{Result: res, InputChars: inputChars, Err: serr, Meta: meta})
 	if berr != nil {
 		// 结算失败意味着这次调用没收到钱，只能留下线索供对账补扣；不能因此让用户的对话失败
 		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", run.ID))

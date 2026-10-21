@@ -31,6 +31,8 @@ type ToolResult struct {
 	IsError   bool        `json:"is_error"`         // 工具没做成，模型会看到并自行处理
 	Images    []ToolImage `json:"images,omitempty"` // 随结果交给模型看的图片（看图工具）
 	Terminate bool        `json:"terminate"`        // 本批工具执行完后停下，不再请求模型（等审批、等回答、步数用尽）
+
+	summary string // 与 tool.end 事件一致的一行摘要，只给调用记录用，不下发给 Node
 }
 
 // ToolImage 是随工具结果交给模型的一张图片。
@@ -91,6 +93,17 @@ func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCall
 	if err != nil {
 		return nil, err
 	}
+	// 令牌和运行都校验过才算一次真实的调用，从这里开始留存：被拒绝的调用（选错工具、模式不允许、步数用尽）也记，
+	// 它们正是事后分析 Agent 失败要看的东西
+	started := b.d.Now()
+	b.recordToolStart(ctx, run, toolCallID, parentID, name, args, started)
+	res, err := b.runTool(ctx, sess, run, parentID, toolCallID, name, args)
+	b.recordToolEnd(ctx, run, toolCallID, res, started)
+	return res, err
+}
+
+// runTool 校验并执行一次工具调用，规则见 ExecuteTool。
+func (b *AgentBridge) runTool(ctx context.Context, sess *bridgeSession, run *model.AgentRun, parentID, toolCallID, name string, args json.RawMessage) (*ToolResult, error) {
 	nested := parentID != ""
 	reject := func(msg string) (*ToolResult, error) {
 		return b.toolError(ctx, run, toolCallID, parentID, name, msg), nil
@@ -132,6 +145,7 @@ func (b *AgentBridge) executeTool(ctx context.Context, token, parentID, toolCall
 		}
 	}
 	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", end)
+	res.summary, _ = end["summary"].(string)
 	return res, nil
 }
 
@@ -146,7 +160,7 @@ func withParent(ev map[string]any, parentID string) map[string]any {
 // toolError 为被拒绝的调用（未知工具、模式不允许）记一对事件并返回工具错误。
 func (b *AgentBridge) toolError(ctx context.Context, run *model.AgentRun, id, parentID, name, msg string) *ToolResult {
 	b.d.Agent.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "tool.end", withParent(withToolLabel(map[string]any{"id": id, "name": name, "is_error": true, "summary": msg}, name), parentID))
-	return &ToolResult{Content: msg, IsError: true}
+	return &ToolResult{Content: msg, IsError: true, summary: msg}
 }
 
 // finishTool 把处理函数的结果转成对模型的回复：toolFailure 是普通工具错误；

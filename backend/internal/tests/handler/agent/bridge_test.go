@@ -13,6 +13,7 @@ import (
 
 	. "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/middleware"
 	"video-canvas/internal/pkg/errcode"
 	agentsvc "video-canvas/internal/service/agent"
 )
@@ -370,5 +371,47 @@ func TestBridgeHandler_ToolEvent_RejectsBadInput(t *testing.T) {
 		if strings.Contains(w.Body.String(), `"code":0`) {
 			t.Errorf("%s 应被拒绝: %s", body, w.Body)
 		}
+	}
+}
+
+// fakeRunTagger 让桥 handler 的 TagRun 中间件能把令牌解析成运行 id。
+type fakeRunTagger struct {
+	*fakeBridge
+}
+
+func (f fakeRunTagger) RunIDForToken(tok string) uint64 {
+	if tok == "good" {
+		return 77
+	}
+	return 0
+}
+
+func TestBridgeHandler_TagRun(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	serve := func(h *AgentBridgeHandler, authz string) uint64 {
+		r := gin.New()
+		r.Use(h.TagRun())
+		var got uint64
+		r.POST("/x", func(c *gin.Context) { got = c.GetUint64(middleware.CtxAgentRunIDKey); c.Status(200) })
+		req := httptest.NewRequest("POST", "/x", nil)
+		if authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+		r.ServeHTTP(httptest.NewRecorder(), req)
+		return got
+	}
+	h := NewAgentBridgeHandler(fakeRunTagger{&fakeBridge{}})
+	if got := serve(h, "Bearer good"); got != 77 {
+		t.Errorf("有效令牌应把运行 id 写进上下文，访问日志据此关联：%d", got)
+	}
+	if got := serve(h, "Bearer bad"); got != 0 {
+		t.Errorf("无效令牌不写：%d", got)
+	}
+	if got := serve(h, ""); got != 0 {
+		t.Errorf("没有令牌不写：%d", got)
+	}
+	// 业务层不支持解析运行 id 时：什么都不做，不报错
+	if got := serve(NewAgentBridgeHandler(&fakeBridge{}), "Bearer good"); got != 0 {
+		t.Errorf("got=%d", got)
 	}
 }

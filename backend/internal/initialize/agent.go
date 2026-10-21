@@ -119,6 +119,8 @@ type agentDeps struct {
 	registry provider.Registry
 	secrets  provider.SecretResolver
 	skills   agentsvc.SkillLibrary
+	// toolCalls 逐条留存工具调用的参数、结果和耗时；nil 表示不记录
+	toolCalls agentsvc.ToolCallRecorder
 	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
 	ipAllowed func(net.IP) bool
 }
@@ -165,6 +167,9 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
 		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web,
 	})
+	if d.toolCalls != nil {
+		bridge.SetToolRecorder(d.toolCalls)
+	}
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},
 		Config: agentsvc.RuntimeConfig{NodePath: paths.Node, ScriptPath: paths.Script, BridgeURL: "http://" + ln.Addr().String(), WorkRoot: ac.WorkDir, DisabledTools: AgentDisabledTools(ac)},

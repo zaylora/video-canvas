@@ -45,6 +45,16 @@ type RuntimeDeps struct {
 	Config   RuntimeConfig       // 配置
 }
 
+// RuntimeTailSink 留存 Node 进程退出时 stderr 的末尾（*ObserveService 实现它）：压缩失败、保存历史失败这类诊断只写 stderr，
+// 进程一退出就没了，事后分析要靠它。
+type RuntimeTailSink interface {
+	// RecordRuntimeTail 把进程 stderr 的末尾写进运行摘要。
+	RecordRuntimeTail(ctx context.Context, runID uint64, tail string) error
+}
+
+// SetTailSink 绑定 stderr 末尾的留存方。装配阶段调用，运行开始前完成；不绑定就不留存。
+func (r *ProcessRuntime) SetTailSink(s RuntimeTailSink) { r.tailSink = s }
+
 // segment 是一个运行中的进程（一个运行片段）。
 type segment struct {
 	proc   Proc
@@ -60,6 +70,8 @@ type ProcessRuntime struct {
 	d    RuntimeDeps
 	mu   sync.Mutex
 	segs map[uint64]*segment
+	// tailSink 留存进程退出时 stderr 的末尾；为 nil 时不留存。装配阶段用 SetTailSink 绑定
+	tailSink RuntimeTailSink
 }
 
 // NewProcessRuntime 创建运行时。
@@ -250,6 +262,12 @@ func (r *ProcessRuntime) watch(run *model.AgentRun, seg *segment) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// 不管正常还是异常退出，stderr 里的诊断都留下来；先于下面的状态修正，之后刷新摘要时会沿用它。落库失败只记日志
+	if r.tailSink != nil && exit.StderrTail != "" {
+		if err := r.tailSink.RecordRuntimeTail(ctx, run.ID, exit.StderrTail); err != nil {
+			logger.Warn("留存 Agent 进程 stderr 失败", zap.Error(err), zap.Uint64("run_id", run.ID))
+		}
+	}
 	cur, err := r.d.Repo.GetRun(ctx, run.UserID, run.ID)
 	if err != nil {
 		logger.Error("进程退出后读取运行失败", zap.Error(err), zap.Uint64("run_id", run.ID))

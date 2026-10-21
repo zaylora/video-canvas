@@ -41,8 +41,10 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 		return nil, err
 	}
 	// 5. 创建运行。同一画布同时只能有一个活跃运行，由数据库的部分唯一索引保证，并发点两次发送也只有一个成功
+	//    同时记下此刻的 Harness 版本：续跑、审批后继续都沿用这一条，运行中途发版也不会让同一次运行有两个版本
 	run := &model.AgentRun{SessionID: sess.ID, CanvasID: sess.CanvasID, UserID: userID, Status: model.RunQueued,
-		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps}
+		Mode: mode, BudgetCredits: budget, MaxSteps: defaultRunMaxSteps,
+		PromptVersion: s.harness.PromptVersion, ToolsHash: s.harness.ToolsHash, BuildSHA: s.harness.BuildSHA, HarnessKey: s.harness.Key()}
 	if err := s.repo.CreateRun(ctx, run); err != nil {
 		if errors.Is(err, repository.ErrDuplicate) {
 			return nil, errcode.ErrAgentRunActive

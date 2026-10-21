@@ -168,6 +168,7 @@ var (
 	ErrAgentSessionMissing = New(60011, "会话不存在", http.StatusNotFound)
 	ErrAgentRunMissing     = New(60012, "运行不存在", http.StatusNotFound)
 	ErrAgentApprovalMiss   = New(60013, "审批不存在", http.StatusNotFound)
+	ErrAgentRunNotEnded    = New(60014, "运行还没结束，结束后才能评价", http.StatusConflict)
 )
 
 // Agent 技能管理 61xxx
