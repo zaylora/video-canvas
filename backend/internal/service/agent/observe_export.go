@@ -51,9 +51,9 @@ func RenderRunMarkdown(f *model.AgentExportFacts) string {
 			sb.WriteString("- " + who + "：" + clipBytes(text, mdSegmentBytes) + "\n")
 		}
 	}
-	if len(f.Events) > 0 {
+	if steps := BuildTimeline(f); len(steps) > 0 {
 		sb.WriteString("\n## 时间线\n")
-		writeTimeline(&sb, f)
+		writeTimeline(&sb, steps)
 	}
 	if len(f.Mutations) > 0 {
 		sb.WriteString("\n## 画布改动\n")
@@ -143,124 +143,206 @@ func eventText(ev model.AgentEvent) string {
 	return p.Text
 }
 
-// writeTimeline 按事件序号写时间线。工具调用的参数、结果和耗时来自 agent_tool_calls，按调用 id 对上事件；
-// 被拒绝的调用（选错工具、模式不允许）只有 tool.end 没有 tool.start，也要写出来。
-func writeTimeline(sb *strings.Builder, f *model.AgentExportFacts) {
+// TimelineStep 是时间线上的一步：Markdown 导出和后台详情抽屉都从同一份步骤列表生成，所以两边的内容、编号、截断规则天然一致。
+type TimelineStep struct {
+	N        int           `json:"n"`                  // 步骤编号 #n，分析时用它引用证据
+	Kind     string        `json:"kind"`               // 见 timelineKind*
+	Label    string        `json:"label"`              // 这一步的名称，如「用户」「模型回复」「工具调用」
+	Text     string        `json:"text"`               // 正文（已按 2KB 截断）；工具调用为空，内容在 Tool 里
+	Thinking string        `json:"thinking,omitempty"` // 模型回复的思考摘要，前 600 字
+	Partial  bool          `json:"partial,omitempty"`  // 半截回答，被中断
+	Nested   bool          `json:"nested,omitempty"`   // codemode 脚本里发起的子调用
+	At       *time.Time    `json:"at,omitempty"`       // 事件时间
+	Tool     *TimelineTool `json:"tool,omitempty"`     // 工具调用的细节
+}
+
+// 时间线步骤的种类，前端据此决定图标和颜色。
+const (
+	TimelineUser     = "user"      // 用户消息
+	TimelineSteer    = "steer"     // 用户插话
+	TimelineAssist   = "assistant" // 模型回复
+	TimelineKindTool = "tool"      // 工具调用
+	TimelineApproval = "approval"  // 审批请求和结果
+	TimelinePlan     = "plan"      // 计划更新
+	TimelineUndo     = "undo"      // 用户撤销本轮
+	TimelineFeedback = "feedback"  // 用户反馈
+	TimelineNotice   = "notice"    // 运行时提示
+	TimelineStatus   = "status"    // 运行状态
+	TimelineOther    = "other"     // 其他事件
+)
+
+// TimelineTool 是工具调用这一步的细节。参数和结果每段最多 2KB，完整内容在 JSON 导出的 tool_calls 里。
+type TimelineTool struct {
+	Name       string     `json:"name"`                  // 工具名
+	DurationMs int        `json:"duration_ms,omitempty"` // 耗时（毫秒），没有记录为 0
+	IsError    bool       `json:"is_error"`              // 工具没做成
+	Summary    string     `json:"summary,omitempty"`     // 一行摘要
+	Args       string     `json:"args,omitempty"`        // 参数（压缩 JSON，已截断）
+	Result     string     `json:"result,omitempty"`      // 返回给模型的文本（已截断）
+	Truncated  bool       `json:"truncated,omitempty"`   // 参数或结果被截断过
+	Recorded   bool       `json:"recorded"`              // 有这次调用的记录；为 false 表示观测写库失败过，或运行早于观测上线
+	PurgedAt   *time.Time `json:"purged_at,omitempty"`   // 参数和结果已过保留期被清理的时间
+}
+
+// BuildTimeline 把一次运行的落库事件整理成时间线步骤。工具调用的参数、结果和耗时来自 agent_tool_calls，按调用 id 对上事件；
+// 被拒绝的调用（选错工具、模式不允许）只有 tool.end 没有 tool.start，也要出现。
+func BuildTimeline(f *model.AgentExportFacts) []TimelineStep {
 	calls := map[string]*model.AgentToolCall{}
 	for i := range f.ToolCalls {
 		calls[f.ToolCalls[i].ToolCallID] = &f.ToolCalls[i]
 	}
-	rendered := map[string]bool{}
-	n := 0
-	for _, ev := range f.Events {
+	seen := map[string]bool{}
+	steps := make([]TimelineStep, 0, len(f.Events))
+	for i := range f.Events {
+		ev := &f.Events[i]
 		var p map[string]any
 		_ = json.Unmarshal(ev.PayloadJSON, &p)
+		var step TimelineStep
 		if ev.Type == "tool.start" || ev.Type == "tool.end" {
 			id := str(p["id"])
-			if rendered[id] {
+			if seen[id] {
 				continue // tool.end 的内容已经并进了对应的 tool.start
 			}
-			rendered[id] = true
-			indent, prefix := "", ""
-			if str(p["parent_id"]) != "" {
-				indent, prefix = "   ", "↳ "
+			seen[id] = true
+			step = toolStep(p, calls[id])
+		} else {
+			var ok bool
+			if step, ok = eventStep(ev.Type, p); !ok {
+				continue
 			}
-			writeToolCall(sb, &n, indent, prefix, p, calls[id])
-			continue
 		}
-		text, extra, ok := eventLine(ev.Type, p)
-		if !ok {
-			continue
+		at := ev.CreatedAt
+		if !at.IsZero() {
+			step.At = &at
 		}
-		n++
-		fmt.Fprintf(sb, "#%d %s\n", n, text)
-		if extra != "" {
-			sb.WriteString(extra + "\n")
-		}
+		step.N = len(steps) + 1
+		steps = append(steps, step)
 	}
+	return steps
 }
 
-// eventLine 把一个非工具事件写成时间线上的一行（以及可选的缩进补充行）；不需要出现在时间线上的事件返回 ok=false。
-func eventLine(typ string, p map[string]any) (line, extra string, ok bool) {
+// eventStep 把一个非工具事件转成时间线上的一步；不需要出现在时间线上的事件返回 ok=false。
+func eventStep(typ string, p map[string]any) (TimelineStep, bool) {
 	switch typ {
 	case "message.user":
 		if b, _ := p["steer"].(bool); b {
-			return "[用户插话] " + clipBytes(str(p["text"]), mdSegmentBytes), "", true
+			return TimelineStep{Kind: TimelineSteer, Label: "用户插话", Text: clipBytes(str(p["text"]), mdSegmentBytes)}, true
 		}
-		return "[用户] " + clipBytes(str(p["text"]), mdSegmentBytes), "", true
+		return TimelineStep{Kind: TimelineUser, Label: "用户", Text: clipBytes(str(p["text"]), mdSegmentBytes)}, true
 	case "message.done":
-		partial := ""
-		if b, _ := p["partial"].(bool); b {
-			partial = "（半截回答，被中断）"
-		}
+		partial, _ := p["partial"].(bool)
+		st := TimelineStep{Kind: TimelineAssist, Label: "模型回复", Text: clipBytes(str(p["text"]), mdSegmentBytes), Partial: partial}
 		if th := str(p["thinking"]); th != "" {
-			extra = "   思考：" + clipThinking(th, mdThinkingRunes)
+			st.Thinking = clipThinking(th, mdThinkingRunes)
 		}
-		return "[模型回复]" + partial + " " + clipBytes(str(p["text"]), mdSegmentBytes), extra, true
+		return st, true
 	case "approval.created":
-		return "[审批请求] " + compactPayload(p, "kind", "status", "quote_credits"), "", true
+		return TimelineStep{Kind: TimelineApproval, Label: "审批请求", Text: compactPayload(p, "kind", "status", "quote_credits")}, true
 	case "approval.decided":
-		return "[审批结果] " + compactPayload(p, "kind", "status", "decision"), "", true
+		return TimelineStep{Kind: TimelineApproval, Label: "审批结果", Text: compactPayload(p, "kind", "status", "decision")}, true
 	case "plan.updated":
-		return "[计划] " + describePlan(p), "", true
+		return TimelineStep{Kind: TimelinePlan, Label: "计划", Text: describePlan(p)}, true
 	case "run.undone":
-		return "[用户撤销本轮] " + compactPayload(p), "", true
+		return TimelineStep{Kind: TimelineUndo, Label: "用户撤销本轮", Text: compactPayload(p)}, true
 	case "feedback.set":
-		return "[用户反馈] " + describeFeedbackEvent(p), "", true
+		return TimelineStep{Kind: TimelineFeedback, Label: "用户反馈", Text: describeFeedbackEvent(p)}, true
 	case "feedback.cleared":
-		return "[用户取消了反馈]", "", true
+		return TimelineStep{Kind: TimelineFeedback, Label: "用户取消了反馈"}, true
 	case "runtime.notice":
-		return "[运行时提示] " + clipBytes(str(p["text"]), mdSegmentBytes), "", true
+		return TimelineStep{Kind: TimelineNotice, Label: "运行时提示", Text: clipBytes(str(p["text"]), mdSegmentBytes)}, true
 	case "run.status":
-		return "[状态] " + str(p["status"]), "", true
+		return TimelineStep{Kind: TimelineStatus, Label: "状态", Text: str(p["status"])}, true
 	case "run.usage":
-		return "", "", false // 用量变化太频繁，且摘要里已有合计
+		return TimelineStep{}, false // 用量变化太频繁，且摘要里已有合计
 	}
-	return "[" + typ + "] " + compactPayload(p), "", true
+	return TimelineStep{Kind: TimelineOther, Label: typ, Text: compactPayload(p)}, true
 }
 
-// writeToolCall 写一次工具调用：名称、耗时、成败，再接参数、结果和摘要。
-func writeToolCall(sb *strings.Builder, n *int, indent, prefix string, ev map[string]any, c *model.AgentToolCall) {
-	*n++
+// toolStep 把一次工具调用转成时间线上的一步：名称、耗时、成败、参数、结果和摘要。
+func toolStep(ev map[string]any, c *model.AgentToolCall) TimelineStep {
 	name := str(ev["name"])
 	isErr, _ := ev["is_error"].(bool)
-	summary := str(ev["summary"])
-	dur := ""
+	t := &TimelineTool{Name: name, IsError: isErr, Summary: str(ev["summary"]), Recorded: c != nil}
 	if c != nil {
-		name, isErr = c.Name, c.IsError
-		if summary == "" {
-			summary = c.Summary
+		t.Name, t.IsError = c.Name, c.IsError
+		if t.Summary == "" {
+			t.Summary = c.Summary
 		}
 		if c.EndedAt != nil && c.DurationMs > 0 {
-			dur = fmt.Sprintf(" · %dms", c.DurationMs)
+			t.DurationMs = c.DurationMs
+		}
+		t.PurgedAt = c.PurgedAt
+		if c.PurgedAt == nil {
+			if len(c.ArgsJSON) > 0 {
+				args, cut := TruncateBytes(compactJSON(c.ArgsJSON), mdSegmentBytes)
+				t.Args, t.Truncated = args, cut
+			}
+			if c.ResultText != nil {
+				res, cut := TruncateBytes(*c.ResultText, mdSegmentBytes)
+				t.Result = res
+				t.Truncated = t.Truncated || cut || c.ResultTruncated
+			}
 		}
 	}
-	status := ""
-	if isErr {
+	return TimelineStep{Kind: TimelineKindTool, Label: "工具调用", Nested: str(ev["parent_id"]) != "", Tool: t}
+}
+
+// writeTimeline 把时间线步骤写成 Markdown。
+func writeTimeline(sb *strings.Builder, steps []TimelineStep) {
+	for _, st := range steps {
+		if st.Tool != nil {
+			writeToolStep(sb, st)
+			continue
+		}
+		line := "[" + st.Label + "]"
+		if st.Partial {
+			line += "（半截回答，被中断）"
+		}
+		if st.Text != "" {
+			line += " " + st.Text
+		}
+		fmt.Fprintf(sb, "#%d %s\n", st.N, line)
+		if st.Thinking != "" {
+			fmt.Fprintf(sb, "   思考：%s\n", st.Thinking)
+		}
+	}
+}
+
+// writeToolStep 写一次工具调用：名称、耗时、成败，再接参数、结果和摘要。
+func writeToolStep(sb *strings.Builder, st TimelineStep) {
+	t := st.Tool
+	indent, prefix := "", ""
+	if st.Nested {
+		indent, prefix = "   ", "↳ "
+	}
+	dur, status := "", ""
+	if t.DurationMs > 0 {
+		dur = fmt.Sprintf(" · %dms", t.DurationMs)
+	}
+	if t.IsError {
 		status = " · ✘ 报错"
 	}
-	fmt.Fprintf(sb, "%s#%d %s[工具调用] %s%s%s\n", indent, *n, prefix, name, dur, status)
+	fmt.Fprintf(sb, "%s#%d %s[工具调用] %s%s%s\n", indent, st.N, prefix, t.Name, dur, status)
 	pad := indent + "   "
 	switch {
-	case c == nil:
+	case !t.Recorded:
 		fmt.Fprintf(sb, "%s参数和结果：未记录参数（记录这次调用时写库失败，或运行的时间早于观测上线）\n", pad)
-	case c.PurgedAt != nil:
-		fmt.Fprintf(sb, "%s参数和结果：已过保留期（%s 清理），摘要和耗时仍在\n", pad, c.PurgedAt.UTC().Format("2006-01-02"))
+	case t.PurgedAt != nil:
+		fmt.Fprintf(sb, "%s参数和结果：已过保留期（%s 清理），摘要和耗时仍在\n", pad, t.PurgedAt.UTC().Format("2006-01-02"))
 	default:
-		if len(c.ArgsJSON) > 0 {
-			fmt.Fprintf(sb, "%s参数：%s\n", pad, clipBytes(compactJSON(c.ArgsJSON), mdSegmentBytes))
+		if t.Args != "" {
+			fmt.Fprintf(sb, "%s参数：%s\n", pad, t.Args)
 		}
-		if c.ResultText != nil {
-			res, cut := TruncateBytes(*c.ResultText, mdSegmentBytes)
+		if t.Result != "" || t.Truncated {
 			note := ""
-			if cut || c.ResultTruncated {
+			if t.Truncated {
 				note = "（已截断，完整内容见 JSON 导出）"
 			}
-			fmt.Fprintf(sb, "%s结果：%s%s\n", pad, res, note)
+			fmt.Fprintf(sb, "%s结果：%s%s\n", pad, t.Result, note)
 		}
 	}
-	if summary != "" {
-		fmt.Fprintf(sb, "%s摘要：%s\n", pad, summary)
+	if t.Summary != "" {
+		fmt.Fprintf(sb, "%s摘要：%s\n", pad, t.Summary)
 	}
 }
 

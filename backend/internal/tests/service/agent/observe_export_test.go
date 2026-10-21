@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -264,5 +265,116 @@ func TestExportRunJSON(t *testing.T) {
 	}
 	if got := e.audit.actions(); len(got) != 1 || got[0] != model.AdminAuditAgentRunsRead {
 		t.Errorf("只有令牌访问写审计，且每次导出一条：%v", got)
+	}
+}
+
+func TestBuildTimeline(t *testing.T) {
+	steps := BuildTimeline(exportFacts())
+	if len(steps) == 0 {
+		t.Fatal("时间线不应为空")
+	}
+	for i, st := range steps {
+		if st.N != i+1 {
+			t.Fatalf("步骤编号应连续从 1 起：第 %d 步编号是 %d", i+1, st.N)
+		}
+	}
+	byKind := map[string][]TimelineStep{}
+	for _, st := range steps {
+		byKind[st.Kind] = append(byKind[st.Kind], st)
+	}
+	if len(byKind[TimelineUser]) != 1 || byKind[TimelineUser][0].Text != "把这段剧本拆成 6 个镜头的分镜" || byKind[TimelineUser][0].Label != "用户" {
+		t.Errorf("用户步骤：%+v", byKind[TimelineUser])
+	}
+	if s := byKind[TimelineSteer]; len(s) != 1 || s[0].Text != "镜头别太多" {
+		t.Errorf("插话：%+v", s)
+	}
+	if a := byKind[TimelineAssist]; len(a) != 1 || a[0].Thinking != "剧本里有 12 个节拍，按节拍拆最细致" || a[0].Partial {
+		t.Errorf("模型回复和思考：%+v", a)
+	}
+	if len(byKind[TimelineApproval]) != 2 || len(byKind[TimelinePlan]) != 1 || len(byKind[TimelineUndo]) != 1 || len(byKind[TimelineFeedback]) != 1 || len(byKind[TimelineNotice]) != 1 {
+		t.Errorf("各类步骤数量：%v", map[string]int{"approval": len(byKind[TimelineApproval]), "plan": len(byKind[TimelinePlan])})
+	}
+
+	tools := byKind[TimelineKindTool]
+	if len(tools) != 4 {
+		t.Fatalf("4 次工具调用：%d", len(tools))
+	}
+	first := tools[0].Tool
+	if first.Name != "skill_read" || first.DurationMs != 120 || first.IsError || !first.Recorded || first.Args != `{"name":"script-breakdown"}` || first.Result != "<技能 script-breakdown@v3>…" || first.Summary != "读取技能 script-breakdown@v3" {
+		t.Errorf("成功的工具调用：%+v", first)
+	}
+	if !tools[2].Nested || tools[2].Tool.Name != "canvas_get_state" || tools[0].Nested || tools[1].Nested {
+		t.Errorf("codemode 子调用要标 nested：%+v %+v", tools[1], tools[2])
+	}
+	rej := tools[3].Tool
+	if !rej.IsError || rej.Name != "canvas_delete" || rej.Result != "当前是「提示词优化」模式" {
+		t.Errorf("被拒绝的调用（只有 tool.end）也要有：%+v", rej)
+	}
+	for _, st := range steps {
+		if st.At == nil {
+			t.Errorf("步骤应带事件时间：%+v", st)
+			break
+		}
+	}
+}
+
+func TestBuildTimeline_ToolEdgeCases(t *testing.T) {
+	// 没有调用记录：Recorded 为 false；过保留期：PurgedAt 有值且参数结果为空；被截断：Truncated
+	f := exportFacts()
+	f.ToolCalls = nil
+	for _, st := range BuildTimeline(f) {
+		if st.Tool != nil && st.Tool.Recorded {
+			t.Errorf("没有记录时 Recorded 应为 false：%+v", st.Tool)
+		}
+	}
+	f = exportFacts()
+	purged := obsT0.Add(31 * 24 * time.Hour)
+	f.ToolCalls[0].ArgsJSON, f.ToolCalls[0].ResultText, f.ToolCalls[0].PurgedAt = nil, nil, &purged
+	for _, st := range BuildTimeline(f) {
+		if st.Tool != nil && st.Tool.Name == "skill_read" && (st.Tool.PurgedAt == nil || st.Tool.Args != "" || st.Tool.Result != "") {
+			t.Errorf("过保留期：%+v", st.Tool)
+		}
+	}
+	f = exportFacts()
+	big := strings.Repeat("长", 2000)
+	f.ToolCalls[0].ResultText = &big
+	for _, st := range BuildTimeline(f) {
+		if st.Tool != nil && st.Tool.Name == "skill_read" && (!st.Tool.Truncated || len(st.Tool.Result) > 2<<10) {
+			t.Errorf("超长结果应截断并标记：len=%d truncated=%v", len(st.Tool.Result), st.Tool.Truncated)
+		}
+	}
+	// 半截回答
+	f = exportFacts()
+	f.Events[2].PayloadJSON = rawJSON(`{"text":"说到一半","partial":true,"tool_calls":[]}`)
+	for _, st := range BuildTimeline(f) {
+		if st.Kind == TimelineAssist && !st.Partial {
+			t.Error("partial 应标出")
+		}
+	}
+	// 没有事件：空列表（不是 nil，JSON 里是 []）
+	if steps := BuildTimeline(&model.AgentExportFacts{}); steps == nil || len(steps) != 0 {
+		t.Errorf("steps=%v", steps)
+	}
+}
+
+// 抽屉和 Markdown 同源：JSON 里的每一步都能在 Markdown 里找到同样的编号和名称。
+func TestExportRun_TimelineMatchesMarkdown(t *testing.T) {
+	e := newObserveEnv(t)
+	e.repo.exports[5] = exportFacts()
+	out, err := e.svc.ExportRun(t.Context(), ObserveActor{UserID: 9}, 5, ExportBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Data.Timeline) == 0 {
+		t.Fatal("JSON 导出应带 timeline")
+	}
+	for _, st := range out.Data.Timeline {
+		if !strings.Contains(out.Content, fmt.Sprintf("#%d ", st.N)) || !strings.Contains(out.Content, "["+st.Label+"]") {
+			t.Errorf("Markdown 里找不到第 %d 步「%s」", st.N, st.Label)
+		}
+	}
+	raw, _ := json.Marshal(out.Data)
+	if !strings.Contains(string(raw), `"timeline":[`) {
+		t.Error("timeline 字段名")
 	}
 }

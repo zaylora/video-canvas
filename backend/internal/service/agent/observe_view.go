@@ -12,6 +12,7 @@ import (
 type RunExportView struct {
 	Digest      *AgentRunDigestView `json:"digest"`       // 运行摘要；运行刚创建还没有摘要时为 null
 	Run         *AgentRunView       `json:"run"`          // 运行本身
+	Timeline    []TimelineStep      `json:"timeline"`     // 时间线步骤：Markdown 导出和后台详情抽屉共用同一份
 	Events      []*AgentEventView   `json:"events"`       // 本轮的落库事件，按序号升序
 	ToolCalls   []*ToolCallView     `json:"tool_calls"`   // 工具调用，含参数和结果
 	ModelCalls  []*ModelCallView    `json:"model_calls"`  // 模型调用
@@ -83,7 +84,7 @@ type ApprovalExport struct {
 
 // exportView 把导出事实转成对外的结构化视图。
 func exportView(f *model.AgentExportFacts) *RunExportView {
-	v := &RunExportView{Run: runView(&f.Run), RuntimeTail: f.RuntimeTail,
+	v := &RunExportView{Run: runView(&f.Run), RuntimeTail: f.RuntimeTail, Timeline: BuildTimeline(f),
 		Events: eventViews(f.Events), Context: eventViews(f.Context),
 		ToolCalls: []*ToolCallView{}, ModelCalls: []*ModelCallView{}, Mutations: []*MutationView{}, Approvals: []*ApprovalExport{}}
 	if f.Digest.RunID != 0 {

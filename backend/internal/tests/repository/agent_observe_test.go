@@ -359,6 +359,9 @@ func TestObserve_Stats(t *testing.T) {
 	approx("耗时中位数", h9.MedianDurationMs, 2500) // 1000,2000,3000,4000
 	approx("步数中位数", h9.MedianSteps, 25)
 	approx("平均积分", h9.AvgCredits, 25)
+	if h9.PromptVersion != 9 {
+		t.Errorf("按 harness_key 分组时带上提示词版本：%+v", h9)
+	}
 	if by["h10"].N != 1 {
 		t.Errorf("h10=%+v", by["h10"])
 	}
@@ -597,5 +600,42 @@ func TestObserve_EndToEnd(t *testing.T) {
 	}
 	if out.Data == nil || len(out.Data.ToolCalls) != 2 || out.Data.Digest == nil || out.Data.Feedback == nil {
 		t.Errorf("data=%+v", out.Data)
+	}
+}
+
+// 版本对比卡片要「最近几个版本」：分组按最近一次运行的时间倒序，并带上 last_at。
+func TestObserve_StatsOrdersByRecency(t *testing.T) {
+	ctx := context.Background()
+	db := observeDB(t)
+	r := NewAgentObserveRepository(db)
+	mk := func(id uint64, harness string, created time.Time) *model.AgentRunDigest {
+		return &model.AgentRunDigest{RunID: id, UserID: 1, SessionID: 1, CanvasID: 1, HarnessKey: harness, ModelKey: "m", Status: model.RunSucceeded, CreatedAt: created, Skills: datatypes.JSON(`{}`)}
+	}
+	// h-old 运行最多但都是旧的；h-new 只有一次，但最近；h-mid 居中
+	for _, d := range []*model.AgentRunDigest{
+		mk(1, "h-old", t0), mk(2, "h-old", t0.Add(time.Hour)), mk(3, "h-old", t0.Add(2*time.Hour)),
+		mk(4, "h-mid", t0.Add(5*time.Hour)),
+		mk(5, "h-new", t0.Add(9*time.Hour)),
+	} {
+		if err := r.UpsertDigest(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := r.Stats(ctx, model.StatsQuery{GroupBy: "harness_key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, row := range rows {
+		keys = append(keys, row.Key)
+	}
+	if strings.Join(keys, ",") != "h-new,h-mid,h-old" {
+		t.Errorf("应按最近一次运行倒序：%v", keys)
+	}
+	if rows[0].PromptVersion != 0 || rows[0].BuildSHA != "" {
+		t.Errorf("这组摘要没填版本，应是零值：%+v", rows[0])
+	}
+	if !rows[0].LastAt.Equal(t0.Add(9*time.Hour)) || !rows[2].LastAt.Equal(t0.Add(2*time.Hour)) {
+		t.Errorf("last_at：%v %v", rows[0].LastAt, rows[2].LastAt)
 	}
 }

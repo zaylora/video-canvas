@@ -240,7 +240,7 @@ var statsGroupColumns = map[string]string{
 }
 
 // Stats 按版本（或模型）分组聚合运行摘要的指标，用来判断改了 Harness 之后有没有变好。分组字段不在白名单返回 ErrInvalidGroupBy。
-// 比率的分母为 0 时记 0。分组值为空（没记版本的老运行）单独成一组，key 为空串。
+// 按每组最近一次运行的时间倒序（版本对比只关心最近几个版本）。比率的分母为 0 时记 0。分组值为空（没记版本的老运行）单独成一组，key 为空串。
 func (r *AgentObserveRepository) Stats(ctx context.Context, q model.StatsQuery) ([]model.AgentStatsRow, error) {
 	col, ok := statsGroupColumns[q.GroupBy]
 	if !ok {
@@ -256,7 +256,10 @@ func (r *AgentObserveRepository) Stats(ctx context.Context, q model.StatsQuery) 
 		COALESCE(COUNT(*) FILTER (WHERE status IN ?)::float / NULLIF(COUNT(*), 0), 0) AS fail_end_rate,
 		COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms), 0) AS median_duration_ms,
 		COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY steps), 0) AS median_steps,
-		COALESCE(AVG(spent_credits), 0) AS avg_credits`, col)
+		COALESCE(AVG(spent_credits), 0) AS avg_credits,
+		MAX(prompt_version) AS prompt_version,
+		COALESCE(MAX(build_sha), '') AS build_sha,
+		MAX(created_at) AS last_at`, col)
 	tx := r.db.WithContext(ctx).Model(&model.AgentRunDigest{}).Select(sel, failed)
 	if !q.Since.IsZero() {
 		tx = tx.Where("created_at >= ?", q.Since)
@@ -265,7 +268,7 @@ func (r *AgentObserveRepository) Stats(ctx context.Context, q model.StatsQuery) 
 		tx = tx.Where("created_at < ?", q.Until)
 	}
 	var rows []model.AgentStatsRow
-	if err := tx.Group(col).Order("n DESC, key").Scan(&rows).Error; err != nil {
+	if err := tx.Group(col).Order("last_at DESC, n DESC, key").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil

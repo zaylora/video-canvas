@@ -180,15 +180,18 @@ type DigestQuery struct {
 
 // AgentStatsRow 是版本对比里一组的聚合指标；比率是 0–1 的小数，分母为 0 时记 0。
 type AgentStatsRow struct {
-	Key              string  `json:"key"`                // 分组值
-	N                int     `json:"n"`                  // 运行数
-	FeedbackRate     float64 `json:"feedback_rate"`      // 有评价的运行占比
-	DownRate         float64 `json:"down_rate"`          // 点踩数 ÷ 有评价的运行数
-	UndoRate         float64 `json:"undo_rate"`          // 被撤销的运行数 ÷ 改过画布的运行数
-	FailEndRate      float64 `json:"fail_end_rate"`      // 失败结束的运行占比，见 FailedRunStatuses
-	MedianDurationMs float64 `json:"median_duration_ms"` // 耗时中位数
-	MedianSteps      float64 `json:"median_steps"`       // 步数中位数
-	AvgCredits       float64 `json:"avg_credits"`        // 平均每次运行花的积分
+	Key              string    `json:"key"`                // 分组值
+	N                int       `json:"n"`                  // 运行数
+	FeedbackRate     float64   `json:"feedback_rate"`      // 有评价的运行占比
+	DownRate         float64   `json:"down_rate"`          // 点踩数 ÷ 有评价的运行数
+	UndoRate         float64   `json:"undo_rate"`          // 被撤销的运行数 ÷ 改过画布的运行数
+	FailEndRate      float64   `json:"fail_end_rate"`      // 失败结束的运行占比，见 FailedRunStatuses
+	MedianDurationMs float64   `json:"median_duration_ms"` // 耗时中位数
+	MedianSteps      float64   `json:"median_steps"`       // 步数中位数
+	AvgCredits       float64   `json:"avg_credits"`        // 平均每次运行花的积分
+	PromptVersion    int       `json:"prompt_version"`     // 这一组的提示词版本（按 harness_key 分组时唯一；其他分组取最大值，仅供参考）
+	BuildSHA         string    `json:"build_sha"`          // 这一组的构建号（同上）
+	LastAt           time.Time `json:"last_at"`            // 这一组最近一次运行的创建时间，版本对比按它挑「最近几个版本」
 }
 
 // StatsQuery 是版本对比的条件。
