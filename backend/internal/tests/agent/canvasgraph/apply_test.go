@@ -13,7 +13,7 @@ const shotOps = `[
   {"op":"create_node","tempId":"a","kind":"script","label":"镜头01","prompt":"近景，林夏抬头","parentGroup":"g1"},
   {"op":"create_node","tempId":"b","kind":"image","label":"镜头01 关键帧","parentGroup":"g1"},
   {"op":"create_node","tempId":"c","kind":"video","label":"镜头01 视频","parentGroup":"g1"},
-  {"op":"connect","source":"n_script","target":"a"},
+  {"op":"connect","source":"n_script","target":"c"},
   {"op":"connect","source":"a","target":"b"},
   {"op":"connect","source":"b","target":"c"}
 ]`
@@ -107,7 +107,7 @@ func TestApplyConnectRules(t *testing.T) {
 		wantReject bool
 	}{
 		{"文本到图片", "script", "image", false},
-		{"文本到文本", "script", "script", false},
+		{"文本到文本：文本节点没有输入口", "script", "script", true},
 		{"图片到视频", "image", "video", false},
 		{"视频到图片", "video", "image", true},
 		{"音频到视频", "audio", "video", false},
@@ -163,7 +163,8 @@ func TestUpdateNodeRules(t *testing.T) {
 	g := mustParse(t, basePayload)
 	res := mustApply(t, g, `[{"op":"update_node","id":"n_script","prompt":"黄昏","label":"剧本 v2"}]`)
 	d := node(t, res.Graph, "n_script").Data()
-	if d["label"] != "剧本 v2" || d["prompt"] != "黄昏" || d["params"].(map[string]any)["prompt"] != "黄昏" {
+	// 文本节点没有提示词，prompt 写的是正文；旧的 prompt 字段不动
+	if d["label"] != "剧本 v2" || d["text"] != "黄昏" || d["prompt"] != "雨夜便利店" {
 		t.Errorf("data=%v", d)
 	}
 	for _, bad := range []string{
