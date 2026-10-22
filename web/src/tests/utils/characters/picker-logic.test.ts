@@ -7,6 +7,7 @@ import {
   CHARACTER_NODE_WIDTH,
   planCharacterNodes,
 } from "@/utils/canvas/character-nodes";
+import { NODE_FRAME_SHORT_SIDE, nodeFrameSize } from "@/utils/canvas/node-frame";
 import {
   characterPickerSummary,
   filterCharacters,
@@ -87,6 +88,12 @@ describe("planCharacterNodes：在双击位置排布角色卡节点", () => {
     expect(ASSET_STACK_COLUMNS).toBe(4);
     expect(xs.slice(0, 4)).toEqual([100, 100 + step, 100 + 2 * step, 100 + 3 * step]);
     expect(nodes[4].position).toEqual({ x: 100, y: 50 + CHARACTER_NODE_HEIGHT + ASSET_STACK_GAP });
+  });
+
+  test("角色卡节点的短边（宽）与 1:1 素材节点的边长一样，封面 3:4，下面再加 40px 声音条", () => {
+    expect(CHARACTER_NODE_WIDTH).toBe(NODE_FRAME_SHORT_SIDE);
+    expect(CHARACTER_NODE_WIDTH).toBe(nodeFrameSize(1).width);
+    expect(CHARACTER_NODE_HEIGHT).toBe(nodeFrameSize(3 / 4).height + 40);
   });
 
   test("节点名与画布上已有的重名时编号去重", () => {

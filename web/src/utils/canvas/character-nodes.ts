@@ -4,13 +4,17 @@ import type { CharacterDto } from "@/api/character/type";
 import { ASSET_STACK_COLUMNS, ASSET_STACK_GAP, NODE_META } from "@/constants/canvas";
 import type { CanvasNode } from "@/types";
 
+import { NODE_FRAME_SHORT_SIDE, nodeFrameSize } from "./node-frame";
 import { newNodeLabel } from "./node-label";
 
-/** 角色卡节点卡片宽度（像素）：竖版 3:4 封面，比素材节点窄 */
-export const CHARACTER_NODE_WIDTH = 216;
+/** 角色卡节点卡片宽度（像素）：与所有 1:1 节点的边长一样（短边 NODE_FRAME_SHORT_SIDE），封面竖版 3:4 */
+export const CHARACTER_NODE_WIDTH = NODE_FRAME_SHORT_SIDE;
 
-/** 角色卡节点框的高度（像素）：3:4 封面 + 底部声音条，排布时按它算行高 */
-export const CHARACTER_NODE_HEIGHT = 328;
+/** 底部声音条的高度（像素），与节点里声音条的 h-10 一致 */
+const CHARACTER_BAR_HEIGHT = 40;
+
+/** 角色卡节点框的高度（像素）：宽度下的 3:4 封面 + 底部声音条，排布时按它算行高 */
+export const CHARACTER_NODE_HEIGHT = nodeFrameSize(3 / 4).height + CHARACTER_BAR_HEIGHT;
 
 /**
  * 把选中的角色卡排成一批节点：每张卡一个节点，数据只有 characterId 和占位用的 labelCache
