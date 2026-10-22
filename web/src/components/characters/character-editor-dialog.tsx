@@ -64,8 +64,11 @@ export function CharacterEditorDialog({
   onSaved?: (card: CharacterDto) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const title = character ? "编辑角色卡" : "新建角色卡";
-  /** 保存中不可关闭；内容打开时才挂载，状态每次从头开始 */
+  // 关闭时父级会把 character 清成 null：退出动画期间沿用打开时的那张卡，标题和按钮文案才不会跳成「新建 / 创建」
+  const [shown, setShown] = useState(character);
+  if (open && shown !== character) setShown(character);
+  const title = shown ? "编辑角色卡" : "新建角色卡";
+  /** 保存中不可关闭 */
   return (
     <Dialog
       open={open}
@@ -76,7 +79,7 @@ export function CharacterEditorDialog({
       <DialogContent
         showCloseButton={!saving}
         data-slot="character-editor"
-        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-3xl"
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-x-hidden overflow-y-auto p-0 [scrollbar-gutter:auto]! [scrollbar-width:none] sm:max-w-3xl [&::-webkit-scrollbar]:hidden"
       >
         <DialogHeader className="px-5 pt-4 pb-3">
           <DialogTitle className="text-base">{title}</DialogTitle>
@@ -84,15 +87,14 @@ export function CharacterEditorDialog({
             设置角色的名称、形象图、声音和设定
           </DialogDescription>
         </DialogHeader>
-        {open && (
-          <EditorBody
-            character={character}
-            saving={saving}
-            setSaving={setSaving}
-            onClose={onClose}
-            onSaved={onSaved}
-          />
-        )}
+        {/* 内容随弹框外壳一起挂载和卸载：关闭动画期间表单不会先消失，每次打开状态从头开始 */}
+        <EditorBody
+          character={shown}
+          saving={saving}
+          setSaving={setSaving}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
       </DialogContent>
     </Dialog>
   );

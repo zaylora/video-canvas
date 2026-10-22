@@ -105,16 +105,16 @@ export function AssetPickerDialog({
       <DialogContent className={CONTENT_CLASS} data-slot="asset-picker">
         <DialogTitle className="sr-only">{options.title ?? "资产库"}</DialogTitle>
         <DialogDescription className="sr-only">选择要引入的素材</DialogDescription>
-        {/* 打开时才挂载内容：选择、筛选、搜索、上传队列每次都从初始状态开始，关闭时进行中的上传随之中止 */}
-        {open && (
-          <PickerBody
-            {...options}
-            onConfirm={(assets) => {
-              onConfirm(assets);
-              onOpenChange(false);
-            }}
-          />
-        )}
+        {/* 内容随弹框外壳一起挂载和卸载（Base UI 在退出动画结束后才卸载）：
+            选择、筛选、搜索、上传队列每次打开都从初始状态开始，关闭时进行中的上传随之中止，
+            关闭动画期间内容不会先消失 */}
+        <PickerBody
+          {...options}
+          onConfirm={(assets) => {
+            onConfirm(assets);
+            onOpenChange(false);
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
