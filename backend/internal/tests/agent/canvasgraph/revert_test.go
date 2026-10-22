@@ -26,16 +26,15 @@ func TestRevertRestoresOriginal(t *testing.T) {
 func TestRevertSkipsUserEditedField(t *testing.T) {
 	g := mustParse(t, basePayload)
 	res := mustApply(t, g, `[{"op":"update_node","id":"n_script","prompt":"黄昏","label":"剧本 v2"}]`)
-	// 用户之后把提示词改成了「清晨」，标题没动。
+	// 用户之后把正文改成了「清晨」，标题没动。
 	cur := res.Graph.Clone()
 	d := node(t, cur, "n_script").Data()
-	d["prompt"] = "清晨"
-	d["params"].(map[string]any)["prompt"] = "清晨"
+	d["text"] = "清晨"
 
 	rr := canvasgraph.Revert(cur, res.Changes)
 	got := node(t, rr.Graph, "n_script").Data()
-	if got["prompt"] != "清晨" {
-		t.Errorf("用户改过的字段应保留，实际 %v", got["prompt"])
+	if got["text"] != "清晨" {
+		t.Errorf("用户改过的字段应保留，实际 %v", got["text"])
 	}
 	if got["label"] != "剧本" {
 		t.Errorf("没被改过的标题应恢复: %v", got["label"])
@@ -45,12 +44,12 @@ func TestRevertSkipsUserEditedField(t *testing.T) {
 	}
 	found := false
 	for _, s := range rr.Skipped {
-		if s.NodeID == "n_script" && s.Field == "data.prompt" {
+		if s.NodeID == "n_script" && s.Field == "data.text" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("跳过项里应有 n_script 的 data.prompt: %+v", rr.Skipped)
+		t.Errorf("跳过项里应有 n_script 的 data.text: %+v", rr.Skipped)
 	}
 }
 

@@ -1,23 +1,24 @@
-import { useCallback } from "react";
-import { useReactFlow } from "@xyflow/react";
+import { useCallback, useState } from "react";
+import { Position, useReactFlow } from "@xyflow/react";
 
-import { NodeCard, NodeTextBody, type IncomingConnection } from "@/components/canvas";
-import { useHandleRemeasure } from "@/components/canvas/hooks/use-handle-remeasure";
+import { NodeCard, NodeTextBody, type NodeCardHandle } from "@/components/canvas";
+import { TextEditorDialog } from "@/components/canvas/text-editor-dialog";
 import { NODE_META } from "@/constants/canvas";
-import { useTextNode } from "@/hooks/use-text-node";
 import type { CanvasNode, CanvasNodeData } from "@/types";
-import { canLinkFrom } from "@/utils/canvas/link-rule";
 import { textEditPatch } from "@/utils/canvas/text-body";
 
 import { NodeOverlays, NodeOverlaysPresence } from "./node-overlays";
 import { useDragSelected } from "./overlay-gate";
 import { useMultiSelected } from "./selection-toolbar";
-import { NodeStatusLabel, TaskPromptPanel } from "./video-node";
+import { NodeStatusLabel } from "./video-node";
+
+/** 文本节点只有输出口：它是手写内容，不接上游，没有哪种节点能连进它 */
+const TEXT_HANDLES: NodeCardHandle[] = [{ type: "source", position: Position.Right }];
 
 /**
- * 文本节点：模型清单、参数与提交走后端生成任务，正文由任务回填写进 data.text。
- * 输入口随所选模型 input_schema 里带 port 的字段生成（上游文本可以接到 prompt 上），
- * 选中时下方浮出提示词与参数面板。
+ * 文本节点：正文就是 data.text，按 Markdown 渲染，双击在弹窗里用富文本编辑。
+ * 不调模型：没有提示词与参数面板，也没有输入口，选中时只浮出上方功能区；
+ * 老数据里已经在跑的任务仍会回填正文，生成中锁定编辑。
  */
 export function TextCanvasNode({
   id,
@@ -28,8 +29,7 @@ export function TextCanvasNode({
   data: CanvasNodeData;
   selected?: boolean;
 }) {
-  const { getNode, updateNodeData } = useReactFlow<CanvasNode>();
-  const vm = useTextNode(id, data);
+  const { updateNodeData } = useReactFlow<CanvasNode>();
   const meta = NODE_META.get("script");
   const PlaceholderIcon = meta?.placeholderIcon;
   const KindIcon = meta?.icon;
@@ -37,27 +37,19 @@ export function TextCanvasNode({
   const multiSelected = useMultiSelected();
   const dragSelected = useDragSelected(id);
 
-  /** 输入口随模型 schema 增减，xyflow 要被通知重新测量，否则连线会因找不到 handle 被藏起来 */
-  const handleSignature = vm.handles
-    .map((handle) => `${handle.type}:${handle.id ?? ""}:${handle.top ?? ""}`)
-    .join("|");
-  useHandleRemeasure(id, handleSignature);
+  /** 编辑弹窗是否打开：双击正文、工具栏「放大」都走它 */
+  const [editing, setEditing] = useState(false);
+  const openEditor = useCallback(() => setEditing(true), []);
+  /** 生成中锁定：弹窗只能看，免得和即将回填的结果打架 */
+  const editable = status !== "running";
 
-  /** 双击编辑完正文：写回节点，正文就是下游引用到的那份 */
+  /** 弹窗关闭时写回正文：正文就是下游引用到的那份 */
   const onTextChange = useCallback(
     (draft: string) => {
       const patch = textEditPatch(data, draft);
       if (patch) updateNodeData(id, patch);
     },
     [data, id, updateNodeData],
-  );
-
-  const canAcceptConnection = useCallback(
-    ({ nodeId, handleType }: IncomingConnection) => {
-      const from = getNode(nodeId);
-      return !!from && canLinkFrom(from.data, handleType, data);
-    },
-    [data, getNode],
   );
 
   return (
@@ -73,8 +65,7 @@ export function TextCanvasNode({
             }}
           />
         }
-        handles={vm.handles}
-        canAcceptConnection={canAcceptConnection}
+        handles={TEXT_HANDLES}
       >
         <NodeTextBody
           status={status}
@@ -82,17 +73,21 @@ export function TextCanvasNode({
           error={data.error}
           taskRef={data.taskId ? data.errorTaskRef : null}
           icon={PlaceholderIcon ? <PlaceholderIcon className="size-10" /> : null}
-          placeholder="双击输入文字，或选中后写提示词生成"
-          onTextChange={vm.submitting ? undefined : onTextChange}
+          placeholder="双击输入文字"
+          onEdit={editable ? openEditor : undefined}
         />
       </NodeCard>
+      <TextEditorDialog
+        open={editing}
+        onOpenChange={setEditing}
+        title={data.label}
+        text={data.text ?? ""}
+        editable={editable}
+        onSave={onTextChange}
+      />
       <NodeOverlaysPresence multiSelected={multiSelected}>
         {selected && !dragSelected && (
-          <NodeOverlays key="overlays" id={id} data={data}>
-            {(width) => (
-              <TaskPromptPanel vm={vm} data={data} kind="script" nodeId={id} width={width} />
-            )}
-          </NodeOverlays>
+          <NodeOverlays key="overlays" id={id} data={data} onOpenText={openEditor} />
         )}
       </NodeOverlaysPresence>
     </>

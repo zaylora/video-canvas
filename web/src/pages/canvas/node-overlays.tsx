@@ -9,7 +9,6 @@ import { NodeActionBar } from "@/components/canvas/node-action-bar";
 import { DoodleOverlay } from "@/components/canvas/doodle-overlay";
 import { GridSplitOverlay } from "@/components/canvas/grid-split-overlay";
 import { OutpaintOverlay } from "@/components/canvas/outpaint-overlay";
-import { TextPreviewDialog } from "@/components/canvas/text-preview-dialog";
 import { FrameOverlay } from "@/components/canvas/frame-overlay";
 import { TrimOverlay } from "@/components/canvas/trim-overlay";
 import {
@@ -76,12 +75,15 @@ export function NodeOverlaysPresence({
 export function NodeOverlays({
   id,
   data,
+  onOpenText,
   children,
 }: {
   id: string;
   data: CanvasNodeData;
-  /** 生成面板，拿到算好的宽度 */
-  children: (width: number) => ReactNode;
+  /** 文本节点「放大」按钮：打开节点自己持有的编辑弹窗；不是文本节点用不到 */
+  onOpenText?: () => void;
+  /** 生成面板，拿到算好的宽度；不给就不摆面板（文本节点只有手写内容，不调模型） */
+  children?: (width: number) => ReactNode;
 }) {
   const previewNode = useNodePreview();
   const { width, shift } = usePanelPlacement(id);
@@ -101,8 +103,6 @@ export function NodeOverlays({
   const { captureQuick } = useFrameNodes();
   /** 「加入资产库」的文件夹选择器是否打开 */
   const [pickingFolder, setPickingFolder] = useState(false);
-  /** 文本节点的放大预览弹窗是否打开 */
-  const [previewingText, setPreviewingText] = useState(false);
   const imageModels = useRemoteModels("image", data.kind === "image");
 
   const config = NODE_TOOLBAR[data.kind];
@@ -173,12 +173,12 @@ export function NodeOverlays({
 
   const { src, text, label, fileName } = data;
   const onTail: Partial<Record<ToolbarTail, () => void>> = {
-    // 灯箱只认图片和视频；文本用自己的只读弹窗，音频的放大先当占位
+    // 灯箱只认图片和视频；文本打开节点自己的编辑弹窗，音频的放大先当占位
     zoom:
       previewNode && (data.kind === "image" || data.kind === "video")
         ? () => previewNode(id)
         : data.kind === "script"
-          ? () => setPreviewingText(true)
+          ? onOpenText
           : undefined,
     download: src ? () => void downloadMedia(src, downloadName(label, src, fileName)) : undefined,
     copy: text
@@ -253,14 +253,8 @@ export function NodeOverlays({
         confirmLabel="加入"
         onConfirm={confirmAddToLibrary}
       />
-      <TextPreviewDialog
-        open={previewingText}
-        onOpenChange={setPreviewingText}
-        title={label}
-        text={text ?? ""}
-      />
       {/* 扩图出来的节点提示词是固定的，参考图只有合成图，没有可调的东西，不摆生成面板 */}
-      {!data.uploaded && !data.outpaintFrom && data.kind !== "director" && (
+      {children && !data.uploaded && !data.outpaintFrom && data.kind !== "director" && (
         <NodeToolbar isVisible position={Position.Bottom} offset={PANEL_OFFSET}>
           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.985 }}

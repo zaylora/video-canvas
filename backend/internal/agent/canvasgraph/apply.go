@@ -159,6 +159,24 @@ func setPrompt(n Node, prompt string) {
 	params["prompt"] = prompt
 }
 
+// setContent 写节点的内容：文本节点没有提示词，prompt 字段写的就是正文（data.text，前端按 Markdown 渲染，
+// 下游引用的也是它），有内容算 done、清空回到 idle，旧的失败信息一并去掉；其余节点写提示词。
+func setContent(n Node, content string) {
+	if n.Kind() != KindScript {
+		setPrompt(n, content)
+		return
+	}
+	d := n.Data()
+	d["text"] = content
+	if strings.TrimSpace(content) == "" {
+		d["status"] = "idle"
+	} else {
+		d["status"] = "done"
+	}
+	delete(d, "error")
+	delete(d, "errorTaskRef")
+}
+
 // createNode 新建一个普通节点，可以直接放进某个组。
 func (a *applier) createNode(op Op) error {
 	if op.Kind == KindDirector {
@@ -183,7 +201,7 @@ func (a *applier) createNode(op Op) error {
 	}
 	n := Node{"id": id, "type": "canvas", "data": map[string]any{"kind": op.Kind, "label": a.uniqueLabel(op.Label, kindLabel[op.Kind])}}
 	if op.Prompt != nil {
-		setPrompt(n, *op.Prompt)
+		setContent(n, *op.Prompt)
 	}
 	if op.Model != nil {
 		n.Data()["model"] = *op.Model
@@ -237,7 +255,7 @@ func (a *applier) updateNode(op Op) error {
 		d["label"] = a.uniqueLabel(op.Label, n.Label())
 	}
 	if op.Prompt != nil {
-		setPrompt(n, *op.Prompt)
+		setContent(n, *op.Prompt)
 	}
 	if op.Model != nil {
 		d["model"] = *op.Model

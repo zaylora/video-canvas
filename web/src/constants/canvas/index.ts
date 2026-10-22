@@ -12,7 +12,8 @@ export * from "./node-library";
  * 音视频只往视频走。拉线落空时据此决定菜单里哪些项可点。
  */
 export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
-  script: ["script", "image", "video", "audio"],
+  // 文本节点是手写内容，没有输入口：不接上游，也就没有哪种节点能连进它
+  script: ["image", "video", "audio"],
   image: ["image", "video"],
   video: ["video"],
   audio: ["video"],
