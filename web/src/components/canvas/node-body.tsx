@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Loader2, TriangleAlert } from "lucide-react";
 
 import { TaskIdTag } from "@/components/task-id-tag";
-import { TEXT_BODY_MAX } from "@/utils/canvas/paste";
+import { Markdown } from "@/pages/canvas/agent/markdown";
 
 import { AudioPlayer } from "./audio-player";
 import { BaseNodeContent } from "./base-node";
@@ -113,53 +113,16 @@ type NodeTextBodyProps = {
   icon: ReactNode;
   /** 占位框的无障碍说明，也是这个节点该干什么 */
   placeholder: string;
-  /** 双击正文编辑完（失焦或按 Esc）后回调，参数是编辑框里的全文；不给就不能编辑，生成中也不能编辑 */
-  onTextChange?: (text: string) => void;
+  /** 双击正文时回调，由外层打开编辑弹窗；不给就不能编辑，生成中也不能编辑 */
+  onEdit?: () => void;
 };
 
 /**
- * 文本节点的正文：双击进入原地编辑，失焦或按 Esc 保存；
+ * 文本节点的正文：按 Markdown 渲染，双击通知外层打开编辑弹窗；
  * 生成中锁定，免得和即将回填的结果打架。
  */
-export function NodeTextBody({ onTextChange, ...view }: NodeTextBodyProps) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const editable = !!onTextChange && view.status !== "running";
-  // 编辑中途变成不可编辑（比如任务回填触发了生成中），丢掉编辑态，免得生成完又弹回来
-  if (draft !== null && !editable) setDraft(null);
-
-  if (draft !== null && onTextChange) {
-    return (
-      <BaseNodeContent>
-        <textarea
-          autoFocus
-          value={draft}
-          maxLength={TEXT_BODY_MAX}
-          aria-label="文本内容"
-          placeholder="输入文字…"
-          onFocus={(event) => {
-            // 光标放到末尾，接着写
-            const end = event.currentTarget.value.length;
-            event.currentTarget.setSelectionRange(end, end);
-          }}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              event.currentTarget.blur();
-            }
-          }}
-          onBlur={() => {
-            setDraft(null);
-            onTextChange(draft);
-          }}
-          // 选字、拖光标、滚长文都不能把节点或画布带走
-          className="nodrag nowheel nopan bg-muted/40 block w-full resize-none rounded-[inherit] p-4 text-sm leading-6 outline-none"
-          style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
-        />
-      </BaseNodeContent>
-    );
-  }
+export function NodeTextBody({ onEdit, ...view }: NodeTextBodyProps) {
+  const editable = !!onEdit && view.status !== "running";
 
   return (
     // contents 的外层只用来接双击，不参与布局
@@ -170,7 +133,7 @@ export function NodeTextBody({ onTextChange, ...view }: NodeTextBodyProps) {
         if (!editable) return;
         // 别让画布把这次双击当成「在空白处新建节点」
         event.stopPropagation();
-        setDraft(view.text ?? "");
+        onEdit();
       }}
     >
       <TextBodyView {...view} />
@@ -181,8 +144,8 @@ export function NodeTextBody({ onTextChange, ...view }: NodeTextBodyProps) {
 /**
  * 文本节点正文的展示：跑之前是占位框，跑起来占位框里转圈，
  * 出了结果就把正文摊开，失败则把原因摆在明面上。
- * 结果区只留 nowheel 好滚长文，不挡拖拽（整张卡片几乎都是正文，挡了就拖不动节点）；
- * 要选字、复制就双击进编辑框。
+ * 正文按 Markdown 渲染（单个换行也换行）。结果区只留 nowheel 好滚长文，不挡拖拽
+ * （整张卡片几乎都是正文，挡了就拖不动节点）；要选字、复制就双击进编辑弹窗。
  */
 function TextBodyView({
   status,
@@ -191,7 +154,7 @@ function TextBodyView({
   taskRef,
   icon,
   placeholder,
-}: Omit<NodeTextBodyProps, "onTextChange">) {
+}: Omit<NodeTextBodyProps, "onEdit">) {
   if (status === "running") {
     return (
       <BaseNodeContent>
@@ -224,15 +187,15 @@ function TextBodyView({
     );
   }
 
-  // 出了结果才摊正文；跑完却空手而归，按没跑过处理，别留一块空白
-  if (status === "done" && text) {
+  // 有正文就摊开，不看状态（手写、Agent 写、撤销都可能只动状态）；没有正文按没跑过处理，别留一块空白
+  if (text) {
     return (
       <BaseNodeContent>
         <div
-          className="nowheel bg-muted/40 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 whitespace-pre-wrap select-none"
+          className="nowheel bg-muted/40 w-full overflow-y-auto rounded-[inherit] p-4 text-sm leading-6 select-none"
           style={{ aspectRatio: NODE_PREVIEW_ASPECT }}
         >
-          {text}
+          <Markdown text={text} breaks />
         </div>
       </BaseNodeContent>
     );

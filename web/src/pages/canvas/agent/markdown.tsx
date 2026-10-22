@@ -1,5 +1,6 @@
 import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/lib/utils";
@@ -63,11 +64,23 @@ const COMPONENTS: Components = {
 };
 
 const PLUGINS = [remarkGfm];
+/** 开了 breaks 再加上：单个换行也当作换行，文本节点里剧本、清单一行一项的写法才不会被合成一段 */
+const PLUGINS_BREAKS = [remarkGfm, remarkBreaks];
 
-/** 流式输出时每个 delta 都会重渲染；text 不变时跳过 */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/**
+ * 流式输出时每个 delta 都会重渲染；text、breaks 不变时跳过
+ * @param props.text Markdown 文本
+ * @param props.breaks 单个换行是否也换行；助手消息按标准语法，文本节点要开
+ */
+export const Markdown = memo(function Markdown({
+  text,
+  breaks = false,
+}: {
+  text: string;
+  breaks?: boolean;
+}) {
   return (
-    <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS}>
+    <ReactMarkdown remarkPlugins={breaks ? PLUGINS_BREAKS : PLUGINS} components={COMPONENTS}>
       {text}
     </ReactMarkdown>
   );
