@@ -9,6 +9,7 @@ import { TAP } from "@/lib/motion";
 import type { ComposerRef } from "@/utils/conversation/submission";
 import {
   currentOp,
+  emptyBindings,
   isAutoOp,
   OP_LABEL,
   openParams,
@@ -17,7 +18,7 @@ import {
 } from "@/utils/tasks/capabilities";
 
 /** 参数面板用不到上游连线，素材口为空 */
-const NO_BINDINGS = { images: [], videos: [], audios: [] };
+const NO_BINDINGS = emptyBindings();
 
 /** 参考素材由输入卡片自己管，参数面板里不会触发这些 */
 const NOOP = () => undefined;

@@ -30,6 +30,7 @@ type Handlers struct {
 	WS             *handler.WSHandler                  // 用户级 WebSocket 推送
 	Asset          *handler.AssetHandler               // 素材上传与查询
 	AssetLibrary   *handler.AssetLibraryHandler        // 资产库：文件夹、库归属、生成历史
+	CharacterCard  *handler.CharacterCardHandler       // 用户私有角色卡 CRUD 与批量读取
 	Files          gin.HandlerFunc                     // 素材稳定地址 /files/*：本地存储直出，对象存储签名后 302
 	AIModel        *handler.AIModelHandler             // 面向画布的模型清单
 	AdminAI        *handler.AdminAIHandler             // AI 模型配置管理
@@ -168,6 +169,14 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		auth.POST("/asset-library/items", h.AssetLibrary.AddItem)
 		auth.PATCH("/asset-library/items/:id", h.AssetLibrary.MoveItem)
 		auth.DELETE("/asset-library/items/:id", h.AssetLibrary.RemoveItem)
+
+		// 角色卡：ID 为十六进制串，素材 ID 为数字；所有操作按当前用户隔离。
+		characters := auth.Group("/characters")
+		characters.GET("", h.CharacterCard.List)
+		characters.GET("/:id", h.CharacterCard.Get)
+		characters.POST("", h.CharacterCard.Create)
+		characters.PATCH("/:id", h.CharacterCard.Update)
+		characters.DELETE("/:id", h.CharacterCard.Delete)
 
 		// 管理员后台接口：读与模型相关的写 = admin 或 super_admin；插件与渠道的写 = 仅 super_admin。
 		// 凭证不再有独立接口，渠道 Key 统一走 PUT /channels/:key/secret。

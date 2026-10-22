@@ -21,6 +21,7 @@ import { fanoutCount, quote } from "@/utils/pricing/quote";
 import {
   buildTaskInput,
   currentOp,
+  emptyBindings,
   OP_LABEL,
   priceSpecOf,
   type RefKey,
@@ -159,7 +160,7 @@ export function TestNode({
               op={op}
               params={params}
               paramAssets={assets}
-              bindings={{ images: [], videos: [], audios: [] }}
+              bindings={emptyBindings()}
               errors={errors}
               showErrors={showErrors}
               disabled={disabled}

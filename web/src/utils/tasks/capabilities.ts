@@ -95,13 +95,17 @@ export function refKindsOf(
   return REF_KINDS_OF_OP[op].filter((kind) => caps.refs?.[kind]?.on);
 }
 
-/** 上游节点种类能提供哪种东西：文本节点给文字，其余给对应种类的素材；导演台什么都不提供 */
-export const PORT_OF_KIND: Record<NodeKind, "text" | RefKind | null> = {
-  script: "text",
-  image: "image",
-  video: "video",
-  audio: "audio",
-  director: null,
+/**
+ * 上游节点种类能提供哪些东西：文本节点给文字，图片 / 视频 / 音频节点给对应种类的素材，
+ * 角色卡同时给图片（形象）和音频（声音）；导演台什么都不提供。
+ */
+export const PORTS_OF_KIND: Record<NodeKind, ReadonlyArray<"text" | RefKind>> = {
+  script: ["text"],
+  image: ["image"],
+  video: ["video"],
+  audio: ["audio"],
+  director: [],
+  character: ["image", "audio"],
 };
 
 /** 节点上的一个输入口：提示词口 + 每种可接收的素材一个口 */
@@ -116,6 +120,33 @@ export function inputPorts(caps: Capabilities | undefined, op: GenerationOp | un
   return ports;
 }
 
+/**
+ * 角色卡节点此刻的引用内容（来自角色卡 store 的最新读取）：素材 id 是前端的字符串 id。
+ * 提交任务时据此展开成参考图和参考音频。
+ */
+export type CharacterRefs = {
+  /** 角色卡 ID */
+  id: string;
+  /** 角色名，用于提示 */
+  name: string;
+  /** 主图素材 ID */
+  avatarAssetId: string;
+  /** 补充图素材 ID，按保存顺序 */
+  extraAssetIds: string[];
+  /** 声音素材 ID；没有声音为 null */
+  voiceAssetId: string | null;
+};
+
+/** 一根展开出来的虚拟连线是角色卡的哪一部分 */
+export type CharacterPart = {
+  /** 角色卡 ID */
+  id: string;
+  /** avatar 主图；extra 补充图；voice 声音 */
+  part: "avatar" | "extra" | "voice";
+  /** 同一部分里的序号（补充图第几张），从 0 起 */
+  index: number;
+};
+
 /** 连到本节点的一根上游连线，以及上游节点此刻能提供的东西 */
 export type IncomingLink = {
   edgeId: string;
@@ -128,6 +159,12 @@ export type IncomingLink = {
   assetId?: string;
   /** 上游文本（文本节点的正文，没生成过就取它写的提示词） */
   text?: string;
+  /** 角色卡节点引用的角色卡 ID（sourceKind 为 character 时有，缺省是旧数据） */
+  characterId?: string;
+  /** 角色卡节点的当前内容：缺省表示还在加载，null 表示角色卡已失效，两者都不参与提交 */
+  character?: CharacterRefs | null;
+  /** 只在 resolveBindings 展开出来的虚拟连线上有：它是角色卡的哪一部分 */
+  fromCharacter?: CharacterPart;
 };
 
 /** 每个输入口由哪些上游连线提供：提示词口取第一根，素材口可以接多根 */
@@ -136,14 +173,47 @@ export type Bindings = {
   images: IncomingLink[];
   videos: IncomingLink[];
   audios: IncomingLink[];
+  /** 超出参考上限、按顺序被截掉的角色卡素材（虚拟连线） */
+  dropped: IncomingLink[];
+  /** 目标不收参考音频，被丢弃的角色卡声音（虚拟连线） */
+  ignored: IncomingLink[];
+  /** 摆给用户看的非阻断提示：声音未生效、第 N 张起未带入…… */
+  notices: string[];
 };
 
-const emptyBindings = (): Bindings => ({ images: [], videos: [], audios: [] });
+export const emptyBindings = (): Bindings => ({
+  images: [],
+  videos: [],
+  audios: [],
+  dropped: [],
+  ignored: [],
+  notices: [],
+});
+
+/** 角色卡展开成的虚拟连线：沿用原连线的 id（断线、定位都认它），带上素材 id 和来源部分 */
+function characterLinks(link: IncomingLink, refs: CharacterRefs) {
+  const virtual = (assetId: string, part: CharacterPart["part"], index: number): IncomingLink => ({
+    ...link,
+    character: undefined,
+    assetId,
+    fromCharacter: { id: refs.id, part, index },
+  });
+  return {
+    images: [
+      virtual(refs.avatarAssetId, "avatar", 0),
+      ...refs.extraAssetIds.map((assetId, index) => virtual(assetId, "extra", index)),
+    ],
+    voice: refs.voiceAssetId ? virtual(refs.voiceAssetId, "voice", 0) : null,
+  };
+}
 
 /**
  * 决定每个输入口由哪些上游连线提供：
  * 先认落在具名输入口且类型对得上的线，剩下的线按种类落到第一个同类型输入口。
  * 当前生成方式不接收的素材（含关闭的类型）不绑定，连线保留但不参与提交。
+ * 角色卡连线展开成虚拟连线：主图在前、补充图随后进 images，声音进 audios；
+ * 失效 / 加载中的角色卡跳过；超出参考图 / 参考音频上限的按顺序截断（普通连线先占名额），
+ * 目标不收参考音频时声音丢弃，两种情况都在 notices 里给出提示，不阻断提交。
  */
 export function resolveBindings(
   caps: Capabilities | undefined,
@@ -158,17 +228,76 @@ export function resolveBindings(
   };
   const rest: IncomingLink[] = [];
   for (const link of links) {
+    if (link.sourceKind === "character") continue;
     const port = ports.find(
-      (item) => item.id === link.targetHandle && item.port === PORT_OF_KIND[link.sourceKind],
+      (item) => item.id === link.targetHandle && PORTS_OF_KIND[link.sourceKind].includes(item.port),
     );
     if (port) put(port, link);
     else rest.push(link);
   }
   for (const link of rest) {
-    const port = ports.find((item) => item.port === PORT_OF_KIND[link.sourceKind]);
+    const port = ports.find((item) => PORTS_OF_KIND[link.sourceKind].includes(item.port));
     if (port) put(port, link);
   }
+
+  const imagePort = ports.some((item) => item.id === "images");
+  const audioPort = ports.some((item) => item.id === "audios");
+  if (!imagePort && !audioPort) return out;
+  const virtualImages: IncomingLink[] = [];
+  const virtualVoices: IncomingLink[] = [];
+  for (const link of links) {
+    if (link.sourceKind !== "character" || !link.character) continue;
+    const parts = characterLinks(link, link.character);
+    if (imagePort) virtualImages.push(...parts.images);
+    if (parts.voice) virtualVoices.push(parts.voice);
+  }
+
+  // 参考图：普通连线先占名额，角色卡的图按顺序填剩下的，放不下的截掉
+  if (imagePort && caps) {
+    const max = caps.refs?.image?.max ?? 0;
+    const room = Math.max(0, max - out.images.length);
+    out.images.push(...virtualImages.slice(0, room));
+    out.dropped.push(...virtualImages.slice(room));
+    if (virtualImages.length > room) {
+      out.notices.push(`参考图最多 ${max} 张，第 ${max + 1} 张起未带入`);
+    }
+  }
+  // 声音：目标不收参考音频就丢弃；收的话同样按上限截断
+  if (virtualVoices.length > 0 && imagePort) {
+    if (!audioPort) {
+      out.ignored.push(...virtualVoices);
+      out.notices.push("当前模型不支持参考音频，声音未生效");
+    } else if (caps) {
+      const max = caps.refs?.audio?.max ?? 0;
+      const room = Math.max(0, max - out.audios.length);
+      out.audios.push(...virtualVoices.slice(0, room));
+      out.dropped.push(...virtualVoices.slice(room));
+      if (virtualVoices.length > room) {
+        out.notices.push(`参考音频最多 ${max} 条，多出的声音未带入`);
+      }
+    }
+  } else if (virtualVoices.length > 0 && audioPort && caps) {
+    // 只收音频不收图片的方式：声音照常带入
+    const max = caps.refs?.audio?.max ?? 0;
+    const room = Math.max(0, max - out.audios.length);
+    out.audios.push(...virtualVoices.slice(0, room));
+    out.dropped.push(...virtualVoices.slice(room));
+  }
   return out;
+}
+
+/**
+ * 能当「图片引用」的上游连线：图片节点本身，以及有主图的角色卡（取主图一张，够判断「有没有图片引用」）。
+ * 生成方式自动切换的模型据此决定是图生图还是文生图，要在 resolveBindings 之前算。
+ */
+export function imageLinksOf(links: IncomingLink[]): IncomingLink[] {
+  return links.flatMap((link) => {
+    if (link.sourceKind === "image") return [link];
+    if (link.sourceKind === "character" && link.character) {
+      return [characterLinks(link, link.character).images[0]];
+    }
+    return [];
+  });
 }
 
 /**
@@ -192,10 +321,9 @@ export function acceptsSourceKind(
   sourceKind: NodeKind,
 ): boolean {
   if (!caps) return true;
-  const port = PORT_OF_KIND[sourceKind];
-  return (
-    port === "text" || (port !== null && refKindsOf(caps, refPanelOp(caps, op)).includes(port))
-  );
+  const ports = PORTS_OF_KIND[sourceKind];
+  const kinds = refKindsOf(caps, refPanelOp(caps, op));
+  return ports.includes("text") || ports.some((port) => port !== "text" && kinds.includes(port));
 }
 
 /**
@@ -231,7 +359,14 @@ export function opToAcceptSource(
   if (!caps || acceptsSourceKind(caps, op, sourceKind)) return undefined;
   const ops = caps.ops ?? [];
   const accepting = ops.filter((item) => acceptsSourceKind(caps, item, sourceKind));
-  return accepting.includes("omni") ? "omni" : accepting[0];
+  // 角色卡同时给图片和音频：优先选两样都收的方式，其次才是只收一样的
+  const ports = PORTS_OF_KIND[sourceKind];
+  const covering = accepting.filter((item) => {
+    const kinds = refKindsOf(caps, refPanelOp(caps, item));
+    return ports.every((port) => port !== "text" && kinds.includes(port));
+  });
+  const pick = (list: GenerationOp[]) => (list.includes("omni") ? "omni" : list[0]);
+  return pick(covering) ?? pick(accepting);
 }
 
 /** 文件属于哪种参考素材：按 MIME 前缀判断，不是图片 / 视频 / 音频返回 null */
@@ -367,7 +502,7 @@ const REF_WORD: Record<RefKind, string> = { image: "图片", video: "视频", au
 /**
  * 把提示词里 @ 进来的素材和节点预设换成模型看得懂的文字：文本上游换成它的正文，
  * 素材换成在 input 里的编号（连线已断、素材没提交的，退回成素材名）；
- * 预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
+ * 角色卡换成角色名；预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
  */
 function expandRefs(prompt: string, links: IncomingLink[], input: Record<string, unknown>) {
   return expandPrompt(
@@ -375,9 +510,13 @@ function expandRefs(prompt: string, links: IncomingLink[], input: Record<string,
     (id, label) => {
       const link = links.find((item) => item.sourceId === id);
       if (!link) return label;
-      const port = PORT_OF_KIND[link.sourceKind];
+      // 形象和声音已经由连线展开成参考图 / 参考音频带入 input，这里只把 @ 换成名字；
+      // 节点已删或卡已失效时同样是名字，不报错
+      if (link.sourceKind === "character") return link.character?.name || label;
+      const ports = PORTS_OF_KIND[link.sourceKind];
+      if (ports.length !== 1) return label;
+      const port = ports[0];
       if (port === "text") return link.text?.trim() || label;
-      if (!port) return label;
       const ref = REF_KEYS.find((item) => item.kind === port);
       const list = ref ? input[ref.key] : undefined;
       const asset = toAssetNumber(link.assetId);

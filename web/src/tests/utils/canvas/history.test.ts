@@ -25,6 +25,16 @@ describe("structureKey / contentKey", () => {
     expect(structureKey(typed)).toBe(structureKey(a));
     expect(contentKey(typed)).not.toBe(contentKey(a));
   });
+
+  test("角色卡节点同名换另一张卡是内容变化，只有选中状态不同则不是", () => {
+    const card = (characterId: string) =>
+      node("c1", { kind: "character", label: "小明", characterId });
+    const a = { nodes: [card("aa11")], edges: [] };
+    expect(contentKey({ nodes: [card("bb22")], edges: [] })).not.toBe(contentKey(a));
+    expect(contentKey({ nodes: [{ ...card("aa11"), selected: true }], edges: [] })).toBe(
+      contentKey(a),
+    );
+  });
 });
 
 describe("restoreNodes", () => {

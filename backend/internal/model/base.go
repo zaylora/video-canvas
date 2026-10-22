@@ -58,6 +58,7 @@ func All() []any {
 		&ConversationRecord{},
 		&AssetFolder{},
 		&AssetLibraryItem{},
+		&CharacterCard{},
 		&PaymentChannel{},
 		&RechargeProduct{},
 		&PaymentOrder{},

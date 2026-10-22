@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Position, addEdge, useNodeConnections, useNodesData, useReactFlow } from "@xyflow/react";
 
 import type { GenerationOp, ModelInfo } from "@/api/model/type";
@@ -12,6 +12,7 @@ import { useRemoteModels } from "@/hooks/use-models";
 import type { TaskGeneration, TaskNodeKind } from "@/hooks/use-task-generation";
 import { ANIMATED_EDGE_OPTIONS, REMOTE_KIND_OF_NODE } from "@/constants/canvas";
 import { useCreditsStore } from "@/store/credits";
+import { useCharactersStore } from "@/store/characters";
 import { useTask } from "@/store/tasks";
 import type { CanvasEdge, CanvasNode, CanvasNodeData, ParamAsset } from "@/types";
 import { isGenerating } from "@/utils/canvas/outputs";
@@ -19,12 +20,15 @@ import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-r
 import { withoutOutpaintSource } from "@/utils/canvas/outpaint-node";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import { referencedText } from "@/utils/canvas/text-body";
+import { applyCharacters, withoutDeadCharacters } from "@/utils/characters/refs";
+import { buildFreshInput, characterIdsOf } from "@/utils/tasks/fresh-input";
 import {
   REF_KEYS,
-  PORT_OF_KIND,
+  PORTS_OF_KIND,
   buildTaskInput,
   currentOp,
   hasImageRefs,
+  imageLinksOf,
   isAutoOp,
   legacyHandleFixes,
   manualRefs,
@@ -96,9 +100,10 @@ export function useTaskNode(
     [allConnections, data.outpaintFrom],
   );
   const upstream = useNodesData<CanvasNode>(connections.map((item) => item.source));
+  const characters = useCharactersStore((state) => state.byId);
   const links = useMemo<IncomingLink[]>(() => {
     const byId = new Map(upstream.map((node) => [node.id, node.data]));
-    return connections.flatMap((connection) => {
+    const raw = connections.flatMap((connection) => {
       const source = byId.get(connection.source);
       if (!source) return [];
       const generating = source.status === "running";
@@ -111,13 +116,16 @@ export function useTaskNode(
           targetHandle: connection.targetHandle ?? null,
           assetId: generating ? undefined : source.assetId,
           text: referencedText(source),
+          characterId: source.characterId,
         },
       ];
     });
-  }, [connections, upstream]);
+    // 角色卡节点的内容实时取自角色卡缓存（资产页改 / 删后这里自动跟着变）
+    return applyCharacters(raw, characters);
+  }, [characters, connections, upstream]);
   // 图片模型不让用户选生成方式：连着图片或手动加了参考图就是图生图，否则文生图
   const hasImageRef = useMemo(
-    () => hasImageRefs(params, { images: links.filter((link) => link.sourceKind === "image") }),
+    () => hasImageRefs(params, { images: imageLinksOf(links) }),
     [links, params],
   );
   const op = useMemo(() => currentOp(caps, params, hasImageRef), [caps, params, hasImageRef]);
@@ -140,16 +148,24 @@ export function useTaskNode(
       const node = byId.get(connection.source);
       if (!node || seen.has(node.id)) return [];
       seen.add(node.id);
-      const port = PORT_OF_KIND[node.data.kind];
+      const ports = PORTS_OF_KIND[node.data.kind];
+      const card = node.data.characterId ? characters[node.data.characterId]?.card : undefined;
       return [
         {
           ...toRefSource(node),
-          used: !caps || port === "text" || (port !== null && refKindsOf(caps, op).includes(port)),
+          // 角色卡的缩略图取它此刻的主图，读不到时退回节点上记着的封面占位
+          ...(node.data.kind === "character"
+            ? { src: card?.avatar?.url ?? null, mediaType: "image" as const }
+            : {}),
+          used:
+            !caps ||
+            ports.includes("text") ||
+            ports.some((port) => port !== "text" && refKindsOf(caps, op).includes(port)),
           running: node.data.status === "running",
         },
       ];
     });
-  }, [caps, connections, op, upstream]);
+  }, [caps, characters, connections, op, upstream]);
   const linkedIds = useMemo(() => new Set(refItems.map((item) => item.id)), [refItems]);
 
   /** 从画布里接一根线进来；@ 时顺手连的线和正在打的字算同一步撤销 */
@@ -199,10 +215,28 @@ export function useTaskNode(
     [id, setEdges, updateNodeData],
   );
 
-  /** 画布里能 @ 的素材，打开菜单时才取，不订阅 */
+  /**
+   * 画布里能 @ 的素材，打开菜单时才取，不订阅。
+   * 角色卡的内容在缓存里：已失效的不列（它不参与提交），名字和缩略图取卡此刻的内容。
+   */
   const listMentionables = useCallback(() => {
+    const byId = useCharactersStore.getState().byId;
     const { linked, canvas } = mentionableNodes(id, getNodes(), getEdges());
-    return { linked: linked.map(toRefSource), canvas: canvas.map(toRefSource) };
+    const toSource = (node: CanvasNode): RefSource => {
+      const source = toRefSource(node);
+      if (node.data.kind !== "character") return source;
+      const card = node.data.characterId ? byId[node.data.characterId]?.card : undefined;
+      return {
+        ...source,
+        label: card?.name ?? source.label,
+        src: card?.avatar?.url ?? null,
+        mediaType: "image",
+      };
+    };
+    return {
+      linked: withoutDeadCharacters(linked, byId).map(toSource),
+      canvas: withoutDeadCharacters(canvas, byId).map(toSource),
+    };
   }, [getEdges, getNodes, id]);
 
   const mention = useMemo<PromptMentionSource>(
@@ -297,21 +331,49 @@ export function useTaskNode(
               ? "暂无可用模型"
               : (firstError ?? null);
 
+  /** 提交前正在强制刷新角色卡：这段时间再点提交不重复发起 */
+  const refreshingRef = useRef(false);
   /** 提交失败就地提示在提示词面板里，全局错误 toast 由请求层统一弹出 */
   const submit = useCallback(async () => {
-    if (blockedReason || !model) return;
+    if (blockedReason || !model || refreshingRef.current) return;
     setSubmitError(null);
+    let input = built.input;
+    let expectedCredits = price && !price.isMax ? price.one : undefined;
+    // 提交前强制刷新被引用的角色卡：用最新的形象和声音生成，不用画布里可能已过期的缓存
+    const characterIds = characterIdsOf(links);
+    if (characterIds.length > 0) {
+      refreshingRef.current = true;
+      try {
+        const latest = await useCharactersStore.getState().refresh(characterIds);
+        if (characterIds.some((characterId) => latest[characterId]?.status === "error")) {
+          setSubmitError("角色卡信息读取失败，请稍后重试");
+          return;
+        }
+        const fresh = buildFreshInput(caps, params, links, latest);
+        const firstFresh = Object.values(fresh.errors)[0];
+        if (firstFresh) {
+          setSubmitError(firstFresh);
+          return;
+        }
+        input = fresh.input;
+        if (expectedCredits !== undefined) {
+          expectedCredits = quote(model.pricing, caps, priceSpecOf(caps, input));
+        }
+      } finally {
+        refreshingRef.current = false;
+      }
+    }
     const outcome = await generation.submit({
       modelKey: model.key,
-      input: built.input,
+      input,
       currentSrc: data.src,
       count: price?.count ?? 1,
       // Token 计费的预估不含固定系统提示（画布拿不到），和后端本来就会不同，不比对
-      expectedCredits: price && !price.isMax ? price.one : undefined,
+      expectedCredits,
     });
     if (outcome.ok) return;
     setSubmitError(outcome.error.message);
-  }, [blockedReason, built.input, data.src, generation, model, price]);
+  }, [blockedReason, built.input, caps, data.src, generation, links, model, params, price]);
 
   /** 取消本节点全部进行中的任务（一批任务时是 pendingTaskIds，否则是 taskId）；已出的图保留 */
   const cancel = useCallback(() => {

@@ -3,7 +3,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
-import type { LibraryItemDto } from "@/api/asset-library/type";
+import type { AssetKind, LibraryItemDto } from "@/api/asset-library/type";
 import { EmptyMark } from "@/components/home/empty-mark";
 import { Button } from "@/components/ui/button";
 import type { AssetFoldersState } from "@/hooks/use-asset-folders";
@@ -36,16 +36,28 @@ function PaneLoading() {
   );
 }
 
-/** 一张卡片的选择状态：已选的可取消，没选的在已选满后禁用 */
+/** 选择规则：一次最多选几个，以及某个素材不能选的原因（标在卡片上并禁用） */
+export type PickRules = {
+  /** 一次最多选几个，缺省 20；1 是单选 */
+  limit?: number;
+  /** 某个素材不能选的原因；null 表示可以选 */
+  reasonOf?: (asset: AssetDto) => string | null;
+};
+
+/** 一张卡片的选择状态：已选的可取消，没选的在已选满后或有不可选原因时禁用 */
 function selectOf(
   selected: AssetDto[],
   asset: AssetDto,
   onToggle: (asset: AssetDto) => void,
+  rules: PickRules,
 ): CardSelect {
   const checked = selected.some((item) => item.id === asset.id);
+  const reason = checked ? null : (rules.reasonOf?.(asset) ?? null);
+  const full = !canToggle(selected, asset, rules.limit);
   return {
     selected: checked,
-    disabled: !canToggle(selected, asset),
+    disabled: !!reason || full,
+    reason: reason ?? (full && rules.limit !== undefined ? "已达上限" : null),
     onToggle: () => onToggle(asset),
   };
 }
@@ -64,12 +76,14 @@ export function HistoryPane({
   filter,
   selected,
   onToggle,
+  rules,
   onClearFilters,
 }: {
   kind: PickerView["kind"];
   filter: GeneratedFilter;
   selected: AssetDto[];
   onToggle: (asset: AssetDto) => void;
+  rules: PickRules;
   onClearFilters: () => void;
 }) {
   const { list, state } = useGeneratedAssets(kind, filter);
@@ -115,7 +129,7 @@ export function HistoryPane({
           <HistoryAssetCard
             key={item.asset.id}
             item={item}
-            select={selectOf(selected, item.asset, onToggle)}
+            select={selectOf(selected, item.asset, onToggle, rules)}
           />
         ))}
       </AssetGrid>
@@ -150,6 +164,8 @@ export function LibraryPane({
   folders,
   tasks,
   selected,
+  kind,
+  rules,
   listRef,
   onToggle,
   onOpenFolder,
@@ -162,6 +178,9 @@ export function LibraryPane({
   folders: AssetFoldersState;
   tasks: UploadTask[];
   selected: AssetDto[];
+  /** 锁定素材种类：个人资产库只列这一种；不给则各种类混列（原有行为） */
+  kind?: AssetKind;
+  rules: PickRules;
   listRef: MutableRefObject<PagedList<LibraryItemDto> | null>;
   onToggle: (asset: AssetDto) => void;
   onOpenFolder: (folder: string) => void;
@@ -171,7 +190,7 @@ export function LibraryPane({
 }) {
   const { folder } = view;
   const searching = q.trim() !== "";
-  const { list, state } = useAssetLibrary(folder, q);
+  const { list, state } = useAssetLibrary(folder, q, kind);
   const { items } = state;
   const currentFolder = (folder && folders.folders?.find((entry) => entry.id === folder)) || null;
 
@@ -281,7 +300,7 @@ export function LibraryPane({
               <LibraryAssetCard
                 key={item.id}
                 item={item}
-                select={selectOf(selected, item.asset, onToggle)}
+                select={selectOf(selected, item.asset, onToggle, rules)}
               />
             ))}
           </AssetGrid>

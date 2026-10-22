@@ -10,8 +10,10 @@ import {
 } from "@xyflow/react";
 
 import type { AssetDto } from "@/api/asset/type";
+import type { CharacterDto } from "@/api/character/type";
 import { getNodeHit } from "@/components/canvas";
 import { planAssetNodes } from "@/utils/canvas/asset-nodes";
+import { planCharacterNodes } from "@/utils/canvas/character-nodes";
 import { newNodeLabel, uploadLabel } from "@/utils/canvas/node-label";
 import { createDefaultScene } from "@/utils/director/scene";
 import {
@@ -449,6 +451,63 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     [defaultModels, getNodes, setNodes],
   );
 
+  /**
+   * 从角色卡选择框引入角色卡：每张卡一个节点（只存 characterId 与占位用的 labelCache），
+   * 从落点起按网格排开（排布见 planCharacterNodes）。整批在一次 setNodes 里写入，撤销是一条记录；
+   * 新节点保持选中。不连线：角色卡要用户自己拉线到图片 / 视频生成节点。
+   * @param cards 选中的角色卡，按选择顺序
+   * @param origin 落点：第一个节点的左上角（画布坐标）
+   */
+  const addCharacterNodes = useCallback(
+    (cards: CharacterDto[], origin: { x: number; y: number }) => {
+      if (cards.length === 0) return;
+      const created = planCharacterNodes(
+        cards,
+        origin,
+        getNodes().map((node) => node.data.label),
+      );
+      setNodes((nds) =>
+        nds
+          .map((item) => (item.selected ? { ...item, selected: false } : item))
+          .concat(created.map((node) => ({ ...node, selected: true }))),
+      );
+      toast.success(`已放置 ${created.length} 个角色卡节点`);
+    },
+    [getNodes, setNodes],
+  );
+
+  /**
+   * 已失效的角色卡节点「重新选择」：换成另一张角色卡，连线保留；一次 setNodes，算一步撤销。
+   * 节点名取新角色名（和画布上别的节点重名时自动编号）。
+   * @param nodeId 要替换的节点
+   * @param card 新选的角色卡
+   */
+  const replaceCharacter = useCallback(
+    (nodeId: string, card: CharacterDto) => {
+      const labels = getNodes()
+        .filter((node) => node.id !== nodeId)
+        .map((node) => node.data.label);
+      const [fresh] = planCharacterNodes([card], { x: 0, y: 0 }, labels, () => nodeId);
+      setNodes((nds) =>
+        nds.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                data: {
+                  ...item.data,
+                  label: fresh.data.label,
+                  characterId: fresh.data.characterId,
+                  labelCache: fresh.data.labelCache,
+                },
+              }
+            : item,
+        ),
+      );
+      toast.success("已替换角色卡");
+    },
+    [getNodes, setNodes],
+  );
+
   return {
     menu,
     pending,
@@ -461,6 +520,8 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     beginUploadAt,
     addUploadedNodes,
     addAssetNodes,
+    addCharacterNodes,
+    replaceCharacter,
     onConnect,
     onConnectEnd,
     onDoubleClick,

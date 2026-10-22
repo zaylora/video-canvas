@@ -35,6 +35,11 @@ func OKPage(c *gin.Context, list any, total int64, page, pageSize int) {
 	OK(c, PageData{List: list, Total: total, Page: page, PageSize: pageSize})
 }
 
+// NoContent 返回 204：操作成功但没有响应体。
+func NoContent(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
+
 // Fail 把 error 转成统一响应；非 *errcode.Error 的错误视为内部错误，记录日志后只返回通用提示。
 func Fail(c *gin.Context, err error) {
 	var e *errcode.Error

@@ -82,6 +82,43 @@ describe("mentionableNodes：@ 菜单里能列哪些素材", () => {
   });
 });
 
+describe("mentionableNodes：角色卡节点（二期 @ 角色）", () => {
+  const n = (
+    id: string,
+    kind: "character" | "image" | "video" | "audio" | "script",
+    extra = {},
+  ) => ({
+    id,
+    data: { kind, label: id, ...extra },
+  });
+  // withId=false 造「没有 characterId 的旧数据」；不能用 undefined 当参数，会触发默认值
+  const card = (id: string, withId = true) =>
+    n(id, "character", withId ? { characterId: `c-${id}` } : {});
+
+  test("目标是视频 / 图片节点：有 characterId 的角色卡列进候选，没有 characterId 的旧数据不列", () => {
+    const nodes = [n("video", "video"), n("image", "image"), card("c1"), card("old", false)];
+    expect(mentionableNodes("video", nodes, []).canvas.map((item) => item.id)).toEqual(["c1"]);
+    expect(mentionableNodes("image", nodes, []).canvas.map((item) => item.id)).toEqual(["c1"]);
+  });
+
+  test("目标是音频 / 文本节点：角色卡接不上，不列", () => {
+    const nodes = [n("audio", "audio"), n("text", "script"), card("c1")];
+    expect(mentionableNodes("audio", nodes, [])).toEqual({ linked: [], canvas: [] });
+    expect(mentionableNodes("text", nodes, [])).toEqual({ linked: [], canvas: [] });
+  });
+
+  test("已连上的角色卡进 linked，不再出现在 canvas；在目标下游的不列", () => {
+    const nodes = [n("video", "video"), card("linked"), card("free"), card("down")];
+    const edges = [
+      { source: "linked", target: "video" },
+      { source: "video", target: "down" },
+    ];
+    const { linked, canvas } = mentionableNodes("video", nodes, edges);
+    expect(linked.map((item) => item.id)).toEqual(["linked"]);
+    expect(canvas.map((item) => item.id)).toEqual(["free"]);
+  });
+});
+
 describe("unlinkSource：引用条上点 × 断开某个上游", () => {
   const edges = [
     { id: "a", source: "img", target: "me" },

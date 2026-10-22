@@ -38,6 +38,7 @@ import {
   UPLOAD_ACCEPT,
   UPLOAD_ACTION,
   ASSET_LIBRARY_ACTION,
+  CHARACTER_ACTION,
 } from "@/constants/canvas";
 import { CanvasHistoryProvider, useCanvasHistory } from "@/hooks/use-canvas-history";
 import { useCanvasMenu } from "@/hooks/use-canvas-menu";
@@ -86,6 +87,8 @@ import { collectPreviewItems, type PreviewItem } from "@/utils/canvas/preview-it
 import { groupMembers, isGroupNode } from "@/utils/canvas/group";
 
 import { AssetPickerDialog } from "@/components/assets/asset-picker-dialog";
+import { CharacterPickerDialog } from "@/components/characters/character-picker-dialog";
+import { useCharacterReselect } from "@/store/character-reselect";
 import { BottomToolbar } from "./chrome/bottom-toolbar";
 import { EmptyState } from "./chrome/empty-state";
 import { ShortcutsDialog } from "./chrome/shortcuts-dialog";
@@ -370,8 +373,10 @@ export const Flow = memo(function Flow({
         .filter((node): node is CanvasNode => node.type === "canvas")
         .flatMap((node) => {
           const { kind } = node.data;
-          // 导演台 Agent 读不懂也改不了，不进 @ 候选
-          return kind === "director" ? [] : [{ id: node.id, label: node.data.label, kind }];
+          // 导演台、角色卡节点 Agent 读不懂也改不了，不进 @ 候选
+          return kind === "director" || kind === "character"
+            ? []
+            : [{ id: node.id, label: node.data.label, kind }];
         }),
     [nodes],
   );
@@ -381,7 +386,9 @@ export const Flow = memo(function Flow({
       nodes.flatMap((node): RefNode[] => {
         if (node.type === "group") return [{ id: node.id, label: node.data.label, kind: "group" }];
         const { kind } = node.data;
-        return kind === "director" ? [] : [{ id: node.id, label: node.data.label, kind }];
+        return kind === "director" || kind === "character"
+          ? []
+          : [{ id: node.id, label: node.data.label, kind }];
       }),
     [nodes],
   );
@@ -607,6 +614,8 @@ export const Flow = memo(function Flow({
     beginUploadAt,
     addUploadedNodes,
     addAssetNodes,
+    addCharacterNodes,
+    replaceCharacter,
     onConnect,
     onConnectEnd,
     onDoubleClick,
@@ -636,6 +645,28 @@ export const Flow = memo(function Flow({
   const openAssetPickerAtCenter = useCallback(
     () => setAssetPicker({ origin: viewportCenter() }),
     [viewportCenter],
+  );
+  /** 角色卡选择框：null 是关着，打开时记下节点落在哪（底栏按钮是视口中心，菜单是菜单位置） */
+  const [characterPicker, setCharacterPicker] = useState<{
+    origin: { x: number; y: number };
+  } | null>(null);
+  const openCharacterPickerAtCenter = useCallback(
+    () => setCharacterPicker({ origin: viewportCenter() }),
+    [viewportCenter],
+  );
+  /** 已失效的角色卡节点点「重新选择」：单选替换这个节点 */
+  const reselectNodeId = useCharacterReselect((state) => state.nodeId);
+  /** 当前画布上已有节点的角色卡 ID，选择框里标「画布中已有」；只在选择框打开时才算 */
+  const placedCharacterIds = useMemo(
+    () =>
+      new Set(
+        characterPicker || reselectNodeId
+          ? nodes.flatMap((node) =>
+              node.type === "canvas" && node.data.characterId ? [node.data.characterId] : [],
+            )
+          : [],
+      ),
+    [characterPicker, nodes, reselectNodeId],
   );
   const uploadAtCenter = useCallback(() => {
     beginUploadAt(viewportCenter());
@@ -887,6 +918,7 @@ export const Flow = memo(function Flow({
                           onAdd={addAtCenter}
                           onUpload={uploadAtCenter}
                           onOpenAssets={openAssetPickerAtCenter}
+                          onOpenCharacters={openCharacterPickerAtCenter}
                           canUndo={history.canUndo}
                           canRedo={history.canRedo}
                           onUndo={history.undo}
@@ -997,6 +1029,13 @@ export const Flow = memo(function Flow({
                             return;
                           }
 
+                          // 角色卡：落点是菜单位置；选完卡只建节点，连线用户自己拉
+                          if (value === CHARACTER_ACTION) {
+                            if (menu) setCharacterPicker({ origin: menu.flow });
+                            closeMenu();
+                            return;
+                          }
+
                           addNode(value as NodeKind);
                         }}
                       />
@@ -1005,6 +1044,24 @@ export const Flow = memo(function Flow({
                         onOpenChange={(open) => !open && setAssetPicker(null)}
                         onConfirm={(assets) => {
                           if (assetPicker) addAssetNodes(assets, assetPicker.origin);
+                        }}
+                      />
+                      <CharacterPickerDialog
+                        open={characterPicker !== null}
+                        onOpenChange={(open) => !open && setCharacterPicker(null)}
+                        placedIds={placedCharacterIds}
+                        onConfirm={(cards) => {
+                          if (characterPicker) addCharacterNodes(cards, characterPicker.origin);
+                        }}
+                      />
+                      {/* 已失效节点「重新选择」：单选，替换那个节点（连线保留） */}
+                      <CharacterPickerDialog
+                        open={reselectNodeId !== null}
+                        onOpenChange={(open) => !open && useCharacterReselect.getState().close()}
+                        replace
+                        placedIds={placedCharacterIds}
+                        onConfirm={([card]) => {
+                          if (reselectNodeId && card) replaceCharacter(reselectNodeId, card);
                         }}
                       />
                     </div>

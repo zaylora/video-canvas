@@ -1,9 +1,10 @@
 import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Clapperboard, Image, Music, Type, Video } from "lucide-react";
+import { Clapperboard, Image, Music, Type, UserRound, Video } from "lucide-react";
 
 import {
   AudioPlaceholderIcon,
+  CharacterPlaceholderIcon,
   DirectorPlaceholderIcon,
   ImagePlaceholderIcon,
   TextPlaceholderIcon,
@@ -70,6 +71,14 @@ export const NODE_LIBRARY = [
     placeholder: "双击打开导演台，摆人物、放机位、套运镜，导出预览视频。",
     icon: Clapperboard,
     placeholderIcon: DirectorPlaceholderIcon,
+  },
+  {
+    kind: "character",
+    label: "角色卡",
+    description: "人物形象与声音，连到图片 / 视频生成节点",
+    placeholder: "角色卡的内容在资产页编辑，这里只引用。",
+    icon: UserRound,
+    placeholderIcon: CharacterPlaceholderIcon,
   },
 ] as const satisfies readonly NodeKindEntry[];
 
