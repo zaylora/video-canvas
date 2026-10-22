@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { CharacterDto } from "@/api/character/type";
 
@@ -16,13 +16,20 @@ const card = (id: string, name = id): CharacterDto => ({
 const fetched: string[][] = [];
 let respond: (ids: string[]) => Promise<CharacterDto[]> = async (ids) => ids.map((id) => card(id));
 
+// mock.module 在整个测试进程里生效且不会自动还原：只给部分导出，后面加载真实模块的测试文件
+// 会报 Export named 'xxx' not found（取决于文件执行顺序，macOS 与 CI 的顺序不同）。
+// 所以先留一份真实导出，mock 时展开，文件结束后再还原
+const realApi = { ...(await import("@/api/character")) };
 mock.module("@/api/character", () => ({
-  CHARACTER_IDS_LIMIT: 100,
+  ...realApi,
   getCharactersByIds: (ids: string[]) => {
     fetched.push(ids);
     return respond(ids);
   },
 }));
+afterAll(() => {
+  mock.module("@/api/character", () => ({ ...realApi }));
+});
 // mock.module 必须先于被测模块加载，静态 import 会被提升到它前面，所以这里只能动态导入
 const { useCharactersStore, CHARACTER_TTL } = await import("@/store/characters");
 
