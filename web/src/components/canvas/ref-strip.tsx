@@ -105,6 +105,7 @@ export function RefStrip({
   onUpload,
   onRemoveManual,
   errors,
+  notices = [],
   disabled,
 }: {
   items: RefItem[];
@@ -119,6 +120,8 @@ export function RefStrip({
   onRemoveManual: (key: RefKey, assetId: string) => void;
   /** 参考素材相关的校验错误 */
   errors: string[];
+  /** 非阻断提示：角色卡的声音未生效、参考图被截断等，提交照常进行 */
+  notices?: string[];
   disabled?: boolean;
 }) {
   const refs = usePromptRefs();
@@ -336,6 +339,11 @@ export function RefStrip({
         }}
       />
       {messages.length > 0 && <p className="text-destructive text-xs">{messages[0]}</p>}
+      {notices.map((notice) => (
+        <p key={notice} data-slot="ref-notice" className="text-status-warning text-xs">
+          {notice}
+        </p>
+      ))}
     </div>
   );
 }

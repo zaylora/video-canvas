@@ -18,6 +18,8 @@ export const DOWNSTREAM_KINDS: Record<NodeKind, NodeKind[]> = {
   audio: ["video"],
   // 导演台不接上游、也不能直接当参考：要先导出成视频 / 图片节点
   director: [],
+  // 角色卡把形象当参考图、声音当参考音频：只能往生图 / 生视频连，不接音频、文本、导演台
+  character: ["image", "video"],
 };
 
 /** 画布一开始是空的，节点都由用户双击或拉线建出来 */
@@ -64,6 +66,9 @@ export const UPLOAD_ACTION = "action:upload";
 
 /** 菜单里「从资产库添加」那项的标识，取值规则同 UPLOAD_ACTION */
 export const ASSET_LIBRARY_ACTION = "action:asset-library";
+
+/** 菜单里「角色卡」那项的标识：先选卡再建节点，所以是动作项而不是节点种类，取值规则同 UPLOAD_ACTION */
+export const CHARACTER_ACTION = "action:character";
 
 /** 文件选择框收的类型 */
 export const UPLOAD_ACCEPT = "image/*,video/*,audio/*";

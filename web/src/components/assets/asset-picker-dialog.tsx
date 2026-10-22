@@ -3,7 +3,7 @@ import { Clock, ListFilter, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AssetDto } from "@/api/asset/type";
-import type { LibraryItemDto } from "@/api/asset-library/type";
+import type { AssetKind, LibraryItemDto } from "@/api/asset-library/type";
 import { Segmented } from "@/components/home/segmented";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -32,7 +32,7 @@ import {
 import type { TimeRange } from "@/utils/assets/time-range";
 
 import { AssetKindTabs } from "./asset-kind-tabs";
-import { HistoryPane, LibraryPane } from "./asset-picker-panes";
+import { HistoryPane, LibraryPane, type PickRules } from "./asset-picker-panes";
 import { AssetSearch } from "./asset-search";
 import { FilterMenu } from "./filter-menu";
 
@@ -64,10 +64,28 @@ const CONTENT_CLASS = [
 type PickerState = { view: PickerView; selected: AssetDto[] };
 
 /**
+ * 选素材弹框的可选项：默认（都不给）就是画布「从资产库添加」的行为，多选最多 20 个、不限种类。
+ * 角色卡编辑弹框用它选主图 / 补充图 / 声音：锁定种类、限制个数、标注已用素材。
+ */
+export type AssetPickerOptions = {
+  /** 锁定素材种类：两个来源都只列这一种，隐藏类型标签，弹框内上传也只收这一种 */
+  kind?: AssetKind;
+  /** 一次最多选几个，缺省 20；1 是单选（点另一个就换成它） */
+  limit?: number;
+  /** 某个素材不能选的原因（「已是主图」「已添加」）：卡片禁用并标注，不隐藏 */
+  reasonOf?: (asset: AssetDto) => string | null;
+  /** 弹框标题（读屏用），缺省「资产库」 */
+  title?: string;
+  /** 确认按钮文字，缺省「确认」 */
+  confirmLabel?: string;
+};
+
+/**
  * 画布里的资产库弹框（设计文档 §6.2）：从「个人资产库」或「生成历史」多选素材，确认后交给画布建节点。
  * 顶部来源切换，第二行搜索，生成历史来源还有类型标签（下划线选中态）；生成历史来源有「时间」「筛选」图标按钮，
  * 个人资产库来源有「上传」（文件归入当前所在文件夹，传完自动勾选并切到该类型标签）。
  * 一次最多选 20 个，满了其余卡片禁用并提示。每次打开都从初始状态开始。手机宽度全屏。
+ * 传 AssetPickerOptions 可锁定种类、改上限（见该类型）。
  * @param open 是否打开
  * @param onOpenChange 打开状态变化
  * @param onConfirm 确认：拿到选中的素材（按勾选顺序）；调用后弹框自动关闭
@@ -76,7 +94,8 @@ export function AssetPickerDialog({
   open,
   onOpenChange,
   onConfirm,
-}: {
+  ...options
+}: AssetPickerOptions & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (assets: AssetDto[]) => void;
@@ -84,11 +103,12 @@ export function AssetPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={CONTENT_CLASS} data-slot="asset-picker">
-        <DialogTitle className="sr-only">资产库</DialogTitle>
-        <DialogDescription className="sr-only">选择要引入画布的素材</DialogDescription>
+        <DialogTitle className="sr-only">{options.title ?? "资产库"}</DialogTitle>
+        <DialogDescription className="sr-only">选择要引入的素材</DialogDescription>
         {/* 打开时才挂载内容：选择、筛选、搜索、上传队列每次都从初始状态开始，关闭时进行中的上传随之中止 */}
         {open && (
           <PickerBody
+            {...options}
             onConfirm={(assets) => {
               onConfirm(assets);
               onOpenChange(false);
@@ -100,8 +120,18 @@ export function AssetPickerDialog({
   );
 }
 
-function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) {
-  const [state, setState] = useState<PickerState>({ view: INITIAL_PICKER_VIEW, selected: [] });
+function PickerBody({
+  kind,
+  limit,
+  reasonOf,
+  confirmLabel = "确认",
+  onConfirm,
+}: AssetPickerOptions & { onConfirm: (assets: AssetDto[]) => void }) {
+  const rules = useMemo<PickRules>(() => ({ limit, reasonOf }), [limit, reasonOf]);
+  const [state, setState] = useState<PickerState>({
+    view: kind ? { ...INITIAL_PICKER_VIEW, kind } : INITIAL_PICKER_VIEW,
+    selected: [],
+  });
   /** 上传完成回调要读「此刻」的位置与选择，且多个文件可能在同一次渲染前接连完成，所以用 ref 跟 state 同步 */
   const stateRef = useRef(state);
   const commit = useCallback((next: PickerState) => {
@@ -126,7 +156,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
 
   const uploads = useAssetUploads((item, task) => {
     const current = stateRef.current;
-    const done = applyUploadDone(current.selected, item.asset);
+    const done = applyUploadDone(current.selected, item.asset, limit);
     commit({ view: current.view, selected: done.selected });
     if (done.dropped > 0) {
       toast.info(`已选满，「${item.asset.fileName ?? "素材"}」已上传但没有勾选`);
@@ -140,7 +170,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
   });
 
   const toggle = (asset: AssetDto) =>
-    commit({ ...stateRef.current, selected: toggleAsset(stateRef.current.selected, asset) });
+    commit({ ...stateRef.current, selected: toggleAsset(stateRef.current.selected, asset, limit) });
   const changeSource = (source: PickerSource) => {
     setInput("");
     commit({ ...stateRef.current, view: switchSource(stateRef.current.view, source) });
@@ -161,7 +191,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
     setInput("");
   };
 
-  const summary = describeSelection(selected);
+  const summary = describeSelection(selected, limit);
   const library = view.source === "library";
 
   return (
@@ -177,7 +207,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
         />
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b">
           {/* 个人资产库不分类型；生成历史的接口按类型取，所以只有它有标签 */}
-          {!library && (
+          {!library && !kind && (
             <AssetKindTabs variant="underline" value={view.kind} onChange={changeKind} />
           )}
           <div className="ml-auto flex items-center gap-1 pb-1.5">
@@ -226,7 +256,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
         ref={fileInput}
         type="file"
         multiple
-        accept={UPLOAD_ACCEPT}
+        accept={kind ? `${kind}/*` : UPLOAD_ACCEPT}
         aria-label="选择要上传的文件"
         className="sr-only"
         tabIndex={-1}
@@ -250,6 +280,8 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
             folders={folders}
             tasks={uploads.tasks}
             selected={selected}
+            kind={kind}
+            rules={rules}
             listRef={libraryList}
             onToggle={toggle}
             onOpenFolder={openFolder}
@@ -262,6 +294,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
             kind={view.kind}
             filter={filter}
             selected={selected}
+            rules={rules}
             onToggle={toggle}
             onClearFilters={clearFilters}
           />
@@ -280,7 +313,7 @@ function PickerBody({ onConfirm }: { onConfirm: (assets: AssetDto[]) => void }) 
         {/* 禁用的按钮收不到悬停，提示挂在外层 */}
         <span title={summary.confirmHint ?? undefined}>
           <Button disabled={summary.confirmDisabled} onClick={() => onConfirm(selected)}>
-            确认
+            {confirmLabel}
           </Button>
         </span>
       </div>

@@ -34,6 +34,8 @@ export const MODEL_LIBRARY = {
   audio: [],
   // 导演台不调模型，只在浏览器里渲染导出
   director: [],
+  // 角色卡只引用资产页的角色，不调模型
+  character: [],
 } as const satisfies Record<NodeKind, readonly ModelOption[]>;
 
 /**

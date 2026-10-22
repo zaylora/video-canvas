@@ -49,7 +49,7 @@ import { isUploadFailed, isUploading } from "@/utils/canvas/upload-state";
 import { uploadRunner } from "@/utils/canvas/upload-runner";
 import {
   OP_LABEL,
-  PORT_OF_KIND,
+  PORTS_OF_KIND,
   REF_KEYS,
   manualRefs,
   opDisabledHint,
@@ -161,7 +161,7 @@ export function TaskPromptPanel({
   const meta = NODE_META.get(kind);
   // 连着图片 / 视频 / 音频节点，或手动加过参考素材，就算有参考素材（文本不算）
   const hasRefs =
-    vm.refItems.some((item) => PORT_OF_KIND[item.kind] !== "text") ||
+    vm.refItems.some((item) => PORTS_OF_KIND[item.kind].some((port) => port !== "text")) ||
     REF_KEYS.some((ref) => manualRefs(vm.params, ref.key).length > 0);
   const { modelsStatus, reloadModels } = vm;
 
@@ -281,6 +281,7 @@ export function TaskPromptPanel({
           onUpload={vm.addRef}
           onRemoveManual={vm.removeRef}
           errors={REF_KEYS.flatMap((ref) => (vm.errors[ref.key] ? [vm.errors[ref.key]] : []))}
+          notices={vm.bindings.notices}
           disabled={locked}
         />
       </NodePromptInput>

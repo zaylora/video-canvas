@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ASSET_LIBRARY_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
+import { ASSET_LIBRARY_ACTION, CHARACTER_ACTION, UPLOAD_ACTION } from "@/constants/canvas";
 import type { NodeKind } from "@/types";
 
 import { buildAddNodeItems } from "./add-node-items";
@@ -29,6 +29,7 @@ export function BottomToolbar({
   onAdd,
   onUpload,
   onOpenAssets,
+  onOpenCharacters,
   canUndo,
   canRedo,
   onUndo,
@@ -40,6 +41,8 @@ export function BottomToolbar({
   onUpload: () => void;
   /** 打开资产库弹框：底栏按钮和「添加节点」菜单里的「从资产库添加」共用 */
   onOpenAssets: () => void;
+  /** 打开角色卡选择框：「添加节点」菜单里的「角色卡」 */
+  onOpenCharacters: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -70,6 +73,7 @@ export function BottomToolbar({
               onSelect={(value) => {
                 if (value === UPLOAD_ACTION) onUpload();
                 else if (value === ASSET_LIBRARY_ACTION) onOpenAssets();
+                else if (value === CHARACTER_ACTION) onOpenCharacters();
                 else onAdd(value as NodeKind);
               }}
             />

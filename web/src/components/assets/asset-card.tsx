@@ -67,6 +67,8 @@ export type CardSelect = {
   selected: boolean;
   /** 不能再勾选（已选满），已选中的卡片不会是 true */
   disabled: boolean;
+  /** 不能选的原因（「已是主图」「已添加」「已达上限」），显示在封面上；不隐藏卡片 */
+  reason?: string | null;
   /** 点击卡片：勾选或取消 */
   onToggle: () => void;
 };
@@ -106,6 +108,19 @@ function SelectBox({ selected }: { selected: boolean }) {
           selected ? "opacity-100" : "opacity-0",
         )}
       />
+    </span>
+  );
+}
+
+/** 选择模式下标注不能选的原因：压在封面右下，和左上的勾选框、右上的时长错开 */
+function ReasonChip({ reason }: { reason?: string | null }) {
+  if (!reason) return null;
+  return (
+    <span
+      data-slot="select-reason"
+      className="bg-cover-scrim text-cover-foreground pointer-events-none absolute right-2 bottom-9 z-10 rounded-md px-1.5 py-0.5 text-[11px]"
+    >
+      {reason}
     </span>
   );
 }
@@ -159,6 +174,7 @@ export function HistoryAssetCard({
         className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
       />
       {select && <SelectBox selected={select.selected} />}
+      {select && <ReasonChip reason={select.reason} />}
       {(duration || inLibrary) && (
         <span
           className={cn(
@@ -249,6 +265,7 @@ export function LibraryAssetCard({
         className={cn(COVER_BUTTON, select?.disabled && "cursor-not-allowed")}
       />
       {select && <SelectBox selected={select.selected} />}
+      {select && <ReasonChip reason={select.reason} />}
       {duration && (
         <span
           className={cn(CHIP, "pointer-events-none absolute top-2", select ? "right-2" : "left-2")}

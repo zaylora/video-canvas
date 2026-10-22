@@ -94,3 +94,18 @@ describe("describeSelection：底部栏", () => {
     expect(describeSelection(many(20)).limitHint).toBe("一次最多引入 20 个");
   });
 });
+
+describe("自定义上限（角色卡选主图 / 补充图 / 声音）", () => {
+  test("单选（limit 1）：点另一个就换成它，点已选的取消，永远能点", () => {
+    expect(toggleAsset([asset(1)], asset(2), 1).map((a) => a.id)).toEqual(["2"]);
+    expect(toggleAsset([asset(1)], asset(1), 1)).toEqual([]);
+    expect(canToggle([asset(1)], asset(2), 1)).toBe(true);
+    expect(describeSelection([asset(1)], 1).limitHint).toBeNull();
+  });
+
+  test("补充图只剩 2 个名额：选满后其余禁用，提示说明还能选几个", () => {
+    expect(canToggle(many(2), asset(9), 2)).toBe(false);
+    expect(toggleAsset(many(2), asset(9), 2)).toHaveLength(2);
+    expect(describeSelection(many(2), 2).limitHint).toBe("最多再选 2 个");
+  });
+});

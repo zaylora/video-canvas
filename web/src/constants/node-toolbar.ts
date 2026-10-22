@@ -144,6 +144,8 @@ export const NODE_TOOLBAR: Record<NodeKind, NodeToolbarConfig> = {
   script: { actions: [], tail: ["copy", "zoom"] },
   // 导演台（设计稿 docs/design/3D导演台）：不出功能区（toolbarGate 里不显示），这里留空
   director: { actions: [], tail: [] },
+  // 角色卡在资产页编辑，节点上没有加工类按钮
+  character: { actions: [], tail: [] },
 };
 
 /** 一种节点配置里所有按钮和菜单项的 id，用来检查不重复 */

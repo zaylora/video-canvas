@@ -18,6 +18,15 @@ describe("parseAssetsParams：地址栏参数", () => {
     expect(parseAssetsParams(new URLSearchParams("tab=history&folder=1f")).folder).toBeNull();
   });
 
+  test("认得「角色卡」范围，且它没有文件夹", () => {
+    expect(parseAssetsParams(new URLSearchParams("tab=characters"))).toEqual({
+      tab: "characters",
+      folder: null,
+    });
+    expect(parseAssetsParams(new URLSearchParams("tab=characters&folder=1f")).folder).toBeNull();
+    expect(buildAssetsSearch({ tab: "characters", folder: null })).toBe("tab=characters");
+  });
+
   test("folder 不是十六进制串时当作根目录，防止乱填的值打到接口", () => {
     expect(parseAssetsParams(new URLSearchParams("tab=library&folder=../x")).folder).toBeNull();
     expect(parseAssetsParams(new URLSearchParams("tab=library&folder=")).folder).toBeNull();

@@ -290,6 +290,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 			Folders: repository.NewAssetFolderRepository(db), Items: repository.NewAssetLibraryRepository(db),
 			Assets: assetRepo, Canvases: canvasProjectRepo, Views: assetSvc,
 		})),
+		CharacterCard: handler.NewCharacterCardHandler(service.NewCharacterCardService(service.CharacterCardDeps{
+			Cards: repository.NewCharacterCardRepository(db), Assets: assetRepo, Views: assetSvc,
+		})),
 		Files:        handler.NewFilesHandler(assetSvc),
 		AIModel:      handler.NewAIModelHandler(aiCfgSvc),
 		AdminAI:      handler.NewAdminAIHandler(aiCfgSvc),

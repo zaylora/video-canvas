@@ -62,3 +62,13 @@ export function AudioPlaceholderIcon({ className }: PlaceholderIconProps) {
     </svg>
   );
 }
+
+/** 半身人像，角色卡读取中或失效时的占位 */
+export function CharacterPlaceholderIcon({ className }: PlaceholderIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 19.2C4 15.8 7.6 14 12 14s8 1.8 8 5.2c0 .6-.5 1.1-1.1 1.1H5.1c-.6 0-1.1-.5-1.1-1.1Z" />
+    </svg>
+  );
+}

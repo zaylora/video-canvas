@@ -4,13 +4,14 @@ import type { NodeProps } from "@xyflow/react";
 import type { CanvasNode } from "@/types";
 import { sameNodeProps } from "@/utils/canvas/node-props";
 
+import { CharacterCanvasNode } from "./character-node";
 import { DirectorCanvasNode } from "./director-node";
 import { TextCanvasNode } from "./text-node";
 import { AudioCanvasNode, ImageCanvasNode, VideoCanvasNode } from "./video-node";
 
 /**
  * 画布节点入口：文本、图片、视频、音频接真实生成任务（后端下发的模型清单、schema 驱动的参数面板、任务状态），
- * 导演台是浏览器里的 3D 预演，不调模型。
+ * 导演台是浏览器里的 3D 预演，不调模型；角色卡只引用资产页的角色，内容实时取自角色卡缓存。
  * 种类在节点整个生命周期里不变，分发不会切换 hook 集合。
  * 比较器只认 id、data、selected：拖动时 xyflow 每帧换坐标和 dragging，这里不跟着重渲染。
  */
@@ -27,6 +28,8 @@ export const CanvasNodeView = memo((props: NodeProps<CanvasNode>) => {
       return <TextCanvasNode id={id} data={data} selected={selected} />;
     case "director":
       return <DirectorCanvasNode id={id} data={data} />;
+    case "character":
+      return <CharacterCanvasNode id={id} data={data} />;
   }
 }, sameNodeProps);
 CanvasNodeView.displayName = "CanvasNodeView";

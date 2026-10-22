@@ -60,6 +60,10 @@ export type CanvasNodeData = {
   outpaintFrom?: string;
   /** 导演台节点的 3D 场景，只有 kind 为 director 时才有；编辑器里改动后自动写回 */
   scene?: DirectorScene;
+  /** 角色卡节点引用的角色卡 ID（十六进制串），只有 kind 为 character 时才有；内容实时取自角色卡，不随画布保存 */
+  characterId?: string;
+  /** 角色卡节点上次读到的名称和主图素材 ID，只在加载前或读取失败时占位，不作为事实来源 */
+  labelCache?: { name: string; coverAssetId?: string };
 };
 
 /** 节点的一版生成产物 */

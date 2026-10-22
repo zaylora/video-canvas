@@ -14,6 +14,7 @@ const isFull = (selected: AssetDto[], limit: number) => selected.length >= limit
 
 /**
  * 勾选或取消一个素材：没选过就追加到末尾，选过就移除；已满时新勾选不生效（原数组原样返回）。
+ * limit 为 1 是单选：点另一个素材就换成它。
  * 选择里存整个素材而不是 ID：切换来源、类型标签后，列表换了，选中的素材仍能确认引入。
  * @param selected 当前选择，按勾选顺序
  * @param asset 被点的素材
@@ -27,11 +28,12 @@ export function toggleAsset(
   if (selected.some((item) => item.id === asset.id)) {
     return selected.filter((item) => item.id !== asset.id);
   }
+  if (limit === 1) return [asset];
   return isFull(selected, limit) ? selected : [...selected, asset];
 }
 
 /**
- * 这张卡片现在能不能点：已选的随时能点（取消），没选的在已满后禁用。
+ * 这张卡片现在能不能点：已选的随时能点（取消），没选的在已满后禁用；单选（limit 为 1）永远能点。
  * @param selected 当前选择
  * @param asset 卡片对应的素材
  * @param limit 上限
@@ -41,7 +43,7 @@ export function canToggle(
   asset: AssetDto,
   limit = ASSET_PICK_LIMIT,
 ): boolean {
-  return selected.some((item) => item.id === asset.id) || !isFull(selected, limit);
+  return limit === 1 || selected.some((item) => item.id === asset.id) || !isFull(selected, limit);
 }
 
 /**
@@ -80,6 +82,10 @@ export type SelectionSummary = {
   limitHint: string | null;
 };
 
+/** 已满时的提示：默认上限用「一次最多引入 20 个」，其它上限（补充图只剩几个名额）直接说上限 */
+const limitHintOf = (limit: number) =>
+  limit === ASSET_PICK_LIMIT ? PICK_LIMIT_HINT : `最多再选 ${limit} 个`;
+
 /**
  * 底部栏的文案与按钮状态。
  * @param selected 当前选择
@@ -95,6 +101,6 @@ export function describeSelection(
     label: `已选择 ${count} 个素材`,
     confirmDisabled: count === 0,
     confirmHint: count === 0 ? PICK_EMPTY_HINT : null,
-    limitHint: isFull(selected, limit) ? PICK_LIMIT_HINT : null,
+    limitHint: limit === 1 || !isFull(selected, limit) ? null : limitHintOf(limit),
   };
 }

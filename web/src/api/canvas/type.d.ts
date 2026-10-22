@@ -15,7 +15,7 @@ export interface PersistedCanvasNodeDto {
   /** 节点携带的业务数据 */
   data: {
     /** 节点种类 */
-    kind: "script" | "image" | "video" | "audio" | "director";
+    kind: "script" | "image" | "video" | "audio" | "director" | "character";
     /** 节点标题 */
     label: string;
     /** 提示词 */
@@ -53,6 +53,10 @@ export interface PersistedCanvasNodeDto {
     >;
     /** 导演台节点的 3D 场景（结构见 types/director.ts） */
     scene?: DirectorScene;
+    /** 角色卡节点引用的角色卡 ID（十六进制串）；内容以角色卡本身为准，不随画布保存 */
+    characterId?: string;
+    /** 角色卡节点上次读到的名称和主图素材 ID，仅在读取失败或加载前占位 */
+    labelCache?: { name: string; coverAssetId?: string };
   };
 }
 
