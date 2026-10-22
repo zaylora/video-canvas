@@ -122,7 +122,7 @@ function HistoryPopover({ ctl }: { ctl: AgentController }) {
   );
 }
 
-/** 设置：显示思考过程、生成前确认（固定开）。Agent 模型和本轮预算在输入框右下角 */
+/** 设置：显示思考过程、生成前确认（固定开）。Agent 模型和上下文用量在输入框右下角 */
 function SettingsPopover() {
   const settings = useAgentSettings();
   return (
@@ -152,7 +152,7 @@ function SettingsPopover() {
           <span className="text-[13px]">生成前确认</span>
           <span className="text-muted-foreground text-xs">固定开</span>
         </section>
-        <p className="text-muted-foreground text-[11.5px]">Agent 模型和本轮预算在输入框右下角</p>
+        <p className="text-muted-foreground text-[11.5px]">Agent 模型和上下文用量在输入框右下角</p>
       </PopoverContent>
     </Popover>
   );

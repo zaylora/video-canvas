@@ -105,8 +105,8 @@ describe("agent store：事件与会话列表", () => {
       canvas_id: "c1",
       status: "running",
       mode: "all",
-      budget_credits: 50,
       spent_credits: 0,
+      context_tokens: 35_000,
       steps: 0,
       max_steps: 40,
       error_code: "",
@@ -114,10 +114,31 @@ describe("agent store：事件与会话列表", () => {
       created_at: "",
       ended_at: null,
     });
-    expect(useAgentStore.getState().sessions.s1.runs.r9).toMatchObject({
-      status: "running",
-      spent: 0,
-      budget: 50,
-    });
+    const session = useAgentStore.getState().sessions.s1;
+    expect(session.runs.r9).toMatchObject({ status: "running", spent: 0 });
+    expect(session.contextTokens).toBe(35_000);
+  });
+
+  test("ingestRun：新一轮刚发起时上下文用量是 0，不能把会话已有的用量冲成 0", () => {
+    const run = {
+      id: "r10",
+      session_id: "s1",
+      canvas_id: "c1",
+      status: "queued" as const,
+      mode: "all" as const,
+      spent_credits: 0,
+      context_tokens: 0,
+      steps: 0,
+      max_steps: 40,
+      error_code: "",
+      error_message: "",
+      created_at: "",
+      ended_at: null,
+    };
+    useAgentStore
+      .getState()
+      .ingestRun({ ...run, id: "r9", status: "running", context_tokens: 35_000 });
+    useAgentStore.getState().ingestRun(run);
+    expect(useAgentStore.getState().sessions.s1.contextTokens).toBe(35_000);
   });
 });

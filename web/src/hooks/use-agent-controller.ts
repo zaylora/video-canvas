@@ -19,15 +19,11 @@ import type {
   DecideAgentApprovalReq,
   SetAgentFeedbackReq,
 } from "@/api/agent/type";
-import { ApiError } from "@/utils/requests/request";
 import { useAgentSettings } from "@/store/agent-settings";
 import { useAgentStore } from "@/store/agent";
 import { useCreditsStore } from "@/store/credits";
 import { activeRunId, emptySession } from "@/utils/agent/session-state";
 import { buildRunStrip, buildStatusLine, buildTimeline } from "@/utils/agent/timeline";
-
-/** 后端错误码：超出本轮积分预算 */
-const OVER_BUDGET_CODE = 60008;
 
 /** 会话标题自动取首条消息的前几个字 */
 const AUTO_TITLE_LEN = 14;
@@ -125,11 +121,10 @@ export function useAgentController({
     );
     return list.at(-1) ?? null;
   }, [activeRun, state.approvals]);
-  /** 本轮用量：运行中取运行的已花和预算，空闲时已花为 0、预算取设置 */
-  const live = activeRun ? state.runs[activeRun] : undefined;
-  const usage = {
-    spent: live?.spent ?? 0,
-    budget: live?.budget ?? settings.budget,
+  /** 当前会话的上下文用量：已用取最近一次对话调用的输入（新一轮开始前沿用上一轮的），上限是当前模型的窗口 */
+  const context = {
+    tokens: state.contextTokens,
+    window: models.find((m) => m.key === modelKey)?.context_window ?? 0,
   };
 
   /** 确保有会话可发：没有就按当前模式和模型新建一个 */
@@ -159,7 +154,6 @@ export function useAgentController({
           mode,
           selection: withSelection ? getSelection() : [],
           viewport: getViewport(),
-          budget_credits: settings.budget,
           agent_model_key: modelKey || undefined,
         });
         useAgentStore.getState().ingestRun(run);
@@ -179,7 +173,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, ensureSession, getSelection, getViewport, mode, modelKey, settings.budget],
+    [activeRun, ensureSession, getSelection, getViewport, mode, modelKey],
   );
 
   const stop = useCallback(async () => {
@@ -199,20 +193,15 @@ export function useAgentController({
     }
   }, []);
 
-  /** 对审批做决定；超出本轮预算单独报出来，卡片据此提供「追加预算并批准」 */
+  /** 对审批做决定；接口失败的提示由全局请求拦截器弹出，返回是否成功 */
   const decide = useCallback(
-    async (
-      approvalId: string,
-      req: DecideAgentApprovalReq,
-    ): Promise<"ok" | "over_budget" | "failed"> => {
+    async (approvalId: string, req: DecideAgentApprovalReq): Promise<"ok" | "failed"> => {
       try {
         await decideAgentApproval(approvalId, req);
         void useCreditsStore.getState().refresh();
         return "ok";
-      } catch (error) {
-        return error instanceof ApiError && error.code === OVER_BUDGET_CODE
-          ? "over_budget"
-          : "failed";
+      } catch {
+        return "failed";
       }
     },
     [],
@@ -294,7 +283,7 @@ export function useAgentController({
     strip,
     statusLine,
     pending,
-    usage,
+    context,
     activeRun,
     busy: activeRun !== null,
     sending,

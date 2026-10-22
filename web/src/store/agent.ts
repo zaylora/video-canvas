@@ -106,23 +106,22 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set((s) => {
       const current = s.sessions[run.session_id] ?? emptySession();
       const live = current.runs[run.id];
+      // 新一轮刚发起时它的上下文用量是 0，不能把会话已有的用量冲掉
+      const contextTokens = run.context_tokens > 0 ? run.context_tokens : current.contextTokens;
       if (
         live &&
         live.status === run.status &&
         live.spent === run.spent_credits &&
-        live.budget === run.budget_credits
+        current.contextTokens === contextTokens
       )
         return s;
       const runs = {
         ...current.runs,
-        [run.id]: {
-          status: run.status,
-          error: run.error_message,
-          spent: run.spent_credits,
-          budget: run.budget_credits,
-        },
+        [run.id]: { status: run.status, error: run.error_message, spent: run.spent_credits },
       };
-      return { sessions: { ...s.sessions, [run.session_id]: { ...current, runs } } };
+      return {
+        sessions: { ...s.sessions, [run.session_id]: { ...current, runs, contextTokens } },
+      };
     }),
 
   submitFeedback: async (sessionId, runId, req) => {

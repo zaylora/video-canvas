@@ -231,7 +231,7 @@ export function AgentPanel({
             onModeChange={ctl.setMode}
             models={models}
             modelKey={ctl.modelKey}
-            usage={ctl.usage}
+            context={ctl.context}
             selectionCount={selectionCount}
             useSelection={useSelection}
             onToggleSelection={() => setUseSelection(false)}
