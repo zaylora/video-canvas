@@ -38,6 +38,7 @@ import { NODE_META } from "@/constants/canvas";
 import { findPreset, type PresetKind } from "@/constants/presets";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useCharactersStore } from "@/store/characters";
 import type { CanvasNode, NodeKind, NodeMediaType } from "@/types";
 import { planPreset, type PresetPick, type PresetPlan } from "@/utils/canvas/preset-rules";
 import {
@@ -180,12 +181,19 @@ function MentionChip({ node }: NodeViewProps) {
   const saved = String(node.attrs.label ?? "");
   const live = useNodesData<CanvasNode>(id)?.data;
   const refs = usePromptRefs();
+  // 角色卡节点自己没有素材，缩略图和名字取角色卡此刻的内容；读不到时退回占位图标和存下的名字
+  const card = useCharactersStore((state) =>
+    live?.characterId ? state.byId[live.characterId]?.card : undefined,
+  );
+  const isCharacter = live?.kind === "character";
   const gone = !live || !(refs?.linkedIds.has(id) ?? true);
   const lit = refs?.highlight === id;
-  const label = live?.label ?? saved;
+  const label = (isCharacter ? card?.name : undefined) ?? live?.label ?? saved;
+  const src = isCharacter ? (card?.avatar?.url ?? null) : live?.src;
+  const mediaType = isCharacter ? "image" : live?.mediaType;
   // 悬停放大（设计稿 10.1）：已断开、文本、音频、没产出的不弹
   const { bind, peek } = useRefPeek(
-    { kind: live?.kind ?? "image", mediaType: live?.mediaType, src: live?.src, gone },
+    { kind: live?.kind ?? "image", mediaType, src, gone },
     `${label} 的大图`,
   );
 
@@ -217,8 +225,8 @@ function MentionChip({ node }: NodeViewProps) {
             id,
             kind: live?.kind ?? "image",
             label,
-            src: live?.src,
-            mediaType: live?.mediaType,
+            src,
+            mediaType,
             text: live?.text,
           }}
         />

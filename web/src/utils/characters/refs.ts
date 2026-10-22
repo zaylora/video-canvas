@@ -42,3 +42,20 @@ export function applyCharacters(
     };
   });
 }
+
+/**
+ * 去掉已失效的角色卡节点（@ 候选用）：失效的卡不参与提交，列出来只会让人选了没用。
+ * 还在加载（undefined）的先留着，读到之后再判；缺 characterId 的旧数据按失效处理。别的节点原样保留。
+ * @param nodes 候选节点
+ * @param byId 角色卡缓存
+ */
+export function withoutDeadCharacters<T extends { data: { kind: string; characterId?: string } }>(
+  nodes: readonly T[],
+  byId: Record<string, CharacterEntry | undefined>,
+): T[] {
+  return nodes.filter((node) => {
+    if (node.data.kind !== "character") return true;
+    const id = node.data.characterId;
+    return !!id && characterRefsOf(byId[id]) !== null;
+  });
+}

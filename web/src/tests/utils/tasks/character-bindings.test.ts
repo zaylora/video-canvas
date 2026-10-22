@@ -204,3 +204,72 @@ describe("角色卡与连线规则里的素材判断", () => {
     expect(ids(imageLinksOf([imageLink("a", "100"), charLink()]))).toEqual(["100", "1"]);
   });
 });
+
+describe("提示词里 @ 角色卡：提交时展开成角色名（二期）", () => {
+  const caps = () => video({ image: { on: true, max: 9, max_mb: 10 } });
+  const prompt = "让 @[林晚](n1) 走向镜头";
+
+  test("已连线：@ 换成角色名，形象和声音由连线带进 input", () => {
+    const links = [charLink()];
+    const bound = resolveBindings(caps(), "omni", links);
+    const built = buildTaskInput(caps(), { prompt }, bound, "omni", links);
+    expect(built.errors).toEqual({});
+    expect(built.input.prompt).toBe("让 林晚 走向镜头");
+    expect(built.input.images).toEqual([1, 2, 3]);
+    expect(built.input.audios).toEqual([9]);
+  });
+
+  test("角色卡改名后：展开成卡此刻的名字，不是 token 里写入时的旧名", () => {
+    const links = [charLink({ character: refs({ name: "林晚晚" }) })];
+    const built = buildTaskInput(
+      caps(),
+      { prompt },
+      resolveBindings(caps(), "omni", links),
+      "omni",
+      links,
+    );
+    expect(built.input.prompt).toBe("让 林晚晚 走向镜头");
+  });
+
+  test("节点已删（连线里没有它）：退回 token 里的名字，其余连线照常，不报错", () => {
+    const links = [imageLink("a", "100")];
+    const built = buildTaskInput(
+      caps(),
+      { prompt },
+      resolveBindings(caps(), "omni", links),
+      "omni",
+      links,
+    );
+    expect(built.errors).toEqual({});
+    expect(built.input.prompt).toBe("让 林晚 走向镜头");
+    expect(built.input.images).toEqual([100]);
+    expect(built.input.audios).toBeUndefined();
+  });
+
+  test("卡已失效（连线还在）：退回名字，不带形象和声音，不报错", () => {
+    const links = [charLink({ character: null }), imageLink("a", "100")];
+    const built = buildTaskInput(
+      caps(),
+      { prompt },
+      resolveBindings(caps(), "omni", links),
+      "omni",
+      links,
+    );
+    expect(built.errors).toEqual({});
+    expect(built.input.prompt).toBe("让 林晚 走向镜头");
+    expect(built.input.images).toEqual([100]);
+    expect(built.input.audios).toBeUndefined();
+  });
+
+  test("普通图片的 @ 行为不变，仍展开成编号", () => {
+    const links = [imageLink("a", "100")];
+    const built = buildTaskInput(
+      caps(),
+      { prompt: "把 @[图](img-a) 里的人放进去" },
+      resolveBindings(caps(), "omni", links),
+      "omni",
+      links,
+    );
+    expect(built.input.prompt).toBe("把 图片1 里的人放进去");
+  });
+});

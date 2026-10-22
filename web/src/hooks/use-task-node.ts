@@ -20,7 +20,7 @@ import { mentionableNodes, opForLink, unlinkSource } from "@/utils/canvas/link-r
 import { withoutOutpaintSource } from "@/utils/canvas/outpaint-node";
 import { removePromptRef } from "@/utils/canvas/prompt-tokens";
 import { referencedText } from "@/utils/canvas/text-body";
-import { applyCharacters } from "@/utils/characters/refs";
+import { applyCharacters, withoutDeadCharacters } from "@/utils/characters/refs";
 import { buildFreshInput, characterIdsOf } from "@/utils/tasks/fresh-input";
 import {
   REF_KEYS,
@@ -215,10 +215,28 @@ export function useTaskNode(
     [id, setEdges, updateNodeData],
   );
 
-  /** 画布里能 @ 的素材，打开菜单时才取，不订阅 */
+  /**
+   * 画布里能 @ 的素材，打开菜单时才取，不订阅。
+   * 角色卡的内容在缓存里：已失效的不列（它不参与提交），名字和缩略图取卡此刻的内容。
+   */
   const listMentionables = useCallback(() => {
+    const byId = useCharactersStore.getState().byId;
     const { linked, canvas } = mentionableNodes(id, getNodes(), getEdges());
-    return { linked: linked.map(toRefSource), canvas: canvas.map(toRefSource) };
+    const toSource = (node: CanvasNode): RefSource => {
+      const source = toRefSource(node);
+      if (node.data.kind !== "character") return source;
+      const card = node.data.characterId ? byId[node.data.characterId]?.card : undefined;
+      return {
+        ...source,
+        label: card?.name ?? source.label,
+        src: card?.avatar?.url ?? null,
+        mediaType: "image",
+      };
+    };
+    return {
+      linked: withoutDeadCharacters(linked, byId).map(toSource),
+      canvas: withoutDeadCharacters(canvas, byId).map(toSource),
+    };
   }, [getEdges, getNodes, id]);
 
   const mention = useMemo<PromptMentionSource>(

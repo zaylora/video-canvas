@@ -502,7 +502,7 @@ const REF_WORD: Record<RefKind, string> = { image: "图片", video: "视频", au
 /**
  * 把提示词里 @ 进来的素材和节点预设换成模型看得懂的文字：文本上游换成它的正文，
  * 素材换成在 input 里的编号（连线已断、素材没提交的，退回成素材名）；
- * 预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
+ * 角色卡换成角色名；预设换成预设提示词（设计稿 6.13），已下架的退回成名称。
  */
 function expandRefs(prompt: string, links: IncomingLink[], input: Record<string, unknown>) {
   return expandPrompt(
@@ -510,8 +510,10 @@ function expandRefs(prompt: string, links: IncomingLink[], input: Record<string,
     (id, label) => {
       const link = links.find((item) => item.sourceId === id);
       if (!link) return label;
+      // 形象和声音已经由连线展开成参考图 / 参考音频带入 input，这里只把 @ 换成名字；
+      // 节点已删或卡已失效时同样是名字，不报错
+      if (link.sourceKind === "character") return link.character?.name || label;
       const ports = PORTS_OF_KIND[link.sourceKind];
-      // 角色卡同时给图片和音频，提示词里 @ 角色卡的展开留给二期，这里先按名字退回
       if (ports.length !== 1) return label;
       const port = ports[0];
       if (port === "text") return link.text?.trim() || label;

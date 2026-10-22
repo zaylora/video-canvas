@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { AssetDto } from "@/api/asset/type";
 import type { CharacterDto } from "@/api/character/type";
 import type { CharacterEntry } from "@/store/characters";
-import { applyCharacters, characterRefsOf } from "@/utils/characters/refs";
+import { applyCharacters, characterRefsOf, withoutDeadCharacters } from "@/utils/characters/refs";
 import type { IncomingLink } from "@/utils/tasks/capabilities";
 
 const asset = (id: string): AssetDto => ({ id, kind: "image" }) as AssetDto;
@@ -72,5 +72,35 @@ describe("applyCharacters：把缓存里的角色卡写进角色卡连线", () =
 
   test("缺 characterId 的旧数据按失效处理", () => {
     expect(applyCharacters([base({ characterId: undefined })], {})[0].character).toBeNull();
+  });
+});
+
+describe("withoutDeadCharacters：@ 候选里去掉已失效的角色卡节点", () => {
+  const node = (id: string, kind: string, characterId?: string) => ({
+    id,
+    data: { kind, characterId },
+  });
+  const ids = (nodes: { id: string }[]) => nodes.map((item) => item.id);
+
+  test("已失效（卡已删、主图不可用）不列；加载中、没读过、正常的都列", () => {
+    const nodes = [
+      node("ok", "character", "ok"),
+      node("gone", "character", "gone"),
+      node("noAvatar", "character", "noAvatar"),
+      node("loading", "character", "loading"),
+      node("unread", "character", "unread"),
+    ];
+    const byId = {
+      ok: ready(card()),
+      gone: { status: "missing", loadedAt: 1 } as CharacterEntry,
+      noAvatar: ready(card({ avatar: null })),
+      loading: { status: "loading", loadedAt: 0 } as CharacterEntry,
+    };
+    expect(ids(withoutDeadCharacters(nodes, byId))).toEqual(["ok", "loading", "unread"]);
+  });
+
+  test("别的节点原样保留，缺 characterId 的角色卡节点按失效不列", () => {
+    const nodes = [node("img", "image"), node("old", "character")];
+    expect(ids(withoutDeadCharacters(nodes, {}))).toEqual(["img"]);
   });
 });
