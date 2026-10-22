@@ -23,7 +23,6 @@ import (
 const (
 	maxAgentSessionsPerCanvas = 50    // 每个画布最多的会话数
 	defaultAgentTitle         = "新对话" // 新会话的默认标题
-	defaultRunBudget          = 50    // 一轮运行的默认积分预算
 	defaultRunMaxSteps        = 40    // 一轮运行最多的工具调用步数
 	approvalTTL               = 24 * time.Hour
 	maxEventPage              = 200 // 回放事件一页最多多少条
@@ -55,6 +54,8 @@ type AgentRepo interface {
 	UpdateRunIf(ctx context.Context, id uint64, from []string, fields map[string]any) (*model.AgentRun, error)
 	// AddRunUsage 累加运行的步数和已花积分。
 	AddRunUsage(ctx context.Context, id uint64, steps, credits int) error
+	// SetRunContextTokens 记下运行当前的上下文大小（最近一次对话调用的输入 Token 数），覆盖旧值。
+	SetRunContextTokens(ctx context.Context, id uint64, tokens int) error
 	// AppendEvent 给会话追加一条事件，序号原子分配。
 	AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error)
 	// ListEvents 列出会话里序号大于 afterSeq 的事件。
@@ -329,7 +330,7 @@ func (s *AgentService) emitUsage(ctx context.Context, run *model.AgentRun) {
 		logger.Error("读取运行用量失败", zap.Error(err), zap.Uint64("run_id", run.ID))
 		return
 	}
-	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.usage", map[string]any{"spent_credits": cur.SpentCredits, "budget_credits": cur.BudgetCredits})
+	s.emit(ctx, run.UserID, run.SessionID, run.ID, run.CanvasID, "run.usage", map[string]any{"spent_credits": cur.SpentCredits, "context_tokens": cur.ContextTokens})
 }
 
 // push 只推送不落库的临时事件（文本、思考增量）：每个 Token 一次写库代价太大，而且增量丢了不要紧，

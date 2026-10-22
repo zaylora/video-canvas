@@ -68,9 +68,14 @@ func wantAgentCode(t *testing.T, err error, want *errcode.Error) {
 	}
 }
 
+// legacyBudget 是夹具给运行设的本轮预算：新界面不再设预算（不传就是不限制），
+// 但旧客户端仍可能传，大于 0 时预算照常生效，这些旧用例用它来守着。
+const legacyBudget = 50
+
 func (e *agentEnv) start(t *testing.T, msg string) *AgentRunView {
 	t.Helper()
-	v, err := e.svc.StartRun(context.Background(), 1, e.sess, &model.StartAgentRunReq{Message: msg})
+	budget := legacyBudget
+	v, err := e.svc.StartRun(context.Background(), 1, e.sess, &model.StartAgentRunReq{Message: msg, BudgetCredits: &budget})
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
@@ -187,6 +192,14 @@ func TestAgentStartRun(t *testing.T) {
 		list, _ := e.svc.ListSessions(ctx, 1, 7)
 		if list[0].Title != "把剧本拆成分镜" || list[0].ModelKey != "claude" {
 			t.Errorf("会话=%+v", list[0])
+		}
+	})
+
+	t.Run("不带预算：不限制（预算存 0），旧客户端传了仍按传的", func(t *testing.T) {
+		e := newAgentEnv(t)
+		v, err := e.svc.StartRun(ctx, 1, e.sess, &model.StartAgentRunReq{Message: "x"})
+		if err != nil || v.BudgetCredits != 0 {
+			t.Fatalf("不传预算应存 0（不限制）: v=%+v err=%v", v, err)
 		}
 	})
 

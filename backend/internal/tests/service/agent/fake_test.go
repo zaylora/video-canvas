@@ -196,6 +196,17 @@ func (f *fakeAgentCanvasRepo) AddRunUsage(_ context.Context, id uint64, steps, c
 	return nil
 }
 
+func (f *fakeAgentCanvasRepo) SetRunContextTokens(_ context.Context, id uint64, tokens int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.runs[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	r.ContextTokens = tokens
+	return nil
+}
+
 func (f *fakeAgentCanvasRepo) AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error) {
 	if err := ctx.Err(); err != nil { // 和真实数据库一样：上下文取消后写不进去
 		return nil, err

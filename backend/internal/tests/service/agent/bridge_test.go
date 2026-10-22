@@ -245,6 +245,34 @@ func TestAgentBridge_ProxyModel(t *testing.T) {
 		}
 	})
 
+	t.Run("对话调用结算后：记下这次的输入 Token 作为上下文用量，并推 run.usage", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		if err := b.br.ProxyModel(ctx, tok, body, func([]byte) {}); err != nil {
+			t.Fatal(err)
+		}
+		if got := b.run(run.ID).ContextTokens; got != 1_000_000 {
+			t.Errorf("上下文用量应取这次调用的输入 Token: %d", got)
+		}
+		if u := b.repo.lastEvent("run.usage"); u["context_tokens"] != float64(1_000_000) {
+			t.Errorf("run.usage=%v", u)
+		}
+	})
+
+	t.Run("摘要调用的输入很大，但不是对话上下文：不更新上下文用量", func(t *testing.T) {
+		b := newBridgeEnv(t)
+		tok, run := b.token(t, "all")
+		b.repo.mu.Lock()
+		b.repo.runs[run.ID].ContextTokens = 777
+		b.repo.mu.Unlock()
+		if err := b.br.ProxyModel(WithModelPurpose(ctx, ModelPurposeSummary), tok, body, func([]byte) {}); err != nil {
+			t.Fatal(err)
+		}
+		if got := b.run(run.ID).ContextTokens; got != 777 {
+			t.Errorf("摘要调用不该改上下文用量: %d", got)
+		}
+	})
+
 	t.Run("内部摘要调用：预算用尽照样挡住并暂停运行", func(t *testing.T) {
 		b := newBridgeEnv(t)
 		tok, run := b.token(t, "all")

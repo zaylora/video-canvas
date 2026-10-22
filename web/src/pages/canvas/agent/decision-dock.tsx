@@ -47,7 +47,7 @@ const ICON = { generate: Sparkles, delete: Trash2, ask: MessageCircleQuestion } 
 /**
  * 决定框：等你批准生成 / 删除、或回答提问时，替换输入框钉在原位，不会被滚到看不见的地方。
  * 编号选项：数字键直接选，↑↓ 移动、Enter 确认；「…并告诉 Agent 怎么改」原地变输入框，Esc 退回。
- * 明细默认 ≤3 项展开、更多收起；可以逐项取消勾选。超预算、余额不足时批准项禁用并写明原因。
+ * 明细默认 ≤3 项展开、更多收起；可以逐项取消勾选。余额不足时批准项禁用并写明原因。
  */
 export function DecisionDock({
   approval,
@@ -58,8 +58,6 @@ export function DecisionDock({
 }) {
   const credits = useCreditsStore((s) => s.credits);
   const [busy, setBusy] = useState(false);
-  /** 服务端说超出了本轮预算（本地算不准时以它为准） */
-  const [overBudget, setOverBudget] = useState(false);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const gen = approval.kind === "generate" ? (approval.payload as AgentGeneratePayload) : null;
@@ -74,32 +72,19 @@ export function DecisionDock({
   const options: Option[] = [];
   if (gen) {
     const quote = gen.items.reduce((sum, it, i) => sum + (picks[i] ? it.price * it.count : 0), 0);
-    const remaining = Math.max(0, ctl.usage.budget - ctl.usage.spent);
-    const over = overBudget || quote > remaining;
     const short = credits !== null && quote > credits.available;
-    const approve = (addBudget = 0): DecideAgentApprovalReq => ({
+    const approve = (): DecideAgentApprovalReq => ({
       decision: "approve",
       items: picks.map((on, index) => ({ index, approve: on, count: gen.items[index].count })),
-      add_budget: addBudget,
     });
     options.push({
       key: "approve",
       label: "批准生成",
       meta: `✦ ${quote}`,
-      disabled: chosen === 0 || over || short,
-      note: short
-        ? `余额不足（需要 ${quote}，可用 ${credits?.available}）`
-        : over
-          ? `超出本轮预算（剩 ✦${remaining}）`
-          : undefined,
+      disabled: chosen === 0 || short,
+      note: short ? `余额不足（需要 ${quote}，可用 ${credits?.available}）` : undefined,
       decide: () => approve(),
     });
-    if (over && !short && chosen > 0)
-      options.push({
-        key: "topup",
-        label: `追加 ✦${quote - remaining} 预算并批准`,
-        decide: () => approve(quote - remaining),
-      });
     options.push(
       { key: "reject", label: "拒绝", decide: () => ({ decision: "reject" }) },
       {
@@ -170,9 +155,8 @@ export function DecisionDock({
 
   const submit = async (option: Option, answer?: string) => {
     setBusy(true);
-    const result = await ctl.decide(approval.id, option.decide(answer));
+    await ctl.decide(approval.id, option.decide(answer));
     setBusy(false);
-    if (result === "over_budget") setOverBudget(true);
   };
 
   const choose = (i: number) => {

@@ -18,8 +18,6 @@ export type AgentRunLive = {
   error: string;
   /** 本轮已花积分（run.usage 或运行接口给出），还不知道时没有 */
   spent?: number;
-  /** 本轮积分预算，还不知道时没有 */
-  budget?: number;
 };
 
 /** 正在流式输出、还没落成 message.done 的文字 */
@@ -50,6 +48,8 @@ export type AgentSessionState = {
   plans: Record<string, AgentPlanStep[]>;
   /** 各轮运行的用户反馈（没评价的轮没有这一项），由 feedback.set / feedback.cleared 事件和本地乐观更新维护 */
   feedback: Record<string, AgentFeedback>;
+  /** 会话当前的上下文大小（Token）：最近一次对话调用送进模型的输入，压缩之后会变小；还没有调用过是 0 */
+  contextTokens: number;
 };
 
 /** 运行还占着画布的状态：Agent 在跑或在等用户 */
@@ -70,6 +70,7 @@ export const emptySession = (): AgentSessionState => ({
   approvals: {},
   plans: {},
   feedback: {},
+  contextTokens: 0,
 });
 
 const asString = (v: unknown) => (typeof v === "string" ? v : "");
@@ -97,8 +98,14 @@ function foldDerived(state: AgentSessionState, ev: AgentEventDto): AgentSessionS
       const prev = ev.run_id ? state.runs[ev.run_id] : undefined;
       if (!ev.run_id || !prev) return state;
       const spent = typeof data.spent_credits === "number" ? data.spent_credits : prev.spent;
-      const budget = typeof data.budget_credits === "number" ? data.budget_credits : prev.budget;
-      return { ...state, runs: { ...state.runs, [ev.run_id]: { ...prev, spent, budget } } };
+      // 上下文用量是会话级的：下一轮开始前界面还要显示上一轮的值
+      const contextTokens =
+        typeof data.context_tokens === "number" ? data.context_tokens : state.contextTokens;
+      return {
+        ...state,
+        contextTokens,
+        runs: { ...state.runs, [ev.run_id]: { ...prev, spent } },
+      };
     }
     case "approval.created":
     case "approval.decided": {

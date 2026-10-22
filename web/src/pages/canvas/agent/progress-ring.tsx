@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * 18px 进度环：value / total 的占比。动画只改 stroke-dashoffset（DURATION.slow）。
- * 颜色由 className 给到 stroke-*，比如计划用 stroke-status-running、预算用 stroke-credit。
+ * 颜色由 className 给到 stroke-*，比如计划用 stroke-status-running、上下文用量按占比换 stroke-*。
  */
 export function ProgressRing({
   value,

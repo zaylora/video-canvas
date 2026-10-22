@@ -1,9 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** 默认的本轮积分预算，与后端默认值一致 */
-export const DEFAULT_BUDGET = 50;
-
 /** 停靠宽度：默认、最小、最大（最大还不超过窗口的一半） */
 export const DOCK_WIDTH = { default: 400, min: 320, max: 560 } as const;
 
@@ -13,8 +10,6 @@ export type AgentPanelOffset = { dx: number; dy: number };
 type AgentSettings = {
   /** 选用的 Agent 模型 key，空表示取第一个可用的 */
   modelKey: string;
-  /** 每一轮运行的积分预算 */
-  budget: number;
   /** 是否显示思考过程 */
   showThinking: boolean;
   /** 浮窗位置，null 是默认位置（右下角） */
@@ -32,7 +27,6 @@ export const useAgentSettings = create<AgentSettings>()(
   persist(
     (set) => ({
       modelKey: "",
-      budget: DEFAULT_BUDGET,
       showThinking: false,
       offset: null,
       docked: false,

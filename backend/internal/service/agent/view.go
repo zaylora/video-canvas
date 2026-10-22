@@ -37,6 +37,7 @@ type AgentRunView struct {
 	Mode          string     `json:"mode"`           // 任务模式
 	BudgetCredits int        `json:"budget_credits"` // 本轮积分预算
 	SpentCredits  int        `json:"spent_credits"`  // 已花积分
+	ContextTokens int        `json:"context_tokens"` // 当前上下文大小（Token）：最近一次对话调用的输入
 	Steps         int        `json:"steps"`          // 已执行步数
 	MaxSteps      int        `json:"max_steps"`      // 步数上限
 	ErrorCode     string     `json:"error_code"`     // 失败时的错误码
@@ -48,7 +49,7 @@ type AgentRunView struct {
 // runView 转成返回给前端的结构。
 func runView(r *model.AgentRun) *AgentRunView {
 	return &AgentRunView{ID: idcodec.ID(r.ID), SessionID: idcodec.ID(r.SessionID), CanvasID: idcodec.ID(r.CanvasID),
-		Status: r.Status, Mode: r.Mode, BudgetCredits: r.BudgetCredits, SpentCredits: r.SpentCredits, Steps: r.Steps,
+		Status: r.Status, Mode: r.Mode, BudgetCredits: r.BudgetCredits, SpentCredits: r.SpentCredits, ContextTokens: r.ContextTokens, Steps: r.Steps,
 		MaxSteps: r.MaxSteps, ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage, CreatedAt: r.CreatedAt, EndedAt: r.EndedAt}
 }
 

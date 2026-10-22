@@ -95,14 +95,40 @@ describe("衍生状态", () => {
     expect(s.plans.r1).toEqual(steps);
   });
 
-  test("run.usage：记下本轮已花和预算；之后的 run.status 不把它们冲掉", () => {
+  test("run.usage：记下本轮已花，和会话当前的上下文用量；之后的 run.status 不把它们冲掉", () => {
     let s = fold([
       ev(1, "run.status", { status: "running" }),
-      ev(2, "run.usage", { spent_credits: 6, budget_credits: 50 }),
+      ev(2, "run.usage", { spent_credits: 6, context_tokens: 12_000 }),
     ]);
-    expect(s.runs.r1).toMatchObject({ status: "running", spent: 6, budget: 50 });
+    expect(s.runs.r1).toMatchObject({ status: "running", spent: 6 });
+    expect(s.contextTokens).toBe(12_000);
     s = applyAgentEvent(s, ev(3, "run.status", { status: "waiting_approval" }));
-    expect(s.runs.r1).toMatchObject({ status: "waiting_approval", spent: 6, budget: 50 });
+    expect(s.runs.r1).toMatchObject({ status: "waiting_approval", spent: 6 });
+    expect(s.contextTokens).toBe(12_000);
+  });
+
+  test("上下文用量取最近一次：压缩之后变小，界面跟着降下来", () => {
+    const s = fold([
+      ev(1, "run.status", { status: "running" }),
+      ev(2, "run.usage", { spent_credits: 1, context_tokens: 180_000 }),
+      ev(3, "run.usage", { spent_credits: 2, context_tokens: 40_000 }),
+    ]);
+    expect(s.contextTokens).toBe(40_000);
+  });
+
+  test("旧事件没带 context_tokens：不改上下文用量；回放补来的更旧事件也不把它倒回去", () => {
+    let s = fold([
+      ev(1, "run.status", { status: "running" }),
+      ev(3, "run.usage", { spent_credits: 2, context_tokens: 40_000 }),
+    ]);
+    s = applyAgentEvent(s, ev(4, "run.usage", { spent_credits: 3 }));
+    expect(s.contextTokens).toBe(40_000);
+    s = applyAgentEvent(s, ev(2, "run.usage", { spent_credits: 1, context_tokens: 999 }));
+    expect(s.contextTokens).toBe(40_000);
+  });
+
+  test("新会话还没有用量：上下文是 0", () => {
+    expect(fold([ev(1, "run.status", { status: "running" })]).contextTokens).toBe(0);
   });
 
   test("回放补来的旧事件不会把新状态倒回去", () => {

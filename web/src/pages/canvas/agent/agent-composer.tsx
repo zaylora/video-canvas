@@ -13,7 +13,7 @@ import type { Chip } from "@/utils/agent/chips";
 
 import { AgentEditor, type AgentEditorHandle, type NodeOption } from "./agent-editor";
 import { AttachPopover } from "./attach-popover";
-import { BudgetRing } from "./budget-ring";
+import { ContextRing } from "./context-ring";
 import { ModelPopover } from "./model-popover";
 import { SkillPopover } from "./skill-popover";
 import { AGENT_BAR_BTN, AGENT_POP } from "./styles";
@@ -121,7 +121,7 @@ function AgentModelMenu({
 
 /**
  * 输入区（设计稿 6.8）：上方是上下文行（选中了几个节点），中间是编辑区；
- * 底栏左侧 ＋ 附件、模式、插入模型、插入技能，右侧 Agent 模型、预算环、发送。
+ * 底栏左侧 ＋ 附件、模式、插入模型、插入技能，右侧 Agent 模型、上下文环、发送。
  * 运行中：编辑区为空时发送键是「停止」，有内容时是「插话」。外层容器（大圆角、聚焦光晕）由浮窗给。
  */
 export function AgentComposer({
@@ -135,7 +135,7 @@ export function AgentComposer({
   onModeChange,
   models,
   modelKey,
-  usage,
+  context,
   selectionCount,
   useSelection,
   onToggleSelection,
@@ -157,8 +157,8 @@ export function AgentComposer({
   /** 可选的 Agent 模型和当前选中的 */
   models: AgentModelDto[];
   modelKey: string;
-  /** 本轮已花和预算 */
-  usage: { spent: number; budget: number };
+  /** 当前会话的上下文用量和模型的上限（Token） */
+  context: { tokens: number; window: number };
   /** 画布上选中的节点数 */
   selectionCount: number;
   /** 发送时是否带上选中的节点 */
@@ -216,7 +216,7 @@ export function AgentComposer({
         <SkillPopover onPick={(chip) => handle.current?.insertChip(chip)} />
         <span className="min-w-1 flex-1" />
         <AgentModelMenu models={models} modelKey={modelKey} busy={busy} />
-        <BudgetRing spent={usage.spent} budget={usage.budget} busy={busy} />
+        <ContextRing tokens={context.tokens} window={context.window} />
         <ChromeTooltip label={sendLabel} shortcut={stopMode ? "Esc" : "Enter"} side="top">
           <motion.button
             type="button"

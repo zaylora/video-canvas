@@ -186,6 +186,20 @@ func TestAgentDecideGenerate(t *testing.T) {
 		}
 	})
 
+	t.Run("本轮预算为 0 表示不限制：批准不受预算拦截", func(t *testing.T) {
+		e := newAgentEnv(t)
+		run, id := pendingGenerate(t, e, 24)
+		e.repo.mu.Lock()
+		e.repo.runs[run.ID].BudgetCredits = 0
+		e.repo.mu.Unlock()
+		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
+			t.Fatalf("不限制预算时批准不该被拦: %v", err)
+		}
+		if got := e.run(run.ID); got.BudgetCredits != 0 || got.SpentCredits != 24 {
+			t.Errorf("run=%+v", got)
+		}
+	})
+
 	t.Run("拒绝：不执行、不扣积分、运行继续；拒绝时的追加预算不生效", func(t *testing.T) {
 		e := newAgentEnv(t)
 		run, id := pendingGenerate(t, e, 24)
@@ -216,15 +230,21 @@ func TestAgentDecideGenerate(t *testing.T) {
 		}
 	})
 
-	t.Run("批准扣费后推送 run.usage：已花和预算", func(t *testing.T) {
+	t.Run("批准扣费后推送 run.usage：已花和上下文用量，不再带预算", func(t *testing.T) {
 		e := newAgentEnv(t)
-		_, id := pendingGenerate(t, e, 24)
+		run, id := pendingGenerate(t, e, 24)
+		e.repo.mu.Lock()
+		e.repo.runs[run.ID].ContextTokens = 12345
+		e.repo.mu.Unlock()
 		if _, err := e.svc.Decide(ctx, 1, id, approve); err != nil {
 			t.Fatal(err)
 		}
 		u := e.repo.lastEvent("run.usage")
-		if u["spent_credits"] != float64(24) || u["budget_credits"] != float64(50) {
+		if u["spent_credits"] != float64(24) || u["context_tokens"] != float64(12345) {
 			t.Errorf("run.usage=%v", u)
+		}
+		if _, has := u["budget_credits"]; has {
+			t.Errorf("run.usage 不该再带预算: %v", u)
 		}
 	})
 

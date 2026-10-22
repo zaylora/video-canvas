@@ -4,9 +4,10 @@ import "encoding/json"
 
 // AgentModelView 是面向画布的 Agent 模型清单项。
 type AgentModelView struct {
-	Key    string `json:"key"`    // 模型 key
-	Name   string `json:"name"`   // 显示名
-	Vision bool   `json:"vision"` // 是否支持看图
+	Key           string `json:"key"`            // 模型 key
+	Name          string `json:"name"`           // 显示名
+	Vision        bool   `json:"vision"`         // 是否支持看图
+	ContextWindow int    `json:"context_window"` // 上下文窗口（Token），没配置是 0；画布据此显示上下文用量
 }
 
 // AgentRunInput 是启动运行时交给 runtime 的输入。

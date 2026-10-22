@@ -173,10 +173,13 @@ func TestProcessRuntime_StartBuildsInputAndLaunches(t *testing.T) {
 		t.Errorf("系统提示词应含基础内容和模式说明")
 	}
 	prompt := in["prompt"].(map[string]any)["text"].(string)
-	for _, must := range []string{"把剧本拆成分镜", "<画布目录>", "n_script", "预算 50 积分"} {
+	for _, must := range []string{"把剧本拆成分镜", "<画布目录>", "n_script", "最多 40 步"} {
 		if !strings.Contains(prompt, must) {
 			t.Errorf("用户消息应包含 %q:\n%s", must, prompt)
 		}
+	}
+	if strings.Contains(prompt, "预算") {
+		t.Errorf("用户消息不该再告诉模型预算:\n%s", prompt)
 	}
 	if _, has := in["messages"]; has {
 		t.Errorf("没有历史时不传 messages: %v", in["messages"])

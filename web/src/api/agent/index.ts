@@ -66,7 +66,7 @@ export const getAgentEvents = async (sessionId: string, after: number): Promise<
 /**
  * 发起一轮运行（HTTP 202）；画布上已有运行中的 Agent 时返回 60001
  * @param sessionId 会话 ID
- * @param data 消息、模式、选中节点、预算
+ * @param data 消息、模式、选中节点
  * @returns 新建的运行
  */
 export const startAgentRun = (sessionId: string, data: StartAgentRunReq) =>
@@ -89,9 +89,9 @@ export const cancelAgentRun = (runId: string) =>
   service.post<AgentRunDto>(`/agent/runs/${runId}/cancel`, undefined);
 
 /**
- * 继续一个暂停的运行（中断、预算用尽、步数用尽）
+ * 继续一个暂停的运行（中断、步数用尽，以及早先设过额度又用完的旧运行）
  * @param runId 运行 ID
- * @param addBudget 追加的积分预算，预算用尽时用
+ * @param addBudget 追加的额度（积分），只有设过额度又用完的旧运行用得上
  * @returns 继续后的运行
  */
 export const resumeAgentRun = (runId: string, addBudget = 0) =>

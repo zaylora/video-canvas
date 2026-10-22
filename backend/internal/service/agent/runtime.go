@@ -97,7 +97,7 @@ func (r *ProcessRuntime) Start(ctx context.Context, run *model.AgentRun, in mode
 	if err != nil {
 		return err
 	}
-	text := prompts.User(in.Message, string(catJSON), prompts.RunInfo{BudgetCredits: run.BudgetCredits, SpentCredits: run.SpentCredits, MaxSteps: run.MaxSteps})
+	text := prompts.User(in.Message, string(catJSON), prompts.RunInfo{MaxSteps: run.MaxSteps})
 	input["mode"], input["prompt"] = "start", map[string]any{"text": text}
 	return r.launch(ctx, run, in, input, true)
 }

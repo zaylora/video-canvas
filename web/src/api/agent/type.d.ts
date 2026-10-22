@@ -19,7 +19,7 @@ export type AgentRunStatus =
   | "failed"
   /** 用户停止 */
   | "canceled"
-  /** 本轮积分预算用尽，暂停，可继续 */
+  /** 早先设过额度、用完了，暂停，可继续（现在新的运行不设额度，不会再出现） */
   | "budget_exhausted"
   /** 达到步数上限，暂停，可继续 */
   | "step_limit"
@@ -38,6 +38,8 @@ export interface AgentModelDto {
   name: string;
   /** 是否支持看图 */
   vision: boolean;
+  /** 上下文窗口（Token），没配置是 0 */
+  context_window: number;
 }
 
 /** 会话 */
@@ -72,10 +74,10 @@ export interface AgentRunDto {
   status: AgentRunStatus;
   /** 任务模式 */
   mode: AgentMode;
-  /** 本轮积分预算 */
-  budget_credits: number;
   /** 已花积分 */
   spent_credits: number;
+  /** 当前上下文大小（Token）：最近一次对话调用的输入，还没有调用过是 0 */
+  context_tokens: number;
   /** 已执行的工具调用步数 */
   steps: number;
   /** 步数上限 */
@@ -233,8 +235,6 @@ export interface StartAgentRunReq {
   selection?: string[];
   /** 视口 */
   viewport?: { x: number; y: number; zoom: number };
-  /** 本轮积分预算，不传默认 50 */
-  budget_credits?: number;
   /** Agent 模型 key，不传沿用会话的 */
   agent_model_key?: string;
 }
@@ -257,8 +257,6 @@ export interface DecideAgentApprovalReq {
   items?: ApprovalItemDecision[];
   /** 提问的回答；拒绝时是给 Agent 的说明（「拒绝，并告诉 Agent 怎么改」） */
   answer?: string;
-  /** 批准时追加的积分预算 */
-  add_budget?: number;
 }
 
 /** 撤销本轮的结果 */

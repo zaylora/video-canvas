@@ -1,17 +1,15 @@
 import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
-import type { CanvasDetailDto, CanvasGraphDto } from "@/api/canvas/type";
+import type { CanvasDetailDto } from "@/api/canvas/type";
 import { getCanvas } from "@/api/canvas";
-import { ANIMATED_EDGE_OPTIONS } from "@/constants/canvas";
 import { useAgentStore } from "@/store/agent";
 import { useAgentHighlight } from "@/store/agent-highlight";
 import type { CanvasEdge, FlowNode } from "@/types";
 import { subscribeCanvasPatch } from "@/utils/agent/patch-bus";
 import { activeRunId } from "@/utils/agent/session-state";
 import { createAgentSync } from "@/utils/canvas/agent-sync";
-import { deserializeGraph } from "@/utils/canvas/canvas-persistence";
-import { normalizeFlowNodes } from "@/utils/canvas/group";
-import { unflatten, type MergeEdge } from "@/utils/canvas/graph-changes";
+import { agentPatchMerge } from "@/utils/canvas/canvas-persistence";
+import type { MergeEdge } from "@/utils/canvas/graph-changes";
 import { reconcileTaskIds } from "@/utils/ws/task-events";
 
 /** 画布页交给同步的东西：当前画布内容（要是最新的）、写回的方法、保存的版本 */
@@ -75,14 +73,7 @@ export function useAgentCanvasSync(args: AgentCanvasSyncArgs) {
           (s) => sessions[s.id] && activeRunId(sessions[s.id]) !== null,
         );
       },
-      merge: {
-        makeNode: (fields) =>
-          deserializeGraph({
-            nodes: [unflatten(fields) as unknown as CanvasGraphDto["nodes"][number]],
-          }).nodes[0],
-        makeEdge: (fields) => ({ ...fields, ...ANIMATED_EDGE_OPTIONS }) as unknown as CanvasEdge,
-        normalize: normalizeFlowNodes,
-      },
+      merge: agentPatchMerge,
     }),
   );
 
