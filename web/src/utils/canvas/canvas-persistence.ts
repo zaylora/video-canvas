@@ -6,6 +6,7 @@ import type { CanvasEdge, FlowNode } from "@/types";
 import { createDefaultScene, normalizeScene } from "@/utils/director/scene";
 
 import { isGroupNode, normalizeFlowNodes } from "./group";
+import { unflatten, type MergeEdge, type MergeOptions } from "./graph-changes";
 import { isUploading } from "./upload-state";
 import { dropNodeOrigin } from "./placement";
 
@@ -140,38 +141,62 @@ function withDirectorScene<T extends { data: unknown }>(node: T): T {
   return { ...node, data: { ...data, scene: normalizeScene(data.scene) ?? createDefaultScene() } };
 }
 
+/**
+ * 读一个节点：只修这个节点自己的数据，不看它的组在不在。
+ * parentId 是否有效、组是否排在成员前，要看整张画布才知道，由 normalizeFlowNodes 在整批上统一处理。
+ * 所以一次只拿到一个节点的地方（Agent 补丁新建节点）必须用这个，不能用 deserializeGraph：
+ * 它会把单节点列表里「找不到组」的 parentId 清掉。
+ */
+export function deserializeNode(node: CanvasGraphDto["nodes"][number]): FlowNode {
+  const data = node.data as {
+    status?: string;
+    taskId?: string;
+    outpaintFrom?: string;
+    params?: Record<string, unknown>;
+  };
+  // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理；
+  // 扩图中途残留的 running 说明被打断了，读成失败态并写明原因
+  const fixed = isOutpaintInFlight(data)
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          status: "error" as const,
+          error: outpaintInterruptedMessage(data.params),
+        },
+      }
+    : data.status === "running" && !data.taskId
+      ? { ...node, data: { ...node.data, status: "idle" as const } }
+      : node;
+  // 老存档里带 origin 的节点，position 统一换算成左上角
+  return dropNodeOrigin(withDirectorScene(fixed) as FlowNode);
+}
+
+/** 把 Agent 补丁里拍平的节点字段（"data.x" 路径）造成前端节点。 */
+export function nodeFromPatch(fields: Record<string, unknown>): FlowNode {
+  return deserializeNode(unflatten(fields) as unknown as CanvasGraphDto["nodes"][number]);
+}
+
+/**
+ * 前端合并 Agent 补丁时用的节点、连线构造和整批规整。use-agent-canvas-sync 和测试共用这一份：
+ * 测试自己另拼一份的话，线上这里被改坏时测试照样是绿的。
+ */
+export const agentPatchMerge: Pick<
+  MergeOptions<FlowNode, CanvasEdge & MergeEdge>,
+  "makeNode" | "makeEdge" | "normalize"
+> = {
+  makeNode: nodeFromPatch,
+  makeEdge: (fields) => ({ ...fields, ...ANIMATED_EDGE_OPTIONS }) as unknown as CanvasEdge,
+  normalize: normalizeFlowNodes,
+};
+
 export function deserializeGraph(graph?: Partial<CanvasGraphDto> | null) {
   const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
   const edges = Array.isArray(graph?.edges) ? graph.edges : [];
   const viewport = graph?.viewport ?? { x: 0, y: 0, zoom: 1 };
   return {
     // 组排在成员之前、指向不存在的组的 parentId 清掉：xyflow 要求父节点在前，也防坏数据
-    nodes: normalizeFlowNodes(
-      nodes.map((node) => {
-        const data = node.data as {
-          status?: string;
-          taskId?: string;
-          outpaintFrom?: string;
-          params?: Record<string, unknown>;
-        };
-        // 兜底：旧数据或异常数据里没有 taskId 的 running 没人来回填，按 idle 处理；
-        // 扩图中途残留的 running 说明被打断了，读成失败态并写明原因
-        const fixed = isOutpaintInFlight(data)
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                status: "error" as const,
-                error: outpaintInterruptedMessage(data.params),
-              },
-            }
-          : data.status === "running" && !data.taskId
-            ? { ...node, data: { ...node.data, status: "idle" as const } }
-            : node;
-        // 老存档里带 origin 的节点，position 统一换算成左上角
-        return dropNodeOrigin(withDirectorScene(fixed) as FlowNode);
-      }) as FlowNode[],
-    ),
+    nodes: normalizeFlowNodes(nodes.map(deserializeNode)),
     edges: edges.map((edge) => ({ ...edge, ...ANIMATED_EDGE_OPTIONS })) as CanvasEdge[],
     viewport,
   };
