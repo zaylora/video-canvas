@@ -78,6 +78,22 @@ func TestAgentBilling_Preflight(t *testing.T) {
 		wantAgentCode(t, err, errcode.ErrAgentOverBudget)
 	})
 
+	t.Run("本轮预算为 0 表示不限制：已花再多也只看余额", func(t *testing.T) {
+		b := NewAgentBilling(&fakeBillingRepo{available: 100})
+		run := billingRun(9999)
+		run.BudgetCredits = 0
+		if err := b.Preflight(ctx, run, billingPricing, billingCaps, 4000); err != nil {
+			t.Fatalf("不限制预算时不该报超预算: %v", err)
+		}
+	})
+
+	t.Run("不限制预算时余额不够仍然拦住：40001", func(t *testing.T) {
+		b := NewAgentBilling(&fakeBillingRepo{available: 0})
+		run := billingRun(0)
+		run.BudgetCredits = 0
+		wantAgentCode(t, b.Preflight(ctx, run, billingPricing, billingCaps, 4000), errcode.ErrInsufficientCredits)
+	})
+
 	t.Run("可用积分不够：40001", func(t *testing.T) {
 		b := NewAgentBilling(&fakeBillingRepo{available: 0})
 		wantAgentCode(t, b.Preflight(ctx, billingRun(0), billingPricing, billingCaps, 4000), errcode.ErrInsufficientCredits)

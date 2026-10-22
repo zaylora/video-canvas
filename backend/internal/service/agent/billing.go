@@ -62,6 +62,8 @@ type SettleResult struct {
 	Charged   int  // 实际扣的积分
 	Estimated bool // Token 数是估的
 	Shortfall bool // 用户余额不够，实扣小于应收
+
+	InputTokens int // 这次调用送进模型的输入 Token 数（上游没给用量时是按字数估的），一个字都没收到时为 0
 }
 
 // Preflight 在发起调用前预检：本轮预算和用户可用积分，都要够付这次调用「最坏情况」的费用
@@ -72,8 +74,8 @@ func (b *AgentBilling) Preflight(ctx context.Context, run *model.AgentRun, p mod
 		return errcode.ErrAgentModelNA
 	}
 	upper := modelcfg.Quote(p, caps, modelcfg.Spec{PromptChars: inputChars})
-	// 2. 本轮预算：已花加上最坏情况不能超过预算
-	if upper > run.BudgetCredits-run.SpentCredits {
+	// 2. 本轮预算：已花加上最坏情况不能超过预算；预算为 0 表示不限制，只看下面的账户积分
+	if run.BudgetCredits > 0 && upper > run.BudgetCredits-run.SpentCredits {
 		return errcode.ErrAgentOverBudget
 	}
 	// 3. 用户可用积分：没有账户和不够一样处理
@@ -120,7 +122,7 @@ func (b *AgentBilling) Settle(ctx context.Context, run *model.AgentRun, call *mo
 			return nil, err
 		}
 	}
-	return &SettleResult{Credits: settled.Credits, Charged: settled.Charged, Estimated: in.UsageEstimated, Shortfall: settled.Charged < settled.Credits}, nil
+	return &SettleResult{Credits: settled.Credits, Charged: settled.Charged, Estimated: in.UsageEstimated, Shortfall: settled.Charged < settled.Credits, InputTokens: in.InputTokens}, nil
 }
 
 // outputChars 估输出：正文、思考内容和工具调用参数的字数之和。

@@ -29,9 +29,9 @@ func (s *AgentService) StartRun(ctx context.Context, userID, sessionID uint64, r
 		return nil, err
 	}
 	req.Selection = selection
-	// 3. 补默认值：模式沿用会话的，预算默认 50
+	// 3. 补默认值：模式沿用会话的；预算不传就是不限制（存 0），只受账户可用积分约束。旧客户端传了就仍按传的
 	mode := firstNonEmpty(req.Mode, sess.Mode, model.AgentModeAll)
-	budget := defaultRunBudget
+	budget := 0
 	if req.BudgetCredits != nil {
 		budget = *req.BudgetCredits
 	}

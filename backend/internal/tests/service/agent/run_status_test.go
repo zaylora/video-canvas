@@ -15,7 +15,7 @@ func TestRunStatusText(t *testing.T) {
 		"failed":           {"运行失败", "可以换个说法重试"},
 		"timeout":          {"运行超时", "可以继续，或换个说法重试"},
 		"interrupted":      {"运行被中断", "服务重启或运行进程退出了，可以从断点继续"},
-		"budget_exhausted": {"本轮预算用完了", "追加预算后可以继续"},
+		"budget_exhausted": {"本轮额度用完了", "追加额度后可以继续"},
 		"step_limit":       {"达到本轮步数上限", "继续的话会再给一轮步数"},
 		"canceled":         {"已停止", "没做完的计划还留着，可以接着让它做"},
 		"expired":          {"等待超时", "你太久没有回应，这一轮已经结束"},
@@ -90,7 +90,7 @@ func TestRunStatusEvents_CarryText(t *testing.T) {
 		b.repo.mu.Unlock()
 		_ = b.br.ProxyModel(ctx, tok, []byte(`{"model":"x","messages":[{"role":"user","content":"x"}]}`), func([]byte) {})
 		ev := b.repo.lastEvent("run.status")
-		if ev["status"] != "budget_exhausted" || ev["title"] != "本轮预算用完了" {
+		if ev["status"] != "budget_exhausted" || ev["title"] != "本轮额度用完了" {
 			t.Errorf("budget_exhausted 事件要带标题和提示: %v", ev)
 		}
 	})

@@ -167,6 +167,18 @@ func (r *AgentRepository) AddRunUsage(ctx context.Context, id uint64, steps, cre
 	return nil
 }
 
+// SetRunContextTokens 记下运行当前的上下文大小（最近一次对话调用的输入 Token 数），覆盖旧值；运行不存在返回 ErrNotFound。
+func (r *AgentRepository) SetRunContextTokens(ctx context.Context, id uint64, tokens int) error {
+	res := r.db.WithContext(ctx).Model(&model.AgentRun{}).Where("id = ?", id).Update("context_tokens", tokens)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // AppendEvent 给会话追加一条事件。序号在同一事务里用 UPDATE … RETURNING 原子地分配，
 // 并发追加不会拿到相同的 seq；会话不存在返回 ErrNotFound。
 func (r *AgentRepository) AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error) {

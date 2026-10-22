@@ -249,8 +249,18 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	if berr != nil {
 		// 结算失败意味着这次调用没收到钱，只能留下线索供对账补扣；不能因此让用户的对话失败
 		logger.Error("Agent 对话结算失败", zap.Error(berr), zap.Uint64("call_id", call.ID), zap.Uint64("run_id", run.ID))
-	} else if settled.Charged > 0 {
-		b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
+	} else {
+		// 上下文大小只看对话调用：摘要调用的输入是被压缩的那段历史，不代表对话现在多大；
+		// 压缩生效后，下一次对话调用的输入自然变小，界面上的用量也就跟着降下来
+		isMain := meta.Purpose == "main"
+		if isMain && settled.InputTokens > 0 {
+			if err := b.d.Repo.SetRunContextTokens(context.WithoutCancel(ctx), run.ID, settled.InputTokens); err != nil {
+				logger.Error("记录上下文用量失败", zap.Error(err), zap.Uint64("run_id", run.ID))
+			}
+		}
+		if isMain || settled.Charged > 0 {
+			b.d.Agent.emitUsage(context.WithoutCancel(ctx), run)
+		}
 	}
 	// 插话会让 Agent 中止正在输出的回答再重答：此时 ctx 已取消，半截回答的 message.done 也要落库，前端才能清掉流式残留
 	if !internal {

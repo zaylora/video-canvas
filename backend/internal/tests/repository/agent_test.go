@@ -157,6 +157,22 @@ func TestAgentRuns(t *testing.T) {
 		}
 	})
 
+	t.Run("记上下文用量：覆盖旧值，不是累加；运行不存在返回 ErrNotFound", func(t *testing.T) {
+		if err := r.SetRunContextTokens(ctx, run.ID, 120000); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.SetRunContextTokens(ctx, run.ID, 35000); err != nil { // 压缩之后变小
+			t.Fatal(err)
+		}
+		got, _ := r.GetRun(ctx, 1, run.ID)
+		if got.ContextTokens != 35000 {
+			t.Errorf("应是最近一次的值，不是累加: %d", got.ContextTokens)
+		}
+		if err := r.SetRunContextTokens(ctx, 9999, 1); !errors.Is(err, ErrNotFound) {
+			t.Errorf("不存在应 ErrNotFound: %v", err)
+		}
+	})
+
 	t.Run("运行结束后画布空出来，可以开下一个", func(t *testing.T) {
 		if _, err := r.UpdateRunIf(ctx, run.ID, []string{model.RunWaitingApproval}, map[string]any{"status": model.RunSucceeded}); err != nil {
 			t.Fatal(err)

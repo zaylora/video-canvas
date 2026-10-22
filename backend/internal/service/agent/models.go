@@ -27,7 +27,11 @@ func (m *RegistryAgentModels) List(ctx context.Context) ([]model.AgentModelView,
 	}
 	out := make([]model.AgentModelView, 0, len(infos))
 	for _, in := range infos {
-		out = append(out, model.AgentModelView{Key: in.Key, Name: in.Label, Vision: in.Capabilities.Vision})
+		view := model.AgentModelView{Key: in.Key, Name: in.Label, Vision: in.Capabilities.Vision}
+		if c := in.Capabilities.Context; c != nil {
+			view.ContextWindow = c.Window
+		}
+		out = append(out, view)
 	}
 	return out, nil
 }

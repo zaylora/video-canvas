@@ -109,8 +109,9 @@ type AgentRun struct {
 	UserID        uint64     `gorm:"not null;index" json:"user_id"`                                                                                                            // 所属用户
 	Status        string     `gorm:"size:20;not null" json:"status"`                                                                                                           // 运行状态，取值见 Run* 常量
 	Mode          string     `gorm:"size:16;not null;default:'all'" json:"mode"`                                                                                               // 本轮的任务模式
-	BudgetCredits int        `gorm:"not null;default:0" json:"budget_credits"`                                                                                                 // 本轮积分预算
+	BudgetCredits int        `gorm:"not null;default:0" json:"budget_credits"`                                                                                                 // 本轮积分预算；0 表示不限制，只受账户可用积分约束
 	SpentCredits  int        `gorm:"not null;default:0" json:"spent_credits"`                                                                                                  // 已花积分（对话 token + 已批准的生成）
+	ContextTokens int        `gorm:"not null;default:0" json:"context_tokens"`                                                                                                 // 最近一次对话调用送进模型的输入 Token 数，即会话当前的上下文大小
 	Steps         int        `gorm:"not null;default:0" json:"steps"`                                                                                                          // 已执行的步数
 	MaxSteps      int        `gorm:"not null;default:40" json:"max_steps"`                                                                                                     // 步数上限
 	ErrorCode     string     `gorm:"size:64;not null;default:''" json:"error_code"`                                                                                            // 失败时的错误码

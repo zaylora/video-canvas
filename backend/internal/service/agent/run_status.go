@@ -8,7 +8,7 @@ var runStatusTexts = map[string]struct{ title, hint string }{
 	model.RunFailed:          {"运行失败", "可以换个说法重试"},
 	model.RunTimeout:         {"运行超时", "可以继续，或换个说法重试"},
 	model.RunInterrupted:     {"运行被中断", "服务重启或运行进程退出了，可以从断点继续"},
-	model.RunBudgetExhausted: {"本轮预算用完了", "追加预算后可以继续"},
+	model.RunBudgetExhausted: {"本轮额度用完了", "追加额度后可以继续"},
 	model.RunStepLimit:       {"达到本轮步数上限", "继续的话会再给一轮步数"},
 	model.RunCanceled:        {"已停止", "没做完的计划还留着，可以接着让它做"},
 	"expired":                {"等待超时", "你太久没有回应，这一轮已经结束"},

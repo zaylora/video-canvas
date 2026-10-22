@@ -249,7 +249,8 @@ func resolveGenerate(a *model.AgentApproval, run *model.AgentRun, req *model.Dec
 	if len(out.gen) == 0 {
 		return nil, errcode.ErrInvalidParams.WithMsg("至少批准一项")
 	}
-	if out.quote > run.BudgetCredits+req.AddBudget-run.SpentCredits {
+	// 本轮预算为 0 表示不限制：只靠账户积分约束，执行生成时账户积分不够会失败
+	if run.BudgetCredits > 0 && out.quote > run.BudgetCredits+req.AddBudget-run.SpentCredits {
 		return nil, errcode.ErrAgentOverBudget
 	}
 	out.decision["items"] = out.gen

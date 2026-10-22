@@ -46,6 +46,20 @@ func TestRegistryAgentModels_List(t *testing.T) {
 		}
 	})
 
+	t.Run("带上下文窗口：画布据此显示上下文用量；没配窗口是 0", func(t *testing.T) {
+		reg := &fakeAgentRegistry{models: []provider.ModelInfo{
+			{Key: "claude", Kind: "agent", Label: "Claude", Capabilities: modelcfg.Capabilities{Context: &modelcfg.ContextSpec{Window: 200000, Output: 8192}}},
+			{Key: "deepseek", Kind: "agent", Label: "DeepSeek"},
+		}}
+		got, err := NewRegistryAgentModels(reg).List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got[0].ContextWindow != 200000 || got[1].ContextWindow != 0 {
+			t.Errorf("got=%+v", got)
+		}
+	})
+
 	t.Run("没有已发布的模型：返回空清单而不是 nil", func(t *testing.T) {
 		got, err := NewRegistryAgentModels(&fakeAgentRegistry{}).List(ctx)
 		if err != nil || got == nil || len(got) != 0 {
