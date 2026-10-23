@@ -54,7 +54,7 @@ func startWith(e *agentEnv, msg string, selection ...string) error {
 func TestAgentStartRun_ChipValidation(t *testing.T) {
 	t.Run("引用都合法：放行，消息原样交给运行时", func(t *testing.T) {
 		e := refsEnv(t)
-		msg := "把 @[剧本](node:n_script) 拆开，角色用 @[Seedream](model:seedream)，参考 @[拆镜](skill:script-breakdown)"
+		msg := "把 @[剧本](node:n_script) 拆开，角色用 @[Seedream](model:seedream)"
 		if err := startWith(e, msg); err != nil {
 			t.Fatal(err)
 		}

@@ -1,5 +1,8 @@
 // Package skills 是画布 Agent 的内置技能库：随二进制发布的 Markdown 文件，Agent 用 skill_search 找、skill_read 读。
 // 技能内容是写给模型看的方法说明，不是可执行代码；后台管理（草稿、发布）放在二期。
+//
+// 目前没有内置技能（原来的 5 个已删除，技能都由后台导入）。新增内置技能：在 skills/<name>/ 下放一份 SKILL.md；
+// skills/.gitkeep 只是让空目录也能被嵌入，有了内置技能后可以删掉。
 package skills
 
 import (
@@ -10,7 +13,9 @@ import (
 	"strings"
 )
 
-//go:embed skills/*/SKILL.md
+// all: 前缀让点开头的占位文件也被嵌入，没有任何内置技能时 skills 目录仍然存在，ReadDir 才不会失败
+//
+//go:embed all:skills
 var files embed.FS
 
 // MaxResults 是一次搜索最多返回几个技能。
@@ -18,7 +23,7 @@ const MaxResults = 5
 
 // Skill 是一个技能。
 type Skill struct {
-	Name        string   // 技能名，也是目录名，如 script-breakdown
+	Name        string   // 技能名，也是目录名，如 shot-list
 	Title       string   // 中文显示名，@ 弹层和管理页用；缺省取 Name
 	Description string   // 一句话说明，给模型判断要不要读
 	Tags        []string // 搜索用的关键词
@@ -42,11 +47,14 @@ func mustLoad() []Skill {
 	}
 	out := make([]Skill, 0, len(entries))
 	for _, e := range entries {
+		if !e.IsDir() {
+			continue // .gitkeep 之类的占位文件
+		}
 		raw, err := files.ReadFile("skills/" + e.Name() + "/SKILL.md")
 		if err != nil {
 			panic(err)
 		}
-		s, err := parse(string(raw))
+		s, err := Parse(string(raw))
 		if err != nil {
 			panic(fmt.Sprintf("技能 %s：%v", e.Name(), err))
 		}
@@ -59,8 +67,9 @@ func mustLoad() []Skill {
 	return out
 }
 
-// parse 解析「---」包起来的头部（name、description、tags）和正文。
-func parse(raw string) (Skill, error) {
+// Parse 解析「---」包起来的头部（name、description、title、tags）和正文。
+// 导出是为了在没有内置技能时，测试仍能直接验证这份格式的解析。
+func Parse(raw string) (Skill, error) {
 	rest, ok := strings.CutPrefix(raw, "---\n")
 	if !ok {
 		return Skill{}, fmt.Errorf("缺少头部")
