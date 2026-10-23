@@ -15,9 +15,12 @@ import (
 // maxSafeAssetID 是 float64 能精确表示的最大整数（2^53）；更大的 asset id 必须以字符串或 json.Number 传入。
 const maxSafeAssetID = 1 << 53
 
-// refKindsOfOp 返回生成方式允许引用的素材种类：文生不引用素材；图生只引用图片；全能参考不限类型（以 refs 里开启的为准）。
+// refKindsOfOp 返回生成方式允许引用的素材种类：文生不引用素材；图生只引用图片；全能参考不限类型（以 refs 里开启的为准）；
+// 没有生成方式（op 为空：文本、音频模型）只可能引用图片，文本模型的图片参考开关校验时不允许打开，所以实际只有音频模型用得上。
 func refKindsOfOp(op string) []string {
 	switch op {
+	case "":
+		return []string{"image"}
 	case OpI2V, OpI2I:
 		return []string{"image"}
 	case OpOmni:

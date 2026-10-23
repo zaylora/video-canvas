@@ -273,6 +273,14 @@ func TestParseModel_能力规则(t *testing.T) {
 			mcCaps(m)["ops"] = []any{"t2i", "i2i"}
 			mcDig(m, "capabilities.refs.video")["on"] = true
 		}, "capabilities.refs.video.on", "不接收"},
+		{"音频模型不能开参考音频", func(m map[string]any) {
+			m["kind"] = "audio"
+			m["capabilities"] = map[string]any{
+				"prompt": map[string]any{"max_length": 4096},
+				"refs":   map[string]any{"audio": map[string]any{"on": true, "max": 1, "max_mb": 10}},
+			}
+			m["pricing"] = map[string]any{"billing": "per_call", "unit": 2}
+		}, "capabilities.refs.audio.on", "不接收"},
 		// —— 提示词 ——
 		{"提示词上限为 0", func(m map[string]any) { mcDig(m, "capabilities.prompt")["max_length"] = 0 }, "capabilities.prompt.max_length", "1 –"},
 		{"提示词上限过大", func(m map[string]any) { mcDig(m, "capabilities.prompt")["max_length"] = 1000001 }, "capabilities.prompt.max_length", "1000000"},
@@ -486,6 +494,14 @@ func TestParseModel_合法变体(t *testing.T) {
 		{"kind=audio", func(m map[string]any) {
 			m["kind"] = "audio"
 			m["capabilities"] = map[string]any{"prompt": map[string]any{"max_length": 4096}}
+			m["pricing"] = map[string]any{"billing": "per_call", "unit": 2}
+		}},
+		{"kind=audio 开图片参考（文本 + 图片生成音频）", func(m map[string]any) {
+			m["kind"] = "audio"
+			m["capabilities"] = map[string]any{
+				"prompt": map[string]any{"max_length": 4096},
+				"refs":   map[string]any{"image": map[string]any{"on": true, "max": 1, "max_mb": 10}},
+			}
 			m["pricing"] = map[string]any{"billing": "per_call", "unit": 2}
 		}},
 		{"key 含点、下划线、大写", func(m map[string]any) { m["key"] = "Kling_v2.master-1" }},

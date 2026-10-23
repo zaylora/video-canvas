@@ -86,12 +86,16 @@ export function refPanelOp(
   return isAutoOp(caps) ? "i2i" : op;
 }
 
-/** 当前生成方式下，节点能接收的素材种类（已过 refs 开关） */
+/**
+ * 当前生成方式下，节点能接收的素材种类（已过 refs 开关）。
+ * 没有生成方式的模型（音频）只能引用图片：后端不允许文本模型开图片参考，所以文本模型这里恒为空。
+ */
 export function refKindsOf(
   caps: Capabilities | undefined,
   op: GenerationOp | undefined,
 ): RefKind[] {
-  if (!caps || !op) return [];
+  if (!caps) return [];
+  if (!op) return caps.refs?.image?.on ? ["image"] : [];
   return REF_KINDS_OF_OP[op].filter((kind) => caps.refs?.[kind]?.on);
 }
 

@@ -79,6 +79,18 @@ describe("生成方式与输入口", () => {
     expect(refKindsOf(video(), "omni")).toEqual(["image", "audio"]); // 视频素材关闭
   });
 
+  test("refKindsOf：音频模型没有生成方式，开了图片参考就能引用图片（文本 + 图片生成音频）", () => {
+    const audio = (): Capabilities => ({
+      prompt: { max_length: 100 },
+      refs: { image: { on: true, max: 1, max_mb: 10 }, audio: { on: false, max: 0, max_mb: 0 } },
+    });
+    expect(refKindsOf(audio(), undefined)).toEqual(["image"]);
+    expect(inputPorts(audio(), undefined).map((p) => p.id)).toEqual(["prompt", "images"]);
+    // 没开图片参考、或者是文本模型：没有素材口
+    expect(refKindsOf(defaultCapabilities("audio"), undefined)).toEqual([]);
+    expect(refKindsOf(defaultCapabilities("text"), undefined)).toEqual([]);
+  });
+
   test("inputPorts：提示词口 + 当前方式能接收的素材口", () => {
     expect(inputPorts(video(), "t2v").map((p) => p.id)).toEqual(["prompt"]);
     expect(inputPorts(video(), "omni").map((p) => p.id)).toEqual(["prompt", "images", "audios"]);
