@@ -69,7 +69,7 @@ import {
 import { AnimatePresence } from "motion/react";
 import { useAgentCanvasSync } from "@/hooks/use-agent-canvas-sync";
 import { useAgentController, useAgentModels } from "@/hooks/use-agent-controller";
-import type { RefNode } from "@/utils/agent/selection-refs";
+import { isReferableKind, type RefNode } from "@/utils/agent/selection-refs";
 import { useCanvasPersistence } from "@/hooks/use-canvas-persistence";
 import {
   createViewportWriter,
@@ -362,9 +362,17 @@ export const Flow = memo(function Flow({
   const agentCtl = useAgentController({
     canvasId: canvas.id,
     models: agentModels ?? [],
-    getSelection: () => nodesRef.current.filter((node) => node.selected).map((node) => node.id),
     getViewport,
   });
+  // 画布选中的节点 id（含组）。nodes 拖动时每帧都是新数组，这里拼成字符串再拆，选中没变时引用不变
+  const agentSelectionKey = nodes
+    .filter((node) => node.selected)
+    .map((node) => node.id)
+    .join("\n");
+  const agentSelection = useMemo(
+    () => (agentSelectionKey ? agentSelectionKey.split("\n") : []),
+    [agentSelectionKey],
+  );
   const toggleAgent = useCallback(() => setAgentOpen((open) => !open), []);
   /** 输入框里 @ 能引用的节点（组不算） */
   const agentNodeOptions = useMemo(
@@ -373,22 +381,18 @@ export const Flow = memo(function Flow({
         .filter((node): node is CanvasNode => node.type === "canvas")
         .flatMap((node) => {
           const { kind } = node.data;
-          // 导演台、角色卡节点 Agent 读不懂也改不了，不进 @ 候选
-          return kind === "director" || kind === "character"
-            ? []
-            : [{ id: node.id, label: node.data.label, kind }];
+          // 导演台 Agent 读不懂，不进 @ 候选；角色卡可以
+          return isReferableKind(kind) ? [{ id: node.id, label: node.data.label, kind }] : [];
         }),
     [nodes],
   );
-  /** 消息里「引用了哪些节点」解析标题用：组也要能解析（输入框里 @ 的候选不含组） */
+  /** 选中节点的浅色占位解析标题用：组也要能解析（输入框里 @ 的候选不含组） */
   const agentRefOptions = useMemo(
     () =>
       nodes.flatMap((node): RefNode[] => {
         if (node.type === "group") return [{ id: node.id, label: node.data.label, kind: "group" }];
         const { kind } = node.data;
-        return kind === "director" || kind === "character"
-          ? []
-          : [{ id: node.id, label: node.data.label, kind }];
+        return isReferableKind(kind) ? [{ id: node.id, label: node.data.label, kind }] : [];
       }),
     [nodes],
   );
@@ -1073,7 +1077,7 @@ export const Flow = memo(function Flow({
                           key="agent-panel"
                           ctl={agentCtl}
                           models={agentModels}
-                          selectionCount={nodes.filter((node) => node.selected).length}
+                          selection={agentSelection}
                           nodes={agentNodeOptions}
                           refNodes={agentRefOptions}
                           onAttachImages={attachImagesForAgent}

@@ -1,6 +1,28 @@
 import { describe, expect, test } from "bun:test";
 
-import { type RefNode, resolveSelection, splitSelection } from "@/utils/agent/selection-refs";
+import {
+  type RefNode,
+  isReferableKind,
+  resolveSelection,
+  splitSelection,
+} from "@/utils/agent/selection-refs";
+
+describe("哪些节点能被引用", () => {
+  test("文本、图片、视频、音频和角色卡都能引用", () => {
+    for (const kind of ["script", "image", "video", "audio", "character"] as const) {
+      expect(isReferableKind(kind)).toBe(true);
+    }
+  });
+
+  test("导演台 Agent 读不懂，不能引用", () => {
+    expect(isReferableKind("director")).toBe(false);
+  });
+
+  test("没有标题的角色卡用「角色卡节点」兜底", () => {
+    const refs = resolveSelection(["k"], [{ id: "k", label: " ", kind: "character" }]);
+    expect(refs[0]).toMatchObject({ label: "角色卡节点", kind: "character", missing: false });
+  });
+});
 
 const nodes: RefNode[] = [
   { id: "a", label: "图片 7", kind: "image" },

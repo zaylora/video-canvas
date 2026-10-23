@@ -1,12 +1,14 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   Box,
   Clapperboard,
   FileText,
+  Group,
   Image as ImageIcon,
   Music,
   Paperclip,
   Lightbulb,
+  UserRound,
 } from "lucide-react";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
@@ -15,7 +17,8 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import { Extension } from "@tiptap/core";
 import { UndoRedo } from "@tiptap/extensions";
-import { PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
   EditorContent,
   NodeViewWrapper,
@@ -25,10 +28,13 @@ import {
 } from "@tiptap/react";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 
+import type { NodeKind } from "@/constants/canvas/node-library";
 import { cn } from "@/lib/utils";
 import type { Chip, ChipType } from "@/utils/agent/chips";
 import { chipNode, docToMessage, messageToDoc, type DocNode } from "@/utils/agent/editor-doc";
 import type { AgentSkillDto } from "@/api/agent/type.d";
+import { ghostContent, pendingRefs } from "@/utils/agent/selection-ghost";
+import type { RefNode, SelectionRef } from "@/utils/agent/selection-refs";
 import { filterSkills, skillMenuNotice } from "@/utils/agent/skills";
 
 import { SuggestionMenu } from "./suggestion-menu";
@@ -40,8 +46,8 @@ export type NodeOption = {
   id: string;
   /** 标题 */
   label: string;
-  /** 节点种类 */
-  kind: "script" | "image" | "video" | "audio";
+  /** 节点种类（导演台 Agent 读不懂，不在这里） */
+  kind: Exclude<NodeKind, "director">;
 };
 
 /** 编辑器对外的操作 */
@@ -70,20 +76,32 @@ const KIND_ICON = {
   image: ImageIcon,
   video: Clapperboard,
   audio: Music,
+  character: UserRound,
 } as const;
 
 /** 行内 chip：不可编辑的原子节点，退格整个删除 */
 function ChipView({ node }: NodeViewProps) {
   const type = (node.attrs.ctype as ChipType) ?? "node";
   const Icon =
-    type === "model" ? Box : type === "skill" ? Lightbulb : type === "asset" ? Paperclip : FileText;
+    type === "model"
+      ? Box
+      : type === "skill"
+        ? Lightbulb
+        : type === "asset"
+          ? Paperclip
+          : node.attrs.nodeKind === "group"
+            ? Group
+            : node.attrs.nodeKind === "character"
+              ? UserRound
+              : FileText;
   return (
     <NodeViewWrapper as="span" className="inline-block align-baseline">
       <span
         contentEditable={false}
         className={cn(
           "ring-chrome-border mx-0.5 inline-flex h-6 max-w-44 items-center gap-1 rounded-md px-1.5 align-middle text-xs ring-1",
-          "animate-in fade-in-0 zoom-in-90 duration-120",
+          // 从浅色占位变深的 chip 原地换上，不播入场动画，免得「变深」看着像又冒出一个
+          !node.attrs.quiet && "animate-in fade-in-0 zoom-in-90 duration-120",
           CHIP_TONE[type],
         )}
       >
@@ -92,6 +110,115 @@ function ChipView({ node }: NodeViewProps) {
       </span>
     </NodeViewWrapper>
   );
+}
+
+/** 浅色占位的图标（lucide 的 file-text / group / user-round 的路径）：占位是装饰层的原生 DOM，不能用 React 图标组件 */
+const GHOST_ICON = {
+  node: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  group:
+    '<path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/><rect width="7" height="5" x="7" y="7" rx="1"/><rect width="7" height="5" x="10" y="12" rx="1"/>',
+  character: '<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+} as const;
+
+/** 浅色占位：和深色 chip 同尺寸，虚线边、字色变淡；不可聚焦、不响应点击 */
+function ghostDom(ref: SelectionRef) {
+  const el = document.createElement("span");
+  el.contentEditable = "false";
+  el.className =
+    "border-foreground/25 text-foreground/45 mx-0.5 inline-flex h-6 max-w-44 items-center gap-1 rounded-md border border-dashed px-1.5 align-middle text-xs select-none animate-in fade-in-0 zoom-in-95 duration-120 motion-reduce:animate-none";
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("class", "size-3 shrink-0 opacity-50");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.innerHTML = GHOST_ICON[ref.kind === "group" || ref.kind === "character" ? ref.kind : "node"];
+  const label = document.createElement("span");
+  label.className = "truncate";
+  label.textContent = ref.label;
+  el.append(icon, label);
+  return el;
+}
+
+/** 占位插件的状态：占位画在哪（文档位置，null 表示末尾）、画哪些 */
+type GhostState = { pos: number | null; refs: SelectionRef[] };
+
+const ghostKey = new PluginKey<GhostState>("selectionGhost");
+
+/** 占位的落点：记住的光标位置，没有（输入框没聚焦过）就在末尾；夹在文档范围内 */
+function ghostPos(state: EditorState, pos: number | null) {
+  const end = state.doc.content.size - 1;
+  return Math.max(1, Math.min(pos ?? end, end));
+}
+
+/**
+ * 画布选中节点时在输入框光标处出现的浅色占位（widget decoration，不进文档：不影响消息文本、撤销栈和输入法组字）。
+ * 失焦时记下光标位置，文档变化时位置跟着映射；占位内容由外面通过 meta 推进来。
+ */
+const SelectionGhost = Extension.create({
+  name: "selectionGhost",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<GhostState>({
+        key: ghostKey,
+        state: {
+          init: () => ({ pos: null, refs: [] }),
+          apply: (tr, prev) => {
+            const meta = tr.getMeta(ghostKey) as Partial<GhostState> | undefined;
+            const pos =
+              meta && "pos" in meta
+                ? (meta.pos ?? null)
+                : prev.pos === null
+                  ? null
+                  : tr.mapping.map(prev.pos);
+            return { pos, refs: meta?.refs ?? prev.refs };
+          },
+        },
+        props: {
+          decorations: (state) => {
+            const { pos, refs } = ghostKey.getState(state) ?? { pos: null, refs: [] };
+            if (refs.length === 0) return null;
+            const at = ghostPos(state, pos);
+            return DecorationSet.create(
+              state.doc,
+              refs.map((ref, i) =>
+                Decoration.widget(at, () => ghostDom(ref), {
+                  key: `ghost:${ref.id}:${ref.label}`,
+                  // 同一个位置上按顺序排，都在光标后面
+                  side: i + 1,
+                  ignoreSelection: true,
+                  stopEvent: () => true,
+                }),
+              ),
+            );
+          },
+          handleDOMEvents: {
+            blur: (view) => {
+              view.dispatch(
+                view.state.tr
+                  .setMeta(ghostKey, { pos: view.state.selection.from })
+                  .setMeta("addToHistory", false),
+              );
+              return false;
+            },
+          },
+        },
+      }),
+    ];
+  },
+});
+
+/** 文档里已经有的节点 chip 的 id（浅色占位要避开它们，不重复引用） */
+function committedNodeIds(state: EditorState) {
+  const ids: string[] = [];
+  state.doc.descendants((node) => {
+    if (node.type.name === "mention" && (node.attrs.ctype ?? "node") === "node") {
+      ids.push(String(node.attrs.id));
+    }
+  });
+  return ids;
 }
 
 /** @ 菜单的状态：关键词、光标位置、选中后写入文档的回调 */
@@ -167,13 +294,19 @@ function handleMenuKey(
 export function AgentEditor({
   handleRef,
   nodes,
+  selection,
+  refNodes,
   placeholder,
   onChange,
   onSubmit,
 }: {
   handleRef: Ref<AgentEditorHandle>;
-  /** 画布上能引用的节点 */
+  /** 画布上能 @ 引用的节点 */
   nodes: NodeOption[];
+  /** 画布上选中的节点 id（含组）：在光标处显示浅色占位，输入框激活后变成真正的引用 */
+  selection: readonly string[];
+  /** 解析选中节点标题用的列表（含组） */
+  refNodes: readonly RefNode[];
   placeholder: string;
   /** 内容变了：消息文本 */
   onChange: (text: string) => void;
@@ -186,6 +319,15 @@ export function AgentEditor({
   const [skillActive, setSkillActive] = useState(0);
   const catalog = useSkillCatalog(skillMenu !== null);
   const [empty, setEmpty] = useState(true);
+  // 文档里已有的节点 chip（换行拼成字符串，没变化时 setState 不触发重渲染）
+  const [committedKey, setCommittedKey] = useState("");
+  // 浅色占位 = 画布选中、且文档里还没有的节点
+  const pending = useMemo(
+    () => pendingRefs(selection, refNodes, committedKey ? committedKey.split("\n") : []),
+    [selection, refNodes, committedKey],
+  );
+  const pendingKey = pending.map((r) => `${r.id}\u0001${r.kind}\u0001${r.label}`).join("\n");
+  const pendingRef = useRef(pending);
   // 键盘处理挂在编辑器创建时，要读最新值，所以放进 ref
   const live = useRef({
     menu,
@@ -214,6 +356,7 @@ export function AgentEditor({
       Text,
       HardBreak,
       UndoRedo,
+      SelectionGhost,
       skillSuggestion((state) => {
         setSkillMenu(state);
         if (state) setSkillActive(0);
@@ -223,6 +366,10 @@ export function AgentEditor({
           id: { default: "" },
           label: { default: "" },
           ctype: { default: "node" },
+          /** 从浅色占位变深的 chip：原地换上，不播入场动画。不进 DOM 属性，也不影响消息文本 */
+          quiet: { default: false, rendered: false },
+          /** 引用的是组或角色卡（"group" / "character"）：图标跟着换，其余节点用默认图标 */
+          nodeKind: { default: null, rendered: false },
         }),
         addNodeView: () => ReactNodeViewRenderer(ChipView, { as: "span" }),
       }).configure({
@@ -286,7 +433,38 @@ export function AgentEditor({
       setEmpty(e.isEmpty);
       onChange(docToMessage(e.getJSON() as DocNode));
     },
+    onTransaction: ({ editor: e }) => setCommittedKey(committedNodeIds(e.state).join("\n")),
+    // 输入框激活：浅色占位原地变深，成为真正的引用，光标落在它们后面。
+    // 点击会在 focus 之后再落光标，所以等一帧再写，免得被点击的光标位置盖掉
+    onFocus: ({ editor: e }) => {
+      requestAnimationFrame(() => {
+        if (e.isDestroyed || !e.isFocused) return;
+        const ghost = ghostKey.getState(e.state);
+        const content = ghostContent(pendingRef.current).map((n) =>
+          n.type === "mention" ? { ...n, attrs: { ...n.attrs, quiet: true } } : n,
+        );
+        if (!ghost || content.length === 0) return;
+        e.chain()
+          .command(({ tr }) => {
+            tr.setMeta(ghostKey, { refs: [] });
+            return true;
+          })
+          .insertContentAt(ghostPos(e.state, ghost.pos), content)
+          .run();
+      });
+    },
   });
+
+  // 占位内容跟着画布选中走：推给装饰层，不进撤销栈
+  useEffect(() => {
+    pendingRef.current = pending;
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(ghostKey, { refs: pending }).setMeta("addToHistory", false),
+    );
+    // pending 每次渲染都是新数组，用内容拼的 key 判断有没有真的变
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, pendingKey]);
 
   useImperativeHandle(
     handleRef,
@@ -316,7 +494,7 @@ export function AgentEditor({
 
   return (
     <div className="relative">
-      {empty && (
+      {empty && pending.length === 0 && (
         <span className="text-muted-foreground/70 pointer-events-none absolute top-0 left-1 text-[13.5px] leading-[1.75]">
           {placeholder}
         </span>
