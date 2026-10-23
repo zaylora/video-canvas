@@ -81,6 +81,7 @@ const (
 	MutationDelete   = "delete"    // 批准后的删除
 	MutationBind     = "bind"      // 批准生成后，把任务绑定到节点
 	MutationUndo     = "undo"      // 撤销本轮
+	MutationFrames   = "frames"    // 从视频里截帧，建成图片节点
 )
 
 // AgentSession 是画布上的一个 Agent 对话。会话不写进 payload_json，避免拖大画布保存。

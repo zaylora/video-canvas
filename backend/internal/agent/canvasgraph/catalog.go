@@ -154,6 +154,7 @@ type DetailNode struct {
 	Parent   string         `json:"parent,omitempty"` // 所属组 id
 	Position Point          `json:"position"`         // 位置，成员是相对组的
 	Data     map[string]any `json:"data"`             // 节点数据（已去掉媒体地址）
+	Mode     *ModeInfo      `json:"mode,omitempty"`   // 生成方式：图片、视频节点选了已知模型才有，见 AnnotateModes
 	Size     *Point         `json:"size,omitempty"`   // 组框尺寸
 }
 

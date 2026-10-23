@@ -55,19 +55,21 @@ type ModelStreamer interface {
 
 // BridgeDeps 是创建 AgentBridge 需要的依赖。
 type BridgeDeps struct {
-	Repo     AgentRepo               // 运行、会话的数据访问
-	Canvas   *AgentCanvasService     // 读写画布
-	Agent    *AgentService           // 审批、事件
-	Billing  *AgentBilling           // 对话计费
-	Registry provider.Registry       // 模型注册表
-	Tasks    AgentGenTasks           // 生成任务（task_get 查进度）
-	Assets   provider.AssetStore     // 素材（看图）
-	Secrets  provider.SecretResolver // 渠道 Key
-	Streamer ModelStreamer           // 大模型网关
-	Skills   SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
-	Web      provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
-	Now      func() time.Time        // 为 nil 取系统时间
-	TokenTTL time.Duration           // 令牌有效期，0 取 2 小时
+	Repo       AgentRepo               // 运行、会话的数据访问
+	Canvas     *AgentCanvasService     // 读写画布
+	Agent      *AgentService           // 审批、事件
+	Billing    *AgentBilling           // 对话计费
+	Registry   provider.Registry       // 模型注册表
+	Tasks      AgentGenTasks           // 生成任务（task_get 查进度）
+	Assets     provider.AssetStore     // 素材（看图、看视频）
+	Frames     VideoFrames             // 抽帧（看视频、截帧）；为 nil 表示没有视频处理能力，两个视频工具返回「不能处理视频」
+	FrameStore FrameStore              // 把截出的帧存成用户素材；为 nil 时截帧返回「不能处理视频」
+	Secrets    provider.SecretResolver // 渠道 Key
+	Streamer   ModelStreamer           // 大模型网关
+	Skills     SkillLibrary            // 技能库（内置 + 后台已启用）；为 nil 时只有内置技能
+	Web        provider.WebAccess      // 联网（搜索、抓网页）；为 nil 表示没有联网能力，联网工具返回「未启用」
+	Now        func() time.Time        // 为 nil 取系统时间
+	TokenTTL   time.Duration           // 令牌有效期，0 取 2 小时
 }
 
 // bridgeSession 是一个令牌对应的运行片段：Node 进程用它调用桥。
@@ -99,6 +101,10 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	}
 	if d.TokenTTL <= 0 {
 		d.TokenTTL = 2 * time.Hour
+	}
+	// 画布服务要按模型支持的生成方式校验 mode、展示节点当前的方式：来源是模型注册表
+	if d.Canvas != nil && d.Registry != nil {
+		d.Canvas.SetModelOps(registryModelOps(d.Registry))
 	}
 	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, calls: map[uint64]int{}}
 }

@@ -107,7 +107,7 @@ func TestToolRegistry_FilterByModeAndVision(t *testing.T) {
 }
 
 func TestToolRegistry_Scriptable(t *testing.T) {
-	notScriptable := map[string]bool{"canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true}
+	notScriptable := map[string]bool{"canvas_delete": true, "ask_user": true, "generate_media": true, "canvas_inspect_image": true, "canvas_inspect_video": true, "canvas_capture_frame": true}
 	for _, d := range AgentToolDecls("all", true) {
 		if d.Scriptable == notScriptable[d.Name] {
 			t.Errorf("%s 的 scriptable=%v：会创建审批或返回图片的工具不能给脚本调用，其余都可以", d.Name, d.Scriptable)
@@ -123,6 +123,7 @@ func TestToolRegistry_LabelsMatchFrontend(t *testing.T) {
 		"ask_user": {"向你提问", "提问"}, "model_list": {"查看可用模型", "查模型"}, "generate_media": {"申请生成", "生成"},
 		"task_get": {"查询任务", "查任务"}, "skill_search": {"搜索技能", "技能"}, "skill_read": {"读取技能", "技能"},
 		"web_search": {"搜索网页", "搜索"}, "web_fetch": {"读取网页", "读网页"},
+		"canvas_inspect_video": {"查看视频", "看视频"}, "canvas_capture_frame": {"截取视频帧", "截帧"},
 	}
 	for _, d := range AgentToolDecls("all", true) {
 		w, ok := want[d.Name]

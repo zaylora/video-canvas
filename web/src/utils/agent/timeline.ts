@@ -126,7 +126,7 @@ const NOTABLE_STATUSES: readonly AgentRunStatus[] = [
 ];
 
 /** 会改画布内容、「撤销本轮」能倒回去的工具（生成不在其中：已提交的任务撤销不了） */
-const WRITE_TOOLS = ["canvas_apply_ops", "canvas_arrange", "canvas_delete"];
+const WRITE_TOOLS = ["canvas_apply_ops", "canvas_arrange", "canvas_delete", "canvas_capture_frame"];
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const strs = (v: unknown) =>

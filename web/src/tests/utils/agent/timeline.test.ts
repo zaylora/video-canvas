@@ -307,6 +307,47 @@ describe("本轮改动摘要", () => {
     expect(items[2]).toMatchObject({ runId: "r1", created: ["n1"], updated: [], deleted: [] });
   });
 
+  test("只截了视频帧的一轮：新建的帧图节点算新建，也有摘要和「撤销本轮」", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }, "r1"),
+        ev("tool.start", { id: "f", name: "canvas_capture_frame" }, "r1"),
+        ev(
+          "tool.end",
+          {
+            id: "f",
+            name: "canvas_capture_frame",
+            is_error: false,
+            summary: "截取 2 帧",
+            node_ids: ["f1", "f2"],
+            created: ["f1", "f2"],
+          },
+          "r1",
+        ),
+        ev("run.status", { status: "succeeded" }, "r1"),
+      ]),
+    );
+    expect(items.find((i) => i.type === "run-summary")).toMatchObject({
+      runId: "r1",
+      created: ["f1", "f2"],
+      updated: [],
+      deleted: [],
+    });
+  });
+
+  test("看视频是只读的：不产生摘要", () => {
+    reset();
+    const items = buildTimeline(
+      fold([
+        ev("run.status", { status: "running" }, "r1"),
+        ev("tool.end", { id: "v", name: "canvas_inspect_video", is_error: false }, "r1"),
+        ev("run.status", { status: "succeeded" }, "r1"),
+      ]),
+    );
+    expect(items.some((i) => i.type === "run-summary")).toBe(false);
+  });
+
   test("新建、修改按节点去重；同一轮里新建后又改的只算新建；批准执行的删除算删除", () => {
     reset();
     const items = buildTimeline(

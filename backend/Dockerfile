@@ -30,7 +30,8 @@ FROM alpine:3.22
 
 WORKDIR /app
 # node 二进制取自官方镜像（alpine 仓库里的版本可能低于 pi 要求的 22.19）；它动态链接 libstdc++
-RUN apk add --no-cache libstdc++ && addgroup -S app && adduser -S -G app app
+# 画布 Agent 看视频、截帧需要 ffmpeg / ffprobe。
+RUN apk add --no-cache libstdc++ ffmpeg && addgroup -S app && adduser -S -G app app
 COPY --from=node:22-alpine /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /out/server /app/server
 COPY agent/src /app/agent/src

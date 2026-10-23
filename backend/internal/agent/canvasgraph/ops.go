@@ -61,6 +61,7 @@ type Op struct {
 	Prompt        *string        `json:"prompt,omitempty"`        // 提示词
 	Model         *string        `json:"model,omitempty"`         // 模型 key
 	Params        map[string]any `json:"params,omitempty"`        // 生成参数，浅合并
+	Mode          *string        `json:"mode,omitempty"`          // 生成方式（视频 t2v / i2v / omni，图片 t2i / i2i），要先有模型；写入 params.op
 	ParentGroup   string         `json:"parentGroup,omitempty"`   // create_node：所属组
 	Position      *Point         `json:"position,omitempty"`      // 位置，成员是相对组的
 	Color         *string        `json:"color,omitempty"`         // 组背景色，空串清除

@@ -70,25 +70,9 @@ func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[s
 	return input
 }
 
-// pickOp 选生成方式：同时支持文生图和图生图的模型由有没有参考图决定；其它取节点上选的（仍被支持时），
-// 没选时有参考图且模型支持图生视频就走图生，最后取模型支持的第一种。模型没有生成方式（文本、音频）返回空。
+// pickOp 选生成方式，规则见 canvasgraph.PickOp：创建节点后给模型的提醒和这里用的是同一条规则。
 func pickOp(ops []string, chosen any, hasImage bool) string {
-	switch {
-	case len(ops) == 0:
-		return ""
-	case slices.Contains(ops, "t2i") && slices.Contains(ops, "i2i"):
-		if hasImage {
-			return "i2i"
-		}
-		return "t2i"
-	}
-	if c, ok := chosen.(string); ok && slices.Contains(ops, c) {
-		return c
-	}
-	if hasImage && slices.Contains(ops, "i2v") {
-		return "i2v"
-	}
-	return ops[0]
+	return canvasgraph.PickOp(ops, chosen, hasImage)
 }
 
 // toolGenerate 申请生成：逐个节点预检（有没有产物、选了模型、参数合不合法），算价后创建审批并让本轮停下。

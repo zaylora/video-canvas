@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent 看视频与截帧续镜 演示</title>
+    <!-- 模板用法见 html-demo-guide.md：复制本文件，替换【】里的内容，删掉用不到的标签页 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <style>
+      /* 颜色全走变量，明暗主题只换变量。仓库已有演示或前端令牌时，改用同一套。 */
+      :root {
+        --radius: 0.625rem;
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --border: 240 5.9% 90%;
+        --ok: 5 150 105;
+        --bad: 220 38 38;
+        --warn: 180 83 9;
+        --info: 2 132 199;
+        --violet: 124 58 237;
+        color-scheme: light;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 5.5%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --accent: 240 3.7% 15.9%;
+        --border: 240 3.7% 17%;
+        --ok: 52 211 153;
+        --bad: 248 113 113;
+        --warn: 251 191 36;
+        --info: 56 189 248;
+        --violet: 167 139 250;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: Geist, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+      }
+      code, .mono { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
+      code { font-size: 0.92em; background: hsl(var(--muted)); padding: 1px 5px; border-radius: 5px; }
+      [data-lucide] { width: 1em; height: 1em; flex: none; }
+      h1, h2, h3, h4, p { margin: 0; }
+      button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      th { font-weight: 500; text-align: left; }
+      [hidden] { display: none !important; }
+      .muted { color: hsl(var(--muted-foreground)); }
+      .row { display: flex; align-items: center; gap: 8px; }
+      .wrapflex { flex-wrap: wrap; }
+      .spacer { margin-left: auto; }
+
+      /* ---- 顶栏与标签页 ---- */
+      .top {
+        position: sticky; top: 0; z-index: 30;
+        background: hsl(var(--background) / 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid hsl(var(--border));
+      }
+      .top-in { max-width: 1160px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 16px; height: 56px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+      .logo { width: 28px; height: 28px; border-radius: 8px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; }
+      .tabs { display: flex; gap: 2px; margin-left: 8px; overflow-x: auto; }
+      .tab {
+        height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+        color: hsl(var(--muted-foreground)); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .tab:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+      .tab[aria-selected="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn { height: 32px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+      .btn:hover { background: hsl(var(--accent)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(var(--primary) / 0.9); }
+      .btn-outline { border: 1px solid hsl(var(--border)); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .switch { width: 34px; height: 20px; border-radius: 999px; background: hsl(var(--border)); position: relative; transition: background 0.15s; }
+      .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .switch[aria-checked="true"] { background: rgb(var(--violet)); }
+      .switch[aria-checked="true"]::after { transform: translateX(14px); }
+
+      /* ---- 页面内容 ---- */
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 20px 80px; }
+      .h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+      .lead { margin-top: 10px; max-width: 820px; font-size: 15px; color: hsl(var(--muted-foreground)); }
+      .lead b { color: hsl(var(--foreground)); }
+      .sec { margin-top: 36px; }
+      .sec > h2 { font-size: 18px; font-weight: 600; }
+      .sec > .sub { margin: 4px 0 14px; max-width: 820px; font-size: 13.5px; color: hsl(var(--muted-foreground)); }
+      .card { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: var(--radius); padding: 16px; }
+      .grid { display: grid; gap: 12px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } .top-in { padding: 0 12px; } .wrap { padding: 24px 16px 64px; } }
+      ul.list { margin: 0; padding-left: 18px; font-size: 13.5px; }
+
+      /* ---- 标签：核实度、状态 ---- */
+      .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+      .t-ok { background: rgb(var(--ok) / 0.12); color: rgb(var(--ok)); }
+      .t-bad { background: rgb(var(--bad) / 0.12); color: rgb(var(--bad)); }
+      .t-warn { background: rgb(var(--warn) / 0.12); color: rgb(var(--warn)); }
+      .t-info { background: rgb(var(--info) / 0.12); color: rgb(var(--info)); }
+      .t-mute { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
+
+      /* ---- 提示框 ---- */
+      .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--radius); font-size: 13.5px; border: 1px solid; }
+      .callout > i { margin-top: 3px; }
+      .c-info { background: rgb(var(--info) / 0.07); border-color: rgb(var(--info) / 0.3); }
+      .c-info > i { color: rgb(var(--info)); }
+      .c-warn { background: rgb(var(--warn) / 0.07); border-color: rgb(var(--warn) / 0.3); }
+      .c-warn > i { color: rgb(var(--warn)); }
+      .c-bad { background: rgb(var(--bad) / 0.07); border-color: rgb(var(--bad) / 0.3); }
+      .c-bad > i { color: rgb(var(--bad)); }
+      .c-ok { background: rgb(var(--ok) / 0.07); border-color: rgb(var(--ok) / 0.3); }
+      .c-ok > i { color: rgb(var(--ok)); }
+
+      /* ---- 主线流程图 ---- */
+      .flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; padding: 14px; border-radius: var(--radius); }
+      .flow .node { flex: 1 1 140px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+      .flow .node b { display: block; font-size: 13px; margin-bottom: 2px; }
+      .flow .node.hl { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary)); }
+      .flow .arrow { display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+
+      /* ---- 对比表 ---- */
+      .cmp-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); }
+      .cmp th, .cmp td { padding: 9px 12px; font-size: 13px; vertical-align: top; border-bottom: 1px solid hsl(var(--border)); }
+      .cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+      .cmp thead th { background: hsl(var(--muted)); font-size: 12.5px; white-space: nowrap; }
+      .cmp tbody th { width: 120px; color: hsl(var(--muted-foreground)); font-weight: 500; }
+      .cmp .y { color: rgb(var(--ok)); }
+      .cmp .m { color: rgb(var(--warn)); }
+      .cmp .m b, .cmp .m { font-weight: 500; }
+
+      /* ---- 有序步骤 ---- */
+      .steps { list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      .steps li { counter-increment: s; position: relative; padding-left: 32px; font-size: 13.5px; }
+      .steps li::before {
+        content: counter(s); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+        background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+      }
+      .steps li small { display: block; color: hsl(var(--muted-foreground)); font-size: 12.5px; }
+
+      /* ---- 代码块（提案伪代码） ---- */
+      .codeblock { background: hsl(var(--muted)); border-radius: var(--radius); padding: 14px; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 12.5px; overflow-x: auto; }
+
+      /* ---- 假浏览器框（原型） ---- */
+      .frame { border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--background)); }
+      .frame-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: hsl(var(--muted)); font-size: 12px; color: hsl(var(--muted-foreground)); }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--border)); }
+      .proto { min-height: 360px; position: relative; }
+
+      /* ---- 设计标注层：顶栏开关控制显隐 ---- */
+      .note { outline: 1.5px dashed rgb(var(--violet)); outline-offset: 3px; position: relative; }
+      .note-txt { display: none; margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: rgb(var(--violet)); }
+      .show-notes .note-txt { display: block; }
+      body:not(.show-notes) .note { outline: none; }
+
+      /* ---- 轻提示 ---- */
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none; }
+      .toast > div { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
+    </style>
+  </head>
+
+  <body class="show-notes">
+<style>
+  .pf { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 420px; }
+  @media (max-width: 820px) { .pf { grid-template-columns: 1fr; } }
+  .pf-cv { padding: 16px; background: hsl(var(--muted) / 0.5); border-right: 1px solid hsl(var(--border)); position: relative; }
+  .pf-chat { padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .bub { padding: 8px 10px; border-radius: 10px; border: 1px solid hsl(var(--border)); max-width: 95%; }
+  .bub.u { align-self: flex-end; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
+  .bub.tool { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; background: hsl(var(--muted)); }
+  .nd { border: 1px solid hsl(var(--border)); background: hsl(var(--card)); border-radius: 10px; padding: 8px; width: 150px; font-size: 12px; }
+  .nd .th { height: 64px; border-radius: 6px; background: linear-gradient(135deg, hsl(var(--muted)), hsl(var(--border))); display: grid; place-items: center; margin-bottom: 6px; color: hsl(var(--muted-foreground)); }
+  .nd.new { border-color: rgb(var(--ok)); box-shadow: 0 0 0 1px rgb(var(--ok)); }
+  .nds { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .frames { display: flex; gap: 4px; flex-wrap: wrap; }
+  .fr { width: 44px; height: 30px; border-radius: 4px; background: hsl(var(--border)); font-size: 10px; display: grid; place-items: center; color: hsl(var(--muted-foreground)); }
+  .fr.pick { outline: 2px solid rgb(var(--ok)); }
+  .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid hsl(var(--border)); font-size: 13px; }
+  .ln { height: 2px; width: 28px; background: rgb(var(--ok)); margin-top: 38px; border-radius: 2px; }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><span class="logo"><i data-lucide="film"></i></span>Agent 看视频 演示</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="overview" aria-selected="true"><i data-lucide="map"></i>总览</button>
+      <button class="tab" role="tab" data-tab="proto" aria-selected="false"><i data-lucide="layout-dashboard"></i>续镜原型</button>
+      <button class="tab" role="tab" data-tab="impl" aria-selected="false"><i data-lucide="database"></i>数据与接口</button>
+    </div>
+    <div class="spacer row">
+      <label class="row muted" style="font-size: 12px">
+        设计标注
+        <button class="switch" id="notesSw" role="switch" aria-checked="true" onclick="toggleNotes()"></button>
+      </label>
+      <button class="btn" onclick="document.documentElement.classList.toggle('dark')" aria-label="切换明暗主题"><i data-lucide="sun-moon"></i></button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ============ 总览 ============ -->
+  <section id="tab-overview">
+    <h1 class="h1">让 Agent 看懂上一段视频，并把尾帧接给下一镜</h1>
+    <p class="lead">
+      生成模型不能拿视频当参考，所以连续镜头要靠「上一镜的画面」衔接。结论：<b>可行，而且不需要火山「长视频理解」</b>——给 Agent 新增两个后端工具，用 ffmpeg 抽帧：一个<b>抽几帧让模型看懂</b>，一个<b>把指定帧存成图片节点</b>。<b>截帧只是一个按需调用的工具，不是每次看视频后的固定动作</b>：要不要看、要不要截、截几张（一次最多 6 张）、哪些帧连给下一镜当参考，全由 LLM 自己决定，后端只管上限和合法性。第一版<b>只看 AI 生成的短片（约 5–15 秒）</b>，不做长视频。
+    </p>
+
+    <div class="callout c-info" style="margin-top: 16px">
+      <i data-lucide="info"></i>
+      <div>
+        <b>阅读说明。</b>第一期后端已按本设计实现（<b>未提交、未真机验证</b>，详见 Markdown §13）；原型是内存里的模拟，数字为示意。对应 Markdown 设计文档 <code>Agent看视频.md</code>。<br />
+        <span class="muted">核实度图例：</span>
+        <span class="tag t-ok">已核对官方页面 / 代码</span>
+        <span class="tag t-info">调研检索，未逐条复核</span>
+        <span class="tag t-warn">未验证 · 需实测</span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>主线：一次「续镜」怎么走</h2>
+      <p class="sub">用户一句话，Agent 完成「看 → 选 → 截 → 连 → 写提示词」，真正花积分的只有最后的生成，仍走原来的确认卡片。</p>
+      <div class="flow note">
+        <div class="node"><b>用户</b>「接着上一段继续，镜头往前推」</div>
+        <div class="arrow"><i data-lucide="arrow-right"></i></div>
+        <div class="node hl"><b>canvas_inspect_video</b>后端 ffmpeg 抽 6 帧，交给模型看（只读）</div>
+        <div class="arrow"><i data-lucide="arrow-right"></i></div>
+        <div class="node hl" style="border-style: dashed"><b>canvas_capture_frame（按需）</b>仅当 LLM 判断要留下画面（如当参考图）：选帧（≤6）→ 存素材 → 建节点 → 要作参考的才连线</div>
+        <div class="arrow"><i data-lucide="arrow-right"></i></div>
+        <div class="node"><b>写衔接提示词</b>canvas_apply_ops</div>
+        <div class="arrow"><i data-lucide="arrow-right"></i></div>
+        <div class="node"><b>generate_media</b>确认卡片 + 积分预估</div>
+      </div>
+      <div class="note-txt">设计：虚线框的截帧是<b>可选分支</b>。这条是典型路径，不是固定流程——只问「拍了什么」就只看不截，用户明说「截尾帧」也可以不看直接截。看和写分开：看视频只读、不落库；截帧免费、可撤销。复用现有看图链路，抽出的帧就是图片，不另接模型。放弃了：让用户每次手动点「截取帧」。</div>
+      <div class="callout c-warn" style="margin-top: 10px">
+        <i data-lucide="corner-down-right"></i>
+        <div><b>抽帧失败时（回退，永远可用）：</b>Agent 说明原因（超时、视频损坏、环境不支持），并引导用户改用现有的手动「截取帧」按钮；其他步骤不受影响。</div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>三条路线</h2>
+      <p class="sub">真正的分歧是「谁来看懂视频」和「截图从哪来」。</p>
+      <div class="grid g3">
+        <div class="card">
+          <div class="row"><i data-lucide="scissors"></i><b>A 后端 ffmpeg 抽帧</b></div>
+          <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-ok">推荐 · 已确认</span></div>
+          <p class="muted" style="font-size: 13px; margin-top: 8px"><b>抽出的帧交给 Agent 当前的看图模型。</b>既能看懂又能直接截图；代价是镜像要装 ffmpeg。</p>
+        </div>
+        <div class="card">
+          <div class="row"><i data-lucide="video"></i><b>B 方舟 video_url</b></div>
+          <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-info">未采用</span></div>
+          <p class="muted" style="font-size: 13px; margin-top: 8px"><b>让豆包模型直接看视频。</b>不产出截图，仍需另抽帧；且绑定豆包渠道。</p>
+        </div>
+        <div class="card">
+          <div class="row"><i data-lucide="cloud"></i><b>C 火山长视频理解</b></div>
+          <div class="row wrapflex" style="margin-top: 6px"><span class="tag t-warn">搁置</span></div>
+          <p class="muted" style="font-size: 13px; margin-top: 8px"><b>视频要先传进点播空间</b>，输出只有文字总结。为 10 秒短片太重，适合以后分析长片。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>对比</h2>
+      <p class="sub">用这个场景（短片 + 截图续镜）衡量。</p>
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead><tr><th></th><th>A 后端 ffmpeg</th><th>B 方舟 video_url</th><th>C 火山长视频理解</th></tr></thead>
+          <tbody>
+            <tr><th>能否产出截图</th><td class="y">能</td><td class="m">不能，仍需抽帧</td><td class="m">不能，仍需抽帧</td></tr>
+            <tr><th>额外账号/服务</th><td class="y">无，镜像加 ffmpeg</td><td class="y">无，依赖渠道支持</td><td class="m">点播空间 + 接入点 + ASR 应用</td></tr>
+            <tr><th>素材出站</th><td class="y">不新增（对象存储本就给模型 URL）</td><td class="m">视频交方舟</td><td class="m">视频上传到点播</td></tr>
+            <tr><th>速度</th><td class="y">秒级（示意）</td><td class="m">取决于预处理，Files API 预处理超时 5 分钟</td><td class="m">异步任务</td></tr>
+            <tr><th>输出</th><td>图片，由 Agent 自己理解</td><td>文字</td><td class="m">自由文本，无章节/时间戳字段</td></tr>
+            <tr><th>核实度</th><td><span class="tag t-warn">代码已核对；ffmpeg 行为未验证</span></td><td><span class="tag t-info">调研检索</span></td><td><span class="tag t-ok">已核对官方页面</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>当用户说「接着上一段继续」时，会发生什么</h2>
+      <p class="sub">Agent 自己完成衔接，用户只在最后一步确认花积分。</p>
+      <div class="grid g2">
+        <div class="card">
+          <ol class="steps" style="margin: 0; padding: 0">
+            <li><b>Agent 抽帧看视频</b><small>首帧、尾帧必含，中间均匀取点；没有看图能力的模型拿不到这个工具</small></li>
+            <li><b>Agent 判断结尾状态</b><small>人物位置、动作、光线、运镜方向</small></li>
+            <li><b>（仅在需要参考图时）Agent 才调用截帧工具，自己决定截几张、哪几帧</b><small>一次最多 6 张，免费，出现在视频节点右侧</small></li>
+            <li><b>Agent 决定哪些帧当参考</b><small>只有它写了连线目标的帧才连到下一镜，其余只留在画布上</small></li>
+            <li><b>写衔接提示词，申请生成</b><small>弹出原有确认卡片</small></li>
+          </ol>
+        </div>
+        <div class="card">
+          <div class="callout c-warn">
+            <i data-lucide="triangle-alert"></i>
+            <div>
+              <b>边界：只管 AI 生成的短片。</b>
+              <ul class="list" style="margin-top: 6px">
+                <li>用户上传的数分钟长片、需要听懂对白的场景<b>本期不做</b>（需要语音转写，才轮到火山方案）。</li>
+                <li>截帧没有确认卡片，靠撤销兜底。</li>
+                <li>后端镜像要装 ffmpeg，<b>打破了「后端不装 ffmpeg」的旧约定</b>。</li>
+              </ul>
+            </div>
+          </div>
+          <p class="muted" style="font-size: 12.5px; margin-top: 10px">交付前要告知：升级后需重新构建镜像；ffmpeg 许可证与镜像体积待确认。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 续镜原型 ============ -->
+  <section id="tab-proto" hidden>
+    <h1 class="h1">续镜原型</h1>
+    <p class="lead">
+      模拟对话与画布，数据在内存里，刷新复原。已预置一段「镜头 1」视频和空的「镜头 2」，点<b>「下一步」</b>走完整流程。想看失败：勾选<b>「模拟抽帧超时」</b>再走一遍。（耗时、帧数为示意，非真实调用）
+    </p>
+    <div class="frame" style="margin-top: 18px">
+      <div class="frame-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span style="margin-left: 8px">canvas.example.com / 我的画布 / 分镜</span>
+      </div>
+      <div class="pf note" id="pf"></div>
+      <div class="ctl">
+        <button class="btn btn-primary" id="pfNext">下一步</button>
+        <button class="btn btn-outline" id="pfReset">重置</button>
+        <label class="row"><input type="checkbox" id="pfFail" /> 模拟抽帧超时</label>
+        <label class="row"><input type="checkbox" id="pfVision" checked /> 当前模型支持看图</label>
+        <label class="row"><input type="checkbox" id="pfCap" checked /> LLM 判断需要截帧</label>
+        <label class="row">截 <select id="pfN"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select> 张</label>
+        <label class="row"><input type="checkbox" id="pfRef" checked /> LLM 决定作为参考（连线）</label>
+        <span class="muted" id="pfHint"></span>
+      </div>
+    </div>
+    <div class="note-txt">设计：左画布右对话，让用户看到「帧图节点如何长出来、连到哪里」。不能看图的模型只能截帧，不能看视频——禁用的是「看」，不是「截」。</div>
+  </section>
+
+  <!-- ============ 数据与接口（提案） ============ -->
+  <section id="tab-impl" hidden>
+    <h1 class="h1">数据与接口（提案）</h1>
+    <p class="lead">下面是已实现的设计（实现与出入见 Markdown §13；字段与数字以代码为准）。对应 Markdown 设计文档的 §6、§7、§8。<b>不新增数据表，不改 payload 与 revision 机制</b>，只新增两个 Agent 工具。</p>
+
+    <div class="sec">
+      <h2>关系</h2>
+      <p class="sub">帧图节点和视频、下一镜的关系，沿用截取帧的做法。</p>
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead><tr><th>对象</th><th>关系</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><th>帧图节点</th><td><code>uploaded: true</code> 的图片节点，普通连线 视频 → 帧图</td><td>上传型节点不出生成面板，这根线不会被它自己当参考（已核对：截取帧设计 §2）</td></tr>
+            <tr><th>下一镜视频节点</th><td>帧图 → 下一镜，普通连线</td><td>上游连线的素材自动作 <code>generate_media</code> 的参考</td></tr>
+            <tr><th>帧素材</th><td>用户素材，归属当前用户</td><td>走素材服务，沿用归属校验</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>工具契约</h2>
+      <p class="sub">两个工具在 <code>tool_decls.json</code> 声明，<code>tool_registry.go</code> 登记，<code>inspect_video</code> 带 <code>needsVision</code>。</p>
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead><tr><th>工具</th><th>参数</th><th>返回与错误</th></tr></thead>
+          <tbody>
+            <tr>
+              <th><code>canvas_inspect_video</code><br /><span class="tag t-mute">只读</span></th>
+              <td><code>nodeId</code> string 必填；<code>count</code> int 默认 6，范围 1–6，由 LLM 决定；<code>start</code>/<code>end</code> 秒，可选（接口保留，为长视频扩展）</td>
+              <td>文字（节点名、时长、各帧时间戳）+ JPEG 图片（长边 ≤1024，示意）。错误：不是视频节点 / 无产物 / 生成中 / 素材不存在 / 模型不能看图 / 抽帧超时或失败</td>
+            </tr>
+            <tr>
+              <th><code>canvas_capture_frame</code><br /><span class="tag t-ok">写画布 · 免费</span></th>
+              <td><code>nodeId</code> 必填；<code>frames</code>：<b>1–6 项</b>，每项 <code>at</code>（<code>"first"</code> | <code>"last"</code> | 秒数）+ 可选 <code>connectTo</code>（节点 id 数组，<b>写了才连线作参考</b>）</td>
+              <td>新图片节点 id、时间戳。错误：同上，另有超过 6 帧、<code>at</code> 超出时长、<code>connectTo</code> 节点不存在</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>核心流程伪代码</h2>
+      <div class="codeblock"><pre style="margin: 0; font: inherit; white-space: pre-wrap">// canvas_capture_frame（提案）
+if len(frames) < 1 || len(frames) > 6: fail("一次最多截 6 帧")
+ref   = canvasgraph.VideoRefs(graph, nodeId)            // 校验视频节点与产物 assetId
+file  = Assets.Open(userID, ref.AssetID)                 // 归属校验
+src   = file.Remote ? file.URL : spoolToTemp(file.Body)  // 本地存储落临时文件，尾帧要 seek
+dur   = ffprobe(src)                                     // 超时即失败
+for f in dedupe(frames):                                 // 同一时间点去重
+  t     = f.at=="first" ? 0 : f.at=="last" ? dur-0.1 : f.at   // 尾帧不取正好等于时长（待实测）
+  png   = ffmpeg(-ss t -i src -frames:v 1)               // 协议白名单 + 超时 + 并发上限
+  asset = AssetService.Upload(userID, png)               // 存为用户素材
+  node  = canvasgraph.AddUploadedImage(row(video, i), asset, label="视频名 · "+label(t))
+  canvasgraph.Connect(video -> node)
+  for x in f.connectTo: Connect(node -> x)               // 只有写了才连，是否作参考由 LLM 决定
+return [{nodeId, at: t}]                                 // 图片不进历史与日志</pre></div>
+    </div>
+
+    <div class="sec">
+      <h2>已确认的决定</h2>
+      <div class="card">
+        <ol class="list" style="padding-left: 18px">
+          <li><b>诉求是「理解已生成视频，并把截图交给后续镜头做参考」</b>：生成模型不能引用视频，只能引用图片。</li>
+          <li><b>抽帧放在后端，装 ffmpeg</b>：Agent 离线也能跑，不依赖浏览器。</li>
+          <li><b>Agent 直接建图片节点，不弹确认卡片</b>：截帧免费，靠撤销兜底，保证连续出片流程不被打断。</li>
+          <li><b>截帧是按需调用的独立工具，不是固定步骤；是否截帧、截几张、哪些帧当参考，都由 LLM 自己决定</b>：一次最多 6 张；后端只校验上限与合法性，不写死流程。</li>
+          <li><b>（实现时定的）截帧只在「全能创作」「分镜搭建」可用，看视频所有模式可用</b>：截帧会新建节点，与剧本创编、提示词优化模式的限制一致。帧图放在视频节点右侧同一列、向下依次避让（不是横排），并用后端受信任的建图函数连 <code>video → image</code> 来源线。主文档已回写（§6.3、§7、§13）。</li>
+          <li><b>截好的帧放在画布中</b>：是普通图片节点，不连线也保留，用户可拖动、预览、再拿去做别的；是否连线当参考另由 LLM 决定。</li>
+          <li><b>只看 AI 生成的短片</b>：5–15 秒，抽 6 帧足够，不需要火山点播。</li>
+          <li><b>已搁置：火山长视频理解 / 方舟 video_url</b>：以后分析长片或要听对白时再启用。</li>
+          <li><b>主文档已回写</b>：以上均在 Markdown §11；默认值（看视频默认 6 帧、JPEG 1024）为设计默认，非用户回答。</li>
+        </ol>
+        <p class="muted" style="font-size: 12.5px; margin-top: 10px">仍待确认：只读任务模式是否放行截帧；Alpine ffmpeg 许可证与镜像体积。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const icons = () => { if (window.lucide) lucide.createIcons(); };
+
+  function toggleNotes() {
+    const on = document.body.classList.toggle("show-notes");
+    $("#notesSw").setAttribute("aria-checked", String(on));
+  }
+  let toastTimer;
+  function toast(msg, kind = "ok") {
+    const icon = { ok: "circle-check", bad: "circle-x", warn: "triangle-alert" }[kind] || "info";
+    $("#toast").innerHTML = `<div><i data-lucide="${icon}" style="color: rgb(var(--${kind}))"></i>${esc(msg)}</div>`;
+    icons();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ($("#toast").innerHTML = ""), 2200);
+  }
+  function showTab(id) {
+    document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + id));
+    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === id)));
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+  /* ---- 续镜原型：内存状态，异步为模拟 ---- */
+  const S = { step: 0, busy: false, log: [], frame: false, linked: false, gen: false, failed: false, seen: false, n: 1 };
+  const TIMES = [0, 2, 4, 6, 8, 10];
+
+  function pfRender() {
+    const picked = S.frame;
+    const frames = S.seen ? `<div class="frames">${TIMES.map((t, i) => `<div class="fr ${picked && i === 5 ? "pick" : ""}">${t}s</div>`).join("")}</div>` : "";
+    const cv = `
+      <div class="nds">
+        <div class="nd"><div class="th"><i data-lucide="film"></i></div><b>镜头 1</b><div class="muted">视频 · 10s · 已生成</div>${frames}</div>
+        ${S.frame ? Array.from({ length: S.n }, (_, i) => `<div class="ln"></div><div class="nd new"><div class="th"><i data-lucide="image"></i></div><b>镜头 1 · ${S.n === 1 ? "尾帧" : TIMES[Math.min(TIMES.length - 1, TIMES.length - S.n + i)] + "s"}</b><div class="muted">图片 · 上传型 · 免费</div></div>`).join("") : ""}
+        ${S.linked ? `<div class="ln"></div>` : ""}
+        <div class="nd" ${S.linked ? "" : 'style="opacity:.7"'}><div class="th"><i data-lucide="film"></i></div><b>镜头 2</b><div class="muted">${S.gen ? "生成确认中（模拟）" : S.linked ? "视频 · 已写提示词（带参考帧）" : "视频 · 空"}</div></div>
+      </div>`;
+    const chat = S.log.map((m) => `<div class="bub ${m.k}">${esc(m.t)}</div>`).join("") || `<div class="muted">点「下一步」开始。</div>`;
+    $("#pf").innerHTML = `<div class="pf-cv">${cv}</div><div class="pf-chat">${chat}</div>`;
+    const hints = ["下一步：用户发出请求", "下一步：Agent 抽帧看视频", "下一步：Agent 截尾帧并连线", "下一步：Agent 写衔接提示词", "下一步：申请生成（确认卡片）", "已完成。可点重置再走一遍"];
+    $("#pfHint").textContent = S.failed ? "抽帧失败：可取消勾选后重置再试，或用手动「截取帧」" : hints[S.step] || "";
+    icons();
+  }
+  function add(k, t) { S.log.push({ k, t }); }
+
+  function pfNext() {
+    if (S.busy || S.failed || S.step >= 5) return;
+    const vision = $("#pfVision").checked, fail = $("#pfFail").checked;
+    const s = S.step;
+    if (s === 0) { add("u", "接着上一段继续，镜头往前推。"); S.step = 1; return pfRender(); }
+    if (s === 1) {
+      if (!vision) {
+        add("tool", "canvas_inspect_video  ✗ 当前模型不能看图（该工具不会提供给它）");
+        add("a", "我看不了视频内容，但可以直接截尾帧。建议换支持看图的模型来判断衔接。");
+        S.step = 2; toast("不能看图：跳过「看」，直接截帧", "warn"); return pfRender();
+      }
+      S.busy = true; add("tool", "canvas_inspect_video { nodeId: 镜头1, count: 6 } …"); pfRender();
+      return setTimeout(() => {
+        S.busy = false;
+        if (fail) { S.failed = true; add("tool", "✗ 抽帧超时（示意 30s）"); add("a", "抽帧超时了。你可以先点视频节点的「截取帧 → 尾帧」手动截一张，我再接着写提示词。"); toast("抽帧超时，已给出回退路径", "bad"); }
+        else { add("tool", "✓ 返回 6 帧（0s…10s），已交给模型"); add("a", "镜头 1 结尾：人物站在窗边回头，暖色逆光。尾帧最适合作为镜头 2 的起点。"); S.step = 2; S.seen = true; }
+        pfRender();
+      }, 700);
+    }
+    if (s === 2 && !$("#pfCap").checked) {
+      add("a", "这次不需要留下画面（只是了解内容 / 文字就能衔接），所以不调用截帧工具。"); S.ref = false; S.step = 4; toast("未调用截帧工具：画布不新增节点");
+      return pfRender();
+    }
+    if (s === 2) {
+      S.busy = true; S.n = +$("#pfN").value; S.ref = $("#pfRef").checked;
+      add("tool", `canvas_capture_frame { nodeId: 镜头1, frames: ${S.n} 项${S.ref ? ", connectTo: [镜头2]" : "，无 connectTo"} } …`); pfRender();
+      return setTimeout(() => {
+        S.busy = false;
+        if (fail) { S.failed = true; add("tool", "✗ 截帧失败：抽帧超时"); add("a", "截帧失败，请手动「截取帧」后告诉我。"); toast("截帧失败，已给出回退路径", "bad"); }
+        else { S.frame = true; S.linked = S.ref; add("tool", `✓ 已建 ${S.n} 个图片节点（免费）${S.ref ? "，并连到镜头 2 作参考" : "，未连线，仅留在画布上备用"}`); S.step = 4; }
+        pfRender();
+      }, 600);
+    }
+    if (s === 4) {
+      add("tool", "canvas_apply_ops  写入镜头 2 提示词"); add("a", S.ref ? "已写：从窗边回头的画面接起，镜头缓慢前推。" : "已按文字描述写好提示词（没有参考帧，衔接靠文字）。"); S.step = 5; S.gen = true;
+      add("tool", "generate_media → 确认卡片：预计 20 积分（示意）"); toast("到这里才会扣积分，且需用户点确认");
+      return pfRender();
+    }
+  }
+  function pfReset() { Object.assign(S, { step: 0, busy: false, log: [], frame: false, linked: false, gen: false, failed: false, seen: false, n: 1 }); pfRender(); }
+  $("#pfNext").addEventListener("click", pfNext);
+  $("#pfReset").addEventListener("click", pfReset);
+  $("#pfVision").addEventListener("change", () => { if (!$("#pfVision").checked && S.step === 1) toast("再点下一步，看不能看图时的表现", "warn"); });
+  pfRender();
+  icons();
+</script>
+</body>
+</html>

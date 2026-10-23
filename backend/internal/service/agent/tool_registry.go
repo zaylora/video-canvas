@@ -56,6 +56,9 @@ var toolSpecs = []toolSpec{
 	{name: "skill_search", label: "搜索技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillSearch},
 	{name: "skill_read", label: "读取技能", verb: "技能", scriptable: true, run: (*AgentBridge).toolSkillRead},
 	{name: "canvas_inspect_image", label: "查看图片", verb: "看图", needsVision: true, run: (*AgentBridge).toolInspectImage},
+	// 视频：看视频只读、要模型能看图；截帧会写素材和画布，和生成一样只在能改画布的模式里。两者都会返回图片或写素材，不能被脚本调用
+	{name: "canvas_inspect_video", label: "查看视频", verb: "看视频", needsVision: true, run: (*AgentBridge).toolInspectVideo},
+	{name: "canvas_capture_frame", label: "截取视频帧", verb: "截帧", modes: layoutModes, run: (*AgentBridge).toolCaptureFrame},
 	// 联网：所有模式都能用；结果只是资料，可以被脚本调用。是否真的下发由运行时的停用清单决定（RuntimeConfig.DisabledTools）
 	{name: "web_search", label: "搜索网页", verb: "搜索", scriptable: true, run: (*AgentBridge).toolWebSearch},
 	{name: "web_fetch", label: "读取网页", verb: "读网页", scriptable: true, run: (*AgentBridge).toolWebFetch},

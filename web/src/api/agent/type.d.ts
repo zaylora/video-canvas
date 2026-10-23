@@ -211,7 +211,7 @@ export interface CanvasPatchDto {
   run_id: string;
   /** 所属画布 */
   canvas_id: string;
-  /** 改动种类：apply_ops / arrange / delete / bind / undo */
+  /** 改动种类：apply_ops / arrange / delete / bind / undo / frames */
   kind: string;
   /** 改动前的画布 revision */
   revision_before: number;
