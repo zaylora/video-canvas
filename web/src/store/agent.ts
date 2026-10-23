@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   deleteAgentFeedback,
   getAgentEvents,
+  getAgentHistory,
   listAgentSessions,
   setAgentFeedback,
 } from "@/api/agent";
@@ -19,7 +20,12 @@ import {
   normalizeFeedback,
   type AgentFeedback,
 } from "@/utils/agent/feedback";
-import { applyAgentEvent, emptySession, type AgentSessionState } from "@/utils/agent/session-state";
+import {
+  applyAgentEvent,
+  applyHistoryPage,
+  emptySession,
+  type AgentSessionState,
+} from "@/utils/agent/session-state";
 
 /** 一页回放最多拉多少页，防止服务端异常时死循环 */
 const MAX_REPLAY_PAGES = 50;
@@ -39,6 +45,12 @@ type AgentStore = {
   handleEvent: (event: AgentEventDto) => void;
   /** 拉回会话里漏掉的事件：从连续收齐的序号之后分页拉到没有为止 */
   replay: (sessionId: string) => Promise<void>;
+  /** 打开会话：取最新一页聊天记录（加载过就什么也不做）；失败不抛出，留下 loadError 让界面给重试 */
+  loadLatest: (sessionId: string) => Promise<void>;
+  /** 往上翻：取比已有事件更早的一页；没有更早的、正在加载、还没取过最新一页时什么也不做；失败同 loadLatest */
+  loadOlder: (sessionId: string) => Promise<void>;
+  /** 断线重连后对账：加载过聊天记录的补尾巴，没加载过的取最新一页（不从头拉整段会话） */
+  sync: (sessionId: string) => Promise<void>;
   /** 把 HTTP 返回的运行快照并进会话（发起、停止、继续之后，不必等事件） */
   ingestRun: (run: AgentRunDto) => void;
   /**
@@ -102,6 +114,36 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
+  loadLatest: async (sessionId) => {
+    const current = get().sessions[sessionId] ?? emptySession();
+    if (current.historyReady || current.loading) return;
+    patchSession(sessionId, (x) => ({ ...x, loading: "latest", loadError: false }));
+    try {
+      const page = await getAgentHistory(sessionId, 0);
+      patchSession(sessionId, (x) => applyHistoryPage(x, page.events, page.has_more));
+    } catch {
+      patchSession(sessionId, (x) => ({ ...x, loading: null, loadError: true }));
+    }
+  },
+
+  loadOlder: async (sessionId) => {
+    const current = get().sessions[sessionId] ?? emptySession();
+    const before = current.events[0]?.seq;
+    if (!current.historyReady || !current.hasMoreOlder || current.loading || !before) return;
+    patchSession(sessionId, (x) => ({ ...x, loading: "older", loadError: false }));
+    try {
+      const page = await getAgentHistory(sessionId, before);
+      patchSession(sessionId, (x) => applyHistoryPage(x, page.events, page.has_more));
+    } catch {
+      patchSession(sessionId, (x) => ({ ...x, loading: null, loadError: true }));
+    }
+  },
+
+  sync: async (sessionId) => {
+    if (get().sessions[sessionId]?.historyReady) await get().replay(sessionId);
+    else await get().loadLatest(sessionId);
+  },
+
   ingestRun: (run) =>
     set((s) => {
       const current = s.sessions[run.session_id] ?? emptySession();
@@ -154,6 +196,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 }));
+
+/** 改某个会话的前端状态（没有就从空的开始） */
+function patchSession(sessionId: string, update: (state: AgentSessionState) => AgentSessionState) {
+  useAgentStore.setState((s) => ({
+    sessions: { ...s.sessions, [sessionId]: update(s.sessions[sessionId] ?? emptySession()) },
+  }));
+}
 
 /** 某轮运行当前的反馈，没有为 null */
 const feedbackOf = (sessionId: string, runId: string): AgentFeedback | null =>

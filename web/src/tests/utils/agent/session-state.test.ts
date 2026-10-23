@@ -4,6 +4,7 @@ import type { AgentEventDto } from "@/api/agent/type";
 import {
   activeRunId,
   applyAgentEvent,
+  applyHistoryPage,
   emptySession,
   hasGap,
   type AgentSessionState,
@@ -171,5 +172,106 @@ describe("流式文字", () => {
   test("不认识的临时事件忽略", () => {
     const s = emptySession();
     expect(applyAgentEvent(s, ev(0, "something.else"))).toBe(s);
+  });
+});
+
+describe("聊天记录分页：从最新往回加载", () => {
+  const turn = (from: number, run: string, status = "succeeded") => [
+    ev(from, "message.user", { text: run }, run),
+    ev(from + 1, "run.status", { status: "queued" }, run),
+    ev(from + 2, "run.usage", { spent_credits: 3, context_tokens: from * 100 }, run),
+    ev(from + 3, "run.status", { status }, run),
+  ];
+  const seqs = (s: AgentSessionState) => s.events.map((e) => e.seq);
+
+  test("第一页：连续区间从这一页的第一条算起，不要求从 1 开始；记下还有没有更早的", () => {
+    const s = applyHistoryPage(emptySession(), [...turn(11, "r3")], true);
+    expect(seqs(s)).toEqual([11, 12, 13, 14]);
+    expect([s.baseSeq, s.contiguousSeq, s.lastSeq]).toEqual([10, 14, 14]);
+    expect([s.historyReady, s.hasMoreOlder, hasGap(s)]).toEqual([true, true, false]);
+    expect(s.runs.r3.status).toBe("succeeded");
+  });
+
+  test("页到达之前实时推送已经来了几条：并进去，连续位置接着算", () => {
+    let s = applyAgentEvent(emptySession(), ev(15, "run.status", { status: "queued" }, "r4"));
+    expect(s.contiguousSeq).toBe(0); // 前面还没加载，接不上
+    s = applyHistoryPage(s, turn(11, "r3"), false);
+    expect(seqs(s)).toEqual([11, 12, 13, 14, 15]);
+    expect(s.contiguousSeq).toBe(15);
+    expect(s.hasMoreOlder).toBe(false);
+  });
+
+  test("加载之后实时推送照常接在后面", () => {
+    let s = applyHistoryPage(emptySession(), turn(11, "r3"), true);
+    s = applyAgentEvent(s, ev(15, "message.user", { text: "新" }, "r4"));
+    expect([s.contiguousSeq, hasGap(s)]).toEqual([15, false]);
+  });
+
+  test("往上翻：更早的一页接在前面，连续位置不变，起点前移；更早的状态补进来，新的不被倒回去", () => {
+    // r1 的 queued 在旧页，succeeded 在新页（页对齐到一轮开头，但保险起见新旧同键时新的为准）
+    let s = applyHistoryPage(
+      emptySession(),
+      [ev(21, "run.status", { status: "succeeded" }, "r1"), ...turn(22, "r3")],
+      true,
+    );
+    s = applyHistoryPage(
+      s,
+      [
+        ev(19, "run.status", { status: "queued" }, "r1"),
+        ev(20, "run.status", { status: "running" }, "r1"),
+      ],
+      true,
+    );
+    expect(seqs(s).slice(0, 4)).toEqual([19, 20, 21, 22]);
+    expect([s.baseSeq, s.contiguousSeq]).toEqual([18, 25]);
+    expect(s.runs.r1.status).toBe("succeeded");
+    expect(s.runs.r3.status).toBe("succeeded");
+  });
+
+  test("更早一页里的运行状态、计划、审批都折进来；没有更早的了就清掉标记", () => {
+    let s = applyHistoryPage(emptySession(), turn(11, "r3"), true);
+    s = applyHistoryPage(
+      s,
+      [
+        ev(5, "run.status", { status: "failed", error: "炸了" }, "r2"),
+        ev(6, "plan.updated", { steps: [{ title: "a", status: "done" }] }, "r2"),
+        ev(7, "approval.created", { id: "ap1", status: "pending" }, "r2"),
+      ],
+      false,
+    );
+    expect(s.runs.r2).toMatchObject({ status: "failed", error: "炸了" });
+    expect(s.plans.r2).toEqual([{ title: "a", status: "done" }]);
+    expect(s.approvals.ap1).toMatchObject({ id: "ap1" });
+    expect(s.hasMoreOlder).toBe(false);
+  });
+
+  test("旧页里的评价已在新页里被取消：不会复活", () => {
+    let s = applyHistoryPage(
+      emptySession(),
+      [ev(30, "feedback.cleared", { run_id: "r1" }, "r1"), ...turn(31, "r3")],
+      true,
+    );
+    s = applyHistoryPage(s, [ev(10, "feedback.set", { run_id: "r1", rating: -1 }, "r1")], true);
+    expect(s.feedback.r1).toBeUndefined();
+  });
+
+  test("上下文用量取最新的那条：旧页不覆盖", () => {
+    let s = applyHistoryPage(emptySession(), turn(31, "r3"), true);
+    const latest = s.contextTokens;
+    s = applyHistoryPage(s, turn(11, "r2"), true);
+    expect(s.contextTokens).toBe(latest);
+  });
+
+  test("空页：也算加载完成", () => {
+    const s = applyHistoryPage(emptySession(), [], false);
+    expect([s.historyReady, s.hasMoreOlder, s.events.length]).toEqual([true, false, 0]);
+  });
+
+  test("流式文字和已知的运行花费不被重新折叠冲掉", () => {
+    let s = applyAgentEvent(emptySession(), ev(0, "message.delta", { text: "你好" }, "r4"));
+    s = { ...s, runs: { r4: { status: "running", error: "", spent: 9 } } };
+    s = applyHistoryPage(s, [ev(11, "run.status", { status: "running" }, "r4")], false);
+    expect(s.stream.text).toBe("你好");
+    expect(s.runs.r4.spent).toBe(9);
   });
 });

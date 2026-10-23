@@ -18,6 +18,7 @@ import type { AgentController } from "@/hooks/use-agent-controller";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { parseMessage } from "@/utils/agent/chips";
+import { anchoredScrollTop, trackHistoryKeys } from "@/utils/agent/message-scroll";
 import type { TimelineItem } from "@/utils/agent/timeline";
 
 import { ActivityGroup } from "./activity-group";
@@ -29,10 +30,13 @@ import { ApprovalRow } from "./approval-row";
 import { Markdown } from "./markdown";
 import { RunFeedback } from "./run-feedback";
 import { RunSummary } from "./run-summary";
+import { ShimmerText } from "./shimmer-text";
 import { StatusLine } from "./status-line";
 
 /** 离底部多近算「在底部」：在底部时新内容自动滚动，用户往上翻看时不打扰 */
 const STICK_PX = 48;
+/** 离顶部不到这么远就去加载更早的一页：趁用户还没滚到头，翻上去时内容已经在了 */
+const LOAD_MORE_PX = 160;
 
 const CHIP_TONE = {
   node: "bg-foreground/7",
@@ -66,7 +70,8 @@ export function MessageText({ text }: { text: string }) {
 }
 
 /**
- * 消息流：新增的消息淡入上浮，历史和流式更新不重放。
+ * 消息流：实时新增的消息淡入上浮，历史（首次加载、往上翻补来的）和流式更新不播动画。
+ * 挂载时历史已经加载好，首次布局前就停在底部；往上翻到快到顶时加载更早一页，补完后视线停在原来看的那条上。
  * 贴着底部时自动跟随（内容高度变化也跟，比如卡片展开、图片加载）；用户往上翻看时不打扰，有新内容就出现「回到底部」。
  * 末尾是状态行：运行中唯一的实时指示。
  */
@@ -90,8 +95,11 @@ export function MessageList({
   const content = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  /** 首次渲染时已有的项不播入场 */
-  const [initialCount] = useState(ctl.timeline.length);
+  /** 历史项的 key：不播入场；首次渲染时已有的、往前补来的都算。渲染期派生：补来的页和新增的消息在同一次渲染里分清 */
+  const keys = ctl.timeline.map((item) => item.key);
+  const [history, setHistory] = useState(() => trackHistoryKeys(null, keys));
+  const historyKeys = trackHistoryKeys(history, keys);
+  if (historyKeys.size !== history.size) setHistory(historyKeys);
   const reduce = useReducedMotion();
 
   /** 上次看到的内容高度：只有内容真的变高了，才算「有新内容」 */
@@ -105,8 +113,31 @@ export function MessageList({
     else if (el.scrollHeight > lastHeight.current + 1) setShowJump(true);
     lastHeight.current = el.scrollHeight;
   };
+  // 前面补了更早的一页：内容在上面变高了，滚动位置跟着补偿，视线才不跳。要排在 follow 前面，免得把补出来的高度当成新内容
+  const firstKey = ctl.timeline[0]?.key;
+  const prevFirstKey = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (
+      el &&
+      prevFirstKey.current !== undefined &&
+      firstKey !== prevFirstKey.current &&
+      !stuck.current
+    ) {
+      el.scrollTop = anchoredScrollTop(el.scrollTop, lastHeight.current, el.scrollHeight);
+      lastHeight.current = el.scrollHeight;
+    }
+    prevFirstKey.current = firstKey;
+  });
   // 每次渲染（新消息、流式文字）后跟随
   useLayoutEffect(follow);
+
+  // 快到顶了就取更早的一页；内容还不够一屏（滚不动）时也要取，直到铺满或没有更早的
+  const canLoadOlder = ctl.hasMoreOlder && !ctl.loadingOlder && !ctl.olderFailed;
+  useEffect(() => {
+    const el = scroller.current;
+    if (el && canLoadOlder && el.scrollTop < LOAD_MORE_PX) ctl.loadOlder();
+  });
   // 渲染之外的高度变化（展开、图片加载）也跟随
   useEffect(() => {
     const el = content.current;
@@ -128,20 +159,21 @@ export function MessageList({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scroller}
-        className="agent-fade-y min-h-0 flex-1 overflow-y-auto"
+        className="agent-fade-y min-h-0 flex-1 [overflow-anchor:none] overflow-y-auto"
         onScroll={(e) => {
           const el = e.currentTarget;
           stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
           if (stuck.current) setShowJump(false);
           onScrolled(el.scrollTop > 4);
+          if (canLoadOlder && el.scrollTop < LOAD_MORE_PX) ctl.loadOlder();
         }}
       >
         <div ref={content} className="flex flex-col gap-3 px-4 pt-3 pb-2">
-          {ctl.timeline.map((item, index) =>
+          {ctl.timeline.map((item) =>
             item.type === "assistant" && item.streaming && !item.text ? null : (
               <motion.div
                 key={item.key}
-                initial={index >= initialCount && !reduce ? { opacity: 0, y: 6 } : false}
+                initial={!historyKeys.has(item.key) && !reduce ? { opacity: 0, y: 6 } : false}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: DURATION.base, ease: EASE_OUT }}
               >
@@ -159,6 +191,33 @@ export function MessageList({
             {ctl.statusLine && <StatusLine key={ctl.statusLine.runId} line={ctl.statusLine} />}
           </AnimatePresence>
         </div>
+      </div>
+      {/* 顶部的加载提示悬浮在列表上，不占文档流：出现和消失都不会让内容位移 */}
+      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+        <AnimatePresence>
+          {(ctl.loadingOlder || ctl.olderFailed) && (
+            <motion.div
+              key={ctl.olderFailed ? "failed" : "loading"}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: DURATION.exit } }}
+              transition={{ duration: DURATION.base, ease: EASE_OUT }}
+              className="agent-raised bg-popover text-muted-foreground pointer-events-auto flex h-7 items-center rounded-full px-3 text-[12px]"
+            >
+              {ctl.olderFailed ? (
+                <button
+                  type="button"
+                  onClick={ctl.reload}
+                  className="hover:text-foreground focus-visible:ring-node-ring/60 rounded-full outline-none focus-visible:ring-2"
+                >
+                  加载失败，点击重试
+                </button>
+              ) : (
+                <ShimmerText>加载更早的消息…</ShimmerText>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       <AnimatePresence>
         {showJump && (

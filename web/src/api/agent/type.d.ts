@@ -197,6 +197,12 @@ export interface AgentEventDto {
   created_at: string;
 }
 
+/** 一页聊天记录：事件按序号升序，has_more 表示更早还有没加载的 */
+export type AgentHistoryDto = {
+  events: AgentEventDto[];
+  has_more: boolean;
+};
+
 /** Agent 改画布后推送的改动（canvas.patch） */
 export interface CanvasPatchDto {
   /** 改动 ID */

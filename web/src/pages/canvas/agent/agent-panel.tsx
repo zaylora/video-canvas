@@ -29,6 +29,7 @@ import type { RefNode } from "@/utils/agent/selection-refs";
 
 import type { AgentEditorHandle, NodeOption } from "./agent-editor";
 import { AgentEmpty } from "./agent-empty";
+import { AgentLoading } from "./agent-loading";
 import { AgentHeader } from "./agent-header";
 import { DecisionDock } from "./decision-dock";
 import { MessageList } from "./message-list";
@@ -152,7 +153,8 @@ export function AgentPanel({
     void ctl.stop();
   };
 
-  const empty = ctl.timeline.length === 0 && !ctl.busy;
+  const loading = ctl.opening || ctl.openFailed;
+  const empty = ctl.timeline.length === 0 && !ctl.busy && !loading;
   const enter = reduce
     ? { opacity: 0 }
     : docked
@@ -175,12 +177,14 @@ export function AgentPanel({
         title={ctl.session?.title ?? "新对话"}
         docked={docked}
         canDock={mobile ? null : canDock}
-        scrolled={!empty && scrolled}
+        scrolled={!empty && !loading && scrolled}
         onToggleDock={() => useAgentSettings.getState().patch({ docked: !docked })}
         onClose={onClose}
         onDragStart={mobile || docked ? undefined : (e) => controls.start(e)}
       />
-      {empty ? (
+      {loading ? (
+        <AgentLoading failed={ctl.openFailed} onRetry={ctl.reload} />
+      ) : empty ? (
         <AgentEmpty />
       ) : (
         <MessageList
