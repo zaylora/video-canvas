@@ -27,6 +27,7 @@ type fakeAgentAPI struct {
 	gotStart  *model.StartAgentRunReq
 	gotDecide *model.DecideAgentApprovalReq
 	gotAfter  int64
+	gotBefore int64
 	gotLimit  int
 	gotBudget int
 	gotText   string
@@ -59,6 +60,10 @@ func (f *fakeAgentAPI) DeleteSession(_ context.Context, u, id uint64) error {
 func (f *fakeAgentAPI) Events(_ context.Context, u, id uint64, after int64, limit int) ([]*agentsvc.AgentEventView, error) {
 	f.gotAfter, f.gotLimit = after, limit
 	return []*agentsvc.AgentEventView{{Seq: after + 1, Type: "message.delta"}}, f.rec("events", u, id)
+}
+func (f *fakeAgentAPI) History(_ context.Context, u, id uint64, before int64, limit int) (*agentsvc.AgentHistoryView, error) {
+	f.gotBefore, f.gotLimit = before, limit
+	return &agentsvc.AgentHistoryView{Events: []*agentsvc.AgentEventView{{Seq: 3, Type: "message.user"}}, HasMore: true}, f.rec("history", u, id)
 }
 func (f *fakeAgentAPI) StartRun(_ context.Context, u, id uint64, req *model.StartAgentRunReq) (*agentsvc.AgentRunView, error) {
 	f.gotStart = req
@@ -95,6 +100,7 @@ func newAgentRouter(api AgentAPI) *gin.Engine {
 	a.PATCH("/sessions/:sid", h.RenameSession)
 	a.DELETE("/sessions/:sid", h.DeleteSession)
 	a.GET("/sessions/:sid/events", h.Events)
+	a.GET("/sessions/:sid/history", h.History)
 	a.POST("/sessions/:sid/runs", h.StartRun)
 	a.POST("/runs/:rid/interject", h.Interject)
 	a.POST("/runs/:rid/cancel", h.Cancel)
@@ -126,6 +132,7 @@ func TestAgentHandler_AllEndpoints(t *testing.T) {
 		{"重命名", "PATCH", "/api/v1/agent/sessions/" + sid, `{"title":"新名字"}`, 200, "rename", 11},
 		{"删除会话", "DELETE", "/api/v1/agent/sessions/" + sid, "", 200, "delete", 11},
 		{"事件回放", "GET", "/api/v1/agent/sessions/" + sid + "/events?after=7&limit=50", "", 200, "events", 11},
+		{"历史分页", "GET", "/api/v1/agent/sessions/" + sid + "/history?before=40&limit=100", "", 200, "history", 11},
 		{"发起运行返回 202", "POST", "/api/v1/agent/sessions/" + sid + "/runs", `{"message":"拆分镜","selection":["n1"]}`, 202, "start", 11},
 		{"插话", "POST", "/api/v1/agent/runs/" + rid + "/interject", `{"message":"再暖一点"}`, 200, "interject", 22},
 		{"停止", "POST", "/api/v1/agent/runs/" + rid + "/cancel", "", 200, "cancel", 22},
@@ -164,6 +171,7 @@ func TestAgentHandler_BadIDs(t *testing.T) {
 			{"PATCH", "/api/v1/agent/sessions/" + bad, `{"title":"x"}`},
 			{"DELETE", "/api/v1/agent/sessions/" + bad, ""},
 			{"GET", "/api/v1/agent/sessions/" + bad + "/events", ""},
+			{"GET", "/api/v1/agent/sessions/" + bad + "/history", ""},
 			{"POST", "/api/v1/agent/sessions/" + bad + "/runs", `{"message":"x"}`},
 			{"POST", "/api/v1/agent/runs/" + bad + "/interject", `{"message":"x"}`},
 			{"POST", "/api/v1/agent/runs/" + bad + "/cancel", ""},
@@ -197,6 +205,8 @@ func TestAgentHandler_ParamValidation(t *testing.T) {
 		{"条目张数超过 4", "POST", "/api/v1/agent/approvals/" + aid + "/decision", `{"decision":"approve","items":[{"index":0,"approve":true,"count":9}]}`},
 		{"回放 after 为负", "GET", "/api/v1/agent/sessions/" + sid + "/events?after=-1", ""},
 		{"回放 limit 超上限", "GET", "/api/v1/agent/sessions/" + sid + "/events?limit=201", ""},
+		{"历史 before 为负", "GET", "/api/v1/agent/sessions/" + sid + "/history?before=-1", ""},
+		{"历史 limit 超上限", "GET", "/api/v1/agent/sessions/" + sid + "/history?limit=201", ""},
 		{"请求体不是 JSON", "POST", "/api/v1/agent/runs/" + rid + "/interject", `not json`},
 	}
 	for _, tc := range bad {
@@ -226,6 +236,12 @@ func TestAgentHandler_PassesParsedValues(t *testing.T) {
 	agentCall(t, newAgentRouter(api), "GET", "/api/v1/agent/sessions/"+sid+"/events?after=7&limit=50", "")
 	if api.gotAfter != 7 || api.gotLimit != 50 {
 		t.Errorf("after=%d limit=%d", api.gotAfter, api.gotLimit)
+	}
+
+	api = &fakeAgentAPI{}
+	agentCall(t, newAgentRouter(api), "GET", "/api/v1/agent/sessions/"+sid+"/history?before=40&limit=100", "")
+	if api.gotBefore != 40 || api.gotLimit != 100 {
+		t.Errorf("before=%d limit=%d", api.gotBefore, api.gotLimit)
 	}
 
 	api = &fakeAgentAPI{}

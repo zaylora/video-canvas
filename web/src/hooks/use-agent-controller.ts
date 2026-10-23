@@ -77,20 +77,20 @@ export function useAgentController({
     useAgentStore((s) => (sessionId ? s.sessions[sessionId] : undefined)) ?? emptySession();
   const session = sessions.find((s) => s.id === sessionId) ?? null;
   const sendingRef = useRef(false);
+  /** 画布上的会话列表拿到了（成功或失败都算）：之前正文区不该闪出「空会话」 */
+  const [loadedCanvas, setLoadedCanvas] = useState<string | null>(null);
+  const listLoaded = loadedCanvas === canvasId;
 
   const modelKey = models.some((m) => m.key === settings.modelKey)
     ? settings.modelKey
     : (models[0]?.key ?? "");
 
-  /** 切到一个会话：先放上去，再把事件从头补齐（已经收齐的部分不重复拉） */
+  /** 切到一个会话：先放上去，再取最新一页聊天记录（加载过的不重复取）；更早的往上翻时再取 */
   const openSession = useCallback((target: AgentSessionDto | null) => {
     setSessionId(target?.id ?? null);
     if (target) {
       setMode(target.mode);
-      void useAgentStore
-        .getState()
-        .replay(target.id)
-        .catch(() => undefined);
+      void useAgentStore.getState().loadLatest(target.id);
     } else {
       setMode("all");
     }
@@ -102,12 +102,34 @@ export function useAgentController({
     void useAgentStore
       .getState()
       .loadSessions(canvasId)
-      .then((list) => active && openSession(list[0] ?? null))
-      .catch(() => undefined);
+      .then((list) => {
+        if (!active) return;
+        setLoadedCanvas(canvasId);
+        openSession(list[0] ?? null);
+      })
+      .catch(() => active && setLoadedCanvas(canvasId));
     return () => {
       active = false;
     };
   }, [canvasId, openSession]);
+
+  /** 正在打开：会话列表或这个会话最近一页聊天记录还在加载（新建的会话没有历史，不算） */
+  const opening =
+    !listLoaded || (sessionId !== null && !state.historyReady && state.loading === "latest");
+  /** 最近一页聊天记录加载失败，等用户点重试 */
+  const openFailed = sessionId !== null && !state.historyReady && state.loadError;
+  /** 重试加载聊天记录：最近一页没加载出来就重取最近一页，否则重取更早的一页 */
+  const reload = useCallback(() => {
+    if (!sessionId) return;
+    const store = useAgentStore.getState();
+    void (store.sessions[sessionId]?.historyReady
+      ? store.loadOlder(sessionId)
+      : store.loadLatest(sessionId));
+  }, [sessionId]);
+  /** 往上翻：取更早的一页 */
+  const loadOlder = useCallback(() => {
+    if (sessionId) void useAgentStore.getState().loadOlder(sessionId);
+  }, [sessionId]);
 
   const activeRun = useMemo(() => activeRunId(state), [state]);
   const timeline = useMemo(() => buildTimeline(state), [state]);
@@ -287,6 +309,13 @@ export function useAgentController({
     activeRun,
     busy: activeRun !== null,
     sending,
+    opening,
+    openFailed,
+    reload,
+    hasMoreOlder: state.hasMoreOlder,
+    loadingOlder: state.loading === "older",
+    olderFailed: state.historyReady && state.loadError,
+    loadOlder,
     mode,
     setMode,
     modelKey,

@@ -241,6 +241,23 @@ func (f *fakeAgentCanvasRepo) ListEvents(_ context.Context, sessionID uint64, af
 	return out, nil
 }
 
+func (f *fakeAgentCanvasRepo) ListEventsBefore(_ context.Context, sessionID uint64, before int64, limit int) ([]model.AgentEvent, error) {
+	st := f.st()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	var all []model.AgentEvent
+	for _, e := range st.events {
+		if e.SessionID == sessionID && (before <= 0 || e.Seq < before) {
+			all = append(all, e)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].Seq < all[j].Seq })
+	if len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+	return all, nil
+}
+
 func (f *fakeAgentCanvasRepo) eventTypes() []string {
 	st := f.st()
 	st.mu.Lock()

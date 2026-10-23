@@ -20,8 +20,26 @@ const ev = (
 let total = 0;
 let pageSize = 200;
 const calls: number[] = [];
+/** 聊天记录接口：每页最多 historyPage 条，before 之前最新的一页；failNext 让下一次请求失败；gate 让请求停住等放行 */
+let historyPage = 3;
+const historyCalls: number[] = [];
+let failNext = false;
+let gate: Promise<void> | null = null;
 mock.module("@/api/agent", () => ({
   listAgentSessions: async () => [],
+  getAgentHistory: async (_sid: string, before: number) => {
+    historyCalls.push(before);
+    if (gate) await gate;
+    if (failNext) {
+      failNext = false;
+      throw new Error("boom");
+    }
+    const end = before > 0 ? before - 1 : total;
+    const start = Math.max(1, end - historyPage + 1);
+    const events: AgentEventDto[] = [];
+    for (let seq = start; seq <= end; seq++) events.push(ev(seq));
+    return { events, has_more: start > 1 };
+  },
   getAgentEvents: async (_sid: string, after: number) => {
     calls.push(after);
     const out: AgentEventDto[] = [];
@@ -37,7 +55,11 @@ const { useAgentStore } = await import("@/store/agent");
 beforeEach(() => {
   useAgentStore.setState({ sessions: {}, sessionsByCanvas: {} });
   calls.length = 0;
+  historyCalls.length = 0;
   pageSize = 200;
+  historyPage = 3;
+  failNext = false;
+  gate = null;
 });
 
 describe("agent store：回放", () => {
@@ -66,6 +88,102 @@ describe("agent store：回放", () => {
     total = 1;
     await useAgentStore.getState().replay("s1");
     expect(calls.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("agent store：聊天记录从最新往回加载", () => {
+  const session = () => useAgentStore.getState().sessions.s1;
+
+  test("打开会话：只取最新一页；已经加载过就不再请求", async () => {
+    total = 10;
+    await useAgentStore.getState().loadLatest("s1");
+    expect(historyCalls).toEqual([0]);
+    expect(session().events.map((e) => e.seq)).toEqual([8, 9, 10]);
+    expect([session().historyReady, session().hasMoreOlder, session().loading]).toEqual([
+      true,
+      true,
+      null,
+    ]);
+    await useAgentStore.getState().loadLatest("s1");
+    expect(historyCalls).toEqual([0]);
+  });
+
+  test("请求期间标记为正在加载最新一页，重复打开不重复请求", async () => {
+    total = 10;
+    let release!: () => void;
+    gate = new Promise<void>((r) => (release = r));
+    const first = useAgentStore.getState().loadLatest("s1");
+    useAgentStore.getState().loadLatest("s1");
+    expect(session().loading).toBe("latest");
+    release();
+    await first;
+    expect(historyCalls).toEqual([0]);
+    expect(session().loading).toBeNull();
+  });
+
+  test("往上翻：before 取已有的最小序号，加载到头后不再请求", async () => {
+    total = 7;
+    await useAgentStore.getState().loadLatest("s1"); // 5..7
+    await useAgentStore.getState().loadOlder("s1"); // 2..4
+    expect(historyCalls).toEqual([0, 5]);
+    expect(session().events.map((e) => e.seq)).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(session().hasMoreOlder).toBe(true);
+    await useAgentStore.getState().loadOlder("s1"); // 1
+    expect(session().events[0].seq).toBe(1);
+    expect(session().hasMoreOlder).toBe(false);
+    await useAgentStore.getState().loadOlder("s1");
+    expect(historyCalls).toEqual([0, 5, 2]);
+  });
+
+  test("往上翻正在进行时，再次触发不重复请求", async () => {
+    total = 10;
+    await useAgentStore.getState().loadLatest("s1");
+    let release!: () => void;
+    gate = new Promise<void>((r) => (release = r));
+    const a = useAgentStore.getState().loadOlder("s1");
+    void useAgentStore.getState().loadOlder("s1");
+    expect(session().loading).toBe("older");
+    release();
+    await a;
+    expect(historyCalls).toEqual([0, 8]);
+  });
+
+  test("还没加载最新一页时不能往上翻", async () => {
+    total = 10;
+    await useAgentStore.getState().loadOlder("s1");
+    expect(historyCalls).toEqual([]);
+  });
+
+  test("加载失败：留下失败标记，不抛出；再次加载会重试", async () => {
+    total = 10;
+    failNext = true;
+    await useAgentStore.getState().loadLatest("s1");
+    expect([session().loadError, session().loading, session().historyReady]).toEqual([
+      true,
+      null,
+      false,
+    ]);
+    await useAgentStore.getState().loadLatest("s1");
+    expect([session().loadError, session().historyReady]).toEqual([false, true]);
+
+    failNext = true;
+    await useAgentStore.getState().loadOlder("s1");
+    expect([session().loadError, session().hasMoreOlder]).toEqual([true, true]);
+    await useAgentStore.getState().loadOlder("s1");
+    expect(session().loadError).toBe(false);
+    expect(session().events[0].seq).toBe(5);
+  });
+
+  test("断线重连对账 sync：加载过的补尾巴，没加载过的取最新一页（不从头拉）", async () => {
+    total = 10;
+    await useAgentStore.getState().sync("s1");
+    expect(historyCalls).toEqual([0]);
+    expect(calls).toEqual([]);
+    total = 12; // 断线期间服务端又有了 11、12
+    await useAgentStore.getState().sync("s1");
+    expect(historyCalls).toEqual([0]);
+    expect(calls).toEqual([10, 12]);
+    expect(session().events.map((e) => e.seq)).toEqual([8, 9, 10, 11, 12]);
   });
 });
 

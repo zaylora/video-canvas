@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -454,4 +455,51 @@ func TestAgentRuns_DuplicateIsNotLoggedAsError(t *testing.T) {
 	if len(errs) != 0 {
 		t.Errorf("预期内的冲突不该被记成错误日志: %v", errs)
 	}
+}
+
+func TestAgentListEventsBefore(t *testing.T) {
+	ctx := context.Background()
+	r := NewAgentRepository(agentDB(t))
+	s := newSession(t, r, 1, 10)
+	other := newSession(t, r, 1, 11)
+	for i := 0; i < 10; i++ {
+		if _, err := r.AppendEvent(ctx, s.ID, 1, "message.done", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.AppendEvent(ctx, other.ID, 1, "message.done", nil); err != nil {
+		t.Fatal(err)
+	}
+	seqs := func(evs []model.AgentEvent) []int64 {
+		out := make([]int64, len(evs))
+		for i, e := range evs {
+			out[i] = e.Seq
+		}
+		return out
+	}
+
+	t.Run("before 为 0 取最新的 limit 条，按序号升序", func(t *testing.T) {
+		got, err := r.ListEventsBefore(ctx, s.ID, 0, 3)
+		if err != nil || !reflect.DeepEqual(seqs(got), []int64{8, 9, 10}) {
+			t.Errorf("应为 8..10: %v err=%v", seqs(got), err)
+		}
+	})
+	t.Run("before 之前的最新 limit 条，不含 before 本身", func(t *testing.T) {
+		got, _ := r.ListEventsBefore(ctx, s.ID, 6, 3)
+		if !reflect.DeepEqual(seqs(got), []int64{3, 4, 5}) {
+			t.Errorf("before=6 limit=3 应为 3..5: %v", seqs(got))
+		}
+	})
+	t.Run("不够 limit 条时有多少给多少", func(t *testing.T) {
+		got, _ := r.ListEventsBefore(ctx, s.ID, 3, 5)
+		if !reflect.DeepEqual(seqs(got), []int64{1, 2}) {
+			t.Errorf("before=3 应只剩 1..2: %v", seqs(got))
+		}
+	})
+	t.Run("只读本会话的事件", func(t *testing.T) {
+		got, _ := r.ListEventsBefore(ctx, other.ID, 0, 10)
+		if len(got) != 1 || got[0].SessionID != other.ID {
+			t.Errorf("别的会话的事件不该混进来: %+v", got)
+		}
+	})
 }

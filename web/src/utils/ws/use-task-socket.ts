@@ -35,8 +35,8 @@ export function useTaskSocket() {
         void reconcileActiveTasks();
         void useCreditsStore.getState().refresh();
         // 断线期间可能漏了 Agent 事件：把已经打开过的会话补齐
-        const { sessions, replay } = useAgentStore.getState();
-        for (const id of Object.keys(sessions)) void replay(id).catch(() => undefined);
+        const { sessions, sync } = useAgentStore.getState();
+        for (const id of Object.keys(sessions)) void sync(id).catch(() => undefined);
       },
       onState: setConnection,
       canConnect: () => !!getToken(),

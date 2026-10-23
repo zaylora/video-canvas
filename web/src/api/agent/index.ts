@@ -3,6 +3,7 @@ import type {
   AgentApprovalDto,
   AgentEventDto,
   AgentFeedbackDto,
+  AgentHistoryDto,
   AgentModelDto,
   AgentRunDto,
   AgentSessionDto,
@@ -62,6 +63,22 @@ export const deleteAgentSession = (sessionId: string) =>
 export const getAgentEvents = async (sessionId: string, after: number): Promise<AgentEventDto[]> =>
   (await service.get<AgentEventDto[] | null>(`/agent/sessions/${sessionId}/events`, { after })) ??
   [];
+
+/**
+ * 读聊天记录的一页：从最新往回翻。一页以「一轮」的开头为起点，条数由服务端定（默认约 100 条事件）
+ * @param sessionId 会话 ID
+ * @param before 已有事件里最小的序号，0 取最新一页
+ * @returns 事件（升序）和更早是否还有
+ */
+export const getAgentHistory = async (
+  sessionId: string,
+  before: number,
+): Promise<AgentHistoryDto> => {
+  const page = await service.get<AgentHistoryDto | null>(`/agent/sessions/${sessionId}/history`, {
+    before,
+  });
+  return { events: page?.events ?? [], has_more: page?.has_more ?? false };
+};
 
 /**
  * 发起一轮运行（HTTP 202）；画布上已有运行中的 Agent 时返回 60001

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"gorm.io/datatypes"
@@ -211,6 +212,24 @@ func (r *AgentRepository) ListEvents(ctx context.Context, sessionID uint64, afte
 	err := r.db.WithContext(ctx).Where("session_id = ? AND seq > ?", sessionID, afterSeq).
 		Order("seq ASC").Limit(limit).Find(&out).Error
 	return out, err
+}
+
+// ListEventsBefore 列出会话里序号小于 beforeSeq 的最新 limit 条事件，按序号升序（beforeSeq<=0 不设上界，limit<=0 取默认值）。
+// 聊天记录从最新往回翻页用它：不必把整个会话的事件读出来。
+func (r *AgentRepository) ListEventsBefore(ctx context.Context, sessionID uint64, beforeSeq int64, limit int) ([]model.AgentEvent, error) {
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	q := r.db.WithContext(ctx).Where("session_id = ?", sessionID)
+	if beforeSeq > 0 {
+		q = q.Where("seq < ?", beforeSeq)
+	}
+	var out []model.AgentEvent
+	if err := q.Order("seq DESC").Limit(limit).Find(&out).Error; err != nil {
+		return nil, err
+	}
+	slices.Reverse(out)
+	return out, nil
 }
 
 // GetCanvas 按 id + user_id 读画布（含 payload_json），不存在或不属于该用户返回 ErrNotFound。

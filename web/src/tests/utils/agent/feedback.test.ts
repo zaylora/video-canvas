@@ -227,6 +227,7 @@ let failNext = false;
 const calls: string[] = [];
 mock.module("@/api/agent", () => ({
   listAgentSessions: async () => [],
+  getAgentHistory: async () => ({ events: [], has_more: false }),
   getAgentEvents: async () => [],
   setAgentFeedback: async (runId: string, req: SetAgentFeedbackReq) => {
     calls.push(`PUT ${runId} ${req.rating}`);

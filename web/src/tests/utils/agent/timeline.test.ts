@@ -491,6 +491,38 @@ describe("状态行", () => {
     expect(buildStatusLine(doneTool)?.text).toBe("思考中…");
   });
 
+  test("等审批、等回答之后回到运行：计时从恢复运行那一刻算，不把等待的几小时算进去", () => {
+    reset();
+    const HOURS = 11 * 3600; // 事件时间是基准之后 seq 秒
+    for (const wait of ["waiting_approval", "waiting_input"]) {
+      const s = fold([
+        ev("run.status", { status: "queued" }, "r1", 1),
+        ev("run.status", { status: "running" }, "r1", 2),
+        ev("run.status", { status: wait }, "r1", 3),
+        ev("run.status", { status: "running" }, "r1", HOURS),
+      ]);
+      expect(buildStatusLine(s)?.since).toBe(Date.parse(at(HOURS)));
+    }
+  });
+
+  test("计时：直接 queued → running 仍从 queued 算；工具切换不重置；再次 queued 重新起算", () => {
+    reset();
+    const base = fold([
+      ev("run.status", { status: "queued" }, "r1", 1),
+      ev("run.status", { status: "running" }, "r1", 2),
+      ev("tool.start", { id: "a", name: "canvas_arrange" }, "r1", 3),
+      ev("tool.end", { id: "a", name: "canvas_arrange" }, "r1", 4),
+    ]);
+    expect(buildStatusLine(base)?.since).toBe(Date.parse(at(1)));
+    const again = fold([
+      ...base.events,
+      ev("run.status", { status: "interrupted" }, "r1", 5),
+      ev("run.status", { status: "queued" }, "r1", 50),
+      ev("run.status", { status: "running" }, "r1", 51),
+    ]);
+    expect(buildStatusLine(again)?.since).toBe(Date.parse(at(50)));
+  });
+
   test("工具名称由后端随事件下发：新工具不用改前端；状态行也用它", () => {
     reset();
     const working = fold([

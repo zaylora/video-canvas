@@ -28,6 +28,8 @@ type AgentAPI interface {
 	DeleteSession(ctx context.Context, userID, sessionID uint64) error
 	// Events 回放会话事件。
 	Events(ctx context.Context, userID, sessionID uint64, after int64, limit int) ([]*agentsvc.AgentEventView, error)
+	// History 读聊天记录：从最新往回翻页。
+	History(ctx context.Context, userID, sessionID uint64, before int64, limit int) (*agentsvc.AgentHistoryView, error)
 	// StartRun 发起一轮运行。
 	StartRun(ctx context.Context, userID, sessionID uint64, req *model.StartAgentRunReq) (*agentsvc.AgentRunView, error)
 	// Interject 运行中插话。
@@ -155,6 +157,30 @@ func (h *AgentHandler) Events(c *gin.Context) {
 		return
 	}
 	response.OK(c, list)
+}
+
+// agentHistoryQuery 是聊天记录翻页的查询参数。
+type agentHistoryQuery struct {
+	Before int64 `form:"before" binding:"min=0" label:"before"`       // 已有的最小序号，0 取最新一页
+	Limit  int   `form:"limit" binding:"min=0,max=200" label:"limit"` // 一页最多多少条事件（会对齐到一轮的开头），0 取默认值
+}
+
+// History 读聊天记录：打开会话取最新一页，往上翻时带上已有的最小序号取更早的一页。
+func (h *AgentHandler) History(c *gin.Context) {
+	id, ok := encodedParam(c, "sid")
+	if !ok {
+		return
+	}
+	var q agentHistoryQuery
+	if !handler.BindQuery(c, &q) {
+		return
+	}
+	page, err := h.svc.History(c.Request.Context(), uint64(middleware.GetUserID(c)), id, q.Before, q.Limit)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, page)
 }
 
 // StartRun 发起一轮运行，返回 202：运行异步执行，进度走 WebSocket 事件。

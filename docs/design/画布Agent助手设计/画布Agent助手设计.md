@@ -561,6 +561,7 @@ running → interrupted（服务重启 / runtime 崩溃）→ 用户点「继续
 | `PATCH /api/v1/agent/sessions/:sid` | `{title}` 重命名 | 10002 |
 | `DELETE /api/v1/agent/sessions/:sid` | 软删除；有活跃 run 时拒绝 | 60001 |
 | `GET /api/v1/agent/sessions/:sid/events?after=seq&limit=200` | 回放事件（断线对账） | 10002 |
+| `GET /api/v1/agent/sessions/:sid/history?before=seq&limit=` | 聊天记录从最新往回翻页，返回 `{events, has_more}`：`before` 取已有的最小序号，0 取最新一页；`limit` 缺省 100、最大 200，一页起点对齐到一轮的开头（用户发起的 `message.user`，插话不算），所以一轮比 `limit` 长时一页会更多；`has_more` 说明更早还有没有。打开会话和往上翻用它，不再从头读整段会话 | 10002 |
 | `POST /api/v1/agent/sessions/:sid/runs` | `{message, mode: all\|script\|storyboard\|prompt, selection: id[], viewport, budget_credits, agent_model_key}`，返回 202 `{run}`，需要 `Idempotency-Key`。`message` 中的行内 chip 序列化为 `@[名字](node:id)`、`@[名字](model:key)`、`@[名字](skill:key)`、`@[名字](asset:id)`；Go 解析后校验节点属于该画布、模型已发布、技能存在，不合法时返回 10001 并写明是哪个 chip | 60001 画布已有运行中的 Agent；60002 agent 模型不可用；40001 积分不足；60005 runtime 不可用 |
 | `POST /api/v1/agent/runs/:rid/interject` | `{message}`，只在 running 时可用，转为 pi `steer` | 60003 状态不允许 |
 | `POST /api/v1/agent/runs/:rid/cancel` | 停止；pending 的审批变为 expired | 60003 |

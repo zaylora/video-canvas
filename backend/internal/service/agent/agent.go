@@ -26,6 +26,8 @@ const (
 	defaultRunMaxSteps        = 40    // 一轮运行最多的工具调用步数
 	approvalTTL               = 24 * time.Hour
 	maxEventPage              = 200 // 回放事件一页最多多少条
+	defaultHistoryPage        = 100 // 聊天记录一页默认多少条事件：中位数的一轮约 50 条、16KB，一页两三轮，够铺满浮窗又不拖慢打开
+	maxHistoryChunks          = 20  // 一轮特别长、一页装不下时，最多再往前读几块去找它的开头
 )
 
 // AgentRepo 是会话、运行、事件、审批所需的数据访问。
@@ -60,6 +62,8 @@ type AgentRepo interface {
 	AppendEvent(ctx context.Context, sessionID, runID uint64, typ string, payload datatypes.JSON) (*model.AgentEvent, error)
 	// ListEvents 列出会话里序号大于 afterSeq 的事件。
 	ListEvents(ctx context.Context, sessionID uint64, afterSeq int64, limit int) ([]model.AgentEvent, error)
+	// ListEventsBefore 列出会话里序号小于 beforeSeq 的最新 limit 条事件，升序（beforeSeq<=0 不设上界）。
+	ListEventsBefore(ctx context.Context, sessionID uint64, beforeSeq int64, limit int) ([]model.AgentEvent, error)
 	// CreateApproval 创建审批。
 	CreateApproval(ctx context.Context, a *model.AgentApproval) error
 	// GetApproval 按 id + user_id 读审批，不存在或不属于该用户返回 repository.ErrNotFound。
@@ -264,6 +268,75 @@ func (s *AgentService) Events(ctx context.Context, userID, sessionID uint64, aft
 		out[i] = eventView(&items[i])
 	}
 	return out, nil
+}
+
+// History 读会话的聊天记录，从最新往回翻页：before 是已有的最小序号（0 取最新一页），返回 before 之前的最多 limit 条事件，升序。
+// 一页的起点对齐到一轮的开头（用户发起的 message.user，插话不算），不把一轮拦腰截断：前端按一轮的事件折叠运行状态，
+// 拦腰截断会让最旧那轮缺开头。因此一页可能比 limit 多（一轮比 limit 长时）。HasMore 说明更早还有没有。
+func (s *AgentService) History(ctx context.Context, userID, sessionID uint64, before int64, limit int) (*AgentHistoryView, error) {
+	// 1. 会话必须是自己的
+	if _, err := s.repo.GetSession(ctx, userID, sessionID); err != nil {
+		return nil, sessionErr(err)
+	}
+	// 2. 修正条数：<=0 或超限取默认值
+	if limit <= 0 || limit > maxEventPage {
+		limit = defaultHistoryPage
+	}
+	// 3. 读最新的一块；起点不是一轮的开头就继续往前读，直到找到开头或读完
+	events, older, err := s.historyChunk(ctx, sessionID, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < maxHistoryChunks; i++ {
+		if at := firstTurnStart(events); at >= 0 {
+			// 起点之前的残余留给下一页（它们是更早一轮的结尾）
+			older = older || at > 0
+			events = events[at:]
+			break
+		}
+		if !older || len(events) == 0 {
+			break
+		}
+		more, moreOlder, err := s.historyChunk(ctx, sessionID, events[0].Seq, limit)
+		if err != nil {
+			return nil, err
+		}
+		events, older = append(more, events...), moreOlder
+	}
+	out := make([]*AgentEventView, len(events))
+	for i := range events {
+		out[i] = eventView(&events[i])
+	}
+	return &AgentHistoryView{Events: out, HasMore: older}, nil
+}
+
+// historyChunk 读 before 之前最新的 limit 条事件，并说明更早的还有没有（多读一条来判断）。
+func (s *AgentService) historyChunk(ctx context.Context, sessionID uint64, before int64, limit int) ([]model.AgentEvent, bool, error) {
+	items, err := s.repo.ListEventsBefore(ctx, sessionID, before, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(items) > limit {
+		return items[1:], true, nil
+	}
+	return items, false, nil
+}
+
+// firstTurnStart 返回第一个「一轮开头」事件的下标，没有返回 -1：用户发起的 message.user，运行中的插话（steer）不算。
+func firstTurnStart(events []model.AgentEvent) int {
+	for i := range events {
+		if events[i].Type != "message.user" {
+			continue
+		}
+		var p struct {
+			Steer bool `json:"steer"`
+		}
+		if json.Unmarshal(events[i].PayloadJSON, &p) == nil && p.Steer {
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 // checkCanvas 确认画布属于该用户。

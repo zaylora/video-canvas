@@ -499,7 +499,7 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
 
   const open = new Map<string, string>();
   let since: number | null = null;
-  let first: number | null = null;
+  let prev = "";
   for (const ev of state.events) {
     if (ev.run_id !== runId) continue;
     const d = ev.data ?? {};
@@ -507,14 +507,18 @@ export function buildStatusLine(state: AgentSessionState): StatusLine | null {
       open.set(str(d.id) || `e${ev.seq}`, toolLabel(str(d.name), str(d.label)));
     if (ev.type === "tool.end") open.delete(str(d.id) || `e${ev.seq}`);
     if (ev.type === "run.status") {
-      first ??= time(ev);
-      // 每次开始或继续都会先进 queued：计时从最近一次算起
-      if (str(d.status) === "queued") since = time(ev);
+      const status = str(d.status);
+      // 计时从「这一段运行」开始算：开始或继续会先进 queued；等审批、等回答之后直接回到 running 的不会再 queued，
+      // 等待的几小时不算在内，所以从恢复运行那一刻起算；一轮的头一条状态没有别的可依据，就用它
+      const resumed =
+        status === "running" && (prev === "waiting_approval" || prev === "waiting_input");
+      if (status === "queued" || resumed || since === null) since = time(ev);
+      prev = status;
     }
   }
   const running = [...open.values()].at(-1);
   const text = running ? `正在${running}…` : "思考中…";
-  return { runId, text, waiting: false, since: since ?? first };
+  return { runId, text, waiting: false, since };
 }
 
 /** 审批是否还在等用户：未决定且没过期 */
