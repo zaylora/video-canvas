@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	. "video-canvas/internal/service/agent"
@@ -181,4 +182,20 @@ func TestToolRegistry_WebToolsAreAppended(t *testing.T) {
 			t.Errorf("%s 由 Go 执行、可被脚本调用: %+v", d.Name, d)
 		}
 	}
+}
+
+// canvas_apply_ops 的说明要告诉模型：写提示词引用素材用 @[素材名](节点id)，且素材要先连线。
+func TestToolRegistry_ApplyOpsExplainsAssetRefs(t *testing.T) {
+	for _, d := range AgentToolDecls("all", true) {
+		if d.Name != "canvas_apply_ops" {
+			continue
+		}
+		for _, must := range []string{"@[素材名](节点id)", "连线"} {
+			if !strings.Contains(d.Description, must) {
+				t.Errorf("canvas_apply_ops 的说明缺少 %q:\n%s", must, d.Description)
+			}
+		}
+		return
+	}
+	t.Fatal("没有 canvas_apply_ops")
 }

@@ -159,3 +159,21 @@ func TestSystem_ExplainsSelectedInCatalog(t *testing.T) {
 		}
 	}
 }
+
+// 节点提示词里引用已连线的素材要写 @[素材名](节点id)，由前端提交时展开成素材编号；
+// 不能手写「图1/图2」，技能里的素材映射表也要换成这种写法。
+func TestSystem_PromptAssetRefs(t *testing.T) {
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, must := range []string{
+			"@[素材名](节点id)", // 引用格式
+			"图1",           // 点名不要手写的编号
+			"素材映射",         // 技能里的映射表要换成引用
+			"连线",           // 引用的素材必须已连线
+		} {
+			if !strings.Contains(got, must) {
+				t.Errorf("模式 %s 的提示词应交代节点提示词怎么引用素材，缺少 %q", mode, must)
+			}
+		}
+	}
+}
