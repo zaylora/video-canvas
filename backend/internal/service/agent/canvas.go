@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 
+	"go.uber.org/zap"
+
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/pkg/ws"
+	"video-canvas/internal/provider"
 	"video-canvas/internal/repository"
 )
 
@@ -35,8 +39,48 @@ type AgentCanvasRepo interface {
 // 工具层的错误（*canvasgraph.ValidationError、canvasgraph.ErrInvalid）原样返回，由调用方转成给模型看的工具错误，
 // 不是 HTTP 错误；其余业务错误都是 errcode.*。
 type AgentCanvasService struct {
-	repo AgentCanvasRepo
-	bc   ws.Broadcaster
+	repo     AgentCanvasRepo
+	bc       ws.Broadcaster
+	modelOps ModelOpsSource // 校验和展示生成方式用；nil 表示不校验、不展示
+}
+
+// ModelOpsSource 返回已上架、可用的图片和视频模型各自支持的生成方式（模型 key → ops）。
+type ModelOpsSource func(ctx context.Context) (map[string][]string, error)
+
+// SetModelOps 设置模型的生成方式来源。装配桥时由 NewAgentBridge 用模型注册表设置。
+func (s *AgentCanvasService) SetModelOps(src ModelOpsSource) { s.modelOps = src }
+
+// registryModelOps 用模型注册表做生成方式来源；注册表缓存了编译结果，每次调用不查库。
+func registryModelOps(reg provider.Registry) ModelOpsSource {
+	return func(ctx context.Context) (map[string][]string, error) {
+		list, err := reg.ListModels(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string][]string, len(list))
+		for _, m := range list {
+			if (m.Kind == "video" || m.Kind == "image") && len(m.Capabilities.Ops) > 0 {
+				out[m.Key] = m.Capabilities.Ops
+			}
+		}
+		return out, nil
+	}
+}
+
+// modelOpsLookup 取一次模型的生成方式并包成查询函数；没有来源或取失败时返回 nil（不校验，生成时再兜底）。
+func (s *AgentCanvasService) modelOpsLookup(ctx context.Context) canvasgraph.ModelOpsFunc {
+	if s.modelOps == nil {
+		return nil
+	}
+	ops, err := s.modelOps(ctx)
+	if err != nil {
+		logger.Warn("读取模型生成方式失败，本次不校验 mode", zap.Error(err))
+		return nil
+	}
+	return func(model string) ([]string, bool) {
+		v, ok := ops[model]
+		return v, ok
+	}
 }
 
 // NewAgentCanvasService 创建服务；bc 为 nil 时不推送。
@@ -49,12 +93,13 @@ func NewAgentCanvasService(repo AgentCanvasRepo, bc ws.Broadcaster) *AgentCanvas
 
 // WriteResult 是一次画布写入的结果。没有任何变化时 MutationID 为 0，也不会产生新的 revision。
 type WriteResult struct {
-	IDMap      map[string]string `json:"id_map,omitempty"` // tempId → 真实 id
-	MutationID uint64            `json:"mutation_id"`      // 改动日志 id，0 表示没有写入
-	Revision   uint64            `json:"revision"`         // 写入后的画布 revision
-	Changes    int               `json:"changes"`          // 改动项数
-	Created    []string          `json:"-"`                // 新建的节点 id，前端的改动摘要用
-	Updated    []string          `json:"-"`                // 改了字段的节点 id（不含新建和删除）
+	IDMap      map[string]string `json:"id_map,omitempty"`   // tempId → 真实 id
+	MutationID uint64            `json:"mutation_id"`        // 改动日志 id，0 表示没有写入
+	Revision   uint64            `json:"revision"`           // 写入后的画布 revision
+	Changes    int               `json:"changes"`            // 改动项数
+	Created    []string          `json:"-"`                  // 新建的节点 id，前端的改动摘要用
+	Updated    []string          `json:"-"`                  // 改了字段的节点 id（不含新建和删除）
+	Warnings   []string          `json:"warnings,omitempty"` // 写入后发现的问题提醒（如生成方式和已连素材对不上），不拦截
 }
 
 // nodeIDsByOp 取出差异里某种操作涉及的节点 id，连线不算。
@@ -90,15 +135,38 @@ func (s *AgentCanvasService) ApplyOps(ctx context.Context, run *model.AgentRun, 
 	if err != nil {
 		return nil, err
 	}
-	// 2. 在最新画布上应用并写入；版本冲突时重读重试
-	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
-		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{})
+	// 2. 在最新画布上应用并写入；版本冲突时重读重试。模型的生成方式在重试之前取一次：mode 要按它校验，写入后还要据它检查提醒
+	lookup := s.modelOpsLookup(ctx)
+	res, extra, err := s.mutate(ctx, run, toolCallID, model.MutationApplyOps, 0, func(g *canvasgraph.Graph) (*edit, error) {
+		r, err := canvasgraph.Apply(g, ops, canvasgraph.Options{ModelOps: lookup})
 		if err != nil {
 			return nil, err
 		}
-		return &edit{graph: r.Graph, changes: r.Changes, idMap: r.IDMap}, nil
+		warnings := canvasgraph.ModeWarnings(r.Graph, touchedNodeIDs(r.Changes), lookup)
+		return &edit{graph: r.Graph, changes: r.Changes, idMap: r.IDMap, extra: warnings}, nil
 	})
+	if w, ok := extra.([]string); ok && res != nil {
+		res.Warnings = w
+	}
 	return res, err
+}
+
+// touchedNodeIDs 取出这批改动涉及的节点：新建、修改的节点，以及新连线的两端。
+func touchedNodeIDs(changes []canvasgraph.Change) []string {
+	var ids []string
+	for _, c := range changes {
+		switch {
+		case c.Kind == "node" && c.Op != canvasgraph.ChangeDelete:
+			ids = append(ids, c.ID)
+		case c.Kind == "edge" && c.Op == canvasgraph.ChangeCreate:
+			for _, k := range []string{"source", "target"} {
+				if id, _ := c.After[k].(string); id != "" {
+					ids = append(ids, id)
+				}
+			}
+		}
+	}
+	return ids
 }
 
 // Arrange 整理布局：排列一个组的成员或一组节点。
@@ -219,7 +287,12 @@ func (s *AgentCanvasService) Detail(ctx context.Context, run *model.AgentRun, id
 	if err != nil {
 		return nil, err
 	}
-	return canvasgraph.Detail(g, ids)
+	d, err := canvasgraph.Detail(g, ids)
+	if err != nil {
+		return nil, err
+	}
+	canvasgraph.AnnotateModes(d, s.modelOpsLookup(ctx))
+	return d, nil
 }
 
 // load 读取并解析运行所属用户的画布，返回图和当前 revision。

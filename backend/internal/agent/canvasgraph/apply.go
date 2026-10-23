@@ -15,6 +15,8 @@ const maxLabelRunes = 40
 type Options struct {
 	// NewID 生成新节点、组、连线的 id，prefix 是 "n_" / "g_" / "e_"；不传用随机值。测试里注入可预期的实现。
 	NewID func(prefix string) string
+	// ModelOps 按模型 key 查它支持的生成方式，用来校验 mode；不传就只检查 mode 与节点种类是否相符
+	ModelOps ModelOpsFunc
 }
 
 // newID 生成带前缀的 id。
@@ -144,6 +146,9 @@ func checkParams(params map[string]any) error {
 			return fmt.Errorf("params.%s 不能直接写入，需要参考素材请用 connect 连线", k)
 		}
 	}
+	if _, ok := params["op"]; ok {
+		return errors.New("params.op 不能直接写入，生成方式请用 mode 字段设置")
+	}
 	return nil
 }
 
@@ -216,6 +221,11 @@ func (a *applier) createNode(op Op) error {
 			params[k] = v
 		}
 	}
+	if op.Mode != nil {
+		if err := a.setMode(n, *op.Mode); err != nil {
+			return err
+		}
+	}
 	switch {
 	case op.Position != nil:
 		n.SetPosition(*op.Position)
@@ -244,7 +254,7 @@ func (a *applier) updateNode(op Op) error {
 	if n.Kind() == KindDirector {
 		return errors.New("导演台节点只能由用户在导演台里修改")
 	}
-	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 {
+	if op.Label == nil && op.Prompt == nil && op.Model == nil && len(op.Params) == 0 && op.Mode == nil {
 		return errors.New("没有要修改的内容")
 	}
 	if err := checkParams(op.Params); err != nil {
@@ -269,6 +279,9 @@ func (a *applier) updateNode(op Op) error {
 		for k, v := range op.Params {
 			params[k] = v
 		}
+	}
+	if op.Mode != nil {
+		return a.setMode(n, *op.Mode)
 	}
 	return nil
 }

@@ -298,7 +298,11 @@ func (b *AgentBridge) toolApplyOps(ctx context.Context, tc *toolCall) (*toolOut,
 	if err != nil {
 		return nil, err
 	}
-	content, err := jsonOut(map[string]any{"ok": true, "id_map": res.IDMap, "changes": res.Changes, "revision": res.Revision})
+	out := map[string]any{"ok": true, "id_map": res.IDMap, "changes": res.Changes, "revision": res.Revision}
+	if len(res.Warnings) > 0 {
+		out["warnings"] = res.Warnings
+	}
+	content, err := jsonOut(out)
 	ids := make([]string, 0, len(res.IDMap))
 	for _, id := range res.IDMap {
 		ids = append(ids, id)

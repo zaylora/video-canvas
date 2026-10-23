@@ -102,6 +102,10 @@ func NewAgentBridge(d BridgeDeps) *AgentBridge {
 	if d.TokenTTL <= 0 {
 		d.TokenTTL = 2 * time.Hour
 	}
+	// 画布服务要按模型支持的生成方式校验 mode、展示节点当前的方式：来源是模型注册表
+	if d.Canvas != nil && d.Registry != nil {
+		d.Canvas.SetModelOps(registryModelOps(d.Registry))
+	}
 	return &AgentBridge{d: d, tokens: map[string]*bridgeSession{}, calls: map[uint64]int{}}
 }
 
