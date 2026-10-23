@@ -3,9 +3,12 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"gorm.io/datatypes"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
@@ -342,3 +345,97 @@ func TestAgentInterjectCancelResume(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// 历史分页：从最新往回读，每页的起点对齐到「一轮」的开头（用户发起的 message.user，插话不算），不把一轮拦腰截断。
+func TestAgentHistory(t *testing.T) {
+	ctx := context.Background()
+	// 三轮：A=1..3，B=4..8（6 是插话），C=9..14
+	seed := func(t *testing.T) *agentEnv {
+		e := newAgentEnv(t)
+		add := func(run uint64, typ, payload string) {
+			if _, err := e.repo.AppendEvent(ctx, e.sess, run, typ, datatypes.JSON(payload)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		add(1, "message.user", `{"text":"a"}`)
+		add(1, "run.status", `{"status":"queued"}`)
+		add(1, "message.done", `{}`)
+		add(2, "message.user", `{"text":"b"}`)
+		add(2, "run.status", `{"status":"queued"}`)
+		add(2, "message.user", `{"text":"插话","steer":true}`)
+		add(2, "message.done", `{}`)
+		add(2, "run.status", `{"status":"succeeded"}`)
+		add(3, "message.user", `{"text":"c"}`)
+		for i := 0; i < 5; i++ {
+			add(3, "tool.start", `{}`)
+		}
+		return e
+	}
+	seqs := func(h *AgentHistoryView) []int64 {
+		out := make([]int64, len(h.Events))
+		for i, ev := range h.Events {
+			out[i] = ev.Seq
+		}
+		return out
+	}
+	rng := func(from, to int64) []int64 {
+		var out []int64
+		for i := from; i <= to; i++ {
+			out = append(out, i)
+		}
+		return out
+	}
+
+	t.Run("最新一页从最近一轮的开头起，还有更早的", func(t *testing.T) {
+		e := seed(t)
+		h, err := e.svc.History(ctx, 1, e.sess, 0, 5)
+		if err != nil || !reflect.DeepEqual(seqs(h), rng(9, 14)) || !h.HasMore {
+			t.Fatalf("limit=5 本该只有 10..14，但 C 轮要读全，应为 9..14 且还有更早: %v more=%v err=%v", seqs(h), h.HasMore, err)
+		}
+	})
+	t.Run("往前翻：before 取上一页的第一条，一页以一轮开头", func(t *testing.T) {
+		e := seed(t)
+		h, _ := e.svc.History(ctx, 1, e.sess, 9, 5)
+		if !reflect.DeepEqual(seqs(h), rng(4, 8)) || !h.HasMore {
+			t.Errorf("应为 B 轮 4..8 且还有更早: %v more=%v", seqs(h), h.HasMore)
+		}
+		h, _ = e.svc.History(ctx, 1, e.sess, 4, 5)
+		if !reflect.DeepEqual(seqs(h), rng(1, 3)) || h.HasMore {
+			t.Errorf("翻到头：应为 1..3 且没有更早: %v more=%v", seqs(h), h.HasMore)
+		}
+	})
+	t.Run("插话不是一轮的开头", func(t *testing.T) {
+		e := seed(t)
+		h, _ := e.svc.History(ctx, 1, e.sess, 9, 3)
+		if !reflect.DeepEqual(seqs(h), rng(4, 8)) {
+			t.Errorf("窗口只有 5..8、起点是插话：要往前找到 4（本轮的 message.user）: %v", seqs(h))
+		}
+	})
+	t.Run("页比整个会话大：全给，没有更早", func(t *testing.T) {
+		e := seed(t)
+		h, _ := e.svc.History(ctx, 1, e.sess, 0, 100)
+		if !reflect.DeepEqual(seqs(h), rng(1, 14)) || h.HasMore {
+			t.Errorf("应全部 1..14: %v more=%v", seqs(h), h.HasMore)
+		}
+	})
+	t.Run("空会话：空列表（不是 null），没有更早", func(t *testing.T) {
+		e := newAgentEnv(t)
+		h, err := e.svc.History(ctx, 1, e.sess, 0, 10)
+		if err != nil || h.Events == nil || len(h.Events) != 0 || h.HasMore {
+			t.Errorf("h=%+v err=%v", h, err)
+		}
+	})
+	t.Run("limit 缺省和超限：缺省 100，最大 200", func(t *testing.T) {
+		e := seed(t)
+		for _, limit := range []int{0, -1, 9999} {
+			if h, err := e.svc.History(ctx, 1, e.sess, 0, limit); err != nil || len(h.Events) != 14 {
+				t.Errorf("limit=%d 应读到全部: %+v err=%v", limit, h, err)
+			}
+		}
+	})
+	t.Run("别人的会话不存在", func(t *testing.T) {
+		e := seed(t)
+		_, err := e.svc.History(ctx, 2, e.sess, 0, 10)
+		wantAgentCode(t, err, errcode.ErrAgentSessionMissing)
+	})
+}

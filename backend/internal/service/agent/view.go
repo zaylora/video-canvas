@@ -64,6 +64,12 @@ type AgentEventView struct {
 	CreatedAt time.Time       `json:"created_at"` // 创建时间
 }
 
+// AgentHistoryView 是一页聊天记录：事件按序号升序，HasMore 表示更早还有没有。
+type AgentHistoryView struct {
+	Events  []*AgentEventView `json:"events"`   // 事件，升序
+	HasMore bool              `json:"has_more"` // 更早还有事件
+}
+
 // eventView 转成返回给前端的结构。
 func eventView(e *model.AgentEvent) *AgentEventView {
 	v := &AgentEventView{SessionID: idcodec.ID(e.SessionID), Seq: e.Seq, Type: e.Type, Data: json.RawMessage(e.PayloadJSON), CreatedAt: e.CreatedAt}

@@ -126,8 +126,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		agent.GET("/skills", h.AgentSkill.UserList) // 已启用技能的目录（@ 弹层）
 		agent.PATCH("/sessions/:sid", h.Agent.RenameSession)
 		agent.DELETE("/sessions/:sid", h.Agent.DeleteSession)
-		agent.GET("/sessions/:sid/events", h.Agent.Events)  // ?after=序号&limit=
-		agent.POST("/sessions/:sid/runs", h.Agent.StartRun) // 202
+		agent.GET("/sessions/:sid/events", h.Agent.Events)   // ?after=序号&limit=
+		agent.GET("/sessions/:sid/history", h.Agent.History) // ?before=序号&limit=，聊天记录从最新往回翻
+		agent.POST("/sessions/:sid/runs", h.Agent.StartRun)  // 202
 		agent.POST("/runs/:rid/interject", h.Agent.Interject)
 		agent.POST("/runs/:rid/cancel", h.Agent.Cancel)
 		agent.POST("/runs/:rid/resume", h.Agent.Resume)
