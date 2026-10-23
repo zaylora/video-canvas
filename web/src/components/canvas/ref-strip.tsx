@@ -304,7 +304,7 @@ export function RefStrip({
               {choices.map((choice) => (
                 <DropdownMenuItem key={choice.id} onClick={() => onLink(choice)}>
                   <span className="bg-foreground/10 size-7 shrink-0 overflow-hidden rounded-md">
-                    <RefThumb compact source={choice} />
+                    <RefThumb source={choice} />
                   </span>
                   <span className="min-w-0 flex-1 truncate">{choice.label}</span>
                 </DropdownMenuItem>

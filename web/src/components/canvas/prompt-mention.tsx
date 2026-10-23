@@ -136,19 +136,12 @@ export function useRefHighlight() {
 }
 
 /**
- * 素材缩略图：图片、视频取画面，音频是音符，文本在格子里摆前几十个字（compact 时只给图标），
- * 还没产出的给种类图标。外框大小和圆角由调用方定。
+ * 素材缩略图：图片、视频取画面，音频是音符，文本只给种类图标（T，摆几个字没有信息量），
+ * 还没产出的也给种类图标。外框大小和圆角由调用方定。
  */
-export function RefThumb({ source, compact }: { source: RefSource; compact?: boolean }) {
+export function RefThumb({ source }: { source: RefSource }) {
   const KindIcon = NODE_META.get(source.kind)?.icon;
   if (source.kind === "script") {
-    const text = source.text?.trim();
-    if (text && !compact)
-      return (
-        <span className="text-muted-foreground line-clamp-2 size-full px-1.5 pt-5 text-left text-[10px] leading-[1.35]">
-          {text.slice(0, 40)}
-        </span>
-      );
     return (
       <span className="text-muted-foreground grid size-full place-items-center">
         {KindIcon && <KindIcon className="size-[55%] max-w-4" />}
@@ -220,7 +213,6 @@ function MentionChip({ node }: NodeViewProps) {
         )}
       >
         <RefThumb
-          compact
           source={{
             id,
             kind: live?.kind ?? "image",
@@ -373,7 +365,7 @@ function MentionMenu({
         )}
       >
         <span className="bg-foreground/10 size-7 shrink-0 overflow-hidden rounded-md">
-          <RefThumb compact source={entry.source} />
+          <RefThumb source={entry.source} />
         </span>
         <span className="min-w-0 flex-1 truncate">{entry.source.label}</span>
         {!entry.linked && (

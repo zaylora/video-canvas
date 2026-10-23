@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useState, type Ref } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, Bot, Check, ChevronDown, Square, X } from "lucide-react";
 
@@ -171,6 +171,8 @@ export function AgentComposer({
   /** 把图片传到画布并引用：返回新建节点的 chip */
   onAttachImages: (files: File[]) => Promise<Chip[]>;
 }) {
+  // 输入框是否聚焦（点发送按钮不算）
+  const [editing, setEditing] = useState(false);
   const handle = editorRef as { current: AgentEditorHandle | null };
   const empty = text.trim() === "";
   const stopMode = busy && empty;
@@ -181,7 +183,13 @@ export function AgentComposer({
     <div className="flex flex-col gap-1.5 p-2.5">
       {selectionCount > 0 && useSelection && (
         <div className="flex">
-          <span className="agent-inset bg-foreground/6 inline-flex h-6 items-center gap-1.5 rounded-md pr-1 pl-2 text-xs">
+          <span
+            className={cn(
+              "agent-inset inline-flex h-6 items-center gap-1.5 rounded-md pr-1 pl-2 text-xs transition-colors duration-120",
+              // 浅色是「选中了」，输入框聚焦后变深，表示这些节点会随这条消息一起引用
+              editing ? "bg-foreground/14" : "bg-foreground/6",
+            )}
+          >
             <span aria-hidden className="bg-preset size-1.5 rounded-full" />
             已选中 {selectionCount} 个节点
             <button
@@ -195,15 +203,17 @@ export function AgentComposer({
           </span>
         </div>
       )}
-      <AgentEditor
-        handleRef={editorRef}
-        nodes={nodes}
-        placeholder={
-          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
-        }
-        onChange={onTextChange}
-        onSubmit={() => !empty && !sending && onSend()}
-      />
+      <div onFocusCapture={() => setEditing(true)} onBlurCapture={() => setEditing(false)}>
+        <AgentEditor
+          handleRef={editorRef}
+          nodes={nodes}
+          placeholder={
+            busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
+          }
+          onChange={onTextChange}
+          onSubmit={() => !empty && !sending && onSend()}
+        />
+      </div>
       <div className="flex min-w-0 items-center gap-0.5">
         <AttachPopover
           onInsertText={(t) => handle.current?.insertText(t)}
