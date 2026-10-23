@@ -95,7 +95,8 @@ func validateRefs(kind string, c *Capabilities, add func(path, msg string)) {
 // validateRefSpec 校验一种参考素材：模型种类是否接收，开启后数量与大小是否在固定范围内。
 func validateRefSpec(kind, refKind string, spec RefSpec, add func(path, msg string)) {
 	path := "refs." + refKind
-	supported := kind == KindVideo || (kind == KindImage && refKind == "image")
+	// 视频全部接收；图片、音频模型只接收图片参考（图片模型：图生图；音频模型：文本 + 图片生成音频）
+	supported := kind == KindVideo || ((kind == KindImage || kind == KindAudio) && refKind == "image")
 	if !supported {
 		if spec.On {
 			add(path+".on", "这个种类的模型不接收这种参考素材")

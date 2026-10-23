@@ -148,6 +148,33 @@ func TestValidateInput_文本与音频没有生成方式(t *testing.T) {
 	}
 }
 
+// 音频模型没有生成方式，但可以开图片参考（文本 + 图片生成音频）：images 保留并规范成 uint64，
+// 参考音频、参考视频不接收；图片参考没开启时 images 被忽略。
+func TestValidateInput_音频模型的图片参考(t *testing.T) {
+	caps := modelcfg.Capabilities{
+		Prompt: modelcfg.PromptSpec{MaxLength: 100},
+		Refs:   modelcfg.Refs{Image: modelcfg.RefSpec{On: true, Max: 1, MaxMB: 10}, Audio: modelcfg.RefSpec{On: true, Max: 3, MaxMB: 10}},
+	}
+	got, errs := modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"prompt": "读出来", "images": []any{7.0}, "audios": []any{9.0}})
+	if len(errs) > 0 {
+		t.Fatalf("不该有错误：%v", errs)
+	}
+	if !reflect.DeepEqual(got, map[string]any{"prompt": "读出来", "images": []uint64{7}}) {
+		t.Fatalf("应只保留图片素材：%v", got)
+	}
+
+	_, errs = modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"prompt": "x", "images": []any{1.0, 2.0}})
+	if len(errs) != 1 || errs[0].Field != "images" {
+		t.Fatalf("超过上限应报 images：%v", errs)
+	}
+
+	caps.Refs.Image.On = false
+	got, errs = modelcfg.ValidateInput(modelcfg.KindAudio, caps, map[string]any{"prompt": "x", "images": []any{7.0}})
+	if len(errs) > 0 || !reflect.DeepEqual(got, map[string]any{"prompt": "x"}) {
+		t.Fatalf("图片参考没开启时应忽略 images：%v %v", got, errs)
+	}
+}
+
 func TestValidateInput_枚举数字与字符串互认(t *testing.T) {
 	caps := modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}, Params: modelcfg.ParamSet{
 		{Name: "count", ParamField: modelcfg.ParamField{Type: modelcfg.ParamEnum, Label: "数量", Open: true, Options: []any{1.0, 2.0, 4.0}, Default: 1.0}},
