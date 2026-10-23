@@ -619,6 +619,7 @@ export const Flow = memo(function Flow({
     onConnect,
     onConnectEnd,
     onDoubleClick,
+    onPaneMouseDown,
   } = useCanvasMenu({
     setNodes: setContentNodes,
     setEdges,
@@ -831,6 +832,7 @@ export const Flow = memo(function Flow({
                         isValidConnection={isValidConnection}
                         onConnectEnd={onConnectEnd}
                         // 抓手模式下双击也只是拖画布的一部分，别在松手后冒出添加菜单
+                        onMouseDown={isPanning ? undefined : onPaneMouseDown}
                         onDoubleClick={isPanning ? undefined : onDoubleClick}
                         onNodeDoubleClick={isPanning ? undefined : onNodeDoubleClick}
                         zoomOnDoubleClick={false}

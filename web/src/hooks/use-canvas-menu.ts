@@ -49,6 +49,18 @@ type UseCanvasMenuOptions = {
 };
 
 /**
+ * 点的是不是画布空白处（不在节点、连线、面板上）。
+ * node-toolbar 得单列：它的 class 是 react-flow__node-toolbar，
+ * 和 react-flow__node 是两个不同的 class，closest 认不出亲戚关系，
+ * 漏了它双击输入框就会当成双击空白、平白弹出建节点菜单
+ */
+function isBlankCanvas(target: Element) {
+  return !target.closest(
+    ".react-flow__node, .react-flow__node-toolbar, .react-flow__edge, .react-flow__panel",
+  );
+}
+
+/**
  * 「添加节点」菜单的状态机：双击空白或拉线落空时记录锚点，
  * 选定种类后就地建节点，并把拉线落空那根边补上。
  */
@@ -129,22 +141,20 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     [screenToFlowPosition],
   );
 
+  /*
+   * 双击空白画布的第二下按下时，浏览器会按「双击选词」去选附近的文字，
+   * 菜单建出节点后，面板里的占位符、模型名全被刷成蓝色选区。
+   * 在空白处按下时拦掉默认行为就不会选；节点里的输入框不在拦截范围内，照常能双击选词。
+   */
+  const onPaneMouseDown = useCallback((event: React.MouseEvent) => {
+    if (event.detail < 2 || !isBlankCanvas(event.target as Element)) return;
+    event.preventDefault();
+  }, []);
+
   // 只有双击空白画布才弹菜单
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
-      const target = event.target as Element;
-      /*
-       * node-toolbar 得单列：它的 class 是 react-flow__node-toolbar，
-       * 和 react-flow__node 是两个不同的 class，closest 认不出亲戚关系，
-       * 漏了它双击输入框就会当成双击空白、平白弹出建节点菜单
-       */
-      if (
-        target.closest(
-          ".react-flow__node, .react-flow__node-toolbar, .react-flow__edge, .react-flow__panel",
-        )
-      ) {
-        return;
-      }
+      if (!isBlankCanvas(event.target as Element)) return;
 
       const screen = { x: event.clientX, y: event.clientY };
       setMenu({
@@ -525,5 +535,6 @@ export function useCanvasMenu({ setNodes, setEdges, defaultModels }: UseCanvasMe
     onConnect,
     onConnectEnd,
     onDoubleClick,
+    onPaneMouseDown,
   };
 }
