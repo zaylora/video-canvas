@@ -14,7 +14,7 @@ import {
 
 import { useFocusNode } from "../chrome/use-focus-node";
 
-/** 标签的外观：和输入框里「已选中 N 个节点」同款的底色和内高光 */
+/** 标签的外观：底色加内高光，和输入框里的行内引用 chip 区分开（这里只用来回看旧消息的 selection） */
 const CHIP =
   "agent-inset bg-foreground/6 inline-flex h-6 max-w-40 items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-120 focus-visible:ring-2 focus-visible:ring-node-ring/60";
 

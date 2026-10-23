@@ -177,3 +177,16 @@ func TestSystem_PromptAssetRefs(t *testing.T) {
 		}
 	}
 }
+
+// 内置技能已经全部去掉：任何模式的系统提示词都不该再让模型去读它们（读不到只会白跑一趟工具调用）。
+func TestSystem_NoRemovedBuiltInSkills(t *testing.T) {
+	removed := []string{"script-breakdown", "character-turnaround", "scene-setting", "keyframe-prompt", "video-motion-prompt"}
+	for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
+		got := prompts.System(mode)
+		for _, name := range removed {
+			if strings.Contains(got, name) {
+				t.Errorf("%s 模式的系统提示词不应再提到已删除的技能 %s", mode, name)
+			}
+		}
+	}
+}

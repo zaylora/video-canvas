@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>选中节点引用原型</title>
+<!--
+  选中节点引用原型（设计文档 6.9）：画布上选中节点，在输入框光标处先出现「浅色占位」，输入框激活后变「深色」，才算真正引用。
+  颜色抄自 web/src/index.css（同画布 Agent 浮窗原型），时长和曲线与 web/src/lib/motion.ts 一致：
+  hover / 颜色过渡 120ms（DURATION.fast），进入 120ms，退出 126ms（DURATION.exit），曲线 EASE_OUT。
+  输入框是真的 contenteditable，可以直接用输入法打字，验证「组字中点节点、再回到输入框」的流程。
+  原型里占位是插在文档里的 span；代码里改用 ProseMirror 的 widget decoration（不进文档，不打断输入法）。
+-->
+<style>
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --canvas-bg: oklch(0.975 0 0);
+    --canvas-dot: oklch(0 0 0 / 0.14);
+    --chrome-border: oklch(0 0 0 / 0.08);
+    --chrome-hover: oklch(0 0 0 / 0.05);
+    --node-ring: oklch(0.2 0 0 / 0.85);
+    --preset: oklch(0.55 0.2 295);
+    --status-running: oklch(0.58 0.15 250);
+    --status-success: oklch(0.6 0.15 155);
+    --card: oklch(1 0 0);
+    --radius: 0.625rem;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+  [data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --canvas-bg: oklch(0.13 0 0);
+    --canvas-dot: oklch(1 0 0 / 0.08);
+    --chrome-border: oklch(1 0 0 / 0.08);
+    --chrome-hover: oklch(1 0 0 / 0.07);
+    --node-ring: oklch(1 0 0 / 0.72);
+    --preset: oklch(0.6 0.19 295);
+    --status-running: oklch(0.75 0.12 240);
+    --status-success: oklch(0.75 0.15 155);
+    --card: oklch(0.205 0 0);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font: 13px/1.5 "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid color-mix(in oklab, var(--node-ring) 60%, transparent); outline-offset: 1px; }
+  svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- 页面骨架 ---------- */
+  .top { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--chrome-border); }
+  .top h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  .top .sp { flex: 1; }
+  .top button { height: 28px; padding: 0 10px; border-radius: 8px; color: var(--muted-foreground); display: inline-flex; align-items: center; gap: 6px; transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+  .top button:hover { background: var(--chrome-hover); color: var(--foreground); }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; padding: 20px; align-items: start; }
+  @media (max-width: 900px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ---------- 画布 ---------- */
+  .canvas {
+    position: relative; height: 270px; overflow: auto; border-radius: 14px;
+    border: 1px solid var(--chrome-border);
+    background-color: var(--canvas-bg);
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .canvas-in { position: relative; width: 600px; height: 100%; }
+  .group { position: absolute; border-radius: calc(var(--radius) * 1.8); border: 1px dashed color-mix(in oklab, var(--foreground) 22%, transparent); padding: 6px 10px; color: var(--muted-foreground); font-size: 11px; cursor: pointer; transition: box-shadow 120ms var(--ease); }
+  .group.sel { box-shadow: 0 0 0 2px var(--node-ring); }
+  .node {
+    position: absolute; width: 150px; padding: 8px 10px; border-radius: calc(var(--radius) * 1.4);
+    background: var(--card); box-shadow: 0 0 0 1px var(--chrome-border), 0 2px 8px oklch(0 0 0 / 0.12);
+    font-size: 12px; cursor: pointer; user-select: none; transition: box-shadow 120ms var(--ease);
+  }
+  .node b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node small { display: block; color: var(--muted-foreground); font-size: 11px; }
+  .node.sel { box-shadow: 0 0 0 2px var(--node-ring), 0 2px 8px oklch(0 0 0 / 0.12); }
+  .hint-tip { position: absolute; right: 10px; bottom: 8px; color: var(--muted-foreground); font-size: 11px; pointer-events: none; }
+
+  /* ---------- 说明卡 ---------- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 14px; }
+  .card { border: 1px solid var(--chrome-border); border-radius: 14px; padding: 12px 14px; background: color-mix(in oklab, var(--foreground) 2.5%, var(--background)); }
+  .card h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+  .card ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .card p { margin: 0 0 6px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+  .kv dt { color: var(--muted-foreground); }
+  .kv dd { margin: 0; }
+  .on { color: var(--status-success); }
+  .sent { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--foreground) 5%, transparent); font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+  .legend { display: grid; gap: 8px; }
+  .legend > div { display: flex; align-items: center; gap: 10px; }
+  .legend .chip { margin: 0; flex: none; }
+
+  /* ---------- Agent 浮窗（只画到输入区够用） ---------- */
+  .panel {
+    height: 580px; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden;
+    background: var(--popover); border: 1px solid var(--chrome-border);
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 8px 32px oklch(0 0 0 / 0.28);
+  }
+  .p-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .p-head .orb { width: 20px; height: 20px; border-radius: 7px; background: linear-gradient(135deg, var(--status-running), var(--preset)); }
+  .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .bubble-u { align-self: flex-end; max-width: 88%; padding: 8px 12px; border-radius: 14px; background: color-mix(in oklab, var(--foreground) 8%, transparent); box-shadow: 0 0 0 1px var(--chrome-border); line-height: 1.75; white-space: pre-wrap; }
+  .bubble-u .chip { margin: 0 2px; }
+  .bubble-a { color: color-mix(in oklab, var(--foreground) 92%, transparent); line-height: 1.7; }
+  .composer-wrap { padding: 10px; }
+  .composer {
+    display: flex; flex-direction: column; gap: 6px; padding: 10px;
+    border-radius: 16px; border: 1px solid var(--chrome-border);
+    background: color-mix(in oklab, var(--foreground) 4%, var(--popover));
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05);
+    transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+  }
+  .composer:focus-within {
+    border-color: color-mix(in oklab, var(--preset) 50%, transparent);
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 0 0 4px color-mix(in oklab, var(--preset) 14%, transparent);
+  }
+  .ed { position: relative; min-height: 60px; max-height: 140px; overflow-y: auto; padding: 0 4px; font-size: 13.5px; line-height: 1.75; outline: none; white-space: pre-wrap; word-break: break-word; }
+  .ed.is-empty::before { content: attr(data-placeholder); color: color-mix(in oklab, var(--muted-foreground) 70%, transparent); pointer-events: none; position: absolute; left: 4px; top: 0; }
+  .bar { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .bar .b { height: 32px; min-width: 32px; padding: 0 8px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; color: var(--muted-foreground); }
+  .bar .b:hover { background: var(--chrome-hover); color: var(--foreground); }
+  .bar .sp { flex: 1; }
+  .send {
+    margin-left: 2px; width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; flex: none;
+    transition: background-color 120ms var(--ease), color 120ms var(--ease), transform 120ms var(--ease);
+    background: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--muted-foreground);
+  }
+  .send:active:not(:disabled) { transform: scale(0.96); }
+  .send.ready { background: linear-gradient(135deg, var(--status-running), var(--preset)); color: oklch(0.985 0 0); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25); }
+
+  /* ---------- 行内节点 chip：深色 = 已引用，浅色（ghost）= 占位 ---------- */
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; height: 24px; max-width: 176px; margin: 0 2px; padding: 0 6px;
+    border-radius: 6px; font-size: 12px; line-height: 1; vertical-align: middle; user-select: none;
+    background: color-mix(in oklab, var(--foreground) 7%, transparent);
+    border: 1px solid var(--chrome-border);
+    color: var(--foreground);
+    transition: background-color 120ms var(--ease), color 120ms var(--ease), border-color 120ms var(--ease);
+  }
+  .chip svg { width: 12px; height: 12px; opacity: 0.7; transition: opacity 120ms var(--ease); }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip.ghost {
+    background: transparent;
+    border: 1px dashed color-mix(in oklab, var(--foreground) 26%, transparent);
+    color: color-mix(in oklab, var(--foreground) 45%, transparent);
+    animation: ghost-in 120ms var(--ease);
+  }
+  .chip.ghost svg { opacity: 0.5; }
+  .chip.leaving { animation: ghost-out 126ms var(--ease) forwards; }
+  @keyframes ghost-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+  @keyframes ghost-out { to { opacity: 0; transform: scale(0.94); } }
+  .anchor { display: inline; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chip.ghost, .chip.leaving { animation: none; }
+    .chip.leaving { display: none; }
+    * { transition-duration: 1ms !important; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>选中节点引用 · 原型</h1>
+  <span class="sp"></span>
+  <button id="theme" type="button"></button>
+  <button id="reset" type="button">重置</button>
+</header>
+
+<main class="stage">
+  <section>
+    <div class="canvas" id="canvas" aria-label="画布（示意）">
+      <div class="canvas-in" id="canvasIn"></div>
+      <span class="hint-tip">点节点选中 · Shift / ⌘ 点击多选 · 点空白取消</span>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <h2>试试这几个场景</h2>
+        <ol>
+          <li>先在画布点一个节点，再点输入框：浅色占位变深色。</li>
+          <li>变深后继续点别的节点，再点输入框：引用第二个、第三个。</li>
+          <li>用输入法打几个字（先别回车确认），再点画布节点、点回输入框：占位出现在光标处，回来后变深。</li>
+          <li>按住 Shift 点两个节点：两个占位并排出现。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>两种状态</h2>
+        <div class="legend">
+          <div><span class="chip ghost"><svg class="i" viewBox="0 0 24 24"><use href="#i-file" /></svg><span>镜头 1 分镜脚本</span></span>浅色虚线：画布上选中了，还没引用，不随消息发送</div>
+          <div><span class="chip"><svg class="i" viewBox="0 0 24 24"><use href="#i-file" /></svg><span>镜头 1 分镜脚本</span></span>深色实线：输入框激活后确认，随消息发送（和 @ 引用同款）</div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>实时状态（仅原型显示）</h2>
+        <dl class="kv tnum">
+          <dt>输入框</dt><dd id="s-focus"></dd>
+          <dt>输入法</dt><dd id="s-ime"></dd>
+          <dt>画布选中</dt><dd id="s-sel"></dd>
+          <dt>浅色占位</dt><dd id="s-ghost"></dd>
+          <dt>深色引用</dt><dd id="s-chip"></dd>
+        </dl>
+        <div class="sent" id="sent" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel" aria-label="画布 Agent">
+    <div class="p-head"><span class="orb"></span>画布 Agent</div>
+    <div class="msgs" id="msgs">
+      <div class="bubble-u">帮我看看第一场的节奏</div>
+      <div class="bubble-a">好的。你可以在画布上点选要我看的节点，再点输入框，它们就会作为引用跟着消息一起发给我。</div>
+    </div>
+    <div class="composer-wrap">
+      <div class="composer">
+        <div class="ed is-empty" id="ed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="给 Agent 的消息" data-placeholder="描述你的想法，@ 引用节点，/ 插入技能，也可以直接点画布上的节点"></div>
+        <div class="bar">
+          <button class="b" type="button" aria-label="添加"><svg class="i" viewBox="0 0 24 24"><use href="#i-plus" /></svg></button>
+          <button class="b" type="button">全能创作<svg class="i" style="width:14px;height:14px" viewBox="0 0 24 24"><use href="#i-down" /></svg></button>
+          <button class="b" type="button" aria-label="插入模型"><svg class="i" viewBox="0 0 24 24"><use href="#i-box" /></svg></button>
+          <button class="b" type="button" aria-label="插入技能"><svg class="i" viewBox="0 0 24 24"><use href="#i-pen" /></svg></button>
+          <span class="sp"></span>
+          <button class="b" type="button"><svg class="i" viewBox="0 0 24 24"><use href="#i-bot" /></svg>gpt-6-sol<svg class="i" style="width:14px;height:14px" viewBox="0 0 24 24"><use href="#i-down" /></svg></button>
+          <button class="send" id="send" type="button" aria-label="发送" disabled><svg class="i" style="width:18px;height:18px" viewBox="0 0 24 24"><use href="#i-up" /></svg></button>
+        </div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-group" viewBox="0 0 24 24"><path d="M3 7V5c0-1.1.9-2 2-2h2"/><path d="M17 3h2c1.1 0 2 .9 2 2v2"/><path d="M21 17v2c0 1.1-.9 2-2 2h-2"/><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"/><rect width="7" height="5" x="7" y="7" rx="1"/><rect width="7" height="5" x="10" y="12" rx="1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+</svg>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const ed = $("#ed");
+  const sendBtn = $("#send");
+
+  /* ---------- 画布数据：4 种节点 + 1 个组 ---------- */
+  const GROUPS = [{ id: "g1", label: "镜头组 A", x: 24, y: 20, w: 350, h: 124 }];
+  const NODES = [
+    { id: "n1", label: "镜头 1 分镜脚本", kind: "脚本", x: 44, y: 62 },
+    { id: "n2", label: "镜头 1 画面", kind: "图片", x: 214, y: 62 },
+    { id: "n3", label: "角色立绘 · 林夏", kind: "图片", x: 24, y: 176 },
+    { id: "n4", label: "镜头 2 视频", kind: "视频", x: 194, y: 176 },
+    { id: "n5", label: "背景音乐", kind: "音频", x: 410, y: 62 },
+    { id: "n6", label: "旁白台词", kind: "脚本", x: 410, y: 176 },
+  ];
+  const ITEMS = new Map([...GROUPS.map((g) => [g.id, { ...g, group: true }]), ...NODES.map((n) => [n.id, n])]);
+
+  /** 画布上当前选中（按选中顺序） */
+  let selected = [];
+
+  const canvasIn = $("#canvasIn");
+  for (const g of GROUPS) {
+    const el = document.createElement("div");
+    el.className = "group";
+    el.dataset.id = g.id;
+    el.style.cssText = `left:${g.x}px;top:${g.y}px;width:${g.w}px;height:${g.h}px`;
+    el.textContent = g.label;
+    canvasIn.append(el);
+  }
+  for (const n of NODES) {
+    const el = document.createElement("div");
+    el.className = "node";
+    el.dataset.id = n.id;
+    el.style.cssText = `left:${n.x}px;top:${n.y}px`;
+    el.innerHTML = `<b></b><small>${n.kind}</small>`;
+    el.querySelector("b").textContent = n.label;
+    canvasIn.append(el);
+  }
+
+  /** 点画布：节点 / 组选中，Shift 或 ⌘ 多选，点空白取消 */
+  canvasIn.addEventListener("click", (e) => {
+    const el = e.target.closest(".node, .group");
+    if (!el) {
+      setSelected([]);
+      return;
+    }
+    const id = el.dataset.id;
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      setSelected(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+    } else {
+      setSelected([id]);
+    }
+  });
+  $("#canvas").addEventListener("click", (e) => {
+    if (e.target === $("#canvas")) setSelected([]);
+  });
+
+  function setSelected(ids) {
+    selected = ids;
+    canvasIn.querySelectorAll(".node, .group").forEach((el) => el.classList.toggle("sel", ids.includes(el.dataset.id)));
+    syncGhosts();
+  }
+
+  /* ---------- 输入框里的 chip ---------- */
+  const svgUse = (id) => `<svg class="i" viewBox="0 0 24 24"><use href="#${id}" /></svg>`;
+
+  function makeChip(id, ghost) {
+    const item = ITEMS.get(id);
+    const el = document.createElement("span");
+    el.className = "chip" + (ghost ? " ghost" : "");
+    el.contentEditable = "false";
+    el.dataset.id = id;
+    el.dataset.label = item.label;
+    el.innerHTML = svgUse(item.group ? "i-group" : "i-file") + "<span></span>";
+    el.lastChild.textContent = item.label;
+    return el;
+  }
+
+  const committedIds = () => [...ed.querySelectorAll(".chip:not(.ghost)")].map((c) => c.dataset.id);
+  const ghosts = () => [...ed.querySelectorAll(".chip.ghost:not(.leaving)")];
+
+  /** 占位的锚点：一个空 span，记住「光标当时在哪」；输入框激活（占位变深）时才移除 */
+  let anchor = null;
+  /** 输入框失焦时的光标位置 */
+  let savedRange = null;
+
+  function ensureAnchor() {
+    if (anchor && ed.contains(anchor)) return anchor;
+    anchor = document.createElement("span");
+    anchor.className = "anchor";
+    anchor.contentEditable = "false";
+    let r = savedRange && ed.contains(savedRange.startContainer) ? savedRange : null;
+    if (!r) {
+      r = document.createRange();
+      r.selectNodeContents(ed);
+      r.collapse(false);
+    }
+    r.insertNode(anchor);
+    savedRange = null;
+    return anchor;
+  }
+
+  /**
+   * 占位 = 画布上选中、但还没写进输入框的节点：在光标处补上缺的，去掉不再选中的（退出 126ms），已有的不重播动画。
+   * 已经是深色引用的节点不再出占位（不重复引用）。
+   */
+  function syncGhosts() {
+    const want = selected.filter((id) => !committedIds().includes(id));
+    for (const g of ghosts()) {
+      if (!want.includes(g.dataset.id)) {
+        g.classList.add("leaving");
+        setTimeout(() => g.remove(), 126);
+      }
+    }
+    if (want.length) {
+      const host = ensureAnchor();
+      const have = new Set(ghosts().map((g) => g.dataset.id));
+      for (const id of want) if (!have.has(id)) host.before(makeChip(id, true));
+    }
+    refresh();
+  }
+
+  /** 输入框激活：占位变深，光标落到它们后面（和 @ 插入 chip 一样带一个空格） */
+  function commitGhosts() {
+    const list = ghosts();
+    if (anchor && ed.contains(anchor)) {
+      if (list.length) {
+        list.forEach((c) => c.classList.remove("ghost"));
+        const space = document.createTextNode(" ");
+        anchor.replaceWith(space);
+        placeCaret(space, 1);
+      } else {
+        const probe = document.createTextNode("");
+        anchor.replaceWith(probe);
+        placeCaret(probe, 0);
+      }
+    }
+    anchor = null;
+    refresh();
+  }
+
+  function placeCaret(node, offset) {
+    const sel = getSelection();
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  /* ---------- 焦点、输入法 ---------- */
+  let focused = false;
+  let composing = false;
+
+  ed.addEventListener("focus", () => {
+    focused = true;
+    // 点击会在 focus 之后再落光标，等一帧再把光标放到 chip 后面
+    requestAnimationFrame(() => {
+      if (document.activeElement === ed) commitGhosts();
+    });
+    refresh();
+  });
+  ed.addEventListener("blur", () => {
+    focused = false;
+    const sel = getSelection();
+    if (sel.rangeCount && ed.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0).cloneRange();
+    refresh();
+  });
+  ed.addEventListener("compositionstart", () => ((composing = true), refresh()));
+  ed.addEventListener("compositionend", () => ((composing = false), refresh()));
+  ed.addEventListener("input", refresh);
+
+  ed.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      if (e.shiftKey) document.execCommand("insertLineBreak");
+      else send();
+    }
+  });
+  // 只要纯文本，不要粘贴进来的富文本
+  ed.addEventListener("paste", (e) => {
+    e.preventDefault();
+    document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+  });
+
+  /* ---------- 发送：只有深色引用随消息发出，浅色占位不算 ---------- */
+  function serialize(root) {
+    let out = "";
+    for (const n of root.childNodes) {
+      if (n.nodeType === 3) out += n.data.replace(/ /g, " ");
+      else if (n.nodeName === "BR") out += "\n";
+      else if (n.classList?.contains("chip")) {
+        if (!n.classList.contains("ghost")) out += `@[${n.dataset.label}](node:${n.dataset.id})`;
+      } else if (n.classList?.contains("anchor")) continue;
+      else out += serialize(n);
+    }
+    return out;
+  }
+
+  function send() {
+    const msg = serialize(ed).trim();
+    if (!msg) return;
+    const skipped = ghosts().length;
+    $("#sent").hidden = false;
+    $("#sent").textContent = `发送内容：\n${msg}` + (skipped ? `\n\n（另有 ${skipped} 个浅色占位未随消息发送）` : "");
+    const b = document.createElement("div");
+    b.className = "bubble-u";
+    msg.split(/(@\[[^\]]*\]\(node:[^)]+\))/).forEach((part) => {
+      const m = part.match(/^@\[([^\]]*)\]\(node:([^)]+)\)$/);
+      if (m) b.append(makeChip(m[2], false));
+      else b.append(document.createTextNode(part));
+    });
+    $("#msgs").append(b);
+    $("#msgs").scrollTop = 1e6;
+    ed.innerHTML = "";
+    anchor = null;
+    savedRange = null;
+    refresh();
+  }
+  sendBtn.addEventListener("click", send);
+
+  /* ---------- 状态刷新 ---------- */
+  function refresh() {
+    const chips = ed.querySelectorAll(".chip").length;
+    const hasText = serialize(ed).trim() !== "";
+    ed.classList.toggle("is-empty", chips === 0 && !ed.textContent.trim());
+    sendBtn.disabled = !hasText;
+    sendBtn.classList.toggle("ready", hasText);
+    $("#s-focus").innerHTML = focused ? '<span class="on">聚焦</span>' : "失焦";
+    $("#s-ime").textContent = composing ? "组字中" : "空闲";
+    $("#s-sel").textContent = selected.length + " 个";
+    $("#s-ghost").textContent = ghosts().length + " 个";
+    $("#s-chip").textContent = committedIds().length + " 个";
+  }
+
+  /* ---------- 主题、重置 ---------- */
+  const themeBtn = $("#theme");
+  function paintTheme() {
+    const dark = document.documentElement.dataset.theme === "dark";
+    themeBtn.innerHTML = svgUse(dark ? "i-sun" : "i-moon") + (dark ? "浅色" : "深色");
+  }
+  themeBtn.addEventListener("click", () => {
+    document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    paintTheme();
+  });
+  $("#reset").addEventListener("click", () => location.reload());
+  paintTheme();
+  refresh();
+</script>
+</body>
+</html>

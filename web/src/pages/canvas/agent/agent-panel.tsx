@@ -65,7 +65,7 @@ function useWindowWidth() {
 export function AgentPanel({
   ctl,
   models,
-  selectionCount,
+  selection,
   nodes,
   refNodes,
   onAttachImages,
@@ -73,11 +73,11 @@ export function AgentPanel({
 }: {
   ctl: AgentController;
   models: AgentModelDto[];
-  /** 画布上选中的节点数 */
-  selectionCount: number;
+  /** 画布上选中的节点 id（含组）：输入框里先显示浅色占位，激活输入框后变成引用 */
+  selection: readonly string[];
   /** 画布上能用 @ 引用的节点 */
   nodes: NodeOption[];
-  /** 消息里「引用了哪些节点」解析标题用：含组（nodes 是输入框 @ 的候选，不含组） */
+  /** 解析选中节点标题用：含组（nodes 是输入框 @ 的候选，不含组） */
   refNodes: RefNode[];
   /** 把图片传到画布，返回新建节点的 chip */
   onAttachImages: (files: File[]) => Promise<Chip[]>;
@@ -93,7 +93,6 @@ export function AgentPanel({
   const docked = wantDock && canDock && !mobile;
 
   const [text, setText] = useState("");
-  const [useSelection, setUseSelection] = useState(true);
   const [scrolled, setScrolled] = useState(false);
   const editor = useRef<AgentEditorHandle>(null);
   const bounds = useRef<HTMLDivElement>(null);
@@ -139,7 +138,7 @@ export function AgentPanel({
 
   const send = async (message: string, mode = ctl.mode) => {
     if (mode !== ctl.mode) ctl.setMode(mode);
-    const ok = await ctl.send(message, useSelection);
+    const ok = await ctl.send(message);
     // 发出去了才清空输入框；没发出去（接口报错）保留原文，用户可以改了再发
     if (ok) editor.current?.clear();
     return ok;
@@ -236,9 +235,8 @@ export function AgentPanel({
             models={models}
             modelKey={ctl.modelKey}
             context={ctl.context}
-            selectionCount={selectionCount}
-            useSelection={useSelection}
-            onToggleSelection={() => setUseSelection(false)}
+            selection={selection}
+            refNodes={refNodes}
             editorRef={editor}
             nodes={nodes}
             onAttachImages={onAttachImages}

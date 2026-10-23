@@ -54,13 +54,10 @@ export function useAgentModels() {
 export function useAgentController({
   canvasId,
   models,
-  getSelection,
   getViewport,
 }: {
   canvasId: string;
   models: AgentModelDto[];
-  /** 当前选中的节点 id */
-  getSelection: () => string[];
   /** 当前视口 */
   getViewport: () => { x: number; y: number; zoom: number };
 }) {
@@ -160,7 +157,7 @@ export function useAgentController({
 
   /** 发送：运行中就是插话，否则发起新一轮。返回是否发出去了（没发出去输入框要保留原文） */
   const send = useCallback(
-    async (text: string, withSelection = true) => {
+    async (text: string) => {
       const message = text.trim();
       if (!message || sendingRef.current) return false;
       sendingRef.current = true;
@@ -174,7 +171,7 @@ export function useAgentController({
         const run = await startAgentRun(target.id, {
           message,
           mode,
-          selection: withSelection ? getSelection() : [],
+          // 选中的节点不再整批带上：要引用哪个，就在输入框里变成消息里的 node: chip
           viewport: getViewport(),
           agent_model_key: modelKey || undefined,
         });
@@ -195,7 +192,7 @@ export function useAgentController({
         setSending(false);
       }
     },
-    [activeRun, ensureSession, getSelection, getViewport, mode, modelKey],
+    [activeRun, ensureSession, getViewport, mode, modelKey],
   );
 
   const stop = useCallback(async () => {

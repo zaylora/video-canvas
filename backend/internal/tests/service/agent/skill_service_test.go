@@ -71,15 +71,6 @@ func TestSkillService_ImportPrecheck(t *testing.T) {
 			t.Errorf("缺 SKILL.md: %+v", bad)
 		}
 	})
-	t.Run("与内置同名", func(t *testing.T) {
-		b := mustImport(t, e, 1, zipOf(t, map[string]string{"SKILL.md": skillMD("keyframe-prompt", "d", "x")}))
-		if b.CanConfirm || b.Issues[0].Code != "BUILTIN_NAME" {
-			t.Errorf("%+v", b.Issues)
-		}
-		if _, err := e.svc.ConfirmImport(context.Background(), 1, b.ID); codeOf(err) != 61003 {
-			t.Errorf("确认应 61003: %v", err)
-		}
-	})
 	t.Run("含脚本的包可以导入：预检只提示，脚本保存下来但不会执行", func(t *testing.T) {
 		withScript := zipOf(t, map[string]string{"SKILL.md": skillMD("scripty", "d", "x"), "scripts/run.py": "print(1)\n"})
 		v := mustImport(t, e, 1, withScript)
@@ -282,15 +273,6 @@ func TestSkillService_EnableAndDelete(t *testing.T) {
 	if _, err := e.svc.SetEnabled(ctx, 1, "nope", true); codeOf(err) != 61004 {
 		t.Errorf("不存在: %v", err)
 	}
-	if _, err := e.svc.SetEnabled(ctx, 1, "keyframe-prompt", false); codeOf(err) != 61007 {
-		t.Errorf("内置: %v", err)
-	}
-	if _, err := e.svc.Rename(ctx, 1, "keyframe-prompt", "x"); codeOf(err) != 61007 {
-		t.Errorf("内置改名: %v", err)
-	}
-	if err := e.svc.DeleteSkill(ctx, 1, "keyframe-prompt"); codeOf(err) != 61007 {
-		t.Errorf("内置删除: %v", err)
-	}
 	it, err := e.svc.SetEnabled(ctx, 1, "demo", true)
 	if err != nil || !it.Enabled {
 		t.Fatalf("启用: %+v %v", it, err)
@@ -332,19 +314,16 @@ func TestSkillService_ListAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var builtin, imported int
+	var imported int
 	for _, it := range page.List {
 		if it.Source == SkillSourceBuiltin {
-			builtin++
-			if !it.Readonly || !it.Enabled {
-				t.Errorf("内置应只读且启用: %+v", it)
-			}
+			t.Errorf("目前没有内置技能: %+v", it)
 		} else {
 			imported++
 		}
 	}
-	if builtin != 5 || imported != 1 || page.Total != 6 {
-		t.Errorf("内置 5 + 导入 1，total 6: %d %d %d", builtin, imported, page.Total)
+	if imported != 1 || page.Total != 1 {
+		t.Errorf("只有导入的 1 个，total 1: %d %d", imported, page.Total)
 	}
 	req := func(q, status string, p, size int) *model.ListSkillReq {
 		return &model.ListSkillReq{AdminListReq: model.AdminListReq{Q: q, Page: p, PageSize: size}, Status: status}
@@ -352,14 +331,11 @@ func TestSkillService_ListAndRead(t *testing.T) {
 	if got, _ := e.svc.List(ctx, req("", "disabled", 0, 0)); len(got.List) != 1 || got.List[0].Name != "demo" || got.Total != 1 {
 		t.Errorf("status=disabled: %+v", got)
 	}
-	if got, _ := e.svc.List(ctx, req("", "builtin", 0, 0)); got.Total != 5 {
-		t.Errorf("status=builtin 只要内置的 5 个: %+v", got)
+	if got, _ := e.svc.List(ctx, req("", "builtin", 0, 0)); got.Total != 0 || got.List == nil {
+		t.Errorf("status=builtin 没有内置技能，要返回空切片: %+v", got)
 	}
-	if got, _ := e.svc.List(ctx, req("关键帧", "", 0, 0)); len(got.List) != 1 || got.List[0].Name != "keyframe-prompt" {
-		t.Errorf("q 按显示名过滤: %+v", got)
-	}
-	if got, _ := e.svc.List(ctx, req("", "", 2, 4)); got.Total != 6 || len(got.List) != 2 || got.Page != 2 || got.PageSize != 4 {
-		t.Errorf("分页第 2 页剩 2 条，total 仍是 6: %+v", got)
+	if got, _ := e.svc.List(ctx, req("demo", "", 0, 0)); len(got.List) != 1 || got.List[0].Name != "demo" {
+		t.Errorf("q 按名称过滤: %+v", got)
 	}
 	if got, _ := e.svc.List(ctx, req("没有这个", "", 0, 0)); got.Total != 0 || got.List == nil {
 		t.Errorf("没有命中要返回空切片: %+v", got)
@@ -383,14 +359,14 @@ func TestSkillService_ListAndRead(t *testing.T) {
 	_, _ = e.svc.SetEnabled(ctx, 1, "demo", true)
 	t.Run("启用后出现在目录和搜索里", func(t *testing.T) {
 		cat, _ := e.svc.Enabled(ctx)
-		if len(cat) != 6 || cat[5].Name != "demo" {
-			t.Errorf("目录: %+v", cat)
+		if len(cat) != 1 || cat[0].Name != "demo" {
+			t.Errorf("目录只有启用的导入技能: %+v", cat)
 		}
 		if res, _ := e.svc.Search(ctx, "方法"); len(res) == 0 {
 			t.Error("按说明能搜到")
 		}
-		if res, _ := e.svc.Search(ctx, "拆镜"); len(res) == 0 || res[0].Name != "script-breakdown" {
-			t.Errorf("内置技能仍可按标签搜到: %+v", res)
+		if res, _ := e.svc.Search(ctx, "拆镜"); len(res) != 0 {
+			t.Errorf("已经没有内置技能，搜不到它们: %+v", res)
 		}
 	})
 
@@ -408,9 +384,6 @@ func TestSkillService_ListAndRead(t *testing.T) {
 		}
 		if _, _, err = e.svc.ReadSkillFile(ctx, "demo", "../../etc/passwd", c.VersionID); codeOf(err) != 10001 {
 			t.Errorf("清单外: %v", err)
-		}
-		if _, _, err = e.svc.ReadSkillFile(ctx, "keyframe-prompt", "a.md", 0); codeOf(err) != 10001 {
-			t.Errorf("内置没有资源文件: %v", err)
 		}
 	})
 
@@ -483,4 +456,22 @@ func hasCode(issues []SkillIssue, code, level string) bool {
 		}
 	}
 	return false
+}
+
+func TestSkillService_ListPaging(t *testing.T) {
+	e := newSkillEnv(t)
+	ctx := context.Background()
+	for _, name := range []string{"demo1", "demo2", "demo3", "demo4", "demo5"} {
+		mustConfirm(t, e, 1, standardPkg(t, name, "x"))
+	}
+	got, err := e.svc.List(ctx, &model.ListSkillReq{AdminListReq: model.AdminListReq{Page: 2, PageSize: 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 5 || len(got.List) != 2 || got.Page != 2 || got.PageSize != 2 {
+		t.Errorf("分页第 2 页有 2 条，total 仍是 5: %+v", got)
+	}
+	if got, _ = e.svc.List(ctx, &model.ListSkillReq{AdminListReq: model.AdminListReq{Page: 3, PageSize: 2}}); len(got.List) != 1 {
+		t.Errorf("最后一页剩 1 条: %+v", got)
+	}
 }

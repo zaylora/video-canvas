@@ -1,6 +1,6 @@
-import { useState, type Ref } from "react";
+import type { Ref } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, Bot, Check, ChevronDown, Square, X } from "lucide-react";
+import { ArrowUp, Bot, Check, ChevronDown, Square } from "lucide-react";
 
 import type { AgentMode, AgentModelDto } from "@/api/agent/type";
 import { ChromeTooltip } from "@/components/canvas/chrome/chrome";
@@ -10,6 +10,7 @@ import { TAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useAgentSettings } from "@/store/agent-settings";
 import type { Chip } from "@/utils/agent/chips";
+import type { RefNode } from "@/utils/agent/selection-refs";
 
 import { AgentEditor, type AgentEditorHandle, type NodeOption } from "./agent-editor";
 import { AttachPopover } from "./attach-popover";
@@ -120,7 +121,7 @@ function AgentModelMenu({
 }
 
 /**
- * 输入区（设计稿 6.8）：上方是上下文行（选中了几个节点），中间是编辑区；
+ * 输入区（设计稿 6.8、6.9）：编辑区（画布选中的节点在光标处先是浅色占位，激活输入框后变成行内引用）；
  * 底栏左侧 ＋ 附件、模式、插入模型、插入技能，右侧 Agent 模型、上下文环、发送。
  * 运行中：编辑区为空时发送键是「停止」，有内容时是「插话」。外层容器（大圆角、聚焦光晕）由浮窗给。
  */
@@ -136,9 +137,8 @@ export function AgentComposer({
   models,
   modelKey,
   context,
-  selectionCount,
-  useSelection,
-  onToggleSelection,
+  selection,
+  refNodes,
   editorRef,
   nodes,
   onAttachImages,
@@ -159,11 +159,10 @@ export function AgentComposer({
   modelKey: string;
   /** 当前会话的上下文用量和模型的上限（Token） */
   context: { tokens: number; window: number };
-  /** 画布上选中的节点数 */
-  selectionCount: number;
-  /** 发送时是否带上选中的节点 */
-  useSelection: boolean;
-  onToggleSelection: () => void;
+  /** 画布上选中的节点 id（含组）：输入框光标处显示浅色占位，激活输入框后变成引用 */
+  selection: readonly string[];
+  /** 解析选中节点标题用的列表（含组） */
+  refNodes: readonly RefNode[];
   /** 编辑器的操作：面板用它预填文字，弹层用它插入 chip */
   editorRef: Ref<AgentEditorHandle>;
   /** 画布上能用 @ 引用的节点 */
@@ -171,8 +170,6 @@ export function AgentComposer({
   /** 把图片传到画布并引用：返回新建节点的 chip */
   onAttachImages: (files: File[]) => Promise<Chip[]>;
 }) {
-  // 输入框是否聚焦（点发送按钮不算）
-  const [editing, setEditing] = useState(false);
   const handle = editorRef as { current: AgentEditorHandle | null };
   const empty = text.trim() === "";
   const stopMode = busy && empty;
@@ -181,39 +178,17 @@ export function AgentComposer({
   const sendLabel = stopMode ? "停止" : busy ? "插话" : "发送";
   return (
     <div className="flex flex-col gap-1.5 p-2.5">
-      {selectionCount > 0 && useSelection && (
-        <div className="flex">
-          <span
-            className={cn(
-              "agent-inset inline-flex h-6 items-center gap-1.5 rounded-md pr-1 pl-2 text-xs transition-colors duration-120",
-              // 浅色是「选中了」，输入框聚焦后变深，表示这些节点会随这条消息一起引用
-              editing ? "bg-foreground/14" : "bg-foreground/6",
-            )}
-          >
-            <span aria-hidden className="bg-preset size-1.5 rounded-full" />
-            已选中 {selectionCount} 个节点
-            <button
-              type="button"
-              aria-label="不带选中的节点"
-              onClick={onToggleSelection}
-              className="hover:bg-foreground/10 focus-visible:ring-node-ring/60 rounded p-0.5 outline-none focus-visible:ring-2"
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        </div>
-      )}
-      <div onFocusCapture={() => setEditing(true)} onBlurCapture={() => setEditing(false)}>
-        <AgentEditor
-          handleRef={editorRef}
-          nodes={nodes}
-          placeholder={
-            busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
-          }
-          onChange={onTextChange}
-          onSubmit={() => !empty && !sending && onSend()}
-        />
-      </div>
+      <AgentEditor
+        handleRef={editorRef}
+        nodes={nodes}
+        selection={selection}
+        refNodes={refNodes}
+        placeholder={
+          busy ? "补充要求，Agent 会在下一步看到" : "描述你的想法，@ 引用节点，/ 插入技能"
+        }
+        onChange={onTextChange}
+        onSubmit={() => !empty && !sending && onSend()}
+      />
       <div className="flex min-w-0 items-center gap-0.5">
         <AttachPopover
           onInsertText={(t) => handle.current?.insertText(t)}

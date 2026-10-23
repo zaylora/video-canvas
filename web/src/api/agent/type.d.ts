@@ -237,7 +237,7 @@ export interface StartAgentRunReq {
   message: string;
   /** 任务模式，不传沿用会话的 */
   mode?: AgentMode;
-  /** 选中的节点 id */
+  /** 选中的节点 id。前端已不再传（选中节点改成输入框里的 node: chip），字段保留给旧客户端 */
   selection?: string[];
   /** 视口 */
   viewport?: { x: number; y: number; zoom: number };

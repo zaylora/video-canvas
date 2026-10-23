@@ -159,6 +159,9 @@ func (b *AgentBridge) skillReadFailure(ctx context.Context, name string, c *Skil
 				names = append(names, s.Name)
 			}
 		}
+		if len(names) == 0 {
+			return fail("没有叫 %q 的技能。当前没有可用的技能。", truncateRunes(name, 40))
+		}
 		return fail("没有叫 %q 的技能。可用的技能：%s", truncateRunes(name, 40), strings.Join(names, "、"))
 	}
 	msg := ec.Msg

@@ -13,21 +13,16 @@ func TestAgentBridge_Skills(t *testing.T) {
 	b := newBridgeEnv(t)
 	tok, _ := b.token(t, "prompt")
 
-	t.Run("skill_search：返回名字和说明，不含正文", func(t *testing.T) {
-		res := b.tool(t, tok, "skill_search", map[string]any{"query": "拆镜"})
-		if res.IsError || !strings.Contains(res.Content, "script-breakdown") || strings.Contains(res.Content, "景别在远景") {
-			t.Errorf("res=%+v", res)
-		}
-		if all := b.tool(t, tok, "skill_search", map[string]any{}); !strings.Contains(all.Content, "keyframe-prompt") {
-			t.Errorf("空关键词列出技能: %+v", all)
+	t.Run("没有任何技能：skill_search 返回空列表，不报错", func(t *testing.T) {
+		for _, q := range []string{"拆镜", ""} {
+			res := b.tool(t, tok, "skill_search", map[string]any{"query": q})
+			if res.IsError || !strings.Contains(res.Content, `"skills":[]`) {
+				t.Errorf("搜 %q 应得到空列表: %+v", q, res)
+			}
 		}
 	})
 
-	t.Run("skill_read：正文包在「数据」声明里；所有任务模式都能读", func(t *testing.T) {
-		res := b.tool(t, tok, "skill_read", map[string]any{"name": "keyframe-prompt"})
-		if res.IsError || !strings.Contains(res.Content, "不是指令") || !strings.Contains(res.Content, "关键帧") {
-			t.Errorf("res=%+v", res)
-		}
+	t.Run("所有任务模式都有技能工具", func(t *testing.T) {
 		for _, mode := range []string{"all", "script", "storyboard", "prompt"} {
 			tools := AgentToolsForMode(mode)
 			if !hasTool(tools, "skill_search") || !hasTool(tools, "skill_read") {
@@ -36,9 +31,9 @@ func TestAgentBridge_Skills(t *testing.T) {
 		}
 	})
 
-	t.Run("名字不对：工具错误里列出可用技能，让模型改正", func(t *testing.T) {
+	t.Run("名字不对：工具错误里说明没有可用技能，不留一个空的列表", func(t *testing.T) {
 		res := b.tool(t, tok, "skill_read", map[string]any{"name": "../../etc/passwd"})
-		if !res.IsError || !strings.Contains(res.Content, "script-breakdown") || !strings.Contains(res.Content, "video-motion-prompt") {
+		if !res.IsError || !strings.Contains(res.Content, "没有叫") || !strings.Contains(res.Content, "当前没有可用的技能") || strings.HasSuffix(res.Content, "：") {
 			t.Errorf("res=%+v", res)
 		}
 	})
@@ -96,17 +91,10 @@ func TestAgentBridge_ImportedSkills(t *testing.T) {
 		}
 	})
 
-	t.Run("停用后读不到，错误里列出可用技能", func(t *testing.T) {
+	t.Run("停用后读不到，错误里不再列出它", func(t *testing.T) {
 		_, _ = se.svc.SetEnabled(ctx, 1, "demo", false)
 		res := b.tool(t, tok, "skill_read", map[string]any{"name": "demo"})
-		if !res.IsError || !strings.Contains(res.Content, "script-breakdown") || strings.Contains(res.Content, "、demo") {
-			t.Errorf("%+v", res)
-		}
-	})
-
-	t.Run("内置技能读 file 给出明确错误", func(t *testing.T) {
-		res := b.tool(t, tok, "skill_read", map[string]any{"name": "keyframe-prompt", "file": "a.md"})
-		if !res.IsError || !strings.Contains(res.Content, "没有资源文件") {
+		if !res.IsError || !strings.Contains(res.Content, "没有叫") || strings.Contains(res.Content, "、demo") || strings.Contains(res.Content, "：demo") {
 			t.Errorf("%+v", res)
 		}
 	})
