@@ -80,6 +80,9 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: 安装 ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Test
         run: go test -race ./...
 

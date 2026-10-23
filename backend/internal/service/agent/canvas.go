@@ -328,6 +328,50 @@ func (s *AgentCanvasService) BindTasks(ctx context.Context, run *model.AgentRun,
 	return res, err
 }
 
+// VideoRef 取一个视频节点当前的视频素材，给 Agent「看视频」和截帧用。
+func (s *AgentCanvasService) VideoRef(ctx context.Context, run *model.AgentRun, id string) (canvasgraph.VideoSource, error) {
+	g, _, err := s.load(ctx, run)
+	if err != nil {
+		return canvasgraph.VideoSource{}, err
+	}
+	return canvasgraph.VideoRef(g, id)
+}
+
+// CheckFrames 在不写入的前提下校验截帧请求：视频节点要有产物、每帧的连线目标合法。
+// 截帧要先抽帧、存素材，最后才改画布；先在这里挡掉不合法的请求，免得白存一批素材。
+// connects[i] 是第 i 帧要连到的节点。
+func (s *AgentCanvasService) CheckFrames(ctx context.Context, run *model.AgentRun, videoID string, connects [][]string) (canvasgraph.VideoSource, error) {
+	g, _, err := s.load(ctx, run)
+	if err != nil {
+		return canvasgraph.VideoSource{}, err
+	}
+	src, err := canvasgraph.VideoRef(g, videoID)
+	if err != nil {
+		return canvasgraph.VideoSource{}, err
+	}
+	specs := make([]canvasgraph.FrameSpec, len(connects))
+	for i, to := range connects {
+		specs[i] = canvasgraph.FrameSpec{Label: "帧", ConnectTo: to}
+	}
+	if _, err := canvasgraph.AddFrameNodes(g, videoID, specs, canvasgraph.Options{}); err != nil {
+		return canvasgraph.VideoSource{}, err
+	}
+	return src, nil
+}
+
+// AddFrames 把已存好素材的帧图建成图片节点：放在视频节点右侧，连来源线，写了 ConnectTo 的再连到目标作参考。
+// 整批原子：任何一项不合法都不会写入。
+func (s *AgentCanvasService) AddFrames(ctx context.Context, run *model.AgentRun, toolCallID, videoID string, frames []canvasgraph.FrameSpec) (*WriteResult, error) {
+	res, _, err := s.mutate(ctx, run, toolCallID, model.MutationFrames, 0, func(g *canvasgraph.Graph) (*edit, error) {
+		r, err := canvasgraph.AddFrameNodes(g, videoID, frames, canvasgraph.Options{})
+		if err != nil {
+			return nil, err
+		}
+		return &edit{graph: r.Graph, changes: r.Changes, idMap: r.IDMap}, nil
+	})
+	return res, err
+}
+
 // ImageRefs 取若干图片节点当前的素材，顺序与 ids 一致，给 Agent「看图」用。
 func (s *AgentCanvasService) ImageRefs(ctx context.Context, run *model.AgentRun, ids []string) ([]canvasgraph.ImageRef, error) {
 	g, _, err := s.load(ctx, run)

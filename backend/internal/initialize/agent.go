@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,11 +20,14 @@ import (
 	"video-canvas/internal/config"
 	agenthandler "video-canvas/internal/handler/agent"
 	"video-canvas/internal/llmgateway"
+	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/logger"
+	"video-canvas/internal/pkg/videoframe"
 	"video-canvas/internal/provider"
 	"video-canvas/internal/provider/webaccess"
 	"video-canvas/internal/repository"
 	"video-canvas/internal/router"
+	"video-canvas/internal/service"
 	agentsvc "video-canvas/internal/service/agent"
 )
 
@@ -111,14 +115,17 @@ type agentRuntime struct {
 
 // agentDeps 是装配运行时需要的已有服务。
 type agentDeps struct {
-	tasks    agentsvc.AgentGenTasks
-	assets   provider.AssetStore
-	repo     *repository.AgentRepository
-	agent    *agentsvc.AgentService
-	canvas   *agentsvc.AgentCanvasService
-	registry provider.Registry
-	secrets  provider.SecretResolver
-	skills   agentsvc.SkillLibrary
+	tasks  agentsvc.AgentGenTasks
+	assets provider.AssetStore
+	// frames / frameStore 是看视频和截帧要用的抽帧器和帧图存储；nil 表示没有视频处理能力
+	frames     agentsvc.VideoFrames
+	frameStore agentsvc.FrameStore
+	repo       *repository.AgentRepository
+	agent      *agentsvc.AgentService
+	canvas     *agentsvc.AgentCanvasService
+	registry   provider.Registry
+	secrets    provider.SecretResolver
+	skills     agentsvc.SkillLibrary
 	// toolCalls 逐条留存工具调用的参数、结果和耗时；nil 表示不记录
 	toolCalls agentsvc.ToolCallRecorder
 	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
@@ -165,7 +172,7 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	web, _ := AgentWebAccess(ac, d.ipAllowed)
 	bridge := agentsvc.NewAgentBridge(agentsvc.BridgeDeps{
 		Repo: d.repo, Canvas: d.canvas, Agent: d.agent, Billing: agentsvc.NewAgentBilling(d.repo),
-		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web,
+		Registry: d.registry, Secrets: d.secrets, Tasks: d.tasks, Assets: d.assets, Frames: d.frames, FrameStore: d.frameStore, Streamer: llmgateway.New(llmgateway.Options{IPAllowed: d.ipAllowed}), Skills: d.skills, Web: web,
 	})
 	if d.toolCalls != nil {
 		bridge.SetToolRecorder(d.toolCalls)
@@ -196,4 +203,20 @@ func (a *agentRuntime) stop(ctx context.Context) {
 		_ = a.server.Close() // 优雅关闭超时就直接断开：进程马上要被杀了，没有继续等的意义
 	}
 	a.rt.Shutdown()
+}
+
+// newVideoFrames 创建抽帧器；找不到 ffmpeg / ffprobe 时只记警告，Agent 的两个视频工具会提示「不能处理视频」。
+func newVideoFrames() *videoframe.Extractor {
+	e := videoframe.New(videoframe.Options{})
+	if !e.Available() {
+		logger.Warn("没有找到 ffmpeg / ffprobe，画布 Agent 不能看视频和截帧")
+	}
+	return e
+}
+
+// assetFrameStore 把截出的帧经素材服务存成用户素材。
+type assetFrameStore struct{ assets *service.AssetService }
+
+func (s assetFrameStore) SaveFrame(ctx context.Context, userID uint64, fileName string, png []byte) (*model.AssetView, error) {
+	return s.assets.Upload(ctx, userID, service.UploadInput{FileName: fileName, Size: int64(len(png)), Body: bytes.NewReader(png)})
 }
