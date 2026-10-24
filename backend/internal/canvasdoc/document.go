@@ -141,13 +141,10 @@ func (d *Document) Validate(l Limits) error {
 	if err := d.checkLimits(l); err != nil {
 		return err
 	}
-	// 2. assets 的键必须是 64 位小写十六进制，元信息不能为负
-	for hash, info := range d.Assets {
+	// 2. assets 的键必须是 64 位小写十六进制
+	for hash := range d.Assets {
 		if !isHash(hash) {
 			return fmt.Errorf("%w: 素材编号 %q 不是 64 位小写十六进制哈希", ErrInvalid, hash)
-		}
-		if info.ByteSize < 0 {
-			return fmt.Errorf("%w: 素材 %s 的大小不能为负", ErrInvalid, shortHash(hash))
 		}
 	}
 	// 3. 节点：每个都必须是对象；它引用的哈希必须在 assets 里，角色卡引用必须在 characters 里
@@ -160,7 +157,7 @@ func (d *Document) Validate(l Limits) error {
 	return d.checkCharacters()
 }
 
-// checkLimits 检查节点数、素材数和素材总大小是否超出上限。
+// checkLimits 检查节点数、素材数和素材总大小是否超出上限，素材大小为负时返回 ErrInvalid。
 func (d *Document) checkLimits(l Limits) error {
 	if len(d.Canvas.Nodes) > l.MaxNodes {
 		return fmt.Errorf("%w: 节点数 %d 超过上限 %d", ErrLimit, len(d.Canvas.Nodes), l.MaxNodes)
@@ -168,15 +165,21 @@ func (d *Document) checkLimits(l Limits) error {
 	if len(d.Assets) > l.MaxAssets {
 		return fmt.Errorf("%w: 素材数 %d 超过上限 %d", ErrLimit, len(d.Assets), l.MaxAssets)
 	}
+	// 负数会拉低总量、让文件绕过上限，先单独扫一遍拒绝，
+	// 这样同一份文件的结果不取决于 map 先遍历到负数还是先超限
+	for hash, info := range d.Assets {
+		if info.ByteSize < 0 {
+			return fmt.Errorf("%w: 素材 %s 的大小不能为负", ErrInvalid, shortHash(hash))
+		}
+	}
 	var total int64
 	for _, info := range d.Assets {
-		// 负数在后面单独报 ErrInvalid；这里只累加非负值，避免负数抵消真实总量
-		if info.ByteSize > 0 {
-			total += info.ByteSize
-		}
-		if total > l.MaxAssetBytes {
+		// 先比较剩余额度再累加：total 不超过 MaxAssetBytes，用减法比较不会整数溢出，
+		// 结果也不依赖 map 的遍历顺序
+		if info.ByteSize > l.MaxAssetBytes-total {
 			return fmt.Errorf("%w: 素材总大小超过上限 %d 字节", ErrLimit, l.MaxAssetBytes)
 		}
+		total += info.ByteSize
 	}
 	return nil
 }

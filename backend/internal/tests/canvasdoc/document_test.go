@@ -3,6 +3,7 @@ package canvasdoc_test
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -225,5 +226,40 @@ func TestValidateErrorMessageIsReadable(t *testing.T) {
 	err = doc.Validate(canvasdoc.DefaultLimits())
 	if err == nil || !strings.Contains(err.Error(), "n1") {
 		t.Fatalf("错误信息应带上节点 id 方便用户定位: %v", err)
+	}
+}
+
+// TestValidateByteSizeCannotBypassCap 覆盖素材大小的溢出和负数：map 遍历顺序随机，
+// 所以多放几个素材并循环多次，保证无论先遍历到哪个，结果都一致。
+func TestValidateByteSizeCannotBypassCap(t *testing.T) {
+	cases := []struct {
+		name    string
+		sizes   []int64
+		wantErr error
+	}{
+		{"1 加 MaxInt64", []int64{1, math.MaxInt64}, canvasdoc.ErrLimit},
+		{"多个 MaxInt64", []int64{1, math.MaxInt64, math.MaxInt64, 5, math.MaxInt64}, canvasdoc.ErrLimit},
+		{"单个 MaxInt64", []int64{math.MaxInt64}, canvasdoc.ErrLimit},
+		{"负数抵消总量", []int64{-1000, 800, 800}, canvasdoc.ErrInvalid},
+		{"负数单独存在", []int64{-1}, canvasdoc.ErrInvalid},
+		{"总量刚好等于上限", []int64{400, 600}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := &canvasdoc.Document{Assets: map[string]canvasdoc.AssetInfo{}}
+			for i, size := range tc.sizes {
+				doc.Assets[strings.Repeat(string(rune('a'+i)), 64)] = canvasdoc.AssetInfo{Kind: "image", ByteSize: size}
+			}
+			l := canvasdoc.Limits{MaxNodes: 10, MaxAssets: 10, MaxAssetBytes: 1000}
+			for range 50 {
+				err := doc.Validate(l)
+				if tc.wantErr == nil && err != nil {
+					t.Fatalf("不应报错: %v", err)
+				}
+				if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+					t.Fatalf("want %v, got %v", tc.wantErr, err)
+				}
+			}
+		})
 	}
 }
