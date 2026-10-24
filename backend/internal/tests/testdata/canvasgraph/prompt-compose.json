@@ -1,0 +1,66 @@
+{
+  "说明": "生成时提示词怎么合成：节点自己的提示词展开 @ 引用，没被 @ 的文本上游按连线顺序追加在后面，提示词为空时就只用文本上游。前端 web/src/tests/utils/tasks/prompt-compose-fixture.test.ts 与后端 internal/tests/agent/canvasgraph 读同一份，防止画布上点生成和 Agent 生成的规则漂移。nodes 是连到目标节点的上游，按连线顺序；引用写成 @[名字](节点id)；素材编号是它在同类素材里的位置（从 1 起）。",
+  "cases": [
+    {
+      "name": "提示词为空：文本上游按连线顺序拼接",
+      "nodes": [
+        {"id": "t1", "kind": "script", "label": "剧本", "text": "男主走进便利店"},
+        {"id": "t2", "kind": "script", "label": "镜头", "text": "近景"}
+      ],
+      "prompt": "",
+      "expect": "男主走进便利店\n\n近景"
+    },
+    {
+      "name": "手填了、没有 @：文本上游追加在手填后面",
+      "nodes": [
+        {"id": "t1", "kind": "script", "label": "剧本", "text": "男主走进便利店"}
+      ],
+      "prompt": "电影感",
+      "expect": "电影感\n\n男主走进便利店"
+    },
+    {
+      "name": "已 @ 的文本换成正文且不重复，没 @ 的追加",
+      "nodes": [
+        {"id": "t1", "kind": "script", "label": "剧本", "text": "男主走进便利店"},
+        {"id": "t2", "kind": "script", "label": "镜头", "text": "近景"}
+      ],
+      "prompt": "按@[剧本](t1)拍",
+      "expect": "按男主走进便利店拍\n\n近景"
+    },
+    {
+      "name": "没有文字的文本上游不收",
+      "nodes": [
+        {"id": "t1", "kind": "script", "label": "空", "text": ""},
+        {"id": "t2", "kind": "script", "label": "空白", "text": "  "}
+      ],
+      "prompt": "推镜",
+      "expect": "推镜"
+    },
+    {
+      "name": "图片、视频、音频引用换成同类素材里的编号，文本照常追加",
+      "nodes": [
+        {"id": "i1", "kind": "image", "label": "角色", "assetId": "5"},
+        {"id": "i2", "kind": "image", "label": "场景", "assetId": "6"},
+        {"id": "v1", "kind": "video", "label": "运镜", "assetId": "8"},
+        {"id": "a1", "kind": "audio", "label": "配乐", "assetId": "7"},
+        {"id": "t1", "kind": "script", "label": "剧本", "text": "雨夜"}
+      ],
+      "prompt": "@[场景](i2)里的@[角色](i1)，学@[运镜](v1)，配@[配乐](a1)",
+      "expect": "图片2里的图片1，学视频1，配音频1\n\n雨夜"
+    },
+    {
+      "name": "引用的节点已断开：退回成引用时的名字",
+      "nodes": [],
+      "prompt": "参考@[旧图](gone)",
+      "expect": "参考旧图"
+    },
+    {
+      "name": "只引用图片、没有文本上游：只展开编号",
+      "nodes": [
+        {"id": "i1", "kind": "image", "label": "角色", "assetId": "5"}
+      ],
+      "prompt": "@[角色](i1)走路",
+      "expect": "图片1走路"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ import type {
 } from "@/api/model/type";
 import type { CanvasNodeData, NodeKind } from "@/types";
 import { findPreset } from "@/constants/presets";
-import { expandPrompt, promptPresets } from "@/utils/canvas/prompt-tokens";
+import { expandPrompt, promptPresets, promptRefIds } from "@/utils/canvas/prompt-tokens";
 
 /** 参数 + 参数名，按 capabilities.params 的键顺序排列（也就是参数面板的显示顺序） */
 export type ParamEntry = ParamField & { name: string };
@@ -532,8 +532,40 @@ function expandRefs(prompt: string, links: IncomingLink[], input: Record<string,
 }
 
 /**
+ * 合成提交给模型的提示词（与后端 canvasgraph.ComposePrompt 一致，两边共用 fixture）：
+ * 手填的提示词先展开 @ 的素材；没被 @ 的上游文本按连线顺序追加在后面，段与段之间空一行；
+ * 手填为空就只剩上游文本。没有文字的文本上游不收，同一个文本节点连了几根线也只算一次。
+ * @param typed 手填的提示词（含 @ 引用）
+ * @param links 接进来的全部上游
+ * @param promptLink 提示词口绑定的那根连线：links 里没有它时（只传了绑定）也算上
+ * @param input 已经收齐的参考素材，用来给素材引用编号
+ */
+function composePrompt(
+  typed: string,
+  links: IncomingLink[],
+  promptLink: IncomingLink | undefined,
+  input: Record<string, unknown>,
+) {
+  const texts = new Map<string, string>();
+  const upstream = links.filter((item) => item.sourceKind === "script");
+  if (
+    promptLink?.sourceKind === "script" &&
+    !upstream.some((item) => item.edgeId === promptLink.edgeId)
+  )
+    upstream.unshift(promptLink);
+  for (const item of upstream) {
+    const text = item.text?.trim();
+    if (text && !texts.has(item.sourceId)) texts.set(item.sourceId, text);
+  }
+  const cited = new Set(promptRefIds(typed));
+  const parts = [expandRefs(typed, [...links, ...upstream], input).trim()];
+  for (const [id, text] of texts) if (!cited.has(id)) parts.push(text);
+  return parts.filter(Boolean).join("\n\n");
+}
+
+/**
  * 按模型能力组装提交用的 input 并校验：
- * 提示词（手填优先，里面 @ 的素材展开成编号或正文；没手填才用上游文字）、生成方式、开放给用户的参数（没填取默认值），
+ * 提示词（里面 @ 的素材展开成编号或正文，没被 @ 的上游文字追加在后面）、生成方式、开放给用户的参数（没填取默认值），
  * 以及参考素材：当前方式允许的种类里，上游连线（还没出图的跳过）+ 手动添加的素材合并去重后按 refs 上限和方式要求检查。
  * 未开放的参数不放进 input，后端按默认值补齐。素材值是素材 assetId（数字），不是 URL。
  */
@@ -595,10 +627,10 @@ export function buildTaskInput(
   )
     errors.images = "全能参考需要至少 1 个参考素材";
 
-  // 提示词：手填的优先（@ 的素材展开），没手填才用上游文字
+  // 提示词：手填的先展开 @ 的素材，没被 @ 的上游文字按连线顺序追加在后面，手填为空就只剩上游文字
   const link = bindings.prompt;
   const typed = typeof params.prompt === "string" ? params.prompt : "";
-  const prompt = expandRefs(typed, links, input).trim() || link?.text?.trim() || "";
+  const prompt = composePrompt(typed, links, link, input);
   const promptError = !prompt
     ? link
       ? `上游「${link.sourceLabel}」还没有文字`

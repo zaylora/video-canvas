@@ -29,6 +29,18 @@ func refKindsOfOp(op string) []string {
 	return nil
 }
 
+// RefKindsUsed 返回当前生成方式真正会带给模型的参考素材种类：方式允许，且 refs 里开启。
+// 其余种类的上游素材即使连着也会被忽略，提示词里也就没有它的编号。
+func RefKindsUsed(c Capabilities, op string) []string {
+	var used []string
+	for _, kind := range refKindsOfOp(op) {
+		if c.Refs.Of(kind).On {
+			used = append(used, kind)
+		}
+	}
+	return used
+}
+
 // validateInput 按能力校验并规范化任务输入。输出只包含这些键：
 //   - prompt：string，必填，不超过 prompt.max_length 个字符；
 //   - op：string，仅 video / image，省略取第一种生成方式；
@@ -113,10 +125,10 @@ func inputParams(c Capabilities, in, out map[string]any) []FieldError {
 // inputRefs 校验参考素材：按生成方式与 refs 开关过滤，检查数量；不要求一定有素材（上游节点可能还没出图）。
 func inputRefs(c Capabilities, op string, in, out map[string]any) []FieldError {
 	var errs []FieldError
-	allowed := refKindsOfOp(op)
+	used := RefKindsUsed(c, op)
 	for _, m := range MediaKinds {
 		spec := c.Refs.Of(m.Kind)
-		if in[m.Key] == nil || !spec.On || !inStrings(allowed, m.Kind) {
+		if in[m.Key] == nil || !inStrings(used, m.Kind) {
 			continue // 当前方式不使用这种素材：忽略
 		}
 		ids, err := refIDs(in[m.Key])

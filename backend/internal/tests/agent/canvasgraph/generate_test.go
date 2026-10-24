@@ -41,10 +41,10 @@ func TestGeneration(t *testing.T) {
 		if _, has := src.Params["prompt"]; has || src.Params["op"] != "i2v" {
 			t.Errorf("params 不含 prompt、保留其它字段: %v", src.Params)
 		}
-		if len(src.Texts) != 1 || src.Texts[0] != "男主走进便利店" {
+		if len(src.Texts) != 1 || src.Texts[0] != (canvasgraph.GenText{NodeID: "n_text", Text: "男主走进便利店"}) {
 			t.Errorf("空文本不收: %v", src.Texts)
 		}
-		if len(src.Assets) != 1 || src.Assets[0] != (canvasgraph.GenAsset{Kind: "image", AssetID: "42"}) {
+		if len(src.Assets) != 1 || src.Assets[0] != (canvasgraph.GenAsset{NodeID: "n_ref", Kind: "image", AssetID: "42"}) {
 			t.Errorf("素材: %v", src.Assets)
 		}
 		if src.Pending != 1 {

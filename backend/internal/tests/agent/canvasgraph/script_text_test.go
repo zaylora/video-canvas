@@ -101,7 +101,7 @@ func TestAgentWrittenScriptFeedsDownstream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(src.Texts) != 1 || src.Texts[0] != "近景，林夏抬头" {
+	if len(src.Texts) != 1 || src.Texts[0].Text != "近景，林夏抬头" {
 		t.Errorf("Agent 写的文本节点应作为上游文字带进生成: %v", src.Texts)
 	}
 }

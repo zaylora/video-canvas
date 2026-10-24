@@ -256,6 +256,30 @@ func TestAgentGenerator_Execute(t *testing.T) {
 		}
 	})
 
+	t.Run("手填了提示词：没被 @ 的上游文字追加在后面，被 @ 的换成正文且不重复", func(t *testing.T) {
+		e := newGenEnv(t, "all")
+		e.repo.canvas.PayloadJSON = []byte(strings.Replace(string(e.repo.canvas.PayloadJSON),
+			`"label":"剧本"`, `"label":"剧本","text":"男主走进便利店"`, 1))
+		if _, err := newGenerator(e).Execute(ctx, e.run, 1, items(e)); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.tasks.reqs[0].Input["prompt"]; got != "红衣女孩\n\n男主走进便利店" {
+			t.Errorf("没 @ 时追加: prompt = %q", got)
+		}
+
+		e2 := newGenEnv(t, "all")
+		e2.repo.canvas.PayloadJSON = []byte(strings.Replace(string(e2.repo.canvas.PayloadJSON),
+			`"label":"剧本"`, `"label":"剧本","text":"男主走进便利店"`, 1))
+		e2.tool(t, e2.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{
+			{"op": "update_node", "id": e2.imgID(t), "prompt": "红衣女孩，场景：@[剧本](n_script)"}}})
+		if _, err := newGenerator(e2).Execute(ctx, e2.run, 2, items(e2)); err != nil {
+			t.Fatal(err)
+		}
+		if got := e2.tasks.reqs[0].Input["prompt"]; got != "红衣女孩，场景：男主走进便利店" {
+			t.Errorf("已 @ 时展开且不重复: prompt = %q", got)
+		}
+	})
+
 	t.Run("部分失败：成功的绑定，失败的写在结果里", func(t *testing.T) {
 		e := newGenEnv(t, "all")
 		e.tool(t, e.tok, "canvas_apply_ops", map[string]any{"ops": []map[string]any{

@@ -224,7 +224,7 @@ export function TaskPromptPanel({
         hint={vm.blockedReason ?? "开始生成"}
         placeholder={
           vm.promptBinding
-            ? `留空就用上游「${vm.promptBinding.sourceLabel}」的文字，输入 @ 引用素材`
+            ? `上游「${vm.promptBinding.sourceLabel}」的文字会自动并入，输入 @ 引用素材`
             : `${meta?.placeholder ?? "写下你想要的内容。"}输入 @ 引用画布里的素材。`
         }
         mention={vm.mention}

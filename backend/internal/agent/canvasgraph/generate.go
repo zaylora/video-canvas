@@ -1,6 +1,12 @@
 package canvasgraph
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+)
 
 // GenSource 是一个节点发起生成所需的全部输入，从画布里读出来：节点自己的模型、提示词、参数，
 // 以及连进来的上游文字和素材。组装成任务输入、校验和计价由 service 层按模型能力完成。
@@ -11,15 +17,22 @@ type GenSource struct {
 	Model     string         // 节点上选的模型 key，没选为空
 	Prompt    string         // 节点自己的提示词
 	Params    map[string]any // 节点的生成参数（不含素材引用）
-	Texts     []string       // 上游文本节点的正文，按连线顺序，空文本不收
+	Texts     []GenText      // 上游文本节点的正文，按连线顺序，空文本不收
 	Assets    []GenAsset     // 上游已经有产物的素材，按连线顺序
 	Pending   int            // 上游里还没有产物的素材节点数，只作提示
 	Status    string         // 节点当前状态
 	HasOutput bool           // 节点是否已经有产物：生成不会覆盖已有产物
 }
 
+// GenText 是上游文本节点的正文。
+type GenText struct {
+	NodeID string // 文本节点 id：提示词里 @ 它时按它认出是哪一段
+	Text   string // 正文
+}
+
 // GenAsset 是上游节点的一份素材。
 type GenAsset struct {
+	NodeID  string // 素材节点 id：提示词里 @ 它时按它认出是哪一份
 	Kind    string // image / video / audio
 	AssetID string // 素材 id（十进制字符串）
 }
@@ -65,12 +78,12 @@ func (s *GenSource) addUpstream(up Node) {
 	d := up.Data()
 	if up.Kind() == KindScript {
 		if t := str(d["text"]); t != "" {
-			s.Texts = append(s.Texts, t)
+			s.Texts = append(s.Texts, GenText{NodeID: up.ID(), Text: t})
 		}
 		return
 	}
 	if id := str(d["assetId"]); id != "" {
-		s.Assets = append(s.Assets, GenAsset{Kind: up.Kind(), AssetID: id})
+		s.Assets = append(s.Assets, GenAsset{NodeID: up.ID(), Kind: up.Kind(), AssetID: id})
 		return
 	}
 	s.Pending++
@@ -91,4 +104,77 @@ func BindTasks(g *Graph, tasks map[string]string) *Result {
 		delete(d, "error")
 	}
 	return finish(g, after, nil)
+}
+
+// promptRef 匹配提示词里的素材引用 @[名字](节点id)；兼容 Agent 从用户消息里照抄的 node: 前缀写法。
+var promptRef = regexp.MustCompile(`@\[([^\]\n]*)\]\((?:node:)?([^)\s]+)\)`)
+
+// refWord 是素材引用在提示词里的叫法：「图片1」「视频2」「音频1」。
+var refWord = map[string]string{"image": "图片", "video": "视频", "audio": "音频"}
+
+// ComposePrompt 合成提交给模型的提示词，规则与前端 buildTaskInput 一致（两边共用 fixture 保证不漂移）：
+//   - 节点自己的提示词里 @ 的引用先展开：文本节点换成正文，素材换成「图片1」这样的编号
+//     （编号是它在 used 里同类素材中的位置，从 1 起；这种素材当前方式不带给模型，或节点已断开，就退回引用时的名字）；
+//   - 没被 @ 的上游文本，按连线顺序追加在后面；提示词为空就只剩上游文本；
+//   - 段与段之间空一行，只有空白的文本不收。
+//
+// used 是当前生成方式真正会带给模型的素材种类（见 modelcfg.RefKindsUsed）。
+func ComposePrompt(s *GenSource, used []string) string {
+	numbers := assetNumbers(s.Assets, used)
+	texts := make(map[string]string, len(s.Texts))
+	for _, t := range s.Texts {
+		if text := strings.TrimSpace(t.Text); text != "" && texts[t.NodeID] == "" {
+			texts[t.NodeID] = text
+		}
+	}
+	cited := map[string]bool{}
+	body := promptRef.ReplaceAllStringFunc(s.Prompt, func(m string) string {
+		sub := promptRef.FindStringSubmatch(m)
+		label, id := sub[1], sub[2]
+		if text, ok := texts[id]; ok {
+			cited[id] = true
+			return text
+		}
+		if n, ok := numbers[id]; ok {
+			return n
+		}
+		return label
+	})
+	parts := []string{strings.TrimSpace(body)}
+	for _, t := range s.Texts {
+		if text := texts[t.NodeID]; text != "" && !cited[t.NodeID] {
+			cited[t.NodeID] = true // 同一个文本节点连了两根线也只追加一次
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(slices.DeleteFunc(parts, func(p string) bool { return p == "" }), "\n\n")
+}
+
+// assetNumbers 算每个素材节点在提示词里的叫法：同类素材按连线顺序去重后的位置。只算 used 里的种类和 id 合法的素材，
+// 与 buildGenInput 放进 images / videos / audios 的内容一一对应。
+func assetNumbers(assets []GenAsset, used []string) map[string]string {
+	out := map[string]string{}
+	for kind, word := range refWord {
+		if !slices.Contains(used, kind) {
+			continue
+		}
+		var ids []string
+		for _, a := range assets {
+			if a.Kind != kind {
+				continue
+			}
+			if _, err := strconv.ParseUint(a.AssetID, 10, 64); err != nil {
+				continue
+			}
+			i := slices.Index(ids, a.AssetID)
+			if i < 0 {
+				ids = append(ids, a.AssetID)
+				i = len(ids) - 1
+			}
+			if _, ok := out[a.NodeID]; !ok {
+				out[a.NodeID] = word + strconv.Itoa(i+1)
+			}
+		}
+	}
+	return out
 }
