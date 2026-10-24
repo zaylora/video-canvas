@@ -109,4 +109,22 @@ describe("api/canvas：导出与导入", () => {
     expect(report.characters.renamed).toEqual([]);
     expect(report.characters.invalid).toEqual([]);
   });
+  test("exportCanvas / importCanvas 把取消信号透传给请求层，不传时不带 signal", async () => {
+    get.mockResolvedValue({ document: {} });
+    post.mockResolvedValue({
+      canvas: { id: "7", title: "t", revision: 1 },
+      report: { assets: { total: 0, copied: 0 }, characters: { created: 0 }, edges_dropped: 0 },
+    });
+    const controller = new AbortController();
+
+    await exportCanvas("42", controller.signal);
+    await importCanvas({}, controller.signal);
+    expect(get.mock.calls[0]?.[2]?.signal).toBe(controller.signal);
+    expect(post.mock.calls[0]?.[2]?.signal).toBe(controller.signal);
+
+    await exportCanvas("42");
+    await importCanvas({});
+    expect(get.mock.calls[1]?.[2]?.signal).toBeUndefined();
+    expect(post.mock.calls[1]?.[2]?.signal).toBeUndefined();
+  });
 });

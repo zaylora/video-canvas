@@ -168,12 +168,14 @@ const CANVAS_TRANSFER_TIMEOUT = 5 * 60 * 1000;
 /**
  * 导出画布为文档
  * @param id 画布 ID
+ * @param signal 取消信号；取消后请求层原样抛出取消错误、不弹提示
  * @returns 导出文档，以及因找不到文件被跳过的素材数
  */
-export const exportCanvas = (id: string): Promise<CanvasExportResultDto> =>
+export const exportCanvas = (id: string, signal?: AbortSignal): Promise<CanvasExportResultDto> =>
   service
     .get<BackendCanvasExportDto>(`/canvas/${id}/export`, undefined, {
       timeout: CANVAS_TRANSFER_TIMEOUT,
+      signal,
     })
     .then((data) => ({
       document: data.document,
@@ -183,14 +185,18 @@ export const exportCanvas = (id: string): Promise<CanvasExportResultDto> =>
 /**
  * 把导出文档导入为一张新画布
  * @param document 导出文档，前端不解析，原样交给后端校验
+ * @param signal 取消信号；取消后请求层原样抛出取消错误、不弹提示
  * @returns 新画布和导入报告
  */
-export const importCanvas = (document: unknown): Promise<CanvasImportResultDto> =>
+export const importCanvas = (
+  document: unknown,
+  signal?: AbortSignal,
+): Promise<CanvasImportResultDto> =>
   service
     .post<BackendCanvasImportDto>(
       "/canvas/import",
       { document },
-      { timeout: CANVAS_TRANSFER_TIMEOUT },
+      { timeout: CANVAS_TRANSFER_TIMEOUT, signal },
     )
     .then(({ canvas, report }) => ({
       canvas,

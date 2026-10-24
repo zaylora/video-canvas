@@ -7,6 +7,7 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   STAGE_INTERVAL_MS,
@@ -25,13 +26,27 @@ const COPY: Record<TransferKind, { title: string; hint: string }> = {
 /**
  * 导入 / 导出进度弹窗（设计稿 docs/design/画布导入导出 第 14 节）：请求进行中把用户锁在这里。
  * 基于 AlertDialog：它本来就不响应点遮罩关闭，Esc 走 onOpenChange，受控的 open 不变就不会关。
- * 弹窗里没有任何按钮、不能取消：请求发出去后服务端可能已经在写数据，取消只能停止等待、不能回滚。
+ * 唯一能中止的方式是点「取消」，Esc、点遮罩、右上角都没有关闭入口，避免误触。
+ * 取消会断开请求，后端随之停止复制并回滚事务；但事务提交那一瞬间之后停不住（设计稿 §14.8），
+ * 所以点了取消后弹窗仍然锁住，等请求真正结束才由调用方关闭，避免取消后立刻又发起并发请求。
  * 被 Esc 或点遮罩拦住时，面板轻晃一次提示「现在不能关」。
  * 阶段列表是按时间轮播的说明，不代表后端真实进度，最后一步停住直到请求返回。
  * @param open 是否显示；请求开始置真，结束置假
  * @param kind 导出（画布 → 文件）或导入（文件 → 画布）
+ * @param cancelling 已点取消、正在等请求收尾：按钮变「正在取消…」并禁用
+ * @param onCancel 点「取消」
  */
-export function TransferProgressDialog({ open, kind }: { open: boolean; kind: TransferKind }) {
+export function TransferProgressDialog({
+  open,
+  kind,
+  cancelling,
+  onCancel,
+}: {
+  open: boolean;
+  kind: TransferKind;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
   const [nudging, setNudging] = useState(false);
   const nudgeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -70,6 +85,15 @@ export function TransferProgressDialog({ open, kind }: { open: boolean; kind: Tr
           {COPY[kind].hint}
         </AlertDialogDescription>
         <StageList kind={kind} />
+        <Button
+          type="button"
+          variant="outline"
+          className="mx-auto mt-4 min-w-24"
+          disabled={cancelling}
+          onClick={onCancel}
+        >
+          {cancelling ? "正在取消…" : "取消"}
+        </Button>
       </AlertDialogContent>
     </AlertDialog>
   );

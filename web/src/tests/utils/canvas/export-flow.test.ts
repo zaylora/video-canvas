@@ -1,7 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
+import axios from "axios";
 
 import type { exportCanvas } from "@/api/canvas";
 import { runCanvasExport } from "@/utils/canvas/export-flow";
+import { createTransferCancel } from "@/utils/canvas/transfer-cancel";
 import { exportFileName } from "@/utils/canvas/transfer-file";
 
 type Deps = Parameters<typeof runCanvasExport>[0];
@@ -39,7 +41,7 @@ describe("runCanvasExport：画布内导出流程", () => {
     const deps = setup();
     await runCanvasExport(deps);
 
-    expect(deps.exportCanvas).toHaveBeenCalledWith("42");
+    expect(deps.exportCanvas).toHaveBeenCalledWith("42", undefined);
     expect(deps.download).toHaveBeenCalledTimes(1);
     expect(deps.download).toHaveBeenCalledWith(exportFileName("雨夜短片"), doc);
     expect(deps.notify.success).toHaveBeenCalledTimes(1);
@@ -63,11 +65,75 @@ describe("runCanvasExport：画布内导出流程", () => {
         throw new Error("boom");
       }),
     });
-    await expect(runCanvasExport(deps)).resolves.toBeUndefined();
+    await expect(runCanvasExport(deps)).resolves.toBe("failed");
 
     expect(deps.download).not.toHaveBeenCalled();
     expect(deps.notify.success).not.toHaveBeenCalled();
     expect(deps.notify.warning).not.toHaveBeenCalled();
     expect(deps.notify.error).not.toHaveBeenCalled();
+  });
+
+  test("成功时返回 done", async () => {
+    expect(await runCanvasExport(setup())).toBe("done");
+  });
+
+  test("请求失败（非取消）返回 failed", async () => {
+    const deps = setup({
+      exportCanvas: mock(async () => {
+        throw new Error("boom");
+      }),
+    });
+    expect(await runCanvasExport(deps)).toBe("failed");
+  });
+
+  test("保存没成功返回 failed，不请求", async () => {
+    const deps = setup({ saveNow: mock(async () => false) });
+    expect(await runCanvasExport(deps)).toBe("failed");
+    expect(deps.exportCanvas).not.toHaveBeenCalled();
+  });
+
+  test("请求被取消：返回 cancelled，不下载、不提示成功也不提示错误", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup({
+      signal: cancel.signal,
+      exportCanvas: mock(async () => {
+        cancel.cancel();
+        throw new axios.CanceledError("canceled");
+      }),
+    });
+    expect(await runCanvasExport(deps)).toBe("cancelled");
+
+    expect(deps.download).not.toHaveBeenCalled();
+    expect(deps.notify.success).not.toHaveBeenCalled();
+    expect(deps.notify.error).not.toHaveBeenCalled();
+    expect(deps.notify.warning).not.toHaveBeenCalled();
+  });
+
+  test("取消时请求恰好已成功：按成功处理，下载文件，不返回 cancelled", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup({
+      signal: cancel.signal,
+      exportCanvas: mock(async () => {
+        cancel.cancel(); // 取消发生在响应已经到达之后：请求没有抛错
+        return { document: doc, skippedAssets: 0 };
+      }),
+    });
+    expect(await runCanvasExport(deps)).toBe("done");
+    expect(deps.download).toHaveBeenCalledTimes(1);
+    expect(deps.notify.success).toHaveBeenCalledTimes(1);
+  });
+
+  test("保存阶段就已取消：不再请求导出", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup({
+      signal: cancel.signal,
+      saveNow: mock(async () => {
+        cancel.cancel();
+        return true;
+      }),
+    });
+    expect(await runCanvasExport(deps)).toBe("cancelled");
+    expect(deps.exportCanvas).not.toHaveBeenCalled();
+    expect(deps.download).not.toHaveBeenCalled();
   });
 });

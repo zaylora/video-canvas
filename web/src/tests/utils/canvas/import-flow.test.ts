@@ -1,7 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
+import axios from "axios";
 
 import type { CanvasImportResultDto } from "@/api/canvas/type";
 import { runCanvasImport, summarizeImportReport } from "@/utils/canvas/import-flow";
+import { createTransferCancel } from "@/utils/canvas/transfer-cancel";
 import { MAX_IMPORT_BYTES } from "@/utils/canvas/transfer-file";
 
 type Report = CanvasImportResultDto["report"];
@@ -132,6 +134,52 @@ describe("runCanvasImport：列表页导入流程", () => {
     const outcome = await runCanvasImport(setup({ report: cleanReport({ edgesDropped: 1 }) }));
 
     expect(outcome.kind).toBe("report");
+  });
+
+  test("请求被取消：返回 cancelled，不当作失败也不当作成功", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup();
+    deps.importCanvas.mockImplementation(async () => {
+      cancel.cancel();
+      throw new axios.CanceledError("canceled");
+    });
+    const outcome = await runCanvasImport({ ...deps, signal: cancel.signal });
+
+    expect(outcome).toEqual({ kind: "cancelled" });
+  });
+
+  test("取消时请求恰好已成功：按成功处理（画布已经建好了），不返回 cancelled", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup();
+    const original = deps.importCanvas.getMockImplementation()!;
+    deps.importCanvas.mockImplementation(async (document: unknown) => {
+      cancel.cancel(); // 取消发生在响应已经到达之后：请求没有抛错
+      return original(document);
+    });
+    const outcome = await runCanvasImport({ ...deps, signal: cancel.signal });
+
+    expect(outcome).toEqual({ kind: "opened", canvasId: "88", title: "雨夜短片（导入）" });
+  });
+
+  test("读文件期间就取消了：不发请求，返回 cancelled", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup();
+    deps.file.text.mockImplementation(async () => {
+      cancel.cancel();
+      return JSON.stringify(validDoc);
+    });
+    const outcome = await runCanvasImport({ ...deps, signal: cancel.signal });
+
+    expect(outcome).toEqual({ kind: "cancelled" });
+    expect(deps.importCanvas).not.toHaveBeenCalled();
+  });
+
+  test("把取消信号交给 importCanvas", async () => {
+    const cancel = createTransferCancel();
+    const deps = setup();
+    await runCanvasImport({ ...deps, signal: cancel.signal });
+
+    expect(deps.importCanvas.mock.calls[0]?.[1]).toBe(cancel.signal);
   });
 });
 

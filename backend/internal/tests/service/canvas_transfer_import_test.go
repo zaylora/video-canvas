@@ -35,6 +35,8 @@ type fakeImportAssets struct {
 	discardCtxErr []error
 	// afterCopy 非空时在每次复制成功后调用（用来模拟复制途中请求被取消）
 	afterCopy func()
+	// honorCtx 为真时，ctx 已取消就返回 ctx 的错误：与真实 CopyBySha256 循环开头的 ctx.Err() 检查一致
+	honorCtx bool
 }
 
 func newFakeImportAssets() *fakeImportAssets {
@@ -45,8 +47,13 @@ func (f *fakeImportAssets) EnsureSha256(context.Context, uint64, uint64) (string
 	return "", nil, service.ErrAssetUnreadable
 }
 
-func (f *fakeImportAssets) CopyBySha256(_ context.Context, userID uint64, sha string, byteSize int64) (*model.Asset, error) {
+func (f *fakeImportAssets) CopyBySha256(ctx context.Context, userID uint64, sha string, byteSize int64) (*model.Asset, error) {
 	f.calls[sha]++
+	if f.honorCtx {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("按哈希复制素材: %w", err)
+		}
+	}
 	if err := f.errs[sha]; err != nil {
 		return nil, err
 	}
@@ -726,6 +733,59 @@ func TestImport_DiscardCopiesSurvivesCancelledRequest(t *testing.T) {
 		}
 		if len(e.assets.discardCtxErr) != 1 || e.assets.discardCtxErr[0] != nil {
 			t.Errorf("回收副本应拿到未取消的 ctx，实际 %v", e.assets.discardCtxErr)
+		}
+	})
+}
+
+// 用户在导入途中点了取消：请求上下文被取消，复制应当停下，已复制的副本全部回收，不留画布、素材和角色卡。
+func TestImport_CancelledMidwayLeavesNothing(t *testing.T) {
+	t.Run("复制途中取消：停止复制、回收已复制的副本、不建任何行", func(t *testing.T) {
+		e := newDefaultImportEnv(t)
+		e.assets.honorCtx = true
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := 0
+		e.assets.afterCopy = func() {
+			done++
+			if done == 2 { // 哈希按字典序复制：第二份复制完时用户点了取消
+				cancel()
+			}
+		}
+
+		_, err := e.svc.Import(ctx, importUser, defaultImportFixture().build(t))
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("应返回 context.Canceled，实际 %v", err)
+		}
+		var ce *errcode.Error
+		if errors.As(err, &ce) {
+			t.Errorf("取消不是业务错误，不应转成错误码: %v", err)
+		}
+		if len(e.assets.copies) != 2 {
+			t.Errorf("取消后不应再复制：已复制 %d 份，期望 2 份", len(e.assets.copies))
+		}
+		if len(e.assets.discarded) != 1 || !slices.Equal(e.assets.discarded[0], e.assets.copies) {
+			t.Errorf("应回收已复制的 2 份副本: %v", e.assets.discarded)
+		}
+		if len(e.assets.discardCtxErr) != 1 || e.assets.discardCtxErr[0] != nil {
+			t.Errorf("回收副本应拿到未取消的 ctx，实际 %v", e.assets.discardCtxErr)
+		}
+		if len(e.tx.st.canvases) != 0 || len(e.tx.st.assets) != 0 || len(e.tx.st.cards) != 0 {
+			t.Errorf("取消后不应留下任何行: %+v", e.tx.st)
+		}
+	})
+
+	t.Run("请求在开始前就已取消：一份都不复制，也没有可回收的东西", func(t *testing.T) {
+		e := newDefaultImportEnv(t)
+		e.assets.honorCtx = true
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := e.svc.Import(ctx, importUser, defaultImportFixture().build(t))
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("应返回 context.Canceled，实际 %v", err)
+		}
+		if len(e.assets.copies) != 0 || len(e.tx.st.canvases) != 0 {
+			t.Errorf("不应复制也不应建画布: copies=%d canvases=%d", len(e.assets.copies), len(e.tx.st.canvases))
 		}
 	})
 }

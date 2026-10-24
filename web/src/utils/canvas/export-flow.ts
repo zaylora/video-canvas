@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import type { exportCanvas } from "@/api/canvas";
 
 import { exportFileName } from "./transfer-file";
@@ -10,8 +12,10 @@ export type CanvasExportDeps = {
   title: string;
   /** 立即保存，返回保存后是否已经没有未保存的内容 */
   saveNow: () => Promise<boolean>;
-  /** 向后端请求导出文档 */
+  /** 向后端请求导出文档；signal 用来中止请求 */
   exportCanvas: typeof exportCanvas;
+  /** 取消信号；不传表示不可取消 */
+  signal?: AbortSignal;
   /** 把文档存成文件下载到本地 */
   download: (fileName: string, data: unknown) => void;
   /** 给用户的提示 */
@@ -25,30 +29,38 @@ export type CanvasExportDeps = {
   };
 };
 
+/** 一次导出的结果：成功、失败（保存没成功或请求出错）、被用户取消 */
+export type ExportOutcome = "done" | "failed" | "cancelled";
+
 /**
  * 导出当前画布为文件：先保存，再请求导出，最后下载。
  * 为什么先保存：后端只导出已保存的内容，不先存的话没保存的改动会悄悄缺失；存不上就不导出。
  * 请求失败时只终止流程，不向外抛错。
  * @param deps 画布信息和注入的外部能力
  */
-export async function runCanvasExport(deps: CanvasExportDeps): Promise<void> {
-  const { canvasId, title, saveNow, notify } = deps;
+export async function runCanvasExport(deps: CanvasExportDeps): Promise<ExportOutcome> {
+  const { canvasId, title, saveNow, notify, signal } = deps;
 
   if (!(await saveNow())) {
     notify.error("还有内容没保存上，请保存成功后再导出");
-    return;
+    return "failed";
   }
+  // 保存期间用户点了取消：不必再发请求
+  if (signal?.aborted) return "cancelled";
 
   let result: Awaited<ReturnType<typeof exportCanvas>>;
   try {
-    result = await deps.exportCanvas(canvasId);
-  } catch {
+    result = await deps.exportCanvas(canvasId, signal);
+  } catch (error) {
+    // 主动取消不是失败：请求层不会为它弹提示，由调用方告诉用户「已取消」
+    if (axios.isCancel(error)) return "cancelled";
     /**
      * 请求失败时请求层已弹出全局错误提示，这里不再重复提示（见 coding-standards §3），只终止流程。
      */
-    return;
+    return "failed";
   }
 
+  // 取消时响应恰好已经到了：事实上没取消成，按成功处理，文件照常下载
   deps.download(exportFileName(title), result.document);
   notify.success(`已导出「${title}」`);
   if (result.skippedAssets > 0) {
@@ -56,4 +68,5 @@ export async function runCanvasExport(deps: CanvasExportDeps): Promise<void> {
       `有 ${result.skippedAssets} 个素材文件读不到，已跳过，对应节点导入后素材位置为空`,
     );
   }
+  return "done";
 }

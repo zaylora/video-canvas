@@ -118,7 +118,12 @@ export default function CanvasList() {
         onOpen={canvasImport.openImported}
       />
       {/* 导入期间把用户锁在进度弹窗里，不能点列表、不能再选文件 */}
-      <TransferProgressDialog open={canvasImport.importing} kind="import" />
+      <TransferProgressDialog
+        open={canvasImport.importing}
+        kind="import"
+        cancelling={canvasImport.cancelling}
+        onCancel={canvasImport.cancel}
+      />
     </div>
   );
 }
