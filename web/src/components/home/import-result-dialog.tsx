@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { summarizeImportReport, type ImportReport } from "@/utils/canvas/import-flow";
 
 /**
@@ -97,7 +98,7 @@ function ReportBody({ report, onOpen }: { report: ImportReport; onOpen: () => vo
   );
 }
 
-/** 一类需要注意的项：警告（warn）用琥珀色，提示（info）用中性底色 */
+/** 一类需要注意的项：警告（warn）用 status-warning 主题色打底，提示（info）用中性底色 */
 function Section({
   icon: Icon,
   tone,
@@ -111,13 +112,13 @@ function Section({
 }) {
   return (
     <div
-      className={
-        tone === "warn"
-          ? "flex gap-2.5 rounded-lg bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300"
-          : "bg-muted/60 text-foreground flex gap-2.5 rounded-lg p-3"
-      }
+      className={cn(
+        "text-foreground flex gap-2.5 rounded-lg p-3",
+        tone === "warn" ? "bg-status-warning/10" : "bg-muted/60",
+      )}
     >
-      <Icon className="mt-0.5 size-4 shrink-0" />
+      {/* 浅色模式下 status-warning 作正文色对比度不够，只给图标用，文字保持前景色 */}
+      <Icon className={cn("mt-0.5 size-4 shrink-0", tone === "warn" && "text-status-warning")} />
       <div className="min-w-0 flex-1">
         <p className="font-medium">{title}</p>
         {children && (
