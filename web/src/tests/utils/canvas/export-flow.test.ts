@@ -57,7 +57,7 @@ describe("runCanvasExport：画布内导出流程", () => {
     expect(String(deps.notify.warning.mock.calls[0]?.[0])).toContain("2");
   });
 
-  test("导出请求失败：提示失败、不下载，也不向外抛错", async () => {
+  test("导出请求失败：不下载、不再重复提示（请求层已弹全局提示），也不向外抛错", async () => {
     const deps = setup({
       exportCanvas: mock(async () => {
         throw new Error("boom");
@@ -67,7 +67,7 @@ describe("runCanvasExport：画布内导出流程", () => {
 
     expect(deps.download).not.toHaveBeenCalled();
     expect(deps.notify.success).not.toHaveBeenCalled();
-    expect(deps.notify.error).toHaveBeenCalledTimes(1);
-    expect(deps.notify.error).toHaveBeenCalledWith("导出失败，请稍后重试");
+    expect(deps.notify.warning).not.toHaveBeenCalled();
+    expect(deps.notify.error).not.toHaveBeenCalled();
   });
 });

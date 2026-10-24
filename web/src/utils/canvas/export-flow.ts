@@ -28,7 +28,7 @@ export type CanvasExportDeps = {
 /**
  * 导出当前画布为文件：先保存，再请求导出，最后下载。
  * 为什么先保存：后端只导出已保存的内容，不先存的话没保存的改动会悄悄缺失；存不上就不导出。
- * 所有失败都在内部提示，不向外抛错。
+ * 请求失败时只终止流程，不向外抛错。
  * @param deps 画布信息和注入的外部能力
  */
 export async function runCanvasExport(deps: CanvasExportDeps): Promise<void> {
@@ -43,7 +43,9 @@ export async function runCanvasExport(deps: CanvasExportDeps): Promise<void> {
   try {
     result = await deps.exportCanvas(canvasId);
   } catch {
-    notify.error("导出失败，请稍后重试");
+    /**
+     * 请求失败时请求层已弹出全局错误提示，这里不再重复提示（见 coding-standards §3），只终止流程。
+     */
     return;
   }
 
