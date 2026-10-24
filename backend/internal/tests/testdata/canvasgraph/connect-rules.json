@@ -8,7 +8,7 @@
     {"from": "image", "to": "script", "ok": false},
     {"from": "image", "to": "image", "ok": true},
     {"from": "image", "to": "video", "ok": true},
-    {"from": "image", "to": "audio", "ok": false},
+    {"from": "image", "to": "audio", "ok": true},
     {"from": "video", "to": "script", "ok": false},
     {"from": "video", "to": "image", "ok": false},
     {"from": "video", "to": "video", "ok": true},

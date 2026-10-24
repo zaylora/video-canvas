@@ -137,6 +137,30 @@ func TestValidateInput_关闭的素材类型被忽略(t *testing.T) {
 	}
 }
 
+func TestRefKindsUsed_方式允许且开关打开的种类(t *testing.T) {
+	caps := mcVideoCaps()
+	caps.Refs.Video = modelcfg.RefSpec{On: true, Max: 1, MaxMB: 50}
+	cases := []struct {
+		name string
+		op   string
+		want []string
+	}{
+		{"文生不用素材", modelcfg.OpT2V, nil},
+		{"图生只用图片", modelcfg.OpI2V, []string{"image"}},
+		{"全能参考用三种", modelcfg.OpOmni, []string{"image", "video", "audio"}},
+		{"没有生成方式只可能是图片", "", []string{"image"}},
+	}
+	for _, c := range cases {
+		if got := modelcfg.RefKindsUsed(caps, c.op); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s：%v，期望 %v", c.name, got, c.want)
+		}
+	}
+	caps.Refs.Image.On = false
+	if got := modelcfg.RefKindsUsed(caps, modelcfg.OpOmni); !reflect.DeepEqual(got, []string{"video", "audio"}) {
+		t.Errorf("关掉图片开关后：%v", got)
+	}
+}
+
 func TestValidateInput_文本与音频没有生成方式(t *testing.T) {
 	caps := modelcfg.Capabilities{Prompt: modelcfg.PromptSpec{MaxLength: 100}}
 	got, errs := modelcfg.ValidateInput(modelcfg.KindText, caps, map[string]any{"prompt": "你好", "op": "t2v", "images": []any{1.0}})

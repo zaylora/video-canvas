@@ -563,6 +563,15 @@ Repo.UndoRun(...); emit("run.undone", ...); Repo.MarkDigestUndone(run.ID)
 
 **验证**：前端 `bun test` 2994 项通过，`tsc` 通过，oxlint 0 个 error，改过的 30 个文件 oxfmt 检查通过；后端全量测试通过，`golangci-lint` 0 issues。**没有在浏览器里看过**：抽屉动画与宽度、深浅主题下的卡片颜色、筛选栏换行、模型调用表横向滚动、点卡片筛选的手感，需要你实际看一遍。
 
+### 13.7 补：模型请求体留存（2026-10-24）
+- **缺口**：原来 `agent_model_calls` 只记 Token、耗时、渠道和 `stop_reason`，实际发给上游的请求没有落库；`session_jsonl` 不含 system 消息和图片，且和发出去的内容不同（发送前还有上下文裁剪），事后没法回答「模型当时到底看到了什么」。
+- **做法**：`ProxyModel` 在发请求前用 `llmgateway.SanitizeRaw`（原来的 `sanitizeRaw` 改成导出）算出**实际发给上游的请求体**（白名单字段、换成上游模型名、强制流式、输出上限收紧），后台协程脱敏、gzip 压缩后写新表 `agent_model_call_bodies`（迁移 0011）。写库失败只记日志，不影响对话；失败的调用也留。
+- **脱敏**：非文本分段（图片等）里的 `url` / `data` / `file_data` / `file_id` 换成 `[已省略 N 字符]`，守住 2.2 的「图片地址不出库」；文字原文保留，渠道 Key 本来就不在请求体里。
+- **体量**：单次脱敏后超过 8MB（`MaxModelRequestBytes`）只留摘要；**保留 7 天**（比工具参数的 30 天短，每次调用都带完整上下文），每天清理任务整行删除。
+- **导出**：`export` 的 `model_calls[]` 多了 `id` 和 `request` 摘要（消息数、工具数、字节数、是否留存、除消息和工具外的参数），Markdown 多一段「模型调用」；完整请求体体量大，不放进 `export`，走新接口 `GET /admin/agent/runs/:rid/requests`（同样挂在管理员 JWT 或分析令牌之后，令牌访问写审计 `op=requests`）。
+- **CLI**：`agent-trace pull --with-requests` 额外落 `runs/<日期>_r<id>.requests.json`，本地副本重拉时保留（服务端只留 7 天）。
+- **没做**：后台「运行记录」抽屉里还不展示请求摘要和下载请求体；不记上游的**响应**原文（回复文字已在 `message.done` 事件里）；生成媒体走的上游 HTTP 请求（插件调用）不在这次范围。
+
 ### 13.6 遗留
 - 列表显示用户名而不是用户 ID。
 - 用户协议里是否补一句「对话用于改进服务」：产品或法务决定，未处理。

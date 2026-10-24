@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 
 	"video-canvas/internal/agent/canvasgraph"
 	"video-canvas/internal/model"
@@ -37,7 +36,7 @@ func remoteKindOf(nodeKind string) string {
 }
 
 // buildGenInput 按模型能力把节点读出来的内容组装成任务输入，与画布上点生成时的规则一致：
-// 提示词手填优先，没有才用上游文字；生成方式取节点上选的，没选时有参考图就走图生；上游素材按种类放进 images / videos / audios。
+// 提示词里 @ 的引用展开、没被 @ 的上游文字追加在后面（规则见 canvasgraph.ComposePrompt）；生成方式取节点上选的，没选时有参考图就走图生；上游素材按种类放进 images / videos / audios。
 // 参数里有「生成数量」的一律按 1，要多个结果请多建几个节点。校验和默认值由 modelcfg.ValidateInput 负责。
 func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[string]any {
 	input := make(map[string]any, len(src.Params)+4)
@@ -47,15 +46,12 @@ func buildGenInput(caps modelcfg.Capabilities, src *canvasgraph.GenSource) map[s
 	if name := modelcfg.FanoutParam(caps); name != "" {
 		input[name] = 1
 	}
-	prompt := strings.TrimSpace(src.Prompt)
-	if prompt == "" {
-		prompt = strings.TrimSpace(strings.Join(src.Texts, "\n\n"))
-	}
-	input["prompt"] = prompt
 	hasImage := slices.ContainsFunc(src.Assets, func(a canvasgraph.GenAsset) bool { return a.Kind == "image" })
-	if op := pickOp(caps.Ops, src.Params["op"], hasImage); op != "" {
+	op := pickOp(caps.Ops, src.Params["op"], hasImage)
+	if op != "" {
 		input["op"] = op
 	}
+	input["prompt"] = canvasgraph.ComposePrompt(src, modelcfg.RefKindsUsed(caps, op))
 	for _, m := range modelcfg.MediaKinds {
 		var ids []uint64
 		for _, a := range src.Assets {

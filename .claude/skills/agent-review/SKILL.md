@@ -45,7 +45,7 @@ node scripts/agent-trace/agent-trace.mjs pull --since 7d --sample 60
 ### 2. 逐条判定
 
 1. 读取 `.traces/index.jsonl`，列出本次要判定的运行。已在 `.traces/verdicts.jsonl` 里有判定的 `run_id` 跳过，除非用户要求重判。
-2. 对每个运行，读取 `.traces/runs/*_r<id>.md`（按分段读：头部信号、用户请求、时间线、画布改动、结束）。需要完整工具参数或结果时再读同名 `.json`。
+2. 对每个运行，读取 `.traces/runs/*_r<id>.md`（按分段读：头部信号、用户请求、时间线、画布改动、结束）。需要完整工具参数或结果时再读同名 `.json`；想确认「模型当时到底看到了什么」（系统提示词、实际发出的消息、工具声明、max_tokens），先看 `.md` 里的「模型调用」段，要全文就读同名 `.requests.json`（拉数据时要加 `--with-requests`，服务端只留 7 天，图片地址和数据已脱敏）。
 3. 判定后**追加**一行 JSON 到 `.traces/verdicts.jsonl`（一行一条，不要改动已有行）：
 
 ```json

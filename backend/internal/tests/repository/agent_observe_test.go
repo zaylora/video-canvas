@@ -17,7 +17,7 @@ import (
 
 func observeDB(t *testing.T) *gorm.DB {
 	return isolatedDB(t, &model.AgentSession{}, &model.AgentRun{}, &model.AgentEvent{}, &model.AgentMutation{}, &model.AgentApproval{},
-		&model.AgentModelCall{}, &model.AgentToolCall{}, &model.AgentFeedback{}, &model.AgentRunDigest{}, &model.AdminAPIToken{})
+		&model.AgentModelCall{}, &model.AgentModelCallBody{}, &model.AgentToolCall{}, &model.AgentFeedback{}, &model.AgentRunDigest{}, &model.AdminAPIToken{})
 }
 
 var t0 = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
@@ -671,4 +671,80 @@ func TestObserve_StatsOrdersByRecency(t *testing.T) {
 	if !rows[0].LastAt.Equal(t0.Add(9*time.Hour)) || !rows[2].LastAt.Equal(t0.Add(2*time.Hour)) {
 		t.Errorf("last_at：%v %v", rows[0].LastAt, rows[2].LastAt)
 	}
+}
+
+func TestObserve_ModelCallBodies(t *testing.T) {
+	ctx := context.Background()
+	db := observeDB(t)
+	r := NewAgentObserveRepository(db)
+	run := seedRun(t, db, 1, model.RunSucceeded, t0)
+	other := seedRun(t, db, 1, model.RunSucceeded, t0)
+	mk := func(call, runID uint64, created time.Time, body string) *model.AgentModelCallBody {
+		b := &model.AgentModelCallBody{CallID: call, RunID: runID, MessageCount: 2, ToolCount: 1, RawBytes: len(body), Params: datatypes.JSON(`{"model":"m"}`), CreatedAt: created}
+		if body != "" {
+			b.Body = []byte(body)
+		}
+		return b
+	}
+
+	t.Run("保存后按运行读出：按调用 id 升序，只取自己运行的", func(t *testing.T) {
+		for _, b := range []*model.AgentModelCallBody{mk(12, run.ID, t0, "BODY-12"), mk(11, run.ID, t0, "BODY-11"), mk(13, other.ID, t0, "BODY-13")} {
+			if err := r.SaveModelCallBody(ctx, b); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := r.ModelCallRequests(ctx, run.ID, true)
+		if err != nil || len(got) != 2 || got[0].CallID != 11 || got[1].CallID != 12 || string(got[0].Body) != "BODY-11" {
+			t.Fatalf("got=%+v err=%v", got, err)
+		}
+		if got[0].MessageCount != 2 || got[0].ToolCount != 1 || !strings.Contains(string(got[0].Params), `"model"`) {
+			t.Errorf("摘要字段应一起保存: %+v", got[0])
+		}
+	})
+
+	t.Run("withBody=false 不读请求体，摘要照常返回", func(t *testing.T) {
+		got, err := r.ModelCallRequests(ctx, run.ID, false)
+		if err != nil || len(got) != 2 || len(got[0].Body) != 0 || got[0].RawBytes != len("BODY-11") {
+			t.Fatalf("got=%+v err=%v", got, err)
+		}
+	})
+
+	t.Run("同一次调用重复保存：保留第一条，不报错", func(t *testing.T) {
+		if err := r.SaveModelCallBody(ctx, mk(11, run.ID, t0, "CHANGED")); err != nil {
+			t.Fatalf("重复保存不该报错: %v", err)
+		}
+		got, _ := r.ModelCallRequests(ctx, run.ID, true)
+		if string(got[0].Body) != "BODY-11" {
+			t.Errorf("应保留第一条: %s", got[0].Body)
+		}
+	})
+
+	t.Run("导出事实带请求摘要，不带请求体", func(t *testing.T) {
+		f, err := r.ExportFacts(ctx, run.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(f.Requests) != 2 || f.Requests[0].CallID != 11 || len(f.Requests[0].Body) != 0 || f.Requests[0].RawBytes == 0 {
+			t.Errorf("Requests=%+v", f.Requests)
+		}
+	})
+
+	t.Run("清理：整行删除早于 cutoff 的，没过期的不动，重复执行幂等", func(t *testing.T) {
+		old := t0.Add(-8 * 24 * time.Hour)
+		if err := r.SaveModelCallBody(ctx, mk(20, run.ID, old, "OLD")); err != nil {
+			t.Fatal(err)
+		}
+		cutoff := t0.Add(-7 * 24 * time.Hour)
+		n, err := r.PurgeModelCallBodiesBefore(ctx, cutoff)
+		if err != nil || n != 1 {
+			t.Fatalf("n=%d err=%v", n, err)
+		}
+		got, _ := r.ModelCallRequests(ctx, run.ID, false)
+		if len(got) != 2 {
+			t.Errorf("过期的删掉，其余保留: %+v", got)
+		}
+		if n, _ := r.PurgeModelCallBodiesBefore(ctx, cutoff); n != 0 {
+			t.Errorf("重复清理应为 0: %d", n)
+		}
+	})
 }

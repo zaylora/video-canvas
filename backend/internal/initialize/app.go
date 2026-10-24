@@ -194,7 +194,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	} else if n > 0 {
 		logger.Warn("上次退出时有 Agent 运行没有结束，已标为中断，用户可以点「继续」", zap.Int64("runs", n))
 	}
-	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, ipAllowed: outboundIPPolicy(cfg)})
+	agentRT, err := newAgentRuntime(cfg, agentDeps{tasks: taskSvc, assets: assetSvc, frames: newVideoFrames(), frameStore: assetFrameStore{assetSvc}, repo: agentRepo, agent: agentSvc, canvas: agentCanvasSvc, registry: aiCfgSvc, secrets: aiCfgSvc, skills: skillSvc, toolCalls: observeRepo, modelRequests: observeRepo, ipAllowed: outboundIPPolicy(cfg)})
 	if err != nil {
 		stopRunner(runnerStop)
 		closeRedis(rdb)
@@ -625,7 +625,7 @@ func (a *App) cleanupLoginLogsOnce(ctx context.Context) {
 const observeCleanupInterval = 24 * time.Hour
 
 // cleanupObserve 启动后延迟随机一小段时间清理一次，之后每天一次，直到 ctx 取消。
-// 工具调用的参数和结果、运行摘要里的 runtime_tail 保留 30 天；失败只记日志，下一轮会继续，不影响服务。
+// 工具调用的参数和结果、运行摘要里的 runtime_tail 保留 30 天，模型请求体只保留 7 天；失败只记日志，下一轮会继续，不影响服务。
 func (a *App) cleanupObserve(ctx context.Context) {
 	delay := time.Minute + time.Duration(rand.Int64N(int64(loginLogCleanupMaxDelay-time.Minute))) //nolint:gosec // 只是错峰用的随机延迟，不需要密码学随机
 	timer := time.NewTimer(delay)
@@ -640,6 +640,12 @@ func (a *App) cleanupObserve(ctx context.Context) {
 				logger.Error("清理过期的 Agent 观测数据失败", zap.Error(err))
 			} else if tools > 0 || digests > 0 {
 				logger.Info("已清理过期的 Agent 观测数据", zap.Int64("tool_calls", tools), zap.Int64("digests", digests))
+			}
+			bodies, err := a.observe.PurgeExpiredRequestBodies(ctx)
+			if err != nil {
+				logger.Error("清理过期的 Agent 模型请求体失败", zap.Error(err))
+			} else if bodies > 0 {
+				logger.Info("已清理过期的 Agent 模型请求体", zap.Int64("bodies", bodies))
 			}
 			timer.Reset(observeCleanupInterval)
 		}

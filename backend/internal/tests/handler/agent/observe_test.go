@@ -116,15 +116,16 @@ func TestFeedbackHandler(t *testing.T) {
 // ---- 后台观测 ----
 
 type fakeObserveAPI struct {
-	err       error
-	who       agentsvc.ObserveActor
-	filter    *agentsvc.RunListFilter
-	exportFmt string
-	exportID  uint64
-	groupBy   string
-	since     time.Time
-	issued    *model.IssueAnalysisTokenReq
-	revoked   uint64
+	err        error
+	who        agentsvc.ObserveActor
+	filter     *agentsvc.RunListFilter
+	exportFmt  string
+	exportID   uint64
+	requestsID uint64
+	groupBy    string
+	since      time.Time
+	issued     *model.IssueAnalysisTokenReq
+	revoked    uint64
 }
 
 func (f *fakeObserveAPI) ListRuns(_ context.Context, who agentsvc.ObserveActor, flt *agentsvc.RunListFilter) (*agentsvc.RunListPage, error) {
@@ -145,6 +146,14 @@ func (f *fakeObserveAPI) ExportRun(_ context.Context, who agentsvc.ObserveActor,
 		out.Data = &agentsvc.RunExportView{RuntimeTail: "tail"}
 	}
 	return out, nil
+}
+
+func (f *fakeObserveAPI) RunRequests(_ context.Context, who agentsvc.ObserveActor, id uint64) (*agentsvc.RunRequestsExport, error) {
+	f.who, f.requestsID = who, id
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &agentsvc.RunRequestsExport{Items: []*agentsvc.RunRequestItem{{ID: 11, ModelRequestView: agentsvc.ModelRequestView{Messages: 3, Kept: true, Body: []byte(`{"model":"m"}`)}}}}, nil
 }
 
 func (f *fakeObserveAPI) Stats(_ context.Context, who agentsvc.ObserveActor, groupBy string, since, _ time.Time) ([]model.AgentStatsRow, error) {
@@ -185,6 +194,7 @@ func newObserveRouter(api ObserveAPI, tokenID uint64) *gin.Engine {
 	g.GET("/runs", h.ListRuns)
 	g.GET("/runs/:rid", h.Get)
 	g.GET("/runs/:rid/export", h.Export)
+	g.GET("/runs/:rid/requests", h.Requests)
 	g.GET("/stats", h.Stats)
 	g.GET("/tokens", h.ListTokens)
 	g.POST("/tokens", h.IssueToken)
@@ -446,6 +456,38 @@ func TestAdminOrAnalysisToken(t *testing.T) {
 		w, _ := serve(middleware.AdminOrAnalysisToken(auth, jwtDeny), "")
 		if w.Code != http.StatusUnauthorized || !chainRan {
 			t.Errorf("code=%d chainRan=%v", w.Code, chainRan)
+		}
+	})
+}
+
+func TestObserveHandler_Requests(t *testing.T) {
+	rid := idcodec.Encode(22)
+	base := "/api/v1/admin/agent/runs/" + rid + "/requests"
+
+	t.Run("返回每次模型调用的完整请求体", func(t *testing.T) {
+		api := &fakeObserveAPI{}
+		status, resp := agentCall(t, newObserveRouter(api, 0), "GET", base, "")
+		data, _ := resp["data"].(map[string]any)
+		items, _ := data["items"].([]any)
+		if status != 200 || api.requestsID != 22 || len(items) != 1 {
+			t.Fatalf("status=%d id=%d data=%v", status, api.requestsID, data)
+		}
+		item, _ := items[0].(map[string]any)
+		body, _ := item["body"].(map[string]any)
+		if item["id"] != idcodec.Encode(11) || item["messages"] != float64(3) || body["model"] != "m" {
+			t.Errorf("item=%v", item)
+		}
+	})
+
+	t.Run("运行 id 不合法返回参数错误，业务错误原样返回", func(t *testing.T) {
+		api := &fakeObserveAPI{}
+		status, _ := agentCall(t, newObserveRouter(api, 0), "GET", "/api/v1/admin/agent/runs/zzz/requests", "")
+		if status == 200 || api.requestsID != 0 {
+			t.Errorf("坏 id 不该走到业务：status=%d id=%d", status, api.requestsID)
+		}
+		api = &fakeObserveAPI{err: errcode.ErrAgentRunMissing}
+		if status, _ := agentCall(t, newObserveRouter(api, 0), "GET", base, ""); status == 200 {
+			t.Errorf("运行不存在不该返回 200")
 		}
 	})
 }

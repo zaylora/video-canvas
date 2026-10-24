@@ -18,6 +18,7 @@ type fakeObserveRepo struct {
 	mu        sync.Mutex
 	facts     map[uint64]*model.AgentRunFacts
 	exports   map[uint64]*model.AgentExportFacts
+	requests  map[uint64][]model.AgentModelCallBody
 	digests   map[uint64]*model.AgentRunDigest
 	feedback  map[[2]uint64]*model.AgentFeedback
 	tokens    []*model.AdminAPIToken
@@ -29,11 +30,12 @@ type fakeObserveRepo struct {
 	factsErr  error
 	upsertErr error
 	purgeAt   time.Time
+	bodiesAt  time.Time
 	nextTok   uint64
 }
 
 func newFakeObserveRepo() *fakeObserveRepo {
-	return &fakeObserveRepo{facts: map[uint64]*model.AgentRunFacts{}, exports: map[uint64]*model.AgentExportFacts{}, digests: map[uint64]*model.AgentRunDigest{},
+	return &fakeObserveRepo{facts: map[uint64]*model.AgentRunFacts{}, exports: map[uint64]*model.AgentExportFacts{}, requests: map[uint64][]model.AgentModelCallBody{}, digests: map[uint64]*model.AgentRunDigest{},
 		feedback: map[[2]uint64]*model.AgentFeedback{}, touched: map[uint64]int{}}
 }
 
@@ -279,3 +281,22 @@ func (a *fakeAudit) actions() []string {
 var errBadCursor = repository.ErrInvalidCursor
 
 func rawJSON(s string) datatypes.JSON { return datatypes.JSON(s) }
+
+func (f *fakeObserveRepo) ModelCallRequests(_ context.Context, runID uint64, withBody bool) ([]model.AgentModelCallBody, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := append([]model.AgentModelCallBody(nil), f.requests[runID]...)
+	if !withBody {
+		for i := range out {
+			out[i].Body = nil
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeObserveRepo) PurgeModelCallBodiesBefore(_ context.Context, cutoff time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bodiesAt = cutoff
+	return 5, nil
+}

@@ -151,14 +151,15 @@ describe("buildTaskInput", () => {
     });
   });
 
-  test("手填优先；没手填才用上游文字；两边都没有时报错", () => {
+  test("手填和上游文字合并：手填在前、上游文字追加；没手填就只用上游文字；两边都没有时报错", () => {
     const text = link({ sourceKind: "script", sourceLabel: "文本", text: "来自上游" });
+    const caps = { ...video(), prompt: { max_length: 100 } };
     expect(
-      buildTaskInput(video(), { prompt: "手填" }, { ...emptyB(), prompt: text }).input.prompt,
-    ).toBe("手填");
-    expect(
-      buildTaskInput(video(), { prompt: "  " }, { ...emptyB(), prompt: text }).input.prompt,
-    ).toBe("来自上游");
+      buildTaskInput(caps, { prompt: "手填" }, { ...emptyB(), prompt: text }).input.prompt,
+    ).toBe("手填\n\n来自上游");
+    expect(buildTaskInput(caps, { prompt: "  " }, { ...emptyB(), prompt: text }).input.prompt).toBe(
+      "来自上游",
+    );
     const empty = { ...text, text: "" };
     expect(buildTaskInput(video(), {}, { ...emptyB(), prompt: empty }).errors.prompt).toContain(
       "上游",

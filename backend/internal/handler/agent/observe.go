@@ -22,6 +22,8 @@ type ObserveAPI interface {
 	ListRuns(ctx context.Context, who agentsvc.ObserveActor, f *agentsvc.RunListFilter) (*agentsvc.RunListPage, error)
 	// ExportRun 导出一次运行，给 AI 读。
 	ExportRun(ctx context.Context, who agentsvc.ObserveActor, runID uint64, format string) (*agentsvc.RunExport, error)
+	// RunRequests 导出一次运行各次模型调用实际发给上游的完整请求体。
+	RunRequests(ctx context.Context, who agentsvc.ObserveActor, runID uint64) (*agentsvc.RunRequestsExport, error)
 	// Stats 按版本或模型分组聚合指标。
 	Stats(ctx context.Context, who agentsvc.ObserveActor, groupBy string, since, until time.Time) ([]model.AgentStatsRow, error)
 	// IssueToken 签发分析令牌，明文只返回这一次。
@@ -121,6 +123,21 @@ func (h *AgentObserveHandler) Get(c *gin.Context) {
 func (h *AgentObserveHandler) Export(c *gin.Context) {
 	format := c.DefaultQuery("format", agentsvc.ExportMD)
 	h.export(c, format)
+}
+
+// Requests 返回一次运行各次模型调用实际发给上游的完整请求体：GET /admin/agent/runs/:rid/requests。
+// 请求体体量大，不放进 export，本地 agent-trace pull --with-requests 才会来取。
+func (h *AgentObserveHandler) Requests(c *gin.Context) {
+	id, ok := encodedParam(c, "rid")
+	if !ok {
+		return
+	}
+	out, err := h.svc.RunRequests(c.Request.Context(), actor(c), id)
+	if err != nil {
+		response.Fail(c, err)
+		return
+	}
+	response.OK(c, out)
 }
 
 func (h *AgentObserveHandler) export(c *gin.Context, format string) {

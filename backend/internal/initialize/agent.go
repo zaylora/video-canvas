@@ -128,6 +128,8 @@ type agentDeps struct {
 	skills     agentsvc.SkillLibrary
 	// toolCalls 逐条留存工具调用的参数、结果和耗时；nil 表示不记录
 	toolCalls agentsvc.ToolCallRecorder
+	// modelRequests 留存模型调用实际发给上游的请求体（7 天）；nil 表示不记录
+	modelRequests agentsvc.ModelRequestRecorder
 	// ipAllowed 是出站请求的 IP 策略；nil 用默认（拒绝全部内网）
 	ipAllowed func(net.IP) bool
 }
@@ -176,6 +178,9 @@ func newAgentRuntime(cfg *config.Config, d agentDeps) (*agentRuntime, error) {
 	})
 	if d.toolCalls != nil {
 		bridge.SetToolRecorder(d.toolCalls)
+	}
+	if d.modelRequests != nil {
+		bridge.SetModelRequestRecorder(d.modelRequests)
 	}
 	rt := agentsvc.NewProcessRuntime(agentsvc.RuntimeDeps{
 		Repo: d.repo, Bridge: bridge, Canvas: d.canvas, Agent: d.agent, Registry: d.registry, Launcher: agentsvc.ExecLauncher{},

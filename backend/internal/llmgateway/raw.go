@@ -16,11 +16,13 @@ type RawLimits struct {
 // 其余字段（logit_bias、user、n、response_format、store……）一律丢掉，渠道 Key 的权限不该被拿来试探上游的其他功能。
 var rawAllowed = []string{"messages", "tools", "tool_choice", "temperature", "top_p", "stop"}
 
-// sanitizeRaw 把调用方拼好的 OpenAI 请求体收紧成可以发往渠道的形状：
+// SanitizeRaw 把调用方拼好的 OpenAI 请求体收紧成可以发往渠道的形状：
 //   - 只保留白名单字段，messages 必须是非空数组（原样保留，含图片分段）；
 //   - model 强制成渠道的上游模型名，stream 和 stream_options.include_usage 强制打开（计费靠用量）；
 //   - max_tokens / max_completion_tokens 合并成 max_tokens，并按上限收紧。
-func sanitizeRaw(body []byte, tg Target, lim RawLimits) ([]byte, error) {
+//
+// 导出是给观测用：记下"实际发出的内容"，而不是 Agent 发来的原始请求。不改变入参。
+func SanitizeRaw(body []byte, tg Target, lim RawLimits) ([]byte, error) {
 	var in map[string]json.RawMessage
 	if err := json.Unmarshal(body, &in); err != nil || in == nil {
 		return nil, fmt.Errorf("%w: 请求体不是 JSON 对象", ErrInvalidRequest)

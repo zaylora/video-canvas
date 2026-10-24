@@ -90,7 +90,7 @@ export function ModelParamsForm({
   const kind = readModelKind(body);
   const caps = readCaps(body);
   const params = caps.params ?? {};
-  const isMedia = kind === "video" || kind === "image";
+  const hasRefs = kind === "video" || kind === "image" || kind === "audio";
   const setField = (field: string, value: unknown) =>
     onChange((body) => withModelField(body, field, value));
   const setCaps = (next: Capabilities) => setField("capabilities", next);
@@ -229,7 +229,7 @@ export function ModelParamsForm({
         </FormSection>
       )}
 
-      {isMedia && (
+      {hasRefs && (
         <FormSection>
           <FormSectionHeader>
             <FormSectionTitle>参考素材</FormSectionTitle>

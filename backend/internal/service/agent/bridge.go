@@ -92,6 +92,8 @@ type AgentBridge struct {
 	calls  map[uint64]int // 运行 id → 进行中的模型调用数（含结算和写事件的收尾），取消时等它归零
 	// toolRec 逐条留存工具调用；为 nil 时不记。装配阶段用 SetToolRecorder 绑定
 	toolRec ToolCallRecorder
+	// reqRec 留存模型调用实际发给上游的请求体；为 nil 时不记。装配阶段用 SetModelRequestRecorder 绑定
+	reqRec ModelRequestRecorder
 }
 
 // NewAgentBridge 创建桥。
@@ -222,6 +224,12 @@ func (b *AgentBridge) ProxyModel(ctx context.Context, token string, body []byte,
 	lim := llmgateway.RawLimits{}
 	if c := snap.Model.Capabilities.Context; c != nil {
 		lim.MaxTokens = c.Output
+	}
+	// 记下实际发给上游的请求（白名单字段、上游模型名、收紧后的输出上限），而不是 Agent 发来的原始请求；写库放到后台，不拖慢这次调用
+	if b.reqRec != nil {
+		if sent, err := llmgateway.SanitizeRaw(body, tg, lim); err == nil {
+			go b.recordModelRequest(ctx, run.ID, call.ID, sent)
+		}
 	}
 
 	internal := ModelPurposeFrom(ctx) == ModelPurposeSummary

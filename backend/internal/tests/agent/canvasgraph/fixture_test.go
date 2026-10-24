@@ -169,3 +169,53 @@ func TestGroupMatchesFrontend(t *testing.T) {
 		})
 	}
 }
+
+// TestComposePromptMatchesFrontend 读与前端共用的提示词合成 fixture
+// （web/src/tests/utils/tasks/prompt-compose-fixture.test.ts 读同一份），保证 Agent 生成和画布上点生成合成出一样的提示词。
+func TestComposePromptMatchesFrontend(t *testing.T) {
+	var fx struct {
+		Cases []struct {
+			Name  string
+			Nodes []struct {
+				ID, Kind, Label, Text string
+				AssetID               string `json:"assetId"`
+			}
+			Prompt string
+			Expect string
+		} `json:"cases"`
+	}
+	loadFixture(t, "prompt-compose.json", &fx)
+	if len(fx.Cases) == 0 {
+		t.Fatal("fixture 没有用例")
+	}
+	for _, c := range fx.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			nodes := []map[string]any{{"id": "target", "type": "canvas", "data": map[string]any{
+				"kind": "video", "label": "目标", "params": map[string]any{"prompt": c.Prompt}}}}
+			edges := []map[string]any{}
+			for i, n := range c.Nodes {
+				data := map[string]any{"kind": n.Kind, "label": n.Label}
+				if n.Text != "" {
+					data["text"] = n.Text
+				}
+				if n.AssetID != "" {
+					data["assetId"] = n.AssetID
+				}
+				nodes = append(nodes, map[string]any{"id": n.ID, "type": "canvas", "data": data})
+				edges = append(edges, map[string]any{"id": fmt.Sprintf("e%d", i), "source": n.ID, "target": "target"})
+			}
+			raw, err := json.Marshal(map[string]any{"nodes": nodes, "edges": edges})
+			if err != nil {
+				t.Fatal(err)
+			}
+			src, err := canvasgraph.Generation(mustParse(t, string(raw)), "target")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := canvasgraph.ComposePrompt(src, []string{"image", "video", "audio"})
+			if got != c.Expect {
+				t.Errorf("提示词 = %q，期望 %q", got, c.Expect)
+			}
+		})
+	}
+}

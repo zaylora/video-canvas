@@ -44,13 +44,17 @@ node scripts/agent-trace/agent-trace.mjs pull --since 2026-10-01 --feedback down
 | `--harness` / `--model` / `--prompt-version` / `--user` | 按 `harness_key` / `model_key` / `prompt_version` / `user_id` 过滤 |
 | `--limit` | 最多命中多少条，默认 200 |
 | `--sample N` | 在命中的运行里抽 N 条，见下 |
+| `--with-requests` | 同时拉每次模型调用**实际发给上游的完整请求体**（system 提示词、发送前裁剪后的 messages、tools、max_tokens 等），写成 `runs/<日期>_r<id>.requests.json`。服务端只留 7 天，想留着就要在这之内拉下来 |
 
 行为：
 
 1. 分页拉摘要（尊重 `--limit`）。
 2. `--sample N`：分层抽样。信号样本优先，最多取 `ceil(N*2/3)` 条，其余随机补满 N，总数不超过 N。信号样本 = 点踩、被撤销、有被拒绝的审批、状态不是 `succeeded` / `running` / `queued` / `waiting_*` 的运行。
 3. 对抽中的运行逐条拉 `format=both` 导出（每条运行 1 次请求：`content` 写 `.md`，`data` 写 `.json`）。本地已有 `runs/*_r<id>.md/.json`，且 `index.jsonl` 里该运行的 `updated_at` 没变的，跳过。
-4. 结束打印：`命中 X 条，抽样 Y 条，新写 Z 条，跳过 W 条`。
+4. 带 `--with-requests` 时，每条运行再请求一次 `/requests`；运行没变但本地缺请求体时只补取这一项，不重复导出。服务端返回空（过了 7 天或没留存）不写空文件；重拉运行时本地已有的请求体文件会跟着新日期改名保留，不会被删掉。
+5. 结束打印：`命中 X 条，抽样 Y 条，新写 Z 条，跳过 W 条`（带 `--with-requests` 时末尾多一段 `，请求体 K 条`）。
+
+请求体里**图片地址和图片数据已被服务端换成占位文字**（`[已省略 N 字符]`），其余内容是原文。超过 8MB 的请求只留摘要。`.json` 里每次模型调用的 `request` 字段是摘要（消息数、工具数、字节数、参数），`id` 与 `.requests.json` 里的 `items[].id` 对应。
 
 错误处理：401 提示「令牌失效，请在后台重新签发」；429 按 1s / 2s / 4s 退避重试 3 次（响应带 `Retry-After` 头时优先用它），仍失败就停止（已写的文件和 index 保留，再次运行会续拉）；HTTP 非 2xx 或响应 `code≠0` 都报错，退出码 1。用法、配置错误退出码 2。
 
@@ -84,6 +88,7 @@ node scripts/agent-trace/agent-trace.mjs compare --by prompt_version --since 30d
   index.jsonl                    # 每行一条运行摘要，按 run_id 去重
   runs/2026-10-20_r1234.md       # AI 读的单次运行文档（后端生成，原样保存）
   runs/2026-10-20_r1234.json     # 同一运行的完整结构化数据
+  runs/2026-10-20_r1234.requests.json  # 可选（--with-requests）：每次模型调用实际发给上游的完整请求体
   verdicts.jsonl                 # /agent-review 写入的逐条判定
   reports/2026-10-21.md          # /agent-review 的分析报告
 ```

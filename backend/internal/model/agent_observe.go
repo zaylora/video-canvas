@@ -65,6 +65,23 @@ type AgentToolCall struct {
 // TableName 表名。
 func (AgentToolCall) TableName() string { return "agent_tool_calls" }
 
+// AgentModelCallBody 是一次模型调用实际发给上游的请求体（已脱敏、gzip 压缩），给事后分析"模型当时看到了什么"。
+// 请求体是大字段，一次运行几十次调用、每次都带完整上下文，所以单独放一张表，保留 7 天后整行删除。
+// 超过 MaxModelRequestBytes 的请求只留摘要（Body 为空），摘要部分长期随这一行一起保留到被清理。
+type AgentModelCallBody struct {
+	CallID       uint64         `gorm:"primaryKey;autoIncrement:false" json:"call_id"`                        // 对应 agent_model_calls.id
+	RunID        uint64         `gorm:"not null;index:idx_agent_model_call_bodies_run" json:"run_id"`         // 所属运行
+	MessageCount int            `gorm:"not null;default:0" json:"message_count"`                              // messages 条数
+	ToolCount    int            `gorm:"not null;default:0" json:"tool_count"`                                 // tools 个数
+	Params       datatypes.JSON `gorm:"type:jsonb" json:"params"`                                             // 除 messages 和 tools 外的顶层字段：model、max_tokens、temperature 等
+	RawBytes     int            `gorm:"not null;default:0" json:"raw_bytes"`                                  // 脱敏后的请求体原始字节数（压缩前）
+	Body         []byte         `gorm:"type:bytea" json:"-"`                                                  // gzip 压缩的请求体 JSON；超过上限为空
+	CreatedAt    time.Time      `gorm:"not null;index:idx_agent_model_call_bodies_created" json:"created_at"` // 创建时间，清理按它算
+}
+
+// TableName 表名。
+func (AgentModelCallBody) TableName() string { return "agent_model_call_bodies" }
+
 // AgentFeedback 是用户对一次运行的评价：每个运行每人一条，改选就是覆盖。
 type AgentFeedback struct {
 	ID        uint64         `gorm:"primaryKey" json:"id"`                                             // 记录 ID
@@ -203,14 +220,15 @@ type StatsQuery struct {
 
 // AgentExportFacts 是导出一次运行（给 AI 读）需要的全部事实，工具参数和结果也在里面。
 type AgentExportFacts struct {
-	Digest      AgentRunDigest   // 运行摘要
-	Run         AgentRun         // 运行本身
-	Events      []AgentEvent     // 本轮的全部落库事件，按序号升序
-	ToolCalls   []AgentToolCall  // 工具调用，含参数和结果
-	ModelCalls  []AgentModelCall // 模型调用
-	Mutations   []AgentMutation  // 画布改动
-	Approvals   []AgentApproval  // 审批
-	Feedback    *AgentFeedback   // 评价
-	Context     []AgentEvent     // 同会话更早两轮的用户消息和 Agent 最终回复，按时间升序，给 AI 补上下文
-	RuntimeTail string           // Node 进程 stderr 末尾
+	Digest      AgentRunDigest       // 运行摘要
+	Run         AgentRun             // 运行本身
+	Events      []AgentEvent         // 本轮的全部落库事件，按序号升序
+	ToolCalls   []AgentToolCall      // 工具调用，含参数和结果
+	ModelCalls  []AgentModelCall     // 模型调用
+	Requests    []AgentModelCallBody // 模型请求的摘要（不含请求体），按调用 id 对应 ModelCalls；过了保留期的没有
+	Mutations   []AgentMutation      // 画布改动
+	Approvals   []AgentApproval      // 审批
+	Feedback    *AgentFeedback       // 评价
+	Context     []AgentEvent         // 同会话更早两轮的用户消息和 Agent 最终回复，按时间升序，给 AI 补上下文
+	RuntimeTail string               // Node 进程 stderr 末尾
 }
