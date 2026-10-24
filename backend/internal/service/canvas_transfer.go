@@ -403,9 +403,10 @@ func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, docum
 		return tx.CreateCanvas(ctx, canvas)
 	})
 
-	// 6. 事务失败时数据库已回滚，但复制出的文件还在存储里，删掉它们，免得留下没有素材行的孤儿文件
+	// 6. 事务失败时数据库已回滚，但复制出的文件还在存储里，删掉它们，免得留下没有素材行的孤儿文件。
+	//    用 WithoutCancel：失败常常就是因为请求被取消，而回收时找存储可能要查数据库，跟着取消就会留下孤儿文件
 	if err != nil {
-		s.assets.DiscardCopies(ctx, copyAssetsOf(copies))
+		s.assets.DiscardCopies(context.WithoutCancel(ctx), copyAssetsOf(copies))
 		return nil, err
 	}
 
@@ -458,8 +459,9 @@ func (s *CanvasTransferService) copyAssets(ctx context.Context, userID uint64, d
 			continue
 		}
 		if err != nil {
-			// 存储故障不是文件的问题，不能悄悄当成缺失后报导入成功；已复制的文件不会再有人引用，先回收
-			s.assets.DiscardCopies(ctx, copyAssetsOf(copies))
+			// 存储故障（含请求被取消）不是文件的问题，不能悄悄当成缺失后报导入成功；已复制的文件不会再有人引用，先回收。
+			// 回收用 WithoutCancel：请求取消后仍要删干净，否则留下孤儿文件
+			s.assets.DiscardCopies(context.WithoutCancel(ctx), copyAssetsOf(copies))
 			return nil, fmt.Errorf("复制导入素材: %w", err)
 		}
 		copies = append(copies, copiedAsset{hash: h, asset: a})

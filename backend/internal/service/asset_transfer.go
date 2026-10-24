@@ -64,7 +64,7 @@ func (s *AssetService) EnsureSha256(ctx context.Context, userID, assetID uint64)
 
 // CopyBySha256 按内容哈希与大小找到一份已有的素材文件，复制到当前默认存储的新 key 下，
 // 返回尚未入库的素材行（UserID 为 userID，其余元数据取自源素材，Source 固定为 upload）；入库由调用方在事务里完成，
-// 事务失败时调用 DiscardCopies 回收这份副本。没有任何可读的候选返回 ErrAssetNotFoundByHash。
+// 事务失败时调用 DiscardCopies 回收这份副本。没有任何可读的候选返回 ErrAssetNotFoundByHash；请求已取消时返回包装了 ctx.Err() 的错误。
 func (s *AssetService) CopyBySha256(ctx context.Context, userID uint64, sha string, byteSize int64) (*model.Asset, error) {
 	// 1. 按哈希 + 大小查候选。故意不按用户过滤：导入的 JSON 里的哈希是不可猜测的内容摘要，
 	//    谁拿到了这份 JSON，就说明他持有这份内容，允许他认领；调用方只会得到文件副本，拿不到别人的素材行
@@ -83,8 +83,12 @@ func (s *AssetService) CopyBySha256(ctx context.Context, userID uint64, sha stri
 	}
 
 	// 3. 依次尝试候选：源文件读得通的第一个就用；读不通（存储已删、对象丢失）只记日志并换下一个，
-	//    因为同一内容常有多份拷贝，只要有一份可用就不该导入失败
+	//    因为同一内容常有多份拷贝，只要有一份可用就不该导入失败。
+	//    每轮先看请求是否已取消：取消后每个候选都会「读不通」，不能误报成找不到素材
 	for i := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("按哈希复制素材: %w", err)
+		}
 		src := &candidates[i]
 		body, err := s.openAssetObject(ctx, src)
 		if err != nil {

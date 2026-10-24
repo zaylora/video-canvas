@@ -934,6 +934,22 @@ func TestAssetService_CopyBySha256_NotFound(t *testing.T) {
 	}
 }
 
+func TestAssetService_CopyBySha256_CancelledContext(t *testing.T) {
+	svc, repo, store := newAssetTestService(config.Storage{})
+	data := []byte("png-bytes-for-copy")
+	seedHashedAsset(repo, store, 5, 1, "u1/a.png", data, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := svc.CopyBySha256(ctx, 2, assetSha(data), int64(len(data)))
+	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrAssetNotFoundByHash) {
+		t.Fatalf("请求已取消应返回 context.Canceled，而不是“找不到”：%v", err)
+	}
+	if len(store.objects) != 1 {
+		t.Fatalf("取消后不应再写副本：objects=%d", len(store.objects))
+	}
+}
+
 func TestAssetService_CopyBySha256_PutFailureCleansUp(t *testing.T) {
 	svc, repo, store := newAssetTestService(config.Storage{})
 	data := []byte("png-bytes-for-copy")

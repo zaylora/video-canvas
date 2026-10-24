@@ -30,8 +30,11 @@ type fakeImportAssets struct {
 	errs    map[string]error
 	calls   map[string]int
 	copies  []*model.Asset
-	// discarded 记录每次 DiscardCopies 收到的参数
-	discarded [][]*model.Asset
+	// discarded 记录每次 DiscardCopies 收到的参数，discardCtxErr 记录当时 ctx.Err()
+	discarded     [][]*model.Asset
+	discardCtxErr []error
+	// afterCopy 非空时在每次复制成功后调用（用来模拟复制途中请求被取消）
+	afterCopy func()
 }
 
 func newFakeImportAssets() *fakeImportAssets {
@@ -59,11 +62,15 @@ func (f *fakeImportAssets) CopyBySha256(_ context.Context, userID uint64, sha st
 		ByteSize: byteSize, Sha256: sha, Source: model.AssetSourceUpload,
 	}
 	f.copies = append(f.copies, a)
+	if f.afterCopy != nil {
+		f.afterCopy()
+	}
 	return a, nil
 }
 
-func (f *fakeImportAssets) DiscardCopies(_ context.Context, assets []*model.Asset) {
+func (f *fakeImportAssets) DiscardCopies(ctx context.Context, assets []*model.Asset) {
 	f.discarded = append(f.discarded, assets)
+	f.discardCtxErr = append(f.discardCtxErr, ctx.Err())
 }
 
 func (f *fakeImportAssets) FileURL(key string) string { return "/files/" + key }
@@ -691,4 +698,34 @@ func TestImport_IgnoresUnreferencedEntries(t *testing.T) {
 	if a := res.Report.Assets; a.Total != 5 || a.Copied != 5 {
 		t.Errorf("素材总数应只算被引用的: %+v", a)
 	}
+}
+
+func TestImport_DiscardCopiesSurvivesCancelledRequest(t *testing.T) {
+	t.Run("事务失败时请求已取消", func(t *testing.T) {
+		e := newDefaultImportEnv(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		e.assets.afterCopy = cancel // 第一份复制完请求就被取消（如用户关掉页面）
+		e.tx.failCanvas = errors.New("db down")
+		if _, err := e.svc.Import(ctx, importUser, defaultImportFixture().build(t)); err == nil {
+			t.Fatal("应返回事务错误")
+		}
+		if len(e.assets.discardCtxErr) != 1 || e.assets.discardCtxErr[0] != nil {
+			t.Errorf("回收副本应拿到未取消的 ctx，实际 %v", e.assets.discardCtxErr)
+		}
+	})
+
+	t.Run("复制出错时请求已取消", func(t *testing.T) {
+		e := newDefaultImportEnv(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		e.assets.afterCopy = cancel
+		e.assets.errs[transferHash(102)] = errors.New("storage down")
+		if _, err := e.svc.Import(ctx, importUser, defaultImportFixture().build(t)); err == nil {
+			t.Fatal("应返回复制错误")
+		}
+		if len(e.assets.discardCtxErr) != 1 || e.assets.discardCtxErr[0] != nil {
+			t.Errorf("回收副本应拿到未取消的 ctx，实际 %v", e.assets.discardCtxErr)
+		}
+	})
 }
