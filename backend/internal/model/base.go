@@ -48,6 +48,7 @@ func All() []any {
 		&AgentApproval{},
 		&AgentModelCall{},
 		&AgentToolCall{},
+		&AgentModelCallBody{},
 		&AgentFeedback{},
 		&AgentRunDigest{},
 		&AdminAPIToken{},

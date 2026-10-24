@@ -55,6 +55,7 @@ func RenderRunMarkdown(f *model.AgentExportFacts) string {
 		sb.WriteString("\n## 时间线\n")
 		writeTimeline(&sb, steps)
 	}
+	writeModelCalls(&sb, f)
 	if len(f.Mutations) > 0 {
 		sb.WriteString("\n## 画布改动\n")
 		for _, m := range f.Mutations {
@@ -493,4 +494,45 @@ func clipThinking(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// mdParamsBytes 是 Markdown 里每次请求的参数摘要最多保留的字节数。
+const mdParamsBytes = 300
+
+// writeModelCalls 列出每次模型调用和它实际发给上游的请求摘要：模型当时看到了多少消息和工具、带了什么参数。
+// 完整请求体不进 Markdown（动辄几十 KB），要看用 agent-trace pull --with-requests。没有模型调用不输出。
+func writeModelCalls(sb *strings.Builder, f *model.AgentExportFacts) {
+	if len(f.ModelCalls) == 0 {
+		return
+	}
+	requests := make(map[uint64]*model.AgentModelCallBody, len(f.Requests))
+	for i := range f.Requests {
+		requests[f.Requests[i].CallID] = &f.Requests[i]
+	}
+	sb.WriteString("\n## 模型调用\n")
+	for i := range f.ModelCalls {
+		m := &f.ModelCalls[i]
+		purpose := "对话"
+		if m.Purpose == "summary" {
+			purpose = "摘要"
+		}
+		fmt.Fprintf(sb, "- 第 %d 次（%s）· %s · 输入 %d / 输出 %d token", i+1, purpose, firstNonEmpty(m.UpstreamModel, m.ModelKey), m.InputTokens, m.OutputTokens)
+		if m.StopReason != "" {
+			sb.WriteString(" · stop=" + m.StopReason)
+		}
+		b := requests[m.ID]
+		if b == nil {
+			sb.WriteString(" · 请求体未留存（过了保留期，或这次调用发生时还没有留存）\n")
+			continue
+		}
+		v := requestSummary(b)
+		fmt.Fprintf(sb, " · 请求：消息 %d 条、工具 %d 个、%dKB", v.Messages, v.Tools, (v.Bytes+1023)/1024)
+		if len(v.Params) > 0 {
+			sb.WriteString("，参数 " + clipBytes(string(v.Params), mdParamsBytes))
+		}
+		if !v.Kept {
+			sb.WriteString("（超过上限，只留摘要）")
+		}
+		sb.WriteString("\n")
+	}
 }

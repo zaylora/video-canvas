@@ -75,7 +75,7 @@ func (g *Gateway) Stream(ctx context.Context, tg Target, req Request, emit func(
 }
 
 // StreamRaw 和 Stream 一样发一次流式请求，但请求体由调用方拼好（OpenAI 格式），响应的 SSE 行原样回调给 raw。
-// 用于让 Node 里的 pi 把这里当作一个 OpenAI 兼容端点：请求体先经 sanitizeRaw 收紧（白名单字段、强制模型名和用量、
+// 用于让 Node 里的 pi 把这里当作一个 OpenAI 兼容端点：请求体先经 SanitizeRaw 收紧（白名单字段、强制模型名和用量、
 // 按 lim 封顶输出），然后和 Stream 走同一条路径，所以限流、SSRF 防护、用量解析、取消和断流的行为完全一致。
 // 上游报错发生在流开始之前，此时 raw 一次都没有被调用，调用方可以据此返回 HTTP 错误码。
 func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim RawLimits, emit func(Event), raw func([]byte)) (*Result, error) {
@@ -83,7 +83,7 @@ func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim Raw
 	if err != nil {
 		return nil, err
 	}
-	clean, err := sanitizeRaw(body, tg, lim)
+	clean, err := SanitizeRaw(body, tg, lim)
 	if err != nil {
 		return nil, err
 	}

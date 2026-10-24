@@ -266,8 +266,9 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 			middleware.JWTAuth(jwtSecret), middleware.RequireActive(h.UserState), middleware.RequireAdmin(h.AdminRole)))
 		observe.GET("/runs", h.AgentObserve.ListRuns) // 摘要列表，游标分页
 		observe.GET("/runs/:rid", h.AgentObserve.Get)
-		observe.GET("/runs/:rid/export", h.AgentObserve.Export) // ?format=md|json|both
-		observe.GET("/stats", h.AgentObserve.Stats)             // ?group_by=harness_key|prompt_version|model_key
+		observe.GET("/runs/:rid/export", h.AgentObserve.Export)     // ?format=md|json|both
+		observe.GET("/runs/:rid/requests", h.AgentObserve.Requests) // 各次模型调用实际发给上游的完整请求体，体量大，单独取
+		observe.GET("/stats", h.AgentObserve.Stats)                 // ?group_by=harness_key|prompt_version|model_key
 		tokensAdmin := auth.Group("/admin/agent/tokens", middleware.RequireAdmin(h.AdminRole))
 		tokensAdmin.GET("", h.AgentObserve.ListTokens)
 		tokensAdmin.POST("", h.AgentObserve.IssueToken)

@@ -41,21 +41,39 @@ type ToolCallView struct {
 
 // ModelCallView 是导出里的一次模型调用。
 type ModelCallView struct {
-	Purpose        string    `json:"purpose"`         // main 对话调用，summary 摘要调用
-	ModelKey       string    `json:"model_key"`       // Agent 模型
-	ChannelKey     string    `json:"channel_key"`     // 实际走的渠道
-	UpstreamModel  string    `json:"upstream_model"`  // 实际调用的上游模型
-	InputTokens    int       `json:"input_tokens"`    // 输入 Token
-	OutputTokens   int       `json:"output_tokens"`   // 输出 Token
-	CachedTokens   int       `json:"cached_tokens"`   // 命中缓存的输入 Token
-	UsageEstimated bool      `json:"usage_estimated"` // Token 数是估的
-	Credits        int       `json:"credits"`         // 应收积分
-	Charged        int       `json:"charged"`         // 实扣积分
-	LatencyMs      int       `json:"latency_ms"`      // 总耗时
-	TTFTMs         int       `json:"ttft_ms"`         // 首字耗时
-	StopReason     string    `json:"stop_reason"`     // 上游的结束原因
-	Error          string    `json:"error"`           // 失败或中断的原因
-	CreatedAt      time.Time `json:"created_at"`      // 发起时间
+	ID             idcodec.ID        `json:"id"`              // 调用 id（编码后）：与 /requests 接口返回的 id 对应
+	Request        *ModelRequestView `json:"request"`         // 实际发给上游的请求摘要；过了保留期或没留存为 null
+	Purpose        string            `json:"purpose"`         // main 对话调用，summary 摘要调用
+	ModelKey       string            `json:"model_key"`       // Agent 模型
+	ChannelKey     string            `json:"channel_key"`     // 实际走的渠道
+	UpstreamModel  string            `json:"upstream_model"`  // 实际调用的上游模型
+	InputTokens    int               `json:"input_tokens"`    // 输入 Token
+	OutputTokens   int               `json:"output_tokens"`   // 输出 Token
+	CachedTokens   int               `json:"cached_tokens"`   // 命中缓存的输入 Token
+	UsageEstimated bool              `json:"usage_estimated"` // Token 数是估的
+	Credits        int               `json:"credits"`         // 应收积分
+	Charged        int               `json:"charged"`         // 实扣积分
+	LatencyMs      int               `json:"latency_ms"`      // 总耗时
+	TTFTMs         int               `json:"ttft_ms"`         // 首字耗时
+	StopReason     string            `json:"stop_reason"`     // 上游的结束原因
+	Error          string            `json:"error"`           // 失败或中断的原因
+	CreatedAt      time.Time         `json:"created_at"`      // 发起时间
+}
+
+// ModelRequestView 是一次模型调用实际发给上游的请求：摘要在导出里，完整请求体要走 /requests 接口。
+type ModelRequestView struct {
+	Messages int             `json:"messages"`       // messages 条数
+	Tools    int             `json:"tools"`          // tools 个数
+	Bytes    int             `json:"bytes"`          // 脱敏后请求体的原始字节数（压缩前）
+	Kept     bool            `json:"kept"`           // 请求体是否留存了：超过上限只留摘要
+	Params   json.RawMessage `json:"params"`         // 除 messages 和 tools 外的顶层字段：model、max_tokens、temperature 等
+	Body     json.RawMessage `json:"body,omitempty"` // 完整请求体（图片地址和数据已脱敏）；只有 /requests 接口返回
+}
+
+// requestSummary 把请求记录转成摘要视图，不带请求体。
+func requestSummary(b *model.AgentModelCallBody) *ModelRequestView {
+	return &ModelRequestView{Messages: b.MessageCount, Tools: b.ToolCount, Bytes: b.RawBytes,
+		Kept: b.RawBytes > 0 && b.RawBytes <= MaxModelRequestBytes, Params: json.RawMessage(b.Params)}
 }
 
 // MutationView 是导出里的一次画布改动。
@@ -95,9 +113,17 @@ func exportView(f *model.AgentExportFacts) *RunExportView {
 		v.ToolCalls = append(v.ToolCalls, &ToolCallView{ID: c.ToolCallID, ParentID: c.ParentID, Name: c.Name, Args: json.RawMessage(c.ArgsJSON), Result: c.ResultText,
 			ResultTruncated: c.ResultTruncated, IsError: c.IsError, Summary: c.Summary, StartedAt: c.StartedAt, EndedAt: c.EndedAt, DurationMs: c.DurationMs, Purged: c.PurgedAt != nil})
 	}
+	requests := make(map[uint64]*model.AgentModelCallBody, len(f.Requests))
+	for i := range f.Requests {
+		requests[f.Requests[i].CallID] = &f.Requests[i]
+	}
 	for i := range f.ModelCalls {
 		m := &f.ModelCalls[i]
-		v.ModelCalls = append(v.ModelCalls, &ModelCallView{Purpose: m.Purpose, ModelKey: m.ModelKey, ChannelKey: m.ChannelKey, UpstreamModel: m.UpstreamModel,
+		var req *ModelRequestView
+		if b := requests[m.ID]; b != nil {
+			req = requestSummary(b)
+		}
+		v.ModelCalls = append(v.ModelCalls, &ModelCallView{ID: idcodec.ID(m.ID), Request: req, Purpose: m.Purpose, ModelKey: m.ModelKey, ChannelKey: m.ChannelKey, UpstreamModel: m.UpstreamModel,
 			InputTokens: m.InputTokens, OutputTokens: m.OutputTokens, CachedTokens: m.CachedTokens, UsageEstimated: m.UsageEstimated, Credits: m.Credits, Charged: m.Charged,
 			LatencyMs: m.LatencyMs, TTFTMs: m.TTFTMs, StopReason: m.StopReason, Error: m.Error, CreatedAt: m.CreatedAt})
 	}

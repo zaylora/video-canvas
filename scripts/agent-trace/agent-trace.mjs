@@ -29,6 +29,7 @@ const USAGE = `用法：
   agent-trace pull [--since 7d|24h|2026-10-01] [--until <时间>] [--feedback down|up|any|none]
                    [--undone] [--status a,b] [--harness <key>] [--model <key>]
                    [--prompt-version N] [--user <id>] [--limit 200] [--sample N]
+                   [--with-requests]   同时拉每次模型调用实际发给上游的完整请求体（服务端只留 7 天）
   agent-trace show <run_id>
   agent-trace compare --by harness_key|prompt_version|model_key [--since 30d] [--until <时间>]
 
@@ -53,7 +54,7 @@ class CliError extends Error {
 const COMMAND_FLAGS = {
   pull: {
     since: true, until: true, feedback: true, undone: false, status: true, harness: true,
-    model: true, 'prompt-version': true, user: true, limit: true, sample: true,
+    model: true, 'prompt-version': true, user: true, limit: true, sample: true, 'with-requests': false,
   },
   show: {},
   compare: { by: true, since: true, until: true },
@@ -276,6 +277,15 @@ function safeRunId(runId) {
   return String(runId).replace(/[^A-Za-z0-9_]/g, '')
 }
 
+// 一次运行的模型请求体文件：服务端只留 7 天，本地这份是唯一的长期副本，重拉运行时不能丢。
+function requestsFileOf(runsDir, safeId) {
+  try {
+    return fs.readdirSync(runsDir).find((f) => f.endsWith(`_r${safeId}.requests.json`))
+  } catch {
+    return undefined
+  }
+}
+
 function runFiles(runsDir, safeId) {
   try {
     return fs.readdirSync(runsDir).filter((f) => f.endsWith(`_r${safeId}.md`) || f.endsWith(`_r${safeId}.json`))
@@ -363,6 +373,14 @@ async function cmdPull(ctx, flags) {
   const index = new Map()
   for (const row of readJsonl(indexFile)) if (row?.run_id !== undefined) index.set(String(row.run_id), row)
 
+  // 取一次运行的请求体：服务端返回空（过了保留期或没留存）不算错，也不写空文件
+  const withRequests = Boolean(flags['with-requests'])
+  let requestsWritten = 0
+  const fetchRequests = async (id) => {
+    const data = await client.request(`/admin/agent/runs/${encodeURIComponent(id)}/requests`)
+    return Array.isArray(data?.items) && data.items.some((item) => item?.body) ? data : null
+  }
+
   let written = 0
   let skipped = 0
   try {
@@ -380,6 +398,16 @@ async function cmdPull(ctx, flags) {
         existing.some((f) => f.endsWith('.md')) &&
         existing.some((f) => f.endsWith('.json'))
       if (unchanged) {
+        // 运行没变：只在要请求体、本地又没有时补取，不重复导出
+        if (withRequests && !requestsFileOf(runsDir, safeId)) {
+          const requests = await fetchRequests(id)
+          if (requests) {
+            const mdName = existing.find((f) => f.endsWith('.md'))
+            const date = mdName.slice(0, mdName.indexOf('_r'))
+            fs.writeFileSync(path.join(runsDir, `${date}_r${safeId}.requests.json`), `${JSON.stringify(requests, null, 2)}\n`)
+            requestsWritten++
+          }
+        }
         skipped++
         continue
       }
@@ -389,6 +417,17 @@ async function cmdPull(ctx, flags) {
       for (const f of existing) fs.rmSync(path.join(runsDir, f), { force: true }) // 日期可能变化，先清掉旧文件
       fs.writeFileSync(path.join(runsDir, `${date}_r${safeId}.md`), String(both?.content ?? ''))
       fs.writeFileSync(path.join(runsDir, `${date}_r${safeId}.json`), `${JSON.stringify(both?.data ?? null, null, 2)}\n`)
+      // 请求体：拉到新的就换掉旧的；没拉（没带开关，或服务端已过保留期）就把本地已有的那份改成新日期的文件名，不留两份也不丢
+      const oldRequests = requestsFileOf(runsDir, safeId)
+      const requests = withRequests ? await fetchRequests(id) : null
+      const requestsName = `${date}_r${safeId}.requests.json`
+      if (requests) {
+        if (oldRequests && oldRequests !== requestsName) fs.rmSync(path.join(runsDir, oldRequests), { force: true })
+        fs.writeFileSync(path.join(runsDir, requestsName), `${JSON.stringify(requests, null, 2)}\n`)
+        requestsWritten++
+      } else if (oldRequests && oldRequests !== requestsName) {
+        fs.renameSync(path.join(runsDir, oldRequests), path.join(runsDir, requestsName))
+      }
       index.set(id, d)
       written++
     }
@@ -401,7 +440,11 @@ async function cmdPull(ctx, flags) {
     fs.writeFileSync(indexFile, [...index.values()].map((r) => JSON.stringify(r)).join('\n') + (index.size ? '\n' : ''))
   }
 
-  stdout.write(`命中 ${hits.length} 条，抽样 ${picked.length} 条，新写 ${written} 条，跳过 ${skipped} 条\n`)
+  stdout.write(
+    `命中 ${hits.length} 条，抽样 ${picked.length} 条，新写 ${written} 条，跳过 ${skipped} 条` +
+      (withRequests ? `，请求体 ${requestsWritten} 条` : '') +
+      '\n',
+  )
 }
 
 // ---------------------------------------------------------------------------

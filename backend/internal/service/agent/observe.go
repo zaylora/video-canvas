@@ -25,16 +25,17 @@ import (
 
 // 观测的固定参数。
 const (
-	maxFeedbackComment  = 500                 // 反馈说明最多多少字
-	maxFeedbackReasons  = 5                   // 反馈原因标签最多几个
-	maxTokenNameRunes   = 64                  // 令牌用途最多多少字
-	maxTokenDays        = 90                  // 令牌最长有效天数
-	tokenRatePerMinute  = 120                 // 每个令牌每分钟最多请求数：pull 一条运行要两次请求（md 和 json 合并成一次后是一次），留足余量
-	tokenTouchInterval  = time.Minute         // 最近使用时间最多一分钟写一次库，免得每次请求都写
-	observeRetention    = 30 * 24 * time.Hour // 工具参数、结果和 runtime_tail 保留 30 天
-	requestHeadRunes    = 200                 // 摘要里用户请求首句的最大字数
-	maxStatusFilter     = 20                  // 列表按状态筛选最多几个
-	analysisTokenRandom = 32                  // 令牌随机部分的字节数
+	maxFeedbackComment   = 500                 // 反馈说明最多多少字
+	maxFeedbackReasons   = 5                   // 反馈原因标签最多几个
+	maxTokenNameRunes    = 64                  // 令牌用途最多多少字
+	maxTokenDays         = 90                  // 令牌最长有效天数
+	tokenRatePerMinute   = 120                 // 每个令牌每分钟最多请求数：pull 一条运行要两次请求（md 和 json 合并成一次后是一次），留足余量
+	tokenTouchInterval   = time.Minute         // 最近使用时间最多一分钟写一次库，免得每次请求都写
+	observeRetention     = 30 * 24 * time.Hour // 工具参数、结果和 runtime_tail 保留 30 天
+	requestBodyRetention = 7 * 24 * time.Hour  // 模型请求体每次都带完整上下文、体量大，只保留 7 天
+	requestHeadRunes     = 200                 // 摘要里用户请求首句的最大字数
+	maxStatusFilter      = 20                  // 列表按状态筛选最多几个
+	analysisTokenRandom  = 32                  // 令牌随机部分的字节数
 )
 
 // ObserveRepo 是观测所需的数据访问，由 repository.AgentObserveRepository 实现。
@@ -61,6 +62,10 @@ type ObserveRepo interface {
 	DeleteFeedback(ctx context.Context, runID, userID uint64) error
 	// PurgeObserveBefore 清空早于 cutoff 的工具参数、结果和 runtime_tail，返回两类各清了多少行。
 	PurgeObserveBefore(ctx context.Context, cutoff, now time.Time) (toolCalls, digests int64, err error)
+	// ModelCallRequests 读一次运行各次模型调用的请求记录；withBody 为 false 时不读请求体。
+	ModelCallRequests(ctx context.Context, runID uint64, withBody bool) ([]model.AgentModelCallBody, error)
+	// PurgeModelCallBodiesBefore 删除早于 cutoff 的模型请求记录，返回删了多少行。
+	PurgeModelCallBodiesBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	// CreateToken 保存新签发的分析令牌。
 	CreateToken(ctx context.Context, t *model.AdminAPIToken) error
 	// ListTokens 列出分析令牌（不含已注销的），新的在前。
@@ -379,6 +384,11 @@ func normalizeReasons(rating int, in []string) ([]string, error) {
 func (s *ObserveService) PurgeExpired(ctx context.Context) (toolCalls, digests int64, err error) {
 	now := s.d.Now()
 	return s.d.Repo.PurgeObserveBefore(ctx, now.Add(-observeRetention), now)
+}
+
+// PurgeExpiredRequestBodies 删除过了保留期的模型请求记录，返回删了多少行。请求体保留 7 天，比其他观测大字段短得多：每次调用都带完整上下文。
+func (s *ObserveService) PurgeExpiredRequestBodies(ctx context.Context) (int64, error) {
+	return s.d.Repo.PurgeModelCallBodiesBefore(ctx, s.d.Now().Add(-requestBodyRetention))
 }
 
 // ---- 分析令牌 ----

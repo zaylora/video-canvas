@@ -1,15 +1,21 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"slices"
 	"time"
+
+	"go.uber.org/zap"
 
 	"video-canvas/internal/model"
 	"video-canvas/internal/pkg/errcode"
 	"video-canvas/internal/pkg/idcodec"
+	"video-canvas/internal/pkg/logger"
 	"video-canvas/internal/repository"
 )
 
@@ -189,6 +195,64 @@ func (s *ObserveService) ExportRun(ctx context.Context, who ObserveActor, runID 
 	}
 	if who.TokenID != 0 {
 		s.audit(ctx, who.UserID, model.AdminAuditAgentRunsRead, who.TokenID, map[string]any{"token_id": who.TokenID, "op": "export", "run_id": idcodec.Encode(runID), "format": format})
+	}
+	return out, nil
+}
+
+// RunRequestItem 是一次模型调用实际发给上游的请求，含完整请求体。
+type RunRequestItem struct {
+	ID idcodec.ID `json:"id"` // 调用 id，与导出里 model_calls[].id 对应
+	ModelRequestView
+}
+
+// RunRequestsExport 是一次运行全部模型调用的请求体。
+type RunRequestsExport struct {
+	Items []*RunRequestItem `json:"items"` // 按调用先后；过了保留期的调用没有
+}
+
+// RunRequests 导出一次运行里各次模型调用实际发给上游的完整请求体（图片地址和数据已脱敏）。
+// 体量大，所以不放进 ExportRun，要用时单独取。运行不存在返回 60012；令牌访问每次写一条审计。
+func (s *ObserveService) RunRequests(ctx context.Context, who ObserveActor, runID uint64) (*RunRequestsExport, error) {
+	if _, err := s.d.Repo.RunFacts(ctx, runID); err != nil {
+		return nil, runErr(err)
+	}
+	rows, err := s.d.Repo.ModelCallRequests(ctx, runID, true)
+	if err != nil {
+		return nil, err
+	}
+	out := &RunRequestsExport{Items: make([]*RunRequestItem, 0, len(rows))}
+	for i := range rows {
+		item := &RunRequestItem{ID: idcodec.ID(rows[i].CallID), ModelRequestView: *requestSummary(&rows[i])}
+		item.Kept = false
+		if len(rows[i].Body) > 0 {
+			body, err := gunzipBody(rows[i].Body)
+			if err != nil {
+				logger.Warn("解压模型请求体失败", zap.Error(err), zap.Uint64("call_id", rows[i].CallID))
+			} else {
+				item.Body, item.Kept = body, true
+			}
+		}
+		out.Items = append(out.Items, item)
+	}
+	if who.TokenID != 0 {
+		s.audit(ctx, who.UserID, model.AdminAuditAgentRunsRead, who.TokenID, map[string]any{"token_id": who.TokenID, "op": "requests", "run_id": idcodec.Encode(runID)})
+	}
+	return out, nil
+}
+
+// gunzipBody 把落库的压缩请求体还原成 JSON；最多读 MaxModelRequestBytes，防止异常数据撑爆内存。
+func gunzipBody(b []byte) (json.RawMessage, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	out, err := io.ReadAll(io.LimitReader(zr, MaxModelRequestBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > MaxModelRequestBytes {
+		return nil, errors.New("请求体解压后超过上限")
 	}
 	return out, nil
 }

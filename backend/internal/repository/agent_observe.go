@@ -313,6 +313,10 @@ func (r *AgentObserveRepository) ExportFacts(ctx context.Context, runID uint64) 
 	if err := db.Where("run_id = ?", runID).Order("id").Find(&f.ModelCalls).Error; err != nil {
 		return nil, err
 	}
+	// 请求体是大字段，导出默认只取摘要；要全文走 ModelCallRequests
+	if err := db.Omit("body").Where("run_id = ?", runID).Order("call_id").Find(&f.Requests).Error; err != nil {
+		return nil, err
+	}
 	if err := db.Where("run_id = ?", runID).Order("seq").Find(&f.Mutations).Error; err != nil {
 		return nil, err
 	}
@@ -401,4 +405,28 @@ func (r *AgentObserveRepository) RevokeToken(ctx context.Context, id uint64, at 
 		return translate(err)
 	}
 	return r.db.WithContext(ctx).Model(&model.AdminAPIToken{}).Where("id = ? AND revoked_at IS NULL", id).UpdateColumn("revoked_at", at).Error
+}
+
+// SaveModelCallBody 保存一次模型调用的请求记录。同一次调用重复保存时保留第一条，不报错。
+func (r *AgentObserveRepository) SaveModelCallBody(ctx context.Context, b *model.AgentModelCallBody) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(b).Error
+}
+
+// ModelCallRequests 读一次运行里各次模型调用的请求记录，按调用 id 升序。withBody 为 false 时不读请求体（只要摘要，省内存和带宽）。
+func (r *AgentObserveRepository) ModelCallRequests(ctx context.Context, runID uint64, withBody bool) ([]model.AgentModelCallBody, error) {
+	q := r.db.WithContext(ctx).Where("run_id = ?", runID).Order("call_id")
+	if !withBody {
+		q = q.Omit("body")
+	}
+	var out []model.AgentModelCallBody
+	if err := q.Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PurgeModelCallBodiesBefore 删除早于 cutoff 创建的模型请求记录（整行删除，请求体是大头），返回删了多少行；重复执行是幂等的。
+func (r *AgentObserveRepository) PurgeModelCallBodiesBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	res := r.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&model.AgentModelCallBody{})
+	return res.RowsAffected, res.Error
 }

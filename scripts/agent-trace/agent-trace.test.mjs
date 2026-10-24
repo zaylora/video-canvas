@@ -32,7 +32,7 @@ function digest(i, extra = {}) {
 const ok = (data) => new Response(JSON.stringify({ code: 0, msg: 'success', data }), { status: 200 })
 
 // 假后端：支持游标分页（单页上限 pageMax）、导出、统计；记录所有请求。
-function fakeBackend({ digests = [], stats = [], pageMax = 1000, onExport } = {}) {
+function fakeBackend({ digests = [], stats = [], pageMax = 1000, onExport, requests = {} } = {}) {
   const calls = []
   const fetch = async (url, init) => {
     const u = new URL(url)
@@ -59,10 +59,17 @@ function fakeBackend({ digests = [], stats = [], pageMax = 1000, onExport } = {}
       if (format === 'both') return ok({ format: 'both', content: md, data })
       return ok({ format: 'md', content: md })
     }
+    const rq = p.match(/^\/admin\/agent\/runs\/(.+)\/requests$/)
+    if (rq) return ok({ items: requests[decodeURIComponent(rq[1])] ?? [] })
     if (p === '/admin/agent/stats') return ok({ groups: stats })
     return new Response('not found', { status: 404 })
   }
-  return { fetch, calls, exportCalls: () => calls.filter((c) => c.path.endsWith('/export')) }
+  return {
+    fetch,
+    calls,
+    exportCalls: () => calls.filter((c) => c.path.endsWith('/export')),
+    requestCalls: () => calls.filter((c) => c.path.endsWith('/requests')),
+  }
 }
 
 // 运行 CLI 并收集输出。sleeps 记录退避等待。
@@ -409,4 +416,75 @@ test('429 带 Retry-After 时优先用它，没有则用默认退避', async () 
   const r = await run(['pull'], { cwd, backend })
   assert.equal(r.code, 0, r.err)
   assert.deepEqual(r.sleeps, [7000, 2000])
+})
+
+// ---------------------------------------------------------------------------
+// pull --with-requests：把每次模型调用实际发给上游的完整请求体也拉下来
+// ---------------------------------------------------------------------------
+
+const requestItems = (id) => [{ id: `call-${id}`, messages: 3, tools: 2, bytes: 100, kept: true, params: { model: 'm' }, body: { model: 'm', marker: `BODY-${id}` } }]
+const requestsFileOf = (cwd, id) => runFiles(cwd).find((f) => f.endsWith(`_r${id}.requests.json`))
+
+test('pull 不带 --with-requests：不请求请求体接口，也不写 .requests.json', async () => {
+  const cwd = tmpDir()
+  const backend = fakeBackend({ digests: [digest(1)], requests: { rid1: requestItems('rid1') } })
+  const r = await run(['pull'], { cwd, backend })
+  assert.equal(r.code, 0, r.err)
+  assert.equal(backend.requestCalls().length, 0)
+  assert.equal(requestsFileOf(cwd, 'rid1'), undefined)
+})
+
+test('pull --with-requests：每条运行取一次请求体，写成 _r<id>.requests.json，不影响 .md 和 .json', async () => {
+  const cwd = tmpDir()
+  const backend = fakeBackend({ digests: [digest(1), digest(2)], requests: { rid1: requestItems('rid1'), rid2: requestItems('rid2') } })
+  const r = await run(['pull', '--with-requests'], { cwd, backend })
+  assert.equal(r.code, 0, r.err)
+  assert.equal(backend.requestCalls().length, 2, '每条运行只发 1 次 requests 请求')
+  assert.match(r.out, /请求体 2 条/)
+  for (const id of ['rid1', 'rid2']) {
+    const f = requestsFileOf(cwd, id)
+    assert.ok(f, `${id} 应有 .requests.json`)
+    const data = JSON.parse(fs.readFileSync(path.join(cwd, '.traces', 'runs', f), 'utf8'))
+    assert.equal(data.items[0].body.marker, `BODY-${id}`)
+    assert.ok(runFiles(cwd).some((x) => x.endsWith(`_r${id}.md`)) && runFiles(cwd).some((x) => x.endsWith(`_r${id}.json`)))
+  }
+})
+
+test('请求体已过保留期（后端返回空）：不写空文件', async () => {
+  const cwd = tmpDir()
+  const backend = fakeBackend({ digests: [digest(1)], requests: {} })
+  const r = await run(['pull', '--with-requests'], { cwd, backend })
+  assert.equal(r.code, 0, r.err)
+  assert.equal(requestsFileOf(cwd, 'rid1'), undefined)
+  assert.match(r.out, /请求体 0 条/)
+})
+
+test('运行没变、本地已有请求体：不再请求任何接口；没有请求体文件时只补取请求体，不重复导出', async () => {
+  const cwd = tmpDir()
+  const first = fakeBackend({ digests: [digest(1)] })
+  await run(['pull'], { cwd, backend: first }) // 先拉过一次，没带 --with-requests
+  const backend = fakeBackend({ digests: [digest(1)], requests: { rid1: requestItems('rid1') } })
+  const r = await run(['pull', '--with-requests'], { cwd, backend })
+  assert.equal(r.code, 0, r.err)
+  assert.equal(backend.exportCalls().length, 0, '运行没变，不该重复导出')
+  assert.equal(backend.requestCalls().length, 1, '只补取请求体')
+  assert.ok(requestsFileOf(cwd, 'rid1'))
+
+  const again = fakeBackend({ digests: [digest(1)], requests: { rid1: requestItems('rid1') } })
+  await run(['pull', '--with-requests'], { cwd, backend: again })
+  assert.equal(again.exportCalls().length + again.requestCalls().length, 0, '都已在本地：什么也不请求')
+})
+
+test('运行更新后重拉（不带 --with-requests）：本地已有的请求体保留，不因日期变化被删掉或丢下', async () => {
+  const cwd = tmpDir()
+  await run(['pull', '--with-requests'], { cwd, backend: fakeBackend({ digests: [digest(1)], requests: { rid1: requestItems('rid1') } }) })
+  const before = requestsFileOf(cwd, 'rid1')
+  assert.ok(before)
+  // 运行有了新进展：更新时间和结束日期都变了
+  const changed = digest(1, { updated_at: '2026-10-22T06:00:01Z', ended_at: '2026-10-22T06:00:00Z' })
+  await run(['pull'], { cwd, backend: fakeBackend({ digests: [changed] }) })
+  const after = requestsFileOf(cwd, 'rid1')
+  assert.ok(after, '请求体服务端只留 7 天，本地的不能丢')
+  assert.match(after, /^2026-10-22_/, '文件名跟着新日期走，不留两份')
+  assert.equal(runFiles(cwd).filter((f) => f.endsWith('_rrid1.requests.json')).length, 1)
 })
