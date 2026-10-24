@@ -1,7 +1,11 @@
 import service from "@/utils/requests/service";
 import type { RequestExtraConfig } from "@/utils/requests/service";
 import type {
+  BackendCanvasExportDto,
+  BackendCanvasImportDto,
   CanvasDetailDto,
+  CanvasExportResultDto,
+  CanvasImportResultDto,
   CanvasGraphDto,
   CanvasListQueryDto,
   CanvasListResponseDto,
@@ -153,3 +157,45 @@ export const saveCanvasGraph = (
  * @param id 画布 ID
  */
 export const deleteCanvas = (id: string) => service.delete<void>(`/canvas/${id}`);
+
+/**
+ * 导出画布为文档
+ * @param id 画布 ID
+ * @returns 导出文档，以及因找不到文件被跳过的素材数
+ */
+export const exportCanvas = (id: string): Promise<CanvasExportResultDto> =>
+  service.get<BackendCanvasExportDto>(`/canvas/${id}/export`).then((data) => ({
+    document: data.document,
+    skippedAssets: data.report?.skipped_assets ?? 0,
+  }));
+
+/**
+ * 把导出文档导入为一张新画布
+ * @param document 导出文档，前端不解析，原样交给后端校验
+ * @returns 新画布和导入报告
+ */
+export const importCanvas = (document: unknown): Promise<CanvasImportResultDto> =>
+  service
+    .post<BackendCanvasImportDto>("/canvas/import", { document })
+    .then(({ canvas, report }) => ({
+      canvas,
+      report: {
+        assets: {
+          total: report.assets.total,
+          copied: report.assets.copied,
+          missing: (report.assets.missing ?? []).map((item) => ({
+            nodeId: item.node_id,
+            fileName: item.file_name,
+          })),
+        },
+        characters: {
+          created: report.characters.created,
+          renamed: report.characters.renamed ?? [],
+          invalid: (report.characters.invalid ?? []).map((item) => ({
+            nodeId: item.node_id,
+            name: item.name,
+          })),
+        },
+        edgesDropped: report.edges_dropped,
+      },
+    }));
