@@ -93,3 +93,8 @@ func (i CanvasProjectItem) MarshalJSON() ([]byte, error) {
 		ID idcodec.ID `json:"id"`
 	}{plain: plain(i), ID: idcodec.ID(i.ID)})
 }
+
+// ImportCanvasReq 导入画布请求：document 是导出文件里的整个 JSON 对象，由 service 解析与校验。
+type ImportCanvasReq struct {
+	Document json.RawMessage `json:"document" binding:"required" label:"导入文件"` // 导出文件内容
+}
