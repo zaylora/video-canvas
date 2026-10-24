@@ -3,9 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
+
+	"gorm.io/datatypes"
 
 	"video-canvas/internal/canvasdoc"
 	"video-canvas/internal/model"
@@ -38,19 +43,18 @@ type TransferRepo interface {
 	WithTx(ctx context.Context, fn func(tx TransferTx) error) error
 }
 
-// TransferTx 是导入事务内可用的写入与查询操作，都只作用于当前事务。
-type TransferTx interface {
-	// CreateAsset 插入一条素材记录。
-	CreateAsset(ctx context.Context, a *model.Asset) error
-	// CountCharacters 返回该用户已有的角色卡数量，用于检查角色卡数量上限。
-	CountCharacters(ctx context.Context, userID uint64) (int64, error)
-	// CharacterNameExists 判断该用户是否已有同名（不区分大小写）的角色卡。
-	CharacterNameExists(ctx context.Context, userID uint64, name string) (bool, error)
-	// CreateCharacter 插入一张角色卡。
-	CreateCharacter(ctx context.Context, c *model.CharacterCard) error
-	// CreateCanvas 插入一张画布。
-	CreateCanvas(ctx context.Context, p *model.CanvasProject) error
-}
+// TransferTx 是导入事务内可用的写入与查询操作，都只作用于当前事务：
+// CreateAsset、CountCharacters、CharacterNameExists、CreateCharacter（重名返回 repository.ErrDuplicate）、CreateCanvas。
+// 定义在 repository 包（与 PaymentTx、GenerationTaskTx 同样的做法）：WithTx 的回调签名两边必须是同一个类型，
+// 而 repository 不能反过来 import service。
+type TransferTx = repository.CanvasTransferTx
+
+// 编译期确认真实实现满足导入导出依赖的接口。
+var (
+	_ TransferAssets     = (*AssetService)(nil)
+	_ TransferCharacters = (*repository.CharacterCardRepository)(nil)
+	_ TransferRepo       = (*repository.CanvasTransferRepository)(nil)
+)
 
 // CanvasTransferDeps 是 CanvasTransferService 的依赖。
 type CanvasTransferDeps struct {
@@ -240,4 +244,345 @@ func (s *CanvasTransferService) loadAssets(ctx context.Context, userID uint64, i
 		}
 	}
 	return entries, nil
+}
+
+// 导入的默认值与长度规则。
+const (
+	importTitleSuffix      = "（导入）"
+	importTitleFallback    = "未命名画布"
+	maxImportTitleLen      = 60 // 导入画布标题（含后缀）最多 60 字
+	importNameFallback     = "未命名角色"
+	maxImportRenameTries   = 2 * maxCharacterCards // 改名重试上限：远大于同一用户可能存在的同名卡数，只防死循环
+	importedCanvasRevision = 1
+)
+
+// ImportResult 是一次导入的结果：新画布和汇总。
+type ImportResult struct {
+	Canvas ImportedCanvas `json:"canvas"`
+	Report ImportReport   `json:"report"`
+}
+
+// ImportedCanvas 是导入生成的新画布。
+type ImportedCanvas struct {
+	ID       idcodec.ID `json:"id"`       // 画布 ID（十六进制串）
+	Title    string     `json:"title"`    // 标题，原标题加「（导入）」
+	Revision uint64     `json:"revision"` // 版本号，新画布恒为 1
+}
+
+// ImportReport 是导入过程的情况汇总，前端据此决定直接打开画布还是先弹出详情。
+type ImportReport struct {
+	Assets       ImportAssets     `json:"assets"`
+	Characters   ImportCharacters `json:"characters"`
+	EdgesDropped int              `json:"edges_dropped"` // 两端节点不存在而丢弃的连线数
+}
+
+// ImportAssets 是素材复制的汇总。
+type ImportAssets struct {
+	Total   int                  `json:"total"`   // 文件里的不同素材数
+	Copied  int                  `json:"copied"`  // 成功复制的素材数
+	Missing []ImportMissingAsset `json:"missing"` // 找不到的素材，按节点列出
+}
+
+// ImportMissingAsset 是某个节点里找不到的一个素材。
+type ImportMissingAsset struct {
+	NodeID   string `json:"node_id"`
+	FileName string `json:"file_name"`
+}
+
+// ImportCharacters 是角色卡重建的汇总。
+type ImportCharacters struct {
+	Created int                      `json:"created"` // 新建的角色卡数
+	Renamed []ImportRename           `json:"renamed"` // 因重名自动改名的卡
+	Invalid []ImportInvalidCharacter `json:"invalid"` // 没能重建、节点按「已失效」处理的引用
+}
+
+// ImportRename 是一次自动改名。
+type ImportRename struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// ImportInvalidCharacter 是某个节点引用了、但没能重建的角色卡。
+type ImportInvalidCharacter struct {
+	NodeID string `json:"node_id"`
+	Name   string `json:"name"`
+}
+
+// copiedAsset 是一份已复制到导入者存储、尚未入库的素材，hash 是它在文档里的键。
+type copiedAsset struct {
+	hash  string
+	asset *model.Asset
+}
+
+// Import 把导出文档还原成当前用户的一张新画布（revision 1），并复制文件里的素材、重建角色卡。
+// 个别素材找不到、角色卡建不了不会让导入失败，只记进报告；文件不合法返回 30005，版本过高返回 30006，
+// 超出大小或数量上限返回 30007；存储或数据库故障原样返回（不是用户能修的问题）。
+func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, document []byte) (*ImportResult, error) {
+	// 1. 原文大小先查：Parse 要把整份文件解码进内存，超大文件不该走到那一步；Validate 看不到原文，只能在这里查
+	if int64(len(document)) > s.limits.MaxBytes {
+		return nil, errcode.ErrCanvasImportTooLarge.WithMsg("导入文件超过 " + formatBytes(s.limits.MaxBytes))
+	}
+
+	// 2. 解析与校验：格式、版本、体量上限、引用完整；再扫描原环境字段，拒绝手改文件夹带进来的旧素材 / 任务 / 角色卡 ID。
+	//    canvasdoc 的哨兵错误翻译成导入错误码（版本过高 30006、超限 30007、其余 30005），具体原因写进提示
+	doc, err := canvasdoc.Parse(document)
+	if err == nil {
+		err = doc.Validate(s.limits)
+	}
+	if err == nil {
+		err = canvasdoc.CheckDocumentClean(doc)
+	}
+	if err != nil {
+		return nil, importDocError(err)
+	}
+
+	// 3. 事务外复制素材文件：复制是存储网络 I/O，不能放进数据库事务（A5）。
+	//    哈希排序后逐个复制，保证同一份文件的结果与报错稳定；同一哈希在画布里出现多少次都只复制一份
+	copies, err := s.copyAssets(ctx, userID, doc)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 一个事务内写入：素材行 → 角色卡 → 还原画布内容 → 新画布；任一步失败整体回滚
+	var (
+		canvas  *model.CanvasProject
+		restore canvasdoc.RestoreReport
+		chars   ImportCharacters
+	)
+	err = s.tx.WithTx(ctx, func(tx TransferTx) error {
+		restored, err := insertCopies(ctx, tx, copies, s.assets.FileURL)
+		if err != nil {
+			return err
+		}
+		cardIDs, created, err := createImportedCharacters(ctx, tx, userID, doc, copies)
+		if err != nil {
+			return err
+		}
+		chars = created
+		payload, rep, err := canvasdoc.Restore(canvasdoc.RestoreInput{Doc: doc, Assets: restored, Characters: cardIDs})
+		if err != nil {
+			return err
+		}
+		restore = rep
+		canvas = &model.CanvasProject{
+			UserID: userID, Title: importTitle(doc.Canvas.Title), PayloadJSON: payload, Revision: importedCanvasRevision,
+		}
+		return tx.CreateCanvas(ctx, canvas)
+	})
+
+	// 5. 事务失败时数据库已回滚，但复制出的文件还在存储里，删掉它们，免得留下没有素材行的孤儿文件
+	if err != nil {
+		s.assets.DiscardCopies(ctx, copyAssetsOf(copies))
+		return nil, err
+	}
+
+	// 6. 汇总报告：缺失素材与失效角色卡以 Restore 按节点给出的为准（建不了的卡就是没进 cardIDs 的那些）
+	report := ImportReport{
+		Assets: ImportAssets{
+			Total: len(doc.Assets), Copied: len(copies),
+			Missing: make([]ImportMissingAsset, 0, len(restore.MissingAssets)),
+		},
+		Characters:   chars,
+		EdgesDropped: restore.EdgesDropped,
+	}
+	for _, m := range restore.MissingAssets {
+		report.Assets.Missing = append(report.Assets.Missing, ImportMissingAsset{NodeID: m.NodeID, FileName: m.FileName})
+	}
+	report.Characters.Invalid = make([]ImportInvalidCharacter, 0, len(restore.InvalidCharacters))
+	for _, c := range restore.InvalidCharacters {
+		report.Characters.Invalid = append(report.Characters.Invalid, ImportInvalidCharacter{NodeID: c.NodeID, Name: c.Name})
+	}
+	return &ImportResult{
+		Canvas: ImportedCanvas{ID: idcodec.ID(canvas.ID), Title: canvas.Title, Revision: canvas.Revision},
+		Report: report,
+	}, nil
+}
+
+// importDocError 把 canvasdoc 的解析 / 校验错误翻译成导入错误码，提示里只放去掉哨兵前缀的中文原因；
+// 不是这三类的错误原样返回。
+func importDocError(err error) error {
+	reason := func(sentinel error) string {
+		return strings.TrimPrefix(err.Error(), sentinel.Error()+": ")
+	}
+	switch {
+	case errors.Is(err, canvasdoc.ErrTooNew):
+		return errcode.ErrCanvasImportTooNew.WithMsg(reason(canvasdoc.ErrTooNew))
+	case errors.Is(err, canvasdoc.ErrLimit):
+		return errcode.ErrCanvasImportTooLarge.WithMsg(reason(canvasdoc.ErrLimit))
+	case errors.Is(err, canvasdoc.ErrInvalid):
+		return errcode.ErrCanvasImportInvalid.WithMsg(reason(canvasdoc.ErrInvalid))
+	}
+	return err
+}
+
+// copyAssets 按哈希字典序逐个复制文档里的素材，返回复制成功的副本（同样有序）。
+// 找不到的哈希跳过（Restore 会按节点报告缺失）；其他错误回收已复制的副本后返回。
+func (s *CanvasTransferService) copyAssets(ctx context.Context, userID uint64, doc *canvasdoc.Document) ([]copiedAsset, error) {
+	hashes := make([]string, 0, len(doc.Assets))
+	for h := range doc.Assets {
+		hashes = append(hashes, h)
+	}
+	slices.Sort(hashes)
+	copies := make([]copiedAsset, 0, len(hashes))
+	for _, h := range hashes {
+		a, err := s.assets.CopyBySha256(ctx, userID, h, doc.Assets[h].ByteSize)
+		if errors.Is(err, ErrAssetNotFoundByHash) {
+			continue
+		}
+		if err != nil {
+			// 存储故障不是文件的问题，不能悄悄当成缺失后报导入成功；已复制的文件不会再有人引用，先回收
+			s.assets.DiscardCopies(ctx, copyAssetsOf(copies))
+			return nil, fmt.Errorf("复制导入素材: %w", err)
+		}
+		copies = append(copies, copiedAsset{hash: h, asset: a})
+	}
+	return copies, nil
+}
+
+// copyAssetsOf 取出副本里的素材行，交给 DiscardCopies。
+func copyAssetsOf(copies []copiedAsset) []*model.Asset {
+	out := make([]*model.Asset, len(copies))
+	for i, c := range copies {
+		out[i] = c.asset
+	}
+	return out
+}
+
+// insertCopies 在事务里插入副本素材行（回填 ID），返回 Restore 需要的哈希 → 新素材 ID 与地址。
+func insertCopies(ctx context.Context, tx TransferTx, copies []copiedAsset, fileURL func(string) string) (map[string]canvasdoc.RestoredAsset, error) {
+	restored := make(map[string]canvasdoc.RestoredAsset, len(copies))
+	for _, c := range copies {
+		if err := tx.CreateAsset(ctx, c.asset); err != nil {
+			return nil, err
+		}
+		restored[c.hash] = canvasdoc.RestoredAsset{ID: strconv.FormatUint(c.asset.ID, 10), URL: fileURL(c.asset.StorageKey)}
+	}
+	return restored, nil
+}
+
+// createImportedCharacters 按编号顺序（c1、c2…）为导入者重建文档里的角色卡，返回编号 → 新卡十六进制 ID 与建卡汇总。
+// 主图缺失或种类不对、导入者角色卡已达上限的卡不建，它们的节点由 Restore 记为失效。
+func createImportedCharacters(ctx context.Context, tx TransferTx, userID uint64, doc *canvasdoc.Document, copies []copiedAsset) (map[string]string, ImportCharacters, error) {
+	report := ImportCharacters{Renamed: []ImportRename{}, Invalid: []ImportInvalidCharacter{}}
+	ids := map[string]string{}
+	if len(doc.Characters) == 0 {
+		return ids, report, nil
+	}
+
+	// 1. 上限与 Create 共用 maxCharacterCards：已有数量在事务里查一次，之后每建一张加一
+	count, err := tx.CountCharacters(ctx, userID)
+	if err != nil {
+		return nil, report, err
+	}
+	byHash := make(map[string]*model.Asset, len(copies))
+	for _, c := range copies {
+		byHash[c.hash] = c.asset
+	}
+
+	// 2. 编号按长度再按字典序排，c10 排在 c9 之后，与导出时的编号顺序一致
+	refs := make([]string, 0, len(doc.Characters))
+	for ref := range doc.Characters {
+		refs = append(refs, ref)
+	}
+	slices.SortFunc(refs, func(a, b string) int {
+		if len(a) != len(b) {
+			return len(a) - len(b)
+		}
+		return strings.Compare(a, b)
+	})
+
+	for _, ref := range refs {
+		// 3. 主图缺失的卡无法重建（角色卡主图必填）；数量已满时不建，二者都由 Restore 把节点记为失效
+		card, ok := importedCard(userID, doc.Characters[ref], byHash)
+		if !ok || count >= maxCharacterCards {
+			continue
+		}
+		// 4. 重名自动改名为「名字 (2)」「名字 (3)」…
+		from := card.Name
+		if err := createWithFreeName(ctx, tx, card); err != nil {
+			return nil, report, err
+		}
+		count++
+		report.Created++
+		ids[ref] = idcodec.Encode(card.ID)
+		if card.Name != from {
+			report.Renamed = append(report.Renamed, ImportRename{From: from, To: card.Name})
+		}
+	}
+	return ids, report, nil
+}
+
+// importedCard 把文档里的一张卡换成导入者的角色卡（未入库），规则与 Create 一致：
+// 名称去首尾空白、最多 64 字（空名用「未命名角色」），设定最多 500 字（超出截断而不是拒绝，导入不能因此失败）；
+// 主图必须复制成功且是图片，否则返回 false；补充图只保留复制成功的图片，去重、不含主图、最多 4 张；
+// 声音复制失败或不是音频时为空。
+func importedCard(userID uint64, info canvasdoc.CharacterInfo, byHash map[string]*model.Asset) (*model.CharacterCard, bool) {
+	avatar := byHash[info.Avatar]
+	if avatar == nil || avatar.Kind != characterAssetKindImage {
+		return nil, false
+	}
+	name := strings.TrimSpace(truncateRunes(strings.TrimSpace(info.Name), maxCharacterNameLen))
+	if name == "" {
+		name = importNameFallback
+	}
+	card := &model.CharacterCard{
+		UserID:        userID,
+		Name:          name,
+		Description:   truncateRunes(info.Description, maxCharacterDescLen),
+		AvatarAssetID: avatar.ID,
+		ExtraAssetIDs: datatypes.JSONSlice[uint64]{},
+	}
+	for _, h := range info.Extras {
+		a := byHash[h]
+		if a == nil || a.Kind != characterAssetKindImage || a.ID == avatar.ID || slices.Contains(card.ExtraAssetIDs, a.ID) {
+			continue
+		}
+		if len(card.ExtraAssetIDs) == maxCharacterExtraAssets {
+			break
+		}
+		card.ExtraAssetIDs = append(card.ExtraAssetIDs, a.ID)
+	}
+	if info.Voice != nil {
+		if a := byHash[*info.Voice]; a != nil && a.Kind == characterAssetKindAudio {
+			card.VoiceAssetID = &a.ID
+		}
+	}
+	return card, true
+}
+
+// createWithFreeName 以 card.Name 为基础找一个导入者没用过的名字（不区分大小写）并插入：
+// 先试原名，再试「名字 (2)」「名字 (3)」…，加后缀时截短名字部分让总长不超过 64 字。
+// 并发导入可能在查完之后抢先建了同名卡，撞唯一索引（ErrDuplicate）同样视为重名、换下一个后缀。
+func createWithFreeName(ctx context.Context, tx TransferTx, card *model.CharacterCard) error {
+	base := card.Name
+	for n := 1; n <= maxImportRenameTries; n++ {
+		if n > 1 {
+			suffix := fmt.Sprintf(" (%d)", n)
+			card.Name = strings.TrimSpace(truncateRunes(base, maxCharacterNameLen-utf8.RuneCountInString(suffix))) + suffix
+		}
+		exists, err := tx.CharacterNameExists(ctx, card.UserID, card.Name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		err = tx.CreateCharacter(ctx, card)
+		if errors.Is(err, repository.ErrDuplicate) {
+			continue
+		}
+		return err
+	}
+	return fmt.Errorf("导入角色卡 %q: 找不到可用的名字", base)
+}
+
+// importTitle 生成导入画布的标题：原标题去首尾空白后加「（导入）」，空标题用「未命名画布」；
+// 总长超过 60 字时截短原标题部分，保证后缀完整（用户靠它区分导入件）。
+func importTitle(title string) string {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = importTitleFallback
+	}
+	limit := maxImportTitleLen - utf8.RuneCountInString(importTitleSuffix)
+	return strings.TrimSpace(truncateRunes(base, limit)) + importTitleSuffix
 }
