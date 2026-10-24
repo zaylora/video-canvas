@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -88,6 +89,113 @@ func TestAssetRepository_CreateAndGetByID(t *testing.T) {
 		got, err := r.GetByID(ctx, owner, up.ID)
 		if err != nil || got.TaskID != nil || got.Source != model.AssetSourceUpload {
 			t.Fatalf("实际：%+v %v", got, err)
+		}
+	})
+}
+
+// sha256TestHash 生成每个用例唯一的 64 位十六进制哈希：FindBySha256 不带用户条件，
+// 用唯一哈希避免与其他用例 / 历史数据互相污染。
+func sha256TestHash(seed uint64) string {
+	return fmt.Sprintf("%064x", seed)
+}
+
+func TestAssetRepository_FindBySha256(t *testing.T) {
+	db := assetRepoTestDB(t)
+	r := NewAssetRepository(db)
+	ctx := context.Background()
+
+	owner := uint64(time.Now().UnixNano())
+	hash := sha256TestHash(owner)
+	t.Cleanup(func() { db.Where("user_id = ?", owner).Delete(&model.Asset{}) })
+
+	newAsset := func(key string, size int64, sha string) *model.Asset {
+		a := &model.Asset{
+			UserID: owner, Kind: "image", StorageKey: fmt.Sprintf("sha-%d/%s", owner, key), MimeType: "image/png",
+			ByteSize: size, Source: model.AssetSourceUpload, Sha256: sha,
+		}
+		if err := r.Create(ctx, a); err != nil {
+			t.Fatalf("创建素材失败：%v", err)
+		}
+		return a
+	}
+	a := newAsset("a.png", 100, hash)
+	b := newAsset("b.png", 100, hash)
+	newAsset("c.png", 200, hash)         // 同哈希但大小不同，不应命中
+	newAsset("d.png", 100, "")           // 未计算哈希，不应命中
+	newAsset("e.png", 100, "f"+hash[1:]) // 其他哈希，不应命中
+
+	t.Run("同哈希同大小按 id 升序返回", func(t *testing.T) {
+		got, err := r.FindBySha256(ctx, hash, 100)
+		if err != nil {
+			t.Fatalf("查询失败：%v", err)
+		}
+		if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
+			t.Fatalf("期望 [%d %d]，实际：%+v", a.ID, b.ID, got)
+		}
+		if got[0].Sha256 != hash {
+			t.Fatalf("Sha256 字段未读出：%+v", got[0])
+		}
+	})
+
+	t.Run("哈希不存在返回空切片", func(t *testing.T) {
+		got, err := r.FindBySha256(ctx, sha256TestHash(owner+1), 100)
+		if err != nil || got == nil || len(got) != 0 {
+			t.Fatalf("期望非 nil 空切片，实际：%#v %v", got, err)
+		}
+	})
+
+	t.Run("最多返回 5 条", func(t *testing.T) {
+		many := sha256TestHash(owner + 2)
+		for i := 0; i < 7; i++ {
+			newAsset(fmt.Sprintf("m%d.png", i), 7, many)
+		}
+		got, err := r.FindBySha256(ctx, many, 7)
+		if err != nil || len(got) != 5 {
+			t.Fatalf("期望 5 条，实际：%d %v", len(got), err)
+		}
+	})
+}
+
+func TestAssetRepository_SetSha256IfEmpty(t *testing.T) {
+	db := assetRepoTestDB(t)
+	r := NewAssetRepository(db)
+	ctx := context.Background()
+
+	owner := uint64(time.Now().UnixNano())
+	t.Cleanup(func() { db.Where("user_id = ?", owner).Delete(&model.Asset{}) })
+
+	a := &model.Asset{
+		UserID: owner, Kind: "image", StorageKey: fmt.Sprintf("sha-set-%d/a.png", owner), MimeType: "image/png",
+		ByteSize: 1, Source: model.AssetSourceUpload,
+	}
+	if err := r.Create(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	first, second := sha256TestHash(owner), sha256TestHash(owner+1)
+
+	t.Run("第一次写入生效", func(t *testing.T) {
+		if err := r.SetSha256IfEmpty(ctx, a.ID, first); err != nil {
+			t.Fatalf("写入失败：%v", err)
+		}
+		got, err := r.GetByID(ctx, owner, a.ID)
+		if err != nil || got.Sha256 != first {
+			t.Fatalf("期望 %s，实际：%+v %v", first, got, err)
+		}
+	})
+
+	t.Run("已有哈希时不覆盖", func(t *testing.T) {
+		if err := r.SetSha256IfEmpty(ctx, a.ID, second); err != nil {
+			t.Fatalf("重复写入应幂等：%v", err)
+		}
+		got, err := r.GetByID(ctx, owner, a.ID)
+		if err != nil || got.Sha256 != first {
+			t.Fatalf("期望仍为 %s，实际：%+v %v", first, got, err)
+		}
+	})
+
+	t.Run("素材不存在不算错", func(t *testing.T) {
+		if err := r.SetSha256IfEmpty(ctx, a.ID+1_000_000_000, first); err != nil {
+			t.Fatalf("期望 nil，实际：%v", err)
 		}
 	})
 }
