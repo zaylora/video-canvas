@@ -2,6 +2,7 @@ package modelcfg_test
 
 import (
 	"testing"
+	"time"
 
 	"video-canvas/internal/provider/modelcfg"
 )
@@ -85,4 +86,50 @@ func TestParseModel_Agent不影响文本模型的既有规则(t *testing.T) {
 	if got, issues := modelcfg.ParseModel(mcMarshal(t, m)); got == nil {
 		t.Fatalf("文本模型的固定系统提示应保持可用: %v", mcIssueList(issues))
 	}
+}
+
+// idle_timeout 是 Agent 模型的「上游响应超时」：上游多久没发数据就算超时（含等首字节）。
+// 不写（或写 0）表示用平台默认值 90 秒；它和 deadline（异步生成任务的整体截止时间）是两回事。
+func TestParseModel_Agent上游响应超时(t *testing.T) {
+	t.Run("合法值被保留", func(t *testing.T) {
+		m := mcLoadFixture(t, "model_video.json")
+		mcAsAgent(m)
+		m["idle_timeout"] = "3m"
+		got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+		if got == nil || len(issues) != 0 {
+			t.Fatalf("合法的 idle_timeout 应通过: %v", mcIssueList(issues))
+		}
+		if got.IdleTimeout.D() != 3*time.Minute {
+			t.Errorf("IdleTimeout=%v", got.IdleTimeout.D())
+		}
+	})
+
+	t.Run("不写就是 0，由网关取默认值", func(t *testing.T) {
+		m := mcLoadFixture(t, "model_video.json")
+		mcAsAgent(m)
+		got, issues := modelcfg.ParseModel(mcMarshal(t, m))
+		if got == nil || got.IdleTimeout != 0 {
+			t.Fatalf("got=%+v issues=%v", got, mcIssueList(issues))
+		}
+	})
+
+	t.Run("边界值 10s 和 10m 都合法", func(t *testing.T) {
+		for _, v := range []string{"10s", "10m"} {
+			m := mcLoadFixture(t, "model_video.json")
+			mcAsAgent(m)
+			m["idle_timeout"] = v
+			if got, issues := modelcfg.ParseModel(mcMarshal(t, m)); got == nil {
+				t.Errorf("%s 应合法: %v", v, mcIssueList(issues))
+			}
+		}
+	})
+
+	mcRunCases(t, []mcCase{
+		{"太短", func(m map[string]any) { mcAsAgent(m); m["idle_timeout"] = "5s" }, "idle_timeout", "10s"},
+		{"太长", func(m map[string]any) { mcAsAgent(m); m["idle_timeout"] = "11m" }, "idle_timeout", "10m"},
+		{"负数", func(m map[string]any) { mcAsAgent(m); m["idle_timeout"] = "-30s" }, "idle_timeout", "10s"},
+		{"格式不对", func(m map[string]any) { mcAsAgent(m); m["idle_timeout"] = "很久" }, "idle_timeout", "时长格式"},
+		{"视频模型不能配：它走插件，没有这条链路", func(m map[string]any) { m["idle_timeout"] = "2m" }, "idle_timeout", "Agent"},
+		{"文本模型也不能配", func(m map[string]any) { mcAsText(m); m["idle_timeout"] = "2m" }, "idle_timeout", "Agent"},
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // 消息角色。
@@ -89,6 +90,7 @@ type Target struct {
 	UpstreamModel  string            // 上游模型名
 	RPS            float64           // 每秒最多发起几次请求，0 不限
 	MaxConcurrency int               // 同时在途的请求数上限，0 不限
+	IdleTimeout    time.Duration     // 上游多久没发数据就判定超时（含等首字节）；0 用网关默认值。来自模型配置，不同模型的首字耗时差别很大
 }
 
 // Usage 是上游报告的 Token 用量。

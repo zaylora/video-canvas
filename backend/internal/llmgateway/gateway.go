@@ -20,6 +20,7 @@ import (
 
 const (
 	defaultIdleTimeout = 90 * time.Second // 默认的空闲超时：推理模型首个 Token 可能要等一会儿
+	maxIdleRetries     = 1                // 上游一个字节都没发就空闲超时时，最多自动重试几次
 	maxErrBodyBytes    = 8 << 10          // 读错误响应体最多 8KB
 	maxErrRunes        = 300              // 给用户看的上游报错最多 300 字
 )
@@ -27,6 +28,7 @@ const (
 // Options 是网关的可选项。
 type Options struct {
 	// IdleTimeout 是上游多久没发数据就判定超时，含等第一个字节的时间；0 取 90 秒。
+	// 单个调用可以用 Target.IdleTimeout 覆盖它（Agent 模型在后台按模型配置）。
 	IdleTimeout time.Duration
 	// Dial 用于测试里替换拨号；生产不设。
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -88,33 +90,54 @@ func (g *Gateway) StreamRaw(ctx context.Context, tg Target, body []byte, lim Raw
 	return g.run(ctx, tg, base, clean, emit, raw)
 }
 
-// run 是 Stream 和 StreamRaw 共用的主体：渠道限流 → 空闲看门狗 → 发请求读响应 → 区分空闲超时与调用方取消。
+// run 是 Stream 和 StreamRaw 共用的主体：渠道限流 → 发请求读响应（带空闲看门狗）。
+// 上游一个字节都没交出来就空闲超时时，自动再发一次（只重试一次，占着同一个限流名额）。
 func (g *Gateway) run(ctx context.Context, tg Target, base *url.URL, body []byte, emit func(Event), raw func([]byte)) (*Result, error) {
-	// 1. 渠道限流：同时在途数和速率；排队时可被取消
+	// 渠道限流：同时在途数和速率；排队时可被取消
 	release, err := g.limiters.get(tg.ChannelKey, tg.RPS, tg.MaxConcurrency).acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	// 2. 空闲看门狗：每收到数据重置计时，超时就取消请求
+
+	timeout := g.opts.IdleTimeout
+	if tg.IdleTimeout > 0 {
+		timeout = tg.IdleTimeout
+	}
+	for attempt := 0; ; attempt++ {
+		res, delivered, err := g.attempt(ctx, tg, base, body, timeout, emit, raw)
+		if errors.Is(err, ErrIdleTimeout) && !delivered && attempt < maxIdleRetries && ctx.Err() == nil {
+			continue
+		}
+		return res, err
+	}
+}
+
+// attempt 发一次请求：空闲看门狗每收到数据重置计时，超时就取消请求，并区分「空闲超时」与「调用方取消」。
+// delivered 表示是否已经把内容交给了调用方（emit 或 raw 被调用过）；没交过就还没有对外可见的副作用，可以放心重试。
+func (g *Gateway) attempt(ctx context.Context, tg Target, base *url.URL, body []byte, timeout time.Duration, emit func(Event), raw func([]byte)) (res *Result, delivered bool, err error) {
 	ctx2, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var idle atomic.Bool
-	timer := time.AfterFunc(g.opts.IdleTimeout, func() { idle.Store(true); cancel() })
+	timer := time.AfterFunc(timeout, func() { idle.Store(true); cancel() })
 	defer timer.Stop()
-	touch := func() { timer.Reset(g.opts.IdleTimeout) }
+	touch := func() { timer.Reset(timeout) }
 
-	res, err := g.do(ctx2, tg, base, body, emit, touch, raw)
-	// 3. 把「空闲超时」和「调用方取消」区分开：看门狗触发的取消不是调用方的意思
+	emitW := func(e Event) { delivered = true; emit(e) }
+	var rawW func([]byte)
+	if raw != nil {
+		rawW = func(b []byte) { delivered = true; raw(b) }
+	}
+	res, err = g.do(ctx2, tg, base, body, emitW, touch, rawW)
 	switch {
 	case err == nil:
-		return res, nil
+		return res, delivered, nil
 	case idle.Load():
-		return res, ErrIdleTimeout
+		return res, delivered, ErrIdleTimeout
 	case ctx.Err() != nil:
-		return res, ctx.Err()
+		return res, delivered, ctx.Err()
 	}
-	return res, err
+	return res, delivered, err
 }
 
 // do 发请求并读响应。

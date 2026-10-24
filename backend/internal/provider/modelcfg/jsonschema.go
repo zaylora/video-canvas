@@ -184,9 +184,10 @@ func modelSchema() obj {
 				"items":       obj{"type": "string", "minLength": 1, "maxLength": maxTagLen},
 				"description": "展示标签，最多 5 个，每个最多 12 字",
 			},
-			"deadline": duration("任务整体截止时间，大于 0 且不超过 24h，默认 30m"),
-			"enabled":  boolean("是否上架"),
-			"sort":     obj{"type": "integer", "description": "排序，升序"},
+			"deadline":     duration("任务整体截止时间，大于 0 且不超过 24h，默认 30m"),
+			"idle_timeout": duration("上游响应超时（仅 agent）：上游多久没发数据就判定超时，含等首字节；10s – 10m，不填默认 90s"),
+			"enabled":      boolean("是否上架"),
+			"sort":         obj{"type": "integer", "description": "排序，升序"},
 			"channels": obj{
 				"type": "array", "minItems": maxChannels, "maxItems": maxChannels, "items": channelRefSchema(),
 				"description": "绑定的渠道。数据结构是数组，预留多渠道故障切换，首期只支持一个渠道",

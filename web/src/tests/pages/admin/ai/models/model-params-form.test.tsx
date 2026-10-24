@@ -32,4 +32,39 @@ describe("ModelParamsForm", () => {
     expect(html).not.toContain("添加参数");
     expect(html).not.toContain("新参数名");
   });
+
+  test("Agent 模型有「上游响应超时」，视频等其他模型没有", () => {
+    expect(render("agent")).toContain("上游响应超时");
+    for (const kind of ["video", "image", "audio", "text"])
+      expect(render(kind)).not.toContain("上游响应超时");
+  });
+
+  test("Agent 模型没有「任务超时」：那是异步生成任务的截止时间，和对话调用无关", () => {
+    expect(render("agent")).not.toContain("任务超时");
+    expect(render("video")).toContain("任务超时");
+  });
+
+  test("已配置的上游响应超时回显在自定义输入框里", () => {
+    const html = renderToStaticMarkup(
+      <ModelParamsForm
+        body={{ kind: "agent", idle_timeout: "150s", capabilities: defaultCapabilities("agent") }}
+        issues={[]}
+        warnings={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(html).toContain('value="150s"');
+  });
+
+  test("后端返回的 idle_timeout 校验问题显示在这个字段下", () => {
+    const html = renderToStaticMarkup(
+      <ModelParamsForm
+        body={{ kind: "agent", idle_timeout: "5s", capabilities: defaultCapabilities("agent") }}
+        issues={[{ path: "idle_timeout", message: "必须在 10s – 10m 之间" }]}
+        warnings={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(html).toContain("必须在 10s – 10m 之间");
+  });
 });

@@ -74,10 +74,11 @@ type ModelConfig struct {
 	Key          string       `json:"key"`
 	Kind         string       `json:"kind"` // video / image / audio / text / agent
 	Label        string       `json:"label"`
-	Hint         string       `json:"hint,omitempty"`   // 模型描述，最多 maxHintLen 个字符
-	Vendor       string       `json:"vendor,omitempty"` // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空
-	Tags         []string     `json:"tags,omitempty"`   // 展示标签，最多 maxTags 个，每个最多 maxTagLen 个字符
-	Deadline     Duration     `json:"deadline"`         // 默认 30m
+	Hint         string       `json:"hint,omitempty"`         // 模型描述，最多 maxHintLen 个字符
+	Vendor       string       `json:"vendor,omitempty"`       // 厂商 slug（小写字母/数字/连字符），前端据此显示 logo，可空
+	Tags         []string     `json:"tags,omitempty"`         // 展示标签，最多 maxTags 个，每个最多 maxTagLen 个字符
+	Deadline     Duration     `json:"deadline"`               // 默认 30m
+	IdleTimeout  Duration     `json:"idle_timeout,omitempty"` // 仅 agent：上游多久没发数据就判定超时（含等首字节）；0 用平台默认值
 	Enabled      bool         `json:"enabled"`
 	Sort         int          `json:"sort"`
 	Channels     []ChannelRef `json:"channels"`     // 首期长度必须为 1
