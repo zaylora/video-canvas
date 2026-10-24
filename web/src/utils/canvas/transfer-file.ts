@@ -1,6 +1,9 @@
 /** 导入文件大小上限，字节；与后端限制一致，前端先拦一道省得白传 */
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
+/** 文件超过 MAX_IMPORT_BYTES 时给用户的提示；读文件前也要用，所以单独导出 */
+export const IMPORT_TOO_LARGE_MESSAGE = "文件过大，上限 10 MB";
+
 /** 导出文件的格式标识，和后端写进文档的 format 一致 */
 const EXPORT_FORMAT = "video-canvas/canvas";
 
@@ -55,7 +58,7 @@ export type ImportPrecheckResult =
  * @returns 通过时带解析后的文档，否则带失败原因
  */
 export function precheckImportText(size: number, text: string): ImportPrecheckResult {
-  if (size > MAX_IMPORT_BYTES) return { ok: false, message: "文件过大，上限 10 MB" };
+  if (size > MAX_IMPORT_BYTES) return { ok: false, message: IMPORT_TOO_LARGE_MESSAGE };
 
   let document: unknown;
   try {
