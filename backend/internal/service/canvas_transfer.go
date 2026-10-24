@@ -278,7 +278,7 @@ type ImportReport struct {
 
 // ImportAssets 是素材复制的汇总。
 type ImportAssets struct {
-	Total   int                  `json:"total"`   // 文件里的不同素材数
+	Total   int                  `json:"total"`   // 画布节点（含被引用角色卡）用到的不同素材数
 	Copied  int                  `json:"copied"`  // 成功复制的素材数
 	Missing []ImportMissingAsset `json:"missing"` // 找不到的素材，按节点列出
 }
@@ -314,7 +314,7 @@ type copiedAsset struct {
 	asset *model.Asset
 }
 
-// Import 把导出文档还原成当前用户的一张新画布（revision 1），并复制文件里的素材、重建角色卡。
+// Import 把导出文档还原成当前用户的一张新画布（revision 1），并复制节点用到的素材、重建节点引用的角色卡。
 // 个别素材找不到、角色卡建不了不会让导入失败，只记进报告；文件不合法返回 30005，版本过高返回 30006，
 // 超出大小或数量上限返回 30007；存储或数据库故障原样返回（不是用户能修的问题）。
 func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, document []byte) (*ImportResult, error) {
@@ -336,14 +336,18 @@ func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, docum
 		return nil, importDocError(err)
 	}
 
-	// 3. 事务外复制素材文件：复制是存储网络 I/O，不能放进数据库事务（A5）。
-	//    哈希排序后逐个复制，保证同一份文件的结果与报错稳定；同一哈希在画布里出现多少次都只复制一份
-	copies, err := s.copyAssets(ctx, userID, doc)
+	// 3. 只处理节点真正用到的素材和角色卡：assets / characters 里没被引用的条目忽略（设计 §8.4），
+	//    否则手改的文件能借哈希把任意文件悄悄认领进素材库，没用的卡还会占掉角色卡名额
+	hashes, charRefs := canvasdoc.ReferencedSets(doc)
+
+	// 4. 事务外复制素材文件：复制是存储网络 I/O，不能放进数据库事务（A5）。
+	//    哈希已排序，逐个复制保证同一份文件的结果与报错稳定；同一哈希在画布里出现多少次都只复制一份
+	copies, err := s.copyAssets(ctx, userID, doc, hashes)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. 一个事务内写入：素材行 → 角色卡 → 还原画布内容 → 新画布；任一步失败整体回滚
+	// 5. 一个事务内写入：素材行 → 角色卡 → 还原画布内容 → 新画布；任一步失败整体回滚
 	var (
 		canvas  *model.CanvasProject
 		restore canvasdoc.RestoreReport
@@ -354,7 +358,7 @@ func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, docum
 		if err != nil {
 			return err
 		}
-		cardIDs, created, err := createImportedCharacters(ctx, tx, userID, doc, copies)
+		cardIDs, created, err := createImportedCharacters(ctx, tx, userID, doc, charRefs, copies)
 		if err != nil {
 			return err
 		}
@@ -370,16 +374,16 @@ func (s *CanvasTransferService) Import(ctx context.Context, userID uint64, docum
 		return tx.CreateCanvas(ctx, canvas)
 	})
 
-	// 5. 事务失败时数据库已回滚，但复制出的文件还在存储里，删掉它们，免得留下没有素材行的孤儿文件
+	// 6. 事务失败时数据库已回滚，但复制出的文件还在存储里，删掉它们，免得留下没有素材行的孤儿文件
 	if err != nil {
 		s.assets.DiscardCopies(ctx, copyAssetsOf(copies))
 		return nil, err
 	}
 
-	// 6. 汇总报告：缺失素材与失效角色卡以 Restore 按节点给出的为准（建不了的卡就是没进 cardIDs 的那些）
+	// 7. 汇总报告：素材总数只算被引用的；缺失素材与失效角色卡以 Restore 按节点给出的为准（建不了的卡就是没进 cardIDs 的那些）
 	report := ImportReport{
 		Assets: ImportAssets{
-			Total: len(doc.Assets), Copied: len(copies),
+			Total: len(hashes), Copied: len(copies),
 			Missing: make([]ImportMissingAsset, 0, len(restore.MissingAssets)),
 		},
 		Characters:   chars,
@@ -415,14 +419,9 @@ func importDocError(err error) error {
 	return err
 }
 
-// copyAssets 按哈希字典序逐个复制文档里的素材，返回复制成功的副本（同样有序）。
+// copyAssets 按给定顺序（调用方已按字典序排好）逐个复制这些哈希的素材，返回复制成功的副本（同样有序）。
 // 找不到的哈希跳过（Restore 会按节点报告缺失）；其他错误回收已复制的副本后返回。
-func (s *CanvasTransferService) copyAssets(ctx context.Context, userID uint64, doc *canvasdoc.Document) ([]copiedAsset, error) {
-	hashes := make([]string, 0, len(doc.Assets))
-	for h := range doc.Assets {
-		hashes = append(hashes, h)
-	}
-	slices.Sort(hashes)
+func (s *CanvasTransferService) copyAssets(ctx context.Context, userID uint64, doc *canvasdoc.Document, hashes []string) ([]copiedAsset, error) {
 	copies := make([]copiedAsset, 0, len(hashes))
 	for _, h := range hashes {
 		a, err := s.assets.CopyBySha256(ctx, userID, h, doc.Assets[h].ByteSize)
@@ -460,12 +459,12 @@ func insertCopies(ctx context.Context, tx TransferTx, copies []copiedAsset, file
 	return restored, nil
 }
 
-// createImportedCharacters 按编号顺序（c1、c2…）为导入者重建文档里的角色卡，返回编号 → 新卡十六进制 ID 与建卡汇总。
-// 主图缺失或种类不对、导入者角色卡已达上限的卡不建，它们的节点由 Restore 记为失效。
-func createImportedCharacters(ctx context.Context, tx TransferTx, userID uint64, doc *canvasdoc.Document, copies []copiedAsset) (map[string]string, ImportCharacters, error) {
+// createImportedCharacters 按 refs 的顺序（被节点引用的编号，c1、c2… 已由 ReferencedSets 排好）为导入者重建角色卡，
+// 返回编号 → 新卡十六进制 ID 与建卡汇总。主图缺失或种类不对、导入者角色卡已达上限的卡不建，它们的节点由 Restore 记为失效。
+func createImportedCharacters(ctx context.Context, tx TransferTx, userID uint64, doc *canvasdoc.Document, refs []string, copies []copiedAsset) (map[string]string, ImportCharacters, error) {
 	report := ImportCharacters{Renamed: []ImportRename{}, Invalid: []ImportInvalidCharacter{}}
 	ids := map[string]string{}
-	if len(doc.Characters) == 0 {
+	if len(refs) == 0 {
 		return ids, report, nil
 	}
 
@@ -479,25 +478,13 @@ func createImportedCharacters(ctx context.Context, tx TransferTx, userID uint64,
 		byHash[c.hash] = c.asset
 	}
 
-	// 2. 编号按长度再按字典序排，c10 排在 c9 之后，与导出时的编号顺序一致
-	refs := make([]string, 0, len(doc.Characters))
-	for ref := range doc.Characters {
-		refs = append(refs, ref)
-	}
-	slices.SortFunc(refs, func(a, b string) int {
-		if len(a) != len(b) {
-			return len(a) - len(b)
-		}
-		return strings.Compare(a, b)
-	})
-
 	for _, ref := range refs {
-		// 3. 主图缺失的卡无法重建（角色卡主图必填）；数量已满时不建，二者都由 Restore 把节点记为失效
+		// 2. 主图缺失的卡无法重建（角色卡主图必填）；数量已满时不建，二者都由 Restore 把节点记为失效
 		card, ok := importedCard(userID, doc.Characters[ref], byHash)
 		if !ok || count >= maxCharacterCards {
 			continue
 		}
-		// 4. 重名自动改名为「名字 (2)」「名字 (3)」…
+		// 3. 重名自动改名为「名字 (2)」「名字 (3)」…
 		from := card.Name
 		if err := createWithFreeName(ctx, tx, card); err != nil {
 			return nil, report, err

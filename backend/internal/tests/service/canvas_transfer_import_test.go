@@ -201,6 +201,8 @@ func importPayload(cardHex string) string {
 type importFixture struct {
 	title string
 	card  canvasdoc.CharacterEntry
+	// mutate 非空时在序列化前改写导出的文档，模拟手改过的文件
+	mutate func(doc *canvasdoc.Document)
 }
 
 func defaultImportFixture() importFixture {
@@ -233,6 +235,9 @@ func (fx importFixture) build(t *testing.T) []byte {
 	})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
+	}
+	if fx.mutate != nil {
+		fx.mutate(doc)
 	}
 	raw, err := json.Marshal(doc)
 	if err != nil {
@@ -655,5 +660,35 @@ func TestImport_TitleTruncation(t *testing.T) {
 				t.Errorf("标题 = %q，期望 %q", res.Canvas.Title, tc.want)
 			}
 		})
+	}
+}
+
+func TestImport_IgnoresUnreferencedEntries(t *testing.T) {
+	e := newDefaultImportEnv(t)
+	fx := defaultImportFixture()
+	// 手改文件：多塞一个没人引用的素材，和一张没有节点引用的角色卡（它的主图也只有它用）
+	unrefAsset, unrefAvatar := transferHash(901), transferHash(902)
+	fx.mutate = func(doc *canvasdoc.Document) {
+		doc.Assets[unrefAsset] = canvasdoc.AssetInfo{Kind: "image", MimeType: "image/png", ByteSize: 901, FileName: "x.png"}
+		doc.Assets[unrefAvatar] = canvasdoc.AssetInfo{Kind: "image", MimeType: "image/png", ByteSize: 902, FileName: "y.png"}
+		doc.Characters["c2"] = canvasdoc.CharacterInfo{Name: "无人引用", Avatar: unrefAvatar, Extras: []string{}}
+	}
+	res, err := e.svc.Import(context.Background(), importUser, fx.build(t))
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	for _, h := range []string{unrefAsset, unrefAvatar} {
+		if n := e.assets.calls[h]; n != 0 {
+			t.Errorf("未被引用的素材 %s 不应复制，实际复制 %d 次", h[60:], n)
+		}
+	}
+	if len(e.assets.calls) != 5 || len(e.tx.st.assets) != 5 {
+		t.Errorf("应只复制、入库被引用的 5 个素材: calls=%v rows=%d", e.assets.calls, len(e.tx.st.assets))
+	}
+	if cards := e.cardsOf(importUser); len(cards) != 1 || cards[0].Name != "林夏" || res.Report.Characters.Created != 1 {
+		t.Errorf("应只建被引用的角色卡: %+v created=%d", cards, res.Report.Characters.Created)
+	}
+	if a := res.Report.Assets; a.Total != 5 || a.Copied != 5 {
+		t.Errorf("素材总数应只算被引用的: %+v", a)
 	}
 }

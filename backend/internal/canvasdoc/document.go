@@ -264,6 +264,56 @@ func hashRefs(node map[string]any) []string {
 	return appendString(refs, scene["thumbHash"])
 }
 
+// ReferencedSets 返回画布节点真正用到的素材哈希和角色卡编号，供导入只复制、只建这些（设计 §8.4）：
+// 素材 = 各节点的 hashRefs + 被引用角色卡的主图、补充图、声音；角色卡 = 节点上的 characterRef。
+// 只保留在 assets / characters 里存在的条目（Validate 通过后两者一致），都去重；
+// 哈希按字典序，编号按长度再按字典序（c10 排在 c9 之后，与导出时的编号顺序一致）。没有引用时返回空切片。
+func ReferencedSets(doc *Document) (hashes []string, characterRefs []string) {
+	seenHash := map[string]bool{}
+	addHash := func(h string) {
+		if _, ok := doc.Assets[h]; ok && !seenHash[h] {
+			seenHash[h] = true
+			hashes = append(hashes, h)
+		}
+	}
+	seenRef := map[string]bool{}
+	characterRefs = []string{}
+	for _, node := range doc.Canvas.Nodes {
+		for _, h := range hashRefs(node) {
+			addHash(h)
+		}
+		if ref, ok := characterRef(node); ok && !seenRef[ref] {
+			if _, exists := doc.Characters[ref]; exists {
+				seenRef[ref] = true
+				characterRefs = append(characterRefs, ref)
+			}
+		}
+	}
+	// 被引用的角色卡要能重建，它们的素材也算被引用
+	for _, ref := range characterRefs {
+		c := doc.Characters[ref]
+		addHash(c.Avatar)
+		for _, h := range c.Extras {
+			addHash(h)
+		}
+		if c.Voice != nil {
+			addHash(*c.Voice)
+		}
+	}
+	if hashes == nil {
+		hashes = []string{}
+	}
+	sort.Strings(hashes)
+	sort.Slice(characterRefs, func(i, j int) bool {
+		a, b := characterRefs[i], characterRefs[j]
+		if len(a) != len(b) {
+			return len(a) < len(b)
+		}
+		return a < b
+	})
+	return hashes, characterRefs
+}
+
 // appendString 在 v 是字符串时把它追加到 refs，否则原样返回。
 func appendString(refs []string, v any) []string {
 	if s, ok := v.(string); ok {
