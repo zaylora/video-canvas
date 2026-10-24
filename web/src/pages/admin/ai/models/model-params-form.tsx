@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   checkDeadline,
+  checkIdleTimeout,
   readModelKind,
   readModelString,
   withModelField,
@@ -36,6 +37,16 @@ const DEADLINES: Array<[string, string]> = [
   ["20m", "20 分钟"],
   ["30m", "30 分钟"],
   ["60m", "60 分钟"],
+];
+
+/** 上游响应超时的预设；值为空串表示不写，用平台默认的 90 秒 */
+const IDLE_TIMEOUTS: Array<[string, string]> = [
+  ["30s", "30 秒"],
+  ["60s", "60 秒"],
+  ["", "默认（90 秒）"],
+  ["2m", "2 分钟"],
+  ["3m", "3 分钟"],
+  ["5m", "5 分钟"],
 ];
 
 const REF_OFF: RefSpec = { on: false, max: 0, max_mb: 0 };
@@ -73,6 +84,9 @@ export function ModelParamsForm({
   const deadline = readModelString(body, "deadline");
   const custom = !!deadline && !DEADLINES.some(([value]) => value === deadline);
   const deadlineError = deadline ? checkDeadline(deadline) : null;
+  const idleTimeout = readModelString(body, "idle_timeout");
+  const idleCustom = !!idleTimeout && !IDLE_TIMEOUTS.some(([value]) => value === idleTimeout);
+  const idleTimeoutError = checkIdleTimeout(idleTimeout);
   const kind = readModelKind(body);
   const caps = readCaps(body);
   const params = caps.params ?? {};
@@ -122,6 +136,40 @@ export function ModelParamsForm({
                 className="h-8 w-36 font-mono text-xs"
                 value={custom ? deadline : ""}
                 onChange={(event) => setField("deadline", event.target.value)}
+              />
+            </div>
+          </FormField>
+        </FormSection>
+      )}
+
+      {isAgent && (
+        <FormSection>
+          <FormSectionHeader>
+            <FormSectionTitle>调用设置</FormSectionTitle>
+          </FormSectionHeader>
+          <FormField
+            size="default"
+            label="上游响应超时"
+            htmlFor="model-idle-timeout"
+            error={idleTimeoutError ?? issueFor(issues, "idle_timeout")}
+            hint="上游多久没发任何数据就判定超时（包含等第一个字的时间）。首次超时会自动重试一次；推理模型首字慢可以调长，响应快的模型调短能更早失败重试。范围 10 秒 – 10 分钟。"
+          >
+            <div className="flex flex-wrap items-center gap-2" id="model-idle-timeout">
+              {IDLE_TIMEOUTS.map(([value, label]) => (
+                <ToggleChip
+                  key={value || "default"}
+                  pressed={idleTimeout === value}
+                  onClick={() => setField("idle_timeout", value)}
+                >
+                  {label}
+                </ToggleChip>
+              ))}
+              <Input
+                aria-label="自定义上游响应超时"
+                placeholder="自定义，如 150s"
+                className="h-8 w-36 font-mono text-xs"
+                value={idleCustom ? idleTimeout : ""}
+                onChange={(event) => setField("idle_timeout", event.target.value)}
               />
             </div>
           </FormField>

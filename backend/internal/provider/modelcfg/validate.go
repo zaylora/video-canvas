@@ -24,6 +24,10 @@ var (
 const (
 	// maxModelDeadline 是模型任务超时的上限。
 	maxModelDeadline = 24 * time.Hour
+	// minIdleTimeout / maxIdleTimeout 是 Agent 模型「上游响应超时」的合法范围：
+	// 太短会把正常的推理等待当成故障，太长则用户要对着空白等很久才知道失败。
+	minIdleTimeout = 10 * time.Second
+	maxIdleTimeout = 10 * time.Minute
 	// maxUpstreamModelLen 是上游模型名的最大字符数。
 	maxUpstreamModelLen = 128
 	// maxChannels 是首期每个模型允许绑定的渠道数。数据结构是数组，预留多渠道，但首期只接受一个。
@@ -125,9 +129,24 @@ func validateModel(m *ModelConfig, issues *[]Issue) {
 	if m.Deadline <= 0 || m.Deadline.D() > maxModelDeadline {
 		add("deadline", "必须大于 0 且不超过 24h（不填默认 30m）")
 	}
+	validateIdleTimeout(m, add)
 	validateChannels(m.Kind, m.Channels, add)
 	validateCapabilities(m.Kind, &m.Capabilities, issues)
 	validatePricing(m.Kind, &m.Capabilities, &m.Pricing, issues)
+}
+
+// validateIdleTimeout 校验 Agent 模型的上游响应超时：只有 Agent 模型走 LLM 网关，别的种类写了也不会生效，直接拒绝免得误导；0 表示用平台默认值。
+func validateIdleTimeout(m *ModelConfig, add func(path, msg string)) {
+	if m.IdleTimeout == 0 {
+		return
+	}
+	if m.Kind != KindAgent {
+		add("idle_timeout", "只有 Agent 模型可以配置上游响应超时")
+		return
+	}
+	if d := m.IdleTimeout.D(); d < minIdleTimeout || d > maxIdleTimeout {
+		add("idle_timeout", "必须在 10s – 10m 之间（不填用平台默认 90s）")
+	}
 }
 
 // validateTags 校验展示标签：个数、单个长度、不能为空、不能重复。

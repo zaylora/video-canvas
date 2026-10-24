@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   checkDeadline,
+  checkIdleTimeout,
   describeDefaultPrice,
   readModelBool,
   readModelChannel,
@@ -104,6 +105,22 @@ describe("checkDeadline", () => {
     expect(checkDeadline("")).toContain("请填写");
     for (const bad of ["30", "m", "30 分钟", "-5m", "1d"])
       expect(checkDeadline(bad)).toContain("格式");
+  });
+});
+
+describe("checkIdleTimeout", () => {
+  test("留空表示用平台默认值，不报错", () => {
+    expect(checkIdleTimeout("")).toBeNull();
+    expect(checkIdleTimeout("   ")).toBeNull();
+  });
+
+  test("Go 时长写法通过", () => {
+    for (const ok of ["30s", "90s", "2m", "1m30s", "10m"]) expect(checkIdleTimeout(ok)).toBeNull();
+  });
+
+  test("错误格式给出提示，范围 10s – 10m 之外也提示", () => {
+    for (const bad of ["30", "m", "两分钟", "-5s"]) expect(checkIdleTimeout(bad)).toContain("格式");
+    for (const out of ["5s", "9s", "11m", "1h"]) expect(checkIdleTimeout(out)).toContain("10s");
   });
 });
 

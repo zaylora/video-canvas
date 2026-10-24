@@ -20,7 +20,7 @@ func TestJSONSchema(t *testing.T) {
 		t.Fatalf("根节点不符：%v", m)
 	}
 	props, _ := m["properties"].(map[string]any)
-	for _, k := range []string{"key", "kind", "label", "hint", "pricing", "deadline", "enabled", "sort", "channels", "capabilities", "vendor", "tags"} {
+	for _, k := range []string{"key", "kind", "label", "hint", "pricing", "deadline", "enabled", "sort", "channels", "capabilities", "vendor", "tags", "idle_timeout"} {
 		if _, ok := props[k]; !ok {
 			t.Errorf("properties 缺少 %s", k)
 		}

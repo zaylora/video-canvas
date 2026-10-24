@@ -25,6 +25,7 @@ type ModelSnapshot struct {
 	Kind          string                `json:"kind"`
 	Label         string                `json:"label"`
 	Deadline      modelcfg.Duration     `json:"deadline"`
+	IdleTimeout   modelcfg.Duration     `json:"idle_timeout,omitempty"` // 仅 agent：上游响应超时，0 用平台默认值
 	UpstreamModel string                `json:"upstream_model"`
 	Capabilities  modelcfg.Capabilities `json:"capabilities"`
 	Pricing       modelcfg.Pricing      `json:"pricing"` // 定价规则：运营中途调价不影响进行中的任务
@@ -119,7 +120,7 @@ func NewSnapshot(cfg *modelcfg.ModelConfig, rt *ChannelRuntime, modelRevisionID 
 	}
 	return &Snapshot{
 		Model: ModelSnapshot{
-			Key: cfg.Key, Kind: cfg.Kind, Label: cfg.Label, Deadline: cfg.Deadline,
+			Key: cfg.Key, Kind: cfg.Kind, Label: cfg.Label, Deadline: cfg.Deadline, IdleTimeout: cfg.IdleTimeout,
 			UpstreamModel: upstream, Capabilities: cfg.Capabilities, Pricing: cfg.Pricing,
 		},
 		Channel:         rt.Channel,

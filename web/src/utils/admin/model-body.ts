@@ -152,3 +152,26 @@ export function checkDeadline(value: string): string | null {
   if (!text) return "请填写时限，例如 30m";
   return /^(\d+(\.\d+)?(ms|s|m|h))+$/.test(text) ? null : "时限格式不对，示例：90s、30m、1h";
 }
+
+/** Agent 模型「上游响应超时」的合法范围（毫秒），和后端 minIdleTimeout / maxIdleTimeout 一致 */
+const IDLE_TIMEOUT_MIN_MS = 10_000;
+const IDLE_TIMEOUT_MAX_MS = 600_000;
+const DURATION_UNIT_MS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+
+/** 时长文本换成毫秒；格式不对返回 null */
+function durationMs(text: string): number | null {
+  if (!/^(\d+(\.\d+)?(ms|s|m|h))+$/.test(text)) return null;
+  let total = 0;
+  for (const [, num, unit] of text.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g))
+    total += Number(num) * DURATION_UNIT_MS[unit];
+  return total;
+}
+
+/** 上游响应超时：留空表示用平台默认值；填了要是合法时长且在 10s – 10m 之间。通过返回 null */
+export function checkIdleTimeout(value: string): string | null {
+  const text = value.trim();
+  if (!text) return null;
+  const ms = durationMs(text);
+  if (ms === null) return "时长格式不对，示例：90s、2m";
+  return ms < IDLE_TIMEOUT_MIN_MS || ms > IDLE_TIMEOUT_MAX_MS ? "必须在 10s – 10m 之间" : null;
+}

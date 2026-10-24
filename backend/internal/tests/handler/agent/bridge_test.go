@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -166,6 +167,31 @@ func TestBridgeHandler_ChatCompletions_ErrorsBeforeStream(t *testing.T) {
 			}
 			if strings.Contains(w.Body.String(), "secret-host") {
 				t.Errorf("内部错误细节不能返回给调用方: %s", w.Body)
+			}
+		})
+	}
+}
+
+// 上游一直不响应（网关的空闲超时）要和「上游故障」分开：504 + upstream_timeout，文案直接说是模型响应超时，
+// 用户和排障的人看到就知道是等不到模型、而不是请求被拒绝。
+func TestBridgeHandler_ChatCompletions_IdleTimeoutIsGatewayTimeout(t *testing.T) {
+	for name, err := range map[string]error{
+		"直接返回": llmgateway.ErrIdleTimeout,
+		"被包装过": fmt.Errorf("调用模型：%w", llmgateway.ErrIdleTimeout),
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := bridgeCall(newBridgeRouter(&fakeBridge{err: err}), "/v1/chat/completions", "tok", `{"messages":[{"role":"user","content":"x"}]}`)
+			if w.Code != http.StatusGatewayTimeout {
+				t.Fatalf("status=%d，期望 504: %s", w.Code, w.Body)
+			}
+			var body struct {
+				Error struct {
+					Message string `json:"message"`
+					Type    string `json:"type"`
+				} `json:"error"`
+			}
+			if jerr := json.Unmarshal(w.Body.Bytes(), &body); jerr != nil || body.Error.Type != "upstream_timeout" || !strings.Contains(body.Error.Message, "超时") {
+				t.Errorf("应是 upstream_timeout 且文案说明是超时: %s", w.Body)
 			}
 		})
 	}

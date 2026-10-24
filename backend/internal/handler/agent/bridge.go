@@ -136,6 +136,8 @@ func openAIError(err error) (status int, msg, typ string) {
 			return http.StatusBadGateway, ue.Message, "upstream_error"
 		}
 		return ue.Status, ue.Message, "upstream_error"
+	case errors.Is(err, llmgateway.ErrIdleTimeout):
+		return http.StatusGatewayTimeout, "模型响应超时，请稍后重试", "upstream_timeout"
 	case errors.Is(err, llmgateway.ErrInvalidRequest):
 		return http.StatusBadRequest, "请求不合法", "invalid_request_error"
 	case errors.Is(err, context.Canceled):
