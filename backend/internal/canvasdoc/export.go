@@ -164,13 +164,16 @@ func (e *exporter) rewriteOutputs(data map[string]any) {
 		return
 	}
 	out := map[string]any{"assetHash": hash}
-	for _, key := range []string{"mediaType", "model", "createdAt"} {
+	for _, key := range outputMetaKeys {
 		if v, exists := kept[key]; exists {
 			out[key] = v
 		}
 	}
 	data["outputs"] = []any{out}
 }
+
+// outputMetaKeys 是产物里随文件导出、导入时原样带回的字段。
+var outputMetaKeys = []string{"mediaType", "model", "createdAt"}
 
 // rewriteParams 把 params.images / videos / audios 里的素材 ID 换成哈希，读不到的项去掉；其余参数原样。
 func (e *exporter) rewriteParams(data map[string]any) {
