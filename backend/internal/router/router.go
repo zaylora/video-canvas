@@ -12,13 +12,14 @@ import (
 
 // Handlers 汇总所有 handler，新增模块时在这里加字段并注册路由。
 type Handlers struct {
-	Health        *handler.HealthHandler
-	User          *handler.UserHandler
-	Me            *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
-	CanvasProject *handler.CanvasProjectHandler
-	Conversation  *handler.ConversationHandler // 首页生成：对话与生成记录
-	Agent         *agenthandler.AgentHandler   // 画布 Agent：会话、运行、审批
-	AgentSkill    *agenthandler.SkillHandler   // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
+	Health         *handler.HealthHandler
+	User           *handler.UserHandler
+	Me             *handler.MeHandler // 个人中心：资料、头像、改密码、统计、热力图、积分流水
+	CanvasProject  *handler.CanvasProjectHandler
+	CanvasTransfer *handler.CanvasTransferHandler // 画布导出为文档、从文档导入为新画布
+	Conversation   *handler.ConversationHandler   // 首页生成：对话与生成记录
+	Agent          *agenthandler.AgentHandler     // 画布 Agent：会话、运行、审批
+	AgentSkill     *agenthandler.SkillHandler     // Agent 技能：用户端目录 + 管理端导入 / 版本 / 启停
 
 	// Agent 运行观测：用户反馈、后台只读查看与导出、分析令牌
 	AgentFeedback *agenthandler.AgentFeedbackHandler // 用户对运行打 👍/👎
@@ -107,6 +108,8 @@ func New(mode, jwtSecret string, h Handlers) *gin.Engine {
 		canvas.GET("/:id", h.CanvasProject.Get)
 		canvas.PUT("/:id", h.CanvasProject.Update)
 		canvas.DELETE("/:id", h.CanvasProject.Delete)
+		canvas.GET("/:id/export", h.CanvasTransfer.Export)
+		canvas.POST("/import", h.CanvasTransfer.Import)
 		canvas.GET("/:id/agent/sessions", h.Agent.ListSessions)
 		canvas.POST("/:id/agent/sessions", h.Agent.CreateSession)
 

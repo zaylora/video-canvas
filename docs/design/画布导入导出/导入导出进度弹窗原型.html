@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>导入导出进度弹窗原型</title>
+    <style>
+      /* token 抄自 web/src/index.css（:root / .dark），动效参数抄自 lib/motion.ts */
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --popover: oklch(1 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --status-running: oklch(0.58 0.15 250);
+        --status-warning: oklch(0.7 0.16 70);
+        --ease: cubic-bezier(0.2, 0, 0, 1);
+        --radius: 0.625rem;
+      }
+      .dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --popover: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --status-running: oklch(0.75 0.12 240);
+        --status-warning: oklch(0.7 0.16 70);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 14px/1.5 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--background); color: var(--foreground); }
+      button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; border-radius: 10px; height: 36px; padding: 0 14px; transition: background 120ms var(--ease), transform 120ms var(--ease); }
+      button:hover:not(:disabled) { background: var(--muted); }
+      button:active:not(:disabled) { transform: scale(0.96); }
+      button:focus-visible { outline: 2px solid var(--status-running); outline-offset: 2px; }
+      button.primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+      .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--background); }
+      .bar label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground); }
+      .grow { flex: 1; }
+      main { max-width: 880px; margin: 0 auto; padding: 24px 16px 80px; }
+      .muted { color: var(--muted-foreground); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+      .card { height: 96px; border-radius: 12px; background: var(--muted); display: grid; place-items: center; color: var(--muted-foreground); }
+      .log { margin-top: 18px; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--border); min-height: 64px; font-size: 13px; }
+      .log div { padding: 1px 0; }
+      /* ---- 锁定弹窗：遮罩吃掉所有点击，没有关闭按钮 ---- */
+      .overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgb(0 0 0 / 0.1); backdrop-filter: blur(2px); opacity: 0; transition: opacity 240ms var(--ease); }
+      .overlay.open { opacity: 1; }
+      .overlay.closing { transition-duration: 168ms; }
+      .panel { width: min(calc(100% - 2rem), 22rem); padding: 22px 20px 18px; border-radius: 14px; background: var(--popover); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent), 0 12px 40px rgb(0 0 0 / 0.12); text-align: center; transform: scale(0.95); opacity: 0; transition: transform 240ms var(--ease), opacity 240ms var(--ease); outline: none; }
+      .overlay.open .panel { transform: none; opacity: 1; }
+      .overlay.closing .panel { transform: scale(0.95); transition-duration: 168ms; }
+      .panel h3 { margin: 14px 0 2px; font-size: 15px; font-weight: 600; }
+      .panel p { margin: 0; font-size: 13px; color: var(--muted-foreground); }
+      .steps { margin: 14px 0 0; padding: 0; list-style: none; text-align: left; display: grid; gap: 6px; font-size: 13px; }
+      .steps li { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); transition: color 180ms var(--ease); }
+      .steps li.now { color: var(--foreground); }
+      .steps li.done { color: var(--foreground); }
+      .dot { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0.45; display: grid; place-items: center; }
+      .now .dot { border-color: var(--status-running); border-top-color: transparent; opacity: 1; animation: spin 0.9s linear infinite; }
+      .done .dot { background: var(--status-running); border-color: var(--status-running); opacity: 1; }
+      .done .dot::after { content: ""; width: 4px; height: 7px; border: solid var(--primary-foreground); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-1px, -1px); }
+      .hint { margin-top: 14px; font-size: 12px; color: var(--muted-foreground); }
+      .cancel { display: block; margin: 16px auto 0; min-width: 96px; }
+      .cancel:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      /* ---- 动画：文件 → 轨道 → 画布 ---- */
+      .stage { position: relative; width: 132px; height: 64px; margin: 0 auto; }
+      .stage .doc, .stage .cv { position: absolute; top: 8px; width: 40px; height: 48px; border-radius: 8px; border: 1.5px solid var(--foreground); background: var(--popover); }
+      .stage .doc { left: 0; }
+      .stage .doc::before { content: ""; position: absolute; left: 7px; right: 7px; top: 12px; height: 2px; border-radius: 2px; background: currentColor; box-shadow: 0 8px 0 currentColor, 0 16px 0 currentColor; opacity: 0.35; }
+      .stage .cv { right: 0; background-image: radial-gradient(circle, color-mix(in oklch, var(--foreground) 22%, transparent) 1px, transparent 1.2px); background-size: 8px 8px; }
+      .stage .cv::after { content: ""; position: absolute; inset: 9px 8px; border-radius: 4px; border: 1.5px solid var(--status-running); opacity: 0.85; animation: breathe 1.6s ease-in-out infinite; }
+      .stage .rail { position: absolute; left: 46px; right: 46px; top: 31px; height: 2px; border-radius: 2px; background: var(--border); }
+      .stage .pkt { position: absolute; top: 25px; left: 46px; width: 14px; height: 14px; border-radius: 4px; background: var(--status-running); animation: fly 1.4s var(--ease) infinite; }
+      .stage .pkt:nth-of-type(2) { animation-delay: 0.46s; }
+      .stage .pkt:nth-of-type(3) { animation-delay: 0.92s; }
+      /* 导出的方向相反：画布 → 文件 */
+      .stage.rev { transform: scaleX(-1); }
+      .stage.rev .doc, .stage.rev .cv { transform: scaleX(-1); }
+      @keyframes fly { 0% { transform: translateX(0) scale(0.6); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateX(26px) scale(1); opacity: 0; } }
+      @keyframes breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes shake { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+      .panel.nudge { animation: shake 120ms var(--ease); }
+
+      /* 减少动态效果：包裹移动和呼吸停掉，只留转圈的淡入淡出之外的静态指示 */
+      @media (prefers-reduced-motion: reduce) {
+        .pkt, .cv::after, .now .dot { animation: none !important; }
+        .now .dot { border-top-color: var(--status-running); }
+        .overlay, .panel { transition-duration: 1ms !important; transform: none !important; }
+        .panel.nudge { animation: none; }
+      }
+      @media (max-width: 480px) { .stage { transform: scale(0.9); } .stage.rev { transform: scale(0.9) scaleX(-1); } }
+      .note { margin-top: 10px; padding: 8px 10px; border-radius: 10px; border: 1px dashed color-mix(in oklch, var(--status-running) 60%, transparent); color: var(--status-running); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <strong>导入导出进度弹窗（原型）</strong>
+      <span class="grow"></span>
+      <label><input type="checkbox" id="fail" /> 模拟失败</label>
+      <label><input type="checkbox" id="late" /> 取消时请求已成功（提交那一瞬间）</label>
+      <label><input type="checkbox" id="slow" /> 慢速（便于看动画）</label>
+      <button id="theme">明 / 暗</button>
+    </div>
+    <main>
+      <h2 style="margin: 0 0 4px">页面背景：试试弹窗打开后点这里、按 Esc、Tab</h2>
+      <p class="muted" style="margin: 0">下面两个按钮分别模拟「画布内 Logo 菜单 → 导出画布」和「列表页 → 导入画布」。弹窗期间页面其他地方点不动，Esc 和点遮罩只会让弹窗轻晃一下（表示被拦住了），不会关闭；要中止只能点弹窗里的「取消」。勾「取消时请求已成功」可以看到：取消生效前请求已经完成的话，会按成功处理而不是假装取消成功。</p>
+      <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap">
+        <button class="primary" id="btnExport">导出画布</button>
+        <button id="btnImport">导入画布</button>
+        <button id="btnOther">页面上的其他按钮</button>
+      </div>
+      <div class="grid" id="cards"></div>
+      <div class="log" id="log"><div class="muted">操作记录会出现在这里：弹窗期间任何点击都不应该出现在这里。</div></div>
+      <div class="note">说明：步骤耗时是示意，真实请求是一次调用，前端没有逐步进度，所以下面的步骤是「按阶段轮播的文案」，不代表后端真实进度（见方案 §14.4）。</div>
+    </main>
+    <div id="mount"></div>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const log = (t) => { const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString() + "  " + t; $("#log").appendChild(d); };
+      $("#cards").innerHTML = Array.from({ length: 6 }, (_, i) => `<div class="card">节点 ${i + 1}</div>`).join("");
+      $("#theme").onclick = () => document.documentElement.classList.toggle("dark");
+      document.querySelectorAll("main button, #cards .card").forEach((el) => el.addEventListener("click", () => log("页面被点击：" + (el.textContent || "").trim())));
+
+      /* 两个流程的阶段文案：真实请求只有一次调用，这里按耗时轮播，只是让用户知道在做什么 */
+      const FLOWS = {
+        export: { title: "正在导出画布", rev: true, steps: ["保存最新内容", "整理素材", "生成文件"], done: "已导出", hint: "导出期间请勿离开页面，也无法编辑画布" },
+        import: { title: "正在导入画布", rev: false, steps: ["检查文件", "复制素材", "创建新画布"], done: "已导入", hint: "导入期间请勿离开页面" },
+      };
+      let locked = null; /* 当前打开的弹窗：存在时拦截一切 */
+
+      function open(kind) {
+        if (locked) return;
+        const f = FLOWS[kind];
+        const prev = document.activeElement;
+        const el = document.createElement("div");
+        el.className = "overlay";
+        el.innerHTML = `<div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="t" aria-describedby="d" tabindex="-1">
+          <div class="stage ${f.rev ? "rev" : ""}" aria-hidden="true"><div class="doc"></div><div class="rail"></div><i class="pkt"></i><i class="pkt"></i><i class="pkt"></i><div class="cv"></div></div>
+          <h3 id="t">${f.title}</h3><p id="d">${f.hint}</p>
+          <ul class="steps" role="status" aria-live="polite">${f.steps.map((s) => `<li><span class="dot"></span>${s}</li>`).join("")}</ul>
+          <button class="cancel" id="cancel">取消</button></div>`;
+        $("#mount").appendChild(el);
+        const panel = el.firstElementChild;
+        panel.focus(); /* 焦点先进弹窗面板，Tab 在弹窗内循环，只有「取消」一个可聚焦元素 */
+        requestAnimationFrame(() => el.classList.add("open"));
+        locked = { el, panel, prev, kind, cancelling: false, timers: [] };
+        $("#cancel").onclick = () => cancel();
+        log("打开弹窗：" + f.title);
+
+        const lis = [...el.querySelectorAll(".steps li")];
+        const slow = $("#slow").checked ? 1.8 : 1;
+        const fail = $("#fail").checked;
+        const late = $("#late").checked; /* 取消生效前请求已经成功返回：模拟提交那一瞬间 */
+        const mine = locked;
+        const later = (fn, ms) => { if (mine.cancelled) return; const t = setTimeout(fn, ms); mine.timers.push(t); };
+        let i = 0;
+        const tick = () => {
+          if (mine.cancelled) return;
+          lis.forEach((li, n) => { li.className = n < i ? "done" : n === i ? "now" : ""; });
+          if (fail && i === 1) return later(() => finish(false), 900 * slow);
+          if (i >= lis.length) return later(() => finish(true), 360);
+          i += 1;
+          later(tick, 900 * slow);
+        };
+        tick();
+        mine.late = late;
+      }
+
+      /* 取消：按钮变「正在取消…」并禁用，弹窗仍锁住；等"请求"真正结束后才关闭，避免取消后立刻再发起并发请求 */
+      function cancel() {
+        if (!locked || locked.cancelling) return;
+        const mine = locked;
+        mine.cancelling = true;
+        const btn = $("#cancel");
+        btn.textContent = "正在取消…";
+        btn.disabled = true;
+        log("点击取消：已中止请求，等待后端收尾");
+        if (mine.late) {
+          /* 取消时响应其实已经到了：按成功处理，不假装取消成功 */
+          mine.cancelled = true;
+          mine.timers.forEach(clearTimeout);
+          setTimeout(() => finish(true, true), 700);
+          return;
+        }
+        mine.cancelled = true;
+        mine.timers.forEach(clearTimeout);
+        setTimeout(() => finishCancelled(), 700);
+      }
+
+      function finishCancelled() {
+        if (!locked) return;
+        const { el, prev, kind } = locked;
+        close(el, prev);
+        log(kind === "export" ? "已取消导出（提示条）" : "已取消导入（提示条），并刷新列表：取消可能恰好发生在提交之后，列表里可能多出一张画布");
+      }
+
+      function close(el, prev) {
+        el.classList.add("closing");
+        el.classList.remove("open");
+        setTimeout(() => { el.remove(); }, 180);
+        locked = null;
+        if (prev && prev.focus) prev.focus(); /* 关闭后焦点还给触发它的按钮 */
+      }
+
+      function finish(ok, afterCancel) {
+        if (!locked) return;
+        const { el, prev, kind } = locked;
+        close(el, prev);
+        if (afterCancel) return log("取消时请求已经成功：按成功处理，不提示「已取消」（" + FLOWS[kind].done + "）");
+        log(ok ? FLOWS[kind].done + "（提示条：成功）" : "失败：弹窗已关闭，请求层的全局提示会显示原因");
+      }
+
+      /* 拦截：弹窗期间 Esc / 遮罩点击 / 页面快捷键都不生效，只让弹窗轻晃一下；Tab / Enter / Space 留给「取消」按钮 */
+      const nudge = () => { if (!locked) return; locked.panel.classList.remove("nudge"); void locked.panel.offsetWidth; locked.panel.classList.add("nudge"); };
+      document.addEventListener("keydown", (e) => {
+        if (!locked) return;
+        const onCancel = e.target && e.target.id === "cancel";
+        if (e.key === "Tab") { e.preventDefault(); const b = $("#cancel"); (document.activeElement === b ? locked.panel : b.disabled ? locked.panel : b).focus(); return; }
+        if (onCancel && (e.key === "Enter" || e.key === " ")) return;
+        e.preventDefault(); e.stopPropagation(); if (e.key === "Escape") nudge();
+      }, true);
+      document.addEventListener("pointerdown", (e) => { if (!locked) return; if (!locked.panel.contains(e.target)) { e.preventDefault(); e.stopPropagation(); nudge(); } }, true);
+      document.addEventListener("click", (e) => { if (locked && !locked.panel.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
+      window.addEventListener("beforeunload", (e) => { if (locked) { e.preventDefault(); e.returnValue = ""; } });
+
+      $("#btnExport").onclick = () => open("export");
+      $("#btnImport").onclick = () => open("import");
+      $("#btnOther").onclick = () => {};
+    </script>
+  </body>
+</html>

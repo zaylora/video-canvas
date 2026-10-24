@@ -2,15 +2,19 @@ import { useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Search } from "lucide-react";
 
+import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
 import {
   CanvasCard,
   CanvasCardSkeleton,
   CardListNote,
   NewCanvasCard,
 } from "@/components/home/canvas-card";
+import { ImportCanvasButton } from "@/components/home/import-canvas-button";
+import { ImportResultDialog } from "@/components/home/import-result-dialog";
 import { Segmented } from "@/components/home/segmented";
 import { Button } from "@/components/ui/button";
 import { RECENT_CANVAS_LIMIT } from "@/constants/creation";
+import { useCanvasImport } from "@/hooks/use-canvas-import";
 import { useCanvasList } from "@/hooks/use-canvas-list";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +33,7 @@ type Scope = "all" | "mine" | "shared";
 export default function CanvasList() {
   const [scope, setScope] = useState<Scope>("mine");
   const list = useCanvasList(PAGE_SIZE);
+  const canvasImport = useCanvasImport(list.reload);
 
   let body;
   if (list.loading) {
@@ -84,6 +89,7 @@ export default function CanvasList() {
           ]}
         />
         <div className="flex-1" />
+        <ImportCanvasButton importing={canvasImport.importing} onPick={canvasImport.pick} />
         <label className="bg-muted/60 text-muted-foreground focus-within:ring-ring flex h-9 w-36 items-center gap-2 rounded-[10px] px-3 transition-shadow focus-within:ring-1 md:w-56">
           <Search className="size-4 shrink-0" />
           <input
@@ -105,6 +111,19 @@ export default function CanvasList() {
         />
         <AnimatePresence initial={false}>{body}</AnimatePresence>
       </div>
+
+      <ImportResultDialog
+        report={canvasImport.pending?.report ?? null}
+        onClose={canvasImport.closeReport}
+        onOpen={canvasImport.openImported}
+      />
+      {/* 导入期间把用户锁在进度弹窗里，不能点列表、不能再选文件 */}
+      <TransferProgressDialog
+        open={canvasImport.importing}
+        kind="import"
+        cancelling={canvasImport.cancelling}
+        onCancel={canvasImport.cancel}
+      />
     </div>
   );
 }

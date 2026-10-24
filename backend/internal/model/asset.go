@@ -23,6 +23,7 @@ type Asset struct {
 	Source     string    `gorm:"size:16;not null;index:idx_assets_user_source_kind_created,priority:2" json:"source"` // upload / generated
 	TaskID     *uint64   `gorm:"index" json:"task_id"`                                                                // 生成产物对应的任务
 	FileName   string    `gorm:"size:255;not null;default:''" json:"file_name"`                                       // 原始文件名
+	Sha256     string    `gorm:"size:64;not null;default:'';index:idx_assets_sha256" json:"-"`                        // 文件内容的 SHA-256（小写十六进制）；空串表示还没算，导入导出按它复用已有文件
 	CreatedAt  time.Time `gorm:"index:idx_assets_user_source_kind_created,priority:4,sort:desc" json:"created_at"`    // 创建时间
 }
 

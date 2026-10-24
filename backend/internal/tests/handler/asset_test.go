@@ -55,6 +55,16 @@ func (f *fakeAssetHandlerRepo) GetByStorageKey(ctx context.Context, key string) 
 	return nil, repository.ErrNotFound
 }
 
+// FindBySha256 handler 测试用不到按哈希查找，返回空即可。
+func (f *fakeAssetHandlerRepo) FindBySha256(ctx context.Context, sha string, byteSize int64) ([]model.Asset, error) {
+	return nil, nil
+}
+
+// SetSha256IfEmpty handler 测试用不到哈希回填。
+func (f *fakeAssetHandlerRepo) SetSha256IfEmpty(ctx context.Context, id uint64, sha string) error {
+	return nil
+}
+
 // handlerRegistry 实现 service.StoreRegistry：只有一套存储，id 固定为 1。
 type handlerRegistry struct{ h *storage.Handle }
 

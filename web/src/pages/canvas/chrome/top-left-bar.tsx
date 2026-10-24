@@ -6,15 +6,17 @@ import {
   Check,
   ChevronDown,
   CloudAlert,
+  FileDown,
   LoaderCircle,
   Plus,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { createCanvas } from "@/api/canvas";
+import { createCanvas, exportCanvas } from "@/api/canvas";
 import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
+import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +27,9 @@ import {
 import type { SaveStatus } from "@/hooks/use-canvas-persistence";
 import { DURATION, EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { runCanvasExport } from "@/utils/canvas/export-flow";
+import { createTransferCancel, type TransferCancel } from "@/utils/canvas/transfer-cancel";
+import { downloadJson } from "@/utils/canvas/transfer-file";
 
 /** 画布名最长多少字 */
 const TITLE_MAX = 60;
@@ -139,13 +144,16 @@ function SaveIndicator({ status, onSave }: { status: SaveStatus; onSave: () => v
   );
 }
 
-/** 左上角：品牌菜单（回列表、新建画布）、画布名、保存状态 */
+/** 左上角：品牌菜单（回列表、新建画布、导出画布）、画布名、保存状态 */
 export function TopLeftBar({
+  canvasId,
   title,
   onRename,
   saveStatus,
   onSaveNow,
 }: {
+  /** 当前画布 ID，导出用 */
+  canvasId: string;
   title: string;
   onRename: (title: string) => void;
   saveStatus: SaveStatus;
@@ -154,6 +162,11 @@ export function TopLeftBar({
 }) {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  /** 已点取消、正在等请求收尾；弹窗据此把按钮置灰 */
+  const [cancelling, setCancelling] = useState(false);
+  /** 当前这次导出的取消控制器；每次导出新建一个 */
+  const exportCancel = useRef<TransferCancel | null>(null);
 
   /** 离开前先把没存的内容存掉；存不上就留在原地，别让内容悄悄丢了 */
   const leaveTo = async (to: string) => {
@@ -181,6 +194,38 @@ export function TopLeftBar({
     }
   };
 
+  /** 导出期间菜单项置灰，防止重复点击连发请求、连下多份文件 */
+  const exportThisCanvas = async () => {
+    if (exporting) return;
+    const cancel = createTransferCancel();
+    exportCancel.current = cancel;
+    setExporting(true);
+    try {
+      const outcome = await runCanvasExport({
+        canvasId,
+        title,
+        saveNow: onSaveNow,
+        exportCanvas,
+        signal: cancel.signal,
+        download: downloadJson,
+        notify: toast,
+      });
+      // 请求层不会为主动取消弹提示，这里告诉用户；导出不写数据，不需要刷新什么
+      if (outcome === "cancelled") toast.info("已取消导出");
+    } finally {
+      exportCancel.current = null;
+      setCancelling(false);
+      setExporting(false);
+    }
+  };
+
+  /** 点「取消」：中止请求，弹窗继续锁住，等 exportThisCanvas 收尾后才关闭 */
+  const cancelExport = () => {
+    if (!exportCancel.current || cancelling) return;
+    setCancelling(true);
+    exportCancel.current.cancel();
+  };
+
   return (
     <ChromePill className="max-w-[calc(100vw-24px)] pr-1">
       <DropdownMenu modal={false}>
@@ -205,10 +250,22 @@ export function TopLeftBar({
             <Plus />
             新建画布
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={exporting} onClick={() => void exportThisCanvas()}>
+            <FileDown />
+            导出画布
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <CanvasTitle title={title} onRename={onRename} />
       <SaveIndicator key={saveStatus} status={saveStatus} onSave={() => void onSaveNow()} />
+      {/* 导出期间把用户锁在进度弹窗里：导出的是已保存的内容，此时再改画布不会进这份文件 */}
+      <TransferProgressDialog
+        open={exporting}
+        kind="export"
+        cancelling={cancelling}
+        onCancel={cancelExport}
+      />
     </ChromePill>
   );
 }
