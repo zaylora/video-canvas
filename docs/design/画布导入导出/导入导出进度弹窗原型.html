@@ -66,6 +66,8 @@
       .done .dot { background: var(--status-running); border-color: var(--status-running); opacity: 1; }
       .done .dot::after { content: ""; width: 4px; height: 7px; border: solid var(--primary-foreground); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-1px, -1px); }
       .hint { margin-top: 14px; font-size: 12px; color: var(--muted-foreground); }
+      .cancel { display: block; margin: 16px auto 0; min-width: 96px; }
+      .cancel:disabled { opacity: 0.55; cursor: not-allowed; }
 
       /* ---- 动画：文件 → 轨道 → 画布 ---- */
       .stage { position: relative; width: 132px; height: 64px; margin: 0 auto; }
@@ -103,12 +105,13 @@
       <strong>导入导出进度弹窗（原型）</strong>
       <span class="grow"></span>
       <label><input type="checkbox" id="fail" /> 模拟失败</label>
+      <label><input type="checkbox" id="late" /> 取消时请求已成功（提交那一瞬间）</label>
       <label><input type="checkbox" id="slow" /> 慢速（便于看动画）</label>
       <button id="theme">明 / 暗</button>
     </div>
     <main>
       <h2 style="margin: 0 0 4px">页面背景：试试弹窗打开后点这里、按 Esc、Tab</h2>
-      <p class="muted" style="margin: 0">下面两个按钮分别模拟「画布内 Logo 菜单 → 导出画布」和「列表页 → 导入画布」。弹窗期间页面其他地方点不动，Esc 和点遮罩只会让弹窗轻晃一下（表示被拦住了），不会关闭。</p>
+      <p class="muted" style="margin: 0">下面两个按钮分别模拟「画布内 Logo 菜单 → 导出画布」和「列表页 → 导入画布」。弹窗期间页面其他地方点不动，Esc 和点遮罩只会让弹窗轻晃一下（表示被拦住了），不会关闭；要中止只能点弹窗里的「取消」。勾「取消时请求已成功」可以看到：取消生效前请求已经完成的话，会按成功处理而不是假装取消成功。</p>
       <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap">
         <button class="primary" id="btnExport">导出画布</button>
         <button id="btnImport">导入画布</button>
@@ -142,42 +145,88 @@
         el.innerHTML = `<div class="panel" role="alertdialog" aria-modal="true" aria-labelledby="t" aria-describedby="d" tabindex="-1">
           <div class="stage ${f.rev ? "rev" : ""}" aria-hidden="true"><div class="doc"></div><div class="rail"></div><i class="pkt"></i><i class="pkt"></i><i class="pkt"></i><div class="cv"></div></div>
           <h3 id="t">${f.title}</h3><p id="d">${f.hint}</p>
-          <ul class="steps" role="status" aria-live="polite">${f.steps.map((s) => `<li><span class="dot"></span>${s}</li>`).join("")}</ul></div>`;
+          <ul class="steps" role="status" aria-live="polite">${f.steps.map((s) => `<li><span class="dot"></span>${s}</li>`).join("")}</ul>
+          <button class="cancel" id="cancel">取消</button></div>`;
         $("#mount").appendChild(el);
         const panel = el.firstElementChild;
-        panel.focus(); /* 焦点进弹窗；Tab 在弹窗内循环（弹窗内没有可聚焦按钮，所以焦点一直停在面板上） */
+        panel.focus(); /* 焦点先进弹窗面板，Tab 在弹窗内循环，只有「取消」一个可聚焦元素 */
         requestAnimationFrame(() => el.classList.add("open"));
-        locked = { el, panel, prev, kind };
+        locked = { el, panel, prev, kind, cancelling: false, timers: [] };
+        $("#cancel").onclick = () => cancel();
         log("打开弹窗：" + f.title);
 
         const lis = [...el.querySelectorAll(".steps li")];
         const slow = $("#slow").checked ? 1.8 : 1;
         const fail = $("#fail").checked;
+        const late = $("#late").checked; /* 取消生效前请求已经成功返回：模拟提交那一瞬间 */
+        const mine = locked;
+        const later = (fn, ms) => { if (mine.cancelled) return; const t = setTimeout(fn, ms); mine.timers.push(t); };
         let i = 0;
         const tick = () => {
+          if (mine.cancelled) return;
           lis.forEach((li, n) => { li.className = n < i ? "done" : n === i ? "now" : ""; });
-          if (fail && i === 1) return setTimeout(() => finish(false), 900 * slow);
-          if (i >= lis.length) return setTimeout(() => finish(true), 360);
+          if (fail && i === 1) return later(() => finish(false), 900 * slow);
+          if (i >= lis.length) return later(() => finish(true), 360);
           i += 1;
-          setTimeout(tick, 900 * slow);
+          later(tick, 900 * slow);
         };
         tick();
+        mine.late = late;
       }
 
-      function finish(ok) {
+      /* 取消：按钮变「正在取消…」并禁用，弹窗仍锁住；等"请求"真正结束后才关闭，避免取消后立刻再发起并发请求 */
+      function cancel() {
+        if (!locked || locked.cancelling) return;
+        const mine = locked;
+        mine.cancelling = true;
+        const btn = $("#cancel");
+        btn.textContent = "正在取消…";
+        btn.disabled = true;
+        log("点击取消：已中止请求，等待后端收尾");
+        if (mine.late) {
+          /* 取消时响应其实已经到了：按成功处理，不假装取消成功 */
+          mine.cancelled = true;
+          mine.timers.forEach(clearTimeout);
+          setTimeout(() => finish(true, true), 700);
+          return;
+        }
+        mine.cancelled = true;
+        mine.timers.forEach(clearTimeout);
+        setTimeout(() => finishCancelled(), 700);
+      }
+
+      function finishCancelled() {
         if (!locked) return;
         const { el, prev, kind } = locked;
+        close(el, prev);
+        log(kind === "export" ? "已取消导出（提示条）" : "已取消导入（提示条），并刷新列表：取消可能恰好发生在提交之后，列表里可能多出一张画布");
+      }
+
+      function close(el, prev) {
         el.classList.add("closing");
         el.classList.remove("open");
         setTimeout(() => { el.remove(); }, 180);
         locked = null;
         if (prev && prev.focus) prev.focus(); /* 关闭后焦点还给触发它的按钮 */
+      }
+
+      function finish(ok, afterCancel) {
+        if (!locked) return;
+        const { el, prev, kind } = locked;
+        close(el, prev);
+        if (afterCancel) return log("取消时请求已经成功：按成功处理，不提示「已取消」（" + FLOWS[kind].done + "）");
         log(ok ? FLOWS[kind].done + "（提示条：成功）" : "失败：弹窗已关闭，请求层的全局提示会显示原因");
       }
 
-      /* 拦截：弹窗期间 Esc / 遮罩点击 / 页面快捷键都不生效，只让弹窗轻晃一下 */
+      /* 拦截：弹窗期间 Esc / 遮罩点击 / 页面快捷键都不生效，只让弹窗轻晃一下；Tab / Enter / Space 留给「取消」按钮 */
       const nudge = () => { if (!locked) return; locked.panel.classList.remove("nudge"); void locked.panel.offsetWidth; locked.panel.classList.add("nudge"); };
-      document.addEventListener("keydown", (e) => { if (!locked) return; if (e.key === "Tab") { e.preventDefault(); locked.panel.focus(); return; } e.preventDefault(); e.stopPropagation(); if (e.key === "Escape") nudge(); }, true);
+      document.addEventListener("keydown", (e) => {
+        if (!locked) return;
+        const onCancel = e.target && e.target.id === "cancel";
+        if (e.key === "Tab") { e.preventDefault(); const b = $("#cancel"); (document.activeElement === b ? locked.panel : b.disabled ? locked.panel : b).focus(); return; }
+        if (onCancel && (e.key === "Enter" || e.key === " ")) return;
+        e.preventDefault(); e.stopPropagation(); if (e.key === "Escape") nudge();
+      }, true);
       document.addEventListener("pointerdown", (e) => { if (!locked) return; if (!locked.panel.contains(e.target)) { e.preventDefault(); e.stopPropagation(); nudge(); } }, true);
       document.addEventListener("click", (e) => { if (locked && !locked.panel.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
       window.addEventListener("beforeunload", (e) => { if (locked) { e.preventDefault(); e.returnValue = ""; } });
