@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Search } from "lucide-react";
 
+import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
 import {
   CanvasCard,
   CanvasCardSkeleton,
@@ -116,6 +117,8 @@ export default function CanvasList() {
         onClose={canvasImport.closeReport}
         onOpen={canvasImport.openImported}
       />
+      {/* 导入期间把用户锁在进度弹窗里，不能点列表、不能再选文件 */}
+      <TransferProgressDialog open={canvasImport.importing} kind="import" />
     </div>
   );
 }

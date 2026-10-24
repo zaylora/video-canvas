@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { createCanvas, exportCanvas } from "@/api/canvas";
 import { Logo } from "@/components/brand/logo";
 import { ChromeButton, ChromePill, ChromeTooltip } from "@/components/canvas/chrome/chrome";
+import { TransferProgressDialog } from "@/components/canvas/transfer-progress-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -239,6 +240,8 @@ export function TopLeftBar({
       </DropdownMenu>
       <CanvasTitle title={title} onRename={onRename} />
       <SaveIndicator key={saveStatus} status={saveStatus} onSave={() => void onSaveNow()} />
+      {/* 导出期间把用户锁在进度弹窗里：导出的是已保存的内容，此时再改画布不会进这份文件 */}
+      <TransferProgressDialog open={exporting} kind="export" />
     </ChromePill>
   );
 }

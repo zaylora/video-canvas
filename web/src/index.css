@@ -1136,3 +1136,58 @@ html:has([data-shell="home"]) {
     background-position: -150% 0;
   }
 }
+
+/* 导入 / 导出进度弹窗（设计稿 docs/design/画布导入导出 第 14 节）：包裹沿轨道从起点飞向终点，只动 transform 与 opacity */
+@keyframes transfer-packet-fly {
+  0% {
+    transform: translateX(0) scale(0.6);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(26px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes transfer-canvas-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* 弹窗被 Esc / 点遮罩拦住时轻晃一次，表示「现在不能关」 */
+@keyframes transfer-nudge {
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+@utility transfer-packet {
+  animation: transfer-packet-fly 1.4s cubic-bezier(0.2, 0, 0, 1) infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 1;
+    transform: translateX(13px);
+  }
+}
+@utility transfer-breathe {
+  animation: transfer-canvas-breathe 1.6s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 1;
+  }
+}
+@utility transfer-nudge {
+  animation: transfer-nudge 120ms cubic-bezier(0.2, 0, 0, 1);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
